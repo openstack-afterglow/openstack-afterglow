@@ -156,6 +156,7 @@ from app.api.identity.admin_instances import router as admin_instances_router
 from app.api.identity.admin_libraries import router as admin_libraries_router
 from app.api.identity.admin_notion import router as admin_notion_router
 from app.api.identity.admin_orphans import router as admin_orphans_router
+from app.api.identity.admin_secrets import router as admin_secrets_router
 from app.api.identity.admin_services import router as admin_services_router
 from app.api.identity.profile import router as profile_router
 from app.api.identity.profile_activity import router as profile_activity_router
@@ -430,6 +431,13 @@ if _svc_cfg.service_swift_enabled:
 
     app.include_router(swift_router, prefix="/api/object-storage", tags=["object-storage"])
     app.include_router(swift_upload_router)
+if _svc_cfg.service_barbican_enabled:
+    from app.api.secrets import containers_router, orders_router, secrets_router
+
+    app.include_router(secrets_router, prefix="/api/secrets", tags=["secrets"])
+    app.include_router(containers_router, prefix="/api/secret-containers", tags=["secret-containers"])
+    app.include_router(orders_router, prefix="/api/secret-orders", tags=["secret-orders"])
+    app.include_router(admin_secrets_router, prefix="/api/admin", tags=["admin-key-manager"])
 # Common
 app.include_router(dashboard_router, prefix="/api/dashboard", tags=["dashboard"])
 app.include_router(metrics_router, prefix="/api/metrics", tags=["metrics"])
