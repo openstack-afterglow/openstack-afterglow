@@ -78,6 +78,22 @@ test("Afterglow resolves the global service project once per play batch", () => 
 	assert.match(lookup, /run_once: true/)
 })
 
+test("Afterglow fails prechecks before restart when K3s API credentials are absent", () => {
+	const defaults = readRepoFile("deploy/kolla/ansible/roles/afterglow/defaults/main.yml")
+	const precheck = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/precheck.yml")
+	const secrets = readRepoFile(
+		"deploy/kolla/ansible/roles/afterglow/tasks/preconditions_secrets.yml"
+	)
+
+	assert.match(defaults, /^afterglow_k3s_gpu_admission_token: ""$/m)
+	assert.match(defaults, /^afterglow_k3s_provisioning_token: ""$/m)
+	for (const taskFile of [precheck, secrets]) {
+		assert.match(taskFile, /afterglow_k3s_gpu_admission_token \| length >= 32/)
+		assert.match(taskFile, /afterglow_k3s_provisioning_token \| length >= 32/)
+		assert.match(taskFile, /afterglow_service_k3s_enabled \| bool/)
+	}
+})
+
 test("Afterglow frontend receives only a public runtime configuration", () => {
 	const defaults = readRepoFile("deploy/kolla/ansible/roles/afterglow/defaults/main.yml")
 	const vars = readRepoFile("deploy/kolla/ansible/roles/afterglow/vars/main.yml")

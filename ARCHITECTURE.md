@@ -193,9 +193,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "98a4e6699e850bdb09a9bdad9aba693f4c1184f52cbc86494300c5f5c154d16e",
-  "reviewed_at": "2026-09-11T06:56:50Z",
-  "summary": "No structure impact: serialized the existing global Keystone service-project lookup with Ansible run_once to prevent multi-controller deployment stalls."
+  "source_sha256": "9d3632d8e7eb9ee05dcdb45efdf3d6517740afe1f862e1259af3b0403cc921e4",
+  "reviewed_at": "2026-09-11T07:07:38Z",
+  "summary": "No structure impact: Kolla now fails closed before restart when required K3s internal API credentials are absent."
 }
 ```
 <!-- architecture-review:end -->

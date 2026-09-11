@@ -150,6 +150,10 @@ afterglow_service_chat_enabled: true
 afterglow_service_mcp_enabled: true
 # Shared only with the Lumen workload for the internal delegated-MCP bridge.
 afterglow_lumen_mcp_service_token: ""
+# K3s internal API credentials remain empty until supplied by the operator
+# secrets layer. Prechecks reject empty values before any container restart.
+afterglow_k3s_gpu_admission_token: ""
+afterglow_k3s_provisioning_token: ""
 
 # ── GHCR imagePullSecret ──────────────────────────────────────────────────────
 afterglow_image_pull_secret_b64: ""

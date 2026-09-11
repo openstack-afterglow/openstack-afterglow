@@ -30,6 +30,18 @@
   tags: precheck
   when: enable_afterglow | bool
 
+- name: Precheck | Verify K3s internal API credentials
+  ansible.builtin.assert:
+    that:
+      - afterglow_k3s_gpu_admission_token | length >= 32
+      - afterglow_k3s_provisioning_token | length >= 32
+    fail_msg: "K3s GPU admission and provisioning tokens must each be at least 32 characters in secrets.yml"
+  run_once: true
+  tags: precheck
+  when:
+    - enable_afterglow | bool
+    - afterglow_service_k3s_enabled | bool
+
 - name: Precheck | Validate Afterglow public frontend origin
   ansible.builtin.assert:
     that:
