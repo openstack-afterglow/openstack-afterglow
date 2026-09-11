@@ -193,9 +193,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "3a71808a9c91e6bf8d7650cc6021ca0e7b28bcf842d08b60223b0384e7c9406a",
-  "reviewed_at": "2026-09-11T08:06:19Z",
-  "summary": "No structure impact: Kolla now verifies internal Keystone reachability independently from every Afterglow controller before deployment."
+  "source_sha256": "2f9ecae6e32e8e47debea6f9b3da3abb4f172496309f9e5b5e61d4dc3870e6bd",
+  "reviewed_at": "2026-09-11T08:12:09Z",
+  "summary": "No structure impact: Kolla now checks the versioned Keystone public catalog endpoint independently from every Afterglow controller before deployment."
 }
 ```
 <!-- architecture-review:end -->

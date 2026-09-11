@@ -30,9 +30,9 @@
   tags: precheck
   when: enable_afterglow | bool
 
-- name: Precheck | Verify Keystone internal endpoint from every Afterglow host
+- name: Precheck | Verify Keystone public catalog endpoint from every Afterglow host
   ansible.builtin.uri:
-    url: "{{ afterglow_keystone_auth_url }}"
+    url: "{{ keystone_public_url | regex_replace('/$', '') }}/v3"
     method: GET
     status_code: 200
     return_content: false
