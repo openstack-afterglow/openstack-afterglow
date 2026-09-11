@@ -44,7 +44,7 @@
 		"mermaid": "^11.16.1",
 		"qrcode": "^1.5.4",
 		"shiki": "^3.23.0",
-		"smol-toml": "^1.6.1"
+		"smol-toml": "^1.7.1"
 	},
 	"overrides": {
 		"cookie": "^0.7.0",
