@@ -30,6 +30,22 @@
   tags: precheck
   when: enable_afterglow | bool
 
+- name: Precheck | Verify Keystone internal endpoint from every Afterglow host
+  ansible.builtin.uri:
+    url: "{{ afterglow_keystone_auth_url }}"
+    method: GET
+    status_code: 200
+    return_content: false
+    timeout: 10
+    validate_certs: "{{ not (afterglow_openstack_insecure | bool) }}"
+    ca_path: "{{ afterglow_openstack_cacert | default(omit, true) }}"
+  register: afterglow_keystone_reachability
+  changed_when: false
+  tags: precheck
+  when:
+    - enable_afterglow | bool
+    - inventory_hostname in groups['afterglow']
+
 - name: Precheck | Verify K3s internal API credentials
   ansible.builtin.assert:
     that:

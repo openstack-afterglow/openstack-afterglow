@@ -94,6 +94,22 @@ test("Afterglow fails prechecks before restart when K3s API credentials are abse
 	}
 })
 
+test("Afterglow checks Keystone reachability from every backend host", () => {
+	const precheck = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/precheck.yml")
+	const reachability = precheck.slice(
+		precheck.indexOf("Precheck | Verify Keystone internal endpoint from every Afterglow host"),
+		precheck.indexOf("Precheck | Verify K3s internal API credentials"),
+	)
+
+	assert.match(reachability, /ansible\.builtin\.uri:/)
+	assert.match(reachability, /url: "\{\{ afterglow_keystone_auth_url \}\}"/)
+	assert.match(reachability, /timeout: 10/)
+	assert.match(reachability, /validate_certs: "\{\{ not \(afterglow_openstack_insecure \| bool\) \}\}"/)
+	assert.match(reachability, /ca_path: "\{\{ afterglow_openstack_cacert \| default\(omit, true\) \}\}"/)
+	assert.match(reachability, /inventory_hostname in groups\['afterglow'\]/)
+	assert.doesNotMatch(reachability, /run_once:|delegate_to:/)
+})
+
 test("Afterglow frontend receives only a public runtime configuration", () => {
 	const defaults = readRepoFile("deploy/kolla/ansible/roles/afterglow/defaults/main.yml")
 	const vars = readRepoFile("deploy/kolla/ansible/roles/afterglow/vars/main.yml")
