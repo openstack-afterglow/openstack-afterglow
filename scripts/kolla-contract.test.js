@@ -66,6 +66,18 @@ test("Afterglow public endpoint controls every browser-facing origin", () => {
 	assert.doesNotMatch(defaults, /afterglow_external_url/)
 })
 
+test("Afterglow resolves the global service project once per play batch", () => {
+	const config = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/config.yml")
+	const lookup = config.slice(
+		config.indexOf("Config | Resolve Afterglow service project ID"),
+		config.indexOf("Config | Set resolved Afterglow service project ID"),
+	)
+
+	assert.match(lookup, /become: true/)
+	assert.match(lookup, /no_log: true/)
+	assert.match(lookup, /run_once: true/)
+})
+
 test("Afterglow frontend receives only a public runtime configuration", () => {
 	const defaults = readRepoFile("deploy/kolla/ansible/roles/afterglow/defaults/main.yml")
 	const vars = readRepoFile("deploy/kolla/ansible/roles/afterglow/vars/main.yml")

@@ -10,6 +10,7 @@
   register: afterglow_service_project_lookup
   changed_when: false
   no_log: true
+  run_once: true
   when:
     - inventory_hostname in groups['afterglow']
     - afterglow_service_project_id | default('') | length == 0

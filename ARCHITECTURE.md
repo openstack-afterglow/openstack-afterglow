@@ -193,9 +193,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "59d5b1c5c10491a348718f4df52c71de2e4b7722bc0b067fd43c9577dbfc67ad",
-  "reviewed_at": "2026-09-11T05:57:28Z",
-  "summary": "Reviewed accumulated dashboard, chat quota, topology, Kolla deployment, and responsive UI changes; architecture and operational docs updated, including scoped Manila toolbox authentication."
+  "source_sha256": "98a4e6699e850bdb09a9bdad9aba693f4c1184f52cbc86494300c5f5c154d16e",
+  "reviewed_at": "2026-09-11T06:56:50Z",
+  "summary": "No structure impact: serialized the existing global Keystone service-project lookup with Ansible run_once to prevent multi-controller deployment stalls."
 }
 ```
 <!-- architecture-review:end -->
