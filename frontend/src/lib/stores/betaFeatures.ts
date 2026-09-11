@@ -42,9 +42,10 @@ function readFlag(key: keyof BetaFeatures): boolean {
 }
 
 function createBetaFeaturesStore() {
-	const initial: BetaFeatures = Object.fromEntries(
-		(Object.keys(DEFAULT_BETA_FEATURES) as (keyof BetaFeatures)[]).map(key => [key, readFlag(key)]),
-	) as BetaFeatures;
+	const initial: BetaFeatures = { ...DEFAULT_BETA_FEATURES };
+	for (const key of Object.keys(initial) as (keyof BetaFeatures)[]) {
+		initial[key] = readFlag(key);
+	}
 	const { subscribe, set, update } = writable<BetaFeatures>(initial);
 
 	function persist(value: BetaFeatures) {

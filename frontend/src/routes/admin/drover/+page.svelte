@@ -90,7 +90,7 @@
 
 <!-- 슬라이드 패널 -->
 {#if selectedClusterId}
-	<SlidePanel onClose={closeClusterPanel}>
+	<SlidePanel onClose={closeClusterPanel} ariaLabel="Drover 클러스터 상세">
 		<K3sClusterDetailPanel clusterId={selectedClusterId} onClose={closeClusterPanel} adminMode={true} />
 	</SlidePanel>
 {/if}

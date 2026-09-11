@@ -16,7 +16,7 @@
 		{#if count > 0 || key === 'all'}
 			<button
 				onclick={() => distroFilter = key}
-				class="px-3 py-1 rounded-full text-xs font-medium transition-colors {distroFilter === key ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}"
+				class="px-3 py-1 rounded-full text-xs font-medium transition-colors {distroFilter === key ? 'bg-action-warm text-ink-0' : 'bg-surface-sunken text-ink-2 hover:text-ink-0'}"
 			>
 				{label} {count > 0 ? `(${count})` : ''}
 			</button>

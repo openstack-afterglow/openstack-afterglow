@@ -14,6 +14,7 @@ import type { SecurityGroup as SecurityGroupInfo } from '$lib/types/securityGrou
 import type { Volume } from '$lib/types/volume';
 import type { Keypair } from '$lib/types/keypair';
 import type { FlavorOption } from '$lib/types/flavor';
+import type { ImageInfo } from '$lib/types/compute';
 import {
 	isGithubSshEligible,
 	isSshAccessReady,
@@ -42,13 +43,9 @@ interface ProjectQuota {
 	disk_gb: QuotaPair;
 	gpu_instances?: number;
 }
-interface VmImage {
-	id: string;
-	name: string;
-	status: string;
-	os_distro?: string;
-	os_version?: string;
-	properties?: Record<string, unknown>;
+interface VmImage extends ImageInfo {
+	os_version?: string | null;
+	properties?: Record<string, unknown> | null;
 }
 interface LibraryItem {
 	id: string;
@@ -276,8 +273,10 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	// Mirror writable stores in runes for reactive derived values
 	let wizardState = $state(get(wizard));
 	let betaState = $state(get(betaFeatures));
+	let authProjectId = $state(get(auth).projectId);
 	$effect(() => wizard.subscribe(v => { wizardState = v; }));
 	$effect(() => betaFeatures.subscribe(v => { betaState = v; }));
+	$effect(() => auth.subscribe(v => { authProjectId = v.projectId; }));
 	let images = $state<VmImage[]>([]);
 	let flavors = $state<FlavorOption[]>([]);
 	let libraries = $state<LibraryItem[]>([]);
@@ -301,6 +300,17 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	let adminProjectsRequestId = 0;
 	let adminProjectQuotasRequestId = 0;
 	let adminProjectQuotasPromise: Promise<void> | null = null;
+	let initialized = false;
+	let loadedAuthProjectId = get(auth).projectId;
+	let projectLoadController = new AbortController();
+	let destroyed = false;
+
+	let deployController: AbortController | null = null;
+	function advanceProjectGeneration() {
+		projectLoadController.abort();
+		projectLoadController = new AbortController();
+		loadGeneration += 1;
+	}
 	function optionKeysForStep(step: WizardStepId): OptionKey[] {
 		if (step === 1) return ['images', 'volumes'];
 		if (step === 2) return ['flavors'];
@@ -564,25 +574,30 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	function loadOption<T>(
 		key: OptionKey,
 		scope: string,
-		request: () => Promise<T>,
+		request: (signal?: AbortSignal) => Promise<T>,
 		apply: (value: T) => void,
 		isCurrent = () => true,
 	): Promise<void> {
-		const requestKey = `${key}:${scope}`;
+		if (destroyed) return Promise.resolve();
+		const generation = loadGeneration;
+		const projectScoped = scope !== 'global';
+		const signal = projectScoped ? projectLoadController.signal : undefined;
+		const requestKey = projectScoped ? `${key}:${scope}:${generation}` : `${key}:${scope}`;
 		const existing = optionRequests.get(requestKey);
 		if (existing) return existing;
 		if (optionStatus[key] !== 'idle' && optionStatus[key] !== 'error') return Promise.resolve();
 
 		optionStatus[key] = 'loading';
 		delete optionErrors[key];
-		const promise = request()
+		const promise = request(signal)
 			.then(value => {
-				if (!isCurrent()) return;
+				if (destroyed || (projectScoped && generation !== loadGeneration) || !isCurrent()) return;
 				apply(value);
 				optionStatus[key] = 'loaded';
 			})
 			.catch(error => {
-				if (!isCurrent()) return;
+				if (destroyed || (projectScoped && generation !== loadGeneration) || !isCurrent()) return;
+				if (error instanceof DOMException && error.name === 'AbortError') return;
 				optionErrors[key] = optionError(error);
 				optionStatus[key] = 'error';
 			})
@@ -601,22 +616,30 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	}
 
 	function targetIsCurrent(projectId: string, generation: number) {
-		return opts.adminMode() && adminSelectedProjectId === projectId && loadGeneration === generation;
+		return !destroyed && opts.adminMode() && adminSelectedProjectId === projectId && loadGeneration === generation;
+	}
+
+	function authProjectIsCurrent(projectId: string | undefined, generation: number) {
+		return !destroyed
+			&& !opts.adminMode()
+			&& (get(auth).projectId ?? undefined) === projectId
+			&& loadGeneration === generation;
 	}
 
 	async function loadBootOptions() {
 		const { token, projectId } = authScope();
+		if (destroyed) return;
 		const imagePromise = loadOption(
 			'images',
-			'global',
-			() => api.get<VmImage[]>('/api/v1/images', token, projectId),
+			opts.adminMode() ? 'global' : `public:${projectId ?? ''}`,
+			(signal) => api.get<VmImage[]>('/api/v1/images', token, projectId, { signal }),
 			value => { images = value; },
 		);
 		if (!opts.adminMode()) {
 			const volumePromise = loadOption(
 				'volumes',
 				`public:${projectId ?? ''}`,
-				() => api.get<Volume[]>('/api/v1/volumes', token, projectId),
+				(signal) => api.get<Volume[]>('/api/v1/volumes', token, projectId, { signal }),
 				value => { volumes = value; },
 			);
 			await Promise.all([imagePromise, volumePromise]);
@@ -631,10 +654,10 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		const volumePromise = loadOption(
 			'volumes',
 			targetProjectId,
-			() => api.get<Volume[]>(
-				`/api/v1/admin/instances/volumes-for-project?project_id=${encodeURIComponent(targetProjectId)}`,
+			(signal) => api.get<Volume[]>(`/api/v1/admin/instances/volumes-for-project?project_id=${encodeURIComponent(targetProjectId)}`,
 				token,
 				projectId,
+				{ signal },
 			),
 			value => { volumes = value; },
 			() => targetIsCurrent(targetProjectId, generation),
@@ -643,6 +666,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	}
 
 	function loadFlavorOptions() {
+		if (destroyed) return Promise.resolve();
 		const { token, projectId } = authScope();
 		if (opts.adminMode() && adminSelectedProjectId) {
 			const targetProjectId = adminSelectedProjectId;
@@ -650,11 +674,10 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 			return loadOption(
 				'flavors',
 				targetProjectId,
-				() =>
-					api.get<FlavorOption[]>(
-						`/api/v1/admin/instances/flavors-for-project?project_id=${encodeURIComponent(targetProjectId)}`,
+				(signal) => api.get<FlavorOption[]>(`/api/v1/admin/instances/flavors-for-project?project_id=${encodeURIComponent(targetProjectId)}`,
 						token,
 						projectId,
+						{ signal },
 					),
 				value => {
 					flavors = value;
@@ -664,59 +687,61 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		}
 		return loadOption(
 			'flavors',
-			'global',
-			() => api.get<FlavorOption[]>('/api/v1/flavors', token, projectId),
+			`public:${projectId ?? ''}`,
+			(signal) => api.get<FlavorOption[]>('/api/v1/flavors', token, projectId, { signal }),
 			value => { flavors = value; },
 		);
 	}
 
 	async function loadSquashfsCatalog() {
+		if (destroyed) return;
 		if (opts.adminMode()) return;
 		const { token, projectId } = authScope();
 		await Promise.allSettled([
 			loadOption(
 				'squashfsProfiles',
-				'public',
-				() => api.get<SquashfsProfile[]>('/api/v1/libraries/squashfs/profiles', token, projectId),
+				`public:${projectId ?? ''}`,
+				(signal) => api.get<SquashfsProfile[]>('/api/v1/libraries/squashfs/profiles', token, projectId, { signal }),
 				value => { squashfsProfiles = value; },
 			),
 			loadOption(
 				'squashfsArtifacts',
-				'public',
-				() => api.get<SquashfsArtifact[]>('/api/v1/libraries/squashfs/artifacts', token, projectId),
+				`public:${projectId ?? ''}`,
+				(signal) => api.get<SquashfsArtifact[]>('/api/v1/libraries/squashfs/artifacts', token, projectId, { signal }),
 				value => { squashfsArtifacts = value; },
 			),
 		]);
 	}
 
 	async function loadConfigurationOptions() {
+		if (destroyed) return;
 		const { token, projectId } = authScope();
+		const generation = loadGeneration;
 		if (!opts.adminMode()) {
 			await Promise.allSettled([
-				loadOption('networks', `public:${projectId ?? ''}`, () => api.get<NetworkInfo[]>('/api/v1/networks', token, projectId), value => { networks = value; }),
-				loadOption('keypairs', `public:${projectId ?? ''}`, () => api.get<Keypair[]>('/api/v1/keypairs', token, projectId), value => { keypairs = value; }),
-				loadOption('securityGroups', `public:${projectId ?? ''}`, () => api.get<SecurityGroupInfo[]>('/api/v1/security-groups', token, projectId), value => { securityGroups = value; }),
-				loadOption('defaultNetwork', `public:${projectId ?? ''}`, () => api.get<{ network_id: string }>('/api/v1/networks/default', token, projectId), value => { defaultNetworkId = value.network_id; }),
+				loadOption('networks', `public:${projectId ?? ''}`, (signal) => api.get<NetworkInfo[]>('/api/v1/networks', token, projectId, { signal }), value => { networks = value; }),
+				loadOption('keypairs', `public:${projectId ?? ''}`, (signal) => api.get<Keypair[]>('/api/v1/keypairs', token, projectId, { signal }), value => { keypairs = value; }),
+				loadOption('securityGroups', `public:${projectId ?? ''}`, (signal) => api.get<SecurityGroupInfo[]>('/api/v1/security-groups', token, projectId, { signal }), value => { securityGroups = value; }),
+				loadOption('defaultNetwork', `public:${projectId ?? ''}`, (signal) => api.get<{ network_id: string }>('/api/v1/networks/default', token, projectId, { signal }), value => { defaultNetworkId = value.network_id; }),
 			]);
-			applyConfigurationDefaults();
+			if (authProjectIsCurrent(projectId, generation)) applyConfigurationDefaults();
 			return;
 		}
 		const targetProjectId = adminSelectedProjectId;
 		if (!targetProjectId) return;
-		const generation = loadGeneration;
 		const isCurrent = () => targetIsCurrent(targetProjectId, generation);
 		await Promise.allSettled([
 			loadOption(
 				'networks',
 				targetProjectId,
-				() => api.get<NetworkInfo[]>(`/api/v1/admin/instances/networks-for-project?project_id=${encodeURIComponent(targetProjectId)}`, token, projectId),
+				(signal) => api.get<NetworkInfo[]>(`/api/v1/admin/instances/networks-for-project?project_id=${encodeURIComponent(targetProjectId)}`, token, projectId, { signal }),
 				value => { networks = value; },
 				isCurrent,
 			),
 			loadOption(
 				'securityGroups',
 				targetProjectId,
-				() => api.get<SecurityGroupInfo[]>(`/api/v1/admin/instances/security-groups-for-project?project_id=${encodeURIComponent(targetProjectId)}`, token, projectId),
+				(signal) => api.get<SecurityGroupInfo[]>(`/api/v1/admin/instances/security-groups-for-project?project_id=${encodeURIComponent(targetProjectId)}`, token, projectId, { signal }),
 				value => { securityGroups = value; },
 				isCurrent,
 			),
@@ -725,6 +750,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	}
 
 	function applyConfigurationDefaults() {
+		if (destroyed) return;
 		const current = get(wizard);
 		if (!opts.adminMode() && keypairs.length === 1 && !current.keyName) {
 			wizard.update(w => ({ ...w, keyName: keypairs[0].name }));
@@ -742,6 +768,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	}
 
 	function loadFileStorages() {
+		if (destroyed) return Promise.resolve();
 		if (opts.adminMode() || !get(siteConfig).services.manila) {
 			fileStorages = [];
 			return Promise.resolve();
@@ -750,13 +777,15 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		return loadOption(
 			'fileStorages',
 			`public:${projectId ?? ''}`,
-			() => api.get<typeof fileStorages>('/api/v1/file-storage', token, projectId),
+			(signal) => api.get<typeof fileStorages>('/api/v1/file-storage', token, projectId, { signal }),
 			value => { fileStorages = value; },
 		);
 	}
 
 	function preloadConfigurationAfterBoot(bootPromise: Promise<void>, targetProjectId?: string) {
+		const generation = loadGeneration;
 		void bootPromise.then(() => {
+			if (destroyed || generation !== loadGeneration) return;
 			if (opts.adminMode() && targetProjectId !== adminSelectedProjectId) return;
 			void loadConfigurationOptions();
 			void loadFileStorages();
@@ -764,12 +793,13 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	}
 
 	function loadLegacyLibraries() {
+		if (destroyed) return Promise.resolve();
 		if (wizardState.libraries.length === 0) return Promise.resolve();
 		const { token, projectId } = authScope();
 		return loadOption(
 			'legacyLibraries',
-			'public',
-			() => api.get<LibraryItem[]>('/api/v1/libraries', token, projectId),
+			`public:${projectId ?? ''}`,
+			(signal) => api.get<LibraryItem[]>('/api/v1/libraries', token, projectId, { signal }),
 			value => { libraries = value; },
 		);
 	}
@@ -790,6 +820,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	}
 
 	async function loadFlavorQuota() {
+		if (destroyed) return;
 		const { token, projectId } = authScope();
 		if (opts.adminMode() && adminSelectedProjectId) {
 			const targetProjectId = adminSelectedProjectId;
@@ -807,7 +838,8 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 				const response = await api.get<QuotaResponse>(
 					`/api/v1/admin/quotas/${encodeURIComponent(targetProjectId)}`,
 					token,
-					projectId
+					projectId,
+					{ signal: projectLoadController.signal },
 				);
 				if (!targetIsCurrent(targetProjectId, generation)) return;
 				flavorQuota = {
@@ -822,8 +854,10 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 			return;
 		}
 		if (!opts.adminMode()) {
+			const generation = loadGeneration;
 			try {
-				const response = await api.get<QuotaResponse>('/api/v1/dashboard/quotas', token, projectId);
+				const response = await api.get<QuotaResponse>('/api/v1/dashboard/quotas', token, projectId, { signal: projectLoadController.signal });
+				if (!authProjectIsCurrent(projectId, generation)) return;
 				flavorQuota = {
 					instances: response.compute?.instances,
 					cores: response.compute?.cores,
@@ -831,13 +865,14 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 					gigabytes: response.storage?.gigabytes,
 				};
 			} catch {
-				flavorQuota = null;
+				if (authProjectIsCurrent(projectId, generation)) flavorQuota = null;
 			}
 		}
 	}
 
 	function loadAdminProjectQuotas(): Promise<void> {
 		if (!opts.adminMode()) return Promise.resolve();
+		if (destroyed) return Promise.resolve();
 		if (adminProjectQuotasPromise) return adminProjectQuotasPromise;
 
 		const requestId = ++adminProjectQuotasRequestId;
@@ -860,6 +895,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 
 	async function loadAdminProjects() {
 		if (!opts.adminMode()) return;
+		if (destroyed) return;
 		const requestId = ++adminProjectsRequestId;
 		adminProjectsLoading = true;
 		const { token, projectId } = authScope();
@@ -877,18 +913,23 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	}
 
 	function resetTargetOptions() {
-		loadGeneration += 1;
-		for (const key of ['volumes', 'networks', 'securityGroups'] as const) {
+		advanceProjectGeneration();
+		for (const key of ['volumes', 'flavors', 'networks', 'securityGroups'] as const) {
 			optionStatus[key] = 'idle';
 			delete optionErrors[key];
 		}
 		volumes = [];
+		flavors = [];
 		networks = [];
 		securityGroups = [];
 		defaultNetworkId = null;
 		flavorQuota = null;
 		wizard.update(w => ({
 			...w,
+			bootVolumeId: null,
+			bootVolumeName: null,
+			flavorId: null,
+			flavorName: null,
 			networkId: null,
 			networkName: null,
 			securityGroups: [],
@@ -898,7 +939,29 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		}));
 	}
 
+	function resetPublicProjectOptions() {
+		advanceProjectGeneration();
+		for (const key of OPTION_KEYS) {
+			optionStatus[key] = 'idle';
+			delete optionErrors[key];
+		}
+		images = [];
+		volumes = [];
+		flavors = [];
+		libraries = [];
+		networks = [];
+		keypairs = [];
+		securityGroups = [];
+		fileStorages = [];
+		squashfsProfiles = [];
+		squashfsArtifacts = [];
+		defaultNetworkId = null;
+		flavorQuota = null;
+		resetWizard();
+	}
+
 	function ensureStepData(step: WizardStepId) {
+		if (destroyed) return;
 		if (step === 1) void loadBootOptions();
 		if (step === 2) void loadFlavorOptions();
 		if (step === 3 && squashfsEligible) void loadSquashfsCatalog();
@@ -1080,6 +1143,9 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	}
 
 	async function deploy() {
+		if (destroyed || deploying) return;
+		deployController?.abort();
+		deployController = new AbortController();
 		deployError = '';
 		deploying = true;
 		currentStep = 'manila_preparing';
@@ -1136,7 +1202,9 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 					method: 'POST',
 					headers: { ...headers, Accept: 'application/json' },
 					body: JSON.stringify(consumeBody),
+					signal: deployController.signal,
 				});
+				if (destroyed) return;
 				if (!response.ok) {
 					const text = await response.text();
 					throw new ApiError(response.status, text || response.statusText);
@@ -1146,12 +1214,14 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 				progressMessage = '배포 완료';
 				toast.success('인스턴스 생성 완료');
 				setTimeout(() => {
+					if (destroyed) return;
 					resetWizard();
 					closeWizard();
 					goto('/dashboard');
 				}, 1000);
 				return;
 			} catch (e) {
+				if (destroyed) return;
 				deployError = e instanceof ApiError
 					? `배포 실패: ${e.message}`
 					: `서버 연결 오류: ${e instanceof Error ? e.message : '알 수 없는 오류'}`;
@@ -1195,12 +1265,14 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		);
 		if (mockStream) {
 			for await (const data of mockStream) {
+				if (destroyed) return;
 				currentStep = data.step;
 				progress = data.progress;
 				progressMessage = data.message;
 			}
 			toast.success('인스턴스 생성 완료');
 			setTimeout(() => {
+				if (destroyed) return;
 				resetWizard();
 				adminSelectedProjectId = null;
 				adminSelectedProjectName = null;
@@ -1211,7 +1283,8 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		}
 
 		try {
-			const response = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body) });
+			const response = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body), signal: deployController.signal });
+			if (destroyed) return;
 			if (!response.ok) {
 				const text = await response.text();
 				throw new ApiError(response.status, text || response.statusText);
@@ -1222,6 +1295,10 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 			let buffer = '';
 			while (true) {
 				const { done, value } = await reader.read();
+				if (destroyed) {
+					await reader.cancel();
+					return;
+				}
 				if (done) break;
 				buffer += decoder.decode(value, { stream: true });
 				const lines = buffer.split('\n');
@@ -1239,6 +1316,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 							if (data.step === 'completed') {
 								toast.success(`인스턴스 생성 완료`);
 								setTimeout(() => {
+									if (destroyed) return;
 									resetWizard();
 									adminSelectedProjectId = null;
 									adminSelectedProjectName = null;
@@ -1258,6 +1336,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 				}
 			}
 		} catch (e) {
+			if (destroyed) return;
 			deployError = e instanceof ApiError
 				? `배포 실패: ${e.message}`
 				: `서버 연결 오류: ${e instanceof Error ? e.message : '알 수 없는 오류'}`;
@@ -1269,7 +1348,37 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		ensureStepData(wizardState.step as WizardStepId);
 	}
 
+	$effect(() => {
+		const projectId = authProjectId;
+		if (!initialized || opts.adminMode() || projectId === loadedAuthProjectId) return;
+		loadedAuthProjectId = projectId;
+		resetPublicProjectOptions();
+
+		if (!projectId) return;
+		if (destroyed) return;
+		const bootPromise = loadBootOptions();
+		preloadConfigurationAfterBoot(bootPromise);
+		void loadFlavorOptions();
+		void loadFlavorQuota();
+	});
+	function destroy() {
+		if (destroyed) return;
+		destroyed = true;
+		initialized = false;
+		projectLoadController.abort();
+		deployController?.abort();
+		deployController = null;
+		loadGeneration += 1;
+		adminProjectsRequestId += 1;
+		adminProjectQuotasRequestId += 1;
+		optionRequests.clear();
+		adminProjectQuotasPromise = null;
+	}
+
 	function init() {
+		if (destroyed) return;
+		loadedAuthProjectId = get(auth).projectId;
+		initialized = true;
 		if (opts.adminMode()) {
 			const targetId = get(wizard).targetProjectId;
 			if (targetId) {
@@ -1358,6 +1467,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		isExhausted,
 		// Lifecycle
 		init,
+		destroy,
 		// Data loading
 		ensureStepData,
 		retryCurrentStep,

@@ -21,7 +21,7 @@ The repository implements these operational surfaces:
 - **Shared data and libraries** — use Manila CephFS/NFS shares and snapshots; compose squashfs content-addressable immutable AI/ML layers with OverlayFS inside VMs for reuse.
 - **Operations and observability** — manage projects, users, roles, quotas, Grafana and Prometheus integrations, and audit logs from one console.
 
-The implementation path is SvelteKit frontend → FastAPI `/api/v1` gateway → OpenStack services through `openstacksdk`, with Redis providing cache and session storage. See the [architecture documentation](docs/architecture.md) and [Palimpsest layer documentation](docs/palimpsest.md) for the detailed flows.
+The browser's SvelteKit application calls the configured FastAPI `/api/v1` API base directly, and the backend talks to OpenStack services through `openstacksdk`. SvelteKit is the UI/auth shell, not an API relay. Redis provides cache and session storage. The current architecture source of truth is the [root architecture](ARCHITECTURE.md); see the [Palimpsest layer documentation](docs/palimpsest.md) for domain detail. After code/config changes, run `python3 scripts/check_architecture.py --stamp --summary "<review summary>"` and `python3 scripts/check_architecture.py --staged` to check freshness.
 
 
 ## Features
@@ -57,12 +57,13 @@ See the documentation below for Kubernetes / ArgoCD / kolla-ansible deployment a
 
 | Document | Contents |
 |---|---|
-| [Getting started · Deployment](docs/en/deployment.md) | Docker Compose · Kubernetes · ArgoCD · kolla-ansible |
+| [Root architecture](ARCHITECTURE.md) | Current ownership, runtime, data boundaries, and update rules |
+| [Deployment detail](docs/en/deployment.md) | Docker Compose · Kubernetes · ArgoCD · kolla-ansible |
 | [k3s cluster](docs/en/k3s.md) | k3s provisioning, node topology, CoreOS migration |
-| [Architecture](docs/architecture.md) _(Korean)_ | System structure, VM-creation flow, OverlayFS |
-| [API reference](docs/api-reference.md) _(Korean)_ | Complete REST API |
+| [API detail](docs/api-reference.md) _(Korean)_ | Complete REST API |
 | [Security model](docs/security.md) _(Korean)_ | Authn/authz, IDOR guards, HKDF crypto, audit log |
 | [Targeted testing](docs/testing.md) _(Korean)_ | Fast local feature-test target guide |
+| [Architecture detail](docs/en/architecture.md) | Historical/domain detail linked from the root source of truth |
 
 Release changes: [CHANGELOG](CHANGELOG.md) · work log: [`openspec/`](openspec/) (`openspec list`, migrated from milestone.md).
 

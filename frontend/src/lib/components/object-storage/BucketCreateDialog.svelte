@@ -43,7 +43,7 @@
 
 {#if open}
 	<div
-		class="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
+		class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 		onclick={() => (open = false)}
 		role="dialog"
 		aria-modal="true"
@@ -51,20 +51,20 @@
 		onkeydown={(e) => e.key === 'Escape' && (open = false)}
 	>
 		<div
-			class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-md mx-4 shadow-2xl"
+			class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]"
 			onclick={(e) => e.stopPropagation()}
 			role="none"
 			onkeydown={(e) => e.stopPropagation()}
 		>
-			<h2 class="text-lg font-semibold text-white mb-4">버킷 생성</h2>
+			<h2 class="text-lg font-semibold text-ink-0 mb-4">버킷 생성</h2>
 			<div class="space-y-3">
 				<div>
-					<label class="block text-xs text-gray-400 mb-1">이름</label>
-					<input
+					<label class="block text-xs text-ink-2 mb-1" for="field-bucketcreatedialog-62">이름</label>
+					<input id="field-bucketcreatedialog-62"
 						type="text"
 						bind:value={name}
 						placeholder="my-container"
-						class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+						class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 focus:outline-none focus:border-indigo-500"
 						onkeydown={(e) => e.key === 'Enter' && submit()}
 					/>
 				</div>
@@ -75,12 +75,12 @@
 			<div class="flex justify-end gap-2 mt-5">
 				<button
 					onclick={() => (open = false)}
-					class="px-4 py-2 text-sm text-gray-400 hover:text-white border border-gray-700 rounded-lg transition-colors"
+					class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 border border-line-2 rounded-lg transition-colors"
 				>취소</button>
 				<button
 					onclick={submit}
 					disabled={creating || !name.trim()}
-					class="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded-lg transition-colors"
+					class="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:bg-surface-selected disabled:text-ink-3 text-ink-0 rounded-lg transition-colors"
 				>{creating ? '생성 중...' : '생성'}</button>
 			</div>
 		</div>

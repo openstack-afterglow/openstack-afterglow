@@ -39,11 +39,11 @@
 	});
 </script>
 
-<div class="p-6 text-gray-100">
+<div class="p-6 text-ink-1">
 	<RouterDetailHeader {ar} {onClose} {routerId} />
 
 	{#if s.loading}
-		<div class="text-gray-500 text-sm">불러오는 중...</div>
+		<div class="text-ink-3 text-sm">불러오는 중...</div>
 	{:else if s.error}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{s.error}</div>
 	{:else if s.router}

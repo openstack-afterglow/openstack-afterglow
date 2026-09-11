@@ -9,6 +9,7 @@
   import { betaFeatures, type BetaFeatures } from '$lib/stores/betaFeatures';
   import { siteConfig } from '$lib/config/site';
   import { isMockupPathAllowed } from '$lib/mockup/contracts';
+  import { dialogFocus } from '$lib/utils/dialogFocus';
 
   interface PaletteItem {
     id: string;
@@ -36,6 +37,7 @@
   let inputEl = $state<HTMLInputElement | null>(null);
   let indexedAt = $state(0);
   let resourceItems = $state<PaletteItem[]>([]);
+  const listboxId = 'command-palette-results';
   const mockupAdminActive = $derived($page.data.mockup?.active === true && $page.data.mockup.profile === 'admin');
   const paletteBetaFeatures = $derived(mockupAdminActive ? MOCKUP_BETA_FEATURES : $betaFeatures);
 
@@ -125,6 +127,9 @@
     }
     return ni === n.length;
   }
+  function resultId(item: PaletteItem): string {
+    return `command-palette-result-${item.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+  }
 
   const results = $derived.by(() => {
     const q = query.trim();
@@ -168,68 +173,79 @@
 </script>
 
 {#if $palette}
-  <!-- Backdrop -->
   <div
-    class="fixed inset-0 bg-surface-scrim backdrop-blur-sm z-[var(--z-command)]"
-    onclick={() => palette.close()}
-    role="presentation"
-  ></div>
-
-  <!-- Panel -->
-  <div
-    class="fixed top-[20vh] left-1/2 -translate-x-1/2 w-full max-w-xl z-[calc(var(--z-command)+1)] px-4"
+    use:dialogFocus={{ enabled: true, onEscape: () => palette.close(), initialFocus: '#command-palette-input' }}
+    class="fixed inset-0 z-[var(--z-command)]"
     role="dialog"
     aria-modal="true"
     aria-label="커맨드 팔레트"
+    tabindex="-1"
   >
-    <div class="palette-panel rounded-2xl border border-line-2 shadow-2xl overflow-hidden">
-      <!-- Input -->
-      <div class="flex items-center gap-3 px-4 py-3 border-b border-line">
-        <svg class="w-4 h-4 text-ink-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z"/>
-        </svg>
-        <input
-          bind:this={inputEl}
-          bind:value={query}
-          onkeydown={onKeydown}
-          type="text"
-          placeholder="메뉴 또는 리소스 검색..."
-          autocomplete="off"
-          class="flex-1 bg-transparent text-[14px] text-ink-0 placeholder-ink-3 outline-none"
-        />
-        <kbd class="text-[10px] text-ink-3 border border-line px-1.5 py-0.5 rounded font-mono">ESC</kbd>
-      </div>
+    <button
+      type="button"
+      class="absolute inset-0 cursor-default bg-surface-scrim backdrop-blur-sm"
+      onclick={() => palette.close()}
+      aria-label="커맨드 팔레트 닫기"
+    ></button>
+    <div class="fixed left-1/2 top-[20vh] z-[calc(var(--z-command)+1)] w-full max-w-xl -translate-x-1/2 px-4">
+      <div class="palette-panel overflow-hidden rounded-xl border border-line-2 shadow-[var(--shadow-restraint)]">
+        <div class="flex items-center gap-3 border-b border-line px-4 py-3">
+          <svg class="size-4 shrink-0 text-ink-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z"/>
+          </svg>
+          <input
+            id="command-palette-input"
+            bind:this={inputEl}
+            bind:value={query}
+            onkeydown={onKeydown}
+            type="text"
+            role="combobox"
+            aria-label="메뉴 또는 리소스 검색"
+            aria-autocomplete="list"
+            aria-controls={listboxId}
+            aria-expanded="true"
+            aria-activedescendant={results[selectedIdx] ? resultId(results[selectedIdx]) : undefined}
+            placeholder="메뉴 또는 리소스 검색..."
+            autocomplete="off"
+            class="flex-1 bg-transparent text-[14px] text-ink-0 placeholder-ink-3 outline-none"
+          />
+          <kbd class="rounded border border-line px-1.5 py-0.5 font-mono text-[10px] text-ink-2">ESC</kbd>
+        </div>
 
-      <!-- Results -->
-      {#if results.length > 0}
-        <ul class="max-h-80 overflow-y-auto py-1">
-          {#each results as item, i}
-            <li>
-              <button
-                onclick={() => navigate(item.href)}
-                class="palette-item w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors"
-                class:palette-item-selected={i === selectedIdx}
-                onmouseenter={() => selectedIdx = i}
-              >
-                <span class="palette-icon w-7 h-7 rounded-lg flex items-center justify-center shrink-0">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d={item.icon ?? ICONS.route}/>
-                  </svg>
-                </span>
-                <div class="min-w-0 flex-1">
-                  <div class="text-[13px] font-medium text-ink-0 truncate">{item.label}</div>
-                  {#if item.sublabel}
-                    <div class="text-[11px] text-ink-3 truncate">{item.sublabel}</div>
-                  {/if}
-                </div>
-                <kbd class="text-[10px] text-ink-3 opacity-0 group-hover:opacity-100">↵</kbd>
-              </button>
-            </li>
-          {/each}
-        </ul>
-      {:else}
-        <div class="px-4 py-6 text-center text-sm text-ink-3">결과 없음</div>
-      {/if}
+        <p class="sr-only" aria-live="polite">{results.length > 0 ? `${results.length}개 결과` : '검색 결과 없음'}</p>
+        {#if results.length > 0}
+          <ul id={listboxId} role="listbox" aria-label="검색 결과" class="max-h-80 overflow-y-auto py-1">
+            {#each results as item, i}
+              <li role="presentation">
+                <button
+                  id={resultId(item)}
+                  role="option"
+                  aria-selected={i === selectedIdx}
+                  onclick={() => navigate(item.href)}
+                  class="palette-item flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors"
+                  class:palette-item-selected={i === selectedIdx}
+                  onmouseenter={() => selectedIdx = i}
+                >
+                  <span class="palette-icon flex size-7 shrink-0 items-center justify-center rounded-md">
+                    <svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d={item.icon ?? ICONS.route}/>
+                    </svg>
+                  </span>
+                  <span class="min-w-0 flex-1">
+                    <span class="block truncate text-[13px] font-medium text-ink-0">{item.label}</span>
+                    {#if item.sublabel}
+                      <span class="block truncate text-xs text-ink-2">{item.sublabel}</span>
+                    {/if}
+                  </span>
+                  <kbd class="text-[10px] text-ink-2 opacity-0 group-hover:opacity-100">↵</kbd>
+                </button>
+              </li>
+            {/each}
+          </ul>
+        {:else}
+          <div id={listboxId} role="listbox" aria-label="검색 결과" class="px-4 py-6 text-center text-sm text-ink-2">결과 없음</div>
+        {/if}
+      </div>
     </div>
   </div>
 {/if}
@@ -249,14 +265,14 @@
   }
   .palette-item:hover,
   .palette-item-selected {
-    background: var(--color-surface-sunken);
+    background: var(--color-surface-selected);
   }
   .palette-icon {
-    background: color-mix(in oklab, var(--color-accent) 12%, transparent);
-    color: var(--color-accent);
+    background: var(--color-surface-sunken);
+    color: var(--color-ink-2);
   }
   .palette-item-selected .palette-icon {
-    background: color-mix(in oklab, var(--color-warm) 14%, transparent);
-    color: var(--color-warm);
+    background: var(--color-surface-selected);
+    color: var(--color-ink-0);
   }
 </style>

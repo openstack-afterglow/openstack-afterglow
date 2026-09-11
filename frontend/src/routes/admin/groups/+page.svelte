@@ -30,7 +30,7 @@
 <div class="p-4 md:p-6 max-w-7xl mx-auto">
 	<PageHeader breadcrumb="IDENTITY / GROUPS" title="그룹">
 		{#snippet actions()}
-			<button onclick={() => { ctrl.showCreate = true; ctrl.createError = ''; }} class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg">+ 생성</button>
+			<button onclick={() => { ctrl.showCreate = true; ctrl.createError = ''; }} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg">+ 생성</button>
 			<AutoRefreshControl
 				bind:active={ar.active}
 				bind:intervalSeconds={ar.intervalSeconds}
@@ -48,9 +48,9 @@
 	{#if ctrl.loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if ctrl.groups.length === 0}
-		<div class="text-center text-gray-500 text-sm py-8">그룹이 없습니다</div>
+		<div class="text-center text-ink-3 text-sm py-8">그룹이 없습니다</div>
 	{:else}
-		<div class="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+		<div class="bg-surface-base border border-line rounded-lg p-5">
 			<div class="space-y-2">
 				{#each ctrl.groups as g (g.id)}
 					<GroupCard

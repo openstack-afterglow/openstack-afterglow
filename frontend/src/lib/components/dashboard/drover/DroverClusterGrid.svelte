@@ -26,14 +26,14 @@
 {#if loading}
 	<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
 		{#each Array(3) as _}
-			<div class="animate-pulse h-48 bg-gray-900 border border-gray-800 rounded-2xl"></div>
+			<div class="animate-pulse h-48 bg-surface-base border border-line rounded-lg"></div>
 		{/each}
 	</div>
 {:else if clusters.length === 0}
-	<div class="text-center py-20 text-gray-600">
+	<div class="text-center py-20 text-ink-3">
 		<div class="text-5xl mb-4">☸</div>
 		<p class="text-lg">Drover 클러스터가 없습니다</p>
-		<button onclick={onOpenCreate} onpointerenter={onOpenCreateIntent} onfocus={onOpenCreateIntent} class="text-blue-400 hover:text-blue-300 text-sm mt-2 inline-block">
+		<button onclick={onOpenCreate} onpointerenter={onOpenCreateIntent} onfocus={onOpenCreateIntent} class="text-action-warm hover:text-action-warm-hover text-sm mt-2 inline-block">
 			첫 클러스터를 생성하세요 →
 		</button>
 	</div>

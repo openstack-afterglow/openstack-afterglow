@@ -553,3 +553,497 @@ async def test_traffic_default_scoped_to_project(client, mock_conn):
     assert mock_conn.network.ports.called
     _, kwargs = mock_conn.network.ports.call_args
     assert kwargs.get("project_id") == _PROJECT_ID
+
+
+# ── 테스트: rate 윈도우와 scrape interval 결합 ────────────────────────────────
+
+
+@pytest.mark.anyio
+async def test_traffic_rate_window_is_30s(client, mock_conn):
+    """토폴로지 트래픽 PromQL 4개 모두 30초 rate 윈도우를 써야 한다.
+
+    캔버스가 사용량을 30초 단위로 읽는 근거다. 2m 로 되돌리면 화면 값이 2분 평균이 되어
+    순간 사용량이 뭉개진다.
+    """
+    mock_conn.network.ports.return_value = [
+        _mock_port("uuid-1", "net-a", port_id="port-1", mac_address="fa:16:3e:00:00:01")
+    ]
+
+    calls: list[str] = []
+
+    async def _capture_query(promql: str):
+        calls.append(promql)
+        return []
+
+    with (
+        patch("app.api.network.networks.query_instant_multi", side_effect=_capture_query),
+        patch("app.api.network.networks.list_load_balancers", return_value=[]),
+    ):
+        resp = await client.get("/api/v1/networks/topology/traffic")
+
+    assert resp.status_code == 200
+    assert len(calls) == 4
+    for q in calls:
+        assert "[30s]" in q, f"30초 윈도우가 아니다: {q}"
+        assert "[2m]" not in q
+
+
+def test_topology_scrape_interval_supports_rate_window():
+    """토폴로지가 쓰는 두 job 의 scrape_interval 이 rate 윈도우를 지탱해야 한다.
+
+    Prometheus rate 는 윈도우 안에 최소 2 샘플이 필요하고 jitter 를 감당하려면 3 샘플이 안전하다.
+    scrape 를 다시 올리면(예: 30s) `rate(...[30s])` 는 빈 결과를 돌려주고 화면 트래픽이 사라진다 —
+    코드만 보면 알 수 없는 결합이므로 배포 설정을 함께 고정한다.
+    """
+    import re
+    from pathlib import Path
+
+    from app.api.network.networks import TOPOLOGY_RATE_WINDOW
+
+    m = re.fullmatch(r"(\d+)s", TOPOLOGY_RATE_WINDOW)
+    assert m, f"윈도우 형식이 초 단위가 아니다: {TOPOLOGY_RATE_WINDOW}"
+    window_s = int(m.group(1))
+
+    root = Path(__file__).resolve().parents[2]
+    # **배포본과 template 을 모두 본다.** 한쪽만 검사하면 template 으로 세운 새 클러스터에
+    # libvirt exporter 가 없어도(= 주 경로 상실) 테스트가 초록으로 남는다 — 실제로 그랬다.
+    configs = [
+        root / "deploy" / "k8s" / "monitoring" / "prometheus" / "configmap.yaml",
+        root / "deploy" / "k8s-template" / "monitoring" / "prometheus" / "configmap.yaml",
+    ]
+    for cfg in configs:
+        text = cfg.read_text(encoding="utf-8")
+
+        global_m = re.search(r"^\s*global:\s*\n\s*scrape_interval:\s*(\d+)s", text, re.MULTILINE)
+        assert global_m, f"{cfg.name}: global scrape_interval 을 찾지 못했다"
+        global_s = int(global_m.group(1))
+
+        # 토폴로지 트래픽이 읽는 두 exporter job
+        for job in ("instances-node", "instances-libvirt"):
+            job_m = re.search(rf"- job_name: '{job}'\n(?:\s+scrape_interval:\s*(\d+)s\n)?", text)
+            assert job_m, f"{cfg.parent.parents[1].name}: {job} job 을 찾지 못했다"
+            scrape_s = int(job_m.group(1)) if job_m.group(1) else global_s
+            assert scrape_s * 3 <= window_s, (
+                f"{cfg.parent.parents[1].name}: {job} scrape_interval={scrape_s}s 는 "
+                f"rate 윈도우 {window_s}s 에 3 샘플을 채우지 못한다"
+            )
+
+
+# ── 테스트: 사용량 히스토리 (`/topology/traffic/history`) ─────────────────────
+
+
+def _prom_range_response(label_series_pairs: list[tuple[dict, list[tuple[int, float]]]]):
+    """query_range_multi 가 반환할 (labels, [(ts, value)]) 리스트 생성."""
+    return [(labels, samples) for labels, samples in label_series_pairs]
+
+
+@pytest.mark.anyio
+async def test_history_folds_libvirt_series_for_requested_network(client, mock_conn):
+    """libvirt 시계열이 mac→네트워크 귀속을 거쳐 ts 별로 합산되고 ×8 이 적용돼야 한다."""
+    mock_conn.network.ports.return_value = [
+        _mock_port("uuid-1", "net-a", port_id="port-1", mac_address="fa:16:3e:00:00:01"),
+        _mock_port("uuid-2", "net-a", port_id="port-2", mac_address="fa:16:3e:00:00:02"),
+    ]
+
+    lv_rx = _prom_range_response(
+        [
+            ({"instance_id": "uuid-1", "mac_address": "fa:16:3e:00:00:01"}, [(100, 100.0), (115, 200.0)]),
+            ({"instance_id": "uuid-2", "mac_address": "fa:16:3e:00:00:02"}, [(100, 50.0), (115, 50.0)]),
+        ]
+    )
+
+    with patch(
+        "app.api.network.networks.query_range_multi",
+        new=AsyncMock(side_effect=[[], [], lv_rx, []]),
+    ):
+        resp = await client.get("/api/v1/networks/topology/traffic/history?network_id=net-a")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert [p["ts"] for p in body["series"]] == [100, 115]
+    assert abs(body["series"][0]["rx_bps"] - (100.0 + 50.0) * 8) < 1
+    assert abs(body["series"][1]["rx_bps"] - (200.0 + 50.0) * 8) < 1
+    assert body["series"][0]["tx_bps"] == 0.0
+
+
+@pytest.mark.anyio
+async def test_history_excludes_other_networks(client, mock_conn):
+    """다른 네트워크에 붙은 NIC 의 트래픽은 이 네트워크 히스토리에 들어가면 안 된다."""
+    mock_conn.network.ports.return_value = [
+        _mock_port("uuid-1", "net-a", port_id="port-1", mac_address="fa:16:3e:00:00:01"),
+        _mock_port("uuid-1", "net-b", port_id="port-2", mac_address="fa:16:3e:00:00:02"),
+    ]
+
+    lv_rx = _prom_range_response(
+        [
+            ({"instance_id": "uuid-1", "mac_address": "fa:16:3e:00:00:01"}, [(100, 10.0)]),
+            ({"instance_id": "uuid-1", "mac_address": "fa:16:3e:00:00:02"}, [(100, 999.0)]),
+        ]
+    )
+
+    with patch(
+        "app.api.network.networks.query_range_multi",
+        new=AsyncMock(side_effect=[[], [], lv_rx, []]),
+    ):
+        resp = await client.get("/api/v1/networks/topology/traffic/history?network_id=net-a")
+
+    assert resp.status_code == 200
+    series = resp.json()["series"]
+    assert len(series) == 1
+    assert abs(series[0]["rx_bps"] - 10.0 * 8) < 1, "net-b NIC 트래픽이 섞였다"
+
+
+@pytest.mark.anyio
+async def test_history_stats_come_from_returned_series(client, mock_conn):
+    """avg/max/latest 는 반환한 series 로 계산돼야 한다.
+
+    `avg_over_time` 같은 별도 쿼리로 채우면 그래프 최고점과 라벨 숫자가 어긋난다.
+    """
+    mock_conn.network.ports.return_value = [
+        _mock_port("uuid-1", "net-a", port_id="port-1", mac_address="fa:16:3e:00:00:01")
+    ]
+
+    lv_rx = _prom_range_response(
+        [({"instance_id": "uuid-1", "mac_address": "fa:16:3e:00:00:01"}, [(100, 100.0), (115, 300.0)])]
+    )
+    lv_tx = _prom_range_response(
+        [({"instance_id": "uuid-1", "mac_address": "fa:16:3e:00:00:01"}, [(100, 0.0), (115, 100.0)])]
+    )
+
+    with patch(
+        "app.api.network.networks.query_range_multi",
+        new=AsyncMock(side_effect=[[], [], lv_rx, lv_tx]),
+    ):
+        resp = await client.get("/api/v1/networks/topology/traffic/history?network_id=net-a")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    rxs = [p["rx_bps"] for p in body["series"]]
+    txs = [p["tx_bps"] for p in body["series"]]
+    assert rxs == [800.0, 2400.0]
+    assert txs == [0.0, 800.0]
+    stats = body["stats"]
+    assert abs(stats["avg"]["rx_bps"] - sum(rxs) / len(rxs)) < 1e-6
+    assert abs(stats["avg"]["tx_bps"] - sum(txs) / len(txs)) < 1e-6
+    assert abs(stats["max"]["rx_bps"] - max(rxs)) < 1e-6
+    assert abs(stats["max"]["tx_bps"] - max(txs)) < 1e-6
+    assert stats["latest"] == {"rx_bps": rxs[-1], "tx_bps": txs[-1]}
+
+
+@pytest.mark.anyio
+async def test_history_stats_are_direction_split_not_summed(client, mock_conn):
+    """stats 는 rx+tx 합계가 아니라 방향별이어야 한다.
+
+    instant 엔드포인트가 방향별(`▼ rx ▲ tx`)을 주므로 합계로 내보내면 같은 패널에서
+    `▼ 5.8M ▲ 2.0M` 옆에 `7.8M` 이 붙어 사용자가 두 행을 대조할 수 없다.
+    """
+    mock_conn.network.ports.return_value = [
+        _mock_port("uuid-1", "net-a", port_id="port-1", mac_address="fa:16:3e:00:00:01")
+    ]
+
+    lv_rx = _prom_range_response([({"instance_id": "uuid-1", "mac_address": "fa:16:3e:00:00:01"}, [(100, 1000.0)])])
+    lv_tx = _prom_range_response([({"instance_id": "uuid-1", "mac_address": "fa:16:3e:00:00:01"}, [(100, 250.0)])])
+
+    with patch(
+        "app.api.network.networks.query_range_multi",
+        new=AsyncMock(side_effect=[[], [], lv_rx, lv_tx]),
+    ):
+        resp = await client.get("/api/v1/networks/topology/traffic/history?network_id=net-a")
+
+    stats = resp.json()["stats"]
+    for key in ("avg", "max", "latest"):
+        assert set(stats[key]) == {"rx_bps", "tx_bps"}, f"{key} 가 방향별이 아니다: {stats[key]}"
+        assert abs(stats[key]["rx_bps"] - 8000.0) < 1e-6
+        assert abs(stats[key]["tx_bps"] - 2000.0) < 1e-6
+        # 합계(10000)를 어느 필드에도 담지 않는다
+        assert 10000.0 not in stats[key].values()
+
+
+@pytest.mark.anyio
+async def test_history_max_per_direction_can_be_at_different_timestamps(client, mock_conn):
+    """rx 최대와 tx 최대가 서로 다른 시점이어도 각각 그 방향의 최고값이어야 한다."""
+    mock_conn.network.ports.return_value = [
+        _mock_port("uuid-1", "net-a", port_id="port-1", mac_address="fa:16:3e:00:00:01")
+    ]
+
+    lv_rx = _prom_range_response(
+        [({"instance_id": "uuid-1", "mac_address": "fa:16:3e:00:00:01"}, [(100, 500.0), (115, 100.0)])]
+    )
+    lv_tx = _prom_range_response(
+        [({"instance_id": "uuid-1", "mac_address": "fa:16:3e:00:00:01"}, [(100, 10.0), (115, 300.0)])]
+    )
+
+    with patch(
+        "app.api.network.networks.query_range_multi",
+        new=AsyncMock(side_effect=[[], [], lv_rx, lv_tx]),
+    ):
+        resp = await client.get("/api/v1/networks/topology/traffic/history?network_id=net-a")
+
+    stats = resp.json()["stats"]
+    assert abs(stats["max"]["rx_bps"] - 4000.0) < 1e-6  # ts=100
+    assert abs(stats["max"]["tx_bps"] - 2400.0) < 1e-6  # ts=115
+
+
+@pytest.mark.anyio
+async def test_history_fills_zero_for_direction_missing_at_a_timestamp(client, mock_conn):
+    """rx 에만 있는 ts 는 tx=0 으로 채워 표본 수가 방향별로 달라지지 않게 한다."""
+    mock_conn.network.ports.return_value = [
+        _mock_port("uuid-1", "net-a", port_id="port-1", mac_address="fa:16:3e:00:00:01")
+    ]
+
+    lv_rx = _prom_range_response(
+        [({"instance_id": "uuid-1", "mac_address": "fa:16:3e:00:00:01"}, [(100, 10.0), (115, 20.0)])]
+    )
+    # tx 는 두 번째 표본만 존재
+    lv_tx = _prom_range_response([({"instance_id": "uuid-1", "mac_address": "fa:16:3e:00:00:01"}, [(115, 5.0)])])
+
+    with patch(
+        "app.api.network.networks.query_range_multi",
+        new=AsyncMock(side_effect=[[], [], lv_rx, lv_tx]),
+    ):
+        resp = await client.get("/api/v1/networks/topology/traffic/history?network_id=net-a")
+
+    series = resp.json()["series"]
+    assert [p["ts"] for p in series] == [100, 115]
+    assert series[0]["tx_bps"] == 0.0
+    assert abs(series[1]["tx_bps"] - 40.0) < 1e-6
+
+
+@pytest.mark.anyio
+async def test_history_node_fallback_only_for_single_nic(client, mock_conn):
+    """node_exporter 폴백은 libvirt 미관측 + 단일 NIC 인스턴스만 귀속한다."""
+    mock_conn.network.ports.return_value = [
+        # 단일 NIC — 폴백 대상
+        _mock_port("uuid-solo", "net-a", port_id="port-solo", mac_address="fa:16:3e:00:00:aa"),
+        # 다중 NIC — device 이름으로 네트워크를 가릴 수 없어 제외돼야 한다
+        _mock_port("uuid-multi", "net-a", port_id="port-m1", mac_address="fa:16:3e:00:00:bb"),
+        _mock_port("uuid-multi", "net-b", port_id="port-m2", mac_address="fa:16:3e:00:00:cc"),
+    ]
+
+    ne_rx = _prom_range_response(
+        [
+            ({"instance_id": "uuid-solo", "device": "ens3"}, [(100, 10.0)]),
+            ({"instance_id": "uuid-multi", "device": "ens3"}, [(100, 999.0)]),
+        ]
+    )
+
+    with patch(
+        "app.api.network.networks.query_range_multi",
+        new=AsyncMock(side_effect=[ne_rx, [], [], []]),
+    ):
+        resp = await client.get("/api/v1/networks/topology/traffic/history?network_id=net-a")
+
+    assert resp.status_code == 200
+    series = resp.json()["series"]
+    assert len(series) == 1
+    assert abs(series[0]["rx_bps"] - 10.0 * 8) < 1, "다중 NIC 인스턴스가 귀속됐다"
+
+
+@pytest.mark.anyio
+async def test_history_node_fallback_skips_libvirt_observed(client, mock_conn):
+    """libvirt 가 이미 본 인스턴스는 node 폴백에서 제외돼야 한다(이중 계산 금지)."""
+    mock_conn.network.ports.return_value = [
+        _mock_port("uuid-1", "net-a", port_id="port-1", mac_address="fa:16:3e:00:00:01")
+    ]
+
+    ne_rx = _prom_range_response([({"instance_id": "uuid-1", "device": "ens3"}, [(100, 500.0)])])
+    lv_rx = _prom_range_response([({"instance_id": "uuid-1", "mac_address": "fa:16:3e:00:00:01"}, [(100, 10.0)])])
+
+    with patch(
+        "app.api.network.networks.query_range_multi",
+        new=AsyncMock(side_effect=[ne_rx, [], lv_rx, []]),
+    ):
+        resp = await client.get("/api/v1/networks/topology/traffic/history?network_id=net-a")
+
+    assert resp.status_code == 200
+    series = resp.json()["series"]
+    assert abs(series[0]["rx_bps"] - 10.0 * 8) < 1, "libvirt 값에 node 값이 더해졌다"
+
+
+@pytest.mark.anyio
+async def test_history_prom_failure_returns_empty_series(client, mock_conn):
+    """Prometheus 장애 시 500 이 아니라 빈 series + stats None 을 돌려준다."""
+    from app.services.prom_query import PromUnavailable
+
+    mock_conn.network.ports.return_value = [
+        _mock_port("uuid-1", "net-a", port_id="port-1", mac_address="fa:16:3e:00:00:01")
+    ]
+
+    with patch(
+        "app.api.network.networks.query_range_multi",
+        new=AsyncMock(side_effect=PromUnavailable("연결 실패")),
+    ):
+        resp = await client.get("/api/v1/networks/topology/traffic/history?network_id=net-a")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["series"] == []
+    assert body["stats"] == {"avg": None, "max": None, "latest": None}
+
+
+@pytest.mark.anyio
+async def test_history_all_projects_requires_system_admin(client, mock_conn):
+    """all_projects=true 는 시스템 admin 이 아니면 403 이어야 한다."""
+    mock_conn.network.ports.return_value = []
+
+    with patch("app.api.network.networks.query_range_multi", new=AsyncMock(return_value=[])):
+        resp = await client.get("/api/v1/networks/topology/traffic/history?network_id=net-a&all_projects=true")
+
+    assert resp.status_code == 403
+
+
+@pytest.mark.anyio
+async def test_history_uses_rate_window_and_range_step(client, mock_conn):
+    """히스토리 쿼리도 30초 rate 윈도우를 쓰고, step 은 range 별 고정값이어야 한다."""
+    mock_conn.network.ports.return_value = [
+        _mock_port("uuid-1", "net-a", port_id="port-1", mac_address="fa:16:3e:00:00:01")
+    ]
+
+    calls: list[dict] = []
+
+    async def _capture(promql: str, *, start_ts: int, end_ts: int, step_s: int):
+        calls.append({"q": promql, "start_ts": start_ts, "end_ts": end_ts, "step_s": step_s})
+        return []
+
+    with patch("app.api.network.networks.query_range_multi", side_effect=_capture):
+        resp = await client.get("/api/v1/networks/topology/traffic/history?network_id=net-a&range=30m")
+
+    assert resp.status_code == 200
+    assert len(calls) == 4
+    for c in calls:
+        assert "[30s]" in c["q"], f"30초 윈도우가 아니다: {c['q']}"
+        assert c["step_s"] == 30
+        assert c["end_ts"] - c["start_ts"] == 1800
+    assert resp.json()["step_s"] == 30
+
+
+def test_history_step_never_exceeds_rate_window():
+    """모든 range 의 step 이 rate 윈도우 이하여야 한다.
+
+    step > 윈도우면 샘플 사이 트래픽이 그래프에서 통째로 사라진다. `calc_step()`(range//100)
+    을 쓰면 1h 에서 36s 가 나와 이 계약이 깨지므로 고정 표를 쓴다.
+    """
+    import re
+
+    from app.api.network.networks import _HISTORY_RANGES, TOPOLOGY_RATE_WINDOW
+
+    m = re.fullmatch(r"(\d+)s", TOPOLOGY_RATE_WINDOW)
+    assert m
+    window_s = int(m.group(1))
+
+    assert _HISTORY_RANGES, "range 표가 비어 있다"
+    for label, (range_s, step_s) in _HISTORY_RANGES.items():
+        assert step_s <= window_s, f"{label}: step {step_s}s 가 rate 윈도우 {window_s}s 보다 크다"
+        assert range_s % step_s == 0, f"{label}: range 가 step 의 배수가 아니다"
+
+
+@pytest.mark.anyio
+async def test_history_foreign_network_id_leaks_nothing(client, mock_conn):
+    """다른 프로젝트의 network_id 를 넣어도 빈 series 여야 한다.
+
+    포트맵이 호출자 프로젝트로 스코프되므로 mac_idx 에 남의 포트가 없다 —
+    network_id 자체는 검증하지 않지만 귀속 대상이 없어 아무것도 새지 않는다.
+    """
+    mock_conn.network.ports.return_value = [
+        _mock_port("uuid-1", "net-a", port_id="port-1", mac_address="fa:16:3e:00:00:01")
+    ]
+
+    lv_rx = _prom_range_response([({"instance_id": "uuid-1", "mac_address": "fa:16:3e:00:00:01"}, [(100, 999.0)])])
+
+    with patch(
+        "app.api.network.networks.query_range_multi",
+        new=AsyncMock(side_effect=[[], [], lv_rx, []]),
+    ):
+        resp = await client.get("/api/v1/networks/topology/traffic/history?network_id=net-other-project")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["series"] == []
+    assert body["stats"]["max"] is None
+
+
+@pytest.mark.anyio
+async def test_instant_and_history_agree_on_multi_device_node_fallback(client, mock_conn):
+    """같은 입력에서 instant 와 history 의 네트워크 합산값이 같아야 한다.
+
+    node 쿼리는 `sum by (instance_id, device)` 라 **device 마다 시계열이 하나씩** 온다.
+    한쪽이 대입(마지막 device 만), 한쪽이 누산(전체 합)이면 같은 패널에서 몇 배 차이 나는
+    두 숫자를 나란히 보여준다. 게스트 안 device 가 2개 이상인 VM 은 흔하다 —
+    제외 정규식(`lo|veth|docker|cni|tap|qbr`)은 k3s `flannel.1`, Waygate `wg0`, `bond0` 를 못 막는다.
+    """
+    mock_conn.network.ports.return_value = [
+        _mock_port("uuid-1", "net-a", port_id="port-1", mac_address="fa:16:3e:00:00:01")
+    ]
+
+    # libvirt 미관측 → node 폴백 경로. 한 인스턴스에 device 2개.
+    devices = [
+        ({"instance_id": "uuid-1", "device": "eth0"}, 1_000_000.0),
+        ({"instance_id": "uuid-1", "device": "flannel.1"}, 400_000.0),
+    ]
+    expected_rx = (1_000_000.0 + 400_000.0) * 8
+
+    with (
+        patch(
+            "app.api.network.networks.query_instant_multi",
+            new=AsyncMock(side_effect=[_prom_instant_response(devices), [], [], []]),
+        ),
+        patch("app.api.network.networks.list_load_balancers", return_value=[]),
+    ):
+        instant = await client.get("/api/v1/networks/topology/traffic")
+
+    with patch(
+        "app.api.network.networks.query_range_multi",
+        new=AsyncMock(
+            side_effect=[
+                _prom_range_response([(labels, [(100, val)]) for labels, val in devices]),
+                [],
+                [],
+                [],
+            ]
+        ),
+    ):
+        history = await client.get("/api/v1/networks/topology/traffic/history?network_id=net-a")
+
+    assert instant.status_code == 200 and history.status_code == 200
+    instant_rx = instant.json()["networks"]["net-a"]["rx_bps"]
+    history_rx = history.json()["series"][-1]["rx_bps"]
+
+    assert abs(instant_rx - expected_rx) < 1, f"instant 가 device 를 다 세지 않았다: {instant_rx}"
+    assert abs(history_rx - expected_rx) < 1, f"history 가 device 를 다 세지 않았다: {history_rx}"
+    assert abs(instant_rx - history_rx) < 1, (
+        f"같은 입력인데 instant={instant_rx} history={history_rx} — 패널에서 두 숫자가 어긋난다"
+    )
+
+
+@pytest.mark.anyio
+async def test_history_drops_non_finite_samples(client, mock_conn):
+    """Prometheus 가 "NaN"/"+Inf" 를 보내도 응답 JSON 이 무효해지지 않아야 한다.
+
+    `float("NaN")` 은 예외를 던지지 않으므로 그대로 담으면 합계·최대가 NaN 이 되고
+    응답에 `NaN` 리터럴이 들어가 클라이언트 파싱이 깨진다.
+    """
+    from app.services.prom_query import query_range_multi
+
+    payload = {
+        "status": "success",
+        "data": {
+            "result": [
+                {
+                    "metric": {"instance_id": "uuid-1", "mac_address": "fa:16:3e:00:00:01"},
+                    "values": [[100, "10"], [115, "NaN"], [130, "+Inf"], [145, "20"]],
+                }
+            ]
+        },
+    }
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = payload
+
+    with patch("app.services.prom_query._get_client") as mock_client:
+        mock_client.return_value.get = AsyncMock(return_value=mock_resp)
+        result = await query_range_multi("expr", start_ts=0, end_ts=200, step_s=15)
+
+    assert len(result) == 1
+    samples = result[0][1]
+    assert [ts for ts, _ in samples] == [100, 145], "NaN/Inf 표본이 남았다"
+    assert all(v == v and abs(v) != float("inf") for _, v in samples)

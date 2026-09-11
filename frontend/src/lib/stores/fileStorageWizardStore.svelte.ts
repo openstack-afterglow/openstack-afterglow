@@ -146,7 +146,7 @@ export function createFileStorageWizardStore(opts: FsWizardOptions) {
 			createFileStorage();
 			return;
 		}
-		if (shareNetworksOn() && dhssEnabled && fsForm.share_proto !== 'CEPHFS') {
+		if (shareNetworksOn() && dhssEnabled) {
 			step = 2;
 		}
 		if (neutronNetworks.length === 0) {

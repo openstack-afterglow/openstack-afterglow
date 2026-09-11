@@ -46,6 +46,7 @@
 	const mockupAdminActive = $derived(mockup.active && mockup.profile === 'admin');
 	let lastVerifiedToken: string | null = null;
 	let authVerifyNonce = $state(0);
+	let sidebarTrigger = $state<HTMLButtonElement | null>(null);
 
 	replaceSiteConfig(initialSiteConfig);
 
@@ -203,6 +204,17 @@
 	const isInvitationRoute = $derived($page.url.pathname.startsWith('/invitations/'));
 	const shelllessRoutes = ['/', '/login', '/auth/gitlab/callback', '/select-project'];
 	const showAppChrome = $derived($isLoggedIn && !shelllessRoutes.includes($page.url.pathname) && !isInvitationRoute);
+	$effect(() => {
+		if (!$sidebarOpen || typeof document === 'undefined') return;
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (event.key !== 'Escape' || event.defaultPrevented) return;
+			event.preventDefault();
+			sidebarOpen.close();
+			sidebarTrigger?.focus();
+		};
+		document.addEventListener('keydown', onKeyDown);
+		return () => document.removeEventListener('keydown', onKeyDown);
+	});
 
 	$effect(() => {
 		if (!mockupClientReady) return;
@@ -354,53 +366,62 @@
 <svelte:head><link rel="icon" href={themedFaviconPath} /></svelte:head>
 
 {#if showAppChrome}
-	<nav class="fixed top-0 left-0 md:left-60 right-0 z-50 bg-[#0B1220] border-b border-gray-800 h-14 flex items-center px-4 md:px-6 gap-4 shrink-0">
+	<a
+		href="#main-content"
+		class="fixed left-3 top-3 z-[calc(var(--z-command)+2)] -translate-y-20 rounded-md bg-surface-raised px-3 py-2 text-sm font-medium text-ink-0 shadow-lg transition-transform focus:translate-y-0"
+	>본문으로 건너뛰기</a>
+	<header class="fixed top-0 left-0 md:left-[var(--app-sidebar-width)] right-0 z-[var(--z-header)] h-[var(--app-header-height)] flex items-center gap-3 border-b border-line bg-surface-base px-3 md:px-6">
 		<!-- 모바일 햄버거 -->
 		<button
+			bind:this={sidebarTrigger}
+			id="app-sidebar-trigger"
 			onclick={() => sidebarOpen.toggle()}
-			class="md:hidden p-1.5 text-gray-400 hover:text-white transition-colors rounded-md hover:bg-gray-800 shrink-0"
+			class="md:hidden -ml-2 flex size-11 shrink-0 items-center justify-center rounded-md text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
 			aria-label="메뉴 열기"
+			aria-expanded={$sidebarOpen}
+			aria-controls="app-sidebar"
 		>
-			<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+			<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
 			</svg>
 		</button>
 
-		<!-- 브레드크럼 + 페이지 제목 -->
-		<div class="hidden md:block min-w-0">
-			{#if crumb.breadcrumb}
-				<div class="text-[10px] text-gray-500 uppercase tracking-widest font-medium leading-none mb-0.5">{crumb.breadcrumb}</div>
-			{/if}
-			<div class="text-white text-[15px] font-semibold leading-tight truncate">{crumb.title || $siteConfig.site_name}</div>
-		</div>
+		<!-- 한 줄 컨텍스트 브레드크럼 -->
+		<p class="hidden min-w-0 truncate text-xs text-ink-2 md:block">
+			{crumb.breadcrumb ? `${crumb.breadcrumb} / ${crumb.title}` : crumb.title || $siteConfig.site_name}
+		</p>
 
 		<!-- 검색 입력 (⌘K 트리거) -->
 		<button
 			onclick={() => palette.open()}
-			class="flex-1 max-w-sm mx-4 hidden lg:flex items-center gap-2 bg-gray-900 border border-gray-800 text-gray-500 rounded-lg pl-3 pr-2 py-1.5 text-[13px] hover:border-gray-700 transition-colors cursor-text"
+			class="mx-4 hidden max-w-sm flex-1 cursor-text items-center gap-2 rounded-md border border-line-2 bg-surface-sunken py-1.5 pl-3 pr-2 text-[13px] text-ink-2 transition-colors hover:bg-surface-selected lg:flex"
 			aria-label="검색 (⌘K)"
 		>
-			<svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z"/></svg>
-			<span class="flex-1 text-left text-gray-600">리소스 검색...</span>
-			<kbd class="text-[10px] border border-gray-700 px-1.5 py-0.5 rounded font-mono text-gray-600">⌘K</kbd>
+			<svg class="size-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z"/></svg>
+			<span class="flex-1 text-left">리소스 검색...</span>
+			<kbd class="rounded border border-line px-1.5 py-0.5 font-mono text-[10px] text-ink-2">⌘K</kbd>
 		</button>
 
 		<!-- 우측 컨트롤 -->
-		<div class="ml-auto flex items-center gap-2.5">
+		<div class="ml-auto flex items-center gap-1 md:gap-2">
 			<div class="hidden lg:block"><ProjectSelector direction="down" /></div>
 
 			{#if $isAdmin && !mockupAdminActive}
 				{#if $page.url.pathname.startsWith('/admin')}
 					<a href="/dashboard"
-						class="hidden lg:flex items-center gap-1.5 px-3 h-8 rounded-lg border text-[12px] font-semibold transition-colors bg-amber-500/15 border-amber-600/50 text-amber-400 hover:bg-amber-500/25">
-						<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
-						사용자 모드
+						aria-label="현재 관리자 모드, 사용자 모드로 전환"
+						title="사용자 모드로 전환"
+						class="hidden lg:flex items-center gap-1.5 px-3 h-8 rounded-lg border text-[12px] font-semibold transition-colors bg-action-warm/15 border-action-warm/50 text-action-warm hover:bg-action-warm-hover/25">
+						<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6l8-4z"/></svg>
+						관리자 모드
 					</a>
 				{:else}
 					<a href="/admin"
-						class="hidden lg:flex items-center gap-1.5 px-3 h-8 rounded-lg border text-[12px] font-semibold transition-colors bg-gray-900 border-gray-700 text-gray-200 hover:border-gray-600 hover:text-white">
-						<svg class="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6l8-4z"/></svg>
-						관리자 모드
+						aria-label="현재 사용자 모드, 관리자 모드로 전환"
+						title="관리자 모드로 전환"
+						class="hidden lg:flex items-center gap-1.5 px-3 h-8 rounded-lg border text-[12px] font-semibold transition-colors bg-surface-base border-line-2 text-ink-1 hover:border-line-2 hover:text-ink-0">
+						<svg class="w-3.5 h-3.5 text-ink-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+						사용자 모드
 					</a>
 				{/if}
 			{/if}
@@ -408,15 +429,16 @@
 			<!-- 테마 토글 -->
 			<button
 				onclick={() => theme.toggle()}
-				class="p-1.5 text-gray-400 hover:text-white transition-colors rounded-md hover:bg-gray-800"
+				class="flex size-11 items-center justify-center rounded-md text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] lg:size-8"
 				title="{$theme === 'system' ? '시스템 테마' : $theme === 'dark' ? '다크 모드' : '라이트 모드'}"
+				aria-label="{$theme === 'system' ? '시스템 테마' : $theme === 'dark' ? '다크 모드' : '라이트 모드'}"
 			>
 				{#if $theme === 'system'}
-					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+					<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
 				{:else if $theme === 'dark'}
-					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+					<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
 				{:else}
-					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M12 7a5 5 0 110 10A5 5 0 0112 7z"></path></svg>
+					<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M12 7a5 5 0 110 10A5 5 0 0112 7z"></path></svg>
 				{/if}
 			</button>
 
@@ -425,15 +447,16 @@
 				<button
 					bind:this={bellButton}
 					onclick={toggleBellDropdown}
-					class="relative p-1.5 text-gray-400 hover:text-white transition-colors rounded-md hover:bg-gray-800"
+					class="relative flex size-11 items-center justify-center rounded-md text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] lg:size-8"
 					title="알림"
+					aria-label="알림"
 					aria-haspopup="true"
 					aria-expanded={bellOpen}
 				>
-					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+					<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
 					{#if unreadAnnouncementCount > 0}
 						<span
-							class="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full text-white text-[9px] font-semibold flex items-center justify-center leading-none"
+							class="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-semibold leading-none text-ink-0"
 							style="background: var(--color-state-danger);"
 						>{unreadAnnouncementCount > 99 ? '99+' : unreadAnnouncementCount}</span>
 					{/if}
@@ -441,7 +464,7 @@
 				{#if bellOpen}
 					<!-- 모바일: 바텀 시트 / sm 이상: 종 아이콘 기준 드롭다운 (ProjectSelector 패턴 준용) -->
 					<div
-						class="fixed left-0 bottom-0 w-full rounded-t-xl sm:absolute sm:left-auto sm:right-0 sm:bottom-auto sm:top-full sm:mt-2 sm:w-80 sm:rounded-xl border shadow-xl z-50 overflow-hidden"
+						class="fixed left-0 bottom-0 w-full rounded-t-xl sm:absolute sm:left-auto sm:right-0 sm:bottom-auto sm:top-full sm:mt-2 sm:w-80 sm:rounded-xl border shadow-[var(--shadow-restraint)] z-50 overflow-hidden"
 						style="background: var(--color-surface-raised); border-color: var(--color-line);"
 					>
 						<p class="px-4 pt-3 pb-2 text-[10px] uppercase tracking-wide text-[var(--color-ink-3)]">알림</p>
@@ -485,7 +508,7 @@
 			<!-- 유저 아바타 -->
 			<a
 				href={mockupAdminActive ? '/admin' : '/dashboard/account'}
-				class="w-[30px] h-[30px] rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-gray-300 text-[11px] font-semibold hover:border-gray-600 transition-colors"
+				class="w-[30px] h-[30px] rounded-full bg-surface-sunken border border-line-2 flex items-center justify-center text-ink-2 text-[11px] font-semibold hover:border-line-2 transition-colors"
 				title={$auth.username}
 			>{initials}</a>
 
@@ -494,13 +517,13 @@
 				onclick={logout}
 				disabled={$logoutInProgress}
 				aria-label="로그아웃"
-				class="p-1.5 text-gray-400 hover:text-red-400 transition-colors rounded-md hover:bg-gray-800"
+				class="flex size-11 items-center justify-center rounded-md text-ink-2 transition-colors hover:bg-surface-sunken hover:text-state-danger focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] lg:size-8"
 				title="로그아웃"
 			>
-				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+				<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
 			</button>
 		</div>
-	</nav>
+	</header>
 	{#if !mockup.active}
 		<UploadDock />
 	{/if}
@@ -521,6 +544,6 @@
 <Toast />
 
 <!-- children은 단일 렌더 포인트에서 항상 렌더 — 분기 전환 시 컴포넌트 재마운트 방지 -->
-<main class="min-h-screen bg-gray-950 text-white">
+<div class="min-h-[100dvh] bg-surface-canvas text-ink-1 {mockup.active ? 'mockup-active' : ''}">
 	{@render children()}
-</main>
+</div>

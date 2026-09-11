@@ -43,7 +43,8 @@
 		return models.filter(
 			(m) =>
 				m.display_name.toLowerCase().includes(q) ||
-				m.model_name.toLowerCase().includes(q) ||
+				(m.api_model_name || m.model_name).toLowerCase().includes(q) ||
+				(m.api_provider ?? '').toLowerCase().includes(q) ||
 				(m.provider ?? '').toLowerCase().includes(q)
 		);
 	});

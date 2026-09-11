@@ -21,6 +21,6 @@
       refreshing={s.loading}
       onManualRefresh={() => s.loadAll()}
     />
-    <button onclick={onClose} class="text-gray-400 hover:text-white transition-colors text-lg leading-none">✕</button>
+    <!-- 닫기 버튼은 SlidePanel 이 제공한다(`[data-slide-panel-close]`) -->
   {/snippet}
 </DetailHeader>

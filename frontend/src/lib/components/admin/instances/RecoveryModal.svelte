@@ -67,27 +67,27 @@
 
 <!-- 모달 오버레이 -->
 <div
-	class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+	class="fixed inset-0 z-50 flex items-center justify-center bg-surface-scrim/60 backdrop-blur-sm p-4"
 	role="dialog"
 	aria-modal="true"
 	aria-label="인스턴스 복구"
 >
-	<div class="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
+	<div class="bg-surface-base border border-line-2 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-[var(--shadow-restraint)]">
 		<!-- 헤더 -->
-		<div class="flex items-center justify-between px-6 py-4 border-b border-gray-800">
+		<div class="flex items-center justify-between px-6 py-4 border-b border-line">
 			<div>
-				<h2 class="text-white font-semibold text-base">인스턴스 복구 분석</h2>
-				<p class="text-gray-400 text-xs mt-0.5 font-mono">{serverName} · {serverId.slice(0, 8)}</p>
+				<h2 class="text-ink-0 font-semibold text-base">인스턴스 복구 분석</h2>
+				<p class="text-ink-2 text-xs mt-0.5 font-mono">{serverName} · {serverId.slice(0, 8)}</p>
 			</div>
-			<button onclick={onClose} class="text-gray-500 hover:text-gray-300 transition-colors text-lg leading-none">✕</button>
+			<button onclick={onClose} class="text-ink-3 hover:text-ink-2 transition-colors text-lg leading-none">✕</button>
 		</div>
 
 		<div class="px-6 py-5 space-y-5">
 
 			<!-- 로딩 -->
 			{#if phase === 'loading'}
-				<div class="flex items-center gap-3 text-gray-400 text-sm py-8 justify-center">
-					<svg class="animate-spin w-5 h-5 text-blue-400" fill="none" viewBox="0 0 24 24">
+				<div class="flex items-center gap-3 text-ink-2 text-sm py-8 justify-center">
+					<svg class="animate-spin w-5 h-5 text-action-warm" fill="none" viewBox="0 0 24 24">
 						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
 						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
 					</svg>
@@ -105,15 +105,15 @@
 
 				<!-- fault 메시지 -->
 				{#if analysis.server.fault?.message}
-					<div class="bg-gray-800 border border-gray-700 rounded-lg px-4 py-3">
-						<div class="text-xs text-gray-400 mb-1 font-medium">FAULT 메시지</div>
+					<div class="bg-surface-sunken border border-line-2 rounded-lg px-4 py-3">
+						<div class="text-xs text-ink-2 mb-1 font-medium">FAULT 메시지</div>
 						<div class="text-red-300 text-xs font-mono break-all leading-relaxed">{analysis.server.fault.message}</div>
 					</div>
 				{/if}
 
 				<!-- 안전 검사 체크리스트 -->
 				<div>
-					<div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">안전 검사</div>
+					<div class="text-xs font-medium text-ink-2 uppercase tracking-wide mb-2">안전 검사</div>
 					<div class="space-y-1.5">
 						{#each analysis.checks as check (check.key)}
 							<div class="flex items-start gap-2.5 text-sm">
@@ -123,9 +123,9 @@
 									<span class="mt-0.5 text-red-400 shrink-0 text-base leading-none">✗</span>
 								{/if}
 								<div>
-									<span class={check.passed ? 'text-gray-200' : 'text-red-300 font-medium'}>{check.label}</span>
+									<span class={check.passed ? 'text-ink-1' : 'text-red-300 font-medium'}>{check.label}</span>
 									{#if check.detail}
-										<div class="text-gray-500 text-xs mt-0.5">{check.detail}</div>
+										<div class="text-ink-3 text-xs mt-0.5">{check.detail}</div>
 									{/if}
 								</div>
 							</div>
@@ -134,27 +134,27 @@
 				</div>
 
 				<!-- 시나리오 -->
-				<div class="bg-gray-800 border border-gray-700 rounded-lg px-4 py-3">
+				<div class="bg-surface-sunken border border-line-2 rounded-lg px-4 py-3">
 					<div class="flex items-center gap-2 mb-1">
-						<span class="text-xs text-gray-400 uppercase tracking-wide font-medium">시나리오</span>
-						<span class="text-xs px-1.5 py-0.5 rounded bg-gray-700 text-gray-300 font-mono">{scenarioLabels[analysis.scenario] ?? analysis.scenario}</span>
+						<span class="text-xs text-ink-2 uppercase tracking-wide font-medium">시나리오</span>
+						<span class="text-xs px-1.5 py-0.5 rounded bg-surface-selected text-ink-2 font-mono">{scenarioLabels[analysis.scenario] ?? analysis.scenario}</span>
 					</div>
-					<p class="text-gray-300 text-sm leading-relaxed">{analysis.scenario_description}</p>
+					<p class="text-ink-2 text-sm leading-relaxed">{analysis.scenario_description}</p>
 				</div>
 
 				<!-- 권장 단계 (실행 전) -->
 				{#if phase === 'analyzed' || phase === 'executing'}
 					<div>
-						<div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">권장 복구 단계</div>
+						<div class="text-xs font-medium text-ink-2 uppercase tracking-wide mb-2">권장 복구 단계</div>
 						<div class="space-y-1.5">
 							{#each analysis.steps as step, i (i)}
 								{#if step.action !== 'manual'}
 									<div class="flex items-start gap-2.5 text-sm">
-										<span class="shrink-0 w-5 h-5 rounded-full bg-gray-700 text-gray-300 text-xs flex items-center justify-center font-medium">{i + 1}</span>
-										<span class="text-gray-300">{step.description}</span>
+										<span class="shrink-0 w-5 h-5 rounded-full bg-surface-selected text-ink-2 text-xs flex items-center justify-center font-medium">{i + 1}</span>
+										<span class="text-ink-2">{step.description}</span>
 									</div>
 								{:else}
-									<div class="text-amber-400 text-sm">{step.description}</div>
+									<div class="text-action-warm text-sm">{step.description}</div>
 								{/if}
 							{/each}
 						</div>
@@ -164,7 +164,7 @@
 				<!-- 실행 결과 -->
 				{#if phase === 'done' && result}
 					<div>
-						<div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">실행 결과</div>
+						<div class="text-xs font-medium text-ink-2 uppercase tracking-wide mb-2">실행 결과</div>
 						<div class="space-y-1.5">
 							{#each result.steps as step, i (i)}
 								<div class="flex items-start gap-2.5 text-sm">
@@ -173,14 +173,14 @@
 									{:else if step.status === 'failed'}
 										<span class="mt-0.5 text-red-400 shrink-0 text-base leading-none">✗</span>
 									{:else}
-										<span class="mt-0.5 text-gray-500 shrink-0 text-base leading-none">—</span>
+										<span class="mt-0.5 text-ink-3 shrink-0 text-base leading-none">—</span>
 									{/if}
 									<div>
-										<span class={step.status === 'failed' ? 'text-red-300' : step.status === 'skipped' ? 'text-gray-500' : 'text-gray-200'}>
+										<span class={step.status === 'failed' ? 'text-red-300' : step.status === 'skipped' ? 'text-ink-3' : 'text-ink-1'}>
 											{step.description}
 										</span>
 										{#if step.detail}
-											<div class="text-gray-500 text-xs mt-0.5">{step.detail}</div>
+											<div class="text-ink-3 text-xs mt-0.5">{step.detail}</div>
 										{/if}
 									</div>
 								</div>
@@ -200,16 +200,16 @@
 
 				<!-- placement 안내 -->
 				{#if analysis.placement_note}
-					<div class="bg-amber-900/20 border border-amber-700/40 text-amber-300 rounded-lg px-4 py-3 text-xs leading-relaxed">
+					<div class="bg-surface-selected/20 border border-action-warm/40 text-action-warm rounded-lg px-4 py-3 text-xs leading-relaxed">
 						<span class="font-medium">Placement 주의:</span> {analysis.placement_note}
 					</div>
 				{/if}
 
 				<!-- 수동 점검 안내 -->
 				{#if !analysis.auto_executable && phase === 'analyzed'}
-					<div class="bg-gray-800 border border-amber-700/40 text-amber-300 rounded-lg px-4 py-3 text-sm">
+					<div class="bg-surface-sunken border border-action-warm/40 text-action-warm rounded-lg px-4 py-3 text-sm">
 						<div class="font-medium mb-1">수동 점검이 필요합니다</div>
-						<div class="text-xs text-amber-200/70">
+						<div class="text-xs text-action-warm/70">
 							위 안전 검사를 통과하지 못해 자동 복구를 실행할 수 없습니다.
 							실패한 항목을 확인하고 직접 복구하세요.
 						</div>
@@ -220,22 +220,22 @@
 		</div>
 
 		<!-- 푸터 버튼 -->
-		<div class="flex items-center justify-between px-6 py-4 border-t border-gray-800 gap-4">
+		<div class="flex items-center justify-between px-6 py-4 border-t border-line gap-4">
 			{#if phase === 'analyzed' && analysis?.auto_executable}
-				<label class="flex items-center gap-2 text-sm text-gray-300 cursor-pointer select-none">
-					<input type="checkbox" bind:checked={confirmed} class="rounded border-gray-600 bg-gray-800 text-red-500 focus:ring-red-500 focus:ring-1" />
+				<label class="flex items-center gap-2 text-sm text-ink-2 cursor-pointer select-none">
+					<input type="checkbox" bind:checked={confirmed} class="rounded border-line-2 bg-surface-sunken text-red-500 focus:ring-red-500 focus:ring-1" />
 					<span>프로덕션 인스턴스 상태를 강제 변경합니다. 이 작업은 되돌리기 어렵습니다.</span>
 				</label>
 				<button
 					onclick={execute}
 					disabled={!confirmed}
-					class="shrink-0 px-4 py-2 bg-red-700 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
+					class="shrink-0 px-4 py-2 bg-red-700 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-ink-0 text-sm font-medium rounded-lg transition-colors"
 				>
 					복구 실행
 				</button>
 			{:else if phase === 'executing'}
-				<div class="flex items-center gap-2 text-gray-400 text-sm">
-					<svg class="animate-spin w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24">
+				<div class="flex items-center gap-2 text-ink-2 text-sm">
+					<svg class="animate-spin w-4 h-4 text-action-warm" fill="none" viewBox="0 0 24 24">
 						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
 						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
 					</svg>
@@ -244,7 +244,7 @@
 				<div></div>
 			{:else}
 				<div></div>
-				<button onclick={onClose} class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition-colors">
+				<button onclick={onClose} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg transition-colors">
 					닫기
 				</button>
 			{/if}

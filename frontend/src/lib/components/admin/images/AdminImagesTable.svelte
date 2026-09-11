@@ -61,7 +61,7 @@
 					class="border-b border-[var(--color-line)]/50 text-xs transition-colors {selectedImageId === img.id ? 'bg-[var(--color-surface-sunken)]/50' : ''}"
 				>
 					<td class="p-0">
-						<button type="button" onclick={() => onOpenDetail(img)} class="block w-full py-2 pr-4 text-white hover:text-[var(--color-accent)] transition-colors text-left" title={img.name || img.id}>
+						<button type="button" onclick={() => onOpenDetail(img)} class="block w-full py-2 pr-4 text-ink-0 hover:text-[var(--color-accent)] transition-colors text-left" title={img.name || img.id}>
 							<span class="max-md:block max-md:max-w-[66vw] max-md:truncate">{img.name || img.id.slice(0, 12)}</span>
 							{#if img.repository || img.tag}
 								<div class="text-[var(--color-ink-3)] text-[11px] mt-0.5 font-mono">repository: {img.repository ?? img.name} · tag: {img.tag ?? 'latest'}</div>

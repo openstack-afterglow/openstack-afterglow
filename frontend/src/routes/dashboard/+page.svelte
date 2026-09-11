@@ -10,7 +10,7 @@
 	import type { DashboardK3sStats } from '$lib/types/k3s';
 	import type { AnnouncementUser } from '$lib/types/announcements';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
-	import { Alert, Spark, SectionHeader } from '$lib/components/ui';
+	import { Alert, PageShell, Spark, SectionHeader } from '$lib/components/ui';
 	import DashboardGreetingHeader from '$lib/components/dashboard/overview/DashboardGreetingHeader.svelte';
 	import DashboardStatTiles from '$lib/components/dashboard/overview/DashboardStatTiles.svelte';
 	import RecentInstancesCard from '$lib/components/dashboard/overview/RecentInstancesCard.svelte';
@@ -404,7 +404,7 @@
 </script>
 
 {#key visibleProjectId}
-<div class="p-6 max-w-7xl mx-auto flex flex-col gap-5">
+<PageShell class="flex flex-col gap-5">
 	<DashboardGreetingHeader
 		username={$auth.username ?? ''}
 		projectName={$auth.projectName ?? '—'}
@@ -429,7 +429,7 @@
 	/>
 
 	<div class="flex items-center justify-between mb-1">
-		<p class="text-[10px] uppercase tracking-wide text-[var(--color-ink-3)]">사용 추세</p>
+		<p class="text-xs tracking-tight text-[var(--color-ink-2)]">사용 추세</p>
 		<RangeToggle value={range} onchange={handleRangeChange} />
 	</div>
 	<div class="grid grid-cols-1 md:grid-cols-3 gap-3.5">
@@ -444,30 +444,30 @@
 			{@const current = hasData ? series!.data.at(-1)! : null}
 			{@const min = hasData ? Math.min(...series!.data) : null}
 			{@const max = hasData ? Math.max(...series!.data) : null}
-			<div class="bg-gray-900 border border-gray-800 rounded-2xl p-5 flex flex-col gap-2">
+			<div class="bg-surface-base border border-line rounded-lg p-5 flex flex-col gap-2">
 				<div class="flex items-baseline justify-between">
-					<p class="text-[10px] uppercase tracking-wide text-[var(--color-ink-3)]">{card.label}</p>
+					<p class="text-xs tracking-tight text-[var(--color-ink-2)]">{card.label}</p>
 					{#if current !== null}
 						<span class="text-xl font-semibold tabular-nums text-[var(--color-ink-0)]">
-							{current.toFixed(1)}<span class="text-[10px] text-[var(--color-ink-3)] ml-0.5">{card.unit}</span>
+							{current.toFixed(1)}<span class="ml-0.5 text-xs text-[var(--color-ink-2)]">{card.unit}</span>
 						</span>
 					{/if}
 				</div>
 				<div class="min-h-[72px] flex items-center w-full">
 					{#if (authLoading || initialLoadPending || trendState.pending) && !hasData}
-						<div class="h-[72px] w-full bg-gray-800/60 rounded animate-pulse"></div>
+						<div class="h-[72px] w-full bg-surface-sunken/60 rounded animate-pulse"></div>
 					{:else if hasData}
 						<Spark data={series!.data} color={card.color} height={72} class="w-full" />
 					{:else if trendState.error}
 						<p class="text-[11px] italic text-[var(--color-state-danger)]">메트릭을 불러오지 못했습니다</p>
 					{:else if !currentTrend || !currentTrend.prometheus_available}
-						<p class="text-[11px] italic text-[var(--color-ink-3)]">메트릭 수집 미설정</p>
+						<p class="text-xs italic text-[var(--color-ink-2)]">메트릭 수집 미설정</p>
 					{:else}
-						<p class="text-[11px] text-[var(--color-ink-3)]">해당 메트릭 수집 대기 중</p>
+						<p class="text-xs text-[var(--color-ink-2)]">해당 메트릭 수집 대기 중</p>
 					{/if}
 				</div>
 				{#if hasData}
-					<p class="text-[10px] tabular-nums text-[var(--color-ink-3)]">
+					<p class="text-xs tabular-nums text-[var(--color-ink-2)]">
 						min {min!.toFixed(1)}{card.unit} · max {max!.toFixed(1)}{card.unit}
 						{#if trendState.error} · 갱신 실패{/if}
 					</p>
@@ -486,7 +486,7 @@
 		</div>
 
 		<div class="flex flex-col gap-3.5">
-			<div class="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+			<div class="bg-surface-base border border-line rounded-lg p-5">
 				<SectionHeader title="시스템 알림">
 					{#snippet right()}
 						<a href="/dashboard/notifications" class="text-[13px] text-[var(--color-ink-3)] hover:text-[var(--color-ink-1)] transition-colors">모두 보기 →</a>
@@ -494,8 +494,8 @@
 				</SectionHeader>
 				{#if alertsPending && alerts.length === 0 && announcements.length === 0}
 					<ul class="mt-3 flex flex-col gap-2 animate-pulse">
-						<li class="h-4 bg-gray-800/60 rounded"></li>
-						<li class="h-4 bg-gray-800/60 rounded w-3/4"></li>
+						<li class="h-4 bg-surface-sunken/60 rounded"></li>
+						<li class="h-4 bg-surface-sunken/60 rounded w-3/4"></li>
 					</ul>
 				{:else if alertsCompleteEmpty}
 					<p class="text-sm text-[var(--color-ink-3)] mt-4">알림 없음</p>
@@ -544,7 +544,7 @@
 			/>
 		</div>
 	</div>
-</div>
+</PageShell>
 {/key}
 
 <style>

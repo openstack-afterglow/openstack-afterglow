@@ -1,0 +1,43 @@
+---
+- name: Manila | Ensure toolbox has the Manila CLI plugin
+  become: true
+  kolla_toolbox:
+    container_engine: "{{ kolla_container_engine }}"
+    user: root
+    module_name: ansible.builtin.pip
+    module_args:
+      name: "python-manilaclient=={{ afterglow_manila_client_version }}"
+      executable: /opt/ansible/bin/pip
+  run_once: true
+  delegate_to: "{{ groups['afterglow'][0] }}"
+
+- name: Manila | Prepare toolbox cloud configuration directory
+  become: true
+  kolla_toolbox:
+    container_engine: "{{ kolla_container_engine }}"
+    user: root
+    module_name: ansible.builtin.file
+    module_args:
+      path: /var/lib/ansible/.config/openstack
+      state: directory
+      owner: ansible
+      group: ansible
+      mode: "0700"
+  run_once: true
+  delegate_to: "{{ groups['afterglow'][0] }}"
+
+- name: Manila | Configure authenticated toolbox cloud
+  become: true
+  kolla_toolbox:
+    container_engine: "{{ kolla_container_engine }}"
+    user: root
+    module_name: ansible.builtin.copy
+    module_args:
+      content: "{{ {'clouds': {'kolla': {'auth': openstack_auth, 'auth_type': 'password', 'region_name': openstack_region_name, 'interface': openstack_interface}}} | to_json }}"
+      dest: /var/lib/ansible/.config/openstack/clouds.yaml
+      owner: ansible
+      group: ansible
+      mode: "0600"
+  no_log: true
+  run_once: true
+  delegate_to: "{{ groups['afterglow'][0] }}"

@@ -24,8 +24,8 @@
 </script>
 
 <div class="flex items-center gap-2">
-	<div class="w-14 bg-gray-800 rounded-full h-1.5 flex-shrink-0">
+	<div class="w-14 bg-surface-sunken rounded-full h-1.5 flex-shrink-0">
 		<div class="h-1.5 rounded-full transition-all" style="width: {usagePct(used, total)}%; background: {usageGrad(used, total)}"></div>
 	</div>
-	<span class="text-gray-400 text-xs">{label}</span>
+	<span class="text-ink-2 text-xs">{label}</span>
 </div>

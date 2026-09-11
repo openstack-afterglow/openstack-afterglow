@@ -111,7 +111,7 @@
 				{#each BUCKETS as b (b.key)}
 					<button
 						class="rounded px-2 py-0.5 text-xs {bucket === b.key
-							? 'bg-[var(--color-accent)] text-white'
+							? 'bg-[var(--color-accent)] text-ink-0'
 							: 'text-[var(--color-ink-3)] hover:text-[var(--color-ink-1)]'}"
 						onclick={() => setBucket(b.key)}>{b.label}</button
 					>

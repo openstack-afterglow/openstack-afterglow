@@ -184,7 +184,7 @@
 		const cat = categorize(f);
 		if (cat === 'gpu') return { label: 'GPU', class: 'bg-purple-900/50 text-purple-300 border-purple-700/50' };
 		if (cat === 'cpu') return { label: 'CPU', class: 'bg-sky-900/50 text-sky-300 border-sky-700/50' };
-		if (cat === 'memory') return { label: '메모리', class: 'bg-amber-900/50 text-amber-300 border-amber-700/50' };
+		if (cat === 'memory') return { label: '메모리', class: 'bg-surface-selected/50 text-action-warm border-action-warm/50' };
 		return null;
 	}
 
@@ -215,7 +215,7 @@
 	const selectedFlavor = $derived(flavors.find(f => f.id === selectedId));
 
 	const flavorChipClass = (remaining: number, requested: number) => {
-		if (remaining < 0) return 'bg-gray-800/60 text-gray-300 border border-gray-700';
+		if (remaining < 0) return 'bg-surface-sunken/60 text-ink-2 border border-line-2';
 		if (requested > 0 && remaining - requested < 0) return 'bg-red-900/40 text-red-300 border border-red-800/50';
 		if (remaining === 0) return 'bg-red-900/40 text-red-300 border border-red-800/50';
 		if (requested > 0) return 'bg-yellow-900/30 text-yellow-300 border border-yellow-800/40';
@@ -273,15 +273,15 @@
 		<button
 			onclick={() => { activeCategory = tab.key; }}
 			class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors {activeCategory === tab.key
-				? 'bg-blue-600 text-white'
-				: 'bg-gray-800 text-gray-400 hover:bg-gray-700'}"
+				? 'bg-action-warm text-action-on-warm'
+				: 'bg-surface-sunken text-ink-2 hover:bg-surface-selected'}"
 		>{tab.label}</button>
 	{/each}
 </div>
 
 <!-- 통합 검색 -->
 <div class="order-4 relative mb-4">
-	<span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none">
+	<span class="absolute left-3 top-1/2 -translate-y-1/2 text-ink-3 pointer-events-none">
 		<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/>
 		</svg>
@@ -290,7 +290,7 @@
 		type="search"
 		placeholder="플레이버 이름, vCPU, RAM으로 검색..."
 		bind:value={searchTerm}
-		class="w-full bg-gray-900 border border-gray-800 text-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm outline-none focus:border-gray-600 placeholder-gray-600"
+		class="w-full bg-surface-base border border-line text-ink-1 rounded-lg pl-9 pr-3 py-2 text-sm outline-none focus:border-line-2 placeholder-ink-3"
 	/>
 </div>
 
@@ -312,103 +312,103 @@
 	{@const critCpu = limCpu >= 0 && curCpu + reqCpu > limCpu}
 	{@const critRam = limRamMb >= 0 && curRamMb + reqRamMb > limRamMb}
 	{@const critDisk = limDiskGb >= 0 && curDiskGb + reqDiskGb > limDiskGb}
-	<div class="order-1 mb-4 overflow-hidden rounded-xl border border-gray-800 bg-gray-900/70 md:mb-5">
-		<div class="flex items-center justify-between px-3 py-2 border-b border-gray-800">
-			<span class="text-[11px] text-gray-400 font-medium">
+	<div class="order-1 mb-4 overflow-hidden rounded-xl border border-line bg-surface-base/70 md:mb-5">
+		<div class="flex items-center justify-between px-3 py-2 border-b border-line">
+			<span class="text-[11px] text-ink-2 font-medium">
 				프로젝트 잔여 쿼터
-				{#if selectedFlavor}<span class="text-blue-400 ml-1">— 선택 flavor 반영</span>{/if}
+				{#if selectedFlavor}<span class="text-action-warm ml-1">— 선택 flavor 반영</span>{/if}
 			</span>
-			<div class="hidden items-center gap-3 text-[10px] text-gray-500 @md/panel:flex">
-				<span class="flex items-center gap-1"><i class="inline-block w-2 h-2 rounded-full bg-gray-500"></i>현재 사용</span>
-				<span class="flex items-center gap-1"><i class="inline-block w-2 h-2 rounded-full bg-blue-500"></i>이번 VM 추가</span>
+			<div class="hidden items-center gap-3 text-[10px] text-ink-3 @md/panel:flex">
+				<span class="flex items-center gap-1"><i class="inline-block w-2 h-2 rounded-full bg-surface-selected"></i>현재 사용</span>
+				<span class="flex items-center gap-1"><i class="inline-block w-2 h-2 rounded-full bg-action-warm"></i>이번 VM 추가</span>
 			</div>
 		</div>
-		<div class="grid grid-cols-2 gap-px bg-gray-800 @2xl/panel:grid-cols-4">
+		<div class="grid grid-cols-2 gap-px bg-surface-sunken @2xl/panel:grid-cols-4">
 			<!-- VM cell -->
-			<div class="flex flex-col gap-1.5 bg-gray-900 px-3 py-2">
-				<span class="text-[10px] uppercase tracking-wider text-gray-500 font-mono font-semibold">VM</span>
+			<div class="flex flex-col gap-1.5 bg-surface-base px-3 py-2">
+				<span class="text-[10px] uppercase tracking-wider text-ink-3 font-mono font-semibold">VM</span>
 				<div class="flex items-baseline gap-1 font-mono">
-					<span class="text-sm text-gray-300">{curVm}</span>
+					<span class="text-sm text-ink-2">{curVm}</span>
 					{#if reqVm > 0}
-						<span class="text-gray-600 text-[10px]">→</span>
-						<span class="text-sm font-bold {critVm ? 'text-red-400' : 'text-blue-400'}">{curVm + reqVm}</span>
+						<span class="text-ink-3 text-[10px]">→</span>
+						<span class="text-sm font-bold {critVm ? 'text-red-400' : 'text-action-warm'}">{curVm + reqVm}</span>
 					{/if}
-					{#if limVm >= 0}<span class="text-gray-500 text-[11px]">/ {limVm}</span>{/if}
+					{#if limVm >= 0}<span class="text-ink-3 text-[11px]">/ {limVm}</span>{/if}
 				</div>
 				{#if limVm >= 0}
 					{@const curPct = Math.min(100, (curVm / limVm) * 100)}
 					{@const deltaPct = Math.min(100 - curPct, (reqVm / limVm) * 100)}
-					<div class="relative h-[5px] rounded-full bg-gray-800 overflow-hidden">
-						<div class="absolute left-0 top-0 h-full bg-gray-500 rounded-full" style="width:{curPct}%"></div>
-						<div class="absolute top-0 h-full rounded-r-full {critVm ? 'bg-red-500' : 'bg-blue-500'}" style="left:{curPct}%; width:{deltaPct}%"></div>
+					<div class="relative h-[5px] rounded-full bg-surface-sunken overflow-hidden">
+						<div class="absolute left-0 top-0 h-full bg-surface-selected rounded-full" style="width:{curPct}%"></div>
+						<div class="absolute top-0 h-full rounded-r-full {critVm ? 'bg-red-500' : 'bg-action-warm'}" style="left:{curPct}%; width:{deltaPct}%"></div>
 					</div>
 				{/if}
 			</div>
 			<!-- vCPU cell -->
-			<div class="flex flex-col gap-1.5 bg-gray-900 px-3 py-2">
-				<span class="text-[10px] uppercase tracking-wider text-gray-500 font-mono font-semibold">vCPU</span>
+			<div class="flex flex-col gap-1.5 bg-surface-base px-3 py-2">
+				<span class="text-[10px] uppercase tracking-wider text-ink-3 font-mono font-semibold">vCPU</span>
 				<div class="flex items-baseline gap-1 font-mono">
-					<span class="text-sm text-gray-300">{curCpu}</span>
+					<span class="text-sm text-ink-2">{curCpu}</span>
 					{#if reqCpu > 0}
-						<span class="text-gray-600 text-[10px]">→</span>
-						<span class="text-sm font-bold {critCpu ? 'text-red-400' : 'text-blue-400'}">{curCpu + reqCpu}</span>
+						<span class="text-ink-3 text-[10px]">→</span>
+						<span class="text-sm font-bold {critCpu ? 'text-red-400' : 'text-action-warm'}">{curCpu + reqCpu}</span>
 					{/if}
-					{#if limCpu >= 0}<span class="text-gray-500 text-[11px]">/ {limCpu}</span>{/if}
+					{#if limCpu >= 0}<span class="text-ink-3 text-[11px]">/ {limCpu}</span>{/if}
 				</div>
 				{#if limCpu >= 0}
 					{@const curPct = Math.min(100, (curCpu / limCpu) * 100)}
 					{@const deltaPct = Math.min(100 - curPct, (reqCpu / limCpu) * 100)}
-					<div class="relative h-[5px] rounded-full bg-gray-800 overflow-hidden">
-						<div class="absolute left-0 top-0 h-full bg-gray-500 rounded-full" style="width:{curPct}%"></div>
-						<div class="absolute top-0 h-full rounded-r-full {critCpu ? 'bg-red-500' : 'bg-blue-500'}" style="left:{curPct}%; width:{deltaPct}%"></div>
+					<div class="relative h-[5px] rounded-full bg-surface-sunken overflow-hidden">
+						<div class="absolute left-0 top-0 h-full bg-surface-selected rounded-full" style="width:{curPct}%"></div>
+						<div class="absolute top-0 h-full rounded-r-full {critCpu ? 'bg-red-500' : 'bg-action-warm'}" style="left:{curPct}%; width:{deltaPct}%"></div>
 					</div>
 				{/if}
 			</div>
 			<!-- RAM cell -->
-			<div class="flex flex-col gap-1.5 bg-gray-900 px-3 py-2">
-				<span class="text-[10px] uppercase tracking-wider text-gray-500 font-mono font-semibold">RAM</span>
+			<div class="flex flex-col gap-1.5 bg-surface-base px-3 py-2">
+				<span class="text-[10px] uppercase tracking-wider text-ink-3 font-mono font-semibold">RAM</span>
 				<div class="flex items-baseline gap-1 font-mono">
-					<span class="text-sm text-gray-300">{Math.round(curRamMb / 1024)}GB</span>
+					<span class="text-sm text-ink-2">{Math.round(curRamMb / 1024)}GB</span>
 					{#if reqRamMb > 0}
-						<span class="text-gray-600 text-[10px]">→</span>
-						<span class="text-sm font-bold {critRam ? 'text-red-400' : 'text-blue-400'}">{Math.round((curRamMb + reqRamMb) / 1024)}GB</span>
+						<span class="text-ink-3 text-[10px]">→</span>
+						<span class="text-sm font-bold {critRam ? 'text-red-400' : 'text-action-warm'}">{Math.round((curRamMb + reqRamMb) / 1024)}GB</span>
 					{/if}
-					{#if limRamMb >= 0}<span class="text-gray-500 text-[11px]">/ {Math.round(limRamMb / 1024)}GB</span>{/if}
+					{#if limRamMb >= 0}<span class="text-ink-3 text-[11px]">/ {Math.round(limRamMb / 1024)}GB</span>{/if}
 				</div>
 				{#if limRamMb >= 0}
 					{@const curPct = Math.min(100, (curRamMb / limRamMb) * 100)}
 					{@const deltaPct = Math.min(100 - curPct, (reqRamMb / limRamMb) * 100)}
-					<div class="relative h-[5px] rounded-full bg-gray-800 overflow-hidden">
-						<div class="absolute left-0 top-0 h-full bg-gray-500 rounded-full" style="width:{curPct}%"></div>
-						<div class="absolute top-0 h-full rounded-r-full {critRam ? 'bg-red-500' : 'bg-blue-500'}" style="left:{curPct}%; width:{deltaPct}%"></div>
+					<div class="relative h-[5px] rounded-full bg-surface-sunken overflow-hidden">
+						<div class="absolute left-0 top-0 h-full bg-surface-selected rounded-full" style="width:{curPct}%"></div>
+						<div class="absolute top-0 h-full rounded-r-full {critRam ? 'bg-red-500' : 'bg-action-warm'}" style="left:{curPct}%; width:{deltaPct}%"></div>
 					</div>
 				{/if}
 			</div>
 			<!-- DISK cell -->
-			<div class="flex flex-col gap-1.5 bg-gray-900 px-3 py-2">
-				<span class="text-[10px] uppercase tracking-wider text-gray-500 font-mono font-semibold">DISK</span>
+			<div class="flex flex-col gap-1.5 bg-surface-base px-3 py-2">
+				<span class="text-[10px] uppercase tracking-wider text-ink-3 font-mono font-semibold">DISK</span>
 				{#if limDiskGb < 0}
 					<div class="flex items-baseline gap-1 font-mono">
-						<span class="text-sm text-gray-300">{curDiskGb}GB</span>
-						<span class="text-gray-500 text-[11px]">/ ∞</span>
+						<span class="text-sm text-ink-2">{curDiskGb}GB</span>
+						<span class="text-ink-3 text-[11px]">/ ∞</span>
 					</div>
-					<div class="relative h-[5px] rounded-full bg-gray-800 overflow-hidden">
-						<div class="absolute left-0 top-0 h-full bg-gray-500 rounded-full" style="width:0%"></div>
+					<div class="relative h-[5px] rounded-full bg-surface-sunken overflow-hidden">
+						<div class="absolute left-0 top-0 h-full bg-surface-selected rounded-full" style="width:0%"></div>
 					</div>
 				{:else}
 					<div class="flex items-baseline gap-1 font-mono">
-						<span class="text-sm text-gray-300">{curDiskGb}GB</span>
+						<span class="text-sm text-ink-2">{curDiskGb}GB</span>
 						{#if reqDiskGb > 0}
-							<span class="text-gray-600 text-[10px]">→</span>
-							<span class="text-sm font-bold {critDisk ? 'text-red-400' : 'text-blue-400'}">{curDiskGb + reqDiskGb}GB</span>
+							<span class="text-ink-3 text-[10px]">→</span>
+							<span class="text-sm font-bold {critDisk ? 'text-red-400' : 'text-action-warm'}">{curDiskGb + reqDiskGb}GB</span>
 						{/if}
-						<span class="text-gray-500 text-[11px]">/ {limDiskGb}GB</span>
+						<span class="text-ink-3 text-[11px]">/ {limDiskGb}GB</span>
 					</div>
 					{@const curPct = Math.min(100, (curDiskGb / limDiskGb) * 100)}
 					{@const deltaPct = Math.min(100 - curPct, (reqDiskGb / limDiskGb) * 100)}
-					<div class="relative h-[5px] rounded-full bg-gray-800 overflow-hidden">
-						<div class="absolute left-0 top-0 h-full bg-gray-500 rounded-full" style="width:{curPct}%"></div>
-						<div class="absolute top-0 h-full rounded-r-full {critDisk ? 'bg-red-500' : 'bg-blue-500'}" style="left:{curPct}%; width:{deltaPct}%"></div>
+					<div class="relative h-[5px] rounded-full bg-surface-sunken overflow-hidden">
+						<div class="absolute left-0 top-0 h-full bg-surface-selected rounded-full" style="width:{curPct}%"></div>
+						<div class="absolute top-0 h-full rounded-r-full {critDisk ? 'bg-red-500' : 'bg-action-warm'}" style="left:{curPct}%; width:{deltaPct}%"></div>
 					</div>
 				{/if}
 			</div>
@@ -418,8 +418,8 @@
 
 <!-- GPU 가용량 배너 -->
 {#if gpuAvailability.length > 0 && (activeCategory === 'all' || activeCategory === 'gpu')}
-	<div class="order-5 mb-4 rounded-lg border border-gray-700 bg-gray-800/60 p-3">
-		<div class="text-xs text-gray-400 mb-2">GPU 가용량{#if selectedGpuRequest.size > 0} <span class="text-blue-400">(선택 flavor 반영)</span>{/if}</div>
+	<div class="order-5 mb-4 rounded-lg border border-line-2 bg-surface-sunken/60 p-3">
+		<div class="text-xs text-ink-2 mb-2">GPU 가용량{#if selectedGpuRequest.size > 0} <span class="text-action-warm">(선택 flavor 반영)</span>{/if}</div>
 		<div class="flex flex-wrap gap-2">
 			{#each gpuAvailability as g}
 				{@const requested = selectedGpuRequest.get(g.device_name) ?? 0}
@@ -429,13 +429,13 @@
 					{avail > 0 && requested === 0
 						? 'bg-green-900/30 text-green-300 border border-green-800/40'
 						: avail >= 0 && requested > 0
-							? 'bg-blue-900/30 text-blue-300 border border-blue-800/40'
+							? 'bg-surface-selected/30 text-action-warm border border-action-warm/40'
 							: 'bg-red-900/30 text-red-300 border border-red-800/40'}">
 					<b class="font-semibold">{g.device_name}</b>
 					{#if requested > 0}
 						<span class="opacity-70">{g.used}/{g.total}</span>
 						<span class="text-[10px] opacity-50">→</span>
-						<span class="font-bold text-blue-400">{nextUsed}/{g.total}</span>
+						<span class="font-bold text-action-warm">{nextUsed}/{g.total}</span>
 					{:else}
 						<span class="opacity-70">{g.used}/{g.total}</span>
 					{/if}
@@ -515,8 +515,8 @@
 </div>
 
 <!-- 데스크톱에서는 스펙 비교를 위한 표를 유지한다. -->
-<div class="order-6 hidden overflow-hidden rounded-xl border border-gray-800 bg-[#0B1220] @2xl/panel:block">
-	<div class="grid grid-cols-[2fr_80px_90px_100px_100px] border-b border-gray-800 px-4 py-2.5 text-[11px] font-medium uppercase tracking-wider text-gray-500">
+<div class="order-6 hidden overflow-hidden rounded-xl border border-line bg-[#0B1220] @2xl/panel:block">
+	<div class="grid grid-cols-[2fr_80px_90px_100px_100px] border-b border-line px-4 py-2.5 text-[11px] font-medium uppercase tracking-wider text-ink-3">
 		<div>이름</div>
 		<div class="text-center">VCPU</div>
 		<div class="text-center">RAM</div>
@@ -532,24 +532,24 @@
 		<button
 			onclick={() => handleFlavorClick(flavor)}
 			disabled={!selectable}
-			class="grid w-full grid-cols-[2fr_80px_90px_100px_100px] border-b border-gray-800/60 px-4 py-3 text-sm transition-all
-				{selectedId === flavor.id ? 'border-l-2 border-l-blue-500 bg-blue-900/20' : ''}
-				{selectable ? 'hover:bg-gray-800/40' : 'opacity-60 cursor-not-allowed bg-[var(--color-surface-sunken)]/30'}"
+			class="grid w-full grid-cols-[2fr_80px_90px_100px_100px] border-b border-line/60 px-4 py-3 text-sm transition-all
+				{selectedId === flavor.id ? 'border-l-2 border-l-blue-500 bg-surface-selected/20' : ''}
+				{selectable ? 'hover:bg-surface-sunken/40' : 'opacity-60 cursor-not-allowed bg-[var(--color-surface-sunken)]/30'}"
 		>
 			<div class="flex min-w-0 items-center gap-3">
-				<div class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-gray-700 bg-gray-800">
-					<svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<div class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-line-2 bg-surface-sunken">
+					<svg class="h-4 w-4 text-ink-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 002 2v10a2 2 0 00-2 2zM9 9h6v6H9V9z"/>
 					</svg>
 				</div>
 				<div class="min-w-0">
 					<div class="flex items-center gap-2">
-						<span class="truncate font-medium text-white">{flavor.name}</span>
+						<span class="truncate font-medium text-ink-0">{flavor.name}</span>
 						{#if badge}
 							<span class="rounded border px-1.5 py-0.5 text-[10px] {badge.class}">{badge.label}</span>
 						{/if}
 						{#if flavor.is_public}
-							<span class="rounded border border-gray-700 bg-gray-800 px-1.5 py-0.5 text-[10px] text-gray-400">공용</span>
+							<span class="rounded border border-line-2 bg-surface-sunken px-1.5 py-0.5 text-[10px] text-ink-2">공용</span>
 						{/if}
 					</div>
 					{#if gpu}
@@ -566,38 +566,38 @@
 						</div>
 					{/if}
 			</div>
-			<div class="self-center text-center text-gray-300">{flavor.vcpus}</div>
-			<div class="self-center text-center text-gray-300">{ramLabel(flavor.ram)}</div>
-			<div class="self-center text-center text-gray-300">{flavor.disk} GB</div>
-			<div class="self-center text-center text-xs text-gray-400">{networkBandwidth(flavor)}</div>
+			<div class="self-center text-center text-ink-2">{flavor.vcpus}</div>
+			<div class="self-center text-center text-ink-2">{ramLabel(flavor.ram)}</div>
+			<div class="self-center text-center text-ink-2">{flavor.disk} GB</div>
+			<div class="self-center text-center text-xs text-ink-2">{networkBandwidth(flavor)}</div>
 		</button>
 	{/each}
 
 	{#if searchedFlavors.length === 0}
-		<div class="py-8 text-center text-sm text-gray-600">조건에 맞는 플레이버가 없습니다</div>
+		<div class="py-8 text-center text-sm text-ink-3">조건에 맞는 플레이버가 없습니다</div>
 	{/if}
 </div>
 
 <!-- 페이지네이션 -->
 {#if totalPages > 1}
-<div class="order-7 mt-3 flex items-center justify-between text-xs text-gray-500">
+<div class="order-7 mt-3 flex items-center justify-between text-xs text-ink-3">
 	<span>{searchedFlavors.length}개 중 {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, searchedFlavors.length)}</span>
 	<div class="flex gap-1">
 		<button
 			onclick={() => currentPage = Math.max(1, currentPage - 1)}
 			disabled={currentPage === 1}
-			class="px-2 py-1 rounded bg-gray-800 text-gray-400 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
+			class="px-2 py-1 rounded bg-surface-sunken text-ink-2 hover:bg-surface-selected disabled:opacity-30 disabled:cursor-not-allowed"
 		>이전</button>
 		{#each Array.from({ length: totalPages }, (_, i) => i + 1) as p}
 			<button
 				onclick={() => currentPage = p}
-				class="px-2 py-1 rounded {p === currentPage ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}"
+				class="px-2 py-1 rounded {p === currentPage ? 'bg-action-warm text-ink-0' : 'bg-surface-sunken text-ink-2 hover:bg-surface-selected'}"
 			>{p}</button>
 		{/each}
 		<button
 			onclick={() => currentPage = Math.min(totalPages, currentPage + 1)}
 			disabled={currentPage === totalPages}
-			class="px-2 py-1 rounded bg-gray-800 text-gray-400 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
+			class="px-2 py-1 rounded bg-surface-sunken text-ink-2 hover:bg-surface-selected disabled:opacity-30 disabled:cursor-not-allowed"
 		>다음</button>
 	</div>
 </div>

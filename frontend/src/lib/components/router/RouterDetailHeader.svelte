@@ -13,8 +13,8 @@
 	const s = useRouterDetailController();
 </script>
 
-<div class="flex items-center justify-between mb-6 border-b border-gray-800 pb-4">
-	<h2 class="text-xl font-bold text-white">라우터 상세</h2>
+<div class="flex items-center justify-between mb-6 border-b border-line pb-4">
+	<h2 class="text-xl font-bold text-ink-0">라우터 상세</h2>
 	<div class="flex items-center gap-2">
 		<AutoRefreshControl
 			bind:active={ar.active}
@@ -25,10 +25,7 @@
 		/>
 		<button
 			onclick={() => goto(`/dashboard/network/routers/${routerId}`)}
-			class="text-xs text-gray-400 hover:text-blue-300 px-2 py-1 rounded border border-gray-700 hover:border-blue-700 transition-colors"
+			class="text-xs text-ink-2 hover:text-action-warm-hover px-2 py-1 rounded border border-line-2 hover:border-action-warm transition-colors"
 		>전체 보기 →</button>
-		{#if onClose}
-			<button data-tour="admin-network-detail-close" onclick={onClose} class="text-gray-400 hover:text-white text-xl leading-none px-2">✕</button>
-		{/if}
 	</div>
 </div>

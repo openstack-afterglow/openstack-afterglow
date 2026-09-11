@@ -5,7 +5,6 @@
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
-	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import BulkSelectionOverlay, { type BulkSelectionAction } from '$lib/components/ui/BulkSelectionOverlay.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
@@ -17,6 +16,7 @@
 	import DbInstancesTable from '$lib/components/database/DbInstancesTable.svelte';
 	import type { DbInstance } from '$lib/types/database';
 	import { toast } from '$lib/stores/toast';
+	import { Button, EmptyState, PageHeader, PageShell, ResourceToolbar } from '$lib/components/ui';
 
 	let instances = $state<DbInstance[]>([]);
 	let loading = $state(true);
@@ -163,7 +163,7 @@
 <DbCreatePanel bind:open={showCreatePanel} onCreated={load} />
 
 {#if selectedInstanceId}
-	<SlidePanel onClose={closePanel} width="w-full md:w-[70vw] max-w-4xl">
+	<SlidePanel onClose={closePanel} ariaLabel="데이터베이스 인스턴스 상세" width="w-full md:w-[70vw] max-w-4xl">
 		<DbInstanceDetailPanel
 			instanceId={selectedInstanceId}
 			token={$auth.token ?? undefined}
@@ -174,8 +174,13 @@
 	</SlidePanel>
 {/if}
 
-<div class="bulk-selection-page p-4 md:p-8 max-w-7xl mx-auto">
+<PageShell class="bulk-selection-page space-y-4">
 	<PageHeader breadcrumb="DATABASE / INSTANCES" title="DB 인스턴스">
+		{#snippet actions()}
+			<Button onclick={() => (showCreatePanel = true)} onintent={prefetchCreateMetadata} variant="primary">+ 인스턴스 생성</Button>
+		{/snippet}
+	</PageHeader>
+	<ResourceToolbar label="데이터베이스 인스턴스 목록 도구">
 		{#snippet actions()}
 			<AutoRefreshControl
 				bind:active={ar.active}
@@ -184,19 +189,13 @@
 				refreshing={refreshing || loading}
 				onManualRefresh={forceRefresh}
 			/>
-			<button
-				onclick={() => (showCreatePanel = true)}
-				onpointerenter={prefetchCreateMetadata}
-				onfocus={prefetchCreateMetadata}
-				class="text-xs text-white bg-amber-600 hover:bg-amber-500 transition-colors px-3 py-1.5 rounded border border-amber-500"
-			>+ 인스턴스 생성</button>
 		{/snippet}
-	</PageHeader>
+	</ResourceToolbar>
 
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if instances.length === 0}
-		<div class="text-gray-600 text-sm">DB 인스턴스가 없습니다</div>
+		<EmptyState headline="DB 인스턴스가 없습니다" description="관리형 데이터베이스 인스턴스를 생성하세요." />
 	{:else}
 		<DbInstancesTable
 			{instances}
@@ -214,4 +213,4 @@
 		/>
 		<BulkSelectionOverlay count={selection.count} ariaLabel="선택한 DB 인스턴스 일괄 작업" actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
 	{/if}
-</div>
+</PageShell>

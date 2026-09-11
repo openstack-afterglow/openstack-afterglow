@@ -16,7 +16,7 @@ data:
 
       # VM node_exporter (port 9100) — http_sd로 타깃 자동 갱신
       - job_name: 'instances-node'
-        scrape_interval: 30s
+        scrape_interval: 10s
         metrics_path: /metrics
         http_sd_configs:
           - url: 'http://backend:8000/api/v1/sd/prometheus/targets'
@@ -30,6 +30,23 @@ data:
             regex: 'node_exporter'
             action: keep
           # instance label을 __address__로 설정 (VM 이름 대신 ip:port 사용)
+          - source_labels: [__address__]
+            target_label: instance
+
+      # compute 노드의 libvirt_exporter — VM 내부 node_exporter 미설치 인스턴스도 커버
+      # 토폴로지 트래픽의 **주 경로**다(NIC 단위 demux). 이 job 이 없으면 전부 node 폴백으로
+      # 떨어져 다중 NIC 인스턴스가 네트워크 귀속에서 빠진다.
+      # kolla: enable_prometheus_libvirt_exporter: "yes" 설정 후 kolla-ansible reconfigure -t prometheus 필요
+      - job_name: 'instances-libvirt'
+        scrape_interval: 10s
+        metrics_path: /metrics
+        http_sd_configs:
+          - url: 'http://backend:8000/api/v1/sd/prometheus/libvirt-targets'
+            authorization:
+              type: Bearer
+              credentials_file: /etc/prometheus/sd-token
+            refresh_interval: 60s
+        relabel_configs:
           - source_labels: [__address__]
             target_label: instance
 

@@ -55,7 +55,7 @@
 	onMount(load);
 </script>
 
-<div class="p-4 md:p-8 max-w-7xl mx-auto">
+<div class="p-4 md:p-6 max-w-7xl mx-auto">
 	<div data-tour="admin-containers-header">
 	<PageHeader breadcrumb="CONTAINERS" title="전체 컨테이너">
 		{#snippet actions()}
@@ -75,12 +75,12 @@
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if containers.length === 0}
-		<div class="text-gray-600 text-sm" data-tour="admin-containers-ready">컨테이너가 없습니다</div>
+		<div class="text-ink-3 text-sm" data-tour="admin-containers-ready">컨테이너가 없습니다</div>
 	{:else}
 		<div class="overflow-x-auto" data-tour="admin-containers-ready">
 			<table class="w-full text-sm">
 				<thead>
-					<tr class="border-b border-gray-800 text-gray-400 text-xs uppercase tracking-wide">
+					<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
 						<th class="text-left py-2 pr-4">이름</th>
 						<th class="text-left py-2 pr-4">상태</th>
 						<th class="text-left py-2 pr-4">이미지</th>
@@ -93,20 +93,20 @@
 				<tbody>
 					{#each containers as c, index (c.uuid)}
 						<tr
-							class="border-b border-gray-800/50 text-xs hover:bg-gray-800/30 transition-colors cursor-pointer {selectedContainerId === c.uuid ? 'bg-gray-800/50' : ''}"
+							class="border-b border-line/50 text-xs hover:bg-surface-sunken/30 transition-colors cursor-pointer {selectedContainerId === c.uuid ? 'bg-surface-sunken/50' : ''}"
 							onclick={() => (selectedContainerId = c.uuid)}
 							onkeydown={(e) => e.key === 'Enter' && (selectedContainerId = c.uuid)}
 							role="button"
 							tabindex="0"
 							data-tour={index === 0 ? 'admin-containers-row' : undefined}
 						>
-							<td class="py-2 pr-4 text-white"><span class="max-md:block max-md:max-w-[66vw] max-md:truncate" title={c.name || c.uuid}>{c.name || c.uuid.slice(0, 8)}</span></td>
+							<td class="py-2 pr-4 text-ink-0"><span class="max-md:block max-md:max-w-[66vw] max-md:truncate" title={c.name || c.uuid}>{c.name || c.uuid.slice(0, 8)}</span></td>
 							<td class="py-2 pr-4"><StatusChip status={c.status} /></td>
-							<td class="py-2 pr-4 text-gray-400 font-mono text-xs">{c.image || '-'}</td>
-							<td class="py-2 pr-4 text-gray-400">{c.cpu ?? '-'}</td>
-							<td class="py-2 pr-4 text-gray-400">{c.memory || '-'}</td>
-							<td class="py-2 pr-4 text-gray-400">{c.host || '-'}</td>
-							<td class="py-2 text-gray-500">{c.created_at?.slice(0, 10) ?? '-'}</td>
+							<td class="py-2 pr-4 text-ink-2 font-mono text-xs">{c.image || '-'}</td>
+							<td class="py-2 pr-4 text-ink-2">{c.cpu ?? '-'}</td>
+							<td class="py-2 pr-4 text-ink-2">{c.memory || '-'}</td>
+							<td class="py-2 pr-4 text-ink-2">{c.host || '-'}</td>
+							<td class="py-2 text-ink-3">{c.created_at?.slice(0, 10) ?? '-'}</td>
 						</tr>
 					{/each}
 				</tbody>
@@ -117,7 +117,7 @@
 </div>
 
 {#if selectedContainerId}
-	<SlidePanel onClose={() => (selectedContainerId = null)} width="w-full md:w-[480px]" dataTour="admin-containers-detail">
+	<SlidePanel onClose={() => (selectedContainerId = null)} ariaLabel="컨테이너 상세" width="w-full md:w-[480px]" dataTour="admin-containers-detail">
 		<ContainerDetailPanel
 			containerId={selectedContainerId}
 			onClose={() => (selectedContainerId = null)}

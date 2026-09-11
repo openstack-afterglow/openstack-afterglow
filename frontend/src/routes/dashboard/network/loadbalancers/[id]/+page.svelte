@@ -29,9 +29,9 @@
 	$effect(() => { ctrl.loadPoolMembers(); });
 </script>
 
-<div class="max-w-4xl mx-auto px-4 py-8 text-gray-100">
+<div class="max-w-4xl mx-auto px-4 py-8 text-ink-1">
 	<div class="flex items-center justify-between mb-6">
-		<button onclick={() => goto('/dashboard/network/loadbalancers')} class="text-sm text-gray-400 hover:text-gray-200 inline-flex items-center gap-1">
+		<button onclick={() => goto('/dashboard/network/loadbalancers')} class="text-sm text-ink-2 hover:text-ink-1 inline-flex items-center gap-1">
 			← 로드밸런서 목록
 		</button>
 		<AutoRefreshControl
@@ -44,7 +44,7 @@
 	</div>
 
 	{#if ctrl.loading}
-		<div class="text-gray-500">불러오는 중...</div>
+		<div class="text-ink-3">불러오는 중...</div>
 	{:else if ctrl.error}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{ctrl.error}</div>
 	{:else if ctrl.lb}

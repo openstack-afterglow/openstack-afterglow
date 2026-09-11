@@ -2,6 +2,7 @@
 - name: Apply role lumen
   gather_facts: false
   hosts: lumen
+  become: true
   serial: "{{ kolla_serial | default('0') }}"
   roles:
     - { role: lumen, tags: lumen, when: enable_lumen | default(false) | bool }

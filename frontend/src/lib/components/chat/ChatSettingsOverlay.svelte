@@ -11,7 +11,7 @@
 	import type { ChatUsage } from '$lib/api/chatTree';
 	import type { Memory } from '$lib/api/chatWorkspaces';
 
-	type Section = 'usage' | 'apikeys' | 'memory' | 'mcp' | 'tools' | 'skills';
+	export type ChatSettingsSection = 'usage' | 'apikeys' | 'memory' | 'mcp' | 'tools' | 'skills';
 
 	interface MemoryDocument {
 		filename: 'memory.md';
@@ -23,16 +23,16 @@
 		open: boolean;
 		onClose: () => void;
 		usage: ChatUsage | null;
-		initialSection?: Section;
+		initialSection?: ChatSettingsSection;
 	}
 	let { open, onClose, usage, initialSection = 'usage' }: Props = $props();
-	let section = $state<Section>('usage');
+	let section = $state<ChatSettingsSection>('usage');
 
 	$effect(() => {
 		if (open) section = initialSection;
 	});
 
-	const sections: { key: Section; label: string }[] = [
+	const sections: { key: ChatSettingsSection; label: string }[] = [
 		{ key: 'usage', label: '사용량' },
 		{ key: 'apikeys', label: 'API 키' },
 		{ key: 'memory', label: '메모리' },
@@ -41,9 +41,9 @@
 		{ key: 'skills', label: '스킬' }
 	];
 
-
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
+
 
 	// --- 사용량 ---
 	const monthTokens = $derived(
@@ -113,7 +113,7 @@
 			void loadMemories();
 		}
 	});
-	// 오버레이가 닫히면 다음에 다시 로드하도록 초기화.
+	// 오버레이가 닫히면 다음에 다시 로드하도록 초기화한다.
 	$effect(() => {
 		if (!open) {
 			loadedOnce = false;
@@ -177,17 +177,17 @@
 	}
 </script>
 
-<Modal {open} {onClose}>
+<Modal {open} {onClose} ariaLabel="채팅 설정">
 	<div class="panel">
 		<header class="head">
 			<h2>설정</h2>
 			<button type="button" class="close" onclick={onClose} aria-label="닫기">
-				<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="round" /></svg>
+				<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="round" /></svg>
 			</button>
 		</header>
 
 		<div class="split">
-			<nav class="nav">
+			<nav class="nav" aria-label="채팅 설정">
 				{#each sections as s (s.key)}
 					<button
 						type="button"
@@ -223,13 +223,18 @@
 								월 쿼터 {fmt(quotaUsed)} / {fmt(quotaMax)}
 							</p>
 						{/if}
+						{#if (usage?.quota_weekly_max ?? 0) > 0}
+							<p class="sec-desc quota">
+								주간 쿼터 {fmt(usage?.week_credited_cost ?? 0)} / {fmt(usage?.quota_weekly_max ?? 0)}
+							</p>
+						{/if}
 						<div class="mt-4">
 							<ChatUsagePanel />
 						</div>
 					</section>
 				{:else if section === 'apikeys'}
 					<section class="sec">
-						<ChatApiKeysManager />
+						<ChatApiKeysManager {usage} />
 					</section>
 				{:else if section === 'memory'}
 					<section class="sec">
@@ -336,16 +341,17 @@
 	</div>
 </Modal>
 
+
 <style>
 	.panel {
 		width: min(94vw, 52rem);
-		height: min(86vh, 40rem);
+		height: min(86dvh, 40rem);
+		max-height: calc(100dvh - 2rem);
 		display: flex;
 		flex-direction: column;
 		border-radius: 0.9rem;
 		border: 1px solid var(--color-line);
 		background: var(--color-surface-raised);
-		box-shadow: 0 24px 64px rgba(0, 0, 0, 0.4);
 		overflow: hidden;
 	}
 	.head {
@@ -373,7 +379,9 @@
 		background: transparent;
 		color: var(--color-ink-3);
 		cursor: pointer;
-		transition: background 0.12s, color 0.12s;
+		transition:
+			background var(--motion-duration-fast) var(--motion-ease-standard),
+			color var(--motion-duration-fast) var(--motion-ease-standard);
 	}
 	.close:hover {
 		background: var(--color-surface-sunken);
@@ -397,6 +405,7 @@
 	}
 	.nav-item {
 		text-align: left;
+		display: block;
 		padding: 0.5rem 0.65rem;
 		border: none;
 		border-radius: 0.55rem;
@@ -404,8 +413,11 @@
 		color: var(--color-ink-2);
 		font-size: 0.8125rem;
 		font-weight: 550;
+		text-decoration: none;
 		cursor: pointer;
-		transition: background 0.12s, color 0.12s;
+		transition:
+			background var(--motion-duration-fast) var(--motion-ease-standard),
+			color var(--motion-duration-fast) var(--motion-ease-standard);
 	}
 	.nav-item:hover {
 		background: var(--color-surface-base);
@@ -418,8 +430,8 @@
 	.content {
 		flex: 1;
 		min-width: 0;
-		overflow-y: auto;
 		padding: 1.2rem 1.3rem;
+		overflow-y: auto;
 	}
 	.sec {
 		display: flex;
@@ -600,7 +612,9 @@
 		background: transparent;
 		color: var(--color-ink-3);
 		cursor: pointer;
-		transition: background 0.12s, color 0.12s;
+		transition:
+			background var(--motion-duration-fast) var(--motion-ease-standard),
+			color var(--motion-duration-fast) var(--motion-ease-standard);
 	}
 	.act:hover {
 		background: var(--color-surface-sunken);

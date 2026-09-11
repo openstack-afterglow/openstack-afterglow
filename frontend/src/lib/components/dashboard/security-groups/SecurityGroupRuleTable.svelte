@@ -18,13 +18,13 @@
 	} = $props();
 </script>
 
-<div class="border-t border-gray-700">
+<div class="border-t border-line-2">
 	{#if rules.length === 0}
-		<p class="text-xs text-gray-600 px-4 py-3 italic">규칙 없음</p>
+		<p class="text-xs text-ink-3 px-4 py-3 italic">규칙 없음</p>
 	{:else}
 		<table class="w-full text-xs">
 			<thead>
-				<tr class="text-gray-600 uppercase tracking-wide border-b border-gray-700/50">
+				<tr class="text-ink-3 uppercase tracking-wide border-b border-line-2/50">
 					<th class="text-left px-4 py-2">방향</th>
 					<th class="text-left px-4 py-2">프로토콜</th>
 					<th class="text-left px-4 py-2">포트</th>
@@ -34,15 +34,15 @@
 			</thead>
 			<tbody>
 				{#each rules as rule (rule.id)}
-					<tr class="border-b border-gray-800/50 hover:bg-gray-800/30">
-						<td class="px-4 py-2 text-gray-400">{rule.direction === 'ingress' ? '인바운드' : '아웃바운드'}</td>
-						<td class="px-4 py-2 text-gray-300 font-mono">{rule.protocol?.toUpperCase() ?? 'ANY'}</td>
-						<td class="px-4 py-2 text-gray-400 font-mono">
+					<tr class="border-b border-line/50 hover:bg-surface-sunken/30">
+						<td class="px-4 py-2 text-ink-2">{rule.direction === 'ingress' ? '인바운드' : '아웃바운드'}</td>
+						<td class="px-4 py-2 text-ink-2 font-mono">{rule.protocol?.toUpperCase() ?? 'ANY'}</td>
+						<td class="px-4 py-2 text-ink-2 font-mono">
 							{#if rule.port_range_min != null && rule.port_range_max != null}
 								{rule.port_range_min === rule.port_range_max ? rule.port_range_min : `${rule.port_range_min}-${rule.port_range_max}`}
 							{:else}-{/if}
 						</td>
-						<td class="px-4 py-2 text-gray-400 font-mono">{rule.remote_ip_prefix ?? '-'}</td>
+						<td class="px-4 py-2 text-ink-2 font-mono">{rule.remote_ip_prefix ?? '-'}</td>
 						<td class="px-4 py-2 text-right">
 							<button
 								onclick={() => onDelete(rule.id)}

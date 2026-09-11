@@ -24,6 +24,14 @@ _logger = logging.getLogger(__name__)
 _TOKEN_CACHE_TTL = 60
 
 
+async def _run_best_effort(awaitable, operation: str) -> None:
+    """Observe background-task failures without changing the foreground response."""
+    try:
+        await awaitable
+    except Exception:
+        _logger.warning("%s failed", operation, exc_info=True)
+
+
 def _session_key(token_hash: str, project_id: str) -> str:
     return f"afterglow:session_start:{token_hash}:{project_id or 'noscope'}"
 
@@ -167,10 +175,17 @@ async def _resolve_jwt_token_info(request, bearer_token: str, x_project_id: str 
                 )
             )
         else:
-            # ok — last_seen 쓰로틀 갱신 (fire-and-forget)
-            from app.services.session_store import touch_session_seen
+            # 이미 읽은 세션이 최신이면 Redis EVAL 자체를 생략한다. TTL 경과 뒤의
+            # 갱신만 background로 보내 요청 latency와 Redis write load를 분리한다.
+            from app.services.session_store import session_seen_needs_touch, touch_session_seen
 
-            asyncio.create_task(touch_session_seen(refresh_jti, cur_ip, cur_fp))
+            if session_seen_needs_touch(sess, cur_ip, cur_fp):
+                asyncio.create_task(
+                    _run_best_effort(
+                        touch_session_seen(refresh_jti, cur_ip, cur_fp),
+                        "session last_seen update",
+                    )
+                )
     except HTTPException:
         raise
     except Exception:
@@ -250,7 +265,12 @@ async def _resolve_jwt_token_info(request, bearer_token: str, x_project_id: str 
     if new_ks_token and new_ks_token != sess.get("keystone_token"):
         from app.services.session_store import update_session_token
 
-        asyncio.create_task(update_session_token(refresh_jti, new_ks_token))
+        asyncio.create_task(
+            _run_best_effort(
+                update_session_token(refresh_jti, new_ks_token),
+                "session Keystone token update",
+            )
+        )
 
     return {
         "token": info["token"],
@@ -333,20 +353,15 @@ async def require_project_manager(
 
 
 async def get_os_conn(
-    request: Request,
-    authorization: str | None = Header(None),
-    x_project_id: str | None = Header(None),
+    token_info: dict = Depends(get_token_info),
 ) -> AsyncGenerator[openstack.connection.Connection, None]:
     """openstacksdk Connection 객체를 반환하는 Depends 함수.
     conn._afterglow_token, conn._afterglow_project_id 에 원본 크리덴셜을 저장해
     Manila 등 openstacksdk 외부 클라이언트에서 그대로 사용할 수 있도록 한다.
+    FastAPI가 get_token_info를 요청 단위로 캐시하므로 require_admin 등과 함께
+    사용해도 Redis/Keystone 인증 검증을 중복 실행하지 않는다.
     요청 완료 후 Connection을 닫아 리소스 누수를 방지한다.
     """
-    token_info = await get_token_info(
-        request=request,
-        authorization=authorization,
-        x_project_id=x_project_id,
-    )
     scoped_token = token_info["token"]
     project_id = token_info["project_id"]
     connection_project_id = token_info.get("connection_project_id", project_id)

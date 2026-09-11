@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { createObjectBrowserStore, provideObjectBrowser } from '$lib/stores/objectBrowser.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import UploadModal from '$lib/components/UploadModal.svelte';
@@ -13,6 +14,7 @@
 	import NewDirModal from '$lib/components/object-storage/NewDirModal.svelte';
 	import RenameModal from '$lib/components/object-storage/RenameModal.svelte';
 	import MoveModal from '$lib/components/object-storage/MoveModal.svelte';
+	import { PageShell, Tabs } from '$lib/components/ui';
 
 	interface Props {
 		mode: 'user' | 'admin';
@@ -33,7 +35,7 @@
 	});
 	provideObjectBrowser(s);
 
-	const storageKey = mode === 'user' ? 'object-browser-user' : 'object-browser-admin';
+	const storageKey = untrack(() => mode === 'user' ? 'object-browser-user' : 'object-browser-admin');
 
 	const ar = createAutoRefresh(
 		() => {
@@ -43,13 +45,16 @@
 		{ storageKey, defaultActive: true, defaultInterval: 15, intervalOptions: [10, 15, 30, 60], invokeOnMount: false }
 	);
 
-	const onManualRefresh = mode === 'user'
-		? () => { s.refreshAll(); s.loadContainerMeta(); }
-		: () => s.load();
+	function onManualRefresh() {
+		if (mode === 'user') {
+			s.refreshAll();
+			s.loadContainerMeta();
+		} else s.load();
+	}
 
-	const onUploadSuccess = mode === 'user'
-		? () => s.refreshAll({ silent: true })
-		: () => s.load({ silent: true });
+	function onUploadSuccess() {
+		return mode === 'user' ? s.refreshAll({ silent: true }) : s.load({ silent: true });
+	}
 
 	function hasFiles(e: DragEvent): boolean {
 		const types = e.dataTransfer?.types;
@@ -91,24 +96,28 @@
 
 <ObjectDragOverlay />
 
-<div class:bulk-selection-page={mode === 'user'} class="p-4 md:p-8 max-w-7xl mx-auto">
+<PageShell class={mode === 'user' ? 'bulk-selection-page space-y-4' : 'space-y-4'}>
 	<ObjectBrowserHeader />
-
-	<!-- 탭 전환: 파일 목록 / 휴지통 -->
-	<div class="flex items-center gap-2 mb-3">
-		<button
-			onclick={() => { showTrash = false; s.selected = new Set(); }}
-			class="text-xs px-3 py-1 rounded transition-colors {!showTrash ? 'bg-indigo-700 text-white' : 'text-gray-400 hover:text-gray-200 border border-gray-700'}"
-		>파일</button>
-		<button
-			onclick={() => { showTrash = true; s.selected = new Set(); }}
-			class="text-xs px-3 py-1 rounded transition-colors {showTrash ? 'bg-orange-800 text-orange-200' : 'text-gray-400 hover:text-gray-200 border border-gray-700'}"
-		>🗑 휴지통</button>
-	</div>
+	<Tabs
+		id="object-browser-tabs"
+		value={showTrash ? 'trash' : 'files'}
+		items={[
+			{ value: 'files', label: '파일', panelId: 'object-files-panel' },
+			{ value: 'trash', label: '휴지통', panelId: 'object-trash-panel' },
+		]}
+		onchange={(next) => {
+			showTrash = next === 'trash';
+			s.selected = new Set();
+		}}
+		ariaLabel="오브젝트 브라우저 보기"
+	/>
 
 	{#if showTrash}
+		<div id="object-trash-panel" role="tabpanel" aria-labelledby="object-browser-tabs-trash" tabindex="0">
 		<ObjectTrashView {containerName} {token} {projectId} selectionEnabled={mode === 'user'} />
+		</div>
 	{:else}
+		<div id="object-files-panel" role="tabpanel" aria-labelledby="object-browser-tabs-files" tabindex="0">
 		<ObjectBrowserToolbar {ar} {onManualRefresh} />
 		<ObjectBulkActionBar {mode} />
 
@@ -128,7 +137,7 @@
 		<MoveModal />
 		<MoveModal bulk />
 
-		<div class="flex gap-6">
+		<div class="flex flex-col gap-4 lg:flex-row lg:gap-6">
 			<div class="flex-1 min-w-0 relative">
 				{#if mode === 'user'}
 					<ObjectTreeTable />
@@ -138,5 +147,6 @@
 			</div>
 			<ObjectMetaPanel />
 		</div>
+		</div>
 	{/if}
-</div>
+</PageShell>

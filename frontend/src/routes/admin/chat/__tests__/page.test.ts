@@ -83,6 +83,8 @@ const models = [
 		id: 10,
 		provider_id: 1,
 		model_name: 'openai/gpt-test',
+		api_model_name: 'openai/gpt-test',
+		api_provider: 'openai',
 		display_name: 'Test',
 		is_active: true,
 		input_price_per_million: '2',
@@ -97,6 +99,8 @@ const models = [
 		id: 11,
 		provider_id: 1,
 		model_name: 'openai/manual',
+		api_model_name: 'openai/manual',
+		api_provider: 'openai',
 		display_name: 'Manual',
 		is_active: true,
 		input_price_per_million: '3',
@@ -110,7 +114,9 @@ const models = [
 	{
 		id: 12,
 		provider_id: 1,
-		model_name: 'gpt-5.4',
+		model_name: 'perplexity/perplexity/sonar',
+		api_model_name: 'perplexity/sonar',
+		api_provider: 'perplexity',
 		display_name: null,
 		is_active: true,
 		input_price_per_million: null,
@@ -146,9 +152,49 @@ describe('admin chat model pricing', () => {
 		expect(screen.getByText(/입력 5 · 출력 22\.5 USD/)).toBeTruthy();
 	});
 
-	it('offers Perplexity as a LiteLLM provider', async () => {
+	it('shows canonical API metadata separately from the internal routing ID', async () => {
+		const testModels = [
+			...models,
+			{
+				id: 13,
+				provider_id: 1,
+				model_name: 'perplexity/perplexity/deepseek-v4-flash-0731',
+				api_model_name: 'perplexity/deepseek-v4-flash-0731',
+				api_provider: 'perplexity',
+				display_name: null,
+				is_active: true,
+				capabilities: { web_search: true },
+				input_price_per_million: null,
+				output_price_per_million: null,
+				effective_input_price_per_million: null,
+				effective_output_price_per_million: null,
+				effective_price_source: 'unpriced' as const,
+				models_dev_model_id: null,
+				price_source: null
+			}
+		];
+		get.mockImplementation((path: string) => {
+			if (path === '/api/v1/chat/admin/providers') return Promise.resolve(provider ? [provider] : []);
+			if (path === '/api/v1/chat/admin/models') return Promise.resolve(testModels);
+			if (path === '/api/v1/chat/admin/models/title') return Promise.resolve({ model_id: null });
+			return Promise.resolve([]);
+		});
+		render(ModelPage);
+		expect(await screen.findByText('sonar')).toBeTruthy();
+		expect(screen.getByText('perplexity/sonar', { selector: 'code' })).toBeTruthy();
+		expect(screen.getByText('deepseek-v4-flash-0731')).toBeTruthy();
+		expect(screen.getByText('Search')).toBeTruthy();
+		expect(screen.getByText('perplexity/perplexity/deepseek-v4-flash-0731')).toBeTruthy();
+	});
+
+	it('offers Perplexity Agent, Router, and Sonar transports with exact URL guidance', async () => {
 		render(ProviderPage);
-		expect(await screen.findByRole('option', { name: 'Perplexity (Sonar)' })).toBeTruthy();
+		const option = await screen.findByRole('option', { name: 'Perplexity (Agent API · Router · Sonar)' });
+		await fireEvent.change(screen.getByRole('combobox'), { target: { value: 'perplexity' } });
+
+		expect(option).toBeTruthy();
+		expect(await screen.findByText(/https:\/\/api\.perplexity\.ai\/v1/)).toBeTruthy();
+		expect(screen.getByText(/https:\/\/api\.perplexity\.ai\/router/)).toBeTruthy();
 	});
 
 	it('isolates MCP, skills, and custom HTTP tools on the tool settings route', async () => {
@@ -191,8 +237,8 @@ describe('admin chat model pricing', () => {
 		await screen.findByText('models.dev 추천 가격');
 		await screen.findByText(/수동 가격 보존/);
 		const checkboxes = screen.getAllByRole('checkbox');
-		expect(checkboxes.at(-3)?.checked).toBe(true);
-		expect(checkboxes.at(-2)?.disabled).toBe(true);
+		expect((checkboxes.at(-3) as HTMLInputElement | undefined)?.checked).toBe(true);
+		expect((checkboxes.at(-2) as HTMLInputElement | undefined)?.disabled).toBe(true);
 		expect(screen.getByText(/tier\/cache\/reasoning\/audio 단가는 적용하지 않습니다/)).toBeTruthy();
 	});
 

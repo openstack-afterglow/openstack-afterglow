@@ -80,25 +80,25 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
-		class="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
+		class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 		onclick={onClose}
 		role="dialog" aria-modal="true" tabindex="-1"
 		onkeydown={(e) => e.key === 'Escape' && onClose()}
 	>
 		<div
-			class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-md mx-4 shadow-2xl"
+			class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]"
 			onclick={(e) => e.stopPropagation()}
 			role="none"
 			onkeydown={(e) => e.stopPropagation()}
 		>
-			<h2 class="text-lg font-semibold text-white mb-3">볼륨 프로젝트 이전</h2>
-			<p class="text-xs text-gray-500 mb-4">볼륨 <span class="text-white">{volume.name || volume.id.slice(0, 8)}</span>을 다른 프로젝트로 이전합니다.</p>
+			<h2 class="text-lg font-semibold text-ink-0 mb-3">볼륨 프로젝트 이전</h2>
+			<p class="text-xs text-ink-3 mb-4">볼륨 <span class="text-ink-0">{volume.name || volume.id.slice(0, 8)}</span>을 다른 프로젝트로 이전합니다.</p>
 			{#if transferError}
 				<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{transferError}</div>
 			{/if}
 			<div class="relative">
-				<label class="block text-xs text-gray-400 mb-1.5 uppercase tracking-wide">대상 프로젝트 *</label>
-				<input
+				<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminvolumetransfermodal-100">대상 프로젝트 *</label>
+				<input id="field-adminvolumetransfermodal-100"
 					type="text"
 					bind:value={transferSearch}
 					onfocus={() => (showTransferDropdown = true)}
@@ -108,26 +108,26 @@
 					}}
 					onblur={() => setTimeout(() => { showTransferDropdown = false; }, 150)}
 					placeholder="프로젝트 검색..."
-					class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+					class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm"
 				/>
 				{#if showTransferDropdown && filteredTransferProjects.length > 0}
-					<div class="absolute z-10 w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl max-h-40 overflow-y-auto">
+					<div class="absolute z-10 w-full mt-1 bg-surface-sunken border border-line-2 rounded-lg shadow-[var(--shadow-restraint)] max-h-40 overflow-y-auto">
 						{#each filteredTransferProjects as p (p.id)}
 							<button
 								type="button"
 								onmousedown={() => { transferProjectId = p.id; transferProjectName = p.name; transferSearch = p.name; showTransferDropdown = false; }}
-								class="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 transition-colors {transferProjectId === p.id ? 'bg-gray-700 text-white' : ''}"
+								class="w-full text-left px-3 py-2 text-sm text-ink-2 hover:bg-surface-selected transition-colors {transferProjectId === p.id ? 'bg-surface-selected text-ink-0' : ''}"
 							>{p.name}</button>
 						{/each}
 					</div>
 				{/if}
 				{#if transferProjectName}
-					<div class="mt-1 text-xs text-gray-500">선택됨: <span class="text-blue-400">{transferProjectName}</span></div>
+					<div class="mt-1 text-xs text-ink-3">선택됨: <span class="text-action-warm">{transferProjectName}</span></div>
 				{/if}
 			</div>
 			<div class="flex justify-end gap-3 mt-6">
-				<button onclick={onClose} class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg">취소</button>
-				<button onclick={confirmTransfer} disabled={transferring || !transferProjectId} class="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium rounded-lg disabled:opacity-30">{transferring ? '이전 중...' : '이전'}</button>
+				<button onclick={onClose} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">취소</button>
+				<button onclick={confirmTransfer} disabled={transferring || !transferProjectId} class="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{transferring ? '이전 중...' : '이전'}</button>
 			</div>
 		</div>
 	</div>

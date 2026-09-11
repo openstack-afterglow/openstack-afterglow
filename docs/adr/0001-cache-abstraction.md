@@ -14,6 +14,7 @@ We also need to enforce the **write-through forbidden** invariant. Nova `create_
 - Keep the `backend/app/services/cache/__init__.py` re-export surface identical to the legacy `cache.py` so all ~85 call sites continue to work unchanged.
 - The ABC docstring records the **write-through forbidden** invariant for `set()`: it is for read-through cache misses only, never after a mutation response.
 - All invalidation flows through `delete(*keys)` or `invalidate_tag(tag)`. Pattern-based `invalidate(pattern)` continues to work via `RedisBackend._scan()` but is not on the ABC — Memcached v2 implementers will lose only that one wrapper, not the 85 call sites.
+- `cached_call()` coalesces concurrent misses for the same key within one process and event loop. `asyncio.shield()` prevents a cancelled waiter from cancelling the shared origin load. Explicit refresh calls form an ordered chain behind the current same-key load, always execute their own loader, and write last so an older load cannot overwrite refreshed data.
 - Self-implemented — no `aiocache` / `cashews` dependency.
 
 ## Alternatives Considered
@@ -31,9 +32,11 @@ We also need to enforce the **write-through forbidden** invariant. Nova `create_
 - v2 Memcached / DragonflyDB / pluggable backend can implement the same ABC without changing any call site.
 - `set()` docstring makes write-through forbidden explicit and reviewable.
 - Tag-set invalidation gives O(1) project-scoped flush without SCAN.
+- Concurrent TTL expiry no longer amplifies one origin lookup per waiting request within a process.
 
 ### Negative
 - `invalidate(pattern)` only works on Redis-class backends. Memcached v2 must implement key-prefix invalidation a different way (tag sets) before the legacy pattern helper can be removed.
+- Single-flight is process-local. Multiple backend workers can still issue one origin lookup per worker when the same key expires concurrently.
 - Two infra concepts to learn (tag sets + versioned keys) when adding new endpoints. Mitigated by `keys.py` builders.
 
 ### Neutral

@@ -41,6 +41,13 @@ describe('Field and form controls', () => {
 		expect(input.value).toBe('after');
 	});
 
+	it('TextInput forwards the numeric keyboard hint and accessible name', () => {
+		const { container } = render(TextInput, { inputmode: 'decimal', ariaLabel: '월 한도' });
+		const input = container.querySelector('input') as HTMLInputElement;
+		expect(input.getAttribute('inputmode')).toBe('decimal');
+		expect(input.getAttribute('aria-label')).toBe('월 한도');
+	});
+
 	it('SelectInput renders options and exposes its value', () => {
 		const { container } = render(SelectInput, { value: 'a', children: rawSnippet('<option value="a">A</option>') });
 		const select = container.querySelector('select') as HTMLSelectElement;

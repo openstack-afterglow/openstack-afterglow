@@ -2,7 +2,7 @@
 
 ## Product character & authority
 
-Afterglow is a dark-first cloud operations console: navy/ink surfaces support dense operational work, warm orange identifies the single highest-priority brand action, and blue/purple carry data and everyday operational intent. Light mode remaps the same semantic hierarchy; it is not a separate brand.
+Afterglow is a dark-first cloud operations console: neutral graphite surfaces support dense operational work, warm orange identifies the single highest-priority affirmative action, and blue/purple remain reserved for data and semantic information. Light mode remaps the same semantic hierarchy; it is not a separate brand.
 
 New UI follows this authority order: `frontend/src/routes/layout.css` owns theme and runtime CSS values; `frontend/src/lib/design/tokens.ts` exposes TypeScript metadata; `frontend/src/lib/components/ui` owns reusable behavior and markup; feature routes and components compose those primitives. `:root.light` legacy palette overrides are a compatibility boundary for existing visual debt, never a new API.
 
@@ -12,50 +12,51 @@ New UI follows this authority order: `frontend/src/routes/layout.css` owns theme
 
 | Token | Dark | Light | Meaning |
 | --- | --- | --- | --- |
-| `--color-surface-canvas` | `#06080d` | `#fafbff` | page canvas |
-| `--color-surface-base` | `#0b0f17` | `#ffffff` | base panels/sidebar |
-| `--color-surface-raised` | `#10141d` | `#ffffff` | cards, modal panels, popovers |
-| `--color-surface-sunken` | `#161b27` | `#f4f6fb` | controls, inset rows, hover fills |
+| `--color-surface-canvas` | `#101113` | `#fafbff` | page canvas |
+| `--color-surface-base` | `#151618` | `#ffffff` | base panels/sidebar |
+| `--color-surface-raised` | `#1c1d20` | `#ffffff` | modal panels and popovers |
+| `--color-surface-sunken` | `#242529` | `#f4f6fb` | controls and inset rows |
+| `--color-surface-selected` | neutral 7% ink/base mix | neutral 7% ink/base mix | selected navigation, rows, and choices |
 | `--color-surface-scrim` | `rgb(0 0 0 / 60%)` | `rgb(0 0 0 / 25%)` | modal/dialog scrim |
 | `--color-surface-scrim-soft` | `rgb(0 0 0 / 50%)` | `rgb(0 0 0 / 20%)` | drawer/sidebar scrim |
-| `--color-ink-0` / `--color-ink-1` / `--color-ink-2` / `--color-ink-3` | `#f4f6fb` / `#c8cfdc` / `#8a93a4` / `#5b6275` | `#0f172a` / `#1e293b` / `#475569` / `#94a3b8` | primary through disabled text |
-| `--color-line` / `--color-line-2` | `#1e2533` / `#262e3f` | `#e2e8f0` / `#cbd5e1` | ordinary/control borders |
-| `--color-accent` / `--color-accent-2` | `#7da3ff` / `#9f7df0` | `#2563eb` / `#6d28d9` | blue action/data and purple secondary data |
+| `--color-ink-0` / `--color-ink-1` / `--color-ink-2` / `--color-ink-3` | `#f4f4f5` / `#d5d6da` / `#999ca5` / `#656973` | `#0f172a` / `#1e293b` / `#475569` / `#94a3b8` | primary through disabled-only text |
+| `--color-line` / `--color-line-2` | `#2b2d31` / `#727680` | `#e2e8f0` / `#cbd5e1` | decorative separators / interactive boundaries |
+| `--color-accent` / `--color-accent-2` | `#7da3ff` / `#9f7df0` | `#2563eb` / `#6d28d9` | data and semantic information |
 | `--color-warm` / `--color-warm-2` | `#f4976c` / `#e8c19a` | `#ea580c` / `#c2410c` | brand CTA and warm contrast |
 | `--color-state-success` / `--color-state-warning` / `--color-state-danger` / `--color-state-info` / `--color-state-neutral` | `#5ddca0` / `#f4b85a` / `#f06b6b` / `#5ed4e4` / `#8a93a4` | `#16a34a` / `#b45309` / `#dc2626` / `#2563eb` / `#64748b` | operational state tones |
 | `--color-warm-text` / `--color-state-success-text` | `var(--color-warm)` / `var(--color-state-success)` | `#c2410c` / `#15803d` | WCAG AA-safe brand and success text at normal sizes |
 
-Use `SURFACE_CSS_VAR` rather than spelling surface variables in TypeScript-driven styles. Modal/dialog shells use `bg-surface-scrim`; drawers and sidebars use `bg-surface-scrim-soft`. `ConfirmDialog` intentionally keeps its canvas wash (`color-mix(in oklab, var(--color-surface-canvas) 72%, transparent)`) because it is not a black scrim.
+Use `SURFACE_CSS_VAR` rather than spelling surface variables in TypeScript-driven styles. Selection uses `SURFACE_CSS_VAR.selected`, never a filled blue/purple navigation treatment. Modal/dialog shells use `bg-surface-scrim`; drawers and sidebars use `bg-surface-scrim-soft`. `ConfirmDialog` intentionally keeps its canvas wash (`color-mix(in oklab, var(--color-surface-canvas) 72%, transparent)`) because it is not a black scrim.
 
-Map legacy colors by role: gray/slate becomes surface, ink, or line; blue → accent; green → success; red → danger; yellow/amber → warning; orange → warm; purple/violet → accent-2. Do not collapse rose, indigo, cyan, sky, or teal into a generic tone: introduce a semantic token and primitive first when required. `CHART_COLORS`, topology external/shared/internal/router/link colors, and GitLab `#FC6D26`/`#E24329` are domain or third-party-brand exceptions only.
+Map legacy colors by role: gray/slate becomes surface, ink, or line; blue/purple become data or semantic information; green becomes success; red becomes danger; yellow/amber becomes warning; orange becomes warm. Small orange copy in light mode uses `--color-warm-text`, not raw warm. Do not collapse rose, indigo, cyan, sky, or teal into a generic tone: introduce a semantic token and primitive first when required. `CHART_COLORS`, topology external/shared/internal/internal-2/router/link/gateway colors plus the canvas zone-fill alpha (`--topology-zone-fill-alpha`, `--topology-zone-fill-alpha-active`) and grid tokens (`--color-topology-grid-minor`, `--color-topology-grid-major`), and GitLab `#FC6D26`/`#E24329` are domain or third-party-brand exceptions only.
 
 ### Type, spacing, geometry, and elevation
 
-Typography has three explicit roles and no feature may redeclare a Korean-only font family. `--font-sans` is locally hosted Pretendard Variable for Korean body copy, controls, tables, and dense console UI. `--font-display` is locally hosted IBM Plex Sans KR for public-page hero, section, and editorial headings only; do not use it for ordinary console page titles or controls. `--font-mono` is locally hosted IBM Plex Mono followed by Pretendard, so Latin identifiers, timestamps, resource values, and status labels keep a technical rhythm while Korean glyphs remain legible. All bundled fonts use WOFF2 and `font-display: swap`; do not add a runtime font CDN dependency. Keep the active system to these three families unless this document and its guardrails are updated first.
+Typography has three explicit roles and no feature may redeclare a Korean-only font family. `--font-sans` is locally hosted Pretendard Variable for Korean body copy, controls, tables, and dense console UI. `--font-display` is locally hosted IBM Plex Sans KR for public-page hero, section, and editorial headings only; do not use it for ordinary console page titles or controls. `--font-mono` is locally hosted IBM Plex Mono followed by Pretendard, so identifiers and code remain technical without making ordinary timestamps or status copy harder to scan. All bundled fonts use WOFF2 and `font-display: swap`; do not add a runtime font CDN dependency.
 
-The console scale is page title `1.375rem`/700; emphasis count `0.9375rem`/700; form controls, `Button lg`, and PageHeader body `0.875rem`; `Button md`, `Button icon`, and PageHeader subtitle `0.8125rem`; Field label/help/error, Pagination, UsageBar meta, `Button sm`, and Toggle sm `0.75rem`; breadcrumbs, uppercase section labels, `Button xs`, Toggle xs, and Pill sm `0.6875rem` (500 with tracking for labels); Pill xs `0.625rem`. Body copy defaults to 400 with a relaxed line-height; dense labels use 500 or 600 rather than synthetic bold. Update this document before adding another type size or role.
+Console body/form copy is `0.875rem`/400. Resource rows, navigation, and buttons are `0.8125rem`/500. Support labels, status, and metadata are at least `0.75rem`; only identifiers and code use mono. Page titles are `1.25rem`/600 with `1.75rem` line-height. Breadcrumbs are ordinary-case `0.75rem` muted text with tight tracking. Quotas, metrics, and timestamps use tabular figures. Body copy keeps a relaxed line-height; dense labels use 500 or 600 rather than synthetic bold. Update this document before adding another type size or role.
 
-`PageShell` defaults to `80rem`; route padding is `1rem` mobile and `2rem` desktop (`0.75rem`/`1rem` dense). Button and controls use `0.5rem` radius, Card `1rem`, TableShell `0.875rem`, and chips/pills `999px`. Card padding is `none/sm/md/lg = 0/0.75/1/1.5rem`. Ordinary surfaces use `1px solid var(--color-line)` with no shadow; controls use `--color-line-2`; only `Card surface="modal"` may elevate, while primary/accent actions may glow. Focus is `--focus-ring = 0 0 0 3px var(--accent-ring)`; removing an outline is allowed only when the same visible focus ring replaces it. Use Tailwind spacing/type values before creating new CSS variables.
+`PageShell` max widths remain `none`, `5xl`, and `7xl`; route padding is `1rem` mobile and `1.5rem` tablet/desktop (`0.75rem`/`1rem` dense). The spacing rhythm is 4px. Controls use `0.375rem` radius, ordinary panels and tables `0.5rem`, dialogs `0.75rem`, and only status pills/avatars use `999px`. Ordinary surfaces use `1px solid var(--color-line)` with no shadow; required interactive boundaries use `--color-line-2`; only modal/popover elevation uses a restrained shadow. Primary actions are flat warm fills without gradient or glow. Focus is `--focus-ring = 0 0 0 2px var(--color-surface-base), 0 0 0 4px var(--color-line-2)`; removing an outline is allowed only when the same visible ring replaces it, with a native outline fallback in forced-colors mode.
 
 ### Layering and focus
 
-`LAYER_CSS_VAR` exposes the runtime order: `--z-sidebar: 30`, `--z-panel: 40`, `--z-modal: 50`, `--z-toast: 60`, `--z-command: 200`, `--z-popover: 210`. Sidebar/AdminSidebar use sidebar; SlidePanel uses panel; ProjectQuotaPanel uses panel for scrim and modal for content; Modal uses modal; Toast and BulkSelectionOverlay use toast; CmdPalette uses command with its panel at `calc(var(--z-command) + 1)`; ConfirmDialog uses command; ActionMenu uses popover. In a shared stacking context, backdrop precedes panel in DOM order.
+`LAYOUT_CSS_VAR` exposes `--app-header-height: 3rem` and `--app-sidebar-width: 15rem`. `LAYER_CSS_VAR` exposes the runtime order: `--z-sidebar` 30; `--z-header` 35; `--z-panel` 40; `--z-modal` 50; `--z-toast` 60; `--z-confirmation` 200; `--z-popover` 210; `--z-command` 220. Sidebar/AdminSidebar use sidebar; the root context bar uses header; desktop SlidePanel uses panel; mobile SlidePanel and Modal use modal; Toast and BulkSelectionOverlay use toast; ConfirmDialog uses confirmation; ActionMenu uses popover; CmdPalette uses command with its panel at `calc(var(--z-command) + 1)`. In a shared stacking context, backdrop precedes panel in DOM order. Feature composition must not create page-level stacking contexts that trap overlays below the shell.
 
 ### Gradients and chrome
 
-`--gradient-brand` is logo, brand text, and highlight only. `--gradient-warm` is `Button variant="primary"` and the one highest-priority CTA per surface. `--gradient-usage`, `--gradient-usage-warning`, and `--gradient-usage-danger` are quantitative bars only. `--warm-soft`/ring and `--accent-soft`/ring are their semantic tint, focus, and selection; `--admin-tone*` belongs only to admin context. Reuse global `--scrollbar-size`, `--scrollbar-track`, `--scrollbar-thumb`, and `--scrollbar-thumb-hover`; do not add component-scoped scrollbar styling.
+`--gradient-brand` remains logo/brand/editorial decoration. `Button variant="primary"` is a flat warm fill and the single highest-priority affirmative CTA per task surface. `--gradient-usage`, `--gradient-usage-warning`, and `--gradient-usage-danger` remain quantitative bars only. `--warm-soft`/ring and `--accent-soft`/ring are semantic tints; `--admin-tone*` belongs only to admin context. Reuse global scrollbar tokens; do not add component-scoped scrollbar styling.
 
 ## Layout & responsive hierarchy
 
 Use the existing Tailwind breakpoints only: mobile is `<768px`; tablet is `md` (`768–1023px`); desktop is `lg` (`≥1024px`). `sm` (`≥640px`) is a compact mobile refinement, not a separate layout tier; use `xl` only to increase density after the desktop hierarchy already works. Do not introduce a component-specific breakpoint without updating this section and its test.
 
-**Mobile (<768px).** `PageShell` route/dense padding is `1rem`/`0.75rem`. Navigation opens as the hamburger-controlled, dismissible sidebar drawer; PageHeader keeps its compact breadcrumb. Start resource and form layouts as one column; a two-column compact statistic group is allowed when each value remains readable. Header actions wrap or stack rather than clip, and the highest-priority action remains visible without hover. `TableShell` stays horizontally scrollable with headers intact; do not silently transform a table into cards unless the route provides and tests an equivalent semantic card view. SlidePanel and other task panels use the available viewport width with a visible close path.
+**Mobile (<768px).** `PageShell` route/dense padding is `1rem`/`0.75rem`. Navigation opens as the hamburger-controlled, dismissible sidebar drawer; project selection and mode switching remain explicit in the drawer. Header utility actions use 44px touch targets. Start resource and form layouts as one column; a two-column compact statistic group is allowed when each value remains readable. Header actions wrap or stack rather than clip, and the highest-priority action remains visible without hover. `TableShell` stays horizontally scrollable with headers intact; do not silently transform a table into cards unless the route provides and tests an equivalent semantic card view. SlidePanel is full-viewport and modal with a visible close path.
 
-**Tablet (768–1023px).** `PageShell` route/dense padding becomes `2rem`/`1rem`. The 15rem sidebar is sticky, PageHeader restores its full breadcrumb, and header actions retain the mobile wrap/stack composition; its sidebar search remains the compact search entry point. Use two columns for comparable cards/forms where each control has usable inline space; keep summary data legible instead of forcing desktop-density grids. Detail panels may adopt their component’s `md:` constrained width, but must retain panel-above-backdrop contrast and the existing dismissal contract.
+**Tablet (768–1023px).** `PageShell` route/dense padding becomes `1.5rem`/`1rem`. The 15rem sidebar is persistent, PageHeader remains stacked and its actions wrap; sidebar search remains the compact search entry point. Use two columns for comparable cards/forms where each control has usable inline space. Desktop/tablet SlidePanel is non-modal so header/sidebar navigation stays usable.
 
-**Desktop (≥1024px).** Keep the same PageShell padding and persistent sidebar. The header exposes its desktop search and project/context controls. Three-or-more columns are allowed only when the minimum card/control width and scanning order remain clear; use PageShell max widths instead of stretching sparse content. Inline action groups are appropriate when they do not truncate labels; preserve the mobile action order and accessible names.
+**Desktop (≥1024px).** Keep the same PageShell padding and persistent sidebar. PageHeader becomes inline and actions still wrap when labels would clip. The header exposes its desktop search and project/context controls. Three-or-more columns are allowed only when the minimum card/control width and scanning order remain clear; use PageShell max widths instead of stretching sparse content.
 
-Test every new or materially changed visual flow at mobile, tablet, and desktop widths. Confirm navigation, action placement, overlay sizing/dismissal, readable resource selection, and table overflow/card fallback at each relevant tier. Preserve information and interaction parity across widths; a smaller viewport may change composition, never silently remove required state or a reachable action.
+Console shells use `100dvh`, one main workspace scroll owner, the shared geometry variables, and one focusable `main#main-content` landmark per rendered surface. Test every new or materially changed visual flow at mobile, tablet, desktop, 767/768, and 1023/1024 cutovers. Confirm navigation, action placement, overlay sizing/dismissal, readable resource selection, and table overflow/card fallback. Preserve information and interaction parity across widths; a smaller viewport may change composition, never silently remove required state or a reachable action.
 
 ## Actions
 
@@ -65,7 +66,7 @@ The current disabled anchor guards its primary click handler and intent callback
 
 ## Forms
 
-Compose forms with `Field` plus `TextInput`, `SelectInput`, or `TextareaInput`; use `FormModal` and `ConfirmDialog` for submit/cancel flows. `ToggleGroup` owns compact mutually exclusive filter/view choices: callers supply `value`, `options`, and `onchange` rather than recreating segmented controls. Field owns visible label/help/error copy and `for`/`id`; input primitives own placeholder, disabled, and focus appearance. Field help/error currently does not wire `aria-describedby` or `aria-invalid` to inputs: this is known accessibility debt, not implemented error announcement. Do not document imaginary error or loading props.
+Compose forms with `Field` plus `TextInput`, `SelectInput`, or `TextareaInput`; use `FormModal` and `ConfirmDialog` for submit/cancel flows. `ToggleGroup` owns compact mutually exclusive filter/view choices: callers supply `value`, `options`, and `onchange` rather than recreating segmented controls. Field owns visible label/help/error copy and `for`/`id`; input primitives own placeholder, disabled, and focus appearance. `TextInput` accepts `inputmode` (`text`, `decimal`, `numeric`, `search`, `email`, `url`, `tel`) for touch keyboard hints such as credit-limit amounts; it is a hint only and never replaces server-side or caller-side validation. Field help/error currently does not wire `aria-describedby` or `aria-invalid` to inputs: this is known accessibility debt, not implemented error announcement. Do not document imaginary error or loading props.
 
 ## Feedback/overlays/tables
 
@@ -75,7 +76,7 @@ Use `Alert`, `Toast`, and `EmptyState` for feedback; `StatusChip` + `getStatusSt
 
 ## Status & data visualization
 
-Operational status uses exact, case-sensitive `getStatusStyle(status: string | null | undefined)` and its five tones; unknown or falsy status is neutral. Status conveys label plus tone and, where applicable, transition dot; color alone is never state. Charts use the six ordinal `CHART_COLORS`; topology preserves its domain colors.
+Operational status uses exact, case-sensitive `getStatusStyle(status: string | null | undefined)` and its five tones; unknown or falsy status is neutral. Status conveys label plus tone and, where applicable, transition dot; color alone is never state. Charts use the six ordinal `CHART_COLORS`; topology preserves its domain colors. The topology canvas view alternates tenant zones between `--color-topology-internal` and `--color-topology-internal-2`, uses `--color-topology-gateway` only for L3 device stripes and glyphs (never as a status tone), and paints zone fills with `color-mix()` at `--topology-zone-fill-alpha` (`--topology-zone-fill-alpha-active` when selected) over the `--color-topology-grid-minor`/`--color-topology-grid-major` grid.
 
 ## Motion
 
@@ -83,7 +84,7 @@ Operational status uses exact, case-sensitive `getStatusStyle(status: string | n
 
 Animate opacity, translate, or scale only; never animate layout dimensions. Hover is decoration, never the only status signal. Repeating animation is limited to loading, progress, and status. `prefersReducedMotion()` and `motionDuration()` make JavaScript transitions immediate. The global reduced-motion contract sets all five duration variables plus Tailwind `--default-transition-duration` and `--default-animation-duration` to `0.01ms`, scroll to `auto`, and universally overrides animation/transition duration and delay.
 
-Named motion exceptions: `--landing-ease`; ChatPanel composer `cubic-bezier(0.22, 1, 0.36, 1)`; QuotaDonut `duration-700`; 600ms landing reveal; 7-second tutorial hint; and `0.8–1.2s` linear loading loops. Do not copy exceptions into ordinary components.
+Named motion exceptions: `--landing-ease`; ChatPanel composer `cubic-bezier(0.22, 1, 0.36, 1)`; QuotaDonut `duration-700`; 600ms landing reveal; 7-second tutorial hint; `0.8–1.2s` linear loading loops; and 토폴로지 캔버스 패킷 흐름 시뮬레이션 (옵트인, 기본 off, prefers-reduced-motion 시 완전 비활성, rAF 기반 transform 이동). Do not copy exceptions into ordinary components.
 
 ## Editorial surfaces
 

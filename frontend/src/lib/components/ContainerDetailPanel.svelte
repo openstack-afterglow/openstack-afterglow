@@ -44,7 +44,7 @@
 
 	<div class="flex-1 overflow-y-auto p-5 space-y-4">
 		{#if s.loading}
-			<div class="text-gray-500 text-sm">로딩 중...</div>
+			<div class="text-ink-3 text-sm">로딩 중...</div>
 		{:else if s.error}
 			<div class="text-red-400 text-sm">{s.error}</div>
 		{:else if s.container}

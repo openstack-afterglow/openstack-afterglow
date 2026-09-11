@@ -148,16 +148,16 @@
 	onClose={() => { showSetQuota = false; }}
 >
 	<div class="space-y-4">
-		<div class="text-xs text-gray-400 font-mono">{editProjectId}</div>
-		<p class="text-xs text-gray-500">-1 = 무제한, 0 = 비활성</p>
+		<div class="text-xs text-ink-2 font-mono">{editProjectId}</div>
+		<p class="text-xs text-ink-3">-1 = 무제한, 0 = 비활성</p>
 		{#each quotaFields as [label, val, setter]}
 			<div>
-				<label class="block text-sm text-gray-400 mb-1">{label}</label>
-				<input
+				<label class="block text-sm text-ink-2 mb-1" for="field-page-155">{label}</label>
+				<input id="field-page-155"
 					type="number"
 					value={val ?? ''}
 					oninput={(e) => setter(e.currentTarget.value ? Number(e.currentTarget.value) : null)}
-					class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white"
+					class="w-full bg-surface-selected border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0"
 					placeholder="-1 (무제한)"
 				/>
 			</div>
@@ -187,7 +187,7 @@
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={4} />
 	{:else if quotas.length === 0}
-		<div class="text-center py-16 text-gray-500" data-tour="admin-key-manager-ready">
+		<div class="text-center py-16 text-ink-3" data-tour="admin-key-manager-ready">
 			<div class="text-4xl mb-3">📊</div>
 			<p class="text-sm">설정된 프로젝트 쿼터가 없습니다. (모두 기본값 사용 중)</p>
 		</div>
@@ -195,7 +195,7 @@
 		<div class="overflow-x-auto" data-tour="admin-key-manager-ready">
 			<table class="w-full text-sm">
 				<thead>
-					<tr class="text-left text-gray-400 border-b border-gray-700">
+					<tr class="text-left text-ink-2 border-b border-line-2">
 						<th class="pb-3 pr-4 font-medium">프로젝트 ID</th>
 						<th class="pb-3 pr-4 font-medium">Secrets</th>
 						<th class="pb-3 pr-4 font-medium">Orders</th>
@@ -203,16 +203,16 @@
 						<th class="pb-3 font-medium">액션</th>
 					</tr>
 				</thead>
-				<tbody class="divide-y divide-gray-800">
+				<tbody class="divide-y divide-line">
 					{#each quotas as q, index}
-						<tr class="hover:bg-gray-800/30">
-							<td class="py-3 pr-4 font-mono text-xs text-gray-300">{q.project_id}</td>
-							<td class="py-3 pr-4 text-gray-300">{q.project_quotas.secrets ?? -1}</td>
-							<td class="py-3 pr-4 text-gray-300">{q.project_quotas.orders ?? -1}</td>
-							<td class="py-3 pr-4 text-gray-300">{q.project_quotas.containers ?? -1}</td>
+						<tr class="hover:bg-surface-sunken/30">
+							<td class="py-3 pr-4 font-mono text-xs text-ink-2">{q.project_id}</td>
+							<td class="py-3 pr-4 text-ink-2">{q.project_quotas.secrets ?? -1}</td>
+							<td class="py-3 pr-4 text-ink-2">{q.project_quotas.orders ?? -1}</td>
+							<td class="py-3 pr-4 text-ink-2">{q.project_quotas.containers ?? -1}</td>
 							<td class="py-3 flex gap-3" data-tour={index === 0 ? 'admin-key-manager-actions' : undefined}>
-								<button onclick={() => openEdit(q)} class="text-xs text-blue-400 hover:text-blue-300">설정</button>
-								<button onclick={() => handleResetQuota(q.project_id)} class="text-xs text-gray-400 hover:text-gray-200">초기화</button>
+								<button onclick={() => openEdit(q)} class="text-xs text-action-warm hover:text-action-warm-hover">설정</button>
+								<button onclick={() => handleResetQuota(q.project_id)} class="text-xs text-ink-2 hover:text-ink-1">초기화</button>
 							</td>
 						</tr>
 					{/each}

@@ -1,0 +1,30 @@
+# Tasks
+
+- [x] 토큰·상태 tone 확장 (`layout.css` dark+light, `tokens.ts` TOPOLOGY_COLORS, `statusColors.ts`, `designSystemRules.test.ts`)
+- [x] 백엔드 무료 필드 확장 (`neutron.get_topology(include_provider, project_id)`, `build_compute_port_index`, `trove.topology_database_ips`, `storage.py` 모델)
+- [x] 관리자 전용 provider 세그먼트 응답 모델 (`AdminTopologyNetwork`, `AdminTopologyData`)
+- [x] 백엔드 테스트 (`test_topology.py`, `test_admin_filters.py`, `test_trove_topology.py`, `test_neutron.py`)
+- [x] 순수 그래프 파생 `topologyGraph.ts` + 테스트
+- [x] 결정론적 자동 배치 `topologyLayout.ts` + 테스트(거짓 존 겹침·유령 포섭·라우터 겹침·계층 위반·상단 잘림 0 측정)
+- [x] 뷰포트·수동 배치 저장 (`viewport.svelte.ts`, `layoutStorage.ts`) + 테스트
+- [x] `TopologyCanvas.svelte` 및 HUD/존/엣지/카드/툴바/범례 컴포넌트 + 컴포넌트 테스트
+- [x] 읽기 전용 네트워크 패널 `TopologyNetworkPanel.svelte` + 테스트
+- [x] 두 라우트에 "레인 | 캔버스" 토글과 `topologyViewPreference.ts`
+- [x] 트랙패드 두 손가락 스크롤 = 팬, ctrl/⌘+휠·핀치 = 줌
+- [x] 라우터를 GW 네트워크 존에 소속시키고 존 내부 계층(라우터>스위치>LB>인스턴스>DB) 적용
+- [x] 외부(프로바이더) 네트워크를 구름 모양 인터넷 경계로 표시
+- [x] 합성 L3 코어 노드 제거, Floating IP 선을 외부망 스위치로 재연결
+- [x] 네트워크 세로 밴드: provider → provider 에 라우터로 닿는 망 → 독립 망(밴드마다 라우터 밴드 분리)
+- [x] 목업(Artifact)도 코어 제거·밴드 순서 동기화 후 재배포
+- [x] 사용량 30초 해상도: `TOPOLOGY_RATE_WINDOW=30s` + `instances-node`·`instances-libvirt` scrape 10초, 결합 회귀 테스트
+- [x] 사용량 → 선 굵기·점 빈도 연속 반영(`edgeIntensity` 보간, `flowRate`/`flowDotCount`)
+- [x] east-west: 격리 네트워크만 양방향(내부 통신), 라우터 있는 망은 게이트웨이 방향만(`flowStreams`)
+- [x] LB 를 멤버 인스턴스 위(가장 왼쪽 멤버 기준)에 정렬, 오버행을 콘텐츠 폭에 반영
+- [x] 30초 사용량의 추이·평균·최대 통계 UI(`query_range_multi` 기반 `/topology/traffic/history` + 패널 스파크라인, instant 경로와 귀속 규칙 공유)
+- [x] 블럭 비겹침: 주차 스트립을 라우터 뒤로 이동(퍼즈가 찾은 solo 라우터 × 미연결 VM 겹침 수정) + `resolveManualOverlap` 으로 수동 배치 겹침 해소
+- [x] 존 밖 라우터 레인이 중앙 정렬 뒤 밴드 안쪽에 떨어지던 결함 수정(`zonelessLaneX`)
+- [x] 네트워크 계층: provider 로부터의 라우터 홉 깊이대로 N개 행 배치(`bands.rows`), 라우터를 자기 행 존 멤버로 한정, 비가시 망 경유 사슬 보존
+- [x] 독립 리뷰 반영 (성능 메모이제이션, 드래그 중 구조 갱신 보호, `pendingDrag` 정리, 비가시 네트워크 LB 주차, stale hover 가드, 3-포인터 제스처, 존 더블클릭 억제, nudge flush, 중복 저장 회피, `aria-pressed` 선택 반영, 범례 role, `flowActive` 파생, FIP 프로젝트 범위 보정)
+- [x] 문서 (`ARCHITECTURE.md` stamp, `docs/api/networks.md`(+en), `docs/api/admin.md`, `DESIGN.md`, `CHANGELOG.md`)
+- [x] `npm run test:gate` 통과
+- [ ] 커밋 — 사용자 지시로 보류

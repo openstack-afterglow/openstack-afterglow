@@ -17,6 +17,22 @@ describe('Button', () => {
 		expect(link.getAttribute('href')).toBe('/x');
 	});
 
+	it('removes navigation and focus from disabled links', async () => {
+		const onclick = vi.fn();
+		const { container } = render(Button, { href: '/x', disabled: true, onclick, children: textSnippet('Unavailable') });
+		const link = container.querySelector('a') as HTMLAnchorElement;
+		expect(link.getAttribute('href')).toBeNull();
+		expect(link.getAttribute('aria-disabled')).toBe('true');
+		expect(link.tabIndex).toBe(-1);
+		await fireEvent.click(link);
+		expect(onclick).not.toHaveBeenCalled();
+	});
+
+	it('forwards stable tutorial hooks', () => {
+		render(Button, { dataTour: 'create-vm', children: textSnippet('Create') });
+		expect(screen.getByRole('button', { name: 'Create' }).getAttribute('data-tour')).toBe('create-vm');
+	});
+
 	it('applies the accent variant class', () => {
 		render(Button, { variant: 'accent', children: textSnippet('Run') });
 		expect(screen.getByRole('button', { name: 'Run' }).classList.contains('btn-accent')).toBe(true);

@@ -12,39 +12,39 @@
 	] as const;
 </script>
 
-<section class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+<section class="bg-surface-base border border-line rounded-xl p-5">
 	<div class="mb-5">
-		<p class="text-sm font-semibold text-white">고급 VM 생성 옵션</p>
-		<p class="text-xs text-gray-400 mt-1">
+		<p class="text-sm font-semibold text-ink-0">고급 VM 생성 옵션</p>
+		<p class="text-xs text-ink-2 mt-1">
 			이 설정은 현재 브라우저에만 저장됩니다. 프로젝트 전체 서버 설정이나 다른 사용자에게는 적용되지 않습니다.
 		</p>
 	</div>
 
 	<div class="space-y-6">
 		<div class="space-y-4">
-			<label class="flex items-start justify-between gap-4 rounded-lg border border-gray-800 bg-gray-950/40 px-4 py-3">
+			<label class="flex items-start justify-between gap-4 rounded-lg border border-line bg-surface-canvas/40 px-4 py-3">
 				<span>
-					<span class="block text-sm font-medium text-gray-100">squashfs 라이브러리 소비 VM 생성 단계 표시</span>
-					<span class="block text-xs text-gray-500 mt-1">Ubuntu 이미지 선택 시 VM 생성 마법사에서 관리자 공개 squashfs 프로필/레이어를 선택합니다.</span>
+					<span class="block text-sm font-medium text-ink-1">squashfs 라이브러리 소비 VM 생성 단계 표시</span>
+					<span class="block text-xs text-ink-3 mt-1">Ubuntu 이미지 선택 시 VM 생성 마법사에서 관리자 공개 squashfs 프로필/레이어를 선택합니다.</span>
 				</span>
 				<input
 					type="checkbox"
 					aria-label="squashfs 라이브러리 소비 VM 생성 단계 표시"
-					class="mt-1 h-4 w-4 rounded border-gray-600 bg-gray-800 text-blue-600 focus:ring-blue-500"
+					class="mt-1 h-4 w-4 rounded border-line-2 bg-surface-sunken text-blue-600 focus:ring-line-2"
 					checked={$betaFeatures.libraryConsume}
 					onchange={(event) => setBetaFeature('libraryConsume', event.currentTarget.checked)}
 				/>
 			</label>
 
-			<label class="flex items-start justify-between gap-4 rounded-lg border border-gray-800 bg-gray-950/40 px-4 py-3">
+			<label class="flex items-start justify-between gap-4 rounded-lg border border-line bg-surface-canvas/40 px-4 py-3">
 				<span>
-					<span class="block text-sm font-medium text-gray-100">HA 배포 옵션 표시</span>
-					<span class="block text-xs text-gray-500 mt-1">VM 생성 전략 단계에서 HA 스케줄링 옵션을 노출합니다.</span>
+					<span class="block text-sm font-medium text-ink-1">HA 배포 옵션 표시</span>
+					<span class="block text-xs text-ink-3 mt-1">VM 생성 전략 단계에서 HA 스케줄링 옵션을 노출합니다.</span>
 				</span>
 				<input
 					type="checkbox"
 					aria-label="HA 배포 옵션 표시"
-					class="mt-1 h-4 w-4 rounded border-gray-600 bg-gray-800 text-blue-600 focus:ring-blue-500"
+					class="mt-1 h-4 w-4 rounded border-line-2 bg-surface-sunken text-blue-600 focus:ring-line-2"
 					checked={$betaFeatures.haDeploy}
 					onchange={(event) => setBetaFeature('haDeploy', event.currentTarget.checked)}
 				/>
@@ -53,7 +53,7 @@
 
 		<div class="space-y-4">
 			<div>
-				<p class="text-sm font-semibold text-white">검증 중인 기능</p>
+				<p class="text-sm font-semibold text-ink-0">검증 중인 기능</p>
 				<p class="beta-feature-description text-xs mt-1">아직 일반 공개 품질로 검증되지 않은 기능을 현재 브라우저에서만 노출합니다.</p>
 			</div>
 

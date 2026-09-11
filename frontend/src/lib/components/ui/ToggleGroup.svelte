@@ -57,8 +57,8 @@
 		align-items: center;
 		gap: 0.25rem;
 		padding: 0.25rem;
-		border: 1px solid var(--color-line);
-		border-radius: 0.625rem;
+		border: 1px solid var(--color-line-2);
+		border-radius: 0.5rem;
 		background: var(--color-surface-sunken);
 	}
 	.toggle-full-width {
@@ -68,7 +68,7 @@
 	.toggle-full-width .toggle-option { width: 100%; }
 	.toggle-option {
 		border: 0;
-		border-radius: 0.4375rem;
+		border-radius: 0.375rem;
 		background: transparent;
 		color: var(--color-ink-2);
 		font-weight: 500;
@@ -83,7 +83,7 @@
 		box-shadow: var(--focus-ring);
 	}
 	.toggle-selected {
-		background: var(--color-surface-raised);
+		background: var(--color-surface-selected);
 		color: var(--color-ink-0);
 	}
 	.toggle-option:disabled {

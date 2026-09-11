@@ -21,6 +21,7 @@
 		if (caps.vision) out.push({ key: 'vision', label: 'Vision', title: '이미지 입력 지원' });
 		if (caps.reasoning) out.push({ key: 'think', label: 'Think', title: '추론(thinking) 지원' });
 		if (caps.tool_call) out.push({ key: 'tools', label: 'Tools', title: '도구 호출 지원' });
+		if (caps.web_search) out.push({ key: 'search', label: 'Search', title: '웹 검색 지원' });
 		if (caps.attachment && !caps.vision)
 			out.push({ key: 'files', label: 'Files', title: '파일 첨부 지원' });
 		return out;
@@ -37,6 +38,8 @@
 					<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M9.5 21h5M12 3a6 6 0 0 1 4 10.5c-.6.6-1 1.4-1 2.2V17H9v-1.3c0-.8-.4-1.6-1-2.2A6 6 0 0 1 12 3z" stroke-linecap="round" stroke-linejoin="round" /></svg>
 				{:else if b.key === 'tools'}
 					<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.5-2.5 2.5-2.5z" stroke-linejoin="round" /></svg>
+				{:else if b.key === 'search'}
+					<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" stroke-linecap="round" /></svg>
 				{:else}
 					<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M21 8l-9 9a5 5 0 0 1-7-7l9-9a3.5 3.5 0 0 1 5 5l-9 9a2 2 0 0 1-3-3l8-8" stroke-linecap="round" stroke-linejoin="round" /></svg>
 				{/if}
@@ -79,6 +82,9 @@
 	}
 	.badge.tools {
 		color: color-mix(in oklab, var(--color-state-success) 70%, var(--color-ink-1));
+	}
+	.badge.search {
+		color: color-mix(in oklab, var(--color-state-info) 85%, var(--color-ink-1));
 	}
 	.label {
 		display: inline-block;

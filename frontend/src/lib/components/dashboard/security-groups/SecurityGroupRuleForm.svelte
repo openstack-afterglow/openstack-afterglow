@@ -49,26 +49,26 @@
 	}
 </script>
 
-<div class="px-4 pb-3 border-t border-gray-700 pt-3 bg-gray-900/30">
-	<p class="text-xs text-gray-500 mb-2">규칙 추가</p>
+<div class="px-4 pb-3 border-t border-line-2 pt-3 bg-surface-base/30">
+	<p class="text-xs text-ink-3 mb-2">규칙 추가</p>
 	<div class="grid grid-cols-2 gap-2 mb-2 md:grid-cols-4">
 		<select
 			bind:value={ruleForm.direction}
-			class="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-gray-200 focus:border-blue-500"
+			class="bg-surface-selected border border-line-2 rounded px-2 py-1 text-xs text-ink-1 focus:border-action-warm"
 		>
 			<option value="ingress">인바운드</option>
 			<option value="egress">아웃바운드</option>
 		</select>
 		<select
 			bind:value={ruleForm.ethertype}
-			class="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-gray-200 focus:border-blue-500"
+			class="bg-surface-selected border border-line-2 rounded px-2 py-1 text-xs text-ink-1 focus:border-action-warm"
 		>
 			<option value="IPv4">IPv4</option>
 			<option value="IPv6">IPv6</option>
 		</select>
 		<select
 			bind:value={ruleForm.protocol}
-			class="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-gray-200 focus:border-blue-500"
+			class="bg-surface-selected border border-line-2 rounded px-2 py-1 text-xs text-ink-1 focus:border-action-warm"
 		>
 			<option value="">전체 (Any)</option>
 			<option value="tcp">TCP</option>
@@ -78,7 +78,7 @@
 		<input
 			bind:value={ruleForm.remote_ip_prefix}
 			placeholder="원격 IP (예: 0.0.0.0/0)"
-			class="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-600 focus:border-blue-500 focus:outline-none"
+			class="bg-surface-selected border border-line-2 rounded px-2 py-1 text-xs text-ink-1 placeholder-ink-3 focus:border-action-warm focus:outline-none"
 		/>
 	</div>
 	{#if ruleForm.protocol === 'tcp' || ruleForm.protocol === 'udp'}
@@ -86,12 +86,12 @@
 			<input
 				bind:value={ruleForm.port_range_min}
 				placeholder="시작 포트"
-				class="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-600 focus:border-blue-500 focus:outline-none"
+				class="bg-surface-selected border border-line-2 rounded px-2 py-1 text-xs text-ink-1 placeholder-ink-3 focus:border-action-warm focus:outline-none"
 			/>
 			<input
 				bind:value={ruleForm.port_range_max}
 				placeholder="끝 포트"
-				class="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-600 focus:border-blue-500 focus:outline-none"
+				class="bg-surface-selected border border-line-2 rounded px-2 py-1 text-xs text-ink-1 placeholder-ink-3 focus:border-action-warm focus:outline-none"
 			/>
 		</div>
 	{/if}
@@ -102,13 +102,13 @@
 		<button
 			onclick={handleSubmit}
 			disabled={submitting}
-			class="text-xs text-blue-400 hover:text-blue-300 px-2 py-1 border border-blue-900 hover:border-blue-700 rounded transition-colors disabled:text-gray-600"
+			class="text-xs text-action-warm hover:text-action-warm-hover px-2 py-1 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3"
 		>
 			{submitting ? '추가 중...' : '추가'}
 		</button>
 		<button
 			onclick={handleCancel}
-			class="text-xs text-gray-400 hover:text-gray-200 px-2 py-1 border border-gray-700 rounded transition-colors"
+			class="text-xs text-ink-2 hover:text-ink-1 px-2 py-1 border border-line-2 rounded transition-colors"
 		>취소</button>
 	</div>
 </div>

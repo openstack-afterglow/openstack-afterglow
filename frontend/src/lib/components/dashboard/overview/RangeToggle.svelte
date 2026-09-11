@@ -24,7 +24,7 @@
 </script>
 
 <div
-	class="inline-flex gap-0.5 bg-gray-800 rounded-lg p-0.5"
+	class="inline-flex gap-0.5 bg-surface-sunken rounded-lg p-0.5"
 	role="group"
 	aria-label="기간 선택"
 >
@@ -33,7 +33,7 @@
 			type="button"
 			aria-pressed={value === opt.value}
 			class="px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors {value === opt.value
-				? 'bg-gray-700 text-[var(--color-ink-0)]'
+				? 'bg-surface-selected text-[var(--color-ink-0)]'
 				: 'text-[var(--color-ink-3)] hover:text-[var(--color-ink-1)]'}"
 			onclick={() => onchange(opt.value)}
 			onkeydown={(e) => handleKeydown(e, idx)}

@@ -270,7 +270,7 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 			last_used_at: null,
 			revoked_at: null,
 			is_lumen_default: false,
-		};
+		} satisfies (typeof state.mcpAccess.personalTokens)[number];
 		state.mcpAccess.personalTokens.unshift(record);
 		return { ...record, token: `sk-afgl-mock-${id}` };
 	}
@@ -596,6 +596,44 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	if (method === 'GET' && pathname === '/api/v1/networks/floating-ips') return state.topology.floating_ips;
 	if (method === 'GET' && pathname === '/api/v1/networks/topology') return state.topology;
 	if (method === 'GET' && pathname === '/api/v1/networks/topology/traffic') return state.traffic;
+	if (method === 'GET' && pathname === '/api/v1/networks/topology/traffic/history') {
+		// 결정론적 합성 시계열 — 목업은 난수를 쓰지 않는다. 마지막 샘플을 instant 값과 일치시켜
+		// 패널의 "합산 트래픽" 행과 스파크라인이 어긋나 보이지 않게 한다.
+		const netId = params.get('network_id') ?? '';
+		const range = params.get('range') ?? '15m';
+		const spans: Record<string, [number, number]> = { '15m': [900, 15], '30m': [1800, 30], '1h': [3600, 30] };
+		const [rangeS, stepS] = spans[range] ?? spans['15m'];
+		const n = rangeS / stepS;
+		const cur = state.traffic.networks[netId];
+		const series = cur
+			? Array.from({ length: n }, (_, i) => {
+				const k = i === n - 1 ? 1 : 0.75 + 0.25 * Math.sin((i / n) * Math.PI * 4);
+				return {
+					ts: state.traffic.ts - (n - 1 - i) * stepS,
+					rx_bps: Math.round(cur.rx_bps * k),
+					tx_bps: Math.round(cur.tx_bps * k),
+				};
+			})
+			: [];
+		const rxs = series.map((p) => p.rx_bps);
+		const txs = series.map((p) => p.tx_bps);
+		const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+		return {
+			network_id: netId,
+			range,
+			step_s: stepS,
+			window: '30s',
+			series,
+			stats: series.length
+				? {
+					avg: { rx_bps: mean(rxs), tx_bps: mean(txs) },
+					max: { rx_bps: Math.max(...rxs), tx_bps: Math.max(...txs) },
+					latest: { rx_bps: rxs[rxs.length - 1], tx_bps: txs[txs.length - 1] },
+				}
+				: { avg: null, max: null, latest: null },
+			_meta: { source: 'network_nic_sum', router_traffic: 'exporter_required' },
+		};
+	}
 	const networkId = pathname.match(/^\/api\/v1\/networks\/([^/]+)$/)?.[1];
 	if (method === 'GET' && networkId) return networkDetail(networkId) ?? mockUnsupported();
 	if (method === 'GET' && pathname === '/api/v1/routers') return state.topology.routers.map((router) => ({ id: router.id, name: router.name, status: router.status, external_gateway_network_id: router.external_gateway_network_id, connected_subnet_ids: router.connected_subnet_ids }));

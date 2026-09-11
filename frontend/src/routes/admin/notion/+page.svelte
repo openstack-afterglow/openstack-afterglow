@@ -127,7 +127,7 @@
 		{#snippet actions()}
 			<button
 				onclick={() => { showAddForm = !showAddForm; }}
-				class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg transition-colors"
+				class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg transition-colors"
 			>
 				{showAddForm ? '취소' : '+ 연결 추가'}
 			</button>
@@ -161,18 +161,18 @@
 	{#if loading}
 		<div class="space-y-3">
 			{#each [0, 1] as _}
-				<div class="animate-pulse bg-gray-900 rounded-lg h-32"></div>
+				<div class="animate-pulse bg-surface-base rounded-lg h-32"></div>
 			{/each}
 		</div>
 	{:else if targets.length === 0}
-		<div class="bg-gray-900 border border-gray-800 rounded-lg p-8 text-center">
-			<p class="text-gray-500 text-sm">등록된 Notion 연동 대상이 없습니다.</p>
-			<p class="text-gray-600 text-xs mt-1">"연결 추가" 버튼을 눌러 시작하세요.</p>
+		<div class="bg-surface-base border border-line rounded-lg p-8 text-center">
+			<p class="text-ink-3 text-sm">등록된 Notion 연동 대상이 없습니다.</p>
+			<p class="text-ink-3 text-xs mt-1">"연결 추가" 버튼을 눌러 시작하세요.</p>
 		</div>
 	{:else}
 		<div class="space-y-4">
 			{#each targets as target (target.id)}
-				<div class="bg-gray-900 border border-gray-800 rounded-lg p-5">
+				<div class="bg-surface-base border border-line rounded-lg p-5">
 					{#if editingTarget?.id === target.id}
 						<NotionTargetEditForm
 							{target}
@@ -195,11 +195,11 @@
 		</div>
 	{/if}
 
-	<div class="mt-6 bg-gray-900 border border-gray-800 rounded-lg p-5">
-		<h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">설정 방법</h3>
-		<ol class="text-xs text-gray-500 space-y-1.5 list-decimal list-inside">
+	<div class="mt-6 bg-surface-base border border-line rounded-lg p-5">
+		<h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">설정 방법</h3>
+		<ol class="text-xs text-ink-3 space-y-1.5 list-decimal list-inside">
 			<li>
-				<a href="https://www.notion.so/profile/integrations" target="_blank" class="text-blue-500 hover:text-blue-400">Notion Integrations</a>에서 Internal Integration 생성
+				<a href="https://www.notion.so/profile/integrations" target="_blank" class="text-action-warm hover:text-action-warm-hover">Notion Integrations</a>에서 Internal Integration 생성
 			</li>
 			<li>Notion에서 빈 Database 페이지 생성 후 Integration 연결 추가</li>
 			<li>Database URL에서 32자리 ID 복사</li>

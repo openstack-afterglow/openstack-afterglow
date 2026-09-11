@@ -95,12 +95,12 @@
 
 <div class="p-4 md:p-8 max-w-4xl">
 	<div class="flex items-center gap-3 mb-6">
-		<a href="/admin/volumes" class="text-gray-400 hover:text-white text-sm transition-colors">← 전체 볼륨</a>
+		<a href="/admin/volumes" class="text-ink-2 hover:text-ink-0 text-sm transition-colors">← 전체 볼륨</a>
 	</div>
 	{#if loading}
 		<div class="animate-pulse space-y-4">
-			<div class="h-8 bg-gray-800 rounded w-64"></div>
-			<div class="h-40 bg-gray-800 rounded"></div>
+			<div class="h-8 bg-surface-sunken rounded w-64"></div>
+			<div class="h-40 bg-surface-sunken rounded"></div>
 		</div>
 	{:else if error}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{error}</div>

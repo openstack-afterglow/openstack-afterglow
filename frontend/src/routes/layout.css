@@ -43,20 +43,21 @@
 /* Design system theme tokens */
 @theme static {
   /* Surface */
-  --color-surface-canvas: #06080d;
-  --color-surface-base: #0b0f17;
-  --color-surface-raised: #10141d;
-  --color-surface-sunken: #161b27;
+  --color-surface-canvas: #101113;
+  --color-surface-base: #151618;
+  --color-surface-raised: #1c1d20;
+  --color-surface-sunken: #242529;
+  --color-surface-selected: color-mix(in oklab, var(--color-ink-0) 7%, var(--color-surface-base));
   --color-surface-scrim: rgb(0 0 0 / 60%);
   --color-surface-scrim-soft: rgb(0 0 0 / 50%);
   /* Ink */
-  --color-ink-0: #f4f6fb;
-  --color-ink-1: #c8cfdc;
-  --color-ink-2: #8a93a4;
-  --color-ink-3: #5b6275;
+  --color-ink-0: #f4f4f5;
+  --color-ink-1: #d5d6da;
+  --color-ink-2: #999ca5;
+  --color-ink-3: #656973;
   /* Line */
-  --color-line: #1e2533;
-  --color-line-2: #262e3f;
+  --color-line: #2b2d31;
+  --color-line-2: #727680;
   /* Accent */
   --color-accent: #7da3ff;
   --color-accent-2: #9f7df0;
@@ -99,8 +100,8 @@
   --color-surface-editorial-media: oklch(13.4% 0.012 264.7);
   --glow-warm: 0 8px 24px color-mix(in oklab, var(--color-warm) 25%, transparent);
   --glow-accent: 0 8px 24px color-mix(in oklab, var(--color-accent) 25%, transparent);
-  --focus-ring: 0 0 0 3px var(--accent-ring);
-  --color-action-on-warm: #111827;
+  --focus-ring: 0 0 0 2px var(--color-surface-base), 0 0 0 4px var(--color-line-2);
+  --color-action-on-warm: #18191b;
   --color-action-on-accent: #07111f;
   --color-chart-1: #7da3ff;
   --color-chart-2: #5ddca0;
@@ -113,6 +114,13 @@
   --color-topology-internal: #3b82f6;
   --color-topology-router: #64748b;
   --color-topology-link: #334155;
+  /* 토폴로지 캔버스 (존/그리드/게이트웨이) */
+  --color-topology-gateway: #c9a27a;
+  --color-topology-internal-2: #9f7df0;
+  --topology-zone-fill-alpha: 8%;
+  --topology-zone-fill-alpha-active: 14%;
+  --color-topology-grid-minor: #1a1b1e;
+  --color-topology-grid-major: #202226;
   /* Chat message */
   --chat-message-gap: 0.32rem;
   --chat-message-meta-gap: 0.35rem;
@@ -130,16 +138,21 @@
   --scrollbar-thumb: color-mix(in oklab, var(--color-ink-3) 58%, var(--color-surface-base));
   --scrollbar-thumb-hover: color-mix(in oklab, var(--color-ink-2) 72%, var(--color-surface-base));
   /* Overlay stacking */
+  /* Application geometry */
+  --app-header-height: 3rem;
+  --app-sidebar-width: 15rem;
   --z-sidebar: 30;
+  --z-header: 35;
   --z-panel: 40;
   --z-modal: 50;
   --z-toast: 60;
-  --z-command: 200;
+  --z-confirmation: 200;
   --z-popover: 210;
+  --z-command: 220;
   /* Motion */
-  --motion-duration-fast: 150ms;
-  --motion-duration-base: 200ms;
-  --motion-duration-panel: 300ms;
+  --motion-duration-fast: 120ms;
+  --motion-duration-base: 160ms;
+  --motion-duration-panel: 200ms;
   --motion-duration-data: 500ms;
   --motion-duration-status-pulse: 1400ms;
   --motion-ease-standard: ease;
@@ -153,7 +166,50 @@
 html,
 body {
   background-color: var(--color-surface-canvas);
+}
+
+body {
+  color: var(--color-ink-1);
   font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+/* Fixed tutorial chrome must never cover the last interactive row. */
+.mockup-active main {
+  padding-bottom: 5rem;
+  scroll-padding-bottom: 5rem;
+}
+
+@media (max-width: 640px) {
+  .mockup-active main {
+    padding-bottom: 8rem;
+    scroll-padding-bottom: 8rem;
+  }
+}
+.app-workspace-height {
+  height: calc(100dvh - var(--app-header-height));
+}
+
+.app-panel-frame {
+  inset: 0;
+}
+
+@media (min-width: 768px) {
+  .app-panel-frame {
+    top: var(--app-header-height);
+    right: 0;
+    bottom: 0;
+    left: var(--app-sidebar-width);
+  }
+}
+
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 2px solid CanvasText !important;
+    outline-offset: 2px;
+  }
 }
 
 /* Light theme token overrides */
@@ -162,6 +218,7 @@ body {
   --color-surface-base: #ffffff;
   --color-surface-raised: #ffffff;
   --color-surface-sunken: #f4f6fb;
+  --color-surface-selected: color-mix(in oklab, var(--color-ink-0) 7%, var(--color-surface-base));
   --color-line: #e2e8f0;
   --color-line-2: #cbd5e1;
   --color-ink-0: #0f172a;
@@ -173,6 +230,7 @@ body {
   --color-warm: #ea580c;
   --color-warm-2: #c2410c;
   --color-warm-text: #c2410c;
+  --color-action-on-warm: #18191b;
   --color-state-success: #16a34a;
   --color-state-success-text: #15803d;
   --color-state-warning: #b45309;
@@ -195,6 +253,12 @@ body {
   --color-topology-internal: #2563eb;
   --color-topology-router: #64748b;
   --color-topology-link: #94a3b8;
+  --color-topology-gateway: #8a5a2b;
+  --color-topology-internal-2: #6d28d9;
+  --topology-zone-fill-alpha: 6%;
+  --topology-zone-fill-alpha-active: 12%;
+  --color-topology-grid-minor: #eef1f7;
+  --color-topology-grid-major: #e3e8f0;
   /* 랜딩 플레이트(인라인 SVG) 레터박스 배경 — 라이트 모드에서 밝은 표면으로 전환 */
   --color-surface-editorial-media: #eef2f8;
   /* 배경 색상 오버라이드 */

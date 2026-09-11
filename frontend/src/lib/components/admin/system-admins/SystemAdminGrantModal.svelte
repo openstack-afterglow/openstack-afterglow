@@ -77,17 +77,16 @@
 </script>
 
 <div
-	class="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
-	onclick={onClose}
+	class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
+	onclick={(event) => { if (event.target === event.currentTarget) (onClose)(); }}
 	onkeydown={(e) => e.key === 'Escape' && onClose()}
 	role="dialog"
 	tabindex="-1"
 >
 	<div
-		class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-lg mx-4 shadow-2xl"
-		onclick={(e) => e.stopPropagation()}
+		class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-lg mx-4 shadow-[var(--shadow-restraint)]"
 	>
-		<h2 class="text-lg font-semibold text-white mb-4">System Admin 추가</h2>
+		<h2 class="text-lg font-semibold text-ink-0 mb-4">System Admin 추가</h2>
 
 		{#if grantError}
 			<div class="mb-3 bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{grantError}</div>
@@ -97,25 +96,25 @@
 			bind:value={query}
 			type="text"
 			placeholder="이름 또는 이메일로 검색"
-			class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 mb-3"
+			class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mb-3"
 		/>
 
-		<div class="overflow-y-auto max-h-72 rounded-lg border border-gray-700">
+		<div class="overflow-y-auto max-h-72 rounded-lg border border-line-2">
 			{#if loadingUsers}
-				<div class="text-gray-500 text-sm px-4 py-6 text-center">불러오는 중...</div>
+				<div class="text-ink-3 text-sm px-4 py-6 text-center">불러오는 중...</div>
 			{:else if filtered.length === 0}
-				<div class="text-gray-500 text-sm px-4 py-6 text-center">사용자 없음</div>
+				<div class="text-ink-3 text-sm px-4 py-6 text-center">사용자 없음</div>
 			{:else}
 				<table class="w-full text-sm">
 					<tbody>
 						{#each filtered as u (u.id)}
 							<tr
-								class="border-b border-gray-800/50 hover:bg-gray-800/50 cursor-pointer transition-colors"
+								class="border-b border-line/50 hover:bg-surface-sunken/50 cursor-pointer transition-colors"
 								onclick={() => grant(u)}
 							>
-								<td class="px-4 py-2 text-white text-xs">{u.name}</td>
-								<td class="px-4 py-2 text-gray-400 text-xs">{u.email || '-'}</td>
-								<td class="px-4 py-2 text-gray-500 font-mono text-xs">{u.id.slice(0, 8)}</td>
+								<td class="px-4 py-2 text-ink-0 text-xs">{u.name}</td>
+								<td class="px-4 py-2 text-ink-2 text-xs">{u.email || '-'}</td>
+								<td class="px-4 py-2 text-ink-3 font-mono text-xs">{u.id.slice(0, 8)}</td>
 							</tr>
 						{/each}
 					</tbody>
@@ -127,7 +126,7 @@
 			<button
 				onclick={onClose}
 				disabled={granting}
-				class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg"
+				class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg"
 			>
 				취소
 			</button>

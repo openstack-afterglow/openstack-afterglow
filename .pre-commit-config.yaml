@@ -7,3 +7,11 @@ repos:
         files: ^backend/
       - id: ruff-format
         files: ^backend/
+  - repo: local
+    hooks:
+      - id: architecture
+        name: architecture freshness
+        entry: python3 scripts/check_architecture.py --staged
+        language: system
+        always_run: true
+        pass_filenames: false

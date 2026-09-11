@@ -167,7 +167,7 @@
 			/>
 			<button
 				onclick={() => { showSgModal = true; sgCreateError = ''; }}
-				class="bg-blue-600 hover:bg-blue-500 text-white text-sm px-4 py-2 rounded-lg transition-colors"
+				class="bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm px-4 py-2 rounded-lg transition-colors"
 			>+ 보안 그룹 생성</button>
 		{/snippet}
 	</PageHeader>
@@ -179,7 +179,7 @@
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if securityGroups.length === 0}
-		<div class="text-center py-20 text-gray-600">
+		<div class="text-center py-20 text-ink-3">
 			<div class="text-5xl mb-4">🔒</div>
 			<div class="text-lg">보안 그룹이 없습니다</div>
 		</div>
@@ -210,7 +210,7 @@
 					onCloseMobile={() => selectedSg = null}
 				/>
 			{:else}
-				<div class="bg-gray-900 border border-gray-800 rounded-2xl p-5 flex items-center justify-center text-gray-600 text-sm min-h-[200px]">
+				<div class="bg-surface-base border border-line rounded-lg p-5 flex items-center justify-center text-ink-3 text-sm min-h-[200px]">
 					왼쪽에서 보안 그룹을 선택하세요
 				</div>
 			{/if}

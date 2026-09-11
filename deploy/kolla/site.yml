@@ -1,5 +1,7 @@
 ---
 # Kolla-Ansible site playbook integration for Afterglow services
+# Runtime plays own privilege escalation so standard deploy needs no CLI -b.
+# Keep controller-side credential/file preparation explicitly become: false.
 
 - name: Gather facts for all hosts
   hosts: all
@@ -57,6 +59,7 @@
 - name: Apply role afterglow
   gather_facts: false
   hosts: afterglow
+  become: true
   serial: "{{ kolla_serial | default('0') }}"
   tasks:
     - name: Apply role afterglow
@@ -70,6 +73,7 @@
 - name: Apply role waygate
   gather_facts: false
   hosts: waygate
+  become: true
   serial: "{{ kolla_serial | default('0') }}"
   tasks:
     - name: Apply role waygate
@@ -83,6 +87,7 @@
 - name: Apply role drover
   gather_facts: false
   hosts: drover
+  become: true
   serial: "{{ kolla_serial | default('0') }}"
   tasks:
     - name: Apply role drover
@@ -96,6 +101,7 @@
 - name: Apply role lumen
   gather_facts: false
   hosts: lumen
+  become: true
   serial: "{{ kolla_serial | default('0') }}"
   tasks:
     - name: Apply role lumen
@@ -109,6 +115,7 @@
 - name: Apply role palimpsest
   gather_facts: false
   hosts: palimpsest
+  become: true
   serial: "{{ kolla_serial | default('0') }}"
   tasks:
     - name: Apply role palimpsest
@@ -122,6 +129,7 @@
 - name: Configure plugin HAProxy routes
   gather_facts: false
   hosts: loadbalancer
+  become: true
   serial: "{{ kolla_serial | default('0') }}"
   tags: haproxy
   tasks:

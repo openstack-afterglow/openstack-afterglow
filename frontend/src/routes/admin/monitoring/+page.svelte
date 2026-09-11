@@ -8,11 +8,16 @@
 	import InstanceMetricsTab from '$lib/components/admin/monitoring/InstanceMetricsTab.svelte';
 	import type { MonitoringSummary } from '$lib/components/admin/monitoring/MonitoringSummaryTab.svelte';
 	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
+	import { PageShell, Tabs } from '$lib/components/ui';
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
 
 	let tab = $state<'summary' | 'instances'>('summary');
+	const monitoringTabs = [
+		{ value: 'summary', label: '클러스터 요약', panelId: 'admin-monitoring-panel-summary', dataTour: 'admin-monitoring-summary-tab' },
+		{ value: 'instances', label: '인스턴스 메트릭', panelId: 'admin-monitoring-panel-instances', dataTour: 'admin-monitoring-instances-tab' },
+	];
 
 	let summary = $state<MonitoringSummary | null>(null);
 	let loading = $state(true);
@@ -42,7 +47,7 @@
 	let refreshRef: (() => void) | undefined;
 </script>
 
-<div class="p-4 md:p-8 max-w-7xl mx-auto">
+<PageShell class="max-w-7xl">
 	<div data-tour="admin-monitoring-header">
 	<PageHeader breadcrumb="MONITORING" title="통합 모니터링">
 		{#snippet actions()}
@@ -59,7 +64,7 @@
 				<button
 					onclick={() => refreshRef?.()}
 					disabled={instancesLoading}
-					class="text-xs px-3 py-1.5 rounded border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500 disabled:opacity-40 transition-colors"
+					class="text-xs px-3 py-1.5 rounded border border-line-2 text-ink-2 hover:text-ink-1 hover:border-line-2 disabled:opacity-40 transition-colors"
 				>
 					{instancesLoading ? '로딩 중...' : '새로고침'}
 				</button>
@@ -68,21 +73,21 @@
 	</PageHeader>
 	</div>
 
-	<div class="flex gap-1 mb-6 border-b border-gray-800">
-		<button
-			onclick={() => (tab = 'summary')}
-			data-tour="admin-monitoring-summary-tab"
-			class="px-4 py-2 text-sm font-medium transition-colors -mb-px border-b-2
-				{tab === 'summary' ? 'text-white border-blue-500' : 'text-gray-500 border-transparent hover:text-gray-300'}"
-		>클러스터 요약</button>
-		<button
-			onclick={() => (tab = 'instances')}
-			data-tour="admin-monitoring-instances-tab"
-			class="px-4 py-2 text-sm font-medium transition-colors -mb-px border-b-2
-				{tab === 'instances' ? 'text-white border-blue-500' : 'text-gray-500 border-transparent hover:text-gray-300'}"
-		>인스턴스 메트릭</button>
-	</div>
+	<Tabs
+		id="admin-monitoring-tabs"
+		value={tab}
+		items={monitoringTabs}
+		ariaLabel="통합 모니터링"
+		onchange={(value) => { tab = value as typeof tab; }}
+		class="mb-6"
+	/>
 
+	<div
+		id={`admin-monitoring-panel-${tab}`}
+		role="tabpanel"
+		aria-labelledby={`admin-monitoring-tabs-${tab}`}
+		tabindex="0"
+	>
 	{#if tab === 'summary'}
 		<MonitoringSummaryTab {summary} {loading} {refreshing} />
 	{:else}
@@ -93,5 +98,6 @@
 			bind:loadingInstances={instancesLoading}
 		/>
 	{/if}
+	</div>
 
-</div>
+</PageShell>

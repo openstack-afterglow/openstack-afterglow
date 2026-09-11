@@ -50,7 +50,7 @@
 <div class="overflow-x-auto">
 	<table class="w-full text-sm">
 		<thead>
-			<tr class="border-b border-gray-800 text-gray-400 text-xs uppercase tracking-wide">
+			<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
 				<th class="text-left py-2 pr-4">이름</th>
 				<th class="text-left py-2 pr-4">이메일</th>
 				<th class="text-left py-2 pr-4">상태</th>
@@ -60,18 +60,18 @@
 		</thead>
 		<tbody>
 			{#each admins as admin (admin.user_id)}
-				<tr class="border-b border-gray-800/50 text-xs hover:bg-gray-800/30 transition-colors">
-					<td class="py-2 pr-4 text-white"><span class="max-md:block max-md:max-w-[66vw] max-md:truncate" title={admin.name || ''}>{admin.name || '-'}</span></td>
-					<td class="py-2 pr-4 text-gray-400">{admin.email || '-'}</td>
+				<tr class="border-b border-line/50 text-xs hover:bg-surface-sunken/30 transition-colors">
+					<td class="py-2 pr-4 text-ink-0"><span class="max-md:block max-md:max-w-[66vw] max-md:truncate" title={admin.name || ''}>{admin.name || '-'}</span></td>
+					<td class="py-2 pr-4 text-ink-2">{admin.email || '-'}</td>
 					<td class="py-2 pr-4">
 						<span class="px-1.5 py-0.5 rounded text-xs font-medium {admin.enabled ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'}">
 							{admin.enabled ? '활성' : '비활성'}
 						</span>
 					</td>
-					<td class="py-2 pr-4 text-gray-500 font-mono text-xs">{admin.user_id.slice(0, 8)}</td>
+					<td class="py-2 pr-4 text-ink-3 font-mono text-xs">{admin.user_id.slice(0, 8)}</td>
 					<td class="py-2">
 						{#if admins.length <= 1}
-							<span title="마지막 system admin은 회수할 수 없습니다" class="px-3 py-1 text-xs rounded bg-gray-800 text-gray-600 cursor-not-allowed">회수</span>
+							<span title="마지막 system admin은 회수할 수 없습니다" class="px-3 py-1 text-xs rounded bg-surface-sunken text-ink-3 cursor-not-allowed">회수</span>
 						{:else}
 							<button
 								onclick={() => revoke(admin)}

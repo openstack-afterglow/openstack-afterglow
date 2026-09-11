@@ -64,30 +64,30 @@
 </script>
 
 {#if open}
-  <div class="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
+  <div class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
     onclick={() => { open = false; createError = ''; }}
     role="dialog" aria-modal="true" tabindex="-1"
     onkeydown={(e) => e.key === 'Escape' && (open = false)}>
-    <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-lg mx-4 shadow-2xl"
+    <div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-lg mx-4 shadow-[var(--shadow-restraint)]"
       onclick={(e) => e.stopPropagation()} role="none" onkeydown={(e) => e.stopPropagation()}>
-      <h2 class="text-lg font-semibold text-white mb-5">Share 네트워크 생성</h2>
+      <h2 class="text-lg font-semibold text-ink-0 mb-5">Share 네트워크 생성</h2>
       <div class="space-y-4">
         <div>
-          <label class="block text-xs text-gray-400 mb-1.5 uppercase tracking-wide">이름 *
+          <label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">이름 *
             <input bind:value={form.name} type="text" placeholder="my-share-network"
-              class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 mt-1.5" />
+              class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5" />
           </label>
         </div>
         <div>
-          <label class="block text-xs text-gray-400 mb-1.5 uppercase tracking-wide">설명 (선택)
+          <label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">설명 (선택)
             <input bind:value={form.description} type="text" placeholder="설명"
-              class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 mt-1.5" />
+              class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5" />
           </label>
         </div>
         <div>
-          <label class="block text-xs text-gray-400 mb-1.5 uppercase tracking-wide">Neutron 네트워크 *
+          <label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">Neutron 네트워크 *
             <select bind:value={form.neutron_net_id} onchange={onNetworkChange}
-              class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 mt-1.5">
+              class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5">
               <option value="">네트워크 선택</option>
               {#each neutronNetworks as net}
                 <option value={net.id}>{net.name || net.id.slice(0, 12)} ({net.status})</option>
@@ -96,13 +96,13 @@
           </label>
         </div>
         <div>
-          <label class="block text-xs text-gray-400 mb-1.5 uppercase tracking-wide">서브넷 *
+          <label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">서브넷 *
             {#if loadingSubnets}
-              <div class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-gray-500 text-sm mt-1.5">로딩 중...</div>
+              <div class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-3 text-sm mt-1.5">로딩 중...</div>
             {:else}
               <select bind:value={form.neutron_subnet_id}
                 disabled={subnets.length === 0}
-                class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 mt-1.5 disabled:text-gray-600">
+                class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5 disabled:text-ink-3">
                 <option value="">{subnets.length === 0 ? '네트워크를 먼저 선택하세요' : '서브넷 선택'}</option>
                 {#each subnets as subnet}
                   <option value={subnet.id}>{subnet.name || subnet.id.slice(0, 12)} {subnet.cidr ? `(${subnet.cidr})` : ''}</option>
@@ -117,9 +117,9 @@
       {/if}
       <div class="flex justify-end gap-3 mt-6">
         <button onclick={() => { open = false; createError = ''; }}
-          class="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">취소</button>
+          class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">취소</button>
         <button onclick={handleCreate} disabled={creating || !form.name.trim() || !form.neutron_net_id || !form.neutron_subnet_id}
-          class="px-5 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-medium rounded-lg transition-colors">
+          class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors">
           {creating ? '생성 중...' : '생성'}
         </button>
       </div>

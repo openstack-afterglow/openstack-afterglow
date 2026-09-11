@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Alert, Button, Card, Field, Modal, TextareaInput, TextInput } from '$lib/components/ui';
 	let {
 		open = $bindable(),
 		onCreate,
@@ -61,51 +62,43 @@
 	}
 </script>
 
-{#if open}
-	<div
-		class="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
-		onclick={() => (open = false)}
-		role="dialog"
-		aria-modal="true"
-		tabindex="-1"
-		onkeydown={(e) => e.key === 'Escape' && (open = false)}
-	>
-		<div
-			class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-md mx-4 shadow-2xl"
-			onclick={(e) => e.stopPropagation()}
-			role="none"
-			onkeydown={(e) => e.stopPropagation()}
-		>
+<Modal bind:open dismissible={!creating} labelledBy="keypair-create-title">
+	<div class="w-[min(28rem,calc(100vw-2rem))] max-h-[calc(100dvh-2rem)] overflow-y-auto">
+		<Card surface="modal" padding="lg">
 			{#if createdPrivateKey}
-				<h2 class="text-lg font-semibold text-white mb-3">개인키 다운로드</h2>
-				<p class="text-sm text-yellow-300 mb-3">이 키는 다시 표시되지 않습니다. 지금 저장하세요.</p>
-				<pre class="bg-gray-800 rounded p-3 text-xs text-green-300 overflow-auto max-h-48 mb-4">{createdPrivateKey}</pre>
-				<button onclick={() => (open = false)} class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg transition-colors">확인</button>
+				<h2 id="keypair-create-title" class="mb-3 text-lg font-semibold text-ink-0">개인키 다운로드</h2>
+				<Alert tone="warning" class="mb-3">이 키는 다시 표시되지 않습니다. 지금 저장하세요.</Alert>
+				<pre class="mb-4 max-h-48 overflow-auto rounded-md bg-surface-sunken p-3 text-xs text-green-300">{createdPrivateKey}</pre>
+				<Button onclick={() => (open = false)} variant="primary" class="w-full">확인</Button>
 			{:else}
-				<h2 class="text-lg font-semibold text-white mb-5">키페어 생성</h2>
+				<h2 id="keypair-create-title" class="mb-5 text-lg font-semibold text-ink-0">키페어 생성</h2>
 				<div class="space-y-4">
-					<div>
-						<label class="block text-xs text-gray-400 mb-1.5 uppercase tracking-wide">이름
-							<input bind:value={form.name} type="text" placeholder="my-keypair" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 mt-1.5" />
-						</label>
-					</div>
-					<div>
-						<div class="flex items-center justify-between mb-1.5">
-							<label for="keypair-pubkey" class="text-xs text-gray-400 uppercase tracking-wide">공개키 (선택 - 비우면 자동 생성)</label>
-							<label class="text-xs text-blue-400 hover:text-blue-300 cursor-pointer transition-colors">
+					<Field label="이름" for="keypair-name" required>
+						<TextInput id="keypair-name" bind:value={form.name} placeholder="my-keypair" />
+					</Field>
+					<Field label="공개키" help="비우면 새 키페어를 자동 생성합니다." for="keypair-pubkey">
+						<div class="mb-1.5 flex justify-end">
+							<label class="cursor-pointer text-xs text-action-warm transition-colors hover:text-action-warm-hover">
 								파일 선택
 								<input type="file" accept=".pub,.pem,.txt" class="hidden" onchange={handleFileUpload} />
 							</label>
 						</div>
-						<textarea id="keypair-pubkey" bind:value={form.public_key} placeholder="ssh-rsa AAAA..." rows="3" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 font-mono resize-none"></textarea>
-					</div>
+						<TextareaInput
+							id="keypair-pubkey"
+							bind:value={form.public_key}
+							placeholder="ssh-rsa AAAA..."
+							rows={3}
+							class="font-mono"
+							ariaDescribedBy="keypair-pubkey-message"
+						/>
+					</Field>
 				</div>
-				{#if error}<div class="mt-3 text-red-400 text-xs">{error}</div>{/if}
-				<div class="flex justify-end gap-3 mt-6">
-					<button onclick={() => (open = false)} class="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">취소</button>
-					<button onclick={submit} disabled={creating} class="px-5 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-medium rounded-lg transition-colors">{creating ? '생성 중...' : '생성'}</button>
+				{#if error}<Alert tone="danger" class="mt-3">{error}</Alert>{/if}
+				<div class="mt-6 flex justify-end gap-3">
+					<Button onclick={() => (open = false)} variant="secondary" disabled={creating}>취소</Button>
+					<Button onclick={submit} disabled={creating || !form.name.trim()} variant="primary">{creating ? '생성 중...' : '생성'}</Button>
 				</div>
 			{/if}
-		</div>
+		</Card>
 	</div>
-{/if}
+</Modal>

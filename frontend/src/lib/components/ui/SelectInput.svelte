@@ -9,6 +9,8 @@
 		class?: string;
 		children: Snippet;
 		ariaLabel?: string;
+		ariaDescribedBy?: string;
+		ariaInvalid?: boolean;
 		onchange?: (event: Event) => void;
 	}
 
@@ -19,19 +21,21 @@
 		required = false,
 		class: className = '',
 		ariaLabel,
+		ariaDescribedBy,
+		ariaInvalid = false,
 		children,
 		onchange,
 	}: Props = $props();
 </script>
 
-<select {id} bind:value {disabled} {required} {onchange} aria-label={ariaLabel} class="control select-input {className}">
+<select {id} bind:value {disabled} {required} {onchange} aria-label={ariaLabel} aria-describedby={ariaDescribedBy} aria-invalid={ariaInvalid || undefined} class="control select-input {className}">
 	{@render children()}
 </select>
 
 <style>
 	.control {
 		width: 100%;
-		border-radius: 0.5rem;
+		border-radius: 0.375rem;
 		border: 1px solid var(--color-line-2);
 		background: var(--color-surface-sunken);
 		color: var(--color-ink-0);
@@ -40,9 +44,9 @@
 		line-height: 1.4;
 		transition: border-color var(--motion-duration-fast) var(--motion-ease-standard), box-shadow var(--motion-duration-fast) var(--motion-ease-standard), background var(--motion-duration-fast) var(--motion-ease-standard);
 	}
-	.control:focus {
+	.control:focus-visible {
 		outline: none;
-		border-color: var(--color-accent);
+		border-color: var(--color-line-2);
 		box-shadow: var(--focus-ring);
 	}
 	.control:disabled {

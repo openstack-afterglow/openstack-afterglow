@@ -77,10 +77,10 @@
 	<div class="grid grid-cols-1 lg:grid-cols-2 gap-6" data-tour="admin-monitoring-summary">
 		<span class="sr-only" data-tour="admin-monitoring-summary-ready">모니터링 요약 준비됨</span>
 		<!-- Compute -->
-		<div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+		<div class="bg-surface-base border border-line rounded-xl p-5">
 			<div class="flex items-center justify-between mb-4">
-				<h2 class="text-sm font-semibold text-white">Compute</h2>
-				<span class="text-xs text-gray-500">
+				<h2 class="text-sm font-semibold text-ink-0">Compute</h2>
+				<span class="text-xs text-ink-3">
 					하이퍼바이저 <span class="text-green-400">{summary.compute.hypervisors_up}</span>/{summary.compute.hypervisors_total} up
 				</span>
 			</div>
@@ -94,19 +94,19 @@
 
 			<div class="mt-4 grid grid-cols-4 gap-2">
 				<SummaryStatCard value={summary.compute.instance_stats?.active ?? 0} label="ACTIVE" valueClass="text-green-400" size="sm" />
-				<SummaryStatCard value={summary.compute.instance_stats?.shutoff ?? 0} label="SHUTOFF" valueClass="text-gray-400" size="sm" />
+				<SummaryStatCard value={summary.compute.instance_stats?.shutoff ?? 0} label="SHUTOFF" valueClass="text-ink-2" size="sm" />
 				<SummaryStatCard value={summary.compute.instance_stats?.error ?? 0} label="ERROR" valueClass="text-red-400" size="sm" />
 				<SummaryStatCard value={summary.compute.gpu_instances} label="GPU VM" valueClass="text-purple-400" size="sm" />
 			</div>
 
-			<div class="mt-3 text-xs text-gray-500 text-right">
+			<div class="mt-3 text-xs text-ink-3 text-right">
 				총 {summary.compute.instance_stats?.total ?? 0}개 인스턴스
 			</div>
 		</div>
 
 		<!-- Storage -->
-		<div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
-			<h2 class="text-sm font-semibold text-white mb-4">스토리지</h2>
+		<div class="bg-surface-base border border-line rounded-xl p-5">
+			<h2 class="text-sm font-semibold text-ink-0 mb-4">스토리지</h2>
 
 			<div class="grid grid-cols-2 gap-3 mb-4">
 				<SummaryStatCard value={summary.storage.volume_count} label="볼륨" />
@@ -122,40 +122,40 @@
 				<div class="space-y-1.5">
 					{#each Object.entries(summary.storage.volume_by_status) as [status, count]}
 						<div class="flex justify-between text-xs">
-							<span class="{status === 'available' ? 'text-green-400' : status === 'in-use' ? 'text-blue-400' : status === 'error' ? 'text-red-400' : 'text-gray-400'}">{status}</span>
-							<span class="text-gray-300">{count}개</span>
+							<span class="{status === 'available' ? 'text-green-400' : status === 'in-use' ? 'text-action-warm' : status === 'error' ? 'text-red-400' : 'text-ink-2'}">{status}</span>
+							<span class="text-ink-2">{count}개</span>
 						</div>
 					{/each}
 				</div>
 			{/if}
 
-			<div class="mt-4 pt-4 border-t border-gray-800 space-y-1.5 text-xs">
+			<div class="mt-4 pt-4 border-t border-line space-y-1.5 text-xs">
 				<div class="flex items-center justify-between">
-					<span class="text-gray-500">파일 스토리지</span>
-					<span class="text-gray-300">{summary.storage.file_storage_count}개</span>
+					<span class="text-ink-3">파일 스토리지</span>
+					<span class="text-ink-2">{summary.storage.file_storage_count}개</span>
 				</div>
 				<div class="flex items-center justify-between">
-					<span class="text-gray-500">볼륨 스냅샷</span>
-					<span class="text-gray-300">{summary.storage.volume_snapshot_count ?? 0}개</span>
+					<span class="text-ink-3">볼륨 스냅샷</span>
+					<span class="text-ink-2">{summary.storage.volume_snapshot_count ?? 0}개</span>
 				</div>
 				<div class="flex items-center justify-between">
-					<span class="text-gray-500">볼륨 백업</span>
-					<span class="text-gray-300">{summary.storage.volume_backup_count ?? 0}개</span>
+					<span class="text-ink-3">볼륨 백업</span>
+					<span class="text-ink-2">{summary.storage.volume_backup_count ?? 0}개</span>
 				</div>
 				<div class="flex items-center justify-between">
-					<span class="text-gray-500">파일 스냅샷</span>
-					<span class="text-gray-300">{summary.storage.share_snapshot_count ?? 0}개</span>
+					<span class="text-ink-3">파일 스냅샷</span>
+					<span class="text-ink-2">{summary.storage.share_snapshot_count ?? 0}개</span>
 				</div>
 				<div class="flex items-center justify-between">
-					<span class="text-gray-500">이미지</span>
-					<span class="text-gray-300">{summary.storage.image_count ?? 0}개</span>
+					<span class="text-ink-3">이미지</span>
+					<span class="text-ink-2">{summary.storage.image_count ?? 0}개</span>
 				</div>
 			</div>
 		</div>
 
 		<!-- Network -->
-		<div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
-			<h2 class="text-sm font-semibold text-white mb-4">네트워크</h2>
+		<div class="bg-surface-base border border-line rounded-xl p-5">
+			<h2 class="text-sm font-semibold text-ink-0 mb-4">네트워크</h2>
 
 			<div class="grid grid-cols-2 gap-3 mb-3">
 				<SummaryStatCard value={summary.network.network_count} label="네트워크" />
@@ -172,18 +172,18 @@
 				<SummaryStatCard value={summary.network.port_count} label="포트" />
 			</div>
 
-			<div class="mt-3 pt-4 border-t border-gray-800 space-y-1.5 text-xs">
+			<div class="mt-3 pt-4 border-t border-line space-y-1.5 text-xs">
 				<div class="flex items-center justify-between">
-					<span class="text-gray-500">서브넷</span>
-					<span class="text-gray-300">{summary.network.subnet_count ?? 0}개</span>
+					<span class="text-ink-3">서브넷</span>
+					<span class="text-ink-2">{summary.network.subnet_count ?? 0}개</span>
 				</div>
 				<div class="flex items-center justify-between">
-					<span class="text-gray-500">Security Group</span>
-					<span class="text-gray-300">{summary.network.security_group_count ?? 0}개</span>
+					<span class="text-ink-3">Security Group</span>
+					<span class="text-ink-2">{summary.network.security_group_count ?? 0}개</span>
 				</div>
 				<div class="flex items-center justify-between">
-					<span class="text-gray-500">Load Balancer</span>
-					<span class="text-gray-300">
+					<span class="text-ink-3">Load Balancer</span>
+					<span class="text-ink-2">
 						{summary.network.load_balancer_count ?? 0}개
 						{#if (summary.network.load_balancer_count ?? 0) > 0}
 							<span class="text-green-400">({summary.network.load_balancer_active ?? 0} active)</span>
@@ -194,8 +194,8 @@
 		</div>
 
 		<!-- Containers -->
-		<div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
-			<h2 class="text-sm font-semibold text-white mb-4">컨테이너</h2>
+		<div class="bg-surface-base border border-line rounded-xl p-5">
+			<h2 class="text-sm font-semibold text-ink-0 mb-4">컨테이너</h2>
 
 			<div class="grid grid-cols-2 gap-3">
 				<SummaryStatCard value={summary.containers.zun_count} label="Zun 컨테이너" size="lg" />
@@ -212,41 +212,41 @@
 				</SummaryStatCard>
 			</div>
 
-			<div class="mt-4 pt-4 border-t border-gray-800 grid grid-cols-2 gap-2">
-				<a href="/admin/containers" class="flex items-center justify-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors bg-gray-800 rounded-lg py-2">
+			<div class="mt-4 pt-4 border-t border-line grid grid-cols-2 gap-2">
+				<a href="/admin/containers" class="flex items-center justify-center gap-1.5 text-xs text-action-warm hover:text-action-warm-hover transition-colors bg-surface-sunken rounded-lg py-2">
 					컨테이너 목록 →
 				</a>
-				<a href="/admin/drover" class="flex items-center justify-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors bg-gray-800 rounded-lg py-2">
+				<a href="/admin/drover" class="flex items-center justify-center gap-1.5 text-xs text-action-warm hover:text-action-warm-hover transition-colors bg-surface-sunken rounded-lg py-2">
 					Drover 클러스터 →
 				</a>
 			</div>
 		</div>
 
 		<!-- 데이터 서비스 -->
-		<div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
-			<h2 class="text-sm font-semibold text-white mb-4">데이터 서비스</h2>
+		<div class="bg-surface-base border border-line rounded-xl p-5">
+			<h2 class="text-sm font-semibold text-ink-0 mb-4">데이터 서비스</h2>
 			<div class="grid grid-cols-1 gap-3">
 				<SummaryStatCard value={summary.data_services?.database_instance_count ?? 0} label="DB 인스턴스 (Trove)" size="lg" />
 			</div>
-			<div class="mt-4 pt-4 border-t border-gray-800">
-				<a href="/admin/database-instances" class="flex items-center justify-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors bg-gray-800 rounded-lg py-2">
+			<div class="mt-4 pt-4 border-t border-line">
+				<a href="/admin/database-instances" class="flex items-center justify-center gap-1.5 text-xs text-action-warm hover:text-action-warm-hover transition-colors bg-surface-sunken rounded-lg py-2">
 					DB 인스턴스 →
 				</a>
 			</div>
 		</div>
 
 		<!-- Identity -->
-		<div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
-			<h2 class="text-sm font-semibold text-white mb-4">Identity</h2>
+		<div class="bg-surface-base border border-line rounded-xl p-5">
+			<h2 class="text-sm font-semibold text-ink-0 mb-4">Identity</h2>
 			<div class="grid grid-cols-2 gap-3">
 				<SummaryStatCard value={summary.identity?.user_count ?? 0} label="사용자" size="lg" />
 				<SummaryStatCard value={summary.identity?.project_count ?? 0} label="프로젝트" size="lg" />
 			</div>
-			<div class="mt-4 pt-4 border-t border-gray-800 grid grid-cols-2 gap-2">
-				<a href="/admin/users" class="flex items-center justify-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors bg-gray-800 rounded-lg py-2">
+			<div class="mt-4 pt-4 border-t border-line grid grid-cols-2 gap-2">
+				<a href="/admin/users" class="flex items-center justify-center gap-1.5 text-xs text-action-warm hover:text-action-warm-hover transition-colors bg-surface-sunken rounded-lg py-2">
 					사용자 →
 				</a>
-				<a href="/admin/projects" class="flex items-center justify-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors bg-gray-800 rounded-lg py-2">
+				<a href="/admin/projects" class="flex items-center justify-center gap-1.5 text-xs text-action-warm hover:text-action-warm-hover transition-colors bg-surface-sunken rounded-lg py-2">
 					프로젝트 →
 				</a>
 			</div>

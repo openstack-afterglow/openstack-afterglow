@@ -112,7 +112,7 @@
 	}
 </script>
 
-<Modal {open} {onClose}>
+<Modal {open} {onClose} ariaLabel="에이전트 관리">
 	<div class="panel">
 		<header class="head">
 			<div class="head-title">

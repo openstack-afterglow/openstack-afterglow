@@ -100,12 +100,12 @@
 	onMount(loadCloudInitLibrary);
 </script>
 
-<h2 class="text-lg font-semibold text-white mb-5">인스턴스 설정</h2>
+<h2 class="text-lg font-semibold text-ink-0 mb-5">인스턴스 설정</h2>
 
 <!-- VM 이름 -->
 <div class="mb-4">
-	<label for="vm-name" class="block text-[11.5px] font-semibold text-gray-300 tracking-tight flex items-center gap-1.5 mb-1.5">
-		VM 이름 <span class="text-[10px] text-gray-500 font-normal px-1.5 py-0.5 rounded-full bg-gray-800">선택</span>
+	<label for="vm-name" class="block text-[11.5px] font-semibold text-ink-2 tracking-tight flex items-center gap-1.5 mb-1.5">
+		VM 이름 <span class="text-[10px] text-ink-3 font-normal px-1.5 py-0.5 rounded-full bg-surface-sunken">선택</span>
 	</label>
 	{#if normalizedInstanceName}
 		<p class="text-xs mb-1" aria-live="polite">
@@ -117,22 +117,22 @@
 		bind:value={$wizard.instanceName}
 		type="text"
 		placeholder="비워두면 자동 생성"
-		class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500 transition-colors"
+		class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm transition-colors"
 	/>
-	<p class="text-xs text-gray-500 mt-1">입력하지 않으면 같은 프로젝트 안에서 중복되지 않는 안전한 영문 이름이 자동 생성됩니다.</p>
+	<p class="text-xs text-ink-3 mt-1">입력하지 않으면 같은 프로젝트 안에서 중복되지 않는 안전한 영문 이름이 자동 생성됩니다.</p>
 </div>
 
 <!-- 네트워크 + 보안 그룹 -->
 <div class="grid grid-cols-1 @lg/panel:grid-cols-2 gap-3.5 mb-4">
 	<div>
-		<label for="create-network" class="block text-[11.5px] font-semibold text-gray-300 tracking-tight flex items-center gap-1.5 mb-1.5">
+		<label for="create-network" class="block text-[11.5px] font-semibold text-ink-2 tracking-tight flex items-center gap-1.5 mb-1.5">
 			네트워크 <span class="text-red-400">*</span>
 		</label>
 		<select
 			id="create-network"
 			value={$wizard.networkId ?? ''}
 			onchange={e => s.selectNetwork((e.target as HTMLSelectElement).value || null)}
-			class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500 transition-colors"
+			class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm transition-colors"
 		>
 			<option value="">기본 네트워크</option>
 			{#each s.networks as net}
@@ -143,8 +143,8 @@
 		</select>
 	</div>
 	<div>
-		<label for="create-sg" class="block text-[11.5px] font-semibold text-gray-300 tracking-tight flex items-center gap-1.5 mb-1.5">
-			보안 그룹 <span class="text-[10px] text-gray-500 font-normal px-1.5 py-0.5 rounded-full bg-gray-800">선택</span>
+		<label for="create-sg" class="block text-[11.5px] font-semibold text-ink-2 tracking-tight flex items-center gap-1.5 mb-1.5">
+			보안 그룹 <span class="text-[10px] text-ink-3 font-normal px-1.5 py-0.5 rounded-full bg-surface-sunken">선택</span>
 		</label>
 		<select
 			id="create-sg"
@@ -153,7 +153,7 @@
 				const v = (e.target as HTMLSelectElement).value;
 				wizard.update(w => ({ ...w, securityGroups: v ? [v] : [] }));
 			}}
-			class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500 transition-colors"
+			class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm transition-colors"
 		>
 			<option value="">기본</option>
 			{#each s.securityGroups as sg}
@@ -166,13 +166,13 @@
 <!-- SSH 접근 -->
 <div class="mb-4">
 	{#if s.adminMode}
-		<p class="block text-[11.5px] font-semibold text-gray-300 tracking-tight flex items-center gap-1.5 mb-1.5">
-			키페어 <span class="text-[10px] text-gray-500 font-normal px-1.5 py-0.5 rounded-full bg-gray-800">선택</span>
+		<p class="block text-[11.5px] font-semibold text-ink-2 tracking-tight flex items-center gap-1.5 mb-1.5">
+			키페어 <span class="text-[10px] text-ink-3 font-normal px-1.5 py-0.5 rounded-full bg-surface-sunken">선택</span>
 		</p>
-		<div class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-gray-500 text-sm">
+		<div class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2.5 text-ink-3 text-sm">
 			없음 (관리자 생성 — 콘솔 비밀번호 사용)
 		</div>
-		<p class="text-xs text-amber-400/80 mt-1">admin 모드에서는 대상 프로젝트의 키페어에 접근할 수 없습니다.</p>
+		<p class="text-xs text-action-warm/80 mt-1">admin 모드에서는 대상 프로젝트의 키페어에 접근할 수 없습니다.</p>
 	{:else}
 		{#if s.githubSshEligible}
 			<div class="mb-2">
@@ -198,14 +198,14 @@
 				<TextInput id="github-username" bind:value={$wizard.githubUsername} placeholder="예: octocat" />
 			</Field>
 		{:else}
-			<label for="create-keypair" class="block text-[11.5px] font-semibold text-gray-300 tracking-tight flex items-center gap-1.5 mb-1.5">
+			<label for="create-keypair" class="block text-[11.5px] font-semibold text-ink-2 tracking-tight flex items-center gap-1.5 mb-1.5">
 				키페어 <span class="text-red-400">*</span>
 			</label>
 			<select
 				id="create-keypair"
 				value={$wizard.keyName ?? ''}
 				onchange={e => wizard.update(w => ({ ...w, keyName: (e.target as HTMLSelectElement).value || null }))}
-				class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500 transition-colors"
+				class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm transition-colors"
 			>
 				<option value="">키페어 선택</option>
 				{#each s.keypairs as kp}
@@ -213,7 +213,7 @@
 				{/each}
 			</select>
 			{#if s.keypairs.length === 0}
-				<p class="text-xs text-amber-400 mt-1">등록된 키페어가 없습니다.</p>
+				<p class="text-xs text-action-warm mt-1">등록된 키페어가 없습니다.</p>
 			{/if}
 		{/if}
 	{/if}
@@ -221,13 +221,13 @@
 
 <!-- 루트 디스크 -->
 {#if $wizard.squashfsMode}
-<div class="mb-4 p-3 rounded-lg bg-blue-900/20 border border-blue-800/40 text-blue-300 text-xs">
+<div class="mb-4 p-3 rounded-lg bg-surface-selected/20 border border-action-warm/40 text-action-warm text-xs">
 	squashfs 라이브러리 소비 VM은 선택한 레이어의 Glance base image에서 직접 부팅합니다. 루트 디스크 크기와 삭제 옵션은 이 베타 경로에서 적용되지 않습니다.
 </div>
 {:else if $wizard.bootSource === 'image'}
 <div class="grid grid-cols-1 @lg/panel:grid-cols-2 gap-3.5 mb-4">
 	<div>
-		<label for="boot-volume-size" class="block text-[11.5px] font-semibold text-gray-300 tracking-tight flex items-center gap-1.5 mb-1.5">
+		<label for="boot-volume-size" class="block text-[11.5px] font-semibold text-ink-2 tracking-tight flex items-center gap-1.5 mb-1.5">
 			루트 디스크 <span class="text-red-400">*</span>
 		</label>
 		<div class="flex items-center gap-3">
@@ -237,24 +237,24 @@
 				type="number"
 				min="1"
 				max="16384"
-				class="w-24 bg-gray-800 border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500 transition-colors"
+				class="w-24 bg-surface-sunken border border-line-2 rounded-lg px-3 py-2.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm transition-colors"
 			/>
-			<span class="text-[11px] text-gray-500">1 – 16,384 GB</span>
+			<span class="text-[11px] text-ink-3">1 – 16,384 GB</span>
 		</div>
 	</div>
 	<div class="flex items-end pb-1">
-		<label class="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-800/60 border border-gray-700 cursor-pointer w-full">
+		<label class="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-sunken/60 border border-line-2 cursor-pointer w-full">
 			<input
 				type="checkbox"
 				bind:checked={$wizard.deleteBootVolumeOnTermination}
-				class="w-4 h-4 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500 flex-shrink-0"
+				class="w-4 h-4 rounded border-line-2 bg-surface-sunken text-action-warm focus:ring-line-2 flex-shrink-0"
 			/>
-			<span class="text-sm text-gray-300">VM 삭제 시 루트 디스크 함께 삭제</span>
+			<span class="text-sm text-ink-2">VM 삭제 시 루트 디스크 함께 삭제</span>
 		</label>
 	</div>
 </div>
 {:else}
-<div class="mb-4 p-3 rounded-lg bg-blue-900/20 border border-blue-800/40 text-blue-300 text-xs">
+<div class="mb-4 p-3 rounded-lg bg-surface-selected/20 border border-action-warm/40 text-action-warm text-xs">
 	기존 부팅 볼륨 사용 시 루트 디스크 크기 설정이 적용되지 않습니다. 볼륨: <span class="font-medium">{$wizard.bootVolumeName ?? $wizard.bootVolumeId}</span>
 </div>
 {/if}
@@ -263,21 +263,21 @@
 {#if s.fileStorages.length > 0}
 <div class="mb-4">
 	<div class="flex items-center justify-between mb-1.5">
-		<p class="block text-[11.5px] font-semibold text-gray-300 tracking-tight">
-			파일 스토리지 마운트 <span class="text-[10px] text-gray-500 font-normal px-1.5 py-0.5 rounded-full bg-gray-800">선택</span>
+		<p class="block text-[11.5px] font-semibold text-ink-2 tracking-tight">
+			파일 스토리지 마운트 <span class="text-[10px] text-ink-3 font-normal px-1.5 py-0.5 rounded-full bg-surface-sunken">선택</span>
 		</p>
 		<button
 			type="button"
 			onclick={() => wizard.update(w => ({ ...w, dataMounts: [...w.dataMounts, { fileStorageId: '', mountPoint: '', readOnly: false }] }))}
-			class="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+			class="text-xs text-action-warm hover:text-action-warm-hover transition-colors"
 		>+ 추가</button>
 	</div>
 	{#if $wizard.dataMounts.length === 0}
-		<p class="text-[11px] text-gray-500">마운트할 파일 스토리지가 없습니다. "+ 추가"를 눌러 추가하세요.</p>
+		<p class="text-[11px] text-ink-3">마운트할 파일 스토리지가 없습니다. "+ 추가"를 눌러 추가하세요.</p>
 	{:else}
 		<div class="space-y-2">
 			{#each $wizard.dataMounts as mount, i}
-				<div class="flex gap-2 items-start bg-gray-800/60 rounded-lg p-2.5">
+				<div class="flex gap-2 items-start bg-surface-sunken/60 rounded-lg p-2.5">
 					<div class="flex-1 grid grid-cols-1 @lg/panel:grid-cols-2 gap-2">
 						<select
 							value={mount.fileStorageId}
@@ -286,7 +286,7 @@
 								m[i] = { ...m[i], fileStorageId: (e.target as HTMLSelectElement).value };
 								return { ...w, dataMounts: m };
 							})}
-							class="bg-gray-700 border border-gray-600 text-gray-200 text-xs rounded px-2 py-1.5 focus:outline-none focus:border-blue-500"
+							class="bg-surface-selected border border-line-2 text-ink-1 text-xs rounded px-2 py-1.5 focus:outline-none focus:border-action-warm"
 						>
 							<option value="">스토리지 선택...</option>
 							{#each s.fileStorages.filter(fs => fs.status === 'available') as fs}
@@ -302,10 +302,10 @@
 								return { ...w, dataMounts: m };
 							})}
 							placeholder="/mnt/mydata"
-							class="bg-gray-700 border border-gray-600 text-gray-200 text-xs rounded px-2 py-1.5 focus:outline-none focus:border-blue-500"
+							class="bg-surface-selected border border-line-2 text-ink-1 text-xs rounded px-2 py-1.5 focus:outline-none focus:border-action-warm"
 						/>
 					</div>
-					<label class="flex items-center gap-1.5 text-xs text-gray-400 shrink-0 mt-1.5">
+					<label class="flex items-center gap-1.5 text-xs text-ink-2 shrink-0 mt-1.5">
 						<input
 							type="checkbox"
 							checked={mount.readOnly}
@@ -314,13 +314,13 @@
 								m[i] = { ...m[i], readOnly: (e.target as HTMLInputElement).checked };
 								return { ...w, dataMounts: m };
 							})}
-							class="w-3.5 h-3.5 rounded border-gray-600 bg-gray-800 text-blue-500"
+							class="w-3.5 h-3.5 rounded border-line-2 bg-surface-sunken text-action-warm"
 						/>읽기 전용
 					</label>
 					<button
 						type="button"
 						onclick={() => wizard.update(w => ({ ...w, dataMounts: w.dataMounts.filter((_, j) => j !== i) }))}
-						class="text-gray-500 hover:text-red-400 transition-colors mt-0.5 shrink-0"
+						class="text-ink-3 hover:text-red-400 transition-colors mt-0.5 shrink-0"
 						aria-label="삭제"
 					>
 						<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -330,30 +330,30 @@
 				</div>
 			{/each}
 		</div>
-		<p class="text-[10.5px] text-gray-600 mt-1">/mnt, /data, /srv, /home 하위 경로만 허용됩니다.</p>
+		<p class="text-[10.5px] text-ink-3 mt-1">/mnt, /data, /srv, /home 하위 경로만 허용됩니다.</p>
 	{/if}
 </div>
 {/if}
 
 <!-- cloud-init 다크 에디터 -->
 <div class="mb-4">
-	<label for="cloud-init" class="block text-[11.5px] font-semibold text-gray-300 tracking-tight flex items-center gap-1.5 mb-1.5">
-		CLOUD-INIT <span class="text-[10px] text-gray-500 font-normal px-1.5 py-0.5 rounded-full bg-gray-800">선택</span>
+	<label for="cloud-init" class="block text-[11.5px] font-semibold text-ink-2 tracking-tight flex items-center gap-1.5 mb-1.5">
+		CLOUD-INIT <span class="text-[10px] text-ink-3 font-normal px-1.5 py-0.5 rounded-full bg-surface-sunken">선택</span>
 	</label>
 	<div class="relative">
-		<div class="absolute top-2 right-2 flex gap-1 z-[2] bg-gray-900 border border-gray-700 rounded-md p-0.5">
-			<button type="button" disabled class="px-2 py-1 text-[10.5px] font-mono text-gray-500 rounded opacity-50 cursor-not-allowed">예제 ▾</button>
-			<button type="button" disabled class="px-2 py-1 text-[10.5px] font-mono text-gray-500 rounded opacity-50 cursor-not-allowed">YAML ✓</button>
+		<div class="absolute top-2 right-2 flex gap-1 z-[2] bg-surface-base border border-line-2 rounded-md p-0.5">
+			<button type="button" disabled class="px-2 py-1 text-[10.5px] font-mono text-ink-3 rounded opacity-50 cursor-not-allowed">예제 ▾</button>
+			<button type="button" disabled class="px-2 py-1 text-[10.5px] font-mono text-ink-3 rounded opacity-50 cursor-not-allowed">YAML ✓</button>
 		</div>
 		<textarea
 			id="cloud-init"
 			bind:value={$wizard.cloudInit}
 			rows="8"
 			placeholder="#cloud-config&#10;package_update: true&#10;packages:&#10;  - htop"
-			class="w-full p-3.5 font-mono text-xs bg-[#0f172a] text-slate-200 rounded-lg border border-gray-700 outline-none min-h-[140px] resize-y leading-relaxed focus:border-blue-500"
+			class="w-full p-3.5 font-mono text-xs bg-[#0f172a] text-ink-1 rounded-lg border border-line-2 outline-none min-h-[140px] resize-y leading-relaxed focus:border-action-warm"
 		></textarea>
 	</div>
-	<div class="mt-3 border border-gray-700 rounded-lg p-3 space-y-3">
+	<div class="mt-3 border border-line-2 rounded-lg p-3 space-y-3">
 		<div class="grid grid-cols-1 @lg/panel:grid-cols-[1fr_auto] gap-2 items-end">
 			<Field label="저장 이름" for="cloud-init-preset-name" help="프리셋은 계정에 암호화되어 저장됩니다.">
 				<TextInput id="cloud-init-preset-name" bind:value={cloudInitPresetName} placeholder="예: 초기 패키지 설치" />
@@ -365,12 +365,12 @@
 
 		<div class="grid grid-cols-1 @lg/panel:grid-cols-2 gap-2">
 			<div>
-				<label for="cloud-init-load" class="block text-[11.5px] font-semibold text-gray-300 mb-1">저장된 항목 불러오기</label>
+				<label for="cloud-init-load" class="block text-[11.5px] font-semibold text-ink-2 mb-1">저장된 항목 불러오기</label>
 				<select
 					id="cloud-init-load"
 					onchange={applyCloudInitSnippet}
 					disabled={cloudInitLibraryLoading || (cloudInitPresets.length === 0 && cloudInitHistory.length === 0)}
-					class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm disabled:opacity-50"
+					class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm disabled:opacity-50"
 				>
 					<option value="">프리셋 또는 최근 실행 선택</option>
 					{#if cloudInitPresets.length > 0}
@@ -391,7 +391,7 @@
 			</div>
 			{#if cloudInitPresets.length > 0}
 				<div>
-					<p class="block text-[11.5px] font-semibold text-gray-300 mb-1">저장한 프리셋 관리</p>
+					<p class="block text-[11.5px] font-semibold text-ink-2 mb-1">저장한 프리셋 관리</p>
 					<div class="flex flex-wrap gap-1.5">
 						{#each cloudInitPresets as snippet}
 							<Button type="button" variant="subtle" size="sm" onclick={() => deleteCloudInitSnippet(snippet.id)}>
@@ -405,6 +405,6 @@
 		{#if cloudInitLibraryError}
 			<Alert tone="danger">{cloudInitLibraryError}</Alert>
 		{/if}
-		<p class="text-[11px] text-gray-500">실행에 성공한 비어 있지 않은 cloud-init은 최근 실행 이력에 자동 저장됩니다.</p>
+		<p class="text-[11px] text-ink-3">실행에 성공한 비어 있지 않은 cloud-init은 최근 실행 이력에 자동 저장됩니다.</p>
 	</div>
 </div>

@@ -35,12 +35,21 @@
 	$effect(() => {
 		if (activeProvider !== null && !providers.includes(activeProvider)) activeProvider = null;
 	});
+
+	function apiModelName(model: AvailableModel): string {
+		return model.api_model_name || model.model_name;
+	}
+
+	function apiProvider(model: AvailableModel): string {
+		return model.api_provider || model.provider || 'unknown';
+	}
 	const grouped = $derived.by((): Group[] => {
 		const q = query.trim().toLowerCase();
 		const match = (m: AvailableModel) =>
 			(!q ||
 				m.display_name.toLowerCase().includes(q) ||
-				m.model_name.toLowerCase().includes(q) ||
+				apiModelName(m).toLowerCase().includes(q) ||
+				apiProvider(m).toLowerCase().includes(q) ||
 				(m.provider ?? '').toLowerCase().includes(q)) &&
 			(activeProvider === null || (m.provider ?? '기타') === activeProvider);
 		const byProvider = new Map<string, AvailableModel[]>();
@@ -94,9 +103,9 @@
 		<div class="search">
 			<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" stroke-linecap="round" /></svg>
 			<!-- svelte-ignore a11y_autofocus -->
-			<input type="text" placeholder="모델 검색 (이름·프로바이더)" bind:value={query} autofocus />
+			<input type="text" placeholder="모델 검색 (이름·API ID·프로바이더)" bind:value={query} autofocus />
 		</div>
-		<p id="model-picker-help" class="help">ID를 복사해 API 호출의 <code>model</code> 값에 붙여 넣으세요.</p>
+		<p id="model-picker-help" class="help">API ID를 <code>model</code>에 사용하세요. 같은 ID가 여러 경로에 있으면 provider도 함께 지정하세요.</p>
 
 		<div class="picker-body" class:with-providers={showProviderNav}>
 			{#if showProviderNav}
@@ -140,7 +149,8 @@
 								>
 									<span class="model-main">
 										<span class="model-name" title={m.display_name}>{m.display_name}</span>
-										<span class="model-id">API ID: <code>{m.model_name}</code></span>
+										<span class="model-id">API ID: <code>{apiModelName(m)}</code></span>
+										<span class="model-provider">provider: <code>{apiProvider(m)}</code></span>
 									</span>
 									<span class="model-caps"><ModelCapabilityBadges caps={m.capabilities} size="xs" /></span>
 									{#if m.model_name === value}
@@ -151,9 +161,9 @@
 									variant="ghost"
 									size="sm"
 									class="min-h-11 shrink-0"
-									ariaLabel={`${m.model_name} API 모델 ID 복사`}
-									title={`API model: ${m.model_name}`}
-									onclick={() => copyModelName(m.model_name)}
+									ariaLabel={`${apiModelName(m)} API 모델 ID 복사`}
+									title={`API model: ${apiModelName(m)}`}
+									onclick={() => copyModelName(apiModelName(m))}
 								>
 									ID 복사
 								</Button>
@@ -257,15 +267,18 @@
 	}
 	.provider-nav {
 		display: flex;
+		max-height: 7rem;
 		flex-shrink: 0;
+		flex-wrap: wrap;
 		gap: 0.25rem;
-		overflow-x: auto;
+		overflow-y: auto;
 		padding: 0.15rem 0.75rem 0.65rem;
 		border-bottom: 1px solid var(--color-line);
 	}
 	.provider-nav button {
 		display: inline-flex;
 		min-height: 2.5rem;
+		max-width: 100%;
 		flex-shrink: 0;
 		align-items: center;
 		justify-content: space-between;
@@ -279,6 +292,11 @@
 		font-weight: 600;
 		cursor: pointer;
 		white-space: nowrap;
+	}
+	.provider-nav button > span:first-child {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	.provider-nav button:hover {
 		background: var(--color-surface-sunken);
@@ -297,6 +315,7 @@
 		color: var(--color-ink-3);
 		font-family: var(--font-mono);
 		font-size: 0.68rem;
+		flex-shrink: 0;
 	}
 	.list {
 		flex: 1;
@@ -384,6 +403,14 @@
 	.model-id code {
 		font-family: var(--font-mono);
 	}
+	.model-provider {
+		font-size: 0.7rem;
+		color: var(--color-ink-3);
+		overflow-wrap: anywhere;
+	}
+	.model-provider code {
+		font-family: var(--font-mono);
+	}
 	.check {
 		grid-column: 2;
 		grid-row: 1 / 3;
@@ -393,11 +420,13 @@
 	@media (min-width: 768px) {
 		.picker-body.with-providers {
 			display: grid;
-			grid-template-columns: 10rem minmax(0, 1fr);
+			grid-template-columns: 12rem minmax(0, 1fr);
 		}
 		.provider-nav {
 			min-width: 0;
 			flex-direction: column;
+			max-height: none;
+			flex-wrap: nowrap;
 			overflow-x: visible;
 			overflow-y: auto;
 			padding: 0.25rem 0.6rem 0.8rem;

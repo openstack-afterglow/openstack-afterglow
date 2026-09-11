@@ -81,10 +81,10 @@
 	onMount(load);
 </script>
 
-<div class="p-4 md:p-8 max-w-7xl mx-auto">
+<div class="p-4 md:p-6 max-w-7xl mx-auto">
 	<PageHeader breadcrumb="NETWORK / FLOATING IPs" title="Floating IP">
 		{#snippet actions()}
-			<button onclick={openCreate} onpointerenter={prefetchExternalNetworks} onfocus={prefetchExternalNetworks} class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg">+ 생성</button>
+			<button onclick={openCreate} onpointerenter={prefetchExternalNetworks} onfocus={prefetchExternalNetworks} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg">+ 생성</button>
 			<AutoRefreshControl
 				bind:active={ar.active}
 				bind:intervalSeconds={ar.intervalSeconds}
@@ -96,12 +96,12 @@
 	</PageHeader>
 
 	{#if loading}
-		<div class="text-gray-500 text-sm">로딩 중...</div>
+		<div class="text-ink-3 text-sm">로딩 중...</div>
 	{:else}
 		<div class="overflow-x-auto">
 			<table class="w-full text-sm">
 				<thead>
-					<tr class="border-b border-gray-800 text-gray-400 text-xs uppercase tracking-wide">
+					<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
 						<th class="text-left py-2 pr-4">Floating IP</th>
 						<th class="text-left py-2 pr-4">Fixed IP</th>
 						<th class="text-left py-2 pr-4">상태</th>
@@ -111,13 +111,13 @@
 				</thead>
 				<tbody>
 					{#each fips as f (f.id)}
-						<tr class="border-b border-gray-800/50 text-xs hover:bg-gray-800/30 transition-colors">
+						<tr class="border-b border-line/50 text-xs hover:bg-surface-sunken/30 transition-colors">
 							<td class="py-2 pr-4 font-mono text-green-400">{f.floating_ip_address}</td>
-							<td class="py-2 pr-4 font-mono text-gray-400">{f.fixed_ip_address ?? '-'}</td>
-							<td class="py-2 pr-4 {f.port_id ? 'text-green-400' : 'text-gray-500'}">
+							<td class="py-2 pr-4 font-mono text-ink-2">{f.fixed_ip_address ?? '-'}</td>
+							<td class="py-2 pr-4 {f.port_id ? 'text-green-400' : 'text-ink-3'}">
 								{f.port_id ? '할당됨' : '미할당'}
 							</td>
-							<td class="py-2 pr-4 text-gray-500 font-mono">{f.project_id?.slice(0, 8) ?? '-'}</td>
+							<td class="py-2 pr-4 text-ink-3 font-mono">{f.project_id?.slice(0, 8) ?? '-'}</td>
 							<td class="py-2">
 								{#if !f.port_id}
 									<button onclick={() => { deleteFip = f; deleteError = ''; }}
@@ -129,7 +129,7 @@
 				</tbody>
 			</table>
 		</div>
-		<div class="mt-3 flex gap-4 text-xs text-gray-500">
+		<div class="mt-3 flex gap-4 text-xs text-ink-3">
 			<span>총 {fips.length}개</span>
 			<span class="text-green-400">할당됨: {fips.filter(f => f.port_id).length}개</span>
 			<span>미할당: {fips.filter(f => !f.port_id).length}개</span>
@@ -138,16 +138,16 @@
 </div>
 
 <!-- 생성 모달 -->
-<Modal bind:open={showCreate}>
-	<div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-md mx-4 shadow-2xl">
-		<h2 class="text-lg font-semibold text-white mb-5">Floating IP 생성</h2>
+<Modal bind:open={showCreate} ariaLabel="Floating IP 생성">
+	<div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]">
+		<h2 class="text-lg font-semibold text-ink-0 mb-5">Floating IP 생성</h2>
 		{#if createError}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{createError}</div>{/if}
 		<div>
-			<label class="block text-xs text-gray-400 mb-1.5 uppercase tracking-wide">외부 네트워크</label>
+			<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-page-146">외부 네트워크</label>
 			{#if externalNets.length === 0}
 				<div class="text-xs text-red-400">외부 네트워크가 없습니다</div>
 			{:else}
-				<select bind:value={selectedNetId} class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none">
+				<select id="field-page-146" bind:value={selectedNetId} class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none">
 					{#each externalNets as n}
 						<option value={n.id}>{n.name || n.id.slice(0, 8)}</option>
 					{/each}
@@ -155,22 +155,22 @@
 			{/if}
 		</div>
 		<div class="flex justify-end gap-3 mt-6">
-			<button onclick={() => { showCreate = false; }} class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg">취소</button>
-			<button onclick={createFip} disabled={creating || !selectedNetId} class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg disabled:opacity-30">{creating ? '생성 중...' : '생성'}</button>
+			<button onclick={() => { showCreate = false; }} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">취소</button>
+			<button onclick={createFip} disabled={creating || !selectedNetId} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{creating ? '생성 중...' : '생성'}</button>
 		</div>
 	</div>
 </Modal>
 
 <!-- 삭제 확인 모달 -->
 {#if deleteFip}
-	<Modal open={true} onClose={() => { deleteFip = null; }}>
-		<div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-sm mx-4 shadow-2xl">
-			<h2 class="text-lg font-semibold text-white mb-3">Floating IP 삭제</h2>
-			<p class="text-sm text-gray-400 mb-4"><span class="text-white font-mono">{deleteFip.floating_ip_address}</span>을 삭제하시겠습니까?</p>
+	<Modal open={true} onClose={() => { deleteFip = null; }} ariaLabel="Floating IP 삭제">
+		<div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-sm mx-4 shadow-[var(--shadow-restraint)]">
+			<h2 class="text-lg font-semibold text-ink-0 mb-3">Floating IP 삭제</h2>
+			<p class="text-sm text-ink-2 mb-4"><span class="text-ink-0 font-mono">{deleteFip.floating_ip_address}</span>을 삭제하시겠습니까?</p>
 			{#if deleteError}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{deleteError}</div>{/if}
 			<div class="flex justify-end gap-3">
-				<button onclick={() => { deleteFip = null; }} class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg">취소</button>
-				<button onclick={confirmDelete} disabled={deleting} class="px-4 py-2 bg-red-600 hover:bg-red-500 text-white text-sm font-medium rounded-lg disabled:opacity-30">{deleting ? '삭제 중...' : '삭제'}</button>
+				<button onclick={() => { deleteFip = null; }} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">취소</button>
+				<button onclick={confirmDelete} disabled={deleting} class="px-4 py-2 bg-red-600 hover:bg-red-500 text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{deleting ? '삭제 중...' : '삭제'}</button>
 			</div>
 		</div>
 	</Modal>

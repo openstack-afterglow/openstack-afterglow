@@ -69,7 +69,7 @@
 {/if}
 
 {#if panel.selectedClusterId}
-	<SlidePanel onClose={panel.close}>
+	<SlidePanel onClose={panel.close} ariaLabel="Drover 클러스터 상세">
 		<K3sClusterDetailPanel clusterId={panel.selectedClusterId} onClose={panel.close} />
 	</SlidePanel>
 {/if}
@@ -85,7 +85,7 @@
 		onOpenCreateIntent={prefetchCreateDependencies}
 	/>
 
-	<p class="text-sm text-gray-500 mb-6">Nova VM + cloud-init으로 k3s Kubernetes 클러스터를 프로비저닝합니다.</p>
+	<p class="text-sm text-ink-3 mb-6">Nova VM + cloud-init으로 k3s Kubernetes 클러스터를 프로비저닝합니다.</p>
 
 	{#if ctrl.error}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{ctrl.error}</div>

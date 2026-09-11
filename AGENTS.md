@@ -13,6 +13,13 @@
 
 인터랙티브 작업은 plan 모드에서 목표·범위·설계·완료 기준·제약을 먼저 확정한다. 하네스 작업은 승인된 태스크 명세를 입력으로 구현한다. 결과는 변경 파일, 검증 증거, 미완료 또는 위험을 정확히 보고한다. 새로운 기능이나 수정은 OpenSpec change를 먼저 만들고, 작업 중 checklist를 갱신하며, 완료 후 archive한다.
 
+## Architecture maintenance
+
+- 작업 시작 전에 root [`ARCHITECTURE.md`](ARCHITECTURE.md)를 읽는다. 이 문서는 현재 source의 정본이며 계획·roadmap·archive는 완료 증거가 아니다.
+- code/config/schema/dependency/deploy/test를 변경하면 영향받는 `ARCHITECTURE.md` 본문과 상세 `docs/`를 같은 변경에서 갱신한다. 구조 영향이 없는 bugfix/refactor도 최신 review summary에 no-structure-impact 이유를 남긴다.
+- 실제 source를 검토한 뒤 `python3 scripts/check_architecture.py --stamp --summary "<검토 요약>"`으로 stamp하고, 완료/commit 전 `python3 scripts/check_architecture.py --staged`를 통과시킨다. source와 문서가 충돌하면 source가 우선이다.
+- 이 저장소의 문서 freshness guard는 표준 라이브러리와 Git만 사용하며 자동 stage/commit하지 않는다. hook이 설치되지 않은 환경에서도 위 명령을 직접 실행한다.
+
 ## 태스크 명세
 
 하네스 입력은 다음 형식을 사용한다.

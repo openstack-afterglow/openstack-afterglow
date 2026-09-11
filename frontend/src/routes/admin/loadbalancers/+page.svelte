@@ -105,11 +105,11 @@
 	{#if loading && loadbalancers.length === 0}
 		<div class="space-y-4 animate-pulse">
 			{#each [1, 2, 3] as _}
-				<div class="h-12 bg-gray-800/50 rounded-lg"></div>
+				<div class="h-12 bg-surface-sunken/50 rounded-lg"></div>
 			{/each}
 		</div>
 	{:else if loadbalancers.length === 0}
-		<div class="text-center py-20 text-gray-600 bg-gray-900/20 border border-gray-800/50 rounded-2xl">
+		<div class="text-center py-20 text-ink-3 bg-surface-base/20 border border-line/50 rounded-lg">
 			<div class="text-5xl mb-4">⚖️</div>
 			<p class="text-lg">로드밸런서가 없습니다</p>
 		</div>
@@ -125,10 +125,10 @@
 				onToggle={() => selection.toggleAll(selectableIds)}
 			/>
 		</div>
-		<div class="overflow-x-auto bg-gray-900/20 border border-gray-800/50 rounded-2xl p-5">
+		<div class="overflow-x-auto bg-surface-base/20 border border-line/50 rounded-lg p-5">
 			<table class="w-full text-sm">
 				<thead>
-					<tr class="border-b border-gray-800 text-gray-400 text-xs uppercase tracking-wide">
+					<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
 						<th class="py-2 pr-3 w-8 text-left" aria-label="선택"></th>
 						<th class="text-left py-2 pr-4">이름 / ID</th>
 						<th class="text-left py-2 pr-4">프로젝트 ID</th>
@@ -141,7 +141,7 @@
 				<tbody>
 					{#each loadbalancers as lb (lb.id)}
 						{@const isProtected = isDroverLoadBalancer(lb)}
-						<tr class="resource-selection-surface border-b border-gray-800/30 text-xs transition-colors hover:bg-gray-800/10" data-selected={selection.has(lb.id)}>
+						<tr class="resource-selection-surface border-b border-line/30 text-xs transition-colors hover:bg-surface-sunken/10" data-selected={selection.has(lb.id)}>
 							<td class="py-3 pr-3 text-left" onclick={(e) => e.stopPropagation()}>
 								<SelectionCheckbox
 									checked={selection.has(lb.id)}
@@ -156,7 +156,7 @@
 								<button
 									type="button"
 									onclick={() => openLbPanel(lb.id)}
-									class="block w-full py-3 pr-4 font-semibold text-white hover:text-blue-400 transition-colors text-left"
+									class="block w-full py-3 pr-4 font-semibold text-ink-0 hover:text-action-warm-hover transition-colors text-left"
 									title={lb.name || lb.id}
 								>
 									<span class="max-md:block max-md:max-w-[40vw] max-md:truncate">
@@ -164,10 +164,10 @@
 									</span>
 								</button>
 							</td>
-							<td class="py-3 pr-4 text-gray-500 font-mono text-[10px] select-all" title={lb.project_id}>
+							<td class="py-3 pr-4 text-ink-3 font-mono text-[10px] select-all" title={lb.project_id}>
 								{lb.project_id ? lb.project_id.slice(0, 8) + '...' : '—'}
 							</td>
-							<td class="py-3 pr-4 text-gray-300 font-mono">
+							<td class="py-3 pr-4 text-ink-2 font-mono">
 								{lb.vip_address ?? '—'}
 							</td>
 							<td class="py-3 pr-4 font-medium">
@@ -176,14 +176,14 @@
 								</span>
 							</td>
 							<td class="py-3 pr-4">
-								<span class={lb.operating_status === 'ONLINE' ? 'text-green-400' : lb.operating_status === 'OFFLINE' ? 'text-red-400' : 'text-gray-500'}>
+								<span class={lb.operating_status === 'ONLINE' ? 'text-green-400' : lb.operating_status === 'OFFLINE' ? 'text-red-400' : 'text-ink-3'}>
 									{lb.operating_status ?? '—'}
 								</span>
 							</td>
 							<td class="py-3" onclick={(e) => e.stopPropagation()}>
 								<button
 									onclick={() => openLbPanel(lb.id)}
-									class="px-2.5 py-1 text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 rounded transition-colors"
+									class="px-2.5 py-1 text-xs bg-surface-sunken hover:bg-surface-selected text-ink-2 border border-line-2 rounded transition-colors"
 								>
 									상세
 								</button>
@@ -192,7 +192,7 @@
 					{/each}
 				</tbody>
 			</table>
-			<div class="mt-4 text-xs text-gray-500">총 {loadbalancers.length}개 로드밸런서</div>
+			<div class="mt-4 text-xs text-ink-3">총 {loadbalancers.length}개 로드밸런서</div>
 		</div>
 	{/if}
 </div>
@@ -206,7 +206,7 @@
 />
 
 {#if selectedLbId}
-	<SlidePanel onClose={closeLbPanel}>
+	<SlidePanel onClose={closeLbPanel} ariaLabel="관리자 로드밸런서 상세">
 		<LoadBalancerDetailPanel
 			lbId={selectedLbId}
 			onClose={closeLbPanel}

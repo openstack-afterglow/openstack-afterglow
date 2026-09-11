@@ -14,7 +14,7 @@
 	} = $props();
 </script>
 
-<div class="mt-4 flex gap-6 text-xs text-gray-500 px-1">
+<div class="mt-4 flex gap-6 text-xs text-ink-3 px-1">
 	<span>네트워크 {visibleNetworkCount}개</span>
 	<span>라우터 {projectRouterCount}개</span>
 	<span>인스턴스 {instanceCount}개</span>

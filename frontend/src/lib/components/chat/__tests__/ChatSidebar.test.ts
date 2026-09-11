@@ -3,7 +3,16 @@ import { describe, expect, it, vi } from 'vitest';
 
 import ChatSidebar from '../ChatSidebar.svelte';
 
-const conversations = [
+type SidebarConversation = {
+	id: string;
+	title: string | null;
+	model_name: string | null;
+	workspace_id: number | null;
+	updated_at: string | null;
+	title_status?: 'idle' | 'pending' | 'ready' | 'failed' | 'unavailable';
+};
+
+const conversations: SidebarConversation[] = [
 	{ id: 'conv-1', title: 'OpenStack 네트워크 점검', model_name: 'gemini', workspace_id: null, updated_at: null },
 	{ id: 'conv-2', title: 'Kubernetes 클러스터 상태', model_name: 'claude', workspace_id: null, updated_at: null }
 ];
@@ -12,17 +21,20 @@ function renderSidebar(
 	runningConversationIds = new Set<string>(),
 	activeConvId: string | null = null,
 	workspaces: { id: number; name: string; description: string | null; instructions: string | null }[] = [],
-	sidebarConversations = conversations
+	sidebarConversations: SidebarConversation[] = conversations,
+	busy = false
 ) {
 	const onSelect = vi.fn();
 	const onNewInWorkspace = vi.fn();
+	const onDelete = vi.fn();
 	const view = render(ChatSidebar, {
 		conversations: sidebarConversations,
 		workspaces,
 		activeConvId,
+		busy,
 		onSelect,
 		onNew: vi.fn(),
-		onDelete: vi.fn(),
+		onDelete,
 		onAssign: vi.fn(),
 		onAgents: vi.fn(),
 		onWorkspaces: vi.fn(),
@@ -30,13 +42,13 @@ function renderSidebar(
 		onOpenWorkspace: vi.fn(),
 		runningConversationIds,
 		onSearch: vi.fn().mockImplementation(async (query: string) =>
-			sidebarConversations.filter((conversation) => conversation.title.toLowerCase().includes(query.toLowerCase()))
+			sidebarConversations.filter((conversation) => (conversation.title ?? '').toLowerCase().includes(query.toLowerCase()))
 		),
 		onNewInWorkspace,
 		onDeleteWorkspace: vi.fn(),
 		onSettings: vi.fn()
 	});
-	return { ...view, onSelect, onNewInWorkspace };
+	return { ...view, onSelect, onNewInWorkspace, onDelete };
 }
 
 describe('ChatSidebar search palette', () => {
@@ -124,5 +136,21 @@ describe('ChatSidebar search palette', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '제목 요약 중' }));
 		expect(view.onSelect).toHaveBeenCalledWith(created);
 		expect(screen.queryByText('과거 대화 4')).toBeNull();
+	});
+
+	it('invokes onDelete with conversation when delete button is clicked', async () => {
+		const { onDelete } = renderSidebar();
+		const deleteButtons = screen.getAllByRole('button', { name: '대화 삭제' });
+		expect(deleteButtons.length).toBe(2);
+		await fireEvent.click(deleteButtons[0]);
+		expect(onDelete).toHaveBeenCalledWith(conversations[0]);
+	});
+
+	it('disables delete buttons when busy/streaming', () => {
+		renderSidebar(new Set(), null, [], conversations, true);
+		const deleteButtons = screen.getAllByRole('button', { name: '대화 삭제' });
+		expect(deleteButtons.length).toBe(2);
+		expect(deleteButtons[0].hasAttribute('disabled')).toBe(true);
+		expect(deleteButtons[1].hasAttribute('disabled')).toBe(true);
 	});
 });

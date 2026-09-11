@@ -138,14 +138,31 @@ function seedState(): MockupState {
 	];
 
 	const networks = [
-		{ id: 'mock-net-private', name: 'sample-private', status: 'ACTIVE', is_external: false, is_shared: false, project_id: PROJECT_ID, subnet_details: [{ id: 'mock-subnet-private', name: 'sample-private-subnet', cidr: '192.0.2.0/24', gateway_ip: '192.0.2.1', dhcp_enabled: true }] },
-		{ id: 'mock-net-data', name: 'sample-data', status: 'ACTIVE', is_external: false, is_shared: true, project_id: PROJECT_ID, subnet_details: [{ id: 'mock-subnet-data', name: 'sample-data-subnet', cidr: '198.51.100.0/24', gateway_ip: '198.51.100.1', dhcp_enabled: true }] },
-		{ id: 'mock-net-public', name: 'sample-external', status: 'ACTIVE', is_external: true, is_shared: true, project_id: null, subnet_details: [{ id: 'mock-subnet-public', name: 'sample-external-subnet', cidr: '203.0.113.0/24', gateway_ip: '203.0.113.1', dhcp_enabled: false }] },
+		{ id: 'mock-net-private', name: 'sample-private', status: 'ACTIVE', is_external: false, is_shared: false, project_id: PROJECT_ID, mtu: 1450, subnet_details: [{ id: 'mock-subnet-private', name: 'sample-private-subnet', cidr: '192.0.2.0/24', gateway_ip: '192.0.2.1', dhcp_enabled: true }] },
+		{ id: 'mock-net-data', name: 'sample-data', status: 'ACTIVE', is_external: false, is_shared: true, project_id: PROJECT_ID, mtu: 1450, subnet_details: [{ id: 'mock-subnet-data', name: 'sample-data-subnet', cidr: '198.51.100.0/24', gateway_ip: '198.51.100.1', dhcp_enabled: true }] },
+		{ id: 'mock-net-public', name: 'sample-external', status: 'ACTIVE', is_external: true, is_shared: true, project_id: null, mtu: 1500, subnet_details: [{ id: 'mock-subnet-public', name: 'sample-external-subnet', cidr: '203.0.113.0/24', gateway_ip: '203.0.113.1', dhcp_enabled: false }] },
 	];
 
 	const routers = [
-		{ id: 'mock-router-main', name: 'sample-edge-router', status: 'ACTIVE', external_gateway_network_id: 'mock-net-public', external_gateway_ips: ['203.0.113.218'], interface_ips: [{ ip_address: '192.0.2.1', subnet_id: 'mock-subnet-private' }], is_distributed: true, is_ha: true, connected_subnet_ids: ['mock-subnet-private'], dvr_subnet_ids: [], project_id: PROJECT_ID },
-		{ id: 'mock-router-data', name: 'sample-data-router', status: 'ACTIVE', external_gateway_network_id: null, external_gateway_ips: [], interface_ips: [{ ip_address: '198.51.100.1', subnet_id: 'mock-subnet-data' }], is_distributed: false, is_ha: false, connected_subnet_ids: ['mock-subnet-data'], dvr_subnet_ids: [], project_id: PROJECT_ID },
+		{ id: 'mock-router-main', name: 'sample-edge-router', status: 'ACTIVE', external_gateway_network_id: 'mock-net-public', external_gateway_ips: ['203.0.113.218'], interface_ips: [{ ip_address: '192.0.2.1', subnet_id: 'mock-subnet-private' }], is_distributed: true, is_ha: true, connected_subnet_ids: ['mock-subnet-private'], dvr_subnet_ids: [], project_id: PROJECT_ID, enable_snat: true, routes: [{ destination: '198.51.100.0/24', nexthop: '192.0.2.254' }] },
+		{ id: 'mock-router-data', name: 'sample-data-router', status: 'ACTIVE', external_gateway_network_id: null, external_gateway_ips: [], interface_ips: [{ ip_address: '198.51.100.1', subnet_id: 'mock-subnet-data' }], is_distributed: false, is_ha: false, connected_subnet_ids: ['mock-subnet-data'], dvr_subnet_ids: [], project_id: PROJECT_ID, enable_snat: false, routes: [] },
+	];
+
+	// 캔버스 토폴로지용: 포트 단위 NIC(port_id/mac_addr/network_id). FIP 의 port_id 와 fixed 포트 id 를 일치시킨다.
+	const topologyNic = (portId: string, addr: string, mac: string, networkId: 'mock-net-private' | 'mock-net-data') => ({
+		addr,
+		type: 'fixed',
+		network_name: networkId === 'mock-net-private' ? 'sample-private' : 'sample-data',
+		network_id: networkId,
+		port_id: portId,
+		mac_addr: mac,
+	});
+	const topologyFip = (addr: string) => ({ addr, type: 'floating', network_name: 'sample-external', network_id: 'mock-net-public', port_id: null, mac_addr: null });
+	const topologyInstances: TopologyData['instances'] = [
+		{ id: 'mock-instance-1', name: 'sample-project-alpha', status: 'ACTIVE', project_id: PROJECT_ID, flavor_name: 'cpu.8c_32g', image_id: 'fixture-image-ubuntu', network_names: ['sample-private'], ip_addresses: [topologyNic('mock-port-1', '192.0.2.24', 'fa:16:3e:00:00:01', 'mock-net-private'), topologyFip('203.0.113.216')] },
+		{ id: 'mock-instance-2', name: 'sample-project-beta', status: 'ACTIVE', project_id: PROJECT_ID, flavor_name: 'cpu.4c_8g', image_id: 'fixture-image-ubuntu', network_names: ['sample-private'], ip_addresses: [topologyNic('mock-port-2', '192.0.2.25', 'fa:16:3e:00:00:02', 'mock-net-private'), topologyFip('203.0.113.221')] },
+		{ id: 'mock-instance-3', name: 'sample-ci-runner', status: 'ACTIVE', project_id: PROJECT_ID, flavor_name: 'cpu.4c_16g', image_id: 'fixture-image-ubuntu', network_names: ['sample-private', 'sample-data'], ip_addresses: [topologyNic('mock-port-3-eth0', '192.0.2.66', 'fa:16:3e:00:00:03', 'mock-net-private'), topologyNic('mock-port-3-eth1', '198.51.100.66', 'fa:16:3e:00:01:03', 'mock-net-data')] },
+		{ id: 'mock-instance-4', name: 'sample-ml-notebook', status: 'SHUTOFF', project_id: PROJECT_ID, flavor_name: 'gpu.8c_64g_a10', image_id: 'fixture-image-ubuntu', network_names: ['sample-private'], ip_addresses: [topologyNic('mock-port-4-eth0', '192.0.2.41', 'fa:16:3e:00:00:04', 'mock-net-private')] },
 	];
 
 	const adminInstances: AdminInstance[] = [
@@ -252,7 +269,7 @@ function seedState(): MockupState {
 		topology: {
 			networks,
 			routers,
-			instances: instances.slice(0, 4).map((i) => ({ id: i.id, name: i.name, status: i.status, project_id: PROJECT_ID, network_names: ['sample-private'], ip_addresses: i.ip_addresses })),
+			instances: topologyInstances,
 			floating_ips: [
 				{ id: 'mock-fip-1', floating_ip_address: '203.0.113.216', status: 'ACTIVE', fixed_ip_address: '192.0.2.24', port_id: 'mock-port-1', instance_id: 'mock-instance-1', instance_name: 'sample-project-alpha', project_id: PROJECT_ID, router_id: 'mock-router-main', floating_network_id: 'mock-net-public' },
 				{ id: 'mock-fip-2', floating_ip_address: '203.0.113.221', status: 'ACTIVE', fixed_ip_address: '192.0.2.25', port_id: 'mock-port-2', instance_id: 'mock-instance-2', instance_name: 'sample-project-beta', project_id: PROJECT_ID, router_id: 'mock-router-main', floating_network_id: 'mock-net-public' },
@@ -261,10 +278,19 @@ function seedState(): MockupState {
 		},
 		traffic: {
 			ts: 1783555200,
-			instances: { 'mock-instance-1': { rx_bps: 2400000, tx_bps: 1800000 }, 'mock-instance-2': { rx_bps: 1200000, tx_bps: 900000 } },
+			// interfaces 합 = instances 합 = networks 합(포트 단위 텔레메트리와 집계값의 정합성 유지)
+			instances: { 'mock-instance-1': { rx_bps: 2400000, tx_bps: 1800000 }, 'mock-instance-2': { rx_bps: 1200000, tx_bps: 900000 }, 'mock-instance-3': { rx_bps: 2400000, tx_bps: 2200000 } },
 			networks: { 'mock-net-private': { rx_bps: 5200000, tx_bps: 4300000 }, 'mock-net-data': { rx_bps: 800000, tx_bps: 600000 } },
-			routers: { 'mock-router-main': { rx_bps: 4200000, tx_bps: 3900000 } },
+			// 라우터 exporter 가 없으므로 항상 비어 있고 _meta 로 사유를 알린다(캔버스 트렁크 배지는 networks 합산값 사용)
+			routers: {},
 			load_balancers: { 'mock-lb-1': { rx_bps: 1600000, tx_bps: 1500000 } },
+			interfaces: {
+				'mock-port-1': { instance_id: 'mock-instance-1', network_id: 'mock-net-private', mac_address: 'fa:16:3e:00:00:01', rx_bps: 2400000, tx_bps: 1800000 },
+				'mock-port-2': { instance_id: 'mock-instance-2', network_id: 'mock-net-private', mac_address: 'fa:16:3e:00:00:02', rx_bps: 1200000, tx_bps: 900000 },
+				'mock-port-3-eth0': { instance_id: 'mock-instance-3', network_id: 'mock-net-private', mac_address: 'fa:16:3e:00:00:03', rx_bps: 1600000, tx_bps: 1600000 },
+				'mock-port-3-eth1': { instance_id: 'mock-instance-3', network_id: 'mock-net-data', mac_address: 'fa:16:3e:00:01:03', rx_bps: 800000, tx_bps: 600000 },
+			},
+			_meta: { router_traffic: 'exporter_required' },
 		},
 		quotas: {
 			compute: { instances: { limit: 30, in_use: 8 }, cores: { limit: 128, in_use: 36 }, ram: { limit: 262144, in_use: 86016 } },

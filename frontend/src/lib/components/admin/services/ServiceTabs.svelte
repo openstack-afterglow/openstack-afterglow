@@ -27,7 +27,7 @@
 	}
 </script>
 
-<div class="flex flex-wrap gap-1 mb-6 border-b border-gray-800 pb-0" data-tour="admin-system-tabs">
+<div class="flex flex-wrap gap-1 mb-6 border-b border-line pb-0" data-tour="admin-system-tabs">
 	{#each tabs as tab}
 		<button
 			onclick={() => { onIntent(tab.key); activeTab = tab.key; }}
@@ -35,12 +35,12 @@
 			onfocus={() => onIntent(tab.key)}
 			data-tour={tourAnchor(tab.key)}
 			class="px-3 py-2 text-xs font-medium rounded-t-lg transition-colors relative -mb-px border-b-2 {activeTab === tab.key
-				? 'border-blue-500 text-blue-400 bg-blue-900/10'
-				: 'border-transparent text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'}"
+				? 'border-action-warm text-action-warm bg-surface-selected/10'
+				: 'border-transparent text-ink-2 hover:text-ink-1 hover:bg-surface-sunken/50'}"
 		>
 			{tab.label}
 			{#if loadingMap[tab.key]}
-				<span class="ml-1.5 inline-block w-3 h-3 border border-gray-500 border-t-blue-400 rounded-full animate-spin"></span>
+				<span class="ml-1.5 inline-block w-3 h-3 border border-line-2 border-t-blue-400 rounded-full animate-spin"></span>
 			{:else if !loadedMap[tab.key]}
 				<Pill class="ml-1.5" tone="neutral" size="xs">—</Pill>
 			{:else}

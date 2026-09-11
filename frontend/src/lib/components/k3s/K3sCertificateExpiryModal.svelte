@@ -57,49 +57,49 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <div class="fixed inset-0 z-50 flex items-center justify-center">
-	<button class="absolute inset-0 bg-black/60" onclick={onclose} aria-label="닫기" tabindex="-1"></button>
+	<button class="absolute inset-0 bg-surface-scrim/60" onclick={onclose} aria-label="닫기" tabindex="-1"></button>
 
-	<div class="relative bg-gray-950 border border-gray-800 rounded-2xl w-full max-w-lg mx-4 shadow-2xl max-h-[85vh] overflow-y-auto">
-		<div class="flex items-center justify-between px-5 py-4 border-b border-gray-800">
-			<h2 class="text-sm font-semibold text-white">인증서 만료 — {clusterName}</h2>
-			<button onclick={onclose} class="text-gray-500 hover:text-white transition-colors text-lg leading-none">&times;</button>
+	<div class="relative bg-surface-canvas border border-line rounded-lg w-full max-w-lg mx-4 shadow-[var(--shadow-restraint)] max-h-[85vh] overflow-y-auto">
+		<div class="flex items-center justify-between px-5 py-4 border-b border-line">
+			<h2 class="text-sm font-semibold text-ink-0">인증서 만료 — {clusterName}</h2>
+			<button onclick={onclose} class="text-ink-3 hover:text-ink-0 transition-colors text-lg leading-none">&times;</button>
 		</div>
 
 		<div class="p-5 space-y-4">
 			{#if loading}
-				<p class="text-gray-400 text-sm text-center py-6">조회 중...</p>
+				<p class="text-ink-2 text-sm text-center py-6">조회 중...</p>
 			{:else if error}
 				<p class="text-red-400 text-sm">{error}</p>
 			{:else if data}
 				{#snippet certRow(label: string, cert: CertificateInfo | null)}
-					<div class="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-2">
+					<div class="bg-surface-base border border-line rounded-xl p-4 space-y-2">
 						<div class="flex items-center justify-between">
-							<span class="text-xs text-gray-400 uppercase tracking-wide">{label}</span>
+							<span class="text-xs text-ink-2 uppercase tracking-wide">{label}</span>
 							{#if cert}
 								<span class="text-xs px-2 py-0.5 rounded-full {expiryColor(cert.days_remaining)}">
 									{cert.days_remaining}일 남음
 								</span>
 							{:else}
-								<span class="text-xs text-gray-600">없음</span>
+								<span class="text-xs text-ink-3">없음</span>
 							{/if}
 						</div>
 						{#if cert}
 							<dl class="space-y-1 text-xs">
 								<div class="flex justify-between gap-2">
-									<dt class="text-gray-500 shrink-0">만료일</dt>
-									<dd class="text-gray-300 font-mono">{formatDate(cert.not_after)}</dd>
+									<dt class="text-ink-3 shrink-0">만료일</dt>
+									<dd class="text-ink-2 font-mono">{formatDate(cert.not_after)}</dd>
 								</div>
 								<div class="flex justify-between gap-2">
-									<dt class="text-gray-500 shrink-0">발급일</dt>
-									<dd class="text-gray-300 font-mono">{formatDate(cert.not_before)}</dd>
+									<dt class="text-ink-3 shrink-0">발급일</dt>
+									<dd class="text-ink-2 font-mono">{formatDate(cert.not_before)}</dd>
 								</div>
 								<div class="flex justify-between gap-2">
-									<dt class="text-gray-500 shrink-0">Subject</dt>
-									<dd class="text-gray-300 font-mono truncate max-w-[240px]" title={cert.subject}>{cert.subject}</dd>
+									<dt class="text-ink-3 shrink-0">Subject</dt>
+									<dd class="text-ink-2 font-mono truncate max-w-[240px]" title={cert.subject}>{cert.subject}</dd>
 								</div>
 								<div class="flex justify-between gap-2">
-									<dt class="text-gray-500 shrink-0">Issuer</dt>
-									<dd class="text-gray-300 font-mono truncate max-w-[240px]" title={cert.issuer}>{cert.issuer}</dd>
+									<dt class="text-ink-3 shrink-0">Issuer</dt>
+									<dd class="text-ink-2 font-mono truncate max-w-[240px]" title={cert.issuer}>{cert.issuer}</dd>
 								</div>
 							</dl>
 						{/if}
@@ -114,9 +114,9 @@
 						{@render certRow(`서버 TLS ${i + 1}`, cert)}
 					{/each}
 				{:else}
-					<div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
-						<span class="text-xs text-gray-400 uppercase tracking-wide">서버 TLS</span>
-						<p class="text-xs text-gray-500 mt-1">TLS 프로브 불가 (API 서버 비접근 또는 타임아웃)</p>
+					<div class="bg-surface-base border border-line rounded-xl p-4">
+						<span class="text-xs text-ink-2 uppercase tracking-wide">서버 TLS</span>
+						<p class="text-xs text-ink-3 mt-1">TLS 프로브 불가 (API 서버 비접근 또는 타임아웃)</p>
 					</div>
 				{/if}
 			{/if}
@@ -125,14 +125,14 @@
 		<div class="px-5 pb-4 flex justify-end gap-2">
 			<button
 				onclick={load}
-				class="text-xs px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200 transition-colors"
+				class="text-xs px-3 py-1.5 rounded-lg bg-surface-sunken hover:bg-surface-selected text-ink-1 transition-colors"
 			>
 				새로고침
 			</button>
 			{#if masterCount >= 3}
 				<button
 					onclick={() => (showRotateModal = true)}
-					class="text-xs px-3 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white transition-colors"
+					class="text-xs px-3 py-1.5 rounded-lg bg-action-warm hover:bg-action-warm-hover text-action-on-warm transition-colors"
 					title="인증서 rolling 회전 (HA 클러스터 전용)"
 				>
 					인증서 회전
@@ -140,7 +140,7 @@
 			{/if}
 			<button
 				onclick={onclose}
-				class="text-xs px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-white transition-colors"
+				class="text-xs px-3 py-1.5 rounded-lg bg-surface-selected hover:bg-surface-selected text-ink-0 transition-colors"
 			>
 				닫기
 			</button>

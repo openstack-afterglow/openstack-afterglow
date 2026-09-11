@@ -136,7 +136,7 @@
 	onMount(load);
 </script>
 
-<div class="p-4 md:p-8 max-w-7xl mx-auto">
+<div class="p-4 md:p-6 max-w-7xl mx-auto">
 	<PageHeader breadcrumb="시스템 / 고아 리소스" title="고아 리소스 정리">
 		{#snippet actions()}
 			<AutoRefreshControl
@@ -149,9 +149,9 @@
 		{/snippet}
 	</PageHeader>
 
-	<div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6 flex flex-wrap items-center gap-4 text-sm">
+	<div class="bg-surface-base border border-line rounded-xl p-4 mb-6 flex flex-wrap items-center gap-4 text-sm">
 		<div class="flex items-center gap-2">
-			<label for="min-age" class="text-gray-400 text-xs uppercase tracking-wide">Volume 최소 연령(일)</label>
+			<label for="min-age" class="text-ink-2 text-xs uppercase tracking-wide">Volume 최소 연령(일)</label>
 			<input
 				id="min-age"
 				type="number"
@@ -159,10 +159,10 @@
 				max="365"
 				bind:value={minAgeDays}
 				onchange={load}
-				class="w-20 bg-gray-800 border border-gray-600 rounded-lg px-2 py-1 text-white text-sm focus:outline-none"
+				class="w-20 bg-surface-sunken border border-line-2 rounded-lg px-2 py-1 text-ink-0 text-sm focus:outline-none"
 			/>
 		</div>
-		<div class="text-xs text-gray-500">
+		<div class="text-xs text-ink-3">
 			Floating IP는 분리된 즉시 후보. Volume은 status=available + attachments=[] + 연령 ≥ 임계치.
 		</div>
 	</div>
@@ -174,7 +174,7 @@
 	{/if}
 
 	{#if loading}
-		<div class="text-gray-500 text-sm">로딩 중...</div>
+		<div class="text-ink-3 text-sm">로딩 중...</div>
 	{:else}
 		<OrphanFipSection items={fips} bind:selected={selectedFips} onCleanup={() => openConfirm('floating_ip')} />
 		<OrphanVolumeSection items={volumes} bind:selected={selectedVolumes} {minAgeDays} onCleanup={() => openConfirm('volume')} />

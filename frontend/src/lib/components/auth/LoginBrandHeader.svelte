@@ -24,8 +24,8 @@
       <img src={loginLogoSrc} alt={$siteConfig.site_name} class="h-full w-auto mx-auto" />
     {/if}
   </div>
-  <h1 class="text-4xl font-bold text-white mb-2">{$siteConfig.site_name}</h1>
-  <p class="text-gray-400 text-sm">{$siteConfig.site_description}</p>
+  <h1 class="text-4xl font-bold text-ink-0 mb-2">{$siteConfig.site_name}</h1>
+  <p class="text-ink-2 text-sm">{$siteConfig.site_description}</p>
   <a class="login-home-link" href="/" aria-label="메인 홈페이지로 돌아가기">
     <span aria-hidden="true">←</span>
     <span>메인 홈페이지로 돌아가기</span>

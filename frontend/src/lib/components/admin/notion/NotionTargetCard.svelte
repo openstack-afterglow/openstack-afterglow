@@ -48,53 +48,53 @@
 <div class="flex items-start justify-between">
 	<div class="flex-1 min-w-0">
 		<div class="flex items-center gap-2 mb-1">
-			<span class="text-white font-medium">{target.label}</span>
+			<span class="text-ink-0 font-medium">{target.label}</span>
 			{#if target.enabled}
 				<span class="text-xs text-green-400 bg-green-900/30 px-1.5 py-0.5 rounded">활성</span>
 			{:else}
-				<span class="text-xs text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded">비활성</span>
+				<span class="text-xs text-ink-3 bg-surface-sunken px-1.5 py-0.5 rounded">비활성</span>
 			{/if}
-			<span class="text-xs text-gray-500">{target.interval_minutes}분 간격</span>
+			<span class="text-xs text-ink-3">{target.interval_minutes}분 간격</span>
 		</div>
-		<div class="text-xs text-gray-500 font-mono truncate">{target.api_key}</div>
+		<div class="text-xs text-ink-3 font-mono truncate">{target.api_key}</div>
 		<dl class="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
 			<div>
-				<dt class="text-gray-600 inline">인스턴스 DB: </dt>
-				<dd class="text-gray-400 font-mono inline">{target.database_id || '-'}</dd>
+				<dt class="text-ink-3 inline">인스턴스 DB: </dt>
+				<dd class="text-ink-2 font-mono inline">{target.database_id || '-'}</dd>
 			</div>
 			<div>
-				<dt class="text-gray-600 inline">마지막 동기화: </dt>
-				<dd class="text-gray-400 inline">{formatDate(target.last_sync)}</dd>
+				<dt class="text-ink-3 inline">마지막 동기화: </dt>
+				<dd class="text-ink-2 inline">{formatDate(target.last_sync)}</dd>
 			</div>
 			{#if target.hypervisors_database_id}
 				<div>
-					<dt class="text-gray-600 inline">하이퍼바이저 DB: </dt>
-					<dd class="text-gray-400 font-mono inline">{target.hypervisors_database_id}</dd>
+					<dt class="text-ink-3 inline">하이퍼바이저 DB: </dt>
+					<dd class="text-ink-2 font-mono inline">{target.hypervisors_database_id}</dd>
 				</div>
 				<div>
-					<dt class="text-gray-600 inline">하이퍼바이저 동기화: </dt>
-					<dd class="text-gray-400 inline">{formatDate(target.hypervisors_last_sync)}</dd>
+					<dt class="text-ink-3 inline">하이퍼바이저 동기화: </dt>
+					<dd class="text-ink-2 inline">{formatDate(target.hypervisors_last_sync)}</dd>
 				</div>
 			{/if}
 			{#if target.gpu_spec_database_id}
 				<div>
-					<dt class="text-gray-600 inline">GPU Spec DB: </dt>
-					<dd class="text-gray-400 font-mono inline">{target.gpu_spec_database_id}</dd>
+					<dt class="text-ink-3 inline">GPU Spec DB: </dt>
+					<dd class="text-ink-2 font-mono inline">{target.gpu_spec_database_id}</dd>
 				</div>
 				<div>
-					<dt class="text-gray-600 inline">GPU spec 동기화: </dt>
-					<dd class="text-gray-400 inline">{formatDate(target.gpu_spec_last_sync)}</dd>
+					<dt class="text-ink-3 inline">GPU spec 동기화: </dt>
+					<dd class="text-ink-2 inline">{formatDate(target.gpu_spec_last_sync)}</dd>
 				</div>
 			{/if}
 		</dl>
 	</div>
 	<div class="flex items-center gap-2 ml-4 shrink-0">
 		<button onclick={onTest} disabled={testing}
-			class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-xs rounded-lg transition-colors">
+			class="px-3 py-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-xs rounded-lg transition-colors">
 			{testing ? '동기화 중...' : '지금 동기화'}
 		</button>
 		<button onclick={onEdit}
-			class="px-3 py-1.5 border border-gray-700 hover:border-gray-500 text-gray-400 hover:text-gray-200 text-xs rounded-lg transition-colors">
+			class="px-3 py-1.5 border border-line-2 hover:border-line-2 text-ink-2 hover:text-ink-1 text-xs rounded-lg transition-colors">
 			수정
 		</button>
 		<button onclick={onDelete}

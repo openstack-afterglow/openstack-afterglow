@@ -218,7 +218,7 @@
 				onclick={() => {
 					showCreate = true;
 				}}
-				class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg"
+				class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg"
 				>+ 생성</button
 			>
 			<AutoRefreshControl
@@ -242,40 +242,40 @@
 		<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5" data-tour="admin-identity-overview">
 			<span class="sr-only" data-tour="admin-identity-overview-ready">사용자 현황 준비됨</span>
 			<!-- 집계 통계 -->
-			<div class="md:col-span-2 bg-gray-900 border border-gray-800 rounded-2xl p-4">
-				<p class="text-xs font-semibold text-gray-400 mb-3">사용자 현황</p>
+			<div class="md:col-span-2 bg-surface-base border border-line rounded-lg p-4">
+				<p class="text-xs font-semibold text-ink-2 mb-3">사용자 현황</p>
 				<div class="flex gap-8">
 					<div class="text-center">
-						<div class="text-2xl font-bold text-white">{stats.total}</div>
-						<div class="text-xs text-gray-500 mt-0.5">전체</div>
+						<div class="text-2xl font-bold text-ink-0">{stats.total}</div>
+						<div class="text-xs text-ink-3 mt-0.5">전체</div>
 					</div>
 					<div class="text-center">
 						<div class="text-2xl font-bold text-green-400">{stats.enabled}</div>
-						<div class="text-xs text-gray-500 mt-0.5">활성</div>
+						<div class="text-xs text-ink-3 mt-0.5">활성</div>
 					</div>
 					<div class="text-center">
 						<div class="text-2xl font-bold text-red-400">{stats.disabled}</div>
-						<div class="text-xs text-gray-500 mt-0.5">비활성</div>
+						<div class="text-xs text-ink-3 mt-0.5">비활성</div>
 					</div>
 				</div>
 			</div>
 
 			<!-- 최근 변경 로그 -->
-			<div class="bg-gray-900 border border-gray-800 rounded-2xl p-4">
-				<p class="text-xs font-semibold text-gray-400 mb-2">최근 사용자 변경</p>
+			<div class="bg-surface-base border border-line rounded-lg p-4">
+				<p class="text-xs font-semibold text-ink-2 mb-2">최근 사용자 변경</p>
 				{#if loadingActivity}
-					<p class="text-xs text-gray-600">로딩...</p>
+					<p class="text-xs text-ink-3">로딩...</p>
 				{:else if activityLog.length === 0}
-					<p class="text-xs text-gray-600">변경 내역 없음</p>
+					<p class="text-xs text-ink-3">변경 내역 없음</p>
 				{:else}
 					<ul class="space-y-1.5">
 						{#each activityLog.slice(0, 5) as ev (ev.id)}
-							<li class="text-xs text-gray-400 flex justify-between gap-2">
+							<li class="text-xs text-ink-2 flex justify-between gap-2">
 								<span class="truncate"
-									><span class="text-gray-300">{ev.username}</span>
+									><span class="text-ink-2">{ev.username}</span>
 									{ev.action}</span
 								>
-								<span class="text-gray-600 shrink-0">{formatActivityTime(ev.created_at)}</span>
+								<span class="text-ink-3 shrink-0">{formatActivityTime(ev.created_at)}</span>
 							</li>
 						{/each}
 					</ul>
@@ -289,11 +289,11 @@
 				bind:value={search}
 				type="text"
 				placeholder="이름 또는 이메일 검색..."
-				class="flex-1 min-w-[180px] bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500"
+				class="flex-1 min-w-[180px] bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
 			/>
 			<select
 				bind:value={filterStatus}
-				class="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-300 focus:outline-none"
+				class="bg-surface-sunken border border-line-2 rounded-lg px-2 py-1.5 text-sm text-ink-2 focus:outline-none"
 				data-tour="admin-identity-status-filter"
 			>
 				<option value="all">전체 상태</option>
@@ -302,7 +302,7 @@
 			</select>
 			<select
 				bind:value={sortBy}
-				class="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-300 focus:outline-none"
+				class="bg-surface-sunken border border-line-2 rounded-lg px-2 py-1.5 text-sm text-ink-2 focus:outline-none"
 			>
 				<option value="name">이름순</option>
 				<option value="first_seen">최초 활동일순</option>
@@ -311,13 +311,13 @@
 				onclick={() => {
 					sortDir = sortDir === 'asc' ? 'desc' : 'asc';
 				}}
-				class="px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-300 hover:bg-gray-700 transition-colors"
+				class="px-3 py-1.5 bg-surface-sunken border border-line-2 rounded-lg text-sm text-ink-2 hover:bg-surface-selected transition-colors"
 			>{sortDir === 'asc' ? '오름차순' : '내림차순'}</button>
 		</div>
 
-		<div class="bg-gray-900 border border-gray-800 rounded-2xl p-5" data-tour="admin-identity-list">
+		<div class="bg-surface-base border border-line rounded-lg p-5" data-tour="admin-identity-list">
 			{#if pagedUsers.length === 0}
-				<p class="text-xs text-gray-600 text-center py-6" data-tour="admin-identity-list-ready">검색 결과가 없습니다.</p>
+				<p class="text-xs text-ink-3 text-center py-6" data-tour="admin-identity-list-ready">검색 결과가 없습니다.</p>
 			{:else}
 				<div data-tour="admin-identity-list-ready">
 				<AdminUsersTable

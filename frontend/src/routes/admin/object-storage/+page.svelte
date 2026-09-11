@@ -93,7 +93,7 @@
 		{#snippet actions()}
 			<button
 				onclick={() => { showModal = true; }}
-				class="text-xs text-white bg-indigo-600 hover:bg-indigo-500 transition-colors px-3 py-1.5 rounded border border-indigo-500"
+				class="text-xs text-ink-0 bg-indigo-600 hover:bg-indigo-500 transition-colors px-3 py-1.5 rounded border border-indigo-500"
 			>+ 버킷 생성</button>
 			<AutoRefreshControl
 				bind:active={ar.active}
@@ -107,17 +107,17 @@
 
 	{#if account}
 		<div class="grid grid-cols-3 gap-4 mb-6">
-			<div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
-				<div class="text-xs text-gray-500 uppercase tracking-wide mb-1">버킷</div>
-				<div class="text-2xl font-bold text-white">{account.container_count}</div>
+			<div class="bg-surface-base border border-line rounded-xl p-4">
+				<div class="text-xs text-ink-3 uppercase tracking-wide mb-1">버킷</div>
+				<div class="text-2xl font-bold text-ink-0">{account.container_count}</div>
 			</div>
-			<div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
-				<div class="text-xs text-gray-500 uppercase tracking-wide mb-1">오브젝트</div>
-				<div class="text-2xl font-bold text-white">{account.object_count}</div>
+			<div class="bg-surface-base border border-line rounded-xl p-4">
+				<div class="text-xs text-ink-3 uppercase tracking-wide mb-1">오브젝트</div>
+				<div class="text-2xl font-bold text-ink-0">{account.object_count}</div>
 			</div>
-			<div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
-				<div class="text-xs text-gray-500 uppercase tracking-wide mb-1">사용 용량</div>
-				<div class="text-2xl font-bold text-white">{formatStorage(account.bytes_used / 1_000_000_000)}</div>
+			<div class="bg-surface-base border border-line rounded-xl p-4">
+				<div class="text-xs text-ink-3 uppercase tracking-wide mb-1">사용 용량</div>
+				<div class="text-2xl font-bold text-ink-0">{formatStorage(account.bytes_used / 1_000_000_000)}</div>
 			</div>
 		</div>
 	{/if}
@@ -125,7 +125,7 @@
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if containers.length === 0}
-		<div class="text-gray-600 text-sm">버킷가 없습니다</div>
+		<div class="text-ink-3 text-sm">버킷가 없습니다</div>
 	{:else}
 		<BucketTable {containers} deletingId={deleting} {refreshing} onDelete={deleteContainer} />
 		{#if containers.some((c) => c.is_quarantine)}

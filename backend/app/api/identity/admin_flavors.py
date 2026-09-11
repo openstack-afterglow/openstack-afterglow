@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from app.api.common.dashboard import _gpu_count_from_flavor
 from app.api.deps import get_os_conn, require_admin
 from app.services.cache import invalidate
+from app.services.flavor_eligibility import AFTERGLOW_FRONTEND_VISIBLE_SPEC, is_flavor_frontend_visible
 
 _logger = logging.getLogger(__name__)
 
@@ -43,6 +44,10 @@ class FlavorAccessModeRequest(BaseModel):
     mode: Literal["manual", "gpu_quota"]
 
 
+class FlavorFrontendVisibilityRequest(BaseModel):
+    visible: bool
+
+
 class FlavorAccessReconcileRequest(BaseModel):
     project_id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$")
     apply: bool = False
@@ -68,6 +73,7 @@ def _flavor_to_dict(f) -> dict:
         "extra_specs": extra_specs,
         "is_gpu": gpu_count > 0,
         "gpu_count": gpu_count,
+        "frontend_visible": is_flavor_frontend_visible(f),
     }
 
 
@@ -192,6 +198,36 @@ async def set_flavor_access_mode(
     except Exception as exc:
         _logger.warning("Flavor access mode 저장 실패: %s", exc)
         raise HTTPException(status_code=400, detail="Flavor access mode 저장 실패") from exc
+
+
+@router.put("/flavors/{flavor_id}/frontend-visibility", dependencies=[Depends(require_admin)])
+async def set_flavor_frontend_visibility(
+    flavor_id: str,
+    req: FlavorFrontendVisibilityRequest,
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+):
+    """Control ordinary Afterglow flavor discovery without changing Nova access."""
+
+    def _set():
+        flavor = conn.compute.get_flavor(flavor_id)
+        if flavor is None:
+            raise HTTPException(status_code=404, detail="Flavor를 찾을 수 없습니다")
+        value = "true" if req.visible else "false"
+        conn.compute.create_flavor_extra_specs(
+            flavor_id,
+            {AFTERGLOW_FRONTEND_VISIBLE_SPEC: value},
+        )
+        return {"flavor_id": flavor_id, "frontend_visible": req.visible}
+
+    try:
+        result = await asyncio.to_thread(_set)
+        await invalidate("afterglow:nova:*:flavors")
+        return result
+    except HTTPException:
+        raise
+    except Exception as exc:
+        _logger.warning("Afterglow Flavor 노출 설정 실패: %s", exc)
+        raise HTTPException(status_code=400, detail="Afterglow Flavor 노출 설정 실패") from exc
 
 
 @router.post("/flavors/access-reconcile", dependencies=[Depends(require_admin)])

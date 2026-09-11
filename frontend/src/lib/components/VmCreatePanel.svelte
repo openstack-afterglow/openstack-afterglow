@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { wizard, closeWizard } from '$lib/stores/wizard';
 	import { createVmCreateStore, provideVmCreate } from '$lib/stores/vmCreateStore.svelte';
 	import SelectFlavor from '$lib/components/wizard/SelectFlavor.svelte';
@@ -26,11 +26,12 @@
 	provideVmCreate(s);
 
 	onMount(() => s.init());
+	onDestroy(() => s.destroy());
 </script>
 
-<SlidePanel onClose={closeWizard} dataTour="wizard-panel" width="w-full md:w-[75vw] max-w-4xl">
-	<div class="min-h-full flex flex-col">
-		<div class="flex-1 p-4 md:p-8">
+<SlidePanel onClose={closeWizard} ariaLabel="가상 머신 생성" dataTour="wizard-panel" width="w-full md:w-[75vw] max-w-4xl">
+	<div class="h-full min-h-0 flex flex-col bg-surface-canvas">
+		<div class="min-h-0 flex-1 overflow-y-auto p-4 md:p-8">
 			{#if s.needsProjectSelect}
 				<AdminProjectSelector />
 			{:else if s.loading}
@@ -72,7 +73,7 @@
 					{:else if $wizard.step === 3}
 						<WizardStep3Library />
 					{:else if $wizard.step === 4}
-						<h2 class="text-lg font-semibold text-white mb-4">배포 전략 <span class="text-gray-500 text-sm font-normal">스케줄링 / 레이어 마운트</span></h2>
+						<h2 class="text-lg font-semibold text-ink-0 mb-4">배포 전략 <span class="text-ink-3 text-sm font-normal">스케줄링 / 레이어 마운트</span></h2>
 						<SelectStrategy
 							scheduling={$wizard.scheduling}
 							onSchedulingChange={s.selectScheduling}

@@ -16,15 +16,15 @@
 
 	const btn = {
 		base: 'text-sm px-3 py-1.5 rounded border transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
-		gray: 'text-gray-300 hover:text-white border-gray-700 hover:border-gray-500',
+		gray: 'text-ink-2 hover:text-ink-0 border-line-2 hover:border-line-2',
 		green: 'text-green-400 hover:text-green-300 border-green-900 hover:border-green-700',
 		yellow: 'text-yellow-400 hover:text-yellow-300 border-yellow-900 hover:border-yellow-700',
-		blue: 'text-blue-400 hover:text-blue-300 border-blue-900 hover:border-blue-700',
+		blue: 'text-action-warm hover:text-action-warm-hover border-action-warm hover:border-action-warm',
 		purple: 'text-purple-400 hover:text-purple-300 border-purple-900 hover:border-purple-700',
 		cyan: 'text-cyan-400 hover:text-cyan-300 border-cyan-900 hover:border-cyan-700',
 		teal: 'text-teal-400 hover:text-teal-300 border-teal-900 hover:border-teal-700',
 		violet: 'text-violet-400 hover:text-violet-300 border-violet-900 hover:border-violet-700',
-		amber: 'text-amber-400 hover:text-amber-300 border-amber-900 hover:border-amber-700',
+		amber: 'text-action-warm hover:text-action-warm-hover border-action-warm hover:border-action-warm',
 		orange: 'text-orange-400 hover:text-orange-300 border-orange-900 hover:border-orange-700',
 		red: 'text-red-400 hover:text-red-300 border-red-900 hover:border-red-700',
 	};
@@ -71,7 +71,7 @@
 					>
 						{#if s.consoleOpening}
 							<span class="inline-flex items-center gap-1.5">
-								<span class="w-3 h-3 rounded-full border border-gray-500 border-t-gray-200 animate-spin" aria-hidden="true"></span>
+								<span class="w-3 h-3 rounded-full border border-line-2 border-t-gray-200 animate-spin" aria-hidden="true"></span>
 								콘솔 준비 중...
 							</span>
 						{:else}
@@ -135,7 +135,7 @@
 					id="instance-console-status"
 					role={s.consoleOpenError ? 'alert' : 'status'}
 					aria-live={s.consoleOpenError ? 'assertive' : 'polite'}
-					class="max-w-xl rounded-lg border px-3 py-2 text-xs {s.consoleOpenError ? 'bg-red-900/30 border-red-800/40 text-red-300' : 'bg-blue-900/20 border-blue-800/40 text-blue-300'}"
+					class="max-w-xl rounded-lg border px-3 py-2 text-xs {s.consoleOpenError ? 'bg-red-900/30 border-red-800/40 text-red-300' : 'bg-surface-selected/20 border-action-warm/40 text-action-warm'}"
 				>
 					{s.consoleOpenError || s.consoleOpenMessage}
 				</div>

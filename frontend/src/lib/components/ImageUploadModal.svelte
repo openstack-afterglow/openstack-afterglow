@@ -129,7 +129,7 @@
 
 {#if open}
 	<div
-		class="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
+		class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 		onclick={close}
 		role="dialog"
 		aria-modal="true"
@@ -137,7 +137,7 @@
 		onkeydown={(e) => e.key === 'Escape' && close()}
 	>
 		<div
-			class="bg-[var(--color-surface-raised)] border border-[var(--color-line)] rounded-xl p-6 w-full max-w-lg mx-4 shadow-2xl"
+			class="bg-[var(--color-surface-raised)] border border-[var(--color-line)] rounded-xl p-6 w-full max-w-lg mx-4 shadow-[var(--shadow-restraint)]"
 			onclick={(e) => e.stopPropagation()}
 			role="none"
 			onkeydown={(e) => e.stopPropagation()}

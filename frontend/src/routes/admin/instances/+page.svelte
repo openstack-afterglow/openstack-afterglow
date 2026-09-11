@@ -253,7 +253,7 @@
 				refreshing={loading || refreshing}
 				onManualRefresh={() => { markerStack = []; nextMarker = null; hostFilter = ''; projectFilter = ''; projectSearchText = ''; statusFilter = ''; nameSearch = ''; void load(undefined, { clearSelection: true }); void loadHosts(); }}
 			/>
-			<div class="flex items-center gap-1 text-xs text-gray-500 max-md:hidden">
+			<div class="flex items-center gap-1 text-xs text-ink-3 max-md:hidden">
 				표시:
 				<ToggleGroup
 					value={String(pageSize)}
@@ -290,8 +290,8 @@
 
 	<div class="mb-6" data-tour="admin-compute-timeseries">
 		{#if tsLoading}
-			<div class="bg-gray-900 border border-gray-800 rounded-xl p-5 h-48 flex items-center justify-center">
-				<div class="text-gray-600 text-sm">차트 로딩 중...</div>
+			<div class="bg-surface-base border border-line rounded-xl p-5 h-48 flex items-center justify-center">
+				<div class="text-ink-3 text-sm">차트 로딩 중...</div>
 			</div>
 		{:else}
 			<TimeSeriesChart
@@ -345,7 +345,7 @@
 </div>
 
 {#if selectedInstanceId}
-	<SlidePanel onClose={closeDetail} dataTour="admin-compute-detail">
+	<SlidePanel onClose={closeDetail} ariaLabel="관리자 인스턴스 상세" dataTour="admin-compute-detail">
 		<InstanceDetailPanel instanceId={selectedInstanceId} adminProjectId={selectedProjectId} onClose={closeDetail} showHost={true} />
 	</SlidePanel>
 {/if}

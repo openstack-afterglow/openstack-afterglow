@@ -70,7 +70,7 @@
 	}
 </script>
 
-<Modal {open} {onClose}>
+<Modal {open} {onClose} ariaLabel="에이전트 허브">
 	<div class="panel">
 		<header class="head">
 			<h2>에이전트 허브</h2>

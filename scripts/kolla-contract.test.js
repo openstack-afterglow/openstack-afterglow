@@ -323,7 +323,7 @@ test("Kolla installer loads plugin variables from the standard config root", () 
 		fs.writeFileSync(fakeKollaBinary, "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 })
 		fs.writeFileSync(
 			fakeKollaPython,
-			'#!/usr/bin/env bash\nif [[ "${1:-}" == "-c" && "${2:-}" == *drover-kolla* ]]; then echo "0.2.19"; exit 0; fi\nif [[ "${1:-}" == "-c" && "${2:-}" == *lumen-kolla* ]]; then echo "0.1.8"; exit 0; fi\nexec "${KOLLA_TEST_PYTHON:?}" "$@"\n',
+			'#!/usr/bin/env bash\nif [[ "${1:-}" == "-c" && "${2:-}" == *drover-kolla* ]]; then echo "0.2.19"; exit 0; fi\nif [[ "${1:-}" == "-c" && "${2:-}" == *lumen-kolla* ]]; then echo "0.2.0"; exit 0; fi\nexec "${KOLLA_TEST_PYTHON:?}" "$@"\n',
 			{ mode: 0o755 }
 		)
 		fs.writeFileSync(
@@ -1014,7 +1014,7 @@ test("Drover and Lumen Kolla role packaging, operator specifications, and instal
 	)
 	assert.match(
 		pyproject,
-		/lumen-kolla @ https:\/\/github\.com\/openstack-afterglow\/lumen\/releases\/download\/v0\.1\.8\/lumen_kolla-0\.1\.8-py3-none-any\.whl#sha256=fdef6b8ed0a8bb7f48364ba20cc9bb90471b162287d4d33f9cc13105c340a78b/
+		/lumen-kolla @ https:\/\/github\.com\/openstack-afterglow\/lumen\/releases\/download\/v0\.2\.0\/lumen_kolla-0\.2\.0-py3-none-any\.whl#sha256=d55e2b0ace06d232452f9dd2892a88912755e9d00e99de0e59d6738c5a3b2474/
 	)
 	assert.match(
 		pyproject,
@@ -1040,7 +1040,7 @@ test("Hermetic integration test for drover-kolla and lumen-kolla wheel installat
 	const droverRoleDir = path.join(rolesDir, "drover")
 	const droverDistInfoDir = path.join(rolesDir, "drover_kolla-0.2.19.dist-info")
 	const lumenRoleDir = path.join(rolesDir, "lumen")
-	const lumenDistInfoDir = path.join(rolesDir, "lumen_kolla-0.1.8.dist-info")
+	const lumenDistInfoDir = path.join(rolesDir, "lumen_kolla-0.2.0.dist-info")
 
 	const pluginConfigRoot = path.join(kollaConfigPath, "config", "afterglow")
 	const pluginGlobals = path.join(pluginConfigRoot, "globals.yml")
@@ -1074,7 +1074,7 @@ test("Hermetic integration test for drover-kolla and lumen-kolla wheel installat
 	}
 
 	try {
-		// 1. Setup mock installed drover-kolla 0.2.19 and lumen-kolla 0.1.8 wheel files in Python share/roles
+		// 1. Setup mock installed drover-kolla 0.2.19 and lumen-kolla 0.2.0 wheel files in Python share/roles
 		fs.mkdirSync(path.join(droverRoleDir, "defaults"), { recursive: true })
 		fs.mkdirSync(path.join(droverRoleDir, "tasks"), { recursive: true })
 		fs.mkdirSync(path.join(droverRoleDir, "templates"), { recursive: true })
@@ -1095,7 +1095,7 @@ test("Hermetic integration test for drover-kolla and lumen-kolla wheel installat
 		fs.writeFileSync(path.join(lumenRoleDir, "tasks", "main.yml"), "---\n- name: Lumen main task\n  ansible.builtin.debug:\n    msg: lumen\n")
 		fs.writeFileSync(path.join(lumenRoleDir, "tasks", "deploy.yml"), "---\n- name: Lumen deploy task\n  ansible.builtin.debug:\n    msg: deploy\n")
 		fs.writeFileSync(path.join(lumenRoleDir, "templates", "lumen.conf.j2"), "[DEFAULT]\n")
-		fs.writeFileSync(path.join(lumenDistInfoDir, "METADATA"), "Metadata-Version: 2.1\nName: lumen-kolla\nVersion: 0.1.8\n")
+		fs.writeFileSync(path.join(lumenDistInfoDir, "METADATA"), "Metadata-Version: 2.1\nName: lumen-kolla\nVersion: 0.2.0\n")
 
 		// Verify package roles are real package directories, not symlinks
 		assert.equal(fs.statSync(droverRoleDir).isDirectory(), true)
@@ -1104,7 +1104,7 @@ test("Hermetic integration test for drover-kolla and lumen-kolla wheel installat
 
 		assert.equal(fs.statSync(lumenRoleDir).isDirectory(), true)
 		assert.equal(fs.lstatSync(lumenRoleDir).isSymbolicLink(), false)
-		assert.match(fs.readFileSync(path.join(lumenDistInfoDir, "METADATA"), "utf8"), /Version: 0\.1\.8/)
+		assert.match(fs.readFileSync(path.join(lumenDistInfoDir, "METADATA"), "utf8"), /Version: 0\.2\.0/)
 
 		// 2. Setup mock Afterglow source role links targets & Kolla environment
 		for (const role of ["afterglow", "waygate", "palimpsest"]) {
@@ -1117,7 +1117,7 @@ test("Hermetic integration test for drover-kolla and lumen-kolla wheel installat
 		fs.writeFileSync(fakeKollaBinary, "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 })
 		fs.writeFileSync(
 			fakeKollaPython,
-			'#!/usr/bin/env bash\nif [[ "${1:-}" == "-c" && "${2:-}" == *drover-kolla* ]]; then echo "0.2.19"; exit 0; fi\nif [[ "${1:-}" == "-c" && "${2:-}" == *lumen-kolla* ]]; then echo "0.1.8"; exit 0; fi\nexec "${KOLLA_TEST_PYTHON:?}" "$@"\n',
+			'#!/usr/bin/env bash\nif [[ "${1:-}" == "-c" && "${2:-}" == *drover-kolla* ]]; then echo "0.2.19"; exit 0; fi\nif [[ "${1:-}" == "-c" && "${2:-}" == *lumen-kolla* ]]; then echo "0.2.0"; exit 0; fi\nexec "${KOLLA_TEST_PYTHON:?}" "$@"\n',
 			{ mode: 0o755 }
 		)
 		fs.writeFileSync(path.join(kollaAnsiblePath, "ansible", "site.yml"), "---\n- import_playbook: gather-facts.yml\n")

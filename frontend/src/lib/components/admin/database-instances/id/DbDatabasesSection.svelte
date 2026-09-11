@@ -29,34 +29,34 @@
 	}
 </script>
 
-<div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-4">
+<div class="bg-surface-base border border-line rounded-xl p-4 mb-4">
 	<div class="flex items-center justify-between mb-3">
-		<h2 class="text-sm font-semibold text-white">데이터베이스</h2>
+		<h2 class="text-sm font-semibold text-ink-0">데이터베이스</h2>
 		<button onclick={() => { showForm = !showForm; }}
-			class="text-xs text-gray-400 hover:text-white border border-gray-700 hover:border-gray-600 px-2 py-1 rounded transition-colors">
+			class="text-xs text-ink-2 hover:text-ink-0 border border-line-2 hover:border-line-2 px-2 py-1 rounded transition-colors">
 			{showForm ? '취소' : '+ 추가'}
 		</button>
 	</div>
 	{#if showForm}
-		<div class="bg-gray-800 rounded-lg p-3 mb-3 space-y-2">
+		<div class="bg-surface-sunken rounded-lg p-3 mb-3 space-y-2">
 			<input type="text" bind:value={newDb.name} placeholder="database_name"
-				class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-amber-500" />
+				class="w-full bg-surface-selected border border-line-2 rounded px-3 py-1.5 text-sm text-ink-0 focus:outline-none focus:border-action-warm" />
 			{#if addError}<p class="text-red-400 text-xs">{addError}</p>{/if}
 			<button onclick={handleAdd} disabled={creating || !newDb.name.trim()}
-				class="text-xs bg-amber-600 hover:bg-amber-500 disabled:bg-gray-700 disabled:text-gray-500 text-white px-3 py-1.5 rounded transition-colors">
+				class="text-xs bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm px-3 py-1.5 rounded transition-colors">
 				{creating ? '생성 중...' : '생성'}
 			</button>
 		</div>
 	{/if}
 	{#if databases.length === 0}
-		<div class="text-gray-600 text-xs">데이터베이스가 없습니다</div>
+		<div class="text-ink-3 text-xs">데이터베이스가 없습니다</div>
 	{:else}
 		<div class="space-y-1">
 			{#each databases as db}
-				<div class="flex items-center justify-between py-1.5 border-b border-gray-800/50">
-					<span class="text-white text-sm font-medium">{db.name}</span>
+				<div class="flex items-center justify-between py-1.5 border-b border-line/50">
+					<span class="text-ink-0 text-sm font-medium">{db.name}</span>
 					<button onclick={() => onDelete(db.name)} disabled={deletingDb === db.name}
-						class="text-red-400 hover:text-red-300 disabled:text-gray-600 text-xs px-2 py-0.5 rounded border border-red-900 hover:border-red-700 transition-colors">
+						class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-red-900 hover:border-red-700 transition-colors">
 						{deletingDb === db.name ? '...' : '삭제'}
 					</button>
 				</div>

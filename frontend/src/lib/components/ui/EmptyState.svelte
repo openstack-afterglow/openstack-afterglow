@@ -31,26 +31,16 @@
 
 <style>
   .empty-icon-wrap {
-    position: relative;
-    width: 64px;
-    height: 64px;
-    border-radius: 16px;
-    background: var(--warm-soft);
-    border: 1px solid var(--warm-ring);
+    width: 3rem;
+    height: 3rem;
+    border-radius: 0.5rem;
+    background: var(--color-surface-sunken);
+    border: 1px solid var(--color-line);
     display: flex;
     align-items: center;
     justify-content: center;
   }
-  .empty-icon-wrap::before {
-    content: "";
-    position: absolute;
-    inset: -12px;
-    border-radius: 24px;
-    background: radial-gradient(circle at center, var(--color-warm) 0%, transparent 70%);
-    opacity: 0.08;
-    pointer-events: none;
-  }
   .empty-icon {
-    color: var(--color-warm);
+    color: var(--color-ink-2);
   }
 </style>

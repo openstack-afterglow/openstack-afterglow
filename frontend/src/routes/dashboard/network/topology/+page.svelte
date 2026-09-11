@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy, untrack } from 'svelte';
+	import { onDestroy, onMount, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
@@ -9,11 +9,17 @@
 	import RouterDetailPanel from '$lib/components/RouterDetailPanel.svelte';
 	import SlidePanel from '$lib/components/SlidePanel.svelte';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
+	import ToggleGroup from '$lib/components/ui/ToggleGroup.svelte';
+	import TopologyCanvas from '$lib/components/topology/canvas/TopologyCanvas.svelte';
+	import CanvasLegend from '$lib/components/topology/canvas/CanvasLegend.svelte';
+	import TopologyNetworkPanel from '$lib/components/topology/canvas/TopologyNetworkPanel.svelte';
+	import { DEFAULT_TOPOLOGY_VIEW, isTopologyView, readTopologyView, writeTopologyView, type TopologyView } from '$lib/utils/topologyViewPreference';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import TopologyLegend from '$lib/components/dashboard/network/topology/TopologyLegend.svelte';
 	import TopologySummary from '$lib/components/dashboard/network/topology/TopologySummary.svelte';
 	import LoadBalancerDetailPanel from '$lib/components/dashboard/network/topology/LoadBalancerDetailPanel.svelte';
-	import type { TopologyData, TopologyTraffic, TopologyLoadBalancer } from '$lib/types/topology';
+	import type { TopologyData, TopologyTraffic, TopologyLoadBalancer, TopologyTrafficHistory } from '$lib/types/topology';
+	import PageShell from '$lib/components/ui/PageShell.svelte';
 
 	let data = $state<TopologyData | null>(null);
 	let loading = $state(true);
@@ -23,13 +29,43 @@
 	let selectedInstanceId = $state<string | null>(null);
 	let selectedRouterId = $state<string | null>(null);
 	let selectedLB = $state<TopologyLoadBalancer | null>(null);
+	let selectedNetworkId = $state<string | null>(null);
+	// 뷰 선택(레인 | 캔버스)은 localStorage 'topology.view' 에 저장한다. 기본은 캔버스.
+	let view = $state<TopologyView>(DEFAULT_TOPOLOGY_VIEW);
+	onMount(() => { view = readTopologyView(); });
+	const viewOptions = [
+		{ value: 'lane', label: '레인' },
+		{ value: 'canvas', label: '캔버스' },
+	];
+	function onViewChange(value: string) {
+		if (!isTopologyView(value)) return;
+		view = value;
+		writeTopologyView(value);
+	}
 	let intentTimer: ReturnType<typeof setTimeout> | null = null;
 	let intentController: AbortController | null = null;
 
 	// 토폴로지 선택 상태를 부모에서 파생 (패널 닫을 때 자동 highlight 해제)
 	const topologySelectedId = $derived(
-		selectedInstanceId ?? selectedRouterId ?? selectedLB?.id ?? null
+		selectedInstanceId ?? selectedRouterId ?? selectedLB?.id ?? selectedNetworkId ?? null
 	);
+
+	function onSelectInstance(id: string) {
+		if (selectedInstanceId === id) { selectedInstanceId = null; }
+		else { selectedInstanceId = id; selectedRouterId = null; selectedLB = null; selectedNetworkId = null; }
+	}
+	function onSelectRouter(id: string) {
+		if (selectedRouterId === id) { selectedRouterId = null; }
+		else { selectedRouterId = id; selectedInstanceId = null; selectedLB = null; selectedNetworkId = null; }
+	}
+	function onSelectLoadBalancer(lb: TopologyLoadBalancer) {
+		if (selectedLB?.id === lb.id) { selectedLB = null; }
+		else { selectedLB = lb; selectedInstanceId = null; selectedRouterId = null; selectedNetworkId = null; }
+	}
+	function onSelectNetwork(id: string) {
+		if (selectedNetworkId === id) { selectedNetworkId = null; }
+		else { selectedNetworkId = id; selectedInstanceId = null; selectedRouterId = null; selectedLB = null; }
+	}
 
 	function cancelIntent() {
 		clearTimeout(intentTimer ?? undefined);
@@ -77,6 +113,19 @@
 		} catch { /* silent — 토폴로지 표시는 traffic=null 로 유지 */ }
 	}
 
+	/**
+	 * 네트워크 사용량 히스토리. 네트워크 패널을 열 때 1회만 호출한다 —
+	 * 폴링(`arTraffic`)에 얹으면 Prometheus 부하가 네트워크 수만큼 곱해진다.
+	 */
+	async function loadNetworkHistory(networkId: string, range: string): Promise<TopologyTrafficHistory | null> {
+		if (!$auth.token) return null;
+		return api.get<TopologyTrafficHistory>(
+			`/api/v1/networks/topology/traffic/history?network_id=${encodeURIComponent(networkId)}&range=${encodeURIComponent(range)}`,
+			$auth.token ?? undefined,
+			$auth.projectId ?? undefined,
+		);
+	}
+
 	const arTraffic = createAutoRefresh(loadTraffic, {
 		storageKey: 'dashboard-network-topology-traffic',
 		defaultActive: true,
@@ -120,9 +169,10 @@
 	onDestroy(cancelIntent);
 </script>
 
-<div class="p-4 md:p-8 max-w-screen-2xl mx-auto">
+<PageShell class="max-w-screen-2xl">
 	<PageHeader breadcrumb="NETWORK / TOPOLOGY" title="토폴로지">
 		{#snippet actions()}
+			<ToggleGroup value={view} options={viewOptions} onchange={onViewChange} ariaLabel="토폴로지 보기" />
 			<AutoRefreshControl
 			bind:active={ar.active}
 			bind:intervalSeconds={ar.intervalSeconds}
@@ -144,31 +194,43 @@
 		{@const _projectRouters = data.routers.filter(r => r.project_id === $auth.projectId)}
 		{@const _projectFips = data.floating_ips.filter(f => !f.project_id || f.project_id === $auth.projectId)}
 		{@const _projectLbs = (data.load_balancers ?? []).filter(lb => !lb.project_id || lb.project_id === $auth.projectId)}
-		<div class="bg-gray-900 border border-gray-800 rounded-lg p-6 mb-4">
-			<GlobalTopology
-				{data}
-				{traffic}
-				projectId={$auth.projectId}
-				selectedId={topologySelectedId}
-				onSelectInstance={(id) => {
-					if (selectedInstanceId === id) { selectedInstanceId = null; }
-					else { selectedInstanceId = id; selectedRouterId = null; selectedLB = null; }
-				}}
-				onSelectRouter={(id) => {
-					if (selectedRouterId === id) { selectedRouterId = null; }
-					else { selectedRouterId = id; selectedInstanceId = null; selectedLB = null; }
-				}}
-				onSelectLoadBalancer={(lb) => {
-					if (selectedLB?.id === lb.id) { selectedLB = null; }
-					else { selectedLB = lb; selectedInstanceId = null; selectedRouterId = null; }
-				}}
-				{onIntentInstance}
-				{onIntentRouter}
-				onCancelIntent={cancelIntent}
-			/>
+		<div class="rounded-lg border border-line bg-surface-base p-3 md:p-6 mb-4">
+			{#if view === 'canvas'}
+				<TopologyCanvas
+					{data}
+					{traffic}
+					projectId={$auth.projectId}
+					selectedId={topologySelectedId}
+					storageScope="user"
+					{onSelectInstance}
+					{onSelectRouter}
+					{onSelectLoadBalancer}
+					{onSelectNetwork}
+					{onIntentInstance}
+					{onIntentRouter}
+					onCancelIntent={cancelIntent}
+				/>
+			{:else}
+				<GlobalTopology
+					{data}
+					{traffic}
+					projectId={$auth.projectId}
+					selectedId={topologySelectedId}
+					{onSelectInstance}
+					{onSelectRouter}
+					{onSelectLoadBalancer}
+					{onIntentInstance}
+					{onIntentRouter}
+					onCancelIntent={cancelIntent}
+				/>
+			{/if}
 		</div>
 
-		<TopologyLegend />
+		{#if view === 'canvas'}
+			<CanvasLegend />
+		{:else}
+			<TopologyLegend />
+		{/if}
 
 		<TopologySummary
 			visibleNetworkCount={_visibleNets.length}
@@ -178,22 +240,36 @@
 			projectLbCount={_projectLbs.length}
 		/>
 	{/if}
-</div>
+</PageShell>
 
 {#if selectedInstanceId}
-	<SlidePanel onClose={() => selectedInstanceId = null}>
+	<SlidePanel onClose={() => selectedInstanceId = null} ariaLabel="토폴로지 인스턴스 상세">
 		<InstanceDetailPanel instanceId={selectedInstanceId} onClose={() => selectedInstanceId = null} />
 	</SlidePanel>
 {/if}
 
 {#if selectedRouterId}
-	<SlidePanel onClose={() => selectedRouterId = null} width="w-full md:w-[60vw] max-w-3xl">
+	<SlidePanel onClose={() => selectedRouterId = null} ariaLabel="토폴로지 라우터 상세" width="w-full md:w-[60vw] max-w-3xl">
 		<RouterDetailPanel routerId={selectedRouterId} onClose={() => selectedRouterId = null} />
 	</SlidePanel>
 {/if}
 
 {#if selectedLB}
-	<SlidePanel onClose={() => selectedLB = null} width="w-full md:w-[60vw] max-w-2xl">
+	<SlidePanel onClose={() => selectedLB = null} ariaLabel="토폴로지 로드밸런서 상세" width="w-full md:w-[60vw] max-w-2xl">
 		<LoadBalancerDetailPanel lb={selectedLB} onClose={() => selectedLB = null} />
+	</SlidePanel>
+{/if}
+
+{#if selectedNetworkId && data}
+	<SlidePanel onClose={() => selectedNetworkId = null} ariaLabel="토폴로지 네트워크 상세" width="w-full md:w-[60vw] max-w-2xl">
+		<TopologyNetworkPanel
+			networkId={selectedNetworkId}
+			{data}
+			{traffic}
+			showProvider={false}
+			loadHistory={loadNetworkHistory}
+			{onSelectInstance}
+			{onSelectRouter}
+		/>
 	</SlidePanel>
 {/if}

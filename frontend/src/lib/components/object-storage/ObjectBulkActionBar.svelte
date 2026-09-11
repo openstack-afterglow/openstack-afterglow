@@ -23,16 +23,16 @@
 		<div class="flex-1"></div>
 		<button
 			onclick={() => { s.selected = new Set(); }}
-			class="text-xs text-gray-400 hover:text-white transition-colors"
+			class="text-xs text-ink-2 hover:text-ink-0 transition-colors"
 		>선택 해제</button>
 		<button
 			onclick={s.openBulkMove}
-			class="text-xs text-white bg-indigo-700 hover:bg-indigo-600 transition-colors px-3 py-1.5 rounded border border-indigo-600"
+			class="text-xs text-ink-0 bg-indigo-700 hover:bg-indigo-600 transition-colors px-3 py-1.5 rounded border border-indigo-600"
 		>선택 이동</button>
 		<button
 			onclick={s.bulkDelete}
 			disabled={s.bulkDeleting}
-			class="text-xs text-white bg-red-700 hover:bg-red-600 disabled:bg-gray-700 disabled:text-gray-500 transition-colors px-3 py-1.5 rounded border border-red-600 disabled:border-gray-600"
+			class="text-xs text-ink-0 bg-red-700 hover:bg-red-600 disabled:bg-surface-selected disabled:text-ink-3 transition-colors px-3 py-1.5 rounded border border-red-600 disabled:border-line-2"
 		>{s.bulkDeleting ? '삭제 중...' : '선택 삭제'}</button>
 	</div>
 {/if}

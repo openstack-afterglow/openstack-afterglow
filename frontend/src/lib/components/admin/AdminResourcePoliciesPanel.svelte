@@ -155,9 +155,10 @@
 
 	function stringRecord(value: unknown): Record<string, string> {
 		if (!isObjectRecord(value)) return {};
-		return Object.fromEntries(
-			Object.entries(value).filter(([key, item]) => isSafeCookieKey(key) && typeof item === 'string')
+		const entries = Object.entries(value).filter(
+			(entry): entry is [string, string] => isSafeCookieKey(entry[0]) && typeof entry[1] === 'string'
 		);
+		return Object.fromEntries(entries);
 	}
 
 	function cookieValue(): Record<string, DraftScope> {

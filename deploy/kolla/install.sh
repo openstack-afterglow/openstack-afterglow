@@ -158,7 +158,7 @@ DROVER_KOLLA_VERSION="0.2.19"
 if [[ -L "$DROVER_ROLE_DIR" ]]; then
   current_drover_target=$(readlink "$DROVER_ROLE_DIR" || true)
   if [[ "$current_drover_target" == "$DROVER_LEGACY_ROLE_TARGET" ]]; then
-    die "Legacy Afterglow-owned Drover role symlink detected at $DROVER_ROLE_DIR. Verify it points to $DROVER_LEGACY_ROLE_TARGET, remove only that symlink with 'rm -- $DROVER_ROLE_DIR', then run 'uv sync --frozen' in deploy/kolla/operator before rerunning install.sh."
+    die "Legacy Afterglow-owned Drover role symlink detected at $DROVER_ROLE_DIR. Verify it points to $DROVER_LEGACY_ROLE_TARGET, remove only that symlink with 'rm -- $DROVER_ROLE_DIR', then run 'UV_PROJECT_ENVIRONMENT=/etc/kolla/.venv uv sync --frozen --inexact --no-install-project' in deploy/kolla/operator before rerunning install.sh."
   fi
   die "Unexpected Drover role symlink at $DROVER_ROLE_DIR -> $current_drover_target. Refusing to replace or remove it."
 elif [[ ! -d "$DROVER_ROLE_DIR" ||
@@ -166,7 +166,7 @@ elif [[ ! -d "$DROVER_ROLE_DIR" ||
         ! -f "$DROVER_ROLE_DIR/tasks/deploy.yml" ||
         ! -f "$DROVER_ROLE_DIR/defaults/main.yml" ||
         ! -f "$DROVER_ROLE_DIR/templates/drover.conf.j2" ]]; then
-  die "Drover role missing or invalid at $DROVER_ROLE_DIR. Install drover-kolla==$DROVER_KOLLA_VERSION into the active Kolla environment with 'uv sync --frozen' in deploy/kolla/operator."
+  die "Drover role missing or invalid at $DROVER_ROLE_DIR. Install drover-kolla==$DROVER_KOLLA_VERSION into the active Kolla environment with 'UV_PROJECT_ENVIRONMENT=/etc/kolla/.venv uv sync --frozen --inexact --no-install-project' in deploy/kolla/operator."
 fi
 installed_drover_kolla_version=$(
   "$KOLLA_PYTHON" -c 'from importlib.metadata import version; print(version("drover-kolla"))' 2>/dev/null || true
@@ -177,11 +177,11 @@ log "Drover role verified at $DROVER_ROLE_DIR (drover-kolla==$installed_drover_k
 
 LUMEN_ROLE_DIR="$ROLES_DIR/lumen"
 LUMEN_LEGACY_ROLE_TARGET="$REPO_DIR/deploy/kolla/ansible/roles/lumen"
-LUMEN_KOLLA_VERSION="0.1.8"
+LUMEN_KOLLA_VERSION="0.2.0"
 if [[ -L "$LUMEN_ROLE_DIR" ]]; then
   current_lumen_target=$(readlink "$LUMEN_ROLE_DIR" || true)
   if [[ "$current_lumen_target" == "$LUMEN_LEGACY_ROLE_TARGET" ]]; then
-    die "Legacy Afterglow-owned Lumen role symlink detected at $LUMEN_ROLE_DIR. Verify it points to $LUMEN_LEGACY_ROLE_TARGET, remove only that symlink with 'rm -- $LUMEN_ROLE_DIR', then run 'uv sync --frozen' in deploy/kolla/operator before rerunning install.sh."
+    die "Legacy Afterglow-owned Lumen role symlink detected at $LUMEN_ROLE_DIR. Verify it points to $LUMEN_LEGACY_ROLE_TARGET, remove only that symlink with 'rm -- $LUMEN_ROLE_DIR', then run 'UV_PROJECT_ENVIRONMENT=/etc/kolla/.venv uv sync --frozen --inexact --no-install-project' in deploy/kolla/operator before rerunning install.sh."
   fi
   die "Unexpected Lumen role symlink at $LUMEN_ROLE_DIR -> $current_lumen_target. Refusing to replace or remove it."
 elif [[ ! -d "$LUMEN_ROLE_DIR" ||
@@ -189,7 +189,7 @@ elif [[ ! -d "$LUMEN_ROLE_DIR" ||
         ! -f "$LUMEN_ROLE_DIR/tasks/deploy.yml" ||
         ! -f "$LUMEN_ROLE_DIR/defaults/main.yml" ||
         ! -f "$LUMEN_ROLE_DIR/templates/lumen.conf.j2" ]]; then
-  die "Lumen role missing or invalid at $LUMEN_ROLE_DIR. Install lumen-kolla==$LUMEN_KOLLA_VERSION into the active Kolla environment with 'uv sync --frozen' in deploy/kolla/operator."
+  die "Lumen role missing or invalid at $LUMEN_ROLE_DIR. Install lumen-kolla==$LUMEN_KOLLA_VERSION into the active Kolla environment with 'UV_PROJECT_ENVIRONMENT=/etc/kolla/.venv uv sync --frozen --inexact --no-install-project' in deploy/kolla/operator."
 fi
 installed_lumen_kolla_version=$(
   "$KOLLA_PYTHON" -c 'from importlib.metadata import version; print(version("lumen-kolla"))' 2>/dev/null || true
@@ -241,10 +241,11 @@ echo " The installer owns only its marked stock site.yml import, default"
 echo " inventory link, globals.d links, source role links (afterglow, waygate,"
 echo " palimpsest), and aggregate playbook link. Drover and Lumen roles are package-owned."
 echo ""
-echo " From /etc/kolla, reconfigure Afterglow with:"
-echo " kolla-ansible reconfigure --tags afterglow"
+echo " Activate the Kolla virtualenv, then from $KOLLA_CONFIG_DIR deploy with:"
+echo " kolla-ansible deploy -i multinode"
+echo " Custom service and HAProxy plays request sudo; CLI --become is not required."
 echo ""
-echo " For explicit inventory diagnostics, use:"
+echo " For a service-scoped configuration update, use:"
 echo " kolla-ansible reconfigure \\"
 echo "   -i $MULTINODE_INVENTORY \\"
 echo "   --tags afterglow"

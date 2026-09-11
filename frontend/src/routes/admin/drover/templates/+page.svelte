@@ -58,12 +58,12 @@
 	onMount(load);
 </script>
 
-<div class="p-4 md:p-8 max-w-7xl mx-auto">
+<div class="p-4 md:p-6 max-w-7xl mx-auto">
 	<PageHeader breadcrumb="DROVER / CLUSTER TEMPLATES" title="클러스터 템플릿">
 		{#snippet actions()}
 			<button
 				onclick={() => (showCreate = true)}
-				class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg"
+				class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg"
 			>
 				+ 생성
 			</button>
@@ -81,7 +81,7 @@
 		<LoadingSkeleton variant="table" rows={3} />
 	{:else}
 			{#if templates.length === 0}
-				<div class="text-gray-500 text-sm py-12 text-center">등록된 클러스터 템플릿이 없습니다.</div>
+				<div class="text-ink-3 text-sm py-12 text-center">등록된 클러스터 템플릿이 없습니다.</div>
 			{:else}
 				<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
 					{#each templates as t (t.id)}
@@ -112,18 +112,18 @@
 {/if}
 
 {#if deleteTarget}
-	<Modal open={true} onClose={() => (deleteTarget = null)}>
-		<div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-sm mx-4 shadow-2xl">
-			<h2 class="text-lg font-semibold text-white mb-3">템플릿 삭제</h2>
-			<p class="text-sm text-gray-300 mb-5">
-				<strong class="text-white">{deleteTarget.name}</strong> 템플릿을 삭제합니다. 이미 생성된 클러스터에는 영향 없습니다.
+	<Modal open={true} onClose={() => (deleteTarget = null)} ariaLabel="클러스터 템플릿 삭제">
+		<div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-sm mx-4 shadow-[var(--shadow-restraint)]">
+			<h2 class="text-lg font-semibold text-ink-0 mb-3">템플릿 삭제</h2>
+			<p class="text-sm text-ink-2 mb-5">
+				<strong class="text-ink-0">{deleteTarget.name}</strong> 템플릿을 삭제합니다. 이미 생성된 클러스터에는 영향 없습니다.
 			</p>
 			{#if deleteError}
 				<div class="mb-3 text-red-400 text-xs bg-red-900/20 border border-red-800 rounded px-3 py-2">{deleteError}</div>
 			{/if}
 			<div class="flex justify-end gap-3">
-				<button onclick={() => (deleteTarget = null)} class="px-4 py-2 text-sm text-gray-400 hover:text-white">취소</button>
-				<button onclick={confirmDelete} class="px-4 py-2 bg-red-700 hover:bg-red-600 text-white text-sm font-medium rounded-lg">삭제</button>
+				<button onclick={() => (deleteTarget = null)} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0">취소</button>
+				<button onclick={confirmDelete} class="px-4 py-2 bg-red-700 hover:bg-red-600 text-ink-0 text-sm font-medium rounded-lg">삭제</button>
 			</div>
 		</div>
 	</Modal>

@@ -32,7 +32,7 @@
 		position: relative;
 		overflow: hidden;
 		border: 1px solid var(--color-line);
-		border-radius: 1rem;
+		border-radius: 0.5rem;
 		color: var(--color-ink-0);
 	}
 
@@ -41,7 +41,10 @@
 	.card-base { background: var(--color-surface-base); }
 	.card-sunken { background: var(--color-surface-sunken); }
 	.card-subtle { background: color-mix(in oklab, var(--color-surface-raised) 72%, transparent); }
-	.card-modal { box-shadow: 0 24px 80px color-mix(in oklab, var(--color-surface-canvas) 82%, transparent); }
+	.card-modal {
+		border-radius: 0.75rem;
+		box-shadow: 0 24px 72px color-mix(in oklab, var(--color-surface-canvas) 78%, transparent);
+	}
 
 	.card-pad-none { padding: 0; }
 	.card-pad-sm { padding: 0.75rem; }

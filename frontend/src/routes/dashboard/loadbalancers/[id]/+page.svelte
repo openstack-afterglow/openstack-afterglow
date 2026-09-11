@@ -13,12 +13,11 @@
 	});
 
 	$effect(() => { if ($auth.projectId) ctrl.fetchAll(); });
-	$effect(() => { ctrl.fetchPoolMembers(); });
 </script>
 
-<div class="max-w-4xl mx-auto px-4 py-8 text-gray-100">
+<div class="max-w-4xl mx-auto px-4 py-8 text-ink-1">
 	{#if ctrl.loading}
-		<div class="text-gray-500">불러오는 중...</div>
+		<div class="text-ink-3">불러오는 중...</div>
 	{:else if ctrl.error}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{ctrl.error}</div>
 	{:else if ctrl.lb}
@@ -41,14 +40,17 @@
 			pools={ctrl.pools}
 			selectedPoolId={ctrl.selectedPoolId}
 			members={ctrl.selectedPoolMembers}
-			membersLoading={ctrl.membersLoading}
+			membersLoading={ctrl.saving}
 			saving={ctrl.saving}
 			error=""
-			addingMember={ctrl.addingMember}
-			addMemberError={ctrl.addMemberError}
+			addingMember={ctrl.saving}
+			addMemberError=""
 			onAddPool={ctrl.createPool}
 			onDeletePool={ctrl.deletePool}
-			onSelectPool={ctrl.loadPoolMembers}
+			onSelectPool={(id) => {
+				if (id) ctrl.togglePool(id);
+				else if (ctrl.selectedPoolId) ctrl.togglePool(ctrl.selectedPoolId);
+			}}
 			onAddMember={ctrl.addMember}
 			onRemoveMember={ctrl.removeMember}
 		/>

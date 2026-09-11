@@ -3,12 +3,19 @@
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
+	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import {
-		StatTile,
-		SectionHeader,
-		Pill,
+		Alert,
 		CapacityBar,
 		Card,
+		EmptyState,
+		PageHeader,
+		PageShell,
+		Pill,
+		ResourceToolbar,
+		SectionHeader,
+		StatTile,
+		ToggleGroup,
 	} from '$lib/components/ui';
 	import type { ChatUsage } from '$lib/api/chatTree';
 
@@ -105,50 +112,48 @@
 	}
 </script>
 
-<div class="p-6 max-w-7xl mx-auto space-y-6">
-	<!-- Header -->
-	<div>
-		<div class="text-[10px] uppercase tracking-wide text-[var(--color-ink-3)] mb-1">
-			USAGE REPORT · 사용량 리포트
-		</div>
-		<div class="flex items-start justify-between gap-4 flex-wrap">
-			<div>
-				<h1 class="text-2xl font-bold text-white">기간 사용량 &amp; 쿼터 예측</h1>
-				<p class="text-sm text-gray-400 mt-0.5">
-					{#if data}
-						{data.start} ~ {data.end} ·
-					{/if}
-					인스턴스 활성 시간(instance-hours)
-				</p>
-			</div>
-			<div class="flex items-center gap-2">
-				{#each (['7d', '30d', '90d'] as const) as p}
-					<button
-						onclick={() => { period = p; }}
-						class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors {period === p ? 'bg-[var(--color-accent)] text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}"
-					>{p}</button>
-				{/each}
-				<button
-					onclick={() => { ar.active = !ar.active; }}
-					class="px-3 py-1.5 rounded-lg text-xs transition-colors {ar.active ? 'bg-gray-700 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}"
-					title="자동 새로고침"
-				>↻</button>
-			</div>
-		</div>
-	</div>
+<PageShell class="space-y-6">
+	<PageHeader
+		breadcrumb="USAGE REPORT"
+		title="기간 사용량 & 쿼터 예측"
+		subtitle={data ? `${data.start} ~ ${data.end} · 인스턴스 활성 시간(instance-hours)` : '인스턴스 활성 시간(instance-hours)'}
+	/>
+	<ResourceToolbar label="사용량 리포트 조회 설정">
+		{#snippet filters()}
+			<ToggleGroup
+				value={period}
+				options={[
+					{ value: '7d', label: '7d' },
+					{ value: '30d', label: '30d' },
+					{ value: '90d', label: '90d' },
+				]}
+				onchange={(next) => { period = next as typeof period; }}
+				ariaLabel="리포트 조회 기간"
+			/>
+		{/snippet}
+		{#snippet actions()}
+			<button
+				type="button"
+				onclick={() => { ar.active = !ar.active; }}
+				class="min-h-8 rounded-md border border-line-2 px-3 text-xs font-medium text-ink-2 transition-colors hover:bg-surface-selected hover:text-ink-0"
+				aria-pressed={ar.active}
+			>자동 새로고침 {ar.active ? '켜짐' : '꺼짐'}</button>
+		{/snippet}
+	</ResourceToolbar>
 
 	{#if loading}
-		<div class="text-gray-400 text-sm py-8 text-center">로딩 중...</div>
+		<LoadingSkeleton variant="table" rows={6} />
 	{:else if error}
-		<div class="text-[var(--color-state-danger)] text-sm py-4">{error}</div>
+		<Alert tone="danger">{error}</Alert>
 	{:else if data}
 		<!-- KPI StatTiles -->
-		<div class="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+		<div class="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line lg:grid-cols-4">
 			<StatTile
 				label="누계 인스턴스-시간"
 				value={data.stats.instance_hours.toFixed(1)}
 				unit="h"
 				accent="blue"
+				flat
 			>
 				{#snippet icon()}
 					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -163,6 +168,7 @@
 				value={dailyAvg}
 				unit="h/일"
 				accent="cyan"
+				flat
 			>
 				{#snippet icon()}
 					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -179,6 +185,7 @@
 				value={data.stats.active_instances}
 				unit="/ {data.stats.total_instances}"
 				accent="emerald"
+				flat
 			>
 				{#snippet icon()}
 					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -194,6 +201,7 @@
 				value={data.stats.vcpu_hours.toFixed(1)}
 				unit="h"
 				accent="violet"
+				flat
 			>
 				{#snippet icon()}
 					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -205,7 +213,7 @@
 
 		<!-- Optimization hint -->
 		{#if data.forecast.vcpu_pct >= 80}
-			<div class="bg-gray-900 border border-[var(--color-state-warning)] rounded-2xl p-4 flex items-start gap-3">
+			<div class="bg-surface-base border border-[var(--color-state-warning)] rounded-lg p-4 flex items-start gap-3">
 				<svg class="flex-shrink-0 mt-0.5" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-state-warning)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 					<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
 					<line x1="12" y1="9" x2="12" y2="13"/>
@@ -220,15 +228,15 @@
 		<!-- 2-col layout -->
 		<div class="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-3.5">
 			<!-- Flavor usage table -->
-			<div class="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+			<div class="bg-surface-base border border-line rounded-lg p-5">
 				<SectionHeader title="플레이버별 사용 시간" meta="{sortedFlavors.length}종" />
 				{#if sortedFlavors.length === 0}
-					<div class="mt-6 text-center text-sm text-gray-500 py-6">데이터 없음</div>
+					<div class="mt-6 text-center text-sm text-ink-3 py-6">데이터 없음</div>
 				{:else}
 					<div class="mt-4 overflow-x-auto">
 						<table class="w-full text-xs">
 							<thead>
-								<tr class="border-b border-gray-800">
+								<tr class="border-b border-line">
 									<th class="text-left pb-2 text-[10px] uppercase tracking-wide text-[var(--color-ink-3)] font-medium">Flavor</th>
 									<th class="text-right pb-2 text-[10px] uppercase tracking-wide text-[var(--color-ink-3)] font-medium">사용 시간(h)</th>
 									<th class="text-right pb-2 text-[10px] uppercase tracking-wide text-[var(--color-ink-3)] font-medium">VM 수</th>
@@ -236,17 +244,17 @@
 							</thead>
 							<tbody>
 								{#each sortedFlavors as f}
-									<tr class="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
+									<tr class="border-b border-line/50 hover:bg-surface-sunken/30 transition-colors">
 										<td class="py-2.5">
 											<div class="flex items-center gap-2">
-												<span class="text-white font-mono">{f.flavor}</span>
+												<span class="text-ink-0 font-mono">{f.flavor}</span>
 												{#if isGpu(f.flavor)}
 													<Pill tone="accent">GPU</Pill>
 												{/if}
 											</div>
 										</td>
-										<td class="py-2.5 text-right text-white font-medium">{f.usage_hours.toFixed(1)}</td>
-										<td class="py-2.5 text-right text-gray-400">{f.instance_count}</td>
+										<td class="py-2.5 text-right text-ink-0 font-medium">{f.usage_hours.toFixed(1)}</td>
+										<td class="py-2.5 text-right text-ink-2">{f.instance_count}</td>
 									</tr>
 								{/each}
 							</tbody>
@@ -256,7 +264,7 @@
 			</div>
 
 			<!-- Quota forecast -->
-			<div class="bg-gray-900 border border-gray-800 rounded-2xl p-5 flex flex-col gap-4">
+			<div class="bg-surface-base border border-line rounded-lg p-5 flex flex-col gap-4">
 				<SectionHeader title="쿼터 예측" />
 				<div class="space-y-3">
 					<CapacityBar
@@ -267,7 +275,7 @@
 						size="sm"
 					/>
 				</div>
-				<p class="text-[11px] text-gray-500 mt-auto">선형 예측 (7일 추세 기반)</p>
+				<p class="text-[11px] text-ink-3 mt-auto">선형 예측 (7일 추세 기반)</p>
 			</div>
 		</div>
 
@@ -316,6 +324,6 @@
 			</Card>
 		{/if}
 	{:else}
-		<div class="text-gray-500 text-sm py-8 text-center">데이터 없음</div>
+		<EmptyState headline="사용량 리포트가 없습니다" description="선택한 기간에 집계된 사용량이 없습니다." />
 	{/if}
-</div>
+</PageShell>

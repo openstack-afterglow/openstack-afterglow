@@ -704,3 +704,178 @@ def test_net_to_info_optional_cidrs_parameter():
 
     info2 = _net_to_info(net, ["10.0.0.0/24", "10.0.1.0/24"])
     assert info2.cidrs == ["10.0.0.0/24", "10.0.1.0/24"]
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# get_topology — mtu / enable_snat / routes / provider (include_provider) / compute 포트 인덱스
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+def _topology_conn():
+    """networks/subnets/routers/ports/ips 를 stub 한 MagicMock conn."""
+    conn = MagicMock()
+
+    net = MagicMock()
+    net.id = "net-1"
+    net.name = "vlan-net"
+    net.status = "ACTIVE"
+    net.is_router_external = False
+    net.is_shared = False
+    net.project_id = "proj-1"
+    net.mtu = "1450"  # 문자열도 int 로 변환된다
+    net.provider_network_type = "vlan"
+    net.provider_segmentation_id = "100"
+    net.provider_physical_network = "physnet1"
+    conn.network.networks.return_value = [net]
+
+    subnet = MagicMock()
+    subnet.id = "subnet-1"
+    subnet.name = "subnet-1"
+    subnet.cidr = "10.0.0.0/24"
+    subnet.gateway_ip = "10.0.0.1"
+    subnet.is_dhcp_enabled = True
+    subnet.network_id = "net-1"
+    conn.network.subnets.return_value = [subnet]
+
+    router_with_gw = MagicMock()
+    router_with_gw.id = "r-gw"
+    router_with_gw.name = "router-gw"
+    router_with_gw.status = "ACTIVE"
+    router_with_gw.project_id = "proj-1"
+    router_with_gw.is_distributed = False
+    router_with_gw.is_ha = False
+    router_with_gw.external_gateway_info = {
+        "network_id": "net-ext",
+        "enable_snat": False,
+        "external_fixed_ips": [{"ip_address": "203.0.113.5", "subnet_id": "subnet-ext"}],
+    }
+    router_with_gw.routes = [
+        {"destination": "10.20.0.0/16", "nexthop": "10.0.0.254"},
+        {"destination": "10.30.0.0/16"},  # nexthop 누락 → 제외
+        "garbage",  # dict 아님 → 제외
+    ]
+
+    router_no_gw = MagicMock()
+    router_no_gw.id = "r-nogw"
+    router_no_gw.name = "router-nogw"
+    router_no_gw.status = "ACTIVE"
+    router_no_gw.project_id = "proj-1"
+    router_no_gw.is_distributed = False
+    router_no_gw.is_ha = False
+    router_no_gw.external_gateway_info = None
+    router_no_gw.routes = None
+    conn.network.routers.return_value = [router_with_gw, router_no_gw]
+
+    conn.network.ports.return_value = []
+    conn.network.ips.return_value = []
+    return conn
+
+
+def test_get_topology_default_omits_provider_keys_and_fills_mtu_snat_routes():
+    from app.models.storage import AdminTopologyData, TopologyData
+    from app.services.neutron import get_topology
+
+    conn = _topology_conn()
+    topo = get_topology(conn)
+
+    assert isinstance(topo, TopologyData)
+    assert not isinstance(topo, AdminTopologyData)
+    net = topo.networks[0].model_dump()
+    assert net["mtu"] == 1450
+    assert "provider_network_type" not in net
+    assert "provider_segmentation_id" not in net
+    assert "provider_physical_network" not in net
+    assert "provider_segmentation_id" not in topo.model_dump()["networks"][0]
+
+    routers = {r.id: r for r in topo.routers}
+    assert routers["r-gw"].enable_snat is False
+    assert routers["r-gw"].routes == [{"destination": "10.20.0.0/16", "nexthop": "10.0.0.254"}]
+    assert routers["r-gw"].external_gateway_ips == ["203.0.113.5"]
+    assert routers["r-nogw"].enable_snat is None
+    assert routers["r-nogw"].routes == []
+
+
+def test_get_topology_include_provider_returns_admin_models():
+    from app.models.storage import AdminTopologyData, AdminTopologyNetwork
+    from app.services.neutron import get_topology
+
+    conn = _topology_conn()
+    topo = get_topology(conn, include_provider=True)
+
+    assert isinstance(topo, AdminTopologyData)
+    assert isinstance(topo.networks[0], AdminTopologyNetwork)
+    net = topo.model_dump()["networks"][0]
+    assert net["mtu"] == 1450
+    assert net["provider_network_type"] == "vlan"
+    assert net["provider_segmentation_id"] == 100
+    assert net["provider_physical_network"] == "physnet1"
+    # 라우터 필드는 provider 여부와 무관하게 동일하다
+    assert {r.id: r.enable_snat for r in topo.routers} == {"r-gw": False, "r-nogw": None}
+
+
+def test_get_topology_call_count_unchanged_with_include_provider():
+    """include_provider 는 추가 OpenStack 호출을 만들지 않는다."""
+    from app.services.neutron import get_topology
+
+    def _call_counts(include_provider: bool) -> dict[str, int]:
+        conn = _topology_conn()
+        get_topology(conn, include_provider=include_provider)
+        conn.network.get_network.assert_not_called()
+        conn.network.get_router.assert_not_called()
+        return {
+            name: getattr(conn.network, name).call_count for name in ("networks", "subnets", "routers", "ports", "ips")
+        }
+
+    baseline = _call_counts(False)
+    assert baseline["networks"] == 1
+    assert baseline["subnets"] == 1
+    assert baseline["routers"] == 1
+    assert baseline["ips"] == 1
+    assert _call_counts(True) == baseline
+
+
+def test_get_topology_invalid_mtu_and_segmentation_become_none():
+    from app.services.neutron import get_topology
+
+    conn = _topology_conn()
+    net = conn.network.networks.return_value[0]
+    net.mtu = "not-a-number"
+    net.provider_segmentation_id = "n/a"
+
+    topo = get_topology(conn, include_provider=True)
+    dumped = topo.model_dump()["networks"][0]
+    assert dumped["mtu"] is None
+    assert dumped["provider_segmentation_id"] is None
+
+
+def test_build_compute_port_index_filters_and_maps_meta():
+    from app.services.neutron import build_compute_port_index
+
+    def _port(port_id, device_id, owner, network_id, ips, mac="fa:16:3e:aa:bb:cc"):
+        p = MagicMock()
+        p.id = port_id
+        p.device_id = device_id
+        p.device_owner = owner
+        p.network_id = network_id
+        p.mac_address = mac
+        p.fixed_ips = [{"ip_address": ip, "subnet_id": "s"} for ip in ips]
+        return p
+
+    conn = MagicMock()
+    conn.network.ports.return_value = [
+        _port("p-1", "vm-1", "compute:nova", "net-a", ["10.0.0.5", "fd00::5"], mac="fa:16:3e:00:00:01"),
+        _port("p-2", "vm-1", "compute:az2", "net-b", ["10.0.1.7"], mac="fa:16:3e:00:00:02"),
+        _port("p-r", "r-1", "network:router_interface", "net-a", ["10.0.0.1"]),
+        _port("p-dhcp", "", "compute:nova", "net-a", ["10.0.0.2"]),
+        _port("p-noip", "vm-2", "compute:nova", "net-a", []),
+    ]
+
+    index = build_compute_port_index(conn)
+
+    conn.network.ports.assert_called_once_with()
+    assert index[("vm-1", "10.0.0.5")] == {"network_id": "net-a", "port_id": "p-1", "mac_address": "fa:16:3e:00:00:01"}
+    assert index[("vm-1", "fd00::5")]["port_id"] == "p-1"
+    assert index[("vm-1", "10.0.1.7")] == {"network_id": "net-b", "port_id": "p-2", "mac_address": "fa:16:3e:00:00:02"}
+    assert ("r-1", "10.0.0.1") not in index
+    assert ("", "10.0.0.2") not in index
+    assert all(key[0] != "vm-2" for key in index)

@@ -110,12 +110,10 @@
 
 <div class="p-8">
 	<div class="mb-6 flex items-center justify-between">
-		{#if onClose}
-			<button data-tour="admin-compute-detail-close" onclick={onClose} class="text-gray-400 hover:text-gray-200 text-sm transition-colors">
-				✕ 닫기
-			</button>
-		{:else}
-			<a href="/dashboard/compute/instances" class="text-gray-400 hover:text-gray-200 text-sm transition-colors">
+		<!-- SlidePanel 안(onClose 전달)에서는 닫기를 SlidePanel 이 그린다(`[data-slide-panel-close]`).
+		     여기서 또 그리면 헤더에 닫기 컨트롤이 두 개 보인다. 단독 라우트에서만 목록 백링크를 둔다. -->
+		{#if !onClose}
+			<a href="/dashboard/compute/instances" class="text-ink-2 hover:text-ink-1 text-sm transition-colors">
 				← 인스턴스
 			</a>
 		{/if}
@@ -144,18 +142,18 @@
 		/>
 
 		{#if recommendation?.underutilized}
-			<div class="bg-amber-900/40 border border-amber-700 text-amber-300 rounded-lg px-4 py-3 text-sm mb-4 flex items-center justify-between gap-4">
+			<div class="bg-surface-selected/40 border border-action-warm text-action-warm rounded-lg px-4 py-3 text-sm mb-4 flex items-center justify-between gap-4">
 				<span>
 					최근 7일 평균 CPU {summaryCpuAvg != null ? summaryCpuAvg.toFixed(1) : '—'}% · RAM {summaryMemAvg != null ? summaryMemAvg.toFixed(1) : '—'}% — 사용량이 낮습니다.
 					{#if recommendation.suggested_flavor}
-						<strong class="text-amber-200">{recommendation.suggested_flavor.name}</strong>으로 리사이즈를 권장합니다.
+						<strong class="text-action-warm">{recommendation.suggested_flavor.name}</strong>으로 리사이즈를 권장합니다.
 					{:else}
 						더 작은 플레이버로의 리사이즈를 권장합니다.
 					{/if}
 				</span>
 				<button
 					onclick={() => openResizeModal(recommendation?.suggested_flavor?.id)}
-					class="shrink-0 px-3 py-1.5 bg-amber-700 hover:bg-amber-600 text-white text-xs font-medium rounded-lg transition-colors"
+					class="shrink-0 px-3 py-1.5 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-xs font-medium rounded-lg transition-colors"
 				>
 					리사이즈
 				</button>
@@ -163,8 +161,8 @@
 		{/if}
 
 		<InfoSection {showHost} />
-		<div class="bg-gray-900 border border-gray-800 rounded-lg p-6 mb-4">
-			<div class="text-white text-[15px] font-semibold mb-4">성능 모니터링</div>
+		<div class="bg-surface-base border border-line rounded-lg p-6 mb-4">
+			<div class="text-ink-0 text-[15px] font-semibold mb-4">성능 모니터링</div>
 			<MetricsPanel
 				instanceId={s.instance.id}
 				isGpu={(s.instance.flavor_name ?? '').toLowerCase().startsWith('gpu.')}

@@ -58,11 +58,11 @@
 </script>
 
 {#if target}
-	<div class="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
+	<div class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 	     onclick={() => { onClose(); }}
 	     role="dialog" aria-modal="true" tabindex="-1"
 	     onkeydown={(e) => e.key === 'Escape' && onClose()}>
-		<div class="bg-[var(--color-surface-raised)] border border-[var(--color-line)] rounded-xl p-6 w-full max-w-md mx-4 shadow-2xl"
+		<div class="bg-[var(--color-surface-raised)] border border-[var(--color-line)] rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]"
 		     onclick={(e) => e.stopPropagation()}
 		     role="none" onkeydown={(e) => e.stopPropagation()}>
 			<h2 class="text-lg font-semibold text-[var(--color-ink-0)] mb-5">이미지 메타데이터 편집</h2>

@@ -86,7 +86,8 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
     }
   }
 
-  async function createListener() {
+  async function createListener(form?: { protocol: string; protocol_port: number; name: string }): Promise<boolean> {
+    if (form) listenerForm = { ...form };
     saving = true;
     try {
       await api.post(
@@ -98,8 +99,10 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
       showAddListener = false;
       listenerForm = { protocol: 'HTTP', protocol_port: 80, name: '' };
       await fetchAll();
+      return true;
     } catch (e) {
       toast.error('리스너 생성 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+      return false;
     } finally {
       saving = false;
     }
@@ -126,7 +129,8 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
     showAddListener = !showAddListener;
   }
 
-  async function createPool() {
+  async function createPool(form?: { protocol: string; lb_algorithm: string; name: string }): Promise<boolean> {
+    if (form) poolForm = { ...form };
     saving = true;
     try {
       await api.post(
@@ -138,8 +142,10 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
       showAddPool = false;
       poolForm = { protocol: 'HTTP', lb_algorithm: 'ROUND_ROBIN', name: '' };
       await fetchAll();
+      return true;
     } catch (e) {
       toast.error('풀 생성 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+      return false;
     } finally {
       saving = false;
     }
@@ -171,8 +177,9 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
     showAddPool = !showAddPool;
   }
 
-  async function addMember() {
-    if (!selectedPoolId) return;
+  async function addMember(form?: { address: string; protocol_port: number; weight: number; name: string }): Promise<boolean> {
+    if (!selectedPoolId) return false;
+    if (form) memberForm = { ...form };
     saving = true;
     try {
       await api.post(
@@ -188,8 +195,10 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
         opts.token(),
         opts.projectId(),
       );
+      return true;
     } catch (e) {
       toast.error('멤버 추가 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+      return false;
     } finally {
       saving = false;
     }

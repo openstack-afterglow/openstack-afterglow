@@ -33,33 +33,33 @@
 	}
 </script>
 
-<div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+<div class="bg-surface-base border border-line rounded-xl p-4">
 	<div class="flex items-center justify-between mb-3">
-		<h2 class="text-sm font-semibold text-white">백업</h2>
+		<h2 class="text-sm font-semibold text-ink-0">백업</h2>
 		<button onclick={() => { showForm = !showForm; }}
-			class="text-xs text-gray-400 hover:text-white border border-gray-700 hover:border-gray-600 px-2 py-1 rounded transition-colors">
+			class="text-xs text-ink-2 hover:text-ink-0 border border-line-2 hover:border-line-2 px-2 py-1 rounded transition-colors">
 			{showForm ? '취소' : '+ 백업 생성'}
 		</button>
 	</div>
 	{#if showForm}
-		<div class="bg-gray-800 rounded-lg p-3 mb-3 space-y-2">
+		<div class="bg-surface-sunken rounded-lg p-3 mb-3 space-y-2">
 			<input type="text" bind:value={newBackup.name} placeholder="backup-name"
-				class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-amber-500" />
+				class="w-full bg-surface-selected border border-line-2 rounded px-3 py-1.5 text-sm text-ink-0 focus:outline-none focus:border-action-warm" />
 			<input type="text" bind:value={newBackup.description} placeholder="설명 (선택)"
-				class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-amber-500" />
+				class="w-full bg-surface-selected border border-line-2 rounded px-3 py-1.5 text-sm text-ink-0 focus:outline-none focus:border-action-warm" />
 			{#if addError}<p class="text-red-400 text-xs">{addError}</p>{/if}
 			<button onclick={handleAdd} disabled={creating || !newBackup.name.trim()}
-				class="text-xs bg-amber-600 hover:bg-amber-500 disabled:bg-gray-700 disabled:text-gray-500 text-white px-3 py-1.5 rounded transition-colors">
+				class="text-xs bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm px-3 py-1.5 rounded transition-colors">
 				{creating ? '생성 중...' : '백업 생성'}
 			</button>
 		</div>
 	{/if}
 	{#if backups.length === 0}
-		<div class="text-gray-600 text-xs">백업이 없습니다</div>
+		<div class="text-ink-3 text-xs">백업이 없습니다</div>
 	{:else}
 		<table class="w-full text-sm">
 			<thead>
-				<tr class="text-gray-500 text-xs">
+				<tr class="text-ink-3 text-xs">
 					<th class="text-left py-2 font-medium">이름</th>
 					<th class="text-left py-2 font-medium">상태</th>
 					<th class="text-left py-2 font-medium">크기</th>
@@ -69,19 +69,19 @@
 			</thead>
 			<tbody>
 				{#each backups as b}
-					<tr class="border-t border-gray-800/50">
-						<td class="py-2 text-white">{b.name}</td>
-						<td class="py-2 text-gray-400 text-xs">{b.status}</td>
-						<td class="py-2 text-gray-400 text-xs">{b.size ? `${b.size} GB` : '-'}</td>
-						<td class="py-2 text-gray-500 text-xs">{b.created_at ? b.created_at.slice(0, 10) : '-'}</td>
+					<tr class="border-t border-line/50">
+						<td class="py-2 text-ink-0">{b.name}</td>
+						<td class="py-2 text-ink-2 text-xs">{b.status}</td>
+						<td class="py-2 text-ink-2 text-xs">{b.size ? `${b.size} GB` : '-'}</td>
+						<td class="py-2 text-ink-3 text-xs">{b.created_at ? b.created_at.slice(0, 10) : '-'}</td>
 						<td class="py-2 text-right">
 							<div class="flex justify-end gap-1">
 								<button onclick={() => onRestore(b.id)} disabled={restoringBackup === b.id}
-									class="text-blue-400 hover:text-blue-300 disabled:text-gray-600 text-xs px-2 py-0.5 rounded border border-blue-900 hover:border-blue-700 transition-colors">
+									class="text-action-warm hover:text-action-warm-hover disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-action-warm hover:border-action-warm transition-colors">
 									{restoringBackup === b.id ? '...' : '복원'}
 								</button>
 								<button onclick={() => onDelete(b.id)} disabled={deletingBackup === b.id}
-									class="text-red-400 hover:text-red-300 disabled:text-gray-600 text-xs px-2 py-0.5 rounded border border-red-900 hover:border-red-700 transition-colors">
+									class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-red-900 hover:border-red-700 transition-colors">
 									{deletingBackup === b.id ? '...' : '삭제'}
 								</button>
 							</div>

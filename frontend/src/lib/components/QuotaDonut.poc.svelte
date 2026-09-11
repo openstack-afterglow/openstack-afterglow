@@ -71,10 +71,10 @@
   </div>
 
   <div class="text-center">
-    <div class="{size === 'lg' ? 'text-sm' : 'text-xs'} text-gray-300 font-medium leading-tight">
+    <div class="{size === 'lg' ? 'text-sm' : 'text-xs'} text-ink-2 font-medium leading-tight">
       {label}
     </div>
-    <div class="{size === 'lg' ? 'text-sm' : 'text-xs'} text-gray-500 leading-tight">
+    <div class="{size === 'lg' ? 'text-sm' : 'text-xs'} text-ink-3 leading-tight">
       {#if limit > 0}
         {fmt(used)} / {fmt(limit)}
       {:else if limit === -1}

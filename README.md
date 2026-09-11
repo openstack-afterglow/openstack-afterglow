@@ -21,7 +21,7 @@ Afterglow는 현재 [DMS Cloud 연구 클라우드 제공 콘솔](https://cloud.
 - **공유 데이터와 라이브러리** — Manila CephFS/NFS share와 스냅샷을 사용하고, squashfs 기반 content-addressable 불변 AI/ML 레이어를 VM에서 OverlayFS로 조합해 재사용합니다.
 - **운영과 관측** — 프로젝트·사용자·역할·쿼터, Grafana·Prometheus 연동, 감사 로그를 한 콘솔에서 관리합니다.
 
-구현 경로는 SvelteKit 프론트엔드 → FastAPI `/api/v1` 게이트웨이 → `openstacksdk` 기반 OpenStack 서비스이며, Redis가 캐시와 세션을 담당합니다. 상세한 흐름은 [아키텍처 문서](docs/architecture.md)와 [Palimpsest 레이어 문서](docs/palimpsest.md)를 참고하세요.
+브라우저의 SvelteKit 앱은 설정된 API base의 FastAPI `/api/v1` 게이트웨이를 직접 호출하고, 백엔드는 `openstacksdk` 기반 OpenStack 서비스와 통신합니다. SvelteKit은 UI/auth shell이며 API 중계 서버가 아닙니다. Redis는 캐시와 세션을 담당합니다. 현재 구조의 정본은 [루트 아키텍처](ARCHITECTURE.md)이고, 상세 도메인은 [Palimpsest 레이어 문서](docs/palimpsest.md)를 참고하세요. 코드·설정 변경 후에는 `python3 scripts/check_architecture.py --stamp --summary "<검토 요약>"` 및 `python3 scripts/check_architecture.py --staged`로 freshness를 확인합니다.
 
 
 ## 주요 기능
@@ -57,12 +57,13 @@ Kubernetes · ArgoCD · kolla-ansible 배포와 상세 설정은 아래 문서�
 
 | 문서 | 내용 |
 |---|---|
-| [시작하기 · 배포](docs/deployment.md) | Docker Compose · Kubernetes · ArgoCD · kolla-ansible |
-| [아키텍처](docs/architecture.md) | 시스템 구조, VM 생성 플로우, OverlayFS |
+| [루트 아키텍처](ARCHITECTURE.md) | 현재 ownership·runtime·데이터 경계와 갱신 규칙 |
+| [상세 배포](docs/deployment.md) | Docker Compose · Kubernetes · ArgoCD · kolla-ansible |
 | [k3s 클러스터](docs/k3s.md) | k3s 프로비저닝, 노드 구성, CoreOS 전환 |
-| [API 레퍼런스](docs/api-reference.md) | 전체 REST API |
+| [상세 API](docs/api-reference.md) | 전체 REST API |
 | [보안 모델](docs/security.md) | 인증·인가, IDOR 가드, HKDF 암호화, audit log |
 | [국소 기능테스트](docs/testing.md) | 개발 중 빠른 국소 기능 검증 가이드 |
+| [아키텍처 상세](docs/architecture.md) | 루트 정본에서 연결하는 historical/domain detail |
 
 릴리스 변경사항은 [CHANGELOG](CHANGELOG.md), 작업 기록·로드맵은 [`openspec/`](openspec/)(`openspec list`, 구 [milestone.md](milestone.md)에서 이관)를 참고하세요.
 

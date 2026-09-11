@@ -19,15 +19,14 @@
 
 {#if target}
 	<div
-		class="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
-		onclick={() => { target = null; }}
+		class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
+		onclick={(event) => { if (event.target === event.currentTarget) (() => { target = null; })(); }}
 		role="dialog"
 		onkeydown={(e) => e.key === 'Escape' && (target = null)}
 		tabindex="-1"
 	>
 		<div
-			class="bg-[var(--color-surface-raised)] border border-[var(--color-line)] rounded-xl p-6 w-full max-w-md mx-4 shadow-2xl"
-			onclick={(e) => e.stopPropagation()}
+			class="bg-[var(--color-surface-raised)] border border-[var(--color-line)] rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]"
 		>
 			<h2 class="text-lg font-semibold text-[var(--color-ink-0)] mb-5">이미지 수정</h2>
 			{#if editError}
@@ -35,8 +34,8 @@
 			{/if}
 			<div class="space-y-4">
 				<div>
-					<label class="block text-xs text-[var(--color-ink-2)] mb-1.5 uppercase tracking-wide">이름</label>
-					<input
+					<label class="block text-xs text-[var(--color-ink-2)] mb-1.5 uppercase tracking-wide" for="field-imageeditmodal-38">이름</label>
+					<input id="field-imageeditmodal-38"
 						bind:value={form.name}
 						type="text"
 						class="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-line-2)] rounded-lg px-3 py-2 text-[var(--color-ink-0)] text-sm focus:outline-none focus:border-[var(--color-accent)]"
@@ -44,8 +43,8 @@
 					<span class="block text-[11px] text-[var(--color-ink-3)] mt-1">repository:tag 형식이며 tag를 생략하면 latest가 사용됩니다.</span>
 				</div>
 				<div>
-					<label class="block text-xs text-[var(--color-ink-2)] mb-1.5 uppercase tracking-wide">OS 배포판</label>
-					<input
+					<label class="block text-xs text-[var(--color-ink-2)] mb-1.5 uppercase tracking-wide" for="field-imageeditmodal-47">OS 배포판</label>
+					<input id="field-imageeditmodal-47"
 						bind:value={form.os_distro}
 						type="text"
 						placeholder="ubuntu, centos, rocky ..."
@@ -53,8 +52,8 @@
 					/>
 				</div>
 				<div>
-					<label class="block text-xs text-[var(--color-ink-2)] mb-1.5 uppercase tracking-wide">공개 범위</label>
-					<select
+					<label class="block text-xs text-[var(--color-ink-2)] mb-1.5 uppercase tracking-wide" for="field-imageeditmodal-56">공개 범위</label>
+					<select id="field-imageeditmodal-56"
 						bind:value={form.visibility}
 						class="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-line-2)] rounded-lg px-3 py-2 text-[var(--color-ink-0)] text-sm focus:outline-none focus:border-[var(--color-accent)]"
 					>

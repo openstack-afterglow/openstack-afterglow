@@ -4,10 +4,8 @@
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import type { SwiftContainer, AccountMeta } from '$lib/types/objectStorage';
-	import PageHeader from '$lib/components/ui/PageHeader.svelte';
+	import { Alert, Button, EmptyState, PageHeader, PageShell, ResourceToolbar, StatTile } from '$lib/components/ui';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
-	import Alert from '$lib/components/ui/Alert.svelte';
-	import StatTile from '$lib/components/ui/StatTile.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import BucketCreateDialog from '$lib/components/object-storage/BucketCreateDialog.svelte';
 	import BucketCardGrid from '$lib/components/object-storage/BucketCardGrid.svelte';
@@ -221,8 +219,13 @@
 
 <BucketCreateDialog bind:open={showModal} onCreate={createContainer} />
 
-<div class="bulk-selection-page p-4 md:p-8 max-w-7xl mx-auto">
+<PageShell class="bulk-selection-page space-y-4">
 	<PageHeader breadcrumb="OBJECT STORAGE / BUCKETS" title="버킷">
+		{#snippet actions()}
+			<Button onclick={() => (showModal = true)} variant="primary">+ 버킷 생성</Button>
+		{/snippet}
+	</PageHeader>
+	<ResourceToolbar label="버킷 목록 도구">
 		{#snippet actions()}
 			<AutoRefreshControl
 				bind:active={ar.active}
@@ -231,12 +234,8 @@
 				refreshing={refreshing || loading}
 				onManualRefresh={forceRefresh}
 			/>
-			<button
-				onclick={() => (showModal = true)}
-				class="text-xs text-white bg-indigo-600 hover:bg-indigo-500 transition-colors px-3 py-1.5 rounded border border-indigo-500"
-			>+ 버킷 생성</button>
 		{/snippet}
-	</PageHeader>
+	</ResourceToolbar>
 	<section aria-label="오브젝트 스토리지 계정 통계" class="mb-6">
 		{#if accountLoading}
 			<Alert tone="neutral">계정 통계를 불러오는 중...</Alert>
@@ -261,7 +260,7 @@
 	{#if loading}
 		<BucketCardSkeleton />
 	{:else if containers.length === 0 && !activeError}
-		<div class="text-sm py-20 text-center" style="color: var(--color-ink-3)">버킷이 없습니다</div>
+		<EmptyState headline="버킷이 없습니다" description="오브젝트를 저장할 첫 버킷을 생성하세요." />
 	{:else}
 		{#if containers.length > 0}
 			<div class="mb-3">
@@ -295,7 +294,7 @@
 
 		{#if deletedContainers.length > 0}
 			<div class="mt-8">
-				<h2 class="text-sm font-medium text-gray-400 mb-3 flex items-center gap-2">
+				<h2 class="text-sm font-medium text-ink-2 mb-3 flex items-center gap-2">
 					<span class="text-red-400">🗑</span> 삭제 대기 중 — 복구 가능
 				</h2>
 				<SelectionToolbar
@@ -321,20 +320,20 @@
 								<div>
 									<span class="text-sm font-medium text-red-300">{c.name}</span>
 									{#if deletedAt}
-										<span class="ml-2 text-xs text-gray-500">
+										<span class="ml-2 text-xs text-ink-3">
 											{new Date(deletedAt * 1000).toLocaleDateString('ko-KR')} 삭제
 										</span>
 									{/if}
 								</div>
 							</div>
 							<div class="flex gap-2">
-								<button onclick={() => restoreContainer(c.name)} disabled={restoring === c.name || busy} class="text-xs text-emerald-400 hover:text-emerald-300 disabled:text-gray-600 px-2 py-1 rounded border border-emerald-900 hover:border-emerald-700 disabled:border-gray-700 transition-colors">{restoring === c.name ? '복구 중...' : '복구'}</button>
-								<button onclick={() => purgeContainer(c.name)} disabled={deleting === c.name || busy} class="text-xs text-red-400 hover:text-red-300 disabled:text-gray-600 px-2 py-1 rounded border border-red-900 hover:border-red-700 disabled:border-gray-700 transition-colors">{deleting === c.name ? '삭제 중...' : '영구 삭제'}</button>
+								<button onclick={() => restoreContainer(c.name)} disabled={restoring === c.name || busy} class="text-xs text-emerald-400 hover:text-emerald-300 disabled:text-ink-3 px-2 py-1 rounded border border-emerald-900 hover:border-emerald-700 disabled:border-line-2 transition-colors">{restoring === c.name ? '복구 중...' : '복구'}</button>
+								<button onclick={() => purgeContainer(c.name)} disabled={deleting === c.name || busy} class="text-xs text-red-400 hover:text-red-300 disabled:text-ink-3 px-2 py-1 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors">{deleting === c.name ? '삭제 중...' : '영구 삭제'}</button>
 							</div>
 						</div>
 					{/each}
 				</div>
-				<p class="mt-2 text-xs text-gray-600">삭제된 버킷은 보관 기간이 지나면 자동으로 영구 삭제됩니다. 보관 기간 동안 스토리지 용량을 차지합니다.</p>
+				<p class="mt-2 text-xs text-ink-3">삭제된 버킷은 보관 기간이 지나면 자동으로 영구 삭제됩니다. 보관 기간 동안 스토리지 용량을 차지합니다.</p>
 			</div>
 		{/if}
 
@@ -350,4 +349,4 @@
 			]}
 		onClear={() => selection.clear()}
 	/>
-</div>
+</PageShell>

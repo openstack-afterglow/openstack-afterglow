@@ -1,11 +1,12 @@
 """compute/flavors.py 엔드포인트 단위 테스트."""
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.main import app
+from app.models.compute import FlavorInfo
 from app.services.cache import ttl_static
 
 
@@ -30,6 +31,33 @@ async def test_list_flavors_success(client, mock_conn):
         resp = await client.get("/api/v1/flavors")
     assert resp.status_code == 200
     assert isinstance(resp.json(), list)
+
+
+@pytest.mark.asyncio
+async def test_list_flavors_excludes_afterglow_hidden_flavors_before_eligibility(client, mock_conn):
+    async def mock_cached_call(key, ttl, fn, *, refresh=False, **kw):
+        return await fn()
+
+    visible = FlavorInfo(id="visible", name="user.small", vcpus=1, ram=1024, disk=10)
+    hidden = FlavorInfo(
+        id="hidden",
+        name="amphora",
+        vcpus=1,
+        ram=1024,
+        disk=5,
+        extra_specs={"afterglow:frontend_visible": "false"},
+    )
+    evaluator = AsyncMock(side_effect=lambda _conn, _pid, flavors: list(flavors))
+    with (
+        patch("app.api.compute.flavors.nova.list_flavors", return_value=[visible, hidden]),
+        patch("app.services.cache.cached_call", new=mock_cached_call),
+        patch("app.services.flavor_eligibility.evaluate_project_flavors", evaluator),
+    ):
+        resp = await client.get("/api/v1/flavors")
+
+    assert resp.status_code == 200
+    assert [item["id"] for item in resp.json()] == ["visible"]
+    assert [flavor.id for flavor in evaluator.await_args.args[2]] == ["visible"]
 
 
 @pytest.mark.asyncio

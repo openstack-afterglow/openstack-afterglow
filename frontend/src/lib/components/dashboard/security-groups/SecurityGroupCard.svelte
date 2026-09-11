@@ -65,24 +65,24 @@
 	}
 </script>
 
-<div class="bg-gray-800/50 border border-gray-700 rounded-lg overflow-hidden">
+<div class="bg-surface-sunken/50 border border-line-2 rounded-lg overflow-hidden">
 	<!-- SG 헤더 -->
 	<div class="flex items-center gap-3 px-4 py-3">
 		<button
 			onclick={() => (expanded = !expanded)}
 			class="flex items-center gap-2 flex-1 text-left min-w-0"
 		>
-			<span class="text-sm font-medium text-white truncate">{sg.name}</span>
+			<span class="text-sm font-medium text-ink-0 truncate">{sg.name}</span>
 			{#if sg.description}
-				<span class="text-xs text-gray-500 truncate">{sg.description}</span>
+				<span class="text-xs text-ink-3 truncate">{sg.description}</span>
 			{/if}
-			<span class="text-xs text-gray-600 ml-auto shrink-0"
+			<span class="text-xs text-ink-3 ml-auto shrink-0"
 				>{sg.rules.length}개 규칙 {expanded ? '▾' : '▸'}</span
 			>
 		</button>
 		<button
 			onclick={() => { showAddRule = !showAddRule; }}
-			class="text-xs text-blue-400 hover:text-blue-300 px-2 py-1 border border-blue-900 hover:border-blue-700 rounded transition-colors shrink-0"
+			class="text-xs text-action-warm hover:text-action-warm-hover px-2 py-1 border border-action-warm hover:border-action-warm rounded transition-colors shrink-0"
 		>+ 규칙</button>
 		<button
 			onclick={() => onDelete(sg.id, sg.name)}

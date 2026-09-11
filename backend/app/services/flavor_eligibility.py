@@ -17,6 +17,19 @@ from app.models.compute import (
 from app.services import gpu_quota, nova
 from app.services.gpu_inventory import is_gpu_flavor
 
+AFTERGLOW_FRONTEND_VISIBLE_SPEC = "afterglow:frontend_visible"
+_FRONTEND_HIDDEN_VALUES = frozenset({"0", "false", "no", "off"})
+
+
+def is_flavor_frontend_visible(flavor: Any) -> bool:
+    """Return the Afterglow user-catalog visibility, defaulting legacy flavors to visible."""
+    try:
+        specs = flavor.get("extra_specs") if isinstance(flavor, dict) else getattr(flavor, "extra_specs", None)
+        raw = (specs or {}).get(AFTERGLOW_FRONTEND_VISIBLE_SPEC)
+    except (AttributeError, TypeError):
+        return True
+    return raw is None or str(raw).strip().lower() not in _FRONTEND_HIDDEN_VALUES
+
 
 class FlavorEligibilityDenied(Exception):
     """A known project quota prevents the requested flavor demand."""

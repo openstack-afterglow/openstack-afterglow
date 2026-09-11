@@ -82,12 +82,12 @@
   });
 </script>
 
-<div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+<div class="bg-surface-base border border-line rounded-xl p-5">
   <div class="flex items-center justify-between mb-4">
     <div class="flex items-center gap-3">
-      <h3 class="text-sm font-semibold text-gray-300">{title}</h3>
+      <h3 class="text-sm font-semibold text-ink-2">{title}</h3>
       {#if points.length > 0}
-        <span class="text-xl font-bold text-white">{latestVal}</span>
+        <span class="text-xl font-bold text-ink-0">{latestVal}</span>
         {#if delta > 0}
           <span class="text-xs text-green-400 bg-green-900/30 px-1.5 py-0.5 rounded">+{delta}</span>
         {:else if delta < 0}
@@ -99,14 +99,14 @@
       {#each RANGES as r}
         <button
           onclick={() => onRangeChange?.(r)}
-          class="text-xs px-2 py-0.5 rounded transition-colors {currentRange === r ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-300'}"
+          class="text-xs px-2 py-0.5 rounded transition-colors {currentRange === r ? 'bg-action-warm text-ink-0' : 'text-ink-3 hover:text-ink-2'}"
         >{RANGE_LABELS[r]}</button>
       {/each}
     </div>
   </div>
 
   {#if points.length === 0}
-    <div class="flex items-center justify-center h-24 text-gray-600 text-sm">
+    <div class="flex items-center justify-center h-24 text-ink-3 text-sm">
       수집된 데이터가 없습니다 (서버 시작 후 30초 뒤 첫 스냅샷이 저장됩니다)
     </div>
   {:else}
@@ -170,14 +170,14 @@
     {#if extraKeys.length > 0}
       <div class="flex flex-wrap gap-3 mt-2">
         <div class="flex items-center gap-1">
-          <div class="w-4 h-0.5 bg-blue-500"></div>
-          <span class="text-xs text-gray-500">{mainKey}</span>
+          <div class="w-4 h-0.5 bg-action-warm"></div>
+          <span class="text-xs text-ink-3">{mainKey}</span>
         </div>
         {#each extraKeys as key}
           {#if EXTRA_COLORS[key]}
             <div class="flex items-center gap-1">
               <div class="w-4 h-0.5" style="background:{EXTRA_COLORS[key]}; opacity:0.7; border-top: 1px dashed {EXTRA_COLORS[key]}"></div>
-              <span class="text-xs text-gray-500">{key}</span>
+              <span class="text-xs text-ink-3">{key}</span>
             </div>
           {/if}
         {/each}

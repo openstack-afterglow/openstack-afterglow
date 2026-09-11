@@ -325,6 +325,21 @@ async def test_touch_session_seen_throttle_skips():
     assert sess.get("last_seen") == initial_seen
 
 
+def test_session_seen_precheck_skips_fresh_redis_write():
+    """이미 조회한 최신 세션은 매 요청마다 touch EVAL을 만들지 않는다."""
+    from app.services.session_store import session_seen_needs_touch
+
+    session = {
+        "last_ip": "10.0.0.1",
+        "last_fp": "fp_same",
+        "last_seen": 1_000,
+    }
+
+    assert session_seen_needs_touch(session, "10.0.0.1", "fp_same", now=1_059) is False
+    assert session_seen_needs_touch(session, "10.0.0.1", "fp_same", now=1_060) is True
+    assert session_seen_needs_touch(session, "10.0.0.2", "fp_same", now=1_001) is True
+
+
 @pytest.mark.asyncio
 async def test_revoke_user_sessions_calls_keystone():
     """revoke_user_sessions(revoke_keystone=True)가 Keystone revoke_token을 호출하는지 확인."""

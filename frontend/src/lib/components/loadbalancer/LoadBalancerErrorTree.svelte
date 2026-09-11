@@ -37,9 +37,9 @@
     {#if node && s.lb}
       <div class="space-y-2 text-xs font-mono">
         <div class="flex items-center gap-3">
-          <span class="text-gray-400 w-28 shrink-0">LB 상태</span>
+          <span class="text-ink-2 w-28 shrink-0">LB 상태</span>
           <span class="text-red-400">{node.provisioning_status ?? s.lb.status}</span>
-          <span class="text-gray-500">{node.operating_status ?? s.lb.operating_status}</span>
+          <span class="text-ink-3">{node.operating_status ?? s.lb.operating_status}</span>
         </div>
         {#if node.listeners}
           {#each node.listeners as listener}
@@ -73,8 +73,8 @@
   </div>
 {:else if node}
   <div class="{indentByDepth[depth]} flex items-center gap-3">
-    <span class="text-gray-500 {labelWidthByDepth[depth]} shrink-0">{labelByDepth[depth]}</span>
-    <span class="text-gray-300">{node.name || node.id?.slice(0, 12)}</span>
-    <span class={provisioningColor(node.provisioning_status)}>{node.provisioning_status}</span>
+    <span class="text-ink-3 {labelWidthByDepth[depth]} shrink-0">{labelByDepth[depth]}</span>
+    <span class="text-ink-2">{node.name || node.id?.slice(0, 12)}</span>
+    <span class={provisioningColor(node.provisioning_status ?? '')}>{node.provisioning_status ?? '-'}</span>
   </div>
 {/if}

@@ -4,7 +4,7 @@
 	let {
 		value,
 		label,
-		valueClass = 'text-white',
+		valueClass = 'text-ink-0',
 		size = 'md',
 		labelExtra,
 	}: {
@@ -19,9 +19,9 @@
 	const fontSize = { sm: 'text-lg', md: 'text-2xl', lg: 'text-2xl' };
 </script>
 
-<div class="bg-gray-800 rounded-lg text-center {padding[size]}">
+<div class="bg-surface-sunken rounded-lg text-center {padding[size]}">
 	<div class="font-bold {fontSize[size]} {valueClass}">{value}</div>
-	<div class="text-xs text-gray-500 mt-1">
+	<div class="text-xs text-ink-3 mt-1">
 		{label}{#if labelExtra} {@render labelExtra()}{/if}
 	</div>
 </div>

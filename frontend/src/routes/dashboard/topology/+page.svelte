@@ -47,13 +47,13 @@
 	}
 </script>
 
-<div class="p-4 md:p-8 max-w-screen-2xl mx-auto">
+<div class="p-4 md:p-6 max-w-screen-2xl mx-auto">
 	<div class="mb-6 flex items-center justify-between">
 		<div>
-			<a href="/dashboard" class="text-gray-400 hover:text-gray-200 text-sm transition-colors">
+			<a href="/dashboard" class="text-ink-2 hover:text-ink-1 text-sm transition-colors">
 				← 대시보드
 			</a>
-			<h1 class="text-2xl font-bold text-white mt-2">네트워크 토폴로지</h1>
+			<h1 class="text-2xl font-bold text-ink-0 mt-2">네트워크 토폴로지</h1>
 		</div>
 		<AutoRefreshControl
 			bind:active={ar.active}
@@ -74,12 +74,12 @@
 		{@const _visibleNets = data.networks.filter(n => n.is_external || n.is_shared || n.project_id === $auth.projectId)}
 		{@const _projectRouters = data.routers.filter(r => r.project_id === $auth.projectId)}
 		{@const _projectFips = data.floating_ips.filter(f => !f.project_id || f.project_id === $auth.projectId)}
-		<div class="bg-gray-900 border border-gray-800 rounded-lg p-6 mb-4">
+		<div class="bg-surface-base border border-line rounded-lg p-6 mb-4">
 			<GlobalTopology {data} projectId={$auth.projectId} />
 		</div>
 
 		<!-- 범례 -->
-		<div class="flex flex-wrap gap-5 text-xs text-gray-400 px-1">
+		<div class="flex flex-wrap gap-5 text-xs text-ink-2 px-1">
 			<span class="flex items-center gap-1.5">
 				<span class="inline-block w-2 h-4 rounded" style="background:#ea580c"></span>
 				외부 네트워크
@@ -115,7 +115,7 @@
 		</div>
 
 		<!-- 요약 (현재 프로젝트 기준) -->
-		<div class="mt-4 flex gap-6 text-xs text-gray-500 px-1">
+		<div class="mt-4 flex gap-6 text-xs text-ink-3 px-1">
 			<span>네트워크 {_visibleNets.length}개</span>
 			<span>라우터 {_projectRouters.length}개</span>
 			<span>인스턴스 {data.instances.length}개</span>

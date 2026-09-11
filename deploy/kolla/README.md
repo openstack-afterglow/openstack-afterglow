@@ -2,6 +2,22 @@
 
 This guide deploys **Afterglow**, **Drover**, **Lumen**, **Waygate**, and **Palimpsest** through
 the ordinary Kolla command line from `/etc/kolla`.
+
+After the one-time setup below, activate the Kolla environment and deploy:
+
+```bash
+source /etc/kolla/.venv/bin/activate
+cd /etc/kolla
+kolla-ansible deploy -i multinode
+```
+
+The command runs stock Kolla services and enabled plugin services. Afterglow's
+installed `site.yml` import dispatches the package-owned Lumen role, including
+DB/Keystone prerequisites, PostgreSQL, migrations, API/worker startup and HAProxy.
+Custom service and HAProxy plays declare `become: true`; the deployment SSH user
+must already have noninteractive sudo on the relevant hosts. No CLI `--become`,
+custom playbook argument, extra-vars file or shell wrapper is needed. This does
+not grant sudo or change global Ansible settings.
 ---
 
 ## Architecture & Integration Principles
@@ -92,7 +108,7 @@ The `deploy/kolla/operator/` directory contains a canonical `uv` project
 
 - **`kolla-ansible`**: git commit `34daacfbf2d5987f543787f57535b2bebe7dee19` (21.2.0).
 - **`drover-kolla`**: PEP 508 URL wheel release `v0.2.19` (`drover_kolla-0.2.19-py3-none-any.whl`).
-- **`lumen-kolla`**: PEP 508 URL wheel release `v0.1.8` (`lumen_kolla-0.1.8-py3-none-any.whl`).
+- **`lumen-kolla`**: PEP 508 URL wheel release `v0.2.0` (`lumen_kolla-0.2.0-py3-none-any.whl`).
 
 ### 1. Legacy Symlink Migration
 
@@ -112,10 +128,15 @@ To sync the operator environment into Kolla's virtual environment:
 
 ```bash
 cd deploy/kolla/operator
-uv sync --frozen
+UV_PROJECT_ENVIRONMENT=/etc/kolla/.venv uv sync --frozen --inexact --no-install-project
 ```
 
-This installs the `drover-kolla` and `lumen-kolla` wheels directly into `$VIRTUAL_ENV/share/kolla-ansible/ansible/roles/{drover,lumen}` as real, package-owned directories.
+This targets the actual Kolla environment, installs the role wheels as real
+package-owned directories, and preserves unrelated installed operator packages
+with `--inexact`. `--no-install-project` avoids treating this dependency-only
+operator manifest as an application package. Review the pinned Kolla version
+before synchronizing an existing cloud; package synchronization is a one-time
+setup/update operation, not part of every deploy.
 
 > **Security Note:** Keep the operator project free of live secrets or deployment globals. Operator configuration belongs exclusively in `/etc/kolla/config/afterglow/`.
 
@@ -123,7 +144,7 @@ This installs the `drover-kolla` and `lumen-kolla` wheels directly into `$VIRTUA
 
 Follow this installation sequence:
 
-1. **Sync Operator Packages**: Run `uv sync --frozen` in `deploy/kolla/operator`.
+1. **Sync Operator Packages**: Run the explicit-environment command above in `deploy/kolla/operator`.
 2. **Configure Operator Variables**: Populate `/etc/kolla/config/afterglow/globals.yml` and `secrets.yml`.
 3. **Run Integration Installer**: Run `./deploy/kolla/install.sh`.
 
@@ -331,7 +352,7 @@ The installer fails rather than replacing conflicting links or unexpected `site.
 
 > **Note on Kolla Integration:** Stock Kolla-Ansible site playbooks do not auto-discover custom roles. Custom service roles execute through standard `kolla-ansible` commands only after `install.sh` appends the `afterglow-site.yml` import to Kolla's installed `site.yml`. Uninstalled environments will not execute custom roles automatically.
 
-### Post-Installer Bare Kolla Commands
+### Post-Installer Standard Kolla Commands
 
 From `/etc/kolla`, once `install.sh` has integrated the plugin import into `site.yml`, standard bare `kolla-ansible` lifecycle commands run custom service operations against `/etc/kolla/multinode`:
 
@@ -339,7 +360,7 @@ From `/etc/kolla`, once `install.sh` has integrated the plugin import into `site
 # Pull plugin and stock service images (force-refreshes mutable tags)
 kolla-ansible pull -i multinode
 
-# Initial deployment (force-refreshes mutable tags; include valkey tag if Valkey is not yet running)
+# Deployment of enabled stock and plugin services, including stock Valkey
 kolla-ansible deploy -i multinode
 
 # Reconfigure running services after config/globals changes (force-refreshes mutable tags)
@@ -359,7 +380,38 @@ kolla-ansible reconfigure -i multinode --tags afterglow
 kolla-ansible reconfigure -i multinode --tags afterglow,waygate,drover,lumen,palimpsest
 ```
 
-The explicit `-i`, `-p`, and `-e` form remains an escape hatch for diagnosis; normal operations should use the standard commands above.
+`-i multinode` explicitly selects `/etc/kolla/multinode` when run from
+`/etc/kolla`. Omitting `-i` uses the installer's link to that same inventory.
+Custom `-p` and `-e @...` arguments are diagnostic overrides, not normal setup.
+With `--limit`, bootstrap and bundled PostgreSQL tasks can still delegate to the
+first service controller. Its existing configuration and shared datastores must
+be available; a limit does not isolate those dependencies.
+
+### Verification and existing installations
+
+```bash
+kolla-ansible prechecks -i multinode --tags afterglow,lumen
+kolla-ansible deploy -i multinode --tags afterglow,lumen
+```
+
+Check API/worker state on the selected controllers and test public HTTP routes.
+An API liveness response does not prove DB, Redis, PostgreSQL or authenticated
+application operations. Verify those dependencies as well. The role pin is
+`lumen-kolla==0.2.0`; installation refuses a different version rather than
+silently downgrading an existing deployment.
+
+The canonical operator files are `config/afterglow/globals.yml` and
+`config/afterglow/secrets.yml`. Before rerunning the installer on a legacy setup,
+compare any regular files in `globals.d/90-*` or `globals.d/91-*` with those
+canonical files. Preserve the active values and backups before reconciling
+them; the installer intentionally refuses conflicting files and never merges
+secrets implicitly. Do not replace live credentials with sample files.
+
+For repository verification, `npm run test:kolla:contract` runs the offline
+structure/installer contracts. After installing the operator environment,
+`npm run test:kolla:runtime` exercises the native CLI and real Ansible with
+isolated role fixtures, including privilege inheritance and negative controls.
+It does not contact or mutate a cloud.
 
 ---
 

@@ -91,12 +91,12 @@
 	onMount(load);
 </script>
 
-<div class="p-4 md:p-8 max-w-7xl mx-auto">
+<div class="p-4 md:p-6 max-w-7xl mx-auto">
 	<PageHeader breadcrumb="IDENTITY / SYSTEM ADMINS" title="시스템 관리자">
 		{#snippet actions()}
 			<button
 				onclick={() => (showGrant = true)}
-				class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg"
+				class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg"
 			>
 				+ 추가
 			</button>
@@ -125,7 +125,7 @@
 				<Alert tone="danger" class="mb-3" title="시스템 관리자 조회 실패">{adminsError}</Alert>
 			{/if}
 			{#if admins.length === 0}
-				<div class="text-gray-500 text-sm py-12 text-center">
+				<div class="text-ink-3 text-sm py-12 text-center">
 					등록된 system admin이 없습니다.
 				</div>
 			{:else}

@@ -13,8 +13,8 @@
   secondaryStatus={s.health?.status ?? null}
 >
   {#snippet meta()}
-    {#if s.cluster!.k3s_version}<span class="text-xs text-gray-500">{s.cluster!.k3s_version}</span>{/if}
-    {#if s.cluster!.status_reason}<p class="text-xs text-gray-500">{s.cluster!.status_reason}</p>{/if}
+    {#if s.cluster!.k3s_version}<span class="text-xs text-ink-3">{s.cluster!.k3s_version}</span>{/if}
+    {#if s.cluster!.status_reason}<p class="text-xs text-ink-3">{s.cluster!.status_reason}</p>{/if}
   {/snippet}
   {#snippet actions()}
     {#if s.cluster!.status === 'CREATING' || s.cluster!.status === 'PROVISIONING'}
@@ -26,7 +26,7 @@
       <button
         onclick={() => s.triggerHealthCheck()}
         disabled={s.checkingHealth}
-        class="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 text-xs rounded-lg transition-colors disabled:opacity-50">
+        class="px-3 py-1.5 bg-surface-selected hover:bg-surface-selected text-ink-1 text-xs rounded-lg transition-colors disabled:opacity-50">
         {s.checkingHealth ? '확인 중...' : '헬스 체크'}
       </button>
       <K3sCloudShellButton />

@@ -112,8 +112,8 @@
   });
 </script>
 
-<div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
-  <h3 class="text-sm font-semibold text-white mb-4">소속 프로젝트</h3>
+<div class="bg-surface-base border border-line rounded-xl p-5">
+  <h3 class="text-sm font-semibold text-ink-0 mb-4">소속 프로젝트</h3>
 
   {#if error}
     <div class="text-red-400 text-xs mb-2">{error}</div>
@@ -125,11 +125,11 @@
   {#if loading}
     <div class="space-y-2">
       {#each [1, 2] as _}
-        <div class="h-8 bg-gray-800 rounded animate-pulse"></div>
+        <div class="h-8 bg-surface-sunken rounded animate-pulse"></div>
       {/each}
     </div>
   {:else if projects.length === 0}
-    <div class="text-gray-500 text-xs text-center py-4">소속 프로젝트가 없습니다</div>
+    <div class="text-ink-3 text-xs text-center py-4">소속 프로젝트가 없습니다</div>
   {:else}
     <div class="space-y-2">
       {#each projects as proj (proj.id)}
@@ -137,27 +137,27 @@
         {@const isDefault = defaultProjectId === proj.id}
         <div
           class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
-            {isActive ? 'bg-blue-500/10 border border-blue-500/30' : 'bg-gray-800/50 border border-transparent'}"
+            {isActive ? 'bg-action-warm/10 border border-action-warm/30' : 'bg-surface-sunken/50 border border-transparent'}"
         >
           <button
             onclick={() => selectProject(proj)}
             disabled={switching || isActive}
             class="flex-1 min-w-0 text-left disabled:cursor-default"
           >
-            <div class="text-sm font-medium truncate {isActive ? 'text-blue-300' : 'text-white'}">{proj.name}</div>
+            <div class="text-sm font-medium truncate {isActive ? 'text-action-warm' : 'text-ink-0'}">{proj.name}</div>
             {#if proj.description}
-              <div class="text-[11px] text-gray-500 truncate">{proj.description}</div>
+              <div class="text-[11px] text-ink-3 truncate">{proj.description}</div>
             {/if}
           </button>
 
           <div class="flex items-center gap-1.5 shrink-0">
             {#if isDefault}
-              <span class="text-[10px] text-amber-400 font-medium px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/25">기본</span>
+              <span class="text-[10px] text-action-warm font-medium px-1.5 py-0.5 rounded bg-action-warm/10 border border-action-warm/25">기본</span>
             {/if}
             {#if isActive}
-              <span class="text-[10px] text-blue-400 font-medium px-1.5 py-0.5 rounded bg-blue-500/15 border border-blue-500/30">활성</span>
+              <span class="text-[10px] text-action-warm font-medium px-1.5 py-0.5 rounded bg-action-warm/15 border border-action-warm/30">활성</span>
             {:else if switching}
-              <svg class="w-3.5 h-3.5 text-gray-500 animate-spin" fill="none" viewBox="0 0 24 24">
+              <svg class="w-3.5 h-3.5 text-ink-3 animate-spin" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
               </svg>
@@ -166,13 +166,13 @@
               <button
                 onclick={() => clearDefault()}
                 disabled={settingDefault}
-                class="text-[11px] text-gray-500 hover:text-red-400 transition-colors disabled:opacity-40"
+                class="text-[11px] text-ink-3 hover:text-red-400 transition-colors disabled:opacity-40"
               >해제</button>
             {:else}
               <button
                 onclick={() => setDefault(proj)}
                 disabled={settingDefault}
-                class="text-[11px] text-gray-600 hover:text-amber-400 transition-colors disabled:opacity-40"
+                class="text-[11px] text-ink-3 hover:text-action-warm-hover transition-colors disabled:opacity-40"
               >기본 설정</button>
             {/if}
           </div>

@@ -17,7 +17,7 @@
 	onMount(() => { ctrl.loadProjects(); ctrl.loadGpuAliases(); ctrl.loadGpuDefaults(); });
 </script>
 
-<div class="p-4 md:p-8 max-w-7xl mx-auto">
+<div class="p-4 md:p-6 max-w-7xl mx-auto">
 	<PageHeader breadcrumb="IDENTITY / QUOTAS" title="쿼터" />
 
 	{#if ctrl.loading}
@@ -62,7 +62,7 @@
 						reconcilePreview={ctrl.reconcilePreview}
 					/>
 				{:else}
-					<div class="text-gray-600 text-sm">쿼터를 불러올 수 없습니다</div>
+					<div class="text-ink-3 text-sm">쿼터를 불러올 수 없습니다</div>
 				{/if}
 			{/if}
 	{/if}

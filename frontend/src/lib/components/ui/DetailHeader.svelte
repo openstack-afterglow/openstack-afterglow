@@ -24,7 +24,7 @@
     class: className = ''
   }: Props = $props();
 
-  const titleClass = size === 'lg' ? 'text-2xl' : size === 'sm' ? 'text-sm' : 'text-xl';
+  const titleClass = $derived(size === 'lg' ? 'text-xl' : size === 'sm' ? 'text-sm' : 'text-lg');
 </script>
 
 <div class="flex items-start justify-between mb-6 gap-4 {className}">

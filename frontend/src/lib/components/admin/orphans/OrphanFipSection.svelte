@@ -29,9 +29,9 @@
 	{/snippet}
 	{#snippet row(f)}
 		<td class="py-2 pr-4 font-mono text-green-400">{f.address}</td>
-		<td class="py-2 pr-4 text-gray-500 font-mono">{f.project_id?.slice(0, 8) ?? '-'}</td>
-		<td class="py-2 pr-4 text-gray-400">{f.created_at?.slice(0, 10) ?? '-'}</td>
-		<td class="py-2 pr-4 text-amber-400">{f.age_days}</td>
-		<td class="py-2 pr-4 text-gray-500 font-mono">{f.id.slice(0, 8)}</td>
+		<td class="py-2 pr-4 text-ink-3 font-mono">{f.project_id?.slice(0, 8) ?? '-'}</td>
+		<td class="py-2 pr-4 text-ink-2">{f.created_at?.slice(0, 10) ?? '-'}</td>
+		<td class="py-2 pr-4 text-action-warm">{f.age_days}</td>
+		<td class="py-2 pr-4 text-ink-3 font-mono">{f.id.slice(0, 8)}</td>
 	{/snippet}
 </OrphanSection>

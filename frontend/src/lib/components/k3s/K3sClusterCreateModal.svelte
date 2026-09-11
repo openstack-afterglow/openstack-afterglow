@@ -51,24 +51,24 @@
 
 {#if open}
 	<div
-		class="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
+		class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 		onclick={() => { open = false; error = ''; }}
 		role="dialog"
 		aria-modal="true"
 		tabindex="-1"
 		onkeydown={(e) => e.key === 'Escape' && (open = false)}
 	>
-		<div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-md mx-4 shadow-2xl" onclick={(e) => e.stopPropagation()} role="none" onkeydown={(e) => e.stopPropagation()}>
-			<h2 class="text-lg font-semibold text-white mb-5">K8s 클러스터 생성</h2>
+		<div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]" onclick={(e) => e.stopPropagation()} role="none" onkeydown={(e) => e.stopPropagation()}>
+			<h2 class="text-lg font-semibold text-ink-0 mb-5">K8s 클러스터 생성</h2>
 			<div class="space-y-4">
 				<div>
-					<label class="block text-xs text-gray-400 mb-1.5 uppercase tracking-wide">클러스터 이름
-						<input bind:value={form.name} type="text" placeholder="my-cluster" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 mt-1.5" />
+					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">클러스터 이름
+						<input bind:value={form.name} type="text" placeholder="my-cluster" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5" />
 					</label>
 				</div>
 				<div>
-					<label class="block text-xs text-gray-400 mb-1.5 uppercase tracking-wide">클러스터 템플릿
-						<select bind:value={form.cluster_template_id} class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 mt-1.5">
+					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">클러스터 템플릿
+						<select bind:value={form.cluster_template_id} class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5">
 							{#each templates as t}
 								<option value={t.id}>{t.name} ({t.coe})</option>
 							{/each}
@@ -77,26 +77,26 @@
 				</div>
 				<div class="grid grid-cols-2 gap-3">
 					<div>
-						<label class="block text-xs text-gray-400 mb-1.5 uppercase tracking-wide">마스터 수
-							<input bind:value={form.master_count} type="number" min="1" max="5" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 mt-1.5" />
+						<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">마스터 수
+							<input bind:value={form.master_count} type="number" min="1" max="5" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5" />
 						</label>
 					</div>
 					<div>
-						<label class="block text-xs text-gray-400 mb-1.5 uppercase tracking-wide">워커 수
-							<input bind:value={form.node_count} type="number" min="1" max="50" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 mt-1.5" />
+						<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">워커 수
+							<input bind:value={form.node_count} type="number" min="1" max="50" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5" />
 						</label>
 					</div>
 				</div>
 				<div>
-					<label class="block text-xs text-gray-400 mb-1.5 uppercase tracking-wide">키페어 (선택)
-						<input bind:value={form.keypair} type="text" placeholder="my-keypair" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 mt-1.5" />
+					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">키페어 (선택)
+						<input bind:value={form.keypair} type="text" placeholder="my-keypair" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5" />
 					</label>
 				</div>
 			</div>
 			{#if error}<div class="mt-3 text-red-400 text-xs">{error}</div>{/if}
 			<div class="flex justify-end gap-3 mt-6">
-				<button onclick={() => { open = false; error = ''; }} class="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">취소</button>
-				<button onclick={submit} disabled={creating || !form.name || !form.cluster_template_id} class="px-5 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-medium rounded-lg transition-colors">
+				<button onclick={() => { open = false; error = ''; }} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">취소</button>
+				<button onclick={submit} disabled={creating || !form.name || !form.cluster_template_id} class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-ink-0 text-sm font-medium rounded-lg transition-colors">
 					{creating ? '생성 중...' : '생성'}
 				</button>
 			</div>

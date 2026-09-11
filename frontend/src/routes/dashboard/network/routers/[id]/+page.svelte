@@ -127,9 +127,9 @@
 	}
 </script>
 
-<div class="max-w-4xl mx-auto px-4 py-8 text-gray-100">
+<div class="max-w-4xl mx-auto px-4 py-8 text-ink-1">
 	{#if loading}
-		<div class="text-gray-500">불러오는 중...</div>
+		<div class="text-ink-3">불러오는 중...</div>
 	{:else if error}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{error}</div>
 	{:else if router}

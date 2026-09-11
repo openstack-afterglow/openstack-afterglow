@@ -83,11 +83,11 @@
   });
 </script>
 
-<div class="p-4 md:p-8 max-w-7xl mx-auto">
+<div class="p-4 md:p-6 max-w-7xl mx-auto">
   <PageHeader breadcrumb="FILE STORAGE / MANAGE" title="사전 빌드 파일 스토리지" subtitle="구 prebuilt 라이브러리 share를 확인하거나 수동으로 빌드합니다.">
     {#snippet actions()}
-      <label class="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
-        <input type="checkbox" bind:checked={autoInstall} class="rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-0" />
+      <label class="flex items-center gap-2 text-xs text-ink-2 cursor-pointer">
+        <input type="checkbox" bind:checked={autoInstall} class="rounded border-line-2 bg-surface-sunken text-action-warm focus:ring-line-2 focus:ring-offset-0" />
         자동 패키지 설치
       </label>
       <AutoRefreshControl
@@ -111,15 +111,15 @@
     <LoadingSkeleton variant="list" rows={4} />
   {:else}
       <div class="mb-8">
-        <h2 class="text-base font-semibold text-white mb-3">사전 빌드 상태</h2>
+        <h2 class="text-base font-semibold text-ink-0 mb-3">사전 빌드 상태</h2>
         <PrebuiltLibraryGrid {libraries} {fileStorages} {building} onBuild={buildFileStorage} />
       </div>
 
       <div class="flex items-center justify-between mb-3">
-        <h2 class="text-base font-semibold text-white">전체 파일 스토리지 목록</h2>
+        <h2 class="text-base font-semibold text-ink-0">전체 파일 스토리지 목록</h2>
       </div>
       {#if fileStorages.length === 0}
-        <div class="text-gray-600 text-sm py-8 text-center">파일 스토리지가 없습니다</div>
+        <div class="text-ink-3 text-sm py-8 text-center">파일 스토리지가 없습니다</div>
       {:else}
         <FileStorageManageGrid {fileStorages} />
       {/if}

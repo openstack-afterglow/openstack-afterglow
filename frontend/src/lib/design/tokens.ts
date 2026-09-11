@@ -25,6 +25,7 @@ export const SURFACE_CSS_VAR = {
 	base: 'var(--color-surface-base)',
 	raised: 'var(--color-surface-raised)',
 	sunken: 'var(--color-surface-sunken)',
+	selected: 'var(--color-surface-selected)',
 	scrim: 'var(--color-surface-scrim)',
 	scrimSoft: 'var(--color-surface-scrim-soft)',
 } as const;
@@ -35,13 +36,20 @@ export const FONT_CSS_VAR = {
 	mono: 'var(--font-mono)',
 } as const;
 
+export const LAYOUT_CSS_VAR = {
+	headerHeight: 'var(--app-header-height)',
+	sidebarWidth: 'var(--app-sidebar-width)',
+} as const;
+
 export const LAYER_CSS_VAR = {
 	sidebar: 'var(--z-sidebar)',
+	header: 'var(--z-header)',
 	panel: 'var(--z-panel)',
 	modal: 'var(--z-modal)',
 	toast: 'var(--z-toast)',
-	command: 'var(--z-command)',
+	confirmation: 'var(--z-confirmation)',
 	popover: 'var(--z-popover)',
+	command: 'var(--z-command)',
 } as const;
 
 export const MOTION_CSS_VAR = {
@@ -56,9 +64,9 @@ export const MOTION_CSS_VAR = {
 } as const;
 
 export const MOTION_DURATION_MS = {
-	fast: 150,
-	base: 200,
-	panel: 300,
+	fast: 120,
+	base: 160,
+	panel: 200,
 	data: 500,
 	statusPulse: 1400,
 } as const;
@@ -88,6 +96,20 @@ export const TOPOLOGY_COLORS = {
 	internal: 'var(--color-topology-internal)',
 	router: 'var(--color-topology-router)',
 	link: 'var(--color-topology-link)',
+	gateway: 'var(--color-topology-gateway)',
+	internal2: 'var(--color-topology-internal-2)',
+} as const;
+
+/**
+ * 토폴로지 캔버스 뷰 전용 CSS 변수 이름.
+ * 존 채움은 color-mix()에 alpha 토큰을 넣어 계산하고, 그리드 선은 minor/major 두 단계만 사용한다.
+ * 값이 아니라 변수 이름이므로 getPropertyValue / var() 양쪽에서 쓸 수 있다.
+ */
+export const TOPOLOGY_CANVAS_CSS_VAR = {
+	zoneFillAlpha: '--topology-zone-fill-alpha',
+	zoneFillAlphaActive: '--topology-zone-fill-alpha-active',
+	gridMinor: '--color-topology-grid-minor',
+	gridMajor: '--color-topology-grid-major',
 } as const;
 
 export function usageTone(

@@ -7,7 +7,7 @@
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
-	import PageHeader from '$lib/components/ui/PageHeader.svelte';
+	import { Alert, Button, EmptyState, PageHeader, PageShell, ResourceToolbar } from '$lib/components/ui';
 	import VolumeBackupCreateModal from '$lib/components/volume/backups/VolumeBackupCreateModal.svelte';
 	import VolumeBackupRestoreModal from '$lib/components/volume/backups/VolumeBackupRestoreModal.svelte';
 	import VolumeBackupListTable from '$lib/components/volume/backups/VolumeBackupListTable.svelte';
@@ -111,25 +111,27 @@
 </script>
 
 {#if !volumeBackupsEnabled}
-	<div class="p-4 md:p-8"><BetaFeatureGate title="볼륨 백업은 베타 기능입니다" /></div>
+	<PageShell><BetaFeatureGate title="볼륨 백업은 베타 기능입니다" /></PageShell>
 {:else}
 	<VolumeBackupCreateModal bind:open={showModal} {volumes} onCreate={createBackup} />
 	<VolumeBackupRestoreModal bind:open={showRestoreModal} backup={selectedBackup} onRestore={restoreBackup} />
-	<div class="bulk-selection-page p-4 md:p-8">
+	<PageShell class="bulk-selection-page space-y-4">
 		<PageHeader breadcrumb="VOLUMES / BACKUPS" title="볼륨 백업">
 			{#snippet actions()}
-				<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} refreshing={refreshing} onManualRefresh={forceRefresh} />
-				<button onclick={openCreate} onpointerenter={prefetchVolumes} onfocus={prefetchVolumes} class="bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">+ 백업 생성</button>
+				<Button onclick={openCreate} onintent={prefetchVolumes} variant="primary">+ 백업 생성</Button>
 			{/snippet}
 		</PageHeader>
-		{#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
+		<ResourceToolbar label="볼륨 백업 목록 도구">
+			{#snippet actions()}<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} refreshing={refreshing} onManualRefresh={forceRefresh} />{/snippet}
+		</ResourceToolbar>
+		{#if error}<Alert tone="danger">{error}</Alert>{/if}
 		{#if loading}
 			<LoadingSkeleton variant="table" rows={4} />
 		{:else if backups.length === 0}
-			<div class="text-center py-20 text-gray-600"><div class="text-5xl mb-4">📦</div><p class="text-lg">볼륨 백업이 없습니다</p></div>
+			<EmptyState headline="볼륨 백업이 없습니다" description="필요한 볼륨의 복구 지점을 생성하세요." />
 		{:else}
 			<VolumeBackupListTable {backups} deletingId={deleting} selectedIds={selection.ids} selectableIds={selectableIds} selectionDisabled={bulkBusy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} onRestore={(b) => { selectedBackup = b; showRestoreModal = true; }} onDelete={deleteBackup} />
 			<BulkSelectionOverlay count={selection.count} ariaLabel="선택한 볼륨 백업 일괄 작업" actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
 		{/if}
-	</div>
+	</PageShell>
 {/if}

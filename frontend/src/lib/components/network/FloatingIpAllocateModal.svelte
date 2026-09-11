@@ -63,7 +63,7 @@
 
 {#if open}
 	<div
-		class="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
+		class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 		onclick={close}
 		role="dialog"
 		aria-modal="true"
@@ -71,27 +71,27 @@
 		onkeydown={(e) => e.key === 'Escape' && close()}
 	>
 		<div
-			class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-sm mx-4 shadow-2xl"
+			class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-sm mx-4 shadow-[var(--shadow-restraint)]"
 			onclick={(e) => e.stopPropagation()}
 			role="none"
 			onkeydown={(e) => e.stopPropagation()}
 		>
-			<h2 class="text-lg font-semibold text-white mb-5">Floating IP 할당</h2>
+			<h2 class="text-lg font-semibold text-ink-0 mb-5">Floating IP 할당</h2>
 
 			{#if externalNetworks.length === 0}
-				<p class="text-sm text-gray-400 mb-4">
+				<p class="text-sm text-ink-2 mb-4">
 					사용 가능한 외부 네트워크가 없습니다. 라우터에 외부 게이트웨이가 연결되어 있는지 확인하세요.
 				</p>
 			{:else if externalNetworks.length === 1}
-				<p class="text-sm text-gray-400 mb-4">
-					외부 네트워크 <span class="text-white font-mono">{externalNetworks[0].name || externalNetworks[0].id.slice(0, 8)}</span>에서 Floating IP를 할당합니다.
+				<p class="text-sm text-ink-2 mb-4">
+					외부 네트워크 <span class="text-ink-0 font-mono">{externalNetworks[0].name || externalNetworks[0].id.slice(0, 8)}</span>에서 Floating IP를 할당합니다.
 				</p>
 			{:else}
 				<div class="mb-4">
-					<label class="block text-xs text-gray-400 mb-1.5 uppercase tracking-wide">외부 네트워크</label>
-					<select
+					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-floatingipallocatemodal-91">외부 네트워크</label>
+					<select id="field-floatingipallocatemodal-91"
 						bind:value={selectedNetworkId}
-						class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+						class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm"
 					>
 						<option value="">-- 선택 --</option>
 						{#each externalNetworks as net}
@@ -108,12 +108,12 @@
 			<div class="flex justify-end gap-3">
 				<button
 					onclick={close}
-					class="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
+					class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors"
 				>취소</button>
 				<button
 					onclick={allocate}
 					disabled={allocating || externalNetworks.length === 0}
-					class="px-5 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-medium rounded-lg transition-colors"
+					class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors"
 				>{allocating ? '할당 중...' : 'IP 할당'}</button>
 			</div>
 		</div>

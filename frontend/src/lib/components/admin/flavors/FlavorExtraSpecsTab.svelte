@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import {
@@ -33,7 +33,7 @@
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
 
-	let flavor = $state(flavorIn);
+	let flavor = $state(untrack(() => flavorIn));
 	$effect(() => {
 		flavor = flavorIn;
 	});
@@ -185,36 +185,36 @@
 {/if}
 
 {#if Object.keys(flavor.extra_specs).length === 0}
-	<div class="text-gray-600 text-sm mb-4">등록된 속성이 없습니다</div>
+	<div class="text-ink-3 text-sm mb-4">등록된 속성이 없습니다</div>
 {:else}
 	<div class="space-y-1 mb-4">
 		{#each Object.entries(flavor.extra_specs) as [k, v]}
-			<div class="bg-gray-900 border border-gray-800 rounded-lg px-3 py-2">
+			<div class="bg-surface-base border border-line rounded-lg px-3 py-2">
 				{#if editingSpecKey === k}
 					<div class="flex items-center gap-2">
-						<span class="text-xs text-blue-300 font-mono break-all shrink-0">{k}</span>
-						<span class="text-gray-500">=</span>
+						<span class="text-xs text-action-warm font-mono break-all shrink-0">{k}</span>
+						<span class="text-ink-3">=</span>
 						<input
 							bind:value={editingSpecValue}
 							type="text"
-							class="flex-1 min-w-0 bg-gray-800 border border-blue-500 rounded px-2 py-1 text-xs text-white font-mono focus:outline-none"
+							class="flex-1 min-w-0 bg-surface-sunken border border-action-warm rounded px-2 py-1 text-xs text-ink-0 font-mono focus:outline-none"
 							onkeydown={(e) => {
 								if (e.key === 'Enter') saveEditSpec();
 								if (e.key === 'Escape') cancelEditSpec();
 							}}
 						/>
 						<button onclick={saveEditSpec} disabled={specSaving} class="text-green-400 hover:text-green-300 text-xs shrink-0">저장</button>
-						<button onclick={cancelEditSpec} class="text-gray-400 hover:text-gray-300 text-xs shrink-0">취소</button>
+						<button onclick={cancelEditSpec} class="text-ink-2 hover:text-ink-2 text-xs shrink-0">취소</button>
 					</div>
 				{:else}
 					<div class="flex items-center justify-between">
 						<button
-							class="flex-1 min-w-0 text-left cursor-pointer hover:bg-gray-800/50 rounded -mx-1 px-1 py-0.5 transition-colors"
+							class="flex-1 min-w-0 text-left cursor-pointer hover:bg-surface-sunken/50 rounded -mx-1 px-1 py-0.5 transition-colors"
 							onclick={() => startEditSpec(k, v)}
 						>
-							<span class="text-xs text-blue-300 font-mono break-all">{k}</span>
-							<span class="text-gray-500 mx-2">=</span>
-							<span class="text-xs text-gray-300 font-mono break-all">{v}</span>
+							<span class="text-xs text-action-warm font-mono break-all">{k}</span>
+							<span class="text-ink-3 mx-2">=</span>
+							<span class="text-xs text-ink-2 font-mono break-all">{v}</span>
 						</button>
 						<button onclick={() => deleteExtraSpec(k)} class="ml-2 text-red-400 hover:text-red-300 text-xs shrink-0">삭제</button>
 					</div>
@@ -224,12 +224,12 @@
 	</div>
 {/if}
 
-<div class="text-sm text-gray-400 mb-2">속성 추가/수정</div>
+<div class="text-sm text-ink-2 mb-2">속성 추가/수정</div>
 <div class="space-y-2">
 	<select
 		value={selectedTemplateKey}
 		onchange={(e) => selectTemplate(e.currentTarget.value)}
-		class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500"
+		class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm"
 	>
 		<option value="">직접 입력</option>
 		{#each FLAVOR_SPEC_CATEGORIES as category}
@@ -242,7 +242,7 @@
 	</select>
 
 	{#if currentTemplate}
-		<div class="text-xs text-gray-500">{currentTemplate.description}</div>
+		<div class="text-xs text-ink-3">{currentTemplate.description}</div>
 		{#if currentTemplate.valueType === 'gpu_alias'}
 			{#if gpuAliasOptions.length === 0}
 				<div class="text-xs text-yellow-400">GPU alias 카탈로그를 불러올 수 없습니다 — 값을 직접 입력하세요</div>
@@ -250,13 +250,13 @@
 					bind:value={newSpecValue}
 					type="text"
 					placeholder="예: RTX3090:1"
-					class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
+					class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-ink-0 text-sm font-mono focus:outline-none focus:border-action-warm"
 				/>
 			{:else}
 				<div class="flex gap-2">
 					<select
 						bind:value={gpuAlias}
-						class="flex-1 min-w-0 bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
+						class="flex-1 min-w-0 bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-ink-0 text-sm font-mono focus:outline-none focus:border-action-warm"
 					>
 						{#each gpuAliasOptions as o (o.alias)}
 							<option value={o.alias}>{o.alias} — {o.name}</option>
@@ -267,15 +267,15 @@
 						type="number"
 						min="1"
 						title="GPU 개수"
-						class="w-20 bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500"
+						class="w-20 bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm"
 					/>
 				</div>
-				<div class="text-xs text-gray-500 font-mono">값: {gpuAlias ? `${gpuAlias}:${gpuCount}` : '-'}</div>
+				<div class="text-xs text-ink-3 font-mono">값: {gpuAlias ? `${gpuAlias}:${gpuCount}` : '-'}</div>
 			{/if}
 		{:else if currentTemplate.valueType === 'enum'}
 			<select
 				bind:value={newSpecValue}
-				class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
+				class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-ink-0 text-sm font-mono focus:outline-none focus:border-action-warm"
 			>
 				{#each currentTemplate.options ?? [] as opt}
 					<option value={opt}>{opt}</option>
@@ -286,7 +286,7 @@
 				bind:value={newSpecValue}
 				type={currentTemplate.valueType === 'number' ? 'number' : 'text'}
 				placeholder={currentTemplate.placeholder ?? '값'}
-				class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
+				class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-ink-0 text-sm font-mono focus:outline-none focus:border-action-warm"
 			/>
 		{/if}
 	{:else}
@@ -294,19 +294,19 @@
 			bind:value={newSpecKey}
 			type="text"
 			placeholder="키 (예: hw:numa_nodes)"
-			class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
+			class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-ink-0 text-sm font-mono focus:outline-none focus:border-action-warm"
 		/>
 		<input
 			bind:value={newSpecValue}
 			type="text"
 			placeholder="값"
-			class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
+			class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-ink-0 text-sm font-mono focus:outline-none focus:border-action-warm"
 		/>
 	{/if}
 	<button
 		onclick={addExtraSpec}
 		disabled={specSaving || !newSpecKey.trim() || (currentTemplate?.valueType === 'gpu_alias' && gpuAliasOptions.length > 0 && !gpuAlias)}
-		class="w-full px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg disabled:opacity-30"
+		class="w-full px-3 py-1.5 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm rounded-lg disabled:opacity-30"
 	>
 		{specSaving ? '저장 중...' : '추가/수정'}
 	</button>

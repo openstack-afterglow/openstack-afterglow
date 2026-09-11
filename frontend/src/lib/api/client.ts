@@ -142,8 +142,8 @@ function _readPersistedAuth(): { token?: string; refreshToken?: string; accessEx
 	}
 }
 type RefreshSettledFailure =
-	| { kind: 'terminal'; accessToken: string | undefined; refreshToken: string }
-	| { kind: 'retryable'; accessToken: string | undefined; refreshToken: string; error: unknown; retryAt: number };
+	| { kind: 'terminal'; accessToken: string | null | undefined; refreshToken: string }
+	| { kind: 'retryable'; accessToken: string | null | undefined; refreshToken: string; error: unknown; retryAt: number };
 
 let _refreshSettledFailure: RefreshSettledFailure | null = null;
 

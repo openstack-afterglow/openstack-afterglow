@@ -152,11 +152,11 @@
 	}
 </script>
 
-<div class="min-h-screen bg-gray-950 text-white">
+<main id="main-content" tabindex="-1" class="min-h-screen bg-surface-canvas text-ink-0">
 	<!-- 상단 알림 바 -->
-	<div class="border-b border-gray-800 bg-[#0B1220]">
+	<div class="border-b border-line bg-[#0B1220]">
 		<div class="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
-			<div class="flex items-center gap-2 text-sm text-gray-400">
+			<div class="flex items-center gap-2 text-sm text-ink-2">
 				<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
 				</svg>
@@ -165,7 +165,7 @@
 			<button
 				onclick={logout}
 				disabled={$logoutInProgress}
-				class="text-sm text-gray-500 hover:text-white transition-colors"
+				class="text-sm text-ink-3 hover:text-ink-0 transition-colors"
 			>
 				로그아웃
 			</button>
@@ -175,10 +175,10 @@
 	<!-- 본문 -->
 	<div class="max-w-6xl mx-auto px-6 py-10">
 		<div class="flex items-center justify-between mb-6">
-			<h1 class="text-lg font-semibold text-white">최근 프로젝트 선택</h1>
+			<h1 class="text-lg font-semibold text-ink-0">최근 프로젝트 선택</h1>
 			<button
 				onclick={openCreateProject}
-				class="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+				class="flex items-center gap-1.5 px-3 py-1.5 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg transition-colors"
 			>
 				<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v14M5 12h14"/>
@@ -190,26 +190,26 @@
 		{#if loading}
 			<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
 				{#each [1, 2, 3, 4, 5] as _}
-					<div class="h-28 bg-gray-800 rounded-xl animate-pulse"></div>
+					<div class="h-28 bg-surface-sunken rounded-xl animate-pulse"></div>
 				{/each}
 			</div>
 		{:else if error}
 			<div class="text-red-400 text-sm">{error}</div>
 		{:else if projects.length === 0}
-			<div class="text-gray-500 text-sm text-center py-16">접근 가능한 프로젝트가 없습니다.</div>
+			<div class="text-ink-3 text-sm text-center py-16">접근 가능한 프로젝트가 없습니다.</div>
 		{:else}
 			<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
 				{#each projects as proj (proj.id)}
 					<button
 						onclick={() => selectProject(proj)}
 						disabled={switching}
-						class="text-left border border-gray-700 rounded-xl p-5 bg-gray-900 hover:border-blue-500 hover:bg-gray-800 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+						class="text-left border border-line-2 rounded-xl p-5 bg-surface-base hover:border-action-warm hover:bg-surface-sunken transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
 					>
-						<div class="font-medium text-white mb-3 truncate">{proj.name}</div>
-						<div class="space-y-1 text-[13px] text-gray-400">
+						<div class="font-medium text-ink-0 mb-3 truncate">{proj.name}</div>
+						<div class="space-y-1 text-[13px] text-ink-2">
 							<div class="flex gap-1.5">
 								<span class="shrink-0">프로젝트 ID:</span>
-								<span class="truncate font-mono text-gray-300">{proj.id}</span>
+								<span class="truncate font-mono text-ink-2">{proj.id}</span>
 							</div>
 							<div class="flex gap-1.5">
 								<span class="shrink-0">조직:</span>
@@ -225,7 +225,7 @@
 			</div>
 		{/if}
 	</div>
-</div>
+</main>
 
 {#if showCreateModal && !mockupActive}
 	<CreateProjectModal

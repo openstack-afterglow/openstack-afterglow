@@ -445,34 +445,34 @@ describe('mockup transport', () => {
 			'mock-token-tutorial-scoped',
 			'mock-project-1',
 		);
-		const overviewSummary = await maybeMockJson<{ recent_instances: unknown[] }>(
+		const overviewSummary = (await maybeMockJson<{ recent_instances: unknown[] }>(
 			'GET',
 			'/api/v1/dashboard/summary?view=overview&recent_limit=12',
 			undefined,
 			'mock-token-tutorial-scoped',
 			'mock-project-1',
-		);
-		const overviewQuotas = await maybeMockJson<{ file_storage: unknown; alerts: unknown[] }>(
+		)) as { recent_instances: unknown[] };
+		const overviewQuotas = (await maybeMockJson<{ file_storage: unknown; alerts: unknown[] }>(
 			'GET',
 			'/api/v1/dashboard/quotas?view=overview',
 			undefined,
 			'mock-token-tutorial-scoped',
 			'mock-project-1',
-		);
-		const k3sStats = await maybeMockJson<{ total: number; active: number; available: boolean }>(
+		)) as { file_storage: unknown; alerts: unknown[] };
+		const k3sStats = (await maybeMockJson<{ total: number; active: number; available: boolean }>(
 			'GET',
 			'/api/v1/dashboard/k3s-stats',
 			undefined,
 			'mock-token-tutorial-scoped',
 			'mock-project-1',
-		);
-		const trend = await maybeMockJson<{ network: { unit: string; data: unknown[] } }>(
+		)) as { total: number; active: number; available: boolean };
+		const trend = (await maybeMockJson<{ network: { unit: string; data: unknown[] } }>(
 			'GET',
 			'/api/v1/dashboard/metrics/trend?range=14d&include_network=false',
 			undefined,
 			'mock-token-tutorial-scoped',
 			'mock-project-1',
-		);
+		)) as { network: { unit: string; data: unknown[] } };
 
 		expect(fullSummary).toMatchObject({ gpu_used: expect.any(Number) });
 		expect(overviewSummary).toMatchObject({ recent_instances: expect.any(Array) });

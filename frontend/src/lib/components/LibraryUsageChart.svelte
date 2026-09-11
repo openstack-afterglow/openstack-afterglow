@@ -48,27 +48,27 @@
   );
 </script>
 
-<div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+<div class="bg-surface-base border border-line rounded-xl p-5">
   <div class="flex items-center justify-between mb-4">
     <div class="flex items-center gap-3">
-      <h3 class="text-sm font-semibold text-gray-300">{title}</h3>
+      <h3 class="text-sm font-semibold text-ink-2">{title}</h3>
       {#if totalUsage > 0}
-        <span class="text-xl font-bold text-white">{totalUsage}</span>
-        <span class="text-xs text-gray-500">활성 VM</span>
+        <span class="text-xl font-bold text-ink-0">{totalUsage}</span>
+        <span class="text-xs text-ink-3">활성 VM</span>
       {/if}
     </div>
     <div class="flex gap-1">
       {#each RANGES as r}
         <button
           onclick={() => onRangeChange?.(r)}
-          class="text-xs px-2 py-0.5 rounded transition-colors {currentRange === r ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-300'}"
+          class="text-xs px-2 py-0.5 rounded transition-colors {currentRange === r ? 'bg-action-warm text-ink-0' : 'text-ink-3 hover:text-ink-2'}"
         >{RANGE_LABELS[r]}</button>
       {/each}
     </div>
   </div>
 
   {#if data.length === 0 || topKeys.length === 0}
-    <div class="flex items-center justify-center h-24 text-gray-600 text-sm">
+    <div class="flex items-center justify-center h-24 text-ink-3 text-sm">
       수집된 데이터가 없습니다 (라이브러리가 적재된 VM이 없거나 아직 스냅샷이 저장되지 않았습니다)
     </div>
   {:else}
@@ -78,14 +78,14 @@
         {@const val = (latestPoint?.[key] as number) ?? 0}
         {@const pct = totalUsage > 0 ? (val / totalUsage) * 100 : 0}
         <div class="flex items-center gap-3">
-          <div class="w-28 text-xs text-gray-400 truncate text-right">{label}</div>
-          <div class="flex-1 h-3 bg-gray-800 rounded-full overflow-hidden">
+          <div class="w-28 text-xs text-ink-2 truncate text-right">{label}</div>
+          <div class="flex-1 h-3 bg-surface-sunken rounded-full overflow-hidden">
             <div
               class="h-full rounded-full transition-all duration-500"
               style="width: {pct}%; background-color: {color};"
             ></div>
           </div>
-          <div class="w-6 text-xs text-gray-300 text-right">{val}</div>
+          <div class="w-6 text-xs text-ink-2 text-right">{val}</div>
         </div>
       {/each}
     </div>

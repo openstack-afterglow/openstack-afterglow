@@ -191,9 +191,5 @@ master key (k3s_kubeconfig_encryption_key, 64 hex)
 
 ---
 
-## 참고
-
-- [Release notes v1.14.0](releases/v1.14.0.md)
-- [CHANGELOG](../CHANGELOG.md)
-- [Architecture](architecture.md)
-- [Deployment](deployment.md)
+- [루트 Architecture 정본](https://github.com/openstack-afterglow/openstack-afterglow/blob/main/ARCHITECTURE.md)
+- [배포](deployment.md)

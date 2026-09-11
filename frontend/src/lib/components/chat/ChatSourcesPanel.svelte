@@ -18,7 +18,7 @@
 		onclick={onClose}
 		onkeydown={(e) => e.key === 'Escape' && onClose()}
 	></div>
-	<aside class="drawer" role="dialog" aria-label="대화 출처">
+	<div class="drawer" role="dialog" aria-label="대화 출처">
 		<header class="head">
 			<h2>출처 {citations.length}</h2>
 			<button type="button" class="close" onclick={onClose} aria-label="닫기">
@@ -59,7 +59,7 @@
 				{/each}
 			</ol>
 		{/if}
-	</aside>
+	</div>
 {/if}
 
 <style>

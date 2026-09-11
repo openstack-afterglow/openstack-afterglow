@@ -75,45 +75,45 @@
 	<div class="overflow-x-auto">
 		<table class="w-full text-sm">
 			<thead>
-				<tr class="border-b border-gray-800 text-gray-400 text-xs uppercase tracking-wide">
+				<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
 					<th
-						class="text-left py-2 pr-4 cursor-pointer select-none hover:text-gray-200"
+						class="text-left py-2 pr-4 cursor-pointer select-none hover:text-ink-1"
 						onclick={() => toggleSort('name')}
-					>이름 <span class="text-gray-600">{sortIcon('name')}</span></th>
+					>이름 <span class="text-ink-3">{sortIcon('name')}</span></th>
 					<th
-						class="text-left py-2 pr-4 cursor-pointer select-none hover:text-gray-200"
+						class="text-left py-2 pr-4 cursor-pointer select-none hover:text-ink-1"
 						onclick={() => toggleSort('vcpus')}
-					>VCPU <span class="text-gray-600">{sortIcon('vcpus')}</span></th>
+					>VCPU <span class="text-ink-3">{sortIcon('vcpus')}</span></th>
 					<th
-						class="text-left py-2 pr-4 cursor-pointer select-none hover:text-gray-200"
+						class="text-left py-2 pr-4 cursor-pointer select-none hover:text-ink-1"
 						onclick={() => toggleSort('ram')}
-					>RAM <span class="text-gray-600">{sortIcon('ram')}</span></th>
+					>RAM <span class="text-ink-3">{sortIcon('ram')}</span></th>
 					<th
-						class="text-left py-2 pr-4 cursor-pointer select-none hover:text-gray-200"
+						class="text-left py-2 pr-4 cursor-pointer select-none hover:text-ink-1"
 						onclick={() => toggleSort('disk')}
-					>Disk <span class="text-gray-600">{sortIcon('disk')}</span></th>
+					>Disk <span class="text-ink-3">{sortIcon('disk')}</span></th>
 					<th
-						class="text-left py-2 pr-4 cursor-pointer select-none hover:text-gray-200"
+						class="text-left py-2 pr-4 cursor-pointer select-none hover:text-ink-1"
 						onclick={() => toggleSort('is_public')}
-					>공개 <span class="text-gray-600">{sortIcon('is_public')}</span></th>
+					>공개 <span class="text-ink-3">{sortIcon('is_public')}</span></th>
 					<th class="text-left py-2 pr-4">GPU</th>
 					<th class="text-right py-2">액션</th>
 				</tr>
 			</thead>
 			<tbody>
 				{#each pagedFlavors as f (f.id)}
-					<tr class="border-b border-gray-800/50 text-xs hover:bg-gray-800/50 transition-colors">
+					<tr class="border-b border-line/50 text-xs hover:bg-surface-sunken/50 transition-colors">
 						<td class="py-2 pr-4">
 							<div class="min-w-0">
-								<span class="text-white max-md:block max-md:max-w-[66vw] max-md:truncate" title={f.name}>{f.name}</span>
+								<span class="text-ink-0 max-md:block max-md:max-w-[66vw] max-md:truncate" title={f.name}>{f.name}</span>
 								{#if f.description}
-									<div class="text-gray-500 text-xs mt-0.5">{f.description}</div>
+									<div class="text-ink-3 text-xs mt-0.5">{f.description}</div>
 								{/if}
 							</div>
 						</td>
-						<td class="py-2 pr-4 text-gray-300">{f.vcpus}</td>
-						<td class="py-2 pr-4 text-gray-300">{formatRam(f.ram)}</td>
-						<td class="py-2 pr-4 text-gray-300">{f.disk} GB</td>
+						<td class="py-2 pr-4 text-ink-2">{f.vcpus}</td>
+						<td class="py-2 pr-4 text-ink-2">{formatRam(f.ram)}</td>
+						<td class="py-2 pr-4 text-ink-2">{f.disk} GB</td>
 						<td class="py-2 pr-4">
 							<span
 								class="px-1.5 py-0.5 rounded text-xs font-medium {f.is_public
@@ -121,7 +121,7 @@
 									: 'bg-yellow-900/30 text-yellow-400'}"
 							>{f.is_public ? 'Public' : 'Private'}</span>
 						</td>
-						<td class="py-2 pr-4 text-gray-400">
+						<td class="py-2 pr-4 text-ink-2">
 							{#if f.is_gpu}
 								<span class="text-purple-400">GPU{f.gpu_count > 1 ? ` x${f.gpu_count}` : ''}</span>
 							{:else}
@@ -132,7 +132,7 @@
 							<div class="flex items-center justify-end gap-2">
 								<button
 									onclick={() => onManage(f)}
-									class="text-blue-400 hover:text-blue-300 text-xs"
+									class="text-action-warm hover:text-action-warm-hover text-xs"
 								>관리</button>
 								<button
 									onclick={() => onDelete(f.id)}

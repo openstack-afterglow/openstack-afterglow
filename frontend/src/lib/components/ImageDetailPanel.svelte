@@ -26,8 +26,8 @@
 		token: () => $auth.token ?? undefined,
 		projectId: () => $auth.projectId ?? undefined,
 		isAdmin: () => isAdmin,
-		onDelete,
-		onClose,
+		onDelete: (id) => onDelete?.(id),
+		onClose: () => onClose?.(),
 	});
 	provideImageDetailController(s);
 

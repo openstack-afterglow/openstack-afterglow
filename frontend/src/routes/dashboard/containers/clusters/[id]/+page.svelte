@@ -14,6 +14,7 @@
   import ClusterResourcesTab from '$lib/components/dashboard/containers/clusters/id/ClusterResourcesTab.svelte';
   import ClusterEventsTab from '$lib/components/dashboard/containers/clusters/id/ClusterEventsTab.svelte';
   import { toast } from '$lib/stores/toast';
+  import { PageShell, Tabs } from '$lib/components/ui';
 
   type Tab = 'detail' | 'resources' | 'events';
   let activeTab = $state<Tab>('detail');
@@ -21,6 +22,11 @@
   let cluster = $state<Cluster | null>(null);
   let resources = $state<StackResource[]>([]);
   let events = $state<StackEvent[]>([]);
+  const clusterTabs = $derived([
+    { value: 'detail', label: '상세', panelId: 'cluster-panel-detail' },
+    { value: 'resources', label: cluster?.stack_id ? '스택 리소스' : '스택 리소스 (없음)', panelId: 'cluster-panel-resources', disabled: !cluster?.stack_id },
+    { value: 'events', label: cluster?.stack_id ? '스택 이벤트' : '스택 이벤트 (없음)', panelId: 'cluster-panel-events', disabled: !cluster?.stack_id },
+  ]);
   let loading = $state(true);
   let resourcesLoading = $state(false);
   let eventsLoading = $state(false);
@@ -149,12 +155,12 @@
   });
 </script>
 
-<div class="p-4 md:p-8 max-w-5xl">
+<PageShell class="max-w-5xl">
   {#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
 
   {#if loading}
     <div class="flex items-center gap-3 mb-6">
-      <button onclick={() => goto('/dashboard/containers/clusters')} class="text-gray-400 hover:text-white transition-colors text-sm">← 클러스터 목록</button>
+      <button onclick={() => goto('/dashboard/containers/clusters')} class="text-ink-2 hover:text-ink-0 transition-colors text-sm">← 클러스터 목록</button>
     </div>
     <LoadingSkeleton variant="detail" />
   {:else if cluster}
@@ -168,18 +174,21 @@
 
     <ClusterProgressBar {resources} {isInProgress} />
 
-    <!-- 탭 -->
-    <div class="flex gap-1 border-b border-gray-800 mb-6">
-      {#each [['detail', '상세'], ['resources', '스택 리소스'], ['events', '스택 이벤트']] as [tab, label]}
-        <button
-          onclick={() => switchTab(tab as Tab)}
-          onfocus={() => { if (cluster?.stack_id) void ensureTab(tab as Tab); }}
-          class="px-4 py-2 text-sm transition-colors border-b-2 {activeTab === tab ? 'border-blue-500 text-white' : 'border-transparent text-gray-500 hover:text-gray-300'}"
-          disabled={tab !== 'detail' && !cluster.stack_id}
-        >{label}{tab !== 'detail' && !cluster.stack_id ? ' (없음)' : ''}</button>
-      {/each}
-    </div>
+    <Tabs
+      id="cluster-detail-tabs"
+      value={activeTab}
+      items={clusterTabs}
+      ariaLabel="클러스터 상세 정보"
+      onchange={(value) => { void switchTab(value as Tab); }}
+      class="mb-6"
+    />
 
+    <div
+      id={`cluster-panel-${activeTab}`}
+      role="tabpanel"
+      aria-labelledby={`cluster-detail-tabs-${activeTab}`}
+      tabindex="0"
+    >
     {#if activeTab === 'detail'}
       <ClusterDetailGrid {cluster} />
     {:else if activeTab === 'resources'}
@@ -187,5 +196,6 @@
     {:else if activeTab === 'events'}
       <ClusterEventsTab {events} loading={eventsLoading} onRefresh={fetchEvents} />
     {/if}
+    </div>
   {/if}
-</div>
+</PageShell>

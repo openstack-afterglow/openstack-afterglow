@@ -18,15 +18,24 @@ from app.config import get_settings
 from app.models.storage import (
     AdminNetworkDetail,
     AdminSubnetDetail,
+    AdminTopologyData,
     FileStorageDeleteDiagnostic,
     FileStorageForceDeleteResult,
     FileStorageInfo,
-    TopologyData,
     TopologyInstance,
     VolumeDeleteDiagnostic,
     VolumeDeleteRecoveryResult,
 )
-from app.services import instance_recovery, keystone, library_builder, manila, neutron, nova, volume_delete_recovery
+from app.services import (
+    instance_recovery,
+    keystone,
+    library_builder,
+    manila,
+    neutron,
+    nova,
+    trove,
+    volume_delete_recovery,
+)
 from app.services import libraries as lib_svc
 from app.services.cache import cached_call, invalidate, ttl_fast, ttl_normal, ttl_slow
 from app.services.cache import invalidation as cache_invalidation
@@ -1111,29 +1120,43 @@ async def force_delete_file_storage(
         raise HTTPException(status_code=500, detail="파일 스토리지 강제 삭제 실패")
 
 
-@router.get("/topology", response_model=TopologyData, dependencies=[Depends(require_admin)])
+@router.get("/topology", response_model=AdminTopologyData, dependencies=[Depends(require_admin)])
 async def admin_topology(
     conn: openstack.connection.Connection = Depends(get_os_conn), cm: CacheMode = Depends(cache_mode)
 ):
-    """전체 프로젝트의 네트워크/라우터/인스턴스 토폴로지."""
+    """전체 프로젝트의 네트워크/라우터/인스턴스 토폴로지 (네트워크에 provider 세그먼트 메타 포함)."""
 
     def _fetch():
-        topo = neutron.get_topology(conn)
+        topo = neutron.get_topology(conn, include_provider=True)
 
-        # Neutron 포트에서 (device_id, ip) → network_id 매핑 구축
-        port_net_map: dict[tuple[str, str], str] = {}
-        for p in conn.network.ports():
-            dev_owner = p.device_owner or ""
-            if not p.device_id or not dev_owner.startswith("compute:"):
-                continue
-            for fip in p.fixed_ips or []:
-                ip = fip.get("ip_address")
-                if ip:
-                    port_net_map[(p.device_id, ip)] = p.network_id
+        # Neutron compute 포트에서 (device_id, ip) → {network_id, port_id, mac_address} 인덱스 구축
+        port_index = neutron.build_compute_port_index(conn)
+
+        # Trove DB 인스턴스 IP 집합 (전체 프로젝트, 1회 조회).
+        # Trove 미배포/조회 실패는 정상 → 전부 is_database=False.
+        try:
+            db_ips = trove.topology_database_ips(conn, all_projects=True)
+        except Exception:
+            _logger.debug("Trove 토폴로지 IP 조회 실패 — is_database 표시 생략", exc_info=True)
+            db_ips = set()
+
+        def _ip_entry(server_id: str, net_name: str, addr: dict) -> dict:
+            port = port_index.get((server_id, addr["addr"]), {})
+            return {
+                "addr": addr["addr"],
+                "type": addr.get("OS-EXT-IPS:type", ""),
+                "network_name": net_name,
+                "network_id": port.get("network_id"),
+                "port_id": port.get("port_id"),
+                "mac_addr": port.get("mac_address"),
+            }
 
         instances = []
         for s in conn.compute.servers(details=True, all_projects=True):
             addresses = getattr(s, "addresses", {}) or {}
+            flavor = getattr(s, "flavor", None)
+            image = getattr(s, "image", None)
+            ip_entries = [_ip_entry(s.id, net_name, addr) for net_name, addrs in addresses.items() for addr in addrs]
             instances.append(
                 TopologyInstance(
                     id=s.id,
@@ -1141,16 +1164,11 @@ async def admin_topology(
                     status=s.status or "",
                     project_id=getattr(s, "project_id", None) or getattr(s, "tenant_id", None),
                     network_names=list(set(addresses.keys())),
-                    ip_addresses=[
-                        {
-                            "addr": addr["addr"],
-                            "type": addr.get("OS-EXT-IPS:type", ""),
-                            "network_name": net_name,
-                            "network_id": port_net_map.get((s.id, addr["addr"])),
-                        }
-                        for net_name, addrs in addresses.items()
-                        for addr in addrs
-                    ],
+                    ip_addresses=ip_entries,
+                    flavor_name=flavor.get("original_name") if isinstance(flavor, dict) else None,
+                    image_id=image.get("id") if isinstance(image, dict) else None,
+                    # fixed IP 가 Trove IP 집합에 속하면 DB 인스턴스. floating IP 우연 일치는 제외.
+                    is_database=any(e.get("type") == "fixed" and e.get("addr") in db_ips for e in ip_entries),
                 )
             )
         topo.instances = instances
@@ -1165,6 +1183,8 @@ async def admin_topology(
         return await cached_call(
             "afterglow:admin:topology", ttl_normal(), _fetch, enabled=cm.enabled, refresh=cm.refresh
         )
+    except HTTPException:
+        raise
     except Exception:
         _logger.exception("토폴로지 조회 실패")
         raise HTTPException(status_code=500, detail="토폴로지 조회 실패")

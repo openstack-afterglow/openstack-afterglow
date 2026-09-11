@@ -23,18 +23,18 @@
 	} = $props();
 </script>
 
-<div class="bg-gray-900 border border-gray-800 rounded-xl p-6 mb-6">
-	<h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-1">GPU Quota</h2>
-	<p class="text-xs text-gray-600 mb-4">이 프로젝트의 GPU quota입니다. 개별 설정이 없으면 전체 기본값이 적용됩니다.</p>
+<div class="bg-surface-base border border-line rounded-xl p-6 mb-6">
+	<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide mb-1">GPU Quota</h2>
+	<p class="text-xs text-ink-3 mb-4">이 프로젝트의 GPU quota입니다. 개별 설정이 없으면 전체 기본값이 적용됩니다.</p>
 	{#if error}<div class="text-red-400 text-xs mb-3">{error}</div>{/if}
 	{#if loading}
-		<div class="text-gray-500 text-sm">불러오는 중...</div>
+		<div class="text-ink-3 text-sm">불러오는 중...</div>
 	{:else if rows.length === 0 && !hasAnyAlias}
-		<div class="text-gray-600 text-sm">GPU alias를 찾을 수 없습니다.</div>
+		<div class="text-ink-3 text-sm">GPU alias를 찾을 수 없습니다.</div>
 	{:else}
 		<table class="w-full text-sm">
 			<thead>
-				<tr class="text-gray-400 text-xs border-b border-gray-800">
+				<tr class="text-ink-2 text-xs border-b border-line">
 					<th class="text-left pb-2">GPU 타입</th>
 					<th class="text-right pb-2">기본값</th>
 					<th class="text-right pb-2">프로젝트 Limit</th>
@@ -50,9 +50,9 @@
 					{@const effectiveLimit = q.limit}
 					{@const inUse = q.in_use}
 					{@const avail = effectiveLimit === -1 ? -1 : effectiveLimit - inUse}
-					<tr class="border-b border-gray-800/50 last:border-0">
-						<td class="py-2 text-white font-mono">{alias}</td>
-						<td class="py-2 text-right text-gray-500">{defLimit === -1 ? '무제한' : defLimit}</td>
+					<tr class="border-b border-line/50 last:border-0">
+						<td class="py-2 text-ink-0 font-mono">{alias}</td>
+						<td class="py-2 text-right text-ink-3">{defLimit === -1 ? '무제한' : defLimit}</td>
 						<td class="py-2 text-right">
 							<input
 								type="number"
@@ -67,18 +67,18 @@
 										onSetLimit(alias, Number(v));
 									}
 								}}
-								class="w-20 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm text-white text-right focus:outline-none focus:border-blue-500"
+								class="w-20 bg-surface-selected border border-line-2 rounded px-2 py-1 text-sm text-ink-0 text-right focus:outline-none focus:border-action-warm"
 							/>
 						</td>
-						<td class="py-2 text-right text-gray-400">{inUse}</td>
-						<td class="py-2 text-right {avail > 0 ? 'text-green-400' : avail === -1 ? 'text-gray-500' : 'text-red-400'}">
+						<td class="py-2 text-right text-ink-2">{inUse}</td>
+						<td class="py-2 text-right {avail > 0 ? 'text-green-400' : avail === -1 ? 'text-ink-3' : 'text-red-400'}">
 							{effectiveLimit === -1 ? '무제한' : avail}
 						</td>
 						<td class="py-2 text-right">
 							{#if q?.limit != null}
 								<button
 									onclick={() => onClear(alias)}
-									class="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+									class="text-xs text-ink-3 hover:text-ink-2 transition-colors"
 									title="프로젝트별 설정 삭제 (기본값으로 복귀)"
 								>초기화</button>
 							{/if}
@@ -87,7 +87,7 @@
 				{/each}
 			</tbody>
 		</table>
-		<p class="text-xs text-gray-600 mt-2">빈 칸 = 기본값 사용, -1 = 무제한, 0 = 사용 불가</p>
+		<p class="text-xs text-ink-3 mt-2">빈 칸 = 기본값 사용, -1 = 무제한, 0 = 사용 불가</p>
 
 		{#if reconcilePreview && reconcilePreview.operations.length > 0}
 			<div class="mt-6 border-t border-[var(--color-line)] pt-4">

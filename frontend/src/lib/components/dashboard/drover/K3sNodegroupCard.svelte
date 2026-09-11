@@ -15,7 +15,7 @@
 	const roleBadgeClass = $derived(
 		nodegroup.role === 'server'
 			? 'bg-purple-900/40 text-purple-400 border-purple-800'
-			: 'bg-blue-900/40 text-blue-400 border-blue-800'
+			: 'bg-surface-selected/40 text-action-warm border-action-warm'
 	);
 
 
@@ -36,17 +36,17 @@
 	);
 </script>
 
-<div class="bg-gray-800/50 border border-gray-700 rounded-lg p-3 space-y-2">
+<div class="bg-surface-sunken/50 border border-line-2 rounded-lg p-3 space-y-2">
 	<div class="flex items-center justify-between">
 		<div class="flex items-center gap-2 flex-wrap">
 			<span class="text-xs border rounded px-1.5 py-0.5 {roleBadgeClass}">{roleLabel}</span>
-			<span class="text-sm font-medium text-white">{nodegroup.name}</span>
+			<span class="text-sm font-medium text-ink-0">{nodegroup.name}</span>
 			{#if nodegroup.is_default}
-				<span class="text-xs text-gray-500">(기본)</span>
+				<span class="text-xs text-ink-3">(기본)</span>
 			{/if}
 			{#if nodegroup.stampede_enabled}
-				<span class="text-xs bg-blue-900/50 text-blue-300 border border-blue-700/60 rounded px-1.5 py-0.5 leading-none">Stampede</span>
-				<span class="text-xs text-gray-500">{nodegroup.min_size}–{nodegroup.max_size}</span>
+				<span class="text-xs bg-surface-selected/50 text-action-warm border border-action-warm/60 rounded px-1.5 py-0.5 leading-none">Stampede</span>
+				<span class="text-xs text-ink-3">{nodegroup.min_size}–{nodegroup.max_size}</span>
 				{#if gpuCount > 0}
 					<span class="text-xs bg-emerald-900/50 text-emerald-300 border border-emerald-700/60 rounded px-1.5 py-0.5 leading-none">GPU {gpuCount}</span>
 				{/if}
@@ -59,22 +59,22 @@
 			{#if onEdit && !nodegroup.is_default}
 				<button
 					onclick={() => onEdit?.(nodegroup)}
-					class="text-xs text-gray-400 hover:text-blue-400 px-2 py-1 rounded transition-colors"
+					class="text-xs text-ink-2 hover:text-action-warm-hover px-2 py-1 rounded transition-colors"
 				>수정</button>
 			{/if}
 			{#if onDelete && !nodegroup.is_default}
 				<button
 					onclick={() => onDelete?.(nodegroup)}
-					class="text-xs text-gray-400 hover:text-red-400 px-2 py-1 rounded transition-colors"
+					class="text-xs text-ink-2 hover:text-red-400 px-2 py-1 rounded transition-colors"
 				>삭제</button>
 			{/if}
 		</div>
 	</div>
 
-	<div class="flex items-center gap-4 text-xs text-gray-400">
-		<span>노드 수: <span class="text-white">{nodegroup.node_count}</span></span>
+	<div class="flex items-center gap-4 text-xs text-ink-2">
+		<span>노드 수: <span class="text-ink-0">{nodegroup.node_count}</span></span>
 		{#if nodegroup.vms.length > 0}
-			<span>VM: <span class="text-white">{runningVms}/{nodegroup.vms.length}</span></span>
+			<span>VM: <span class="text-ink-0">{runningVms}/{nodegroup.vms.length}</span></span>
 		{/if}
 		{#if nodegroup.flavor_id}
 			<span class="font-mono truncate max-w-32">{nodegroup.flavor_id.slice(0, 12)}...</span>
@@ -84,7 +84,7 @@
 	{#if Object.keys(nodegroup.labels ?? {}).length > 0}
 		<div class="flex flex-wrap gap-1">
 			{#each Object.entries(nodegroup.labels) as [k, v]}
-				<span class="text-xs bg-gray-700 text-gray-300 rounded px-1.5 py-0.5 font-mono">{k}={v}</span>
+				<span class="text-xs bg-surface-selected text-ink-2 rounded px-1.5 py-0.5 font-mono">{k}={v}</span>
 			{/each}
 		</div>
 	{/if}

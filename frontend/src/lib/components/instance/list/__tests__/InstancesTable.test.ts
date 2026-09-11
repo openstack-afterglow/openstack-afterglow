@@ -36,6 +36,15 @@ function renderTable(overrides: Partial<{
 }
 
 describe('InstancesTable selection', () => {
+	it('exposes resource columns through native table semantics', () => {
+		renderTable();
+		expect(screen.getByRole('table', { name: '인스턴스 목록' })).toBeTruthy();
+		for (const heading of ['이름', '상태', '이미지 / 플레이버', 'IP', '라이브러리', '전략', '작업']) {
+			expect(screen.getByRole('columnheader', { name: heading })).toBeTruthy();
+		}
+		expect(screen.getAllByRole('row')).toHaveLength(instances.length + 1);
+	});
+
 	it('shows selectable row checkboxes and forwards select-all state', async () => {
 		const onToggleAll = vi.fn();
 		renderTable({ selectedIds: new Set(['instance-1']), onToggleAll });

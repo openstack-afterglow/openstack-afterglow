@@ -39,10 +39,10 @@
 	}
 </script>
 
-<Modal {open} dismissible={!saving} onClose={close}>
-	<section class="create-dialog" aria-label="프로젝트 만들기">
+<Modal {open} dismissible={!saving} onClose={close} labelledBy="create-project-dialog-title">
+	<section class="create-dialog">
 		<header class="create-dialog-head">
-			<h2>프로젝트 만들기</h2>
+			<h2 id="create-project-dialog-title">프로젝트 만들기</h2>
 			<Button variant="ghost" size="icon" type="button" onclick={close} ariaLabel="프로젝트 만들기 닫기">
 				<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="round" /></svg>
 			</Button>

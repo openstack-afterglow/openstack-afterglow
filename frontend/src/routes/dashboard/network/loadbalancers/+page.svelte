@@ -104,7 +104,7 @@
         refreshing={loading}
         onManualRefresh={() => fetchLoadbalancers({ refresh: true })}
       />
-      <a href="/dashboard/network/loadbalancers/new" class="bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">+ 로드밸런서 생성</a>
+      <a href="/dashboard/network/loadbalancers/new" class="bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">+ 로드밸런서 생성</a>
     {/snippet}
   </PageHeader>
 
@@ -113,23 +113,23 @@
   {#if loading}
     <div class="flex flex-col gap-3.5">
       {#each [1, 2, 3] as _}
-        <div class="bg-gray-900 border border-gray-800 rounded-2xl p-5 animate-pulse">
+        <div class="bg-surface-base border border-line rounded-lg p-5 animate-pulse">
           <div class="flex items-center gap-4">
-            <div class="w-10 h-10 rounded-xl bg-gray-800"></div>
+            <div class="w-10 h-10 rounded-xl bg-surface-sunken"></div>
             <div class="flex-1">
-              <div class="h-4 w-32 bg-gray-800 rounded mb-2"></div>
-              <div class="h-3 w-48 bg-gray-800 rounded"></div>
+              <div class="h-4 w-32 bg-surface-sunken rounded mb-2"></div>
+              <div class="h-3 w-48 bg-surface-sunken rounded"></div>
             </div>
-            <div class="h-6 w-16 bg-gray-800 rounded-full"></div>
+            <div class="h-6 w-16 bg-surface-sunken rounded-full"></div>
           </div>
         </div>
       {/each}
     </div>
   {:else if loadbalancers.length === 0}
-    <div class="text-center py-20 text-gray-600">
+    <div class="text-center py-20 text-ink-3">
       <div class="text-5xl mb-4">⚖️</div>
       <p class="text-lg">로드밸런서가 없습니다</p>
-      <a href="/dashboard/network/loadbalancers/new" class="text-blue-400 hover:text-blue-300 text-sm mt-2 inline-block">첫 로드밸런서를 생성하세요 →</a>
+      <a href="/dashboard/network/loadbalancers/new" class="text-action-warm hover:text-action-warm-hover text-sm mt-2 inline-block">첫 로드밸런서를 생성하세요 →</a>
     </div>
   {:else}
     <div class="flex flex-col gap-3.5">
@@ -146,7 +146,7 @@
     </div>
       {#each loadbalancers as lb (lb.id)}
         {@const isProtected = isDroverLoadBalancer(lb)}
-        <div class="resource-selection-surface bg-gray-900 border border-gray-800 rounded-2xl p-5" data-selected={selection.has(lb.id)}>
+        <div class="resource-selection-surface bg-surface-base border border-line rounded-lg p-5" data-selected={selection.has(lb.id)}>
           <div class="flex items-center gap-4">
             <SelectionCheckbox
               checked={selection.has(lb.id)}
@@ -157,19 +157,19 @@
               onclick={() => selection.toggle(lb.id)}
             />
             <!-- Blue icon chip -->
-            <div class="shrink-0 w-10 h-10 rounded-xl bg-blue-500/15 border border-blue-500/30 flex items-center justify-center">
-              <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="shrink-0 w-10 h-10 rounded-xl bg-action-warm/15 border border-action-warm/30 flex items-center justify-center">
+              <svg class="w-5 h-5 text-action-warm" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <circle cx="12" cy="12" r="9" stroke-width="2"/>
                 <path stroke-linecap="round" stroke-width="2" d="M8 12h8M12 8v8"/>
               </svg>
             </div>
             <!-- Name + subtitle -->
             <div class="flex-1 min-w-0">
-              <div class="text-white text-[15px] font-semibold truncate">{lb.name || lb.id.slice(0, 12)}</div>
-              <div class="text-[11px] text-gray-500 mt-0.5 font-mono">
+              <div class="text-ink-0 text-[15px] font-semibold truncate">{lb.name || lb.id.slice(0, 12)}</div>
+              <div class="text-[11px] text-ink-3 mt-0.5 font-mono">
                 VIP {lb.vip_address ?? '—'}
                 {#if lb.operating_status}
-                  <span class="ml-2 {lb.operating_status === 'ONLINE' ? 'text-green-400' : 'text-gray-400'}">{lb.operating_status}</span>
+                  <span class="ml-2 {lb.operating_status === 'ONLINE' ? 'text-green-400' : 'text-ink-2'}">{lb.operating_status}</span>
                 {/if}
               </div>
             </div>
@@ -177,7 +177,7 @@
             <StatusChip status={lb.status} />
             <button
               onclick={() => openLbPanel(lb.id)}
-              class="px-3 py-1.5 text-[13px] text-gray-300 hover:text-white border border-gray-700 hover:border-gray-500 rounded-lg transition-colors shrink-0"
+              class="px-3 py-1.5 text-[13px] text-ink-2 hover:text-ink-0 border border-line-2 hover:border-line-2 rounded-lg transition-colors shrink-0"
             >상세</button>
           </div>
         </div>
@@ -194,7 +194,7 @@
 />
 
 {#if selectedLbId}
-  <SlidePanel onClose={closeLbPanel}>
+  <SlidePanel onClose={closeLbPanel} ariaLabel="로드밸런서 상세">
     <LoadBalancerDetailPanel
       lbId={selectedLbId}
       onClose={closeLbPanel}

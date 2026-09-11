@@ -11,10 +11,16 @@
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import { projectNames } from '$lib/stores/projectNames';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
+	import type { TopologyLoadBalancer } from '$lib/types/topology';
 	import ProjectFilter from '$lib/components/admin/topology/ProjectFilter.svelte';
 	import TopologyLegend from '$lib/components/admin/topology/TopologyLegend.svelte';
 	import TopologyLBPanel from '$lib/components/admin/topology/TopologyLBPanel.svelte';
 	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
+	import ToggleGroup from '$lib/components/ui/ToggleGroup.svelte';
+	import TopologyCanvas from '$lib/components/topology/canvas/TopologyCanvas.svelte';
+	import CanvasLegend from '$lib/components/topology/canvas/CanvasLegend.svelte';
+	import TopologyNetworkPanel from '$lib/components/topology/canvas/TopologyNetworkPanel.svelte';
+	import { DEFAULT_TOPOLOGY_VIEW, isTopologyView, readTopologyView, writeTopologyView, type TopologyView } from '$lib/utils/topologyViewPreference';
 
 	let isLight = $state(false);
 	onMount(() => {
@@ -30,6 +36,40 @@
 		token: () => $auth.token ?? undefined,
 		projectId: () => $auth.projectId ?? undefined,
 	});
+
+	// 뷰 선택(레인 | 캔버스)은 localStorage 'topology.view' 에 저장한다. 기본은 캔버스.
+	let view = $state<TopologyView>(DEFAULT_TOPOLOGY_VIEW);
+	onMount(() => { view = readTopologyView(); });
+	const viewOptions = [
+		{ value: 'lane', label: '레인' },
+		{ value: 'canvas', label: '캔버스' },
+	];
+	function onViewChange(value: string) {
+		if (!isTopologyView(value)) return;
+		view = value;
+		writeTopologyView(value);
+	}
+
+	// 네트워크(스위치) 선택은 페이지 로컬 상태. 다른 선택과 상호 배타이며 패널을 닫으면 강조도 해제된다.
+	let selectedNetworkId = $state<string | null>(null);
+	const topologySelectedId = $derived(ctrl.topologySelectedId ?? selectedNetworkId);
+
+	function onSelectInstance(id: string) {
+		if (ctrl.selectedInstanceId === id) { ctrl.selectedInstanceId = null; }
+		else { ctrl.selectedInstanceId = id; ctrl.selectedRouterId = null; ctrl.selectedLB = null; selectedNetworkId = null; }
+	}
+	function onSelectRouter(id: string) {
+		if (ctrl.selectedRouterId === id) { ctrl.selectedRouterId = null; }
+		else { ctrl.selectedRouterId = id; ctrl.selectedInstanceId = null; ctrl.selectedLB = null; selectedNetworkId = null; }
+	}
+	function onSelectLoadBalancer(lb: TopologyLoadBalancer) {
+		if (ctrl.selectedLB?.id === lb.id) { ctrl.selectedLB = null; }
+		else { ctrl.selectedLB = lb; ctrl.selectedInstanceId = null; ctrl.selectedRouterId = null; selectedNetworkId = null; }
+	}
+	function onSelectNetwork(id: string) {
+		if (selectedNetworkId === id) { selectedNetworkId = null; }
+		else { selectedNetworkId = id; ctrl.selectedInstanceId = null; ctrl.selectedRouterId = null; ctrl.selectedLB = null; }
+	}
 
 	const ar = createAutoRefresh(ctrl.fetchTopology, {
 		storageKey: 'admin-topology',
@@ -66,11 +106,12 @@
 	});
 </script>
 
-<div class="p-4 md:p-8 max-w-screen-2xl mx-auto">
+<div class="p-4 md:p-6 max-w-screen-2xl mx-auto">
 	<div data-tour="admin-network-header">
 	<PageHeader breadcrumb="NETWORK / TOPOLOGY" title="토폴로지">
 		{#snippet actions()}
 			<TutorialStartButton tour="admin-network" compactOnMobile />
+			<ToggleGroup value={view} options={viewOptions} onchange={onViewChange} ariaLabel="토폴로지 보기" />
 			<AutoRefreshControl
 				bind:active={ar.active}
 				bind:intervalSeconds={ar.intervalSeconds}
@@ -94,35 +135,46 @@
 	{:else if ctrl.loading}
 		<LoadingSkeleton variant="card" rows={8} />
 	{:else if ctrl.data}
-		<div class="bg-gray-900 border border-gray-800 rounded-lg p-6 mb-4" data-tour="admin-network-canvas">
+		<div class="bg-surface-base border border-line rounded-lg p-6 mb-4" data-tour="admin-network-canvas">
 			<div data-tour="admin-network-ready">
-			<GlobalTopology
-				data={ctrl.data}
-				traffic={ctrl.traffic}
-				projectId={ctrl.projectFilter}
-				showAll={ctrl.projectFilter == null}
-				selectedId={ctrl.topologySelectedId}
-				onSelectInstance={(id) => {
-					if (ctrl.selectedInstanceId === id) { ctrl.selectedInstanceId = null; }
-					else { ctrl.selectedInstanceId = id; ctrl.selectedRouterId = null; ctrl.selectedLB = null; }
-				}}
-				onSelectRouter={(id) => {
-					if (ctrl.selectedRouterId === id) { ctrl.selectedRouterId = null; }
-					else { ctrl.selectedRouterId = id; ctrl.selectedInstanceId = null; ctrl.selectedLB = null; }
-				}}
-				onSelectLoadBalancer={(lb) => {
-					if (ctrl.selectedLB?.id === lb.id) { ctrl.selectedLB = null; }
-					else { ctrl.selectedLB = lb; ctrl.selectedInstanceId = null; ctrl.selectedRouterId = null; }
-				}}
-			/>
+			{#if view === 'canvas'}
+				<TopologyCanvas
+					data={ctrl.data}
+					traffic={ctrl.traffic}
+					projectId={ctrl.projectFilter}
+					showAll={ctrl.projectFilter == null}
+					selectedId={topologySelectedId}
+					adminView={true}
+					storageScope="admin"
+					{onSelectInstance}
+					{onSelectRouter}
+					{onSelectLoadBalancer}
+					{onSelectNetwork}
+				/>
+			{:else}
+				<GlobalTopology
+					data={ctrl.data}
+					traffic={ctrl.traffic}
+					projectId={ctrl.projectFilter}
+					showAll={ctrl.projectFilter == null}
+					selectedId={topologySelectedId}
+					{onSelectInstance}
+					{onSelectRouter}
+					{onSelectLoadBalancer}
+				/>
+			{/if}
 			</div>
 		</div>
 
 		<div data-tour="admin-network-legend">
-		<TopologyLegend {isLight} />
+		{#if view === 'canvas'}
+			<CanvasLegend />
+		{:else}
+			<TopologyLegend {isLight} />
+		{/if}
 
 		<!-- 전체 요약 -->
-		<div class="mt-4 flex gap-6 text-xs text-gray-500 px-1">
+		<div class="mt-4 flex gap-6 text-xs text-ink-3 px-1">
 			<span>네트워크 {ctrl.data.networks.length}개</span>
 			<span>라우터 {ctrl.data.routers.length}개</span>
 			<span>인스턴스 {ctrl.data.instances.length}개</span>
@@ -134,19 +186,33 @@
 </div>
 
 {#if ctrl.selectedInstanceId}
-	<SlidePanel onClose={() => ctrl.selectedInstanceId = null}>
+	<SlidePanel onClose={() => ctrl.selectedInstanceId = null} ariaLabel="토폴로지 인스턴스 상세">
 		<InstanceDetailPanel instanceId={ctrl.selectedInstanceId} onClose={() => ctrl.selectedInstanceId = null} showHost={true} />
 	</SlidePanel>
 {/if}
 
 {#if ctrl.selectedRouterId}
-	<SlidePanel onClose={() => ctrl.selectedRouterId = null} width="w-full md:w-[60vw] max-w-3xl" dataTour="admin-network-detail">
+	<SlidePanel onClose={() => ctrl.selectedRouterId = null} ariaLabel="토폴로지 라우터 상세" width="w-full md:w-[60vw] max-w-3xl" dataTour="admin-network-detail">
 		<RouterDetailPanel routerId={ctrl.selectedRouterId} onClose={() => ctrl.selectedRouterId = null} />
 	</SlidePanel>
 {/if}
 
 {#if ctrl.selectedLB}
-	<SlidePanel onClose={() => ctrl.selectedLB = null} width="w-full md:w-[60vw] max-w-2xl">
+	<SlidePanel onClose={() => ctrl.selectedLB = null} ariaLabel="토폴로지 로드밸런서 상세" width="w-full md:w-[60vw] max-w-2xl">
 		<TopologyLBPanel lb={ctrl.selectedLB} onClose={() => ctrl.selectedLB = null} />
+	</SlidePanel>
+{/if}
+
+{#if selectedNetworkId && ctrl.data}
+	<SlidePanel onClose={() => selectedNetworkId = null} ariaLabel="토폴로지 네트워크 상세" width="w-full md:w-[60vw] max-w-2xl">
+		<TopologyNetworkPanel
+			networkId={selectedNetworkId}
+			data={ctrl.data}
+			traffic={ctrl.traffic}
+			showProvider={true}
+			loadHistory={ctrl.loadNetworkHistory}
+			{onSelectInstance}
+			{onSelectRouter}
+		/>
 	</SlidePanel>
 {/if}

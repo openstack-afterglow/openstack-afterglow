@@ -4,7 +4,7 @@
 	import { api, ApiError } from '$lib/api/client';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
-	import PageHeader from '$lib/components/ui/PageHeader.svelte';
+	import { Alert, EmptyState, PageHeader, PageShell } from '$lib/components/ui';
 	import MyResourcesSummary from '$lib/components/dashboard/my-resources/MyResourcesSummary.svelte';
 	import ProjectUsageTable from '$lib/components/dashboard/my-resources/ProjectUsageTable.svelte';
 	import InstancesPreviewCard from '$lib/components/dashboard/my-resources/InstancesPreviewCard.svelte';
@@ -60,19 +60,19 @@
 	});
 </script>
 
-<div class="p-4 md:p-8 max-w-7xl mx-auto">
+<PageShell>
 	<div class="flex items-center gap-3 mb-4">
 		<a
 			href="/dashboard"
-			class="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-white transition-colors px-2.5 py-1.5 rounded-md hover:bg-gray-800"
+			class="inline-flex items-center gap-1.5 text-xs text-ink-2 hover:text-ink-0 transition-colors px-2.5 py-1.5 rounded-md hover:bg-surface-sunken"
 		>
 			<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
 			대시보드로 돌아가기
 		</a>
-		<span class="text-gray-700">·</span>
+		<span class="text-ink-3">·</span>
 		<a
 			href="/dashboard/account"
-			class="inline-flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors px-2.5 py-1.5 rounded-md hover:bg-blue-500/10"
+			class="inline-flex items-center gap-1.5 text-xs text-action-warm hover:text-action-warm-hover transition-colors px-2.5 py-1.5 rounded-md hover:bg-action-warm-hover/10"
 		>
 			계정 설정
 			<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
@@ -92,18 +92,18 @@
 	</PageHeader>
 
 	{#if error}
-		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>
+		<Alert tone="danger" class="mb-4">{error}</Alert>
 	{/if}
 
 	{#if initialLoading}
 		<div class="grid grid-cols-2 sm:grid-cols-4 gap-3.5 mb-4">
 			{#each [1, 2, 3, 4] as _}
-				<div class="animate-pulse bg-gray-900 border border-gray-800 rounded-2xl h-[82px]"></div>
+				<div class="animate-pulse bg-surface-base border border-line rounded-lg h-[82px]"></div>
 			{/each}
 		</div>
 		<div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
 			{#each [1, 2, 3, 4] as _}
-				<div class="animate-pulse bg-gray-900 border border-gray-800 rounded-2xl h-48"></div>
+				<div class="animate-pulse bg-surface-base border border-line rounded-lg h-48"></div>
 			{/each}
 		</div>
 	{:else if data}
@@ -115,18 +115,18 @@
 			<VolumesPreviewCard volumes={allVolumes} />
 
 			<!-- Floating IP 카드 -->
-			<div class="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+			<div class="bg-surface-base border border-line rounded-lg p-5">
 				<div class="flex items-center gap-2.5 mb-3.5">
-					<div class="w-10 h-10 rounded-[10px] bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0">
+					<div class="w-10 h-10 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0">
 						<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
 						</svg>
 					</div>
-					<div class="text-white font-semibold text-sm">Floating IP</div>
-					<span class="ml-auto text-xs text-gray-500">{data.totals.floating_ips}개</span>
+					<div class="text-ink-0 font-semibold text-sm">Floating IP</div>
+					<span class="ml-auto text-xs text-ink-3">{data.totals.floating_ips}개</span>
 				</div>
 				<div class="flex flex-col items-center justify-center py-6">
-					<div class="text-[11px] text-gray-600 text-center leading-relaxed">
+					<div class="text-[11px] text-ink-3 text-center leading-relaxed">
 						Floating IP 목록은<br />
 						<a href="/dashboard/network/floating-ips" class="text-emerald-400 hover:text-emerald-300 transition-colors">네트워크 → Floating IP</a>에서 확인하세요
 					</div>
@@ -135,7 +135,7 @@
 		</div>
 
 		{#if data.projects.length === 0}
-			<div class="text-center text-gray-500 text-sm py-12">소속 프로젝트가 없습니다</div>
+			<EmptyState headline="소속 프로젝트가 없습니다" description="프로젝트에 초대되면 리소스가 여기에 표시됩니다." />
 		{/if}
 	{/if}
-</div>
+</PageShell>

@@ -31,27 +31,27 @@
 	);
 </script>
 
-<div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-4">
-	<h2 class="text-sm font-semibold text-white mb-3">연결 정보</h2>
+<div class="bg-surface-base border border-line rounded-xl p-4 mb-4">
+	<h2 class="text-sm font-semibold text-ink-0 mb-3">연결 정보</h2>
 	<div class="space-y-2 text-sm">
 		<div class="flex gap-4">
-			<div><div class="text-gray-500 text-xs mb-0.5">호스트</div><div class="text-white font-mono">{instance.ip || instance.hostname || '-'}</div></div>
-			<div><div class="text-gray-500 text-xs mb-0.5">포트</div><div class="text-white font-mono">{dbPort}</div></div>
+			<div><div class="text-ink-3 text-xs mb-0.5">호스트</div><div class="text-ink-0 font-mono">{instance.ip || instance.hostname || '-'}</div></div>
+			<div><div class="text-ink-3 text-xs mb-0.5">포트</div><div class="text-ink-0 font-mono">{dbPort}</div></div>
 		</div>
 		{#if connectCmd}
 			<div>
-				<div class="text-gray-500 text-xs mb-1">연결 명령어 예시</div>
-				<code class="block bg-gray-800 rounded px-3 py-2 text-xs text-green-400 font-mono break-all">{connectCmd}</code>
+				<div class="text-ink-3 text-xs mb-1">연결 명령어 예시</div>
+				<code class="block bg-surface-sunken rounded px-3 py-2 text-xs text-green-400 font-mono break-all">{connectCmd}</code>
 			</div>
 		{/if}
 		{#if rootInfo}
-			<div class="bg-amber-950/30 border border-amber-800 rounded-lg px-3 py-2">
-				<div class="text-amber-400 text-xs font-medium mb-1">root 계정</div>
-				<div class="font-mono text-xs text-white">사용자: {rootInfo.name} / 비밀번호: {rootInfo.password}</div>
+			<div class="bg-amber-950/30 border border-action-warm rounded-lg px-3 py-2">
+				<div class="text-action-warm text-xs font-medium mb-1">root 계정</div>
+				<div class="font-mono text-xs text-ink-0">사용자: {rootInfo.name} / 비밀번호: {rootInfo.password}</div>
 			</div>
 		{:else}
 			<button onclick={onEnableRoot} disabled={enablingRoot}
-				class="text-xs text-amber-400 border border-amber-800 hover:border-amber-600 px-3 py-1.5 rounded transition-colors">
+				class="text-xs text-action-warm border border-action-warm hover:border-action-warm px-3 py-1.5 rounded transition-colors">
 				{enablingRoot ? 'root 활성화 중...' : 'root 유저 활성화'}
 			</button>
 		{/if}

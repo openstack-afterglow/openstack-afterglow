@@ -171,7 +171,7 @@
 <div class="p-4 md:p-8 max-w-7xl mx-auto">
 	<PageHeader breadcrumb="NETWORK / PORTS" title="포트">
 		{#snippet actions()}
-			<button onclick={() => { showCreate = true; createError = ''; }} class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg">+ 생성</button>
+			<button onclick={() => { showCreate = true; createError = ''; }} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg">+ 생성</button>
 			<AutoRefreshControl
 				bind:active={ar.active}
 				bind:intervalSeconds={ar.intervalSeconds}
@@ -179,12 +179,12 @@
 				refreshing={loading}
 				onManualRefresh={() => { markerStack = []; nextMarker = null; load(); }}
 			/>
-			<div class="flex items-center gap-1 text-xs text-gray-500 max-md:hidden">
+			<div class="flex items-center gap-1 text-xs text-ink-3 max-md:hidden">
 				표시:
 				{#each [10, 20, 30] as n}
 					<button
 						onclick={() => { pageSize = n; markerStack = []; nextMarker = null; load(); }}
-						class="px-2 py-0.5 rounded {pageSize === n ? 'bg-blue-600 text-white' : 'bg-gray-800 hover:bg-gray-700 text-gray-400'}"
+						class="px-2 py-0.5 rounded {pageSize === n ? 'bg-action-warm text-ink-0' : 'bg-surface-sunken hover:bg-surface-selected text-ink-2'}"
 					>{n}</button>
 				{/each}
 			</div>
@@ -199,7 +199,7 @@
 	/>
 
 	{#if loading}
-		<div class="text-gray-500 text-sm">로딩 중...</div>
+		<div class="text-ink-3 text-sm">로딩 중...</div>
 	{:else}
 		<PortsTable
 			ports={filtered}

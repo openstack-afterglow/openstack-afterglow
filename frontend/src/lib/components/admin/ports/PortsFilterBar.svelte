@@ -17,12 +17,12 @@
     type="text"
     bind:value={search}
     placeholder="필터 (이름, device_owner, IP)"
-    class="text-xs bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-gray-300 placeholder-gray-600 w-56"
+    class="text-xs bg-surface-sunken border border-line-2 rounded px-3 py-1.5 text-ink-2 placeholder-ink-3 w-56"
   />
   <select
     bind:value={projectFilter}
     onchange={onProjectChange}
-    class="text-xs bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-gray-300 focus:outline-none focus:border-blue-500"
+    class="text-xs bg-surface-sunken border border-line-2 rounded px-3 py-1.5 text-ink-2 focus:outline-none focus:border-action-warm"
   >
     <option value="">전체 프로젝트</option>
     {#each projectOptions as p (p.id)}

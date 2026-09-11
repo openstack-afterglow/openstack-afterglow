@@ -142,6 +142,23 @@ describe('ChatPanel', () => {
 		expect(screen.getByRole('heading', { name: '무엇을 도와드릴까요?' })).toBeTruthy();
 	});
 
+	it('opens chat settings as an overlay from the sidebar user menu', async () => {
+		render(ChatPanel);
+
+		await fireEvent.click(screen.getByRole('button', { name: /tester/i }));
+		await fireEvent.click(screen.getByRole('menuitem', { name: '설정' }));
+
+		expect(await screen.findByRole('dialog', { name: '채팅 설정' })).toBeTruthy();
+		expect(screen.getByRole('heading', { name: '이번 달 사용량' })).toBeTruthy();
+	});
+
+	it('opens a deep-linked settings section in the overlay', async () => {
+		render(ChatPanel, { initialSettingsSection: 'mcp' });
+
+		expect(await screen.findByRole('dialog', { name: '채팅 설정' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'MCP 서버' }).classList.contains('active')).toBe(true);
+	});
+
 
 	it('opens the existing project dialog from the new-project slash command', async () => {
 		render(ChatPanel);
@@ -166,12 +183,6 @@ describe('ChatPanel', () => {
 		expect(mocks.createRun).not.toHaveBeenCalled();
 	});
 
-	it('opens MCP settings when reached from an OAuth callback', async () => {
-		render(ChatPanel, { initialSettingsSection: 'mcp' });
-
-		await waitFor(() => expect(screen.getByRole('heading', { name: '원격 MCP 서버' })).toBeTruthy());
-		expect(screen.queryByRole('heading', { name: '이번 달 사용량' })).toBeNull();
-	});
 
 	it('inserts a Lumen starter into the composer without directly starting a run', async () => {
 		render(ChatPanel);

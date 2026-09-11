@@ -7,7 +7,7 @@
 {#if s.isActive && s.kubeconfigAvailable}
   <button
     onclick={() => s.openShell()}
-    class="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 text-xs rounded-lg transition-colors"
+    class="px-3 py-1.5 bg-surface-selected hover:bg-surface-selected text-ink-1 text-xs rounded-lg transition-colors"
   >
     Cloud Shell
   </button>

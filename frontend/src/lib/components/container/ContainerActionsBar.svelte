@@ -5,15 +5,15 @@
 
 	const statusColor: Record<string, string> = {
 		Running:  'text-green-400 bg-green-900/30',
-		Stopped:  'text-gray-400 bg-gray-800',
-		Created:  'text-blue-400 bg-blue-900/30',
+		Stopped:  'text-ink-2 bg-surface-sunken',
+		Created:  'text-action-warm bg-surface-selected/30',
 		Error:    'text-red-400 bg-red-900/30',
 		Deleting: 'text-orange-400 bg-orange-900/30',
 	};
 </script>
 
 <div class="flex items-center justify-between">
-	<span class="px-2 py-0.5 rounded text-xs font-medium {statusColor[s.container?.status ?? ''] ?? 'text-gray-400 bg-gray-800'}">
+	<span class="px-2 py-0.5 rounded text-xs font-medium {statusColor[s.container?.status ?? ''] ?? 'text-ink-2 bg-surface-sunken'}">
 		{s.container?.status}
 	</span>
 	<div class="flex items-center gap-2">

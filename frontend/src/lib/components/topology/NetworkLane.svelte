@@ -80,7 +80,7 @@
 	<button
 		type="button"
 		onclick={onSelect}
-		class="flex flex-col items-center transition-opacity duration-200 w-full appearance-none bg-transparent border-0 p-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 rounded"
+		class="flex flex-col items-center transition-opacity duration-200 w-full appearance-none bg-transparent border-0 p-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-line-2 rounded"
 		style="opacity: {dimmed ? 0.25 : 1}"
 	>
 		<!-- Stat card -->

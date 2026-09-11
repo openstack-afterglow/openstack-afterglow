@@ -24,7 +24,12 @@
 	let savingSubnet = $state(false);
 	let editSubnetError = $state('');
 
-	const ar = createAutoRefresh(() => fetchNetwork($page.params.id), {
+	async function refreshCurrentNetwork() {
+		const id = $page.params.id;
+		if (id) await fetchNetwork(id);
+	}
+
+	const ar = createAutoRefresh(refreshCurrentNetwork, {
 		storageKey: 'dashboard-network-network-detail',
 		invokeOnMount: false,
 		defaultActive: true,
@@ -137,9 +142,9 @@
 	}
 </script>
 
-<div class="p-4 md:p-8 max-w-5xl mx-auto">
+<div class="p-4 md:p-6 max-w-5xl mx-auto">
 	<div class="mb-6">
-		<a href="/dashboard/network/networks" class="text-gray-400 hover:text-gray-200 text-sm transition-colors">
+		<a href="/dashboard/network/networks" class="text-ink-2 hover:text-ink-1 text-sm transition-colors">
 			← 네트워크 목록
 		</a>
 	</div>
@@ -156,14 +161,14 @@
 			bind:arActive={ar.active}
 			bind:arInterval={ar.intervalSeconds}
 			arIntervalOptions={ar.intervalOptions}
-			onManualRefresh={() => fetchNetwork($page.params.id)}
+			onManualRefresh={refreshCurrentNetwork}
 			onDelete={deleteNetwork}
 		/>
 		<NetworkInfoCard {network} />
 
 		<!-- 네트워크 토폴로지 -->
-		<div class="bg-gray-900 border border-gray-800 rounded-lg p-6 mb-4">
-			<h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-4">네트워크 토폴로지</h2>
+		<div class="bg-surface-base border border-line rounded-lg p-6 mb-4">
+			<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide mb-4">네트워크 토폴로지</h2>
 			<NetworkTopology {network} />
 		</div>
 

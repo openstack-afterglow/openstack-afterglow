@@ -6,6 +6,7 @@ pytest-asyncio auto 모드 (backend/pyproject.toml 의 `asyncio_mode = "auto"`) 
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 import fakeredis.aioredis as fakeredis
@@ -132,6 +133,82 @@ async def test_cached_call_miss_then_hit(backend: RedisBackend) -> None:
     assert r2 == {"value": 1}
     assert calls["n"] == 1
     assert metrics_get("cache.hit") == 1
+
+
+async def test_cached_call_coalesces_concurrent_misses(backend: RedisBackend) -> None:
+    """동일 키 동시 miss는 origin을 한 번만 조회하고 모든 호출자에게 같은 결과를 반환한다."""
+    calls = 0
+    release = asyncio.Event()
+
+    async def fn() -> dict:
+        nonlocal calls
+        calls += 1
+        await release.wait()
+        return {"value": calls}
+
+    first = asyncio.create_task(cached_call("afterglow:test:single-flight", 60, fn))
+    second = asyncio.create_task(cached_call("afterglow:test:single-flight", 60, fn))
+    await asyncio.sleep(0)
+    release.set()
+
+    assert await asyncio.gather(first, second) == [{"value": 1}, {"value": 1}]
+    assert calls == 1
+
+
+async def test_cached_call_waiter_cancellation_does_not_cancel_shared_load(backend: RedisBackend) -> None:
+    """한 HTTP 요청 취소가 같은 키를 기다리는 다른 요청의 origin 조회를 중단하지 않는다."""
+    release = asyncio.Event()
+    calls = 0
+
+    async def fn() -> dict:
+        nonlocal calls
+        calls += 1
+        await release.wait()
+        return {"ok": True}
+
+    cancelled = asyncio.create_task(cached_call("afterglow:test:cancelled-waiter", 60, fn))
+    surviving = asyncio.create_task(cached_call("afterglow:test:cancelled-waiter", 60, fn))
+    await asyncio.sleep(0)
+    cancelled.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await cancelled
+    release.set()
+
+    assert await surviving == {"ok": True}
+    assert calls == 1
+
+
+async def test_cached_call_refresh_waits_for_older_load_and_keeps_fresh_cache(backend: RedisBackend) -> None:
+    """명시적 refresh는 진행 중인 일반 miss를 재사용하거나 그 결과로 덮어써지면 안 된다."""
+    key = "afterglow:test:refresh-race"
+    old_started = asyncio.Event()
+    release_old = asyncio.Event()
+    refresh_started = asyncio.Event()
+    calls: list[str] = []
+
+    async def load_old() -> dict:
+        calls.append("old")
+        old_started.set()
+        await release_old.wait()
+        return {"value": "old"}
+
+    async def load_fresh() -> dict:
+        calls.append("fresh")
+        refresh_started.set()
+        return {"value": "fresh"}
+
+    old_request = asyncio.create_task(cached_call(key, 60, load_old))
+    await old_started.wait()
+    refresh_request = asyncio.create_task(cached_call(key, 60, load_fresh, refresh=True))
+    await asyncio.sleep(0)
+
+    assert not refresh_started.is_set()
+    release_old.set()
+
+    assert await old_request == {"value": "old"}
+    assert await refresh_request == {"value": "fresh"}
+    assert calls == ["old", "fresh"]
+    assert json.loads(await backend.get(key)) == {"value": "fresh"}
 
 
 async def test_cached_call_refresh(backend: RedisBackend) -> None:

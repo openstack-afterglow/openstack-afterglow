@@ -157,23 +157,23 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
-		class="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
+		class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 		onclick={onClose}
 		role="dialog" aria-modal="true" tabindex="-1"
 		onkeydown={(e) => e.key === 'Escape' && onClose()}
 	>
 		<div
-			class="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-3xl mx-4 shadow-2xl max-h-[85vh] flex flex-col"
+			class="bg-surface-base border border-line-2 rounded-xl w-full max-w-3xl mx-4 shadow-[var(--shadow-restraint)] max-h-[85vh] flex flex-col"
 			onclick={(e) => e.stopPropagation()}
 			role="none"
 			onkeydown={(e) => e.stopPropagation()}
 		>
-			<div class="flex items-center justify-between p-5 border-b border-gray-800">
+			<div class="flex items-center justify-between p-5 border-b border-line">
 				<div>
-					<h2 class="text-lg font-semibold text-white">접근 권한 관리</h2>
-					<p class="text-xs text-gray-500 mt-0.5">프로젝트: {project.name}</p>
+					<h2 class="text-lg font-semibold text-ink-0">접근 권한 관리</h2>
+					<p class="text-xs text-ink-3 mt-0.5">프로젝트: {project.name}</p>
 				</div>
-				<button onclick={onClose} class="text-gray-400 hover:text-white text-xl">&times;</button>
+				<button onclick={onClose} class="text-ink-2 hover:text-ink-0 text-xl">&times;</button>
 			</div>
 
 			{#if addError}
@@ -181,50 +181,50 @@
 			{/if}
 
 			{#if membersLoading}
-				<div class="text-xs text-gray-500 py-8 text-center">로딩 중...</div>
+				<div class="text-xs text-ink-3 py-8 text-center">로딩 중...</div>
 			{:else}
 				<div class="flex flex-1 min-h-0">
 					<!-- 왼쪽: 전체 사용자/그룹 -->
-					<div class="w-1/2 border-r border-gray-800 flex flex-col">
-						<div class="p-4 border-b border-gray-800">
+					<div class="w-1/2 border-r border-line flex flex-col">
+						<div class="p-4 border-b border-line">
 							<div class="flex gap-1 mb-2">
 								<button
 									onclick={() => { accessTab = 'users'; userSearchFilter = ''; }}
-									class="px-3 py-1 text-xs rounded {accessTab === 'users' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}"
+									class="px-3 py-1 text-xs rounded {accessTab === 'users' ? 'bg-action-warm text-ink-0' : 'bg-surface-sunken text-ink-2 hover:text-ink-0'}"
 								>사용자</button>
 								<button
 									onclick={() => { accessTab = 'groups'; userSearchFilter = ''; }}
-									class="px-3 py-1 text-xs rounded {accessTab === 'groups' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}"
+									class="px-3 py-1 text-xs rounded {accessTab === 'groups' ? 'bg-action-warm text-ink-0' : 'bg-surface-sunken text-ink-2 hover:text-ink-0'}"
 								>그룹</button>
 							</div>
 							<input
 								type="text"
 								placeholder="{accessTab === 'users' ? '사용자' : '그룹'} 이름 검색"
 								bind:value={userSearchFilter}
-								class="w-full bg-gray-800 border border-gray-700 text-white text-xs rounded px-2 py-1.5 focus:outline-none focus:border-blue-500"
+								class="w-full bg-surface-sunken border border-line-2 text-ink-0 text-xs rounded px-2 py-1.5 focus:outline-none focus:border-action-warm"
 							/>
 						</div>
 						<div class="overflow-y-auto flex-1">
 							{#if accessTab === 'users'}
 								{#each filteredUsers as u}
-									<div class="flex items-center justify-between px-4 py-2 hover:bg-gray-800/50 border-b border-gray-800/30">
-										<span class="text-sm text-gray-200">{u.name}</span>
+									<div class="flex items-center justify-between px-4 py-2 hover:bg-surface-sunken/50 border-b border-line/30">
+										<span class="text-sm text-ink-1">{u.name}</span>
 										<button
 											onclick={() => { pendingAddUser = u; pendingRoleId = allRoles[0]?.id ?? ''; }}
-											class="text-blue-400 hover:text-blue-300 text-lg font-bold leading-none">+</button>
+											class="text-action-warm hover:text-action-warm-hover text-lg font-bold leading-none">+</button>
 									</div>
 								{/each}
 							{:else}
 								{#each filteredGroups as g}
-									<div class="flex items-center justify-between px-4 py-2 hover:bg-gray-800/50 border-b border-gray-800/30">
+									<div class="flex items-center justify-between px-4 py-2 hover:bg-surface-sunken/50 border-b border-line/30">
 										<div>
-											<span class="text-sm text-gray-200">{g.name}</span>
-											{#if memberGroupIds.has(g.id)}<span class="text-xs text-gray-600 ml-1">할당됨</span>{/if}
+											<span class="text-sm text-ink-1">{g.name}</span>
+											{#if memberGroupIds.has(g.id)}<span class="text-xs text-ink-3 ml-1">할당됨</span>{/if}
 										</div>
 										{#if !memberGroupIds.has(g.id)}
 											<button
 												onclick={() => { pendingAddGroup = g; pendingGroupRoleId = allRoles[0]?.id ?? ''; }}
-												class="text-blue-400 hover:text-blue-300 text-lg font-bold leading-none">+</button>
+												class="text-action-warm hover:text-action-warm-hover text-lg font-bold leading-none">+</button>
 										{/if}
 									</div>
 								{/each}
@@ -234,18 +234,18 @@
 
 					<!-- 오른쪽: 프로젝트 멤버 -->
 					<div class="w-1/2 flex flex-col">
-						<div class="p-4 border-b border-gray-800">
-							<div class="text-xs text-gray-400 uppercase tracking-wide">프로젝트 멤버</div>
+						<div class="p-4 border-b border-line">
+							<div class="text-xs text-ink-2 uppercase tracking-wide">프로젝트 멤버</div>
 						</div>
 						<div class="overflow-y-auto flex-1">
 							{#if members.length === 0}
-								<div class="text-xs text-gray-600 px-4 py-4">멤버가 없습니다</div>
+								<div class="text-xs text-ink-3 px-4 py-4">멤버가 없습니다</div>
 							{:else}
 								{#each members as m}
-									<div class="flex items-center justify-between px-4 py-2 hover:bg-gray-800/50 border-b border-gray-800/30">
+									<div class="flex items-center justify-between px-4 py-2 hover:bg-surface-sunken/50 border-b border-line/30">
 										<div>
-											<div class="text-sm text-gray-200">{m.user_name}</div>
-											<div class="text-xs text-gray-500">{m.role_name}</div>
+											<div class="text-sm text-ink-1">{m.user_name}</div>
+											<div class="text-xs text-ink-3">{m.role_name}</div>
 										</div>
 										<button onclick={() => revokeRole(m)} class="text-red-400 hover:text-red-300 text-lg font-bold leading-none">-</button>
 									</div>
@@ -256,8 +256,8 @@
 				</div>
 			{/if}
 
-			<div class="flex justify-end p-4 border-t border-gray-800">
-				<button onclick={onClose} class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg">닫기</button>
+			<div class="flex justify-end p-4 border-t border-line">
+				<button onclick={onClose} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">닫기</button>
 			</div>
 		</div>
 	</div>
@@ -268,28 +268,28 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
-		class="fixed inset-0 bg-black/70 flex items-center justify-center z-[60]"
+		class="fixed inset-0 bg-surface-scrim/70 flex items-center justify-center z-[60]"
 		onclick={() => { pendingAddUser = null; }}
 		role="dialog" tabindex="-1"
 	>
 		<div
-			class="bg-gray-900 border border-gray-700 rounded-xl p-5 w-full max-w-sm mx-4 shadow-2xl"
+			class="bg-surface-base border border-line-2 rounded-xl p-5 w-full max-w-sm mx-4 shadow-[var(--shadow-restraint)]"
 			onclick={(e) => e.stopPropagation()}
 			role="none"
 			onkeydown={(e) => e.stopPropagation()}
 		>
-			<h3 class="text-base font-semibold text-white mb-3">{pendingAddUser.name} — 역할 선택</h3>
-			<select bind:value={pendingRoleId} class="w-full bg-gray-800 border border-gray-700 text-white text-sm rounded px-3 py-2 focus:outline-none focus:border-blue-500 mb-4">
+			<h3 class="text-base font-semibold text-ink-0 mb-3">{pendingAddUser.name} — 역할 선택</h3>
+			<select bind:value={pendingRoleId} class="w-full bg-surface-sunken border border-line-2 text-ink-0 text-sm rounded px-3 py-2 focus:outline-none focus:border-action-warm mb-4">
 				{#each allRoles as r}
 					<option value={r.id}>{r.name}</option>
 				{/each}
 			</select>
 			<div class="flex justify-end gap-3">
-				<button onclick={() => { pendingAddUser = null; }} class="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg">취소</button>
+				<button onclick={() => { pendingAddUser = null; }} class="px-3 py-1.5 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm rounded-lg">취소</button>
 				<button
 					onclick={() => pendingAddUser && assignRole(pendingAddUser.id, pendingRoleId)}
 					disabled={addSaving || !pendingRoleId}
-					class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg disabled:opacity-30"
+					class="px-3 py-1.5 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm rounded-lg disabled:opacity-30"
 				>{addSaving ? '추가 중...' : '추가'}</button>
 			</div>
 		</div>
@@ -301,28 +301,28 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
-		class="fixed inset-0 bg-black/70 flex items-center justify-center z-[60]"
+		class="fixed inset-0 bg-surface-scrim/70 flex items-center justify-center z-[60]"
 		onclick={() => { pendingAddGroup = null; }}
 		role="dialog" tabindex="-1"
 	>
 		<div
-			class="bg-gray-900 border border-gray-700 rounded-xl p-5 w-full max-w-sm mx-4 shadow-2xl"
+			class="bg-surface-base border border-line-2 rounded-xl p-5 w-full max-w-sm mx-4 shadow-[var(--shadow-restraint)]"
 			onclick={(e) => e.stopPropagation()}
 			role="none"
 			onkeydown={(e) => e.stopPropagation()}
 		>
-			<h3 class="text-base font-semibold text-white mb-3">[그룹] {pendingAddGroup.name} — 역할 선택</h3>
-			<select bind:value={pendingGroupRoleId} class="w-full bg-gray-800 border border-gray-700 text-white text-sm rounded px-3 py-2 focus:outline-none focus:border-blue-500 mb-4">
+			<h3 class="text-base font-semibold text-ink-0 mb-3">[그룹] {pendingAddGroup.name} — 역할 선택</h3>
+			<select bind:value={pendingGroupRoleId} class="w-full bg-surface-sunken border border-line-2 text-ink-0 text-sm rounded px-3 py-2 focus:outline-none focus:border-action-warm mb-4">
 				{#each allRoles as r}
 					<option value={r.id}>{r.name}</option>
 				{/each}
 			</select>
 			<div class="flex justify-end gap-3">
-				<button onclick={() => { pendingAddGroup = null; }} class="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg">취소</button>
+				<button onclick={() => { pendingAddGroup = null; }} class="px-3 py-1.5 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm rounded-lg">취소</button>
 				<button
 					onclick={() => pendingAddGroup && assignGroupRole(pendingAddGroup.id, pendingGroupRoleId)}
 					disabled={addSaving || !pendingGroupRoleId}
-					class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg disabled:opacity-30"
+					class="px-3 py-1.5 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm rounded-lg disabled:opacity-30"
 				>{addSaving ? '추가 중...' : '추가'}</button>
 			</div>
 		</div>

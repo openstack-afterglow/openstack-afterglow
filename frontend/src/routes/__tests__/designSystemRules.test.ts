@@ -39,6 +39,7 @@ const designTokenNames = [
 	'--color-surface-base',
 	'--color-surface-raised',
 	'--color-surface-sunken',
+	'--color-surface-selected',
 	'--color-surface-scrim',
 	'--color-surface-scrim-soft',
 	'--color-ink-0',
@@ -58,13 +59,25 @@ const designTokenNames = [
 	'--color-state-neutral',
 ];
 
+// 토폴로지 캔버스 도메인 토큰 — layout.css(dark/light)와 DESIGN.md 예외 목록에 모두 존재해야 한다.
+const topologyTokenNames = [
+	'--color-topology-gateway',
+	'--color-topology-internal-2',
+	'--topology-zone-fill-alpha',
+	'--topology-zone-fill-alpha-active',
+	'--color-topology-grid-minor',
+	'--color-topology-grid-major',
+];
+
 const layerTokenNames = [
 	'--z-sidebar',
+	'--z-header',
 	'--z-panel',
 	'--z-modal',
 	'--z-toast',
-	'--z-command',
+	'--z-confirmation',
 	'--z-popover',
+	'--z-command',
 ];
 
 const motionTokenNames = [
@@ -79,9 +92,9 @@ const motionTokenNames = [
 ];
 
 const motionDurationExports = [
-	'fast: 150',
-	'base: 200',
-	'panel: 300',
+	'fast: 120',
+	'base: 160',
+	'panel: 200',
 	'data: 500',
 	'statusPulse: 1400',
 	"REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)'",
@@ -94,11 +107,13 @@ const scrimThemeDeclarations = [
 
 const layerCssVars = [
 	"sidebar: 'var(--z-sidebar)'",
+	"header: 'var(--z-header)'",
 	"panel: 'var(--z-panel)'",
 	"modal: 'var(--z-modal)'",
 	"toast: 'var(--z-toast)'",
-	"command: 'var(--z-command)'",
+	"confirmation: 'var(--z-confirmation)'",
 	"popover: 'var(--z-popover)'",
+	"command: 'var(--z-command)'",
 ];
 
 const motionCssVars = [
@@ -134,12 +149,14 @@ describe('design system source contracts', () => {
 		expect(layoutSource).toContain(':root.light');
 		expect(layoutSource).toContain('Legacy light-mode compatibility overrides');
 		for (const token of designTokenNames) expect(layoutSource).toContain(token);
+		for (const token of topologyTokenNames) expect(layoutSource).toContain(token);
 	});
 
 	it('keeps DESIGN.md as the canonical new-entity rulebook', () => {
 		expect(designSource).toContain('새 색상·gradient·badge tone·table density·form control·card treatment가 필요하면');
 		expect(designSource).toContain('새 route/component file은 raw hex');
 		for (const token of designTokenNames) expect(designSource).toContain(token);
+		for (const token of topologyTokenNames) expect(designSource).toContain(token);
 	});
 
 	it('defines responsive hierarchy and makes it mandatory agent guidance', () => {
@@ -149,8 +166,8 @@ describe('design system source contracts', () => {
 			'**Tablet (768–1023px).**',
 			'**Desktop (≥1024px).**',
 			'`TableShell` stays horizontally scrollable with headers intact',
-			'header actions retain the mobile wrap/stack composition',
-			'Test every new or materially changed visual flow at mobile, tablet, and desktop widths.',
+			'PageHeader remains stacked and its actions wrap',
+			'Test every new or materially changed visual flow at mobile, tablet, desktop, 767/768, and 1023/1024 cutovers.',
 		]) {
 			expect(designSource).toContain(rule);
 		}
@@ -206,6 +223,9 @@ describe('design system source contracts', () => {
 		}
 		expect(tokenSource).toContain('LAYER_CSS_VAR');
 		for (const cssVar of layerCssVars) expect(tokenSource).toContain(cssVar);
+		expect(tokenSource).toContain('LAYOUT_CSS_VAR');
+		expect(tokenSource).toContain("headerHeight: 'var(--app-header-height)'");
+		expect(tokenSource).toContain("sidebarWidth: 'var(--app-sidebar-width)'");
 	});
 
 	it('keeps motion tokens and reduced-motion behavior aligned', () => {

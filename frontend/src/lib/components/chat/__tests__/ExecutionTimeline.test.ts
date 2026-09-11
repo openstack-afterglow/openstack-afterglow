@@ -173,9 +173,9 @@ it('renders durable generated files as owned download actions', async () => {
 		vi.unstubAllGlobals();
 		anchorClick.mockRestore();
 		if (originalCreateObjectURL) Object.defineProperty(URL, 'createObjectURL', originalCreateObjectURL);
-		else delete (URL as typeof URL & { createObjectURL?: unknown }).createObjectURL;
+		else Reflect.deleteProperty(URL, 'createObjectURL');
 		if (originalRevokeObjectURL) Object.defineProperty(URL, 'revokeObjectURL', originalRevokeObjectURL);
-		else delete (URL as typeof URL & { revokeObjectURL?: unknown }).revokeObjectURL;
+		else Reflect.deleteProperty(URL, 'revokeObjectURL');
 	}
 });
 

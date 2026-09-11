@@ -106,11 +106,6 @@
 		flex-direction: column;
 		gap: 0.3rem;
 	}
-	.usage-label {
-		font-size: 0.68rem;
-		font-weight: 600;
-		color: var(--color-ink-3);
-	}
 	.entry {
 		display: flex;
 		align-items: center;

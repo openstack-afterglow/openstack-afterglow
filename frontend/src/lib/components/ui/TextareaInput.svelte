@@ -6,6 +6,9 @@
 		placeholder?: string;
 		disabled?: boolean;
 		required?: boolean;
+		ariaLabel?: string;
+		ariaDescribedBy?: string;
+		ariaInvalid?: boolean;
 		class?: string;
 	}
 
@@ -16,16 +19,19 @@
 		placeholder,
 		disabled = false,
 		required = false,
+		ariaLabel,
+		ariaDescribedBy,
+		ariaInvalid = false,
 		class: className = '',
 	}: Props = $props();
 </script>
 
-<textarea {id} {rows} bind:value {placeholder} {disabled} {required} class="control textarea-input {className}"></textarea>
+<textarea {id} {rows} bind:value {placeholder} {disabled} {required} aria-label={ariaLabel} aria-describedby={ariaDescribedBy} aria-invalid={ariaInvalid || undefined} class="control textarea-input {className}"></textarea>
 
 <style>
 	.control {
 		width: 100%;
-		border-radius: 0.5rem;
+		border-radius: 0.375rem;
 		border: 1px solid var(--color-line-2);
 		background: var(--color-surface-sunken);
 		color: var(--color-ink-0);
@@ -36,9 +42,9 @@
 		resize: vertical;
 	}
 	.control::placeholder { color: var(--color-ink-3); }
-	.control:focus {
+	.control:focus-visible {
 		outline: none;
-		border-color: var(--color-accent);
+		border-color: var(--color-line-2);
 		box-shadow: var(--focus-ring);
 	}
 	.control:disabled {

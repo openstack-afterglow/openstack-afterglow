@@ -439,7 +439,10 @@ class TopologyInstance(BaseModel):
     status: str
     project_id: str | None = None
     network_names: list[str] = []
-    ip_addresses: list[dict] = []  # [{addr, type, network_name}]
+    ip_addresses: list[dict] = []  # [{addr, type, network_name, network_id, port_id, mac_addr}]
+    flavor_name: str | None = None
+    image_id: str | None = None
+    is_database: bool = False  # Trove DB 인스턴스를 구성하는 Nova 인스턴스 여부
 
 
 class TopologyRouter(BaseModel):
@@ -454,6 +457,8 @@ class TopologyRouter(BaseModel):
     connected_subnet_ids: list[str] = []
     dvr_subnet_ids: list[str] = []
     project_id: str | None = None
+    enable_snat: bool | None = None  # 외부 게이트웨이 SNAT 여부 (게이트웨이 없으면 None)
+    routes: list[dict] = []  # [{destination, nexthop}] 정적 경로
 
 
 class TopologyNetwork(BaseModel):
@@ -464,6 +469,15 @@ class TopologyNetwork(BaseModel):
     is_shared: bool = False
     project_id: str | None = None
     subnet_details: list[SubnetDetail] = []
+    mtu: int | None = None
+
+
+class AdminTopologyNetwork(TopologyNetwork):
+    """관리자 토폴로지 전용 네트워크 — provider 세그먼트 메타데이터 포함."""
+
+    provider_network_type: str | None = None
+    provider_segmentation_id: int | None = None
+    provider_physical_network: str | None = None
 
 
 class TopologyLBMember(BaseModel):
@@ -504,6 +518,12 @@ class TopologyData(BaseModel):
     instances: list[TopologyInstance] = []
     floating_ips: list[FloatingIpInfo] = []
     load_balancers: list[TopologyLoadBalancer] = []
+
+
+class AdminTopologyData(TopologyData):
+    """관리자 토폴로지 응답 — 네트워크에 provider 메타데이터가 추가된다."""
+
+    networks: list[AdminTopologyNetwork] = []
 
 
 # ---------------------------------------------------------------------------

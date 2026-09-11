@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
@@ -109,7 +110,7 @@
 	}
 
 	const ar = createAutoRefresh(() => load(false), {
-		storageKey,
+		storageKey: untrack(() => storageKey),
 		defaultActive: true,
 		defaultInterval: 30,
 		intervalOptions: [15, 30, 60],
@@ -158,7 +159,7 @@
 	<div class="flex flex-wrap gap-3 items-center">
 		<select
 			bind:value={filterResourceType}
-			class="bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
+			class="bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-sm text-ink-0 focus:outline-none focus:border-action-warm"
 		>
 			<option value="">전체 리소스</option>
 			{#each RESOURCE_TYPES as rt}
@@ -169,14 +170,14 @@
 			bind:value={filterAction}
 			type="text"
 			placeholder="액션 필터 (예: instance.create)"
-			class="bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500 w-52"
+			class="bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-sm text-ink-0 focus:outline-none focus:border-action-warm w-52"
 		/>
 		{#if showUser}
 			<input
 				bind:value={filterUserId}
 				type="text"
 				placeholder="사용자 ID"
-				class="bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500 w-44"
+				class="bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-sm text-ink-0 focus:outline-none focus:border-action-warm w-44"
 			/>
 		{/if}
 		<div class="ml-auto">
@@ -192,13 +193,13 @@
 
 	<!-- 테이블 -->
 	{#if loading}
-		<div class="text-gray-400 text-sm py-8 text-center">로딩 중...</div>
+		<div class="text-ink-2 text-sm py-8 text-center">로딩 중...</div>
 	{:else if logs.length === 0}
-		<div class="text-gray-500 text-sm py-8 text-center">활동 없음</div>
+		<div class="text-ink-3 text-sm py-8 text-center">활동 없음</div>
 	{:else}
-		<div class="overflow-x-auto rounded-lg border border-gray-800">
+		<div class="overflow-x-auto rounded-lg border border-line">
 			<table class="w-full text-sm">
-				<thead class="bg-gray-900 text-gray-400 text-xs uppercase tracking-wide">
+				<thead class="bg-surface-base text-ink-2 text-xs uppercase tracking-wide">
 					<tr>
 						<th class="px-4 py-3 text-left font-medium">시각</th>
 						{#if showUser}<th class="px-4 py-3 text-left font-medium">사용자</th>{/if}
@@ -207,31 +208,31 @@
 						<th class="px-4 py-3 text-left font-medium">상태</th>
 					</tr>
 				</thead>
-				<tbody class="divide-y divide-gray-800">
+				<tbody class="divide-y divide-line">
 					{#each logs as log (log.id)}
-						<tr class="hover:bg-gray-800/40 transition-colors">
-							<td class="px-4 py-3 text-gray-300 whitespace-nowrap" title={log.created_at}>
+						<tr class="hover:bg-surface-sunken/40 transition-colors">
+							<td class="px-4 py-3 text-ink-2 whitespace-nowrap" title={log.created_at}>
 								{relativeTime(log.created_at)}
 							</td>
 							{#if showUser}
-								<td class="px-4 py-3 text-gray-300">{log.username}</td>
+								<td class="px-4 py-3 text-ink-2">{log.username}</td>
 							{/if}
-							<td class="px-4 py-3 text-gray-300">
-								<span class="text-gray-400 text-xs">{log.resource_type}</span>
+							<td class="px-4 py-3 text-ink-2">
+								<span class="text-ink-2 text-xs">{log.resource_type}</span>
 								{#if log.resource_name}
-									<span class="ml-1 text-white">{log.resource_name}</span>
+									<span class="ml-1 text-ink-0">{log.resource_name}</span>
 								{:else if log.resource_id}
-									<span class="ml-1 font-mono text-xs text-gray-400">{log.resource_id.slice(0, 8)}</span>
+									<span class="ml-1 font-mono text-xs text-ink-2">{log.resource_id.slice(0, 8)}</span>
 								{/if}
 							</td>
-							<td class="px-4 py-3 font-mono text-xs text-gray-300">{log.action}</td>
+							<td class="px-4 py-3 font-mono text-xs text-ink-2">{log.action}</td>
 							<td class="px-4 py-3">
 								<div class="flex items-center gap-2">
 									<StatusChip status={log.status} />
 									{#if log.status === 'failed' && log.error_message}
 										<button
 											onclick={() => expandedId = expandedId === log.id ? null : log.id}
-											class="text-gray-500 hover:text-gray-300 text-xs underline"
+											class="text-ink-3 hover:text-ink-2 text-xs underline"
 										>
 											{expandedId === log.id ? '닫기' : '상세'}
 										</button>
@@ -254,7 +255,7 @@
 				<button
 					onclick={loadMore}
 					disabled={loadingMore}
-					class="px-4 py-2 text-sm text-gray-400 hover:text-white border border-gray-700 hover:border-gray-500 rounded-lg transition-colors disabled:opacity-50"
+					class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 border border-line-2 hover:border-line-2 rounded-lg transition-colors disabled:opacity-50"
 				>
 					{loadingMore ? '로딩 중...' : '더 보기'}
 				</button>

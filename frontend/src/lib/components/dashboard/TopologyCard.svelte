@@ -72,19 +72,19 @@
   });
 </script>
 
-<div class="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+<div class="bg-surface-base border border-line rounded-lg p-5">
   <div class="flex items-center justify-between mb-3.5">
-    <div class="text-white text-[15px] font-semibold">네트워크 토폴로지</div>
-    <a href="/dashboard/network/topology" class="text-[13px] text-gray-500 hover:text-gray-200 transition-colors">전체 보기 →</a>
+    <div class="text-ink-0 text-[15px] font-semibold">네트워크 토폴로지</div>
+    <a href="/dashboard/network/topology" class="text-[13px] text-ink-3 hover:text-ink-1 transition-colors">전체 보기 →</a>
   </div>
 
   {#if loading}
     <div class="topology-clip flex items-center justify-center">
-      <div class="text-gray-600 text-sm">불러오는 중...</div>
+      <div class="text-ink-3 text-sm">불러오는 중...</div>
     </div>
   {:else if error}
     <div class="topology-clip flex items-center justify-center">
-      <div class="text-gray-600 text-sm">{error}</div>
+      <div class="text-ink-3 text-sm">{error}</div>
     </div>
   {:else if data && (data.networks.length > 0 || data.routers.length > 0)}
     <div class="topology-clip">
@@ -92,7 +92,7 @@
     </div>
   {:else}
     <div class="topology-clip flex items-center justify-center">
-      <div class="text-gray-600 text-sm">네트워크 리소스가 없습니다</div>
+      <div class="text-ink-3 text-sm">네트워크 리소스가 없습니다</div>
     </div>
   {/if}
 </div>

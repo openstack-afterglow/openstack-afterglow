@@ -16,7 +16,7 @@ data:
 
       # VM node_exporter (port 9100) — http_sd로 타깃 자동 갱신
       - job_name: 'instances-node'
-        scrape_interval: 30s
+        scrape_interval: 10s
         metrics_path: /metrics
         http_sd_configs:
           - url: 'http://backend:8000/api/v1/sd/prometheus/targets'
@@ -53,7 +53,7 @@ data:
       # compute 노드의 libvirt_exporter — VM 내부 node_exporter 미설치 인스턴스도 커버
       # kolla: enable_prometheus_libvirt_exporter: "yes" 설정 후 kolla-ansible reconfigure -t prometheus 필요
       - job_name: 'instances-libvirt'
-        scrape_interval: 30s
+        scrape_interval: 10s
         metrics_path: /metrics
         http_sd_configs:
           - url: 'http://backend:8000/api/v1/sd/prometheus/libvirt-targets'

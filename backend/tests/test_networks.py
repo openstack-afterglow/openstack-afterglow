@@ -104,7 +104,7 @@ async def test_get_topology_unauthenticated():
 async def test_get_topology_includes_instance_project_id(client, mock_conn):
     """토폴로지 응답에 인스턴스 project_id가 포함되어야 함 (필터링 정상 작동 확인)."""
 
-    def fake_get_topology(conn):
+    def fake_get_topology(conn, **kwargs):
         return TopologyData()
 
     def fake_list_servers(conn):

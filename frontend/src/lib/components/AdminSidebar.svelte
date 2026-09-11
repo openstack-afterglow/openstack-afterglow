@@ -122,6 +122,7 @@
 			service: 'chat' as const,
 			items: [
 				{ label: '채팅 통계', href: '/admin/chat/stats', service: 'chat' as const },
+				{ label: '사용자 쿼터', href: '/admin/chat/quotas', service: 'chat' as const },
 				{ label: '프로바이더 설정', href: '/admin/chat', service: 'chat' as const },
 				{ label: '모델 설정', href: '/admin/chat/models', service: 'chat' as const },
 				{ label: '도구 설정', href: '/admin/chat/tools', service: 'chat' as const },
@@ -157,6 +158,10 @@
 		$page.url.pathname;
 		sidebarOpen.close();
 	});
+	function closeMobileSidebar() {
+		sidebarOpen.close();
+		document.getElementById('app-sidebar-trigger')?.focus();
+	}
 
 	function isBetaVisible(beta?: BetaFeatureKey): boolean {
 		return mockupAdminActive || !beta || Boolean($betaFeatures[beta]);
@@ -183,31 +188,35 @@
 {#if $sidebarOpen}
 	<button
 		class="fixed inset-0 z-[var(--z-sidebar)] bg-surface-scrim-soft md:hidden"
-		onclick={() => sidebarOpen.close()}
+		onclick={closeMobileSidebar}
 		aria-label="메뉴 닫기"
 	></button>
 {/if}
 
-<aside class="fixed top-0 left-0 bottom-0 z-[var(--z-sidebar)] w-60 bg-gray-900 border-r border-gray-800 flex flex-col overflow-y-auto transition-transform duration-200 ease-in-out {$sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:sticky md:top-0 md:h-screen md:translate-x-0 md:shrink-0 md:transition-none">
+<aside
+	id="app-sidebar"
+	class="fixed inset-y-0 left-0 z-[var(--z-sidebar)] flex h-[100dvh] w-[var(--app-sidebar-width)] flex-col overflow-y-auto border-r border-line bg-surface-base transition-transform duration-[var(--motion-duration-panel)] ease-out {$sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:sticky md:top-0 md:shrink-0 md:translate-x-0 md:transition-none"
+	aria-label="관리자 탐색"
+>
 	<!-- 로고 헤더 with Admin badge -->
-	<div class="h-14 flex items-center gap-2.5 px-4 border-b border-gray-800 shrink-0">
-		<RingMark size={26} />
-		<a href="/admin" class="text-white font-bold text-base tracking-tight hover:text-gray-200 transition-colors">
+	<div class="flex h-[var(--app-header-height)] shrink-0 items-center gap-2.5 border-b border-line px-4">
+		<RingMark size={24} />
+		<a href="/admin" class="text-[15px] font-semibold tracking-tight text-ink-0 transition-colors hover:text-ink-1">
 			{$siteConfig.site_name}
 		</a>
-		<span class="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-amber-900/30 border border-amber-800 text-amber-400 uppercase tracking-wider">Admin</span>
+		<span class="ml-auto rounded-md border border-[var(--admin-tone-ring)] bg-[var(--admin-tone-soft)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--admin-tone)]">Admin</span>
 	</div>
 
 	<!-- 검색 버튼 (1024px 미만에서만 표시) -->
-	<div class="px-3 pt-2 pb-1 lg:hidden">
+	<div class="px-3 pb-1 pt-2 lg:hidden">
 		<button
 			onclick={() => palette.open()}
-			class="w-full flex items-center gap-2 bg-gray-800 border border-gray-700 text-gray-500 rounded-lg pl-3 pr-2 py-1.5 text-[13px] hover:border-gray-600 transition-colors cursor-text"
+			class="flex w-full items-center gap-2 rounded-md border border-line-2 bg-surface-sunken py-1.5 pl-3 pr-2 text-[13px] text-ink-2 transition-colors hover:bg-surface-selected"
 			aria-label="검색 (⌘K)"
 		>
-			<svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z"/></svg>
-			<span class="flex-1 text-left text-gray-600">리소스 검색...</span>
-			<kbd class="text-[10px] border border-gray-700 px-1.5 py-0.5 rounded font-mono text-gray-600">⌘K</kbd>
+			<svg class="size-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z"/></svg>
+			<span class="flex-1 text-left">리소스 검색...</span>
+			<kbd class="rounded border border-line px-1.5 py-0.5 font-mono text-[10px]">⌘K</kbd>
 		</button>
 	</div>
 
@@ -215,10 +224,11 @@
 		<!-- 개요 -->
 		<a
 			href="/admin"
-			class="nav-item flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors"
+			aria-current={$page.url.pathname === '/admin' ? 'page' : undefined}
+			class="nav-item flex h-8 items-center gap-2 rounded-md px-3 text-[13px] transition-colors"
 			class:nav-active={$page.url.pathname === '/admin'}
 		>
-			<svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+			<svg class="size-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
 			개요
 		</a>
 
@@ -228,7 +238,7 @@
 			<div>
 				<button
 					onclick={() => section.open = !section.open}
-					class="flex items-center justify-between w-full px-3 py-2 rounded-lg text-sm transition-colors {$page.url.pathname.startsWith(section.prefix) || section.items.some(item => $page.url.pathname.startsWith(item.href)) ? 'text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}"
+					class="flex items-center justify-between w-full px-3 py-2 rounded-lg text-sm transition-colors {$page.url.pathname.startsWith(section.prefix) || section.items.some(item => $page.url.pathname.startsWith(item.href)) ? 'text-ink-0' : 'text-ink-2 hover:text-ink-0 hover:bg-surface-sunken'}"
 				>
 					<div class="flex items-center gap-1.5">
 						{#if section.icon}
@@ -236,7 +246,7 @@
 						{/if}
 						<span>{section.label}</span>
 					</div>
-					<span class="text-xs text-gray-600">{section.open ? '▾' : '▸'}</span>
+					<span class="text-xs text-ink-3">{section.open ? '▾' : '▸'}</span>
 				</button>
 
 				{#if section.open}
@@ -245,7 +255,8 @@
 							{#if isItemVisible(item)}
 							<a
 								href={item.href}
-								class="nav-item nav-sub flex items-center px-3 py-1.5 rounded-lg text-xs transition-colors"
+								aria-current={$page.url.pathname === item.href ? 'page' : undefined}
+								class="nav-item nav-sub flex h-8 items-center rounded-md px-3 text-[13px] transition-colors"
 								class:nav-active={$page.url.pathname === item.href}
 							>
 								{item.label}
@@ -260,16 +271,16 @@
 	</nav>
 
 	<!-- 하단: 사용자 정보 + 사용자 모드 전환 -->
-	<div class="border-t border-gray-800 shrink-0">
+	<div class="border-t border-line shrink-0">
 		<!-- 데스크톱: 관리자 정보 -->
 		<div class="hidden md:block px-4 py-3">
-			<div class="text-[10px] text-gray-500 uppercase tracking-widest font-medium">관리자</div>
-			<div class="text-[13px] text-gray-200 font-medium mt-0.5 truncate">{$auth.username}</div>
+			<div class="text-[10px] text-ink-3 uppercase tracking-widest font-medium">관리자</div>
+			<div class="text-[13px] text-ink-1 font-medium mt-0.5 truncate">{$auth.username}</div>
 		</div>
 
 		<!-- 모바일 전용 -->
 		<div class="p-3 lg:hidden">
-			<div class="text-[10px] text-gray-500 uppercase tracking-wide px-1 mb-1.5">프로젝트</div>
+			<div class="text-[10px] text-ink-3 uppercase tracking-wide px-1 mb-1.5">프로젝트</div>
 			<ProjectSelector />
 		</div>
 		{#if !mockupAdminActive}
@@ -281,8 +292,8 @@
 			</a>
 		</div>
 		{/if}
-		<div class="p-3 pt-0 md:hidden border-t border-gray-800">
-			<div class="px-3 text-xs text-gray-500">{$auth.username}</div>
+		<div class="p-3 pt-0 md:hidden border-t border-line">
+			<div class="px-3 text-xs text-ink-3">{$auth.username}</div>
 		</div>
 	</div>
 </aside>
@@ -290,31 +301,27 @@
 <style>
 	.nav-item {
 		color: var(--color-ink-2);
+		font-weight: 500;
 	}
 	.nav-item:hover:not(.nav-active) {
 		color: var(--color-ink-0);
-		background-color: color-mix(in oklab, var(--color-surface-sunken) 80%, transparent);
+		background-color: var(--color-surface-sunken);
 	}
 	.nav-sub {
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.nav-sub:hover:not(.nav-active) {
 		color: var(--color-ink-1);
 	}
 	.nav-active {
-		background: var(--warm-soft);
-		color: var(--color-warm-2);
-		font-weight: 500;
-		position: relative;
+		background: var(--color-surface-selected);
+		color: var(--color-ink-0);
+		font-weight: 600;
 	}
-	.nav-active::before {
-		content: "";
-		position: absolute;
-		left: 0;
-		top: 6px;
-		bottom: 6px;
-		width: 3px;
-		border-radius: 2px;
-		background: var(--color-warm);
+
+	@media (pointer: coarse) {
+		.nav-item {
+			min-height: 2.75rem;
+		}
 	}
 </style>

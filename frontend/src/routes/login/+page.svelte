@@ -2,4 +2,6 @@
 	import LoginPage from '$lib/components/auth/LoginPage.svelte';
 </script>
 
-<LoginPage />
+<main id="main-content" tabindex="-1">
+	<LoginPage />
+</main>

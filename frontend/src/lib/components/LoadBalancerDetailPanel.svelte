@@ -22,8 +22,8 @@
     lbId: () => lbId,
     token: () => $auth.token ?? undefined,
     projectId: () => $auth.projectId ?? undefined,
-    onDeleted,
-    onClose,
+    onDeleted: () => onDeleted?.(),
+    onClose: () => onClose?.(),
   });
   provideLoadbalancerDetailController(s);
 
@@ -45,7 +45,7 @@
   {#if s.loading}
     <div class="space-y-4">
       {#each [1, 2, 3] as _}
-        <div class="h-16 bg-gray-800 rounded-lg animate-pulse"></div>
+        <div class="h-16 bg-surface-sunken rounded-lg animate-pulse"></div>
       {/each}
     </div>
   {:else if s.error}

@@ -14,7 +14,7 @@ export function isValidGithubUsername(value: string | null | undefined): boolean
 }
 
 export function isUbuntuImage(
-	image: Pick<{ name: string; os_distro?: string; properties?: Record<string, unknown> }, 'name' | 'os_distro' | 'properties'> | null | undefined,
+	image: Pick<{ name: string; os_distro?: string | null; properties?: Record<string, unknown> | null }, 'name' | 'os_distro' | 'properties'> | null | undefined,
 	fallbackName?: string | null,
 ): boolean {
 	if (!image) return false;

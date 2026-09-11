@@ -46,8 +46,7 @@
 <div class="relative group">
   <button
     onclick={handleCopy}
-    class="absolute top-2 right-2 text-xs text-gray-600 hover:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity z-10 bg-gray-900 px-1.5 py-0.5 rounded"
+    class="absolute top-2 right-2 text-xs text-ink-3 hover:text-ink-2 opacity-0 group-hover:opacity-100 transition-opacity z-10 bg-surface-base px-1.5 py-0.5 rounded"
   >복사</button>
-  <pre class="text-xs font-mono text-gray-300 bg-gray-950 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-all leading-relaxed">{#each parsedLines as parsed, i}{#if i > 0}
-{/if}{#if parsed.kind === 'masked'}<span class="text-gray-500">{parsed.prefix}</span>{#if revealed.has(parsed.key)}<span class="text-yellow-400">{parsed.value}</span><button onclick={() => toggle(parsed.key)} class="text-blue-500 hover:text-blue-300 ml-1">숨기기</button>{:else}<span class="text-gray-600">••••••••••</span><button onclick={() => toggle(parsed.key)} class="text-blue-500 hover:text-blue-300 ml-1">Reveal</button>{/if}{:else}{parsed.text}{/if}{/each}</pre>
+  <pre class="text-xs font-mono text-ink-2 bg-surface-canvas rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-all leading-relaxed">{#each parsedLines as parsed, i}{i > 0 ? '\n' : ''}{#if parsed.kind === 'masked'}<span class="text-ink-3">{parsed.prefix}</span>{#if revealed.has(parsed.key)}<span class="text-yellow-400">{parsed.value}</span><button onclick={() => toggle(parsed.key)} class="text-action-warm hover:text-action-warm-hover ml-1">숨기기</button>{:else}<span class="text-ink-3">••••••••••</span><button onclick={() => toggle(parsed.key)} class="text-action-warm hover:text-action-warm-hover ml-1">Reveal</button>{/if}{:else}{parsed.text}{/if}{/each}</pre>
 </div>

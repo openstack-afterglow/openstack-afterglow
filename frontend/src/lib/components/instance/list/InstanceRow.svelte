@@ -28,11 +28,8 @@
 	} = $props();
 </script>
 
-<div
-	class="instance-row resource-selection-surface grid grid-cols-[36px_1fr_0px_0px_1fr_0px_0px_0px] sm:grid-cols-[36px_1.2fr_130px_0px_1.5fr_0px_0px_32px] md:grid-cols-[36px_1.2fr_130px_1.2fr_1.5fr_0px_0px_32px] lg:grid-cols-[36px_1.2fr_130px_1.2fr_1.5fr_80px_80px_32px] px-4 py-3 text-[13px] items-center border-b border-gray-800 transition-colors last:border-b-0"
-	data-selected={selected}
->
-	<div class="flex items-center">
+<tr class="instance-row resource-selection-surface" data-selected={selected}>
+	<td class="text-left">
 		<SelectionCheckbox
 			checked={selected}
 			disabled={!selectable || selectionDisabled}
@@ -41,50 +38,42 @@
 			onclick={onToggleSelect}
 			ariaLabel={`${instance.name || instance.id} 선택`}
 		/>
-	</div>
-	<!-- 이름 -->
-	<button
-		type="button"
-		onclick={() => onSelect(instance.id)}
-		class="flex items-center gap-2.5 min-w-0 w-full text-left text-white hover:text-blue-400 transition-colors cursor-pointer"
-	>
-		<div class="shrink-0 w-7 h-7 rounded-md bg-blue-500/15 border border-blue-500/30 flex items-center justify-center">
-			<svg class="w-3.5 h-3.5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2"/>
-			</svg>
-		</div>
-		<div class="min-w-0 flex-1">
-			<span class="block font-medium truncate">{instance.name}</span>
-			<div class="sm:hidden mt-0.5" onclick={(e) => e.stopPropagation()} role="none"><StatusChip status={instance.status} /></div>
-		</div>
-	</button>
-	<!-- 상태 -->
-	<div class="hidden sm:block overflow-hidden px-1"><StatusChip status={instance.status} class="max-w-full truncate" /></div>
-	<!-- 이미지/플레이버 -->
-	<div class="hidden md:block text-xs min-w-0">
-		<div class="text-gray-300 truncate">{instance.image_name ?? '볼륨에서 부팅'}</div>
+	</td>
+	<td>
+		<button
+			type="button"
+			onclick={() => onSelect(instance.id)}
+			class="flex min-w-0 items-center gap-2.5 text-left text-ink-0 transition-colors hover:text-action-warm-hover"
+		>
+			<span class="flex size-7 shrink-0 items-center justify-center rounded-md border border-line bg-surface-sunken">
+				<svg class="size-3.5 text-ink-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2"/>
+				</svg>
+			</span>
+			<span class="max-w-56 truncate font-medium">{instance.name}</span>
+		</button>
+	</td>
+	<td><StatusChip status={instance.status} class="max-w-full truncate" /></td>
+	<td class="text-xs">
+		<div class="truncate text-ink-2">{instance.image_name ?? '볼륨에서 부팅'}</div>
 		{#if instance.flavor_name}
-			<div class="text-gray-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
+			<div class="mt-0.5 flex items-center gap-1.5 text-ink-3">
 				<span class="truncate">{instance.flavor_name}</span>
 				{#if isUnderutilized}
-					<span class="shrink-0 px-1.5 py-0.5 bg-amber-900/50 text-amber-400 border border-amber-700/60 rounded text-[10px] font-medium">리사이즈 권장</span>
+					<span class="shrink-0 rounded border border-action-warm/60 bg-surface-selected px-1.5 py-0.5 text-[10px] font-medium text-action-warm">리사이즈 권장</span>
 				{/if}
 			</div>
 		{/if}
-	</div>
-	<!-- IP -->
-	<div class="text-[11px] sm:text-xs">
-		<InstanceIpCell addresses={instance.ip_addresses} />
-	</div>
-	<!-- 라이브러리 -->
-	<div class="hidden lg:flex flex-wrap gap-1">
-		{#each instance.union_libraries.filter(Boolean) as lib}
-			<span class="px-1.5 py-0.5 bg-blue-900/40 text-blue-300 rounded text-xs">{lib}</span>
-		{/each}
-	</div>
-	<!-- 전략 -->
-	<div class="hidden lg:block text-gray-500 text-xs">{instance.union_strategy ? strategyLabel[instance.union_strategy] ?? instance.union_strategy : '—'}</div>
-	<!-- 액션 -->
+	</td>
+	<td class="text-xs"><InstanceIpCell addresses={instance.ip_addresses} /></td>
+	<td>
+		<div class="flex flex-wrap gap-1">
+			{#each instance.union_libraries.filter(Boolean) as lib}
+				<span class="rounded bg-surface-selected px-1.5 py-0.5 text-xs text-ink-1">{lib}</span>
+			{/each}
+		</div>
+	</td>
+	<td class="text-xs text-ink-3">{instance.union_strategy ? strategyLabel[instance.union_strategy] ?? instance.union_strategy : '—'}</td>
 	<InstanceRowActions {instance} {onAction} />
-</div>
+</tr>
 

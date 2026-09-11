@@ -31,7 +31,7 @@
 <div class="overflow-x-auto">
 	<table class="w-full text-sm">
 		<thead>
-			<tr class="border-b border-gray-800 text-gray-400 text-xs uppercase tracking-wide">
+			<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
 				<th class="text-left py-2 pr-4">이름</th>
 				<th class="text-left py-2 pr-4">상태</th>
 				<th class="text-left py-2 pr-4">크기</th>
@@ -45,21 +45,21 @@
 		</thead>
 		<tbody>
 			{#each storages as fs (fs.id)}
-				<tr class="border-b border-gray-800/50 text-xs transition-colors {selectedId === fs.id ? 'bg-blue-900/10' : 'hover:bg-gray-800/20'}">
-					<td class="p-0"><button type="button" onclick={() => onOpen(fs)} class="block w-full py-2 pr-4 font-medium text-white hover:text-blue-400 transition-colors text-left" title={fs.name || fs.id}><span class="max-md:block max-md:max-w-[66vw] max-md:truncate">{fs.name || fs.id.slice(0, 8)}</span></button></td>
+				<tr class="border-b border-line/50 text-xs transition-colors {selectedId === fs.id ? 'bg-surface-selected/10' : 'hover:bg-surface-sunken/20'}">
+					<td class="p-0"><button type="button" onclick={() => onOpen(fs)} class="block w-full py-2 pr-4 font-medium text-ink-0 hover:text-action-warm-hover transition-colors text-left" title={fs.name || fs.id}><span class="max-md:block max-md:max-w-[66vw] max-md:truncate">{fs.name || fs.id.slice(0, 8)}</span></button></td>
 					<td class="py-2 pr-4"><StatusChip status={fs.status} /></td>
-					<td class="py-2 pr-4 text-gray-400">{formatNumber(fs.size)} GB</td>
+					<td class="py-2 pr-4 text-ink-2">{formatNumber(fs.size)} GB</td>
 					<td class="py-2 pr-4">
-						<span class="px-1.5 py-0.5 rounded text-xs font-medium {fs.share_proto === 'NFS' ? 'bg-blue-900/40 text-blue-300' : 'bg-purple-900/40 text-purple-300'}">{fs.share_proto}</span>
+						<span class="px-1.5 py-0.5 rounded text-xs font-medium {fs.share_proto === 'NFS' ? 'bg-surface-selected/40 text-action-warm' : 'bg-purple-900/40 text-purple-300'}">{fs.share_proto}</span>
 					</td>
-					<td class="py-2 pr-4 text-gray-500">{fs.metadata?.union_type || '-'}</td>
+					<td class="py-2 pr-4 text-ink-3">{fs.metadata?.union_type || '-'}</td>
 					<td class="py-2 pr-4">
 						{#if fs.project_id}
 							<div class="flex items-center gap-1.5">
-								<span class="text-gray-300">{$projectNames.get(fs.project_id) ?? fs.project_id.slice(0, 8)}</span>
+								<span class="text-ink-2">{$projectNames.get(fs.project_id) ?? fs.project_id.slice(0, 8)}</span>
 								<button
 									onclick={(e) => { e.stopPropagation(); copyValue(fs.project_id!); }}
-									class="text-gray-600 hover:text-gray-400 transition-colors"
+									class="text-ink-3 hover:text-ink-2 transition-colors"
 									title={fs.project_id}
 								>
 									{#if copiedId === fs.project_id}
@@ -70,17 +70,17 @@
 								</button>
 							</div>
 						{:else}
-							<span class="text-gray-600">-</span>
+							<span class="text-ink-3">-</span>
 						{/if}
 					</td>
-					<td class="py-2 pr-4 text-gray-400">{formatDate(fs.created_at)}</td>
-					<td class="py-2 text-gray-500 font-mono">
+					<td class="py-2 pr-4 text-ink-2">{formatDate(fs.created_at)}</td>
+					<td class="py-2 text-ink-3 font-mono">
 						{#if fs.export_locations?.length > 0}
 							<div class="flex items-center gap-1.5">
 								<span class="truncate max-w-[200px]" title={fs.export_locations[0]}>{fs.export_locations[0]}</span>
 								<button
 									onclick={(e) => { e.stopPropagation(); copyValue(fs.export_locations[0]); }}
-									class="text-gray-600 hover:text-gray-400 transition-colors shrink-0"
+									class="text-ink-3 hover:text-ink-2 transition-colors shrink-0"
 								>
 									{#if copiedId === fs.export_locations[0]}
 										<svg class="w-3 h-3 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
@@ -94,7 +94,7 @@
 						{/if}
 					</td>
 					<td class="py-2">
-						<button type="button" onclick={() => onOpen(fs)} class="px-2 py-1 rounded border border-blue-500/40 text-blue-300 hover:bg-blue-500/10 hover:text-blue-200 transition-colors text-xs font-medium">상세</button>
+						<button type="button" onclick={() => onOpen(fs)} class="px-2 py-1 rounded border border-action-warm/40 text-action-warm hover:bg-action-warm-hover/10 hover:text-action-warm-hover transition-colors text-xs font-medium">상세</button>
 					</td>
 				</tr>
 			{/each}

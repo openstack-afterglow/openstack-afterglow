@@ -31,13 +31,13 @@
 <div class="w-full" {...restProps}>
 	<!-- Progress bar -->
 	<div class="relative mb-6">
-		<div class="h-2 bg-gray-800 rounded-full overflow-hidden">
+		<div class="h-2 bg-surface-sunken rounded-full overflow-hidden">
 			<div
-				class="h-full bg-blue-500 transition-all duration-500 ease-out"
+				class="h-full bg-action-warm transition-all duration-500 ease-out"
 				style="width: {progress}%"
 			></div>
 		</div>
-		<div class="flex justify-between mt-2 text-xs text-gray-500">
+		<div class="flex justify-between mt-2 text-xs text-ink-3">
 			<span>0%</span>
 			<span>{progress}%</span>
 		</div>
@@ -50,9 +50,9 @@
 			<div class="flex items-start gap-3">
 				<!-- Step indicator -->
 				<div class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors
-					{status === 'completed' ? 'bg-green-600 text-white' : ''}
-					{status === 'active' ? 'bg-blue-600 text-white animate-pulse' : ''}
-					{status === 'pending' ? 'bg-gray-800 text-gray-500' : ''}
+					{status === 'completed' ? 'bg-green-600 text-ink-0' : ''}
+					{status === 'active' ? 'bg-action-warm text-ink-0 animate-pulse' : ''}
+					{status === 'pending' ? 'bg-surface-sunken text-ink-3' : ''}
 				">
 					{#if status === 'completed'}
 						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -66,7 +66,7 @@
 				<!-- Step content -->
 				<div class="flex-1 pt-1">
 					<div class="flex items-center gap-2">
-						<span class="font-medium {status === 'active' ? 'text-white' : status === 'completed' ? 'text-green-400' : 'text-gray-500'}">
+						<span class="font-medium {status === 'active' ? 'text-ink-0' : status === 'completed' ? 'text-green-400' : 'text-ink-3'}">
 							{step.label}
 						</span>
 						{#if status === 'active'}
@@ -78,7 +78,7 @@
 						{/if}
 					</div>
 					{#if step.description && status !== 'pending'}
-						<p class="text-xs text-gray-500 mt-0.5">{step.description}</p>
+						<p class="text-xs text-ink-3 mt-0.5">{step.description}</p>
 					{/if}
 				</div>
 			</div>

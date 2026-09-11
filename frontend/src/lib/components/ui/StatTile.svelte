@@ -16,6 +16,7 @@
     footer?: Snippet;
     children?: Snippet;
     class?: string;
+    flat?: boolean;
   }
 
   let {
@@ -29,6 +30,7 @@
     iconBgClass,
     progress,
     footer,
+    flat = false,
     class: className = '',
   }: Props = $props();
 
@@ -72,7 +74,7 @@
   );
 </script>
 
-<div class="stat-tile {tileToneClass} {className}">
+<div class="stat-tile {flat ? 'stat-tile-flat' : ''} {tileToneClass} {className}">
   {#if icon}
     <div class="icon-chip {chipClass}">
       {@render icon()}
@@ -101,19 +103,27 @@
   .stat-tile {
     display: flex;
     align-items: center;
-    gap: 0.875rem;
+    gap: 0.75rem;
     border: 1px solid var(--color-line);
-    border-radius: 1rem;
-    background: var(--color-surface-raised);
-    padding: 1.125rem;
-    transition: border-color var(--motion-duration-fast) var(--motion-ease-standard), background var(--motion-duration-fast) var(--motion-ease-standard), box-shadow var(--motion-duration-fast) var(--motion-ease-standard), transform var(--motion-duration-fast) var(--motion-ease-standard);
+    border-radius: 0.5rem;
+    background: var(--color-surface-base);
+    padding: 1rem;
+    transition: border-color var(--motion-duration-fast) var(--motion-ease-standard), background var(--motion-duration-fast) var(--motion-ease-standard);
   }
   :global(a:hover) > .stat-tile,
   :global(a:focus-visible) > .stat-tile {
     border-color: var(--stat-tile-ring);
-    background: color-mix(in oklab, var(--stat-tile-tone) 8%, var(--color-surface-sunken));
-    box-shadow: 0 10px 28px color-mix(in oklab, var(--stat-tile-tone) 14%, transparent);
-    transform: translateY(-1px);
+    background: var(--color-surface-selected);
+  }
+  .stat-tile-flat {
+    border: 0;
+    border-radius: 0;
+    background: var(--color-surface-base);
+  }
+  :global(a:hover) > .stat-tile-flat,
+  :global(a:focus-visible) > .stat-tile-flat {
+    border-color: transparent;
+    background: var(--color-surface-selected);
   }
   .tile-accent {
     --stat-tile-tone: var(--color-accent);
@@ -148,11 +158,10 @@
     min-width: 0;
   }
   .stat-label {
-    font-size: 0.6875rem;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
+    font-size: 0.75rem;
+    letter-spacing: -0.01em;
     font-weight: 500;
-    color: var(--color-ink-3);
+    color: var(--color-ink-2);
   }
   .stat-value-row {
     display: flex;
@@ -169,7 +178,7 @@
   }
   .stat-unit {
     font-size: 0.75rem;
-    color: var(--color-ink-3);
+    color: var(--color-ink-2);
   }
   .stat-delta {
     margin-left: auto;
@@ -192,30 +201,26 @@
     transition: width var(--motion-duration-base) var(--motion-ease-standard);
   }
   .icon-chip {
-    width: 2.5rem;
-    height: 2.5rem;
-    border-radius: 0.625rem;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 0.375rem;
     border: 1px solid transparent;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    position: relative;
   }
-  .icon-chip::before {
-    content: '';
-    position: absolute;
-    inset: -0.5rem;
-    border-radius: 1rem;
-    background: radial-gradient(circle at center, currentColor 0%, transparent 70%);
-    opacity: 0.07;
-    pointer-events: none;
+  .stat-tile-flat .icon-chip {
+    width: 2rem;
+    height: 2rem;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
   }
   .icon-accent {
     background: var(--accent-soft);
     border-color: var(--accent-ring);
     color: var(--color-accent);
-    box-shadow: 0 0 16px color-mix(in oklab, var(--color-accent) 15%, transparent);
   }
   .icon-accent2 {
     background: color-mix(in oklab, var(--color-accent-2) 14%, transparent);

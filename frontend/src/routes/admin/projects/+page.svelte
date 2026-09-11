@@ -109,7 +109,7 @@
 		{#snippet actions()}
 			<button
 				onclick={() => { showCreate = true; }}
-				class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg"
+				class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg"
 			>+ 생성</button>
 			<AutoRefreshControl
 				bind:active={ar.active}
@@ -118,12 +118,12 @@
 				refreshing={loading || refreshing}
 				onManualRefresh={() => load()}
 			/>
-			<div class="flex items-center gap-1 text-xs text-gray-500 max-md:hidden">
+			<div class="flex items-center gap-1 text-xs text-ink-3 max-md:hidden">
 				표시:
 				{#each [10, 20, 30] as n}
 					<button
 						onclick={() => { pageSize = n; markerStack = []; nextMarker = null; load(); }}
-						class="px-2 py-0.5 rounded {pageSize === n ? 'bg-blue-600 text-white' : 'bg-gray-800 hover:bg-gray-700 text-gray-400'}"
+						class="px-2 py-0.5 rounded {pageSize === n ? 'bg-action-warm text-ink-0' : 'bg-surface-sunken hover:bg-surface-selected text-ink-2'}"
 					>{n}</button>
 				{/each}
 			</div>
@@ -133,7 +133,7 @@
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else}
-		<div class="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+		<div class="bg-surface-base border border-line rounded-lg p-5">
 			<AdminProjectTable
 				{projects}
 				{copiedId}

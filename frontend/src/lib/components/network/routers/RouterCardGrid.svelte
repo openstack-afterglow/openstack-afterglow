@@ -52,7 +52,7 @@
           ariaLabel={`${router.name || router.id.slice(0, 12)} 선택`}
           onclick={() => onToggleSelect(router.id)}
         />
-        <div class="router-card__icon w-10 h-10 rounded-[10px] flex items-center justify-center shrink-0">
+        <div class="router-card__icon w-10 h-10 rounded-lg flex items-center justify-center shrink-0">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"/>
             <line x1="2" y1="12" x2="22" y2="12"/>

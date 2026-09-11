@@ -54,21 +54,21 @@
   }
 </script>
 
-<div class="bg-gray-900 border border-gray-800 rounded-xl p-4 mt-3">
+<div class="bg-surface-base border border-line rounded-xl p-4 mt-3">
   <div class="flex items-center justify-between mb-3">
-    <h3 class="text-xs text-gray-500 uppercase tracking-wide">ConfigMaps</h3>
+    <h3 class="text-xs text-ink-3 uppercase tracking-wide">ConfigMaps</h3>
     <button
       onclick={() => { showCreate = !showCreate; newName = ''; createError = ''; }}
-      class="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+      class="text-xs text-action-warm hover:text-action-warm-hover transition-colors"
     >{showCreate ? '닫기' : '+ 생성'}</button>
   </div>
 
   {#if showCreate}
-    <div class="mb-3 bg-gray-800 rounded-lg p-3">
+    <div class="mb-3 bg-surface-sunken rounded-lg p-3">
       <input
         bind:value={newName}
         placeholder="ConfigMap 이름"
-        class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-xs rounded px-2 py-1.5 font-mono mb-2 focus:outline-none focus:border-blue-500"
+        class="w-full bg-surface-selected border border-line-2 text-ink-1 text-xs rounded px-2 py-1.5 font-mono mb-2 focus:outline-none focus:border-action-warm"
       />
       {#if createError}
         <p class="text-xs text-red-400 mb-1">{createError}</p>
@@ -88,23 +88,23 @@
   {#if loadError}
     <p class="text-xs text-red-400">{loadError}</p>
   {:else if s.configMaps.length === 0}
-    <p class="text-xs text-gray-500">ConfigMap 없음</p>
+    <p class="text-xs text-ink-3">ConfigMap 없음</p>
   {:else}
     <div class="space-y-2">
       {#each s.configMaps as cm}
         {@const actionKey = `${s.selectedNamespace}:${cm.name}`}
-        <div class="bg-gray-800/50 rounded-lg p-3">
+        <div class="bg-surface-sunken/50 rounded-lg p-3">
           <div class="flex items-center justify-between gap-3 mb-2">
-            <span class="text-xs text-gray-200 font-mono font-medium">{cm.name}</span>
+            <span class="text-xs text-ink-1 font-mono font-medium">{cm.name}</span>
             <div class="flex gap-1 shrink-0">
               <button
                 onclick={() => { editingCm = { name: cm.name, data: { ...cm.data } }; }}
-                class="text-xs text-gray-400 hover:text-gray-200 px-2 py-1 border border-gray-700 hover:border-gray-500 rounded transition-colors"
+                class="text-xs text-ink-2 hover:text-ink-1 px-2 py-1 border border-line-2 hover:border-line-2 rounded transition-colors"
               >편집</button>
               <button
                 onclick={() => handleDelete(cm.name)}
                 disabled={s.cmActioning === actionKey}
-                class="text-xs text-orange-400 hover:text-orange-300 px-2 py-1 border border-orange-900 hover:border-orange-700 rounded transition-colors disabled:text-gray-600 disabled:border-gray-700 disabled:cursor-not-allowed"
+                class="text-xs text-orange-400 hover:text-orange-300 px-2 py-1 border border-orange-900 hover:border-orange-700 rounded transition-colors disabled:text-ink-3 disabled:border-line-2 disabled:cursor-not-allowed"
               >{s.cmActioning === actionKey ? '삭제 중...' : '삭제'}</button>
             </div>
           </div>

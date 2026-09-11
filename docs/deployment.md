@@ -112,92 +112,42 @@ open http://localhost:3000
 
 ## kolla-ansible 배포
 
-OpenStack 환경 내부(컨트롤러 노드)에서 kolla-ansible 플레이북으로 Afterglow를 배포합니다. Docker 기반 서비스를 기존 kolla 인프라와 동일한 방식으로 관리합니다.
+Afterglow와 Lumen은 Kolla 배포 호스트에서 표준 명령으로 함께 배포합니다.
+최초 한 번 [Kolla 설치·설정 가이드](../deploy/kolla/README.md)에 따라 다음을 준비합니다.
 
-### 사전 요구사항
+- `/etc/kolla/multinode`의 `afterglow`, `lumen` 그룹과 기존 OpenStack inventory
+- 실제 Kolla 가상 환경에 설치한 고정 버전 역할 패키지 (`lumen-kolla==0.2.0`)
+- `/etc/kolla/config/afterglow/globals.yml` 및 `secrets.yml`, globals.d 연결
+- 기존 MariaDB·Valkey, Lumen PostgreSQL 설정, 고정 이미지와 API 공개 경로
+- 대상 호스트에서 암호 입력 없이 sudo를 사용할 수 있는 배포 SSH 계정
+- stock `site.yml`에 서비스 플레이북을 연결하는 `deploy/kolla/install.sh`
 
-- kolla-ansible 환경 구성 완료 (`/etc/kolla/globals.yml`, `/etc/kolla/passwords.yml` 존재)
-- Afterglow 컨테이너 이미지 접근 가능 (GHCR 또는 내부 레지스트리)
-- Python 가상 환경에 kolla-ansible 설치
-
-### 1. 역할 설치
-
-```bash
-# 저장소 클론
-git clone git@github.com:openstack-afterglow/openstack-afterglow.git
-cd openstack-afterglow/deploy/kolla
-
-# kolla-ansible 가상 환경 활성화
-source /path/to/kolla-venv/bin/activate
-
-# Afterglow 역할이 kolla-ansible 역할 경로에 있어야 함
-# (install.sh가 자동으로 복사)
-bash install.sh
-```
-
-### 2. globals.yml 설정
-
-`/etc/kolla/globals.yml`에 Afterglow 관련 변수 추가:
-
-```yaml
-# Afterglow 활성화
-enable_afterglow: "yes"
-enable_afterglow_frontend: "yes"
-enable_afterglow_worker: "yes"
-
-# 브라우저 frontend origin
-afterglow_public_endpoint_url: "https://afterglow.example.com"
-
-# Kolla external VIP/TLS frontend으로 같은 도메인을 배포할 때
-afterglow_public_haproxy_enabled: true
-afterglow_public_haproxy_fqdn: "afterglow.example.com"
-
-# 이미지 설정
-afterglow_backend_image: "ghcr.io/openstack-afterglow/afterglow-api"
-afterglow_frontend_image: "ghcr.io/openstack-afterglow/afterglow"
-afterglow_image_tag: "latest"
-
-# OpenStack 서비스 연결
-afterglow_service_project_name: "service"
-afterglow_admin_keystone_user: "afterglow"
-```
-
-### 3. 패스워드 설정
-
-`/etc/kolla/passwords.yml`에 추가:
-
-```yaml
-afterglow_admin_keystone_password: "<keystone-password>"
-afterglow_database_password: "<db-password>"
-afterglow_secret_key: "<random-32-char-key>"
-afterglow_redis_password: ""  # Redis 인증 미사용 시 빈 문자열
-```
-
-### 4. 배포 실행
+Afterglow 역할은 저장소로 연결되며 Lumen 역할은 wheel이 소유합니다.
+설치기는 역할을 임의 복제하거나 기존 비밀값을 샘플로 덮어쓰지 않습니다.
 
 ```bash
+source /etc/kolla/.venv/bin/activate
 cd /etc/kolla
-
-# 배포
-kolla-ansible deploy --tags afterglow
-
-# 설정 반영
-kolla-ansible reconfigure --tags afterglow
+kolla-ansible deploy -i multinode
 ```
 
-### 5. 서비스 확인
+이 명령은 활성화된 stock OpenStack 서비스도 실행합니다. Afterglow/Lumen만
+설정 반영할 때는 같은 명령에 `--tags afterglow,lumen`을 추가합니다.
+custom service와 HAProxy 플레이에 `become: true`가 선언되어 있어 별도
+`--become`, `-p`, `-e @...` 인자가 필요하지 않습니다.
 
 ```bash
-# Docker 컨테이너 상태 확인
-docker ps | grep afterglow
-
-# 로그 확인
-docker logs afterglow_backend
-docker logs afterglow_frontend
-docker logs afterglow_worker
+kolla-ansible prechecks -i multinode --tags afterglow,lumen
+kolla-ansible reconfigure -i multinode --tags afterglow,lumen
 ```
 
-Drover, Lumen, Waygate를 OpenStack SDK service catalog로 사용하는 환경에서는 [서비스 카탈로그 등록 튜토리얼](openstack-service-catalog.md)에서 service type, endpoint, 리전 검증 절차를 완료하세요.
+배포 후 각 대상에서 `afterglow_backend`, `afterglow_frontend`, `lumen_api`,
+`lumen_worker` 상태와 공개 health 경로를 확인합니다. liveness HTTP 200과
+실제 DB·Redis·PostgreSQL 연결 또는 인증된 채팅 동작은 구분해 검증합니다.
+`--limit`을 사용해도 DB 마이그레이션과 PostgreSQL은 첫 서비스 컨트롤러에
+위임될 수 있으므로 해당 호스트의 설정과 공유 데이터 저장소도 필요합니다.
+
+서비스 카탈로그 검증은 [등록 튜토리얼](openstack-service-catalog.md)을 참고하세요.
 
 ---
 

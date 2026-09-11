@@ -13,6 +13,8 @@
 	import TextInput from '$lib/components/ui/TextInput.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
 	import SelectInput from '$lib/components/ui/SelectInput.svelte';
+	import ModelCapabilityBadges from '$lib/components/chat/ModelCapabilityBadges.svelte';
+	import type { ModelCapabilities } from '$lib/api/chatContracts';
 
 	let { section = 'providers' }: { section?: 'providers' | 'models' | 'tools' } = $props();
 
@@ -55,13 +57,15 @@
 		{ value: 'deepseek', label: 'DeepSeek', providerType: 'deepseek', authMode: 'api_key' },
 		{ value: 'together_ai', label: 'Together AI', providerType: 'together_ai', authMode: 'api_key' },
 		{ value: 'openrouter', label: 'OpenRouter', providerType: 'openrouter', authMode: 'api_key' },
-		{ value: 'perplexity', label: 'Perplexity (Sonar)', providerType: 'perplexity', authMode: 'api_key' },
+		{ value: 'perplexity', label: 'Perplexity (Agent API · Router · Sonar)', providerType: 'perplexity', authMode: 'api_key' },
 		{ value: 'xai', label: 'xAI (Grok)', providerType: 'xai', authMode: 'api_key' }
 	];
 	interface Model {
 		id: number;
 		provider_id: number;
 		model_name: string;
+		api_model_name?: string;
+		api_provider?: string;
 		display_name: string | null;
 		is_active: boolean;
 		is_title_model?: boolean;
@@ -72,6 +76,8 @@
 		effective_price_source: 'manual' | 'models.dev' | 'litellm' | 'partial' | 'unpriced' | null;
 		models_dev_model_id: string | null;
 		price_source: 'manual' | 'models.dev' | null;
+		capabilities?: ModelCapabilities | null;
+		effective_capabilities?: ModelCapabilities | null;
 	}
 
 	const token = $derived($auth.token ?? undefined);
@@ -163,8 +169,51 @@
 	let discovering = $state(false);
 	let registeringBulk = $state(false);
 
+	function cleanShortModelName(name: string): string {
+		if (!name) return '';
+		let s = name.trim();
+		for (const prefix of ['perplexity/', 'gemini/']) {
+			while (s.startsWith(prefix)) {
+				const rest = s.slice(prefix.length);
+				if (!rest) break;
+				s = rest;
+			}
+		}
+		return s;
+	}
+
+	function publicModelName(model: Model): string {
+		const raw = model.api_model_name || model.model_name;
+		if (
+			raw.startsWith('perplexity/perplexity/') ||
+			raw.startsWith('gemini/gemini/') ||
+			raw.startsWith('gemini/gemini-') ||
+			(model.api_provider === 'gemini' && raw.startsWith('gemini/'))
+		) {
+			return cleanShortModelName(raw);
+		}
+		return raw;
+	}
+
+	function displayModelTitle(model: Model): string {
+		if (
+			model.display_name &&
+			model.display_name !== model.model_name &&
+			!model.display_name.startsWith('perplexity/perplexity/') &&
+			!model.display_name.startsWith('gemini/gemini-') &&
+			!(model.api_provider === 'gemini' && model.display_name.startsWith('gemini/'))
+		) {
+			return cleanShortModelName(model.display_name);
+		}
+		return cleanShortModelName(publicModelName(model));
+	}
+
 	function registeredNames(providerId: number): Set<string> {
-		return new Set(models.filter((m) => m.provider_id === providerId).map((m) => m.model_name));
+		return new Set(
+			models
+				.filter((m) => m.provider_id === providerId)
+				.flatMap((m) => [m.model_name, publicModelName(m), cleanShortModelName(m.model_name)])
+		);
 	}
 
 	const filteredAvailable = $derived.by(() => {
@@ -549,9 +598,9 @@
 		}
 	}
 
-	function formatPricePerMillion(price: string | null): string {
-		if (price === null) return '가격 미확인';
-		return price.replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '');
+	function formatPricePerMillion(price: string | number | null | undefined): string {
+		if (price === null || price === undefined) return '가격 미확인';
+		return String(price).replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '');
 	}
 
 	function pricePayload(input: string, output: string): { input_price_per_million: string | null; output_price_per_million: string | null } | undefined {
@@ -819,6 +868,10 @@
 		return providers.find((provider) => provider.id === id)?.name ?? String(id);
 	}
 
+	function providerType(id: number): string {
+		return providers.find((provider) => provider.id === id)?.provider_type ?? 'unknown';
+	}
+
 	// 제목 요약 모델 지정/해제 — 최대 1개만 지정(백엔드가 단일 보장). 요약 호출은 시스템 부담.
 	async function setTitleModel(m: Model) {
 		try {
@@ -913,6 +966,11 @@
 					이 개인 구독 연결은 이 Afterglow의 모든 사용자 요청에 공용으로 사용됩니다. 공급자 이용 약관과 조직 정책을 확인하고 전용 계정을 사용하세요.
 					<a class="underline" href={selectedProviderChoice.authMode === 'chatgpt_device' ? 'https://help.openai.com/en/articles/11369540-codex-in-chatgpt' : 'https://support.anthropic.com/en/articles/11145838-using-claude-code-with-your-pro-or-max-plan'} target="_blank" rel="noreferrer">공식 안내</a>
 				</Alert>
+			{:else if selectedProviderChoice.providerType === 'perplexity'}
+				<Alert tone="info" title="Perplexity API Base" class="mt-4">
+					Agent API는 <code>https://api.perplexity.ai/v1</code>, Router는
+					<code>https://api.perplexity.ai/router</code>를 입력하세요. 비워 두면 기존 Sonar API 호환 경로를 사용합니다.
+				</Alert>
 			{:else}
 				<p class="mt-2 text-xs text-[var(--color-ink-3)]">
 					타입은 내부 LiteLLM 중계 형식입니다. OpenAI 호환 엔드포인트(vLLM·LM Studio 등)는 OpenAI API + API Base로 연결하세요.
@@ -976,8 +1034,8 @@
 	{/if}
 
 	{#if section === 'providers'}
-		<Modal bind:open={authModalOpen} onClose={closeSubscriptionAuth}>
-			<div class="max-h-[calc(100vh-2rem)] w-[min(36rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-4 shadow-xl sm:p-5">
+		<Modal bind:open={authModalOpen} onClose={closeSubscriptionAuth} ariaLabel="구독 인증">
+			<div class="max-h-[calc(100vh-2rem)] w-[min(36rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-4 shadow-[var(--shadow-restraint)] sm:p-5">
 				<div class="flex items-start justify-between gap-3">
 					<div>
 						<h3 class="text-base font-semibold text-[var(--color-ink-1)]">
@@ -1089,6 +1147,7 @@
 	<section>
 		<h3 class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">모델</h3>
 		<p class="mb-3 text-xs text-[var(--color-ink-3)]">
+			API 모델 ID는 외부 OpenAI·Anthropic 호환 요청에 사용합니다. 내부 라우팅 ID는 Lumen 전송 전용이며 다를 수 있습니다.
 			'제목요약 지정'한 모델은 새 대화 제목을 자동 생성합니다. 이 호출 비용은 사용자 크레딧이 아닌 시스템에서 부담합니다.
 		</p>
 		<div class="{cardCls} mb-4 p-5">
@@ -1203,12 +1262,12 @@
 			</div>
 			<div class="space-y-2">
 				{#each models as m (m.id)}
-					<div class="{cardCls} flex items-center justify-between gap-3 px-4 py-3">
-						<div class="flex min-w-0 items-center gap-3">
-							<input type="checkbox" bind:checked={selectedModelIds[m.id]} aria-label="{m.display_name || m.model_name} 선택" />
-						<div class="min-w-0">
-							<div class="flex items-center gap-2">
-								<span class="truncate text-sm font-medium text-[var(--color-ink-1)]">{m.display_name || m.model_name}</span>
+					<div class="{cardCls} flex flex-col items-stretch gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+						<div class="flex min-w-0 items-start gap-3">
+							<input class="mt-0.5 shrink-0" type="checkbox" bind:checked={selectedModelIds[m.id]} aria-label="{m.display_name || publicModelName(m)} 선택" />
+							<div class="min-w-0 flex-1">
+							<div class="flex flex-wrap items-center gap-2">
+								<span class="truncate text-sm font-medium text-[var(--color-ink-1)]">{displayModelTitle(m)}</span>
 								<span
 									class="rounded px-1.5 py-0.5 text-xs {m.is_active
 										? 'bg-[var(--color-state-success)]/15 text-[var(--color-state-success)]'
@@ -1224,14 +1283,21 @@
 								<Pill tone={m.price_source === 'manual' ? 'success' : m.price_source === 'models.dev' ? 'accent' : 'neutral'} size="xs">
 									{m.price_source === 'manual' ? '수동' : m.price_source === 'models.dev' ? 'models.dev' : 'LiteLLM 기본값'}
 								</Pill>
+								<ModelCapabilityBadges caps={m.capabilities || m.effective_capabilities} size="xs" />
 							</div>
-							<div class="mt-0.5 truncate text-xs text-[var(--color-ink-3)]">{m.model_name} · {providerName(m.provider_id)}</div>
+							<div class="mt-0.5 text-xs text-[var(--color-ink-3)]">
+								<div class="break-all">API ID: <code class="font-mono">{publicModelName(m)}</code> · provider: <code class="font-mono">{m.api_provider || providerType(m.provider_id)}</code></div>
+								{#if m.model_name !== publicModelName(m)}
+									<div class="mt-0.5 break-all">내부 라우팅 ID: <code class="font-mono">{m.model_name}</code></div>
+								{/if}
+								<div class="mt-0.5">{providerName(m.provider_id)}</div>
+							</div>
 							<div class="mt-1 text-xs text-[var(--color-ink-2)]">
 								입력 {formatPricePerMillion(m.effective_input_price_per_million)} · 출력 {formatPricePerMillion(m.effective_output_price_per_million)} USD / 1M tokens
 							</div>
 						</div>
 						</div>
-						<div class="flex shrink-0 items-center gap-3 text-xs">
+						<div class="flex flex-wrap items-center justify-end gap-x-3 gap-y-2 border-t border-[var(--color-line)] pt-3 text-xs sm:shrink-0 sm:border-t-0 sm:pt-0">
 							<button class={rowActionCls} onclick={() => setTitleModel(m)}>
 								{m.is_title_model ? '제목요약 해제' : '제목요약 지정'}
 							</button>
@@ -1247,8 +1313,8 @@
 	{/if}
 
 	{#if section === 'models'}
-	<Modal open={editingPrice !== null} onClose={() => (editingPrice = null)}>
-		<div class="w-[min(32rem,calc(100vw-2rem))] rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-5 shadow-xl">
+	<Modal open={editingPrice !== null} onClose={() => (editingPrice = null)} ariaLabel="모델 가격 수정">
+		<div class="w-[min(32rem,calc(100vw-2rem))] rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-5 shadow-[var(--shadow-restraint)]">
 			<h3 class="text-base font-semibold text-[var(--color-ink-1)]">모델 가격 수정</h3>
 			<p class="mt-1 text-sm text-[var(--color-ink-3)]">두 가격을 함께 저장하거나 모두 비우면 LiteLLM 기본 가격을 사용합니다.</p>
 			<div class="mt-4 grid gap-3 sm:grid-cols-2">
@@ -1262,8 +1328,8 @@
 		</div>
 	</Modal>
 
-	<Modal bind:open={modelsDevOpen}>
-		<div class="max-h-[calc(100vh-2rem)] w-[min(48rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-5 shadow-xl">
+	<Modal bind:open={modelsDevOpen} ariaLabel="models.dev 추천 가격">
+		<div class="max-h-[calc(100vh-2rem)] w-[min(48rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-5 shadow-[var(--shadow-restraint)]">
 			<h3 class="text-base font-semibold text-[var(--color-ink-1)]">models.dev 추천 가격</h3>
 			<p class="mt-1 text-sm text-[var(--color-ink-3)]">
 				<a class="underline" href="https://models.dev" target="_blank" rel="noreferrer">models.dev</a>의 기본 input/output 단가만 적용합니다. 수동 확정 가격은 덮어쓰지 않습니다.

@@ -19,11 +19,7 @@
     : pct > 80 ? 'donut-grad-warning'
     : 'donut-grad-accent'
   );
-  const textColor = $derived(
-    pct >= 100 ? '#ef4444'
-    : pct > 80 ? '#f59e0b'
-    : '#8893d4'
-  );
+  const textColor = 'var(--color-ink-0)';
 
   function fmt(v: number): string {
     if (v >= 1024 && unit === 'MB') return `${Math.round(v / 1024)}GB`;
@@ -57,7 +53,7 @@
       <circle
         cx={size === 'lg' ? 56 : 36} cy={size === 'lg' ? 56 : 36} r={r}
         fill="none"
-        stroke="#374151"
+        stroke="var(--color-line-2)"
         stroke-width={size === 'lg' ? 10 : 8}
       />
       <!-- Usage arc -->
@@ -77,8 +73,8 @@
     </div>
   </div>
   <div class="text-center">
-    <div class="{size === 'lg' ? 'text-sm' : 'text-xs'} text-gray-300 font-medium leading-tight">{label}</div>
-    <div class="{size === 'lg' ? 'text-sm' : 'text-xs'} text-gray-500 leading-tight">
+    <div class="{size === 'lg' ? 'text-sm' : 'text-xs'} text-ink-2 font-medium leading-tight">{label}</div>
+    <div class="{size === 'lg' ? 'text-sm' : 'text-xs'} text-ink-2 leading-tight">
       {#if limit > 0}
         {fmt(used)} / {fmt(limit)}
       {:else if limit === -1}

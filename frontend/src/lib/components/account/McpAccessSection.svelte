@@ -293,7 +293,7 @@
 		</section>
 	</Card>
 
-	<Modal bind:open={showIssuedToken} onClose={dismissIssuedToken}>
+	<Modal bind:open={showIssuedToken} onClose={dismissIssuedToken} ariaLabel="새 MCP 토큰">
 		<Card surface="modal" padding="lg" class="issued-token-dialog">
 			<h2>새 MCP 토큰</h2>
 			<p>이 값은 지금만 표시됩니다. 복사 후 이 창을 닫으면 메모리에서도 제거됩니다.</p>

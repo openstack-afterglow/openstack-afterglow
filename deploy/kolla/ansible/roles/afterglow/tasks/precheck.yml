@@ -52,28 +52,33 @@
     - enable_afterglow | bool
     - afterglow_public_haproxy_enabled | bool
 
+- name: Precheck | Prepare Manila CLI authentication
+  ansible.builtin.include_tasks: manila_cli_auth.yml
+  when: enable_afterglow | bool and afterglow_service_manila_enabled | bool
+  tags: precheck
+
 - name: Precheck | Verify Manila microversion support
   become: true
   community.docker.docker_container_exec:
     container: kolla_toolbox
-    command: >
-      bash -c "openstack --os-cloud=kolla --os-share-api-version={{ afterglow_manila_microversion }}
-      share api-versions show 2>&1 | head -5"
+    command: >-
+      openstack --os-cloud=kolla --os-share-api-version={{ afterglow_manila_microversion }}
+      share list --limit 1 -f json
   register: manila_version_check
   failed_when: false
   run_once: true
-  delegate_to: "{{ groups['control'] | first }}"
+  delegate_to: "{{ groups['afterglow'][0] }}"
   tags: precheck
   when: enable_afterglow | bool and afterglow_service_manila_enabled | bool
 
 - name: Precheck | Fail if Manila microversion not supported
   ansible.builtin.fail:
-    msg: "Manila does not support microversion {{ afterglow_manila_microversion }}. Wallaby (2021.1) or later required."
+    msg: "Manila authenticated API check failed: {{ manila_version_check.stderr | default('', true) }} {{ manila_version_check.stdout | default('', true) }} {{ manila_version_check.msg | default('', true) }}"
   when:
     - enable_afterglow | bool
     - afterglow_service_manila_enabled | bool
     - manila_version_check is defined
-    - "'error' in (manila_version_check.stdout | lower)"
+    - manila_version_check.rc | default(1) != 0
   run_once: true
   tags: precheck
 

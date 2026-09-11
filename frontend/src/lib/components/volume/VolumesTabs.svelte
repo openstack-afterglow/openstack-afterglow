@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Tabs from '$lib/components/ui/Tabs.svelte';
 	let {
 		tab = $bindable<'volumes' | 'snapshots'>(),
 		volumeCount,
@@ -12,23 +13,15 @@
 	} = $props();
 </script>
 
-<div class="flex gap-1 mb-4 border-b border-gray-800">
-	<button
-		onclick={() => (tab = 'volumes')}
-		class="px-4 py-2 text-[13px] font-medium border-b-2 -mb-px transition-colors {tab === 'volumes'
-			? 'border-blue-500 text-white'
-			: 'border-transparent text-gray-400 hover:text-gray-200'}"
-	>
-		볼륨 {volumeCount}
-	</button>
-	{#if showSnapshots}
-		<button
-			onclick={() => (tab = 'snapshots')}
-			class="px-4 py-2 text-[13px] font-medium border-b-2 -mb-px transition-colors {tab === 'snapshots'
-				? 'border-blue-500 text-white'
-				: 'border-transparent text-gray-400 hover:text-gray-200'}"
-		>
-			스냅샷 {snapshotCount}
-		</button>
-	{/if}
-</div>
+<Tabs
+	id="volume-resource-tabs"
+	value={tab}
+	items={[
+		{ value: 'volumes', label: `볼륨 ${volumeCount}`, panelId: 'volume-resource-panel' },
+		...(showSnapshots
+			? [{ value: 'snapshots', label: `스냅샷 ${snapshotCount}`, panelId: 'snapshot-resource-panel' }]
+			: []),
+	]}
+	onchange={(next) => { tab = next as typeof tab; }}
+	ariaLabel="볼륨 리소스"
+/>

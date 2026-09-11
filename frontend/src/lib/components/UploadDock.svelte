@@ -85,13 +85,13 @@
 </script>
 
 {#if visible}
-	<div class="fixed bottom-4 right-4 z-40 w-80 shadow-2xl rounded-xl overflow-hidden border border-gray-700 bg-gray-900">
+	<div class="fixed bottom-4 right-4 z-40 w-80 shadow-[var(--shadow-restraint)] rounded-xl overflow-hidden border border-line-2 bg-surface-base">
 		<!-- 헤더 -->
 		<button
 			onclick={() => (collapsed = !collapsed)}
-			class="w-full flex items-center justify-between px-4 py-3 bg-gray-800 hover:bg-gray-750 transition-colors"
+			class="w-full flex items-center justify-between px-4 py-3 bg-surface-sunken hover:bg-gray-750 transition-colors"
 		>
-			<span class="text-sm font-medium text-white">
+			<span class="text-sm font-medium text-ink-0">
 				{#if activeCount > 0}
 					{activeCount}개 업로드 중 · {formatBytes(totalLoaded)} / {formatBytes(totalBytes)}
 				{:else}
@@ -99,7 +99,7 @@
 				{/if}
 			</span>
 			<svg
-				class="w-4 h-4 text-gray-400 transition-transform {collapsed ? 'rotate-180' : ''}"
+				class="w-4 h-4 text-ink-2 transition-transform {collapsed ? 'rotate-180' : ''}"
 				viewBox="0 0 20 20" fill="currentColor"
 			>
 				<path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
@@ -108,7 +108,7 @@
 
 		<!-- 작업 목록 -->
 		{#if !collapsed}
-			<div class="max-h-64 overflow-y-auto divide-y divide-gray-800">
+			<div class="max-h-64 overflow-y-auto divide-y divide-line">
 				{#each jobs as j (j.id)}
 					<div class="px-4 py-3">
 						<div class="flex items-start justify-between gap-2 mb-1.5">
@@ -116,41 +116,41 @@
 								{#if j.kind === 'image'}
 									<span class="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-purple-900/40 border border-purple-800 text-purple-300">이미지</span>
 								{/if}
-								<span class="text-xs text-gray-200 truncate" title={j.name}>{j.name}</span>
+								<span class="text-xs text-ink-1 truncate" title={j.name}>{j.name}</span>
 							</div>
 							{#if j.status === 'uploading'}
 								<button
 									onclick={() => uploadQueue.cancel(j.id)}
-									class="shrink-0 text-gray-500 hover:text-red-400 transition-colors text-xs"
+									class="shrink-0 text-ink-3 hover:text-red-400 transition-colors text-xs"
 									title="취소"
 								>✕</button>
 							{:else}
 								<button
 									onclick={() => uploadQueue.remove(j.id)}
-									class="shrink-0 text-gray-500 hover:text-gray-300 transition-colors text-xs"
+									class="shrink-0 text-ink-3 hover:text-ink-2 transition-colors text-xs"
 									title="닫기"
 								>✕</button>
 							{/if}
 						</div>
 
 						{#if j.status === 'uploading'}
-							<div class="bg-gray-800 rounded-full h-1.5 mb-1 overflow-hidden">
+							<div class="bg-surface-sunken rounded-full h-1.5 mb-1 overflow-hidden">
 								<div
 									class="bg-indigo-500 h-1.5 rounded-full transition-all duration-300"
 									style="width: {j.total > 0 ? Math.round((j.loaded / j.total) * 100) : 0}%"
 								></div>
 							</div>
 						{:else if j.status === 'error'}
-							<div class="bg-gray-800 rounded-full h-1.5 mb-1 overflow-hidden">
+							<div class="bg-surface-sunken rounded-full h-1.5 mb-1 overflow-hidden">
 								<div class="bg-red-500 h-1.5 rounded-full w-full"></div>
 							</div>
 						{:else}
-							<div class="bg-gray-800 rounded-full h-1.5 mb-1 overflow-hidden">
+							<div class="bg-surface-sunken rounded-full h-1.5 mb-1 overflow-hidden">
 								<div class="bg-green-500 h-1.5 rounded-full w-full transition-all"></div>
 							</div>
 						{/if}
 
-						<div class="text-[10px] {j.status === 'error' ? 'text-red-400' : j.status === 'success' ? 'text-green-400' : 'text-gray-500'}">
+						<div class="text-[10px] {j.status === 'error' ? 'text-red-400' : j.status === 'success' ? 'text-green-400' : 'text-ink-3'}">
 							{#if j.status === 'error'}
 								{j.error ?? '업로드 실패'}
 							{:else}

@@ -34,6 +34,7 @@ export interface Flavor {
 	extra_specs: Record<string, string>;
 	is_gpu: boolean;
 	gpu_count: number;
+	frontend_visible?: boolean;
 }
 
 export type FlavorOption = Pick<Flavor, 'id' | 'name' | 'vcpus' | 'ram' | 'disk' | 'is_public'> & {

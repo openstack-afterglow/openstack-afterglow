@@ -11,8 +11,8 @@
 	const s = useNetworkDetailController();
 </script>
 
-<div class="flex items-center justify-between px-5 py-4 border-b border-gray-800 flex-shrink-0">
-	<h2 class="text-sm font-semibold text-white truncate">{s.network?.name || ''}</h2>
+<div class="flex items-center justify-between px-5 py-4 border-b border-line flex-shrink-0">
+	<h2 class="text-sm font-semibold text-ink-0 truncate">{s.network?.name || ''}</h2>
 	<div class="flex items-center gap-2 ml-3 flex-shrink-0">
 		<AutoRefreshControl
 			bind:active={ar.active}
@@ -21,6 +21,6 @@
 			refreshing={s.loading}
 			onManualRefresh={() => s.fetchNetwork()}
 		/>
-		<button onclick={onClose} class="text-gray-400 hover:text-white text-xl leading-none">×</button>
+		<!-- 닫기 버튼은 SlidePanel 이 제공한다(`[data-slide-panel-close]`) -->
 	</div>
 </div>

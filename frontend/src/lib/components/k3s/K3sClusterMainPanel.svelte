@@ -51,27 +51,27 @@
 {#if s.deleteProgress}<K3sDeleteProgress />{/if}
 
 {#if isStampede}
-	<div class="mb-3 flex items-center justify-between bg-blue-900/20 border border-blue-700/40 rounded-lg px-3 py-2.5">
+	<div class="mb-3 flex items-center justify-between bg-surface-selected/20 border border-action-warm/40 rounded-lg px-3 py-2.5">
 		<div class="flex items-center gap-2">
-			<span class="text-blue-400 text-sm font-medium">⚡ Stampede 모드</span>
-			<span class="text-xs text-blue-300/70">노드그룹의 Stampede 설정에 따라 자동 스케일링이 동작합니다</span>
+			<span class="text-action-warm text-sm font-medium">⚡ Stampede 모드</span>
+			<span class="text-xs text-action-warm/70">노드그룹의 Stampede 설정에 따라 자동 스케일링이 동작합니다</span>
 		</div>
 		<button
 			onclick={disableStampede}
 			disabled={disabling}
-			class="text-xs text-blue-400/70 hover:text-red-400 disabled:opacity-50 transition-colors px-2 py-1 rounded"
+			class="text-xs text-action-warm/70 hover:text-red-400 disabled:opacity-50 transition-colors px-2 py-1 rounded"
 		>{disabling ? '...' : '비활성화'}</button>
 	</div>
 {:else if canEnableStampede}
-	<div class="mb-3 flex items-center justify-between bg-gray-800/50 border border-gray-700 rounded-lg px-3 py-2.5">
+	<div class="mb-3 flex items-center justify-between bg-surface-sunken/50 border border-line-2 rounded-lg px-3 py-2.5">
 		<div class="flex items-center gap-2">
-			<span class="text-gray-400 text-sm">Stampede 오토스케일</span>
-			<span class="text-xs text-gray-500">노드그룹별 min/max 설정 후 활성화하세요</span>
+			<span class="text-ink-2 text-sm">Stampede 오토스케일</span>
+			<span class="text-xs text-ink-3">노드그룹별 min/max 설정 후 활성화하세요</span>
 		</div>
 		<button
 			onclick={enableStampede}
 			disabled={enabling}
-			class="text-xs text-gray-400 hover:text-blue-400 disabled:opacity-50 transition-colors px-2 py-1 rounded border border-gray-600 hover:border-blue-500"
+			class="text-xs text-ink-2 hover:text-action-warm-hover disabled:opacity-50 transition-colors px-2 py-1 rounded border border-line-2 hover:border-action-warm"
 		>{enabling ? '...' : '활성화'}</button>
 	</div>
 {/if}

@@ -182,12 +182,12 @@
   }
 </script>
 
-<div class="fixed inset-0 z-50 bg-gray-950 flex flex-col">
+<div class="fixed inset-0 z-50 bg-surface-canvas flex flex-col">
   <!-- 헤더 -->
-  <div class="flex items-center justify-between px-4 py-2 border-b border-gray-800 shrink-0">
+  <div class="flex items-center justify-between px-4 py-2 border-b border-line shrink-0">
     <div class="flex items-center gap-3">
-      <span class="text-sm font-medium text-gray-200">
-        Cloud Shell — <span class="text-blue-400">{s.cluster?.name}</span>
+      <span class="text-sm font-medium text-ink-1">
+        Cloud Shell — <span class="text-action-warm">{s.cluster?.name}</span>
       </span>
       {#if connected}
         <span class="text-xs text-green-400 flex items-center gap-1">
@@ -197,19 +197,19 @@
       {:else if connecting}
         <span class="text-xs text-yellow-400">연결 중...</span>
       {:else}
-        <span class="text-xs text-gray-500">연결 끊김</span>
+        <span class="text-xs text-ink-3">연결 끊김</span>
       {/if}
     </div>
     <div class="flex items-center gap-2">
       {#if !connected && !connecting}
         <button
           onclick={reconnect}
-          class="text-xs text-blue-400 hover:text-blue-300 px-3 py-1 border border-blue-900 hover:border-blue-700 rounded transition-colors"
+          class="text-xs text-action-warm hover:text-action-warm-hover px-3 py-1 border border-action-warm hover:border-action-warm rounded transition-colors"
         >재연결</button>
       {/if}
       <button
         onclick={handleClose}
-        class="text-gray-400 hover:text-white text-xl leading-none px-2 transition-colors"
+        class="text-ink-2 hover:text-ink-0 text-xl leading-none px-2 transition-colors"
         aria-label="닫기"
       >&times;</button>
     </div>
@@ -230,7 +230,7 @@
   {#if idleTimedOut}
     <div class="shrink-0 px-4 py-2 bg-yellow-900/30 border-t border-yellow-800 text-xs text-yellow-400 flex items-center justify-between">
       <span>15분 동안 활동이 없어 세션이 종료되었습니다.</span>
-      <button onclick={reconnect} class="text-blue-400 hover:text-blue-300 underline">재연결</button>
+      <button onclick={reconnect} class="text-action-warm hover:text-action-warm-hover underline">재연결</button>
     </div>
   {/if}
 </div>

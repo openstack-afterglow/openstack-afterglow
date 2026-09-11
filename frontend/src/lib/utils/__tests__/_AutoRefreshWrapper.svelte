@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { createAutoRefresh } from '../autoRefresh.svelte';
 
 	interface Props {
@@ -17,12 +18,12 @@
 		invokeOnMount = false,
 	}: Props = $props();
 
-	let state = createAutoRefresh(fn, {
+	let state = untrack(() => createAutoRefresh(fn, {
 		storageKey,
 		defaultActive,
 		defaultInterval,
 		invokeOnMount,
-	});
+	}));
 </script>
 
 <div data-testid="active">{state.active}</div>

@@ -3,7 +3,8 @@
 	import { auth, authReady } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
-	import { StatTile, Pill, SectionHeader } from '$lib/components/ui';
+	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import { Alert, PageHeader, PageShell, Pill, ResourceToolbar, SectionHeader, StatTile, ToggleGroup } from '$lib/components/ui';
 
 	interface KPI {
 		total: number;
@@ -120,53 +121,50 @@
 	const PERIOD_LABELS: Record<string, string> = { '24h': '24h', '7d': '7d', '30d': '30d' };
 </script>
 
-<div class="p-6 max-w-7xl mx-auto flex flex-col gap-5">
-	<!-- Header -->
-	<div class="flex flex-col gap-1">
-		<p class="text-[10px] uppercase tracking-wide text-[var(--color-ink-3)]">ACTIVITY · 활동</p>
-		<div class="flex items-end justify-between gap-3 flex-wrap">
-			<div>
-				<h1 class="text-2xl font-bold text-[var(--color-ink-0)] leading-tight">활동 &amp; 작업</h1>
-				<p class="text-sm text-[var(--color-ink-3)] mt-0.5">내 프로젝트의 최근 작업</p>
-			</div>
-			<div class="flex items-center gap-2">
-				{#each (['24h', '7d', '30d'] as const) as p}
-					<button
-						onclick={() => { period = p; }}
-						class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors {period === p ? 'bg-[var(--color-warm)] text-white' : 'bg-gray-800 text-[var(--color-ink-3)] hover:text-[var(--color-ink-0)]'}"
-					>{PERIOD_LABELS[p]}</button>
-				{/each}
-				<button
-					onclick={() => { ar.active = !ar.active; }}
-					class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors {ar.active ? 'bg-gray-700 text-[var(--color-ink-0)]' : 'bg-gray-800 text-[var(--color-ink-3)] hover:text-[var(--color-ink-0)]'}"
-					title="자동 새로고침"
-				>↻</button>
-			</div>
-		</div>
-	</div>
+<PageShell class="flex flex-col gap-5">
+	<PageHeader breadcrumb="ACTIVITY" title="활동 & 작업" subtitle="내 프로젝트의 최근 작업" />
+	<ResourceToolbar label="활동 기간 및 새로고침">
+		{#snippet filters()}
+			<ToggleGroup
+				value={period}
+				options={[
+					{ value: '24h', label: PERIOD_LABELS['24h'] },
+					{ value: '7d', label: PERIOD_LABELS['7d'] },
+					{ value: '30d', label: PERIOD_LABELS['30d'] },
+				]}
+				onchange={(next) => { period = next as typeof period; }}
+				ariaLabel="활동 조회 기간"
+			/>
+		{/snippet}
+		{#snippet actions()}
+			<button
+				type="button"
+				onclick={() => { ar.active = !ar.active; }}
+				class="min-h-8 rounded-md border border-line-2 px-3 text-xs font-medium text-ink-2 transition-colors hover:bg-surface-selected hover:text-ink-0"
+				aria-pressed={ar.active}
+			>자동 새로고침 {ar.active ? '켜짐' : '꺼짐'}</button>
+		{/snippet}
+	</ResourceToolbar>
 
 	{#if loading && !data}
-		<div class="text-sm text-[var(--color-ink-3)]">로딩 중...</div>
+		<LoadingSkeleton variant="table" rows={5} />
 	{:else if error && !data}
-		<div class="text-sm text-[var(--color-state-danger)]">{error}</div>
+		<Alert tone="danger">{error}</Alert>
 	{:else}
 		{#if data?.db_status === 'unavailable'}
-			<div class="bg-gray-900 border border-[var(--color-state-warning)] rounded-2xl p-4 flex items-center gap-3 text-sm text-[var(--color-state-warning)]">
-				<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
-				활동 로그 DB 미연결 — 서버 설정을 확인하세요 (database_url)
-			</div>
+			<Alert tone="warning">활동 로그 DB 미연결 — 서버 설정을 확인하세요 (database_url)</Alert>
 		{/if}
 		<!-- KPI Tiles -->
-		<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
-			<StatTile label="오늘 작업" value={kpi.total} accent="blue" />
-			<StatTile label="실패한 작업" value={kpi.failed} unit="/ {kpi.total}" accent="rose" />
-			<StatTile label="지난 24시간" value={kpi.last_24h} unit="이벤트" accent="amber" />
-			<StatTile label="활성 사용자" value={kpi.unique_users} accent="emerald" />
-			<StatTile label="성공률" value={successRate} unit="%" accent="cyan" />
+		<div class="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-3 lg:grid-cols-5">
+			<StatTile label="오늘 작업" value={kpi.total} accent="blue" flat />
+			<StatTile label="실패한 작업" value={kpi.failed} unit="/ {kpi.total}" accent="rose" flat />
+			<StatTile label="지난 24시간" value={kpi.last_24h} unit="이벤트" accent="amber" flat />
+			<StatTile label="활성 사용자" value={kpi.unique_users} accent="emerald" flat />
+			<StatTile label="성공률" value={successRate} unit="%" accent="cyan" flat />
 		</div>
 
 		<!-- Hour Distribution Card -->
-		<div class="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+		<div class="bg-surface-base border border-line rounded-lg p-5">
 			<SectionHeader title="오늘의 활동 분포" meta="시간대별 작업 수" />
 			<div class="mt-4 flex items-end gap-0.5 h-20" aria-hidden="true">
 				{#each hourDist as val, i}
@@ -191,7 +189,7 @@
 		</div>
 
 		<!-- Audit Log Table -->
-		<div class="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+		<div class="bg-surface-base border border-line rounded-lg p-5">
 			<SectionHeader title="감사 로그" meta="최근 작업 내역" />
 			{#if recentActions.length === 0}
 				<div class="mt-6 text-center text-sm text-[var(--color-ink-3)] py-6">로그 없음</div>
@@ -199,7 +197,7 @@
 				<div class="mt-4 overflow-x-auto">
 					<table class="w-full text-sm">
 						<thead>
-							<tr class="text-[10px] uppercase tracking-wide text-[var(--color-ink-3)] border-b border-gray-800">
+							<tr class="text-[10px] uppercase tracking-wide text-[var(--color-ink-3)] border-b border-line">
 								<th class="text-left pb-2 pr-4 font-medium">시각</th>
 								<th class="text-left pb-2 pr-4 font-medium">액션</th>
 								<th class="text-left pb-2 pr-4 font-medium">리소스</th>
@@ -207,10 +205,10 @@
 								<th class="text-left pb-2 font-medium">결과</th>
 							</tr>
 						</thead>
-						<tbody class="divide-y divide-gray-800/60">
+						<tbody class="divide-y divide-line/60">
 							{#each recentActions as action}
 								{@const badge = actionBadgeStyle(action.action)}
-								<tr class="hover:bg-gray-800/30 transition-colors">
+								<tr class="hover:bg-surface-sunken/30 transition-colors">
 									<td class="py-2.5 pr-4 text-[var(--color-ink-3)] text-xs tabular-nums whitespace-nowrap">
 										{formatHour(action.created_at)}
 									</td>
@@ -237,4 +235,4 @@
 			{/if}
 		</div>
 	{/if}
-</div>
+</PageShell>

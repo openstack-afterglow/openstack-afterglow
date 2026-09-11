@@ -276,7 +276,7 @@
 	</div>
 </aside>
 
-<Modal open={searchOpen} onClose={() => (searchOpen = false)}>
+<Modal open={searchOpen} onClose={() => (searchOpen = false)} ariaLabel="대화 검색">
 	<section class="chat-search-dialog" aria-label="대화 검색">
 		<div class="chat-search-input">
 			<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" stroke-linecap="round" /></svg>
@@ -355,6 +355,7 @@
 		class:dragging={draggingId === conv.id}
 		class:project-child={projectChild}
 		draggable={true}
+		role="listitem"
 		ondragstart={() => (draggingId = conv.id)}
 		ondragend={() => {
 			dropTargetKey = null;
@@ -400,8 +401,8 @@
 	.sidebar.closed {
 		margin-left: -16rem;
 	}
-	/* 모바일: 오버레이 드로어 — 흐름에서 빼내 본문은 항상 전체 폭, 열릴 때만 위에 겹침 */
-	@media (width < 768px) {
+	/* Compact shell: overlay drawer keeps the transcript at full width below desktop. */
+	@media (width < 1024px) {
 		.sidebar {
 			position: absolute;
 			top: 0;
@@ -846,6 +847,10 @@
 	.del:hover:not(:disabled) {
 		color: var(--color-state-danger);
 		background: color-mix(in oklab, var(--color-state-danger) 12%, transparent);
+	}
+	.del:disabled {
+		cursor: not-allowed;
+		opacity: 0.35;
 	}
 	.entries {
 		display: flex;

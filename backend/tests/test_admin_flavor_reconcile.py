@@ -1,5 +1,6 @@
 """Tests for quota-managed flavor access reconciliation and unified compute policy."""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -41,6 +42,49 @@ async def test_set_flavor_access_mode_validations(admin_client, mock_conn):
     )
     assert resp.status_code == 200
     assert resp.json()["mode"] == "gpu_quota"
+
+
+@pytest.mark.asyncio
+async def test_set_flavor_frontend_visibility_and_admin_listing(admin_client, mock_conn):
+    flavor = SimpleNamespace(
+        id="fl-service",
+        name="amphora",
+        vcpus=1,
+        ram=1024,
+        disk=5,
+        is_public=True,
+        description=None,
+        extra_specs={},
+    )
+    hidden = SimpleNamespace(
+        id="fl-hidden",
+        name="manila-service-flavor",
+        vcpus=1,
+        ram=128,
+        disk=0,
+        is_public=True,
+        description=None,
+        extra_specs={"afterglow:frontend_visible": "false"},
+    )
+    mock_conn.compute.get_flavor.return_value = flavor
+    with patch("app.api.identity.admin_flavors.invalidate", AsyncMock()) as mock_invalidate:
+        resp = await admin_client.put(
+            "/api/v1/admin/flavors/fl-service/frontend-visibility",
+            json={"visible": False},
+        )
+
+    assert resp.status_code == 200
+    assert resp.json() == {"flavor_id": "fl-service", "frontend_visible": False}
+    mock_conn.compute.create_flavor_extra_specs.assert_called_once_with(
+        "fl-service",
+        {"afterglow:frontend_visible": "false"},
+    )
+    mock_invalidate.assert_awaited_once_with("afterglow:nova:*:flavors")
+
+    mock_conn.compute.flavors.return_value = [flavor, hidden]
+    listed = await admin_client.get("/api/v1/admin/flavors?limit=999")
+    assert listed.status_code == 200
+    assert [item["frontend_visible"] for item in listed.json()["items"]] == [True, False]
 
 
 @pytest.mark.asyncio

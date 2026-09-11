@@ -561,6 +561,9 @@ Returns the Neutron port list for the current project.
 
 The topology is split into two endpoints. **Structure** (`/topology`) returns node/edge relationships with a 30s cache, and
 **Traffic** (`/topology/traffic`) is a short-interval-polling-only endpoint that computes real-time rx/tx bps on every call with no cache.
+Values are **30-second averages** from Prometheus `rate(...[30s])`. The window depends on the scrape interval: the two jobs the topology reads (`instances-node`, `instances-libvirt`) must scrape every 10s so three samples fall inside the window (`deploy/k8s*/monitoring/prometheus/configmap.yaml`). The window constant is `app.api.network.networks.TOPOLOGY_RATE_WINDOW`; `backend/tests/test_topology_traffic.py` pins the window together with the scrape interval across **both** the deployed and template configmaps.
+
+> **Failure mode**: a 30s window with a 10s scrape is exactly 3 samples, leaving one sample of slack. If **two consecutive scrapes are missed** (e.g. during an http_sd target refresh), `rate()` returns nothing and that instance drops out of `instances`, `networks`, and the history `series` entirely — the UI shows no value (`—`), not `0`. Raise the window to 45-60s for more slack (the `scrape x 3 <= window` contract still passes).
 
 ### Endpoint List
 
@@ -568,10 +571,11 @@ The topology is split into two endpoints. **Structure** (`/topology`) returns no
 |--------|------|------|
 | `GET` | `/api/v1/networks/topology` | Topology structure (30s cache) |
 | `GET` | `/api/v1/networks/topology/traffic` | Real-time traffic (rx/tx bps) |
+| `GET` | `/api/v1/networks/topology/traffic/history` | Usage series + avg/max for one network |
 
 ### GET /api/v1/networks/topology
 
-Returns the project's full network topology. Includes network, router, instance, floating IP, and load balancer relationships.
+Returns the project's full network topology. Includes network, router, instance, floating IP, and load balancer relationships. Instances, routers, floating IPs, and load balancers are limited to the current project; networks include the project's own plus external/shared networks.
 In user scope it shows only resources owned by the current project plus external/shared networks. The response is cached for 30 seconds.
 
 **Response (200 OK)** — `TopologyData`
@@ -586,7 +590,8 @@ In user scope it shows only resources owned by the current project plus external
       "is_external": false,
       "is_shared": false,
       "project_id": "uuid-string",
-      "subnet_details": []
+      "subnet_details": [],
+      "mtu": 1450
     }
   ],
   "routers": [
@@ -601,7 +606,9 @@ In user scope it shows only resources owned by the current project plus external
       "is_ha": false,
       "connected_subnet_ids": ["uuid-string"],
       "dvr_subnet_ids": [],
-      "project_id": "uuid-string"
+      "project_id": "uuid-string",
+      "enable_snat": true,
+      "routes": [{ "destination": "10.20.0.0/16", "nexthop": "192.168.1.254" }]
     }
   ],
   "instances": [
@@ -611,7 +618,19 @@ In user scope it shows only resources owned by the current project plus external
       "status": "ACTIVE",
       "project_id": "uuid-string",
       "network_names": ["private-net"],
-      "ip_addresses": [{ "addr": "10.0.0.5", "type": "fixed", "network_name": "private-net", "network_id": "uuid-string" }]
+      "ip_addresses": [
+        {
+          "addr": "10.0.0.5",
+          "type": "fixed",
+          "network_name": "private-net",
+          "network_id": "uuid-string",
+          "port_id": "uuid-string",
+          "mac_addr": "fa:16:3e:00:00:01"
+        }
+      ],
+      "flavor_name": "m1.small",
+      "image_id": "uuid-string",
+      "is_database": false
     }
   ],
   "floating_ips": [],
@@ -636,10 +655,23 @@ Key fields:
 
 | Group | Field | Description |
 |------|------|------|
+| `networks[]` | `mtu` | Network MTU (`null` when Neutron does not expose the attribute) |
 | `routers[]` | `is_distributed` / `is_ha` | Whether it is a DVR / HA router |
 | `routers[]` | `external_gateway_ips` | Gateway external fixed IPs (including SNAT IP) |
-| `instances[].ip_addresses[]` | `network_id` | Belonging network UUID enriched via port mapping |
+| `routers[]` | `enable_snat` | Whether SNAT is enabled on the external gateway. `null` when the router has no gateway |
+| `routers[]` | `routes` | Static routes `[{destination, nexthop}]` (malformed entries are dropped) |
+| `instances[]` | `flavor_name` / `image_id` | Instance flavor name and boot image UUID (`image_id` is `null` for volume-booted instances) |
+| `instances[]` | `is_database` | Whether the Nova instance backs a Trove database instance. `true` only when a **fixed** IP matches a Trove IP (floating IPs are never matched) |
+| `instances[].ip_addresses[]` | `network_id` | Belonging network UUID enriched via the compute port mapping |
+| `instances[].ip_addresses[]` | `port_id` / `mac_addr` | UUID and MAC of the Neutron compute port holding that IP. `null` for IPs without a port (e.g. floating) |
 | `load_balancers[]` | `listeners` / `members` | Summary of listeners/members attached to the LB |
+
+> The port metadata (`network_id` / `port_id` / `mac_addr`) and `flavor_name` / `image_id` are all filled from the existing
+> Neutron/Nova batch queries, so the number of OpenStack calls does not change.
+> `is_database` is filled from a single listing of Trove instances, an optional service. When Trove is not deployed or the
+> listing fails, that is treated as a normal condition rather than an error and every instance is returned with `is_database: false`.
+> Provider segment metadata (`provider_network_type` / `provider_segmentation_id` / `provider_physical_network`) is
+> never included in the tenant response; it is returned only by the admin-only `GET /api/v1/admin/topology` (`AdminTopologyData`).
 
 ### GET /api/v1/networks/topology/traffic
 
@@ -688,3 +720,66 @@ On Prometheus failure, traffic values fall back to 0.
 | Code | Description |
 |------|------|
 | `403` | `all_projects=true` called by a non-system-admin user |
+
+### GET /api/v1/networks/topology/traffic/history
+
+Returns the rx/tx bps series plus avg/max/latest stats for **one** network. The canvas network panel's "usage trend" section calls it **once when the panel opens**, and again when the user switches the range toggle (15m / 30m / 1h).
+
+It uses the **same attribution rule** as the instant endpoint: the value is the sum of the NICs attached to that network, *not* router↔switch traffic (no router exporter). For the same reason it includes east-west (instance-to-instance) traffic.
+
+Design constraints:
+
+- **Do not poll.** Calling this periodically for every network multiplies Prometheus load by the number of networks.
+- `step_s` is a fixed per-range value and is always **at or below** `TOPOLOGY_RATE_WINDOW` (30s). Using `calc_step()` (range/100) would yield 36s for the 1h range, which would drop traffic between samples from the graph. `backend/tests/test_topology_traffic.py::test_history_step_never_exceeds_rate_window` pins this contract.
+- `stats` is computed **from the returned `series`**, not from separate `avg_over_time` queries. Two sources would make the graph peak disagree with the label.
+- `stats` is **per direction**, not an rx+tx sum. The instant endpoint reports per direction, so a summed figure would sit next to `▼ 5.8M ▲ 2.0M` as an uncomparable `7.8M`. The rx and tx values of `max` may come from different timestamps (each is that direction's independent peak).
+- Past traffic of instances no longer in the port map (deleted) is dropped because it has nothing to attribute to — the instant endpoint has the same limitation.
+- The node_exporter fallback attributes only instances that libvirt did not observe **and** that have a single NIC. Multi-NIC instances cannot be resolved to a network by device name.
+
+| Parameter | Location | Type | Required | Description |
+|----------|------|------|------|------|
+| `network_id` | query | string | Yes | Network ID to query |
+| `range` | query | string | No | `15m` (default) · `30m` · `1h` |
+| `all_projects` | query | boolean | No | Cover ports of all projects (default `false`). **System admin only** |
+
+| `range` | Span | `step_s` | Samples |
+|---------|------|----------|---------|
+| `15m` | 900s | 15s | 60 |
+| `30m` | 1800s | 30s | 60 |
+| `1h` | 3600s | 30s | 120 |
+
+**Response (200 OK)**
+
+```json
+{
+  "network_id": "uuid-string",
+  "range": "15m",
+  "step_s": 15,
+  "window": "30s",
+  "series": [
+    { "ts": 1767225585, "rx_bps": 4096.0, "tx_bps": 8192.0 },
+    { "ts": 1767225600, "rx_bps": 5120.0, "tx_bps": 8192.0 }
+  ],
+  "stats": {
+    "avg": { "rx_bps": 4608.0, "tx_bps": 8192.0 },
+    "max": { "rx_bps": 5120.0, "tx_bps": 8192.0 },
+    "latest": { "rx_bps": 5120.0, "tx_bps": 8192.0 }
+  },
+  "_meta": { "source": "network_nic_sum", "router_traffic": "exporter_required" }
+}
+```
+
+| Field | Type | Description |
+|------|------|------|
+| `step_s` | integer | Sample interval in seconds; guaranteed to be at or below the rate window |
+| `window` | string | Backend rate window (`TOPOLOGY_RATE_WINDOW`) |
+| `series` | array | `{ts, rx_bps, tx_bps}` samples. Empty array on Prometheus failure |
+| `stats` | object | Per-direction `avg`/`max`/`latest` computed from `series`. Each is `{rx_bps, tx_bps}`, or `null` when there are no samples (distinct from 0) |
+| `_meta.source` | string | Always `network_nic_sum` — states that this is a NIC sum, not router↔switch |
+
+**Errors**
+
+| Code | Description |
+|------|------|
+| `403` | `all_projects=true` called by a non-system-admin user |
+| `422` | `network_id` missing or `range` not an allowed value |

@@ -11,6 +11,8 @@ from app.models.storage import (
     AdminNetworkDetail,
     AdminSubnetDetail,
     AdminSubnetPort,
+    AdminTopologyData,
+    AdminTopologyNetwork,
     AllocationPool,
     DhcpBindingInfo,
     FloatingIpInfo,
@@ -699,8 +701,63 @@ def delete_floating_ip(conn: openstack.connection.Connection, floating_ip_id: st
     conn.network.delete_ip(floating_ip_id, ignore_missing=True)
 
 
-def get_topology(conn: openstack.connection.Connection) -> TopologyData:
-    """배치 조회로 전체 토폴로지 데이터를 수집. OpenStack API 5회 호출."""
+def _coerce_int(value: Any) -> int | None:
+    """OpenStack 속성값을 int 로 안전하게 변환 (실패 시 None)."""
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return None
+
+
+def _normalize_router_routes(raw_routes: Any) -> list[dict]:
+    """라우터 정적 경로를 [{destination, nexthop}] 로 정규화. 형식이 어긋난 항목은 건너뛴다."""
+    routes: list[dict] = []
+    for entry in raw_routes or []:
+        if not isinstance(entry, dict):
+            continue
+        destination = entry.get("destination")
+        nexthop = entry.get("nexthop")
+        if not destination or not nexthop:
+            continue
+        routes.append({"destination": str(destination), "nexthop": str(nexthop)})
+    return routes
+
+
+def build_compute_port_index(conn: openstack.connection.Connection) -> dict[tuple[str, str], dict]:
+    """compute 포트를 한 번 순회해 (device_id, ip_address) → 포트 메타 인덱스를 만든다.
+
+    토폴로지 핸들러(user/admin)가 인스턴스 ip_addresses 에 network_id/port_id/mac_address 를
+    조인할 때 공유한다. device_owner 가 ``compute:`` 로 시작하고 device_id 가 있는 포트만 포함한다.
+    """
+    index: dict[tuple[str, str], dict] = {}
+    for p in conn.network.ports():
+        dev_owner = p.device_owner or ""
+        if not p.device_id or not dev_owner.startswith("compute:"):
+            continue
+        for fip in p.fixed_ips or []:
+            ip = fip.get("ip_address")
+            if ip:
+                index[(p.device_id, ip)] = {
+                    "network_id": p.network_id,
+                    "port_id": p.id,
+                    "mac_address": getattr(p, "mac_address", None),
+                }
+    return index
+
+
+def get_topology(
+    conn: openstack.connection.Connection, *, include_provider: bool = False, project_id: str | None = None
+) -> TopologyData:
+    """배치 조회로 전체 토폴로지 데이터를 수집. OpenStack API 5회 호출.
+
+    ``project_id`` 가 주어지면 Floating IP는 해당 프로젝트 소유분만 조회한다(사용자 scope).
+
+    mtu / enable_snat / routes 는 이미 조회한 객체의 속성에서 채우므로 추가 호출이 없다.
+    ``include_provider=True`` 이면 네트워크를 ``AdminTopologyNetwork`` (provider 세그먼트 메타 포함)로
+    직렬화해 ``AdminTopologyData`` 를 반환한다. 기본값은 provider 키가 없는 ``TopologyData`` 이다.
+    """
     # 1. 전체 네트워크
     all_networks = list(conn.network.networks())
 
@@ -751,12 +808,15 @@ def get_topology(conn: openstack.connection.Connection) -> TopologyData:
     for r in conn.network.routers():
         ext_net_id = None
         ext_gw_ips: list[str] = []
+        enable_snat: bool | None = None
         if r.external_gateway_info:
             ext_net_id = r.external_gateway_info.get("network_id")
             for efip in r.external_gateway_info.get("external_fixed_ips", []):
                 ip = efip.get("ip_address")
                 if ip:
                     ext_gw_ips.append(ip)
+            raw_snat = r.external_gateway_info.get("enable_snat")
+            enable_snat = bool(raw_snat) if raw_snat is not None else None
         dvr_sids = [sid for sid, cnt in router_subnet_port_count.get(r.id, {}).items() if cnt > 1]
         topo_routers.append(
             TopologyRouter(
@@ -771,6 +831,8 @@ def get_topology(conn: openstack.connection.Connection) -> TopologyData:
                 connected_subnet_ids=router_subnets.get(r.id, []),
                 dvr_subnet_ids=dvr_sids,
                 project_id=getattr(r, "project_id", None),
+                enable_snat=enable_snat,
+                routes=_normalize_router_routes(getattr(r, "routes", None)),
             )
         )
 
@@ -782,24 +844,44 @@ def get_topology(conn: openstack.connection.Connection) -> TopologyData:
         if subnet_id in subnet_map:
             network_subnets[net_id].append(subnet_map[subnet_id])
 
-    topo_networks = [
-        TopologyNetwork(
-            id=n.id,
-            name=n.name or "",
-            status=n.status or "",
-            is_external=bool(n.is_router_external),
-            is_shared=bool(n.is_shared),
-            project_id=getattr(n, "project_id", None),
-            subnet_details=network_subnets.get(n.id, []),
-        )
-        for n in all_networks
-    ]
+    topo_networks: list[TopologyNetwork] = []
+    for n in all_networks:
+        base_fields = {
+            "id": n.id,
+            "name": n.name or "",
+            "status": n.status or "",
+            "is_external": bool(n.is_router_external),
+            "is_shared": bool(n.is_shared),
+            "project_id": getattr(n, "project_id", None),
+            "subnet_details": network_subnets.get(n.id, []),
+            "mtu": _coerce_int(getattr(n, "mtu", None)),
+        }
+        if include_provider:
+            # provider 세그먼트 메타는 관리자 응답에서만 노출한다.
+            topo_networks.append(
+                AdminTopologyNetwork(
+                    **base_fields,
+                    provider_network_type=getattr(n, "provider_network_type", None),
+                    provider_segmentation_id=_coerce_int(getattr(n, "provider_segmentation_id", None)),
+                    provider_physical_network=getattr(n, "provider_physical_network", None),
+                )
+            )
+        else:
+            topo_networks.append(TopologyNetwork(**base_fields))
 
+    floating_ips = list_floating_ips(conn, project_id)
+    if include_provider:
+        return AdminTopologyData(
+            networks=topo_networks,
+            routers=topo_routers,
+            instances=[],  # API 핸들러에서 nova 데이터 주입
+            floating_ips=floating_ips,
+        )
     return TopologyData(
         networks=topo_networks,
         routers=topo_routers,
         instances=[],  # API 핸들러에서 nova 데이터 주입
-        floating_ips=list_floating_ips(conn),
+        floating_ips=floating_ips,
     )
 
 

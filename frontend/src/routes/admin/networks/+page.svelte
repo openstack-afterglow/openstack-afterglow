@@ -93,10 +93,10 @@
 	onMount(() => { loadNetworks(); loadTimeseries(tsRange); });
 </script>
 
-<div class="p-4 md:p-8 max-w-7xl mx-auto">
+<div class="p-4 md:p-6 max-w-7xl mx-auto">
 	<PageHeader breadcrumb="NETWORK / NETWORKS" title="네트워크">
 		{#snippet actions()}
-			<button onclick={() => { showCreate = true; }} class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg">+ 생성</button>
+			<button onclick={() => { showCreate = true; }} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg">+ 생성</button>
 			<AutoRefreshControl
 				bind:active={ar.active}
 				bind:intervalSeconds={ar.intervalSeconds}
@@ -115,7 +115,7 @@
 	/>
 
 	{#if loading}
-		<div class="text-gray-500 text-sm">로딩 중...</div>
+		<div class="text-ink-3 text-sm">로딩 중...</div>
 	{:else}
 		<AdminNetworkTable
 			{networks}

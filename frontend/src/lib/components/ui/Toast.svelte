@@ -5,7 +5,7 @@
 {#if $toast.length > 0}
 <div class="fixed top-16 right-4 z-[var(--z-toast)] flex flex-col gap-2 w-80 pointer-events-none">
 	{#each $toast as t (t.id)}
-		<div class="toast-item toast-{t.type} flex items-start gap-3 px-4 py-3 rounded-xl border text-sm shadow-xl pointer-events-auto">
+		<div class="toast-item toast-{t.type} flex items-start gap-3 px-4 py-3 rounded-xl border text-sm shadow-[var(--shadow-restraint)] pointer-events-auto">
 			<span class="toast-icon flex-shrink-0 font-bold text-base leading-none mt-0.5">
 				{#if t.type === 'success'}✓{:else if t.type === 'error'}✕{:else if t.type === 'warning'}⚠{:else}ℹ{/if}
 			</span>

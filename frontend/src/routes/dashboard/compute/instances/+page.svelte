@@ -12,7 +12,7 @@
 	import SlidePanel from '$lib/components/SlidePanel.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
-	import PageHeader from '$lib/components/ui/PageHeader.svelte';
+	import { Alert, Button, EmptyState, PageHeader, PageShell, ResourceToolbar } from '$lib/components/ui';
 	import { openWizard } from '$lib/stores/wizard';
 	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 	import InstancesTable from '$lib/components/instance/list/InstancesTable.svelte';
@@ -262,8 +262,13 @@
 	});
 </script>
 
-<div class="bulk-selection-page p-4 md:p-8 pb-28 md:pb-32">
+<PageShell class="bulk-selection-page pb-28 md:pb-32">
 	<PageHeader breadcrumb="COMPUTE / INSTANCES" title="인스턴스">
+		{#snippet actions()}
+			<Button onclick={openCreateEntryPoint} variant="primary">+ VM 생성</Button>
+		{/snippet}
+	</PageHeader>
+	<ResourceToolbar label="인스턴스 목록 도구">
 		{#snippet actions()}
 			<TutorialStartButton tour="vm-create" />
 			<AutoRefreshControl
@@ -273,25 +278,20 @@
 				refreshing={refreshing}
 				onManualRefresh={forceRefresh}
 			/>
-			<button type="button" onclick={openCreateEntryPoint} class="bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
-				+ VM 생성
-			</button>
 		{/snippet}
-	</PageHeader>
+	</ResourceToolbar>
 
 	{#if error}
-		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>
+		<Alert tone="danger" class="mb-4">{error}</Alert>
 	{/if}
 
 
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if instances.length === 0}
-		<div class="text-center py-20 text-gray-600">
-			<div class="text-5xl mb-4">☁️</div>
-			<p class="text-lg">인스턴스가 없습니다</p>
-			<button type="button" onclick={openCreateEntryPoint} class="text-blue-400 hover:text-blue-300 text-sm mt-2 inline-block bg-transparent">첫 VM을 생성하세요 →</button>
-		</div>
+		<EmptyState headline="인스턴스가 없습니다" description="첫 가상 머신을 생성해 프로젝트를 시작하세요.">
+			{#snippet cta()}<Button onclick={openCreateEntryPoint} variant="primary">VM 생성</Button>{/snippet}
+		</EmptyState>
 	{:else}
 		<InstancesTable
 			{instances}
@@ -317,10 +317,10 @@
 		busy={bulkActioning}
 		onClear={() => selection.clear()}
 	/>
-</div>
+</PageShell>
 
 {#if selectedInstanceId}
-	<SlidePanel onClose={closeInstancePanel}>
+	<SlidePanel onClose={closeInstancePanel} ariaLabel="인스턴스 상세">
 		<InstanceDetailPanel instanceId={selectedInstanceId} onClose={closeInstancePanel} />
 	</SlidePanel>
 {/if}

@@ -137,6 +137,7 @@
 		{:else if loading}
 			<p class="loading">승인 요청을 확인하는 중입니다.</p>
 		{:else if consent}
+			{@const requestsManage = consent.scopes.includes('mcp:write')}
 			<section aria-labelledby="consent-client-heading" class="details">
 				<div><span>클라이언트</span><strong id="consent-client-heading">{consent.client_name}</strong></div>
 				<div><span>Client ID</span><code>{consent.client_id}</code></div>
@@ -144,12 +145,12 @@
 				<div><span>권한</span><div class="scopes">{#each consent.scopes as scope}<StatusChip status={scope === 'mcp:write' ? 'manage' : 'read'} />{/each}</div></div>
 				<div><span>서버가 정한 만료</span><strong>{formatDeadline(consent.grant_deadline)}</strong></div>
 			</section>
-			<Alert tone={consent.scopes.includes('mcp:write') ? 'warning' : 'info'} title={consent.scopes.includes('mcp:write') ? '관리 권한 요청' : '읽기 권한 요청'}>
-				{#snippet children()}{consent.scopes.includes('mcp:write') ? '이 클라이언트는 리소스를 변경할 수 있습니다. 승인 전 요청 주체를 확인하세요.' : '이 클라이언트는 현재 프로젝트의 안전한 조회 도구만 사용할 수 있습니다.'}{/snippet}
+			<Alert tone={requestsManage ? 'warning' : 'info'} title={requestsManage ? '관리 권한 요청' : '읽기 권한 요청'}>
+				{#snippet children()}{requestsManage ? '이 클라이언트는 리소스를 변경할 수 있습니다. 승인 전 요청 주체를 확인하세요.' : '이 클라이언트는 현재 프로젝트의 안전한 조회 도구만 사용할 수 있습니다.'}{/snippet}
 			</Alert>
 			<div class="actions">
 				<Button variant="danger-outline" onclick={() => decide('deny')} disabled={deciding}>거절</Button>
-				<Button onclick={() => decide('approve')} disabled={deciding}>{deciding ? '처리 중…' : consent.scopes.includes('mcp:write') ? '관리 권한 허용' : '읽기 권한 허용'}</Button>
+				<Button onclick={() => decide('approve')} disabled={deciding}>{deciding ? '처리 중…' : requestsManage ? '관리 권한 허용' : '읽기 권한 허용'}</Button>
 			</div>
 		{/if}
 	</Card>

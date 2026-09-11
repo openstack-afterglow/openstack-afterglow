@@ -31,7 +31,7 @@
     token: () => $auth.token ?? undefined,
     projectId: () => $auth.projectId ?? undefined,
     adminMode: () => adminMode,
-    onClose: onClose ?? (() => goto('/dashboard/drover')),
+    onClose: () => (onClose ?? (() => goto('/dashboard/drover')))(),
   });
   provideK3sClusterDetailController(s);
 
@@ -97,12 +97,10 @@
 
   <div class="p-6">
     <div class="mb-5 flex items-center justify-between">
-      {#if onClose}
-        <button onclick={onClose} class="text-gray-400 hover:text-gray-200 text-sm transition-colors">
-          ✕ 닫기
-        </button>
-      {:else}
-        <a href="/dashboard/drover" class="text-gray-400 hover:text-gray-200 text-sm transition-colors">
+      <!-- SlidePanel 안에서는 닫기를 SlidePanel 이 그린다(`[data-slide-panel-close]`).
+           단독 라우트에서만 목록 백링크를 둔다. -->
+      {#if !onClose}
+        <a href="/dashboard/drover" class="text-ink-2 hover:text-ink-1 text-sm transition-colors">
           ← Drover
         </a>
       {/if}
@@ -110,14 +108,20 @@
 
     {#if s.loading}
       <div class="animate-pulse space-y-4">
-        <div class="h-8 bg-gray-800 rounded w-64"></div>
-        <div class="h-40 bg-gray-800 rounded"></div>
+        <div class="h-8 bg-surface-sunken rounded w-64"></div>
+        <div class="h-40 bg-surface-sunken rounded"></div>
       </div>
     {:else if s.error}
       <div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{s.error}</div>
     {:else if s.cluster}
       <K3sClusterTabs />
 
+      <div
+        id={`k3s-panel-${s.activeTab}`}
+        role="tabpanel"
+        aria-labelledby={`k3s-cluster-tabs-${s.activeTab}`}
+        tabindex="0"
+      >
       {#if s.activeTab === 'main'}
         <K3sClusterMainPanel />
       {:else if s.activeTab === 'configmaps'}
@@ -138,6 +142,7 @@
       {:else if s.activeTab === 'stampede'}
         <K3sStampedeTab />
       {/if}
+      </div>
     {/if}
   </div>
 </div>

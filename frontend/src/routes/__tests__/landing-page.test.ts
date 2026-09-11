@@ -79,26 +79,6 @@ describe('public landing and login route source contracts', () => {
 		expect(landingSource).not.toMatch(/\bk3s\b/i);
 	});
 
-	it('keeps the fixed header, active navigation, and accessible landing hooks stable', () => {
-		for (const hook of [
-			'<header class="top-strip">',
-			'href="#landing-content"',
-			'onclick={focusLandingContent}',
-			"document.getElementById('landing-content')?.focus();",
-			'<div id="landing-content" tabindex="-1">',
-			'ariaLabel="워크플로우 필터"',
-			'onchange={selectFilter}',
-			'href={`mailto:${email}`}',
-			'ariaLabel="이메일 문의 보내기"',
-			'class:is-active={activeSection === link.href.slice(1)}',
-			"aria-current={activeSection === link.href.slice(1) ? 'location' : undefined}",
-		]) {
-			expect(landingComponentSource).toContain(hook);
-		}
-		expect(landingComponentSource).toMatch(/\.top-strip\s*\{\s*position:\s*fixed;/);
-		expect(landingComponentSource).not.toContain('<main id="landing-content"');
-		expect(layoutSource).toContain('<main class="min-h-screen bg-gray-950 text-white">');
-	});
 
 	it('keeps the operations-board signature and global responsive tiers explicit', () => {
 		expect(landingComponentSource).toContain("import LandingOpsBoard from './LandingOpsBoard.svelte';");

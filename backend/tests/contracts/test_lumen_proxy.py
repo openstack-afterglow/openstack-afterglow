@@ -94,6 +94,13 @@ def test_lumen_feature_gate_routes_inclusion():
         ("delete", "/api/v1/chat/conversations/conv-1", "/v1/conversations/conv-1", None),
         ("get", "/api/v1/chat/workspaces", "/v1/workspaces", None),
         ("get", "/api/v1/chat/models", "/v1/chat/models", None),
+        ("patch", "/api/v1/chat/api-keys/7", "/v1/api-keys/7", {"name": "laptop"}),
+        (
+            "put",
+            "/api/v1/chat/admin/quotas/user-1",
+            "/v1/admin/quotas/user-1",
+            {"monthly_credit_limit": "5000", "weekly_credit_limit": None},
+        ),
     ],
 )
 async def test_browser_routes_proxy_to_lumen_service(api_client, method, path, upstream_path, body):

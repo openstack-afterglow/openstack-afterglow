@@ -244,26 +244,27 @@
 	);
 </script>
 
-<div class="bg-gray-900 border border-gray-800 rounded-lg p-6 mb-4">
+<div class="bg-surface-base border border-line rounded-lg p-6 mb-4">
 	<div class="flex items-center justify-between mb-4">
-		<h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wide">파일 스토리지</h2>
+		<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide">파일 스토리지</h2>
 		<button
 			onclick={toggleForm}
-			class="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+			class="text-xs text-action-warm hover:text-action-warm-hover transition-colors"
 		>
 			{showForm ? '닫기' : '+ 연결'}
 		</button>
 	</div>
 
 	{#if showForm}
-		<div class="mb-4 bg-gray-800 rounded-lg p-4">
+		<div class="mb-4 bg-surface-sunken rounded-lg p-4">
 			<div class="grid grid-cols-1 gap-3 mb-3">
 				<div>
-					<label class="block text-xs text-gray-400 mb-1">파일 스토리지</label>
+					<label for="attachment-storage" class="block text-xs text-ink-2 mb-1">파일 스토리지</label>
 					<select
+						id="attachment-storage"
 						bind:value={selectedStorageId}
 						disabled={catalogStatus === 'loading'}
-						class="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"
+						class="w-full bg-surface-selected border border-line-2 text-ink-0 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-action-warm"
 					>
 						<option value="">선택...</option>
 						{#each availableStorages as fs}
@@ -271,7 +272,7 @@
 						{/each}
 					</select>
 					{#if catalogStatus === 'loading'}
-						<p class="text-xs text-gray-400 mt-1">파일 스토리지를 불러오는 중...</p>
+						<p class="text-xs text-ink-2 mt-1">파일 스토리지를 불러오는 중...</p>
 					{:else if catalogStatus === 'error'}
 						<p class="catalog-message">파일 스토리지를 불러오지 못했습니다. 다시 열어 재시도하세요.</p>
 					{:else if catalogStatus === 'loaded' && availableStorages.length === 0}
@@ -279,20 +280,20 @@
 					{/if}
 				</div>
 				<div>
-					<label class="block text-xs text-gray-400 mb-1">마운트 경로</label>
+					<label for="attachment-mount-point" class="block text-xs text-ink-2 mb-1">마운트 경로</label>
 					<input
-						type="text"
+						id="attachment-mount-point"
 						bind:value={mountPoint}
 						placeholder="/mnt/mydata"
-						class="w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"
+						class="w-full bg-surface-selected border border-line-2 text-ink-0 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-action-warm"
 					/>
-					<p class="text-[10.5px] text-gray-600 mt-0.5">/mnt, /data, /srv, /home 하위 경로만 허용</p>
+					<p class="text-[10.5px] text-ink-3 mt-0.5">/mnt, /data, /srv, /home 하위 경로만 허용</p>
 				</div>
-				<label class="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+				<label class="flex items-center gap-2 text-sm text-ink-2 cursor-pointer">
 					<input
 						type="checkbox"
 						bind:checked={readOnly}
-						class="w-4 h-4 rounded border-gray-600 bg-gray-800 text-blue-500"
+						class="w-4 h-4 rounded border-line-2 bg-surface-sunken text-action-warm"
 					/>
 					읽기 전용으로 마운트
 				</label>
@@ -300,7 +301,7 @@
 			<button
 				onclick={handleAttach}
 				disabled={catalogStatus === 'loading' || attaching || !selectedStorageId || !mountPoint.trim()}
-				class="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm rounded-lg transition-colors"
+				class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm rounded-lg transition-colors"
 			>
 				{attaching ? '연결 중...' : '연결'}
 			</button>
@@ -311,16 +312,16 @@
 		<div class="mb-4 bg-green-900/20 border border-green-700/50 rounded-lg p-4">
 			<p class="text-xs text-green-400 font-medium mb-2">연결 완료 — VM 내부에서 아래 명령을 실행하세요</p>
 			{#if lastMountInfo.keyring_file}
-				<p class="text-[10.5px] text-gray-400 mb-1.5">
-					키링 파일이 cloud-init으로 미리 주입된 경우 <code class="text-gray-300">{lastMountInfo.keyring_file}</code>에 존재합니다.
+				<p class="text-[10.5px] text-ink-2 mb-1.5">
+					키링 파일이 cloud-init으로 미리 주입된 경우 <code class="text-ink-2">{lastMountInfo.keyring_file}</code>에 존재합니다.
 					런타임 연결 시 키링 파일을 직접 생성해야 할 수 있습니다.
 				</p>
 			{/if}
 			<div class="flex items-center gap-2">
-				<code class="flex-1 text-xs font-mono bg-gray-900 text-cyan-300 px-3 py-2 rounded break-all">{lastMountInfo.mount_command}</code>
+				<code class="flex-1 text-xs font-mono bg-surface-base text-cyan-300 px-3 py-2 rounded break-all">{lastMountInfo.mount_command}</code>
 				<button
 					onclick={() => copyToClipboard(lastMountInfo!.mount_command)}
-					class="shrink-0 px-2 py-1.5 text-xs {copied ? 'text-green-400' : 'text-gray-400 hover:text-gray-200'} transition-colors"
+					class="shrink-0 px-2 py-1.5 text-xs {copied ? 'text-green-400' : 'text-ink-2 hover:text-ink-1'} transition-colors"
 				>
 					{copied ? '복사됨' : '복사'}
 				</button>
@@ -329,26 +330,26 @@
 	{/if}
 
 	{#if loading}
-		<p class="text-sm text-gray-500">로딩 중...</p>
+		<p class="text-sm text-ink-3">로딩 중...</p>
 	{:else if attachments.length === 0}
-		<p class="text-sm text-gray-500">연결된 파일 스토리지가 없습니다.</p>
+		<p class="text-sm text-ink-3">연결된 파일 스토리지가 없습니다.</p>
 	{:else}
 		<div class="space-y-2">
 			{#each attachments as att}
-				<div class="flex items-start gap-3 p-3 bg-gray-800/50 rounded-lg border border-gray-700/50">
+				<div class="flex items-start gap-3 p-3 bg-surface-sunken/50 rounded-lg border border-line-2/50">
 					<div class="flex-1 min-w-0">
 						<div class="flex items-center gap-2">
-							<span class="text-sm text-white font-medium truncate">{att.name || att.file_storage_id.slice(0, 12)}</span>
+							<span class="text-sm text-ink-0 font-medium truncate">{att.name || att.file_storage_id.slice(0, 12)}</span>
 							{#if att.share_proto}
-								<span class="text-[10px] text-gray-500 font-mono px-1.5 py-0.5 rounded bg-gray-700">{att.share_proto}</span>
+								<span class="text-[10px] text-ink-3 font-mono px-1.5 py-0.5 rounded bg-surface-selected">{att.share_proto}</span>
 							{/if}
-							<span class="text-[10px] px-1.5 py-0.5 rounded font-mono {att.status === 'available' ? 'text-green-400 bg-green-900/20' : 'text-gray-400 bg-gray-700'}">{att.status}</span>
+							<span class="text-[10px] px-1.5 py-0.5 rounded font-mono {att.status === 'available' ? 'text-green-400 bg-green-900/20' : 'text-ink-2 bg-surface-selected'}">{att.status}</span>
 						</div>
 					</div>
 					<button
 						onclick={() => handleDetach(att.file_storage_id)}
 						disabled={detaching === att.file_storage_id}
-						class="shrink-0 text-xs text-red-400/70 hover:text-red-400 disabled:text-gray-600 transition-colors"
+						class="shrink-0 text-xs text-red-400/70 hover:text-red-400 disabled:text-ink-3 transition-colors"
 					>
 						{detaching === att.file_storage_id ? '해제 중...' : '해제'}
 					</button>

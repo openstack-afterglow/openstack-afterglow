@@ -10,14 +10,13 @@
   import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
   import SlidePanel from '$lib/components/SlidePanel.svelte';
   import FileStorageDetailPanel from '$lib/components/FileStorageDetailPanel.svelte';
-  import PageHeader from '$lib/components/ui/PageHeader.svelte';
   import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
   import { createCoalescedRefresh } from '$lib/utils/coalescedRefresh';
   import FileStorageWizard from '$lib/components/file-storage/wizard/FileStorageWizard.svelte';
   import FileStorageCard from '$lib/components/file-storage/FileStorageCard.svelte';
   import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
   import { executeBulkMutations } from '$lib/utils/bulkActions';
-  import { BulkSelectionOverlay, SelectionToolbar } from '$lib/components/ui';
+  import { Alert, BulkSelectionOverlay, Button, EmptyState, PageHeader, PageShell, ResourceToolbar, SelectionToolbar } from '$lib/components/ui';
 
   import type { QuotaItem, ManilaFileQuota as Quota } from '$lib/types/quotas';
 
@@ -149,8 +148,13 @@
   onCreated={() => refresh.invalidate()}
 />
 
-<div class="bulk-selection-page p-4 md:p-8">
+<PageShell class="bulk-selection-page space-y-4">
   <PageHeader breadcrumb="FILE STORAGE" title="파일 스토리지">
+    {#snippet actions()}
+      <Button onclick={() => (showWizard = true)} onintent={prefetchCreateMetadata} variant="primary">+ 파일 스토리지 생성</Button>
+    {/snippet}
+  </PageHeader>
+  <ResourceToolbar label="파일 스토리지 목록 도구">
     {#snippet actions()}
       <AutoRefreshControl
         bind:active={ar.active}
@@ -159,24 +163,21 @@
         refreshing={refreshing || loading}
         onManualRefresh={forceRefresh}
       />
-      <button onclick={() => (showWizard = true)} onpointerenter={prefetchCreateMetadata} onfocus={prefetchCreateMetadata} class="bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">+ 파일 스토리지 생성</button>
     {/snippet}
-  </PageHeader>
+  </ResourceToolbar>
 
-  {#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
+  {#if error}<Alert tone="danger">{error}</Alert>{/if}
 
   {#if loading}
     <div class="grid grid-cols-2 gap-3.5">
       {#each [1, 2, 3, 4] as _}
-        <div class="animate-pulse bg-gray-900 border border-gray-800 rounded-2xl h-40"></div>
+        <div class="animate-pulse bg-surface-base border border-line rounded-lg h-40"></div>
       {/each}
     </div>
   {:else if fileStorages.length === 0}
-    <div class="text-center py-20 text-gray-600">
-      <div class="text-5xl mb-4">🗂️</div>
-      <p class="text-lg">파일 스토리지가 없습니다</p>
-      <button onclick={() => (showWizard = true)} class="text-blue-400 hover:text-blue-300 text-sm mt-2 inline-block">첫 파일 스토리지를 생성하세요 →</button>
-    </div>
+    <EmptyState headline="파일 스토리지가 없습니다" description="공유 파일 시스템을 생성해 여러 인스턴스에서 사용하세요.">
+      {#snippet cta()}<Button onclick={() => (showWizard = true)} variant="primary">파일 스토리지 생성</Button>{/snippet}
+    </EmptyState>
   {:else}
     <SelectionToolbar label="파일 스토리지" ariaLabel="파일 스토리지 전체 선택" checked={selectableIds.size > 0 && [...selectableIds].every((id) => selection.has(id))} indeterminate={selection.count > 0 && ![...selectableIds].every((id) => selection.has(id))} selectedCount={selection.count} disabled={bulkBusy} onToggle={() => selection.toggleAll(selectableIds)} />
     <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3.5">
@@ -197,10 +198,10 @@
     </div>
   {/if}
   <BulkSelectionOverlay count={selection.count} ariaLabel="선택한 파일 스토리지 일괄 작업" actions={[{ key: 'delete', label: '삭제', tone: 'danger', onAction: bulkDelete }]} busy={bulkBusy} onClear={() => selection.clear()} />
-</div>
+</PageShell>
 
 {#if selectedId}
-  <SlidePanel onClose={closeDetailPanel} width="w-full md:w-[60vw] max-w-2xl">
+  <SlidePanel onClose={closeDetailPanel} ariaLabel="파일 스토리지 상세" width="w-full md:w-[60vw] max-w-2xl">
     <FileStorageDetailPanel
       fileStorageId={selectedId}
       onClose={closeDetailPanel}

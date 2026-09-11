@@ -95,4 +95,31 @@ describe('SlidePanel', () => {
 		expect(panel.style.width).toBe('560px');
 		expect(localStorage.getItem('slide-panel-test')).toBe('1000');
 	});
+
+	// 자식 패널이 자기 × 를 또 그려 헤더에 닫기 버튼이 두 개 보이는 버그가 실제로 있었다.
+	// 정본은 이 컨테이너가 그리는 `[data-slide-panel-close]` 하나뿐이다.
+	// role/name 으로 세면 안 된다 — 배경 scrim 도 aria-label="패널 닫기" 인 button 이라 정상 상태에서도 2개다.
+	it('닫기 버튼(data-slide-panel-close)을 정확히 1개만 렌더한다', () => {
+		const { container } = render(SlidePanelWrapper, { onClose: vi.fn() });
+		flushSync();
+		expect(container.querySelectorAll('[data-slide-panel-close]')).toHaveLength(1);
+	});
+
+	it('scrim 과 헤더 닫기의 accessible name 이 서로 구분된다', () => {
+		render(SlidePanelWrapper, { onClose: vi.fn() });
+		flushSync();
+		// 이름이 같아지면 getByLabelText 가 다중 매치로 throw 하고, 스크린리더에도 같은 컨트롤이 두 번 읽힌다
+		expect(screen.getByLabelText('패널 닫기')).toBeTruthy();
+		expect(screen.getByLabelText('패널 닫기 버튼')).toBeTruthy();
+	});
+
+	it('초기 포커스·Escape 가 의존하는 셀렉터가 살아 있다', () => {
+		// SlidePanel.svelte 의 onMount 초기 포커스와 dialogFocus initialFocus 가 이 셀렉터를 쓴다.
+		// 닫기 버튼을 정리할 때 이 속성을 지우면 포커스 관리가 조용히 깨진다.
+		const { container } = render(SlidePanelWrapper, { onClose: vi.fn() });
+		flushSync();
+		const btn = container.querySelector('[data-slide-panel-close]');
+		expect(btn).toBeTruthy();
+		expect(btn!.tagName).toBe('BUTTON');
+	});
 });

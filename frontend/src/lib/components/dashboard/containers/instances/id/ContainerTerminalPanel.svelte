@@ -119,23 +119,23 @@
   });
 </script>
 
-<div class="bg-gray-900 border border-gray-700 rounded-xl mb-4 overflow-hidden">
-  <div class="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700">
+<div class="bg-surface-base border border-line-2 rounded-xl mb-4 overflow-hidden">
+  <div class="flex items-center justify-between px-4 py-2 bg-surface-sunken border-b border-line-2">
     <div class="flex items-center gap-2">
-      <span class="text-sm text-white font-medium">터미널</span>
+      <span class="text-sm text-ink-0 font-medium">터미널</span>
       {#if wsConnecting}
         <span class="text-xs text-yellow-400">연결 중...</span>
       {:else if wsConnected}
         <span class="text-xs text-green-400">● 연결됨</span>
       {:else}
-        <span class="text-xs text-gray-500">● 연결 끊김</span>
+        <span class="text-xs text-ink-3">● 연결 끊김</span>
       {/if}
     </div>
     <div class="flex gap-2">
       {#if !wsConnected && !wsConnecting}
-        <button onclick={connectWs} class="text-xs text-blue-400 hover:text-blue-300 transition-colors">재연결</button>
+        <button onclick={connectWs} class="text-xs text-action-warm hover:text-action-warm-hover transition-colors">재연결</button>
       {/if}
-      <button onclick={closeConsole} class="text-xs text-gray-400 hover:text-white transition-colors">✕ 닫기</button>
+      <button onclick={closeConsole} class="text-xs text-ink-2 hover:text-ink-0 transition-colors">✕ 닫기</button>
     </div>
   </div>
   <div bind:this={terminalEl} class="w-full" style="height: 320px; background: #0f172a;"></div>

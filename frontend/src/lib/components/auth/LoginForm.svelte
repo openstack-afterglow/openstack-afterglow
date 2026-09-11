@@ -71,5 +71,4 @@
 		background: var(--color-surface-raised);
 		padding: 2rem;
 	}
-	.login-submit { width: 100%; }
 </style>

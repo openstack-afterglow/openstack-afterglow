@@ -1,5 +1,6 @@
 ---
 - name: Config | Resolve Afterglow service project ID
+  become: true
   kolla_toolbox:
     container_engine: "{{ kolla_container_engine }}"
     module_name: openstack.cloud.project_info
@@ -56,6 +57,7 @@
   run_once: true
 
 - name: Config | Check operator configuration source
+  become: false
   ansible.builtin.stat:
     path: "{{ afterglow_operator_config_source }}"
   register: afterglow_operator_config_source_stat
@@ -84,6 +86,7 @@
   delegate_to: "{{ groups['deployment'][0] }}"
 
 - name: Config | Stage and validate sanitized operator configuration
+  become: false
   ansible.builtin.command:
     argv:
       - "{{ ansible_playbook_python }}"
@@ -131,6 +134,7 @@
   delegate_to: "{{ groups['deployment'][0] }}"
 
 - name: Config | Check frontend public configuration source
+  become: false
   ansible.builtin.stat:
     path: "{{ afterglow_operator_frontend_config_source }}"
   register: afterglow_operator_frontend_config_source_stat
@@ -159,6 +163,7 @@
   delegate_to: "{{ groups['deployment'][0] }}"
 
 - name: Config | Project frontend source onto the public allowlist
+  become: false
   ansible.builtin.command:
     argv:
       - "{{ ansible_playbook_python }}"

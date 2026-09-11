@@ -148,6 +148,10 @@
 		$page.url.pathname;
 		sidebarOpen.close();
 	});
+	function closeMobileSidebar() {
+		sidebarOpen.close();
+		document.getElementById('app-sidebar-trigger')?.focus();
+	}
 
 	function isBetaVisible(beta?: BetaFeatureKey): boolean {
 		return !beta || Boolean($betaFeatures[beta]);
@@ -186,38 +190,41 @@
 {#if $sidebarOpen}
 	<button
 		class="fixed inset-0 z-[var(--z-sidebar)] bg-surface-scrim-soft md:hidden"
-		onclick={() => sidebarOpen.close()}
+		onclick={closeMobileSidebar}
 		aria-label="메뉴 닫기"
 	></button>
 {/if}
 
-<aside class="fixed top-0 left-0 bottom-0 z-[var(--z-sidebar)] w-60 bg-gray-900 border-r border-gray-800 flex flex-col overflow-y-auto transition-transform duration-200 ease-in-out {$sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:sticky md:top-0 md:h-screen md:translate-x-0 md:shrink-0 md:transition-none">
+<aside
+	id="app-sidebar"
+	class="fixed inset-y-0 left-0 z-[var(--z-sidebar)] flex h-[100dvh] w-[var(--app-sidebar-width)] flex-col overflow-y-auto border-r border-line bg-surface-base transition-transform duration-[var(--motion-duration-panel)] ease-out {$sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:sticky md:top-0 md:shrink-0 md:translate-x-0 md:transition-none"
+	aria-label="사용자 탐색"
+>
 	<!-- 로고 헤더 -->
-	<div class="h-14 flex items-center gap-2.5 px-4 border-b border-gray-800 shrink-0">
-		<!-- RingMark logo -->
-		<RingMark size={26} />
-		<a href="/dashboard" class="text-white font-bold text-base tracking-tight hover:text-gray-200 transition-colors">
+	<div class="flex h-[var(--app-header-height)] shrink-0 items-center gap-2.5 border-b border-line px-4">
+		<RingMark size={24} />
+		<a href="/dashboard" class="text-[15px] font-semibold tracking-tight text-ink-0 transition-colors hover:text-ink-1">
 			{$siteConfig.site_name}
 		</a>
 	</div>
 
 	<!-- 검색 버튼 (1024px 미만에서만 표시) -->
-	<div class="px-3 pt-3 pb-2 lg:hidden">
+	<div class="px-3 pb-2 pt-3 lg:hidden">
 		<button
 			onclick={() => palette.open()}
-			class="w-full flex items-center gap-2 bg-gray-800 border border-gray-700 text-gray-500 rounded-lg pl-3 pr-2 py-1.5 text-[13px] hover:border-gray-600 transition-colors cursor-text"
+			class="flex w-full items-center gap-2 rounded-md border border-line-2 bg-surface-sunken py-1.5 pl-3 pr-2 text-[13px] text-ink-2 transition-colors hover:bg-surface-selected"
 			aria-label="검색 (⌘K)"
 		>
-			<svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z"/></svg>
-			<span class="flex-1 text-left text-gray-600">리소스 검색...</span>
-			<kbd class="text-[10px] border border-gray-700 px-1.5 py-0.5 rounded font-mono text-gray-600">⌘K</kbd>
+			<svg class="size-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z"/></svg>
+			<span class="flex-1 text-left">리소스 검색...</span>
+			<kbd class="rounded border border-line px-1.5 py-0.5 font-mono text-[10px]">⌘K</kbd>
 		</button>
 	</div>
 
 	<!-- VM 생성 버튼 -->
 	<div class="px-3 pb-3 pt-2 lg:pt-0" data-tour="vm-create-open">
-		<Button onclick={() => openWizard()} class="w-full">
-			<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v14M5 12h14"/></svg>
+		<Button variant="secondary" onclick={() => openWizard()} class="w-full">
+			<svg class="size-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v14M5 12h14"/></svg>
 			VM 생성
 		</Button>
 	</div>
@@ -227,29 +234,30 @@
 		<div>
 			<button
 				onclick={() => dashboardOpen = !dashboardOpen}
-				class="flex items-center justify-between w-full px-3 py-2 rounded-lg text-sm transition-colors {$page.url.pathname === '/dashboard' || ['/dashboard/usage', '/dashboard/usage-report', '/dashboard/activity'].some((p) => $page.url.pathname.startsWith(p)) ? 'text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}"
+				class="flex items-center justify-between w-full px-3 py-2 rounded-lg text-sm transition-colors {$page.url.pathname === '/dashboard' || ['/dashboard/usage', '/dashboard/usage-report', '/dashboard/activity'].some((p) => $page.url.pathname.startsWith(p)) ? 'text-ink-0' : 'text-ink-2 hover:text-ink-0 hover:bg-surface-sunken'}"
 			>
 				<div class="flex items-center gap-1.5">
 					<svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
 					<span>대시보드</span>
 				</div>
-				<span class="text-xs text-gray-600">{dashboardOpen ? '▾' : '▸'}</span>
+				<span class="text-xs text-ink-3">{dashboardOpen ? '▾' : '▸'}</span>
 			</button>
 			{#if dashboardOpen}
 				<div class="ml-3 mt-0.5 space-y-0.5">
-					<a href="/dashboard" class="nav-item nav-sub flex items-center px-3 py-1.5 rounded-lg text-xs transition-colors" class:nav-active={$page.url.pathname === '/dashboard'}>개요</a>
-					<a href="/dashboard/usage" class="nav-item nav-sub flex items-center px-3 py-1.5 rounded-lg text-xs transition-colors" class:nav-active={$page.url.pathname.startsWith('/dashboard/usage') && !$page.url.pathname.startsWith('/dashboard/usage-report')}>사용량</a>
-					<a href="/dashboard/usage-report" class="nav-item nav-sub flex items-center px-3 py-1.5 rounded-lg text-xs transition-colors" class:nav-active={$page.url.pathname.startsWith('/dashboard/usage-report')}>사용량 리포트</a>
-					<a href="/dashboard/activity" class="nav-item nav-sub flex items-center px-3 py-1.5 rounded-lg text-xs transition-colors" class:nav-active={$page.url.pathname.startsWith('/dashboard/activity')}>활동</a>
+					<a href="/dashboard" aria-current={$page.url.pathname === '/dashboard' ? 'page' : undefined} class="nav-item nav-sub flex h-8 items-center rounded-md px-3 text-[13px] transition-colors" class:nav-active={$page.url.pathname === '/dashboard'}>개요</a>
+					<a href="/dashboard/usage" aria-current={$page.url.pathname.startsWith('/dashboard/usage') && !$page.url.pathname.startsWith('/dashboard/usage-report') ? 'page' : undefined} class="nav-item nav-sub flex h-8 items-center rounded-md px-3 text-[13px] transition-colors" class:nav-active={$page.url.pathname.startsWith('/dashboard/usage') && !$page.url.pathname.startsWith('/dashboard/usage-report')}>사용량</a>
+					<a href="/dashboard/usage-report" aria-current={$page.url.pathname.startsWith('/dashboard/usage-report') ? 'page' : undefined} class="nav-item nav-sub flex h-8 items-center rounded-md px-3 text-[13px] transition-colors" class:nav-active={$page.url.pathname.startsWith('/dashboard/usage-report')}>사용량 리포트</a>
+					<a href="/dashboard/activity" aria-current={$page.url.pathname.startsWith('/dashboard/activity') ? 'page' : undefined} class="nav-item nav-sub flex h-8 items-center rounded-md px-3 text-[13px] transition-colors" class:nav-active={$page.url.pathname.startsWith('/dashboard/activity')}>활동</a>
 				</div>
 			{/if}
 		</div>
 		<a
 			href="/dashboard/network/topology"
-			class="nav-item flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors"
-		class:nav-active={$page.url.pathname === '/dashboard/network/topology'}
+			aria-current={$page.url.pathname === '/dashboard/network/topology' ? 'page' : undefined}
+			class="nav-item flex h-8 items-center gap-2 rounded-md px-3 text-[13px] transition-colors"
+			class:nav-active={$page.url.pathname === '/dashboard/network/topology'}
 		>
-			<svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+			<svg class="size-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
 			토폴로지
 		</a>
 		<!-- 섹션들 -->
@@ -258,7 +266,7 @@
 			<div>
 				<button
 					onclick={() => section.open = !section.open}
-					class="flex items-center justify-between w-full px-3 py-2 rounded-lg text-sm transition-colors {$page.url.pathname.startsWith(section.prefix) || section.extraPrefixes.some((p) => $page.url.pathname.startsWith(p)) ? 'text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}"
+					class="flex items-center justify-between w-full px-3 py-2 rounded-lg text-sm transition-colors {$page.url.pathname.startsWith(section.prefix) || section.extraPrefixes.some((p) => $page.url.pathname.startsWith(p)) ? 'text-ink-0' : 'text-ink-2 hover:text-ink-0 hover:bg-surface-sunken'}"
 				>
 					<div class="flex items-center gap-1.5">
 						{#if section.icon}
@@ -266,7 +274,7 @@
 						{/if}
 						<span>{section.label}</span>
 					</div>
-					<span class="text-xs text-gray-600">{section.open ? '▾' : '▸'}</span>
+					<span class="text-xs text-ink-3">{section.open ? '▾' : '▸'}</span>
 				</button>
 
 				{#if section.open}
@@ -275,7 +283,8 @@
 							{#if isItemVisible(item)}
 							<a
 								href={item.href}
-								class="nav-item nav-sub flex items-center px-3 py-1.5 rounded-lg text-xs transition-colors"
+								aria-current={$page.url.pathname === item.href || ($page.url.pathname.startsWith(item.href + '/') && item.href !== '/dashboard/volumes') ? 'page' : undefined}
+								class="nav-item nav-sub flex h-8 items-center rounded-md px-3 text-[13px] transition-colors"
 								class:nav-active={$page.url.pathname === item.href || ($page.url.pathname.startsWith(item.href + '/') && item.href !== '/dashboard/volumes')}
 							>
 								{item.label}
@@ -290,20 +299,20 @@
 	</nav>
 
 	<!-- 하단: 프로젝트 정보 + 관리 -->
-	<div class="border-t border-gray-800 shrink-0">
+	<div class="border-t border-line shrink-0">
 		<!-- 프로젝트 선택 (1024px 미만) -->
 		<div class="p-3 lg:hidden">
-			<div class="text-[10px] text-gray-500 uppercase tracking-wide px-1 mb-1.5">프로젝트</div>
+			<div class="text-[10px] text-ink-3 uppercase tracking-wide px-1 mb-1.5">프로젝트</div>
 			<ProjectSelector />
 		</div>
 
 		<!-- 프로젝트 이름 표시 (1024px 이상) -->
 		<div class="hidden lg:block px-4 py-3">
-			<div class="text-[10px] text-gray-500 uppercase tracking-widest font-medium">프로젝트</div>
-			<div class="text-[13px] text-gray-200 font-medium mt-0.5 truncate">{$auth.projectName ?? '—'}</div>
+			<div class="text-[10px] text-ink-3 uppercase tracking-widest font-medium">프로젝트</div>
+			<div class="text-[13px] text-ink-1 font-medium mt-0.5 truncate">{$auth.projectName ?? '—'}</div>
 			<a
 				href="/dashboard/project-settings"
-				class="inline-flex items-center gap-1 mt-1.5 text-[11px] transition-colors {$page.url.pathname === '/dashboard/project-settings' ? 'text-blue-400' : 'text-gray-500 hover:text-gray-300'}"
+				class="inline-flex items-center gap-1 mt-1.5 text-[11px] transition-colors {$page.url.pathname === '/dashboard/project-settings' ? 'text-action-warm' : 'text-ink-3 hover:text-ink-2'}"
 			>
 				<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
 				프로젝트 설정
@@ -321,7 +330,7 @@
 					</a>
 				{:else}
 					<a href="/admin"
-						class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors text-gray-400 hover:text-white hover:bg-gray-800">
+						class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors text-ink-2 hover:text-ink-0 hover:bg-surface-sunken">
 						<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6l8-4z"></path></svg>
 						관리자 모드
 					</a>
@@ -330,8 +339,8 @@
 		{/if}
 
 		<!-- 모바일 사용자 정보 -->
-		<div class="p-3 pt-0 md:hidden border-t border-gray-800">
-			<div class="px-3 text-xs text-gray-500">{$auth.username}</div>
+		<div class="p-3 pt-0 md:hidden border-t border-line">
+			<div class="px-3 text-xs text-ink-3">{$auth.username}</div>
 		</div>
 	</div>
 </aside>
@@ -339,32 +348,28 @@
 <style>
 	.nav-item {
 		color: var(--color-ink-2);
+		font-weight: 500;
 	}
 	.nav-item:hover:not(.nav-active) {
 		color: var(--color-ink-0);
-		background-color: color-mix(in oklab, var(--color-surface-sunken) 80%, transparent);
+		background-color: var(--color-surface-sunken);
 	}
 	.nav-sub {
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.nav-sub:hover:not(.nav-active) {
 		color: var(--color-ink-1);
 	}
 	.nav-active {
-		background: var(--warm-soft);
-		color: var(--color-warm-2);
-		font-weight: 500;
-		position: relative;
+		background: var(--color-surface-selected);
+		color: var(--color-ink-0);
+		font-weight: 600;
 	}
-	.nav-active::before {
-		content: "";
-		position: absolute;
-		left: 0;
-		top: 6px;
-		bottom: 6px;
-		width: 3px;
-		border-radius: 2px;
-		background: var(--color-warm);
+
+	@media (pointer: coarse) {
+		.nav-item {
+			min-height: 2.75rem;
+		}
 	}
 
 </style>

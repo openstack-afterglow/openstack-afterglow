@@ -126,25 +126,25 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <div class="fixed inset-0 z-[60] flex items-center justify-center">
-	<button class="absolute inset-0 bg-black/70" onclick={() => done && onclose()} aria-label="닫기" tabindex="-1"></button>
+	<button class="absolute inset-0 bg-surface-scrim/70" onclick={() => done && onclose()} aria-label="닫기" tabindex="-1"></button>
 
-	<div class="relative bg-gray-950 border border-gray-800 rounded-2xl w-full max-w-lg mx-4 shadow-2xl max-h-[85vh] flex flex-col">
-		<div class="flex items-center justify-between px-5 py-4 border-b border-gray-800 shrink-0">
-			<h2 class="text-sm font-semibold text-white">인증서 회전 — {clusterName}</h2>
+	<div class="relative bg-surface-canvas border border-line rounded-lg w-full max-w-lg mx-4 shadow-[var(--shadow-restraint)] max-h-[85vh] flex flex-col">
+		<div class="flex items-center justify-between px-5 py-4 border-b border-line shrink-0">
+			<h2 class="text-sm font-semibold text-ink-0">인증서 회전 — {clusterName}</h2>
 			{#if done}
-				<button onclick={onclose} class="text-gray-500 hover:text-white transition-colors text-lg leading-none">&times;</button>
+				<button onclick={onclose} class="text-ink-3 hover:text-ink-0 transition-colors text-lg leading-none">&times;</button>
 			{/if}
 		</div>
 
 		<!-- 진행률 바 -->
 		<div class="px-5 pt-4 shrink-0">
-			<div class="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+			<div class="h-1.5 bg-surface-sunken rounded-full overflow-hidden">
 				<div
-					class="h-full transition-all duration-500 rounded-full {failed ? 'bg-red-500' : done ? 'bg-green-500' : 'bg-amber-500'}"
+					class="h-full transition-all duration-500 rounded-full {failed ? 'bg-red-500' : done ? 'bg-green-500' : 'bg-action-warm'}"
 					style="width: {progress}%"
 				></div>
 			</div>
-			<p class="text-xs text-gray-500 mt-1 text-right">{progress}%</p>
+			<p class="text-xs text-ink-3 mt-1 text-right">{progress}%</p>
 		</div>
 
 		<!-- 로그 -->
@@ -154,13 +154,13 @@
 					<span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-mono
 						{msg.step === 'completed' ? 'bg-green-900/40 text-green-400' :
 						 msg.step === 'failed' ? 'bg-red-900/40 text-red-400' :
-						 msg.step === 'rotate_server' ? 'bg-amber-900/40 text-amber-400' :
-						 'bg-gray-800 text-gray-400'}">
+						 msg.step === 'rotate_server' ? 'bg-surface-selected/40 text-action-warm' :
+						 'bg-surface-sunken text-ink-2'}">
 						{stepLabel(msg.step)}
 					</span>
-					<span class="text-gray-300 leading-relaxed">{msg.message}</span>
+					<span class="text-ink-2 leading-relaxed">{msg.message}</span>
 					{#if msg.elapsed_seconds != null}
-						<span class="ml-auto shrink-0 text-gray-600">{msg.elapsed_seconds}s</span>
+						<span class="ml-auto shrink-0 text-ink-3">{msg.elapsed_seconds}s</span>
 					{/if}
 				</div>
 				{#if msg.error && msg.step === 'failed'}
@@ -168,19 +168,19 @@
 				{/if}
 			{/each}
 			{#if !done}
-				<div class="flex items-center gap-2 text-xs text-gray-500">
-					<span class="inline-block w-2 h-2 bg-amber-500 rounded-full animate-pulse"></span>
+				<div class="flex items-center gap-2 text-xs text-ink-3">
+					<span class="inline-block w-2 h-2 bg-action-warm rounded-full animate-pulse"></span>
 					진행 중...
 				</div>
 			{/if}
 		</div>
 
-		<div class="px-5 pb-4 pt-2 flex justify-end shrink-0 border-t border-gray-800">
+		<div class="px-5 pb-4 pt-2 flex justify-end shrink-0 border-t border-line">
 			<button
 				onclick={onclose}
 				disabled={!done}
 				class="text-xs px-3 py-1.5 rounded-lg transition-colors
-					{done ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-800 text-gray-600 cursor-not-allowed'}"
+					{done ? 'bg-surface-selected hover:bg-surface-selected text-ink-0' : 'bg-surface-sunken text-ink-3 cursor-not-allowed'}"
 			>
 				{done ? '닫기' : '진행 중...'}
 			</button>

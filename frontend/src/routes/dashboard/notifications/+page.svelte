@@ -3,10 +3,8 @@
 	import { page } from '$app/stores';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
-	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
-	import Card from '$lib/components/ui/Card.svelte';
-	import Alert from '$lib/components/ui/Alert.svelte';
+	import { Alert, Card, EmptyState, PageHeader, PageShell } from '$lib/components/ui';
 	import { formatIsoDateTime } from '$lib/utils/format';
 	import type { AnnouncementUser, AnnouncementSeverity } from '$lib/types/announcements';
 	import type { DashboardAlert, DashboardOverviewQuotas } from '$lib/types/quotas';
@@ -110,7 +108,7 @@
 
 </script>
 
-<div class="p-4 md:p-8 max-w-3xl mx-auto">
+<PageShell max="5xl">
 	<div class="flex items-center gap-3 mb-4">
 		<a
 			href="/dashboard"
@@ -155,7 +153,7 @@
 		<Card padding="lg">
 			<p class="text-[10px] uppercase tracking-wide text-[var(--color-ink-3)] mb-3">공지 히스토리</p>
 			{#if announcements.length === 0}
-				<p class="text-sm text-[var(--color-ink-3)] py-4">받은 공지가 없습니다</p>
+				<EmptyState headline="받은 공지가 없습니다" description="새 공지와 쿼터 알림이 여기에 표시됩니다." />
 			{:else}
 				<ul class="flex flex-col divide-y divide-[var(--color-line)]">
 					{#each announcements as a (a.id)}
@@ -203,4 +201,4 @@
 			{/if}
 		</Card>
 	{/if}
-</div>
+</PageShell>

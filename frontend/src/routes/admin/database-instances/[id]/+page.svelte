@@ -24,15 +24,15 @@
 
 <div class="p-4 md:p-8 max-w-4xl">
 	<div class="flex items-center gap-2 mb-2">
-		<a href="/admin/database-instances" class="text-gray-500 hover:text-gray-300 text-sm">DB 인스턴스</a>
-		<span class="text-gray-700">/</span>
-		<span class="text-white text-sm font-medium">{ctrl.instance?.name ?? $page.params.id?.slice(0, 8)}</span>
+		<a href="/admin/database-instances" class="text-ink-3 hover:text-ink-2 text-sm">DB 인스턴스</a>
+		<span class="text-ink-3">/</span>
+		<span class="text-ink-0 text-sm font-medium">{ctrl.instance?.name ?? $page.params.id?.slice(0, 8)}</span>
 	</div>
 
 	{#if ctrl.loading}
 		<LoadingSkeleton variant="detail" rows={8} />
 	{:else if !ctrl.instance}
-		<div class="text-gray-500 text-sm">인스턴스를 찾을 수 없습니다.</div>
+		<div class="text-ink-3 text-sm">인스턴스를 찾을 수 없습니다.</div>
 	{:else}
 		<DbInstanceHeader instance={ctrl.instance} deleting={ctrl.deleting} onDelete={ctrl.deleteInstance} />
 

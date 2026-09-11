@@ -147,7 +147,7 @@
 
 </script>
 
-<div class="p-4 md:p-8 max-w-7xl mx-auto">
+<div class="p-4 md:p-6 max-w-7xl mx-auto">
 	<div data-tour="admin-system-header">
 	<PageHeader breadcrumb="SYSTEM / SERVICES" title="서비스 상태">
 		{#snippet actions()}

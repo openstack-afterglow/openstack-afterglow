@@ -41,7 +41,7 @@
 </script>
 
 <article
-	class="resource-selection-surface bg-[var(--color-surface-raised)] border border-[var(--color-line)] rounded-2xl p-4 flex flex-col gap-3 hover:border-[var(--color-line-2)] transition-colors"
+	class="resource-selection-surface bg-[var(--color-surface-raised)] border border-[var(--color-line)] rounded-lg p-4 flex flex-col gap-3 hover:border-[var(--color-line-2)] transition-colors"
 	data-selected={selected}
 >
 	<!-- Header: selection + icon + detail -->

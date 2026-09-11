@@ -31,14 +31,35 @@ describe('ChatSettingsOverlay', () => {
 		});
 	});
 
-	it('opens on usage and leaves theme controls to the global header', () => {
-		render(ChatSettingsOverlay, { open: true, onClose: () => {}, usage: null });
+	it('renders usage in a modal with six local section controls', async () => {
+		const onClose = vi.fn();
+		render(ChatSettingsOverlay, {
+			open: true,
+			onClose,
+			usage: {
+				month_prompt_tokens: 5000,
+				month_completion_tokens: 3000,
+				month_credited_cost: 73.73,
+				month_request_count: 13,
+				quota_used: 73.73,
+				quota_max: 100000,
+				week_credited_cost: 12,
+				quota_weekly_max: 1000
+			}
+		});
 
-		expect(screen.getByRole('button', { name: '사용량' })).toBeTruthy();
+		expect(screen.getByRole('dialog', { name: '채팅 설정' })).toBeTruthy();
 		expect(screen.getByRole('heading', { name: '이번 달 사용량' })).toBeTruthy();
-		expect(screen.queryByRole('button', { name: '라이트' })).toBeNull();
-		expect(screen.queryByRole('button', { name: '다크' })).toBeNull();
-		expect(screen.queryByRole('button', { name: '시스템' })).toBeNull();
+		expect(screen.getByText('주간 쿼터 12 / 1,000')).toBeTruthy();
+		const sectionButtons = ['사용량', 'API 키', '메모리', 'MCP 서버', '도구', '스킬'].map(
+			(name) => screen.getByRole('button', { name })
+		);
+		expect(sectionButtons).toHaveLength(6);
+		expect(sectionButtons[0].classList.contains('active')).toBe(true);
+		expect(screen.queryByRole('link', { name: '사용량' })).toBeNull();
+
+		await fireEvent.click(screen.getByRole('button', { name: '닫기' }));
+		expect(onClose).toHaveBeenCalledOnce();
 	});
 
 	it('shows the automatically maintained memory.md and copies its plaintext content', async () => {
@@ -49,7 +70,7 @@ describe('ChatSettingsOverlay', () => {
 		});
 		render(ChatSettingsOverlay, {
 			open: true,
-			onClose: () => {},
+			onClose: vi.fn(),
 			usage: null,
 			initialSection: 'memory'
 		});

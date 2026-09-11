@@ -342,7 +342,7 @@ test("package.json contains exact command contract scripts and no obsolete scrip
 	assert.equal(scripts["test:target:js"], "npm run test:orchestration && npm run test:kolla:contract");
 	assert.equal(scripts["test:live"], "cd backend && AFTERGLOW_ALLOW_INSECURE=1 uv run python -m pytest tests/integration -v");
 	assert.equal(scripts["test:all"], "npm run test:unit && npm run test:contract && npm run test:functional");
-	assert.equal(scripts["test:gate"], "npm run test:all && npm run lint:backend");
+	assert.equal(scripts["test:gate"], "npm run docs:check && npm run test:all && npm run lint:backend");
 
 	assert.equal(scripts["test:backend:app"], undefined);
 	assert.equal(scripts["test:backend:integration"], undefined);

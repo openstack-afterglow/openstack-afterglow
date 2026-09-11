@@ -26,6 +26,10 @@ export type ChatRole = 'user' | 'assistant' | 'tool';
 export interface AvailableModel {
 	id: number;
 	model_name: string;
+	/** External compatibility API model ID. Falls back to model_name during rolling upgrades. */
+	api_model_name?: string;
+	/** Stable external compatibility API provider selector. */
+	api_provider?: string;
 	display_name: string;
 	provider?: string;
 	capabilities?: ModelCapabilities | null;
@@ -40,11 +44,13 @@ export interface ChatUsage {
 	lifetime_completion_tokens: number;
 	lifetime_request_count: number;
 	month_credited_cost: number;
+	week_credited_cost: number;
 	month_prompt_tokens: number;
 	month_completion_tokens: number;
 	month_request_count: number;
 	quota_used: number;
 	quota_max: number;
+	quota_weekly_max: number;
 }
 
 export interface ChatMessage {

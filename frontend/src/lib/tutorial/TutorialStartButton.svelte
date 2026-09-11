@@ -80,6 +80,7 @@
 	}
 
 	/* 초대 팝오버 — 실제 투어 팝오버(.afterglow-tour)와 동일한 디자인 토큰으로 톤을 맞춘다. */
+
 	.ts-invite {
 		position: absolute;
 		top: calc(100% + 10px);
@@ -225,6 +226,24 @@
 		}
 	}
 
+	@media (max-width: 640px) {
+		.ts-invite,
+		.ts-hint {
+			position: fixed;
+			top: calc(var(--app-header-height) + 0.75rem);
+			right: 1rem;
+			left: 1rem;
+			width: auto;
+			max-width: none;
+			transform: none;
+			animation: none;
+		}
+
+		.ts-invite__arrow,
+		.ts-hint__arrow {
+			display: none;
+		}
+	}
 	@keyframes ts-fade-in {
 		from {
 			opacity: 0;

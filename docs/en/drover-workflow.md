@@ -54,7 +54,7 @@ The existing `docs/k3s.md` and `docs/en/k3s.md` describe that goal as follows.
 - Show provisioning progress in real time.
 - The server VM cloud-init creates kubeconfig and a join token. Worker nodes join automatically with that token.
 
-Section 8 of `docs/architecture.md` makes the planned flow more concrete.
+The old plan also appeared as the integrated “Section 8” description in [`docs/en/architecture.md`](architecture.md). Read current ownership boundaries and public API mounts from the [root `ARCHITECTURE.md`](https://github.com/openstack-afterglow/openstack-afterglow/blob/main/ARCHITECTURE.md) and the current source listed below.
 
 ```text
 client -> POST /api/v1/k3s/clusters/async (SSE)

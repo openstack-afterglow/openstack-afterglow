@@ -55,21 +55,21 @@
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if roles.length === 0}
-		<div class="text-gray-600 text-sm">역할이 없습니다</div>
+		<div class="text-ink-3 text-sm">역할이 없습니다</div>
 	{:else}
-		<div class="bg-gray-900 border border-gray-800 rounded-2xl p-5 overflow-x-auto">
+		<div class="bg-surface-base border border-line rounded-lg p-5 overflow-x-auto">
 			<table class="w-full text-sm">
 				<thead>
-					<tr class="border-b border-gray-800 text-gray-400 text-xs uppercase tracking-wide">
+					<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
 						<th class="text-left py-2 pr-4">이름</th>
 						<th class="text-left py-2">ID</th>
 					</tr>
 				</thead>
 				<tbody>
 					{#each roles as r (r.id)}
-						<tr class="border-b border-gray-800/50 text-xs">
-							<td class="py-2 pr-4 text-white"><span class="max-md:block max-md:max-w-[66vw] max-md:truncate" title={r.name}>{r.name}</span></td>
-							<td class="py-2 text-gray-500 font-mono">{r.id.slice(0, 8)}</td>
+						<tr class="border-b border-line/50 text-xs">
+							<td class="py-2 pr-4 text-ink-0"><span class="max-md:block max-md:max-w-[66vw] max-md:truncate" title={r.name}>{r.name}</span></td>
+							<td class="py-2 text-ink-3 font-mono">{r.id.slice(0, 8)}</td>
 						</tr>
 					{/each}
 				</tbody>

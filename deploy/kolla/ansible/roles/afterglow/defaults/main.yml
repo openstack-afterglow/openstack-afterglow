@@ -100,9 +100,11 @@ afterglow_openstack_cacert: "{{ openstack_cacert | default('') }}"
 
 # ── Manila ────────────────────────────────────────────────────────────────────
 afterglow_manila_microversion: "2.65"
+afterglow_manila_client_version: "6.0.0"
 afterglow_manila_share_type: "cephfs"
 afterglow_ceph_monitors: ""
-afterglow_cephx_user: "client.afterglow"
+# Manila expects the CephX ID without the "client." entity prefix.
+afterglow_cephx_user: "afterglow"
 afterglow_manila_shares:
   layer_store_rw:
     name: layer-store-rw

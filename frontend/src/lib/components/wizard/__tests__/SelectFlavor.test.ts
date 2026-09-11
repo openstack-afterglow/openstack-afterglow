@@ -1,12 +1,13 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import SelectFlavor from '../SelectFlavor.svelte';
+import type { FlavorOption } from '$lib/types/flavor';
 
 vi.mock('$lib/api/client', () => ({
 	api: { get: vi.fn().mockResolvedValue({ gpu_types: [] }) },
 }));
 
-const flavors = [
+const flavors: FlavorOption[] = [
 	{ id: 'cpu-1', name: 'cpu.1c_1g', vcpus: 1, ram: 1024, disk: 10, is_public: true },
 	{ id: 'gpu-1', name: 'gpu.1c_8g', vcpus: 1, ram: 8192, disk: 40, is_public: false, extra_specs: { 'pci_passthrough:alias': 'RTX-4090:1' } },
 ];
@@ -40,7 +41,7 @@ describe('SelectFlavor', () => {
 
 	it('separates quota-blocked flavors, explains blockers, and disables selection', async () => {
 		const onSelect = vi.fn();
-		const testFlavors = [
+		const testFlavors: FlavorOption[] = [
 			{
 				id: 'cpu-ok',
 				name: 'cpu.2c_4g',

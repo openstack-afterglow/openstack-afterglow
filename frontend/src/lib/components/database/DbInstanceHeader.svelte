@@ -14,7 +14,7 @@
 		ACTIVE: 'text-green-400',
 		BUILD: 'text-yellow-400',
 		ERROR: 'text-red-400',
-		SHUTDOWN: 'text-gray-400',
+		SHUTDOWN: 'text-ink-2',
 	};
 	const statusLabel: Record<string, string> = { SHUTDOWN: '삭제 중' };
 </script>
@@ -22,10 +22,10 @@
 <div class="flex items-start justify-between">
 	<div>
 		{#if s.loading && !s.instance}
-			<div class="h-7 w-40 bg-gray-800 rounded animate-pulse mb-1"></div>
+			<div class="h-7 w-40 bg-surface-sunken rounded animate-pulse mb-1"></div>
 		{:else}
-			<h1 class="text-xl font-bold text-white">{s.instance?.name ?? ''}</h1>
-			<span class="text-xs font-medium {statusColor[s.instance?.status ?? ''] ?? 'text-gray-400'}">
+			<h1 class="text-xl font-bold text-ink-0">{s.instance?.name ?? ''}</h1>
+			<span class="text-xs font-medium {statusColor[s.instance?.status ?? ''] ?? 'text-ink-2'}">
 				{statusLabel[s.instance?.status ?? ''] ?? s.instance?.status ?? ''}
 			</span>
 		{/if}
@@ -40,12 +40,10 @@
 		/>
 		{#if s.instance}
 			<button onclick={() => s.deleteInstance()} disabled={s.deleting}
-				class="text-red-400 hover:text-red-300 disabled:text-gray-600 text-xs px-2 py-1.5 rounded border border-red-900 hover:border-red-700 transition-colors">
+				class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1.5 rounded border border-red-900 hover:border-red-700 transition-colors">
 				{s.deleting ? '삭제 중...' : '인스턴스 삭제'}
 			</button>
 		{/if}
-		{#if onClose}
-			<button onclick={onClose} class="text-gray-400 hover:text-white text-xl leading-none ml-1">×</button>
-		{/if}
+		<!-- 닫기 버튼은 SlidePanel 이 제공한다(`[data-slide-panel-close]`) -->
 	</div>
 </div>

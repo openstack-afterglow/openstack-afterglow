@@ -53,7 +53,7 @@ Afterglow dashboard
 - 생성 진행률을 실시간으로 보여준다.
 - 서버 VM의 cloud-init이 kubeconfig와 join token을 만들고, 워커 노드는 그 token으로 자동 join한다.
 
-`docs/architecture.md` 8장은 이 계획을 조금 더 구체화한다.
+기존 문서의 과거 계획은 당시 [`docs/architecture.md`](architecture.md)에 있던 통합형 “8장” 설명에도 나타났다. 현재 책임 경계와 공개 API mount는 [루트 `ARCHITECTURE.md`](https://github.com/openstack-afterglow/openstack-afterglow/blob/main/ARCHITECTURE.md)와 아래의 현재 source를 기준으로 읽는다.
 
 ```text
 클라이언트 -> POST /api/v1/k3s/clusters/async (SSE)

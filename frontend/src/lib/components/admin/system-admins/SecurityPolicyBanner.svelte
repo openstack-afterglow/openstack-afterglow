@@ -31,16 +31,16 @@
 		</span>
 	</div>
 {:else}
-	<div class="mb-4 flex items-center justify-between gap-3 rounded-lg border border-amber-700 bg-amber-900/20 px-4 py-3 text-sm">
+	<div class="mb-4 flex items-center justify-between gap-3 rounded-lg border border-action-warm bg-surface-selected/20 px-4 py-3 text-sm">
 		<div class="flex items-center gap-2 flex-1 min-w-0">
-			<span class="text-amber-400 shrink-0">⚙</span>
-			<span class="text-amber-300">
+			<span class="text-action-warm shrink-0">⚙</span>
+			<span class="text-action-warm">
 				Legacy 호환 모드: admin project 멤버({policy.admin_project_member_count}명)도 관리자 권한을 가집니다. 마이그레이션 후 strict 모드로 전환하세요.
 			</span>
 		</div>
 		<button
 			onclick={onMigrate}
-			class="shrink-0 px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-700/50 hover:bg-amber-700/80 text-amber-200 whitespace-nowrap"
+			class="shrink-0 px-3 py-1.5 text-xs font-medium rounded-lg bg-action-warm/50 hover:bg-action-warm-hover/80 text-action-warm whitespace-nowrap"
 		>
 			일괄 마이그레이션
 		</button>

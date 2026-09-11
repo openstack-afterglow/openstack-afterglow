@@ -118,44 +118,44 @@
 
 {#if user}
   <div
-    class="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
-    onclick={() => { user = null; }}
+    class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
+    onclick={(event) => { if (event.target === event.currentTarget) (() => { user = null; })(); }}
     role="dialog"
     onkeydown={(e) => e.key === 'Escape' && (user = null)}
     tabindex="-1"
   >
-    <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-md mx-4 shadow-2xl" onclick={(e) => e.stopPropagation()}>
-      <h2 class="text-lg font-semibold text-white mb-5">사용자 수정</h2>
+    <div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]">
+      <h2 class="text-lg font-semibold text-ink-0 mb-5">사용자 수정</h2>
       {#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
       {#if revokeSuccess}<div class="bg-green-900/40 border border-green-700 text-green-300 rounded-lg px-4 py-3 text-sm mb-4">{revokeSuccess}</div>{/if}
       <div class="space-y-4">
-        <div><label class="block text-xs text-gray-400 mb-1.5 uppercase tracking-wide">이름</label><input bind:value={name} type="text" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" /></div>
-        <div><label class="block text-xs text-gray-400 mb-1.5 uppercase tracking-wide">이메일</label><input bind:value={email} type="email" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" /></div>
-        <div><label class="block text-xs text-gray-400 mb-1.5 uppercase tracking-wide">새 패스워드 <span class="text-gray-600">(변경 시에만 입력)</span></label><input bind:value={password} type="password" placeholder="변경하지 않으면 비워두세요" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" /></div>
+        <div><label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminusereditmodal-132">이름</label><input id="field-adminusereditmodal-132" bind:value={name} type="text" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" /></div>
+        <div><label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminusereditmodal-133">이메일</label><input id="field-adminusereditmodal-133" bind:value={email} type="email" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" /></div>
+        <div><label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminusereditmodal-134">새 패스워드 <span class="text-ink-3">(변경 시에만 입력)</span></label><input id="field-adminusereditmodal-134" bind:value={password} type="password" placeholder="변경하지 않으면 비워두세요" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" /></div>
         <div class="flex items-center gap-3">
-          <button onclick={() => enabled = !enabled} class="relative w-11 h-6 rounded-full transition-colors {enabled ? 'bg-blue-600' : 'bg-gray-700'}">
-            <span class="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform {enabled ? 'translate-x-5' : ''}"></span>
+          <button type="button" role="switch" aria-label="사용자 활성 상태" aria-checked={enabled} onclick={() => enabled = !enabled} class="relative w-11 h-6 rounded-full transition-colors {enabled ? 'bg-action-warm' : 'bg-surface-selected'}">
+            <span class="absolute top-0.5 left-0.5 w-5 h-5 bg-surface-base rounded-full transition-transform {enabled ? 'translate-x-5' : ''}"></span>
           </button>
-          <span class="text-sm text-gray-300">{enabled ? '활성' : '비활성'}</span>
+          <span class="text-sm text-ink-2">{enabled ? '활성' : '비활성'}</span>
         </div>
-        <div class="text-xs text-gray-500">ID: {user.id}</div>
+        <div class="text-xs text-ink-3">ID: {user.id}</div>
       </div>
 
       <!-- 활성 세션 목록 -->
-      <div class="mt-5 pt-4 border-t border-gray-800">
+      <div class="mt-5 pt-4 border-t border-line">
         <div class="flex items-center justify-between mb-2">
-          <p class="text-xs font-medium text-gray-400">활성 세션</p>
+          <p class="text-xs font-medium text-ink-2">활성 세션</p>
           {#if loadingSessions}
-            <span class="text-[10px] text-gray-600">로딩...</span>
+            <span class="text-[10px] text-ink-3">로딩...</span>
           {:else}
-            <span class="text-[10px] text-gray-600">{sessions.length}개</span>
+            <span class="text-[10px] text-ink-3">{sessions.length}개</span>
           {/if}
         </div>
         {#if sessions.length > 0}
           <div class="overflow-x-auto">
             <table class="w-full text-xs">
               <thead>
-                <tr class="border-b border-gray-700 text-gray-500 uppercase tracking-wide text-[10px]">
+                <tr class="border-b border-line-2 text-ink-3 uppercase tracking-wide text-[10px]">
                   <th class="text-left py-1 pr-3">출처 IP</th>
                   <th class="text-left py-1 pr-3">기기</th>
                   <th class="text-left py-1 pr-3">마지막 사용</th>
@@ -164,10 +164,10 @@
               </thead>
               <tbody>
                 {#each sessions as sess (sess.jti)}
-                  <tr class="border-b border-gray-800/50">
-                    <td class="py-1.5 pr-3 font-mono text-gray-300">{sess.origin_ip || '—'}</td>
-                    <td class="py-1.5 pr-3 text-gray-400">{deviceLabel(sess)}</td>
-                    <td class="py-1.5 pr-3 text-gray-500">{formatSessionTime(sess.last_seen)}</td>
+                  <tr class="border-b border-line/50">
+                    <td class="py-1.5 pr-3 font-mono text-ink-2">{sess.origin_ip || '—'}</td>
+                    <td class="py-1.5 pr-3 text-ink-2">{deviceLabel(sess)}</td>
+                    <td class="py-1.5 pr-3 text-ink-3">{formatSessionTime(sess.last_seen)}</td>
                     <td class="py-1.5">
                       {#if sess.blacklisted}
                         <span class="text-red-400 font-semibold">차단</span>
@@ -181,12 +181,12 @@
             </table>
           </div>
         {:else if !loadingSessions}
-          <p class="text-xs text-gray-600">활성 세션 없음</p>
+          <p class="text-xs text-ink-3">활성 세션 없음</p>
         {/if}
       </div>
 
       <!-- 세션 강제 폐기 -->
-      <div class="mt-3 pt-3 border-t border-gray-800">
+      <div class="mt-3 pt-3 border-t border-line">
         {#if showRevokeConfirm}
           <div class="bg-red-950/40 border border-red-800/60 rounded-lg px-3 py-3 mb-3">
             <p class="text-xs text-red-300 mb-2">이 사용자의 모든 세션을 강제 폐기합니까?<br>Keystone 토큰도 즉시 폐기됩니다.</p>
@@ -194,11 +194,11 @@
               <button
                 onclick={revokeAllSessions}
                 disabled={revoking}
-                class="px-3 py-1.5 bg-red-700 hover:bg-red-600 disabled:opacity-50 text-white text-xs rounded-lg transition-colors"
+                class="px-3 py-1.5 bg-red-700 hover:bg-red-600 disabled:opacity-50 text-ink-0 text-xs rounded-lg transition-colors"
               >{revoking ? '폐기 중...' : '확인'}</button>
               <button
                 onclick={() => { showRevokeConfirm = false; }}
-                class="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded-lg transition-colors"
+                class="px-3 py-1.5 bg-surface-selected hover:bg-surface-selected text-ink-0 text-xs rounded-lg transition-colors"
               >취소</button>
             </div>
           </div>
@@ -212,8 +212,8 @@
       </div>
 
       <div class="flex justify-end gap-3 mt-4">
-        <button onclick={() => { user = null; }} class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg">취소</button>
-        <button onclick={submit} disabled={updating} class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg disabled:opacity-30">{updating ? '수정 중...' : '수정'}</button>
+        <button onclick={() => { user = null; }} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">취소</button>
+        <button onclick={submit} disabled={updating} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{updating ? '수정 중...' : '수정'}</button>
       </div>
     </div>
   </div>

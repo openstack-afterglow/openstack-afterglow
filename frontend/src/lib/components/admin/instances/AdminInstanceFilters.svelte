@@ -50,7 +50,7 @@
 	<select
 		bind:value={hostFilter}
 		onchange={() => { onChange(); }}
-		class="bg-gray-800 border border-gray-700 text-sm text-gray-300 rounded-lg px-2 py-1.5 focus:outline-none focus:border-blue-500"
+		class="bg-surface-sunken border border-line-2 text-sm text-ink-2 rounded-lg px-2 py-1.5 focus:outline-none focus:border-action-warm"
 	>
 		<option value="">모든 호스트</option>
 		{#each availableHosts as h}
@@ -61,7 +61,7 @@
 	<select
 		bind:value={statusFilter}
 		onchange={() => { onChange(); }}
-		class="bg-gray-800 border border-gray-700 text-sm text-gray-300 rounded-lg px-2 py-1.5 focus:outline-none focus:border-blue-500"
+		class="bg-surface-sunken border border-line-2 text-sm text-ink-2 rounded-lg px-2 py-1.5 focus:outline-none focus:border-action-warm"
 	>
 		<option value="">모든 상태</option>
 		{#each ['ACTIVE', 'SHUTOFF', 'ERROR', 'SHELVED_OFFLOADED', 'BUILD', 'PAUSED', 'SUSPENDED'] as s}
@@ -77,18 +77,18 @@
 			if (nameDebounceTimer) clearTimeout(nameDebounceTimer);
 			nameDebounceTimer = setTimeout(() => { onChange(); }, 300);
 		}}
-		class="bg-gray-800 border border-gray-700 text-sm text-gray-300 rounded-lg px-3 py-1.5 w-40 focus:outline-none focus:border-blue-500"
+		class="bg-surface-sunken border border-line-2 text-sm text-ink-2 rounded-lg px-3 py-1.5 w-40 focus:outline-none focus:border-action-warm"
 	/>
 
 	<div class="relative project-filter-wrapper">
-		<div class="flex items-center bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 w-52 focus-within:border-blue-500">
+		<div class="flex items-center bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 w-52 focus-within:border-action-warm">
 			<input
 				type="text"
 				placeholder="프로젝트 검색..."
 				bind:value={projectSearchText}
 				onfocus={() => (projectDropdownOpen = true)}
 				oninput={() => { projectDropdownOpen = true; if (!projectSearchText) { projectFilter = ''; } }}
-				class="bg-transparent text-sm text-gray-300 flex-1 outline-none min-w-0"
+				class="bg-transparent text-sm text-ink-2 flex-1 outline-none min-w-0"
 			/>
 			{#if projectFilter}
 				<button
@@ -98,19 +98,19 @@
 						projectDropdownOpen = false;
 						onChange();
 					}}
-					class="text-gray-500 hover:text-white ml-1 flex-shrink-0"
+					class="text-ink-3 hover:text-ink-0 ml-1 flex-shrink-0"
 				>✕</button>
 			{/if}
 		</div>
 		{#if projectDropdownOpen && projectSuggestions.length > 0}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
-				class="absolute top-full mt-1 left-0 w-64 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-20 overflow-hidden"
+				class="absolute top-full mt-1 left-0 w-64 bg-surface-base border border-line-2 rounded-lg shadow-[var(--shadow-restraint)] z-20 overflow-hidden"
 				onmouseleave={() => {}}
 			>
 				{#each projectSuggestions as [id, name]}
 					<button
-						class="w-full text-left px-3 py-2 text-xs hover:bg-gray-800 transition-colors {projectFilter === id ? 'bg-blue-900/30 text-blue-400' : 'text-gray-300'}"
+						class="w-full text-left px-3 py-2 text-xs hover:bg-surface-sunken transition-colors {projectFilter === id ? 'bg-surface-selected/30 text-action-warm' : 'text-ink-2'}"
 						onclick={() => {
 							projectFilter = id;
 							projectSearchText = name;
@@ -119,7 +119,7 @@
 						}}
 					>
 						<div class="font-medium truncate">{name}</div>
-						<div class="text-gray-500 font-mono">{id.slice(0, 12)}...</div>
+						<div class="text-ink-3 font-mono">{id.slice(0, 12)}...</div>
 					</button>
 				{/each}
 			</div>

@@ -38,6 +38,7 @@ export interface ZunContainerDetail {
   memory: string | null;
   created_at: string | null;
   addresses: Record<string, { addr: string }[]> | null;
+  host?: string | null;
 }
 
 export const containerDetailStatusColor: Record<string, string> = {

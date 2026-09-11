@@ -96,13 +96,13 @@
 	});
 </script>
 
-<div class="p-4 md:p-8 max-w-7xl mx-auto">
+<div class="p-4 md:p-6 max-w-7xl mx-auto">
 	<PageHeader breadcrumb="STORAGE / FILE STORAGE" title="파일 스토리지">
 		{#snippet actions()}
 			<select
 				bind:value={pageSize}
 				onchange={() => { currentPage = 0; }}
-				class="text-xs bg-gray-800 border border-gray-700 text-gray-300 rounded px-2 py-1.5"
+				class="text-xs bg-surface-sunken border border-line-2 text-ink-2 rounded px-2 py-1.5"
 			>
 				{#each [10, 20, 30, 50] as s}
 					<option value={s}>{s}개</option>
@@ -130,7 +130,7 @@
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if fileStorages.length === 0}
-		<div class="text-gray-600 text-sm">파일 스토리지가 없습니다</div>
+		<div class="text-ink-3 text-sm">파일 스토리지가 없습니다</div>
 	{:else}
 			<AdminFileStorageTable storages={displayedStorages} selectedId={selectedFileStorageId} onOpen={openDetail} />
 			{#if totalPages > 1}
@@ -149,7 +149,7 @@
 </div>
 
 {#if selectedFileStorageId}
-	<SlidePanel onClose={closeDetail} width="w-full md:w-[60vw] max-w-4xl" storageKey="admin.fileStorage.detail.width">
+	<SlidePanel onClose={closeDetail} ariaLabel="관리자 파일 스토리지 상세" width="w-full md:w-[60vw] max-w-4xl" storageKey="admin.fileStorage.detail.width">
 		<AdminFileStorageDetailPanel fileStorageId={selectedFileStorageId} onClose={closeDetail} onDeleted={handleDeleted} />
 	</SlidePanel>
 {/if}

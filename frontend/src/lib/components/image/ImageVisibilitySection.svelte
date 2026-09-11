@@ -5,12 +5,12 @@
 	const s = useImageDetailController();
 </script>
 
-<div class="bg-gray-900 border border-gray-800 rounded-lg p-5">
-	<h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">공개 범위 수정</h3>
+<div class="bg-surface-base border border-line rounded-lg p-5">
+	<h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-3">공개 범위 수정</h3>
 	<div class="flex items-center gap-3 flex-wrap">
 		<select
 			bind:value={s.visibilityValue}
-			class="bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+			class="bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm"
 		>
 			{#each VISIBILITY_OPTIONS as opt}
 				<option value={opt.value}>{opt.label}</option>

@@ -11,6 +11,6 @@
 	let { onClose, content = '테스트 내용', dataTour, storageKey }: Props = $props();
 </script>
 
-<SlidePanel {onClose} {dataTour} {storageKey}>
+<SlidePanel {onClose} {dataTour} {storageKey} ariaLabel="테스트 패널">
 	{content}
 </SlidePanel>

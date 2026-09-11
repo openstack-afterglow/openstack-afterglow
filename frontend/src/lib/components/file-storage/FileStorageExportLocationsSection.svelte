@@ -19,27 +19,27 @@
 	}
 </script>
 
-<div class="bg-gray-900 border border-gray-800 rounded-lg p-5 mb-4">
-	<h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Export Locations</h3>
+<div class="bg-surface-base border border-line rounded-lg p-5 mb-4">
+	<h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-3">Export Locations</h3>
 	<div class="space-y-2">
 		{#each locations() as loc (loc.index)}
 			<div class="flex items-start gap-2">
-				<div class="flex-1 flex items-center gap-1.5 bg-gray-800 px-3 py-2 rounded min-w-0">
+				<div class="flex-1 flex items-center gap-1.5 bg-surface-sunken px-3 py-2 rounded min-w-0">
 					{#if loc.preferred}
 						<span class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-teal-900/50 text-teal-400 border border-teal-800 leading-none">preferred</span>
 					{/if}
 					{#if extractHost(loc.path)}
 						<span class="shrink-0 font-mono text-xs text-teal-300 font-medium">{extractHost(loc.path)}</span>
-						<code class="flex-1 text-xs text-gray-400 font-mono truncate">{loc.path.replace(/^\d{1,3}(?:\.\d{1,3}){3}:/, '')}</code>
+						<code class="flex-1 text-xs text-ink-2 font-mono truncate">{loc.path.replace(/^\d{1,3}(?:\.\d{1,3}){3}:/, '')}</code>
 					{:else}
-						<code class="flex-1 text-xs text-gray-300 font-mono break-all">{loc.path}</code>
+						<code class="flex-1 text-xs text-ink-2 font-mono break-all">{loc.path}</code>
 					{/if}
 				</div>
 				<button
 					onclick={() => s.copyPath(loc.path, loc.index)}
 					class="shrink-0 text-xs px-2 py-1.5 rounded border transition-colors {s.copiedIndex === loc.index
 						? 'border-green-700 text-green-400'
-						: 'border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500'}"
+						: 'border-line-2 text-ink-2 hover:text-ink-1 hover:border-line-2'}"
 				>
 					{s.copiedIndex === loc.index ? '복사됨' : '복사'}
 				</button>

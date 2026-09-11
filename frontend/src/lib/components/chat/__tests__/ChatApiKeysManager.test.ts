@@ -3,9 +3,9 @@ import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { auth } from '$lib/stores/auth';
 
-const mocks = vi.hoisted(() => ({ get: vi.fn() }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), patch: vi.fn() }));
 vi.mock('$lib/api/client', () => ({
-	api: { get: mocks.get },
+	api: { get: mocks.get, patch: mocks.patch },
 	ApiError: class ApiError extends Error {}
 }));
 
@@ -16,6 +16,26 @@ const discovery = {
 		openai: { sdk_base_url: 'https://inference.example/tenant/v1' },
 		anthropic: { sdk_base_url: 'https://inference.example/tenant' }
 	}
+};
+
+const apiKey = {
+	id: 17,
+	name: '내 CLI',
+	key_prefix: 'lm_test',
+	scopes: ['chat'],
+	is_active: true,
+	last_used_at: null,
+	created_at: '2026-09-09T00:00:00Z',
+	revoked_at: null,
+	owner_monthly_credit_limit: null,
+	admin_monthly_credit_limit: null,
+	system_monthly_credit_limit: '1000',
+	effective_monthly_credit_limit: '1000',
+	month_credited_cost: '12.5',
+	owner_weekly_credit_limit: null,
+	system_weekly_credit_limit: '0',
+	effective_weekly_credit_limit: '1000',
+	week_credited_cost: '3.25'
 };
 
 function examples(container: HTMLElement): string {
@@ -30,7 +50,10 @@ describe('ChatApiKeysManager connection guide', () => {
 			userId: 'user-1', username: 'tester', projectId: 'project-1', projectName: 'Project',
 			availableProjects: [], roles: [], isSystemAdmin: false, federated: false
 		});
-		mocks.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/compat') ? discovery : []));
+		mocks.patch.mockResolvedValue({});
+		mocks.get.mockImplementation((path: string) => Promise.resolve(
+			path.endsWith('/compat') ? discovery : path.endsWith('/api-keys') ? [apiKey] : []
+		));
 	});
 
 	afterEach(cleanup);
@@ -44,6 +67,9 @@ describe('ChatApiKeysManager connection guide', () => {
 		expect(examples(container)).not.toContain('api.localhost');
 		expect(examples(container)).not.toContain('messages=[...]');
 		expect(screen.getAllByRole('button', { name: '예제 복사' })).toHaveLength(2);
+		expect(snippets[0]).toContain('{"provider": os.environ["LUMEN_PROVIDER"]}');
+		expect(snippets[1]).toContain('{"provider": os.environ["LUMEN_PROVIDER"]}');
+		expect(screen.getByText(/동일한 API ID가 여러 프로바이더에 등록된 경우에만/)).toBeTruthy();
 	});
 
 	it('copies each complete SDK example directly', async () => {
@@ -60,7 +86,6 @@ describe('ChatApiKeysManager connection guide', () => {
 		expect(writeText).toHaveBeenCalledWith(expect.stringContaining('from openai import OpenAI'));
 		expect(writeText).toHaveBeenCalledWith(expect.stringContaining('client.chat.completions.create'));
 	});
-
 
 	it('keeps key management available but hides examples until discovery retry succeeds', async () => {
 		let unavailable = true;
@@ -110,5 +135,67 @@ describe('ChatApiKeysManager connection guide', () => {
 		await tick();
 		expect(examples(container)).toContain(discovery.endpoints.openai.sdk_base_url);
 		expect(examples(container)).not.toContain('previous.example');
+	});
+
+	it('renames an active API key in place', async () => {
+		render(ChatApiKeysManager);
+
+		await fireEvent.click(await screen.findByRole('button', { name: '이름 변경' }));
+		const input = screen.getByRole('textbox', { name: 'API 키 이름' });
+		await fireEvent.input(input, { target: { value: '새 이름' } });
+		await fireEvent.click(screen.getByRole('button', { name: '저장' }));
+
+		await waitFor(() => {
+			expect(mocks.patch).toHaveBeenCalledWith(
+				'/api/v1/chat/api-keys/17',
+				{ name: '새 이름' },
+				'browser-token',
+				'project-1'
+			);
+		});
+	});
+
+	it('rejects limits above the user quota and saves valid nullable limits', async () => {
+		render(ChatApiKeysManager);
+
+		await fireEvent.click(await screen.findByRole('button', { name: '한도 설정' }));
+		const monthly = screen.getByLabelText('월 한도(크레딧)');
+		const weekly = screen.getByLabelText('주간 한도(크레딧)');
+		await fireEvent.input(monthly, { target: { value: '2000' } });
+		await fireEvent.click(screen.getByRole('button', { name: '저장' }));
+
+		expect(screen.getByText('사용자 쿼터(1,000)를 초과할 수 없습니다')).toBeTruthy();
+		expect(mocks.patch).not.toHaveBeenCalled();
+
+		await fireEvent.input(monthly, { target: { value: '500' } });
+		await fireEvent.input(weekly, { target: { value: '' } });
+		await fireEvent.click(screen.getByRole('button', { name: '저장' }));
+
+		await waitFor(() => {
+			expect(mocks.patch).toHaveBeenCalledWith(
+				'/api/v1/chat/api-keys/17/limits',
+				{ monthly_credit_limit: '500', weekly_credit_limit: null },
+				'browser-token',
+				'project-1'
+			);
+		});
+	});
+
+	it('blocks a limit above the administrator ceiling before sending a request', async () => {
+		mocks.get.mockImplementation((path: string) => Promise.resolve(
+			path.endsWith('/compat')
+				? discovery
+				: path.endsWith('/api-keys')
+					? [{ ...apiKey, admin_monthly_credit_limit: '500', effective_monthly_credit_limit: '500' }]
+					: []
+		));
+		render(ChatApiKeysManager);
+
+		await fireEvent.click(await screen.findByRole('button', { name: '한도 설정' }));
+		await fireEvent.input(screen.getByLabelText('월 한도(크레딧)'), { target: { value: '800' } });
+		await fireEvent.click(screen.getByRole('button', { name: '저장' }));
+
+		expect(screen.getByText('관리자 한도(500)를 초과할 수 없습니다')).toBeTruthy();
+		expect(mocks.patch).not.toHaveBeenCalled();
 	});
 });

@@ -88,7 +88,7 @@
 <div class="p-4 md:p-8 max-w-7xl mx-auto">
 	<PageHeader breadcrumb="NETWORK / ROUTERS" title="라우터">
 		{#snippet actions()}
-			<button onclick={openCreate} onpointerenter={prefetchExternalNetworks} onfocus={prefetchExternalNetworks} class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg">+ 생성</button>
+			<button onclick={openCreate} onpointerenter={prefetchExternalNetworks} onfocus={prefetchExternalNetworks} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg">+ 생성</button>
 			<AutoRefreshControl
 				bind:active={ar.active}
 				bind:intervalSeconds={ar.intervalSeconds}
@@ -100,9 +100,9 @@
 	</PageHeader>
 
 	{#if loading}
-		<div class="text-gray-500 text-sm">로딩 중...</div>
+		<div class="text-ink-3 text-sm">로딩 중...</div>
 	{:else}
 		<AdminRoutersTable {routers} onEdit={(r) => { editRouter = r; }} onDelete={(r) => { deleteRouter = r; }} />
-		<div class="mt-3 text-xs text-gray-600">총 {routers.length}개 라우터</div>
+		<div class="mt-3 text-xs text-ink-3">총 {routers.length}개 라우터</div>
 	{/if}
 </div>

@@ -70,25 +70,25 @@
 </script>
 
 <div
-  class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4"
+  class="fixed inset-0 bg-surface-scrim/60 z-50 flex items-center justify-center p-4"
   onclick={onClose}
   role="presentation"
 >
   <div
-    class="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col"
+    class="bg-surface-base border border-line-2 rounded-xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col"
     onclick={(e) => e.stopPropagation()}
     role="presentation"
   >
-    <div class="flex items-center justify-between px-4 py-3 border-b border-gray-800">
-      <h3 class="text-sm font-medium text-gray-200">{title}</h3>
-      <button onclick={onClose} class="text-gray-500 hover:text-gray-300 text-lg leading-none">&times;</button>
+    <div class="flex items-center justify-between px-4 py-3 border-b border-line">
+      <h3 class="text-sm font-medium text-ink-1">{title}</h3>
+      <button onclick={onClose} class="text-ink-3 hover:text-ink-2 text-lg leading-none">&times;</button>
     </div>
 
     <div class="overflow-y-auto flex-1 p-4">
       <textarea
         bind:value={yamlText}
         spellcheck={false}
-        class="w-full h-72 bg-gray-950 border border-gray-700 text-gray-200 text-xs rounded-lg px-3 py-3 font-mono focus:outline-none focus:border-blue-500 resize-y leading-relaxed"
+        class="w-full h-72 bg-surface-canvas border border-line-2 text-ink-1 text-xs rounded-lg px-3 py-3 font-mono focus:outline-none focus:border-action-warm resize-y leading-relaxed"
         placeholder={mode === 'secret'
           ? 'stringData:\n  KEY: value'
           : 'data:\n  KEY: value'}
@@ -102,12 +102,12 @@
       <p class="text-xs text-red-400 px-4 pb-2">{parseError}</p>
     {/if}
 
-    <div class="flex justify-end gap-2 px-4 py-3 border-t border-gray-800">
-      <button onclick={onClose} class="text-xs text-gray-400 hover:text-gray-300 px-3 py-1.5">취소</button>
+    <div class="flex justify-end gap-2 px-4 py-3 border-t border-line">
+      <button onclick={onClose} class="text-xs text-ink-2 hover:text-ink-2 px-3 py-1.5">취소</button>
       <button
         onclick={handleSave}
         disabled={saving || !!liveError}
-        class="text-xs text-blue-400 hover:text-blue-300 px-3 py-1.5 border border-blue-900 hover:border-blue-700 rounded transition-colors disabled:text-gray-600 disabled:border-gray-700 disabled:cursor-not-allowed"
+        class="text-xs text-action-warm hover:text-action-warm-hover px-3 py-1.5 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3 disabled:border-line-2 disabled:cursor-not-allowed"
       >
         {saving ? '저장 중...' : '저장'}
       </button>

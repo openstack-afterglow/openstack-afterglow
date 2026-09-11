@@ -67,35 +67,35 @@
 
 <div class="p-4 md:p-8 max-w-lg">
 	<div class="flex items-center gap-4 mb-8">
-		<button onclick={() => goto('/dashboard/network/loadbalancers')} class="text-gray-500 hover:text-white transition-colors text-sm">
+		<button onclick={() => goto('/dashboard/network/loadbalancers')} class="text-ink-3 hover:text-ink-0 transition-colors text-sm">
 			← 로드밸런서 목록
 		</button>
-		<h1 class="text-2xl font-bold text-white">로드밸런서 생성</h1>
+		<h1 class="text-2xl font-bold text-ink-0">로드밸런서 생성</h1>
 	</div>
 
-	<div class="bg-gray-900 border border-gray-700 rounded-xl p-6 space-y-5">
+	<div class="bg-surface-base border border-line-2 rounded-xl p-6 space-y-5">
 		{#if error}
 			<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{error}</div>
 		{/if}
 
 		<div>
-			<label for="lb-name" class="block text-xs text-gray-400 mb-1.5 uppercase tracking-wide">이름</label>
+			<label for="lb-name" class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">이름</label>
 			<input
 				id="lb-name"
 				bind:value={form.name}
 				type="text"
 				placeholder="my-lb"
-				class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500"
+				class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm"
 			/>
 		</div>
 
 		<div>
-			<label for="lb-network" class="block text-xs text-gray-400 mb-1.5 uppercase tracking-wide">네트워크</label>
+			<label for="lb-network" class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">네트워크</label>
 			<select
 				id="lb-network"
 				bind:value={form.vip_network_id}
 				onchange={onNetworkChange}
-				class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500"
+				class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm"
 			>
 				<option value="">네트워크 선택</option>
 				{#each networks.filter(n => !n.is_external) as net}
@@ -106,16 +106,16 @@
 
 		{#if form.vip_network_id}
 			<div>
-				<label for="lb-subnet" class="block text-xs text-gray-400 mb-1.5 uppercase tracking-wide">VIP 서브넷</label>
+				<label for="lb-subnet" class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">VIP 서브넷</label>
 				{#if loadingSubnets}
-					<div class="text-gray-500 text-sm">서브넷 로딩 중...</div>
+					<div class="text-ink-3 text-sm">서브넷 로딩 중...</div>
 				{:else if subnets.length === 0}
-					<div class="text-gray-500 text-sm">서브넷이 없습니다</div>
+					<div class="text-ink-3 text-sm">서브넷이 없습니다</div>
 				{:else}
 					<select
 						id="lb-subnet"
 						bind:value={form.vip_subnet_id}
-						class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500"
+						class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm"
 					>
 						<option value="">서브넷 선택</option>
 						{#each subnets as subnet}
@@ -127,27 +127,27 @@
 		{/if}
 
 		<div>
-			<label for="lb-desc" class="block text-xs text-gray-400 mb-1.5 uppercase tracking-wide">설명 (선택)</label>
+			<label for="lb-desc" class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">설명 (선택)</label>
 			<input
 				id="lb-desc"
 				bind:value={form.description}
 				type="text"
 				placeholder="설명"
-				class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500"
+				class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm"
 			/>
 		</div>
 
 		<div class="flex justify-end gap-3 pt-2">
 			<button
 				onclick={() => goto('/dashboard/network/loadbalancers')}
-				class="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
+				class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors"
 			>
 				취소
 			</button>
 			<button
 				onclick={createLb}
 				disabled={creating}
-				class="px-5 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-medium rounded-lg transition-colors"
+				class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors"
 			>
 				{creating ? '생성 중...' : '생성'}
 			</button>

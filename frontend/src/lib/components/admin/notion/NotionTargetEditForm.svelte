@@ -75,15 +75,15 @@
 {#if target}
 	<div class="space-y-3">
 		<div class="flex items-center justify-between mb-2">
-			<h3 class="text-sm font-semibold text-blue-400">수정 중</h3>
-			<button onclick={onClose} class="text-xs text-gray-500 hover:text-gray-300">취소</button>
+			<h3 class="text-sm font-semibold text-action-warm">수정 중</h3>
+			<button onclick={onClose} class="text-xs text-ink-3 hover:text-ink-2">취소</button>
 		</div>
 		<NotionTargetFormFields {form} mode="edit" />
 		{#if editError}
 			<div class="text-red-400 text-sm">{editError}</div>
 		{/if}
 		<button onclick={saveEdit} disabled={saving}
-			class="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-medium rounded-lg transition-colors">
+			class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors">
 			{saving ? '저장 중...' : '저장'}
 		</button>
 	</div>

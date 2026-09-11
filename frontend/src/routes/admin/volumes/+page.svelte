@@ -163,7 +163,7 @@
 	onDestroy(() => { loadGeneration += 1; nextPrefetch.cancel(); });
 </script>
 
-<div class="p-4 md:p-8 max-w-7xl mx-auto">
+<div class="p-4 md:p-6 max-w-7xl mx-auto">
 	<div data-tour="admin-storage-header">
 	<PageHeader breadcrumb="STORAGE / VOLUMES" title="전체 볼륨">
 		{#snippet actions()}

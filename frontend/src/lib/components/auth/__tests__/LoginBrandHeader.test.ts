@@ -15,7 +15,7 @@ const baseConfig: PublicSiteConfig = {
 	logo_light_path: '/logo-dark.png',
 	favicon_path: '/favicon.ico',
 	refresh_interval_ms: 5000,
-	services: { magnum: false, manila: false, zun: false, k3s: false, trove: false, swift: false, barbican: false },
+	services: { magnum: false, manila: false, zun: false, k3s: false, trove: false, swift: false, barbican: false, waygate: false, chat: false, mcp: false },
 	runtime: {
 		api_base: '',
 		s3_base: '',

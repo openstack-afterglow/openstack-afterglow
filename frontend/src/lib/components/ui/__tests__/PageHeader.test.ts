@@ -28,11 +28,12 @@ describe('PageHeader', () => {
 		expect(container.querySelector('p')).toBeNull();
 	});
 
-	it('keeps header actions wrapped through tablet and restores the row on desktop', () => {
+	it('keeps actions wrapping while the header becomes a desktop row', () => {
 		expect(pageHeaderSource).toContain('flex-direction: column');
 		expect(pageHeaderSource).toContain('flex-wrap: wrap');
 		expect(pageHeaderSource).toContain('@media (min-width: 1024px)');
 		expect(pageHeaderSource).toContain('flex-direction: row');
-		expect(pageHeaderSource).toContain('flex-wrap: nowrap');
+		expect(pageHeaderSource).toContain('max-width: 60%');
+		expect(pageHeaderSource).not.toContain('flex-wrap: nowrap');
 	});
 });

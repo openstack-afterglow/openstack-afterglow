@@ -129,5 +129,4 @@ Prometheus SD(`/api/v1/sd/...`)와 VM 에이전트용 baked 경로는 별도의 
 
 ## 아키텍처 문서
 
-시스템 전체 구조, 인증 흐름, VM 생성/ k3s 프로비저닝 / Union 레이어 라이프사이클 시퀀스는
-[아키텍처](architecture.md)를, 모듈 간 관계는 [클래스·workflow 다이어그램](class-diagrams/)을 참고하세요.
+현재 시스템 경계·ownership·runtime·데이터 정본은 [루트 `ARCHITECTURE.md`](https://github.com/openstack-afterglow/openstack-afterglow/blob/main/ARCHITECTURE.md)를 참고하세요. 이 사이트의 [아키텍처 상세](architecture.md)는 도메인별 문서 진입점이며 전체 root snapshot의 복사본이 아닙니다. 모듈 관계는 [클래스·workflow 다이어그램](class-diagrams/)에서 확인할 수 있습니다.

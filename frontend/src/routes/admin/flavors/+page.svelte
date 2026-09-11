@@ -96,16 +96,16 @@
 	});
 </script>
 
-<div class="p-4 md:p-8 max-w-7xl mx-auto">
+<div class="p-4 md:p-6 max-w-7xl mx-auto">
 	<PageHeader breadcrumb="COMPUTE / FLAVORS" title="Flavor">
 		{#snippet actions()}
 			<button
 				onclick={() => (showCreate = true)}
-				class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg transition-colors"
+				class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg transition-colors"
 			>+ 생성</button>
 			<button
 				onclick={() => (showGpuCatalog = true)}
-				class="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm font-medium rounded-lg transition-colors"
+				class="px-4 py-2 bg-surface-sunken hover:bg-surface-selected text-ink-2 text-sm font-medium rounded-lg transition-colors"
 			>GPU 장치 카탈로그</button>
 			<AutoRefreshControl
 				bind:active={ar.active}
@@ -121,14 +121,14 @@
 					load();
 				}}
 			/>
-			<div class="flex items-center gap-1 text-xs text-gray-500 max-md:hidden">
+			<div class="flex items-center gap-1 text-xs text-ink-3 max-md:hidden">
 				표시:
 				{#each [10, 20, 30] as n}
 					<button
 						onclick={() => { pageSize = n; }}
 						class="px-2 py-0.5 rounded {pageSize === n
-							? 'bg-blue-600 text-white'
-							: 'bg-gray-800 hover:bg-gray-700 text-gray-400'}"
+							? 'bg-action-warm text-action-on-warm'
+							: 'bg-surface-sunken hover:bg-surface-selected text-ink-2'}"
 					>{n}</button>
 				{/each}
 			</div>

@@ -11,7 +11,6 @@
   import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
   import SlidePanel from '$lib/components/SlidePanel.svelte';
   import NetworkDetailPanel from '$lib/components/NetworkDetailPanel.svelte';
-  import PageHeader from '$lib/components/ui/PageHeader.svelte';
   import BulkSelectionOverlay, { type BulkSelectionAction } from '$lib/components/ui/BulkSelectionOverlay.svelte';
   import FloatingIpAllocateModal from '$lib/components/network/FloatingIpAllocateModal.svelte';
   import NetworkCreateModal from '$lib/components/dashboard/network/networks/NetworkCreateModal.svelte';
@@ -20,6 +19,7 @@
   import { toast } from '$lib/stores/toast';
   import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
   import { executeBulkMutations, partitionBulkIds } from '$lib/utils/bulkActions';
+  import { Alert, Button, EmptyState, PageHeader, PageShell, ResourceToolbar } from '$lib/components/ui';
 
   let networks = $state<Network[]>([]);
   let floatingIps = $state<FloatingIp[]>([]);
@@ -206,8 +206,13 @@
 
 <NetworkCreateModal bind:open={showModal} {creating} error={createError} onCreate={createNetwork} />
 
-<div class="bulk-selection-page p-4 md:p-8">
+<PageShell class="bulk-selection-page space-y-4">
   <PageHeader breadcrumb="NETWORK / NETWORKS" title="네트워크">
+    {#snippet actions()}
+      <Button onclick={() => showModal = true} variant="primary">+ 네트워크 생성</Button>
+    {/snippet}
+  </PageHeader>
+  <ResourceToolbar label="네트워크 목록 도구">
     {#snippet actions()}
       <AutoRefreshControl
         bind:active={ar.active}
@@ -216,19 +221,15 @@
         {refreshing}
         onManualRefresh={forceRefresh}
       />
-      <button onclick={() => showModal = true} class="bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">+ 네트워크 생성</button>
     {/snippet}
-  </PageHeader>
+  </ResourceToolbar>
 
-  {#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
+  {#if error}<Alert tone="danger">{error}</Alert>{/if}
 
   {#if loading}
     <LoadingSkeleton variant="table" rows={5} />
   {:else if networks.length === 0 && floatingIps.length === 0}
-    <div class="text-center py-20 text-gray-600">
-      <div class="text-5xl mb-4">🌐</div>
-      <p class="text-lg">네트워크가 없습니다</p>
-    </div>
+    <EmptyState headline="네트워크가 없습니다" description="프로젝트의 첫 네트워크를 생성하세요." />
   {:else}
     <div class="flex flex-col gap-4">
       <NetworksTableCard
@@ -252,7 +253,7 @@
       />
     </div>
   {/if}
-</div>
+</PageShell>
 
 <BulkSelectionOverlay
   count={selection.count}
@@ -268,7 +269,7 @@
 />
 
 {#if selectedNetworkId}
-  <SlidePanel onClose={closeNetworkPanel} width="w-full md:w-[60vw] max-w-2xl">
+  <SlidePanel onClose={closeNetworkPanel} ariaLabel="네트워크 상세" width="w-full md:w-[60vw] max-w-2xl">
     <NetworkDetailPanel
       networkId={selectedNetworkId} apiBase="/api/v1/networks"
       onClose={closeNetworkPanel} token={tok()} projectId={pid()}

@@ -76,7 +76,7 @@
 	});
 </script>
 
-<p class="text-sm text-gray-400 mb-4">
+<p class="text-sm text-ink-2 mb-4">
 	선택한 레이어는 첫 부팅 시 cloud-init으로 자동 마운트됩니다.
 </p>
 
@@ -99,14 +99,14 @@
 			onclick={() => { if (!locked) onToggle(lib.id, lib.depends_on); }}
 			disabled={locked}
 			class="w-full text-left flex items-center gap-3 p-4 rounded-xl border transition-all {selected_
-				? 'border-blue-500 bg-blue-900/10'
-				: 'border-gray-700 bg-gray-900 hover:border-gray-500'} {locked ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}"
+				? 'border-action-warm bg-surface-selected/10'
+				: 'border-line-2 bg-surface-base hover:border-line-2'} {locked ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}"
 		>
 			<!-- 체크박스 -->
 			<div class="w-5 h-5 rounded flex-shrink-0 flex items-center justify-center border transition-colors
-				{selected_ ? 'bg-blue-500 border-blue-500' : 'border-gray-600 bg-gray-800'}">
+				{selected_ ? 'bg-action-warm border-action-warm' : 'border-line-2 bg-surface-sunken'}">
 				{#if selected_}
-					<svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<svg class="w-3.5 h-3.5 text-ink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/>
 					</svg>
 				{/if}
@@ -115,17 +115,17 @@
 			<!-- 이름 + 배지 + 의존성 -->
 			<div class="flex-1 min-w-0">
 				<div class="flex items-center gap-2 flex-wrap">
-					<span class="font-medium text-white text-sm">{lib.name}</span>
+					<span class="font-medium text-ink-0 text-sm">{lib.name}</span>
 					{#if lib.version}
-						<span class="font-mono text-[11px] text-gray-500 px-1.5 py-0.5 rounded bg-gray-800 border border-gray-700">{lib.version}</span>
+						<span class="font-mono text-[11px] text-ink-3 px-1.5 py-0.5 rounded bg-surface-sunken border border-line-2">{lib.version}</span>
 					{/if}
 					{#if lib.size_bytes}
-						<span class="text-[11px] text-gray-500 ml-auto flex-shrink-0">{formatSize(lib.size_bytes)}</span>
+						<span class="text-[11px] text-ink-3 ml-auto flex-shrink-0">{formatSize(lib.size_bytes)}</span>
 					{/if}
 				</div>
 				{#if lib.depends_on.length > 0}
 					<div class="flex items-center gap-1.5 flex-wrap mt-1.5">
-						<span class="text-[11px] text-gray-500">요구사항:</span>
+						<span class="text-[11px] text-ink-3">요구사항:</span>
 						{#each lib.depends_on as dep}
 							{@const met = selected.includes(dep)}
 							<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full font-mono text-[10.5px]
@@ -152,14 +152,14 @@
 
 <!-- 하단 summary strip -->
 {#if libraries.length > 0}
-	<div class="flex items-center gap-3 flex-wrap px-4 py-3 rounded-lg bg-gray-900 border border-gray-800 text-xs text-gray-400 mt-4">
-		<span>선택 <b class="text-white font-mono font-semibold">{selectedCount}</b>개 / {libraries.length}개</span>
+	<div class="flex items-center gap-3 flex-wrap px-4 py-3 rounded-lg bg-surface-base border border-line text-xs text-ink-2 mt-4">
+		<span>선택 <b class="text-ink-0 font-mono font-semibold">{selectedCount}</b>개 / {libraries.length}개</span>
 		{#if totalSize}
-			<span class="text-gray-700">·</span>
-			<span>OverlayFS 추가 디스크 <b class="text-white font-mono">{totalSize}</b></span>
+			<span class="text-ink-3">·</span>
+			<span>OverlayFS 추가 디스크 <b class="text-ink-0 font-mono">{totalSize}</b></span>
 		{/if}
 		{#if selectedCount > 0}
-			<span class="text-gray-700">·</span>
+			<span class="text-ink-3">·</span>
 			{#if allDepsSatisfied}
 				<span>모든 의존성 충족 <span class="text-green-400 font-semibold">✓</span></span>
 			{:else}

@@ -37,7 +37,7 @@
 </script>
 
 <div
-	class="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
+	class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 	onclick={onClose}
 	role="dialog"
 	aria-modal="true"
@@ -45,12 +45,12 @@
 	onkeydown={handleKeydown}
 >
 	<div
-		class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-md mx-4 shadow-2xl"
+		class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]"
 		onclick={(e) => e.stopPropagation()}
 		role="none"
 		onkeydown={(e) => e.stopPropagation()}
 	>
-		<h2 class="text-lg font-semibold text-white mb-4">파일 업로드</h2>
+		<h2 class="text-lg font-semibold text-ink-0 mb-4">파일 업로드</h2>
 
 		<div class="space-y-3">
 			<input
@@ -60,7 +60,7 @@
 					files = (e.target as HTMLInputElement).files;
 					error = '';
 				}}
-				class="w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:bg-gray-700 file:text-white hover:file:bg-gray-600"
+				class="w-full text-sm text-ink-2 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:bg-surface-selected file:text-ink-0 hover:file:bg-surface-selected"
 			/>
 			{#if error}
 				<p class="text-red-400 text-xs">{error}</p>
@@ -70,12 +70,12 @@
 		<div class="flex justify-end gap-2 mt-5">
 			<button
 				onclick={onClose}
-				class="px-4 py-2 text-sm text-gray-400 hover:text-white border border-gray-700 rounded-lg transition-colors"
+				class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 border border-line-2 rounded-lg transition-colors"
 			>취소</button>
 			<button
 				onclick={enqueue}
 				disabled={!files || files.length === 0}
-				class="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded-lg transition-colors"
+				class="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:bg-surface-selected disabled:text-ink-3 text-ink-0 rounded-lg transition-colors"
 			>업로드</button>
 		</div>
 	</div>

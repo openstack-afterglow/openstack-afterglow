@@ -163,19 +163,19 @@
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if hypervisors.length === 0}
-		<div class="text-gray-600 text-sm">하이퍼바이저가 없습니다</div>
+		<div class="text-ink-3 text-sm">하이퍼바이저가 없습니다</div>
 	{:else}
 		{#if gpuTypes.length > 0}
 			<div class="flex items-center gap-2 mb-3 flex-wrap">
-				<span class="text-xs text-gray-500">GPU 필터:</span>
+				<span class="text-xs text-ink-3">GPU 필터:</span>
 				{#each gpuTypes as gt (gt.device_name)}
 					<button
 						onclick={() => toggleGpuType(gt.device_name)}
-						class="text-xs px-2.5 py-1 rounded transition-colors {selectedGpuTypes.has(gt.device_name) ? 'bg-blue-900/50 text-blue-300 border border-blue-500/50' : 'text-gray-400 hover:text-white border border-gray-800'}"
-					>{gt.device_name} <span class="text-gray-500">{gt.used}/{gt.total}</span></button>
+						class="text-xs px-2.5 py-1 rounded transition-colors {selectedGpuTypes.has(gt.device_name) ? 'bg-surface-selected/50 text-action-warm border border-action-warm/50' : 'text-ink-2 hover:text-ink-0 border border-line'}"
+					>{gt.device_name} <span class="text-ink-3">{gt.used}/{gt.total}</span></button>
 				{/each}
 				{#if selectedGpuTypes.size > 0}
-					<button onclick={() => (selectedGpuTypes = new Set())} class="text-xs text-gray-500 hover:text-white transition-colors">✕ 초기화</button>
+					<button onclick={() => (selectedGpuTypes = new Set())} class="text-xs text-ink-3 hover:text-ink-0 transition-colors">✕ 초기화</button>
 				{/if}
 			</div>
 		{/if}
@@ -204,7 +204,7 @@
 </div>
 
 {#if selectedInstanceId}
-	<SlidePanel onClose={closeInstanceDetail}>
+	<SlidePanel onClose={closeInstanceDetail} ariaLabel="하이퍼바이저 인스턴스 상세">
 		<InstanceDetailPanel instanceId={selectedInstanceId} adminProjectId={selectedProjectId} onClose={closeInstanceDetail} showHost={true} />
 	</SlidePanel>
 {/if}

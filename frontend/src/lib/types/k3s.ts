@@ -1,3 +1,5 @@
+import type { FlavorEligibility } from './flavor';
+
 export interface DashboardK3sStats {
   total: number;
   active: number;
@@ -25,9 +27,13 @@ export interface K3sCluster {
 	master_count?: number;
 	stampede_enabled?: boolean;
 }
-export interface K3sFlavor { id: string; name: string; vcpus: number; ram: number; disk: number; extra_specs?: Record<string, string>; gpu_count?: number; }
+export interface K3sFlavor { id: string; name: string; vcpus: number; ram: number; disk: number; extra_specs?: Record<string, string>; gpu_count?: number; eligibility?: FlavorEligibility | null; }
 export interface K3sNetwork { id: string; name: string; is_external: boolean; }
 export interface K3sKeypair { name: string; }
+
+export interface CloudShellTicket {
+	ticket: string;
+}
 
 export interface K3sNodeHealth {
 	name: string;

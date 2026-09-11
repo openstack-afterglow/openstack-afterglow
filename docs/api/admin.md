@@ -38,7 +38,7 @@ nav_order: 20
 | `GET` | `/api/v1/admin/overview/projects` | 프로젝트별 컴퓨트/스토리지 쿼터·사용량·GPU 인스턴스 수 |
 | `GET` | `/api/v1/admin/monitoring/summary` | 서비스 상태·리소스·알림을 종합한 모니터링 요약 |
 | `GET` | `/api/v1/admin/notifications` | 관리자 알림(이상 상태·경고) 목록 |
-| `GET` | `/api/v1/admin/topology` | 전체 프로젝트 네트워크/라우터/인스턴스 토폴로지 (`TopologyData`) |
+| `GET` | `/api/v1/admin/topology` | 전체 프로젝트 네트워크/라우터/인스턴스 토폴로지 (`AdminTopologyData`). 사용자용 `GET /api/v1/networks/topology` 응답에 더해 `networks[]`에 `provider_network_type` / `provider_segmentation_id` / `provider_physical_network`를 추가한다 (관리자 응답 전용). `instances[].is_database`는 Trove 전체 프로젝트 목록(`all_projects=True`)의 fixed IP 매칭으로 채우며 Trove 미배포 시 모두 `false` |
 | `GET` | `/api/v1/admin/timeseries/{resource_type}` | 리소스 유형별 시계열 스냅샷 (1시간 간격) |
 | `GET` | `/api/v1/admin/version` | 백엔드/배포 버전 정보 |
 

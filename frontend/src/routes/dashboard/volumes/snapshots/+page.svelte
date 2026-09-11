@@ -7,7 +7,7 @@
   import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
   import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
   import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
-  import PageHeader from '$lib/components/ui/PageHeader.svelte';
+  import { Alert, Button, PageHeader, PageShell, ResourceToolbar } from '$lib/components/ui';
   import VolumeSnapshotCreateModal from '$lib/components/volume/snapshots/VolumeSnapshotCreateModal.svelte';
   import VolumeSnapshotsTable from '$lib/components/volume/snapshots/VolumeSnapshotsTable.svelte';
   import VolumeSnapshotsEmptyState from '$lib/components/volume/snapshots/VolumeSnapshotsEmptyState.svelte';
@@ -158,21 +158,23 @@
 </script>
 
 {#if !volumeSnapshotsEnabled}
-  <div class="p-4 md:p-8">
+  <PageShell>
     <BetaFeatureGate title="볼륨 스냅샷은 베타 기능입니다" />
-  </div>
+  </PageShell>
 {:else}
 <VolumeSnapshotCreateModal bind:open={showModal} {volumes} onCreate={createSnapshot} />
 
-<div class="bulk-selection-page p-4 md:p-8">
+<PageShell class="bulk-selection-page space-y-4">
   <PageHeader breadcrumb="VOLUMES / SNAPSHOTS" title="볼륨 스냅샷">
     {#snippet actions()}
-      <AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} refreshing={refreshing} onManualRefresh={forceRefresh} />
-      <button onclick={openCreate} onpointerenter={prefetchVolumes} onfocus={prefetchVolumes} class="bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">+ 스냅샷 생성</button>
+      <Button onclick={openCreate} onintent={prefetchVolumes} variant="primary">+ 스냅샷 생성</Button>
     {/snippet}
   </PageHeader>
+  <ResourceToolbar label="볼륨 스냅샷 목록 도구">
+    {#snippet actions()}<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} refreshing={refreshing} onManualRefresh={forceRefresh} />{/snippet}
+  </ResourceToolbar>
 
-  {#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
+  {#if error}<Alert tone="danger">{error}</Alert>{/if}
   {#if loading}
     <LoadingSkeleton variant="table" rows={4} />
   {:else if snapshots.length === 0}
@@ -181,5 +183,5 @@
     <VolumeSnapshotsTable {snapshots} {deleting} selectedIds={selection.ids} selectableIds={selectableIds} selectionDisabled={bulkBusy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} onDelete={deleteSnapshot} />
     <BulkSelectionOverlay count={selection.count} ariaLabel="선택한 볼륨 스냅샷 일괄 작업" actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
   {/if}
-</div>
+</PageShell>
 {/if}

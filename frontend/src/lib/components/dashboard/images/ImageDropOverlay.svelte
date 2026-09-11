@@ -47,8 +47,8 @@
 />
 
 {#if active}
-	<div class="fixed inset-0 z-40 bg-blue-900/20 border-2 border-dashed border-blue-500 pointer-events-none flex items-center justify-center">
-		<div class="bg-gray-900 border border-blue-600 rounded-xl px-8 py-5 text-blue-300 text-base font-medium shadow-2xl">
+	<div class="fixed inset-0 z-40 bg-surface-selected/20 border-2 border-dashed border-action-warm pointer-events-none flex items-center justify-center">
+		<div class="bg-surface-base border border-action-warm rounded-xl px-8 py-5 text-action-warm text-base font-medium shadow-[var(--shadow-restraint)]">
 			이미지 파일을 놓으면 업로드 모달이 열립니다
 		</div>
 	</div>

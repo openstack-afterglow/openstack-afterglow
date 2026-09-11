@@ -28,18 +28,20 @@ async def list_flavors(
         return await asyncio.to_thread(nova.list_flavors, conn)
 
     all_flavors = await cache.cached_call(key, cache.ttl_static(), _load, enabled=cm.enabled, refresh=cm.refresh)
-    from app.services.flavor_eligibility import evaluate_project_flavors
+    from app.services.flavor_eligibility import evaluate_project_flavors, is_flavor_frontend_visible
     from app.services.gpu_inventory import is_gpu_flavor
 
+    visible_flavors = [flavor for flavor in all_flavors if is_flavor_frontend_visible(flavor)]
+
     try:
-        evaluated = await evaluate_project_flavors(conn, pid, all_flavors)
+        evaluated = await evaluate_project_flavors(conn, pid, visible_flavors)
         has_gpu_authority_error = any(
             any(b.code == "gpu_quota_unavailable" for b in (f.eligibility.blockers if f.eligibility else []))
             for f in evaluated
             if is_gpu_flavor(f)
         )
         if has_gpu_authority_error:
-            return [f for f in all_flavors if not is_gpu_flavor(f)]
+            return [f for f in visible_flavors if not is_gpu_flavor(f)]
         return evaluated
     except Exception:
-        return [f for f in all_flavors if not is_gpu_flavor(f)]
+        return [f for f in visible_flavors if not is_gpu_flavor(f)]

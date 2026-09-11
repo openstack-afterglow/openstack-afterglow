@@ -45,25 +45,25 @@
 	}
 </script>
 
-<section class="bg-gray-900 border border-gray-800 rounded-lg p-5 mb-4">
+<section class="bg-surface-base border border-line rounded-lg p-5 mb-4">
 	<div class="flex items-center justify-between mb-4">
-		<h2 class="font-semibold text-white">인터페이스 ({router.interfaces.length})</h2>
+		<h2 class="font-semibold text-ink-0">인터페이스 ({router.interfaces.length})</h2>
 		<button
 			onclick={() => showAddInterface = !showAddInterface}
-			class="text-blue-400 hover:text-blue-300 text-xs px-2 py-1 rounded border border-blue-900 hover:border-blue-700 transition-colors"
+			class="text-action-warm hover:text-action-warm-hover text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm transition-colors"
 		>+ 인터페이스 추가</button>
 	</div>
 
 	{#if showAddInterface}
-		<div class="mb-4 p-4 bg-gray-800/60 border border-gray-700 rounded-lg">
+		<div class="mb-4 p-4 bg-surface-sunken/60 border border-line-2 rounded-lg">
 			<div class="flex gap-2 mb-2">
-				<select bind:value={selectedNetId} class="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200">
+				<select bind:value={selectedNetId} class="flex-1 bg-surface-sunken border border-line-2 rounded px-3 py-2 text-sm text-ink-1">
 					<option value="">네트워크 선택</option>
 					{#each availableNetworks as net}
 						<option value={net.id}>{net.name || net.id.slice(0, 12)}</option>
 					{/each}
 				</select>
-				<select bind:value={selectedSubnetId} disabled={!allSubnets.length} class="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 disabled:opacity-50">
+				<select bind:value={selectedSubnetId} disabled={!allSubnets.length} class="flex-1 bg-surface-sunken border border-line-2 rounded px-3 py-2 text-sm text-ink-1 disabled:opacity-50">
 					<option value="">서브넷 선택</option>
 					{#each allSubnets as subnet}
 						<option value={subnet.id}>{subnet.name || subnet.cidr}</option>
@@ -74,27 +74,27 @@
 				<button
 					onclick={handleAdd}
 					disabled={!selectedSubnetId || saving}
-					class="bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 text-white text-sm px-3 py-2 rounded transition-colors"
+					class="bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-action-on-warm text-sm px-3 py-2 rounded transition-colors"
 				>추가</button>
-				<button onclick={() => { showAddInterface = false; selectedNetId = ''; }} class="text-gray-400 hover:text-gray-200 text-sm px-2">취소</button>
+				<button onclick={() => { showAddInterface = false; selectedNetId = ''; }} class="text-ink-2 hover:text-ink-1 text-sm px-2">취소</button>
 			</div>
 		</div>
 	{/if}
 
 	{#if router.interfaces.length === 0}
-		<p class="text-sm text-gray-600">연결된 인터페이스가 없습니다.</p>
+		<p class="text-sm text-ink-3">연결된 인터페이스가 없습니다.</p>
 	{:else}
 		<div class="space-y-2">
 			{#each router.interfaces as iface}
-				<div class="flex items-center justify-between bg-gray-800/50 rounded-lg px-4 py-3">
+				<div class="flex items-center justify-between bg-surface-sunken/50 rounded-lg px-4 py-3">
 					<div class="text-sm">
-						<div class="text-white font-medium">{iface.subnet_name || iface.subnet_id.slice(0, 12)}</div>
-						<div class="text-gray-500 text-xs font-mono mt-0.5">{iface.ip_address}</div>
+						<div class="text-ink-0 font-medium">{iface.subnet_name || iface.subnet_id.slice(0, 12)}</div>
+						<div class="text-ink-3 text-xs font-mono mt-0.5">{iface.ip_address}</div>
 					</div>
 					<button
 						onclick={() => onRemove(iface.subnet_id)}
 						disabled={saving}
-						class="text-red-400 hover:text-red-300 disabled:text-gray-600 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 disabled:border-gray-700 transition-colors"
+						class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors"
 					>제거</button>
 				</div>
 			{/each}

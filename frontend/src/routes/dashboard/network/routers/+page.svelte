@@ -140,7 +140,7 @@
         refreshing={refreshing}
         onManualRefresh={forceRefresh}
       />
-      <button onclick={openCreate} onpointerenter={prefetchNetworks} onfocus={prefetchNetworks} class="bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">+ 라우터 생성</button>
+      <button onclick={openCreate} onpointerenter={prefetchNetworks} onfocus={prefetchNetworks} class="bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">+ 라우터 생성</button>
     {/snippet}
   </PageHeader>
 
@@ -149,7 +149,7 @@
   {#if loading}
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
       {#each Array(4) as _}
-        <div class="animate-pulse h-44 bg-gray-900 border border-gray-800 rounded-2xl"></div>
+        <div class="animate-pulse h-44 bg-surface-base border border-line rounded-lg"></div>
       {/each}
     </div>
   {:else if routers.length === 0}
@@ -176,7 +176,7 @@
 />
 
 {#if selectedRouterId}
-  <SlidePanel onClose={closeRouterPanel} width="w-full md:w-[60vw] max-w-2xl">
+  <SlidePanel onClose={closeRouterPanel} ariaLabel="라우터 상세" width="w-full md:w-[60vw] max-w-2xl">
     <RouterDetailPanel
       routerId={selectedRouterId}
       onClose={closeRouterPanel}

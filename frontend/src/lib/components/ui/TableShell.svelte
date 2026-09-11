@@ -22,11 +22,12 @@
 	.table-shell {
 		overflow-x: auto;
 		border: 1px solid var(--color-line);
-		border-radius: 0.875rem;
-		background: var(--color-surface-raised);
+		border-radius: 0.5rem;
+		background: var(--color-surface-base);
 	}
 	.table-shell :global(table) {
 		width: 100%;
+		min-width: max-content;
 		border-collapse: collapse;
 	}
 	.table-shell :global(thead) {
@@ -38,14 +39,26 @@
 		border-bottom: 1px solid var(--color-line);
 		text-align: left;
 	}
+	.table-shell :global(th) {
+		font-size: 0.75rem;
+		font-weight: 500;
+	}
+	.table-shell :global(td) {
+		font-size: 0.8125rem;
+	}
 	.table-density-normal :global(th),
-	.table-density-normal :global(td) { padding: 0.75rem 1rem; }
+	.table-density-normal :global(td) { min-height: 2.75rem; padding: 0.75rem 1rem; }
 	.table-density-compact :global(th),
-	.table-density-compact :global(td) { padding: 0.5rem 0.75rem; }
-	.table-shell :global(tbody tr:hover) { background: color-mix(in oklab, var(--color-surface-sunken) 55%, transparent); }
+	.table-density-compact :global(td) { height: 2.5rem; padding: 0.5rem 0.75rem; }
+	.table-shell :global(tbody tr:hover) { background: var(--color-surface-sunken); }
+	.table-shell :global(tbody tr[data-selected='true']) { background: var(--color-surface-selected); }
 	.table-sticky :global(thead) {
 		position: sticky;
 		top: 0;
 		z-index: 2;
+	}
+	@media (pointer: coarse) {
+		.table-density-compact :global(th),
+		.table-density-compact :global(td) { height: 2.75rem; }
 	}
 </style>

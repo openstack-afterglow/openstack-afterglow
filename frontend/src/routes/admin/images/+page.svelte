@@ -132,16 +132,16 @@
 	onDestroy(() => { loadGeneration += 1; nextPrefetch.cancel(); });
 </script>
 
-<div class="p-4 md:p-8 max-w-7xl mx-auto">
+<div class="p-4 md:p-6 max-w-7xl mx-auto">
 	<PageHeader breadcrumb="COMPUTE / IMAGES" title="이미지">
 		{#snippet actions()}
 			<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds}
 				intervalOptions={ar.intervalOptions} refreshing={refreshing} onManualRefresh={forceRefresh} />
-			<div class="flex items-center gap-1 text-xs text-gray-500 max-md:hidden">
+			<div class="flex items-center gap-1 text-xs text-ink-3 max-md:hidden">
 				표시:
 				{#each [10, 20, 30] as n}
 					<button onclick={() => { pageSize = n; markerStack = []; nextMarker = null; load(); }}
-						class="px-2 py-0.5 rounded {pageSize === n ? 'bg-blue-600 text-white' : 'bg-gray-800 hover:bg-gray-700 text-gray-400'}"
+						class="px-2 py-0.5 rounded {pageSize === n ? 'bg-action-warm text-ink-0' : 'bg-surface-sunken hover:bg-surface-selected text-ink-2'}"
 					>{n}</button>
 				{/each}
 			</div>
@@ -160,7 +160,7 @@
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={8} />
 	{:else if images.length === 0}
-		<div class="text-gray-600 text-sm">이미지가 없습니다</div>
+		<div class="text-ink-3 text-sm">이미지가 없습니다</div>
 	{:else}
 		<AdminImagesTable {images} {selectedImageId} {togglingId} {markerStack} {nextMarker}
 			onOpenDetail={(img) => { selectedImageId = img.id; }}
@@ -173,7 +173,7 @@
 </div>
 
 {#if selectedImageId}
-	<SlidePanel onClose={() => { selectedImageId = null; }} width="w-full md:w-[50vw] max-w-2xl">
+	<SlidePanel onClose={() => { selectedImageId = null; }} ariaLabel="관리자 이미지 상세" width="w-full md:w-[50vw] max-w-2xl">
 		{#await import('$lib/components/ImageDetailPanel.svelte') then { default: Panel }}
 			<Panel imageId={selectedImageId} onClose={() => { selectedImageId = null; }} isAdmin={true} />
 		{/await}

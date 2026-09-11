@@ -61,9 +61,11 @@
 	import AgentHubModal from './AgentHubModal.svelte';
 	import ChatProjectsView from './ChatProjectsView.svelte';
 	import CreateProjectDialog from './CreateProjectDialog.svelte';
-	import ChatSettingsOverlay from './ChatSettingsOverlay.svelte';
 	import ChatSourcesPanel from './ChatSourcesPanel.svelte';
 	import ModelPickerOverlay from './ModelPickerOverlay.svelte';
+	import ChatSettingsOverlay, {
+		type ChatSettingsSection
+	} from './ChatSettingsOverlay.svelte';
 	import ConversationWorkspacePicker from './ConversationWorkspacePicker.svelte';
 
 	import { MOTION_DURATION_MS } from '$lib/design/tokens';
@@ -112,17 +114,19 @@
 	}
 
 
-	type ChatSettingsSection = 'usage' | 'mcp';
-
 	interface Props {
 		/** Undefined is the normal chat route; null is the project index. */
 		projectRoute?: number | null;
 		/** One-shot workspace assignment for a newly created conversation. */
 		initialWorkspaceId?: number | null;
-		/** Settings section to open when the route is reached from a handled callback. */
-		initialSettingsSection?: ChatSettingsSection;
+		/** Opens the settings overlay on first render for OAuth/deep-link entry. */
+		initialSettingsSection?: ChatSettingsSection | null;
 	}
-	let { projectRoute = undefined, initialWorkspaceId = null, initialSettingsSection = 'usage' }: Props = $props();
+	let {
+		projectRoute = undefined,
+		initialWorkspaceId = null,
+		initialSettingsSection = null
+	}: Props = $props();
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
 
@@ -231,22 +235,22 @@
 	let agentHubOpen = $state(false);
 	const modelLocked = $derived(activeAgent !== null);
 
-	// 프로젝트(workspace) 관리 · 설정 오버레이
+	// 프로젝트(workspace) 관리
 	let workspaces = $state<Workspace[]>([]);
 	let view = $state<'chat' | 'projects'>('chat');
 	let projectsInitialMode = $state<'grid'>('grid');
 	let projectsInitialWorkspaceId = $state<number | null>(null);
 	let createProjectDialogOpen = $state(false);
-	let settingsSection = $state<ChatSettingsSection>('usage');
-	let settingsOpen = $state(false);
-	$effect(() => {
-		if (initialSettingsSection === 'mcp') {
-			settingsSection = 'mcp';
-			settingsOpen = true;
-		}
-	});
 	let sourcesOpen = $state(false);
 	let modelPickerOpen = $state(false);
+	let settingsOpen = $state(false);
+	let settingsSection = $state<ChatSettingsSection>('usage');
+
+	$effect(() => {
+		if (!initialSettingsSection) return;
+		settingsSection = initialSettingsSection;
+		settingsOpen = true;
+	});
 
 	$effect(() => {
 		if (projectRoute === undefined) return;
@@ -278,13 +282,13 @@
 		persistLastModel(name);
 	}
 
-	// 사이드바 접기/펼치기 (데스크톱 토글 · 모바일 드로어). 모바일은 기본 접힘.
+	// Compact layouts use an overlay drawer; desktop keeps the navigation inline.
 	let sidebarOpen = $state(true);
 	function toggleSidebar() {
 		sidebarOpen = !sidebarOpen;
 	}
 	function isMobile(): boolean {
-		return typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches;
+		return typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches;
 	}
 	function closeSidebarOnMobile() {
 		if (isMobile()) sidebarOpen = false;
@@ -2160,12 +2164,16 @@
 	// --- 삭제 ---
 	async function deleteConversation(conv: Conversation) {
 		if (streaming || !token || !projectId) return;
+		const label = conv.title?.trim();
+		const message = label ? `'${label}' 대화를 삭제하시겠습니까?` : '대화를 삭제하시겠습니까?';
+		if (!(await confirmDialog(message))) return;
 		try {
 			await api.delete(`/api/v1/chat/conversations/${conv.id}`, token, projectId);
 			localMutationEpoch += 1;
 			pendingTitleTrackers.delete(conv.id);
 			conversations = conversations.filter((c) => c.id !== conv.id);
 			if (activeConvId === conv.id) newConversation();
+			toast.success('대화를 삭제했습니다');
 		} catch (e) {
 			error = e instanceof Error ? e.message : '삭제에 실패했습니다';
 		}
@@ -2183,16 +2191,19 @@
 		void navigator.clipboard?.writeText(text);
 	}
 
-	// 최초 1회: 모바일이면 사이드바를 접은 상태로 시작(본문 우선 표시)
+	// Keep the drawer closed below the desktop shell breakpoint and inline at desktop sizes.
 	$effect(() => {
-		untrack(() => {
-			try {
-				tempThreadId = sessionStorage.getItem(_TEMP_THREAD_KEY);
-			} catch {
-				// Browser storage is optional; no temporary content is persisted here.
-			}
-			if (isMobile()) sidebarOpen = false;
-		});
+		try {
+			tempThreadId = sessionStorage.getItem(_TEMP_THREAD_KEY);
+		} catch {
+			// Browser storage is optional; no temporary content is persisted here.
+		}
+		if (typeof window === 'undefined') return;
+		const inlineQuery = window.matchMedia('(min-width: 1024px)');
+		sidebarOpen = inlineQuery.matches;
+		const syncSidebarMode = (event: MediaQueryListEvent) => { sidebarOpen = event.matches; };
+		inlineQuery.addEventListener('change', syncSidebarMode);
+		return () => inlineQuery.removeEventListener('change', syncSidebarMode);
 	});
 
 	// 최초 로드 — 초기 동시 쿼리 폭주가 chat DB 커넥션 풀(size 5)을 고갈시켜
@@ -2440,12 +2451,6 @@
 	onChanged={loadAgents}
 />
 <AgentHubModal open={agentHubOpen} onClose={() => (agentHubOpen = false)} onCloned={loadAgents} />
-<ChatSettingsOverlay
-	open={settingsOpen}
-	onClose={() => (settingsOpen = false)}
-	{usage}
-	initialSection={settingsSection}
-/>
 <ChatSourcesPanel open={sourcesOpen} citations={allCitations} onClose={() => (sourcesOpen = false)} />
 <ModelPickerOverlay
 	open={modelPickerOpen}
@@ -2454,11 +2459,17 @@
 	onSelect={chooseModel}
 	onClose={() => (modelPickerOpen = false)}
 />
+<ChatSettingsOverlay
+	open={settingsOpen}
+	{usage}
+	initialSection={settingsSection}
+	onClose={() => (settingsOpen = false)}
+/>
 
 <style>
 	.chat-shell {
 		display: flex;
-		height: calc(100vh - 3.5rem);
+		height: calc(100dvh - var(--app-header-height));
 		width: 100%;
 		overflow: hidden;
 		background: var(--color-surface-base);
@@ -2512,7 +2523,7 @@
 		margin: 0.15rem 0;
 		background: var(--color-line);
 	}
-	@media (max-width: 768px) {
+	@media (max-width: 1023px) {
 		.chat-shell.sidebar-closed .sidebar-rail {
 			display: flex;
 			position: fixed;
@@ -2532,7 +2543,7 @@
 			display: none;
 		}
 	}
-	@media (min-width: 769px) {
+	@media (min-width: 1024px) {
 		.chat-shell.sidebar-closed .sidebar-rail {
 			display: flex;
 			flex: 0 0 3.25rem;
@@ -2556,8 +2567,8 @@
 		transition: opacity 0.2s ease;
 		cursor: pointer;
 	}
-	/* 백드롭은 모바일에서 사이드바가 열렸을 때만 */
-	@media (max-width: 768px) {
+	/* Backdrop is active whenever the compact overlay drawer is open. */
+	@media (max-width: 1023px) {
 		.sidebar-backdrop.show {
 			display: block;
 			opacity: 1;

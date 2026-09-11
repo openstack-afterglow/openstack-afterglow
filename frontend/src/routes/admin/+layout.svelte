@@ -43,20 +43,20 @@
 {#if $auth.token === null}
 	<!-- 로딩 중: 빈 화면 -->
 {:else if redirecting || !$isAdmin}
-	<div class="flex flex-col items-center justify-center min-h-screen bg-gray-950 text-gray-300">
-		<div class="text-6xl font-bold text-gray-600 mb-4">404</div>
-		<div class="text-xl font-semibold text-gray-400 mb-2">페이지를 찾을 수 없습니다</div>
-		<div class="text-sm text-gray-500">접근 권한이 없거나 존재하지 않는 페이지입니다.</div>
-		<div class="text-xs text-gray-600 mt-4">잠시 후 대시보드로 이동합니다...</div>
+	<div class="flex flex-col items-center justify-center min-h-screen bg-surface-canvas text-ink-2">
+		<div class="text-6xl font-bold text-ink-3 mb-4">404</div>
+		<div class="text-xl font-semibold text-ink-2 mb-2">페이지를 찾을 수 없습니다</div>
+		<div class="text-sm text-ink-3">접근 권한이 없거나 존재하지 않는 페이지입니다.</div>
+		<div class="text-xs text-ink-3 mt-4">잠시 후 대시보드로 이동합니다...</div>
 	</div>
 {:else}
-	<div class="flex h-screen overflow-hidden">
+	<div class="flex h-[100dvh] overflow-hidden">
 		<AdminSidebar />
-		<main class="flex-1 overflow-y-auto min-w-0 pt-14">
+		<main id="main-content" tabindex="-1" class="min-w-0 flex-1 overflow-y-auto pt-[var(--app-header-height)] focus:outline-none">
 			{@render children()}
 		</main>
 	</div>
-	{#if $wizardOpen}
-		<VmCreatePanel adminMode={true} />
-	{/if}
+{#if $wizardOpen}
+	<VmCreatePanel adminMode={true} />
+{/if}
 {/if}

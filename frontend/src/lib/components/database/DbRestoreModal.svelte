@@ -62,7 +62,7 @@
 
 {#if open && backup}
 	<div
-		class="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
+		class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 		onclick={handleClose}
 		onkeydown={(e) => e.key === 'Escape' && handleClose()}
 		role="dialog"
@@ -70,30 +70,30 @@
 		tabindex="-1"
 	>
 		<div
-			class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-md mx-4 shadow-2xl"
+			class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]"
 			onclick={(e) => e.stopPropagation()}
 			role="none"
 			onkeydown={(e) => e.stopPropagation()}
 		>
-			<h2 class="text-lg font-semibold text-white mb-1">백업에서 복원</h2>
-			<p class="text-xs text-gray-500 mb-4">백업 <span class="text-gray-300 font-medium">"{backup.name || backup.id.slice(0, 8)}"</span> 에서 새 DB 인스턴스를 생성합니다.</p>
+			<h2 class="text-lg font-semibold text-ink-0 mb-1">백업에서 복원</h2>
+			<p class="text-xs text-ink-3 mb-4">백업 <span class="text-ink-2 font-medium">"{backup.name || backup.id.slice(0, 8)}"</span> 에서 새 DB 인스턴스를 생성합니다.</p>
 
 			<div class="space-y-3">
 				<label class="flex flex-col gap-1">
-					<span class="text-xs text-gray-500">새 인스턴스 이름 <span class="text-red-400">*</span></span>
+					<span class="text-xs text-ink-3">새 인스턴스 이름 <span class="text-red-400">*</span></span>
 					<input
 						type="text"
 						bind:value={name}
 						placeholder="복원 인스턴스 이름"
-						class="bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500"
+						class="bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
 					/>
 				</label>
 
 				<label class="flex flex-col gap-1">
-					<span class="text-xs text-gray-500">Flavor <span class="text-red-400">*</span></span>
+					<span class="text-xs text-ink-3">Flavor <span class="text-red-400">*</span></span>
 					<select
 						bind:value={flavorId}
-						class="bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+						class="bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 focus:outline-none focus:border-action-warm"
 					>
 						{#if flavors.length === 0}
 							<option value="">로드 중...</option>
@@ -106,13 +106,13 @@
 				</label>
 
 				<label class="flex flex-col gap-1">
-					<span class="text-xs text-gray-500">볼륨 크기 (GB) <span class="text-xs text-gray-600">최소 {minVolume}GB</span></span>
+					<span class="text-xs text-ink-3">볼륨 크기 (GB) <span class="text-xs text-ink-3">최소 {minVolume}GB</span></span>
 					<input
 						type="number"
 						bind:value={volumeSize}
 						min={minVolume}
 						step="1"
-						class="bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+						class="bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 focus:outline-none focus:border-action-warm"
 					/>
 				</label>
 			</div>
@@ -124,14 +124,14 @@
 			<div class="flex justify-end gap-3 mt-5">
 				<button
 					onclick={handleClose}
-					class="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
+					class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors"
 				>
 					취소
 				</button>
 				<button
 					onclick={handleSubmit}
 					disabled={submitting}
-					class="px-5 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-medium rounded-lg transition-colors"
+					class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors"
 				>
 					{submitting ? '복원 중...' : '복원 시작'}
 				</button>

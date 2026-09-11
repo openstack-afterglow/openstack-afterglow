@@ -76,16 +76,16 @@
 	<div class="flex flex-col gap-6 p-6">
 		<PageHeader breadcrumb="Admin / 프로젝트" title={project.name} subtitle="프로젝트 상세">
 			{#snippet actions()}
-				<a href="/admin/projects" class="text-sm text-gray-400 hover:text-white transition-colors">← 목록</a>
+				<a href="/admin/projects" class="text-sm text-ink-2 hover:text-ink-0 transition-colors">← 목록</a>
 			{/snippet}
 		</PageHeader>
 
 		<!-- 탭 -->
-		<div class="flex gap-1 border-b border-gray-800">
+		<div class="flex gap-1 border-b border-line">
 			{#each [['overview', '개요'], ['members', '멤버'], ['activity', '활동']] as [key, label]}
 				<button
 					onclick={() => tab = key as typeof tab}
-					class="px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px {tab === key ? 'text-blue-400 border-blue-500' : 'text-gray-400 border-transparent hover:text-white'}"
+					class="px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px {tab === key ? 'text-action-warm border-action-warm' : 'text-ink-2 border-transparent hover:text-ink-0'}"
 				>
 					{label}
 				</button>
@@ -94,38 +94,38 @@
 
 		<!-- 개요 탭 -->
 		{#if tab === 'overview'}
-			<div class="bg-gray-900 border border-gray-800 rounded-2xl p-5 space-y-4">
+			<div class="bg-surface-base border border-line rounded-lg p-5 space-y-4">
 				<dl class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 					<div>
-						<dt class="text-xs text-gray-500 uppercase tracking-wide mb-1">프로젝트 ID</dt>
-						<dd class="font-mono text-sm text-gray-300">{project.id}</dd>
+						<dt class="text-xs text-ink-3 uppercase tracking-wide mb-1">프로젝트 ID</dt>
+						<dd class="font-mono text-sm text-ink-2">{project.id}</dd>
 					</div>
 					<div>
-						<dt class="text-xs text-gray-500 uppercase tracking-wide mb-1">이름</dt>
-						<dd class="text-sm text-white">{project.name}</dd>
+						<dt class="text-xs text-ink-3 uppercase tracking-wide mb-1">이름</dt>
+						<dd class="text-sm text-ink-0">{project.name}</dd>
 					</div>
 					<div>
-						<dt class="text-xs text-gray-500 uppercase tracking-wide mb-1">설명</dt>
-						<dd class="text-sm text-gray-300">{project.description || '—'}</dd>
+						<dt class="text-xs text-ink-3 uppercase tracking-wide mb-1">설명</dt>
+						<dd class="text-sm text-ink-2">{project.description || '—'}</dd>
 					</div>
 					<div>
-						<dt class="text-xs text-gray-500 uppercase tracking-wide mb-1">상태</dt>
+						<dt class="text-xs text-ink-3 uppercase tracking-wide mb-1">상태</dt>
 						<dd>
-							<span class="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full font-medium {project.enabled ? 'bg-green-900/40 text-green-400' : 'bg-gray-800 text-gray-400'}">
+							<span class="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full font-medium {project.enabled ? 'bg-green-900/40 text-green-400' : 'bg-surface-sunken text-ink-2'}">
 								{project.enabled ? '활성' : '비활성'}
 							</span>
 						</dd>
 					</div>
 					{#if project.created_at}
 						<div>
-							<dt class="text-xs text-gray-500 uppercase tracking-wide mb-1">생성일</dt>
-							<dd class="text-sm text-gray-300">{new Date(project.created_at).toLocaleString('ko-KR')}</dd>
+							<dt class="text-xs text-ink-3 uppercase tracking-wide mb-1">생성일</dt>
+							<dd class="text-sm text-ink-2">{new Date(project.created_at).toLocaleString('ko-KR')}</dd>
 						</div>
 					{/if}
 					{#if project.domain_id}
 						<div>
-							<dt class="text-xs text-gray-500 uppercase tracking-wide mb-1">도메인 ID</dt>
-							<dd class="font-mono text-sm text-gray-400">{project.domain_id}</dd>
+							<dt class="text-xs text-ink-3 uppercase tracking-wide mb-1">도메인 ID</dt>
+							<dd class="font-mono text-sm text-ink-2">{project.domain_id}</dd>
 						</div>
 					{/if}
 				</dl>
@@ -134,28 +134,28 @@
 
 		<!-- 멤버 탭 -->
 		{#if tab === 'members'}
-			<div class="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+			<div class="bg-surface-base border border-line rounded-lg overflow-hidden">
 				{#if membersLoading}
 					<div class="text-[var(--color-ink-3)] text-sm py-8 text-center">멤버를 불러오는 중...</div>
 				{:else if membersError}
 					<div class="text-[var(--color-state-danger)] text-sm py-8 text-center">{membersError}</div>
 				{:else if members.length === 0}
-					<div class="text-gray-500 text-sm py-8 text-center">멤버 없음</div>
+					<div class="text-ink-3 text-sm py-8 text-center">멤버 없음</div>
 				{:else}
 					<table class="w-full text-sm">
-						<thead class="bg-gray-900/60 text-gray-400 text-xs uppercase tracking-wide">
+						<thead class="bg-surface-base/60 text-ink-2 text-xs uppercase tracking-wide">
 							<tr>
 								<th class="px-4 py-3 text-left font-medium">사용자</th>
 								<th class="px-4 py-3 text-left font-medium">역할</th>
 								<th class="px-4 py-3 text-left font-medium">유형</th>
 							</tr>
 						</thead>
-						<tbody class="divide-y divide-gray-800">
+						<tbody class="divide-y divide-line">
 							{#each members as m (m.user_id + m.role_id)}
-								<tr class="hover:bg-gray-800/40">
-									<td class="px-4 py-3 text-white">{m.user_name}</td>
-									<td class="px-4 py-3 text-gray-300">{m.role_name}</td>
-									<td class="px-4 py-3 text-gray-400">{m.type ?? 'user'}</td>
+								<tr class="hover:bg-surface-sunken/40">
+									<td class="px-4 py-3 text-ink-0">{m.user_name}</td>
+									<td class="px-4 py-3 text-ink-2">{m.role_name}</td>
+									<td class="px-4 py-3 text-ink-2">{m.type ?? 'user'}</td>
 								</tr>
 							{/each}
 						</tbody>

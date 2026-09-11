@@ -56,13 +56,13 @@
 	}
 </script>
 
-<div class="bg-gray-900 border border-gray-800 rounded-lg p-6 mb-4">
+<div class="bg-surface-base border border-line rounded-lg p-6 mb-4">
 	<div class="flex items-center justify-between mb-4">
-		<h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wide">서브넷</h2>
+		<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide">서브넷</h2>
 		{#if !network.is_external}
 			<button
 				onclick={() => { showSubnetForm = !showSubnetForm; onClearAddError(); }}
-				class="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+				class="text-xs text-action-warm hover:text-action-warm-hover transition-colors"
 			>
 				{showSubnetForm ? '닫기' : '+ 서브넷 추가'}
 			</button>
@@ -70,41 +70,41 @@
 	</div>
 
 	{#if showSubnetForm}
-		<div class="mb-4 bg-gray-800 rounded-lg p-4 space-y-3">
+		<div class="mb-4 bg-surface-sunken rounded-lg p-4 space-y-3">
 			<div class="grid grid-cols-2 gap-3">
 				<div>
-					<label class="block text-xs text-gray-400 mb-1">이름 (선택)
+					<label class="block text-xs text-ink-2 mb-1">이름 (선택)
 						<input
 							bind:value={subnetForm.name}
 							type="text"
 							placeholder="my-subnet"
-							class="w-full bg-gray-700 border border-gray-600 rounded px-2.5 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500 mt-1"
+							class="w-full bg-surface-selected border border-line-2 rounded px-2.5 py-1.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1"
 						/>
 					</label>
 				</div>
 				<div>
-					<label class="block text-xs text-gray-400 mb-1">CIDR
+					<label class="block text-xs text-ink-2 mb-1">CIDR
 						<input
 							bind:value={subnetForm.cidr}
 							type="text"
 							placeholder="10.0.0.0/24"
-							class="w-full bg-gray-700 border border-gray-600 rounded px-2.5 py-1.5 text-white text-sm font-mono focus:outline-none focus:border-blue-500 mt-1"
+							class="w-full bg-surface-selected border border-line-2 rounded px-2.5 py-1.5 text-ink-0 text-sm font-mono focus:outline-none focus:border-action-warm mt-1"
 						/>
 					</label>
 				</div>
 				<div>
-					<label class="block text-xs text-gray-400 mb-1">게이트웨이 (선택)
+					<label class="block text-xs text-ink-2 mb-1">게이트웨이 (선택)
 						<input
 							bind:value={subnetForm.gateway}
 							type="text"
 							placeholder="10.0.0.1"
-							class="w-full bg-gray-700 border border-gray-600 rounded px-2.5 py-1.5 text-white text-sm font-mono focus:outline-none focus:border-blue-500 mt-1"
+							class="w-full bg-surface-selected border border-line-2 rounded px-2.5 py-1.5 text-ink-0 text-sm font-mono focus:outline-none focus:border-action-warm mt-1"
 						/>
 					</label>
 				</div>
 				<div class="flex items-end pb-1.5">
-					<label class="flex items-center gap-2 text-sm text-gray-300">
-						<input type="checkbox" bind:checked={subnetForm.dhcp} class="rounded border-gray-600" />
+					<label class="flex items-center gap-2 text-sm text-ink-2">
+						<input type="checkbox" bind:checked={subnetForm.dhcp} class="rounded border-line-2" />
 						DHCP 활성화
 					</label>
 				</div>
@@ -116,7 +116,7 @@
 				<button
 					onclick={handleAdd}
 					disabled={addingSubnet}
-					class="text-sm px-4 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 text-white rounded transition-colors"
+					class="text-sm px-4 py-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-action-on-warm rounded transition-colors"
 				>
 					{addingSubnet ? '추가 중...' : '서브넷 추가'}
 				</button>
@@ -127,7 +127,7 @@
 	{#if network.subnet_details.length > 0}
 		<table class="w-full text-sm">
 			<thead>
-				<tr class="border-b border-gray-800 text-gray-400 text-xs uppercase tracking-wide">
+				<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
 					<th class="text-left py-2 pr-6">이름</th>
 					<th class="text-left py-2 pr-6">CIDR</th>
 					<th class="text-left py-2 pr-6">게이트웨이</th>
@@ -139,33 +139,33 @@
 			</thead>
 			<tbody>
 				{#each network.subnet_details as subnet}
-					<tr class="border-b border-gray-800/50">
+					<tr class="border-b border-line/50">
 						{#if editingSubnetId === subnet.id}
 							<td colspan={network.is_external ? 4 : 5} class="py-3">
-								<div class="bg-gray-800 rounded-lg p-4 space-y-3">
+								<div class="bg-surface-sunken rounded-lg p-4 space-y-3">
 									<div class="grid grid-cols-2 gap-3">
 										<div>
-											<label class="block text-xs text-gray-400 mb-1">이름
+											<label class="block text-xs text-ink-2 mb-1">이름
 												<input
 													bind:value={editSubnetForm.name}
 													type="text"
-													class="w-full bg-gray-700 border border-gray-600 rounded px-2.5 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500 mt-1"
+													class="w-full bg-surface-selected border border-line-2 rounded px-2.5 py-1.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1"
 												/>
 											</label>
 										</div>
 										<div>
-											<label class="block text-xs text-gray-400 mb-1">게이트웨이
+											<label class="block text-xs text-ink-2 mb-1">게이트웨이
 												<input
 													bind:value={editSubnetForm.gateway}
 													type="text"
 													placeholder={subnet.gateway_ip ?? '없음'}
-													class="w-full bg-gray-700 border border-gray-600 rounded px-2.5 py-1.5 text-white text-sm font-mono focus:outline-none focus:border-blue-500 mt-1"
+													class="w-full bg-surface-selected border border-line-2 rounded px-2.5 py-1.5 text-ink-0 text-sm font-mono focus:outline-none focus:border-action-warm mt-1"
 												/>
 											</label>
 										</div>
 										<div class="flex items-center">
-											<label class="flex items-center gap-2 text-sm text-gray-300">
-												<input type="checkbox" bind:checked={editSubnetForm.dhcp} class="rounded border-gray-600" />
+											<label class="flex items-center gap-2 text-sm text-ink-2">
+												<input type="checkbox" bind:checked={editSubnetForm.dhcp} class="rounded border-line-2" />
 												DHCP 활성화
 											</label>
 										</div>
@@ -176,25 +176,25 @@
 									<div class="flex justify-end gap-2">
 										<button
 											onclick={() => { editingSubnetId = null; }}
-											class="text-xs text-gray-400 hover:text-gray-200 px-3 py-1.5 transition-colors"
+											class="text-xs text-ink-2 hover:text-ink-1 px-3 py-1.5 transition-colors"
 										>취소</button>
 										<button
 											onclick={handleSave}
 											disabled={savingSubnet}
-											class="text-xs px-4 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 text-white rounded transition-colors"
+											class="text-xs px-4 py-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-action-on-warm rounded transition-colors"
 										>{savingSubnet ? '저장 중...' : '저장'}</button>
 									</div>
 								</div>
 							</td>
 						{:else}
-							<td class="py-2 pr-6 text-gray-300"><span class="max-md:block max-md:max-w-[66vw] max-md:truncate" title={subnet.name || subnet.id}>{subnet.name || '-'}</span></td>
-							<td class="py-2 pr-6 text-gray-300 font-mono text-xs">{subnet.cidr}</td>
-							<td class="py-2 pr-6 text-gray-400 font-mono text-xs">{subnet.gateway_ip ?? '-'}</td>
+							<td class="py-2 pr-6 text-ink-2"><span class="max-md:block max-md:max-w-[66vw] max-md:truncate" title={subnet.name || subnet.id}>{subnet.name || '-'}</span></td>
+							<td class="py-2 pr-6 text-ink-2 font-mono text-xs">{subnet.cidr}</td>
+							<td class="py-2 pr-6 text-ink-2 font-mono text-xs">{subnet.gateway_ip ?? '-'}</td>
 							<td class="py-2 pr-4">
 								{#if subnet.dhcp_enabled}
 									<span class="px-1.5 py-0.5 bg-green-900/30 text-green-400 rounded text-xs">활성</span>
 								{:else}
-									<span class="text-gray-600 text-xs">-</span>
+									<span class="text-ink-3 text-xs">-</span>
 								{/if}
 							</td>
 							{#if !network.is_external}
@@ -202,7 +202,7 @@
 									<div class="flex items-center justify-end gap-1">
 										<button
 											onclick={() => startEditSubnet(subnet)}
-											class="text-xs text-blue-400 hover:text-blue-300 px-2 py-1 border border-blue-900 hover:border-blue-700 rounded transition-colors"
+											class="text-xs text-action-warm hover:text-action-warm-hover px-2 py-1 border border-action-warm hover:border-action-warm rounded transition-colors"
 										>편집</button>
 										<button
 											onclick={() => onDelete(subnet.id, subnet.name)}
@@ -217,6 +217,6 @@
 			</tbody>
 		</table>
 	{:else}
-		<p class="text-sm text-gray-500">서브넷 없음</p>
+		<p class="text-sm text-ink-3">서브넷 없음</p>
 	{/if}
 </div>
