@@ -2,15 +2,17 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { auth } from '$lib/stores/auth';
 
-const mocks = vi.hoisted(() => ({ get: vi.fn() }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), goto: vi.fn() }));
 vi.mock('$lib/api/client', () => ({
 	api: { get: mocks.get, post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
 	ApiError: class ApiError extends Error {}
 }));
 
-import ChatSettingsOverlay from '../ChatSettingsOverlay.svelte';
+vi.mock('$app/navigation', () => ({ goto: mocks.goto }));
 
-describe('ChatSettingsOverlay', () => {
+import ChatSettings from '../ChatSettings.svelte';
+
+describe('ChatSettings', () => {
 	beforeEach(() => {
 		mocks.get.mockReset();
 		auth.set({
@@ -18,7 +20,20 @@ describe('ChatSettingsOverlay', () => {
 			userId: 'user-1', username: 'tester', projectId: 'project-1', projectName: 'Project',
 			availableProjects: [], roles: [], isSystemAdmin: false, federated: false
 		});
+		mocks.goto.mockReset();
 		mocks.get.mockImplementation((path: string) => {
+			if (path === '/api/v1/chat/usage') {
+				return Promise.resolve({
+					month_prompt_tokens: 5000,
+					month_completion_tokens: 3000,
+					month_credited_cost: 73.73,
+					month_request_count: 13,
+					quota_used: 73.73,
+					quota_max: 100000,
+					week_credited_cost: 12,
+					quota_weekly_max: 1000
+				});
+			}
 			if (path.endsWith('/memories/document')) {
 				return Promise.resolve({
 					filename: 'memory.md',
@@ -31,35 +46,25 @@ describe('ChatSettingsOverlay', () => {
 		});
 	});
 
-	it('renders usage in a modal with six local section controls', async () => {
-		const onClose = vi.fn();
-		render(ChatSettingsOverlay, {
-			open: true,
-			onClose,
-			usage: {
-				month_prompt_tokens: 5000,
-				month_completion_tokens: 3000,
-				month_credited_cost: 73.73,
-				month_request_count: 13,
-				quota_used: 73.73,
-				quota_max: 100000,
-				week_credited_cost: 12,
-				quota_weekly_max: 1000
-			}
-		});
+	it('renders all settings sections as a dedicated page and updates its deep link', async () => {
+		render(ChatSettings);
 
-		expect(screen.getByRole('dialog', { name: '채팅 설정' })).toBeTruthy();
-		expect(screen.getByRole('heading', { name: '이번 달 사용량' })).toBeTruthy();
-		expect(screen.getByText('주간 쿼터 12 / 1,000')).toBeTruthy();
+		expect(screen.queryByRole('dialog')).toBeNull();
+		expect(screen.getByRole('heading', { name: '채팅 설정' })).toBeTruthy();
+		expect(await screen.findByText('주간 쿼터 12 / 1,000')).toBeTruthy();
 		const sectionButtons = ['사용량', 'API 키', '메모리', 'MCP 서버', '도구', '스킬'].map(
 			(name) => screen.getByRole('button', { name })
 		);
 		expect(sectionButtons).toHaveLength(6);
 		expect(sectionButtons[0].classList.contains('active')).toBe(true);
-		expect(screen.queryByRole('link', { name: '사용량' })).toBeNull();
 
-		await fireEvent.click(screen.getByRole('button', { name: '닫기' }));
-		expect(onClose).toHaveBeenCalledOnce();
+		await fireEvent.click(screen.getByRole('button', { name: 'MCP 서버' }));
+		expect(mocks.goto).toHaveBeenCalledWith('/dashboard/chat/settings?section=mcp', {
+			replaceState: true,
+			keepFocus: true,
+			noScroll: true
+		});
+		expect(screen.getByRole('button', { name: 'MCP 서버' }).classList.contains('active')).toBe(true);
 	});
 
 	it('shows the automatically maintained memory.md and copies its plaintext content', async () => {
@@ -68,10 +73,7 @@ describe('ChatSettingsOverlay', () => {
 			configurable: true,
 			value: { writeText }
 		});
-		render(ChatSettingsOverlay, {
-			open: true,
-			onClose: vi.fn(),
-			usage: null,
+		render(ChatSettings, {
 			initialSection: 'memory'
 		});
 

@@ -101,6 +101,30 @@ def test_lumen_feature_gate_routes_inclusion():
             "/v1/admin/quotas/user-1",
             {"monthly_credit_limit": "5000", "weekly_credit_limit": None},
         ),
+        (
+            "put",
+            "/api/v1/chat/admin/quotas/defaults",
+            "/v1/admin/quotas/defaults",
+            {"monthly_credit_limit": "100000"},
+        ),
+        (
+            "delete",
+            "/api/v1/chat/admin/quotas/user-1",
+            "/v1/admin/quotas/user-1",
+            None,
+        ),
+        (
+            "get",
+            "/api/v1/chat/admin/stats/users/user-1?range=30d&source=web",
+            "/v1/admin/stats/users/user-1",
+            None,
+        ),
+        (
+            "get",
+            "/api/v1/chat/admin/providers/7/billing",
+            "/v1/admin/providers/7/billing",
+            None,
+        ),
     ],
 )
 async def test_browser_routes_proxy_to_lumen_service(api_client, method, path, upstream_path, body):

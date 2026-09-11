@@ -60,8 +60,12 @@ Afterglow 백엔드는 모든 `/api/v1/chat/{path}` 요청을 내부 Lumen 서�
 | `GET /api/v1/chat/usage` | `/v1/usage` | 사용자 본인의 토큰 및 크레딧 사용량 조회 |
 | `PATCH /api/v1/chat/api-keys/{id}` | `/v1/api-keys/{id}` | 본인 API 키 이름 변경 |
 | `PATCH /api/v1/chat/api-keys/{id}/limits` | `/v1/api-keys/{id}/limits` | 본인 API 키의 월·주간 크레딧 한도 설정(`null`은 해제) |
-| `GET /api/v1/chat/admin/quotas` | `/v1/admin/quotas` | 관리자: 사용자 지갑의 월·주간 쿼터와 현재 사용량 목록 |
-| `PUT /api/v1/chat/admin/quotas/{user_id}` | `/v1/admin/quotas/{user_id}` | 관리자: 사용자 월·주간 쿼터 설정(`null`은 무제한) |
+| `GET /api/v1/chat/admin/quotas` | `/v1/admin/quotas` | 관리자: 시스템 기본 월 한도·credit 환산 정책·사용자별 상속/override와 현재 사용량 목록 |
+| `PUT /api/v1/chat/admin/quotas/defaults` | `/v1/admin/quotas/defaults` | 관리자: 시스템 전체 기본 월 한도 설정(`null`은 무제한) |
+| `PUT /api/v1/chat/admin/quotas/{user_id}` | `/v1/admin/quotas/{user_id}` | 관리자: 사용자 개인 월·주간 override 설정(`null`은 명시적 무제한) |
+| `DELETE /api/v1/chat/admin/quotas/{user_id}` | `/v1/admin/quotas/{user_id}` | 관리자: 개인 override를 지우고 시스템 기본값 상속으로 복원 |
+| `GET /api/v1/chat/admin/stats/users/{user_id}` | `/v1/admin/stats/users/{user_id}` | 관리자: 기간·모델·web/API source·timestamp/token/cost별 사용자 usage ledger |
+| `GET /api/v1/chat/admin/providers/{provider_id}/billing` | `/v1/admin/providers/{provider_id}/billing` | 관리자: 지원 provider의 secret-safe 결제/잔액 snapshot |
 | `GET /api/v1/chat/mcp-oauth/callback` | `/v1/mcp-oauth/callback` | MCP OAuth 브라우저 콜백 전달 |
 
 ### Context 사용량과 압축
@@ -92,7 +96,7 @@ Lumen은 외부 프로그램을 위한 OpenAI/Anthropic 호환 API를 제공한�
 
 ### 연결 주소 확인
 
-채팅 설정은 채팅 화면 위의 팝업이다. 사이드바 사용자 메뉴의 **설정** 또는 작성창의 사용량 명령으로 열고, 팝업 안에서 사용량·API 키·메모리·MCP·도구·스킬 탭을 전환한다. MCP OAuth 복귀용 `/dashboard/chat/settings?section=mcp` deep link도 채팅 화면과 MCP 탭 팝업을 함께 연다. **API 키 → 연결 방법**에서 SDK별 `base_url`을 확인한다. 화면은 인증된 `GET /api/v1/chat/compat` BFF를 통해 Lumen의 `GET /v1/compat` 응답을 조회한다.
+채팅 설정은 `/dashboard/chat/settings?section=…` 전용 페이지다. 사이드바 사용자 메뉴의 **설정** 또는 작성창의 사용량 명령은 이 route로 이동하고, 사용량·API 키·메모리·MCP·도구·스킬을 desktop side navigation 및 mobile horizontal navigation으로 전환한다. MCP OAuth는 `section=mcp`, API 키 자동화는 `section=apikeys` deep link로 같은 페이지의 지정 section에 복귀한다. **API 키 → 연결 방법**은 인증된 `GET /api/v1/chat/compat` BFF를 통해 Lumen `GET /v1/compat`의 SDK별 `base_url`을 표시한다.
 
 - OpenAI: `endpoints.openai.sdk_base_url`을 그대로 사용한다. `/v1`이 포함된다.
 - Anthropic: `endpoints.anthropic.sdk_base_url`을 그대로 사용한다. SDK가 `/v1/messages`를 붙이므로 직접 `/v1`을 추가하지 않는다.
@@ -113,7 +117,7 @@ Lumen은 외부 프로그램을 위한 OpenAI/Anthropic 호환 API를 제공한�
 
 ### API 키와 모델 ID
 
-1. 채팅 화면의 **설정 → API 키**에서 발급한다. OAuth·자동화용 `/dashboard/chat/settings?section=apikeys` deep link도 같은 팝업을 연다. 평문 키는 발급 직후 한 번만 표시한다. 같은 화면에서 키 이름을 바꾸고(`PATCH /api/v1/chat/api-keys/{id}`) 월·주간 한도를 설정한다(`PATCH /api/v1/chat/api-keys/{id}/limits`, 빈 값은 해제). 한도는 본인 쿼터(`system_monthly_credit_limit`, `system_weekly_credit_limit`) 이하만 저장되고 초과 입력은 요청 전에 인라인 오류로 막는다.
+1. 채팅 화면의 **설정 → API 키** 또는 `/dashboard/chat/settings?section=apikeys` 전용 페이지에서 발급한다. 평문 키는 발급 직후 한 번만 표시한다. 같은 화면에서 키 이름을 바꾸고(`PATCH /api/v1/chat/api-keys/{id}`) 월·주간 한도를 설정한다(`PATCH /api/v1/chat/api-keys/{id}/limits`, 빈 값은 해제). 한도는 본인 쿼터 이하만 저장되고 초과 입력은 요청 전에 인라인 오류로 막는다.
 2. 메시지 작성창의 **모델 선택**에서 원하는 모델 옆의 **ID 복사**를 누른다.
 3. 복사되는 **API ID**는 `api_model_name`이다. 표시 이름, 내부 숫자 ID, 운영용 `model_name`/LiteLLM route가 아니며 따옴표·`model=` 접두사를 포함하지 않는다.
 4. 목록의 **Provider**는 `api_provider`다. 같은 공개 API ID가 여러 provider에 있을 때 SDK 요청의 `provider` 선택자로 사용한다.
@@ -238,8 +242,17 @@ Anthropic 스트리밍은 client가 열린 상태에서 `client.messages.stream(
 - 관리자 페이지 모델 목록에서도 중복 provider 접두사가 정리된 간결한 이름과 실시간 웹 검색(`Search`) 등 기능 배지가 표시된다.
 - 이미지 입력은 vision 지원 모델에서 사용한다.
 - 사용량·키별 한도·월 쿼터는 Lumen 정책을 따른다. API 사용량은 웹과 분리해 집계된다.
+
 - `max_tokens` 상한은 서버 정책을 따른다. 폐기된 키는 인증에 사용할 수 없다.
 - Discovery의 공개 주소는 SDK 연결 설정이며, health 응답만으로 모델/provider 실행 성공을 판정하지 않는다.
+
+### 관리자 quota·사용량·provider 결제 화면
+
+`/admin/chat/quotas`는 Lumen quota envelope의 시스템 기본 월 한도와 각 사용자 개인 override를 분리해 표시한다. `기본값 복원`은 해당 지갑의 월·주간 설정만 `NULL` 상속 상태로 되돌리며 과거 usage ledger를 삭제하지 않는다. 독립 주간 ceiling이 없으면 **월 한도 내 무제한**으로 표시하지만 Lumen 월 admission은 계속 강제된다. 상단 환산 안내는 Lumen이 반환한 `credit_per_usd`, `usd_per_credit`, 공식 formula를 사용하므로 frontend 상수가 아니다.
+
+사용자 행의 **사용량**은 modal을 열어 `7d`, `30d`, `90d`, `1y`, 전체 기간과 web/API source를 필터링한다. 모델별 및 source별 aggregate와 timestamp, 입력/출력/총 token, raw USD, 차감 credit, API key attribution이 있는 cursor ledger를 표시한다. 숫자는 Lumen immutable usage log의 projection이며 Afterglow가 별도 accounting state를 저장하지 않는다.
+
+`/admin/chat` provider 설정은 `billing_capability`가 있는 provider에만 결제 현황을 렌더링한다. OpenRouter는 API key limit·remaining과 일/주/월/누적 usage, DeepSeek는 통화별 total/purchased/granted balance와 사용 가능 상태를 보여준다. OpenAI 등 공식 balance endpoint가 inference credential과 맞지 않는 provider는 조회하지 않는다. 조회 실패는 provider 실행 상태를 바꾸지 않으며 secret이나 upstream 원문 오류를 표시하지 않는다.
 
 ### 실제 검증 기록
 

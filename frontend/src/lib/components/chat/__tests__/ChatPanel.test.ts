@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
 	followRun: vi.fn(),
 	cancelRun: vi.fn(),
 	previewContext: vi.fn(),
+	goto: vi.fn(),
 	ChatHttpError: class ChatHttpError extends Error {
 		status: number;
 		constructor(message: string, status: number) {
@@ -31,6 +32,8 @@ vi.mock('$lib/api/client', () => ({
 	},
 	ApiError: class ApiError extends Error {}
 }));
+
+vi.mock('$app/navigation', () => ({ goto: mocks.goto }));
 
 vi.mock('$lib/api/chatStream', () => ({
 	createChatRun: mocks.createRun,
@@ -142,21 +145,14 @@ describe('ChatPanel', () => {
 		expect(screen.getByRole('heading', { name: '무엇을 도와드릴까요?' })).toBeTruthy();
 	});
 
-	it('opens chat settings as an overlay from the sidebar user menu', async () => {
+	it('navigates to the dedicated settings page from the sidebar user menu', async () => {
 		render(ChatPanel);
 
 		await fireEvent.click(screen.getByRole('button', { name: /tester/i }));
 		await fireEvent.click(screen.getByRole('menuitem', { name: '설정' }));
 
-		expect(await screen.findByRole('dialog', { name: '채팅 설정' })).toBeTruthy();
-		expect(screen.getByRole('heading', { name: '이번 달 사용량' })).toBeTruthy();
-	});
-
-	it('opens a deep-linked settings section in the overlay', async () => {
-		render(ChatPanel, { initialSettingsSection: 'mcp' });
-
-		expect(await screen.findByRole('dialog', { name: '채팅 설정' })).toBeTruthy();
-		expect(screen.getByRole('button', { name: 'MCP 서버' }).classList.contains('active')).toBe(true);
+		expect(mocks.goto).toHaveBeenCalledWith('/dashboard/chat/settings?section=usage');
+		expect(screen.queryByRole('dialog', { name: '채팅 설정' })).toBeNull();
 	});
 
 

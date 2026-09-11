@@ -1,4 +1,4 @@
-import type { ChatSettingsSection } from '$lib/components/chat/ChatSettingsOverlay.svelte';
+import type { ChatSettingsSection } from '$lib/components/chat/ChatSettings.svelte';
 import type { PageLoad } from './$types';
 
 const SECTIONS = new Set<ChatSettingsSection>([

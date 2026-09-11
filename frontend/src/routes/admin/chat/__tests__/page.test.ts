@@ -197,6 +197,92 @@ describe('admin chat model pricing', () => {
 		expect(screen.getByText(/https:\/\/api\.perplexity\.ai\/router/)).toBeTruthy();
 	});
 
+	it('loads and renders billing data only for supported providers', async () => {
+		const providers = [
+			{
+				...provider,
+				id: 2,
+				name: 'OpenRouter',
+				provider_type: 'openrouter',
+				billing_capability: 'openrouter_key' as const
+			},
+			{
+				...provider,
+				id: 3,
+				name: 'DeepSeek',
+				provider_type: 'deepseek',
+				billing_capability: 'deepseek_balance' as const
+			},
+			{ ...provider, id: 4, name: 'OpenAI' }
+		];
+		get.mockImplementation((path: string) => {
+			if (path === '/api/v1/chat/admin/providers') return Promise.resolve(providers);
+			if (path === '/api/v1/chat/admin/models') return Promise.resolve([]);
+			if (path === '/api/v1/chat/admin/providers/2/billing') {
+				return Promise.resolve({
+					provider_id: 2,
+					provider_type: 'openrouter',
+					capability: 'openrouter_key',
+					status: 'available',
+					reason: null,
+					fetched_at: '2026-09-11T00:00:00Z',
+					is_available: true,
+					is_free_tier: false,
+					limit: '100',
+					remaining: '75',
+					usage_total: '25',
+					usage_daily: '1',
+					usage_weekly: '5',
+					usage_monthly: '20',
+					balances: []
+				});
+			}
+			if (path === '/api/v1/chat/admin/providers/3/billing') {
+				return Promise.resolve({
+					provider_id: 3,
+					provider_type: 'deepseek',
+					capability: 'deepseek_balance',
+					status: 'available',
+					reason: null,
+					fetched_at: '2026-09-11T00:00:00Z',
+					is_available: true,
+					is_free_tier: null,
+					limit: null,
+					remaining: null,
+					usage_total: null,
+					usage_daily: null,
+					usage_weekly: null,
+					usage_monthly: null,
+					balances: [{ currency: 'USD', total: '48.5', purchased: '40', granted: '8.5' }]
+				});
+			}
+			return Promise.resolve([]);
+		});
+
+		render(ProviderPage);
+
+		expect(await screen.findByText('남은 한도')).toBeTruthy();
+		expect(screen.getByText('75')).toBeTruthy();
+		expect(screen.getByText('구매 40 · 지급 8.5')).toBeTruthy();
+		await waitFor(() => {
+			expect(get).toHaveBeenCalledWith(
+				'/api/v1/chat/admin/providers/2/billing',
+				'token',
+				'project'
+			);
+			expect(get).toHaveBeenCalledWith(
+				'/api/v1/chat/admin/providers/3/billing',
+				'token',
+				'project'
+			);
+		});
+		expect(get).not.toHaveBeenCalledWith(
+			'/api/v1/chat/admin/providers/4/billing',
+			expect.anything(),
+			expect.anything()
+		);
+	});
+
 	it('isolates MCP, skills, and custom HTTP tools on the tool settings route', async () => {
 		render(ToolPage);
 		expect(await screen.findByText('원격 MCP 서버')).toBeTruthy();
@@ -477,6 +563,58 @@ describe('admin chat model pricing', () => {
 				'token',
 				'project'
 			)
+		);
+	});
+
+	it('queries and renders billing only for providers with a supported capability', async () => {
+		const openRouterProvider = {
+			...provider,
+			id: 9,
+			name: 'OpenRouter',
+			provider_type: 'openrouter',
+			billing_capability: 'openrouter_key' as const
+		};
+		get.mockImplementation((path: string) => {
+			if (path === '/api/v1/chat/admin/providers') {
+				return Promise.resolve([provider, openRouterProvider]);
+			}
+			if (path === '/api/v1/chat/admin/models') return Promise.resolve([]);
+			if (path === '/api/v1/chat/admin/providers/9/billing') {
+				return Promise.resolve({
+					provider_id: 9,
+					provider_type: 'openrouter',
+					capability: 'openrouter_key',
+					status: 'available',
+					reason: null,
+					fetched_at: '2026-09-11T00:00:00Z',
+					is_available: null,
+					is_free_tier: false,
+					limit: '100',
+					remaining: '75',
+					usage_total: '25',
+					usage_daily: '1',
+					usage_weekly: '5',
+					usage_monthly: '20',
+					balances: []
+				});
+			}
+			return Promise.resolve([]);
+		});
+
+		render(ProviderPage);
+
+		expect(await screen.findByText('남은 한도')).toBeTruthy();
+		expect(screen.getByText('이번 달 사용')).toBeTruthy();
+		expect(screen.getByText(/오늘 1 · 이번 주 5 · 유료 크레딧/)).toBeTruthy();
+		expect(get).toHaveBeenCalledWith(
+			'/api/v1/chat/admin/providers/9/billing',
+			'token',
+			'project'
+		);
+		expect(get).not.toHaveBeenCalledWith(
+			'/api/v1/chat/admin/providers/1/billing',
+			expect.anything(),
+			expect.anything()
 		);
 	});
 });

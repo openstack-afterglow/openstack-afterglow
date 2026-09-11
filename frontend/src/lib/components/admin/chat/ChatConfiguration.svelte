@@ -31,6 +31,32 @@
 		models_dev_provider_id: string | null;
 		is_active: boolean;
 		margin_multiplier: number;
+		billing_capability?: 'openrouter_key' | 'deepseek_balance' | null;
+	}
+
+	interface ProviderBillingBalance {
+		currency: string;
+		total: string;
+		granted: string;
+		purchased: string;
+	}
+
+	interface ProviderBilling {
+		provider_id: number;
+		provider_type: string;
+		capability: 'openrouter_key' | 'deepseek_balance';
+		status: 'available' | 'unavailable' | 'unsupported';
+		reason: string | null;
+		fetched_at: string;
+		is_available: boolean | null;
+		is_free_tier: boolean | null;
+		limit: string | null;
+		remaining: string | null;
+		usage_total: string | null;
+		usage_daily: string | null;
+		usage_weekly: string | null;
+		usage_monthly: string | null;
+		balances: ProviderBillingBalance[];
 	}
 
 	interface ProviderChoice {
@@ -87,6 +113,8 @@
 	let models = $state<Model[]>([]);
 	let loading = $state(true);
 	let error = $state('');
+	let billingByProvider = $state<Record<number, ProviderBilling>>({});
+	let billingLoading = $state<Record<number, boolean>>({});
 
 	let pName = $state('');
 	let pType = $state('openai');
@@ -223,6 +251,57 @@
 		return available.filter((m) => m.toLowerCase().includes(f) && !reg.has(m));
 	});
 
+	function formatBillingAmount(value: string | null): string {
+		if (value === null) return '—';
+		return Number(value).toLocaleString('en-US', { maximumFractionDigits: 6 });
+	}
+
+	function billingFailureLabel(reason: string | null): string {
+		if (reason === 'credential_not_configured') return 'API 키가 설정되지 않았습니다.';
+		if (reason === 'credential_unavailable') return '저장된 API 키를 복호화할 수 없습니다.';
+		if (reason === 'provider_authorization_failed') return '프로바이더가 이 API 키의 결제 조회를 거부했습니다.';
+		if (reason === 'provider_request_failed') return '프로바이더 결제 API 요청이 실패했습니다.';
+		return '프로바이더 결제 API에 연결할 수 없습니다.';
+	}
+
+	async function loadProviderBilling(provider: Provider) {
+		if (!token || !provider.billing_capability) return;
+		billingLoading = { ...billingLoading, [provider.id]: true };
+		try {
+			const snapshot = await api.get<ProviderBilling>(
+				`/api/v1/chat/admin/providers/${provider.id}/billing`,
+				token,
+				projectId
+			);
+			billingByProvider = { ...billingByProvider, [provider.id]: snapshot };
+		} catch (caught) {
+			billingByProvider = {
+				...billingByProvider,
+				[provider.id]: {
+					provider_id: provider.id,
+					provider_type: provider.provider_type,
+					capability: provider.billing_capability,
+					status: 'unavailable',
+					reason: caught instanceof ApiError && caught.status === 401
+						? 'provider_authorization_failed'
+						: 'provider_unavailable',
+					fetched_at: new Date().toISOString(),
+					is_available: null,
+					is_free_tier: null,
+					limit: null,
+					remaining: null,
+					usage_total: null,
+					usage_daily: null,
+					usage_weekly: null,
+					usage_monthly: null,
+					balances: []
+				}
+			};
+		} finally {
+			billingLoading = { ...billingLoading, [provider.id]: false };
+		}
+	}
+
 	async function load() {
 		if (!token) return;
 		loading = true;
@@ -234,6 +313,13 @@
 			providers = ps;
 			if (mProviderId === '' && ps.length === 1) mProviderId = ps[0].id;
 			models = ms;
+			const supportedIds = new Set(ps.filter((provider) => provider.billing_capability).map((provider) => provider.id));
+			billingByProvider = Object.fromEntries(
+				Object.entries(billingByProvider).filter(([id]) => supportedIds.has(Number(id)))
+			);
+			void Promise.allSettled(
+				ps.filter((provider) => provider.billing_capability).map((provider) => loadProviderBilling(provider))
+			);
 			error = '';
 		} catch (e) {
 			error = e instanceof ApiError ? `조회 실패 (${e.status})` : '서버 오류';
@@ -990,42 +1076,82 @@
 		{:else}
 			<div class="space-y-2">
 				{#each providers as p (p.id)}
-					<div class="{cardCls} flex flex-col items-start justify-between gap-3 px-4 py-3 sm:flex-row sm:items-center">
-						<div class="min-w-0">
-							<div class="flex flex-wrap items-center gap-2">
-								<span class="truncate text-sm font-medium text-[var(--color-ink-1)]">{p.name}</span>
-								<Pill tone={p.is_active ? 'success' : 'neutral'} size="xs">{p.is_active ? '활성' : '비활성'}</Pill>
-								{#if providerAuthMode(p) === 'api_key'}
-									<Pill tone={p.has_api_key ? 'accent' : 'warning'} size="xs">{p.has_api_key ? '키 설정됨' : '키 없음'}</Pill>
-								{:else}
-									<Pill tone="warning" size="xs">실험</Pill>
-									<Pill tone="info" size="xs">전체 공용</Pill>
-									<Pill tone={subscriptionStatusTone(p)} size="xs">{subscriptionStatusLabel(p)}</Pill>
+					{@const billing = billingByProvider[p.id]}
+					<div class="{cardCls} px-4 py-3" data-provider-id={p.id}>
+						<div class="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+							<div class="min-w-0">
+								<div class="flex flex-wrap items-center gap-2">
+									<span class="truncate text-sm font-medium text-[var(--color-ink-1)]">{p.name}</span>
+									<Pill tone={p.is_active ? 'success' : 'neutral'} size="xs">{p.is_active ? '활성' : '비활성'}</Pill>
+									{#if providerAuthMode(p) === 'api_key'}
+										<Pill tone={p.has_api_key ? 'accent' : 'warning'} size="xs">{p.has_api_key ? '키 설정됨' : '키 없음'}</Pill>
+									{:else}
+										<Pill tone="warning" size="xs">실험</Pill>
+										<Pill tone="info" size="xs">전체 공용</Pill>
+										<Pill tone={subscriptionStatusTone(p)} size="xs">{subscriptionStatusLabel(p)}</Pill>
+									{/if}
+									<Pill tone="neutral" size="xs">{p.provider_type}</Pill>
+								</div>
+								{#if p.api_base}
+									<div class="mt-1 truncate text-xs text-[var(--color-ink-3)]">{p.api_base}</div>
+								{:else if providerAuthMode(p) !== 'api_key' && p.auth_expires_at}
+									<div class="mt-1 text-xs text-[var(--color-ink-3)]">만료 {new Date(p.auth_expires_at).toLocaleString()}</div>
 								{/if}
-								<Pill tone="neutral" size="xs">{p.provider_type}</Pill>
 							</div>
-							{#if p.api_base}
-								<div class="mt-1 truncate text-xs text-[var(--color-ink-3)]">{p.api_base}</div>
-							{:else if providerAuthMode(p) !== 'api_key' && p.auth_expires_at}
-								<div class="mt-1 text-xs text-[var(--color-ink-3)]">만료 {new Date(p.auth_expires_at).toLocaleString()}</div>
-							{/if}
-						</div>
-						<div class="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs sm:justify-end">
-							{#if providerAuthMode(p) === 'api_key'}
-								<button class={rowActionCls} onclick={() => updateKey(p)}>키 변경</button>
-							{:else}
-								<button class={rowActionCls} onclick={() => openSubscriptionAuth(p)}>
-									{providerAuthMode(p) === 'chatgpt_device'
-										? p.has_credentials ? '재연결' : '연결'
-										: p.has_credentials ? '토큰 교체' : '토큰 등록'}
-								</button>
-								{#if p.auth_status !== 'disconnected'}
-									<button class={rowActionCls} onclick={() => disconnectSubscription(p)}>연결 해제</button>
+							<div class="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs sm:justify-end">
+								{#if providerAuthMode(p) === 'api_key'}
+									<button class={rowActionCls} onclick={() => updateKey(p)}>키 변경</button>
+								{:else}
+									<button class={rowActionCls} onclick={() => openSubscriptionAuth(p)}>
+										{providerAuthMode(p) === 'chatgpt_device'
+											? p.has_credentials ? '재연결' : '연결'
+											: p.has_credentials ? '토큰 교체' : '토큰 등록'}
+									</button>
+									{#if p.auth_status !== 'disconnected'}
+										<button class={rowActionCls} onclick={() => disconnectSubscription(p)}>연결 해제</button>
+									{/if}
 								{/if}
-							{/if}
-							<button class={rowActionCls} onclick={() => toggleProvider(p)}>{p.is_active ? '비활성화' : '활성화'}</button>
-							<button class="text-[var(--color-state-danger)] transition-opacity hover:opacity-80" onclick={() => deleteProvider(p.id)}>삭제</button>
+								<button class={rowActionCls} onclick={() => toggleProvider(p)}>{p.is_active ? '비활성화' : '활성화'}</button>
+								<button class="text-[var(--color-state-danger)] transition-opacity hover:opacity-80" onclick={() => deleteProvider(p.id)}>삭제</button>
+							</div>
 						</div>
+
+						{#if p.billing_capability}
+							<div class="mt-3 border-t border-[var(--color-line)] pt-3">
+								<div class="flex items-center justify-between gap-3">
+									<div class="flex items-center gap-2">
+										<span class="text-xs font-semibold text-[var(--color-ink-2)]">프로바이더 결제 현황</span>
+										<Pill tone="neutral" size="xs">{p.billing_capability === 'openrouter_key' ? '현재 API 키' : '계정 잔액'}</Pill>
+									</div>
+									<Button variant="ghost" size="sm" disabled={billingLoading[p.id]} onclick={() => void loadProviderBilling(p)}>
+										{billingLoading[p.id] ? '조회 중…' : '새로고침'}
+									</Button>
+								</div>
+								{#if billingLoading[p.id] && !billing}
+									<p class="mt-2 text-xs text-[var(--color-ink-3)]">결제 정보를 조회하는 중…</p>
+								{:else if billing?.status === 'unavailable'}
+									<Alert tone="warning" class="mt-2">{billingFailureLabel(billing.reason)}</Alert>
+								{:else if billing?.status === 'available' && billing.capability === 'openrouter_key'}
+									<div class="mt-2 grid grid-cols-2 gap-2 lg:grid-cols-4">
+										<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-3)]">남은 한도</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">{formatBillingAmount(billing.remaining)}</div></div>
+										<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-3)]">한도</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">{formatBillingAmount(billing.limit)}</div></div>
+										<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-3)]">이번 달 사용</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">{formatBillingAmount(billing.usage_monthly)}</div></div>
+										<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-3)]">누적 사용</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">{formatBillingAmount(billing.usage_total)}</div></div>
+									</div>
+									<p class="mt-2 text-xs text-[var(--color-ink-3)]">오늘 {formatBillingAmount(billing.usage_daily)} · 이번 주 {formatBillingAmount(billing.usage_weekly)} · {billing.is_free_tier ? '무료 티어' : '유료 크레딧'}</p>
+								{:else if billing?.status === 'available' && billing.capability === 'deepseek_balance'}
+									<div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+										{#each billing.balances as balance (balance.currency)}
+											<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3">
+												<div class="flex items-center justify-between gap-2"><span class="text-xs text-[var(--color-ink-3)]">{balance.currency}</span><Pill tone={billing.is_available ? 'success' : 'warning'} size="xs">{billing.is_available ? '사용 가능' : '잔액 부족'}</Pill></div>
+												<div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">잔액 {formatBillingAmount(balance.total)}</div>
+												<div class="mt-1 text-xs tabular-nums text-[var(--color-ink-3)]">구매 {formatBillingAmount(balance.purchased)} · 지급 {formatBillingAmount(balance.granted)}</div>
+											</div>
+										{/each}
+									</div>
+								{/if}
+							</div>
+						{/if}
 					</div>
 				{/each}
 			</div>

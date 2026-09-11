@@ -1,9 +1,9 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
-	import Modal from '$lib/components/ui/Modal.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import ChatExtensionsManager from './ChatExtensionsManager.svelte';
 	import ChatApiKeysManager from './ChatApiKeysManager.svelte';
@@ -20,16 +20,13 @@
 	}
 
 	interface Props {
-		open: boolean;
-		onClose: () => void;
-		usage: ChatUsage | null;
 		initialSection?: ChatSettingsSection;
 	}
-	let { open, onClose, usage, initialSection = 'usage' }: Props = $props();
+	let { initialSection = 'usage' }: Props = $props();
 	let section = $state<ChatSettingsSection>('usage');
 
 	$effect(() => {
-		if (open) section = initialSection;
+		section = initialSection;
 	});
 
 	const sections: { key: ChatSettingsSection; label: string }[] = [
@@ -43,7 +40,42 @@
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
+	let usage = $state<ChatUsage | null>(null);
+	let usageGeneration = 0;
 
+	async function loadUsage(
+		expectedToken: string,
+		expectedProjectId: string | undefined,
+		generation: number
+	) {
+		try {
+			const nextUsage = await api.get<ChatUsage>(
+				'/api/v1/chat/usage',
+				expectedToken,
+				expectedProjectId
+			);
+			if (generation === usageGeneration) usage = nextUsage;
+		} catch {
+			if (generation === usageGeneration) usage = null;
+		}
+	}
+
+	function selectSection(nextSection: ChatSettingsSection) {
+		section = nextSection;
+		void goto(`/dashboard/chat/settings?section=${nextSection}`, {
+			replaceState: true,
+			keepFocus: true,
+			noScroll: true
+		});
+	}
+
+	$effect(() => {
+		const currentToken = token;
+		const currentProjectId = projectId;
+		const generation = ++usageGeneration;
+		usage = null;
+		if (currentToken) void loadUsage(currentToken, currentProjectId, generation);
+	});
 
 	// --- 사용량 ---
 	const monthTokens = $derived(
@@ -67,7 +99,7 @@
 	let editingId = $state<number | null>(null);
 	let draft = $state('');
 	let saving = $state(false);
-	let loadedOnce = $state(false);
+	let loadedMemoryScope = $state('');
 	const canSubmit = $derived(draft.trim().length > 0 && !saving);
 
 	async function loadMemories() {
@@ -106,19 +138,11 @@
 		setTimeout(() => URL.revokeObjectURL(url), 0);
 	}
 
-	// 메모리 섹션을 처음 열 때 한 번 로드한다(오버레이가 열려 있는 동안 캐시).
 	$effect(() => {
-		if (open && section === 'memory' && !loadedOnce) {
-			loadedOnce = true;
+		const currentScope = `${token ?? ''}:${projectId ?? ''}`;
+		if (section === 'memory' && token && loadedMemoryScope !== currentScope) {
+			loadedMemoryScope = currentScope;
 			void loadMemories();
-		}
-	});
-	// 오버레이가 닫히면 다음에 다시 로드하도록 초기화한다.
-	$effect(() => {
-		if (!open) {
-			loadedOnce = false;
-			editingId = null;
-			draft = '';
 		}
 	});
 
@@ -177,15 +201,14 @@
 	}
 </script>
 
-<Modal {open} {onClose} ariaLabel="채팅 설정">
-	<div class="panel">
-		<header class="head">
-			<h2>설정</h2>
-			<button type="button" class="close" onclick={onClose} aria-label="닫기">
-				<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="round" /></svg>
-			</button>
-		</header>
+<section class="settings-page">
+	<header class="page-head">
+		<p class="eyebrow">CHAT</p>
+		<h1>채팅 설정</h1>
+		<p>사용량과 API 키, 메모리, 확장 기능을 한곳에서 관리합니다.</p>
+	</header>
 
+	<div class="panel">
 		<div class="split">
 			<nav class="nav" aria-label="채팅 설정">
 				{#each sections as s (s.key)}
@@ -193,7 +216,7 @@
 						type="button"
 						class="nav-item"
 						class:active={section === s.key}
-						onclick={() => (section = s.key)}
+						onclick={() => selectSection(s.key)}
 					>
 						{s.label}
 					</button>
@@ -339,53 +362,47 @@
 			</div>
 		</div>
 	</div>
-</Modal>
+</section>
 
 
 <style>
+	.settings-page {
+		width: 100%;
+		max-width: 72rem;
+		margin: 0 auto;
+		padding: clamp(1rem, 2.5vw, 2rem);
+	}
+	.page-head {
+		margin-bottom: 1rem;
+	}
+	.page-head h1 {
+		margin: 0;
+		font-size: clamp(1.45rem, 3vw, 2rem);
+		font-weight: 700;
+		letter-spacing: -0.025em;
+		color: var(--color-ink-0);
+	}
+	.page-head p {
+		margin: 0.35rem 0 0;
+		color: var(--color-ink-3);
+		font-size: 0.875rem;
+	}
+	.page-head .eyebrow {
+		margin: 0 0 0.35rem;
+		font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+		font-size: 0.6875rem;
+		font-weight: 700;
+		letter-spacing: 0.14em;
+		color: var(--color-accent);
+	}
 	.panel {
-		width: min(94vw, 52rem);
-		height: min(86dvh, 40rem);
-		max-height: calc(100dvh - 2rem);
+		min-height: calc(100dvh - 12rem);
 		display: flex;
 		flex-direction: column;
 		border-radius: 0.9rem;
 		border: 1px solid var(--color-line);
 		background: var(--color-surface-raised);
 		overflow: hidden;
-	}
-	.head {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 0.9rem 1.1rem;
-		border-bottom: 1px solid var(--color-line);
-		flex-shrink: 0;
-	}
-	.head h2 {
-		margin: 0;
-		font-size: 0.95rem;
-		font-weight: 650;
-		color: var(--color-ink-0);
-	}
-	.close {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 2rem;
-		height: 2rem;
-		border: none;
-		border-radius: 0.5rem;
-		background: transparent;
-		color: var(--color-ink-3);
-		cursor: pointer;
-		transition:
-			background var(--motion-duration-fast) var(--motion-ease-standard),
-			color var(--motion-duration-fast) var(--motion-ease-standard);
-	}
-	.close:hover {
-		background: var(--color-surface-sunken);
-		color: var(--color-ink-0);
 	}
 	.split {
 		display: flex;

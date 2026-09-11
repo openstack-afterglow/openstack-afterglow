@@ -63,9 +63,6 @@
 	import CreateProjectDialog from './CreateProjectDialog.svelte';
 	import ChatSourcesPanel from './ChatSourcesPanel.svelte';
 	import ModelPickerOverlay from './ModelPickerOverlay.svelte';
-	import ChatSettingsOverlay, {
-		type ChatSettingsSection
-	} from './ChatSettingsOverlay.svelte';
 	import ConversationWorkspacePicker from './ConversationWorkspacePicker.svelte';
 
 	import { MOTION_DURATION_MS } from '$lib/design/tokens';
@@ -119,14 +116,8 @@
 		projectRoute?: number | null;
 		/** One-shot workspace assignment for a newly created conversation. */
 		initialWorkspaceId?: number | null;
-		/** Opens the settings overlay on first render for OAuth/deep-link entry. */
-		initialSettingsSection?: ChatSettingsSection | null;
 	}
-	let {
-		projectRoute = undefined,
-		initialWorkspaceId = null,
-		initialSettingsSection = null
-	}: Props = $props();
+	let { projectRoute = undefined, initialWorkspaceId = null }: Props = $props();
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
 
@@ -243,14 +234,9 @@
 	let createProjectDialogOpen = $state(false);
 	let sourcesOpen = $state(false);
 	let modelPickerOpen = $state(false);
-	let settingsOpen = $state(false);
-	let settingsSection = $state<ChatSettingsSection>('usage');
-
-	$effect(() => {
-		if (!initialSettingsSection) return;
-		settingsSection = initialSettingsSection;
-		settingsOpen = true;
-	});
+	function openSettings(section = 'usage') {
+		void goto(`/dashboard/chat/settings?section=${section}`);
+	}
 
 	$effect(() => {
 		if (projectRoute === undefined) return;
@@ -524,10 +510,7 @@
 				id: 'usage',
 				name: '사용량',
 				description: '토큰과 비용 사용량을 확인합니다',
-				onSelect: () => {
-					settingsSection = 'usage';
-					settingsOpen = true;
-				}
+				onSelect: () => openSettings('usage')
 			}
 		];
 	});
@@ -2246,10 +2229,7 @@
 		onNewInWorkspace={newInProject}
 		onDeleteWorkspace={deleteWorkspace}
 		onSearch={searchConversations}
-		onSettings={() => {
-			settingsSection = 'usage';
-			settingsOpen = true;
-		}}
+		onSettings={() => openSettings('usage')}
 	/>
 
 	<nav class="sidebar-rail" aria-label="채팅 탐색">
@@ -2458,12 +2438,6 @@
 	value={activeModelName}
 	onSelect={chooseModel}
 	onClose={() => (modelPickerOpen = false)}
-/>
-<ChatSettingsOverlay
-	open={settingsOpen}
-	{usage}
-	initialSection={settingsSection}
-	onClose={() => (settingsOpen = false)}
 />
 
 <style>

@@ -1,6 +1,7 @@
 <script lang="ts">
-	import ChatPanel from '$lib/components/chat/ChatPanel.svelte';
-	import type { ChatSettingsSection } from '$lib/components/chat/ChatSettingsOverlay.svelte';
+	import ChatSettings, {
+		type ChatSettingsSection
+	} from '$lib/components/chat/ChatSettings.svelte';
 
 	let {
 		data
@@ -9,4 +10,4 @@
 	} = $props();
 </script>
 
-<ChatPanel initialSettingsSection={data.section} />
+<ChatSettings initialSection={data.section} />
