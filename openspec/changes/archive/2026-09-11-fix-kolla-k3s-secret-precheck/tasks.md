@@ -5,4 +5,4 @@
 - [x] Add Kolla contract coverage.
 - [x] Generate missing production credentials atomically.
 - [x] Run focused and full verification, stamp architecture, and commit.
-- [ ] Retry the scoped Kolla deployment and archive the change.
+- [x] Retry the scoped Kolla deployment and archive the change.
