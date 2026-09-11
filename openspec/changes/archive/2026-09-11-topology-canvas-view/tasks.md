@@ -27,4 +27,4 @@
 - [x] 독립 리뷰 반영 (성능 메모이제이션, 드래그 중 구조 갱신 보호, `pendingDrag` 정리, 비가시 네트워크 LB 주차, stale hover 가드, 3-포인터 제스처, 존 더블클릭 억제, nudge flush, 중복 저장 회피, `aria-pressed` 선택 반영, 범례 role, `flowActive` 파생, FIP 프로젝트 범위 보정)
 - [x] 문서 (`ARCHITECTURE.md` stamp, `docs/api/networks.md`(+en), `docs/api/admin.md`, `DESIGN.md`, `CHANGELOG.md`)
 - [x] `npm run test:gate` 통과
-- [ ] 커밋 — 사용자 지시로 보류
+- [x] 커밋 완료 (`f619271d`)
