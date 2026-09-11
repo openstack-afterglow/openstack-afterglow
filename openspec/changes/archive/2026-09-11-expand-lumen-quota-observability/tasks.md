@@ -8,4 +8,4 @@
 - [x] Update proxy contracts, focused UI tests, and visual-debt coverage.
 - [x] Update architecture and chat API documentation.
 - [x] Run focused tests, browser verification, full gate, and architecture guard.
-- [ ] Push both dev branches, deploy with Kolla Ansible, and verify production routes and UI.
+- [x] Push both dev branches, deploy with Kolla Ansible, and verify production routes and UI.
