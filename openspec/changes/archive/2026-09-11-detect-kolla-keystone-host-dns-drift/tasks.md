@@ -6,4 +6,4 @@
 - [x] Add a per-host Kolla Keystone reachability precheck.
 - [x] Add focused Kolla contract coverage.
 - [x] Run full verification, stamp architecture, commit, and push.
-- [ ] Deploy the precheck, monitor the live service, and archive the change.
+- [x] Deploy the precheck, monitor the live service, and archive the change.
