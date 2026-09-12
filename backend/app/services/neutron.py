@@ -27,12 +27,16 @@ from app.models.storage import (
     TopologyNetwork,
     TopologyRouter,
 )
+from app.services.parallel import run_parallel
 
 _ROUTER_IFACE_OWNERS = [
     "network:router_interface",
     "network:router_interface_distributed",
     "network:ha_router_replicated_interface",
 ]
+
+# build_compute_port_index 가 실제로 읽는 속성. Neutron 응답 직렬화 비용을 줄인다.
+_COMPUTE_PORT_FIELDS = ["id", "device_id", "device_owner", "network_id", "mac_address", "fixed_ips"]
 
 # afterglow가 자동 생성한 Security Group을 식별하는 description 접미어.
 # orphan 검출에서 이 마커가 있는 SG만 cleanup 후보로 한정한다 (사용자 SG 보호).
@@ -613,7 +617,9 @@ def list_floating_ips(conn: openstack.connection.Connection, project_id: str | N
     needed_port_ids = {f.port_id for f in fips if getattr(f, "port_id", None)}
     port_to_instance: dict[str, str] = {}
     if needed_port_ids:
-        port_kwargs: dict = {}
+        # FIP 에 붙은 포트만 id 로 직접 조회한다. 전체 포트 목록을 받아 필터링하면
+        # 대규모 클라우드에서 이 한 번의 호출이 초 단위로 늘어난다.
+        port_kwargs: dict = {"id": sorted(needed_port_ids), "fields": ["id", "device_id", "device_owner"]}
         if project_id:
             port_kwargs["project_id"] = project_id
         for p in conn.network.ports(**port_kwargs):
@@ -623,7 +629,8 @@ def list_floating_ips(conn: openstack.connection.Connection, project_id: str | N
     instance_to_name: dict[str, str] = {}
     needed_instance_ids = set(port_to_instance.values())
     if needed_instance_ids:
-        srv_kwargs: dict = {}
+        # 이름만 필요하므로 detail 없는 목록으로 충분하다.
+        srv_kwargs: dict = {"details": False}
         if project_id:
             srv_kwargs["project_id"] = project_id
         for s in conn.compute.servers(**srv_kwargs):
@@ -730,9 +737,11 @@ def build_compute_port_index(conn: openstack.connection.Connection) -> dict[tupl
 
     토폴로지 핸들러(user/admin)가 인스턴스 ip_addresses 에 network_id/port_id/mac_address 를
     조인할 때 공유한다. device_owner 가 ``compute:`` 로 시작하고 device_id 가 있는 포트만 포함한다.
+    Neutron 이 포트당 직렬화하는 속성 수가 응답 시간을 지배하므로 필요한 필드만 요청한다
+    (``device_owner`` prefix 매칭이 필요해 서버측 device_owner 필터는 쓰지 않는다).
     """
     index: dict[tuple[str, str], dict] = {}
-    for p in conn.network.ports():
+    for p in conn.network.ports(fields=_COMPUTE_PORT_FIELDS):
         dev_owner = p.device_owner or ""
         if not p.device_id or not dev_owner.startswith("compute:"):
             continue
@@ -750,7 +759,7 @@ def build_compute_port_index(conn: openstack.connection.Connection) -> dict[tupl
 def get_topology(
     conn: openstack.connection.Connection, *, include_provider: bool = False, project_id: str | None = None
 ) -> TopologyData:
-    """배치 조회로 전체 토폴로지 데이터를 수집. OpenStack API 5회 호출.
+    """배치 조회로 전체 토폴로지 데이터를 수집. 독립 조회는 스레드로 동시에 수행한다.
 
     ``project_id`` 가 주어지면 Floating IP는 해당 프로젝트 소유분만 조회한다(사용자 scope).
 
@@ -758,13 +767,23 @@ def get_topology(
     ``include_provider=True`` 이면 네트워크를 ``AdminTopologyNetwork`` (provider 세그먼트 메타 포함)로
     직렬화해 ``AdminTopologyData`` 를 반환한다. 기본값은 provider 키가 없는 ``TopologyData`` 이다.
     """
-    # 1. 전체 네트워크
-    all_networks = list(conn.network.networks())
+    # 1. 서로 의존하지 않는 조회(네트워크/서브넷/라우터/FIP/라우터 인터페이스 포트)를 동시에 수행.
+    #    직렬 호출은 각 응답 시간이 그대로 합산돼 대규모 클라우드에서 토폴로지 응답이 수 초로 늘어난다.
+    iface_port_calls = [
+        (lambda owner=owner: list(conn.network.ports(device_owner=owner))) for owner in _ROUTER_IFACE_OWNERS
+    ]
+    all_networks, all_subnets, all_routers, floating_ips, *iface_port_groups = run_parallel(
+        lambda: list(conn.network.networks()),
+        lambda: list(conn.network.subnets()),
+        lambda: list(conn.network.routers()),
+        lambda: list_floating_ips(conn, project_id),
+        *iface_port_calls,
+    )
 
-    # 2. 전체 서브넷 → 맵 구축
+    # 2. 서브넷 → 맵 구축
     subnet_map: dict[str, SubnetDetail] = {}  # subnet_id → SubnetDetail
     subnet_network_map: dict[str, str] = {}  # subnet_id → network_id
-    for s in conn.network.subnets():
+    for s in all_subnets:
         subnet_map[s.id] = SubnetDetail(
             id=s.id,
             name=s.name or "",
@@ -778,7 +797,7 @@ def get_topology(
     router_subnets: dict[str, list[str]] = {}
     router_subnet_port_count: dict[str, dict[str, int]] = {}  # rid → {sid → port 수}
     router_interface_ips: dict[str, list[dict]] = {}  # rid → [{ip_address, subnet_id}]
-    for port in _iter_router_interface_ports(conn):
+    for port in (port for group in iface_port_groups for port in group):
         rid = port.device_id
         if not rid:
             continue
@@ -805,7 +824,7 @@ def get_topology(
 
     # 4. 전체 라우터
     topo_routers = []
-    for r in conn.network.routers():
+    for r in all_routers:
         ext_net_id = None
         ext_gw_ips: list[str] = []
         enable_snat: bool | None = None
@@ -869,7 +888,6 @@ def get_topology(
         else:
             topo_networks.append(TopologyNetwork(**base_fields))
 
-    floating_ips = list_floating_ips(conn, project_id)
     if include_provider:
         return AdminTopologyData(
             networks=topo_networks,

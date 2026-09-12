@@ -7,6 +7,14 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **토폴로지 패킷 흐름 기본 표시** — 캔버스의 패킷 흐름 시뮬레이션을 기본 on으로 바꿨다. 툴바 체크박스로 끌 수 있고, `prefers-reduced-motion` 환경에서는 종전대로 토글과 무관하게 완전히 비활성이다.
+
+### Fixed
+
+- **토폴로지 응답 8~10초 지연** — 사용자·관리자 토폴로지 핸들러가 서로 의존하지 않는 OpenStack 조회를 직렬로 수행해 각 응답 시간이 그대로 합산되고 있었다(운영 request 로그 `duration_ms` 8286~9939). 이제 네트워크·서브넷·라우터·Floating IP·라우터 인터페이스 포트, 그리고 topology·compute 포트 인덱스·Trove IP·Nova 서버를 각각 동시에 가져온다. 함께 과다 조회도 줄였다 — compute 포트 인덱스는 실제로 읽는 속성만 요청하고, `list_floating_ips`는 전체 포트·전체 서버 detail 목록을 받아 거르는 대신 FIP가 붙은 포트만 id로 조회하고 인스턴스 이름은 detail 없는 목록에서 읽는다. 운영 컨테이너 실측에서 동일한 payload를 유지하며 fan-out이 8938 ms → 2208 ms, `get_topology` 4267 ms → 781 ms, `list_floating_ips` 3167 ms → 349 ms 로 줄었다.
+
 ## [1.20.0] - 2026-09-12
 
 ### Added

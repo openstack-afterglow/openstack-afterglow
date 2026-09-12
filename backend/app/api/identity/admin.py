@@ -43,6 +43,7 @@ from app.services.octavia import get_topology_lbs
 
 # FastAPI-free 인벤토리 유틸리티로 이동됨 — admin.py 내부 호출 + 하위 호환 재export.
 from app.services.openstack_inventory import _fetch_hypervisors_raw
+from app.services.parallel import run_parallel
 from app.utils.version import read_app_version
 
 if TYPE_CHECKING:
@@ -1127,18 +1128,22 @@ async def admin_topology(
     """전체 프로젝트의 네트워크/라우터/인스턴스 토폴로지 (네트워크에 provider 세그먼트 메타 포함)."""
 
     def _fetch():
-        topo = neutron.get_topology(conn, include_provider=True)
-
-        # Neutron compute 포트에서 (device_id, ip) → {network_id, port_id, mac_address} 인덱스 구축
-        port_index = neutron.build_compute_port_index(conn)
-
-        # Trove DB 인스턴스 IP 집합 (전체 프로젝트, 1회 조회).
         # Trove 미배포/조회 실패는 정상 → 전부 is_database=False.
-        try:
-            db_ips = trove.topology_database_ips(conn, all_projects=True)
-        except Exception:
-            _logger.debug("Trove 토폴로지 IP 조회 실패 — is_database 표시 생략", exc_info=True)
-            db_ips = set()
+        def _db_ips() -> set:
+            try:
+                return trove.topology_database_ips(conn, all_projects=True)
+            except Exception:
+                _logger.debug("Trove 토폴로지 IP 조회 실패 — is_database 표시 생략", exc_info=True)
+                return set()
+
+        # 서로 의존하지 않는 OpenStack 조회는 동시에 수행한다 — 직렬 호출은 응답 시간이 그대로 합산된다.
+        # port_index: (device_id, ip) → {network_id, port_id, mac_address}
+        topo, port_index, db_ips, servers = run_parallel(
+            lambda: neutron.get_topology(conn, include_provider=True),
+            lambda: neutron.build_compute_port_index(conn),
+            _db_ips,
+            lambda: list(conn.compute.servers(details=True, all_projects=True)),
+        )
 
         def _ip_entry(server_id: str, net_name: str, addr: dict) -> dict:
             port = port_index.get((server_id, addr["addr"]), {})
@@ -1152,7 +1157,7 @@ async def admin_topology(
             }
 
         instances = []
-        for s in conn.compute.servers(details=True, all_projects=True):
+        for s in servers:
             addresses = getattr(s, "addresses", {}) or {}
             flavor = getattr(s, "flavor", None)
             image = getattr(s, "image", None)

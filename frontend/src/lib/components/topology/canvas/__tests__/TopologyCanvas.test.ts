@@ -470,12 +470,12 @@ describe('TopologyCanvas', () => {
 		expect(onSelectInstance.mock.calls.every((c) => c[0] === 'vm-web-01')).toBe(true);
 	});
 
-	it('패킷 흐름 토글은 옵트인이며 경로 API 가 없는 환경에서는 점을 만들지 않는다', async () => {
+	it('패킷 흐름은 기본 on 이고 끌 수 있으며 경로 API 가 없는 환경에서는 점을 만들지 않는다', async () => {
 		renderCanvas();
 		const chk = screen.getByRole('checkbox', { name: /패킷 흐름/ });
-		expect((chk as HTMLInputElement).checked).toBe(false);
-		await fireEvent.click(chk);
 		expect((chk as HTMLInputElement).checked).toBe(true);
+		await fireEvent.click(chk);
+		expect((chk as HTMLInputElement).checked).toBe(false);
 		expect(document.querySelectorAll('.flow-dot')).toHaveLength(0);
 	});
 });

@@ -821,8 +821,8 @@
 		};
 	});
 
-	// ───────── 패킷 흐름 시뮬레이션(옵트인 · 기본 off · reduced-motion 하드 off · DESIGN.md named motion exception)
-	let flowOn = $state(false);
+	// ───────── 패킷 흐름 시뮬레이션(기본 on · 토글로 끌 수 있음 · reduced-motion 하드 off · DESIGN.md named motion exception)
+	let flowOn = $state(true);
 	let reducedMotion = $state(prefersReducedMotion());
 	type FlowDot = { el: SVGCircleElement; key: string; t: number; dir: boolean; speed: number };
 	type FlowPath = { path: SVGPathElement; d: string; len: number };

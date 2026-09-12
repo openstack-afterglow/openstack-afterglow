@@ -84,7 +84,7 @@ Operational status uses exact, case-sensitive `getStatusStyle(status: string | n
 
 Animate opacity, translate, or scale only; never animate layout dimensions. Hover is decoration, never the only status signal. Repeating animation is limited to loading, progress, and status. `prefersReducedMotion()` and `motionDuration()` make JavaScript transitions immediate. The global reduced-motion contract sets all five duration variables plus Tailwind `--default-transition-duration` and `--default-animation-duration` to `0.01ms`, scroll to `auto`, and universally overrides animation/transition duration and delay.
 
-Named motion exceptions: `--landing-ease`; ChatPanel composer `cubic-bezier(0.22, 1, 0.36, 1)`; QuotaDonut `duration-700`; 600ms landing reveal; 7-second tutorial hint; `0.8–1.2s` linear loading loops; and 토폴로지 캔버스 패킷 흐름 시뮬레이션 (옵트인, 기본 off, prefers-reduced-motion 시 완전 비활성, rAF 기반 transform 이동). Do not copy exceptions into ordinary components.
+Named motion exceptions: `--landing-ease`; ChatPanel composer `cubic-bezier(0.22, 1, 0.36, 1)`; QuotaDonut `duration-700`; 600ms landing reveal; 7-second tutorial hint; `0.8–1.2s` linear loading loops; and 토폴로지 캔버스 패킷 흐름 시뮬레이션 (기본 on, 툴바 토글로 끌 수 있음, prefers-reduced-motion 시 완전 비활성, rAF 기반 transform 이동). Do not copy exceptions into ordinary components.
 
 ## Editorial surfaces
 

@@ -33,6 +33,7 @@ from app.rate_limit import limiter
 from app.services import neutron, nova, trove
 from app.services.cache import cached_call, invalidate, ttl_fast, ttl_normal, ttl_static
 from app.services.octavia import get_lb_stats, get_topology_lbs, lb_rate_from_snapshot, list_load_balancers
+from app.services.parallel import run_parallel
 from app.services.prom_query import (
     PromBadQuery,
     PromUnavailable,
@@ -401,18 +402,21 @@ def _fetch_topology_sync(conn, project_id: str | None = None) -> dict:
     project_id 지정 시 해당 프로젝트의 인스턴스·네트워크·라우터·Floating IP만 반환 (user scope).
     None이면 전체 반환 (admin scope).
     """
-    topo = neutron.get_topology(conn, project_id=project_id)
-    servers = nova.list_servers(conn)
 
-    # Neutron compute 포트에서 (device_id, ip) → {network_id, port_id, mac_address} 인덱스 구축
-    port_index = neutron.build_compute_port_index(conn)
+    # 서로 의존하지 않는 OpenStack 조회는 동시에 수행한다 — 직렬 호출은 응답 시간이 그대로 합산된다.
+    def _db_ips() -> set:
+        try:
+            return trove.topology_database_ips(conn)
+        except Exception:
+            _logger.debug("Trove 토폴로지 IP 조회 실패 — is_database 표시 생략", exc_info=True)
+            return set()
 
-    # Trove DB 인스턴스 IP 집합 (1회 조회). Trove 미배포/조회 실패는 정상 → 전부 is_database=False.
-    try:
-        db_ips = trove.topology_database_ips(conn)
-    except Exception:
-        _logger.debug("Trove 토폴로지 IP 조회 실패 — is_database 표시 생략", exc_info=True)
-        db_ips = set()
+    topo, servers, port_index, db_ips = run_parallel(
+        lambda: neutron.get_topology(conn, project_id=project_id),
+        lambda: nova.list_servers(conn),
+        lambda: neutron.build_compute_port_index(conn),
+        _db_ips,
+    )
 
     def _ip_entry(server_id: str, ip) -> dict:
         port = port_index.get((server_id, ip.addr), {})

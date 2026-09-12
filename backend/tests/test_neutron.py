@@ -872,10 +872,62 @@ def test_build_compute_port_index_filters_and_maps_meta():
 
     index = build_compute_port_index(conn)
 
-    conn.network.ports.assert_called_once_with()
+    conn.network.ports.assert_called_once_with(
+        fields=["id", "device_id", "device_owner", "network_id", "mac_address", "fixed_ips"]
+    )
     assert index[("vm-1", "10.0.0.5")] == {"network_id": "net-a", "port_id": "p-1", "mac_address": "fa:16:3e:00:00:01"}
     assert index[("vm-1", "fd00::5")]["port_id"] == "p-1"
     assert index[("vm-1", "10.0.1.7")] == {"network_id": "net-b", "port_id": "p-2", "mac_address": "fa:16:3e:00:00:02"}
     assert ("r-1", "10.0.0.1") not in index
     assert ("", "10.0.0.2") not in index
     assert all(key[0] != "vm-2" for key in index)
+
+
+def test_list_floating_ips_looks_up_only_attached_ports_and_names():
+    """FIP 이름 해석이 전체 포트·전체 서버 detail 목록을 훑지 않는다 (토폴로지 지연 원인)."""
+    from app.services.neutron import list_floating_ips
+
+    fip_attached = MagicMock()
+    fip_attached.id = "fip-1"
+    fip_attached.floating_ip_address = "203.0.113.10"
+    fip_attached.fixed_ip_address = "10.0.0.5"
+    fip_attached.status = "ACTIVE"
+    fip_attached.port_id = "p-1"
+    fip_attached.floating_network_id = "net-ext"
+    fip_attached.project_id = "proj-1"
+    fip_attached.description = ""
+
+    fip_free = MagicMock()
+    fip_free.id = "fip-2"
+    fip_free.floating_ip_address = "203.0.113.11"
+    fip_free.fixed_ip_address = None
+    fip_free.status = "DOWN"
+    fip_free.port_id = None
+    fip_free.floating_network_id = "net-ext"
+    fip_free.project_id = "proj-1"
+    fip_free.description = ""
+
+    port = MagicMock()
+    port.id = "p-1"
+    port.device_id = "vm-1"
+    port.device_owner = "compute:nova"
+
+    server = MagicMock()
+    server.id = "vm-1"
+    server.name = "web-01"
+
+    conn = MagicMock()
+    conn.network.ips.return_value = [fip_attached, fip_free]
+    conn.network.ports.return_value = [port]
+    conn.compute.servers.return_value = [server]
+
+    out = list_floating_ips(conn, "proj-1")
+
+    conn.network.ports.assert_called_once_with(
+        id=["p-1"], fields=["id", "device_id", "device_owner"], project_id="proj-1"
+    )
+    conn.compute.servers.assert_called_once_with(details=False, project_id="proj-1")
+    by_id = {f.id: f for f in out}
+    assert by_id["fip-1"].instance_id == "vm-1"
+    assert by_id["fip-1"].instance_name == "web-01"
+    assert by_id["fip-2"].instance_id is None

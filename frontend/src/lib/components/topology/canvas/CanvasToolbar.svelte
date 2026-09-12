@@ -1,5 +1,5 @@
 <script lang="ts">
-	// 캔버스 상단 툴바: 검색, 패킷 흐름(옵트인 시뮬레이션), 화면 맞춤, 배치 초기화.
+	// 캔버스 상단 툴바: 검색, 패킷 흐름(기본 on 시뮬레이션), 화면 맞춤, 배치 초기화.
 	import Button from '$lib/components/ui/Button.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
 
@@ -18,7 +18,7 @@
 
 	let {
 		query = $bindable(''),
-		flowOn = $bindable(false),
+		flowOn = $bindable(true),
 		reducedMotion = false,
 		matchCount = null,
 		searchElement = $bindable(null),
