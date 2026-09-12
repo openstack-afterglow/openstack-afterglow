@@ -201,8 +201,8 @@ Architecture maintenance는 다음 규칙을 따른다.
 {
   "schema_version": 1,
   "source_sha256": "1a07e9f508a3bdfc44ca7ed8027d32086622747aad8bc04ab840546f5f006f81",
-  "reviewed_at": "2026-09-12T15:27:10Z",
-  "summary": "토폴로지 조회 fan-out을 run_parallel로 병렬화하고 포트/FIP 과다 조회를 축소했으며 캔버스 패킷 흐름 기본값을 on으로 바꿨다. 운영 실측으로 동일 payload에서 8938ms→2208ms 확인."
+  "reviewed_at": "2026-09-12T15:28:21Z",
+  "summary": "토폴로지 조회 fan-out 병렬화 change를 archive로 이동. source 구조 변경 없음."
 }
 ```
 <!-- architecture-review:end -->
