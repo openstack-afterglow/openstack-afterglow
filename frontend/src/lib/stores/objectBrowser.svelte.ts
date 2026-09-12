@@ -1,6 +1,6 @@
 import { setContext, getContext } from 'svelte';
 import { SvelteSet, SvelteMap } from 'svelte/reactivity';
-import { api, ApiError, getBaseUrl } from '$lib/api/client';
+import { api, ApiError, fetchWithAuth, getBaseUrl } from '$lib/api/client';
 import { downloadBlobAs } from '$lib/utils/downloadBlob';
 import { uploadQueue } from '$lib/stores/uploadQueue';
 import type { SwiftContainer } from '$lib/types/common';
@@ -505,18 +505,13 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 		selectedMeta = null; showPreview = true;
 		previewName = obj.name; previewContentType = obj.content_type;
 		previewText = ''; previewUrl = ''; loadingPreview = true;
-		const base = getBaseUrl();
-		const headers: Record<string, string> = {};
 		const tok = opts.token(); const pid = opts.projectId();
-		if (tok) headers['Authorization'] = `Bearer ${tok}`;
-		if (pid) headers['X-Project-Id'] = pid;
 		const encodedPath = `/api/v1/object-storage/${encodeURIComponent(opts.containerName())}/objects/${encObj(obj.name)}/preview`;
 		try {
+			const res = await fetchWithAuth(encodedPath, {}, tok, pid);
 			if (obj.content_type.startsWith('image/') || obj.content_type === 'application/pdf') {
-				const res = await fetch(`${base}${encodedPath}`, { headers });
 				previewUrl = URL.createObjectURL(await res.blob());
 			} else {
-				const res = await fetch(`${base}${encodedPath}`, { headers });
 				previewText = await res.text();
 			}
 		} catch { previewText = '미리보기를 불러오지 못했습니다.'; }

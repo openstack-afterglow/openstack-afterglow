@@ -2,7 +2,7 @@ import { get } from 'svelte/store';
 import { goto } from '$app/navigation';
 import { setContext, getContext } from 'svelte';
 import { wizard, resetWizard, closeWizard, type WizardState } from '$lib/stores/wizard';
-import { api, ApiError, getBaseUrl } from '$lib/api/client';
+import { api, ApiError, fetchWithAuth, getBaseUrl } from '$lib/api/client';
 import { maybeMockInstanceCreateStream } from '$lib/mockup/transport';
 import { auth } from '$lib/stores/auth';
 import { betaFeatures } from '$lib/stores/betaFeatures';
@@ -1154,16 +1154,9 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 
 		const baseUrl = getBaseUrl();
 		const authState = get(auth);
-		const headers: Record<string, string> = {
-			'Content-Type': 'application/json',
-			'Accept': 'text/event-stream',
-		};
-		if (authState.token) headers['Authorization'] = `Bearer ${authState.token}`;
-		if (authState.projectId) headers['X-Project-Id'] = authState.projectId;
-
 		const endpoint = opts.adminMode()
-			? `${baseUrl}/api/v1/admin/instances/async`
-			: `${baseUrl}/api/v1/instances/async`;
+			? '/api/v1/admin/instances/async'
+			: '/api/v1/instances/async';
 
 		const w = get(wizard);
 		const requestedName = normalizeRequestedInstanceName(w.instanceName);
@@ -1198,12 +1191,12 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 				currentStep = 'server_creating';
 				progress = 60;
 				progressMessage = 'squashfs 라이브러리 소비 VM 생성 중...';
-				const response = await fetch(`${baseUrl}/api/v1/libraries/squashfs/consume`, {
+				const response = await fetchWithAuth('/api/v1/libraries/squashfs/consume', {
 					method: 'POST',
-					headers: { ...headers, Accept: 'application/json' },
+					headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
 					body: JSON.stringify(consumeBody),
 					signal: deployController.signal,
-				});
+				}, authState.token ?? undefined, authState.projectId ?? undefined, { baseUrl });
 				if (destroyed) return;
 				if (!response.ok) {
 					const text = await response.text();
@@ -1283,7 +1276,12 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		}
 
 		try {
-			const response = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body), signal: deployController.signal });
+			const response = await fetchWithAuth(endpoint, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+				body: JSON.stringify(body),
+				signal: deployController.signal,
+			}, authState.token ?? undefined, authState.projectId ?? undefined, { baseUrl });
 			if (destroyed) return;
 			if (!response.ok) {
 				const text = await response.text();

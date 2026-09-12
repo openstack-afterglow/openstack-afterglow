@@ -2,7 +2,7 @@
  * Scanned canonical chat assets. The API returns an opaque asset id; object keys
  * and signed URLs never cross the browser boundary.
  */
-import { getBaseUrl } from './client';
+import { fetchWithAuth } from './client';
 
 /** Backend asset metadata plus local upload state. */
 export interface ChatAttachment {
@@ -71,19 +71,14 @@ export async function uploadChatAttachment(
 	file: File,
 	{ token, projectId, signal }: UploadOptions = {}
 ): Promise<AttachmentRef> {
-	const headers: Record<string, string> = {};
-	if (token) headers['Authorization'] = `Bearer ${token}`;
-	if (projectId) headers['X-Project-Id'] = projectId;
-
 	const form = new FormData();
 	form.append('file', file);
 
-	const res = await fetch(`${getBaseUrl()}/api/v1/chat/assets`, {
+	const res = await fetchWithAuth('/api/v1/chat/assets', {
 		method: 'POST',
-		headers,
 		body: form,
 		signal
-	});
+	}, token, projectId);
 	if (!res.ok) {
 		let detail = res.statusText;
 		try {
@@ -105,12 +100,11 @@ export async function downloadChatAsset(
 	assetId: string,
 	{ token, projectId, signal }: DownloadOptions = {}
 ): Promise<Blob> {
-	const headers: Record<string, string> = {};
-	if (token) headers['Authorization'] = `Bearer ${token}`;
-	if (projectId) headers['X-Project-Id'] = projectId;
-	const res = await fetch(
-		`${getBaseUrl()}/api/v1/chat/assets/${encodeURIComponent(assetId)}/download`,
-		{ headers, signal }
+	const res = await fetchWithAuth(
+		`/api/v1/chat/assets/${encodeURIComponent(assetId)}/download`,
+		{ signal },
+		token,
+		projectId
 	);
 	if (!res.ok) throw new Error(`파일 다운로드 실패 (${res.status})`);
 	return res.blob();

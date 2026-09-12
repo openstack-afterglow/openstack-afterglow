@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { auth } from '$lib/stores/auth';
-	import { api, ApiError, getBaseUrl } from '$lib/api/client';
+	import { api, ApiError, fetchWithAuth } from '$lib/api/client';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import NotionTargetAddForm from '$lib/components/admin/notion/NotionTargetAddForm.svelte';
 	import NotionTargetEditForm from '$lib/components/admin/notion/NotionTargetEditForm.svelte';
@@ -87,15 +87,12 @@
 		testMessages = { ...testMessages, [id]: '' };
 		testErrors = { ...testErrors, [id]: '' };
 		try {
-			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-			if ($auth.token) headers['Authorization'] = `Bearer ${$auth.token}`;
-			if ($auth.projectId) headers['X-Project-Id'] = $auth.projectId;
-			const resp = await fetch(`${getBaseUrl()}/api/v1/admin/notion/targets/${id}/test`, {
+			const resp = await fetchWithAuth(`/api/v1/admin/notion/targets/${id}/test`, {
 				method: 'POST',
-				headers,
+				headers: { 'Content-Type': 'application/json' },
 				body: '{}',
 				signal: AbortSignal.timeout(120_000),
-			});
+			}, $auth.token ?? undefined, $auth.projectId ?? undefined);
 			if (!resp.ok) {
 				const body = await resp.json().catch(() => ({ detail: resp.statusText }));
 				throw new ApiError(resp.status, body?.detail || resp.statusText);

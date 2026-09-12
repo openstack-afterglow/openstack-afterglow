@@ -561,9 +561,11 @@ Returns the Neutron port list for the current project.
 
 The topology is split into two endpoints. **Structure** (`/topology`) returns node/edge relationships with a 30s cache, and
 **Traffic** (`/topology/traffic`) is a short-interval-polling-only endpoint that computes real-time rx/tx bps on every call with no cache.
-Values are **30-second averages** from Prometheus `rate(...[30s])`. The window depends on the scrape interval: the two jobs the topology reads (`instances-node`, `instances-libvirt`) must scrape every 10s so three samples fall inside the window (`deploy/k8s*/monitoring/prometheus/configmap.yaml`). The window constant is `app.api.network.networks.TOPOLOGY_RATE_WINDOW`; `backend/tests/test_topology_traffic.py` pins the window together with the scrape interval across **both** the deployed and template configmaps.
+Values are **2-minute averages** from Prometheus `rate(...[2m])`. The window constant is `app.api.network.networks.TOPOLOGY_RATE_WINDOW` and matches what the instance metric charts (`instance_metrics.py`) use.
 
-> **Failure mode**: a 30s window with a 10s scrape is exactly 3 samples, leaving one sample of slack. If **two consecutive scrapes are missed** (e.g. during an http_sd target refresh), `rate()` returns nothing and that instance drops out of `instances`, `networks`, and the history `series` entirely — the UI shows no value (`—`), not `0`. Raise the window to 45-60s for more slack (the `scrape x 3 <= window` contract still passes).
+> **Do not narrow this window.** `rate()` needs at least two samples inside it, and **this repository does not control the production Prometheus `scrape_interval`** — production runs Kolla and its scrape config lives outside the repo. `deploy/k8s*/monitoring/prometheus/configmap.yaml` is a different deployment path whose job names (`instances-node`, `instances-libvirt`) do not even match production (`libvirt_exporter`, `openstack-instances-*`), so it cannot justify a narrower window. On 2026-09-11 narrowing it to 30s made the libvirt query return zero series in production (1m scrape) and all traffic vanished from the UI. `backend/tests/test_topology_traffic.py::test_topology_window_is_not_narrower_than_rest_of_repo` pins it against the rest of the repo.
+
+> **Failure mode**: if the scrape interval is slower than half the window, `rate()` returns nothing and that instance drops out of `instances`, `networks`, and the history `series` entirely — the UI shows no value (`—`), not `0`. A 2m window tolerates scrape intervals up to 1m.
 
 ### Endpoint List
 
@@ -730,7 +732,7 @@ It uses the **same attribution rule** as the instant endpoint: the value is the 
 Design constraints:
 
 - **Do not poll.** Calling this periodically for every network multiplies Prometheus load by the number of networks.
-- `step_s` is a fixed per-range value and is always **at or below** `TOPOLOGY_RATE_WINDOW` (30s). Using `calc_step()` (range/100) would yield 36s for the 1h range, which would drop traffic between samples from the graph. `backend/tests/test_topology_traffic.py::test_history_step_never_exceeds_rate_window` pins this contract.
+- The contract for `step_s` is **`scrape <= step <= window`**. Breaking the upper bound drops traffic between samples from the graph; breaking the lower bound produces a staircase of repeated values (measured at a 60s scrape: step 15s gives 75% adjacent-identical points, step 60s gives 0%). Since the scrape interval is unknown, the worst case implied by the window (`window/2`) is used as the floor — `_history_step()` = `max(calc_step(range), window/2)`. `test_history_step_never_exceeds_rate_window` and `test_history_step_is_never_finer_than_scrape_implied_by_window` pin both bounds.
 - `stats` is computed **from the returned `series`**, not from separate `avg_over_time` queries. Two sources would make the graph peak disagree with the label.
 - `stats` is **per direction**, not an rx+tx sum. The instant endpoint reports per direction, so a summed figure would sit next to `▼ 5.8M ▲ 2.0M` as an uncomparable `7.8M`. The rx and tx values of `max` may come from different timestamps (each is that direction's independent peak).
 - Past traffic of instances no longer in the port map (deleted) is dropped because it has nothing to attribute to — the instant endpoint has the same limitation.
@@ -742,11 +744,13 @@ Design constraints:
 | `range` | query | string | No | `15m` (default) · `30m` · `1h` |
 | `all_projects` | query | boolean | No | Cover ports of all projects (default `false`). **System admin only** |
 
-| `range` | Span | `step_s` | Samples |
-|---------|------|----------|---------|
-| `15m` | 900s | 15s | 60 |
-| `30m` | 1800s | 30s | 60 |
-| `1h` | 3600s | 30s | 120 |
+| `range` | Span | `step_s` (with a 2m window) | Samples |
+|---------|------|-----------------------------|---------|
+| `15m` | 900s | 60s | 15 |
+| `30m` | 1800s | 60s | 30 |
+| `1h` | 3600s | 60s | 60 |
+
+`step_s` follows the window (`max(calc_step(range), window/2)`), so a deployment with a narrower window gets finer steps.
 
 **Response (200 OK)**
 
@@ -754,8 +758,8 @@ Design constraints:
 {
   "network_id": "uuid-string",
   "range": "15m",
-  "step_s": 15,
-  "window": "30s",
+  "step_s": 60,
+  "window": "2m",
   "series": [
     { "ts": 1767225585, "rx_bps": 4096.0, "tx_bps": 8192.0 },
     { "ts": 1767225600, "rx_bps": 5120.0, "tx_bps": 8192.0 }

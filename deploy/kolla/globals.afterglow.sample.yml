@@ -41,7 +41,7 @@ enable_lumen_source_build: false
 enable_waygate_source_build: false
 enable_palimpsest_source_build: false
 
-afterglow_image_tag: "v1.19.1"
+afterglow_image_tag: "v1.20.0"
 afterglow_backend_image_ref: "{{ afterglow_backend_image }}:{{ afterglow_image_tag }}"
 afterglow_frontend_image_ref: "{{ afterglow_frontend_image }}:{{ afterglow_image_tag }}"
 afterglow_worker_image_ref: "{{ afterglow_worker_image }}:{{ afterglow_image_tag }}"

@@ -1,7 +1,7 @@
 {
   "name": "afterglow-monorepo",
   "private": true,
-  "version": "1.19.1",
+  "version": "1.20.0",
   "scripts": {
     "test": "npm run test:unit",
     "test:unit": "npm run test:target:js && npm run test:unit:backend && npm run test:unit:frontend",

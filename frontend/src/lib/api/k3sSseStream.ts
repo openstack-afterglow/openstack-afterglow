@@ -1,4 +1,4 @@
-import { beginMutationCacheFence } from './client';
+import { beginMutationCacheFence, fetchWithAuth } from './client';
 import { maybeMockK3sStream } from '$lib/mockup/transport';
 
 
@@ -22,16 +22,14 @@ export async function* streamK3sProgress(
       yield* mockStream;
       return;
     }
-    const res = await fetch(`${fence.baseUrl}${path}`, {
+    const res = await fetchWithAuth(path, {
       method: init.method,
       headers: {
         'Content-Type': 'application/json',
         Accept: 'text/event-stream',
-        ...(init.token ? { 'Authorization': `Bearer ${init.token}` } : {}),
-        ...(init.projectId ? { 'X-Project-Id': init.projectId } : {}),
       },
       body: init.body != null ? JSON.stringify(init.body) : undefined,
-    });
+    }, init.token, init.projectId, { baseUrl: fence.baseUrl });
 
     if (!res.ok || !res.body) {
       const text = await res.text().catch(() => '');

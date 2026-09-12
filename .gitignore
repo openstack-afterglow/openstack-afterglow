@@ -238,6 +238,7 @@ deploy/k8s-test/
 logs/*
 !logs/.gitkeep
 *.log
+backend/logs/
 
 # OS 파일
 .DS_Store

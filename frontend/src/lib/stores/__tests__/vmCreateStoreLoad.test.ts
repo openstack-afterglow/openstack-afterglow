@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as ClientModule from '$lib/api/client';
 import { auth } from '../auth';
 import { DEFAULT_BETA_FEATURES, betaFeatures } from '../betaFeatures';
 import { resetWizard } from '../wizard';
@@ -7,11 +8,10 @@ import { siteConfig } from '$lib/config/site';
 
 const { api } = vi.hoisted(() => ({ api: { get: vi.fn(), post: vi.fn() } }));
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
-vi.mock('$lib/api/client', () => ({
-	api,
-	ApiError: class ApiError extends Error {},
-	getBaseUrl: () => '',
-}));
+vi.mock('$lib/api/client', async (importOriginal) => {
+	const actual = await importOriginal<typeof ClientModule>();
+	return { ...actual, api };
+});
 vi.mock('$lib/mockup/transport', () => ({ maybeMockInstanceCreateStream: () => null }));
 
 import VmCreateStoreLoadWrapper from './_VmCreateStoreLoadWrapper.svelte';

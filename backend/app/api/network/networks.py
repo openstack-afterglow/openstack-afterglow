@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from typing import TYPE_CHECKING, Literal, NamedTuple
 
@@ -35,6 +36,7 @@ from app.services.octavia import get_lb_stats, get_topology_lbs, lb_rate_from_sn
 from app.services.prom_query import (
     PromBadQuery,
     PromUnavailable,
+    calc_step,
     is_safe_label_value,
     query_instant_multi,
     query_range_multi,
@@ -42,18 +44,19 @@ from app.services.prom_query import (
 
 _logger = logging.getLogger(__name__)
 
-# 토폴로지 트래픽 rate 윈도우. 캔버스가 사용량을 30초 단위로 읽으려면 이 값이어야 한다.
-# **scrape interval 에 종속된다**: Prometheus rate 는 윈도우 안에 최소 2 샘플이 필요하고
-# jitter 를 감당하려면 3 샘플이 안전하다 → 윈도우 30s 는 scrape ≤ 10s 를 전제한다.
-# 토폴로지가 쓰는 두 job(`instances-node`, `instances-libvirt`)의 scrape_interval 을
-# `deploy/k8s*/monitoring/prometheus/configmap.yaml` 에서 10s 로 맞춰 두었다.
-# 이 상수를 줄이려면(예: 10s) scrape 도 3-4s 로 함께 낮춰야 하며, 그러지 않으면 빈 결과가 돌아온다.
+# 토폴로지 트래픽 rate 윈도우. 저장소의 다른 PromQL 과 같은 값을 쓴다
+# (`app/api/compute/instance_metrics.py` 가 같은 libvirt/node 카운터에 `[2m]` 을 쓴다).
 #
-# **실패 모드**: 30s/10s 는 정확히 3 샘플이므로 여유가 1 샘플뿐이다. http_sd 타깃 갱신 등으로
-# **scrape 를 연속 2회 놓치면** `rate()` 가 결과를 주지 않아 그 인스턴스가 `instances`/`networks`/
-# 히스토리 `series` 에서 통째로 빠진다 — 화면에는 "0" 이 아니라 "값 없음"(`—`)으로 보인다.
-# 여유가 더 필요하면 윈도우를 45~60s 로 올린다(`scrape × 3 ≤ window` 계약은 그대로 통과한다).
-TOPOLOGY_RATE_WINDOW = "30s"
+# **이 값을 좁히지 마라.** `rate()` 는 윈도우 안에 최소 2 샘플이 필요한데,
+# **이 저장소는 운영 Prometheus 의 scrape_interval 을 제어하지 않는다** — 운영은 Kolla 배포본이고
+# 그 scrape 설정은 이 저장소 밖에 있다(`deploy/kolla/` 에 prometheus 설정이 없는 이유).
+# `deploy/k8s*/monitoring/prometheus/configmap.yaml` 은 **다른 배포 경로**이며 운영 job 이름
+# (`libvirt_exporter`, `openstack-instances-*`)과 일치하지도 않으므로 scrape 근거가 될 수 없다.
+#
+# 실측(2026-09-11, 운영 Prometheus, scrape 1m): 윈도우 30s 로 좁혔더니
+# libvirt NIC 쿼리가 **0 시계열**을 반환해 화면에서 트래픽이 통째로 사라졌다(2m 에서는 43 시계열).
+# 좁은 윈도우는 scrape 가 그만큼 빠른 배포에서만 안전하고, 우리는 그걸 보장할 수 없다.
+TOPOLOGY_RATE_WINDOW = "2m"
 
 router = APIRouter()
 
@@ -534,8 +537,13 @@ def _traffic_exprs(instance_ids: list[str]) -> tuple[str, str, str, str]:
     _exclude = r"lo|veth.*|docker.*|cni.*|tap.*|qbr.*"
     # UUID 는 [0-9a-f-] 만 포함 — re.escape 쓰면 \- 로 인해 Prometheus RE2 거부.
     regex = "|".join(instance_ids)
+    # `max by` 이지 `sum by` 가 아니다. (instance_id, device) 는 NIC 하나를 유일하게 지목하므로
+    # 같은 키가 여러 번 나오는 것은 **같은 카운터를 여러 job 이 중복 scrape** 했다는 뜻이다
+    # (실측: 한 인스턴스가 openstack-instances-internal 과 -external 양쪽에 등록되어
+    #  ens3 가 2243.7 + 2429.9 = 4673.6 으로 1.9배가 됐다). 더하면 이중 계산이고,
+    # 중복 scrape 값은 타이밍 차이만 있으므로 하나만 취하는 것이 맞다.
     rx_q = (
-        f"sum by (instance_id, device) (rate(node_network_receive_bytes_total"
+        f"max by (instance_id, device) (rate(node_network_receive_bytes_total"
         f'{{instance_id=~"{regex}",device!~"{_exclude}"}}[{TOPOLOGY_RATE_WINDOW}]))'
     )
     # libvirt: NIC 단위 demux. group_left 2단계 중첩으로 mac_address + instance_id 동시 보존.
@@ -687,14 +695,31 @@ async def get_topology_traffic(
 # 네트워크 사용량 히스토리 (동적 `/{network_id}` 보다 먼저 등록)
 # ---------------------------------------------------------------------------
 
-# range → (총 구간 초, step 초).
-# step 은 반드시 `TOPOLOGY_RATE_WINDOW` 이하여야 한다 — step 이 윈도우보다 크면 샘플 사이의
-# 트래픽이 그래프에서 통째로 사라진다. `calc_step()`(range//100) 을 쓰지 않는 이유가 이것이다.
-_HISTORY_RANGES: dict[str, tuple[int, int]] = {
-    "15m": (900, 15),
-    "30m": (1800, 30),
-    "1h": (3600, 30),
-}
+# range → 총 구간 초. step 은 저장소 공용 `calc_step()`(최소 15s, 최대 100 포인트)을 쓴다 —
+# 인스턴스 메트릭 차트와 같은 관례다. step 은 `TOPOLOGY_RATE_WINDOW` 이하라야 샘플 사이
+# 트래픽이 그래프에서 빠지지 않는다(`calc_step` 은 1h 에서 36s 이므로 2m 윈도우 안에 든다).
+_HISTORY_RANGES: dict[str, int] = {"15m": 900, "30m": 1800, "1h": 3600}
+
+
+def _window_seconds() -> int:
+    """`TOPOLOGY_RATE_WINDOW` 를 초로. 형식이 바뀌면 즉시 터지게 둔다."""
+    m = re.fullmatch(r"(\d+)(s|m)", TOPOLOGY_RATE_WINDOW)
+    if not m:
+        raise ValueError(f"rate 윈도우 형식을 해석할 수 없다: {TOPOLOGY_RATE_WINDOW}")
+    return int(m.group(1)) * (60 if m.group(2) == "m" else 1)
+
+
+def _history_step(range_s: int) -> int:
+    """히스토리 step. 계약은 `scrape ≤ step ≤ window` 다.
+
+    상한(step ≤ window)을 어기면 샘플 사이 트래픽이 그래프에서 빠진다.
+    하한(step ≥ scrape)을 어기면 **같은 값이 반복되는 계단**이 나온다 — 실측(scrape 60s)에서
+    step 15s 는 인접 동일값 비율 72%, step 60s 는 12%(트래픽이 평평한 구간의 자연 기준선)였다.
+
+    scrape 를 알 수 없으므로(저장소가 제어하지 않는다) 윈도우가 함의하는 최악을 하한으로 쓴다:
+    윈도우는 `rate` 가 2 샘플을 담도록 `window ≥ 2 × scrape` 를 전제하므로 `scrape ≤ window/2` 다.
+    """
+    return max(calc_step(range_s), _window_seconds() // 2)
 
 
 def _series_stats(series: list[dict[str, float]]) -> dict[str, dict[str, float] | None]:
@@ -747,7 +772,8 @@ async def get_topology_traffic_history(
             stats: {avg, max, latest} (각각 {rx_bps, tx_bps} 또는 null), _meta }
     """
     ctx = await _load_port_context(conn, token_info, all_projects)
-    range_s, step_s = _HISTORY_RANGES[range]
+    range_s = _HISTORY_RANGES[range]
+    step_s = _history_step(range_s)
     end_ts = int(time.time())
     start_ts = end_ts - range_s
 

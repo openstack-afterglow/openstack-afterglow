@@ -147,6 +147,14 @@ kolla-ansible reconfigure -i multinode --tags afterglow,lumen
 `--limit`을 사용해도 DB 마이그레이션과 PostgreSQL은 첫 서비스 컨트롤러에
 위임될 수 있으므로 해당 호스트의 설정과 공유 데이터 저장소도 필요합니다.
 
+Afterglow의 Kolla 최종 설정은 `valkey` inventory 전체를 Sentinel 주소로 사용하고
+Kolla의 monitor 이름으로 현재 master를 찾습니다. `redis_url`은 사용자명·
+`valkey_master_password`·전용 DB index(기본 5)를 계속 전달하지만 첫 controller
+주소를 고정 master로 취급하지 않습니다. Valkey promotion 뒤에는 Sentinel이
+보고하는 master와 인증된 `/api/v1/auth/refresh` 쓰기 경로를 함께 확인하세요.
+단순 health 200이나 replica에서 성공하는 `GET`만으로는 세션 쓰기 가능 여부를
+증명하지 못합니다.
+
 서비스 카탈로그 검증은 [등록 튜토리얼](openstack-service-catalog.md)을 참고하세요.
 
 ---

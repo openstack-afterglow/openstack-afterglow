@@ -12,6 +12,7 @@
 	import type { PublicSiteConfig } from '$lib/types/siteConfig';
 	import type { AnnouncementUser, UnreadCountResponse } from '$lib/types/announcements';
 	import { formatIsoDateTime } from '$lib/utils/format';
+	import { startSessionRefreshLifecycle } from '$lib/utils/sessionRefreshLifecycle';
 	import { sidebarOpen } from '$lib/stores/sidebar';
 	import { deriveBreadcrumb } from '$lib/config/routes';
 	import Toast from '$lib/components/ui/Toast.svelte';
@@ -295,27 +296,23 @@
 		if (bootstrapUrl) void goto(bootstrapUrl, { replaceState: true });
 		if (!mockup.active && !bootstrapUrl) void refreshPublicSiteConfig();
 
-		// access JWT 만료 2분 전에 자동 갱신 (client.ts의 401 재시도 보완)
-		const interval = setInterval(async () => {
-			if (mockup.active || !$auth.token || !$auth.refreshToken) return;
-			const expiresAt = $auth.accessExpiresAt;
-			if (!expiresAt) return;
-			const remaining = expiresAt - Math.floor(Date.now() / 1000);
-			if (remaining < 120) {
-				try {
-					await refreshSession();
-				} catch {
-					// refresh 실패 시 client.ts의 401 흐름이 처리
-				}
-			}
-		}, 60_000);
+		const stopSessionRefresh = startSessionRefreshLifecycle({
+			getSession: () => ({
+				token: $auth.token,
+				refreshToken: $auth.refreshToken,
+				accessExpiresAt: $auth.accessExpiresAt,
+				isMock: mockup.active || isMockAuthActive(),
+				isLoggingOut: $logoutInProgress,
+			}),
+			refreshSession,
+		});
 
 		// 헤더 종 아이콘 미읽음 배지 — 60초 주기 폴링 (SSE 도입 전까지)
 		void refreshUnreadAnnouncementCount();
 		const announcementInterval = setInterval(() => void refreshUnreadAnnouncementCount(), 60_000);
 
 		return () => {
-			clearInterval(interval);
+			stopSessionRefresh();
 			clearInterval(announcementInterval);
 		};
 	});

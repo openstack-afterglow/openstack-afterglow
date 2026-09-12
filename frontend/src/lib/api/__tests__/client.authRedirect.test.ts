@@ -44,12 +44,15 @@ vi.mock('$env/dynamic/public', () => ({
 
 vi.stubGlobal('fetch', mockFetch);
 
+// Each case reloads client.ts to isolate its module-scoped refresh/redirect state.
+
 describe('unauthorized API redirect', () => {
 	let replace = vi.fn();
 
 	beforeEach(() => {
 		vi.resetModules();
 		vi.clearAllMocks();
+		mockFetch.mockReset();
 		session.value = { token: 'expired-token', refreshToken: 'refresh-token', accessExpiresAt: null };
 		logoutState.value = false;
 		localStorage.clear();
@@ -102,6 +105,164 @@ describe('unauthorized API redirect', () => {
 		await vi.waitFor(() => expect(clearAuth).toHaveBeenCalledOnce());
 		expect(goto).toHaveBeenCalledOnce();
 		expect(goto).toHaveBeenCalledWith('/login', { replaceState: true });
+	});
+
+	it('refreshes an expired session before dispatching concurrent dashboard requests without a timer', async () => {
+		session.value.accessExpiresAt = Math.floor(Date.now() / 1000) - 1;
+		const order: string[] = [];
+		mockFetch.mockImplementation(async (url: string, init: RequestInit) => {
+			if (url.endsWith('/auth/refresh')) {
+				order.push('refresh');
+				return Response.json({
+					token: 'fresh-token',
+					refresh_token: 'fresh-refresh',
+					expires_at: new Date(Date.now() + 900_000).toISOString(),
+				});
+			}
+			const authorization = new Headers(init.headers).get('Authorization');
+			order.push(authorization ?? 'anonymous');
+			return authorization === 'Bearer fresh-token'
+				? Response.json({ ready: true })
+				: Response.json({ detail: 'expired' }, { status: 401 });
+		});
+		const { api } = await import('../client');
+
+		await expect(Promise.all([
+			api.get('/api/v1/dashboard/summary', 'expired-token', 'project'),
+			api.get('/api/v1/dashboard/quotas', 'expired-token', 'project'),
+		])).resolves.toEqual([{ ready: true }, { ready: true }]);
+		expect(order).toEqual(['refresh', 'Bearer fresh-token', 'Bearer fresh-token']);
+		expect(clearAuth).not.toHaveBeenCalled();
+	});
+
+	it('refreshes the expired current session when a long-lived callback still holds an older token', async () => {
+		session.value = { token: 'already-rotated-token', refreshToken: 'current-refresh', accessExpiresAt: 1 };
+		mockFetch
+			.mockResolvedValueOnce(Response.json({ token: 'fresh-token', refresh_token: 'fresh-refresh' }))
+			.mockImplementation(async (_url: string, init: RequestInit) =>
+				new Headers(init.headers).get('Authorization') === 'Bearer fresh-token'
+					? Response.json({ recovered: true })
+					: Response.json({ detail: 'expired' }, { status: 401 }));
+		const { api } = await import('../client');
+		await expect(api.get('/api/v1/dashboard/summary', 'older-captured-token')).resolves.toEqual({ recovered: true });
+		expect(mockFetch).toHaveBeenCalledTimes(2);
+		expect(clearAuth).not.toHaveBeenCalled();
+	});
+
+	it('recovers a download handshake 401 before returning bytes to the caller', async () => {
+		mockFetch
+			.mockResolvedValueOnce(Response.json({ detail: 'expired' }, { status: 401 }))
+			.mockResolvedValueOnce(Response.json({
+				token: 'fresh-token',
+				refresh_token: 'fresh-refresh',
+				expires_at: new Date(Date.now() + 900_000).toISOString(),
+			}))
+			.mockResolvedValueOnce(new Response('recovered file', {
+				headers: { 'Content-Disposition': 'attachment; filename="report.txt"' },
+			}));
+		const { api } = await import('../client');
+
+		const result = await api.downloadBlob('/api/v1/report', 'expired-token', 'project');
+		const contents = Promise.withResolvers<string>();
+		const reader = new FileReader();
+		reader.onload = () => contents.resolve(String(reader.result));
+		reader.onerror = () => contents.reject(reader.error);
+		reader.readAsText(result.blob);
+		expect(await contents.promise).toBe('recovered file');
+		expect(result.filename).toBe('report.txt');
+		expect(clearAuth).not.toHaveBeenCalled();
+		expect(goto).not.toHaveBeenCalled();
+	});
+
+	it('cancels a waiting request without cancelling the shared refresh or dispatching its body', async () => {
+		const refreshResponse = Promise.withResolvers<Response>();
+		mockFetch.mockReturnValueOnce(refreshResponse.promise);
+		const { fetchWithAuth, refreshSession } = await import('../client');
+		const refresh = refreshSession();
+		await vi.waitFor(() => expect(mockFetch).toHaveBeenCalledOnce());
+		const controller = new AbortController();
+		const request = fetchWithAuth('/api/v1/upload', {
+			method: 'POST', body: new FormData(), signal: controller.signal,
+		}, 'expired-token', 'project');
+		controller.abort();
+		await expect(request).rejects.toMatchObject({ name: 'AbortError' });
+		refreshResponse.resolve(Response.json({ token: 'fresh-token', refresh_token: 'fresh-refresh' }));
+		await expect(refresh).resolves.toBe('fresh-token');
+		expect(mockFetch).toHaveBeenCalledOnce();
+		expect(clearAuth).not.toHaveBeenCalled();
+	});
+
+	it('joins in-flight rotation before POST and preserves the body and project on dispatch', async () => {
+		const refreshResponse = Promise.withResolvers<Response>();
+		mockFetch.mockReturnValueOnce(refreshResponse.promise);
+		const { fetchWithAuth, refreshSession } = await import('../client');
+		const refresh = refreshSession();
+		await vi.waitFor(() => expect(mockFetch).toHaveBeenCalledOnce());
+		const form = new FormData();
+		form.append('file', new Blob(['contents']), 'example.txt');
+		mockFetch.mockImplementation(async (_url: string, init: RequestInit) => {
+			const headers = new Headers(init.headers);
+			if (headers.get('Authorization') !== 'Bearer fresh-token'
+				|| headers.get('X-Project-Id') !== 'chosen-project'
+				|| init.body !== form || headers.has('Content-Type')) {
+				return Response.json({ detail: 'bad upload' }, { status: 400 });
+			}
+			return Response.json({ id: 'uploaded' });
+		});
+		const upload = fetchWithAuth('/api/v1/upload', { method: 'POST', body: form }, 'expired-token', 'chosen-project');
+		expect(mockFetch).toHaveBeenCalledOnce();
+		refreshResponse.resolve(Response.json({ token: 'fresh-token', refresh_token: 'fresh-refresh' }));
+		await refresh;
+		const response = await upload;
+		expect(await response.json()).toEqual({ id: 'uploaded' });
+		expect(clearAuth).not.toHaveBeenCalled();
+	});
+
+	it('does not attach or refresh browser credentials for a public request', async () => {
+		session.value.accessExpiresAt = Math.floor(Date.now() / 1000) - 1;
+		mockFetch.mockResolvedValueOnce(Response.json({ site_name: 'Afterglow' }));
+		const { fetchWithAuth } = await import('../client');
+		const response = await fetchWithAuth('/api/v1/site-config');
+		expect(await response.json()).toEqual({ site_name: 'Afterglow' });
+		expect(mockFetch).toHaveBeenCalledOnce();
+		expect(new Headers(mockFetch.mock.calls[0][1].headers).has('Authorization')).toBe(false);
+	});
+
+	it('keeps a transient preflight failure distinct from terminal authentication failure', async () => {
+		session.value.accessExpiresAt = Math.floor(Date.now() / 1000) + 60;
+		mockFetch.mockResolvedValueOnce(Response.json({ detail: 'temporarily unavailable' }, { status: 503 }));
+		const { fetchWithAuth } = await import('../client');
+		await expect(fetchWithAuth('/api/v1/dashboard/summary', {}, 'expired-token')).rejects.toMatchObject({ status: 503 });
+		expect(mockFetch).toHaveBeenCalledOnce();
+		expect(session.value.token).toBe('expired-token');
+		expect(clearAuth).not.toHaveBeenCalled();
+		expect(goto).not.toHaveBeenCalled();
+	});
+
+	it('stops after a refreshed token is also rejected', async () => {
+		mockFetch
+			.mockResolvedValueOnce(Response.json({ detail: 'expired' }, { status: 401 }))
+			.mockResolvedValueOnce(Response.json({ token: 'fresh-token', refresh_token: 'fresh-refresh' }))
+			.mockResolvedValueOnce(Response.json({ detail: 'revoked' }, { status: 401 }));
+		const { fetchWithAuth } = await import('../client');
+		const response = await fetchWithAuth('/api/v1/protected', {}, 'expired-token');
+		expect(response.status).toBe(401);
+		await vi.waitFor(() => expect(clearAuth).toHaveBeenCalledOnce());
+		expect(mockFetch).toHaveBeenCalledTimes(3);
+	});
+
+	it('does not revive a session cleared while preflight refresh is in flight', async () => {
+		session.value.accessExpiresAt = Math.floor(Date.now() / 1000) - 1;
+		const refreshResponse = Promise.withResolvers<Response>();
+		mockFetch.mockReturnValueOnce(refreshResponse.promise);
+		const { fetchWithAuth } = await import('../client');
+		const request = fetchWithAuth('/api/v1/protected', {}, 'expired-token');
+		await vi.waitFor(() => expect(mockFetch).toHaveBeenCalledOnce());
+		session.value = { token: '', refreshToken: null, accessExpiresAt: null };
+		refreshResponse.resolve(Response.json({ token: 'late-token', refresh_token: 'late-refresh' }));
+		await expect(request).rejects.toMatchObject({ status: 401 });
+		expect(mockFetch).toHaveBeenCalledOnce();
+		expect(setAuth).not.toHaveBeenCalled();
 	});
 	it('coalesces concurrent explicit refreshes through the public helper', async () => {
 		mockFetch.mockResolvedValueOnce({

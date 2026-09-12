@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getBaseUrl } from '$lib/api/client';
+	import { fetchWithAuth } from '$lib/api/client';
 
 	interface ProgressMsg {
 		step: string;
@@ -35,15 +35,10 @@
 		failed = false;
 		progress = 0;
 
-		const headers: Record<string, string> = {};
-		if (token) headers['Authorization'] = `Bearer ${token}`;
-		if (projectId) headers['X-Project-Id'] = projectId;
-
 		try {
-			const resp = await fetch(`${getBaseUrl()}/api/v1/k3s/clusters/${clusterId}/rotate-certs`, {
+			const resp = await fetchWithAuth(`/api/v1/k3s/clusters/${clusterId}/rotate-certs`, {
 				method: 'POST',
-				headers,
-			});
+			}, token, projectId);
 
 			if (!resp.ok) {
 				const body = await resp.json().catch(() => ({}));

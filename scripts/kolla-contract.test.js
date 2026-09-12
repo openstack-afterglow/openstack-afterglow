@@ -473,13 +473,18 @@ test("Plugin lifecycle dispatchers preserve stock actions and tag isolation", ()
 
 test("Plugin services derive data-plane and OpenStack topology from Kolla variables", () => {
 	const afterglowDefaults = readRepoFile("deploy/kolla/ansible/roles/afterglow/defaults/main.yml")
+	const afterglowBaseConfig = readRepoFile("deploy/kolla/ansible/roles/afterglow/templates/afterglow.conf.j2")
 	const afterglowConfig = readRepoFile("deploy/kolla/ansible/roles/afterglow/templates/afterglow.kolla.conf.j2")
 	const afterglowDatabase = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/preconditions_db.yml")
+	const afterglowPrecheck = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/precheck.yml")
 
 	assert.match(afterglowDefaults, /afterglow_database_address: "\{\{ database_address \}\}"/)
 	assert.match(afterglowDefaults, /afterglow_database_admin_user: "\{\{ database_user \}\}"/)
 	assert.match(afterglowDefaults, /afterglow_valkey_port: "\{\{ valkey_server_port \}\}"/)
 	assert.match(afterglowDefaults, /afterglow_valkey_password: "\{\{ valkey_master_password \| default\(''\) \}\}"/)
+	assert.match(afterglowDefaults, /afterglow_sentinel_enabled: true/)
+	assert.match(afterglowDefaults, /afterglow_sentinel_master_name: "\{\{ valkey_sentinel_monitor_name \}\}"/)
+	assert.match(afterglowDefaults, /afterglow_sentinel_hosts: ".*groups\['valkey'\].*kolla_address\(host\).*valkey_sentinel_port.*"/)
 	assert.match(afterglowDefaults, /afterglow_keystone_auth_url: "\{\{ keystone_internal_url \}\}"/)
 	assert.match(afterglowDefaults, /afterglow_keystone_project_domain_name: "\{\{ default_project_domain_name \}\}"/)
 	assert.match(afterglowDefaults, /afterglow_keystone_user_domain_name: "\{\{ default_user_domain_name \}\}"/)
@@ -487,6 +492,13 @@ test("Plugin services derive data-plane and OpenStack topology from Kolla variab
 	assert.match(afterglowConfig, /auth_url = "\{\{ afterglow_keystone_auth_url \}\}"/)
 	assert.match(afterglowConfig, /project_domain_name = "\{\{ afterglow_keystone_project_domain_name \}\}"/)
 	assert.match(afterglowDatabase, /login_host: "\{\{ afterglow_database_address \}\}"/)
+	for (const template of [afterglowBaseConfig, afterglowConfig]) {
+		assert.match(template, /sentinel_enabled = \{\{ afterglow_sentinel_enabled \| bool \| lower \}\}/)
+		assert.match(template, /sentinel_master_name = "\{\{ afterglow_sentinel_master_name \}\}"/)
+		assert.match(template, /sentinel_hosts = "\{\{ afterglow_sentinel_hosts \}\}"/)
+	}
+	assert.match(afterglowPrecheck, /valkey_sentinel_port is defined/)
+	assert.match(afterglowPrecheck, /valkey_sentinel_monitor_name is defined and valkey_sentinel_monitor_name \| length > 0/)
 
 	for (const service of ["waygate", "palimpsest"]) {
 		const defaults = readRepoFile(`deploy/kolla/ansible/roles/${service}/defaults/main.yml`)
@@ -762,7 +774,13 @@ test("Kolla plugin requires stock Kolla Valkey dependency and rejects standalone
 
 	for (const { name: service, dbIndex } of expectedRoles) {
 		const defaults = readRepoFile(`deploy/kolla/ansible/roles/${service}/defaults/main.yml`)
-		assert.match(defaults, new RegExp(`${service}_valkey_host: "\\{\\{ 'api' \\| kolla_address\\(groups\\['valkey'\\]\\[0\\]\\) \\}\\}"`))
+		if (service === "afterglow") {
+			assert.match(defaults, /afterglow_sentinel_enabled: true/)
+			assert.match(defaults, /afterglow_sentinel_master_name: "\{\{ valkey_sentinel_monitor_name \}\}"/)
+			assert.match(defaults, /afterglow_sentinel_hosts: ".*groups\['valkey'\].*valkey_sentinel_port.*"/)
+		} else {
+			assert.match(defaults, new RegExp(`${service}_valkey_host: "\\{\\{ 'api' \\| kolla_address\\(groups\\['valkey'\\]\\[0\\]\\) \\}\\}"`))
+		}
 		assert.match(defaults, new RegExp(`${service}_valkey_port: "\\{\\{ valkey_server_port \\}\\}"`))
 		assert.match(defaults, new RegExp(`${service}_valkey_password:`))
 		assert.match(defaults, new RegExp(`${service}_valkey_password:.*valkey_master_password`))
@@ -779,6 +797,10 @@ test("Kolla plugin requires stock Kolla Valkey dependency and rejects standalone
 		assert.match(precheck, /enable_valkey \| default\(false\) \| bool/)
 		assert.match(precheck, /groups\.get\('valkey', \[\]\) \| length > 0/)
 		assert.match(precheck, /valkey_master_password is defined and valkey_master_password \| length > 0/)
+		if (service === "afterglow") {
+			assert.match(precheck, /valkey_sentinel_port is defined/)
+			assert.match(precheck, /valkey_sentinel_monitor_name is defined and valkey_sentinel_monitor_name \| length > 0/)
+		}
 		assert.match(precheck, new RegExp(`when: enable_${service} \\| default\\(false\\) \\| bool`))
 		assert.match(precheck, /run_once: true/)
 		assert.match(precheck, /tags: precheck/)

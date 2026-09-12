@@ -1,4 +1,5 @@
-import { getBaseUrl } from './client';
+import { fetchWithAuth } from './client';
+import { ApiError } from './errors';
 import { parseChatRunEvent, parseContextState, type ChatRunDescriptor, type ChatRunEvent, type ChatRunStatus, type ContextState } from './chatContracts';
 export type { ChatRunDescriptor, ContextState } from './chatContracts';
 
@@ -78,11 +79,8 @@ function delay(milliseconds: number): Promise<void> {
 }
 
 
-function headers(token?: string, projectId?: string): HeadersInit {
-	const result: Record<string, string> = { Accept: 'text/event-stream' };
-	if (token) result.Authorization = `Bearer ${token}`;
-	if (projectId) result['X-Project-Id'] = projectId;
-	return result;
+function headers(): HeadersInit {
+	return { Accept: 'text/event-stream' };
 }
 
 function normalizeDescriptorUrl(url: unknown): string {
@@ -147,16 +145,16 @@ export async function createChatRun(
 	body: unknown,
 	{ token, projectId, signal, idempotencyKey = crypto.randomUUID() }: CreateChatRunOptions = {}
 ): Promise<ChatRunDescriptor> {
-	const response = await fetch(`${getBaseUrl()}${path}`, {
+	const response = await fetchWithAuth(path, {
 		method: 'POST',
 		headers: {
-			...headers(token, projectId),
+			...headers(),
 			'Content-Type': 'application/json',
 			'Idempotency-Key': idempotencyKey
 		},
 		body: JSON.stringify(body),
 		signal
-	});
+	}, token, projectId);
 	if (response.status !== 202) throw await errorFrom(response);
 	return parseChatRunDescriptor(await response.json());
 }
@@ -166,15 +164,15 @@ export async function previewChatContext(
 	body: unknown,
 	{ token, projectId, signal }: PreviewChatContextOptions = {}
 ): Promise<ContextState> {
-	const response = await fetch(`${getBaseUrl()}${path}`, {
+	const response = await fetchWithAuth(path, {
 		method: 'POST',
 		headers: {
-			...headers(token, projectId),
+			...headers(),
 			'Content-Type': 'application/json'
 		},
 		body: JSON.stringify(body),
 		signal
-	});
+	}, token, projectId);
 	if (!response.ok) throw await errorFrom(response);
 	return parseContextState(await response.json());
 }
@@ -244,12 +242,12 @@ export async function* followChatRun(
 	while (true) {
 		let response: Response;
 		try {
-			response = await fetch(`${getBaseUrl()}${eventsUrlWithAfterSeq(descriptor.events_url, lastSeq)}`, {
-				headers: { ...headers(token, projectId), ...(lastSeq ? { 'Last-Event-ID': `${descriptor.run_id}:${lastSeq}` } : {}) },
+			response = await fetchWithAuth(eventsUrlWithAfterSeq(descriptor.events_url, lastSeq), {
+				headers: { ...headers(), ...(lastSeq ? { 'Last-Event-ID': `${descriptor.run_id}:${lastSeq}` } : {}) },
 				signal
-			});
+			}, token, projectId);
 		} catch (error) {
-			if (signal?.aborted) throw error;
+			if (signal?.aborted || error instanceof ApiError) throw error;
 			if (attempts >= waits.length) throw new ChatProtocolError('chat event stream disconnected');
 			await delay(waits[attempts++]);
 			continue;
@@ -287,11 +285,11 @@ export async function cancelChatRun(
 	descriptor: ChatRunDescriptor,
 	{ token, projectId, signal }: Omit<CreateChatRunOptions, 'idempotencyKey'> = {}
 ): Promise<void> {
-	const response = await fetch(`${getBaseUrl()}${descriptor.cancel_url}`, {
+	const response = await fetchWithAuth(descriptor.cancel_url, {
 		method: 'POST',
-		headers: headers(token, projectId),
+		headers: headers(),
 		signal
-	});
+	}, token, projectId);
 	if (!response.ok) throw await errorFrom(response);
 }
 

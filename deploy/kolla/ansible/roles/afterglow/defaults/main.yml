@@ -85,6 +85,9 @@ afterglow_valkey_port: "{{ valkey_server_port }}"
 afterglow_valkey_password: "{{ valkey_master_password | default('') }}"
 afterglow_redis_db_index: 5
 afterglow_redis_url: "redis://default:{{ afterglow_valkey_password }}@{{ afterglow_valkey_host }}:{{ afterglow_valkey_port }}/{{ afterglow_redis_db_index }}"
+afterglow_sentinel_enabled: true
+afterglow_sentinel_master_name: "{{ valkey_sentinel_monitor_name }}"
+afterglow_sentinel_hosts: "{% for host in groups['valkey'] %}{{ 'api' | kolla_address(host) }}:{{ valkey_sentinel_port }}{{ ',' if not loop.last else '' }}{% endfor %}"
 
 # ── Keystone ──────────────────────────────────────────────────────────────────
 afterglow_admin_keystone_user: "afterglow_admin"

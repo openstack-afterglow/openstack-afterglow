@@ -560,9 +560,11 @@ Floating IP를 삭제(반환)합니다. 삭제 후 목록 캐시를 무효화합
 
 토폴로지는 두 엔드포인트로 나뉩니다. **구조**(`/topology`)는 30초 캐시로 노드·엣지 관계를 반환하고,
 **트래픽**(`/topology/traffic`)은 캐시 없이 매 호출 실시간 rx/tx bps를 계산하는 단주기 폴링 전용 엔드포인트입니다.
-값은 Prometheus `rate(...[30s])` 로 계산한 **최근 30초 평균**입니다. 이 윈도우는 scrape interval 에 종속됩니다 — 토폴로지가 읽는 `instances-node`·`instances-libvirt` job 의 `scrape_interval` 이 10초여야 윈도우 안에 3 샘플이 들어옵니다(`deploy/k8s*/monitoring/prometheus/configmap.yaml`). 윈도우 상수는 `app.api.network.networks.TOPOLOGY_RATE_WINDOW` 이고, `backend/tests/test_topology_traffic.py` 가 윈도우와 scrape interval 의 결합을 배포본·template **양쪽** configmap 에 대해 함께 고정합니다.
+값은 Prometheus `rate(...[2m])` 로 계산한 **최근 2분 평균**입니다. 윈도우 상수는 `app.api.network.networks.TOPOLOGY_RATE_WINDOW` 이며 인스턴스 메트릭 차트(`instance_metrics.py`)와 **같은 값**입니다.
 
-> **실패 모드**: 30초 윈도우 / 10초 scrape 는 정확히 3 샘플이라 여유가 1 샘플뿐입니다. http_sd 타깃 갱신 등으로 **scrape 를 연속 2회 놓치면** `rate()` 가 결과를 주지 않아 그 인스턴스가 `instances`·`networks`·히스토리 `series` 에서 통째로 빠집니다 — 화면에는 `0` 이 아니라 값 없음(`—`)으로 보입니다. 여유가 더 필요하면 윈도우를 45~60초로 올립니다(`scrape × 3 ≤ window` 계약은 그대로 통과합니다).
+> **이 윈도우를 좁히지 마십시오.** `rate()` 는 윈도우 안에 최소 2 샘플이 필요한데 **이 저장소는 운영 Prometheus 의 `scrape_interval` 을 제어하지 않습니다** — 운영은 Kolla 배포본이고 그 설정은 저장소 밖에 있습니다. `deploy/k8s*/monitoring/prometheus/configmap.yaml` 은 다른 배포 경로이며 운영 job 이름(`libvirt_exporter`, `openstack-instances-*`)과 일치하지도 않으므로 scrape 근거가 될 수 없습니다. 2026-09-11 에 이 값을 30초로 좁혔다가 운영(scrape 1분)에서 libvirt 쿼리가 0 시계열을 반환해 화면 트래픽이 통째로 사라진 회귀가 있었습니다. `backend/tests/test_topology_traffic.py::test_topology_window_is_not_narrower_than_rest_of_repo` 가 같은 메트릭을 읽는 다른 코드보다 좁아지지 않도록 고정합니다.
+
+> **실패 모드**: scrape 가 윈도우의 절반보다 느리면 `rate()` 가 결과를 주지 않아 그 인스턴스가 `instances`·`networks`·히스토리 `series` 에서 통째로 빠집니다 — 화면에는 `0` 이 아니라 값 없음(`—`)으로 보입니다. 2분 윈도우는 scrape 1분까지 견딥니다.
 
 ### 엔드포인트 목록
 
@@ -729,7 +731,7 @@ instant 엔드포인트와 **같은 귀속 규칙**을 씁니다 — 즉 이 값
 설계 제약:
 
 - **폴링 금지.** 전체 네트워크에 대해 주기적으로 호출하면 Prometheus 부하가 네트워크 수만큼 곱해집니다.
-- `step_s` 는 range 별 고정값이며 항상 `TOPOLOGY_RATE_WINDOW`(30초) **이하**입니다. `calc_step()`(range/100)을 쓰면 1시간 구간에서 36초가 나와 샘플 사이 트래픽이 그래프에서 사라집니다. `backend/tests/test_topology_traffic.py::test_history_step_never_exceeds_rate_window` 가 이 계약을 고정합니다.
+- `step_s` 의 계약은 **`scrape ≤ step ≤ window`** 입니다. 상한을 어기면 샘플 사이 트래픽이 그래프에서 빠지고, 하한을 어기면 같은 값이 반복되는 계단이 나옵니다(실측 scrape 60초에서 step 15초는 인접 동일값 75%, step 60초는 0%). scrape 를 알 수 없으므로 윈도우가 함의하는 최악(`window/2`)을 하한으로 씁니다 — `_history_step()` = `max(calc_step(range), window/2)`. `test_history_step_never_exceeds_rate_window` 와 `test_history_step_is_never_finer_than_scrape_implied_by_window` 가 양쪽 계약을 고정합니다.
 - `stats` 는 별도 `avg_over_time` 쿼리가 아니라 **반환한 `series` 에서 계산**합니다. 두 소스를 쓰면 그래프 최고점과 라벨 숫자가 어긋납니다.
 - `stats` 는 rx+tx 합계가 아니라 **방향별**입니다. instant 엔드포인트가 방향별 값을 주므로 합계로 내보내면 같은 패널에서 `▼ 5.8M ▲ 2.0M` 옆에 대조 불가능한 `7.8M` 이 붙습니다. `max` 의 rx·tx 는 서로 다른 시점일 수 있습니다(각 방향의 독립적인 최고값).
 - 현재 포트맵에 없는(삭제된) 인스턴스의 과거 트래픽은 귀속 대상이 없어 빠집니다 — instant 엔드포인트도 동일한 한계입니다.
@@ -741,11 +743,13 @@ instant 엔드포인트와 **같은 귀속 규칙**을 씁니다 — 즉 이 값
 | `range` | query | string | 아니오 | `15m`(기본) · `30m` · `1h` |
 | `all_projects` | query | boolean | 아니오 | 모든 프로젝트 포트 대상 (기본값 `false`). **시스템 admin 전용** |
 
-| `range` | 구간 | `step_s` | 표본 수 |
-|---------|------|----------|---------|
-| `15m` | 900초 | 15초 | 60 |
-| `30m` | 1800초 | 30초 | 60 |
-| `1h` | 3600초 | 30초 | 120 |
+| `range` | 구간 | `step_s` (윈도우 2m 기준) | 표본 수 |
+|---------|------|---------------------------|---------|
+| `15m` | 900초 | 60초 | 15 |
+| `30m` | 1800초 | 60초 | 30 |
+| `1h` | 3600초 | 60초 | 60 |
+
+`step_s` 는 윈도우에 따라 달라집니다(`max(calc_step(range), window/2)`). 윈도우가 좁은 배포에서는 더 촘촘해집니다.
 
 **응답 (200 OK)**
 
@@ -753,8 +757,8 @@ instant 엔드포인트와 **같은 귀속 규칙**을 씁니다 — 즉 이 값
 {
   "network_id": "uuid-string",
   "range": "15m",
-  "step_s": 15,
-  "window": "30s",
+  "step_s": 60,
+  "window": "2m",
   "series": [
     { "ts": 1767225585, "rx_bps": 4096.0, "tx_bps": 8192.0 },
     { "ts": 1767225600, "rx_bps": 5120.0, "tx_bps": 8192.0 }

@@ -332,25 +332,30 @@ def test_url_factory_selected_when_sentinel_disabled(monkeypatch) -> None:
     assert url_called == ["redis://test-host:6379/0"], "sentinel_enabled=False 이면 from_url을 호출해야 한다"
 
 
-def test_build_sentinel_client_parses_hosts(monkeypatch) -> None:
-    """_build_sentinel_client 가 sentinel_hosts 문자열을 (host, port) 튜플 목록으로 파싱한다."""
+def test_build_sentinel_client_preserves_redis_auth_and_database(monkeypatch) -> None:
+    """Sentinel가 찾은 master에도 redis_url의 인증 정보와 DB index를 적용한다."""
     import app.services.cache.redis_backend as rb_module
     from app.config import Settings
 
     fake_settings = Settings(
+        redis_url="redis://cache-user:p%40ss@first-replica:6379/5",
         sentinel_enabled=True,
-        sentinel_master_name="mymaster",
+        sentinel_master_name="kolla",
         sentinel_hosts="sentinel-a:26379,sentinel-b:26379, sentinel-c:26380",
     )
 
     captured_hosts: list = []
+    captured_sentinel_kwargs: dict = {}
+    captured_master: dict = {}
     fake_master = fakeredis.FakeRedis(decode_responses=True)
 
     class FakeSentinel:
         def __init__(self, hosts, **kwargs):
             captured_hosts.extend(hosts)
+            captured_sentinel_kwargs.update(kwargs)
 
         def master_for(self, name, **kwargs):
+            captured_master.update({"name": name, **kwargs})
             return fake_master
 
     import redis.asyncio.sentinel as sentinel_mod
@@ -362,5 +367,18 @@ def test_build_sentinel_client_parses_hosts(monkeypatch) -> None:
         ("sentinel-a", 26379),
         ("sentinel-b", 26379),
         ("sentinel-c", 26380),
-    ], "host:port 파싱이 올바르지 않다"
+    ]
+    assert captured_sentinel_kwargs == {
+        "socket_timeout": 5,
+        "socket_connect_timeout": 3,
+    }
+    assert captured_master == {
+        "name": "kolla",
+        "username": "cache-user",
+        "password": "p@ss",
+        "db": 5,
+        "decode_responses": True,
+        "socket_keepalive": True,
+        "health_check_interval": 30,
+    }
     assert client is fake_master

@@ -26,6 +26,9 @@ frontend_base_url = "{{ afterglow_public_endpoint_url }}"
 
 [cache]
 redis_url = "{{ afterglow_redis_url }}"
+sentinel_enabled = {{ afterglow_sentinel_enabled | bool | lower }}
+sentinel_master_name = "{{ afterglow_sentinel_master_name }}"
+sentinel_hosts = "{{ afterglow_sentinel_hosts }}"
 
 [services]
 magnum = {{ afterglow_service_magnum_enabled | bool | lower }}

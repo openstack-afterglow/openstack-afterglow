@@ -1,4 +1,4 @@
-import { api, getBaseUrl } from './client';
+import { api, fetchWithAuth } from './client';
 
 export interface SecretInfo {
 	id: string;
@@ -53,10 +53,7 @@ export const secretsApi = {
 		api.delete<void>(`/api/v1/secrets/${id}`, token, projectId),
 
 	getPayload: async (id: string, token?: string, projectId?: string): Promise<string> => {
-		const headers: Record<string, string> = {};
-		if (token) headers['Authorization'] = `Bearer ${token}`;
-		if (projectId) headers['X-Project-Id'] = projectId;
-		const res = await fetch(`${getBaseUrl()}/api/v1/secrets/${id}/payload`, { headers });
+		const res = await fetchWithAuth(`/api/v1/secrets/${id}/payload`, {}, token, projectId);
 		if (!res.ok) throw new Error('payload 조회 실패');
 		const buf = await res.arrayBuffer();
 		return new TextDecoder().decode(buf);

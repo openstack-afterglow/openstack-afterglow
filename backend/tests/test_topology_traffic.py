@@ -559,11 +559,12 @@ async def test_traffic_default_scoped_to_project(client, mock_conn):
 
 
 @pytest.mark.anyio
-async def test_traffic_rate_window_is_30s(client, mock_conn):
-    """토폴로지 트래픽 PromQL 4개 모두 30초 rate 윈도우를 써야 한다.
+async def test_traffic_rate_window_matches_repo_convention(client, mock_conn):
+    """토폴로지 트래픽 PromQL 4개 모두 저장소 공통 rate 윈도우(2m)를 써야 한다.
 
-    캔버스가 사용량을 30초 단위로 읽는 근거다. 2m 로 되돌리면 화면 값이 2분 평균이 되어
-    순간 사용량이 뭉개진다.
+    2026-09-11 회귀: 이 값을 30s 로 좁혔더니 운영(scrape 1m)에서 libvirt 쿼리가 0 시계열을
+    반환해 화면 트래픽이 통째로 사라졌다. 좁은 윈도우는 scrape 가 그만큼 빠른 배포에서만
+    안전한데 **이 저장소는 운영 scrape 를 제어하지 않는다**.
     """
     mock_conn.network.ports.return_value = [
         _mock_port("uuid-1", "net-a", port_id="port-1", mac_address="fa:16:3e:00:00:01")
@@ -584,49 +585,43 @@ async def test_traffic_rate_window_is_30s(client, mock_conn):
     assert resp.status_code == 200
     assert len(calls) == 4
     for q in calls:
-        assert "[30s]" in q, f"30초 윈도우가 아니다: {q}"
-        assert "[2m]" not in q
+        assert "[2m]" in q, f"저장소 공통 윈도우(2m)가 아니다: {q}"
 
 
-def test_topology_scrape_interval_supports_rate_window():
-    """토폴로지가 쓰는 두 job 의 scrape_interval 이 rate 윈도우를 지탱해야 한다.
+def test_topology_window_is_not_narrower_than_rest_of_repo():
+    """토폴로지 윈도우는 **같은 메트릭을 읽는 다른 코드보다 좁으면 안 된다**.
 
-    Prometheus rate 는 윈도우 안에 최소 2 샘플이 필요하고 jitter 를 감당하려면 3 샘플이 안전하다.
-    scrape 를 다시 올리면(예: 30s) `rate(...[30s])` 는 빈 결과를 돌려주고 화면 트래픽이 사라진다 —
-    코드만 보면 알 수 없는 결합이므로 배포 설정을 함께 고정한다.
+    이 저장소는 운영 Prometheus 의 scrape_interval 을 제어하지 않는다(운영은 Kolla 배포본이고
+    그 설정은 저장소 밖이다). 따라서 "scrape 가 N초니까 윈도우를 M초로 좁혀도 된다" 는 추론은
+    **저장소 안에서 검증할 수 없다** — 2026-09-11 회귀가 정확히 그 추론으로 발생했고,
+    근거로 삼았던 `deploy/k8s*/.../configmap.yaml` 은 운영이 쓰지 않는 파일이었다.
+
+    검증 가능한 대체 불변식: 같은 libvirt/node 카운터를 읽는 `instance_metrics.py` 의 윈도우보다
+    좁히지 않는다. 좁히려면 그 파일도 함께 좁혀야 하고, 그때는 배포 전제를 다시 따지게 된다.
     """
     import re
     from pathlib import Path
 
     from app.api.network.networks import TOPOLOGY_RATE_WINDOW
 
-    m = re.fullmatch(r"(\d+)s", TOPOLOGY_RATE_WINDOW)
-    assert m, f"윈도우 형식이 초 단위가 아니다: {TOPOLOGY_RATE_WINDOW}"
-    window_s = int(m.group(1))
+    def _seconds(window: str) -> int:
+        m = re.fullmatch(r"(\d+)(s|m)", window)
+        assert m, f"윈도우 형식을 해석할 수 없다: {window}"
+        return int(m.group(1)) * (60 if m.group(2) == "m" else 1)
 
-    root = Path(__file__).resolve().parents[2]
-    # **배포본과 template 을 모두 본다.** 한쪽만 검사하면 template 으로 세운 새 클러스터에
-    # libvirt exporter 가 없어도(= 주 경로 상실) 테스트가 초록으로 남는다 — 실제로 그랬다.
-    configs = [
-        root / "deploy" / "k8s" / "monitoring" / "prometheus" / "configmap.yaml",
-        root / "deploy" / "k8s-template" / "monitoring" / "prometheus" / "configmap.yaml",
-    ]
-    for cfg in configs:
-        text = cfg.read_text(encoding="utf-8")
+    root = Path(__file__).resolve().parents[1]
+    peer = (root / "app" / "api" / "compute" / "instance_metrics.py").read_text(encoding="utf-8")
 
-        global_m = re.search(r"^\s*global:\s*\n\s*scrape_interval:\s*(\d+)s", text, re.MULTILINE)
-        assert global_m, f"{cfg.name}: global scrape_interval 을 찾지 못했다"
-        global_s = int(global_m.group(1))
+    peer_windows = {
+        _seconds(w) for w in re.findall(r"rate\((?:node_network|libvirt_domain_interface_stats)_\w+\[(\d+[sm])\]", peer)
+    }
+    assert peer_windows, "비교 대상 윈도우를 찾지 못했다 — 스캐너가 깨진 것이다"
 
-        # 토폴로지 트래픽이 읽는 두 exporter job
-        for job in ("instances-node", "instances-libvirt"):
-            job_m = re.search(rf"- job_name: '{job}'\n(?:\s+scrape_interval:\s*(\d+)s\n)?", text)
-            assert job_m, f"{cfg.parent.parents[1].name}: {job} job 을 찾지 못했다"
-            scrape_s = int(job_m.group(1)) if job_m.group(1) else global_s
-            assert scrape_s * 3 <= window_s, (
-                f"{cfg.parent.parents[1].name}: {job} scrape_interval={scrape_s}s 는 "
-                f"rate 윈도우 {window_s}s 에 3 샘플을 채우지 못한다"
-            )
+    assert _seconds(TOPOLOGY_RATE_WINDOW) >= max(peer_windows), (
+        f"토폴로지 윈도우 {TOPOLOGY_RATE_WINDOW} 가 같은 메트릭을 읽는 instance_metrics.py 의 "
+        f"{max(peer_windows)}s 보다 좁다. 운영 scrape 를 저장소가 보장하지 못하므로 "
+        f"토폴로지만 좁히면 그 배포에서 트래픽이 빈다."
+    )
 
 
 # ── 테스트: 사용량 히스토리 (`/topology/traffic/history`) ─────────────────────
@@ -893,8 +888,8 @@ async def test_history_all_projects_requires_system_admin(client, mock_conn):
 
 
 @pytest.mark.anyio
-async def test_history_uses_rate_window_and_range_step(client, mock_conn):
-    """히스토리 쿼리도 30초 rate 윈도우를 쓰고, step 은 range 별 고정값이어야 한다."""
+async def test_history_uses_rate_window_and_history_step(client, mock_conn):
+    """히스토리 쿼리도 같은 rate 윈도우를 쓰고, step 은 `_history_step()` 결과여야 한다."""
     mock_conn.network.ports.return_value = [
         _mock_port("uuid-1", "net-a", port_id="port-1", mac_address="fa:16:3e:00:00:01")
     ]
@@ -909,32 +904,40 @@ async def test_history_uses_rate_window_and_range_step(client, mock_conn):
         resp = await client.get("/api/v1/networks/topology/traffic/history?network_id=net-a&range=30m")
 
     assert resp.status_code == 200
+    from app.api.network.networks import TOPOLOGY_RATE_WINDOW, _history_step
+
+    expected_step = _history_step(1800)
     assert len(calls) == 4
     for c in calls:
-        assert "[30s]" in c["q"], f"30초 윈도우가 아니다: {c['q']}"
-        assert c["step_s"] == 30
+        assert f"[{TOPOLOGY_RATE_WINDOW}]" in c["q"], f"윈도우가 다르다: {c['q']}"
+        assert c["step_s"] == expected_step
         assert c["end_ts"] - c["start_ts"] == 1800
-    assert resp.json()["step_s"] == 30
+    assert resp.json()["step_s"] == expected_step
 
 
 def test_history_step_never_exceeds_rate_window():
     """모든 range 의 step 이 rate 윈도우 이하여야 한다.
 
-    step > 윈도우면 샘플 사이 트래픽이 그래프에서 통째로 사라진다. `calc_step()`(range//100)
-    을 쓰면 1h 에서 36s 가 나와 이 계약이 깨지므로 고정 표를 쓴다.
+    step > 윈도우면 샘플 사이 트래픽이 그래프에서 통째로 사라진다.
+    step 은 저장소 공용 `calc_step()`(최소 15s, 최대 100 포인트)을 쓰며, 이 단정은
+    range 표를 늘릴 때 그 계약이 깨지지 않는지 확인한다.
     """
     import re
 
     from app.api.network.networks import _HISTORY_RANGES, TOPOLOGY_RATE_WINDOW
+    from app.services.prom_query import calc_step
 
-    m = re.fullmatch(r"(\d+)s", TOPOLOGY_RATE_WINDOW)
-    assert m
-    window_s = int(m.group(1))
+    m = re.fullmatch(r"(\d+)(s|m)", TOPOLOGY_RATE_WINDOW)
+    assert m, f"윈도우 형식을 해석할 수 없다: {TOPOLOGY_RATE_WINDOW}"
+    window_s = int(m.group(1)) * (60 if m.group(2) == "m" else 1)
 
     assert _HISTORY_RANGES, "range 표가 비어 있다"
-    for label, (range_s, step_s) in _HISTORY_RANGES.items():
+    for label, range_s in _HISTORY_RANGES.items():
+        step_s = calc_step(range_s)
         assert step_s <= window_s, f"{label}: step {step_s}s 가 rate 윈도우 {window_s}s 보다 크다"
-        assert range_s % step_s == 0, f"{label}: range 가 step 의 배수가 아니다"
+        assert range_s % step_s == 0 or range_s // step_s >= 50, (
+            f"{label}: 포인트 수가 너무 적다 (range {range_s}s / step {step_s}s)"
+        )
 
 
 @pytest.mark.anyio
@@ -1047,3 +1050,38 @@ async def test_history_drops_non_finite_samples(client, mock_conn):
     samples = result[0][1]
     assert [ts for ts, _ in samples] == [100, 145], "NaN/Inf 표본이 남았다"
     assert all(v == v and abs(v) != float("inf") for _, v in samples)
+
+
+def test_node_query_dedupes_duplicate_scrapes():
+    """node 쿼리는 `max by` 여야 한다 — `sum by` 는 중복 scrape 를 이중 계산한다.
+
+    (instance_id, device) 는 NIC 하나를 유일하게 지목한다. 같은 키가 여러 번 나오는 것은
+    같은 카운터를 여러 job 이 중복 scrape 했다는 뜻이다(운영 실측: 한 인스턴스가
+    openstack-instances-internal 과 -external 양쪽에 등록되어 ens3 가
+    2243.7 + 2429.9 = 4673.6 으로 1.9배가 됐다). 더하면 트래픽이 두 배로 보고된다.
+    """
+    from app.api.network.networks import _traffic_exprs
+
+    rx_q, tx_q, _, _ = _traffic_exprs(["uuid-1"])
+    for q in (rx_q, tx_q):
+        assert "max by (instance_id, device)" in q, f"중복 scrape 를 dedup 하지 않는다: {q}"
+        assert "sum by (instance_id, device)" not in q
+
+
+def test_history_step_is_never_finer_than_scrape_implied_by_window():
+    """step 은 `scrape ≤ step ≤ window` 를 지켜야 한다.
+
+    하한을 어기면 같은 값이 반복되는 계단이 나온다 — 실측(scrape 60s)에서 step 15s 는
+    인접 동일값 72%, step 60s 는 12%(평평한 구간의 자연 기준선)였다.
+    scrape 를 알 수 없으므로 윈도우가 함의하는 최악(`window/2`)을 하한으로 쓴다.
+    """
+    from app.api.network.networks import _HISTORY_RANGES, _history_step, _window_seconds
+
+    window_s = _window_seconds()
+    for label, range_s in _HISTORY_RANGES.items():
+        step_s = _history_step(range_s)
+        assert step_s >= window_s // 2, (
+            f"{label}: step {step_s}s 가 윈도우가 함의하는 scrape({window_s // 2}s)보다 촘촘하다 — 계단이 생긴다"
+        )
+        assert step_s <= window_s, f"{label}: step {step_s}s 가 윈도우 {window_s}s 보다 크다"
+        assert range_s // step_s >= 10, f"{label}: 포인트가 {range_s // step_s}개뿐이라 추이를 볼 수 없다"

@@ -41,7 +41,7 @@
 	<span role="listitem"><Pill tone="neutral" size="xs">격리</Pill>라우터 없는 네트워크</span>
 	<span role="listitem"><span class="mono fip" style:color={TOPOLOGY_COLORS.external}>✦</span>Floating IP</span>
 	<span role="listitem"><Pill tone="warm" size="xs">2NIC</Pill>멀티 NIC (존 교차 영역)</span>
-	<span role="listitem"><span class="ln" style:background={TOPOLOGY_COLORS.internal}></span>연결 (굵기·점 빈도 = 30초 사용량)</span>
+	<span role="listitem"><span class="ln" style:background={TOPOLOGY_COLORS.internal}></span>연결 (굵기·점 빈도 = 사용량)</span>
 	<span role="listitem"><span class="dot dot-in" style:background={TOPOLOGY_COLORS.internal}></span>격리 네트워크는 양방향 = 내부 통신 (인스턴스↔스위치↔인스턴스)</span>
 	<span role="listitem"><span class="dot dot-ns" style:background={TOPOLOGY_COLORS.internal}></span>라우터 있는 네트워크는 게이트웨이 방향만 (내부 비중은 계측 불가)</span>
 	<span role="listitem"><span class="ln dash" style:--c={TOPOLOGY_COLORS.internal}></span>LB → 멤버 (선택 시 점선)</span>

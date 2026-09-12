@@ -13,6 +13,8 @@
       - enable_valkey | default(false) | bool
       - groups.get('valkey', []) | length > 0
       - valkey_master_password is defined and valkey_master_password | length > 0
+      - valkey_sentinel_port is defined
+      - valkey_sentinel_monitor_name is defined and valkey_sentinel_monitor_name | length > 0
     fail_msg: "Deploy stock Kolla Valkey before enabling afterglow; no plugin Redis fallback exists"
   run_once: true
   tags: precheck

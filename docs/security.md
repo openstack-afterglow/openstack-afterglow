@@ -28,6 +28,17 @@
   session key 모두 즉시 삭제 → 동일 토큰으로 다음 호출 시 Keystone 재검증 → 401
 - **session 절대/idle timeout**: `app/api/deps.py` 의 `_check_session_timeout`
 
+### 브라우저 access/refresh 복구
+
+- `frontend/src/lib/api/client.ts`의 `fetchWithAuth`는 명시적 access token을 붙이는 first-party 요청의 HTTP handshake를 담당한다. JSON API와 채팅/SSE·첨부·다운로드 소비자가 같은 경로를 사용하고, 진행률 XHR 업로드도 같은 인증 복구 정책을 사용한다.
+- 현재 세션의 access 만료가 120초 이내이면 요청 전 refresh를 기다린다. 진행 중 갱신에 들어온 요청도 같은 Promise를 기다리므로 background-tab timer가 늦어져도 만료 토큰으로 요청부터 보내지 않는다.
+- 첫 401은 refresh 또는 이미 회전한 live token으로 **한 번만** 재시도한다. body·project·사용자 취소 신호를 보존하며, 이미 HTTP 응답을 받아 소비 중인 SSE를 재시작하지 않는다. 취소된 요청은 갱신 뒤 재전송하지 않고 공유 refresh는 다른 요청을 위해 완료한다.
+- root layout은 mount, window focus, document visible 복귀 시 즉시 만료를 확인하고 60초 interval도 유지한다. mockup과 logout 중에는 lifecycle 갱신을 시작하지 않는다.
+- refresh 자체의 401, 폐기/차단된 Redis 세션, 서버 session timeout, Keystone 인증 만료는 재로그인 대상이다. refresh는 서버 인증 정책을 우회하거나 세션의 무제한 유효성을 보장하지 않는다.
+- refresh 503·429·네트워크 오류는 인증 실패로 바꾸지 않고 세션을 보존한다. 기존 실패 coalescing/cooldown 및 `Retry-After` 처리를 유지하며, 채팅 스트림도 HTTP refresh 오류를 연결 끊김으로 재분류하지 않는다.
+- Kolla HA에서는 backend가 모든 Valkey Sentinel을 통해 현재 master를 해석하고 `redis_url`의 사용자명·비밀번호·DB index를 발견된 master 연결에 적용한다. replica로 승격 정보가 어긋나거나 master 쓰기가 불가능하면 refresh/session 검증은 503으로 fail-closed하며, 브라우저에서 이를 terminal 401로 바꾸지 않는다.
+- 외부/presigned URL은 이 복구 경로와 브라우저 Authorization 주입 대상이 아니다. `downloadAuthenticated`는 설정된 API origin의 `/api/v1/` 경로만 인증하고 다른 URL은 자격 없이 요청한다. logout revocation fence와 늦은 401/cross-tab 회전 winner 보호를 유지한다.
+
 ### 리버스 프록시 IP 추출
 
 - `X-Forwarded-For` / `X-Real-IP` 헤더는 `settings.trusted_proxies` (CIDR 리스트)

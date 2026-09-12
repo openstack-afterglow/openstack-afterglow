@@ -318,11 +318,15 @@ export function endSessionRevocation(): void {
 	_sessionRevocationInProgress = false;
 }
 
-function _buildHeaders(token?: string, projectId?: string, extra?: Record<string, string>): Record<string, string> {
-	const headers: Record<string, string> = {
-		'Content-Type': 'application/json',
-		...(extra ?? {}),
-	};
+function _buildHeaders(token?: string, projectId?: string, extra?: HeadersInit): Record<string, string> {
+	const headers: Record<string, string> = extra instanceof Headers
+		? Object.fromEntries(extra.entries())
+		: Array.isArray(extra) ? Object.fromEntries(extra) : { ...extra };
+	for (const key of Object.keys(headers)) {
+		if ((token && key.toLowerCase() === 'authorization') || (projectId && key.toLowerCase() === 'x-project-id')) {
+			delete headers[key];
+		}
+	}
 	if (token) {
 		headers['Authorization'] = `Bearer ${token}`;
 	}
@@ -330,6 +334,90 @@ function _buildHeaders(token?: string, projectId?: string, extra?: Record<string
 		headers['X-Project-Id'] = projectId;
 	}
 	return headers;
+}
+
+interface AuthRequestOptions {
+	suppressAuthRedirect?: boolean;
+	allowDuringRevocation?: boolean;
+	signal?: AbortSignal | null;
+}
+
+function waitForRefresh(refresh: Promise<string | null>, signal?: AbortSignal | null): Promise<string | null> {
+	if (!signal) return refresh;
+	signal.throwIfAborted();
+	return new Promise((resolve, reject) => {
+		const abort = () => reject(signal.reason);
+		signal.addEventListener('abort', abort, { once: true });
+		refresh.then(
+			(token) => { signal.removeEventListener('abort', abort); resolve(token); },
+			(error) => { signal.removeEventListener('abort', abort); reject(error); },
+		);
+	});
+}
+
+async function withAuthRecovery<T extends { status: number }>(
+	send: (token?: string) => Promise<T>,
+	token: string | undefined,
+	opts: AuthRequestOptions = {},
+): Promise<T> {
+	opts.signal?.throwIfAborted();
+	let requestToken = token;
+	if (token && !_sessionRevocationInProgress) {
+		const state = get(auth);
+		// Background-tab timers can be suspended. The request itself owns this
+		// check and waits for rotation before sending a soon-to-expire token.
+		if (_refreshPromise || (
+			state.token && state.refreshToken && state.accessExpiresAt
+			&& state.accessExpiresAt <= Math.floor(Date.now() / 1000) + 120
+		)) {
+			const freshToken = await waitForRefresh(tryRefresh(), opts.signal);
+			opts.signal?.throwIfAborted();
+			if (!freshToken) {
+				if (!opts.suppressAuthRedirect) void handleUnauthorized();
+				throw new ApiError(401, '세션이 만료되었습니다');
+			}
+			requestToken = freshToken;
+		}
+	}
+
+	let response = await send(requestToken);
+	opts.signal?.throwIfAborted();
+	if (response.status === 401 && requestToken) {
+		const liveToken = get(auth).token;
+		const retryToken = liveToken && liveToken !== requestToken
+			? liveToken
+			: await waitForRefresh(tryRefresh({ allowDuringRevocation: opts.allowDuringRevocation }), opts.signal);
+		opts.signal?.throwIfAborted();
+		if (retryToken && retryToken !== requestToken) {
+			response = await send(retryToken);
+		}
+		opts.signal?.throwIfAborted();
+	}
+	if (response.status === 401 && !opts.suppressAuthRedirect) void handleUnauthorized();
+	return response;
+}
+
+/** First-party HTTP handshake recovery; callers retain response/body ownership. */
+export function fetchWithAuth(
+	path: string,
+	options: RequestInit = {},
+	token?: string,
+	projectId?: string,
+	reqOpts?: { suppressAuthRedirect?: boolean; baseUrl?: string },
+): Promise<Response> {
+	const baseUrl = reqOpts?.baseUrl ?? getBaseUrl();
+	return withAuthRecovery(
+		(currentToken) => fetch(`${baseUrl}${path}`, {
+			...options,
+			headers: _buildHeaders(currentToken, projectId, options.headers),
+		}),
+		token,
+		{
+			signal: options.signal,
+			suppressAuthRedirect: reqOpts?.suppressAuthRedirect,
+			allowDuringRevocation: path === '/api/v1/auth/logout' || path === '/api/v1/auth/logout-all',
+		},
+	);
 }
 
 async function request<T>(
@@ -352,46 +440,12 @@ async function request<T>(
 		return mock;
 	}
 
-	const headers = _buildHeaders(token, projectId, options.headers as Record<string, string>);
-
-	const res = await fetch(`${requestBaseUrl}${path}`, {
+	const res = await fetchWithAuth(path, {
 		...options,
-		headers,
+		headers: { 'Content-Type': 'application/json', ...options.headers },
 		credentials: options.credentials ?? 'include',
 		signal: options.signal ?? AbortSignal.timeout(30_000),
-	});
-
-	// 401: access JWT 만료 → refresh 후 1회 재시도
-	if (res.status === 401 && token) {
-		const allowDuringRevocation = path === '/api/v1/auth/logout' || path === '/api/v1/auth/logout-all';
-		const liveToken = get(auth).token;
-		const retryToken =
-			liveToken && liveToken !== token
-				? liveToken
-				: await tryRefresh({ allowDuringRevocation });
-		if (retryToken && retryToken !== token) {
-			const retryHeaders = _buildHeaders(retryToken, projectId, options.headers as Record<string, string>);
-			const retry = await fetch(`${requestBaseUrl}${path}`, {
-				...options,
-				headers: retryHeaders,
-				credentials: options.credentials ?? 'include',
-				signal: options.signal ?? AbortSignal.timeout(30_000),
-			});
-			if (retry.ok) {
-				if (retry.status === 204) return undefined as T;
-				return retry.json();
-			}
-			if (retry.status === 401 && !reqOpts?.suppressAuthRedirect) void handleUnauthorized();
-			let detail = retry.statusText;
-			try {
-				const body = await retry.json();
-				detail = formatErrorDetail(body, retry.statusText);
-			} catch { /* ignore */ }
-			throw new ApiError(retry.status, detail);
-		}
-		if (!reqOpts?.suppressAuthRedirect) void handleUnauthorized();
-		throw new ApiError(401, '세션이 만료되었습니다');
-	}
+	}, token, projectId, { ...reqOpts, baseUrl: requestBaseUrl });
 
 	if (!res.ok) {
 		let detail = res.statusText;
@@ -400,9 +454,6 @@ async function request<T>(
 			detail = formatErrorDetail(body, res.statusText);
 		} catch {
 			detail = await res.text().catch(() => res.statusText);
-		}
-		if (res.status === 401 && !reqOpts?.suppressAuthRedirect) {
-			void handleUnauthorized();
 		}
 		if (res.status === 403 && path.includes('/admin')) {
 			void handleAdminForbidden();
@@ -809,6 +860,57 @@ async function withMutationInvalidation<T>(
 	}
 }
 
+function uploadWithAuthProgress<T>(
+	method: 'POST' | 'PUT',
+	path: string,
+	body: FormData | Blob,
+	onProgress: (event: { loaded: number; total: number }) => void,
+	token?: string,
+	projectId?: string,
+	contentType?: string,
+): { promise: Promise<T>; abort: () => void } {
+	const scope = captureRequestScope(token, projectId);
+	invalidateExactScope(scope);
+	const controller = new AbortController();
+	let activeXhr: XMLHttpRequest | undefined;
+	const promise = withAuthRecovery(
+		(currentToken) => new Promise<XMLHttpRequest>((resolve, reject) => {
+			const xhr = new XMLHttpRequest();
+			activeXhr = xhr;
+			xhr.open(method, `${scope.baseUrl}${path}`);
+			if (currentToken) xhr.setRequestHeader('Authorization', `Bearer ${currentToken}`);
+			if (projectId) xhr.setRequestHeader('X-Project-Id', projectId);
+			if (contentType) xhr.setRequestHeader('Content-Type', contentType);
+			xhr.timeout = 0;
+			xhr.upload.onprogress = (event) => {
+				if (event.lengthComputable) onProgress({ loaded: event.loaded, total: event.total });
+			};
+			xhr.onload = () => resolve(xhr);
+			xhr.onerror = () => reject(new Error('네트워크 오류가 발생했습니다'));
+			xhr.onabort = () => reject(new ApiError(0, '업로드가 취소되었습니다'));
+			xhr.send(body);
+		}),
+		token,
+		{ signal: controller.signal },
+	).then((xhr) => {
+		if (xhr.status < 200 || xhr.status >= 300) {
+			let detail = xhr.statusText;
+			try { detail = JSON.parse(xhr.responseText)?.detail || detail; } catch { /* empty */ }
+			throw new ApiError(xhr.status, detail);
+		}
+		if (xhr.status === 204) return undefined as T;
+		try { return JSON.parse(xhr.responseText) as T; }
+		catch { return undefined as T; }
+	}).finally(() => invalidateExactScope(scope));
+	return {
+		promise,
+		abort: () => {
+			controller.abort(new ApiError(0, '업로드가 취소되었습니다'));
+			activeXhr?.abort();
+		},
+	};
+}
+
 if (browser) {
 	let observedScope: RequestScope | null = null;
 	let observedToken: string | undefined;
@@ -896,15 +998,11 @@ export const api = {
 	upload: <T>(path: string, formData: FormData, token?: string, projectId?: string): Promise<T> => {
 		const scope = captureRequestScope(token, projectId);
 		return withMutationInvalidation(scope, async () => {
-			const headers: Record<string, string> = {};
-			if (token) headers['Authorization'] = `Bearer ${token}`;
-			if (projectId) headers['X-Project-Id'] = projectId;
-			const res = await fetch(`${scope.baseUrl}${path}`, {
+			const res = await fetchWithAuth(path, {
 				method: 'POST',
-				headers,
 				body: formData,
 				signal: AbortSignal.timeout(300_000),
-			});
+			}, token, projectId, { baseUrl: scope.baseUrl });
 			if (!res.ok) {
 				let detail = res.statusText;
 				try {
@@ -913,7 +1011,6 @@ export const api = {
 				} catch {
 					detail = await res.text().catch(() => res.statusText);
 				}
-				if (res.status === 401) void handleUnauthorized();
 				throw new ApiError(res.status, detail);
 			}
 			if (res.status === 204) return undefined as T;
@@ -927,39 +1024,8 @@ export const api = {
 		onProgress: (event: { loaded: number; total: number }) => void,
 		token?: string,
 		projectId?: string,
-	): { promise: Promise<T>; abort: () => void } => {
-		const scope = captureRequestScope(token, projectId);
-		invalidateExactScope(scope);
-		const xhr = new XMLHttpRequest();
-		const promise = new Promise<T>((resolve, reject) => {
-			xhr.open('POST', `${scope.baseUrl}${path}`);
-			if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-			if (projectId) xhr.setRequestHeader('X-Project-Id', projectId);
-			xhr.timeout = 0; // 타임아웃 없음 (서버 측에서 관리)
-
-			xhr.upload.onprogress = (e) => {
-				if (e.lengthComputable) {
-					onProgress({ loaded: e.loaded, total: e.total });
-				}
-			};
-			xhr.onload = () => {
-				if (xhr.status >= 200 && xhr.status < 300) {
-					if (xhr.status === 204) { resolve(undefined as T); return; }
-					try { resolve(JSON.parse(xhr.responseText)); }
-					catch { resolve(undefined as T); }
-				} else {
-					let detail = xhr.statusText;
-					try { detail = JSON.parse(xhr.responseText)?.detail || detail; } catch { /* empty */ }
-					if (xhr.status === 401) void handleUnauthorized();
-					reject(new ApiError(xhr.status, detail));
-				}
-			};
-			xhr.onerror = () => reject(new Error('네트워크 오류가 발생했습니다'));
-			xhr.onabort = () => reject(new ApiError(0, '업로드가 취소되었습니다'));
-			xhr.send(formData);
-		}).finally(() => invalidateExactScope(scope));
-		return { promise, abort: () => xhr.abort() };
-	},
+	): { promise: Promise<T>; abort: () => void } =>
+		uploadWithAuthProgress<T>('POST', path, formData, onProgress, token, projectId),
 
 	putWithProgress: <T>(
 		path: string,
@@ -968,38 +1034,8 @@ export const api = {
 		onProgress: (event: { loaded: number; total: number }) => void,
 		token?: string,
 		projectId?: string,
-	): { promise: Promise<T>; abort: () => void } => {
-		const scope = captureRequestScope(token, projectId);
-		invalidateExactScope(scope);
-		const xhr = new XMLHttpRequest();
-		const promise = new Promise<T>((resolve, reject) => {
-			xhr.open('PUT', `${scope.baseUrl}${path}`);
-			if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-			if (projectId) xhr.setRequestHeader('X-Project-Id', projectId);
-			xhr.setRequestHeader('Content-Type', contentType || 'application/octet-stream');
-			xhr.timeout = 0;
-
-			xhr.upload.onprogress = (e) => {
-				if (e.lengthComputable) onProgress({ loaded: e.loaded, total: e.total });
-			};
-			xhr.onload = () => {
-				if (xhr.status >= 200 && xhr.status < 300) {
-					if (xhr.status === 204) { resolve(undefined as T); return; }
-					try { resolve(JSON.parse(xhr.responseText)); }
-					catch { resolve(undefined as T); }
-				} else {
-					let detail = xhr.statusText;
-					try { detail = JSON.parse(xhr.responseText)?.detail || detail; } catch { /* empty */ }
-					if (xhr.status === 401) void handleUnauthorized();
-					reject(new ApiError(xhr.status, detail));
-				}
-			};
-			xhr.onerror = () => reject(new Error('네트워크 오류가 발생했습니다'));
-			xhr.onabort = () => reject(new ApiError(0, '업로드가 취소되었습니다'));
-			xhr.send(blob);
-		}).finally(() => invalidateExactScope(scope));
-		return { promise, abort: () => xhr.abort() };
-	},
+	): { promise: Promise<T>; abort: () => void } =>
+		uploadWithAuthProgress<T>('PUT', path, blob, onProgress, token, projectId, contentType || 'application/octet-stream'),
 
 	/** 절대 URL에 PUT (RGW presigned 등). 인증 헤더·Content-Type 미부착, ETag 반환.
 	 * presigned upload_part는 X-Amz-SignedHeaders=host 만 서명하므로 Content-Type을 보내면
@@ -1048,18 +1084,13 @@ export const api = {
 	downloadBlob: async (path: string, token?: string, projectId?: string): Promise<{ blob: Blob; filename: string }> => {
 		const mock = await maybeMockBlob('GET', path, token, projectId);
 		if (mock !== symbolNoMatch) return { blob: mock, filename: 'afterglow-mockup-kubeconfig.yaml' };
-		const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-		if (token) headers['Authorization'] = `Bearer ${token}`;
-		if (projectId) headers['X-Project-Id'] = projectId;
-		const res = await fetch(`${getBaseUrl()}${path}`, {
+		const res = await fetchWithAuth(path, {
 			method: 'GET',
-			headers,
 			signal: AbortSignal.timeout(300_000),
-		});
+		}, token, projectId);
 		if (!res.ok) {
 			let detail = res.statusText;
 			try { detail = (await res.json())?.detail || detail; } catch { /* empty */ }
-			if (res.status === 401) void handleUnauthorized();
 			throw new ApiError(res.status, detail);
 		}
 		const disposition = res.headers.get('Content-Disposition') || '';
@@ -1102,26 +1133,15 @@ export const api = {
 			})();
 			return;
 		}
-		const url = new URL(`${scope.baseUrl}${path}`);
-
-		// POST 요청을 SSE로 처리하기 위해 fetch 사용 후 EventSource로 전환
-		// 하지만 EventSource는 POST를 지원하지 않으므로, fetch로 SSE 스트림을 처리
-		const headers: Record<string, string> = {
-			'Content-Type': 'application/json',
-			'Accept': 'text/event-stream'
-		};
-		if (token) headers['Authorization'] = `Bearer ${token}`;
-		if (projectId) headers['X-Project-Id'] = projectId;
 
 		// fetch로 POST 요청 후 스트림 처리
-		fetch(url, {
+		fetchWithAuth(path, {
 			method: 'POST',
-			headers,
+			headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
 			body: JSON.stringify(body)
-		}).then(async (response) => {
+		}, token, projectId, { baseUrl: scope.baseUrl }).then(async (response) => {
 			if (!response.ok) {
 				const text = await response.text();
-				if (response.status === 401) void handleUnauthorized();
 				throw new ApiError(response.status, text || response.statusText);
 			}
 
