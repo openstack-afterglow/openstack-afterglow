@@ -196,9 +196,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "48b67aa31011d19dc568a9a765467ef49fa210c0d6a997b4cb86b2d974348d29",
-  "reviewed_at": "2026-09-12T14:13:50Z",
-  "summary": "Afterglow 1.20.0 release reviewed across authentication recovery, topology traffic, chat quota, and Kolla Valkey Sentinel failover; deployment contracts resolve the writable master while preserving credentials, DB selection, and fail-closed refresh."
+  "source_sha256": "6765ac14cda96fe2355500383ca6dc2587939a90b4516e4d2b657c3d5f48c1fa",
+  "reviewed_at": "2026-09-12T14:19:06Z",
+  "summary": "Afterglow 1.20.0 release reviewed across authentication recovery, topology traffic, chat quota, and Kolla Valkey Sentinel failover; the download recovery regression uses a cross-runtime Blob contract and deployment preserves fail-closed refresh."
 }
 ```
 <!-- architecture-review:end -->

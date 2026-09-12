@@ -150,6 +150,7 @@ describe('unauthorized API redirect', () => {
 	});
 
 	it('recovers a download handshake 401 before returning bytes to the caller', async () => {
+		const recoveredBlob = new Blob(['recovered file'], { type: 'text/plain' });
 		mockFetch
 			.mockResolvedValueOnce(Response.json({ detail: 'expired' }, { status: 401 }))
 			.mockResolvedValueOnce(Response.json({
@@ -157,18 +158,16 @@ describe('unauthorized API redirect', () => {
 				refresh_token: 'fresh-refresh',
 				expires_at: new Date(Date.now() + 900_000).toISOString(),
 			}))
-			.mockResolvedValueOnce(new Response('recovered file', {
-				headers: { 'Content-Disposition': 'attachment; filename="report.txt"' },
-			}));
+			.mockResolvedValueOnce({
+				ok: true,
+				status: 200,
+				headers: new Headers({ 'Content-Disposition': 'attachment; filename="report.txt"' }),
+				blob: async () => recoveredBlob,
+			} as Response);
 		const { api } = await import('../client');
 
 		const result = await api.downloadBlob('/api/v1/report', 'expired-token', 'project');
-		const contents = Promise.withResolvers<string>();
-		const reader = new FileReader();
-		reader.onload = () => contents.resolve(String(reader.result));
-		reader.onerror = () => contents.reject(reader.error);
-		reader.readAsText(result.blob);
-		expect(await contents.promise).toBe('recovered file');
+		expect(result.blob).toBe(recoveredBlob);
 		expect(result.filename).toBe('report.txt');
 		expect(clearAuth).not.toHaveBeenCalled();
 		expect(goto).not.toHaveBeenCalled();
