@@ -201,8 +201,8 @@ Architecture maintenance는 다음 규칙을 따른다.
 {
   "schema_version": 1,
   "source_sha256": "1912dfa677d3a4f2950f695bd26a27c9e2c8e13e9ff4d8771a7089fb560c4585",
-  "reviewed_at": "2026-09-13T05:26:59Z",
-  "summary": "토폴로지 provider uplink 판정을 external gateway 전용에서 external/shared provider-tier 기준으로 보완했다. uplink 합은 라우터가 직접 연결한 tenant 네트워크만 포함해 provider 자체 합산값 복제를 막는다."
+  "reviewed_at": "2026-09-13T05:28:34Z",
+  "summary": "shared provider 트렁크 귀속 보완 OpenSpec change를 archive로 이동했다. source 구조 영향 없음."
 }
 ```
 <!-- architecture-review:end -->
