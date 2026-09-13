@@ -242,9 +242,11 @@ describe('edgeRate / edgeStyle', () => {
 		traffic.networks['net-other'] = { rx_bps: 7e6, tx_bps: 3e6 };
 		const edgeUplink = all.edges.find((e) => e.kind === 'trunk' && e.from === 'rtr-edge' && e.netId === 'net-pub')!;
 		const otherUplink = all.edges.find((e) => e.kind === 'trunk' && e.from === 'rtr-other' && e.netId === 'net-pub')!;
+		const sharedUplink = all.edges.find((e) => e.kind === 'trunk' && e.from === 'rtr-transit' && e.netId === 'net-transit')!;
 
 		expect(edgeRate(edgeUplink, traffic, all)).toEqual({ rx_bps: 19.8e6, tx_bps: 8e6 });
 		expect(edgeRate(otherUplink, traffic, all)).toEqual({ rx_bps: 7e6, tx_bps: 3e6 });
+		expect(edgeRate(sharedUplink, traffic, all)).toEqual({ rx_bps: 14e6, tx_bps: 6e6 });
 	});
 
 	it('트래픽 강도는 edgeIntensity 를 따르고 trunk 는 최소 폭 2.5', () => {

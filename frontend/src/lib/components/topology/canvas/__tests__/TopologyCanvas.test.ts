@@ -187,6 +187,11 @@ describe('TopologyCanvas', () => {
 		expect(uplink.textContent).toContain('▲ 8.0M');
 		expect(uplink.textContent).toContain('하위망 합산');
 		expect(uplink.getAttribute('title')).toBe('라우터별 하위 네트워크 합산 트래픽 · 라우터 exporter 없음');
+		const sharedUplink = badges.find((b) => b.dataset.trunkBadge === 'trunk:rtr-transit>sw:net-transit')!;
+		expect(sharedUplink.textContent).toContain('▼ 14.0M');
+		expect(sharedUplink.textContent).toContain('▲ 6.0M');
+		expect(sharedUplink.textContent).toContain('하위망 합산');
+		expect(sharedUplink.textContent).not.toContain('120M');
 		const appBadge = badges.find((b) => b.dataset.trunkBadge === 'trunk:rtr-edge>sw:net-app')!;
 		expect(appBadge.textContent).toContain('▼ 14.0M');
 		expect(appBadge.textContent).toContain('네트워크 합산');

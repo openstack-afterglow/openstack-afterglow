@@ -13,7 +13,7 @@
 
 ### Fixed
 
-- **provider 트렁크 트래픽 중복 표시** — 캔버스가 provider 네트워크 전체 NIC 합산값을 그 provider에 붙은 모든 라우터 트렁크에 복제해, 서로 다른 하위망을 가진 링크들이 모두 같은 트래픽처럼 보였다. 이제 하위 스위치 쪽 트렁크는 해당 네트워크 합산을 유지하고, provider 쪽 external gateway 트렁크는 그 라우터가 직접 연결한 하위 네트워크들만 합산한다. 배지도 `네트워크 합산`과 `하위망 합산`으로 범위를 구분한다. 라우터 exporter가 없어 실제 L3 링크 자체의 내부/외부 비중은 여전히 계측하지 않는다.
+- **provider 트렁크 트래픽 중복 표시** — 캔버스가 provider 네트워크 전체 NIC 합산값을 그 provider에 붙은 모든 라우터 트렁크에 복제해, 서로 다른 하위망을 가진 링크들이 모두 같은 트래픽처럼 보였다. 이제 하위 스위치 쪽 트렁크는 해당 네트워크 합산을 유지하고, external·shared provider-tier 스위치 쪽 트렁크는 그 라우터가 직접 연결한 tenant 네트워크들만 합산한다. shared provider가 일반 router interface로 연결되는 경우도 대상 네트워크 tier로 uplink를 판정하며, provider 네트워크 자체는 합산에서 제외한다. 배지도 `네트워크 합산`과 `하위망 합산`으로 범위를 구분한다. 라우터 exporter가 없어 실제 L3 링크 자체의 내부/외부 비중은 여전히 계측하지 않는다.
 
 - **토폴로지 응답 8~10초 지연** — 사용자·관리자 토폴로지 핸들러가 서로 의존하지 않는 OpenStack 조회를 직렬로 수행해 각 응답 시간이 그대로 합산되고 있었다(운영 request 로그 `duration_ms` 8286~9939). 이제 네트워크·서브넷·라우터·Floating IP·라우터 인터페이스 포트, 그리고 topology·compute 포트 인덱스·Trove IP·Nova 서버를 각각 동시에 가져온다. 함께 과다 조회도 줄였다 — compute 포트 인덱스는 실제로 읽는 속성만 요청하고, `list_floating_ips`는 전체 포트·전체 서버 detail 목록을 받아 거르는 대신 FIP가 붙은 포트만 id로 조회하고 인스턴스 이름은 detail 없는 목록에서 읽는다. 운영 컨테이너 실측에서 동일한 payload를 유지하며 fan-out이 8938 ms → 2208 ms, `get_topology` 4267 ms → 781 ms, `list_floating_ips` 3167 ms → 349 ms 로 줄었다.
 
