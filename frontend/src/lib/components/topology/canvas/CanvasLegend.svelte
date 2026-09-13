@@ -46,7 +46,7 @@
 	<span role="listitem"><span class="dot dot-ns" style:background={TOPOLOGY_COLORS.internal}></span>라우터 있는 네트워크는 게이트웨이 방향만 (내부 비중은 계측 불가)</span>
 	<span role="listitem"><span class="ln dash" style:--c={TOPOLOGY_COLORS.internal}></span>LB → 멤버 (선택 시 점선)</span>
 	<span role="listitem"><span class="ln dash" style:--c={TONE_CSS_VAR.neutral}></span>점선 = 비활성 (SHUTOFF · DOWN)</span>
-	<span role="listitem"><Pill tone="neutral" size="xs"><span class="mono">▼ ▲</span></Pill>트렁크 배지 = 네트워크 합산</span>
+	<span role="listitem"><Pill tone="neutral" size="xs"><span class="mono">▼ ▲</span></Pill>트렁크 배지 = 연결망 합산 · provider 쪽은 라우터별 하위망 합산</span>
 </div>
 
 <style>

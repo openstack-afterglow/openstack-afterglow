@@ -26,6 +26,7 @@
 		key: string;
 		netId: string;
 		netName: string;
+		uplink: boolean;
 		sx: number;
 		sy: number;
 		rateText: string;
@@ -36,7 +37,7 @@
 <script lang="ts">
 	// 스크린 공간 HUD: 존 라벨 칩과 트렁크 배지. 버튼에만 pointer-events 를 준다.
 	import Pill from '$lib/components/ui/Pill.svelte';
-	import { TRUNK_CAPTION, TRUNK_TITLE } from './canvasHelpers';
+	import { TRUNK_CAPTION, TRUNK_TITLE, UPLINK_CAPTION, UPLINK_TITLE } from './canvasHelpers';
 
 	interface Props {
 		labels: readonly HudLabelItem[];
@@ -97,14 +98,14 @@
 				class:is-dim={b.dim}
 				data-hud-control
 				data-trunk-badge={b.key}
-				title={TRUNK_TITLE}
-				aria-label="{b.netName} 트렁크 배지 ({TRUNK_CAPTION}) {b.rateText}"
+				title={b.uplink ? UPLINK_TITLE : TRUNK_TITLE}
+				aria-label="{b.netName} 트렁크 배지 ({b.uplink ? UPLINK_CAPTION : TRUNK_CAPTION}) {b.rateText}"
 				style:--sx="{b.sx}px"
 				style:--sy="{b.sy}px"
 				onclick={() => onselectnet(b.netId)}
 			>
 				<span class="badge-rate">{b.rateText}</span>
-				<span class="badge-cap">{TRUNK_CAPTION}</span>
+				<span class="badge-cap">{b.uplink ? UPLINK_CAPTION : TRUNK_CAPTION}</span>
 			</button>
 		{/each}
 	{/if}

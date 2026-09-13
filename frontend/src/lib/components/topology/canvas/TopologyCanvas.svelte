@@ -23,6 +23,7 @@
 		edgeStyle,
 		FLOW_MIN_BPS,
 		flowStreams,
+		isRouterUplink,
 		matchesQuery,
 		relatedSet,
 		switchId,
@@ -273,7 +274,7 @@
 	});
 	const nicRates = $derived.by(() => {
 		const m = new Map<string, string>();
-		for (const e of graph.edges) if (e.kind === 'cable' && e.nic) m.set(e.nic.key, fmtRateShort(edgeRate(e, traffic)));
+		for (const e of graph.edges) if (e.kind === 'cable' && e.nic) m.set(e.nic.key, fmtRateShort(edgeRate(e, traffic, graph)));
 		return m;
 	});
 
@@ -304,7 +305,7 @@
 				dash: base.dash,
 				forced: e.kind === 'fip' && incident,
 				hitTitle: e.kind === 'trunk'
-					? `트렁크 · ${net?.name ?? ''} · 네트워크 합산 트래픽 (라우터 exporter 없음)`
+					? `트렁크 · ${net?.name ?? ''} · ${isRouterUplink(e, graph) ? '라우터별 하위 네트워크 합산' : '연결 네트워크 합산'} 트래픽 (라우터 exporter 없음)`
 					: null,
 				port: toNode?.kind === 'switch' && (e.kind === 'cable' || e.kind === 'lbvip') ? g.b : null,
 			});
@@ -393,9 +394,10 @@
 				key: e.key,
 				netId: e.netId,
 				netName: graph.netById.get(e.netId)?.name ?? '',
+				uplink: isRouterUplink(e, graph),
 				sx: g.mid.x * k + panX,
 				sy: g.mid.y * k + panY,
-				rateText: fmtRate(edgeRate(e, traffic)),
+				rateText: fmtRate(edgeRate(e, traffic, graph)),
 				dim: (Boolean(activeId) && !incident) || (Boolean(match) && !match!.nets.has(e.netId)),
 			});
 		}

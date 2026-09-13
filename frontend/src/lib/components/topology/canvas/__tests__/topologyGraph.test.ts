@@ -224,15 +224,27 @@ describe('edgeRate / edgeStyle', () => {
 		expect(edgeStyle(cable('vm-web-01', 'net-web'), null, g)).toMatchObject({ width: 1.5, opacity: 0.4, dash: null, bps: null, rate: null });
 	});
 
-	it('cable 은 interfaces[portId], 없으면 인스턴스+네트워크 합산, trunk 는 networks, lbvip 는 load_balancers', () => {
-		expect(edgeRate(cable('vm-web-01', 'net-web'), t)).toEqual(t.interfaces!['port-web-01-eth0']);
+	it('cable 은 interfaces[portId], 없으면 인스턴스+네트워크 합산, 하위 trunk 는 networks, lbvip 는 load_balancers', () => {
+		expect(edgeRate(cable('vm-web-01', 'net-web'), t, g)).toEqual(t.interfaces!['port-web-01-eth0']);
 		const noPort = { ...cable('vm-app-01', 'net-app'), portId: null };
-		expect(edgeRate(noPort, t)).toEqual({ rx_bps: 1.4e7, tx_bps: 6.0e6 });
-		expect(edgeRate(cable('vm-web-03', 'net-web'), t)).toBeNull();
+		expect(edgeRate(noPort, t, g)).toEqual({ rx_bps: 1.4e7, tx_bps: 6.0e6 });
+		expect(edgeRate(cable('vm-web-03', 'net-web'), t, g)).toBeNull();
 		const trunk = g.edges.find((e) => e.kind === 'trunk' && e.netId === 'net-web')!;
-		expect(edgeRate(trunk, t)).toEqual(t.networks['net-web']);
-		expect(edgeRate(g.edges.find((e) => e.kind === 'fip')!, t)).toBeNull();
-		expect(edgeRate(g.edges.find((e) => e.kind === 'lbvip')!, t)).toEqual({ rx_bps: 2.9e6, tx_bps: 2.7e6 });
+		expect(edgeRate(trunk, t, g)).toEqual(t.networks['net-web']);
+		expect(edgeRate(g.edges.find((e) => e.kind === 'fip')!, t, g)).toBeNull();
+		expect(edgeRate(g.edges.find((e) => e.kind === 'lbvip')!, t, g)).toEqual({ rx_bps: 2.9e6, tx_bps: 2.7e6 });
+	});
+
+	it('provider 트렁크는 provider 전체값을 복제하지 않고 라우터별 하위 네트워크만 합산한다', () => {
+		const all = buildGraph(makeFixture(), { projectId: null, showAll: true });
+		const traffic = makeTraffic();
+		traffic.networks['net-pub'] = { rx_bps: 438e6, tx_bps: 72e6 };
+		traffic.networks['net-other'] = { rx_bps: 7e6, tx_bps: 3e6 };
+		const edgeUplink = all.edges.find((e) => e.kind === 'trunk' && e.from === 'rtr-edge' && e.netId === 'net-pub')!;
+		const otherUplink = all.edges.find((e) => e.kind === 'trunk' && e.from === 'rtr-other' && e.netId === 'net-pub')!;
+
+		expect(edgeRate(edgeUplink, traffic, all)).toEqual({ rx_bps: 19.8e6, tx_bps: 8e6 });
+		expect(edgeRate(otherUplink, traffic, all)).toEqual({ rx_bps: 7e6, tx_bps: 3e6 });
 	});
 
 	it('트래픽 강도는 edgeIntensity 를 따르고 trunk 는 최소 폭 2.5', () => {

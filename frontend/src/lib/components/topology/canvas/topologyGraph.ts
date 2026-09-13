@@ -371,10 +371,18 @@ export function matchesQuery(graph: CanvasGraph, raw: string): QueryMatch | null
 /**
  * 엣지별 텔레메트리 소스.
  * cable → interfaces[portId], 없으면 같은 인스턴스+네트워크 인터페이스 합산
- * trunk → networks[netId] (라우터 exporter 없음: 네트워크 합산)
+ * trunk → 그 트렁크가 **실어 나르는 네트워크들**의 합산. 라우터 exporter 가 없어 링크 자체는 계측되지 않는다.
+ *   - 라우터 → 하위(tenant) 스위치: 그 하위 네트워크 하나(networks[netId]).
+ *   - 라우터 → provider 스위치(uplink): 그 **라우터가 직접 무는 하위 네트워크들**의 합.
+ *     provider 네트워크 전체 합(networks[providerId])을 쓰면 provider 에 붙은 라우터 수만큼 같은 값이
+ *     복제돼, 다른 테넌트 트래픽까지 자기 uplink 로 주장하게 된다.
  * lbvip → load_balancers[lbId]
  */
-export function edgeRate(e: CanvasEdge, traffic: TopologyTraffic | null | undefined): TrafficRate | null {
+export function edgeRate(
+	e: CanvasEdge,
+	traffic: TopologyTraffic | null | undefined,
+	graph: CanvasGraph,
+): TrafficRate | null {
 	const t = traffic;
 	if (!t) return null;
 	switch (e.kind) {
@@ -391,7 +399,7 @@ export function edgeRate(e: CanvasEdge, traffic: TopologyTraffic | null | undefi
 			return acc;
 		}
 		case 'trunk':
-			return t.networks?.[e.netId] ?? null;
+			return sumNetworks(t, trunkNetIds(e, graph));
 		case 'lbvip':
 			return e.lbId ? (t.load_balancers?.[e.lbId] ?? null) : null;
 		default:
@@ -399,8 +407,39 @@ export function edgeRate(e: CanvasEdge, traffic: TopologyTraffic | null | undefi
 	}
 }
 
+/** provider 스위치 쪽 external gateway 트렁크인지 판별한다. */
+export function isRouterUplink(e: Pick<CanvasEdge, 'kind' | 'from' | 'netId'>, graph: CanvasGraph): boolean {
+	if (e.kind !== 'trunk') return false;
+	const from = graph.nodes.get(e.from);
+	return from?.kind === 'router' && from.extNetId === e.netId;
+}
+
+/**
+ * 트렁크가 실어 나르는 네트워크 id 목록.
+ * uplink(라우터의 external gateway 쪽)는 그 라우터의 하위 네트워크들, 그 밖에는 트렁크가 꽂힌 네트워크 하나다.
+ * 하위 네트워크가 하나도 없는 uplink 는 실어 나를 것이 없으므로 빈 목록이다(= 데이터 없음).
+ */
+export function trunkNetIds(e: Pick<CanvasEdge, 'kind' | 'from' | 'netId'>, graph: CanvasGraph): string[] {
+	if (e.kind !== 'trunk') return [];
+	const from = graph.nodes.get(e.from);
+	if (!isRouterUplink(e, graph) || from?.kind !== 'router') return [e.netId];
+	return from.intNetIds;
+}
+
+function sumNetworks(traffic: TopologyTraffic, netIds: readonly string[]): TrafficRate | null {
+	let acc: TrafficRate | null = null;
+	for (const id of netIds) {
+		const v = traffic.networks?.[id];
+		if (!v) continue;
+		acc = acc ?? { rx_bps: 0, tx_bps: 0 };
+		acc.rx_bps += v.rx_bps;
+		acc.tx_bps += v.tx_bps;
+	}
+	return acc;
+}
+
 export function edgeStyle(e: CanvasEdge, traffic: TopologyTraffic | null | undefined, graph: CanvasGraph): EdgeStyle {
-	const rate = edgeRate(e, traffic);
+	const rate = edgeRate(e, traffic, graph);
 	const bps = rate ? rate.rx_bps + rate.tx_bps : null;
 	let { opacity, width } = bps == null ? { opacity: 0.4, width: 1.5 } : edgeIntensity(bps);
 	let dash: string | null = null;

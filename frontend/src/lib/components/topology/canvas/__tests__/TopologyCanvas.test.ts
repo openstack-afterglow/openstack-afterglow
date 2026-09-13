@@ -177,19 +177,22 @@ describe('TopologyCanvas', () => {
 		expect(within(app).queryByText(/^MTU /)).toBeNull();
 	});
 
-	it("트렁크 배지는 '네트워크 합산' 캡션과 합산 속도를 표시하고 라우터 트래픽을 주장하지 않는다", () => {
+	it('트렁크 배지는 하위 링크와 provider uplink의 합산 범위·속도를 구분하고 라우터 트래픽을 주장하지 않는다', () => {
 		renderCanvas();
 		const badges = Array.from(document.querySelectorAll<HTMLButtonElement>('button[data-trunk-badge]'));
 		// edge-router: pub+web+app, transit-router: transit+app → 5개 트렁크
 		expect(badges).toHaveLength(5);
-		for (const b of badges) {
-			expect(b.textContent).toContain('네트워크 합산');
-			expect(b.getAttribute('title')).toBe('네트워크 합산 트래픽 · 라우터 exporter 없음');
-		}
+		const uplink = badges.find((b) => b.dataset.trunkBadge === 'trunk:rtr-edge>sw:net-pub')!;
+		expect(uplink.textContent).toContain('▼ 19.8M');
+		expect(uplink.textContent).toContain('▲ 8.0M');
+		expect(uplink.textContent).toContain('하위망 합산');
+		expect(uplink.getAttribute('title')).toBe('라우터별 하위 네트워크 합산 트래픽 · 라우터 exporter 없음');
 		const appBadge = badges.find((b) => b.dataset.trunkBadge === 'trunk:rtr-edge>sw:net-app')!;
 		expect(appBadge.textContent).toContain('▼ 14.0M');
+		expect(appBadge.textContent).toContain('네트워크 합산');
+		expect(appBadge.getAttribute('title')).toBe('연결 네트워크 합산 트래픽 · 라우터 exporter 없음');
 		const hit = document.querySelector('path[data-edge-key="trunk:rtr-edge>sw:net-app"]')!;
-		expect(hit.querySelector('title')!.textContent).toContain('네트워크 합산 트래픽');
+		expect(hit.querySelector('title')!.textContent).toContain('연결 네트워크 합산 트래픽');
 	});
 
 	it('관리자 보기에서는 존 라벨에 세그먼트·MTU pill 이 붙는다', () => {

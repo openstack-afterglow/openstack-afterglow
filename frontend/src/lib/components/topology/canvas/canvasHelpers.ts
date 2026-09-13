@@ -56,9 +56,13 @@ export const NET_KIND_LABEL: Record<CanvasNetKind, string> = {
 	internal: '내부',
 };
 
-/** 라우터 트렁크 배지 캡션(사용자 결정: 네트워크 합산값 표시). */
+/** 하위 네트워크 스위치 쪽 라우터 트렁크 배지. */
 export const TRUNK_CAPTION = '네트워크 합산';
-export const TRUNK_TITLE = '네트워크 합산 트래픽 · 라우터 exporter 없음';
+export const TRUNK_TITLE = '연결 네트워크 합산 트래픽 · 라우터 exporter 없음';
+
+/** provider 스위치 쪽 라우터 uplink 배지. 라우터가 직접 무는 하위 네트워크들만 합산한다. */
+export const UPLINK_CAPTION = '하위망 합산';
+export const UPLINK_TITLE = '라우터별 하위 네트워크 합산 트래픽 · 라우터 exporter 없음';
 
 /**
  * 휠 이벤트가 **마우스 휠**인지 추정한다. 브라우저는 입력 장치를 알려주지 않으므로 휴리스틱이다.
