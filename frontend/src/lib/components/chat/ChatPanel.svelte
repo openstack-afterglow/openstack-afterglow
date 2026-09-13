@@ -138,6 +138,7 @@
 	let models = $state<AvailableModel[]>([]);
 	let selectedModel = $state('');
 	let effort = $state('auto'); // auto=provider 기본, none=명시적 비활성.
+	let searchEnabled = $state(false);
 	let attachments = $state<ChatAttachment[]>([]); // 입력창 첨부(업로드 진행/완료)
 	// 대화별 tool/MCP 선택 — null=활성 전체(기본), 배열=해당 항목만. (에이전트 바인딩 시 에이전트가 소유)
 	let availableTools = $state<{ id: number; name: string }[]>([]);
@@ -151,8 +152,15 @@
 
 	let activeConvId = $state<string | null>(null);
 
-	function selectedFeatureOptions() {
+	function selectedFeatureOptions(modelName = activeModelName) {
 		const features = defaultChatFeatureOptions();
+		const caps = models.find((model) => model.model_name === modelName)?.capabilities;
+		const searchGate = caps?.feature_gates?.web_search;
+		if (caps?.web_search && searchGate?.mode === 'native' && (caps.web_search_required || (searchEnabled && searchGate.available && searchGate.pricing_available))) {
+			features.web_search.enabled = true;
+			features.web_search.mode = 'native';
+			features.web_search.provider_id = null;
+		}
 		features.tool_policy.enabled_tool_ids =
 			selectedToolIds === null ? null : selectedToolIds.map(String);
 		features.tool_policy.enabled_mcp_ids = selectedMcpIds;
@@ -247,6 +255,10 @@
 	// 현재 선택 모델의 능력(배지·게이팅). 에이전트 바인딩 시 에이전트 모델 기준.
 	const activeModelName = $derived(activeAgent?.model_name || selectedModel);
 	const selectedModelObj = $derived(models.find((m) => m.model_name === activeModelName) ?? null);
+	$effect(() => {
+		const caps = selectedModelObj?.capabilities;
+		if (!caps?.web_search || caps.feature_gates?.web_search?.mode !== 'native') searchEnabled = false;
+	});
 
 	// 모델을 바꾸면 현재 effort 가 새 모델에 없을 수 있으므로 정규화(없으면 null=서버 기본).
 	$effect(() => {
@@ -268,16 +280,22 @@
 		persistLastModel(name);
 	}
 
-	// Compact layouts use an overlay drawer; desktop keeps the navigation inline.
+	// Compact layouts keep the history control inside the chat header; desktop keeps the sidebar inline.
 	let sidebarOpen = $state(true);
-	function toggleSidebar() {
-		sidebarOpen = !sidebarOpen;
+	let sidebarTrigger = $state<HTMLButtonElement | null>(null);
+	function closeSidebar(restoreFocus = false) {
+		sidebarOpen = false;
+		if (restoreFocus && isCompact()) requestAnimationFrame(() => sidebarTrigger?.focus());
 	}
-	function isMobile(): boolean {
+	function toggleSidebar() {
+		if (sidebarOpen) closeSidebar(true);
+		else sidebarOpen = true;
+	}
+	function isCompact(): boolean {
 		return typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches;
 	}
 	function closeSidebarOnMobile() {
-		if (isMobile()) sidebarOpen = false;
+		if (isCompact()) closeSidebar();
 	}
 	// "이 프로젝트에서 새 채팅" → 다음 생성되는 대화를 이 프로젝트에 배정한다(생성 시 소비).
 	let pendingWorkspaceId = $state<number | null>(null);
@@ -1285,6 +1303,7 @@
 		const _mcp = selectedMcpIds;
 		const _skills = selectedSkillIds;
 		const _effort = effort;
+		const _search = searchEnabled;
 
 		invalidateContextPreview();
 		if (!hasContextScope || streaming || !token || !projectId) return;
@@ -1983,7 +2002,7 @@
 			`/api/v1/chat/conversations/${conversationId}/messages/${messageId}/regenerate`,
 			{
 				model_id: modelName || selectedModel,
-				features: selectedFeatureOptions(),
+				features: selectedFeatureOptions(activeAgent?.model_name || modelName || selectedModel),
 				reasoning_effort: effort,
 				client_timezone: browserTimezone(),
 				skill_ids: selectedSkillIds,
@@ -2184,9 +2203,22 @@
 		if (typeof window === 'undefined') return;
 		const inlineQuery = window.matchMedia('(min-width: 1024px)');
 		sidebarOpen = inlineQuery.matches;
-		const syncSidebarMode = (event: MediaQueryListEvent) => { sidebarOpen = event.matches; };
+		const syncSidebarMode = (event: MediaQueryListEvent) => {
+			sidebarOpen = event.matches;
+		};
 		inlineQuery.addEventListener('change', syncSidebarMode);
 		return () => inlineQuery.removeEventListener('change', syncSidebarMode);
+	});
+
+	$effect(() => {
+		if (!sidebarOpen || !isCompact() || typeof document === 'undefined') return;
+		const onKeydown = (event: KeyboardEvent) => {
+			if (event.key !== 'Escape' || event.defaultPrevented) return;
+			event.preventDefault();
+			closeSidebar(true);
+		};
+		document.addEventListener('keydown', onKeydown);
+		return () => document.removeEventListener('keydown', onKeydown);
 	});
 
 	// 최초 로드 — 초기 동시 쿼리 폭주가 chat DB 커넥션 풀(size 5)을 고갈시켜
@@ -2206,6 +2238,21 @@
 		});
 	});
 </script>
+
+{#snippet historyToggle()}
+					<button
+						bind:this={sidebarTrigger}
+						type="button"
+						class="compact-history-toggle"
+						onclick={toggleSidebar}
+						aria-controls="chat-history-drawer"
+						aria-expanded={sidebarOpen}
+						aria-label={sidebarOpen ? '대화 기록 닫기' : '대화 기록과 설정 열기'}
+						title={sidebarOpen ? '대화 기록 닫기' : '대화 기록과 설정 열기'}
+					>
+						<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="2.5" /><path d="M10 4v16" /></svg>
+					</button>
+{/snippet}
 
 <div class="chat-shell" class:sidebar-closed={!sidebarOpen}>
 	<ChatSidebar
@@ -2248,17 +2295,18 @@
 		</button>
 	</nav>
 
-	<!-- 모바일 드로어 백드롭: 열렸을 때만 본문을 덮어 탭하면 닫힘 -->
+	<!-- Compact drawer backdrop: outside press returns focus to the workspace history control. -->
 	<button
 		type="button"
 		class="sidebar-backdrop"
 		class:show={sidebarOpen}
-		aria-label="사이드바 닫기"
-		onclick={() => (sidebarOpen = false)}
+		aria-label="대화 기록 바깥쪽 닫기"
+		onclick={() => closeSidebar(true)}
 	></button>
 
 	<section class="main">
 		{#if view === 'projects'}
+			<div class="lg:hidden p-2 border-b border-line">{@render historyToggle()}</div>
 			<ChatProjectsView
 				initialMode={projectsInitialMode}
 				initialWorkspaceId={projectsInitialWorkspaceId}
@@ -2276,6 +2324,7 @@
 			<header class="head">
 			<div class="head-center">
 				<div class="head-controls">
+					{@render historyToggle()}
 					<button
 						type="button"
 						class="model-btn"
@@ -2370,6 +2419,7 @@
 				<ChatInput
 					bind:value={input}
 					bind:effort
+					bind:searchEnabled
 					bind:attachments
 					bind:selectedToolIds
 					bind:selectedMcpIds
@@ -2452,6 +2502,9 @@
 	.sidebar-rail {
 		display: none;
 	}
+	.compact-history-toggle {
+		display: none;
+	}
 	.rail-action {
 		display: inline-flex;
 		align-items: center;
@@ -2498,23 +2551,31 @@
 		background: var(--color-line);
 	}
 	@media (max-width: 1023px) {
-		.chat-shell.sidebar-closed .sidebar-rail {
-			display: flex;
-			position: fixed;
-			z-index: 31;
-			top: 0.65rem;
-			left: 0.65rem;
-			flex-direction: column;
+		.compact-history-toggle {
+			display: inline-flex;
+			flex: 0 0 2.75rem;
 			align-items: center;
-			padding: 0.2rem;
+			justify-content: center;
+			width: 2.75rem;
+			height: 2.75rem;
+			padding: 0;
 			border: 1px solid var(--color-line);
-			border-radius: 0.65rem;
+			border-radius: 0.6rem;
 			background: var(--color-surface-raised);
-			box-shadow: 0 8px 24px color-mix(in oklab, var(--color-ink-0) 14%, transparent);
+			color: var(--color-ink-1);
+			cursor: pointer;
 		}
-		.chat-shell.sidebar-closed .rail-divider,
-		.chat-shell.sidebar-closed .rail-action:not(.rail-open) {
-			display: none;
+		.compact-history-toggle:hover,
+		.compact-history-toggle:focus-visible {
+			border-color: var(--color-line-2);
+			background: var(--color-surface-sunken);
+			color: var(--color-ink-0);
+		}
+	}
+	@media (max-width: 1023px) {
+		.head {
+			block-size: 4rem;
+			padding-block: 0.5rem;
 		}
 	}
 	@media (min-width: 1024px) {
@@ -2533,12 +2594,12 @@
 		display: none;
 		position: absolute;
 		inset: 0;
-		z-index: 39;
+		z-index: 1;
 		border: none;
 		padding: 0;
-		background: color-mix(in oklab, var(--color-ink-0) 40%, transparent);
+		background: var(--color-surface-scrim-soft);
 		opacity: 0;
-		transition: opacity 0.2s ease;
+		transition: opacity var(--motion-duration-base) var(--motion-ease-standard);
 		cursor: pointer;
 	}
 	/* Backdrop is active whenever the compact overlay drawer is open. */
@@ -2771,10 +2832,13 @@
 	@media (max-width: 640px) {
 		.head {
 			gap: 0.4rem;
-			padding: 0.55rem 0.6rem;
+			padding-inline: 0.6rem;
 		}
 		.head-controls {
 			gap: 0.3rem;
+		}
+		.compact-history-toggle {
+			flex-basis: 2.75rem;
 		}
 		.model-btn {
 			max-width: 11rem;

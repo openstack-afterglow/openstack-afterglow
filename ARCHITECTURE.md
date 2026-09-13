@@ -4,7 +4,7 @@
 
 Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 배포된 Drover·Lumen·Waygate·Palimpsest 서비스로 가는 인증된 BFF(gateway)이다. 브라우저 UI는 SvelteKit이 제공하지만 OpenStack 자원 생성과 권한 검사는 FastAPI 백엔드가 소유한다. 저장소 URL은 <https://github.com/openstack-afterglow/openstack-afterglow>이다.
 
-이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend 모두 `1.19.1`이며, backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`·Vite `8.2.0`을 manifest에 고정한다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
+이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend 모두 `1.20.0`이며, backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`·Vite `8.2.0`을 manifest에 고정한다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
 
 1분 요약:
 
@@ -85,6 +85,14 @@ graph LR
 ### 형제 서비스 전달
 
 Afterglow가 catalog service type 또는 `SERVICE_*_INTERNAL_URL`을 통해 endpoint를 얻으면 `service_proxy.py`가 허용된 forwarded header와 caller token을 전달한다. 브라우저가 임의의 internal URL을 정하거나 형제 서비스 DB에 접근하지 않는다. Drover의 K3s inventory/operations, Lumen의 chat execution/journal/provider, Waygate의 WireGuard VM/agent, Palimpsest Hub의 upload/download/export는 각각 서비스 경계 뒤에 있다. Afterglow `internal_k3s.py`의 제한된 provisioning/GPU admission은 Drover 전체 Nova 호출을 대체하지 않는다.
+
+### Chat navigation, Search, and citations
+
+`ChatPanel` keeps its history/settings control inside the chat workspace below the global header at widths below 1024px, including project views. It opens the existing bounded drawer; Escape/outside dismissal restores trigger focus and closed drawer content is inert. Desktop retains inline history. The dedicated settings route exposes a return-to-chat link and existing per-project selection persistence restores the active conversation.
+
+The composer uses Lumen's native Search capability/pricing gate and sends explicit `features.web_search.mode="native"` only for the selected supported model; managed search retains its separate provider-selected contract. Required built-in search is a non-toggleable state. Search changes invalidate context preview. Safe canonical citations are rendered before each answer in a horizontally scrollable source row. `ChatBubble` constrains its grid track so source/code overflow stays inside the bubble rather than widening the transcript. Provider detection, actual search execution and price resolution remain Lumen-owned; Afterglow does not bypass price admission.
+
+Browser verification on 2026-09-13 exercised the actual Vite-served chat/settings routes with synthetic API data at 298, 390, 704, 767, 768, 1023, 1024 and 1440px; compact history/user menu and return navigation, source overflow boundaries, and native Search context/completion request payloads passed. This is UI/contract evidence, not live provider completion or deployment evidence.
 
 ### Palimpsest와 제거된 Union
 
@@ -200,9 +208,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "1912dfa677d3a4f2950f695bd26a27c9e2c8e13e9ff4d8771a7089fb560c4585",
-  "reviewed_at": "2026-09-13T05:28:34Z",
-  "summary": "shared provider 트렁크 귀속 보완 OpenSpec change를 archive로 이동했다. source 구조 영향 없음."
+  "source_sha256": "0725055a94f3881f1a923c26d6d54258894173fdee8b1260163d3ea3583afc5c",
+  "reviewed_at": "2026-09-13T09:12:52Z",
+  "summary": "스테이징된 채팅 compact navigation/settings return, native Search context/completion, 안전한 답변 상단 출처와 local overflow, 공식 Agent pricing provenance UI를 검토했다. 298~1440px 브라우저와 full gate 통과. BFF/Lumen 소유권 구조는 유지하며 별도 그룹 테마 작업은 이 커밋에서 제외한다."
 }
 ```
 <!-- architecture-review:end -->

@@ -22,7 +22,8 @@ function renderSidebar(
 	activeConvId: string | null = null,
 	workspaces: { id: number; name: string; description: string | null; instructions: string | null }[] = [],
 	sidebarConversations: SidebarConversation[] = conversations,
-	busy = false
+	busy = false,
+	open = true
 ) {
 	const onSelect = vi.fn();
 	const onNewInWorkspace = vi.fn();
@@ -32,6 +33,7 @@ function renderSidebar(
 		workspaces,
 		activeConvId,
 		busy,
+		open,
 		onSelect,
 		onNew: vi.fn(),
 		onDelete,
@@ -83,6 +85,13 @@ describe('ChatSidebar search palette', () => {
 		await fireEvent.keyDown(input, { key: 'Escape' });
 
 		expect(screen.queryByPlaceholderText('대화 검색')).toBeNull();
+	});
+
+	it('removes closed drawer controls from the accessible keyboard navigation tree', () => {
+		renderSidebar(new Set(), null, [], conversations, false, false);
+
+		expect(screen.queryByRole('button', { name: '대화 검색' })).toBeNull();
+		expect(screen.queryByRole('button', { name: /tester/i })).toBeNull();
 	});
 
 	it('closes project options when clicking elsewhere', async () => {

@@ -12,6 +12,7 @@
 	import { toast } from '$lib/stores/toast';
 	import ModelCapabilityBadges from './ModelCapabilityBadges.svelte';
 	import UsageRing from '$lib/components/ui/UsageRing.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
 
 	export type ComposerCommand = {
 		id: string;
@@ -39,6 +40,7 @@
 		contextError?: string | null;
 		/** 현재 모델 능력 — effort 선택기·배지·첨부 게이팅. */
 		modelCaps?: ModelCapabilities | null;
+		searchEnabled?: boolean;
 	/** 선택된 thinking effort(auto=provider 기본, none=명시적 비활성). */
 	effort?: string | null;
 		/** 첨부(bindable) — 업로드 진행/완료 아이템. 부모가 전송 시 refs 로 변환·초기화. */
@@ -76,6 +78,7 @@
 		contextError = null,
 		placeholder = '메시지를 입력하세요  (Enter 전송 · Shift+Enter 줄바꿈)',
 		modelCaps = null,
+		searchEnabled = $bindable(false),
 		effort = $bindable(null),
 		attachments = $bindable([]),
 		availableTools = [],
@@ -99,6 +102,13 @@
 	let effortOpen = $state(false);
 	let plusOpen = $state(false);
 	let dragOver = $state(false);
+	const searchGate = $derived(modelCaps?.feature_gates?.web_search);
+	const hasNativeSearch = $derived(Boolean(modelCaps?.web_search) && searchGate?.mode === 'native');
+	const searchRequired = $derived(Boolean(modelCaps?.web_search_required));
+	const searchAvailable = $derived(searchGate?.available === true && searchGate?.pricing_available === true);
+	const searchTitle = $derived(!searchAvailable
+		? '웹 검색 요금 또는 제공 경로가 준비되지 않았습니다. 관리자에게 문의하세요.'
+		: searchRequired ? '이 모델은 웹 검색을 기본으로 사용합니다' : '웹 검색을 사용해 답변하고 출처를 표시합니다');
 
 	// The backend disables these gates when the scanned S3/ClamAV pipeline is unavailable.
 	const canAttachImage = $derived(
@@ -585,7 +595,22 @@
 						</div>
 					{/if}
 				</div>
-				<ModelCapabilityBadges caps={modelCaps} size="sm" />
+				{#if hasNativeSearch}
+					<Button
+						variant={searchEnabled || searchRequired ? 'secondary' : 'ghost'}
+						size="sm"
+						class="min-h-11 md:min-h-8"
+						ariaLabel="Search 웹 검색"
+						ariaPressed={searchEnabled || searchRequired}
+						disabled={disabled || streaming || searchRequired || !searchAvailable}
+						title={searchTitle}
+						onclick={() => (searchEnabled = !searchEnabled)}
+					>
+						<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" stroke-linecap="round" /></svg>
+						Search{searchRequired ? ' · 기본' : ''}
+					</Button>
+				{/if}
+				<ModelCapabilityBadges caps={modelCaps} size="sm" hideSearch={hasNativeSearch} />
 			</div>
 
 			<div class="tb-right">
@@ -675,6 +700,7 @@
 	}
 	.toolbar {
 		display: flex;
+		flex-wrap: wrap;
 		min-width: 0;
 		align-items: center;
 		justify-content: space-between;
@@ -808,16 +834,21 @@
 	}
 	.tb-left {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		gap: 0.4rem;
 		min-width: 0;
 		overflow: visible;
+	}
+	.tb-left :global(.badges) {
+		flex-shrink: 0;
 	}
 	.tb-right {
 		display: flex;
 		align-items: center;
 		gap: 0.4rem;
 		flex-shrink: 0;
+		margin-left: auto;
 	}
 	.input-wrap.drag-over {
 		border-color: var(--color-accent);
@@ -1114,6 +1145,12 @@
 	}
 
 	@media (max-width: 47.9375rem) {
+		.tool-shell,
+		.send,
+		.effort-btn {
+			min-width: 2.75rem;
+			min-height: 2.75rem;
+		}
 		.context-status-text {
 			display: none;
 		}

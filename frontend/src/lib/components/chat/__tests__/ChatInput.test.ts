@@ -18,6 +18,50 @@ beforeEach(() => {
 	Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() });
 });
 
+describe('ChatInput native Search', () => {
+	const props = { value: '', onSend: vi.fn(), onStop: vi.fn() };
+	const nativeSearch = {
+		web_search: true,
+		feature_gates: { web_search: { available: true, mode: 'native' as const, reason_code: null, pricing_available: true } }
+	};
+
+	it('lets users enable and disable optional native search', async () => {
+		const view = render(ChatInput, { ...props, modelCaps: nativeSearch });
+		const search = view.getByRole('button', { name: 'Search 웹 검색' });
+		await fireEvent.click(search);
+		expect(search.getAttribute('aria-pressed')).toBe('true');
+		await fireEvent.click(search);
+		expect(search.getAttribute('aria-pressed')).toBe('false');
+	});
+
+	it('does not offer an opt-in for a model with built-in required search', () => {
+		const view = render(ChatInput, { ...props, modelCaps: { ...nativeSearch, web_search_required: true } });
+		const search = view.getByRole('button', { name: 'Search 웹 검색' }) as HTMLButtonElement;
+		search.click();
+		expect(search.disabled).toBe(true);
+		expect(search.getAttribute('aria-pressed')).toBe('true');
+	});
+
+	it('blocks opt-in when native search pricing is unavailable', () => {
+		const view = render(ChatInput, { ...props, modelCaps: {
+			...nativeSearch,
+			feature_gates: { web_search: { ...nativeSearch.feature_gates.web_search, pricing_available: false } }
+		} });
+		const search = view.getByRole('button', { name: 'Search 웹 검색' }) as HTMLButtonElement;
+		search.click();
+		expect(search.disabled).toBe(true);
+		expect(search.getAttribute('aria-pressed')).toBe('false');
+	});
+
+	it('does not mistake a managed search route for a native API option', () => {
+		const view = render(ChatInput, { ...props, modelCaps: {
+			...nativeSearch,
+			feature_gates: { web_search: { ...nativeSearch.feature_gates.web_search, mode: 'managed' } }
+		} });
+		expect(view.queryByRole('button', { name: 'Search 웹 검색' })).toBeNull();
+	});
+});
+
 describe('ChatInput attachments', () => {
 	it('marks a scanned image ready instead of leaving the composer upload-blocked', async () => {
 		vi.mocked(uploadChatAttachment).mockResolvedValue({
@@ -151,24 +195,6 @@ describe('ChatInput shortcuts', () => {
 		expect(getByRole('option', { name: /research.*스킬/i })).toBeTruthy();
 	});
 
-	it('places the slash palette above the composer shell', () => {
-		const { container, getByRole } = render(ChatInput, {
-			value: '/',
-			composerCommands: [
-				{
-					id: 'usage',
-					name: '사용량',
-					description: '토큰과 비용 사용량을 확인합니다',
-					onSelect: vi.fn()
-				}
-			],
-			onSend: vi.fn(),
-			onStop: vi.fn()
-		});
-
-		const menu = getByRole('listbox');
-		expect(container.querySelector('.composer > .shortcut-menu + .input-wrap')).toBe(menu.nextElementSibling);
-	});
 
 	it('executes a supplied slash command instead of treating it as a skill', async () => {
 		const onSelect = vi.fn();

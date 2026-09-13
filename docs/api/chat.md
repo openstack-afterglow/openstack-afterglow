@@ -76,6 +76,18 @@ Afterglow 백엔드는 모든 `/api/v1/chat/{path}` 요청을 내부 Lumen 서�
 
 신규 저장 대화는 `title: null`로 즉시 history에 나타납니다. 첫 정상 user/assistant 교환 뒤 의미 기반 제목을 한 번 생성하고, 이후 일반 turn에서는 재생성하지 않습니다. 제목은 성공한 conversation compaction에서만 전체 누적 active path를 반영해 다시 정하며 실패·취소 시 기존 제목을 유지합니다.
 
+### Native Search와 출처
+
+모델 선택창은 Lumen의 `capabilities.web_search`가 참인 모델에 **Search** 배지를 표시합니다. 작성창에서는 `feature_gates.web_search`의 `mode="native"`, `available`, `pricing_available`을 함께 확인하고 선택 가능한 **Search** 버튼을 제공합니다. 구독 인증 등 지원하지 않는 경로를 모델 이름만 보고 활성화하지 않습니다.
+
+선택한 native 검색은 completion·context-preview·regenerate 요청의 `features.web_search`에 `enabled: true`, `mode: "native"`, `provider_id: null`로 전달합니다. 검색 provider를 별도로 고르는 기존 managed 검색은 `mode: "managed"`(생략 시 기본)이며 native 요청과 섞이지 않습니다. `web_search_required` 모델은 `Search · 기본`으로 표시하고 끄는 동작을 제공하지 않습니다.
+
+출처는 canonical `citation` part를 통해 SSE와 저장된 history에 동일하게 전달됩니다. 각 assistant 답변 위에 번호·제목·도메인을 가로 목록으로 표시하고, 작은 화면에서는 목록 안에서 스크롤합니다. HTTP(S) 이외 링크는 렌더하지 않으며 입력 문서 출처에는 URL을 만들지 않습니다. 모델이 실제 출처를 반환하지 않은 답변에는 임의의 출처를 만들지 않습니다. 대화 전체 출처 패널은 그대로 유지합니다.
+
+1024px 미만에서는 채팅 영역 왼쪽 위 **대화 기록과 설정 열기**로 history와 사용자 메뉴를 엽니다. 사용자 메뉴의 **설정**으로 이동하고 설정 페이지의 **채팅으로 돌아가기**로 복귀하면 기존 project별 선택 대화가 복원됩니다. 드로어는 Escape 또는 바깥 영역으로 닫으며 desktop inline history 동작은 유지합니다.
+
+가격 admission과 실행은 Lumen 소유입니다. Perplexity Agent Sonar·GLM-5.3의 공식 token 가격을 조회하며 Sonar의 Agent API와 legacy API 가격을 구분합니다. 알 수 없는 모델 가격을 0으로 처리하지 않습니다. Native Search는 기존 token 기반 크레딧 계약을 유지하므로 provider의 별도 검색 요청/툴 부가요금은 로컬 크레딧 비용에 포함되지 않습니다.
+
 ---
 
 ## 위임 MCP 제어면 브릿지 (`/api/v1/mcp/lumen`)

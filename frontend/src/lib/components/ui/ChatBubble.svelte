@@ -53,6 +53,7 @@
 <style>
 	.chat-message {
 		display: grid;
+		grid-template-columns: minmax(0, 1fr);
 		gap: var(--chat-message-gap);
 		max-width: 100%;
 	}
@@ -87,6 +88,7 @@
 		font-weight: 400;
 	}
 	.chat-bubble {
+		min-width: 0;
 		max-width: min(92%, var(--chat-message-assistant-max-inline));
 		border: 1px solid var(--color-line);
 		border-radius: var(--chat-message-radius);

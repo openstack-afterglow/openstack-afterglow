@@ -7,8 +7,10 @@
 		size?: 'sm' | 'xs';
 		/** 라벨 숨기고 아이콘만 */
 		iconsOnly?: boolean;
+		/** 작성창은 별도 Search 토글을 표시한다. */
+		hideSearch?: boolean;
 	}
-	let { caps = null, size = 'sm', iconsOnly = false }: Props = $props();
+	let { caps = null, size = 'sm', iconsOnly = false, hideSearch = false }: Props = $props();
 
 	interface Badge {
 		key: string;
@@ -21,7 +23,7 @@
 		if (caps.vision) out.push({ key: 'vision', label: 'Vision', title: '이미지 입력 지원' });
 		if (caps.reasoning) out.push({ key: 'think', label: 'Think', title: '추론(thinking) 지원' });
 		if (caps.tool_call) out.push({ key: 'tools', label: 'Tools', title: '도구 호출 지원' });
-		if (caps.web_search) out.push({ key: 'search', label: 'Search', title: '웹 검색 지원' });
+		if (caps.web_search && !hideSearch) out.push({ key: 'search', label: 'Search', title: '웹 검색 지원' });
 		if (caps.attachment && !caps.vision)
 			out.push({ key: 'files', label: 'Files', title: '파일 첨부 지원' });
 		return out;

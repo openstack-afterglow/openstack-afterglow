@@ -12,6 +12,26 @@ const callbacks = {
 };
 
 describe('ChatWindow', () => {
+	it('shows safe ordered sources above the corresponding answer while streaming and after reload', async () => {
+		const message = {
+			id: 'answer', conversation_id: 'conversation', parent_id: null,
+			role: 'assistant' as const, content: '검색으로 확인한 답변입니다.', created_at: null,
+			streaming: true,
+			citations: [
+				{ source_kind: 'web', url: 'https://docs.openstack.org/barbican/', title: 'Barbican 가이드' },
+				{ source_kind: 'web', url: 'javascript:alert(1)', title: '실행 금지' },
+				{ source_kind: 'document', document_index: 0, title: '첨부 문서' }
+			]
+		};
+		const view = render(ChatWindow, { activePath: [message], models: [], ...callbacks });
+		const source = view.getByRole('link', { name: /Barbican 가이드/ });
+		expect(source.getAttribute('href')).toBe('https://docs.openstack.org/barbican/');
+		expect(source.compareDocumentPosition(view.getByText(message.content)) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+		expect(view.queryByText('실행 금지')).toBeNull();
+		expect(view.getByText('첨부 문서').closest('a')).toBeNull();
+		await view.rerender({ activePath: [{ ...message, streaming: false }] });
+		expect(view.getByRole('link', { name: /Barbican 가이드/ }).compareDocumentPosition(view.getByText(message.content)) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+	});
 	it('shows a user-facing active task and elapsed time', () => {
 		const { getByRole } = render(ChatWindow, {
 			activePath: [],

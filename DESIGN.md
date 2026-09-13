@@ -58,11 +58,15 @@ Use the existing Tailwind breakpoints only: mobile is `<768px`; tablet is `md` (
 
 Console shells use `100dvh`, one main workspace scroll owner, the shared geometry variables, and one focusable `main#main-content` landmark per rendered surface. Test every new or materially changed visual flow at mobile, tablet, desktop, 767/768, and 1023/1024 cutovers. Confirm navigation, action placement, overlay sizing/dismissal, readable resource selection, and table overflow/card fallback. Preserve information and interaction parity across widths; a smaller viewport may change composition, never silently remove required state or a reachable action.
 
+Chat adds a workspace-level 44px history/settings trigger below the global shell header for both mobile and tablet (below 1024px), including its project view. The same history/user footer becomes a bounded overlay drawer; closed content is inert, Escape/outside dismissal restores trigger focus, and desktop keeps the inline history rail. Chat settings has an explicit 44px return-to-chat action. Composer controls wrap before shrinking capability labels or clipping Search/send actions.
+
 ## Actions
 
 Use `Button`: `primary`, `accent`, `secondary`, `subtle`, `ghost`, `outline`, `danger`, `danger-outline`, or `link`; and sizes `xs`, `sm`, `md`, `lg`, or `icon`. Warm `primary` is one highest-priority CTA per surface. Blue `accent` is create/save/run and other routine operational work. `secondary`/`outline` are neutral actions; `subtle` compact chrome; `ghost`/`icon` utility actions; `danger`/`danger-outline` destructive entry or confirmation; `link` inline navigation. `href` renders an anchor; a missing/falsy href renders a native button. Icon-only `Button size="icon"` requires `ariaLabel`.
 
-The current disabled anchor guards its primary click handler and intent callback, but keeps `href` and does not set `tabindex="-1"`; do not claim that middle-click, context menus, or keyboard navigation are fully blocked. Button has no loading prop: callers compose `disabled` with an accurate label.
+Disabled anchors omit `href`, set `aria-disabled`, and leave the tab order with `tabindex="-1"`; the click handler also blocks navigation. Button has no loading prop: callers compose `disabled` with an accurate label.
+
+`Button ariaPressed` exposes a boolean toggle state on native buttons. Chat's optional native API Search action uses this state and a 44px mobile touch target; built-in search models display a non-toggleable `Search · 기본` state. Capability badges in model lists describe support, not whether search ran on a specific answer.
 
 ## Forms
 
@@ -97,6 +101,8 @@ Landing responsive composition follows the global tiers exactly. Mobile stacks t
 ## Chat messages
 
 `ChatBubble` is the chat-message primitive. It supplies `chat-start`, `chat-end`, header, bubble, and optional action footer; features provide only content and actions. It owns `--chat-message-gap`, `--chat-message-meta-gap`, `--chat-message-meta-inset`, `--chat-message-meta-size`, `--chat-message-radius`, `--chat-message-directional-corner`, `--chat-message-padding-block`, `--chat-message-padding-inline`, `--chat-message-assistant-max-inline`, and `--chat-message-user-max-inline`. Do not recreate route-specific bubbles, sizes, or colors.
+
+Assistant citation sources precede the answer and its reasoning/tool activity, never trail the response. Keep provider order and numbering in a single horizontally scrollable source row, with safe HTTP(S) links, readable title/domain text, and document citations without fabricated URLs. The row scrolls within the bubble at compact widths rather than widening the transcript; the existing conversation-wide sources panel remains available.
 
 ## Resource selection
 

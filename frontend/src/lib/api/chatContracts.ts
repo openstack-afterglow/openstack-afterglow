@@ -9,6 +9,7 @@ export interface ModelCapabilities {
 	function_calling?: boolean;
 	structured_output?: boolean;
 	web_search?: boolean;
+	web_search_required?: boolean;
 	web_fetch?: boolean;
 	advisor?: boolean;
 	responses_api?: boolean;
@@ -48,7 +49,8 @@ export type UserInputPart = { type: 'text'; text: string } | { type: 'image' | '
 export interface ChatFeatureOptions {
 	web_search: {
 		enabled: boolean;
-		provider_id?: number;
+		mode?: 'managed' | 'native';
+		provider_id?: number | null;
 		context_size: 'low' | 'medium' | 'high';
 		allowed_domains: string[];
 		blocked_domains: string[];

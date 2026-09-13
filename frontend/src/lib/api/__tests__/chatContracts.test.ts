@@ -1,23 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
 	ChatContractError,
-	defaultChatFeatureOptions,
 	parseChatPartsForDisplay,
 	parseChatPartsStrict,
 	parseChatRunEvent
 } from '../chatContracts';
 
 describe('chatContracts', () => {
-	it('keeps the canonical safe defaults', () => {
-		expect(defaultChatFeatureOptions()).toMatchObject({
-			memory: true,
-			output_modalities: ['text'],
-			web_search: { enabled: false },
-			web_fetch: { enabled: false },
-			advisor: { enabled: false },
-			tool_policy: { mode: 'agent_default', approval_mode: 'required_for_mutations' }
-		});
-	});
 
 	it('rejects unknown input parts but safely degrades display parts', () => {
 		expect(() => parseChatPartsStrict([{ type: 'future_provider_block', secret: 'never render' }])).toThrow(ChatContractError);

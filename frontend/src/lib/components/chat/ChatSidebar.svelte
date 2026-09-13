@@ -69,6 +69,11 @@
 	let searchRequest = 0;
 	let serverSearchResults = $state<Conversation[] | null>(null);
 	let userMenuOpen = $state(false);
+	$effect(() => {
+		if (open) return;
+		userMenuOpen = false;
+		workspaceMenuId = null;
+	});
 
 	$effect(() => {
 		const closeWorkspaceMenu = (event: PointerEvent) => {
@@ -194,10 +199,23 @@
 	});
 </script>
 
-<aside class="sidebar" class:closed={!open}>
+<aside
+	id="chat-history-drawer"
+	class="sidebar"
+	class:closed={!open}
+	aria-hidden={!open}
+	inert={!open}
+	aria-label="대화 기록"
+>
 	<header class="brand">
 		<span class="brand-name">Lumen</span>
-		<button type="button" class="brand-toggle" onclick={onToggle} aria-label="사이드바 접기" title="사이드바 접기">
+		<button
+			type="button"
+			class="brand-toggle"
+			onclick={onToggle}
+			aria-label={open ? '대화 기록 닫기' : '대화 기록 열기'}
+			title={open ? '대화 기록 닫기' : '대화 기록 열기'}
+		>
 			<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="2.5" /><path d="M10 4v16" /></svg>
 		</button>
 	</header>
@@ -393,26 +411,30 @@
 		display: flex;
 		flex-direction: column;
 		min-height: 0;
+		overflow: hidden;
 		border-right: 1px solid var(--color-line);
 		background: var(--color-surface-sunken);
-		transition: margin-left 0.22s ease;
+		transition: transform var(--motion-duration-panel) var(--motion-ease-out);
 	}
-	/* 데스크톱: 접으면 왼쪽으로 밀어내 본문이 전체 폭을 차지 */
+	/* Desktop retains the collapsible inline sidebar. */
 	.sidebar.closed {
 		margin-left: -16rem;
 	}
-	/* Compact shell: overlay drawer keeps the transcript at full width below desktop. */
+	/* Compact shell: a viewport-bounded overlay drawer starts below the shared shell header. */
 	@media (width < 1024px) {
 		.sidebar {
 			position: absolute;
 			top: 0;
 			bottom: 0;
 			left: 0;
-			z-index: 40;
+			z-index: 2;
+			height: 100%;
+			max-height: 100%;
 			box-shadow: 2px 0 16px color-mix(in oklab, var(--color-ink-0) 18%, transparent);
 		}
 		.sidebar.closed {
-			margin-left: -17rem; /* 그림자까지 완전히 숨김 */
+			margin-left: 0;
+			transform: translateX(-100%);
 		}
 	}
 	.brand {
@@ -447,6 +469,12 @@
 		border-color: var(--color-line);
 		background: var(--color-surface-base);
 		color: var(--color-ink-0);
+	}
+	@media (width < 1024px) {
+		.brand-toggle {
+			width: 2.75rem;
+			height: 2.75rem;
+		}
 	}
 	.top {
 		display: flex;

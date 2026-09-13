@@ -9,9 +9,15 @@
 
 ### Changed
 
+- **API Search 선택과 답변 상단 출처** — Lumen이 native 검색을 지원하는 모델에 Search 선택을 연결하고 기본 검색 모델은 `Search · 기본`으로 표시한다. 검색 변경은 context preview와 completion 요청에 반영하며 managed 검색과 분리한다. 출처 번호·제목·도메인을 답변 위에 가로 목록으로 표시하고 작은 화면에서는 목록 안에서만 스크롤한다.
+
 - **토폴로지 패킷 흐름 기본 표시** — 캔버스의 패킷 흐름 시뮬레이션을 기본 on으로 바꿨다. 툴바 체크박스로 끌 수 있고, `prefers-reduced-motion` 환경에서는 종전대로 토글과 무관하게 완전히 비활성이다.
 
 ### Fixed
+
+- **작은 화면의 채팅 기록·설정 접근** — 전역 헤더 아래에 가려졌던 채팅 메뉴 열기 버튼을 workspace header로 이동했다. 1024px 미만에서 기록·사용자 설정 드로어를 열고 Escape/바깥쪽 클릭으로 닫을 수 있으며 설정 화면에 채팅 복귀 버튼을 추가했다. 출처와 긴 코드가 메시지 grid를 넓히던 문제도 공통 ChatBubble에서 수정했다.
+
+- **Perplexity Sonar·GLM-5.3 가격 거부 수정 연동** — Lumen은 내부 transport key와 공개 모델 ID의 가격 조회 차이를 처리하고 공식 Agent API 가격을 적용한다. Sonar는 API base에 따라 Agent/legacy 가격을 구분하며 수동 가격과 알 수 없는 모델의 `pricing_unavailable` 거부는 유지한다.
 
 - **provider 트렁크 트래픽 중복 표시** — 캔버스가 provider 네트워크 전체 NIC 합산값을 그 provider에 붙은 모든 라우터 트렁크에 복제해, 서로 다른 하위망을 가진 링크들이 모두 같은 트래픽처럼 보였다. 이제 하위 스위치 쪽 트렁크는 해당 네트워크 합산을 유지하고, external·shared provider-tier 스위치 쪽 트렁크는 그 라우터가 직접 연결한 tenant 네트워크들만 합산한다. shared provider가 일반 router interface로 연결되는 경우도 대상 네트워크 tier로 uplink를 판정하며, provider 네트워크 자체는 합산에서 제외한다. 배지도 `네트워크 합산`과 `하위망 합산`으로 범위를 구분한다. 라우터 exporter가 없어 실제 L3 링크 자체의 내부/외부 비중은 여전히 계측하지 않는다.
 

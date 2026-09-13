@@ -127,32 +127,6 @@
 		{#if isUser}
 			<div class="user-text">{message.content}</div>
 		{:else}
-			{#if activityItems.length}
-				<ExecutionTimeline items={activityItems} active={streaming} />
-			{:else}
-				{#if reasoning}
-					<ThinkingBlock text={reasoning} active={reasoningActive} />
-				{/if}
-				{#if toolItems.length || invocationItems.length}
-					<div class="tool-cards">
-						{#each toolItems as t (t.id ?? t.name)}
-							<ToolCallCard item={t} />
-						{/each}
-						{#each invocationItems as t (t.id ?? t.name)}
-							<ToolCallCard item={t} />
-						{/each}
-					</div>
-				{/if}
-			{/if}
-			<MarkdownMessage content={message.content} {streaming} />
-			{#if streaming && message.content.length === 0}
-				<div class="thinking">
-					<span></span><span></span><span></span>
-				</div>
-			{/if}
-			{#if streaming && metricsText}
-				<div class="live-metric" aria-live="off">{metricsText}</div>
-			{/if}
 			{#if citations.length}
 				<div class="sources">
 					<div class="sources-label">
@@ -179,6 +153,32 @@
 						{/each}
 					</ol>
 				</div>
+			{/if}
+			{#if activityItems.length}
+				<ExecutionTimeline items={activityItems} active={streaming} />
+			{:else}
+				{#if reasoning}
+					<ThinkingBlock text={reasoning} active={reasoningActive} />
+				{/if}
+				{#if toolItems.length || invocationItems.length}
+					<div class="tool-cards">
+						{#each toolItems as t (t.id ?? t.name)}
+							<ToolCallCard item={t} />
+						{/each}
+						{#each invocationItems as t (t.id ?? t.name)}
+							<ToolCallCard item={t} />
+						{/each}
+					</div>
+				{/if}
+			{/if}
+			<MarkdownMessage content={message.content} {streaming} />
+			{#if streaming && message.content.length === 0}
+				<div class="thinking">
+					<span></span><span></span><span></span>
+				</div>
+			{/if}
+			{#if streaming && metricsText}
+				<div class="live-metric" aria-live="off">{metricsText}</div>
 			{/if}
 		{/if}
 
@@ -313,17 +313,17 @@
 		font-variant-numeric: tabular-nums;
 	}
 	.sources {
-		margin-top: 0.7rem;
-		padding-top: 0.6rem;
-		border-top: 1px solid var(--color-line);
+		margin-bottom: 0.75rem;
+		padding-bottom: 0.75rem;
+		border-bottom: 1px solid var(--color-line);
 	}
 	.sources-label {
 		display: flex;
 		align-items: center;
 		gap: 0.3rem;
-		font-size: 0.7rem;
+		font-size: 0.75rem;
 		font-weight: 600;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		margin-bottom: 0.4rem;
 	}
 	.sources-list {
@@ -331,21 +331,33 @@
 		margin: 0;
 		padding: 0;
 		display: flex;
-		flex-direction: column;
-		gap: 0.15rem;
+		overflow-x: auto;
+		gap: 0.5rem;
+		padding-bottom: 0.25rem;
+		scroll-snap-type: x proximity;
+}
+	.sources-list li {
+		flex: 0 0 min(16rem, 85%);
+		min-width: 0;
+		scroll-snap-align: start;
 	}
 	.sources-list a,
 	.source-document {
-		display: flex;
-		align-items: baseline;
-		gap: 0.45rem;
-		padding: 0.28rem 0.4rem;
-		border-radius: 0.4rem;
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr);
+		align-content: start;
+		gap: 0.25rem 0.5rem;
+		padding: 0.5rem;
+		min-height: 4.5rem;
+		height: 100%;
+		border: 1px solid var(--color-line);
+		border-radius: 0.5rem;
 		text-decoration: none;
 		color: var(--color-ink-1);
-		font-size: 0.78rem;
+		font-size: 0.8125rem;
 	}
-	.sources-list a:hover {
+	.sources-list a:hover,
+	.sources-list a:focus-visible {
 		background: var(--color-surface-sunken);
 	}
 	.src-num {
@@ -358,21 +370,20 @@
 		border-radius: 0.3rem;
 		background: var(--color-surface-sunken);
 		border: 1px solid var(--color-line);
-		font-size: 0.64rem;
-		color: var(--color-ink-3);
+		font-size: 0.75rem;
+		color: var(--color-ink-2);
 		font-variant-numeric: tabular-nums;
 	}
 	.src-label {
-		flex: 1;
 		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		overflow-wrap: anywhere;
 	}
 	.src-domain {
-		flex-shrink: 0;
-		font-size: 0.68rem;
-		color: var(--color-ink-3);
+		grid-column: 2;
+		min-width: 0;
+		overflow-wrap: anywhere;
+		font-size: 0.75rem;
+		color: var(--color-ink-2);
 	}
 	.tool-wrap {
 		max-width: min(92%, 52rem);

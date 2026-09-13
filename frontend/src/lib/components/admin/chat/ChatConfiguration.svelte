@@ -99,7 +99,7 @@
 		output_price_per_million: string | null;
 		effective_input_price_per_million: string | null;
 		effective_output_price_per_million: string | null;
-		effective_price_source: 'manual' | 'models.dev' | 'litellm' | 'partial' | 'unpriced' | null;
+		effective_price_source: 'manual' | 'models.dev' | 'litellm' | 'partial' | 'unpriced' | `perplexity_agent_api_${string}` | null;
 		models_dev_model_id: string | null;
 		price_source: 'manual' | 'models.dev' | null;
 		capabilities?: ModelCapabilities | null;
@@ -1407,7 +1407,7 @@
 									</span>
 								{/if}
 								<Pill tone={m.price_source === 'manual' ? 'success' : m.price_source === 'models.dev' ? 'accent' : 'neutral'} size="xs">
-									{m.price_source === 'manual' ? '수동' : m.price_source === 'models.dev' ? 'models.dev' : 'LiteLLM 기본값'}
+									{m.price_source === 'manual' ? '수동' : m.price_source === 'models.dev' ? 'models.dev' : m.effective_price_source?.startsWith('perplexity_agent_api_') ? 'Perplexity 공식 가격' : 'LiteLLM 기본값'}
 								</Pill>
 								<ModelCapabilityBadges caps={m.capabilities || m.effective_capabilities} size="xs" />
 							</div>

@@ -82,7 +82,7 @@ beforeEach(() => {
 		federated: false
 	});
 	vi.stubGlobal('matchMedia', (query: string) => ({
-		matches: query.includes('prefers-reduced-motion'),
+		matches: query.includes('prefers-reduced-motion') || query.includes('max-width: 1023px'),
 		media: query,
 		onchange: null,
 		addEventListener: () => {},
@@ -139,20 +139,59 @@ beforeEach(() => {
 });
 
 describe('ChatPanel', () => {
+	it('recalculates active context when Search is enabled and disabled', async () => {
+		const fallback = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation(async (path: string, ...args: unknown[]) => {
+			if (path === '/api/v1/chat/models') return [{
+				id: 1, model_name: 'model-1', display_name: 'Search model',
+				capabilities: { web_search: true, feature_gates: { web_search: { available: true, mode: 'native', pricing_available: true, reason_code: null } } }
+			}];
+			if (path === '/api/v1/chat/conversations') return [{ id: 'conv-search', title: '검색 대화', model_name: 'model-1', workspace_id: null }];
+			if (path.startsWith('/api/v1/chat/conversations/conv-search/messages')) return { messages: [], active_leaf_id: null };
+			return fallback(path, ...args);
+		});
+		render(ChatPanel);
+		await fireEvent.click(await screen.findByRole('button', { name: '대화 기록과 설정 열기' }));
+		await fireEvent.click(await screen.findByRole('button', { name: '검색 대화' }));
+		await fireEvent.click(await screen.findByRole('button', { name: 'Search 웹 검색' }));
+		await waitFor(() => expect(mocks.previewContext.mock.calls.at(-1)?.[1]?.features.web_search).toMatchObject({ enabled: true, mode: 'native', provider_id: null }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Search 웹 검색' }));
+		await waitFor(() => expect(mocks.previewContext.mock.calls.at(-1)?.[1]?.features.web_search.enabled).toBe(false));
+	});
 	it('renders an empty chat without a derived-state initialization error', () => {
 		render(ChatPanel);
 
 		expect(screen.getByRole('heading', { name: '무엇을 도와드릴까요?' })).toBeTruthy();
 	});
 
-	it('navigates to the dedicated settings page from the sidebar user menu', async () => {
+	it('opens compact history to reach settings, then closes it with Escape', async () => {
 		render(ChatPanel);
+
+		const historyControl = await screen.findByRole('button', { name: '대화 기록과 설정 열기' });
+		expect(historyControl.getAttribute('aria-expanded')).toBe('false');
+		await fireEvent.click(historyControl);
+		expect(historyControl.getAttribute('aria-expanded')).toBe('true');
 
 		await fireEvent.click(screen.getByRole('button', { name: /tester/i }));
 		await fireEvent.click(screen.getByRole('menuitem', { name: '설정' }));
-
 		expect(mocks.goto).toHaveBeenCalledWith('/dashboard/chat/settings?section=usage');
-		expect(screen.queryByRole('dialog', { name: '채팅 설정' })).toBeNull();
+
+		await fireEvent.keyDown(document, { key: 'Escape' });
+		flushAnimationFrames();
+		expect(historyControl.getAttribute('aria-expanded')).toBe('false');
+		expect(document.activeElement).toBe(historyControl);
+	});
+
+	it('closes compact history when the workspace backdrop is pressed', async () => {
+		render(ChatPanel);
+		const historyControl = await screen.findByRole('button', { name: '대화 기록과 설정 열기' });
+
+		await fireEvent.click(historyControl);
+		await fireEvent.click(screen.getByRole('button', { name: '대화 기록 바깥쪽 닫기' }));
+		flushAnimationFrames();
+
+		expect(historyControl.getAttribute('aria-expanded')).toBe('false');
+		expect(document.activeElement).toBe(historyControl);
 	});
 
 
