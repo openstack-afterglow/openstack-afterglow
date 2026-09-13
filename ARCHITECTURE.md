@@ -201,8 +201,8 @@ Architecture maintenance는 다음 규칙을 따른다.
 {
   "schema_version": 1,
   "source_sha256": "04c1685411542ec3d3c66e7e669c57d10fbaad7b33e29b88acb9f7e04537c013",
-  "reviewed_at": "2026-09-13T05:18:16Z",
-  "summary": "토폴로지 provider uplink가 provider 전체 NIC 합을 라우터마다 복제하던 귀속 오류를 수정했다. external gateway 트렁크는 라우터별 직접 하위 네트워크 합, 하위 스위치 트렁크는 해당 네트워크 합을 표시한다."
+  "reviewed_at": "2026-09-13T05:20:32Z",
+  "summary": "완료된 provider 트렁크 트래픽 귀속 OpenSpec change를 archive로 이동했다. source 구조 영향 없음."
 }
 ```
 <!-- architecture-review:end -->
