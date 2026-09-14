@@ -270,7 +270,7 @@
 		{/each}
 	</nav>
 
-	<!-- 하단: 사용자 정보 + 사용자 모드 전환 -->
+	<!-- 하단: 사용자 정보 + 현재 관리자 모드 -->
 	<div class="border-t border-line shrink-0">
 		<!-- 데스크톱: 관리자 정보 -->
 		<div class="hidden md:block px-4 py-3">
@@ -285,10 +285,14 @@
 		</div>
 		{#if !mockupAdminActive}
 		<div class="p-3 pt-0 lg:hidden">
-			<a href="/dashboard"
-				class="nav-item nav-active flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors">
-				<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
-				사용자 모드
+			<a
+				href="/dashboard"
+				aria-label="현재 관리자 모드, 사용자 모드로 전환"
+				title="사용자 모드로 전환"
+				class="nav-item nav-active flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors"
+			>
+				<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6l8-4z"></path></svg>
+				관리자 모드
 			</a>
 		</div>
 		{/if}

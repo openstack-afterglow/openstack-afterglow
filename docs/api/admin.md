@@ -145,7 +145,7 @@ nav_order: 20
 ## 볼륨 관리
 
 ![전체 볼륨 관리](../../assets/admin-volume.png)
-*전체 프로젝트의 볼륨을 시계열 차트와 함께 일괄 조회 — 상태·크기·프로젝트별 필터링, 수정·삭제 지원*
+*전체 프로젝트의 볼륨을 시계열 차트와 함께 일괄 조회 — 양수 상태만 노출하는 상태·프로젝트 필터, 현재 page 선택, 확인 기반 부분 성공 일괄 삭제, 단건 수정·삭제 지원*
 
 | 메서드 | 경로 | 설명 | 요청 본문 |
 |--------|------|------|-----------|
@@ -153,6 +153,7 @@ nav_order: 20
 | `GET` | `/api/v1/admin/volumes/{volume_id}` | 볼륨 상세 조회 | - |
 | `PATCH` | `/api/v1/admin/volumes/{volume_id}` | 이름/설명 수정 | `name`, `description` (모두 선택) |
 | `DELETE` | `/api/v1/admin/volumes/{volume_id}` | 볼륨 삭제 (`204`) | - |
+| `POST` | `/api/v1/admin/volumes/bulk-delete` | 최대 50개 볼륨 일괄 삭제, ID별 성공/실패 반환 | `volume_ids` (중복 없는 1~50개) |
 | `POST` | `/api/v1/admin/volumes/{volume_id}/force-delete` | 강제 삭제 (`204`) | - |
 | `POST` | `/api/v1/admin/volumes/{volume_id}/extend` | 용량 확장 | `new_size` (현재보다 커야 함) |
 | `POST` | `/api/v1/admin/volumes/{volume_id}/reset-status` | 상태 강제 초기화 | `status` (기본 `available`) |
@@ -161,6 +162,10 @@ nav_order: 20
 | `POST` | `/api/v1/admin/volumes/{volume_id}/recover-delete` | 삭제 실패 복구 시도 | - |
 
 **제한**: `force-delete` / `reset-status`는 Cinder의 정상 상태 전이를 우회하므로 데이터 정합성 위험이 있습니다. 오류 상태 복구 용도로만 사용하고, `extend`는 축소가 불가능합니다.
+
+`bulk-delete`는 요청 순서대로 모든 ID를 처리하며 한 볼륨의 Cinder 거부가 다음 삭제를 중단하지 않습니다. 응답은 `{ "results": [{ "id": "...", "ok": true, "error": null }] }` 형태이고, 연결·상태 경쟁으로 삭제할 수 없는 볼륨은 `ok: false`와 항목별 오류 메시지를 반환합니다. 관리자 화면의 전체 선택은 현재 marker page에만 적용되며, 필터·page size·page·project scope 변경 시 초기화됩니다. 성공한 ID만 선택에서 제거하고 실패한 ID는 재확인을 위해 유지합니다. 상태 card와 선택지는 `status-summary`에서 count가 0보다 큰 상태만 표시합니다.
+
+새 filter/page/project 결과를 기다릴 때 이전 행을 즉시 지워 stale 선택을 막습니다. 확인 대기 중 결과 경계나 user/project가 바뀌면 요청을 보내지 않습니다. 같은 결과의 백그라운드 새로고침은 기존 행을 유지합니다. 항목별 실패는 고정된 공개 메시지이며 upstream 응답·접속 정보·credential을 응답이나 activity에 복제하지 않습니다.
 
 ---
 
@@ -482,6 +487,26 @@ Barbican(key-manager) 서비스가 활성화된 경우에만 마운트됩니다.
 Nova·Cinder·Neutron·Manila·Heat·Zun 서비스 상태, API 엔드포인트, 스토리지 풀 정보를 종합 조회합니다. `refresh` (query) 지원.
 
 응답은 `compute` / `block_storage` / `network` / `shared_file_system` / `orchestration` / `container` / `container_infra` / `endpoints` / `storage_pools` 필드로 구성됩니다.
+
+### 관리자 화면의 필터·정렬
+
+`/admin/services`의 9개 탭은 조회한 category 데이터 안에서 필터·검색·정렬합니다. 필터 조작은 추가 API 요청이나 클라우드 서비스 상태 변경을 일으키지 않습니다.
+
+| 탭 | 조합 가능한 조건 | 정렬 |
+|---|---|---|
+| Compute / Block Storage / File Storage / Orchestrator / Container / Magnum | Binary, Host, 표시되는 경우 Zone, Status, State | 표시되는 모든 열; Updated는 UTC 시각 기준 |
+| Network | Agent Type, Binary, Host, Zone, Alive, Admin State | 표시되는 모든 열; Alive와 Admin State는 독립 |
+| API Endpoints | 이름, 서비스 유형, 리전 | 이름, 서비스 유형, 리전 |
+| Storage Pools | backend, protocol, vendor | 이름, backend/protocol/vendor, 전체·남은·할당 용량(숫자) |
+
+- 조건은 AND로 적용합니다. 예: Network에서 `Alive=down`, `Host=compute2`, `Admin State=UP`을 동시에 선택할 수 있습니다. Alive 미확인은 down과 별개입니다.
+- 검색은 대소문자와 양끝 공백을 무시하고 공백으로 나눈 모든 검색어를 메타데이터에서 찾습니다. API Endpoints의 URL과 Storage Pools의 driver version도 검색 대상입니다.
+- 문자열은 `host2`가 `host10`보다 앞서는 자연 정렬이며, 용량은 표시 문자열이 아닌 숫자 기준입니다. 비어 있거나 유효하지 않은 정렬 값은 오름차순·내림차순 모두 마지막에 둡니다. 같은 값의 원래 순서는 유지합니다.
+- 표 머리글의 버튼은 클릭 또는 키보드로 방향을 전환하며 `aria-sort`를 제공합니다. 작은 화면에서는 표를 가로 스크롤하지 않고 상단 정렬 선택기와 방향 버튼을 사용할 수 있습니다.
+- 탭별 검색·필터·정렬은 페이지가 유지되는 동안 탭 전환과 수동/자동 새로고침 뒤에도 남습니다. 다른 페이지 이동이나 전체 새로고침 이후의 영속화는 하지 않습니다.
+- 초기 로딩과 백그라운드 새로고침을 구분합니다. 새로고침 중에는 기존 행에서 계속 필터·정렬할 수 있습니다. 선택지가 새 응답에서 사라져도 선택을 보존하며 `표시 / 전체` 건수와 초기화 동작을 제공합니다. 원본 0건과 조건에 맞는 결과 0건을 구분합니다.
+- User/project identity가 바뀌면 이전 서비스 행을 즉시 비우고 늦게 도착한 응답을 차단합니다. 같은 identity의 token 갱신은 기존 행과 필터를 유지하면서 새 요청 세대를 사용합니다.
+- 초기화는 현재 탭에만 적용하며 API Endpoints는 이름 오름차순, 나머지 탭은 응답 원본 순서로 돌아갑니다. 기존 lazy load·hover prefetch·선택 탭 refresh 계약은 바뀌지 않습니다.
 
 ---
 

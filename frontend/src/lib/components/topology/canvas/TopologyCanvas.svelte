@@ -7,7 +7,7 @@
 	import { REDUCED_MOTION_QUERY } from '$lib/design/tokens';
 	import type { TopologyData, TopologyLoadBalancer, TopologyTraffic } from '$lib/types/topology';
 	import { prefersReducedMotion } from '$lib/utils/motion';
-	import { fmtRate, fmtRateShort, flowDotCount, flowRate, KIND_LABEL, NET_KIND_LABEL, clamp, wheelIntent } from './canvasHelpers';
+	import { fmtRate, fmtRateShort, KIND_LABEL, NET_KIND_LABEL, clamp, wheelIntent } from './canvasHelpers';
 	import CanvasEdgeLayer, { type EdgeRenderItem } from './CanvasEdgeLayer.svelte';
 	import CanvasHud, { type HudBadgeItem, type HudLabelItem } from './CanvasHud.svelte';
 	import CanvasNodeCard from './CanvasNodeCard.svelte';
@@ -21,12 +21,14 @@
 		colorOfNet,
 		edgeRate,
 		edgeStyle,
+		allocateFlowDots,
 		FLOW_MIN_BPS,
 		flowStreams,
 		isUplinkTrunk,
 		matchesQuery,
 		relatedSet,
 		switchId,
+		trunkNetIds,
 	} from './topologyGraph';
 	import { FIT_K_MAX, K_MAX, K_MIN, applyManualPositions, autoLayout, computeGeometry, contentBounds, nodeBounds, resolveManualOverlap, zoomAt as zoomAtPure } from './topologyLayout';
 	import type { CanvasEdge, CanvasNet, EdgeStyle, ManualPositions, Rect, ViewState } from './types';
@@ -385,8 +387,24 @@
 	const hudBadges = $derived.by((): HudBadgeItem[] => {
 		const { panX, panY, k } = vp;
 		const out: HudBadgeItem[] = [];
+		const seenUplinkRouters = new Set<string>();
 		for (const e of graph.edges) {
 			if (e.kind !== 'trunk') continue;
+			// provider uplink 배지는 **값이 실제로 달라질 때만** 그린다.
+			// 라우터가 tenant 망을 하나만 물면 `trunkNetIds` 가 `[N]` 한 개라
+			// uplink 배지(`하위망 합산`)와 그 tenant 트렁크 배지(`네트워크 합산`)와
+			// 스위치 카드가 **같은 숫자를 세 번** 찍는다. 게다가 배지는 라우터↔스위치
+			// 중점에 놓이는데 라우터 x 는 intNetIds 로만 정해지므로(topologyLayout `routerHome`)
+			// 그 중점이 남의 존 안에 떨어져 VM 카드를 덮는다.
+			// 실측(2026-09-13, Neutron 라우터 30개 전수): tenant 망을 2개 이상 무는 라우터는 0개.
+			if (isUplinkTrunk(e, graph)) {
+				// 하위 tenant 망이 하나뿐이면 tenant 배지와 같은 값이라 접는다.
+				if (trunkNetIds(e, graph).length < 2) continue;
+				// 한 라우터가 provider 트렁크를 둘 이상 물면(게이트웨이 + shared interface)
+				// `trunkNetIds` 가 같아 **같은 합을 provider 마다 반복**한다. 하나만 남긴다.
+				if (seenUplinkRouters.has(e.from)) continue;
+				seenUplinkRouters.add(e.from);
+			}
 			const g = geometry.geom.get(e.key);
 			if (!g) continue;
 			const incident = Boolean(activeId) && (e.from === activeId || e.to === activeId);
@@ -884,7 +902,6 @@
 			cands.push({ e, bps: st.bps, rate: st.rate });
 		}
 		cands.sort((a, b) => b.bps - a.bps);
-		let total = 0;
 		const r = (2.5 / Math.max(vp.k, K_MIN)).toFixed(2);
 		const emit = (key: string, netId: string, n: number, dir: boolean, speed: number, internal: boolean) => {
 			for (let i = 0; i < n; i++) {
@@ -896,19 +913,17 @@
 				flow.dots.push({ el, key, t: i / n, dir, speed });
 			}
 		};
-		for (const c of cands) {
-			if (total >= 60) break;
-			const p = flow.paths.get(c.e.key);
-			if (!p) continue;
-			const isolatedNet = graph.netById.get(c.e.netId)?.isolated === true;
-			for (const s of flowStreams(c.e, c.rate, isolatedNet)) {
-				if (total >= 60) break;
-				// 점 개수는 경로 길이에 맞춰 정한다 — 목표는 개수가 아니라 통과 **빈도**다
-				const n = Math.min(flowDotCount(s.bps, p.len), 60 - total);
-				total += n;
-				emit(c.e.key, c.e.netId, n, s.dir, flowRate(s.bps).speed, s.internal);
-			}
-		}
+		// 점 개수는 경로 길이에 맞춰 정한다 — 목표는 개수가 아니라 통과 **빈도**다.
+		// 예산 배정 규칙은 `allocateFlowDots` 가 갖는다(순수 함수라 테스트로 고정된다).
+		const alloc = allocateFlowDots(
+			cands.flatMap((c) => {
+				const p = flow.paths.get(c.e.key);
+				if (!p) return [];
+				const isolatedNet = graph.netById.get(c.e.netId)?.isolated === true;
+				return [{ key: c.e.key, netId: c.e.netId, len: p.len, streams: flowStreams(c.e, c.rate, isolatedNet, c.bps) }];
+			}),
+		);
+		for (const a of alloc) emit(a.key, a.netId, a.n, a.dir, a.speed, a.internal);
 		resumeFlow();
 	}
 	// 게이트(토글+reduced-motion)·구조·트래픽 변화에만 재생성한다(드래그·팬은 점 개수를 바꾸지 않는다)

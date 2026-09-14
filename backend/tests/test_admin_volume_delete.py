@@ -122,6 +122,60 @@ async def test_delete_volume_in_use_returns_400(admin_client, mock_conn):
     mock_force.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_bulk_delete_volumes_continues_after_secret_bearing_failure(admin_client, mock_conn):
+    from openstack.exceptions import HttpException
+
+    attached = _make_volume("in-use", attachments=[{"id": "att-1"}])
+    attached.project_id = "project-2"
+    available = _make_volume("available")
+    available.project_id = "project-1"
+    sensitive_detail = "https://service:private-password@storage.internal denied X-Auth-Token=private-token"
+    mock_conn.block_storage.get_volume.side_effect = [attached, available]
+    mock_conn.block_storage.delete_volume.side_effect = [HttpException(http_status=400, message=sensitive_detail), None]
+
+    with (
+        patch("app.api.identity.admin.rec", new_callable=AsyncMock) as record,
+        patch("app.api.identity.admin._invalidate_volume_recovery_caches", new_callable=AsyncMock),
+    ):
+        response = await admin_client.post(
+            "/api/v1/admin/volumes/bulk-delete",
+            json={"volume_ids": ["vol-attached", "vol-ok"]},
+        )
+
+    assert response.status_code == 200
+    results = response.json()["results"]
+    assert [(item["id"], item["ok"]) for item in results] == [("vol-attached", False), ("vol-ok", True)]
+    assert results[0]["error"]
+    assert results[1]["error"] is None
+    for secret in ("private-password", "private-token", "storage.internal"):
+        assert secret not in response.text
+        assert secret not in str(record.await_args_list)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "volume_ids",
+    [[], ["duplicate", "duplicate"], [f"vol-{index}" for index in range(51)]],
+)
+async def test_bulk_delete_volumes_rejects_invalid_id_sets(admin_client, mock_conn, volume_ids):
+    resp = await admin_client.post("/api/v1/admin/volumes/bulk-delete", json={"volume_ids": volume_ids})
+
+    assert resp.status_code == 422
+    mock_conn.block_storage.get_volume.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_bulk_delete_volumes_requires_admin(non_admin_client, mock_conn):
+    resp = await non_admin_client.post(
+        "/api/v1/admin/volumes/bulk-delete",
+        json={"volume_ids": ["vol-1"]},
+    )
+
+    assert resp.status_code == 403
+    mock_conn.block_storage.get_volume.assert_not_called()
+
+
 # ── force-delete 엔드포인트 테스트 ────────────────────────────────────────────
 
 

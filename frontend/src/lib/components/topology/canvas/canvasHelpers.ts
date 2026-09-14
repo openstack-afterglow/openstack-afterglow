@@ -1,9 +1,9 @@
 // 캔버스 토폴로지 공용 헬퍼. 레인 뷰의 topologyHelpers 를 재사용하고 캔버스 전용 포맷터만 추가한다.
 import type { TrafficRate } from '$lib/types/topology';
-import { _ipv4InCidr, edgeIntensity, flowDotCount, flowRate, formatBps } from '../topologyHelpers';
+import { _ipv4InCidr, edgeIntensity, flowDotCount, flowRate, formatBps, NO_TELEMETRY_STYLE } from '../topologyHelpers';
 import type { CanvasNetKind, CanvasNodeKind } from './types';
 
-export { _ipv4InCidr, edgeIntensity, flowDotCount, flowRate, formatBps };
+export { _ipv4InCidr, edgeIntensity, flowDotCount, flowRate, formatBps, NO_TELEMETRY_STYLE };
 
 export const clamp = (v: number, a: number, b: number): number => Math.max(a, Math.min(b, v));
 

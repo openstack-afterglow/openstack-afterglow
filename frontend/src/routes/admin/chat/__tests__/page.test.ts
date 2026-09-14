@@ -51,10 +51,50 @@ const provider = {
 	provider_type: 'openai',
 	api_base: null,
 	has_api_key: true,
+	has_billing_admin_key: false,
+	billing_capability: 'openai_admin_usage' as const,
 	models_dev_provider_id: 'openai',
 	is_active: true,
 	margin_multiplier: 1
 };
+
+const billingPeriods = { daily: '1', weekly: '2', monthly: '3', total: '4' };
+function billingSnapshot(
+	providerId: number,
+	providerName: string,
+	providerType: string,
+	overrides: Record<string, unknown> = {}
+) {
+	return {
+		provider_id: providerId,
+		provider_name: providerName,
+		provider_type: providerType,
+		capability: null,
+		status: 'unsupported',
+		reason: 'billing_endpoint_unsupported',
+		fetched_at: '2026-09-13T00:00:00Z',
+		billing_url: null,
+		usage_url: null,
+		has_billing_admin_key: false,
+		local_usage: {
+			currency: 'USD',
+			requests: billingPeriods,
+			tokens: { daily: '100', weekly: '200', monthly: '300', total: '400' },
+			raw_cost: { daily: '0.5', weekly: '1.5', monthly: '2.5', total: '9.5' }
+		},
+		provider_usage: null,
+		is_available: null,
+		is_free_tier: null,
+		limit: null,
+		remaining: null,
+		usage_total: null,
+		usage_daily: null,
+		usage_weekly: null,
+		usage_monthly: null,
+		balances: [],
+		...overrides
+	};
+}
 const chatgptProvider = {
 	...provider,
 	id: 7,
@@ -197,64 +237,50 @@ describe('admin chat model pricing', () => {
 		expect(screen.getByText(/https:\/\/api\.perplexity\.ai\/router/)).toBeTruthy();
 	});
 
-	it('loads and renders billing data only for supported providers', async () => {
+	it('loads one bulk snapshot and renders local usage, live balances, and official payment links', async () => {
 		const providers = [
-			{
-				...provider,
-				id: 2,
-				name: 'OpenRouter',
-				provider_type: 'openrouter',
-				billing_capability: 'openrouter_key' as const
-			},
-			{
-				...provider,
-				id: 3,
-				name: 'DeepSeek',
-				provider_type: 'deepseek',
-				billing_capability: 'deepseek_balance' as const
-			},
+			{ ...provider, id: 2, name: 'OpenRouter', provider_type: 'openrouter' },
+			{ ...provider, id: 3, name: 'DeepSeek', provider_type: 'deepseek' },
 			{ ...provider, id: 4, name: 'OpenAI' }
 		];
 		get.mockImplementation((path: string) => {
 			if (path === '/api/v1/chat/admin/providers') return Promise.resolve(providers);
 			if (path === '/api/v1/chat/admin/models') return Promise.resolve([]);
-			if (path === '/api/v1/chat/admin/providers/2/billing') {
-				return Promise.resolve({
-					provider_id: 2,
-					provider_type: 'openrouter',
-					capability: 'openrouter_key',
-					status: 'available',
-					reason: null,
-					fetched_at: '2026-09-11T00:00:00Z',
-					is_available: true,
-					is_free_tier: false,
-					limit: '100',
-					remaining: '75',
-					usage_total: '25',
-					usage_daily: '1',
-					usage_weekly: '5',
-					usage_monthly: '20',
-					balances: []
-				});
-			}
-			if (path === '/api/v1/chat/admin/providers/3/billing') {
-				return Promise.resolve({
-					provider_id: 3,
-					provider_type: 'deepseek',
-					capability: 'deepseek_balance',
-					status: 'available',
-					reason: null,
-					fetched_at: '2026-09-11T00:00:00Z',
-					is_available: true,
-					is_free_tier: null,
-					limit: null,
-					remaining: null,
-					usage_total: null,
-					usage_daily: null,
-					usage_weekly: null,
-					usage_monthly: null,
-					balances: [{ currency: 'USD', total: '48.5', purchased: '40', granted: '8.5' }]
-				});
+			if (path === '/api/v1/chat/admin/providers/billing') {
+				return Promise.resolve([
+					billingSnapshot(2, 'OpenRouter', 'openrouter', {
+						capability: 'openrouter_key',
+						status: 'available',
+						reason: null,
+						billing_url: 'https://openrouter.ai/settings/credits',
+						usage_url: 'https://openrouter.ai/activity',
+						is_free_tier: false,
+						limit: '100',
+						remaining: '75',
+						usage_total: '25',
+						usage_daily: '1',
+						usage_weekly: '5',
+						usage_monthly: '20'
+					}),
+					billingSnapshot(3, 'DeepSeek', 'deepseek', {
+						capability: 'deepseek_balance',
+						status: 'available',
+						reason: null,
+						billing_url: 'https://platform.deepseek.com/top_up',
+						is_available: true,
+						balances: [{ currency: 'USD', total: '48.5', purchased: '40', granted: '8.5' }]
+					}),
+					billingSnapshot(4, 'OpenAI', 'openai', {
+						billing_url: 'https://platform.openai.com/settings/organization/billing/overview',
+						usage_url: 'https://platform.openai.com/usage',
+						local_usage: {
+							currency: 'USD',
+							requests: { ...billingPeriods, monthly: '12' },
+							tokens: { daily: '100', weekly: '200', monthly: '12345', total: '20000' },
+							raw_cost: { daily: '0.5', weekly: '1.5', monthly: '7.5', total: '19.5' }
+						}
+					})
+				]);
 			}
 			return Promise.resolve([]);
 		});
@@ -262,25 +288,20 @@ describe('admin chat model pricing', () => {
 		render(ProviderPage);
 
 		expect(await screen.findByText('남은 한도')).toBeTruthy();
-		expect(screen.getByText('75')).toBeTruthy();
+		expect(screen.getByText('$75')).toBeTruthy();
 		expect(screen.getByText('구매 40 · 지급 8.5')).toBeTruthy();
-		await waitFor(() => {
-			expect(get).toHaveBeenCalledWith(
-				'/api/v1/chat/admin/providers/2/billing',
-				'token',
-				'project'
-			);
-			expect(get).toHaveBeenCalledWith(
-				'/api/v1/chat/admin/providers/3/billing',
-				'token',
-				'project'
-			);
-		});
-		expect(get).not.toHaveBeenCalledWith(
-			'/api/v1/chat/admin/providers/4/billing',
-			expect.anything(),
-			expect.anything()
-		);
+		const openAiRow = document.querySelector('[data-provider-id="4"]') as HTMLElement;
+		expect(within(openAiRow).getByText('$7.5')).toBeTruthy();
+		expect(within(openAiRow).getByText('12회')).toBeTruthy();
+		expect(within(openAiRow).getByText('12,345')).toBeTruthy();
+		expect(within(openAiRow).getByText('공식 콘솔 확인')).toBeTruthy();
+		const paymentLink = within(openAiRow).getByRole('link', { name: '크레딧 충전·결제 ↗' });
+		expect(paymentLink.getAttribute('href')).toContain('platform.openai.com/settings/organization/billing');
+		expect(paymentLink.getAttribute('target')).toBe('_blank');
+		expect(paymentLink.getAttribute('rel')).toContain('noreferrer');
+		expect(get).toHaveBeenCalledWith('/api/v1/chat/admin/providers/billing', 'token', 'project');
+		expect(get.mock.calls.filter(([path]) => path === '/api/v1/chat/admin/providers/billing')).toHaveLength(1);
+		expect(get.mock.calls.some(([path]) => /providers\/\d+\/billing/.test(String(path)))).toBe(false);
 	});
 
 	it('isolates MCP, skills, and custom HTTP tools on the tool settings route', async () => {
@@ -566,55 +587,165 @@ describe('admin chat model pricing', () => {
 		);
 	});
 
-	it('queries and renders billing only for providers with a supported capability', async () => {
-		const openRouterProvider = {
-			...provider,
-			id: 9,
-			name: 'OpenRouter',
-			provider_type: 'openrouter',
-			billing_capability: 'openrouter_key' as const
-		};
+	it('keeps provider controls available when the bulk billing load fails', async () => {
 		get.mockImplementation((path: string) => {
+			if (path === '/api/v1/chat/admin/providers') return Promise.resolve([provider]);
+			if (path === '/api/v1/chat/admin/models') return Promise.resolve([]);
+			if (path === '/api/v1/chat/admin/providers/billing') return Promise.reject(new ApiError('down', 503));
+			return Promise.resolve([]);
+		});
+
+		render(ProviderPage);
+
+		expect(await screen.findByText('결제 상태를 불러오지 못했습니다')).toBeTruthy();
+		expect(screen.getByText(/결제 상태 조회 실패 \(503\)/)).toBeTruthy();
+		expect(screen.getByRole('button', { name: '키 변경' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: '비활성화' })).toBeTruthy();
+	});
+
+	it('shows a loading state and resolves it from the bulk response', async () => {
+		let resolveBilling!: (value: unknown[]) => void;
+		const pending = new Promise<unknown[]>((resolve) => {
+			resolveBilling = resolve;
+		});
+		get.mockImplementation((path: string) => {
+			if (path === '/api/v1/chat/admin/providers') return Promise.resolve([provider]);
+			if (path === '/api/v1/chat/admin/models') return Promise.resolve([]);
+			if (path === '/api/v1/chat/admin/providers/billing') return pending;
+			return Promise.resolve([]);
+		});
+
+		render(ProviderPage);
+
+		expect(await screen.findByText('사용량과 결제 상태를 조회하는 중…')).toBeTruthy();
+		expect((screen.getByRole('button', { name: '조회 중…' }) as HTMLButtonElement).disabled).toBe(true);
+		resolveBilling([billingSnapshot(1, 'OpenAI', 'openai')]);
+		expect(await screen.findByText('공식 콘솔 확인')).toBeTruthy();
+	});
+
+	it('does not render non-HTTPS billing actions', async () => {
+		get.mockImplementation((path: string) => {
+			if (path === '/api/v1/chat/admin/providers') return Promise.resolve([provider]);
+			if (path === '/api/v1/chat/admin/models') return Promise.resolve([]);
+			if (path === '/api/v1/chat/admin/providers/billing') {
+				return Promise.resolve([
+					billingSnapshot(1, 'OpenAI', 'openai', { billing_url: 'http://unsafe.example/billing' })
+				]);
+			}
+			return Promise.resolve([]);
+		});
+
+		render(ProviderPage);
+		expect(await screen.findByText('공식 콘솔 확인')).toBeTruthy();
+		expect(screen.queryByRole('link', { name: '크레딧 충전·결제 ↗' })).toBeNull();
+	});
+
+	it('stores and removes an admin usage key while fencing a stale pre-mutation response', async () => {
+		const { promise: staleBilling, resolve: resolveStaleBilling } = Promise.withResolvers<unknown[]>();
+		let hasBillingAdminKey = false;
+		let billingRefreshes = 0;
+		const freshSnapshot = billingSnapshot(1, 'OpenAI', 'openai', {
+			capability: 'openai_admin_usage',
+			status: 'available',
+			reason: null,
+			has_billing_admin_key: true,
+			provider_usage: {
+				source: 'openai_admin_usage',
+				currency: 'USD',
+				cost: { daily: '1.25', weekly: '5.5', monthly: '17.25', total: null },
+				requests: { daily: '12', weekly: '40', monthly: '96', total: null },
+				tokens: { daily: '1200', weekly: '4000', monthly: '9600', total: null }
+			}
+		});
+		get.mockImplementation((path: string, _token?: string, _projectId?: string, options?: { refresh?: boolean }) => {
 			if (path === '/api/v1/chat/admin/providers') {
-				return Promise.resolve([provider, openRouterProvider]);
+				return Promise.resolve([{ ...provider, has_billing_admin_key: hasBillingAdminKey }]);
 			}
 			if (path === '/api/v1/chat/admin/models') return Promise.resolve([]);
-			if (path === '/api/v1/chat/admin/providers/9/billing') {
-				return Promise.resolve({
-					provider_id: 9,
-					provider_type: 'openrouter',
-					capability: 'openrouter_key',
-					status: 'available',
-					reason: null,
-					fetched_at: '2026-09-11T00:00:00Z',
-					is_available: null,
-					is_free_tier: false,
-					limit: '100',
-					remaining: '75',
-					usage_total: '25',
-					usage_daily: '1',
-					usage_weekly: '5',
-					usage_monthly: '20',
-					balances: []
-				});
+			if (path === '/api/v1/chat/admin/providers/billing') {
+				if (!options?.refresh) return staleBilling;
+				return Promise.resolve(
+					billingRefreshes++ === 0
+						? [freshSnapshot]
+						: [billingSnapshot(1, 'OpenAI', 'openai', { capability: 'openai_admin_usage' })]
+				);
+			}
+			return Promise.resolve([]);
+		});
+		patch.mockImplementation((_path: string, payload: { billing_admin_key: string | null }) => {
+			hasBillingAdminKey = Boolean(payload.billing_admin_key);
+			return Promise.resolve({});
+		});
+
+		render(ProviderPage);
+		await screen.findByText('OpenAI');
+		await fireEvent.click(screen.getByRole('button', { name: '사용량 키 설정' }));
+		expect(await screen.findByText('Inference 키와 별도 보관')).toBeTruthy();
+		await fireEvent.input(screen.getByLabelText('OpenAI Admin API 키'), {
+			target: { value: 'sk-admin-fresh' }
+		});
+		await fireEvent.click(screen.getByRole('button', { name: '키 설정' }));
+
+		await waitFor(() =>
+			expect(patch).toHaveBeenCalledWith(
+				'/api/v1/chat/admin/providers/1',
+				{ billing_admin_key: 'sk-admin-fresh' },
+				'token',
+				'project'
+			)
+		);
+		expect(await screen.findByText('OpenAI 조직 사용량')).toBeTruthy();
+		expect(screen.getByText('$17.25')).toBeTruthy();
+		expect(get).toHaveBeenCalledWith(
+			'/api/v1/chat/admin/providers/billing',
+			'token',
+			'project',
+			{ refresh: true }
+		);
+
+		resolveStaleBilling([billingSnapshot(1, 'OpenAI', 'openai')]);
+		await Promise.resolve();
+		expect(screen.getByText('OpenAI 조직 사용량')).toBeTruthy();
+		expect(screen.queryByText('공식 콘솔 확인')).toBeNull();
+
+		await fireEvent.click(screen.getByRole('button', { name: '사용량 키 변경' }));
+		await fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '키 변경' }));
+		await waitFor(() =>
+			expect(patch).toHaveBeenLastCalledWith(
+				'/api/v1/chat/admin/providers/1',
+				{ billing_admin_key: null },
+				'token',
+				'project'
+			)
+		);
+		expect(await screen.findByRole('button', { name: '사용량 키 설정' })).toBeTruthy();
+	});
+
+	it('explains Gemini and Perplexity official billing API limits without requesting admin keys', async () => {
+		const gemini = { ...provider, id: 2, name: 'Gemini', provider_type: 'gemini', billing_capability: null };
+		const perplexity = { ...provider, id: 3, name: 'Perplexity', provider_type: 'perplexity', billing_capability: null };
+		get.mockImplementation((path: string) => {
+			if (path === '/api/v1/chat/admin/providers') return Promise.resolve([gemini, perplexity]);
+			if (path === '/api/v1/chat/admin/models') return Promise.resolve([]);
+			if (path === '/api/v1/chat/admin/providers/billing') {
+				return Promise.resolve([
+					billingSnapshot(2, 'Gemini', 'gemini', {
+						reason: 'provider_console_only',
+						billing_url: 'https://aistudio.google.com/app/billing'
+					}),
+					billingSnapshot(3, 'Perplexity', 'perplexity', {
+						reason: 'provider_analytics_scope_mismatch',
+						billing_url: 'https://www.perplexity.ai/settings/api'
+					})
+				]);
 			}
 			return Promise.resolve([]);
 		});
 
 		render(ProviderPage);
 
-		expect(await screen.findByText('남은 한도')).toBeTruthy();
-		expect(screen.getByText('이번 달 사용')).toBeTruthy();
-		expect(screen.getByText(/오늘 1 · 이번 주 5 · 유료 크레딧/)).toBeTruthy();
-		expect(get).toHaveBeenCalledWith(
-			'/api/v1/chat/admin/providers/9/billing',
-			'token',
-			'project'
-		);
-		expect(get).not.toHaveBeenCalledWith(
-			'/api/v1/chat/admin/providers/1/billing',
-			expect.anything(),
-			expect.anything()
-		);
+		expect(await screen.findByText(/Gemini 선불 잔액과 거래 내역은 공식 Google AI Studio/)).toBeTruthy();
+		expect(screen.getByText(/Enterprise Computer Analytics API는 Computer 제품 분석용/)).toBeTruthy();
+		expect(screen.queryByRole('button', { name: /사용량 키/ })).toBeNull();
 	});
 });

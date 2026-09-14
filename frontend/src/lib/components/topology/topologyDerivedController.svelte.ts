@@ -1,5 +1,5 @@
 import type { TopologyData, TopologyTraffic, TopologyNetwork, ItemRow, LBItem, Anchor } from './types.ts';
-import { EXT_COLORS, SHR_COLORS, INT_COLORS, LANE_W, LANE_GAP, LANE_PAD, SIDEBAR_W, _ipv4InCidr, edgeIntensity } from './topologyHelpers.ts';
+import { EXT_COLORS, SHR_COLORS, INT_COLORS, LANE_W, LANE_GAP, LANE_PAD, SIDEBAR_W, _ipv4InCidr, edgeIntensity, NO_TELEMETRY_STYLE } from './topologyHelpers.ts';
 
 export interface ConnectionSpec {
 	key: string; netId: string; color: string; opacity: number; width: number;
@@ -234,8 +234,9 @@ export function createTopologyDerivedController(opts: TopologyDerivedControllerO
 			for (const netId of allNets) {
 				const color = netColors.get(netId) ?? '#3b82f6';
 				const bpsPair = row.type === 'instance' ? instNetBps.get(`${row.id}|${netId}`) : undefined;
-				const bps = (bpsPair?.rx_bps ?? 0) + (bpsPair?.tx_bps ?? 0);
-				const ei = edgeIntensity(bps);
+				// 계측이 없으면 0 으로 뭉개지 않는다 — 0 bps 는 "쟀더니 0" 이라 강도 하한으로 그려야 하고,
+				// "잴 수 없었다" 는 NO_TELEMETRY_STYLE 로 따로 그려야 둘이 구분된다.
+				const ei = bpsPair ? edgeIntensity(bpsPair.rx_bps + bpsPair.tx_bps) : NO_TELEMETRY_STYLE;
 				const isFloating = !row.connectedNetIds.includes(netId);
 				result.push({
 					key: `${row.id}|${netId}`,

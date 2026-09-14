@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
+	import { onDestroy, onMount, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
 	import type { PagedResponse, TsPoint } from '$lib/types/common';
@@ -25,6 +25,10 @@
 	import AdminVolumeDetailSlide from '$lib/components/admin/volumes/AdminVolumeDetailSlide.svelte';
 	import AdminVolumeStatusSummary from '$lib/components/admin/volumes/AdminVolumeStatusSummary.svelte';
 	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
+	import { confirmDialog } from '$lib/stores/confirm.svelte';
+	import { toast } from '$lib/stores/toast';
+	import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
+	import BulkSelectionOverlay, { type BulkSelectionAction } from '$lib/components/ui/BulkSelectionOverlay.svelte';
 
 	let allVolumes = $state<AdminVolume[]>([]);
 	let loading = $state(true);
@@ -54,9 +58,21 @@
 	let forceDeleteVolume = $state<AdminVolume | null>(null);
 	let transferVolume = $state<AdminVolume | null>(null);
 	let loadGeneration = 0;
+	let resultBoundary = 0;
+	let statusSummaryGeneration = 0;
+	let bulkDeleting = $state(false);
+	let projectEffectReady = $state(false);
+	let lastProjectId = $state<string | undefined>(undefined);
+	const selection = createResourceSelection();
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
+	const selectableIds = $derived(new Set(allVolumes.map((volume) => volume.id)));
+	const statusOptions = $derived(
+		(statusSummary?.statuses ?? [])
+			.filter((item) => item.count > 0)
+			.map((item) => item.status),
+	);
 	const nextPrefetch = createIntentPrefetchScheduler();
 	function listPath(marker?: string): string {
 		const params = new URLSearchParams({ limit: String(pageSize) });
@@ -91,25 +107,57 @@
 		}
 	}
 
-	async function loadStatusSummary(opts?: { background?: boolean }) {
+	async function loadStatusSummary(opts?: { background?: boolean; reloadOnReset?: boolean }): Promise<boolean> {
+		const generation = ++statusSummaryGeneration;
+		const requestProjectId = $auth.projectId ?? undefined;
+		const requestToken = $auth.token ?? undefined;
+		const owns = () => generation === statusSummaryGeneration
+			&& ($auth.projectId ?? undefined) === requestProjectId;
 		if (!opts?.background && statusSummary === null) statusSummaryLoading = true;
 		try {
-			statusSummary = await api.get<VolumeStatusSummary>('/api/v1/admin/volumes/status-summary', token, projectId);
+			const summary = await api.get<VolumeStatusSummary>(
+				'/api/v1/admin/volumes/status-summary',
+				requestToken,
+				requestProjectId,
+			);
+			if (!owns()) return false;
+			statusSummary = summary;
+			const activeStatusDisappeared = statusFilter !== ''
+				&& !summary.statuses.some((item) => item.status === statusFilter && item.count > 0);
+			if (activeStatusDisappeared) {
+				statusFilter = '';
+				markerStack = [];
+				nextMarker = null;
+				selection.clear();
+				if (opts?.reloadOnReset !== false) void load(undefined, { clearSelection: true });
+			}
+			return activeStatusDisappeared;
 		} catch {
-			if (!opts?.background) statusSummary = null;
+			if (owns() && !opts?.background) statusSummary = null;
+			return false;
 		} finally {
-			statusSummaryLoading = false;
+			if (owns()) statusSummaryLoading = false;
 		}
+	}
+
+	function resetResultBoundary() {
+		markerStack = [];
+		nextMarker = null;
+		selection.clear();
 	}
 
 	function applyStatusFilter(status: string) {
 		statusFilter = status;
-		markerStack = [];
-		nextMarker = null;
-		load();
+		resetResultBoundary();
+		void load(undefined, { clearSelection: true });
 	}
 
-	async function load(marker?: string) {
+	function onFilterChange() {
+		resetResultBoundary();
+		void load(undefined, { clearSelection: true });
+	}
+
+	async function load(marker?: string, opts?: { clearSelection?: boolean }) {
 		const generation = ++loadGeneration;
 		const requestToken = $auth.token ?? undefined;
 		const requestProjectId = $auth.projectId ?? undefined;
@@ -127,6 +175,11 @@
 			&& nameSearch === requestNameSearch
 			&& listPath(marker) === requestPath;
 		nextPrefetch.cancel();
+		if (opts?.clearSelection) {
+			resultBoundary += 1;
+			selection.clear();
+			allVolumes = [];
+		}
 		if (allVolumes.length === 0) loading = true;
 		else refreshing = true;
 		try {
@@ -134,11 +187,15 @@
 			if (!owns()) return;
 			allVolumes = res.items;
 			nextMarker = res.next_marker;
+			selection.retain(res.items.map((volume) => volume.id));
 			const path = nextMarker ? listPath(nextMarker) : null;
 			const key = path ? JSON.stringify([path, requestToken ?? null, requestProjectId ?? null]) : null;
 			nextPrefetch.schedule(key, (signal) => path ? api.prefetch(path, requestToken, requestProjectId, { signal }) : undefined);
 		} catch {
-			if (owns()) allVolumes = [];
+			if (owns()) {
+				allVolumes = [];
+				selection.clear();
+			}
 		} finally {
 			if (owns()) {
 				loading = false;
@@ -147,23 +204,87 @@
 		}
 	}
 
+	async function bulkDeleteSelectedVolumes() {
+		if (bulkDeleting || loading) return;
+		const ids = [...selection.ids];
+		if (ids.length === 0) return;
+		const boundary = resultBoundary;
+		const requestProjectId = $auth.projectId ?? undefined;
+		const requestUserId = $auth.userId;
+		bulkDeleting = true;
+		try {
+			if (!await confirmDialog(`선택한 볼륨 ${ids.length}개를 삭제하시겠습니까?\n삭제된 데이터는 복구할 수 없습니다.`)) return;
+			if (boundary !== resultBoundary || requestProjectId !== ($auth.projectId ?? undefined)
+				|| requestUserId !== $auth.userId || ids.some(id => !selection.ids.has(id))) return;
+			const requestToken = $auth.token ?? undefined;
+			const response = await api.post<{ results: { id: string; ok: boolean; error: string | null }[] }>(
+				'/api/v1/admin/volumes/bulk-delete',
+				{ volume_ids: ids },
+				requestToken,
+				requestProjectId,
+			);
+			const successfulIds = response.results.filter((result) => result.ok).map((result) => result.id);
+			const failed = response.results.length - successfulIds.length;
+			if (successfulIds.length > 0) toast.success(`${successfulIds.length}개 볼륨 삭제 요청을 완료했습니다.`);
+			if (failed > 0) toast.error(`${failed}개 볼륨 삭제에 실패했습니다. 실패한 볼륨은 선택 상태로 유지됩니다.`);
+			if (($auth.projectId ?? undefined) !== requestProjectId) return;
+			selection.remove(successfulIds);
+			const statusReset = await loadStatusSummary({ background: true, reloadOnReset: false });
+			await Promise.all([
+				load(statusReset ? undefined : markerStack[markerStack.length - 1]),
+				loadTimeseries(tsRange, { background: true }),
+			]);
+		} catch {
+			toast.error('볼륨 일괄 삭제 요청에 실패했습니다.');
+		} finally {
+			bulkDeleting = false;
+		}
+	}
+
+	const bulkActions = $derived<BulkSelectionAction[]>([
+		{ key: 'delete', label: '삭제', tone: 'danger', onAction: bulkDeleteSelectedVolumes },
+	]);
+
+	function refreshCurrentVolumeState() {
+		void load(markerStack[markerStack.length - 1]);
+		void loadStatusSummary();
+		void loadTimeseries(tsRange, { background: true });
+	}
+
 	const ar = createAutoRefresh(
 		() => { load(markerStack[markerStack.length - 1]); loadTimeseries(tsRange, { background: true }); loadStatusSummary({ background: true }); },
 		{ storageKey: 'admin-volumes', defaultActive: true, defaultInterval: 30, intervalOptions: [15, 30, 60], invokeOnMount: false },
 	);
 
+	$effect(() => {
+		const currentProjectId = $auth.projectId ?? undefined;
+		if (!projectEffectReady) return;
+		if (currentProjectId === lastProjectId) return;
+		lastProjectId = currentProjectId;
+		untrack(() => {
+			resetResultBoundary();
+			statusSummary = null;
+			void load(undefined, { clearSelection: true });
+			void loadTimeseries(tsRange);
+			void loadStatusSummary();
+			projectNames.load($auth.token ?? undefined, currentProjectId);
+		});
+	});
+
 	onMount(() => {
 		if (window.matchMedia('(max-width: 767px)').matches) pageSize = 10;
-		load();
-		loadTimeseries(tsRange);
-		loadStatusSummary();
+		lastProjectId = $auth.projectId ?? undefined;
+		projectEffectReady = true;
+		void load(undefined, { clearSelection: true });
+		void loadTimeseries(tsRange);
+		void loadStatusSummary();
 		projectNames.load(token, projectId);
 	});
 
-	onDestroy(() => { loadGeneration += 1; nextPrefetch.cancel(); });
+	onDestroy(() => { resultBoundary += 1; loadGeneration += 1; statusSummaryGeneration += 1; nextPrefetch.cancel(); });
 </script>
 
-<div class="p-4 md:p-6 max-w-7xl mx-auto">
+<div class="bulk-selection-page p-4 md:p-6 pb-28 md:pb-32 max-w-7xl mx-auto">
 	<div data-tour="admin-storage-header">
 	<PageHeader breadcrumb="STORAGE / VOLUMES" title="전체 볼륨">
 		{#snippet actions()}
@@ -174,15 +295,17 @@
 				intervalOptions={ar.intervalOptions}
 				refreshing={loading || refreshing}
 				onManualRefresh={() => {
-					markerStack = []; nextMarker = null;
 					projectFilter = ''; projectSearchText = '';
 					statusFilter = ''; nameSearch = '';
-					load(); loadStatusSummary(); loadTimeseries(tsRange);
+					resetResultBoundary();
+					void load(undefined, { clearSelection: true });
+					void loadStatusSummary();
+					void loadTimeseries(tsRange);
 				}}
 			/>
 			<AdminVolumePageSizeToggle
 				value={pageSize}
-				onChange={(n) => { pageSize = n; markerStack = []; nextMarker = null; load(); }}
+				onChange={(n) => { pageSize = n; resetResultBoundary(); void load(undefined, { clearSelection: true }); }}
 			/>
 		{/snippet}
 	</PageHeader>
@@ -212,7 +335,8 @@
 		bind:projectSearchText
 		bind:statusFilter
 		bind:nameSearch
-		onChange={() => { markerStack = []; nextMarker = null; load(); }}
+		statusOptions={statusOptions}
+		onChange={onFilterChange}
 	/>
 	</div>
 
@@ -226,7 +350,12 @@
 				{selectedVolumeId}
 				{openActionMenu}
 				{copiedProjectId}
+				selectedIds={selection.ids}
+				{selectableIds}
+				selectionDisabled={bulkDeleting}
 				onSelect={(id) => (selectedVolumeId = id)}
+				onToggleSelect={(id) => selection.toggle(id)}
+				onToggleAll={() => selection.toggleAll(selectableIds)}
 				onActionMenuOpen={(id) => (openActionMenu = id)}
 				onActionMenuClose={() => (openActionMenu = null)}
 				onCopyProjectId={copyProjectId}
@@ -250,18 +379,28 @@
 				const prev = markerStack.slice(0, -1);
 				const marker = prev[prev.length - 1];
 				markerStack = prev;
-				load(marker);
+				selection.clear();
+				void load(marker, { clearSelection: true });
 			}}
 			onNext={() => {
 				if (!nextMarker) return;
 				markerStack = [...markerStack, nextMarker];
-				load(nextMarker);
+				selection.clear();
+				void load(nextMarker, { clearSelection: true });
 			}}
 			onintent={prefetchNext}
 		/>
 		</div>
 	{/if}
 	</div>
+
+	<BulkSelectionOverlay
+		count={selection.count}
+		ariaLabel="선택한 관리자 볼륨 일괄 작업"
+		actions={bulkActions}
+		busy={bulkDeleting}
+		onClear={() => selection.clear()}
+	/>
 </div>
 
 {#if selectedVolumeId}
@@ -274,9 +413,9 @@
 	/>
 {/if}
 
-<AdminVolumeEditModal volume={editVolume} onClose={() => (editVolume = null)} onSuccess={() => load()} />
-<AdminVolumeDeleteModal volume={deleteVolume} onClose={() => (deleteVolume = null)} onSuccess={() => load()} />
-<AdminVolumeExtendModal volume={extendVolume} onClose={() => (extendVolume = null)} onSuccess={() => load()} />
-<AdminVolumeResetStatusModal volume={resetVolume} onClose={() => (resetVolume = null)} onSuccess={() => load(markerStack[markerStack.length - 1])} />
-<AdminVolumeForceDeleteModal volume={forceDeleteVolume} onClose={() => (forceDeleteVolume = null)} onSuccess={() => load(markerStack[markerStack.length - 1])} />
-<AdminVolumeTransferModal volume={transferVolume} onClose={() => (transferVolume = null)} onSuccess={() => load(markerStack[markerStack.length - 1])} />
+<AdminVolumeEditModal volume={editVolume} onClose={() => (editVolume = null)} onSuccess={refreshCurrentVolumeState} />
+<AdminVolumeDeleteModal volume={deleteVolume} onClose={() => (deleteVolume = null)} onSuccess={refreshCurrentVolumeState} />
+<AdminVolumeExtendModal volume={extendVolume} onClose={() => (extendVolume = null)} onSuccess={refreshCurrentVolumeState} />
+<AdminVolumeResetStatusModal volume={resetVolume} onClose={() => (resetVolume = null)} onSuccess={refreshCurrentVolumeState} />
+<AdminVolumeForceDeleteModal volume={forceDeleteVolume} onClose={() => (forceDeleteVolume = null)} onSuccess={refreshCurrentVolumeState} />
+<AdminVolumeTransferModal volume={transferVolume} onClose={() => (transferVolume = null)} onSuccess={refreshCurrentVolumeState} />

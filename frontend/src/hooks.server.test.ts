@@ -69,6 +69,19 @@ afterEach(() => {
 	vi.doUnmock('$lib/server/config');
 });
 
+describe('frontend health', () => {
+	it('returns health JSON without a browser session', async () => {
+		const { handle } = await loadHandle();
+		const { GET } = await import('./routes/health/+server');
+		const { event } = createRequest('http://frontend.example.com/health', {}, '/health');
+
+		const response = await handle({ event, resolve: async () => GET() });
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({ status: 'ok' });
+	});
+});
+
 describe('hooks.server mockup gating', () => {
 	it('redirects logged-out protected routes to /login when mockup mode is off', async () => {
 		const { handle } = await loadHandle();

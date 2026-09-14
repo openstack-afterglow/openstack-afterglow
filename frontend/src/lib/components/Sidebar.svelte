@@ -17,8 +17,6 @@
 	const sections = $state([
 		{
 			label: 'Compute',
-			prefix: '/dashboard/compute',
-			extraPrefixes: [] as string[],
 			icon: 'M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2',
 			open: false,
 			items: [
@@ -28,8 +26,6 @@
 		},
 		{
 			label: '볼륨',
-			prefix: '/dashboard/volumes',
-			extraPrefixes: [] as string[],
 			icon: 'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4',
 			open: false,
 			items: [
@@ -40,8 +36,6 @@
 		},
 		{
 			label: 'File Storage',
-			prefix: '/dashboard/file-storage',
-			extraPrefixes: [] as string[],
 			icon: 'M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z',
 			open: false,
 			service: 'manila' as const,
@@ -54,8 +48,6 @@
 		},
 		{
 			label: '컨테이너',
-			prefix: '/dashboard/containers',
-			extraPrefixes: ['/dashboard/drover'],
 			icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4',
 			open: false,
 			service: 'containers' as const,
@@ -67,8 +59,6 @@
 		},
 		{
 			label: 'Database',
-			prefix: '/dashboard/database',
-			extraPrefixes: [] as string[],
 			icon: 'M4 7c0-1.657 3.582-3 8-3s8 1.343 8 3M4 7v5c0 1.657 3.582 3 8 3s8-1.343 8-3V7M4 7c0 1.657 3.582 3 8 3s8-1.343 8-3M4 12v5c0 1.657 3.582 3 8 3s8-1.343 8-3v-5',
 			open: false,
 			service: 'trove' as const,
@@ -79,8 +69,6 @@
 		},
 		{
 			label: 'Object Storage',
-			prefix: '/dashboard/object-storage',
-			extraPrefixes: [] as string[],
 			icon: 'M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z',
 			open: false,
 			service: 'swift' as const,
@@ -90,8 +78,6 @@
 		},
 		{
 			label: 'Key Manager',
-			prefix: '/dashboard/secrets',
-			extraPrefixes: [] as string[],
 			icon: 'M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z',
 			open: false,
 			beta: 'keyManager' as BetaFeatureKey,
@@ -101,8 +87,6 @@
 		},
 		{
 			label: 'AI 채팅',
-			prefix: '/dashboard/chat',
-			extraPrefixes: [] as string[],
 			icon: 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z',
 			open: false,
 			service: 'chat' as const,
@@ -112,8 +96,6 @@
 		},
 		{
 			label: '네트워크',
-			prefix: '/dashboard/network',
-			extraPrefixes: [] as string[],
 			icon: 'M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9',
 			open: false,
 			items: [
@@ -127,6 +109,10 @@
 		},
 	]);
 
+	function isSectionActive(pathname: string, section: { items: { href: string }[] }): boolean {
+		return section.items.some(item => pathname === item.href || pathname.startsWith(item.href + '/'));
+	}
+
 	$effect(() => {
 		const pathname = $page.url.pathname;
 		const dashboardPaths = ['/dashboard/usage', '/dashboard/usage-report', '/dashboard/activity'];
@@ -134,10 +120,7 @@
 			dashboardOpen = true;
 		}
 		for (const section of sections) {
-			if (
-				pathname.startsWith(section.prefix) ||
-				section.extraPrefixes.some((p) => pathname.startsWith(p))
-			) {
+			if (isSectionActive(pathname, section)) {
 				section.open = true;
 			}
 		}
@@ -266,7 +249,7 @@
 			<div>
 				<button
 					onclick={() => section.open = !section.open}
-					class="flex items-center justify-between w-full px-3 py-2 rounded-lg text-sm transition-colors {$page.url.pathname.startsWith(section.prefix) || section.extraPrefixes.some((p) => $page.url.pathname.startsWith(p)) ? 'text-ink-0' : 'text-ink-2 hover:text-ink-0 hover:bg-surface-sunken'}"
+					class="flex items-center justify-between w-full px-3 py-2 rounded-lg text-sm transition-colors {isSectionActive($page.url.pathname, section) ? 'text-ink-0' : 'text-ink-2 hover:text-ink-0 hover:bg-surface-sunken'}"
 				>
 					<div class="flex items-center gap-1.5">
 						{#if section.icon}
@@ -321,20 +304,16 @@
 
 		{#if $isAdmin}
 			<div class="px-3 pb-3 lg:hidden">
-				<!-- 1024px 미만: 관리/사용자 모드 전환 -->
-				{#if $page.url.pathname.startsWith('/admin')}
-					<a href="/dashboard"
-						class="nav-item nav-active flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors">
-						<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
-						사용자 모드
-					</a>
-				{:else}
-					<a href="/admin"
-						class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors text-ink-2 hover:text-ink-0 hover:bg-surface-sunken">
-						<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6l8-4z"></path></svg>
-						관리자 모드
-					</a>
-				{/if}
+				<!-- 1024px 미만: 현재 사용자 모드 표시, 관리자 모드로 전환 -->
+				<a
+					href="/admin"
+					aria-label="현재 사용자 모드, 관리자 모드로 전환"
+					title="관리자 모드로 전환"
+					class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors text-ink-2 hover:text-ink-0 hover:bg-surface-sunken"
+				>
+					<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+					사용자 모드
+				</a>
 			</div>
 		{/if}
 

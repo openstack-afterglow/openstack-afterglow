@@ -38,11 +38,11 @@ Afterglow는 현재 [DMS Cloud 연구 클라우드 제공 콘솔](https://cloud.
 git clone git@github.com:openstack-afterglow/openstack-afterglow.git
 cd openstack-afterglow
 cp afterglow.conf.example afterglow.conf   # OpenStack 자격증명 입력
-cp .env.example .env                       # 로컬 compose 전용: SECRET_KEY 교체 또는 dev-only allow 플래그 유지
-docker compose up -d                 # http://localhost:3000
+cp .env.example .env
+npm run services:up                  # docker-compose.dev.yml, http://localhost:3080
 ```
 
-`afterglow.conf`가 유일한 애플리케이션 설정 파일입니다. `.env.example`의 `AFTERGLOW_ALLOW_INSECURE=1`은 Docker Compose 로컬 개발 전용이며 Kubernetes/production에는 넣지 않습니다.
+개발 실행에는 sibling checkout `../lumen`, `../waygate`, `../drover`, `../palimpsest`와 실제 OpenStack 인증·service project 설정이 필요합니다. `services:up`은 private 로컬 설정과 키를 보존하며 현재 소스를 빌드합니다. `docker-compose.yml`은 frontend/backend만, `docker-compose.prod.yml`은 GHCR 이미지·TLS HAProxy·기본 catalog 연결을 담당합니다. 독립 서비스의 목적지는 `SERVICE_*_INTERNAL_URL` 또는 `[services]`로 선택할 수 있으며 원격 OpenStack 설정은 바꾸지 않습니다. 명령과 선행 조건은 [Compose 배포 가이드](docs/deployment.md#docker-compose-배포)를 따릅니다.
 
 ### 공개 MCP/OAuth
 
@@ -83,7 +83,7 @@ cd backend && uv sync && uv run uvicorn app.main:app --reload   # 백엔드 :800
 cd frontend && npm install && npm run dev                       # 프론트엔드 :3000
 npm run test:list                                               # 실행 가능한 국소 테스트 타깃 확인
 npm run test:target -- auth                                     # 예: 인증/세션 관련 국소 기능테스트
-npm run test:functional                                         # 일회용 전용 DB/캐시 기능테스트 (3307/5434/6380)
+npm run test:functional                                         # dev Compose test profile, 전용 3307/5434/6380
 npm run test:unit                                               # 오케스트레이터 + 백엔드/프론트엔드 단위 계층
 npm run test:gate                                               # 커밋/PR 전 확정 게이트 (test:all + lint:backend)
 ```

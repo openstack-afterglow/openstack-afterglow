@@ -1,60 +1,92 @@
 <script lang="ts">
+	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import Pill from '$lib/components/ui/Pill.svelte';
+	import TableShell from '$lib/components/ui/TableShell.svelte';
+	import type { NetworkAgent } from '$lib/types/adminServices';
+	import ServiceListControls from './ServiceListControls.svelte';
+	import ServiceSortHeader from './ServiceSortHeader.svelte';
 	import { fmtTime } from './serviceColumns.js';
-
-	interface NetworkAgent {
-		id: string;
-		binary: string;
-		host: string;
-		agent_type: string;
-		availability_zone: string | null;
-		alive: boolean | null;
-		admin_state_up: boolean;
-		updated_at: string | null;
-	}
+	import {
+		buildServiceFilters,
+		createServiceListState,
+		filterAndSortRows,
+		serviceTimestamp,
+		type ServiceListField,
+		type ServiceListState,
+	} from './serviceList';
 
 	let {
 		agents,
 		loading,
 		emptyMessage,
+		view = $bindable(createServiceListState()),
 	}: {
 		agents: NetworkAgent[];
 		loading: boolean;
 		emptyMessage: string;
+		view?: ServiceListState;
 	} = $props();
+
+	function aliveLabel(alive: boolean | null): string {
+		return alive === true ? 'alive' : alive === false ? 'down' : '미확인';
+	}
+
+	const fields: ServiceListField<NetworkAgent>[] = [
+		{ key: 'agent_type', label: 'Agent Type', value: (agent) => agent.agent_type, filter: true },
+		{ key: 'binary', label: 'Binary', value: (agent) => agent.binary, filter: true },
+		{ key: 'host', label: 'Host', value: (agent) => agent.host, filter: true },
+		{ key: 'zone', label: 'Zone', value: (agent) => agent.availability_zone, filter: true },
+		{ key: 'alive', label: 'Alive', value: (agent) => agent.alive === null ? null : aliveLabel(agent.alive), filter: true },
+		{ key: 'admin_state', label: 'Admin State', value: (agent) => agent.admin_state_up ? 'UP' : 'DOWN', filter: true },
+		{ key: 'updated', label: 'Updated', value: (agent) => agent.updated_at, sortValue: (agent) => serviceTimestamp(agent.updated_at) },
+	];
+	const filters = $derived(buildServiceFilters(agents, fields));
+	const sortOptions = fields.map(({ key, label }) => ({ key, label }));
+	const displayedAgents = $derived(filterAndSortRows(agents, fields, view));
 </script>
 
-{#if loading}
-	<LoadingSkeleton variant="table" rows={8} />
-{:else if agents.length === 0}
-	<div class="text-ink-3 text-sm py-8 text-center">{emptyMessage}</div>
+<ServiceListControls
+	bind:view
+	{filters}
+	{sortOptions}
+	total={agents.length}
+	count={displayedAgents.length}
+	{loading}
+	searchPlaceholder="Agent Type, Binary, Host, Zone, Updated 검색"
+/>
+
+{#if agents.length === 0}
+	{#if loading}
+		<LoadingSkeleton variant="table" rows={8} />
+	{:else}
+		<EmptyState headline={emptyMessage} />
+	{/if}
+{:else if displayedAgents.length === 0}
+	<EmptyState headline="일치하는 네트워크 에이전트가 없습니다" description="필터나 검색어를 조정해 보세요." />
 {:else}
-	<div class="overflow-x-auto">
-		<table class="w-full text-sm">
+	<TableShell density="compact">
+		<table aria-label="네트워크 에이전트 목록">
 			<thead>
-				<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
-					<th class="text-left py-2 pr-4">Agent Type</th>
-					<th class="text-left py-2 pr-4">Binary</th>
-					<th class="text-left py-2 pr-4">Host</th>
-					<th class="text-left py-2 pr-4">Zone</th>
-					<th class="text-left py-2 pr-4">Alive</th>
-					<th class="text-left py-2 pr-4">Admin State</th>
-					<th class="text-left py-2">Updated</th>
+				<tr>
+					{#each fields as field (field.key)}
+						<ServiceSortHeader bind:view column={field.key} label={field.label} />
+					{/each}
 				</tr>
 			</thead>
 			<tbody>
-				{#each agents as a (a.id)}
-					<tr class="border-b border-line/50 text-xs hover:bg-surface-sunken/30">
-						<td class="py-2 pr-4 text-ink-0">{a.agent_type}</td>
-						<td class="py-2 pr-4 text-ink-2 font-mono">{a.binary}</td>
-						<td class="py-2 pr-4 text-ink-2">{a.host}</td>
-						<td class="py-2 pr-4 text-ink-2">{a.availability_zone || '-'}</td>
-						<td class="py-2 pr-4"><span class="px-1.5 py-0.5 rounded text-xs font-medium {a.alive ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'}">{a.alive ? 'alive' : 'down'}</span></td>
-						<td class="py-2 pr-4"><span class="px-1.5 py-0.5 rounded text-xs font-medium {a.admin_state_up ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'}">{a.admin_state_up ? 'UP' : 'DOWN'}</span></td>
-						<td class="py-2 text-ink-3">{fmtTime(a.updated_at)}</td>
+				{#each displayedAgents as agent (agent.id)}
+					<tr>
+						<td class="text-ink-0">{agent.agent_type}</td>
+						<td class="font-mono text-ink-2">{agent.binary}</td>
+						<td class="text-ink-2">{agent.host}</td>
+						<td class="text-ink-2">{agent.availability_zone || '-'}</td>
+						<td><Pill tone={agent.alive === true ? 'success' : agent.alive === false ? 'danger' : 'neutral'} size="xs">{aliveLabel(agent.alive)}</Pill></td>
+						<td><Pill tone={agent.admin_state_up ? 'success' : 'danger'} size="xs">{agent.admin_state_up ? 'UP' : 'DOWN'}</Pill></td>
+						<td class="tabular-nums text-ink-2">{fmtTime(agent.updated_at)}</td>
 					</tr>
 				{/each}
 			</tbody>
 		</table>
-	</div>
+	</TableShell>
 {/if}

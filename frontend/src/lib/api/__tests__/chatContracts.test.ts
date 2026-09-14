@@ -3,7 +3,8 @@ import {
 	ChatContractError,
 	parseChatPartsForDisplay,
 	parseChatPartsStrict,
-	parseChatRunEvent
+	parseChatRunEvent,
+	parseContextState
 } from '../chatContracts';
 
 describe('chatContracts', () => {
@@ -68,6 +69,17 @@ describe('chatContracts', () => {
 			checkpoint_id: null,
 			active_compaction_run_id: null
 		};
+		const breakdown = { scope: 'request', complete: true, uncounted: [], components: [
+			{ id: 'messages', tokens: 9856, measurement: 'estimated', count: 2, included: true, items: ['user:1', 'assistant:2'] }
+		] };
+		expect(() => parseContextState({ ...state, breakdown: { ...breakdown, components: [
+			{ ...breakdown.components[0], raw_prompt: 'private' }
+		] } })).toThrow(ChatContractError);
+		expect(() => parseContextState({ ...state, breakdown: { ...breakdown, components: [
+			{ ...breakdown.components[0], tokens: -1 }
+		] } })).toThrow(ChatContractError);
+		expect(() => parseContextState({ ...state, breakdown: { ...breakdown, uncounted: ['mcp_tools'] } })).toThrow(ChatContractError);
+		expect(() => parseContextState({ ...state, breakdown: { ...breakdown, components: [breakdown.components[0], breakdown.components[0]] } })).toThrow(ChatContractError);
 		expect(
 			parseChatRunEvent({
 				event_id: 'run-context:1',

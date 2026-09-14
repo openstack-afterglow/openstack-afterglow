@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 const path = require("node:path");
+const { devNull } = require("node:os");
 const { spawnSync } = require("node:child_process");
 
 const rootDir = path.resolve(__dirname, "..");
 const testTargetPath = path.join(__dirname, "test-target.js");
-const composeFile = path.join(rootDir, "docker-compose.test.yml");
+const composeFile = path.join(rootDir, "docker-compose.dev.yml");
 const projectName = process.env.AFTERGLOW_TEST_PROJECT_NAME || "afterglow-test";
+const services = ["mariadb", "postgres", "test-redis"];
 
 const localDatabaseUrl = "mysql+aiomysql://afterglow:dev@127.0.0.1:3307/afterglow_functional";
 const localCheckpointerUrl = "postgresql://afterglow:dev@127.0.0.1:5434/afterglow_checkpoints";
@@ -25,7 +27,7 @@ function run(command, args, options = {}) {
 }
 
 function composeArgs(...args) {
-	return ["compose", "-f", composeFile, "-p", projectName, ...args];
+	return ["compose", "--env-file", devNull, "-f", composeFile, "-p", projectName, "--profile", "test", ...args];
 }
 
 function main(argv, runner = run) {
@@ -41,7 +43,7 @@ function main(argv, runner = run) {
 	try {
 		if (ownsServices) {
 			console.log("Starting disposable MariaDB, PostgreSQL, and Redis functional services...");
-			exitCode = runner("docker", composeArgs("up", "-d", "--wait"));
+			exitCode = runner("docker", composeArgs("up", "-d", "--wait", "--no-deps", ...services));
 		}
 
 		if (exitCode === 0) {
@@ -60,7 +62,7 @@ function main(argv, runner = run) {
 	} finally {
 		if (ownsServices && !keep) {
 			console.log("Tearing down disposable functional services...");
-			const downExitCode = runner("docker", composeArgs("down", "--volumes", "--remove-orphans"));
+			const downExitCode = runner("docker", composeArgs("down", ...services));
 			if (exitCode === 0 && downExitCode !== 0) exitCode = downExitCode;
 		}
 	}

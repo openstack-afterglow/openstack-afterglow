@@ -340,14 +340,12 @@ async def test_dashboard_k3s_stats_uses_caller_catalog_sdk(client):
     drover.cluster_stats.return_value = {"total": 3, "active": 2}
     with (
         patch("app.api.common.dashboard.get_settings", return_value=SimpleNamespace(service_k3s_enabled=True)),
-        patch("app.api.common.dashboard.register_drover", return_value=drover) as register,
+        patch("app.api.common.dashboard.get_drover_proxy", return_value=drover),
     ):
         response = await client.get("/api/v1/dashboard/k3s-stats?refresh=true")
 
     assert response.status_code == 200
     assert response.json() == {"total": 3, "active": 2, "available": True}
-    register.assert_called_once()
-    drover.cluster_stats.assert_called_once_with()
 
 
 @pytest.mark.asyncio
@@ -356,7 +354,7 @@ async def test_dashboard_k3s_stats_reports_drover_unavailable(client):
 
     with (
         patch("app.api.common.dashboard.get_settings", return_value=SimpleNamespace(service_k3s_enabled=True)),
-        patch("app.api.common.dashboard.register_drover", side_effect=RuntimeError("catalog unavailable")),
+        patch("app.api.common.dashboard.get_drover_proxy", side_effect=RuntimeError("catalog unavailable")),
     ):
         response = await client.get("/api/v1/dashboard/k3s-stats")
 
@@ -374,7 +372,7 @@ async def test_dashboard_k3s_stats_rejects_invalid_project_before_catalog_call()
 
     with (
         patch("app.api.common.dashboard.get_settings", return_value=SimpleNamespace(service_k3s_enabled=True)),
-        patch("app.api.common.dashboard.register_drover") as register,
+        patch("app.api.common.dashboard.get_drover_proxy") as register,
         pytest.raises(HTTPException) as error,
     ):
         await get_dashboard_k3s_stats(

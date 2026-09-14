@@ -43,7 +43,7 @@ async def test_monitoring_summary_includes_k3s_active(admin_client, monkeypatch)
     cluster = {"id": "c1", "name": "dms-cloud", "status": "ACTIVE"}
     with (
         patch("app.api.identity.admin.get_os_conn", return_value=conn),
-        patch("app.api.identity.admin.register_drover", return_value=_drover([cluster])),
+        patch("app.api.identity.admin.get_drover_proxy", return_value=_drover([cluster])),
         patch("app.api.identity.admin._fetch_hypervisors_raw", return_value=[]),
         patch(
             "app.api.identity.admin._fetch_overview_servers",
@@ -80,7 +80,7 @@ async def test_monitoring_summary_k3s_zero_when_empty(admin_client, monkeypatch)
     patch_redis_cache_miss(monkeypatch)
     conn = _setup_conn()
     with (
-        patch("app.api.identity.admin.register_drover", return_value=_drover([])),
+        patch("app.api.identity.admin.get_drover_proxy", return_value=_drover([])),
         patch("app.api.identity.admin._fetch_hypervisors_raw", return_value=[]),
         patch(
             "app.api.identity.admin._fetch_overview_servers",
@@ -113,7 +113,7 @@ async def test_monitoring_summary_marks_drover_unavailable(admin_client, monkeyp
     patch_redis_cache_miss(monkeypatch)
     conn = _setup_conn()
     with (
-        patch("app.api.identity.admin.register_drover", side_effect=RuntimeError("catalog unavailable")),
+        patch("app.api.identity.admin.get_drover_proxy", side_effect=RuntimeError("catalog unavailable")),
         patch("app.api.identity.admin._fetch_hypervisors_raw", return_value=[]),
         patch(
             "app.api.identity.admin._fetch_overview_servers",
@@ -151,7 +151,7 @@ async def test_monitoring_summary_includes_new_groups(admin_client, monkeypatch)
     patch_redis_cache_miss(monkeypatch)
     conn = _setup_conn()
     with (
-        patch("app.api.identity.admin.register_drover", return_value=_drover([])),
+        patch("app.api.identity.admin.get_drover_proxy", return_value=_drover([])),
         patch("app.api.identity.admin._fetch_hypervisors_raw", return_value=[]),
         patch(
             "app.api.identity.admin._fetch_overview_servers",
@@ -201,7 +201,7 @@ async def test_monitoring_summary_handles_per_resource_failure(admin_client, mon
     conn.network.subnets.side_effect = RuntimeError("subnet API down")
     with (
         patch(
-            "app.api.identity.admin.register_drover",
+            "app.api.identity.admin.get_drover_proxy",
             return_value=_drover([{"status": "ACTIVE"}, {"status": "CREATING"}]),
         ),
         patch("app.api.identity.admin._fetch_hypervisors_raw", return_value=[]),

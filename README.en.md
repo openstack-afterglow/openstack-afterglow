@@ -38,11 +38,11 @@ The browser's SvelteKit application calls the configured FastAPI `/api/v1` API b
 git clone git@github.com:openstack-afterglow/openstack-afterglow.git
 cd openstack-afterglow
 cp afterglow.conf.example afterglow.conf   # set your OpenStack credentials
-cp .env.example .env                       # local compose only: replace SECRET_KEY or keep dev-only allow flag
-docker compose up -d                 # http://localhost:3000
+cp .env.example .env
+npm run services:up                  # docker-compose.dev.yml, http://localhost:3080
 ```
 
-`afterglow.conf` is the only application configuration file. The `AFTERGLOW_ALLOW_INSECURE=1` flag in `.env.example` is only for local Docker Compose development; never set it in Kubernetes or production.
+Development requires sibling checkouts `../lumen`, `../waygate`, `../drover`, `../palimpsest` and valid OpenStack authentication/service-project settings. `services:up` builds current source while preserving private local configuration and keys. `docker-compose.yml` runs only frontend/backend; `docker-compose.prod.yml` uses GHCR images, TLS HAProxy ingress and catalog discovery by default. Select owned-service endpoints through `SERVICE_*_INTERNAL_URL` or `[services]` without changing remote OpenStack routing. See the [Compose deployment guide](docs/en/deployment.md#docker-compose-deployment) for prerequisites and explicit mode commands.
 
 ### Public MCP/OAuth
 

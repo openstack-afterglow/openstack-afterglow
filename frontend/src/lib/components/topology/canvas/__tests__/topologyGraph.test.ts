@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { assignTenantColors, buildGraph, buildMemberEdges, edgeRate, edgeStyle, FLOW_MIN_BPS, flowStreams, matchesQuery, relatedSet } from '../topologyGraph';
+import { allocateFlowDots, assignTenantColors, buildGraph, buildMemberEdges, edgeRate, edgeStyle, FLOW_DOT_BUDGET, FLOW_MIN_BPS, flowStreams, matchesQuery, relatedSet, switchThroughput, trunkIntensityBps } from '../topologyGraph';
+import { edgeIntensity, flowDotCount } from '../canvasHelpers';
+import { NO_TELEMETRY_STYLE } from '../canvasHelpers';
 import { autoLayout } from '../topologyLayout';
 import type { RouterNode, VmNode } from '../types';
 import { makeFixture, makeTraffic, mkInst, mkLb, OTHER, P } from './fixtures';
@@ -249,22 +251,78 @@ describe('edgeRate / edgeStyle', () => {
 		expect(edgeRate(sharedUplink, traffic, all)).toEqual({ rx_bps: 14e6, tx_bps: 6e6 });
 	});
 
-	it('트래픽 강도는 edgeIntensity 를 따르고 trunk 는 최소 폭 2.5', () => {
+	it('트래픽 강도는 edgeIntensity 를 따른다', () => {
 		// 4.3e6 는 1e6 과 1e7 사이 → 계단이 아니라 연속 보간값이 나온다
 		const mid = edgeStyle(cable('vm-web-01', 'net-web'), t, g);
 		expect(mid.bps).toBe(4.3e6);
-		expect(mid.width).toBeGreaterThan(2.5);
-		expect(mid.width).toBeLessThan(3.0);
+		expect(mid.width).toBeGreaterThan(3.0);
+		expect(mid.width).toBeLessThan(3.6);
 		expect(mid.opacity).toBeGreaterThan(0.8);
 		expect(mid.opacity).toBeLessThan(0.9);
 		const trunk = g.edges.find((e) => e.kind === 'trunk' && e.netId === 'net-mgmt')!;
 		expect(trunk).toBeUndefined();
 		const appTrunk = g.edges.find((e) => e.kind === 'trunk' && e.netId === 'net-app' && e.from === 'rtr-edge')!;
-		expect(edgeStyle(appTrunk, null, g)).toMatchObject({ width: 2.5, opacity: 0.4 });
-		// 트래픽이 붙으면 트렁크 최소 폭(2.5)보다 굵어지고, 케이블보다 사용량이 많으므로 더 굵다
+		// 계측이 없으면 NO_TELEMETRY_STYLE 이다(예전의 트렁크 하한 2.5 가 아니다)
+		expect(edgeStyle(appTrunk, null, g)).toMatchObject({ ...NO_TELEMETRY_STYLE });
 		const trunkStyled = edgeStyle(appTrunk, t, g);
 		expect(trunkStyled.width).toBeGreaterThan(mid.width);
 		expect(trunkStyled.opacity).toBeGreaterThan(mid.opacity);
+	});
+
+	it('트렁크 강도는 증명된 구간 [max, rx+tx] 안의 중점이다 — east-west 이중 계상', () => {
+		const appTrunk = g.edges.find((e) => e.kind === 'trunk' && e.netId === 'net-app' && e.from === 'rtr-edge')!;
+		// networks['net-app'] 은 그 망에 붙은 NIC 합이라 동서 트래픽이 보내는 쪽 tx 와 받는 쪽 rx 로
+		// 두 번 잡힌다. 실제 통과량 T 는 max(rx,tx) ≤ T ≤ rx+tx 로만 좁혀지고 EW 는 계측 불가다.
+		expect(edgeRate(appTrunk, t, g)).toEqual({ rx_bps: 1.4e7, tx_bps: 6.0e6 });
+		const bps = edgeStyle(appTrunk, t, g).bps!;
+		expect(bps).toBeGreaterThanOrEqual(1.4e7);       // 하계 max
+		expect(bps).toBeLessThanOrEqual(2.0e7);          // 상계 rx+tx
+		expect(bps).toBe(1.4e7 + 6.0e6 / 2);             // 중점
+		// 케이블은 그대로 rx+tx 다 — NIC 하나의 두 방향은 진짜로 서로 다른 방향이다
+		expect(edgeStyle(cable('vm-web-01', 'net-web'), t, g).bps).toBe(3.2e6 + 1.1e6);
+	});
+
+	it('순수 east-west 는 rx+tx 의 2배 과대를 피하고, 양방향 남북은 max 의 2배 과소를 피한다', () => {
+		// 순수 east-west(rx≈tx, 실제 통과량 ≈ rx): rx+tx 였다면 2배였다
+		expect(switchThroughput({ rx_bps: 10e6, tx_bps: 10e6 })).toBe(15e6);
+		expect(switchThroughput({ rx_bps: 10e6, tx_bps: 10e6 })).toBeLessThan(20e6);
+		// 순수 단방향 남북(한쪽이 0): 두 끝값이 일치하므로 추정도 정확하다
+		expect(switchThroughput({ rx_bps: 10e6, tx_bps: 0 })).toBe(10e6);
+		// 어떤 입력에서도 구간을 벗어나지 않는다
+		for (const [rx, tx] of [[0, 0], [1, 0], [3e5, 7e5], [9e8, 1e3]] as const) {
+			const v = switchThroughput({ rx_bps: rx, tx_bps: tx });
+			expect(v).toBeGreaterThanOrEqual(Math.max(rx, tx));
+			expect(v).toBeLessThanOrEqual(rx + tx);
+		}
+	});
+
+	it('uplink 는 **망별로 추정한 뒤 더한다** — 합산 뒤 추정하면 반대 방향 망이 상쇄된다', () => {
+		const all = buildGraph(makeFixture(), { projectId: null, showAll: true });
+		const traffic = makeTraffic();
+		// rtr-edge 는 tenant 망 두 개(net-web, net-app)를 문다.
+		traffic.networks['net-web'] = { rx_bps: 10e6, tx_bps: 0 };   // 순수 다운로드
+		traffic.networks['net-app'] = { rx_bps: 0, tx_bps: 10e6 };   // 순수 업로드
+		const uplink = all.edges.find((e) => e.kind === 'trunk' && e.from === 'rtr-edge' && e.netId === 'net-pub')!;
+
+		// 먼저 합산하면 {10M, 10M} 이 되어 east-west 로 오인되고 15M 이 된다.
+		expect(switchThroughput(edgeRate(uplink, traffic, all)!)).toBe(15e6);
+		// 망별로 추정하면 둘 다 순수 남북이라 10M + 10M = 20M 로 정확하다.
+		expect(trunkIntensityBps(uplink, traffic, all)).toBe(20e6);
+		expect(edgeStyle(uplink, traffic, all).bps).toBe(20e6);
+	});
+
+	it('한가한 트렁크는 바쁜 케이블보다 가늘다 — 굵기 하한이 위계를 뒤집지 않는다', () => {
+		// 예전에는 `Math.max(2.5, width)` 때문에 **모든 트렁크가 2.5px 로 같아지고**
+		// 가장 바쁜 케이블보다도 굵었다(실측 2026-09-13: 케이블 최대 2.28 < 트렁크 일괄 2.5).
+		const quiet = { ...t, networks: { ...t.networks, 'net-web': { rx_bps: 5e3, tx_bps: 4e3 } } };
+		const webTrunk = g.edges.find((e) => e.kind === 'trunk' && e.netId === 'net-web')!;
+		const styled = edgeStyle(webTrunk, quiet, g);
+		// **하한이 있었다면 2.5 로 올라갔을 값**이다. edgeIntensity 결과와 정확히 같아야 한다.
+		expect(styled.width).toBe(edgeIntensity(styled.bps!).width);
+		expect(styled.width).toBeLessThan(2.5);
+		expect(styled.width).toBeLessThan(edgeStyle(cable('vm-app-01', 'net-app'), t, g).width);
+		// 그래도 "계측 없음" 보다는 굵다
+		expect(styled.width).toBeGreaterThan(NO_TELEMETRY_STYLE.width);
 	});
 
 	it('FIP 는 0.6배 불투명도·폭 1.5·대시 4 3, LB 링크는 고정 스타일', () => {
@@ -344,6 +402,42 @@ describe('flowStreams — 내부 통신 vs 게이트웨이 방향', () => {
 		const st = flowStreams({ kind: 'trunk', netId: 'net-lab' }, { rx_bps: 4e6, tx_bps: 9e6 }, true);
 		expect(st).toHaveLength(1);
 		expect(st[0].internal).toBe(false);
+		// 트렁크는 edgeStyle 과 같은 스칼라(switchThroughput)를 쓴다 — 합(13e6)이 아니다
+		expect(st[0].bps).toBe(switchThroughput({ rx_bps: 4e6, tx_bps: 9e6 }));
+		expect(st[0].bps).toBe(11e6);
+		// 상위 호출자가 계산한 값을 넘기면 그것을 쓴다(uplink 는 망별 합이라 다르다)
+		expect(flowStreams({ kind: 'trunk', netId: 'net-lab' }, { rx_bps: 4e6, tx_bps: 9e6 }, true, 20e6)[0].bps).toBe(20e6);
+	});
+
+	it('예산이 모자라면 잘라 그리지 않고 통째로 건너뛴다 — 잘린 개수는 빈도를 거짓으로 낮춘다', () => {
+		const len = 400;
+		const mk = (i: number, bps: number) => ({
+			key: `e${i}`, netId: 'net-web', len,
+			streams: [{ bps, dir: true, internal: false }],
+		});
+		// bps 내림차순 후보 20개. 각자 flowDotCount 만큼 원하면 예산(60)을 훨씬 넘는다.
+		const cands = Array.from({ length: 20 }, (_, i) => mk(i, 1e9 / 10 ** (i / 4)));
+		const wanted = cands.reduce((n, c) => n + flowDotCount(c.streams[0].bps, len), 0);
+		expect(wanted).toBeGreaterThan(FLOW_DOT_BUDGET);
+
+		const alloc = allocateFlowDots(cands);
+		expect(alloc.reduce((n, a) => n + a.n, 0)).toBeLessThanOrEqual(FLOW_DOT_BUDGET);
+		// **배정된 엣지는 전부 원하는 개수를 그대로 받는다** — 절반만 받은 엣지가 있으면 안 된다
+		for (const a of alloc) expect(a.n).toBe(flowDotCount(cands.find((c) => c.key === a.key)!.streams[0].bps, len));
+		// 바쁜 쪽부터 배정한다
+		expect(alloc[0].key).toBe('e0');
+		// 예산에 못 든 엣지가 실제로 있다(= 문턱이 아니라 예산이 표시 여부를 정한다)
+		expect(alloc.length).toBeLessThan(cands.length);
+	});
+
+	it('예산이 넉넉하면 모든 후보가 원하는 개수를 받는다', () => {
+		const cands = [200, 400].map((len, i) => ({
+			key: `e${i}`, netId: 'net-web', len,
+			streams: [{ bps: 5e6, dir: true, internal: false }],
+		}));
+		const alloc = allocateFlowDots(cands, 1000);
+		expect(alloc).toHaveLength(2);
+		for (const [i, a] of alloc.entries()) expect(a.n).toBe(flowDotCount(5e6, cands[i].len));
 	});
 
 	it('FLOW_MIN_BPS 미만 스트림은 버린다 — 한쪽만 미달이면 그쪽만 사라진다', () => {
@@ -353,6 +447,9 @@ describe('flowStreams — 내부 통신 vs 게이트웨이 방향', () => {
 		// 합산이 문턱을 넘으면 게이트웨이 방향은 남는다
 		expect(flowStreams(cableTo('net-web'), { rx_bps: 6e4, tx_bps: 6e4 }, false)).toHaveLength(1);
 		expect(flowStreams(cableTo('net-web'), { rx_bps: 10, tx_bps: 20 }, false)).toEqual([]);
-		expect(FLOW_MIN_BPS).toBe(1e5);
+		// 실환경 중간대(1e4~1e5)는 흐름이 **보여야** 한다 — 예전 문턱(1e5)에서는 NIC 43개 중 4개만 남았다
+		expect(flowStreams(cableTo('net-web'), { rx_bps: 1.5e4, tx_bps: 1e4 }, false)).toHaveLength(1);
+		expect(flowStreams(cableTo('net-lab'), { rx_bps: 5e4, tx_bps: 2e4 }, true)).toHaveLength(2);
+		expect(FLOW_MIN_BPS).toBe(1e4);
 	});
 });

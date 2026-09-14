@@ -24,7 +24,17 @@ Afterglow는 Docker Compose(개발/소규모), Kubernetes(프로덕션), ArgoCD(
 
 ## Docker Compose 배포
 
-개발 환경 또는 단일 호스트 소규모 배포에 적합합니다.
+Compose 파일은 합쳐 쓰는 환경 overlay가 아니라 **각각 독립 실행하는 세 가지 계약**입니다. 항상 명시적인 `-f`로 선택합니다.
+
+| 파일 | 실행 목적 | 통신·데이터 경계 |
+|---|---|---|
+| `docker-compose.yml` | published Afterglow frontend/backend 두 개만 실행 | Redis·DB·OpenStack·형제 서비스는 외부 설정 |
+| `docker-compose.dev.yml` | 현재 Afterglow·Lumen·Waygate·Drover·Palimpsest 소스를 빌드해 로컬 실행 | Compose service DNS, private local DB/cache/checkpointer |
+| `docker-compose.prod.yml` | GHCR 이미지를 pull·동기화해 운영 실행 | HAProxy TLS/LB, 인증된 Keystone catalog endpoint |
+
+Dev와 prod를 같은 project/volume에 겹쳐 실행하지 않습니다. 기존 로컬 project는 dev 전환 후에도 `afterglow-local-services`이며 데이터나 암호화 키를 다시 만들지 않습니다.
+
+기능테스트도 `docker-compose.dev.yml`의 `test` profile을 사용합니다. `npm run test:functional`은 별도 `afterglow-test` project에서 전용 3307/5434/6380의 MariaDB/PostgreSQL/Redis 세 개만 실행하고 종료합니다. 테스트 데이터는 tmpfs이며 개발 앱·volume·키를 삭제하지 않습니다. Cloud 자격 증명 없는 테스트 단독 실행과 `--no-start`/`--keep` 사용법은 [기능테스트 가이드](testing.md#일회용-국소-기능테스트-환경-functional-lifecycle--ports)를 따릅니다.
 
 ### 1. 저장소 클론 및 설정
 
@@ -52,7 +62,7 @@ secret_key = "openssl-rand-hex-32-output"  # 반드시 32자 이상 random 값�
 default_network_id = "your-network-uuid"
 ```
 
-Docker Compose 로컬 개발에서는 `.env`도 함께 읽습니다. `.env.example`에는 예시 `SECRET_KEY=change-me-in-production`과 이를 로컬에서만 허용하는 `AFTERGLOW_ALLOW_INSECURE=1`이 들어 있습니다. 운영·Kubernetes에서는 `AFTERGLOW_ALLOW_INSECURE`를 절대 설정하지 말고 실제 `SECRET_KEY`를 사용하세요.
+기본 Compose backend는 `.env`를 선택적으로 읽지만 frontend에는 backend 시크릿을 주입하지 않습니다. Dev runner는 별도의 private random key를 생성·보존하며 insecure 기본 키 허용에 의존하지 않습니다. `.env.example`의 dev-only allow 플래그를 운영에 사용하지 마세요. Prod manifest는 이를 `0`으로 고정하고 실제 운영 키를 요구합니다.
 
 ### 1-b. 설정 오버라이드 (선택)
 
@@ -77,36 +87,187 @@ afterglow.openstack.conf  ← OpenStack 자격증명 오버라이드 (선택)
 
 파일명 예시 처럼 알파벳순(`g` < `o`)으로 적용되며 뒤 파일이 앞 파일을 이깁니다.
 
-### 2. 서비스 시작
+### 2. 기본 서비스 시작
 
 ```bash
-# 기본 서비스 (backend + frontend + redis)
-docker compose up -d
-
-# 모니터링 스택 포함
-docker compose --profile monitoring up -d
+# frontend/backend만 실행. 먼저 외부 DB·Redis 및 인증 설정을 준비한다.
+docker compose -f docker-compose.yml up -d
 ```
 
-### 3. 접속 확인
+### 3. 현재 형제 소스를 포함한 로컬 서비스 스택
+
+로컬 개발은 아래 root 명령으로 `afterglow-local-services` **한 project만** 실행합니다.
+`docker-compose.dev.yml` 하나가 frontend `3080`, backend `8000`과 필수 sibling 서비스를
+기본 실행합니다. 기존 `afterglow` project의 컨테이너가 남아 있으면 시작 전에 거부합니다.
+Runner는 다른 project를 자동 삭제하지 않습니다.
+
+사전 조건은 다음과 같습니다.
+
+- Docker Compose **2.24 이상** (optional env file 지원).
+- Python **3.11 이상** (표준 `tomllib`)과 이 checkout의 `afterglow.conf`, `.env`. Python은 `backend/.venv/bin/python`을 우선 사용하고, 없으면 `python3`를 사용합니다.
+  root 원본은 변경하지 않습니다. 첫 실행은 `afterglow.conf`를 private
+  `.local-services/afterglow.conf`로 복사하고, 별도 JWT/암호화/service key를
+  `.local-services/secrets.json`에 생성합니다. 디렉터리는 0700, config snapshot은 0640이며
+  snapshot을 mount하는 서비스에만 파일의 실제 GID를 `group_add`로 전달합니다. Linux에서도
+  image의 non-root UID를 바꾸지 않고 읽을 수 있습니다. 키와 `compose.env`는 0600으로 유지하고,
+  모든 private 파일은 Git과 Docker build context에서 제외합니다. 이후 실행은 snapshot과 키를 보존합니다.
+  `services:config`/`services:up`은 이 입력을 `.local-services/compose.env`(0600)에도 저장하여
+  명시적인 dev Compose 명령에서 재사용합니다. 이 파일에도 비밀이 있으므로 출력·커밋하지 않습니다.
+  OpenStack 인증은 local snapshot의 실제 자격 증명을 사용합니다. 로컬 DB가 격리되어도
+  OpenStack 자체는 실제 환경이므로 smoke는 resource mutation이나 provider completion을 하지 않습니다.
+- Drover readiness에는 dedicated service project UUID가 필요합니다. `.local-services/afterglow.conf`의 `[openstack] service_project_id` 또는 `.env`의 `OS_SERVICE_PROJECT_ID`로 명시합니다. 시작 전에 누락을 거부하고, admin 프로젝트로 fallback하지 않습니다.
+- 로컬 Drover API/worker/migration은 `SENTINEL_ENABLED=false`, `SENTINEL_HOSTS` 빈 값으로 고정하여 private TOML의 운영 Sentinel 설정을 상속하지 않습니다. 실제 cache client도 local Redis를 사용하며 runner가 이 격리를 검사합니다.
+- Kubernetes 환경에서 복사한 public OpenStack 경로가 로컬 Docker에 맞는지는 별도로 확인합니다. VPN/internal catalog 접근이 가능한 로컬 환경은 snapshot의 `[openstack] auth_url`에 검증한 versioned internal Keystone URL을, `interface`에 `internal`을 지정할 수 있습니다. 원본 설정과 secret은 보존하고 snapshot 변경 전 `.local-services/backups/`에 mode 0600 백업을 둡니다. Internal 경로도 503이면 상류 OpenStack 장애이며 로컬 재배포나 timeout 연장으로 정상 처리하지 않습니다.
+- 현재 소스 build 모드에는 sibling checkout `../lumen`, `../drover`, `../waygate`,
+  `../palimpsest`가 필요합니다. 마지막 checkout에서는 `hub/Dockerfile`도 필요합니다.
+- 실제 provider key를 추가하려면 **로컬** Lumen 관리 UI/API에 등록합니다. 운영 provider DB나
+  암호화된 key를 복제하지 않습니다. 키가 없어도 모델 metadata와 context-preview는 검증할 수
+  있지만, 실제 provider completion 검증은 별도 자격 증명이 필요합니다.
+
+`docker-compose.dev.yml`은 각 datastore URL을 interpolation 없는 literal로
+고정합니다. 따라서 `.env`뿐 아니라 shell에 남은 production DB URL도 local migration을
+외부로 보낼 수 없습니다. Backend는 `afterglow-mariadb`, 추출 서비스는 `service-mariadb`의
+개별 schema, Lumen checkpointer는 `lumen-postgres`, cache는 이 project의 Redis만 사용합니다.
+MariaDB/PostgreSQL은 host port를 공개하지 않습니다. 시작 전 resolved Compose의 DB/cache,
+volume/network, mount와 loopback port 경계를 검사하며, 무시된 `docker-compose.override.yml`을
+읽지 않습니다. API health와 migration 완료까지 기다린 뒤 `services:up`이 성공하지만,
+이것만으로 대시보드·OpenStack 통신까지 검증됐다는 뜻은 아닙니다.
 
 ```bash
-# 헬스체크
-curl http://localhost:8000/api/v1/health
+# 현재 sibling source와 Afterglow source를 build하고, migration/bootstrap 뒤 API+worker를 시작
+npm run services:up
 
-# 브라우저
-open http://localhost:3000
+# migration/API readiness, Lumen billing 계약, BFF/context와 실제 대시보드 summary/quotas 확인
+# 아래 BFF 검사는 shell에만 둔 short-lived Afterglow access token과 해당 사용자가 소유한
+# conversation 및 model ID/이름이 필요하다. token 값은 출력되지 않는다.
+export AFTERGLOW_SMOKE_TOKEN='<short-lived-afterglow-access-token>'
+export LUMEN_SMOKE_MODEL_ID='<active-lumen-model-id>'
+export LUMEN_SMOKE_CONVERSATION_ID='<conversation-owned-by-the-smoke-user>'
+# 필요할 때만 token의 허용된 project UUID를 지정
+export AFTERGLOW_SMOKE_PROJECT_ID='<project-uuid>'
+npm run services:smoke
+
+# 이 project만 정지한다. named volumes, 이미지, 다른 Compose project는 보존한다.
+npm run services:down
 ```
 
-### 서비스 구성
+`services:smoke`는 migration/bootstrapping container의 successful exit, worker의 running
+state, backend/frontend와 모든 service API endpoint를 확인합니다. Drover는 실제
+`/v1/health/ready`로 DB·Redis·migration ledger·Keystone service credential readiness를
+확인합니다. 인증 BFF는 Waygate/Drover/Palimpsest discovery와 각 service의 read-only list
+endpoint, Lumen `/chat/models`를 통과한 뒤 model provider를 호출하지 않는 read-only
+`context-preview`를 호출하고 현재 breakdown 계약과 완료된 토큰 합계를 검증합니다.
+추가로 Lumen OpenAPI의 `billing_admin_key`와 bulk billing GET 계약을 검사하여 구 API 연결을
+거부합니다. 마지막에는 cache를 사용하지 않는 dashboard overview summary/quotas와
+`k3s-stats`를 모두 조회합니다. Drover 통계는 HTTP 200만으로 통과하지 않고
+`available: true` 및 유효한 total/active 수가 있어야 합니다. SDK가 보내는 기존 Keystone
+token의 project scope도 보존되어야 하므로, 기본 project가 있는 관리자 계정의 성공만으로
+일반 사용자 통신을 검증했다고 판단하지 않습니다. 하나라도 실패하면 smoke는 nonzero로
+종료합니다. 예를 들어 Nova가 503이면 다른 service BFF가 정상이어도 전체 smoke는 실패합니다.
+model 또는 conversation이 없는 새 환경에서는 provider/model metadata와 smoke 사용자의
+conversation을 먼저 정상 **로컬** 관리 UI/API로 준비해야 하며, runner는 이를 만들지 않습니다.
 
-| 서비스 | 포트 | 설명 |
-|---|---|---|
-| frontend | 3000 | SvelteKit 웹 UI |
-| backend | 8000 | FastAPI REST API |
-| redis | 6379 | 캐시 / 세션 (AOF 영속화) |
-| opensearch | 9200 | 로그 검색 (모니터링) |
-| prometheus | 9090 | 메트릭 수집 (모니터링) |
-| grafana | 3001 | 대시보드 (모니터링) |
+각 HTTP smoke 요청의 deadline은 30초입니다. 실제 Keystone 확인을 포함하는 readiness에
+더 짧은 별도 deadline을 덧씌우지 않으며, timeout이나 비정상 응답을 성공으로 바꾸거나
+자동 재시도하지 않습니다. Provider key가 없는 모델 metadata/context-preview 성공은
+실제 Sonar completion이나 검색 출처 반환의 성공 증거가 아닙니다.
+
+현재 sibling source가 없으면 `services:up`은 시작 전에 중단합니다. 오래된 이미지로
+fallback하는 개발 모드는 없습니다. Published image 실행은 prod manifest를 사용합니다.
+
+```bash
+# private 입력 준비 후 직접 dev Compose 사용
+npm run services:config
+docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml up -d --build --wait
+
+# 기존 선택적 개발 모니터링 profile
+docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml --profile monitoring up -d
+```
+
+### 로컬 서비스 포트와 경계
+
+| 서비스 | Loopback port | 확인 경로 | 비고 |
+|---|---:|---|---|
+| frontend | 3080 | `/health` | 유일한 로컬 UI 주소 |
+| Afterglow BFF | 8000 | `/api/v1/health` | 기본 local DNS, 명시 endpoint override 가능 |
+| Redis | 6379 | container 내부 `redis:6379` | Compose project별 volume |
+| Waygate API | 8010 | `/v1/health` | API + worker |
+| Drover API | 8011 | `/v1/health/ready` | API + worker + migration |
+| Lumen API | 8012 | `/v1/health` | API + worker + checksum migration |
+| Palimpsest Hub | 8020 | `/v1/health` | API + worker + bootstrap |
+| service-mariadb | 공개 안 함 | Compose healthcheck | 로컬 service schemas 전용 |
+| afterglow-mariadb | 공개 안 함 | Compose healthcheck | Afterglow schema bootstrap 전용 |
+| lumen-postgres | 공개 안 함 | Compose healthcheck | API·worker 공통 durable checkpointer |
+
+이전 alternate port(`13080`/`18000`/`1801x`) 스택은 더 이상 별도로 운영하지 않습니다.
+기존 `afterglow`에서 전환할 때는 소유권을 확인한 컨테이너와 앱 이미지만 제거하고 named
+volumes·설정·키와 다른 프로젝트는 보존합니다. `docker system prune`이나 `down --volumes`는
+사용하지 않습니다. 정상 운영 중 정지는 `npm run services:down`으로 이 project에만 한정합니다.
+
+### 로컬 API endpoint 선택과 원격 OpenStack
+
+Keystone·Nova·Neutron 등 실제 OpenStack은 원격 클라우드를 그대로 사용합니다. 독립 서비스만
+로컬로 연결하려면 `SERVICE_WAYGATE_INTERNAL_URL`, `SERVICE_DROVER_INTERNAL_URL`,
+`SERVICE_LUMEN_INTERNAL_URL`, `SERVICE_PALIMPSEST_INTERNAL_URL` 또는 `[services]`의
+동명 `*_internal_url`을 설정합니다. BFF와 Drover/Waygate SDK에 함께 적용됩니다.
+
+Dev runner는 shell/`.env` → nonempty `.local-services/afterglow.conf` → Compose DNS를
+선택합니다. 명시적 빈 환경 변수는 해당 서비스만 카탈로그로 돌립니다. 기존 private snapshot은
+원본 설정 변경으로 덮어쓰지 않습니다. `services:config`는 선택값을 private `compose.env`에
+보존하고 `services:up`은 새 환경을 반영합니다. 기본·운영 실행은 override가 없으면 카탈로그를
+사용합니다. [주소 예시와 우선순위](openstack-service-catalog.md#로컬-direct-서비스-엔드포인트-오버라이드-direct-service-endpoint-overrides)를 따르세요.
+
+`LUMEN_MCP_CONTROL_PLANE_URL`은 Lumen이 Afterglow를 호출할 주소입니다. 브라우저의
+`PUBLIC_API_BASE` 및 원격 VM의 Waygate/Drover callback URL은 별도이며, 원격 VM callback에는
+개발 컨테이너 DNS나 `localhost`가 아닌 VM에서 도달 가능한 주소가 필요합니다.
+
+### 4. 운영 이미지와 TLS HAProxy
+
+Prod는 `afterglow-production` project에서 frontend/backend, private persistent Redis,
+HAProxy **3.2**를 기본 실행합니다. 앱 컨테이너는 host port를 열지 않고 HAProxy만
+80/443 및 선택 서비스용 TLS listener 8010/8011/8012/8020을 공개합니다. `/api/`,
+`/v1/`, `/.well-known/`, API docs는 backend, 나머지는 frontend로 전달합니다.
+SSE와 WebSocket 연결은 유지하며, 외부 `X-Forwarded-*`는 edge에서 덮어씁니다.
+
+운영자가 별도 mode 0600 env 파일에 `SECRET_KEY`, `OS_PASSWORD`, `DATABASE_URL`,
+HTTPS `ORIGIN`, HTTPS `PUBLIC_API_BASE`, 절대 경로 `TLS_CERTS_DIR`를 설정합니다.
+`afterglow.conf`에는 해당 환경의 Keystone URL·사용자·domain/project 등 나머지 설정을
+준비합니다. 인증서 디렉터리에는 실제 도메인에 유효한 certificate chain과 matching
+unencrypted private key를 포함한 PEM을 둡니다. Mount는 read-only이고 인증서가
+없거나 잘못되면 HAProxy가 시작하지 않습니다. 자동 self-signed 발급은 없습니다.
+
+```bash
+docker compose --env-file /path/to/production.env -f docker-compose.prod.yml pull
+docker compose --env-file /path/to/production.env -f docker-compose.prod.yml up -d --no-build --wait
+
+# Docker DNS round-robin pool: frontend/backend 각각 최대 10 replicas
+docker compose --env-file /path/to/production.env -f docker-compose.prod.yml up -d --no-build --wait --scale frontend=2 --scale backend=2
+```
+
+이미지 registry 기본값은 `ghcr.io/openstack-afterglow`입니다. 배포 시 검토한 `IMAGE_TAG`
+또는 개별 service tag를 고정하세요. `AFTERGLOW_BACKEND_IMAGE`, `AFTERGLOW_FRONTEND_IMAGE`,
+`AFTERGLOW_WORKER_IMAGE`, 각 sibling의 `*_API_IMAGE`/`*_WORKER_IMAGE`에는 tag 또는 digest를
+포함한 **완전한 image reference**를 지정할 수 있습니다. 현재 Afterglow CI는 amd64를
+발행하므로 ARM에서 published 이미지를 실행하려면 호환 manifest 확인 또는 명시적
+`DOCKER_DEFAULT_PLATFORM=linux/amd64` emulation이 필요합니다. Dev 소스 빌드는 native입니다.
+
+기본 운영은 이미 설치된 형제 서비스의 **Keystone internal catalog endpoint**로 통신합니다.
+운영 backend/Notion worker는 unset endpoint를 덮어쓰지 않으므로 TOML 또는 카탈로그를
+사용합니다. 명시적인 `SERVICE_*_INTERNAL_URL`/TOML override는 신뢰된 **HTTPS** URL만
+허용하고 빈 환경 변수는 카탈로그를 선택합니다. 같은 호스트에 형제 서비스를
+이미지로 설치해야 할 때만 `--profile waygate`, `--profile drover`, `--profile lumen`,
+`--profile palimpsest`를 명시합니다. 이 API·worker는 각각 migration/bootstrap 완료 뒤
+시작합니다. `--profile notion`은 선택적 Notion worker입니다.
+
+- 각 sibling의 외부 운영 DB URL, Keystone service credentials, callback URL과 기존
+  암호화 키를 준비합니다. Dev의 `dev` DB 계정이나 local snapshot을 복제하지 않습니다.
+- Drover는 `DROVER_OS_SERVICE_PROJECT_ID`에 전용 service project UUID가 필요합니다.
+- Lumen은 `LUMEN_CHECKPOINTER_POSTGRES_URL`, `LUMEN_ENCRYPTION_KEY`, 공유
+  `LUMEN_MCP_SERVICE_TOKEN`과 catalog에 공개한 Afterglow endpoint인
+  `LUMEN_MCP_CONTROL_PLANE_URL`을 설정합니다. `http://backend:8000`은 운영 값이 아닙니다.
+- 선택 API catalog URL은 운영 DNS·인증서에 맞는 `https://<service-host>:8010/v1` 등
+  HAProxy listener를 가리켜야 합니다. 이 Compose는 Keystone catalog를 자동 변경하지
+  않습니다. Profile을 끈 서비스는 HAProxy 시작을 막지 않으며 해당 listener만 503입니다.
 
 ---
 
@@ -439,9 +600,12 @@ spec:
 ### Docker Compose
 
 ```bash
-git pull origin dev
-docker compose pull
-docker compose up -d
+# Development: update reviewed source, then rebuild the dev manifest.
+npm run services:up
+
+# Production: select the reviewed published tag/digest and synchronize images only.
+docker compose --env-file /path/to/production.env -f docker-compose.prod.yml pull
+docker compose --env-file /path/to/production.env -f docker-compose.prod.yml up -d --no-build --wait
 ```
 
 ### 데이터베이스 스키마 마이그레이션
@@ -451,7 +615,7 @@ docker compose up -d
 로컬 Compose의 2026-08-02 채팅 메시지 시간대 컬럼 마이그레이션 예시:
 
 ```bash
-docker compose exec -T mariadb sh -c \
+docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml exec -T afterglow-mariadb sh -c \
   'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" "$MARIADB_DATABASE"' \
   < backend/migrations/070_chat_message_local_timestamps.sql
 ```
@@ -484,7 +648,7 @@ ArgoCD를 사용하는 경우 `dev` 브랜치 푸시 시 자동 동기화됩니�
 
 ```bash
 # 로그 확인
-docker compose logs backend
+docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml logs backend
 kubectl logs -f deployment/backend -n afterglow
 
 # Keystone 연결 테스트
@@ -494,7 +658,7 @@ curl -s https://keystone.example.com:5000/v3 | python3 -m json.tool
 ### Redis 연결 오류
 
 ```bash
-docker compose exec backend redis-cli -u redis://redis:6379 ping
+docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml exec redis redis-cli ping
 # 또는
 kubectl exec -n afterglow deployment/backend -- redis-cli -u redis://redis:6379 ping
 ```

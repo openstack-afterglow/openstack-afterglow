@@ -3,7 +3,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import TopologyCanvas from '../TopologyCanvas.svelte';
-import { buildGraph } from '../topologyGraph';
+import { buildGraph, edgeStyle } from '../topologyGraph';
+import { edgeIntensity, NO_TELEMETRY_STYLE } from '../canvasHelpers';
 import { layoutStorageKey } from '../layoutStorage';
 import { P, makeFixture, makeTraffic } from './fixtures';
 
@@ -177,27 +178,88 @@ describe('TopologyCanvas', () => {
 		expect(within(app).queryByText(/^MTU /)).toBeNull();
 	});
 
-	it('트렁크 배지는 하위 링크와 provider uplink의 합산 범위·속도를 구분하고 라우터 트래픽을 주장하지 않는다', () => {
+	it('provider uplink 배지는 하위 tenant 망이 2개 이상일 때만 그린다', () => {
 		renderCanvas();
 		const badges = Array.from(document.querySelectorAll<HTMLButtonElement>('button[data-trunk-badge]'));
-		// edge-router: pub+web+app, transit-router: transit+app → 5개 트렁크
-		expect(badges).toHaveLength(5);
+		// 트렁크는 5개(edge-router: pub+web+app, transit-router: transit+app)지만
+		// transit-router 는 tenant 망이 net-app 하나뿐이라 uplink 배지가 net-app 배지와
+		// **같은 숫자**가 된다 → 그리지 않는다.
+		expect(badges).toHaveLength(4);
+
+		// edge-router 는 tenant 망이 web + app 둘이라 합(19.8M)이 어느 한쪽과도 다르다 → 남는다
 		const uplink = badges.find((b) => b.dataset.trunkBadge === 'trunk:rtr-edge>sw:net-pub')!;
 		expect(uplink.textContent).toContain('▼ 19.8M');
 		expect(uplink.textContent).toContain('▲ 8.0M');
 		expect(uplink.textContent).toContain('하위망 합산');
 		expect(uplink.getAttribute('title')).toBe('라우터별 하위 네트워크 합산 트래픽 · 라우터 exporter 없음');
-		const sharedUplink = badges.find((b) => b.dataset.trunkBadge === 'trunk:rtr-transit>sw:net-transit')!;
-		expect(sharedUplink.textContent).toContain('▼ 14.0M');
-		expect(sharedUplink.textContent).toContain('▲ 6.0M');
-		expect(sharedUplink.textContent).toContain('하위망 합산');
-		expect(sharedUplink.textContent).not.toContain('120M');
+
+		// transit-router 의 uplink 배지는 없다. 있었다면 net-app 배지와 같은 14.0M 을 반복하고
+		// 그 중점이 자기 존 밖(provider 쪽)에 떨어져 남의 카드를 덮었다.
+		expect(badges.some((b) => b.dataset.trunkBadge === 'trunk:rtr-transit>sw:net-transit')).toBe(false);
+
 		const appBadge = badges.find((b) => b.dataset.trunkBadge === 'trunk:rtr-edge>sw:net-app')!;
 		expect(appBadge.textContent).toContain('▼ 14.0M');
 		expect(appBadge.textContent).toContain('네트워크 합산');
 		expect(appBadge.getAttribute('title')).toBe('연결 네트워크 합산 트래픽 · 라우터 exporter 없음');
+
+		// 배지를 접어도 선 자체와 그 설명(hit title)은 남는다 — 링크가 사라지는 게 아니다
 		const hit = document.querySelector('path[data-edge-key="trunk:rtr-edge>sw:net-app"]')!;
 		expect(hit.querySelector('title')!.textContent).toContain('연결 네트워크 합산 트래픽');
+		expect(document.querySelector('path[data-edge-key="trunk:rtr-transit>sw:net-transit"]')).toBeTruthy();
+	});
+
+	it('한 라우터가 provider 트렁크를 둘 이상 물어도 uplink 배지는 하나다', () => {
+		const data = makeFixture();
+		const edge = data.routers.find((r) => r.id === 'rtr-edge')!;
+		// 게이트웨이(net-pub) 와 별개로 shared provider(net-transit) 에도 인터페이스를 문다
+		edge.connected_subnet_ids = [...edge.connected_subnet_ids, 'sn-transit'];
+		edge.interface_ips = [...edge.interface_ips, { ip_address: '198.51.100.9', subnet_id: 'sn-transit' }];
+		renderCanvas({ data });
+		const uplinks = Array.from(document.querySelectorAll<HTMLButtonElement>('button[data-trunk-badge]'))
+			.filter((b) => (b.dataset.trunkBadge ?? '').startsWith('trunk:rtr-edge>') && b.textContent?.includes('하위망 합산'));
+		// 두 provider 트렁크의 trunkNetIds 가 같아 **같은 합을 두 번** 찍게 된다 → 하나만 남긴다
+		expect(uplinks).toHaveLength(1);
+	});
+
+	it('하위 tenant 망이 0개인 uplink 도 배지를 그리지 않는다', () => {
+		const data = makeFixture();
+		const other = data.routers.find((r) => r.id === 'rtr-other')!;
+		other.connected_subnet_ids = [];
+		other.interface_ips = [];
+		renderCanvas({ data, showAll: true, projectId: null });
+		expect(document.querySelector('button[data-trunk-badge="trunk:rtr-other>sw:net-pub"]')).toBeNull();
+		// 선 자체는 남는다
+		expect(document.querySelector('path[data-edge-key="trunk:rtr-other>sw:net-pub"]')).toBeTruthy();
+	});
+
+	it('트렁크 굵기에 하한이 없다 — edgeIntensity 결과가 그대로 stroke-width 가 된다', () => {
+		const data = makeFixture();
+		const t = makeTraffic();
+		t.networks['net-app'] = { rx_bps: 5e3, tx_bps: 4e3 };   // 하한이 있었다면 2.5 로 올라갔을 값
+		const graph = buildGraph(data, { projectId: P, showAll: false });
+		const appTrunk = graph.edges.find((e) => e.kind === 'trunk' && e.netId === 'net-app' && e.from === 'rtr-edge')!;
+		const expected = edgeStyle(appTrunk, t, graph).width;
+		expect(expected).toBeLessThan(2.5);
+		renderCanvas({ data, traffic: t });
+		const path = document.querySelector<SVGPathElement>(`path.edge[data-key="${appTrunk.key}"]`)!;
+		expect(Number(path.style.strokeWidth)).toBe(expected);
+		expect(Number(path.style.strokeWidth)).toBe(edgeIntensity(edgeStyle(appTrunk, t, graph).bps!).width);
+	});
+
+	it('**조용한 케이블은 계측 없는 케이블과 다르게 그려진다** (렌더 레벨)', () => {
+		const t = makeTraffic();
+		// vm-web-01 은 아주 조용하고, vm-web-03 은 표본 자체가 없다
+		t.interfaces!['port-web-01-eth0'] = {
+			instance_id: 'vm-web-01', network_id: 'net-web',
+			mac_address: 'fa:16:3e:a1:00:11', rx_bps: 12, tx_bps: 8,
+		};
+		renderCanvas({ traffic: t });
+		const w = (key: string) =>
+			Number(document.querySelector<SVGPathElement>(`path.edge[data-key^="cable:${key}"]`)!.style.strokeWidth);
+		const quiet = w('vm-web-01');
+		const none = w('vm-web-03');
+		expect(none).toBe(NO_TELEMETRY_STYLE.width);
+		expect(quiet).toBeGreaterThan(none);
 	});
 
 	it('관리자 보기에서는 존 라벨에 세그먼트·MTU pill 이 붙는다', () => {
@@ -343,14 +405,20 @@ describe('TopologyCanvas', () => {
 			.map((p) => Number(p.style.strokeWidth))
 			.filter((w) => Number.isFinite(w) && w > 0);
 		expect(widths.length).toBeGreaterThan(3);
-		// 예전 계단값 집합. 트래픽이 붙은 선 중 적어도 하나는 이 집합 밖(보간값)이어야 한다.
-		const steps = new Set([1.5, 2.0, 2.5, 3.0, 3.5]);
+		// 앵커값 집합. 트래픽이 붙은 선 중 적어도 하나는 이 집합 밖(보간값)이어야 한다.
+		const steps = new Set([1.5, 1.8, 2.7, 3.6, 4.5]);
 		expect(widths.some((w) => !steps.has(w))).toBe(true);
-		// 모든 굵기는 바닥값과 상한 사이에 있다
+		// 모든 굵기는 "계측 없음"(1.5)과 포화 상한(4.5) 사이에 있다
 		for (const w of widths) {
 			expect(w).toBeGreaterThanOrEqual(1.5);
-			expect(w).toBeLessThanOrEqual(3.5);
+			expect(w).toBeLessThanOrEqual(4.5);
 		}
+		// 트렁크 굵기 하한이 없으므로 트렁크가 무조건 가장 굵지는 않다
+		const trunkW = [...document.querySelectorAll<SVGPathElement>('path.edge[data-key^="trunk:"]')]
+			.map((p) => Number(p.style.strokeWidth));
+		const cableW = [...document.querySelectorAll<SVGPathElement>('path.edge[data-key^="cable:"]')]
+			.map((p) => Number(p.style.strokeWidth));
+		expect(Math.max(...cableW)).toBeGreaterThan(Math.min(...trunkW));
 	});
 
 	it('트랙패드 두 손가락 스크롤은 확대·축소가 아니라 위치를 이동한다', async () => {

@@ -11,11 +11,12 @@ const mixedSummary: Summary = {
 		{ status: 'in-use', count: 3 },
 		{ status: 'error', count: 2 },
 		{ status: 'maintenance', count: 2 },
+		{ status: 'reserved', count: 0 },
 	],
 };
 
 describe('AdminVolumeStatusSummary', () => {
-	it('renders total and mixed status counts', () => {
+	it('renders total and positive status counts while hiding zero-count states', () => {
 		render(AdminVolumeStatusSummary, {
 			props: {
 				summary: mixedSummary,
@@ -29,6 +30,8 @@ describe('AdminVolumeStatusSummary', () => {
 		expect(screen.getByRole('button', { name: 'in-use 3' })).toBeTruthy();
 		expect(screen.getByRole('button', { name: 'error 2' })).toBeTruthy();
 		expect(screen.getByRole('button', { name: 'maintenance 2' })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'reserved 0' })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'creating 0' })).toBeNull();
 	});
 
 	it('calls onSelect with the clicked status and clears the filter from the total card', async () => {

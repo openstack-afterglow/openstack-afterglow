@@ -150,6 +150,22 @@ export type ContextRecommendation = 'none' | 'compact' | 'required' | 'unavailab
 export type ContextPhase = 'ready' | 'compacting' | 'compacted' | 'failed';
 export type ContextCause = 'automatic' | 'manual' | null;
 
+export interface ContextComponent {
+	id: string;
+	tokens: number | null;
+	measurement: ContextMeasurement;
+	count: number | null;
+	included: boolean;
+	items: string[];
+}
+
+export interface ContextBreakdown {
+	scope: 'preview' | 'request';
+	complete: boolean;
+	components: ContextComponent[];
+	uncounted: string[];
+}
+
 export interface ContextState {
 	model_name: string;
 	context_limit: number | null;
@@ -165,6 +181,7 @@ export interface ContextState {
 	revision: string;
 	checkpoint_id: string | null;
 	active_compaction_run_id: string | null;
+	breakdown?: ContextBreakdown | null;
 }
 
 export interface ContextUpdatedPayload {
@@ -372,9 +389,54 @@ function nullableNonNegativeInteger(value: unknown, label: string): number | nul
 	return integer(value, label);
 }
 
+const CONTEXT_COMPONENT_IDS = ['messages', 'system_prompt', 'workspace', 'memory', 'skills', 'agent', 'tools', 'deferred_tools', 'mcp_tools', 'summary', 'attachments', 'overhead'] as const;
+
+function contextNames(value: unknown): string[] {
+	if (!Array.isArray(value) || value.length > 128) throw new ChatContractError('context names must be bounded');
+	return value.map((item) => {
+		const name = text(item, 'context item')!;
+		if (name.length > 512) throw new ChatContractError('context item is too long');
+		return name;
+	});
+}
+
+function parseContextBreakdown(value: unknown): ContextBreakdown | null {
+	if (value === null) return null;
+	const breakdown = record(value, 'context breakdown');
+	exact(breakdown, ['scope', 'complete', 'components', 'uncounted'], 'context breakdown');
+	if (!Array.isArray(breakdown.components) || breakdown.components.length > 64) {
+		throw new ChatContractError('context components must be bounded');
+	}
+	const componentIds = new Set<string>();
+	const parsed = {
+		scope: enumValue(breakdown.scope, ['preview', 'request'] as const, 'context scope'),
+		complete: bool(breakdown.complete, 'context complete'),
+		uncounted: contextNames(breakdown.uncounted),
+		components: breakdown.components.map((value) => {
+			const component = record(value, 'context component');
+			exact(component, ['id', 'tokens', 'measurement', 'count', 'included', 'items'], 'context component');
+			const id = enumValue(component.id, CONTEXT_COMPONENT_IDS, 'context component id');
+			if (componentIds.has(id)) throw new ChatContractError('duplicate context component id');
+			componentIds.add(id);
+			return {
+				id,
+				tokens: nullableNonNegativeInteger(component.tokens, 'context component tokens'),
+				measurement: enumValue(component.measurement, ['tokenizer', 'estimated', 'unknown'] as const, 'component measurement'),
+				count: nullableNonNegativeInteger(component.count, 'context component count'),
+				included: bool(component.included, 'context component included'),
+				items: contextNames(component.items)
+			};
+		})
+	};
+	if (new Set(parsed.uncounted).size !== parsed.uncounted.length || parsed.uncounted.some((id) => !componentIds.has(id))) {
+		throw new ChatContractError('uncounted context entries must name unique components');
+	}
+	return parsed;
+}
+
 export function parseContextState(value: unknown): ContextState {
 	const state = record(value, 'context state');
-	exact(
+	exactOptional(
 		state,
 		[
 			'model_name',
@@ -392,10 +454,12 @@ export function parseContextState(value: unknown): ContextState {
 			'checkpoint_id',
 			'active_compaction_run_id'
 		],
+		['breakdown'],
 		'context state'
 	);
 	return {
 		model_name: text(state.model_name, 'context model_name')!,
+		...(state.breakdown === undefined ? {} : { breakdown: parseContextBreakdown(state.breakdown) }),
 		context_limit: nullableNonNegativeInteger(state.context_limit, 'context_limit'),
 		output_reserve: nonNegativeNumber(state.output_reserve, 'output_reserve'),
 		safety_reserve: nonNegativeNumber(state.safety_reserve, 'safety_reserve'),

@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
-	import type { User } from '$lib/types/common';
+	import type { PagedResponse, User } from '$lib/types/common';
 	import {
 		formatCredit,
 		isCreditInput,
@@ -19,6 +19,7 @@
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import Pill from '$lib/components/ui/Pill.svelte';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
+	import Pagination from '$lib/components/ui/Pagination.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 
@@ -31,7 +32,6 @@
 	interface QuotaRow {
 		user: DisplayUser;
 		quota: UserQuota | null;
-		orphan: boolean;
 	}
 
 	function emptyQuotaList(): UserQuotaList {
@@ -47,9 +47,15 @@
 		};
 	}
 
+	const USER_PAGE_SIZE = 20;
+
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
+	const userId = $derived($auth.userId ?? undefined);
 	let users = $state<User[]>([]);
+	let userMarker = $state<string | null>(null);
+	let userMarkerStack = $state<(string | null)[]>([]);
+	let nextUserMarker = $state<string | null>(null);
 	let quotaList = $state<UserQuotaList>(emptyQuotaList());
 	let loading = $state(true);
 	let error = $state('');
@@ -66,26 +72,16 @@
 	let savingDefault = $state(false);
 	let resettingUserId = $state<string | null>(null);
 	let loadGeneration = 0;
+	let loadScopeKey = '';
 
 	const rows = $derived.by(() => {
 		const quotaByUser = new Map(quotaList.items.map((quota) => [quota.user_id, quota]));
-		const merged: QuotaRow[] = users.map((user) => ({
-			user,
-			quota: quotaByUser.get(user.id) ?? null,
-			orphan: false
-		}));
-		const knownIds = new Set(users.map((user) => user.id));
-		for (const quota of quotaList.items) {
-			if (!knownIds.has(quota.user_id)) {
-				merged.push({
-					user: { id: quota.user_id, name: quota.user_id, email: '' },
-					quota,
-					orphan: true
-				});
-			}
-		}
 		const query = search.trim().toLowerCase();
-		return merged
+		return users
+			.map((user): QuotaRow => ({
+				user,
+				quota: quotaByUser.get(user.id) ?? null
+			}))
 			.filter((row) => !query || [row.user.id, row.user.name, row.user.email].some((value) => value.toLowerCase().includes(query)))
 			.sort((left, right) => left.user.name.localeCompare(right.user.name));
 	});
@@ -112,46 +108,55 @@
 		return Boolean(row.quota && (!monthlyUsesDefault(row) || !weeklyUsesDefault(row)));
 	}
 
-	async function loadUsers(): Promise<User[]> {
-		let marker: string | null = null;
-		const collected: User[] = [];
-		do {
-			let url = '/api/v1/admin/users?limit=100';
-			if (marker) url += `&marker=${encodeURIComponent(marker)}`;
-			const response = await api.get<{ items: User[]; next_marker: string | null }>(
-				url,
-				token,
-				projectId
-			);
-			collected.push(...(response.items ?? []));
-			marker = response.next_marker ?? null;
-		} while (marker);
-		return collected;
+	async function loadUsers(marker: string | null): Promise<PagedResponse<User>> {
+		let url = `/api/v1/admin/users?limit=${USER_PAGE_SIZE}`;
+		if (marker) url += `&marker=${encodeURIComponent(marker)}`;
+		return api.get<PagedResponse<User>>(url, token, projectId);
 	}
 
-	async function loadAll() {
-		if (!token) return;
+	async function loadAll(marker: string | null = userMarker): Promise<boolean> {
 		const generation = ++loadGeneration;
+		if (!token) {
+			loading = false;
+			return false;
+		}
 		loading = true;
 		error = '';
 		try {
 			const [nextUsers, nextQuotas] = await Promise.all([
-				loadUsers(),
+				loadUsers(marker),
 				api.get<UserQuotaList>('/api/v1/chat/admin/quotas', token, projectId)
 			]);
-			if (generation !== loadGeneration) return;
-			users = nextUsers;
+			if (generation !== loadGeneration) return false;
+			users = nextUsers.items ?? [];
+			userMarker = marker;
+			nextUserMarker = nextUsers.next_marker ?? null;
 			quotaList = nextQuotas;
 			defaultDraft = nextQuotas.default_monthly_credit_limit ?? '';
+			return true;
 		} catch (caught) {
 			if (generation === loadGeneration) {
 				error = caught instanceof ApiError ? caught.message : '쿼터 조회 실패';
-				users = [];
-				quotaList = emptyQuotaList();
-				defaultDraft = '';
 			}
+			return false;
 		} finally {
 			if (generation === loadGeneration) loading = false;
+		}
+	}
+
+	async function nextPage() {
+		if (!nextUserMarker || loading) return;
+		const previousMarker = userMarker;
+		if (await loadAll(nextUserMarker)) {
+			userMarkerStack = [...userMarkerStack, previousMarker];
+		}
+	}
+
+	async function previousPage() {
+		if (userMarkerStack.length === 0 || loading) return;
+		const previousMarker = userMarkerStack.at(-1) ?? null;
+		if (await loadAll(previousMarker)) {
+			userMarkerStack = userMarkerStack.slice(0, -1);
 		}
 	}
 
@@ -260,10 +265,25 @@
 
 	$effect(() => {
 		void token;
-		void projectId;
-		untrack(() => void loadAll());
-		return () => { loadGeneration += 1; };
+		const nextScopeKey = JSON.stringify([userId ?? null, projectId ?? null]);
+		const scopeChanged = loadScopeKey !== nextScopeKey;
+		if (scopeChanged) {
+			loadScopeKey = nextScopeKey;
+			untrack(() => {
+				userMarker = null;
+				userMarkerStack = [];
+				nextUserMarker = null;
+				users = [];
+				quotaList = emptyQuotaList();
+				defaultDraft = '';
+			});
+		}
+		const marker = scopeChanged ? null : untrack(() => userMarker);
+		if (scopeChanged || !untrack(() => loading)) {
+			void untrack(() => loadAll(marker));
+		}
 	});
+	onDestroy(() => { loadGeneration += 1; });
 </script>
 
 <div class="mx-auto min-w-0 max-w-7xl p-4 md:p-6">
@@ -304,8 +324,8 @@
 	</section>
 
 	<div class="mb-4 max-w-xl">
-		<Field label="사용자 검색" for="quota-user-search" help="이름, 이메일 또는 사용자 ID로 검색합니다.">
-			<TextInput id="quota-user-search" type="search" placeholder="사용자 검색" bind:value={search} />
+		<Field label="사용자 검색" for="quota-user-search" help="현재 페이지에서 이름, 이메일 또는 사용자 ID로 검색합니다.">
+			<TextInput id="quota-user-search" type="search" placeholder="현재 페이지 사용자 검색" bind:value={search} />
 		</Field>
 	</div>
 
@@ -330,7 +350,6 @@
 							<td class="user-cell" title={row.user.id}>
 								<div class="flex items-center gap-2">
 									<span class="font-medium text-[var(--color-ink-1)]">{row.user.name}</span>
-									{#if row.orphan}<Pill tone="warning" size="xs">미확인 사용자</Pill>{/if}
 								</div>
 								{#if row.user.email}<div class="text-xs text-[var(--color-ink-3)]">{row.user.email}</div>{/if}
 							</td>
@@ -371,6 +390,14 @@
 				</tbody>
 			</table>
 		</TableShell>
+		<Pagination
+			page={userMarkerStack.length + 1}
+			hasPrev={userMarkerStack.length > 0}
+			hasNext={nextUserMarker !== null}
+			onPrev={() => void previousPage()}
+			onNext={() => void nextPage()}
+			note={`${users.length}명 표시`}
+		/>
 	{/if}
 </div>
 

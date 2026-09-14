@@ -12,7 +12,7 @@ import {
 } from '$lib/mockup/contracts';
 
 // 인증 없이 접근 가능한 경로
-const PUBLIC_PATHS = ['/', '/login', '/auth/gitlab/callback'];
+const PUBLIC_PATHS = ['/', '/login', '/auth/gitlab/callback', '/health'];
 
 // 정적 파일로 판단할 확장자 패턴
 const STATIC_EXT = /\.(js|css|svg|png|jpg|jpeg|ico|woff2?|ttf|eot|map|webp|gif)$/;

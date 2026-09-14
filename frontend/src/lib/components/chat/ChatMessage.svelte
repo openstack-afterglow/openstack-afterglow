@@ -128,7 +128,7 @@
 			<div class="user-text">{message.content}</div>
 		{:else}
 			{#if citations.length}
-				<div class="sources">
+				<section class="sources" aria-label="답변 출처">
 					<div class="sources-label">
 						<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" stroke-linecap="round" stroke-linejoin="round" /></svg>
 						출처 {citations.length}
@@ -141,18 +141,20 @@
 										<span class="src-num">{i + 1}</span>
 										<span class="src-label">{citationLabel(c)}</span>
 										<span class="src-domain">{citationDomain(c.url)}</span>
+										{#if c.snippet}<span class="src-snippet">{c.snippet}</span>{/if}
 									</a>
 								{:else}
 									<div class="source-document" title={c.snippet ?? undefined}>
 										<span class="src-num">{i + 1}</span>
 										<span class="src-label">{citationLabel(c)}</span>
 										<span class="src-domain">입력 문서</span>
+										{#if c.snippet}<span class="src-snippet">{c.snippet}</span>{/if}
 									</div>
 								{/if}
 							</li>
 						{/each}
 					</ol>
-				</div>
+				</section>
 			{/if}
 			{#if activityItems.length}
 				<ExecutionTimeline items={activityItems} active={streaming} />
@@ -385,6 +387,19 @@
 		font-size: 0.75rem;
 		color: var(--color-ink-2);
 	}
+	.src-snippet {
+		grid-column: 2;
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 3;
+		line-clamp: 3;
+		overflow: hidden;
+		overflow-wrap: anywhere;
+		font-size: 0.75rem;
+		line-height: 1.5;
+		color: var(--color-ink-2);
+	}
+	.sources-list a:visited .src-label { color: var(--color-accent-2); }
 	.tool-wrap {
 		max-width: min(92%, 52rem);
 	}

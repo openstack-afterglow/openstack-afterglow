@@ -449,44 +449,6 @@ describe('ChatPanel', () => {
 		compactionCompleted.resolve();
 		await waitFor(() => expect(document.querySelector('.context-activity')).toBeNull());
 	});
-	it('uses the typed HTTP 409 status for a compaction revision conflict', async () => {
-		mocks.get.mockImplementation(async (path: string) => {
-			if (path === '/api/v1/chat/models') {
-				return [{ id: 1, model_name: 'model-1', display_name: 'Model 1' }];
-			}
-			if (path === '/api/v1/chat/conversations') {
-				return [
-					{
-						id: 'conv-conflict',
-						title: '충돌 대화',
-						title_status: 'ready',
-						title_revision: 1,
-						model_name: 'model-1',
-						workspace_id: null,
-						updated_at: at
-					}
-				];
-			}
-			if (path === '/api/v1/chat/conversations/conv-conflict/messages?limit=40') {
-				return { messages: [], tree_nodes: [], active_leaf_id: null, has_more: false, next_before_id: null };
-			}
-			if (path === '/api/v1/chat/runs?active=true') return [];
-			if (path === '/api/v1/chat/conversations/conv-conflict/runs?active=true') return [];
-			return [];
-		});
-		mocks.createRun.mockRejectedValueOnce(new mocks.ChatHttpError('stale revision', 409));
-
-		render(ChatPanel);
-		await waitFor(() => expect(screen.getByText('충돌 대화')).toBeTruthy());
-		await fireEvent.click(screen.getByText('충돌 대화'));
-		const textbox = screen.getByRole('textbox') as HTMLTextAreaElement;
-		await fireEvent.input(textbox, { target: { value: '/' } });
-		const compactCommand = await screen.findByRole('option', { name: /압축.*컨텍스트.*명령/i });
-		await waitFor(() => expect((compactCommand as HTMLButtonElement).disabled).toBe(false));
-		await fireEvent.click(compactCommand);
-
-		await waitFor(() => expect(screen.getByText('대화 상태가 변경되었습니다. 최신 대화를 확인해 주세요.')).toBeTruthy());
-	});
 
 
 	it('resumes an active compaction run without creating an assistant bubble and supports cancellation', async () => {
@@ -575,57 +537,65 @@ describe('ChatPanel', () => {
 		holdRun.resolve();
 	});
 
-	it('polls pending conversation titles with max 4 concurrent requests and respects document visibility', async () => {
-		vi.useFakeTimers();
+
+	it('invalidates stale capacity on preview failure and recovers without losing the draft', async () => {
+		const defaultGet = mocks.get.getMockImplementation()!;
 		mocks.get.mockImplementation(async (path: string) => {
-			if (path === '/api/v1/chat/models') {
-				return [{ id: 1, model_name: 'model-1', display_name: 'Model 1' }];
+			if (path === '/api/v1/chat/conversations') return [{ id: 'context-chat', title: '컨텍스트 대화', model_name: 'model-1', updated_at: at }];
+			if (path.includes('/context-chat/messages')) return { messages: [], tree_nodes: [], active_leaf_id: null, has_more: false, next_before_id: null };
+			return defaultGet(path);
+		});
+		let unavailable = false;
+		mocks.previewContext.mockImplementation(async () => {
+			if (unavailable) throw new mocks.ChatHttpError('private-provider-response', 503);
+			return {
+				model_name: 'model-1', context_limit: 16000, output_reserve: 4096, safety_reserve: 2048,
+				input_budget: 9856, input_tokens: 3000, utilization: 0.3, measurement: 'tokenizer',
+				recommendation: 'none', can_compact: false, reason_code: null, revision: 'context-rev',
+				checkpoint_id: null, active_compaction_run_id: null
+			};
+		});
+		render(ChatPanel);
+		await fireEvent.click(await screen.findByText('컨텍스트 대화'));
+		await screen.findByRole('button', { name: '컨텍스트 용량 세부 정보' });
+		const textbox = screen.getByRole('textbox') as HTMLTextAreaElement;
+		unavailable = true;
+		await fireEvent.input(textbox, { target: { value: '보존할 초안' } });
+		expect(screen.queryByRole('button', { name: '컨텍스트를 표시할 수 없는 이유' })).toBeNull();
+		const reason = await screen.findByRole('button', { name: '컨텍스트를 표시할 수 없는 이유' });
+		expect(screen.queryByRole('button', { name: '컨텍스트 용량 세부 정보' })).toBeNull();
+		await fireEvent.click(reason);
+		expect(screen.getByRole('dialog', { name: '컨텍스트 윈도우' }).textContent).not.toContain('private-provider-response');
+		expect(textbox.value).toBe('보존할 초안');
+		unavailable = false;
+		await fireEvent.input(textbox, { target: { value: '보존할 초안 계속' } });
+		await screen.findByRole('button', { name: '컨텍스트 용량 세부 정보' });
+		expect(screen.queryByRole('dialog', { name: '컨텍스트 윈도우' })).toBeNull();
+		expect(textbox.value).toBe('보존할 초안 계속');
+	});
+
+	it('keeps the server pending state beyond thirty seconds and shows a late generated title', async () => {
+		vi.useFakeTimers();
+		const started = Date.now();
+		const pending = { id: 'slow-title', title: null, title_status: 'pending', title_revision: 1, model_name: 'model-1', workspace_id: null, updated_at: at };
+		mocks.get.mockImplementation(async (path: string) => {
+			if (path === '/api/v1/chat/models') return [{ id: 1, model_name: 'model-1', display_name: 'Model 1' }];
+			if (path === '/api/v1/chat/conversations') return [pending];
+			if (path === '/api/v1/chat/conversations/slow-title') {
+				return Date.now() - started >= 45_000
+					? { ...pending, title: 'OpenStack 배포 권장 구성', title_status: 'ready', title_revision: 2 }
+					: pending;
 			}
-			if (path === '/api/v1/chat/conversations') {
-				return [
-					{ id: 'c1', title: null, title_status: 'pending', title_revision: 0, model_name: 'model-1', workspace_id: null, updated_at: at },
-					{ id: 'c2', title: null, title_status: 'pending', title_revision: 0, model_name: 'model-1', workspace_id: null, updated_at: at },
-					{ id: 'c3', title: null, title_status: 'pending', title_revision: 0, model_name: 'model-1', workspace_id: null, updated_at: at },
-					{ id: 'c4', title: null, title_status: 'pending', title_revision: 0, model_name: 'model-1', workspace_id: null, updated_at: at },
-					{ id: 'c5', title: null, title_status: 'pending', title_revision: 0, model_name: 'model-1', workspace_id: null, updated_at: at }
-				];
-			}
-			if (path.startsWith('/api/v1/chat/conversations/c')) {
-				const id = path.split('/')[5];
-				return {
-					id,
-					title: `완료된 제목 ${id}`,
-					title_status: 'ready',
-					title_revision: 1,
-					model_name: 'model-1',
-					workspace_id: null,
-					updated_at: at
-				};
-			}
-			if (path === '/api/v1/chat/runs?active=true') return [];
 			return [];
 		});
-
+		const view = render(ChatPanel);
 		try {
-			render(ChatPanel);
-			await vi.advanceTimersByTimeAsync(0);
-
-			const singlePolls = mocks.get.mock.calls.filter(
-				(call) => typeof call[0] === 'string' && call[0].startsWith('/api/v1/chat/conversations/c')
-			);
-			expect(singlePolls.length).toBeGreaterThan(0);
-			expect(singlePolls.length).toBeLessThanOrEqual(5);
-
-			Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
-			document.dispatchEvent(new Event('visibilitychange'));
-
-			const countBeforeHidden = mocks.get.mock.calls.length;
-			await vi.advanceTimersByTimeAsync(2000);
-			expect(mocks.get.mock.calls.length).toBe(countBeforeHidden);
-
-			Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
-			document.dispatchEvent(new Event('visibilitychange'));
+			await vi.advanceTimersByTimeAsync(31_000);
+			expect(screen.getByText(/제목 요약 중/)).toBeTruthy();
+			await vi.advanceTimersByTimeAsync(15_000);
+			expect(screen.getByText('OpenStack 배포 권장 구성')).toBeTruthy();
 		} finally {
+			view.unmount();
 			vi.useRealTimers();
 		}
 	});

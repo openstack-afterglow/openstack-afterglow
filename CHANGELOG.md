@@ -9,11 +9,50 @@
 
 ### Changed
 
+- **관리자 사용자 쿼터 페이지네이션** — 사용자 쿼터 화면이 Keystone 사용자 전체를 순차 수집하지 않고 한 번에 20명만 marker 기반으로 불러온다. 공통 이전/다음 탐색과 현재 페이지 표시 건수를 제공하고, 검색과 Lumen quota 결합도 현재 사용자 페이지로 한정해 아직 불러오지 않은 사용자를 미확인 계정으로 잘못 표시하지 않는다. 쿼터 변경 뒤에도 현재 페이지를 유지한다.
+- **인증 갱신 중 관리자 화면 보존** — 서비스 목록은 user/project 변경 시 이전 행을 지우고 늦은 응답을 차단한다. 같은 사용자의 token 갱신은 기존 행을 유지하며, 쿼터 화면의 현재 페이지와 진행 중 페이지 이동도 보존한다.
+- **관리자 전체 볼륨 일괄 삭제·상태 필터 정리** — `/admin/volumes`에서 현재 marker 페이지의 볼륨을 개별/전체 선택하고 확인 후 최대 50개를 한 요청으로 삭제할 수 있다. Cinder 처리 결과를 ID별로 분리해 일부 실패에도 나머지를 계속 처리하며 성공 선택만 제거하고 실패 선택은 유지한다. 필터·페이지·page size·관리자 project scope 변경 시 선택을 비우고, 상태 카드와 선택지는 실제 count가 1개 이상인 상태만 표시하며 활성 상태가 0이 되면 전체 필터로 복귀한다.
+
+- **관리자 서비스 필터·정렬** — 서비스 상태의 9개 탭에 검색과 조합형 필터를 추가했다. Host·서비스 유형·Zone·Status/State, Network의 Alive/Admin State를 독립적으로 선택하고 각 표 열을 정렬할 수 있다. API Endpoints는 이름·유형·리전 정렬과 URL 검색, Storage Pools는 backend·protocol·vendor·숫자 용량을 지원한다. 탭 전환과 새로고침에도 선택을 유지하며 기존 행을 계속 조작할 수 있다. 미확인과 down, 원본 0건과 검색 결과 0건을 구분하고 초기화·표시 건수를 제공한다.
+
+- **컨텍스트 구성 검사** — 작성창에서 실제 포함된 메시지·지침·메모리·스킬·에이전트·요약·도구/MCP·첨부 metadata를 펼쳐 보고 전체 모델 한도 대비 비중, 응답 예약, 안전 버퍼와 남은 입력을 구분한다. 미계수 재료와 미로딩 재료를 분리하고, 한도 미확인이나 부분 계수에서는 정확한 여유 용량을 표시하지 않는다. 과거 기록의 구성을 임의로 만들어 내지 않는다.
+
+- **Compose 실행 모드 분리** — `docker-compose.yml`은 frontend/backend 최소 실행, `docker-compose.dev.yml`은 현재 Afterglow·Lumen·Waygate·Drover·Palimpsest 소스 빌드와 로컬 통신, `docker-compose.prod.yml`은 GHCR 이미지 pull과 운영 인증서 HAProxy TLS/LB 및 catalog 연결을 담당한다. 기존 overlay와 installed-image 개발 fallback을 제거하고 규정·명령을 통일했다. `services:config`는 private Compose 입력을 준비하며 `services:up/smoke/down`은 기존 `afterglow-local-services` project·DB/cache/checkpointer·키·volume을 보존한다. 실제 대시보드 조회 실패와 상류 Nova 503은 container health로 숨기지 않는다.
+- **개발 설정·cache 격리** — private config snapshot에 한정한 0640/supplemental-GID 접근으로 Linux non-root 컨테이너를 지원하고 암호화 키는 0600으로 유지한다. 로컬 Drover의 Sentinel 상속을 차단하며 기존 키와 volume은 보존한다.
+
+- **개발 Compose 기능테스트 통합** — 별도 `docker-compose.test.yml`을 제거하고 dev manifest의 `test` profile로 MariaDB/PostgreSQL/Redis 실행을 통일했다. 전용 loopback 3307/5434/6380과 tmpfs로 앱 데이터와 분리하며, 테스트 실행기는 세 서비스만 기동·종료한다. Cloud 자격 증명 없는 테스트와 `--no-start`/`--keep`을 지원하고 named volume·orphan을 삭제하지 않는다.
+
+- **독립 서비스 endpoint 선택** — Waygate·Drover·Lumen·Palimpsest를 `SERVICE_*_INTERNAL_URL` 또는 `[services] *_internal_url`로 지정할 수 있다. BFF와 대시보드·관리자·MCP의 scoped SDK 호출을 통일했으며 root/`/v1` 주소를 지원한다. Dev는 shell/`.env` → private TOML → local DNS, 기본·운영은 미설정 시 catalog를 사용한다. 명시적 빈 환경 변수는 catalog를 선택하며 운영 HTTPS·인증·project scope와 원격 OpenStack 연결은 유지한다.
+
 - **API Search 선택과 답변 상단 출처** — Lumen이 native 검색을 지원하는 모델에 Search 선택을 연결하고 기본 검색 모델은 `Search · 기본`으로 표시한다. 검색 변경은 context preview와 completion 요청에 반영하며 managed 검색과 분리한다. 출처 번호·제목·도메인을 답변 위에 가로 목록으로 표시하고 작은 화면에서는 목록 안에서만 스크롤한다.
+
+- **관리자 AI 공급자 사용량·결제 상태** — `/admin/chat`의 모든 configured provider에 Lumen 귀속 일·주·월·누적 요청·토큰·raw USD cost를 표시한다. OpenRouter와 DeepSeek는 기존 inference key로 live 한도·잔액을 조회하고, direct OpenAI/Anthropic은 inference와 분리된 암호화 관리자 키를 UI에서 설정해 공식 조직 비용·사용량 report를 표시한다. Gemini는 AI Studio console-only, Perplexity Enterprise Computer Analytics는 API Platform billing과 다른 제품 범위임을 명시한다. 상태는 fresh reload fence가 있는 한 bulk BFF 요청으로 로드하며 실패해도 provider CRUD는 유지한다.
 
 - **토폴로지 패킷 흐름 기본 표시** — 캔버스의 패킷 흐름 시뮬레이션을 기본 on으로 바꿨다. 툴바 체크박스로 끌 수 있고, `prefers-reduced-motion` 환경에서는 종전대로 토글과 무관하게 완전히 비활성이다.
 
 ### Fixed
+
+- **토폴로지 메뉴 독립 동작** — 사이드바 그룹의 자동 확장·강조를 URL 상위 접두사가 아닌 실제 하위 메뉴 경로로 판정한다. 토폴로지를 눌러도 네트워크 그룹이 자동으로 펼쳐지거나 활성화되지 않으며, 기존 URL·네트워크 상세 경로의 자동 확장·사용자가 선택한 접기/펼치기 상태는 유지한다.
+
+- **반응형 현재 모드 표시 통일** — 관리자 계정의 사용자·관리자 sidebar가 전환 목적지가 아니라 현재 화면의 `사용자 모드`·`관리자 모드`를 icon과 함께 표시하도록 desktop header와 맞췄다. 링크·title·접근성 이름은 기존처럼 반대 모드로 전환하는 동작을 명시하며 1024px 경계의 표시 위치만 sidebar에서 header로 바뀐다.
+
+- **프론트엔드 health 검증** — `/health`를 인증 없이 JSON으로 반환하여 로그인 redirect를 제거했다. Compose healthcheck도 redirect를 따라가지 않고 실제 JSON 상태를 확인한다.
+
+- **로컬 Drover 대시보드 인증** — SDK가 전달한 기존 Keystone token을 Drover에서 무범위 재인증해 원래 프로젝트를 잃던 문제를 수정했다. 프로젝트 헤더가 없는 호출은 토큰 자체를 검증하며 명시적 rescope와 fail-closed 권한 검사는 유지한다. 로컬 smoke는 `k3s-stats`의 `available: true`와 count 범위까지 확인해 HTTP 200인 실패 응답을 통과시키지 않는다. Nova 503은 별도 upstream 장애로 계속 실패 처리한다.
+
+- **서비스 discovery redirect** — Waygate/Drover의 BFF root를 upstream `/v1/`로 전달하여 내부 container hostname으로 향하던 307 대신 version JSON을 반환한다.
+
+- **Lumen 인증 요청 지연 격리** — async 인증 dependency의 동기 Keystone 호출을 제한된 threadpool에서 기다리도록 수정했다. 느린 인증이 전체 API event loop를 막던 문제를 제거하며 token/project/admin 검증과 실패 응답은 유지한다.
+
+- **Perplexity 실행 상태 정합성** — 실제 provider 검색 이벤트에서만 출처와 성공을 생성하고, 실패한 tool call은 durable 기록까지 실패로 유지한다. 함수 schema의 strict 지원 여부와 optional 인자를 보존하여 provider가 지원하지 않는 strict 선언을 강제하지 않는다.
+
+- **큰 화면의 채팅 설정 높이** — 복귀 동작과 설정 본문이 같은 parent 높이를 나눠 쓰도록 바꿔 viewport 최소 높이가 중복되던 문제를 제거했다. Tablet/desktop의 내용 스크롤과 mobile의 자연스러운 main 스크롤을 유지한다.
+
+- **토폴로지 트래픽 강도 스케일과 중복 트렁크 배지** — 선 굵기·흐름 점의 하한을 100 kbps 에서 1 kbps 로 낮추고 포화 지점을 1 Gbps 로 넓혔다. 실측에서 NIC 43개 중 39개가 옛 하한 아래라 `계측 없음` 과 똑같은 스타일로 그려져 어떤 네트워크가 바쁜지 읽을 수 없었다. 이제 계측값이 있으면 항상 `계측 없음` 보다 굵고, 모든 트렁크를 2.5px 로 같게 만들던 굵기 하한을 없앴다. 트렁크 강도는 같은 바이트가 보내는 쪽·받는 쪽에서 두 번 잡히던 최대 2배 과대 표시를 없앴다 — 실제 통과량은 `max(rx,tx)` 와 `rx+tx` 사이로만 계측되므로 그 중점을 쓰고, 하위망이 여럿인 uplink 는 망별로 추정한 뒤 더한다. 흐름 점은 예산이 모자랄 때 개수를 잘라 그리지 않고 건너뛴다(잘린 개수는 흐름 빈도를 거짓으로 낮춘다). provider uplink 배지는 그 라우터의 하위 tenant 망이 2개 이상일 때 라우터당 하나만 그려, 같은 숫자를 배지 2개와 스위치 카드로 세 번 찍고 남의 존 카드를 덮던 문제를 없앴다.
+
+- **대화 제목·Perplexity 출처·컨텍스트 표시** — 서버가 아직 처리 중인 제목을 30초 뒤 클라이언트에서 실패로 바꾸던 처리를 제거했다. Lumen의 미예약 첫 제목 복구와 수동 제목 revision 보호를 연결하고, Agent 검색 이벤트/output item의 출처를 LiteLLM 변환 뒤에도 보존한다. 모든 화면 폭에 상단 기록·출처 목록을 제공하며 답변 카드와 출처 패널에 반환된 snippet을 표시한다. 컨텍스트는 Sonar의 정규 catalog 한도와 남은 token을 사용하고, 미확인 한도·계수 불가·잘못된 예산·요청 실패를 구분하여 키보드/터치로 설명한다.
+
+- **그룹 멤버 검색 테마 대비** — 관리자 그룹의 검색 결과와 빈 결과 패널에 남아 있던 하드코딩 다크 배경을 공통 raised surface로 전환했다. 활성 그룹 설명·ID·멤버 이메일·로딩/빈 상태는 disabled 전용 색상 대신 읽을 수 있는 보조 ink를 사용하고, 삭제·제거·오류는 semantic danger tone, 추가 동작은 공통 primary Button을 사용한다. 라이트·다크 모드에서 각 표면·텍스트·동작 대비를 실제 Chromium으로 확인했다.
 
 - **작은 화면의 채팅 기록·설정 접근** — 전역 헤더 아래에 가려졌던 채팅 메뉴 열기 버튼을 workspace header로 이동했다. 1024px 미만에서 기록·사용자 설정 드로어를 열고 Escape/바깥쪽 클릭으로 닫을 수 있으며 설정 화면에 채팅 복귀 버튼을 추가했다. 출처와 긴 코드가 메시지 grid를 넓히던 문제도 공통 ChatBubble에서 수정했다.
 

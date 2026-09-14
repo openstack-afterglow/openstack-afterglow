@@ -368,9 +368,13 @@
 <style>
 	.settings-page {
 		width: 100%;
+		height: 100%;
+		min-height: 0;
 		max-width: 72rem;
 		margin: 0 auto;
 		padding: clamp(1rem, 2.5vw, 2rem);
+		display: flex;
+		flex-direction: column;
 	}
 	.page-head {
 		margin-bottom: 1rem;
@@ -396,8 +400,9 @@
 		color: var(--color-accent);
 	}
 	.panel {
-		min-height: calc(100dvh - 12rem);
 		display: flex;
+		min-height: 0;
+		flex: 1;
 		flex-direction: column;
 		border-radius: 0.9rem;
 		border: 1px solid var(--color-line);

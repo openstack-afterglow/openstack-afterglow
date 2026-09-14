@@ -18,6 +18,7 @@ afterglow.conf
 afterglow.*.conf
 config.toml
 config.*.toml
+.local-services/
 
 # ── 문서 ──────────────────────────────────────────────────────────────────────
 docs/

@@ -65,16 +65,23 @@ Afterglow 백엔드는 모든 `/api/v1/chat/{path}` 요청을 내부 Lumen 서�
 | `PUT /api/v1/chat/admin/quotas/{user_id}` | `/v1/admin/quotas/{user_id}` | 관리자: 사용자 개인 월·주간 override 설정(`null`은 명시적 무제한) |
 | `DELETE /api/v1/chat/admin/quotas/{user_id}` | `/v1/admin/quotas/{user_id}` | 관리자: 개인 override를 지우고 시스템 기본값 상속으로 복원 |
 | `GET /api/v1/chat/admin/stats/users/{user_id}` | `/v1/admin/stats/users/{user_id}` | 관리자: 기간·모델·web/API source·timestamp/token/cost별 사용자 usage ledger |
-| `GET /api/v1/chat/admin/providers/{provider_id}/billing` | `/v1/admin/providers/{provider_id}/billing` | 관리자: 지원 provider의 secret-safe 결제/잔액 snapshot |
+| `PATCH /api/v1/chat/admin/providers/{provider_id}` | `/v1/admin/providers/{provider_id}` | 관리자: inference key와 별개인 direct OpenAI/Anthropic 조직 사용량 관리자 키 설정·교체·제거 |
+| `GET /api/v1/chat/admin/providers/billing` | `/v1/admin/providers/billing` | 관리자: 모든 configured provider의 Lumen 귀속 일·주·월·누적 request/token/raw USD cost, OpenAI/Anthropic 공식 조직 report, OpenRouter/DeepSeek live 잔액/한도, 공식 console URL을 한 번에 조회 |
 | `GET /api/v1/chat/mcp-oauth/callback` | `/v1/mcp-oauth/callback` | MCP OAuth 브라우저 콜백 전달 |
+
+관리자 provider 화면의 **사용량 키 설정**은 direct OpenAI API와 Anthropic API에만 표시됩니다. 이 키는 Lumen이 inference key와 다른 AES-GCM/HKDF domain으로 암호화해 저장하며 organization cost/usage report에만 사용합니다. 브라우저와 API read 응답에는 키 값 대신 설정 여부만 반환됩니다. OpenAI는 현재 UTC 일·주·월 공식 비용·요청·토큰, Anthropic은 공식 비용·토큰을 표시합니다. Anthropic 공식 report에 없는 요청 수와 현재 달 범위로 계산할 수 없는 누적값은 `—`로 표시합니다.
+
+Gemini의 선불 잔액·거래 내역은 Google AI Studio 결제 화면에서만 확인합니다. Perplexity Enterprise Computer Analytics API는 Computer 제품 분석용이므로 Sonar/API Platform 크레딧으로 표시하거나 그 key를 요청하지 않습니다. OpenRouter와 DeepSeek의 기존 inference-key 잔액 조회는 유지합니다. Provider별 실패와 bulk 실패는 provider CRUD를 막지 않습니다.
+
+배포 순서는 Lumen migration `011_provider_billing_admin_key.sql` → 호환 Lumen API → Afterglow backend/frontend입니다. 구 Lumen에는 bulk `GET /v1/admin/providers/billing`보다 동적 `PATCH /v1/admin/providers/{provider_id}`만 있을 수 있어, 새 Afterglow UI의 GET이 `provider_id="billing"` route에 매칭된 뒤 HTTP 405를 반환합니다. 이 오류는 관리자 키 부족이 아니라 Afterglow/Lumen 버전 불일치입니다.
 
 ### Context 사용량과 압축
 
 작성창은 lifetime 청구 token이 아니라 선택 모델에 실제로 보낼 입력의 context 점유율을 표시합니다. 입력 예산은 모델 context limit에서 응답 token reserve와 안전 reserve를 뺀 값입니다. 70%부터 이전 대화 요약을 권고하고 80% 이상이면 다음 provider 호출 전에 Lumen이 자동 압축을 시도합니다. 사용자는 작성창의 **압축**으로 같은 작업을 먼저 실행하거나 진행 중인 수동 압축을 중단할 수 있습니다.
 
-압축은 저장되거나 화면에 보이는 메시지를 삭제하지 않습니다. Lumen이 이전 active-branch prefix의 암호화 summary checkpoint를 만들고 후속 모델 입력에서만 summary와 최근 원문을 사용합니다. `run_kind="compaction"`은 일반 응답 bubble을 만들지 않으며 완료·실패·취소 상태는 기존 run SSE로 전달됩니다. 알 수 없는 context limit/tokenizer는 0%로 추정하지 않고 사용 불가 상태로 표시합니다.
+압축은 저장되거나 화면에 보이는 메시지를 삭제하지 않습니다. Lumen이 이전 active-branch prefix의 암호화 summary checkpoint를 만들고 후속 모델 입력에서만 summary와 최근 원문을 사용합니다. `run_kind="compaction"`은 일반 응답 bubble을 만들지 않으며 완료·실패·취소 상태는 기존 run SSE로 전달됩니다. 컨텍스트 상세 버튼은 사용/입력 예산, 남은 token과 tokenizer/추정치 구분을 키보드·터치로 보여 줍니다. 모델 한도 미확인(`context_window_unknown`), 계산 불가능한 입력(`token_count_unavailable`), 유효하지 않은 예산(`invalid_budget`)은 0% meter 없이 별도 이유를 표시합니다. 텍스트 계수 실패의 길이 기반 fallback은 `token_counter_failed` 추정치이며, preview HTTP/네트워크 실패는 오래된 용량을 지우고 정제된 오류 설명을 제공합니다.
 
-신규 저장 대화는 `title: null`로 즉시 history에 나타납니다. 첫 정상 user/assistant 교환 뒤 의미 기반 제목을 한 번 생성하고, 이후 일반 turn에서는 재생성하지 않습니다. 제목은 성공한 conversation compaction에서만 전체 누적 active path를 반영해 다시 정하며 실패·취소 시 기존 제목을 유지합니다.
+신규 저장 대화는 `title: null`로 즉시 history에 나타납니다. 첫 정상 user/assistant 교환 뒤 durable worker가 의미 기반 제목을 한 번 생성하고, 이후 일반 turn에서는 재생성하지 않습니다. 브라우저는 서버 `title_status`를 정본으로 사용하며 30초 뒤에도 pending을 실패로 바꾸지 않고 15초 간격으로 계속 확인합니다. worker는 아직 예약되지 않은 active `auto/idle/revision=0` 대화의 완료된 첫 교환을 보수적으로 복구하며 빈 대화, 기존 job, legacy/수동/실패/삭제된 대화는 재실행하지 않습니다. 수동 제목 수정은 revision을 올려 뒤늦은 첫 요약이 덮어쓰지 못하게 합니다. 성공한 conversation compaction은 전체 누적 active path를 반영해 제목을 다시 정하며 실패·취소 시 기존 제목을 유지합니다.
 
 ### Native Search와 출처
 
@@ -82,9 +89,9 @@ Afterglow 백엔드는 모든 `/api/v1/chat/{path}` 요청을 내부 Lumen 서�
 
 선택한 native 검색은 completion·context-preview·regenerate 요청의 `features.web_search`에 `enabled: true`, `mode: "native"`, `provider_id: null`로 전달합니다. 검색 provider를 별도로 고르는 기존 managed 검색은 `mode: "managed"`(생략 시 기본)이며 native 요청과 섞이지 않습니다. `web_search_required` 모델은 `Search · 기본`으로 표시하고 끄는 동작을 제공하지 않습니다.
 
-출처는 canonical `citation` part를 통해 SSE와 저장된 history에 동일하게 전달됩니다. 각 assistant 답변 위에 번호·제목·도메인을 가로 목록으로 표시하고, 작은 화면에서는 목록 안에서 스크롤합니다. HTTP(S) 이외 링크는 렌더하지 않으며 입력 문서 출처에는 URL을 만들지 않습니다. 모델이 실제 출처를 반환하지 않은 답변에는 임의의 출처를 만들지 않습니다. 대화 전체 출처 패널은 그대로 유지합니다.
+출처는 canonical `citation` part를 통해 SSE와 저장된 history에 동일하게 전달됩니다. LiteLLM Chat Completions의 `citations`/`search_results`/annotations와 Perplexity Agent의 reasoning search-result 이벤트, 완료된 search-result output item 및 최종 response output을 보존합니다. 각 assistant 답변 위에 번호·제목·도메인·반환된 snippet을 가로 목록으로 표시하고, 작은 화면에서는 목록 안에서 스크롤합니다. HTTP(S) 이외 링크는 렌더하지 않으며 입력 문서 출처에는 URL을 만들지 않습니다. 모델이 실제 출처를 반환하지 않은 답변에는 임의의 출처를 만들지 않습니다. 상단 **출처 N**은 현재 불러온 대화의 중복 제거 목록, 전체 URL/snippet 또는 정직한 빈 상태를 공통 SlidePanel로 표시합니다.
 
-1024px 미만에서는 채팅 영역 왼쪽 위 **대화 기록과 설정 열기**로 history와 사용자 메뉴를 엽니다. 사용자 메뉴의 **설정**으로 이동하고 설정 페이지의 **채팅으로 돌아가기**로 복귀하면 기존 project별 선택 대화가 복원됩니다. 드로어는 Escape 또는 바깥 영역으로 닫으며 desktop inline history 동작은 유지합니다.
+모든 화면 폭에서 채팅 영역 상단 **기록**과 **출처 N**을 사용할 수 있습니다. 모바일은 모델/에이전트와 기록/출처를 두 행으로 배치합니다. 1024px 미만의 기록은 bounded drawer, desktop은 inline sidebar이며 설정 메뉴의 기존 **채팅으로 돌아가기**와 project별 선택 복원을 유지합니다. 출처 패널은 mobile에서 full-screen modal, tablet/desktop에서 공통 비모달 panel 계약을 따릅니다. Escape/바깥 영역으로 닫으면 trigger로 focus가 복원됩니다.
 
 가격 admission과 실행은 Lumen 소유입니다. Perplexity Agent Sonar·GLM-5.3의 공식 token 가격을 조회하며 Sonar의 Agent API와 legacy API 가격을 구분합니다. 알 수 없는 모델 가격을 0으로 처리하지 않습니다. Native Search는 기존 token 기반 크레딧 계약을 유지하므로 provider의 별도 검색 요청/툴 부가요금은 로컬 크레딧 비용에 포함되지 않습니다.
 
@@ -264,7 +271,7 @@ Anthropic 스트리밍은 client가 열린 상태에서 `client.messages.stream(
 
 사용자 행의 **사용량**은 modal을 열어 `7d`, `30d`, `90d`, `1y`, 전체 기간과 web/API source를 필터링한다. 모델별 및 source별 aggregate와 timestamp, 입력/출력/총 token, raw USD, 차감 credit, API key attribution이 있는 cursor ledger를 표시한다. 숫자는 Lumen immutable usage log의 projection이며 Afterglow가 별도 accounting state를 저장하지 않는다.
 
-`/admin/chat` provider 설정은 `billing_capability`가 있는 provider에만 결제 현황을 렌더링한다. OpenRouter는 API key limit·remaining과 일/주/월/누적 usage, DeepSeek는 통화별 total/purchased/granted balance와 사용 가능 상태를 보여준다. OpenAI 등 공식 balance endpoint가 inference credential과 맞지 않는 provider는 조회하지 않는다. 조회 실패는 provider 실행 상태를 바꾸지 않으며 secret이나 upstream 원문 오류를 표시하지 않는다.
+`/admin/chat` provider 설정은 모든 configured provider에 Lumen 귀속 일·주·월·누적 request/token/raw USD cost를 표시한다. OpenRouter는 API key limit·remaining과 provider-reported usage, DeepSeek는 통화별 total/purchased/granted balance와 사용 가능 상태를 추가로 보여준다. OpenAI처럼 저장된 inference credential로 공식 balance endpoint를 호출할 수 없는 provider는 자동 조회를 `지원하지 않음`으로 명시하고, 알려진 cloud provider에는 서버가 고정한 공식 HTTPS 결제·사용량 console action을 제공한다. Subscription credential, custom OpenAI-compatible base, local/unknown provider에는 오인 가능한 결제 링크를 제공하지 않는다. 결제 상태 조회 실패는 provider CRUD·실행 상태를 바꾸지 않으며 secret이나 upstream 원문 오류를 표시하지 않는다.
 
 ### 실제 검증 기록
 

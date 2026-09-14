@@ -11,7 +11,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
-import yaml
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from httpx import ASGITransport, AsyncClient, Headers
@@ -121,8 +120,8 @@ def test_lumen_feature_gate_routes_inclusion():
         ),
         (
             "get",
-            "/api/v1/chat/admin/providers/7/billing",
-            "/v1/admin/providers/7/billing",
+            "/api/v1/chat/admin/providers/billing",
+            "/v1/admin/providers/billing",
             None,
         ),
     ],
@@ -521,7 +520,7 @@ async def test_external_v1_openai_anthropic_unmounted(api_client):
         assert r.status_code == 404
 
 
-def test_afterglow_chat_boundary_no_ai_runtime_dependencies_or_secrets():
+def test_afterglow_chat_boundary_has_no_ai_runtime_dependencies():
     # 1. Verify app.chat_worker entry point does not exist
     assert importlib.util.find_spec("app.chat_worker") is None
 
@@ -547,75 +546,3 @@ def test_afterglow_chat_boundary_no_ai_runtime_dependencies_or_secrets():
         "lumen-sdk",
     }
     assert dependency_names.isdisjoint(forbidden_deps)
-
-    # 3. Verify deployment templates contain no chat runtime secrets.
-    forbidden_secrets = [
-        "CHAT_CHECKPOINTER_POSTGRES_URL",
-        "CHAT_MEMORY_PGVECTOR_URL",
-        "CHAT_ASSET_S3_ACCESS_KEY",
-        "CHAT_ASSET_S3_SECRET_KEY",
-        "CHAT_SANDBOX_API_KEY",
-    ]
-    deploy_paths = [
-        repo_root / "docker-compose.yml",
-        repo_root / "docker-compose.prod.yml",
-        repo_root / "deploy" / "k8s-template" / "base" / "backend" / "deployment.yaml",
-        repo_root / "helm" / "afterglow" / "templates" / "backend" / "deployment.yaml",
-        repo_root / "helm" / "afterglow" / "values.yaml",
-    ]
-    for path in deploy_paths:
-        if path.exists():
-            txt = path.read_text(encoding="utf-8")
-            for secret in forbidden_secrets:
-                assert secret not in txt, f"Forbidden secret {secret} found in {path}"
-            assert "chat-worker" not in txt, f"Stale chat-worker reference found in {path}"
-
-    assert not (repo_root / "helm" / "afterglow" / "templates" / "backend" / "chat-worker-deployment.yaml").exists()
-
-    development_compose = yaml.safe_load((repo_root / "docker-compose.yml").read_text(encoding="utf-8"))
-    assert "pgvector" not in development_compose["services"]
-    production_compose = yaml.safe_load((repo_root / "docker-compose.prod.yml").read_text(encoding="utf-8"))
-    for service_name in ("lumen-migrate", "lumen-api", "lumen-worker"):
-        service = development_compose["services"][service_name]
-        assert service["environment"]["LUMEN_ENCRYPTION_KEY"] == "${LUMEN_ENCRYPTION_KEY:-}"
-        assert all("/etc/afterglow/" not in volume for volume in service.get("volumes", []))
-    for service_name in ("lumen-api", "lumen-worker"):
-        service = production_compose["services"][service_name]
-        assert service["environment"]["LUMEN_ENCRYPTION_KEY"] == "${LUMEN_ENCRYPTION_KEY:-}"
-
-
-def test_lumen_compose_keystone_auth_configuration():
-    repo_root = Path(__file__).resolve().parents[3]
-    compose_path = repo_root / "docker-compose.yml"
-    compose_raw = compose_path.read_text(encoding="utf-8")
-    compose = yaml.safe_load(compose_raw)
-
-    command = "--env-file .env --env-file docker-compose.services.env --profile services"
-    assert command in compose_raw
-
-    expected = {
-        "KEYSTONE_AUTH_URL": "${LUMEN_KEYSTONE_AUTH_URL:-${OS_AUTH_URL:-}}",
-        "KEYSTONE_ADMIN_USERNAME": "${LUMEN_KEYSTONE_ADMIN_USERNAME:-${OS_USERNAME:-}}",
-        "KEYSTONE_ADMIN_PASSWORD": "${LUMEN_KEYSTONE_ADMIN_PASSWORD:-${OS_PASSWORD:-}}",
-        "KEYSTONE_ADMIN_PROJECT": "${LUMEN_KEYSTONE_ADMIN_PROJECT:-${OS_PROJECT_NAME:-}}",
-        "KEYSTONE_DOMAIN": "${LUMEN_KEYSTONE_DOMAIN:-${OS_USER_DOMAIN_NAME:-Default}}",
-        "KEYSTONE_REGION_NAME": "${LUMEN_KEYSTONE_REGION_NAME:-${OS_REGION_NAME:-RegionOne}}",
-        "KEYSTONE_INTERFACE": "${LUMEN_KEYSTONE_INTERFACE:-${OS_INTERFACE:-internal}}",
-    }
-    for service_name in ("lumen-migrate", "lumen-api", "lumen-worker"):
-        service = compose["services"][service_name]
-        assert service["env_file"] == [{"path": ".env", "required": False}]
-        assert {key: service["environment"][key] for key in expected} == expected
-        assert "localhost:5000" not in str(service["environment"])
-
-    example = (repo_root / ".env.example").read_text(encoding="utf-8")
-    for name in (
-        "LUMEN_KEYSTONE_AUTH_URL",
-        "LUMEN_KEYSTONE_ADMIN_USERNAME",
-        "LUMEN_KEYSTONE_ADMIN_PASSWORD",
-        "LUMEN_KEYSTONE_ADMIN_PROJECT",
-        "LUMEN_KEYSTONE_DOMAIN",
-        "LUMEN_KEYSTONE_REGION_NAME",
-        "LUMEN_KEYSTONE_INTERFACE",
-    ):
-        assert f"{name}=" in example

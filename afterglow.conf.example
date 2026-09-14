@@ -147,8 +147,12 @@ waygate = false     # Waygate (활성화 시 [waygate] 섹션 설정 필수)
 palimpsest = false   # Palimpsest Hub (활성화 시 [services] palimpsest_internal_url 또는 Keystone 카탈로그 필요)
 chat = false        # 빌트인 AI 채팅 (활성화 시 [chat] 섹션 + 관리자 페이지에서 프로바이더/모델 등록)
 mcp = false         # Consumer MCP control plane (Stage 2 publish gate 전까지 false 유지)
-# Extracted service discovery override. Empty keeps the Keystone internal catalog.
-# Set only trusted deployment-internal base URLs; production requires HTTPS.
+# Explicit owned-service endpoint; otherwise use authenticated Keystone catalog.
+# Environment SERVICE_<SERVICE>_INTERNAL_URL wins, including empty = catalog.
+# Host backend examples: http://127.0.0.1:8010 (Waygate), :8011 (Drover),
+# :8012 (Lumen), :8020 (Palimpsest). Inside Compose use service DNS, not localhost.
+# Dev runner uses nonempty values in .local-services/afterglow.conf, otherwise
+# defaults to its local service DNS. Base/prod have no local default; prod requires HTTPS.
 waygate_internal_url = ""
 drover_internal_url = ""
 lumen_internal_url = ""

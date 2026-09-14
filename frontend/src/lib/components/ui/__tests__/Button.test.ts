@@ -17,6 +17,15 @@ describe('Button', () => {
 		expect(link.getAttribute('href')).toBe('/x');
 	});
 
+	it('adds noreferrer to external new-tab anchors', () => {
+		render(Button, {
+			props: { href: 'https://example.com', target: '_blank', children: textSnippet('Billing') }
+		});
+		const link = screen.getByRole('link', { name: 'Billing' });
+		expect(link.getAttribute('target')).toBe('_blank');
+		expect(link.getAttribute('rel')).toContain('noreferrer');
+	});
+
 	it('removes navigation and focus from disabled links', async () => {
 		const onclick = vi.fn();
 		const { container } = render(Button, { href: '/x', disabled: true, onclick, children: textSnippet('Unavailable') });

@@ -9,7 +9,7 @@ import type {
 	TopologyTraffic,
 	TrafficRate,
 } from '$lib/types/topology';
-import { _ipv4InCidr, byName, cmpArr, edgeIntensity, normalizeMac, slug, uniq } from './canvasHelpers';
+import { _ipv4InCidr, byName, cmpArr, edgeIntensity, flowDotCount, flowRate, NO_TELEMETRY_STYLE, normalizeMac, slug, uniq } from './canvasHelpers';
 import type {
 	CanvasEdge,
 	CanvasFip,
@@ -438,23 +438,89 @@ function sumNetworks(traffic: TopologyTraffic, netIds: readonly string[]): Traff
 	return acc;
 }
 
+/**
+ * 네트워크 값 하나에서 **스위치를 실제로 통과한 양**을 추정한다.
+ *
+ * `traffic.networks[N]` 은 그 망에 붙은 NIC 들의 합이므로
+ *
+ *   rx = EW + IN,  tx = EW + OUT     (EW = 망 내부 통신, IN/OUT = 남북 유입·유출)
+ *
+ * 이고 실제 통과량은 `T = EW + IN + OUT = rx + tx − EW` 다. 동서 트래픽은 보내는 쪽 tx 와
+ * 받는 쪽 rx 로 **두 번** 잡히기 때문이다. `0 ≤ EW ≤ min(rx,tx)` 이므로 T 는
+ *
+ *   max(rx,tx)  ≤  T  ≤  rx + tx
+ *
+ * 로만 좁혀진다 — 미지수 3개에 식 2개라 EW 를 계측으로 가를 수 없다(`flowStreams` 와 같은 한계).
+ * 두 끝값은 각각 최악 2배 틀린다: 순수 동서에서 `rx+tx` 가 2배 과대(실측 2026-09-13:
+ * dmslab 3-tier 235k/230k → 465k), 양방향 남북에서 `max` 가 2배 과소다.
+ * 그래서 구간의 **중점**을 쓴다 — 과대 1.5배·과소 1.33배로 최악 오차가 가장 작고,
+ * 로그축에서 1.5배는 0.18 decade(굵기 0.08px)라 눈에 띄지 않는다.
+ */
+export function switchThroughput(rate: { rx_bps: number; tx_bps: number }): number {
+	return Math.max(rate.rx_bps, rate.tx_bps) + Math.min(rate.rx_bps, rate.tx_bps) / 2;
+}
+
+/**
+ * 강도 인코딩(굵기·불투명도·흐름)에 쓸 스칼라.
+ *
+ * - **케이블과 그 밖**: `rx + tx`. NIC 하나의 두 방향은 진짜로 서로 다른 방향이라 이중 계상이 없다.
+ * - **트렁크**: `switchThroughput`.
+ */
+export function intensityBps(kind: CanvasEdge['kind'], rate: { rx_bps: number; tx_bps: number }): number {
+	return kind === 'trunk' ? switchThroughput(rate) : rate.rx_bps + rate.tx_bps;
+}
+
+/**
+ * 트렁크 강도 스칼라. **망별로 추정한 뒤 더한다** — 합산 뒤 추정하면 안 된다.
+ *
+ * `switchThroughput` 은 선형이 아니라 두 순서가 다른 값을 낸다. 반례: 라우터가 순수 다운로드
+ * 망(rx 10M/tx 0)과 순수 업로드 망(rx 0/tx 10M)을 물면 먼저 합산했을 때 {10M, 10M} 이 되어
+ * 동서 통신으로 오인되고 15M 으로 추정되지만, 실제 uplink 통과량은 20M 이다. 망마다 따로 추정하면
+ * 10M + 10M = 20M 으로 정확하다.
+ */
+export function trunkIntensityBps(
+	e: CanvasEdge,
+	traffic: TopologyTraffic | null | undefined,
+	graph: CanvasGraph,
+): number | null {
+	let acc: number | null = null;
+	for (const id of trunkNetIds(e, graph)) {
+		const v = traffic?.networks?.[id];
+		if (!v) continue;
+		acc = (acc ?? 0) + switchThroughput(v);
+	}
+	return acc;
+}
+
 export function edgeStyle(e: CanvasEdge, traffic: TopologyTraffic | null | undefined, graph: CanvasGraph): EdgeStyle {
 	const rate = edgeRate(e, traffic, graph);
-	const bps = rate ? rate.rx_bps + rate.tx_bps : null;
-	let { opacity, width } = bps == null ? { opacity: 0.4, width: 1.5 } : edgeIntensity(bps);
+	// 트렁크는 `edgeRate` 가 이미 합쳐 놓은 값이 아니라 망별 추정의 합을 쓴다(`trunkIntensityBps`).
+	const bps = e.kind === 'trunk' ? trunkIntensityBps(e, traffic, graph) : rate ? rate.rx_bps + rate.tx_bps : null;
+	// 계측이 없을 때만 NO_TELEMETRY_STYLE 이다. 0 bps 는 "쟀더니 0" 이라 edgeIntensity 의 하한으로 간다.
+	let { opacity, width } = bps == null ? { ...NO_TELEMETRY_STYLE } : edgeIntensity(bps);
 	let dash: string | null = null;
 	if (e.kind === 'fip') { width = 1.5; opacity = opacity * 0.6; dash = '4 3'; }
 	if (e.kind === 'lbvip') { width = 2; opacity = 0.75; }
 	if (e.kind === 'lbmember') { width = 1.5; opacity = 0.75; dash = '4 3'; }
-	if (e.kind === 'trunk') width = Math.max(2.5, width);
+	// 트렁크 굵기 하한(구 `Math.max(2.5, width)`)은 없다. 하한이 스케일 상단을 눌러
+	// **모든 트렁크가 2.5px 로 같아지고** 가장 바쁜 케이블보다도 굵어져 위계가 뒤집혔다.
 	const from = graph.nodes.get(e.from);
 	if (from?.kind === 'vm' && from.status === 'SHUTOFF') dash = '6 4';
 	if (from?.kind === 'router' && from.status === 'DOWN') dash = '6 4';
 	return { opacity, width, dash, bps, rate };
 }
 
-/** 이 미만이면 흐름을 그리지 않는다 — "사용량 없음" 을 0 이 아니라 "점 없음" 으로 읽게 한다. */
-export const FLOW_MIN_BPS = 1e5;
+/**
+ * 이 미만이면 흐름을 그리지 않는다 — "사용량 없음" 을 0 이 아니라 "점 없음" 으로 읽게 한다.
+ * 실측(2026-09-13)에서 NIC 43개 중 `1e5` 이상은 4개뿐이라 흐름이 사실상 보이지 않았다.
+ * `1e4` 는 같은 표본에서 21/43 이 이 문턱을 넘는다.
+ *
+ * **다만 화면에 실제로 점이 붙는 엣지 수는 이 문턱이 아니라 `rebuildFlow` 의 전역 점 예산(60)이
+ * 정한다.** 후보를 bps 내림차순으로 훑으며 예산이 차면 멈추므로, 문턱을 넘고도 점이 없는 엣지가
+ * 생긴다(실측 표본·경로 길이 기준 상위 8~15개만 배정). 이는 문턱과 무관한 성능 예산이며 굵기·
+ * 불투명도는 43개 전부에 그대로 실린다.
+ */
+export const FLOW_MIN_BPS = 1e4;
 
 /** 한 엣지에 흘릴 점 스트림. `dir=true` 는 엣지의 from→to(인스턴스→스위치) 방향이다. */
 export interface FlowStream {
@@ -478,6 +544,9 @@ export function flowStreams(
 	edge: Pick<CanvasEdge, 'kind' | 'netId'>,
 	rate: { rx_bps: number; tx_bps: number },
 	isolatedNet: boolean,
+	/** 게이트웨이 방향 스트림에 쓸 스칼라. 생략하면 `intensityBps` 로 계산한다.
+	 *  uplink 트렁크처럼 `edgeStyle` 이 망별 합으로 따로 계산하는 경우 그 값을 넘겨야 어긋나지 않는다. */
+	aggregateBps?: number,
 ): FlowStream[] {
 	if (edge.kind === 'cable' && isolatedNet) {
 		return [
@@ -485,9 +554,52 @@ export function flowStreams(
 			{ bps: rate.rx_bps, dir: false, internal: true },
 		].filter((s) => s.bps >= FLOW_MIN_BPS);
 	}
-	const bps = rate.rx_bps + rate.tx_bps;
+	const bps = aggregateBps ?? intensityBps(edge.kind, rate);
 	if (bps < FLOW_MIN_BPS) return [];
 	return [{ bps, dir: rate.tx_bps >= rate.rx_bps, internal: false }];
+}
+
+/**
+ * 흐름 점 전역 예산. **성능 한도**이며 사용량 문턱(`FLOW_MIN_BPS`)과는 별개다.
+ * 대규모(인스턴스 40+) 화면에서 rAF 마다 옮길 원 개수의 상한이다.
+ */
+export const FLOW_DOT_BUDGET = 60;
+
+export interface FlowAllocation {
+	key: string;
+	netId: string;
+	n: number;
+	dir: boolean;
+	speed: number;
+	internal: boolean;
+}
+
+/**
+ * 전역 예산 안에서 어떤 엣지에 점을 몇 개 줄지 정한다.
+ *
+ * 후보는 **bps 내림차순**이어야 한다. 예산이 모자라는 스트림은 **잘라서 그리지 않고 건너뛴다** —
+ * 잘린 개수는 통과 빈도를 그만큼 거짓으로 낮춰(8개 중 4개면 절반) 사용량을 잘못 읽게 만든다.
+ * 건너뛴 뒤에도 계속 훑으므로 남은 예산은 더 한가한(그래서 더 적게 필요한) 엣지에게 돌아간다.
+ *
+ * 그 결과 화면에 점이 붙는 엣지 수는 `FLOW_MIN_BPS` 가 아니라 이 예산이 정한다.
+ * 굵기·불투명도에는 이런 절단이 없어 모든 엣지가 사용량대로 그려진다.
+ */
+export function allocateFlowDots(
+	cands: readonly { key: string; netId: string; streams: readonly FlowStream[]; len: number }[],
+	budget: number = FLOW_DOT_BUDGET,
+): FlowAllocation[] {
+	const out: FlowAllocation[] = [];
+	let total = 0;
+	for (const c of cands) {
+		if (total >= budget) break;
+		for (const s of c.streams) {
+			const n = flowDotCount(s.bps, c.len);
+			if (total + n > budget) continue;
+			total += n;
+			out.push({ key: c.key, netId: c.netId, n, dir: s.dir, speed: flowRate(s.bps).speed, internal: s.internal });
+		}
+	}
+	return out;
 }
 
 /** activeId 와 직접 연결된 노드 집합(자기 자신 포함). 스위치는 존 멤버, LB 는 멤버 VM 을 포함한다. */

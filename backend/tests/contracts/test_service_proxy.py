@@ -6,9 +6,11 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
 from starlette.requests import Request
 
+from app.api.deps import get_token_info
+from app.main import app
 from app.services.service_proxy import (
     _get_internal_endpoint,
     _get_service_internal_endpoint,
@@ -16,6 +18,61 @@ from app.services.service_proxy import (
     proxy,
     proxy_passthrough,
 )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("environment_endpoint", "toml_endpoint", "expected_source"),
+    [
+        (None, "", "catalog"),
+        (None, "https://toml.test/v1", "toml"),
+        ("https://environment.test/v1", "https://toml.test/v1", "environment"),
+        ("", "https://toml.test/v1", "catalog"),
+        ("https://unavailable.test/v1", "https://toml.test/v1", None),
+    ],
+)
+async def test_configured_endpoint_precedence_reaches_selected_service(
+    monkeypatch, environment_endpoint, toml_endpoint, expected_source
+):
+    from app import config as app_config
+
+    # get_settings seeds os.environ from TOML. Isolate that mutation as well as
+    # the explicitly supplied environment value between requests/test cases.
+    monkeypatch.setattr(app_config.os, "environ", dict(app_config.os.environ))
+    monkeypatch.delenv("SERVICE_LUMEN_INTERNAL_URL", raising=False)
+    if environment_endpoint is not None:
+        monkeypatch.setenv("SERVICE_LUMEN_INTERNAL_URL", environment_endpoint)
+    monkeypatch.setattr(app_config, "_load_toml", lambda: {"service_lumen_internal_url": toml_endpoint})
+    settings = app_config.get_settings.__wrapped__()
+    connection = MagicMock()
+    connection.session.get_endpoint.return_value = "https://catalog.test/v1"
+    models = {
+        "https://catalog.test/v1/models": {"models": [{"id": "catalog-model"}]},
+        "https://toml.test/v1/models": {"models": [{"id": "toml-model"}]},
+        "https://environment.test/v1/models": {"models": [{"id": "environment-model"}]},
+    }
+
+    def upstream(request):
+        payload = models.get(str(request.url))
+        return httpx.Response(200, json=payload) if payload else httpx.Response(503)
+
+    request = _make_request(token_info={"token": "caller-token", "project_id": "caller-project"})
+    with (
+        patch("app.services.service_proxy.get_settings", return_value=settings),
+        patch("app.services.keystone.get_openstack_connection", return_value=connection),
+        patch(
+            "app.services.service_proxy.httpx.AsyncClient",
+            return_value=httpx.AsyncClient(transport=httpx.MockTransport(upstream)),
+        ),
+    ):
+        if expected_source is None:
+            # A broken explicit test endpoint must not silently reach the
+            # healthy catalog service and expose production data instead.
+            with pytest.raises(HTTPException) as failure:
+                await get_json("lumen", request, "/models")
+            assert failure.value.status_code == 503
+        else:
+            assert await get_json("lumen", request, "/models") == models[f"https://{expected_source}.test/v1/models"]
 
 
 def _make_request(
@@ -46,6 +103,36 @@ def _make_request(
     if token_info:
         req.state.token_info = token_info
     return req
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["/api/v1/waygate", "/api/v1/k3s"])
+async def test_service_discovery_returns_json_without_internal_redirect(path, monkeypatch):
+    upstream = FastAPI()
+
+    @upstream.get("/v1/")
+    async def discovery():
+        return {"version": "1.0.0"}
+
+    async def authenticated(request: Request):
+        info = {"token": "caller-token", "project_id": "project-1", "user_id": "user-1"}
+        request.state.token_info = info
+        return info
+
+    monkeypatch.setitem(app.dependency_overrides, get_token_info, authenticated)
+    monkeypatch.setattr(
+        "app.services.service_proxy._get_internal_endpoint", lambda *_args: "http://service.internal/v1"
+    )
+    client_type = httpx.AsyncClient
+    monkeypatch.setattr(
+        "app.services.service_proxy.httpx.AsyncClient",
+        lambda **kwargs: client_type(transport=httpx.ASGITransport(app=upstream), **kwargs),
+    )
+    async with client_type(transport=httpx.ASGITransport(app=app), base_url="http://bff") as client:
+        response = await client.get(path)
+
+    assert response.status_code == 200
+    assert response.json() == {"version": "1.0.0"}
 
 
 def test_get_internal_endpoint_success():

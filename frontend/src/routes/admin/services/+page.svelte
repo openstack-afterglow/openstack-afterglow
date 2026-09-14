@@ -32,10 +32,12 @@
 	let loadedMap = $state<Record<TabKey, boolean>>(Object.fromEntries(allCategories.map(c => [c, false])) as Record<TabKey, boolean>);
 	let categoryGeneration = $state<Record<TabKey, number>>(Object.fromEntries(allCategories.map(c => [c, 0])) as Record<TabKey, number>);
 	let activeTab = $state<TabKey>('compute');
-	let loadScopeKey = $state('');
+	let loadScopeKey = '';
+	let loadToken: string | undefined;
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
+	const userId = $derived($auth.userId ?? undefined);
 
 	const tabs: { key: TabKey; label: string; count: () => number }[] = [
 		{ key: 'compute', label: 'Compute', count: () => computeServices.length },
@@ -67,6 +69,7 @@
 
 	async function loadCategory(cat: TabKey, isRefresh = false) {
 		const requestToken = token;
+		const requestUserId = userId;
 		const requestProjectId = projectId;
 		const generation = ++categoryGeneration[cat];
 		loadingMap[cat] = true;
@@ -79,7 +82,7 @@
 			);
 			if (
 				generation !== categoryGeneration[cat]
-				|| token !== requestToken
+				|| userId !== requestUserId
 				|| projectId !== requestProjectId
 			) return;
 			switch (cat) {
@@ -97,13 +100,13 @@
 		} catch {
 			if (
 				generation === categoryGeneration[cat]
-				&& token === requestToken
+				&& userId === requestUserId
 				&& projectId === requestProjectId
 			) loadedMap[cat] = false;
 		} finally {
 			if (
 				generation === categoryGeneration[cat]
-				&& token === requestToken
+				&& userId === requestUserId
 				&& projectId === requestProjectId
 			) loadingMap[cat] = false;
 		}
@@ -122,17 +125,31 @@
 		if (visibleTabs.length > 0 && !visibleTabs.find(t => t.key === activeTab)) {
 			activeTab = visibleTabs[0].key;
 		}
-		const nextScopeKey = JSON.stringify([token ?? null, projectId ?? null]);
-		if (loadScopeKey !== nextScopeKey) {
-			loadScopeKey = nextScopeKey;
+		const nextScopeKey = JSON.stringify([userId ?? null, projectId ?? null]);
+		const scopeChanged = loadScopeKey !== nextScopeKey;
+		if (scopeChanged || loadToken !== token) {
+			loadToken = token;
 			for (const category of allCategories) {
 				categoryGeneration[category] += 1;
 				loadingMap[category] = false;
 				loadedMap[category] = false;
 			}
 		}
+		if (scopeChanged) {
+			loadScopeKey = nextScopeKey;
+			computeServices = [];
+			blockStorageServices = [];
+			networkAgents = [];
+			sharedFsServices = [];
+			orchestrationServices = [];
+			containerServices = [];
+			magnumServices = [];
+			endpoints = [];
+			storagePools = [];
+		}
 		const requestedTab = activeTab;
 		token;
+		userId;
 		projectId;
 		ensureCategory(requestedTab);
 	});

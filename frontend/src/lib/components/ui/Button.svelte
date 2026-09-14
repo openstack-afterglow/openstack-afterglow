@@ -22,6 +22,8 @@
 		onclick?: (e: MouseEvent) => void;
 		onintent?: () => void;
 		href?: string;
+		target?: '_self' | '_blank';
+		rel?: string;
 		ariaLabel?: string;
 		ariaPressed?: boolean;
 		title?: string;
@@ -38,6 +40,8 @@
 		onclick,
 		onintent,
 		href,
+		target,
+		rel,
 		ariaLabel,
 		ariaPressed,
 		title,
@@ -58,11 +62,14 @@
 	function handleIntent() {
 		if (!disabled) onintent?.();
 	}
+	const anchorRel = $derived(target === '_blank' ? [rel, 'noreferrer'].filter(Boolean).join(' ') : rel);
 </script>
 
 {#if href}
 	<a
 		href={disabled ? undefined : href}
+		{target}
+		rel={anchorRel}
 		aria-label={ariaLabel}
 		aria-disabled={disabled}
 		tabindex={disabled ? -1 : undefined}

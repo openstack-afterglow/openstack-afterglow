@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from waygate_sdk import register
+from app.services.keystone import get_waygate_proxy
 
 
 class McpWaygateError(ValueError):
@@ -30,11 +30,11 @@ def _safe_server(server: dict[str, Any], *, project_id: str) -> dict[str, str | 
 
 
 def _list_servers(conn: object) -> object:
-    return register(conn).servers()
+    return get_waygate_proxy(conn).servers()
 
 
 def _get_server(conn: object, server_id: str) -> object:
-    return register(conn).get_server(server_id)
+    return get_waygate_proxy(conn).get_server(server_id)
 
 
 async def list_project_waygate_servers(

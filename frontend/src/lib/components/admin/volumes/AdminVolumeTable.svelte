@@ -3,6 +3,7 @@
 	import { formatNumber } from '$lib/utils/format';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import ActionMenu from '$lib/components/ui/ActionMenu.svelte';
+	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
 
 	interface AdminVolume {
 		id: string;
@@ -19,7 +20,12 @@
 		selectedVolumeId,
 		openActionMenu,
 		copiedProjectId,
+		selectedIds,
+		selectableIds = new Set(volumes.map((volume) => volume.id)),
+		selectionDisabled = false,
 		onSelect,
+		onToggleSelect,
+		onToggleAll,
 		onActionMenuOpen,
 		onActionMenuClose,
 		onCopyProjectId,
@@ -35,7 +41,12 @@
 		selectedVolumeId: string | null;
 		openActionMenu: string | null;
 		copiedProjectId: string | null;
+		selectedIds: ReadonlySet<string>;
+		selectableIds?: ReadonlySet<string>;
+		selectionDisabled?: boolean;
 		onSelect: (id: string) => void;
+		onToggleSelect: (id: string) => void;
+		onToggleAll: () => void;
 		onActionMenuOpen: (id: string) => void;
 		onActionMenuClose: () => void;
 		onCopyProjectId: (id: string) => void;
@@ -47,12 +58,25 @@
 		onDelete: (v: AdminVolume) => void;
 		onBootFromVolume: (v: AdminVolume) => void;
 	} = $props();
+
+	const selectedSelectableCount = $derived([...selectedIds].filter((id) => selectableIds.has(id)).length);
+	const allSelected = $derived(selectableIds.size > 0 && selectedSelectableCount === selectableIds.size);
+	const partiallySelected = $derived(selectedSelectableCount > 0 && !allSelected);
 </script>
 
 <div class="overflow-x-auto">
 	<table class="w-full text-sm">
 		<thead>
 			<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
+				<th class="py-2 pr-2 w-8">
+					<SelectionCheckbox
+						checked={allSelected}
+						indeterminate={partiallySelected}
+						disabled={selectionDisabled || selectableIds.size === 0}
+						onclick={onToggleAll}
+						ariaLabel="현재 페이지 전체 볼륨 선택"
+					/>
+				</th>
 				<th class="text-left py-2 pr-4">이름</th>
 				<th class="text-left py-2 pr-4">상태</th>
 				<th class="text-left py-2 pr-4">크기</th>
@@ -64,9 +88,19 @@
 		<tbody>
 			{#each volumes as v, index (v.id)}
 				<tr
-					class="border-b border-line/50 text-xs transition-colors {selectedVolumeId === v.id ? 'bg-surface-sunken/50' : ''}"
+					class="resource-selection-surface border-b border-line/50 text-xs transition-colors {selectedIds.has(v.id) ? 'is-selected bg-surface-selected/10' : selectedVolumeId === v.id ? 'bg-surface-sunken/50' : ''}"
+					data-selected={selectedIds.has(v.id)}
 					data-tour={index === 0 ? 'admin-storage-row' : undefined}
 				>
+					<td class="py-2 pr-2">
+						<SelectionCheckbox
+							checked={selectedIds.has(v.id)}
+							disabled={selectionDisabled || !selectableIds.has(v.id)}
+							unavailable={!selectableIds.has(v.id)}
+							onclick={() => onToggleSelect(v.id)}
+							ariaLabel={`${v.name || v.id} 선택`}
+						/>
+					</td>
 					<td class="p-0">
 						<button type="button" data-tour={index === 0 ? 'admin-storage-row-open' : undefined} onclick={() => onSelect(v.id)} class="block w-full py-2 pr-4 font-medium text-ink-0 hover:text-action-warm-hover transition-colors text-left" title={v.name || v.id}><span class="max-md:block max-md:max-w-[66vw] max-md:truncate">{v.name || v.id.slice(0, 8)}</span></button>
 					</td>

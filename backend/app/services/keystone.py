@@ -3,8 +3,10 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from drover_sdk.proxy import Proxy as DroverProxy
 from keystoneauth1 import session as ks_session
 from keystoneauth1.identity import v3
+from waygate_sdk.proxy import Proxy as WaygateProxy
 
 from app.config import get_settings
 
@@ -256,6 +258,55 @@ def validate_token(token: str, project_id: str = "") -> dict:
     }
 
 
+_OWN_SERVICE_ENDPOINT_FIELDS: dict[str, str] = {
+    "waygate": "service_waygate_internal_url",
+    "drover": "service_drover_internal_url",
+    "lumen": "service_lumen_internal_url",
+    "palimpsest": "service_palimpsest_internal_url",
+}
+
+
+class _OwnedWaygateProxy(WaygateProxy):
+    def request(self, url, method, *args, **kwargs):
+        endpoint = self.endpoint_override or self.get_endpoint()
+        if endpoint and endpoint.rstrip("/").endswith("/v1") and url.startswith("/v1/"):
+            url = url[3:]
+        return super().request(url, method, *args, **kwargs)
+
+
+def _owned_service_connection_options(settings) -> dict[str, str]:
+    """Build OpenStack SDK options for trusted, configured sibling-service endpoints."""
+    options: dict[str, str] = {}
+    for service_type, field_name in _OWN_SERVICE_ENDPOINT_FIELDS.items():
+        endpoint = getattr(settings, field_name, "")
+        if not isinstance(endpoint, str) or not (endpoint := endpoint.strip()):
+            continue
+        options[f"{service_type}_endpoint_override"] = endpoint
+    return options
+
+
+def get_drover_proxy(conn: openstack.connection.Connection) -> DroverProxy:
+    """Use the caller's authenticated session without probing version discovery."""
+    return DroverProxy(
+        session=conn.session,
+        service_type="drover",
+        interface=conn.config.get_interface("drover"),
+        region_name=conn.config.get_region_name("drover"),
+        endpoint_override=conn.config.get_endpoint("drover"),
+    )
+
+
+def get_waygate_proxy(conn: openstack.connection.Connection) -> WaygateProxy:
+    """Use the same scoped session for root or versioned Waygate endpoints."""
+    return _OwnedWaygateProxy(
+        session=conn.session,
+        service_type="waygate",
+        interface=conn.config.get_interface("waygate"),
+        region_name=conn.config.get_region_name("waygate"),
+        endpoint_override=conn.config.get_endpoint("waygate"),
+    )
+
+
 def get_openstack_connection(token: str, project_id: str) -> openstack.connection.Connection:
     """
     검증된 토큰으로 openstacksdk Connection 객체 반환.
@@ -277,6 +328,7 @@ def get_openstack_connection(token: str, project_id: str) -> openstack.connectio
         interface=settings.os_interface,
         api_timeout=30,
         verify=settings.ssl_verify,
+        **_owned_service_connection_options(settings),
     )
 
 
@@ -302,6 +354,7 @@ def get_admin_connection_for_project(project_id: str) -> openstack.connection.Co
         interface=settings.os_interface,
         api_timeout=30,
         verify=settings.ssl_verify,
+        **_owned_service_connection_options(settings),
     )
 
 
@@ -328,6 +381,7 @@ def get_admin_project_connection() -> openstack.connection.Connection:
         interface=settings.os_interface,
         api_timeout=30,
         verify=settings.ssl_verify,
+        **_owned_service_connection_options(settings),
     )
 
 

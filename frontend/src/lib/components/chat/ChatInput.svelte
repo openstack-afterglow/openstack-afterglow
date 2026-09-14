@@ -13,6 +13,7 @@
 	import ModelCapabilityBadges from './ModelCapabilityBadges.svelte';
 	import UsageRing from '$lib/components/ui/UsageRing.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import ChatContextPanel from './ChatContextPanel.svelte';
 
 	export type ComposerCommand = {
 		id: string;
@@ -101,6 +102,7 @@
 	let fileInput = $state<HTMLInputElement | null>(null);
 	let effortOpen = $state(false);
 	let plusOpen = $state(false);
+	let contextInfoOpen = $state(false);
 	let dragOver = $state(false);
 	const searchGate = $derived(modelCaps?.feature_gates?.web_search);
 	const hasNativeSearch = $derived(Boolean(modelCaps?.web_search) && searchGate?.mode === 'native');
@@ -407,20 +409,65 @@
 	const format = new Intl.NumberFormat('ko-KR');
 	const knownContext = $derived(
 		hasContextScope &&
+			!contextError &&
 			contextState !== null &&
 			contextState.measurement !== 'unknown' &&
 			contextState.input_budget !== null &&
 			contextState.input_tokens !== null &&
 			contextState.utilization !== null
+			&& contextState.breakdown?.complete !== false
 	);
 	const contextPercent = $derived(
-		Math.min(100, Math.round((contextState?.utilization ?? 0) * 100))
+		Math.max(0, Math.round((contextState?.utilization ?? 0) * 100))
+	);
+	const contextRingPercent = $derived(Math.min(100, contextPercent));
+	const contextRemaining = $derived(
+		knownContext ? Math.max(0, contextState!.input_budget! - contextState!.input_tokens!) : null
+	);
+	const contextMeasurementLabel = $derived(
+		contextState?.reason_code === 'token_counter_failed'
+			? '추정치 (토큰 계수 실패)'
+			: contextState?.measurement === 'estimated'
+				? '추정치'
+				: '토큰 계수'
 	);
 	const contextValueText = $derived(
 		knownContext
-			? `약 ${format.format(contextState!.input_tokens!)} / ${format.format(contextState!.input_budget!)} 토큰 · ${Math.round((contextState!.utilization ?? 0) * 100)}%`
+			? `${contextMeasurementLabel} ${format.format(contextState!.input_tokens!)} / ${format.format(contextState!.input_budget!)} 토큰 · ${format.format(contextRemaining!)} 남음 · ${Math.round((contextState!.utilization ?? 0) * 100)}%`
 			: '컨텍스트 한도를 확인할 수 없습니다'
 	);
+	const contextDetail = $derived.by(() => {
+		if (knownContext) {
+			if (contextState?.reason_code === 'token_counter_failed') {
+				return `${contextValueText}. LiteLLM 토큰 계수에 실패해 텍스트 길이 기반 추정치를 표시합니다.`;
+			}
+			if (contextState?.measurement === 'estimated') {
+				return `${contextValueText}. 제공되는 토크나이저 식별 정보가 없어 추정치를 표시합니다.`;
+			}
+			return `${contextValueText}. 모델 토크나이저로 계산한 입력 예산 사용량입니다.`;
+		}
+		if (contextError) return contextError;
+		if (contextState?.breakdown?.complete === false) return '일부 입력이 아직 계수되지 않았습니다. 포함된 항목과 미계수 항목을 확인하세요.';
+		switch (contextState?.reason_code) {
+			case 'context_window_unknown':
+				return '선택한 모델의 입력 한도가 확인되지 않아 남은 컨텍스트 용량을 계산할 수 없습니다.';
+			case 'token_count_unavailable':
+				return '현재 메시지 또는 첨부의 토큰 수를 안전하게 셀 수 없어 컨텍스트 사용량을 표시하지 않습니다.';
+			case 'invalid_budget':
+				return '모델 한도에서 응답 및 안전 여유분을 제외한 입력 예산이 0 이하입니다. 모델 또는 출력 설정을 확인하세요.';
+			case 'context_request_invalid':
+				return '컨텍스트 요청 설정이 올바르지 않아 사용량을 계산할 수 없습니다.';
+			default:
+				return '컨텍스트 사용량 정보를 아직 사용할 수 없습니다.';
+		}
+	});
+	function toggleContextDetails(event: MouseEvent) {
+		(event.currentTarget as HTMLButtonElement).focus();
+		contextInfoOpen = !contextInfoOpen;
+	}
+	$effect(() => {
+		if (contextLoading || contextPhase === 'compacting') contextInfoOpen = false;
+	});
 	const contextStatus = $derived.by(() => {
 		if (contextPhase === 'compacting') {
 			return contextCause === 'automatic' ? '컨텍스트 자동 압축 중' : '컨텍스트 압축 중';
@@ -428,12 +475,14 @@
 		if (contextPhase === 'compacted' && contextBeforeTokens !== null && contextAfterTokens !== null) {
 			return `압축 ${format.format(contextBeforeTokens)} → ${format.format(contextAfterTokens)}`;
 		}
-		if (contextError) return contextError;
+		if (contextError) return '컨텍스트 조회 실패';
+		if (contextState?.breakdown?.complete === false) return '컨텍스트 일부 미계수';
 		if (knownContext) return `컨텍스트 ${contextPercent}%`;
 		if (contextLoading) return '컨텍스트 확인 중';
 		return '컨텍스트 확인 불가';
 	});
 </script>
+
 
 <div class="composer">
 	<input
@@ -618,7 +667,6 @@
 					<div
 						class="context-status"
 						class:compacting={contextPhase === 'compacting'}
-						title={contextError ?? contextValueText}
 						role="status"
 						aria-live="polite"
 						aria-atomic="true"
@@ -626,14 +674,32 @@
 						{#if contextPhase === 'compacting' || (contextLoading && !knownContext)}
 							<span class="context-spinner" aria-hidden="true"></span>
 						{:else if knownContext}
-							<UsageRing
-								percent={contextPercent}
-								thresholds={{ warning: 70, danger: 80 }}
-								label="컨텍스트 입력 예산 사용률"
-								valueText={contextValueText}
-							/>
+							<button
+								type="button"
+								class="context-meter"
+								aria-label="컨텍스트 용량 세부 정보"
+								aria-controls="chat-context-detail"
+								aria-expanded={contextInfoOpen}
+								aria-haspopup="dialog"
+								onclick={toggleContextDetails}
+							>
+								<UsageRing
+									percent={contextRingPercent}
+									thresholds={{ warning: 70, danger: 80 }}
+									label="컨텍스트 입력 예산 사용률"
+									valueText={contextValueText}
+								/>
+							</button>
 						{:else}
-							<span class="context-unavailable" aria-hidden="true">?</span>
+							<button
+								type="button"
+								class="context-unavailable"
+								aria-label="컨텍스트를 표시할 수 없는 이유"
+								aria-controls="chat-context-detail"
+								aria-expanded={contextInfoOpen}
+								aria-haspopup="dialog"
+								onclick={toggleContextDetails}
+							><span class="context-reason-icon">?</span></button>
 						{/if}
 						<span class="context-status-text">{contextStatus}</span>
 					</div>
@@ -682,6 +748,10 @@
 	{/if}
 	<p class="hint">AI 응답은 부정확할 수 있습니다. 중요한 내용은 확인하세요.</p>
 </div>
+
+{#if contextInfoOpen}
+	<ChatContextPanel state={contextError ? null : contextState} explanation={contextDetail} onClose={() => (contextInfoOpen = false)} />
+{/if}
 
 <style>
 	.composer {
@@ -796,6 +866,7 @@
 		background: transparent;
 	}
 	.context-status {
+		position: relative;
 		display: inline-flex;
 		align-items: center;
 		gap: 0.32rem;
@@ -811,7 +882,7 @@
 		text-overflow: ellipsis;
 	}
 	.context-spinner,
-	.context-unavailable {
+	.context-reason-icon {
 		display: inline-flex;
 		width: 1.125rem;
 		height: 1.125rem;
@@ -819,18 +890,47 @@
 		align-items: center;
 		justify-content: center;
 	}
+	.context-meter,
+	.context-unavailable {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 2.75rem;
+		height: 2.75rem;
+		flex: 0 0 auto;
+		padding: 0;
+		border: none;
+		border-radius: 50%;
+		background: transparent;
+		cursor: pointer;
+	}
+	.context-meter:focus-visible {
+		outline: none;
+		box-shadow: var(--focus-ring);
+	}
 	.context-spinner {
 		border: 2px solid var(--color-line-2);
 		border-top-color: currentColor;
 		border-radius: 50%;
 		animation: spin 0.8s linear infinite;
 	}
-	.context-unavailable {
+	.context-reason-icon {
+		padding: 0;
 		border: 1px solid var(--color-line-2);
 		border-radius: 50%;
+		background: transparent;
 		color: var(--color-ink-3);
 		font-size: 0.7rem;
 		font-weight: 700;
+		cursor: pointer;
+	}
+	.context-unavailable:hover .context-reason-icon {
+		border-color: var(--color-line-2);
+		color: var(--color-ink-1);
+	}
+	.context-unavailable:focus-visible {
+		outline: none;
+		box-shadow: var(--focus-ring);
 	}
 	.tb-left {
 		display: flex;

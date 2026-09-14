@@ -11,6 +11,12 @@ import { uploadChatAttachment } from '$lib/api/chatAttachments';
 
 beforeEach(() => {
 	vi.mocked(uploadChatAttachment).mockReset();
+	vi.stubGlobal('matchMedia', (query: string) => ({
+		matches: query.includes('min-width: 768px') || query.includes('prefers-reduced-motion'),
+		media: query,
+		addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {},
+		dispatchEvent: () => false, onchange: null
+	}));
 	Object.defineProperty(URL, 'createObjectURL', {
 		configurable: true,
 		value: vi.fn(() => 'blob:preview')
@@ -109,7 +115,7 @@ describe('ChatInput attachments', () => {
 });
 
 describe('ChatInput compact context meter', () => {
-	it('keeps measured context use inside the composer controls', () => {
+	it('keeps measured context use inside the composer controls', async () => {
 		const view = render(ChatInput, {
 			value: '',
 			hasContextScope: true,
@@ -121,7 +127,7 @@ describe('ChatInput compact context meter', () => {
 				input_budget: 13_824,
 				input_tokens: 4_147,
 				utilization: 0.3,
-				measurement: 'tokenizer',
+				measurement: 'estimated',
 				recommendation: 'none',
 				can_compact: false,
 				reason_code: 'no_prior_turn',
@@ -135,11 +141,13 @@ describe('ChatInput compact context meter', () => {
 
 		const meter = view.getByRole('meter', { name: '컨텍스트 입력 예산 사용률' });
 		expect(meter.getAttribute('aria-valuenow')).toBe('30');
-		expect(meter.getAttribute('aria-valuetext')).toBe('약 4,147 / 13,824 토큰 · 30%');
-		expect(view.getByText('컨텍스트 30%')).toBeTruthy();
+		const details = view.getByRole('button', { name: '컨텍스트 용량 세부 정보' });
+		await fireEvent.click(details);
+		expect(view.getByRole('dialog', { name: '컨텍스트 윈도우' })).toBeTruthy();
+		expect(view.queryByText('대화 메시지·초안')).toBeNull();
 	});
 
-	it('does not invent a zero percent meter for unknown context usage', () => {
+	it('does not invent a zero percent meter for unknown context usage', async () => {
 		const view = render(ChatInput, {
 			value: '',
 			hasContextScope: true,
@@ -154,7 +162,7 @@ describe('ChatInput compact context meter', () => {
 				measurement: 'unknown',
 				recommendation: 'unavailable',
 				can_compact: false,
-				reason_code: 'context_unavailable',
+				reason_code: 'context_window_unknown',
 				revision: 'context-r2',
 				checkpoint_id: null,
 				active_compaction_run_id: null
@@ -164,8 +172,46 @@ describe('ChatInput compact context meter', () => {
 		});
 
 		expect(view.queryByRole('meter')).toBeNull();
-		expect(view.getByText('컨텍스트 확인 불가')).toBeTruthy();
+		const explanation = view.getByRole('button', { name: '컨텍스트를 표시할 수 없는 이유' });
+		expect(explanation.getAttribute('aria-expanded')).toBe('false');
+		await fireEvent.click(explanation);
+		expect(explanation.getAttribute('aria-expanded')).toBe('true');
+		const panel = view.getByRole('dialog', { name: '컨텍스트 윈도우' });
+		expect(view.queryByRole('meter')).toBeNull();
+		await fireEvent.keyDown(panel, { key: 'Escape' });
+		await waitFor(() => expect(view.queryByRole('dialog')).toBeNull());
+		expect(document.activeElement).toBe(explanation);
+		expect(explanation.getAttribute('aria-expanded')).toBe('false');
 	});
+
+	it('uses the full model denominator and excludes deferred tools from current capacity', async () => {
+		const state = {
+			model_name: 'sonar', context_limit: 16000, output_reserve: 2000, safety_reserve: 1000,
+			input_budget: 13000, input_tokens: 4000, utilization: 4000 / 13000,
+			measurement: 'estimated' as const, recommendation: 'none' as const, can_compact: false,
+			reason_code: null, revision: 'r1', checkpoint_id: null, active_compaction_run_id: null,
+			breakdown: { scope: 'preview' as const, complete: true, uncounted: [] as string[], components: [
+				{ id: 'messages', tokens: 3000, measurement: 'estimated' as const, count: 2, included: true, items: ['user:1', 'assistant:2'] },
+				{ id: 'tools', tokens: 1000, measurement: 'estimated' as const, count: 1, included: true, items: ['tool_catalog_search'] },
+				{ id: 'deferred_tools', tokens: 7000, measurement: 'estimated' as const, count: 5, included: false, items: ['Research server'] }
+			] }
+		};
+		const view = render(ChatInput, { value: '', hasContextScope: true, contextState: state, onSend: vi.fn(), onStop: vi.fn() });
+		await fireEvent.click(view.getByRole('button', { name: '컨텍스트 용량 세부 정보' }));
+		const messageRow = view.getByText('대화 메시지·초안', { exact: false }).closest('summary')!;
+		expect(messageRow.textContent).toContain('18.8%');
+		expect(view.queryByText('7,000')).toBeNull();
+		expect(view.getByText('남은 입력 용량').parentElement?.textContent).toContain('9,000');
+		await view.rerender({ contextState: { ...state, breakdown: {
+			...state.breakdown, complete: false, uncounted: ['mcp_tools'], components: [
+				...state.breakdown.components,
+				{ id: 'mcp_tools', tokens: null, measurement: 'unknown' as const, count: null, included: false, items: ['Preloaded MCP'] }
+			]
+		} } });
+		expect(view.queryByRole('meter')).toBeNull();
+		expect(view.getByText('남은 입력 용량').parentElement?.textContent).not.toContain('9,000');
+	});
+
 });
 
 

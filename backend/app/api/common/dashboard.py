@@ -11,7 +11,6 @@ import re
 from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 
-from drover_sdk import register as register_drover
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import and_, func, select
 
@@ -24,6 +23,7 @@ from app.services import neutron as neutron_svc
 from app.services import swift as swift_svc
 from app.services import trove as trove_svc
 from app.services.cache import cached_call, ttl_fast, ttl_normal, ttl_static
+from app.services.keystone import get_drover_proxy
 
 router = APIRouter()
 _logger = logging.getLogger(__name__)
@@ -270,7 +270,7 @@ async def get_dashboard_k3s_stats(
         raise HTTPException(status_code=400, detail="유효하지 않은 프로젝트 ID")
 
     try:
-        stats = await asyncio.to_thread(register_drover(conn).cluster_stats)
+        stats = await asyncio.to_thread(get_drover_proxy(conn).cluster_stats)
         return {
             "total": int(stats.get("total", 0)),
             "active": int(stats.get("active", 0)),
@@ -772,7 +772,7 @@ async def get_dashboard_overview(
     k3s_available = settings.service_k3s_enabled
     if k3s_available:
         try:
-            stats = await asyncio.to_thread(register_drover(conn).cluster_stats)
+            stats = await asyncio.to_thread(get_drover_proxy(conn).cluster_stats)
             k3s_count = int(stats.get("total", 0))
             k3s_active = int(stats.get("active", 0))
         except Exception:

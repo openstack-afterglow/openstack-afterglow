@@ -599,6 +599,8 @@
 	interface PendingTitleTracker {
 		conversationId: string;
 		startedAt: number;
+		nextPollAt: number;
+		inFlight: boolean;
 	}
 	const pendingTitleTrackers = new Map<string, PendingTitleTracker>();
 	let titlePollingGeneration = 0;
@@ -615,7 +617,9 @@
 			if (c.title_status === 'pending' && !pendingTitleTrackers.has(c.id)) {
 				pendingTitleTrackers.set(c.id, {
 					conversationId: c.id,
-					startedAt: now
+					startedAt: now,
+					nextPollAt: now,
+					inFlight: false
 				});
 			}
 		}
@@ -657,20 +661,15 @@
 			return;
 		}
 		const now = Date.now();
-		const trackers = [...pendingTitleTrackers.values()];
+		const trackers = [...pendingTitleTrackers.values()].sort((a, b) => a.nextPollAt - b.nextPollAt);
 		for (const tracker of trackers) {
-			if (now - tracker.startedAt > 30_000) {
-				pendingTitleTrackers.delete(tracker.conversationId);
-				conversations = conversations.map((c) =>
-					c.id === tracker.conversationId && c.title_status === 'pending'
-						? { ...c, title_status: 'failed' }
-						: c
-				);
-				continue;
-			}
+			if (tracker.inFlight || now < tracker.nextPollAt) continue;
 			if (activeTitlePollRequests >= 4) {
 				break;
 			}
+			tracker.inFlight = true;
+			// A slow provider/queue is still pending; only the server can declare failure.
+			tracker.nextPollAt = now + (now - tracker.startedAt >= 30_000 ? 15_000 : 1_000);
 			void pollSingleTitle(tracker.conversationId, titlePollingGeneration);
 		}
 		if (pendingTitleTrackers.size === 0) {
@@ -703,7 +702,11 @@
 		} catch {
 			// Transient poll failure ignored
 		} finally {
-			activeTitlePollRequests = Math.max(0, activeTitlePollRequests - 1);
+			if (generation === titlePollingGeneration) {
+				activeTitlePollRequests = Math.max(0, activeTitlePollRequests - 1);
+				const tracker = pendingTitleTrackers.get(convId);
+				if (tracker) tracker.inFlight = false;
+			}
 		}
 	}
 
@@ -1218,6 +1221,7 @@
 	}
 
 	function scheduleDebouncedContextPreview() {
+		contextLoading = true;
 		if (previewDebounceTimer) {
 			clearTimeout(previewDebounceTimer);
 		}
@@ -1280,10 +1284,22 @@
 			) {
 				return null;
 			}
-			if (caught instanceof ChatHttpError && caught.status === 409) {
+			contextState = null;
+			const status = caught instanceof ChatHttpError || caught instanceof ApiError ? caught.status : null;
+			if (status === 409) {
 				contextError = '대화 상태가 변경되었습니다. 최신 대화를 확인해 주세요.';
-			} else if (caught instanceof ChatHttpError && caught.status === 422) {
-				contextError = caught.message;
+			} else if (status === 422) {
+				contextError = '선택한 모델 또는 요청 설정으로 컨텍스트를 계산할 수 없습니다.';
+			} else if (status === 401 || status === 403) {
+				contextError = '대화 접근 권한과 로그인 상태를 확인해 주세요.';
+			} else if (status === 404) {
+				contextError = '대화를 찾을 수 없어 컨텍스트를 계산하지 못했습니다.';
+			} else if (status === 429) {
+				contextError = '요청이 많아 컨텍스트를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.';
+			} else if (status !== null && status >= 500) {
+				contextError = '컨텍스트 계산 서비스를 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.';
+			} else {
+				contextError = '컨텍스트 요청을 완료하지 못했습니다. 연결 상태를 확인해 주세요.';
 			}
 			return null;
 		} finally {
@@ -1305,6 +1321,8 @@
 		const _effort = effort;
 		const _search = searchEnabled;
 
+		contextState = null;
+		contextError = null;
 		invalidateContextPreview();
 		if (!hasContextScope || streaming || !token || !projectId) return;
 
@@ -2251,6 +2269,7 @@
 						title={sidebarOpen ? '대화 기록 닫기' : '대화 기록과 설정 열기'}
 					>
 						<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="2.5" /><path d="M10 4v16" /></svg>
+						<span>기록</span>
 					</button>
 {/snippet}
 
@@ -2324,7 +2343,6 @@
 			<header class="head">
 			<div class="head-center">
 				<div class="head-controls">
-					{@render historyToggle()}
 					<button
 						type="button"
 						class="model-btn"
@@ -2351,12 +2369,11 @@
 				{/if}
 			</div>
 			<div class="head-right">
-				{#if allCitations.length}
-					<button type="button" class="sources-btn" onclick={() => (sourcesOpen = true)} title="이 대화의 출처 보기">
+					{@render historyToggle()}
+					<button type="button" class="sources-btn" onclick={() => (sourcesOpen = !sourcesOpen)} aria-haspopup="dialog" aria-expanded={sourcesOpen} aria-controls="chat-sources-panel" title="이 대화의 출처 보기">
 						<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" stroke-linecap="round" stroke-linejoin="round" /></svg>
 						출처 {allCitations.length}
 					</button>
-				{/if}
 				{#if tempMode || !tempToggleLocked}
 					<button
 						type="button"
@@ -2503,7 +2520,24 @@
 		display: none;
 	}
 	.compact-history-toggle {
-		display: none;
+		display: inline-flex;
+		flex: 0 0 auto;
+		align-items: center;
+		justify-content: center;
+		gap: 0.375rem;
+		min-height: 2.75rem;
+		padding: 0.375rem 0.625rem;
+		border: 1px solid var(--color-line);
+		border-radius: 0.5rem;
+		background: var(--color-surface-raised);
+		color: var(--color-ink-1);
+		font-size: 0.75rem;
+		cursor: pointer;
+	}
+	.compact-history-toggle:hover,
+	.compact-history-toggle:focus-visible {
+		border-color: var(--color-line-2);
+		background: var(--color-surface-sunken);
 	}
 	.rail-action {
 		display: inline-flex;
@@ -2551,30 +2585,8 @@
 		background: var(--color-line);
 	}
 	@media (max-width: 1023px) {
-		.compact-history-toggle {
-			display: inline-flex;
-			flex: 0 0 2.75rem;
-			align-items: center;
-			justify-content: center;
-			width: 2.75rem;
-			height: 2.75rem;
-			padding: 0;
-			border: 1px solid var(--color-line);
-			border-radius: 0.6rem;
-			background: var(--color-surface-raised);
-			color: var(--color-ink-1);
-			cursor: pointer;
-		}
-		.compact-history-toggle:hover,
-		.compact-history-toggle:focus-visible {
-			border-color: var(--color-line-2);
-			background: var(--color-surface-sunken);
-			color: var(--color-ink-0);
-		}
-	}
-	@media (max-width: 1023px) {
 		.head {
-			block-size: 4rem;
+			min-block-size: 4rem;
 			padding-block: 0.5rem;
 		}
 	}
@@ -2622,7 +2634,7 @@
 		align-items: center;
 		gap: 0.55rem 1rem;
 		box-sizing: border-box;
-		block-size: 3.75rem;
+		min-block-size: 3.75rem;
 		padding: 0.7rem 1rem;
 		border-bottom: 1px solid var(--color-line);
 		background: var(--color-surface-base);
@@ -2794,6 +2806,7 @@
 	}
 	.sources-btn {
 		display: inline-flex;
+		min-height: 2.75rem;
 		align-items: center;
 		gap: 0.3rem;
 		padding: 0.3rem 0.6rem;
@@ -2837,9 +2850,6 @@
 		.head-controls {
 			gap: 0.3rem;
 		}
-		.compact-history-toggle {
-			flex-basis: 2.75rem;
-		}
 		.model-btn {
 			max-width: 11rem;
 			padding: 0.4rem 0.55rem;
@@ -2848,5 +2858,10 @@
 		.model-btn-caps {
 			display: none;
 		}
+	}
+	@media (max-width: 767px) {
+		.head { grid-template-columns: minmax(0, 1fr); }
+		.head-right { grid-column: 1; grid-row: 2; justify-content: flex-start; }
+		.temp-notice { grid-row: 3; }
 	}
 </style>

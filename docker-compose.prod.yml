@@ -1,17 +1,18 @@
-# 프로덕션 환경용 docker-compose
-# 사용법: docker compose -f docker-compose.prod.yml up -d
+# Image-only production stack. The operator supplies production configuration and
+# secrets outside this repository; this file never builds application images.
 #
-# 필수 환경 변수 (.env 파일 또는 셸에서 설정):
-#   REGISTRY       - 컨테이너 레지스트리 주소 (예: ghcr.io/myorg)
-#   IMAGE_TAG      - 이미지 태그 (예: latest, v1.2.3)
-#   ORIGIN         - 프론트엔드 접근 URL (예: https://afterglow.example.com)
-#   PUBLIC_API_BASE - 백엔드 API URL (예: https://afterglow.example.com)
-#   PUBLIC_GRAFANA_BASE - Grafana URL (예: https://grafana.example.com, 미설정 시 모니터링 임베드 비활성)
+# Required for the default stack: SECRET_KEY, OS_PASSWORD, DATABASE_URL, ORIGIN,
+# PUBLIC_API_BASE, and TLS_CERTS_DIR. TLS_CERTS_DIR must contain PEM files with
+# each certificate chain and its private key. Full *_IMAGE overrides support tags/digests.
+name: afterglow-production
 
 services:
   redis:
     image: redis:7-alpine
-    # 프로덕션: 포트를 호스트에 노출하지 않음 (내부 네트워크만 사용)
+    pull_policy: always
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
     restart: always
     logging:
       driver: json-file
@@ -20,27 +21,31 @@ services:
         max-file: "3"
 
   backend:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: backend
-    image: ${REGISTRY}/afterglow-api:${IMAGE_TAG:-latest}
+    image: ${AFTERGLOW_BACKEND_IMAGE:-${REGISTRY:-ghcr.io/openstack-afterglow}/afterglow-api:${BACKEND_IMAGE_TAG:-${IMAGE_TAG:-latest}}}
     pull_policy: always
-    ports:
-      - "127.0.0.1:8000:8000"
     volumes:
       - ./afterglow.conf:/app/afterglow.conf:ro
       - ./logs:/app/logs
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2 --proxy-headers
     environment:
-      - OPENSTACK_PASSWORD=${OPENSTACK_PASSWORD}
-      - SECRET_KEY=${SECRET_KEY}
-      - AFTERGLOW_ENV=production
-      - LUMEN_MCP_SERVICE_TOKEN=${LUMEN_MCP_SERVICE_TOKEN:-}
-      - SERVICE_WAYGATE_INTERNAL_URL=${SERVICE_WAYGATE_INTERNAL_URL:-}
-      - SERVICE_DROVER_INTERNAL_URL=${SERVICE_DROVER_INTERNAL_URL:-}
-      - SERVICE_LUMEN_INTERNAL_URL=${SERVICE_LUMEN_INTERNAL_URL:-}
-      - SERVICE_PALIMPSEST_INTERNAL_URL=${SERVICE_PALIMPSEST_INTERNAL_URL:-}
+      OS_PASSWORD: ${OS_PASSWORD:?OS_PASSWORD must be set}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set}
+      AFTERGLOW_ENV: production
+      AFTERGLOW_ALLOW_INSECURE: "0"
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must select the production Afterglow database}
+      REDIS_URL: redis://redis:6379/0
+      SENTINEL_ENABLED: "false"
+      SENTINEL_HOSTS: ""
+      FRONTEND_BASE_URL: ${ORIGIN:?ORIGIN must be an HTTPS public origin}
+      PUBLIC_API_BASE: ${PUBLIC_API_BASE:?PUBLIC_API_BASE must be an HTTPS public API origin}
+      CORS_ORIGINS: ${ORIGIN:?ORIGIN must be an HTTPS public origin}
+      # No application host ports: only the private Compose network reaches Uvicorn.
+      FORWARDED_ALLOW_IPS: "*"
+      LUMEN_MCP_SERVICE_TOKEN: ${LUMEN_MCP_SERVICE_TOKEN:-}
+      SERVICE_WAYGATE_INTERNAL_URL:
+      SERVICE_DROVER_INTERNAL_URL:
+      SERVICE_LUMEN_INTERNAL_URL:
+      SERVICE_PALIMPSEST_INTERNAL_URL:
     depends_on:
       - redis
     restart: always
@@ -49,87 +54,59 @@ services:
       options:
         max-size: "50m"
         max-file: "5"
-
-
-
-  waygate-api:
-    image: ${REGISTRY}/waygate-api:${IMAGE_TAG:-latest}
-    pull_policy: always
-    ports:
-      - "127.0.0.1:8010:8010"
-    environment:
-      DATABASE_URL: ${WAYGATE_DATABASE_URL:-}
-      REDIS_URL: redis://redis:6379/6
-      OS_AUTH_URL: ${WAYGATE_OS_AUTH_URL:-}
-      OS_USERNAME: ${WAYGATE_OS_USERNAME:-waygate}
-      OS_PASSWORD: ${WAYGATE_OS_PASSWORD:-}
-      OS_PROJECT_NAME: ${WAYGATE_OS_PROJECT_NAME:-waygate}
-      OS_PROJECT_DOMAIN_NAME: ${WAYGATE_OS_PROJECT_DOMAIN_NAME:-Default}
-      OS_USER_DOMAIN_NAME: ${WAYGATE_OS_USER_DOMAIN_NAME:-Default}
-      OS_REGION_NAME: ${WAYGATE_OS_REGION_NAME:-RegionOne}
-      OS_INTERFACE: ${WAYGATE_OS_INTERFACE:-internal}
-      WAYGATE_CALLBACK_BASE_URL: ${WAYGATE_CALLBACK_BASE_URL:-}
-      WAYGATE_KEY_NAME: ${WAYGATE_KEY_NAME:-}
-      WAYGATE_ENCRYPTION_KEY: ${WAYGATE_ENCRYPTION_KEY:-${K3S_KUBECONFIG_ENCRYPTION_KEY:-}}
-    depends_on:
-      - redis
-    restart: always
     healthcheck:
-      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8010/v1/health')" ]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 10s
-    logging:
-      driver: json-file
-      options:
-        max-size: "20m"
-        max-file: "3"
 
-  waygate-worker:
-    image: ${REGISTRY}/waygate-worker:${IMAGE_TAG:-latest}
+  frontend:
+    image: ${AFTERGLOW_FRONTEND_IMAGE:-${REGISTRY:-ghcr.io/openstack-afterglow}/afterglow:${FRONTEND_IMAGE_TAG:-${IMAGE_TAG:-latest}}}
     pull_policy: always
+    volumes:
+      - ./logs:/app/logs
     environment:
-      DATABASE_URL: ${WAYGATE_DATABASE_URL:-}
-      REDIS_URL: redis://redis:6379/6
-      OS_AUTH_URL: ${WAYGATE_OS_AUTH_URL:-}
-      OS_USERNAME: ${WAYGATE_OS_USERNAME:-waygate}
-      OS_PASSWORD: ${WAYGATE_OS_PASSWORD:-}
-      OS_PROJECT_NAME: ${WAYGATE_OS_PROJECT_NAME:-waygate}
-      OS_PROJECT_DOMAIN_NAME: ${WAYGATE_OS_PROJECT_DOMAIN_NAME:-Default}
-      OS_USER_DOMAIN_NAME: ${WAYGATE_OS_USER_DOMAIN_NAME:-Default}
-      OS_REGION_NAME: ${WAYGATE_OS_REGION_NAME:-RegionOne}
-      OS_INTERFACE: ${WAYGATE_OS_INTERFACE:-internal}
-      WAYGATE_CALLBACK_BASE_URL: ${WAYGATE_CALLBACK_BASE_URL:-}
-      WAYGATE_KEY_NAME: ${WAYGATE_KEY_NAME:-}
-      WAYGATE_ENCRYPTION_KEY: ${WAYGATE_ENCRYPTION_KEY:-${K3S_KUBECONFIG_ENCRYPTION_KEY:-}}
+      ORIGIN: ${ORIGIN:?ORIGIN must be an HTTPS public origin}
+      PUBLIC_API_BASE: ${PUBLIC_API_BASE:?PUBLIC_API_BASE must be an HTTPS public API origin}
+      PUBLIC_S3_BASE: ${PUBLIC_S3_BASE:-}
+      PUBLIC_GRAFANA_BASE: ${PUBLIC_GRAFANA_BASE:-}
     depends_on:
-      - redis
+      backend:
+        condition: service_healthy
     restart: always
     logging:
       driver: json-file
       options:
-        max-size: "20m"
+        max-size: "10m"
         max-file: "3"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3080/health',{redirect:'error'}).then(async r=>{if(!r.ok||(await r.json()).status!=='ok')throw 1})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
-  frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: frontend
-    image: ${REGISTRY}/afterglow:${IMAGE_TAG:-latest}
+  haproxy:
+    image: haproxy:3.2-alpine
     pull_policy: always
     ports:
-      - "127.0.0.1:3080:3080"
+      - "80:80"
+      - "443:443"
+      # Keystone catalog ingress for optional sibling APIs. These listeners are
+      # HAProxy only; application containers never publish host ports.
+      - "8010:8010"
+      - "8011:8011"
+      - "8012:8012"
+      - "8020:8020"
     volumes:
-      - ./logs:/app/logs
-    environment:
-      - ORIGIN=${ORIGIN:-http://localhost:3080}
-      - PUBLIC_API_BASE=${PUBLIC_API_BASE:-http://localhost:8000}
-      - PUBLIC_S3_BASE=${PUBLIC_S3_BASE:-https://s3.dmslab.re.kr}
-      - PUBLIC_GRAFANA_BASE=${PUBLIC_GRAFANA_BASE:-}
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ${TLS_CERTS_DIR:?TLS_CERTS_DIR must be an absolute directory of PEM certificate-and-key files}:/etc/haproxy/certs:ro
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
     restart: always
     logging:
       driver: json-file
@@ -137,39 +114,121 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # ── Drover migration bootstrap ──────────────────────────────────────────────
-  drover-migrate:
-    image: ${REGISTRY}/drover-api:${IMAGE_TAG:-latest}
+  notion-worker:
+    profiles: ["notion"]
+    image: ${AFTERGLOW_WORKER_IMAGE:-${REGISTRY:-ghcr.io/openstack-afterglow}/afterglow-worker:${WORKER_IMAGE_TAG:-${IMAGE_TAG:-latest}}}
     pull_policy: always
+    command: python -m app.notion_worker
+    volumes:
+      - ./afterglow.conf:/app/afterglow.conf:ro
+      - ./logs:/app/logs
     environment:
-      DATABASE_URL: ${DROVER_DATABASE_URL:-}
-      REDIS_URL: redis://redis:6379/7
-      OS_AUTH_URL: ${DROVER_OS_AUTH_URL:-}
-      OS_USERNAME: ${DROVER_OS_USERNAME:-drover}
-      OS_PASSWORD: ${DROVER_OS_PASSWORD:-}
-      OS_PROJECT_NAME: ${DROVER_OS_PROJECT_NAME:-drover-service}
-      OS_PROJECT_DOMAIN_NAME: ${DROVER_OS_PROJECT_DOMAIN_NAME:-Default}
-      OS_USER_DOMAIN_NAME: ${DROVER_OS_USER_DOMAIN_NAME:-Default}
-      OS_REGION_NAME: ${DROVER_OS_REGION_NAME:-RegionOne}
-      OS_INTERFACE: ${DROVER_OS_INTERFACE:-internal}
-      DROVER_CALLBACK_BASE_URL: ${DROVER_CALLBACK_BASE_URL:-}
-      DROVER_KUBECONFIG_ENCRYPTION_KEY: ${DROVER_KUBECONFIG_ENCRYPTION_KEY:-${K3S_KUBECONFIG_ENCRYPTION_KEY:-}}
-    command: python -m drover.scripts.migrate --apply
+      OS_PASSWORD: ${OS_PASSWORD:?OS_PASSWORD must be set}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set}
+      AFTERGLOW_ENV: production
+      AFTERGLOW_ALLOW_INSECURE: "0"
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must select the production Afterglow database}
+      REDIS_URL: redis://redis:6379/0
+      SENTINEL_ENABLED: "false"
+      SENTINEL_HOSTS: ""
+      SERVICE_WAYGATE_INTERNAL_URL:
+      SERVICE_DROVER_INTERNAL_URL:
+      SERVICE_LUMEN_INTERNAL_URL:
+      SERVICE_PALIMPSEST_INTERNAL_URL:
+    depends_on:
+      - redis
+      - backend
+    restart: always
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  waygate-migrate:
+    profiles: ["waygate"]
+    image: ${WAYGATE_API_IMAGE:-${REGISTRY:-ghcr.io/openstack-afterglow}/waygate-api:${WAYGATE_IMAGE_TAG:-${IMAGE_TAG:-latest}}}
+    pull_policy: always
+    command: python -m waygate.scripts.migrate --apply
+    environment:
+      DATABASE_URL: ${WAYGATE_DATABASE_URL:-}
+      REDIS_URL: redis://redis:6379/6
+      OS_AUTH_URL: ${WAYGATE_OS_AUTH_URL:-}
+      OS_USERNAME: ${WAYGATE_OS_USERNAME:-waygate}
+      OS_PASSWORD: ${WAYGATE_OS_PASSWORD:-}
+      OS_PROJECT_NAME: ${WAYGATE_OS_PROJECT_NAME:-waygate}
+      OS_PROJECT_DOMAIN_NAME: ${WAYGATE_OS_PROJECT_DOMAIN_NAME:-Default}
+      OS_USER_DOMAIN_NAME: ${WAYGATE_OS_USER_DOMAIN_NAME:-Default}
+      OS_REGION_NAME: ${WAYGATE_OS_REGION_NAME:-RegionOne}
+      OS_INTERFACE: ${WAYGATE_OS_INTERFACE:-internal}
+      WAYGATE_CALLBACK_BASE_URL: ${WAYGATE_CALLBACK_BASE_URL:-}
+      WAYGATE_KEY_NAME: ${WAYGATE_KEY_NAME:-}
+      WAYGATE_ENCRYPTION_KEY: ${WAYGATE_ENCRYPTION_KEY:-}
     depends_on:
       - redis
     restart: "no"
-    logging:
-      driver: json-file
-      options:
-        max-size: "20m"
-        max-file: "3"
 
-  # ── Drover API ───────────────────────────────────────────────────────────────
-  drover-api:
-    image: ${REGISTRY}/drover-api:${IMAGE_TAG:-latest}
+  waygate-api:
+    profiles: ["waygate"]
+    image: ${WAYGATE_API_IMAGE:-${REGISTRY:-ghcr.io/openstack-afterglow}/waygate-api:${WAYGATE_IMAGE_TAG:-${IMAGE_TAG:-latest}}}
     pull_policy: always
-    ports:
-      - "127.0.0.1:8011:8011"
+    environment:
+      DATABASE_URL: ${WAYGATE_DATABASE_URL:-}
+      REDIS_URL: redis://redis:6379/6
+      OS_AUTH_URL: ${WAYGATE_OS_AUTH_URL:-}
+      OS_USERNAME: ${WAYGATE_OS_USERNAME:-waygate}
+      OS_PASSWORD: ${WAYGATE_OS_PASSWORD:-}
+      OS_PROJECT_NAME: ${WAYGATE_OS_PROJECT_NAME:-waygate}
+      OS_PROJECT_DOMAIN_NAME: ${WAYGATE_OS_PROJECT_DOMAIN_NAME:-Default}
+      OS_USER_DOMAIN_NAME: ${WAYGATE_OS_USER_DOMAIN_NAME:-Default}
+      OS_REGION_NAME: ${WAYGATE_OS_REGION_NAME:-RegionOne}
+      OS_INTERFACE: ${WAYGATE_OS_INTERFACE:-internal}
+      WAYGATE_CALLBACK_BASE_URL: ${WAYGATE_CALLBACK_BASE_URL:-}
+      WAYGATE_KEY_NAME: ${WAYGATE_KEY_NAME:-}
+      WAYGATE_ENCRYPTION_KEY: ${WAYGATE_ENCRYPTION_KEY:-}
+    depends_on:
+      redis:
+        condition: service_started
+      waygate-migrate:
+        condition: service_completed_successfully
+    restart: always
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8010/v1/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  waygate-worker:
+    profiles: ["waygate"]
+    image: ${WAYGATE_WORKER_IMAGE:-${REGISTRY:-ghcr.io/openstack-afterglow}/waygate-worker:${WAYGATE_IMAGE_TAG:-${IMAGE_TAG:-latest}}}
+    pull_policy: always
+    environment:
+      DATABASE_URL: ${WAYGATE_DATABASE_URL:-}
+      REDIS_URL: redis://redis:6379/6
+      OS_AUTH_URL: ${WAYGATE_OS_AUTH_URL:-}
+      OS_USERNAME: ${WAYGATE_OS_USERNAME:-waygate}
+      OS_PASSWORD: ${WAYGATE_OS_PASSWORD:-}
+      OS_PROJECT_NAME: ${WAYGATE_OS_PROJECT_NAME:-waygate}
+      OS_PROJECT_DOMAIN_NAME: ${WAYGATE_OS_PROJECT_DOMAIN_NAME:-Default}
+      OS_USER_DOMAIN_NAME: ${WAYGATE_OS_USER_DOMAIN_NAME:-Default}
+      OS_REGION_NAME: ${WAYGATE_OS_REGION_NAME:-RegionOne}
+      OS_INTERFACE: ${WAYGATE_OS_INTERFACE:-internal}
+      WAYGATE_CALLBACK_BASE_URL: ${WAYGATE_CALLBACK_BASE_URL:-}
+      WAYGATE_KEY_NAME: ${WAYGATE_KEY_NAME:-}
+      WAYGATE_ENCRYPTION_KEY: ${WAYGATE_ENCRYPTION_KEY:-}
+    depends_on:
+      redis:
+        condition: service_started
+      waygate-migrate:
+        condition: service_completed_successfully
+    restart: always
+
+  drover-migrate:
+    profiles: ["drover"]
+    image: ${DROVER_API_IMAGE:-${REGISTRY:-ghcr.io/openstack-afterglow}/drover-api:${DROVER_IMAGE_TAG:-${IMAGE_TAG:-latest}}}
+    pull_policy: always
+    command: python -m drover.scripts.migrate --apply
     environment:
       DATABASE_URL: ${DROVER_DATABASE_URL:-}
       REDIS_URL: redis://redis:6379/7
@@ -177,12 +236,35 @@ services:
       OS_USERNAME: ${DROVER_OS_USERNAME:-drover}
       OS_PASSWORD: ${DROVER_OS_PASSWORD:-}
       OS_PROJECT_NAME: ${DROVER_OS_PROJECT_NAME:-drover-service}
+      OS_SERVICE_PROJECT_ID: ${DROVER_OS_SERVICE_PROJECT_ID:-}
       OS_PROJECT_DOMAIN_NAME: ${DROVER_OS_PROJECT_DOMAIN_NAME:-Default}
       OS_USER_DOMAIN_NAME: ${DROVER_OS_USER_DOMAIN_NAME:-Default}
       OS_REGION_NAME: ${DROVER_OS_REGION_NAME:-RegionOne}
       OS_INTERFACE: ${DROVER_OS_INTERFACE:-internal}
       DROVER_CALLBACK_BASE_URL: ${DROVER_CALLBACK_BASE_URL:-}
-      DROVER_KUBECONFIG_ENCRYPTION_KEY: ${DROVER_KUBECONFIG_ENCRYPTION_KEY:-${K3S_KUBECONFIG_ENCRYPTION_KEY:-}}
+      DROVER_KUBECONFIG_ENCRYPTION_KEY: ${DROVER_KUBECONFIG_ENCRYPTION_KEY:-}
+    depends_on:
+      - redis
+    restart: "no"
+
+  drover-api:
+    profiles: ["drover"]
+    image: ${DROVER_API_IMAGE:-${REGISTRY:-ghcr.io/openstack-afterglow}/drover-api:${DROVER_IMAGE_TAG:-${IMAGE_TAG:-latest}}}
+    pull_policy: always
+    environment:
+      DATABASE_URL: ${DROVER_DATABASE_URL:-}
+      REDIS_URL: redis://redis:6379/7
+      OS_AUTH_URL: ${DROVER_OS_AUTH_URL:-}
+      OS_USERNAME: ${DROVER_OS_USERNAME:-drover}
+      OS_PASSWORD: ${DROVER_OS_PASSWORD:-}
+      OS_PROJECT_NAME: ${DROVER_OS_PROJECT_NAME:-drover-service}
+      OS_SERVICE_PROJECT_ID: ${DROVER_OS_SERVICE_PROJECT_ID:-}
+      OS_PROJECT_DOMAIN_NAME: ${DROVER_OS_PROJECT_DOMAIN_NAME:-Default}
+      OS_USER_DOMAIN_NAME: ${DROVER_OS_USER_DOMAIN_NAME:-Default}
+      OS_REGION_NAME: ${DROVER_OS_REGION_NAME:-RegionOne}
+      OS_INTERFACE: ${DROVER_OS_INTERFACE:-internal}
+      DROVER_CALLBACK_BASE_URL: ${DROVER_CALLBACK_BASE_URL:-}
+      DROVER_KUBECONFIG_ENCRYPTION_KEY: ${DROVER_KUBECONFIG_ENCRYPTION_KEY:-}
     depends_on:
       redis:
         condition: service_started
@@ -190,20 +272,15 @@ services:
         condition: service_completed_successfully
     restart: always
     healthcheck:
-      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8011/v1/health')" ]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8011/v1/health/ready')"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 10s
-    logging:
-      driver: json-file
-      options:
-        max-size: "20m"
-        max-file: "3"
 
-  # ── Drover worker ────────────────────────────────────────────────────────────
   drover-worker:
-    image: ${REGISTRY}/drover-worker:${IMAGE_TAG:-latest}
+    profiles: ["drover"]
+    image: ${DROVER_WORKER_IMAGE:-${REGISTRY:-ghcr.io/openstack-afterglow}/drover-worker:${DROVER_IMAGE_TAG:-${IMAGE_TAG:-latest}}}
     pull_policy: always
     environment:
       DATABASE_URL: ${DROVER_DATABASE_URL:-}
@@ -212,34 +289,55 @@ services:
       OS_USERNAME: ${DROVER_OS_USERNAME:-drover}
       OS_PASSWORD: ${DROVER_OS_PASSWORD:-}
       OS_PROJECT_NAME: ${DROVER_OS_PROJECT_NAME:-drover-service}
+      OS_SERVICE_PROJECT_ID: ${DROVER_OS_SERVICE_PROJECT_ID:-}
       OS_PROJECT_DOMAIN_NAME: ${DROVER_OS_PROJECT_DOMAIN_NAME:-Default}
       OS_USER_DOMAIN_NAME: ${DROVER_OS_USER_DOMAIN_NAME:-Default}
       OS_REGION_NAME: ${DROVER_OS_REGION_NAME:-RegionOne}
       OS_INTERFACE: ${DROVER_OS_INTERFACE:-internal}
       DROVER_CALLBACK_BASE_URL: ${DROVER_CALLBACK_BASE_URL:-}
-      DROVER_KUBECONFIG_ENCRYPTION_KEY: ${DROVER_KUBECONFIG_ENCRYPTION_KEY:-${K3S_KUBECONFIG_ENCRYPTION_KEY:-}}
+      DROVER_KUBECONFIG_ENCRYPTION_KEY: ${DROVER_KUBECONFIG_ENCRYPTION_KEY:-}
     depends_on:
       redis:
         condition: service_started
       drover-migrate:
         condition: service_completed_successfully
     restart: always
-    logging:
-      driver: json-file
-      options:
-        max-size: "20m"
-        max-file: "3"
-  # ── Lumen API ───────────────────────────────────────────────────────────────
+
+  lumen-migrate:
+    profiles: ["lumen"]
+    image: ${LUMEN_API_IMAGE:-${REGISTRY:-ghcr.io/openstack-afterglow}/lumen-api:${LUMEN_IMAGE_TAG:-${IMAGE_TAG:-latest}}}
+    pull_policy: always
+    command: python -m lumen.scripts.migrate --apply
+    environment:
+      DATABASE_URL: ${LUMEN_DATABASE_URL:-}
+      REDIS_URL: redis://redis:6379/8
+      CHAT_CHECKPOINTER_POSTGRES_URL: ${LUMEN_CHECKPOINTER_POSTGRES_URL:-}
+      CHAT_MEMORY_PGVECTOR_URL: ${LUMEN_MEMORY_PGVECTOR_URL:-}
+      KEYSTONE_AUTH_URL: ${LUMEN_KEYSTONE_AUTH_URL:-}
+      KEYSTONE_ADMIN_USERNAME: ${LUMEN_KEYSTONE_ADMIN_USERNAME:-lumen}
+      KEYSTONE_ADMIN_PASSWORD: ${LUMEN_KEYSTONE_ADMIN_PASSWORD:-}
+      KEYSTONE_ADMIN_PROJECT: ${LUMEN_KEYSTONE_ADMIN_PROJECT:-lumen-service}
+      KEYSTONE_DOMAIN: ${LUMEN_KEYSTONE_DOMAIN:-Default}
+      KEYSTONE_REGION_NAME: ${LUMEN_KEYSTONE_REGION_NAME:-RegionOne}
+      KEYSTONE_INTERFACE: ${LUMEN_KEYSTONE_INTERFACE:-internal}
+      LUMEN_ENCRYPTION_KEY: ${LUMEN_ENCRYPTION_KEY:-}
+      # Must be the operator-published OpenStack catalog endpoint, never backend DNS.
+      MCP_CONTROL_PLANE_URL: ${LUMEN_MCP_CONTROL_PLANE_URL:-}
+      LUMEN_MCP_SERVICE_TOKEN: ${LUMEN_MCP_SERVICE_TOKEN:-}
+    depends_on:
+      - redis
+    restart: "no"
+
   lumen-api:
     profiles: ["lumen"]
-    image: ${REGISTRY}/lumen-api:${IMAGE_TAG:-latest}
+    image: ${LUMEN_API_IMAGE:-${REGISTRY:-ghcr.io/openstack-afterglow}/lumen-api:${LUMEN_IMAGE_TAG:-${IMAGE_TAG:-latest}}}
     pull_policy: always
-    ports:
-      - "127.0.0.1:8012:8012"
     environment:
       DATABASE_URL: ${LUMEN_DATABASE_URL:-}
       REDIS_URL: redis://redis:6379/8
-      KEYSTONE_AUTH_URL: ${LUMEN_KEYSTONE_AUTH_URL:-${KEYSTONE_AUTH_URL:-http://localhost:5000/v3}}
+      CHAT_CHECKPOINTER_POSTGRES_URL: ${LUMEN_CHECKPOINTER_POSTGRES_URL:-}
+      CHAT_MEMORY_PGVECTOR_URL: ${LUMEN_MEMORY_PGVECTOR_URL:-}
+      KEYSTONE_AUTH_URL: ${LUMEN_KEYSTONE_AUTH_URL:-}
       KEYSTONE_ADMIN_USERNAME: ${LUMEN_KEYSTONE_ADMIN_USERNAME:-lumen}
       KEYSTONE_ADMIN_PASSWORD: ${LUMEN_KEYSTONE_ADMIN_PASSWORD:-}
       KEYSTONE_ADMIN_PROJECT: ${LUMEN_KEYSTONE_ADMIN_PROJECT:-lumen-service}
@@ -247,32 +345,31 @@ services:
       KEYSTONE_REGION_NAME: ${LUMEN_KEYSTONE_REGION_NAME:-RegionOne}
       KEYSTONE_INTERFACE: ${LUMEN_KEYSTONE_INTERFACE:-internal}
       LUMEN_ENCRYPTION_KEY: ${LUMEN_ENCRYPTION_KEY:-}
-      MCP_CONTROL_PLANE_URL: ${MCP_CONTROL_PLANE_URL:-http://backend:8000}
+      MCP_CONTROL_PLANE_URL: ${LUMEN_MCP_CONTROL_PLANE_URL:-}
       LUMEN_MCP_SERVICE_TOKEN: ${LUMEN_MCP_SERVICE_TOKEN:-}
     depends_on:
-      - redis
+      redis:
+        condition: service_started
+      lumen-migrate:
+        condition: service_completed_successfully
     restart: always
     healthcheck:
-      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8012/v1/health')" ]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8012/v1/health')"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 10s
-    logging:
-      driver: json-file
-      options:
-        max-size: "20m"
-        max-file: "3"
 
-  # ── Lumen worker ────────────────────────────────────────────────────────────
   lumen-worker:
     profiles: ["lumen"]
-    image: ${REGISTRY}/lumen-worker:${IMAGE_TAG:-latest}
+    image: ${LUMEN_WORKER_IMAGE:-${REGISTRY:-ghcr.io/openstack-afterglow}/lumen-worker:${LUMEN_IMAGE_TAG:-${IMAGE_TAG:-latest}}}
     pull_policy: always
     environment:
       DATABASE_URL: ${LUMEN_DATABASE_URL:-}
       REDIS_URL: redis://redis:6379/8
-      KEYSTONE_AUTH_URL: ${LUMEN_KEYSTONE_AUTH_URL:-${KEYSTONE_AUTH_URL:-http://localhost:5000/v3}}
+      CHAT_CHECKPOINTER_POSTGRES_URL: ${LUMEN_CHECKPOINTER_POSTGRES_URL:-}
+      CHAT_MEMORY_PGVECTOR_URL: ${LUMEN_MEMORY_PGVECTOR_URL:-}
+      KEYSTONE_AUTH_URL: ${LUMEN_KEYSTONE_AUTH_URL:-}
       KEYSTONE_ADMIN_USERNAME: ${LUMEN_KEYSTONE_ADMIN_USERNAME:-lumen}
       KEYSTONE_ADMIN_PASSWORD: ${LUMEN_KEYSTONE_ADMIN_PASSWORD:-}
       KEYSTONE_ADMIN_PROJECT: ${LUMEN_KEYSTONE_ADMIN_PROJECT:-lumen-service}
@@ -280,30 +377,27 @@ services:
       KEYSTONE_REGION_NAME: ${LUMEN_KEYSTONE_REGION_NAME:-RegionOne}
       KEYSTONE_INTERFACE: ${LUMEN_KEYSTONE_INTERFACE:-internal}
       LUMEN_ENCRYPTION_KEY: ${LUMEN_ENCRYPTION_KEY:-}
-      MCP_CONTROL_PLANE_URL: ${MCP_CONTROL_PLANE_URL:-http://backend:8000}
+      MCP_CONTROL_PLANE_URL: ${LUMEN_MCP_CONTROL_PLANE_URL:-}
       LUMEN_MCP_SERVICE_TOKEN: ${LUMEN_MCP_SERVICE_TOKEN:-}
     depends_on:
-      - redis
+      redis:
+        condition: service_started
+      lumen-migrate:
+        condition: service_completed_successfully
     restart: always
-    logging:
-      driver: json-file
-      options:
-        max-size: "20m"
-        max-file: "3"
 
-  # ── Palimpsest Hub ──────────────────────────────────────────────────────────
   palimpsest-bootstrap:
     profiles: ["palimpsest"]
-    image: ${REGISTRY}/palimpsest-hub-api:${IMAGE_TAG:-latest}
+    image: ${PALIMPSEST_API_IMAGE:-${REGISTRY:-ghcr.io/openstack-afterglow}/palimpsest-hub-api:${PALIMPSEST_IMAGE_TAG:-${IMAGE_TAG:-latest}}}
     pull_policy: always
     command: palimpsest-hub-bootstrap
     environment:
       DATABASE_URL: ${PALIMPSEST_DATABASE_URL:-}
       REDIS_URL: redis://redis:6379/9
       PALIMPSEST_HUB_LOCAL_PATH: /var/lib/palimpsest/hub
-      OS_AUTH_URL: ${PALIMPSEST_OS_AUTH_URL:-${OS_AUTH_URL:-}}
+      OS_AUTH_URL: ${PALIMPSEST_OS_AUTH_URL:-}
       OS_USERNAME: ${PALIMPSEST_OS_USERNAME:-palimpsest}
-      OS_PASSWORD: ${PALIMPSEST_OS_PASSWORD:-${OS_PASSWORD:-}}
+      OS_PASSWORD: ${PALIMPSEST_OS_PASSWORD:-}
       OS_PROJECT_NAME: ${PALIMPSEST_OS_PROJECT_NAME:-palimpsest-service}
       OS_PROJECT_DOMAIN_NAME: ${PALIMPSEST_OS_PROJECT_DOMAIN_NAME:-Default}
       OS_USER_DOMAIN_NAME: ${PALIMPSEST_OS_USER_DOMAIN_NAME:-Default}
@@ -318,17 +412,15 @@ services:
 
   palimpsest-api:
     profiles: ["palimpsest"]
-    image: ${REGISTRY}/palimpsest-hub-api:${IMAGE_TAG:-latest}
+    image: ${PALIMPSEST_API_IMAGE:-${REGISTRY:-ghcr.io/openstack-afterglow}/palimpsest-hub-api:${PALIMPSEST_IMAGE_TAG:-${IMAGE_TAG:-latest}}}
     pull_policy: always
-    ports:
-      - "127.0.0.1:8020:8020"
     environment:
       DATABASE_URL: ${PALIMPSEST_DATABASE_URL:-}
       REDIS_URL: redis://redis:6379/9
       PALIMPSEST_HUB_LOCAL_PATH: /var/lib/palimpsest/hub
-      OS_AUTH_URL: ${PALIMPSEST_OS_AUTH_URL:-${OS_AUTH_URL:-}}
+      OS_AUTH_URL: ${PALIMPSEST_OS_AUTH_URL:-}
       OS_USERNAME: ${PALIMPSEST_OS_USERNAME:-palimpsest}
-      OS_PASSWORD: ${PALIMPSEST_OS_PASSWORD:-${OS_PASSWORD:-}}
+      OS_PASSWORD: ${PALIMPSEST_OS_PASSWORD:-}
       OS_PROJECT_NAME: ${PALIMPSEST_OS_PROJECT_NAME:-palimpsest-service}
       OS_PROJECT_DOMAIN_NAME: ${PALIMPSEST_OS_PROJECT_DOMAIN_NAME:-Default}
       OS_USER_DOMAIN_NAME: ${PALIMPSEST_OS_USER_DOMAIN_NAME:-Default}
@@ -344,7 +436,7 @@ services:
         condition: service_completed_successfully
     restart: always
     healthcheck:
-      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8020/v1/health')" ]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8020/v1/health')"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -352,15 +444,15 @@ services:
 
   palimpsest-worker:
     profiles: ["palimpsest"]
-    image: ${REGISTRY}/palimpsest-hub-worker:${IMAGE_TAG:-latest}
+    image: ${PALIMPSEST_WORKER_IMAGE:-${REGISTRY:-ghcr.io/openstack-afterglow}/palimpsest-hub-worker:${PALIMPSEST_IMAGE_TAG:-${IMAGE_TAG:-latest}}}
     pull_policy: always
     environment:
       DATABASE_URL: ${PALIMPSEST_DATABASE_URL:-}
       REDIS_URL: redis://redis:6379/9
       PALIMPSEST_HUB_LOCAL_PATH: /var/lib/palimpsest/hub
-      OS_AUTH_URL: ${PALIMPSEST_OS_AUTH_URL:-${OS_AUTH_URL:-}}
+      OS_AUTH_URL: ${PALIMPSEST_OS_AUTH_URL:-}
       OS_USERNAME: ${PALIMPSEST_OS_USERNAME:-palimpsest}
-      OS_PASSWORD: ${PALIMPSEST_OS_PASSWORD:-${OS_PASSWORD:-}}
+      OS_PASSWORD: ${PALIMPSEST_OS_PASSWORD:-}
       OS_PROJECT_NAME: ${PALIMPSEST_OS_PROJECT_NAME:-palimpsest-service}
       OS_PROJECT_DOMAIN_NAME: ${PALIMPSEST_OS_PROJECT_DOMAIN_NAME:-Default}
       OS_USER_DOMAIN_NAME: ${PALIMPSEST_OS_USER_DOMAIN_NAME:-Default}
@@ -375,135 +467,7 @@ services:
       palimpsest-bootstrap:
         condition: service_completed_successfully
     restart: always
-    logging:
-      driver: json-file
-      options:
-        max-size: "20m"
-        max-file: "3"
-
-  # ── Notion Sync Worker ────────────────────────────────────────────────────────
-  notion-worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: worker
-    image: ${REGISTRY}/afterglow-worker:${IMAGE_TAG:-latest}
-    pull_policy: always
-    command: python -m app.notion_worker
-    volumes:
-      - ./afterglow.conf:/app/afterglow.conf:ro
-      - ./logs:/app/logs
-    environment:
-      - OPENSTACK_PASSWORD=${OPENSTACK_PASSWORD}
-      - SECRET_KEY=${SECRET_KEY}
-      - AFTERGLOW_ENV=production
-    depends_on:
-      - redis
-      - backend
-    restart: always
-    logging:
-      driver: json-file
-      options:
-        max-size: "20m"
-        max-file: "3"
-
-
-  # ── 프록시 프로필 (docker compose --profile proxy -f docker-compose.prod.yml up -d) ────────
-  # HAProxy를 사용하면 80 포트 하나로 프론트(/)와 백엔드(/api/)를 모두 서빙
-  # 환경변수: HAPROXY_BIND_PORT (기본 80), ORIGIN과 PUBLIC_API_BASE를 HAProxy 주소로 설정
-  haproxy:
-    image: haproxy:2.9-alpine
-    profiles: [ "proxy" ]
-    ports:
-      - "${HAPROXY_BIND_PORT:-80}:80"
-    volumes:
-      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
-    depends_on:
-      - frontend
-      - backend
-    restart: always
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  # ── 모니터링 프로필 (docker compose --profile monitoring -f docker-compose.prod.yml up -d) ──
-
-  opensearch:
-    image: opensearchproject/opensearch:2.13.0
-    profiles: [ "monitoring" ]
-    environment:
-      - discovery.type=single-node
-      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
-      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_PASSWORD:?OPENSEARCH_PASSWORD must be set}
-    ports:
-      - "127.0.0.1:9200:9200"
-    volumes:
-      - opensearch-data:/usr/share/opensearch/data
-    restart: always
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  opensearch-dashboards:
-    image: opensearchproject/opensearch-dashboards:2.13.0
-    profiles: [ "monitoring" ]
-    environment:
-      - OPENSEARCH_HOSTS=http://opensearch:9200
-      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
-    ports:
-      - "127.0.0.1:5601:5601"
-    depends_on:
-      - opensearch
-    restart: always
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  prometheus:
-    image: prom/prometheus:v2.51.0
-    profiles: [ "monitoring" ]
-    ports:
-      - "127.0.0.1:9090:9090"
-    volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prom-data:/prometheus
-    restart: always
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  grafana:
-    image: grafana/grafana:11.0.0
-    profiles: [ "monitoring" ]
-    ports:
-      - "127.0.0.1:3001:3000"
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:?GRAFANA_PASSWORD must be set}
-      - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_SECURITY_COOKIE_SECURE=true
-      - GF_SECURITY_COOKIE_SAMESITE=strict
-    volumes:
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-      - grafana-data:/var/lib/grafana
-    depends_on:
-      - prometheus
-    restart: always
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
 
 volumes:
-  opensearch-data:
-  prom-data:
-  grafana-data:
+  redis-data:
   palimpsest-hub:

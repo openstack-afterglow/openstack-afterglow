@@ -7,12 +7,14 @@
 		projectSearchText = $bindable(''),
 		statusFilter = $bindable(''),
 		nameSearch = $bindable(''),
+		statusOptions,
 		onChange,
 	}: {
 		projectFilter: string;
 		projectSearchText: string;
 		statusFilter: string;
 		nameSearch: string;
+		statusOptions: string[];
 		onChange: () => void;
 	} = $props();
 
@@ -50,8 +52,8 @@
 		class="bg-surface-sunken border border-line-2 text-sm text-ink-2 rounded-lg px-2 py-1.5 focus:outline-none focus:border-action-warm"
 	>
 		<option value="">모든 상태</option>
-		{#each ['available', 'in-use', 'error', 'error_deleting', 'creating', 'deleting', 'attaching', 'detaching', 'reserved'] as s}
-			<option value={s}>{s}</option>
+		{#each statusOptions as status}
+			<option value={status}>{status}</option>
 		{/each}
 	</select>
 	<input

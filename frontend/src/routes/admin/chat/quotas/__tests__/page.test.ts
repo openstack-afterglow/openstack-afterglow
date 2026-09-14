@@ -7,17 +7,23 @@ const mocks = vi.hoisted(() => {
 			super(message);
 		}
 	}
-	return { get: vi.fn(), put: vi.fn(), delete: vi.fn(), confirm: vi.fn(), ApiError };
+	let authState = { token: 'browser-token', userId: 'user-1', projectId: 'project-1', isSystemAdmin: true };
+	const authListeners = new Set<(value: typeof authState) => void>();
+	const auth = {
+		subscribe(run: (value: typeof authState) => void) {
+			authListeners.add(run);
+			run(authState);
+			return () => authListeners.delete(run);
+		},
+		set(nextState: typeof authState) {
+			authState = nextState;
+			for (const run of authListeners) run(authState);
+		}
+	};
+	return { get: vi.fn(), put: vi.fn(), delete: vi.fn(), confirm: vi.fn(), ApiError, auth };
 });
 
-vi.mock('$lib/stores/auth', () => ({
-	auth: {
-		subscribe(run: (value: { token: string; projectId: string; isSystemAdmin: boolean }) => void) {
-			run({ token: 'browser-token', projectId: 'project-1', isSystemAdmin: true });
-			return () => {};
-		}
-	}
-}));
+vi.mock('$lib/stores/auth', () => ({ auth: mocks.auth }));
 vi.mock('$lib/api/client', () => ({
 	api: { get: mocks.get, put: mocks.put, delete: mocks.delete },
 	ApiError: mocks.ApiError
@@ -117,6 +123,7 @@ const usageDetail = {
 describe('admin user quota page', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		mocks.auth.set({ token: 'browser-token', userId: 'user-1', projectId: 'project-1', isSystemAdmin: true });
 		mocks.confirm.mockResolvedValue(true);
 		mocks.get.mockImplementation((path: string) => {
 			if (path.startsWith('/api/v1/admin/users?')) return Promise.resolve(users);
@@ -240,5 +247,108 @@ describe('admin user quota page', () => {
 			'browser-token',
 			'project-1'
 		);
+	});
+
+	it('loads one bounded user page and navigates markers without mislabeling later users', async () => {
+		const pageTwoQuota = {
+			...quota,
+			user_id: 'u2',
+			monthly_credit_limit: '7000',
+			configured_monthly_credit_limit: '7000',
+			month_credited_cost: '3',
+			week_credited_cost: '1'
+		};
+		mocks.get.mockImplementation((path: string) => {
+			if (path === '/api/v1/admin/users?limit=20') {
+				return Promise.resolve({ items: [users.items[0]], next_marker: 'u1', count: 1 });
+			}
+			if (path === '/api/v1/admin/users?limit=20&marker=u1') {
+				return Promise.resolve({ items: [users.items[1]], next_marker: null, count: 1 });
+			}
+			if (path === '/api/v1/chat/admin/quotas') {
+				return Promise.resolve({ ...quotaList, items: [quota, pageTwoQuota] });
+			}
+			return Promise.resolve({});
+		});
+
+		render(QuotaPage);
+
+		expect(await screen.findByText('alice')).toBeTruthy();
+		expect(screen.queryByText('bob')).toBeNull();
+		expect(screen.queryByText('미확인 사용자')).toBeNull();
+		expect(mocks.get).toHaveBeenCalledWith(
+			'/api/v1/admin/users?limit=20',
+			'browser-token',
+			'project-1'
+		);
+		expect(screen.getByText('페이지 1')).toBeTruthy();
+
+		await fireEvent.click(screen.getByRole('button', { name: '다음 →' }));
+		expect(await screen.findByText('bob')).toBeTruthy();
+		expect(screen.queryByText('alice')).toBeNull();
+		expect(screen.getByText('7,000')).toBeTruthy();
+		expect(screen.getByText('페이지 2')).toBeTruthy();
+		expect(mocks.get).toHaveBeenCalledWith(
+			'/api/v1/admin/users?limit=20&marker=u1',
+			'browser-token',
+			'project-1'
+		);
+
+		await fireEvent.click(screen.getByRole('button', { name: '← 이전' }));
+		expect(await screen.findByText('alice')).toBeTruthy();
+		expect(screen.getByText('페이지 1')).toBeTruthy();
+	});
+
+	it('retains page two for a token rotation but resets a changed scope to page one', async () => {
+		const pendingPage = Promise.withResolvers<Record<string, unknown>>();
+		const pageTwoQuota = {
+			...quota,
+			user_id: 'u2',
+			monthly_credit_limit: '7000',
+			configured_monthly_credit_limit: '7000'
+		};
+		mocks.get.mockImplementation((path: string) => {
+			if (path === '/api/v1/admin/users?limit=20') {
+				return Promise.resolve({ items: [users.items[0]], next_marker: 'u1', count: 1 });
+			}
+			if (path === '/api/v1/admin/users?limit=20&marker=u1') {
+				return pendingPage.promise;
+			}
+			if (path === '/api/v1/chat/admin/quotas') {
+				return Promise.resolve({ ...quotaList, items: [quota, pageTwoQuota] });
+			}
+			return Promise.resolve({});
+		});
+
+		render(QuotaPage);
+		await screen.findByText('alice');
+		await fireEvent.click(screen.getByRole('button', { name: '다음 →' }));
+		mocks.auth.set({ token: 'navigation-token', userId: 'user-1', projectId: 'project-1', isSystemAdmin: true });
+		await waitFor(() => expect(screen.queryByText('bob')).toBeNull());
+		pendingPage.resolve({ items: [users.items[1]], next_marker: null, count: 1 });
+		await screen.findByText('bob');
+		expect(screen.getByText('페이지 2')).toBeTruthy();
+
+		mocks.auth.set({ token: 'refreshed-token', userId: 'user-1', projectId: 'project-1', isSystemAdmin: true });
+		await waitFor(() => {
+			expect(mocks.get).toHaveBeenCalledWith(
+				'/api/v1/admin/users?limit=20&marker=u1',
+				'refreshed-token',
+				'project-1'
+			);
+		});
+		expect(await screen.findByText('bob')).toBeTruthy();
+		expect(screen.getByText('페이지 2')).toBeTruthy();
+
+		mocks.auth.set({ token: 'project-two-token', userId: 'user-1', projectId: 'project-2', isSystemAdmin: true });
+		await waitFor(() => {
+			expect(mocks.get).toHaveBeenCalledWith(
+				'/api/v1/admin/users?limit=20',
+				'project-two-token',
+				'project-2'
+			);
+		});
+		expect(await screen.findByText('alice')).toBeTruthy();
+		expect(screen.getByText('페이지 1')).toBeTruthy();
 	});
 });

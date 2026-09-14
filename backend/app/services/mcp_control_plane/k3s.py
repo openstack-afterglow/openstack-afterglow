@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from drover_sdk import register
+from app.services.keystone import get_drover_proxy
 
 
 class McpK3sError(ValueError):
@@ -60,11 +60,11 @@ def _safe_cluster(cluster: Any, *, project_id: str) -> dict[str, Any]:
 
 
 def _list_clusters(conn: object, limit: int) -> Any:
-    return register(conn).clusters(limit=limit)
+    return get_drover_proxy(conn).clusters(limit=limit)
 
 
 def _get_cluster(conn: object, cluster_id: str) -> Any:
-    return register(conn).get_cluster(cluster_id)
+    return get_drover_proxy(conn).get_cluster(cluster_id)
 
 
 async def list_project_k3s_clusters(
