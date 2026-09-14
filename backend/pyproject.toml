@@ -34,7 +34,7 @@ dependencies = [
     "beautifulsoup4==4.14.3",
     "puremagic==1.30",
     "Pillow==12.3.0",
-    "pypdf==6.15.0",
+    "pypdf==6.16.1",
     "mutagen==1.47.0",
     "afterglow-crypto @ git+https://github.com/openstack-afterglow/afterglow-crypto.git@aee36e8ea173e486f443fa816de4e6397d11cff2",
     "waygate-sdk @ git+https://github.com/openstack-afterglow/waygate.git@1c59b5e86d3c3c1b9d3397b38301ee9bc401cf03#subdirectory=sdk",
