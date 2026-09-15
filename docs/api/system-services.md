@@ -73,6 +73,8 @@ nav_order: 65
 
 **응답 (200 OK)**: `{ "unread_count": 3 }`
 
+프론트엔드 shell은 로그인 직후와 project scope 변경 직후 미읽음 수를 조회하고 60초 주기 polling을 보조로 유지합니다. 미읽음 공지가 있으면 header 알림 버튼에 작은 danger 점멸 점과 count가 포함된 접근성 이름을 표시하며, reduced-motion 환경에서는 점을 정적으로 유지합니다. 알림함의 발송자 표시는 관리자 전용 생성 경계를 드러내기 위해 `created_by_username (관리자)` 형식을 사용합니다.
+
 ### POST /api/v1/announcements/{announcement_id}/read
 
 읽음 처리 전 타겟팅을 서버에서 재검증합니다. 다른 유저/프로젝트 대상 공지는 (구분되지 않게) `404`로 응답합니다. 저장소 장애 시 `503`.

@@ -29,6 +29,10 @@ export function createAdminAnnouncementsController(opts: AdminAnnouncementsContr
 	let options = $state<AnnouncementOptions | null>(null);
 	let allUsers = $state<PickerUser[]>([]);
 	let allProjects = $state<PickerProject[]>([]);
+	let usersLoading = $state(false);
+	let usersError = $state('');
+	let projectsLoading = $state(false);
+	let projectsError = $state('');
 
 	let creating = $state(false);
 	let createError = $state('');
@@ -66,21 +70,29 @@ export function createAdminAnnouncementsController(opts: AdminAnnouncementsContr
 	}
 
 	async function loadUsers() {
-		if (allUsers.length > 0) return;
+		if (allUsers.length > 0 || usersLoading) return;
+		usersLoading = true;
+		usersError = '';
 		try {
 			const res = await api.get<{ items: PickerUser[] }>('/api/v1/admin/users?limit=100', tok(), pid());
 			allUsers = res.items;
 		} catch {
-			// 피커는 best-effort — 실패 시 target_id 수동 입력으로 폴백.
+			usersError = '유저 목록을 불러오지 못했습니다';
+		} finally {
+			usersLoading = false;
 		}
 	}
 
 	async function loadProjects() {
-		if (allProjects.length > 0) return;
+		if (allProjects.length > 0 || projectsLoading) return;
+		projectsLoading = true;
+		projectsError = '';
 		try {
 			allProjects = await api.get<PickerProject[]>('/api/v1/admin/projects/names', tok(), pid());
 		} catch {
-			// 피커는 best-effort — 실패 시 target_id 수동 입력으로 폴백.
+			projectsError = '프로젝트 목록을 불러오지 못했습니다';
+		} finally {
+			projectsLoading = false;
 		}
 	}
 
@@ -135,6 +147,10 @@ export function createAdminAnnouncementsController(opts: AdminAnnouncementsContr
 		get options() { return options; },
 		get allUsers() { return allUsers; },
 		get allProjects() { return allProjects; },
+		get usersLoading() { return usersLoading; },
+		get usersError() { return usersError; },
+		get projectsLoading() { return projectsLoading; },
+		get projectsError() { return projectsError; },
 		get creating() { return creating; },
 		get createError() { return createError; },
 		set createError(v: string) { createError = v; },

@@ -14,6 +14,8 @@
 		deleted: 'diagnostic-result-success',
 		already_deleted: 'diagnostic-result-success',
 		delete_submitted: 'diagnostic-result-warning',
+		backend_residue: 'diagnostic-result-danger',
+		backend_unverified: 'diagnostic-result-warning',
 		blocked: 'diagnostic-result-warning',
 		failed: 'diagnostic-result-danger',
 	};
@@ -22,6 +24,8 @@
 		deleted: '삭제 검증 완료',
 		already_deleted: '이미 삭제됨',
 		delete_submitted: '삭제 요청 제출됨',
+		backend_residue: 'Ceph backend 잔여물 확인됨',
+		backend_unverified: 'Ceph backend 검증 불가',
 		blocked: '자동 복구 차단',
 		failed: '자동 복구 실패',
 	};
@@ -30,8 +34,11 @@
 		const diagnostic = s.deleteDiagnostic;
 		const volume = s.volume;
 		if (!diagnostic || !volume) return;
+		const backendConfirmation = diagnostic.backend.mode === 'inspected'
+			? '\n\nCeph RBD metadata를 검사했으며 삭제 후 backend 부재까지 확인합니다.'
+			: '\n\nCeph RBD 검증이 설정되지 않았거나 불가능하면 성공으로 처리하지 않습니다.';
 		const confirmed = await confirmDialog(
-			`볼륨 "${volume.name || volume.id}" 삭제 복구를 실행하시겠습니까?\n\n진단: ${diagnostic.summary}\n\n스냅샷/백업 종속성은 자동 삭제하지 않습니다. 남아 있으면 복구가 차단됩니다.`
+			`볼륨 "${volume.name || volume.id}" 삭제 복구를 실행하시겠습니까?\n\n진단: ${diagnostic.summary}\n\n스냅샷/백업 종속성은 자동 삭제하지 않습니다. 남아 있으면 복구가 차단됩니다.${backendConfirmation}`
 		);
 		if (!confirmed) return;
 		await s.recoverDelete();
@@ -42,7 +49,7 @@
 	<div class="flex items-start justify-between gap-3">
 		<div>
 			<h3 class="diagnostic-kicker text-xs uppercase tracking-wide">삭제 진단 및 자동 복구</h3>
-			<p class="diagnostic-muted text-xs mt-1">Cinder 상태, 연결, 스냅샷/백업, messages를 확인합니다.</p>
+			<p class="diagnostic-muted text-xs mt-1">Cinder 상태·종속성, Nova 연결, Ceph RBD metadata를 독립적으로 확인합니다.</p>
 		</div>
 		<button
 			type="button"
@@ -84,6 +91,31 @@
 			<div class="diagnostic-stat rounded border p-3 space-y-2">
 				<p class="diagnostic-primary">{s.deleteDiagnostic.summary}</p>
 				<p class="diagnostic-muted text-xs">권장 조치: {s.deleteDiagnostic.recommended_action}</p>
+			</div>
+
+			{#if s.deleteDiagnostic.checks.length > 0}
+				<div>
+					<div class="diagnostic-muted text-xs mb-1">안전 점검</div>
+					<ul class="diagnostic-primary space-y-1 text-xs">
+						{#each s.deleteDiagnostic.checks as check}
+							<li class="font-mono break-all">
+								{check.name}: {check.state}{check.detail ? ` — ${check.detail}` : ''}
+							</li>
+						{/each}
+					</ul>
+				</div>
+			{/if}
+
+			<div class="diagnostic-stat rounded border p-3 space-y-1 text-xs">
+				<div class="diagnostic-muted">Ceph backend</div>
+				<div class="diagnostic-primary font-mono break-all">
+					{s.deleteDiagnostic.backend.mode} / {s.deleteDiagnostic.backend.classification}
+				</div>
+				{#if s.deleteDiagnostic.backend.pool || s.deleteDiagnostic.backend.image_name || s.deleteDiagnostic.backend.image_id}
+					<div class="diagnostic-muted font-mono break-all">
+						pool={s.deleteDiagnostic.backend.pool || 'unknown'}, image={s.deleteDiagnostic.backend.image_name || 'unknown'}, id={s.deleteDiagnostic.backend.image_id || 'unknown'}
+					</div>
+				{/if}
 			</div>
 
 			{#if s.deleteDiagnostic.evidence.length > 0}
@@ -140,6 +172,10 @@
 			<div class="font-medium">{resultLabel[s.recoveryResult.status] ?? s.recoveryResult.status}</div>
 			{#if s.recoveryResult.status === 'delete_submitted'}
 				<p class="text-xs">삭제 요청은 제출됐지만 제한 시간 안에 삭제 검증이 끝나지 않았습니다. verified_deleted=false, final_status={s.recoveryResult.final_status || 'unknown'}</p>
+			{:else if s.recoveryResult.status === 'backend_residue'}
+				<p class="text-xs">Cinder 레코드는 사라졌지만 Ceph RBD metadata 또는 data object가 남아 있습니다. 운영자 확인이 필요합니다.</p>
+			{:else if s.recoveryResult.status === 'backend_unverified'}
+				<p class="text-xs">Cinder 삭제 이후 Ceph backend 부재를 증명하지 못했습니다. 자동 성공으로 처리하지 않습니다.</p>
 			{:else if s.recoveryResult.status === 'blocked'}
 				<p class="text-xs">{s.recoveryResult.diagnostic.recommended_action}</p>
 			{:else if s.recoveryResult.status === 'failed'}
@@ -147,6 +183,9 @@
 			{:else}
 				<p class="text-xs">verified_deleted={String(s.recoveryResult.verified_deleted)}</p>
 			{/if}
+
+			<p class="text-xs font-mono">backend_verification={s.recoveryResult.backend_verification}</p>
+			<p class="text-xs font-mono">quota_verification={s.recoveryResult.quota_verification}</p>
 
 			{#if s.recoveryResult.steps.length > 0}
 				<ol class="space-y-1 text-xs">

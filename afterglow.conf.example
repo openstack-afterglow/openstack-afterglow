@@ -34,6 +34,20 @@ manila_cephx_key_timeout_seconds = 300  # CephX key 발급 폴링 최대 대기(
 # Ceph 모니터 (cloud-init CephFS 마운트용, 콤마 구분)
 ceph_monitors = ""
 
+# Ceph RBD backend 검사/복원 (관리자 볼륨 삭제 복구 전용, 선택). 두 경로가 모두 비어 있으면 비활성.
+[ceph]
+rbd_conf_path = ""                 # 예: /etc/ceph/ceph.conf
+rbd_keyring_path = ""              # 예: /etc/ceph/ceph.client.afterglow-rbd.keyring (mode 0400)
+rbd_client_name = "client.afterglow-rbd"
+rbd_cluster_fsid = ""              # 활성 시 필수. `ceph fsid` 값과 불일치하면 backend 검사를 unknown 처리
+rbd_command_timeout_seconds = 30
+# `generate_k8s.py` 전용 입력. 실제 keyring을 Git에 커밋하지 말고 private config에서만 설정한다.
+# rbd_conf_content = """[global]\nfsid = <cluster-fsid>\nmon_host = <monitor-addresses>"""
+# rbd_keyring = """[client.afterglow-rbd]\nkey = <cephx-key>"""
+# Cinder backend 이름(host의 `@`와 `#` 사이) → RBD pool. 활성 시 최소 1개.
+[ceph.rbd_volume_pools]
+ceph = "volumes"
+
 [app]
 backend_port = 8000
 frontend_port = 3000

@@ -127,24 +127,22 @@ def list_instances(conn) -> list[dict]:
 def list_instances_admin_all_projects(conn) -> list[dict]:
     """admin 전용: Trove /mgmt/instances 로 모든 프로젝트 DB 인스턴스 반환.
 
-    반환 dict 에 project_id 필드 추가. mgmt API 미지원 환경에서는 빈 목록.
-    deleted=1 행은 응답에서 제외 (이미 삭제된 인스턴스).
+    Database proxy를 통해 catalog의 project-scoped endpoint와 인증을 그대로 사용한다.
+    조회 실패를 빈 inventory로 숨기지 않고 API boundary까지 전파한다.
     """
-    try:
-        endpoint = conn.database.get_endpoint()
-        resp = conn.session.get(f"{endpoint}/mgmt/instances")
-        resp.raise_for_status()
-        items = resp.json().get("instances", [])
-    except Exception:
-        _logger.warning("Trove /mgmt/instances 조회 실패", exc_info=True)
-        return []
+    resp = conn.database.get("/mgmt/instances")
+    resp.raise_for_status()
+    body = resp.json()
+    items = body.get("instances")
+    if not isinstance(items, list):
+        raise RuntimeError("Trove management instances response is invalid")
 
     out: list[dict] = []
     for raw in items:
         if raw.get("deleted"):
             continue
         d = _dict_from_raw(raw)
-        d["project_id"] = raw.get("tenant_id", "") or ""
+        d["project_id"] = raw.get("tenant_id") or raw.get("project_id") or ""
         out.append(d)
     return out
 

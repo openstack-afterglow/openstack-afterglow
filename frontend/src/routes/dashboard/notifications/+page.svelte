@@ -171,7 +171,7 @@
 											<span class="text-[9px] uppercase tracking-wide text-[var(--color-accent)] border border-[var(--color-accent)]/40 rounded px-1 py-0.5">new</span>
 										{/if}
 									</span>
-									<span class="block text-[10px] text-[var(--color-ink-3)] mt-1 tabular-nums">{formatIsoDateTime(a.created_at)} · {a.created_by_username}</span>
+									<span class="block text-[10px] text-[var(--color-ink-3)] mt-1 tabular-nums">{formatIsoDateTime(a.created_at)} · {a.created_by_username} (관리자)</span>
 								</span>
 								<svg
 									class="w-3.5 h-3.5 mt-1 flex-shrink-0 text-[var(--color-ink-3)] transition-transform {expandedId === a.id ? 'rotate-180' : ''}"
@@ -183,7 +183,7 @@
 									<p class="text-xs text-[var(--color-ink-1)] whitespace-pre-wrap leading-relaxed">{a.body}</p>
 									<dl class="mt-3 pt-3 border-t border-[var(--color-line)] grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[11px]">
 										<dt class="text-[var(--color-ink-3)]">발송자</dt>
-										<dd class="text-[var(--color-ink-1)]">{a.created_by_username}</dd>
+										<dd class="text-[var(--color-ink-1)]">{a.created_by_username} (관리자)</dd>
 										<dt class="text-[var(--color-ink-3)]">발송 시각</dt>
 										<dd class="text-[var(--color-ink-1)] tabular-nums">{formatIsoDateTime(a.created_at)}</dd>
 										{#if a.starts_at}

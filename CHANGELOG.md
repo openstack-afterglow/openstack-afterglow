@@ -9,6 +9,7 @@
 
 ### Changed
 
+- **공지 대상 검색·미읽음 표시** — 관리자 공지 작성에서 사용자와 프로젝트를 이름 또는 ID로 검색해 선택하도록 바꾸고 키보드 탐색·빈 결과·반응형 팝오버를 제공한다. 사용자 알림함은 발송자에 `(관리자)`를 표시하며, 로그인·프로젝트 전환 직후 미읽음 수를 조회해 header 알림 옆에 reduced-motion-safe danger 점멸 점을 표시한다.
 - **관리자 사용자 쿼터 페이지네이션** — 사용자 쿼터 화면이 Keystone 사용자 전체를 순차 수집하지 않고 한 번에 20명만 marker 기반으로 불러온다. 공통 이전/다음 탐색과 현재 페이지 표시 건수를 제공하고, 검색과 Lumen quota 결합도 현재 사용자 페이지로 한정해 아직 불러오지 않은 사용자를 미확인 계정으로 잘못 표시하지 않는다. 쿼터 변경 뒤에도 현재 페이지를 유지한다.
 - **인증 갱신 중 관리자 화면 보존** — 서비스 목록은 user/project 변경 시 이전 행을 지우고 늦은 응답을 차단한다. 같은 사용자의 token 갱신은 기존 행을 유지하며, 쿼터 화면의 현재 페이지와 진행 중 페이지 이동도 보존한다.
 - **관리자 전체 볼륨 일괄 삭제·상태 필터 정리** — `/admin/volumes`에서 현재 marker 페이지의 볼륨을 개별/전체 선택하고 확인 후 최대 50개를 한 요청으로 삭제할 수 있다. Cinder 처리 결과를 ID별로 분리해 일부 실패에도 나머지를 계속 처리하며 성공 선택만 제거하고 실패 선택은 유지한다. 필터·페이지·page size·관리자 project scope 변경 시 선택을 비우고, 상태 카드와 선택지는 실제 count가 1개 이상인 상태만 표시하며 활성 상태가 0이 되면 전체 필터로 복귀한다.
@@ -31,6 +32,10 @@
 - **토폴로지 패킷 흐름 기본 표시** — 캔버스의 패킷 흐름 시뮬레이션을 기본 on으로 바꿨다. 툴바 체크박스로 끌 수 있고, `prefers-reduced-motion` 환경에서는 종전대로 토글과 무관하게 완전히 비활성이다.
 
 ### Fixed
+
+- **관리자 RBD 볼륨 삭제 복구 fail-closed 전환** — 오류 볼륨 진단이 system-admin Cinder/Nova dependency를 독립 tri-state로 확인하고, 선택적 restricted CephX adapter로 RBD directory·image/header/data/trash를 교차 검증한다. 안전한 경우에만 `rbd_id` mapping을 복원/정리하고 force-delete 뒤 Cinder·backend·quota를 다시 확인한다. Per-volume Redis lock과 residue/unverified 결과를 추가해 404 또는 조회 실패를 삭제 성공으로 오판하지 않으며 관리자 패널은 검증된 terminal success에서만 닫힌다.
+
+- **관리자 DB 인스턴스 소스 정정** — `/admin/database-instances`가 OpenStack control-plane `mysqld_exporter` dashboard를 tenant DB처럼 함께 표시하던 문제를 제거했다. 관리자 목록은 인증된 Trove `/mgmt/instances`에서 사용자 생성 DB와 owning project를 읽으며, management 조회 실패를 빈 목록으로 숨기지 않고 명시적인 오류로 표시한다.
 
 - **토폴로지 메뉴 독립 동작** — 사이드바 그룹의 자동 확장·강조를 URL 상위 접두사가 아닌 실제 하위 메뉴 경로로 판정한다. 토폴로지를 눌러도 네트워크 그룹이 자동으로 펼쳐지거나 활성화되지 않으며, 기존 URL·네트워크 상세 경로의 자동 확장·사용자가 선택한 접기/펼치기 상태는 유지한다.
 

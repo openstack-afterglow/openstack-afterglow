@@ -26,6 +26,8 @@ services:
     volumes:
       - ./afterglow.conf:/app/afterglow.conf:ro
       - ./logs:/app/logs
+      - ${CEPH_RBD_CONF_FILE:-/dev/null}:/etc/ceph/ceph.conf:ro
+      - ${CEPH_RBD_KEYRING_FILE:-/dev/null}:/etc/ceph/ceph.client.afterglow-rbd.keyring:ro
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2 --proxy-headers
     environment:
       OS_PASSWORD: ${OS_PASSWORD:?OS_PASSWORD must be set}

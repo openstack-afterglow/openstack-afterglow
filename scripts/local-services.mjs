@@ -154,6 +154,14 @@ print(json.dumps({'AFTERGLOW_LOCAL_OS_' + key: str(openstack.get(field, default)
 `], { capture: true }));
 	if (['AUTH_URL', 'USERNAME', 'PASSWORD'].some((key) => !credentials[`AFTERGLOW_LOCAL_OS_${key}`])) fail('The local afterglow.conf needs OpenStack auth_url, username and password.');
 	composeInputs = { ...credentials, ...secrets, AFTERGLOW_LOCAL_CONFIG_GID: String(statSync(configPath).gid) };
+	const cephConfPath = `${process.cwd()}/${LOCAL_DIR}/ceph/ceph.conf`;
+	const cephKeyringPath = `${process.cwd()}/${LOCAL_DIR}/ceph/ceph.client.afterglow-rbd.keyring`;
+	if (existsSync(cephConfPath) && existsSync(cephKeyringPath)) {
+		chmodSync(cephConfPath, 0o640);
+		chmodSync(cephKeyringPath, 0o640);
+		composeInputs.AFTERGLOW_LOCAL_CEPH_CONF = cephConfPath;
+		composeInputs.AFTERGLOW_LOCAL_CEPH_KEYRING = cephKeyringPath;
+	}
 	composeEnvironment = { ...process.env, ...composeInputs };
 }
 

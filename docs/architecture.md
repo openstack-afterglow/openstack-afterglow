@@ -21,6 +21,14 @@ python3 scripts/check_architecture.py --staged
 
 이 페이지는 루트 문서의 복사본이나 별도 snapshot이 아닙니다. historical Union 계획은 [Palimpsest 현행 경계](palimpsest.md)와 구분해 읽습니다.
 
+### 관리자 Cinder/Ceph 볼륨 삭제 복구 경계
+
+- `app/services/volume_delete_recovery.py`가 system-admin Cinder/Nova 조회, tri-state dependency 판정, mutation 순서와 삭제 후 검증을 소유합니다. Project-scoped connection으로 재인증하지 않으며 Cinder message는 evidence로만 사용합니다.
+- `app/services/ceph_rbd.py`는 opt-in backend adapter입니다. Validated argv로만 `ceph`/`rbd`/`rados`를 실행하고, 정확한 rc=2/ENOENT만 `absent`로 인정합니다. FSID와 backend→pool map을 먼저 확인하며 timeout·권한·parse 오류는 `unknown`입니다.
+- Backend write 범위는 엄격히 `rbd_id.volume-<uuid>`입니다. 누락 mapping은 directory/id/geometry/parent/dependency 불변성이 맞을 때 복원하고, stale mapping은 Cinder 및 RBD artifacts 부재와 기존 payload 일치를 모두 증명한 뒤 정리합니다. Image/header/data/trash는 삭제하지 않습니다.
+- API는 Redis의 10분 per-volume lock으로 recovery를 직렬화하고 lock storage 장애 시 503으로 거부합니다. Cinder force-delete가 attached 400을 반환한 경우에만 attach status를 한 번 reset하고 한 번 재시도합니다.
+- `deleted`/`already_deleted`만 terminal success입니다. `delete_submitted`, `backend_residue`, `backend_unverified`는 관리자 상세 화면을 유지하며 backend/quota verification을 별도 필드로 노출합니다. Ceph 설정이 없는 기존 배포는 계속 동작하지만 backend 삭제 완료를 주장하지 않습니다.
+
 ## 채팅 컨텍스트 검사와 로컬 실행 경계
 
 `ChatContextPanel`은 Lumen의 optional `ContextState.breakdown`을 표시하며 Afterglow가 토큰이나 모델 한도를 재추정하지 않는다. `preview`는 다음 요청의 준비 상태이고 `request`는 worker의 실제 요청 상태다. 각 component는 안전한 이름/ID, 개수, 토큰 수, 측정 방식과 포함 여부를 전달한다. 메시지·시스템/프로젝트 지침·메모리·스킬·에이전트·요약·도구·MCP·첨부·framing을 구분하되 본문/비밀은 표시하지 않는다.

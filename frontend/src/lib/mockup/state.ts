@@ -1,5 +1,5 @@
 import type { Instance } from '$lib/types/compute';
-import type { AdminVolume, AdminVolumeDetail, AdminVolumeStatusSummary, Volume } from '$lib/types/volume';
+import type { AdminVolume, AdminVolumeDetail, AdminVolumeStatusSummary, Volume, VolumeDeleteDiagnostic } from '$lib/types/volume';
 import type { DashboardQuotas } from '$lib/types/quotas';
 import type { TopologyData, TopologyTraffic } from '$lib/types/topology';
 import type { K3sCluster } from '$lib/types/k3s';
@@ -64,6 +64,7 @@ interface MockupState {
 		volumeStatusSummary: AdminVolumeStatusSummary;
 		volumeTimeseries: TsPoint[];
 		volumeDetails: Record<string, AdminVolumeDetail>;
+		volumeDeleteDiagnostics: Record<string, VolumeDeleteDiagnostic>;
 		library: {
 			baseImages: Record<string, unknown>[];
 			artifacts: Record<string, unknown>[];
@@ -351,6 +352,55 @@ function seedState(): MockupState {
 				'mock-admin-volume-available': { id: 'mock-admin-volume-available', name: 'sample-dataset-ready', status: 'available', size: 200, volume_type: 'ceph-ssd', project_id: PROJECT_ID, attachments: [], created_at: '2026-07-01T10:00:00Z', description: '튜토리얼용 가용 볼륨', bootable: false, encrypted: false, multiattach: false, metadata: { purpose: 'tutorial' } },
 				'mock-admin-volume-in-use': { id: 'mock-admin-volume-in-use', name: 'sample-notebook-root', status: 'in-use', size: 120, volume_type: 'ceph-ssd', project_id: 'mock-project-2', attachments: [{ server_id: 'mock-instance-4', device: '/dev/vda', id: 'mock-attachment-1' }], created_at: '2026-07-03T11:30:00Z', description: 'GPU notebook root volume', bootable: true, encrypted: false, multiattach: false, metadata: { workload: 'notebook' } },
 				'mock-admin-volume-error': { id: 'mock-admin-volume-error', name: 'sample-recovery-volume', status: 'error', size: 80, volume_type: 'ceph-ssd', project_id: 'mock-project-3', attachments: [], created_at: '2026-07-06T16:45:00Z', description: '복구 절차 예시', bootable: false, encrypted: false, multiattach: false, metadata: { state: 'sample-error' } },
+			},
+			volumeDeleteDiagnostics: {
+				'mock-admin-volume-error': {
+					volume_id: 'mock-admin-volume-error',
+					status: 'error',
+					project_id: 'mock-project-3',
+					name: 'sample-recovery-volume',
+					size_gb: 80,
+					backend_host: 'sample-storage-a@ceph#rbd',
+					updated_at: '2026-07-08T23:10:00Z',
+					attachments: [],
+					dependencies: [],
+					messages: [
+						{ id: 'mock-message-1', event_id: 'VOLUME_DELETE_ERROR', request_id: 'req-mock-recovery', message_level: 'ERROR', resource_uuid: 'mock-admin-volume-error', resource_type: 'VOLUME', user_message: '튜토리얼 예시: Cinder 삭제가 backend 오류로 중단되었습니다.', created_at: '2026-07-08T23:10:00Z' },
+					],
+					checks: [
+						{ name: 'auth_preflight', state: 'present', detail: 'system_admin' },
+						{ name: 'volume_attachments', state: 'absent', detail: 'attachments=0' },
+						{ name: 'cinder_attachments', state: 'absent', detail: 'attachments=0' },
+						{ name: 'nova_attachments', state: 'absent', detail: 'server_attachments=0' },
+						{ name: 'snapshots', state: 'absent', detail: 'snapshots=0' },
+						{ name: 'backups', state: 'absent', detail: 'backups=0' },
+						{ name: 'clone_volumes', state: 'absent', detail: 'clones=0' },
+						{ name: 'group_or_migration', state: 'absent', detail: null },
+						{ name: 'backend_fsid', state: 'present', detail: '00000000-0000-0000-0000-0000000000ff' },
+						{ name: 'rbd_directory_entry', state: 'present', detail: 'mock1a2b3c' },
+						{ name: 'rbd_name_mapping', state: 'present', detail: null },
+						{ name: 'rbd_image_by_name', state: 'present', detail: 'mock1a2b3c' },
+						{ name: 'rbd_watchers', state: 'absent', detail: 'watchers=0' },
+						{ name: 'rbd_snapshots', state: 'absent', detail: 'snapshots=0' },
+						{ name: 'rbd_trash', state: 'absent', detail: 'trash_clear' },
+					],
+					backend: {
+						mode: 'inspected',
+						classification: 'consistent',
+						pool: 'volumes',
+						image_name: 'volume-mock-admin-volume-error',
+						image_id: 'mock1a2b3c',
+						size_bytes: 85899345920,
+						order: 22,
+						parent_spec: null,
+					},
+					root_cause_code: 'backend_present_consistent',
+					confidence: 'high',
+					summary: 'Cinder 레코드와 Ceph RBD 이미지가 일관되며 종속 리소스와 연결이 없습니다.',
+					evidence: ['status=error', 'backend_fsid=present', 'rbd_image_by_name=present'],
+					recommended_action: 'force-delete 후 Ceph backend 부재와 quota 반영을 검증하세요.',
+					recovery_available: true,
+				},
 			},
 			library: {
 				baseImages: [baseImage],

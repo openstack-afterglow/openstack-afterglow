@@ -85,6 +85,14 @@ afterglow_frontend_listen_port: 18081
 afterglow_public_api_base: "https://cloud.dmslab.re.kr"
 afterglow_ceph_monitors: "172.30.2.101:6789,172.30.2.102:6789,172.30.2.103:6789"
 
+# Optional Ceph RBD delete-recovery inspection. Both source files must exist on
+# every Afterglow backend host before enabling these values.
+# afterglow_rbd_conf_source: "/etc/ceph/ceph.conf"
+# afterglow_rbd_keyring_source: "/etc/ceph/ceph.client.afterglow-rbd.keyring"
+# afterglow_rbd_cluster_fsid: "00000000-0000-0000-0000-000000000000"
+# afterglow_rbd_volume_pools:
+#   ceph: volumes
+
 # Optional deploy-host TOML files default to
 # /etc/kolla/config/afterglow/backend/afterglow.conf and
 # /etc/kolla/config/afterglow/frontend/afterglow.conf. Keep the backend source

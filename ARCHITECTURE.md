@@ -266,9 +266,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "401263815ed73552a605f7023d6562e3ca69a80055d30cef5abe62a6e5c98762",
-  "reviewed_at": "2026-09-15T09:41:26Z",
-  "summary": "Reviewed GPU flavor visibility and quota authority fixes: typed rehydration of cached flavor payloads, logged authority failures surfaced as blockers, authenticated-scope Nova usage inventory, latest-updated-wins GPU alias resolution with migration 079; no structure, ownership, or deployment impact."
+  "source_sha256": "e37a01154830f6a3894648e41bfc1cae8df5c4b7be603aba85acc262efb54550",
+  "reviewed_at": "2026-09-15T09:52:27Z",
+  "summary": "Reviewed all pending Afterglow changes across Ceph RBD volume recovery, Trove instance-source handling, notifications and announcement targeting, SearchSelect behavior, deployment manifests, generated class diagrams, tests, and archived OpenSpec artifacts; no undocumented architecture ownership change."
 }
 ```
 <!-- architecture-review:end -->

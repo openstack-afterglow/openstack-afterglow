@@ -48,11 +48,13 @@ RUN python -m compileall -q app/
 
 # OpenTofu CLI 설치 (MPL-2.0, ~80MB)
 ARG TOFU_VERSION=1.8.3
-RUN apt-get update && apt-get install -y --no-install-recommends curl unzip ffmpeg qemu-utils \
+RUN apt-get update && apt-get install -y --no-install-recommends curl unzip ffmpeg qemu-utils ceph-common \
     && curl -fsSL "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_amd64.zip" -o /tmp/tofu.zip \
     && unzip /tmp/tofu.zip tofu -d /usr/local/bin/ \
     && rm /tmp/tofu.zip \
     && apt-get purge -y --auto-remove curl unzip \
+    && rbd --version \
+    && rados --version \
     && rm -rf /var/lib/apt/lists/*
 
 RUN rm -rf /tmp/* /root/.cache

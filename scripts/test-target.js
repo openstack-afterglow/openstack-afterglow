@@ -182,6 +182,7 @@ const targets = {
 			selectors: [
 				"tests/test_volumes.py",
 				"tests/test_volume_backups.py",
+				"tests/test_ceph_rbd.py",
 				"tests/test_volume_delete_recovery.py",
 				"tests/test_volume_extend.py",
 				"tests/test_volume_owner_check.py",

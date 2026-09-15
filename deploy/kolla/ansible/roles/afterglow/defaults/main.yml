@@ -106,6 +106,12 @@ afterglow_manila_microversion: "2.65"
 afterglow_manila_client_version: "6.0.0"
 afterglow_manila_share_type: "cephfs"
 afterglow_ceph_monitors: ""
+
+# 관리자 볼륨 삭제 복구용 Ceph RBD 검사/매핑 복원 (두 source가 모두 설정될 때만 활성)
+afterglow_rbd_conf_source: ""
+afterglow_rbd_keyring_source: ""
+afterglow_rbd_cluster_fsid: ""
+afterglow_rbd_volume_pools: {}
 # Manila expects the CephX ID without the "client." entity prefix.
 afterglow_cephx_user: "afterglow"
 afterglow_manila_shares:
@@ -172,11 +178,20 @@ afterglow_services:
     command: ["uvicorn", "app.main:app", "--host", "{{ afterglow_backend_listen_address }}", "--port", "{{ afterglow_backend_listen_port | string }}"]
     restart_policy: unless-stopped
     groups: ["0"]
-    volumes:
-      - "{{ afterglow_runtime_config_dir }}/{{ afterglow_generated_config_name }}:/app/afterglow.conf:ro"
-      - "{{ afterglow_runtime_config_dir }}/{{ afterglow_operator_config_name }}:/app/{{ afterglow_operator_config_name }}:ro"
-      - "{{ afterglow_runtime_config_dir }}/{{ afterglow_kolla_config_name }}:/app/{{ afterglow_kolla_config_name }}:ro"
-      - "kolla_logs:/var/log/kolla/"
+    volumes: >-
+      {{
+        [
+          afterglow_runtime_config_dir ~ '/' ~ afterglow_generated_config_name ~ ':/app/afterglow.conf:ro',
+          afterglow_runtime_config_dir ~ '/' ~ afterglow_operator_config_name ~ ':/app/' ~ afterglow_operator_config_name ~ ':ro',
+          afterglow_runtime_config_dir ~ '/' ~ afterglow_kolla_config_name ~ ':/app/' ~ afterglow_kolla_config_name ~ ':ro',
+          'kolla_logs:/var/log/kolla/'
+        ] + (
+          [
+            afterglow_rbd_conf_source ~ ':/etc/ceph/ceph.conf:ro',
+            afterglow_rbd_keyring_source ~ ':/etc/ceph/ceph.client.afterglow-rbd.keyring:ro'
+          ] if afterglow_rbd_conf_source and afterglow_rbd_keyring_source else []
+        )
+      }}
     healthcheck:
       test: ["CMD", "python", "-c", "from urllib.request import urlopen; response = urlopen('http://{{ afterglow_backend_listen_address }}:{{ afterglow_backend_listen_port }}/api/v1/health', timeout=5); assert response.status == 200"]
       interval: 30s

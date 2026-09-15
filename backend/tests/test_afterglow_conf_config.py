@@ -519,3 +519,87 @@ def test_helm_app_templates_use_writable_ephemeral_log_mounts():
         # Must not introduce hostPath or PVC for log storage
         assert "persistentVolumeClaim" not in text
         assert "hostPath" not in text
+
+
+def test_ceph_rbd_config_is_disabled_only_when_both_mount_paths_are_empty():
+    assert app_config.Settings().ceph_rbd_enabled is False
+
+    with pytest.raises(ValueError, match="함께 설정"):
+        app_config.Settings(ceph_rbd_conf_path="/etc/ceph/ceph.conf")
+    with pytest.raises(ValueError, match="함께 설정"):
+        app_config.Settings(ceph_rbd_keyring_path="/etc/ceph/keyring")
+
+
+def test_ceph_rbd_config_requires_cluster_pool_and_valid_client_when_enabled():
+    base = {
+        "ceph_rbd_conf_path": "/etc/ceph/ceph.conf",
+        "ceph_rbd_keyring_path": "/etc/ceph/ceph.client.afterglow-rbd.keyring",
+        "ceph_rbd_cluster_fsid": "00000000-1111-2222-3333-444444444444",
+        "ceph_rbd_volume_pools": {"ceph": "volumes"},
+    }
+
+    settings = app_config.Settings(**base)
+    assert settings.ceph_rbd_enabled is True
+
+    with pytest.raises(ValueError, match="rbd_cluster_fsid"):
+        app_config.Settings(**{**base, "ceph_rbd_cluster_fsid": ""})
+    with pytest.raises(ValueError, match="client"):
+        app_config.Settings(**{**base, "ceph_rbd_client_name": "bad;client"})
+    with pytest.raises(ValueError, match="RBD pool"):
+        app_config.Settings(**{**base, "ceph_rbd_volume_pools": {"ceph": "volumes;rm"}})
+    with pytest.raises(ValueError, match="양수"):
+        app_config.Settings(**{**base, "ceph_rbd_command_timeout_seconds": 0})
+
+
+def test_app_config_flattens_ceph_rbd_settings(isolated_config_dir):
+    (isolated_config_dir / "afterglow.conf").write_text(
+        """
+[ceph]
+rbd_conf_path = "/etc/ceph/ceph.conf"
+rbd_keyring_path = "/etc/ceph/ceph.client.afterglow-rbd.keyring"
+rbd_client_name = "client.afterglow-rbd"
+rbd_cluster_fsid = "00000000-1111-2222-3333-444444444444"
+rbd_command_timeout_seconds = 17
+
+[ceph.rbd_volume_pools]
+ceph = "volumes"
+archive = "archive-volumes"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    settings = app_config.Settings(**app_config._load_toml())
+
+    assert settings.ceph_rbd_enabled is True
+    assert settings.ceph_rbd_command_timeout_seconds == 17
+    assert settings.ceph_rbd_volume_pools == {
+        "ceph": "volumes",
+        "archive": "archive-volumes",
+    }
+
+
+def test_k8s_renderer_separates_ceph_conf_and_keyring():
+    keyring = "[client.afterglow-rbd]\n  key = secret-sentinel"
+    ceph_conf = "[global]\nfsid = 00000000-1111-2222-3333-444444444444"
+    cfg = {
+        "ceph": {
+            "rbd_conf_path": "/etc/ceph/ceph.conf",
+            "rbd_keyring_path": "/etc/ceph/ceph.client.afterglow-rbd.keyring",
+            "rbd_client_name": "client.afterglow-rbd",
+            "rbd_cluster_fsid": "00000000-1111-2222-3333-444444444444",
+            "rbd_command_timeout_seconds": 30,
+            "rbd_volume_pools": {"ceph": "volumes"},
+            "rbd_conf_content": ceph_conf,
+            "rbd_keyring": keyring,
+        },
+        "app": {"secret_key": "0123456789abcdef0123456789abcdef"},
+    }
+
+    toml = generate_k8s._render_toml_for_k8s(cfg)
+    configmap = yaml.safe_load(generate_k8s.render_configmap(cfg))
+    secret = yaml.safe_load(generate_k8s.render_secret(cfg))
+
+    assert '[ceph.rbd_volume_pools]\n"ceph" = "volumes"' in toml
+    assert keyring not in toml
+    assert configmap["data"]["ceph.conf"].rstrip("\n") == ceph_conf
+    assert secret["stringData"]["CEPH_RBD_KEYRING"].rstrip("\n") == keyring

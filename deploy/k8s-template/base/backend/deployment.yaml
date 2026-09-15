@@ -94,6 +94,14 @@ spec:
             - name: builder-ssh-key
               mountPath: /etc/afterglow/ssh
               readOnly: true
+            - name: ceph-conf
+              mountPath: /etc/ceph/ceph.conf
+              subPath: ceph.conf
+              readOnly: true
+            - name: ceph-rbd-keyring
+              mountPath: /etc/ceph/ceph.client.afterglow-rbd.keyring
+              subPath: ceph.client.afterglow-rbd.keyring
+              readOnly: true
             - name: app-logs
               mountPath: /app/logs
           # startupProbe: 시작 완료까지 최대 10 + 240*5 = 1210초(약 20분) 허용
@@ -142,5 +150,18 @@ spec:
               - key: BUILDER_SSH_PRIVATE_KEY
                 path: builder.key
             defaultMode: 0400  # SSH 요구사항: owner read-only
+        - name: ceph-conf
+          configMap:
+            name: afterglow-config
+            items:
+              - key: ceph.conf
+                path: ceph.conf
+        - name: ceph-rbd-keyring
+          secret:
+            secretName: afterglow-secrets
+            items:
+              - key: CEPH_RBD_KEYRING
+                path: ceph.client.afterglow-rbd.keyring
+            defaultMode: 0400
         - name: app-logs
           emptyDir: {}

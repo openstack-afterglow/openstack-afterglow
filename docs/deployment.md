@@ -87,6 +87,43 @@ afterglow.openstack.conf  ← OpenStack 자격증명 오버라이드 (선택)
 
 파일명 예시 처럼 알파벳순(`g` < `o`)으로 적용되며 뒤 파일이 앞 파일을 이깁니다.
 
+### 1-c. 관리자 볼륨 삭제 Ceph RBD 검사 (선택)
+
+`error_deleting` 볼륨 복구는 기본적으로 Cinder/Nova API만 사용합니다. RBD backend를 직접 확인하려면 아래 네 항목을 모두 설정해야 하며, 하나라도 빠지면 기능은 비활성입니다. 비활성 상태에서는 Cinder 삭제를 요청할 수 있지만 backend 삭제를 증명하지 못하므로 결과는 `backend_unverified`이고 성공으로 닫히지 않습니다.
+
+```toml
+[ceph]
+rbd_conf_path = "/etc/ceph/ceph.conf"
+rbd_keyring_path = "/etc/ceph/ceph.client.afterglow-rbd.keyring"
+rbd_client_name = "client.afterglow-rbd"
+rbd_cluster_fsid = "01234567-89ab-cdef-0123-456789abcdef"
+rbd_command_timeout_seconds = 30
+
+# Cinder volume.host의 `@`와 `#` 사이 backend 이름을 실제 RBD pool에 연결한다.
+[ceph.rbd_volume_pools]
+ceph = "volumes"
+```
+
+`rbd_cluster_fsid`는 `ceph fsid`와 정확히 같아야 합니다. 불일치·timeout·권한 거부·해석할 수 없는 CLI 응답은 모두 `unknown`이며 복구를 중단합니다. 각 backend 이름은 정확히 한 pool에 대응시킵니다. clone parent가 다른 pool에 있으면 그 parent pool의 read/class-read 권한도 추가해야 합니다.
+
+CephX identity는 전용 `client.afterglow-rbd`를 사용하고 `client.admin`을 사용하지 않습니다. 필요한 권한 경계는 다음과 같습니다.
+
+- monitor: cluster FSID와 RBD client metadata를 읽는 `profile rbd` 수준
+- manager: 대상 volume pool의 `profile rbd-read-only` 수준
+- OSD: 대상 volume/parent pool의 `rbd_` object read와 class-read, 대상 volume pool의 `rbd_id.` object write
+
+Afterglow는 image data/header/trash를 삭제하지 않습니다. 쓰기는 누락된 `rbd_id.volume-<uuid>` 복원과, Cinder·RBD image/header/data/trash 부재가 모두 증명된 뒤 동일 object를 정리하는 경우뿐입니다. Ceph release별 RBD class method cap 요구가 다를 수 있으므로 운영 반영 전에 전용 identity로 `ceph fsid`, `rbd info`, `rbd status`, `rbd snap ls`, `rbd children`, `rbd trash ls`, `rados stat/getomapval/getxattr/ls`를 staging pool에서 실행해 권한을 검증합니다. 권한을 넓혀 오류를 숨기지 말고 필요한 pool/object prefix만 추가합니다.
+
+배포별 파일 연결:
+
+- Dev runner: `.local-services/ceph/ceph.conf`와 `.local-services/ceph/ceph.client.afterglow-rbd.keyring`을 만들면 `services:config/up`이 source를 0640으로 고정하고, 실제 파일 GID를 받은 non-root backend에만 `/etc/ceph/` read-only mount합니다. private `.local-services/afterglow.conf`의 `[ceph]` 경로·FSID·pool map도 위 값으로 설정해야 합니다.
+- 직접 dev Compose: `AFTERGLOW_LOCAL_CEPH_CONF`, `AFTERGLOW_LOCAL_CEPH_KEYRING`에 host 파일 경로를 넣습니다.
+- Prod Compose: `CEPH_RBD_CONF_FILE`, `CEPH_RBD_KEYRING_FILE`에 host 파일 경로를 넣고 container config는 `/etc/ceph/` 경로를 가리킵니다.
+- Kolla: `afterglow_rbd_conf_source`, `afterglow_rbd_keyring_source`, `afterglow_rbd_cluster_fsid`, `afterglow_rbd_volume_pools`를 설정합니다. 두 source가 모두 있을 때만 mount됩니다.
+- Kubernetes: private generation config의 `[ceph]`에 `rbd_conf_content`와 secret `rbd_keyring`을 추가한 뒤 `generate_k8s.py`를 실행합니다. ConfigMap의 `ceph.conf`와 Secret의 `ceph.client.afterglow-rbd.keyring`이 backend에 0400 read-only로 mount됩니다. repository의 빈 placeholder를 운영 key로 착각하지 않습니다.
+
+배포 뒤 backend container의 non-root 사용자로 `rbd --version`, `rados --version`, `ceph fsid`를 확인합니다. 진단 API에서 `backend_fsid=present`와 mapped pool을 확인하되, 기존 Cinder 장애 볼륨을 자동 복구 검증 대상으로 사용하지 않습니다. Keyring 본문·CLI argv 전체·Ceph auth output은 로그나 이슈에 붙이지 않습니다.
+
 ### 2. 기본 서비스 시작
 
 ```bash

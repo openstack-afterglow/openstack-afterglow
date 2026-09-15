@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen } from '@testing-library/svelte';
 import { writable } from 'svelte/store';
 import type { AnnouncementUser } from '$lib/types/announcements';
 
@@ -43,6 +43,8 @@ describe('notification loading boundaries', () => {
 			is_read: false,
 		}]);
 		expect(await screen.findByText('Maintenance notice')).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: /Maintenance notice/ }));
+		expect(screen.getByText('admin (관리자)')).toBeTruthy();
 		expect(screen.getByText('쿼터 경고를 불러오는 중...')).toBeTruthy();
 		expect(screen.queryByText('new')).toBeNull();
 		expect(mockPost).toHaveBeenCalledWith('/api/v1/announcements/7/read', {}, 'token', 'project');

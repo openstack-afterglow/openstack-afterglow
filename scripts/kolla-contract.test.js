@@ -648,13 +648,17 @@ test("Afterglow hands operator TOML to containers without surrendering Kolla-own
 		generatedConfig,
 		/client_secret = "\{\{ afterglow_oidc_client_secret \| default\(''\) \}\}"/
 	)
-	const runtimeMountSources = [
+	const directRuntimeMountSources = [
 		...defaults.matchAll(/^\s+- "([^"]+):\/app\/[^"]+:ro"$/gm),
 	].map((match) => match[1])
-	assert.equal(runtimeMountSources.length, 7)
-	for (const source of runtimeMountSources) {
+	assert.equal(directRuntimeMountSources.length, 4)
+	for (const source of directRuntimeMountSources) {
 		assert.ok(source.startsWith("{{ afterglow_runtime_config_dir }}/"))
 	}
+	assert.equal((backendService.match(/afterglow_runtime_config_dir ~ '\/'/g) ?? []).length, 3)
+	assert.match(backendService, /afterglow_rbd_conf_source ~ ':\/etc\/ceph\/ceph\.conf:ro'/)
+	assert.match(backendService, /afterglow_rbd_keyring_source ~ ':\/etc\/ceph\/ceph\.client\.afterglow-rbd\.keyring:ro'/)
+	assert.match(backendService, /if afterglow_rbd_conf_source and afterglow_rbd_keyring_source else \[\]/)
 	assert.match(configTask, /Config \| Stage and validate sanitized operator configuration/)
 	assert.match(configTask, /sanitize_operator_config\.py/)
 	assert.match(configTask, /Config \| Clear stale sanitized operator configuration staging file/)

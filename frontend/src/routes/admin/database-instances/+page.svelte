@@ -6,10 +6,10 @@
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
+	import Alert from '$lib/components/ui/Alert.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import DbCreatePanel from '$lib/components/database/DbCreatePanel.svelte';
-	import GrafanaEmbed from '$lib/components/monitoring/GrafanaEmbed.svelte';
 	import type { DbInstance } from '$lib/types/database';
 	import { toast } from '$lib/stores/toast';
 
@@ -18,6 +18,7 @@
 	let refreshing = $state(false);
 	let deleting = $state<string | null>(null);
 	let restarting = $state<string | null>(null);
+	let loadError = $state<string | null>(null);
 
 	let showCreatePanel = $state(false);
 
@@ -28,10 +29,11 @@
 	async function load() {
 		if (instances.length === 0) loading = true;
 		else refreshing = true;
+		loadError = null;
 		try {
 			instances = await api.get<DbInstance[]>('/api/v1/database-instances?all_projects=true', token, projectId);
-		} catch {
-			instances = [];
+		} catch (error) {
+			loadError = error instanceof ApiError ? error.message : 'Trove DB 인스턴스 목록 조회에 실패했습니다.';
 		} finally {
 			loading = false;
 			refreshing = false;
@@ -91,12 +93,17 @@
 			/>
 		{/snippet}
 	</PageHeader>
+	{#if loadError}
+		<Alert tone="danger" title="Trove DB 인스턴스를 불러오지 못했습니다">
+			{loadError}
+		</Alert>
+	{/if}
 
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={5} />
-	{:else if instances.length === 0}
+	{:else if instances.length === 0 && !loadError}
 		<div class="text-ink-3 text-sm">DB 인스턴스가 없습니다</div>
-	{:else}
+	{:else if instances.length > 0}
 		<div class="overflow-x-auto">
 			<table class="w-full text-sm">
 				<thead>
@@ -104,6 +111,7 @@
 						<th class="text-left py-3 px-4 font-medium">이름</th>
 						<th class="text-left py-3 px-4 font-medium">상태</th>
 						<th class="text-left py-3 px-4 font-medium">Datastore</th>
+						<th class="text-left py-3 px-4 font-medium">프로젝트</th>
 						<th class="text-left py-3 px-4 font-medium">크기 (GB)</th>
 						<th class="text-left py-3 px-4 font-medium">ID</th>
 						<th class="text-left py-3 px-4 font-medium">생성일</th>
@@ -118,6 +126,7 @@
 							</td>
 							<td class="py-3 px-4"><StatusChip status={inst.status} /></td>
 							<td class="py-3 px-4 text-ink-2">{inst.datastore?.type ?? '-'} {inst.datastore?.version ?? ''}</td>
+							<td class="py-3 px-4 text-ink-3 font-mono text-xs">{inst.project_id || '-'}</td>
 							<td class="py-3 px-4 text-ink-2">{inst.size || '-'}</td>
 							<td class="py-3 px-4 text-ink-3 font-mono text-xs">{inst.id.slice(0, 8)}…</td>
 							<td class="py-3 px-4 text-ink-3 text-xs">{inst.created_at ? inst.created_at.slice(0, 10) : '-'}</td>
@@ -140,10 +149,4 @@
 		</div>
 	{/if}
 
-	{#if !loading}
-	<div class="mt-8">
-		<h2 class="text-xs font-semibold text-ink-3 uppercase tracking-wide mb-3">MySQL 메트릭 (mysqld_exporter)</h2>
-		<GrafanaEmbed dashboardKey="mysqld" height={400} />
-	</div>
-	{/if}
 </div>

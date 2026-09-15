@@ -98,6 +98,14 @@ spec:
             - name: builder-ssh-key
               mountPath: /etc/afterglow/ssh
               readOnly: true
+            - name: ceph-conf
+              mountPath: /etc/ceph/ceph.conf
+              subPath: ceph.conf
+              readOnly: true
+            - name: ceph-rbd-keyring
+              mountPath: /etc/ceph/ceph.client.afterglow-rbd.keyring
+              subPath: ceph.client.afterglow-rbd.keyring
+              readOnly: true
             - name: app-logs
               mountPath: /app/logs
           # startupProbe: 노드 I/O 저하 시 import가 10분+ 걸릴 수 있어 20분까지 허용
@@ -142,6 +150,19 @@ spec:
             items:
               - key: BUILDER_SSH_PRIVATE_KEY
                 path: builder.key
+            defaultMode: 0400
+        - name: ceph-conf
+          configMap:
+            name: afterglow-config
+            items:
+              - key: ceph.conf
+                path: ceph.conf
+        - name: ceph-rbd-keyring
+          secret:
+            secretName: afterglow-secrets
+            items:
+              - key: CEPH_RBD_KEYRING
+                path: ceph.client.afterglow-rbd.keyring
             defaultMode: 0400
         - name: app-logs
           emptyDir: {}

@@ -406,6 +406,8 @@ services:
     volumes:
       - ./.local-services/afterglow.conf:/app/afterglow.conf:ro
       - ./.local-services/logs:/app/logs
+      - ${AFTERGLOW_LOCAL_CEPH_CONF:-/dev/null}:/etc/ceph/ceph.conf:ro
+      - ${AFTERGLOW_LOCAL_CEPH_KEYRING:-/dev/null}:/etc/ceph/ceph.client.afterglow-rbd.keyring:ro
     env_file:
       - path: .env
         required: false

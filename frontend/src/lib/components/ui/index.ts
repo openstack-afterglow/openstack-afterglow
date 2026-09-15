@@ -27,6 +27,8 @@ export { default as SelectionToolbar } from './SelectionToolbar.svelte';
 export type { BulkActionTone, BulkSelectionAction } from './BulkSelectionOverlay.svelte';
 export { default as BulkSelectionOverlay } from './BulkSelectionOverlay.svelte';
 export { default as SectionLabel } from './SectionLabel.svelte';
+export { default as SearchSelect } from './SearchSelect.svelte';
+export type { SearchSelectOption } from './SearchSelect.svelte';
 export { default as SelectInput } from './SelectInput.svelte';
 export { default as Spark } from './Spark.svelte';
 export { default as StatTile } from './StatTile.svelte';

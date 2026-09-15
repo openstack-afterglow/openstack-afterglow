@@ -353,6 +353,10 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	}
 	if (profile === 'admin' && pathname === '/api/v1/admin/volumes/status-summary') return state.admin.volumeStatusSummary;
 	if (profile === 'admin' && pathname === '/api/v1/admin/timeseries/volumes') return state.admin.volumeTimeseries;
+	const adminVolumeDiagnosticId = pathname.match(/^\/api\/v1\/admin\/volumes\/([^/]+)\/delete-diagnostics$/)?.[1];
+	if (profile === 'admin' && adminVolumeDiagnosticId) {
+		return state.admin.volumeDeleteDiagnostics[adminVolumeDiagnosticId] ?? mockUnsupported();
+	}
 	const adminVolumeId = pathname.match(/^\/api\/v1\/admin\/volumes\/([^/]+)$/)?.[1];
 	if (profile === 'admin' && adminVolumeId) return state.admin.volumeDetails[adminVolumeId] ?? mockUnsupported();
 
@@ -517,7 +521,16 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	if (method === 'GET' && pathname === '/api/v1/clusters') return [];
 	if (method === 'GET' && pathname === '/api/v1/clusters/templates') return [];
 	if (method === 'GET' && pathname === '/api/v1/containers') return [];
-	if (method === 'GET' && pathname === '/api/v1/database-instances') return [];
+	if (method === 'GET' && pathname === '/api/v1/database-instances') {
+		return [{
+			id: 'mock-trove-instance-1', name: 'sample-customer-mysql', status: 'ACTIVE',
+			datastore: { type: 'mysql', version: '8.0' }, flavor_id: 'db.small',
+			flavor_ram: 2048, flavor_vcpus: 2, size: 20, created_at: NOW_ISO,
+			hostname: 'sample-customer-mysql.internal', ip: '192.0.2.41', ips: ['192.0.2.41'],
+			address_map: { private: ['192.0.2.41'] }, volume_used: 4.25,
+			...(params.get('all_projects') === 'true' ? { project_id: state.selectedProjectId } : {}),
+		}];
+	}
 	if (method === 'GET' && pathname === '/api/v1/database-instances/backups') return [];
 	if (method === 'GET' && pathname === '/api/v1/database-instances/flavors') return [];
 	if (method === 'GET' && pathname === '/api/v1/object-storage') return [{ name: 'sample-artifacts', count: 12, bytes: 734003200 }];

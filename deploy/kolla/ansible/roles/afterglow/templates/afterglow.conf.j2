@@ -16,6 +16,17 @@ service_project_id = "{{ afterglow_service_project_id }}"
 ceph_monitors = "{{ afterglow_ceph_monitors }}"
 manila_share_type = "{{ afterglow_manila_share_type }}"
 
+[ceph]
+rbd_conf_path = "{{ '/etc/ceph/ceph.conf' if afterglow_rbd_conf_source and afterglow_rbd_keyring_source else '' }}"
+rbd_keyring_path = "{{ '/etc/ceph/ceph.client.afterglow-rbd.keyring' if afterglow_rbd_conf_source and afterglow_rbd_keyring_source else '' }}"
+rbd_client_name = "client.afterglow-rbd"
+rbd_cluster_fsid = "{{ afterglow_rbd_cluster_fsid }}"
+rbd_command_timeout_seconds = 30
+[ceph.rbd_volume_pools]
+{% for backend, pool in afterglow_rbd_volume_pools | dictsort %}
+"{{ backend }}" = "{{ pool }}"
+{% endfor %}
+
 [app]
 backend_port = {{ afterglow_backend_port }}
 frontend_port = {{ afterglow_frontend_port }}

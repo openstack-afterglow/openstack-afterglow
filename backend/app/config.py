@@ -3,14 +3,16 @@
 우선순위: 환경변수 > afterglow.conf (프로젝트 루트) > 기본값
 """
 
+import json
 import os
+import re
 import tomllib
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
@@ -107,6 +109,14 @@ def _load_toml() -> dict:
     flat["manila_nfs_sec_flavor"] = ost.get("manila_nfs_sec_flavor", "sys")
     flat["manila_cephx_key_timeout_seconds"] = ost.get("manila_cephx_key_timeout_seconds", 300)
     flat["ceph_monitors"] = ost.get("ceph_monitors", "")
+
+    ceph = data.get("ceph", {})
+    flat["ceph_rbd_conf_path"] = ceph.get("rbd_conf_path", "")
+    flat["ceph_rbd_keyring_path"] = ceph.get("rbd_keyring_path", "")
+    flat["ceph_rbd_client_name"] = ceph.get("rbd_client_name", "client.afterglow-rbd")
+    flat["ceph_rbd_cluster_fsid"] = ceph.get("rbd_cluster_fsid", "")
+    flat["ceph_rbd_command_timeout_seconds"] = ceph.get("rbd_command_timeout_seconds", 30)
+    flat["ceph_rbd_volume_pools"] = dict(ceph.get("rbd_volume_pools", {}) or {})
     flat["os_service_project_id"] = ost.get("service_project_id", "")
 
     app = data.get("app", {})
@@ -365,6 +375,14 @@ class Settings(BaseSettings):
 
     # Ceph 모니터 (cloud-init CephFS 마운트용)
     ceph_monitors: str = ""
+
+    # 관리자 볼륨 삭제 복구용 Ceph RBD 검사/매핑 복원 (두 경로가 모두 설정될 때만 활성)
+    ceph_rbd_conf_path: str = ""
+    ceph_rbd_keyring_path: str = ""
+    ceph_rbd_client_name: str = "client.afterglow-rbd"
+    ceph_rbd_cluster_fsid: str = ""
+    ceph_rbd_command_timeout_seconds: int = 30
+    ceph_rbd_volume_pools: dict[str, str] = Field(default_factory=dict)
 
     # 앱 설정
     backend_port: int = 8000
@@ -654,6 +672,10 @@ class Settings(BaseSettings):
         return [m.strip() for m in self.ceph_monitors.split(",") if m.strip()]
 
     @property
+    def ceph_rbd_enabled(self) -> bool:
+        return bool(self.ceph_rbd_conf_path.strip() and self.ceph_rbd_keyring_path.strip())
+
+    @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
@@ -667,6 +689,27 @@ class Settings(BaseSettings):
         is_production = env == "production"
         insecure_flag = os.environ.get("AFTERGLOW_ALLOW_INSECURE", "").strip() == "1"
 
+        ceph_paths = (
+            bool(self.ceph_rbd_conf_path.strip()),
+            bool(self.ceph_rbd_keyring_path.strip()),
+        )
+        if any(ceph_paths) and not all(ceph_paths):
+            raise ValueError("[ceph] rbd_conf_path와 rbd_keyring_path는 함께 설정하거나 모두 비워야 합니다")
+
+        if self.ceph_rbd_enabled:
+            if not self.ceph_rbd_cluster_fsid.strip() or not self.ceph_rbd_volume_pools:
+                raise ValueError(
+                    "[ceph] rbd_cluster_fsid와 rbd_volume_pools는 rbd_conf_path/rbd_keyring_path 설정 시 필수"
+                )
+            if re.fullmatch(r"client\.[A-Za-z0-9._-]{1,64}", self.ceph_rbd_client_name) is None:
+                raise ValueError(f"[ceph] 유효하지 않은 Ceph client 이름: {self.ceph_rbd_client_name!r}")
+            if self.ceph_rbd_command_timeout_seconds <= 0:
+                raise ValueError("[ceph] rbd_command_timeout_seconds는 양수여야 합니다")
+            for backend, pool in self.ceph_rbd_volume_pools.items():
+                if re.fullmatch(r"[A-Za-z0-9._@-]{1,64}", backend) is None:
+                    raise ValueError(f"[ceph] 유효하지 않은 Cinder backend 이름: {backend!r}")
+                if re.fullmatch(r"[A-Za-z0-9._-]{1,64}", pool) is None:
+                    raise ValueError(f"[ceph] 유효하지 않은 RBD pool 이름: {pool!r}")
         # production 환경에서는 INSECURE 우회 자체를 금지 — 운영 부팅 실수 차단.
         if is_production and insecure_flag:
             raise ValueError(
@@ -848,5 +891,5 @@ def get_settings() -> Settings:
         if env_key not in os.environ or (
             env_key in _EMPTY_ENV_TOML_FALLBACK_KEYS and os.environ[env_key] == "" and value != ""
         ):
-            os.environ[env_key] = str(value)
+            os.environ[env_key] = json.dumps(value) if isinstance(value, dict) else str(value)
     return Settings()

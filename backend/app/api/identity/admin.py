@@ -27,7 +27,6 @@ from app.models.storage import (
 )
 from app.services import (
     instance_recovery,
-    keystone,
     library_builder,
     manila,
     neutron,
@@ -36,7 +35,7 @@ from app.services import (
     volume_delete_recovery,
 )
 from app.services import libraries as lib_svc
-from app.services.cache import cached_call, invalidate, ttl_fast, ttl_normal, ttl_slow
+from app.services.cache import _get_redis, cached_call, invalidate, ttl_fast, ttl_normal, ttl_slow
 from app.services.cache import invalidation as cache_invalidation
 from app.services.keystone import get_drover_proxy
 from app.services.octavia import get_topology_lbs
@@ -1575,13 +1574,12 @@ async def get_volume_delete_diagnostics(
     volume_id: str,
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
-    """볼륨 삭제 실패 원인을 진단한다 (관리자)."""
+    """볼륨 삭제 실패 원인과 Cinder/Ceph 안전 조건을 진단한다 (관리자)."""
     try:
         return await asyncio.to_thread(
             volume_delete_recovery.diagnose_volume_delete_issue,
             conn,
             volume_id,
-            keystone.get_admin_connection_for_project,
         )
     except Exception:
         _logger.warning("볼륨 삭제 진단 실패: %s", volume_id, exc_info=True)
@@ -1599,16 +1597,30 @@ async def recover_delete_volume(
     conn: openstack.connection.Connection = Depends(get_os_conn),
     token_info: dict = Depends(get_token_info),
 ):
-    """error_deleting 볼륨의 삭제 복구를 진단→실행→검증한다 (관리자)."""
+    """관리자 force-delete 단일 경로를 실행하고 설정된 Ceph backend까지 검증한다."""
+    lock_key = f"afterglow:volume-recovery:lock:{volume_id}"
+    try:
+        redis = await _get_redis()
+        acquired = await redis.set(lock_key, token_info.get("user_id", ""), nx=True, ex=600)
+    except Exception:
+        raise HTTPException(status_code=503, detail="복구 잠금을 확보할 수 없습니다")
+    if not acquired:
+        raise HTTPException(status_code=409, detail="볼륨 삭제 복구가 이미 진행 중입니다")
+
     try:
         result = await asyncio.to_thread(
             volume_delete_recovery.recover_delete_volume,
             conn,
             volume_id,
-            keystone.get_admin_connection_for_project,
             verify_timeout_seconds=verify_timeout_seconds,
         )
-        if result.status in {"deleted", "already_deleted", "delete_submitted"}:
+        if result.status in {
+            "deleted",
+            "already_deleted",
+            "delete_submitted",
+            "backend_residue",
+            "backend_unverified",
+        }:
             await _invalidate_volume_recovery_caches(result.diagnostic.project_id)
         try:
             await rec(
@@ -1616,19 +1628,28 @@ async def recover_delete_volume(
                 conn,
                 resource_type="volume",
                 action="volume.recover_delete",
-                status="success" if result.status in {"deleted", "already_deleted", "delete_submitted"} else "failed",
+                status="success" if result.status in {"deleted", "already_deleted"} else "failed",
                 resource_id=volume_id,
-                error_message=result.status if result.status in {"blocked", "failed"} else None,
+                error_message=(
+                    result.status
+                    if result.status in {"blocked", "failed", "backend_residue", "backend_unverified"}
+                    else None
+                ),
                 extra={
                     "result": result.status,
                     "verified_deleted": result.verified_deleted,
                     "root_cause": result.diagnostic.root_cause_code,
+                    "backend_verification": result.backend_verification,
+                    "quota_verification": result.quota_verification,
+                    "checks": [check.model_dump() for check in result.diagnostic.checks],
                     "steps": [step.model_dump() for step in result.steps],
                 },
             )
         except Exception:
             pass
         return result
+    except HTTPException:
+        raise
     except Exception:
         try:
             await rec(
@@ -1643,6 +1664,11 @@ async def recover_delete_volume(
             pass
         _logger.warning("볼륨 삭제 복구 실패: %s", volume_id, exc_info=True)
         raise HTTPException(status_code=500, detail="볼륨 삭제 복구 실패")
+    finally:
+        try:
+            await redis.delete(lock_key)
+        except Exception:
+            _logger.warning("볼륨 삭제 복구 잠금 해제 실패: %s", volume_id, exc_info=True)
 
 
 def _delete_admin_volume(conn, volume_id: str) -> str | None:

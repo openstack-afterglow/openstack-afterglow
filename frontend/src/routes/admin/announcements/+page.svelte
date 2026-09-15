@@ -10,6 +10,7 @@
 	import Card from '$lib/components/ui/Card.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import SearchSelect from '$lib/components/ui/SearchSelect.svelte';
 	import type { AnnouncementAdmin, AnnouncementSeverity, AnnouncementTargetType } from '$lib/types/announcements';
 
 	const FALLBACK_SEVERITIES: AnnouncementSeverity[] = ['info', 'warning', 'danger'];
@@ -34,6 +35,16 @@
 		starts_at: '',
 		ends_at: '',
 	});
+	const targetOptions = $derived(
+		form.target_type === 'project'
+			? ctrl.allProjects.map((project) => ({ value: project.id, label: project.name, description: project.id }))
+			: ctrl.allUsers.map((user) => ({ value: user.id, label: user.name, description: user.id })),
+	);
+	const targetLoading = $derived(form.target_type === 'project' ? ctrl.projectsLoading : ctrl.usersLoading);
+	const targetEmptyText = $derived(
+		(form.target_type === 'project' ? ctrl.projectsError : ctrl.usersError)
+			|| (form.target_type === 'project' ? '일치하는 프로젝트가 없습니다' : '일치하는 유저가 없습니다'),
+	);
 
 	function resetForm() {
 		form = { title: '', body: '', severity: 'info', target_type: 'all', target_id: '', starts_at: '', ends_at: '' };
@@ -177,22 +188,17 @@
 						<label class="block text-xs text-[var(--color-ink-2)] mb-1.5 uppercase tracking-wide" for="announcement-target-id">
 							{form.target_type === 'project' ? '프로젝트 선택' : '유저 선택'}
 						</label>
-						<select
+						<SearchSelect
 							id="announcement-target-id"
-							bind:value={form.target_id}
-							class="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-line-2)] rounded-lg px-3 py-2 text-[var(--color-ink-0)] text-sm focus:outline-none focus:border-[var(--color-accent)]"
-						>
-							<option value="">선택하세요</option>
-							{#if form.target_type === 'project'}
-								{#each ctrl.allProjects as p}
-									<option value={p.id}>{p.name}</option>
-								{/each}
-							{:else}
-								{#each ctrl.allUsers as u}
-									<option value={u.id}>{u.name}</option>
-								{/each}
-							{/if}
-						</select>
+							value={form.target_id}
+							options={targetOptions}
+							loading={targetLoading}
+							placeholder={form.target_type === 'project' ? '프로젝트를 선택하세요' : '유저를 선택하세요'}
+							searchPlaceholder={form.target_type === 'project' ? '프로젝트 이름 또는 ID 검색' : '유저 이름 또는 ID 검색'}
+							emptyText={targetEmptyText}
+							ariaLabel={form.target_type === 'project' ? '프로젝트 선택' : '유저 선택'}
+							onchange={(value) => (form.target_id = value)}
+						/>
 					</div>
 				{/if}
 			</div>

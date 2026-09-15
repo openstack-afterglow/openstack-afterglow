@@ -7,6 +7,7 @@
 	import { theme, resolvedTheme } from '$lib/stores/theme';
 	import { api, ApiError, getBaseUrl, refreshSession, beginSessionRevocation, endSessionRevocation } from '$lib/api/client';
 	import ProjectSelector from '$lib/components/ProjectSelector.svelte';
+	import AnnouncementBellButton from '$lib/components/notifications/AnnouncementBellButton.svelte';
 	import { siteConfig, initSiteConfig, qualifyBackendAssetPaths, replaceSiteConfig } from '$lib/config/site';
 	import { resolveFaviconPath } from '$lib/config/brandAssets';
 	import type { PublicSiteConfig } from '$lib/types/siteConfig';
@@ -47,6 +48,7 @@
 	const mockupAdminActive = $derived(mockup.active && mockup.profile === 'admin');
 	let lastVerifiedToken: string | null = null;
 	let authVerifyNonce = $state(0);
+	let unreadFetchSerial = 0;
 	let sidebarTrigger = $state<HTMLButtonElement | null>(null);
 
 	replaceSiteConfig(initialSiteConfig);
@@ -62,15 +64,21 @@
 		}
 	}
 
-	async function refreshUnreadAnnouncementCount() {
-		const token = $auth.token;
-		const projectId = $auth.projectId;
-		if (mockup.active || isMockAuthActive() || !token) return;
+	async function refreshUnreadAnnouncementCount(
+		token = $auth.token,
+		projectId = $auth.projectId,
+	) {
+		const serial = ++unreadFetchSerial;
+		if (mockup.active || isMockAuthActive() || !token) {
+			unreadAnnouncementCount = 0;
+			return;
+		}
 		try {
 			const res = await api.get<UnreadCountResponse>('/api/v1/announcements/unread-count', token, projectId ?? undefined);
+			if (serial !== unreadFetchSerial || $auth.token !== token || $auth.projectId !== projectId) return;
 			unreadAnnouncementCount = res.unread_count;
 		} catch {
-			// 배지 갱신은 best-effort — 실패해도 헤더 렌더링을 막지 않는다.
+			// 표시는 best-effort다. 기존 미읽음 상태는 일시적인 조회 실패로 지우지 않는다.
 		}
 	}
 
@@ -115,6 +123,19 @@
 		bellOpen = false;
 		void goto(id != null ? `/dashboard/notifications?focus=${id}` : '/dashboard/notifications');
 	}
+
+	$effect(() => {
+		const ready = $authReady;
+		const token = $auth.token;
+		const projectId = $auth.projectId;
+		const inactive = mockup.active || isMockAuthActive() || !ready || !token;
+		if (inactive) {
+			unreadFetchSerial += 1;
+			unreadAnnouncementCount = 0;
+			return;
+		}
+		untrack(() => void refreshUnreadAnnouncementCount(token, projectId));
+	});
 
 	$effect(() => {
 		if (!bellOpen || typeof document === 'undefined') return;
@@ -307,8 +328,7 @@
 			refreshSession,
 		});
 
-		// 헤더 종 아이콘 미읽음 배지 — 60초 주기 폴링 (SSE 도입 전까지)
-		void refreshUnreadAnnouncementCount();
+		// 로그인/프로젝트 전환 직후에는 reactive effect가 갱신하고, 이후 60초마다 보조 폴링한다.
 		const announcementInterval = setInterval(() => void refreshUnreadAnnouncementCount(), 60_000);
 
 		return () => {
@@ -441,23 +461,12 @@
 
 			<!-- 알림 아이콘 + 드롭다운 -->
 			<div class="relative" bind:this={bellContainer}>
-				<button
-					bind:this={bellButton}
+				<AnnouncementBellButton
+					bind:element={bellButton}
+					count={unreadAnnouncementCount}
+					open={bellOpen}
 					onclick={toggleBellDropdown}
-					class="relative flex size-11 items-center justify-center rounded-md text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] lg:size-8"
-					title="알림"
-					aria-label="알림"
-					aria-haspopup="true"
-					aria-expanded={bellOpen}
-				>
-					<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
-					{#if unreadAnnouncementCount > 0}
-						<span
-							class="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-semibold leading-none text-ink-0"
-							style="background: var(--color-state-danger);"
-						>{unreadAnnouncementCount > 99 ? '99+' : unreadAnnouncementCount}</span>
-					{/if}
-				</button>
+				/>
 				{#if bellOpen}
 					<!-- 모바일: 바텀 시트 / sm 이상: 종 아이콘 기준 드롭다운 (ProjectSelector 패턴 준용) -->
 					<div
