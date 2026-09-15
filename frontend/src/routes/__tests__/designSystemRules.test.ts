@@ -97,6 +97,10 @@ const radiusTokenNames = ['--radius-sm', '--radius-md', '--radius-lg', '--radius
 // 모달·팝오버 depth 가 조용히 사라지므로, 세 토큰 모두 런타임·TS·문서에 동시에 존재해야 한다.
 const elevationTokenNames = ['--shadow-restraint', '--shadow-popover', '--shadow-overlay-compact'];
 
+// Material 은 테마별 alpha 두 개와 테마 공통 blur 두 개로 나뉜다.
+const materialAlphaTokenNames = ['--material-chrome-alpha', '--material-overlay-alpha'];
+const materialBlurTokenNames = ['--material-chrome-blur', '--material-scrim-blur'];
+
 const motionDurationExports = [
 	'fast: 120',
 	'base: 160',
@@ -230,6 +234,43 @@ describe('design system source contracts', () => {
 			expect(lightValue).toBeTruthy();
 			expect(lightValue).not.toBe(darkValue);
 		}
+	});
+
+	it('keeps the material confined to the floating layer and failing safe to an opaque surface', () => {
+		const materialTokenNames = [...materialAlphaTokenNames, ...materialBlurTokenNames];
+		for (const token of materialTokenNames) {
+			expect(layoutSource).toContain(token);
+			expect(tokenSource).toContain(token);
+			expect(designSource).toContain(token);
+		}
+		expect(tokenSource).toContain('MATERIAL_CSS_VAR');
+
+		const lightStart = layoutSource.indexOf(':root.light {');
+		const darkBlock = layoutSource.slice(0, lightStart);
+		const lightBlock = layoutSource.slice(lightStart);
+		const valueOf = (block: string, token: string) =>
+			block.match(new RegExp(`${token}:\\s*([^;]+);`))?.[1].trim();
+		// alpha 는 테마마다 달라야 한다: 어두운 표면용 값을 흰 표면에 그대로 쓰면 비쳐 보이지 않는다.
+		for (const token of materialAlphaTokenNames) {
+			expect(valueOf(darkBlock, token)).toBeTruthy();
+			expect(valueOf(lightBlock, token)).toBeTruthy();
+			expect(valueOf(lightBlock, token)).not.toBe(valueOf(darkBlock, token));
+		}
+		// blur 는 한 값만 둔다: 라이트 블록에 다시 정의하면 의도가 깨진 것이다.
+		for (const token of materialBlurTokenNames) {
+			expect(valueOf(darkBlock, token)).toBeTruthy();
+			expect(valueOf(lightBlock, token)).toBeUndefined();
+		}
+
+		// 불투명이 기본 선언이고 반투명은 향상이다. 세 블록의 명시도가 같으므로 순서가 계약이다:
+		// 접근성 보정이 @supports 뒤에 와야 조용히 덮이지 않는다.
+		const enhancement = layoutSource.indexOf('@supports ((backdrop-filter: blur(1px))');
+		const reducedTransparency = layoutSource.indexOf('prefers-reduced-transparency');
+		const forcedColors = layoutSource.indexOf('@media (forced-colors: active) {\n  .material-chrome');
+		expect(enhancement).toBeGreaterThan(-1);
+		expect(reducedTransparency).toBeGreaterThan(enhancement);
+		expect(forcedColors).toBeGreaterThan(enhancement);
+		expect(layoutSource).toContain('color-mix(in oklab, var(--color-surface-base) var(--material-chrome-alpha)');
 	});
 
 	it('links tracked frontend docs and optional local agent instructions to the canonical design system', () => {

@@ -272,9 +272,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "09bcce868197e75cf5c0a93488298955d1f1669de04c6263edcfcf76b5c39b71",
-  "reviewed_at": "2026-09-15T17:46:57Z",
-  "summary": "Reviewed the frontend geometry and elevation token layer: radius tokens added to @theme static so the Tailwind rounded-* scale retunes centrally (lg 0.5->0.625rem, xl 0.75->0.875rem, control tier held), three elevation tokens defined in :root with separate :root.light alphas after --shadow-restraint was found referenced in 103 files and defined nowhere, ui/ primitive radius literals reconciled to tokens with Alert held at the panel tier so it never out-rounds its Card container, small controls retagged off the bumped tiers, and a dead :root.light .shadow-xl rule removed. Frontend styling only: no API, schema, permission, dependency, or deployment-contract change, so no structural section of this document changes."
+  "source_sha256": "c6abb83dc1b72210c8e3461401dcc913504c0bf64b76cd828beeccde297fae99",
+  "reviewed_at": "2026-09-15T18:32:25Z",
+  "summary": "Reviewed the floating-layer material: token family added to layout.css and tokens.ts with per-theme alpha and theme-shared blur, guarded utility classes whose opaque background is the base declaration and translucency the enhancement so unsupported browsers, prefers-reduced-transparency and forced-colors all fail safe, the chrome material applied to the application header on a negative-z child so the header creates no containing block for its own popovers, BulkSelectionOverlay moved onto the overlay material, and five ad-hoc scrim blurs consolidated. Frontend styling only: no API, schema, permission, dependency or deployment-contract change, so no structural section of this document changes."
 }
 ```
 <!-- architecture-review:end -->

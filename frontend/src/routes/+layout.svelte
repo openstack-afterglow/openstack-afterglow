@@ -387,7 +387,8 @@
 		href="#main-content"
 		class="fixed left-3 top-3 z-[calc(var(--z-command)+2)] -translate-y-20 rounded-md bg-surface-raised px-3 py-2 text-sm font-medium text-ink-0 shadow-lg transition-transform focus:translate-y-0"
 	>본문으로 건너뛰기</a>
-	<header class="fixed top-0 left-0 md:left-[var(--app-sidebar-width)] right-0 z-[var(--z-header)] h-[var(--app-header-height)] flex items-center gap-3 border-b border-line bg-surface-base px-3 md:px-6">
+	<header class="fixed top-0 left-0 md:left-[var(--app-sidebar-width)] right-0 z-[var(--z-header)] h-[var(--app-header-height)] flex items-center gap-3 border-b border-line px-3 md:px-6">
+		<div class="material-chrome pointer-events-none absolute inset-0 -z-10" aria-hidden="true"></div>
 		<!-- 모바일 햄버거 -->
 		<button
 			bind:this={sidebarTrigger}

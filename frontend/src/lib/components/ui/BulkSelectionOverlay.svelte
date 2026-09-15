@@ -25,7 +25,7 @@
 
 {#if count > 0}
 	<div class="bulk-overlay-wrap" role="region" aria-label={ariaLabel} aria-busy={busy}>
-		<div class="bulk-overlay-panel">
+		<div class="bulk-overlay-panel material-overlay">
 			<div class="bulk-count" aria-live="polite"><strong>{count}</strong>개 선택됨</div>
 			<div class="bulk-actions">
 				{#each actions as action (action.key)}
@@ -62,9 +62,7 @@
 		padding: 0.75rem 1rem;
 		border: 1px solid var(--color-line-2);
 		border-radius: var(--radius-xl);
-		background: color-mix(in oklab, var(--color-surface-raised) 94%, transparent);
 		box-shadow: var(--shadow-overlay-compact);
-		backdrop-filter: blur(12px);
 		pointer-events: auto;
 		animation: bulk-rise var(--motion-duration-panel) var(--motion-ease-out);
 	}

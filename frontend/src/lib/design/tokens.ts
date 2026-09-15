@@ -71,6 +71,18 @@ export const ELEVATION_CSS_VAR = {
 	compact: 'var(--shadow-overlay-compact)',
 } as const;
 
+/**
+ * Material 은 부유 레이어 전용이다. alpha 는 "표면이 얼마나 남는가"이므로 값이 클수록 불투명하다.
+ * 라이트는 흰 표면이 훨씬 잘 비쳐서 더 불투명해야 하므로 테마별 값이 다르고,
+ * blur 반경은 의도적으로 두 테마가 같은 값을 쓴다.
+ */
+export const MATERIAL_CSS_VAR = {
+	chromeAlpha: 'var(--material-chrome-alpha)',
+	overlayAlpha: 'var(--material-overlay-alpha)',
+	chromeBlur: 'var(--material-chrome-blur)',
+	scrimBlur: 'var(--material-scrim-blur)',
+} as const;
+
 export const MOTION_CSS_VAR = {
 	durationFast: 'var(--motion-duration-fast)',
 	durationBase: 'var(--motion-duration-base)',

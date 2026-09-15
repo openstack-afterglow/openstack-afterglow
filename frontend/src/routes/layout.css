@@ -114,6 +114,13 @@
   --shadow-restraint: 0 2px 4px -1px rgb(0 0 0 / 0.40), 0 16px 32px -8px rgb(0 0 0 / 0.46), 0 40px 72px -32px rgb(0 0 0 / 0.55);
   --shadow-popover: 0 1px 2px 0 rgb(0 0 0 / 0.32), 0 8px 20px -6px rgb(0 0 0 / 0.44);
   --shadow-overlay-compact: 0 2px 4px -1px rgb(0 0 0 / 0.40), 0 16px 32px -8px rgb(0 0 0 / 0.46);
+  /* Material — the floating layer only. Alpha is how much of the surface stays, so a HIGHER value is
+     more opaque; light needs more because a white surface shows through far more readily than a
+     graphite one. Blur radii are one value for both themes on purpose. */
+  --material-chrome-alpha: 90%;
+  --material-overlay-alpha: 94%;
+  --material-chrome-blur: 1.125rem;
+  --material-scrim-blur: 0.75rem;
   --color-action-on-warm: #18191b;
   --color-action-on-accent: #07111f;
   --color-chart-1: #7da3ff;
@@ -173,6 +180,71 @@
   --motion-ease-in-out: ease-in-out;
 }
 
+/* Material — translucency belongs to the floating functional layer, never to content.
+   The opaque background is the base declaration and translucency is the enhancement, so an
+   unsupported browser, reduced transparency, or forced colors all fail safe to a solid surface. */
+.material-chrome {
+  background: var(--color-surface-base);
+}
+
+.material-overlay {
+  background: var(--color-surface-raised);
+}
+
+.material-scrim {
+  backdrop-filter: none;
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .material-chrome {
+    background: color-mix(in oklab, var(--color-surface-base) var(--material-chrome-alpha), transparent);
+    -webkit-backdrop-filter: blur(var(--material-chrome-blur));
+    backdrop-filter: blur(var(--material-chrome-blur));
+  }
+
+  .material-overlay {
+    background: color-mix(in oklab, var(--color-surface-raised) var(--material-overlay-alpha), transparent);
+    -webkit-backdrop-filter: blur(var(--material-scrim-blur));
+    backdrop-filter: blur(var(--material-scrim-blur));
+  }
+
+  .material-scrim {
+    -webkit-backdrop-filter: blur(var(--material-scrim-blur));
+    backdrop-filter: blur(var(--material-scrim-blur));
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .material-chrome {
+    background: var(--color-surface-base);
+  }
+
+  .material-overlay {
+    background: var(--color-surface-raised);
+  }
+
+  .material-chrome,
+  .material-overlay,
+  .material-scrim {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .material-chrome,
+  .material-overlay {
+    background: Canvas;
+  }
+
+  .material-chrome,
+  .material-overlay,
+  .material-scrim {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
 /* Design system utility classes */
 
 /* overscroll(rubber-band) 영역이 페이지 배경과 같게 보이도록 <html>/<body>에 배경 지정 */
@@ -230,6 +302,8 @@ body {
   --shadow-restraint: 0 2px 4px -1px rgb(0 0 0 / 0.05), 0 16px 32px -8px rgb(0 0 0 / 0.12), 0 40px 72px -32px rgb(0 0 0 / 0.16);
   --shadow-popover: 0 1px 2px 0 rgb(0 0 0 / 0.04), 0 8px 20px -6px rgb(0 0 0 / 0.12);
   --shadow-overlay-compact: 0 2px 4px -1px rgb(0 0 0 / 0.05), 0 16px 32px -8px rgb(0 0 0 / 0.12);
+  --material-chrome-alpha: 85%;
+  --material-overlay-alpha: 90%;
   --color-surface-canvas: #fafbff;
   --color-surface-base: #ffffff;
   --color-surface-raised: #ffffff;

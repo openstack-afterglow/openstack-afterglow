@@ -183,7 +183,7 @@
   >
     <button
       type="button"
-      class="absolute inset-0 cursor-default bg-surface-scrim backdrop-blur-sm"
+      class="material-scrim absolute inset-0 cursor-default bg-surface-scrim"
       onclick={() => palette.close()}
       aria-label="커맨드 팔레트 닫기"
     ></button>

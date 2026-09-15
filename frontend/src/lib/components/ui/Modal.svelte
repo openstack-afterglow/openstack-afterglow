@@ -39,7 +39,7 @@
 	>
 		<button
 			type="button"
-			class="absolute inset-0 cursor-default bg-surface-scrim"
+			class="material-scrim absolute inset-0 cursor-default bg-surface-scrim"
 			onclick={close}
 			aria-label="대화상자 닫기"
 			tabindex={dismissible ? 0 : -1}

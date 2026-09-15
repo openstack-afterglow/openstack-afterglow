@@ -8,7 +8,7 @@
 {#if dialogState.open}
 	<div
 		use:dialogFocus={{ enabled: dialogState.open, onEscape: dialogState.reject }}
-		class="confirm-overlay"
+		class="confirm-overlay material-scrim"
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="confirm-dialog-message"

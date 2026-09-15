@@ -67,7 +67,7 @@
 
 <!-- 모달 오버레이 -->
 <div
-	class="fixed inset-0 z-50 flex items-center justify-center bg-surface-scrim/60 backdrop-blur-sm p-4"
+	class="material-scrim fixed inset-0 z-50 flex items-center justify-center bg-surface-scrim/60 p-4"
 	role="dialog"
 	aria-modal="true"
 	aria-label="인스턴스 복구"
