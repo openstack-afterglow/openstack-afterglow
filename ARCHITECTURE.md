@@ -266,9 +266,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "ebc61807fe3d90d267620ed835df7b540af7158d95a2faaf571514b23b0bb846",
-  "reviewed_at": "2026-09-15T09:32:42Z",
-  "summary": "Reviewed GPU flavor visibility and quota authority fixes: cached flavor rehydration, scope-aware Nova usage inventory, canonical GPU alias normalization with migration 021; no structure, ownership, or deployment impact."
+  "source_sha256": "401263815ed73552a605f7023d6562e3ca69a80055d30cef5abe62a6e5c98762",
+  "reviewed_at": "2026-09-15T09:41:26Z",
+  "summary": "Reviewed GPU flavor visibility and quota authority fixes: typed rehydration of cached flavor payloads, logged authority failures surfaced as blockers, authenticated-scope Nova usage inventory, latest-updated-wins GPU alias resolution with migration 079; no structure, ownership, or deployment impact."
 }
 ```
 <!-- architecture-review:end -->

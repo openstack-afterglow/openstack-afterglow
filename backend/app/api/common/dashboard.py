@@ -119,17 +119,7 @@ def _recent_instances(servers: list[dict], limit: int = 5) -> list[dict]:
 
 def _list_flavors_as_dicts(conn):
     """플레이버 목록을 dict 리스트로 반환 (캐시 직렬화 호환)."""
-    return [
-        {
-            "id": f.id,
-            "name": f.name,
-            "vcpus": f.vcpus,
-            "ram": f.ram,
-            "disk": f.disk,
-            "extra_specs": f.extra_specs,
-        }
-        for f in nova.list_flavors(conn)
-    ]
+    return [f.model_dump() for f in nova.list_flavors(conn)]
 
 
 def _usage_hours(created_at: str | None) -> float:

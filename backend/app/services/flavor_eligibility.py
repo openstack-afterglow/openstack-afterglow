@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
@@ -16,6 +17,8 @@ from app.models.compute import (
 )
 from app.services import gpu_quota, nova
 from app.services.gpu_inventory import is_gpu_flavor
+
+_logger = logging.getLogger(__name__)
 
 AFTERGLOW_FRONTEND_VISIBLE_SPEC = "afterglow:frontend_visible"
 _FRONTEND_HIDDEN_VALUES = frozenset({"0", "false", "no", "off"})
@@ -223,6 +226,7 @@ async def evaluate_project_flavors(
     try:
         compute_quota = await asyncio.to_thread(nova.get_project_quota, conn, project_id)
     except Exception:
+        _logger.warning("compute quota lookup failed for project %s", project_id, exc_info=True)
         compute_error = True
 
     if any(parse_gpu_demand(flavor) for flavor in flavor_list):
@@ -230,6 +234,7 @@ async def evaluate_project_flavors(
             statuses = await gpu_quota.get_effective_gpu_quota_status(conn, project_id)
             gpu_status = {item["gpu_type"]: item for item in statuses}
         except Exception:
+            _logger.warning("GPU quota status lookup failed for project %s", project_id, exc_info=True)
             gpu_error = True
     else:
         gpu_status = {}

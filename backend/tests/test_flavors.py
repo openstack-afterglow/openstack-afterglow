@@ -1,10 +1,12 @@
 """compute/flavors.py 엔드포인트 단위 테스트."""
 
+import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from app.api.deps import CacheMode
 from app.main import app
 from app.models.compute import FlavorInfo
 from app.services.cache import ttl_static
@@ -99,3 +101,73 @@ async def test_list_flavors_cache_bypass(client, mock_conn):
 
     assert resp.status_code == 200
     assert captured.get("refresh") is True
+
+
+@pytest.mark.asyncio
+async def test_list_flavors_rehydrates_cached_dict_payload(client, mock_conn):
+    """A Redis cache hit returns dicts; GPU flavors must survive eligibility evaluation."""
+    from app.services.cache import _make_serializable
+
+    cpu = FlavorInfo(id="fl-cpu", name="cpu.2c_4g", vcpus=2, ram=4096, disk=20)
+    gpu = FlavorInfo(
+        id="fl-gpu",
+        name="gpu.3090_8c_32g",
+        vcpus=8,
+        ram=32768,
+        disk=100,
+        extra_specs={"pci_passthrough:alias": "RTX-3090:1"},
+    )
+    cached_payload = json.loads(json.dumps(_make_serializable([cpu, gpu])))
+    compute_quota = {
+        "instances": {"limit": 10, "in_use": 0},
+        "cores": {"limit": 64, "in_use": 0},
+        "ram": {"limit": 262144, "in_use": 0},
+    }
+    gpu_status = [{"project_id": "proj-123", "gpu_type": "RTX3090", "limit": -1, "in_use": 0, "available": -1}]
+
+    with (
+        patch("app.services.cache.cached_call", new=AsyncMock(return_value=cached_payload)),
+        patch("app.services.nova.get_project_quota", return_value=compute_quota),
+        patch("app.services.gpu_quota.get_effective_gpu_quota_status", new=AsyncMock(return_value=gpu_status)),
+    ):
+        resp = await client.get("/api/v1/flavors?cache=true")
+
+    assert resp.status_code == 200
+    items = resp.json()
+    assert [item["id"] for item in items] == ["fl-cpu", "fl-gpu"]
+    by_id = {item["id"]: item for item in items}
+    assert by_id["fl-gpu"]["extra_specs"] == {"pci_passthrough:alias": "RTX-3090:1"}
+    assert by_id["fl-gpu"]["eligibility"]["selectable"] is True
+    assert by_id["fl-gpu"]["eligibility"]["blockers"] == []
+    # Cached payloads already carry extra_specs; no per-flavor Nova refetch is allowed.
+    mock_conn.compute.get_flavor.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_list_flavors_propagates_evaluator_failure_instead_of_hiding_gpu(mock_conn):
+    """An evaluator crash must surface, never degrade into a silently GPU-free list."""
+    from app.api.compute.flavors import list_flavors
+
+    gpu = FlavorInfo(
+        id="fl-gpu",
+        name="gpu.3090_8c_32g",
+        vcpus=8,
+        ram=32768,
+        disk=100,
+        extra_specs={"pci_passthrough:alias": "RTX-3090:1"},
+    )
+    mock_conn._afterglow_project_id = "proj-123"
+
+    async def _load_without_cache(_key, _ttl, loader, **_kwargs):
+        return await loader()
+
+    with (
+        patch("app.api.compute.flavors.nova.list_flavors", return_value=[gpu]),
+        patch("app.api.compute.flavors.cache.cached_call", new=_load_without_cache),
+        patch(
+            "app.services.flavor_eligibility.evaluate_project_flavors",
+            new=AsyncMock(side_effect=RuntimeError("eligibility evaluation failed")),
+        ),
+        pytest.raises(RuntimeError, match="eligibility evaluation failed"),
+    ):
+        await list_flavors(conn=mock_conn, cm=CacheMode(enabled=False, refresh=False))

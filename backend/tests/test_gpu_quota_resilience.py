@@ -661,7 +661,7 @@ async def test_admin_async_quota_unavailable_returns_503_before_streaming(admin_
 
 
 @pytest.mark.asyncio
-async def test_flavors_list_preserves_gpu_blocker_when_quota_authority_unavailable():
+async def test_flavors_list_marks_gpu_flavors_unavailable_when_quota_authority_unavailable():
     from app.api.compute.flavors import list_flavors
 
     conn = MagicMock()

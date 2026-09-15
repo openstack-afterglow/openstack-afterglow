@@ -405,9 +405,9 @@ vendor_id/device_id → 표시 이름 매핑을 관리합니다.
 | `PUT` | `/api/v1/admin/gpu-quotas/{project_id}` | 프로젝트 GPU 쿼터 수정 |
 | `DELETE` | `/api/v1/admin/gpu-quotas/{project_id}/{gpu_type}` | 프로젝트 쿼터 유형별 삭제 → 기본값 복귀 (`204`) |
 
-사용자 flavor 목록은 Redis cache hit로 `extra_specs`가 일반 JSON payload가 된 경우에도 Nova flavor 상세를 다시 결합한 뒤 frontend visibility와 GPU 쿼터를 판정합니다. GPU quota DB, Nova server inventory, 또는 legacy flavor metadata를 authoritative하게 확인할 수 없으면 GPU flavor를 목록에서 숨기거나 `in_use=0`으로 간주하지 않습니다. 해당 flavor는 `eligibility.selectable=false`와 `gpu_quota_unavailable` blocker를 유지해 이름과 차단 원인을 함께 노출합니다.
+사용자 flavor 목록은 Redis cache hit로 payload가 일반 dict가 된 경우에도 `FlavorInfo`로 다시 해석한 뒤 frontend visibility와 GPU 쿼터를 판정합니다(캐시 payload가 `extra_specs`를 이미 보존하므로 flavor별 Nova 재조회는 하지 않습니다). GPU quota DB, Nova server inventory, 또는 legacy flavor metadata를 확인할 수 없으면 GPU flavor를 목록에서 숨기거나 `in_use=0`으로 간주하지 않습니다. 해당 flavor는 `eligibility.selectable=false`와 `gpu_quota_unavailable` blocker를 유지하고, authority 실패는 warning으로 기록됩니다.
 
-GPU 사용량은 system-admin connection에서만 Nova의 all-project inventory를 조회한 뒤 대상 `project_id`로 제한합니다. 일반 project-scoped connection은 전역 inventory를 요청하지 않습니다. 저장된 legacy row의 nullable/중복 alias는 읽기에서 canonical alias와 가장 제한적인 유효 limit로 합치며, PUT/DELETE는 해당 canonical alias의 모든 물리 row를 하나로 수렴시킵니다. Migration `021_gpu_quota_normalization.sql`은 동일 규칙으로 유효하지 않은 row를 fail-closed 정리하고 NOT NULL 및 `(project_id, gpu_type)` uniqueness를 복구합니다.
+GPU 사용량은 인증된 project scope와 대상 `project_id`가 다를 때만 Nova의 all-project inventory를 조회한 뒤 대상 project로 제한합니다. 같은 scope의 connection은 전역 inventory를 요청하지 않습니다. Microversion 2.47+ embedded flavor snapshot(`original_name` + `extra_specs`)은 `extra_specs`가 비어 있어도 authoritative로 취급하며 legacy snapshot만 flavor 상세를 조회합니다. 저장된 legacy alias(`RTX3090Ti` 등)는 읽기에서 canonical alias로 정규화하며 같은 alias의 중복 row는 `updated_at`이 가장 최신인 row(동률이면 `id`가 큰 row)의 limit를 사용합니다. PUT/DELETE도 같은 기준으로 survivor를 고른 뒤 중복 row를 제거합니다. Migration `079_normalize_gpu_quota_types.sql`은 동일 규칙으로 중복을 정리하고 `gpu_type`만 정규화하며 `updated_at`을 보존합니다.
 
 ---
 
