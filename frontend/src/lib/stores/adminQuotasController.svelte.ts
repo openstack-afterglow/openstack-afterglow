@@ -55,6 +55,19 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts) {
   const allGpuTypes = $derived(
     [...new Set([...gpuAliases, ...gpuDefaults.map(d => d.gpu_type), ...gpuQuotas.map(q => q.gpu_type)])].sort()
   );
+  const gpuQuotaRows = $derived(
+    allGpuTypes.map((gpuType): GpuQuota => {
+      const current = gpuQuotaMap[gpuType];
+      if (current) return current;
+      const limit = gpuDefaultMap[gpuType] ?? 0;
+      return {
+        gpu_type: gpuType,
+        limit,
+        in_use: 0,
+        available: limit === -1 ? -1 : limit,
+      };
+    }),
+  );
 
   const tok = opts.token;
   const pid = opts.projectId;
@@ -223,6 +236,7 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts) {
     get gpuQuotaMap() { return gpuQuotaMap; },
     get gpuDefaultMap() { return gpuDefaultMap; },
     get allGpuTypes() { return allGpuTypes; },
+    get gpuQuotaRows() { return gpuQuotaRows; },
     get gpuQuotaLoading() { return gpuQuotaLoading; },
     get gpuQuotaError() { return gpuQuotaError; },
     get gpuDefaultLoading() { return gpuDefaultLoading; },

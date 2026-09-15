@@ -52,7 +52,7 @@
 						onSave={ctrl.saveQuotas}
 					/>
 					<GpuQuotaTable
-						rows={ctrl.gpuQuotas}
+						rows={ctrl.gpuQuotaRows}
 						defaults={ctrl.gpuDefaultMap}
 						loading={ctrl.gpuQuotaLoading}
 						error={ctrl.gpuQuotaError}

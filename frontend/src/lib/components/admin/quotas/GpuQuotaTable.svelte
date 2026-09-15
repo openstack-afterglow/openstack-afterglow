@@ -25,7 +25,7 @@
 
 <div class="bg-surface-base border border-line rounded-xl p-6 mb-6">
 	<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide mb-1">GPU Quota</h2>
-	<p class="text-xs text-ink-3 mb-4">이 프로젝트의 GPU quota입니다. 개별 설정이 없으면 전체 기본값이 적용됩니다.</p>
+	<p class="text-xs text-ink-3 mb-4">클러스터에서 발견된 모든 GPU 타입을 표시합니다. 프로젝트별 설정이 없으면 전체 기본값이 적용됩니다.</p>
 	{#if error}<div class="text-red-400 text-xs mb-3">{error}</div>{/if}
 	{#if loading}
 		<div class="text-ink-3 text-sm">불러오는 중...</div>
@@ -92,10 +92,10 @@
 		{#if reconcilePreview && reconcilePreview.operations.length > 0}
 			<div class="mt-6 border-t border-[var(--color-line)] pt-4">
 				<h3 class="text-xs font-semibold text-[var(--color-ink-1)] uppercase tracking-wide mb-1">
-					Quota 연동 Flavor 권한 상태
+					Quota 연동 Flavor 권한 미리보기
 				</h3>
 				<p class="text-xs text-[var(--color-ink-2)] mb-3">
-					설정된 GPU limit에 따라 프로젝트에 부여되거나 회수될 Nova Flavor Access 계획입니다.
+					설정된 GPU limit으로 계산한 Nova Flavor Access 계획입니다. 실제 권한 반영은 통합 Compute 정책 적용 시 수행됩니다.
 				</p>
 				<div class="space-y-1.5">
 					{#each reconcilePreview.operations as op}

@@ -9,6 +9,7 @@
 
 ### Changed
 
+- **관리자 Flavor 접근 정책·GPU 쿼터 카탈로그** — Private GPU Flavor 목록에 `Quota 연동`/`수동` 정책 배지를 표시한다. 프로젝트 GPU 쿼터 표는 저장된 row에 한정하지 않고 Flavor·Placement에서 발견한 전체 alias, 전체 기본값, 프로젝트 effective 상태를 합쳐 RTX3060·RTX3090·RTX3090TI 등 모든 클러스터 GPU 타입을 즉시 설정할 수 있다. 권한 변경 영역은 dry-run 미리보기와 통합 Compute 정책이 실제 Nova Flavor Access를 반영하는 경계를 명시한다.
 - **공지 대상 검색·미읽음 표시** — 관리자 공지 작성에서 사용자와 프로젝트를 이름 또는 ID로 검색해 선택하도록 바꾸고 키보드 탐색·빈 결과·반응형 팝오버를 제공한다. 사용자 알림함은 발송자에 `(관리자)`를 표시하며, 로그인·프로젝트 전환 직후 미읽음 수를 조회해 header 알림 옆에 reduced-motion-safe danger 점멸 점을 표시한다.
 - **관리자 사용자 쿼터 페이지네이션** — 사용자 쿼터 화면이 Keystone 사용자 전체를 순차 수집하지 않고 한 번에 20명만 marker 기반으로 불러온다. 공통 이전/다음 탐색과 현재 페이지 표시 건수를 제공하고, 검색과 Lumen quota 결합도 현재 사용자 페이지로 한정해 아직 불러오지 않은 사용자를 미확인 계정으로 잘못 표시하지 않는다. 쿼터 변경 뒤에도 현재 페이지를 유지한다.
 - **인증 갱신 중 관리자 화면 보존** — 서비스 목록은 user/project 변경 시 이전 행을 지우고 늦은 응답을 차단한다. 같은 사용자의 token 갱신은 기존 행을 유지하며, 쿼터 화면의 현재 페이지와 진행 중 페이지 이동도 보존한다.
@@ -33,6 +34,7 @@
 
 ### Fixed
 
+- **로컬 Ceph placeholder 검증 격리** — 생성된 개발 설정에서 비활성 Ceph mount의 placeholder 경로로 `/dev/null`을 허용하되, 운영자가 직접 입력한 파일·디렉터리는 기존 타입 검증을 계속 적용한다.
 - **관리자 RBD 볼륨 삭제 복구 fail-closed 전환** — 오류 볼륨 진단이 system-admin Cinder/Nova dependency를 독립 tri-state로 확인하고, 선택적 restricted CephX adapter로 RBD directory·image/header/data/trash를 교차 검증한다. 안전한 경우에만 `rbd_id` mapping을 복원/정리하고 force-delete 뒤 Cinder·backend·quota를 다시 확인한다. Per-volume Redis lock과 residue/unverified 결과를 추가해 404 또는 조회 실패를 삭제 성공으로 오판하지 않으며 관리자 패널은 검증된 terminal success에서만 닫힌다.
 
 - **관리자 DB 인스턴스 소스 정정** — `/admin/database-instances`가 OpenStack control-plane `mysqld_exporter` dashboard를 tenant DB처럼 함께 표시하던 문제를 제거했다. 관리자 목록은 인증된 Trove `/mgmt/instances`에서 사용자 생성 DB와 owning project를 읽으며, management 조회 실패를 빈 목록으로 숨기지 않고 명시적인 오류로 표시한다.

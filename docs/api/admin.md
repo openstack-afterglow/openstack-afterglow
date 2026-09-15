@@ -409,6 +409,10 @@ vendor_id/device_id → 표시 이름 매핑을 관리합니다.
 
 GPU 사용량은 인증된 project scope와 대상 `project_id`가 다를 때만 Nova의 all-project inventory를 조회한 뒤 대상 project로 제한합니다. 같은 scope의 connection은 전역 inventory를 요청하지 않습니다. Microversion 2.47+ embedded flavor snapshot(`original_name` + `extra_specs`)은 `extra_specs`가 비어 있어도 authoritative로 취급하며 legacy snapshot만 flavor 상세를 조회합니다. 저장된 legacy alias(`RTX3090Ti` 등)는 읽기에서 canonical alias로 정규화하며 같은 alias의 중복 row는 `updated_at`이 가장 최신인 row(동률이면 `id`가 큰 row)의 limit를 사용합니다. PUT/DELETE도 같은 기준으로 survivor를 고른 뒤 중복 row를 제거합니다. Migration `079_normalize_gpu_quota_types.sql`은 동일 규칙으로 중복을 정리하고 `gpu_type`만 정규화하며 `updated_at`을 보존합니다.
 
+관리자 쿼터 화면은 `GET /api/v1/admin/gpu-aliases`의 클러스터 전체 alias(Flavor `pci_passthrough:alias` + Placement inventory), 전체 기본값, 선택 프로젝트의 effective quota/usage를 합쳐 GPU 타입 행을 구성합니다. 따라서 프로젝트에 저장된 row나 현재 사용량이 없어도 RTX3060·RTX3090 같은 클러스터 GPU 타입이 표시되며 즉시 프로젝트 limit을 설정할 수 있습니다. 별도 기본값이 없는 타입의 effective limit은 `0`입니다.
+
+Private GPU Flavor가 `extra_specs["afterglow:access_mode"] = "gpu_quota"`이면 access reconcile 대상입니다. Reconcile은 Flavor의 GPU 요구량을 effective project limit과 비교하고 Nova Flavor Access의 현재 tenant 목록을 읽어 `add`·`remove`·`none`을 계산합니다. `/api/v1/admin/flavors/access-reconcile`의 `apply=false`는 관리자 화면의 `권한 추가/회수 예정` 미리보기만 만들며 Nova 권한을 변경하지 않습니다. 실제 `addTenantAccess`/`removeTenantAccess` 호출은 `apply=true` 또는 `PUT /api/v1/admin/compute-policy/{project_id}`의 통합 정책 적용 시 수행됩니다. 관리자 Flavor 목록은 이 정책을 Private GPU 행의 `Quota 연동` 또는 `수동` 배지로 표시합니다.
+
 ---
 
 ## 이미지 관리

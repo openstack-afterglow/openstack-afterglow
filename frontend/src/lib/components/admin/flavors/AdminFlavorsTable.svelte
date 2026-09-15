@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Flavor } from '$lib/types/flavor';
 	import Pagination from '$lib/components/ui/Pagination.svelte';
+	import Pill from '$lib/components/ui/Pill.svelte';
 
 	let {
 		flavors,
@@ -39,6 +40,10 @@
 	function formatRam(mb: number): string {
 		if (mb >= 1024) return `${(mb / 1024).toFixed(mb % 1024 === 0 ? 0 : 1)} GB`;
 		return `${mb} MB`;
+	}
+
+	function isQuotaManaged(flavor: Flavor): boolean {
+		return flavor.extra_specs?.['afterglow:access_mode'] === 'gpu_quota';
 	}
 
 	let sortedFlavors = $derived(
@@ -115,11 +120,20 @@
 						<td class="py-2 pr-4 text-ink-2">{formatRam(f.ram)}</td>
 						<td class="py-2 pr-4 text-ink-2">{f.disk} GB</td>
 						<td class="py-2 pr-4">
-							<span
-								class="px-1.5 py-0.5 rounded text-xs font-medium {f.is_public
-									? 'bg-green-900/30 text-green-400'
-									: 'bg-yellow-900/30 text-yellow-400'}"
-							>{f.is_public ? 'Public' : 'Private'}</span>
+							<div class="flex flex-wrap items-center gap-1">
+								<span
+									class="px-1.5 py-0.5 rounded text-xs font-medium {f.is_public
+										? 'bg-green-900/30 text-green-400'
+										: 'bg-yellow-900/30 text-yellow-400'}"
+								>{f.is_public ? 'Public' : 'Private'}</span>
+								{#if !f.is_public && f.is_gpu}
+									<span title={isQuotaManaged(f) ? '접근 권한 관리 정책: GPU Quota 연동' : '접근 권한 관리 정책: 수동 관리'}>
+										<Pill tone={isQuotaManaged(f) ? 'accent' : 'neutral'} size="xs">
+											{isQuotaManaged(f) ? 'Quota 연동' : '수동'}
+										</Pill>
+									</span>
+								{/if}
+							</div>
 						</td>
 						<td class="py-2 pr-4 text-ink-2">
 							{#if f.is_gpu}

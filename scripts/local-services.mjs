@@ -187,8 +187,11 @@ function assertIsolatedConfiguration() {
 			if (mount.type === 'volume') {
 				const volume = config.volumes[mount.source];
 				if (volume.external || !volume.name.startsWith(`${PROJECT}_`)) fail(`${name} would reuse a non-local volume.`);
-			} else if (!mount.source.startsWith(`${process.cwd()}/${LOCAL_DIR}/`) && name !== 'service-mariadb') {
-				fail(`${name} would mount files outside the isolated configuration directory.`);
+			} else {
+				const isDisabledCephPlaceholder = name === 'backend' && mount.source === '/dev/null';
+				if (!isDisabledCephPlaceholder && !mount.source.startsWith(`${process.cwd()}/${LOCAL_DIR}/`) && name !== 'service-mariadb') {
+					fail(`${name} would mount files outside the isolated configuration directory.`);
+				}
 			}
 		}
 		for (const networkName of Object.keys(service.networks ?? {})) {
