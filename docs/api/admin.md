@@ -167,6 +167,23 @@ nav_order: 20
 
 새 filter/page/project 결과를 기다릴 때 이전 행을 즉시 지워 stale 선택을 막습니다. 확인 대기 중 결과 경계나 user/project가 바뀌면 요청을 보내지 않습니다. 같은 결과의 백그라운드 새로고침은 기존 행을 유지합니다. 항목별 실패는 고정된 공개 메시지이며 upstream 응답·접속 정보·credential을 응답이나 activity에 복제하지 않습니다.
 
+두 endpoint는 요청 token으로 만든 **system-admin connection**을 그대로 사용하며 volume project로 재범위화하지 않습니다. Cinder message는 원인 추정용 evidence일 뿐 삭제 허용 근거가 아닙니다. 진단은 Cinder volume/attachment/snapshot/backup/clone/group·migration, Nova attachment, 선택적 Ceph RBD 상태를 각각 `present | absent | unknown`으로 반환합니다. 필수 check 하나라도 `unknown`이면 fail-closed로 `recovery_available=false`이고 복구는 `blocked`입니다. 401/403, timeout, SDK/CLI parse 오류를 `absent`로 바꾸지 않습니다.
+
+RBD 검사가 활성화되면 `backend`에 `mode`, `classification`, pool, image name/id, size/order, parent를 반환합니다. Cinder의 404만으로 `already_deleted`를 확정하지 않습니다. RBD image/header/data/trash가 남아 있으면 `api_absent_backend_present`, 조회가 불완전하면 `backend_lookup_unknown`입니다. `rbd_id.volume-<uuid>`만 빠지고 directory·image id·size/order·parent·watcher/snapshot/child 상태가 일치할 때만 mapping을 복원합니다. 반대로 stale mapping 제거는 Cinder와 모든 backend artifact의 부재가 확인되고 mapping payload가 예상 image id와 정확히 같을 때만 실행합니다. Image data/header/trash 자체는 이 API가 삭제하지 않습니다.
+
+복구 결과 `status` 계약:
+
+- `deleted`, `already_deleted`: Cinder 부재와 활성화된 RBD backend 부재가 검증된 terminal success
+- `delete_submitted`: Cinder 삭제 요청은 수락됐지만 아직 Cinder record가 남아 있음
+- `backend_residue`: Cinder record는 사라졌지만 RBD residue가 확인됨
+- `backend_unverified`: Cinder record는 사라졌지만 RBD 검사가 비활성 또는 `unknown`
+- `blocked`: dependency, attachment, fresh `deleting`, 권한/인증, backend 불일치 또는 unknown 때문에 mutation하지 않음
+- `failed`: 허용된 mutation 자체가 실패함
+
+`verified_deleted`는 `deleted`/`already_deleted`에서만 `true`입니다. `backend_verification`은 `verified | unavailable | residue | unknown`, `quota_verification`은 `verified | mismatch | unavailable`을 별도로 반환합니다. UI는 terminal success에서만 상세 패널을 닫고 `delete_submitted`, residue, unverified 결과에서는 check·backend evidence를 유지한 채 상세를 새로고침합니다.
+
+Recovery는 볼륨별 Redis `NX EX=600` lock을 잡습니다. 같은 볼륨의 동시 요청은 HTTP 409, Redis 장애는 fail-closed HTTP 503이며 lock은 `finally`에서 소유 token과 일치할 때만 해제합니다. 모든 결과와 단계, backend/quota 검증은 감사 로그에 기록됩니다.
+
 ---
 
 ## 네트워크·라우터·포트·Floating IP
@@ -388,6 +405,10 @@ vendor_id/device_id → 표시 이름 매핑을 관리합니다.
 | `PUT` | `/api/v1/admin/gpu-quotas/{project_id}` | 프로젝트 GPU 쿼터 수정 |
 | `DELETE` | `/api/v1/admin/gpu-quotas/{project_id}/{gpu_type}` | 프로젝트 쿼터 유형별 삭제 → 기본값 복귀 (`204`) |
 
+사용자 flavor 목록은 Redis cache hit로 `extra_specs`가 일반 JSON payload가 된 경우에도 Nova flavor 상세를 다시 결합한 뒤 frontend visibility와 GPU 쿼터를 판정합니다. GPU quota DB, Nova server inventory, 또는 legacy flavor metadata를 authoritative하게 확인할 수 없으면 GPU flavor를 목록에서 숨기거나 `in_use=0`으로 간주하지 않습니다. 해당 flavor는 `eligibility.selectable=false`와 `gpu_quota_unavailable` blocker를 유지해 이름과 차단 원인을 함께 노출합니다.
+
+GPU 사용량은 system-admin connection에서만 Nova의 all-project inventory를 조회한 뒤 대상 `project_id`로 제한합니다. 일반 project-scoped connection은 전역 inventory를 요청하지 않습니다. 저장된 legacy row의 nullable/중복 alias는 읽기에서 canonical alias와 가장 제한적인 유효 limit로 합치며, PUT/DELETE는 해당 canonical alias의 모든 물리 row를 하나로 수렴시킵니다. Migration `021_gpu_quota_normalization.sql`은 동일 규칙으로 유효하지 않은 row를 fail-closed 정리하고 NOT NULL 및 `(project_id, gpu_type)` uniqueness를 복구합니다.
+
 ---
 
 ## 이미지 관리
@@ -528,6 +549,8 @@ Nova·Cinder·Neutron·Manila·Heat·Zun 서비스 상태, API 엔드포인트, 
 - `severity`: `info` 등(기본 `info`).
 - `target_type`: 대상 범위(전체/프로젝트 등), `target_id`로 특정 대상 지정.
 - `starts_at`/`ends_at`으로 노출 기간, `is_active`로 활성 여부 제어.
+
+관리자 화면의 특정 사용자·프로젝트 대상은 긴 native 선택 목록 대신 `SearchSelect`로 고릅니다. 팝오버 검색은 표시 이름과 stable ID를 모두 대상으로 하며 키보드 방향키·Enter·Escape를 지원합니다. 대상 유형을 바꾸면 이전 `target_id` 선택은 제거됩니다. 사용자 후보는 `/api/v1/admin/users?limit=100`, 프로젝트 후보는 `/api/v1/admin/projects/names` 응답을 사용하며 생성 payload와 서버 권한 계약은 바뀌지 않습니다.
 
 ---
 

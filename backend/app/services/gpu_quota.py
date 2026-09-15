@@ -50,6 +50,31 @@ def normalize_gpu_alias(alias: str) -> str:
     return norm
 
 
+def _normalized_limit(value: Any) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < -1:
+        return 0
+    return value
+
+
+def _merge_quota_limits(rows: list[GpuQuota]) -> int:
+    limits = [_normalized_limit(row.limit) for row in rows]
+    finite = [limit for limit in limits if limit != -1]
+    return min(finite) if finite else -1
+
+
+def _normalized_quota_groups(rows: list[GpuQuota]) -> dict[str, list[GpuQuota]]:
+    groups: dict[str, list[GpuQuota]] = {}
+    for row in rows:
+        gpu_type = normalize_gpu_alias(row.gpu_type)
+        if gpu_type:
+            groups.setdefault(gpu_type, []).append(row)
+    return groups
+
+
+def _canonical_quota_row(rows: list[GpuQuota]) -> GpuQuota:
+    return min(rows, key=lambda row: (row.id is None, row.id or 0))
+
+
 async def _execute_db_op(op_func, session_override: AsyncSession | None = None):
     if session_override is not None:
         return await op_func(session_override)
@@ -77,38 +102,30 @@ async def get_project_gpu_quotas(
 
     async def _op(sess: AsyncSession) -> list[dict[str, Any]]:
         result = await sess.execute(select(GpuQuota).where(GpuQuota.project_id == project_id))
-        rows = list(result.scalars().all())
-
-        if project_id == DEFAULT_PROJECT_ID:
-            return [
-                {
-                    "id": q.id,
-                    "project_id": q.project_id,
-                    "gpu_type": q.gpu_type,
-                    "limit": q.limit,
-                    "created_at": q.created_at,
-                    "updated_at": q.updated_at,
-                }
-                for q in rows
-            ]
-
-        usage = await get_project_gpu_usage(conn, project_id) if conn else {}
+        groups = _normalized_quota_groups(list(result.scalars().all()))
+        usage = await get_project_gpu_usage(conn, project_id) if conn and project_id != DEFAULT_PROJECT_ID else {}
         quotas = []
-        for q in rows:
-            in_use = usage.get(q.gpu_type, 0)
-            avail = max(0, q.limit - in_use) if q.limit >= 0 else -1
-            quotas.append(
-                {
-                    "id": q.id,
-                    "project_id": q.project_id,
-                    "gpu_type": q.gpu_type,
-                    "limit": q.limit,
-                    "in_use": in_use,
-                    "available": avail,
-                    "created_at": q.created_at,
-                    "updated_at": q.updated_at,
-                }
-            )
+        for gpu_type in sorted(groups):
+            rows = groups[gpu_type]
+            row = _canonical_quota_row(rows)
+            limit = _merge_quota_limits(rows)
+            quota = {
+                "id": row.id,
+                "project_id": project_id,
+                "gpu_type": gpu_type,
+                "limit": limit,
+                "created_at": row.created_at,
+                "updated_at": row.updated_at,
+            }
+            if project_id != DEFAULT_PROJECT_ID:
+                in_use = usage.get(gpu_type, 0)
+                quota.update(
+                    {
+                        "in_use": in_use,
+                        "available": max(0, limit - in_use) if limit >= 0 else -1,
+                    }
+                )
+            quotas.append(quota)
         return quotas
 
     return await _execute_db_op(_op, session_override=session)
@@ -127,14 +144,17 @@ async def set_project_gpu_quota(
         raise ValueError(f"Invalid GPU type alias: {gpu_type}")
 
     async def _op(sess: AsyncSession) -> dict[str, Any]:
-        res = await sess.execute(
-            select(GpuQuota).where(GpuQuota.project_id == project_id, GpuQuota.gpu_type == norm_type)
-        )
-        row = res.scalar_one_or_none()
+        res = await sess.execute(select(GpuQuota).where(GpuQuota.project_id == project_id).with_for_update())
+        matches = [row for row in res.scalars().all() if normalize_gpu_alias(row.gpu_type) == norm_type]
         now = datetime.now(UTC)
-        if row:
+        if matches:
+            row = _canonical_quota_row(matches)
+            row.gpu_type = norm_type
             row.limit = limit
             row.updated_at = now
+            for duplicate in matches:
+                if duplicate is not row:
+                    await sess.delete(duplicate)
         else:
             row = GpuQuota(
                 project_id=project_id,
@@ -167,11 +187,12 @@ async def delete_project_gpu_quota(
         return False
 
     async def _op(sess: AsyncSession) -> bool:
-        res = await sess.execute(
-            delete(GpuQuota).where(GpuQuota.project_id == project_id, GpuQuota.gpu_type == norm_type)
-        )
+        res = await sess.execute(select(GpuQuota).where(GpuQuota.project_id == project_id).with_for_update())
+        matches = [row for row in res.scalars().all() if normalize_gpu_alias(row.gpu_type) == norm_type]
+        for row in matches:
+            await sess.delete(row)
         await sess.commit()
-        return bool(res.rowcount and res.rowcount > 0)
+        return bool(matches)
 
     return await _execute_db_op(_op, session_override=session)
 
@@ -182,18 +203,23 @@ async def get_effective_gpu_quotas(
     """Get merged effective GPU quotas where project entries override default project baseline."""
 
     async def _op(sess: AsyncSession) -> dict[str, int]:
-        defaults_res = await sess.execute(select(GpuQuota).where(GpuQuota.project_id == DEFAULT_PROJECT_ID))
-        defaults = {q.gpu_type: q.limit for q in defaults_res.scalars().all()}
+        result = await sess.execute(select(GpuQuota).where(GpuQuota.project_id.in_((DEFAULT_PROJECT_ID, project_id))))
+        rows_by_project: dict[str, list[GpuQuota]] = {DEFAULT_PROJECT_ID: [], project_id: []}
+        for row in result.scalars().all():
+            rows_by_project.setdefault(row.project_id, []).append(row)
 
+        defaults = {
+            gpu_type: _merge_quota_limits(rows)
+            for gpu_type, rows in _normalized_quota_groups(rows_by_project[DEFAULT_PROJECT_ID]).items()
+        }
         if project_id == DEFAULT_PROJECT_ID:
             return defaults
 
-        proj_res = await sess.execute(select(GpuQuota).where(GpuQuota.project_id == project_id))
-        project_quotas = {q.gpu_type: q.limit for q in proj_res.scalars().all()}
-
-        effective = dict(defaults)
-        effective.update(project_quotas)
-        return effective
+        project_quotas = {
+            gpu_type: _merge_quota_limits(rows)
+            for gpu_type, rows in _normalized_quota_groups(rows_by_project[project_id]).items()
+        }
+        return {**defaults, **project_quotas}
 
     return await _execute_db_op(_op, session_override=session)
 
@@ -227,11 +253,15 @@ def _get_project_gpu_usage(conn: Any, project_id: str) -> dict[str, int]:
     if not conn:
         return usage
 
+    is_system_admin = getattr(conn, "_afterglow_is_system_admin", False) is True
     try:
-        try:
-            servers = conn.compute.servers(details=True, all_projects=True, project_id=project_id)
-        except TypeError:
-            servers = conn.compute.servers(details=True, all_projects=True)
+        if is_system_admin:
+            try:
+                servers = conn.compute.servers(details=True, all_projects=True, project_id=project_id)
+            except TypeError:
+                servers = conn.compute.servers(details=True, all_projects=True)
+        else:
+            servers = conn.compute.servers(details=True)
     except Exception as exc:
         raise GpuQuotaUnavailable("GPU quota usage inventory is unavailable") from exc
 
@@ -252,6 +282,8 @@ def _get_project_gpu_usage(conn: Any, project_id: str) -> dict[str, int]:
 
     for s in servers:
         s_proj = getattr(s, "project_id", getattr(s, "tenant_id", None))
+        if is_system_admin and not s_proj:
+            raise GpuQuotaUnavailable("GPU quota server ownership is unavailable")
         if s_proj and s_proj != project_id:
             continue
 
@@ -262,15 +294,17 @@ def _get_project_gpu_usage(conn: Any, project_id: str) -> dict[str, int]:
         flavor_info = getattr(s, "flavor", None) or {}
         extra_specs = {}
         flavor_id = None
+        embedded_specs_are_authoritative = False
 
         if isinstance(flavor_info, dict):
             extra_specs = flavor_info.get("extra_specs") or {}
             flavor_id = flavor_info.get("id")
+            embedded_specs_are_authoritative = "original_name" in flavor_info and "extra_specs" in flavor_info
         else:
             extra_specs = getattr(flavor_info, "extra_specs", None) or {}
             flavor_id = getattr(flavor_info, "id", None)
 
-        if not extra_specs and flavor_id:
+        if not extra_specs and flavor_id and not embedded_specs_are_authoritative:
             if flavor_id in flavor_cache:
                 extra_specs = flavor_cache[flavor_id]
             else:
@@ -381,19 +415,21 @@ async def reserve_gpu_quota(
     async def _op(sess: AsyncSession) -> str | None:
         await sess.execute(delete(GpuQuotaReservation).where(GpuQuotaReservation.expires_at <= now))
         quota_result = await sess.execute(
-            select(GpuQuota)
-            .where(
-                GpuQuota.project_id.in_((DEFAULT_PROJECT_ID, project_id)),
-                GpuQuota.gpu_type.in_(tuple(normalized)),
-            )
-            .with_for_update()
+            select(GpuQuota).where(GpuQuota.project_id.in_((DEFAULT_PROJECT_ID, project_id))).with_for_update()
         )
-        defaults: dict[str, int] = {}
-        project_limits: dict[str, int] = {}
-        for quota in quota_result.scalars().all():
-            target = defaults if quota.project_id == DEFAULT_PROJECT_ID else project_limits
-            target[quota.gpu_type] = quota.limit
-
+        quota_rows_by_project: dict[str, list[GpuQuota]] = {DEFAULT_PROJECT_ID: [], project_id: []}
+        for row in quota_result.scalars().all():
+            quota_rows_by_project.setdefault(row.project_id, []).append(row)
+        defaults = {
+            gpu_type: _merge_quota_limits(rows)
+            for gpu_type, rows in _normalized_quota_groups(quota_rows_by_project[DEFAULT_PROJECT_ID]).items()
+            if gpu_type in normalized
+        }
+        project_limits = {
+            gpu_type: _merge_quota_limits(rows)
+            for gpu_type, rows in _normalized_quota_groups(quota_rows_by_project[project_id]).items()
+            if gpu_type in normalized
+        }
         reservation_result = await sess.execute(
             select(GpuQuotaReservation)
             .where(

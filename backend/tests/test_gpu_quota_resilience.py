@@ -661,7 +661,7 @@ async def test_admin_async_quota_unavailable_returns_503_before_streaming(admin_
 
 
 @pytest.mark.asyncio
-async def test_flavors_list_fallback_when_quota_authority_unavailable():
+async def test_flavors_list_preserves_gpu_blocker_when_quota_authority_unavailable():
     from app.api.compute.flavors import list_flavors
 
     conn = MagicMock()
@@ -681,9 +681,12 @@ async def test_flavors_list_fallback_when_quota_authority_unavailable():
         patch("app.api.compute.flavors.cache.cached_call", new=AsyncMock(side_effect=_load_without_cache)),
     ):
         flavors = await list_flavors(conn=conn, cm=MagicMock(enabled=False))
-        assert len(flavors) == 1
-        assert flavors[0].id == "f1"
-        assert flavors[0].name == "m1.small"
+
+    assert [flavor.id for flavor in flavors] == ["f1", "f2", "f3"]
+    for flavor in flavors[1:]:
+        assert flavor.eligibility is not None
+        assert flavor.eligibility.selectable is False
+        assert [blocker.code for blocker in flavor.eligibility.blockers] == ["gpu_quota_unavailable"]
 
 
 @pytest.mark.asyncio
