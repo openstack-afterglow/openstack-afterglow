@@ -105,7 +105,7 @@
     align-items: center;
     gap: 0.75rem;
     border: 1px solid var(--color-line);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-lg);
     background: var(--color-surface-base);
     padding: 1rem;
     transition: border-color var(--motion-duration-fast) var(--motion-ease-standard), background var(--motion-duration-fast) var(--motion-ease-standard);
@@ -203,7 +203,7 @@
   .icon-chip {
     width: 2.25rem;
     height: 2.25rem;
-    border-radius: 0.375rem;
+    border-radius: var(--radius-md);
     border: 1px solid transparent;
     display: flex;
     align-items: center;

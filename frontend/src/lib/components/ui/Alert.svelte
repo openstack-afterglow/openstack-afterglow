@@ -38,7 +38,7 @@
 		justify-content: space-between;
 		gap: 1rem;
 		border: 1px solid var(--alert-line);
-		border-radius: 0.75rem;
+		border-radius: var(--radius-lg);
 		background: color-mix(in oklab, var(--alert-tone) 12%, transparent);
 		color: var(--alert-tone);
 		padding: 0.75rem 1rem;

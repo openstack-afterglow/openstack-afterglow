@@ -154,7 +154,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 0.375rem;
+    border-radius: var(--radius-md);
     color: var(--color-ink-2);
     background: transparent;
     transition: background var(--motion-duration-fast) var(--motion-ease-standard), color var(--motion-duration-fast) var(--motion-ease-standard);
@@ -169,9 +169,9 @@
     min-width: 8.75rem;
     padding-block: 0.25rem;
     border: 1px solid var(--color-line-2);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-lg);
     background: var(--color-surface-raised);
-    box-shadow: var(--shadow-restraint);
+    box-shadow: var(--shadow-popover);
   }
   @media (pointer: coarse) {
     .action-trigger {

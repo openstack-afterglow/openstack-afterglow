@@ -12,7 +12,7 @@
 	}: Props = $props();
 </script>
 
-<div class="beta-gate rounded-lg p-8 text-center shadow-[var(--shadow-restraint)]">
+<div class="beta-gate rounded-lg p-8 text-center">
 	<div class="beta-gate-icon mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full">
 		<span class="text-xl font-semibold">β</span>
 	</div>

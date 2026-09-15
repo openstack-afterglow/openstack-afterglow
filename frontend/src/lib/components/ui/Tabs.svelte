@@ -138,7 +138,7 @@
 	button:focus-visible {
 		position: relative;
 		z-index: 1;
-		border-radius: 0.375rem 0.375rem 0 0;
+		border-radius: var(--radius-md) var(--radius-md) 0 0;
 		outline: none;
 		box-shadow: var(--focus-ring);
 	}

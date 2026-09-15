@@ -65,7 +65,7 @@
         </div>
         <StatusChip status={router.status} />
       </div>
-      <button type="button" onclick={() => onOpen(router.id)} class="router-card__detail ml-auto px-2.5 py-1 text-xs rounded-lg">상세</button>
+      <button type="button" onclick={() => onOpen(router.id)} class="router-card__detail ml-auto px-2.5 py-1 text-xs rounded-md">상세</button>
 
       <div class="flex flex-col gap-2 text-[13px]">
         <div class="router-card__section flex items-center gap-3 p-2.5 rounded-lg">

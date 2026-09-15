@@ -58,7 +58,7 @@
 		gap: 0.25rem;
 		padding: 0.25rem;
 		border: 1px solid var(--color-line-2);
-		border-radius: 0.5rem;
+		border-radius: var(--radius-lg);
 		background: var(--color-surface-sunken);
 	}
 	.toggle-full-width {
@@ -68,7 +68,7 @@
 	.toggle-full-width .toggle-option { width: 100%; }
 	.toggle-option {
 		border: 0;
-		border-radius: 0.375rem;
+		border-radius: var(--radius-md);
 		background: transparent;
 		color: var(--color-ink-2);
 		font-weight: 500;

@@ -89,7 +89,7 @@
 		{#if projectDropdownOpen && projectSuggestions.length > 0}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
-				class="absolute top-full mt-1 left-0 w-64 bg-surface-base border border-line-2 rounded-lg shadow-[var(--shadow-restraint)] z-20 overflow-hidden"
+				class="absolute top-full mt-1 left-0 w-64 bg-surface-base border border-line-2 rounded-lg shadow-[var(--shadow-popover)] z-20 overflow-hidden"
 				onmouseleave={() => {}}
 			>
 				{#each projectSuggestions as [id, name]}

@@ -32,7 +32,7 @@
 		position: relative;
 		overflow: hidden;
 		border: 1px solid var(--color-line);
-		border-radius: 0.5rem;
+		border-radius: var(--radius-lg);
 		color: var(--color-ink-0);
 	}
 
@@ -42,7 +42,7 @@
 	.card-sunken { background: var(--color-surface-sunken); }
 	.card-subtle { background: color-mix(in oklab, var(--color-surface-raised) 72%, transparent); }
 	.card-modal {
-		border-radius: 0.75rem;
+		border-radius: var(--radius-xl);
 		box-shadow: 0 24px 72px color-mix(in oklab, var(--color-surface-canvas) 78%, transparent);
 	}
 

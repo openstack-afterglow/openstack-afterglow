@@ -52,6 +52,25 @@ export const LAYER_CSS_VAR = {
 	command: 'var(--z-command)',
 } as const;
 
+export const RADIUS_CSS_VAR = {
+	sm: 'var(--radius-sm)',
+	md: 'var(--radius-md)',
+	lg: 'var(--radius-lg)',
+	xl: 'var(--radius-xl)',
+	capsule: '999px',
+} as const;
+
+/**
+ * Elevation은 부유 레이어 전용이다. restraint 는 트리거에 붙지 않은 다이얼로그·패널,
+ * popover 는 트리거에 앵커된 표면, compact 는 20rem 미만의 작은 부유 표면에 쓴다.
+ * 콘텐츠 레이어(Card·TableShell·StatTile)는 그림자를 갖지 않는다.
+ */
+export const ELEVATION_CSS_VAR = {
+	restraint: 'var(--shadow-restraint)',
+	popover: 'var(--shadow-popover)',
+	compact: 'var(--shadow-overlay-compact)',
+} as const;
+
 export const MOTION_CSS_VAR = {
 	durationFast: 'var(--motion-duration-fast)',
 	durationBase: 'var(--motion-duration-base)',

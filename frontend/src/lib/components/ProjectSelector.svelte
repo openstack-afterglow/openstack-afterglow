@@ -107,7 +107,7 @@
 	</button>
 
 	{#if isOpen && !showInitialLoading}
-		<div class="fixed left-0 bottom-0 w-full sm:absolute sm:left-0 sm:w-64 max-h-[50vh] bg-surface-base border border-line-2 rounded-t-lg sm:rounded-lg shadow-[var(--shadow-restraint)] z-50 overflow-hidden {direction === 'down' ? 'sm:bottom-auto sm:top-full sm:mt-1' : 'sm:top-auto sm:bottom-full sm:mb-1'}">
+		<div class="fixed left-0 bottom-0 w-full sm:absolute sm:left-0 sm:w-64 max-h-[50vh] bg-surface-base border border-line-2 rounded-t-lg sm:rounded-lg shadow-[var(--shadow-restraint)] sm:shadow-[var(--shadow-popover)] z-50 overflow-hidden {direction === 'down' ? 'sm:bottom-auto sm:top-full sm:mt-1' : 'sm:top-auto sm:bottom-full sm:mb-1'}">
 			{#if error}
 				<div class="p-3 text-sm text-red-400">{error}</div>
 			{:else if $projectList.projects.length === 0}

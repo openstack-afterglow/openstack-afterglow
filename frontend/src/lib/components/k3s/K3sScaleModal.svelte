@@ -36,7 +36,7 @@
 	role="dialog"
 	aria-modal="true"
 >
-	<div class="bg-surface-base border border-line-2 rounded-lg p-6 w-80 shadow-[var(--shadow-restraint)]" role="none">
+	<div class="bg-surface-base border border-line-2 rounded-lg p-6 w-80 shadow-[var(--shadow-overlay-compact)]" role="none">
 		<h3 class="text-sm font-semibold text-ink-0 mb-1">Deployment 스케일</h3>
 		<p class="text-xs text-ink-2 mb-4 font-mono">{deploymentName}</p>
 

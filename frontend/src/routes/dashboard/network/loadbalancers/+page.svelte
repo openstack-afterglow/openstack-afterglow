@@ -115,7 +115,7 @@
       {#each [1, 2, 3] as _}
         <div class="bg-surface-base border border-line rounded-lg p-5 animate-pulse">
           <div class="flex items-center gap-4">
-            <div class="w-10 h-10 rounded-xl bg-surface-sunken"></div>
+            <div class="w-10 h-10 rounded-lg bg-surface-sunken"></div>
             <div class="flex-1">
               <div class="h-4 w-32 bg-surface-sunken rounded mb-2"></div>
               <div class="h-3 w-48 bg-surface-sunken rounded"></div>
@@ -157,7 +157,7 @@
               onclick={() => selection.toggle(lb.id)}
             />
             <!-- Blue icon chip -->
-            <div class="shrink-0 w-10 h-10 rounded-xl bg-action-warm/15 border border-action-warm/30 flex items-center justify-center">
+            <div class="shrink-0 w-10 h-10 rounded-lg bg-action-warm/15 border border-action-warm/30 flex items-center justify-center">
               <svg class="w-5 h-5 text-action-warm" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <circle cx="12" cy="12" r="9" stroke-width="2"/>
                 <path stroke-linecap="round" stroke-width="2" d="M8 12h8M12 8v8"/>

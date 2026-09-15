@@ -31,7 +31,7 @@
 <style>
 	.control {
 		width: 100%;
-		border-radius: 0.375rem;
+		border-radius: var(--radius-md);
 		border: 1px solid var(--color-line-2);
 		background: var(--color-surface-sunken);
 		color: var(--color-ink-0);

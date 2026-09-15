@@ -22,7 +22,7 @@
 	.table-shell {
 		overflow-x: auto;
 		border: 1px solid var(--color-line);
-		border-radius: 0.5rem;
+		border-radius: var(--radius-lg);
 		background: var(--color-surface-base);
 	}
 	.table-shell :global(table) {

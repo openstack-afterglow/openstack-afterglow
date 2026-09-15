@@ -94,7 +94,7 @@
 		align-items: center;
 		justify-content: center;
 		gap: 0.375rem;
-		border-radius: 0.375rem;
+		border-radius: var(--radius-md);
 		font-size: 0.8125rem;
 		font-weight: 500;
 		line-height: 1.2;

@@ -218,7 +218,7 @@
 	.search-select-input {
 		width: 100%;
 		border: 1px solid var(--color-line-2);
-		border-radius: 0.375rem;
+		border-radius: var(--radius-md);
 		background: var(--color-surface-sunken);
 		color: var(--color-ink-0);
 		font-size: 0.875rem;
@@ -240,7 +240,7 @@
 	.search-select-input:focus-visible { outline: none; border-color: var(--color-line-2); box-shadow: var(--focus-ring); }
 	.search-select-trigger:disabled { cursor: not-allowed; opacity: 0.55; }
 	.chevron { width: 0.5rem; height: 0.5rem; flex: 0 0 auto; border-right: 1px solid currentColor; border-bottom: 1px solid currentColor; transform: translateY(-0.125rem) rotate(45deg); color: var(--color-ink-2); }
-	.search-select-popover { position: fixed; z-index: var(--z-popover); display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; border: 1px solid var(--color-line-2); border-radius: 0.5rem; background: var(--color-surface-raised); box-shadow: var(--shadow-restraint); }
+	.search-select-popover { position: fixed; z-index: var(--z-popover); display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; border: 1px solid var(--color-line-2); border-radius: var(--radius-lg); background: var(--color-surface-raised); box-shadow: var(--shadow-popover); }
 	.search-select-input { border: 0; border-bottom: 1px solid var(--color-line); border-radius: 0; padding: 0.625rem 0.75rem; }
 	.search-select-input::placeholder { color: var(--color-ink-3); }
 	.search-select-options { min-height: 0; overflow-y: auto; }

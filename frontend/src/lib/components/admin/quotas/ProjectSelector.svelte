@@ -51,7 +51,7 @@
 		class="w-full bg-surface-sunken border border-line-2 text-sm text-ink-2 rounded-lg px-3 py-2 focus:outline-none focus:border-action-warm"
 	/>
 	{#if showDropdown && filtered.length > 0}
-		<div class="absolute z-10 w-full mt-1 bg-surface-sunken border border-line-2 rounded-lg shadow-[var(--shadow-restraint)] max-h-60 overflow-y-auto">
+		<div class="absolute z-10 w-full mt-1 bg-surface-sunken border border-line-2 rounded-lg shadow-[var(--shadow-popover)] max-h-60 overflow-y-auto">
 			{#each filtered as p (p.id)}
 				<button
 					type="button"

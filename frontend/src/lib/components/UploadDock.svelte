@@ -85,7 +85,7 @@
 </script>
 
 {#if visible}
-	<div class="fixed bottom-4 right-4 z-40 w-80 shadow-[var(--shadow-restraint)] rounded-xl overflow-hidden border border-line-2 bg-surface-base">
+	<div class="fixed bottom-4 right-4 z-40 w-80 shadow-[var(--shadow-overlay-compact)] rounded-xl overflow-hidden border border-line-2 bg-surface-base">
 		<!-- 헤더 -->
 		<button
 			onclick={() => (collapsed = !collapsed)}

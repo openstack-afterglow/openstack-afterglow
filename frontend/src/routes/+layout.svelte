@@ -470,7 +470,7 @@
 				{#if bellOpen}
 					<!-- 모바일: 바텀 시트 / sm 이상: 종 아이콘 기준 드롭다운 (ProjectSelector 패턴 준용) -->
 					<div
-						class="fixed left-0 bottom-0 w-full rounded-t-xl sm:absolute sm:left-auto sm:right-0 sm:bottom-auto sm:top-full sm:mt-2 sm:w-80 sm:rounded-xl border shadow-[var(--shadow-restraint)] z-50 overflow-hidden"
+						class="fixed left-0 bottom-0 w-full rounded-t-xl sm:absolute sm:left-auto sm:right-0 sm:bottom-auto sm:top-full sm:mt-2 sm:w-80 sm:rounded-xl border shadow-[var(--shadow-restraint)] sm:shadow-[var(--shadow-popover)] z-50 overflow-hidden"
 						style="background: var(--color-surface-raised); border-color: var(--color-line);"
 					>
 						<p class="px-4 pt-3 pb-2 text-[10px] uppercase tracking-wide text-[var(--color-ink-3)]">알림</p>

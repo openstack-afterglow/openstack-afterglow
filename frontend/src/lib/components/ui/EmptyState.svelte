@@ -33,7 +33,7 @@
   .empty-icon-wrap {
     width: 3rem;
     height: 3rem;
-    border-radius: 0.5rem;
+    border-radius: var(--radius-lg);
     background: var(--color-surface-sunken);
     border: 1px solid var(--color-line);
     display: flex;

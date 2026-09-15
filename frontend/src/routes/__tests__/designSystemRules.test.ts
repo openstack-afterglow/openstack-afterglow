@@ -91,6 +91,12 @@ const motionTokenNames = [
 	'--motion-ease-in-out',
 ];
 
+const radiusTokenNames = ['--radius-sm', '--radius-md', '--radius-lg', '--radius-xl'];
+
+// Elevation은 부유 레이어 전용이다. 이름만 있고 정의가 없으면 box-shadow 가 none 으로 계산되어
+// 모달·팝오버 depth 가 조용히 사라지므로, 세 토큰 모두 런타임·TS·문서에 동시에 존재해야 한다.
+const elevationTokenNames = ['--shadow-restraint', '--shadow-popover', '--shadow-overlay-compact'];
+
 const motionDurationExports = [
 	'fast: 120',
 	'base: 160',
@@ -197,6 +203,33 @@ describe('design system source contracts', () => {
 		expect(designSource).toContain('ChatBubble');
 		expect(designSource).toContain('chat-start');
 		expect(designSource).toContain('chat-end');
+	});
+
+	it('keeps radius and elevation tokens aligned across runtime, TypeScript, and documentation', () => {
+		for (const token of [...radiusTokenNames, ...elevationTokenNames]) {
+			expect(layoutSource).toContain(token);
+			expect(tokenSource).toContain(token);
+			expect(designSource).toContain(token);
+		}
+		expect(tokenSource).toContain('RADIUS_CSS_VAR');
+		expect(tokenSource).toContain('ELEVATION_CSS_VAR');
+		// 정의 없는 var() 는 box-shadow 를 none 으로 만든다: 각 토큰은 :root 에서 실제 값을 가져야 한다.
+		for (const token of elevationTokenNames) {
+			expect(layoutSource).toMatch(new RegExp(`${token}:\\s*0 `));
+		}
+		// 라이트 테마는 어두운 그림자를 재사용하지 않고 별도 알파를 갖는다.
+		const lightStart = layoutSource.indexOf(':root.light {');
+		const darkBlock = layoutSource.slice(0, lightStart);
+		const lightBlock = layoutSource.slice(lightStart);
+		const valueOf = (block: string, token: string) =>
+			block.match(new RegExp(`${token}:\\s*([^;]+);`))?.[1].trim();
+		for (const token of elevationTokenNames) {
+			const darkValue = valueOf(darkBlock, token);
+			const lightValue = valueOf(lightBlock, token);
+			expect(darkValue).toBeTruthy();
+			expect(lightValue).toBeTruthy();
+			expect(lightValue).not.toBe(darkValue);
+		}
 	});
 
 	it('links tracked frontend docs and optional local agent instructions to the canonical design system', () => {

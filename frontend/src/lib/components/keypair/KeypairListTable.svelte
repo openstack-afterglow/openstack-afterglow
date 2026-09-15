@@ -38,12 +38,12 @@
 			<div class="flex gap-1.5 justify-end">
 				<button
 					onclick={() => onCopy(kp.fingerprint)}
-					class="text-xs px-2 py-1 rounded-lg bg-surface-sunken hover:bg-surface-selected text-ink-1 border border-line-2 transition-colors"
+					class="text-xs px-2 py-1 rounded-md bg-surface-sunken hover:bg-surface-selected text-ink-1 border border-line-2 transition-colors"
 				>{copiedFingerprint === kp.fingerprint ? '복사됨' : '복사'}</button>
 				<button
 					onclick={() => onDelete(kp.name)}
 					disabled={deleting === kp.name}
-					class="text-xs px-2 py-1 rounded-lg bg-transparent hover:bg-red-950/40 text-red-400 border border-red-900 disabled:text-ink-3 disabled:border-line-2 transition-colors"
+					class="text-xs px-2 py-1 rounded-md bg-transparent hover:bg-red-950/40 text-red-400 border border-red-900 disabled:text-ink-3 disabled:border-line-2 transition-colors"
 				>{deleting === kp.name ? '삭제 중...' : '삭제'}</button>
 			</div>
 		</div>

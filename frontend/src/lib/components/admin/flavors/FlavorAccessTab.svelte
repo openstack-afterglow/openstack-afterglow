@@ -238,7 +238,7 @@
 				class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm"
 			/>
 			{#if searchedProjects.length > 0}
-				<div class="absolute z-10 left-0 right-0 mt-1 bg-surface-sunken border border-line-2 rounded-lg shadow-[var(--shadow-restraint)] overflow-hidden">
+				<div class="absolute z-10 left-0 right-0 mt-1 bg-surface-sunken border border-line-2 rounded-lg shadow-[var(--shadow-popover)] overflow-hidden">
 					{#each searchedProjects as p}
 						<div class="flex items-center justify-between px-3 py-2 hover:bg-surface-selected border-b border-line-2/50 last:border-0">
 							<div>

@@ -61,9 +61,9 @@
 		gap: 1rem;
 		padding: 0.75rem 1rem;
 		border: 1px solid var(--color-line-2);
-		border-radius: 0.75rem;
+		border-radius: var(--radius-xl);
 		background: color-mix(in oklab, var(--color-surface-raised) 94%, transparent);
-		box-shadow: 0 18px 48px color-mix(in oklab, var(--color-surface-canvas) 72%, transparent);
+		box-shadow: var(--shadow-overlay-compact);
 		backdrop-filter: blur(12px);
 		pointer-events: auto;
 		animation: bulk-rise var(--motion-duration-panel) var(--motion-ease-out);
@@ -91,7 +91,7 @@
 
 	.bulk-btn {
 		border: 1px solid color-mix(in oklab, var(--bulk-action-tone) 56%, var(--color-line));
-		border-radius: 0.375rem;
+		border-radius: var(--radius-md);
 		padding: 0.5rem 0.75rem;
 		color: var(--color-ink-0);
 		font-size: 0.8125rem;

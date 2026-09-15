@@ -63,7 +63,7 @@
 				{#if pod.containers.length > 1}
 					<select
 						bind:value={container}
-						class="text-xs bg-surface-sunken border border-line-2 text-ink-1 rounded-lg px-2 py-1"
+						class="text-xs bg-surface-sunken border border-line-2 text-ink-1 rounded-md px-2 py-1"
 					>
 						{#each pod.containers as c}
 							<option value={c.name}>{c.name}</option>
@@ -72,7 +72,7 @@
 				{/if}
 				<select
 					bind:value={tailLines}
-					class="text-xs bg-surface-sunken border border-line-2 text-ink-1 rounded-lg px-2 py-1"
+					class="text-xs bg-surface-sunken border border-line-2 text-ink-1 rounded-md px-2 py-1"
 				>
 					<option value={50}>마지막 50줄</option>
 					<option value={200}>마지막 200줄</option>
@@ -81,7 +81,7 @@
 				<button
 					onclick={fetchLog}
 					disabled={loading}
-					class="text-xs px-3 py-1 bg-surface-sunken hover:bg-surface-selected text-ink-2 rounded-lg transition-colors disabled:opacity-40"
+					class="text-xs px-3 py-1 bg-surface-sunken hover:bg-surface-selected text-ink-2 rounded-md transition-colors disabled:opacity-40"
 				>새로고침</button>
 				<button
 					onclick={onClose}

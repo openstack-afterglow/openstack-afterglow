@@ -95,7 +95,7 @@
 							{@const existingIds = new Set(members.map(m => m.id))}
 							{@const filtered = allUsers.filter(u => !existingIds.has(u.id) && u.name.toLowerCase().includes(addMemberSearchText.toLowerCase())).slice(0, 8)}
 							{#if filtered.length > 0}
-								<div class="absolute z-10 left-0 right-0 mt-1 bg-surface-raised border border-line-2 rounded-lg shadow-[var(--shadow-restraint)] overflow-hidden max-h-56 overflow-y-auto">
+								<div class="absolute z-10 left-0 right-0 mt-1 bg-surface-raised border border-line-2 rounded-lg shadow-[var(--shadow-popover)] overflow-hidden max-h-56 overflow-y-auto">
 									{#each filtered as u}
 										<div class="flex items-center justify-between px-4 py-2.5 hover:bg-surface-selected border-b border-line-2/50 last:border-0 transition-colors">
 											<span class="text-sm text-ink-1">{u.name}</span>

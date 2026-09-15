@@ -34,7 +34,7 @@
 		width: 100%;
 		padding: 0.75rem;
 		border: 1px solid var(--color-line);
-		border-radius: 0.5rem;
+		border-radius: var(--radius-lg);
 		background: var(--color-surface-base);
 	}
 	.resource-toolbar-controls,
