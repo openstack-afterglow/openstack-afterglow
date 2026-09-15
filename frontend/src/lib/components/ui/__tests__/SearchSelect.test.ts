@@ -92,4 +92,39 @@ describe('SearchSelect', () => {
 		await fireEvent.click(screen.getByRole('option', { name: /Project 30/ }));
 		expect(onchange).toHaveBeenCalledWith('project-30');
 	});
+
+	it('opens above the trigger when the space below is too small', async () => {
+		render(SearchSelect, {
+			id: 'policy-waygate-floating-network',
+			value: '',
+			options,
+			ariaLabel: '하단 정책 선택',
+			onchange: vi.fn(),
+		});
+
+		const trigger = screen.getByRole('button', { name: '하단 정책 선택' });
+		const triggerTop = window.innerHeight - 60;
+		trigger.getBoundingClientRect = () =>
+			({
+				top: triggerTop,
+				bottom: triggerTop + 40,
+				left: 100,
+				right: 420,
+				width: 320,
+				height: 40,
+				x: 100,
+				y: triggerTop,
+				toJSON: () => ({}),
+			}) as DOMRect;
+
+		await fireEvent.click(trigger);
+		const popover = document.querySelector('.search-select-popover') as HTMLElement | null;
+		if (!popover) throw new Error('popover was not rendered');
+
+		const top = Number.parseFloat(popover.style.top);
+		const maxHeight = Number.parseFloat(popover.style.maxHeight);
+		expect(Number.isFinite(top)).toBe(true);
+		expect(Number.isFinite(maxHeight)).toBe(true);
+		expect(top + maxHeight).toBeLessThanOrEqual(triggerTop);
+	});
 });

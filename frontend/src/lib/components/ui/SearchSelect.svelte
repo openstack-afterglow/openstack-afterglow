@@ -19,6 +19,7 @@
 		loading?: boolean;
 		disabled?: boolean;
 		ariaLabel?: string;
+		onopen?: () => void;
 		onchange: (value: string) => void;
 	}
 
@@ -32,6 +33,7 @@
 		loading = false,
 		disabled = false,
 		ariaLabel,
+		onopen,
 		onchange,
 	}: Props = $props();
 
@@ -86,6 +88,7 @@
 		if (disabled || loading) return;
 		query = '';
 		open = true;
+		onopen?.();
 		const selectedIndex = options.findIndex((option) => option.value === value);
 		activeIndex = selectedIndex >= 0 ? selectedIndex : 0;
 		await tick();

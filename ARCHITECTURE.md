@@ -92,6 +92,12 @@ graph LR
 
 사용자 shell은 인증 token 또는 project scope가 준비·변경되는 즉시 `/api/v1/announcements/unread-count`를 조회하고 60초 polling을 보조로 유지한다. 이전 identity 요청은 serial과 token/project 비교로 폐기한다. 미읽음이 있으면 알림 버튼은 danger tone의 작은 pulse를 표시하고 접근성 이름에 count를 포함하며 reduced-motion에서는 정적인 점으로 남는다. 알림함은 공지 발송자가 관리자 endpoint를 통과했다는 기존 권한 경계에 따라 username 뒤에 `(관리자)`를 표시한다. API, DB schema, 읽음 처리와 권한 경계는 변경하지 않는다. 실제 Vite 화면에 합성 API 응답을 주입해 사용자·프로젝트 이름/ID 검색과 선택, 390/767/768/1023/1024/1216px popover containment, 미읽음 표시와 발송자 수식어를 검증했다.
 
+### 관리자 기본 설정 리소스 선택
+
+`/admin/settings`의 [`AdminResourcePoliciesPanel`](frontend/src/lib/components/admin/AdminResourcePoliciesPanel.svelte)은 27개 정책 행마다 공통 `SearchSelect`를 사용한다. 이전의 route-local combobox는 결과 목록을 input 아래에 absolute로 고정해 페이지 하단 정책(Waygate floating network 등)의 목록이 viewport 밖으로 잘렸다. 공통 primitive는 body portal의 viewport-fixed layer에서 trigger 위·아래 중 넓은 쪽을 선택하므로 하단 정책은 목록을 위로 열고 전체가 화면 안에 남는다. 선택은 목록 항목 클릭 또는 키보드 확정으로만 이뤄지고 `선택 안 함`이 해제를 담당하므로 free-form query가 저장으로 흐르지 않는다. `SearchSelect`의 선택적 `onopen`은 초기 catalog 조회가 실패한 정책을 popover를 열 때 다시 조회한다. `/api/v1/admin/resource-policies`·`runtime-settings` 계약, 관리자 권한, draft cookie 범위, 배포 구조는 바뀌지 않는다.
+
+실제 Chromium에서 stub catalog(24개 옵션)를 주입한 현행 panel을 1440×900, 1024×800, 1023×800, 768×700, 767×700, 390×720에서 확인했다. 모든 폭에서 마지막 정책 popover는 `placedAbove=true`로 trigger 위에 열리고 viewport 안에 있었으며, 첫 정책은 아래로 열렸다. 검색 입력으로 1건까지 필터한 뒤 선택하면 trigger label과 `.selection-id`가 갱신되고 popover가 닫히며 trigger로 focus가 돌아왔고, Escape도 같은 계약을 유지했다. 이는 합성 catalog의 UI 증거이며 live OpenStack 정책 저장 검증은 아니다.
+
 ### 관리자 볼륨 상태 필터·일괄 삭제
 
 `/admin/volumes`는 현재 marker page의 행만 `createResourceSelection`으로 선택하며 filter·page size·marker page·관리자 project scope가 바뀌면 선택을 비운다. `SelectionCheckbox`와 `BulkSelectionOverlay`가 desktop/touch에서 같은 선택·busy 계약을 제공하고, 삭제 전 `ConfirmDialog`를 거친다. Compact 목록에는 attachment 정본이 없으므로 browser가 삭제 가능 여부를 추정하지 않는다.
@@ -266,9 +272,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "592f83a8cdcb305f0d44349568617e71c411f64f05468e1c01ee78f64c104ef3",
-  "reviewed_at": "2026-09-15T11:04:19Z",
-  "summary": "Reviewed pending local-services /dev/null Ceph placeholder isolation plus admin Flavor access-policy badges and complete project GPU quota alias visibility; documented the dry-run versus applied Nova Flavor Access reconciliation boundary. No topology, schema, API, dependency, or deployment-contract change."
+  "source_sha256": "095dcc01a1a5b089e6018b121860d233a55b1704d95b3f5646131341673d1297",
+  "reviewed_at": "2026-09-15T11:46:41Z",
+  "summary": "Reviewed the admin default-settings resource policy panel cutover to the shared SearchSelect picker: viewport-aware popover placement so bottom-of-page catalogs open upward, option-only selection with an explicit clear entry, and onopen catalog retry. No API, schema, permission, dependency, or deployment-contract change."
 }
 ```
 <!-- architecture-review:end -->

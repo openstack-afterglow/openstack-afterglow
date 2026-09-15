@@ -34,6 +34,8 @@
 
 ### Fixed
 
+- **관리자 기본 설정 리소스 검색 목록 위치** — `/admin/settings`의 리소스 정책 선택이 공통 `SearchSelect`를 사용하도록 바꿨다. 이전에는 결과 목록이 항상 입력 아래에 고정되어 페이지 하단 정책(Waygate floating network 등)에서 검색 결과가 화면 밖으로 잘려 보이지 않았다. 이제 trigger 위·아래 중 넓은 쪽에 목록을 열어 하단 정책은 위로 펼치며, 목록 높이는 viewport 안으로 제한된다. 선택은 목록 항목으로만 확정되고 `선택 안 함`이 해제를 담당하며, 초기 catalog 조회가 실패한 정책은 목록을 열 때 다시 조회한다. API·권한·draft 보관 범위는 그대로다.
+
 - **로컬 Ceph placeholder 검증 격리** — 생성된 개발 설정에서 비활성 Ceph mount의 placeholder 경로로 `/dev/null`을 허용하되, 운영자가 직접 입력한 파일·디렉터리는 기존 타입 검증을 계속 적용한다.
 - **관리자 RBD 볼륨 삭제 복구 fail-closed 전환** — 오류 볼륨 진단이 system-admin Cinder/Nova dependency를 독립 tri-state로 확인하고, 선택적 restricted CephX adapter로 RBD directory·image/header/data/trash를 교차 검증한다. 안전한 경우에만 `rbd_id` mapping을 복원/정리하고 force-delete 뒤 Cinder·backend·quota를 다시 확인한다. Per-volume Redis lock과 residue/unverified 결과를 추가해 404 또는 조회 실패를 삭제 성공으로 오판하지 않으며 관리자 패널은 검증된 terminal success에서만 닫힌다.
 
