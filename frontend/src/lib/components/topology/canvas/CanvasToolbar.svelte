@@ -1,3 +1,7 @@
+<script module lang="ts">
+	export type CreateKind = 'network' | 'router' | 'instance' | 'loadbalancer' | 'database';
+</script>
+
 <script lang="ts">
 	// 캔버스 상단 툴바: 검색, 패킷 흐름(기본 on 시뮬레이션), 화면 맞춤, 배치 초기화.
 	import Button from '$lib/components/ui/Button.svelte';
@@ -12,6 +16,8 @@
 		matchCount?: number | null;
 		searchElement?: HTMLInputElement | null;
 		editable?: boolean;
+		oncreate?: (kind: CreateKind) => void;
+		createContextName?: string | null;
 		onfit: () => void;
 		onreset: () => void;
 		oncreatenetwork?: () => void;
@@ -29,6 +35,8 @@
 		matchCount = null,
 		searchElement = $bindable(null),
 		editable = false,
+		oncreate,
+		createContextName = null,
 		onfit,
 		onreset,
 		oncreatenetwork,
@@ -65,7 +73,19 @@
 		<span class="hint" id={flowHintId}>시스템 '동작 줄이기' 설정으로 패킷 애니메이션이 비활성화됩니다</span>
 	{/if}
 	<div class="actions">
-		{#if editable}
+		{#if oncreate}
+			<div class="create" role="group" aria-label="리소스 생성">
+				<span class="hint">생성</span>
+				<Button variant="accent" size="sm" onclick={() => oncreate?.('network')}>+ 네트워크</Button>
+				<Button variant="secondary" size="sm" onclick={() => oncreate?.('router')}>+ 라우터</Button>
+				<Button variant="secondary" size="sm" onclick={() => oncreate?.('instance')}>+ 인스턴스</Button>
+				<Button variant="secondary" size="sm" onclick={() => oncreate?.('loadbalancer')}>+ 로드밸런서</Button>
+				<Button variant="secondary" size="sm" onclick={() => oncreate?.('database')}>+ DB</Button>
+				{#if createContextName}
+					<span class="hint">선택한 네트워크 <b>{createContextName}</b> 에 연결</span>
+				{/if}
+			</div>
+		{:else if editable}
 			<Button variant="accent" size="sm" onclick={oncreatenetwork}>+ 네트워크</Button>
 			<Button variant="secondary" size="sm" onclick={oncreaterouter}>+ 라우터</Button>
 			<Button variant="secondary" size="sm" onclick={oncreateinstance}>+ 인스턴스</Button>
@@ -104,8 +124,10 @@
 	.check.is-disabled { opacity: 0.5; cursor: not-allowed; }
 	.hint { font-size: 0.75rem; color: var(--color-ink-2); }
 	.actions { display: flex; gap: 0.5rem; align-items: center; margin-left: auto; }
+	.create { display: flex; flex-wrap: wrap; gap: 0.375rem; align-items: center; }
 	@media (max-width: 767px) {
 		.search { flex-basis: 100%; }
 		.actions { margin-left: 0; }
+		.create { flex-basis: 100%; }
 	}
 </style>

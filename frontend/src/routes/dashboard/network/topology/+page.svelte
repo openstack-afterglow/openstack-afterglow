@@ -17,9 +17,13 @@
 	import NetworkCreateModal from '$lib/components/dashboard/network/networks/NetworkCreateModal.svelte';
 	import RouterCreateModal from '$lib/components/network/routers/RouterCreateModal.svelte';
 	import DbCreatePanel from '$lib/components/database/DbCreatePanel.svelte';
-	import { openWizard } from '$lib/stores/wizard';
+	import { openWizard, wizardOpen } from '$lib/stores/wizard';
 	import { toast } from '$lib/stores/toast';
+	import TopologyLinkModal, { type LinkConfirmPayload } from '$lib/components/dashboard/network/topology/TopologyLinkModal.svelte';
+	import { attachableSubnets, type LinkRequest } from '$lib/components/topology/canvas/topologyLink';
+	import type { CreateKind } from '$lib/components/topology/canvas/CanvasToolbar.svelte';
 	import { type TopologyLinkRequest } from '$lib/components/topology/canvas/link-types';
+	import type { SubnetDetail, TopologyNetwork } from '$lib/types/topology';
 	import { DEFAULT_TOPOLOGY_VIEW, isTopologyView, readTopologyView, writeTopologyView, type TopologyView } from '$lib/utils/topologyViewPreference';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import TopologyLegend from '$lib/components/dashboard/network/topology/TopologyLegend.svelte';
@@ -43,6 +47,16 @@
 	let showDbCreate = $state(false);
 	let creatingNetwork = $state(false);
 	let createNetworkError = $state('');
+	let pendingLink = $state<LinkRequest | null>(null);
+	let activeLinkModal = $state<{
+		req: LinkRequest;
+		net: TopologyNetwork;
+		subnets: SubnetDetail[];
+		createdSubnet?: SubnetDetail | null;
+	} | null>(null);
+	let linkSubmitting = $state(false);
+	let linkError = $state('');
+	let createCtx = $state<{ networkId: string | null; networkName: string | null }>({ networkId: null, networkName: null });
 	const externalNetworks = $derived<Network[]>(
 		(data?.networks ?? []).filter((network) => network.is_external).map((network) => ({
 			id: network.id,
@@ -117,6 +131,115 @@
 		}
 	}
 
+	function onConnect(req: LinkRequest) {
+		const net = data?.networks.find((n) => n.id === req.networkId);
+		if (!net) return;
+		linkError = '';
+		pendingLink = req;
+		if (req.kind === 'router-net') {
+			const router = data?.routers.find((r) => r.id === req.routerId);
+			const subnets = router ? attachableSubnets(net, router) : [];
+			activeLinkModal = { req, net, subnets };
+		} else {
+			activeLinkModal = { req, net, subnets: [] };
+		}
+	}
+
+	async function handleLinkConfirm(payload: LinkConfirmPayload): Promise<boolean> {
+		if (!activeLinkModal) return false;
+		const { req, net } = activeLinkModal;
+		linkSubmitting = true;
+		linkError = '';
+		try {
+			if (req.kind === 'vm-net') {
+				await api.post(
+					`/api/v1/instances/${encodeURIComponent(req.instanceId)}/interfaces`,
+					{ net_id: req.networkId },
+					$auth.token ?? undefined,
+					$auth.projectId ?? undefined
+				);
+				toast.success(`${req.instanceName} 에 ${net.name} 인터페이스를 추가했습니다.`);
+			} else if (req.kind === 'router-gateway') {
+				await api.post(
+					`/api/v1/routers/${encodeURIComponent(req.routerId)}/gateway`,
+					{ external_network_id: req.networkId },
+					$auth.token ?? undefined,
+					$auth.projectId ?? undefined
+				);
+				toast.success(`${req.routerName} 의 외부 게이트웨이를 ${net.name} 로 설정했습니다.`);
+			} else if (req.kind === 'router-net') {
+				let subnetId: string;
+				if (activeLinkModal.createdSubnet) {
+					subnetId = activeLinkModal.createdSubnet.id;
+				} else if (payload.kind === 'router-net' && 'create' in payload) {
+					const s = await api.post<SubnetDetail>(
+						`/api/v1/networks/${encodeURIComponent(req.networkId)}/subnets`,
+						{
+							name: payload.create.name,
+							cidr: payload.create.cidr,
+							gateway_ip: null,
+							enable_dhcp: payload.create.dhcp
+						},
+						$auth.token ?? undefined,
+						$auth.projectId ?? undefined
+					);
+					subnetId = s.id;
+					activeLinkModal.createdSubnet = s;
+					if (!activeLinkModal.subnets.some((sub) => sub.id === s.id)) {
+						activeLinkModal.subnets = [s, ...activeLinkModal.subnets];
+					}
+					if (!net.subnet_details.some((sub) => sub.id === s.id)) {
+						net.subnet_details.push(s);
+					}
+				} else if (payload.kind === 'router-net' && 'subnetId' in payload) {
+					subnetId = payload.subnetId;
+				} else {
+					return false;
+				}
+
+				try {
+					await api.post(
+						`/api/v1/routers/${encodeURIComponent(req.routerId)}/interfaces`,
+						{ subnet_id: subnetId, auto_gateway: true },
+						$auth.token ?? undefined,
+						$auth.projectId ?? undefined
+					);
+					toast.success(`${req.routerName} 를 ${net.name} 의 게이트웨이로 연결했습니다.`);
+				} catch (routerErr) {
+					const msg = routerErr instanceof ApiError ? routerErr.message : '라우터 연결 실패';
+					linkError = `서브넷은 생성되었으나 라우터 인터페이스 연결에 실패했습니다 (${msg}). 라우터 연결만 다시 시도할 수 있습니다.`;
+					toast.warning(linkError);
+					return false;
+				}
+			}
+			activeLinkModal = null;
+			pendingLink = null;
+			await fetchTopology({ refresh: true });
+			return true;
+		} catch (e) {
+			linkError = e instanceof ApiError ? e.message : '연결 실패';
+			toast.error(`연결 실패: ${linkError}`);
+			return false;
+		} finally {
+			linkSubmitting = false;
+		}
+	}
+
+	function handleLinkModalClose() {
+		activeLinkModal = null;
+		pendingLink = null;
+		linkError = '';
+	}
+
+	function handleCreate(kind: CreateKind, ctx: { networkId: string | null; networkName: string | null }) {
+		createCtx = ctx;
+		if (kind === 'network') showNetworkCreate = true;
+		else if (kind === 'router') showRouterCreate = true;
+		else if (kind === 'instance') createInstance(ctx.networkId);
+		else if (kind === 'loadbalancer') createLoadBalancer(ctx.networkId);
+		else showDbCreate = true;
+	}
+
 	async function createCable(request: TopologyLinkRequest) {
 		try {
 			await api.post(request.url, request.body, $auth.token ?? undefined, $auth.projectId ?? undefined);
@@ -132,10 +255,19 @@
 		openWizard({ prefill: network ? { networkId: network.id, networkName: network.name } : undefined });
 	}
 
-	function createLoadBalancer() {
-		void goto('/dashboard/network/loadbalancers/new');
+	function createLoadBalancer(networkId?: string | null) {
+		const targetId = networkId ?? createCtx.networkId;
+		void goto(`/dashboard/network/loadbalancers/new${targetId ? `?network=${encodeURIComponent(targetId)}` : ''}`);
 	}
 
+	let wasWizardOpen = false;
+	$effect(() => {
+		const open = $wizardOpen;
+		if (wasWizardOpen && !open) {
+			untrack(() => fetchTopology({ refresh: true }));
+		}
+		wasWizardOpen = open;
+	});
 	function onDatabaseCreated() {
 		showDbCreate = false;
 		void fetchTopology({ refresh: true });
@@ -206,12 +338,18 @@
 		else refreshing = true;
 		error = '';
 		try {
-			data = await api.get<TopologyData>(
+			const nextData = await api.get<TopologyData>(
 				'/api/v1/networks/topology',
 				$auth.token ?? undefined,
 				$auth.projectId ?? undefined,
 				opts,
 			);
+			data = {
+				...nextData,
+				networks: [...nextData.networks],
+				routers: [...nextData.routers],
+				instances: [...nextData.instances],
+			};
 		} catch (e) {
 			error = e instanceof ApiError ? `조회 실패 (${e.status}): ${e.message}` : '서버 오류';
 		} finally {
@@ -265,6 +403,9 @@
 					selectedId={topologySelectedId}
 					storageScope="user"
 					editable={true}
+					{pendingLink}
+					{onConnect}
+					onCreate={handleCreate}
 					{onSelectInstance}
 					{onSelectRouter}
 					{onSelectLoadBalancer}
@@ -273,7 +414,7 @@
 					onCreateNetwork={() => { showNetworkCreate = true; }}
 					onCreateRouter={() => { showRouterCreate = true; }}
 					onCreateInstance={createInstance}
-					onCreateLoadBalancer={createLoadBalancer}
+					onCreateLoadBalancer={() => createLoadBalancer()}
 					onCreateDatabase={() => { showDbCreate = true; }}
 					{onIntentInstance}
 					{onIntentRouter}
@@ -344,4 +485,22 @@
 <NetworkCreateModal bind:open={showNetworkCreate} creating={creatingNetwork} error={createNetworkError} onCreate={createNetwork} />
 <RouterCreateModal bind:open={showRouterCreate} {externalNetworks} onCreate={createRouter} />
 
-<DbCreatePanel bind:open={showDbCreate} onCreated={onDatabaseCreated} />
+<DbCreatePanel
+	bind:open={showDbCreate}
+	onCreated={onDatabaseCreated}
+	initialNetworkId={createCtx.networkId && data?.networks.find((n) => n.id === createCtx.networkId && !n.is_external && !n.is_shared) ? createCtx.networkId : null}
+/>
+
+{#if activeLinkModal}
+	<TopologyLinkModal
+		open={true}
+		request={activeLinkModal.req}
+		network={activeLinkModal.net}
+		subnets={activeLinkModal.subnets}
+		createdSubnet={activeLinkModal.createdSubnet ?? null}
+		submitting={linkSubmitting}
+		error={linkError}
+		onConfirm={handleLinkConfirm}
+		onClose={handleLinkModalClose}
+	/>
+{/if}

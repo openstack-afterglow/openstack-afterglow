@@ -25,7 +25,8 @@
 		/** Canvas-owned controlled selection; used by staged resource cards as well as graph nodes. */
 		setSelected?: (id: string) => void;
 		linkSource?: boolean;
-		linkTarget?: boolean;
+		linkable?: boolean;
+		linkTarget?: 'valid' | 'invalid' | boolean | null;
 		linkEnabled?: boolean;
 		onselect?: (id: string) => void;
 		onhover?: (id: string | null) => void;
@@ -47,7 +48,8 @@
 		dataTour,
 		setSelected,
 		linkSource = false,
-		linkTarget = false,
+		linkable = false,
+		linkTarget = null,
 		linkEnabled = false,
 		onselect,
 		onhover,
@@ -93,12 +95,12 @@
 	class="node node-{node.kind}"
 	class:is-selected={selected}
 	class:is-dim={dim}
-	class:is-faded={faded}
+	class:is-faded={faded || linkTarget === 'invalid'}
 	class:is-dragging={dragging}
 	class:is-armed={armed}
 	class:is-error={node.status === 'ERROR'}
 	class:is-link-source={linkSource}
-	class:is-link-target={linkTarget}
+	class:is-link-target={linkTarget === 'valid' || linkTarget === true}
 	data-node-id={node.id}
 	data-tour={dataTour}
 	aria-pressed={selected}
@@ -113,11 +115,8 @@
 	onfocus={() => onfocusnode?.(node.id)}
 	onblur={() => onblurnode?.(node.id)}
 >
-	{#if linkEnabled && (node.kind === 'vm' || node.kind === 'router')}
-		<span class="link-port link-port-output" data-link-source title="연결 시작" aria-hidden="true">↗</span>
-	{/if}
-	{#if linkTarget}
-		<span class="link-port link-port-input" data-link-target title="여기에 연결" aria-hidden="true">←</span>
+	{#if linkable || (linkEnabled && (node.kind === 'vm' || node.kind === 'router'))}
+		<span class="link-handle" data-link-handle={node.id} data-link-source title="끌어서 연결" aria-hidden="true"></span>
 	{/if}
 	<span class="node-head">
 		<span class="node-glyph" aria-hidden="true">
@@ -293,7 +292,42 @@
 	.nic-fip-row .nic-ip { color: var(--color-topology-external); }
 	.parked-note { display: flex; align-items: center; height: 20px; padding: 0 0.5rem; font-size: 0.75rem; color: var(--color-ink-2); }
 	.node.is-link-source { border-color: var(--color-accent); box-shadow: 0 0 0 4px var(--accent-ring); }
-	.node.is-link-target { border-color: var(--color-accent); }
+	.node.is-link-target { border-color: var(--color-accent); outline: 2px dashed var(--color-accent); outline-offset: 2px; }
+	.link-handle {
+		position: absolute;
+		right: -6px;
+		top: 50%;
+		width: 12px;
+		height: 12px;
+		margin-top: -6px;
+		border-radius: 50%;
+		background: var(--color-accent);
+		border: 2px solid var(--color-surface-base);
+		opacity: 0;
+		cursor: crosshair;
+		z-index: 5;
+		transition: opacity var(--motion-duration-fast) var(--motion-ease-standard);
+	}
+	.link-handle::before {
+		content: '';
+		position: absolute;
+		inset: -8px;
+	}
+	.node:hover .link-handle,
+	.node:focus-visible .link-handle,
+	.node.is-selected .link-handle,
+	.node.is-link-target .link-handle {
+		opacity: 1;
+	}
+	@media (pointer: coarse) {
+		.link-handle {
+			opacity: 1;
+			width: 16px;
+			height: 16px;
+			margin-top: -8px;
+			right: -8px;
+		}
+	}
 	.link-port {
 		position: absolute;
 		top: 50%;

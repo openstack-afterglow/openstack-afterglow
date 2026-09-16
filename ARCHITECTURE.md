@@ -161,7 +161,7 @@ At ≥768px, the settings route allocates the return action and settings body wi
 
 캔버스 패킷 흐름 시뮬레이션은 기본 on이며 툴바 체크박스로 끌 수 있다. `prefers-reduced-motion`이면 토글과 무관하게 하드 off이고, 탭이 보이지 않거나 pinch 중이면 rAF 루프를 멈춘다.
 
-사용자 캔버스만 생성·연결 mutation을 노출한다. `TopologyCanvas`의 `link-types.ts`는 현재 프로젝트 소유 VM/라우터와 ACTIVE internal/external 네트워크 조합만 `POST /api/v1/instances/{id}/interfaces`, `POST /api/v1/routers/{id}/gateway`, `POST /api/v1/routers/{id}/interfaces`로 해석하며, 이미 연결된 NIC/인터페이스·DB 노드·공유/타 프로젝트 대상은 클라이언트에서도 거부하고 API 권한 검증이 최종 경계다. 출력 포트에서 대상 카드로 드래그하면 accent 점선 임시 케이블과 가능한 대상만 표시하고 성공 뒤 topology를 refresh한다. 툴바의 네트워크·라우터·인스턴스·로드밸런서·DB 생성은 기존 생성 플로우를 연다; 선택된 네트워크는 VM wizard의 network prefill로 전달한다. 네트워크 생성의 선택 subnet은 `CreateNetworkSubnetSpec`이며 subnet 실패 시 생성한 Neutron network를 최선으로 롤백하고 목록 cache를 무효화한다. 상세 패널은 사용자 `/api/v1/networks/{id}/subnets`에서 선택 subnet을 추가한다.
+사용자 캔버스만 생성·연결 mutation을 노출한다. `TopologyCanvas`와 `topologyLink.ts`는 현재 프로젝트 소유 VM/라우터와 ACTIVE internal/external 네트워크 조합만 `POST /api/v1/instances/{id}/interfaces`, `POST /api/v1/routers/{id}/gateway`, `POST /api/v1/routers/{id}/interfaces`로 해석하며, 이미 연결된 NIC/인터페이스·DB 노드·공유/타 프로젝트 대상은 클라이언트에서도 거부하고 API 권한 검증이 최종 경계다. 카드 핸들에서 대상 카드로 드래그하면 cubic bezier 곡선의 러버밴드와 유효 타깃 outline을 표시하고, 연결 드롭 시 바로 API를 호출하지 않고 어떤 컴포넌트끼리 어떻게 연결될 것인지(NIC 포트 생성 및 IP 자동 할당, 서브넷 게이트웨이 인터페이스 연결, 외부 라우팅 게이트웨이 설정)를 사전에 확인·선택·생성할 수 있는 `TopologyLinkModal`을 거친다. 서브넷이 없는 네트워크와 라우터 연결 시 서브넷 생성 후 라우터 인터페이스 연결이 실패하더라도 생성된 서브넷을 모달 상태에 보존해 재시도 시 서브넷을 중복 생성하지 않고 라우터 연결만 재시도한다. 라우터 인터페이스 연결의 `auto_gateway=true`는 게이트웨이 IP가 비어 있는 서브넷에 대해 CIDR의 첫 호스트 IP를 게이트웨이로 자동 지정(백엔드 및 튜토리얼 목업 공통) 후 인터페이스를 attach한다. 확인 승인 시 `pendingLink` 점선 고스트 케이블을 표시하며 API 호출 후 토폴로지를 새로고침한다. 툴바의 네트워크·라우터·인스턴스·로드밸런서·DB 생성 버튼 그룹은 선택된 네트워크 컨텍스트를 VM 위저드·LB 생성 쿼리(`?network=`)·DB 생성 패널의 network prefill로 전달한다. 네트워크 생성의 선택 subnet은 `CreateNetworkSubnetSpec`이며 subnet 실패 시 생성한 Neutron network를 최선으로 롤백하고 목록 cache를 무효화한다. 상세 패널은 사용자 `/api/v1/networks/{id}/subnets`에서 선택 subnet을 추가한다.
 
 `/dashboard/network/networks`의 목록·슬라이드 패널·직접 상세는 `NetworkInfo`/`NetworkDetail.project_id`를 현재 rescope 프로젝트와 비교한다. 외부 네트워크와 타 프로젝트 공유 네트워크는 표시만 하고 일괄 선택·기본 설정·삭제·서브넷/라우터 연결 affordance를 렌더하지 않는다. 소유 네트워크에서만 서브넷을 만들고 선택한 소유 라우터에 `auto_gateway`로 즉시 연결할 수 있으며, 라우터 상세의 internal network/subnet 선택지도 소유 리소스로 한정한다. 브라우저 판정은 UX 경계일 뿐: `set_default_network`, network/subnet write 및 router/interface write는 `assert_project_resource_owner`로 project metadata 누락까지 404 fail-closed 처리하고, system admin만 우회한다. tutorial transport도 선택 프로젝트의 `project_id`를 기록·검사한다.
 
@@ -277,9 +277,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "35efa07d42b1210e2e62ad383306d2df534e1c8425f0662bb24d1801d170da14",
-  "reviewed_at": "2026-09-16T13:26:15Z",
-  "summary": "Strict project ownership on network/subnet/router mutations, subnet creation with router connection, network detail router interface management, and responsive table overflow wrappers"
+  "source_sha256": "641e61e1e2db441458a81de6500fa749c4137ac0620965c25392fb7e242558b1",
+  "reviewed_at": "2026-09-16T14:16:41Z",
+  "summary": "토폴로지 생성 버튼 및 케이블 드래그 연결, 연결 사전 확인 모달(TopologyLinkModal) 및 서브넷 생성 부분 성공 시 라우터 연결 재시도 보존, auto_gateway 첫 호스트 지정 목업 동기화"
 }
 ```
 <!-- architecture-review:end -->

@@ -40,6 +40,7 @@ interface DbCreateOpts {
 	open: () => boolean;
 	setOpen: (v: boolean) => void;
 	onCreated: () => void;
+	initialNics?: () => string[];
 	databaseBackupsEnabled?: () => boolean;
 }
 
@@ -210,6 +211,7 @@ export function createDbCreateStore(opts: DbCreateOpts) {
 	$effect(() => {
 		if (!opts.open()) return;
 		resetForm();
+		selectedNics = opts.initialNics?.() ?? [];
 		loadMetadata();
 	});
 

@@ -554,4 +554,105 @@ describe('TopologyCanvas', () => {
 		expect((chk as HTMLInputElement).checked).toBe(false);
 		expect(document.querySelectorAll('.flow-dot')).toHaveLength(0);
 	});
+
+	it('onConnect 미전달 시 link handle이 렌더링되지 않는다', () => {
+		renderCanvas({ editable: false });
+		expect(document.querySelector('[data-link-handle]')).toBeNull();
+	});
+
+	it('onConnect 전달 시 핸들 드래그 앤 드롭으로 연결 요청을 발생시킨다', async () => {
+		const onConnect = vi.fn();
+		renderCanvas({ onConnect, editable: true });
+
+		const vmCard = cardOf('vm-web-01')!;
+		const handle = vmCard.querySelector<HTMLSpanElement>('[data-link-handle]')!;
+		expect(handle).not.toBeNull();
+
+		const initialTransform = vmCard.style.transform;
+
+		// 포인터 다운: 드래그 시작
+		firePointer('pointerdown', handle, { pointerId: 1, clientX: 10, clientY: 10 });
+		expect(document.querySelector('.layer-link .edge-link')).not.toBeNull();
+		expect(cardOf('sw:net-app')!.classList.contains('is-link-target')).toBe(true);
+		expect(cardOf('rtr-edge')!.classList.contains('is-faded')).toBe(true);
+
+		// 타깃 스위치로 이동
+		const swCard = cardOf('sw:net-app')!;
+		fireEvent(swCard, pointerMove({ pointerId: 1, clientX: 300, clientY: 300 }));
+		expect(document.querySelector('.edge-link.is-snapped')).not.toBeNull();
+
+		// 포인터 업: 연결 요청 완료
+		firePointer('pointerup', swCard, { pointerId: 1, clientX: 300, clientY: 300 });
+		expect(onConnect).toHaveBeenCalledTimes(1);
+		expect(onConnect).toHaveBeenCalledWith({
+			kind: 'vm-net',
+			instanceId: 'vm-web-01',
+			instanceName: expect.any(String),
+			networkId: 'net-app',
+			networkName: expect.any(String),
+		});
+
+		// 노드 위치는 불변이며 러버밴드는 사라짐
+		expect(vmCard.style.transform).toBe(initialTransform);
+		expect(document.querySelector('.layer-link .edge-link')).toBeNull();
+	});
+
+	it('핸들 드래그 중 Escape를 누르면 연결이 취소된다', () => {
+		const onConnect = vi.fn();
+		renderCanvas({ onConnect, editable: true });
+
+		const handle = cardOf('vm-web-01')!.querySelector<HTMLSpanElement>('[data-link-handle]')!;
+		firePointer('pointerdown', handle, { pointerId: 1, clientX: 10, clientY: 10 });
+		expect(document.querySelector('.layer-link .edge-link')).not.toBeNull();
+
+		const viewport = document.querySelector<HTMLDivElement>('.viewport')!;
+		fireEvent.keyDown(viewport, { key: 'Escape' });
+
+		expect(document.querySelector('.layer-link .edge-link')).toBeNull();
+		expect(onConnect).not.toHaveBeenCalled();
+	});
+
+	it('유효하지 않은 카드에 드롭하면 onConnect를 호출하지 않는다', () => {
+		const onConnect = vi.fn();
+		renderCanvas({ onConnect, editable: true });
+
+		const handle = cardOf('vm-web-01')!.querySelector<HTMLSpanElement>('[data-link-handle]')!;
+		firePointer('pointerdown', handle, { pointerId: 1, clientX: 10, clientY: 10 });
+
+		const invalidCard = cardOf('vm-app-01')!;
+		firePointer('pointerup', invalidCard, { pointerId: 1, clientX: 300, clientY: 300 });
+
+		expect(onConnect).not.toHaveBeenCalled();
+	});
+
+	it('pendingLink 전달 시 점선 고스트 케이블(.edge-pending)이 렌더링된다', () => {
+		renderCanvas({
+			pendingLink: {
+				kind: 'vm-net',
+				instanceId: 'vm-web-01',
+				instanceName: 'web-01',
+				networkId: 'net-app',
+				networkName: 'app-net',
+			},
+		});
+		expect(document.querySelectorAll('.layer-link .edge-pending')).toHaveLength(1);
+	});
+
+	it('onCreate 전달 시 툴바에 리소스 생성 버튼이 노출되고 클릭 시 컨텍스트와 함께 호출된다', async () => {
+		const onCreate = vi.fn();
+		renderCanvas({ onCreate });
+
+		const addInstanceBtn = screen.getByRole('button', { name: '+ 인스턴스' });
+		expect(addInstanceBtn).not.toBeNull();
+
+		// 스위치 카드 선택
+		await fireEvent.click(cardOf('sw:net-app')!);
+
+		// 인스턴스 생성 버튼 클릭
+		await fireEvent.click(addInstanceBtn);
+		expect(onCreate).toHaveBeenCalledWith('instance', {
+			networkId: 'net-app',
+			networkName: expect.any(String),
+		});
+	});
 });

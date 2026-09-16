@@ -3,6 +3,7 @@
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { goto } from '$app/navigation';
+	import { page } from '$app/stores';
 
 	import type { Network, SubnetDetail } from '$lib/types/networks';
 
@@ -16,6 +17,11 @@
 	async function loadNetworks() {
 		try {
 			networks = await api.get<Network[]>('/api/v1/networks', $auth.token ?? undefined, $auth.projectId ?? undefined);
+			const preset = $page.url.searchParams.get('network');
+			if (preset && !form.vip_network_id && networks.some((n) => n.id === preset)) {
+				form.vip_network_id = preset;
+				await onNetworkChange();
+			}
 		} catch {
 			// ignore
 		}

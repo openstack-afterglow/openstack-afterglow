@@ -30,10 +30,12 @@
 		switchId,
 		trunkNetIds,
 	} from './topologyGraph';
-	import { FIT_K_MAX, K_MAX, K_MIN, applyManualPositions, autoLayout, computeGeometry, contentBounds, nodeBounds, resolveManualOverlap, zoomAt as zoomAtPure } from './topologyLayout';
+	import { FIT_K_MAX, K_MAX, K_MIN, applyManualPositions, autoLayout, center, computeGeometry, contentBounds, cubic, nodeBounds, resolveManualOverlap, sideFor, zoomAt as zoomAtPure } from './topologyLayout';
 	import type { CanvasEdge, CanvasNet, EdgeStyle, ManualPositions, Pt, Rect, ViewState } from './types';
 	import { createViewport } from './viewport.svelte';
 	import { canLink, linkRequest, type TopologyLinkRequest } from './link-types';
+	import { canStartLink, linkTargets, resolveLink, type LinkRequest } from './topologyLink';
+	import type { CreateKind } from './CanvasToolbar.svelte';
 
 	interface Props {
 		data: TopologyData;
@@ -51,6 +53,9 @@
 		onSelectRouter?: (id: string) => void;
 		onSelectLoadBalancer?: (lb: TopologyLoadBalancer) => void;
 		onSelectNetwork?: (networkId: string) => void;
+		onConnect?: (req: LinkRequest) => void;
+		pendingLink?: LinkRequest | null;
+		onCreate?: (kind: CreateKind, ctx: { networkId: string | null; networkName: string | null }) => void;
 		onCreateCable?: (request: TopologyLinkRequest) => void | Promise<void>;
 		onCreateNetwork?: () => void;
 		onCreateRouter?: () => void;
@@ -75,6 +80,9 @@
 		onSelectRouter,
 		onSelectLoadBalancer,
 		onSelectNetwork,
+		onConnect,
+		pendingLink = null,
+		onCreate,
 		onCreateCable,
 		onCreateNetwork,
 		onCreateRouter,
@@ -183,18 +191,32 @@
 	let matchIdx = -1;
 	let liveText = $state('');
 	let liveTimer: ReturnType<typeof setTimeout> | null = null;
-	let linkFrom = $state<string | null>(null);
-	let linkPointerId = $state<number | null>(null);
-	let linkCursor = $state<Pt | null>(null);
-	const linkDraft = $derived.by(() => {
-		if (!linkFrom || !linkCursor) return null;
-		const source = pos.get(linkFrom);
-		return source ? { x1: source.x + source.w, y1: source.y + source.h / 2, x2: linkCursor.x, y2: linkCursor.y } : null;
+	let link = $state<{ sourceId: string; pt: Pt; targets: Set<string>; hoverId: string | null } | null>(null);
+	const linkPath = $derived.by(() => {
+		if (!link) return null;
+		const p = pos.get(link.sourceId);
+		if (!p) return null;
+		const a = { x: p.x + p.w, y: p.y + p.h / 2 };
+		const tp = link.hoverId ? pos.get(link.hoverId) : null;
+		const b = tp ? center(tp) : link.pt;
+		return { d: cubic(a, 'RIGHT', b, sideFor(a.x - b.x, a.y - b.y)).d, snapped: Boolean(tp) };
 	});
-	const linkTargetIds = $derived.by(() => {
-		if (!editable || !linkFrom) return new Set<string>();
-		return new Set([...graph.nodes.keys()].filter((id) => canLink(graph, linkFrom!, id, projectId)));
+	const pendingPath = $derived.by(() => {
+		if (!pendingLink) return null;
+		const [aId, bId] =
+			pendingLink.kind === 'vm-net'
+				? [pendingLink.instanceId, switchId(pendingLink.networkId)]
+				: [pendingLink.routerId, switchId(pendingLink.networkId)];
+		const pa = pos.get(aId),
+			pb = pos.get(bId);
+		if (!pa || !pb) return null;
+		const ca = center(pa),
+			cb = center(pb);
+		const sa = sideFor(cb.x - ca.x, cb.y - ca.y);
+		return cubic(ca, sa, cb, sideFor(ca.x - cb.x, ca.y - cb.y)).d;
 	});
+	const linkFrom = $derived(link?.sourceId ?? null);
+	const linkTargetIds = $derived(link ? link.targets : new Set<string>());
 
 	function resolveSelected(id: string | null | undefined): string | null {
 		if (!id) return null;
@@ -214,6 +236,11 @@
 	/** 존 라벨 aria-pressed 용: 스위치(네트워크)가 선택된 경우에만 채운다(호버 파생 activeNets 와 분리) */
 	const selectedNetId = $derived(selectedNode?.kind === 'switch' ? selectedNode.netId : null);
 	const related = $derived(activeId ? relatedSet(graph, layout, activeId) : null);
+	const createCtx = $derived(
+		selectedNetId
+			? { networkId: selectedNetId, networkName: graph.netById.get(selectedNetId)?.name ?? null }
+			: { networkId: null, networkName: null }
+	);
 	const activeNets = $derived.by(() => {
 		const set = new Set<string>();
 		if (!activeNode || !activeId) return set;
@@ -260,13 +287,11 @@
 		const node = graph.nodes.get(cur);
 		internalSel = null;
 		if (!node) return;
-		// 부모가 토글 방식으로 패널을 닫도록 같은 콜백을 다시 호출한다(제어·비제어 모드 동일)
 		if (node.kind === 'vm') onSelectInstance?.(node.id);
 		else if (node.kind === 'router') onSelectRouter?.(node.id);
 		else if (node.kind === 'lb') onSelectLoadBalancer?.(node.raw);
 		else if (node.kind === 'switch') onSelectNetwork?.(node.netId);
 	}
-
 	function fireIntent(id: string) {
 		const node = graph.nodes.get(id);
 		if (node?.kind === 'vm') onIntentInstance?.(id);
@@ -274,6 +299,7 @@
 	}
 
 	function setHover(id: string | null) {
+		if (link) return;
 		if (hoveredId === id) return;
 		if (hoveredId) onCancelIntent?.();
 		hoveredId = id;
@@ -289,25 +315,6 @@
 		onCancelIntent?.();
 	}
 
-	function startLink(id: string) {
-		if (!editable || !graph.nodes.has(id)) return;
-		linkFrom = id;
-		const source = graph.nodes.get(id)!;
-		announce(`${KIND_LABEL[source.kind]} ${source.name}: 연결할 네트워크를 선택하세요`);
-	}
-
-	function finishLink(targetId: string) {
-		const sourceId = linkFrom;
-		linkFrom = null;
-		if (!sourceId) return;
-		const request = linkRequest(graph, sourceId, targetId, projectId);
-		if (!request) {
-			announce('이 리소스들은 연결할 수 없습니다');
-			return;
-		}
-		announce(`${request.label} 요청됨`);
-		void onCreateCable?.(request);
-	}
 
 	// ───────── 기하·스타일 파생
 	const memberEdges = $derived(activeNode?.kind === 'lb' ? buildMemberEdges(graph, activeNode.id, pos) : []);
@@ -635,22 +642,27 @@
 		const clearLongPress = () => { if (longPress) { clearTimeout(longPress); longPress = null; } };
 		const closest = (t: EventTarget | null, sel: string): HTMLElement | SVGElement | null =>
 			t instanceof Element ? (t.closest(sel) as HTMLElement | SVGElement | null) : null;
-		const local = (e: PointerEvent) => { const r = el.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+		const toWorld = (e: PointerEvent | MouseEvent) => {
+			const r = el.getBoundingClientRect();
+			const v = currentView();
+			return { x: (e.clientX - r.left - v.panX) / v.k, y: (e.clientY - r.top - v.panY) / v.k };
+		};
 
 		const onDown = (e: PointerEvent) => {
 			if (e.pointerType === 'mouse' && e.button !== 0) return;
 			if (closest(e.target, '[data-hud-control]')) return;
-			const handleNode = closest(e.target, '[data-node-id]');
-			const handleNodeId = handleNode?.getAttribute('data-node-id') ?? null;
-			if (handleNodeId && closest(e.target, '[data-link-source]')) {
-				e.preventDefault();
-				startLink(handleNodeId);
-				const point = local(e);
-				const view = currentView();
-				linkPointerId = e.pointerId;
-				linkCursor = { x: (point.x - view.panX) / view.k, y: (point.y - view.panY) / view.k };
-				try { el.setPointerCapture?.(e.pointerId); } catch { /* jsdom 등 미지원 환경 */ }
-				return;
+			const handleEl = closest(e.target, '[data-link-handle]') || closest(e.target, '[data-link-source]');
+			if (handleEl && (onConnect || onCreateCable)) {
+				const sourceId = handleEl.getAttribute('data-link-handle') || closest(handleEl, '[data-node-id]')?.getAttribute('data-node-id');
+				if (sourceId) {
+					try { el.releasePointerCapture?.(e.pointerId); } catch { /* jsdom */ }
+					pointers.delete(e.pointerId);
+					link = { sourceId, pt: toWorld(e), targets: linkTargets(graph, sourceId, projectId), hoverId: null };
+					gesture = null; draggingId = null; armedId = null; pendingDrag = null; stopFlow();
+					announce(`${graph.nodes.get(sourceId)?.name ?? ''} 에서 연결 시작 — 스위치·라우터·인스턴스 위에 놓으세요, Esc 취소`);
+					e.preventDefault();
+					return;
+				}
 			}
 			try { el.setPointerCapture?.(e.pointerId); } catch { /* jsdom 등 미지원 환경 */ }
 			if (pointers.size === 0) pinchConsumed = false;
@@ -705,10 +717,10 @@
 		};
 
 		const onMove = (e: PointerEvent) => {
-			if (linkPointerId === e.pointerId) {
-				const point = local(e);
-				const view = currentView();
-				linkCursor = { x: (point.x - view.panX) / view.k, y: (point.y - view.panY) / view.k };
+			if (link) {
+				const hit = document.elementFromPoint?.(e.clientX, e.clientY) ?? e.target;
+				const id = closest(hit, '[data-node-id]')?.getAttribute('data-node-id') ?? null;
+				link = { ...link, pt: toWorld(e), hoverId: id && link.targets.has(id) ? id : null };
 				return;
 			}
 			if (!pointers.has(e.pointerId)) return;
@@ -745,15 +757,25 @@
 		};
 
 		const onEnd = (e: PointerEvent) => {
-			if (linkPointerId === e.pointerId) {
+			if (link) {
+				const l = link;
+				link = null;
+				resumeFlow();
 				const hit = document.elementFromPoint?.(e.clientX, e.clientY) ?? e.target;
-				const targetId = closest(hit, '[data-node-id]')?.getAttribute('data-node-id') ?? null;
-				linkPointerId = null;
-				linkCursor = null;
-				try { el.releasePointerCapture?.(e.pointerId); } catch { /* jsdom 등 미지원 환경 */ }
-				if (e.type === 'pointerup' && targetId && linkTargetIds.has(targetId)) finishLink(targetId);
-				else {
-					linkFrom = null;
+				const hitId = closest(hit, '[data-node-id]')?.getAttribute('data-node-id') ?? null;
+				const targetId = l.hoverId ?? (hitId && l.targets.has(hitId) ? hitId : null);
+				if (e.type !== 'pointercancel' && targetId) {
+					const req = resolveLink(graph, l.sourceId, targetId, projectId);
+					if (req) {
+						if (onConnect) {
+							onConnect(req);
+						} else if (onCreateCable) {
+							const legacyReq = linkRequest(graph, l.sourceId, targetId, projectId);
+							if (legacyReq) onCreateCable(legacyReq);
+						}
+						announce('연결 요청을 보냈습니다');
+					}
+				} else {
 					announce('연결 만들기를 취소했습니다');
 				}
 				return;
@@ -859,11 +881,11 @@
 			else if (e.key === '0' || e.key === 'f' || e.key === 'F') fitAll();
 			else if (e.key === 'r' || e.key === 'R') resetLayout();
 			else if (e.key === 'Escape') {
-				if (linkFrom) {
-					linkFrom = null;
-					linkPointerId = null;
-					linkCursor = null;
+				if (link) {
+					link = null;
+					resumeFlow();
 					announce('연결 만들기를 취소했습니다');
+					handled = true;
 				}
 				else if (selectedId) clearSelection();
 				else handled = false;
@@ -873,6 +895,8 @@
 			if (handled) e.preventDefault();
 		};
 
+		const onLeave = () => { if (link) { link = null; resumeFlow(); } };
+		el.addEventListener('pointerleave', onLeave);
 		el.addEventListener('pointerdown', onDown);
 		el.addEventListener('pointermove', onMove);
 		el.addEventListener('pointerup', onEnd);
@@ -893,6 +917,7 @@
 			el.removeEventListener('pointerover', onOver);
 			el.removeEventListener('pointerout', onOut);
 			el.removeEventListener('keydown', onKey);
+			el.removeEventListener('pointerleave', onLeave);
 		};
 	});
 
@@ -1033,6 +1058,10 @@
 <div class="canvas-root">
 	<CanvasToolbar
 		bind:query
+		bind:flowOn
+		bind:searchElement
+		oncreate={onCreate ? (kind) => onCreate(kind, createCtx) : undefined}
+		createContextName={createCtx.networkName}
 		oncreatenetwork={onCreateNetwork}
 		oncreaterouter={onCreateRouter}
 		oncreateinstance={() => onCreateInstance?.(selectedNetId)}
@@ -1040,7 +1069,7 @@
 		oncreatedatabase={onCreateDatabase}
 		onsearchkeydown={onSearchKeydown}
 		{reducedMotion}
-		{editable}
+		editable={editable || Boolean(onCreate)}
 		matchCount={match ? matchList.length : null}
 		onfit={fitAll}
 		onreset={resetLayout}
@@ -1053,23 +1082,23 @@
 			bind:this={viewportEl}
 			class="viewport"
 			class:is-panning={panning}
+			class:is-linking={Boolean(link)}
 			role="application"
 			tabindex="0"
 			aria-label="네트워크 토폴로지 캔버스"
 			aria-describedby={helpId}
 			data-badges={badgesHidden ? 'hidden' : 'shown'}
+			data-linking={link ? 'true' : undefined}
 			style:background-size={gridSize}
 			style:background-position={gridPosition}
 		>
-			<div class="world topology-world" class:is-gesturing={gesturing} data-lod={lod} style:transform={worldTransform}>
+			<div class="world topology-world" class:is-gesturing={gesturing} data-lod={lod} style:transform={worldTransform} data-linking={link ? 'true' : undefined}>
 				<CanvasZoneLayer zones={zoneRender} width={svgW} height={svgH} />
 				<CanvasEdgeLayer edges={edgeRender} width={svgW} height={svgH} />
-				{#if linkDraft}
-					<svg class="layer-link-draft" aria-hidden="true" width={svgW} height={svgH}>
-						<line x1={linkDraft.x1} y1={linkDraft.y1} x2={linkDraft.x2} y2={linkDraft.y2} />
-						<circle cx={linkDraft.x2} cy={linkDraft.y2} r="4" />
-					</svg>
-				{/if}
+				<svg class="layer-link" aria-hidden="true" width={svgW} height={svgH}>
+					{#if pendingPath}<path class="edge-pending" d={pendingPath} />{/if}
+					{#if linkPath}<path class="edge-link" class:is-snapped={linkPath.snapped} d={linkPath.d} />{/if}
+				</svg>
 				<svg class="layer-flow" aria-hidden="true" width={svgW} height={svgH}><g bind:this={flowGroupEl}></g></svg>
 				<div class="layer-nodes">
 					{#each layout.domOrder as id (id)}
@@ -1089,9 +1118,8 @@
 								rateText={node.kind === 'switch' ? fmtRate(traffic?.networks?.[node.netId]) : node.kind === 'lb' ? fmtRate(traffic?.load_balancers?.[id]) : null}
 								dataTour={id === firstRouterId ? 'admin-network-resource' : undefined}
 								setSelected={select}
-								linkEnabled={editable}
-								linkSource={id === linkFrom}
-								linkTarget={linkTargetIds.has(id)}
+								linkable={Boolean(onConnect || onCreateCable) && canStartLink(graph, id, projectId)}
+								linkTarget={link ? (id === link.sourceId ? null : link.targets.has(id) ? 'valid' : 'invalid') : null}
 								onselect={select}
 								onhover={setHover}
 								onfocusnode={onNodeFocus}
@@ -1101,7 +1129,6 @@
 					{/each}
 				</div>
 			</div>
-
 			<CanvasHud labels={hudLabels} badges={hudBadges} {badgesHidden} {selectedNetId} onselectnet={selectNetwork} />
 
 			<div class="corner" data-hud-control>
@@ -1122,7 +1149,7 @@
 			{/if}
 		</div>
 		<p class="stage-help" id={helpId}>
-			트랙패드 두 손가락 스크롤로 화면 이동, 마우스 휠·<span class="mono">Ctrl</span>(<span class="mono">⌘</span>)+휠·핀치로 확대·축소. 캔버스에 포커스한 뒤 화살표로 화면 이동(<span class="mono">Shift</span>와 함께 누르면 크게), <span class="mono">+</span>/<span class="mono">-</span> 확대·축소, <span class="mono">0</span>·<span class="mono">f</span> 화면 맞춤, <span class="mono">r</span> 배치 초기화, <span class="mono">/</span> 검색, <span class="mono">Esc</span> 선택 해제. 노드에 포커스한 뒤 <span class="mono">Enter</span>로 상세, <span class="mono">Shift+화살표</span>로 노드 이동.
+			트랙패드 두 손가락 스크롤로 화면 이동, 마우스 휠·<span class="mono">Ctrl</span>(<span class="mono">⌘</span>)+휠·핀치로 확대·축소. 캔버스에 포커스한 뒤 화살표로 화면 이동(<span class="mono">Shift</span>와 함께 누르면 크게), <span class="mono">+</span>/<span class="mono">-</span> 확대·축소, <span class="mono">0</span>·<span class="mono">f</span> 화면 맞춤, <span class="mono">r</span> 배치 초기화, <span class="mono">/</span> 검색, <span class="mono">Esc</span> 선택 해제. 노드에 포커스한 뒤 <span class="mono">Enter</span>로 상세, <span class="mono">Shift+화살표</span>로 노드 이동. 카드 오른쪽 점을 끌어 다른 카드에 놓으면 연결(인스턴스↔스위치는 새 인터페이스, 라우터↔스위치는 게이트웨이), <span class="mono">Esc</span> 취소. 키보드는 카드 상세 패널의 연결 기능을 사용합니다.
 		</p>
 	</div>
 
@@ -1158,9 +1185,11 @@
 	.world.is-gesturing { will-change: transform; }
 	.layer-flow { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
 	.layer-flow :global(.flow-dot) { fill: var(--net); stroke: var(--color-surface-base); stroke-width: 1; pointer-events: none; }
-	.layer-link-draft { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
-	.layer-link-draft line { stroke: var(--color-accent); stroke-width: 2; stroke-dasharray: 6 4; }
-	.layer-link-draft circle { fill: var(--color-accent); }
+	.viewport.is-linking { cursor: crosshair; }
+	.layer-link { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+	.edge-link { fill: none; stroke: var(--color-accent); stroke-width: 2; stroke-dasharray: 6 4; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+	.edge-link.is-snapped { stroke-dasharray: none; stroke-width: 2.5; }
+	.edge-pending { fill: none; stroke: var(--color-topology-link); stroke-width: 2; stroke-dasharray: 4 4; vector-effect: non-scaling-stroke; }
 	/* 내부 통신(라우터 없는 망) 점은 테두리를 없애 게이트웨이 방향 점과 구분한다 — 색만으로 구분하지 않도록 범례에 설명이 있다 */
 	.layer-flow :global(.flow-dot.is-internal) { stroke: none; }
 	.layer-nodes { position: absolute; left: 0; top: 0; width: 0; height: 0; }

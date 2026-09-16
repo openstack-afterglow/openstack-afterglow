@@ -11,15 +11,18 @@
 	let {
 		open = $bindable(false),
 		onCreated,
+		initialNetworkId = null,
 	}: {
 		open: boolean;
 		onCreated: () => void;
+		initialNetworkId?: string | null;
 	} = $props();
 
 	const s = createDbCreateStore({
 		open: () => open,
 		setOpen: (v) => { open = v; },
 		onCreated: () => onCreated(),
+		initialNics: () => (initialNetworkId ? [initialNetworkId] : []),
 		databaseBackupsEnabled: () => $betaFeatures.databaseBackups,
 	});
 	provideDbCreate(s);
