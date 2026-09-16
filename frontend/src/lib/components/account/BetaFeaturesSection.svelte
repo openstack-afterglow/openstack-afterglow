@@ -25,7 +25,7 @@
 			<label class="flex items-start justify-between gap-4 rounded-lg border border-line bg-surface-canvas/40 px-4 py-3">
 				<span>
 					<span class="block text-sm font-medium text-ink-1">squashfs 라이브러리 소비 VM 생성 단계 표시</span>
-					<span class="block text-xs text-ink-3 mt-1">Ubuntu 이미지 선택 시 VM 생성 마법사에서 관리자 공개 squashfs 프로필/레이어를 선택합니다.</span>
+					<span class="block text-xs text-ink-2 mt-1">Ubuntu 이미지 선택 시 VM 생성 마법사에서 관리자 공개 squashfs 프로필/레이어를 선택합니다.</span>
 				</span>
 				<input
 					type="checkbox"
@@ -39,7 +39,7 @@
 			<label class="flex items-start justify-between gap-4 rounded-lg border border-line bg-surface-canvas/40 px-4 py-3">
 				<span>
 					<span class="block text-sm font-medium text-ink-1">HA 배포 옵션 표시</span>
-					<span class="block text-xs text-ink-3 mt-1">VM 생성 전략 단계에서 HA 스케줄링 옵션을 노출합니다.</span>
+					<span class="block text-xs text-ink-2 mt-1">VM 생성 전략 단계에서 HA 스케줄링 옵션을 노출합니다.</span>
 				</span>
 				<input
 					type="checkbox"
@@ -91,7 +91,7 @@
 	}
 
 	.beta-feature-checkbox {
-		border-color: var(--color-line-strong);
+		border-color: var(--color-line-2);
 		background: var(--color-surface-sunken);
 		color: var(--color-warm);
 		--tw-ring-color: color-mix(in oklab, var(--color-warm) 45%, transparent);

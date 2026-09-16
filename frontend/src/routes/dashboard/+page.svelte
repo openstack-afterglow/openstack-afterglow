@@ -459,7 +459,7 @@
 					{:else if hasData}
 						<Spark data={series!.data} color={card.color} height={72} class="w-full" />
 					{:else if trendState.error}
-						<p class="text-[11px] italic text-[var(--color-state-danger)]">메트릭을 불러오지 못했습니다</p>
+						<p class="text-xs italic text-[var(--color-state-danger)]">메트릭을 불러오지 못했습니다</p>
 					{:else if !currentTrend || !currentTrend.prometheus_available}
 						<p class="text-xs italic text-[var(--color-ink-2)]">메트릭 수집 미설정</p>
 					{:else}
@@ -509,7 +509,7 @@
 								></span>
 								<span class="flex-1 text-[var(--color-ink-0)] text-xs leading-snug">{alert.message}</span>
 								{#if alert.count > 1}
-									<span class="text-[10px] text-[var(--color-ink-3)] tabular-nums flex-shrink-0">×{alert.count}</span>
+									<span class="text-xs text-[var(--color-ink-3)] tabular-nums flex-shrink-0">×{alert.count}</span>
 								{/if}
 							</li>
 						{/each}
@@ -525,7 +525,7 @@
 								>
 									{announcement.title}
 									{#if !announcement.is_read}
-										<span class="ml-1 text-[9px] uppercase tracking-wide text-[var(--color-accent)]">new</span>
+										<span class="ml-1 text-xs uppercase tracking-wide text-[var(--color-accent)]">new</span>
 									{/if}
 								</a>
 							</li>

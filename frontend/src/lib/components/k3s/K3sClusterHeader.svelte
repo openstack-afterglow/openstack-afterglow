@@ -13,8 +13,8 @@
   secondaryStatus={s.health?.status ?? null}
 >
   {#snippet meta()}
-    {#if s.cluster!.k3s_version}<span class="text-xs text-ink-3">{s.cluster!.k3s_version}</span>{/if}
-    {#if s.cluster!.status_reason}<p class="text-xs text-ink-3">{s.cluster!.status_reason}</p>{/if}
+    {#if s.cluster!.k3s_version}<span class="text-xs text-ink-2">{s.cluster!.k3s_version}</span>{/if}
+    {#if s.cluster!.status_reason}<p class="text-xs text-ink-2">{s.cluster!.status_reason}</p>{/if}
   {/snippet}
   {#snippet actions()}
     {#if s.cluster!.status === 'CREATING' || s.cluster!.status === 'PROVISIONING'}

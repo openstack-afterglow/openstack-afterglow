@@ -55,11 +55,11 @@
 		</div>
 	{/if}
 	{#if backups.length === 0}
-		<div class="text-ink-3 text-xs">백업이 없습니다</div>
+		<div class="text-ink-2 text-xs">백업이 없습니다</div>
 	{:else}
 		<table class="w-full text-sm">
 			<thead>
-				<tr class="text-ink-3 text-xs">
+				<tr class="text-ink-2 text-xs">
 					<th class="text-left py-2 font-medium">이름</th>
 					<th class="text-left py-2 font-medium">상태</th>
 					<th class="text-left py-2 font-medium">크기</th>
@@ -73,7 +73,7 @@
 						<td class="py-2 text-ink-0">{b.name}</td>
 						<td class="py-2 text-ink-2 text-xs">{b.status}</td>
 						<td class="py-2 text-ink-2 text-xs">{b.size ? `${b.size} GB` : '-'}</td>
-						<td class="py-2 text-ink-3 text-xs">{b.created_at ? b.created_at.slice(0, 10) : '-'}</td>
+						<td class="py-2 text-ink-2 text-xs">{b.created_at ? b.created_at.slice(0, 10) : '-'}</td>
 						<td class="py-2 text-right">
 							<div class="flex justify-end gap-1">
 								<button onclick={() => onRestore(b.id)} disabled={restoringBackup === b.id}

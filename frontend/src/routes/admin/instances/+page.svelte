@@ -253,7 +253,7 @@
 				refreshing={loading || refreshing}
 				onManualRefresh={() => { markerStack = []; nextMarker = null; hostFilter = ''; projectFilter = ''; projectSearchText = ''; statusFilter = ''; nameSearch = ''; void load(undefined, { clearSelection: true }); void loadHosts(); }}
 			/>
-			<div class="flex items-center gap-1 text-xs text-ink-3 max-md:hidden">
+			<div class="flex items-center gap-1 text-xs text-ink-2 max-md:hidden">
 				표시:
 				<ToggleGroup
 					value={String(pageSize)}
@@ -291,7 +291,7 @@
 	<div class="mb-6" data-tour="admin-compute-timeseries">
 		{#if tsLoading}
 			<div class="bg-surface-base border border-line rounded-xl p-5 h-48 flex items-center justify-center">
-				<div class="text-ink-3 text-sm">차트 로딩 중...</div>
+				<div class="text-ink-2 text-sm">차트 로딩 중...</div>
 			</div>
 		{:else}
 			<TimeSeriesChart

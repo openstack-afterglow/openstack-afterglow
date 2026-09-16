@@ -17,7 +17,7 @@
   <ListenerAddForm />
 
   {#if s.listeners.length === 0}
-    <p class="text-sm text-ink-3">리스너가 없습니다.</p>
+    <p class="text-sm text-ink-2">리스너가 없습니다.</p>
   {:else}
     <div class="space-y-2">
       {#each s.listeners as l}

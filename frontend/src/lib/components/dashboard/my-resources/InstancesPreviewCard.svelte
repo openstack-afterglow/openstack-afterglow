@@ -19,22 +19,22 @@
 			</svg>
 		</div>
 		<div class="text-ink-0 font-semibold text-sm">인스턴스</div>
-		<span class="ml-auto text-xs text-ink-3">{instances.length}개</span>
+		<span class="ml-auto text-xs text-ink-2">{instances.length}개</span>
 	</div>
 	<div class="flex flex-col">
 		{#each instances.slice(0, PREVIEW_LIMIT) as inst (inst.id)}
 			<div class="flex items-center gap-3 py-2.5 border-b border-line last:border-b-0">
 				<div class="flex-1 min-w-0">
 					<div class="text-ink-0 text-[13px] font-medium truncate">{inst.name || inst.id.slice(0, 8)}</div>
-					<div class="text-[11px] text-ink-3 mt-0.5 font-mono truncate">{inst.flavor_name || '—'} · {inst.project}</div>
+					<div class="text-xs text-ink-2 mt-0.5 font-mono truncate">{inst.flavor_name || '—'} · {inst.project}</div>
 				</div>
 				<StatusChip status={inst.status} />
 			</div>
 		{/each}
 		{#if instances.length === 0}
-			<div class="text-ink-3 text-xs py-3 text-center">없음</div>
+			<div class="text-ink-2 text-xs py-3 text-center">없음</div>
 		{:else if instances.length > PREVIEW_LIMIT}
-			<a href="/dashboard/instances" class="block text-center text-[11px] text-warm-text hover:text-warm-text-hover transition-colors pt-2.5">
+			<a href="/dashboard/instances" class="block text-center text-xs text-warm-text hover:text-warm-text-hover transition-colors pt-2.5">
 				+{instances.length - PREVIEW_LIMIT}개 더 보기 →
 			</a>
 		{/if}

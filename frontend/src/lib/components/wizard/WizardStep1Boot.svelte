@@ -27,7 +27,7 @@
 	{@const bootableVols = s.volumes.filter(v => v.bootable && v.status === 'available')}
 	<p class="text-sm text-ink-2 mb-4">부팅 가능하고 <span class="text-green-400">available</span> 상태인 볼륨만 표시됩니다.</p>
 	{#if bootableVols.length === 0}
-		<div class="text-center py-10 text-ink-3 text-sm">부팅 가능한 볼륨이 없습니다.</div>
+		<div class="text-center py-10 text-ink-2 text-sm">부팅 가능한 볼륨이 없습니다.</div>
 	{:else}
 		<div class="space-y-2 max-h-96 overflow-y-auto pr-1">
 			{#each bootableVols as vol}
@@ -37,10 +37,10 @@
 				>
 					<div class="flex items-center justify-between">
 						<span class="text-sm text-ink-0 font-medium">{vol.name || vol.id.slice(0, 8)}</span>
-						<span class="text-xs text-ink-3 font-mono">{vol.size} GB</span>
+						<span class="text-xs text-ink-2 font-mono">{vol.size} GB</span>
 					</div>
 					{#if vol.volume_image_metadata?.image_name}
-						<div class="text-xs text-ink-3 mt-0.5">{vol.volume_image_metadata.image_name}</div>
+						<div class="text-xs text-ink-2 mt-0.5">{vol.volume_image_metadata.image_name}</div>
 					{/if}
 				</button>
 			{/each}

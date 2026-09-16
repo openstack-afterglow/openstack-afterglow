@@ -11,7 +11,7 @@
 
 <div class="flex items-center gap-2 mb-4 flex-wrap">
 	<div class="relative flex-1 min-w-[200px] max-w-xs">
-		<svg class="w-4 h-4 text-ink-3 absolute left-3 top-1/2 -translate-y-1/2" viewBox="0 0 20 20" fill="currentColor">
+		<svg class="w-4 h-4 text-ink-2 absolute left-3 top-1/2 -translate-y-1/2" viewBox="0 0 20 20" fill="currentColor">
 			<path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/>
 		</svg>
 		<input
@@ -33,7 +33,7 @@
 			<option value="all">전체 버킷</option>
 		</select>
 		{#if s.searchScope === 'all' && s.allObjectsLoading}
-			<span class="text-xs text-ink-3">전체 인덱싱 중...</span>
+			<span class="text-xs text-ink-2">전체 인덱싱 중...</span>
 		{/if}
 	{/if}
 

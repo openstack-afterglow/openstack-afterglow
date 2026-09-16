@@ -54,7 +54,7 @@
 	{@render headerNote?.()}
 
 	{#if items.length === 0}
-		<div class="text-xs text-ink-3 bg-surface-base border border-line rounded-lg p-4">
+		<div class="text-xs text-ink-2 bg-surface-base border border-line rounded-lg p-4">
 			{emptyMessage}
 		</div>
 	{:else}

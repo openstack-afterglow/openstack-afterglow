@@ -29,11 +29,11 @@
 				<tr class="border-b border-line/50 text-xs hover:bg-surface-sunken/30 transition-colors">
 					<td class="py-2 pr-4 text-ink-0"><span class="max-md:block max-md:max-w-[66vw] max-md:truncate" title={r.name || r.id}>{r.name || r.id.slice(0, 8)}</span></td>
 					<td class="py-2 pr-4 {r.status === 'ACTIVE' ? 'text-green-400' : 'text-ink-2'}">{r.status}</td>
-					<td class="py-2 pr-4 text-ink-3 font-mono">
+					<td class="py-2 pr-4 text-ink-2 font-mono">
 						{r.external_gateway_network_id ? r.external_gateway_network_id.slice(0, 8) + '...' : '-'}
 					</td>
-					<td class="py-2 pr-4 text-ink-3">{r.connected_subnet_ids.length}개</td>
-					<td class="py-2 pr-4 text-ink-3 font-mono">{r.project_id?.slice(0, 8) ?? '-'}</td>
+					<td class="py-2 pr-4 text-ink-2">{r.connected_subnet_ids.length}개</td>
+					<td class="py-2 pr-4 text-ink-2 font-mono">{r.project_id?.slice(0, 8) ?? '-'}</td>
 					<td class="py-2">
 						<div class="flex items-center gap-1">
 							<button onclick={() => onEdit(r)}

@@ -25,7 +25,7 @@
 				{@const isCurrent = controller.step === step.id}
 				{@const isDone = activeSteps.findIndex(s => s.id === controller.step) > activeSteps.findIndex(s => s.id === step.id)}
 				{@const stepTime = controller.stepTimings[step.id]}
-				<div class="flex items-center gap-2 text-sm {isDone ? 'text-green-400' : isCurrent ? 'text-warm-text' : 'text-ink-3'}">
+				<div class="flex items-center gap-2 text-sm {isDone ? 'text-green-400' : isCurrent ? 'text-warm-text' : 'text-ink-2'}">
 					<span class="w-4 h-4 flex items-center justify-center flex-shrink-0">
 						{#if isDone}✓{:else if isCurrent}<span class="animate-pulse">●</span>{:else}○{/if}
 					</span>
@@ -45,7 +45,7 @@
 		<div class="flex items-center justify-between mb-4">
 			<p class="text-sm text-ink-2">{controller.msg}</p>
 			{#if controller.elapsedSeconds > 0}
-				<span class="text-xs text-ink-3 flex-shrink-0 ml-2">경과 {controller.elapsedSeconds}초</span>
+				<span class="text-xs text-ink-2 flex-shrink-0 ml-2">경과 {controller.elapsedSeconds}초</span>
 			{/if}
 		</div>
 		{#if controller.error}
@@ -65,9 +65,9 @@
 			</div>
 		{:else}
 			<div class="flex items-center justify-between">
-				<p class="text-xs text-ink-3">백그라운드에서 계속 진행됩니다.</p>
+				<p class="text-xs text-ink-2">백그라운드에서 계속 진행됩니다.</p>
 				<button onclick={onClose}
-					class="px-3 py-1.5 text-xs text-ink-3 hover:text-ink-0 transition-colors border border-line-2 rounded-lg hover:bg-surface-sunken">
+					class="px-3 py-1.5 text-xs text-ink-2 hover:text-ink-0 transition-colors border border-line-2 rounded-lg hover:bg-surface-sunken">
 					닫기
 				</button>
 			</div>

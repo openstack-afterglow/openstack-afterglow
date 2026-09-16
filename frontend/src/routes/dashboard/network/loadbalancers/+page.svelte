@@ -126,7 +126,7 @@
       {/each}
     </div>
   {:else if loadbalancers.length === 0}
-    <div class="text-center py-20 text-ink-3">
+    <div class="text-center py-20 text-ink-2">
       <div class="text-5xl mb-4">⚖️</div>
       <p class="text-lg">로드밸런서가 없습니다</p>
       <a href="/dashboard/network/loadbalancers/new" class="text-warm-text hover:text-warm-text-hover text-sm mt-2 inline-block">첫 로드밸런서를 생성하세요 →</a>
@@ -166,7 +166,7 @@
             <!-- Name + subtitle -->
             <div class="flex-1 min-w-0">
               <div class="text-ink-0 text-[15px] font-semibold truncate">{lb.name || lb.id.slice(0, 12)}</div>
-              <div class="text-[11px] text-ink-3 mt-0.5 font-mono">
+              <div class="text-xs text-ink-2 mt-0.5 font-mono">
                 VIP {lb.vip_address ?? '—'}
                 {#if lb.operating_status}
                   <span class="ml-2 {lb.operating_status === 'ONLINE' ? 'text-green-400' : 'text-ink-2'}">{lb.operating_status}</span>

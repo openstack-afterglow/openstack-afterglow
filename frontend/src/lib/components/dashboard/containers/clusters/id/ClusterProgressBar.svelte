@@ -19,7 +19,7 @@
     <div class="w-full bg-surface-sunken rounded-full h-2">
       <div class="bg-action-warm h-2 rounded-full transition-all duration-500" style="width:{progressPct}%"></div>
     </div>
-    <div class="text-xs text-ink-3 mt-1">
+    <div class="text-xs text-ink-2 mt-1">
       {resources.filter(r => r.resource_status.endsWith('_COMPLETE')).length} / {resources.length} 리소스 완료
     </div>
   </div>

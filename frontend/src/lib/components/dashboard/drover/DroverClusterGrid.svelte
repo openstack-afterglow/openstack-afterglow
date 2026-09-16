@@ -30,7 +30,7 @@
 		{/each}
 	</div>
 {:else if clusters.length === 0}
-	<div class="text-center py-20 text-ink-3">
+	<div class="text-center py-20 text-ink-2">
 		<div class="text-5xl mb-4">☸</div>
 		<p class="text-lg">Drover 클러스터가 없습니다</p>
 		<button onclick={onOpenCreate} onpointerenter={onOpenCreateIntent} onfocus={onOpenCreateIntent} class="text-warm-text hover:text-warm-text-hover text-sm mt-2 inline-block">

@@ -54,21 +54,21 @@
       <h3 class="text-sm font-semibold text-ink-2">{title}</h3>
       {#if totalUsage > 0}
         <span class="text-xl font-bold text-ink-0">{totalUsage}</span>
-        <span class="text-xs text-ink-3">활성 VM</span>
+        <span class="text-xs text-ink-2">활성 VM</span>
       {/if}
     </div>
     <div class="flex gap-1">
       {#each RANGES as r}
         <button
           onclick={() => onRangeChange?.(r)}
-          class="text-xs px-2 py-0.5 rounded transition-colors {currentRange === r ? 'bg-action-warm text-ink-0' : 'text-ink-3 hover:text-ink-2'}"
+          class="text-xs px-2 py-0.5 rounded transition-colors {currentRange === r ? 'bg-action-warm text-ink-0' : 'text-ink-2 hover:text-ink-2'}"
         >{RANGE_LABELS[r]}</button>
       {/each}
     </div>
   </div>
 
   {#if data.length === 0 || topKeys.length === 0}
-    <div class="flex items-center justify-center h-24 text-ink-3 text-sm">
+    <div class="flex items-center justify-center h-24 text-ink-2 text-sm">
       수집된 데이터가 없습니다 (라이브러리가 적재된 VM이 없거나 아직 스냅샷이 저장되지 않았습니다)
     </div>
   {:else}

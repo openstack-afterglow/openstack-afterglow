@@ -56,7 +56,7 @@
 
 <div class="bg-surface-base border border-line rounded-xl p-4 mt-3">
   <div class="flex items-center justify-between mb-3">
-    <h3 class="text-xs text-ink-3 uppercase tracking-wide">ConfigMaps</h3>
+    <h3 class="text-xs text-ink-2 uppercase tracking-wide">ConfigMaps</h3>
     <button
       onclick={() => { showCreate = !showCreate; newName = ''; createError = ''; }}
       class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
@@ -88,7 +88,7 @@
   {#if loadError}
     <p class="text-xs text-red-400">{loadError}</p>
   {:else if s.configMaps.length === 0}
-    <p class="text-xs text-ink-3">ConfigMap 없음</p>
+    <p class="text-xs text-ink-2">ConfigMap 없음</p>
   {:else}
     <div class="space-y-2">
       {#each s.configMaps as cm}

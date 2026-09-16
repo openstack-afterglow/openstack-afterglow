@@ -151,15 +151,15 @@
   {#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
 
   {#if serviceUnavailable}
-    <div class="text-center py-20 text-ink-3">
+    <div class="text-center py-20 text-ink-2">
       <div class="text-5xl mb-4">⚠️</div>
       <p class="text-lg mb-2 text-warm-text">Magnum 서비스에 연결할 수 없습니다</p>
-      <p class="text-sm text-ink-3">K8s 클러스터 관리 서비스가 현재 응답하지 않습니다.<br/>잠시 후 다시 시도해주세요.</p>
+      <p class="text-sm text-ink-2">K8s 클러스터 관리 서비스가 현재 응답하지 않습니다.<br/>잠시 후 다시 시도해주세요.</p>
     </div>
   {:else if loading}
     <LoadingSkeleton variant="table" rows={4} />
   {:else if clusters.length === 0}
-    <div class="text-center py-20 text-ink-3">
+    <div class="text-center py-20 text-ink-2">
       <p class="text-lg mb-2">K8s 클러스터가 없습니다</p>
       <p class="text-sm">Magnum을 통해 새 클러스터를 생성하세요</p>
     </div>

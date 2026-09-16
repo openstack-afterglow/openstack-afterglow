@@ -22,27 +22,27 @@
           <div class="text-ink-0 font-semibold text-sm font-mono truncate">{fs.name}</div>
           <div class="flex items-center gap-1.5 mt-0.5">
             {#if fs.metadata?.union_type}
-              <span class="text-[10px] px-1.5 py-0.5 rounded bg-surface-selected/40 text-warm-text border border-action-warm/50">{fs.metadata.union_type}</span>
+              <span class="text-xs px-1.5 py-0.5 rounded bg-surface-selected/40 text-warm-text border border-action-warm/50">{fs.metadata.union_type}</span>
             {/if}
             {#if fs.library_name}
-              <span class="text-[10px] px-1.5 py-0.5 rounded bg-violet-900/40 text-violet-300 border border-violet-800/50 truncate">{fs.library_name}</span>
+              <span class="text-xs px-1.5 py-0.5 rounded bg-violet-900/40 text-violet-300 border border-violet-800/50 truncate">{fs.library_name}</span>
             {/if}
           </div>
         </div>
       </div>
       <div class="grid grid-cols-2 gap-2 mb-3">
         <div>
-          <div class="text-[11px] uppercase tracking-wider font-medium text-ink-3">크기</div>
+          <div class="text-xs uppercase tracking-wider font-medium text-ink-2">크기</div>
           <div class="text-ink-0 font-mono text-sm mt-0.5">{fs.size} GB</div>
         </div>
         <div>
-          <div class="text-[11px] uppercase tracking-wider font-medium text-ink-3">상태</div>
+          <div class="text-xs uppercase tracking-wider font-medium text-ink-2">상태</div>
           <div class="mt-0.5"><StatusChip status={fs.status} /></div>
         </div>
       </div>
       {#if fs.built_at}
         <div class="pt-3 border-t border-line">
-          <div class="text-[11px] text-ink-3">빌드: {fs.built_at.split('T')[0]}</div>
+          <div class="text-xs text-ink-2">빌드: {fs.built_at.split('T')[0]}</div>
         </div>
       {/if}
     </div>

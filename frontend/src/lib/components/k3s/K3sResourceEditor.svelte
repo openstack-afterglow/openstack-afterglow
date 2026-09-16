@@ -81,7 +81,7 @@
   >
     <div class="flex items-center justify-between px-4 py-3 border-b border-line">
       <h3 class="text-sm font-medium text-ink-1">{title}</h3>
-      <button onclick={onClose} class="text-ink-3 hover:text-ink-2 text-lg leading-none">&times;</button>
+      <button onclick={onClose} class="text-ink-2 hover:text-ink-2 text-lg leading-none">&times;</button>
     </div>
 
     <div class="overflow-y-auto flex-1 p-4">

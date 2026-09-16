@@ -53,7 +53,7 @@
 					<div class="bg-surface-sunken rounded-lg px-3 py-2 text-sm flex items-center gap-3">
 						<span class="w-2 h-2 rounded-full flex-shrink-0" style="background:{m.status === 'ACTIVE' ? '#22c55e' : m.status === 'ERROR' ? '#ef4444' : '#64748b'}"></span>
 						<span class="text-ink-0 font-mono text-xs">{m.address}:{m.protocol_port}</span>
-						<span class="text-ink-3 text-xs">{m.status}</span>
+						<span class="text-ink-2 text-xs">{m.status}</span>
 						{#if !m.server_id}
 							<span class="text-xs text-yellow-600">외부 호스트</span>
 						{/if}

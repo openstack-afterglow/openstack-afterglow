@@ -11,7 +11,7 @@
 		data-tour="admin-containers-logs"
 	>
 		<span class="uppercase tracking-wide font-medium">로그</span>
-		<span class="text-ink-3">{s.logsOpen ? '▲' : '▼'}</span>
+		<span class="text-ink-2">{s.logsOpen ? '▲' : '▼'}</span>
 	</button>
 	{#if s.logsOpen}
 		<div class="px-4 pb-4">
@@ -23,7 +23,7 @@
 			{#if s.logs}
 				<pre class="bg-surface-canvas rounded p-3 text-xs text-ink-2 overflow-auto max-h-64 font-mono whitespace-pre-wrap">{s.logs}</pre>
 			{:else}
-				<div class="text-ink-3 text-xs">새로고침을 클릭하세요</div>
+				<div class="text-ink-2 text-xs">새로고침을 클릭하세요</div>
 			{/if}
 		</div>
 	{/if}

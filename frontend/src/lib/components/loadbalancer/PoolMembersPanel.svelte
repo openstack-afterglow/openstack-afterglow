@@ -51,14 +51,14 @@
   {/if}
 
   {#if s.selectedPoolMembers.length === 0}
-    <p class="text-xs text-ink-3">멤버가 없습니다.</p>
+    <p class="text-xs text-ink-2">멤버가 없습니다.</p>
   {:else}
     <div class="space-y-1.5">
       {#each s.selectedPoolMembers as member}
         <div class="flex items-center justify-between bg-surface-sunken/50 rounded px-3 py-2">
           <div class="text-xs">
             <span class="text-ink-0 font-mono">{member.address}:{member.protocol_port}</span>
-            <span class="ml-2 text-ink-3">가중치 {member.weight}</span>
+            <span class="ml-2 text-ink-2">가중치 {member.weight}</span>
             <span class="ml-2 {member.status === 'ACTIVE' ? 'text-green-400' : 'text-yellow-400'}">{member.status}</span>
           </div>
           <button onclick={() => s.removeMember(member.id)} disabled={s.saving} class="text-red-400 hover:text-red-300 text-xs">제거</button>

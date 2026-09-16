@@ -2658,7 +2658,7 @@
 	}
 	.model-lock-hint {
 		font-size: 0.66rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.chat-workspace {
 		display: flex;

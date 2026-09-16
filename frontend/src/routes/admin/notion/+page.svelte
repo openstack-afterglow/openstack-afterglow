@@ -163,8 +163,8 @@
 		</div>
 	{:else if targets.length === 0}
 		<div class="bg-surface-base border border-line rounded-lg p-8 text-center">
-			<p class="text-ink-3 text-sm">등록된 Notion 연동 대상이 없습니다.</p>
-			<p class="text-ink-3 text-xs mt-1">"연결 추가" 버튼을 눌러 시작하세요.</p>
+			<p class="text-ink-2 text-sm">등록된 Notion 연동 대상이 없습니다.</p>
+			<p class="text-ink-2 text-xs mt-1">"연결 추가" 버튼을 눌러 시작하세요.</p>
 		</div>
 	{:else}
 		<div class="space-y-4">
@@ -194,7 +194,7 @@
 
 	<div class="mt-6 bg-surface-base border border-line rounded-lg p-5">
 		<h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">설정 방법</h3>
-		<ol class="text-xs text-ink-3 space-y-1.5 list-decimal list-inside">
+		<ol class="text-xs text-ink-2 space-y-1.5 list-decimal list-inside">
 			<li>
 				<a href="https://www.notion.so/profile/integrations" target="_blank" class="text-warm-text hover:text-warm-text-hover">Notion Integrations</a>에서 Internal Integration 생성
 			</li>

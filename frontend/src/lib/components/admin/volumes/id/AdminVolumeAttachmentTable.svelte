@@ -6,7 +6,7 @@
 
 {#if attachments.length > 0}
 	<div class="bg-surface-base border border-line rounded-xl p-4 mb-4">
-		<h3 class="text-xs text-ink-3 uppercase tracking-wide mb-3">연결 정보</h3>
+		<h3 class="text-xs text-ink-2 uppercase tracking-wide mb-3">연결 정보</h3>
 		<table class="w-full text-sm">
 			<thead>
 				<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">

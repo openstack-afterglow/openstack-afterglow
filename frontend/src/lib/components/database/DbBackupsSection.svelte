@@ -99,9 +99,9 @@
 			<h2 class="text-sm font-semibold text-ink-0">자동 백업</h2>
 			{#if autoEnabled}
 				{@const f = configToForm()}
-				<p class="text-xs text-ink-3 mt-0.5">{FREQ_LABEL[f.frequency]} · {f.count}회 보존</p>
+				<p class="text-xs text-ink-2 mt-0.5">{FREQ_LABEL[f.frequency]} · {f.count}회 보존</p>
 			{:else}
-				<p class="text-xs text-ink-3 mt-0.5">비활성화됨</p>
+				<p class="text-xs text-ink-2 mt-0.5">비활성화됨</p>
 			{/if}
 		</div>
 		<div class="flex items-center gap-2">
@@ -126,7 +126,7 @@
 		<div class="mt-3 bg-surface-sunken rounded-lg p-3 space-y-3">
 			<div class="flex gap-3">
 				<label class="flex flex-col gap-1 flex-1">
-					<span class="text-xs text-ink-3">백업 주기</span>
+					<span class="text-xs text-ink-2">백업 주기</span>
 					<select bind:value={autoForm.frequency}
 						class="bg-surface-selected border border-line-2 rounded px-2 py-1.5 text-sm text-ink-0 focus:outline-none focus:border-action-warm">
 						<option value="daily">일별</option>
@@ -135,7 +135,7 @@
 					</select>
 				</label>
 				<label class="flex flex-col gap-1 w-24">
-					<span class="text-xs text-ink-3">보존 개수</span>
+					<span class="text-xs text-ink-2">보존 개수</span>
 					<input type="number" min="1" max="30" bind:value={autoForm.count}
 						class="bg-surface-selected border border-line-2 rounded px-2 py-1.5 text-sm text-ink-0 focus:outline-none focus:border-action-warm text-center" />
 				</label>
@@ -177,11 +177,11 @@
 		</div>
 	{/if}
 	{#if s.backups.length === 0}
-		<div class="text-ink-3 text-xs">백업이 없습니다</div>
+		<div class="text-ink-2 text-xs">백업이 없습니다</div>
 	{:else}
 		<table class="w-full text-sm">
 			<thead>
-				<tr class="text-ink-3 text-xs">
+				<tr class="text-ink-2 text-xs">
 					<th class="text-left py-2 font-medium">이름</th>
 					<th class="text-left py-2 font-medium">상태</th>
 					<th class="text-left py-2 font-medium">크기</th>
@@ -202,7 +202,7 @@
 							</div>
 						</td>
 						<td class="py-2 text-ink-2 text-xs">{b.size ? `${b.size} GB` : '-'}</td>
-						<td class="py-2 text-ink-3 text-xs">{b.created_at ? b.created_at.slice(0, 10) : '-'}</td>
+						<td class="py-2 text-ink-2 text-xs">{b.created_at ? b.created_at.slice(0, 10) : '-'}</td>
 						<td class="py-2 text-right">
 							<div class="flex justify-end gap-1">
 								<button onclick={() => { selectedBackup = b; showRestoreModal = true; }} disabled={s.restoringBackup === b.id}

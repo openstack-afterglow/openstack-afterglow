@@ -286,7 +286,7 @@
 			{/if}
 		</section>
 
-		<p class="text-xs text-ink-3">조작은 네트워크 상세 페이지에서 · 토폴로지 상세는 읽기 전용</p>
+		<p class="text-xs text-ink-2">조작은 네트워크 상세 페이지에서 · 토폴로지 상세는 읽기 전용</p>
 	{/if}
 </div>
 

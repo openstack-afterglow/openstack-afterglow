@@ -62,7 +62,7 @@
 	<div class="relative bg-surface-canvas border border-line rounded-lg w-full max-w-lg mx-4 shadow-[var(--shadow-restraint)] max-h-[85vh] overflow-y-auto">
 		<div class="flex items-center justify-between px-5 py-4 border-b border-line">
 			<h2 class="text-sm font-semibold text-ink-0">인증서 만료 — {clusterName}</h2>
-			<button onclick={onclose} class="text-ink-3 hover:text-ink-0 transition-colors text-lg leading-none">&times;</button>
+			<button onclick={onclose} class="text-ink-2 hover:text-ink-0 transition-colors text-lg leading-none">&times;</button>
 		</div>
 
 		<div class="p-5 space-y-4">
@@ -80,25 +80,25 @@
 									{cert.days_remaining}일 남음
 								</span>
 							{:else}
-								<span class="text-xs text-ink-3">없음</span>
+								<span class="text-xs text-ink-2">없음</span>
 							{/if}
 						</div>
 						{#if cert}
 							<dl class="space-y-1 text-xs">
 								<div class="flex justify-between gap-2">
-									<dt class="text-ink-3 shrink-0">만료일</dt>
+									<dt class="text-ink-2 shrink-0">만료일</dt>
 									<dd class="text-ink-2 font-mono">{formatDate(cert.not_after)}</dd>
 								</div>
 								<div class="flex justify-between gap-2">
-									<dt class="text-ink-3 shrink-0">발급일</dt>
+									<dt class="text-ink-2 shrink-0">발급일</dt>
 									<dd class="text-ink-2 font-mono">{formatDate(cert.not_before)}</dd>
 								</div>
 								<div class="flex justify-between gap-2">
-									<dt class="text-ink-3 shrink-0">Subject</dt>
+									<dt class="text-ink-2 shrink-0">Subject</dt>
 									<dd class="text-ink-2 font-mono truncate max-w-[240px]" title={cert.subject}>{cert.subject}</dd>
 								</div>
 								<div class="flex justify-between gap-2">
-									<dt class="text-ink-3 shrink-0">Issuer</dt>
+									<dt class="text-ink-2 shrink-0">Issuer</dt>
 									<dd class="text-ink-2 font-mono truncate max-w-[240px]" title={cert.issuer}>{cert.issuer}</dd>
 								</div>
 							</dl>
@@ -116,7 +116,7 @@
 				{:else}
 					<div class="bg-surface-base border border-line rounded-xl p-4">
 						<span class="text-xs text-ink-2 uppercase tracking-wide">서버 TLS</span>
-						<p class="text-xs text-ink-3 mt-1">TLS 프로브 불가 (API 서버 비접근 또는 타임아웃)</p>
+						<p class="text-xs text-ink-2 mt-1">TLS 프로브 불가 (API 서버 비접근 또는 타임아웃)</p>
 					</div>
 				{/if}
 			{/if}

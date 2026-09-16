@@ -117,15 +117,15 @@
 				<div class="flex items-center gap-2 flex-wrap">
 					<span class="font-medium text-ink-0 text-sm">{lib.name}</span>
 					{#if lib.version}
-						<span class="font-mono text-[11px] text-ink-3 px-1.5 py-0.5 rounded bg-surface-sunken border border-line-2">{lib.version}</span>
+						<span class="font-mono text-xs text-ink-2 px-1.5 py-0.5 rounded bg-surface-sunken border border-line-2">{lib.version}</span>
 					{/if}
 					{#if lib.size_bytes}
-						<span class="text-[11px] text-ink-3 ml-auto flex-shrink-0">{formatSize(lib.size_bytes)}</span>
+						<span class="text-xs text-ink-2 ml-auto flex-shrink-0">{formatSize(lib.size_bytes)}</span>
 					{/if}
 				</div>
 				{#if lib.depends_on.length > 0}
 					<div class="flex items-center gap-1.5 flex-wrap mt-1.5">
-						<span class="text-[11px] text-ink-3">요구사항:</span>
+						<span class="text-xs text-ink-2">요구사항:</span>
 						{#each lib.depends_on as dep}
 							{@const met = selected.includes(dep)}
 							<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full font-mono text-[10.5px]
@@ -155,11 +155,11 @@
 	<div class="flex items-center gap-3 flex-wrap px-4 py-3 rounded-lg bg-surface-base border border-line text-xs text-ink-2 mt-4">
 		<span>선택 <b class="text-ink-0 font-mono font-semibold">{selectedCount}</b>개 / {libraries.length}개</span>
 		{#if totalSize}
-			<span class="text-ink-3">·</span>
+			<span class="text-ink-2">·</span>
 			<span>OverlayFS 추가 디스크 <b class="text-ink-0 font-mono">{totalSize}</b></span>
 		{/if}
 		{#if selectedCount > 0}
-			<span class="text-ink-3">·</span>
+			<span class="text-ink-2">·</span>
 			{#if allDepsSatisfied}
 				<span>모든 의존성 충족 <span class="text-green-400 font-semibold">✓</span></span>
 			{:else}

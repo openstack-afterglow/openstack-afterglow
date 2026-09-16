@@ -179,7 +179,7 @@
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if securityGroups.length === 0}
-		<div class="text-center py-20 text-ink-3">
+		<div class="text-center py-20 text-ink-2">
 			<div class="text-5xl mb-4">🔒</div>
 			<div class="text-lg">보안 그룹이 없습니다</div>
 		</div>
@@ -210,7 +210,7 @@
 					onCloseMobile={() => selectedSg = null}
 				/>
 			{:else}
-				<div class="bg-surface-base border border-line rounded-lg p-5 flex items-center justify-center text-ink-3 text-sm min-h-[200px]">
+				<div class="bg-surface-base border border-line rounded-lg p-5 flex items-center justify-center text-ink-2 text-sm min-h-[200px]">
 					왼쪽에서 보안 그룹을 선택하세요
 				</div>
 			{/if}

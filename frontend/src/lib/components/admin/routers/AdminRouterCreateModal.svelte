@@ -51,7 +51,7 @@
 					<input id="field-adminroutercreatemodal-46" bind:value={form.name} type="text" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" />
 				</div>
 				<div>
-					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminroutercreatemodal-50">외부 네트워크 <span class="text-ink-3">(선택)</span></label>
+					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminroutercreatemodal-50">외부 네트워크 <span class="text-ink-2">(선택)</span></label>
 					<select id="field-adminroutercreatemodal-50" bind:value={form.external_network_id} class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus-visible:shadow-[var(--focus-ring)]">
 						<option value="">없음</option>
 						{#each externalNetworks as n}

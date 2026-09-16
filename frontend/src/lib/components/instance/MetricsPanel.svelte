@@ -182,11 +182,11 @@
 		<div class="flex gap-1">
 			<button
 				onclick={() => { activeTab = 'chart'; }}
-				class="text-xs px-3 py-1 rounded transition-colors {activeTab === 'chart' ? 'bg-action-warm text-ink-0' : 'text-ink-3 hover:text-ink-2 border border-line-2'}"
+				class="text-xs px-3 py-1 rounded transition-colors {activeTab === 'chart' ? 'bg-action-warm text-ink-0' : 'text-ink-2 hover:text-ink-2 border border-line-2'}"
 			>차트</button>
 			<button
 				onclick={() => { activeTab = 'grafana'; }}
-				class="text-xs px-3 py-1 rounded transition-colors {activeTab === 'grafana' ? 'bg-action-warm text-ink-0' : 'text-ink-3 hover:text-ink-2 border border-line-2'}"
+				class="text-xs px-3 py-1 rounded transition-colors {activeTab === 'grafana' ? 'bg-action-warm text-ink-0' : 'text-ink-2 hover:text-ink-2 border border-line-2'}"
 			>Grafana</button>
 		</div>
 
@@ -197,7 +197,7 @@
 				{#each RANGES as r}
 					<button
 						onclick={() => { range = r; }}
-						class="text-xs px-2 py-0.5 rounded transition-colors {range === r ? 'bg-surface-selected text-ink-0' : 'text-ink-3 hover:text-ink-2'}"
+						class="text-xs px-2 py-0.5 rounded transition-colors {range === r ? 'bg-surface-selected text-ink-0' : 'text-ink-2 hover:text-ink-2'}"
 					>{RANGE_LABELS[r]}</button>
 				{/each}
 			</div>
@@ -234,11 +234,11 @@
 				</div>
 
 				{#if m.data === null}
-					<div class="flex items-center justify-center h-20 text-ink-3 text-xs">로딩 중…</div>
+					<div class="flex items-center justify-center h-20 text-ink-2 text-xs">로딩 중…</div>
 				{:else if m.error}
 					<div class="flex items-center justify-center h-20 text-red-500 text-xs">{m.error}</div>
 				{:else if m.data.length === 0}
-					<div class="flex items-center justify-center h-20 text-ink-3 text-xs">메트릭 없음 (인스턴스 미가동 또는 exporter 미연동)</div>
+					<div class="flex items-center justify-center h-20 text-ink-2 text-xs">메트릭 없음 (인스턴스 미가동 또는 exporter 미연동)</div>
 				{:else}
 					{@const pts = m.data}
 					{@const exPts = ex?.data ?? []}
@@ -302,11 +302,11 @@
 						<div class="flex gap-3 mt-1">
 							<div class="flex items-center gap-1">
 								<div class="w-4 h-0.5" style="background:{chart.color}"></div>
-								<span class="text-xs text-ink-3">rx / read</span>
+								<span class="text-xs text-ink-2">rx / read</span>
 							</div>
 							<div class="flex items-center gap-1">
 								<div class="w-4 h-0.5 border-t border-dashed" style="border-color:{chart.extraColor}"></div>
-								<span class="text-xs text-ink-3">tx / write</span>
+								<span class="text-xs text-ink-2">tx / write</span>
 							</div>
 						</div>
 					{/if}
@@ -315,7 +315,7 @@
 				<!-- 통계 요약 행 (min / avg / max) -->
 				{#if summaryStats[chart.key]}
 					{@const s = summaryStats[chart.key]}
-					<div class="flex gap-4 mt-2 pt-2 border-t border-line-2/60 text-[11px] text-ink-3">
+					<div class="flex gap-4 mt-2 pt-2 border-t border-line-2/60 text-xs text-ink-2">
 						<span>최소 <span class="text-ink-2 font-medium">{s.min != null ? (chart.formatY ? chart.formatY(s.min) : `${s.min.toFixed(1)}${chart.unit}`) : '—'}</span></span>
 						<span>평균 <span class="text-ink-2 font-medium">{s.avg != null ? (chart.formatY ? chart.formatY(s.avg) : `${s.avg.toFixed(1)}${chart.unit}`) : '—'}</span></span>
 						<span>최대 <span class="text-ink-2 font-medium">{s.max != null ? (chart.formatY ? chart.formatY(s.max) : `${s.max.toFixed(1)}${chart.unit}`) : '—'}</span></span>

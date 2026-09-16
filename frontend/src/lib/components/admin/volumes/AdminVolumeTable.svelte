@@ -119,7 +119,7 @@
 							{/if}
 						</button>
 					</td>
-					<td class="py-2 pr-4 text-ink-3">{v.created_at?.slice(0, 10) ?? '-'}</td>
+					<td class="py-2 pr-4 text-ink-2">{v.created_at?.slice(0, 10) ?? '-'}</td>
 					<td class="py-2" onclick={(e) => e.stopPropagation()}>
 						<div class="flex justify-end">
 							<ActionMenu

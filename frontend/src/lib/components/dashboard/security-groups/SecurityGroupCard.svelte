@@ -74,9 +74,9 @@
 		>
 			<span class="text-sm font-medium text-ink-0 truncate">{sg.name}</span>
 			{#if sg.description}
-				<span class="text-xs text-ink-3 truncate">{sg.description}</span>
+				<span class="text-xs text-ink-2 truncate">{sg.description}</span>
 			{/if}
-			<span class="text-xs text-ink-3 ml-auto shrink-0"
+			<span class="text-xs text-ink-2 ml-auto shrink-0"
 				>{sg.rules.length}개 규칙 {expanded ? '▾' : '▸'}</span
 			>
 		</button>

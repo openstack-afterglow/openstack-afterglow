@@ -205,12 +205,12 @@
 			<p class="text-xs text-ink-2 mb-4">아래 정보를 수락 측에 전달하세요. 인증 키는 다시 확인할 수 없습니다.</p>
 			<div class="space-y-3">
 				<div class="bg-surface-sunken rounded-lg p-3">
-					<div class="text-xs text-ink-3 mb-1">이전 ID</div>
+					<div class="text-xs text-ink-2 mb-1">이전 ID</div>
 					<div class="font-mono text-sm text-ink-0 break-all">{createdTransfer.id}</div>
 				</div>
 				<div class="bg-surface-sunken rounded-lg p-3">
 					<div class="flex items-center justify-between mb-1">
-						<div class="text-xs text-ink-3">인증 키</div>
+						<div class="text-xs text-ink-2">인증 키</div>
 						<button
 							onclick={copyAuthKey}
 							class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
@@ -258,11 +258,11 @@
 		{:else if mode === 'list'}
 			<h2 class="text-lg font-semibold text-ink-0 mb-4">대기 중인 이전 목록</h2>
 			{#if loading}
-				<div class="text-center py-6 text-ink-3 text-sm">불러오는 중...</div>
+				<div class="text-center py-6 text-ink-2 text-sm">불러오는 중...</div>
 			{:else if errorMsg}
 				<div class="text-red-400 text-xs bg-red-900/20 border border-red-800 rounded px-3 py-2">{errorMsg}</div>
 			{:else if transfers.length === 0}
-				<div class="text-center py-6 text-ink-3 text-sm">대기 중인 이전이 없습니다.</div>
+				<div class="text-center py-6 text-ink-2 text-sm">대기 중인 이전이 없습니다.</div>
 			{:else}
 				<div class="space-y-2">
 					{#each transfers as t (t.id)}
@@ -270,7 +270,7 @@
 							<div class="min-w-0">
 								<div class="text-xs text-ink-2 font-mono truncate">{t.id}</div>
 								{#if t.name}<div class="text-sm text-ink-0">{t.name}</div>{/if}
-								<div class="text-xs text-ink-3">볼륨: {t.volume_id.slice(0, 8)}...</div>
+								<div class="text-xs text-ink-2">볼륨: {t.volume_id.slice(0, 8)}...</div>
 							</div>
 							<button
 								onclick={() => cancelTransfer(t.id)}

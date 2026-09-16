@@ -195,7 +195,7 @@
 	{#if loading}
 		<div class="text-ink-2 text-sm py-8 text-center">로딩 중...</div>
 	{:else if logs.length === 0}
-		<div class="text-ink-3 text-sm py-8 text-center">활동 없음</div>
+		<div class="text-ink-2 text-sm py-8 text-center">활동 없음</div>
 	{:else}
 		<div class="overflow-x-auto rounded-lg border border-line">
 			<table class="w-full text-sm">
@@ -232,7 +232,7 @@
 									{#if log.status === 'failed' && log.error_message}
 										<button
 											onclick={() => expandedId = expandedId === log.id ? null : log.id}
-											class="text-ink-3 hover:text-ink-2 text-xs underline"
+											class="text-ink-2 hover:text-ink-2 text-xs underline"
 										>
 											{expandedId === log.id ? '닫기' : '상세'}
 										</button>

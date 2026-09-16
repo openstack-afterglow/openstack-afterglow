@@ -69,7 +69,7 @@
 				({volume.status})
 			</p>
 			<p class="text-xs text-state-danger-text mb-1">상태 무관 강제 삭제. Cinder DB row 정리 목적이며 Ceph backend가 NotFound인 경우에만 사용하세요.</p>
-			<p class="text-xs text-ink-3 mb-4">attached 볼륨은 거부됩니다.</p>
+			<p class="text-xs text-ink-2 mb-4">attached 볼륨은 거부됩니다.</p>
 			{#if forceDeleteError}
 				<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{forceDeleteError}</div>
 			{/if}

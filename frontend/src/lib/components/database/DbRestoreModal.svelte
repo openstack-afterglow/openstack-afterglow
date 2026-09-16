@@ -78,11 +78,11 @@
 			role="none"
 		>
 			<h2 class="text-lg font-semibold text-ink-0 mb-1">백업에서 복원</h2>
-			<p class="text-xs text-ink-3 mb-4">백업 <span class="text-ink-2 font-medium">"{backup.name || backup.id.slice(0, 8)}"</span> 에서 새 DB 인스턴스를 생성합니다.</p>
+			<p class="text-xs text-ink-2 mb-4">백업 <span class="text-ink-2 font-medium">"{backup.name || backup.id.slice(0, 8)}"</span> 에서 새 DB 인스턴스를 생성합니다.</p>
 
 			<div class="space-y-3">
 				<label class="flex flex-col gap-1">
-					<span class="text-xs text-ink-3">새 인스턴스 이름 <span class="text-red-400">*</span></span>
+					<span class="text-xs text-ink-2">새 인스턴스 이름 <span class="text-red-400">*</span></span>
 					<input
 						type="text"
 						bind:value={name}
@@ -92,7 +92,7 @@
 				</label>
 
 				<label class="flex flex-col gap-1">
-					<span class="text-xs text-ink-3">Flavor <span class="text-red-400">*</span></span>
+					<span class="text-xs text-ink-2">Flavor <span class="text-red-400">*</span></span>
 					<select
 						bind:value={flavorId}
 						class="bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 focus:outline-none focus:border-action-warm"
@@ -108,7 +108,7 @@
 				</label>
 
 				<label class="flex flex-col gap-1">
-					<span class="text-xs text-ink-3">볼륨 크기 (GB) <span class="text-xs text-ink-3">최소 {minVolume}GB</span></span>
+					<span class="text-xs text-ink-2">볼륨 크기 (GB) <span class="text-xs text-ink-2">최소 {minVolume}GB</span></span>
 					<input
 						type="number"
 						bind:value={volumeSize}

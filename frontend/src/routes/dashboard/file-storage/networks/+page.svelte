@@ -148,12 +148,12 @@
 				<button onclick={() => showModal = true} class="bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">+ Share 네트워크 생성</button>
 			{/snippet}
 		</PageHeader>
-		<p class="text-sm text-ink-3 mb-6">파일 스토리지를 Neutron 네트워크에 연결하는 Share Network를 관리합니다.</p>
+		<p class="text-sm text-ink-2 mb-6">파일 스토리지를 Neutron 네트워크에 연결하는 Share Network를 관리합니다.</p>
 		{#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
 		{#if loading}
 			<LoadingSkeleton variant="table" rows={4} />
 		{:else if networks.length === 0}
-			<div class="text-center py-20 text-ink-3"><p class="text-lg">Share 네트워크가 없습니다</p></div>
+			<div class="text-center py-20 text-ink-2"><p class="text-lg">Share 네트워크가 없습니다</p></div>
 		{:else}
 			<ShareNetworkTable {networks} {deleting} selectedIds={selection.ids} selectableIds={selectableIds} selectionDisabled={bulkBusy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} onDelete={deleteNetwork} />
 			<BulkSelectionOverlay count={selection.count} ariaLabel="선택한 Share 네트워크 일괄 작업" actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />

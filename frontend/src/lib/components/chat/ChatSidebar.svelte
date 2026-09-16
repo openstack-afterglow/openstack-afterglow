@@ -534,7 +534,7 @@
 		border: 1px solid transparent;
 		border-radius: 0.55rem;
 		background: transparent;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-size: 0.8125rem;
 		cursor: pointer;
 	}
@@ -549,7 +549,7 @@
 		padding: 0.1rem 0.3rem;
 		border: 1px solid var(--color-line);
 		border-radius: 0.3rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-size: 0.65rem;
 	}
 	.chat-search-dialog {
@@ -585,7 +585,7 @@
 		padding: 0.12rem 0.35rem;
 		border: 1px solid var(--color-line);
 		border-radius: 0.3rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-size: 0.65rem;
 	}
 	.chat-search-results {
@@ -613,13 +613,13 @@
 		color: var(--color-ink-0);
 	}
 	.chat-search-results small {
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-size: 0.68rem;
 	}
 	.chat-search-empty {
 		margin: 0;
 		padding: 1.25rem 0.65rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-size: 0.8rem;
 	}
 	.list {
@@ -634,7 +634,7 @@
 	.empty {
 		padding: 1rem 0.75rem;
 		font-size: 0.78rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.group-row {
 		position: relative;
@@ -656,7 +656,7 @@
 		padding: 0.4rem 0.5rem;
 		border: none;
 		background: transparent;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-size: 0.7rem;
 		font-weight: 650;
 		letter-spacing: 0.03em;
@@ -675,7 +675,7 @@
 	}
 	.group-count {
 		flex-shrink: 0;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-weight: 550;
 	}
 	.group-actions {
@@ -704,7 +704,7 @@
 		border: none;
 		border-radius: 0.4rem;
 		background: transparent;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		cursor: pointer;
 	}
 	.group-action:hover,
@@ -752,7 +752,7 @@
 		border: none;
 		border-radius: 0.4rem;
 		background: transparent;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-size: 0.72rem;
 		cursor: pointer;
 	}
@@ -863,7 +863,7 @@
 		border: none;
 		border-radius: 0.4rem;
 		background: transparent;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		cursor: pointer;
 		opacity: 0;
 		transition: opacity 0.12s, color 0.12s, background 0.12s;
@@ -950,7 +950,7 @@
 	}
 	.dots {
 		flex-shrink: 0;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.truncate {
 		overflow: hidden;

@@ -186,7 +186,7 @@
 						placeholder="ubuntu:latest"
 						class="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-line-2)] rounded-lg px-3 py-2 text-[var(--color-ink-0)] text-sm focus:outline-none focus:border-[var(--color-accent)]"
 					/>
-					<div class="text-[11px] text-[var(--color-ink-3)] mt-1">repository:tag 형식이며 tag를 생략하면 latest가 사용됩니다. 예: ubuntu:24.04</div>
+					<div class="text-xs text-[var(--color-ink-3)] mt-1">repository:tag 형식이며 tag를 생략하면 latest가 사용됩니다. 예: ubuntu:24.04</div>
 				</div>
 
 				<div class="grid grid-cols-2 gap-3">

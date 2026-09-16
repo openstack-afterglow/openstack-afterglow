@@ -99,23 +99,13 @@
 		text: string;
 	};
 
+	// 리소스 종류는 운영 상태가 아니다. 다섯 가지 상태 톤을 카테고리 라벨에 쓰면 감사 로그가
+	// 건강 상태 열처럼 읽힌다. 파괴적 동작 하나만 danger 를 유지하고 나머지는 중립이다.
 	function actionBadgeStyle(action: string): ActionBadgeStyle {
 		if (action.startsWith('instance.delete')) {
-			return { bg: 'color-mix(in oklab, var(--color-state-danger) 14%, transparent)', text: 'var(--color-state-danger)' };
-		} else if (action.startsWith('instance.')) {
-			return { bg: 'color-mix(in oklab, var(--color-accent) 14%, transparent)', text: 'var(--color-accent)' };
-		} else if (action.startsWith('volume.')) {
-			return { bg: 'color-mix(in oklab, var(--color-state-info) 14%, transparent)', text: 'var(--color-state-info)' };
-		} else if (action.startsWith('snapshot.')) {
-			return { bg: 'color-mix(in oklab, var(--color-accent-2) 14%, transparent)', text: 'var(--color-accent-2)' };
-		} else if (action.startsWith('floating_ip.')) {
-			return { bg: 'color-mix(in oklab, var(--color-state-warning) 14%, transparent)', text: 'var(--color-state-warning)' };
-		} else if (action.startsWith('security_group.')) {
-			return { bg: 'color-mix(in oklab, var(--color-state-success) 14%, transparent)', text: 'var(--color-state-success)' };
-		} else if (action.startsWith('auth.')) {
-			return { bg: 'color-mix(in oklab, var(--color-ink-3) 14%, transparent)', text: 'var(--color-ink-3)' };
+			return { bg: 'color-mix(in oklab, var(--color-state-danger) 14%, transparent)', text: 'var(--color-state-danger-text)' };
 		}
-		return { bg: 'color-mix(in oklab, var(--color-ink-3) 14%, transparent)', text: 'var(--color-ink-3)' };
+		return { bg: 'color-mix(in oklab, var(--color-ink-2) 14%, transparent)', text: 'var(--color-ink-2)' };
 	}
 
 	const PERIOD_LABELS: Record<string, string> = { '24h': '24h', '7d': '7d', '30d': '30d' };
@@ -181,7 +171,7 @@
 				{#each hourDist as _, i}
 					<div class="flex-1 text-center">
 						{#if i % 3 === 0}
-							<span class="text-[9px] text-[var(--color-ink-3)]">{String(i).padStart(2, '0')}</span>
+							<span class="text-xs text-[var(--color-ink-3)]">{String(i).padStart(2, '0')}</span>
 						{/if}
 					</div>
 				{/each}
@@ -197,7 +187,7 @@
 				<div class="mt-4 overflow-x-auto">
 					<table class="w-full text-sm">
 						<thead>
-							<tr class="text-[10px] uppercase tracking-wide text-[var(--color-ink-3)] border-b border-line">
+							<tr class="text-xs uppercase tracking-wide text-[var(--color-ink-3)] border-b border-line">
 								<th class="text-left pb-2 pr-4 font-medium">시각</th>
 								<th class="text-left pb-2 pr-4 font-medium">액션</th>
 								<th class="text-left pb-2 pr-4 font-medium">리소스</th>
@@ -214,7 +204,7 @@
 									</td>
 									<td class="py-2.5 pr-4">
 										<span
-											class="font-mono text-[11px] px-2 py-0.5 rounded"
+											class="font-mono text-xs px-2 py-0.5 rounded"
 											style="background: {badge.bg}; color: {badge.text};"
 										>{action.action}</span>
 									</td>

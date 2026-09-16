@@ -132,11 +132,11 @@
 
 <div class="mt-2">
 	{#if loading}
-		<div class="text-ink-3 text-xs py-8 text-center">휴지통 목록 로딩 중...</div>
+		<div class="text-ink-2 text-xs py-8 text-center">휴지통 목록 로딩 중...</div>
 	{:else if items.length === 0}
-		<div class="text-ink-3 text-xs py-12 text-center">휴지통이 비어 있습니다</div>
+		<div class="text-ink-2 text-xs py-12 text-center">휴지통이 비어 있습니다</div>
 	{:else}
-		<div class="text-xs text-ink-3 mb-2">총 {items.length}개 항목 — 보관 기간 내 복구 가능</div>
+		<div class="text-xs text-ink-2 mb-2">총 {items.length}개 항목 — 보관 기간 내 복구 가능</div>
 		{#if selectionEnabled}
 			<div class="mb-2">
 				<SelectionToolbar
@@ -194,7 +194,7 @@
 				{/each}
 			</tbody>
 		</table>
-		<p class="mt-2 text-xs text-ink-3">휴지통 항목도 스토리지 용량을 차지합니다. 필요 없는 항목은 영구 삭제하세요.</p>
+		<p class="mt-2 text-xs text-ink-2">휴지통 항목도 스토리지 용량을 차지합니다. 필요 없는 항목은 영구 삭제하세요.</p>
 		{#if selectionEnabled}
 			<BulkSelectionOverlay
 				count={selection.count}

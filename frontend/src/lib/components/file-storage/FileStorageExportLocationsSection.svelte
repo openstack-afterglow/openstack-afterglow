@@ -26,7 +26,7 @@
 			<div class="flex items-start gap-2">
 				<div class="flex-1 flex items-center gap-1.5 bg-surface-sunken px-3 py-2 rounded min-w-0">
 					{#if loc.preferred}
-						<span class="shrink-0 text-[10px] px-1 py-0.5 rounded bg-teal-900/50 text-teal-400 border border-teal-800 leading-none">preferred</span>
+						<span class="shrink-0 text-xs px-1 py-0.5 rounded bg-teal-900/50 text-teal-400 border border-teal-800 leading-none">preferred</span>
 					{/if}
 					{#if extractHost(loc.path)}
 						<span class="shrink-0 font-mono text-xs text-teal-300 font-medium">{extractHost(loc.path)}</span>

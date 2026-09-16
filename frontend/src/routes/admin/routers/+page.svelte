@@ -100,9 +100,9 @@
 	</PageHeader>
 
 	{#if loading}
-		<div class="text-ink-3 text-sm">로딩 중...</div>
+		<div class="text-ink-2 text-sm">로딩 중...</div>
 	{:else}
 		<AdminRoutersTable {routers} onEdit={(r) => { editRouter = r; }} onDelete={(r) => { deleteRouter = r; }} />
-		<div class="mt-3 text-xs text-ink-3">총 {routers.length}개 라우터</div>
+		<div class="mt-3 text-xs text-ink-2">총 {routers.length}개 라우터</div>
 	{/if}
 </div>

@@ -287,7 +287,7 @@
 						placeholder="/mnt/mydata"
 						class="w-full bg-surface-selected border border-line-2 text-ink-0 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-action-warm"
 					/>
-					<p class="text-[10.5px] text-ink-3 mt-0.5">/mnt, /data, /srv, /home 하위 경로만 허용</p>
+					<p class="text-[10.5px] text-ink-2 mt-0.5">/mnt, /data, /srv, /home 하위 경로만 허용</p>
 				</div>
 				<label class="flex items-center gap-2 text-sm text-ink-2 cursor-pointer">
 					<input
@@ -330,9 +330,9 @@
 	{/if}
 
 	{#if loading}
-		<p class="text-sm text-ink-3">로딩 중...</p>
+		<p class="text-sm text-ink-2">로딩 중...</p>
 	{:else if attachments.length === 0}
-		<p class="text-sm text-ink-3">연결된 파일 스토리지가 없습니다.</p>
+		<p class="text-sm text-ink-2">연결된 파일 스토리지가 없습니다.</p>
 	{:else}
 		<div class="space-y-2">
 			{#each attachments as att}
@@ -341,9 +341,9 @@
 						<div class="flex items-center gap-2">
 							<span class="text-sm text-ink-0 font-medium truncate">{att.name || att.file_storage_id.slice(0, 12)}</span>
 							{#if att.share_proto}
-								<span class="text-[10px] text-ink-3 font-mono px-1.5 py-0.5 rounded bg-surface-selected">{att.share_proto}</span>
+								<span class="text-xs text-ink-2 font-mono px-1.5 py-0.5 rounded bg-surface-selected">{att.share_proto}</span>
 							{/if}
-							<span class="text-[10px] px-1.5 py-0.5 rounded font-mono {att.status === 'available' ? 'text-green-400 bg-green-900/20' : 'text-ink-2 bg-surface-selected'}">{att.status}</span>
+							<span class="text-xs px-1.5 py-0.5 rounded font-mono {att.status === 'available' ? 'text-green-400 bg-green-900/20' : 'text-ink-2 bg-surface-selected'}">{att.status}</span>
 						</div>
 					</div>
 					<button
@@ -362,6 +362,6 @@
 	.catalog-message {
 		margin-top: 0.25rem;
 		font-size: 0.75rem;
-		color: var(--color-text-muted);
+		color: var(--color-ink-2);
 	}
 </style>

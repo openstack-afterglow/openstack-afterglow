@@ -197,7 +197,7 @@
       {:else if connecting}
         <span class="text-xs text-yellow-400">연결 중...</span>
       {:else}
-        <span class="text-xs text-ink-3">연결 끊김</span>
+        <span class="text-xs text-ink-2">연결 끊김</span>
       {/if}
     </div>
     <div class="flex items-center gap-2">

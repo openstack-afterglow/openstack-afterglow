@@ -68,7 +68,7 @@
 			role="none"
 		>
 			<h2 class="text-lg font-semibold text-ink-0 mb-3">용량 확장</h2>
-			<p class="text-xs text-ink-3 mb-4">현재: {volume.size} GB</p>
+			<p class="text-xs text-ink-2 mb-4">현재: {volume.size} GB</p>
 			{#if extendError}
 				<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{extendError}</div>
 			{/if}

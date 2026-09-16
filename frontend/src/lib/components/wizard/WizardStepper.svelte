@@ -41,11 +41,11 @@
 							{step}
 						</div>
 					{:else}
-						<div class="w-6 h-6 rounded-full bg-surface-sunken border border-line-2 flex items-center justify-center flex-shrink-0 text-[11px] font-medium text-ink-3">
+						<div class="w-6 h-6 rounded-full bg-surface-sunken border border-line-2 flex items-center justify-center flex-shrink-0 text-xs font-medium text-ink-2">
 							{step}
 						</div>
 					{/if}
-					<span class="text-[11px] font-medium {isCurrent ? 'text-ink-0' : isDone ? 'text-ink-2 group-hover:text-ink-0' : 'text-ink-3'}">{label}</span>
+					<span class="text-xs font-medium {isCurrent ? 'text-ink-0' : isDone ? 'text-ink-2 group-hover:text-ink-0' : 'text-ink-2'}">{label}</span>
 				</button>
 			{/each}
 		</div>

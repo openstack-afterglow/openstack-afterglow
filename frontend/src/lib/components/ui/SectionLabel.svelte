@@ -19,6 +19,6 @@
     text-transform: uppercase;
     letter-spacing: 0.12em;
     font-weight: 500;
-    color: var(--color-ink-3);
+    color: var(--color-ink-2);
   }
 </style>

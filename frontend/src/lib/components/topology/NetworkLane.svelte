@@ -91,11 +91,11 @@
 				: isLight ? 'rgba(255,255,255,0.95)' : 'rgb(17 24 39 / 0.9)'}"
 		>
 			<div class="text-xs font-semibold truncate" style="color: {color}">{net.name || net.id}</div>
-			<div class="text-[9px] mt-0.5" style="color: {isLight ? '#6b7280' : '#6b7280'}">{typeLabel}</div>
+			<div class="text-xs mt-0.5" style="color: {isLight ? '#6b7280' : '#6b7280'}">{typeLabel}</div>
 			{#if cidr}
-				<div class="text-[8px] font-mono mt-0.5" style="color: {isLight ? '#9ca3af' : '#4b5563'}">{cidr}</div>
+				<div class="text-xs font-mono mt-0.5" style="color: {isLight ? '#9ca3af' : '#4b5563'}">{cidr}</div>
 			{/if}
-			<div class="text-[8px] font-mono mt-1" style="color: {totalBps > 0 ? trafficColor(totalBps) : (isLight ? '#9ca3af' : '#374151')}">
+			<div class="text-xs font-mono mt-1" style="color: {totalBps > 0 ? trafficColor(totalBps) : (isLight ? '#9ca3af' : '#374151')}">
 				{#if netTraffic && totalBps > 0}
 					↓{formatBps(netTraffic.rx_bps)} ↑{formatBps(netTraffic.tx_bps)}
 				{:else}

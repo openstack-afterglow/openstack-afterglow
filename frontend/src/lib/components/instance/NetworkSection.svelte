@@ -78,7 +78,7 @@
 	{/if}
 
 	{#if s.interfaces.length === 0}
-		<p class="text-sm text-ink-3">인터페이스 정보 없음</p>
+		<p class="text-sm text-ink-2">인터페이스 정보 없음</p>
 	{:else}
 		<div class="space-y-4">
 			{#each s.interfaces as iface}
@@ -87,23 +87,23 @@
 					<div class="flex items-start justify-between mb-3">
 						<div class="grid grid-cols-1 @3xl/panel:grid-cols-2 gap-x-6 gap-y-2 flex-1">
 							<div>
-								<dt class="text-xs text-ink-3 mb-0.5">포트 ID</dt>
+								<dt class="text-xs text-ink-2 mb-0.5">포트 ID</dt>
 								<dd class="text-xs text-ink-2 font-mono">{iface.id}</dd>
 							</div>
 							<div>
-								<dt class="text-xs text-ink-3 mb-0.5">MAC 주소</dt>
+								<dt class="text-xs text-ink-2 mb-0.5">MAC 주소</dt>
 								<dd class="text-xs text-ink-2 font-mono">{iface.mac_address}</dd>
 							</div>
 							<div>
-								<dt class="text-xs text-ink-3 mb-0.5">네트워크</dt>
+								<dt class="text-xs text-ink-2 mb-0.5">네트워크</dt>
 								<dd class="text-xs text-ink-2">{iface.network_id ? s.networkNameById(iface.network_id) : '-'}</dd>
 							</div>
 							<div>
-								<dt class="text-xs text-ink-3 mb-0.5">상태</dt>
+								<dt class="text-xs text-ink-2 mb-0.5">상태</dt>
 								<dd class="text-xs {iface.status === 'ACTIVE' ? 'text-green-400' : 'text-ink-2'}">{iface.status}</dd>
 							</div>
 							<div class="col-span-2">
-								<dt class="text-xs text-ink-3 mb-1">IP 주소</dt>
+								<dt class="text-xs text-ink-2 mb-1">IP 주소</dt>
 								<dd class="flex flex-wrap gap-1.5 items-center">
 									{#each iface.fixed_ips as fip}
 										<span class="text-xs font-mono text-ink-2 bg-surface-selected px-1.5 py-0.5 rounded">{fip.ip_address}</span>
@@ -144,7 +144,7 @@
 					<!-- 보안 그룹 -->
 					<div>
 						<div class="flex items-center justify-between mb-1.5">
-							<dt class="text-xs text-ink-3">보안 그룹</dt>
+							<dt class="text-xs text-ink-2">보안 그룹</dt>
 							<button
 								onclick={() => openSgEdit(iface)}
 								class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
@@ -154,7 +154,7 @@
 						</div>
 						{#if sgEditPortId === iface.id}
 							<div class="bg-surface-selected rounded p-3 mt-2">
-								<p class="text-xs text-ink-3 mb-2">이 프로젝트의 보안 그룹</p>
+								<p class="text-xs text-ink-2 mb-2">이 프로젝트의 보안 그룹</p>
 								<div class="space-y-1.5 mb-3 max-h-56 overflow-y-auto">
 									{#each s.allSecurityGroups as sg}
 										<div>
@@ -167,12 +167,12 @@
 												/>
 												<span class="text-xs text-ink-2">{sg.name}</span>
 												{#if sg.description}
-													<span class="text-xs text-ink-3 truncate max-w-[100px]">— {sg.description}</span>
+													<span class="text-xs text-ink-2 truncate max-w-[100px]">— {sg.description}</span>
 												{/if}
 												<button
 													type="button"
 													onclick={() => toggleSgRules(sg.id)}
-													class="text-xs text-ink-3 hover:text-ink-2 ml-auto shrink-0 transition-colors"
+													class="text-xs text-ink-2 hover:text-ink-2 ml-auto shrink-0 transition-colors"
 												>
 													{expandedSgRules.has(sg.id) ? '▾' : '▸'} {sg.rules.length}개 규칙
 												</button>
@@ -180,10 +180,10 @@
 											{#if expandedSgRules.has(sg.id)}
 												<div class="ml-5 mt-1 mb-1 space-y-0.5 pl-2 border-l border-line-2">
 													{#each sg.rules as rule}
-														<div class="text-xs text-ink-3 font-mono">{s.formatRule(rule)}</div>
+														<div class="text-xs text-ink-2 font-mono">{s.formatRule(rule)}</div>
 													{/each}
 													{#if sg.rules.length === 0}
-														<div class="text-xs text-ink-3 italic">규칙 없음</div>
+														<div class="text-xs text-ink-2 italic">규칙 없음</div>
 													{/if}
 												</div>
 											{/if}
@@ -209,7 +209,7 @@
 						{:else}
 							<dd class="flex flex-wrap gap-1.5">
 								{#if !(iface.security_group_ids?.length)}
-									<span class="text-xs text-ink-3">없음</span>
+									<span class="text-xs text-ink-2">없음</span>
 								{:else}
 									{#each (iface.security_group_ids ?? []) as sgId}
 										<span class="text-xs text-purple-300 bg-purple-900/30 px-1.5 py-0.5 rounded">{s.sgNameById(sgId)}</span>

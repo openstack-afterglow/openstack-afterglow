@@ -76,7 +76,7 @@
 					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminvolumeeditmodal-76">이름</label>
 					<input id="field-adminvolumeeditmodal-76" bind:value={editName} type="text" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" />
 				</div>
-				<div class="text-xs text-ink-3">ID: {volume.id}</div>
+				<div class="text-xs text-ink-2">ID: {volume.id}</div>
 			</div>
 			<div class="flex justify-end gap-3 mt-6">
 				<button onclick={onClose} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">취소</button>

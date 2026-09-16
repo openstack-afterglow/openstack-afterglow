@@ -92,7 +92,7 @@
 			role="none"
 		>
 			<h2 class="text-lg font-semibold text-ink-0 mb-3">볼륨 프로젝트 이전</h2>
-			<p class="text-xs text-ink-3 mb-4">볼륨 <span class="text-ink-0">{volume.name || volume.id.slice(0, 8)}</span>을 다른 프로젝트로 이전합니다.</p>
+			<p class="text-xs text-ink-2 mb-4">볼륨 <span class="text-ink-0">{volume.name || volume.id.slice(0, 8)}</span>을 다른 프로젝트로 이전합니다.</p>
 			{#if transferError}
 				<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{transferError}</div>
 			{/if}
@@ -122,7 +122,7 @@
 					</div>
 				{/if}
 				{#if transferProjectName}
-					<div class="mt-1 text-xs text-ink-3">선택됨: <span class="text-warm-text">{transferProjectName}</span></div>
+					<div class="mt-1 text-xs text-ink-2">선택됨: <span class="text-warm-text">{transferProjectName}</span></div>
 				{/if}
 			</div>
 			<div class="flex justify-end gap-3 mt-6">

@@ -58,7 +58,7 @@
 
 <div class="bg-surface-base border border-line rounded-xl p-4 mt-3">
   <div class="flex items-center justify-between mb-3">
-    <h3 class="text-xs text-ink-3 uppercase tracking-wide">Secrets</h3>
+    <h3 class="text-xs text-ink-2 uppercase tracking-wide">Secrets</h3>
     <button
       onclick={() => { showCreate = !showCreate; newName = ''; createError = ''; newType = 'Opaque'; }}
       class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
@@ -101,7 +101,7 @@
   {#if loadError}
     <p class="text-xs text-red-400">{loadError}</p>
   {:else if s.secrets.length === 0}
-    <p class="text-xs text-ink-3">Secret 없음</p>
+    <p class="text-xs text-ink-2">Secret 없음</p>
   {:else}
     <div class="space-y-2">
       {#each s.secrets as secret}
@@ -116,7 +116,7 @@
           <div class="flex items-center justify-between gap-3 mb-2">
             <div>
               <span class="text-xs text-ink-1 font-mono font-medium">{secret.name}</span>
-              <span class="text-xs text-ink-3 ml-2">{secret.type}</span>
+              <span class="text-xs text-ink-2 ml-2">{secret.type}</span>
             </div>
             <div class="flex gap-1 shrink-0">
               <button

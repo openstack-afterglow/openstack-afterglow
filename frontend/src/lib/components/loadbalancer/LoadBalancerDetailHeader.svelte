@@ -32,7 +32,7 @@
   >
     {#snippet meta()}
       {#if s.lb?.vip_address}
-        <span class="text-xs text-ink-3 font-mono">VIP: {s.lb.vip_address}</span>
+        <span class="text-xs text-ink-2 font-mono">VIP: {s.lb.vip_address}</span>
       {/if}
     {/snippet}
     {#snippet actions()}

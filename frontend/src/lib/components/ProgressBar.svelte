@@ -37,7 +37,7 @@
 				style="width: {progress}%"
 			></div>
 		</div>
-		<div class="flex justify-between mt-2 text-xs text-ink-3">
+		<div class="flex justify-between mt-2 text-xs text-ink-2">
 			<span>0%</span>
 			<span>{progress}%</span>
 		</div>
@@ -52,7 +52,7 @@
 				<div class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors
 					{status === 'completed' ? 'bg-green-600 text-ink-0' : ''}
 					{status === 'active' ? 'bg-action-warm text-ink-0 animate-pulse' : ''}
-					{status === 'pending' ? 'bg-surface-sunken text-ink-3' : ''}
+					{status === 'pending' ? 'bg-surface-sunken text-ink-2' : ''}
 				">
 					{#if status === 'completed'}
 						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -66,7 +66,7 @@
 				<!-- Step content -->
 				<div class="flex-1 pt-1">
 					<div class="flex items-center gap-2">
-						<span class="font-medium {status === 'active' ? 'text-ink-0' : status === 'completed' ? 'text-green-400' : 'text-ink-3'}">
+						<span class="font-medium {status === 'active' ? 'text-ink-0' : status === 'completed' ? 'text-green-400' : 'text-ink-2'}">
 							{step.label}
 						</span>
 						{#if status === 'active'}
@@ -78,7 +78,7 @@
 						{/if}
 					</div>
 					{#if step.description && status !== 'pending'}
-						<p class="text-xs text-ink-3 mt-0.5">{step.description}</p>
+						<p class="text-xs text-ink-2 mt-0.5">{step.description}</p>
 					{/if}
 				</div>
 			</div>

@@ -52,13 +52,13 @@
 					<td class="py-2 pr-4">
 						<button
 							onclick={() => onCopyId(p.id)}
-							class="text-ink-3 font-mono text-xs hover:text-ink-2 transition-colors"
+							class="text-ink-2 font-mono text-xs hover:text-ink-2 transition-colors"
 							title={p.id}
 						>
 							{copiedId === p.id ? '복사됨!' : p.id.slice(0, 8)}
 						</button>
 					</td>
-					<td class="py-2 pr-4 text-ink-3">{p.created_at?.slice(0, 10) ?? '-'}</td>
+					<td class="py-2 pr-4 text-ink-2">{p.created_at?.slice(0, 10) ?? '-'}</td>
 					<td class="py-2">
 						<div class="flex items-center gap-1">
 							<button

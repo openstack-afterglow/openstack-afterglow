@@ -52,7 +52,7 @@
 					</div>
 				</div>
 			{:else}
-				<div class="text-ink-3 text-xs">먼저 데이터베이스를 생성하면 권한을 부여할 수 있습니다</div>
+				<div class="text-ink-2 text-xs">먼저 데이터베이스를 생성하면 권한을 부여할 수 있습니다</div>
 			{/if}
 			{#if s.userError}<p class="text-red-400 text-xs">{s.userError}</p>{/if}
 			<button onclick={handleCreateUser} disabled={s.creatingUser || !newUser.name.trim() || !newUser.password}
@@ -62,17 +62,17 @@
 		</div>
 	{/if}
 	{#if s.users.length === 0}
-		<div class="text-ink-3 text-xs">유저가 없습니다</div>
+		<div class="text-ink-2 text-xs">유저가 없습니다</div>
 	{:else}
 		<div class="space-y-1">
 			{#each s.users as u (u.name + '@' + u.host)}
 				<div class="flex items-center justify-between py-1.5 border-b border-line/50">
 					<div>
 						<span class="text-ink-0 text-sm font-medium font-mono">
-							{u.name}<span class="text-ink-3">@{u.host || '%'}</span>
+							{u.name}<span class="text-ink-2">@{u.host || '%'}</span>
 						</span>
 						{#if u.databases?.length}
-							<span class="text-ink-3 text-xs ml-2">{u.databases.map(d => d.name).join(', ')}</span>
+							<span class="text-ink-2 text-xs ml-2">{u.databases.map(d => d.name).join(', ')}</span>
 						{/if}
 					</div>
 					<button onclick={() => s.deleteUser(u)} disabled={s.deletingUser === userKey(u)}

@@ -30,7 +30,7 @@
 			<div class="flex items-baseline gap-2 mt-0.5 flex-wrap">
 				<div class="text-[28px] font-bold text-ink-0 leading-none">{formatNumber(overview.running_vms)}</div>
 				{#if overview.instance_stats}
-					<div class="flex gap-2 text-[11px] ml-auto flex-wrap">
+					<div class="flex gap-2 text-xs ml-auto flex-wrap">
 						<span class="text-emerald-400">● {overview.instance_stats.active}</span>
 						<span class="text-red-400">● {overview.instance_stats.error} err</span>
 					</div>

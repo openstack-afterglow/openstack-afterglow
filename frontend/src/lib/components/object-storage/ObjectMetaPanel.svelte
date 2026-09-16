@@ -13,32 +13,32 @@
 	<div class="w-72 shrink-0 bg-surface-base border border-line rounded-xl p-4 text-sm">
 		<div class="flex items-center justify-between mb-3">
 			<h3 class="text-ink-0 font-medium text-xs">오브젝트 정보</h3>
-			<button onclick={() => s.selectedMeta = null} class="text-ink-3 hover:text-ink-2 text-xs">✕</button>
+			<button onclick={() => s.selectedMeta = null} class="text-ink-2 hover:text-ink-2 text-xs">✕</button>
 		</div>
 		<div class="space-y-2">
 			<div>
-				<div class="text-ink-3 text-xs">이름</div>
+				<div class="text-ink-2 text-xs">이름</div>
 				<div class="text-ink-0 break-all">{s.selectedMeta.name}</div>
 			</div>
 			<div>
-				<div class="text-ink-3 text-xs">크기</div>
+				<div class="text-ink-2 text-xs">크기</div>
 				<div class="text-ink-0">{s.selectedMeta.bytes.toLocaleString()} bytes</div>
 			</div>
 			<div>
-				<div class="text-ink-3 text-xs">Content-Type</div>
+				<div class="text-ink-2 text-xs">Content-Type</div>
 				<div class="text-ink-0">{s.selectedMeta.content_type || '-'}</div>
 			</div>
 			<div>
-				<div class="text-ink-3 text-xs">ETag (MD5)</div>
+				<div class="text-ink-2 text-xs">ETag (MD5)</div>
 				<div class="text-ink-2 font-mono text-xs break-all">{s.selectedMeta.etag || '-'}</div>
 			</div>
 			<div>
-				<div class="text-ink-3 text-xs">수정일</div>
+				<div class="text-ink-2 text-xs">수정일</div>
 				<div class="text-ink-0">{s.selectedMeta.last_modified ? s.selectedMeta.last_modified.slice(0, 19) : '-'}</div>
 			</div>
 			{#if s.selectedMeta.content_encoding}
 				<div>
-					<div class="text-ink-3 text-xs">Content-Encoding</div>
+					<div class="text-ink-2 text-xs">Content-Encoding</div>
 					<div class="text-ink-0">{s.selectedMeta.content_encoding}</div>
 				</div>
 			{/if}
@@ -48,10 +48,10 @@
 	<div class="w-96 shrink-0 bg-surface-base border border-line rounded-xl p-4 text-sm flex flex-col">
 		<div class="flex items-center justify-between mb-3">
 			<h3 class="text-ink-0 font-medium text-xs truncate flex-1 mr-2">{s.displayName(s.previewName)}</h3>
-			<button onclick={s.closePreview} class="text-ink-3 hover:text-ink-2 text-xs shrink-0">✕</button>
+			<button onclick={s.closePreview} class="text-ink-2 hover:text-ink-2 text-xs shrink-0">✕</button>
 		</div>
 		{#if s.loadingPreview}
-			<div class="text-ink-3 text-xs">로딩 중...</div>
+			<div class="text-ink-2 text-xs">로딩 중...</div>
 		{:else if s.previewContentType.startsWith('image/')}
 			<img src={s.previewUrl} alt={s.previewName} class="max-w-full rounded object-contain max-h-96" />
 		{:else if s.previewContentType === 'application/pdf'}

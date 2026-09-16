@@ -48,7 +48,7 @@
 	{#if ctrl.loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if ctrl.groups.length === 0}
-		<div class="text-center text-ink-3 text-sm py-8">그룹이 없습니다</div>
+		<div class="text-center text-ink-2 text-sm py-8">그룹이 없습니다</div>
 	{:else}
 		<div class="bg-surface-base border border-line rounded-lg p-5">
 			<div class="space-y-2">

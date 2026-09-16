@@ -95,16 +95,16 @@
 >
 	<div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]">
 		<h2 class="text-lg font-semibold text-ink-0 mb-1">{type === 'live' ? '라이브 마이그레이션' : '콜드 마이그레이션'}</h2>
-		<p class="text-xs text-ink-3 mb-1"><span class="text-ink-2">{serverName}</span></p>
-		<p class="text-xs text-ink-3 mb-5">{type === 'live' ? '인스턴스 실행 중에 다른 호스트로 이동합니다.' : '인스턴스를 종료하고 다른 호스트로 이동합니다.'}</p>
+		<p class="text-xs text-ink-2 mb-1"><span class="text-ink-2">{serverName}</span></p>
+		<p class="text-xs text-ink-2 mb-5">{type === 'live' ? '인스턴스 실행 중에 다른 호스트로 이동합니다.' : '인스턴스를 종료하고 다른 호스트로 이동합니다.'}</p>
 		{#if error}
 			<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>
 		{/if}
 		<div>
 			<div class="flex items-baseline justify-between mb-1.5">
-				<label class="text-xs text-ink-2 uppercase tracking-wide" for="field-hypervisormigratemodal-102">대상 호스트 <span class="text-ink-3">(선택 안 하면 자동)</span></label>
+				<label class="text-xs text-ink-2 uppercase tracking-wide" for="field-hypervisormigratemodal-102">대상 호스트 <span class="text-ink-2">(선택 안 하면 자동)</span></label>
 				{#if cpuModelHint}
-					<span class="text-xs text-ink-3">{cpuModelHint}</span>
+					<span class="text-xs text-ink-2">{cpuModelHint}</span>
 				{/if}
 			</div>
 			<select id="field-hypervisormigratemodal-102" bind:value={selectedHost} class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm">

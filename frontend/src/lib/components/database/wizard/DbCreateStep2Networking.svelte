@@ -8,7 +8,7 @@
 		사용할 네트워크를 선택하세요. 선택하지 않으면 Trove가 기본 네트워크를 사용합니다.
 	</p>
 	{#if s.networks.length === 0}
-		<p class="text-ink-3 text-sm">사용 가능한 네트워크가 없습니다.</p>
+		<p class="text-ink-2 text-sm">사용 가능한 네트워크가 없습니다.</p>
 	{:else}
 		<div class="space-y-2">
 			{#each s.networks as net}
@@ -22,7 +22,7 @@
 						class="accent-amber-500"
 					/>
 					<span class="text-sm text-ink-0">{net.name}</span>
-					<span class="text-xs text-ink-3 font-mono">{net.id.slice(0, 8)}…</span>
+					<span class="text-xs text-ink-2 font-mono">{net.id.slice(0, 8)}…</span>
 				</label>
 			{/each}
 		</div>

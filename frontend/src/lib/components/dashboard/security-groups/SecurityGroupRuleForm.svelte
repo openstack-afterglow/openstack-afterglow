@@ -50,7 +50,7 @@
 </script>
 
 <div class="px-4 pb-3 border-t border-line-2 pt-3 bg-surface-base/30">
-	<p class="text-xs text-ink-3 mb-2">규칙 추가</p>
+	<p class="text-xs text-ink-2 mb-2">규칙 추가</p>
 	<div class="grid grid-cols-2 gap-2 mb-2 md:grid-cols-4">
 		<select
 			bind:value={ruleForm.direction}

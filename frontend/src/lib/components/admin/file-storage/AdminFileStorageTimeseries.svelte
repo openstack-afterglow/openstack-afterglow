@@ -17,7 +17,7 @@
 
 {#if loading}
 	<div class="bg-surface-base border border-line rounded-xl p-5 h-48 flex items-center justify-center">
-		<div class="text-ink-3 text-sm">차트 로딩 중...</div>
+		<div class="text-ink-2 text-sm">차트 로딩 중...</div>
 	</div>
 {:else}
 	<TimeSeriesChart

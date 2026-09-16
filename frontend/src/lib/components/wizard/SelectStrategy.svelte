@@ -29,7 +29,7 @@
 
 <!-- 섹션 A: 스케줄링 (항상) -->
 <div class="mb-6">
-	<p class="text-xs font-semibold text-ink-3 uppercase tracking-wide mb-3">스케줄링 / 내고장성</p>
+	<p class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-3">스케줄링 / 내고장성</p>
 	<div class="flex flex-col gap-3">
 		<button
 			onclick={() => onSchedulingChange('standard')}
@@ -48,7 +48,7 @@
 			<div class="flex-1 flex flex-col gap-1.5">
 				<div class="flex items-center gap-2.5 flex-wrap">
 					<b class="text-sm font-semibold text-ink-0">일반 배포</b>
-					<span class="ml-auto text-ink-3 font-mono text-[11.5px]">⚡ ~30초 부팅</span>
+					<span class="ml-auto text-ink-2 font-mono text-[11.5px]">⚡ ~30초 부팅</span>
 				</div>
 				<p class="text-xs text-ink-2 leading-relaxed">단일 호스트 고정 배치. 호스트 장애 시 수동 복구가 필요합니다.</p>
 			</div>
@@ -72,8 +72,8 @@
 			<div class="flex-1 flex flex-col gap-1.5">
 				<div class="flex items-center gap-2.5 flex-wrap">
 					<b class="text-sm font-semibold text-ink-0">HA 배포</b>
-					<span class="px-1.5 py-0.5 rounded bg-surface-selected/30 border border-action-warm text-warm-text text-[11px] font-mono">권장</span>
-					<span class="ml-auto text-ink-3 font-mono text-[11.5px]">🛡 고가용성</span>
+					<span class="px-1.5 py-0.5 rounded bg-surface-selected/30 border border-action-warm text-warm-text text-xs font-mono">권장</span>
+					<span class="ml-auto text-ink-2 font-mono text-[11.5px]">🛡 고가용성</span>
 				</div>
 				<p class="text-xs text-ink-2 leading-relaxed">호스트 장애 시 자동 evacuate. Masakari 등 HA 솔루션 활성화 시 동작합니다.</p>
 			</div>
@@ -85,7 +85,7 @@
 <!-- 섹션 B: 레이어 마운트 방식 (라이브러리 선택 시에만) -->
 {#if hasLibraries}
 	<div class="border-t border-line pt-5">
-		<p class="text-xs font-semibold text-ink-3 uppercase tracking-wide mb-3">레이어 마운트 방식</p>
+		<p class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-3">레이어 마운트 방식</p>
 
 		{#if !hasPrebuilt}
 			<div class="mb-3 px-3 py-2 rounded-lg bg-yellow-900/20 border border-yellow-800 text-yellow-400 text-xs">
@@ -112,7 +112,7 @@
 				<div class="flex-1 flex flex-col gap-1.5">
 					<div class="flex items-center gap-2.5 flex-wrap">
 						<b class="text-sm font-semibold text-ink-0">사전 빌드 레이어 사용</b>
-						<span class="ml-auto text-ink-3 font-mono text-[11.5px]">⚡ 빠른 부팅</span>
+						<span class="ml-auto text-ink-2 font-mono text-[11.5px]">⚡ 빠른 부팅</span>
 					</div>
 					<p class="text-xs text-ink-2 leading-relaxed">미리 빌드된 OverlayFS 레이어를 읽기 전용 마운트. 부팅이 빠릅니다.</p>
 				</div>
@@ -135,7 +135,7 @@
 				<div class="flex-1 flex flex-col gap-1.5">
 					<div class="flex items-center gap-2.5 flex-wrap">
 						<b class="text-sm font-semibold text-ink-0">cloud-init 동적 생성</b>
-						<span class="ml-auto text-ink-3 font-mono text-[11.5px]">⏱ ~3-5분 부팅</span>
+						<span class="ml-auto text-ink-2 font-mono text-[11.5px]">⏱ ~3-5분 부팅</span>
 					</div>
 					<p class="text-xs text-ink-2 leading-relaxed">첫 부팅 시 cloud-init 스크립트로 레이어를 직접 빌드. 유연하게 조합 가능합니다.</p>
 				</div>
@@ -145,13 +145,13 @@
 		<!-- mountProtocol 토글 (dynamic 선택 시) -->
 		{#if strategy === 'dynamic'}
 			<div class="mt-4 flex items-center gap-3">
-				<span class="text-xs text-ink-3">마운트 프로토콜</span>
+				<span class="text-xs text-ink-2">마운트 프로토콜</span>
 				{#each (['CEPHFS', 'NFS'] as const) as p}
 					<button
 						onclick={() => onProtocolChange(p)}
 						class="px-3 py-1 rounded-md text-xs font-mono border transition-colors {mountProtocol === p
 							? 'bg-surface-selected/40 border-action-warm text-warm-text'
-							: 'border-line-2 text-ink-3 hover:border-line-2'}"
+							: 'border-line-2 text-ink-2 hover:border-line-2'}"
 					>{p}</button>
 				{/each}
 			</div>

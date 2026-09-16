@@ -98,9 +98,9 @@
             {#each envVars as env, i (i)}
               <div class="flex gap-2 items-center">
                 <input bind:value={env.key} type="text" placeholder="KEY" class="flex-1 bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-ink-0 text-xs focus:outline-none focus:border-action-warm font-mono" />
-                <span class="text-ink-3 text-xs">=</span>
+                <span class="text-ink-2 text-xs">=</span>
                 <input bind:value={env.value} type="text" placeholder="value" class="flex-1 bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-ink-0 text-xs focus:outline-none focus:border-action-warm font-mono" />
-                <button type="button" onclick={() => removeEnvVar(i)} class="text-ink-3 hover:text-red-400 transition-colors text-xs px-1">✕</button>
+                <button type="button" onclick={() => removeEnvVar(i)} class="text-ink-2 hover:text-red-400 transition-colors text-xs px-1">✕</button>
               </div>
             {/each}
           </div>
@@ -118,7 +118,7 @@
                 <div class="flex-1">
                   <input bind:value={port.container_port} type="number" min="1" max="65535" placeholder="컨테이너 포트" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-ink-0 text-xs focus:outline-none focus:border-action-warm" />
                 </div>
-                <span class="text-ink-3 text-xs">→</span>
+                <span class="text-ink-2 text-xs">→</span>
                 <div class="flex-1">
                   <input bind:value={port.host_port} type="number" min="0" max="65535" placeholder="호스트 포트 (선택)" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-ink-0 text-xs focus:outline-none focus:border-action-warm" />
                 </div>
@@ -126,7 +126,7 @@
                   <option value="tcp">TCP</option>
                   <option value="udp">UDP</option>
                 </select>
-                <button type="button" onclick={() => removePort(i)} class="text-ink-3 hover:text-red-400 transition-colors text-xs px-1">✕</button>
+                <button type="button" onclick={() => removePort(i)} class="text-ink-2 hover:text-red-400 transition-colors text-xs px-1">✕</button>
               </div>
             {/each}
           </div>

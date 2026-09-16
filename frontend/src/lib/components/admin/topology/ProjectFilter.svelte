@@ -33,7 +33,7 @@
 			class="bg-transparent text-sm text-ink-2 flex-1 outline-none min-w-0"
 		/>
 		{#if projectFilter}
-			<button onclick={() => { projectFilter = null; searchText = ''; dropdownOpen = false; }} class="text-ink-3 hover:text-ink-0 ml-1 flex-shrink-0">✕</button>
+			<button onclick={() => { projectFilter = null; searchText = ''; dropdownOpen = false; }} class="text-ink-2 hover:text-ink-0 ml-1 flex-shrink-0">✕</button>
 		{/if}
 	</div>
 	{#if dropdownOpen && projectSuggestions.length > 0}
@@ -48,7 +48,7 @@
 					onclick={() => { projectFilter = id; searchText = name; dropdownOpen = false; }}
 				>
 					<div class="font-medium truncate">{name}</div>
-					<div class="text-ink-3 font-mono">{id.slice(0, 12)}...</div>
+					<div class="text-ink-2 font-mono">{id.slice(0, 12)}...</div>
 				</button>
 			{/each}
 		</div>

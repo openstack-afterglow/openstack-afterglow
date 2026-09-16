@@ -5,7 +5,7 @@
 </script>
 
 <div class="bg-surface-base border border-line rounded-xl p-4">
-	<h3 class="text-xs text-ink-3 uppercase tracking-wide mb-3">기본 정보</h3>
+	<h3 class="text-xs text-ink-2 uppercase tracking-wide mb-3">기본 정보</h3>
 	<dl class="space-y-2 text-xs">
 		<div class="flex justify-between gap-4">
 			<dt class="text-ink-2 flex-shrink-0">이미지</dt>

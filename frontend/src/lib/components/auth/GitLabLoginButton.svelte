@@ -13,7 +13,7 @@
 {#if enabled}
   <div class="relative my-2">
     <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-line-2"></div></div>
-    <div class="relative flex justify-center text-xs"><span class="bg-surface-base px-2 text-ink-3">또는</span></div>
+    <div class="relative flex justify-center text-xs"><span class="bg-surface-base px-2 text-ink-2">또는</span></div>
   </div>
   <button
     type="button"

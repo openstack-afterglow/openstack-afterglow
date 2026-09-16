@@ -93,20 +93,20 @@
 						<div class="flex items-start justify-between gap-2 mb-1.5">
 							<div class="flex items-center gap-1.5 min-w-0 flex-1">
 								{#if j.kind === 'image'}
-									<span class="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-purple-900/40 border border-purple-800 text-purple-300">이미지</span>
+									<span class="shrink-0 text-xs px-1.5 py-0.5 rounded bg-purple-900/40 border border-purple-800 text-purple-300">이미지</span>
 								{/if}
 								<span class="text-xs text-ink-1 truncate" title={j.name}>{j.name}</span>
 							</div>
 							{#if j.status === 'uploading'}
 								<button
 									onclick={() => uploadQueue.cancel(j.id)}
-									class="shrink-0 text-ink-3 hover:text-red-400 transition-colors text-xs"
+									class="shrink-0 text-ink-2 hover:text-red-400 transition-colors text-xs"
 									title="취소"
 								>✕</button>
 							{:else}
 								<button
 									onclick={() => uploadQueue.remove(j.id)}
-									class="shrink-0 text-ink-3 hover:text-ink-2 transition-colors text-xs"
+									class="shrink-0 text-ink-2 hover:text-ink-2 transition-colors text-xs"
 									title="닫기"
 								>✕</button>
 							{/if}
@@ -129,7 +129,7 @@
 							</div>
 						{/if}
 
-						<div class="text-[10px] {j.status === 'error' ? 'text-red-400' : j.status === 'success' ? 'text-green-400' : 'text-ink-3'}">
+						<div class="text-xs {j.status === 'error' ? 'text-red-400' : j.status === 'success' ? 'text-green-400' : 'text-ink-2'}">
 							{#if j.status === 'error'}
 								{j.error ?? '업로드 실패'}
 							{:else}

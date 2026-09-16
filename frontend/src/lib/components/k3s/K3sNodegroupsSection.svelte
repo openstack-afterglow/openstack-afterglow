@@ -60,7 +60,7 @@
 
 <div class="bg-surface-base border border-line rounded-xl p-4">
 	<div class="flex items-center justify-between mb-3">
-		<h3 class="text-xs text-ink-3 uppercase tracking-wide">노드그룹</h3>
+		<h3 class="text-xs text-ink-2 uppercase tracking-wide">노드그룹</h3>
 		<button
 			onclick={() => { showCreate = true; }}
 			class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
@@ -68,9 +68,9 @@
 	</div>
 
 	{#if loading}
-		<div class="text-xs text-ink-3 py-2">불러오는 중...</div>
+		<div class="text-xs text-ink-2 py-2">불러오는 중...</div>
 	{:else if nodegroups.length === 0}
-		<div class="text-xs text-ink-3 py-2">노드그룹 정보가 없습니다.</div>
+		<div class="text-xs text-ink-2 py-2">노드그룹 정보가 없습니다.</div>
 	{:else}
 		<div class="space-y-2">
 			{#each nodegroups as ng (ng.id)}

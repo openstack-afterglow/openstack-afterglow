@@ -53,7 +53,7 @@
 
 			{#if attachMode === 'existing'}
 				{#if s.availableVolumes.length === 0}
-					<p class="text-sm text-ink-3">연결 가능한 볼륨이 없습니다. "새 볼륨 생성"을 이용하세요.</p>
+					<p class="text-sm text-ink-2">연결 가능한 볼륨이 없습니다. "새 볼륨 생성"을 이용하세요.</p>
 				{:else}
 					<div class="flex gap-2">
 						<select
@@ -104,7 +104,7 @@
 	{/if}
 
 	{#if s.volumes.length === 0}
-		<p class="text-sm text-ink-3">연결된 볼륨 없음</p>
+		<p class="text-sm text-ink-2">연결된 볼륨 없음</p>
 	{:else}
 		<div class="space-y-2">
 			{#each s.volumes as vol}
@@ -114,9 +114,9 @@
 							<a href="/dashboard/volumes/{vol.volume_id}">{vol.name || vol.volume_id.slice(0, 12) + '...'}</a>
 						</span>
 						{#if vol.size}
-							<span class="text-xs text-ink-3">{vol.size}GB</span>
+							<span class="text-xs text-ink-2">{vol.size}GB</span>
 						{/if}
-						<span class="text-xs font-mono text-ink-3">{vol.device}</span>
+						<span class="text-xs font-mono text-ink-2">{vol.device}</span>
 						{#if vol.status}
 							<span class="text-xs {vol.status === 'in-use' ? 'text-green-400' : 'text-ink-2'}">{vol.status}</span>
 						{/if}
@@ -125,7 +125,7 @@
 							onclick={() => s.setDeleteOnTermination(vol.volume_id, !vol.delete_on_termination)}
 							disabled={s.actioning === 'dot-' + vol.volume_id}
 							title="클릭해서 토글"
-							class="text-[10px] px-1.5 py-0.5 rounded transition-colors disabled:opacity-50 cursor-pointer
+							class="text-xs px-1.5 py-0.5 rounded transition-colors disabled:opacity-50 cursor-pointer
 								{vol.delete_on_termination
 									? 'text-red-300 bg-red-900/30 hover:bg-red-900/50 border border-red-800/50'
 									: 'text-ink-2 bg-surface-sunken hover:bg-surface-selected border border-line-2'}"

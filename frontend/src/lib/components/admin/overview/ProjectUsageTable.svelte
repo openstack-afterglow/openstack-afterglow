@@ -42,19 +42,19 @@
 						<div class="w-14 h-1.5 bg-surface-selected rounded-full overflow-hidden shrink-0">
 							<div class="h-full rounded-full transition-all" style="width: {usageBar(p.cpu.used, p.cpu.quota)}%; background: {usageGrad(p.cpu.used, p.cpu.quota)}"></div>
 						</div>
-						<span class="text-ink-2 font-mono text-[11px] min-w-[24px]">{p.cpu.used}</span>
+						<span class="text-ink-2 font-mono text-xs min-w-[24px]">{p.cpu.used}</span>
 					</div>
 					<div class="flex items-center gap-1.5">
 						<div class="w-14 h-1.5 bg-surface-selected rounded-full overflow-hidden shrink-0">
 							<div class="h-full rounded-full transition-all" style="width: {usageBar(p.ram_mb.used, p.ram_mb.quota)}%; background: {usageGrad(p.ram_mb.used, p.ram_mb.quota)}"></div>
 						</div>
-						<span class="text-ink-2 font-mono text-[11px] min-w-[28px]">{Math.round(p.ram_mb.used/1024)}G</span>
+						<span class="text-ink-2 font-mono text-xs min-w-[28px]">{Math.round(p.ram_mb.used/1024)}G</span>
 					</div>
 					<div class="flex items-center gap-1.5">
 						<div class="w-14 h-1.5 bg-surface-selected rounded-full overflow-hidden shrink-0">
 							<div class="h-full rounded-full transition-all" style="width: {usageBar(p.disk_gb.used, p.disk_gb.quota)}%; background: {usageGrad(p.disk_gb.used, p.disk_gb.quota)}"></div>
 						</div>
-						<span class="text-ink-2 font-mono text-[11px] min-w-[28px]">{Math.round(p.disk_gb.used)}G</span>
+						<span class="text-ink-2 font-mono text-xs min-w-[28px]">{Math.round(p.disk_gb.used)}G</span>
 					</div>
 					<div class="text-right">
 						{#if p.gpu_instances > 0}

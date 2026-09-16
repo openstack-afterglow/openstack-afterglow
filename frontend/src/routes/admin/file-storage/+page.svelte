@@ -130,7 +130,7 @@
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if fileStorages.length === 0}
-		<div class="text-ink-3 text-sm">파일 스토리지가 없습니다</div>
+		<div class="text-ink-2 text-sm">파일 스토리지가 없습니다</div>
 	{:else}
 			<AdminFileStorageTable storages={displayedStorages} selectedId={selectedFileStorageId} onOpen={openDetail} />
 			{#if totalPages > 1}

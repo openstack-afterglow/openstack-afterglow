@@ -164,32 +164,32 @@
       {/each}
     </div>
   {:else if keypairs.length === 0}
-    <div class="text-ink-3 text-xs text-center py-6">등록된 키페어가 없습니다</div>
+    <div class="text-ink-2 text-xs text-center py-6">등록된 키페어가 없습니다</div>
   {:else}
     <div class="bg-[#0B1220] border border-line rounded-lg overflow-hidden">
-      <div class="grid grid-cols-[1fr_100px_80px] px-3 py-2 border-b border-line text-[10px] uppercase tracking-wider text-ink-3">
+      <div class="grid grid-cols-[1fr_100px_80px] px-3 py-2 border-b border-line text-xs uppercase tracking-wider text-ink-2">
         <div>이름 / 지문</div>
         <div>유형</div>
         <div class="text-right">액션</div>
       </div>
       {#each keypairs as kp, i (kp.name)}
-        <div class="grid grid-cols-[1fr_100px_80px] px-3 py-2.5 text-[12px] items-center {i < keypairs.length - 1 ? 'border-b border-line' : ''} hover:bg-surface-sunken/30 transition-colors">
+        <div class="grid grid-cols-[1fr_100px_80px] px-3 py-2.5 text-xs items-center {i < keypairs.length - 1 ? 'border-b border-line' : ''} hover:bg-surface-sunken/30 transition-colors">
           <div class="min-w-0">
             <div class="text-ink-0 font-medium truncate">{kp.name}</div>
-            <div class="text-[10px] text-ink-3 font-mono truncate mt-0.5">{kp.fingerprint}</div>
+            <div class="text-xs text-ink-2 font-mono truncate mt-0.5">{kp.fingerprint}</div>
           </div>
           <div>
-            <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-violet-900/25 border border-violet-800 text-violet-400">{kp.type}</span>
+            <span class="text-xs font-mono px-1.5 py-0.5 rounded bg-violet-900/25 border border-violet-800 text-violet-400">{kp.type}</span>
           </div>
           <div class="flex gap-1 justify-end">
             <button
               onclick={() => copyFingerprint(kp.fingerprint)}
-              class="text-[10px] px-1.5 py-1 rounded bg-surface-sunken hover:bg-surface-selected text-ink-2 border border-line-2 transition-colors"
+              class="text-xs px-1.5 py-1 rounded bg-surface-sunken hover:bg-surface-selected text-ink-2 border border-line-2 transition-colors"
             >{copiedFingerprint === kp.fingerprint ? '복사됨' : '복사'}</button>
             <button
               onclick={() => deleteKeypair(kp.name)}
               disabled={deleting === kp.name}
-              class="text-[10px] px-1.5 py-1 rounded text-red-400 border border-red-900 hover:bg-red-950/40 disabled:text-ink-3 disabled:border-line-2 transition-colors"
+              class="text-xs px-1.5 py-1 rounded text-red-400 border border-red-900 hover:bg-red-950/40 disabled:text-ink-3 disabled:border-line-2 transition-colors"
             >{deleting === kp.name ? '...' : '삭제'}</button>
           </div>
         </div>

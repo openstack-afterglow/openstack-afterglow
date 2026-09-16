@@ -75,7 +75,7 @@
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if containers.length === 0}
-		<div class="text-ink-3 text-sm" data-tour="admin-containers-ready">컨테이너가 없습니다</div>
+		<div class="text-ink-2 text-sm" data-tour="admin-containers-ready">컨테이너가 없습니다</div>
 	{:else}
 		<div class="overflow-x-auto" data-tour="admin-containers-ready">
 			<table class="w-full text-sm">
@@ -106,7 +106,7 @@
 							<td class="py-2 pr-4 text-ink-2">{c.cpu ?? '-'}</td>
 							<td class="py-2 pr-4 text-ink-2">{c.memory || '-'}</td>
 							<td class="py-2 pr-4 text-ink-2">{c.host || '-'}</td>
-							<td class="py-2 text-ink-3">{c.created_at?.slice(0, 10) ?? '-'}</td>
+							<td class="py-2 text-ink-2">{c.created_at?.slice(0, 10) ?? '-'}</td>
 						</tr>
 					{/each}
 				</tbody>

@@ -71,7 +71,7 @@
 		padding: 0 var(--chat-message-meta-inset);
 		font-size: var(--chat-message-meta-size);
 		line-height: 1.2;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.chat-header {
 		font-weight: 600;

@@ -73,7 +73,7 @@
 			<div>
 				<div class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">볼륨</div>
 				<div class="bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-2 text-sm">
-					{volume.name || volume.id.slice(0, 8)} <span class="text-ink-3">({volume.size} GB)</span>
+					{volume.name || volume.id.slice(0, 8)} <span class="text-ink-2">({volume.size} GB)</span>
 				</div>
 			</div>
 			<div>

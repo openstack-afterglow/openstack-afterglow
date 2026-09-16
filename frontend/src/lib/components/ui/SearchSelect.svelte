@@ -249,7 +249,7 @@
 	.search-select-option:hover,
 	.search-select-option.active,
 	.search-select-option.selected { background: var(--color-surface-selected); color: var(--color-ink-0); }
-	.search-select-option small { overflow: hidden; color: var(--color-ink-3); font-family: var(--font-mono); font-size: 0.6875rem; text-overflow: ellipsis; white-space: nowrap; }
+	.search-select-option small { overflow: hidden; color: var(--color-ink-2); font-family: var(--font-mono); font-size: 0.6875rem; text-overflow: ellipsis; white-space: nowrap; }
 	.search-select-empty { margin: 0; padding: 0.75rem; color: var(--color-ink-2); font-size: 0.8125rem; }
 	@media (forced-colors: active) { .search-select-trigger:focus-visible, .search-select-input:focus-visible { outline: 2px solid CanvasText; outline-offset: 2px; } }
 </style>

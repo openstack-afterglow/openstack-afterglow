@@ -34,7 +34,7 @@
           <td class="py-3 pr-6 font-medium text-ink-0"><span class="max-md:block max-md:max-w-[66vw] max-md:truncate" title={snap.name || snap.id}>{snap.name || snap.id.slice(0, 8)}</span></td>
           <td class="py-3 pr-6"><StatusChip status={snap.status} /></td>
           <td class="py-3 pr-6 text-ink-2">{formatStorage(snap.size)}</td>
-          <td class="py-3 pr-6 text-ink-3 font-mono text-xs">{snap.volume_id.slice(0, 8)}…</td>
+          <td class="py-3 pr-6 text-ink-2 font-mono text-xs">{snap.volume_id.slice(0, 8)}…</td>
           <td class="py-3 pr-6 text-ink-2 text-xs">{snap.description || '-'}</td>
           <td class="py-3 pr-6 text-ink-2 text-xs">{snap.created_at ? new Date(snap.created_at).toLocaleDateString('ko-KR') : '-'}</td>
           <td class="py-3 text-right">

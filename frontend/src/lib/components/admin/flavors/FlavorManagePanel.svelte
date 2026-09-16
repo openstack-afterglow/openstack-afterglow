@@ -45,10 +45,10 @@
 			<div class="mb-4">
 				<div class="text-sm text-ink-2">Flavor</div>
 				<div class="text-ink-0 font-medium">{flavor.name}</div>
-				<div class="text-xs text-ink-3">{flavor.vcpus} VCPU / {formatRam(flavor.ram)} / {flavor.disk} GB</div>
+				<div class="text-xs text-ink-2">{flavor.vcpus} VCPU / {formatRam(flavor.ram)} / {flavor.disk} GB</div>
 				<button
 					onclick={() => navigator.clipboard.writeText(flavor!.id)}
-					class="mt-1 text-xs text-ink-3 font-mono hover:text-ink-2 transition-colors cursor-pointer select-all"
+					class="mt-1 text-xs text-ink-2 font-mono hover:text-ink-2 transition-colors cursor-pointer select-all"
 					title="클릭하여 ID 복사"
 				>{flavor.id}</button>
 			</div>

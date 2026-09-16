@@ -12,7 +12,7 @@
         <div class="bg-surface-base rounded-lg border border-line-2 px-3 py-2 text-xs text-ink-2">
           <span class="font-mono">{(att as Record<string, unknown>).server_id as string ?? '-'}</span>
           {#if (att as Record<string, unknown>).device}
-            <span class="text-ink-3 ml-2">{(att as Record<string, unknown>).device as string}</span>
+            <span class="text-ink-2 ml-2">{(att as Record<string, unknown>).device as string}</span>
           {/if}
         </div>
       {/each}

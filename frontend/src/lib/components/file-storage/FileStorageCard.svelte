@@ -24,16 +24,16 @@
 			</svg>
 		</div>
 		<div class="flex-1 min-w-0">
-			<div class="text-ink-0 text-[14px] font-semibold font-mono truncate">
+			<div class="text-ink-0 text-sm font-semibold font-mono truncate">
 				{fs.name || fs.id.slice(0, 8)}
 			</div>
-			<div class="text-[11px] text-ink-3 mt-0.5">
+			<div class="text-xs text-ink-2 mt-0.5">
 				{fs.share_proto}
 				{#if fs.library_name}
 					· <span class="text-warm-text">{fs.library_name}{fs.library_version ? ` v${fs.library_version}` : ''}</span>
 				{/if}
 				{#if fs.created_at}
-					· <span class="text-ink-3">{formatIsoDateTime(fs.created_at)}</span>
+					· <span class="text-ink-2">{formatIsoDateTime(fs.created_at)}</span>
 				{/if}
 			</div>
 		</div>
@@ -41,7 +41,7 @@
 	</div>
 
 	<div>
-		<div class="flex justify-between text-[11px] text-ink-2 mb-1.5">
+		<div class="flex justify-between text-xs text-ink-2 mb-1.5">
 			<span>할당 크기</span>
 			<span class="text-ink-0 font-medium">{fs.size} GB</span>
 		</div>
@@ -57,7 +57,7 @@
 			<div class="flex-1 h-1 bg-surface-sunken rounded-full overflow-hidden">
 				<div class="h-full rounded-full bg-yellow-500 transition-all" style="width: {pct}%"></div>
 			</div>
-			<span class="text-[10px] text-yellow-400 shrink-0">{fs.progress}</span>
+			<span class="text-xs text-yellow-400 shrink-0">{fs.progress}</span>
 		</div>
 	{/if}
 

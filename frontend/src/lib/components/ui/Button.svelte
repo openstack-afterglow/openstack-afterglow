@@ -199,7 +199,9 @@
 
 	.btn-danger-outline {
 		background: color-mix(in oklab, var(--color-state-danger) 15%, transparent);
-		color: var(--color-state-danger);
+		/* 라벨만 tone-text 로 올린다. 15% wash 위에서 danger 원색은 라이트에서 3.89:1 이라 AA 미달이고,
+		   danger-text 는 5.45:1 이다. 다크는 danger-text 가 danger 의 별칭이라 변화가 없다. */
+		color: var(--color-state-danger-text);
 		border-color: color-mix(in oklab, var(--color-state-danger) 35%, transparent);
 	}
 	.btn-danger-outline:hover:not(:disabled):not([aria-disabled='true']) {

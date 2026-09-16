@@ -86,7 +86,7 @@
     <div class="space-y-3">
       <div>
         <div class="block text-xs text-ink-2 mb-1">사용자 ID</div>
-        <div class="text-sm text-ink-3 font-mono bg-surface-sunken/50 rounded px-3 py-2">{profile.id}</div>
+        <div class="text-sm text-ink-2 font-mono bg-surface-sunken/50 rounded px-3 py-2">{profile.id}</div>
       </div>
       <div>
         <label class="block text-xs text-ink-2 mb-1" for="field-profilesection-92">이름 (닉네임)</label>

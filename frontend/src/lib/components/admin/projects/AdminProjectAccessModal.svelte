@@ -2,6 +2,9 @@
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
+	import Button from '$lib/components/ui/Button.svelte';
+	import Pill from '$lib/components/ui/Pill.svelte';
+	import Alert from '$lib/components/ui/Alert.svelte';
 
 	interface Project {
 		id: string;
@@ -22,6 +25,13 @@
 	interface User { id: string; name: string; }
 	interface Group { id: string; name: string; description: string; }
 	interface Role { id: string; name: string; }
+	interface Principal {
+		key: string;
+		id: string;
+		name: string;
+		type: 'user' | 'group';
+		roles: { role_id: string; role_name: string }[];
+	}
 
 	let {
 		project,
@@ -33,6 +43,7 @@
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
+	const ROLE_ORDER = ['reader', 'member', 'admin'];
 
 	let members = $state<Member[]>([]);
 	let membersLoading = $state(false);
@@ -42,115 +53,145 @@
 	let addError = $state('');
 	let addSaving = $state(false);
 	let userSearchFilter = $state('');
-	let pendingAddUser = $state<User | null>(null);
-	let pendingRoleId = $state('');
 	let accessTab = $state<'users' | 'groups'>('users');
-	let pendingAddGroup = $state<Group | null>(null);
-	let pendingGroupRoleId = $state('');
+	let detailPrincipal = $state<Principal | null>(null);
+	let detailError = $state('');
+	let roleBusy = $state<string | null>(null);
+	let removingKey = $state<string | null>(null);
 
-	let memberUserIds = $derived(new Set(members.filter(m => m.type !== 'group').map(m => m.user_id)));
-	let memberGroupIds = $derived(new Set(members.filter(m => m.type === 'group').map(m => m.group_id)));
+	let readerRole = $derived(allRoles.find((role) => role.name.toLowerCase() === 'reader') ?? null);
+	let orderedRoles = $derived(
+		[...allRoles].sort((a, b) => {
+			const ai = ROLE_ORDER.indexOf(a.name.toLowerCase());
+			const bi = ROLE_ORDER.indexOf(b.name.toLowerCase());
+			if (ai !== bi) return (ai === -1 ? ROLE_ORDER.length : ai) - (bi === -1 ? ROLE_ORDER.length : bi);
+			return a.name.localeCompare(b.name);
+		}),
+	);
+	let principals = $derived.by(() => {
+		const map = new Map<string, Principal>();
+		for (const member of members) {
+			const type = member.type === 'group' ? 'group' : 'user';
+			const principal = map.get(member.user_id) ?? {
+				key: member.user_id,
+				id: type === 'group' ? (member.group_id ?? member.user_id) : member.user_id,
+				name: member.user_name,
+				type,
+				roles: [],
+			};
+			principal.roles.push({ role_id: member.role_id, role_name: member.role_name });
+			map.set(member.user_id, principal);
+		}
+		return [...map.values()];
+	});
+	let detailRoleIds = $derived(new Set(principals.find((principal) => principal.key === detailPrincipal?.key)?.roles.map((role) => role.role_id) ?? []));
+	let memberUserIds = $derived(new Set(members.filter((member) => member.type !== 'group').map((member) => member.user_id)));
+	let memberGroupIds = $derived(new Set(members.filter((member) => member.type === 'group').map((member) => member.group_id)));
 	let filteredUsers = $derived(
-		allUsers.filter(u => !userSearchFilter || u.name.toLowerCase().includes(userSearchFilter.toLowerCase()))
+		allUsers.filter((user) => !userSearchFilter || user.name.toLowerCase().includes(userSearchFilter.toLowerCase())),
 	);
 	let filteredGroups = $derived(
-		allGroups.filter(g => !userSearchFilter || g.name.toLowerCase().includes(userSearchFilter.toLowerCase()))
+		allGroups.filter((group) => !userSearchFilter || group.name.toLowerCase().includes(userSearchFilter.toLowerCase())),
 	);
 
 	$effect(() => {
-		if (project) {
-			membersLoading = true;
-			addError = '';
-			userSearchFilter = '';
-			pendingAddUser = null;
-			pendingAddGroup = null;
-			pendingRoleId = '';
-			pendingGroupRoleId = '';
-			accessTab = 'users';
-			const p = project;
-			Promise.all([
-				api.get<Member[]>(`/api/v1/admin/projects/${p.id}/members`, token, projectId),
-				api.get<{ items: User[] }>('/api/v1/admin/users?limit=100', token, projectId),
-				api.get<Role[]>('/api/v1/admin/roles', token, projectId),
-				api.get<Group[]>('/api/v1/admin/groups', token, projectId),
-			]).then(([m, u, r, g]) => {
-				members = m;
-				allUsers = u.items;
-				allRoles = r;
-				allGroups = g;
-				if (allRoles.length > 0) {
-					pendingRoleId = allRoles[0].id;
-					pendingGroupRoleId = allRoles[0].id;
-				}
-			}).catch(() => {
+		if (!project) return;
+		membersLoading = true;
+		addError = '';
+		userSearchFilter = '';
+		accessTab = 'users';
+		detailPrincipal = null;
+		detailError = '';
+		roleBusy = null;
+		removingKey = null;
+		const currentProject = project;
+		Promise.all([
+			api.get<Member[]>(`/api/v1/admin/projects/${currentProject.id}/members`, token, projectId),
+			api.get<{ items: User[] }>('/api/v1/admin/users?limit=100', token, projectId),
+			api.get<Role[]>('/api/v1/admin/roles', token, projectId),
+			api.get<Group[]>('/api/v1/admin/groups', token, projectId),
+		])
+			.then(([loadedMembers, users, roles, groups]) => {
+				members = loadedMembers;
+				allUsers = users.items;
+				allRoles = roles;
+				allGroups = groups;
+			})
+			.catch(() => {
 				members = [];
-			}).finally(() => {
+			})
+			.finally(() => {
 				membersLoading = false;
 			});
-		}
 	});
 
 	async function reloadMembers() {
 		if (!project) return;
 		try {
 			members = await api.get<Member[]>(`/api/v1/admin/projects/${project.id}/members`, token, projectId);
-		} catch { members = []; }
+		} catch {
+			members = [];
+		}
 	}
 
-	async function assignRole(userId: string, roleId: string) {
-		if (!project || !userId || !roleId) return;
+	function assignRequest(principal: { id: string; type: 'user' | 'group' }, roleId: string) {
+		if (!project) return Promise.resolve();
+		return principal.type === 'group'
+			? api.post('/api/v1/admin/roles/assign-group', { group_id: principal.id, project_id: project.id, role_id: roleId }, token, projectId)
+			: api.post('/api/v1/admin/roles/assign', { user_id: principal.id, project_id: project.id, role_id: roleId }, token, projectId);
+	}
+
+	function revokeRequest(principal: { id: string; type: 'user' | 'group' }, roleId: string) {
+		if (!project) return Promise.resolve();
+		return principal.type === 'group'
+			? api.delete(`/api/v1/admin/roles/assign-group?group_id=${principal.id}&project_id=${project.id}&role_id=${roleId}`, token, projectId)
+			: api.delete(`/api/v1/admin/roles/assign?user_id=${principal.id}&project_id=${project.id}&role_id=${roleId}`, token, projectId);
+	}
+
+	async function addAsReader(target: { id: string; type: 'user' | 'group' }) {
+		if (!project || !readerRole || addSaving) return;
 		addSaving = true;
 		addError = '';
 		try {
-			await api.post('/api/v1/admin/roles/assign', {
-				user_id: userId,
-				project_id: project.id,
-				role_id: roleId,
-			}, token, projectId);
-			pendingAddUser = null;
+			await assignRequest(target, readerRole.id);
 			await reloadMembers();
-		} catch (e) {
-			addError = e instanceof ApiError ? e.message : '할당 실패';
+		} catch (error) {
+			addError = error instanceof ApiError ? error.message : (target.type === 'group' ? '그룹 멤버 추가 실패' : '멤버 추가 실패');
 		} finally {
 			addSaving = false;
 		}
 	}
 
-	async function assignGroupRole(groupId: string, roleId: string) {
-		if (!project || !groupId || !roleId) return;
-		addSaving = true;
-		addError = '';
+	async function toggleRole(role: Role, checked: boolean) {
+		if (!detailPrincipal || roleBusy) return;
+		if (!checked && role.id === readerRole?.id) return;
+		roleBusy = role.id;
+		detailError = '';
 		try {
-			await api.post('/api/v1/admin/roles/assign-group', {
-				group_id: groupId,
-				project_id: project.id,
-				role_id: roleId,
-			}, token, projectId);
-			pendingAddGroup = null;
+			if (checked) await assignRequest(detailPrincipal, role.id);
+			else await revokeRequest(detailPrincipal, role.id);
 			await reloadMembers();
-		} catch (e) {
-			addError = e instanceof ApiError ? e.message : '그룹 할당 실패';
+		} catch (error) {
+			detailError = error instanceof ApiError ? error.message : (checked ? '역할 할당 실패' : '역할 회수 실패');
 		} finally {
-			addSaving = false;
+			roleBusy = null;
 		}
 	}
 
-	async function revokeRole(m: Member) {
-		if (!project) return;
+	async function removePrincipal(principal: Principal) {
+		if (!project || removingKey) return;
+		removingKey = principal.key;
+		addError = '';
 		try {
-			if (m.type === 'group' && m.group_id) {
-				await api.delete(
-					`/api/v1/admin/roles/assign-group?group_id=${m.group_id}&project_id=${project.id}&role_id=${m.role_id}`,
-					token, projectId,
-				);
-			} else {
-				await api.delete(
-					`/api/v1/admin/roles/assign?user_id=${m.user_id}&project_id=${project.id}&role_id=${m.role_id}`,
-					token, projectId,
-				);
+			for (const role of principal.roles) {
+				await revokeRequest(principal, role.role_id);
 			}
+		} catch (error) {
+			addError = error instanceof ApiError ? error.message : '멤버 제거 실패';
+		} finally {
 			await reloadMembers();
-		} catch {}
+			removingKey = null;
+		}
 	}
 </script>
 
@@ -158,73 +199,72 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
-		use:dialogFocus={{ enabled: true, onEscape: () => onClose() }}
+		use:dialogFocus={{ enabled: true, onEscape: onClose }}
 		class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 		onclick={onClose}
-		role="dialog" aria-modal="true" tabindex="-1"
+		role="dialog"
+		aria-modal="true"
+		tabindex="-1"
 	>
 		<div
 			class="bg-surface-base border border-line-2 rounded-xl w-full max-w-3xl mx-4 shadow-[var(--shadow-restraint)] max-h-[85vh] flex flex-col"
-			onclick={(e) => e.stopPropagation()}
+			onclick={(event) => event.stopPropagation()}
 			role="none"
 		>
 			<div class="flex items-center justify-between p-5 border-b border-line">
 				<div>
 					<h2 class="text-lg font-semibold text-ink-0">접근 권한 관리</h2>
-					<p class="text-xs text-ink-3 mt-0.5">프로젝트: {project.name}</p>
+					<p class="text-xs text-ink-2 mt-0.5">프로젝트: {project.name}</p>
 				</div>
-				<button onclick={onClose} class="text-ink-2 hover:text-ink-0 text-xl">&times;</button>
+				<Button variant="ghost" size="icon" ariaLabel="접근 권한 관리 닫기" onclick={onClose}>&times;</Button>
 			</div>
 
 			{#if addError}
-				<div class="mx-5 mt-3 bg-red-900/40 border border-red-700 text-red-300 rounded px-3 py-2 text-xs">{addError}</div>
+				<Alert tone="danger" class="mx-5 mt-3">{addError}</Alert>
+			{/if}
+			{#if !membersLoading && allRoles.length > 0 && !readerRole}
+				<Alert tone="warning" class="mx-5 mt-3">reader 역할을 찾을 수 없어 멤버를 추가할 수 없습니다. Keystone 역할 목록을 확인하세요.</Alert>
 			{/if}
 
 			{#if membersLoading}
-				<div class="text-xs text-ink-3 py-8 text-center">로딩 중...</div>
+				<div class="text-xs text-ink-2 py-8 text-center">로딩 중...</div>
 			{:else}
-				<div class="flex flex-1 min-h-0">
-					<!-- 왼쪽: 전체 사용자/그룹 -->
-					<div class="w-1/2 border-r border-line flex flex-col">
+				<div class="flex flex-col md:flex-row flex-1 min-h-0">
+					<div class="md:w-1/2 flex flex-col min-h-0 flex-1 md:flex-none border-b md:border-b-0 md:border-r border-line">
 						<div class="p-4 border-b border-line">
 							<div class="flex gap-1 mb-2">
-								<button
-									onclick={() => { accessTab = 'users'; userSearchFilter = ''; }}
-									class="px-3 py-1 text-xs rounded {accessTab === 'users' ? 'bg-action-warm text-ink-0' : 'bg-surface-sunken text-ink-2 hover:text-ink-0'}"
-								>사용자</button>
-								<button
-									onclick={() => { accessTab = 'groups'; userSearchFilter = ''; }}
-									class="px-3 py-1 text-xs rounded {accessTab === 'groups' ? 'bg-action-warm text-ink-0' : 'bg-surface-sunken text-ink-2 hover:text-ink-0'}"
-								>그룹</button>
+								<Button variant={accessTab === 'users' ? 'primary' : 'subtle'} size="xs" onclick={() => { accessTab = 'users'; userSearchFilter = ''; }}>사용자</Button>
+								<Button variant={accessTab === 'groups' ? 'primary' : 'subtle'} size="xs" onclick={() => { accessTab = 'groups'; userSearchFilter = ''; }}>그룹</Button>
 							</div>
 							<input
 								type="text"
-								placeholder="{accessTab === 'users' ? '사용자' : '그룹'} 이름 검색"
+								placeholder={accessTab === 'users' ? '사용자 이름 검색' : '그룹 이름 검색'}
 								bind:value={userSearchFilter}
 								class="w-full bg-surface-sunken border border-line-2 text-ink-0 text-xs rounded px-2 py-1.5 focus:outline-none focus:border-action-warm"
 							/>
 						</div>
 						<div class="overflow-y-auto flex-1">
 							{#if accessTab === 'users'}
-								{#each filteredUsers as u}
+								{#each filteredUsers as user}
 									<div class="flex items-center justify-between px-4 py-2 hover:bg-surface-sunken/50 border-b border-line/30">
-										<span class="text-sm text-ink-1">{u.name}</span>
-										<button
-											onclick={() => { pendingAddUser = u; pendingRoleId = allRoles[0]?.id ?? ''; }}
-											class="text-warm-text hover:text-warm-text-hover text-lg font-bold leading-none">+</button>
+										<div class="min-w-0">
+											<span class="text-sm text-ink-1">{user.name}</span>
+											{#if memberUserIds.has(user.id)}<span class="text-xs text-ink-2 ml-1">할당됨</span>{/if}
+										</div>
+										{#if !memberUserIds.has(user.id)}
+											<Button variant="ghost" size="icon" ariaLabel={`${user.name} reader로 추가`} title="reader 역할로 추가" disabled={!readerRole || addSaving} onclick={() => addAsReader({ id: user.id, type: 'user' })}>+</Button>
+										{/if}
 									</div>
 								{/each}
 							{:else}
-								{#each filteredGroups as g}
+								{#each filteredGroups as group}
 									<div class="flex items-center justify-between px-4 py-2 hover:bg-surface-sunken/50 border-b border-line/30">
-										<div>
-											<span class="text-sm text-ink-1">{g.name}</span>
-											{#if memberGroupIds.has(g.id)}<span class="text-xs text-ink-3 ml-1">할당됨</span>{/if}
+										<div class="min-w-0">
+											<span class="text-sm text-ink-1">{group.name}</span>
+											{#if memberGroupIds.has(group.id)}<span class="text-xs text-ink-2 ml-1">할당됨</span>{/if}
 										</div>
-										{#if !memberGroupIds.has(g.id)}
-											<button
-												onclick={() => { pendingAddGroup = g; pendingGroupRoleId = allRoles[0]?.id ?? ''; }}
-												class="text-warm-text hover:text-warm-text-hover text-lg font-bold leading-none">+</button>
+										{#if !memberGroupIds.has(group.id)}
+											<Button variant="ghost" size="icon" ariaLabel={`${group.name} reader로 추가`} title="reader 역할로 추가" disabled={!readerRole || addSaving} onclick={() => addAsReader({ id: group.id, type: 'group' })}>+</Button>
 										{/if}
 									</div>
 								{/each}
@@ -232,22 +272,28 @@
 						</div>
 					</div>
 
-					<!-- 오른쪽: 프로젝트 멤버 -->
-					<div class="w-1/2 flex flex-col">
+					<div class="md:w-1/2 flex flex-col min-h-0 flex-1 md:flex-none">
 						<div class="p-4 border-b border-line">
 							<div class="text-xs text-ink-2 uppercase tracking-wide">프로젝트 멤버</div>
 						</div>
 						<div class="overflow-y-auto flex-1">
-							{#if members.length === 0}
-								<div class="text-xs text-ink-3 px-4 py-4">멤버가 없습니다</div>
+							{#if principals.length === 0}
+								<div class="text-xs text-ink-2 px-4 py-4">멤버가 없습니다</div>
 							{:else}
-								{#each members as m}
-									<div class="flex items-center justify-between px-4 py-2 hover:bg-surface-sunken/50 border-b border-line/30">
-										<div>
-											<div class="text-sm text-ink-1">{m.user_name}</div>
-											<div class="text-xs text-ink-3">{m.role_name}</div>
+								{#each principals as principal (principal.key)}
+									<div class="flex items-start justify-between gap-3 px-4 py-2 border-b border-line/30">
+										<div class="min-w-0">
+											<div class="text-sm text-ink-1 truncate">{principal.name}</div>
+											<div class="mt-1 flex flex-wrap gap-1">
+												{#each principal.roles as role (role.role_id)}
+													<Pill tone={role.role_name.toLowerCase() === 'admin' ? 'admin-tone' : 'neutral'} size="xs">{role.role_name}</Pill>
+												{/each}
+											</div>
 										</div>
-										<button onclick={() => revokeRole(m)} class="text-red-400 hover:text-red-300 text-lg font-bold leading-none">-</button>
+										<div class="flex shrink-0 items-center gap-1">
+											<Button variant="subtle" size="xs" ariaLabel={`${principal.name} 권한`} onclick={() => { detailPrincipal = principal; detailError = ''; }}>권한</Button>
+											<Button variant="danger-outline" size="xs" ariaLabel={`${principal.name} 제거`} disabled={removingKey !== null} onclick={() => removePrincipal(principal)}>{removingKey === principal.key ? '제거 중...' : '제거'}</Button>
+										</div>
 									</div>
 								{/each}
 							{/if}
@@ -257,73 +303,43 @@
 			{/if}
 
 			<div class="flex justify-end p-4 border-t border-line">
-				<button onclick={onClose} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">닫기</button>
+				<Button variant="secondary" size="sm" onclick={onClose}>닫기</Button>
 			</div>
 		</div>
 	</div>
 {/if}
 
-<!-- 사용자 역할 선택 서브 모달 -->
-{#if pendingAddUser}
+{#if detailPrincipal}
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
-		use:dialogFocus={{ enabled: true, onEscape: () => { pendingAddUser = null; } }}
+		use:dialogFocus={{ enabled: true, onEscape: () => { detailPrincipal = null; } }}
 		class="fixed inset-0 bg-surface-scrim/70 flex items-center justify-center z-[60]"
-		onclick={() => { pendingAddUser = null; }}
-		role="dialog" aria-modal="true" tabindex="-1"
+		onclick={() => { detailPrincipal = null; }}
+		role="dialog"
+		aria-modal="true"
+		tabindex="-1"
+		aria-labelledby="project-access-detail-title"
 	>
-		<div
-			class="bg-surface-base border border-line-2 rounded-xl p-5 w-full max-w-sm mx-4 shadow-[var(--shadow-restraint)]"
-			onclick={(e) => e.stopPropagation()}
-			role="none"
-		>
-			<h3 class="text-base font-semibold text-ink-0 mb-3">{pendingAddUser.name} — 역할 선택</h3>
-			<select bind:value={pendingRoleId} class="w-full bg-surface-sunken border border-line-2 text-ink-0 text-sm rounded px-3 py-2 focus:outline-none focus:border-action-warm mb-4">
-				{#each allRoles as r}
-					<option value={r.id}>{r.name}</option>
+		<div class="bg-surface-base border border-line-2 rounded-xl p-5 w-full max-w-sm mx-4 max-h-[85vh] flex flex-col shadow-[var(--shadow-restraint)]" onclick={(event) => event.stopPropagation()} role="none">
+			<h3 id="project-access-detail-title" class="text-base font-semibold text-ink-0 mb-1">{detailPrincipal.name} — 세부 권한</h3>
+			<p class="text-xs text-ink-2 mb-3">체크하면 즉시 할당되고, 해제하면 즉시 회수됩니다. reader는 기본 역할이며 멤버 제거로만 해제됩니다.</p>
+			{#if detailError}<Alert tone="danger" class="mb-3">{detailError}</Alert>{/if}
+			<ul class="overflow-y-auto flex-1 min-h-0 divide-y divide-line/30" aria-label="역할 목록">
+				{#each orderedRoles as role (role.id)}
+					{@const assigned = detailRoleIds.has(role.id)}
+					{@const locked = assigned && role.id === readerRole?.id}
+					<li class="flex items-center justify-between py-2">
+						<label class="flex items-center gap-2 text-sm text-ink-1 cursor-pointer">
+							<input type="checkbox" class="rounded border-line-2 bg-surface-sunken" checked={assigned} disabled={locked || roleBusy !== null} onchange={(event) => toggleRole(role, event.currentTarget.checked)} />
+							<span>{role.name}</span>
+						</label>
+						{#if locked}<span class="text-xs text-ink-2">기본 역할</span>{:else if roleBusy === role.id}<span class="text-xs text-ink-2">저장 중...</span>{/if}
+					</li>
 				{/each}
-			</select>
-			<div class="flex justify-end gap-3">
-				<button onclick={() => { pendingAddUser = null; }} class="px-3 py-1.5 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm rounded-lg">취소</button>
-				<button
-					onclick={() => pendingAddUser && assignRole(pendingAddUser.id, pendingRoleId)}
-					disabled={addSaving || !pendingRoleId}
-					class="px-3 py-1.5 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm rounded-lg disabled:opacity-30"
-				>{addSaving ? '추가 중...' : '추가'}</button>
-			</div>
-		</div>
-	</div>
-{/if}
-
-<!-- 그룹 역할 선택 서브 모달 -->
-{#if pendingAddGroup}
-	<!-- svelte-ignore a11y_click_events_have_key_events -->
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div
-		use:dialogFocus={{ enabled: true, onEscape: () => { pendingAddGroup = null; } }}
-		class="fixed inset-0 bg-surface-scrim/70 flex items-center justify-center z-[60]"
-		onclick={() => { pendingAddGroup = null; }}
-		role="dialog" aria-modal="true" tabindex="-1"
-	>
-		<div
-			class="bg-surface-base border border-line-2 rounded-xl p-5 w-full max-w-sm mx-4 shadow-[var(--shadow-restraint)]"
-			onclick={(e) => e.stopPropagation()}
-			role="none"
-		>
-			<h3 class="text-base font-semibold text-ink-0 mb-3">[그룹] {pendingAddGroup.name} — 역할 선택</h3>
-			<select bind:value={pendingGroupRoleId} class="w-full bg-surface-sunken border border-line-2 text-ink-0 text-sm rounded px-3 py-2 focus:outline-none focus:border-action-warm mb-4">
-				{#each allRoles as r}
-					<option value={r.id}>{r.name}</option>
-				{/each}
-			</select>
-			<div class="flex justify-end gap-3">
-				<button onclick={() => { pendingAddGroup = null; }} class="px-3 py-1.5 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm rounded-lg">취소</button>
-				<button
-					onclick={() => pendingAddGroup && assignGroupRole(pendingAddGroup.id, pendingGroupRoleId)}
-					disabled={addSaving || !pendingGroupRoleId}
-					class="px-3 py-1.5 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm rounded-lg disabled:opacity-30"
-				>{addSaving ? '추가 중...' : '추가'}</button>
+			</ul>
+			<div class="flex justify-end mt-4">
+				<Button variant="secondary" size="sm" onclick={() => { detailPrincipal = null; }}>닫기</Button>
 			</div>
 		</div>
 	</div>

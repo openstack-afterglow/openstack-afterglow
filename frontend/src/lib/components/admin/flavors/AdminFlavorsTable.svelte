@@ -84,23 +84,23 @@
 					<th
 						class="text-left py-2 pr-4 cursor-pointer select-none hover:text-ink-1"
 						onclick={() => toggleSort('name')}
-					>이름 <span class="text-ink-3">{sortIcon('name')}</span></th>
+					>이름 <span class="text-ink-2">{sortIcon('name')}</span></th>
 					<th
 						class="text-left py-2 pr-4 cursor-pointer select-none hover:text-ink-1"
 						onclick={() => toggleSort('vcpus')}
-					>VCPU <span class="text-ink-3">{sortIcon('vcpus')}</span></th>
+					>VCPU <span class="text-ink-2">{sortIcon('vcpus')}</span></th>
 					<th
 						class="text-left py-2 pr-4 cursor-pointer select-none hover:text-ink-1"
 						onclick={() => toggleSort('ram')}
-					>RAM <span class="text-ink-3">{sortIcon('ram')}</span></th>
+					>RAM <span class="text-ink-2">{sortIcon('ram')}</span></th>
 					<th
 						class="text-left py-2 pr-4 cursor-pointer select-none hover:text-ink-1"
 						onclick={() => toggleSort('disk')}
-					>Disk <span class="text-ink-3">{sortIcon('disk')}</span></th>
+					>Disk <span class="text-ink-2">{sortIcon('disk')}</span></th>
 					<th
 						class="text-left py-2 pr-4 cursor-pointer select-none hover:text-ink-1"
 						onclick={() => toggleSort('is_public')}
-					>공개 <span class="text-ink-3">{sortIcon('is_public')}</span></th>
+					>공개 <span class="text-ink-2">{sortIcon('is_public')}</span></th>
 					<th class="text-left py-2 pr-4">GPU</th>
 					<th class="text-right py-2">액션</th>
 				</tr>
@@ -112,7 +112,7 @@
 							<div class="min-w-0">
 								<span class="text-ink-0 max-md:block max-md:max-w-[66vw] max-md:truncate" title={f.name}>{f.name}</span>
 								{#if f.description}
-									<div class="text-ink-3 text-xs mt-0.5">{f.description}</div>
+									<div class="text-ink-2 text-xs mt-0.5">{f.description}</div>
 								{/if}
 							</div>
 						</td>

@@ -35,9 +35,9 @@
 	<!-- 로딩 중: 빈 화면 -->
 {:else if !$isAdmin}
 	<div class="flex flex-col items-center justify-center min-h-screen bg-surface-canvas text-ink-2">
-		<div class="text-6xl font-bold text-ink-3 mb-4">404</div>
+		<div class="text-6xl font-bold text-ink-2 mb-4">404</div>
 		<div class="text-xl font-semibold text-ink-2 mb-2">페이지를 찾을 수 없습니다</div>
-		<div class="text-sm text-ink-3">접근 권한이 없거나 존재하지 않는 페이지입니다.</div>
+		<div class="text-sm text-ink-2">접근 권한이 없거나 존재하지 않는 페이지입니다.</div>
 		<Button variant="primary" size="sm" class="mt-4" onclick={() => goto('/dashboard')}>대시보드로 이동</Button>
 	</div>
 {:else}

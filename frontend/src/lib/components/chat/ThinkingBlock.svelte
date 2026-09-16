@@ -69,7 +69,7 @@
 	}
 	.chevron {
 		margin-left: auto;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		transition: transform 0.15s;
 	}
 	.chevron.open {

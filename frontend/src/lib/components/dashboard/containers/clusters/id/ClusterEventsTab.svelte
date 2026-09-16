@@ -13,7 +13,7 @@
 {#if loading}
   <LoadingSkeleton variant="table" rows={8} />
 {:else if events.length === 0}
-  <div class="text-ink-3 text-sm">스택 이벤트 정보를 불러올 수 없습니다</div>
+  <div class="text-ink-2 text-sm">스택 이벤트 정보를 불러올 수 없습니다</div>
 {:else}
   <div class="overflow-x-auto">
     <table class="w-full text-sm">
@@ -33,7 +33,7 @@
             <td class="py-2 pr-4">
               <span class="{resourceStatusColor(e.resource_status)} font-medium">{e.resource_status}</span>
             </td>
-            <td class="py-2 text-ink-3">{e.resource_status_reason ?? '-'}</td>
+            <td class="py-2 text-ink-2">{e.resource_status_reason ?? '-'}</td>
           </tr>
         {/each}
       </tbody>

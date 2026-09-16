@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { LoadBalancerDetail } from '$lib/types/loadbalancer';
 	import { isDroverLoadBalancer } from '$lib/utils/droverLoadBalancer';
+	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 
 	let {
 		lb,
@@ -22,10 +23,10 @@
 			<p class="text-ink-2 text-sm mt-1">{lb.description}</p>
 		{/if}
 		<div class="flex items-center gap-3 mt-2">
-			<span class="px-2 py-0.5 rounded text-xs {lb.status === 'ACTIVE' ? 'text-green-400 bg-green-900/30' : 'text-yellow-400 bg-yellow-900/30'}">{lb.status}</span>
-			<span class="px-2 py-0.5 rounded text-xs {lb.operating_status === 'ONLINE' ? 'text-green-400' : 'text-ink-2'}">{lb.operating_status}</span>
+			<StatusChip status={lb.status} />
+			<StatusChip status={lb.operating_status} />
 			{#if lb.vip_address}
-				<span class="text-xs text-ink-3 font-mono">VIP: {lb.vip_address}</span>
+				<span class="text-xs text-ink-2 font-mono">VIP: {lb.vip_address}</span>
 			{/if}
 		</div>
 	</div>

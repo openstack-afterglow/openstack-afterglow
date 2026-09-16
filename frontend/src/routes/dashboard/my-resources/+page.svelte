@@ -69,7 +69,7 @@
 			<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
 			대시보드로 돌아가기
 		</a>
-		<span class="text-ink-3">·</span>
+		<span class="text-ink-2">·</span>
 		<a
 			href="/dashboard/account"
 			class="inline-flex items-center gap-1.5 text-xs text-warm-text hover:text-warm-text-hover transition-colors px-2.5 py-1.5 rounded-md hover:bg-action-warm-hover/10"
@@ -123,10 +123,10 @@
 						</svg>
 					</div>
 					<div class="text-ink-0 font-semibold text-sm">Floating IP</div>
-					<span class="ml-auto text-xs text-ink-3">{data.totals.floating_ips}개</span>
+					<span class="ml-auto text-xs text-ink-2">{data.totals.floating_ips}개</span>
 				</div>
 				<div class="flex flex-col items-center justify-center py-6">
-					<div class="text-[11px] text-ink-3 text-center leading-relaxed">
+					<div class="text-xs text-ink-2 text-center leading-relaxed">
 						Floating IP 목록은<br />
 						<a href="/dashboard/network/floating-ips" class="text-emerald-400 hover:text-emerald-300 transition-colors">네트워크 → Floating IP</a>에서 확인하세요
 					</div>

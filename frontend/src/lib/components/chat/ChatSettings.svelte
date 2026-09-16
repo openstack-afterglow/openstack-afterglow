@@ -388,7 +388,7 @@
 	}
 	.page-head p {
 		margin: 0.35rem 0 0;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-size: 0.875rem;
 	}
 	.page-head .eyebrow {
@@ -469,7 +469,7 @@
 	.sec-desc {
 		margin: 0;
 		font-size: 0.78rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.stats {
 		display: grid;
@@ -494,7 +494,7 @@
 	}
 	.stat-lbl {
 		font-size: 0.72rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.quota {
 		margin-top: 0.5rem;
@@ -616,7 +616,7 @@
 		padding: 0.1rem 0.4rem;
 		border-radius: 999px;
 		background: var(--color-surface-sunken);
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.mem-actions {
 		display: flex;
@@ -632,7 +632,7 @@
 		border: none;
 		border-radius: 0.45rem;
 		background: transparent;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		cursor: pointer;
 		transition:
 			background var(--motion-duration-fast) var(--motion-ease-standard),

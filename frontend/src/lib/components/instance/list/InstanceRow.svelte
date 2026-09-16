@@ -57,10 +57,10 @@
 	<td class="text-xs">
 		<div class="truncate text-ink-2">{instance.image_name ?? '볼륨에서 부팅'}</div>
 		{#if instance.flavor_name}
-			<div class="mt-0.5 flex items-center gap-1.5 text-ink-3">
+			<div class="mt-0.5 flex items-center gap-1.5 text-ink-2">
 				<span class="truncate">{instance.flavor_name}</span>
 				{#if isUnderutilized}
-					<span class="shrink-0 rounded border border-action-warm/60 bg-surface-selected px-1.5 py-0.5 text-[10px] font-medium text-warm-text">리사이즈 권장</span>
+					<span class="shrink-0 rounded border border-action-warm/60 bg-surface-selected px-1.5 py-0.5 text-xs font-medium text-warm-text">리사이즈 권장</span>
 				{/if}
 			</div>
 		{/if}
@@ -73,7 +73,7 @@
 			{/each}
 		</div>
 	</td>
-	<td class="text-xs text-ink-3">{instance.union_strategy ? strategyLabel[instance.union_strategy] ?? instance.union_strategy : '—'}</td>
+	<td class="text-xs text-ink-2">{instance.union_strategy ? strategyLabel[instance.union_strategy] ?? instance.union_strategy : '—'}</td>
 	<InstanceRowActions {instance} {onAction} />
 </tr>
 

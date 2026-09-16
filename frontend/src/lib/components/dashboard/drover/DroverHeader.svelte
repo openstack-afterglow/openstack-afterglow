@@ -30,7 +30,7 @@
 			onclick={onToggleDeleted}
 			class="hidden sm:inline-flex text-xs px-3 py-1.5 rounded border transition-colors {showDeleted
 				? 'border-line-2 text-ink-2 bg-surface-sunken'
-				: 'border-line-2 text-ink-3 hover:border-line-2 hover:text-ink-2'}"
+				: 'border-line-2 text-ink-2 hover:border-line-2 hover:text-ink-2'}"
 		>
 			{showDeleted ? '삭제 이력 숨기기' : '삭제 이력 보기'}
 		</button>

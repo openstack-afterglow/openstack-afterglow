@@ -33,7 +33,7 @@
 			{#if mode === 'add'}
 				<span class="text-red-400">*</span>
 			{:else}
-				<span class="text-ink-3">(변경 시에만 입력)</span>
+				<span class="text-ink-2">(변경 시에만 입력)</span>
 			{/if}
 		</label>
 		<input id="field-notiontargetformfields-31"
@@ -52,16 +52,16 @@
 	</div>
 	<div class="grid grid-cols-2 gap-3">
 		<div>
-			<label class="block text-xs text-ink-2 mb-1" for="field-notiontargetformfields-55">사용자 DB ID <span class="text-ink-3">(선택)</span></label>
+			<label class="block text-xs text-ink-2 mb-1" for="field-notiontargetformfields-55">사용자 DB ID <span class="text-ink-2">(선택)</span></label>
 			<input id="field-notiontargetformfields-55" bind:value={form.usersDatabaseId} type="text" placeholder="People DB" class={monoInputClass} />
 		</div>
 		<div>
-			<label class="block text-xs text-ink-2 mb-1" for="field-notiontargetformfields-59">하이퍼바이저 DB ID <span class="text-ink-3">(선택)</span></label>
+			<label class="block text-xs text-ink-2 mb-1" for="field-notiontargetformfields-59">하이퍼바이저 DB ID <span class="text-ink-2">(선택)</span></label>
 			<input id="field-notiontargetformfields-59" bind:value={form.hypervisorsDatabaseId} type="text" placeholder="Hypervisor DB" class={monoInputClass} />
 		</div>
 	</div>
 	<div>
-		<label class="block text-xs text-ink-2 mb-1" for="field-notiontargetformfields-64">GPU Spec DB ID <span class="text-ink-3">(선택)</span></label>
+		<label class="block text-xs text-ink-2 mb-1" for="field-notiontargetformfields-64">GPU Spec DB ID <span class="text-ink-2">(선택)</span></label>
 		<input id="field-notiontargetformfields-64" bind:value={form.gpuSpecDatabaseId} type="text" placeholder="GPU Spec DB" class={monoInputClass} />
 	</div>
 	<div class="flex gap-4 items-end">

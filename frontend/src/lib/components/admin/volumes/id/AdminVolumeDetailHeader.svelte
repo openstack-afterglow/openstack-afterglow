@@ -25,7 +25,7 @@
 			<span class="px-2 py-0.5 rounded text-xs font-medium {volumeStatusColor[volume.status] ?? 'text-ink-2 bg-surface-sunken'}">
 				{volume.status}
 			</span>
-			<span class="text-xs text-ink-3">{formatNumber(volume.size)} GB</span>
+			<span class="text-xs text-ink-2">{formatNumber(volume.size)} GB</span>
 		</div>
 	</div>
 	<div class="flex items-center gap-2">

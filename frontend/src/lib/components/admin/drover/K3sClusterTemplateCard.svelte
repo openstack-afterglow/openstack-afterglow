@@ -38,13 +38,13 @@
 	</div>
 
 	<div class="grid grid-cols-2 gap-2 text-xs">
-		<div class="text-ink-3">k3s 버전</div>
+		<div class="text-ink-2">k3s 버전</div>
 		<div class="text-ink-2 font-mono">{template.k3s_version ?? '설정값'}</div>
-		<div class="text-ink-3">에이전트 수</div>
+		<div class="text-ink-2">에이전트 수</div>
 		<div class="text-ink-2">{template.default_node_count}대</div>
-		<div class="text-ink-3">OS</div>
+		<div class="text-ink-2">OS</div>
 		<div class="text-ink-2">{template.os_type}</div>
-		<div class="text-ink-3">플러그인</div>
+		<div class="text-ink-2">플러그인</div>
 		<div class="text-ink-2">
 			{#if Object.keys(template.plugins_enabled).length === 0}
 				없음

@@ -42,7 +42,7 @@
 	{#if s.loading && !s.instance}
 		<LoadingSkeleton variant="detail" rows={8} />
 	{:else if !s.instance}
-		<div class="text-ink-3 text-sm">인스턴스를 찾을 수 없습니다.</div>
+		<div class="text-ink-2 text-sm">인스턴스를 찾을 수 없습니다.</div>
 	{:else}
 		<DbInfoSection />
 		<DbConnectionSection />

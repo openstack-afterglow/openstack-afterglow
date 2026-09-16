@@ -42,12 +42,12 @@
 </script>
 
 {#if snapshots.length === 0}
-	<div class="text-center py-16 text-ink-3">
+	<div class="text-center py-16 text-ink-2">
 		<p class="text-sm">스냅샷이 없습니다</p>
 	</div>
 {:else}
 	<div class="bg-[#0B1220] border border-line rounded-lg overflow-hidden">
-		<div class="grid grid-cols-[32px_1.6fr_1.2fr_80px_140px_110px_56px] px-4 py-2.5 border-b border-line text-[11px] uppercase tracking-wider text-ink-3 font-medium">
+		<div class="grid grid-cols-[32px_1.6fr_1.2fr_80px_140px_110px_56px] px-4 py-2.5 border-b border-line text-xs uppercase tracking-wider text-ink-2 font-medium">
 			<div><SelectionCheckbox checked={selectableIds.size > 0 && selectedSelectableCount === selectableIds.size} indeterminate={selectedSelectableCount > 0 && selectedSelectableCount < selectableIds.size} disabled={selectionDisabled || selectableIds.size === 0} onclick={onToggleAll} ariaLabel="전체 선택" /></div>
 			<div>이름</div>
 			<div>원본 볼륨</div>
@@ -61,11 +61,11 @@
 				<div><SelectionCheckbox checked={selectedIds.has(snap.id)} disabled={selectionDisabled} onclick={() => onToggleSelect(snap.id)} ariaLabel={`${snap.name || snap.id} 선택`} /></div>
 				<div class="min-w-0">
 					<div class="text-ink-0 font-medium truncate">{snap.name || snap.id.slice(0, 12)}</div>
-					<div class="text-[11px] text-ink-3 font-mono truncate">{snap.id.slice(0, 8)}…</div>
+					<div class="text-xs text-ink-2 font-mono truncate">{snap.id.slice(0, 8)}…</div>
 				</div>
-				<div class="text-ink-2 font-mono text-[12px] truncate">{snap.volume_id.slice(0, 12)}…</div>
-				<div class="text-ink-2 font-mono text-[12px]">{snap.size} GB</div>
-				<div class="text-ink-2 text-[12px]">
+				<div class="text-ink-2 font-mono text-xs truncate">{snap.volume_id.slice(0, 12)}…</div>
+				<div class="text-ink-2 font-mono text-xs">{snap.size} GB</div>
+				<div class="text-ink-2 text-xs">
 					{snap.created_at ? new Date(snap.created_at).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}
 				</div>
 				<div><StatusChip status={snap.status} /></div>

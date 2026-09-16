@@ -123,15 +123,15 @@
 					</div>
 					<div class="mt-2 grid grid-cols-3 gap-2 text-xs">
 						<div class="rounded bg-surface-base p-2">
-							<div class="text-ink-3">CPU free</div>
+							<div class="text-ink-2">CPU free</div>
 							<div class="text-ink-1">{formatResource((ng.capacity?.free as Record<string, unknown> | undefined)?.cpu_m, 'cpu')}</div>
 						</div>
 						<div class="rounded bg-surface-base p-2">
-							<div class="text-ink-3">MEM free</div>
+							<div class="text-ink-2">MEM free</div>
 							<div class="text-ink-1">{formatResource((ng.capacity?.free as Record<string, unknown> | undefined)?.memory_bytes, 'memory')}</div>
 						</div>
 						<div class="rounded bg-surface-base p-2">
-							<div class="text-ink-3">GPU free</div>
+							<div class="text-ink-2">GPU free</div>
 							<div class="text-ink-1">{formatResource((ng.capacity?.free as Record<string, unknown> | undefined)?.gpu, 'gpu')}</div>
 						</div>
 					</div>
@@ -150,9 +150,9 @@
 	{/if}
 
 	<div class="flex items-center justify-between mb-4">
-		<h3 class="text-xs text-ink-3 uppercase tracking-wide">Stampede 스케일 이벤트</h3>
+		<h3 class="text-xs text-ink-2 uppercase tracking-wide">Stampede 스케일 이벤트</h3>
 		<button onclick={load} disabled={loading}
-			class="text-xs text-ink-3 hover:text-ink-2 transition-colors disabled:opacity-50">
+			class="text-xs text-ink-2 hover:text-ink-2 transition-colors disabled:opacity-50">
 			{loading ? '로딩 중...' : '새로고침'}
 		</button>
 	</div>
@@ -160,12 +160,12 @@
 	{#if error}
 		<div class="text-xs text-red-400 py-2">{error}</div>
 	{:else if loading && events.length === 0}
-		<div class="text-xs text-ink-3 py-2">불러오는 중...</div>
+		<div class="text-xs text-ink-2 py-2">불러오는 중...</div>
 	{:else if events.length === 0}
-		<div class="text-xs text-ink-3 py-4 text-center">
+		<div class="text-xs text-ink-2 py-4 text-center">
 			<div class="text-2xl mb-2">⚡</div>
 			<div>아직 Stampede 이벤트가 없습니다.</div>
-			<div class="text-ink-3 mt-1">노드그룹에 Stampede를 활성화하면 스케일 이벤트가 여기에 표시됩니다.</div>
+			<div class="text-ink-2 mt-1">노드그룹에 Stampede를 활성화하면 스케일 이벤트가 여기에 표시됩니다.</div>
 		</div>
 	{:else}
 		<div class="space-y-0.5">
@@ -180,17 +180,17 @@
 								{actionLabel(ev.action, ev.status)}
 							</span>
 							{#if ev.nodegroup_id}
-								<span class="text-xs text-ink-3 font-mono truncate max-w-40">{ev.nodegroup_id.slice(0, 8)}…</span>
+								<span class="text-xs text-ink-2 font-mono truncate max-w-40">{ev.nodegroup_id.slice(0, 8)}…</span>
 							{/if}
 							{#if ev.status === 'failed'}
 								<span class="text-xs bg-red-900/40 text-red-400 border border-red-800/40 rounded px-1.5 py-0.5">실패</span>
 							{/if}
 						</div>
 						{#if extraSummary(ev.action, ev.extra)}
-							<div class="text-xs text-ink-3 mt-0.5">{extraSummary(ev.action, ev.extra)}</div>
+							<div class="text-xs text-ink-2 mt-0.5">{extraSummary(ev.action, ev.extra)}</div>
 						{/if}
 					</div>
-					<span class="text-xs text-ink-3 flex-shrink-0 tabular-nums">{formatTime(ev.created_at)}</span>
+					<span class="text-xs text-ink-2 flex-shrink-0 tabular-nums">{formatTime(ev.created_at)}</span>
 				</div>
 			{/each}
 		</div>

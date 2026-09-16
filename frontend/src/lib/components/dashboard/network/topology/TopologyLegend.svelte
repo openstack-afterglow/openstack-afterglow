@@ -55,10 +55,10 @@
 	</span>
 	<!-- 마커 -->
 	<span class="flex items-center gap-1.5">
-		<span class="text-[10px] text-orange-400 font-mono flex-shrink-0">✦</span>Floating IP
+		<span class="text-xs text-orange-400 font-mono flex-shrink-0">✦</span>Floating IP
 	</span>
 	<span class="flex items-center gap-1.5">
-		<span class="text-[9px] px-1 rounded bg-surface-selected/40 text-warm-text flex-shrink-0">2NIC</span>멀티 NIC
+		<span class="text-xs px-1 rounded bg-surface-selected/40 text-warm-text flex-shrink-0">2NIC</span>멀티 NIC
 	</span>
 	<!-- 연결선 -->
 	<span class="flex items-center gap-1.5">

@@ -37,9 +37,9 @@
 					<td class="py-2 pr-4">
 						{#if n.is_external}<span class="px-1.5 py-0.5 bg-orange-900/30 text-orange-300 rounded text-xs mr-1">외부</span>{/if}
 						{#if n.is_shared}<span class="px-1.5 py-0.5 bg-surface-selected/30 text-warm-text rounded text-xs">공유</span>{/if}
-						{#if !n.is_external && !n.is_shared}<span class="text-ink-3">내부</span>{/if}
+						{#if !n.is_external && !n.is_shared}<span class="text-ink-2">내부</span>{/if}
 					</td>
-					<td class="py-2 pr-4 text-ink-3">{n.subnets.length}개</td>
+					<td class="py-2 pr-4 text-ink-2">{n.subnets.length}개</td>
 					<td class="py-2" onclick={(e) => e.stopPropagation()}>
 						<div class="flex items-center gap-1">
 							<button
@@ -57,4 +57,4 @@
 		</tbody>
 	</table>
 </div>
-<div class="mt-3 text-xs text-ink-3">총 {networks.length}개 네트워크</div>
+<div class="mt-3 text-xs text-ink-2">총 {networks.length}개 네트워크</div>

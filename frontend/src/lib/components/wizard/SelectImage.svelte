@@ -37,10 +37,12 @@
 		windows: 'Windows', cirros: 'CirrOS',
 	};
 
+	// 배포판은 범주형 식별자다. 상태 톤(success/info/neutral)을 빌리면 목록이 건강 상태처럼
+	// 읽히므로 범주형 팔레트인 --color-chart-* 만 쓴다.
 	const distroColors: Record<string, string> = {
-		ubuntu: 'bg-[var(--color-warm)]', centos: 'bg-[var(--color-accent-2)]', rocky: 'bg-[var(--color-state-success)]',
-		debian: 'bg-[var(--color-chart-3)]', fedora: 'bg-[var(--color-accent)]', 'fedora-coreos': 'bg-[var(--color-chart-6)]',
-		rhel: 'bg-[var(--color-warm-2)]', windows: 'bg-[var(--color-state-info)]', cirros: 'bg-[var(--color-state-neutral)]',
+		ubuntu: 'bg-[var(--color-chart-1)]', centos: 'bg-[var(--color-chart-5)]', rocky: 'bg-[var(--color-chart-2)]',
+		debian: 'bg-[var(--color-chart-3)]', fedora: 'bg-[var(--color-chart-1)]', 'fedora-coreos': 'bg-[var(--color-chart-6)]',
+		rhel: 'bg-[var(--color-chart-4)]', windows: 'bg-[var(--color-chart-6)]', cirros: 'bg-[var(--color-chart-5)]',
 	};
 
 	const distroLogos: Record<string, string> = {
@@ -119,7 +121,7 @@
 		</svg>
 		필터
 		{#if activeFilterCount > 0}
-			<span class="rounded-full bg-[var(--color-accent)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--color-action-on-accent)]">{activeFilterCount}</span>
+			<span class="rounded-full bg-[var(--color-accent)] px-1.5 py-0.5 font-mono text-xs text-[var(--color-action-on-accent)]">{activeFilterCount}</span>
 		{/if}
 	</button>
 </div>
@@ -201,15 +203,15 @@
 				{/if}
 				<div class="min-w-0 flex-1">
 					<div class="font-semibold text-[var(--color-ink-0)] text-[13.5px] font-mono truncate leading-tight">{reference.repository}</div>
-					<div class="text-[11px] text-[var(--color-ink-3)] truncate mt-0.5">{distroDescription(img)}</div>
+					<div class="text-xs text-[var(--color-ink-3)] truncate mt-0.5">{distroDescription(img)}</div>
 				</div>
 			</div>
 
 			<!-- 메타 -->
-			<div class="flex items-center gap-2 text-[11px] text-[var(--color-ink-3)] font-mono pt-2 mt-2 border-t border-[var(--color-line)]">
-				<span class="px-1.5 py-0.5 bg-[var(--color-surface-sunken)] border border-[var(--color-line)] rounded text-[var(--color-ink-2)] text-[10px]">tag:{reference.tag}</span>
+			<div class="flex items-center gap-2 text-xs text-[var(--color-ink-3)] font-mono pt-2 mt-2 border-t border-[var(--color-line)]">
+				<span class="px-1.5 py-0.5 bg-[var(--color-surface-sunken)] border border-[var(--color-line)] rounded text-[var(--color-ink-2)] text-xs">tag:{reference.tag}</span>
 				{#if img.disk_format}
-					<span class="px-1.5 py-0.5 bg-[var(--color-surface-sunken)] border border-[var(--color-line)] rounded text-[var(--color-ink-2)] text-[10px] lowercase">{img.disk_format}</span>
+					<span class="px-1.5 py-0.5 bg-[var(--color-surface-sunken)] border border-[var(--color-line)] rounded text-[var(--color-ink-2)] text-xs lowercase">{img.disk_format}</span>
 				{/if}
 				{#if img.min_disk}
 					<span>{img.min_disk} GB</span>

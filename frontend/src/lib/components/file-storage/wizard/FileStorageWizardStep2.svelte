@@ -14,7 +14,7 @@
 <div class="space-y-4">
 	<div>
 		{#if s.fsForm.share_proto === 'CEPHFS'}
-			<div class="bg-surface-sunken/40 border border-line-2 rounded-lg px-3 py-2.5 text-xs text-ink-3">
+			<div class="bg-surface-sunken/40 border border-line-2 rounded-lg px-3 py-2.5 text-xs text-ink-2">
 				CephFS native 프로토콜은 Share Network 없이 직접 마운트됩니다.
 			</div>
 		{:else}
@@ -31,7 +31,7 @@
 					{#each s.shareNetworks as net}<option value={net.id}>{net.name || net.id.slice(0, 8)}{net.status ? ` (${net.status})` : ''}</option>{/each}
 				</select>
 			{:else if !s.showInlineNetCreate}
-				<div class="bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-3 text-sm">
+				<div class="bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-2 text-sm">
 					Share Network 없음 —
 					<button onclick={() => (s.showInlineNetCreate = true)} class="text-warm-text hover:text-warm-text-hover underline">지금 생성</button>
 				</div>
@@ -43,19 +43,19 @@
 		<div class="border border-line-2 rounded-lg p-4 bg-surface-sunken/40 space-y-3">
 			<p class="text-xs text-ink-2 font-medium uppercase tracking-wide">새 Share Network 생성</p>
 			<div>
-				<label class="block text-xs text-ink-3 mb-1">이름 *
+				<label class="block text-xs text-ink-2 mb-1">이름 *
 					<input bind:value={s.inlineNetForm.name} type="text" placeholder="my-share-network"
 						class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1" />
 				</label>
 			</div>
 			<div>
-				<label class="block text-xs text-ink-3 mb-1">설명 (선택)
+				<label class="block text-xs text-ink-2 mb-1">설명 (선택)
 					<input bind:value={s.inlineNetForm.description} type="text" placeholder="설명"
 						class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1" />
 				</label>
 			</div>
 			<div>
-				<label class="block text-xs text-ink-3 mb-1">Neutron 네트워크 *
+				<label class="block text-xs text-ink-2 mb-1">Neutron 네트워크 *
 					<select bind:value={s.inlineNetForm.neutron_net_id} onchange={s.onInlineNetworkChange}
 						class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1">
 						<option value="">네트워크 선택</option>
@@ -64,9 +64,9 @@
 				</label>
 			</div>
 			<div>
-				<label class="block text-xs text-ink-3 mb-1">서브넷 *
+				<label class="block text-xs text-ink-2 mb-1">서브넷 *
 					{#if s.loadingSubnets}
-						<div class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-3 text-sm mt-1">로딩 중...</div>
+						<div class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-2 text-sm mt-1">로딩 중...</div>
 					{:else}
 						<select bind:value={s.inlineNetForm.neutron_subnet_id} disabled={s.subnets.length === 0}
 							class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1 disabled:text-ink-3">

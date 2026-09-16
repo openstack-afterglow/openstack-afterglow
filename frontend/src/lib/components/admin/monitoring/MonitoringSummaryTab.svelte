@@ -80,7 +80,7 @@
 		<div class="bg-surface-base border border-line rounded-xl p-5">
 			<div class="flex items-center justify-between mb-4">
 				<h2 class="text-sm font-semibold text-ink-0">Compute</h2>
-				<span class="text-xs text-ink-3">
+				<span class="text-xs text-ink-2">
 					하이퍼바이저 <span class="text-green-400">{summary.compute.hypervisors_up}</span>/{summary.compute.hypervisors_total} up
 				</span>
 			</div>
@@ -99,7 +99,7 @@
 				<SummaryStatCard value={summary.compute.gpu_instances} label="GPU VM" valueClass="text-purple-400" size="sm" />
 			</div>
 
-			<div class="mt-3 text-xs text-ink-3 text-right">
+			<div class="mt-3 text-xs text-ink-2 text-right">
 				총 {summary.compute.instance_stats?.total ?? 0}개 인스턴스
 			</div>
 		</div>
@@ -131,23 +131,23 @@
 
 			<div class="mt-4 pt-4 border-t border-line space-y-1.5 text-xs">
 				<div class="flex items-center justify-between">
-					<span class="text-ink-3">파일 스토리지</span>
+					<span class="text-ink-2">파일 스토리지</span>
 					<span class="text-ink-2">{summary.storage.file_storage_count}개</span>
 				</div>
 				<div class="flex items-center justify-between">
-					<span class="text-ink-3">볼륨 스냅샷</span>
+					<span class="text-ink-2">볼륨 스냅샷</span>
 					<span class="text-ink-2">{summary.storage.volume_snapshot_count ?? 0}개</span>
 				</div>
 				<div class="flex items-center justify-between">
-					<span class="text-ink-3">볼륨 백업</span>
+					<span class="text-ink-2">볼륨 백업</span>
 					<span class="text-ink-2">{summary.storage.volume_backup_count ?? 0}개</span>
 				</div>
 				<div class="flex items-center justify-between">
-					<span class="text-ink-3">파일 스냅샷</span>
+					<span class="text-ink-2">파일 스냅샷</span>
 					<span class="text-ink-2">{summary.storage.share_snapshot_count ?? 0}개</span>
 				</div>
 				<div class="flex items-center justify-between">
-					<span class="text-ink-3">이미지</span>
+					<span class="text-ink-2">이미지</span>
 					<span class="text-ink-2">{summary.storage.image_count ?? 0}개</span>
 				</div>
 			</div>
@@ -174,15 +174,15 @@
 
 			<div class="mt-3 pt-4 border-t border-line space-y-1.5 text-xs">
 				<div class="flex items-center justify-between">
-					<span class="text-ink-3">서브넷</span>
+					<span class="text-ink-2">서브넷</span>
 					<span class="text-ink-2">{summary.network.subnet_count ?? 0}개</span>
 				</div>
 				<div class="flex items-center justify-between">
-					<span class="text-ink-3">Security Group</span>
+					<span class="text-ink-2">Security Group</span>
 					<span class="text-ink-2">{summary.network.security_group_count ?? 0}개</span>
 				</div>
 				<div class="flex items-center justify-between">
-					<span class="text-ink-3">Load Balancer</span>
+					<span class="text-ink-2">Load Balancer</span>
 					<span class="text-ink-2">
 						{summary.network.load_balancer_count ?? 0}개
 						{#if (summary.network.load_balancer_count ?? 0) > 0}

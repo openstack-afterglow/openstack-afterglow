@@ -165,7 +165,7 @@
 			<button
 				onclick={logout}
 				disabled={$logoutInProgress}
-				class="text-sm text-ink-3 hover:text-ink-0 transition-colors"
+				class="text-sm text-ink-2 hover:text-ink-0 transition-colors"
 			>
 				로그아웃
 			</button>
@@ -196,7 +196,7 @@
 		{:else if error}
 			<div class="text-red-400 text-sm">{error}</div>
 		{:else if projects.length === 0}
-			<div class="text-ink-3 text-sm text-center py-16">접근 가능한 프로젝트가 없습니다.</div>
+			<div class="text-ink-2 text-sm text-center py-16">접근 가능한 프로젝트가 없습니다.</div>
 		{:else}
 			<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
 				{#each projects as proj (proj.id)}

@@ -54,20 +54,20 @@
 			{#if reviewFlavor}
 				<div class="grid grid-cols-4 gap-2">
 					<div class="flex flex-col gap-0.5 px-2.5 py-2 rounded-md bg-surface-sunken/70 border border-line-2">
-						<span class="text-[9.5px] uppercase tracking-wider text-ink-3 font-mono font-bold">vCPU</span>
+						<span class="text-[9.5px] uppercase tracking-wider text-ink-2 font-mono font-bold">vCPU</span>
 						<span class="font-mono text-sm font-semibold text-ink-0">{reviewFlavor.vcpus}</span>
 					</div>
 					<div class="flex flex-col gap-0.5 px-2.5 py-2 rounded-md bg-surface-sunken/70 border border-line-2">
-						<span class="text-[9.5px] uppercase tracking-wider text-ink-3 font-mono font-bold">RAM</span>
+						<span class="text-[9.5px] uppercase tracking-wider text-ink-2 font-mono font-bold">RAM</span>
 						<span class="font-mono text-sm font-semibold text-ink-0">{reviewFlavor.ram >= 1024 ? Math.round(reviewFlavor.ram / 1024) + 'G' : reviewFlavor.ram + 'M'}</span>
 					</div>
 					<div class="flex flex-col gap-0.5 px-2.5 py-2 rounded-md bg-surface-sunken/70 border border-line-2">
-						<span class="text-[9.5px] uppercase tracking-wider text-ink-3 font-mono font-bold">Disk</span>
+						<span class="text-[9.5px] uppercase tracking-wider text-ink-2 font-mono font-bold">Disk</span>
 						<span class="font-mono text-sm font-semibold text-ink-0">{reviewFlavor.disk}G</span>
 					</div>
 					<div class="flex flex-col gap-0.5 px-2.5 py-2 rounded-md bg-surface-sunken/70 border border-line-2">
-						<span class="text-[9.5px] uppercase tracking-wider text-ink-3 font-mono font-bold">GPU</span>
-						<span class="font-mono text-sm font-semibold {reviewGpu ? 'text-purple-400' : 'text-ink-3'}">{reviewGpu || '—'}</span>
+						<span class="text-[9.5px] uppercase tracking-wider text-ink-2 font-mono font-bold">GPU</span>
+						<span class="font-mono text-sm font-semibold {reviewGpu ? 'text-purple-400' : 'text-ink-2'}">{reviewGpu || '—'}</span>
 					</div>
 				</div>
 			{/if}
@@ -80,7 +80,7 @@
 		<span class="text-xs text-ink-2 font-medium">라이브러리</span>
 		<span class="flex flex-wrap gap-1.5">
 			{#each $wizard.libraries as lib}
-				<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-selected/30 border border-action-warm text-warm-text font-mono text-[11px]">{lib}</span>
+				<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-selected/30 border border-action-warm text-warm-text font-mono text-xs">{lib}</span>
 			{/each}
 		</span>
 		<button onclick={() => s.goTo(3)} class="review-edit-btn">✎ 수정</button>
@@ -117,7 +117,7 @@
 		<span class="text-xs text-ink-2 font-medium">루트 디스크</span>
 		<span class="text-sm text-ink-0 font-mono">
 			{$wizard.bootVolumeSizeGb} GB
-			<span class="text-ink-3 text-xs ml-1">({$wizard.deleteBootVolumeOnTermination ? 'VM 삭제 시 함께 삭제' : '보존'})</span>
+			<span class="text-ink-2 text-xs ml-1">({$wizard.deleteBootVolumeOnTermination ? 'VM 삭제 시 함께 삭제' : '보존'})</span>
 		</span>
 		<button onclick={() => s.goTo(5)} class="review-edit-btn">✎ 수정</button>
 	</div>
@@ -130,9 +130,9 @@
 			{#each $wizard.dataMounts as dm}
 				<div class="flex items-center gap-2 text-xs font-mono">
 					<span class="text-ink-2 truncate max-w-[140px]">{dm.fileStorageId ? (s.fileStorages.find(f => f.id === dm.fileStorageId)?.name ?? dm.fileStorageId.slice(0, 12)) : '—'}</span>
-					<span class="text-ink-3">→</span>
+					<span class="text-ink-2">→</span>
 					<span class="text-cyan-400">{dm.mountPoint || '—'}</span>
-					{#if dm.readOnly}<span class="text-warm-text/80 text-[10px]">ro</span>{/if}
+					{#if dm.readOnly}<span class="text-warm-text/80 text-xs">ro</span>{/if}
 				</div>
 			{/each}
 		</div>

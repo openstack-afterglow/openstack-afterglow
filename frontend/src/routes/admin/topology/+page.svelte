@@ -174,7 +174,7 @@
 		{/if}
 
 		<!-- 전체 요약 -->
-		<div class="mt-4 flex gap-6 text-xs text-ink-3 px-1">
+		<div class="mt-4 flex gap-6 text-xs text-ink-2 px-1">
 			<span>네트워크 {ctrl.data.networks.length}개</span>
 			<span>라우터 {ctrl.data.routers.length}개</span>
 			<span>인스턴스 {ctrl.data.instances.length}개</span>

@@ -217,14 +217,14 @@
 	.summary {
 		margin: 0.35rem 0 0;
 		font-size: 0.8rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.loading-card {
 		border: 1px dashed var(--color-line);
 		border-radius: 0.875rem;
 		padding: 1rem;
 		font-size: 0.85rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.slot-grid {
 		display: grid;
@@ -253,7 +253,7 @@
 		margin: 0.25rem 0 0;
 		font-size: 0.76rem;
 		line-height: 1.45;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.asset-state {
 		align-self: flex-start;
@@ -262,7 +262,7 @@
 		padding: 0.16rem 0.45rem;
 		font-size: 0.65rem;
 		font-weight: 700;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		white-space: nowrap;
 	}
 	.asset-state[data-uploaded='true'] {
@@ -301,7 +301,7 @@
 		font-weight: 700;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
-		color: var(--color-ink-4);
+		color: var(--color-ink-2);
 	}
 	dd {
 		margin: 0.15rem 0 0;

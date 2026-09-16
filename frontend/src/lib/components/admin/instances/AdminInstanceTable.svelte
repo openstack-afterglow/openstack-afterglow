@@ -134,7 +134,7 @@
 							{/if}
 						</button>
 					</td>
-					<td class="py-2 text-ink-3">{s.created_at?.slice(0, 10) ?? '-'}</td>
+					<td class="py-2 text-ink-2">{s.created_at?.slice(0, 10) ?? '-'}</td>
 				</tr>
 			{/each}
 		</tbody>

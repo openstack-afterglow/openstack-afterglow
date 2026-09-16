@@ -84,14 +84,14 @@
 	{/if}
 
 	{#if accessLoading}
-		<p class="text-ink-3 text-sm text-center py-4">로딩 중...</p>
+		<p class="text-ink-2 text-sm text-center py-4">로딩 중...</p>
 	{:else if accessRules.length === 0}
-		<p class="text-ink-3 text-sm text-center py-4">접근 규칙이 없습니다</p>
+		<p class="text-ink-2 text-sm text-center py-4">접근 규칙이 없습니다</p>
 	{:else}
 		<div class="overflow-x-auto">
 			<table class="w-full text-sm">
 				<thead>
-					<tr class="border-b border-line text-ink-3 text-xs uppercase tracking-wide">
+					<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
 						<th class="text-left py-2 pr-4">접근 대상</th>
 						<th class="text-left py-2 pr-4">권한</th>
 						<th class="text-left py-2 pr-4">상태</th>
@@ -112,7 +112,7 @@
 							<td class="py-2 pr-4 text-xs font-mono">
 								{#if rule.access_key}
 									<div class="flex items-center gap-2">
-										<span class="text-ink-3 truncate max-w-[120px]">{rule.access_key.slice(0, 16)}...</span>
+										<span class="text-ink-2 truncate max-w-[120px]">{rule.access_key.slice(0, 16)}...</span>
 										<button
 											onclick={() => copyKey(rule.access_key!, rule.id)}
 											class="text-xs px-1.5 py-0.5 rounded border transition-colors {copiedKey === rule.id ? 'border-green-700 text-green-400' : 'border-line-2 text-ink-2 hover:text-ink-1'}"
@@ -121,7 +121,7 @@
 										</button>
 									</div>
 								{:else}
-									<span class="text-ink-3">-</span>
+									<span class="text-ink-2">-</span>
 								{/if}
 							</td>
 							<td class="py-2 text-right">

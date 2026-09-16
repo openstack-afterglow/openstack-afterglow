@@ -77,7 +77,7 @@
 	.heading, .footer { justify-content: space-between; gap: 0.75rem; }
 	.eyebrow { margin: 0 0 0.1875rem; color: var(--color-state-warning); font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
 	h3 { margin: 0; color: var(--color-ink-0); font-size: 0.875rem; }
-	.tool-identifier { margin: 0.1875rem 0 0; color: var(--color-ink-3); font-family: var(--font-mono); font-size: 0.6875rem; overflow-wrap: anywhere; }
+	.tool-identifier { margin: 0.1875rem 0 0; color: var(--color-ink-2); font-family: var(--font-mono); font-size: 0.6875rem; overflow-wrap: anywhere; }
 	.effect { border: 1px solid var(--color-line-2); border-radius: 999px; color: var(--color-state-warning); font-size: 0.6875rem; padding: 0.1875rem 0.5rem; white-space: nowrap; }
 	.preview, .arguments { margin: 0.75rem 0 0; color: var(--color-ink-1); font-size: 0.8125rem; line-height: 1.5; white-space: pre-wrap; }
 	.muted, .footer p { color: var(--color-ink-2); }

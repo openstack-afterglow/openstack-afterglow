@@ -66,7 +66,7 @@
 	<div class="mb-3 flex items-center justify-between bg-surface-sunken/50 border border-line-2 rounded-lg px-3 py-2.5">
 		<div class="flex items-center gap-2">
 			<span class="text-ink-2 text-sm">Stampede 오토스케일</span>
-			<span class="text-xs text-ink-3">노드그룹별 min/max 설정 후 활성화하세요</span>
+			<span class="text-xs text-ink-2">노드그룹별 min/max 설정 후 활성화하세요</span>
 		</div>
 		<button
 			onclick={enableStampede}

@@ -45,7 +45,7 @@
 				{/each}
 			</select>
 			{#if s.allowedProtos.length === 1 && s.currentShareType}
-				<span class="block text-[10px] text-ink-3 mt-1">선택된 share type 이 {s.allowedProtos[0]} 만 지원합니다.</span>
+				<span class="block text-xs text-ink-2 mt-1">선택된 share type 이 {s.allowedProtos[0]} 만 지원합니다.</span>
 			{/if}
 		</label>
 	</div>
@@ -59,10 +59,10 @@
 				<div class="flex gap-2 items-center">
 					<input bind:value={meta.key} type="text" placeholder="key"
 						class="flex-1 bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-ink-0 text-xs focus:outline-none focus:border-action-warm font-mono" />
-					<span class="text-ink-3 text-xs">=</span>
+					<span class="text-ink-2 text-xs">=</span>
 					<input bind:value={meta.value} type="text" placeholder="value"
 						class="flex-1 bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-ink-0 text-xs focus:outline-none focus:border-action-warm font-mono" />
-					<button type="button" onclick={() => s.removeMeta(i)} class="text-ink-3 hover:text-red-400 transition-colors text-xs px-1">✕</button>
+					<button type="button" onclick={() => s.removeMeta(i)} class="text-ink-2 hover:text-red-400 transition-colors text-xs px-1">✕</button>
 				</div>
 			{/each}
 		</div>

@@ -171,11 +171,11 @@
 		color: var(--color-ink-1);
 	}
 	.summary-count {
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.summary-chevron {
 		margin-left: auto;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		transition: transform 0.15s ease;
 	}
 	details[open] .summary-chevron {

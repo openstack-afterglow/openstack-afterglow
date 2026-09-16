@@ -102,7 +102,7 @@
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if instances.length === 0 && !loadError}
-		<div class="text-ink-3 text-sm">DB 인스턴스가 없습니다</div>
+		<div class="text-ink-2 text-sm">DB 인스턴스가 없습니다</div>
 	{:else if instances.length > 0}
 		<div class="overflow-x-auto">
 			<table class="w-full text-sm">
@@ -126,10 +126,10 @@
 							</td>
 							<td class="py-3 px-4"><StatusChip status={inst.status} /></td>
 							<td class="py-3 px-4 text-ink-2">{inst.datastore?.type ?? '-'} {inst.datastore?.version ?? ''}</td>
-							<td class="py-3 px-4 text-ink-3 font-mono text-xs">{inst.project_id || '-'}</td>
+							<td class="py-3 px-4 text-ink-2 font-mono text-xs">{inst.project_id || '-'}</td>
 							<td class="py-3 px-4 text-ink-2">{inst.size || '-'}</td>
-							<td class="py-3 px-4 text-ink-3 font-mono text-xs">{inst.id.slice(0, 8)}…</td>
-							<td class="py-3 px-4 text-ink-3 text-xs">{inst.created_at ? inst.created_at.slice(0, 10) : '-'}</td>
+							<td class="py-3 px-4 text-ink-2 font-mono text-xs">{inst.id.slice(0, 8)}…</td>
+							<td class="py-3 px-4 text-ink-2 text-xs">{inst.created_at ? inst.created_at.slice(0, 10) : '-'}</td>
 							<td class="py-3 px-4 text-right">
 								<div class="flex justify-end gap-1">
 									<button onclick={() => restartInstance(inst.id, inst.name)} disabled={restarting === inst.id}

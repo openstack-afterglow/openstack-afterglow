@@ -149,7 +149,7 @@
 >
 	<div class="space-y-4">
 		<div class="text-xs text-ink-2 font-mono">{editProjectId}</div>
-		<p class="text-xs text-ink-3">-1 = 무제한, 0 = 비활성</p>
+		<p class="text-xs text-ink-2">-1 = 무제한, 0 = 비활성</p>
 		{#each quotaFields as [label, val, setter]}
 			<div>
 				<label class="block text-sm text-ink-2 mb-1" for="field-page-155">{label}</label>
@@ -187,7 +187,7 @@
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={4} />
 	{:else if quotas.length === 0}
-		<div class="text-center py-16 text-ink-3" data-tour="admin-key-manager-ready">
+		<div class="text-center py-16 text-ink-2" data-tour="admin-key-manager-ready">
 			<div class="text-4xl mb-3">📊</div>
 			<p class="text-sm">설정된 프로젝트 쿼터가 없습니다. (모두 기본값 사용 중)</p>
 		</div>

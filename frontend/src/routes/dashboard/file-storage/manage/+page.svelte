@@ -119,7 +119,7 @@
         <h2 class="text-base font-semibold text-ink-0">전체 파일 스토리지 목록</h2>
       </div>
       {#if fileStorages.length === 0}
-        <div class="text-ink-3 text-sm py-8 text-center">파일 스토리지가 없습니다</div>
+        <div class="text-ink-2 text-sm py-8 text-center">파일 스토리지가 없습니다</div>
       {:else}
         <FileStorageManageGrid {fileStorages} />
       {/if}

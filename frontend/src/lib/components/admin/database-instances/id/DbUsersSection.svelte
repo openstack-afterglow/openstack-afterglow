@@ -53,7 +53,7 @@
 		</div>
 	{/if}
 	{#if users.length === 0}
-		<div class="text-ink-3 text-xs">유저가 없습니다</div>
+		<div class="text-ink-2 text-xs">유저가 없습니다</div>
 	{:else}
 		<div class="space-y-1">
 			{#each users as u}
@@ -61,7 +61,7 @@
 					<div>
 						<span class="text-ink-0 text-sm font-medium">{u.name}</span>
 						{#if u.databases?.length}
-							<span class="text-ink-3 text-xs ml-2">{u.databases.map(d => d.name).join(', ')}</span>
+							<span class="text-ink-2 text-xs ml-2">{u.databases.map(d => d.name).join(', ')}</span>
 						{/if}
 					</div>
 					<button onclick={() => onDelete(u.name)} disabled={deletingUser === u.name}

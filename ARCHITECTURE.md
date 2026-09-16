@@ -273,9 +273,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "bfafc853fcd087d7cc80e989c9ccce70891db639879df464889deb3367ae632d",
-  "reviewed_at": "2026-09-16T09:18:44Z",
-  "summary": "Volume backup defaults now follow declared browser and SSR state while preserving local opt-out; provider credit docs aligned; frontend-only with no service-boundary or schema impact"
+  "source_sha256": "e8770d448138cf23c4df5516acd4989eaa8c2061dc60f1447acb1ffa999841b7",
+  "reviewed_at": "2026-09-16T10:14:43Z",
+  "summary": "콘솔 테마 일관성 정리. DESIGN.md 가 이미 규정한 --color-ink-3(비활성 전용) 규칙을 실제로 이행해 Tailwind 클래스 1135곳과 scoped CSS 105곳을 ink-2 로 옮겼고(disabled/placeholder 157곳 보존), 0.75rem 미만 콘솔 타입 321곳을 사다리 위로 올렸다(사이드바·명령 팔레트 섬 26곳 제외). 감사에서 확정된 61건 중 라우터 카드 기하·표면 계층, 상태 톤의 의미 오용, 손으로 만든 StatusChip/Button/Pill/EmptyState, 정의되지 않은 토큰 참조(line-strong/ink-4/text-muted/color-sunken), literal black/white 로 섞은 hover, 하드코딩 그림자를 토큰 계약으로 되돌렸다. 토큰 이름·컴포넌트 API·라우터·의존성 변경 없음(no-structure-impact)."
 }
 ```
 <!-- architecture-review:end -->

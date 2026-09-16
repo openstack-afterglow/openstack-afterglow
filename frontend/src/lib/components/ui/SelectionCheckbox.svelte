@@ -114,7 +114,7 @@
 		width: 18px;
 		height: 18px;
 		place-items: center;
-		border: 2px solid color-mix(in oklab, var(--color-ink-3) 72%, transparent);
+		border: 2px solid var(--color-line-2);
 		border-radius: var(--radius-sm);
 		background: color-mix(in oklab, var(--color-surface-raised) 82%, transparent);
 		box-shadow: inset 0 0 0 1px color-mix(in oklab, white 4%, transparent);

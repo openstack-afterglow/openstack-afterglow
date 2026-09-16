@@ -12,7 +12,7 @@
 </script>
 
 <div class="flex items-center gap-2 mb-3">
-  <span class="text-xs text-ink-3">네임스페이스</span>
+  <span class="text-xs text-ink-2">네임스페이스</span>
   <select
     bind:value={s.selectedNamespace}
     onchange={() => { s.loadConfigMaps(); s.loadSecrets(); }}

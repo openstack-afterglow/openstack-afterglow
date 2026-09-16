@@ -121,7 +121,7 @@
     <h3 class="text-sm font-semibold text-ink-0">세션 보안</h3>
     <button
       onclick={loadSessions}
-      class="text-xs text-ink-3 hover:text-ink-2 transition-colors"
+      class="text-xs text-ink-2 hover:text-ink-2 transition-colors"
       disabled={loadingSessions}
     >{loadingSessions ? '로딩...' : '새로고침'}</button>
   </div>
@@ -136,42 +136,42 @@
   <!-- 활성 세션 목록 -->
   {#if sessions.length > 0}
     <div class="mb-4 space-y-2">
-      <p class="text-xs text-ink-3 mb-2">활성 세션 <span class="text-ink-2 font-medium">{sessions.length}</span>개</p>
+      <p class="text-xs text-ink-2 mb-2">활성 세션 <span class="text-ink-2 font-medium">{sessions.length}</span>개</p>
       {#each sessions as sess (sess.jti)}
         <div class="bg-surface-sunken/60 rounded-lg px-3 py-2 text-xs {sess.blacklisted ? 'border border-red-800/60' : 'border border-line-2/40'}">
           <div class="flex items-center justify-between gap-2">
             <div class="flex flex-col gap-0.5 min-w-0">
               <span class="text-ink-2 font-mono truncate">{sess.origin_ip || '—'}</span>
-              <span class="text-ink-3">{deviceLabel(sess)}</span>
+              <span class="text-ink-2">{deviceLabel(sess)}</span>
             </div>
             <div class="flex items-center gap-2 shrink-0">
               {#if sess.blacklisted}
-                <span class="text-red-400 text-[10px] font-semibold uppercase">차단됨</span>
+                <span class="text-red-400 text-xs font-semibold uppercase">차단됨</span>
               {:else}
-                <span class="text-green-500 text-[10px]">활성</span>
+                <span class="text-green-500 text-xs">활성</span>
               {/if}
               {#if deletingJti === sess.jti}
                 <div class="flex items-center gap-1">
                   <button
                     onclick={() => deleteSession(sess.jti)}
                     disabled={removingJti === sess.jti}
-                    class="px-2 py-0.5 bg-red-700 hover:bg-red-600 disabled:opacity-50 text-ink-0 text-[10px] rounded transition-colors"
+                    class="px-2 py-0.5 bg-red-700 hover:bg-red-600 disabled:opacity-50 text-ink-0 text-xs rounded transition-colors"
                   >{removingJti === sess.jti ? '삭제 중...' : '확인'}</button>
                   <button
                     onclick={() => { deletingJti = null; }}
-                    class="px-2 py-0.5 bg-surface-selected hover:bg-surface-selected text-ink-0 text-[10px] rounded transition-colors"
+                    class="px-2 py-0.5 bg-surface-selected hover:bg-surface-selected text-ink-0 text-xs rounded transition-colors"
                   >취소</button>
                 </div>
               {:else}
                 <button
                   onclick={() => { deletingJti = sess.jti; }}
                   disabled={removingJti !== null}
-                  class="px-2 py-0.5 bg-surface-selected hover:bg-red-900/60 border border-line-2 hover:border-red-700/60 text-ink-2 hover:text-red-300 text-[10px] rounded transition-colors disabled:opacity-40"
+                  class="px-2 py-0.5 bg-surface-selected hover:bg-red-900/60 border border-line-2 hover:border-red-700/60 text-ink-2 hover:text-red-300 text-xs rounded transition-colors disabled:opacity-40"
                 >제거</button>
               {/if}
             </div>
           </div>
-          <div class="text-ink-3 mt-0.5">
+          <div class="text-ink-2 mt-0.5">
             마지막 사용: {formatTime(sess.last_seen)}
             {#if sess.last_ip && sess.last_ip !== sess.origin_ip}
               · 최근 IP: <span class="font-mono">{sess.last_ip}</span>
@@ -181,12 +181,12 @@
       {/each}
     </div>
   {:else if !loadingSessions}
-    <p class="text-xs text-ink-3 mb-4">활성 세션 정보를 불러올 수 없습니다.</p>
+    <p class="text-xs text-ink-2 mb-4">활성 세션 정보를 불러올 수 없습니다.</p>
   {/if}
 
   <!-- 전체 로그아웃 -->
   <div class="border-t border-line pt-4">
-    <p class="text-xs text-ink-3 mb-3">
+    <p class="text-xs text-ink-2 mb-3">
       모든 기기에서 로그아웃합니다. Keystone 토큰도 즉시 폐기됩니다.
     </p>
     {#if showConfirm}

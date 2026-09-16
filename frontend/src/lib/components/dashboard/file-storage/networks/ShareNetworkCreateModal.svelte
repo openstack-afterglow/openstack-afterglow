@@ -102,7 +102,7 @@
         <div>
           <label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">서브넷 *
             {#if loadingSubnets}
-              <div class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-3 text-sm mt-1.5">로딩 중...</div>
+              <div class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-2 text-sm mt-1.5">로딩 중...</div>
             {:else}
               <select bind:value={form.neutron_subnet_id}
                 disabled={subnets.length === 0}

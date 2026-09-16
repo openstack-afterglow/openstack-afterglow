@@ -7,7 +7,7 @@
 	<div class="fixed inset-0 z-50 flex items-center justify-center bg-surface-scrim/70">
 		<div class="bg-surface-base border border-line rounded-xl p-6 w-full max-w-sm shadow-[var(--shadow-restraint)]">
 			<h2 class="text-ink-0 font-semibold mb-1">이름 변경</h2>
-			<p class="text-ink-3 text-xs mb-4 break-all">{s.displayName(s.renameTarget)}</p>
+			<p class="text-ink-2 text-xs mb-4 break-all">{s.displayName(s.renameTarget)}</p>
 			{#if s.renameError}<p class="text-red-400 text-xs mb-2">{s.renameError}</p>{/if}
 			<input
 				type="text"

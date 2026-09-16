@@ -82,7 +82,7 @@
 			{#if projectFilter}
 				<button
 					onclick={() => { projectFilter = ''; projectSearchText = ''; projectDropdownOpen = false; onChange(); }}
-					class="text-ink-3 hover:text-ink-0 ml-1 flex-shrink-0"
+					class="text-ink-2 hover:text-ink-0 ml-1 flex-shrink-0"
 				>✕</button>
 			{/if}
 		</div>
@@ -98,7 +98,7 @@
 						onclick={() => { projectFilter = id; projectSearchText = name; projectDropdownOpen = false; onChange(); }}
 					>
 						<div class="font-medium truncate">{name}</div>
-						<div class="text-ink-3 font-mono">{id.slice(0, 12)}...</div>
+						<div class="text-ink-2 font-mono">{id.slice(0, 12)}...</div>
 					</button>
 				{/each}
 			</div>

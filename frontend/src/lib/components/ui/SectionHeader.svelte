@@ -46,11 +46,11 @@
     text-transform: uppercase;
     letter-spacing: 0.12em;
     font-weight: 500;
-    color: var(--color-ink-3);
+    color: var(--color-ink-2);
   }
   .section-header-meta {
     font-size: 0.6875rem;
-    color: var(--color-ink-3);
+    color: var(--color-ink-2);
   }
   .section-header-right { flex-shrink: 0; }
 </style>

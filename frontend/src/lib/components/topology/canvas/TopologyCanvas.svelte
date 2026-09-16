@@ -1063,7 +1063,7 @@
 	@media (max-width: 767px) { .corner :global(.btn-icon) { width: 44px; height: 44px; } }
 	.offscreen-hint { position: absolute; left: 50%; top: 0.75rem; transform: translateX(-50%); }
 	.manual-chip { position: absolute; left: 0.75rem; bottom: 0.75rem; }
-	.stage-help { margin: 0.375rem 0.25rem 0; font-size: 0.75rem; color: var(--color-ink-3); }
+	.stage-help { margin: 0.375rem 0.25rem 0; font-size: 0.75rem; color: var(--color-ink-2); }
 	.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 	@media (forced-colors: active) {
 		.viewport:focus-visible { outline: 2px solid CanvasText; }

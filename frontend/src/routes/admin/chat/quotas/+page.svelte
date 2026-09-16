@@ -463,7 +463,7 @@
 		.quota-table td::before {
 			content: attr(data-label);
 			flex-shrink: 0;
-			color: var(--color-ink-3);
+			color: var(--color-ink-2);
 			font-size: 0.75rem;
 			font-weight: 600;
 		}

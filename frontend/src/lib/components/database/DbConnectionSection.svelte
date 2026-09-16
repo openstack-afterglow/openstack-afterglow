@@ -9,7 +9,7 @@
 	<div class="space-y-2 text-sm">
 		<div class="flex gap-4">
 			<div class="flex-1">
-				<div class="text-ink-3 text-xs mb-0.5">호스트</div>
+				<div class="text-ink-2 text-xs mb-0.5">호스트</div>
 				{#if s.instance!.address_map && Object.keys(s.instance!.address_map).length > 0}
 					<div class="space-y-0.5">
 						{#each Object.entries(s.instance!.address_map) as [netName, addrs]}
@@ -27,15 +27,15 @@
 						{/each}
 					</div>
 				{:else}
-					<div class="text-ink-3 font-mono">-</div>
+					<div class="text-ink-2 font-mono">-</div>
 				{/if}
 			</div>
-			<div><div class="text-ink-3 text-xs mb-0.5">포트</div><div class="text-ink-0 font-mono">{s.dbPort}</div></div>
+			<div><div class="text-ink-2 text-xs mb-0.5">포트</div><div class="text-ink-0 font-mono">{s.dbPort}</div></div>
 		</div>
 
 		<!-- 공개 IP (Floating IP) -->
 		<div>
-			<div class="text-ink-3 text-xs mb-1">공개 IP (Floating)</div>
+			<div class="text-ink-2 text-xs mb-1">공개 IP (Floating)</div>
 			{#if s.instanceFips.length > 0}
 				<div class="flex flex-wrap items-center gap-2">
 					{#each s.instanceFips as fip}
@@ -57,7 +57,7 @@
 				</div>
 			{:else}
 				<div class="flex items-center gap-2">
-					<span class="text-ink-3 text-sm">미할당</span>
+					<span class="text-ink-2 text-sm">미할당</span>
 					<button onclick={() => s.attachFip()} disabled={s.attachingFip || !s.instance!.ip}
 						class="text-warm-text hover:text-warm-text-hover disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-action-warm hover:border-action-warm transition-colors">
 						{s.attachingFip ? '할당 중...' : '+ 공개 IP 할당'}
@@ -69,7 +69,7 @@
 
 		{#if s.connectCmd}
 			<div>
-				<div class="text-ink-3 text-xs mb-1">연결 명령어 예시</div>
+				<div class="text-ink-2 text-xs mb-1">연결 명령어 예시</div>
 				<code class="block bg-surface-sunken rounded px-3 py-2 text-xs text-green-400 font-mono break-all">{s.connectCmd}</code>
 			</div>
 		{/if}

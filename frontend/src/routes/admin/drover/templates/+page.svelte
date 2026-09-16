@@ -81,7 +81,7 @@
 		<LoadingSkeleton variant="table" rows={3} />
 	{:else}
 			{#if templates.length === 0}
-				<div class="text-ink-3 text-sm py-12 text-center">등록된 클러스터 템플릿이 없습니다.</div>
+				<div class="text-ink-2 text-sm py-12 text-center">등록된 클러스터 템플릿이 없습니다.</div>
 			{:else}
 				<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
 					{#each templates as t (t.id)}

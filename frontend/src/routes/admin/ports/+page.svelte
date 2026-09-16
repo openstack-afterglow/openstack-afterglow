@@ -179,7 +179,7 @@
 				refreshing={loading}
 				onManualRefresh={() => { markerStack = []; nextMarker = null; load(); }}
 			/>
-			<div class="flex items-center gap-1 text-xs text-ink-3 max-md:hidden">
+			<div class="flex items-center gap-1 text-xs text-ink-2 max-md:hidden">
 				표시:
 				{#each [10, 20, 30] as n}
 					<button
@@ -199,7 +199,7 @@
 	/>
 
 	{#if loading}
-		<div class="text-ink-3 text-sm">로딩 중...</div>
+		<div class="text-ink-2 text-sm">로딩 중...</div>
 	{:else}
 		<PortsTable
 			ports={filtered}

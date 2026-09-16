@@ -326,7 +326,7 @@
 	}
 	.older-loading {
 		align-self: center;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-size: 0.75rem;
 		padding: 0.25rem 0.5rem;
 	}
@@ -366,7 +366,7 @@
 	.welcome p {
 		margin: 0;
 		font-size: 0.85rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.starter-prompts {
 		display: flex;
@@ -394,7 +394,7 @@
 		color: var(--color-accent);
 	}
 	.activity-elapsed {
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-variant-numeric: tabular-nums;
 	}
 	.spinner {

@@ -12,7 +12,7 @@
 			placeholder="mydb, testdb"
 			class={s.inputCls}
 		/>
-		<p class="text-xs text-ink-3 mt-1">생성 시 자동으로 만들어질 데이터베이스 목록</p>
+		<p class="text-xs text-ink-2 mt-1">생성 시 자동으로 만들어질 데이터베이스 목록</p>
 	</div>
 	<div class="border border-line-2 rounded-lg p-4">
 		<h4 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-3">초기 관리자</h4>

@@ -115,7 +115,7 @@
 		</div>
 
 		<!-- 요약 (현재 프로젝트 기준) -->
-		<div class="mt-4 flex gap-6 text-xs text-ink-3 px-1">
+		<div class="mt-4 flex gap-6 text-xs text-ink-2 px-1">
 			<span>네트워크 {_visibleNets.length}개</span>
 			<span>라우터 {_projectRouters.length}개</span>
 			<span>인스턴스 {data.instances.length}개</span>

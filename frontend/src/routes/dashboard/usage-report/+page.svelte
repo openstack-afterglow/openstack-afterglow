@@ -231,15 +231,15 @@
 			<div class="bg-surface-base border border-line rounded-lg p-5">
 				<SectionHeader title="플레이버별 사용 시간" meta="{sortedFlavors.length}종" />
 				{#if sortedFlavors.length === 0}
-					<div class="mt-6 text-center text-sm text-ink-3 py-6">데이터 없음</div>
+					<div class="mt-6 text-center text-sm text-ink-2 py-6">데이터 없음</div>
 				{:else}
 					<div class="mt-4 overflow-x-auto">
 						<table class="w-full text-xs">
 							<thead>
 								<tr class="border-b border-line">
-									<th class="text-left pb-2 text-[10px] uppercase tracking-wide text-[var(--color-ink-3)] font-medium">Flavor</th>
-									<th class="text-right pb-2 text-[10px] uppercase tracking-wide text-[var(--color-ink-3)] font-medium">사용 시간(h)</th>
-									<th class="text-right pb-2 text-[10px] uppercase tracking-wide text-[var(--color-ink-3)] font-medium">VM 수</th>
+									<th class="text-left pb-2 text-xs uppercase tracking-wide text-[var(--color-ink-3)] font-medium">Flavor</th>
+									<th class="text-right pb-2 text-xs uppercase tracking-wide text-[var(--color-ink-3)] font-medium">사용 시간(h)</th>
+									<th class="text-right pb-2 text-xs uppercase tracking-wide text-[var(--color-ink-3)] font-medium">VM 수</th>
 								</tr>
 							</thead>
 							<tbody>
@@ -275,7 +275,7 @@
 						size="sm"
 					/>
 				</div>
-				<p class="text-[11px] text-ink-3 mt-auto">선형 예측 (7일 추세 기반)</p>
+				<p class="text-xs text-ink-2 mt-auto">선형 예측 (7일 추세 기반)</p>
 			</div>
 		</div>
 

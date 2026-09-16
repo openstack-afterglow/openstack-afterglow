@@ -240,7 +240,7 @@
 			<div class="overflow-x-auto">
 				<table class="w-full text-sm">
 					<thead>
-						<tr class="text-left text-[11px] uppercase tracking-wide text-[var(--color-ink-3)] border-b border-[var(--color-line)]">
+						<tr class="text-left text-xs uppercase tracking-wide text-[var(--color-ink-3)] border-b border-[var(--color-line)]">
 							<th class="py-2 pr-4 font-medium">발송일</th>
 							<th class="py-2 pr-4 font-medium">제목</th>
 							<th class="py-2 pr-4 font-medium">심각도</th>
@@ -256,14 +256,14 @@
 								<td class="py-2.5 pr-4 text-[var(--color-ink-2)] tabular-nums whitespace-nowrap">{formatIsoDateTime(a.created_at)}</td>
 								<td class="py-2.5 pr-4 text-[var(--color-ink-0)] max-w-[240px] truncate" title={a.title}>{a.title}</td>
 								<td class="py-2.5 pr-4">
-									<span class="px-1.5 py-0.5 rounded text-[10px] border" style={severityStyle(a.severity)}>{severityLabel(a.severity)}</span>
+									<span class="px-1.5 py-0.5 rounded text-xs border" style={severityStyle(a.severity)}>{severityLabel(a.severity)}</span>
 								</td>
 								<td class="py-2.5 pr-4 text-[var(--color-ink-1)] whitespace-nowrap">{targetLabel(a)}</td>
 								<td class="py-2.5 pr-4">
 									<button
 										onclick={() => handleToggleActive(a)}
 										disabled={ctrl.togglingId === a.id}
-										class="px-2 py-0.5 rounded text-[10px] border transition-colors disabled:opacity-40"
+										class="px-2 py-0.5 rounded text-xs border transition-colors disabled:opacity-40"
 										style={activeStyle(a.is_active)}
 									>{a.is_active ? '게시중' : '비활성'}</button>
 								</td>

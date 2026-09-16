@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { RouterDetail } from '$lib/types/router';
+	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 
 	let {
 		router,
@@ -22,10 +23,8 @@
 	<div>
 		<h1 class="text-2xl font-bold text-ink-0">{router.name || router.id.slice(0, 12)}</h1>
 		<div class="flex items-center gap-3 mt-2">
-			<span class="px-2 py-0.5 rounded text-xs font-medium {router.status === 'ACTIVE' ? 'text-green-400 bg-green-900/30' : 'text-ink-2 bg-surface-sunken'}">
-				{router.status}
-			</span>
-			<span class="text-xs text-ink-3 font-mono">{router.id}</span>
+			<StatusChip status={router.status} />
+			<span class="text-xs text-ink-2 font-mono">{router.id}</span>
 		</div>
 	</div>
 	<button

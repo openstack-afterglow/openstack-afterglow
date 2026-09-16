@@ -55,7 +55,7 @@
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if roles.length === 0}
-		<div class="text-ink-3 text-sm">역할이 없습니다</div>
+		<div class="text-ink-2 text-sm">역할이 없습니다</div>
 	{:else}
 		<div class="bg-surface-base border border-line rounded-lg p-5 overflow-x-auto">
 			<table class="w-full text-sm">
@@ -69,7 +69,7 @@
 					{#each roles as r (r.id)}
 						<tr class="border-b border-line/50 text-xs">
 							<td class="py-2 pr-4 text-ink-0"><span class="max-md:block max-md:max-w-[66vw] max-md:truncate" title={r.name}>{r.name}</span></td>
-							<td class="py-2 text-ink-3 font-mono">{r.id.slice(0, 8)}</td>
+							<td class="py-2 text-ink-2 font-mono">{r.id.slice(0, 8)}</td>
 						</tr>
 					{/each}
 				</tbody>

@@ -91,7 +91,7 @@
 				<div class="space-y-3">
 					<div>
 						<label for="evacuate-host" class="block text-xs text-ink-2 mb-1 font-medium">
-							대상 호스트 <span class="text-ink-3">(비워두면 스케줄러 자동 선택)</span>
+							대상 호스트 <span class="text-ink-2">(비워두면 스케줄러 자동 선택)</span>
 						</label>
 						<input
 							id="evacuate-host"
@@ -110,7 +110,7 @@
 						/>
 						<div>
 							<div class="text-sm text-ink-2">공유 스토리지 사용 (onSharedStorage)</div>
-							<div class="text-xs text-ink-3 mt-0.5">
+							<div class="text-xs text-ink-2 mt-0.5">
 								인스턴스 디스크가 공유 스토리지(Ceph RBD 등)에 있으면 활성화. 그 외에는 비활성.
 							</div>
 						</div>

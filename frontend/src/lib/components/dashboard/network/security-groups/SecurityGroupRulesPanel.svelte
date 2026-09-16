@@ -34,7 +34,7 @@
 		<div>
 			<div class="text-ink-0 text-[15px] font-semibold font-mono">{group.name}</div>
 			{#if group.description}
-				<div class="text-[11px] text-ink-3 mt-0.5">{group.description}</div>
+				<div class="text-xs text-ink-2 mt-0.5">{group.description}</div>
 			{/if}
 		</div>
 		<div class="ml-auto flex gap-2">
@@ -62,10 +62,10 @@
 
 	<!-- Rules table -->
 	{#if group.rules.length === 0}
-		<div class="text-center py-10 text-ink-3 text-sm">규칙이 없습니다</div>
+		<div class="text-center py-10 text-ink-2 text-sm">규칙이 없습니다</div>
 	{:else}
 		<div class="bg-[#0B1220] border border-line rounded-lg overflow-hidden">
-			<div class="grid grid-cols-[120px_120px_1fr_1.4fr_80px] px-4 py-2.5 border-b border-line text-[11px] uppercase tracking-wider text-ink-3 font-medium">
+			<div class="grid grid-cols-[120px_120px_1fr_1.4fr_80px] px-4 py-2.5 border-b border-line text-xs uppercase tracking-wider text-ink-2 font-medium">
 				<div>방향</div>
 				<div>프로토콜</div>
 				<div>포트</div>
@@ -75,7 +75,7 @@
 			{#each group.rules as rule, i (rule.id)}
 				<div class="grid grid-cols-[120px_120px_1fr_1.4fr_80px] px-4 py-3 text-[13px] items-center {i < group.rules.length - 1 ? 'border-b border-line' : ''}">
 					<div>
-						<span class="text-[11px] px-2 py-0.5 rounded-md border font-medium
+						<span class="text-xs px-2 py-0.5 rounded-md border font-medium
 							{rule.direction === 'ingress' ? 'bg-emerald-900/25 border-emerald-800 text-emerald-400' : 'bg-surface-selected/25 border-action-warm text-warm-text'}">
 							{rule.direction === 'ingress' ? '↓ ingress' : '↑ egress'}
 						</span>

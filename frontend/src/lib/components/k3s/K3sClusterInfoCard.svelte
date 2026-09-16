@@ -31,7 +31,7 @@
 </script>
 
 <div class="bg-surface-base border border-line rounded-xl p-4">
-  <h3 class="text-xs text-ink-3 uppercase tracking-wide mb-3">클러스터 정보</h3>
+  <h3 class="text-xs text-ink-2 uppercase tracking-wide mb-3">클러스터 정보</h3>
   <dl class="space-y-1.5 text-sm">
     <div class="flex justify-between">
       <dt class="text-ink-2 text-xs">ID</dt>
@@ -55,7 +55,7 @@
         {#if s.cluster!.stampede_enabled}
           <span class="text-warm-text">⚡ 활성</span>
         {:else}
-          <span class="text-ink-3">비활성</span>
+          <span class="text-ink-2">비활성</span>
         {/if}
       </dd>
     </div>

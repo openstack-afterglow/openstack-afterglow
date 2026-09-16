@@ -127,7 +127,7 @@
 		<div class="flex items-center justify-between px-5 py-4 border-b border-line shrink-0">
 			<h2 class="text-sm font-semibold text-ink-0">인증서 회전 — {clusterName}</h2>
 			{#if done}
-				<button onclick={onclose} class="text-ink-3 hover:text-ink-0 transition-colors text-lg leading-none">&times;</button>
+				<button onclick={onclose} class="text-ink-2 hover:text-ink-0 transition-colors text-lg leading-none">&times;</button>
 			{/if}
 		</div>
 
@@ -139,14 +139,14 @@
 					style="width: {progress}%"
 				></div>
 			</div>
-			<p class="text-xs text-ink-3 mt-1 text-right">{progress}%</p>
+			<p class="text-xs text-ink-2 mt-1 text-right">{progress}%</p>
 		</div>
 
 		<!-- 로그 -->
 		<div class="flex-1 overflow-y-auto px-5 py-3 space-y-1.5 min-h-0">
 			{#each messages as msg}
 				<div class="flex items-start gap-2 text-xs">
-					<span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-mono
+					<span class="shrink-0 px-1.5 py-0.5 rounded text-xs font-mono
 						{msg.step === 'completed' ? 'bg-green-900/40 text-green-400' :
 						 msg.step === 'failed' ? 'bg-red-900/40 text-red-400' :
 						 msg.step === 'rotate_server' ? 'bg-surface-selected/40 text-warm-text' :
@@ -155,7 +155,7 @@
 					</span>
 					<span class="text-ink-2 leading-relaxed">{msg.message}</span>
 					{#if msg.elapsed_seconds != null}
-						<span class="ml-auto shrink-0 text-ink-3">{msg.elapsed_seconds}s</span>
+						<span class="ml-auto shrink-0 text-ink-2">{msg.elapsed_seconds}s</span>
 					{/if}
 				</div>
 				{#if msg.error && msg.step === 'failed'}
@@ -163,7 +163,7 @@
 				{/if}
 			{/each}
 			{#if !done}
-				<div class="flex items-center gap-2 text-xs text-ink-3">
+				<div class="flex items-center gap-2 text-xs text-ink-2">
 					<span class="inline-block w-2 h-2 bg-action-warm rounded-full animate-pulse"></span>
 					진행 중...
 				</div>
@@ -175,7 +175,7 @@
 				onclick={onclose}
 				disabled={!done}
 				class="text-xs px-3 py-1.5 rounded-lg transition-colors
-					{done ? 'bg-surface-selected hover:bg-surface-selected text-ink-0' : 'bg-surface-sunken text-ink-3 cursor-not-allowed'}"
+					{done ? 'bg-surface-selected hover:bg-surface-selected text-ink-0' : 'bg-surface-sunken text-ink-2 cursor-not-allowed'}"
 			>
 				{done ? '닫기' : '진행 중...'}
 			</button>

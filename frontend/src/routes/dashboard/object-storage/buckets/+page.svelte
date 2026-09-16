@@ -320,7 +320,7 @@
 								<div>
 									<span class="text-sm font-medium text-red-300">{c.name}</span>
 									{#if deletedAt}
-										<span class="ml-2 text-xs text-ink-3">
+										<span class="ml-2 text-xs text-ink-2">
 											{new Date(deletedAt * 1000).toLocaleDateString('ko-KR')} 삭제
 										</span>
 									{/if}
@@ -333,7 +333,7 @@
 						</div>
 					{/each}
 				</div>
-				<p class="mt-2 text-xs text-ink-3">삭제된 버킷은 보관 기간이 지나면 자동으로 영구 삭제됩니다. 보관 기간 동안 스토리지 용량을 차지합니다.</p>
+				<p class="mt-2 text-xs text-ink-2">삭제된 버킷은 보관 기간이 지나면 자동으로 영구 삭제됩니다. 보관 기간 동안 스토리지 용량을 차지합니다.</p>
 			</div>
 		{/if}
 

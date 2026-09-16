@@ -26,9 +26,9 @@
 <div class="flex items-start justify-between mb-4">
   <div>
     <h1 class="text-2xl font-bold text-ink-0">{cluster.name}</h1>
-    <p class="text-ink-3 text-sm mt-0.5 font-mono">ID: {cluster.id}</p>
+    <p class="text-ink-2 text-sm mt-0.5 font-mono">ID: {cluster.id}</p>
     {#if cluster.stack_id}
-      <p class="text-ink-3 text-xs mt-0.5 font-mono">Stack: {cluster.stack_id}</p>
+      <p class="text-ink-2 text-xs mt-0.5 font-mono">Stack: {cluster.stack_id}</p>
     {/if}
   </div>
   <div class="flex items-center gap-2">

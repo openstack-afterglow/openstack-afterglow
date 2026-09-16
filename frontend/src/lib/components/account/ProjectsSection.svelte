@@ -129,7 +129,7 @@
       {/each}
     </div>
   {:else if projects.length === 0}
-    <div class="text-ink-3 text-xs text-center py-4">소속 프로젝트가 없습니다</div>
+    <div class="text-ink-2 text-xs text-center py-4">소속 프로젝트가 없습니다</div>
   {:else}
     <div class="space-y-2">
       {#each projects as proj (proj.id)}
@@ -146,18 +146,18 @@
           >
             <div class="text-sm font-medium truncate {isActive ? 'text-warm-text' : 'text-ink-0'}">{proj.name}</div>
             {#if proj.description}
-              <div class="text-[11px] text-ink-3 truncate">{proj.description}</div>
+              <div class="text-xs text-ink-2 truncate">{proj.description}</div>
             {/if}
           </button>
 
           <div class="flex items-center gap-1.5 shrink-0">
             {#if isDefault}
-              <span class="text-[10px] text-warm-text font-medium px-1.5 py-0.5 rounded bg-action-warm/10 border border-action-warm/25">기본</span>
+              <span class="text-xs text-warm-text font-medium px-1.5 py-0.5 rounded bg-action-warm/10 border border-action-warm/25">기본</span>
             {/if}
             {#if isActive}
-              <span class="text-[10px] text-warm-text font-medium px-1.5 py-0.5 rounded bg-action-warm/15 border border-action-warm/30">활성</span>
+              <span class="text-xs text-warm-text font-medium px-1.5 py-0.5 rounded bg-action-warm/15 border border-action-warm/30">활성</span>
             {:else if switching}
-              <svg class="w-3.5 h-3.5 text-ink-3 animate-spin" fill="none" viewBox="0 0 24 24">
+              <svg class="w-3.5 h-3.5 text-ink-2 animate-spin" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
               </svg>
@@ -166,13 +166,13 @@
               <button
                 onclick={() => clearDefault()}
                 disabled={settingDefault}
-                class="text-[11px] text-ink-3 hover:text-red-400 transition-colors disabled:opacity-40"
+                class="text-xs text-ink-2 hover:text-red-400 transition-colors disabled:opacity-40"
               >해제</button>
             {:else}
               <button
                 onclick={() => setDefault(proj)}
                 disabled={settingDefault}
-                class="text-[11px] text-ink-3 hover:text-warm-text-hover transition-colors disabled:opacity-40"
+                class="text-xs text-ink-2 hover:text-warm-text-hover transition-colors disabled:opacity-40"
               >기본 설정</button>
             {/if}
           </div>

@@ -53,7 +53,7 @@
 					<input id="field-adminnetworkcreatemodal-48" bind:value={form.name} type="text" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" />
 				</div>
 				<div>
-					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminnetworkcreatemodal-52">CIDR <span class="text-ink-3">(서브넷 자동 생성, 선택)</span></label>
+					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminnetworkcreatemodal-52">CIDR <span class="text-ink-2">(서브넷 자동 생성, 선택)</span></label>
 					<input id="field-adminnetworkcreatemodal-52" bind:value={form.cidr} type="text" placeholder="예: 192.168.1.0/24" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" />
 				</div>
 				<div class="flex items-center gap-4">

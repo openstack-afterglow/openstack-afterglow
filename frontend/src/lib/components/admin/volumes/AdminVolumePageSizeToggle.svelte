@@ -10,7 +10,7 @@
 	} = $props();
 </script>
 
-<div class="flex items-center gap-1 text-xs text-ink-3 max-md:hidden">
+<div class="flex items-center gap-1 text-xs text-ink-2 max-md:hidden">
 	표시:
 	{#each options as n}
 		<button

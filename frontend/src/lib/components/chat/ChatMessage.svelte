@@ -280,7 +280,7 @@
 		border-radius: 0.45rem;
 		border: none;
 		background: transparent;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		cursor: pointer;
 		transition: background 0.12s, color 0.12s;
 	}
@@ -303,7 +303,7 @@
 	}
 	.metric-tag {
 		font-size: 0.68rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		padding-left: 0.3rem;
 		font-variant-numeric: tabular-nums;
 		white-space: nowrap;
@@ -311,7 +311,7 @@
 	.live-metric {
 		margin-top: 0.35rem;
 		font-size: 0.68rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-variant-numeric: tabular-nums;
 	}
 	.sources {

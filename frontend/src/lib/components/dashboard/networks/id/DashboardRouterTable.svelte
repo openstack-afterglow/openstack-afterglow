@@ -23,10 +23,10 @@
 						{#if router.external_gateway_network_id}
 							<span class="text-orange-300 text-xs font-mono">{router.external_gateway_network_id.slice(0, 12)}…</span>
 						{:else}
-							<span class="text-ink-3 text-xs">-</span>
+							<span class="text-ink-2 text-xs">-</span>
 						{/if}
 					</td>
-					<td class="py-2 text-ink-3 text-xs">
+					<td class="py-2 text-ink-2 text-xs">
 						{router.connected_subnet_ids.length}개
 					</td>
 				</tr>

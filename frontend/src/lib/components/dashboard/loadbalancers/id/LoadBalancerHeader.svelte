@@ -30,7 +30,7 @@
 			<span class="px-2 py-0.5 rounded text-xs {lb.status === 'ACTIVE' ? 'text-green-400 bg-green-900/30' : 'text-yellow-400 bg-yellow-900/30'}">{lb.status}</span>
 			<span class="px-2 py-0.5 rounded text-xs {lb.operating_status === 'ONLINE' ? 'text-green-400' : 'text-ink-2'}">{lb.operating_status}</span>
 			{#if lb.vip_address}
-				<span class="text-xs text-ink-3 font-mono">VIP: {lb.vip_address}</span>
+				<span class="text-xs text-ink-2 font-mono">VIP: {lb.vip_address}</span>
 			{/if}
 		</div>
 	</div>

@@ -116,7 +116,7 @@
 
   .db-backups-table__head {
     border-bottom: 1px solid var(--color-line);
-    color: var(--color-ink-3);
+    color: var(--color-ink-2);
   }
 
   .db-backups-table__selection-count,
@@ -152,11 +152,11 @@
 
   .db-backups-table__link:hover,
   .db-backups-table__restore:hover {
-    color: color-mix(in oklab, var(--color-accent), white 18%);
+    color: color-mix(in oklab, var(--color-accent) 88%, var(--color-ink-0));
   }
 
   .db-backups-table__muted {
-    color: var(--color-ink-3);
+    color: var(--color-ink-2);
   }
 
   .db-backups-table__action {
@@ -168,7 +168,7 @@
   }
 
   .db-backups-table__delete:hover {
-    color: color-mix(in oklab, var(--color-state-danger), white 20%);
+    color: color-mix(in oklab, var(--color-state-danger) 88%, var(--color-ink-0));
     border-color: var(--color-state-danger);
   }
 

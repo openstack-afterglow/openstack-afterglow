@@ -9,7 +9,7 @@
 			<tbody>
 				{#each Object.entries(metadata) as [k, v]}
 					<tr class="border-b border-line/50">
-						<td class="py-2 pr-4 text-ink-3 text-xs w-1/3">{k}</td>
+						<td class="py-2 pr-4 text-ink-2 text-xs w-1/3">{k}</td>
 						<td class="py-2 text-ink-2 font-mono text-xs break-all">{v}</td>
 					</tr>
 				{/each}

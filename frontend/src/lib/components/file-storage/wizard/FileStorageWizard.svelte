@@ -49,10 +49,10 @@
 							<div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors
 								{s.step === item.step ? 'border-action-warm bg-surface-selected/40 text-warm-text' :
 								 s.step > item.step ? 'border-green-600 bg-green-900/30 text-green-400' :
-								 'border-line-2 bg-surface-sunken text-ink-3'}">
+								 'border-line-2 bg-surface-sunken text-ink-2'}">
 								{s.step > item.step ? '✓' : idx + 1}
 							</div>
-							<span class="text-xs mt-1 {s.step === item.step ? 'text-warm-text' : s.step > item.step ? 'text-green-400' : 'text-ink-3'}">{item.label}</span>
+							<span class="text-xs mt-1 {s.step === item.step ? 'text-warm-text' : s.step > item.step ? 'text-green-400' : 'text-ink-2'}">{item.label}</span>
 						</div>
 						{#if !isLast}
 							<div class="flex-1 h-px mx-3 mt-[-14px] {s.step > item.step ? 'bg-green-700' : 'bg-surface-selected'}"></div>

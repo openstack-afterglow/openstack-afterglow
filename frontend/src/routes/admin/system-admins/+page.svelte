@@ -125,7 +125,7 @@
 				<Alert tone="danger" class="mb-3" title="시스템 관리자 조회 실패">{adminsError}</Alert>
 			{/if}
 			{#if admins.length === 0}
-				<div class="text-ink-3 text-sm py-12 text-center">
+				<div class="text-ink-2 text-sm py-12 text-center">
 					등록된 system admin이 없습니다.
 				</div>
 			{:else}

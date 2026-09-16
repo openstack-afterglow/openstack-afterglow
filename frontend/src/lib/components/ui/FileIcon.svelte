@@ -48,14 +48,13 @@
 </span>
 
 <style>
-	.file-icon { flex-shrink: 0; }
-	.file-icon-folder,
-	.file-icon-archive { color: var(--color-state-warning); }
-	.file-icon-pdf { color: var(--color-state-danger); }
-	.file-icon-spreadsheet { color: var(--color-state-success); }
-	.file-icon-config,
-	.file-icon-image { color: var(--color-accent-2); }
+	/* 파일 종류는 상태가 아니다. 아홉 개의 glyph 모양과 옆의 파일명이 이미 종류를 구분하므로
+	   상태 톤을 빌려 쓰면 오브젝트 목록이 건강 상태 열처럼 읽힌다. */
+	.file-icon {
+		flex-shrink: 0;
+		color: var(--color-ink-2);
+	}
 	.file-icon-code { color: var(--color-accent); }
 	.file-icon-text { color: var(--color-ink-2); }
-	.file-icon-file { color: var(--color-ink-3); }
+	.file-icon-file { color: var(--color-ink-2); }
 </style>

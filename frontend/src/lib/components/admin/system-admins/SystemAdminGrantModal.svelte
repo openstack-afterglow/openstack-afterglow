@@ -104,9 +104,9 @@
 
 		<div class="overflow-y-auto max-h-72 rounded-lg border border-line-2">
 			{#if loadingUsers}
-				<div class="text-ink-3 text-sm px-4 py-6 text-center">불러오는 중...</div>
+				<div class="text-ink-2 text-sm px-4 py-6 text-center">불러오는 중...</div>
 			{:else if filtered.length === 0}
-				<div class="text-ink-3 text-sm px-4 py-6 text-center">사용자 없음</div>
+				<div class="text-ink-2 text-sm px-4 py-6 text-center">사용자 없음</div>
 			{:else}
 				<table class="w-full text-sm">
 					<tbody>
@@ -117,7 +117,7 @@
 							>
 								<td class="px-4 py-2 text-ink-0 text-xs">{u.name}</td>
 								<td class="px-4 py-2 text-ink-2 text-xs">{u.email || '-'}</td>
-								<td class="px-4 py-2 text-ink-3 font-mono text-xs">{u.id.slice(0, 8)}</td>
+								<td class="px-4 py-2 text-ink-2 font-mono text-xs">{u.id.slice(0, 8)}</td>
 							</tr>
 						{/each}
 					</tbody>

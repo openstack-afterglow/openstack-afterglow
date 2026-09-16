@@ -78,7 +78,7 @@
 
 <div class="bg-surface-base border border-line rounded-xl p-4 mt-3">
   <div class="flex items-center justify-between mb-3">
-    <h3 class="text-xs text-ink-3 uppercase tracking-wide">노드 네트워크</h3>
+    <h3 class="text-xs text-ink-2 uppercase tracking-wide">노드 네트워크</h3>
     {#if s.isActive}
       <button
         onclick={() => { showAttachForm = !showAttachForm; selectedNetId = ''; attachError = ''; }}
@@ -90,7 +90,7 @@
   </div>
 
   {#if nodeOptions.length === 0}
-    <p class="text-sm text-ink-3">노드 정보 없음</p>
+    <p class="text-sm text-ink-2">노드 정보 없음</p>
   {:else}
     <!-- 노드 선택 -->
     <div class="mb-3">
@@ -106,13 +106,13 @@
 
     <!-- 인터페이스 목록 -->
     {#if loadingIfaces}
-      <div class="text-xs text-ink-3 py-2">로드 중...</div>
+      <div class="text-xs text-ink-2 py-2">로드 중...</div>
     {:else if ifaceError}
       <div class="text-xs text-red-400 py-2">{ifaceError}</div>
     {:else if currentIfaces === null}
-      <div class="text-xs text-ink-3 py-2">로드 중...</div>
+      <div class="text-xs text-ink-2 py-2">로드 중...</div>
     {:else if currentIfaces.length === 0}
-      <div class="text-xs text-ink-3 py-2">인터페이스 없음</div>
+      <div class="text-xs text-ink-2 py-2">인터페이스 없음</div>
     {:else}
       <div class="space-y-2">
         {#each currentIfaces as iface}
@@ -124,15 +124,15 @@
                   {iface.node_role}
                 </span>
                 {#if iface.is_primary}
-                  <span class="text-xs text-ink-3">기본 인터페이스</span>
+                  <span class="text-xs text-ink-2">기본 인터페이스</span>
                 {/if}
               </div>
-              <div class="text-xs text-ink-3 mb-0.5">포트</div>
+              <div class="text-xs text-ink-2 mb-0.5">포트</div>
               <div class="text-xs text-ink-2 font-mono truncate">{iface.port_id}</div>
-              <div class="text-xs text-ink-3 mt-1 mb-0.5">네트워크</div>
+              <div class="text-xs text-ink-2 mt-1 mb-0.5">네트워크</div>
               <div class="text-xs text-ink-2 font-mono truncate">{iface.net_id}</div>
               {#if iface.fixed_ips.length > 0}
-                <div class="text-xs text-ink-3 mt-1 mb-0.5">IP</div>
+                <div class="text-xs text-ink-2 mt-1 mb-0.5">IP</div>
                 <div class="flex flex-wrap gap-1">
                   {#each iface.fixed_ips as fip}
                     <span class="text-xs font-mono text-ink-2 bg-surface-selected px-1.5 py-0.5 rounded">{fip.ip_address}</span>

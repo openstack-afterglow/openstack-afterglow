@@ -140,7 +140,7 @@
 		border-radius: 0.9rem;
 		border: 1px solid var(--color-line);
 		background: var(--color-surface-raised);
-		box-shadow: 0 24px 64px rgba(0, 0, 0, 0.4);
+		box-shadow: var(--shadow-restraint);
 		overflow: hidden;
 	}
 	.head {
@@ -165,7 +165,7 @@
 		border: none;
 		border-radius: 0.5rem;
 		background: transparent;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		cursor: pointer;
 		transition: background 0.12s, color 0.12s;
 	}
@@ -182,7 +182,7 @@
 		border-radius: 0.55rem;
 		border: 1px solid var(--color-line);
 		background: var(--color-surface-base);
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.search input {
 		flex: 1;
@@ -202,7 +202,7 @@
 	}
 	.muted {
 		font-size: 0.8rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.empty-box {
 		padding: 2.5rem 1rem;
@@ -265,7 +265,7 @@
 		align-items: center;
 		gap: 0.2rem;
 		font-size: 0.7rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.desc {
 		font-size: 0.78rem;
@@ -276,7 +276,7 @@
 		margin-top: 0.35rem;
 		font-size: 0.75rem;
 		line-height: 1.5;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		display: -webkit-box;
 		-webkit-line-clamp: 2;
 		line-clamp: 2;
@@ -290,7 +290,7 @@
 	}
 	.mine {
 		font-size: 0.72rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		padding: 0.2rem 0.5rem;
 		border-radius: 999px;
 		border: 1px solid var(--color-line);

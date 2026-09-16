@@ -47,7 +47,7 @@
 			<option value="anti-affinity">Anti-Affinity</option>
 		</select>
 		{#if !s.replicaOf}
-			<p class="text-xs text-ink-3 mt-1">복제 인스턴스 생성 시에만 적용됩니다.</p>
+			<p class="text-xs text-ink-2 mt-1">복제 인스턴스 생성 시에만 적용됩니다.</p>
 		{/if}
 	</div>
 </div>

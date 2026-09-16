@@ -39,16 +39,16 @@
 				</div>
 				<div class="flex-1 min-w-0">
 					<div class="text-ink-0 font-semibold text-sm font-mono truncate">{c.name}</div>
-					<div class="text-[11px] text-ink-3 mt-0.5">오브젝트 {c.count}개</div>
+					<div class="text-xs text-ink-2 mt-0.5">오브젝트 {c.count}개</div>
 				</div>
 			</div>
 			<div class="grid grid-cols-2 gap-2 mb-3">
 				<div>
-					<div class="text-[11px] uppercase tracking-wider font-medium text-ink-3">오브젝트</div>
+					<div class="text-xs uppercase tracking-wider font-medium text-ink-2">오브젝트</div>
 					<div class="text-ink-0 font-mono text-sm mt-0.5">{c.count}</div>
 				</div>
 				<div>
-					<div class="text-[11px] uppercase tracking-wider font-medium text-ink-3">크기</div>
+					<div class="text-xs uppercase tracking-wider font-medium text-ink-2">크기</div>
 					<div class="text-ink-0 font-mono text-sm mt-0.5">{formatStorage(c.bytes / 1_000_000_000)}</div>
 				</div>
 			</div>

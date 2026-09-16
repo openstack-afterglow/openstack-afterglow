@@ -41,16 +41,16 @@
 	{:else if loadError}
 		<div class="mt-4 text-sm text-red-400">{loadError}</div>
 	{:else if s.deployments.length === 0}
-		<div class="mt-4 text-sm text-ink-3 text-center py-6">Deployment 없음</div>
+		<div class="mt-4 text-sm text-ink-2 text-center py-6">Deployment 없음</div>
 	{:else}
 		<div class="mt-4 overflow-x-auto">
 			<table class="w-full text-xs">
 				<thead>
 					<tr class="border-b border-line">
-						<th class="text-left pb-2 text-[10px] uppercase tracking-wide text-ink-3 font-medium">이름</th>
-						<th class="text-left pb-2 text-[10px] uppercase tracking-wide text-ink-3 font-medium">레플리카</th>
-						<th class="text-left pb-2 text-[10px] uppercase tracking-wide text-ink-3 font-medium">전략</th>
-						<th class="text-left pb-2 text-[10px] uppercase tracking-wide text-ink-3 font-medium">이미지</th>
+						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">이름</th>
+						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">레플리카</th>
+						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">전략</th>
+						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">이미지</th>
 						<th class="pb-2"></th>
 					</tr>
 				</thead>
@@ -62,7 +62,7 @@
 							<td class="py-2.5">
 								<span class="tabular-nums text-ink-0">{dep.ready}/{dep.replicas}</span>
 								{#if dep.available < dep.replicas}
-									<span class="ml-1 text-yellow-400 text-[10px]">({dep.available} available)</span>
+									<span class="ml-1 text-yellow-400 text-xs">({dep.available} available)</span>
 								{/if}
 							</td>
 							<td class="py-2.5 text-ink-2">{dep.strategy || '—'}</td>
@@ -72,12 +72,12 @@
 									<button
 										onclick={() => s.rolloutRestartDeployment(dep.name)}
 										disabled={!!s.workloadActioning}
-										class="px-2 py-1 rounded text-[10px] bg-surface-selected/40 text-warm-text hover:bg-surface-selected/70 disabled:opacity-40 transition-colors"
+										class="px-2 py-1 rounded text-xs bg-surface-selected/40 text-warm-text hover:bg-surface-selected/70 disabled:opacity-40 transition-colors"
 									>{actioning ? '중...' : '재시작'}</button>
 									<button
 										onclick={() => { scalingDeploy = dep; }}
 										disabled={!!s.workloadActioning}
-										class="px-2 py-1 rounded text-[10px] bg-surface-sunken text-ink-2 hover:bg-surface-selected disabled:opacity-40 transition-colors"
+										class="px-2 py-1 rounded text-xs bg-surface-sunken text-ink-2 hover:bg-surface-selected disabled:opacity-40 transition-colors"
 									>스케일</button>
 								</div>
 							</td>
@@ -97,10 +97,10 @@
 			<table class="w-full text-xs">
 				<thead>
 					<tr class="border-b border-line">
-						<th class="text-left pb-2 text-[10px] uppercase tracking-wide text-ink-3 font-medium">이름</th>
-						<th class="text-left pb-2 text-[10px] uppercase tracking-wide text-ink-3 font-medium">레플리카</th>
-						<th class="text-left pb-2 text-[10px] uppercase tracking-wide text-ink-3 font-medium">Owner</th>
-						<th class="text-left pb-2 text-[10px] uppercase tracking-wide text-ink-3 font-medium">이미지</th>
+						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">이름</th>
+						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">레플리카</th>
+						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">Owner</th>
+						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">이미지</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -110,7 +110,7 @@
 							<td class="py-2.5 tabular-nums text-ink-2">{rs.ready}/{rs.replicas}</td>
 							<td class="py-2.5 text-ink-2">
 								{#if rs.owner_kind && rs.owner_name}
-									<span class="text-[10px] bg-surface-sunken px-1.5 py-0.5 rounded">{rs.owner_kind}</span>
+									<span class="text-xs bg-surface-sunken px-1.5 py-0.5 rounded">{rs.owner_kind}</span>
 									<span class="ml-1 font-mono">{rs.owner_name}</span>
 								{:else}
 									—

@@ -5,7 +5,7 @@
 </script>
 
 <div class="bg-surface-base border border-line rounded-xl p-4">
-  <h3 class="text-xs text-ink-3 uppercase tracking-wide mb-3">VM 목록</h3>
+  <h3 class="text-xs text-ink-2 uppercase tracking-wide mb-3">VM 목록</h3>
   <div class="space-y-2">
     {#if s.cluster!.server_vm_id}
       <div class="flex items-center justify-between py-2 border-b border-line">
@@ -34,7 +34,7 @@
       </div>
     {/each}
     {#if !s.cluster!.server_vm_id && s.cluster!.agent_vm_ids.length === 0}
-      <p class="text-xs text-ink-3 py-2">VM 정보가 없습니다.</p>
+      <p class="text-xs text-ink-2 py-2">VM 정보가 없습니다.</p>
     {/if}
   </div>
 </div>

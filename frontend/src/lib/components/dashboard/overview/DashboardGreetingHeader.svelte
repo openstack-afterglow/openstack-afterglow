@@ -40,7 +40,7 @@
 
 <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
 	<div class="min-w-0">
-		<div class="text-[11px] text-[var(--color-ink-3)] uppercase tracking-widest font-medium mb-1">OVERVIEW · 대시보드</div>
+		<div class="text-xs text-[var(--color-ink-3)] uppercase tracking-widest font-medium mb-1">OVERVIEW · 대시보드</div>
 		<h1 class="text-2xl font-bold text-[var(--color-ink-0)] mb-1 break-words">안녕하세요, <GradientText>{username}</GradientText>님</h1>
 		<div class="text-[var(--color-ink-2)] text-[13px] break-words">
 			{projectName} · {syncLabel}

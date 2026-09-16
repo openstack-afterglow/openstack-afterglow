@@ -325,7 +325,7 @@
 			</select>
 		</div>
 		<div>
-			<label class="block text-sm text-ink-2 mb-1" for="field-page-328">payload <span class="text-ink-3">(선택 — 나중에 PUT으로도 가능)</span></label>
+			<label class="block text-sm text-ink-2 mb-1" for="field-page-328">payload <span class="text-ink-2">(선택 — 나중에 PUT으로도 가능)</span></label>
 			<textarea id="field-page-328" bind:value={newSecretPayload} rows={3} class="w-full bg-surface-selected border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 font-mono" placeholder={newSecretType === 'certificate' ? '-----BEGIN CERTIFICATE-----\n...' : '비밀 값'}></textarea>
 		</div>
 	</div>
@@ -421,7 +421,7 @@
 				class="px-4 py-2 text-sm font-medium transition-colors {activeTab === tab ? 'text-ink-0 border-b-2 border-action-warm' : 'text-ink-2 hover:text-ink-1'}"
 			>
 				{tab === 'secrets' ? '비밀' : tab === 'containers' ? '컨테이너' : tab === 'orders' ? 'Key Orders' : '쿼터'}
-				{#if tab === 'secrets' && secrets.length > 0}<span class="ml-1 text-xs text-ink-3">({secrets.length})</span>{/if}
+				{#if tab === 'secrets' && secrets.length > 0}<span class="ml-1 text-xs text-ink-2">({secrets.length})</span>{/if}
 			</button>
 		{/each}
 	</div>
@@ -475,7 +475,7 @@
 		<LoadingSkeleton variant="table" rows={4} />
 	{:else if activeTab === 'secrets'}
 		{#if secrets.length === 0}
-			<div class="text-center py-16 text-ink-3">
+			<div class="text-center py-16 text-ink-2">
 				<div class="text-4xl mb-3">🔑</div>
 				<p class="text-sm">저장된 비밀이 없습니다.</p>
 				<button onclick={() => showCreateSecret = true} class="mt-4 text-warm-text hover:text-warm-text-hover text-sm">+ 비밀 생성</button>
@@ -523,7 +523,7 @@
 										<span class="max-md:truncate" title={s.name ?? s.id}>{s.name ?? s.id}</span>
 										{#if s.system_managed}<span class="text-xs bg-surface-selected text-ink-2 px-2 py-0.5 rounded-full">시스템</span>{/if}
 									</div>
-									<div class="text-ink-3 text-xs mt-0.5">{s.id}</div>
+									<div class="text-ink-2 text-xs mt-0.5">{s.id}</div>
 								</td>
 								<td class="py-3 pr-4 text-ink-2">{SECRET_TYPE_LABEL[s.secret_type] ?? s.secret_type}</td>
 								<td class="py-3 pr-4"><span class="px-2 py-0.5 rounded text-xs {STATUS_CLASS[s.status ?? ''] ?? 'bg-surface-selected text-ink-2'}">{s.status ?? '-'}</span></td>
@@ -550,7 +550,7 @@
 
 	{:else if activeTab === 'containers'}
 		{#if containers.length === 0}
-			<div class="text-center py-16 text-ink-3">
+			<div class="text-center py-16 text-ink-2">
 				<div class="text-4xl mb-3">📦</div>
 				<p class="text-sm">저장된 컨테이너가 없습니다.</p>
 				<button onclick={() => showCreateContainer = true} class="mt-4 text-warm-text hover:text-warm-text-hover text-sm">+ 컨테이너 생성</button>
@@ -583,7 +583,7 @@
 						{#each containers as c (c.id)}
 							<tr class="resource-selection-surface hover:bg-surface-sunken/30" data-selected={selection.has(c.id)}>
 								<td class="py-3 pr-4"><SelectionCheckbox checked={selection.has(c.id)} disabled={selectionBusy} ariaLabel={`${c.name ?? c.id} 선택`} onclick={() => selection.toggle(c.id)} /></td>
-								<td class="py-3 pr-4"><div class="max-md:max-w-[66vw] max-md:truncate" title={c.name ?? c.id}>{c.name ?? '-'}</div><div class="text-xs text-ink-3 font-mono max-md:max-w-[66vw] max-md:truncate">{c.id}</div></td>
+								<td class="py-3 pr-4"><div class="max-md:max-w-[66vw] max-md:truncate" title={c.name ?? c.id}>{c.name ?? '-'}</div><div class="text-xs text-ink-2 font-mono max-md:max-w-[66vw] max-md:truncate">{c.id}</div></td>
 								<td class="py-3 pr-4 text-ink-2">{c.type}</td>
 								<td class="py-3 pr-4"><span class="px-2 py-0.5 rounded text-xs {STATUS_CLASS[c.status ?? ''] ?? 'bg-surface-selected text-ink-2'}">{c.status ?? '-'}</span></td>
 								<td class="py-3 pr-4 text-ink-2">{c.secret_refs.length}개</td>
@@ -597,7 +597,7 @@
 
 	{:else if activeTab === 'orders'}
 		{#if orders.length === 0}
-			<div class="text-center py-16 text-ink-3">
+			<div class="text-center py-16 text-ink-2">
 				<div class="text-4xl mb-3">⚙️</div>
 				<p class="text-sm">진행 중인 Key Order가 없습니다.</p>
 				<button onclick={() => showCreateOrder = true} class="mt-4 text-warm-text hover:text-warm-text-hover text-sm">+ 키 생성 요청</button>
@@ -640,12 +640,12 @@
 					<div class="bg-surface-sunken rounded-xl p-4 border border-line-2">
 						<div class="text-xs text-ink-2 mb-1">{label}</div>
 						<div class="text-2xl font-bold text-ink-0">{val === -1 ? '∞' : val}</div>
-						<div class="text-xs text-ink-3 mt-1">{val === -1 ? '무제한' : `한도 ${val}개`}</div>
+						<div class="text-xs text-ink-2 mt-1">{val === -1 ? '무제한' : `한도 ${val}개`}</div>
 					</div>
 				{/each}
 			</div>
 		{:else}
-			<div class="text-center py-8 text-ink-3 text-sm">쿼터 정보를 불러올 수 없습니다.</div>
+			<div class="text-center py-8 text-ink-2 text-sm">쿼터 정보를 불러올 수 없습니다.</div>
 		{/if}
 	{/if}
 	<BulkSelectionOverlay

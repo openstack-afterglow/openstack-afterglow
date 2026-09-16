@@ -108,7 +108,7 @@
 					{/if}
 				</div>
 				<div>
-					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-portcreatemodal-108">Fixed IP <span class="text-ink-3">(선택)</span></label>
+					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-portcreatemodal-108">Fixed IP <span class="text-ink-2">(선택)</span></label>
 					<input id="field-portcreatemodal-108" bind:value={form.fixed_ip} type="text" placeholder="예: 192.168.1.100" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" />
 				</div>
 			</div>

@@ -130,7 +130,7 @@
 	<div class="flex items-center justify-between px-5 py-4 border-b border-line flex-shrink-0">
 		<div>
 			<h2 class="text-sm font-semibold text-ink-0">{projectName}</h2>
-			<p class="text-xs text-ink-3 mt-0.5">{projectId}</p>
+			<p class="text-xs text-ink-2 mt-0.5">{projectId}</p>
 		</div>
 		<button
 			onclick={onClose}
@@ -141,7 +141,7 @@
 
 	<div class="flex-1 overflow-y-auto p-5 space-y-5">
 		{#if loading}
-			<div class="text-ink-3 text-sm">로딩 중...</div>
+			<div class="text-ink-2 text-sm">로딩 중...</div>
 		{:else if error && !quota}
 			<div class="text-red-400 text-sm">{error}</div>
 		{:else if quota}
@@ -153,7 +153,7 @@
 					<div>
 						<div class="flex items-center justify-between mb-1">
 							<label class="text-sm text-ink-2" for="q-instances">인스턴스</label>
-							<span class="text-xs text-ink-3">사용 중: {quota.compute.instances?.in_use ?? 0} / {limitLabel(quota.compute.instances?.limit ?? -1)}</span>
+							<span class="text-xs text-ink-2">사용 중: {quota.compute.instances?.in_use ?? 0} / {limitLabel(quota.compute.instances?.limit ?? -1)}</span>
 						</div>
 						{#if (quota.compute.instances?.limit ?? -1) > 0}
 							<div class="w-full h-1 bg-surface-sunken rounded-full overflow-hidden mb-2">
@@ -170,14 +170,14 @@
 							min="-1"
 							class="w-full bg-surface-sunken border border-line-2 rounded px-3 py-1.5 text-sm text-ink-0 focus:outline-none focus:border-action-warm"
 						/>
-						<p class="text-xs text-ink-3 mt-1">-1 = 무제한</p>
+						<p class="text-xs text-ink-2 mt-1">-1 = 무제한</p>
 					</div>
 
 					<!-- CPU -->
 					<div>
 						<div class="flex items-center justify-between mb-1">
 							<label class="text-sm text-ink-2" for="q-cores">CPU (코어)</label>
-							<span class="text-xs text-ink-3">사용 중: {quota.compute.cores?.in_use ?? 0} / {limitLabel(quota.compute.cores?.limit ?? -1)}</span>
+							<span class="text-xs text-ink-2">사용 중: {quota.compute.cores?.in_use ?? 0} / {limitLabel(quota.compute.cores?.limit ?? -1)}</span>
 						</div>
 						{#if (quota.compute.cores?.limit ?? -1) > 0}
 							<div class="w-full h-1 bg-surface-sunken rounded-full overflow-hidden mb-2">
@@ -200,7 +200,7 @@
 					<div>
 						<div class="flex items-center justify-between mb-1">
 							<label class="text-sm text-ink-2" for="q-ram">RAM (MB)</label>
-							<span class="text-xs text-ink-3">사용 중: {quota.compute.ram?.in_use ?? 0} MB / {limitLabel(quota.compute.ram?.limit ?? -1)}</span>
+							<span class="text-xs text-ink-2">사용 중: {quota.compute.ram?.in_use ?? 0} MB / {limitLabel(quota.compute.ram?.limit ?? -1)}</span>
 						</div>
 						{#if (quota.compute.ram?.limit ?? -1) > 0}
 							<div class="w-full h-1 bg-surface-sunken rounded-full overflow-hidden mb-2">
@@ -229,7 +229,7 @@
 					<div>
 						<div class="flex items-center justify-between mb-1">
 							<label class="text-sm text-ink-2" for="q-volumes">볼륨 수</label>
-							<span class="text-xs text-ink-3">사용 중: {quota.volume.volumes?.in_use ?? 0} / {limitLabel(quota.volume.volumes?.limit ?? -1)}</span>
+							<span class="text-xs text-ink-2">사용 중: {quota.volume.volumes?.in_use ?? 0} / {limitLabel(quota.volume.volumes?.limit ?? -1)}</span>
 						</div>
 						{#if (quota.volume.volumes?.limit ?? -1) > 0}
 							<div class="w-full h-1 bg-surface-sunken rounded-full overflow-hidden mb-2">
@@ -252,7 +252,7 @@
 					<div>
 						<div class="flex items-center justify-between mb-1">
 							<label class="text-sm text-ink-2" for="q-gigabytes">용량 (GB)</label>
-							<span class="text-xs text-ink-3">사용 중: {quota.volume.gigabytes?.in_use ?? 0} GB / {limitLabel(quota.volume.gigabytes?.limit ?? -1)}</span>
+							<span class="text-xs text-ink-2">사용 중: {quota.volume.gigabytes?.in_use ?? 0} GB / {limitLabel(quota.volume.gigabytes?.limit ?? -1)}</span>
 						</div>
 						{#if (quota.volume.gigabytes?.limit ?? -1) > 0}
 							<div class="w-full h-1 bg-surface-sunken rounded-full overflow-hidden mb-2">

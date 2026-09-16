@@ -97,19 +97,19 @@
 			<div class="bg-surface-base border border-line rounded-lg p-5 space-y-4">
 				<dl class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 					<div>
-						<dt class="text-xs text-ink-3 uppercase tracking-wide mb-1">프로젝트 ID</dt>
+						<dt class="text-xs text-ink-2 uppercase tracking-wide mb-1">프로젝트 ID</dt>
 						<dd class="font-mono text-sm text-ink-2">{project.id}</dd>
 					</div>
 					<div>
-						<dt class="text-xs text-ink-3 uppercase tracking-wide mb-1">이름</dt>
+						<dt class="text-xs text-ink-2 uppercase tracking-wide mb-1">이름</dt>
 						<dd class="text-sm text-ink-0">{project.name}</dd>
 					</div>
 					<div>
-						<dt class="text-xs text-ink-3 uppercase tracking-wide mb-1">설명</dt>
+						<dt class="text-xs text-ink-2 uppercase tracking-wide mb-1">설명</dt>
 						<dd class="text-sm text-ink-2">{project.description || '—'}</dd>
 					</div>
 					<div>
-						<dt class="text-xs text-ink-3 uppercase tracking-wide mb-1">상태</dt>
+						<dt class="text-xs text-ink-2 uppercase tracking-wide mb-1">상태</dt>
 						<dd>
 							<span class="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full font-medium {project.enabled ? 'bg-green-900/40 text-green-400' : 'bg-surface-sunken text-ink-2'}">
 								{project.enabled ? '활성' : '비활성'}
@@ -118,13 +118,13 @@
 					</div>
 					{#if project.created_at}
 						<div>
-							<dt class="text-xs text-ink-3 uppercase tracking-wide mb-1">생성일</dt>
+							<dt class="text-xs text-ink-2 uppercase tracking-wide mb-1">생성일</dt>
 							<dd class="text-sm text-ink-2">{new Date(project.created_at).toLocaleString('ko-KR')}</dd>
 						</div>
 					{/if}
 					{#if project.domain_id}
 						<div>
-							<dt class="text-xs text-ink-3 uppercase tracking-wide mb-1">도메인 ID</dt>
+							<dt class="text-xs text-ink-2 uppercase tracking-wide mb-1">도메인 ID</dt>
 							<dd class="font-mono text-sm text-ink-2">{project.domain_id}</dd>
 						</div>
 					{/if}
@@ -140,7 +140,7 @@
 				{:else if membersError}
 					<div class="text-[var(--color-state-danger)] text-sm py-8 text-center">{membersError}</div>
 				{:else if members.length === 0}
-					<div class="text-ink-3 text-sm py-8 text-center">멤버 없음</div>
+					<div class="text-ink-2 text-sm py-8 text-center">멤버 없음</div>
 				{:else}
 					<table class="w-full text-sm">
 						<thead class="bg-surface-base/60 text-ink-2 text-xs uppercase tracking-wide">

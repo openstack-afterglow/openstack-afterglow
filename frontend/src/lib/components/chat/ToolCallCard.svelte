@@ -161,11 +161,11 @@
 		color: var(--color-ink-1);
 	}
 	.tool-status {
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-size: 0.7rem;
 	}
 	.tool-duration {
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-size: 0.66rem;
 		font-variant-numeric: tabular-nums;
 		white-space: nowrap;
@@ -175,7 +175,7 @@
 	}
 	.chevron {
 		margin-left: auto;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		transition: transform 0.15s;
 	}
 	.chevron.open {
@@ -192,7 +192,7 @@
 		font-size: 0.66rem;
 		text-transform: uppercase;
 		letter-spacing: 0.03em;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		margin-bottom: 0.2rem;
 	}
 	.detail-pre {
@@ -245,7 +245,7 @@
 		font-weight: 600;
 	}
 	.file-size {
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-variant-numeric: tabular-nums;
 	}
 	.error-code {

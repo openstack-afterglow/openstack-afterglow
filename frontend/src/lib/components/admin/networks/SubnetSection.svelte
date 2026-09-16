@@ -177,7 +177,7 @@
 										{subnet.name || '(이름 없음)'}
 									</a>
 								</h3>
-								<span class="text-xs text-ink-3 font-mono">{subnet.id}</span>
+								<span class="text-xs text-ink-2 font-mono">{subnet.id}</span>
 							</div>
 							<div class="flex items-center gap-1">
 								<button
@@ -193,25 +193,25 @@
 						</div>
 						<dl class="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
 							<div>
-								<dt class="text-xs text-ink-3 mb-0.5">CIDR</dt>
+								<dt class="text-xs text-ink-2 mb-0.5">CIDR</dt>
 								<dd class="text-sm text-ink-2 font-mono">{subnet.cidr}</dd>
 							</div>
 							<div>
-								<dt class="text-xs text-ink-3 mb-0.5">게이트웨이</dt>
+								<dt class="text-xs text-ink-2 mb-0.5">게이트웨이</dt>
 								<dd class="text-sm text-ink-2 font-mono">{subnet.gateway_ip ?? '-'}</dd>
 							</div>
 							<div>
-								<dt class="text-xs text-ink-3 mb-0.5">DHCP</dt>
+								<dt class="text-xs text-ink-2 mb-0.5">DHCP</dt>
 								<dd>
 									{#if subnet.dhcp_enabled}
 										<span class="px-1.5 py-0.5 bg-green-900/30 text-green-400 rounded text-xs">활성</span>
 									{:else}
-										<span class="px-1.5 py-0.5 bg-surface-sunken text-ink-3 rounded text-xs">비활성</span>
+										<span class="px-1.5 py-0.5 bg-surface-sunken text-ink-2 rounded text-xs">비활성</span>
 									{/if}
 								</dd>
 							</div>
 							<div>
-								<dt class="text-xs text-ink-3 mb-0.5">IP 버전</dt>
+								<dt class="text-xs text-ink-2 mb-0.5">IP 버전</dt>
 								<dd class="text-sm text-ink-2">IPv4</dd>
 							</div>
 						</dl>
@@ -220,6 +220,6 @@
 			{/each}
 		</div>
 	{:else}
-		<p class="text-sm text-ink-3">서브넷 없음</p>
+		<p class="text-sm text-ink-2">서브넷 없음</p>
 	{/if}
 </div>

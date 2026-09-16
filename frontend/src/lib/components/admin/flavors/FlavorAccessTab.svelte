@@ -167,7 +167,7 @@
 			<div class="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-1)]">
 				Afterglow 사용자 노출
 			</div>
-			<p class="mt-1 text-[11px] leading-normal text-[var(--color-ink-2)]">
+			<p class="mt-1 text-xs leading-normal text-[var(--color-ink-2)]">
 				숨기면 일반 사용자 VM·Resize·K3s Flavor 목록에서 제외됩니다. Nova Public/Private 및 Flavor Access는 변경되지 않습니다.
 			</p>
 		</div>
@@ -221,7 +221,7 @@
 					GPU Quota 연동 (gpu_quota)
 				</button>
 			</div>
-			<p class="mt-2 text-[11px] text-[var(--color-ink-2)] leading-normal">
+			<p class="mt-2 text-xs text-[var(--color-ink-2)] leading-normal">
 				{accessMode === 'gpu_quota'
 					? '이 Flavor는 프로젝트의 GPU quota limit에 따라 접근 권한이 자동 조정됩니다. 아래 수동 추가는 예외 프로젝트에만 사용하세요.'
 					: '관리자가 프로젝트를 개별적으로 추가하거나 제거합니다.'}
@@ -243,7 +243,7 @@
 						<div class="flex items-center justify-between px-3 py-2 hover:bg-surface-selected border-b border-line-2/50 last:border-0">
 							<div>
 								<span class="text-sm text-ink-0">{p.name}</span>
-								<span class="text-xs text-ink-3 ml-2 font-mono">{p.id.slice(0, 12)}</span>
+								<span class="text-xs text-ink-2 ml-2 font-mono">{p.id.slice(0, 12)}</span>
 							</div>
 							<button
 								onclick={() => addAccess(p.id)}
@@ -264,7 +264,7 @@
 					{/each}
 				</div>
 			{:else if projectSearch.trim().length > 0}
-				<div class="absolute z-10 left-0 right-0 mt-1 bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-xs text-ink-3">
+				<div class="absolute z-10 left-0 right-0 mt-1 bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-xs text-ink-2">
 					일치하는 프로젝트가 없습니다
 				</div>
 			{/if}
@@ -273,9 +273,9 @@
 
 	<div class="text-sm text-ink-2 mb-2">접근 권한이 있는 프로젝트</div>
 	{#if accessLoading}
-		<div class="text-ink-3 text-sm">로딩 중...</div>
+		<div class="text-ink-2 text-sm">로딩 중...</div>
 	{:else if accessList.length === 0}
-		<div class="text-ink-3 text-sm">접근 권한이 없습니다</div>
+		<div class="text-ink-2 text-sm">접근 권한이 없습니다</div>
 	{:else}
 		<div class="space-y-2">
 			{#each accessList as a (a.project_id)}
@@ -283,7 +283,7 @@
 					<div>
 						<div class="text-xs text-ink-1">{a.project_name || a.project_id}</div>
 						{#if a.project_name}
-							<div class="text-xs text-ink-3 font-mono">{a.project_id.slice(0, 12)}</div>
+							<div class="text-xs text-ink-2 font-mono">{a.project_id.slice(0, 12)}</div>
 						{/if}
 					</div>
 					<button onclick={() => removeAccess(a.project_id)} class="text-red-400 hover:text-red-300 text-xs">제거</button>

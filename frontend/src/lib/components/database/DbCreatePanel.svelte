@@ -60,7 +60,7 @@
 						class="text-xs py-3 px-4 border-b-2 whitespace-nowrap transition-colors
 							{s.activeTab === i
 							? 'border-action-warm text-warm-text font-medium'
-							: 'border-transparent text-ink-3 hover:text-ink-2'}"
+							: 'border-transparent text-ink-2 hover:text-ink-2'}"
 					>
 						{tab}
 						{#if i === 0 && s.step1Error && s.name}

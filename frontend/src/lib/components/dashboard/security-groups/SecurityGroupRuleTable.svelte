@@ -20,11 +20,11 @@
 
 <div class="border-t border-line-2">
 	{#if rules.length === 0}
-		<p class="text-xs text-ink-3 px-4 py-3 italic">규칙 없음</p>
+		<p class="text-xs text-ink-2 px-4 py-3 italic">규칙 없음</p>
 	{:else}
 		<table class="w-full text-xs">
 			<thead>
-				<tr class="text-ink-3 uppercase tracking-wide border-b border-line-2/50">
+				<tr class="text-ink-2 uppercase tracking-wide border-b border-line-2/50">
 					<th class="text-left px-4 py-2">방향</th>
 					<th class="text-left px-4 py-2">프로토콜</th>
 					<th class="text-left px-4 py-2">포트</th>

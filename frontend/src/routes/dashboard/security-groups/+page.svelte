@@ -84,7 +84,7 @@
 <div class="max-w-5xl mx-auto px-6 py-8">
 	<div class="flex items-center justify-between mb-6">
 		<div>
-			<div class="flex items-center gap-2 text-sm text-ink-3 mb-1">
+			<div class="flex items-center gap-2 text-sm text-ink-2 mb-1">
 				<a href="/dashboard" class="hover:text-ink-2 transition-colors">대시보드</a>
 				<span>›</span>
 				<span class="text-ink-2">보안 그룹</span>
@@ -104,7 +104,7 @@
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if securityGroups.length === 0}
-		<div class="text-center py-20 text-ink-3">
+		<div class="text-center py-20 text-ink-2">
 			<div class="text-5xl mb-4">🔒</div>
 			<div class="text-lg">보안 그룹이 없습니다</div>
 		</div>

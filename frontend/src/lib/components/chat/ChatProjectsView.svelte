@@ -337,7 +337,7 @@
 		border-radius: 0.55rem;
 		border: 1px solid var(--color-line);
 		background: var(--color-surface-raised);
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.search input {
 		flex: 1;
@@ -360,7 +360,7 @@
 		border: none;
 		border-radius: 0.5rem;
 		background: transparent;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		cursor: pointer;
 		transition: background 0.12s, color 0.12s;
 		flex-shrink: 0;
@@ -411,7 +411,7 @@
 	}
 	.card-desc {
 		font-size: 0.78rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		line-height: 1.4;
 		display: -webkit-box;
 		-webkit-line-clamp: 2;
@@ -459,7 +459,7 @@
 		color: var(--color-ink-1);
 	}
 	.count {
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-weight: 550;
 	}
 	.form {
@@ -480,7 +480,7 @@
 	}
 	.hint {
 		font-weight: 400;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.req {
 		color: var(--color-state-danger);
@@ -549,7 +549,7 @@
 		border: none;
 		border-radius: 0.45rem;
 		background: transparent;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		cursor: pointer;
 		transition: background 0.12s, color 0.12s;
 		flex-shrink: 0;
@@ -566,7 +566,7 @@
 	}
 	.assign-lbl {
 		font-size: 0.75rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.assign select {
 		flex: 1;
@@ -581,7 +581,7 @@
 	}
 	.muted {
 		font-size: 0.8rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.pad {
 		padding: 1.4rem;

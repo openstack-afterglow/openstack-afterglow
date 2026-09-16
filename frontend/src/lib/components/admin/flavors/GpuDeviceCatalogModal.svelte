@@ -183,9 +183,9 @@
 			<div class="flex-1 overflow-y-auto min-h-0 space-y-5">
 				<!-- 카탈로그 목록 -->
 				<div>
-					<div class="text-xs text-ink-3 uppercase tracking-wide mb-2">등록된 장치 ({devices.length})</div>
+					<div class="text-xs text-ink-2 uppercase tracking-wide mb-2">등록된 장치 ({devices.length})</div>
 					{#if loading}
-						<div class="text-ink-3 text-sm py-4">로딩 중...</div>
+						<div class="text-ink-2 text-sm py-4">로딩 중...</div>
 					{:else}
 						<div class="border border-line rounded-lg overflow-hidden">
 							<table class="w-full text-xs">
@@ -202,7 +202,7 @@
 									{#each devices.filter((d) => !d.is_audio) as d (d.vendor_id + d.device_id)}
 										<tr class="border-t border-line/50">
 											<td class="px-3 py-1.5 font-mono text-ink-2">{d.vendor_id}:{d.device_id}</td>
-											<td class="px-3 py-1.5 text-ink-0">{d.name} <span class="text-ink-3">({d.vendor_name})</span></td>
+											<td class="px-3 py-1.5 text-ink-0">{d.name} <span class="text-ink-2">({d.vendor_name})</span></td>
 											<td class="px-3 py-1.5 font-mono text-ink-2 break-all">{d.aliases.join(', ') || '-'}</td>
 											<td class="px-3 py-1.5">
 												<span class="px-1.5 py-0.5 rounded {sourceClass[d.source]}">{sourceLabel[d.source]}</span>
@@ -222,7 +222,7 @@
 
 				<!-- 단건 추가 -->
 				<div>
-					<div class="text-xs text-ink-3 uppercase tracking-wide mb-2">장치 추가</div>
+					<div class="text-xs text-ink-2 uppercase tracking-wide mb-2">장치 추가</div>
 					<div class="grid grid-cols-2 md:grid-cols-4 gap-2">
 						<input bind:value={form.vendor_id} type="text" placeholder="Vendor (10DE)" maxlength="4"
 							class="bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-ink-0 text-sm font-mono focus:outline-none focus:border-action-warm" />
@@ -248,8 +248,8 @@
 
 				<!-- 일괄 갱신 (템플릿 다운로드 → 값 입력 → 업로드) -->
 				<div>
-					<div class="text-xs text-ink-3 uppercase tracking-wide mb-2">일괄 갱신</div>
-					<div class="text-xs text-ink-3 mb-2">
+					<div class="text-xs text-ink-2 uppercase tracking-wide mb-2">일괄 갱신</div>
+					<div class="text-xs text-ink-2 mb-2">
 						1) 현재 카탈로그가 채워진 템플릿을 다운로드 → 2) 엑셀 등에서 값 입력 → 3) 업로드.
 						컬럼: <span class="font-mono">vendor_id, device_id, name, is_audio, aliases</span> (aliases는 ; 구분, source 컬럼은 무시됨)
 					</div>

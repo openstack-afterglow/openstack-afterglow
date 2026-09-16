@@ -40,14 +40,14 @@
   {/if}
 
   {#if s.snapshots.length === 0}
-    <p class="text-xs text-ink-3">스냅샷이 없습니다.</p>
+    <p class="text-xs text-ink-2">스냅샷이 없습니다.</p>
   {:else}
     <div class="space-y-1">
       {#each s.snapshots as snap}
         <div class="bg-surface-base rounded-lg border border-line-2 px-3 py-2 flex items-center justify-between text-xs">
           <div>
             <span class="text-ink-0 font-medium">{snap.name || snap.id.slice(0, 8)}</span>
-            <span class="text-ink-3 ml-2">{formatStorage(snap.size)}</span>
+            <span class="text-ink-2 ml-2">{formatStorage(snap.size)}</span>
             <span class="ml-2 px-1.5 py-0.5 rounded text-xs {statusColor[snap.status] ?? 'text-ink-2 bg-surface-sunken'}">{snap.status}</span>
           </div>
           <button

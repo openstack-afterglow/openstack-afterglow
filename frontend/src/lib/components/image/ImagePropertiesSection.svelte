@@ -7,7 +7,7 @@
 <div class="bg-surface-base border border-line rounded-lg p-5">
 	<div class="flex items-center justify-between mb-3">
 		<h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide">
-			추가 속성 <span class="normal-case font-normal text-ink-3">({Object.keys(s.image!.properties).length})</span>
+			추가 속성 <span class="normal-case font-normal text-ink-2">({Object.keys(s.image!.properties).length})</span>
 		</h3>
 		{#if s.canEditMetadata && !s.editingProps}
 			<button onclick={() => s.startEditProps()} class="text-xs text-warm-text hover:text-warm-text-hover">편집</button>
@@ -16,7 +16,7 @@
 
 	{#if !s.editingProps}
 		{#if Object.keys(s.image!.properties).length === 0}
-			<p class="text-xs text-ink-3">추가 속성이 없습니다.</p>
+			<p class="text-xs text-ink-2">추가 속성이 없습니다.</p>
 		{:else}
 			<table class="w-full text-xs">
 				<tbody>
@@ -34,12 +34,12 @@
 			<tbody>
 				{#each Object.entries(s.propsDraft) as [k, v]}
 					<tr class="border-b border-line/50">
-						<td class="py-1.5 pr-2 font-mono w-2/5 {isReservedKey(k) ? 'text-ink-3' : 'text-ink-2'}">
-							{k}{#if isReservedKey(k)}&nbsp;<span class="text-[10px] text-ink-3">(예약)</span>{/if}
+						<td class="py-1.5 pr-2 font-mono w-2/5 {isReservedKey(k) ? 'text-ink-2' : 'text-ink-2'}">
+							{k}{#if isReservedKey(k)}&nbsp;<span class="text-xs text-ink-2">(예약)</span>{/if}
 						</td>
 						<td class="py-1.5 pr-2">
 							{#if isReservedKey(k)}
-								<span class="text-ink-3 font-mono break-all">{v}</span>
+								<span class="text-ink-2 font-mono break-all">{v}</span>
 							{:else}
 								<input bind:value={s.propsDraft[k]}
 									class="w-full bg-surface-sunken border border-line-2 rounded px-2 py-1 text-ink-2 font-mono text-xs focus:outline-none focus:border-action-warm" />

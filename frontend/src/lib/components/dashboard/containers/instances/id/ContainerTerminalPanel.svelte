@@ -128,7 +128,7 @@
       {:else if wsConnected}
         <span class="text-xs text-green-400">● 연결됨</span>
       {:else}
-        <span class="text-xs text-ink-3">● 연결 끊김</span>
+        <span class="text-xs text-ink-2">● 연결 끊김</span>
       {/if}
     </div>
     <div class="flex gap-2">

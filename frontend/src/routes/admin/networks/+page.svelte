@@ -115,7 +115,7 @@
 	/>
 
 	{#if loading}
-		<div class="text-ink-3 text-sm">로딩 중...</div>
+		<div class="text-ink-2 text-sm">로딩 중...</div>
 	{:else}
 		<AdminNetworkTable
 			{networks}

@@ -52,37 +52,37 @@
 			{#if target.enabled}
 				<span class="text-xs text-green-400 bg-green-900/30 px-1.5 py-0.5 rounded">활성</span>
 			{:else}
-				<span class="text-xs text-ink-3 bg-surface-sunken px-1.5 py-0.5 rounded">비활성</span>
+				<span class="text-xs text-ink-2 bg-surface-sunken px-1.5 py-0.5 rounded">비활성</span>
 			{/if}
-			<span class="text-xs text-ink-3">{target.interval_minutes}분 간격</span>
+			<span class="text-xs text-ink-2">{target.interval_minutes}분 간격</span>
 		</div>
-		<div class="text-xs text-ink-3 font-mono truncate">{target.api_key}</div>
+		<div class="text-xs text-ink-2 font-mono truncate">{target.api_key}</div>
 		<dl class="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
 			<div>
-				<dt class="text-ink-3 inline">인스턴스 DB: </dt>
+				<dt class="text-ink-2 inline">인스턴스 DB: </dt>
 				<dd class="text-ink-2 font-mono inline">{target.database_id || '-'}</dd>
 			</div>
 			<div>
-				<dt class="text-ink-3 inline">마지막 동기화: </dt>
+				<dt class="text-ink-2 inline">마지막 동기화: </dt>
 				<dd class="text-ink-2 inline">{formatDate(target.last_sync)}</dd>
 			</div>
 			{#if target.hypervisors_database_id}
 				<div>
-					<dt class="text-ink-3 inline">하이퍼바이저 DB: </dt>
+					<dt class="text-ink-2 inline">하이퍼바이저 DB: </dt>
 					<dd class="text-ink-2 font-mono inline">{target.hypervisors_database_id}</dd>
 				</div>
 				<div>
-					<dt class="text-ink-3 inline">하이퍼바이저 동기화: </dt>
+					<dt class="text-ink-2 inline">하이퍼바이저 동기화: </dt>
 					<dd class="text-ink-2 inline">{formatDate(target.hypervisors_last_sync)}</dd>
 				</div>
 			{/if}
 			{#if target.gpu_spec_database_id}
 				<div>
-					<dt class="text-ink-3 inline">GPU Spec DB: </dt>
+					<dt class="text-ink-2 inline">GPU Spec DB: </dt>
 					<dd class="text-ink-2 font-mono inline">{target.gpu_spec_database_id}</dd>
 				</div>
 				<div>
-					<dt class="text-ink-3 inline">GPU spec 동기화: </dt>
+					<dt class="text-ink-2 inline">GPU spec 동기화: </dt>
 					<dd class="text-ink-2 inline">{formatDate(target.gpu_spec_last_sync)}</dd>
 				</div>
 			{/if}

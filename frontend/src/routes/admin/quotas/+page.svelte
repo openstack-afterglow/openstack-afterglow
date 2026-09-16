@@ -62,7 +62,7 @@
 						reconcilePreview={ctrl.reconcilePreview}
 					/>
 				{:else}
-					<div class="text-ink-3 text-sm">쿼터를 불러올 수 없습니다</div>
+					<div class="text-ink-2 text-sm">쿼터를 불러올 수 없습니다</div>
 				{/if}
 			{/if}
 	{/if}

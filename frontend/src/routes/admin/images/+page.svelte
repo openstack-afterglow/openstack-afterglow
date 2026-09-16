@@ -137,7 +137,7 @@
 		{#snippet actions()}
 			<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds}
 				intervalOptions={ar.intervalOptions} refreshing={refreshing} onManualRefresh={forceRefresh} />
-			<div class="flex items-center gap-1 text-xs text-ink-3 max-md:hidden">
+			<div class="flex items-center gap-1 text-xs text-ink-2 max-md:hidden">
 				표시:
 				{#each [10, 20, 30] as n}
 					<button onclick={() => { pageSize = n; markerStack = []; nextMarker = null; load(); }}
@@ -160,7 +160,7 @@
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={8} />
 	{:else if images.length === 0}
-		<div class="text-ink-3 text-sm">이미지가 없습니다</div>
+		<div class="text-ink-2 text-sm">이미지가 없습니다</div>
 	{:else}
 		<AdminImagesTable {images} {selectedImageId} {togglingId} {markerStack} {nextMarker}
 			onOpenDetail={(img) => { selectedImageId = img.id; }}

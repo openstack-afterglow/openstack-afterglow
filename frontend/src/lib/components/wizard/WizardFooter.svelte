@@ -21,7 +21,7 @@
 
 <div class="wizard-footer sticky bottom-0 z-20 flex flex-none items-center justify-between flex-wrap gap-3 px-4 py-3 md:px-8 md:py-4 bg-[var(--color-surface-base)] border-t border-[var(--color-line)]">
 	<!-- selection chips strip -->
-	<div class="hidden md:flex flex-wrap items-center gap-2 text-xs text-ink-3 min-w-0">
+	<div class="hidden md:flex flex-wrap items-center gap-2 text-xs text-ink-2 min-w-0">
 		{#if imageDisplay}
 			<span class="pick">이미지: <b class="text-ink-2 font-mono font-medium">{imageDisplay}</b></span>
 		{/if}

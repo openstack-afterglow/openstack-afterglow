@@ -52,7 +52,7 @@
 <Modal open={true} onClose={onClose} labelledBy="instance-resize-title">
 	<div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]">
 		<h2 id="instance-resize-title" class="text-lg font-semibold text-ink-0 mb-1">인스턴스 리사이즈</h2>
-		<p class="text-xs text-ink-3 mb-5">플레이버를 변경합니다. 완료 후 '리사이즈 확인' 또는 '되돌리기'를 선택하세요.</p>
+		<p class="text-xs text-ink-2 mb-5">플레이버를 변경합니다. 완료 후 '리사이즈 확인' 또는 '되돌리기'를 선택하세요.</p>
 		{#if s.resizeError}
 			<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{s.resizeError}</div>
 		{/if}

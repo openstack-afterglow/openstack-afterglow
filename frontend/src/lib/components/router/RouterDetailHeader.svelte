@@ -1,5 +1,6 @@
 <script lang="ts">
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
 	import { goto } from '$app/navigation';
 	import { useRouterDetailController } from '$lib/stores/routerDetailController.svelte';
 
@@ -23,9 +24,6 @@
 			refreshing={s.loading}
 			onManualRefresh={() => s.fetchRouter()}
 		/>
-		<button
-			onclick={() => goto(`/dashboard/network/routers/${routerId}`)}
-			class="text-xs text-ink-2 hover:text-warm-text-hover px-2 py-1 rounded border border-line-2 hover:border-action-warm transition-colors"
-		>전체 보기 →</button>
+		<Button variant="outline" size="xs" onclick={() => goto(`/dashboard/network/routers/${routerId}`)}>전체 보기 →</Button>
 	</div>
 </div>

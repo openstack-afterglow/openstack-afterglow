@@ -86,9 +86,9 @@
 
 		<div class="overflow-y-auto flex-1">
 			{#if loadingInstances && instanceList.length === 0}
-				<div class="p-4 text-ink-3 text-sm text-center">인스턴스 목록 로딩 중...</div>
+				<div class="p-4 text-ink-2 text-sm text-center">인스턴스 목록 로딩 중...</div>
 			{:else if filtered.length === 0}
-				<div class="p-4 text-ink-3 text-sm text-center" data-tour="admin-monitoring-list-ready">
+				<div class="p-4 text-ink-2 text-sm text-center" data-tour="admin-monitoring-list-ready">
 					{search ? '검색 결과 없음' : '인스턴스 없음'}
 				</div>
 			{:else}
@@ -108,7 +108,7 @@
 								<span class="text-xs text-purple-400 bg-purple-900/30 px-1 rounded flex-shrink-0">GPU</span>
 							{/if}
 						</div>
-						<div class="text-xs text-ink-3 pl-3.5 mt-0.5 truncate font-mono">
+						<div class="text-xs text-ink-2 pl-3.5 mt-0.5 truncate font-mono">
 							{inst.project_id?.slice(0, 12) ?? '-'}
 						</div>
 					</button>
@@ -126,7 +126,7 @@
 			{/if}
 		</div>
 
-		<div class="px-3 py-2 border-t border-line text-xs text-ink-3">
+		<div class="px-3 py-2 border-t border-line text-xs text-ink-2">
 			{filtered.length}개 표시 / 총 {instanceList.length}개 로드
 		</div>
 	</div>
@@ -144,14 +144,14 @@
 				</button>
 				<div class="flex items-center gap-3 mb-5">
 					<span class="text-ink-0 font-semibold">{selectedInst.name}</span>
-					<span class="text-xs text-ink-3 font-mono">{selectedInst.id.slice(0, 8)}…</span>
+					<span class="text-xs text-ink-2 font-mono">{selectedInst.id.slice(0, 8)}…</span>
 					<span class="text-xs px-2 py-0.5 rounded
 						{selectedInst.status === 'ACTIVE' ? 'bg-green-900/30 text-green-400' :
 						 selectedInst.status === 'ERROR' ? 'bg-red-900/30 text-red-400' :
 						 'bg-surface-sunken text-ink-2'}"
 					>{selectedInst.status}</span>
 					{#if selectedInst.flavor}
-						<span class="text-xs text-ink-3">{selectedInst.flavor}</span>
+						<span class="text-xs text-ink-2">{selectedInst.flavor}</span>
 					{/if}
 				</div>
 				<div data-tour="admin-monitoring-metrics">
@@ -164,8 +164,8 @@
 		{:else}
 			<div class="flex items-center justify-center h-64 bg-surface-base border border-line rounded-xl">
 				<div class="text-center">
-					<div class="text-ink-3 text-sm mb-1">인스턴스를 선택하세요</div>
-					<div class="text-ink-3 text-xs">왼쪽 목록에서 VM을 클릭하면 메트릭이 표시됩니다</div>
+					<div class="text-ink-2 text-sm mb-1">인스턴스를 선택하세요</div>
+					<div class="text-ink-2 text-xs">왼쪽 목록에서 VM을 클릭하면 메트릭이 표시됩니다</div>
 				</div>
 			</div>
 		{/if}

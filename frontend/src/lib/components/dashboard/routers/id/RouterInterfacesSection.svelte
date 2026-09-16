@@ -82,14 +82,14 @@
 	{/if}
 
 	{#if router.interfaces.length === 0}
-		<p class="text-sm text-ink-3">연결된 인터페이스가 없습니다.</p>
+		<p class="text-sm text-ink-2">연결된 인터페이스가 없습니다.</p>
 	{:else}
 		<div class="space-y-2">
 			{#each router.interfaces as iface}
 				<div class="flex items-center justify-between bg-surface-sunken/50 rounded-lg px-4 py-3">
 					<div class="text-sm">
 						<div class="text-ink-0 font-medium">{iface.subnet_name || iface.subnet_id.slice(0, 12)}</div>
-						<div class="text-ink-3 text-xs font-mono mt-0.5">{iface.ip_address}</div>
+						<div class="text-ink-2 text-xs font-mono mt-0.5">{iface.ip_address}</div>
 					</div>
 					<button
 						onclick={() => onRemove(iface.subnet_id)}

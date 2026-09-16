@@ -105,7 +105,7 @@
 <!-- VM 이름 -->
 <div class="mb-4">
 	<label for="vm-name" class="block text-[11.5px] font-semibold text-ink-2 tracking-tight flex items-center gap-1.5 mb-1.5">
-		VM 이름 <span class="text-[10px] text-ink-3 font-normal px-1.5 py-0.5 rounded-full bg-surface-sunken">선택</span>
+		VM 이름 <span class="text-xs text-ink-2 font-normal px-1.5 py-0.5 rounded-full bg-surface-sunken">선택</span>
 	</label>
 	{#if normalizedInstanceName}
 		<p class="text-xs mb-1" aria-live="polite">
@@ -119,7 +119,7 @@
 		placeholder="비워두면 자동 생성"
 		class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm transition-colors"
 	/>
-	<p class="text-xs text-ink-3 mt-1">입력하지 않으면 같은 프로젝트 안에서 중복되지 않는 안전한 영문 이름이 자동 생성됩니다.</p>
+	<p class="text-xs text-ink-2 mt-1">입력하지 않으면 같은 프로젝트 안에서 중복되지 않는 안전한 영문 이름이 자동 생성됩니다.</p>
 </div>
 
 <!-- 네트워크 + 보안 그룹 -->
@@ -144,7 +144,7 @@
 	</div>
 	<div>
 		<label for="create-sg" class="block text-[11.5px] font-semibold text-ink-2 tracking-tight flex items-center gap-1.5 mb-1.5">
-			보안 그룹 <span class="text-[10px] text-ink-3 font-normal px-1.5 py-0.5 rounded-full bg-surface-sunken">선택</span>
+			보안 그룹 <span class="text-xs text-ink-2 font-normal px-1.5 py-0.5 rounded-full bg-surface-sunken">선택</span>
 		</label>
 		<select
 			id="create-sg"
@@ -167,9 +167,9 @@
 <div class="mb-4">
 	{#if s.adminMode}
 		<p class="block text-[11.5px] font-semibold text-ink-2 tracking-tight flex items-center gap-1.5 mb-1.5">
-			키페어 <span class="text-[10px] text-ink-3 font-normal px-1.5 py-0.5 rounded-full bg-surface-sunken">선택</span>
+			키페어 <span class="text-xs text-ink-2 font-normal px-1.5 py-0.5 rounded-full bg-surface-sunken">선택</span>
 		</p>
-		<div class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2.5 text-ink-3 text-sm">
+		<div class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2.5 text-ink-2 text-sm">
 			없음 (관리자 생성 — 콘솔 비밀번호 사용)
 		</div>
 		<p class="text-xs text-warm-text/80 mt-1">admin 모드에서는 대상 프로젝트의 키페어에 접근할 수 없습니다.</p>
@@ -239,7 +239,7 @@
 				max="16384"
 				class="w-24 bg-surface-sunken border border-line-2 rounded-lg px-3 py-2.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm transition-colors"
 			/>
-			<span class="text-[11px] text-ink-3">1 – 16,384 GB</span>
+			<span class="text-xs text-ink-2">1 – 16,384 GB</span>
 		</div>
 	</div>
 	<div class="flex items-end pb-1">
@@ -264,7 +264,7 @@
 <div class="mb-4">
 	<div class="flex items-center justify-between mb-1.5">
 		<p class="block text-[11.5px] font-semibold text-ink-2 tracking-tight">
-			파일 스토리지 마운트 <span class="text-[10px] text-ink-3 font-normal px-1.5 py-0.5 rounded-full bg-surface-sunken">선택</span>
+			파일 스토리지 마운트 <span class="text-xs text-ink-2 font-normal px-1.5 py-0.5 rounded-full bg-surface-sunken">선택</span>
 		</p>
 		<button
 			type="button"
@@ -273,7 +273,7 @@
 		>+ 추가</button>
 	</div>
 	{#if $wizard.dataMounts.length === 0}
-		<p class="text-[11px] text-ink-3">마운트할 파일 스토리지가 없습니다. "+ 추가"를 눌러 추가하세요.</p>
+		<p class="text-xs text-ink-2">마운트할 파일 스토리지가 없습니다. "+ 추가"를 눌러 추가하세요.</p>
 	{:else}
 		<div class="space-y-2">
 			{#each $wizard.dataMounts as mount, i}
@@ -320,7 +320,7 @@
 					<button
 						type="button"
 						onclick={() => wizard.update(w => ({ ...w, dataMounts: w.dataMounts.filter((_, j) => j !== i) }))}
-						class="text-ink-3 hover:text-red-400 transition-colors mt-0.5 shrink-0"
+						class="text-ink-2 hover:text-red-400 transition-colors mt-0.5 shrink-0"
 						aria-label="삭제"
 					>
 						<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -330,7 +330,7 @@
 				</div>
 			{/each}
 		</div>
-		<p class="text-[10.5px] text-ink-3 mt-1">/mnt, /data, /srv, /home 하위 경로만 허용됩니다.</p>
+		<p class="text-[10.5px] text-ink-2 mt-1">/mnt, /data, /srv, /home 하위 경로만 허용됩니다.</p>
 	{/if}
 </div>
 {/if}
@@ -338,12 +338,12 @@
 <!-- cloud-init 다크 에디터 -->
 <div class="mb-4">
 	<label for="cloud-init" class="block text-[11.5px] font-semibold text-ink-2 tracking-tight flex items-center gap-1.5 mb-1.5">
-		CLOUD-INIT <span class="text-[10px] text-ink-3 font-normal px-1.5 py-0.5 rounded-full bg-surface-sunken">선택</span>
+		CLOUD-INIT <span class="text-xs text-ink-2 font-normal px-1.5 py-0.5 rounded-full bg-surface-sunken">선택</span>
 	</label>
 	<div class="relative">
 		<div class="absolute top-2 right-2 flex gap-1 z-[2] bg-surface-base border border-line-2 rounded-md p-0.5">
-			<button type="button" disabled class="px-2 py-1 text-[10.5px] font-mono text-ink-3 rounded opacity-50 cursor-not-allowed">예제 ▾</button>
-			<button type="button" disabled class="px-2 py-1 text-[10.5px] font-mono text-ink-3 rounded opacity-50 cursor-not-allowed">YAML ✓</button>
+			<button type="button" disabled class="px-2 py-1 text-[10.5px] font-mono text-ink-2 rounded opacity-50 cursor-not-allowed">예제 ▾</button>
+			<button type="button" disabled class="px-2 py-1 text-[10.5px] font-mono text-ink-2 rounded opacity-50 cursor-not-allowed">YAML ✓</button>
 		</div>
 		<textarea
 			id="cloud-init"
@@ -405,6 +405,6 @@
 		{#if cloudInitLibraryError}
 			<Alert tone="danger">{cloudInitLibraryError}</Alert>
 		{/if}
-		<p class="text-[11px] text-ink-3">실행에 성공한 비어 있지 않은 cloud-init은 최근 실행 이력에 자동 저장됩니다.</p>
+		<p class="text-xs text-ink-2">실행에 성공한 비어 있지 않은 cloud-init은 최근 실행 이력에 자동 저장됩니다.</p>
 	</div>
 </div>

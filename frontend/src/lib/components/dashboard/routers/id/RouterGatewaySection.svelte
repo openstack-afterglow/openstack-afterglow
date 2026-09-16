@@ -53,7 +53,7 @@
 			<span class="text-orange-300">{router.external_gateway_network_name || router.external_gateway_network_id}</span>
 		</div>
 	{:else}
-		<p class="text-sm text-ink-3">외부 게이트웨이가 설정되지 않았습니다.</p>
+		<p class="text-sm text-ink-2">외부 게이트웨이가 설정되지 않았습니다.</p>
 	{/if}
 
 	{#if showSetGateway}

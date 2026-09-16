@@ -62,11 +62,11 @@
 					</svg>
 				</div>
 				<div class="text-ink-0 font-medium text-[13px] font-mono truncate">{sg.name}</div>
-				<span class="ml-auto text-[11px] text-ink-3 shrink-0">{sg.rules?.length ?? 0}</span>
+				<span class="ml-auto text-xs text-ink-2 shrink-0">{sg.rules?.length ?? 0}</span>
 				</button>
 			</div>
 			{#if sg.description}
-				<div class="text-[11px] text-ink-2 mt-1.5 leading-snug truncate">{sg.description}</div>
+				<div class="text-xs text-ink-2 mt-1.5 leading-snug truncate">{sg.description}</div>
 			{/if}
 		</article>
 	{/each}

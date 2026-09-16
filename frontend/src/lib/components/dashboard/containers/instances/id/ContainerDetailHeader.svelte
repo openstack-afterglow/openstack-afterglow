@@ -22,7 +22,7 @@
 <div class="flex items-start justify-between mb-6">
   <div>
     <h1 class="text-2xl font-bold text-ink-0">{container.name}</h1>
-    <p class="text-ink-3 text-sm mt-1 font-mono">{container.uuid}</p>
+    <p class="text-ink-2 text-sm mt-1 font-mono">{container.uuid}</p>
   </div>
   <div class="flex gap-2">
     {#if container.status === 'Running'}

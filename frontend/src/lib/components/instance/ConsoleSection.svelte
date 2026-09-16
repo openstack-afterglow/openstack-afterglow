@@ -24,7 +24,7 @@
 		<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide">콘솔 로그</h2>
 		<div class="flex gap-2 items-center">
 			{#if showLog}
-				<span class="text-xs text-ink-3">{s.consolePollAr.intervalSeconds}초마다 자동 갱신</span>
+				<span class="text-xs text-ink-2">{s.consolePollAr.intervalSeconds}초마다 자동 갱신</span>
 				<button
 					onclick={s.toggleFullLog}
 					class="text-xs {s.logFull ? 'text-yellow-400 border-yellow-900' : 'text-ink-2 border-line-2'} hover:text-ink-1 px-2 py-1 border hover:border-line-2 rounded transition-colors"

@@ -76,14 +76,14 @@
       {#each RANGES as r}
         <button
           onclick={() => onRangeChange?.(r)}
-          class="text-xs px-2 py-0.5 rounded transition-colors {currentRange === r ? 'bg-action-warm text-ink-0' : 'text-ink-3 hover:text-ink-2'}"
+          class="text-xs px-2 py-0.5 rounded transition-colors {currentRange === r ? 'bg-action-warm text-ink-0' : 'text-ink-2 hover:text-ink-2'}"
         >{RANGE_LABELS[r]}</button>
       {/each}
     </div>
   </div>
 
   {#if points.length === 0}
-    <div class="flex items-center justify-center h-24 text-ink-3 text-sm">
+    <div class="flex items-center justify-center h-24 text-ink-2 text-sm">
       수집된 데이터가 없습니다 (서버 시작 후 30초 뒤 첫 스냅샷이 저장됩니다)
     </div>
   {:else}
@@ -161,13 +161,13 @@
       <div class="flex flex-wrap gap-3 mt-2">
         <div class="flex items-center gap-1">
           <div class="w-4 h-0.5 bg-action-warm"></div>
-          <span class="text-xs text-ink-3">{mainKey}</span>
+          <span class="text-xs text-ink-2">{mainKey}</span>
         </div>
         {#each extraKeys as key}
           {#if EXTRA_COLORS[key]}
             <div class="flex items-center gap-1">
               <div class="w-4 h-0.5 opacity-70" style="background: {EXTRA_COLORS[key]}"></div>
-              <span class="text-xs text-ink-3">{key}</span>
+              <span class="text-xs text-ink-2">{key}</span>
             </div>
           {/if}
         {/each}

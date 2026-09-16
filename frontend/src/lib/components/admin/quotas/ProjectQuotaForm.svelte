@@ -38,17 +38,17 @@
 	<div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
 		<div>
 			<label class="block text-xs text-ink-2 mb-1.5" for="field-projectquotaform-40">인스턴스</label>
-			<div class="text-sm text-ink-3 mb-1">사용: {quotas?.compute?.instances?.in_use ?? 0}</div>
+			<div class="text-sm text-ink-2 mb-1">사용: {quotas?.compute?.instances?.in_use ?? 0}</div>
 			<input id="field-projectquotaform-40" bind:value={form.instances} type="number" min="-1" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" />
 		</div>
 		<div>
 			<label class="block text-xs text-ink-2 mb-1.5" for="field-projectquotaform-45">CPU 코어</label>
-			<div class="text-sm text-ink-3 mb-1">사용: {quotas?.compute?.cores?.in_use ?? 0}</div>
+			<div class="text-sm text-ink-2 mb-1">사용: {quotas?.compute?.cores?.in_use ?? 0}</div>
 			<input id="field-projectquotaform-45" bind:value={form.cores} type="number" min="-1" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" />
 		</div>
 		<div>
 			<label class="block text-xs text-ink-2 mb-1.5" for="field-projectquotaform-50">RAM (MB)</label>
-			<div class="text-sm text-ink-3 mb-1">사용: {formatRam(quotas?.compute?.ram?.in_use ?? 0)}</div>
+			<div class="text-sm text-ink-2 mb-1">사용: {formatRam(quotas?.compute?.ram?.in_use ?? 0)}</div>
 			<input id="field-projectquotaform-50" bind:value={form.ram} type="number" min="-1" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" />
 		</div>
 	</div>
@@ -60,12 +60,12 @@
 	<div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
 		<div>
 			<label class="block text-xs text-ink-2 mb-1.5" for="field-projectquotaform-62">볼륨</label>
-			<div class="text-sm text-ink-3 mb-1">사용: {quotas?.volume?.volumes?.in_use ?? 0}</div>
+			<div class="text-sm text-ink-2 mb-1">사용: {quotas?.volume?.volumes?.in_use ?? 0}</div>
 			<input id="field-projectquotaform-62" bind:value={form.volumes} type="number" min="-1" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" />
 		</div>
 		<div>
 			<label class="block text-xs text-ink-2 mb-1.5" for="field-projectquotaform-67">용량 (GB)</label>
-			<div class="text-sm text-ink-3 mb-1">사용: {quotas?.volume?.gigabytes?.in_use ?? 0} GB</div>
+			<div class="text-sm text-ink-2 mb-1">사용: {quotas?.volume?.gigabytes?.in_use ?? 0} GB</div>
 			<input id="field-projectquotaform-67" bind:value={form.gigabytes} type="number" min="-1" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" />
 		</div>
 	</div>

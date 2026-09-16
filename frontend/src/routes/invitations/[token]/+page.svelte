@@ -82,12 +82,12 @@
 		<!-- 로고 헤더 -->
 		<div class="text-center mb-8">
 			<div class="text-2xl font-bold text-ink-0 mb-1">Afterglow</div>
-			<div class="text-sm text-ink-3">프로젝트 초대</div>
+			<div class="text-sm text-ink-2">프로젝트 초대</div>
 		</div>
 
 		{#if loading}
 			<div class="bg-surface-base border border-line rounded-xl p-8 text-center">
-				<div class="text-ink-3 text-sm">초대 정보를 불러오는 중...</div>
+				<div class="text-ink-2 text-sm">초대 정보를 불러오는 중...</div>
 			</div>
 		{:else if loadError}
 			<div class="bg-surface-base border border-red-800/50 rounded-xl p-8 text-center">
@@ -101,7 +101,7 @@
 					</svg>
 				</div>
 				<div class="text-ink-0 font-medium mb-1">초대를 수락했습니다</div>
-				<div class="text-ink-3 text-sm mb-5">이제 <strong class="text-ink-2">{info?.project_name}</strong> 프로젝트에 접근할 수 있습니다.</div>
+				<div class="text-ink-2 text-sm mb-5">이제 <strong class="text-ink-2">{info?.project_name}</strong> 프로젝트에 접근할 수 있습니다.</div>
 				<a href="/select-project" class="inline-block px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg transition-colors">
 					프로젝트 선택
 				</a>
@@ -114,27 +114,27 @@
 			<div class="bg-surface-base border border-line rounded-xl p-6">
 				<!-- 초대 정보 -->
 				<div class="mb-6">
-					<div class="text-xs text-ink-3 uppercase tracking-wide mb-1">프로젝트</div>
+					<div class="text-xs text-ink-2 uppercase tracking-wide mb-1">프로젝트</div>
 					<div class="text-ink-0 font-semibold text-lg">{info.project_name}</div>
 				</div>
 
 				<div class="space-y-3 text-sm mb-6">
 					<div class="flex justify-between">
-						<span class="text-ink-3">초대한 사람</span>
+						<span class="text-ink-2">초대한 사람</span>
 						<span class="text-ink-1">{info.inviter_name || '알 수 없음'}</span>
 					</div>
 					<div class="flex justify-between">
-						<span class="text-ink-3">초대받은 이메일</span>
+						<span class="text-ink-2">초대받은 이메일</span>
 						<span class="text-ink-1">{info.invited_email}</span>
 					</div>
 					<div class="flex justify-between">
-						<span class="text-ink-3">만료일</span>
+						<span class="text-ink-2">만료일</span>
 						<span class="text-ink-1">{fmtDate(info.expires_at)}</span>
 					</div>
 				</div>
 
 				{#if isExpiredOrHandled}
-					<div class="text-center py-2 text-sm text-ink-3">
+					<div class="text-center py-2 text-sm text-ink-2">
 						{#if info.status === 'accepted'}
 							이미 수락된 초대입니다.
 						{:else if info.status === 'declined'}
@@ -152,7 +152,7 @@
 					>
 						로그인 후 수락
 					</button>
-					<p class="text-center text-xs text-ink-3 mt-2">로그인 후 이 초대를 수락하거나 거절할 수 있습니다.</p>
+					<p class="text-center text-xs text-ink-2 mt-2">로그인 후 이 초대를 수락하거나 거절할 수 있습니다.</p>
 				{:else}
 					{#if actionError}
 						<div class="mb-3 text-xs text-red-400">{actionError}</div>

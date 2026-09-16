@@ -33,9 +33,9 @@
 		<td class="py-2 pr-4 text-ink-1">{s.name ?? '-'}</td>
 		<td class="py-2 pr-4 text-ink-2 font-mono">{s.size_gb}</td>
 		<td class="py-2 pr-4 text-green-400">{s.status}</td>
-		<td class="py-2 pr-4 text-ink-3 font-mono">{s.project_id?.slice(0, 8) ?? '-'}</td>
+		<td class="py-2 pr-4 text-ink-2 font-mono">{s.project_id?.slice(0, 8) ?? '-'}</td>
 		<td class="py-2 pr-4 text-ink-2">{s.created_at?.slice(0, 10) ?? '-'}</td>
 		<td class="py-2 pr-4 text-warm-text">{s.age_days}</td>
-		<td class="py-2 pr-4 text-ink-3 font-mono">{s.id.slice(0, 8)}</td>
+		<td class="py-2 pr-4 text-ink-2 font-mono">{s.id.slice(0, 8)}</td>
 	{/snippet}
 </OrphanSection>

@@ -73,7 +73,7 @@
 					{:else if $wizard.step === 3}
 						<WizardStep3Library />
 					{:else if $wizard.step === 4}
-						<h2 class="text-lg font-semibold text-ink-0 mb-4">배포 전략 <span class="text-ink-3 text-sm font-normal">스케줄링 / 레이어 마운트</span></h2>
+						<h2 class="text-lg font-semibold text-ink-0 mb-4">배포 전략 <span class="text-ink-2 text-sm font-normal">스케줄링 / 레이어 마운트</span></h2>
 						<SelectStrategy
 							scheduling={$wizard.scheduling}
 							onSchedulingChange={s.selectScheduling}

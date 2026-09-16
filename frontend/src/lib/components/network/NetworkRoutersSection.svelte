@@ -1,12 +1,13 @@
 <script lang="ts">
 	import { useNetworkDetailController } from '$lib/stores/networkDetailController.svelte';
+	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 
 	const s = useNetworkDetailController();
 </script>
 
 <div class="bg-surface-base border border-line rounded-xl p-4">
 	<div class="flex items-center justify-between mb-3">
-		<h3 class="text-xs text-ink-3 uppercase tracking-wide">연결된 라우터 ({s.network!.routers.length})</h3>
+		<h3 class="text-xs text-ink-2 uppercase tracking-wide">연결된 라우터 ({s.network!.routers.length})</h3>
 		{#if s.isUserPanel}
 			<button
 				onclick={() => s.openRouterConnect()}
@@ -48,10 +49,10 @@
 				<div class="flex items-center justify-between py-1">
 					<div>
 						<div class="text-xs text-ink-0">{router.name || router.id.slice(0, 8)}</div>
-						<div class="text-xs text-ink-3 font-mono">{router.id.slice(0, 12)}...</div>
+						<div class="text-xs text-ink-2 font-mono">{router.id.slice(0, 12)}...</div>
 					</div>
 					<div class="flex items-center gap-2">
-						<span class="text-xs {router.status === 'ACTIVE' ? 'text-green-400' : 'text-ink-2'}">{router.status}</span>
+						<StatusChip status={router.status} />
 						{#if s.isUserPanel}
 							<button
 								onclick={() => s.disconnectRouter(router)}
@@ -63,6 +64,6 @@
 			{/each}
 		</div>
 	{:else if !s.showRouterConnect}
-		<p class="text-xs text-ink-3">연결된 라우터가 없습니다</p>
+		<p class="text-xs text-ink-2">연결된 라우터가 없습니다</p>
 	{/if}
 </div>

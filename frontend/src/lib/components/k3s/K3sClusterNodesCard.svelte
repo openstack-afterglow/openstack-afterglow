@@ -7,16 +7,16 @@
 
 <div class="bg-surface-base border border-line rounded-xl p-4">
   <div class="flex items-center justify-between mb-3">
-    <h3 class="text-xs text-ink-3 uppercase tracking-wide">노드 현황</h3>
+    <h3 class="text-xs text-ink-2 uppercase tracking-wide">노드 현황</h3>
     {#if s.health}
       <div class="flex items-center gap-2">
-        <span class="px-2 py-0.5 rounded border text-xs font-medium {healthColor[s.health.status] ?? 'text-ink-3 bg-surface-sunken border-line-2'}">
+        <span class="px-2 py-0.5 rounded border text-xs font-medium {healthColor[s.health.status] ?? 'text-ink-2 bg-surface-sunken border-line-2'}">
           {s.health.status}
         </span>
-        <span class="text-xs text-ink-3">{new Date(s.health.checked_at).toLocaleTimeString('ko-KR')}</span>
+        <span class="text-xs text-ink-2">{new Date(s.health.checked_at).toLocaleTimeString('ko-KR')}</span>
       </div>
     {:else}
-      <span class="text-xs text-ink-3">미확인</span>
+      <span class="text-xs text-ink-2">미확인</span>
     {/if}
   </div>
 
@@ -36,7 +36,7 @@
               {node.ready ? 'Ready' : 'NotReady'}
             </span>
             {#if node.kubelet_version}
-              <div class="text-xs text-ink-3 font-mono">{node.kubelet_version}</div>
+              <div class="text-xs text-ink-2 font-mono">{node.kubelet_version}</div>
             {/if}
           </div>
         </div>
@@ -104,7 +104,7 @@
       </div>
     </dl>
     {#if s.health === null && s.cluster!.status === 'ACTIVE'}
-      <p class="text-xs text-ink-3 mt-2">헬스 데이터 로드 중...</p>
+      <p class="text-xs text-ink-2 mt-2">헬스 데이터 로드 중...</p>
     {/if}
     {#if s.scaleError}
       <p class="text-red-400 text-xs mt-2">{s.scaleError}</p>

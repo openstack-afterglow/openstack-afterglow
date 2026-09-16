@@ -42,11 +42,11 @@
 			<span class="text-xs border rounded px-1.5 py-0.5 {roleBadgeClass}">{roleLabel}</span>
 			<span class="text-sm font-medium text-ink-0">{nodegroup.name}</span>
 			{#if nodegroup.is_default}
-				<span class="text-xs text-ink-3">(기본)</span>
+				<span class="text-xs text-ink-2">(기본)</span>
 			{/if}
 			{#if nodegroup.stampede_enabled}
 				<span class="text-xs bg-surface-selected/50 text-warm-text border border-action-warm/60 rounded px-1.5 py-0.5 leading-none">Stampede</span>
-				<span class="text-xs text-ink-3">{nodegroup.min_size}–{nodegroup.max_size}</span>
+				<span class="text-xs text-ink-2">{nodegroup.min_size}–{nodegroup.max_size}</span>
 				{#if gpuCount > 0}
 					<span class="text-xs bg-emerald-900/50 text-emerald-300 border border-emerald-700/60 rounded px-1.5 py-0.5 leading-none">GPU {gpuCount}</span>
 				{/if}

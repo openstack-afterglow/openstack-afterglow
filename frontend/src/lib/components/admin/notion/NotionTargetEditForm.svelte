@@ -76,7 +76,7 @@
 	<div class="space-y-3">
 		<div class="flex items-center justify-between mb-2">
 			<h3 class="text-sm font-semibold text-warm-text">수정 중</h3>
-			<button onclick={onClose} class="text-xs text-ink-3 hover:text-ink-2">취소</button>
+			<button onclick={onClose} class="text-xs text-ink-2 hover:text-ink-2">취소</button>
 		</div>
 		<NotionTargetFormFields {form} mode="edit" />
 		{#if editError}

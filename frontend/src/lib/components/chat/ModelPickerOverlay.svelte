@@ -232,7 +232,7 @@
 		border-radius: 0.45rem;
 		border: none;
 		background: transparent;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		cursor: pointer;
 	}
 	.close:hover {
@@ -248,7 +248,7 @@
 		border-radius: 0.7rem;
 		border: 1px solid var(--color-line);
 		background: var(--color-surface-sunken);
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.search input {
 		flex: 1;
@@ -315,12 +315,12 @@
 		box-shadow: var(--focus-ring);
 	}
 	.provider-nav button.active {
-		border-color: var(--color-line-strong);
+		border-color: var(--color-line-2);
 		background: var(--color-surface-raised);
 		color: var(--color-ink-0);
 	}
 	.provider-count {
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-family: var(--font-mono);
 		font-size: 0.68rem;
 		flex-shrink: 0;
@@ -335,7 +335,7 @@
 	.empty {
 		padding: 2rem;
 		text-align: center;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-size: 0.85rem;
 	}
 	.group-label {
@@ -344,7 +344,7 @@
 		font-weight: 700;
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.model-row {
 		display: flex;
@@ -413,7 +413,7 @@
 	}
 	.model-provider {
 		font-size: 0.7rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		overflow-wrap: anywhere;
 	}
 	.model-provider code {

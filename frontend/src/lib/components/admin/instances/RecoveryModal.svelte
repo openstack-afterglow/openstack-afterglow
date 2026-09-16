@@ -128,7 +128,7 @@
 								<div>
 									<span class={check.passed ? 'text-ink-1' : 'text-red-300 font-medium'}>{check.label}</span>
 									{#if check.detail}
-										<div class="text-ink-3 text-xs mt-0.5">{check.detail}</div>
+										<div class="text-ink-2 text-xs mt-0.5">{check.detail}</div>
 									{/if}
 								</div>
 							</div>
@@ -176,14 +176,14 @@
 									{:else if step.status === 'failed'}
 										<span class="mt-0.5 text-red-400 shrink-0 text-base leading-none">✗</span>
 									{:else}
-										<span class="mt-0.5 text-ink-3 shrink-0 text-base leading-none">—</span>
+										<span class="mt-0.5 text-ink-2 shrink-0 text-base leading-none">—</span>
 									{/if}
 									<div>
-										<span class={step.status === 'failed' ? 'text-red-300' : step.status === 'skipped' ? 'text-ink-3' : 'text-ink-1'}>
+										<span class={step.status === 'failed' ? 'text-red-300' : step.status === 'skipped' ? 'text-ink-2' : 'text-ink-1'}>
 											{step.description}
 										</span>
 										{#if step.detail}
-											<div class="text-ink-3 text-xs mt-0.5">{step.detail}</div>
+											<div class="text-ink-2 text-xs mt-0.5">{step.detail}</div>
 										{/if}
 									</div>
 								</div>

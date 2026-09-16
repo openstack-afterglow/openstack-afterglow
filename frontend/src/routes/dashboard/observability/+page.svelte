@@ -9,7 +9,7 @@
 	<PageHeader breadcrumb="DASHBOARD / OBSERVABILITY" title="VM 메트릭" />
 
 	{#if !$auth.projectId}
-		<div class="mt-4 text-sm text-ink-3">
+		<div class="mt-4 text-sm text-ink-2">
 			프로젝트를 선택하면 VM 메트릭이 표시됩니다.
 		</div>
 	{:else}

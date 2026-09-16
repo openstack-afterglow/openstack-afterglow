@@ -25,12 +25,12 @@
 
 <div class="bg-surface-base border border-line rounded-xl p-6 mb-6">
 	<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide mb-1">GPU Quota</h2>
-	<p class="text-xs text-ink-3 mb-4">클러스터에서 발견된 모든 GPU 타입을 표시합니다. 프로젝트별 설정이 없으면 전체 기본값이 적용됩니다.</p>
+	<p class="text-xs text-ink-2 mb-4">클러스터에서 발견된 모든 GPU 타입을 표시합니다. 프로젝트별 설정이 없으면 전체 기본값이 적용됩니다.</p>
 	{#if error}<div class="text-red-400 text-xs mb-3">{error}</div>{/if}
 	{#if loading}
-		<div class="text-ink-3 text-sm">불러오는 중...</div>
+		<div class="text-ink-2 text-sm">불러오는 중...</div>
 	{:else if rows.length === 0 && !hasAnyAlias}
-		<div class="text-ink-3 text-sm">GPU alias를 찾을 수 없습니다.</div>
+		<div class="text-ink-2 text-sm">GPU alias를 찾을 수 없습니다.</div>
 	{:else}
 		<table class="w-full text-sm">
 			<thead>
@@ -52,7 +52,7 @@
 					{@const avail = effectiveLimit === -1 ? -1 : effectiveLimit - inUse}
 					<tr class="border-b border-line/50 last:border-0">
 						<td class="py-2 text-ink-0 font-mono">{alias}</td>
-						<td class="py-2 text-right text-ink-3">{defLimit === -1 ? '무제한' : defLimit}</td>
+						<td class="py-2 text-right text-ink-2">{defLimit === -1 ? '무제한' : defLimit}</td>
 						<td class="py-2 text-right">
 							<input
 								type="number"
@@ -71,14 +71,14 @@
 							/>
 						</td>
 						<td class="py-2 text-right text-ink-2">{inUse}</td>
-						<td class="py-2 text-right {avail > 0 ? 'text-green-400' : avail === -1 ? 'text-ink-3' : 'text-red-400'}">
+						<td class="py-2 text-right {avail > 0 ? 'text-green-400' : avail === -1 ? 'text-ink-2' : 'text-red-400'}">
 							{effectiveLimit === -1 ? '무제한' : avail}
 						</td>
 						<td class="py-2 text-right">
 							{#if q?.limit != null}
 								<button
 									onclick={() => onClear(alias)}
-									class="text-xs text-ink-3 hover:text-ink-2 transition-colors"
+									class="text-xs text-ink-2 hover:text-ink-2 transition-colors"
 									title="프로젝트별 설정 삭제 (기본값으로 복귀)"
 								>초기화</button>
 							{/if}
@@ -87,7 +87,7 @@
 				{/each}
 			</tbody>
 		</table>
-		<p class="text-xs text-ink-3 mt-2">빈 칸 = 기본값 사용, -1 = 무제한, 0 = 사용 불가</p>
+		<p class="text-xs text-ink-2 mt-2">빈 칸 = 기본값 사용, -1 = 무제한, 0 = 사용 불가</p>
 
 		{#if reconcilePreview && reconcilePreview.operations.length > 0}
 			<div class="mt-6 border-t border-[var(--color-line)] pt-4">
@@ -103,11 +103,11 @@
 							<div class="flex items-center gap-2">
 								<span class="font-mono text-[var(--color-ink-0)]">{op.flavor_name}</span>
 								{#if op.action === 'add'}
-									<span class="rounded bg-[var(--color-surface-base)] text-[var(--color-state-success-text)] border border-[var(--color-state-success)]/40 px-1.5 py-0.5 text-[10px]">권한 추가 예정</span>
+									<span class="rounded bg-[var(--color-surface-base)] text-[var(--color-state-success-text)] border border-[var(--color-state-success)]/40 px-1.5 py-0.5 text-xs">권한 추가 예정</span>
 								{:else if op.action === 'remove'}
-									<span class="rounded bg-[var(--color-surface-base)] text-[var(--color-state-danger-text)] border border-[var(--color-state-danger)]/40 px-1.5 py-0.5 text-[10px]">권한 회수 예정</span>
+									<span class="rounded bg-[var(--color-surface-base)] text-[var(--color-state-danger-text)] border border-[var(--color-state-danger)]/40 px-1.5 py-0.5 text-xs">권한 회수 예정</span>
 								{:else}
-									<span class="rounded bg-[var(--color-surface-base)] text-[var(--color-ink-2)] px-1.5 py-0.5 text-[10px]">권한 유지</span>
+									<span class="rounded bg-[var(--color-surface-base)] text-[var(--color-ink-2)] px-1.5 py-0.5 text-xs">권한 유지</span>
 								{/if}
 							</div>
 							<span class="text-[var(--color-ink-2)] font-mono">

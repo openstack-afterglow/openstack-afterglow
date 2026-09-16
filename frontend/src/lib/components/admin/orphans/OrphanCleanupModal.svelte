@@ -106,7 +106,7 @@
 							</ul>
 						</details>
 					{/if}
-					<div class="text-sm {cleanupResult.failed.length > 0 ? 'text-red-400' : 'text-ink-3'}">
+					<div class="text-sm {cleanupResult.failed.length > 0 ? 'text-red-400' : 'text-ink-2'}">
 						실패: {cleanupResult.failed.length}개
 					</div>
 					{#if cleanupResult.failed.length > 0}

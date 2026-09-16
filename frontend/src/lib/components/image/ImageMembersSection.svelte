@@ -25,16 +25,16 @@
 	{/if}
 
 	{#if s.loadingMembers}
-		<p class="text-ink-3 text-xs">불러오는 중...</p>
+		<p class="text-ink-2 text-xs">불러오는 중...</p>
 	{:else if s.members.length === 0}
-		<p class="text-ink-3 text-xs">공유된 프로젝트가 없습니다.</p>
+		<p class="text-ink-2 text-xs">공유된 프로젝트가 없습니다.</p>
 	{:else}
 		<div class="space-y-1">
 			{#each s.members as m (m.member_id)}
 				<div class="flex items-center justify-between px-3 py-2 bg-surface-sunken rounded-lg">
 					<div>
 						<span class="text-xs text-ink-2 font-mono">{m.member_id}</span>
-						<span class="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-surface-selected text-ink-2">{m.status}</span>
+						<span class="ml-2 text-xs px-1.5 py-0.5 rounded bg-surface-selected text-ink-2">{m.status}</span>
 					</div>
 					<button
 						onclick={() => s.removeMember(m.member_id)}

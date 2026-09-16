@@ -100,7 +100,7 @@
 			{:else if error}
 				<div class="text-red-400 text-sm">{error}</div>
 			{:else if !log}
-				<div class="text-ink-3 text-sm text-center py-8">로그 없음</div>
+				<div class="text-ink-2 text-sm text-center py-8">로그 없음</div>
 			{:else}
 				<pre class="text-xs text-ink-1 font-mono whitespace-pre-wrap break-words leading-relaxed">{log}</pre>
 			{/if}

@@ -19,7 +19,7 @@
 <div class="bg-surface-base border border-line rounded-lg p-6">
   <h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide mb-4">연결 정보</h2>
   {#if attachments.length === 0}
-    <p class="text-sm text-ink-3">미연결</p>
+    <p class="text-sm text-ink-2">미연결</p>
   {:else}
     <table class="w-full text-sm">
       <thead>
@@ -41,7 +41,7 @@
               </a>
             </td>
             <td class="py-2 pr-6 text-ink-2 font-mono text-xs">{dev(a)}</td>
-            <td class="py-2 text-ink-3 font-mono text-xs">{sid(a)}</td>
+            <td class="py-2 text-ink-2 font-mono text-xs">{sid(a)}</td>
           </tr>
         {/each}
       </tbody>

@@ -141,24 +141,24 @@
 	<div class="mb-4">
 		<h3 class="text-sm font-semibold text-ink-0">프로젝트 멤버 & 초대</h3>
 		{#if projectId}
-			<p class="text-xs text-ink-3 mt-0.5">{projectId}</p>
+			<p class="text-xs text-ink-2 mt-0.5">{projectId}</p>
 		{/if}
 	</div>
 
 	{#if !projectId}
-		<div class="text-ink-3 text-xs text-center py-6">활성 프로젝트가 없습니다.</div>
+		<div class="text-ink-2 text-xs text-center py-6">활성 프로젝트가 없습니다.</div>
 	{:else}
 		<!-- 탭 -->
 		<div class="flex gap-1 mb-5 border-b border-line">
 			<button
 				onclick={() => (activeTab = 'members')}
-				class="px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px {activeTab === 'members' ? 'border-action-warm text-warm-text' : 'border-transparent text-ink-3 hover:text-ink-0'}"
+				class="px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px {activeTab === 'members' ? 'border-action-warm text-warm-text' : 'border-transparent text-ink-2 hover:text-ink-0'}"
 			>
 				멤버
 			</button>
 			<button
 				onclick={() => (activeTab = 'invitations')}
-				class="px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px {activeTab === 'invitations' ? 'border-action-warm text-warm-text' : 'border-transparent text-ink-3 hover:text-ink-0'}"
+				class="px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px {activeTab === 'invitations' ? 'border-action-warm text-warm-text' : 'border-transparent text-ink-2 hover:text-ink-0'}"
 			>
 				초대
 			</button>
@@ -177,12 +177,12 @@
 					{/each}
 				</div>
 			{:else if members.length === 0}
-				<div class="text-ink-3 text-sm text-center py-12">멤버가 없습니다.</div>
+				<div class="text-ink-2 text-sm text-center py-12">멤버가 없습니다.</div>
 			{:else}
 				<div class="bg-surface-sunken/50 border border-line-2 rounded-xl overflow-hidden">
 					<table class="w-full text-sm">
 						<thead>
-							<tr class="border-b border-line-2 text-xs text-ink-3 uppercase tracking-wide">
+							<tr class="border-b border-line-2 text-xs text-ink-2 uppercase tracking-wide">
 								<th class="text-left px-4 py-3">사용자</th>
 								<th class="text-left px-4 py-3">이메일</th>
 								<th class="text-left px-4 py-3">역할</th>
@@ -197,14 +197,14 @@
 									<td class="px-4 py-3 text-ink-2">{m.email || '—'}</td>
 									<td class="px-4 py-3">
 										{#if m.is_manager}
-											<span class="text-[11px] px-2 py-0.5 rounded bg-action-warm/15 text-warm-text border border-action-warm/30 font-medium">관리자</span>
+											<span class="text-xs px-2 py-0.5 rounded bg-action-warm/15 text-warm-text border border-action-warm/30 font-medium">관리자</span>
 										{:else}
-											<span class="text-ink-3 text-xs">멤버</span>
+											<span class="text-ink-2 text-xs">멤버</span>
 										{/if}
 									</td>
 									<td class="px-4 py-3">
 										{#if m.source === 'group' && m.group_name}
-											<span class="text-[11px] px-2 py-0.5 rounded bg-action-warm/10 text-warm-text border border-action-warm/20 font-medium">{m.group_name}</span>
+											<span class="text-xs px-2 py-0.5 rounded bg-action-warm/10 text-warm-text border border-action-warm/20 font-medium">{m.group_name}</span>
 										{/if}
 									</td>
 									<td class="px-4 py-3 text-right">
@@ -212,14 +212,14 @@
 											{#if m.is_manager}
 												<button
 													onclick={() => demoteManager(m.user_id)}
-													class="text-xs text-ink-3 hover:text-red-400 transition-colors"
+													class="text-xs text-ink-2 hover:text-red-400 transition-colors"
 												>
 													관리자 해제
 												</button>
 											{:else}
 												<button
 													onclick={() => promoteManager(m.user_id)}
-													class="text-xs text-ink-3 hover:text-warm-text-hover transition-colors"
+													class="text-xs text-ink-2 hover:text-warm-text-hover transition-colors"
 												>
 													관리자 지정
 												</button>
@@ -278,12 +278,12 @@
 					{/each}
 				</div>
 			{:else if invitations.length === 0}
-				<div class="text-ink-3 text-sm text-center py-8">초대 내역이 없습니다.</div>
+				<div class="text-ink-2 text-sm text-center py-8">초대 내역이 없습니다.</div>
 			{:else}
 				<div class="bg-surface-sunken/50 border border-line-2 rounded-xl overflow-hidden">
 					<table class="w-full text-sm">
 						<thead>
-							<tr class="border-b border-line-2 text-xs text-ink-3 uppercase tracking-wide">
+							<tr class="border-b border-line-2 text-xs text-ink-2 uppercase tracking-wide">
 								<th class="text-left px-4 py-3">이메일</th>
 								<th class="text-left px-4 py-3">역할</th>
 								<th class="text-left px-4 py-3">상태</th>
@@ -297,16 +297,16 @@
 									<td class="px-4 py-3 font-medium text-ink-0">{inv.invited_email}</td>
 									<td class="px-4 py-3 text-ink-2">{inv.keystone_role}</td>
 									<td class="px-4 py-3">
-										<span class="text-[11px] px-2 py-0.5 rounded font-medium {statusColor(inv.status)}">
+										<span class="text-xs px-2 py-0.5 rounded font-medium {statusColor(inv.status)}">
 											{statusLabel(inv.status)}
 										</span>
 									</td>
-									<td class="px-4 py-3 text-ink-3 text-xs">{fmtDate(inv.expires_at)}</td>
+									<td class="px-4 py-3 text-ink-2 text-xs">{fmtDate(inv.expires_at)}</td>
 									<td class="px-4 py-3 text-right">
 										{#if inv.status === 'pending'}
 											<button
 												onclick={() => revokeInvitation(inv.id)}
-												class="text-xs text-ink-3 hover:text-red-400 transition-colors"
+												class="text-xs text-ink-2 hover:text-red-400 transition-colors"
 											>
 												취소
 											</button>

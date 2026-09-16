@@ -15,7 +15,7 @@
 </script>
 
 <div class="mb-4 p-3.5 bg-[#0B1220] border border-line rounded-lg">
-	<p class="text-xs text-ink-3 mb-2.5">규칙 추가</p>
+	<p class="text-xs text-ink-2 mb-2.5">규칙 추가</p>
 	<div class="grid grid-cols-2 gap-2 mb-2 md:grid-cols-4">
 		<select bind:value={ruleForm.direction}
 			class="bg-surface-selected border border-line-2 rounded px-2 py-1 text-xs text-ink-1 focus:border-action-warm">

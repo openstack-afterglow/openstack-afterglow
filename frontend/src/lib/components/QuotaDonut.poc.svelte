@@ -74,7 +74,7 @@
     <div class="{size === 'lg' ? 'text-sm' : 'text-xs'} text-ink-2 font-medium leading-tight">
       {label}
     </div>
-    <div class="{size === 'lg' ? 'text-sm' : 'text-xs'} text-ink-3 leading-tight">
+    <div class="{size === 'lg' ? 'text-sm' : 'text-xs'} text-ink-2 leading-tight">
       {#if limit > 0}
         {fmt(used)} / {fmt(limit)}
       {:else if limit === -1}

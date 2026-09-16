@@ -59,7 +59,7 @@
 		<div class="flex-1 overflow-y-auto p-4 space-y-4">
 			<!-- 기본 정보 -->
 			<div class="bg-surface-base border border-line rounded-xl p-4">
-				<h3 class="text-xs text-ink-3 uppercase tracking-wide mb-3">기본 정보</h3>
+				<h3 class="text-xs text-ink-2 uppercase tracking-wide mb-3">기본 정보</h3>
 				<dl class="space-y-2 text-xs">
 					<div class="flex justify-between">
 						<dt class="text-ink-2">상태</dt>
@@ -104,15 +104,15 @@
 
 			<!-- 리소스 현황 -->
 			<div class="bg-surface-base border border-line rounded-xl p-4">
-				<h3 class="text-xs text-ink-3 uppercase tracking-wide mb-3">리소스 현황</h3>
+				<h3 class="text-xs text-ink-2 uppercase tracking-wide mb-3">리소스 현황</h3>
 				<dl class="space-y-2 text-xs">
 					<div class="flex justify-between">
 						<dt class="text-ink-2">vCPU</dt>
-						<dd class="text-ink-2">{detail.vcpus_used} / {detail.vcpus_allowed || detail.vcpus} <span class="text-ink-3 text-xs">(물리 {detail.vcpus})</span></dd>
+						<dd class="text-ink-2">{detail.vcpus_used} / {detail.vcpus_allowed || detail.vcpus} <span class="text-ink-2 text-xs">(물리 {detail.vcpus})</span></dd>
 					</div>
 					<div class="flex justify-between">
 						<dt class="text-ink-2">RAM</dt>
-						<dd class="text-ink-2">{formatNumber(Math.round(detail.memory_mb_used/1024))} / {formatNumber(Math.round((detail.memory_allowed_mb || detail.memory_mb)/1024))} GB <span class="text-ink-3 text-xs">(물리 {formatNumber(Math.round(detail.memory_mb/1024))} GB)</span></dd>
+						<dd class="text-ink-2">{formatNumber(Math.round(detail.memory_mb_used/1024))} / {formatNumber(Math.round((detail.memory_allowed_mb || detail.memory_mb)/1024))} GB <span class="text-ink-2 text-xs">(물리 {formatNumber(Math.round(detail.memory_mb/1024))} GB)</span></dd>
 					</div>
 					<div class="flex justify-between">
 						<dt class="text-ink-2">로컬 디스크</dt>
@@ -128,7 +128,7 @@
 			<!-- GPU 장치 -->
 			{#if gpus.length > 0}
 				<div class="bg-surface-base border border-line rounded-xl p-4">
-					<h3 class="text-xs text-ink-3 uppercase tracking-wide mb-3">GPU 장치 ({gpus.length})</h3>
+					<h3 class="text-xs text-ink-2 uppercase tracking-wide mb-3">GPU 장치 ({gpus.length})</h3>
 					<div class="space-y-1.5">
 						{#each gpus as gpu (gpu.provider_uuid)}
 							<div class="flex items-center justify-between bg-surface-sunken/50 border border-line-2/50 rounded-lg px-3 py-2">
@@ -138,10 +138,10 @@
 										{#if gpu.device_name}
 											<span class="text-ink-2 ml-1">{gpu.device_name}</span>
 										{:else if gpu.device_id}
-											<span class="text-ink-3 ml-1">({gpu.device_id})</span>
+											<span class="text-ink-2 ml-1">({gpu.device_id})</span>
 										{/if}
 									</div>
-									<div class="text-xs text-ink-3 font-mono">{gpu.pci_address} · {gpu.resource_class}</div>
+									<div class="text-xs text-ink-2 font-mono">{gpu.pci_address} · {gpu.resource_class}</div>
 								</div>
 								<span class="ml-2 px-1.5 py-0.5 rounded text-xs font-medium shrink-0 {gpu.used > 0 ? 'bg-red-900/30 text-red-400' : 'bg-green-900/30 text-green-400'}">
 									{gpu.used > 0 ? '사용 중' : '사용 가능'}
@@ -155,7 +155,7 @@
 			<!-- VM 목록 -->
 			{#if detail.servers.length > 0}
 				<div class="bg-surface-base border border-line rounded-xl p-4">
-					<h3 class="text-xs text-ink-3 uppercase tracking-wide mb-3">VM 목록 ({detail.servers.length})</h3>
+					<h3 class="text-xs text-ink-2 uppercase tracking-wide mb-3">VM 목록 ({detail.servers.length})</h3>
 					<div class="space-y-1.5">
 						{#each detail.servers as s}
 							<div class="flex items-center justify-between py-1.5 border-b border-line/50 last:border-0">
@@ -165,7 +165,7 @@
 										onclick={() => onOpenDetail(s.id, s.project_id)}
 										class="text-xs text-ink-2 hover:text-warm-text-hover transition-colors truncate block w-full text-left"
 									>{s.name || s.id.slice(0, 12)}</button>
-									<div class="text-xs text-ink-3">{projectNameMap.get(s.project_id) || s.project_id.slice(0, 8)} · {s.flavor}</div>
+									<div class="text-xs text-ink-2">{projectNameMap.get(s.project_id) || s.project_id.slice(0, 8)} · {s.flavor}</div>
 								</div>
 								<div class="flex items-center gap-1 ml-2 flex-shrink-0">
 									<span class="text-xs {s.status === 'ACTIVE' ? 'text-green-400' : s.status === 'ERROR' ? 'text-red-400' : 'text-ink-2'}">{s.status}</span>

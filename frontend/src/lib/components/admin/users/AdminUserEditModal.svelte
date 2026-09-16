@@ -134,14 +134,14 @@
       <div class="space-y-4">
         <div><label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminusereditmodal-132">이름</label><input id="field-adminusereditmodal-132" bind:value={name} type="text" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" /></div>
         <div><label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminusereditmodal-133">이메일</label><input id="field-adminusereditmodal-133" bind:value={email} type="email" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" /></div>
-        <div><label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminusereditmodal-134">새 패스워드 <span class="text-ink-3">(변경 시에만 입력)</span></label><input id="field-adminusereditmodal-134" bind:value={password} type="password" placeholder="변경하지 않으면 비워두세요" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" /></div>
+        <div><label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminusereditmodal-134">새 패스워드 <span class="text-ink-2">(변경 시에만 입력)</span></label><input id="field-adminusereditmodal-134" bind:value={password} type="password" placeholder="변경하지 않으면 비워두세요" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" /></div>
         <div class="flex items-center gap-3">
           <button type="button" role="switch" aria-label="사용자 활성 상태" aria-checked={enabled} onclick={() => enabled = !enabled} class="relative w-11 h-6 rounded-full transition-colors {enabled ? 'bg-action-warm' : 'bg-surface-selected'}">
             <span class="absolute top-0.5 left-0.5 w-5 h-5 bg-surface-base rounded-full transition-transform {enabled ? 'translate-x-5' : ''}"></span>
           </button>
           <span class="text-sm text-ink-2">{enabled ? '활성' : '비활성'}</span>
         </div>
-        <div class="text-xs text-ink-3">ID: {user.id}</div>
+        <div class="text-xs text-ink-2">ID: {user.id}</div>
       </div>
 
       <!-- 활성 세션 목록 -->
@@ -149,16 +149,16 @@
         <div class="flex items-center justify-between mb-2">
           <p class="text-xs font-medium text-ink-2">활성 세션</p>
           {#if loadingSessions}
-            <span class="text-[10px] text-ink-3">로딩...</span>
+            <span class="text-xs text-ink-2">로딩...</span>
           {:else}
-            <span class="text-[10px] text-ink-3">{sessions.length}개</span>
+            <span class="text-xs text-ink-2">{sessions.length}개</span>
           {/if}
         </div>
         {#if sessions.length > 0}
           <div class="overflow-x-auto">
             <table class="w-full text-xs">
               <thead>
-                <tr class="border-b border-line-2 text-ink-3 uppercase tracking-wide text-[10px]">
+                <tr class="border-b border-line-2 text-ink-2 uppercase tracking-wide text-xs">
                   <th class="text-left py-1 pr-3">출처 IP</th>
                   <th class="text-left py-1 pr-3">기기</th>
                   <th class="text-left py-1 pr-3">마지막 사용</th>
@@ -170,7 +170,7 @@
                   <tr class="border-b border-line/50">
                     <td class="py-1.5 pr-3 font-mono text-ink-2">{sess.origin_ip || '—'}</td>
                     <td class="py-1.5 pr-3 text-ink-2">{deviceLabel(sess)}</td>
-                    <td class="py-1.5 pr-3 text-ink-3">{formatSessionTime(sess.last_seen)}</td>
+                    <td class="py-1.5 pr-3 text-ink-2">{formatSessionTime(sess.last_seen)}</td>
                     <td class="py-1.5">
                       {#if sess.blacklisted}
                         <span class="text-red-400 font-semibold">차단</span>
@@ -184,7 +184,7 @@
             </table>
           </div>
         {:else if !loadingSessions}
-          <p class="text-xs text-ink-3">활성 세션 없음</p>
+          <p class="text-xs text-ink-2">활성 세션 없음</p>
         {/if}
       </div>
 

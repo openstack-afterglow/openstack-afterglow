@@ -47,7 +47,7 @@
       {/each}
     </div>
   {:else if noPermission}
-    <div class="text-ink-3 text-xs text-center py-4">그룹 조회 권한이 없거나 소속 그룹이 없습니다</div>
+    <div class="text-ink-2 text-xs text-center py-4">그룹 조회 권한이 없거나 소속 그룹이 없습니다</div>
   {:else}
     <div class="space-y-2">
       {#each groups as grp (grp.id)}
@@ -60,7 +60,7 @@
           <div class="flex-1 min-w-0">
             <div class="text-sm text-ink-0 font-medium truncate">{grp.name}</div>
             {#if grp.description}
-              <div class="text-[11px] text-ink-3 truncate">{grp.description}</div>
+              <div class="text-xs text-ink-2 truncate">{grp.description}</div>
             {/if}
           </div>
         </div>

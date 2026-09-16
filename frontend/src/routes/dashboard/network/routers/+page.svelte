@@ -10,6 +10,7 @@
   import SlidePanel from '$lib/components/SlidePanel.svelte';
   import RouterDetailPanel from '$lib/components/RouterDetailPanel.svelte';
   import PageHeader from '$lib/components/ui/PageHeader.svelte';
+  import Button from '$lib/components/ui/Button.svelte';
   import BulkSelectionOverlay from '$lib/components/ui/BulkSelectionOverlay.svelte';
   import RouterCreateModal from '$lib/components/network/routers/RouterCreateModal.svelte';
   import RouterCardGrid from '$lib/components/network/routers/RouterCardGrid.svelte';
@@ -140,18 +141,14 @@
         refreshing={refreshing}
         onManualRefresh={forceRefresh}
       />
-      <button onclick={openCreate} onpointerenter={prefetchNetworks} onfocus={prefetchNetworks} class="bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">+ 라우터 생성</button>
+      <Button onclick={openCreate} onintent={prefetchNetworks} variant="primary">+ 라우터 생성</Button>
     {/snippet}
   </PageHeader>
 
   {#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
 
   {#if loading}
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-      {#each Array(4) as _}
-        <div class="animate-pulse h-44 bg-surface-base border border-line rounded-lg"></div>
-      {/each}
-    </div>
+    <LoadingSkeleton variant="card" rows={4} />
   {:else if routers.length === 0}
     <RouterEmptyState />
   {:else}

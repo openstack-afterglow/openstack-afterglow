@@ -12,12 +12,12 @@
 {#if s.loading}
 	<LoadingSkeleton variant="table" rows={5} />
 {:else if s.objects.length === 0}
-	<div class="text-ink-3 text-sm py-8 text-center">
-		<svg class="w-12 h-12 mx-auto text-ink-3 mb-3" viewBox="0 0 20 20" fill="currentColor">
+	<div class="text-ink-2 text-sm py-8 text-center">
+		<svg class="w-12 h-12 mx-auto text-ink-2 mb-3" viewBox="0 0 20 20" fill="currentColor">
 			<path d="M2 6a2 2 0 012-2h4l2 2h6a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/>
 		</svg>
 		<p>오브젝트가 없습니다</p>
-		<p class="text-ink-3 text-xs mt-1">파일을 업로드하거나 새 폴더를 만들어보세요</p>
+		<p class="text-ink-2 text-xs mt-1">파일을 업로드하거나 새 폴더를 만들어보세요</p>
 	</div>
 {:else}
 	<div class="overflow-x-auto">
@@ -31,7 +31,7 @@
 				<col style="width: {s.colWidths.action}%" />
 			</colgroup>
 			<thead>
-				<tr class="border-b border-line text-ink-3 text-xs uppercase tracking-wide">
+				<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
 					<th class="py-3 px-4 w-10">
 						<input
 							type="checkbox"
@@ -90,10 +90,10 @@
 								: obj.bytes >= 1048576 ? `${(obj.bytes / 1048576).toFixed(1)} MB`
 								: `${(obj.bytes / 1024).toFixed(1)} KB`}
 						</td>
-						<td class="py-3 px-4 text-ink-3 text-xs whitespace-nowrap" title={isDir ? 'folder' : obj.content_type || '-'}>
+						<td class="py-3 px-4 text-ink-2 text-xs whitespace-nowrap" title={isDir ? 'folder' : obj.content_type || '-'}>
 							{isDir ? '폴더' : shortContentType(obj.content_type)}
 						</td>
-						<td class="py-3 px-4 text-ink-3 text-xs whitespace-nowrap">{isDir ? '-' : formatDate(obj.last_modified)}</td>
+						<td class="py-3 px-4 text-ink-2 text-xs whitespace-nowrap">{isDir ? '-' : formatDate(obj.last_modified)}</td>
 						<td class="py-3 px-4 text-right">
 							<div class="flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
 								{#if !isDir && s.isPreviewable(obj.content_type)}

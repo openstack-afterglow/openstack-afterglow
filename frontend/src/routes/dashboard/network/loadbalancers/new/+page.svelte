@@ -67,7 +67,7 @@
 
 <div class="p-4 md:p-8 max-w-lg">
 	<div class="flex items-center gap-4 mb-8">
-		<button onclick={() => goto('/dashboard/network/loadbalancers')} class="text-ink-3 hover:text-ink-0 transition-colors text-sm">
+		<button onclick={() => goto('/dashboard/network/loadbalancers')} class="text-ink-2 hover:text-ink-0 transition-colors text-sm">
 			← 로드밸런서 목록
 		</button>
 		<h1 class="text-2xl font-bold text-ink-0">로드밸런서 생성</h1>
@@ -108,9 +108,9 @@
 			<div>
 				<label for="lb-subnet" class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">VIP 서브넷</label>
 				{#if loadingSubnets}
-					<div class="text-ink-3 text-sm">서브넷 로딩 중...</div>
+					<div class="text-ink-2 text-sm">서브넷 로딩 중...</div>
 				{:else if subnets.length === 0}
-					<div class="text-ink-3 text-sm">서브넷이 없습니다</div>
+					<div class="text-ink-2 text-sm">서브넷이 없습니다</div>
 				{:else}
 					<select
 						id="lb-subnet"

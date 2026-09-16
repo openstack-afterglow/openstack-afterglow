@@ -33,10 +33,10 @@
 			</svg>
 		</div>
 		<div class="flex-1 min-w-0">
-			<div class="text-ink-0 font-semibold text-sm truncate {cluster.deleted_at ? 'line-through text-ink-3' : ''}">
+			<div class="text-ink-0 font-semibold text-sm truncate {cluster.deleted_at ? 'line-through text-ink-2' : ''}">
 				{cluster.name}
 			</div>
-			<div class="text-[11px] text-ink-3 font-mono mt-0.5">
+			<div class="text-xs text-ink-2 font-mono mt-0.5">
 				{cluster.k3s_version || 'k3s'}
 			</div>
 		</div>
@@ -46,21 +46,21 @@
 	<!-- Info grid -->
 	<div class="grid grid-cols-2 gap-2 text-xs mb-3.5">
 		<div>
-			<div class="text-[11px] uppercase tracking-wider font-medium text-ink-3">노드 (M+A)</div>
+			<div class="text-xs uppercase tracking-wider font-medium text-ink-2">노드 (M+A)</div>
 			<div class="text-ink-1 mt-0.5">{cluster.agent_count + 1} (1+{cluster.agent_count})</div>
 		</div>
 		<div>
-			<div class="text-[11px] uppercase tracking-wider font-medium text-ink-3">API</div>
+			<div class="text-xs uppercase tracking-wider font-medium text-ink-2">API</div>
 			<div class="text-ink-1 mt-0.5 font-mono text-xs truncate">{cluster.api_address || '—'}</div>
 		</div>
 		{#if cluster.deleted_at}
 			<div class="col-span-2">
-				<div class="text-[11px] uppercase tracking-wider font-medium text-ink-3">삭제됨</div>
-				<div class="text-ink-3 mt-0.5 text-xs">{cluster.deleted_at.replace('T', ' ').slice(0, 16)}</div>
+				<div class="text-xs uppercase tracking-wider font-medium text-ink-2">삭제됨</div>
+				<div class="text-ink-2 mt-0.5 text-xs">{cluster.deleted_at.replace('T', ' ').slice(0, 16)}</div>
 			</div>
 		{:else if cluster.status_reason}
 			<div class="col-span-2">
-				<div class="text-[11px] text-ink-3 truncate">{cluster.status_reason}</div>
+				<div class="text-xs text-ink-2 truncate">{cluster.status_reason}</div>
 			</div>
 		{/if}
 	</div>

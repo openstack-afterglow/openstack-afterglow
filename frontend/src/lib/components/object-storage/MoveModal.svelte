@@ -58,7 +58,7 @@
 			<label class="text-ink-2 text-xs mb-1 block font-medium" for="field-movemodal-56">대상 디렉토리</label>
 			{#if s.moveLoadingDirs}
 				<div class="bg-surface-sunken border border-line-2 rounded-lg p-3 mb-3">
-					<p class="text-ink-3 text-xs">디렉토리 목록 로딩 중...</p>
+					<p class="text-ink-2 text-xs">디렉토리 목록 로딩 중...</p>
 				</div>
 			{:else}
 				<div class="bg-surface-sunken border border-line-2 rounded-lg max-h-48 overflow-y-auto mb-3">
@@ -85,14 +85,14 @@
 						</button>
 					{/each}
 					{#if !bulk && s.moveDirectories.length <= 1}
-						<p class="text-ink-3 text-xs px-3 py-2">디렉토리가 없습니다. 루트로 이동됩니다.</p>
+						<p class="text-ink-2 text-xs px-3 py-2">디렉토리가 없습니다. 루트로 이동됩니다.</p>
 					{/if}
 				</div>
 			{/if}
 
 			{#if s.moveDestinationChosen}
 				<div class="bg-surface-sunken/50 border border-line-2 rounded px-3 py-2 mb-4">
-					<p class="text-[10px] text-ink-3 uppercase tracking-wider mb-0.5">{bulk ? '이동 위치' : '이동 경로'}</p>
+					<p class="text-xs text-ink-2 uppercase tracking-wider mb-0.5">{bulk ? '이동 위치' : '이동 경로'}</p>
 					<p class="text-ink-0 text-sm font-mono break-all">{s.moveDestContainer} / {s.moveDest || '(루트)'}</p>
 				</div>
 			{/if}

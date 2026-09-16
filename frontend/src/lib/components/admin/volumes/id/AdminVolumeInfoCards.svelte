@@ -9,7 +9,7 @@
 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
 	<!-- 기본 정보 -->
 	<div class="bg-surface-base border border-line rounded-xl p-4">
-		<h3 class="text-xs text-ink-3 uppercase tracking-wide mb-3">기본 정보</h3>
+		<h3 class="text-xs text-ink-2 uppercase tracking-wide mb-3">기본 정보</h3>
 		<dl class="space-y-2 text-sm">
 			<div class="flex justify-between">
 				<dt class="text-ink-2">ID</dt>
@@ -38,7 +38,7 @@
 
 	<!-- 속성 -->
 	<div class="bg-surface-base border border-line rounded-xl p-4">
-		<h3 class="text-xs text-ink-3 uppercase tracking-wide mb-3">속성</h3>
+		<h3 class="text-xs text-ink-2 uppercase tracking-wide mb-3">속성</h3>
 		<dl class="space-y-2 text-sm">
 			<div class="flex justify-between">
 				<dt class="text-ink-2">부팅 가능</dt>

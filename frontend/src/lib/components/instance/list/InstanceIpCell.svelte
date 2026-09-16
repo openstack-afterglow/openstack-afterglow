@@ -17,5 +17,5 @@
 		{/each}
 	</div>
 {:else}
-	<span class="text-ink-3">-</span>
+	<span class="text-ink-2">-</span>
 {/if}

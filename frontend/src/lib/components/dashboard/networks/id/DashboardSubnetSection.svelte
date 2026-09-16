@@ -117,7 +117,7 @@
 							{#if subnet.dhcp_enabled}
 								<span class="px-1.5 py-0.5 bg-green-900/30 text-green-400 rounded text-xs">활성</span>
 							{:else}
-								<span class="text-ink-3 text-xs">-</span>
+								<span class="text-ink-2 text-xs">-</span>
 							{/if}
 						</td>
 					</tr>
@@ -125,6 +125,6 @@
 			</tbody>
 		</table>
 	{:else}
-		<p class="text-sm text-ink-3">서브넷 없음</p>
+		<p class="text-sm text-ink-2">서브넷 없음</p>
 	{/if}
 </div>

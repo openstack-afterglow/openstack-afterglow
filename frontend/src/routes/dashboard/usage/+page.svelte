@@ -192,10 +192,10 @@
 				{@const max     = hasData ? Math.max(...seriesData) : null}
 				<div class="bg-surface-base border border-line rounded-lg p-5 flex flex-col gap-2">
 					<div class="flex items-baseline justify-between">
-						<p class="text-[10px] uppercase tracking-wide text-[var(--color-ink-3)]">{card.label}</p>
+						<p class="text-xs uppercase tracking-wide text-[var(--color-ink-3)]">{card.label}</p>
 						{#if current !== null}
 							<span class="text-xl font-semibold tabular-nums text-[var(--color-ink-0)]">
-								{current.toFixed(1)}<span class="text-[10px] text-[var(--color-ink-3)] ml-0.5">{displayUnit}</span>
+								{current.toFixed(1)}<span class="text-xs text-[var(--color-ink-3)] ml-0.5">{displayUnit}</span>
 							</span>
 						{/if}
 					</div>
@@ -203,15 +203,15 @@
 						{#if hasData}
 							<Spark data={seriesData} color={card.color} height={72} class="w-full" />
 						{:else if !trendData || !trendData.prometheus_available}
-							<p class="text-[11px] italic text-[var(--color-ink-3)]">메트릭 수집 미설정</p>
+							<p class="text-xs italic text-[var(--color-ink-3)]">메트릭 수집 미설정</p>
 						{:else if 'fallback' in card}
-							<p class="text-[11px] italic text-[var(--color-ink-3)]">{card.fallback}</p>
+							<p class="text-xs italic text-[var(--color-ink-3)]">{card.fallback}</p>
 						{:else}
-							<p class="text-[11px] text-[var(--color-ink-3)]">수집 대기 중</p>
+							<p class="text-xs text-[var(--color-ink-3)]">수집 대기 중</p>
 						{/if}
 					</div>
 					{#if hasData}
-						<p class="text-[10px] tabular-nums text-[var(--color-ink-3)]">
+						<p class="text-xs tabular-nums text-[var(--color-ink-3)]">
 							min {min!.toFixed(1)}{displayUnit} · max {max!.toFixed(1)}{displayUnit}
 						</p>
 					{/if}
@@ -223,24 +223,24 @@
 		<div class="bg-surface-base border border-line rounded-lg p-5">
 			<SectionHeader title="상위 인스턴스" meta="{data.top_instances.length}개" />
 			{#if data.top_instances.length === 0}
-				<div class="mt-6 text-center text-sm text-ink-3 py-6">인스턴스 없음</div>
+				<div class="mt-6 text-center text-sm text-ink-2 py-6">인스턴스 없음</div>
 			{:else}
 				<div class="mt-4 overflow-x-auto">
 					<table class="w-full text-xs">
 						<thead>
 							<tr class="border-b border-line">
-								<th class="text-left pb-2 text-[10px] uppercase tracking-wide text-[var(--color-ink-3)] font-medium w-8">#</th>
-								<th class="text-left pb-2 text-[10px] uppercase tracking-wide text-[var(--color-ink-3)] font-medium">인스턴스</th>
-								<th class="text-left pb-2 text-[10px] uppercase tracking-wide text-[var(--color-ink-3)] font-medium">플레이버</th>
-								<th class="text-left pb-2 text-[10px] uppercase tracking-wide text-[var(--color-ink-3)] font-medium w-44">vCPU</th>
-								<th class="text-left pb-2 text-[10px] uppercase tracking-wide text-[var(--color-ink-3)] font-medium w-44">RAM</th>
-								<th class="text-left pb-2 text-[10px] uppercase tracking-wide text-[var(--color-ink-3)] font-medium">상태</th>
+								<th class="text-left pb-2 text-xs uppercase tracking-wide text-[var(--color-ink-3)] font-medium w-8">#</th>
+								<th class="text-left pb-2 text-xs uppercase tracking-wide text-[var(--color-ink-3)] font-medium">인스턴스</th>
+								<th class="text-left pb-2 text-xs uppercase tracking-wide text-[var(--color-ink-3)] font-medium">플레이버</th>
+								<th class="text-left pb-2 text-xs uppercase tracking-wide text-[var(--color-ink-3)] font-medium w-44">vCPU</th>
+								<th class="text-left pb-2 text-xs uppercase tracking-wide text-[var(--color-ink-3)] font-medium w-44">RAM</th>
+								<th class="text-left pb-2 text-xs uppercase tracking-wide text-[var(--color-ink-3)] font-medium">상태</th>
 							</tr>
 						</thead>
 						<tbody>
 							{#each data.top_instances as inst, i}
 								<tr class="border-b border-line/50 hover:bg-surface-sunken/30 transition-colors">
-									<td class="py-2.5 text-ink-3 font-mono">{i + 1}</td>
+									<td class="py-2.5 text-ink-2 font-mono">{i + 1}</td>
 									<td class="py-2.5">
 										<div class="flex items-center gap-2">
 											<span class="text-ink-0 font-medium truncate max-w-[140px]">{inst.name}</span>

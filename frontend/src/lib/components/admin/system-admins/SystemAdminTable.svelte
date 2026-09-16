@@ -68,10 +68,10 @@
 							{admin.enabled ? '활성' : '비활성'}
 						</span>
 					</td>
-					<td class="py-2 pr-4 text-ink-3 font-mono text-xs">{admin.user_id.slice(0, 8)}</td>
+					<td class="py-2 pr-4 text-ink-2 font-mono text-xs">{admin.user_id.slice(0, 8)}</td>
 					<td class="py-2">
 						{#if admins.length <= 1}
-							<span title="마지막 system admin은 회수할 수 없습니다" class="px-3 py-1 text-xs rounded bg-surface-sunken text-ink-3 cursor-not-allowed">회수</span>
+							<span title="마지막 system admin은 회수할 수 없습니다" class="px-3 py-1 text-xs rounded bg-surface-sunken text-ink-2 cursor-not-allowed">회수</span>
 						{:else}
 							<button
 								onclick={() => revoke(admin)}

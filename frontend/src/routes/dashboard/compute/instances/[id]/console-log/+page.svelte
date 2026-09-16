@@ -45,16 +45,16 @@
 	<title>콘솔 로그 — {instanceId.slice(0, 8)}</title>
 </svelte:head>
 
-<div class="min-h-screen bg-surface-scrim text-ink-1 font-mono text-xs">
+<div class="min-h-screen bg-surface-canvas text-ink-1 font-mono text-xs">
 	<div class="sticky top-0 bg-surface-base border-b border-line px-4 py-2 flex items-center gap-3 z-10">
 		<span class="text-warm-text font-semibold">콘솔 로그</span>
-		<span class="text-ink-3 truncate max-w-md" title={instanceId}>{instanceId}</span>
+		<span class="text-ink-2 truncate max-w-md" title={instanceId}>{instanceId}</span>
 		<div class="ml-auto flex items-center gap-2">
 			{#if lastLoaded}
-				<span class="text-ink-3 text-xs">마지막 로드: {formatTime(lastLoaded)}</span>
+				<span class="text-ink-2 text-xs">마지막 로드: {formatTime(lastLoaded)}</span>
 			{/if}
 			{#if loading}
-				<span class="text-ink-3 text-xs">로딩...</span>
+				<span class="text-ink-2 text-xs">로딩...</span>
 			{/if}
 			<button
 				onclick={load}
@@ -76,16 +76,18 @@
 	{#if error}
 		<div class="p-4 text-red-400">로그 조회 실패: {error}</div>
 	{:else if loading && !log}
-		<div class="p-4 text-ink-3">로딩 중...</div>
+		<div class="p-4 text-ink-2">로딩 중...</div>
 	{:else if !log}
-		<div class="p-4 text-ink-3">(로그 없음)</div>
+		<div class="p-4 text-ink-2">(로그 없음)</div>
 	{:else}
 		<pre class="p-4 whitespace-pre-wrap break-all leading-relaxed">{log}</pre>
 	{/if}
 </div>
 
 <style>
+	/* 예전에는 body 를 #000 으로 강제해 라이트 테마에서 로그가 1.72:1 로 떨어졌다.
+	   페이지는 콘솔의 다른 화면과 같은 canvas 표면을 쓴다. */
 	:global(body) {
-		background: #000;
+		background: var(--color-surface-canvas);
 	}
 </style>

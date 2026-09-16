@@ -109,7 +109,7 @@
 			{/each}
 		</div>
 	{:else if loadbalancers.length === 0}
-		<div class="text-center py-20 text-ink-3 bg-surface-base/20 border border-line/50 rounded-lg">
+		<div class="text-center py-20 text-ink-2 bg-surface-base/20 border border-line/50 rounded-lg">
 			<div class="text-5xl mb-4">⚖️</div>
 			<p class="text-lg">로드밸런서가 없습니다</p>
 		</div>
@@ -164,7 +164,7 @@
 									</span>
 								</button>
 							</td>
-							<td class="py-3 pr-4 text-ink-3 font-mono text-[10px] select-all" title={lb.project_id}>
+							<td class="py-3 pr-4 text-ink-2 font-mono text-xs select-all" title={lb.project_id}>
 								{lb.project_id ? lb.project_id.slice(0, 8) + '...' : '—'}
 							</td>
 							<td class="py-3 pr-4 text-ink-2 font-mono">
@@ -176,7 +176,7 @@
 								</span>
 							</td>
 							<td class="py-3 pr-4">
-								<span class={lb.operating_status === 'ONLINE' ? 'text-green-400' : lb.operating_status === 'OFFLINE' ? 'text-red-400' : 'text-ink-3'}>
+								<span class={lb.operating_status === 'ONLINE' ? 'text-green-400' : lb.operating_status === 'OFFLINE' ? 'text-red-400' : 'text-ink-2'}>
 									{lb.operating_status ?? '—'}
 								</span>
 							</td>
@@ -192,7 +192,7 @@
 					{/each}
 				</tbody>
 			</table>
-			<div class="mt-4 text-xs text-ink-3">총 {loadbalancers.length}개 로드밸런서</div>
+			<div class="mt-4 text-xs text-ink-2">총 {loadbalancers.length}개 로드밸런서</div>
 		</div>
 	{/if}
 </div>

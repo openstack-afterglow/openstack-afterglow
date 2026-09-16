@@ -113,7 +113,7 @@
 				<div class="px-3 py-2 rounded-lg border border-action-warm bg-surface-selected/30 text-ink-0 text-sm">
 					에이전트
 				</div>
-				<p class="mt-1 text-xs text-ink-3">커스텀 server 노드그룹은 HA join 설계 후 지원됩니다.</p>
+				<p class="mt-1 text-xs text-ink-2">커스텀 server 노드그룹은 HA join 설계 후 지원됩니다.</p>
 			</div>
 
 			<label class="block text-xs text-ink-2 uppercase tracking-wide">
@@ -178,7 +178,7 @@
 								class="w-full bg-surface-selected border border-line-2 rounded px-2 py-1.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1" />
 						</label>
 					</div>
-					<p class="mt-2 text-xs text-ink-3">Pending pod 발생 시 명시한 Flavor로 {form.min_size}~{form.max_size}개 agent 노드 범위에서 스케일합니다.</p>
+					<p class="mt-2 text-xs text-ink-2">Pending pod 발생 시 명시한 Flavor로 {form.min_size}~{form.max_size}개 agent 노드 범위에서 스케일합니다.</p>
 				{/if}
 			</div>
 		</div>

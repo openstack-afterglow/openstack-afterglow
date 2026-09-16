@@ -52,14 +52,14 @@
 					<td class="py-2 pr-4">
 						<span class="px-1.5 py-0.5 rounded text-xs font-medium {fs.share_proto === 'NFS' ? 'bg-surface-selected/40 text-warm-text' : 'bg-purple-900/40 text-purple-300'}">{fs.share_proto}</span>
 					</td>
-					<td class="py-2 pr-4 text-ink-3">{fs.metadata?.union_type || '-'}</td>
+					<td class="py-2 pr-4 text-ink-2">{fs.metadata?.union_type || '-'}</td>
 					<td class="py-2 pr-4">
 						{#if fs.project_id}
 							<div class="flex items-center gap-1.5">
 								<span class="text-ink-2">{$projectNames.get(fs.project_id) ?? fs.project_id.slice(0, 8)}</span>
 								<button
 									onclick={(e) => { e.stopPropagation(); copyValue(fs.project_id!); }}
-									class="text-ink-3 hover:text-ink-2 transition-colors"
+									class="text-ink-2 hover:text-ink-2 transition-colors"
 									title={fs.project_id}
 								>
 									{#if copiedId === fs.project_id}
@@ -70,17 +70,17 @@
 								</button>
 							</div>
 						{:else}
-							<span class="text-ink-3">-</span>
+							<span class="text-ink-2">-</span>
 						{/if}
 					</td>
 					<td class="py-2 pr-4 text-ink-2">{formatDate(fs.created_at)}</td>
-					<td class="py-2 text-ink-3 font-mono">
+					<td class="py-2 text-ink-2 font-mono">
 						{#if fs.export_locations?.length > 0}
 							<div class="flex items-center gap-1.5">
 								<span class="truncate max-w-[200px]" title={fs.export_locations[0]}>{fs.export_locations[0]}</span>
 								<button
 									onclick={(e) => { e.stopPropagation(); copyValue(fs.export_locations[0]); }}
-									class="text-ink-3 hover:text-ink-2 transition-colors shrink-0"
+									class="text-ink-2 hover:text-ink-2 transition-colors shrink-0"
 								>
 									{#if copiedId === fs.export_locations[0]}
 										<svg class="w-3 h-3 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>

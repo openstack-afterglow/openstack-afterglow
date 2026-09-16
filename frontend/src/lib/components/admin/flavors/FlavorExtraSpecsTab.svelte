@@ -185,7 +185,7 @@
 {/if}
 
 {#if Object.keys(flavor.extra_specs).length === 0}
-	<div class="text-ink-3 text-sm mb-4">등록된 속성이 없습니다</div>
+	<div class="text-ink-2 text-sm mb-4">등록된 속성이 없습니다</div>
 {:else}
 	<div class="space-y-1 mb-4">
 		{#each Object.entries(flavor.extra_specs) as [k, v]}
@@ -193,7 +193,7 @@
 				{#if editingSpecKey === k}
 					<div class="flex items-center gap-2">
 						<span class="text-xs text-warm-text font-mono break-all shrink-0">{k}</span>
-						<span class="text-ink-3">=</span>
+						<span class="text-ink-2">=</span>
 						<input
 							bind:value={editingSpecValue}
 							type="text"
@@ -213,7 +213,7 @@
 							onclick={() => startEditSpec(k, v)}
 						>
 							<span class="text-xs text-warm-text font-mono break-all">{k}</span>
-							<span class="text-ink-3 mx-2">=</span>
+							<span class="text-ink-2 mx-2">=</span>
 							<span class="text-xs text-ink-2 font-mono break-all">{v}</span>
 						</button>
 						<button onclick={() => deleteExtraSpec(k)} class="ml-2 text-red-400 hover:text-red-300 text-xs shrink-0">삭제</button>
@@ -242,7 +242,7 @@
 	</select>
 
 	{#if currentTemplate}
-		<div class="text-xs text-ink-3">{currentTemplate.description}</div>
+		<div class="text-xs text-ink-2">{currentTemplate.description}</div>
 		{#if currentTemplate.valueType === 'gpu_alias'}
 			{#if gpuAliasOptions.length === 0}
 				<div class="text-xs text-yellow-400">GPU alias 카탈로그를 불러올 수 없습니다 — 값을 직접 입력하세요</div>
@@ -270,7 +270,7 @@
 						class="w-20 bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm"
 					/>
 				</div>
-				<div class="text-xs text-ink-3 font-mono">값: {gpuAlias ? `${gpuAlias}:${gpuCount}` : '-'}</div>
+				<div class="text-xs text-ink-2 font-mono">값: {gpuAlias ? `${gpuAlias}:${gpuCount}` : '-'}</div>
 			{/if}
 		{:else if currentTemplate.valueType === 'enum'}
 			<select

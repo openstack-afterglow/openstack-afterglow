@@ -162,7 +162,7 @@
 				class="w-20 bg-surface-sunken border border-line-2 rounded-md px-2 py-1 text-ink-0 text-sm focus:outline-none focus-visible:shadow-[var(--focus-ring)]"
 			/>
 		</div>
-		<div class="text-xs text-ink-3">
+		<div class="text-xs text-ink-2">
 			Floating IP는 분리된 즉시 후보. Volume은 status=available + attachments=[] + 연령 ≥ 임계치.
 		</div>
 	</div>
@@ -174,7 +174,7 @@
 	{/if}
 
 	{#if loading}
-		<div class="text-ink-3 text-sm">로딩 중...</div>
+		<div class="text-ink-2 text-sm">로딩 중...</div>
 	{:else}
 		<OrphanFipSection items={fips} bind:selected={selectedFips} onCleanup={() => openConfirm('floating_ip')} />
 		<OrphanVolumeSection items={volumes} bind:selected={selectedVolumes} {minAgeDays} onCleanup={() => openConfirm('volume')} />

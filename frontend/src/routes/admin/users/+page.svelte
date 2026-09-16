@@ -247,15 +247,15 @@
 				<div class="flex gap-8">
 					<div class="text-center">
 						<div class="text-2xl font-bold text-ink-0">{stats.total}</div>
-						<div class="text-xs text-ink-3 mt-0.5">전체</div>
+						<div class="text-xs text-ink-2 mt-0.5">전체</div>
 					</div>
 					<div class="text-center">
 						<div class="text-2xl font-bold text-green-400">{stats.enabled}</div>
-						<div class="text-xs text-ink-3 mt-0.5">활성</div>
+						<div class="text-xs text-ink-2 mt-0.5">활성</div>
 					</div>
 					<div class="text-center">
 						<div class="text-2xl font-bold text-red-400">{stats.disabled}</div>
-						<div class="text-xs text-ink-3 mt-0.5">비활성</div>
+						<div class="text-xs text-ink-2 mt-0.5">비활성</div>
 					</div>
 				</div>
 			</div>
@@ -264,9 +264,9 @@
 			<div class="bg-surface-base border border-line rounded-lg p-4">
 				<p class="text-xs font-semibold text-ink-2 mb-2">최근 사용자 변경</p>
 				{#if loadingActivity}
-					<p class="text-xs text-ink-3">로딩...</p>
+					<p class="text-xs text-ink-2">로딩...</p>
 				{:else if activityLog.length === 0}
-					<p class="text-xs text-ink-3">변경 내역 없음</p>
+					<p class="text-xs text-ink-2">변경 내역 없음</p>
 				{:else}
 					<ul class="space-y-1.5">
 						{#each activityLog.slice(0, 5) as ev (ev.id)}
@@ -275,7 +275,7 @@
 									><span class="text-ink-2">{ev.username}</span>
 									{ev.action}</span
 								>
-								<span class="text-ink-3 shrink-0">{formatActivityTime(ev.created_at)}</span>
+								<span class="text-ink-2 shrink-0">{formatActivityTime(ev.created_at)}</span>
 							</li>
 						{/each}
 					</ul>
@@ -317,7 +317,7 @@
 
 		<div class="bg-surface-base border border-line rounded-lg p-5" data-tour="admin-identity-list">
 			{#if pagedUsers.length === 0}
-				<p class="text-xs text-ink-3 text-center py-6" data-tour="admin-identity-list-ready">검색 결과가 없습니다.</p>
+				<p class="text-xs text-ink-2 text-center py-6" data-tour="admin-identity-list-ready">검색 결과가 없습니다.</p>
 			{:else}
 				<div data-tour="admin-identity-list-ready">
 				<AdminUsersTable

@@ -65,7 +65,7 @@
 </script>
 
 <div class="bg-[#0B1220] border border-line rounded-lg overflow-hidden">
-	<div class="{volumeGridClass} px-4 py-2.5 border-b border-line text-[11px] uppercase tracking-wider text-ink-3 font-medium">
+	<div class="{volumeGridClass} px-4 py-2.5 border-b border-line text-xs uppercase tracking-wider text-ink-2 font-medium">
 		<div><SelectionCheckbox checked={selectableIds.size > 0 && selectedSelectableCount === selectableIds.size} indeterminate={selectedSelectableCount > 0 && selectedSelectableCount < selectableIds.size} disabled={selectionDisabled || selectableIds.size === 0} onclick={onToggleAll} ariaLabel="전체 선택" /></div>
 		<div>이름</div>
 		<div>크기</div>
@@ -106,33 +106,33 @@
 					{:else}
 						<span class="block font-mono text-xs truncate">{vol.id}</span>
 					{/if}
-					<div class="text-[11px] text-ink-3 font-mono truncate">{vol.id.slice(0, 8)}…</div>
+					<div class="text-xs text-ink-2 font-mono truncate">{vol.id.slice(0, 8)}…</div>
 				</div>
 			</button>
 			<!-- 크기 -->
-			<div class="text-ink-2 font-mono text-[12px]">{formatStorage(vol.size)}</div>
+			<div class="text-ink-2 font-mono text-xs">{formatStorage(vol.size)}</div>
 			<!-- 유형 -->
 			<div class="hidden sm:block">
-				<span class="text-[11px] px-2 py-0.5 rounded-md bg-surface-sunken border border-line-2 text-ink-2 font-mono">
+				<span class="text-xs px-2 py-0.5 rounded-md bg-surface-sunken border border-line-2 text-ink-2 font-mono">
 					{vol.volume_type ?? '기본'}
 				</span>
 			</div>
 			<!-- 상태 -->
 			<div><StatusChip status={vol.status} /></div>
 			<!-- 연결 -->
-			<div class="hidden lg:block text-[12px]">
+			<div class="hidden lg:block text-xs">
 				{#if vol.attachments.length > 0}
 					<span class="text-warm-text">{vol.attachments.length}개 연결</span>
 				{:else}
-					<span class="text-ink-3">미연결</span>
+					<span class="text-ink-2">미연결</span>
 				{/if}
 			</div>
 			<!-- 부트 -->
 			<div class="hidden lg:flex flex-col gap-0.5">
 				{#if vol.bootable}
-					<span class="text-[11px] px-2 py-0.5 rounded-md bg-surface-selected/30 border border-action-warm text-warm-text w-fit">부트</span>
+					<span class="text-xs px-2 py-0.5 rounded-md bg-surface-selected/30 border border-action-warm text-warm-text w-fit">부트</span>
 					{#if vol.volume_image_metadata?.os_distro}
-						<span class="text-[10px] text-ink-3 font-mono">{vol.volume_image_metadata.os_distro}{vol.volume_image_metadata.os_version ? ' ' + vol.volume_image_metadata.os_version : ''}</span>
+						<span class="text-xs text-ink-2 font-mono">{vol.volume_image_metadata.os_distro}{vol.volume_image_metadata.os_version ? ' ' + vol.volume_image_metadata.os_version : ''}</span>
 					{/if}
 				{/if}
 			</div>

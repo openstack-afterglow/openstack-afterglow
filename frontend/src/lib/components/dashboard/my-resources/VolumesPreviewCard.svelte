@@ -19,22 +19,22 @@
 			</svg>
 		</div>
 		<div class="text-ink-0 font-semibold text-sm">블록 볼륨</div>
-		<span class="ml-auto text-xs text-ink-3">{volumes.length}개</span>
+		<span class="ml-auto text-xs text-ink-2">{volumes.length}개</span>
 	</div>
 	<div class="flex flex-col">
 		{#each volumes.slice(0, PREVIEW_LIMIT) as vol (vol.id)}
 			<div class="flex items-center gap-3 py-2.5 border-b border-line last:border-b-0">
 				<div class="flex-1 min-w-0">
 					<div class="text-ink-0 text-[13px] font-medium truncate">{vol.name || vol.id.slice(0, 8)}</div>
-					<div class="text-[11px] text-ink-3 mt-0.5 font-mono truncate">{vol.size} GB · {vol.volume_type || '—'}</div>
+					<div class="text-xs text-ink-2 mt-0.5 font-mono truncate">{vol.size} GB · {vol.volume_type || '—'}</div>
 				</div>
 				<StatusChip status={vol.status} />
 			</div>
 		{/each}
 		{#if volumes.length === 0}
-			<div class="text-ink-3 text-xs py-3 text-center">없음</div>
+			<div class="text-ink-2 text-xs py-3 text-center">없음</div>
 		{:else if volumes.length > PREVIEW_LIMIT}
-			<a href="/dashboard/volumes" class="block text-center text-[11px] text-cyan-400 hover:text-cyan-300 transition-colors pt-2.5">
+			<a href="/dashboard/volumes" class="block text-center text-xs text-cyan-400 hover:text-cyan-300 transition-colors pt-2.5">
 				+{volumes.length - PREVIEW_LIMIT}개 더 보기 →
 			</a>
 		{/if}

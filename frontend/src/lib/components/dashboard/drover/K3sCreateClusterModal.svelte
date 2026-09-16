@@ -117,7 +117,7 @@
 							<span class="text-base">🐧</span>
 							<div class="text-left">
 								<div class="font-medium leading-none">Ubuntu</div>
-								<div class="text-xs text-ink-3 mt-0.5">cloud-init</div>
+								<div class="text-xs text-ink-2 mt-0.5">cloud-init</div>
 							</div>
 						</button>
 						<button type="button"
@@ -126,7 +126,7 @@
 							<span class="text-base">🔴</span>
 							<div class="text-left">
 								<div class="font-medium leading-none">CoreOS</div>
-								<div class="text-xs text-ink-3 mt-0.5">Ignition</div>
+								<div class="text-xs text-ink-2 mt-0.5">Ignition</div>
 							</div>
 						</button>
 					</div>
@@ -229,7 +229,7 @@
 							></span>
 						</button>
 					</div>
-					<p class="mt-1.5 text-xs text-ink-3">
+					<p class="mt-1.5 text-xs text-ink-2">
 						pod 배포 시 노드(VM)를 자동으로 확장/축소합니다. 노드그룹에서 min/max를 별도 설정해야 합니다.
 					</p>
 					{#if form.stampede_enabled}

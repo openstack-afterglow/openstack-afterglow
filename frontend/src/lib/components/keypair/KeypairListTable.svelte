@@ -17,7 +17,7 @@
 </script>
 
 <div class="bg-[#0B1220] border border-line rounded-lg overflow-hidden">
-	<div class="grid grid-cols-[1fr_auto] md:grid-cols-[1.2fr_140px_2fr_120px] px-4 py-2.5 border-b border-line text-[11px] uppercase tracking-wider text-ink-3 font-medium">
+	<div class="grid grid-cols-[1fr_auto] md:grid-cols-[1.2fr_140px_2fr_120px] px-4 py-2.5 border-b border-line text-xs uppercase tracking-wider text-ink-2 font-medium">
 		<div>이름</div>
 		<div class="hidden md:block">유형</div>
 		<div class="hidden md:block">지문</div>
@@ -32,9 +32,9 @@
 				<span class="truncate">{kp.name}</span>
 			</div>
 			<div class="hidden md:block">
-				<span class="text-[11px] font-mono px-2 py-0.5 rounded-md bg-violet-900/25 border border-violet-800 text-violet-400">{kp.type}</span>
+				<span class="text-xs font-mono px-2 py-0.5 rounded-md bg-violet-900/25 border border-violet-800 text-violet-400">{kp.type}</span>
 			</div>
-			<div class="hidden md:block text-ink-2 font-mono text-[11px] truncate">{kp.fingerprint}</div>
+			<div class="hidden md:block text-ink-2 font-mono text-xs truncate">{kp.fingerprint}</div>
 			<div class="flex gap-1.5 justify-end">
 				<button
 					onclick={() => onCopy(kp.fingerprint)}

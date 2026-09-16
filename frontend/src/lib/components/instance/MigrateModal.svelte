@@ -33,7 +33,7 @@
 		<h2 id="instance-migrate-title" class="text-lg font-semibold text-ink-0 mb-1">
 			{type === 'live' ? '라이브 마이그레이션' : '콜드 마이그레이션'}
 		</h2>
-		<p class="text-xs text-ink-3 mb-5">
+		<p class="text-xs text-ink-2 mb-5">
 			{type === 'live' ? '인스턴스 실행 중에 다른 호스트로 이동합니다.' : '인스턴스를 종료하고 다른 호스트로 이동합니다.'}
 		</p>
 		{#if s.migrateError}
@@ -43,14 +43,14 @@
 			<div>
 				<div class="flex items-baseline justify-between mb-1.5">
 					<label for="migrate-host" class="text-xs text-ink-2 uppercase tracking-wide">
-						대상 호스트 <span class="text-ink-3">(선택 안 하면 자동)</span>
+						대상 호스트 <span class="text-ink-2">(선택 안 하면 자동)</span>
 					</label>
 					{#if cpuModelHint}
-						<span class="text-xs text-ink-3">{cpuModelHint}</span>
+						<span class="text-xs text-ink-2">{cpuModelHint}</span>
 					{/if}
 				</div>
 				{#if s.migrateHosts.length === 0}
-					<div class="bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-xs text-ink-3">
+					<div class="bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-xs text-ink-2">
 						호환 가능한 호스트가 없습니다. 자동 선택만 가능합니다.
 					</div>
 				{:else}

@@ -35,12 +35,12 @@
 	<h2 class="text-sm font-semibold text-ink-0 mb-3">연결 정보</h2>
 	<div class="space-y-2 text-sm">
 		<div class="flex gap-4">
-			<div><div class="text-ink-3 text-xs mb-0.5">호스트</div><div class="text-ink-0 font-mono">{instance.ip || instance.hostname || '-'}</div></div>
-			<div><div class="text-ink-3 text-xs mb-0.5">포트</div><div class="text-ink-0 font-mono">{dbPort}</div></div>
+			<div><div class="text-ink-2 text-xs mb-0.5">호스트</div><div class="text-ink-0 font-mono">{instance.ip || instance.hostname || '-'}</div></div>
+			<div><div class="text-ink-2 text-xs mb-0.5">포트</div><div class="text-ink-0 font-mono">{dbPort}</div></div>
 		</div>
 		{#if connectCmd}
 			<div>
-				<div class="text-ink-3 text-xs mb-1">연결 명령어 예시</div>
+				<div class="text-ink-2 text-xs mb-1">연결 명령어 예시</div>
 				<code class="block bg-surface-sunken rounded px-3 py-2 text-xs text-green-400 font-mono break-all">{connectCmd}</code>
 			</div>
 		{/if}

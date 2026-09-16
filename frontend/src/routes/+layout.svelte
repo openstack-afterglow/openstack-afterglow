@@ -417,7 +417,7 @@
 		>
 			<svg class="size-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z"/></svg>
 			<span class="flex-1 text-left">리소스 검색...</span>
-			<kbd class="rounded border border-line px-1.5 py-0.5 font-mono text-[10px] text-ink-2">⌘K</kbd>
+			<kbd class="rounded border border-line px-1.5 py-0.5 font-mono text-xs text-ink-2">⌘K</kbd>
 		</button>
 
 		<!-- 우측 컨트롤 -->
@@ -429,7 +429,7 @@
 					<a href="/dashboard"
 						aria-label="현재 관리자 모드, 사용자 모드로 전환"
 						title="사용자 모드로 전환"
-						class="hidden lg:flex items-center gap-1.5 px-3 h-8 rounded-lg border text-[12px] font-semibold transition-colors bg-action-warm/15 border-action-warm/50 text-warm-text hover:bg-action-warm-hover/25">
+						class="hidden lg:flex items-center gap-1.5 px-3 h-8 rounded-lg border text-xs font-semibold transition-colors bg-action-warm/15 border-action-warm/50 text-warm-text hover:bg-action-warm-hover/25">
 						<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6l8-4z"/></svg>
 						관리자 모드
 					</a>
@@ -437,7 +437,7 @@
 					<a href="/admin"
 						aria-label="현재 사용자 모드, 관리자 모드로 전환"
 						title="관리자 모드로 전환"
-						class="hidden lg:flex items-center gap-1.5 px-3 h-8 rounded-lg border text-[12px] font-semibold transition-colors bg-surface-base border-line-2 text-ink-1 hover:border-line-2 hover:text-ink-0">
+						class="hidden lg:flex items-center gap-1.5 px-3 h-8 rounded-lg border text-xs font-semibold transition-colors bg-surface-base border-line-2 text-ink-1 hover:border-line-2 hover:text-ink-0">
 						<svg class="w-3.5 h-3.5 text-ink-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
 						사용자 모드
 					</a>
@@ -474,7 +474,7 @@
 						class="fixed left-0 bottom-0 w-full rounded-t-xl sm:absolute sm:left-auto sm:right-0 sm:bottom-auto sm:top-full sm:mt-2 sm:w-80 sm:rounded-xl border shadow-[var(--shadow-restraint)] sm:shadow-[var(--shadow-popover)] z-50 overflow-hidden"
 						style="background: var(--color-surface-raised); border-color: var(--color-line);"
 					>
-						<p class="px-4 pt-3 pb-2 text-[10px] uppercase tracking-wide text-[var(--color-ink-3)]">알림</p>
+						<p class="px-4 pt-3 pb-2 text-xs uppercase tracking-wide text-[var(--color-ink-3)]">알림</p>
 						{#if bellItems === null}
 							<p class="px-4 pb-3 text-xs text-[var(--color-ink-3)]">불러오는 중…</p>
 						{:else if bellError}
@@ -492,10 +492,10 @@
 											<span class="mt-1.5 w-2 h-2 rounded-full flex-shrink-0" style="background: {bellDotColor(item.severity)};"></span>
 											<span class="flex-1 min-w-0">
 												<span class="block text-xs text-[var(--color-ink-0)] truncate {item.is_read ? '' : 'font-semibold'}">{item.title}</span>
-												<span class="block text-[10px] text-[var(--color-ink-3)] mt-0.5 tabular-nums">{formatIsoDateTime(item.created_at)}</span>
+												<span class="block text-xs text-[var(--color-ink-3)] mt-0.5 tabular-nums">{formatIsoDateTime(item.created_at)}</span>
 											</span>
 											{#if !item.is_read}
-												<span class="mt-1 text-[9px] uppercase tracking-wide text-[var(--color-accent)] flex-shrink-0">new</span>
+												<span class="mt-1 text-xs uppercase tracking-wide text-[var(--color-accent)] flex-shrink-0">new</span>
 											{/if}
 										</button>
 									</li>
@@ -515,7 +515,7 @@
 			<!-- 유저 아바타 -->
 			<a
 				href={mockupAdminActive ? '/admin' : '/dashboard/account'}
-				class="w-[30px] h-[30px] rounded-full bg-surface-sunken border border-line-2 flex items-center justify-center text-ink-2 text-[11px] font-semibold hover:border-line-2 transition-colors"
+				class="w-[30px] h-[30px] rounded-full bg-surface-sunken border border-line-2 flex items-center justify-center text-ink-2 text-xs font-semibold hover:border-line-2 transition-colors"
 				title={$auth.username}
 			>{initials}</a>
 

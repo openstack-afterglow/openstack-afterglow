@@ -103,7 +103,7 @@
 					><span class="absolute top-0.5 left-0.5 w-5 h-5 bg-surface-base rounded-full transition-transform {editEnabled ? 'translate-x-5' : ''}"></span></button>
 					<span class="text-sm text-ink-2">{editEnabled ? '활성' : '비활성'}</span>
 				</div>
-				<div class="text-xs text-ink-3">ID: {project.id}</div>
+				<div class="text-xs text-ink-2">ID: {project.id}</div>
 			</div>
 			<div class="flex justify-end gap-3 mt-6">
 				<button onclick={onClose} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">취소</button>

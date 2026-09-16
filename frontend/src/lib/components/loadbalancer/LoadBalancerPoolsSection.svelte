@@ -18,7 +18,7 @@
   <PoolAddForm />
 
   {#if s.pools.length === 0}
-    <p class="text-sm text-ink-3">풀이 없습니다.</p>
+    <p class="text-sm text-ink-2">풀이 없습니다.</p>
   {:else}
     <div class="space-y-2">
       {#each s.pools as pool}
@@ -33,11 +33,11 @@
             <div class="text-sm">
               <span class="text-ink-0 font-medium">{pool.name || pool.id.slice(0, 10)}</span>
               <span class="ml-2 text-xs text-purple-300 bg-purple-900/30 px-1.5 py-0.5 rounded">{pool.protocol}</span>
-              <span class="ml-2 text-xs text-ink-3">{pool.lb_algorithm}</span>
+              <span class="ml-2 text-xs text-ink-2">{pool.lb_algorithm}</span>
               <span class="ml-2 text-xs {pool.status === 'ACTIVE' ? 'text-green-400' : 'text-yellow-400'}">{pool.status}</span>
             </div>
             <div class="flex gap-2">
-              <span class="text-xs text-ink-3">{s.selectedPoolId === pool.id ? '▲ 접기' : '▼ 멤버'}</span>
+              <span class="text-xs text-ink-2">{s.selectedPoolId === pool.id ? '▲ 접기' : '▼ 멤버'}</span>
               <button
                 onclick={(e) => { e.stopPropagation(); s.deletePool(pool.id); }}
                 disabled={s.saving}

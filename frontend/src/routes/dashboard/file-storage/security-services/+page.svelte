@@ -197,7 +197,7 @@
 				<button onclick={() => showModal = true} class="bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">+ Security Service 생성</button>
 			{/snippet}
 		</PageHeader>
-		<p class="text-sm text-ink-3 mb-6">LDAP, Kerberos, Active Directory 인증 서비스를 관리합니다.</p>
+		<p class="text-sm text-ink-2 mb-6">LDAP, Kerberos, Active Directory 인증 서비스를 관리합니다.</p>
 		{#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
 		{#if loading}
 			<LoadingSkeleton variant="table" rows={3} />

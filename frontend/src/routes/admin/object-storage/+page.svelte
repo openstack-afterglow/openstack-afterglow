@@ -108,15 +108,15 @@
 	{#if account}
 		<div class="grid grid-cols-3 gap-4 mb-6">
 			<div class="bg-surface-base border border-line rounded-xl p-4">
-				<div class="text-xs text-ink-3 uppercase tracking-wide mb-1">버킷</div>
+				<div class="text-xs text-ink-2 uppercase tracking-wide mb-1">버킷</div>
 				<div class="text-2xl font-bold text-ink-0">{account.container_count}</div>
 			</div>
 			<div class="bg-surface-base border border-line rounded-xl p-4">
-				<div class="text-xs text-ink-3 uppercase tracking-wide mb-1">오브젝트</div>
+				<div class="text-xs text-ink-2 uppercase tracking-wide mb-1">오브젝트</div>
 				<div class="text-2xl font-bold text-ink-0">{account.object_count}</div>
 			</div>
 			<div class="bg-surface-base border border-line rounded-xl p-4">
-				<div class="text-xs text-ink-3 uppercase tracking-wide mb-1">사용 용량</div>
+				<div class="text-xs text-ink-2 uppercase tracking-wide mb-1">사용 용량</div>
 				<div class="text-2xl font-bold text-ink-0">{formatStorage(account.bytes_used / 1_000_000_000)}</div>
 			</div>
 		</div>
@@ -125,7 +125,7 @@
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if containers.length === 0}
-		<div class="text-ink-3 text-sm">버킷가 없습니다</div>
+		<div class="text-ink-2 text-sm">버킷가 없습니다</div>
 	{:else}
 		<BucketTable {containers} deletingId={deleting} {refreshing} onDelete={deleteContainer} />
 		{#if containers.some((c) => c.is_quarantine)}

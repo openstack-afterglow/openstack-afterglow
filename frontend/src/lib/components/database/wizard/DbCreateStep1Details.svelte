@@ -66,7 +66,7 @@
 					<option value={vt.name}>{vt.name}</option>
 				{/each}
 			</select>
-			<p class="text-xs text-ink-3 mt-1">기본값을 권장합니다. 모든 Cinder 타입이 Trove 와 호환되지 않습니다.</p>
+			<p class="text-xs text-ink-2 mt-1">기본값을 권장합니다. 모든 Cinder 타입이 Trove 와 호환되지 않습니다.</p>
 		</div>
 	</div>
 

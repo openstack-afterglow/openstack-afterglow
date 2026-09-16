@@ -26,7 +26,7 @@
 				: 'bg-surface-sunken border border-line-2 text-ink-1 placeholder-ink-3'}"
 	/>
 	{#if traffic?.interfaces || traffic?.ts}
-		<div class="ml-auto flex items-center gap-3 text-[10px]"
+		<div class="ml-auto flex items-center gap-3 text-xs"
 		     style="color: {isLight ? '#6b7280' : '#9ca3af'}">
 			{#if traffic?.interfaces}
 				<div class="flex items-center gap-1.5 font-mono">

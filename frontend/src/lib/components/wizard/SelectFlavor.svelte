@@ -281,7 +281,7 @@
 
 <!-- 통합 검색 -->
 <div class="order-4 relative mb-4">
-	<span class="absolute left-3 top-1/2 -translate-y-1/2 text-ink-3 pointer-events-none">
+	<span class="absolute left-3 top-1/2 -translate-y-1/2 text-ink-2 pointer-events-none">
 		<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/>
 		</svg>
@@ -314,11 +314,11 @@
 	{@const critDisk = limDiskGb >= 0 && curDiskGb + reqDiskGb > limDiskGb}
 	<div class="order-1 mb-4 overflow-hidden rounded-xl border border-line bg-surface-base/70 md:mb-5">
 		<div class="flex items-center justify-between px-3 py-2 border-b border-line">
-			<span class="text-[11px] text-ink-2 font-medium">
+			<span class="text-xs text-ink-2 font-medium">
 				프로젝트 잔여 쿼터
 				{#if selectedFlavor}<span class="text-warm-text ml-1">— 선택 flavor 반영</span>{/if}
 			</span>
-			<div class="hidden items-center gap-3 text-[10px] text-ink-3 @md/panel:flex">
+			<div class="hidden items-center gap-3 text-xs text-ink-2 @md/panel:flex">
 				<span class="flex items-center gap-1"><i class="inline-block w-2 h-2 rounded-full bg-surface-selected"></i>현재 사용</span>
 				<span class="flex items-center gap-1"><i class="inline-block w-2 h-2 rounded-full bg-action-warm"></i>이번 VM 추가</span>
 			</div>
@@ -326,14 +326,14 @@
 		<div class="grid grid-cols-2 gap-px bg-surface-sunken @2xl/panel:grid-cols-4">
 			<!-- VM cell -->
 			<div class="flex flex-col gap-1.5 bg-surface-base px-3 py-2">
-				<span class="text-[10px] uppercase tracking-wider text-ink-3 font-mono font-semibold">VM</span>
+				<span class="text-xs uppercase tracking-wider text-ink-2 font-mono font-semibold">VM</span>
 				<div class="flex items-baseline gap-1 font-mono">
 					<span class="text-sm text-ink-2">{curVm}</span>
 					{#if reqVm > 0}
-						<span class="text-ink-3 text-[10px]">→</span>
+						<span class="text-ink-2 text-xs">→</span>
 						<span class="text-sm font-bold {critVm ? 'text-red-400' : 'text-warm-text'}">{curVm + reqVm}</span>
 					{/if}
-					{#if limVm >= 0}<span class="text-ink-3 text-[11px]">/ {limVm}</span>{/if}
+					{#if limVm >= 0}<span class="text-ink-2 text-xs">/ {limVm}</span>{/if}
 				</div>
 				{#if limVm >= 0}
 					{@const curPct = Math.min(100, (curVm / limVm) * 100)}
@@ -346,14 +346,14 @@
 			</div>
 			<!-- vCPU cell -->
 			<div class="flex flex-col gap-1.5 bg-surface-base px-3 py-2">
-				<span class="text-[10px] uppercase tracking-wider text-ink-3 font-mono font-semibold">vCPU</span>
+				<span class="text-xs uppercase tracking-wider text-ink-2 font-mono font-semibold">vCPU</span>
 				<div class="flex items-baseline gap-1 font-mono">
 					<span class="text-sm text-ink-2">{curCpu}</span>
 					{#if reqCpu > 0}
-						<span class="text-ink-3 text-[10px]">→</span>
+						<span class="text-ink-2 text-xs">→</span>
 						<span class="text-sm font-bold {critCpu ? 'text-red-400' : 'text-warm-text'}">{curCpu + reqCpu}</span>
 					{/if}
-					{#if limCpu >= 0}<span class="text-ink-3 text-[11px]">/ {limCpu}</span>{/if}
+					{#if limCpu >= 0}<span class="text-ink-2 text-xs">/ {limCpu}</span>{/if}
 				</div>
 				{#if limCpu >= 0}
 					{@const curPct = Math.min(100, (curCpu / limCpu) * 100)}
@@ -366,14 +366,14 @@
 			</div>
 			<!-- RAM cell -->
 			<div class="flex flex-col gap-1.5 bg-surface-base px-3 py-2">
-				<span class="text-[10px] uppercase tracking-wider text-ink-3 font-mono font-semibold">RAM</span>
+				<span class="text-xs uppercase tracking-wider text-ink-2 font-mono font-semibold">RAM</span>
 				<div class="flex items-baseline gap-1 font-mono">
 					<span class="text-sm text-ink-2">{Math.round(curRamMb / 1024)}GB</span>
 					{#if reqRamMb > 0}
-						<span class="text-ink-3 text-[10px]">→</span>
+						<span class="text-ink-2 text-xs">→</span>
 						<span class="text-sm font-bold {critRam ? 'text-red-400' : 'text-warm-text'}">{Math.round((curRamMb + reqRamMb) / 1024)}GB</span>
 					{/if}
-					{#if limRamMb >= 0}<span class="text-ink-3 text-[11px]">/ {Math.round(limRamMb / 1024)}GB</span>{/if}
+					{#if limRamMb >= 0}<span class="text-ink-2 text-xs">/ {Math.round(limRamMb / 1024)}GB</span>{/if}
 				</div>
 				{#if limRamMb >= 0}
 					{@const curPct = Math.min(100, (curRamMb / limRamMb) * 100)}
@@ -386,11 +386,11 @@
 			</div>
 			<!-- DISK cell -->
 			<div class="flex flex-col gap-1.5 bg-surface-base px-3 py-2">
-				<span class="text-[10px] uppercase tracking-wider text-ink-3 font-mono font-semibold">DISK</span>
+				<span class="text-xs uppercase tracking-wider text-ink-2 font-mono font-semibold">DISK</span>
 				{#if limDiskGb < 0}
 					<div class="flex items-baseline gap-1 font-mono">
 						<span class="text-sm text-ink-2">{curDiskGb}GB</span>
-						<span class="text-ink-3 text-[11px]">/ ∞</span>
+						<span class="text-ink-2 text-xs">/ ∞</span>
 					</div>
 					<div class="relative h-[5px] rounded-full bg-surface-sunken overflow-hidden">
 						<div class="absolute left-0 top-0 h-full bg-surface-selected rounded-full" style="width:0%"></div>
@@ -399,10 +399,10 @@
 					<div class="flex items-baseline gap-1 font-mono">
 						<span class="text-sm text-ink-2">{curDiskGb}GB</span>
 						{#if reqDiskGb > 0}
-							<span class="text-ink-3 text-[10px]">→</span>
+							<span class="text-ink-2 text-xs">→</span>
 							<span class="text-sm font-bold {critDisk ? 'text-red-400' : 'text-warm-text'}">{curDiskGb + reqDiskGb}GB</span>
 						{/if}
-						<span class="text-ink-3 text-[11px]">/ {limDiskGb}GB</span>
+						<span class="text-ink-2 text-xs">/ {limDiskGb}GB</span>
 					</div>
 					{@const curPct = Math.min(100, (curDiskGb / limDiskGb) * 100)}
 					{@const deltaPct = Math.min(100 - curPct, (reqDiskGb / limDiskGb) * 100)}
@@ -434,7 +434,7 @@
 					<b class="font-semibold">{g.device_name}</b>
 					{#if requested > 0}
 						<span class="opacity-70">{g.used}/{g.total}</span>
-						<span class="text-[10px] opacity-50">→</span>
+						<span class="text-xs opacity-50">→</span>
 						<span class="font-bold text-warm-text">{nextUsed}/{g.total}</span>
 					{:else}
 						<span class="opacity-70">{g.used}/{g.total}</span>
@@ -472,10 +472,10 @@
 					<div class="break-words font-mono text-sm font-semibold text-[var(--color-ink-0)]">{flavor.name}</div>
 					<div class="mt-1 flex flex-wrap gap-1.5">
 						{#if badge}
-							<span class="rounded border px-1.5 py-0.5 text-[10px] {badge.class}">{badge.label}</span>
+							<span class="rounded border px-1.5 py-0.5 text-xs {badge.class}">{badge.label}</span>
 						{/if}
 						{#if flavor.is_public}
-							<span class="rounded border border-[var(--color-line)] bg-[var(--color-surface-sunken)] px-1.5 py-0.5 text-[10px] text-[var(--color-ink-2)]">공용</span>
+							<span class="rounded border border-[var(--color-line)] bg-[var(--color-surface-sunken)] px-1.5 py-0.5 text-xs text-[var(--color-ink-2)]">공용</span>
 						{/if}
 						<span class="text-xs text-[var(--color-ink-3)]">{networkBandwidth(flavor)}</span>
 					</div>
@@ -483,15 +483,15 @@
 			</div>
 			<dl class="mt-3 grid grid-cols-3 gap-2 border-t border-[var(--color-line)] pt-2.5 font-mono">
 				<div>
-					<dt class="text-[10px] uppercase tracking-wide text-[var(--color-ink-3)]">vCPU</dt>
+					<dt class="text-xs uppercase tracking-wide text-[var(--color-ink-3)]">vCPU</dt>
 					<dd class="mt-0.5 text-sm text-[var(--color-ink-1)]">{flavor.vcpus}</dd>
 				</div>
 				<div>
-					<dt class="text-[10px] uppercase tracking-wide text-[var(--color-ink-3)]">RAM</dt>
+					<dt class="text-xs uppercase tracking-wide text-[var(--color-ink-3)]">RAM</dt>
 					<dd class="mt-0.5 text-sm text-[var(--color-ink-1)]">{ramLabel(flavor.ram)}</dd>
 				</div>
 				<div>
-					<dt class="text-[10px] uppercase tracking-wide text-[var(--color-ink-3)]">Disk</dt>
+					<dt class="text-xs uppercase tracking-wide text-[var(--color-ink-3)]">Disk</dt>
 					<dd class="mt-0.5 text-sm text-[var(--color-ink-1)]">{flavor.disk} GB</dd>
 				</div>
 			</dl>
@@ -501,7 +501,7 @@
 			{#if blockers.length > 0}
 				<div class="mt-2 flex flex-wrap gap-1">
 					{#each blockers as b}
-						<span class="rounded border border-[var(--color-state-danger)]/40 bg-[var(--color-surface-sunken)] px-1.5 py-0.5 text-[10px] text-[var(--color-state-danger-text)] font-medium">
+						<span class="rounded border border-[var(--color-state-danger)]/40 bg-[var(--color-surface-sunken)] px-1.5 py-0.5 text-xs text-[var(--color-state-danger-text)] font-medium">
 							{blockerLabel(b)}
 						</span>
 					{/each}
@@ -516,7 +516,7 @@
 
 <!-- 데스크톱에서는 스펙 비교를 위한 표를 유지한다. -->
 <div class="order-6 hidden overflow-hidden rounded-xl border border-line bg-[#0B1220] @2xl/panel:block">
-	<div class="grid grid-cols-[2fr_80px_90px_100px_100px] border-b border-line px-4 py-2.5 text-[11px] font-medium uppercase tracking-wider text-ink-3">
+	<div class="grid grid-cols-[2fr_80px_90px_100px_100px] border-b border-line px-4 py-2.5 text-xs font-medium uppercase tracking-wider text-ink-2">
 		<div>이름</div>
 		<div class="text-center">VCPU</div>
 		<div class="text-center">RAM</div>
@@ -546,20 +546,20 @@
 					<div class="flex items-center gap-2">
 						<span class="truncate font-medium text-ink-0">{flavor.name}</span>
 						{#if badge}
-							<span class="rounded border px-1.5 py-0.5 text-[10px] {badge.class}">{badge.label}</span>
+							<span class="rounded border px-1.5 py-0.5 text-xs {badge.class}">{badge.label}</span>
 						{/if}
 						{#if flavor.is_public}
-							<span class="rounded border border-line-2 bg-surface-sunken px-1.5 py-0.5 text-[10px] text-ink-2">공용</span>
+							<span class="rounded border border-line-2 bg-surface-sunken px-1.5 py-0.5 text-xs text-ink-2">공용</span>
 						{/if}
 					</div>
 					{#if gpu}
-						<div class="mt-0.5 text-[11px] text-purple-400">{gpu}</div>
+						<div class="mt-0.5 text-xs text-purple-400">{gpu}</div>
 					{/if}
 				</div>
 					{#if blockers.length > 0}
 						<div class="mt-1 flex flex-wrap gap-1">
 							{#each blockers as b}
-								<span class="rounded border border-[var(--color-state-danger)]/40 bg-[var(--color-surface-sunken)] px-1.5 py-0.5 text-[10px] text-[var(--color-state-danger-text)] font-medium">
+								<span class="rounded border border-[var(--color-state-danger)]/40 bg-[var(--color-surface-sunken)] px-1.5 py-0.5 text-xs text-[var(--color-state-danger-text)] font-medium">
 									{blockerLabel(b)}
 								</span>
 							{/each}
@@ -574,13 +574,13 @@
 	{/each}
 
 	{#if searchedFlavors.length === 0}
-		<div class="py-8 text-center text-sm text-ink-3">조건에 맞는 플레이버가 없습니다</div>
+		<div class="py-8 text-center text-sm text-ink-2">조건에 맞는 플레이버가 없습니다</div>
 	{/if}
 </div>
 
 <!-- 페이지네이션 -->
 {#if totalPages > 1}
-<div class="order-7 mt-3 flex items-center justify-between text-xs text-ink-3">
+<div class="order-7 mt-3 flex items-center justify-between text-xs text-ink-2">
 	<span>{searchedFlavors.length}개 중 {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, searchedFlavors.length)}</span>
 	<div class="flex gap-1">
 		<button

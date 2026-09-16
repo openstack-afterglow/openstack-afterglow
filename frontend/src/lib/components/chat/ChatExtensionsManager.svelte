@@ -4,6 +4,7 @@
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
 	import Button from '$lib/components/ui/Button.svelte';
+	import Pill from '$lib/components/ui/Pill.svelte';
 
 	// base: '/api/v1/chat/admin' (관리자 global) 또는 '/api/v1/chat' (사용자 본인)
 	// only: 특정 섹션만 렌더('mcp' | 'tools' | 'skills'). 미지정 시 전부.
@@ -389,7 +390,7 @@
 								<span class="text-xs text-[var(--color-ink-3)]">{m.transport}</span>
 								{#if m.has_headers}<span class="text-xs text-[var(--color-ink-3)]" title="공용 인증 헤더 설정됨">🔒</span>{/if}
 								{#if m.auth_mode === 'oauth'}
-									<span class="text-xs text-[var(--color-state-info)]" title="사용자별 OAuth 연결 필요">OAuth</span>
+									<span title="사용자별 OAuth 연결 필요"><Pill tone="neutral" size="xs">OAuth</Pill></span>
 								{/if}
 							</div>
 							{#if m.url}<div class="mt-0.5 truncate text-xs text-[var(--color-ink-3)]">{m.url}</div>{/if}
@@ -406,7 +407,7 @@
 							{/if}
 							{#if isAdmin}
 								<select
-									class="rounded border border-[var(--color-line)] bg-[var(--color-sunken)] px-1 py-0.5 text-xs text-[var(--color-ink-2)]"
+									class="rounded border border-[var(--color-line)] bg-[var(--color-surface-sunken)] px-1 py-0.5 text-xs text-[var(--color-ink-2)]"
 									aria-label={`${m.name} 로딩 정책`}
 									value={m.load_policy ?? 'on_demand'}
 									onchange={(event) =>
@@ -478,7 +479,7 @@
 					<div class="flex shrink-0 items-center gap-3 text-xs">
 						{#if isAdmin}
 							<select
-								class="rounded border border-[var(--color-line)] bg-[var(--color-sunken)] px-1 py-0.5 text-xs text-[var(--color-ink-2)]"
+								class="rounded border border-[var(--color-line)] bg-[var(--color-surface-sunken)] px-1 py-0.5 text-xs text-[var(--color-ink-2)]"
 								aria-label={`${t.name} 로딩 정책`}
 								value={t.load_policy ?? 'on_demand'}
 								onchange={(event) =>

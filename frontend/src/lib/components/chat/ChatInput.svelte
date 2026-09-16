@@ -844,7 +844,7 @@
 	}
 	.shortcut-description {
 		overflow: hidden;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-size: 0.68rem;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -852,7 +852,7 @@
 	.shortcut-kind {
 		max-width: 8rem;
 		overflow: hidden;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-size: 0.68rem;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -919,7 +919,7 @@
 		border: 1px solid var(--color-line-2);
 		border-radius: 50%;
 		background: transparent;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-size: 0.7rem;
 		font-weight: 700;
 		cursor: pointer;
@@ -1082,7 +1082,7 @@
 		font-weight: 600;
 	}
 	.plus-opt-description {
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-size: 0.7rem;
 		line-height: 1.35;
 	}
@@ -1107,7 +1107,7 @@
 		font-weight: 700;
 		text-transform: uppercase;
 		letter-spacing: 0.03em;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.plus-opt.toggle {
 		gap: 0.45rem;
@@ -1189,7 +1189,7 @@
 		font-weight: 700;
 		text-transform: uppercase;
 		letter-spacing: 0.03em;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.effort-opt {
 		text-align: left;
@@ -1241,7 +1241,7 @@
 		margin: 0.5rem 0 0;
 		text-align: center;
 		font-size: 0.6875rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 
 	@media (max-width: 47.9375rem) {

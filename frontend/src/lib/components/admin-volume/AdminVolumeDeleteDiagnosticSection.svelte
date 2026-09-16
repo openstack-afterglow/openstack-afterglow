@@ -211,7 +211,7 @@
 
 	.diagnostic-kicker,
 	.diagnostic-muted {
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 
 	.diagnostic-primary {

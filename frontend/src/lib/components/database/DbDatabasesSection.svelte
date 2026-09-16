@@ -36,7 +36,7 @@
 		</div>
 	{/if}
 	{#if s.databases.length === 0}
-		<div class="text-ink-3 text-xs">데이터베이스가 없습니다</div>
+		<div class="text-ink-2 text-xs">데이터베이스가 없습니다</div>
 	{:else}
 		<div class="space-y-1">
 			{#each s.databases as db}

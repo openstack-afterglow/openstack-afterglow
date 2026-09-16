@@ -13,7 +13,7 @@
 				접근 규칙 {s.fileStorage!.share_proto === 'NFS' ? '(IP)' : '(CephX)'}
 			</h3>
 			{#if s.fileStorage!.access_rules_status}
-				<StatusChip status={s.fileStorage!.access_rules_status} class="text-[10px]" />
+				<StatusChip status={s.fileStorage!.access_rules_status} class="text-xs" />
 			{/if}
 		</div>
 		<button
@@ -59,18 +59,18 @@
 	{/if}
 
 	{#if s.accessLoading}
-		<p class="text-ink-3 text-sm text-center py-4">로딩 중...</p>
+		<p class="text-ink-2 text-sm text-center py-4">로딩 중...</p>
 	{:else if s.accessError}
 		<div class="flex items-center gap-2 py-3 px-3 bg-red-900/20 border border-red-800/50 rounded-md">
 			<span class="text-red-400 text-xs">{s.accessError}</span>
 		</div>
 	{:else if s.accessRules.length === 0}
-		<p class="text-ink-3 text-sm text-center py-4">접근 규칙이 없습니다</p>
+		<p class="text-ink-2 text-sm text-center py-4">접근 규칙이 없습니다</p>
 	{:else}
 		<div class="overflow-x-auto">
 			<table class="w-full text-sm">
 				<thead>
-					<tr class="border-b border-line text-ink-3 text-xs uppercase tracking-wide">
+					<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
 						<th class="text-left py-2 pr-4">접근 대상</th>
 						<th class="text-left py-2 pr-4">권한</th>
 						<th class="text-left py-2 pr-4">상태</th>
@@ -86,12 +86,12 @@
 								<span class="text-xs px-1.5 py-0.5 rounded {rule.access_level === 'rw' ? 'bg-orange-900/30 text-orange-400' : 'bg-surface-sunken text-ink-2'}">{rule.access_level}</span>
 							</td>
 							<td class="py-2 pr-4">
-								<StatusChip status={rule.state || 'unknown'} class="text-[10px]" />
+								<StatusChip status={rule.state || 'unknown'} class="text-xs" />
 							</td>
 							<td class="py-2 pr-4 text-xs font-mono">
 								{#if rule.access_key}
 									<div class="flex items-center gap-2">
-										<span class="text-ink-3 truncate max-w-[120px]">{rule.access_key.slice(0, 16)}...</span>
+										<span class="text-ink-2 truncate max-w-[120px]">{rule.access_key.slice(0, 16)}...</span>
 										<button
 											onclick={() => s.copyKey(rule.access_key!, rule.id)}
 											class="text-xs px-1.5 py-0.5 rounded border transition-colors {s.copiedKey === rule.id ? 'border-green-700 text-green-400' : 'border-line-2 text-ink-2 hover:text-ink-1'}"
@@ -100,7 +100,7 @@
 										</button>
 									</div>
 								{:else}
-									<span class="text-ink-3">-</span>
+									<span class="text-ink-2">-</span>
 								{/if}
 							</td>
 							<td class="py-2 text-right">

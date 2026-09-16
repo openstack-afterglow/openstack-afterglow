@@ -96,7 +96,7 @@
 	</PageHeader>
 
 	{#if loading}
-		<div class="text-ink-3 text-sm">로딩 중...</div>
+		<div class="text-ink-2 text-sm">로딩 중...</div>
 	{:else}
 		<div class="overflow-x-auto">
 			<table class="w-full text-sm">
@@ -114,10 +114,10 @@
 						<tr class="border-b border-line/50 text-xs hover:bg-surface-sunken/30 transition-colors">
 							<td class="py-2 pr-4 font-mono text-green-400">{f.floating_ip_address}</td>
 							<td class="py-2 pr-4 font-mono text-ink-2">{f.fixed_ip_address ?? '-'}</td>
-							<td class="py-2 pr-4 {f.port_id ? 'text-green-400' : 'text-ink-3'}">
+							<td class="py-2 pr-4 {f.port_id ? 'text-green-400' : 'text-ink-2'}">
 								{f.port_id ? '할당됨' : '미할당'}
 							</td>
-							<td class="py-2 pr-4 text-ink-3 font-mono">{f.project_id?.slice(0, 8) ?? '-'}</td>
+							<td class="py-2 pr-4 text-ink-2 font-mono">{f.project_id?.slice(0, 8) ?? '-'}</td>
 							<td class="py-2">
 								{#if !f.port_id}
 									<button onclick={() => { deleteFip = f; deleteError = ''; }}
@@ -129,7 +129,7 @@
 				</tbody>
 			</table>
 		</div>
-		<div class="mt-3 flex gap-4 text-xs text-ink-3">
+		<div class="mt-3 flex gap-4 text-xs text-ink-2">
 			<span>총 {fips.length}개</span>
 			<span class="text-green-400">할당됨: {fips.filter(f => f.port_id).length}개</span>
 			<span>미할당: {fips.filter(f => !f.port_id).length}개</span>

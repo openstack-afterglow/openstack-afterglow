@@ -1164,7 +1164,7 @@
                 <option value={image.id}>{baseImageLabel(image)}</option>
               {/each}
             </select>
-            <p class="mt-1 text-[11px] text-ink-3">uv preset과 apt system layer는 선택한 실제 Glance image fingerprint를 저장합니다.</p>
+            <p class="mt-1 text-xs text-ink-2">uv preset과 apt system layer는 선택한 실제 Glance image fingerprint를 저장합니다.</p>
           </div>
           <div>
             <label class="block text-xs text-ink-2 mb-1" for="system-apt-packages">apt 패키지 (system layer)</label>
@@ -1176,9 +1176,9 @@
               class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
             ></textarea>
             {#if systemInvalidAptPackages.length > 0}
-              <p class="mt-1 text-[11px] text-red-300">apt 패키지명 형식 오류: {systemInvalidAptPackages.join(', ')}</p>
+              <p class="mt-1 text-xs text-red-300">apt 패키지명 형식 오류: {systemInvalidAptPackages.join(', ')}</p>
             {:else if systemAptPackages.length > 0}
-              <p class="mt-1 text-[11px] text-ink-3">전송 예정: {systemAptPackages.join(', ')}</p>
+              <p class="mt-1 text-xs text-ink-2">전송 예정: {systemAptPackages.join(', ')}</p>
             {/if}
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1219,7 +1219,7 @@
                   <option value={image.id}>{baseImageLabel(image)}</option>
                 {/each}
               </select>
-              <p class="mt-1 text-[11px] text-ink-3">NVIDIA hook 레이어도 선택한 실제 Glance image 계열의 소비 VM에서만 사용하세요.</p>
+              <p class="mt-1 text-xs text-ink-2">NVIDIA hook 레이어도 선택한 실제 Glance image 계열의 소비 VM에서만 사용하세요.</p>
             </div>
             <div>
               <label class="block text-xs text-ink-2 mb-1" for="nvidia-driver-branch">NVIDIA driver branch</label>
@@ -1232,7 +1232,7 @@
                   <option value={branch}>{branch}</option>
                 {/each}
               </select>
-              <p class="mt-1 text-[11px] text-ink-3">
+              <p class="mt-1 text-xs text-ink-2">
                 레이어 자체에는 /usr hook만 저장하고, 소비 VM에서 cuda-keyring + nvidia-dkms-*-open을 설치합니다.
               </p>
             </div>
@@ -1400,7 +1400,7 @@
                 {/each}
               </select>
             {:else}
-              <div class="text-xs text-ink-3 italic px-3 py-2 bg-surface-base border border-line-2 rounded-lg">
+              <div class="text-xs text-ink-2 italic px-3 py-2 bg-surface-base border border-line-2 rounded-lg">
                 먼저 uv 레이어를 빌드하세요
               </div>
             {/if}
@@ -1410,8 +1410,8 @@
               <div class="text-xs text-indigo-300">
                 stacked 빌드: <span class="font-mono">{artifactChainLabel(selectedPythonParentArtifact)}</span> → <span class="font-mono">{pythonForm.layer_name || '(새 레이어)'}</span>
               </div>
-              <p class="text-[11px] text-indigo-200/70">부모 uv artifact ID #{selectedPythonParentArtifact.id} 위에 Python runtime delta만 생성합니다.</p>
-              <p class="text-[11px] text-indigo-200/70">상속 Ubuntu: {ubuntuBaseLabel(selectedPythonParentArtifact)}</p>
+              <p class="text-xs text-indigo-200/70">부모 uv artifact ID #{selectedPythonParentArtifact.id} 위에 Python runtime delta만 생성합니다.</p>
+              <p class="text-xs text-indigo-200/70">상속 Ubuntu: {ubuntuBaseLabel(selectedPythonParentArtifact)}</p>
             </div>
           {/if}
           <button
@@ -1457,7 +1457,7 @@
                 {/each}
               </select>
             {:else}
-              <div class="text-xs text-ink-3 italic px-3 py-2 bg-surface-base border border-line-2 rounded-lg">
+              <div class="text-xs text-ink-2 italic px-3 py-2 bg-surface-base border border-line-2 rounded-lg">
                 먼저 Python runtime 레이어를 빌드하세요
               </div>
             {/if}
@@ -1467,8 +1467,8 @@
               <div class="text-xs text-indigo-300">
                 package delta: <span class="font-mono">{artifactChainLabel(selectedPackageParentArtifact)}</span> → <span class="font-mono">{packageForm.layer_name || '(새 레이어)'}</span>
               </div>
-              <p class="text-[11px] text-indigo-200/70">부모 artifact ID #{selectedPackageParentArtifact.id}의 Python runtime을 재사용합니다.</p>
-              <p class="text-[11px] text-indigo-200/70">상속 Ubuntu: {ubuntuBaseLabel(selectedPackageParentArtifact)}</p>
+              <p class="text-xs text-indigo-200/70">부모 artifact ID #{selectedPackageParentArtifact.id}의 Python runtime을 재사용합니다.</p>
+              <p class="text-xs text-indigo-200/70">상속 Ubuntu: {ubuntuBaseLabel(selectedPackageParentArtifact)}</p>
             </div>
           {/if}
           <div>
@@ -1481,9 +1481,9 @@
               class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
             ></textarea>
             {#if packageInvalidSpecs.length > 0}
-              <p class="mt-1 text-[11px] text-red-300">패키지 스펙 형식 오류: {packageInvalidSpecs.join(', ')}</p>
+              <p class="mt-1 text-xs text-red-300">패키지 스펙 형식 오류: {packageInvalidSpecs.join(', ')}</p>
             {:else if packageSpecs.length > 0}
-              <p class="mt-1 text-[11px] text-ink-3">전송 예정: {packageSpecs.join(', ')}</p>
+              <p class="mt-1 text-xs text-ink-2">전송 예정: {packageSpecs.join(', ')}</p>
             {/if}
           </div>
           <div>
@@ -1495,7 +1495,7 @@
               bind:value={packageForm.pip_index_url}
               class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
             />
-            <p class="mt-1 text-[11px] text-ink-3">pip install --index-url 값입니다. 인증정보, query, fragment는 허용하지 않습니다.</p>
+            <p class="mt-1 text-xs text-ink-2">pip install --index-url 값입니다. 인증정보, query, fragment는 허용하지 않습니다.</p>
           </div>
           <div>
             <label class="block text-xs text-ink-2 mb-1" for="package-extra-index-urls">extra index URLs (선택, 줄당 1개)</label>
@@ -1517,9 +1517,9 @@
               class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
             ></textarea>
             {#if packageInvalidUrls.length > 0}
-              <p class="mt-1 text-[11px] text-red-300">pip source URL 형식 오류: {packageInvalidUrls.join(', ')}</p>
+              <p class="mt-1 text-xs text-red-300">pip source URL 형식 오류: {packageInvalidUrls.join(', ')}</p>
             {:else if packageForm.pip_index_url.trim() || packageExtraIndexUrls.length > 0 || packageFindLinks.length > 0}
-              <p class="mt-1 text-[11px] text-ink-3">pip source 옵션을 빌드에 함께 전달합니다.</p>
+              <p class="mt-1 text-xs text-ink-2">pip source 옵션을 빌드에 함께 전달합니다.</p>
             {/if}
           </div>
           <button
@@ -1566,11 +1566,11 @@
                 />
               {/if}
               {#if selectedConsumeProfileBaseImage}
-                <p class="mt-1 text-[11px] text-ink-3">기본 이미지: {baseImageLabel(selectedConsumeProfileBaseImage)} 사용</p>
+                <p class="mt-1 text-xs text-ink-2">기본 이미지: {baseImageLabel(selectedConsumeProfileBaseImage)} 사용</p>
               {:else if selectedConsumeProfileBaseImageIds.length === 1}
-                <p class="mt-1 text-[11px] text-ink-3">기본 이미지 ID: {shortId(selectedConsumeProfileBaseImageIds[0])} 사용</p>
+                <p class="mt-1 text-xs text-ink-2">기본 이미지 ID: {shortId(selectedConsumeProfileBaseImageIds[0])} 사용</p>
               {:else if consumeProfileHasMixedUbuntuBases}
-                <p class="mt-1 text-[11px] text-yellow-300">base image가 섞인 프로필입니다: {selectedConsumeProfileBaseImageIds.join(', ') || selectedConsumeProfileUbuntuBases.join(', ')}</p>
+                <p class="mt-1 text-xs text-yellow-300">base image가 섞인 프로필입니다: {selectedConsumeProfileBaseImageIds.join(', ') || selectedConsumeProfileUbuntuBases.join(', ')}</p>
               {/if}
             </div>
             <div>
@@ -1603,7 +1603,7 @@
               bind:value={consumeForm.network_id}
               class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
             />
-            <p class="mt-1 text-[11px] text-ink-3">소비 VM 이미지는 프로필 레이어가 저장한 Glance base image fingerprint에서 자동 결정됩니다.</p>
+            <p class="mt-1 text-xs text-ink-2">소비 VM 이미지는 프로필 레이어가 저장한 Glance base image fingerprint에서 자동 결정됩니다.</p>
           </div>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
@@ -1618,7 +1618,7 @@
                   <option value={kp.name}>{kp.name}</option>
                 {/each}
               </select>
-              <p class="mt-1 text-[11px] text-ink-3">현재 로그인한 프로젝트/사용자 범위에서 보이는 키페어만 선택됩니다.</p>
+              <p class="mt-1 text-xs text-ink-2">현재 로그인한 프로젝트/사용자 범위에서 보이는 키페어만 선택됩니다.</p>
             </div>
             <div>
               <label class="block text-xs text-ink-2 mb-1" for="consume-ssh-username">SSH 사용자 (선택)</label>
@@ -1629,7 +1629,7 @@
                 bind:value={consumeForm.ssh_username}
                 class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
               />
-              <p class="mt-1 text-[11px] text-ink-3">키나 공개키를 넣은 경우에만 사용됩니다. VM에는 Floating IP를 붙이지 않으므로 내부 IP로 접속해야 합니다.</p>
+              <p class="mt-1 text-xs text-ink-2">키나 공개키를 넣은 경우에만 사용됩니다. VM에는 Floating IP를 붙이지 않으므로 내부 IP로 접속해야 합니다.</p>
             </div>
           </div>
           <div>
@@ -1641,7 +1641,7 @@
               bind:value={consumeForm.ssh_public_key}
               class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm font-mono resize-none"
             ></textarea>
-            <p class="mt-1 text-[11px] text-ink-3">직접 입력한 공개키가 있으면 위 키페어 선택보다 우선합니다.</p>
+            <p class="mt-1 text-xs text-ink-2">직접 입력한 공개키가 있으면 위 키페어 선택보다 우선합니다.</p>
           </div>
           <button
             onclick={triggerConsume}
@@ -1663,7 +1663,7 @@
         <p class="text-xs text-ink-2 mb-4">
           빌드된 레이어를 순서대로 묶어 named 프로필로 저장합니다.
           소비 인스턴스는 이 프로필의 레이어 스택을 OverlayFS로 마운트합니다.
-          <span class="text-ink-3">(표시는 base→상위 레이어 순서, 소비 시 topmost 우선순위로 변환)</span>
+          <span class="text-ink-2">(표시는 base→상위 레이어 순서, 소비 시 topmost 우선순위로 변환)</span>
         </p>
         {#if profileError}
           <div class="mb-3 p-2 bg-red-900/40 border border-red-700 rounded text-red-300 text-xs">{profileError}</div>
@@ -1676,9 +1676,9 @@
         {/if}
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <p class="text-xs text-ink-3 mb-2">빌드된 레이어 (클릭해 선택)</p>
+            <p class="text-xs text-ink-2 mb-2">빌드된 레이어 (클릭해 선택)</p>
             {#if artifacts.length === 0}
-              <p class="text-xs text-ink-3 italic">아직 빌드된 레이어가 없습니다</p>
+              <p class="text-xs text-ink-2 italic">아직 빌드된 레이어가 없습니다</p>
             {:else}
               <div class="space-y-1 max-h-40 overflow-y-auto">
                 {#each artifacts as a}
@@ -1689,21 +1689,21 @@
                     disabled={!a.is_sealed}
                     title={!a.is_sealed ? '봉인 전 — 빌드 완료 후 사용 가능' : artifactChainLabel(a)}
                     class="w-full text-left px-3 py-2 rounded-lg text-xs transition-colors
-                      {!a.is_sealed ? 'opacity-40 cursor-not-allowed bg-surface-base border border-line text-ink-3' :
+                      {!a.is_sealed ? 'opacity-40 cursor-not-allowed bg-surface-base border border-line text-ink-2' :
                        selected ? 'bg-action-warm/50 border border-action-warm text-action-on-warm' :
                        'bg-surface-base border border-line-2 text-ink-2 hover:border-line-2'}"
                   >
                     <div class="flex items-center gap-2">
                       <span class="font-mono flex-1">#{a.id} {a.name}</span>
-                      <span class="text-[10px] px-1.5 py-0.5 rounded {a.kind === 'uv' ? 'bg-surface-selected/60 text-warm-text' : 'bg-indigo-900/60 text-indigo-300'}">{a.kind}</span>
+                      <span class="text-xs px-1.5 py-0.5 rounded {a.kind === 'uv' ? 'bg-surface-selected/60 text-warm-text' : 'bg-indigo-900/60 text-indigo-300'}">{a.kind}</span>
                       {#if selected}
-                        <span class="text-[10px] text-warm-text">#{profileForm.selectedLayers.indexOf(a.name) + 1}</span>
+                        <span class="text-xs text-warm-text">#{profileForm.selectedLayers.indexOf(a.name) + 1}</span>
                       {/if}
                     </div>
-                    <div class="mt-1 text-[10px] text-ink-3 truncate">체인: {artifactChainLabel(a)}</div>
-                    <div class="mt-0.5 text-[10px] text-ink-3 truncate">Ubuntu: {ubuntuBaseLabel(a)}</div>
+                    <div class="mt-1 text-xs text-ink-2 truncate">체인: {artifactChainLabel(a)}</div>
+                    <div class="mt-0.5 text-xs text-ink-2 truncate">Ubuntu: {ubuntuBaseLabel(a)}</div>
                     {#if packageLabel(a) !== '—'}
-                      <div class="mt-0.5 text-[10px] text-ink-3 truncate">요청 패키지: {packageLabel(a)}</div>
+                      <div class="mt-0.5 text-xs text-ink-2 truncate">요청 패키지: {packageLabel(a)}</div>
                     {/if}
                   </button>
                 {/each}
@@ -1712,27 +1712,27 @@
           </div>
           <div class="space-y-3">
             <div>
-              <p class="text-xs text-ink-3 mb-1">선택된 레이어 순서</p>
+              <p class="text-xs text-ink-2 mb-1">선택된 레이어 순서</p>
               {#if profileForm.selectedLayers.length === 0}
-                <p class="text-xs text-ink-3 italic">레이어를 선택하세요</p>
+                <p class="text-xs text-ink-2 italic">레이어를 선택하세요</p>
               {:else}
                 <div class="space-y-1">
                   {#each profileForm.selectedLayers as layer, i}
                     <div class="flex items-center gap-2 text-xs text-ink-2 px-2 py-1 bg-surface-base rounded">
-                      <span class="text-ink-3 w-4 text-right">{i + 1}</span>
+                      <span class="text-ink-2 w-4 text-right">{i + 1}</span>
                       <div class="flex-1 min-w-0">
                         <span class="font-mono">{layer}</span>
                         {#if isAutoIncludedParent(layer)}
-                          <span class="ml-2 text-[10px] text-warm-text">상위 부모 자동 포함</span>
+                          <span class="ml-2 text-xs text-warm-text">상위 부모 자동 포함</span>
                         {/if}
                       </div>
-                      <button type="button" onclick={() => removeProfileLayerCascade(layer)} class="text-ink-3 hover:text-red-400 transition-colors">✕</button>
+                      <button type="button" onclick={() => removeProfileLayerCascade(layer)} class="text-ink-2 hover:text-red-400 transition-colors">✕</button>
                     </div>
                   {/each}
                 </div>
               {/if}
               {#if selectedProfileBaseImageIds.length === 1}
-                <p class="mt-2 text-[11px] text-ink-3">프로필 base image: {artifactBaseImageLabel(sealedArtifacts.find(a => a.base_image_id === selectedProfileBaseImageIds[0]) ?? { ubuntu_base: selectedProfileUbuntuBases[0], base_image_id: selectedProfileBaseImageIds[0] })}</p>
+                <p class="mt-2 text-xs text-ink-2">프로필 base image: {artifactBaseImageLabel(sealedArtifacts.find(a => a.base_image_id === selectedProfileBaseImageIds[0]) ?? { ubuntu_base: selectedProfileUbuntuBases[0], base_image_id: selectedProfileBaseImageIds[0] })}</p>
               {:else if profileHasMixedUbuntuBases}
                 <div class="mt-2 px-3 py-2 bg-yellow-900/30 border border-yellow-700/50 rounded text-xs text-yellow-200">
                   base image가 섞여 있습니다: {selectedProfileBaseImageIds.join(', ') || selectedProfileUbuntuBases.join(', ')}. 저장/소비 전 같은 Glance base image 레이어만 선택하세요.
@@ -1762,11 +1762,11 @@
             </button>
             {#if profiles.length > 0}
               <div class="pt-3 border-t border-line-2">
-                <p class="text-xs text-ink-3 mb-2">저장된 프로필</p>
+                <p class="text-xs text-ink-2 mb-2">저장된 프로필</p>
                 <div class="overflow-x-auto border border-line-2 rounded-lg">
                   <table class="w-full text-xs">
                     <thead>
-                      <tr class="text-ink-3 bg-surface-base/80">
+                      <tr class="text-ink-2 bg-surface-base/80">
                         <th class="text-left px-3 py-2">이름</th>
                         <th class="text-left px-3 py-2">레이어 체인</th>
                         <th class="text-left px-3 py-2">활성 consume</th>
@@ -1782,7 +1782,7 @@
                           <td class="px-3 py-2 text-ink-2">{profile.layers.join(' → ')}</td>
                           <td class="px-3 py-2 text-ink-2">{blockers.length}</td>
                           <td class="px-3 py-2">
-                            <span class="{profile.is_published ? 'text-warm-text' : 'text-ink-3'}">{profile.is_published ? '공개' : '비공개'}</span>
+                            <span class="{profile.is_published ? 'text-warm-text' : 'text-ink-2'}">{profile.is_published ? '공개' : '비공개'}</span>
                           </td>
                           <td class="px-3 py-2">
                             <div class="flex justify-end gap-2">
@@ -1834,7 +1834,7 @@
     <div class="mb-6" data-tour="admin-library-artifacts">
       <h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">아티팩트 현황</h3>
       {#if artifacts.length === 0}
-        <div class="bg-surface-sunken border border-line-2 rounded-xl p-6 text-center text-ink-3 text-sm">
+        <div class="bg-surface-sunken border border-line-2 rounded-xl p-6 text-center text-ink-2 text-sm">
           생성된 artifact가 없습니다
         </div>
       {:else}
@@ -1842,7 +1842,7 @@
           <div class="max-h-80 overflow-y-auto">
             <table class="w-full text-sm">
               <thead>
-                <tr class="text-xs text-ink-3 uppercase tracking-wide sticky top-0 z-10 bg-surface-sunken [box-shadow:inset_0_-1px_0_#374151]">
+                <tr class="text-xs text-ink-2 uppercase tracking-wide sticky top-0 z-10 bg-surface-sunken [box-shadow:inset_0_-1px_0_#374151]">
                   <th class="text-left px-4 py-2.5">Artifact</th>
                   <th class="text-left px-4 py-2.5 hidden md:table-cell">상속 체인</th>
                   <th class="text-left px-4 py-2.5 hidden lg:table-cell">요청 패키지</th>
@@ -1855,12 +1855,12 @@
                   <tr class="hover:bg-surface-selected/30 transition-colors">
                     <td class="px-4 py-2.5">
                       <div class="font-mono text-ink-0">#{a.id} {a.name}</div>
-                      <div class="mt-1 flex items-center gap-1.5 text-[10px] text-ink-3">
+                      <div class="mt-1 flex items-center gap-1.5 text-xs text-ink-2">
                         <span class="px-1.5 py-0.5 rounded {a.kind === 'uv' ? 'bg-surface-selected/60 text-warm-text' : 'bg-indigo-900/60 text-indigo-300'}">{a.kind}</span>
                         {#if a.python_version}<span>py{a.python_version}</span>{/if}
                         <span>{a.is_sealed ? 'sealed' : 'unsealed'}</span>
                       </div>
-                      <div class="mt-0.5 text-[10px] text-ink-3 truncate" title={ubuntuBaseLabel(a)}>Ubuntu: {ubuntuBaseLabel(a)}</div>
+                      <div class="mt-0.5 text-xs text-ink-2 truncate" title={ubuntuBaseLabel(a)}>Ubuntu: {ubuntuBaseLabel(a)}</div>
                     </td>
                     <td class="px-4 py-2.5 text-ink-2 text-xs font-mono hidden md:table-cell max-w-md truncate" title={artifactChainLabel(a)}>
                       {artifactChainLabel(a)}
@@ -1909,7 +1909,7 @@
         {/if}
       </h3>
       {#if builds.length === 0}
-        <div class="bg-surface-sunken border border-line-2 rounded-xl p-6 text-center text-ink-3 text-sm">
+        <div class="bg-surface-sunken border border-line-2 rounded-xl p-6 text-center text-ink-2 text-sm">
           빌드 기록이 없습니다
         </div>
       {:else}
@@ -1917,7 +1917,7 @@
           <div class="max-h-72 overflow-y-auto">
             <table class="w-full text-sm">
               <thead>
-                <tr class="text-xs text-ink-3 uppercase tracking-wide sticky top-0 z-10 bg-surface-sunken [box-shadow:inset_0_-1px_0_#374151]">
+                <tr class="text-xs text-ink-2 uppercase tracking-wide sticky top-0 z-10 bg-surface-sunken [box-shadow:inset_0_-1px_0_#374151]">
                   <th class="text-left px-4 py-2.5">레이어 이름</th>
                   <th class="text-left px-4 py-2.5 hidden sm:table-cell">Kind / Python</th>
                   <th class="text-left px-4 py-2.5">상태</th>
@@ -1938,13 +1938,13 @@
                     <td class="px-4 py-2.5 font-medium text-ink-0 max-w-28 truncate">
                       <div class="truncate">{build.layer_name}</div>
                       {#if buildPackageLabel(build) !== '—'}
-                        <div class="mt-0.5 text-[10px] text-ink-3 truncate" title={buildPackageLabel(build)}>{buildPackageLabel(build)}</div>
+                        <div class="mt-0.5 text-xs text-ink-2 truncate" title={buildPackageLabel(build)}>{buildPackageLabel(build)}</div>
                       {/if}
                     </td>
                     <td class="px-4 py-2.5 text-ink-2 text-xs font-mono hidden sm:table-cell">
-                      <span class="text-[10px] px-1.5 py-0.5 rounded mr-1 {build.kind === 'uv' ? 'bg-surface-selected/60 text-warm-text' : 'bg-indigo-900/60 text-indigo-300'}">{build.kind ?? 'python'}</span>
+                      <span class="text-xs px-1.5 py-0.5 rounded mr-1 {build.kind === 'uv' ? 'bg-surface-selected/60 text-warm-text' : 'bg-indigo-900/60 text-indigo-300'}">{build.kind ?? 'python'}</span>
                       {build.python_version ?? ''}
-                      <div class="mt-0.5 text-[10px] text-ink-3 truncate" title={ubuntuBaseLabel(build)}>Ubuntu: {ubuntuBaseLabel(build)}</div>
+                      <div class="mt-0.5 text-xs text-ink-2 truncate" title={ubuntuBaseLabel(build)}>Ubuntu: {ubuntuBaseLabel(build)}</div>
                     </td>
                     <td class="px-4 py-2.5">
                       <StatusChip status={build.status} />
@@ -1960,13 +1960,13 @@
                             style="width:{build.progress_pct}%"
                           ></div>
                         </div>
-                        <span class="text-xs text-ink-3 w-8 text-right">{build.progress_pct}%</span>
+                        <span class="text-xs text-ink-2 w-8 text-right">{build.progress_pct}%</span>
                       </div>
                     </td>
-                    <td class="px-4 py-2.5 text-ink-3 text-xs font-mono hidden xl:table-cell">
+                    <td class="px-4 py-2.5 text-ink-2 text-xs font-mono hidden xl:table-cell">
                       {build.server_id ? build.server_id.slice(0, 8) + '…' : '—'}
                     </td>
-                    <td class="px-4 py-2.5 text-ink-3 text-xs hidden lg:table-cell">
+                    <td class="px-4 py-2.5 text-ink-2 text-xs hidden lg:table-cell">
                       {fmtRelative(build.started_at)}
                     </td>
                     <td class="px-4 py-2.5 text-right">
@@ -1990,7 +1990,7 @@
     <div data-tour="admin-library-consumes">
       <h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">소비 인스턴스</h3>
       {#if consumes.length === 0}
-        <div class="bg-surface-sunken border border-line-2 rounded-xl p-6 text-center text-ink-3 text-sm">
+        <div class="bg-surface-sunken border border-line-2 rounded-xl p-6 text-center text-ink-2 text-sm">
           생성된 소비 인스턴스가 없습니다
         </div>
       {:else}
@@ -1998,7 +1998,7 @@
           <div class="max-h-72 overflow-y-auto">
             <table class="w-full text-sm">
               <thead>
-                <tr class="text-xs text-ink-3 uppercase tracking-wide sticky top-0 z-10 bg-surface-sunken [box-shadow:inset_0_-1px_0_#374151]">
+                <tr class="text-xs text-ink-2 uppercase tracking-wide sticky top-0 z-10 bg-surface-sunken [box-shadow:inset_0_-1px_0_#374151]">
                   <th class="text-left px-4 py-2.5">서버 이름</th>
                   <th class="text-left px-4 py-2.5 hidden sm:table-cell">프로필</th>
                   <th class="text-left px-4 py-2.5">상태</th>
@@ -2018,10 +2018,10 @@
                     <td class="px-4 py-2.5">
                       <StatusChip status={c.status} />
                     </td>
-                    <td class="px-4 py-2.5 text-ink-3 text-xs font-mono hidden xl:table-cell">
+                    <td class="px-4 py-2.5 text-ink-2 text-xs font-mono hidden xl:table-cell">
                       {c.server_id ? c.server_id.slice(0, 8) + '…' : '—'}
                     </td>
-                    <td class="px-4 py-2.5 text-ink-3 text-xs hidden lg:table-cell">
+                    <td class="px-4 py-2.5 text-ink-2 text-xs hidden lg:table-cell">
                       {fmtRelative(c.created_at)}
                     </td>
                     <td class="px-4 py-2.5 text-right">
@@ -2049,12 +2049,12 @@
     <div class="bg-surface-base rounded-xl border border-line-2 w-full max-w-2xl mx-auto p-6 space-y-5">
       <div class="flex items-start justify-between gap-3">
         <div>
-          <p class="text-xs text-ink-3 mb-1">레이어 빌드 상세</p>
+          <p class="text-xs text-ink-2 mb-1">레이어 빌드 상세</p>
           <h2 class="text-base font-semibold text-ink-0">{buildDetail?.layer_name ?? '—'}</h2>
           {#if buildDetail}
-            <p class="text-xs text-ink-3 mt-0.5">Ubuntu: {ubuntuBaseLabel(buildDetail)}</p>
+            <p class="text-xs text-ink-2 mt-0.5">Ubuntu: {ubuntuBaseLabel(buildDetail)}</p>
           {/if}
-          <p class="text-xs text-ink-3 mt-0.5">Kind: {buildDetail?.kind ?? '—'}{buildDetail?.python_version ? ` · Python ${buildDetail.python_version}` : ''}</p>
+          <p class="text-xs text-ink-2 mt-0.5">Kind: {buildDetail?.kind ?? '—'}{buildDetail?.python_version ? ` · Python ${buildDetail.python_version}` : ''}</p>
         </div>
         <div class="flex items-center gap-2 shrink-0">
           {#if buildDetail?.status}
@@ -2062,7 +2062,7 @@
           {/if}
           <button
             onclick={() => (detailOpen = false)}
-            class="text-ink-3 hover:text-ink-0 transition-colors ml-2"
+            class="text-ink-2 hover:text-ink-0 transition-colors ml-2"
             aria-label="닫기"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2096,11 +2096,11 @@
         <!-- 정보 그리드 -->
         <div class="grid grid-cols-2 gap-3 text-xs">
           <div class="bg-surface-sunken/60 rounded-lg px-3 py-2.5">
-            <p class="text-ink-3 mb-0.5">VM 인스턴스</p>
+            <p class="text-ink-2 mb-0.5">VM 인스턴스</p>
             <p class="text-ink-0 font-mono truncate">{buildDetail.server_id ? buildDetail.server_id.slice(0, 18) + '…' : '—'}</p>
           </div>
           <div class="bg-surface-sunken/60 rounded-lg px-3 py-2.5">
-            <p class="text-ink-3 mb-0.5">VM 상태</p>
+            <p class="text-ink-2 mb-0.5">VM 상태</p>
             {#if buildDetail.vm_status}
               <StatusChip status={buildDetail.vm_status.toLowerCase()} />
             {:else}
@@ -2108,25 +2108,25 @@
             {/if}
           </div>
           <div class="bg-surface-sunken/60 rounded-lg px-3 py-2.5">
-            <p class="text-ink-3 mb-0.5">VM IP</p>
+            <p class="text-ink-2 mb-0.5">VM IP</p>
             <p class="text-ink-0 font-mono">{buildDetail.vm_ip ?? '—'}</p>
           </div>
           <div class="bg-surface-sunken/60 rounded-lg px-3 py-2.5">
-            <p class="text-ink-3 mb-0.5">경과 시간</p>
+            <p class="text-ink-2 mb-0.5">경과 시간</p>
             <p class="text-ink-0">{elapsed(buildDetail.started_at)}</p>
           </div>
           <div class="bg-surface-sunken/60 rounded-lg px-3 py-2.5">
-            <p class="text-ink-3 mb-0.5">시작 시각</p>
+            <p class="text-ink-2 mb-0.5">시작 시각</p>
             <p class="text-ink-0">{fmtDate(buildDetail.started_at)}</p>
           </div>
           <div class="bg-surface-sunken/60 rounded-lg px-3 py-2.5">
-            <p class="text-ink-3 mb-0.5">완료 시각</p>
+            <p class="text-ink-2 mb-0.5">완료 시각</p>
             <p class="text-ink-0">{fmtDate(buildDetail.completed_at)}</p>
           </div>
           {#if buildDetail.share_id}
             <div class="col-span-2 bg-surface-sunken/60 rounded-lg px-3 py-2.5">
-              <p class="text-ink-3 mb-0.5">NFS Share ID</p>
-              <p class="text-ink-0 font-mono text-[11px] truncate">{buildDetail.share_id}</p>
+              <p class="text-ink-2 mb-0.5">NFS Share ID</p>
+              <p class="text-ink-0 font-mono text-xs truncate">{buildDetail.share_id}</p>
             </div>
           {/if}
         </div>
@@ -2141,7 +2141,7 @@
         <!-- 콘솔 로그 -->
         <div>
           <div class="flex items-center justify-between mb-1.5">
-            <p class="text-xs text-ink-3">
+            <p class="text-xs text-ink-2">
               {#if buildDetail.live_console}
                 콘솔 로그 {detailIsActive ? '(10초마다 자동 갱신)' : ''}
               {:else if buildDetail.console_log_excerpt}
@@ -2153,14 +2153,14 @@
             {#if detailIsActive}
               <button
                 onclick={loadBuildDetail}
-                class="text-[11px] text-warm-text hover:text-warm-text-hover transition-colors"
+                class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
               >새로고침</button>
             {/if}
           </div>
           {#if buildDetail.live_console || buildDetail.console_log_excerpt}
-            <pre class="bg-surface-canvas text-[11px] text-ink-2 font-mono whitespace-pre-wrap break-all overflow-auto max-h-56 rounded-lg p-3 border border-line">{buildDetail.live_console || buildDetail.console_log_excerpt}</pre>
+            <pre class="bg-surface-canvas text-xs text-ink-2 font-mono whitespace-pre-wrap break-all overflow-auto max-h-56 rounded-lg p-3 border border-line">{buildDetail.live_console || buildDetail.console_log_excerpt}</pre>
           {:else}
-            <div class="bg-surface-canvas rounded-lg p-3 border border-line text-[11px] text-ink-3 font-mono">
+            <div class="bg-surface-canvas rounded-lg p-3 border border-line text-xs text-ink-2 font-mono">
               로그 없음
             </div>
           {/if}
@@ -2202,9 +2202,9 @@
     <div class="bg-surface-base rounded-xl border border-line-2 w-full max-w-xl mx-auto p-6 space-y-4">
       <div class="flex items-start justify-between gap-3">
         <div>
-          <p class="text-xs text-ink-3 mb-1">소비 인스턴스 상세</p>
+          <p class="text-xs text-ink-2 mb-1">소비 인스턴스 상세</p>
           <h2 class="text-base font-semibold text-ink-0">{consumeDetail?.server_name ?? '—'}</h2>
-          <p class="text-xs text-ink-3 mt-0.5">프로필: {consumeDetail?.profile_name ?? '—'}</p>
+          <p class="text-xs text-ink-2 mt-0.5">프로필: {consumeDetail?.profile_name ?? '—'}</p>
         </div>
         <div class="flex items-center gap-2 shrink-0">
           {#if consumeDetail?.status}
@@ -2212,7 +2212,7 @@
           {/if}
           <button
             onclick={() => (consumeDetailOpen = false)}
-            class="text-ink-3 hover:text-ink-0 transition-colors ml-2"
+            class="text-ink-2 hover:text-ink-0 transition-colors ml-2"
             aria-label="닫기"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2231,11 +2231,11 @@
       {:else if consumeDetail}
         <div class="grid grid-cols-2 gap-3 text-xs">
           <div class="bg-surface-sunken/60 rounded-lg px-3 py-2.5">
-            <p class="text-ink-3 mb-0.5">서버 ID</p>
+            <p class="text-ink-2 mb-0.5">서버 ID</p>
             <p class="text-ink-0 font-mono truncate">{consumeDetail.server_id ? consumeDetail.server_id.slice(0, 18) + '…' : '—'}</p>
           </div>
           <div class="bg-surface-sunken/60 rounded-lg px-3 py-2.5">
-            <p class="text-ink-3 mb-0.5">VM 상태</p>
+            <p class="text-ink-2 mb-0.5">VM 상태</p>
             {#if consumeDetail.vm_status}
               <StatusChip status={consumeDetail.vm_status.toLowerCase()} />
             {:else}
@@ -2243,17 +2243,17 @@
             {/if}
           </div>
           <div class="bg-surface-sunken/60 rounded-lg px-3 py-2.5">
-            <p class="text-ink-3 mb-0.5">VM IP</p>
+            <p class="text-ink-2 mb-0.5">VM IP</p>
             <p class="text-ink-0 font-mono">{consumeDetail.vm_ip ?? '—'}</p>
           </div>
           <div class="bg-surface-sunken/60 rounded-lg px-3 py-2.5">
-            <p class="text-ink-3 mb-0.5">생성 시각</p>
+            <p class="text-ink-2 mb-0.5">생성 시각</p>
             <p class="text-ink-0">{fmtDate(consumeDetail.created_at)}</p>
           </div>
           {#if consumeDetail.share_id}
             <div class="col-span-2 bg-surface-sunken/60 rounded-lg px-3 py-2.5">
-              <p class="text-ink-3 mb-0.5">NFS Share ID (RO)</p>
-              <p class="text-ink-0 font-mono text-[11px] truncate">{consumeDetail.share_id}</p>
+              <p class="text-ink-2 mb-0.5">NFS Share ID (RO)</p>
+              <p class="text-ink-0 font-mono text-xs truncate">{consumeDetail.share_id}</p>
             </div>
           {/if}
         </div>
@@ -2284,15 +2284,15 @@
     <div class="bg-surface-base rounded-xl border border-line-2 w-full max-w-2xl mx-auto p-6 space-y-5">
       <div class="flex items-start justify-between gap-3">
         <div>
-          <p class="text-xs text-ink-3 mb-1">Artifact 삭제 미리보기</p>
+          <p class="text-xs text-ink-2 mb-1">Artifact 삭제 미리보기</p>
           <h2 class="text-base font-semibold text-ink-0">
             {deletePreview ? `#${deletePreview.artifact.id} ${deletePreview.artifact.name}` : '조회 중'}
           </h2>
-          <p class="text-xs text-ink-3 mt-0.5">삭제는 leaf artifact만 허용됩니다. 이름 기반 프로필 참조는 보수적으로 차단합니다.</p>
+          <p class="text-xs text-ink-2 mt-0.5">삭제는 leaf artifact만 허용됩니다. 이름 기반 프로필 참조는 보수적으로 차단합니다.</p>
         </div>
         <button
           onclick={() => (deleteModalOpen = false)}
-          class="text-ink-3 hover:text-ink-0 transition-colors"
+          class="text-ink-2 hover:text-ink-0 transition-colors"
           aria-label="닫기"
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2310,15 +2310,15 @@
       {:else if deletePreview}
         <div class="space-y-3 text-xs">
           <div class="bg-surface-sunken/60 rounded-lg px-3 py-2.5">
-            <p class="text-ink-3 mb-1">상속 체인</p>
+            <p class="text-ink-2 mb-1">상속 체인</p>
             <p class="text-ink-0 font-mono break-all">{deletePreview.lineage.map(a => `${a.name}#${a.id}`).join(' → ')}</p>
           </div>
           <div class="bg-surface-sunken/60 rounded-lg px-3 py-2.5">
-            <p class="text-ink-3 mb-1">Ubuntu base</p>
+            <p class="text-ink-2 mb-1">Ubuntu base</p>
             <p class="text-ink-0 break-all">{ubuntuBaseLabel(deletePreview.artifact)}</p>
           </div>
           <div class="bg-surface-sunken/60 rounded-lg px-3 py-2.5">
-            <p class="text-ink-3 mb-1">요청 패키지</p>
+            <p class="text-ink-2 mb-1">요청 패키지</p>
             <p class="text-ink-0 break-all">{packageLabel(deletePreview.artifact)}</p>
           </div>
 
@@ -2333,7 +2333,7 @@
                 {#each deletePreview.delete_blockers as blocker}
                   <div class="rounded border border-yellow-700/30 bg-surface-canvas/40 p-2">
                     <p class="text-yellow-200">{blocker.message}</p>
-                    <p class="mt-1 text-[11px] text-ink-3 font-mono break-all">{JSON.stringify(blocker.items)}</p>
+                    <p class="mt-1 text-xs text-ink-2 font-mono break-all">{JSON.stringify(blocker.items)}</p>
                   </div>
                 {/each}
               </div>

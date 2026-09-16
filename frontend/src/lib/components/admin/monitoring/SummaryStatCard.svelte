@@ -21,7 +21,7 @@
 
 <div class="bg-surface-sunken rounded-lg text-center {padding[size]}">
 	<div class="font-bold {fontSize[size]} {valueClass}">{value}</div>
-	<div class="text-xs text-ink-3 mt-1">
+	<div class="text-xs text-ink-2 mt-1">
 		{label}{#if labelExtra} {@render labelExtra()}{/if}
 	</div>
 </div>
