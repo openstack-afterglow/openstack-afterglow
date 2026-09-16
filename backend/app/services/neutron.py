@@ -43,6 +43,11 @@ _COMPUTE_PORT_FIELDS = ["id", "device_id", "device_owner", "network_id", "mac_ad
 AFTERGLOW_MANAGED_TAG = "[afterglow-managed]"
 
 
+def _project_id(resource: Any) -> str | None:
+    project_id = getattr(resource, "project_id", None) or getattr(resource, "tenant_id", None)
+    return project_id if isinstance(project_id, str) else None
+
+
 def _iter_router_interface_ports(conn, **kwargs):
     """DVR/HA를 포함한 모든 라우터 인터페이스 포트를 순회."""
     for owner in _ROUTER_IFACE_OWNERS:
@@ -120,6 +125,7 @@ def _serialize_network_detail(conn: openstack.connection.Connection, n: Any) -> 
                         id=r.id,
                         name=r.name or "",
                         external_gateway_network_id=ext_net_id,
+                        project_id=_project_id(r),
                         connected_subnet_ids=[],
                     )
                 except Exception:
@@ -141,6 +147,7 @@ def _serialize_network_detail(conn: openstack.connection.Connection, n: Any) -> 
         is_shared=bool(getattr(n, "is_shared", False)),
         subnet_details=subnet_details,
         routers=list(router_map.values()),
+        project_id=_project_id(n),
     )
 
 
@@ -932,7 +939,7 @@ def list_routers(conn: openstack.connection.Connection, project_id: str | None =
                 id=r.id,
                 name=r.name or "",
                 status=r.status or "",
-                project_id=getattr(r, "project_id", None),
+                project_id=_project_id(r),
                 external_gateway_network_id=ext_net_id,
                 connected_subnet_ids=subnet_ids,
             )
@@ -979,7 +986,7 @@ def get_router_detail(conn: openstack.connection.Connection, router_id: str) -> 
         id=r.id,
         name=r.name or "",
         status=r.status or "",
-        project_id=getattr(r, "project_id", None),
+        project_id=_project_id(r),
         external_gateway_network_id=ext_net_id,
         external_gateway_network_name=ext_net_name,
         interfaces=interfaces,
@@ -1000,7 +1007,7 @@ def create_router(
         id=r.id,
         name=r.name or "",
         status=r.status or "",
-        project_id=getattr(r, "project_id", None),
+        project_id=_project_id(r),
         external_gateway_network_id=ext_net_id,
     )
 
@@ -1444,6 +1451,7 @@ def _net_to_info(n, cidrs: list[str] | None = None) -> NetworkInfo:
         cidrs=list(cidrs or []),
         is_external=bool(getattr(n, "is_router_external", False)),
         is_shared=bool(getattr(n, "is_shared", False)),
+        project_id=_project_id(n),
     )
 
 

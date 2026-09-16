@@ -27,6 +27,11 @@ function createNetworkDetailController(opts: Options) {
 	let subnetError = $state('');
 
 	const isUserPanel = $derived(opts.apiBase() === '/api/v1/networks');
+	const canManageNetwork = $derived(
+		isUserPanel && !!network && network.project_id === opts.projectId() && !network.is_external,
+	);
+	const managedRouters = $derived(allRouters.filter((router) => router.project_id === opts.projectId()));
+
 
 	$effect(() => {
 		const id = opts.networkId();
@@ -49,8 +54,21 @@ function createNetworkDetailController(opts: Options) {
 			loading = false;
 		}
 	}
+	async function toggleSubnetForm() {
+		if (!canManageNetwork) return;
+		if (!showSubnetForm && !allRouters.length) {
+			try {
+				allRouters = await api.get<RouterListItem[]>('/api/v1/routers', opts.token(), opts.projectId());
+			} catch {
+				allRouters = [];
+			}
+		}
+		showSubnetForm = !showSubnetForm;
+	}
+
 
 	async function openRouterConnect() {
+		if (!canManageNetwork) return;
 		if (!allRouters.length) {
 			try {
 				allRouters = await api.get<RouterListItem[]>('/api/v1/routers', opts.token(), opts.projectId());
@@ -58,13 +76,13 @@ function createNetworkDetailController(opts: Options) {
 				allRouters = [];
 			}
 		}
-		selectedRouterId = allRouters[0]?.id ?? '';
+		selectedRouterId = managedRouters[0]?.id ?? '';
 		selectedSubnetId = network?.subnet_details[0]?.id ?? '';
 		showRouterConnect = true;
 	}
 
 	async function connectRouter() {
-		if (!selectedRouterId || !selectedSubnetId) return;
+		if (!canManageNetwork || !selectedRouterId || !selectedSubnetId || !managedRouters.some((router) => router.id === selectedRouterId)) return;
 		connectingRouter = true;
 		try {
 			const subnet = network?.subnet_details.find(s => s.id === selectedSubnetId);
@@ -84,12 +102,12 @@ function createNetworkDetailController(opts: Options) {
 		}
 	}
 
-	async function addSubnet(form: { name?: string; cidr: string; gateway: string; dhcp: boolean }): Promise<boolean> {
-		if (!isUserPanel || !network) return false;
+	async function addSubnet(form: { name?: string; cidr: string; gateway: string; dhcp: boolean; routerId?: string }): Promise<boolean> {
+		if (!canManageNetwork || !network) return false;
 		addingSubnet = true;
 		subnetError = '';
 		try {
-			await api.post(
+			const subnet = await api.post<{ id: string; gateway_ip: string | null }>(
 				`${opts.apiBase()}/${network.id}/subnets`,
 				{
 					name: form.name?.trim() || `${network.name}-subnet`,
@@ -101,6 +119,19 @@ function createNetworkDetailController(opts: Options) {
 				opts.projectId(),
 			);
 			showSubnetForm = false;
+			if (form.routerId && managedRouters.some((router) => router.id === form.routerId)) {
+				try {
+					await api.post(
+						`/api/v1/routers/${form.routerId}/interfaces`,
+						{ subnet_id: subnet.id, auto_gateway: !subnet.gateway_ip },
+						opts.token(),
+						opts.projectId(),
+					);
+					toast.success('서브넷을 생성하고 라우터에 연결했습니다.');
+				} catch (e) {
+					toast.error('서브넷은 생성됐지만 라우터 연결에 실패했습니다: ' + (e instanceof ApiError ? e.message : String(e)));
+				}
+			}
 			await fetchNetwork();
 			return true;
 		} catch (e) {
@@ -112,13 +143,14 @@ function createNetworkDetailController(opts: Options) {
 	}
 
 	async function disconnectRouter(router: NetworkRouterInfo) {
+		if (!canManageNetwork || router.project_id !== opts.projectId()) return;
 		const subnetIds = network?.subnet_details.map(s => s.id) ?? [];
 		const targetSubnet = router.connected_subnet_ids.find(sid => subnetIds.includes(sid));
 		if (!targetSubnet) {
 			toast.warning('연결된 서브넷을 찾을 수 없습니다.');
 			return;
 		}
-		if (!(await confirmDialog(`라우터 "${router.name || router.id.slice(0, 8)}"과의 연결을 해제하시겠습니까?`))) return;
+		if (!(await confirmDialog(`라우터 "${router.name || router.id.slice(0, 8)}"과의 연결을 해제하시겠습니까?`, { confirmLabel: '연결 해제' }))) return;
 		try {
 			await api.delete(`/api/v1/routers/${router.id}/interfaces/${targetSubnet}`, opts.token(), opts.projectId());
 			await fetchNetwork();
@@ -132,8 +164,11 @@ function createNetworkDetailController(opts: Options) {
 		get loading() { return loading; },
 		get error() { return error; },
 		get isUserPanel() { return isUserPanel; },
+		get canManageNetwork() { return canManageNetwork; },
+		get managedRouters() { return managedRouters; },
 		get allRouters() { return allRouters; },
 		get showRouterConnect() { return showRouterConnect; },
+		toggleSubnetForm,
 		set showRouterConnect(v: boolean) { showRouterConnect = v; },
 		get selectedRouterId() { return selectedRouterId; },
 		set selectedRouterId(v: string) { selectedRouterId = v; },

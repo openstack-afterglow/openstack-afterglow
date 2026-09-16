@@ -8,7 +8,7 @@
 <div class="bg-surface-base border border-line rounded-xl p-4">
 	<div class="flex items-center justify-between mb-3">
 		<h3 class="text-xs text-ink-2 uppercase tracking-wide">연결된 라우터 ({s.network!.routers.length})</h3>
-		{#if s.isUserPanel}
+		{#if s.canManageNetwork}
 			<button
 				onclick={() => s.openRouterConnect()}
 				class="text-warm-text hover:text-warm-text-hover text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm transition-colors"
@@ -16,11 +16,11 @@
 		{/if}
 	</div>
 
-	{#if s.showRouterConnect && s.isUserPanel}
+	{#if s.showRouterConnect && s.canManageNetwork}
 		<div class="mb-3 p-3 bg-surface-sunken/60 border border-line-2 rounded-lg space-y-2">
 			<select bind:value={s.selectedRouterId} class="w-full bg-surface-sunken border border-line-2 rounded px-2 py-1.5 text-xs text-ink-1">
 				<option value="">라우터 선택</option>
-				{#each s.allRouters as r}
+				{#each s.managedRouters as r}
 					<option value={r.id}>{r.name || r.id.slice(0, 12)}</option>
 				{/each}
 			</select>
@@ -53,7 +53,7 @@
 					</div>
 					<div class="flex items-center gap-2">
 						<StatusChip status={router.status} />
-						{#if s.isUserPanel}
+						{#if s.canManageNetwork && router.project_id === s.network!.project_id}
 							<button
 								onclick={() => s.disconnectRouter(router)}
 								class="text-red-400 hover:text-red-300 text-xs px-1.5 py-0.5 rounded border border-red-900 hover:border-red-700 transition-colors"

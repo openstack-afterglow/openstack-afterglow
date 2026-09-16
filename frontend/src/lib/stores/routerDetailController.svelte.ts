@@ -12,6 +12,7 @@ interface Options {
 	routerId: () => string;
 	token: () => string | undefined;
 	projectId: () => string | undefined;
+	isSystemAdmin?: () => boolean;
 	onDeleted?: () => void;
 	onClose?: () => void;
 }
@@ -31,8 +32,10 @@ function createRouterDetailController(opts: Options) {
 	let selectedSubnetId = $state('');
 	let showSetGateway = $state(false);
 	let selectedExtNetId = $state('');
-
-	const canAddInterface = $derived(!!selectedSubnetId && !saving);
+	const canManageRouter = $derived(
+		!!router && (opts.isSystemAdmin?.() || Boolean(router.project_id && router.project_id === opts.projectId()))
+	);
+	const canAddInterface = $derived(canManageRouter && !!selectedSubnetId && !saving);
 
 	$effect(() => {
 		const netId = selectedNetId;
@@ -66,16 +69,17 @@ function createRouterDetailController(opts: Options) {
 	async function fetchNetworks() {
 		try {
 			const nets = await api.get<Network[]>('/api/v1/networks', opts.token(), opts.projectId());
-			availableNetworks = nets.filter(n => !n.is_external);
+			availableNetworks = nets.filter((network) => !network.is_external && (opts.isSystemAdmin?.() || network.project_id === opts.projectId()));
 			externalNetworks = nets.filter(n => n.is_external);
 		} catch { /* 무시 */ }
 	}
 
 	async function addInterface() {
-		if (!selectedSubnetId) return;
+		if (!canManageRouter || !selectedSubnetId) return;
+		const subnet = allSubnets.find((item) => item.id === selectedSubnetId);
 		saving = true;
 		try {
-			await api.post(`/api/v1/routers/${opts.routerId()}/interfaces`, { subnet_id: selectedSubnetId }, opts.token(), opts.projectId());
+			await api.post(`/api/v1/routers/${opts.routerId()}/interfaces`, { subnet_id: selectedSubnetId, auto_gateway: !subnet?.gateway_ip }, opts.token(), opts.projectId());
 			showAddInterface = false;
 			selectedNetId = '';
 			selectedSubnetId = '';
@@ -88,6 +92,7 @@ function createRouterDetailController(opts: Options) {
 	}
 
 	async function removeInterface(subnetId: string) {
+		if (!canManageRouter) return;
 		if (!(await confirmDialog('인터페이스를 제거하시겠습니까?'))) return;
 		saving = true;
 		try {
@@ -101,7 +106,7 @@ function createRouterDetailController(opts: Options) {
 	}
 
 	async function setGateway() {
-		if (!selectedExtNetId) return;
+		if (!canManageRouter || !selectedExtNetId) return;
 		saving = true;
 		try {
 			await api.post(`/api/v1/routers/${opts.routerId()}/gateway`, { external_network_id: selectedExtNetId }, opts.token(), opts.projectId());
@@ -116,6 +121,7 @@ function createRouterDetailController(opts: Options) {
 	}
 
 	async function removeGateway() {
+		if (!canManageRouter) return;
 		if (!(await confirmDialog('외부 게이트웨이를 제거하시겠습니까?'))) return;
 		saving = true;
 		try {
@@ -129,6 +135,7 @@ function createRouterDetailController(opts: Options) {
 	}
 
 	async function deleteRouter() {
+		if (!canManageRouter) return;
 		if (!(await confirmDialog(`라우터 "${router?.name || opts.routerId()}"을 삭제하시겠습니까?`))) return;
 		saving = true;
 		try {
@@ -164,6 +171,7 @@ function createRouterDetailController(opts: Options) {
 		get selectedExtNetId() { return selectedExtNetId; },
 		set selectedExtNetId(v: string) { selectedExtNetId = v; },
 		get canAddInterface() { return canAddInterface; },
+		get canManageRouter() { return canManageRouter; },
 		fetchRouter,
 		fetchNetworks,
 		addInterface,

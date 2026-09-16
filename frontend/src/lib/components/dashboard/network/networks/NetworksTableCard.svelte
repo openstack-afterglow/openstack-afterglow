@@ -81,7 +81,7 @@
             checked={selectedIds.has(net.id)}
             disabled={selectionDisabled || !selectableIds.has(net.id)}
             unavailable={!selectableIds.has(net.id)}
-            title={!selectableIds.has(net.id) ? '외부 네트워크는 선택할 수 없습니다' : undefined}
+            title={!selectableIds.has(net.id) ? '현재 프로젝트가 소유한 네트워크만 선택할 수 있습니다' : undefined}
             ariaLabel={`${net.name || net.id.slice(0, 12)} 선택`}
             onclick={() => onToggleSelect(net.id)}
           />
@@ -131,7 +131,7 @@
         <div class="hidden sm:block"><StatusChip status={net.status} /></div>
         <!-- 액션 -->
         <div class="hidden sm:flex items-center justify-end" role="none">
-          {#if !net.is_external}
+          {#if selectableIds.has(net.id)}
             <ActionMenu
               open={openNetMenu === net.id}
               ariaLabel={`${net.name || net.id} 네트워크 작업`}

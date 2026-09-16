@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from app.api.common.activity_recorder import rec
-from app.api.common.owner_check import assert_resource_owner
+from app.api.common.owner_check import assert_project_resource_owner, assert_resource_owner
 from app.api.deps import CacheMode, cache_mode, get_os_conn, get_token_info
 from app.config import get_settings
 from app.models.storage import (
@@ -200,6 +200,7 @@ async def get_default_network(conn: openstack.connection.Connection = Depends(ge
 async def set_default_network(
     req: SetDefaultNetworkRequest,
     conn: openstack.connection.Connection = Depends(get_os_conn),
+    token_info: dict = Depends(get_token_info),
 ):
     """사용자가 원하는 네트워크를 프로젝트의 Default 네트워크로 지정한다."""
     project_id = conn._afterglow_project_id
@@ -208,6 +209,7 @@ async def set_default_network(
         net = await asyncio.to_thread(neutron.get_network, conn, req.network_id)
     except Exception:
         raise HTTPException(status_code=404, detail="네트워크를 찾을 수 없습니다")
+    assert_project_resource_owner(net, conn, token_info, not_found_detail="네트워크를 찾을 수 없습니다")
 
     from app.services.default_network import get_default_network_record
     from app.services.default_network import set_default_network as _set
@@ -378,7 +380,7 @@ async def update_subnet(
         sub = await asyncio.to_thread(conn.network.get_subnet, subnet_id)
     except Exception:
         raise HTTPException(status_code=404, detail="서브넷을 찾을 수 없습니다")
-    assert_resource_owner(sub, conn, token_info, not_found_detail="서브넷을 찾을 수 없습니다")
+    assert_project_resource_owner(sub, conn, token_info, not_found_detail="서브넷을 찾을 수 없습니다")
     try:
         result = await asyncio.to_thread(
             neutron.update_subnet, conn, subnet_id, req.name, req.gateway_ip, req.enable_dhcp
@@ -410,7 +412,7 @@ async def delete_subnet(
         sub = await asyncio.to_thread(conn.network.get_subnet, subnet_id)
     except Exception:
         raise HTTPException(status_code=404, detail="서브넷을 찾을 수 없습니다")
-    assert_resource_owner(sub, conn, token_info, not_found_detail="서브넷을 찾을 수 없습니다")
+    assert_project_resource_owner(sub, conn, token_info, not_found_detail="서브넷을 찾을 수 없습니다")
     try:
         await asyncio.to_thread(neutron.delete_subnet, conn, subnet_id)
         await rec(token_info, conn, resource_type="subnet", action="delete", resource_id=subnet_id)
@@ -944,7 +946,7 @@ async def delete_network(
         net = await asyncio.to_thread(conn.network.get_network, network_id)
     except Exception:
         raise HTTPException(status_code=404, detail="네트워크를 찾을 수 없습니다")
-    assert_resource_owner(net, conn, token_info, not_found_detail="네트워크를 찾을 수 없습니다")
+    assert_project_resource_owner(net, conn, token_info, not_found_detail="네트워크를 찾을 수 없습니다")
     try:
         await asyncio.to_thread(neutron.delete_network, conn, network_id)
         await rec(token_info, conn, resource_type="network", action="delete", resource_id=network_id)
@@ -970,6 +972,11 @@ async def create_subnet(
     conn: openstack.connection.Connection = Depends(get_os_conn),
     token_info: dict = Depends(get_token_info),
 ):
+    try:
+        net = await asyncio.to_thread(conn.network.get_network, network_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail="네트워크를 찾을 수 없습니다")
+    assert_project_resource_owner(net, conn, token_info, not_found_detail="네트워크를 찾을 수 없습니다")
     try:
         result = await asyncio.to_thread(
             neutron.create_subnet,

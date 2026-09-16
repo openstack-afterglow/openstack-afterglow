@@ -55,6 +55,22 @@ def assert_resource_owner(
         )
 
 
+def assert_project_resource_owner(
+    resource: Any,
+    conn: Any,
+    token_info: dict,
+    *,
+    not_found_detail: str = "리소스를 찾을 수 없습니다",
+) -> None:
+    """프로젝트 소유 write 대상은 owner metadata 누락도 거부한다."""
+    if token_info.get("is_system_admin", False):
+        return
+    caller_pid = _caller_project_id(conn)
+    resource_pid = _resource_project_id(resource)
+    if not caller_pid or not resource_pid or resource_pid != caller_pid:
+        raise HTTPException(status_code=404, detail=not_found_detail)
+
+
 def assert_instance_owner(
     server: Any,
     conn: Any,

@@ -1,6 +1,6 @@
 """라우터 API 단위 테스트."""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -75,10 +75,30 @@ async def test_add_router_interface(client, mock_conn):
 
 
 @pytest.mark.asyncio
+async def test_add_router_interface_rejects_foreign_subnet(client, mock_conn):
+    mock_conn.network.get_subnet.return_value = MagicMock(project_id="other-project", tenant_id=None)
+    with patch("app.api.network.routers.neutron.add_router_interface") as add:
+        resp = await client.post("/api/v1/routers/router-1/interfaces", json={"subnet_id": "foreign-subnet"})
+
+    assert resp.status_code == 404
+    add.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_remove_router_interface(client, mock_conn):
     with patch("app.api.network.routers.neutron.remove_router_interface", return_value=None):
         resp = await client.delete("/api/v1/routers/router-1/interfaces/subnet-1")
     assert resp.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_remove_router_interface_rejects_foreign_subnet(client, mock_conn):
+    mock_conn.network.get_subnet.return_value = MagicMock(project_id="other-project", tenant_id=None)
+    with patch("app.api.network.routers.neutron.remove_router_interface") as remove:
+        resp = await client.delete("/api/v1/routers/router-1/interfaces/foreign-subnet")
+
+    assert resp.status_code == 404
+    remove.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -107,3 +127,30 @@ async def test_add_router_interface_auto_gateway(client, mock_conn):
         )
     assert resp.status_code in (200, 201)
     mock_add.assert_called_once_with(mock_conn, "router-1", "subnet-1", True)
+
+
+@pytest.mark.asyncio
+async def test_delete_router_rejects_foreign_router(client, mock_conn):
+    mock_conn.network.get_router.return_value = MagicMock(project_id="other-project", tenant_id=None)
+    with patch("app.api.network.routers.neutron.delete_router") as mock_delete:
+        resp = await client.delete("/api/v1/routers/router-foreign")
+    assert resp.status_code == 404
+    mock_delete.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_add_router_interface_rejects_foreign_router(client, mock_conn):
+    mock_conn.network.get_router.return_value = MagicMock(project_id="other-project", tenant_id=None)
+    with patch("app.api.network.routers.neutron.add_router_interface") as mock_add:
+        resp = await client.post("/api/v1/routers/router-foreign/interfaces", json={"subnet_id": "subnet-1"})
+    assert resp.status_code == 404
+    mock_add.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_set_router_gateway_rejects_foreign_router(client, mock_conn):
+    mock_conn.network.get_router.return_value = MagicMock(project_id="other-project", tenant_id=None)
+    with patch("app.api.network.routers.neutron.set_router_gateway") as mock_gw:
+        resp = await client.post("/api/v1/routers/router-foreign/gateway", json={"external_network_id": "ext-1"})
+    assert resp.status_code == 404
+    mock_gw.assert_not_called()

@@ -7,6 +7,7 @@
 		router,
 		availableNetworks,
 		saving,
+		canManage = false,
 		token,
 		projectId,
 		onAdd,
@@ -15,6 +16,7 @@
 		router: RouterDetail;
 		availableNetworks: Network[];
 		saving: boolean;
+		canManage?: boolean;
 		token: string | undefined;
 		projectId: string | undefined;
 		onAdd: (subnetId: string) => Promise<boolean>;
@@ -48,10 +50,12 @@
 <section class="bg-surface-base border border-line rounded-lg p-5 mb-4">
 	<div class="flex items-center justify-between mb-4">
 		<h2 class="font-semibold text-ink-0">인터페이스 ({router.interfaces.length})</h2>
-		<button
-			onclick={() => showAddInterface = !showAddInterface}
-			class="text-warm-text hover:text-warm-text-hover text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm transition-colors"
-		>+ 인터페이스 추가</button>
+		{#if canManage}
+			<button
+				onclick={() => showAddInterface = !showAddInterface}
+				class="text-warm-text hover:text-warm-text-hover text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm transition-colors"
+			>+ 인터페이스 추가</button>
+		{/if}
 	</div>
 
 	{#if showAddInterface}
@@ -91,11 +95,13 @@
 						<div class="text-ink-0 font-medium">{iface.subnet_name || iface.subnet_id.slice(0, 12)}</div>
 						<div class="text-ink-2 text-xs font-mono mt-0.5">{iface.ip_address}</div>
 					</div>
-					<button
-						onclick={() => onRemove(iface.subnet_id)}
-						disabled={saving}
-						class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors"
-					>제거</button>
+					{#if canManage}
+						<button
+							onclick={() => onRemove(iface.subnet_id)}
+							disabled={saving}
+							class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors"
+						>제거</button>
+					{/if}
 				</div>
 			{/each}
 		</div>

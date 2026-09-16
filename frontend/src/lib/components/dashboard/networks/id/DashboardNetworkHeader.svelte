@@ -2,9 +2,10 @@
 	import type { NetworkDetail } from '$lib/types/networks';
 	import { networkStatusColor } from '$lib/types/networks';
 
-	let { network, deleting, onDelete }: {
+	let { network, deleting, canManage = false, onDelete }: {
 		network: NetworkDetail;
 		deleting: boolean;
+		canManage?: boolean;
 		onDelete: () => Promise<void>;
 	} = $props();
 </script>
@@ -24,7 +25,7 @@
 			{/if}
 		</div>
 	</div>
-	{#if !network.is_external && !network.is_shared}
+	{#if canManage}
 		<button
 			onclick={onDelete}
 			disabled={deleting}

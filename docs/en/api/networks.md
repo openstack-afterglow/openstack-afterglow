@@ -27,9 +27,7 @@ Default network management and real-time traffic queries are also served by this
 
 ## Common Notes
 
-- **Ownership verification**: The detail/delete/update family (`GET·DELETE /{network_id}`, subnet `PUT·DELETE`, floating IP `associate·disassociate·DELETE`)
-  checks that the target resource's `project_id` matches the token project. On mismatch it responds with `404` (existence hiding).
-- **External/shared network exemption**: `GET /{network_id}` treats the target as a valid cross-project exposure and skips ownership verification when it is an external (`is_router_external`) or shared (`is_shared`) network.
+- **Ownership verification**: write endpoints (`DELETE /{network_id}`, `PUT /default`, subnet `POST·PUT·DELETE`) proceed only when the target `project_id` is present and matches the token project. Mismatch or missing owner metadata responds with `404` (existence hiding). Shared and external networks remain readable only.
 - **Cache**: List/topology responses are cached in Redis. The TTL is adjustable via the `[cache]` section of `afterglow.conf`, with defaults shown in the table below.
   Appending `?refresh=true` to the request, or a mutation (create/delete), invalidates the related cache.
 
@@ -84,7 +82,8 @@ Returns the project's Neutron network list. The response is cached for 30 second
     "status": "ACTIVE",
     "subnets": ["uuid-string"],
     "is_external": false,
-    "is_shared": false
+    "is_shared": false,
+    "project_id": "uuid-string"
   }
 ]
 ```
@@ -97,6 +96,7 @@ Returns the project's Neutron network list. The response is cached for 30 second
 | `subnets` | array[string] | Subnet UUID list |
 | `is_external` | boolean | Whether it is an external network |
 | `is_shared` | boolean | Whether it is a shared network |
+| `project_id` | string\|null | Owning Neutron project UUID, used for UI mutation eligibility |
 
 **Errors**
 
@@ -258,8 +258,8 @@ Returns the default network record stored for the current project (DB-based).
 
 ### PUT /api/v1/networks/default
 
-Assigns a user-chosen network as the project's default network. The subnet ID uses the first subnet of that network.
-After assignment it invalidates the network list cache.
+Assigns a network **owned by the current project** as the project's default network. The subnet ID uses the first subnet of that network.
+After assignment it invalidates the network list cache. A foreign shared network or missing owner metadata is rejected with `404`.
 
 **Request body**
 
@@ -298,7 +298,7 @@ After assignment it invalidates the network list cache.
 
 ### POST /api/v1/networks/{network_id}/subnets
 
-Creates a subnet in the specified network.
+Creates a subnet in a network **owned by the current project**. A readable shared network that is foreign-owned or lacks owner metadata is rejected with `404`.
 
 | Parameter | Location | Type | Required | Description |
 |----------|------|------|------|------|
@@ -328,6 +328,7 @@ Creates a subnet in the specified network.
 
 | Code | Description |
 |------|------|
+| `404` | Network not found / ownership mismatch / missing owner metadata |
 | `500` | Failed to create subnet (CIDR conflict, etc.) |
 
 ### PUT /api/v1/networks/subnets/{subnet_id}

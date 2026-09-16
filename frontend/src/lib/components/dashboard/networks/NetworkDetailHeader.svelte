@@ -11,6 +11,7 @@
 		arIntervalOptions,
 		onManualRefresh,
 		onDelete,
+		canManage,
 	}: {
 		network: NetworkDetail;
 		deleting: boolean;
@@ -20,6 +21,7 @@
 		arIntervalOptions: number[];
 		onManualRefresh: () => void;
 		onDelete: () => void;
+		canManage: boolean;
 	} = $props();
 
 	const statusColor: Record<string, string> = {
@@ -54,7 +56,7 @@
 			{refreshing}
 			{onManualRefresh}
 		/>
-		{#if !network.is_external && !network.is_shared}
+		{#if canManage}
 			<button
 				onclick={onDelete}
 				disabled={deleting}

@@ -9,7 +9,7 @@ import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.api.common.activity_recorder import rec
-from app.api.common.owner_check import assert_resource_owner
+from app.api.common.owner_check import assert_project_resource_owner
 from app.api.deps import CacheMode, cache_mode, get_os_conn, get_token_info
 from app.models.storage import (
     CreateRouterRequest,
@@ -74,8 +74,17 @@ async def _get_router_with_owner_check(conn: openstack.connection.Connection, ro
         r = await asyncio.to_thread(conn.network.get_router, router_id)
     except Exception:
         raise HTTPException(status_code=404, detail="라우터를 찾을 수 없습니다")
-    assert_resource_owner(r, conn, token_info, not_found_detail="라우터를 찾을 수 없습니다")
+    assert_project_resource_owner(r, conn, token_info, not_found_detail="라우터를 찾을 수 없습니다")
     return r
+
+
+async def _get_subnet_with_owner_check(conn: openstack.connection.Connection, subnet_id: str, token_info: dict):
+    try:
+        subnet = await asyncio.to_thread(conn.network.get_subnet, subnet_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail="서브넷을 찾을 수 없습니다")
+    assert_project_resource_owner(subnet, conn, token_info, not_found_detail="서브넷을 찾을 수 없습니다")
+    return subnet
 
 
 @router.get("/{router_id}", response_model=RouterDetail)
@@ -128,6 +137,7 @@ async def add_interface(
     token_info: dict = Depends(get_token_info),
 ):
     await _get_router_with_owner_check(conn, router_id, token_info)
+    await _get_subnet_with_owner_check(conn, req.subnet_id, token_info)
     try:
         result = await asyncio.to_thread(neutron.add_router_interface, conn, router_id, req.subnet_id, req.auto_gateway)
         await rec(
@@ -162,6 +172,7 @@ async def remove_interface(
     token_info: dict = Depends(get_token_info),
 ):
     await _get_router_with_owner_check(conn, router_id, token_info)
+    await _get_subnet_with_owner_check(conn, subnet_id, token_info)
     try:
         await asyncio.to_thread(neutron.remove_router_interface, conn, router_id, subnet_id)
         await rec(token_info, conn, resource_type="router", action="remove_interface", resource_id=router_id)

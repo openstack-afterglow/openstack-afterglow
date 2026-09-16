@@ -49,7 +49,9 @@
       <div class="flex items-center gap-2.5 mb-3.5">
         <SelectionCheckbox
           checked={selectedIds.has(router.id)}
-          disabled={selectionDisabled}
+          disabled={selectionDisabled || !selectableIds.has(router.id)}
+          unavailable={!selectableIds.has(router.id)}
+          title={!selectableIds.has(router.id) ? '현재 프로젝트가 소유한 라우터만 선택할 수 있습니다' : undefined}
           ariaLabel={`${router.name || router.id.slice(0, 12)} 선택`}
           onclick={() => onToggleSelect(router.id)}
         />

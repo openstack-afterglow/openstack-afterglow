@@ -114,10 +114,21 @@ async def test_delete_network_unauthenticated():
 
 @pytest.mark.asyncio
 async def test_delete_network_success(client):
-    with patch("app.api.network.networks.asyncio") as mock_asyncio:
-        mock_asyncio.to_thread = AsyncMock(return_value=None)
+    network = MagicMock(project_id="test-project-123", tenant_id=None)
+    with patch("app.api.network.networks.asyncio.to_thread", new=AsyncMock(side_effect=[network, None])):
         resp = await client.delete("/api/v1/networks/net-1")
     assert resp.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_delete_network_rejects_foreign_network(client, mock_conn):
+    foreign = MagicMock(project_id="other-project", tenant_id=None)
+    mock_conn.network.get_network.return_value = foreign
+    with patch("app.api.network.networks.neutron.delete_network") as delete_net:
+        resp = await client.delete("/api/v1/networks/net-foreign")
+
+    assert resp.status_code == 404
+    delete_net.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -130,10 +141,55 @@ async def test_create_subnet_unauthenticated():
 
 
 @pytest.mark.asyncio
+async def test_create_subnet_rejects_foreign_network(client, mock_conn):
+    foreign = MagicMock(project_id="other-project", tenant_id=None)
+    mock_conn.network.get_network.return_value = foreign
+    with patch("app.api.network.networks.neutron.create_subnet") as create:
+        resp = await client.post(
+            "/api/v1/networks/net-foreign/subnets", json={"name": "blocked", "cidr": "10.0.0.0/24"}
+        )
+
+    assert resp.status_code == 404
+    create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_set_default_network_rejects_foreign_network(client, mock_conn):
+    foreign = NetworkInfo(id="net-foreign", name="foreign", status="ACTIVE", project_id="other-project")
+    with patch("app.api.network.networks.neutron.get_network", return_value=foreign):
+        resp = await client.put("/api/v1/networks/default", json={"network_id": "net-foreign"})
+
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_create_subnet_rejects_network_without_owner(client, mock_conn):
+    mock_conn.network.get_network.return_value = MagicMock(project_id=None, tenant_id=None)
+    with patch("app.api.network.networks.neutron.create_subnet") as create:
+        resp = await client.post(
+            "/api/v1/networks/net-unowned/subnets", json={"name": "blocked", "cidr": "10.0.0.0/24"}
+        )
+
+    assert resp.status_code == 404
+    create.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_delete_subnet_unauthenticated():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         resp = await ac.delete("/api/v1/networks/subnets/sub-1")
     assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_delete_subnet_rejects_foreign_subnet(client, mock_conn):
+    foreign = MagicMock(project_id="other-project", tenant_id=None)
+    mock_conn.network.get_subnet.return_value = foreign
+    with patch("app.api.network.networks.neutron.delete_subnet") as delete_sub:
+        resp = await client.delete("/api/v1/networks/subnets/sub-foreign")
+
+    assert resp.status_code == 404
+    delete_sub.assert_not_called()
 
 
 @pytest.mark.asyncio

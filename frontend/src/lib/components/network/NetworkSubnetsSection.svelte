@@ -2,11 +2,12 @@
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
+	import SelectInput from '$lib/components/ui/SelectInput.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
 	import { useNetworkDetailController } from '$lib/stores/networkDetailController.svelte';
 
 	const s = useNetworkDetailController();
-	let form = $state({ name: '', cidr: '', gateway: '', dhcp: true });
+	let form = $state({ name: '', cidr: '', gateway: '', dhcp: true, routerId: '' });
 	let submitted = $state(false);
 	const cidrError = $derived.by(() => {
 		if (!form.cidr) return 'CIDR을 입력하세요.';
@@ -28,7 +29,7 @@
 		submitted = true;
 		if (cidrError) return;
 		if (await s.addSubnet(form)) {
-			form = { name: '', cidr: '', gateway: '', dhcp: true };
+			form = { name: '', cidr: '', gateway: '', dhcp: true, routerId: '' };
 			submitted = false;
 		}
 	}
@@ -37,14 +38,14 @@
 <div class="bg-surface-base border border-line rounded-xl p-4">
 	<div class="flex items-center justify-between gap-3 mb-3">
 		<h3 class="text-xs text-ink-2 uppercase tracking-wide">서브넷 ({s.network!.subnet_details.length})</h3>
-		{#if s.isUserPanel}
-			<Button variant="subtle" size="xs" onclick={() => (s.showSubnetForm = !s.showSubnetForm)}>
+		{#if s.canManageNetwork}
+			<Button variant="subtle" size="xs" onclick={() => { void s.toggleSubnetForm(); }}>
 				{s.showSubnetForm ? '닫기' : '+ 서브넷 추가'}
 			</Button>
 		{/if}
 	</div>
 
-	{#if s.showSubnetForm && s.isUserPanel}
+	{#if s.showSubnetForm && s.canManageNetwork}
 		<form class="mb-4 grid gap-3 border border-line-2 rounded-lg p-3" onsubmit={(event) => { event.preventDefault(); void submit(); }}>
 			<Field label="서브넷 이름" for="network-subnet-name" help="비우면 네트워크 이름을 사용합니다.">
 				<TextInput id="network-subnet-name" bind:value={form.name} maxlength={255} placeholder={`${s.network!.name}-subnet`} />
@@ -54,6 +55,14 @@
 			</Field>
 			<Field label="게이트웨이" for="network-subnet-gateway" help="비우면 Neutron이 게이트웨이를 선택합니다.">
 				<TextInput id="network-subnet-gateway" bind:value={form.gateway} inputmode="decimal" placeholder="10.0.0.1" />
+			</Field>
+			<Field label="라우터 연결" for="network-subnet-router" help="서브넷 생성 후 선택한 라우터 인터페이스를 자동으로 추가합니다.">
+				<SelectInput id="network-subnet-router" bind:value={form.routerId}>
+					<option value="">연결하지 않음</option>
+					{#each s.managedRouters as router}
+						<option value={router.id}>{router.name || router.id.slice(0, 12)}</option>
+					{/each}
+				</SelectInput>
 			</Field>
 			<label class="flex items-center gap-2 text-xs text-ink-1"><input type="checkbox" bind:checked={form.dhcp} /> DHCP 활성화</label>
 			{#if s.subnetError}<Alert tone="danger" title="서브넷 생성 실패">{s.subnetError}</Alert>{/if}

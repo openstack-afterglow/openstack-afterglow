@@ -19,6 +19,7 @@
 		routerId: () => routerId,
 		token: () => $auth.token ?? undefined,
 		projectId: () => $auth.projectId ?? undefined,
+		isSystemAdmin: () => $auth.isSystemAdmin,
 		onDeleted: () => onDeleted?.(),
 		onClose: () => onClose?.(),
 	});

@@ -37,7 +37,7 @@
   let activeDomain = $state<'networks' | 'floating-ips' | null>(null);
   let selection = createResourceSelection();
   let busy = $state(false);
-  let selectableNetworkIds = $derived(new Set(networks.filter((network) => !network.is_external).map((network) => network.id)));
+  let selectableNetworkIds = $derived(new Set(networks.filter((network) => network.project_id === $auth.projectId && !network.is_external).map((network) => network.id)));
   let selectableFloatingIpIds = $derived(new Set(floatingIps.map((fip) => fip.id)));
 
   function toggleSelect(domain: 'networks' | 'floating-ips', id: string) {
@@ -84,6 +84,10 @@
   }
 
   async function setAsDefault(networkId: string) {
+    if (!selectableNetworkIds.has(networkId)) {
+      toast.warning('현재 프로젝트가 소유한 네트워크만 기본 네트워크로 설정할 수 있습니다.');
+      return;
+    }
     settingDefault = networkId;
     try {
       await api.put('/api/v1/networks/default', { network_id: networkId }, tok(), pid());
@@ -166,6 +170,7 @@
   }
 
   async function deleteNetwork(id: string, name: string, isExternal: boolean) {
+    if (!selectableNetworkIds.has(id)) { toast.warning('현재 프로젝트가 소유한 네트워크만 삭제할 수 있습니다.'); return; }
     if (isExternal) { toast.warning('외부 네트워크는 삭제할 수 없습니다.'); return; }
     if (!await confirmDialog(`네트워크 "${name || id.slice(0, 8)}"를 삭제하시겠습니까?`)) return;
     deleting = id;

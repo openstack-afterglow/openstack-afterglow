@@ -52,14 +52,14 @@ const common = {
 };
 
 describe('network bulk selection controls', () => {
-  it('keeps external networks unavailable while shared internal networks remain eligible', async () => {
+  it('excludes shared and external networks from mutation selection and menus', async () => {
     const onToggleAll = vi.fn();
     render(NetworksTableCard, {
       networks,
       defaultNetworkId: null,
       deleting: null,
       settingDefault: null,
-      selectableIds: new Set(['private-1', 'shared-1']),
+      selectableIds: new Set(['private-1']),
       ...common,
       onToggleAll,
       onOpenPanel: vi.fn(),
@@ -67,7 +67,8 @@ describe('network bulk selection controls', () => {
       onDelete: vi.fn(),
     });
     expect((screen.getByRole('checkbox', { name: 'public 선택' }) as HTMLInputElement).disabled).toBe(true);
-    expect((screen.getByRole('checkbox', { name: 'shared 선택' }) as HTMLInputElement).disabled).toBe(false);
+    expect((screen.getByRole('checkbox', { name: 'shared 선택' }) as HTMLInputElement).disabled).toBe(true);
+    expect(screen.queryByRole('button', { name: 'shared 네트워크 작업' })).toBeNull();
     const selectAll = screen.getByRole('checkbox', { name: '전체 네트워크 선택' });
     expect((selectAll as HTMLInputElement).disabled).toBe(false);
     await fireEvent.click(selectAll.closest('label')!);

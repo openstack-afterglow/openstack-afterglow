@@ -21,4 +21,5 @@ export interface RouterSubnet {
   name: string;
   cidr: string;
   network_id: string;
+  gateway_ip?: string | null;
 }

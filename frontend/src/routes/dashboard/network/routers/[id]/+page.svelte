@@ -23,7 +23,9 @@
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
-
+	const canManageRouter = $derived(
+		Boolean(router && ($auth.isSystemAdmin || (router.project_id && router.project_id === projectId)))
+	);
 	async function fetchRouter() {
 		try {
 			router = await api.get<RouterDetail>(`/api/v1/routers/${id}`, token, projectId);
@@ -38,7 +40,7 @@
 	async function fetchNetworks() {
 		try {
 			const nets = await api.get<Network[]>('/api/v1/networks', token, projectId);
-			availableNetworks = nets.filter(n => !n.is_external);
+			availableNetworks = nets.filter(n => !n.is_external && n.project_id === projectId);
 			externalNetworks = nets.filter(n => n.is_external);
 		} catch {
 			// 무시
@@ -61,6 +63,7 @@
 	});
 
 	async function addInterface(subnetId: string): Promise<boolean> {
+		if (!canManageRouter) return false;
 		saving = true;
 		try {
 			await api.post(`/api/v1/routers/${id}/interfaces`, { subnet_id: subnetId }, token, projectId);
@@ -75,6 +78,7 @@
 	}
 
 	async function removeInterface(subnetId: string): Promise<void> {
+		if (!canManageRouter) return;
 		if (!await confirmDialog('인터페이스를 제거하시겠습니까?')) return;
 		saving = true;
 		try {
@@ -88,6 +92,7 @@
 	}
 
 	async function setGateway(externalNetworkId: string): Promise<boolean> {
+		if (!canManageRouter) return false;
 		saving = true;
 		try {
 			await api.post(`/api/v1/routers/${id}/gateway`, { external_network_id: externalNetworkId }, token, projectId);
@@ -102,6 +107,7 @@
 	}
 
 	async function removeGateway(): Promise<void> {
+		if (!canManageRouter) return;
 		if (!await confirmDialog('외부 게이트웨이를 제거하시겠습니까?')) return;
 		saving = true;
 		try {
@@ -115,6 +121,7 @@
 	}
 
 	async function deleteRouter(): Promise<void> {
+		if (!canManageRouter) return;
 		if (!await confirmDialog(`라우터 "${router?.name || id}"을 삭제하시겠습니까?`)) return;
 		saving = true;
 		try {
@@ -138,6 +145,7 @@
 			{saving}
 			{ar}
 			onManualRefresh={() => fetchRouter()}
+			canManage={canManageRouter}
 			onDelete={deleteRouter}
 			onBack={() => goto('/dashboard/network/routers')}
 		/>
@@ -145,6 +153,7 @@
 			{router}
 			{externalNetworks}
 			{saving}
+			canManage={canManageRouter}
 			onSet={setGateway}
 			onRemove={removeGateway}
 		/>
@@ -154,6 +163,7 @@
 			{saving}
 			{token}
 			{projectId}
+			canManage={canManageRouter}
 			onAdd={addInterface}
 			onRemove={removeInterface}
 		/>

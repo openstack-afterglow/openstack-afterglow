@@ -6,16 +6,17 @@
 		router,
 		externalNetworks,
 		saving,
+		canManage = false,
 		onSet,
 		onRemove,
 	}: {
 		router: RouterDetail;
 		externalNetworks: Network[];
 		saving: boolean;
+		canManage?: boolean;
 		onSet: (externalNetworkId: string) => Promise<boolean>;
 		onRemove: () => Promise<void>;
 	} = $props();
-
 	let showSetGateway = $state(false);
 	let selectedExtNetId = $state('');
 
@@ -31,20 +32,22 @@
 <section class="bg-surface-base border border-line rounded-lg p-5 mb-4">
 	<div class="flex items-center justify-between mb-4">
 		<h2 class="font-semibold text-ink-0">외부 게이트웨이</h2>
-		<div class="flex gap-2">
-			{#if router.external_gateway_network_id}
-				<button
-					onclick={onRemove}
-					disabled={saving}
-					class="text-red-400 hover:text-red-300 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors"
-				>게이트웨이 제거</button>
-			{:else}
-				<button
-					onclick={() => showSetGateway = !showSetGateway}
-					class="text-warm-text hover:text-warm-text-hover text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm transition-colors"
-				>게이트웨이 설정</button>
-			{/if}
-		</div>
+		{#if canManage}
+			<div class="flex gap-2">
+				{#if router.external_gateway_network_id}
+					<button
+						onclick={onRemove}
+						disabled={saving}
+						class="text-red-400 hover:text-red-300 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors"
+					>게이트웨이 제거</button>
+				{:else}
+					<button
+						onclick={() => showSetGateway = !showSetGateway}
+						class="text-warm-text hover:text-warm-text-hover text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm transition-colors"
+					>게이트웨이 설정</button>
+				{/if}
+			</div>
+		{/if}
 	</div>
 
 	{#if router.external_gateway_network_id}

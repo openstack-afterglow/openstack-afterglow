@@ -163,6 +163,8 @@ At ≥768px, the settings route allocates the return action and settings body wi
 
 사용자 캔버스만 생성·연결 mutation을 노출한다. `TopologyCanvas`의 `link-types.ts`는 현재 프로젝트 소유 VM/라우터와 ACTIVE internal/external 네트워크 조합만 `POST /api/v1/instances/{id}/interfaces`, `POST /api/v1/routers/{id}/gateway`, `POST /api/v1/routers/{id}/interfaces`로 해석하며, 이미 연결된 NIC/인터페이스·DB 노드·공유/타 프로젝트 대상은 클라이언트에서도 거부하고 API 권한 검증이 최종 경계다. 출력 포트에서 대상 카드로 드래그하면 accent 점선 임시 케이블과 가능한 대상만 표시하고 성공 뒤 topology를 refresh한다. 툴바의 네트워크·라우터·인스턴스·로드밸런서·DB 생성은 기존 생성 플로우를 연다; 선택된 네트워크는 VM wizard의 network prefill로 전달한다. 네트워크 생성의 선택 subnet은 `CreateNetworkSubnetSpec`이며 subnet 실패 시 생성한 Neutron network를 최선으로 롤백하고 목록 cache를 무효화한다. 상세 패널은 사용자 `/api/v1/networks/{id}/subnets`에서 선택 subnet을 추가한다.
 
+`/dashboard/network/networks`의 목록·슬라이드 패널·직접 상세는 `NetworkInfo`/`NetworkDetail.project_id`를 현재 rescope 프로젝트와 비교한다. 외부 네트워크와 타 프로젝트 공유 네트워크는 표시만 하고 일괄 선택·기본 설정·삭제·서브넷/라우터 연결 affordance를 렌더하지 않는다. 소유 네트워크에서만 서브넷을 만들고 선택한 소유 라우터에 `auto_gateway`로 즉시 연결할 수 있으며, 라우터 상세의 internal network/subnet 선택지도 소유 리소스로 한정한다. 브라우저 판정은 UX 경계일 뿐: `set_default_network`, network/subnet write 및 router/interface write는 `assert_project_resource_owner`로 project metadata 누락까지 404 fail-closed 처리하고, system admin만 우회한다. tutorial transport도 선택 프로젝트의 `project_id`를 기록·검사한다.
+
 ## Data and contracts
 
 ### 정본과 cache 분리
@@ -275,9 +277,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "6442bda3f12f50c68a76fce64d5f7c0b0fb1d3710bdc9fe64d5ebc5fcf9b4174",
-  "reviewed_at": "2026-09-16T11:42:30Z",
-  "summary": "Verified scoped topology creation, drag cables, optional subnets, UI entry points, and tutorial mutations."
+  "source_sha256": "35efa07d42b1210e2e62ad383306d2df534e1c8425f0662bb24d1801d170da14",
+  "reviewed_at": "2026-09-16T13:26:15Z",
+  "summary": "Strict project ownership on network/subnet/router mutations, subnet creation with router connection, network detail router interface management, and responsive table overflow wrappers"
 }
 ```
 <!-- architecture-review:end -->

@@ -1,8 +1,9 @@
 <script lang="ts">
-	import type { NetworkDetail } from '$lib/types/networks';
+	import type { NetworkDetail, RouterListItem } from '$lib/types/networks';
 
 	let {
 		network,
+		availableRouters = [],
 		onAdd,
 		onSave,
 		onDelete,
@@ -12,9 +13,11 @@
 		saveError,
 		onClearAddError,
 		onClearSaveError,
+		canManage,
 	}: {
 		network: NetworkDetail;
-		onAdd: (form: { name: string; cidr: string; gateway: string; dhcp: boolean }) => Promise<boolean>;
+		availableRouters?: RouterListItem[];
+		onAdd: (form: { name: string; cidr: string; gateway: string; dhcp: boolean; routerId?: string }) => Promise<boolean>;
 		onSave: (subnetId: string, form: { name: string; gateway: string; dhcp: boolean }) => Promise<boolean>;
 		onDelete: (subnetId: string, subnetName: string) => Promise<void>;
 		addingSubnet: boolean;
@@ -23,10 +26,11 @@
 		saveError: string;
 		onClearAddError: () => void;
 		onClearSaveError: () => void;
+		canManage: boolean;
 	} = $props();
 
 	let showSubnetForm = $state(false);
-	let subnetForm = $state({ name: '', cidr: '10.0.0.0/24', gateway: '', dhcp: true });
+	let subnetForm = $state({ name: '', cidr: '10.0.0.0/24', gateway: '', dhcp: true, routerId: '' });
 	let editingSubnetId = $state<string | null>(null);
 	let editSubnetForm = $state({ name: '', gateway: '', dhcp: true });
 
@@ -45,7 +49,7 @@
 		if (ok) {
 			showSubnetForm = false;
 			onClearAddError();
-			subnetForm = { name: '', cidr: '10.0.0.0/24', gateway: '', dhcp: true };
+			subnetForm = { name: '', cidr: '10.0.0.0/24', gateway: '', dhcp: true, routerId: '' };
 		}
 	}
 
@@ -59,7 +63,7 @@
 <div class="bg-surface-base border border-line rounded-lg p-6 mb-4">
 	<div class="flex items-center justify-between mb-4">
 		<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide">서브넷</h2>
-		{#if !network.is_external}
+		{#if canManage}
 			<button
 				onclick={() => { showSubnetForm = !showSubnetForm; onClearAddError(); }}
 				class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
@@ -108,6 +112,21 @@
 						DHCP 활성화
 					</label>
 				</div>
+				{#if availableRouters.length > 0}
+					<div class="col-span-2">
+						<label class="block text-xs text-ink-2 mb-1">라우터 연결 (선택)
+							<select
+								bind:value={subnetForm.routerId}
+								class="w-full bg-surface-selected border border-line-2 rounded px-2.5 py-1.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1"
+							>
+								<option value="">연결하지 않음</option>
+								{#each availableRouters as r}
+									<option value={r.id}>{r.name || r.id.slice(0, 12)}</option>
+								{/each}
+							</select>
+						</label>
+					</div>
+				{/if}
 			</div>
 			{#if addError}
 				<p class="text-red-400 text-xs">{addError}</p>
@@ -125,6 +144,7 @@
 	{/if}
 
 	{#if network.subnet_details.length > 0}
+		<div class="overflow-x-auto">
 		<table class="w-full text-sm">
 			<thead>
 				<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
@@ -132,16 +152,18 @@
 					<th class="text-left py-2 pr-6">CIDR</th>
 					<th class="text-left py-2 pr-6">게이트웨이</th>
 					<th class="text-left py-2 pr-4">DHCP</th>
-					{#if !network.is_external}
+					<th class="text-left py-2 pr-6">연결된 라우터</th>
+					{#if canManage}
 						<th class="text-right py-2">액션</th>
 					{/if}
 				</tr>
 			</thead>
 			<tbody>
 				{#each network.subnet_details as subnet}
+					{@const connected = (network.routers || []).filter((r) => r.connected_subnet_ids.includes(subnet.id))}
 					<tr class="border-b border-line/50">
 						{#if editingSubnetId === subnet.id}
-							<td colspan={network.is_external ? 4 : 5} class="py-3">
+							<td colspan={canManage ? 6 : 5} class="py-3">
 								<div class="bg-surface-sunken rounded-lg p-4 space-y-3">
 									<div class="grid grid-cols-2 gap-3">
 										<div>
@@ -197,7 +219,20 @@
 									<span class="text-ink-2 text-xs">-</span>
 								{/if}
 							</td>
-							{#if !network.is_external}
+							<td class="py-2 pr-6 text-ink-2 text-xs">
+								{#if connected.length > 0}
+									<div class="flex flex-wrap gap-1">
+										{#each connected as r}
+											<span class="px-1.5 py-0.5 rounded text-xs bg-surface-selected/50 border border-line text-ink-1">
+												{r.name || r.id.slice(0, 8)}
+											</span>
+										{/each}
+									</div>
+								{:else}
+									<span class="text-ink-3">-</span>
+								{/if}
+							</td>
+							{#if canManage}
 								<td class="py-2 text-right">
 									<div class="flex items-center justify-end gap-1">
 										<button
@@ -216,6 +251,7 @@
 				{/each}
 			</tbody>
 		</table>
+		</div>
 	{:else}
 		<p class="text-sm text-ink-2">서브넷 없음</p>
 	{/if}

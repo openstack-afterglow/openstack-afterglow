@@ -9,6 +9,7 @@
 		router,
 		saving,
 		ar,
+		canManage = false,
 		onManualRefresh,
 		onDelete,
 		onBack,
@@ -16,6 +17,7 @@
 		router: RouterDetail;
 		saving: boolean;
 		ar: AutoRefreshController;
+		canManage?: boolean;
 		onManualRefresh: () => void;
 		onDelete: () => Promise<void>;
 		onBack: () => void;
@@ -42,6 +44,8 @@
 			refreshing={saving}
 			onManualRefresh={onManualRefresh}
 		/>
-		<Button variant="danger-outline" size="sm" disabled={saving} onclick={onDelete}>삭제</Button>
+		{#if canManage}
+			<Button variant="danger-outline" size="sm" disabled={saving} onclick={onDelete}>삭제</Button>
+		{/if}
 	</div>
 </div>

@@ -246,6 +246,7 @@ class NetworkInfo(BaseModel):
     cidrs: list[str] = []
     is_external: bool = False
     is_shared: bool = False
+    project_id: str | None = None
 
 
 class SubnetDetail(BaseModel):
@@ -306,6 +307,7 @@ class NetworkDetail(BaseModel):
     is_shared: bool = False
     subnet_details: list[SubnetDetail] = []
     routers: list[RouterInfo] = []
+    project_id: str | None = None
 
 
 class AdminNetworkDetail(NetworkDetail):

@@ -8,7 +8,7 @@
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import NetworkTopology from '$lib/components/NetworkTopology.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
-	import type { NetworkDetail } from '$lib/types/networks';
+	import type { NetworkDetail, RouterListItem } from '$lib/types/networks';
 	import NetworkDetailHeader from '$lib/components/dashboard/networks/NetworkDetailHeader.svelte';
 	import NetworkInfoCard from '$lib/components/dashboard/networks/NetworkInfoCard.svelte';
 	import SubnetTableSection from '$lib/components/dashboard/networks/SubnetTableSection.svelte';
@@ -23,6 +23,22 @@
 	let subnetError = $state('');
 	let savingSubnet = $state(false);
 	let editSubnetError = $state('');
+	let routers = $state<RouterListItem[]>([]);
+	let connectingRouter = $state(false);
+	const canManageNetwork = $derived(
+		!!network && network.project_id === $auth.projectId && !network.is_external,
+	);
+	const managedRouters = $derived(
+		routers.filter((router) => $auth.isSystemAdmin || (router.project_id && router.project_id === $auth.projectId))
+	);
+
+	async function fetchRouters() {
+		try {
+			routers = await api.get<RouterListItem[]>('/api/v1/routers', $auth.token ?? undefined, $auth.projectId ?? undefined);
+		} catch {
+			routers = [];
+		}
+	}
 
 	async function refreshCurrentNetwork() {
 		const id = $page.params.id;
@@ -40,9 +56,11 @@
 	$effect(() => {
 		const id = $page.params.id;
 		if (!id || !$auth.token) return;
-		untrack(() => fetchNetwork(id));
+		untrack(() => {
+			fetchNetwork(id);
+			fetchRouters();
+		});
 	});
-
 	async function fetchNetwork(id: string) {
 		loading = true;
 		error = '';
@@ -61,8 +79,12 @@
 
 	async function deleteNetwork() {
 		if (!network) return;
-		if (network.is_external || network.is_shared) {
-			toast.warning('외부/공유 네트워크는 삭제할 수 없습니다.');
+		if (!canManageNetwork) {
+			toast.warning('현재 프로젝트가 소유한 네트워크만 삭제할 수 있습니다.');
+			return;
+		}
+		if (network.is_external) {
+			toast.warning('외부 네트워크는 삭제할 수 없습니다.');
 			return;
 		}
 		if (!await confirmDialog(`네트워크 "${network.name || network.id}"를 삭제하시겠습니까?`)) return;
@@ -77,12 +99,12 @@
 		}
 	}
 
-	async function addSubnet(form: { name: string; cidr: string; gateway: string; dhcp: boolean }): Promise<boolean> {
-		if (!network || !form.cidr.trim()) return false;
+	async function addSubnet(form: { name: string; cidr: string; gateway: string; dhcp: boolean; routerId?: string }): Promise<boolean> {
+		if (!canManageNetwork || !network || !form.cidr.trim()) return false;
 		addingSubnet = true;
 		subnetError = '';
 		try {
-			await api.post(
+			const created = await api.post<{ id: string; gateway_ip: string | null }>(
 				`/api/v1/networks/${network.id}/subnets`,
 				{
 					name: form.name || `${network.name}-subnet`,
@@ -93,6 +115,18 @@
 				$auth.token ?? undefined,
 				$auth.projectId ?? undefined
 			);
+			if (form.routerId && managedRouters.some((router) => router.id === form.routerId)) {
+				try {
+					await api.post(
+						`/api/v1/routers/${form.routerId}/interfaces`,
+						{ subnet_id: created.id, auto_gateway: !created.gateway_ip },
+						$auth.token ?? undefined,
+						$auth.projectId ?? undefined
+					);
+				} catch (re) {
+					toast.warning('서브넷은 생성되었으나 라우터 연결에 실패했습니다: ' + (re instanceof ApiError ? re.message : String(re)));
+				}
+			}
 			await fetchNetwork(network.id);
 			return true;
 		} catch (e) {
@@ -103,8 +137,58 @@
 		}
 	}
 
+	async function connectRouter(routerId: string, subnetId: string): Promise<boolean> {
+		if (!canManageNetwork || !routerId || !subnetId) return false;
+		connectingRouter = true;
+		try {
+			const subnet = network?.subnet_details.find((s) => s.id === subnetId);
+			const autoGateway = !subnet?.gateway_ip;
+			await api.post(
+				`/api/v1/routers/${routerId}/interfaces`,
+				{ subnet_id: subnetId, auto_gateway: autoGateway },
+				$auth.token ?? undefined,
+				$auth.projectId ?? undefined
+			);
+			toast.success('라우터가 연결되었습니다.');
+			if (network) await fetchNetwork(network.id);
+			return true;
+		} catch (e) {
+			toast.error('라우터 연결 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			return false;
+		} finally {
+			connectingRouter = false;
+		}
+	}
+
+	async function disconnectRouter(routerId: string, subnetId: string): Promise<boolean> {
+		if (!canManageNetwork || !routerId || !subnetId) return false;
+		const targetRouter = network?.routers.find((r) => r.id === routerId);
+		if (!targetRouter) return false;
+		if (!($auth.isSystemAdmin || (targetRouter.project_id && targetRouter.project_id === $auth.projectId))) {
+			toast.warning('현재 프로젝트가 소유한 라우터만 연결 해제할 수 있습니다.');
+			return false;
+		}
+		if (!await confirmDialog('라우터 연결을 해제하시겠습니까?')) return false;
+		connectingRouter = true;
+		try {
+			await api.delete(
+				`/api/v1/routers/${routerId}/interfaces/${subnetId}`,
+				$auth.token ?? undefined,
+				$auth.projectId ?? undefined
+			);
+			toast.success('라우터 연결이 해제되었습니다.');
+			if (network) await fetchNetwork(network.id);
+			return true;
+		} catch (e) {
+			toast.error('라우터 연결 해제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			return false;
+		} finally {
+			connectingRouter = false;
+		}
+	}
+
 	async function saveSubnet(subnetId: string, form: { name: string; gateway: string; dhcp: boolean }): Promise<boolean> {
-		savingSubnet = true;
+		if (!canManageNetwork) return false;
 		editSubnetError = '';
 		try {
 			await api.put(
@@ -128,6 +212,7 @@
 	}
 
 	async function deleteSubnet(subnetId: string, subnetName: string) {
+		if (!canManageNetwork) return;
 		if (!await confirmDialog(`서브넷 "${subnetName || subnetId.slice(0, 8)}"를 삭제하시겠습니까?`)) return;
 		try {
 			await api.delete(
@@ -162,6 +247,7 @@
 			bind:arInterval={ar.intervalSeconds}
 			arIntervalOptions={ar.intervalOptions}
 			onManualRefresh={refreshCurrentNetwork}
+			canManage={canManageNetwork}
 			onDelete={deleteNetwork}
 		/>
 		<NetworkInfoCard {network} />
@@ -174,6 +260,8 @@
 
 		<SubnetTableSection
 			{network}
+			availableRouters={managedRouters}
+			canManage={canManageNetwork}
 			onAdd={addSubnet}
 			onSave={saveSubnet}
 			onDelete={deleteSubnet}
@@ -185,8 +273,16 @@
 			onClearSaveError={() => { editSubnetError = ''; }}
 		/>
 
-		{#if network.routers.length > 0}
-			<ConnectedRouterTable routers={network.routers} />
-		{/if}
+		<ConnectedRouterTable
+			routers={network.routers}
+			subnets={network.subnet_details}
+			availableRouters={managedRouters}
+			canManage={canManageNetwork}
+			connecting={connectingRouter}
+			projectId={$auth.projectId}
+			isSystemAdmin={$auth.isSystemAdmin}
+			onConnect={connectRouter}
+			onDisconnect={disconnectRouter}
+		/>
 	{/if}
 </div>

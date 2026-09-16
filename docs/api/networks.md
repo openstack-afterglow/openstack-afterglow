@@ -25,10 +25,7 @@ Default 네트워크 관리와 실시간 트래픽 조회도 이 라우터에서
 
 ## 공통 사항
 
-- **소유권 검증**: 상세/삭제/수정 계열(`GET·DELETE /{network_id}`, 서브넷 `PUT·DELETE`, Floating IP `associate·disassociate·DELETE`)은
-  대상 리소스의 `project_id`가 토큰 프로젝트와 일치하는지 검사합니다. 불일치 시 `404`로 응답합니다(존재 은닉).
-- **외부/공유 네트워크 면제**: `GET /{network_id}`는 대상이 외부(`is_router_external`) 또는 공유(`is_shared`) 네트워크이면
-  cross-project 정상 노출로 간주하여 소유권 검증을 면제합니다.
+- **소유권 검증**: write 계열(`DELETE /{network_id}`, `PUT /default`, 서브넷 `POST·PUT·DELETE`)은 대상의 `project_id`가 토큰 프로젝트와 일치하고 비어 있지 않은 경우에만 처리합니다. 불일치 또는 소유자 metadata 누락은 `404`로 응답합니다(존재 은닉). 공유/외부 네트워크는 조회만 가능합니다.
 - **캐시**: 목록/토폴로지 응답은 Redis에 캐시됩니다. TTL은 `afterglow.conf`의 `[cache]` 항목으로 조정 가능하며 기본값은 아래 표와 같습니다.
   응답 헤더에 `?refresh=true`를 붙이거나 mutation(생성/삭제)이 발생하면 관련 캐시가 무효화됩니다.
 
@@ -83,7 +80,8 @@ Default 네트워크 관리와 실시간 트래픽 조회도 이 라우터에서
     "status": "ACTIVE",
     "subnets": ["uuid-string"],
     "is_external": false,
-    "is_shared": false
+    "is_shared": false,
+    "project_id": "uuid-string"
   }
 ]
 ```
@@ -96,6 +94,7 @@ Default 네트워크 관리와 실시간 트래픽 조회도 이 라우터에서
 | `subnets` | array[string] | 서브넷 UUID 목록 |
 | `is_external` | boolean | 외부 네트워크 여부 |
 | `is_shared` | boolean | 공유 네트워크 여부 |
+| `project_id` | string\|null | Neutron 네트워크 소유 프로젝트 UUID. UI mutation 권한 판정에 사용 |
 
 **오류**
 
@@ -146,6 +145,7 @@ Default 네트워크 관리와 실시간 트래픽 조회도 이 라우터에서
   "subnets": ["uuid-string"],
   "is_external": false,
   "is_shared": false,
+  "project_id": "uuid-string",
   "subnet_details": [
     {
       "id": "uuid-string",
@@ -257,8 +257,8 @@ DB에 이미 기록되어 있으면 빠르게 반환하고, 없으면 설정값(
 
 ### PUT /api/v1/networks/default
 
-사용자가 원하는 네트워크를 프로젝트의 Default 네트워크로 지정합니다. 서브넷 ID는 해당 네트워크의 첫 번째 서브넷을 사용합니다.
-지정 후 네트워크 목록 캐시를 무효화합니다.
+사용자가 **현재 프로젝트가 소유한** 네트워크를 프로젝트의 Default 네트워크로 지정합니다. 서브넷 ID는 해당 네트워크의 첫 번째 서브넷을 사용합니다.
+지정 후 네트워크 목록 캐시를 무효화합니다. 공유로 보이는 타 프로젝트 네트워크와 owner metadata가 없는 네트워크는 `404`로 거부합니다.
 
 **요청 본문**
 
@@ -297,7 +297,7 @@ DB에 이미 기록되어 있으면 빠르게 반환하고, 없으면 설정값(
 
 ### POST /api/v1/networks/{network_id}/subnets
 
-지정한 네트워크에 서브넷을 생성합니다.
+지정한 **현재 프로젝트 소유** 네트워크에 서브넷을 생성합니다. 공유 네트워크를 조회할 수 있어도 타 프로젝트 소유이거나 owner metadata가 없으면 `404`로 거부합니다.
 
 | 파라미터 | 위치 | 타입 | 필수 | 설명 |
 |----------|------|------|------|------|
@@ -327,6 +327,7 @@ DB에 이미 기록되어 있으면 빠르게 반환하고, 없으면 설정값(
 
 | 코드 | 설명 |
 |------|------|
+| `404` | 네트워크를 찾을 수 없음 / 소유권 불일치 / owner metadata 누락 |
 | `500` | 서브넷 생성 실패 (CIDR 충돌 등) |
 
 ### PUT /api/v1/networks/subnets/{subnet_id}

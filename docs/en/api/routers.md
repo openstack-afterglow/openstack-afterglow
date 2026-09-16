@@ -27,8 +27,7 @@ A router serves two roles: routing between subnets (internal interfaces) and con
 
 ## Common Notes
 
-- **Ownership verification**: Every endpoint that handles a single router (`GET·DELETE /{router_id}`, interface/gateway family)
-  checks that the router's `project_id` matches the token project. On mismatch it responds with `404` (existence hiding).
+- **Ownership verification**: endpoints that handle a single router and all mutations proceed only when the router `project_id` is present and matches the token project. Interface add/remove requires the same condition for its subnet. Mismatch or missing owner metadata responds with `404` (existence hiding). Only a system admin bypasses this check.
 - **Cache**: The router list (`GET ""`) is cached with `ttl_normal` (adjustable via `afterglow.conf`, default 30s).
   On create/delete mutations, the list cache is invalidated.
 - **Rate limit**: All mutation endpoints (create/delete/interface/gateway) are limited to `10/minute`.
@@ -193,7 +192,7 @@ Deletes a router. If it has connected interfaces or a gateway, they must be remo
 
 ## POST /api/v1/routers/{router_id}/interfaces
 
-Adds an internal subnet interface to the router. If `auto_gateway` is `true`, the subnet's gateway IP is used as the interface IP.
+Adds an internal subnet interface to the router only for a subnet **owned by the same project**. If `auto_gateway` is `true`, the subnet's gateway IP is used as the interface IP.
 
 | Parameter | Location | Type | Required | Description |
 |----------|------|------|------|------|
@@ -219,7 +218,7 @@ Adds an internal subnet interface to the router. If `auto_gateway` is `true`, th
 
 | Code | Description |
 |------|------|
-| `404` | Router not found / ownership mismatch |
+| `404` | Router or subnet not found / ownership mismatch / missing owner metadata |
 | `500` | Failed to add interface |
 
 ---

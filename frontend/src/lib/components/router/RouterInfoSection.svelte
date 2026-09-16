@@ -12,6 +12,8 @@
 	status={s.router!.status}
 >
 	{#snippet actions()}
-		<Button variant="danger-outline" size="sm" disabled={s.saving} onclick={() => s.deleteRouter()}>삭제</Button>
+		{#if s.canManageRouter}
+			<Button variant="danger-outline" size="sm" disabled={s.saving} onclick={() => s.deleteRouter()}>삭제</Button>
+		{/if}
 	{/snippet}
 </DetailHeader>
