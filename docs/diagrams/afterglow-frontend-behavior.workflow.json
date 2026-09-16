@@ -1,0 +1,260 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Afterglow Frontend 동작 구조: route·state·API recovery",
+    "output": "afterglow-frontend-behavior.html",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    {
+      "id": "ui",
+      "label": "Browser UI"
+    },
+    {
+      "id": "client",
+      "label": "Svelte client state"
+    },
+    {
+      "id": "api",
+      "label": "Afterglow API contract"
+    },
+    {
+      "id": "recovery",
+      "label": "Authentication recovery",
+      "variant": "exception"
+    }
+  ],
+  "phases": [
+    {
+      "id": "admission",
+      "label": "Route admission",
+      "fromCol": 0,
+      "toCol": 1
+    },
+    {
+      "id": "load",
+      "label": "Load and scope request",
+      "fromCol": 2,
+      "toCol": 3,
+      "variant": "emphasis"
+    },
+    {
+      "id": "result",
+      "label": "Server result and render",
+      "fromCol": 4,
+      "toCol": 5,
+      "variant": "dashed"
+    }
+  ],
+  "groups": [
+    {
+      "id": "session-state",
+      "label": "Persistent browser session",
+      "lane": "client",
+      "fromCol": 1,
+      "toCol": 3,
+      "variant": "emphasis"
+    },
+    {
+      "id": "request-work",
+      "label": "Request dispatch",
+      "lane": "client",
+      "fromCol": 3,
+      "toCol": 4,
+      "variant": "dashed"
+    },
+    {
+      "id": "recovery-work",
+      "label": "One shared refresh; terminal redirect",
+      "lane": "recovery",
+      "fromCol": 3,
+      "toCol": 5,
+      "variant": "security"
+    }
+  ],
+  "mainPath": [
+    "user-nav",
+    "server-hook",
+    "route",
+    "api-client",
+    "rendered-view"
+  ],
+  "nodes": [
+    {
+      "id": "user-nav",
+      "lane": "ui",
+      "col": 0,
+      "type": "external",
+      "label": "Navigation",
+      "sublabel": "load · deep link · refresh",
+      "width": 136
+    },
+    {
+      "id": "server-hook",
+      "lane": "ui",
+      "col": 1,
+      "type": "frontend",
+      "label": "hooks.server.ts",
+      "sublabel": "route gate · CSP",
+      "width": 148
+    },
+    {
+      "id": "route",
+      "lane": "ui",
+      "col": 2,
+      "type": "frontend",
+      "label": "Route component",
+      "sublabel": "page state · actions",
+      "width": 150
+    },
+    {
+      "id": "rendered-view",
+      "lane": "ui",
+      "col": 5,
+      "type": "frontend",
+      "label": "Rendered dashboard",
+      "sublabel": "data · loading · errors",
+      "width": 150
+    },
+    {
+      "id": "auth-store",
+      "lane": "client",
+      "col": 1,
+      "type": "security",
+      "label": "auth store",
+      "sublabel": "JWT · project scope",
+      "tag": "localStorage + session marker",
+      "width": 150
+    },
+    {
+      "id": "api-client",
+      "lane": "client",
+      "col": 3,
+      "type": "backend",
+      "label": "api client",
+      "sublabel": "fetchWithAuth · errors",
+      "width": 150
+    },
+    {
+      "id": "sse-consumer",
+      "lane": "client",
+      "col": 4,
+      "type": "messagebus",
+      "label": "SSE consumer",
+      "sublabel": "chat · VM progress",
+      "width": 150
+    },
+    {
+      "id": "fastapi",
+      "lane": "api",
+      "col": 4,
+      "type": "backend",
+      "label": "FastAPI /api/v1",
+      "sublabel": "auth · domain router",
+      "width": 150
+    },
+    {
+      "id": "refresh",
+      "lane": "recovery",
+      "col": 3,
+      "type": "security",
+      "label": "Refresh coordinator",
+      "sublabel": "expiry · shared promise",
+      "width": 154
+    },
+    {
+      "id": "login-redirect",
+      "lane": "recovery",
+      "col": 5,
+      "type": "security",
+      "label": "Clear auth → /login",
+      "sublabel": "terminal 401 only",
+      "width": 150
+    }
+  ],
+  "edges": [
+    {
+      "id": "navigation-hook",
+      "from": "user-nav",
+      "to": "server-hook",
+      "label": "document request",
+      "variant": "default"
+    },
+    {
+      "id": "hook-route",
+      "from": "server-hook",
+      "to": "route",
+      "label": "allow / redirect / SPA fallback",
+      "variant": "security"
+    },
+    {
+      "id": "route-request",
+      "from": "route",
+      "to": "api-client",
+      "label": "load · mutation · refresh",
+      "variant": "emphasis"
+    },
+    {
+      "id": "auth-headers",
+      "from": "auth-store",
+      "to": "api-client",
+      "label": "Bearer JWT · X-Project-Id",
+      "variant": "security"
+    },
+    {
+      "id": "client-fastapi",
+      "from": "api-client",
+      "to": "fastapi",
+      "label": "JSON / upload / download / SSE handshake",
+      "variant": "emphasis"
+    },
+    {
+      "id": "client-render",
+      "from": "api-client",
+      "to": "rendered-view",
+      "label": "server result → state · invalidate affected family",
+      "variant": "default",
+      "role": "return"
+    },
+    {
+      "id": "client-sse",
+      "from": "api-client",
+      "to": "sse-consumer",
+      "label": "text/event-stream",
+      "variant": "dashed",
+      "role": "branch"
+    },
+    {
+      "id": "sse-render",
+      "from": "sse-consumer",
+      "to": "rendered-view",
+      "label": "bounded event update",
+      "variant": "dashed",
+      "role": "return"
+    },
+    {
+      "id": "client-refresh",
+      "from": "api-client",
+      "to": "refresh",
+      "label": "near expiry / first 401 → new token, retry once",
+      "variant": "security",
+      "role": "branch"
+    },
+    {
+      "id": "refresh-api",
+      "from": "refresh",
+      "to": "fastapi",
+      "label": "POST /api/v1/auth/refresh",
+      "variant": "security"
+    },
+    {
+      "id": "terminal-401",
+      "from": "fastapi",
+      "to": "login-redirect",
+      "label": "unrecoverable 401",
+      "variant": "security",
+      "role": "error"
+    }
+  ]
+}

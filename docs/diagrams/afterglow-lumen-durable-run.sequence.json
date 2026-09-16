@@ -1,0 +1,207 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Lumen 동작 과정: completion descriptor · durable execution · SSE",
+    "output": "afterglow-lumen-durable-run.html",
+    "viewBox": [
+      1000,
+      600
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "accept-descriptor",
+        "label": "202 descriptor",
+        "focus": [
+          "browser",
+          "afterglow",
+          "lumen"
+        ],
+        "note": "Completion 요청의 성공은 durable run descriptor 수신이며, 생성 모델 응답의 완료가 아니다."
+      },
+      {
+        "id": "stream-execution",
+        "label": "durable execution",
+        "focus": [
+          "lumen",
+          "runtime",
+          "provider"
+        ],
+        "note": "Lumen이 journal, provider, model/tool 실행을 소유한다. Afterglow는 runtime을 실행하지 않는다."
+      },
+      {
+        "id": "events-and-control",
+        "label": "SSE + control",
+        "focus": [
+          "browser",
+          "afterglow",
+          "lumen"
+        ],
+        "note": "browser는 events URL을 구독하고, optional approval 또는 cancel은 동일 run으로 전달한다."
+      }
+    ]
+  },
+  "participants": [
+    {
+      "id": "browser",
+      "type": "frontend",
+      "label": "ChatPanel",
+      "sublabel": "browser state"
+    },
+    {
+      "id": "afterglow",
+      "type": "backend",
+      "label": "Afterglow BFF",
+      "sublabel": "/api/v1/chat"
+    },
+    {
+      "id": "lumen",
+      "type": "backend",
+      "label": "Lumen API",
+      "sublabel": "durable run API"
+    },
+    {
+      "id": "runtime",
+      "type": "database",
+      "label": "Lumen journal",
+      "sublabel": "run · event · checkpoint"
+    },
+    {
+      "id": "provider",
+      "type": "cloud",
+      "label": "Model / tool provider",
+      "sublabel": "Lumen-managed"
+    }
+  ],
+  "segments": [
+    {
+      "from": 140,
+      "to": 280,
+      "label": "1 · completion request is accepted"
+    },
+    {
+      "from": 288,
+      "to": 370,
+      "label": "2 · Lumen-owned durable execution"
+    },
+    {
+      "from": 378,
+      "to": 505,
+      "label": "3 · stream, optional approval, terminal result"
+    }
+  ],
+  "messages": [
+    {
+      "from": "browser",
+      "to": "afterglow",
+      "y": 165,
+      "label": "POST /api/v1/chat/conversations/{id}/completions",
+      "variant": "emphasis"
+    },
+    {
+      "from": "afterglow",
+      "to": "lumen",
+      "y": 195,
+      "label": "forward /v1/conversations/{id}/completions",
+      "variant": "security"
+    },
+    {
+      "from": "lumen",
+      "to": "runtime",
+      "y": 225,
+      "label": "persist accepted run + event journal",
+      "variant": "emphasis"
+    },
+    {
+      "from": "lumen",
+      "to": "afterglow",
+      "y": 255,
+      "label": "202 descriptor: run id · events_url · cancel_url",
+      "variant": "return"
+    },
+    {
+      "from": "afterglow",
+      "to": "browser",
+      "y": 285,
+      "label": "202 descriptor with browser-safe /api/v1/chat paths",
+      "variant": "return"
+    },
+    {
+      "from": "lumen",
+      "to": "provider",
+      "y": 315,
+      "label": "execute selected model / tool / provider call",
+      "variant": "emphasis"
+    },
+    {
+      "from": "provider",
+      "to": "lumen",
+      "y": 345,
+      "label": "delta, tool request, final outcome",
+      "variant": "return"
+    },
+    {
+      "from": "browser",
+      "to": "afterglow",
+      "y": 375,
+      "label": "GET /api/v1/chat/runs/{id}/events · Last-Event-ID?",
+      "variant": "default"
+    },
+    {
+      "from": "afterglow",
+      "to": "lumen",
+      "y": 405,
+      "label": "forward SSE subscription / replay position",
+      "variant": "security"
+    },
+    {
+      "from": "lumen",
+      "to": "browser",
+      "y": 435,
+      "label": "SSE deltas, approval, context and terminal events via BFF",
+      "variant": "dashed"
+    },
+    {
+      "from": "browser",
+      "to": "afterglow",
+      "y": 465,
+      "label": "POST approval / cancel",
+      "variant": "security"
+    },
+    {
+      "from": "afterglow",
+      "to": "lumen",
+      "y": 495,
+      "label": "forward run control",
+      "variant": "security"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "afterglow",
+      "from": 174,
+      "to": 500,
+      "type": "backend"
+    },
+    {
+      "participant": "lumen",
+      "from": 216,
+      "to": 500,
+      "type": "backend"
+    },
+    {
+      "participant": "runtime",
+      "from": 258,
+      "to": 460,
+      "type": "database"
+    },
+    {
+      "participant": "provider",
+      "from": 364,
+      "to": 418,
+      "type": "cloud"
+    }
+  ]
+}

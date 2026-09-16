@@ -1,0 +1,173 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Afterglow 플랫폼: 브라우저·BFF·클라우드 경계",
+    "output": "afterglow-platform.html",
+    "quality_profile": "showcase",
+    "viewBox": [1320, 720]
+  },
+  "components": [
+    {
+      "id": "browser",
+      "type": "external",
+      "label": "사용자 브라우저",
+      "sublabel": "JWT · project scope",
+      "pos": [50, 340],
+      "size": [150, 70]
+    },
+    {
+      "id": "frontend",
+      "type": "frontend",
+      "label": "Afterglow Frontend",
+      "sublabel": "SvelteKit :3080",
+      "pos": [460, 340],
+      "size": [170, 70],
+      "tag": "UI shell"
+    },
+    {
+      "id": "backend",
+      "type": "backend",
+      "label": "Afterglow API",
+      "sublabel": "FastAPI /api/v1 :8000",
+      "pos": [700, 340],
+      "size": [180, 70],
+      "tag": "authorization BFF"
+    },
+    {
+      "id": "redis",
+      "type": "database",
+      "label": "Redis / Valkey",
+      "sublabel": "Keystone session · cache · lock",
+      "pos": [460, 140],
+      "size": [180, 70]
+    },
+    {
+      "id": "afterglow-db",
+      "type": "database",
+      "label": "Afterglow MariaDB",
+      "sublabel": "app metadata · layer build records",
+      "pos": [700, 140],
+      "size": [200, 70]
+    },
+    {
+      "id": "keystone",
+      "type": "security",
+      "label": "Keystone",
+      "sublabel": "identity · catalog · RBAC",
+      "pos": [780, 540],
+      "size": [160, 70],
+      "tag": "caller-scoped"
+    },
+    {
+      "id": "openstack",
+      "type": "cloud",
+      "label": "OpenStack APIs",
+      "sublabel": "Nova · Neutron · storage · LB",
+      "pos": [1030, 340],
+      "size": [200, 70]
+    },
+    {
+      "id": "siblings",
+      "type": "external",
+      "label": "독립 형제 서비스",
+      "sublabel": "Drover · Lumen · Waygate · Palimpsest",
+      "pos": [1010, 540],
+      "size": [220, 70],
+      "tag": "own DB · worker · secrets"
+    },
+    {
+      "id": "kolla",
+      "type": "cloud",
+      "label": "Kolla / HAProxy",
+      "sublabel": "TLS ingress · controller replicas",
+      "pos": [250, 340],
+      "size": [180, 70]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Afterglow deployment boundary",
+      "wraps": ["frontend", "backend", "redis", "afterglow-db"]
+    }
+  ],
+  "connections": [
+    {
+      "id": "browser-to-ingress",
+      "from": "browser",
+      "to": "kolla",
+      "label": "HTTPS UI",
+      "variant": "security"
+    },
+    {
+      "id": "ingress-to-frontend",
+      "from": "kolla",
+      "to": "frontend"
+    },
+    {
+      "id": "frontend-to-api",
+      "from": "frontend",
+      "to": "backend",
+      "label": "Bearer JWT · X-Project-Id",
+      "labelDy": 52,
+      "variant": "emphasis"
+    },
+    {
+      "id": "api-to-redis",
+      "from": "backend",
+      "to": "redis",
+      "label": "session · cache"
+    },
+    {
+      "id": "api-to-keystone",
+      "from": "backend",
+      "to": "keystone",
+      "label": "verify token · catalog",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [[790, 480], [860, 480]]
+    },
+    {
+      "id": "api-to-openstack",
+      "from": "backend",
+      "to": "openstack",
+      "label": "caller-scoped openstacksdk",
+      "variant": "emphasis"
+    },
+    {
+      "id": "api-to-siblings",
+      "from": "backend",
+      "to": "siblings",
+      "label": "authenticated BFF proxy",
+      "variant": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "브라우저와 API",
+      "items": [
+        "Frontend는 UI shell과 브라우저 인증 상태를 소유하고 OpenStack SDK를 직접 호출하지 않는다.",
+        "모든 신규 API는 /api/v1 namespace를 사용하며, 선택적 X-Project-Id는 서버가 허용한 rescope에만 적용된다."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "권한과 데이터 정본",
+      "items": [
+        "FastAPI가 JWT·project ownership을 확인한 뒤 caller-scoped connection으로 Keystone과 OpenStack을 호출한다.",
+        "Redis는 세션·cache·lock 보조이고, cloud resource와 Keystone 권한의 정본은 아니다."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "서비스 경계",
+      "items": [
+        "Drover·Lumen·Waygate·Palimpsest는 자체 DB·worker·secret을 소유한다.",
+        "Afterglow는 신뢰된 endpoint로만 전달하며 형제 서비스의 durable state를 직접 공유하지 않는다."
+      ]
+    }
+  ]
+}

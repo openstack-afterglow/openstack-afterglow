@@ -1,0 +1,207 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Lumen API 통신: browser BFF proxy · SSE bytes · public SDK 경계",
+    "output": "afterglow-lumen-bff-transport.html",
+    "viewBox": [
+      1040,
+      600
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "browser-bff-request",
+        "label": "browser BFF 요청",
+        "focus": [
+          "browser",
+          "afterglow",
+          "catalog",
+          "lumen"
+        ],
+        "note": "Afterglow가 caller-scoped Keystone catalog 또는 trusted internal URL로 Lumen endpoint를 찾는다."
+      },
+      {
+        "id": "durable-sse-proxy",
+        "label": "descriptor와 SSE",
+        "focus": [
+          "browser",
+          "afterglow",
+          "lumen"
+        ],
+        "note": "run descriptor의 local URL을 사용하고, Lumen SSE는 압축 상태를 포함한 raw bytes로 비버퍼링 전달한다."
+      },
+      {
+        "id": "public-sdk-boundary",
+        "label": "public SDK 경계",
+        "focus": [
+          "sdk",
+          "lumen"
+        ],
+        "note": "OpenAI/Anthropic-compatible API는 Lumen 공개 URL과 API key를 사용한다. Afterglow는 외부 /v1 runtime을 mount하지 않는다."
+      }
+    ]
+  },
+  "participants": [
+    {
+      "id": "browser",
+      "type": "frontend",
+      "label": "Afterglow chat UI",
+      "sublabel": "browser JWT state"
+    },
+    {
+      "id": "afterglow",
+      "type": "backend",
+      "label": "Afterglow BFF",
+      "sublabel": "/api/v1/chat/*"
+    },
+    {
+      "id": "catalog",
+      "type": "security",
+      "label": "Keystone catalog",
+      "sublabel": "caller-scoped internal endpoint"
+    },
+    {
+      "id": "lumen",
+      "type": "backend",
+      "label": "Lumen API",
+      "sublabel": "internal /v1 · owns runtime"
+    },
+    {
+      "id": "sdk",
+      "type": "external",
+      "label": "External SDK",
+      "sublabel": "OpenAI / Anthropic client"
+    }
+  ],
+  "segments": [
+    {
+      "from": 140,
+      "to": 265,
+      "label": "1 · authenticated browser proxy"
+    },
+    {
+      "from": 273,
+      "to": 385,
+      "label": "2 · durable run and unbuffered SSE"
+    },
+    {
+      "from": 393,
+      "to": 505,
+      "label": "3 · separate public SDK surface"
+    }
+  ],
+  "messages": [
+    {
+      "from": "browser",
+      "to": "afterglow",
+      "y": 165,
+      "label": "GET /api/v1/chat/models or POST /conversations/{id}/completions",
+      "variant": "emphasis"
+    },
+    {
+      "from": "afterglow",
+      "to": "catalog",
+      "y": 195,
+      "label": "resolve trusted internal lumen endpoint",
+      "variant": "security"
+    },
+    {
+      "from": "afterglow",
+      "to": "lumen",
+      "y": 225,
+      "label": "forward → /v1/... · X-Auth-Token · X-Project-Id",
+      "variant": "security"
+    },
+    {
+      "from": "lumen",
+      "to": "afterglow",
+      "y": 255,
+      "label": "preserve status, safe headers, JSON body",
+      "variant": "return"
+    },
+    {
+      "from": "afterglow",
+      "to": "browser",
+      "y": 285,
+      "label": "same HTTP status/body; 503 if endpoint is unavailable",
+      "variant": "return"
+    },
+    {
+      "from": "browser",
+      "to": "afterglow",
+      "y": 315,
+      "label": "GET /api/v1/chat/runs/{run_id}/events · Last-Event-ID?",
+      "variant": "emphasis"
+    },
+    {
+      "from": "afterglow",
+      "to": "lumen",
+      "y": 345,
+      "label": "forward /v1/runs/{run_id}/events · preserve Accept + replay header",
+      "variant": "security"
+    },
+    {
+      "from": "lumen",
+      "to": "afterglow",
+      "y": 375,
+      "label": "text/event-stream raw chunks; do not buffer or decompress",
+      "variant": "dashed"
+    },
+    {
+      "from": "afterglow",
+      "to": "browser",
+      "y": 405,
+      "label": "same SSE chunks; browser updates bounded display state",
+      "variant": "dashed"
+    },
+    {
+      "from": "sdk",
+      "to": "lumen",
+      "y": 435,
+      "label": "GET /v1/compat then API-key request to public /v1",
+      "variant": "default"
+    },
+    {
+      "from": "lumen",
+      "to": "sdk",
+      "y": 465,
+      "label": "OpenAI/Anthropic-compatible model or stream response",
+      "variant": "return"
+    },
+    {
+      "from": "sdk",
+      "to": "afterglow",
+      "y": 495,
+      "label": "not a supported direct path: Afterglow external /v1 routes are unmounted",
+      "variant": "security"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "afterglow",
+      "from": 174,
+      "to": 492,
+      "type": "backend"
+    },
+    {
+      "participant": "catalog",
+      "from": 212,
+      "to": 226,
+      "type": "security"
+    },
+    {
+      "participant": "lumen",
+      "from": 250,
+      "to": 500,
+      "type": "backend"
+    },
+    {
+      "participant": "sdk",
+      "from": 429,
+      "to": 482,
+      "type": "external"
+    }
+  ]
+}
