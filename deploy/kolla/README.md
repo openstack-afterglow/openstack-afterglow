@@ -48,7 +48,7 @@ not grant sudo or change global Ansible settings.
      Kolla recreates HAProxy only if their resulting configuration hash changes.
    - The plugin does not create external-VIP routes, DNS records, or TLS certificates. Existing Drover and Waygate public catalog URLs remain operator-owned ingress contracts.
 4. **Published GHCR Images**:
-   - Services pull published `ghcr.io/openstack-afterglow/*` images using explicit release version tags (e.g. `:v0.1.0`, `:v0.2.20`, `:v0.2.1`, `:v1.22.0`) or exact linux/amd64 manifest digests (`@sha256:...`).
+   - Services pull published `ghcr.io/openstack-afterglow/*` images using explicit release version tags (e.g. `:0.1.0`, `:0.2.20`, `:0.2.1`, `:v1.22.0`) or exact linux/amd64 manifest digests (`@sha256:...`).
    - Mutable tags such as `latest` or bare unpinned references are prohibited by role precheck validators to prevent multi-controller divergence.
    - Source-build mode remains an optional development path; it is not used for production deployment.
 5. **Datastores & Credential Reuse**:

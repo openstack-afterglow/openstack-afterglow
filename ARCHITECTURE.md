@@ -277,9 +277,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "b3b9beb9e8b24ee9e7f9bd986eda5cb1552552cabb866fe11b35336f574f8593",
-  "reviewed_at": "2026-09-16T17:49:52Z",
-  "summary": "Release v1.22.0: Kolla explicit service version tags, updated service references (Waygate v0.1.0, Drover v0.2.20, Lumen v0.2.1, Palimpsest Hub v0.1.0), and design/backup refinements."
+  "source_sha256": "0a39f0941b04d7a1f695c72757da89f0ea688757c4a0b7f86b538292b03f452f",
+  "reviewed_at": "2026-09-16T18:07:47Z",
+  "summary": "Release v1.22.0: align Kolla sample service refs to exact published tags (:0.1.0, :0.2.20, :0.2.1)."
 }
 ```
 <!-- architecture-review:end -->
