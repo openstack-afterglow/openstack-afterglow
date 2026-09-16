@@ -238,6 +238,7 @@
 			<div>
 				<button
 					onclick={() => section.open = !section.open}
+					aria-expanded={section.open}
 					class="flex items-center justify-between w-full px-3 py-2 rounded-lg text-sm transition-colors {$page.url.pathname.startsWith(section.prefix) || section.items.some(item => $page.url.pathname.startsWith(item.href)) ? 'text-ink-0' : 'text-ink-2 hover:text-ink-0 hover:bg-surface-sunken'}"
 				>
 					<div class="flex items-center gap-1.5">
@@ -246,7 +247,7 @@
 						{/if}
 						<span>{section.label}</span>
 					</div>
-					<span class="text-xs text-ink-3">{section.open ? '▾' : '▸'}</span>
+					<span class="text-xs text-ink-2" aria-hidden="true">{section.open ? '▾' : '▸'}</span>
 				</button>
 
 				{#if section.open}
@@ -274,13 +275,13 @@
 	<div class="border-t border-line shrink-0">
 		<!-- 데스크톱: 관리자 정보 -->
 		<div class="hidden md:block px-4 py-3">
-			<div class="text-[10px] text-ink-3 uppercase tracking-widest font-medium">관리자</div>
+			<div class="text-[10px] text-ink-2 uppercase tracking-widest font-medium">관리자</div>
 			<div class="text-[13px] text-ink-1 font-medium mt-0.5 truncate">{$auth.username}</div>
 		</div>
 
 		<!-- 모바일 전용 -->
 		<div class="p-3 lg:hidden">
-			<div class="text-[10px] text-ink-3 uppercase tracking-wide px-1 mb-1.5">프로젝트</div>
+			<div class="text-[10px] text-ink-2 uppercase tracking-wide px-1 mb-1.5">프로젝트</div>
 			<ProjectSelector />
 		</div>
 		{#if !mockupAdminActive}
@@ -297,7 +298,7 @@
 		</div>
 		{/if}
 		<div class="p-3 pt-0 md:hidden border-t border-line">
-			<div class="px-3 text-xs text-ink-3">{$auth.username}</div>
+			<div class="px-3 text-xs text-ink-2">{$auth.username}</div>
 		</div>
 	</div>
 </aside>

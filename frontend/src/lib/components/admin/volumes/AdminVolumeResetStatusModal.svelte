@@ -73,7 +73,7 @@
 			{/if}
 			<div>
 				<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminvolumeresetstatusmodal-75">변경할 상태</label>
-				<select id="field-adminvolumeresetstatusmodal-75" bind:value={resetStatus} class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none">
+				<select id="field-adminvolumeresetstatusmodal-75" bind:value={resetStatus} class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus-visible:shadow-[var(--focus-ring)]">
 					<option value="available">available</option>
 					<option value="error">error</option>
 					<option value="in-use">in-use</option>

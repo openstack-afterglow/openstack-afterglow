@@ -147,7 +147,7 @@
 			{#if externalNets.length === 0}
 				<div class="text-xs text-red-400">외부 네트워크가 없습니다</div>
 			{:else}
-				<select id="field-page-146" bind:value={selectedNetId} class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none">
+				<select id="field-page-146" bind:value={selectedNetId} class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus-visible:shadow-[var(--focus-ring)]">
 					{#each externalNets as n}
 						<option value={n.id}>{n.name || n.id.slice(0, 8)}</option>
 					{/each}

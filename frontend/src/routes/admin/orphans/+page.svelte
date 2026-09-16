@@ -159,7 +159,7 @@
 				max="365"
 				bind:value={minAgeDays}
 				onchange={load}
-				class="w-20 bg-surface-sunken border border-line-2 rounded-md px-2 py-1 text-ink-0 text-sm focus:outline-none"
+				class="w-20 bg-surface-sunken border border-line-2 rounded-md px-2 py-1 text-ink-0 text-sm focus:outline-none focus-visible:shadow-[var(--focus-ring)]"
 			/>
 		</div>
 		<div class="text-xs text-ink-3">

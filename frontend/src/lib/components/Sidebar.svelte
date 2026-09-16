@@ -217,13 +217,14 @@
 		<div>
 			<button
 				onclick={() => dashboardOpen = !dashboardOpen}
+				aria-expanded={dashboardOpen}
 				class="flex items-center justify-between w-full px-3 py-2 rounded-lg text-sm transition-colors {$page.url.pathname === '/dashboard' || ['/dashboard/usage', '/dashboard/usage-report', '/dashboard/activity'].some((p) => $page.url.pathname.startsWith(p)) ? 'text-ink-0' : 'text-ink-2 hover:text-ink-0 hover:bg-surface-sunken'}"
 			>
 				<div class="flex items-center gap-1.5">
 					<svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
 					<span>대시보드</span>
 				</div>
-				<span class="text-xs text-ink-3">{dashboardOpen ? '▾' : '▸'}</span>
+				<span class="text-xs text-ink-2" aria-hidden="true">{dashboardOpen ? '▾' : '▸'}</span>
 			</button>
 			{#if dashboardOpen}
 				<div class="ml-3 mt-0.5 space-y-0.5">
@@ -249,6 +250,7 @@
 			<div>
 				<button
 					onclick={() => section.open = !section.open}
+					aria-expanded={section.open}
 					class="flex items-center justify-between w-full px-3 py-2 rounded-lg text-sm transition-colors {isSectionActive($page.url.pathname, section) ? 'text-ink-0' : 'text-ink-2 hover:text-ink-0 hover:bg-surface-sunken'}"
 				>
 					<div class="flex items-center gap-1.5">
@@ -257,7 +259,7 @@
 						{/if}
 						<span>{section.label}</span>
 					</div>
-					<span class="text-xs text-ink-3">{section.open ? '▾' : '▸'}</span>
+					<span class="text-xs text-ink-2" aria-hidden="true">{section.open ? '▾' : '▸'}</span>
 				</button>
 
 				{#if section.open}
@@ -285,17 +287,17 @@
 	<div class="border-t border-line shrink-0">
 		<!-- 프로젝트 선택 (1024px 미만) -->
 		<div class="p-3 lg:hidden">
-			<div class="text-[10px] text-ink-3 uppercase tracking-wide px-1 mb-1.5">프로젝트</div>
+			<div class="text-[10px] text-ink-2 uppercase tracking-wide px-1 mb-1.5">프로젝트</div>
 			<ProjectSelector />
 		</div>
 
 		<!-- 프로젝트 이름 표시 (1024px 이상) -->
 		<div class="hidden lg:block px-4 py-3">
-			<div class="text-[10px] text-ink-3 uppercase tracking-widest font-medium">프로젝트</div>
+			<div class="text-[10px] text-ink-2 uppercase tracking-widest font-medium">프로젝트</div>
 			<div class="text-[13px] text-ink-1 font-medium mt-0.5 truncate">{$auth.projectName ?? '—'}</div>
 			<a
 				href="/dashboard/project-settings"
-				class="inline-flex items-center gap-1 mt-1.5 text-[11px] transition-colors {$page.url.pathname === '/dashboard/project-settings' ? 'text-warm-text' : 'text-ink-3 hover:text-ink-2'}"
+				class="inline-flex items-center gap-1 mt-1.5 text-[11px] transition-colors {$page.url.pathname === '/dashboard/project-settings' ? 'text-warm-text' : 'text-ink-2 hover:text-ink-2'}"
 			>
 				<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
 				프로젝트 설정
@@ -319,7 +321,7 @@
 
 		<!-- 모바일 사용자 정보 -->
 		<div class="p-3 pt-0 md:hidden border-t border-line">
-			<div class="px-3 text-xs text-ink-3">{$auth.username}</div>
+			<div class="px-3 text-xs text-ink-2">{$auth.username}</div>
 		</div>
 	</div>
 </aside>

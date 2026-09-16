@@ -26,9 +26,10 @@
 		children,
 		onchange,
 	}: Props = $props();
+	const describedBy = $derived(ariaDescribedBy ?? (id ? `${id}-message` : undefined));
 </script>
 
-<select {id} bind:value {disabled} {required} {onchange} aria-label={ariaLabel} aria-describedby={ariaDescribedBy} aria-invalid={ariaInvalid || undefined} class="control select-input {className}">
+<select {id} bind:value {disabled} {required} {onchange} aria-label={ariaLabel} aria-describedby={describedBy} aria-invalid={ariaInvalid || undefined} class="control select-input {className}">
 	{@render children()}
 </select>
 

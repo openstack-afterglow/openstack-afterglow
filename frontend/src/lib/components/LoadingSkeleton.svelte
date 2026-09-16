@@ -12,7 +12,7 @@
 </script>
 
 {#if variant === 'table'}
-	<div class="overflow-x-auto" {...restProps}>
+	<div class="overflow-x-auto" role="status" aria-busy="true" aria-live="polite" aria-label="불러오는 중" {...restProps}>
 		<table class="w-full text-sm">
 			<thead>
 				<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
@@ -41,7 +41,7 @@
 		</table>
 	</div>
 {:else if variant === 'card'}
-	<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" {...restProps}>
+	<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" role="status" aria-busy="true" aria-live="polite" aria-label="불러오는 중" {...restProps}>
 		{#each Array(rows) as _, i}
 			<div class="bg-surface-base rounded-xl border border-line p-4">
 				<div class="h-5 w-3/4 bg-surface-sunken rounded animate-pulse mb-3"></div>
@@ -55,7 +55,7 @@
 		{/each}
 	</div>
 {:else if variant === 'list'}
-	<div class="space-y-3" {...restProps}>
+	<div class="space-y-3" role="status" aria-busy="true" aria-live="polite" aria-label="불러오는 중" {...restProps}>
 		{#each Array(rows) as _, i}
 			<div class="flex items-center gap-4 p-3 bg-surface-base rounded-lg border border-line">
 				<div class="h-10 w-10 bg-surface-sunken rounded animate-pulse shrink-0"></div>
@@ -68,7 +68,7 @@
 		{/each}
 	</div>
 {:else if variant === 'detail'}
-	<div class="space-y-4" {...restProps}>
+	<div class="space-y-4" role="status" aria-busy="true" aria-live="polite" aria-label="불러오는 중" {...restProps}>
 		<div class="bg-surface-base border border-line rounded-lg p-6">
 			<div class="h-4 w-24 bg-surface-sunken rounded animate-pulse mb-4"></div>
 			<div class="grid grid-cols-2 gap-x-8 gap-y-4">

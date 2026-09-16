@@ -78,6 +78,13 @@
   /* State */
   --color-state-success: #5ddca0;
   --color-state-success-text: var(--color-state-success);
+  /* Semantic tones need a text sibling: the raw tone is tuned as a FILL, and on a light surface —
+     including the 12% wash Alert paints behind its own copy — it lands below AA. Dark passes, so
+     dark aliases the tone and only :root.light carries a darker value. */
+  --color-state-warning-text: var(--color-state-warning);
+  --color-state-danger-text: var(--color-state-danger);
+  --color-state-info-text: var(--color-state-info);
+  --color-state-neutral-text: var(--color-state-neutral);
   --color-state-warning: #f4b85a;
   --color-state-danger: #f06b6b;
   --color-state-info: #5ed4e4;
@@ -333,7 +340,11 @@ body {
   --color-warm-text: #c2410c;
   --color-action-on-warm: #18191b;
   --color-state-success: #16a34a;
-  --color-state-success-text: #15803d;
+  --color-state-success-text: #166534;
+  --color-state-warning-text: #92400e;
+  --color-state-danger-text: #b91c1c;
+  --color-state-info-text: #1d4ed8;
+  --color-state-neutral-text: #475569;
   --color-state-warning: #b45309;
   --color-state-danger: #dc2626;
   --color-state-info: #2563eb;

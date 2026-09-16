@@ -1252,7 +1252,17 @@
 			min-height: 2.75rem;
 		}
 		.context-status-text {
-			display: none;
+			/* 화면에서만 감춘다: display:none 은 접근성 트리에서도 제거해 컨텍스트 잔량을
+			   스크린리더 사용자에게서 빼앗는다. */
+			position: absolute;
+			width: 1px;
+			height: 1px;
+			padding: 0;
+			margin: -1px;
+			overflow: hidden;
+			clip-path: inset(50%);
+			white-space: nowrap;
+			border: 0;
 		}
 	}
 </style>

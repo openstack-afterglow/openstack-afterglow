@@ -40,7 +40,7 @@
 		border: 1px solid var(--alert-line);
 		border-radius: var(--radius-lg);
 		background: color-mix(in oklab, var(--alert-tone) 12%, transparent);
-		color: var(--alert-tone);
+		color: var(--alert-text);
 		padding: 0.75rem 1rem;
 	}
 	.alert-body { min-width: 0; }
@@ -48,21 +48,21 @@
 		margin: 0 0 0.25rem;
 		font-size: 0.875rem;
 		font-weight: 600;
-		color: var(--alert-tone);
+		color: var(--alert-text);
 	}
 	.alert-content {
 		font-size: 0.8125rem;
 		line-height: 1.5;
-		color: color-mix(in oklab, var(--alert-tone) 88%, var(--color-ink-0));
+		color: color-mix(in oklab, var(--alert-text) 88%, var(--color-ink-0));
 	}
 	.alert-actions {
 		display: flex;
 		flex-shrink: 0;
 		gap: 0.5rem;
 	}
-	.alert-success { --alert-tone: var(--color-state-success); --alert-line: color-mix(in oklab, var(--color-state-success) 32%, transparent); }
-	.alert-warning { --alert-tone: var(--color-state-warning); --alert-line: color-mix(in oklab, var(--color-state-warning) 32%, transparent); }
-	.alert-danger { --alert-tone: var(--color-state-danger); --alert-line: color-mix(in oklab, var(--color-state-danger) 32%, transparent); }
-	.alert-info { --alert-tone: var(--color-state-info); --alert-line: color-mix(in oklab, var(--color-state-info) 32%, transparent); }
-	.alert-neutral { --alert-tone: var(--color-state-neutral); --alert-line: color-mix(in oklab, var(--color-state-neutral) 32%, transparent); }
+	.alert-success { --alert-tone: var(--color-state-success); --alert-text: var(--color-state-success-text); --alert-line: color-mix(in oklab, var(--color-state-success) 32%, transparent); }
+	.alert-warning { --alert-tone: var(--color-state-warning); --alert-text: var(--color-state-warning-text); --alert-line: color-mix(in oklab, var(--color-state-warning) 32%, transparent); }
+	.alert-danger { --alert-tone: var(--color-state-danger); --alert-text: var(--color-state-danger-text); --alert-line: color-mix(in oklab, var(--color-state-danger) 32%, transparent); }
+	.alert-info { --alert-tone: var(--color-state-info); --alert-text: var(--color-state-info-text); --alert-line: color-mix(in oklab, var(--color-state-info) 32%, transparent); }
+	.alert-neutral { --alert-tone: var(--color-state-neutral); --alert-text: var(--color-state-neutral-text); --alert-line: color-mix(in oklab, var(--color-state-neutral) 32%, transparent); }
 </style>

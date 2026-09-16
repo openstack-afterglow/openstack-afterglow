@@ -22,7 +22,7 @@
 <!-- One viewport-bounded workspace; main is the only content scroll owner. -->
 <div class="flex h-[100dvh] overflow-hidden">
 	<Sidebar />
-	<main id="main-content" tabindex="-1" class="min-w-0 flex-1 overflow-y-auto pt-[var(--app-header-height)] focus:outline-none">
+	<main id="main-content" tabindex="-1" class="min-w-0 flex-1 overflow-y-auto pt-[var(--app-header-height)] focus:outline-none focus-visible:shadow-[var(--focus-ring)]">
 		{@render children()}
 	</main>
 </div>

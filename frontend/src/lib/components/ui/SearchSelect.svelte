@@ -242,7 +242,7 @@
 	.chevron { width: 0.5rem; height: 0.5rem; flex: 0 0 auto; border-right: 1px solid currentColor; border-bottom: 1px solid currentColor; transform: translateY(-0.125rem) rotate(45deg); color: var(--color-ink-2); }
 	.search-select-popover { position: fixed; z-index: var(--z-popover); display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; border: 1px solid var(--color-line-2); border-radius: var(--radius-lg); background: var(--color-surface-raised); box-shadow: var(--shadow-popover); }
 	.search-select-input { border: 0; border-bottom: 1px solid var(--color-line); border-radius: 0; padding: 0.625rem 0.75rem; }
-	.search-select-input::placeholder { color: var(--color-ink-3); }
+	.search-select-input::placeholder { color: var(--color-ink-2); }
 	.search-select-options { min-height: 0; overflow-y: auto; }
 	.search-select-option { display: grid; width: 100%; gap: 0.125rem; border: 0; border-bottom: 1px solid var(--color-line); background: transparent; padding: 0.625rem 0.75rem; color: var(--color-ink-1); text-align: left; }
 	.search-select-option:last-child { border-bottom: 0; }

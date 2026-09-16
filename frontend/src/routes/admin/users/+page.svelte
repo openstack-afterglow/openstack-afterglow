@@ -293,7 +293,7 @@
 			/>
 			<select
 				bind:value={filterStatus}
-				class="bg-surface-sunken border border-line-2 rounded-lg px-2 py-1.5 text-sm text-ink-2 focus:outline-none"
+				class="bg-surface-sunken border border-line-2 rounded-lg px-2 py-1.5 text-sm text-ink-2 focus:outline-none focus-visible:shadow-[var(--focus-ring)]"
 				data-tour="admin-identity-status-filter"
 			>
 				<option value="all">전체 상태</option>
@@ -302,7 +302,7 @@
 			</select>
 			<select
 				bind:value={sortBy}
-				class="bg-surface-sunken border border-line-2 rounded-lg px-2 py-1.5 text-sm text-ink-2 focus:outline-none"
+				class="bg-surface-sunken border border-line-2 rounded-lg px-2 py-1.5 text-sm text-ink-2 focus:outline-none focus-visible:shadow-[var(--focus-ring)]"
 			>
 				<option value="name">이름순</option>
 				<option value="first_seen">최초 활동일순</option>

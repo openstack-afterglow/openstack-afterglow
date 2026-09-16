@@ -146,8 +146,8 @@
 						{/snippet}
 						{#if identitySummary.recent_users && identitySummary.recent_users.length > 0}
 							{#snippet footer()}
-								<span class="flex items-center gap-1 text-[10px] text-emerald-400">
-									<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 animate-pulse"></span>
+								<span class="flex items-center gap-1 text-[10px] text-state-success-text">
+									<span class="w-1.5 h-1.5 rounded-full bg-state-success shrink-0 animate-pulse"></span>
 									최근 추가 {identitySummary?.recent_users?.length ?? 0}명
 								</span>
 							{/snippet}
@@ -163,8 +163,8 @@
 						{/snippet}
 						{#if identitySummary.recent_projects && identitySummary.recent_projects.length > 0}
 							{#snippet footer()}
-								<span class="flex items-center gap-1 text-[10px] text-emerald-400">
-									<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 animate-pulse"></span>
+								<span class="flex items-center gap-1 text-[10px] text-state-success-text">
+									<span class="w-1.5 h-1.5 rounded-full bg-state-success shrink-0 animate-pulse"></span>
 									최근 추가 {identitySummary?.recent_projects?.length ?? 0}개
 								</span>
 							{/snippet}

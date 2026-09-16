@@ -559,7 +559,7 @@
 	.lab-card { transition: opacity var(--motion-duration-base) var(--landing-ease), transform var(--motion-duration-base) var(--landing-ease); }
 	.lab-card { display: grid; grid-template-columns: auto minmax(5.5rem, 7rem) minmax(0, 1fr); align-items: center; gap: 0.75rem; padding: 0.75rem; border-bottom: 1px solid var(--color-line); }
 	.lab-card:last-of-type { border-bottom: 0; }
-	.lab-card.is-muted { opacity: 0.34; transform: scale(0.99); }
+	.lab-card.is-muted { opacity: 0.62; transform: scale(0.99); }
 	.workflow-index { align-self: start; color: var(--color-warm-text); font-family: var(--font-mono); font-size: 0.6875rem; }
 	.landing-page :global(.lab-card-media) { width: 100%; aspect-ratio: 1 / 1; border-radius: 0.625rem; background: var(--color-surface-editorial-media); }
 	.workflow-copy span { color: var(--color-ink-2); font-family: var(--font-mono); font-size: 0.625rem; text-transform: uppercase; }

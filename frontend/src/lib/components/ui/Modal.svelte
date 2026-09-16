@@ -44,7 +44,7 @@
 			aria-label="대화상자 닫기"
 			tabindex={dismissible ? 0 : -1}
 		></button>
-		<div class="relative z-[1] max-h-full max-w-full">
+		<div class="relative z-[1] max-h-full max-w-full overflow-y-auto">
 			{@render children()}
 		</div>
 	</div>

@@ -9,6 +9,7 @@ const readmeSource = readFileSync(resolve(repoRoot, 'README.md'), 'utf8');
 const agentsPath = resolve(repoRoot, '../AGENTS.md');
 const agentsSource = existsSync(agentsPath) ? readFileSync(agentsPath, 'utf8') : '';
 const claudePath = resolve(repoRoot, '../CLAUDE.md');
+const alertSource = readFileSync(resolve(repoRoot, 'src/lib/components/ui/Alert.svelte'), 'utf8');
 const uiIndexSource = readFileSync(resolve(repoRoot, 'src/lib/components/ui/index.ts'), 'utf8');
 const tokenSource = readFileSync(resolve(repoRoot, 'src/lib/design/tokens.ts'), 'utf8');
 
@@ -89,6 +90,26 @@ const motionTokenNames = [
 	'--motion-ease-standard',
 	'--motion-ease-out',
 	'--motion-ease-in-out',
+];
+
+// 시맨틱 톤은 채움용 값과 글자용 값을 따로 갖는다. 채움 값을 글자에 쓰면 라이트에서 AA 미달이다.
+const toneTextTokenNames = [
+	'--color-warm-text',
+	'--color-warm-text-hover',
+	'--color-state-success-text',
+	'--color-state-warning-text',
+	'--color-state-danger-text',
+	'--color-state-info-text',
+	'--color-state-neutral-text',
+];
+
+// Tailwind 4 는 @theme static 안에 선언된 --color-* 에서만 유틸리티를 만든다. :root 에 선언하면
+// 클래스가 조용히 아무 규칙도 만들지 않는다 — action-warm 계열이 실제로 그래서 죽어 있었다.
+const themeScopedColorNames = [
+	'--color-action-warm',
+	'--color-action-warm-hover',
+	'--color-action-on-warm',
+	'--color-action-on-accent',
 ];
 
 const radiusTokenNames = ['--radius-sm', '--radius-md', '--radius-lg', '--radius-xl'];
@@ -271,6 +292,27 @@ describe('design system source contracts', () => {
 		expect(reducedTransparency).toBeGreaterThan(enhancement);
 		expect(forcedColors).toBeGreaterThan(enhancement);
 		expect(layoutSource).toContain('color-mix(in oklab, var(--color-surface-base) var(--material-chrome-alpha)');
+	});
+
+	it('keeps tone text tokens and action colours declared where Tailwind can see them', () => {
+		const themeStart = layoutSource.indexOf('@theme static');
+		const themeEnd = layoutSource.indexOf('\n}', themeStart);
+		const themeBlock = layoutSource.slice(themeStart, themeEnd);
+		for (const token of themeScopedColorNames) {
+			expect(themeBlock).toContain(token);
+			expect(designSource).toContain(token);
+		}
+		for (const token of toneTextTokenNames) {
+			expect(themeBlock).toContain(token);
+		}
+		// 라이트는 채움 톤을 글자에 재사용하지 않는다: 다섯 톤 모두 별도 값을 가져야 한다.
+		const lightBlock = layoutSource.slice(layoutSource.indexOf(':root.light {'));
+		for (const token of ['--color-state-success-text', '--color-state-warning-text', '--color-state-danger-text', '--color-state-info-text', '--color-state-neutral-text']) {
+			expect(lightBlock).toContain(token);
+		}
+		// 경고/오류 배너의 글자는 톤이 아니라 톤의 텍스트 형제를 쓴다.
+		expect(alertSource).toContain('--alert-text: var(--color-state-danger-text)');
+		expect(alertSource).not.toContain('color: var(--alert-tone);');
 	});
 
 	it('links tracked frontend docs and optional local agent instructions to the canonical design system', () => {

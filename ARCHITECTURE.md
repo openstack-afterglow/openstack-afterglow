@@ -272,9 +272,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "5ea4f1dfbf0d73e718f7ae4ec832ee53039559bace07a62881aa3fd9027971b2",
-  "reviewed_at": "2026-09-15T21:49:53Z",
-  "summary": "Reviewed the warm action-colour restoration: --color-action-warm, --color-action-warm-hover, --color-action-on-warm and --color-action-on-accent moved into @theme static, which is what makes a --color-* name generate Tailwind utilities — they were declared in :root or not at all, so roughly 1,200 bg-/text-/border-action-warm class occurrences emitted no CSS and the warm CTA rendered with no fill. Warm as text on a light surface is 3.56:1, so the 422 text-action-warm occurrences were migrated to text-warm-text at 5.18:1 rather than sharing one key with the fill. Light mode also gains a --focus-ring counterpart, replacing a 1.48:1 indicator with 7.58:1. Frontend styling only: no API, schema, permission, dependency or deployment-contract change."
+  "source_sha256": "2c9876499749fbc86843b8429ba8ff1cfd9aba052a896cb51eb03ea4c375caf4",
+  "reviewed_at": "2026-09-16T05:43:25Z",
+  "summary": "Reviewed the accessibility and theme-defect batch from the five-lens HIG review: semantic tones gain text siblings so Alert stops painting copy in a fill colour that measures 2.89-4.37:1 on its own wash; Toast becomes a live region with per-type politeness; Field's help and error finally associate with their input because the text primitives default aria-describedby to the id Field already renders; LoadingSkeleton announces itself without adding a grid child; Modal gains a scroll path; placeholders and the shell's labels, username, empty state, record count and meter readout move off the disabled-only ink-3; the volume action menu becomes reachable below 1024px; and several dark-theme palette literals rendering raw on white panels move to semantic tokens. Frontend styling and markup only: no API, schema, permission, dependency or deployment-contract change."
 }
 ```
 <!-- architecture-review:end -->

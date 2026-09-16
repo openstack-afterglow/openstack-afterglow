@@ -34,6 +34,7 @@
 		oninput,
 		onkeydown,
 	}: Props = $props();
+	const describedBy = $derived(ariaDescribedBy ?? (id ? `${id}-message` : undefined));
 </script>
 
 <input
@@ -47,7 +48,7 @@
 	{maxlength}
 	{inputmode}
 	aria-label={ariaLabel}
-	aria-describedby={ariaDescribedBy}
+	aria-describedby={describedBy}
 	aria-invalid={ariaInvalid || undefined}
 	{oninput}
 	{onkeydown}
@@ -66,7 +67,7 @@
 		line-height: 1.4;
 		transition: border-color var(--motion-duration-fast) var(--motion-ease-standard), box-shadow var(--motion-duration-fast) var(--motion-ease-standard), background var(--motion-duration-fast) var(--motion-ease-standard);
 	}
-	.control::placeholder { color: var(--color-ink-3); }
+	.control::placeholder { color: var(--color-ink-2); }
 	.control:focus-visible {
 		outline: none;
 		border-color: var(--color-line-2);

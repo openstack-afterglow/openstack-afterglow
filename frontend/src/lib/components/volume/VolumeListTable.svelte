@@ -150,7 +150,7 @@
 				</div>
 			{/if}
 			<!-- 액션 드롭다운 -->
-			<div class="hidden lg:flex justify-end" role="none">
+			<div class="flex justify-end" role="none">
 				<ActionMenu
 					open={openActionMenu === vol.id}
 					ariaLabel={`${vol.name || vol.id} 볼륨 작업`}

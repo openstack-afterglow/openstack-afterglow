@@ -197,7 +197,7 @@
 						<input
 							bind:value={editingSpecValue}
 							type="text"
-							class="flex-1 min-w-0 bg-surface-sunken border border-action-warm rounded px-2 py-1 text-xs text-ink-0 font-mono focus:outline-none"
+							class="flex-1 min-w-0 bg-surface-sunken border border-action-warm rounded px-2 py-1 text-xs text-ink-0 font-mono focus:outline-none focus-visible:shadow-[var(--focus-ring)]"
 							onkeydown={(e) => {
 								if (e.key === 'Enter') saveEditSpec();
 								if (e.key === 'Escape') cancelEditSpec();

@@ -29,7 +29,7 @@
 	});
 </script>
 
-{#if saveSuccess}<div class="bg-green-900/40 border border-green-700 text-green-300 rounded-lg px-4 py-3 text-sm mb-4">{saveSuccess}</div>{/if}
+{#if saveSuccess}<div class="bg-state-success/12 border border-state-success/32 text-state-success-text rounded-lg px-4 py-3 text-sm mb-4">{saveSuccess}</div>{/if}
 {#if saveError}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{saveError}</div>{/if}
 
 <!-- Compute Quotas -->
