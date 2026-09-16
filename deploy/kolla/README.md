@@ -47,10 +47,10 @@ not grant sudo or change global Ansible settings.
    - A tag-selected plugin run reconciles the matching Kolla HAProxy fragments.
      Kolla recreates HAProxy only if their resulting configuration hash changes.
    - The plugin does not create external-VIP routes, DNS records, or TLS certificates. Existing Drover and Waygate public catalog URLs remain operator-owned ingress contracts.
-4. **Pinned GHCR Images**:
-   - DMSLab pulls published `ghcr.io/openstack-afterglow/*` images by exact linux/amd64 manifest digest. Production DMSLab stays digest-pinned. Do not use mutable `latest` or `dev` tags in production.
-   - Mutable tags are force-refreshed by `deploy`, `reconfigure`, `pull`, and `upgrade` lifecycle actions. Digest pins remain immutable and must be repinned to the published release's linux/amd64 digests when upgrading release versions.
-   - Source-build mode remains an optional development path; it is not used for the DMSLab deployment.
+4. **Published GHCR Images**:
+   - Services pull published `ghcr.io/openstack-afterglow/*` images using explicit release version tags (e.g. `:v0.1.0`, `:v0.2.20`, `:v0.2.1`, `:v1.22.0`) or exact linux/amd64 manifest digests (`@sha256:...`).
+   - Mutable tags such as `latest` or bare unpinned references are prohibited by role precheck validators to prevent multi-controller divergence.
+   - Source-build mode remains an optional development path; it is not used for production deployment.
 5. **Datastores & Credential Reuse**:
    - **MariaDB**: Creates plugin-owned `_kolla` schemas (`afterglow_kolla`, `drover_kolla`, `lumen_kolla`, `waygate_kolla`, `palimpsest_kolla`).
    - **Valkey (Redis)**: Current Kolla deploys Valkey server+Sentinel. Afterglow gives its Redis client every Kolla Sentinel address and the Kolla monitor name, so cache/session writes follow a promoted master without rewriting configuration; the generated `redis_url` still carries the existing master password and service DB index. The plugin creates no Redis container, so a full or Valkey-tagged Kolla deployment (`enable_valkey: "yes"`) must establish Valkey before plugin-only tagged operations. Other plugin services retain the connection behavior defined by their own roles. Explicit service indexes remain (5: Afterglow, 6: Waygate, 7: Drover, 8: Lumen, 9: Palimpsest).

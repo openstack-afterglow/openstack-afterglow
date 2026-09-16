@@ -4,7 +4,7 @@
 
 Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 배포된 Drover·Lumen·Waygate·Palimpsest 서비스로 가는 인증된 BFF(gateway)이다. 브라우저 UI는 SvelteKit이 제공하지만 OpenStack 자원 생성과 권한 검사는 FastAPI 백엔드가 소유한다. 저장소 URL은 <https://github.com/openstack-afterglow/openstack-afterglow>이다.
 
-이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend 모두 `1.20.0`이며, backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`·Vite `8.2.0`을 manifest에 고정한다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
+이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend 모두 `1.22.0`이며, backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`·Vite `8.2.0`을 manifest에 고정한다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
 
 1분 요약:
 
@@ -277,9 +277,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "a383ba230a8c7c0a4df02d9765280c44dcde47adad007c2f8c0af4e75629ced8",
-  "reviewed_at": "2026-09-16T17:03:40Z",
-  "summary": "Kolla Waygate and Palimpsest validators permit explicit version tags while retaining immutable digest, source-image, and latest-tag safeguards."
+  "source_sha256": "b3b9beb9e8b24ee9e7f9bd986eda5cb1552552cabb866fe11b35336f574f8593",
+  "reviewed_at": "2026-09-16T17:49:52Z",
+  "summary": "Release v1.22.0: Kolla explicit service version tags, updated service references (Waygate v0.1.0, Drover v0.2.20, Lumen v0.2.1, Palimpsest Hub v0.1.0), and design/backup refinements."
 }
 ```
 <!-- architecture-review:end -->
