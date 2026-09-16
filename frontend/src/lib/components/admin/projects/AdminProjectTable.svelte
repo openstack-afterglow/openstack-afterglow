@@ -41,7 +41,7 @@
 			{#each projects as p (p.id)}
 				<tr class="border-b border-line/50 text-xs hover:bg-surface-sunken/50 transition-colors">
 					<td class="py-2 pr-4 text-ink-0">
-						<a href="/admin/projects/{p.id}" class="hover:text-action-warm-hover transition-colors max-md:block max-md:max-w-[66vw] max-md:truncate" title={p.name}>{p.name}</a>
+						<a href="/admin/projects/{p.id}" class="hover:text-warm-text-hover transition-colors max-md:block max-md:max-w-[66vw] max-md:truncate" title={p.name}>{p.name}</a>
 					</td>
 					<td class="py-2 pr-4 text-ink-2">{p.description || '-'}</td>
 					<td class="py-2 pr-4">
@@ -67,7 +67,7 @@
 							>수정</button>
 							<button
 								onclick={() => onAccess(p)}
-								class="px-2 py-0.5 text-xs bg-surface-selected/40 hover:bg-surface-selected/40 text-action-warm rounded"
+								class="px-2 py-0.5 text-xs bg-surface-selected/40 hover:bg-surface-selected/40 text-warm-text rounded"
 							>권한</button>
 							<button
 								onclick={() => onDelete(p)}

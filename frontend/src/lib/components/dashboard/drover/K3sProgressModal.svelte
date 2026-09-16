@@ -25,7 +25,7 @@
 				{@const isCurrent = controller.step === step.id}
 				{@const isDone = activeSteps.findIndex(s => s.id === controller.step) > activeSteps.findIndex(s => s.id === step.id)}
 				{@const stepTime = controller.stepTimings[step.id]}
-				<div class="flex items-center gap-2 text-sm {isDone ? 'text-green-400' : isCurrent ? 'text-action-warm' : 'text-ink-3'}">
+				<div class="flex items-center gap-2 text-sm {isDone ? 'text-green-400' : isCurrent ? 'text-warm-text' : 'text-ink-3'}">
 					<span class="w-4 h-4 flex items-center justify-center flex-shrink-0">
 						{#if isDone}✓{:else if isCurrent}<span class="animate-pulse">●</span>{:else}○{/if}
 					</span>

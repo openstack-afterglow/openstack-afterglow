@@ -8,7 +8,7 @@
 <div class="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-3">
 	<!-- 하이퍼바이저 -->
 	<a href="/admin/hypervisors" class="flex items-center gap-3 bg-surface-base p-4 transition-colors hover:bg-surface-selected">
-		<div class="flex size-8 shrink-0 items-center justify-center text-action-warm">
+		<div class="flex size-8 shrink-0 items-center justify-center text-warm-text">
 			<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2"/></svg>
 		</div>
 		<div class="flex-1 min-w-0">

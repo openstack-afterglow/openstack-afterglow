@@ -172,7 +172,7 @@
 		<div class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2.5 text-ink-3 text-sm">
 			없음 (관리자 생성 — 콘솔 비밀번호 사용)
 		</div>
-		<p class="text-xs text-action-warm/80 mt-1">admin 모드에서는 대상 프로젝트의 키페어에 접근할 수 없습니다.</p>
+		<p class="text-xs text-warm-text/80 mt-1">admin 모드에서는 대상 프로젝트의 키페어에 접근할 수 없습니다.</p>
 	{:else}
 		{#if s.githubSshEligible}
 			<div class="mb-2">
@@ -213,7 +213,7 @@
 				{/each}
 			</select>
 			{#if s.keypairs.length === 0}
-				<p class="text-xs text-action-warm mt-1">등록된 키페어가 없습니다.</p>
+				<p class="text-xs text-warm-text mt-1">등록된 키페어가 없습니다.</p>
 			{/if}
 		{/if}
 	{/if}
@@ -221,7 +221,7 @@
 
 <!-- 루트 디스크 -->
 {#if $wizard.squashfsMode}
-<div class="mb-4 p-3 rounded-lg bg-surface-selected/20 border border-action-warm/40 text-action-warm text-xs">
+<div class="mb-4 p-3 rounded-lg bg-surface-selected/20 border border-action-warm/40 text-warm-text text-xs">
 	squashfs 라이브러리 소비 VM은 선택한 레이어의 Glance base image에서 직접 부팅합니다. 루트 디스크 크기와 삭제 옵션은 이 베타 경로에서 적용되지 않습니다.
 </div>
 {:else if $wizard.bootSource === 'image'}
@@ -247,14 +247,14 @@
 			<input
 				type="checkbox"
 				bind:checked={$wizard.deleteBootVolumeOnTermination}
-				class="w-4 h-4 rounded border-line-2 bg-surface-sunken text-action-warm focus:ring-line-2 flex-shrink-0"
+				class="w-4 h-4 rounded border-line-2 bg-surface-sunken text-warm-text focus:ring-line-2 flex-shrink-0"
 			/>
 			<span class="text-sm text-ink-2">VM 삭제 시 루트 디스크 함께 삭제</span>
 		</label>
 	</div>
 </div>
 {:else}
-<div class="mb-4 p-3 rounded-lg bg-surface-selected/20 border border-action-warm/40 text-action-warm text-xs">
+<div class="mb-4 p-3 rounded-lg bg-surface-selected/20 border border-action-warm/40 text-warm-text text-xs">
 	기존 부팅 볼륨 사용 시 루트 디스크 크기 설정이 적용되지 않습니다. 볼륨: <span class="font-medium">{$wizard.bootVolumeName ?? $wizard.bootVolumeId}</span>
 </div>
 {/if}
@@ -269,7 +269,7 @@
 		<button
 			type="button"
 			onclick={() => wizard.update(w => ({ ...w, dataMounts: [...w.dataMounts, { fileStorageId: '', mountPoint: '', readOnly: false }] }))}
-			class="text-xs text-action-warm hover:text-action-warm-hover transition-colors"
+			class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
 		>+ 추가</button>
 	</div>
 	{#if $wizard.dataMounts.length === 0}
@@ -314,7 +314,7 @@
 								m[i] = { ...m[i], readOnly: (e.target as HTMLInputElement).checked };
 								return { ...w, dataMounts: m };
 							})}
-							class="w-3.5 h-3.5 rounded border-line-2 bg-surface-sunken text-action-warm"
+							class="w-3.5 h-3.5 rounded border-line-2 bg-surface-sunken text-warm-text"
 						/>읽기 전용
 					</label>
 					<button

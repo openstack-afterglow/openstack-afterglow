@@ -122,7 +122,7 @@
 				<div class="space-y-1.5">
 					{#each Object.entries(summary.storage.volume_by_status) as [status, count]}
 						<div class="flex justify-between text-xs">
-							<span class="{status === 'available' ? 'text-green-400' : status === 'in-use' ? 'text-action-warm' : status === 'error' ? 'text-red-400' : 'text-ink-2'}">{status}</span>
+							<span class="{status === 'available' ? 'text-green-400' : status === 'in-use' ? 'text-warm-text' : status === 'error' ? 'text-red-400' : 'text-ink-2'}">{status}</span>
 							<span class="text-ink-2">{count}개</span>
 						</div>
 					{/each}
@@ -213,10 +213,10 @@
 			</div>
 
 			<div class="mt-4 pt-4 border-t border-line grid grid-cols-2 gap-2">
-				<a href="/admin/containers" class="flex items-center justify-center gap-1.5 text-xs text-action-warm hover:text-action-warm-hover transition-colors bg-surface-sunken rounded-lg py-2">
+				<a href="/admin/containers" class="flex items-center justify-center gap-1.5 text-xs text-warm-text hover:text-warm-text-hover transition-colors bg-surface-sunken rounded-lg py-2">
 					컨테이너 목록 →
 				</a>
-				<a href="/admin/drover" class="flex items-center justify-center gap-1.5 text-xs text-action-warm hover:text-action-warm-hover transition-colors bg-surface-sunken rounded-lg py-2">
+				<a href="/admin/drover" class="flex items-center justify-center gap-1.5 text-xs text-warm-text hover:text-warm-text-hover transition-colors bg-surface-sunken rounded-lg py-2">
 					Drover 클러스터 →
 				</a>
 			</div>
@@ -229,7 +229,7 @@
 				<SummaryStatCard value={summary.data_services?.database_instance_count ?? 0} label="DB 인스턴스 (Trove)" size="lg" />
 			</div>
 			<div class="mt-4 pt-4 border-t border-line">
-				<a href="/admin/database-instances" class="flex items-center justify-center gap-1.5 text-xs text-action-warm hover:text-action-warm-hover transition-colors bg-surface-sunken rounded-lg py-2">
+				<a href="/admin/database-instances" class="flex items-center justify-center gap-1.5 text-xs text-warm-text hover:text-warm-text-hover transition-colors bg-surface-sunken rounded-lg py-2">
 					DB 인스턴스 →
 				</a>
 			</div>
@@ -243,10 +243,10 @@
 				<SummaryStatCard value={summary.identity?.project_count ?? 0} label="프로젝트" size="lg" />
 			</div>
 			<div class="mt-4 pt-4 border-t border-line grid grid-cols-2 gap-2">
-				<a href="/admin/users" class="flex items-center justify-center gap-1.5 text-xs text-action-warm hover:text-action-warm-hover transition-colors bg-surface-sunken rounded-lg py-2">
+				<a href="/admin/users" class="flex items-center justify-center gap-1.5 text-xs text-warm-text hover:text-warm-text-hover transition-colors bg-surface-sunken rounded-lg py-2">
 					사용자 →
 				</a>
-				<a href="/admin/projects" class="flex items-center justify-center gap-1.5 text-xs text-action-warm hover:text-action-warm-hover transition-colors bg-surface-sunken rounded-lg py-2">
+				<a href="/admin/projects" class="flex items-center justify-center gap-1.5 text-xs text-warm-text hover:text-warm-text-hover transition-colors bg-surface-sunken rounded-lg py-2">
 					프로젝트 →
 				</a>
 			</div>

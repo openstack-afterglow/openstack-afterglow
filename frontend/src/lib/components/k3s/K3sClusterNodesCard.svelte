@@ -27,7 +27,7 @@
           <div class="flex items-center gap-2">
             <span class="w-2 h-2 rounded-full {node.ready ? 'bg-green-400' : 'bg-red-400'}"></span>
             <span class="text-xs text-ink-2 font-mono">{node.name}</span>
-            <span class="text-xs px-1.5 py-0.5 rounded {node.role === 'server' ? 'bg-purple-900/40 text-purple-400 border border-purple-800' : 'bg-surface-selected/40 text-action-warm border border-action-warm'}">
+            <span class="text-xs px-1.5 py-0.5 rounded {node.role === 'server' ? 'bg-purple-900/40 text-purple-400 border border-purple-800' : 'bg-surface-selected/40 text-warm-text border border-action-warm'}">
               {node.role}
             </span>
           </div>

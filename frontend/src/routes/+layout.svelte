@@ -429,7 +429,7 @@
 					<a href="/dashboard"
 						aria-label="현재 관리자 모드, 사용자 모드로 전환"
 						title="사용자 모드로 전환"
-						class="hidden lg:flex items-center gap-1.5 px-3 h-8 rounded-lg border text-[12px] font-semibold transition-colors bg-action-warm/15 border-action-warm/50 text-action-warm hover:bg-action-warm-hover/25">
+						class="hidden lg:flex items-center gap-1.5 px-3 h-8 rounded-lg border text-[12px] font-semibold transition-colors bg-action-warm/15 border-action-warm/50 text-warm-text hover:bg-action-warm-hover/25">
 						<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6l8-4z"/></svg>
 						관리자 모드
 					</a>

@@ -478,7 +478,7 @@
 			<div class="text-center py-16 text-ink-3">
 				<div class="text-4xl mb-3">🔑</div>
 				<p class="text-sm">저장된 비밀이 없습니다.</p>
-				<button onclick={() => showCreateSecret = true} class="mt-4 text-action-warm hover:text-action-warm-hover text-sm">+ 비밀 생성</button>
+				<button onclick={() => showCreateSecret = true} class="mt-4 text-warm-text hover:text-warm-text-hover text-sm">+ 비밀 생성</button>
 			</div>
 		{:else}
 			<div class="mb-3">
@@ -531,7 +531,7 @@
 								<td class="py-3 pr-4 text-ink-2 text-xs">{s.expires ? new Date(s.expires).toLocaleDateString('ko') : '없음'}</td>
 								<td class="py-3">
 									<div class="flex gap-2">
-										<button onclick={() => handleShowPayload(s)} disabled={payloadLoading === s.id} class="text-xs text-action-warm hover:text-action-warm-hover disabled:opacity-50">{payloadLoading === s.id ? '로딩...' : payloadVisible[s.id] ? '숨기기' : '값 보기'}</button>
+										<button onclick={() => handleShowPayload(s)} disabled={payloadLoading === s.id} class="text-xs text-warm-text hover:text-warm-text-hover disabled:opacity-50">{payloadLoading === s.id ? '로딩...' : payloadVisible[s.id] ? '숨기기' : '값 보기'}</button>
 										{#if !s.system_managed}<button onclick={() => handleDeleteSecret(s)} class="text-xs text-red-400 hover:text-red-300">삭제</button>{/if}
 									</div>
 									{#if payloadVisible[s.id]}
@@ -553,7 +553,7 @@
 			<div class="text-center py-16 text-ink-3">
 				<div class="text-4xl mb-3">📦</div>
 				<p class="text-sm">저장된 컨테이너가 없습니다.</p>
-				<button onclick={() => showCreateContainer = true} class="mt-4 text-action-warm hover:text-action-warm-hover text-sm">+ 컨테이너 생성</button>
+				<button onclick={() => showCreateContainer = true} class="mt-4 text-warm-text hover:text-warm-text-hover text-sm">+ 컨테이너 생성</button>
 			</div>
 		{:else}
 			<div class="mb-3">
@@ -600,7 +600,7 @@
 			<div class="text-center py-16 text-ink-3">
 				<div class="text-4xl mb-3">⚙️</div>
 				<p class="text-sm">진행 중인 Key Order가 없습니다.</p>
-				<button onclick={() => showCreateOrder = true} class="mt-4 text-action-warm hover:text-action-warm-hover text-sm">+ 키 생성 요청</button>
+				<button onclick={() => showCreateOrder = true} class="mt-4 text-warm-text hover:text-warm-text-hover text-sm">+ 키 생성 요청</button>
 			</div>
 		{:else}
 			<div class="overflow-x-auto">

@@ -78,7 +78,7 @@
 					</Field>
 					<Field label="공개키" help="비우면 새 키페어를 자동 생성합니다." for="keypair-pubkey">
 						<div class="mb-1.5 flex justify-end">
-							<label class="cursor-pointer text-xs text-action-warm transition-colors hover:text-action-warm-hover">
+							<label class="cursor-pointer text-xs text-warm-text transition-colors hover:text-warm-text-hover">
 								파일 선택
 								<input type="file" accept=".pub,.pem,.txt" class="hidden" onchange={handleFileUpload} />
 							</label>

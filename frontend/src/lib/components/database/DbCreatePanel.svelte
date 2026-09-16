@@ -56,7 +56,7 @@
 						onclick={() => (s.activeTab = i)}
 						class="text-xs py-3 px-4 border-b-2 whitespace-nowrap transition-colors
 							{s.activeTab === i
-							? 'border-action-warm text-action-warm font-medium'
+							? 'border-action-warm text-warm-text font-medium'
 							: 'border-transparent text-ink-3 hover:text-ink-2'}"
 					>
 						{tab}
@@ -95,7 +95,7 @@
 						{s.createError}
 					</div>
 				{:else if s.step1Error && s.activeTab !== 0}
-					<div class="text-action-warm text-xs">{s.step1Error}</div>
+					<div class="text-warm-text text-xs">{s.step1Error}</div>
 				{/if}
 				<div class="flex items-center justify-between">
 					<div class="flex gap-2">
@@ -110,7 +110,7 @@
 						{#if s.activeTab < DB_TABS.length - 1}
 							<button
 								onclick={() => (s.activeTab += 1)}
-								class="text-xs text-action-warm hover:text-action-warm-hover px-3 py-1.5 border border-action-warm rounded-lg"
+								class="text-xs text-warm-text hover:text-warm-text-hover px-3 py-1.5 border border-action-warm rounded-lg"
 							>
 								다음 →
 							</button>

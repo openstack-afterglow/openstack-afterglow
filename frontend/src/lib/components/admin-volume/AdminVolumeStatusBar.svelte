@@ -7,7 +7,7 @@
 		available: 'text-green-400',
 		creating: 'text-yellow-400',
 		error: 'text-red-400',
-		in_use: 'text-action-warm',
+		in_use: 'text-warm-text',
 		deleting: 'text-red-400',
 	};
 </script>

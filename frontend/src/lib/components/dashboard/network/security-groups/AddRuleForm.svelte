@@ -50,7 +50,7 @@
 	{/if}
 	<div class="flex gap-2">
 		<button onclick={onAdd} disabled={adding}
-			class="text-xs text-action-warm hover:text-action-warm-hover px-2 py-1 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3">
+			class="text-xs text-warm-text hover:text-warm-text-hover px-2 py-1 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3">
 			{adding ? '추가 중...' : '추가'}
 		</button>
 		<button onclick={onCancel}

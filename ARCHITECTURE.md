@@ -272,9 +272,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "c6abb83dc1b72210c8e3461401dcc913504c0bf64b76cd828beeccde297fae99",
-  "reviewed_at": "2026-09-15T18:32:25Z",
-  "summary": "Reviewed the floating-layer material: token family added to layout.css and tokens.ts with per-theme alpha and theme-shared blur, guarded utility classes whose opaque background is the base declaration and translucency the enhancement so unsupported browsers, prefers-reduced-transparency and forced-colors all fail safe, the chrome material applied to the application header on a negative-z child so the header creates no containing block for its own popovers, BulkSelectionOverlay moved onto the overlay material, and five ad-hoc scrim blurs consolidated. Frontend styling only: no API, schema, permission, dependency or deployment-contract change, so no structural section of this document changes."
+  "source_sha256": "5ea4f1dfbf0d73e718f7ae4ec832ee53039559bace07a62881aa3fd9027971b2",
+  "reviewed_at": "2026-09-15T21:49:53Z",
+  "summary": "Reviewed the warm action-colour restoration: --color-action-warm, --color-action-warm-hover, --color-action-on-warm and --color-action-on-accent moved into @theme static, which is what makes a --color-* name generate Tailwind utilities — they were declared in :root or not at all, so roughly 1,200 bg-/text-/border-action-warm class occurrences emitted no CSS and the warm CTA rendered with no fill. Warm as text on a light surface is 3.56:1, so the 422 text-action-warm occurrences were migrated to text-warm-text at 5.18:1 rather than sharing one key with the fill. Light mode also gains a --focus-ring counterpart, replacing a 1.48:1 indicator with 7.58:1. Frontend styling only: no API, schema, permission, dependency or deployment-contract change."
 }
 ```
 <!-- architecture-review:end -->

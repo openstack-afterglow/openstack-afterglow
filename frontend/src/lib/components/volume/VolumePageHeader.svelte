@@ -4,13 +4,13 @@
 
   const statusColor: Record<string, string> = {
     available:          'text-green-400 bg-green-900/30',
-    in_use:             'text-action-warm bg-surface-selected/30',
-    creating:           'text-action-warm bg-surface-selected/30',
+    in_use:             'text-warm-text bg-surface-selected/30',
+    creating:           'text-warm-text bg-surface-selected/30',
     deleting:           'text-orange-400 bg-orange-900/30',
     error:              'text-red-400 bg-red-900/30',
     reserved:           'text-purple-400 bg-purple-900/30',
     attaching:          'text-cyan-400 bg-cyan-900/30',
-    detaching:          'text-action-warm bg-surface-selected/30',
+    detaching:          'text-warm-text bg-surface-selected/30',
     'backing-up':       'text-indigo-400 bg-indigo-900/30',
     'restoring-backup': 'text-teal-400 bg-teal-900/30',
     downloading:        'text-sky-400 bg-sky-900/30',

@@ -53,7 +53,7 @@
       <dt class="text-ink-2 text-xs">Stampede</dt>
       <dd class="text-xs">
         {#if s.cluster!.stampede_enabled}
-          <span class="text-action-warm">⚡ 활성</span>
+          <span class="text-warm-text">⚡ 활성</span>
         {:else}
           <span class="text-ink-3">비활성</span>
         {/if}

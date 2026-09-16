@@ -22,7 +22,7 @@
 			<dt class="text-xs text-ink-3 mb-0.5">라이브러리</dt>
 			<dd class="flex flex-wrap gap-1">
 				{#each s.instance!.union_libraries.filter(Boolean) as lib}
-					<span class="px-1.5 py-0.5 bg-surface-selected/40 text-action-warm rounded text-xs">{lib}</span>
+					<span class="px-1.5 py-0.5 bg-surface-selected/40 text-warm-text rounded text-xs">{lib}</span>
 				{:else}
 					<span class="text-sm text-ink-3">-</span>
 				{/each}
@@ -34,7 +34,7 @@
 				<dd>
 					<a
 						href="/dashboard/volumes/{s.instance!.union_upper_volume_id}"
-						class="text-sm text-action-warm hover:text-action-warm-hover font-mono transition-colors"
+						class="text-sm text-warm-text hover:text-warm-text-hover font-mono transition-colors"
 					>
 						{s.instance!.union_upper_volume_id}
 					</a>
@@ -48,7 +48,7 @@
 					{#each (s.instance!.union_share_ids ?? []).filter(Boolean) as sid}
 						<a
 							href="/dashboard/file-storage/{sid}"
-							class="text-sm text-action-warm hover:text-action-warm-hover font-mono transition-colors"
+							class="text-sm text-warm-text hover:text-warm-text-hover font-mono transition-colors"
 						>
 							{sid}
 						</a>

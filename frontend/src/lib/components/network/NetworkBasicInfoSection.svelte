@@ -19,7 +19,7 @@
 			<dt class="text-ink-2">유형</dt>
 			<dd class="flex gap-1">
 				{#if s.network!.is_external}<span class="px-1.5 py-0.5 bg-orange-900/30 text-orange-300 rounded text-xs">외부</span>{/if}
-				{#if s.network!.is_shared}<span class="px-1.5 py-0.5 bg-surface-selected/30 text-action-warm rounded text-xs">공유</span>{/if}
+				{#if s.network!.is_shared}<span class="px-1.5 py-0.5 bg-surface-selected/30 text-warm-text rounded text-xs">공유</span>{/if}
 				{#if !s.network!.is_external && !s.network!.is_shared}<span class="text-ink-3">내부</span>{/if}
 			</dd>
 		</div>

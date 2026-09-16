@@ -75,7 +75,7 @@
 		<span class="w-2 h-2 rounded-full flex-shrink-0 {statusDot(row?.status ?? lbItem?.lb.provisioning_status ?? '')}"></span>
 
 		{#if row?.type === 'router'}
-			<svg class="w-4 h-4 flex-shrink-0 text-action-warm" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+			<svg class="w-4 h-4 flex-shrink-0 text-warm-text" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
 				<circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2" fill="currentColor" opacity="0.5"/>
 				<path d="M8 2v2M8 12v2M2 8h2M12 8h2"/>
 			</svg>
@@ -100,7 +100,7 @@
 				<span class="text-[9px] px-1 rounded bg-orange-900/40 text-orange-400 font-mono">✦</span>
 			{/if}
 			{#if nicCount > 1}
-				<span class="text-[9px] px-1 rounded bg-surface-selected/40 text-action-warm">{nicCount}NIC</span>
+				<span class="text-[9px] px-1 rounded bg-surface-selected/40 text-warm-text">{nicCount}NIC</span>
 			{/if}
 			{#if lbItem}
 				<span class="text-[9px] px-1 rounded bg-cyan-900/40 text-cyan-400">{lbItem.lb.members.length}m</span>

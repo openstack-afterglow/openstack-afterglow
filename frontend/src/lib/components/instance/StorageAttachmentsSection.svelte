@@ -249,7 +249,7 @@
 		<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide">파일 스토리지</h2>
 		<button
 			onclick={toggleForm}
-			class="text-xs text-action-warm hover:text-action-warm-hover transition-colors"
+			class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
 		>
 			{showForm ? '닫기' : '+ 연결'}
 		</button>
@@ -293,7 +293,7 @@
 					<input
 						type="checkbox"
 						bind:checked={readOnly}
-						class="w-4 h-4 rounded border-line-2 bg-surface-sunken text-action-warm"
+						class="w-4 h-4 rounded border-line-2 bg-surface-sunken text-warm-text"
 					/>
 					읽기 전용으로 마운트
 				</label>

@@ -66,7 +66,7 @@
 					<tr class="border-b border-line last:border-0">
 						<td class="px-3 py-2 font-mono text-ink-2">{rule.access_to}</td>
 						<td class="px-3 py-2">
-							<span class="px-1.5 py-0.5 rounded {rule.access_level === 'rw' ? 'bg-surface-selected/30 text-action-warm' : 'bg-surface-sunken text-ink-2'}">{rule.access_level}</span>
+							<span class="px-1.5 py-0.5 rounded {rule.access_level === 'rw' ? 'bg-surface-selected/30 text-warm-text' : 'bg-surface-sunken text-ink-2'}">{rule.access_level}</span>
 						</td>
 						<td class="px-3 py-2 text-ink-3">{rule.state}</td>
 						{#if s.createdFs!.share_proto !== 'NFS'}

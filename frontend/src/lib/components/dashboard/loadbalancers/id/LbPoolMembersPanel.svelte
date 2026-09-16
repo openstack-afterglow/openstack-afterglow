@@ -32,7 +32,7 @@
 <div class="mt-2 ml-4 bg-surface-sunken/30 rounded-lg p-4 border border-line-2">
 	<div class="flex items-center justify-between mb-3">
 		<span class="text-sm text-ink-2">멤버 ({members.length})</span>
-		<button onclick={() => showAddMember = !showAddMember} class="text-action-warm hover:text-action-warm-hover text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm transition-colors">+ 멤버 추가</button>
+		<button onclick={() => showAddMember = !showAddMember} class="text-warm-text hover:text-warm-text-hover text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm transition-colors">+ 멤버 추가</button>
 	</div>
 
 	{#if showAddMember}

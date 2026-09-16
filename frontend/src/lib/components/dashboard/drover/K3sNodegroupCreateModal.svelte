@@ -159,7 +159,7 @@
 				</div>
 				{#if form.stampede_enabled}
 					{#if Number(form.min_size) === 0}
-						<div class="mt-2 text-xs text-action-warm/90 bg-surface-selected/10 border border-action-warm/40 rounded px-2.5 py-1.5">
+						<div class="mt-2 text-xs text-warm-text/90 bg-surface-selected/10 border border-action-warm/40 rounded px-2.5 py-1.5">
 							⚠ min=0 (scale-to-zero): 유휴 시 모든 노드가 자동 제거됩니다.
 						</div>
 					{/if}

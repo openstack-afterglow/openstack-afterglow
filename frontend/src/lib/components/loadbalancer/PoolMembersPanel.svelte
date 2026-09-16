@@ -18,7 +18,7 @@
     <span class="text-sm text-ink-2">멤버 ({s.selectedPoolMembers.length})</span>
     <button
       onclick={() => s.toggleAddMember()}
-      class="text-action-warm hover:text-action-warm-hover text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm transition-colors"
+      class="text-warm-text hover:text-warm-text-hover text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm transition-colors"
     >+ 멤버 추가</button>
   </div>
 

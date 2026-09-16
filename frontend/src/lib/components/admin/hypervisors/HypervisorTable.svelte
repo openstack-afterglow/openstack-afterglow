@@ -92,7 +92,7 @@
 					class="border-b border-line/50 text-xs transition-colors {selectedId === h.id ? 'bg-surface-sunken/70' : ''}"
 				>
 					<td class="p-0">
-						<button type="button" onclick={() => onSelect(h.id)} class="block w-full py-2 pr-4 font-mono text-ink-0 hover:text-action-warm-hover transition-colors text-left" title={h.name}>{h.name}</button>
+						<button type="button" onclick={() => onSelect(h.id)} class="block w-full py-2 pr-4 font-mono text-ink-0 hover:text-warm-text-hover transition-colors text-left" title={h.name}>{h.name}</button>
 					</td>
 					<td class="py-2 pr-4">
 						<span class="{h.state === 'up' && h.status === 'enabled' ? 'text-green-400' : 'text-red-400'}">{h.state}/{h.status}</span>

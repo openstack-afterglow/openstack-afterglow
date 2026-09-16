@@ -40,7 +40,7 @@
       <button
         onclick={() => onBuild(lib.id)}
         disabled={building === lib.id || !!prebuilt}
-        class="w-full text-xs py-1.5 rounded-lg border transition-colors {prebuilt ? 'border-line-2 text-ink-3 cursor-not-allowed' : 'border-action-warm text-action-warm hover:bg-surface-selected/20'}"
+        class="w-full text-xs py-1.5 rounded-lg border transition-colors {prebuilt ? 'border-line-2 text-ink-3 cursor-not-allowed' : 'border-action-warm text-warm-text hover:bg-surface-selected/20'}"
       >
         {building === lib.id ? '생성 중...' : prebuilt ? '구축됨' : '파일 스토리지 생성'}
       </button>

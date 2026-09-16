@@ -6,7 +6,7 @@
 	const statusColor: Record<string, string> = {
 		Running:  'text-green-400 bg-green-900/30',
 		Stopped:  'text-ink-2 bg-surface-sunken',
-		Created:  'text-action-warm bg-surface-selected/30',
+		Created:  'text-warm-text bg-surface-selected/30',
 		Error:    'text-red-400 bg-red-900/30',
 		Deleting: 'text-orange-400 bg-orange-900/30',
 	};

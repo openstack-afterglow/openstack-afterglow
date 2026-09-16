@@ -88,7 +88,7 @@
           <button
             type="button"
             onclick={() => onOpenPanel(net.id)}
-            class="flex items-center gap-2.5 min-w-0 w-full text-left text-ink-0 hover:text-action-warm-hover transition-colors cursor-pointer"
+            class="flex items-center gap-2.5 min-w-0 w-full text-left text-ink-0 hover:text-warm-text-hover transition-colors cursor-pointer"
           >
             <div class="shrink-0 w-7 h-7 rounded-md bg-violet-500/15 border border-violet-500/30 flex items-center justify-center">
               <svg class="w-3.5 h-3.5 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -99,7 +99,7 @@
               <div class="flex items-center gap-1.5">
                 <span class="font-medium truncate">{net.name || net.id.slice(0, 12)}</span>
                 {#if net.id === defaultNetworkId}
-                  <span class="text-[10px] px-1.5 py-0.5 rounded bg-surface-selected/40 border border-action-warm/60 text-action-warm shrink-0">기본</span>
+                  <span class="text-[10px] px-1.5 py-0.5 rounded bg-surface-selected/40 border border-action-warm/60 text-warm-text shrink-0">기본</span>
                 {/if}
               </div>
               <div class="text-[11px] text-ink-3 font-mono truncate">{net.id.slice(0, 8)}…</div>
@@ -116,7 +116,7 @@
         <!-- 유형 badge -->
         <div>
           {#if net.is_external}
-            <span class="text-[11px] px-2 py-0.5 rounded-md bg-surface-selected/25 border border-action-warm text-action-warm">외부</span>
+            <span class="text-[11px] px-2 py-0.5 rounded-md bg-surface-selected/25 border border-action-warm text-warm-text">외부</span>
           {:else if net.is_shared}
             <span class="text-[11px] px-2 py-0.5 rounded-md bg-teal-500/15 border border-teal-500/30 text-teal-400">공유</span>
           {:else}
@@ -142,7 +142,7 @@
                 <button
                   onclick={() => { openNetMenu = null; onSetDefault(net.id); }}
                   disabled={settingDefault === net.id}
-                  class="w-full text-left px-3 py-1.5 text-xs text-action-warm hover:bg-surface-sunken hover:text-action-warm-hover disabled:text-ink-3"
+                  class="w-full text-left px-3 py-1.5 text-xs text-warm-text hover:bg-surface-sunken hover:text-warm-text-hover disabled:text-ink-3"
                 >{settingDefault === net.id ? '설정 중...' : '기본 네트워크로 설정'}</button>
               {/if}
               <div class="border-t border-line my-1"></div>

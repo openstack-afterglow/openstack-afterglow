@@ -123,7 +123,7 @@
 
   <div class="mb-4 text-sm text-ink-3">
     Floating IP 할당은
-    <a href="/dashboard/network/networks" class="text-action-warm hover:text-action-warm-hover underline">네트워크 페이지</a>에서 수행할 수 있습니다.
+    <a href="/dashboard/network/networks" class="text-warm-text hover:text-warm-text-hover underline">네트워크 페이지</a>에서 수행할 수 있습니다.
   </div>
 
   {#if error}
@@ -168,7 +168,7 @@
           </div>
           <div class="text-[12px] truncate">
             {#if fip.instance_name}
-              <span class="text-action-warm">{fip.instance_name}</span>
+              <span class="text-warm-text">{fip.instance_name}</span>
             {:else if fip.instance_id}
               <span class="text-ink-2 font-mono">{fip.instance_id.slice(0, 8)}…</span>
             {:else}

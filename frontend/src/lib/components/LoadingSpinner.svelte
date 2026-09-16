@@ -18,7 +18,7 @@
 
 	const colorClasses = {
 		white: 'text-ink-0',
-		blue:  'text-action-warm',
+		blue:  'text-warm-text',
 		gray:  'text-ink-2',
 	};
 </script>

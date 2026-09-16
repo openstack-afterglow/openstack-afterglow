@@ -149,7 +149,7 @@
 	const sourceClass: Record<string, string> = {
 		builtin: 'bg-surface-sunken text-ink-2',
 		config: 'bg-yellow-900/30 text-yellow-400',
-		db: 'bg-surface-selected/30 text-action-warm',
+		db: 'bg-surface-selected/30 text-warm-text',
 	};
 </script>
 

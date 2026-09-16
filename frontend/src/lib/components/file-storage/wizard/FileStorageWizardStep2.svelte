@@ -5,7 +5,7 @@
 </script>
 
 <h2 class="text-base font-semibold text-ink-0 mb-1">네트워크 설정</h2>
-<div class="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-blue-950/30 border border-action-warm/40 text-action-warm text-xs mb-4">
+<div class="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-blue-950/30 border border-action-warm/40 text-warm-text text-xs mb-4">
 	<svg class="w-3.5 h-3.5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 		<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
 	</svg>
@@ -21,7 +21,7 @@
 			<div class="flex items-center justify-between mb-1.5">
 				<span class="text-xs text-ink-2 uppercase tracking-wide">Share Network {s.fsForm.share_proto === 'NFS' ? '*' : '(선택)'}</span>
 				<button type="button" onclick={() => { s.showInlineNetCreate = !s.showInlineNetCreate; s.inlineNetError = ''; }}
-					class="text-xs text-action-warm hover:text-action-warm-hover transition-colors">
+					class="text-xs text-warm-text hover:text-warm-text-hover transition-colors">
 					{s.showInlineNetCreate ? '접기' : '+ 새로 생성'}
 				</button>
 			</div>
@@ -33,7 +33,7 @@
 			{:else if !s.showInlineNetCreate}
 				<div class="bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-3 text-sm">
 					Share Network 없음 —
-					<button onclick={() => (s.showInlineNetCreate = true)} class="text-action-warm hover:text-action-warm-hover underline">지금 생성</button>
+					<button onclick={() => (s.showInlineNetCreate = true)} class="text-warm-text hover:text-warm-text-hover underline">지금 생성</button>
 				</div>
 			{/if}
 		{/if}

@@ -50,7 +50,7 @@
 			{/if}
 			<button
 				onclick={toggleLog}
-				class="text-xs text-action-warm hover:text-action-warm-hover transition-colors"
+				class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
 			>
 				{showLog ? '닫기' : '로그 보기'}
 			</button>

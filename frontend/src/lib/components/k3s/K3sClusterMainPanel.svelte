@@ -53,13 +53,13 @@
 {#if isStampede}
 	<div class="mb-3 flex items-center justify-between bg-surface-selected/20 border border-action-warm/40 rounded-lg px-3 py-2.5">
 		<div class="flex items-center gap-2">
-			<span class="text-action-warm text-sm font-medium">⚡ Stampede 모드</span>
-			<span class="text-xs text-action-warm/70">노드그룹의 Stampede 설정에 따라 자동 스케일링이 동작합니다</span>
+			<span class="text-warm-text text-sm font-medium">⚡ Stampede 모드</span>
+			<span class="text-xs text-warm-text/70">노드그룹의 Stampede 설정에 따라 자동 스케일링이 동작합니다</span>
 		</div>
 		<button
 			onclick={disableStampede}
 			disabled={disabling}
-			class="text-xs text-action-warm/70 hover:text-red-400 disabled:opacity-50 transition-colors px-2 py-1 rounded"
+			class="text-xs text-warm-text/70 hover:text-red-400 disabled:opacity-50 transition-colors px-2 py-1 rounded"
 		>{disabling ? '...' : '비활성화'}</button>
 	</div>
 {:else if canEnableStampede}
@@ -71,7 +71,7 @@
 		<button
 			onclick={enableStampede}
 			disabled={enabling}
-			class="text-xs text-ink-2 hover:text-action-warm-hover disabled:opacity-50 transition-colors px-2 py-1 rounded border border-line-2 hover:border-action-warm"
+			class="text-xs text-ink-2 hover:text-warm-text-hover disabled:opacity-50 transition-colors px-2 py-1 rounded border border-line-2 hover:border-action-warm"
 		>{enabling ? '...' : '활성화'}</button>
 	</div>
 {/if}

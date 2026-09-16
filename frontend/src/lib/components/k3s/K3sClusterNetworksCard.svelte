@@ -82,7 +82,7 @@
     {#if s.isActive}
       <button
         onclick={() => { showAttachForm = !showAttachForm; selectedNetId = ''; attachError = ''; }}
-        class="text-xs text-action-warm hover:text-action-warm-hover transition-colors"
+        class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
       >
         {showAttachForm ? '닫기' : '+ 네트워크 연결'}
       </button>
@@ -120,7 +120,7 @@
           <div class="bg-surface-sunken/50 rounded-lg p-3 flex items-start justify-between gap-3">
             <div class="min-w-0">
               <div class="flex items-center gap-2 mb-1">
-                <span class="text-xs px-1.5 py-0.5 rounded {iface.node_role === 'server' ? 'bg-purple-900/40 text-purple-400 border border-purple-800' : 'bg-surface-selected/40 text-action-warm border border-action-warm'}">
+                <span class="text-xs px-1.5 py-0.5 rounded {iface.node_role === 'server' ? 'bg-purple-900/40 text-purple-400 border border-purple-800' : 'bg-surface-selected/40 text-warm-text border border-action-warm'}">
                   {iface.node_role}
                 </span>
                 {#if iface.is_primary}
@@ -173,7 +173,7 @@
           <button
             onclick={handleAttach}
             disabled={!selectedNetId || !!s.interfaceActioning}
-            class="text-xs text-action-warm hover:text-action-warm-hover px-3 py-1.5 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3 disabled:border-line-2"
+            class="text-xs text-warm-text hover:text-warm-text-hover px-3 py-1.5 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3 disabled:border-line-2"
           >
             {s.interfaceActioning === selectedVmId ? '추가 중...' : '추가'}
           </button>

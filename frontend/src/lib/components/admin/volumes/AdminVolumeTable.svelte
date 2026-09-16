@@ -102,14 +102,14 @@
 						/>
 					</td>
 					<td class="p-0">
-						<button type="button" data-tour={index === 0 ? 'admin-storage-row-open' : undefined} onclick={() => onSelect(v.id)} class="block w-full py-2 pr-4 font-medium text-ink-0 hover:text-action-warm-hover transition-colors text-left" title={v.name || v.id}><span class="max-md:block max-md:max-w-[66vw] max-md:truncate">{v.name || v.id.slice(0, 8)}</span></button>
+						<button type="button" data-tour={index === 0 ? 'admin-storage-row-open' : undefined} onclick={() => onSelect(v.id)} class="block w-full py-2 pr-4 font-medium text-ink-0 hover:text-warm-text-hover transition-colors text-left" title={v.name || v.id}><span class="max-md:block max-md:max-w-[66vw] max-md:truncate">{v.name || v.id.slice(0, 8)}</span></button>
 					</td>
 					<td class="py-2 pr-4"><StatusChip status={v.status} /></td>
 					<td class="py-2 pr-4 text-ink-2">{formatNumber(v.size)} GB</td>
 					<td class="py-2 pr-4">
 						<button
 							onclick={(e) => { e.stopPropagation(); if (v.project_id) onCopyProjectId(v.project_id); }}
-							class="text-ink-2 hover:text-action-warm-hover transition-colors cursor-pointer text-left"
+							class="text-ink-2 hover:text-warm-text-hover transition-colors cursor-pointer text-left"
 							title={v.project_id ?? ''}
 						>
 							{#if copiedProjectId === v.project_id}

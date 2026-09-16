@@ -80,7 +80,7 @@
 		<span class="text-xs text-ink-2 font-medium">라이브러리</span>
 		<span class="flex flex-wrap gap-1.5">
 			{#each $wizard.libraries as lib}
-				<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-selected/30 border border-action-warm text-action-warm font-mono text-[11px]">{lib}</span>
+				<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-selected/30 border border-action-warm text-warm-text font-mono text-[11px]">{lib}</span>
 			{/each}
 		</span>
 		<button onclick={() => s.goTo(3)} class="review-edit-btn">✎ 수정</button>
@@ -132,7 +132,7 @@
 					<span class="text-ink-2 truncate max-w-[140px]">{dm.fileStorageId ? (s.fileStorages.find(f => f.id === dm.fileStorageId)?.name ?? dm.fileStorageId.slice(0, 12)) : '—'}</span>
 					<span class="text-ink-3">→</span>
 					<span class="text-cyan-400">{dm.mountPoint || '—'}</span>
-					{#if dm.readOnly}<span class="text-action-warm/80 text-[10px]">ro</span>{/if}
+					{#if dm.readOnly}<span class="text-warm-text/80 text-[10px]">ro</span>{/if}
 				</div>
 			{/each}
 		</div>

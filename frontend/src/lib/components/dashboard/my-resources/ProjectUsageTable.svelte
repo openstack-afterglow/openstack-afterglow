@@ -35,7 +35,7 @@
 					</div>
 					<div class="text-right">
 						{#if p.instance_count > 0}
-							<span class="text-action-warm font-mono text-xs font-medium">{p.instance_count}</span>
+							<span class="text-warm-text font-mono text-xs font-medium">{p.instance_count}</span>
 						{:else}
 							<span class="text-ink-3 text-xs">—</span>
 						{/if}
@@ -63,7 +63,7 @@
 					</div>
 					<div class="text-right">
 						{#if p.ram_mb > 0}
-							<span class="text-action-warm font-mono text-xs">{formatRam(p.ram_mb)}</span>
+							<span class="text-warm-text font-mono text-xs">{formatRam(p.ram_mb)}</span>
 						{:else}
 							<span class="text-ink-3 text-xs">—</span>
 						{/if}

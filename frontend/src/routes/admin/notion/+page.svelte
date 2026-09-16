@@ -196,7 +196,7 @@
 		<h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">설정 방법</h3>
 		<ol class="text-xs text-ink-3 space-y-1.5 list-decimal list-inside">
 			<li>
-				<a href="https://www.notion.so/profile/integrations" target="_blank" class="text-action-warm hover:text-action-warm-hover">Notion Integrations</a>에서 Internal Integration 생성
+				<a href="https://www.notion.so/profile/integrations" target="_blank" class="text-warm-text hover:text-warm-text-hover">Notion Integrations</a>에서 Internal Integration 생성
 			</li>
 			<li>Notion에서 빈 Database 페이지 생성 후 Integration 연결 추가</li>
 			<li>Database URL에서 32자리 ID 복사</li>

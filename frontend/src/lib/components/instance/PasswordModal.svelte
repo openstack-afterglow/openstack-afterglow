@@ -38,9 +38,9 @@
 		<h3 id="instance-password-title" class="text-ink-0 font-semibold text-lg mb-1">관리자 비밀번호 재설정</h3>
 		<p class="text-ink-2 text-sm mb-4">인스턴스: <span class="text-ink-0">{s.instance?.name}</span></p>
 		{#if s.passwordPrecheck?.os_admin_user}
-			<p class="text-xs text-ink-3 mb-4">대상 계정: <span class="text-action-warm">{s.passwordPrecheck.os_admin_user}</span> (이미지 메타 기준)</p>
+			<p class="text-xs text-ink-3 mb-4">대상 계정: <span class="text-warm-text">{s.passwordPrecheck.os_admin_user}</span> (이미지 메타 기준)</p>
 		{:else}
-			<p class="text-xs text-ink-3 mb-4">대상 계정: 이미지 메타데이터의 <code class="text-action-warm">os_admin_user</code>로 자동 결정</p>
+			<p class="text-xs text-ink-3 mb-4">대상 계정: 이미지 메타데이터의 <code class="text-warm-text">os_admin_user</code>로 자동 결정</p>
 		{/if}
 		<div class="bg-yellow-900/20 border border-yellow-800/40 rounded-lg p-3 mb-4 text-xs text-yellow-300">
 			QGA가 게스트에 실제로 동작 중이어야 변경이 적용됩니다. 변경 직후 콘솔/SSH로 동작을 확인하세요.

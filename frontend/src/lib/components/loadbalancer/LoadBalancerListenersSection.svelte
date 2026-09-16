@@ -10,7 +10,7 @@
     <h3 class="font-semibold text-ink-0 text-sm">리스너 ({s.listeners.length})</h3>
     <button
       onclick={() => s.toggleAddListener()}
-      class="text-action-warm hover:text-action-warm-hover text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm transition-colors"
+      class="text-warm-text hover:text-warm-text-hover text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm transition-colors"
     >+ 추가</button>
   </div>
 
@@ -24,7 +24,7 @@
         <div class="flex items-center justify-between bg-surface-sunken/50 rounded-lg px-4 py-3">
           <div class="text-sm">
             <span class="text-ink-0 font-medium">{l.name || l.id.slice(0, 10)}</span>
-            <span class="ml-2 text-xs text-action-warm bg-surface-selected/30 px-1.5 py-0.5 rounded">{l.protocol}:{l.protocol_port}</span>
+            <span class="ml-2 text-xs text-warm-text bg-surface-selected/30 px-1.5 py-0.5 rounded">{l.protocol}:{l.protocol_port}</span>
             <span class="ml-2 text-xs {l.status === 'ACTIVE' ? 'text-green-400' : 'text-yellow-400'}">{l.status}</span>
           </div>
           <button

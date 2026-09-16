@@ -28,7 +28,7 @@
 <section class="bg-surface-base border border-line rounded-lg p-5 mb-4">
 	<div class="flex items-center justify-between mb-4">
 		<h2 class="font-semibold text-ink-0">리스너 ({listeners.length})</h2>
-		<button onclick={() => showAddListener = !showAddListener} class="text-action-warm hover:text-action-warm-hover text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm transition-colors">+ 추가</button>
+		<button onclick={() => showAddListener = !showAddListener} class="text-warm-text hover:text-warm-text-hover text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm transition-colors">+ 추가</button>
 	</div>
 
 	{#if showAddListener}
@@ -53,7 +53,7 @@
 				<div class="flex items-center justify-between bg-surface-sunken/50 rounded-lg px-4 py-3">
 					<div class="text-sm">
 						<span class="text-ink-0 font-medium">{l.name || l.id.slice(0, 10)}</span>
-						<span class="ml-2 text-xs text-action-warm bg-surface-selected/30 px-1.5 py-0.5 rounded">{l.protocol}:{l.protocol_port}</span>
+						<span class="ml-2 text-xs text-warm-text bg-surface-selected/30 px-1.5 py-0.5 rounded">{l.protocol}:{l.protocol_port}</span>
 						<span class="ml-2 text-xs {l.status === 'ACTIVE' ? 'text-green-400' : 'text-yellow-400'}">{l.status}</span>
 					</div>
 					<button onclick={() => onDelete(l.id)} disabled={saving} class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 transition-colors">삭제</button>

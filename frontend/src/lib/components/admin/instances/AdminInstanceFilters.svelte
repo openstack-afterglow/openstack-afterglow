@@ -110,7 +110,7 @@
 			>
 				{#each projectSuggestions as [id, name]}
 					<button
-						class="w-full text-left px-3 py-2 text-xs hover:bg-surface-sunken transition-colors {projectFilter === id ? 'bg-surface-selected/30 text-action-warm' : 'text-ink-2'}"
+						class="w-full text-left px-3 py-2 text-xs hover:bg-surface-sunken transition-colors {projectFilter === id ? 'bg-surface-selected/30 text-warm-text' : 'text-ink-2'}"
 						onclick={() => {
 							projectFilter = id;
 							projectSearchText = name;

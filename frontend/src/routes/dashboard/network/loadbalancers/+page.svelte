@@ -129,7 +129,7 @@
     <div class="text-center py-20 text-ink-3">
       <div class="text-5xl mb-4">⚖️</div>
       <p class="text-lg">로드밸런서가 없습니다</p>
-      <a href="/dashboard/network/loadbalancers/new" class="text-action-warm hover:text-action-warm-hover text-sm mt-2 inline-block">첫 로드밸런서를 생성하세요 →</a>
+      <a href="/dashboard/network/loadbalancers/new" class="text-warm-text hover:text-warm-text-hover text-sm mt-2 inline-block">첫 로드밸런서를 생성하세요 →</a>
     </div>
   {:else}
     <div class="flex flex-col gap-3.5">
@@ -158,7 +158,7 @@
             />
             <!-- Blue icon chip -->
             <div class="shrink-0 w-10 h-10 rounded-lg bg-action-warm/15 border border-action-warm/30 flex items-center justify-center">
-              <svg class="w-5 h-5 text-action-warm" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg class="w-5 h-5 text-warm-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <circle cx="12" cy="12" r="9" stroke-width="2"/>
                 <path stroke-linecap="round" stroke-width="2" d="M8 12h8M12 8v8"/>
               </svg>

@@ -18,7 +18,7 @@
 			{:else}
 				<button
 					onclick={() => s.showSetGateway = !s.showSetGateway}
-					class="text-action-warm hover:text-action-warm-hover text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm transition-colors"
+					class="text-warm-text hover:text-warm-text-hover text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm transition-colors"
 				>게이트웨이 설정</button>
 			{/if}
 		</div>

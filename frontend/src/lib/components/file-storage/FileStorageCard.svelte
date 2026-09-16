@@ -30,7 +30,7 @@
 			<div class="text-[11px] text-ink-3 mt-0.5">
 				{fs.share_proto}
 				{#if fs.library_name}
-					· <span class="text-action-warm">{fs.library_name}{fs.library_version ? ` v${fs.library_version}` : ''}</span>
+					· <span class="text-warm-text">{fs.library_name}{fs.library_version ? ` v${fs.library_version}` : ''}</span>
 				{/if}
 				{#if fs.created_at}
 					· <span class="text-ink-3">{formatIsoDateTime(fs.created_at)}</span>
@@ -64,7 +64,7 @@
 	<div class="mt-3.5 flex items-center gap-2 pt-3 border-t border-line">
 		<button
 			onclick={() => onOpenDetail(fs.id)}
-			class="text-xs text-action-warm hover:text-action-warm-hover transition-colors"
+			class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
 		>상세</button>
 		<div class="flex-1"></div>
 		<button

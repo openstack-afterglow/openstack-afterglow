@@ -43,7 +43,7 @@
 		<button
 			type="button"
 			onclick={() => onSelect(instance.id)}
-			class="flex min-w-0 items-center gap-2.5 text-left text-ink-0 transition-colors hover:text-action-warm-hover"
+			class="flex min-w-0 items-center gap-2.5 text-left text-ink-0 transition-colors hover:text-warm-text-hover"
 		>
 			<span class="flex size-7 shrink-0 items-center justify-center rounded-md border border-line bg-surface-sunken">
 				<svg class="size-3.5 text-ink-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -60,7 +60,7 @@
 			<div class="mt-0.5 flex items-center gap-1.5 text-ink-3">
 				<span class="truncate">{instance.flavor_name}</span>
 				{#if isUnderutilized}
-					<span class="shrink-0 rounded border border-action-warm/60 bg-surface-selected px-1.5 py-0.5 text-[10px] font-medium text-action-warm">리사이즈 권장</span>
+					<span class="shrink-0 rounded border border-action-warm/60 bg-surface-selected px-1.5 py-0.5 text-[10px] font-medium text-warm-text">리사이즈 권장</span>
 				{/if}
 			</div>
 		{/if}

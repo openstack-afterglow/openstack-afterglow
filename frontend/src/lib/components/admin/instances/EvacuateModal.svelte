@@ -60,7 +60,7 @@
 		<div class="px-6 py-5 space-y-4">
 
 			<!-- 설명 -->
-			<div class="bg-surface-selected/20 border border-action-warm/40 text-action-warm rounded-lg px-4 py-3 text-xs leading-relaxed">
+			<div class="bg-surface-selected/20 border border-action-warm/40 text-warm-text rounded-lg px-4 py-3 text-xs leading-relaxed">
 				<span class="font-medium">주의:</span> Evacuate는 호스트 장애 시 인스턴스를 다른 호스트로 강제 이주합니다.
 				인스턴스가 정상 호스트에 있으면 데이터 불일치가 발생할 수 있습니다.
 			</div>
@@ -103,7 +103,7 @@
 						<input
 							type="checkbox"
 							bind:checked={onSharedStorage}
-							class="mt-0.5 rounded border-line-2 bg-surface-sunken text-action-warm focus:ring-line-2 focus:ring-1"
+							class="mt-0.5 rounded border-line-2 bg-surface-sunken text-warm-text focus:ring-line-2 focus:ring-1"
 						/>
 						<div>
 							<div class="text-sm text-ink-2">공유 스토리지 사용 (onSharedStorage)</div>
@@ -118,7 +118,7 @@
 			<!-- 실행 중 -->
 			{#if phase === 'executing'}
 				<div class="flex items-center gap-3 text-ink-2 text-sm py-4 justify-center">
-					<svg class="animate-spin w-5 h-5 text-action-warm" fill="none" viewBox="0 0 24 24">
+					<svg class="animate-spin w-5 h-5 text-warm-text" fill="none" viewBox="0 0 24 24">
 						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
 						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
 					</svg>
@@ -134,7 +134,7 @@
 					<input
 						type="checkbox"
 						bind:checked={confirmed}
-						class="rounded border-line-2 bg-surface-sunken text-action-warm focus:ring-line-2 focus:ring-1"
+						class="rounded border-line-2 bg-surface-sunken text-warm-text focus:ring-line-2 focus:ring-1"
 					/>
 					<span>호스트 장애 상황임을 확인했습니다.</span>
 				</label>

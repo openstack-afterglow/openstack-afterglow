@@ -61,7 +61,7 @@
     <h3 class="text-xs text-ink-3 uppercase tracking-wide">Secrets</h3>
     <button
       onclick={() => { showCreate = !showCreate; newName = ''; createError = ''; newType = 'Opaque'; }}
-      class="text-xs text-action-warm hover:text-action-warm-hover transition-colors"
+      class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
     >{showCreate ? '닫기' : '+ 생성'}</button>
   </div>
 

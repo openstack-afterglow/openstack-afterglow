@@ -10,7 +10,7 @@
 			추가 속성 <span class="normal-case font-normal text-ink-3">({Object.keys(s.image!.properties).length})</span>
 		</h3>
 		{#if s.canEditMetadata && !s.editingProps}
-			<button onclick={() => s.startEditProps()} class="text-xs text-action-warm hover:text-action-warm-hover">편집</button>
+			<button onclick={() => s.startEditProps()} class="text-xs text-warm-text hover:text-warm-text-hover">편집</button>
 		{/if}
 	</div>
 
@@ -62,7 +62,7 @@
 			<input bind:value={s.newPropValue} placeholder="값"
 				class="flex-1 bg-surface-sunken border border-line-2 rounded px-2 py-1 text-xs text-ink-0 font-mono focus:outline-none focus:border-action-warm"
 				onkeydown={(e) => e.key === 'Enter' && s.addProperty()} />
-			<button onclick={() => s.addProperty()} class="text-xs text-action-warm hover:text-action-warm-hover px-2 shrink-0">+ 추가</button>
+			<button onclick={() => s.addProperty()} class="text-xs text-warm-text hover:text-warm-text-hover px-2 shrink-0">+ 추가</button>
 		</div>
 
 		{#if s.propsError}

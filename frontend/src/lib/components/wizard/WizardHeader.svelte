@@ -15,7 +15,7 @@
 		<h1 class="text-2xl font-bold text-ink-0 tracking-tight leading-tight">
 			VM 생성
 			{#if adminMode}
-				<span class="text-sm font-normal text-action-warm ml-2">관리자 · {adminProjectName ?? ''}</span>
+				<span class="text-sm font-normal text-warm-text ml-2">관리자 · {adminProjectName ?? ''}</span>
 			{/if}
 		</h1>
 		<div class="text-[12.5px] text-ink-3 font-mono uppercase tracking-[0.06em] mt-1.5">

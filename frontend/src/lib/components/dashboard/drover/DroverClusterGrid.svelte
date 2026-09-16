@@ -33,7 +33,7 @@
 	<div class="text-center py-20 text-ink-3">
 		<div class="text-5xl mb-4">☸</div>
 		<p class="text-lg">Drover 클러스터가 없습니다</p>
-		<button onclick={onOpenCreate} onpointerenter={onOpenCreateIntent} onfocus={onOpenCreateIntent} class="text-action-warm hover:text-action-warm-hover text-sm mt-2 inline-block">
+		<button onclick={onOpenCreate} onpointerenter={onOpenCreateIntent} onfocus={onOpenCreateIntent} class="text-warm-text hover:text-warm-text-hover text-sm mt-2 inline-block">
 			첫 클러스터를 생성하세요 →
 		</button>
 	</div>

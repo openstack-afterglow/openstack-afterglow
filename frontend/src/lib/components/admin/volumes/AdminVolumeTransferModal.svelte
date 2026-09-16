@@ -122,7 +122,7 @@
 					</div>
 				{/if}
 				{#if transferProjectName}
-					<div class="mt-1 text-xs text-ink-3">선택됨: <span class="text-action-warm">{transferProjectName}</span></div>
+					<div class="mt-1 text-xs text-ink-3">선택됨: <span class="text-warm-text">{transferProjectName}</span></div>
 				{/if}
 			</div>
 			<div class="flex justify-end gap-3 mt-6">

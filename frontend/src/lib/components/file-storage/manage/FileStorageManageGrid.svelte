@@ -22,7 +22,7 @@
           <div class="text-ink-0 font-semibold text-sm font-mono truncate">{fs.name}</div>
           <div class="flex items-center gap-1.5 mt-0.5">
             {#if fs.metadata?.union_type}
-              <span class="text-[10px] px-1.5 py-0.5 rounded bg-surface-selected/40 text-action-warm border border-action-warm/50">{fs.metadata.union_type}</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded bg-surface-selected/40 text-warm-text border border-action-warm/50">{fs.metadata.union_type}</span>
             {/if}
             {#if fs.library_name}
               <span class="text-[10px] px-1.5 py-0.5 rounded bg-violet-900/40 text-violet-300 border border-violet-800/50 truncate">{fs.library_name}</span>

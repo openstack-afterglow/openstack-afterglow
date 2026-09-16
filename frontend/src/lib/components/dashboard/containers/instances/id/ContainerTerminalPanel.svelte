@@ -133,7 +133,7 @@
     </div>
     <div class="flex gap-2">
       {#if !wsConnected && !wsConnecting}
-        <button onclick={connectWs} class="text-xs text-action-warm hover:text-action-warm-hover transition-colors">재연결</button>
+        <button onclick={connectWs} class="text-xs text-warm-text hover:text-warm-text-hover transition-colors">재연결</button>
       {/if}
       <button onclick={closeConsole} class="text-xs text-ink-2 hover:text-ink-0 transition-colors">✕ 닫기</button>
     </div>

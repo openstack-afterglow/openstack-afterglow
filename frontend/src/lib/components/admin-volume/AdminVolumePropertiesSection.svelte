@@ -17,7 +17,7 @@
 		</div>
 		<div class="flex justify-between">
 			<dt class="text-ink-2">다중 연결</dt>
-			<dd class="{s.volume?.multiattach ? 'text-action-warm' : 'text-ink-3'}">{s.volume?.multiattach ? '예' : '아니오'}</dd>
+			<dd class="{s.volume?.multiattach ? 'text-warm-text' : 'text-ink-3'}">{s.volume?.multiattach ? '예' : '아니오'}</dd>
 		</div>
 	</dl>
 </div>

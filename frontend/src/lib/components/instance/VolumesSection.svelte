@@ -28,7 +28,7 @@
 		<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide">볼륨</h2>
 		<button
 			onclick={() => { showAttachVolume = !showAttachVolume; selectedVolumeId = ''; newVolName = ''; newVolSize = 20; }}
-			class="text-xs text-action-warm hover:text-action-warm-hover transition-colors"
+			class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
 		>
 			{showAttachVolume ? '닫기' : '+ 볼륨 연결'}
 		</button>
@@ -39,13 +39,13 @@
 			<div class="flex gap-1 mb-3">
 				<button
 					onclick={() => { attachMode = 'existing'; }}
-					class="text-xs px-2 py-1 rounded border transition-colors {attachMode === 'existing' ? 'text-action-warm border-action-warm bg-surface-selected/20' : 'text-ink-2 border-line-2 hover:text-ink-1'}"
+					class="text-xs px-2 py-1 rounded border transition-colors {attachMode === 'existing' ? 'text-warm-text border-action-warm bg-surface-selected/20' : 'text-ink-2 border-line-2 hover:text-ink-1'}"
 				>
 					기존 볼륨
 				</button>
 				<button
 					onclick={() => { attachMode = 'new'; }}
-					class="text-xs px-2 py-1 rounded border transition-colors {attachMode === 'new' ? 'text-action-warm border-action-warm bg-surface-selected/20' : 'text-ink-2 border-line-2 hover:text-ink-1'}"
+					class="text-xs px-2 py-1 rounded border transition-colors {attachMode === 'new' ? 'text-warm-text border-action-warm bg-surface-selected/20' : 'text-ink-2 border-line-2 hover:text-ink-1'}"
 				>
 					새 볼륨 생성
 				</button>
@@ -68,7 +68,7 @@
 						<button
 							onclick={handleAttachVolume}
 							disabled={!selectedVolumeId || s.actioning === 'attach-vol'}
-							class="text-xs text-action-warm hover:text-action-warm-hover px-3 py-1.5 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3 disabled:border-line-2"
+							class="text-xs text-warm-text hover:text-warm-text-hover px-3 py-1.5 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3 disabled:border-line-2"
 						>
 							{s.actioning === 'attach-vol' ? '연결 중...' : '연결'}
 						</button>
@@ -110,7 +110,7 @@
 			{#each s.volumes as vol}
 				<div class="flex items-center justify-between bg-surface-sunken/50 rounded px-3 py-2">
 					<div class="flex items-center gap-4">
-						<span class="text-xs font-mono text-action-warm hover:text-action-warm-hover">
+						<span class="text-xs font-mono text-warm-text hover:text-warm-text-hover">
 							<a href="/dashboard/volumes/{vol.volume_id}">{vol.name || vol.volume_id.slice(0, 12) + '...'}</a>
 						</span>
 						{#if vol.size}

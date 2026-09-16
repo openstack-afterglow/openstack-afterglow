@@ -72,7 +72,7 @@
 			<div class="flex-1 flex flex-col gap-1.5">
 				<div class="flex items-center gap-2.5 flex-wrap">
 					<b class="text-sm font-semibold text-ink-0">HA 배포</b>
-					<span class="px-1.5 py-0.5 rounded bg-surface-selected/30 border border-action-warm text-action-warm text-[11px] font-mono">권장</span>
+					<span class="px-1.5 py-0.5 rounded bg-surface-selected/30 border border-action-warm text-warm-text text-[11px] font-mono">권장</span>
 					<span class="ml-auto text-ink-3 font-mono text-[11.5px]">🛡 고가용성</span>
 				</div>
 				<p class="text-xs text-ink-2 leading-relaxed">호스트 장애 시 자동 evacuate. Masakari 등 HA 솔루션 활성화 시 동작합니다.</p>
@@ -150,7 +150,7 @@
 					<button
 						onclick={() => onProtocolChange(p)}
 						class="px-3 py-1 rounded-md text-xs font-mono border transition-colors {mountProtocol === p
-							? 'bg-surface-selected/40 border-action-warm text-action-warm'
+							? 'bg-surface-selected/40 border-action-warm text-warm-text'
 							: 'border-line-2 text-ink-3 hover:border-line-2'}"
 					>{p}</button>
 				{/each}

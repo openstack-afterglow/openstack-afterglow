@@ -21,7 +21,7 @@
 		<Panel {volumeId} {onClose} {onRefresh} {token} {projectId} />
 	{:catch}
 		<div class="p-6">
-			<a href="/admin/volumes/{volumeId}" class="text-action-warm hover:text-action-warm-hover">상세 페이지에서 보기 →</a>
+			<a href="/admin/volumes/{volumeId}" class="text-warm-text hover:text-warm-text-hover">상세 페이지에서 보기 →</a>
 		</div>
 	{/await}
 </SlidePanel>

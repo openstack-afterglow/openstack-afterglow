@@ -11,7 +11,7 @@
     <h3 class="text-xs text-ink-2 uppercase tracking-wide">스냅샷</h3>
     <button
       onclick={() => { s.showSnapshotForm = !s.showSnapshotForm; }}
-      class="text-action-warm hover:text-action-warm-hover text-xs transition-colors"
+      class="text-warm-text hover:text-warm-text-hover text-xs transition-colors"
     >+ 스냅샷 생성</button>
   </div>
 

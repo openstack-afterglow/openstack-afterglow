@@ -149,7 +149,7 @@
 					<span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-mono
 						{msg.step === 'completed' ? 'bg-green-900/40 text-green-400' :
 						 msg.step === 'failed' ? 'bg-red-900/40 text-red-400' :
-						 msg.step === 'rotate_server' ? 'bg-surface-selected/40 text-action-warm' :
+						 msg.step === 'rotate_server' ? 'bg-surface-selected/40 text-warm-text' :
 						 'bg-surface-sunken text-ink-2'}">
 						{stepLabel(msg.step)}
 					</span>

@@ -146,7 +146,7 @@
 							<div class="flex items-center justify-end gap-2">
 								<button
 									onclick={() => onManage(f)}
-									class="text-action-warm hover:text-action-warm-hover text-xs"
+									class="text-warm-text hover:text-warm-text-hover text-xs"
 								>관리</button>
 								<button
 									onclick={() => onDelete(f.id)}

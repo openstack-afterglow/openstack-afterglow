@@ -21,7 +21,7 @@
     <span class="text-ink-3">·</span>
     <a
       href="/dashboard/my-resources"
-      class="inline-flex items-center gap-1.5 text-xs text-action-warm hover:text-action-warm-hover transition-colors px-2.5 py-1.5 rounded-md hover:bg-action-warm-hover/10"
+      class="inline-flex items-center gap-1.5 text-xs text-warm-text hover:text-warm-text-hover transition-colors px-2.5 py-1.5 rounded-md hover:bg-action-warm-hover/10"
     >
       내 리소스
       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>

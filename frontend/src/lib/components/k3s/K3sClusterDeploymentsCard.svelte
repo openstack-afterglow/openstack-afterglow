@@ -72,7 +72,7 @@
 									<button
 										onclick={() => s.rolloutRestartDeployment(dep.name)}
 										disabled={!!s.workloadActioning}
-										class="px-2 py-1 rounded text-[10px] bg-surface-selected/40 text-action-warm hover:bg-surface-selected/70 disabled:opacity-40 transition-colors"
+										class="px-2 py-1 rounded text-[10px] bg-surface-selected/40 text-warm-text hover:bg-surface-selected/70 disabled:opacity-40 transition-colors"
 									>{actioning ? '중...' : '재시작'}</button>
 									<button
 										onclick={() => { scalingDeploy = dep; }}

@@ -35,7 +35,7 @@
 		{#if allowAdd}
 			<button
 				onclick={() => { showSubnetForm = !showSubnetForm; }}
-				class="text-xs text-action-warm hover:text-action-warm-hover transition-colors"
+				class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
 			>
 				{showSubnetForm ? '닫기' : '+ 서브넷 추가'}
 			</button>

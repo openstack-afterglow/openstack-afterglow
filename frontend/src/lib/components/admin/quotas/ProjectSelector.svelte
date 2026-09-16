@@ -62,6 +62,6 @@
 		</div>
 	{/if}
 	{#if selectedName}
-		<div class="mt-1 text-xs text-ink-3">선택됨: <span class="text-action-warm">{selectedName}</span></div>
+		<div class="mt-1 text-xs text-ink-3">선택됨: <span class="text-warm-text">{selectedName}</span></div>
 	{/if}
 </div>

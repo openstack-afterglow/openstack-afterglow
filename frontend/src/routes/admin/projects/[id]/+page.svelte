@@ -85,7 +85,7 @@
 			{#each [['overview', '개요'], ['members', '멤버'], ['activity', '활동']] as [key, label]}
 				<button
 					onclick={() => tab = key as typeof tab}
-					class="px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px {tab === key ? 'text-action-warm border-action-warm' : 'text-ink-2 border-transparent hover:text-ink-0'}"
+					class="px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px {tab === key ? 'text-warm-text border-action-warm' : 'text-ink-2 border-transparent hover:text-ink-0'}"
 				>
 					{label}
 				</button>

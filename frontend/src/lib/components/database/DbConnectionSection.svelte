@@ -59,7 +59,7 @@
 				<div class="flex items-center gap-2">
 					<span class="text-ink-3 text-sm">미할당</span>
 					<button onclick={() => s.attachFip()} disabled={s.attachingFip || !s.instance!.ip}
-						class="text-action-warm hover:text-action-warm-hover disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-action-warm hover:border-action-warm transition-colors">
+						class="text-warm-text hover:text-warm-text-hover disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-action-warm hover:border-action-warm transition-colors">
 						{s.attachingFip ? '할당 중...' : '+ 공개 IP 할당'}
 					</button>
 				</div>
@@ -76,13 +76,13 @@
 
 		{#if s.rootInfo}
 			<div class="bg-amber-950/30 border border-action-warm rounded-lg px-3 py-2">
-				<div class="text-action-warm text-xs font-medium mb-1">root 계정 활성화됨</div>
+				<div class="text-warm-text text-xs font-medium mb-1">root 계정 활성화됨</div>
 				<div class="font-mono text-xs text-ink-0">사용자: {s.rootInfo.name}</div>
 				<div class="font-mono text-xs text-ink-0">비밀번호: {s.rootInfo.password}</div>
 			</div>
 		{:else}
 			<button onclick={() => s.enableRoot()} disabled={s.enablingRoot}
-				class="text-xs text-action-warm border border-action-warm hover:border-action-warm px-3 py-1.5 rounded transition-colors">
+				class="text-xs text-warm-text border border-action-warm hover:border-action-warm px-3 py-1.5 rounded transition-colors">
 				{s.enablingRoot ? 'root 활성화 중...' : 'root 유저 활성화'}
 			</button>
 		{/if}

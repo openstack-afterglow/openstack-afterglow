@@ -70,7 +70,7 @@
 		<button
 			onclick={() => onDownloadKubeconfig(cluster.id, cluster.name)}
 			disabled={cluster.status !== 'ACTIVE'}
-			class="flex-1 text-action-warm hover:text-action-warm-hover disabled:text-ink-3 text-xs px-2 py-1.5 rounded border border-action-warm hover:border-action-warm disabled:border-line-2 transition-colors text-center"
+			class="flex-1 text-warm-text hover:text-warm-text-hover disabled:text-ink-3 text-xs px-2 py-1.5 rounded border border-action-warm hover:border-action-warm disabled:border-line-2 transition-colors text-center"
 		>kubeconfig</button>
 		<button
 			onclick={() => onSelect(cluster.id)}

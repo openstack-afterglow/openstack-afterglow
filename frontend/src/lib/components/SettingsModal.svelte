@@ -19,7 +19,7 @@
 		<div class="flex items-center justify-between px-6 py-4 border-b border-line sticky top-0 bg-surface-canvas z-10">
 			<h2 id="account-settings-title" class="text-lg font-bold text-ink-0">계정 설정</h2>
 			<div class="flex items-center gap-3">
-				<a href="/dashboard/account" onclick={close} class="text-xs text-action-warm hover:text-action-warm-hover transition-colors">전체 설정 →</a>
+				<a href="/dashboard/account" onclick={close} class="text-xs text-warm-text hover:text-warm-text-hover transition-colors">전체 설정 →</a>
 				<button type="button" onclick={close} aria-label="계정 설정 닫기" class="text-ink-2 hover:text-ink-0 transition-colors p-1 rounded-lg hover:bg-surface-sunken">
 					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>

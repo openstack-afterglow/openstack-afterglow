@@ -192,7 +192,7 @@
 			<div class="bg-surface-base border border-line rounded-lg px-3 py-2">
 				{#if editingSpecKey === k}
 					<div class="flex items-center gap-2">
-						<span class="text-xs text-action-warm font-mono break-all shrink-0">{k}</span>
+						<span class="text-xs text-warm-text font-mono break-all shrink-0">{k}</span>
 						<span class="text-ink-3">=</span>
 						<input
 							bind:value={editingSpecValue}
@@ -212,7 +212,7 @@
 							class="flex-1 min-w-0 text-left cursor-pointer hover:bg-surface-sunken/50 rounded -mx-1 px-1 py-0.5 transition-colors"
 							onclick={() => startEditSpec(k, v)}
 						>
-							<span class="text-xs text-action-warm font-mono break-all">{k}</span>
+							<span class="text-xs text-warm-text font-mono break-all">{k}</span>
 							<span class="text-ink-3 mx-2">=</span>
 							<span class="text-xs text-ink-2 font-mono break-all">{v}</span>
 						</button>

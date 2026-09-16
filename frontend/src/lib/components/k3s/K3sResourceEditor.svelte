@@ -107,7 +107,7 @@
       <button
         onclick={handleSave}
         disabled={saving || !!liveError}
-        class="text-xs text-action-warm hover:text-action-warm-hover px-3 py-1.5 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3 disabled:border-line-2 disabled:cursor-not-allowed"
+        class="text-xs text-warm-text hover:text-warm-text-hover px-3 py-1.5 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3 disabled:border-line-2 disabled:cursor-not-allowed"
       >
         {saving ? '저장 중...' : '저장'}
       </button>

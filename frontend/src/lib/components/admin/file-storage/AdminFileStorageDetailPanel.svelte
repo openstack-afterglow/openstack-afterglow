@@ -240,7 +240,7 @@
 						<div class="flex flex-wrap items-center gap-2 mb-2">
 							<h3 class="text-sm font-semibold text-ink-0">삭제 진단 및 복구 시나리오</h3>
 							{#if deleteDiagnostic}
-								<span class="px-2 py-0.5 rounded-full text-xs bg-surface-selected/40 text-action-warm border border-action-warm">
+								<span class="px-2 py-0.5 rounded-full text-xs bg-surface-selected/40 text-warm-text border border-action-warm">
 									confidence: {deleteDiagnostic.confidence}
 								</span>
 								<span class="px-2 py-0.5 rounded-full text-xs bg-surface-sunken text-ink-2 border border-line-2">
@@ -288,7 +288,7 @@
 							type="button"
 							onclick={() => fetchDeleteDiagnostic({ refresh: true })}
 							disabled={diagnosticLoading}
-							class="text-action-warm hover:text-action-warm-hover disabled:text-ink-3 text-sm px-3 py-1.5 rounded border border-action-warm hover:border-action-warm disabled:border-line-2 transition-colors"
+							class="text-warm-text hover:text-warm-text-hover disabled:text-ink-3 text-sm px-3 py-1.5 rounded border border-action-warm hover:border-action-warm disabled:border-line-2 transition-colors"
 						>
 							{diagnosticLoading ? '진단 중...' : '진단 다시 실행'}
 						</button>
@@ -335,7 +335,7 @@
 						<div class="rounded border border-line bg-surface-canvas/40 p-3 text-sm">
 							<div class="flex items-start justify-between gap-3">
 								<div class="font-mono text-ink-1 break-all">{loc.path}</div>
-								<button type="button" onclick={() => copyValue(`export-${i}`, loc.path)} class="text-xs text-action-warm hover:text-action-warm-hover shrink-0">{copied === `export-${i}` ? '복사됨' : '복사'}</button>
+								<button type="button" onclick={() => copyValue(`export-${i}`, loc.path)} class="text-xs text-warm-text hover:text-warm-text-hover shrink-0">{copied === `export-${i}` ? '복사됨' : '복사'}</button>
 							</div>
 							<div class="mt-2 flex flex-wrap gap-2 text-xs text-ink-3">
 								<span>preferred: {fieldValue(loc.preferred)}</span>
@@ -379,7 +379,7 @@
 									<td class="py-2 text-ink-3 font-mono">
 										{#if rule.access_key}
 											<span title={rule.access_key}>{shortAccessKey(rule.access_key)}</span>
-											<button type="button" onclick={() => copyValue(`access-key-${rule.id}`, rule.access_key)} class="ml-2 text-xs text-action-warm hover:text-action-warm-hover">{copied === `access-key-${rule.id}` ? '복사됨' : '복사'}</button>
+											<button type="button" onclick={() => copyValue(`access-key-${rule.id}`, rule.access_key)} class="ml-2 text-xs text-warm-text hover:text-warm-text-hover">{copied === `access-key-${rule.id}` ? '복사됨' : '복사'}</button>
 										{:else}
 											-
 										{/if}
@@ -413,7 +413,7 @@
 		<section class="bg-surface-base border border-line rounded-lg p-5">
 			<div class="flex items-center justify-between gap-3 mb-4">
 				<h3 class="text-sm font-semibold text-ink-0">내부 데이터</h3>
-				<button type="button" onclick={() => copyValue('raw-json', rawJson())} class="text-xs text-action-warm hover:text-action-warm-hover">{copied === 'raw-json' ? '복사됨' : 'Raw JSON 복사'}</button>
+				<button type="button" onclick={() => copyValue('raw-json', rawJson())} class="text-xs text-warm-text hover:text-warm-text-hover">{copied === 'raw-json' ? '복사됨' : 'Raw JSON 복사'}</button>
 			</div>
 			<pre class="max-h-[420px] overflow-auto rounded bg-surface-canvas border border-line p-3 text-xs text-ink-2 font-mono whitespace-pre-wrap">{rawJson()}</pre>
 		</section>

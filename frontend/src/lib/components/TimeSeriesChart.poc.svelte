@@ -140,7 +140,7 @@
             <div class="bg-surface-sunken border border-line-2 rounded-lg text-xs shadow-[var(--shadow-popover)] px-2.5 py-2 min-w-[110px]">
               <div class="text-ink-2 mb-1.5 font-medium">{fmtDate(d.ts)}</div>
               <div class="flex justify-between gap-4">
-                <span class="text-action-warm">{mainKey}</span>
+                <span class="text-warm-text">{mainKey}</span>
                 <span class="text-ink-0 font-bold">{d[mainKey] ?? 0}</span>
               </div>
               {#each extraKeys as key}

@@ -142,11 +142,11 @@
 		/>
 
 		{#if recommendation?.underutilized}
-			<div class="bg-surface-selected/40 border border-action-warm text-action-warm rounded-lg px-4 py-3 text-sm mb-4 flex items-center justify-between gap-4">
+			<div class="bg-surface-selected/40 border border-action-warm text-warm-text rounded-lg px-4 py-3 text-sm mb-4 flex items-center justify-between gap-4">
 				<span>
 					최근 7일 평균 CPU {summaryCpuAvg != null ? summaryCpuAvg.toFixed(1) : '—'}% · RAM {summaryMemAvg != null ? summaryMemAvg.toFixed(1) : '—'}% — 사용량이 낮습니다.
 					{#if recommendation.suggested_flavor}
-						<strong class="text-action-warm">{recommendation.suggested_flavor.name}</strong>으로 리사이즈를 권장합니다.
+						<strong class="text-warm-text">{recommendation.suggested_flavor.name}</strong>으로 리사이즈를 권장합니다.
 					{:else}
 						더 작은 플레이버로의 리사이즈를 권장합니다.
 					{/if}

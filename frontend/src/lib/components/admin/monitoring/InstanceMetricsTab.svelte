@@ -119,7 +119,7 @@
 				<button
 					onclick={() => loadInstances()}
 					disabled={loadingInstances}
-					class="w-full py-2.5 text-xs text-action-warm hover:text-action-warm-hover disabled:text-ink-3 transition-colors"
+					class="w-full py-2.5 text-xs text-warm-text hover:text-warm-text-hover disabled:text-ink-3 transition-colors"
 				>
 					{loadingInstances ? '로딩 중...' : '더 불러오기'}
 				</button>
@@ -137,7 +137,7 @@
 			<div class="bg-surface-base border border-line rounded-xl p-5">
 				<button
 					onclick={() => (selectedInst = null)}
-					class="md:hidden mb-3 text-sm text-action-warm hover:text-action-warm-hover flex items-center gap-1"
+					class="md:hidden mb-3 text-sm text-warm-text hover:text-warm-text-hover flex items-center gap-1"
 					data-tour="admin-monitoring-back"
 				>
 					← 목록으로

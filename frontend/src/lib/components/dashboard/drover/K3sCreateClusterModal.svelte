@@ -176,7 +176,7 @@
 					<div class="flex gap-2 mb-2">
 						<button type="button"
 							onclick={() => categoryChange('tenant')}
-							class="flex-1 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors {networkCategory === 'tenant' ? 'border-action-warm bg-surface-selected/30 text-action-warm' : 'border-line-2 bg-surface-sunken text-ink-2 hover:border-line-2'}">
+							class="flex-1 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors {networkCategory === 'tenant' ? 'border-action-warm bg-surface-selected/30 text-warm-text' : 'border-line-2 bg-surface-sunken text-ink-2 hover:border-line-2'}">
 							Tenant
 						</button>
 						<button type="button"

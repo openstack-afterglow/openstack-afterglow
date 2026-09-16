@@ -211,10 +211,10 @@
 						<div class="text-xs text-ink-3">인증 키</div>
 						<button
 							onclick={copyAuthKey}
-							class="text-xs text-action-warm hover:text-action-warm-hover transition-colors"
+							class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
 						>{copied ? '복사됨!' : '복사'}</button>
 					</div>
-					<div class="font-mono text-sm text-action-warm break-all">{createdTransfer.auth_key}</div>
+					<div class="font-mono text-sm text-warm-text break-all">{createdTransfer.auth_key}</div>
 				</div>
 			</div>
 			<div class="flex justify-end mt-6">

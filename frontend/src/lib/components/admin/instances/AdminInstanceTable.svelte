@@ -93,7 +93,7 @@
 						/>
 					</td>
 					<td class="p-0">
-						<button type="button" data-tour={index === 0 ? 'admin-compute-row-open' : undefined} onclick={() => onOpen(s)} class="block w-full py-2 pr-4 font-medium text-ink-0 hover:text-action-warm-hover transition-colors text-left" title={s.name || s.id}><span class="max-md:block max-md:max-w-[66vw] max-md:truncate">{s.name || s.id.slice(0, 8)}</span></button>
+						<button type="button" data-tour={index === 0 ? 'admin-compute-row-open' : undefined} onclick={() => onOpen(s)} class="block w-full py-2 pr-4 font-medium text-ink-0 hover:text-warm-text-hover transition-colors text-left" title={s.name || s.id}><span class="max-md:block max-md:max-w-[66vw] max-md:truncate">{s.name || s.id.slice(0, 8)}</span></button>
 					</td>
 					<td class="py-2 pr-4">
 						<div class="flex items-center gap-1.5">
@@ -108,7 +108,7 @@
 							{#if s.status === 'ERROR' && onRecover}
 								<button
 									onclick={(e) => { e.stopPropagation(); onRecover(s); }}
-									class="text-action-warm hover:text-action-warm-hover text-xs underline"
+									class="text-warm-text hover:text-warm-text-hover text-xs underline"
 									title="복구 분석 및 실행"
 								>복구</button>
 							{/if}
@@ -124,7 +124,7 @@
 					<td class="py-2 pr-4">
 						<button
 							onclick={(e) => { e.stopPropagation(); if (s.project_id) copyProjectId(s.project_id); }}
-							class="text-ink-2 hover:text-action-warm-hover transition-colors cursor-pointer text-left"
+							class="text-ink-2 hover:text-warm-text-hover transition-colors cursor-pointer text-left"
 							title={s.project_id ?? ''}
 						>
 							{#if copiedProjectId === s.project_id}

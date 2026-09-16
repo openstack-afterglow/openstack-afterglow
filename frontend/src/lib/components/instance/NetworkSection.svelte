@@ -47,7 +47,7 @@
 		<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide">인터페이스</h2>
 		<button
 			onclick={() => { showAddInterface = !showAddInterface; selectedNetId = ''; }}
-			class="text-xs text-action-warm hover:text-action-warm-hover transition-colors"
+			class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
 		>
 			{showAddInterface ? '닫기' : '+ 인터페이스 추가'}
 		</button>
@@ -69,7 +69,7 @@
 				<button
 					onclick={handleAttachInterface}
 					disabled={!selectedNetId || s.actioning === 'attach-iface'}
-					class="text-xs text-action-warm hover:text-action-warm-hover px-3 py-1.5 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3 disabled:border-line-2"
+					class="text-xs text-warm-text hover:text-warm-text-hover px-3 py-1.5 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3 disabled:border-line-2"
 				>
 					{s.actioning === 'attach-iface' ? '추가 중...' : '추가'}
 				</button>
@@ -127,7 +127,7 @@
 								<button
 									onclick={() => s.assignFloatingIp(iface.id)}
 									disabled={!!s.actioning}
-									class="text-xs text-action-warm hover:text-action-warm-hover px-2 py-1 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3"
+									class="text-xs text-warm-text hover:text-warm-text-hover px-2 py-1 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3"
 								>
 									{s.actioning === 'fip-assign-' + iface.id ? '할당 중...' : '+ FIP'}
 								</button>
@@ -147,7 +147,7 @@
 							<dt class="text-xs text-ink-3">보안 그룹</dt>
 							<button
 								onclick={() => openSgEdit(iface)}
-								class="text-xs text-action-warm hover:text-action-warm-hover transition-colors"
+								class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
 							>
 								편집
 							</button>
@@ -194,7 +194,7 @@
 									<button
 										onclick={handleSaveSgEdit}
 										disabled={s.actioning === 'sg-' + iface.id}
-										class="text-xs text-action-warm hover:text-action-warm-hover px-2 py-1 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3"
+										class="text-xs text-warm-text hover:text-warm-text-hover px-2 py-1 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3"
 									>
 										{s.actioning === 'sg-' + iface.id ? '저장 중...' : '저장'}
 									</button>

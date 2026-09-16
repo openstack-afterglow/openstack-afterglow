@@ -57,7 +57,7 @@
 		<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide">서브넷</h2>
 		<button
 			onclick={() => { showSubnetForm = !showSubnetForm; }}
-			class="text-xs text-action-warm hover:text-action-warm-hover transition-colors"
+			class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
 		>
 			{showSubnetForm ? '닫기' : '+ 서브넷 추가'}
 		</button>
@@ -182,7 +182,7 @@
 							<div class="flex items-center gap-1">
 								<button
 									onclick={() => startEditSubnet(subnet)}
-									class="text-xs text-action-warm hover:text-action-warm-hover px-2 py-1 border border-action-warm hover:border-action-warm rounded transition-colors"
+									class="text-xs text-warm-text hover:text-warm-text-hover px-2 py-1 border border-action-warm hover:border-action-warm rounded transition-colors"
 								>편집</button>
 								<button
 									onclick={() => onDelete(subnet.id, subnet.name)}

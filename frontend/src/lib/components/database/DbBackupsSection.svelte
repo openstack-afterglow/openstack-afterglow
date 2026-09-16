@@ -206,7 +206,7 @@
 						<td class="py-2 text-right">
 							<div class="flex justify-end gap-1">
 								<button onclick={() => { selectedBackup = b; showRestoreModal = true; }} disabled={s.restoringBackup === b.id}
-									class="text-action-warm hover:text-action-warm-hover disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-action-warm hover:border-action-warm transition-colors">
+									class="text-warm-text hover:text-warm-text-hover disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-action-warm hover:border-action-warm transition-colors">
 									{s.restoringBackup === b.id ? '...' : '복원'}
 								</button>
 								<button onclick={() => s.deleteBackup(b.id)} disabled={s.deletingBackup === b.id}

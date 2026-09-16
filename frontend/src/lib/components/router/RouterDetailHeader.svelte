@@ -25,7 +25,7 @@
 		/>
 		<button
 			onclick={() => goto(`/dashboard/network/routers/${routerId}`)}
-			class="text-xs text-ink-2 hover:text-action-warm-hover px-2 py-1 rounded border border-line-2 hover:border-action-warm transition-colors"
+			class="text-xs text-ink-2 hover:text-warm-text-hover px-2 py-1 rounded border border-line-2 hover:border-action-warm transition-colors"
 		>전체 보기 →</button>
 	</div>
 </div>

@@ -31,12 +31,12 @@
 					class="border-b border-line/50 text-xs transition-colors"
 				>
 					<td class="p-0">
-						<button type="button" onclick={() => onRowClick(n.id)} class="block w-full py-2 pr-4 font-medium text-ink-0 hover:text-action-warm-hover transition-colors text-left" title={n.name || n.id}><span class="max-md:block max-md:max-w-[66vw] max-md:truncate">{n.name || n.id.slice(0, 8)}</span></button>
+						<button type="button" onclick={() => onRowClick(n.id)} class="block w-full py-2 pr-4 font-medium text-ink-0 hover:text-warm-text-hover transition-colors text-left" title={n.name || n.id}><span class="max-md:block max-md:max-w-[66vw] max-md:truncate">{n.name || n.id.slice(0, 8)}</span></button>
 					</td>
 					<td class="py-2 pr-4 {n.status === 'ACTIVE' ? 'text-green-400' : 'text-ink-2'}">{n.status}</td>
 					<td class="py-2 pr-4">
 						{#if n.is_external}<span class="px-1.5 py-0.5 bg-orange-900/30 text-orange-300 rounded text-xs mr-1">외부</span>{/if}
-						{#if n.is_shared}<span class="px-1.5 py-0.5 bg-surface-selected/30 text-action-warm rounded text-xs">공유</span>{/if}
+						{#if n.is_shared}<span class="px-1.5 py-0.5 bg-surface-selected/30 text-warm-text rounded text-xs">공유</span>{/if}
 						{#if !n.is_external && !n.is_shared}<span class="text-ink-3">내부</span>{/if}
 					</td>
 					<td class="py-2 pr-4 text-ink-3">{n.subnets.length}개</td>

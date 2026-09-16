@@ -82,7 +82,7 @@
 		</button>
 		<button
 			onclick={() => { showAddRule = !showAddRule; }}
-			class="text-xs text-action-warm hover:text-action-warm-hover px-2 py-1 border border-action-warm hover:border-action-warm rounded transition-colors shrink-0"
+			class="text-xs text-warm-text hover:text-warm-text-hover px-2 py-1 border border-action-warm hover:border-action-warm rounded transition-colors shrink-0"
 		>+ 규칙</button>
 		<button
 			onclick={() => onDelete(sg.id, sg.name)}

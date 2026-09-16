@@ -87,7 +87,7 @@
 			<!-- 로딩 -->
 			{#if phase === 'loading'}
 				<div class="flex items-center gap-3 text-ink-2 text-sm py-8 justify-center">
-					<svg class="animate-spin w-5 h-5 text-action-warm" fill="none" viewBox="0 0 24 24">
+					<svg class="animate-spin w-5 h-5 text-warm-text" fill="none" viewBox="0 0 24 24">
 						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
 						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
 					</svg>
@@ -154,7 +154,7 @@
 										<span class="text-ink-2">{step.description}</span>
 									</div>
 								{:else}
-									<div class="text-action-warm text-sm">{step.description}</div>
+									<div class="text-warm-text text-sm">{step.description}</div>
 								{/if}
 							{/each}
 						</div>
@@ -200,16 +200,16 @@
 
 				<!-- placement 안내 -->
 				{#if analysis.placement_note}
-					<div class="bg-surface-selected/20 border border-action-warm/40 text-action-warm rounded-lg px-4 py-3 text-xs leading-relaxed">
+					<div class="bg-surface-selected/20 border border-action-warm/40 text-warm-text rounded-lg px-4 py-3 text-xs leading-relaxed">
 						<span class="font-medium">Placement 주의:</span> {analysis.placement_note}
 					</div>
 				{/if}
 
 				<!-- 수동 점검 안내 -->
 				{#if !analysis.auto_executable && phase === 'analyzed'}
-					<div class="bg-surface-sunken border border-action-warm/40 text-action-warm rounded-lg px-4 py-3 text-sm">
+					<div class="bg-surface-sunken border border-action-warm/40 text-warm-text rounded-lg px-4 py-3 text-sm">
 						<div class="font-medium mb-1">수동 점검이 필요합니다</div>
-						<div class="text-xs text-action-warm/70">
+						<div class="text-xs text-warm-text/70">
 							위 안전 검사를 통과하지 못해 자동 복구를 실행할 수 없습니다.
 							실패한 항목을 확인하고 직접 복구하세요.
 						</div>
@@ -235,7 +235,7 @@
 				</button>
 			{:else if phase === 'executing'}
 				<div class="flex items-center gap-2 text-ink-2 text-sm">
-					<svg class="animate-spin w-4 h-4 text-action-warm" fill="none" viewBox="0 0 24 24">
+					<svg class="animate-spin w-4 h-4 text-warm-text" fill="none" viewBox="0 0 24 24">
 						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
 						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
 					</svg>

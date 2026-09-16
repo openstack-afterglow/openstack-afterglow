@@ -55,7 +55,7 @@
 			<div class="pt-3 border-t border-line flex items-center justify-between">
 				<a
 					href="/dashboard/object-storage/buckets/{encodeURIComponent(c.name)}"
-					class="text-xs text-action-warm hover:text-action-warm-hover transition-colors"
+					class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
 				>상세 보기 →</a>
 				<button
 					onclick={() => onDelete(c.name)}

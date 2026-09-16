@@ -152,13 +152,13 @@
 		<div class="flex gap-1 mb-5 border-b border-line">
 			<button
 				onclick={() => (activeTab = 'members')}
-				class="px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px {activeTab === 'members' ? 'border-action-warm text-action-warm' : 'border-transparent text-ink-3 hover:text-ink-0'}"
+				class="px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px {activeTab === 'members' ? 'border-action-warm text-warm-text' : 'border-transparent text-ink-3 hover:text-ink-0'}"
 			>
 				멤버
 			</button>
 			<button
 				onclick={() => (activeTab = 'invitations')}
-				class="px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px {activeTab === 'invitations' ? 'border-action-warm text-action-warm' : 'border-transparent text-ink-3 hover:text-ink-0'}"
+				class="px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px {activeTab === 'invitations' ? 'border-action-warm text-warm-text' : 'border-transparent text-ink-3 hover:text-ink-0'}"
 			>
 				초대
 			</button>
@@ -197,14 +197,14 @@
 									<td class="px-4 py-3 text-ink-2">{m.email || '—'}</td>
 									<td class="px-4 py-3">
 										{#if m.is_manager}
-											<span class="text-[11px] px-2 py-0.5 rounded bg-action-warm/15 text-action-warm border border-action-warm/30 font-medium">관리자</span>
+											<span class="text-[11px] px-2 py-0.5 rounded bg-action-warm/15 text-warm-text border border-action-warm/30 font-medium">관리자</span>
 										{:else}
 											<span class="text-ink-3 text-xs">멤버</span>
 										{/if}
 									</td>
 									<td class="px-4 py-3">
 										{#if m.source === 'group' && m.group_name}
-											<span class="text-[11px] px-2 py-0.5 rounded bg-action-warm/10 text-action-warm border border-action-warm/20 font-medium">{m.group_name}</span>
+											<span class="text-[11px] px-2 py-0.5 rounded bg-action-warm/10 text-warm-text border border-action-warm/20 font-medium">{m.group_name}</span>
 										{/if}
 									</td>
 									<td class="px-4 py-3 text-right">
@@ -219,7 +219,7 @@
 											{:else}
 												<button
 													onclick={() => promoteManager(m.user_id)}
-													class="text-xs text-ink-3 hover:text-action-warm-hover transition-colors"
+													class="text-xs text-ink-3 hover:text-warm-text-hover transition-colors"
 												>
 													관리자 지정
 												</button>

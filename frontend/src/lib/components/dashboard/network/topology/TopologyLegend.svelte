@@ -24,7 +24,7 @@
 	</span>
 	<!-- 자원 타입 아이콘 -->
 	<span class="flex items-center gap-1.5">
-		<svg class="w-3.5 h-3.5 flex-shrink-0 text-action-warm" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+		<svg class="w-3.5 h-3.5 flex-shrink-0 text-warm-text" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
 			<circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2" fill="currentColor" opacity="0.5"/>
 			<path d="M8 2v2M8 12v2M2 8h2M12 8h2"/>
 		</svg>
@@ -58,7 +58,7 @@
 		<span class="text-[10px] text-orange-400 font-mono flex-shrink-0">✦</span>Floating IP
 	</span>
 	<span class="flex items-center gap-1.5">
-		<span class="text-[9px] px-1 rounded bg-surface-selected/40 text-action-warm flex-shrink-0">2NIC</span>멀티 NIC
+		<span class="text-[9px] px-1 rounded bg-surface-selected/40 text-warm-text flex-shrink-0">2NIC</span>멀티 NIC
 	</span>
 	<!-- 연결선 -->
 	<span class="flex items-center gap-1.5">

@@ -65,6 +65,16 @@
   --color-warm: #f4976c;
   --color-warm-2: #e8c19a;
   --color-warm-text: var(--color-warm);
+  /* Warm text needs its own hover because mixing toward ink-0 darkens in light and lightens in
+     dark, keeping contrast on whichever surface the text sits on. */
+  --color-warm-text-hover: color-mix(in oklab, var(--color-warm-text) 85%, var(--color-ink-0));
+  /* Action tokens belong in @theme static, not :root — membership here is what makes a --color-*
+     name generate bg-/text-/border- utilities. --color-action-warm is for FILLS and BORDERS only;
+     warm as TEXT on a light surface is 3.56:1 and must use --color-warm-text at 5.18:1. */
+  --color-action-warm: var(--color-warm);
+  --color-action-warm-hover: color-mix(in oklab, var(--color-warm) 88%, var(--color-ink-0));
+  --color-action-on-warm: #18191b;
+  --color-action-on-accent: #07111f;
   /* State */
   --color-state-success: #5ddca0;
   --color-state-success-text: var(--color-state-success);
@@ -121,8 +131,6 @@
   --material-overlay-alpha: 94%;
   --material-chrome-blur: 1.125rem;
   --material-scrim-blur: 0.75rem;
-  --color-action-on-warm: #18191b;
-  --color-action-on-accent: #07111f;
   --color-chart-1: #7da3ff;
   --color-chart-2: #5ddca0;
   --color-chart-3: #f06b6b;
@@ -304,6 +312,9 @@ body {
   --shadow-overlay-compact: 0 2px 4px -1px rgb(0 0 0 / 0.05), 0 16px 32px -8px rgb(0 0 0 / 0.12);
   --material-chrome-alpha: 85%;
   --material-overlay-alpha: 90%;
+  /* 라이트에서 --color-line-2(#cbd5e1)를 흰 스페이서 위에 쓰면 1.48:1 로 WCAG 1.4.11(비텍스트 3:1)에
+     미달한다. 링의 바깥 테두리만 ink-2 로 올려 7.58:1 을 확보한다. 다크 정의는 건드리지 않는다. */
+  --focus-ring: 0 0 0 2px var(--color-surface-base), 0 0 0 4px var(--color-ink-2);
   --color-surface-canvas: #fafbff;
   --color-surface-base: #ffffff;
   --color-surface-raised: #ffffff;

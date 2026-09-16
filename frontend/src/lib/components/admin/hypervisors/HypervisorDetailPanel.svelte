@@ -163,7 +163,7 @@
 									<button
 										type="button"
 										onclick={() => onOpenDetail(s.id, s.project_id)}
-										class="text-xs text-ink-2 hover:text-action-warm-hover transition-colors truncate block w-full text-left"
+										class="text-xs text-ink-2 hover:text-warm-text-hover transition-colors truncate block w-full text-left"
 									>{s.name || s.id.slice(0, 12)}</button>
 									<div class="text-xs text-ink-3">{projectNameMap.get(s.project_id) || s.project_id.slice(0, 8)} · {s.flavor}</div>
 								</div>

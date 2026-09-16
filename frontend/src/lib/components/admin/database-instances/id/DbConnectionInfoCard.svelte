@@ -46,12 +46,12 @@
 		{/if}
 		{#if rootInfo}
 			<div class="bg-amber-950/30 border border-action-warm rounded-lg px-3 py-2">
-				<div class="text-action-warm text-xs font-medium mb-1">root 계정</div>
+				<div class="text-warm-text text-xs font-medium mb-1">root 계정</div>
 				<div class="font-mono text-xs text-ink-0">사용자: {rootInfo.name} / 비밀번호: {rootInfo.password}</div>
 			</div>
 		{:else}
 			<button onclick={onEnableRoot} disabled={enablingRoot}
-				class="text-xs text-action-warm border border-action-warm hover:border-action-warm px-3 py-1.5 rounded transition-colors">
+				class="text-xs text-warm-text border border-action-warm hover:border-action-warm px-3 py-1.5 rounded transition-colors">
 				{enablingRoot ? 'root 활성화 중...' : 'root 유저 활성화'}
 			</button>
 		{/if}

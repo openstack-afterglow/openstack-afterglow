@@ -62,7 +62,7 @@
 
 	function actionColor(action: string, status: string): string {
 		if (status === 'failed') return 'text-red-400';
-		if (action === 'blocked') return 'text-action-warm';
+		if (action === 'blocked') return 'text-warm-text';
 		if (action === 'scale_up') return 'text-green-400';
 		if (action === 'scale_down') return 'text-yellow-400';
 		return 'text-ink-2';
@@ -117,7 +117,7 @@
 								<span class="rounded border border-emerald-700/50 bg-emerald-900/30 px-1.5 py-0.5 text-xs text-emerald-300">GPU</span>
 							{/if}
 							{#if ng.in_flight}
-								<span class="rounded border border-action-warm/50 bg-surface-selected/30 px-1.5 py-0.5 text-xs text-action-warm">in-flight {ng.in_flight}</span>
+								<span class="rounded border border-action-warm/50 bg-surface-selected/30 px-1.5 py-0.5 text-xs text-warm-text">in-flight {ng.in_flight}</span>
 							{/if}
 						</div>
 					</div>
@@ -136,13 +136,13 @@
 						</div>
 					</div>
 					{#if ng.pending_assignments?.length}
-						<div class="mt-2 text-xs text-action-warm">Pending: {ng.pending_assignments.map(p => `${p.namespace ?? 'default'}/${p.name}`).join(', ')}</div>
+						<div class="mt-2 text-xs text-warm-text">Pending: {ng.pending_assignments.map(p => `${p.namespace ?? 'default'}/${p.name}`).join(', ')}</div>
 					{/if}
 					{#if ng.blocked_reasons?.length}
-						<div class="mt-2 text-xs text-action-warm">Blocked: {ng.blocked_reasons.map(b => `${b.reason}: ${b.namespace ?? 'default'}/${b.name}`).join(', ')}</div>
+						<div class="mt-2 text-xs text-warm-text">Blocked: {ng.blocked_reasons.map(b => `${b.reason}: ${b.namespace ?? 'default'}/${b.name}`).join(', ')}</div>
 					{/if}
 					{#if ng.last_blocked_reason}
-						<div class="mt-2 text-xs text-action-warm">Last blocked: {ng.last_blocked_reason}</div>
+						<div class="mt-2 text-xs text-warm-text">Last blocked: {ng.last_blocked_reason}</div>
 					{/if}
 				</div>
 			{/each}

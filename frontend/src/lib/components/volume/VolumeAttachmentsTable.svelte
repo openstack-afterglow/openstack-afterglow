@@ -35,7 +35,7 @@
             <td class="py-2 pr-6">
               <a
                 href="/dashboard/instances/{sid(a)}"
-                class="text-action-warm hover:text-action-warm-hover transition-colors"
+                class="text-warm-text hover:text-warm-text-hover transition-colors"
               >
                 {attachedInstances.get(sid(a)) ?? sid(a).slice(0, 8) + '…'}
               </a>

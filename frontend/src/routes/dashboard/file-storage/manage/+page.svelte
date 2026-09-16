@@ -87,7 +87,7 @@
   <PageHeader breadcrumb="FILE STORAGE / MANAGE" title="사전 빌드 파일 스토리지" subtitle="구 prebuilt 라이브러리 share를 확인하거나 수동으로 빌드합니다.">
     {#snippet actions()}
       <label class="flex items-center gap-2 text-xs text-ink-2 cursor-pointer">
-        <input type="checkbox" bind:checked={autoInstall} class="rounded border-line-2 bg-surface-sunken text-action-warm focus:ring-line-2 focus:ring-offset-0" />
+        <input type="checkbox" bind:checked={autoInstall} class="rounded border-line-2 bg-surface-sunken text-warm-text focus:ring-line-2 focus:ring-offset-0" />
         자동 패키지 설치
       </label>
       <AutoRefreshControl

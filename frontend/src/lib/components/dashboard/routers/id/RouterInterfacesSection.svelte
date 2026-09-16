@@ -50,7 +50,7 @@
 		<h2 class="font-semibold text-ink-0">인터페이스 ({router.interfaces.length})</h2>
 		<button
 			onclick={() => showAddInterface = !showAddInterface}
-			class="text-action-warm hover:text-action-warm-hover text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm transition-colors"
+			class="text-warm-text hover:text-warm-text-hover text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm transition-colors"
 		>+ 인터페이스 추가</button>
 	</div>
 

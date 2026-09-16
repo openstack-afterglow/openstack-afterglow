@@ -58,15 +58,15 @@
 					</ul>
 				</div>
 				{#if kind === 'volume'}
-					<p class="text-xs text-action-warm mb-3">
+					<p class="text-xs text-warm-text mb-3">
 						※ 삭제 직전 재조회로 attachments / status를 한 번 더 검증합니다(race 방지).
 					</p>
 				{:else if kind === 'manila_share'}
-					<p class="text-xs text-action-warm mb-3">
+					<p class="text-xs text-warm-text mb-3">
 						※ 삭제 직전 재조회로 (1) project 복구 여부 (2) snapshot 부재 (3) status를 검증합니다.
 					</p>
 				{:else if kind === 'security_group'}
-					<p class="text-xs text-action-warm mb-3">
+					<p class="text-xs text-warm-text mb-3">
 						※ 삭제 직전 모든 port를 재조회해 attach가 발생하지 않았는지, marker가 유지되는지 검증합니다.
 					</p>
 				{/if}

@@ -8,7 +8,7 @@
 
 <div class="flex items-start justify-between mb-6">
 	<div>
-		<h1 class="text-xl font-bold text-ink-0">VM 생성 <span class="text-sm font-normal text-action-warm ml-1">관리자</span></h1>
+		<h1 class="text-xl font-bold text-ink-0">VM 생성 <span class="text-sm font-normal text-warm-text ml-1">관리자</span></h1>
 		<p class="text-sm text-ink-3 mt-0.5">대상 프로젝트 선택</p>
 	</div>
 	<!-- 닫기는 SlidePanel(`[data-slide-panel-close]`)과 하단 취소 버튼이 담당한다. -->

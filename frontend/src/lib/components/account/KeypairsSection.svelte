@@ -126,7 +126,7 @@
           <div>
             <div class="flex items-center justify-between mb-1.5">
               <span class="text-xs text-ink-2 uppercase tracking-wide">공개키 (선택 — 비우면 자동 생성)</span>
-              <label class="text-xs text-action-warm hover:text-action-warm-hover cursor-pointer transition-colors">
+              <label class="text-xs text-warm-text hover:text-warm-text-hover cursor-pointer transition-colors">
                 파일 선택<input type="file" accept=".pub,.pem,.txt" class="hidden" onchange={handleFileUpload} />
               </label>
             </div>

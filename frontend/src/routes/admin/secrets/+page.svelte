@@ -211,7 +211,7 @@
 							<td class="py-3 pr-4 text-ink-2">{q.project_quotas.orders ?? -1}</td>
 							<td class="py-3 pr-4 text-ink-2">{q.project_quotas.containers ?? -1}</td>
 							<td class="py-3 flex gap-3" data-tour={index === 0 ? 'admin-key-manager-actions' : undefined}>
-								<button onclick={() => openEdit(q)} class="text-xs text-action-warm hover:text-action-warm-hover">설정</button>
+								<button onclick={() => openEdit(q)} class="text-xs text-warm-text hover:text-warm-text-hover">설정</button>
 								<button onclick={() => handleResetQuota(q.project_id)} class="text-xs text-ink-2 hover:text-ink-1">초기화</button>
 							</td>
 						</tr>

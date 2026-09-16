@@ -15,7 +15,7 @@
 	const roleBadgeClass = $derived(
 		nodegroup.role === 'server'
 			? 'bg-purple-900/40 text-purple-400 border-purple-800'
-			: 'bg-surface-selected/40 text-action-warm border-action-warm'
+			: 'bg-surface-selected/40 text-warm-text border-action-warm'
 	);
 
 
@@ -45,7 +45,7 @@
 				<span class="text-xs text-ink-3">(기본)</span>
 			{/if}
 			{#if nodegroup.stampede_enabled}
-				<span class="text-xs bg-surface-selected/50 text-action-warm border border-action-warm/60 rounded px-1.5 py-0.5 leading-none">Stampede</span>
+				<span class="text-xs bg-surface-selected/50 text-warm-text border border-action-warm/60 rounded px-1.5 py-0.5 leading-none">Stampede</span>
 				<span class="text-xs text-ink-3">{nodegroup.min_size}–{nodegroup.max_size}</span>
 				{#if gpuCount > 0}
 					<span class="text-xs bg-emerald-900/50 text-emerald-300 border border-emerald-700/60 rounded px-1.5 py-0.5 leading-none">GPU {gpuCount}</span>
@@ -59,7 +59,7 @@
 			{#if onEdit && !nodegroup.is_default}
 				<button
 					onclick={() => onEdit?.(nodegroup)}
-					class="text-xs text-ink-2 hover:text-action-warm-hover px-2 py-1 rounded transition-colors"
+					class="text-xs text-ink-2 hover:text-warm-text-hover px-2 py-1 rounded transition-colors"
 				>수정</button>
 			{/if}
 			{#if onDelete && !nodegroup.is_default}

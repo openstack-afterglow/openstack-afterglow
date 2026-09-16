@@ -211,7 +211,7 @@
 										<span class="text-sm text-ink-1">{u.name}</span>
 										<button
 											onclick={() => { pendingAddUser = u; pendingRoleId = allRoles[0]?.id ?? ''; }}
-											class="text-action-warm hover:text-action-warm-hover text-lg font-bold leading-none">+</button>
+											class="text-warm-text hover:text-warm-text-hover text-lg font-bold leading-none">+</button>
 									</div>
 								{/each}
 							{:else}
@@ -224,7 +224,7 @@
 										{#if !memberGroupIds.has(g.id)}
 											<button
 												onclick={() => { pendingAddGroup = g; pendingGroupRoleId = allRoles[0]?.id ?? ''; }}
-												class="text-action-warm hover:text-action-warm-hover text-lg font-bold leading-none">+</button>
+												class="text-warm-text hover:text-warm-text-hover text-lg font-bold leading-none">+</button>
 										{/if}
 									</div>
 								{/each}

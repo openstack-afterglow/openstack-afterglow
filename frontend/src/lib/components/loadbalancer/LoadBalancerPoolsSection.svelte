@@ -11,7 +11,7 @@
     <h3 class="font-semibold text-ink-0 text-sm">풀 ({s.pools.length})</h3>
     <button
       onclick={() => s.toggleAddPool()}
-      class="text-action-warm hover:text-action-warm-hover text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm transition-colors"
+      class="text-warm-text hover:text-warm-text-hover text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm transition-colors"
     >+ 추가</button>
   </div>
 

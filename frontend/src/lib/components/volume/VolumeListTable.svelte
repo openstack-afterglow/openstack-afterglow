@@ -93,7 +93,7 @@
 			<button
 				type="button"
 				onclick={() => onOpenDetail(vol.id)}
-				class="flex items-center gap-2.5 min-w-0 w-full text-left text-ink-0 hover:text-action-warm-hover transition-colors cursor-pointer"
+				class="flex items-center gap-2.5 min-w-0 w-full text-left text-ink-0 hover:text-warm-text-hover transition-colors cursor-pointer"
 			>
 				<div class="hidden sm:flex shrink-0 w-7 h-7 rounded-md bg-cyan-500/15 border border-cyan-500/30 items-center justify-center">
 					<svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -122,7 +122,7 @@
 			<!-- 연결 -->
 			<div class="hidden lg:block text-[12px]">
 				{#if vol.attachments.length > 0}
-					<span class="text-action-warm">{vol.attachments.length}개 연결</span>
+					<span class="text-warm-text">{vol.attachments.length}개 연결</span>
 				{:else}
 					<span class="text-ink-3">미연결</span>
 				{/if}
@@ -130,7 +130,7 @@
 			<!-- 부트 -->
 			<div class="hidden lg:flex flex-col gap-0.5">
 				{#if vol.bootable}
-					<span class="text-[11px] px-2 py-0.5 rounded-md bg-surface-selected/30 border border-action-warm text-action-warm w-fit">부트</span>
+					<span class="text-[11px] px-2 py-0.5 rounded-md bg-surface-selected/30 border border-action-warm text-warm-text w-fit">부트</span>
 					{#if vol.volume_image_metadata?.os_distro}
 						<span class="text-[10px] text-ink-3 font-mono">{vol.volume_image_metadata.os_distro}{vol.volume_image_metadata.os_version ? ' ' + vol.volume_image_metadata.os_version : ''}</span>
 					{/if}
@@ -161,7 +161,7 @@
 						onclick={() => { onActionMenuClose(); onOpenDetail(vol.id); }}
 						class="w-full text-left px-3 py-1.5 text-[13px] text-ink-2 hover:text-ink-0 hover:bg-surface-sunken transition-colors flex items-center gap-2"
 					>
-						<svg class="w-3.5 h-3.5 text-action-warm" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+						<svg class="w-3.5 h-3.5 text-warm-text" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
 						연결
 					</button>
 					{#if vol.status === 'available' && vol.bootable}
@@ -187,7 +187,7 @@
 							onclick={() => { onActionMenuClose(); onSnapshot(vol); }}
 							class="w-full text-left px-3 py-1.5 text-[13px] text-ink-2 hover:text-ink-0 hover:bg-surface-sunken transition-colors flex items-center gap-2"
 						>
-							<svg class="w-3.5 h-3.5 text-action-warm" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+							<svg class="w-3.5 h-3.5 text-warm-text" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
 							스냅샷 생성
 						</button>
 					{/if}

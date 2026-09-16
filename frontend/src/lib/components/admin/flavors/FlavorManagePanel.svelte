@@ -56,11 +56,11 @@
 			<div class="flex border-b border-line mb-4">
 				<button
 					onclick={() => (activeTab = 'access')}
-					class="px-4 py-2 text-sm {activeTab === 'access' ? 'text-action-warm border-b-2 border-action-warm' : 'text-ink-2 hover:text-ink-1'}"
+					class="px-4 py-2 text-sm {activeTab === 'access' ? 'text-warm-text border-b-2 border-action-warm' : 'text-ink-2 hover:text-ink-1'}"
 				>접근 관리</button>
 				<button
 					onclick={() => (activeTab = 'properties')}
-					class="px-4 py-2 text-sm {activeTab === 'properties' ? 'text-action-warm border-b-2 border-action-warm' : 'text-ink-2 hover:text-ink-1'}"
+					class="px-4 py-2 text-sm {activeTab === 'properties' ? 'text-warm-text border-b-2 border-action-warm' : 'text-ink-2 hover:text-ink-1'}"
 				>속성 (extra_specs)</button>
 			</div>
 

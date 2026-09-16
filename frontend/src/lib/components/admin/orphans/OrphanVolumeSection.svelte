@@ -39,7 +39,7 @@
 		<td class="py-2 pr-4 text-green-400">{v.status}</td>
 		<td class="py-2 pr-4 text-ink-3 font-mono">{v.project_id?.slice(0, 8) ?? '-'}</td>
 		<td class="py-2 pr-4 text-ink-2">{v.created_at?.slice(0, 10) ?? '-'}</td>
-		<td class="py-2 pr-4 text-action-warm">{v.age_days}</td>
+		<td class="py-2 pr-4 text-warm-text">{v.age_days}</td>
 		<td class="py-2 pr-4 text-ink-3 font-mono">{v.id.slice(0, 8)}</td>
 	{/snippet}
 </OrphanSection>

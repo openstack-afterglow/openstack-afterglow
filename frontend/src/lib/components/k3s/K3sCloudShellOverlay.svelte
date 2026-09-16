@@ -187,7 +187,7 @@
   <div class="flex items-center justify-between px-4 py-2 border-b border-line shrink-0">
     <div class="flex items-center gap-3">
       <span class="text-sm font-medium text-ink-1">
-        Cloud Shell — <span class="text-action-warm">{s.cluster?.name}</span>
+        Cloud Shell — <span class="text-warm-text">{s.cluster?.name}</span>
       </span>
       {#if connected}
         <span class="text-xs text-green-400 flex items-center gap-1">
@@ -204,7 +204,7 @@
       {#if !connected && !connecting}
         <button
           onclick={reconnect}
-          class="text-xs text-action-warm hover:text-action-warm-hover px-3 py-1 border border-action-warm hover:border-action-warm rounded transition-colors"
+          class="text-xs text-warm-text hover:text-warm-text-hover px-3 py-1 border border-action-warm hover:border-action-warm rounded transition-colors"
         >재연결</button>
       {/if}
       <button
@@ -230,7 +230,7 @@
   {#if idleTimedOut}
     <div class="shrink-0 px-4 py-2 bg-yellow-900/30 border-t border-yellow-800 text-xs text-yellow-400 flex items-center justify-between">
       <span>15분 동안 활동이 없어 세션이 종료되었습니다.</span>
-      <button onclick={reconnect} class="text-action-warm hover:text-action-warm-hover underline">재연결</button>
+      <button onclick={reconnect} class="text-warm-text hover:text-warm-text-hover underline">재연결</button>
     </div>
   {/if}
 </div>

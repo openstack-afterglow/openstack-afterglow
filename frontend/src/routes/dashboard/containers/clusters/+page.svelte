@@ -153,7 +153,7 @@
   {#if serviceUnavailable}
     <div class="text-center py-20 text-ink-3">
       <div class="text-5xl mb-4">⚠️</div>
-      <p class="text-lg mb-2 text-action-warm">Magnum 서비스에 연결할 수 없습니다</p>
+      <p class="text-lg mb-2 text-warm-text">Magnum 서비스에 연결할 수 없습니다</p>
       <p class="text-sm text-ink-3">K8s 클러스터 관리 서비스가 현재 응답하지 않습니다.<br/>잠시 후 다시 시도해주세요.</p>
     </div>
   {:else if loading}

@@ -17,7 +17,7 @@
 		<div class="flex gap-2 mb-2">
 			{#each [10, 20, 50, 100] as preset}
 				<button type="button" onclick={() => (s.fsForm.size_gb = preset)}
-					class="flex-1 py-1.5 text-xs rounded-lg border transition-colors {s.fsForm.size_gb === preset ? 'border-action-warm bg-surface-selected/30 text-action-warm' : 'border-line-2 text-ink-2 hover:border-line-2'}">
+					class="flex-1 py-1.5 text-xs rounded-lg border transition-colors {s.fsForm.size_gb === preset ? 'border-action-warm bg-surface-selected/30 text-warm-text' : 'border-line-2 text-ink-2 hover:border-line-2'}">
 					{preset} GB
 				</button>
 			{/each}
@@ -52,7 +52,7 @@
 	<div>
 		<div class="flex items-center justify-between mb-2">
 			<span class="block text-xs text-ink-2 uppercase tracking-wide">메타데이터 (선택)</span>
-			<button type="button" onclick={s.addMeta} class="text-xs text-action-warm hover:text-action-warm-hover transition-colors">+ 추가</button>
+			<button type="button" onclick={s.addMeta} class="text-xs text-warm-text hover:text-warm-text-hover transition-colors">+ 추가</button>
 		</div>
 		<div class="space-y-2">
 			{#each s.metaEntries as meta, i (i)}

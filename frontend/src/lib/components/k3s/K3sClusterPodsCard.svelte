@@ -14,7 +14,7 @@
 	const phaseColor: Record<string, string> = {
 		Running:   'text-green-400 bg-green-900/30',
 		Pending:   'text-yellow-400 bg-yellow-900/30',
-		Succeeded: 'text-action-warm bg-surface-selected/30',
+		Succeeded: 'text-warm-text bg-surface-selected/30',
 		Failed:    'text-red-400 bg-red-900/30',
 	};
 

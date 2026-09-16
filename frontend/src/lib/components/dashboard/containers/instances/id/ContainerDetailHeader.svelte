@@ -26,7 +26,7 @@
   </div>
   <div class="flex gap-2">
     {#if container.status === 'Running'}
-      <button onclick={onOpenTerminal} disabled={terminalOpen} class="px-4 py-2 text-sm text-action-warm border border-action-warm hover:bg-surface-selected/30 rounded-lg transition-colors disabled:opacity-40">터미널</button>
+      <button onclick={onOpenTerminal} disabled={terminalOpen} class="px-4 py-2 text-sm text-warm-text border border-action-warm hover:bg-surface-selected/30 rounded-lg transition-colors disabled:opacity-40">터미널</button>
       <button onclick={onStop} disabled={actioning} class="px-4 py-2 text-sm text-orange-400 border border-orange-800 hover:bg-orange-900/30 rounded-lg transition-colors disabled:opacity-40">중지</button>
     {:else if container.status === 'Stopped' || container.status === 'Created'}
       <button onclick={onStart} disabled={actioning} class="px-4 py-2 text-sm text-green-400 border border-green-800 hover:bg-green-900/30 rounded-lg transition-colors disabled:opacity-40">시작</button>

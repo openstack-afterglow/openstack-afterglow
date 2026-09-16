@@ -31,7 +31,7 @@
 			{#if traffic?.interfaces}
 				<div class="flex items-center gap-1.5 font-mono">
 					<span style="color: {isLight ? '#9ca3af' : '#6b7280'}">총합</span>
-					<span class="text-action-warm">↓{formatBps(totalTraffic.rx)}</span>
+					<span class="text-warm-text">↓{formatBps(totalTraffic.rx)}</span>
 					<span class="text-green-400">↑{formatBps(totalTraffic.tx)}</span>
 				</div>
 			{/if}

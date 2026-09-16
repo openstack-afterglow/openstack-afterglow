@@ -63,7 +63,7 @@
 
 {#if open}
 	<div class="bg-surface-base border border-action-warm rounded-lg p-5 mb-6">
-		<h2 class="text-sm font-semibold text-action-warm mb-4">새 연동 대상 추가</h2>
+		<h2 class="text-sm font-semibold text-warm-text mb-4">새 연동 대상 추가</h2>
 		<NotionTargetFormFields {form} mode="add" />
 		{#if addError}
 			<div class="mt-3 text-red-400 text-sm">{addError}</div>

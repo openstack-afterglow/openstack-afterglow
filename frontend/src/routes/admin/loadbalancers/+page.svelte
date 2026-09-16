@@ -156,7 +156,7 @@
 								<button
 									type="button"
 									onclick={() => openLbPanel(lb.id)}
-									class="block w-full py-3 pr-4 font-semibold text-ink-0 hover:text-action-warm-hover transition-colors text-left"
+									class="block w-full py-3 pr-4 font-semibold text-ink-0 hover:text-warm-text-hover transition-colors text-left"
 									title={lb.name || lb.id}
 								>
 									<span class="max-md:block max-md:max-w-[40vw] max-md:truncate">

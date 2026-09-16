@@ -41,7 +41,7 @@
 		<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide">접근 규칙 {shareProto === 'NFS' ? '(IP)' : '(CephX)'}</h2>
 		<button
 			onclick={() => { showAddRule = !showAddRule; }}
-			class="text-xs text-action-warm hover:text-action-warm-hover transition-colors"
+			class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
 		>
 			{showAddRule ? '취소' : '+ 추가'}
 		</button>

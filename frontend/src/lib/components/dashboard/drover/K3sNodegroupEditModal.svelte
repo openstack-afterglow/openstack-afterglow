@@ -150,7 +150,7 @@
 				{#if form.stampede_enabled}
 					<p class="mt-2 text-xs text-ink-3">Pending pod 발생 시 {form.min_size}~{form.max_size}개 범위로 자동 스케일합니다.</p>
 					{#if Number(form.min_size) === 0}
-						<div class="mt-2 text-xs text-action-warm/90 bg-surface-selected/10 border border-action-warm/40 rounded px-2.5 py-1.5">
+						<div class="mt-2 text-xs text-warm-text/90 bg-surface-selected/10 border border-action-warm/40 rounded px-2.5 py-1.5">
 							⚠ min=0 (scale-to-zero): 유휴 시 모든 노드가 자동 제거됩니다.
 						</div>
 					{/if}

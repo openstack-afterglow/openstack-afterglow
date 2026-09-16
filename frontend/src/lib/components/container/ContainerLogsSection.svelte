@@ -16,7 +16,7 @@
 	{#if s.logsOpen}
 		<div class="px-4 pb-4">
 			<div class="flex justify-end mb-2">
-				<button onclick={s.fetchLogs} disabled={s.logsLoading} class="text-xs text-action-warm hover:text-action-warm-hover disabled:opacity-40">
+				<button onclick={s.fetchLogs} disabled={s.logsLoading} class="text-xs text-warm-text hover:text-warm-text-hover disabled:opacity-40">
 					{s.logsLoading ? '조회 중...' : '새로고침'}
 				</button>
 			</div>

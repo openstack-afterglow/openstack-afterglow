@@ -76,7 +76,7 @@
 				<div class="grid grid-cols-[120px_120px_1fr_1.4fr_80px] px-4 py-3 text-[13px] items-center {i < group.rules.length - 1 ? 'border-b border-line' : ''}">
 					<div>
 						<span class="text-[11px] px-2 py-0.5 rounded-md border font-medium
-							{rule.direction === 'ingress' ? 'bg-emerald-900/25 border-emerald-800 text-emerald-400' : 'bg-surface-selected/25 border-action-warm text-action-warm'}">
+							{rule.direction === 'ingress' ? 'bg-emerald-900/25 border-emerald-800 text-emerald-400' : 'bg-surface-selected/25 border-action-warm text-warm-text'}">
 							{rule.direction === 'ingress' ? '↓ ingress' : '↑ egress'}
 						</span>
 					</div>

@@ -19,12 +19,12 @@
 		gray: 'text-ink-2 hover:text-ink-0 border-line-2 hover:border-line-2',
 		green: 'text-green-400 hover:text-green-300 border-green-900 hover:border-green-700',
 		yellow: 'text-yellow-400 hover:text-yellow-300 border-yellow-900 hover:border-yellow-700',
-		blue: 'text-action-warm hover:text-action-warm-hover border-action-warm hover:border-action-warm',
+		blue: 'text-warm-text hover:text-warm-text-hover border-action-warm hover:border-action-warm',
 		purple: 'text-purple-400 hover:text-purple-300 border-purple-900 hover:border-purple-700',
 		cyan: 'text-cyan-400 hover:text-cyan-300 border-cyan-900 hover:border-cyan-700',
 		teal: 'text-teal-400 hover:text-teal-300 border-teal-900 hover:border-teal-700',
 		violet: 'text-violet-400 hover:text-violet-300 border-violet-900 hover:border-violet-700',
-		amber: 'text-action-warm hover:text-action-warm-hover border-action-warm hover:border-action-warm',
+		amber: 'text-warm-text hover:text-warm-text-hover border-action-warm hover:border-action-warm',
 		orange: 'text-orange-400 hover:text-orange-300 border-orange-900 hover:border-orange-700',
 		red: 'text-red-400 hover:text-red-300 border-red-900 hover:border-red-700',
 	};
@@ -135,7 +135,7 @@
 					id="instance-console-status"
 					role={s.consoleOpenError ? 'alert' : 'status'}
 					aria-live={s.consoleOpenError ? 'assertive' : 'polite'}
-					class="max-w-xl rounded-lg border px-3 py-2 text-xs {s.consoleOpenError ? 'bg-red-900/30 border-red-800/40 text-red-300' : 'bg-surface-selected/20 border-action-warm/40 text-action-warm'}"
+					class="max-w-xl rounded-lg border px-3 py-2 text-xs {s.consoleOpenError ? 'bg-red-900/30 border-red-800/40 text-red-300' : 'bg-surface-selected/20 border-action-warm/40 text-warm-text'}"
 				>
 					{s.consoleOpenError || s.consoleOpenMessage}
 				</div>

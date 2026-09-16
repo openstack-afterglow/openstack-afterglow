@@ -88,7 +88,7 @@
         <div>
           <div class="flex items-center justify-between mb-2">
             <span class="block text-xs text-ink-2 uppercase tracking-wide">환경 변수</span>
-            <button type="button" onclick={addEnvVar} class="text-xs text-action-warm hover:text-action-warm-hover transition-colors">+ 추가</button>
+            <button type="button" onclick={addEnvVar} class="text-xs text-warm-text hover:text-warm-text-hover transition-colors">+ 추가</button>
           </div>
           <div class="space-y-2">
             {#each envVars as env, i (i)}
@@ -106,7 +106,7 @@
         <div>
           <div class="flex items-center justify-between mb-2">
             <span class="block text-xs text-ink-2 uppercase tracking-wide">포트 매핑</span>
-            <button type="button" onclick={addPort} class="text-xs text-action-warm hover:text-action-warm-hover transition-colors">+ 추가</button>
+            <button type="button" onclick={addPort} class="text-xs text-warm-text hover:text-warm-text-hover transition-colors">+ 추가</button>
           </div>
           <div class="space-y-2">
             {#each portMappings as port, i (i)}

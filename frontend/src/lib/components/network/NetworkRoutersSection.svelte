@@ -10,7 +10,7 @@
 		{#if s.isUserPanel}
 			<button
 				onclick={() => s.openRouterConnect()}
-				class="text-action-warm hover:text-action-warm-hover text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm transition-colors"
+				class="text-warm-text hover:text-warm-text-hover text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm transition-colors"
 			>+ 연결</button>
 		{/if}
 	</div>

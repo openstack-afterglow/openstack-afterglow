@@ -8,6 +8,6 @@
 		<p class="text-ink-2 mb-8">
 			{$page.status === 404 ? '페이지를 찾을 수 없습니다' : '오류가 발생했습니다'}
 		</p>
-		<a href="/" class="text-action-warm hover:text-action-warm-hover text-sm transition-colors">홈으로 돌아가기</a>
+		<a href="/" class="text-warm-text hover:text-warm-text-hover text-sm transition-colors">홈으로 돌아가기</a>
 	</div>
 </div>

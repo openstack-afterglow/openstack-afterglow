@@ -122,7 +122,7 @@
 					{#each instances as inst}
 						<tr class="border-b border-line/50 hover:bg-surface-sunken/30 transition-colors">
 							<td class="py-3 px-4">
-								<a href="/admin/database-instances/{inst.id}" class="text-action-warm hover:text-action-warm-hover font-medium max-md:block max-md:max-w-[66vw] max-md:truncate" title={inst.name}>{inst.name}</a>
+								<a href="/admin/database-instances/{inst.id}" class="text-warm-text hover:text-warm-text-hover font-medium max-md:block max-md:max-w-[66vw] max-md:truncate" title={inst.name}>{inst.name}</a>
 							</td>
 							<td class="py-3 px-4"><StatusChip status={inst.status} /></td>
 							<td class="py-3 px-4 text-ink-2">{inst.datastore?.type ?? '-'} {inst.datastore?.version ?? ''}</td>
@@ -133,7 +133,7 @@
 							<td class="py-3 px-4 text-right">
 								<div class="flex justify-end gap-1">
 									<button onclick={() => restartInstance(inst.id, inst.name)} disabled={restarting === inst.id}
-										class="text-action-warm hover:text-action-warm-hover disabled:text-ink-3 text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm disabled:border-line-2 transition-colors">
+										class="text-warm-text hover:text-warm-text-hover disabled:text-ink-3 text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm disabled:border-line-2 transition-colors">
 										{restarting === inst.id ? '...' : '재시작'}
 									</button>
 									<button onclick={(e) => { e.stopPropagation(); deleteInstance(inst.id, inst.name); }} disabled={deleting === inst.id}

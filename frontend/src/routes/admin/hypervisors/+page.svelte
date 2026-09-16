@@ -171,7 +171,7 @@
 				{#each gpuTypes as gt (gt.device_name)}
 					<button
 						onclick={() => toggleGpuType(gt.device_name)}
-						class="text-xs px-2.5 py-1 rounded transition-colors {selectedGpuTypes.has(gt.device_name) ? 'bg-surface-selected/50 text-action-warm border border-action-warm/50' : 'text-ink-2 hover:text-ink-0 border border-line'}"
+						class="text-xs px-2.5 py-1 rounded transition-colors {selectedGpuTypes.has(gt.device_name) ? 'bg-surface-selected/50 text-warm-text border border-action-warm/50' : 'text-ink-2 hover:text-ink-0 border border-line'}"
 					>{gt.device_name} <span class="text-ink-3">{gt.used}/{gt.total}</span></button>
 				{/each}
 				{#if selectedGpuTypes.size > 0}

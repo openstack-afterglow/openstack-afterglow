@@ -46,11 +46,11 @@
 		<tbody>
 			{#each storages as fs (fs.id)}
 				<tr class="border-b border-line/50 text-xs transition-colors {selectedId === fs.id ? 'bg-surface-selected/10' : 'hover:bg-surface-sunken/20'}">
-					<td class="p-0"><button type="button" onclick={() => onOpen(fs)} class="block w-full py-2 pr-4 font-medium text-ink-0 hover:text-action-warm-hover transition-colors text-left" title={fs.name || fs.id}><span class="max-md:block max-md:max-w-[66vw] max-md:truncate">{fs.name || fs.id.slice(0, 8)}</span></button></td>
+					<td class="p-0"><button type="button" onclick={() => onOpen(fs)} class="block w-full py-2 pr-4 font-medium text-ink-0 hover:text-warm-text-hover transition-colors text-left" title={fs.name || fs.id}><span class="max-md:block max-md:max-w-[66vw] max-md:truncate">{fs.name || fs.id.slice(0, 8)}</span></button></td>
 					<td class="py-2 pr-4"><StatusChip status={fs.status} /></td>
 					<td class="py-2 pr-4 text-ink-2">{formatNumber(fs.size)} GB</td>
 					<td class="py-2 pr-4">
-						<span class="px-1.5 py-0.5 rounded text-xs font-medium {fs.share_proto === 'NFS' ? 'bg-surface-selected/40 text-action-warm' : 'bg-purple-900/40 text-purple-300'}">{fs.share_proto}</span>
+						<span class="px-1.5 py-0.5 rounded text-xs font-medium {fs.share_proto === 'NFS' ? 'bg-surface-selected/40 text-warm-text' : 'bg-purple-900/40 text-purple-300'}">{fs.share_proto}</span>
 					</td>
 					<td class="py-2 pr-4 text-ink-3">{fs.metadata?.union_type || '-'}</td>
 					<td class="py-2 pr-4">
@@ -94,7 +94,7 @@
 						{/if}
 					</td>
 					<td class="py-2">
-						<button type="button" onclick={() => onOpen(fs)} class="px-2 py-1 rounded border border-action-warm/40 text-action-warm hover:bg-action-warm-hover/10 hover:text-action-warm-hover transition-colors text-xs font-medium">상세</button>
+						<button type="button" onclick={() => onOpen(fs)} class="px-2 py-1 rounded border border-action-warm/40 text-warm-text hover:bg-action-warm-hover/10 hover:text-warm-text-hover transition-colors text-xs font-medium">상세</button>
 					</td>
 				</tr>
 			{/each}

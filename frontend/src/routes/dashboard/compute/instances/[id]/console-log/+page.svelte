@@ -47,7 +47,7 @@
 
 <div class="min-h-screen bg-surface-scrim text-ink-1 font-mono text-xs">
 	<div class="sticky top-0 bg-surface-base border-b border-line px-4 py-2 flex items-center gap-3 z-10">
-		<span class="text-action-warm font-semibold">콘솔 로그</span>
+		<span class="text-warm-text font-semibold">콘솔 로그</span>
 		<span class="text-ink-3 truncate max-w-md" title={instanceId}>{instanceId}</span>
 		<div class="ml-auto flex items-center gap-2">
 			{#if lastLoaded}

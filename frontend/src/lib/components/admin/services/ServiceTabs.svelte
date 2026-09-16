@@ -35,7 +35,7 @@
 			onfocus={() => onIntent(tab.key)}
 			data-tour={tourAnchor(tab.key)}
 			class="px-3 py-2 text-xs font-medium rounded-t-lg transition-colors relative -mb-px border-b-2 {activeTab === tab.key
-				? 'border-action-warm text-action-warm bg-surface-selected/10'
+				? 'border-action-warm text-warm-text bg-surface-selected/10'
 				: 'border-transparent text-ink-2 hover:text-ink-1 hover:bg-surface-sunken/50'}"
 		>
 			{tab.label}

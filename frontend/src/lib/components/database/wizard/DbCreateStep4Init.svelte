@@ -38,7 +38,7 @@
 		<button
 			onclick={s.addUser}
 			disabled={!s.userDraft.name.trim() || !s.userDraft.password}
-			class="text-xs text-action-warm hover:text-action-warm-hover disabled:text-ink-3"
+			class="text-xs text-warm-text hover:text-warm-text-hover disabled:text-ink-3"
 		>
 			+ 추가
 		</button>

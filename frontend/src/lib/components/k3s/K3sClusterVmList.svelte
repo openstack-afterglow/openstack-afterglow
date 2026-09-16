@@ -15,7 +15,7 @@
         </div>
         <button
           onclick={() => s.setViewingInstance(s.cluster!.server_vm_id)}
-          class="text-xs text-action-warm hover:text-action-warm-hover transition-colors">
+          class="text-xs text-warm-text hover:text-warm-text-hover transition-colors">
           인스턴스 보기 →
         </button>
       </div>
@@ -23,12 +23,12 @@
     {#each s.cluster!.agent_vm_ids as vmId, i}
       <div class="flex items-center justify-between py-2 {i < s.cluster!.agent_vm_ids.length - 1 ? 'border-b border-line' : ''}">
         <div class="flex items-center gap-2">
-          <span class="text-xs bg-surface-selected/40 text-action-warm border border-action-warm rounded px-1.5 py-0.5">에이전트 {i + 1}</span>
+          <span class="text-xs bg-surface-selected/40 text-warm-text border border-action-warm rounded px-1.5 py-0.5">에이전트 {i + 1}</span>
           <span class="text-xs text-ink-2 font-mono">{vmId.slice(0, 12)}...</span>
         </div>
         <button
           onclick={() => s.setViewingInstance(vmId)}
-          class="text-xs text-action-warm hover:text-action-warm-hover transition-colors">
+          class="text-xs text-warm-text hover:text-warm-text-hover transition-colors">
           인스턴스 보기 →
         </button>
       </div>

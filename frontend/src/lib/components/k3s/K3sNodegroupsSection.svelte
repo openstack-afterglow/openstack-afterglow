@@ -62,7 +62,7 @@
 		<h3 class="text-xs text-ink-3 uppercase tracking-wide">노드그룹</h3>
 		<button
 			onclick={() => { showCreate = true; }}
-			class="text-xs text-action-warm hover:text-action-warm-hover transition-colors"
+			class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
 		>+ 추가</button>
 	</div>
 

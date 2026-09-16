@@ -104,7 +104,7 @@
 				<label for="snap-force" class="text-sm text-ink-2">
 					연결된 볼륨 강제 스냅샷 (force)
 					{#if volume.status === 'in-use'}
-						<span class="ml-1 text-xs text-action-warm">— 사용 중인 볼륨은 필수</span>
+						<span class="ml-1 text-xs text-warm-text">— 사용 중인 볼륨은 필수</span>
 					{/if}
 				</label>
 			</div>

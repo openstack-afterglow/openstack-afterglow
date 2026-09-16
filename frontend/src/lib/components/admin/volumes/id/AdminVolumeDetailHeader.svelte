@@ -31,7 +31,7 @@
 	<div class="flex items-center gap-2">
 		<button
 			onclick={onExtend}
-			class="px-3 py-1.5 bg-surface-selected/40 hover:bg-surface-selected/40 border border-action-warm text-action-warm text-sm rounded-lg transition-colors"
+			class="px-3 py-1.5 bg-surface-selected/40 hover:bg-surface-selected/40 border border-action-warm text-warm-text text-sm rounded-lg transition-colors"
 		>확장</button>
 		{#if volume.status === 'error' || volume.status === 'error_deleting'}
 			<button

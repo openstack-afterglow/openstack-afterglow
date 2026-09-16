@@ -184,7 +184,7 @@
 		const cat = categorize(f);
 		if (cat === 'gpu') return { label: 'GPU', class: 'bg-purple-900/50 text-purple-300 border-purple-700/50' };
 		if (cat === 'cpu') return { label: 'CPU', class: 'bg-sky-900/50 text-sky-300 border-sky-700/50' };
-		if (cat === 'memory') return { label: '메모리', class: 'bg-surface-selected/50 text-action-warm border-action-warm/50' };
+		if (cat === 'memory') return { label: '메모리', class: 'bg-surface-selected/50 text-warm-text border-action-warm/50' };
 		return null;
 	}
 
@@ -316,7 +316,7 @@
 		<div class="flex items-center justify-between px-3 py-2 border-b border-line">
 			<span class="text-[11px] text-ink-2 font-medium">
 				프로젝트 잔여 쿼터
-				{#if selectedFlavor}<span class="text-action-warm ml-1">— 선택 flavor 반영</span>{/if}
+				{#if selectedFlavor}<span class="text-warm-text ml-1">— 선택 flavor 반영</span>{/if}
 			</span>
 			<div class="hidden items-center gap-3 text-[10px] text-ink-3 @md/panel:flex">
 				<span class="flex items-center gap-1"><i class="inline-block w-2 h-2 rounded-full bg-surface-selected"></i>현재 사용</span>
@@ -331,7 +331,7 @@
 					<span class="text-sm text-ink-2">{curVm}</span>
 					{#if reqVm > 0}
 						<span class="text-ink-3 text-[10px]">→</span>
-						<span class="text-sm font-bold {critVm ? 'text-red-400' : 'text-action-warm'}">{curVm + reqVm}</span>
+						<span class="text-sm font-bold {critVm ? 'text-red-400' : 'text-warm-text'}">{curVm + reqVm}</span>
 					{/if}
 					{#if limVm >= 0}<span class="text-ink-3 text-[11px]">/ {limVm}</span>{/if}
 				</div>
@@ -351,7 +351,7 @@
 					<span class="text-sm text-ink-2">{curCpu}</span>
 					{#if reqCpu > 0}
 						<span class="text-ink-3 text-[10px]">→</span>
-						<span class="text-sm font-bold {critCpu ? 'text-red-400' : 'text-action-warm'}">{curCpu + reqCpu}</span>
+						<span class="text-sm font-bold {critCpu ? 'text-red-400' : 'text-warm-text'}">{curCpu + reqCpu}</span>
 					{/if}
 					{#if limCpu >= 0}<span class="text-ink-3 text-[11px]">/ {limCpu}</span>{/if}
 				</div>
@@ -371,7 +371,7 @@
 					<span class="text-sm text-ink-2">{Math.round(curRamMb / 1024)}GB</span>
 					{#if reqRamMb > 0}
 						<span class="text-ink-3 text-[10px]">→</span>
-						<span class="text-sm font-bold {critRam ? 'text-red-400' : 'text-action-warm'}">{Math.round((curRamMb + reqRamMb) / 1024)}GB</span>
+						<span class="text-sm font-bold {critRam ? 'text-red-400' : 'text-warm-text'}">{Math.round((curRamMb + reqRamMb) / 1024)}GB</span>
 					{/if}
 					{#if limRamMb >= 0}<span class="text-ink-3 text-[11px]">/ {Math.round(limRamMb / 1024)}GB</span>{/if}
 				</div>
@@ -400,7 +400,7 @@
 						<span class="text-sm text-ink-2">{curDiskGb}GB</span>
 						{#if reqDiskGb > 0}
 							<span class="text-ink-3 text-[10px]">→</span>
-							<span class="text-sm font-bold {critDisk ? 'text-red-400' : 'text-action-warm'}">{curDiskGb + reqDiskGb}GB</span>
+							<span class="text-sm font-bold {critDisk ? 'text-red-400' : 'text-warm-text'}">{curDiskGb + reqDiskGb}GB</span>
 						{/if}
 						<span class="text-ink-3 text-[11px]">/ {limDiskGb}GB</span>
 					</div>
@@ -419,7 +419,7 @@
 <!-- GPU 가용량 배너 -->
 {#if gpuAvailability.length > 0 && (activeCategory === 'all' || activeCategory === 'gpu')}
 	<div class="order-5 mb-4 rounded-lg border border-line-2 bg-surface-sunken/60 p-3">
-		<div class="text-xs text-ink-2 mb-2">GPU 가용량{#if selectedGpuRequest.size > 0} <span class="text-action-warm">(선택 flavor 반영)</span>{/if}</div>
+		<div class="text-xs text-ink-2 mb-2">GPU 가용량{#if selectedGpuRequest.size > 0} <span class="text-warm-text">(선택 flavor 반영)</span>{/if}</div>
 		<div class="flex flex-wrap gap-2">
 			{#each gpuAvailability as g}
 				{@const requested = selectedGpuRequest.get(g.device_name) ?? 0}
@@ -429,13 +429,13 @@
 					{avail > 0 && requested === 0
 						? 'bg-green-900/30 text-green-300 border border-green-800/40'
 						: avail >= 0 && requested > 0
-							? 'bg-surface-selected/30 text-action-warm border border-action-warm/40'
+							? 'bg-surface-selected/30 text-warm-text border border-action-warm/40'
 							: 'bg-red-900/30 text-red-300 border border-red-800/40'}">
 					<b class="font-semibold">{g.device_name}</b>
 					{#if requested > 0}
 						<span class="opacity-70">{g.used}/{g.total}</span>
 						<span class="text-[10px] opacity-50">→</span>
-						<span class="font-bold text-action-warm">{nextUsed}/{g.total}</span>
+						<span class="font-bold text-warm-text">{nextUsed}/{g.total}</span>
 					{:else}
 						<span class="opacity-70">{g.used}/{g.total}</span>
 					{/if}

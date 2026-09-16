@@ -22,7 +22,7 @@
 		>{container.name}</a>
 		{#if container.is_quarantine}
 			<span
-				class="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded border border-action-warm bg-amber-950/50 text-action-warm"
+				class="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded border border-action-warm bg-amber-950/50 text-warm-text"
 				title="업로드 검증 중인 파일이 임시로 격리되는 시스템 버킷입니다. 검증 통과 시 원본 버킷으로 자동 이동됩니다."
 			>
 				격리용

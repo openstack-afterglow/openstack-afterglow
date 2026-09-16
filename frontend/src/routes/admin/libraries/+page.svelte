@@ -1695,9 +1695,9 @@
                   >
                     <div class="flex items-center gap-2">
                       <span class="font-mono flex-1">#{a.id} {a.name}</span>
-                      <span class="text-[10px] px-1.5 py-0.5 rounded {a.kind === 'uv' ? 'bg-surface-selected/60 text-action-warm' : 'bg-indigo-900/60 text-indigo-300'}">{a.kind}</span>
+                      <span class="text-[10px] px-1.5 py-0.5 rounded {a.kind === 'uv' ? 'bg-surface-selected/60 text-warm-text' : 'bg-indigo-900/60 text-indigo-300'}">{a.kind}</span>
                       {#if selected}
-                        <span class="text-[10px] text-action-warm">#{profileForm.selectedLayers.indexOf(a.name) + 1}</span>
+                        <span class="text-[10px] text-warm-text">#{profileForm.selectedLayers.indexOf(a.name) + 1}</span>
                       {/if}
                     </div>
                     <div class="mt-1 text-[10px] text-ink-3 truncate">체인: {artifactChainLabel(a)}</div>
@@ -1723,7 +1723,7 @@
                       <div class="flex-1 min-w-0">
                         <span class="font-mono">{layer}</span>
                         {#if isAutoIncludedParent(layer)}
-                          <span class="ml-2 text-[10px] text-action-warm">상위 부모 자동 포함</span>
+                          <span class="ml-2 text-[10px] text-warm-text">상위 부모 자동 포함</span>
                         {/if}
                       </div>
                       <button type="button" onclick={() => removeProfileLayerCascade(layer)} class="text-ink-3 hover:text-red-400 transition-colors">✕</button>
@@ -1782,7 +1782,7 @@
                           <td class="px-3 py-2 text-ink-2">{profile.layers.join(' → ')}</td>
                           <td class="px-3 py-2 text-ink-2">{blockers.length}</td>
                           <td class="px-3 py-2">
-                            <span class="{profile.is_published ? 'text-action-warm' : 'text-ink-3'}">{profile.is_published ? '공개' : '비공개'}</span>
+                            <span class="{profile.is_published ? 'text-warm-text' : 'text-ink-3'}">{profile.is_published ? '공개' : '비공개'}</span>
                           </td>
                           <td class="px-3 py-2">
                             <div class="flex justify-end gap-2">
@@ -1801,7 +1801,7 @@
                                 type="button"
                                 onclick={() => setProfilePublication(profile, !profile.is_published)}
                                 disabled={publicationUpdating === `profile:${profile.name}`}
-                                class="px-2 py-1 rounded border border-action-warm text-action-warm hover:border-action-warm disabled:border-line-2 disabled:text-ink-3 disabled:cursor-not-allowed transition-colors"
+                                class="px-2 py-1 rounded border border-action-warm text-warm-text hover:border-action-warm disabled:border-line-2 disabled:text-ink-3 disabled:cursor-not-allowed transition-colors"
                               >
                                 {publicationUpdating === `profile:${profile.name}` ? '변경 중...' : (profile.is_published ? '비공개' : '공개')}
                               </button>
@@ -1856,7 +1856,7 @@
                     <td class="px-4 py-2.5">
                       <div class="font-mono text-ink-0">#{a.id} {a.name}</div>
                       <div class="mt-1 flex items-center gap-1.5 text-[10px] text-ink-3">
-                        <span class="px-1.5 py-0.5 rounded {a.kind === 'uv' ? 'bg-surface-selected/60 text-action-warm' : 'bg-indigo-900/60 text-indigo-300'}">{a.kind}</span>
+                        <span class="px-1.5 py-0.5 rounded {a.kind === 'uv' ? 'bg-surface-selected/60 text-warm-text' : 'bg-indigo-900/60 text-indigo-300'}">{a.kind}</span>
                         {#if a.python_version}<span>py{a.python_version}</span>{/if}
                         <span>{a.is_sealed ? 'sealed' : 'unsealed'}</span>
                       </div>
@@ -1880,7 +1880,7 @@
                         type="button"
                         onclick={() => setArtifactPublication(a, !a.is_published)}
                         disabled={!a.is_sealed || publicationUpdating === `artifact:${a.id}`}
-                        class="mr-3 text-xs {a.is_published ? 'text-action-warm hover:text-action-warm-hover' : 'text-ink-2 hover:text-ink-0'} disabled:text-ink-3 disabled:cursor-not-allowed transition-colors"
+                        class="mr-3 text-xs {a.is_published ? 'text-warm-text hover:text-warm-text-hover' : 'text-ink-2 hover:text-ink-0'} disabled:text-ink-3 disabled:cursor-not-allowed transition-colors"
                         title={!a.is_sealed ? '봉인된 artifact만 공개할 수 있습니다' : (a.is_published ? '사용자 VM 마법사에서 숨기기' : '사용자 VM 마법사에 공개')}
                       >{publicationUpdating === `artifact:${a.id}` ? '변경 중...' : (a.is_published ? '공개 중' : '비공개')}</button>
                       <button
@@ -1905,7 +1905,7 @@
       <h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">
         빌드 현황
         {#if activeBuilds.length > 0}
-          <span class="ml-2 text-action-warm normal-case">(10초마다 자동 갱신)</span>
+          <span class="ml-2 text-warm-text normal-case">(10초마다 자동 갱신)</span>
         {/if}
       </h3>
       {#if builds.length === 0}
@@ -1942,7 +1942,7 @@
                       {/if}
                     </td>
                     <td class="px-4 py-2.5 text-ink-2 text-xs font-mono hidden sm:table-cell">
-                      <span class="text-[10px] px-1.5 py-0.5 rounded mr-1 {build.kind === 'uv' ? 'bg-surface-selected/60 text-action-warm' : 'bg-indigo-900/60 text-indigo-300'}">{build.kind ?? 'python'}</span>
+                      <span class="text-[10px] px-1.5 py-0.5 rounded mr-1 {build.kind === 'uv' ? 'bg-surface-selected/60 text-warm-text' : 'bg-indigo-900/60 text-indigo-300'}">{build.kind ?? 'python'}</span>
                       {build.python_version ?? ''}
                       <div class="mt-0.5 text-[10px] text-ink-3 truncate" title={ubuntuBaseLabel(build)}>Ubuntu: {ubuntuBaseLabel(build)}</div>
                     </td>
@@ -1972,7 +1972,7 @@
                     <td class="px-4 py-2.5 text-right">
                       <button
                         onclick={(e) => { e.stopPropagation(); openBuildDetail(build); }}
-                        class="text-xs text-action-warm hover:text-action-warm-hover transition-colors"
+                        class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
                       >상세</button>
                     </td>
                   </tr>
@@ -2153,7 +2153,7 @@
             {#if detailIsActive}
               <button
                 onclick={loadBuildDetail}
-                class="text-[11px] text-action-warm hover:text-action-warm-hover transition-colors"
+                class="text-[11px] text-warm-text hover:text-warm-text-hover transition-colors"
               >새로고침</button>
             {/if}
           </div>
