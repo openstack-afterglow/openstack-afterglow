@@ -11,4 +11,4 @@
 ## 3. Documentation and Release
 
 - [x] 3.1 Update volume documentation, architecture review, and changelog.
-- [ ] 3.2 Archive the completed change, push `dev`, deploy the published frontend digest, and verify service flags plus Cinder backup readiness.
+- [x] 3.2 Archive the completed change, push `dev`, deploy the published frontend digest, and verify service flags plus Cinder backup readiness.
