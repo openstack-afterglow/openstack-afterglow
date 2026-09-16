@@ -272,9 +272,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "2c9876499749fbc86843b8429ba8ff1cfd9aba052a896cb51eb03ea4c375caf4",
-  "reviewed_at": "2026-09-16T05:43:25Z",
-  "summary": "Reviewed the accessibility and theme-defect batch from the five-lens HIG review: semantic tones gain text siblings so Alert stops painting copy in a fill colour that measures 2.89-4.37:1 on its own wash; Toast becomes a live region with per-type politeness; Field's help and error finally associate with their input because the text primitives default aria-describedby to the id Field already renders; LoadingSkeleton announces itself without adding a grid child; Modal gains a scroll path; placeholders and the shell's labels, username, empty state, record count and meter readout move off the disabled-only ink-3; the volume action menu becomes reachable below 1024px; and several dark-theme palette literals rendering raw on white panels move to semantic tokens. Frontend styling and markup only: no API, schema, permission, dependency or deployment-contract change."
+  "source_sha256": "0e47fb4fc0a88530e5c5631d9f21c8778abce8fc8812aa72f934adedbe2deeb9",
+  "reviewed_at": "2026-09-16T06:45:58Z",
+  "summary": "라이트 테마 중립 램프를 다크와 같은 색상대(H 262-286)·다크 수준 채도로 재조정하고, 라이트 오버라이드 30종을 하드코딩 slate 리터럴에서 토큰 참조로 전환했다. 모바일 전용 sticky 첫 열 배경이 미디어쿼리 밖에서 전 뷰포트에 적용되던 버그를 수정하고, 인스턴스 목록 PageShell 에 누락된 space-y-4 를 추가했다. 토큰 이름·구조·컴포넌트 API·라우터·의존성 변경 없음(no-structure-impact)."
 }
 ```
 <!-- architecture-review:end -->

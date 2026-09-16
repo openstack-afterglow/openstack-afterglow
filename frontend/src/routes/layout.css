@@ -319,117 +319,117 @@ body {
   --shadow-overlay-compact: 0 2px 4px -1px rgb(0 0 0 / 0.05), 0 16px 32px -8px rgb(0 0 0 / 0.12);
   --material-chrome-alpha: 85%;
   --material-overlay-alpha: 90%;
-  /* 라이트에서 --color-line-2(#cbd5e1)를 흰 스페이서 위에 쓰면 1.48:1 로 WCAG 1.4.11(비텍스트 3:1)에
-     미달한다. 링의 바깥 테두리만 ink-2 로 올려 7.58:1 을 확보한다. 다크 정의는 건드리지 않는다. */
+  /* 포커스 링의 바깥 테두리는 line-2(3.72:1)가 아니라 ink-2 로 올려 6.40:1 을 확보한다.
+     링은 표면 위 2px 스페이서를 건너뛰므로 경계선보다 높은 대비가 필요하다. 다크 정의는 건드리지 않는다. */
   --focus-ring: 0 0 0 2px var(--color-surface-base), 0 0 0 4px var(--color-ink-2);
-  --color-surface-canvas: #fafbff;
-  --color-surface-base: #ffffff;
-  --color-surface-raised: #ffffff;
-  --color-surface-sunken: #f4f6fb;
-  --color-surface-selected: color-mix(in oklab, var(--color-ink-0) 7%, var(--color-surface-base));
-  --color-line: #e2e8f0;
-  --color-line-2: #cbd5e1;
-  --color-ink-0: #0f172a;
-  --color-ink-1: #1e293b;
-  --color-ink-2: #475569;
-  --color-ink-3: #94a3b8;
-  --color-accent: #2563eb;
-  --color-accent-2: #6d28d9;
+  --color-surface-canvas: #f2f3f6;
+  --color-surface-base: #f7f8fa;
+  --color-surface-raised: #fefeff;
+  --color-surface-sunken: #eeeff3;
+  --color-surface-selected: color-mix(in oklab, var(--color-ink-0) 5%, var(--color-surface-base));
+  --color-line: #dcdee2;
+  --color-line-2: #7c8089;
+  --color-ink-0: #19191c;
+  --color-ink-1: #34353a;
+  --color-ink-2: #575b64;
+  --color-ink-3: #6f747d;
+  --color-accent: #3352cf;
+  --color-accent-2: #6b3fc4;
   --color-warm: #ea580c;
   --color-warm-2: #c2410c;
   --color-warm-text: #c2410c;
   --color-action-on-warm: #18191b;
-  --color-state-success: #16a34a;
-  --color-state-success-text: #166534;
-  --color-state-warning-text: #92400e;
-  --color-state-danger-text: #b91c1c;
-  --color-state-info-text: #1d4ed8;
-  --color-state-neutral-text: #475569;
-  --color-state-warning: #b45309;
-  --color-state-danger: #dc2626;
-  --color-state-info: #2563eb;
-  --color-state-neutral: #64748b;
+  --color-state-success: #0f8f53;
+  --color-state-success-text: #0b6b3e;
+  --color-state-warning-text: #7a5208;
+  --color-state-danger-text: #a81f1f;
+  --color-state-info-text: #0a5f6e;
+  --color-state-neutral-text: #575b64;
+  --color-state-warning: #96690b;
+  --color-state-danger: #cf2b2b;
+  --color-state-info: #0e7a8c;
+  --color-state-neutral: #6f747d;
   --color-surface-scrim: rgb(0 0 0 / 25%);
   --color-surface-scrim-soft: rgb(0 0 0 / 20%);
   --warm-soft: color-mix(in oklab, var(--color-warm) 10%, transparent);
   --warm-ring: color-mix(in oklab, var(--color-warm) 35%, transparent);
   --color-action-on-accent: #ffffff;
-  --color-chart-1: #2563eb;
-  --color-chart-2: #16a34a;
-  --color-chart-3: #dc2626;
-  --color-chart-4: #b45309;
-  --color-chart-5: #6d28d9;
-  --color-chart-6: #0e7490;
+  --color-chart-1: #3352cf;
+  --color-chart-2: #0f8f53;
+  --color-chart-3: #cf2b2b;
+  --color-chart-4: #96690b;
+  --color-chart-5: #6b3fc4;
+  --color-chart-6: #0e7a8c;
   --color-topology-external: #ea580c;
   --color-topology-shared: #0f766e;
-  --color-topology-internal: #2563eb;
-  --color-topology-router: #64748b;
-  --color-topology-link: #94a3b8;
+  --color-topology-internal: #3352cf;
+  --color-topology-router: #6f747d;
+  --color-topology-link: #868b94;
   --color-topology-gateway: #8a5a2b;
-  --color-topology-internal-2: #6d28d9;
+  --color-topology-internal-2: #6b3fc4;
   --topology-zone-fill-alpha: 6%;
   --topology-zone-fill-alpha-active: 12%;
-  --color-topology-grid-minor: #eef1f7;
-  --color-topology-grid-major: #e3e8f0;
+  --color-topology-grid-minor: #f0f1f4;
+  --color-topology-grid-major: #e4e6ea;
   /* 랜딩 플레이트(인라인 SVG) 레터박스 배경 — 라이트 모드에서 밝은 표면으로 전환 */
-  --color-surface-editorial-media: #eef2f8;
+  --color-surface-editorial-media: #eef0f4;
   /* 배경 색상 오버라이드 */
-  --tw-bg-base: #ffffff;
+  --tw-bg-base: #f7f8fa;
 }
 
 /* Legacy light-mode compatibility overrides — do not add new rules here unless paired with visual debt baseline update */
 /* 주요 배경 */
-:root.light .bg-gray-950 { background-color: #ffffff !important; }
-:root.light .bg-gray-900 { background-color: #f8fafc !important; }
-:root.light .bg-gray-800 { background-color: #f1f5f9 !important; }
-:root.light .bg-gray-700 { background-color: #e2e8f0 !important; }
+:root.light .bg-gray-950 { background-color: var(--color-surface-raised) !important; }
+:root.light .bg-gray-900 { background-color: var(--color-surface-base) !important; }
+:root.light .bg-gray-800 { background-color: var(--color-surface-sunken) !important; }
+:root.light .bg-gray-700 { background-color: var(--color-line) !important; }
 
 /* 반투명 배경 */
-:root.light .bg-gray-800\/50 { background-color: rgba(241,245,249,0.8) !important; }
-:root.light .bg-gray-800\/60 { background-color: rgba(241,245,249,0.9) !important; }
-:root.light .bg-gray-800\/70 { background-color: rgba(241,245,249,0.85) !important; }
+:root.light .bg-gray-800\/50 { background-color: color-mix(in oklab, var(--color-surface-sunken) 80%, var(--color-surface-base)) !important; }
+:root.light .bg-gray-800\/60 { background-color: color-mix(in oklab, var(--color-surface-sunken) 90%, var(--color-surface-base)) !important; }
+:root.light .bg-gray-800\/70 { background-color: color-mix(in oklab, var(--color-surface-sunken) 85%, var(--color-surface-base)) !important; }
 
 /* 텍스트 색상 */
-:root.light .text-white { color: #0f172a !important; }
-:root.light .text-gray-400 { color: #475569 !important; }
-:root.light .text-gray-500 { color: #64748b !important; }
-:root.light .text-gray-600 { color: #94a3b8 !important; }
-:root.light .text-gray-300 { color: #1e293b !important; }
-:root.light .text-gray-200 { color: #1e293b !important; }
+:root.light .text-white { color: var(--color-ink-0) !important; }
+:root.light .text-gray-400 { color: var(--color-ink-2) !important; }
+:root.light .text-gray-500 { color: var(--color-ink-2) !important; }
+:root.light .text-gray-600 { color: var(--color-ink-2) !important; }
+:root.light .text-gray-300 { color: var(--color-ink-1) !important; }
+:root.light .text-gray-200 { color: var(--color-ink-1) !important; }
 
 /* 테두리 */
-:root.light .border-gray-800 { border-color: #e2e8f0 !important; }
-:root.light .border-gray-800\/50 { border-color: rgba(226,232,240,0.8) !important; }
-:root.light .border-gray-700 { border-color: #cbd5e1 !important; }
-:root.light .border-gray-600 { border-color: #94a3b8 !important; }
+:root.light .border-gray-800 { border-color: var(--color-line) !important; }
+:root.light .border-gray-800\/50 { border-color: color-mix(in oklab, var(--color-line) 80%, transparent) !important; }
+:root.light .border-gray-700 { border-color: var(--color-line-2) !important; }
+:root.light .border-gray-600 { border-color: var(--color-line-2) !important; }
 
 /* hover 상태 */
-:root.light .hover\:bg-gray-800:hover { background-color: #e2e8f0 !important; }
-:root.light .hover\:bg-gray-800\/50:hover { background-color: rgba(226,232,240,0.6) !important; }
+:root.light .hover\:bg-gray-800:hover { background-color: var(--color-surface-sunken) !important; }
+:root.light .hover\:bg-gray-800\/50:hover { background-color: color-mix(in oklab, var(--color-surface-sunken) 70%, var(--color-surface-base)) !important; }
 
 /* 입력 필드 */
 :root.light input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) {
-  background-color: #ffffff;
-  border-color: #cbd5e1;
-  color: #0f172a;
+  background-color: var(--color-surface-sunken);
+  border-color: var(--color-line-2);
+  color: var(--color-ink-0);
 }
 :root.light input:not([type="checkbox"]):not([type="radio"]):not([type="range"])::placeholder {
-  color: #94a3b8;
+  color: var(--color-ink-2);
 }
 :root.light textarea {
-  background-color: #ffffff;
-  border-color: #cbd5e1;
-  color: #0f172a;
+  background-color: var(--color-surface-sunken);
+  border-color: var(--color-line-2);
+  color: var(--color-ink-0);
 }
 :root.light select {
-  background-color: #ffffff;
-  border-color: #cbd5e1;
-  color: #0f172a;
+  background-color: var(--color-surface-sunken);
+  border-color: var(--color-line-2);
+  color: var(--color-ink-0);
 }
 
 /* 코드/pre 블록 */
 :root.light pre, :root.light .bg-gray-950 pre {
-  background-color: #f8fafc !important;
+  background-color: var(--color-surface-sunken) !important;
   color: #0f172a;
 }
 
@@ -530,10 +530,10 @@ body {
 :root.light .bg-indigo-900\/30 { background-color: rgba(79,70,229,0.08) !important; }
 
 /* gray-600 텍스트 (secondary text) — 라이트에서 가독성 확보 */
-:root.light .text-gray-600 { color: #64748b !important; }
+:root.light .text-gray-600 { color: var(--color-ink-2) !important; }
 
 /* hover 상태 추가 */
-:root.light .hover\:text-gray-200:hover { color: #1e293b !important; }
+:root.light .hover\:text-gray-200:hover { color: var(--color-ink-1) !important; }
 :root.light .text-blue-500 { color: #2563eb !important; }
 
 /* 앰버 계열 (creating, detaching) */
@@ -603,7 +603,12 @@ body {
     scrollbar-width: thin;
   }
 
-  /* 첫 번째 컬럼 고정 (리소스 이름) */
+  /* 첫 번째 컬럼 고정 (리소스 이름).
+     sticky 열 아래로 나머지 열이 지나가므로 불투명해야 한다. background-color: inherit 은
+     행의 '계산된' 배경을 가져오므로, 행 자체에 표면 토큰을 칠해 두면 hover·selected 전환까지
+     그대로 따라온다. 행을 칠하지 않으면 inherit 이 transparent 를 물려받아 고정이 무의미해진다. */
+  .overflow-x-auto table thead tr { background-color: var(--color-surface-sunken); }
+  .overflow-x-auto table tbody tr { background-color: var(--color-surface-base); }
   .overflow-x-auto table th:first-child,
   .overflow-x-auto table td:first-child {
     position: sticky;
@@ -621,22 +626,17 @@ body {
   }
 }
 
-/* 라이트 모드: 고정 컬럼 배경 */
-:root.light .overflow-x-auto table th:first-child,
-:root.light .overflow-x-auto table td:first-child {
-  background-color: #ffffff;
-}
 
 /* ============================================================
    라이트 모드 — 하드코딩 색상 보완
    ============================================================ */
 
 /* bg-[#0B1220] (테이블 헤더, 네이비 배경) */
-:root.light .bg-\[\#0B1220\] { background-color: #f8fafc !important; }
+:root.light .bg-\[\#0B1220\] { background-color: var(--color-surface-sunken) !important; }
 
 /* hover:bg-gray-800/30 (테이블 행 hover) */
-:root.light .hover\:bg-gray-800\/30:hover { background-color: rgba(241,245,249,0.6) !important; }
-:root.light .bg-gray-800\/30 { background-color: rgba(241,245,249,0.6) !important; }
+:root.light .hover\:bg-gray-800\/30:hover { background-color: color-mix(in oklab, var(--color-surface-sunken) 60%, var(--color-surface-base)) !important; }
+:root.light .bg-gray-800\/30 { background-color: color-mix(in oklab, var(--color-surface-sunken) 60%, var(--color-surface-base)) !important; }
 
 /* 아이콘 칩 반투명 배경 /15 */
 :root.light .bg-blue-500\/15 { background-color: rgba(59,130,246,0.1) !important; }
@@ -656,18 +656,18 @@ body {
 :root.light .border-teal-500\/30 { border-color: rgba(20,184,166,0.3) !important; }
 
 /* hover 버튼 상태 */
-:root.light .hover\:bg-gray-600:hover { background-color: #cbd5e1 !important; }
-:root.light .hover\:bg-gray-700:hover { background-color: #e2e8f0 !important; }
-:root.light .hover\:text-white:hover { color: #0f172a !important; }
+:root.light .hover\:bg-gray-600:hover { background-color: var(--color-surface-selected) !important; }
+:root.light .hover\:bg-gray-700:hover { background-color: var(--color-surface-sunken) !important; }
+:root.light .hover\:text-white:hover { color: var(--color-ink-0) !important; }
 
 /* disabled 상태 */
-:root.light .disabled\:bg-gray-700:disabled { background-color: #e2e8f0 !important; }
-:root.light .disabled\:text-gray-500:disabled { color: #94a3b8 !important; }
-:root.light .disabled\:text-gray-600:disabled { color: #94a3b8 !important; }
-:root.light .disabled\:border-gray-700:disabled { border-color: #e2e8f0 !important; }
+:root.light .disabled\:bg-gray-700:disabled { background-color: var(--color-surface-sunken) !important; }
+:root.light .disabled\:text-gray-500:disabled { color: var(--color-ink-3) !important; }
+:root.light .disabled\:text-gray-600:disabled { color: var(--color-ink-3) !important; }
+:root.light .disabled\:border-gray-700:disabled { border-color: var(--color-line) !important; }
 
 /* 토글 스위치 off 상태 */
-:root.light .bg-gray-700 { background-color: #cbd5e1 !important; }
+:root.light .bg-gray-700 { background-color: var(--color-line) !important; }
 
 /* violet 보더 (이전 버튼) */
 :root.light .border-violet-900 { border-color: #ddd6fe !important; }

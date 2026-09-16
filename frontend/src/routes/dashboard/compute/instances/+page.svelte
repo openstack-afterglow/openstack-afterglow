@@ -262,7 +262,7 @@
 	});
 </script>
 
-<PageShell class="bulk-selection-page pb-28 md:pb-32">
+<PageShell class="bulk-selection-page space-y-4 pb-28 md:pb-32">
 	<PageHeader breadcrumb="COMPUTE / INSTANCES" title="인스턴스">
 		{#snippet actions()}
 			<Button onclick={openCreateEntryPoint} variant="primary">+ VM 생성</Button>
@@ -282,9 +282,8 @@
 	</ResourceToolbar>
 
 	{#if error}
-		<Alert tone="danger" class="mb-4">{error}</Alert>
+		<Alert tone="danger">{error}</Alert>
 	{/if}
-
 
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={5} />
