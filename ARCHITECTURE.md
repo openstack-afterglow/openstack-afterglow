@@ -277,9 +277,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "1acfaa428f697b00897d5938c33a6cd37ca14a64cfe582deb962d88c4002f161",
-  "reviewed_at": "2026-09-16T14:55:34Z",
-  "summary": "Release 1.21.0 metadata synchronization after reviewing the current dev source; no new structural behavior beyond the documented topology ownership and canvas connection flows."
+  "source_sha256": "a383ba230a8c7c0a4df02d9765280c44dcde47adad007c2f8c0af4e75629ced8",
+  "reviewed_at": "2026-09-16T17:03:40Z",
+  "summary": "Kolla Waygate and Palimpsest validators permit explicit version tags while retaining immutable digest, source-image, and latest-tag safeguards."
 }
 ```
 <!-- architecture-review:end -->
