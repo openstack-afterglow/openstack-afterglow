@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { api, ApiError } from '$lib/api/client';
-	import { Alert, Button, Card, SelectInput } from '$lib/components/ui';
+	import { Alert, Button, Card, SearchSelect, SelectInput } from '$lib/components/ui';
+	import type { SearchSelectOption } from '$lib/components/ui';
 
 	interface ResourceOption {
 		id: string;
@@ -50,10 +51,6 @@
 	const DRAFT_COOKIE = 'afterglow_resource_policy_draft';
 	const DRAFT_MAX_AGE = 60 * 60 * 24 * 30;
 	const CLEAR_OPTION_ID = '__clear__';
-
-	function optionDomId(policy: ResourcePolicy, optionId: string): string {
-		return `catalog-option-${encodeURIComponent(policy.key)}-${encodeURIComponent(optionId)}`;
-	}
 
 	function definePolicy(
 		key: string,
@@ -132,12 +129,9 @@
 	let { token, projectId }: Props = $props();
 	let policies = $state<ResourcePolicy[]>(policyDefinitions.map((policy) => ({ ...policy })));
 	let runtimeSettings = $state<RuntimeSetting[]>(runtimeDefinitions.map((setting) => ({ ...setting })));
-	let activeOptionIds = $state<Record<string, string>>({});
 	let options = $state<Record<string, ResourceOption[]>>({});
 	let selections = $state<Record<string, string>>({});
-	let optionQueries = $state<Record<string, string>>({});
 	let runtimeValues = $state<Record<string, string>>({});
-	let openPolicyKey = $state<string | null>(null);
 	let catalogLoading = $state<Record<string, boolean>>({});
 	let loadingValues = $state(true);
 	let saving = $state<string | null>(null);
@@ -155,9 +149,10 @@
 
 	function stringRecord(value: unknown): Record<string, string> {
 		if (!isObjectRecord(value)) return {};
-		return Object.fromEntries(
-			Object.entries(value).filter(([key, item]) => isSafeCookieKey(key) && typeof item === 'string')
+		const entries = Object.entries(value).filter(
+			(entry): entry is [string, string] => isSafeCookieKey(entry[0]) && typeof entry[1] === 'string'
 		);
+		return Object.fromEntries(entries);
 	}
 
 	function cookieValue(): Record<string, DraftScope> {
@@ -216,68 +211,11 @@
 
 	function setPolicySelection(key: string, value: string) {
 		selections = { ...selections, [key]: value };
-		activeOptionIds = { ...activeOptionIds, [key]: value || CLEAR_OPTION_ID };
-		optionQueries = { ...optionQueries, [key]: value ? (options[key]?.find((option) => option.id === value)?.name ?? value) : '' };
 		draftScope = {
 			...draftScope,
 			policies: { ...draftScope.policies, [key]: value }
 		};
 		persistDrafts();
-	}
-
-	function openCatalog(policy: ResourcePolicy) {
-		openPolicyKey = policy.key;
-		activeOptionIds = {
-			...activeOptionIds,
-			[policy.key]: selections[policy.key] || CLEAR_OPTION_ID
-		};
-		void loadOptions(policy);
-	}
-
-	function visibleOptionIds(policy: ResourcePolicy): string[] {
-		return [CLEAR_OPTION_ID, ...filteredOptions(policy).map((option) => option.id)];
-	}
-
-	function setActiveOption(policy: ResourcePolicy, optionId: string) {
-		activeOptionIds = { ...activeOptionIds, [policy.key]: optionId };
-	}
-
-	function activeDescendant(policy: ResourcePolicy): string | undefined {
-		if (openPolicyKey !== policy.key) return undefined;
-		return optionDomId(policy, activeOptionIds[policy.key] || selections[policy.key] || CLEAR_OPTION_ID);
-	}
-
-	function handleCatalogKeydown(policy: ResourcePolicy, event: KeyboardEvent) {
-		const optionIds = visibleOptionIds(policy);
-		const currentId = activeOptionIds[policy.key] || selections[policy.key] || CLEAR_OPTION_ID;
-		const currentIndex = Math.max(optionIds.indexOf(currentId), 0);
-		let nextIndex: number | null = null;
-
-		if (event.key === 'Escape') {
-			openPolicyKey = null;
-			return;
-		}
-		if (event.key === 'ArrowDown') {
-			nextIndex = (currentIndex + 1) % optionIds.length;
-		} else if (event.key === 'ArrowUp') {
-			nextIndex = (currentIndex - 1 + optionIds.length) % optionIds.length;
-		} else if (event.key === 'Home') {
-			nextIndex = 0;
-		} else if (event.key === 'End') {
-			nextIndex = optionIds.length - 1;
-		} else if (event.key === 'Enter' && openPolicyKey === policy.key) {
-			event.preventDefault();
-			const activeId = activeOptionIds[policy.key] || CLEAR_OPTION_ID;
-			setPolicySelection(policy.key, activeId === CLEAR_OPTION_ID ? '' : activeId);
-			openPolicyKey = null;
-			return;
-		}
-
-		if (nextIndex !== null) {
-			event.preventDefault();
-			openPolicyKey = policy.key;
-			setActiveOption(policy, optionIds[nextIndex]);
-		}
 	}
 
 	function setRuntimeValue(key: string, value: string) {
@@ -365,16 +303,17 @@
 		await Promise.allSettled(loadedPolicies.map((policy) => loadOptions(policy)));
 	}
 
-	function filteredOptions(policy: ResourcePolicy): ResourceOption[] {
-		const query = optionQueries[policy.key]?.trim().toLocaleLowerCase() ?? '';
-		const selectedId = selections[policy.key];
-		return (options[policy.key] ?? []).filter(
-			(option) =>
-				option.id === selectedId ||
-				!query ||
-				option.name.toLocaleLowerCase().includes(query) ||
-				option.id.toLocaleLowerCase().includes(query)
-		);
+	function policyOptions(policy: ResourcePolicy): SearchSelectOption[] {
+		const catalog = options[policy.key] ?? [];
+		const selectedId = selections[policy.key] ?? '';
+		const entries: SearchSelectOption[] = [{ value: CLEAR_OPTION_ID, label: '선택 안 함' }];
+		if (selectedId && !catalog.some((option) => option.id === selectedId)) {
+			entries.push({ value: selectedId, label: selectedLabel(policy), description: selectedId });
+		}
+		for (const option of catalog) {
+			entries.push({ value: option.id, label: option.name, description: option.id });
+		}
+		return entries;
 	}
 
 	function selectedLabel(policy: ResourcePolicy): string {
@@ -383,31 +322,7 @@
 			(policy.resolved_name ?? policy.resource_name ?? selectedId ?? '');
 	}
 
-	function setCatalogQuery(policy: ResourcePolicy, event: Event) {
-		const value = (event.currentTarget as HTMLInputElement).value;
-		const exact = options[policy.key]?.find(
-			(option) => option.id === value || option.name.toLocaleLowerCase() === value.trim().toLocaleLowerCase()
-		);
-		optionQueries = { ...optionQueries, [policy.key]: value };
-		if (exact) setPolicySelection(policy.key, exact.id);
-		else if (!value) setPolicySelection(policy.key, '');
-	}
-
-	function hasUncommittedCatalogQuery(policy: ResourcePolicy): boolean {
-		const query = optionQueries[policy.key]?.trim() ?? '';
-		if (!query) return false;
-		const selectedId = selections[policy.key];
-		if (!selectedId) return true;
-		const selectedName = selectedLabel(policy);
-		return query !== selectedId && query.toLocaleLowerCase() !== selectedName.toLocaleLowerCase();
-	}
-
 	async function save(policy: ResourcePolicy) {
-		if (hasUncommittedCatalogQuery(policy)) {
-			error = `${policy.title}: 목록에서 리소스를 선택한 뒤 저장하세요.`;
-			openPolicyKey = policy.key;
-			return;
-		}
 		saving = policy.key;
 		error = '';
 		notice = '';
@@ -520,55 +435,18 @@
 							<span>{policy.help_text} · {policy.execution_scope} · {policy.state}</span>
 						</div>
 						<div class="catalog-selection">
-							<div class="combobox">
-								<input
-									class="catalog-search"
-									type="search"
-									role="combobox"
-									value={optionQueries[policy.key] ?? selectedLabel(policy)}
-									onfocus={() => openCatalog(policy)}
-									oninput={(event) => setCatalogQuery(policy, event)}
-									onkeydown={(event) => handleCatalogKeydown(policy, event)}
-									placeholder={catalogLoading[policy.key] ? '목록 조회 중…' : '이름 또는 ID로 검색·선택'}
-									aria-label={`${policy.title} 검색 및 선택`}
-									aria-controls={`catalog-options-${policy.key}`}
-									aria-expanded={openPolicyKey === policy.key}
-									aria-activedescendant={activeDescendant(policy)}
-									disabled={Boolean(catalogLoading[policy.key])}
-								/>
-								{#if openPolicyKey === policy.key && options[policy.key]}
-									<div class="option-menu" id={`catalog-options-${policy.key}`} role="listbox" aria-label={`${policy.title} 목록`}>
-										<button
-											id={optionDomId(policy, CLEAR_OPTION_ID)}
-											type="button"
-											role="option"
-											class:selected={!selections[policy.key]}
-											class:active={activeOptionIds[policy.key] === CLEAR_OPTION_ID}
-											aria-selected={!selections[policy.key]}
-											onmouseenter={() => setActiveOption(policy, CLEAR_OPTION_ID)}
-											onclick={() => { setPolicySelection(policy.key, ''); openPolicyKey = null; }}
-										>
-											선택 안 함
-										</button>
-										{#each filteredOptions(policy) as option (option.id)}
-											<button
-												id={optionDomId(policy, option.id)}
-												type="button"
-												class:selected={selections[policy.key] === option.id}
-												class:active={activeOptionIds[policy.key] === option.id}
-												role="option"
-												aria-selected={selections[policy.key] === option.id}
-												onmouseenter={() => setActiveOption(policy, option.id)}
-												onclick={() => { setPolicySelection(policy.key, option.id); openPolicyKey = null; }}
-											>
-												<span>{option.name}</span>
-												<small>{option.id}</small>
-											</button>
-										{/each}
-										{#if !filteredOptions(policy).length}<span class="empty-options">일치하는 리소스가 없습니다.</span>{/if}
-									</div>
-								{/if}
-							</div>
+							<SearchSelect
+								id={`policy-${policy.key.replace(/\./g, '-')}`}
+								value={selections[policy.key] ?? ''}
+								options={policyOptions(policy)}
+								placeholder="이름 또는 ID로 검색·선택"
+								searchPlaceholder="이름 또는 ID로 검색"
+								emptyText="일치하는 리소스가 없습니다."
+								loading={Boolean(catalogLoading[policy.key])}
+								ariaLabel={`${policy.title} 검색 및 선택`}
+								onopen={() => void loadOptions(policy)}
+								onchange={(value) => setPolicySelection(policy.key, value === CLEAR_OPTION_ID ? '' : value)}
+							/>
 							{#if selections[policy.key]}<span class="selection-id">{selections[policy.key]}</span>{/if}
 						</div>
 						<div class="actions">
@@ -590,21 +468,14 @@
 	h2, h3 { margin: 0; color: var(--color-ink-0); }
 	h2 { font-size: 1rem; }
 	h3 { font-size: 0.88rem; }
-	p, .muted, .policy-copy span, .selection-id, .empty-options { margin: 0; color: var(--color-ink-2); font-size: 0.82rem; line-height: 1.5; }
+	p, .muted, .policy-copy span, .selection-id { margin: 0; color: var(--color-ink-2); font-size: 0.82rem; line-height: 1.5; }
 	.loading-note { padding: 0.5rem 0; }
 	.runtime-settings, .policy-group { border-top: 1px solid var(--color-line-2); padding: 0.75rem 0; }
 	.runtime-row, .policy-row { display: grid; grid-template-columns: minmax(11rem, 1fr) minmax(13rem, 1.2fr) auto; align-items: center; gap: 0.75rem; border-top: 1px solid var(--color-line-2); padding: 0.75rem 0; }
 	.runtime-settings .runtime-row:first-of-type { border-top: 0; }
 	.policy-copy strong { color: var(--color-ink-0); font-size: 0.86rem; }
-	.runtime-input, .catalog-search { min-width: 0; width: 100%; border: 1px solid var(--color-line); border-radius: 0.375rem; background: var(--color-surface-sunken); color: var(--color-ink-0); padding: 0.5rem 0.75rem; }
-	.runtime-input:focus, .catalog-search:focus { outline: none; border-color: var(--color-accent); box-shadow: var(--focus-ring); }
-	.catalog-search::placeholder { color: var(--color-ink-3); }
-	.combobox { position: relative; }
-	.option-menu { position: absolute; z-index: 5; top: calc(100% + 0.25rem); width: 100%; max-height: 15rem; overflow: auto; border: 1px solid var(--color-line-2); border-radius: 0.5rem; background: var(--color-surface-raised); box-shadow: var(--shadow-md); }
-	.option-menu button { display: flex; width: 100%; justify-content: space-between; gap: 0.75rem; border: 0; border-bottom: 1px solid var(--color-line); background: transparent; color: var(--color-ink-1); padding: 0.55rem 0.7rem; text-align: left; cursor: pointer; }
-	.option-menu button:hover, .option-menu button.selected, .option-menu button.active { background: var(--color-surface-sunken); color: var(--color-ink-0); }
-	.option-menu small { color: var(--color-ink-3); font-family: var(--font-mono); }
-	.empty-options { display: block; padding: 0.65rem 0.7rem; }
+	.runtime-input { min-width: 0; width: 100%; border: 1px solid var(--color-line); border-radius: 0.375rem; background: var(--color-surface-sunken); color: var(--color-ink-0); padding: 0.5rem 0.75rem; }
+	.runtime-input:focus { outline: none; border-color: var(--color-accent); box-shadow: var(--focus-ring); }
 	.selection-id { font-family: var(--font-mono); font-size: 0.7rem; }
 	.actions { display: flex; gap: 0.4rem; }
 	@media (max-width: 720px) { .runtime-row, .policy-row { grid-template-columns: 1fr; } .actions { justify-content: flex-end; } }

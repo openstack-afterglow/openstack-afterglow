@@ -53,6 +53,7 @@
 <style>
 	.chat-message {
 		display: grid;
+		grid-template-columns: minmax(0, 1fr);
 		gap: var(--chat-message-gap);
 		max-width: 100%;
 	}
@@ -70,7 +71,7 @@
 		padding: 0 var(--chat-message-meta-inset);
 		font-size: var(--chat-message-meta-size);
 		line-height: 1.2;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.chat-header {
 		font-weight: 600;
@@ -87,6 +88,7 @@
 		font-weight: 400;
 	}
 	.chat-bubble {
+		min-width: 0;
 		max-width: min(92%, var(--chat-message-assistant-max-inline));
 		border: 1px solid var(--color-line);
 		border-radius: var(--chat-message-radius);

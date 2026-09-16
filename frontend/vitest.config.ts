@@ -7,6 +7,7 @@ import { fileURLToPath, URL } from 'url';
 export default defineConfig({
 	plugins: [svelte()],
 	resolve: {
+		conditions: ['browser'],
 		alias: [
 			// svelte 메인 진입점을 browser 버전으로 강제 → @testing-library/svelte의 mount() 정상 동작
 			{ find: /^svelte$/, replacement: fileURLToPath(new URL('./node_modules/svelte/src/index-client.js', import.meta.url)) },

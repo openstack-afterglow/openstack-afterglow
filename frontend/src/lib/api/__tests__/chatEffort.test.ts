@@ -17,7 +17,7 @@ describe('effortOptionsFor', () => {
 	});
 	it('effort 목록이 없거나 toggle뿐인 모델은 auto/none만 제공한다', () => {
 		expect(effortOptionsFor({ reasoning: true })).toEqual(['auto', 'none']);
-		expect(effortOptionsFor({ reasoning: true, reasoning_options: [{ type: 'toggle' }] })).toEqual([
+		expect(effortOptionsFor({ reasoning: true, reasoning_options: [{ type: 'toggle', values: [] }] })).toEqual([
 			'auto',
 			'none'
 		]);

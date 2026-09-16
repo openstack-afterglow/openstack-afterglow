@@ -2,7 +2,7 @@
  * 채팅 답변 출처(citations) — 표시/집계 순수 함수.
  *
  * 백엔드는 web URL 또는 provider 입력 문서의 index 기반 citation을 저장/스트리밍한다.
- * 메시지 하단 출처 리스트와 "대화 전체 출처" 패널이 이 유틸을 공유한다.
+ * 메시지 상단 출처 리스트와 "대화 전체 출처" 패널이 이 유틸을 공유한다.
  */
 
 export interface Citation {

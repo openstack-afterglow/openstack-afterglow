@@ -114,8 +114,8 @@
 		width: 18px;
 		height: 18px;
 		place-items: center;
-		border: 2px solid color-mix(in oklab, var(--color-ink-3) 72%, transparent);
-		border-radius: 5px;
+		border: 2px solid var(--color-line-2);
+		border-radius: var(--radius-sm);
 		background: color-mix(in oklab, var(--color-surface-raised) 82%, transparent);
 		box-shadow: inset 0 0 0 1px color-mix(in oklab, white 4%, transparent);
 		transition:
@@ -133,7 +133,7 @@
 	}
 
 	.selection-check path {
-		stroke: var(--color-action-on-accent);
+		stroke: var(--color-surface-base);
 		stroke-width: 3;
 		stroke-linecap: round;
 		stroke-linejoin: round;
@@ -146,7 +146,7 @@
 		width: 8px;
 		height: 2px;
 		border-radius: 999px;
-		background: var(--color-action-on-accent);
+		background: var(--color-surface-base);
 		opacity: 0;
 		transform: scaleX(0.4);
 		transition:
@@ -156,7 +156,7 @@
 
 	.selection-checkbox:hover .selection-box,
 	.selection-checkbox input:focus-visible + .selection-box {
-		border-color: var(--color-accent-2);
+		border-color: var(--color-line-2);
 		box-shadow: var(--focus-ring);
 	}
 
@@ -166,11 +166,9 @@
 
 	.selection-checkbox.is-checked .selection-box,
 	.selection-checkbox.is-indeterminate .selection-box {
-		border-color: transparent;
-		background: linear-gradient(135deg, var(--color-accent-2), var(--color-accent));
-		box-shadow:
-			0 0 0 1px color-mix(in oklab, var(--color-accent-2) 20%, transparent),
-			0 6px 18px color-mix(in oklab, var(--color-accent-2) 26%, transparent);
+		border-color: var(--color-ink-0);
+		background: var(--color-ink-0);
+		box-shadow: none;
 		animation: selection-pop var(--motion-duration-panel) var(--motion-ease-out);
 	}
 

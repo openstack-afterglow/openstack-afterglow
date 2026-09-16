@@ -84,7 +84,7 @@
 
   {#if loading}
     <div class="flex items-center gap-3 mb-6">
-      <button onclick={() => goto('/dashboard/containers/instances')} class="text-gray-400 hover:text-white transition-colors">← 컨테이너 목록</button>
+      <button onclick={() => goto('/dashboard/containers/instances')} class="text-ink-2 hover:text-ink-0 transition-colors">← 컨테이너 목록</button>
     </div>
     <LoadingSkeleton variant="detail" />
   {:else if container}

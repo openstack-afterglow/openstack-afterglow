@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 
 import redis.asyncio as aioredis
+from redis.asyncio.connection import parse_url
 
 from app.config import get_settings
 from app.services.cache import metrics
@@ -73,8 +74,11 @@ class RedisBackend(Cache):
             socket_timeout=5,
             socket_connect_timeout=3,
         )
+        redis_options = parse_url(settings.redis_url)
+        master_options = {key: redis_options[key] for key in ("username", "password", "db") if key in redis_options}
         return sentinel.master_for(
             settings.sentinel_master_name,
+            **master_options,
             decode_responses=True,
             socket_keepalive=True,
             health_check_interval=30,

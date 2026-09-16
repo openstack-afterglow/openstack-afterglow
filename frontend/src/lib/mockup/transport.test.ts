@@ -334,7 +334,22 @@ describe('mockup transport', () => {
 		expect(await maybeMockJson('GET', '/api/v1/admin/volumes/status-summary')).toMatchObject({ total: 3 });
 		expect(await maybeMockJson<Array<unknown>>('GET', '/api/v1/admin/timeseries/volumes')).toHaveLength(7);
 		expect(await maybeMockJson('GET', '/api/v1/admin/volumes/mock-admin-volume-available')).toMatchObject({ status: 'available' });
+		expect(await maybeMockJson('GET', '/api/v1/admin/volumes/mock-admin-volume-error/delete-diagnostics')).toMatchObject({
+			root_cause_code: 'backend_present_consistent',
+			recovery_available: true,
+			backend: { mode: 'inspected', classification: 'consistent', pool: 'volumes' },
+			checks: expect.arrayContaining([
+				expect.objectContaining({ name: 'auth_preflight', state: 'present' }),
+				expect.objectContaining({ name: 'rbd_image_by_name', state: 'present' }),
+			]),
+		});
 
+		const databases = await maybeMockJson<Array<{ id: string; name: string; project_id: string }>>(
+			'GET', '/api/v1/database-instances?all_projects=true',
+		);
+		expect(databases).toEqual([
+			expect.objectContaining({ id: 'mock-trove-instance-1', name: 'sample-customer-mysql', project_id: 'mock-project-1' }),
+		]);
 		expect(await maybeMockJson<Array<unknown>>('GET', '/api/v1/admin/libraries/base-images')).toHaveLength(1);
 		expect(await maybeMockJson<Array<unknown>>('GET', '/api/v1/admin/libraries/artifacts')).toHaveLength(3);
 		expect(await maybeMockJson<Array<unknown>>('GET', '/api/v1/admin/libraries/profiles')).toHaveLength(1);
@@ -445,34 +460,34 @@ describe('mockup transport', () => {
 			'mock-token-tutorial-scoped',
 			'mock-project-1',
 		);
-		const overviewSummary = await maybeMockJson<{ recent_instances: unknown[] }>(
+		const overviewSummary = (await maybeMockJson<{ recent_instances: unknown[] }>(
 			'GET',
 			'/api/v1/dashboard/summary?view=overview&recent_limit=12',
 			undefined,
 			'mock-token-tutorial-scoped',
 			'mock-project-1',
-		);
-		const overviewQuotas = await maybeMockJson<{ file_storage: unknown; alerts: unknown[] }>(
+		)) as { recent_instances: unknown[] };
+		const overviewQuotas = (await maybeMockJson<{ file_storage: unknown; alerts: unknown[] }>(
 			'GET',
 			'/api/v1/dashboard/quotas?view=overview',
 			undefined,
 			'mock-token-tutorial-scoped',
 			'mock-project-1',
-		);
-		const k3sStats = await maybeMockJson<{ total: number; active: number; available: boolean }>(
+		)) as { file_storage: unknown; alerts: unknown[] };
+		const k3sStats = (await maybeMockJson<{ total: number; active: number; available: boolean }>(
 			'GET',
 			'/api/v1/dashboard/k3s-stats',
 			undefined,
 			'mock-token-tutorial-scoped',
 			'mock-project-1',
-		);
-		const trend = await maybeMockJson<{ network: { unit: string; data: unknown[] } }>(
+		)) as { total: number; active: number; available: boolean };
+		const trend = (await maybeMockJson<{ network: { unit: string; data: unknown[] } }>(
 			'GET',
 			'/api/v1/dashboard/metrics/trend?range=14d&include_network=false',
 			undefined,
 			'mock-token-tutorial-scoped',
 			'mock-project-1',
-		);
+		)) as { network: { unit: string; data: unknown[] } };
 
 		expect(fullSummary).toMatchObject({ gpu_used: expect.any(Number) });
 		expect(overviewSummary).toMatchObject({ recent_instances: expect.any(Array) });

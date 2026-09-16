@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('$env/dynamic/public', () => ({
 	env: { PUBLIC_API_BASE: 'http://localhost:8000' },
@@ -52,6 +52,60 @@ function jsonResponse(value: unknown): Response {
 		headers: { 'Content-Type': 'application/json' },
 	});
 }
+
+// Tests reload the client to isolate its shared refresh and cache state.
+afterEach(() => localStorage.clear());
+
+describe('authenticated progress upload recovery', () => {
+	beforeEach(() => {
+		vi.resetModules();
+		mockFetch.mockReset();
+		localStorage.clear();
+	});
+
+	it('recovers an XHR 401 with the original upload body and reports retried progress', async () => {
+		const { setAuth } = await import('$lib/stores/auth');
+		setAuth({ token: 'old-token', refreshToken: 'refresh-token', accessExpiresAt: null });
+		mockFetch.mockResolvedValueOnce(jsonResponse({ token: 'new-token', refresh_token: 'new-refresh' }));
+		const { api } = await import('../client');
+		const form = new FormData();
+		form.append('file', new Blob(['data']), 'file.txt');
+		const progress = vi.fn();
+		const { promise } = api.uploadWithProgress<{ id: string }>('/api/v1/upload', form, progress, 'old-token', 'project');
+		const rejectedXhr = lastXhr;
+		rejectedXhr.status = 401;
+		rejectedXhr.onload?.();
+		await vi.waitFor(() => expect(lastXhr).not.toBe(rejectedXhr));
+		expect(lastXhr._headers['Authorization']).toBe('Bearer new-token');
+		expect(lastXhr._headers['X-Project-Id']).toBe('project');
+		expect(lastXhr._body).toBe(form);
+		lastXhr.upload.onprogress?.({ lengthComputable: true, loaded: 100, total: 100 });
+		lastXhr.responseText = '{"id":"uploaded"}';
+		lastXhr.onload?.();
+		await expect(promise).resolves.toEqual({ id: 'uploaded' });
+		expect(progress).toHaveBeenLastCalledWith({ loaded: 100, total: 100 });
+		expect(mockFetch).toHaveBeenCalledOnce();
+	});
+
+	it('aborts during refresh without sending a second PUT or cancelling session rotation', async () => {
+		const { setAuth } = await import('$lib/stores/auth');
+		setAuth({ token: 'old-token', refreshToken: 'refresh-token', accessExpiresAt: null });
+		const refreshResponse = Promise.withResolvers<Response>();
+		mockFetch.mockReturnValueOnce(refreshResponse.promise);
+		const { api, refreshSession } = await import('../client');
+		const { promise, abort } = api.putWithProgress('/api/v1/upload', new Blob(['data']), 'text/plain', vi.fn(), 'old-token');
+		const rejectedXhr = lastXhr;
+		rejectedXhr.status = 401;
+		rejectedXhr.onload?.();
+		await vi.waitFor(() => expect(mockFetch).toHaveBeenCalledOnce());
+		const rotation = refreshSession();
+		abort();
+		await expect(promise).rejects.toMatchObject({ status: 0 });
+		refreshResponse.resolve(jsonResponse({ token: 'new-token', refresh_token: 'new-refresh' }));
+		await expect(rotation).resolves.toBe('new-token');
+		expect(lastXhr).toBe(rejectedXhr);
+	});
+});
 
 
 describe('api.upload', () => {

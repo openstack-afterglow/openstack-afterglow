@@ -17,7 +17,7 @@ describe('LoadingSkeleton', () => {
 	it('variant=card는 table 없이 카드 구조 렌더링', () => {
 		const { container } = render(LoadingSkeleton, { variant: 'card', rows: 2 });
 		expect(container.querySelector('table')).toBeNull();
-		const cards = container.querySelectorAll('.bg-gray-900.rounded-xl');
+		const cards = container.firstElementChild?.children ?? [];
 		expect(cards).toHaveLength(2);
 	});
 

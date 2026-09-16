@@ -10,4 +10,6 @@
 	}
 </script>
 
-<SettingsModal {open} onclose={handleClose} />
+<main id="main-content" tabindex="-1">
+	<SettingsModal {open} onclose={handleClose} />
+</main>

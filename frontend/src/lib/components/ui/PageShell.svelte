@@ -31,7 +31,7 @@
 	.page-shell-pad-dense { padding: 0.75rem; }
 	.page-shell-pad-none { padding: 0; }
 	@media (min-width: 768px) {
-		.page-shell-pad-route { padding: 2rem; }
+		.page-shell-pad-route { padding: 1.5rem; }
 		.page-shell-pad-dense { padding: 1rem; }
 	}
 </style>

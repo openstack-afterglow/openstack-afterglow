@@ -106,9 +106,9 @@
 	}
 </script>
 
-<div class="p-4 md:p-8 max-w-4xl mx-auto">
+<div class="p-4 md:p-6 max-w-4xl mx-auto">
 	<div class="mb-6">
-		<a href="/dashboard" class="text-gray-400 hover:text-gray-200 text-sm transition-colors">← 대시보드</a>
+		<a href="/dashboard" class="text-ink-2 hover:text-ink-1 text-sm transition-colors">← 대시보드</a>
 	</div>
 
 	{#if error}

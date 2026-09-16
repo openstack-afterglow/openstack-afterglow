@@ -1,5 +1,6 @@
 ---
 - name: Config | Resolve Afterglow service project ID
+  become: true
   kolla_toolbox:
     container_engine: "{{ kolla_container_engine }}"
     module_name: openstack.cloud.project_info
@@ -9,6 +10,7 @@
   register: afterglow_service_project_lookup
   changed_when: false
   no_log: true
+  run_once: true
   when:
     - inventory_hostname in groups['afterglow']
     - afterglow_service_project_id | default('') | length == 0
@@ -56,6 +58,7 @@
   run_once: true
 
 - name: Config | Check operator configuration source
+  become: false
   ansible.builtin.stat:
     path: "{{ afterglow_operator_config_source }}"
   register: afterglow_operator_config_source_stat
@@ -84,6 +87,7 @@
   delegate_to: "{{ groups['deployment'][0] }}"
 
 - name: Config | Stage and validate sanitized operator configuration
+  become: false
   ansible.builtin.command:
     argv:
       - "{{ ansible_playbook_python }}"
@@ -131,6 +135,7 @@
   delegate_to: "{{ groups['deployment'][0] }}"
 
 - name: Config | Check frontend public configuration source
+  become: false
   ansible.builtin.stat:
     path: "{{ afterglow_operator_frontend_config_source }}"
   register: afterglow_operator_frontend_config_source_stat
@@ -159,6 +164,7 @@
   delegate_to: "{{ groups['deployment'][0] }}"
 
 - name: Config | Project frontend source onto the public allowlist
+  become: false
   ansible.builtin.command:
     argv:
       - "{{ ansible_playbook_python }}"
@@ -242,4 +248,22 @@
     afterglow_frontend_config_render.rc == 0 and
     ((afterglow_frontend_config_render.stdout | trim | default('{}', true) | from_json).changed
     | default(false) | bool)
+  when: inventory_hostname in groups['afterglow']
+- name: Config | Ensure Afterglow log directories exist and are owned by log owner
+  become: true
+  community.docker.docker_container:
+    name: afterglow_log_dir_setup
+    image: "{{ afterglow_backend_image_ref }}"
+    user: "root"
+    command:
+      - sh
+      - -c
+      - |
+        mkdir -p /var/log/kolla/afterglow_api /var/log/kolla/afterglow && \
+        chown -R {{ afterglow_log_owner_uid }}:{{ afterglow_log_owner_gid }} /var/log/kolla/afterglow_api /var/log/kolla/afterglow
+    state: started
+    detach: false
+    cleanup: true
+    volumes:
+      - "kolla_logs:/var/log/kolla/"
   when: inventory_hostname in groups['afterglow']

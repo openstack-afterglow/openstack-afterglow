@@ -23,8 +23,10 @@
 	/>
 </svelte:head>
 
+<main id="main-content" tabindex="-1">
 <LandingPage
 	siteName={$siteConfig.site_name}
 	logoPath={landingLogoPath}
 	{consoleHref}
 />
+</main>

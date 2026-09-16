@@ -7,7 +7,7 @@
   import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
   import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
   import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
-  import PageHeader from '$lib/components/ui/PageHeader.svelte';
+  import { Alert, Button, PageHeader, PageShell, ResourceToolbar } from '$lib/components/ui';
   import KeypairCreateModal from '$lib/components/keypair/KeypairCreateModal.svelte';
   import KeypairListTable from '$lib/components/keypair/KeypairListTable.svelte';
   import KeypairEmptyState from '$lib/components/keypair/KeypairEmptyState.svelte';
@@ -94,8 +94,13 @@
 
 <KeypairCreateModal bind:open={showModal} onCreate={createKeypair} />
 
-<div class="p-4 md:p-8">
+<PageShell class="space-y-4">
   <PageHeader breadcrumb="COMPUTE / KEYPAIRS" title="키페어">
+    {#snippet actions()}
+      <Button onclick={() => showModal = true} variant="primary">+ 키페어 생성</Button>
+    {/snippet}
+  </PageHeader>
+  <ResourceToolbar label="키페어 목록 도구">
     {#snippet actions()}
       <AutoRefreshControl
         bind:active={ar.active}
@@ -104,11 +109,10 @@
         refreshing={refreshing}
         onManualRefresh={forceRefresh}
       />
-      <button onclick={() => showModal = true} class="bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">+ 키페어 생성</button>
     {/snippet}
-  </PageHeader>
+  </ResourceToolbar>
 
-  {#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
+  {#if error}<Alert tone="danger">{error}</Alert>{/if}
 
   {#if loading}
     <LoadingSkeleton variant="table" rows={4} />
@@ -123,4 +127,4 @@
       onDelete={deleteKeypair}
     />
   {/if}
-</div>
+</PageShell>

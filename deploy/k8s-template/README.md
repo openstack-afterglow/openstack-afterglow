@@ -46,6 +46,7 @@ minikube image load afterglow:latest
 - `ingress.yaml`: `host` 값 (실제 도메인)
 
 `backend`, `worker`(drover), `notion-worker`는 모두 `/app/afterglow.conf`를 마운트하고 `afterglow-secrets/SECRET_KEY`를 환경변수로 읽습니다. 세 서비스 모두 `AFTERGLOW_ENV=production`으로 실행되므로 `AFTERGLOW_ALLOW_INSECURE=1`은 이 manifest에 넣지 않습니다.
+`backend`와 `frontend` Deployment는 `/app/logs` 경로에 `emptyDir` 볼륨(`app-logs`)을 마운트하여 파드 실행 중 날짜/용량 기반 파일 로그를 작성합니다. `fsGroup: 1000` 권한으로 비최상위 사용자 쓰기가 보장되며, PVC나 hostPath 없이 파드 단위 수명주기를 가지는 휘발성(ephemeral) 스토리지입니다. 표준 출력/표준 에러(stdout/stderr) 수집기와 상충하지 않습니다.
 
 > 이 빠른 배포 절차는 `afterglow` 네임스페이스용 프로덕션 정적 manifest만 다룹니다. `overlays/dev`는 `afterglow-dev` 네임스페이스를 사용하므로, dev 배포에는 `afterglow-dev`용 `afterglow-config` ConfigMap과 `afterglow-secrets` Secret을 별도로 생성하거나 ExternalSecret/ArgoCD로 관리해야 합니다.
 

@@ -6,6 +6,7 @@
 	import K3sNodegroupCreateModal from '$lib/components/dashboard/drover/K3sNodegroupCreateModal.svelte';
 	import K3sNodegroupEditModal from '$lib/components/dashboard/drover/K3sNodegroupEditModal.svelte';
 	import type { K3sNodegroup } from '$lib/types/k3s';
+	import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	const s = useK3sClusterDetailController();
 
@@ -57,19 +58,19 @@
 	}
 </script>
 
-<div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+<div class="bg-surface-base border border-line rounded-xl p-4">
 	<div class="flex items-center justify-between mb-3">
-		<h3 class="text-xs text-gray-500 uppercase tracking-wide">노드그룹</h3>
+		<h3 class="text-xs text-ink-2 uppercase tracking-wide">노드그룹</h3>
 		<button
 			onclick={() => { showCreate = true; }}
-			class="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+			class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
 		>+ 추가</button>
 	</div>
 
 	{#if loading}
-		<div class="text-xs text-gray-600 py-2">불러오는 중...</div>
+		<div class="text-xs text-ink-2 py-2">불러오는 중...</div>
 	{:else if nodegroups.length === 0}
-		<div class="text-xs text-gray-600 py-2">노드그룹 정보가 없습니다.</div>
+		<div class="text-xs text-ink-2 py-2">노드그룹 정보가 없습니다.</div>
 	{:else}
 		<div class="space-y-2">
 			{#each nodegroups as ng (ng.id)}
@@ -105,30 +106,31 @@
 {/if}
 
 {#if deleteTarget}
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
-		class="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
-		onclick={() => (deleteTarget = null)}
-		onkeydown={(e) => e.key === 'Escape' && (deleteTarget = null)}
-		role="dialog"
+		use:dialogFocus={{ enabled: true, onEscape: () => (deleteTarget = null) }}
+		class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
+		onclick={(event) => { if (event.target === event.currentTarget) (() => (deleteTarget = null))(); }}
+		role="dialog" aria-modal="true"
 		tabindex="-1"
 	>
 		<div
-			class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-sm mx-4 shadow-2xl"
-			onclick={(e) => e.stopPropagation()}
+			class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-sm mx-4 shadow-[var(--shadow-restraint)]"
 		>
-			<h2 class="text-lg font-semibold text-white mb-3">노드그룹 삭제</h2>
-			<p class="text-sm text-gray-300 mb-5">
-				<strong class="text-white">{deleteTarget.name}</strong> 노드그룹을 삭제합니다.
+			<h2 class="text-lg font-semibold text-ink-0 mb-3">노드그룹 삭제</h2>
+			<p class="text-sm text-ink-2 mb-5">
+				<strong class="text-ink-0">{deleteTarget.name}</strong> 노드그룹을 삭제합니다.
 			</p>
 			{#if deleteError}
 				<div class="mb-3 text-red-400 text-xs bg-red-900/20 border border-red-800 rounded px-3 py-2">{deleteError}</div>
 			{/if}
 			<div class="flex justify-end gap-3">
-				<button onclick={() => (deleteTarget = null)} class="px-4 py-2 text-sm text-gray-400 hover:text-white">취소</button>
+				<button onclick={() => (deleteTarget = null)} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0">취소</button>
 				<button
 					onclick={confirmDelete}
 					disabled={deleting}
-					class="px-4 py-2 bg-red-700 hover:bg-red-600 disabled:bg-gray-700 text-white text-sm font-medium rounded-lg"
+					class="px-4 py-2 bg-red-700 hover:bg-red-600 disabled:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg"
 				>{deleting ? '삭제 중...' : '삭제'}</button>
 			</div>
 		</div>

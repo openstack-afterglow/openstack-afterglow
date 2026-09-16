@@ -966,12 +966,10 @@ async def test_create_instance_gpu_attaches_both_sgs(client, mock_conn):
     fake_upper = MM()
     fake_upper.id = "vol-upper"
     mock_conn.compute.create_volume_attachment.return_value = MM()
-    quota_proxy = MM()
-    quota_proxy.check_gpu_quota.return_value = {"ok": True}
 
     with (
         patch("app.api.compute.instances.nova.list_flavors", return_value=[_make_flavor(is_gpu=True)]),
-        patch("drover_sdk.register", return_value=quota_proxy),
+        patch("app.services.gpu_quota.check_gpu_quota") as mock_check,
         patch("app.api.compute.instances.cinder.create_volume_from_image", return_value=fake_vol),
         patch("app.api.compute.instances.cinder.rename_volume"),
         patch("app.api.compute.instances.cinder.create_empty_volume", return_value=fake_upper),
@@ -1001,7 +999,7 @@ async def test_create_instance_gpu_attaches_both_sgs(client, mock_conn):
         )
 
     assert resp.status_code in (200, 201, 202)
-    quota_proxy.check_gpu_quota.assert_called_once()
+    mock_check.assert_awaited_once()
     assert "node_exporter" in attached_sgs
     assert "dcgm_exporter" in attached_sgs
     assert "default" in attached_sgs

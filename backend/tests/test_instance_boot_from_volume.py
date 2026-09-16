@@ -1,5 +1,6 @@
 """기존 부팅 볼륨으로 인스턴스 생성 단위 테스트."""
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -8,6 +9,10 @@ from openstack.block_storage.v3.volume import Volume
 from app.models.compute import InstanceInfo
 from app.models.storage import VolumeInfo
 from app.services.cinder import _vol_to_info
+
+
+def _make_flavor():
+    return SimpleNamespace(id="flavor-1", name="m1.small", extra_specs={})
 
 
 @pytest.fixture(autouse=True)
@@ -20,6 +25,10 @@ def _resolve_default_placement_policies(monkeypatch):
     monkeypatch.setattr(
         "app.api.compute.instances.instance_orch.resolve_availability_zones",
         resolve_zones,
+    )
+    monkeypatch.setattr(
+        "app.api.compute.instances.nova.list_flavors",
+        lambda _conn: [_make_flavor()],
     )
 
 
@@ -107,7 +116,7 @@ _COMMON_PATCHES = [
     ("app.api.compute.instances.lib_svc.resolve_with_deps", []),
     ("app.api.compute.instances._prepare_dynamic_file_storage", {}),
     ("app.api.compute.instances.cinder.create_empty_volume", None),  # 각 테스트에서 개별 override
-    ("app.api.compute.instances.nova.list_flavors", []),
+    ("app.api.compute.instances.nova.list_flavors", [_make_flavor()]),
     ("app.api.compute.instances.neutron.list_networks", []),
     ("app.api.compute.instances.cloudinit.generate_userdata", ""),
 ]
@@ -125,7 +134,7 @@ async def test_boot_from_volume_skips_create_volume_from_image(client, mock_conn
         patch("app.api.compute.instances.cinder.create_volume_from_image") as mock_create_img,
         patch("app.api.compute.instances.cinder.create_empty_volume", return_value=_make_upper_vol()),
         patch("app.api.compute.instances.cinder.rename_volume", return_value=None),
-        patch("app.api.compute.instances.nova.list_flavors", return_value=[]),
+        patch("app.api.compute.instances.nova.list_flavors", return_value=[_make_flavor()]),
         patch("app.api.compute.instances.nova.create_server", return_value=_make_server()),
         patch("app.api.compute.instances.neutron.list_networks", return_value=[]),
         patch("app.api.compute.instances.cloudinit.generate_userdata", return_value=""),
@@ -149,7 +158,7 @@ async def test_boot_from_volume_forces_delete_on_termination_false(client, mock_
         patch("app.api.compute.instances.cinder.create_volume_from_image") as mock_create_img,
         patch("app.api.compute.instances.cinder.create_empty_volume", return_value=_make_upper_vol()),
         patch("app.api.compute.instances.cinder.rename_volume", return_value=None),
-        patch("app.api.compute.instances.nova.list_flavors", return_value=[]),
+        patch("app.api.compute.instances.nova.list_flavors", return_value=[_make_flavor()]),
         patch("app.api.compute.instances.nova.create_server", return_value=_make_server()) as mock_create_srv,
         patch("app.api.compute.instances.neutron.list_networks", return_value=[]),
         patch("app.api.compute.instances.cloudinit.generate_userdata", return_value=""),

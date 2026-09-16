@@ -4,12 +4,13 @@
 
 ## 책임
 `backend/app/services`의 책임은 <<abstract>>, <<class>>, <<dataclass>>, <<protocol>>으로 표현되는 운영 타입 계약을 정의하는 것이다.
-이 문서는 31개 source type과 14개 정적 관계를 2개 Mermaid class diagram으로 나누어 보여준다.
+이 문서는 34개 source type과 15개 정적 관계를 2개 Mermaid class diagram으로 나누어 보여준다.
 
 ## 포함 파일
 - `backend/app/services/builder_vm.py`
 - `backend/app/services/cache/base.py`
 - `backend/app/services/cache/redis_backend.py`
+- `backend/app/services/ceph_rbd.py`
 - `backend/app/services/dockerfile_import.py`
 - `backend/app/services/heat.py`
 - `backend/app/services/k3s_cloudinit.py`
@@ -62,6 +63,49 @@ class T_backend_app_services_cache_redis_backend_py_RedisBackend_743a29294cc4["R
   +add_to_tag(tag: str, key: str): None
   +invalidate_tag(tag: str): int
   +ping(): bool
+}
+%% source-type: backend/app/services/ceph_rbd.py::RbdCommandError
+class T_backend_app_services_ceph_rbd_py_RbdCommandError_19270fbe0a7c["RbdCommandError (backend/app/services/ceph_rbd.py)"] {
+  <<class>>
+  +returncode: int | None
+  +stderr: str
+  +__init__(message: str, returncode: int | None, stderr: str): void
+}
+%% source-type: backend/app/services/ceph_rbd.py::RbdImageInfo
+class T_backend_app_services_ceph_rbd_py_RbdImageInfo_4b50bfdfb64a["RbdImageInfo (backend/app/services/ceph_rbd.py)"] {
+  <<dataclass>>
+  +id: str
+  +size: int
+  +order: int
+  +parent_pool: str | None
+  +parent_image: str | None
+  +parent_snapshot: str | None
+  +parent_spec: str | None
+}
+%% source-type: backend/app/services/ceph_rbd.py::RbdClient
+class T_backend_app_services_ceph_rbd_py_RbdClient_240c56433d77["RbdClient (backend/app/services/ceph_rbd.py)"] {
+  <<class>>
+  +conf_path: str
+  +keyring_path: str
+  +client_name: str
+  +timeout_seconds: int
+  +__init__(conf_path: str, keyring_path: str, client_name: str, timeout_seconds: int, runner: Runner | None): void
+  +cluster_fsid(): CheckResult
+  +stat_object(pool: str, oid: str): CheckResult
+  +directory_lookup(pool: str, name: str): CheckResult
+  +directory_lookup_by_id(pool: str, image_id: str): CheckResult
+  +image_info_by_id(pool: str, image_id: str): tuple~CheckState; RbdImageInfo | None~
+  +image_info_by_name(pool: str, name: str): tuple~CheckState; RbdImageInfo | None~
+  +watchers(pool: str, image_id: str): CheckResult
+  +snapshots_by_id(pool: str, image_id: str): CheckResult
+  +children_of(parent_pool: str, parent_image: str, snap: str, image_name: str | None, image_id: str | None): CheckResult
+  +trash_contains(pool: str, name: str, image_id: str | None): CheckResult
+  +sampled_data_objects(pool: str, image_id: str, size_bytes: int, order: int): CheckResult
+  +object_map_present(pool: str, image_id: str): CheckResult
+  +name_mapping_payload(image_id: str): bytes
+  +read_name_mapping(pool: str, name: str): tuple~CheckState; bytes | None~
+  +restore_name_mapping(pool: str, name: str, image_id: str): None
+  +cleanup_stale_name_mapping(pool: str, name: str, image_id: str): None
 }
 %% source-type: backend/app/services/dockerfile_import.py::GitHubRepo
 class T_backend_app_services_dockerfile_import_py_GitHubRepo_40ede9d8d478["GitHubRepo (backend/app/services/dockerfile_import.py)"] {
@@ -200,11 +244,13 @@ class T_backend_app_services_worker_runtime_py_WorkerDesired_85aee2cffb9f["Worke
 class T_backend_app_services_worker_runtime_py_WorkerRuntimeAdapter_d5b8099ade00["WorkerRuntimeAdapter (backend/app/services/worker_runtime.py)"] {
   <<reference>>
 }
+T_backend_app_services_ceph_rbd_py_RbdClient_240c56433d77 --> T_backend_app_services_ceph_rbd_py_RbdImageInfo_4b50bfdfb64a : associates
 T_backend_app_services_cache_base_py_Cache_8f58fc797e1d <|.. T_backend_app_services_cache_redis_backend_py_RedisBackend_743a29294cc4 : realizes
 T_backend_app_services_worker_runtime_py_WorkerRuntimeAdapter_d5b8099ade00 --> T_backend_app_services_worker_runtime_py_WorkerDesired_85aee2cffb9f : associates
 ```
 
 ### 관계 설명
+- `backend/app/services/ceph_rbd.py::RbdClient --> backend/app/services/ceph_rbd.py::RbdImageInfo` — 근거: `backend/app/services/ceph_rbd.py::RbdClient.image_info_by_id`, `backend/app/services/ceph_rbd.py::RbdClient.image_info_by_name`; 관계: `associates`.
 - `backend/app/services/cache/base.py::Cache <|.. backend/app/services/cache/redis_backend.py::RedisBackend` — 근거: `backend/app/services/cache/redis_backend.py::RedisBackend.__bases__`; 관계: `realizes`.
 - `backend/app/services/worker_runtime.py::WorkerRuntimeAdapter --> backend/app/services/worker_runtime.py::WorkerDesired` — 근거: `backend/app/services/worker_runtime.py::WorkerRuntimeAdapter.reconcile`; 관계: `associates`.
 

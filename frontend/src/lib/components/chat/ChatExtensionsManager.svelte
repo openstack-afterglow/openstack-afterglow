@@ -4,6 +4,7 @@
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
 	import Button from '$lib/components/ui/Button.svelte';
+	import Pill from '$lib/components/ui/Pill.svelte';
 
 	// base: '/api/v1/chat/admin' (관리자 global) 또는 '/api/v1/chat' (사용자 본인)
 	// only: 특정 섹션만 렌더('mcp' | 'tools' | 'skills'). 미지정 시 전부.
@@ -264,13 +265,22 @@
 		}
 	}
 
-	async function removeItem(kind: 'mcp-servers' | 'custom-tools' | 'skills', id: number) {
-		if (!(await confirmDialog('삭제하시겠습니까?'))) return;
+	async function removeItem(
+		kind: 'mcp-servers' | 'custom-tools' | 'skills',
+		id: number,
+		name: string
+	) {
+		const kindLabel = { 'mcp-servers': 'MCP 서버', 'custom-tools': '커스텀 툴', skills: '스킬' }[kind];
+		const ok = await confirmDialog(
+			`${kindLabel} "${name}"을(를) 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`,
+			{ confirmLabel: '삭제' }
+		);
+		if (!ok) return;
 		try {
 			await api.delete(`${base}/${kind}/${id}`, token, projectId);
 			await load();
 		} catch {
-			toast.error('삭제 실패');
+			toast.error(`${kindLabel} "${name}" 삭제 실패`);
 		}
 	}
 
@@ -380,7 +390,7 @@
 								<span class="text-xs text-[var(--color-ink-3)]">{m.transport}</span>
 								{#if m.has_headers}<span class="text-xs text-[var(--color-ink-3)]" title="공용 인증 헤더 설정됨">🔒</span>{/if}
 								{#if m.auth_mode === 'oauth'}
-									<span class="text-xs text-[var(--color-state-info)]" title="사용자별 OAuth 연결 필요">OAuth</span>
+									<span title="사용자별 OAuth 연결 필요"><Pill tone="neutral" size="xs">OAuth</Pill></span>
 								{/if}
 							</div>
 							{#if m.url}<div class="mt-0.5 truncate text-xs text-[var(--color-ink-3)]">{m.url}</div>{/if}
@@ -397,7 +407,7 @@
 							{/if}
 							{#if isAdmin}
 								<select
-									class="rounded border border-[var(--color-line)] bg-[var(--color-sunken)] px-1 py-0.5 text-xs text-[var(--color-ink-2)]"
+									class="rounded border border-[var(--color-line)] bg-[var(--color-surface-sunken)] px-1 py-0.5 text-xs text-[var(--color-ink-2)]"
 									aria-label={`${m.name} 로딩 정책`}
 									value={m.load_policy ?? 'on_demand'}
 									onchange={(event) =>
@@ -412,7 +422,7 @@
 								</select>
 							{/if}
 							<button class="text-[var(--color-ink-2)] hover:text-[var(--color-ink-0)]" onclick={() => toggle('mcp-servers', m.id, m.is_active)}>{m.is_active ? '비활성화' : '활성화'}</button>
-							<button class="text-[var(--color-state-danger)] hover:opacity-80" onclick={() => removeItem('mcp-servers', m.id)}>삭제</button>
+							<button class="text-[var(--color-state-danger)] hover:opacity-80" onclick={() => removeItem('mcp-servers', m.id, m.name)}>삭제</button>
 						</div>
 					</div>
 				</div>
@@ -469,7 +479,7 @@
 					<div class="flex shrink-0 items-center gap-3 text-xs">
 						{#if isAdmin}
 							<select
-								class="rounded border border-[var(--color-line)] bg-[var(--color-sunken)] px-1 py-0.5 text-xs text-[var(--color-ink-2)]"
+								class="rounded border border-[var(--color-line)] bg-[var(--color-surface-sunken)] px-1 py-0.5 text-xs text-[var(--color-ink-2)]"
 								aria-label={`${t.name} 로딩 정책`}
 								value={t.load_policy ?? 'on_demand'}
 								onchange={(event) =>
@@ -484,7 +494,7 @@
 							</select>
 						{/if}
 						<button class="text-[var(--color-ink-2)] hover:text-[var(--color-ink-0)]" onclick={() => toggle('custom-tools', t.id, t.is_active)}>{t.is_active ? '비활성화' : '활성화'}</button>
-						<button class="text-[var(--color-state-danger)] hover:opacity-80" onclick={() => removeItem('custom-tools', t.id)}>삭제</button>
+						<button class="text-[var(--color-state-danger)] hover:opacity-80" onclick={() => removeItem('custom-tools', t.id, t.name)}>삭제</button>
 					</div>
 				</div>
 			{/each}
@@ -536,7 +546,7 @@
 					</div>
 					<div class="flex shrink-0 items-center gap-3 text-xs">
 						<button class="text-[var(--color-ink-2)] hover:text-[var(--color-ink-0)]" onclick={() => toggle('skills', s.id, s.is_active)}>{s.is_active ? '비활성화' : '활성화'}</button>
-						<button class="text-[var(--color-state-danger)] hover:opacity-80" onclick={() => removeItem('skills', s.id)}>삭제</button>
+						<button class="text-[var(--color-state-danger)] hover:opacity-80" onclick={() => removeItem('skills', s.id, s.name)}>삭제</button>
 					</div>
 				</div>
 			{/each}

@@ -77,7 +77,7 @@
   }
 
   .db-instances-table__selection-count {
-    color: var(--color-ink-3);
+    color: var(--color-ink-2);
   }
 
   .db-instances-table__row {
@@ -93,11 +93,11 @@
   }
 
   .db-instances-table__name {
-    color: var(--color-warm);
+    color: var(--color-ink-0);
   }
 
   .db-instances-table__name:hover {
-    color: color-mix(in oklab, var(--color-warm), white 18%);
+    color: var(--color-accent);
   }
 
   .db-instances-table__detail {
@@ -122,7 +122,7 @@
   }
 
   .db-instances-table__delete:hover {
-    color: color-mix(in oklab, var(--color-state-danger), white 20%);
+    color: color-mix(in oklab, var(--color-state-danger) 88%, var(--color-ink-0));
     border-color: var(--color-state-danger);
   }
 

@@ -16,7 +16,7 @@
   import SlidePanel from '$lib/components/SlidePanel.svelte';
   import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
   import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
-  import PageHeader from '$lib/components/ui/PageHeader.svelte';
+  import { Alert, Button, PageHeader, PageShell, ResourceToolbar } from '$lib/components/ui';
   import VolumesTabs from '$lib/components/volume/VolumesTabs.svelte';
   import VolumesLoadingState from '$lib/components/volume/VolumesLoadingState.svelte';
   import VolumesEmptyState from '$lib/components/volume/VolumesEmptyState.svelte';
@@ -128,8 +128,13 @@
 
 <VolumeCreateModal bind:open={ctrl.showModal} onCreated={() => ctrl.fetchVolumes()} />
 
-<div class="bulk-selection-page p-4 md:p-8">
+<PageShell class="bulk-selection-page space-y-4">
   <PageHeader breadcrumb="VOLUMES / BLOCK VOLUMES" title="블록 볼륨">
+    {#snippet actions()}
+      <Button dataTour="volume-create-open" onclick={() => ctrl.showModal = true} variant="primary">+ 볼륨 생성</Button>
+    {/snippet}
+  </PageHeader>
+  <ResourceToolbar label="볼륨 목록 도구">
     {#snippet actions()}
       <TutorialStartButton tour="volume" />
       <AutoRefreshControl
@@ -139,11 +144,10 @@
         refreshing={ctrl.refreshing}
         onManualRefresh={() => ctrl.fetchAll()}
       />
-      <button data-tour="volume-create-open" onclick={() => ctrl.showModal = true} class="bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">+ 볼륨 생성</button>
     {/snippet}
-  </PageHeader>
+  </ResourceToolbar>
 
-  {#if ctrl.error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{ctrl.error}</div>{/if}
+  {#if ctrl.error}<Alert tone="danger">{ctrl.error}</Alert>{/if}
 
   {#if ctrl.loading}
     <VolumesLoadingState />
@@ -154,7 +158,7 @@
     <VolumesTabs bind:tab={ctrl.tab} volumeCount={ctrl.volumes.length} snapshotCount={ctrl.snapshots.length} showSnapshots={$betaFeatures.volumeSnapshots} />
 
     {#if ctrl.tab === 'volumes'}
-      <div data-tour="volume-list">
+      <div id="volume-resource-panel" role="tabpanel" aria-labelledby="volume-resource-tabs-volumes" tabindex="0" data-tour="volume-list">
       <VolumeListTable
         volumes={ctrl.volumes}
         selectedVolumeId={ctrl.selectedVolumeId}
@@ -191,6 +195,7 @@
       />
       </div>
     {:else}
+      <div id="snapshot-resource-panel" role="tabpanel" aria-labelledby="volume-resource-tabs-snapshots" tabindex="0">
       <BulkSelectionOverlay
         count={snapshotSelection.count}
         ariaLabel="선택한 스냅샷 일괄 작업"
@@ -211,12 +216,13 @@
         onActionMenuClose={() => (ctrl.openSnapshotActionMenu = null)}
         onDelete={ctrl.deleteSnapshot}
       />
+      </div>
     {/if}
   {/if}
-</div>
+</PageShell>
 
 {#if ctrl.selectedVolumeId}
-  <SlidePanel onClose={ctrl.closeVolumePanel} width="w-full md:w-[60vw] max-w-2xl">
+  <SlidePanel onClose={ctrl.closeVolumePanel} ariaLabel="볼륨 상세" width="w-full md:w-[60vw] max-w-2xl">
     <VolumeDetailPanel
       volumeId={ctrl.selectedVolumeId}
       onClose={ctrl.closeVolumePanel}

@@ -3,6 +3,7 @@ import { api, ApiError } from '$lib/api/client';
 import { confirmDialog } from '$lib/stores/confirm.svelte';
 import { toast } from '$lib/stores/toast';
 import type { LoadBalancerDetail, Listener, Pool, Member, LbStatusNode } from '$lib/types/loadbalancer';
+import { isDroverLoadBalancer, loadBalancerDeleteConfirmation } from '$lib/utils/droverLoadBalancer';
 
 export function provisioningColor(status: string): string {
   return status === 'ERROR' ? 'text-red-400' : 'text-gray-400';
@@ -37,7 +38,7 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
   const isErrored = $derived(
     !!lb && (lb.status === 'ERROR' || lb.status?.includes('ERROR')),
   );
-
+  const isProtected = $derived(isDroverLoadBalancer(lb));
   // selectedPoolId 변화 시 멤버 fetch (token/projectId는 untrack)
   $effect(() => {
     const poolId = selectedPoolId;
@@ -85,7 +86,8 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
     }
   }
 
-  async function createListener() {
+  async function createListener(form?: { protocol: string; protocol_port: number; name: string }): Promise<boolean> {
+    if (form) listenerForm = { ...form };
     saving = true;
     try {
       await api.post(
@@ -97,8 +99,10 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
       showAddListener = false;
       listenerForm = { protocol: 'HTTP', protocol_port: 80, name: '' };
       await fetchAll();
+      return true;
     } catch (e) {
       toast.error('리스너 생성 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+      return false;
     } finally {
       saving = false;
     }
@@ -125,7 +129,8 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
     showAddListener = !showAddListener;
   }
 
-  async function createPool() {
+  async function createPool(form?: { protocol: string; lb_algorithm: string; name: string }): Promise<boolean> {
+    if (form) poolForm = { ...form };
     saving = true;
     try {
       await api.post(
@@ -137,8 +142,10 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
       showAddPool = false;
       poolForm = { protocol: 'HTTP', lb_algorithm: 'ROUND_ROBIN', name: '' };
       await fetchAll();
+      return true;
     } catch (e) {
       toast.error('풀 생성 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+      return false;
     } finally {
       saving = false;
     }
@@ -170,8 +177,9 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
     showAddPool = !showAddPool;
   }
 
-  async function addMember() {
-    if (!selectedPoolId) return;
+  async function addMember(form?: { address: string; protocol_port: number; weight: number; name: string }): Promise<boolean> {
+    if (!selectedPoolId) return false;
+    if (form) memberForm = { ...form };
     saving = true;
     try {
       await api.post(
@@ -187,8 +195,10 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
         opts.token(),
         opts.projectId(),
       );
+      return true;
     } catch (e) {
       toast.error('멤버 추가 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+      return false;
     } finally {
       saving = false;
     }
@@ -217,7 +227,8 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
 
   async function deleteLb() {
     const id = opts.lbId();
-    if (!(await confirmDialog(`로드밸런서 "${lb?.name || id}"을 삭제하시겠습니까? (연결된 리스너/풀/멤버도 모두 삭제됩니다)`)))
+    const message = loadBalancerDeleteConfirmation(lb, id);
+    if (!(await confirmDialog(message)))
       return;
     saving = true;
     try {
@@ -252,7 +263,7 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
     get memberForm() { return memberForm; },
     // Derived
     get isErrored() { return isErrored; },
-    // Handlers
+    get isProtected() { return isProtected; },
     fetchAll,
     createListener,
     deleteListener,

@@ -1,16 +1,18 @@
 {
 	"name": "frontend",
 	"private": true,
-	"version": "1.18.1",
+	"version": "1.21.0",
 	"type": "module",
 	"scripts": {
-		"dev": "vite dev",
+		"dev": "node scripts/run-with-file-log.mjs vite dev",
+		"dev:raw": "vite dev",
 		"build": "svelte-kit sync && vite build",
-		"preview": "vite preview",
+		"preview": "node scripts/run-with-file-log.mjs vite preview",
+		"preview:raw": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-		"test": "vitest run",
+		"test": "vitest run && node --test scripts/run-with-file-log.test.mjs",
 		"test:watch": "vitest",
 		"test:coverage": "vitest run --coverage"
 	},

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import Button from './Button.svelte';
+
 	interface Props {
 		title: string;
 		description?: string;
@@ -12,18 +14,13 @@
 	}: Props = $props();
 </script>
 
-<div class="beta-gate rounded-2xl p-8 text-center shadow-xl">
+<div class="beta-gate rounded-lg p-8 text-center">
 	<div class="beta-gate-icon mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full">
 		<span class="text-xl font-semibold">β</span>
 	</div>
 	<h1 class="text-xl font-semibold">{title}</h1>
 	<p class="beta-gate-description mx-auto mt-3 max-w-xl text-sm leading-6">{description}</p>
-	<a
-		href={accountHref}
-		class="beta-gate-link mt-6 inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-offset-2"
-	>
-		베타 설정으로 이동
-	</a>
+	<Button href={accountHref} variant="primary" class="mt-6">베타 설정으로 이동</Button>
 </div>
 
 <style>
@@ -43,14 +40,4 @@
 		color: var(--color-ink-2);
 	}
 
-	.beta-gate-link {
-		background: var(--color-warm);
-		color: var(--color-surface-canvas);
-		--tw-ring-color: color-mix(in oklab, var(--color-warm) 45%, transparent);
-		--tw-ring-offset-color: var(--color-surface-canvas);
-	}
-
-	.beta-gate-link:hover {
-		background: color-mix(in oklab, var(--color-warm) 86%, white);
-	}
 </style>

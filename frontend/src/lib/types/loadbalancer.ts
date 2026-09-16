@@ -5,6 +5,8 @@ export interface LoadBalancer {
   operating_status: string;
   vip_address: string | null;
   vip_subnet_id: string | null;
+  project_id?: string | null;
+  tags?: string[];
 }
 
 export interface LoadBalancerDetail {
@@ -15,6 +17,8 @@ export interface LoadBalancerDetail {
   operating_status: string;
   vip_address: string | null;
   vip_subnet_id: string | null;
+  project_id?: string | null;
+  tags?: string[];
 }
 
 export interface Listener {

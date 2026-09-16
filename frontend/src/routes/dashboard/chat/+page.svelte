@@ -4,8 +4,8 @@
 	let {
 		data
 	}: {
-		data: { workspaceId: number | null; initialSettingsSection: 'usage' | 'mcp' };
+		data: { workspaceId: number | null };
 	} = $props();
 </script>
 
-<ChatPanel initialWorkspaceId={data.workspaceId} initialSettingsSection={data.initialSettingsSection} />
+<ChatPanel initialWorkspaceId={data.workspaceId} />

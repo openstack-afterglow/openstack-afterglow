@@ -10,15 +10,16 @@ import type { Instance } from '$lib/types/compute';
 import type { FloatingIpDetail, PortInfo, NetworkInfo } from '$lib/types/networks';
 import type { SecurityGroup } from '$lib/types/securityGroup';
 import type { Volume as VolumeInfo } from '$lib/types/volume';
-import type { VolumeAttachment } from '$lib/types/volume';
+import type { FlavorOption } from '$lib/types/flavor';
 import type { SecurityGroupRule } from '$lib/types/securityGroup';
 
-export interface Flavor {
-	id: string;
-	name: string;
-	vcpus: number;
-	ram: number;
-	disk: number;
+interface VolumeAttachment {
+	volume_id: string;
+	name?: string | null;
+	device?: string | null;
+	delete_on_termination?: boolean;
+	size?: number | null;
+	status?: string | null;
 }
 
 export interface PasswordPrecheck {
@@ -61,7 +62,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	// Admin domain state
 	let passwordPrecheck = $state<PasswordPrecheck | null>(null);
 	let passwordPrecheckLoading = $state(false);
-	let resizeFlavors = $state<Flavor[]>([]);
+	let resizeFlavors = $state<FlavorOption[]>([]);
 	let resizeLoading = $state(false);
 	let resizeError = $state('');
 	let migrateHosts = $state<{ name: string; state: string; status: string; cpu_model: string | null }[]>([]);
@@ -443,7 +444,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		resizeFlavors = [];
 		resizeError = '';
 		try {
-			resizeFlavors = await api.get<Flavor[]>('/api/v1/flavors', tok(), ownPid());
+			resizeFlavors = await api.get<FlavorOption[]>('/api/v1/flavors', tok(), ownPid());
 		} catch {
 			resizeFlavors = [];
 		}

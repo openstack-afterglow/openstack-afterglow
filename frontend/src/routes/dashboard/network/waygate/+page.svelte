@@ -553,10 +553,10 @@
 />
 
 {#if selectedServer}
-	<SlidePanel onClose={closePanel} width="w-full md:w-[70vw] max-w-3xl" storageKey="slidePanel.waygate-detail.width">
+	<SlidePanel onClose={closePanel} ariaLabel="Waygate 서버 상세" width="w-full md:w-[70vw] max-w-3xl" storageKey="slidePanel.waygate-detail.width">
 		<div class="p-6">
 			<div class="mb-5 flex items-center justify-between">
-				<button onclick={closePanel} class="text-[var(--color-ink-2)] hover:text-[var(--color-ink-0)] text-sm transition-colors">✕ 닫기</button>
+				<!-- 닫기 버튼은 SlidePanel 이 제공한다(`[data-slide-panel-close]`) -->
 				<AutoRefreshControl
 					bind:active={panelAr.active}
 					bind:intervalSeconds={panelAr.intervalSeconds}
@@ -764,7 +764,7 @@
 	</div>
 </FormModal>
 
-<Modal open={qrClient !== null} onClose={closeQr}>
+<Modal open={qrClient !== null} onClose={closeQr} ariaLabel="Waygate 클라이언트 QR 코드">
 	<Card surface="modal" padding="lg" class="w-[min(100%-2rem,22rem)] mx-4">
 		<div class="flex items-center justify-between mb-4">
 			<h2 class="text-sm font-medium text-[var(--color-ink-0)]">
@@ -778,7 +778,7 @@
 			<Alert tone="danger">{qrError}</Alert>
 		{:else if qrDataUrl}
 			<div class="flex flex-col items-center gap-3">
-				<img src={qrDataUrl} alt="WireGuard 설정 QR 코드" width="288" height="288" class="rounded-lg bg-white p-2" />
+				<img src={qrDataUrl} alt="WireGuard 설정 QR 코드" width="288" height="288" class="rounded-lg bg-surface-base p-2" />
 				<p class="text-xs text-[var(--color-ink-3)] text-center">
 					모바일 WireGuard 앱에서 "QR 코드로 추가"를 선택해 스캔하세요.
 				</p>

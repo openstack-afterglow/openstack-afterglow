@@ -53,6 +53,10 @@ const recoverableDiagnostic: VolumeDeleteDiagnostic = {
 	volume_id: 'vol-1',
 	status: 'error_deleting',
 	project_id: 'project-1',
+	name: 'critical-volume',
+	size_gb: 120,
+	backend_host: 'controller@ceph#ceph',
+	updated_at: '2026-07-07T00:00:00Z',
 	attachments: [],
 	dependencies: [],
 	messages: [
@@ -67,13 +71,27 @@ const recoverableDiagnostic: VolumeDeleteDiagnostic = {
 			created_at: '2026-07-07T00:00:01Z',
 		},
 	],
-	root_cause_code: 'recoverable_error_deleting',
+	checks: [
+		{ name: 'auth_preflight', state: 'present', detail: null },
+		{ name: 'snapshots', state: 'absent', detail: null },
+		{ name: 'rbd_header', state: 'present', detail: 'aa11bb22cc33' },
+	],
+	backend: {
+		mode: 'inspected',
+		classification: 'consistent',
+		pool: 'volumes',
+		image_name: 'volume-vol-1',
+		image_id: 'aa11bb22cc33',
+		size_bytes: 128849018880,
+		order: 22,
+		parent_spec: null,
+	},
+	root_cause_code: 'backend_present_consistent',
 	confidence: 'high',
-	summary: '삭제가 진행 중 상태에 머물러 있어 자동 복구를 시도할 수 있습니다.',
-	evidence: ['status:error_deleting', 'message:Volume delete is still pending in Cinder.'],
-	recommended_action: '자동 복구를 실행해 상태 재설정 후 삭제를 다시 시도하세요.',
+	summary: 'Cinder 레코드와 Ceph RBD 이미지가 일관되어 자동 복구할 수 있습니다.',
+	evidence: ['status=error_deleting', 'message=Volume delete is still pending in Cinder.'],
+	recommended_action: '자동 복구로 force-delete 후 Ceph backend 부재를 검증하세요.',
 	recovery_available: true,
-	force_delete_available: true,
 };
 
 const blockedDiagnostic: VolumeDeleteDiagnostic = {
@@ -86,12 +104,12 @@ const blockedDiagnostic: VolumeDeleteDiagnostic = {
 			kind: 'snapshot',
 		},
 	],
-	root_cause_code: 'dependent_snapshot_or_backup',
+	checks: [...recoverableDiagnostic.checks, { name: 'snapshots', state: 'present', detail: 'snapshot:snap-1' }],
+	root_cause_code: 'dependent_resource_present',
 	summary: '남아 있는 스냅샷 때문에 자동 복구가 차단되었습니다.',
-	evidence: ['snapshot:snap-1:available'],
+	evidence: ['snapshots=present'],
 	recommended_action: '스냅샷을 먼저 삭제하거나 보존 여부를 확인한 뒤 다시 시도하세요.',
 	recovery_available: false,
-	force_delete_available: false,
 };
 
 const deletedRecoveryResult: VolumeDeleteRecoveryResult = {
@@ -99,11 +117,16 @@ const deletedRecoveryResult: VolumeDeleteRecoveryResult = {
 	status: 'deleted',
 	verified_deleted: true,
 	final_status: null,
+	backend_verification: 'verified',
+	quota_verification: 'verified',
 	diagnostic: recoverableDiagnostic,
 	steps: [
-		{ action: 'diagnose', status: 'success', detail: 'recoverable_error_deleting' },
-		{ action: 'reset_status', status: 'success', detail: 'error/detached' },
-		{ action: 'delete', status: 'success', detail: 'delete accepted' },
+		{ action: 'diagnose', status: 'success', detail: 'backend_present_consistent' },
+		{ action: 'recheck_state', status: 'success', detail: 'error_deleting' },
+		{ action: 'force_delete', status: 'success', detail: 'force_delete_submitted' },
+		{ action: 'verify_after_force_delete', status: 'success', detail: 'deleted' },
+		{ action: 'backend_verify', status: 'success', detail: 'backend_absent' },
+		{ action: 'quota_verify', status: 'success', detail: 'volumes:10→9,gigabytes:120→0' },
 	],
 };
 
@@ -112,8 +135,18 @@ const blockedRecoveryResult: VolumeDeleteRecoveryResult = {
 	status: 'blocked',
 	verified_deleted: false,
 	final_status: 'error_deleting',
+	backend_verification: 'unavailable',
+	quota_verification: 'unavailable',
 	diagnostic: blockedDiagnostic,
 	steps: [{ action: 'diagnose', status: 'success', detail: 'snapshot blocker detected' }],
+};
+
+const residueRecoveryResult: VolumeDeleteRecoveryResult = {
+	...deletedRecoveryResult,
+	status: 'backend_residue',
+	verified_deleted: false,
+	backend_verification: 'residue',
+	quota_verification: 'verified',
 };
 
 function mockVolumeGets(volume: AdminVolumeDetail, diagnostic?: VolumeDeleteDiagnostic) {
@@ -155,9 +188,12 @@ describe('AdminVolumeDeleteDiagnosticSection', () => {
 		});
 
 		expect(await screen.findByText('삭제 진단 및 자동 복구')).toBeTruthy();
-		expect(screen.getByText('recoverable_error_deleting')).toBeTruthy();
-		expect(screen.getByText(/status:error_deleting/)).toBeTruthy();
-		expect(screen.getByText(/message:Volume delete is still pending in Cinder\./)).toBeTruthy();
+		expect(screen.getByText('backend_present_consistent')).toBeTruthy();
+		expect(screen.getByText(/auth_preflight: present/)).toBeTruthy();
+		expect(screen.getByText(/inspected \/ consistent/)).toBeTruthy();
+		expect(screen.getByText(/pool=volumes/)).toBeTruthy();
+		expect(screen.getByText(/status=error_deleting/)).toBeTruthy();
+		expect(screen.getByText(/message=Volume delete is still pending in Cinder\./)).toBeTruthy();
 		expect(screen.getByText(/req-123/)).toBeTruthy();
 		expect(screen.getByRole('button', { name: '자동 복구 실행' })).toBeTruthy();
 	});
@@ -183,6 +219,7 @@ describe('AdminVolumeDeleteDiagnosticSection', () => {
 		});
 		expect(mocks.confirmDialog.mock.calls[0][0]).toContain('critical-volume');
 		expect(mocks.confirmDialog.mock.calls[0][0]).toContain(recoverableDiagnostic.summary);
+		expect(mocks.confirmDialog.mock.calls[0][0]).toContain('Ceph RBD metadata');
 	});
 
 	it('does not request diagnostics or render the section for available volumes', async () => {
@@ -215,5 +252,24 @@ describe('AdminVolumeDeleteDiagnosticSection', () => {
 		expect(onRefresh).not.toHaveBeenCalled();
 		expect(onClose).not.toHaveBeenCalled();
 		expect(screen.getByText('삭제 진단 및 자동 복구')).toBeTruthy();
+	});
+
+	it('keeps backend residue visible, refreshes data, and does not close the panel', async () => {
+		mocks.confirmDialog.mockResolvedValue(true);
+		mocks.apiPost.mockResolvedValue(residueRecoveryResult);
+		const onRefresh = vi.fn();
+		const onClose = vi.fn();
+		renderPanel({ onRefresh, onClose });
+
+		await screen.findByRole('button', { name: '자동 복구 실행' });
+		await fireEvent.click(screen.getByRole('button', { name: '자동 복구 실행' }));
+
+		await waitFor(() => {
+			expect(screen.getByText('Ceph backend 잔여물 확인됨')).toBeTruthy();
+			expect(screen.getByText('backend_verification=residue')).toBeTruthy();
+			expect(screen.getByText('quota_verification=verified')).toBeTruthy();
+		});
+		expect(onRefresh).toHaveBeenCalledTimes(1);
+		expect(onClose).not.toHaveBeenCalled();
 	});
 });

@@ -51,6 +51,7 @@ logger = logging.getLogger(__name__)
 
 
 _backend: Cache | None = None
+_inflight: dict[tuple[int, str], asyncio.Task[Any]] = {}
 
 
 def _get_backend() -> Cache:
@@ -70,6 +71,7 @@ def set_backend(backend: Cache | None) -> None:
     """테스트 전용 — 백엔드 주입 / 리셋."""
     global _backend
     _backend = backend
+    _inflight.clear()
 
 
 def _make_serializable(obj: Any) -> Any:
@@ -99,6 +101,62 @@ async def _get_redis() -> aioredis.Redis:
     return _get_client()
 
 
+async def _load_and_store(
+    backend: Cache,
+    key: str,
+    ttl: int,
+    fn: Callable[[], Any],
+) -> Any:
+    metrics.increment("cache.miss")
+    if asyncio.iscoroutinefunction(fn):
+        result = await fn()
+    else:
+        result = await asyncio.to_thread(fn)
+
+    try:
+        payload = json.dumps(_make_serializable(result))
+        await backend.set(key, payload, ttl)
+    except Exception as e:
+        metrics.increment("cache.error")
+        logger.warning("캐시 쓰기 실패 (%s): %s", key, e)
+
+    return result
+
+
+async def _refresh_after(
+    backend: Cache,
+    key: str,
+    ttl: int,
+    fn: Callable[[], Any],
+    previous: asyncio.Task[Any] | None,
+) -> Any:
+    if previous is not None:
+        try:
+            await asyncio.shield(previous)
+        except (Exception, asyncio.CancelledError):
+            pass
+
+    try:
+        await backend.delete(key)
+    except Exception:
+        pass
+    return await _load_and_store(backend, key, ttl, fn)
+
+
+def _track_flight(flight_key: tuple[int, str], task: asyncio.Task[Any]) -> None:
+    _inflight[flight_key] = task
+
+    def _clear_flight(done: asyncio.Task[Any]) -> None:
+        if _inflight.get(flight_key) is done:
+            _inflight.pop(flight_key, None)
+        try:
+            done.exception()
+        except asyncio.CancelledError:
+            pass
+
+    task.add_done_callback(_clear_flight)
+
+
 async def cached_call(
     key: str,
     ttl: int,
@@ -111,7 +169,7 @@ async def cached_call(
 
     fn 이 동기 함수인 경우 asyncio.to_thread 로 실행한다.
     Redis 연결 실패 시 캐시 없이 fn 을 직접 실행한다 (silent fail).
-    refresh=True 이면 기존 캐시를 삭제하고 fn 을 강제 실행한다.
+    refresh=True 이면 진행 중인 동일 key 작업 뒤에 fn 을 강제 실행하고 새 값을 최종 저장한다.
     enabled=False 이면 캐시 read/write 를 모두 건너뛰고 fn 만 실행한다
     (인프라 캐시 — 토큰 검증, prewarm 등은 enabled 를 생략해 기본 True 유지).
     """
@@ -122,12 +180,14 @@ async def cached_call(
         return await asyncio.to_thread(fn)
 
     backend = _get_backend()
+    loop = asyncio.get_running_loop()
+    flight_key = (id(loop), key)
 
     if refresh:
-        try:
-            await backend.delete(key)
-        except Exception:
-            pass
+        previous = _inflight.get(flight_key)
+        task = loop.create_task(_refresh_after(backend, key, ttl, fn, previous))
+        _track_flight(flight_key, task)
+        return await asyncio.shield(task)
 
     # 1) 캐시 hit 시도
     try:
@@ -144,22 +204,17 @@ async def cached_call(
         metrics.increment("cache.error")
         logger.warning("캐시 읽기 실패 (%s): %s", key, e)
 
-    # 2) 캐시 미스 — fn 실행
-    metrics.increment("cache.miss")
-    if asyncio.iscoroutinefunction(fn):
-        result = await fn()
+    # 2) 캐시 미스 — 같은 프로세스/이벤트 루프의 동일 키 조회를 single-flight로 합친다.
+    # Redis cache가 동시에 만료될 때 Keystone/OpenStack origin 호출이 요청 수만큼
+    # 증폭되지 않도록 하되, 한 호출자의 취소가 공유 origin 작업을 취소하지 않게 한다.
+    task = _inflight.get(flight_key)
+    if task is None:
+        task = loop.create_task(_load_and_store(backend, key, ttl, fn))
+        _track_flight(flight_key, task)
     else:
-        result = await asyncio.to_thread(fn)
+        metrics.increment("cache.coalesced")
 
-    # 3) 결과를 캐시에 저장 (read-through 경로 — 허용)
-    try:
-        payload = json.dumps(_make_serializable(result))
-        await backend.set(key, payload, ttl)
-    except Exception as e:
-        metrics.increment("cache.error")
-        logger.warning("캐시 쓰기 실패 (%s): %s", key, e)
-
-    return result
+    return await asyncio.shield(task)
 
 
 async def invalidate(pattern: str) -> None:

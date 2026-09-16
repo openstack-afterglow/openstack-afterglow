@@ -270,7 +270,7 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 			last_used_at: null,
 			revoked_at: null,
 			is_lumen_default: false,
-		};
+		} satisfies (typeof state.mcpAccess.personalTokens)[number];
 		state.mcpAccess.personalTokens.unshift(record);
 		return { ...record, token: `sk-afgl-mock-${id}` };
 	}
@@ -353,6 +353,10 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	}
 	if (profile === 'admin' && pathname === '/api/v1/admin/volumes/status-summary') return state.admin.volumeStatusSummary;
 	if (profile === 'admin' && pathname === '/api/v1/admin/timeseries/volumes') return state.admin.volumeTimeseries;
+	const adminVolumeDiagnosticId = pathname.match(/^\/api\/v1\/admin\/volumes\/([^/]+)\/delete-diagnostics$/)?.[1];
+	if (profile === 'admin' && adminVolumeDiagnosticId) {
+		return state.admin.volumeDeleteDiagnostics[adminVolumeDiagnosticId] ?? mockUnsupported();
+	}
 	const adminVolumeId = pathname.match(/^\/api\/v1\/admin\/volumes\/([^/]+)$/)?.[1];
 	if (profile === 'admin' && adminVolumeId) return state.admin.volumeDetails[adminVolumeId] ?? mockUnsupported();
 
@@ -517,7 +521,16 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	if (method === 'GET' && pathname === '/api/v1/clusters') return [];
 	if (method === 'GET' && pathname === '/api/v1/clusters/templates') return [];
 	if (method === 'GET' && pathname === '/api/v1/containers') return [];
-	if (method === 'GET' && pathname === '/api/v1/database-instances') return [];
+	if (method === 'GET' && pathname === '/api/v1/database-instances') {
+		return [{
+			id: 'mock-trove-instance-1', name: 'sample-customer-mysql', status: 'ACTIVE',
+			datastore: { type: 'mysql', version: '8.0' }, flavor_id: 'db.small',
+			flavor_ram: 2048, flavor_vcpus: 2, size: 20, created_at: NOW_ISO,
+			hostname: 'sample-customer-mysql.internal', ip: '192.0.2.41', ips: ['192.0.2.41'],
+			address_map: { private: ['192.0.2.41'] }, volume_used: 4.25,
+			...(params.get('all_projects') === 'true' ? { project_id: state.selectedProjectId } : {}),
+		}];
+	}
 	if (method === 'GET' && pathname === '/api/v1/database-instances/backups') return [];
 	if (method === 'GET' && pathname === '/api/v1/database-instances/flavors') return [];
 	if (method === 'GET' && pathname === '/api/v1/object-storage') return [{ name: 'sample-artifacts', count: 12, bytes: 734003200 }];
@@ -592,15 +605,175 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 		};
 	}
 
-	if (method === 'GET' && pathname === '/api/v1/networks') return state.topology.networks.map((net) => ({ id: net.id, name: net.name, status: net.status, subnets: net.subnet_details.map((subnet) => subnet.id), is_external: net.is_external, is_shared: net.is_shared }));
+	if (method === 'GET' && pathname === '/api/v1/networks') return state.topology.networks.map((net) => ({ id: net.id, name: net.name, status: net.status, subnets: net.subnet_details.map((subnet) => subnet.id), cidrs: net.subnet_details.map((subnet) => subnet.cidr), is_external: net.is_external, is_shared: net.is_shared, project_id: net.project_id }));
 	if (method === 'GET' && pathname === '/api/v1/networks/floating-ips') return state.topology.floating_ips;
-	if (method === 'GET' && pathname === '/api/v1/networks/topology') return state.topology;
+	if (method === 'GET' && pathname === '/api/v1/networks/topology') {
+		return {
+			...state.topology,
+			networks: state.topology.networks.map((n) => ({ ...n, subnet_details: [...n.subnet_details] })),
+			routers: state.topology.routers.map((r) => ({ ...r, interface_ips: [...r.interface_ips], connected_subnet_ids: [...r.connected_subnet_ids] })),
+			instances: state.topology.instances.map((inst) => ({ ...inst, ip_addresses: [...inst.ip_addresses], network_names: [...inst.network_names] })),
+		};
+	}
 	if (method === 'GET' && pathname === '/api/v1/networks/topology/traffic') return state.traffic;
-	const networkId = pathname.match(/^\/api\/v1\/networks\/([^/]+)$/)?.[1];
-	if (method === 'GET' && networkId) return networkDetail(networkId) ?? mockUnsupported();
-	if (method === 'GET' && pathname === '/api/v1/routers') return state.topology.routers.map((router) => ({ id: router.id, name: router.name, status: router.status, external_gateway_network_id: router.external_gateway_network_id, connected_subnet_ids: router.connected_subnet_ids }));
+	if (method === 'GET' && pathname === '/api/v1/networks/topology/traffic/history') {
+		// 결정론적 합성 시계열 — 목업은 난수를 쓰지 않는다. 마지막 샘플을 instant 값과 일치시켜
+		// 패널의 "합산 트래픽" 행과 스파크라인이 어긋나 보이지 않게 한다.
+		const netId = params.get('network_id') ?? '';
+		const range = params.get('range') ?? '15m';
+		const spans: Record<string, [number, number]> = { '15m': [900, 15], '30m': [1800, 30], '1h': [3600, 30] };
+		const [rangeS, stepS] = spans[range] ?? spans['15m'];
+		const n = rangeS / stepS;
+		const cur = state.traffic.networks[netId];
+		const series = cur
+			? Array.from({ length: n }, (_, i) => {
+				const k = i === n - 1 ? 1 : 0.75 + 0.25 * Math.sin((i / n) * Math.PI * 4);
+				return {
+					ts: state.traffic.ts - (n - 1 - i) * stepS,
+					rx_bps: Math.round(cur.rx_bps * k),
+					tx_bps: Math.round(cur.tx_bps * k),
+				};
+			})
+			: [];
+		const rxs = series.map((p) => p.rx_bps);
+		const txs = series.map((p) => p.tx_bps);
+		const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+		return {
+			network_id: netId,
+			range,
+			step_s: stepS,
+			window: '30s',
+			series,
+			stats: series.length
+				? {
+					avg: { rx_bps: mean(rxs), tx_bps: mean(txs) },
+					max: { rx_bps: Math.max(...rxs), tx_bps: Math.max(...txs) },
+					latest: { rx_bps: rxs[rxs.length - 1], tx_bps: txs[txs.length - 1] },
+				}
+				: { avg: null, max: null, latest: null },
+			_meta: { source: 'network_nic_sum', router_traffic: 'exporter_required' },
+		};
+	}
+	if (method === 'POST' && pathname === '/api/v1/networks') {
+		const payload = body as { name?: string; subnet?: { name?: string; cidr?: string; gateway_ip?: string | null; enable_dhcp?: boolean } } | null;
+		const id = `mock-net-${state.topology.networks.length + 1}`;
+		const subnet = payload?.subnet?.cidr
+			? [{ id: `${id}-subnet`, name: payload.subnet.name || `${payload.name || 'network'}-subnet`, cidr: payload.subnet.cidr, gateway_ip: payload.subnet.gateway_ip ?? null, dhcp_enabled: payload.subnet.enable_dhcp ?? true }]
+			: [];
+		state.topology.networks.push({ id, name: payload?.name || id, status: 'ACTIVE', is_external: false, is_shared: false, project_id: state.selectedProjectId, subnet_details: subnet });
+		return { id, name: payload?.name || id, status: 'ACTIVE', subnets: subnet.map((item) => item.id), cidrs: subnet.map((item) => item.cidr) };
+	}
+	const networkSubnet = pathname.match(/^\/api\/v1\/networks\/([^/]+)\/subnets$/)?.[1];
+	if (method === 'POST' && networkSubnet) {
+		const network = state.topology.networks.find((item) => item.id === networkSubnet);
+		const payload = body as { name?: string; cidr?: string; gateway_ip?: string | null; enable_dhcp?: boolean } | null;
+		if (!network || network.project_id !== state.selectedProjectId || !payload?.cidr) return mockUnsupported();
+		const subnet = { id: `${network.id}-subnet-${network.subnet_details.length + 1}`, name: payload.name || `${network.name}-subnet`, cidr: payload.cidr, gateway_ip: payload.gateway_ip ?? null, dhcp_enabled: payload.enable_dhcp ?? true };
+		network.subnet_details.push(subnet);
+		return subnet;
+	}
+	if (method === 'POST' && pathname === '/api/v1/routers') {
+		const payload = body as { name?: string; external_network_id?: string } | null;
+		const id = `mock-router-${state.topology.routers.length + 1}`;
+		state.topology.routers.push({ id, name: payload?.name || id, status: 'ACTIVE', external_gateway_network_id: payload?.external_network_id ?? null, external_gateway_ips: payload?.external_network_id ? ['203.0.113.199'] : [], interface_ips: [], is_distributed: false, is_ha: false, connected_subnet_ids: [], dvr_subnet_ids: [], project_id: state.selectedProjectId });
+		return { id, name: payload?.name || id, status: 'ACTIVE', external_gateway_network_id: payload?.external_network_id ?? null, connected_subnet_ids: [] };
+	}
+	const instanceInterface = pathname.match(/^\/api\/v1\/instances\/([^/]+)\/interfaces$/)?.[1];
+	if (method === 'POST' && instanceInterface) {
+		const payload = body as { net_id?: string } | null;
+		const instance = state.topology.instances.find((item) => item.id === instanceInterface);
+		const network = state.topology.networks.find((item) => item.id === payload?.net_id);
+		if (!instance || !network || instance.ip_addresses.some((ip) => ip.network_id === network.id)) return mockUnsupported();
+		const n = instance.ip_addresses.length + 1;
+		instance.ip_addresses.push({ addr: `10.250.${n}.10`, type: 'fixed', network_name: network.name, network_id: network.id, port_id: `mock-port-${instance.id}-${network.id}`, mac_addr: `fa:16:3e:00:00:${n < 10 ? '0' + n : n}` });
+		if (!instance.network_names.includes(network.name)) instance.network_names.push(network.name);
+		return { net_id: network.id };
+	}
+	const routerGateway = pathname.match(/^\/api\/v1\/routers\/([^/]+)\/gateway$/)?.[1];
+	if (method === 'POST' && routerGateway) {
+		const payload = body as { external_network_id?: string } | null;
+		const router = state.topology.routers.find((item) => item.id === routerGateway);
+		const network = state.topology.networks.find((item) => item.id === payload?.external_network_id && item.is_external);
+		if (!router || !network) return mockUnsupported();
+		router.external_gateway_network_id = network.id;
+		return routerDetail(router.id);
+	}
+	const routerInterfaces = pathname.match(/^\/api\/v1\/routers\/([^/]+)\/interfaces$/)?.[1];
+	if (method === 'POST' && routerInterfaces) {
+		const payload = body as { subnet_id?: string; auto_gateway?: boolean } | null;
+		const router = state.topology.routers.find((item) => item.id === routerInterfaces);
+		const network = state.topology.networks.find((item) => item.subnet_details.some((subnet) => subnet.id === payload?.subnet_id));
+		const subnet = network?.subnet_details.find((item) => item.id === payload?.subnet_id);
+		if (!router || !network || router.project_id !== state.selectedProjectId || network.project_id !== state.selectedProjectId || !subnet || router.connected_subnet_ids.includes(subnet.id)) return mockUnsupported();
+		if (payload?.auto_gateway && !subnet.gateway_ip && subnet.cidr) {
+			const m = subnet.cidr.match(/^(\d+\.\d+\.\d+)\.\d+\/\d+$/);
+			subnet.gateway_ip = m ? `${m[1]}.1` : '10.250.0.1';
+		}
+		const gw = subnet.gateway_ip ?? '10.250.0.1';
+		router.connected_subnet_ids.push(subnet.id);
+		router.interface_ips.push({ subnet_id: subnet.id, ip_address: gw });
+		return routerDetail(router.id);
+	}
+	const routerInterfaceDelete = pathname.match(/^\/api\/v1\/routers\/([^/]+)\/interfaces\/([^/]+)$/);
+	if (method === 'DELETE' && routerInterfaceDelete) {
+		const [, rId, sId] = routerInterfaceDelete;
+		const router = state.topology.routers.find((item) => item.id === rId);
+		if (router) {
+			router.connected_subnet_ids = router.connected_subnet_ids.filter((id) => id !== sId);
+			router.interface_ips = router.interface_ips.filter((item) => item.subnet_id !== sId);
+		}
+		return { success: true };
+	}
+	const routerGatewayDelete = pathname.match(/^\/api\/v1\/routers\/([^/]+)\/gateway$/)?.[1];
+	if (method === 'DELETE' && routerGatewayDelete) {
+		const router = state.topology.routers.find((item) => item.id === routerGatewayDelete);
+		if (router) router.external_gateway_network_id = null;
+		return { success: true };
+	}
+	const subnetItem = pathname.match(/^\/api\/v1\/networks\/subnets\/([^/]+)$/)?.[1];
+	if (method === 'PUT' && subnetItem) {
+		const payload = body as { name?: string; gateway_ip?: string | null; enable_dhcp?: boolean } | null;
+		for (const net of state.topology.networks) {
+			const sub = net.subnet_details.find((s) => s.id === subnetItem);
+			if (sub) {
+				if (payload?.name !== undefined) sub.name = payload.name || sub.name;
+				if (payload?.gateway_ip !== undefined) sub.gateway_ip = payload.gateway_ip;
+				if (payload?.enable_dhcp !== undefined) sub.dhcp_enabled = payload.enable_dhcp;
+				return sub;
+			}
+		}
+		return mockUnsupported();
+	}
+	if (method === 'DELETE' && subnetItem) {
+		for (const net of state.topology.networks) {
+			net.subnet_details = net.subnet_details.filter((s) => s.id !== subnetItem);
+		}
+		for (const r of state.topology.routers) {
+			r.connected_subnet_ids = r.connected_subnet_ids.filter((id) => id !== subnetItem);
+			r.interface_ips = r.interface_ips.filter((item) => item.subnet_id !== subnetItem);
+		}
+		return { success: true };
+	}
 	const routerId = pathname.match(/^\/api\/v1\/routers\/([^/]+)$/)?.[1];
+	if (method === 'DELETE' && routerId) {
+		state.topology.routers = state.topology.routers.filter((item) => item.id !== routerId);
+		return { success: true };
+	}
+	if (method === 'GET' && pathname === '/api/v1/routers') return state.topology.routers.map((router) => ({ id: router.id, name: router.name, status: router.status, project_id: router.project_id, external_gateway_network_id: router.external_gateway_network_id, connected_subnet_ids: router.connected_subnet_ids }));
 	if (method === 'GET' && routerId) return routerDetail(routerId) ?? mockUnsupported();
+	const networkId = pathname.match(/^\/api\/v1\/networks\/([^/]+)$/)?.[1];
+	if (method === 'DELETE' && networkId) {
+		state.topology.networks = state.topology.networks.filter((item) => item.id !== networkId);
+		return { success: true };
+	}
+	if (method === 'PUT' && pathname === '/api/v1/networks/default') {
+		const payload = body as { network_id?: string } | null;
+		return { network_id: payload?.network_id ?? state.topology.networks[0]?.id };
+	}
+	if (method === 'GET' && pathname === '/api/v1/networks/default') {
+		return { network_id: state.topology.networks[0]?.id ?? 'mock-net-1' };
+	}
+	if (method === 'GET' && networkId) return networkDetail(networkId) ?? mockUnsupported();
 
 	if (method === 'GET' && pathname === '/api/v1/k3s/clusters') {
 		const includeDeleted = params.get('include_deleted') === 'true';

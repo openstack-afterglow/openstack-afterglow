@@ -40,6 +40,34 @@ class ImageDetail(ImageInfo):
     direct_url: str | None = None
 
 
+class FlavorQuotaBlocker(BaseModel):
+    code: str
+    resource: str | None = None
+    required: int | None = None
+    remaining: int | None = None
+
+
+class FlavorDemandInfo(BaseModel):
+    instances: int
+    cores: int
+    ram_mb: int
+    gpus: dict[str, int] = {}
+
+
+class FlavorRemainingInfo(BaseModel):
+    instances: int
+    cores: int
+    ram_mb: int
+    gpus: dict[str, int] = {}
+
+
+class FlavorEligibility(BaseModel):
+    selectable: bool
+    requirements: FlavorDemandInfo
+    remaining: FlavorRemainingInfo
+    blockers: list[FlavorQuotaBlocker] = []
+
+
 class FlavorInfo(BaseModel):
     id: str
     name: str
@@ -48,6 +76,7 @@ class FlavorInfo(BaseModel):
     disk: int  # GB
     is_public: bool = True
     extra_specs: dict = {}
+    eligibility: FlavorEligibility | None = None
 
     @property
     def is_gpu(self) -> bool:

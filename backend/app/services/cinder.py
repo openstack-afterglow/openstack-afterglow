@@ -203,8 +203,47 @@ def get_volume_image_metadata(conn: openstack.connection.Connection, volume_id: 
         return None
 
 
-def list_backups(conn: openstack.connection.Connection) -> list[dict]:
-    return [_backup_to_dict(b) for b in conn.block_storage.backups(details=True)]
+def list_backups(
+    conn: openstack.connection.Connection,
+    *,
+    volume_id: str | None = None,
+    all_projects: bool = False,
+) -> list[dict]:
+    kwargs: dict = {}
+    if volume_id:
+        kwargs["volume_id"] = volume_id
+    if all_projects:
+        kwargs["all_projects"] = True
+    return [_backup_to_dict(b) for b in conn.block_storage.backups(details=True, **kwargs)]
+
+
+def list_volume_attachments(conn: openstack.connection.Connection, volume_id: str) -> list[dict]:
+    endpoint = conn.block_storage.get_endpoint().rstrip("/")
+    response = conn.session.get(
+        f"{endpoint}/attachments",
+        params={"all_tenants": "1", "volume_id": volume_id},
+        headers={"OpenStack-API-Version": "volume 3.70"},
+    )
+    response.raise_for_status()
+    payload = response.json()
+    return list(payload.get("attachments", [])) if isinstance(payload, dict) else []
+
+
+def list_volume_messages(conn: openstack.connection.Connection, volume_id: str) -> list[dict]:
+    endpoint = conn.block_storage.get_endpoint().rstrip("/")
+    response = conn.session.get(
+        f"{endpoint}/messages",
+        params={
+            "all_tenants": "1",
+            "resource_uuid": volume_id,
+            "limit": "50",
+            "sort": "created_at:desc",
+        },
+        headers={"OpenStack-API-Version": "volume 3.70"},
+    )
+    response.raise_for_status()
+    payload = response.json()
+    return list(payload.get("messages", [])) if isinstance(payload, dict) else []
 
 
 def get_backup(conn: openstack.connection.Connection, backup_id: str) -> dict:
@@ -242,10 +281,13 @@ def list_snapshots(
     conn: openstack.connection.Connection,
     volume_id: str | None = None,
     caller_project_id: str | None = None,
+    all_projects: bool = False,
 ) -> list[dict]:
-    kwargs = {}
+    kwargs: dict = {}
     if volume_id:
         kwargs["volume_id"] = volume_id
+    if all_projects:
+        kwargs["all_projects"] = True
     snapshots = [_snapshot_to_dict(s) for s in conn.block_storage.snapshots(details=True, **kwargs)]
     if caller_project_id is not None:
         snapshots = [s for s in snapshots if s.get("project_id") == caller_project_id]

@@ -293,7 +293,7 @@
 		</section>
 	</Card>
 
-	<Modal bind:open={showIssuedToken} onClose={dismissIssuedToken}>
+	<Modal bind:open={showIssuedToken} onClose={dismissIssuedToken} ariaLabel="새 MCP 토큰">
 		<Card surface="modal" padding="lg" class="issued-token-dialog">
 			<h2>새 MCP 토큰</h2>
 			<p>이 값은 지금만 표시됩니다. 복사 후 이 창을 닫으면 메모리에서도 제거됩니다.</p>
@@ -326,7 +326,6 @@
 	.record-title { gap: 0.5rem; flex-wrap: wrap; }
 	.record-title strong { color: var(--color-ink-0); font-size: 0.875rem; }
 	.record-actions { flex-wrap: wrap; justify-content: flex-end; }
-	.default-note { color: var(--color-state-info) !important; }
 	:global(.issued-token-dialog) { width: min(32rem, calc(100vw - 2rem)); display: grid; gap: 0.875rem; }
 	:global(.issued-token-dialog pre) { margin: 0; max-height: 12rem; overflow: auto; padding: 0.75rem; border: 1px solid var(--color-line); border-radius: 0.5rem; background: var(--color-surface-sunken); color: var(--color-ink-0); font-size: 0.75rem; white-space: pre-wrap; word-break: break-all; }
 	.dialog-actions { justify-content: flex-end; gap: 0.5rem; }

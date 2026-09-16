@@ -6,6 +6,7 @@ export interface Network {
   cidrs?: string[];
   is_external: boolean;
   is_shared: boolean;
+  project_id?: string | null;
 }
 
 export interface Router {
@@ -14,6 +15,7 @@ export interface Router {
   status: string;
   external_gateway_network_id: string | null;
   connected_subnet_ids: string[];
+  project_id?: string | null;
 }
 
 export type RouterListItem = Router;
@@ -88,6 +90,7 @@ export interface RouterInfo {
   status?: string;
   external_gateway_network_id: string | null;
   connected_subnet_ids: string[];
+  project_id?: string | null;
 }
 
 export type NetworkRouterInfo = RouterInfo;

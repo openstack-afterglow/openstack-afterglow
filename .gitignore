@@ -219,6 +219,7 @@ afterglow.conf
 afterglow.*.conf
 config.toml
 config.*.toml
+.local-services/
 # Helm 차트의 GPU 디바이스 맵은 시크릿이 아니므로 추적 (ArgoCD가 git에서 읽음)
 !helm/afterglow/files/config.gpu.toml
 backend/tests/integration/credentials.toml
@@ -235,8 +236,10 @@ deploy/k8s/argocd-application-*.yaml
 deploy/k8s-test/
 
 # 로그 파일
-logs/
+logs/*
+!logs/.gitkeep
 *.log
+backend/logs/
 
 # OS 파일
 .DS_Store

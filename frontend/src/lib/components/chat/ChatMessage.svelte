@@ -127,6 +127,35 @@
 		{#if isUser}
 			<div class="user-text">{message.content}</div>
 		{:else}
+			{#if citations.length}
+				<section class="sources" aria-label="답변 출처">
+					<div class="sources-label">
+						<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" stroke-linecap="round" stroke-linejoin="round" /></svg>
+						출처 {citations.length}
+					</div>
+					<ol class="sources-list">
+						{#each citations as c, i (`${c.source_kind}:${c.url ?? c.document_index}:${i}`)}
+							<li>
+								{#if c.url}
+									<a href={c.url} target="_blank" rel="noopener noreferrer nofollow" title={c.url}>
+										<span class="src-num">{i + 1}</span>
+										<span class="src-label">{citationLabel(c)}</span>
+										<span class="src-domain">{citationDomain(c.url)}</span>
+										{#if c.snippet}<span class="src-snippet">{c.snippet}</span>{/if}
+									</a>
+								{:else}
+									<div class="source-document" title={c.snippet ?? undefined}>
+										<span class="src-num">{i + 1}</span>
+										<span class="src-label">{citationLabel(c)}</span>
+										<span class="src-domain">입력 문서</span>
+										{#if c.snippet}<span class="src-snippet">{c.snippet}</span>{/if}
+									</div>
+								{/if}
+							</li>
+						{/each}
+					</ol>
+				</section>
+			{/if}
 			{#if activityItems.length}
 				<ExecutionTimeline items={activityItems} active={streaming} />
 			{:else}
@@ -152,33 +181,6 @@
 			{/if}
 			{#if streaming && metricsText}
 				<div class="live-metric" aria-live="off">{metricsText}</div>
-			{/if}
-			{#if citations.length}
-				<div class="sources">
-					<div class="sources-label">
-						<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" stroke-linecap="round" stroke-linejoin="round" /></svg>
-						출처 {citations.length}
-					</div>
-					<ol class="sources-list">
-						{#each citations as c, i (`${c.source_kind}:${c.url ?? c.document_index}:${i}`)}
-							<li>
-								{#if c.url}
-									<a href={c.url} target="_blank" rel="noopener noreferrer nofollow" title={c.url}>
-										<span class="src-num">{i + 1}</span>
-										<span class="src-label">{citationLabel(c)}</span>
-										<span class="src-domain">{citationDomain(c.url)}</span>
-									</a>
-								{:else}
-									<div class="source-document" title={c.snippet ?? undefined}>
-										<span class="src-num">{i + 1}</span>
-										<span class="src-label">{citationLabel(c)}</span>
-										<span class="src-domain">입력 문서</span>
-									</div>
-								{/if}
-							</li>
-						{/each}
-					</ol>
-				</div>
 			{/if}
 		{/if}
 
@@ -278,7 +280,7 @@
 		border-radius: 0.45rem;
 		border: none;
 		background: transparent;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		cursor: pointer;
 		transition: background 0.12s, color 0.12s;
 	}
@@ -301,7 +303,7 @@
 	}
 	.metric-tag {
 		font-size: 0.68rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		padding-left: 0.3rem;
 		font-variant-numeric: tabular-nums;
 		white-space: nowrap;
@@ -309,21 +311,21 @@
 	.live-metric {
 		margin-top: 0.35rem;
 		font-size: 0.68rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-variant-numeric: tabular-nums;
 	}
 	.sources {
-		margin-top: 0.7rem;
-		padding-top: 0.6rem;
-		border-top: 1px solid var(--color-line);
+		margin-bottom: 0.75rem;
+		padding-bottom: 0.75rem;
+		border-bottom: 1px solid var(--color-line);
 	}
 	.sources-label {
 		display: flex;
 		align-items: center;
 		gap: 0.3rem;
-		font-size: 0.7rem;
+		font-size: 0.75rem;
 		font-weight: 600;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		margin-bottom: 0.4rem;
 	}
 	.sources-list {
@@ -331,21 +333,33 @@
 		margin: 0;
 		padding: 0;
 		display: flex;
-		flex-direction: column;
-		gap: 0.15rem;
+		overflow-x: auto;
+		gap: 0.5rem;
+		padding-bottom: 0.25rem;
+		scroll-snap-type: x proximity;
+}
+	.sources-list li {
+		flex: 0 0 min(16rem, 85%);
+		min-width: 0;
+		scroll-snap-align: start;
 	}
 	.sources-list a,
 	.source-document {
-		display: flex;
-		align-items: baseline;
-		gap: 0.45rem;
-		padding: 0.28rem 0.4rem;
-		border-radius: 0.4rem;
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr);
+		align-content: start;
+		gap: 0.25rem 0.5rem;
+		padding: 0.5rem;
+		min-height: 4.5rem;
+		height: 100%;
+		border: 1px solid var(--color-line);
+		border-radius: 0.5rem;
 		text-decoration: none;
 		color: var(--color-ink-1);
-		font-size: 0.78rem;
+		font-size: 0.8125rem;
 	}
-	.sources-list a:hover {
+	.sources-list a:hover,
+	.sources-list a:focus-visible {
 		background: var(--color-surface-sunken);
 	}
 	.src-num {
@@ -358,22 +372,34 @@
 		border-radius: 0.3rem;
 		background: var(--color-surface-sunken);
 		border: 1px solid var(--color-line);
-		font-size: 0.64rem;
-		color: var(--color-ink-3);
+		font-size: 0.75rem;
+		color: var(--color-ink-2);
 		font-variant-numeric: tabular-nums;
 	}
 	.src-label {
-		flex: 1;
 		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		overflow-wrap: anywhere;
 	}
 	.src-domain {
-		flex-shrink: 0;
-		font-size: 0.68rem;
-		color: var(--color-ink-3);
+		grid-column: 2;
+		min-width: 0;
+		overflow-wrap: anywhere;
+		font-size: 0.75rem;
+		color: var(--color-ink-2);
 	}
+	.src-snippet {
+		grid-column: 2;
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 3;
+		line-clamp: 3;
+		overflow: hidden;
+		overflow-wrap: anywhere;
+		font-size: 0.75rem;
+		line-height: 1.5;
+		color: var(--color-ink-2);
+	}
+	.sources-list a:visited .src-label { color: var(--color-accent-2); }
 	.tool-wrap {
 		max-width: min(92%, 52rem);
 	}

@@ -13,7 +13,7 @@
 </script>
 
 <div class="flex items-center justify-between mb-4">
-	<button onclick={onClose} class="text-gray-400 hover:text-gray-200 text-sm transition-colors">← 목록으로</button>
+	<!-- 닫기 버튼은 SlidePanel 이 제공한다(`[data-slide-panel-close]`). 이 패널은 SlidePanel 안에서만 쓰인다. -->
 	<AutoRefreshControl
 		bind:active={ar.active}
 		bind:intervalSeconds={ar.intervalSeconds}

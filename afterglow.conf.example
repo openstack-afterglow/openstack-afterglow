@@ -34,6 +34,20 @@ manila_cephx_key_timeout_seconds = 300  # CephX key 발급 폴링 최대 대기(
 # Ceph 모니터 (cloud-init CephFS 마운트용, 콤마 구분)
 ceph_monitors = ""
 
+# Ceph RBD backend 검사/복원 (관리자 볼륨 삭제 복구 전용, 선택). 두 경로가 모두 비어 있으면 비활성.
+[ceph]
+rbd_conf_path = ""                 # 예: /etc/ceph/ceph.conf
+rbd_keyring_path = ""              # 예: /etc/ceph/ceph.client.afterglow-rbd.keyring (mode 0400)
+rbd_client_name = "client.afterglow-rbd"
+rbd_cluster_fsid = ""              # 활성 시 필수. `ceph fsid` 값과 불일치하면 backend 검사를 unknown 처리
+rbd_command_timeout_seconds = 30
+# `generate_k8s.py` 전용 입력. 실제 keyring을 Git에 커밋하지 말고 private config에서만 설정한다.
+# rbd_conf_content = """[global]\nfsid = <cluster-fsid>\nmon_host = <monitor-addresses>"""
+# rbd_keyring = """[client.afterglow-rbd]\nkey = <cephx-key>"""
+# Cinder backend 이름(host의 `@`와 `#` 사이) → RBD pool. 활성 시 최소 1개.
+[ceph.rbd_volume_pools]
+ceph = "volumes"
+
 [app]
 backend_port = 8000
 frontend_port = 3000
@@ -147,8 +161,12 @@ waygate = false     # Waygate (활성화 시 [waygate] 섹션 설정 필수)
 palimpsest = false   # Palimpsest Hub (활성화 시 [services] palimpsest_internal_url 또는 Keystone 카탈로그 필요)
 chat = false        # 빌트인 AI 채팅 (활성화 시 [chat] 섹션 + 관리자 페이지에서 프로바이더/모델 등록)
 mcp = false         # Consumer MCP control plane (Stage 2 publish gate 전까지 false 유지)
-# Extracted service discovery override. Empty keeps the Keystone internal catalog.
-# Set only trusted deployment-internal base URLs; production requires HTTPS.
+# Explicit owned-service endpoint; otherwise use authenticated Keystone catalog.
+# Environment SERVICE_<SERVICE>_INTERNAL_URL wins, including empty = catalog.
+# Host backend examples: http://127.0.0.1:8010 (Waygate), :8011 (Drover),
+# :8012 (Lumen), :8020 (Palimpsest). Inside Compose use service DNS, not localhost.
+# Dev runner uses nonempty values in .local-services/afterglow.conf, otherwise
+# defaults to its local service DNS. Base/prod have no local default; prod requires HTTPS.
 waygate_internal_url = ""
 drover_internal_url = ""
 lumen_internal_url = ""
@@ -189,7 +207,10 @@ callback_base_url = ""         # e.g. http://10.0.0.1:8000
 # Shared legacy AES-256-GCM key for existing encrypted Afterglow records.
 # Drover uses its own [drover] kubeconfig_encryption_key.
 kubeconfig_encryption_key = "" # 32-byte hex; generate: openssl rand -hex 32
-
+# Shared token for internal K3s GPU admission endpoint (/api/v1/internal/k3s/gpu-admission).
+gpu_admission_token = ""
+# Dedicated token for Drover Stampede provisioning intents (secret.yaml/environment only).
+provisioning_token = ""
 [worker_runtime]
 # Background worker runtime manager.
 # Default static mode preserves the current fixed Compose/Kubernetes/Kolla worker manifests
@@ -225,7 +246,7 @@ gpu_config_mount = "/app/config.gpu.toml"
 gpu_config_host_path = ""         # optional host path for config.gpu.toml
 logs_mount = "/app/logs"
 logs_host_path = ""               # optional host path for worker logs
-env_allowlist = "AFTERGLOW_ENV,AFTERGLOW_ALLOW_INSECURE,SECRET_KEY,OS_PASSWORD,DATABASE_URL,K3S_KUBECONFIG_ENCRYPTION_KEY,PROMETHEUS_PASSWORD,GITLAB_OIDC_CLIENT_SECRET,NOTION_CONFIG_ENCRYPTION_KEY"
+env_allowlist = "AFTERGLOW_ENV,AFTERGLOW_ALLOW_INSECURE,SECRET_KEY,OS_PASSWORD,DATABASE_URL,K3S_KUBECONFIG_ENCRYPTION_KEY,K3S_GPU_ADMISSION_TOKEN,K3S_PROVISIONING_TOKEN,PROMETHEUS_PASSWORD,GITLAB_OIDC_CLIENT_SECRET,NOTION_CONFIG_ENCRYPTION_KEY"
 
 [worker_runtime.kubernetes]
 namespace = "afterglow"
@@ -288,14 +309,10 @@ kvm_state_dir = "/var/lib/palimpsest/domains"
 
 
 [logging]
-# 파일 로그 설정 (미설정 시 stdout 전용 출력)
-# log_file_path = ""            # 로그 파일 경로 (예: "/var/log/afterglow/app.log")
+# 파일 로그 설정
+# log_directory = "logs"        # 로그 디렉터리 경로 (기본값: "logs")
 # log_level = "INFO"            # 로그 레벨: DEBUG, INFO, WARNING, ERROR, CRITICAL
-# max_bytes = 10485760          # 파일 최대 크기 (바이트, rotation_type = "size"일 때)
-# backup_count = 5              # 보관할 로그 파일 수
-# rotation_type = "size"        # "size" (크기 기반) 또는 "time" (시간 기반)
-# rotation_when = "midnight"    # time rotation 기준: midnight, H, D, W0-W6
-# rotation_interval = 1         # time rotation 간격
+# max_bytes = 52428800          # 단일 로그 파일 최대 크기 (바이트, 기본값: 50MB)
 
 
 [gpu]

@@ -95,7 +95,7 @@
   .containers-table__empty,
   .containers-table__selection-count,
   .containers-table__meta {
-    color: var(--color-ink-3);
+    color: var(--color-ink-2);
   }
 
   .containers-table__head {
@@ -124,18 +124,26 @@
   }
 
   .containers-table__stop {
-    color: var(--color-state-warning);
+    color: var(--color-state-warning-text);
+  }
+
+  .containers-table__stop:hover {
+    color: color-mix(in oklab, var(--color-state-warning-text) 82%, var(--color-ink-0));
   }
 
   .containers-table__start {
-    color: var(--color-state-success);
+    color: var(--color-state-success-text);
+  }
+
+  .containers-table__start:hover {
+    color: color-mix(in oklab, var(--color-state-success-text) 82%, var(--color-ink-0));
   }
 
   .containers-table__delete {
-    color: var(--color-state-danger);
+    color: var(--color-state-danger-text);
   }
 
-  .containers-table__action:hover {
-    color: color-mix(in oklab, currentColor, white 18%);
+  .containers-table__delete:hover {
+    color: color-mix(in oklab, var(--color-state-danger-text) 82%, var(--color-ink-0));
   }
 </style>

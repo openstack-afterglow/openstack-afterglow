@@ -20,6 +20,7 @@ export interface DbInstance {
   ips?: string[];
   address_map?: Record<string, string[]>;
   volume_used?: number;
+  project_id?: string;
 }
 
 export interface DbDatabase {

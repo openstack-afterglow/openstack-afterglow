@@ -41,7 +41,7 @@ enable_lumen_source_build: false
 enable_waygate_source_build: false
 enable_palimpsest_source_build: false
 
-afterglow_image_tag: "v1.18.1"
+afterglow_image_tag: "v1.21.0"
 afterglow_backend_image_ref: "{{ afterglow_backend_image }}:{{ afterglow_image_tag }}"
 afterglow_frontend_image_ref: "{{ afterglow_frontend_image }}:{{ afterglow_image_tag }}"
 afterglow_worker_image_ref: "{{ afterglow_worker_image }}:{{ afterglow_image_tag }}"
@@ -53,8 +53,8 @@ drover_api_image_ref: "ghcr.io/openstack-afterglow/drover-api@sha256:<DROVER_API
 drover_worker_image_ref: "ghcr.io/openstack-afterglow/drover-worker@sha256:<DROVER_WORKER_AMD64_DIGEST>"
 waygate_api_image_ref: "ghcr.io/openstack-afterglow/waygate-api@sha256:<WAYGATE_API_AMD64_DIGEST>"
 waygate_worker_image_ref: "ghcr.io/openstack-afterglow/waygate-worker@sha256:<WAYGATE_WORKER_AMD64_DIGEST>"
-lumen_api_image_ref: "ghcr.io/openstack-afterglow/lumen-api@sha256:<LUMEN_API_AMD64_DIGEST>"
-lumen_worker_image_ref: "ghcr.io/openstack-afterglow/lumen-worker@sha256:<LUMEN_WORKER_AMD64_DIGEST>"
+lumen_api_image_ref: "ghcr.io/openstack-afterglow/lumen-api@sha256:e66927b51580d72fba8fbe6fa78330415e05d0dec9b45a156d763cabd82ebad0"
+lumen_worker_image_ref: "ghcr.io/openstack-afterglow/lumen-worker@sha256:48924cfd942aacb6373aa342739685e24ae2b4ee823348c43c45b7d2f4b5fd11"
 palimpsest_api_image_ref: "ghcr.io/openstack-afterglow/palimpsest-hub-api@sha256:<PALIMPSEST_HUB_API_AMD64_DIGEST>"
 palimpsest_worker_image_ref: "ghcr.io/openstack-afterglow/palimpsest-hub-worker@sha256:<PALIMPSEST_HUB_WORKER_AMD64_DIGEST>"
 
@@ -84,6 +84,14 @@ afterglow_backend_listen_port: 18000
 afterglow_frontend_listen_port: 18081
 afterglow_public_api_base: "https://cloud.dmslab.re.kr"
 afterglow_ceph_monitors: "172.30.2.101:6789,172.30.2.102:6789,172.30.2.103:6789"
+
+# Optional Ceph RBD delete-recovery inspection. Both source files must exist on
+# every Afterglow backend host before enabling these values.
+# afterglow_rbd_conf_source: "/etc/ceph/ceph.conf"
+# afterglow_rbd_keyring_source: "/etc/ceph/ceph.client.afterglow-rbd.keyring"
+# afterglow_rbd_cluster_fsid: "00000000-0000-0000-0000-000000000000"
+# afterglow_rbd_volume_pools:
+#   ceph: volumes
 
 # Optional deploy-host TOML files default to
 # /etc/kolla/config/afterglow/backend/afterglow.conf and

@@ -126,15 +126,15 @@
 				<SectionHeader title="서브넷 요약 정보" class="mb-4" />
 				<dl class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4 text-sm">
 					<div>
-						<dt class="text-xs text-ink-3 mb-1">서브넷 ID</dt>
+						<dt class="text-xs text-ink-2 mb-1">서브넷 ID</dt>
 						<dd class="font-mono text-ink-0 break-all">{subnet.id}</dd>
 					</div>
 					<div>
-						<dt class="text-xs text-ink-3 mb-1">서브넷 이름</dt>
+						<dt class="text-xs text-ink-2 mb-1">서브넷 이름</dt>
 						<dd class="font-medium text-ink-0">{subnet.name || '(이름 없음)'}</dd>
 					</div>
 					<div>
-						<dt class="text-xs text-ink-3 mb-1">소속 네트워크</dt>
+						<dt class="text-xs text-ink-2 mb-1">소속 네트워크</dt>
 						<dd class="text-ink-0">
 							{#if subnet.network_id}
 								<a
@@ -149,23 +149,23 @@
 						</dd>
 					</div>
 					<div>
-						<dt class="text-xs text-ink-3 mb-1">프로젝트 ID</dt>
+						<dt class="text-xs text-ink-2 mb-1">프로젝트 ID</dt>
 						<dd class="font-mono text-ink-0 break-all">{subnet.project_id || '-'}</dd>
 					</div>
 					<div>
-						<dt class="text-xs text-ink-3 mb-1">CIDR</dt>
+						<dt class="text-xs text-ink-2 mb-1">CIDR</dt>
 						<dd class="font-mono text-ink-0">{subnet.cidr}</dd>
 					</div>
 					<div>
-						<dt class="text-xs text-ink-3 mb-1">게이트웨이 IP</dt>
+						<dt class="text-xs text-ink-2 mb-1">게이트웨이 IP</dt>
 						<dd class="font-mono text-ink-0">{subnet.gateway_ip || '-'}</dd>
 					</div>
 					<div>
-						<dt class="text-xs text-ink-3 mb-1">IP 버전</dt>
+						<dt class="text-xs text-ink-2 mb-1">IP 버전</dt>
 						<dd class="text-ink-0 font-medium">IPv{subnet.ip_version}</dd>
 					</div>
 					<div>
-						<dt class="text-xs text-ink-3 mb-1">DHCP 활성화</dt>
+						<dt class="text-xs text-ink-2 mb-1">DHCP 활성화</dt>
 						<dd>
 							<Pill tone={subnet.dhcp_enabled ? 'success' : 'neutral'}>
 								{subnet.dhcp_enabled ? '활성' : '비활성'}
@@ -293,7 +293,7 @@
 													{/if}
 												</div>
 											{:else}
-												<span class="text-ink-3">-</span>
+												<span class="text-ink-2">-</span>
 											{/if}
 										</td>
 										<td class="font-mono text-xs whitespace-nowrap">
@@ -342,7 +342,7 @@
 										<th>프로젝트 ID</th>
 										<th>
 											실제 노드
-											<span class="block text-xs normal-case text-ink-3 font-normal">Neutron binding host</span>
+											<span class="block text-xs normal-case text-ink-2 font-normal">Neutron binding host</span>
 										</th>
 									</tr>
 								</thead>
@@ -393,7 +393,7 @@
 										<th>디바이스 ID</th>
 										<th>
 											실제 노드
-											<span class="block text-xs normal-case text-ink-3 font-normal">Neutron binding host</span>
+											<span class="block text-xs normal-case text-ink-2 font-normal">Neutron binding host</span>
 										</th>
 									</tr>
 								</thead>

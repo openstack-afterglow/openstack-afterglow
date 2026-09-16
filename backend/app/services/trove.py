@@ -127,26 +127,53 @@ def list_instances(conn) -> list[dict]:
 def list_instances_admin_all_projects(conn) -> list[dict]:
     """admin 전용: Trove /mgmt/instances 로 모든 프로젝트 DB 인스턴스 반환.
 
-    반환 dict 에 project_id 필드 추가. mgmt API 미지원 환경에서는 빈 목록.
-    deleted=1 행은 응답에서 제외 (이미 삭제된 인스턴스).
+    Database proxy를 통해 catalog의 project-scoped endpoint와 인증을 그대로 사용한다.
+    조회 실패를 빈 inventory로 숨기지 않고 API boundary까지 전파한다.
     """
-    try:
-        endpoint = conn.database.get_endpoint()
-        resp = conn.session.get(f"{endpoint}/mgmt/instances")
-        resp.raise_for_status()
-        items = resp.json().get("instances", [])
-    except Exception:
-        _logger.warning("Trove /mgmt/instances 조회 실패", exc_info=True)
-        return []
+    resp = conn.database.get("/mgmt/instances")
+    resp.raise_for_status()
+    body = resp.json()
+    items = body.get("instances")
+    if not isinstance(items, list):
+        raise RuntimeError("Trove management instances response is invalid")
 
     out: list[dict] = []
     for raw in items:
         if raw.get("deleted"):
             continue
         d = _dict_from_raw(raw)
-        d["project_id"] = raw.get("tenant_id", "") or ""
+        d["project_id"] = raw.get("tenant_id") or raw.get("project_id") or ""
         out.append(d)
     return out
+
+
+def topology_database_ips(conn, *, all_projects: bool = False) -> set[str]:
+    """토폴로지 인스턴스를 DB 인스턴스로 표시하기 위한 Trove IP 집합 반환.
+
+    삭제되지 않은 Trove 인스턴스의 `ips` 를 모두 합집합으로 모은다. 호출자는 이 집합에
+    포함된 fixed IP 를 가진 Nova 인스턴스를 `is_database=True` 로 표시한다.
+
+    `all_projects=True` 는 admin 토폴로지용으로 `/mgmt/instances` 전체 프로젝트 목록을 사용한다.
+
+    Trove 는 optional 서비스이므로 카탈로그에 없거나 조회가 실패하는 것은 정상 상황이며
+    오류가 아니다. 이 경우 빈 집합을 반환하고 예외를 전파하지 않는다.
+    """
+    try:
+        instances = list_instances_admin_all_projects(conn) if all_projects else list_instances(conn)
+    except Exception:
+        _logger.debug("Trove 토폴로지 IP 수집 실패 (Trove 미배포는 정상)", exc_info=True)
+        return set()
+
+    ips: set[str] = set()
+    for inst in instances or []:
+        for ip in inst.get("ips") or []:
+            # Trove 버전에 따라 `ip` 항목이 문자열이 아니라 {"address": ...} dict 일 수 있다
+            # (`_addresses_to_map` 과 같은 이유). str() 로 뭉개면 Nova addr 와 절대 일치하지
+            # 않으므로 dict 는 address/addr 키를 꺼내 사용한다.
+            addr = ip.get("address") or ip.get("addr") or "" if isinstance(ip, dict) else ip
+            if isinstance(addr, str) and addr:
+                ips.add(addr)
+    return ips
 
 
 def count_instances(conn) -> int:

@@ -1,5 +1,6 @@
 """관리자용 cross-project 인스턴스 생성 엔드포인트 단위 테스트."""
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -40,6 +41,10 @@ def _make_server(server_id: str = "srv-admin-1") -> MagicMock:
     srv.status = "BUILD"
     srv.fault = None
     return srv
+
+
+def _make_flavor(flavor_id: str = "f1") -> SimpleNamespace:
+    return SimpleNamespace(id=flavor_id, name="m1.small", extra_specs={})
 
 
 def _make_boot_vol(status: str = "available", bootable: bool = True) -> MagicMock:
@@ -183,7 +188,7 @@ async def test_admin_create_instance_calls_admin_conn(admin_client):
             return_value=mock_conn,
         ) as mock_get_conn,
         patch("app.api.identity.admin_instances.lib_svc.resolve_with_deps", return_value=[]),
-        patch("app.api.identity.admin_instances.nova.list_flavors", return_value=[]),
+        patch("app.api.identity.admin_instances.nova.list_flavors", return_value=[_make_flavor("flavor-1")]),
         patch(
             "app.api.identity.admin_instances.cinder.get_volume",
             return_value=_make_boot_vol(),
@@ -216,7 +221,7 @@ async def test_admin_create_instance_from_image_sse(admin_client):
             return_value=mock_conn,
         ),
         patch("app.api.identity.admin_instances.lib_svc.resolve_with_deps", return_value=[]),
-        patch("app.api.identity.admin_instances.nova.list_flavors", return_value=[]),
+        patch("app.api.identity.admin_instances.nova.list_flavors", return_value=[_make_flavor()]),
         patch("app.api.identity.admin_instances.cinder.create_volume_from_image", return_value=boot_vol),
         patch("app.api.identity.admin_instances.cinder.rename_volume", return_value=None),
         patch("app.api.identity.admin_instances.nova.create_server", return_value=_make_server()),
@@ -243,7 +248,7 @@ async def test_admin_create_instance_boot_from_volume(admin_client):
             return_value=mock_conn,
         ),
         patch("app.api.identity.admin_instances.lib_svc.resolve_with_deps", return_value=[]),
-        patch("app.api.identity.admin_instances.nova.list_flavors", return_value=[]),
+        patch("app.api.identity.admin_instances.nova.list_flavors", return_value=[_make_flavor()]),
         patch(
             "app.api.identity.admin_instances.cinder.get_volume",
             return_value=_make_boot_vol(),
@@ -283,7 +288,7 @@ async def test_admin_create_instance_no_keypair_allowed(admin_client):
             return_value=mock_conn,
         ),
         patch("app.api.identity.admin_instances.lib_svc.resolve_with_deps", return_value=[]),
-        patch("app.api.identity.admin_instances.nova.list_flavors", return_value=[]),
+        patch("app.api.identity.admin_instances.nova.list_flavors", return_value=[_make_flavor()]),
         patch("app.api.identity.admin_instances.cinder.create_volume_from_image", return_value=boot_vol),
         patch("app.api.identity.admin_instances.cinder.rename_volume", return_value=None),
         patch(

@@ -3,10 +3,23 @@
 </script>
 
 {#if $toast.length > 0}
-<div class="fixed top-16 right-4 z-[var(--z-toast)] flex flex-col gap-2 w-80 pointer-events-none">
+<div
+	class="fixed top-16 right-4 z-[var(--z-toast)] flex flex-col gap-2 w-80 pointer-events-none"
+	role="region"
+	aria-label="알림"
+>
 	{#each $toast as t (t.id)}
-		<div class="toast-item toast-{t.type} flex items-start gap-3 px-4 py-3 rounded-xl border text-sm shadow-xl pointer-events-auto">
-			<span class="toast-icon flex-shrink-0 font-bold text-base leading-none mt-0.5">
+		<div
+			class="toast-item toast-{t.type} flex items-start gap-3 px-4 py-3 rounded-xl border text-sm shadow-[var(--shadow-overlay-compact)] pointer-events-auto"
+			role={t.type === 'error' ? 'alert' : 'status'}
+			aria-live={t.type === 'error' ? 'assertive' : 'polite'}
+			aria-atomic="true"
+			onmouseenter={() => toast.pause(t.id, 'hover')}
+			onmouseleave={() => toast.resume(t.id, 'hover')}
+			onfocusin={() => toast.pause(t.id, 'focus')}
+			onfocusout={() => toast.resume(t.id, 'focus')}
+		>
+			<span class="toast-icon flex-shrink-0 font-bold text-base leading-none mt-0.5" aria-hidden="true">
 				{#if t.type === 'success'}✓{:else if t.type === 'error'}✕{:else if t.type === 'warning'}⚠{:else}ℹ{/if}
 			</span>
 			<div class="flex-1 min-w-0">
@@ -21,6 +34,7 @@
 			<button
 				onclick={() => toast.remove(t.id)}
 				class="flex-shrink-0 opacity-40 hover:opacity-80 transition-opacity text-lg leading-none mt-0.5"
+				aria-label="알림 닫기"
 			>×</button>
 		</div>
 	{/each}

@@ -19,11 +19,7 @@
     : pct > 80 ? 'donut-grad-warning'
     : 'donut-grad-accent'
   );
-  const textColor = $derived(
-    pct >= 100 ? '#ef4444'
-    : pct > 80 ? '#f59e0b'
-    : '#8893d4'
-  );
+  const textColor = 'var(--color-ink-0)';
 
   function fmt(v: number): string {
     if (v >= 1024 && unit === 'MB') return `${Math.round(v / 1024)}GB`;
@@ -34,30 +30,27 @@
 
 <div class="flex flex-col items-center gap-1">
   <div class="relative {size === 'lg' ? 'w-28 h-28' : 'w-16 h-16'}">
-    <svg viewBox="0 0 {size === 'lg' ? '112 112' : '72 72'}" class="w-full h-full -rotate-90">
+    <svg viewBox="0 0 {size === 'lg' ? '112 112' : '72 72'}" class="w-full h-full -rotate-90" aria-hidden="true" focusable="false">
       <defs>
         <linearGradient id="donut-grad-accent" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%"   stop-color="#8893d4"/>
-          <stop offset="35%"  stop-color="#b08cd6"/>
-          <stop offset="75%"  stop-color="#f4976c"/>
-          <stop offset="100%" stop-color="#f472b6"/>
+          <stop offset="0%"   stop-color="var(--color-accent)"/>
+          <stop offset="45%"  stop-color="var(--color-accent-2)"/>
+          <stop offset="100%" stop-color="var(--color-warm)"/>
         </linearGradient>
         <linearGradient id="donut-grad-warning" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%"   stop-color="#f4976c"/>
-          <stop offset="50%"  stop-color="#f59e0b"/>
-          <stop offset="100%" stop-color="#f472b6"/>
+          <stop offset="0%"   stop-color="var(--color-state-warning)"/>
+          <stop offset="100%" stop-color="var(--color-warm)"/>
         </linearGradient>
         <linearGradient id="donut-grad-danger" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%"   stop-color="#ef4444"/>
-          <stop offset="50%"  stop-color="#dc2626"/>
-          <stop offset="100%" stop-color="#be185d"/>
+          <stop offset="0%"   stop-color="var(--color-state-danger)"/>
+          <stop offset="100%" stop-color="var(--color-warm)"/>
         </linearGradient>
       </defs>
       <!-- Background track -->
       <circle
         cx={size === 'lg' ? 56 : 36} cy={size === 'lg' ? 56 : 36} r={r}
         fill="none"
-        stroke="#374151"
+        stroke="var(--color-line-2)"
         stroke-width={size === 'lg' ? 10 : 8}
       />
       <!-- Usage arc -->
@@ -77,8 +70,8 @@
     </div>
   </div>
   <div class="text-center">
-    <div class="{size === 'lg' ? 'text-sm' : 'text-xs'} text-gray-300 font-medium leading-tight">{label}</div>
-    <div class="{size === 'lg' ? 'text-sm' : 'text-xs'} text-gray-500 leading-tight">
+    <div class="{size === 'lg' ? 'text-sm' : 'text-xs'} text-ink-2 font-medium leading-tight">{label}</div>
+    <div class="{size === 'lg' ? 'text-sm' : 'text-xs'} text-ink-2 leading-tight">
       {#if limit > 0}
         {fmt(used)} / {fmt(limit)}
       {:else if limit === -1}

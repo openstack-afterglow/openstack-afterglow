@@ -22,7 +22,13 @@ vi.mock('$lib/api/client', () => {
 
 type UploadResp = { success: boolean; name: string; bytes: number; etag: string };
 
-function mockSuccess(api: { uploadWithProgress: Mock }, payload: Partial<UploadResp> = {}) {
+type ApiClient = typeof import('$lib/api/client').api;
+
+function mockedUpload(api: ApiClient) {
+	return vi.mocked(api.uploadWithProgress);
+}
+
+function mockSuccess(api: ApiClient, payload: Partial<UploadResp> = {}) {
 	const promise = Promise.resolve<UploadResp>({
 		success: true,
 		name: 'file.txt',
@@ -31,7 +37,7 @@ function mockSuccess(api: { uploadWithProgress: Mock }, payload: Partial<UploadR
 		...payload
 	});
 	const abort = vi.fn();
-	api.uploadWithProgress.mockReturnValue({ promise, abort });
+	mockedUpload(api).mockReturnValue({ promise, abort });
 	return { abort };
 }
 
@@ -45,7 +51,7 @@ describe('uploadQueue', () => {
 	it('enqueue() 호출 시 job 이 uploading 상태로 추가됨', async () => {
 		const { api } = await import('$lib/api/client');
 		const { uploadQueue } = await import('../uploadQueue');
-		mockSuccess(api as { uploadWithProgress: Mock });
+		mockSuccess(api);
 
 		const file = new File(['hello!\n'], 'test.txt', { type: 'text/plain' });
 		uploadQueue.enqueue(file, { containerName: 'my-bucket' });
@@ -60,7 +66,7 @@ describe('uploadQueue', () => {
 	it('백엔드 /upload 경로로 FormData 전송', async () => {
 		const { api } = await import('$lib/api/client');
 		const { uploadQueue } = await import('../uploadQueue');
-		mockSuccess(api as { uploadWithProgress: Mock });
+		mockSuccess(api);
 
 		const file = new File(['x'], 'report.csv', { type: 'text/csv' });
 		uploadQueue.enqueue(file, {
@@ -70,7 +76,7 @@ describe('uploadQueue', () => {
 		});
 
 		expect(api.uploadWithProgress).toHaveBeenCalledTimes(1);
-		const args = (api.uploadWithProgress as Mock).mock.calls[0];
+		const args = mockedUpload(api).mock.calls[0];
 		expect(args[0]).toBe('/api/v1/object-storage/bucket/upload');
 		expect(args[1]).toBeInstanceOf(FormData);
 		expect(typeof args[2]).toBe('function');
@@ -86,7 +92,7 @@ describe('uploadQueue', () => {
 	it('성공 응답 시 status=success, loaded=file.size, onComplete 호출', async () => {
 		const { api } = await import('$lib/api/client');
 		const { uploadQueue } = await import('../uploadQueue');
-		mockSuccess(api as { uploadWithProgress: Mock });
+		mockSuccess(api);
 
 		const onComplete = vi.fn();
 		const file = new File(['hello!\n'], 'file.txt');
@@ -103,7 +109,7 @@ describe('uploadQueue', () => {
 	it('500 응답 시 status=error', async () => {
 		const { api, ApiError } = await import('$lib/api/client');
 		const { uploadQueue } = await import('../uploadQueue');
-		(api as { uploadWithProgress: Mock }).uploadWithProgress.mockReturnValue({
+		mockedUpload(api).mockReturnValue({
 			promise: Promise.reject(new ApiError(500, '서버 오류')),
 			abort: vi.fn()
 		});
@@ -126,7 +132,7 @@ describe('uploadQueue', () => {
 		const promise = new Promise<UploadResp>((_res, rej) => {
 			rejectFn = rej;
 		});
-		(api as { uploadWithProgress: Mock }).uploadWithProgress.mockReturnValue({ promise, abort });
+		mockedUpload(api).mockReturnValue({ promise, abort });
 
 		const file = new File(['x'], 'file.txt');
 		const id = uploadQueue.enqueue(file, { containerName: 'c' });
@@ -144,7 +150,7 @@ describe('uploadQueue', () => {
 	it('remove(id) 로 큐에서 제거', async () => {
 		const { api } = await import('$lib/api/client');
 		const { uploadQueue } = await import('../uploadQueue');
-		mockSuccess(api as { uploadWithProgress: Mock });
+		mockSuccess(api);
 
 		const file = new File(['x'], 'file.txt');
 		const id = uploadQueue.enqueue(file, { containerName: 'c' });
@@ -156,12 +162,12 @@ describe('uploadQueue', () => {
 	it('prefix 가 FormData 에 포함', async () => {
 		const { api } = await import('$lib/api/client');
 		const { uploadQueue } = await import('../uploadQueue');
-		mockSuccess(api as { uploadWithProgress: Mock });
+		mockSuccess(api);
 
 		const file = new File(['x'], 'notes.md');
 		uploadQueue.enqueue(file, { containerName: 'bucket', prefix: 'docs/' });
 
-		const fd = (api.uploadWithProgress as Mock).mock.calls[0][1] as FormData;
+		const fd = mockedUpload(api).mock.calls[0][1] as FormData;
 		expect(fd.get('prefix')).toBe('docs/');
 		// job.prefix 는 file.name 과 합쳐지지 않고 그대로 보존
 		expect(get(uploadQueue)[0].prefix).toBe('docs/');

@@ -56,6 +56,8 @@ export interface ImageInfo {
   owner?: string;
   protected?: boolean;
   tags?: string[];
-  os_distro?: string;
+  os_distro?: string | null;
+  os_version?: string | null;
   os_type?: string;
+  properties?: Record<string, unknown> | null;
 }

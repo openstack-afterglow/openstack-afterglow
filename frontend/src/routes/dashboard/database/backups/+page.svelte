@@ -10,7 +10,7 @@
 	import { executeBulkMutations } from '$lib/utils/bulkActions';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
-	import PageHeader from '$lib/components/ui/PageHeader.svelte';
+	import { Alert, EmptyState, PageHeader, PageShell, ResourceToolbar } from '$lib/components/ui';
 	import DbBackupsTable from '$lib/components/database/DbBackupsTable.svelte';
 	import BulkSelectionOverlay, { type BulkSelectionAction } from '$lib/components/ui/BulkSelectionOverlay.svelte';
 	import DbRestoreModal from '$lib/components/database/DbRestoreModal.svelte';
@@ -190,9 +190,9 @@
 </script>
 
 {#if !databaseBackupsEnabled}
-	<div class="p-4 md:p-8">
+	<PageShell>
 		<BetaFeatureGate title="DB 백업은 베타 기능입니다" />
-	</div>
+	</PageShell>
 {:else}
 <DbRestoreModal
 	bind:open={showRestoreModal}
@@ -202,8 +202,9 @@
 	onClose={() => { showRestoreModal = false; }}
 />
 
-<div class="bulk-selection-page p-4 md:p-8">
-	<PageHeader breadcrumb="DATABASE / BACKUPS" title="DB 백업">
+<PageShell class="bulk-selection-page space-y-4">
+	<PageHeader breadcrumb="DATABASE / BACKUPS" title="DB 백업" />
+	<ResourceToolbar label="데이터베이스 백업 목록 도구">
 		{#snippet actions()}
 			<AutoRefreshControl
 				bind:active={ar.active}
@@ -213,19 +214,16 @@
 				onManualRefresh={forceRefresh}
 			/>
 		{/snippet}
-	</PageHeader>
+	</ResourceToolbar>
 
 	{#if error}
-		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>
+		<Alert tone="danger">{error}</Alert>
 	{/if}
 
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={4} />
 	{:else if backups.length === 0}
-		<div class="text-center py-20 text-gray-600">
-			<div class="text-5xl mb-4">🗄️</div>
-			<p class="text-lg">DB 백업이 없습니다</p>
-		</div>
+		<EmptyState headline="DB 백업이 없습니다" description="데이터베이스 인스턴스에서 백업을 생성하면 여기에 표시됩니다." />
 	{:else}
 		<DbBackupsTable
 			{backups}
@@ -242,5 +240,5 @@
 		/>
 		<BulkSelectionOverlay count={selection.count} ariaLabel="선택한 DB 백업 일괄 작업" actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
 	{/if}
-</div>
+</PageShell>
 {/if}

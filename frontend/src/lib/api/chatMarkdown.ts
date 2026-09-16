@@ -59,7 +59,7 @@ const chatStrongExtension: TokenizerAndRendererExtension = {
 		};
 	},
 	renderer(token) {
-		return `<strong>${this.parser.parseInline(token.tokens)}</strong>`;
+		return `<strong>${this.parser.parseInline(token.tokens ?? [])}</strong>`;
 	}
 };
 

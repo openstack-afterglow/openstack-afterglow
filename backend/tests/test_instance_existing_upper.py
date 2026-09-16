@@ -1,10 +1,15 @@
 """existing_upper_volume_id 인스턴스 생성 단위 테스트."""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.models.compute import InstanceInfo
+
+
+def _make_flavor():
+    return SimpleNamespace(id="flavor-1", name="m1.small", extra_specs={})
 
 
 @pytest.fixture(autouse=True)
@@ -17,6 +22,10 @@ def _resolve_default_placement_policies(monkeypatch):
     monkeypatch.setattr(
         "app.api.compute.instances.instance_orch.resolve_availability_zones",
         resolve_zones,
+    )
+    monkeypatch.setattr(
+        "app.api.compute.instances.nova.list_flavors",
+        lambda _conn: [_make_flavor()],
     )
 
 
@@ -71,7 +80,7 @@ async def test_create_instance_existing_upper_skips_create_empty_volume(client, 
         patch("app.api.compute.instances.cinder.rename_volume", return_value=None),
         patch("app.api.compute.instances.cinder.get_volume", return_value=_make_vol("available")) as mock_get,
         patch("app.api.compute.instances.cinder.create_empty_volume") as mock_create_empty,
-        patch("app.api.compute.instances.nova.list_flavors", return_value=[]),
+        patch("app.api.compute.instances.nova.list_flavors", return_value=[_make_flavor()]),
         patch("app.api.compute.instances.nova.create_server", return_value=_make_server()),
         patch("app.api.compute.instances.neutron.list_networks", return_value=[]),
         patch("app.api.compute.instances.cloudinit.generate_userdata", return_value=""),

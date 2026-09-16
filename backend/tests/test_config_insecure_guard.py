@@ -182,6 +182,38 @@ def test_production_service_internal_override_requires_https():
         )
 
 
+def test_production_empty_service_internal_override_retains_catalog_lookup():
+    settings = _build_settings_with_env(
+        {
+            "AFTERGLOW_ENV": "production",
+            "AFTERGLOW_ALLOW_INSECURE": "",
+            "SECRET_KEY": "a" * 64,
+            "SERVICE_WAYGATE_INTERNAL_URL": "",
+            "SERVICE_DROVER_INTERNAL_URL": "",
+            "SERVICE_LUMEN_INTERNAL_URL": "",
+            "SERVICE_PALIMPSEST_INTERNAL_URL": "",
+        }
+    )
+
+    assert settings.service_waygate_internal_url == ""
+    assert settings.service_drover_internal_url == ""
+    assert settings.service_lumen_internal_url == ""
+    assert settings.service_palimpsest_internal_url == ""
+
+
+def test_production_valid_https_service_internal_override_succeeds():
+    settings = _build_settings_with_env(
+        {
+            "AFTERGLOW_ENV": "production",
+            "AFTERGLOW_ALLOW_INSECURE": "",
+            "SECRET_KEY": "a" * 64,
+            "SERVICE_LUMEN_INTERNAL_URL": "https://lumen-internal.example.com:8012",
+        }
+    )
+
+    assert settings.service_lumen_internal_url == "https://lumen-internal.example.com:8012"
+
+
 def test_production_mcp_requires_absolute_https_public_api_base():
     with pytest.raises(ValueError, match="services.mcp requires an absolute HTTPS"):
         _build_settings_with_env(

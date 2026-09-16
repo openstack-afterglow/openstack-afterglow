@@ -181,7 +181,7 @@
 	}
 	.hint {
 		font-weight: 400;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.req {
 		color: var(--color-state-danger);
@@ -255,7 +255,7 @@
 	.empty {
 		padding: 0.4rem 0.35rem;
 		font-size: 0.78rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.truncate {
 		overflow: hidden;

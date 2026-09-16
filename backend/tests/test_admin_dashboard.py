@@ -60,7 +60,7 @@ async def test_notifications_k3s_pending_success_has_available_true(admin_client
     drover.admin_clusters.return_value = [pending_cluster]
     with (
         patch("app.config.get_settings", return_value=MagicMock(service_k3s_enabled=True)),
-        patch("app.api.identity.admin_dashboard.register_drover", return_value=drover),
+        patch("app.api.identity.admin_dashboard.get_drover_proxy", return_value=drover),
     ):
         resp = await admin_client.get("/api/v1/admin/notifications")
     assert resp.status_code == 200
@@ -83,7 +83,7 @@ async def test_notifications_k3s_failure_emits_warning_available_false(admin_cli
     with (
         patch("app.config.get_settings", return_value=MagicMock(service_k3s_enabled=True)),
         patch(
-            "app.api.identity.admin_dashboard.register_drover",
+            "app.api.identity.admin_dashboard.get_drover_proxy",
             side_effect=RuntimeError("drover offline"),
         ),
     ):

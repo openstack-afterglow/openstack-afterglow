@@ -100,7 +100,7 @@
 	$effect(() => {
 		const imageId = s.image?.id;
 		const token = $auth.token;
-		const projectId = $auth.projectId;
+		const projectId = $auth.projectId ?? undefined;
 
 		generation += 1;
 		const thisGen = generation;
@@ -129,7 +129,7 @@
 	async function handleExport() {
 		const imageId = s.image?.id;
 		const token = $auth.token;
-		const projectId = $auth.projectId;
+		const projectId = $auth.projectId ?? undefined;
 		if (!imageId || !token) return;
 
 		actionError = '';
@@ -164,7 +164,7 @@
 		const imageId = s.image?.id;
 		const exportId = exportJob.id;
 		const thisGen = generation;
-		const projectId = $auth.projectId;
+		const projectId = $auth.projectId ?? undefined;
 		if (!token) return;
 
 		downloading = true;

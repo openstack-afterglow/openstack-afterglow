@@ -122,6 +122,60 @@ async def test_delete_volume_in_use_returns_400(admin_client, mock_conn):
     mock_force.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_bulk_delete_volumes_continues_after_secret_bearing_failure(admin_client, mock_conn):
+    from openstack.exceptions import HttpException
+
+    attached = _make_volume("in-use", attachments=[{"id": "att-1"}])
+    attached.project_id = "project-2"
+    available = _make_volume("available")
+    available.project_id = "project-1"
+    sensitive_detail = "https://service:private-password@storage.internal denied X-Auth-Token=private-token"
+    mock_conn.block_storage.get_volume.side_effect = [attached, available]
+    mock_conn.block_storage.delete_volume.side_effect = [HttpException(http_status=400, message=sensitive_detail), None]
+
+    with (
+        patch("app.api.identity.admin.rec", new_callable=AsyncMock) as record,
+        patch("app.api.identity.admin._invalidate_volume_recovery_caches", new_callable=AsyncMock),
+    ):
+        response = await admin_client.post(
+            "/api/v1/admin/volumes/bulk-delete",
+            json={"volume_ids": ["vol-attached", "vol-ok"]},
+        )
+
+    assert response.status_code == 200
+    results = response.json()["results"]
+    assert [(item["id"], item["ok"]) for item in results] == [("vol-attached", False), ("vol-ok", True)]
+    assert results[0]["error"]
+    assert results[1]["error"] is None
+    for secret in ("private-password", "private-token", "storage.internal"):
+        assert secret not in response.text
+        assert secret not in str(record.await_args_list)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "volume_ids",
+    [[], ["duplicate", "duplicate"], [f"vol-{index}" for index in range(51)]],
+)
+async def test_bulk_delete_volumes_rejects_invalid_id_sets(admin_client, mock_conn, volume_ids):
+    resp = await admin_client.post("/api/v1/admin/volumes/bulk-delete", json={"volume_ids": volume_ids})
+
+    assert resp.status_code == 422
+    mock_conn.block_storage.get_volume.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_bulk_delete_volumes_requires_admin(non_admin_client, mock_conn):
+    resp = await non_admin_client.post(
+        "/api/v1/admin/volumes/bulk-delete",
+        json={"volume_ids": ["vol-1"]},
+    )
+
+    assert resp.status_code == 403
+    mock_conn.block_storage.get_volume.assert_not_called()
+
+
 # ── force-delete 엔드포인트 테스트 ────────────────────────────────────────────
 
 
@@ -185,72 +239,130 @@ async def test_non_admin_cannot_recover_delete(non_admin_client):
     assert resp.status_code == 403
 
 
-@pytest.mark.asyncio
-async def test_recover_delete_volume_records_activity_and_invalidates(admin_client, mock_conn):
-    """복구 성공 시 activity, 캐시 무효화, mutation count bump 를 함께 수행한다."""
+def _recovery_result(status: str = "deleted"):
     from app.models.storage import (
+        VolumeDeleteBackendInspection,
+        VolumeDeleteCheck,
         VolumeDeleteDiagnostic,
         VolumeDeleteRecoveryResult,
         VolumeDeleteRecoveryStep,
     )
 
+    residue = status == "backend_residue"
     diagnostic = VolumeDeleteDiagnostic(
         volume_id="vol-1",
         status="error_deleting",
         project_id="proj-abc",
-        attachments=[],
-        dependencies=[],
-        messages=[],
-        root_cause_code="recoverable_error_deleting",
+        checks=[VolumeDeleteCheck(name="auth_preflight", state="present")],
+        backend=VolumeDeleteBackendInspection(
+            mode="inspected" if residue else "unavailable",
+            classification="inconsistent" if residue else "not_inspected",
+            pool="volumes" if residue else None,
+        ),
+        root_cause_code="backend_present_consistent" if residue else "recoverable_backend_unverified",
         confidence="high",
         summary="recoverable",
         evidence=["status=error_deleting"],
         recommended_action="recover now",
         recovery_available=True,
-        force_delete_available=True,
     )
-    result = VolumeDeleteRecoveryResult(
+    return VolumeDeleteRecoveryResult(
         volume_id="vol-1",
-        status="deleted",
-        verified_deleted=True,
-        final_status=None,
+        status=status,
+        verified_deleted=status == "deleted",
         diagnostic=diagnostic,
-        steps=[
-            VolumeDeleteRecoveryStep(action="diagnose", status="success", detail="recoverable_error_deleting"),
-            VolumeDeleteRecoveryStep(action="reset_status", status="success", detail="error/detached"),
-        ],
+        backend_verification="residue" if residue else "unavailable",
+        quota_verification="verified",
+        steps=[VolumeDeleteRecoveryStep(action="diagnose", status="success", detail=diagnostic.root_cause_code)],
     )
 
+
+def _redis_lock(acquired: bool = True):
+    redis = MagicMock()
+    redis.set = AsyncMock(return_value=acquired)
+    redis.delete = AsyncMock()
+    return redis
+
+
+@pytest.mark.asyncio
+async def test_recover_delete_volume_locks_records_full_activity_and_invalidates(admin_client, mock_conn):
+    redis = _redis_lock()
+    result = _recovery_result()
+
     with (
+        patch("app.api.identity.admin._get_redis", new=AsyncMock(return_value=redis)),
         patch(
-            "app.api.identity.admin.volume_delete_recovery.recover_delete_volume", return_value=result
+            "app.api.identity.admin.volume_delete_recovery.recover_delete_volume",
+            return_value=result,
         ) as recover_mock,
-        patch("app.api.identity.admin.invalidate", new_callable=AsyncMock) as invalidate_mock,
         patch(
-            "app.api.identity.admin.cache_invalidation.invalidate_mutation_count",
+            "app.api.identity.admin._invalidate_volume_recovery_caches",
             new_callable=AsyncMock,
-        ) as mutation_mock,
+        ) as invalidate_mock,
         patch("app.api.identity.admin.rec", new_callable=AsyncMock) as rec_mock,
     ):
         resp = await admin_client.post("/api/v1/admin/volumes/vol-1/recover-delete")
 
     assert resp.status_code == 200
     assert resp.json()["status"] == "deleted"
-    recover_mock.assert_called_once_with(mock_conn, "vol-1", ANY, verify_timeout_seconds=30)
-    assert invalidate_mock.await_count == 4
-    invalidate_mock.assert_any_await("afterglow:cinder:proj-abc:volumes*")
-    invalidate_mock.assert_any_await("afterglow:cinder:proj-abc:vol_attach:*")
-    invalidate_mock.assert_any_await("afterglow:admin:overview*")
-    invalidate_mock.assert_any_await("afterglow:admin:monitoring*")
-    mutation_mock.assert_awaited_once_with("cinder", "proj-abc")
-    rec_mock.assert_awaited_once()
+    redis.set.assert_awaited_once_with("afterglow:volume-recovery:lock:vol-1", ANY, nx=True, ex=600)
+    redis.delete.assert_awaited_once_with("afterglow:volume-recovery:lock:vol-1")
+    recover_mock.assert_called_once_with(mock_conn, "vol-1", verify_timeout_seconds=30)
+    invalidate_mock.assert_awaited_once_with("proj-abc")
     rec_kwargs = rec_mock.await_args.kwargs
-    assert rec_kwargs["resource_type"] == "volume"
-    assert rec_kwargs["action"] == "volume.recover_delete"
     assert rec_kwargs["status"] == "success"
-    assert rec_kwargs["resource_id"] == "vol-1"
-    assert rec_kwargs["error_message"] is None
-    assert rec_kwargs["extra"]["result"] == "deleted"
-    assert rec_kwargs["extra"]["verified_deleted"] is True
-    assert rec_kwargs["extra"]["root_cause"] == "recoverable_error_deleting"
-    assert rec_kwargs["extra"]["steps"][0]["action"] == "diagnose"
+    assert rec_kwargs["extra"]["backend_verification"] == "unavailable"
+    assert rec_kwargs["extra"]["quota_verification"] == "verified"
+    assert rec_kwargs["extra"]["checks"] == [{"name": "auth_preflight", "state": "present", "detail": None}]
+
+
+@pytest.mark.asyncio
+async def test_recover_delete_volume_rejects_concurrent_operation(admin_client):
+    redis = _redis_lock(acquired=False)
+
+    with (
+        patch("app.api.identity.admin._get_redis", new=AsyncMock(return_value=redis)),
+        patch("app.api.identity.admin.volume_delete_recovery.recover_delete_volume") as recover_mock,
+    ):
+        resp = await admin_client.post("/api/v1/admin/volumes/vol-1/recover-delete")
+
+    assert resp.status_code == 409
+    recover_mock.assert_not_called()
+    redis.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_recover_delete_volume_fails_closed_when_lock_backend_is_unavailable(admin_client):
+    with patch(
+        "app.api.identity.admin._get_redis",
+        new=AsyncMock(side_effect=RuntimeError("redis down")),
+    ):
+        resp = await admin_client.post("/api/v1/admin/volumes/vol-1/recover-delete")
+
+    assert resp.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_backend_residue_invalidates_caches_and_is_a_failed_audit_result(admin_client):
+    redis = _redis_lock()
+    result = _recovery_result("backend_residue")
+
+    with (
+        patch("app.api.identity.admin._get_redis", new=AsyncMock(return_value=redis)),
+        patch(
+            "app.api.identity.admin.volume_delete_recovery.recover_delete_volume",
+            return_value=result,
+        ),
+        patch(
+            "app.api.identity.admin._invalidate_volume_recovery_caches",
+            new_callable=AsyncMock,
+        ) as invalidate_mock,
+        patch("app.api.identity.admin.rec", new_callable=AsyncMock) as rec_mock,
+    ):
+        resp = await admin_client.post("/api/v1/admin/volumes/vol-1/recover-delete")
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "backend_residue"
+    invalidate_mock.assert_awaited_once_with("proj-abc")
+    assert rec_mock.await_args.kwargs["status"] == "failed"
+    assert rec_mock.await_args.kwargs["error_message"] == "backend_residue"

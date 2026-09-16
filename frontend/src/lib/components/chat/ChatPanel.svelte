@@ -10,6 +10,8 @@
 		createChatRun,
 		followChatRun,
 		parseChatRunDescriptor,
+		previewChatContext,
+		ChatHttpError,
 		type ChatRunDescriptor
 	} from '$lib/api/chatStream';
 	import { createRunViewState, reduceRunEvent, type RunActivityItem } from '$lib/api/chatRunReducer';
@@ -32,6 +34,9 @@
 	import { toInputParts, type ChatAttachment } from '$lib/api/chatAttachments';
 	import {
 		defaultChatFeatureOptions,
+		type ChatPart,
+		type ContextState,
+		type ContextUpdatedPayload,
 		type RunStage,
 		type UserInputPart
 	} from '$lib/api/chatContracts';
@@ -49,14 +54,13 @@
 	import type { Workspace, WorkspacePayload } from '$lib/api/chatWorkspaces';
 	import ChatSidebar from './ChatSidebar.svelte';
 	import ChatWindow from './ChatWindow.svelte';
-	import ChatInput from './ChatInput.svelte';
+	import ChatInput, { type ComposerCommand } from './ChatInput.svelte';
 	import ModelCapabilityBadges from './ModelCapabilityBadges.svelte';
 	import AgentPicker from './AgentPicker.svelte';
 	import AgentManagerModal from './AgentManagerModal.svelte';
 	import AgentHubModal from './AgentHubModal.svelte';
 	import ChatProjectsView from './ChatProjectsView.svelte';
 	import CreateProjectDialog from './CreateProjectDialog.svelte';
-	import ChatSettingsOverlay from './ChatSettingsOverlay.svelte';
 	import ChatSourcesPanel from './ChatSourcesPanel.svelte';
 	import ModelPickerOverlay from './ModelPickerOverlay.svelte';
 	import ConversationWorkspacePicker from './ConversationWorkspacePicker.svelte';
@@ -71,6 +75,9 @@
 		workspace_id: number | null;
 		active_leaf_id?: string | null;
 		updated_at: string | null;
+		title_source?: 'legacy' | 'auto' | 'explicit';
+		title_status?: 'idle' | 'pending' | 'ready' | 'failed' | 'unavailable';
+		title_revision?: number;
 	}
 	interface MessagesResponse {
 		messages: ChatMsg[];
@@ -104,25 +111,34 @@
 	}
 
 
-	type ChatSettingsSection = 'usage' | 'mcp';
-
 	interface Props {
 		/** Undefined is the normal chat route; null is the project index. */
 		projectRoute?: number | null;
 		/** One-shot workspace assignment for a newly created conversation. */
 		initialWorkspaceId?: number | null;
-		/** Settings section to open when the route is reached from a handled callback. */
-		initialSettingsSection?: ChatSettingsSection;
 	}
-	let { projectRoute = undefined, initialWorkspaceId = null, initialSettingsSection = 'usage' }: Props = $props();
+	let { projectRoute = undefined, initialWorkspaceId = null }: Props = $props();
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
 
-	// --- 상태 ---
 	let conversations = $state<Conversation[]>([]);
+	let newlyCreatedConversationId = $state<string | null>(null);
+	let newlyCreatedConversationEpoch = 0;
+	let localMutationEpoch = 0;
+
+	// Context state & compaction
+	let contextState = $state<ContextState | null>(null);
+	let contextLoading = $state(false);
+	let contextPhase = $state<'ready' | 'compacting' | 'compacted' | 'failed'>('ready');
+	let contextBeforeTokens = $state<number | null>(null);
+	let contextAfterTokens = $state<number | null>(null);
+	let contextError = $state<string | null>(null);
+	let contextCause = $state<ContextUpdatedPayload['cause']>(null);
+	let manualCompacting = $state(false);
 	let models = $state<AvailableModel[]>([]);
 	let selectedModel = $state('');
 	let effort = $state('auto'); // auto=provider 기본, none=명시적 비활성.
+	let searchEnabled = $state(false);
 	let attachments = $state<ChatAttachment[]>([]); // 입력창 첨부(업로드 진행/완료)
 	// 대화별 tool/MCP 선택 — null=활성 전체(기본), 배열=해당 항목만. (에이전트 바인딩 시 에이전트가 소유)
 	let availableTools = $state<{ id: number; name: string }[]>([]);
@@ -136,8 +152,15 @@
 
 	let activeConvId = $state<string | null>(null);
 
-	function selectedFeatureOptions() {
+	function selectedFeatureOptions(modelName = activeModelName) {
 		const features = defaultChatFeatureOptions();
+		const caps = models.find((model) => model.model_name === modelName)?.capabilities;
+		const searchGate = caps?.feature_gates?.web_search;
+		if (caps?.web_search && searchGate?.mode === 'native' && (caps.web_search_required || (searchEnabled && searchGate.available && searchGate.pricing_available))) {
+			features.web_search.enabled = true;
+			features.web_search.mode = 'native';
+			features.web_search.provider_id = null;
+		}
 		features.tool_policy.enabled_tool_ids =
 			selectedToolIds === null ? null : selectedToolIds.map(String);
 		features.tool_policy.enabled_mcp_ids = selectedMcpIds;
@@ -183,7 +206,9 @@
 	let streaming = $state(false);
 	let runningConversationIds = $state<Set<string>>(new Set());
 	let treeNodes = $state<ChatTreeNode[]>([]);
+	let tempThreadId = $state<string | null>(null);
 	let tempMode = $state(false);
+	const hasContextScope = $derived(Boolean(activeConvId || (tempMode && tempThreadId)));
 	let tempMessages = $state<DisplayMessage[]>([]);
 	let treeLoading = $state(false); // 분기/재생성 대상 전환 등 트리 재조회 중
 	let historyLoading = $state(false);
@@ -209,22 +234,17 @@
 	let agentHubOpen = $state(false);
 	const modelLocked = $derived(activeAgent !== null);
 
-	// 프로젝트(workspace) 관리 · 설정 오버레이
+	// 프로젝트(workspace) 관리
 	let workspaces = $state<Workspace[]>([]);
 	let view = $state<'chat' | 'projects'>('chat');
 	let projectsInitialMode = $state<'grid'>('grid');
 	let projectsInitialWorkspaceId = $state<number | null>(null);
 	let createProjectDialogOpen = $state(false);
-	let settingsSection = $state<ChatSettingsSection>('usage');
-	let settingsOpen = $state(false);
-	$effect(() => {
-		if (initialSettingsSection === 'mcp') {
-			settingsSection = 'mcp';
-			settingsOpen = true;
-		}
-	});
 	let sourcesOpen = $state(false);
 	let modelPickerOpen = $state(false);
+	function openSettings(section = 'usage') {
+		void goto(`/dashboard/chat/settings?section=${section}`);
+	}
 
 	$effect(() => {
 		if (projectRoute === undefined) return;
@@ -235,6 +255,10 @@
 	// 현재 선택 모델의 능력(배지·게이팅). 에이전트 바인딩 시 에이전트 모델 기준.
 	const activeModelName = $derived(activeAgent?.model_name || selectedModel);
 	const selectedModelObj = $derived(models.find((m) => m.model_name === activeModelName) ?? null);
+	$effect(() => {
+		const caps = selectedModelObj?.capabilities;
+		if (!caps?.web_search || caps.feature_gates?.web_search?.mode !== 'native') searchEnabled = false;
+	});
 
 	// 모델을 바꾸면 현재 effort 가 새 모델에 없을 수 있으므로 정규화(없으면 null=서버 기본).
 	$effect(() => {
@@ -256,16 +280,22 @@
 		persistLastModel(name);
 	}
 
-	// 사이드바 접기/펼치기 (데스크톱 토글 · 모바일 드로어). 모바일은 기본 접힘.
+	// Compact layouts keep the history control inside the chat header; desktop keeps the sidebar inline.
 	let sidebarOpen = $state(true);
-	function toggleSidebar() {
-		sidebarOpen = !sidebarOpen;
+	let sidebarTrigger = $state<HTMLButtonElement | null>(null);
+	function closeSidebar(restoreFocus = false) {
+		sidebarOpen = false;
+		if (restoreFocus && isCompact()) requestAnimationFrame(() => sidebarTrigger?.focus());
 	}
-	function isMobile(): boolean {
-		return typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches;
+	function toggleSidebar() {
+		if (sidebarOpen) closeSidebar(true);
+		else sidebarOpen = true;
+	}
+	function isCompact(): boolean {
+		return typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches;
 	}
 	function closeSidebarOnMobile() {
-		if (isMobile()) sidebarOpen = false;
+		if (isCompact()) closeSidebar();
 	}
 	// "이 프로젝트에서 새 채팅" → 다음 생성되는 대화를 이 프로젝트에 배정한다(생성 시 소비).
 	let pendingWorkspaceId = $state<number | null>(null);
@@ -292,7 +322,7 @@
 		temp: boolean;
 	} | null>(null);
 	let currentRun = $state<ChatRunDescriptor | null>(null);
-	let tempThreadId = $state<string | null>(null);
+	let compactionFollowRunId: string | null = null;
 	let tmpSeq = 0;
 	let streamGeneration = 0;
 	let destroyed = false;
@@ -303,27 +333,47 @@
 		destroyed = true;
 		for (const frame of revealFrames) cancelAnimationFrame(frame);
 		streamAttachment.detach();
+		teardownAllTitlePolling();
+		if (previewDebounceTimer) clearTimeout(previewDebounceTimer);
+		if (previewAbortController) previewAbortController.abort();
 	});
 
 	onMount(() => {
 		const reconcile = () => {
 			void refreshServerRunSnapshot();
+			void refreshConversationsMetadata();
+			checkAndStartPendingTitlePolling();
 			if (activeConvId && !tempMode && !currentRun) void resumeActiveRun(activeConvId);
+		};
+		const onVisibility = () => {
+			if (document.visibilityState === 'visible') {
+				reconcile();
+			} else {
+				stopTitlePolling();
+			}
 		};
 		window.addEventListener('focus', reconcile);
 		window.addEventListener('online', reconcile);
+		document.addEventListener('visibilitychange', onVisibility);
 		return () => {
 			window.removeEventListener('focus', reconcile);
 			window.removeEventListener('online', reconcile);
+			document.removeEventListener('visibilitychange', onVisibility);
 		};
 	});
 
 	/** Detach this view from a durable run. This intentionally never sends a cancel request. */
 	function detachLocalStream() {
+		invalidateContextPreview();
 		streamGeneration = streamAttachment.detach();
+		compactionFollowRunId = null;
 		for (const frame of revealFrames) cancelAnimationFrame(frame);
 		revealFrames.clear();
 		streaming = false;
+		manualCompacting = false;
+		contextPhase = 'ready';
+		contextCause = null;
+		contextError = null;
 		toolActivity = null;
 		agentActivity = null;
 		stream = null;
@@ -403,6 +453,88 @@
 	});
 	const treeSource = $derived(tempMode || (stream && stream.conversationId === activeConvId) ? [] : treeNodes);
 	const tempToggleLocked = $derived(streaming || activeConvId !== null || tempMessages.length > 0);
+
+	const compactCommandReason = $derived.by(() => {
+		if (manualCompacting) return null;
+		if (contextPhase === 'compacting') return '자동 압축이 끝날 때까지 기다리세요';
+		if (streaming) return '응답이 끝난 뒤 압축할 수 있습니다';
+		if (!hasContextScope) return '이전 대화를 시작한 뒤 압축할 수 있습니다';
+		if (contextLoading || contextState === null) return '컨텍스트 사용량을 확인하는 중입니다';
+		if (contextState.measurement === 'unknown' || contextState.input_budget === null) {
+			return '컨텍스트 한도를 확인할 수 없습니다';
+		}
+		if (!contextState.can_compact) return '아직 압축할 이전 대화가 없습니다';
+		return null;
+	});
+	const composerCommands = $derived.by((): ComposerCommand[] => {
+		const conversationActionReason = manualCompacting
+			? '컨텍스트 압축이 끝날 때까지 기다리세요'
+			: streaming
+				? '응답이 끝난 뒤 사용할 수 있습니다'
+				: null;
+		return [
+			manualCompacting
+				? {
+						id: 'stop-compaction',
+						name: '압축 중단',
+						description: '진행 중인 수동 컨텍스트 압축을 중단합니다',
+						onSelect: stop
+					}
+				: {
+						id: 'compact',
+						name: '압축',
+						description: '이전 대화를 요약해 컨텍스트를 확보합니다',
+						disabled: compactCommandReason !== null,
+						disabledReason: compactCommandReason ?? undefined,
+						onSelect: startManualCompaction
+					},
+			{
+				id: 'new-conversation',
+				name: '새 채팅',
+				description: '새 빈 대화를 시작합니다',
+				disabled: conversationActionReason !== null,
+				disabledReason: conversationActionReason ?? undefined,
+				onSelect: newConversation
+			},
+			{
+				id: 'new-project',
+				name: '새 프로젝트',
+				description: '대화를 정리할 새 프로젝트를 만듭니다',
+				disabled: conversationActionReason !== null,
+				disabledReason: conversationActionReason ?? undefined,
+				onSelect: createProject
+			},
+			{
+				id: 'select-model',
+				name: '모델 선택',
+				description: '이 대화에 사용할 모델을 선택합니다',
+				disabled: modelLocked || conversationActionReason !== null,
+				disabledReason: modelLocked
+					? '에이전트가 모델을 관리하고 있습니다'
+					: (conversationActionReason ?? undefined),
+				onSelect: () => (modelPickerOpen = true)
+			},
+			{
+				id: 'temporary-chat',
+				name: tempMode ? '임시 채팅 종료' : '임시 채팅',
+				description: tempMode ? '임시 채팅을 종료합니다' : '저장되지 않는 임시 채팅을 시작합니다',
+				disabled: tempToggleLocked,
+				disabledReason: tempToggleLocked
+					? '시작된 채팅에서는 임시 모드를 변경할 수 없습니다'
+					: undefined,
+				onSelect: toggleTempChat
+			},
+			{
+				id: 'usage',
+				name: '사용량',
+				description: '토큰과 비용 사용량을 확인합니다',
+				onSelect: () => openSettings('usage')
+			}
+		];
+	});
+	const manualCompactionActivity = $derived(
+		manualCompacting && contextPhase === 'compacting' ? '컨텍스트 압축 중' : null
+	);
 	// 대화 전체 출처(중복 제거) — 헤더 "출처" 버튼 + 패널 공유
 	const allCitations = $derived(aggregateCitations(displayPath));
 
@@ -431,6 +563,32 @@
 			runningConversationIds = new Set(
 				runs.flatMap((run) => (run.conversation_id ? [run.conversation_id] : []))
 			);
+			const attachedCompaction = currentRun?.run_kind === 'compaction' ? currentRun : null;
+			if (attachedCompaction && activeConvId === attachedCompaction.conversation_id && !tempMode) {
+				const active =
+					runs.find((run) => run.run_id === attachedCompaction.run_id && run.run_kind === 'compaction') ??
+					runs.find(
+						(run) =>
+							run.run_kind === 'compaction' &&
+							run.conversation_id === attachedCompaction.conversation_id
+					);
+				if (!active || active.status === 'completed' || active.status === 'failed' || active.status === 'canceled') {
+					currentRun = null;
+					compactionFollowRunId = null;
+					manualCompacting = false;
+					contextPhase = active?.status === 'failed' ? 'failed' : 'ready';
+					contextCause = null;
+					setConversationRun(attachedCompaction.conversation_id!, false);
+					void executeContextPreview();
+				} else {
+					currentRun = active;
+					manualCompacting = true;
+					contextPhase = 'compacting';
+					contextCause = 'manual';
+					setConversationRun(active.conversation_id!, true);
+					if (!compactionFollowRunId) void followCompactionRun(active, streamGeneration);
+				}
+			}
 			return runs;
 		} catch {
 			// A transient snapshot failure must not block loading durable history.
@@ -438,29 +596,245 @@
 		}
 	}
 
-	async function loadConversations() {
-		if (!token || !projectId) return;
+	interface PendingTitleTracker {
+		conversationId: string;
+		startedAt: number;
+		nextPollAt: number;
+		inFlight: boolean;
+	}
+	const pendingTitleTrackers = new Map<string, PendingTitleTracker>();
+	let titlePollingGeneration = 0;
+	let activeTitlePollRequests = 0;
+	let titlePollTimer: ReturnType<typeof setInterval> | null = null;
+
+	function checkAndStartPendingTitlePolling() {
+		if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+			stopTitlePolling();
+			return;
+		}
+		const now = Date.now();
+		for (const c of conversations) {
+			if (c.title_status === 'pending' && !pendingTitleTrackers.has(c.id)) {
+				pendingTitleTrackers.set(c.id, {
+					conversationId: c.id,
+					startedAt: now,
+					nextPollAt: now,
+					inFlight: false
+				});
+			}
+		}
+		for (const [id] of pendingTitleTrackers) {
+			const c = conversations.find((conv) => conv.id === id);
+			if (!c || c.title_status !== 'pending') {
+				pendingTitleTrackers.delete(id);
+			}
+		}
+		if (pendingTitleTrackers.size > 0 && !titlePollTimer) {
+			titlePollTimer = setInterval(pollPendingTitlesTick, 1000);
+			void pollPendingTitlesTick();
+		} else if (pendingTitleTrackers.size === 0 && titlePollTimer) {
+			stopTitlePolling();
+		}
+	}
+
+	function stopTitlePolling() {
+		if (titlePollTimer) {
+			clearInterval(titlePollTimer);
+			titlePollTimer = null;
+		}
+	}
+
+	function teardownAllTitlePolling() {
+		stopTitlePolling();
+		titlePollingGeneration += 1;
+		pendingTitleTrackers.clear();
+		activeTitlePollRequests = 0;
+	}
+
+	async function pollPendingTitlesTick() {
+		if (destroyed || !token || !projectId) {
+			stopTitlePolling();
+			return;
+		}
+		if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+			stopTitlePolling();
+			return;
+		}
+		const now = Date.now();
+		const trackers = [...pendingTitleTrackers.values()].sort((a, b) => a.nextPollAt - b.nextPollAt);
+		for (const tracker of trackers) {
+			if (tracker.inFlight || now < tracker.nextPollAt) continue;
+			if (activeTitlePollRequests >= 4) {
+				break;
+			}
+			tracker.inFlight = true;
+			// A slow provider/queue is still pending; only the server can declare failure.
+			tracker.nextPollAt = now + (now - tracker.startedAt >= 30_000 ? 15_000 : 1_000);
+			void pollSingleTitle(tracker.conversationId, titlePollingGeneration);
+		}
+		if (pendingTitleTrackers.size === 0) {
+			stopTitlePolling();
+		}
+	}
+
+	async function pollSingleTitle(convId: string, generation = titlePollingGeneration) {
+		if (!token || !projectId || destroyed) return;
+		activeTitlePollRequests += 1;
+		try {
+			const updated = await api.get<Conversation>(`/api/v1/chat/conversations/${convId}`, token, projectId);
+			if (destroyed || generation !== titlePollingGeneration) return;
+			const current = conversations.find((c) => c.id === convId);
+			if (!current) {
+				pendingTitleTrackers.delete(convId);
+				return;
+			}
+			const currentRev = current.title_revision ?? 0;
+			const updatedRev = updated.title_revision ?? 0;
+			if (updatedRev >= currentRev) {
+				conversations = conversations.map((c) =>
+					c.id === convId ? mergeConversationMetadata(c, updated) : c
+				);
+				const merged = conversations.find((c) => c.id === convId);
+				if (merged?.title_status !== 'pending') {
+					pendingTitleTrackers.delete(convId);
+				}
+			}
+		} catch {
+			// Transient poll failure ignored
+		} finally {
+			if (generation === titlePollingGeneration) {
+				activeTitlePollRequests = Math.max(0, activeTitlePollRequests - 1);
+				const tracker = pendingTitleTrackers.get(convId);
+				if (tracker) tracker.inFlight = false;
+			}
+		}
+	}
+
+	function mergeConversationMetadata(existing: Conversation, incoming: Conversation): Conversation {
+		const existingRev = existing.title_revision ?? 0;
+		const incomingRev = incoming.title_revision ?? 0;
+		if (existingRev > incomingRev) {
+			return {
+				...incoming,
+				title: existing.title,
+				title_status: existing.title_status,
+				title_revision: existing.title_revision,
+				title_source: existing.title_source
+			};
+		}
+		if (
+			existingRev === incomingRev &&
+			(existing.title_status === 'ready' || existing.title_status === 'failed' || existing.title_status === 'unavailable') &&
+			(incoming.title_status === 'pending' || incoming.title_status === 'idle')
+		) {
+			return {
+				...incoming,
+				title: existing.title,
+				title_status: existing.title_status,
+				title_revision: existing.title_revision,
+				title_source: existing.title_source
+			};
+		}
+		return incoming;
+	}
+
+	function reconcileConversationsList(loaded: Conversation[], requestEpoch = localMutationEpoch) {
+		const existingMap = new Map(conversations.map((c) => [c.id, c]));
+		const loadedIds = new Set(loaded.map((c) => c.id));
+
+		const reconciled: Conversation[] = loaded.map((item) => {
+			const existing = existingMap.get(item.id);
+			return existing ? mergeConversationMetadata(existing, item) : item;
+		});
+
+		if (newlyCreatedConversationId && !loadedIds.has(newlyCreatedConversationId)) {
+			if (requestEpoch >= newlyCreatedConversationEpoch) {
+				newlyCreatedConversationId = null;
+			} else {
+				const newConv = existingMap.get(newlyCreatedConversationId);
+				if (newConv) reconciled.unshift(newConv);
+			}
+		}
+
+		conversations = reconciled;
+		checkAndStartPendingTitlePolling();
+	}
+
+	let refreshScheduled = false;
+	function scheduleMetadataRefresh() {
+		if (refreshScheduled) return;
+		refreshScheduled = true;
+		queueMicrotask(() => {
+			refreshScheduled = false;
+			void refreshConversationsMetadata();
+		});
+	}
+	async function refreshConversationsMetadata() {
+		if (!token || !projectId || destroyed) return;
+		const reqEpoch = localMutationEpoch;
+		const reqProjectId = projectId;
+		const reqToken = token;
 		try {
 			const loaded = await api.get<Conversation[]>('/api/v1/chat/conversations', token, projectId);
-			conversations = loaded;
-			const activeRuns = await refreshServerRunSnapshot();
+			if (destroyed || projectId !== reqProjectId || token !== reqToken) return;
+			if (reqEpoch !== localMutationEpoch) {
+				scheduleMetadataRefresh();
+				return;
+			}
+			reconcileConversationsList(loaded, reqEpoch);
+		} catch {
+			// Transient refresh failure ignored
+		}
+	}
+	async function restoreInitialSelection() {
+		if (!token || !projectId) return;
+		if (restoredConversationProjectId === projectId) return;
+		const reqProjectId = projectId;
+		const reqToken = token;
+		const capturedSelectionGeneration = selectionGeneration;
+		const capturedMutationEpoch = localMutationEpoch;
+		const capturedActiveConversationId = activeConvId;
+		try {
+			const [loaded, activeRuns] = await Promise.all([
+				api.get<Conversation[]>('/api/v1/chat/conversations', token, projectId),
+				refreshServerRunSnapshot()
+			]);
+			if (destroyed || projectId !== reqProjectId || token !== reqToken) return;
+			if (
+				selectionGeneration !== capturedSelectionGeneration ||
+				localMutationEpoch !== capturedMutationEpoch ||
+				activeConvId !== capturedActiveConversationId
+			) {
+				// A late initial response may refresh metadata, but must never
+				// select/detach a conversation created or selected meanwhile.
+				if (localMutationEpoch === capturedMutationEpoch) {
+					reconcileConversationsList(loaded, capturedMutationEpoch);
+				} else {
+					scheduleMetadataRefresh();
+				}
+				return;
+			}
+			reconcileConversationsList(loaded, capturedMutationEpoch);
+			restoredConversationProjectId = projectId;
 			if (projectRoute !== undefined || initialWorkspaceId !== null) {
 				if (initialWorkspaceId !== null) clearActiveConversationId(projectId);
 				return;
 			}
-			if (restoredConversationProjectId === projectId) return;
-			restoredConversationProjectId = projectId;
 			const savedId = loadActiveConversationId(projectId);
-			const savedConversation = savedId ? loaded.find((conversation) => conversation.id === savedId) : undefined;
+			const savedConversation = savedId ? conversations.find((c) => c.id === savedId) : undefined;
 			const activeConversation = activeRuns
-				.map((run) => (run.conversation_id ? loaded.find((conversation) => conversation.id === run.conversation_id) : undefined))
-				.find((conversation): conversation is Conversation => Boolean(conversation));
+				.map((run) => (run.conversation_id ? conversations.find((c) => c.id === run.conversation_id) : undefined))
+				.find((c): c is Conversation => Boolean(c));
 			const conversation = savedConversation ?? activeConversation;
 			if (conversation) void selectConversation(conversation);
 			else if (savedId) clearActiveConversationId(projectId);
 		} catch (e) {
-			error = e instanceof Error ? e.message : '대화 목록을 불러오지 못했습니다';
+			error = e instanceof Error ? e.message : '대화를 불러오지 못했습니다';
 		}
+	}
+
+	async function loadConversations() {
+		await refreshConversationsMetadata();
 	}
 	async function searchConversations(query: string): Promise<Conversation[]> {
 		if (!token || !projectId) return [];
@@ -653,6 +1027,7 @@
 	async function assignWorkspace(conv: Conversation, workspaceId: number | null) {
 		if (!token || !projectId || conv.workspace_id === workspaceId) return;
 		const prev = conv.workspace_id;
+		localMutationEpoch += 1;
 		conversations = conversations.map((c) =>
 			c.id === conv.id ? { ...c, workspace_id: workspaceId } : c
 		);
@@ -665,6 +1040,7 @@
 			);
 		} catch (e) {
 			// 실패 시 롤백
+			localMutationEpoch += 1;
 			conversations = conversations.map((c) =>
 				c.id === conv.id ? { ...c, workspace_id: prev } : c
 			);
@@ -701,6 +1077,12 @@
 		if (projectId) saveActiveConversationId(projectId, conv.id);
 		if (conv.model_name) selectedModel = conv.model_name;
 		error = null;
+		contextError = null;
+		contextPhase = 'ready';
+		contextBeforeTokens = null;
+		contextCause = null;
+		contextAfterTokens = null;
+		void executeContextPreview();
 		try {
 			if (await loadMessages(conv.id, selection)) void resumeActiveRun(conv.id);
 		} catch (e) {
@@ -722,18 +1104,30 @@
 		closeSidebarOnMobile();
 		metricsById.clear();
 		activeConvId = null;
+		newlyCreatedConversationId = null;
 		if (projectId) clearActiveConversationId(projectId);
 		allMessages = [];
 		treeNodes = [];
 		activeLeafId = null;
 		tempMessages = [];
 		error = null;
+		contextState = null;
+		contextError = null;
+		contextPhase = 'ready';
+		contextBeforeTokens = null;
+		contextAfterTokens = null;
+		contextCause = null;
 	}
 	function toggleTempChat() {
 		if (tempToggleLocked) return;
 		if (tempMode) {
+			invalidateContextPreview();
 			tempMode = false;
 			rememberTempThread(null);
+			contextState = null;
+			contextError = null;
+			contextPhase = 'ready';
+			contextCause = null;
 			return;
 		}
 		leaveProjectsRoute();
@@ -754,15 +1148,314 @@
 		activeLeafId = null;
 		tempMessages = [];
 		error = null;
+		contextState = null;
+		contextError = null;
+		contextPhase = 'ready';
+		contextCause = null;
 	}
-	async function ensureConversation(firstMessage: string): Promise<string | null> {
+
+	// --- Context preview & compaction ---
+	let previewAbortController: AbortController | null = null;
+	let previewGeneration = 0;
+	let previewDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function invalidateContextPreview() {
+		previewGeneration += 1;
+		previewAbortController?.abort();
+		previewAbortController = null;
+		if (previewDebounceTimer) {
+			clearTimeout(previewDebounceTimer);
+			previewDebounceTimer = null;
+		}
+		contextLoading = false;
+	}
+
+	function previewParts(emptyDraft: boolean): UserInputPart[] {
+		return emptyDraft
+			? []
+			: [
+					...(input.trim() ? [{ type: 'text' as const, text: input.trim() }] : []),
+					...toInputParts(attachments)
+				].slice(0, 32);
+	}
+
+	function previewSnapshot(emptyDraft: boolean) {
+		const features = selectedFeatureOptions();
+		const parts = previewParts(emptyDraft);
+		const temp = tempMode;
+		const scopeId = temp ? tempThreadId : activeConvId;
+		const agentId = activeAgent ? String(activeAgent.id) : null;
+		const key = JSON.stringify({
+			projectId,
+			token,
+			temp,
+			scopeId,
+			model: selectedModel,
+			effort,
+			agentId,
+			skills: selectedSkillIds,
+			features,
+			parts,
+			emptyDraft
+		});
+		return {
+			key,
+			path: temp
+				? `/api/v1/chat/temp-threads/${tempThreadId}/context-preview`
+				: `/api/v1/chat/conversations/${activeConvId}/context-preview`,
+			body: {
+				model_id: selectedModel,
+				features,
+				reasoning_effort: effort,
+				agent_id: agentId ?? undefined,
+				skill_ids: selectedSkillIds,
+				execution_mode: 'chat',
+				parts,
+				client_timezone: browserTimezone()
+			}
+		};
+	}
+
+	function isCurrentPreviewSnapshot(key: string): boolean {
+		return key === previewSnapshot(false).key || key === previewSnapshot(true).key;
+	}
+
+	function scheduleDebouncedContextPreview() {
+		contextLoading = true;
+		if (previewDebounceTimer) {
+			clearTimeout(previewDebounceTimer);
+		}
+		previewDebounceTimer = setTimeout(() => {
+			previewDebounceTimer = null;
+			void executeContextPreview();
+		}, 400);
+	}
+
+	async function executeContextPreview(options?: { emptyDraft?: boolean }): Promise<ContextState | null> {
+		if (streaming || destroyed || !token || !projectId) return null;
+		const hasScope = Boolean(activeConvId || (tempMode && tempThreadId));
+		if (!hasScope) {
+			invalidateContextPreview();
+			contextState = null;
+			return null;
+		}
+
+		if (previewDebounceTimer) {
+			clearTimeout(previewDebounceTimer);
+			previewDebounceTimer = null;
+		}
+		previewAbortController?.abort();
+		const controller = new AbortController();
+		previewAbortController = controller;
+		const generation = ++previewGeneration;
+		const snapshot = previewSnapshot(Boolean(options?.emptyDraft));
+
+		contextLoading = true;
+		try {
+			const state = await previewChatContext(snapshot.path, snapshot.body, {
+				token,
+				projectId,
+				signal: controller.signal
+			});
+
+			if (
+				controller.signal.aborted ||
+				destroyed ||
+				generation !== previewGeneration ||
+				!isCurrentPreviewSnapshot(snapshot.key)
+			) {
+				return null;
+			}
+
+			contextState = state;
+			contextError = null;
+			if (state.active_compaction_run_id) {
+				contextPhase = 'compacting';
+			} else if (contextPhase === 'compacting' && !manualCompacting) {
+				contextPhase = 'ready';
+			}
+			return state;
+		} catch (caught) {
+			if (
+				controller.signal.aborted ||
+				destroyed ||
+				generation !== previewGeneration ||
+				!isCurrentPreviewSnapshot(snapshot.key)
+			) {
+				return null;
+			}
+			contextState = null;
+			const status = caught instanceof ChatHttpError || caught instanceof ApiError ? caught.status : null;
+			if (status === 409) {
+				contextError = '대화 상태가 변경되었습니다. 최신 대화를 확인해 주세요.';
+			} else if (status === 422) {
+				contextError = '선택한 모델 또는 요청 설정으로 컨텍스트를 계산할 수 없습니다.';
+			} else if (status === 401 || status === 403) {
+				contextError = '대화 접근 권한과 로그인 상태를 확인해 주세요.';
+			} else if (status === 404) {
+				contextError = '대화를 찾을 수 없어 컨텍스트를 계산하지 못했습니다.';
+			} else if (status === 429) {
+				contextError = '요청이 많아 컨텍스트를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.';
+			} else if (status !== null && status >= 500) {
+				contextError = '컨텍스트 계산 서비스를 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.';
+			} else {
+				contextError = '컨텍스트 요청을 완료하지 못했습니다. 연결 상태를 확인해 주세요.';
+			}
+			return null;
+		} finally {
+			if (!destroyed && generation === previewGeneration && !controller.signal.aborted) {
+				contextLoading = false;
+				if (previewAbortController === controller) previewAbortController = null;
+			}
+		}
+	}
+
+	$effect(() => {
+		const _in = input;
+		const _att = attachments;
+		const _model = selectedModel;
+		const _agent = activeAgent;
+		const _tools = selectedToolIds;
+		const _mcp = selectedMcpIds;
+		const _skills = selectedSkillIds;
+		const _effort = effort;
+		const _search = searchEnabled;
+
+		contextState = null;
+		contextError = null;
+		invalidateContextPreview();
+		if (!hasContextScope || streaming || !token || !projectId) return;
+
+		untrack(() => {
+			scheduleDebouncedContextPreview();
+		});
+	});
+
+	async function startManualCompaction() {
+		if (!token || !projectId || streaming || manualCompacting || destroyed) return;
+		const hasScope = Boolean(activeConvId || (tempMode && tempThreadId));
+		if (!hasScope) return;
+
+		const previewState = await executeContextPreview({ emptyDraft: true });
+		if (!previewState) return;
+		if (!previewState.can_compact) {
+			contextError = '아직 압축할 이전 대화가 없습니다';
+			return;
+		}
+
+		const path = tempMode
+			? `/api/v1/chat/temp-threads/${tempThreadId}/compactions`
+			: `/api/v1/chat/conversations/${activeConvId}/compactions`;
+
+		const body = {
+			model_id: selectedModel,
+			features: selectedFeatureOptions(),
+			reasoning_effort: effort,
+			agent_id: activeAgent ? String(activeAgent.id) : undefined,
+			skill_ids: selectedSkillIds,
+			execution_mode: 'chat',
+			expected_context_revision: previewState.revision,
+			client_timezone: browserTimezone()
+		};
+
+		manualCompacting = true;
+		contextPhase = 'compacting';
+		contextCause = 'manual';
+		contextError = null;
+		invalidateContextPreview();
+		const generation = streamGeneration;
+
+		try {
+			const descriptor = await createChatRun(path, body, {
+				token,
+				projectId,
+				idempotencyKey: crypto.randomUUID()
+			});
+			if (destroyed || generation !== streamGeneration) {
+				manualCompacting = false;
+				return;
+			}
+			currentRun = descriptor;
+			await followCompactionRun(descriptor, generation);
+		} catch (caught) {
+			manualCompacting = false;
+			contextPhase = 'failed';
+			contextCause = null;
+			if (caught instanceof ChatHttpError && caught.status === 409) {
+				contextError = '대화 상태가 변경되었습니다. 최신 대화를 확인해 주세요.';
+				scheduleMetadataRefresh();
+				void executeContextPreview();
+			} else {
+				contextError = caught instanceof Error ? caught.message : '컨텍스트 압축에 실패했습니다';
+			}
+		}
+	}
+
+	async function followCompactionRun(descriptor: ChatRunDescriptor, generation: number) {
+		if (compactionFollowRunId === descriptor.run_id) return;
+		compactionFollowRunId = descriptor.run_id;
+		const controller = new AbortController();
+		if (!streamAttachment.attach(controller, generation)) {
+			if (compactionFollowRunId === descriptor.run_id) compactionFollowRunId = null;
+			return;
+		}
+		try {
+			for await (const evt of followChatRun(descriptor, { token, projectId, signal: controller.signal })) {
+				if (destroyed || generation !== streamGeneration) return;
+				if (evt.type === 'context.updated') {
+					contextState = evt.payload.state;
+					contextPhase = evt.payload.phase;
+					contextBeforeTokens = evt.payload.before_tokens;
+					contextAfterTokens = evt.payload.after_tokens;
+					contextCause = evt.payload.phase === 'compacting' ? evt.payload.cause : null;
+					if (evt.payload.phase === 'compacted') {
+						scheduleMetadataRefresh();
+					} else if (evt.payload.phase === 'failed') {
+						contextError = evt.payload.state.reason_code ?? '컨텍스트 압축에 실패했습니다';
+					}
+				} else if (evt.type === 'run.completed') {
+					manualCompacting = false;
+					if (currentRun?.run_id === descriptor.run_id) currentRun = null;
+					contextPhase = 'compacted';
+					contextCause = null;
+					scheduleMetadataRefresh();
+					void executeContextPreview();
+					if (descriptor.conversation_id && activeConvId === descriptor.conversation_id && !tempMode) {
+						await loadMessages(descriptor.conversation_id, selectionGeneration);
+					}
+					return;
+				} else if (evt.type === 'run.failed' || evt.type === 'run.canceled') {
+					manualCompacting = false;
+					if (currentRun?.run_id === descriptor.run_id) currentRun = null;
+					contextPhase = evt.type === 'run.failed' ? 'failed' : 'ready';
+					contextCause = null;
+					if (evt.type === 'run.failed') {
+						contextError = evt.payload.safe_message;
+					}
+					return;
+				}
+			}
+		} catch (caught) {
+			if (destroyed || controller.signal.aborted || generation !== streamGeneration) return;
+			// A lost follower is not proof that the durable run ended. Keep the
+			// descriptor and cancel affordance until a snapshot says otherwise.
+			contextPhase = 'failed';
+			contextCause = null;
+			contextError = caught instanceof Error ? caught.message : '컨텍스트 압축 중 오류가 발생했습니다';
+		} finally {
+			streamAttachment.release(controller);
+			if (compactionFollowRunId === descriptor.run_id) compactionFollowRunId = null;
+		}
+	}
+
+	async function ensureConversation(): Promise<string | null> {
 		if (activeConvId) return activeConvId;
 		if (!token || !projectId) return null;
 		const wsId = pendingWorkspaceId;
 		const conv = await api.post<Conversation>(
 			'/api/v1/chat/conversations',
 			{
-				title: firstMessage.slice(0, 60),
+				title: null,
 				model_name: selectedModel || null,
 				workspace_id: wsId
 			},
@@ -771,7 +1464,13 @@
 		);
 		pendingWorkspaceId = null;
 		activeConvId = conv.id;
-		conversations = [conv, ...conversations];
+		localMutationEpoch += 1;
+		newlyCreatedConversationId = conv.id;
+		newlyCreatedConversationEpoch = localMutationEpoch;
+		if (projectId) saveActiveConversationId(projectId, conv.id);
+		conversations = [conv, ...conversations.filter((c) => c.id !== conv.id)];
+		checkAndStartPendingTitlePolling();
+		void executeContextPreview();
 		return conv.id;
 	}
 
@@ -798,70 +1497,112 @@
 	) {
 		let firstTokenMs: number | null = null;
 		let charCount = 0;
+		let latestMetrics: StreamMetrics | null = null;
+		let text = '';
+		let reasoning = '';
+		const citations = new Map<number, Extract<ChatPart, { type: 'citation' }>>();
 		const controller = new AbortController();
 		if (!streamAttachment.attach(controller, generation)) return;
+		let runState = createRunViewState(descriptor.run_id);
 		const reveal = createChatRevealBuffer({
 			reducedMotion: prefersReducedMotion()
 		});
-		let revealFrame: number | null = null;
-		let revealCompletion: (() => void) | null = null;
+		let projectionFrame: number | null = null;
+		let projectionDirty = false;
+		let projectionImmediate = false;
+		let lastProjectionAt = Number.NEGATIVE_INFINITY;
 
-		function renderReveal() {
-			if (revealFrame !== null) revealFrames.delete(revealFrame);
-			revealFrame = null;
-			if (destroyed || generation !== streamGeneration) {
-				revealCompletion?.();
-				revealCompletion = null;
+		function toolItemsFromState() {
+			return Object.values(runState.tools).map((tool) => ({
+				id: tool.callId,
+				name: tool.name,
+				args: JSON.stringify(tool.arguments),
+				result: completedToolText(tool.content),
+				durationMs: tool.durationMs,
+				running: tool.status === 'running',
+				status: tool.status === 'running' ? undefined : tool.status,
+				errorCode: tool.errorCode
+			}));
+		}
+
+		function cancelProjectionFrame() {
+			if (projectionFrame === null) return;
+			cancelAnimationFrame(projectionFrame);
+			revealFrames.delete(projectionFrame);
+			projectionFrame = null;
+		}
+
+		function project(nowMs: number) {
+			projectionFrame = null;
+			if (destroyed || generation !== streamGeneration || controller.signal.aborted) return;
+			if (
+				!projectionImmediate &&
+				lastProjectionAt !== Number.NEGATIVE_INFINITY &&
+				nowMs - lastProjectionAt < 50
+			) {
+				scheduleProjection();
 				return;
 			}
-			const next = reveal.frame();
+			projectionDirty = false;
+			projectionImmediate = false;
+			lastProjectionAt = nowMs;
+			const next = reveal.frame(nowMs);
 			draft.content = next.text;
-			if (next.pending) scheduleReveal();
-			else {
-				revealCompletion?.();
-				revealCompletion = null;
-			}
-		}
-		function scheduleReveal() {
-			if (revealFrame !== null || destroyed || generation !== streamGeneration) return;
-			revealFrame = requestAnimationFrame(renderReveal);
-			revealFrames.add(revealFrame);
-		}
-		function drainReveal() {
-			if (revealFrame !== null) {
-				cancelAnimationFrame(revealFrame);
-				revealFrames.delete(revealFrame);
-			}
-			revealFrame = null;
-			draft.content = reveal.drain();
-			revealCompletion?.();
-			revealCompletion = null;
-		}
-		function finishReveal() {
-			reveal.finish();
-			if (destroyed || generation !== streamGeneration || controller.signal.aborted) {
-				return Promise.resolve();
-			}
-			return new Promise<void>((resolve) => {
-				const complete = () => {
-					controller.signal.removeEventListener('abort', complete);
-					if (revealCompletion === complete) revealCompletion = null;
-					resolve();
-				};
-				revealCompletion = complete;
-				controller.signal.addEventListener('abort', complete, { once: true });
-				scheduleReveal();
-			});
+			draft.reasoning = reasoning;
+			draft.citations = [...citations.entries()]
+				.sort(([left], [right]) => left - right)
+				.map(([, citation]) => citation);
+			draft.activityItems = runState.activity;
+			draft.toolItems = toolItemsFromState();
+			draft.metrics = latestMetrics;
+			if (next.pending || projectionDirty) scheduleProjection();
 		}
 
+		function scheduleProjection(immediate = false) {
+			projectionDirty = true;
+			projectionImmediate ||= immediate;
+			if (projectionFrame !== null || destroyed || generation !== streamGeneration) return;
+			projectionFrame = requestAnimationFrame((timestamp) => project(timestamp || performance.now()));
+			revealFrames.add(projectionFrame);
+		}
+
+		function projectImmediately() {
+			cancelProjectionFrame();
+			projectionDirty = true;
+			projectionImmediate = true;
+			project(performance.now());
+		}
+
+		function drainReveal() {
+			reveal.drain();
+			projectImmediately();
+		}
+
+		const onVisibilityChange = () => {
+			if (document.visibilityState === 'visible') drainReveal();
+		};
+		document.addEventListener('visibilitychange', onVisibilityChange);
+
+		const textFromParts = () =>
+			runState.parts
+				.filter((part): part is Extract<ChatPart, { type: 'text' }> => part.type === 'text')
+				.map((part) => part.text)
+				.join('');
+		const reasoningFromParts = () =>
+			runState.parts
+				.filter((part): part is Extract<ChatPart, { type: 'reasoning' }> => part.type === 'reasoning')
+				.map((part) => part.text)
+				.join('');
+
 		try {
-			let runState = createRunViewState(descriptor.run_id);
 			for await (const evt of followChatRun(descriptor, { token, projectId, signal: controller.signal })) {
 				if (destroyed || generation !== streamGeneration) return;
 				runState = reduceRunEvent(runState, evt);
-				draft.activityItems = runState.activity;
 				if (evt.type === 'message.created') {
 					reveal.clear();
+					text = '';
+					reasoning = '';
+					citations.clear();
 					draft.content = '';
 					draft.reasoning = '';
 					draft.citations = [];
@@ -869,45 +1610,50 @@
 				if (evt.type === 'run.stage.changed') {
 					agentActivity = activityForRunStage(evt.payload.stage, evt.created_at, evt.payload.tool_name);
 				}
+				if (evt.type === 'context.updated') {
+					contextState = evt.payload.state;
+					contextPhase = evt.payload.phase;
+					contextBeforeTokens = evt.payload.before_tokens;
+					contextAfterTokens = evt.payload.after_tokens;
+					contextCause = evt.payload.phase === 'compacting' ? evt.payload.cause : null;
+					if (evt.payload.phase === 'compacted') {
+						scheduleMetadataRefresh();
+					} else if (evt.payload.phase === 'failed') {
+						contextError = evt.payload.state.reason_code ?? '컨텍스트 압축에 실패했습니다';
+					}
+				}
 				if (evt.type === 'part.delta' || evt.type === 'part.completed') {
 					if (evt.payload.message_id !== runState.messageId) continue;
-					const authoritativeText = runState.parts
-						.filter((part) => part.type === 'text')
-						.map((part) => part.text)
-						.join('');
-					draft.reasoning = runState.parts
-						.filter((part) => part.type === 'reasoning')
-						.map((part) => part.text)
-						.join('');
-					draft.citations = runState.parts.filter((part) => part.type === 'citation');
-					if (evt.type === 'part.delta' && evt.payload.part_type === 'text') {
-						const receivedAtMs = performance.now();
-						reveal.append(evt.payload.delta, Date.parse(evt.created_at), receivedAtMs);
-						scheduleReveal();
-						toolActivity = null;
-						if (firstTokenMs === null) firstTokenMs = performance.now();
-						charCount += evt.payload.delta.length;
-						draft.metrics = computeMetrics(
-							estimateTokens(charCount),
-							firstTokenMs,
-							performance.now(),
-							true
-						);
-					} else if (evt.type === 'part.completed' && evt.payload.part.type === 'text') {
-						reveal.reconcile(authoritativeText);
-						scheduleReveal();
+					if (evt.type === 'part.delta') {
+						const { part_type: partType, delta } = evt.payload;
+						if (partType === 'text') {
+							const receivedAtMs = performance.now();
+							text += delta;
+							reveal.append(delta, receivedAtMs);
+							toolActivity = null;
+							if (firstTokenMs === null) firstTokenMs = receivedAtMs;
+							charCount += delta.length;
+							latestMetrics = computeMetrics(
+								estimateTokens(charCount),
+								firstTokenMs,
+								performance.now(),
+								true
+							);
+						} else {
+							reasoning += delta;
+						}
+					} else {
+						const { part_index: partIndex, part } = evt.payload;
+						if (part.type === 'text') {
+							text = textFromParts();
+							reveal.reconcile(text);
+						} else if (part.type === 'reasoning') {
+							reasoning = reasoningFromParts();
+						} else if (part.type === 'citation') {
+							citations.set(partIndex, part);
+						}
 					}
 				} else if (evt.type === 'tool.call.started' || evt.type === 'tool.call.completed') {
-					draft.toolItems = Object.values(runState.tools).map((tool) => ({
-						id: tool.callId,
-						name: tool.name,
-						args: JSON.stringify(tool.arguments),
-						result: completedToolText(tool.content),
-						durationMs: tool.durationMs,
-						running: tool.status === 'running',
-						status: tool.status === 'running' ? undefined : tool.status,
-						errorCode: tool.errorCode
-					}));
 					toolActivity = evt.type === 'tool.call.started' ? taskLabelForTool(evt.payload.name) : null;
 				} else if (evt.type === 'tool.approval_required') {
 					pendingToolApprovals = [
@@ -929,7 +1675,7 @@
 						(approval) => approval.runId !== descriptor.run_id || approval.callId !== evt.payload.call_id
 					);
 				} else if (evt.type === 'usage.updated') {
-					draft.metrics = computeMetrics(
+					latestMetrics = computeMetrics(
 						evt.payload.completion_tokens,
 						firstTokenMs,
 						performance.now(),
@@ -937,40 +1683,48 @@
 					);
 				} else if (evt.type === 'run.completed') {
 					pendingToolApprovals = pendingToolApprovals.filter((approval) => approval.runId !== descriptor.run_id);
-					await finishReveal();
+					drainReveal();
+					contextCause = null;
+					if (contextPhase === 'compacting') contextPhase = 'ready';
 					if (generation !== streamGeneration || destroyed) return;
 					draft.streaming = false;
-					await onDone(draft.metrics ?? null);
+					await onDone(latestMetrics);
 					if (generation !== streamGeneration || destroyed) return;
 					endStream();
+					scheduleMetadataRefresh();
+					void executeContextPreview();
 					return;
 				} else if (evt.type === 'run.failed' || evt.type === 'run.canceled') {
 					pendingToolApprovals = pendingToolApprovals.filter((approval) => approval.runId !== descriptor.run_id);
 					drainReveal();
+					contextCause = null;
+					if (contextPhase === 'compacting') contextPhase = 'ready';
+					draft.streaming = false;
+					if (stream?.temp && stream.assistant === draft) tempMessages = [...stream.base, draft];
 					error = evt.payload.safe_message;
 					endStream();
+					scheduleMetadataRefresh();
+					void executeContextPreview();
 					if (descriptor.conversation_id && activeConvId === descriptor.conversation_id && !tempMode) {
 						setConversationRun(descriptor.conversation_id, false);
 						await loadMessages(descriptor.conversation_id, selectionGeneration);
-						void loadConversations();
+						scheduleMetadataRefresh();
 					}
 					return;
 				}
+				scheduleProjection();
 			}
 		} catch (caught) {
 			if (destroyed || controller.signal.aborted || generation !== streamGeneration) return;
 			drainReveal();
+			contextCause = null;
+			if (contextPhase === 'compacting') contextPhase = 'ready';
 			error = caught instanceof Error ? caught.message : '채팅 실행 중 오류가 발생했습니다';
 			endStream();
 		} finally {
+			document.removeEventListener('visibilitychange', onVisibilityChange);
 			streamAttachment.release(controller);
-			const pendingRevealCompletion = revealCompletion as (() => void) | null;
-			pendingRevealCompletion?.();
-			revealCompletion = null;
-			if (revealFrame !== null) {
-				cancelAnimationFrame(revealFrame);
-				revealFrames.delete(revealFrame);
-			}
+			cancelProjectionFrame();
 		}
 	}
 
@@ -1027,8 +1781,21 @@
 				generation !== streamGeneration
 			)
 				return;
+			if (descriptor.run_kind === 'compaction') {
+				invalidateContextPreview();
+				manualCompacting = true;
+				currentRun = descriptor;
+				contextPhase = 'compacting';
+				contextCause = 'manual';
+				setConversationRun(conversationId, true);
+				void followCompactionRun(descriptor, generation).finally(() => {
+					setConversationRun(conversationId, false);
+				});
+				return;
+			}
 
 			const draft = newAssistantDraft(activeConv?.model_name ?? selectedModel);
+			invalidateContextPreview();
 			streaming = true;
 			currentRun = descriptor;
 			setConversationRun(conversationId, true);
@@ -1044,8 +1811,9 @@
 							metricsById.set(activeLeafId, metrics);
 						}
 					}
-					void loadConversations();
+					scheduleMetadataRefresh();
 					void loadUsage();
+					void executeContextPreview();
 				},
 				generation
 			);
@@ -1099,10 +1867,11 @@
 
 		if (tempMode) return sendTemp(text, inputParts);
 
+		invalidateContextPreview();
 		streaming = true;
 		let convId: string | null;
 		try {
-			convId = await ensureConversation(text);
+			convId = await ensureConversation();
 		} catch (e) {
 			error = e instanceof Error ? e.message : '대화를 생성하지 못했습니다';
 			endStream();
@@ -1173,8 +1942,9 @@
 						metricsById.set(activeLeafId, metrics);
 					}
 				}
-				void loadConversations();
+				scheduleMetadataRefresh();
 				void loadUsage();
+				void executeContextPreview();
 			},
 			() => setConversationRun(convId!, true),
 			idempotencyKey
@@ -1208,6 +1978,7 @@
 		};
 		const history = [...tempMessages, userMsg];
 		tempMessages = history;
+		invalidateContextPreview();
 		streaming = true;
 		stream = { base: history, assistant: newAssistantDraft(selectedModel), conversationId: null, temp: true };
 		const live = stream.assistant; // 프록시 경유(반응성)
@@ -1227,6 +1998,7 @@
 				// 임시 채팅은 저장되지 않으므로 완료된 답변을 로컬 배열에 확정(계측값 포함)
 				tempMessages = [...history, { ...live, streaming: false, metrics }];
 				void loadUsage();
+				void executeContextPreview();
 			},
 			(descriptor) => rememberTempThread(descriptor.temp_thread_id)
 		);
@@ -1239,6 +2011,7 @@
 		error = null;
 		const idx = activePath.findIndex((m) => m.id === messageId);
 		if (idx === -1) return;
+		invalidateContextPreview();
 		streaming = true;
 		stream = { base: activePath.slice(0, idx), assistant: newAssistantDraft(modelName || selectedModel), conversationId, temp: false };
 		const live = stream.assistant; // 프록시 경유(반응성)
@@ -1247,7 +2020,7 @@
 			`/api/v1/chat/conversations/${conversationId}/messages/${messageId}/regenerate`,
 			{
 				model_id: modelName || selectedModel,
-				features: selectedFeatureOptions(),
+				features: selectedFeatureOptions(activeAgent?.model_name || modelName || selectedModel),
 				reasoning_effort: effort,
 				client_timezone: browserTimezone(),
 				skill_ids: selectedSkillIds,
@@ -1261,8 +2034,9 @@
 						metricsById.set(activeLeafId, metrics);
 					}
 				}
-				void loadConversations();
+				scheduleMetadataRefresh();
 				void loadUsage();
+				void executeContextPreview();
 			},
 			() => setConversationRun(conversationId, true)
 		);
@@ -1273,11 +2047,12 @@
 		if (failedSubmission?.message.id === messageId) {
 			const submission = failedSubmission;
 			error = null;
+			invalidateContextPreview();
 			streaming = true;
 			let convId = submission.conversationId || activeConvId;
 			if (!convId) {
 				try {
-					convId = await ensureConversation(submission.message.content);
+					convId = await ensureConversation();
 				} catch (e) {
 					error = e instanceof Error ? e.message : '대화를 생성하지 못했습니다';
 					endStream();
@@ -1314,8 +2089,9 @@
 							metricsById.set(activeLeafId, metrics);
 						}
 					}
-					void loadConversations();
+					scheduleMetadataRefresh();
 					void loadUsage();
+					void executeContextPreview();
 				},
 				() => setConversationRun(convId!, true),
 				submission.idempotencyKey
@@ -1330,6 +2106,7 @@
 		const targetRunId = message?.execution?.run_id;
 		if (idx === -1 || message?.role !== 'user' || !targetRunId || message.execution?.retryable !== true) return;
 		error = null;
+		invalidateContextPreview();
 		streaming = true;
 		stream = {
 			base: activePath.slice(0, idx + 1),
@@ -1350,8 +2127,9 @@
 						metricsById.set(activeLeafId, metrics);
 					}
 				}
-				void loadConversations();
+				scheduleMetadataRefresh();
 				void loadUsage();
+				void executeContextPreview();
 			},
 			() => setConversationRun(conversationId, true)
 		);
@@ -1374,6 +2152,7 @@
 			);
 			activeLeafId = targetLeaf; // 낙관적
 			await loadMessages(activeConvId);
+			void executeContextPreview();
 		} catch (e) {
 			error = e instanceof Error ? e.message : '버전 전환에 실패했습니다';
 		} finally {
@@ -1392,6 +2171,7 @@
 				token,
 				projectId
 			);
+			localMutationEpoch += 1;
 			conversations = [conv, ...conversations];
 			await selectConversation(conv);
 		} catch (e) {
@@ -1404,10 +2184,16 @@
 	// --- 삭제 ---
 	async function deleteConversation(conv: Conversation) {
 		if (streaming || !token || !projectId) return;
+		const label = conv.title?.trim();
+		const message = label ? `'${label}' 대화를 삭제하시겠습니까?` : '대화를 삭제하시겠습니까?';
+		if (!(await confirmDialog(message))) return;
 		try {
 			await api.delete(`/api/v1/chat/conversations/${conv.id}`, token, projectId);
+			localMutationEpoch += 1;
+			pendingTitleTrackers.delete(conv.id);
 			conversations = conversations.filter((c) => c.id !== conv.id);
 			if (activeConvId === conv.id) newConversation();
+			toast.success('대화를 삭제했습니다');
 		} catch (e) {
 			error = e instanceof Error ? e.message : '삭제에 실패했습니다';
 		}
@@ -1425,16 +2211,32 @@
 		void navigator.clipboard?.writeText(text);
 	}
 
-	// 최초 1회: 모바일이면 사이드바를 접은 상태로 시작(본문 우선 표시)
+	// Keep the drawer closed below the desktop shell breakpoint and inline at desktop sizes.
 	$effect(() => {
-		untrack(() => {
-			try {
-				tempThreadId = sessionStorage.getItem(_TEMP_THREAD_KEY);
-			} catch {
-				// Browser storage is optional; no temporary content is persisted here.
-			}
-			if (isMobile()) sidebarOpen = false;
-		});
+		try {
+			tempThreadId = sessionStorage.getItem(_TEMP_THREAD_KEY);
+		} catch {
+			// Browser storage is optional; no temporary content is persisted here.
+		}
+		if (typeof window === 'undefined') return;
+		const inlineQuery = window.matchMedia('(min-width: 1024px)');
+		sidebarOpen = inlineQuery.matches;
+		const syncSidebarMode = (event: MediaQueryListEvent) => {
+			sidebarOpen = event.matches;
+		};
+		inlineQuery.addEventListener('change', syncSidebarMode);
+		return () => inlineQuery.removeEventListener('change', syncSidebarMode);
+	});
+
+	$effect(() => {
+		if (!sidebarOpen || !isCompact() || typeof document === 'undefined') return;
+		const onKeydown = (event: KeyboardEvent) => {
+			if (event.key !== 'Escape' || event.defaultPrevented) return;
+			event.preventDefault();
+			closeSidebar(true);
+		};
+		document.addEventListener('keydown', onKeydown);
+		return () => document.removeEventListener('keydown', onKeydown);
 	});
 
 	// 최초 로드 — 초기 동시 쿼리 폭주가 chat DB 커넥션 풀(size 5)을 고갈시켜
@@ -1442,8 +2244,10 @@
 	$effect(() => {
 		void [token, projectId];
 		untrack(() => {
+			invalidateContextPreview();
+			teardownAllTitlePolling();
 			void (async () => {
-				await Promise.allSettled([loadConversations(), loadModels(), loadUsage()]);
+				await Promise.allSettled([restoreInitialSelection(), loadModels(), loadUsage()]);
 				// 보조: 에이전트·프로젝트·확장(tool/MCP/skill)은 초기 버스트에서 제외해 풀 경합 완화.
 				await loadAgents();
 				await loadWorkspaces();
@@ -1453,11 +2257,28 @@
 	});
 </script>
 
+{#snippet historyToggle()}
+					<button
+						bind:this={sidebarTrigger}
+						type="button"
+						class="compact-history-toggle"
+						onclick={toggleSidebar}
+						aria-controls="chat-history-drawer"
+						aria-expanded={sidebarOpen}
+						aria-label={sidebarOpen ? '대화 기록 닫기' : '대화 기록과 설정 열기'}
+						title={sidebarOpen ? '대화 기록 닫기' : '대화 기록과 설정 열기'}
+					>
+						<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="2.5" /><path d="M10 4v16" /></svg>
+						<span>기록</span>
+					</button>
+{/snippet}
+
 <div class="chat-shell" class:sidebar-closed={!sidebarOpen}>
 	<ChatSidebar
 		{conversations}
 		{workspaces}
 		{activeConvId}
+		{newlyCreatedConversationId}
 		{tempMode}
 		open={sidebarOpen}
 		{usage}
@@ -1474,10 +2295,7 @@
 		onNewInWorkspace={newInProject}
 		onDeleteWorkspace={deleteWorkspace}
 		onSearch={searchConversations}
-		onSettings={() => {
-			settingsSection = 'usage';
-			settingsOpen = true;
-		}}
+		onSettings={() => openSettings('usage')}
 	/>
 
 	<nav class="sidebar-rail" aria-label="채팅 탐색">
@@ -1496,17 +2314,18 @@
 		</button>
 	</nav>
 
-	<!-- 모바일 드로어 백드롭: 열렸을 때만 본문을 덮어 탭하면 닫힘 -->
+	<!-- Compact drawer backdrop: outside press returns focus to the workspace history control. -->
 	<button
 		type="button"
 		class="sidebar-backdrop"
 		class:show={sidebarOpen}
-		aria-label="사이드바 닫기"
-		onclick={() => (sidebarOpen = false)}
+		aria-label="대화 기록 바깥쪽 닫기"
+		onclick={() => closeSidebar(true)}
 	></button>
 
 	<section class="main">
 		{#if view === 'projects'}
+			<div class="lg:hidden p-2 border-b border-line">{@render historyToggle()}</div>
 			<ChatProjectsView
 				initialMode={projectsInitialMode}
 				initialWorkspaceId={projectsInitialWorkspaceId}
@@ -1550,12 +2369,11 @@
 				{/if}
 			</div>
 			<div class="head-right">
-				{#if allCitations.length}
-					<button type="button" class="sources-btn" onclick={() => (sourcesOpen = true)} title="이 대화의 출처 보기">
+					{@render historyToggle()}
+					<button type="button" class="sources-btn" onclick={() => (sourcesOpen = !sourcesOpen)} aria-haspopup="dialog" aria-expanded={sourcesOpen} aria-controls="chat-sources-panel" title="이 대화의 출처 보기">
 						<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" stroke-linecap="round" stroke-linejoin="round" /></svg>
 						출처 {allCitations.length}
 					</button>
-				{/if}
 				{#if tempMode || !tempToggleLocked}
 					<button
 						type="button"
@@ -1598,6 +2416,7 @@
 			loadingOlder={historyLoading}
 			onLoadOlder={loadOlderMessages}
 			onCopy={copy}
+			{manualCompactionActivity}
 			onRegenerate={regenerate}
 			onRetry={retryFailedTurn}
 			onFork={fork}
@@ -1617,6 +2436,7 @@
 				<ChatInput
 					bind:value={input}
 					bind:effort
+					bind:searchEnabled
 					bind:attachments
 					bind:selectedToolIds
 					bind:selectedMcpIds
@@ -1632,6 +2452,16 @@
 					{projectId}
 					modelCaps={selectedModelObj?.capabilities}
 					{streaming}
+					{contextState}
+					hasContextScope={hasContextScope}
+					contextLoading={contextLoading}
+					contextPhase={contextPhase}
+					{composerCommands}
+					contextCause={contextCause}
+					contextBeforeTokens={contextBeforeTokens}
+					contextAfterTokens={contextAfterTokens}
+					contextError={contextError}
+					sendDisabled={manualCompacting || contextPhase === 'compacting'}
 					onSend={send}
 					onStop={stop}
 				>
@@ -1668,12 +2498,6 @@
 	onChanged={loadAgents}
 />
 <AgentHubModal open={agentHubOpen} onClose={() => (agentHubOpen = false)} onCloned={loadAgents} />
-<ChatSettingsOverlay
-	open={settingsOpen}
-	onClose={() => (settingsOpen = false)}
-	{usage}
-	initialSection={settingsSection}
-/>
 <ChatSourcesPanel open={sourcesOpen} citations={allCitations} onClose={() => (sourcesOpen = false)} />
 <ModelPickerOverlay
 	open={modelPickerOpen}
@@ -1686,7 +2510,7 @@
 <style>
 	.chat-shell {
 		display: flex;
-		height: calc(100vh - 3.5rem);
+		height: calc(100dvh - var(--app-header-height));
 		width: 100%;
 		overflow: hidden;
 		background: var(--color-surface-base);
@@ -1694,6 +2518,26 @@
 	}
 	.sidebar-rail {
 		display: none;
+	}
+	.compact-history-toggle {
+		display: inline-flex;
+		flex: 0 0 auto;
+		align-items: center;
+		justify-content: center;
+		gap: 0.375rem;
+		min-height: 2.75rem;
+		padding: 0.375rem 0.625rem;
+		border: 1px solid var(--color-line);
+		border-radius: 0.5rem;
+		background: var(--color-surface-raised);
+		color: var(--color-ink-1);
+		font-size: 0.75rem;
+		cursor: pointer;
+	}
+	.compact-history-toggle:hover,
+	.compact-history-toggle:focus-visible {
+		border-color: var(--color-line-2);
+		background: var(--color-surface-sunken);
 	}
 	.rail-action {
 		display: inline-flex;
@@ -1740,27 +2584,13 @@
 		margin: 0.15rem 0;
 		background: var(--color-line);
 	}
-	@media (max-width: 768px) {
-		.chat-shell.sidebar-closed .sidebar-rail {
-			display: flex;
-			position: fixed;
-			z-index: 31;
-			top: 0.65rem;
-			left: 0.65rem;
-			flex-direction: column;
-			align-items: center;
-			padding: 0.2rem;
-			border: 1px solid var(--color-line);
-			border-radius: 0.65rem;
-			background: var(--color-surface-raised);
-			box-shadow: 0 8px 24px color-mix(in oklab, var(--color-ink-0) 14%, transparent);
-		}
-		.chat-shell.sidebar-closed .rail-divider,
-		.chat-shell.sidebar-closed .rail-action:not(.rail-open) {
-			display: none;
+	@media (max-width: 1023px) {
+		.head {
+			min-block-size: 4rem;
+			padding-block: 0.5rem;
 		}
 	}
-	@media (min-width: 769px) {
+	@media (min-width: 1024px) {
 		.chat-shell.sidebar-closed .sidebar-rail {
 			display: flex;
 			flex: 0 0 3.25rem;
@@ -1776,16 +2606,16 @@
 		display: none;
 		position: absolute;
 		inset: 0;
-		z-index: 39;
+		z-index: 1;
 		border: none;
 		padding: 0;
-		background: color-mix(in oklab, var(--color-ink-0) 40%, transparent);
+		background: var(--color-surface-scrim-soft);
 		opacity: 0;
-		transition: opacity 0.2s ease;
+		transition: opacity var(--motion-duration-base) var(--motion-ease-standard);
 		cursor: pointer;
 	}
-	/* 백드롭은 모바일에서 사이드바가 열렸을 때만 */
-	@media (max-width: 768px) {
+	/* Backdrop is active whenever the compact overlay drawer is open. */
+	@media (max-width: 1023px) {
 		.sidebar-backdrop.show {
 			display: block;
 			opacity: 1;
@@ -1804,7 +2634,7 @@
 		align-items: center;
 		gap: 0.55rem 1rem;
 		box-sizing: border-box;
-		block-size: 3.75rem;
+		min-block-size: 3.75rem;
 		padding: 0.7rem 1rem;
 		border-bottom: 1px solid var(--color-line);
 		background: var(--color-surface-base);
@@ -1828,7 +2658,7 @@
 	}
 	.model-lock-hint {
 		font-size: 0.66rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.chat-workspace {
 		display: flex;
@@ -1976,6 +2806,7 @@
 	}
 	.sources-btn {
 		display: inline-flex;
+		min-height: 2.75rem;
 		align-items: center;
 		gap: 0.3rem;
 		padding: 0.3rem 0.6rem;
@@ -2014,7 +2845,7 @@
 	@media (max-width: 640px) {
 		.head {
 			gap: 0.4rem;
-			padding: 0.55rem 0.6rem;
+			padding-inline: 0.6rem;
 		}
 		.head-controls {
 			gap: 0.3rem;
@@ -2027,5 +2858,10 @@
 		.model-btn-caps {
 			display: none;
 		}
+	}
+	@media (max-width: 767px) {
+		.head { grid-template-columns: minmax(0, 1fr); }
+		.head-right { grid-column: 1; grid-row: 2; justify-content: flex-start; }
+		.temp-notice { grid-row: 3; }
 	}
 </style>

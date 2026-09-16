@@ -50,7 +50,7 @@
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{s.error}</div>
 	{:else if s.loading}
 		<div class="space-y-4">
-			{#each [1, 2, 3] as _}<div class="h-16 bg-gray-800 rounded-lg animate-pulse"></div>{/each}
+			{#each [1, 2, 3] as _}<div class="h-16 bg-surface-sunken rounded-lg animate-pulse"></div>{/each}
 		</div>
 	{:else if s.fileStorage}
 		<DetailHeader title={s.fileStorage.name || s.fileStorage.id} status={s.fileStorage.status}>
@@ -61,7 +61,7 @@
 				<button
 					onclick={() => s.deleteFileStorage()}
 					disabled={s.deleting}
-					class="text-red-400 hover:text-red-300 disabled:text-gray-600 text-sm px-3 py-1.5 rounded border border-red-900 hover:border-red-700 disabled:border-gray-700 transition-colors"
+					class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-sm px-3 py-1.5 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors"
 				>
 					{s.deleting ? '삭제 중...' : '삭제'}
 				</button>

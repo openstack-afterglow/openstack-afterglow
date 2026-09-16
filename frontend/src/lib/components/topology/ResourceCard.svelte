@@ -56,7 +56,7 @@
 
 <button
 	type="button"
-	class="w-full text-left rounded-lg border transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 relative"
+	class="w-full text-left rounded-lg border transition-all focus:outline-none focus:ring-2 focus:ring-line-2 relative"
 	data-tour={dataTour}
 	class:shadow-lg={selected}
 	style="
@@ -75,7 +75,7 @@
 		<span class="w-2 h-2 rounded-full flex-shrink-0 {statusDot(row?.status ?? lbItem?.lb.provisioning_status ?? '')}"></span>
 
 		{#if row?.type === 'router'}
-			<svg class="w-4 h-4 flex-shrink-0 text-amber-400" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+			<svg class="w-4 h-4 flex-shrink-0 text-warm-text" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
 				<circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2" fill="currentColor" opacity="0.5"/>
 				<path d="M8 2v2M8 12v2M2 8h2M12 8h2"/>
 			</svg>
@@ -84,7 +84,7 @@
 				<line x1="8" y1="2" x2="8" y2="14"/><line x1="3" y1="5" x2="13" y2="5"/><line x1="4" y1="11" x2="12" y2="11" opacity="0.6"/>
 			</svg>
 		{:else}
-			<svg class="w-4 h-4 flex-shrink-0 text-gray-400" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3">
+			<svg class="w-4 h-4 flex-shrink-0 text-ink-2" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3">
 				<ellipse cx="8" cy="5" rx="5" ry="2"/><line x1="3" y1="5" x2="3" y2="11"/><line x1="13" y1="5" x2="13" y2="11"/>
 				<path d="M3 11 a5 2 0 0 0 10 0"/>
 			</svg>
@@ -97,13 +97,13 @@
 
 		<div class="flex items-center gap-1 flex-shrink-0">
 			{#if hasFloating}
-				<span class="text-[9px] px-1 rounded bg-orange-900/40 text-orange-400 font-mono">✦</span>
+				<span class="text-xs px-1 rounded bg-orange-900/40 text-orange-400 font-mono">✦</span>
 			{/if}
 			{#if nicCount > 1}
-				<span class="text-[9px] px-1 rounded bg-blue-900/40 text-blue-400">{nicCount}NIC</span>
+				<span class="text-xs px-1 rounded bg-surface-selected/40 text-warm-text">{nicCount}NIC</span>
 			{/if}
 			{#if lbItem}
-				<span class="text-[9px] px-1 rounded bg-cyan-900/40 text-cyan-400">{lbItem.lb.members.length}m</span>
+				<span class="text-xs px-1 rounded bg-cyan-900/40 text-cyan-400">{lbItem.lb.members.length}m</span>
 			{/if}
 		</div>
 	</div>
@@ -122,21 +122,21 @@
 					<div class="flex-1 min-w-0">
 						<div class="flex items-center gap-1 flex-wrap">
 							{#each iface.ips as ip}
-								<span class="text-[9px] font-mono" style="color: {isLight ? '#374151' : '#d1d5db'}">{ip}</span>
+								<span class="text-xs font-mono" style="color: {isLight ? '#374151' : '#d1d5db'}">{ip}</span>
 							{/each}
 							{#each iface.fips as fip}
-								<span class="text-[9px] font-mono text-orange-400">✦{fip}</span>
+								<span class="text-xs font-mono text-orange-400">✦{fip}</span>
 							{/each}
 							{#if iface.ips.length === 0 && iface.fips.length === 0}
-								<span class="text-[9px] italic" style="color: {isLight ? '#9ca3af' : '#4b5563'}">인터페이스</span>
+								<span class="text-xs italic" style="color: {isLight ? '#9ca3af' : '#4b5563'}">인터페이스</span>
 							{/if}
 						</div>
 						<div class="flex gap-2 mt-0.5">
-							<span class="text-[8px] font-mono"
+							<span class="text-xs font-mono"
 							      style="color: {iface.rx_bps > 0 ? '#60a5fa' : (isLight ? '#9ca3af' : '#4b5563')}">
 								↓{formatBps(iface.rx_bps)}
 							</span>
-							<span class="text-[8px] font-mono"
+							<span class="text-xs font-mono"
 							      style="color: {iface.tx_bps > 0 ? '#34d399' : (isLight ? '#9ca3af' : '#4b5563')}">
 								↑{formatBps(iface.tx_bps)}
 							</span>
@@ -157,7 +157,7 @@
 				data-anchor-key="lb|{lbItem.lb.id}|{lbItem.vipNetId}"
 			>
 				{#if lbItem.lb.vip_address}
-					<span class="text-[9px] font-mono" style="color: {isLight ? '#374151' : '#d1d5db'}">VIP: {lbItem.lb.vip_address}</span>
+					<span class="text-xs font-mono" style="color: {isLight ? '#374151' : '#d1d5db'}">VIP: {lbItem.lb.vip_address}</span>
 				{/if}
 			</div>
 		</div>

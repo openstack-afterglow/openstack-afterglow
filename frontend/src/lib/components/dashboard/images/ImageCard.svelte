@@ -41,7 +41,7 @@
 </script>
 
 <article
-	class="resource-selection-surface bg-[var(--color-surface-raised)] border border-[var(--color-line)] rounded-2xl p-4 flex flex-col gap-3 hover:border-[var(--color-line-2)] transition-colors"
+	class="resource-selection-surface bg-[var(--color-surface-raised)] border border-[var(--color-line)] rounded-lg p-4 flex flex-col gap-3 hover:border-[var(--color-line-2)] transition-colors"
 	data-selected={selected}
 >
 	<!-- Header: selection + icon + detail -->
@@ -70,14 +70,14 @@
 		>
 			<div class="text-[var(--color-ink-0)] text-[13px] font-medium truncate font-mono">{img.repository ?? img.name}</div>
 			<div class="flex items-center gap-1.5 mt-1">
-				<span class="text-[10px] text-[var(--color-ink-3)] font-mono">tag</span>
+				<span class="text-xs text-[var(--color-ink-3)] font-mono">tag</span>
 				<Pill tone={img.tag === 'latest' || !img.tag ? 'warm' : 'accent'} size="xs">{img.tag ?? 'latest'}</Pill>
 			</div>
 		</button>
 	</div>
 
 	<!-- Footer: status + visibility + size -->
-	<div class="flex items-center gap-2 text-[11px]">
+	<div class="flex items-center gap-2 text-xs">
 		<StatusChip status={img.status} />
 		{#if img.visibility === 'public'}
 			<Pill tone="info" size="xs">공개</Pill>
@@ -98,17 +98,17 @@
 				<button
 					onclick={() => onToggleActivation(img)}
 					disabled={toggling}
-					class="text-[11px] {img.status === 'active' ? 'text-[var(--color-state-warning)] hover:text-[var(--color-warm-2)]' : 'text-[var(--color-state-success)] hover:text-[var(--color-state-success)]'} disabled:text-[var(--color-ink-3)] transition-colors px-2 py-1 rounded hover:bg-[var(--color-surface-sunken)]"
+					class="text-xs {img.status === 'active' ? 'text-[var(--color-state-warning)] hover:text-[var(--color-warm-2)]' : 'text-[var(--color-state-success)] hover:text-[var(--color-state-success)]'} disabled:text-[var(--color-ink-3)] transition-colors px-2 py-1 rounded hover:bg-[var(--color-surface-sunken)]"
 				>{toggling ? '...' : img.status === 'active' ? '비활성화' : '활성화'}</button>
 			{/if}
 			<button
 				onclick={() => onEdit(img)}
-				class="text-[11px] text-[var(--color-accent)] hover:text-[var(--color-ink-0)] transition-colors px-2 py-1 rounded hover:bg-[var(--color-accent)]/15"
+				class="text-xs text-[var(--color-accent)] hover:text-[var(--color-ink-0)] transition-colors px-2 py-1 rounded hover:bg-[var(--color-accent)]/15"
 			>편집</button>
 			<button
 				onclick={() => onDelete(img.id, img.name)}
 				disabled={deleting}
-				class="text-[11px] text-[var(--color-state-danger)] hover:text-[var(--color-state-danger)] disabled:text-[var(--color-ink-3)] transition-colors px-2 py-1 rounded hover:bg-[var(--color-state-danger)]/15"
+				class="text-xs text-[var(--color-state-danger)] hover:text-[var(--color-state-danger)] disabled:text-[var(--color-ink-3)] transition-colors px-2 py-1 rounded hover:bg-[var(--color-state-danger)]/15"
 			>{deleting ? '삭제 중...' : '삭제'}</button>
 		</div>
 	{/if}

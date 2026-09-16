@@ -1,4 +1,4 @@
-import type { ChatPart, ChatRunEvent, ChatRunStatus, RunStage, UsageComponent } from './chatContracts';
+import type { ChatPart, ChatRunEvent, ChatRunKind, ChatRunStatus, ContextUpdatedPayload, RunStage, UsageComponent } from './chatContracts';
 
 export interface RunToolView {
 	callId: string;
@@ -20,6 +20,16 @@ export type RunActivityItem =
 			createdAt: string;
 			stage: RunStage;
 			toolName: string | null;
+	  }
+	| {
+			id: string;
+			kind: 'context';
+			seq: number;
+			createdAt: string;
+			phase: 'compacting' | 'compacted';
+			cause: ContextUpdatedPayload['cause'];
+			beforeTokens: number | null;
+			afterTokens: number | null;
 	  }
 	| {
 			id: string;
@@ -49,12 +59,14 @@ export interface RunViewState {
 	runId: string;
 	lastSeq: number;
 	status: ChatRunStatus;
+	runKind: ChatRunKind;
 	messageId: string | null;
 	parts: ChatPart[];
 	partsByMessage: Record<string, ChatPart[]>;
 	tools: Record<string, RunToolView>;
 	usage: { promptTokens: number; completionTokens: number; components: UsageComponent[] } | null;
 	activity: RunActivityItem[];
+	context: ContextUpdatedPayload | null;
 	error: string | null;
 	stage: RunStage | null;
 	stageStartedAt: string | null;
@@ -66,19 +78,20 @@ export function createRunViewState(runId: string): RunViewState {
 		runId,
 		lastSeq: 0,
 		status: 'queued',
+		runKind: 'completion',
 		messageId: null,
 		parts: [],
 		partsByMessage: {},
 		tools: {},
 		usage: null,
 		activity: [],
+		context: null,
 		error: null,
 		stage: null,
 		stageStartedAt: null,
 		stageToolName: null,
 	};
 }
-
 function replacePart(parts: ChatPart[], index: number, part: ChatPart): ChatPart[] {
 	const next = parts.slice();
 	next[index] = part;
@@ -112,6 +125,22 @@ export function reduceRunEvent(state: RunViewState, event: ChatRunEvent): RunVie
 	switch (event.type) {
 		case 'run.started':
 			next.status = 'running';
+			next.runKind = event.payload.run_kind;
+			break;
+		case 'context.updated':
+			next.context = event.payload;
+			if (event.payload.phase === 'compacting' || event.payload.phase === 'compacted') {
+				next.activity = replaceActivity(next.activity, {
+					id: `context:${event.seq}`,
+					kind: 'context',
+					seq: event.seq,
+					createdAt: event.created_at,
+					phase: event.payload.phase,
+					cause: event.payload.cause,
+					beforeTokens: event.payload.before_tokens,
+					afterTokens: event.payload.after_tokens
+				});
+			}
 			break;
 		case 'run.stage.changed':
 			next.stage = event.payload.stage;

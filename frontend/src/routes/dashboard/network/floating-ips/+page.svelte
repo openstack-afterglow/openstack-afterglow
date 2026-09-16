@@ -121,9 +121,9 @@
     {/snippet}
   </PageHeader>
 
-  <div class="mb-4 text-sm text-gray-500">
+  <div class="mb-4 text-sm text-ink-2">
     Floating IP 할당은
-    <a href="/dashboard/network/networks" class="text-blue-400 hover:text-blue-300 underline">네트워크 페이지</a>에서 수행할 수 있습니다.
+    <a href="/dashboard/network/networks" class="text-warm-text hover:text-warm-text-hover underline">네트워크 페이지</a>에서 수행할 수 있습니다.
   </div>
 
   {#if error}
@@ -133,8 +133,8 @@
   {#if loading}
     <LoadingSkeleton rows={4} />
   {:else}
-    <div class="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-      <div class="grid grid-cols-[1fr_160px_1fr_140px_90px] px-5 py-3 border-b border-gray-800 text-[11px] uppercase tracking-wider text-gray-500 font-medium">
+    <div class="bg-surface-base border border-line rounded-lg overflow-hidden">
+      <div class="grid grid-cols-[1fr_160px_1fr_140px_90px] px-5 py-3 border-b border-line text-xs uppercase tracking-wider text-ink-2 font-medium">
         <div>
           <SelectionToolbar
             label="Floating IP"
@@ -153,7 +153,7 @@
       </div>
 
       {#each fips as fip (fip.id)}
-        <div class="resource-selection-surface grid grid-cols-[1fr_160px_1fr_140px_90px] px-5 py-3.5 border-b border-gray-800 last:border-b-0 items-center hover:bg-gray-800/20 transition-colors" data-selected={selection.has(fip.id)}>
+        <div class="resource-selection-surface grid grid-cols-[1fr_160px_1fr_140px_90px] px-5 py-3.5 border-b border-line last:border-b-0 items-center hover:bg-surface-sunken/20 transition-colors" data-selected={selection.has(fip.id)}>
           <div class="flex items-center gap-2">
             <SelectionCheckbox
               checked={selection.has(fip.id)}
@@ -161,18 +161,18 @@
               ariaLabel={`${fip.floating_ip_address} 선택`}
               onclick={() => selection.toggle(fip.id)}
             />
-            <div class="font-mono text-[13px] text-white">{fip.floating_ip_address}</div>
+            <div class="font-mono text-[13px] text-ink-0">{fip.floating_ip_address}</div>
           </div>
-          <div class="text-[12px] text-gray-400 font-mono truncate">
+          <div class="text-xs text-ink-2 font-mono truncate">
             {fip.fixed_ip_address ?? '—'}
           </div>
-          <div class="text-[12px] truncate">
+          <div class="text-xs truncate">
             {#if fip.instance_name}
-              <span class="text-blue-400">{fip.instance_name}</span>
+              <span class="text-warm-text">{fip.instance_name}</span>
             {:else if fip.instance_id}
-              <span class="text-gray-400 font-mono">{fip.instance_id.slice(0, 8)}…</span>
+              <span class="text-ink-2 font-mono">{fip.instance_id.slice(0, 8)}…</span>
             {:else}
-              <span class="text-gray-600">—</span>
+              <span class="text-ink-2">—</span>
             {/if}
           </div>
           <div><StatusChip status={fip.status} /></div>
@@ -180,7 +180,7 @@
             <button
               onclick={() => deleteFip(fip.id, fip.floating_ip_address)}
               disabled={deleting === fip.id}
-              class="text-[11px] text-red-400 hover:text-red-300 transition-colors disabled:opacity-40"
+              class="text-xs text-red-400 hover:text-red-300 transition-colors disabled:opacity-40"
             >
               {deleting === fip.id ? '처리 중...' : '해제'}
             </button>
@@ -189,7 +189,7 @@
       {/each}
 
       {#if fips.length === 0}
-        <div class="text-gray-500 text-sm text-center py-12">할당된 Floating IP가 없습니다</div>
+        <div class="text-ink-2 text-sm text-center py-12">할당된 Floating IP가 없습니다</div>
       {/if}
     </div>
   {/if}

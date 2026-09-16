@@ -20,8 +20,10 @@ export interface UsageSummary {
 	lifetime_completion_tokens: number;
 	lifetime_request_count: number;
 	month_credited_cost: number;
+	week_credited_cost: number;
 	quota_used: number;
 	quota_max: number;
+	quota_weekly_max: number;
 	by_source: UsageBySource[];
 }
 
@@ -46,10 +48,20 @@ export interface ApiKey {
 	id: number;
 	name: string;
 	key_prefix: string;
+	scopes: string[];
 	is_active: boolean;
 	last_used_at: string | null;
 	created_at: string | null;
 	revoked_at: string | null;
+	owner_monthly_credit_limit: string | null;
+	admin_monthly_credit_limit: string | null;
+	system_monthly_credit_limit: string | null;
+	effective_monthly_credit_limit: string | null;
+	month_credited_cost: string;
+	owner_weekly_credit_limit: string | null;
+	system_weekly_credit_limit: string | null;
+	effective_weekly_credit_limit: string | null;
+	week_credited_cost: string;
 }
 
 export type UsageMetric = 'total_tokens' | 'credited_cost' | 'request_count';

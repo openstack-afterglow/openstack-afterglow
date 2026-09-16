@@ -8,9 +8,8 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING
 
 import httpx
-from drover_sdk import register as register_drover
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 from app.api.common.activity_recorder import rec
 from app.api.deps import CacheMode, cache_mode, get_os_conn, get_token_info, require_admin
@@ -18,22 +17,32 @@ from app.config import get_settings
 from app.models.storage import (
     AdminNetworkDetail,
     AdminSubnetDetail,
+    AdminTopologyData,
     FileStorageDeleteDiagnostic,
     FileStorageForceDeleteResult,
     FileStorageInfo,
-    TopologyData,
     TopologyInstance,
     VolumeDeleteDiagnostic,
     VolumeDeleteRecoveryResult,
 )
-from app.services import instance_recovery, keystone, library_builder, manila, neutron, nova, volume_delete_recovery
+from app.services import (
+    instance_recovery,
+    library_builder,
+    manila,
+    neutron,
+    nova,
+    trove,
+    volume_delete_recovery,
+)
 from app.services import libraries as lib_svc
-from app.services.cache import cached_call, invalidate, ttl_fast, ttl_normal, ttl_slow
+from app.services.cache import _get_redis, cached_call, invalidate, ttl_fast, ttl_normal, ttl_slow
 from app.services.cache import invalidation as cache_invalidation
+from app.services.keystone import get_drover_proxy
 from app.services.octavia import get_topology_lbs
 
 # FastAPI-free 인벤토리 유틸리티로 이동됨 — admin.py 내부 호출 + 하위 호환 재export.
 from app.services.openstack_inventory import _fetch_hypervisors_raw
+from app.services.parallel import run_parallel
 from app.utils.version import read_app_version
 
 if TYPE_CHECKING:
@@ -546,7 +555,7 @@ async def get_monitoring_summary(
         # Drover owns the authoritative cross-project cluster inventory.
         k3s_available = True
         try:
-            clusters = await asyncio.to_thread(register_drover(conn).admin_clusters)
+            clusters = await asyncio.to_thread(get_drover_proxy(conn).admin_clusters)
         except Exception:
             clusters = []
             k3s_available = False
@@ -1111,29 +1120,47 @@ async def force_delete_file_storage(
         raise HTTPException(status_code=500, detail="파일 스토리지 강제 삭제 실패")
 
 
-@router.get("/topology", response_model=TopologyData, dependencies=[Depends(require_admin)])
+@router.get("/topology", response_model=AdminTopologyData, dependencies=[Depends(require_admin)])
 async def admin_topology(
     conn: openstack.connection.Connection = Depends(get_os_conn), cm: CacheMode = Depends(cache_mode)
 ):
-    """전체 프로젝트의 네트워크/라우터/인스턴스 토폴로지."""
+    """전체 프로젝트의 네트워크/라우터/인스턴스 토폴로지 (네트워크에 provider 세그먼트 메타 포함)."""
 
     def _fetch():
-        topo = neutron.get_topology(conn)
+        # Trove 미배포/조회 실패는 정상 → 전부 is_database=False.
+        def _db_ips() -> set:
+            try:
+                return trove.topology_database_ips(conn, all_projects=True)
+            except Exception:
+                _logger.debug("Trove 토폴로지 IP 조회 실패 — is_database 표시 생략", exc_info=True)
+                return set()
 
-        # Neutron 포트에서 (device_id, ip) → network_id 매핑 구축
-        port_net_map: dict[tuple[str, str], str] = {}
-        for p in conn.network.ports():
-            dev_owner = p.device_owner or ""
-            if not p.device_id or not dev_owner.startswith("compute:"):
-                continue
-            for fip in p.fixed_ips or []:
-                ip = fip.get("ip_address")
-                if ip:
-                    port_net_map[(p.device_id, ip)] = p.network_id
+        # 서로 의존하지 않는 OpenStack 조회는 동시에 수행한다 — 직렬 호출은 응답 시간이 그대로 합산된다.
+        # port_index: (device_id, ip) → {network_id, port_id, mac_address}
+        topo, port_index, db_ips, servers = run_parallel(
+            lambda: neutron.get_topology(conn, include_provider=True),
+            lambda: neutron.build_compute_port_index(conn),
+            _db_ips,
+            lambda: list(conn.compute.servers(details=True, all_projects=True)),
+        )
+
+        def _ip_entry(server_id: str, net_name: str, addr: dict) -> dict:
+            port = port_index.get((server_id, addr["addr"]), {})
+            return {
+                "addr": addr["addr"],
+                "type": addr.get("OS-EXT-IPS:type", ""),
+                "network_name": net_name,
+                "network_id": port.get("network_id"),
+                "port_id": port.get("port_id"),
+                "mac_addr": port.get("mac_address"),
+            }
 
         instances = []
-        for s in conn.compute.servers(details=True, all_projects=True):
+        for s in servers:
             addresses = getattr(s, "addresses", {}) or {}
+            flavor = getattr(s, "flavor", None)
+            image = getattr(s, "image", None)
+            ip_entries = [_ip_entry(s.id, net_name, addr) for net_name, addrs in addresses.items() for addr in addrs]
             instances.append(
                 TopologyInstance(
                     id=s.id,
@@ -1141,16 +1168,11 @@ async def admin_topology(
                     status=s.status or "",
                     project_id=getattr(s, "project_id", None) or getattr(s, "tenant_id", None),
                     network_names=list(set(addresses.keys())),
-                    ip_addresses=[
-                        {
-                            "addr": addr["addr"],
-                            "type": addr.get("OS-EXT-IPS:type", ""),
-                            "network_name": net_name,
-                            "network_id": port_net_map.get((s.id, addr["addr"])),
-                        }
-                        for net_name, addrs in addresses.items()
-                        for addr in addrs
-                    ],
+                    ip_addresses=ip_entries,
+                    flavor_name=flavor.get("original_name") if isinstance(flavor, dict) else None,
+                    image_id=image.get("id") if isinstance(image, dict) else None,
+                    # fixed IP 가 Trove IP 집합에 속하면 DB 인스턴스. floating IP 우연 일치는 제외.
+                    is_database=any(e.get("type") == "fixed" and e.get("addr") in db_ips for e in ip_entries),
                 )
             )
         topo.instances = instances
@@ -1165,6 +1187,8 @@ async def admin_topology(
         return await cached_call(
             "afterglow:admin:topology", ttl_normal(), _fetch, enabled=cm.enabled, refresh=cm.refresh
         )
+    except HTTPException:
+        raise
     except Exception:
         _logger.exception("토폴로지 조회 실패")
         raise HTTPException(status_code=500, detail="토폴로지 조회 실패")
@@ -1470,6 +1494,29 @@ class ResetVolumeStatusRequest(BaseModel):
     status: str = "available"
 
 
+class BulkDeleteVolumesRequest(BaseModel):
+    volume_ids: list[str] = Field(..., min_length=1, max_length=50)
+
+    @field_validator("volume_ids")
+    @classmethod
+    def validate_volume_ids(cls, volume_ids: list[str]) -> list[str]:
+        if any(not volume_id.strip() for volume_id in volume_ids):
+            raise ValueError("volume_ids에는 빈 ID를 포함할 수 없습니다")
+        if len(set(volume_ids)) != len(volume_ids):
+            raise ValueError("volume_ids에는 중복 ID를 포함할 수 없습니다")
+        return volume_ids
+
+
+class BulkDeleteVolumeResult(BaseModel):
+    id: str
+    ok: bool
+    error: str | None = None
+
+
+class BulkDeleteVolumesResponse(BaseModel):
+    results: list[BulkDeleteVolumeResult]
+
+
 @router.patch("/volumes/{volume_id}", dependencies=[Depends(require_admin)])
 async def update_volume(
     volume_id: str,
@@ -1527,13 +1574,12 @@ async def get_volume_delete_diagnostics(
     volume_id: str,
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
-    """볼륨 삭제 실패 원인을 진단한다 (관리자)."""
+    """볼륨 삭제 실패 원인과 Cinder/Ceph 안전 조건을 진단한다 (관리자)."""
     try:
         return await asyncio.to_thread(
             volume_delete_recovery.diagnose_volume_delete_issue,
             conn,
             volume_id,
-            keystone.get_admin_connection_for_project,
         )
     except Exception:
         _logger.warning("볼륨 삭제 진단 실패: %s", volume_id, exc_info=True)
@@ -1551,16 +1597,30 @@ async def recover_delete_volume(
     conn: openstack.connection.Connection = Depends(get_os_conn),
     token_info: dict = Depends(get_token_info),
 ):
-    """error_deleting 볼륨의 삭제 복구를 진단→실행→검증한다 (관리자)."""
+    """관리자 force-delete 단일 경로를 실행하고 설정된 Ceph backend까지 검증한다."""
+    lock_key = f"afterglow:volume-recovery:lock:{volume_id}"
+    try:
+        redis = await _get_redis()
+        acquired = await redis.set(lock_key, token_info.get("user_id", ""), nx=True, ex=600)
+    except Exception:
+        raise HTTPException(status_code=503, detail="복구 잠금을 확보할 수 없습니다")
+    if not acquired:
+        raise HTTPException(status_code=409, detail="볼륨 삭제 복구가 이미 진행 중입니다")
+
     try:
         result = await asyncio.to_thread(
             volume_delete_recovery.recover_delete_volume,
             conn,
             volume_id,
-            keystone.get_admin_connection_for_project,
             verify_timeout_seconds=verify_timeout_seconds,
         )
-        if result.status in {"deleted", "already_deleted", "delete_submitted"}:
+        if result.status in {
+            "deleted",
+            "already_deleted",
+            "delete_submitted",
+            "backend_residue",
+            "backend_unverified",
+        }:
             await _invalidate_volume_recovery_caches(result.diagnostic.project_id)
         try:
             await rec(
@@ -1568,19 +1628,28 @@ async def recover_delete_volume(
                 conn,
                 resource_type="volume",
                 action="volume.recover_delete",
-                status="success" if result.status in {"deleted", "already_deleted", "delete_submitted"} else "failed",
+                status="success" if result.status in {"deleted", "already_deleted"} else "failed",
                 resource_id=volume_id,
-                error_message=result.status if result.status in {"blocked", "failed"} else None,
+                error_message=(
+                    result.status
+                    if result.status in {"blocked", "failed", "backend_residue", "backend_unverified"}
+                    else None
+                ),
                 extra={
                     "result": result.status,
                     "verified_deleted": result.verified_deleted,
                     "root_cause": result.diagnostic.root_cause_code,
+                    "backend_verification": result.backend_verification,
+                    "quota_verification": result.quota_verification,
+                    "checks": [check.model_dump() for check in result.diagnostic.checks],
                     "steps": [step.model_dump() for step in result.steps],
                 },
             )
         except Exception:
             pass
         return result
+    except HTTPException:
+        raise
     except Exception:
         try:
             await rec(
@@ -1595,6 +1664,93 @@ async def recover_delete_volume(
             pass
         _logger.warning("볼륨 삭제 복구 실패: %s", volume_id, exc_info=True)
         raise HTTPException(status_code=500, detail="볼륨 삭제 복구 실패")
+    finally:
+        try:
+            await redis.delete(lock_key)
+        except Exception:
+            _logger.warning("볼륨 삭제 복구 잠금 해제 실패: %s", volume_id, exc_info=True)
+
+
+def _delete_admin_volume(conn, volume_id: str) -> str | None:
+    """Delete one admin-scoped volume and return its owning project when known."""
+    from openstack.exceptions import ResourceNotFound
+
+    from app.services import cinder
+
+    try:
+        volume = conn.block_storage.get_volume(volume_id)
+    except ResourceNotFound:
+        return None
+
+    project_id = getattr(volume, "project_id", None) or getattr(volume, "os-vol-tenant-attr:tenant_id", None)
+    status = (getattr(volume, "status", "") or "").lower()
+    attachments = list(getattr(volume, "attachments", []) or [])
+
+    if status in _ERROR_STATUSES and not attachments:
+        try:
+            cinder.reset_volume_status(conn, volume_id, "error")
+        except Exception:
+            _logger.warning("reset_volume_status 실패: %s", volume_id)
+        try:
+            conn.block_storage.delete_volume(volume_id, ignore_missing=True)
+            return project_id
+        except Exception:
+            _logger.info("일반 delete 실패, force_delete 폴백: %s", volume_id)
+        try:
+            cinder.force_delete_volume(conn, volume_id)
+        except Exception:
+            _logger.warning("force_delete 실패: %s", volume_id)
+            raise HTTPException(status_code=400, detail="볼륨 강제 삭제 실패") from None
+        return project_id
+
+    try:
+        conn.block_storage.delete_volume(volume_id, ignore_missing=True)
+    except Exception:
+        _logger.warning("볼륨 삭제 실패: %s", volume_id)
+        raise HTTPException(status_code=400, detail="볼륨 삭제 실패") from None
+    return project_id
+
+
+@router.post(
+    "/volumes/bulk-delete",
+    response_model=BulkDeleteVolumesResponse,
+    dependencies=[Depends(require_admin)],
+)
+async def bulk_delete_admin_volumes(
+    body: BulkDeleteVolumesRequest,
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+    token_info: dict = Depends(get_token_info),
+):
+    """Delete up to 50 volumes in request order without stopping after an individual failure."""
+    results: list[BulkDeleteVolumeResult] = []
+    affected_projects: set[str | None] = set()
+
+    for volume_id in body.volume_ids:
+        try:
+            affected_projects.add(await asyncio.to_thread(_delete_admin_volume, conn, volume_id))
+            result = BulkDeleteVolumeResult(id=volume_id, ok=True)
+        except Exception:
+            _logger.warning("볼륨 일괄 삭제 실패: %s", volume_id)
+            result = BulkDeleteVolumeResult(id=volume_id, ok=False, error="볼륨 삭제 실패")
+        results.append(result)
+        try:
+            await rec(
+                token_info,
+                conn,
+                resource_type="volume",
+                action="volume.bulk_delete",
+                status="success" if result.ok else "failed",
+                resource_id=volume_id,
+                error_message=result.error,
+            )
+        except Exception:
+            pass
+
+    if any(result.ok for result in results):
+        for affected_project in affected_projects:
+            await _invalidate_volume_recovery_caches(affected_project)
+
+    return BulkDeleteVolumesResponse(results=results)
 
 
 @router.delete("/volumes/{volume_id}", dependencies=[Depends(require_admin)], status_code=204)
@@ -1603,47 +1759,9 @@ async def delete_volume(
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
     """볼륨 삭제. error* 상태이면 force-delete로 자동 폴백하여 Cinder DB를 정리한다."""
-    from openstack.exceptions import ResourceNotFound
-
-    from app.services import cinder
-
-    def _delete():
-        try:
-            v = conn.block_storage.get_volume(volume_id)
-        except ResourceNotFound:
-            return  # 이미 없음 → 204
-
-        status = (getattr(v, "status", "") or "").lower()
-        attachments = list(getattr(v, "attachments", []) or [])
-
-        if status in _ERROR_STATUSES and not attachments:
-            # 1) 상태를 error로 리셋하여 일반 delete 경로를 열어 둠
-            try:
-                cinder.reset_volume_status(conn, volume_id, "error")
-            except Exception:
-                _logger.warning("reset_volume_status 실패: %s", volume_id, exc_info=True)
-            # 2) 일반 delete 시도 (error 상태면 Ceph NotFound→DB 정리)
-            try:
-                conn.block_storage.delete_volume(volume_id, ignore_missing=True)
-                return
-            except Exception:
-                _logger.info("일반 delete 실패, force_delete 폴백: %s", volume_id, exc_info=True)
-            # 3) 최후 수단: os-force_delete
-            try:
-                cinder.force_delete_volume(conn, volume_id)
-            except Exception as e:
-                _logger.warning("force_delete 실패: %s %s", volume_id, e, exc_info=True)
-                raise HTTPException(status_code=400, detail=f"볼륨 강제 삭제 실패: {e}")
-            return
-
-        try:
-            conn.block_storage.delete_volume(volume_id, ignore_missing=True)
-        except Exception as e:
-            _logger.warning("볼륨 삭제 실패: %s", e)
-            raise HTTPException(status_code=400, detail=f"볼륨 삭제 실패: {e}")
-
     try:
-        await asyncio.to_thread(_delete)
+        project_id = await asyncio.to_thread(_delete_admin_volume, conn, volume_id)
+        await _invalidate_volume_recovery_caches(project_id)
     except HTTPException:
         raise
 
@@ -2388,57 +2506,50 @@ async def get_gpu_aliases():
 @router.get("/gpu-quotas/defaults", dependencies=[Depends(require_admin)])
 async def get_default_gpu_quotas(conn: openstack.connection.Connection = Depends(get_os_conn)):
     """전체 프로젝트 기본 GPU quota 조회."""
-    from app.database import is_db_available
-
-    if not is_db_available():
-        raise HTTPException(status_code=503, detail="DB가 초기화되지 않아 GPU quota를 조회할 수 없습니다")
-
     try:
-        return await asyncio.to_thread(register_drover(conn).default_gpu_quotas)
+        from app.services.gpu_quota import DEFAULT_PROJECT_ID, get_project_gpu_quotas
+
+        return await get_project_gpu_quotas(conn, DEFAULT_PROJECT_ID)
     except Exception as exc:
-        raise HTTPException(status_code=503, detail="drover 서비스를 사용할 수 없습니다") from exc
+        raise HTTPException(status_code=503, detail="GPU quota 서비스를 사용할 수 없습니다") from exc
 
 
 @router.put("/gpu-quotas/defaults", dependencies=[Depends(require_admin)])
 async def set_default_gpu_quota(req: GpuQuotaRequest, conn: openstack.connection.Connection = Depends(get_os_conn)):
     """전체 프로젝트 기본 GPU quota 설정 (upsert)."""
-    from app.database import is_db_available
-
-    if not is_db_available():
-        raise HTTPException(status_code=503, detail="DB가 초기화되지 않아 GPU quota를 설정할 수 없습니다")
-
     try:
-        return await asyncio.to_thread(register_drover(conn).set_default_gpu_quota, req.gpu_type, req.limit)
+        from app.services.gpu_quota import DEFAULT_PROJECT_ID, set_project_gpu_quota
+
+        quota = await set_project_gpu_quota(conn, DEFAULT_PROJECT_ID, req.gpu_type, req.limit)
+        await invalidate("afterglow:nova:*:flavors")
+        return quota
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=503, detail="drover 서비스를 사용할 수 없습니다") from exc
+        raise HTTPException(status_code=503, detail="GPU quota 서비스를 사용할 수 없습니다") from exc
 
 
 @router.delete("/gpu-quotas/defaults/{gpu_type}", dependencies=[Depends(require_admin)], status_code=204)
 async def delete_default_gpu_quota(gpu_type: str, conn: openstack.connection.Connection = Depends(get_os_conn)):
     """전체 프로젝트 기본 GPU quota 삭제 (기본값 0으로 복귀)."""
-    from app.database import is_db_available
-
-    if not is_db_available():
-        raise HTTPException(status_code=503, detail="DB가 초기화되지 않아 GPU quota를 삭제할 수 없습니다")
-
     try:
-        await asyncio.to_thread(register_drover(conn).delete_default_gpu_quota, gpu_type)
+        from app.services.gpu_quota import DEFAULT_PROJECT_ID, delete_project_gpu_quota
+
+        await delete_project_gpu_quota(conn, DEFAULT_PROJECT_ID, gpu_type)
+        await invalidate("afterglow:nova:*:flavors")
     except Exception as exc:
-        raise HTTPException(status_code=503, detail="drover 서비스를 사용할 수 없습니다") from exc
+        raise HTTPException(status_code=503, detail="GPU quota 서비스를 사용할 수 없습니다") from exc
 
 
 @router.get("/gpu-quotas/{project_id}", dependencies=[Depends(require_admin)])
 async def get_gpu_quotas(project_id: str, conn: openstack.connection.Connection = Depends(get_os_conn)):
     """프로젝트의 GPU quota 목록 + 현재 사용량 조회."""
-    from app.database import is_db_available
-
-    if not is_db_available():
-        raise HTTPException(status_code=503, detail="DB가 초기화되지 않아 GPU quota를 조회할 수 없습니다")
-
     try:
-        return await asyncio.to_thread(register_drover(conn).project_gpu_quotas, project_id)
+        from app.services.gpu_quota import get_effective_gpu_quota_status
+
+        return await get_effective_gpu_quota_status(conn, project_id)
     except Exception as exc:
-        raise HTTPException(status_code=503, detail="drover 서비스를 사용할 수 없습니다") from exc
+        raise HTTPException(status_code=503, detail="GPU quota 서비스를 사용할 수 없습니다") from exc
 
 
 @router.put("/gpu-quotas/{project_id}", dependencies=[Depends(require_admin)])
@@ -2446,15 +2557,16 @@ async def set_gpu_quota(
     project_id: str, req: GpuQuotaRequest, conn: openstack.connection.Connection = Depends(get_os_conn)
 ):
     """프로젝트의 GPU quota 설정 (upsert)."""
-    from app.database import is_db_available
-
-    if not is_db_available():
-        raise HTTPException(status_code=503, detail="DB가 초기화되지 않아 GPU quota를 설정할 수 없습니다")
-
     try:
-        return await asyncio.to_thread(register_drover(conn).set_project_gpu_quota, project_id, req.gpu_type, req.limit)
+        from app.services.gpu_quota import set_project_gpu_quota
+
+        quota = await set_project_gpu_quota(conn, project_id, req.gpu_type, req.limit)
+        await invalidate(f"afterglow:nova:{project_id}:flavors")
+        return quota
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=503, detail="drover 서비스를 사용할 수 없습니다") from exc
+        raise HTTPException(status_code=503, detail="GPU quota 서비스를 사용할 수 없습니다") from exc
 
 
 @router.delete("/gpu-quotas/{project_id}/{gpu_type}", dependencies=[Depends(require_admin)], status_code=204)
@@ -2462,15 +2574,13 @@ async def delete_gpu_quota(
     project_id: str, gpu_type: str, conn: openstack.connection.Connection = Depends(get_os_conn)
 ):
     """프로젝트의 특정 GPU quota 삭제 (기본값으로 폴백)."""
-    from app.database import is_db_available
-
-    if not is_db_available():
-        raise HTTPException(status_code=503, detail="DB가 초기화되지 않아 GPU quota를 삭제할 수 없습니다")
-
     try:
-        await asyncio.to_thread(register_drover(conn).delete_project_gpu_quota, project_id, gpu_type)
+        from app.services.gpu_quota import delete_project_gpu_quota
+
+        await delete_project_gpu_quota(conn, project_id, gpu_type)
+        await invalidate(f"afterglow:nova:{project_id}:flavors")
     except Exception as exc:
-        raise HTTPException(status_code=503, detail="drover 서비스를 사용할 수 없습니다") from exc
+        raise HTTPException(status_code=503, detail="GPU quota 서비스를 사용할 수 없습니다") from exc
 
 
 # ===========================================================================

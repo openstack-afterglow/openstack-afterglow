@@ -12,7 +12,7 @@
 	import ServiceCountCards from '$lib/components/admin/overview/ServiceCountCards.svelte';
 	import VersionInfoPanel from '$lib/components/admin/overview/VersionInfoPanel.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
-	import { Alert, StatTile, Pill } from '$lib/components/ui';
+	import { Alert, PageHeader, PageShell, StatTile } from '$lib/components/ui';
 	import { toast } from '$lib/stores/toast';
 
 	interface Notification {
@@ -95,27 +95,12 @@
 </script>
 
 {#key $auth.projectId}
-<div class="p-6 flex flex-col gap-5">
-	<!-- 헤더 -->
-	<div class="flex items-start justify-between gap-3">
-		<div>
-			<div class="text-[11px] text-gray-500 uppercase tracking-widest font-medium mb-1">ADMIN · 관리자</div>
-			<h1 class="text-2xl font-bold text-white mb-1">관리자 개요</h1>
-			<p class="text-xs" style="color: var(--color-ink-3);">클러스터 전반 · 자원 현황 · 실시간 알림</p>
-		</div>
-		{#if notifications.length > 0}
-			{@const critCount = notifications.filter(n => n.severity === 'critical').length}
-			{@const warnCount = notifications.filter(n => n.severity === 'warning').length}
-			<div class="flex items-center gap-1.5 mt-1">
-				{#if critCount > 0}
-					<Pill tone="danger">{critCount} CRIT</Pill>
-				{/if}
-				{#if warnCount > 0}
-					<Pill tone="warning">{warnCount} WARN</Pill>
-				{/if}
-			</div>
-		{/if}
-	</div>
+<PageShell class="flex flex-col gap-5">
+	<PageHeader
+		breadcrumb="ADMIN / OVERVIEW"
+		title="관리자 개요"
+		subtitle="클러스터 전반 · 자원 현황 · 실시간 알림"
+	/>
 
 	{#if notifications.length > 0}
 		{@const critCount = notifications.filter(n => n.severity === 'critical').length}
@@ -131,14 +116,6 @@
 				{notifications.length - critCount - warnCount} info —
 				<a href="/admin/monitoring" class="underline" style="color: var(--admin-tone);">모니터링 상세 →</a>
 			</span>
-			{#snippet actions()}
-				{#each notifications.filter(n => n.severity === 'critical').slice(0, 1) as n}
-					<Pill tone="danger">{n.severity.toUpperCase()}</Pill>
-				{/each}
-				{#if warnCount > 0}
-					<Pill tone="warning">{warnCount} WARN</Pill>
-				{/if}
-			{/snippet}
 		</Alert>
 	{/if}
 
@@ -148,20 +125,20 @@
 
 
 	{#if overviewLoading}
-		<div class="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+		<div class="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-3">
 			{#each Array(3) as _}
-				<div class="bg-gray-900 border border-gray-800 rounded-2xl p-[18px] animate-pulse h-[82px]"></div>
+				<div class="h-[82px] bg-surface-base animate-pulse"></div>
 			{/each}
 		</div>
-		<div class="bg-gray-900 border border-gray-800 rounded-2xl p-5 animate-pulse h-[260px]"></div>
+		<div class="bg-surface-base border border-line rounded-lg p-5 animate-pulse h-[260px]"></div>
 	{:else if overview}
 		<KpiCardRow {overview} />
 
 		<!-- Identity 통계: 사용자/프로젝트/역할/그룹 -->
 		{#if identitySummary}
-			<div class="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+			<div class="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-4">
 				<a href="/admin/users" class="block">
-					<StatTile label="사용자" value={identitySummary.user_count} unit="명" accent="amber" class="hover:border-amber-500/40 hover:bg-gray-800 transition-colors h-full">
+					<StatTile label="사용자" value={identitySummary.user_count} unit="명" accent="amber" flat class="h-full">
 						{#snippet icon()}
 							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
 								<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/>
@@ -169,8 +146,8 @@
 						{/snippet}
 						{#if identitySummary.recent_users && identitySummary.recent_users.length > 0}
 							{#snippet footer()}
-								<span class="flex items-center gap-1 text-[10px] text-emerald-400">
-									<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 animate-pulse"></span>
+								<span class="flex items-center gap-1 text-xs text-state-success-text">
+									<span class="w-1.5 h-1.5 rounded-full bg-state-success shrink-0 animate-pulse"></span>
 									최근 추가 {identitySummary?.recent_users?.length ?? 0}명
 								</span>
 							{/snippet}
@@ -178,7 +155,7 @@
 					</StatTile>
 				</a>
 				<a href="/admin/projects" class="block">
-					<StatTile label="프로젝트" value={identitySummary.project_count} unit="활성" accent="blue" class="hover:border-blue-500/40 hover:bg-gray-800 transition-colors h-full">
+					<StatTile label="프로젝트" value={identitySummary.project_count} unit="활성" accent="blue" flat class="h-full">
 						{#snippet icon()}
 							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
 								<path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
@@ -186,8 +163,8 @@
 						{/snippet}
 						{#if identitySummary.recent_projects && identitySummary.recent_projects.length > 0}
 							{#snippet footer()}
-								<span class="flex items-center gap-1 text-[10px] text-emerald-400">
-									<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 animate-pulse"></span>
+								<span class="flex items-center gap-1 text-xs text-state-success-text">
+									<span class="w-1.5 h-1.5 rounded-full bg-state-success shrink-0 animate-pulse"></span>
 									최근 추가 {identitySummary?.recent_projects?.length ?? 0}개
 								</span>
 							{/snippet}
@@ -195,7 +172,7 @@
 					</StatTile>
 				</a>
 				<a href="/admin/roles" class="block">
-					<StatTile label="역할" value={identitySummary.role_count} unit="정의됨" accent="violet" class="hover:border-violet-500/40 hover:bg-gray-800 transition-colors h-full">
+					<StatTile label="역할" value={identitySummary.role_count} unit="정의됨" accent="violet" flat class="h-full">
 						{#snippet icon()}
 							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
 								<path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
@@ -204,7 +181,7 @@
 					</StatTile>
 				</a>
 				<a href="/admin/groups" class="block">
-					<StatTile label="그룹" value={identitySummary.group_count} unit="그룹" accent="cyan" class="hover:border-cyan-500/40 hover:bg-gray-800 transition-colors h-full">
+					<StatTile label="그룹" value={identitySummary.group_count} unit="그룹" accent="cyan" flat class="h-full">
 						{#snippet icon()}
 							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
 								<path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
@@ -217,7 +194,7 @@
 			</div>
 
 			{#if identitySummary.partial && identitySummary.partial_reasons && identitySummary.partial_reasons.length > 0}
-				<div class="flex items-center gap-2.5 px-4 py-2.5 rounded-xl border text-xs"
+				<div class="flex items-center gap-2.5 px-4 py-2.5 rounded-lg border text-xs"
 				     style="background: color-mix(in oklab, var(--color-state-warning) 10%, transparent); border-color: color-mix(in oklab, var(--color-state-warning) 30%, transparent); color: var(--color-state-warning);">
 					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0">
 						<path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
@@ -241,21 +218,21 @@
 
 		<!-- 퀵 링크 -->
 		<div class="flex gap-3 flex-wrap text-sm">
-			<a href="/admin/hypervisors" class="text-gray-500 hover:text-gray-200 transition-colors">하이퍼바이저 →</a>
-			<a href="/admin/instances" class="text-gray-500 hover:text-gray-200 transition-colors">전체 인스턴스 →</a>
-			<a href="/admin/containers" class="text-gray-500 hover:text-gray-200 transition-colors">전체 컨테이너 →</a>
-			<a href="/admin/file-storage" class="text-gray-500 hover:text-gray-200 transition-colors">파일 스토리지 →</a>
-			<a href="/admin/database-instances" class="text-gray-500 hover:text-gray-200 transition-colors">Database →</a>
-			<a href="/admin/object-storage" class="text-gray-500 hover:text-gray-200 transition-colors">Object Storage →</a>
-			<a href="/admin/topology" class="text-gray-500 hover:text-gray-200 transition-colors">전체 토폴로지 →</a>
-			<a href="/admin/networks" class="text-gray-500 hover:text-gray-200 transition-colors">네트워크 →</a>
+			<a href="/admin/hypervisors" class="text-ink-2 hover:text-ink-0 transition-colors">하이퍼바이저 →</a>
+			<a href="/admin/instances" class="text-ink-2 hover:text-ink-0 transition-colors">전체 인스턴스 →</a>
+			<a href="/admin/containers" class="text-ink-2 hover:text-ink-0 transition-colors">전체 컨테이너 →</a>
+			<a href="/admin/file-storage" class="text-ink-2 hover:text-ink-0 transition-colors">파일 스토리지 →</a>
+			<a href="/admin/database-instances" class="text-ink-2 hover:text-ink-0 transition-colors">Database →</a>
+			<a href="/admin/object-storage" class="text-ink-2 hover:text-ink-0 transition-colors">Object Storage →</a>
+			<a href="/admin/topology" class="text-ink-2 hover:text-ink-0 transition-colors">전체 토폴로지 →</a>
+			<a href="/admin/networks" class="text-ink-2 hover:text-ink-0 transition-colors">네트워크 →</a>
 		</div>
 
 		<VersionInfoPanel {versionInfo} bind:open={versionOpen} />
 	{:else}
-		<div class="text-gray-500 text-sm">개요를 불러올 수 없습니다</div>
+		<div class="text-ink-2 text-sm">개요를 불러올 수 없습니다</div>
 	{/if}
-</div>
+</PageShell>
 
 {#if selectedProject}
 	<ProjectQuotaPanel

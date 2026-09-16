@@ -587,3 +587,82 @@ class RuntimeSetting(Base):
     updated_by_user_id: Mapped[str | None] = mapped_column(VARCHAR(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+
+
+class GpuQuota(Base):
+    """프로젝트별 GPU 쿼타 설정 (Default project: __default__)."""
+
+    __tablename__ = "gpu_quotas"
+
+    id: Mapped[int] = mapped_column(INT, primary_key=True, autoincrement=True)
+    project_id: Mapped[str] = mapped_column(VARCHAR(64), nullable=False)
+    gpu_type: Mapped[str] = mapped_column(VARCHAR(64), nullable=False)
+    limit: Mapped[int] = mapped_column(INT, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+
+    __table_args__ = (
+        UniqueConstraint("project_id", "gpu_type", name="uq_gpu_quotas_project_gpu_type"),
+        Index("idx_gpu_quotas_project_id", "project_id"),
+    )
+
+
+class GpuQuotaReservation(Base):
+    """Short-lived GPU quota claim for an Afterglow-controlled admission."""
+
+    __tablename__ = "gpu_quota_reservations"
+
+    id: Mapped[int] = mapped_column(INT, primary_key=True, autoincrement=True)
+
+    reservation_id: Mapped[str] = mapped_column(CHAR(36), nullable=False)
+    project_id: Mapped[str] = mapped_column(VARCHAR(64), nullable=False)
+    gpu_type: Mapped[str] = mapped_column(VARCHAR(64), nullable=False)
+    amount: Mapped[int] = mapped_column(INT, nullable=False)
+    status: Mapped[str] = mapped_column(VARCHAR(16), nullable=False, default="pending")
+    server_id: Mapped[str | None] = mapped_column(VARCHAR(64))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+
+    __table_args__ = (
+        UniqueConstraint("reservation_id", "gpu_type", name="uq_gpu_quota_reservation_type"),
+        Index(
+            "idx_gpu_quota_reservations_project_active",
+            "project_id",
+            "gpu_type",
+            "status",
+            "expires_at",
+        ),
+    )
+
+
+class K3sProvisioningIntent(Base):
+    """Durable, non-secret Stampede agent provisioning intent."""
+
+    __tablename__ = "k3s_provisioning_intents"
+
+    id: Mapped[int] = mapped_column(BIGINT, primary_key=True, autoincrement=True)
+    idempotency_key: Mapped[str] = mapped_column(VARCHAR(128), nullable=False, unique=True)
+    project_id: Mapped[str] = mapped_column(VARCHAR(64), nullable=False, index=True)
+    cluster_id: Mapped[str] = mapped_column(VARCHAR(64), nullable=False)
+    nodegroup_id: Mapped[str] = mapped_column(VARCHAR(64), nullable=False)
+    name: Mapped[str] = mapped_column(VARCHAR(128), nullable=False)
+    flavor_id: Mapped[str] = mapped_column(VARCHAR(64), nullable=False)
+    image_id: Mapped[str] = mapped_column(VARCHAR(64), nullable=False)
+    network_id: Mapped[str] = mapped_column(VARCHAR(64), nullable=False)
+    resource_metadata: Mapped[dict | None] = mapped_column("metadata", JSON)
+    boot_volume_size_gb: Mapped[int] = mapped_column(INT, nullable=False)
+    volume_availability_zone: Mapped[str] = mapped_column(VARCHAR(128), nullable=False)
+    security_group_id: Mapped[str | None] = mapped_column(VARCHAR(64))
+    config_drive: Mapped[bool] = mapped_column(BOOLEAN, nullable=False, default=False)
+    request_hash: Mapped[str] = mapped_column(CHAR(64), nullable=False)
+    state: Mapped[str] = mapped_column(VARCHAR(16), nullable=False, default="pending", index=True)
+    error_message: Mapped[str | None] = mapped_column(TEXT)
+    boot_volume_id: Mapped[str | None] = mapped_column(VARCHAR(64))
+    server_id: Mapped[str | None] = mapped_column(VARCHAR(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+
+    __table_args__ = (Index("idx_k3s_provisioning_intents_project_state", "project_id", "state"),)

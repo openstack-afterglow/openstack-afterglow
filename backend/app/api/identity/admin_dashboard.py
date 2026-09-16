@@ -15,7 +15,6 @@ from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
     import openstack
 
-from drover_sdk import register as register_drover
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -23,6 +22,7 @@ from app.api.common.activity_recorder import rec
 from app.api.deps import CacheMode, cache_mode, get_os_conn, get_token_info, require_admin
 from app.services.cache import cached_call, ttl_fast, ttl_normal
 from app.services.image_refs import normalize_image_reference
+from app.services.keystone import get_drover_proxy
 
 _logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -108,7 +108,7 @@ async def get_admin_notifications(
 
             async def _k3s_pending():
                 return await asyncio.to_thread(
-                    register_drover(conn).admin_clusters,
+                    get_drover_proxy(conn).admin_clusters,
                     status="CREATE_IN_PROGRESS,UPDATE_IN_PROGRESS,ERROR",
                 )
 

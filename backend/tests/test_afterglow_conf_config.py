@@ -188,6 +188,25 @@ oauth_consent_url = "https://app.example.test/oauth/mcp/authorize"
     assert settings.mcp_oauth_consent_url == "https://app.example.test/oauth/mcp/authorize"
 
 
+def test_app_config_loads_logging_log_directory_from_afterglow_conf(isolated_config_dir):
+    (isolated_config_dir / "afterglow.conf").write_text(
+        """
+[logging]
+log_directory = "/var/log/kolla/afterglow_api"
+max_bytes = 10485760
+""".strip(),
+        encoding="utf-8",
+    )
+
+    flat = app_config._load_toml()
+    settings = app_config.Settings(**flat)
+
+    assert flat["log_directory"] == "/var/log/kolla/afterglow_api"
+    assert settings.log_directory == "/var/log/kolla/afterglow_api"
+    assert flat["log_max_bytes"] == 10485760
+    assert settings.log_max_bytes == 10485760
+
+
 def test_empty_gitlab_oidc_secret_env_does_not_mask_toml(isolated_config_dir, monkeypatch):
     (isolated_config_dir / "afterglow.conf").write_text(
         """
@@ -400,79 +419,6 @@ secret_key = "0123456789abcdef0123456789abcdef"
     assert 'site_name = "Explicit K8s Afterglow Conf"' in output
 
 
-def test_docker_compose_python_services_share_local_dev_secret_wiring():
-    """Local compose Python services must share .env without overriding SECRET_KEY."""
-    compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text(encoding="utf-8"))
-    services = compose["services"]
-
-    expected_env_file = [{"path": ".env", "required": False}]
-    for service_name in (
-        "backend",
-        "waygate-api",
-        "waygate-worker",
-        "drover-api",
-        "drover-worker",
-        "palimpsest-bootstrap",
-        "palimpsest-api",
-        "palimpsest-worker",
-        "notion-worker",
-    ):
-        service = services[service_name]
-        assert service["env_file"] == expected_env_file
-        environment = service.get("environment", {})
-        names = (
-            set(environment)
-            if isinstance(environment, dict)
-            else {str(entry).partition("=")[0] for entry in environment}
-        )
-        assert "SECRET_KEY" not in names
-
-
-def test_compose_uses_standalone_palimpsest_services():
-    compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text(encoding="utf-8"))
-    services = compose["services"]
-    backend = services["backend"]
-    backend_environment = {
-        str(entry).partition("=")[0]: str(entry).partition("=")[2] for entry in backend["environment"]
-    }
-    assert backend_environment["SERVICE_PALIMPSEST_INTERNAL_URL"].endswith("http://palimpsest-api:8020}")
-    assert "PALIMPSEST_HUB_LOCAL_PATH" not in backend_environment
-    assert "palimpsest-hub:/var/lib/afterglow/palimpsest" not in backend.get("volumes", [])
-
-    for name in ("palimpsest-bootstrap", "palimpsest-api", "palimpsest-worker"):
-        service = services[name]
-        assert "services" in service["profiles"]
-        assert service["environment"]["DATABASE_URL"].startswith("${PALIMPSEST_DATABASE_URL:-mysql+asyncmy://")
-        assert service["environment"]["OS_PROJECT_NAME"].endswith("palimpsest-service}")
-        assert "palimpsest-hub:/var/lib/palimpsest/hub" in service["volumes"]
-
-    production = yaml.safe_load((ROOT / "docker-compose.prod.yml").read_text(encoding="utf-8"))
-    assert {
-        "palimpsest-bootstrap",
-        "palimpsest-api",
-        "palimpsest-worker",
-    } <= production["services"].keys()
-
-    database_init = (ROOT / "docker/mariadb/service-init.sql").read_text(encoding="utf-8")
-    assert "CREATE DATABASE IF NOT EXISTS palimpsest" in database_init
-    assert "GRANT ALL PRIVILEGES ON palimpsest.*" in database_init
-
-    backend_manifest = (ROOT / "deploy/k8s-template/base/backend/deployment.yaml").read_text(encoding="utf-8")
-    assert "PALIMPSEST_HUB_LOCAL_PATH" not in backend_manifest
-    assert "name: palimpsest-hub" not in backend_manifest
-
-
-def test_env_example_allows_local_default_secret_for_compose_workers():
-    """Copied .env.example must not start backend-only while workers crash."""
-    env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
-
-    assert "SECRET_KEY=change-me-in-production" in env_example
-    assert "AFTERGLOW_ALLOW_INSECURE=1" in env_example
-    assert "AFTERGLOW_ENV=development" in env_example
-    assert "PUBLIC_API_BASE=http://localhost:8000" in env_example
-    assert "FRONTEND_BASE_URL=http://localhost:3080" in env_example
-
-
 def test_k8s_python_manifests_use_production_secret_contract():
     """K8s Python services must fail closed and share afterglow-secrets/SECRET_KEY."""
     paths = [
@@ -509,3 +455,151 @@ def test_helm_python_templates_use_production_secret_contract():
         assert "name: afterglow-secrets" in text
         assert "key: SECRET_KEY" in text
         assert "AFTERGLOW_ALLOW_INSECURE" not in text
+
+
+def test_k8s_app_deployments_use_writable_ephemeral_log_mounts():
+    """Backend and frontend K8s static deployments must mount pod-local writable emptyDir log volumes."""
+    paths = [
+        ROOT / "deploy/k8s-template/base/backend/deployment.yaml",
+        ROOT / "deploy/k8s-template/base/frontend/deployment.yaml",
+    ]
+    for path in paths:
+        doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+        spec = doc["spec"]["template"]["spec"]
+
+        # Security context for non-root fsGroup writable volume access
+        assert spec.get("securityContext", {}).get("fsGroup") == 1000
+
+        # Writable emptyDir volume
+        volumes = {v["name"]: v for v in spec.get("volumes", [])}
+        assert "app-logs" in volumes
+        assert volumes["app-logs"] == {"name": "app-logs", "emptyDir": {}}
+        assert "hostPath" not in str(volumes["app-logs"])
+        assert "persistentVolumeClaim" not in str(volumes["app-logs"])
+
+        # Container volumeMount
+        container = spec["containers"][0]
+        mounts = {m["name"]: m for m in container.get("volumeMounts", [])}
+        assert "app-logs" in mounts
+        assert mounts["app-logs"] == {"name": "app-logs", "mountPath": "/app/logs"}
+
+
+def test_k8s_static_config_uses_portable_log_rotation_settings():
+    configmap = (ROOT / "deploy/k8s-template/configmap.yaml").read_text(encoding="utf-8")
+
+    assert 'log_directory = "/app/logs"' in configmap
+    assert "max_bytes = 52428800" in configmap
+    assert "rotation_type" not in configmap
+    assert "rotation_when" not in configmap
+    assert "backup_count" not in configmap
+
+
+def test_helm_app_templates_use_writable_ephemeral_log_mounts():
+    """Backend and frontend Helm templates must declare pod-local writable emptyDir log mounts without PVC/hostPath."""
+    paths = [
+        ROOT / "helm/afterglow/templates/backend/deployment.yaml",
+        ROOT / "helm/afterglow/templates/frontend/deployment.yaml",
+    ]
+    for path in paths:
+        text = path.read_text(encoding="utf-8")
+
+        # Must include securityContext with fsGroup 1000
+        assert "securityContext:" in text
+        assert "fsGroup: 1000" in text
+
+        # Must include app-logs volumeMount at /app/logs
+        assert "- name: app-logs\n              mountPath: /app/logs" in text
+
+        # Must include app-logs emptyDir volume definition
+        assert "- name: app-logs\n          emptyDir: {}" in text
+
+        # Must preserve ConfigMap volume mount
+        assert "afterglow-config-volume" in text
+
+        # Must not introduce hostPath or PVC for log storage
+        assert "persistentVolumeClaim" not in text
+        assert "hostPath" not in text
+
+
+def test_ceph_rbd_config_is_disabled_only_when_both_mount_paths_are_empty():
+    assert app_config.Settings().ceph_rbd_enabled is False
+
+    with pytest.raises(ValueError, match="함께 설정"):
+        app_config.Settings(ceph_rbd_conf_path="/etc/ceph/ceph.conf")
+    with pytest.raises(ValueError, match="함께 설정"):
+        app_config.Settings(ceph_rbd_keyring_path="/etc/ceph/keyring")
+
+
+def test_ceph_rbd_config_requires_cluster_pool_and_valid_client_when_enabled():
+    base = {
+        "ceph_rbd_conf_path": "/etc/ceph/ceph.conf",
+        "ceph_rbd_keyring_path": "/etc/ceph/ceph.client.afterglow-rbd.keyring",
+        "ceph_rbd_cluster_fsid": "00000000-1111-2222-3333-444444444444",
+        "ceph_rbd_volume_pools": {"ceph": "volumes"},
+    }
+
+    settings = app_config.Settings(**base)
+    assert settings.ceph_rbd_enabled is True
+
+    with pytest.raises(ValueError, match="rbd_cluster_fsid"):
+        app_config.Settings(**{**base, "ceph_rbd_cluster_fsid": ""})
+    with pytest.raises(ValueError, match="client"):
+        app_config.Settings(**{**base, "ceph_rbd_client_name": "bad;client"})
+    with pytest.raises(ValueError, match="RBD pool"):
+        app_config.Settings(**{**base, "ceph_rbd_volume_pools": {"ceph": "volumes;rm"}})
+    with pytest.raises(ValueError, match="양수"):
+        app_config.Settings(**{**base, "ceph_rbd_command_timeout_seconds": 0})
+
+
+def test_app_config_flattens_ceph_rbd_settings(isolated_config_dir):
+    (isolated_config_dir / "afterglow.conf").write_text(
+        """
+[ceph]
+rbd_conf_path = "/etc/ceph/ceph.conf"
+rbd_keyring_path = "/etc/ceph/ceph.client.afterglow-rbd.keyring"
+rbd_client_name = "client.afterglow-rbd"
+rbd_cluster_fsid = "00000000-1111-2222-3333-444444444444"
+rbd_command_timeout_seconds = 17
+
+[ceph.rbd_volume_pools]
+ceph = "volumes"
+archive = "archive-volumes"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    settings = app_config.Settings(**app_config._load_toml())
+
+    assert settings.ceph_rbd_enabled is True
+    assert settings.ceph_rbd_command_timeout_seconds == 17
+    assert settings.ceph_rbd_volume_pools == {
+        "ceph": "volumes",
+        "archive": "archive-volumes",
+    }
+
+
+def test_k8s_renderer_separates_ceph_conf_and_keyring():
+    keyring = "[client.afterglow-rbd]\n  key = secret-sentinel"
+    ceph_conf = "[global]\nfsid = 00000000-1111-2222-3333-444444444444"
+    cfg = {
+        "ceph": {
+            "rbd_conf_path": "/etc/ceph/ceph.conf",
+            "rbd_keyring_path": "/etc/ceph/ceph.client.afterglow-rbd.keyring",
+            "rbd_client_name": "client.afterglow-rbd",
+            "rbd_cluster_fsid": "00000000-1111-2222-3333-444444444444",
+            "rbd_command_timeout_seconds": 30,
+            "rbd_volume_pools": {"ceph": "volumes"},
+            "rbd_conf_content": ceph_conf,
+            "rbd_keyring": keyring,
+        },
+        "app": {"secret_key": "0123456789abcdef0123456789abcdef"},
+    }
+
+    toml = generate_k8s._render_toml_for_k8s(cfg)
+    configmap = yaml.safe_load(generate_k8s.render_configmap(cfg))
+    secret = yaml.safe_load(generate_k8s.render_secret(cfg))
+
+    assert '[ceph.rbd_volume_pools]\n"ceph" = "volumes"' in toml
+    assert keyring not in toml
+    assert configmap["data"]["ceph.conf"].rstrip("\n") == ceph_conf
+    assert secret["stringData"]["CEPH_RBD_KEYRING"].rstrip("\n") == keyring

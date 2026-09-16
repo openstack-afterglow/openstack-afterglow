@@ -32,3 +32,13 @@ Generated: 2026-05-15
 - [ ] `generate_k8s.py:render_grafana_deployment` — `cfg` 파라미터 미사용
   hardcoded `"admin"` password → `cfg.get("grafana_admin_password", "admin")` 로 수정
   또는 render_secret()으로 K8s Secret에 주입
+
+## Kolla role wheel 후속
+
+- [ ] **`*-kolla` wheel PyPI trusted publishing 전환** — 초기 GitHub Release direct URL
+  배포가 Drover 파일럿과 Afterglow 4-wheel composition gate에서 안정화된 뒤,
+  `afterglow-kolla`, `drover-kolla`, `lumen-kolla`, `palimpsest-kolla` 이름을 확보하고
+  각 서비스 tag workflow에 PyPI trusted publishing과 provenance 검증을 추가한다.
+  → 장점: `/etc/kolla/pyproject.toml`을 정적 PEP 508 URL 대신 일반 version constraint로 단순화
+  → 비용/위험: 4개 레포의 package-name ownership, OIDC publisher, release rollback 정책을 함께 운영
+  → 선행조건: Drover wheel clean-venv gate, container/wheel lockstep release, 4-wheel install/upgrade/uninstall isolation 통과

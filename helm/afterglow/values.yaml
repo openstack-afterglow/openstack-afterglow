@@ -62,6 +62,8 @@ workerRuntime:
     configHostPath: ""
     gpuConfigMount: /app/config.gpu.toml
     gpuConfigHostPath: ""
+    # Kubernetes backend/frontend Deployment는 /app/logs 에 pod-local emptyDir 볼륨을
+    # 마운트합니다 (fsGroup 1000 쓰기 허용, PVC/hostPath 미사용, 파드 수명주기 종속 휘발성 스토리지).
     logsMount: /app/logs
     logsHostPath: ""
     envAllowlist: "AFTERGLOW_ENV,AFTERGLOW_ALLOW_INSECURE,SECRET_KEY,OS_PASSWORD,DATABASE_URL,K3S_KUBECONFIG_ENCRYPTION_KEY,PROMETHEUS_PASSWORD,GITLAB_OIDC_CLIENT_SECRET,NOTION_CONFIG_ENCRYPTION_KEY"

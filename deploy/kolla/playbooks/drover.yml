@@ -2,6 +2,7 @@
 - name: Apply role drover
   gather_facts: false
   hosts: drover
+  become: true
   serial: "{{ kolla_serial | default('0') }}"
   roles:
     - { role: drover, tags: drover, when: enable_drover | default(false) | bool }

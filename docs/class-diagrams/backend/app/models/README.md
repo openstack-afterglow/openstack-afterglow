@@ -4,7 +4,7 @@
 
 ## 책임
 `backend/app/models`의 책임은 <<class>>, <<enumeration>>, <<orm>>, <<pydantic>>으로 표현되는 운영 타입 계약을 정의하는 것이다.
-이 문서는 185개 source type과 58개 정적 관계를 8개 Mermaid class diagram으로 나누어 보여준다.
+이 문서는 187개 source type과 62개 정적 관계를 8개 Mermaid class diagram으로 나누어 보여준다.
 
 ## 포함 파일
 - `backend/app/models/activity.py`
@@ -1500,15 +1500,40 @@ class T_backend_app_models_storage_py_VolumeDeleteDependency_25f587ba33c8["Volum
   +name: str | None
   +kind: Literal~'snapshot'; 'backup'~
 }
+%% source-type: backend/app/models/storage.py::VolumeDeleteCheck
+class T_backend_app_models_storage_py_VolumeDeleteCheck_769455ab5d9d["VolumeDeleteCheck (backend/app/models/storage.py)"] {
+  <<pydantic>>
+  +name: VolumeDeleteCheckName
+  +state: VolumeDeleteCheckState
+  +detail: str | None
+}
+%% source-type: backend/app/models/storage.py::VolumeDeleteBackendInspection
+class T_backend_app_models_storage_py_VolumeDeleteBackendInspection_cb2209704bb6["VolumeDeleteBackendInspection (backend/app/models/storage.py)"] {
+  <<pydantic>>
+  +mode: Literal~'unavailable'; 'inspected'; 'unknown'~
+  +classification: Literal~'not_inspected'; 'consistent'; 'name_mapping_missing'; 'absent'; 'stale_name_mapping_only'; 'inconsistent'; 'unknown'~
+  +pool: str | None
+  +image_name: str | None
+  +image_id: str | None
+  +size_bytes: int | None
+  +order: int | None
+  +parent_spec: str | None
+}
 %% source-type: backend/app/models/storage.py::VolumeDeleteDiagnostic
 class T_backend_app_models_storage_py_VolumeDeleteDiagnostic_0021c5e4b194["VolumeDeleteDiagnostic (backend/app/models/storage.py)"] {
   <<pydantic>>
   +volume_id: str
   +status: str | None
   +project_id: str | None
+  +name: str | None
+  +size_gb: int | None
+  +backend_host: str | None
+  +updated_at: str | None
   +attachments: list~dict~
   +dependencies: list~VolumeDeleteDependency~
   +messages: list~VolumeDeleteMessage~
+  +checks: list~VolumeDeleteCheck~
+  +backend: VolumeDeleteBackendInspection
   +root_cause_code: VolumeDeleteRootCause
   +confidence: Literal~'high'; 'medium'; 'low'~
   +summary: str
@@ -1530,6 +1555,8 @@ class T_backend_app_models_storage_py_VolumeDeleteRecoveryResult_02269ecf190c["V
   +status: VolumeDeleteRecoveryStatus
   +verified_deleted: bool
   +final_status: str | None
+  +backend_verification: Literal~'verified'; 'unavailable'; 'residue'; 'unknown'~
+  +quota_verification: Literal~'verified'; 'mismatch'; 'unavailable'~
   +diagnostic: VolumeDeleteDiagnostic
   +steps: list~VolumeDeleteRecoveryStep~
 }
@@ -1681,10 +1708,22 @@ class T_frontend_src_lib_types_volume_ts_VolumeDeleteRecoveryStatus_f17c52dc308d
 class T_frontend_src_lib_types_volume_ts_VolumeDeleteRecoveryStepStatus_809e7cce87d0["VolumeDeleteRecoveryStepStatus (../../../frontend/src/lib/types/volume.ts)"] {
   <<external>>
 }
+%% external-type: frontend/src/lib/types/volume.ts::VolumeDeleteCheckName
+class T_frontend_src_lib_types_volume_ts_VolumeDeleteCheckName_5c01bc4d77ac["VolumeDeleteCheckName (../../../frontend/src/lib/types/volume.ts)"] {
+  <<external>>
+}
+%% external-type: frontend/src/lib/types/volume.ts::VolumeDeleteCheckState
+class T_frontend_src_lib_types_volume_ts_VolumeDeleteCheckState_5bb502eff55a["VolumeDeleteCheckState (../../../frontend/src/lib/types/volume.ts)"] {
+  <<external>>
+}
 %% external-type: frontend/src/lib/types/volume.ts::VolumeDeleteRootCause
 class T_frontend_src_lib_types_volume_ts_VolumeDeleteRootCause_c76f30218dcd["VolumeDeleteRootCause (../../../frontend/src/lib/types/volume.ts)"] {
   <<external>>
 }
+T_backend_app_models_storage_py_VolumeDeleteCheck_769455ab5d9d --> T_frontend_src_lib_types_volume_ts_VolumeDeleteCheckName_5c01bc4d77ac : associates
+T_backend_app_models_storage_py_VolumeDeleteCheck_769455ab5d9d --> T_frontend_src_lib_types_volume_ts_VolumeDeleteCheckState_5bb502eff55a : associates
+T_backend_app_models_storage_py_VolumeDeleteDiagnostic_0021c5e4b194 --> T_backend_app_models_storage_py_VolumeDeleteCheck_769455ab5d9d : associates
+T_backend_app_models_storage_py_VolumeDeleteDiagnostic_0021c5e4b194 --> T_backend_app_models_storage_py_VolumeDeleteBackendInspection_cb2209704bb6 : associates
 T_backend_app_models_storage_py_VolumeDeleteDiagnostic_0021c5e4b194 --> T_backend_app_models_storage_py_VolumeDeleteDependency_25f587ba33c8 : associates
 T_backend_app_models_storage_py_VolumeDeleteDiagnostic_0021c5e4b194 --> T_backend_app_models_storage_py_VolumeDeleteMessage_479276ff269c : associates
 T_backend_app_models_storage_py_VolumeDeleteDiagnostic_0021c5e4b194 --> T_frontend_src_lib_types_volume_ts_VolumeDeleteRootCause_c76f30218dcd : associates
@@ -1700,6 +1739,10 @@ T_backend_app_models_storage_py_NetworkDetail_70b62a33a05f --> T_backend_app_mod
 ```
 
 ### 관계 설명
+- `backend/app/models/storage.py::VolumeDeleteCheck --> frontend/src/lib/types/volume.ts::VolumeDeleteCheckName` — 근거: `backend/app/models/storage.py::VolumeDeleteCheck.name`; 관계: `associates`.
+- `backend/app/models/storage.py::VolumeDeleteCheck --> frontend/src/lib/types/volume.ts::VolumeDeleteCheckState` — 근거: `backend/app/models/storage.py::VolumeDeleteCheck.state`; 관계: `associates`.
+- `backend/app/models/storage.py::VolumeDeleteDiagnostic --> backend/app/models/storage.py::VolumeDeleteCheck` — 근거: `backend/app/models/storage.py::VolumeDeleteDiagnostic.checks`; 관계: `associates`.
+- `backend/app/models/storage.py::VolumeDeleteDiagnostic --> backend/app/models/storage.py::VolumeDeleteBackendInspection` — 근거: `backend/app/models/storage.py::VolumeDeleteDiagnostic.backend`; 관계: `associates`.
 - `backend/app/models/storage.py::VolumeDeleteDiagnostic --> backend/app/models/storage.py::VolumeDeleteDependency` — 근거: `backend/app/models/storage.py::VolumeDeleteDiagnostic.dependencies`; 관계: `associates`.
 - `backend/app/models/storage.py::VolumeDeleteDiagnostic --> backend/app/models/storage.py::VolumeDeleteMessage` — 근거: `backend/app/models/storage.py::VolumeDeleteDiagnostic.messages`; 관계: `associates`.
 - `backend/app/models/storage.py::VolumeDeleteDiagnostic --> frontend/src/lib/types/volume.ts::VolumeDeleteRootCause` — 근거: `backend/app/models/storage.py::VolumeDeleteDiagnostic.root_cause_code`; 관계: `associates`.

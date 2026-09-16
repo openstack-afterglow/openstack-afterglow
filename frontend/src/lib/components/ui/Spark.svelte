@@ -27,10 +27,12 @@
     if (data.length < 2) return { line: '', fill: '' };
     const min = Math.min(...data);
     const max = Math.max(...data);
-    const range = max - min || 1;
+    const range = max - min;
     const pts = data.map((v, i) => {
       const x = (i / (data.length - 1)) * 100;
-      const y = height - ((v - min) / range) * (height - 4) - 2;
+      // 상수 계열은 바닥에 붙이지 않고 가운데로 그린다. || 1 은 range 0 일 때 모든 점을
+      // 최저선으로 밀어 옆의 min·max 텍스트와 모순되는 그림을 만들었다.
+      const y = range === 0 ? height / 2 : height - ((v - min) / range) * (height - 4) - 2;
       return [x, y] as [number, number];
     });
     const line = pts.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
@@ -45,6 +47,8 @@
   width={svgW}
   class="spark {className}"
   style="height:{height}px"
+  aria-hidden="true"
+  focusable="false"
 >
   {#if area && path().fill}
     <path

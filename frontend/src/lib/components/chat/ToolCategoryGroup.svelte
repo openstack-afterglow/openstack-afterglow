@@ -69,11 +69,11 @@
 		color: var(--color-ink-1);
 	}
 	.category-count {
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.chevron {
 		margin-left: auto;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		transition: transform var(--motion-duration-fast) var(--motion-ease-standard);
 	}
 	details[open] .chevron {

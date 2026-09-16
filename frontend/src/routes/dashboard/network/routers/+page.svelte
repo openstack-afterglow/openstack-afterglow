@@ -10,6 +10,7 @@
   import SlidePanel from '$lib/components/SlidePanel.svelte';
   import RouterDetailPanel from '$lib/components/RouterDetailPanel.svelte';
   import PageHeader from '$lib/components/ui/PageHeader.svelte';
+  import Button from '$lib/components/ui/Button.svelte';
   import BulkSelectionOverlay from '$lib/components/ui/BulkSelectionOverlay.svelte';
   import RouterCreateModal from '$lib/components/network/routers/RouterCreateModal.svelte';
   import RouterCardGrid from '$lib/components/network/routers/RouterCardGrid.svelte';
@@ -37,7 +38,7 @@
   let showModal = $state(false);
   let selection = createResourceSelection();
   let busy = $state(false);
-  let selectableIds = $derived(new Set(routers.map((router) => router.id)));
+  let selectableIds = $derived(new Set(routers.filter((router) => $auth.isSystemAdmin || (router.project_id && router.project_id === $auth.projectId)).map((router) => router.id)));
 
   async function bulkDelete() {
     const ids = [...selection.ids];
@@ -140,18 +141,14 @@
         refreshing={refreshing}
         onManualRefresh={forceRefresh}
       />
-      <button onclick={openCreate} onpointerenter={prefetchNetworks} onfocus={prefetchNetworks} class="bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">+ 라우터 생성</button>
+      <Button onclick={openCreate} onintent={prefetchNetworks} variant="primary">+ 라우터 생성</Button>
     {/snippet}
   </PageHeader>
 
   {#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
 
   {#if loading}
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-      {#each Array(4) as _}
-        <div class="animate-pulse h-44 bg-gray-900 border border-gray-800 rounded-2xl"></div>
-      {/each}
-    </div>
+    <LoadingSkeleton variant="card" rows={4} />
   {:else if routers.length === 0}
     <RouterEmptyState />
   {:else}
@@ -176,7 +173,7 @@
 />
 
 {#if selectedRouterId}
-  <SlidePanel onClose={closeRouterPanel} width="w-full md:w-[60vw] max-w-2xl">
+  <SlidePanel onClose={closeRouterPanel} ariaLabel="라우터 상세" width="w-full md:w-[60vw] max-w-2xl">
     <RouterDetailPanel
       routerId={selectedRouterId}
       onClose={closeRouterPanel}

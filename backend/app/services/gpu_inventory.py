@@ -8,6 +8,7 @@ import re
 from typing import Any
 
 from app.config import load_raw_toml
+from app.services import gpu_quota
 
 _logger = logging.getLogger(__name__)
 
@@ -601,7 +602,10 @@ def is_gpu_flavor(flavor: Any = None, extra_specs: dict | None = None) -> bool:
         stored_is_gpu = getattr(flavor, "__dict__", {}).get("is_gpu")
         if isinstance(stored_is_gpu, bool):
             explicit_gpu = stored_is_gpu
-
+        elif not isinstance(getattr(type(flavor), "is_gpu", None), property) and isinstance(
+            getattr(flavor, "is_gpu", None), bool
+        ):
+            explicit_gpu = flavor.is_gpu
     for entry in str(specs.get("pci_passthrough:alias", "")).split(","):
         entry = entry.strip()
         if not entry:
@@ -620,38 +624,47 @@ def is_gpu_flavor(flavor: Any = None, extra_specs: dict | None = None) -> bool:
     return isinstance(name, str) and name.lower().startswith(("gpu.", "gpu_", "g1."))
 
 
-class GpuQuotaUnavailable(RuntimeError):
-    """Drover could not provide a trustworthy GPU quota decision."""
-
-
-class GpuQuotaDenied(RuntimeError):
-    """Drover explicitly denied a GPU quota request."""
+GpuQuotaDenied = gpu_quota.GpuQuotaDenied
+GpuQuotaUnavailable = gpu_quota.GpuQuotaUnavailable
 
 
 async def require_gpu_quota(conn: Any, flavor: Any) -> bool:
-    """Require an affirmative Drover decision for GPU flavors before mutation."""
+    """Require an affirmative GPU quota decision before mutation."""
     if not is_gpu_flavor(flavor):
         return False
 
-    import asyncio
-
-    from drover_sdk import register as register_drover
+    project_id = getattr(conn, "_afterglow_project_id", None) or getattr(conn, "current_project_id", None)
 
     flavor_extra_specs = (
         flavor.get("extra_specs") if isinstance(flavor, dict) else getattr(flavor, "extra_specs", None)
     ) or {}
-    try:
-        result = await asyncio.to_thread(
-            register_drover(conn).check_gpu_quota,
-            flavor_extra_specs,
-        )
-    except Exception as exc:
-        _logger.warning("Drover GPU quota check failed", exc_info=True)
-        raise GpuQuotaUnavailable("Drover GPU quota 서비스에 접근할 수 없거나 응답 형식이 잘못되었습니다") from exc
+    alias_str = flavor_extra_specs.get("pci_passthrough:alias", "")
+    requested_gpus: dict[str, int] = {}
+    if alias_str:
+        for entry in str(alias_str).split(","):
+            entry = entry.strip()
+            if not entry or "audio" in entry.lower():
+                continue
+            if not is_gpu_flavor(extra_specs={"pci_passthrough:alias": entry}):
+                continue
+            if ":" in entry:
+                alias_name, _, count_str = entry.rpartition(":")
+                alias_name = alias_name.strip()
+                try:
+                    count = int(count_str.strip())
+                    if count <= 0:
+                        count = 1
+                except ValueError:
+                    count = 1
+            else:
+                alias_name = entry
+                count = 1
+            norm = normalize_gpu_alias(alias_name)
+            if norm:
+                requested_gpus[norm] = requested_gpus.get(norm, 0) + count
 
-    if not isinstance(result, dict) or not isinstance(result.get("ok"), bool):
-        raise GpuQuotaUnavailable("Drover GPU quota 서비스에 접근할 수 없거나 응답 형식이 잘못되었습니다")
-    if not result["ok"]:
-        detail = result.get("detail") or result.get("message") or "GPU quota 초과"
-        raise GpuQuotaDenied(str(detail))
+    if not requested_gpus:
+        requested_gpus = {"GPU": 1}
+
+    await gpu_quota.check_gpu_quota(conn, project_id, requested_gpus)
     return True

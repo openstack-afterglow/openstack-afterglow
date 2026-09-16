@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, NamedTuple
 
 if TYPE_CHECKING:
     import openstack
@@ -12,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from app.api.common.activity_recorder import rec
-from app.api.common.owner_check import assert_resource_owner
+from app.api.common.owner_check import assert_project_resource_owner, assert_resource_owner
 from app.api.deps import CacheMode, cache_mode, get_os_conn, get_token_info
 from app.config import get_settings
 from app.models.storage import (
@@ -29,12 +30,34 @@ from app.models.storage import (
     UpdateSubnetRequest,
 )
 from app.rate_limit import limiter
-from app.services import neutron, nova
+from app.services import neutron, nova, trove
 from app.services.cache import cached_call, invalidate, ttl_fast, ttl_normal, ttl_static
 from app.services.octavia import get_lb_stats, get_topology_lbs, lb_rate_from_snapshot, list_load_balancers
-from app.services.prom_query import PromBadQuery, PromUnavailable, is_safe_label_value, query_instant_multi
+from app.services.parallel import run_parallel
+from app.services.prom_query import (
+    PromBadQuery,
+    PromUnavailable,
+    calc_step,
+    is_safe_label_value,
+    query_instant_multi,
+    query_range_multi,
+)
 
 _logger = logging.getLogger(__name__)
+
+# 토폴로지 트래픽 rate 윈도우. 저장소의 다른 PromQL 과 같은 값을 쓴다
+# (`app/api/compute/instance_metrics.py` 가 같은 libvirt/node 카운터에 `[2m]` 을 쓴다).
+#
+# **이 값을 좁히지 마라.** `rate()` 는 윈도우 안에 최소 2 샘플이 필요한데,
+# **이 저장소는 운영 Prometheus 의 scrape_interval 을 제어하지 않는다** — 운영은 Kolla 배포본이고
+# 그 scrape 설정은 이 저장소 밖에 있다(`deploy/kolla/` 에 prometheus 설정이 없는 이유).
+# `deploy/k8s*/monitoring/prometheus/configmap.yaml` 은 **다른 배포 경로**이며 운영 job 이름
+# (`libvirt_exporter`, `openstack-instances-*`)과 일치하지도 않으므로 scrape 근거가 될 수 없다.
+#
+# 실측(2026-09-11, 운영 Prometheus, scrape 1m): 윈도우 30s 로 좁혔더니
+# libvirt NIC 쿼리가 **0 시계열**을 반환해 화면에서 트래픽이 통째로 사라졌다(2m 에서는 43 시계열).
+# 좁은 윈도우는 scrape 가 그만큼 빠른 배포에서만 안전하고, 우리는 그걸 보장할 수 없다.
+TOPOLOGY_RATE_WINDOW = "2m"
 
 router = APIRouter()
 
@@ -66,9 +89,45 @@ async def create_network(
 ):
     try:
         result = await asyncio.to_thread(neutron.create_network, conn, req.name)
+        if req.subnet:
+            subnet_name = req.subnet.name or f"{req.name}-subnet"
+            try:
+                subnet = await asyncio.to_thread(
+                    neutron.create_subnet,
+                    conn,
+                    result.id,
+                    subnet_name,
+                    req.subnet.cidr,
+                    req.subnet.gateway_ip,
+                    req.subnet.enable_dhcp,
+                )
+            except Exception as exc:
+                try:
+                    await asyncio.to_thread(neutron.delete_network, conn, result.id)
+                except Exception:
+                    _logger.warning("서브넷 생성 실패 후 네트워크 롤백 실패", exc_info=True)
+                await rec(
+                    token_info,
+                    conn,
+                    resource_type="network",
+                    action="create",
+                    status="failed",
+                    resource_name=req.name,
+                    error_message=str(exc)[:500],
+                )
+                raise HTTPException(status_code=500, detail="서브넷 생성 실패") from exc
+            result = result.model_copy(
+                update={
+                    "subnets": [*result.subnets, subnet.id],
+                    "cidrs": [*result.cidrs, subnet.cidr],
+                }
+            )
+        await invalidate(f"afterglow:neutron:{conn._afterglow_project_id}:networks")
         await rec(token_info, conn, resource_type="network", action="create", resource_name=req.name)
         return result
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception as exc:
         await rec(
             token_info,
             conn,
@@ -76,9 +135,9 @@ async def create_network(
             action="create",
             status="failed",
             resource_name=req.name,
-            error_message=str(e)[:500],
+            error_message=str(exc)[:500],
         )
-        raise HTTPException(status_code=500, detail="네트워크 생성 실패")
+        raise HTTPException(status_code=500, detail="네트워크 생성 실패") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -141,6 +200,7 @@ async def get_default_network(conn: openstack.connection.Connection = Depends(ge
 async def set_default_network(
     req: SetDefaultNetworkRequest,
     conn: openstack.connection.Connection = Depends(get_os_conn),
+    token_info: dict = Depends(get_token_info),
 ):
     """사용자가 원하는 네트워크를 프로젝트의 Default 네트워크로 지정한다."""
     project_id = conn._afterglow_project_id
@@ -149,6 +209,7 @@ async def set_default_network(
         net = await asyncio.to_thread(neutron.get_network, conn, req.network_id)
     except Exception:
         raise HTTPException(status_code=404, detail="네트워크를 찾을 수 없습니다")
+    assert_project_resource_owner(net, conn, token_info, not_found_detail="네트워크를 찾을 수 없습니다")
 
     from app.services.default_network import get_default_network_record
     from app.services.default_network import set_default_network as _set
@@ -319,7 +380,7 @@ async def update_subnet(
         sub = await asyncio.to_thread(conn.network.get_subnet, subnet_id)
     except Exception:
         raise HTTPException(status_code=404, detail="서브넷을 찾을 수 없습니다")
-    assert_resource_owner(sub, conn, token_info, not_found_detail="서브넷을 찾을 수 없습니다")
+    assert_project_resource_owner(sub, conn, token_info, not_found_detail="서브넷을 찾을 수 없습니다")
     try:
         result = await asyncio.to_thread(
             neutron.update_subnet, conn, subnet_id, req.name, req.gateway_ip, req.enable_dhcp
@@ -351,7 +412,7 @@ async def delete_subnet(
         sub = await asyncio.to_thread(conn.network.get_subnet, subnet_id)
     except Exception:
         raise HTTPException(status_code=404, detail="서브넷을 찾을 수 없습니다")
-    assert_resource_owner(sub, conn, token_info, not_found_detail="서브넷을 찾을 수 없습니다")
+    assert_project_resource_owner(sub, conn, token_info, not_found_detail="서브넷을 찾을 수 없습니다")
     try:
         await asyncio.to_thread(neutron.delete_subnet, conn, subnet_id)
         await rec(token_info, conn, resource_type="subnet", action="delete", resource_id=subnet_id)
@@ -376,40 +437,54 @@ async def delete_subnet(
 def _fetch_topology_sync(conn, project_id: str | None = None) -> dict:
     """동기 방식으로 토폴로지 데이터 수집 (cached_call 내부에서 to_thread로 실행됨).
 
-    project_id 지정 시 해당 프로젝트의 인스턴스·네트워크·라우터만 반환 (user scope).
+    project_id 지정 시 해당 프로젝트의 인스턴스·네트워크·라우터·Floating IP만 반환 (user scope).
     None이면 전체 반환 (admin scope).
     """
-    topo = neutron.get_topology(conn)
-    servers = nova.list_servers(conn)
 
-    # Neutron 포트에서 (device_id, ip) → network_id 매핑 구축
-    port_net_map: dict[tuple[str, str], str] = {}
-    for p in conn.network.ports():
-        dev_owner = p.device_owner or ""
-        if not p.device_id or not dev_owner.startswith("compute:"):
-            continue
-        for fip in p.fixed_ips or []:
-            ip = fip.get("ip_address")
-            if ip:
-                port_net_map[(p.device_id, ip)] = p.network_id
+    # 서로 의존하지 않는 OpenStack 조회는 동시에 수행한다 — 직렬 호출은 응답 시간이 그대로 합산된다.
+    def _db_ips() -> set:
+        try:
+            return trove.topology_database_ips(conn)
+        except Exception:
+            _logger.debug("Trove 토폴로지 IP 조회 실패 — is_database 표시 생략", exc_info=True)
+            return set()
 
-    instance_list = [
-        TopologyInstance(
-            id=s.id,
-            name=s.name,
-            status=s.status,
-            project_id=s.project_id,
-            network_names=list(set(ip.network_name for ip in s.ip_addresses)),
-            ip_addresses=[
-                {
-                    **ip.model_dump(),
-                    "network_id": port_net_map.get((s.id, ip.addr)),
-                }
-                for ip in s.ip_addresses
-            ],
+    topo, servers, port_index, db_ips = run_parallel(
+        lambda: neutron.get_topology(conn, project_id=project_id),
+        lambda: nova.list_servers(conn),
+        lambda: neutron.build_compute_port_index(conn),
+        _db_ips,
+    )
+
+    def _ip_entry(server_id: str, ip) -> dict:
+        port = port_index.get((server_id, ip.addr), {})
+        return {
+            **ip.model_dump(),
+            "network_id": port.get("network_id"),
+            "port_id": port.get("port_id"),
+            "mac_addr": port.get("mac_address"),
+        }
+
+    def _is_database(ip_entries: list[dict]) -> bool:
+        """fixed IP 가 Trove IP 집합에 속하면 DB 인스턴스. floating IP 우연 일치는 제외."""
+        return any(e.get("type") == "fixed" and e.get("addr") in db_ips for e in ip_entries)
+
+    instance_list = []
+    for s in servers:
+        ip_entries = [_ip_entry(s.id, ip) for ip in s.ip_addresses]
+        instance_list.append(
+            TopologyInstance(
+                id=s.id,
+                name=s.name,
+                status=s.status,
+                project_id=s.project_id,
+                network_names=list(set(ip.network_name for ip in s.ip_addresses)),
+                ip_addresses=ip_entries,
+                flavor_name=s.flavor_name,
+                image_id=s.image_id,
+                is_database=_is_database(ip_entries),
+            )
         )
-        for s in servers
-    ]
 
     # user scope: 현재 프로젝트 인스턴스만 표시
     if project_id:
@@ -418,6 +493,8 @@ def _fetch_topology_sync(conn, project_id: str | None = None) -> dict:
         topo.networks = [n for n in topo.networks if n.project_id == project_id or n.is_external or n.is_shared]
         # 라우터: 현재 프로젝트 소유만 유지
         topo.routers = [r for r in topo.routers if getattr(r, "project_id", None) == project_id]
+        # Floating IP: 현재 프로젝트 소유만 유지 (fail-closed; 관리자 토큰으로 project 전환 시 전체 FIP가 캐시에 남지 않도록)
+        topo.floating_ips = [f for f in topo.floating_ips if getattr(f, "project_id", None) == project_id]
 
     topo.instances = instance_list
     topo.load_balancers = get_topology_lbs(
@@ -441,22 +518,28 @@ async def get_topology(
             enabled=cm.enabled,
             refresh=cm.refresh,
         )
+    except HTTPException:
+        raise
     except Exception:
         _logger.exception("토폴로지 조회 실패")
         raise HTTPException(status_code=500, detail="토폴로지 조회 실패")
 
 
-@router.get("/topology/traffic")
-async def get_topology_traffic(
-    conn: openstack.connection.Connection = Depends(get_os_conn),
-    token_info: dict = Depends(get_token_info),
-    all_projects: bool = Query(False, description="admin 전용: 모든 프로젝트 트래픽 조회"),
-) -> dict:
-    """현재 토폴로지의 모든 리소스 instant 트래픽 (rx/tx bps).
+class _PortContext(NamedTuple):
+    """토폴로지 트래픽 두 엔드포인트가 공유하는 포트 인덱스."""
 
-    구조 엔드포인트(/topology)와 분리 — 15s 단주기 폴링 전용.
-    `all_projects=true` 는 시스템 admin 만 허용 — admin 토폴로지 페이지용.
-    반환: { ts, instances, networks, interfaces, routers, load_balancers, _meta }
+    scope_project_id: str | None
+    port_map: dict[str, dict]
+    mac_idx: dict[str, dict]
+    instance_ids: list[str]
+    instance_ports: dict[str, list[str]]
+
+
+async def _load_port_context(conn, token_info: dict, all_projects: bool) -> _PortContext:
+    """compute 포트맵과 그 역인덱스를 만든다 (Redis 캐시, TTL 300s).
+
+    instant(`/topology/traffic`)와 히스토리(`/topology/traffic/history`)가 **같은 귀속
+    규칙**을 쓰도록 여기 한 곳에서만 만든다. `all_projects` 는 시스템 admin 전용.
     """
     if all_projects:
         if not token_info.get("is_system_admin", False):
@@ -467,7 +550,6 @@ async def get_topology_traffic(
         scope_project_id = token_info.get("project_id", "") or conn._afterglow_project_id
         cache_key = f"afterglow:neutron:{scope_project_id}:port_mac_map"
 
-    # 1) compute 포트맵 — MAC↔port_id↔network_id 매핑 (Redis 캐시, TTL 300s)
     port_map: dict[str, dict] = await cached_call(
         cache_key,
         ttl_static(),
@@ -486,30 +568,61 @@ async def get_topology_traffic(
         iid = v.get("instance_id")
         if iid:
             instance_ports.setdefault(iid, []).append(pid)
+    return _PortContext(scope_project_id, port_map, mac_idx, instance_ids, instance_ports)
+
+
+def _traffic_exprs(instance_ids: list[str]) -> tuple[str, str, str, str]:
+    """(node rx, node tx, libvirt rx, libvirt tx) PromQL. instant/히스토리 공용.
+
+    rate 윈도우는 `TOPOLOGY_RATE_WINDOW` 하나만 쓴다 — 두 엔드포인트가 같은 값을 보고해야 한다.
+    """
+    _exclude = r"lo|veth.*|docker.*|cni.*|tap.*|qbr.*"
+    # UUID 는 [0-9a-f-] 만 포함 — re.escape 쓰면 \- 로 인해 Prometheus RE2 거부.
+    regex = "|".join(instance_ids)
+    # `max by` 이지 `sum by` 가 아니다. (instance_id, device) 는 NIC 하나를 유일하게 지목하므로
+    # 같은 키가 여러 번 나오는 것은 **같은 카운터를 여러 job 이 중복 scrape** 했다는 뜻이다
+    # (실측: 한 인스턴스가 openstack-instances-internal 과 -external 양쪽에 등록되어
+    #  ens3 가 2243.7 + 2429.9 = 4673.6 으로 1.9배가 됐다). 더하면 이중 계산이고,
+    # 중복 scrape 값은 타이밍 차이만 있으므로 하나만 취하는 것이 맞다.
+    rx_q = (
+        f"max by (instance_id, device) (rate(node_network_receive_bytes_total"
+        f'{{instance_id=~"{regex}",device!~"{_exclude}"}}[{TOPOLOGY_RATE_WINDOW}]))'
+    )
+    # libvirt: NIC 단위 demux. group_left 2단계 중첩으로 mac_address + instance_id 동시 보존.
+    lv_rx_q = (
+        f"sum by (instance_id, mac_address) ("
+        f"(rate(libvirt_domain_interface_stats_receive_bytes_total[{TOPOLOGY_RATE_WINDOW}])"
+        f" * on (instance, domain, target_device) group_left(mac_address)"
+        f"   libvirt_domain_interface_stats_info)"
+        f" * on (instance, domain) group_left(instance_id)"
+        f' libvirt_domain_openstack_info{{instance_id=~"{regex}"}})'
+    )
+    return rx_q, rx_q.replace("receive", "transmit"), lv_rx_q, lv_rx_q.replace("receive", "transmit")
+
+
+@router.get("/topology/traffic")
+async def get_topology_traffic(
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+    token_info: dict = Depends(get_token_info),
+    all_projects: bool = Query(False, description="admin 전용: 모든 프로젝트 트래픽 조회"),
+) -> dict:
+    """현재 토폴로지의 모든 리소스 instant 트래픽 (rx/tx bps).
+
+    구조 엔드포인트(/topology)와 분리 — 15s 단주기 폴링 전용.
+    `all_projects=true` 는 시스템 admin 만 허용 — admin 토폴로지 페이지용.
+    반환: { ts, instances, networks, interfaces, routers, load_balancers, _meta }
+    """
+    ctx = await _load_port_context(conn, token_info, all_projects)
+    scope_project_id = ctx.scope_project_id
+    port_map, mac_idx = ctx.port_map, ctx.mac_idx
+    instance_ids, instance_ports = ctx.instance_ids, ctx.instance_ports
 
     # 2) PromQL instant queries — 5-fan-out 병렬 실행
-    _exclude = r"lo|veth.*|docker.*|cni.*|tap.*|qbr.*"
     interfaces: dict[str, dict] = {}
     instances: dict[str, dict[str, float]] = {}
 
     if instance_ids:
-        # UUID 는 [0-9a-f-] 만 포함 — re.escape 쓰면 \- 로 인해 Prometheus RE2 거부.
-        regex = "|".join(instance_ids)
-        rx_q = (
-            f"sum by (instance_id, device) (rate(node_network_receive_bytes_total"
-            f'{{instance_id=~"{regex}",device!~"{_exclude}"}}[2m]))'
-        )
-        tx_q = rx_q.replace("receive", "transmit")
-        # libvirt: NIC 단위 demux. group_left 2단계 중첩으로 mac_address + instance_id 동시 보존.
-        lv_rx_q = (
-            f"sum by (instance_id, mac_address) ("
-            f"(rate(libvirt_domain_interface_stats_receive_bytes_total[2m])"
-            f" * on (instance, domain, target_device) group_left(mac_address)"
-            f"   libvirt_domain_interface_stats_info)"
-            f" * on (instance, domain) group_left(instance_id)"
-            f' libvirt_domain_openstack_info{{instance_id=~"{regex}"}})'
-        )
-        lv_tx_q = lv_rx_q.replace("receive", "transmit")
+        rx_q, tx_q, lv_rx_q, lv_tx_q = _traffic_exprs(instance_ids)
         try:
             rx_pairs, tx_pairs, lv_rx_pairs, lv_tx_pairs = await asyncio.gather(
                 query_instant_multi(rx_q),
@@ -522,7 +635,6 @@ async def get_topology_traffic(
             rx_pairs = tx_pairs = lv_rx_pairs = lv_tx_pairs = []
 
         # libvirt 결과 → interfaces (NIC demux 주 경로)
-        _lv_mac_rx: dict[str, float] = {}
         for labels, val in lv_rx_pairs:
             mac = (labels.get("mac_address") or "").lower()
             iid = labels.get("instance_id")
@@ -540,7 +652,6 @@ async def get_topology_traffic(
                     "tx_bps": 0.0,
                 },
             )["rx_bps"] = val * 8
-            _lv_mac_rx[mac] = val * 8
         for labels, val in lv_tx_pairs:
             mac = (labels.get("mac_address") or "").lower()
             iid = labels.get("instance_id")
@@ -571,15 +682,19 @@ async def get_topology_traffic(
             net["tx_bps"] += ent["tx_bps"]
 
         # node_exporter 결과 — libvirt 미관측 인스턴스 보강
+        # 쿼리가 `sum by (instance_id, device)` 라 **device 마다 시계열이 하나씩** 온다 → 누산해야 한다.
+        # 대입하면 마지막 device 만 남아 과소보고된다(제외 정규식은 k3s `flannel.1`,
+        # Waygate `wg0`, `bond0` 를 못 막으므로 device 2개 이상인 VM 은 흔하다).
+        # 히스토리 엔드포인트도 같은 규칙이며 두 값이 어긋나면 같은 패널에서 모순으로 보인다.
         ne_instances: dict[str, dict[str, float]] = {}
         for labels, val in rx_pairs:
             iid = labels.get("instance_id")
             if iid:
-                ne_instances.setdefault(iid, {"rx_bps": 0.0, "tx_bps": 0.0})["rx_bps"] = val * 8
+                ne_instances.setdefault(iid, {"rx_bps": 0.0, "tx_bps": 0.0})["rx_bps"] += val * 8
         for labels, val in tx_pairs:
             iid = labels.get("instance_id")
             if iid:
-                ne_instances.setdefault(iid, {"rx_bps": 0.0, "tx_bps": 0.0})["tx_bps"] = val * 8
+                ne_instances.setdefault(iid, {"rx_bps": 0.0, "tx_bps": 0.0})["tx_bps"] += val * 8
         for iid, ne_vals in ne_instances.items():
             if iid in instances:
                 continue
@@ -615,6 +730,151 @@ async def get_topology_traffic(
         "routers": {},  # Phase 2 — kolla ovs/libvirt exporter 활성화 후 채워짐
         "load_balancers": load_balancers,
         "_meta": {"router_traffic": "exporter_required"},
+    }
+
+
+# ---------------------------------------------------------------------------
+# 네트워크 사용량 히스토리 (동적 `/{network_id}` 보다 먼저 등록)
+# ---------------------------------------------------------------------------
+
+# range → 총 구간 초. step 은 저장소 공용 `calc_step()`(최소 15s, 최대 100 포인트)을 쓴다 —
+# 인스턴스 메트릭 차트와 같은 관례다. step 은 `TOPOLOGY_RATE_WINDOW` 이하라야 샘플 사이
+# 트래픽이 그래프에서 빠지지 않는다(`calc_step` 은 1h 에서 36s 이므로 2m 윈도우 안에 든다).
+_HISTORY_RANGES: dict[str, int] = {"15m": 900, "30m": 1800, "1h": 3600}
+
+
+def _window_seconds() -> int:
+    """`TOPOLOGY_RATE_WINDOW` 를 초로. 형식이 바뀌면 즉시 터지게 둔다."""
+    m = re.fullmatch(r"(\d+)(s|m)", TOPOLOGY_RATE_WINDOW)
+    if not m:
+        raise ValueError(f"rate 윈도우 형식을 해석할 수 없다: {TOPOLOGY_RATE_WINDOW}")
+    return int(m.group(1)) * (60 if m.group(2) == "m" else 1)
+
+
+def _history_step(range_s: int) -> int:
+    """히스토리 step. 계약은 `scrape ≤ step ≤ window` 다.
+
+    상한(step ≤ window)을 어기면 샘플 사이 트래픽이 그래프에서 빠진다.
+    하한(step ≥ scrape)을 어기면 **같은 값이 반복되는 계단**이 나온다 — 실측(scrape 60s)에서
+    step 15s 는 인접 동일값 비율 72%, step 60s 는 12%(트래픽이 평평한 구간의 자연 기준선)였다.
+
+    scrape 를 알 수 없으므로(저장소가 제어하지 않는다) 윈도우가 함의하는 최악을 하한으로 쓴다:
+    윈도우는 `rate` 가 2 샘플을 담도록 `window ≥ 2 × scrape` 를 전제하므로 `scrape ≤ window/2` 다.
+    """
+    return max(calc_step(range_s), _window_seconds() // 2)
+
+
+def _series_stats(series: list[dict[str, float]]) -> dict[str, dict[str, float] | None]:
+    """series 에서 방향별 평균·최대·최근을 낸다. 표본이 없으면 각 항목 `None`(0 과 구분).
+
+    별도 `avg_over_time` 쿼리를 쓰지 않는 이유: 윈도우 평균과 step 샘플 평균이 미묘하게 달라
+    그래프 최고점과 라벨 숫자가 어긋난다. 라벨은 항상 **그려진 선과 같은 표본**에서 나와야 한다.
+    """
+    if not series:
+        return {"avg": None, "max": None, "latest": None}
+    n = len(series)
+    return {
+        "avg": {
+            "rx_bps": sum(p["rx_bps"] for p in series) / n,
+            "tx_bps": sum(p["tx_bps"] for p in series) / n,
+        },
+        # rx·tx 최대는 서로 다른 시점일 수 있다 — 각 방향의 독립적인 최고값이다.
+        "max": {
+            "rx_bps": max(p["rx_bps"] for p in series),
+            "tx_bps": max(p["tx_bps"] for p in series),
+        },
+        "latest": {"rx_bps": series[-1]["rx_bps"], "tx_bps": series[-1]["tx_bps"]},
+    }
+
+
+@router.get("/topology/traffic/history")
+async def get_topology_traffic_history(
+    network_id: str = Query(..., description="히스토리를 조회할 네트워크 ID"),
+    range: Literal["15m", "30m", "1h"] = Query("15m", description="조회 구간"),
+    all_projects: bool = Query(False, description="admin 전용: 모든 프로젝트 포트 대상"),
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+    token_info: dict = Depends(get_token_info),
+) -> dict:
+    """네트워크 1개의 rx/tx bps 시계열 + avg/max 통계.
+
+    instant 엔드포인트(`/topology/traffic`)와 **같은 귀속 규칙**을 쓴다. 즉 이 값은 해당
+    네트워크에 붙은 NIC 들의 합이며 라우터↔스위치 트래픽이 아니다(라우터 exporter 없음).
+    같은 이유로 east-west(내부 인스턴스 간) 트래픽도 포함된다.
+
+    설계 메모:
+    - **패널을 열 때 1회** 호출용이다. 폴링 루프에 넣으면 Prometheus 부하가 네트워크 수만큼 곱해진다.
+    - avg/max 는 별도 `*_over_time` 쿼리가 아니라 **반환한 series 에서 계산**한다. 두 소스를 쓰면
+      그래프 최고점과 라벨 숫자가 어긋난다.
+    - stats 는 **방향별**(rx/tx)이다. instant 엔드포인트가 방향별 값을 주므로 합계로 내보내면
+      같은 패널에서 `▼ 5.8M ▲ 2.0M` 옆에 `7.8M` 이 붙어 사용자가 대조할 수 없다.
+      `max` 의 rx·tx 는 서로 다른 시점일 수 있다(각 방향의 독립적인 최고값).
+    - 현재 포트맵에 없는(삭제된) 인스턴스의 과거 트래픽은 귀속 대상이 없어 빠진다 — instant 도 동일.
+
+    반환: { network_id, range, step_s, window, series: [{ts, rx_bps, tx_bps}],
+            stats: {avg, max, latest} (각각 {rx_bps, tx_bps} 또는 null), _meta }
+    """
+    ctx = await _load_port_context(conn, token_info, all_projects)
+    range_s = _HISTORY_RANGES[range]
+    step_s = _history_step(range_s)
+    end_ts = int(time.time())
+    start_ts = end_ts - range_s
+
+    rx: dict[int, float] = {}
+    tx: dict[int, float] = {}
+
+    if ctx.instance_ids:
+        rx_q, tx_q, lv_rx_q, lv_tx_q = _traffic_exprs(ctx.instance_ids)
+
+        span = {"start_ts": start_ts, "end_ts": end_ts, "step_s": step_s}
+        try:
+            ne_rx, ne_tx, lv_rx, lv_tx = await asyncio.gather(
+                query_range_multi(rx_q, **span),
+                query_range_multi(tx_q, **span),
+                query_range_multi(lv_rx_q, **span),
+                query_range_multi(lv_tx_q, **span),
+            )
+        except (PromUnavailable, PromBadQuery) as exc:
+            _logger.warning("토폴로지 트래픽 히스토리 PromQL 실패 — 빈 series: %s", exc)
+            ne_rx = ne_tx = lv_rx = lv_tx = []
+
+        # libvirt (주 경로): mac → port → network_id 로 이 네트워크의 NIC 만 골라 ts 별 합산.
+        # 네트워크 필터보다 먼저 observed 에 담는다 — node 폴백은 "libvirt 가 못 본 인스턴스" 기준이다.
+        observed: set[str] = set()
+        for pairs, sink in ((lv_rx, rx), (lv_tx, tx)):
+            for labels, samples in pairs:
+                mac = (labels.get("mac_address") or "").lower()
+                iid = labels.get("instance_id")
+                info = ctx.mac_idx.get(mac)
+                if not info or info["instance_id"] != iid:
+                    continue
+                observed.add(iid)
+                if info["network_id"] != network_id:
+                    continue
+                for ts, val in samples:
+                    sink[ts] = sink.get(ts, 0.0) + val * 8
+
+        # node_exporter 폴백: libvirt 미관측 + 단일 NIC 인스턴스만.
+        # 다중 NIC 는 device 이름으로 네트워크를 가릴 수 없어 제외한다(instant 와 동일 규칙).
+        for pairs, sink in ((ne_rx, rx), (ne_tx, tx)):
+            for labels, samples in pairs:
+                iid = labels.get("instance_id") or ""
+                if not iid or iid in observed:
+                    continue
+                ports = ctx.instance_ports.get(iid, [])
+                if len(ports) != 1 or ctx.port_map.get(ports[0], {}).get("network_id") != network_id:
+                    continue
+                for ts, val in samples:
+                    sink[ts] = sink.get(ts, 0.0) + val * 8
+
+    series = [{"ts": ts, "rx_bps": rx.get(ts, 0.0), "tx_bps": tx.get(ts, 0.0)} for ts in sorted(set(rx) | set(tx))]
+    return {
+        "network_id": network_id,
+        "range": range,
+        "step_s": step_s,
+        "window": TOPOLOGY_RATE_WINDOW,
+        "series": series,
+        "stats": _series_stats(series),
+        "_meta": {"source": "network_nic_sum", "router_traffic": "exporter_required"},
     }
 
 
@@ -686,7 +946,7 @@ async def delete_network(
         net = await asyncio.to_thread(conn.network.get_network, network_id)
     except Exception:
         raise HTTPException(status_code=404, detail="네트워크를 찾을 수 없습니다")
-    assert_resource_owner(net, conn, token_info, not_found_detail="네트워크를 찾을 수 없습니다")
+    assert_project_resource_owner(net, conn, token_info, not_found_detail="네트워크를 찾을 수 없습니다")
     try:
         await asyncio.to_thread(neutron.delete_network, conn, network_id)
         await rec(token_info, conn, resource_type="network", action="delete", resource_id=network_id)
@@ -712,6 +972,11 @@ async def create_subnet(
     conn: openstack.connection.Connection = Depends(get_os_conn),
     token_info: dict = Depends(get_token_info),
 ):
+    try:
+        net = await asyncio.to_thread(conn.network.get_network, network_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail="네트워크를 찾을 수 없습니다")
+    assert_project_resource_owner(net, conn, token_info, not_found_detail="네트워크를 찾을 수 없습니다")
     try:
         result = await asyncio.to_thread(
             neutron.create_subnet,

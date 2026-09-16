@@ -6,6 +6,7 @@ pytest-asyncio auto 모드 (backend/pyproject.toml 의 `asyncio_mode = "auto"`) 
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 import fakeredis.aioredis as fakeredis
@@ -134,6 +135,82 @@ async def test_cached_call_miss_then_hit(backend: RedisBackend) -> None:
     assert metrics_get("cache.hit") == 1
 
 
+async def test_cached_call_coalesces_concurrent_misses(backend: RedisBackend) -> None:
+    """동일 키 동시 miss는 origin을 한 번만 조회하고 모든 호출자에게 같은 결과를 반환한다."""
+    calls = 0
+    release = asyncio.Event()
+
+    async def fn() -> dict:
+        nonlocal calls
+        calls += 1
+        await release.wait()
+        return {"value": calls}
+
+    first = asyncio.create_task(cached_call("afterglow:test:single-flight", 60, fn))
+    second = asyncio.create_task(cached_call("afterglow:test:single-flight", 60, fn))
+    await asyncio.sleep(0)
+    release.set()
+
+    assert await asyncio.gather(first, second) == [{"value": 1}, {"value": 1}]
+    assert calls == 1
+
+
+async def test_cached_call_waiter_cancellation_does_not_cancel_shared_load(backend: RedisBackend) -> None:
+    """한 HTTP 요청 취소가 같은 키를 기다리는 다른 요청의 origin 조회를 중단하지 않는다."""
+    release = asyncio.Event()
+    calls = 0
+
+    async def fn() -> dict:
+        nonlocal calls
+        calls += 1
+        await release.wait()
+        return {"ok": True}
+
+    cancelled = asyncio.create_task(cached_call("afterglow:test:cancelled-waiter", 60, fn))
+    surviving = asyncio.create_task(cached_call("afterglow:test:cancelled-waiter", 60, fn))
+    await asyncio.sleep(0)
+    cancelled.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await cancelled
+    release.set()
+
+    assert await surviving == {"ok": True}
+    assert calls == 1
+
+
+async def test_cached_call_refresh_waits_for_older_load_and_keeps_fresh_cache(backend: RedisBackend) -> None:
+    """명시적 refresh는 진행 중인 일반 miss를 재사용하거나 그 결과로 덮어써지면 안 된다."""
+    key = "afterglow:test:refresh-race"
+    old_started = asyncio.Event()
+    release_old = asyncio.Event()
+    refresh_started = asyncio.Event()
+    calls: list[str] = []
+
+    async def load_old() -> dict:
+        calls.append("old")
+        old_started.set()
+        await release_old.wait()
+        return {"value": "old"}
+
+    async def load_fresh() -> dict:
+        calls.append("fresh")
+        refresh_started.set()
+        return {"value": "fresh"}
+
+    old_request = asyncio.create_task(cached_call(key, 60, load_old))
+    await old_started.wait()
+    refresh_request = asyncio.create_task(cached_call(key, 60, load_fresh, refresh=True))
+    await asyncio.sleep(0)
+
+    assert not refresh_started.is_set()
+    release_old.set()
+
+    assert await old_request == {"value": "old"}
+    assert await refresh_request == {"value": "fresh"}
+    assert calls == ["old", "fresh"]
+    assert json.loads(await backend.get(key)) == {"value": "fresh"}
+
+
 async def test_cached_call_refresh(backend: RedisBackend) -> None:
     calls = {"n": 0}
 
@@ -255,25 +332,30 @@ def test_url_factory_selected_when_sentinel_disabled(monkeypatch) -> None:
     assert url_called == ["redis://test-host:6379/0"], "sentinel_enabled=False 이면 from_url을 호출해야 한다"
 
 
-def test_build_sentinel_client_parses_hosts(monkeypatch) -> None:
-    """_build_sentinel_client 가 sentinel_hosts 문자열을 (host, port) 튜플 목록으로 파싱한다."""
+def test_build_sentinel_client_preserves_redis_auth_and_database(monkeypatch) -> None:
+    """Sentinel가 찾은 master에도 redis_url의 인증 정보와 DB index를 적용한다."""
     import app.services.cache.redis_backend as rb_module
     from app.config import Settings
 
     fake_settings = Settings(
+        redis_url="redis://cache-user:p%40ss@first-replica:6379/5",
         sentinel_enabled=True,
-        sentinel_master_name="mymaster",
+        sentinel_master_name="kolla",
         sentinel_hosts="sentinel-a:26379,sentinel-b:26379, sentinel-c:26380",
     )
 
     captured_hosts: list = []
+    captured_sentinel_kwargs: dict = {}
+    captured_master: dict = {}
     fake_master = fakeredis.FakeRedis(decode_responses=True)
 
     class FakeSentinel:
         def __init__(self, hosts, **kwargs):
             captured_hosts.extend(hosts)
+            captured_sentinel_kwargs.update(kwargs)
 
         def master_for(self, name, **kwargs):
+            captured_master.update({"name": name, **kwargs})
             return fake_master
 
     import redis.asyncio.sentinel as sentinel_mod
@@ -285,5 +367,18 @@ def test_build_sentinel_client_parses_hosts(monkeypatch) -> None:
         ("sentinel-a", 26379),
         ("sentinel-b", 26379),
         ("sentinel-c", 26380),
-    ], "host:port 파싱이 올바르지 않다"
+    ]
+    assert captured_sentinel_kwargs == {
+        "socket_timeout": 5,
+        "socket_connect_timeout": 3,
+    }
+    assert captured_master == {
+        "name": "kolla",
+        "username": "cache-user",
+        "password": "p@ss",
+        "db": 5,
+        "decode_responses": True,
+        "socket_keepalive": True,
+        "health_check_interval": 30,
+    }
     assert client is fake_master

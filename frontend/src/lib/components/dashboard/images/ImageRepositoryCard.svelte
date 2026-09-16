@@ -105,11 +105,11 @@
 	}
 	.repository-link:hover { color: var(--color-accent); }
 	.repository-heading p { margin: 0.2rem 0 0; color: var(--color-ink-2); font-size: 0.7rem; }
-	.repository-meta { display: flex; align-items: center; gap: 0.45rem; color: var(--color-ink-3); font-size: 0.6875rem; }
+	.repository-meta { display: flex; align-items: center; gap: 0.45rem; color: var(--color-ink-2); font-size: 0.6875rem; }
 	.repository-meta code { color: var(--color-ink-1); font-family: var(--font-mono); }
 	.repository-meta time { margin-left: auto; font-family: var(--font-mono); }
 	.tag-section { display: grid; gap: 0.5rem; padding-top: 0.85rem; border-top: 1px solid var(--color-line); }
-	.section-label { color: var(--color-ink-3); font-size: 0.6875rem; font-weight: 600; }
+	.section-label { color: var(--color-ink-2); font-size: 0.6875rem; font-weight: 600; }
 	.tag-list { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
 	.tag-chip {
 		display: inline-flex;
@@ -125,6 +125,6 @@
 		cursor: pointer;
 	}
 	.tag-chip:hover, .tag-chip:focus-visible { border-color: var(--color-accent); color: var(--color-ink-0); outline: none; }
-	.more-tags { color: var(--color-ink-3); font-family: var(--font-mono); font-size: 0.6875rem; }
+	.more-tags { color: var(--color-ink-2); font-family: var(--font-mono); font-size: 0.6875rem; }
 	:global(.browse-button) { justify-self: start; padding-inline: 0; }
 </style>

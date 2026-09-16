@@ -1,6 +1,6 @@
 import { getContext, setContext } from 'svelte';
 import { api, ApiError } from '$lib/api/client';
-import type { ZunContainer } from '$lib/types/zunContainer';
+import type { ZunContainerDetail } from '$lib/types/zunContainer';
 import { confirmDialog } from '$lib/stores/confirm.svelte';
 
 interface Options {
@@ -13,7 +13,7 @@ interface Options {
 }
 
 function createContainerDetailController(opts: Options) {
-	let container = $state<ZunContainer | null>(null);
+	let container = $state<ZunContainerDetail | null>(null);
 	let loading = $state(true);
 	let error = $state('');
 	let logs = $state('');
@@ -28,7 +28,7 @@ function createContainerDetailController(opts: Options) {
 		loading = true;
 		error = '';
 		try {
-			container = await api.get<ZunContainer>(`${apiBase}/${opts.containerId()}`, opts.token(), opts.projectId());
+			container = await api.get<ZunContainerDetail>(`${apiBase}/${opts.containerId()}`, opts.token(), opts.projectId());
 		} catch (e) {
 			error = e instanceof ApiError ? `조회 실패: ${e.message}` : '서버 오류';
 		} finally {

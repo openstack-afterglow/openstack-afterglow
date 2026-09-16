@@ -1,91 +1,80 @@
 ---
-- name: "Manila | Check if share {{ share_item.value.name }} exists"
-  kolla_toolbox:
-    container_engine: "{{ kolla_container_engine }}"
-    module_name: command
-    module_args:
-      cmd: >-
-        openstack --os-cloud=kolla --os-share-api-version={{ afterglow_manila_microversion }}
-        share show {{ share_item.value.name }} -f value -c id
-      creates: null
+- name: Manila | Check if share {{ share_item.value.name }} exists
   register: share_show_result
-  failed_when: false
   run_once: true
-  delegate_to: "{{ groups['afterglow'][0] }}"
-
-- name: "Manila | Create share {{ share_item.value.name }} if not exists"
-  kolla_toolbox:
-    container_engine: "{{ kolla_container_engine }}"
-    module_name: command
-    module_args:
-      cmd: >-
-        openstack --os-cloud=kolla --os-share-api-version={{ afterglow_manila_microversion }}
-        share create {{ share_item.value.protocol }}
-        {{ share_item.value.size_gb }}
-        --name {{ share_item.value.name }}
-        --share-type {{ afterglow_manila_share_type }}
-        -f value -c id
+  delegate_to: '{{ groups[''afterglow''][0] }}'
+  become: true
+  ansible.builtin.command:
+    cmd: '{{ kolla_container_engine }} exec kolla_toolbox openstack --os-cloud=kolla --os-share-api-version={{
+      afterglow_manila_microversion }} share list --name {{ share_item.value.name | quote }} -f value
+      -c ID'
+  changed_when: false
+- name: Manila | Reject ambiguous share names
+  ansible.builtin.assert:
+    that:
+    - share_show_result.stdout_lines | length <= 1
+    fail_msg: Multiple shares match {{ share_item.value.name }}; refusing to choose one.
+  run_once: true
+- name: Manila | Create share {{ share_item.value.name }} if not exists
   register: share_create_result
-  when: share_show_result.rc != 0 or share_show_result.stdout | trim | length == 0
+  when: share_show_result.stdout | trim | length == 0
   run_once: true
-  delegate_to: "{{ groups['afterglow'][0] }}"
-
-- name: "Manila | Resolve share ID for {{ share_item.value.name }}"
+  delegate_to: '{{ groups[''afterglow''][0] }}'
+  become: true
+  ansible.builtin.command:
+    cmd: '{{ kolla_container_engine }} exec kolla_toolbox openstack --os-cloud=kolla --os-share-api-version={{
+      afterglow_manila_microversion }} share create {{ share_item.value.protocol | quote }} {{ share_item.value.size_gb
+      }} --name {{ share_item.value.name | quote }} --share-type {{ afterglow_manila_share_type | quote
+      }} -f value -c id'
+- name: Manila | Resolve share ID for {{ share_item.value.name }}
   ansible.builtin.set_fact:
-    _afterglow_current_share_id: >-
-      {{ share_show_result.stdout | trim
-         if (share_show_result.rc == 0 and share_show_result.stdout | trim | length > 0)
-         else share_create_result.stdout | trim }}
+    _afterglow_current_share_id: '{{ share_show_result.stdout | trim if share_show_result.stdout | trim
+      | length > 0 else share_create_result.stdout | trim }}'
   run_once: true
-  delegate_to: "{{ groups['afterglow'][0] }}"
-
-- name: "Manila | Store share ID for key {{ share_item.key }}"
+  delegate_to: '{{ groups[''afterglow''][0] }}'
+- name: Manila | Store share ID for key {{ share_item.key }}
   ansible.builtin.set_fact:
-    afterglow_share_ids: >-
-      {{ afterglow_share_ids | default({}) | combine({share_item.key: _afterglow_current_share_id}) }}
+    afterglow_share_ids: '{{ afterglow_share_ids | default({}) | combine({share_item.key: _afterglow_current_share_id})
+      }}'
   run_once: true
-  delegate_to: "{{ groups['afterglow'][0] }}"
-
-- name: "Manila | Wait for share {{ share_item.value.name }} to be available"
-  kolla_toolbox:
-    container_engine: "{{ kolla_container_engine }}"
-    module_name: command
-    module_args:
-      cmd: >-
-        openstack --os-cloud=kolla --os-share-api-version={{ afterglow_manila_microversion }}
-        share show {{ share_item.value.name }} -f value -c status
+  delegate_to: '{{ groups[''afterglow''][0] }}'
+- name: Manila | Wait for share {{ share_item.value.name }} to be available
   register: share_status
-  until: share_status.stdout | trim == 'available'
+  until: share_status.stdout | trim in ['available', 'error', 'error_deleting']
   retries: 30
   delay: 10
-  when: share_show_result.rc != 0 or share_show_result.stdout | trim | length == 0
   run_once: true
-  delegate_to: "{{ groups['afterglow'][0] }}"
+  delegate_to: '{{ groups[''afterglow''][0] }}'
+  become: true
+  ansible.builtin.command:
+    cmd: '{{ kolla_container_engine }} exec kolla_toolbox openstack --os-cloud=kolla --os-share-api-version={{
+      afterglow_manila_microversion }} share show {{ _afterglow_current_share_id | quote }} -f value -c
+      status'
+  changed_when: false
+- name: Manila | Require an available share
+  ansible.builtin.assert:
+    that:
+      - share_status.stdout | trim == 'available'
+    fail_msg: 'Share {{ _afterglow_current_share_id }} is {{ share_status.stdout | trim }}; inspect Manila share messages.'
+  run_once: true
 
-- name: "Manila | Check CephX access rule for {{ share_item.value.name }}"
-  kolla_toolbox:
-    container_engine: "{{ kolla_container_engine }}"
-    module_name: command
-    module_args:
-      cmd: >-
-        openstack --os-cloud=kolla --os-share-api-version={{ afterglow_manila_microversion }}
-        share access list {{ share_item.value.name }}
-        -f value -c access_to
+- name: Manila | Check CephX access rule for {{ share_item.value.name }}
   register: access_rule_check
-  failed_when: false
   run_once: true
-  delegate_to: "{{ groups['afterglow'][0] }}"
-
-- name: "Manila | Create CephX access rule for {{ share_item.value.name }}"
-  kolla_toolbox:
-    container_engine: "{{ kolla_container_engine }}"
-    module_name: command
-    module_args:
-      cmd: >-
-        openstack --os-cloud=kolla --os-share-api-version={{ afterglow_manila_microversion }}
-        share access create {{ share_item.value.name }}
-        cephx {{ afterglow_cephx_user }}
-        --access-level {{ share_item.value.access_level }}
-  when: afterglow_cephx_user not in (access_rule_check.stdout | default(''))
+  delegate_to: '{{ groups[''afterglow''][0] }}'
+  become: true
+  ansible.builtin.command:
+    cmd: '{{ kolla_container_engine }} exec kolla_toolbox openstack --os-cloud=kolla --os-share-api-version={{
+      afterglow_manila_microversion }} share access list {{ _afterglow_current_share_id | quote }} -f
+      value -c access_to'
+  changed_when: false
+- name: Manila | Create CephX access rule for {{ share_item.value.name }}
+  when: afterglow_cephx_user not in access_rule_check.stdout_lines
   run_once: true
-  delegate_to: "{{ groups['afterglow'][0] }}"
+  delegate_to: '{{ groups[''afterglow''][0] }}'
+  become: true
+  ansible.builtin.command:
+    cmd: '{{ kolla_container_engine }} exec kolla_toolbox openstack --os-cloud=kolla --os-share-api-version={{
+      afterglow_manila_microversion }} share access create {{ _afterglow_current_share_id | quote }} cephx
+      {{ afterglow_cephx_user | quote }} --access-level {{ share_item.value.access_level | quote }}'
+  no_log: true

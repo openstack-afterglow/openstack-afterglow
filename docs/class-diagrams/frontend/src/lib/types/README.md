@@ -4,7 +4,7 @@
 
 ## 책임
 `frontend/src/lib/types`의 책임은 <<interface>>, <<type alias>>으로 표현되는 운영 타입 계약을 정의하는 것이다.
-이 문서는 178개 source type과 60개 정적 관계를 8개 Mermaid class diagram으로 나누어 보여준다.
+이 문서는 182개 source type과 64개 정적 관계를 8개 Mermaid class diagram으로 나누어 보여준다.
 
 ## 포함 파일
 - `frontend/src/lib/types/adminGroup.ts`
@@ -1961,18 +1961,53 @@ T_frontend_src_lib_types_volume_ts_VolumeDeleteDiagnostic_418dc4421b31 --> T_fro
 | `Array~Record~string; unknown~~` | `Record<string, unknown>[]` |
 | `Record~string; string~ | null` | `Record<string, string> | null` |
 
-## 다이어그램 8 — `frontend/src/lib/types/volume.ts::VolumeDeleteDiagnostic` … `frontend/src/lib/types/zunContainer.ts::ZunContainerDetail`
+## 다이어그램 8 — `frontend/src/lib/types/volume.ts::VolumeDeleteCheckState` … `frontend/src/lib/types/zunContainer.ts::ZunContainerDetail`
 ```mermaid
 classDiagram
+%% source-type: frontend/src/lib/types/volume.ts::VolumeDeleteCheckState
+class T_frontend_src_lib_types_volume_ts_VolumeDeleteCheckState_5bb502eff55a["VolumeDeleteCheckState (frontend/src/lib/types/volume.ts)"] {
+  <<type alias>>
+  +value: 'present' | 'absent' | 'unknown'
+}
+%% source-type: frontend/src/lib/types/volume.ts::VolumeDeleteCheckName
+class T_frontend_src_lib_types_volume_ts_VolumeDeleteCheckName_5c01bc4d77ac["VolumeDeleteCheckName (frontend/src/lib/types/volume.ts)"] {
+  <<type alias>>
+  +value: 'auth_preflight' | 'volume_attachments' | 'cinder_attachments' | 'nova_attachments' | 'snapshots' | 'backups' | 'clone_volumes' | 'group_or_migration' | 'backend_fsid' | 'rbd_name_mapping' | 'rbd_directory_entry' | 'rbd_image_by_name' | 'rbd_image_by_id' | 'rbd_header' | 'rbd_object_map' | 'rbd_watchers' | 'rbd_snapshots' | 'rbd_parent_child_link' | 'rbd_trash' | 'rbd_data_objects'
+}
+%% source-type: frontend/src/lib/types/volume.ts::VolumeDeleteCheck
+class T_frontend_src_lib_types_volume_ts_VolumeDeleteCheck_96bea557573d["VolumeDeleteCheck (frontend/src/lib/types/volume.ts)"] {
+  <<interface>>
+  +name: VolumeDeleteCheckName
+  +state: VolumeDeleteCheckState
+  +detail: string | null
+}
+%% source-type: frontend/src/lib/types/volume.ts::VolumeDeleteBackendInspection
+class T_frontend_src_lib_types_volume_ts_VolumeDeleteBackendInspection_c097b3298b5f["VolumeDeleteBackendInspection (frontend/src/lib/types/volume.ts)"] {
+  <<interface>>
+  +mode: 'unavailable' | 'inspected' | 'unknown'
+  +classification: 'not_inspected' | 'consistent' | 'name_mapping_missing' | 'absent' | 'stale_name_mapping_only' | 'inconsistent' | 'unknown'
+  +pool: string | null
+  +image_name: string | null
+  +image_id: string | null
+  +size_bytes: number | null
+  +order: number | null
+  +parent_spec: string | null
+}
 %% source-type: frontend/src/lib/types/volume.ts::VolumeDeleteDiagnostic
 class T_frontend_src_lib_types_volume_ts_VolumeDeleteDiagnostic_418dc4421b31["VolumeDeleteDiagnostic (frontend/src/lib/types/volume.ts)"] {
   <<interface>>
   +volume_id: string
   +status: string | null
   +project_id: string | null
+  +name: string | null
+  +size_gb: number | null
+  +backend_host: string | null
+  +updated_at: string | null
   +attachments: Array~Record~string; unknown~~
   +dependencies: Array~VolumeDeleteDependency~
   +messages: Array~VolumeDeleteMessage~
+  +checks: Array~VolumeDeleteCheck~
+  +backend: VolumeDeleteBackendInspection
   +root_cause_code: VolumeDeleteRootCause
   +confidence: 'high' | 'medium' | 'low'
   +summary: string
@@ -1995,7 +2030,7 @@ class T_frontend_src_lib_types_volume_ts_VolumeDeleteMessage_4202f8442418["Volum
 %% source-type: frontend/src/lib/types/volume.ts::VolumeDeleteRecoveryAction
 class T_frontend_src_lib_types_volume_ts_VolumeDeleteRecoveryAction_4f548a286cbe["VolumeDeleteRecoveryAction (frontend/src/lib/types/volume.ts)"] {
   <<type alias>>
-  +value: 'diagnose' | 'reset_status' | 'delete' | 'verify_after_delete' | 'force_delete' | 'verify_after_force_delete'
+  +value: 'diagnose' | 'restore_name_mapping' | 'verify_name_mapping' | 'recheck_state' | 'force_delete' | 'reset_attach_status' | 'verify_after_force_delete' | 'backend_verify' | 'cleanup_stale_name_mapping' | 'quota_verify'
 }
 %% source-type: frontend/src/lib/types/volume.ts::VolumeDeleteRecoveryResult
 class T_frontend_src_lib_types_volume_ts_VolumeDeleteRecoveryResult_fa1d7f68ec68["VolumeDeleteRecoveryResult (frontend/src/lib/types/volume.ts)"] {
@@ -2004,13 +2039,15 @@ class T_frontend_src_lib_types_volume_ts_VolumeDeleteRecoveryResult_fa1d7f68ec68
   +status: VolumeDeleteRecoveryStatus
   +verified_deleted: boolean
   +final_status: string | null
+  +backend_verification: 'verified' | 'unavailable' | 'residue' | 'unknown'
+  +quota_verification: 'verified' | 'mismatch' | 'unavailable'
   +diagnostic: VolumeDeleteDiagnostic
   +steps: Array~VolumeDeleteRecoveryStep~
 }
 %% source-type: frontend/src/lib/types/volume.ts::VolumeDeleteRecoveryStatus
 class T_frontend_src_lib_types_volume_ts_VolumeDeleteRecoveryStatus_f17c52dc308d["VolumeDeleteRecoveryStatus (frontend/src/lib/types/volume.ts)"] {
   <<type alias>>
-  +value: 'deleted' | 'already_deleted' | 'delete_submitted' | 'blocked' | 'failed'
+  +value: 'deleted' | 'already_deleted' | 'delete_submitted' | 'backend_residue' | 'backend_unverified' | 'blocked' | 'failed'
 }
 %% source-type: frontend/src/lib/types/volume.ts::VolumeDeleteRecoveryStep
 class T_frontend_src_lib_types_volume_ts_VolumeDeleteRecoveryStep_6c630dea7e10["VolumeDeleteRecoveryStep (frontend/src/lib/types/volume.ts)"] {
@@ -2027,7 +2064,7 @@ class T_frontend_src_lib_types_volume_ts_VolumeDeleteRecoveryStepStatus_809e7cce
 %% source-type: frontend/src/lib/types/volume.ts::VolumeDeleteRootCause
 class T_frontend_src_lib_types_volume_ts_VolumeDeleteRootCause_c76f30218dcd["VolumeDeleteRootCause (frontend/src/lib/types/volume.ts)"] {
   <<type alias>>
-  +value: 'already_deleted' | 'attached_volume_delete_blocked' | 'dependent_snapshot_or_backup' | 'recoverable_error_deleting' | 'recoverable_error_state' | 'normal_delete_possible' | 'not_recoverable_status' | 'unknown'
+  +value: 'already_deleted' | 'api_absent_backend_present' | 'attached_volume_delete_blocked' | 'dependent_resource_present' | 'authentication_scope_failed' | 'authorization_denied' | 'dependency_unknown' | 'deleting_in_progress' | 'backend_lookup_unknown' | 'backend_inconsistent' | 'backend_present_consistent' | 'backend_absent_record_only' | 'rbd_name_mapping_missing' | 'recoverable_backend_unverified' | 'normal_delete_possible' | 'not_recoverable_status'
 }
 %% source-type: frontend/src/lib/types/volume.ts::VolumeSnapshot
 class T_frontend_src_lib_types_volume_ts_VolumeSnapshot_2b343f4701d0["VolumeSnapshot (frontend/src/lib/types/volume.ts)"] {
@@ -2088,6 +2125,10 @@ class T_frontend_src_lib_types_zunContainer_ts_ZunContainerDetail_6efa30794c49["
   +created_at: string | null
   +addresses: Record~string; Array~object~~ | null
 }
+T_frontend_src_lib_types_volume_ts_VolumeDeleteCheck_96bea557573d --> T_frontend_src_lib_types_volume_ts_VolumeDeleteCheckName_5c01bc4d77ac : associates
+T_frontend_src_lib_types_volume_ts_VolumeDeleteCheck_96bea557573d --> T_frontend_src_lib_types_volume_ts_VolumeDeleteCheckState_5bb502eff55a : associates
+T_frontend_src_lib_types_volume_ts_VolumeDeleteDiagnostic_418dc4421b31 --> T_frontend_src_lib_types_volume_ts_VolumeDeleteCheck_96bea557573d : associates
+T_frontend_src_lib_types_volume_ts_VolumeDeleteDiagnostic_418dc4421b31 --> T_frontend_src_lib_types_volume_ts_VolumeDeleteBackendInspection_c097b3298b5f : associates
 T_frontend_src_lib_types_volume_ts_VolumeDeleteDiagnostic_418dc4421b31 --> T_frontend_src_lib_types_volume_ts_VolumeDeleteMessage_4202f8442418 : associates
 T_frontend_src_lib_types_volume_ts_VolumeDeleteDiagnostic_418dc4421b31 --> T_frontend_src_lib_types_volume_ts_VolumeDeleteRootCause_c76f30218dcd : associates
 T_frontend_src_lib_types_volume_ts_VolumeDeleteRecoveryResult_fa1d7f68ec68 --> T_frontend_src_lib_types_volume_ts_VolumeDeleteDiagnostic_418dc4421b31 : associates
@@ -2099,6 +2140,10 @@ T_frontend_src_lib_types_zunContainer_ts_ContainerListResponse_48d15acac198 --> 
 ```
 
 ### 관계 설명
+- `frontend/src/lib/types/volume.ts::VolumeDeleteCheck --> frontend/src/lib/types/volume.ts::VolumeDeleteCheckName` — 근거: `frontend/src/lib/types/volume.ts::VolumeDeleteCheck.name`; 관계: `associates`.
+- `frontend/src/lib/types/volume.ts::VolumeDeleteCheck --> frontend/src/lib/types/volume.ts::VolumeDeleteCheckState` — 근거: `frontend/src/lib/types/volume.ts::VolumeDeleteCheck.state`; 관계: `associates`.
+- `frontend/src/lib/types/volume.ts::VolumeDeleteDiagnostic --> frontend/src/lib/types/volume.ts::VolumeDeleteCheck` — 근거: `frontend/src/lib/types/volume.ts::VolumeDeleteDiagnostic.checks`; 관계: `associates`.
+- `frontend/src/lib/types/volume.ts::VolumeDeleteDiagnostic --> frontend/src/lib/types/volume.ts::VolumeDeleteBackendInspection` — 근거: `frontend/src/lib/types/volume.ts::VolumeDeleteDiagnostic.backend`; 관계: `associates`.
 - `frontend/src/lib/types/volume.ts::VolumeDeleteDiagnostic --> frontend/src/lib/types/volume.ts::VolumeDeleteMessage` — 근거: `frontend/src/lib/types/volume.ts::VolumeDeleteDiagnostic.messages`; 관계: `associates`.
 - `frontend/src/lib/types/volume.ts::VolumeDeleteDiagnostic --> frontend/src/lib/types/volume.ts::VolumeDeleteRootCause` — 근거: `frontend/src/lib/types/volume.ts::VolumeDeleteDiagnostic.root_cause_code`; 관계: `associates`.
 - `frontend/src/lib/types/volume.ts::VolumeDeleteRecoveryResult --> frontend/src/lib/types/volume.ts::VolumeDeleteDiagnostic` — 근거: `frontend/src/lib/types/volume.ts::VolumeDeleteRecoveryResult.diagnostic`; 관계: `associates`.
@@ -2115,9 +2160,14 @@ T_frontend_src_lib_types_zunContainer_ts_ContainerListResponse_48d15acac198 --> 
 | `Array~VolumeDeleteDependency~` | `VolumeDeleteDependency[]` |
 | `Array~VolumeDeleteMessage~` | `VolumeDeleteMessage[]` |
 | `Array~string~` | `string[]` |
-| `'diagnose' | 'reset_status' | 'delete' | 'verify_after_delete' | 'force_delete' | 'verify_after_force_delete'` | `| 'diagnose' | 'reset_status' | 'delete' | 'verify_after_delete' | 'force_delete' | 'verify_after_force_delete'` |
+| `'present' | 'absent' | 'unknown'` | `| 'present' | 'absent' | 'unknown'` |
+| `'auth_preflight' | 'volume_attachments' | 'cinder_attachments' | 'nova_attachments' | 'snapshots' | 'backups' | 'clone_volumes' | 'group_or_migration' | 'backend_fsid' | 'rbd_name_mapping' | 'rbd_directory_entry' | 'rbd_image_by_name' | 'rbd_image_by_id' | 'rbd_header' | 'rbd_object_map' | 'rbd_watchers' | 'rbd_snapshots' | 'rbd_parent_child_link' | 'rbd_trash' | 'rbd_data_objects'` | `VolumeDeleteCheckName` |
+| `'unavailable' | 'inspected' | 'unknown'` | `VolumeDeleteBackendInspection.mode` |
+| `'not_inspected' | 'consistent' | 'name_mapping_missing' | 'absent' | 'stale_name_mapping_only' | 'inconsistent' | 'unknown'` | `VolumeDeleteBackendInspection.classification` |
+| `Array~VolumeDeleteCheck~` | `VolumeDeleteCheck[]` |
+| `'diagnose' | 'restore_name_mapping' | 'verify_name_mapping' | 'recheck_state' | 'force_delete' | 'reset_attach_status' | 'verify_after_force_delete' | 'backend_verify' | 'cleanup_stale_name_mapping' | 'quota_verify'` | `VolumeDeleteRecoveryAction` |
 | `Array~VolumeDeleteRecoveryStep~` | `VolumeDeleteRecoveryStep[]` |
-| `'deleted' | 'already_deleted' | 'delete_submitted' | 'blocked' | 'failed'` | `| 'deleted' | 'already_deleted' | 'delete_submitted' | 'blocked' | 'failed'` |
-| `'already_deleted' | 'attached_volume_delete_blocked' | 'dependent_snapshot_or_backup' | 'recoverable_error_deleting' | 'recoverable_error_state' | 'normal_delete_possible' | 'not_recoverable_status' | 'unknown'` | `| 'already_deleted' | 'attached_volume_delete_blocked' | 'dependent_snapshot_or_backup' | 'recoverable_error_deleting' | 'recoverable_error_state' | 'normal_delete_possible' | 'not_recoverable_status' | 'unknown'` |
+| `'deleted' | 'already_deleted' | 'delete_submitted' | 'backend_residue' | 'backend_unverified' | 'blocked' | 'failed'` | `VolumeDeleteRecoveryStatus` |
+| `'already_deleted' | 'api_absent_backend_present' | 'attached_volume_delete_blocked' | 'dependent_resource_present' | 'authentication_scope_failed' | 'authorization_denied' | 'dependency_unknown' | 'deleting_in_progress' | 'backend_lookup_unknown' | 'backend_inconsistent' | 'backend_present_consistent' | 'backend_absent_record_only' | 'rbd_name_mapping_missing' | 'recoverable_backend_unverified' | 'normal_delete_possible' | 'not_recoverable_status'` | `VolumeDeleteRootCause` |
 | `Array~ZunContainer~` | `ZunContainer[]` |
 | `Record~string; Array~object~~ | null` | `Record<string, { addr: string }[]> | null` |

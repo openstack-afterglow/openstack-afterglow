@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { tick, untrack } from 'svelte';
+	import { tick } from 'svelte';
 	import ChatMessage from './ChatMessage.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import {
@@ -41,9 +41,10 @@
 		metricsById?: Map<string, StreamMetrics>;
 		toolActivity?: string | null;
 		agentActivity?: AgentActivity | null;
+		manualCompactionActivity?: string | null;
 		error?: string | null;
 		empty?: boolean;
-		starterPrompts?: StarterPrompt[];
+		starterPrompts?: readonly StarterPrompt[];
 		onStarterPrompt?: (prompt: string) => void;
 		conversationKey?: string;
 		hasOlder?: boolean;
@@ -65,6 +66,7 @@
 		metricsById = new Map<string, StreamMetrics>(),
 		toolActivity = null,
 		agentActivity = null,
+		manualCompactionActivity = null,
 		error = null,
 		empty = false,
 		starterPrompts = [],
@@ -84,6 +86,7 @@
 	let followingLatest = $state(true);
 	let loadingOlderHere = false;
 	let activityNow = $state(Date.now());
+	let scrollAfterTickPending = false;
 
 	$effect(() => {
 		if (!agentActivity) return;
@@ -142,6 +145,14 @@
 		el.scrollTop = el.scrollHeight;
 		followingLatest = true;
 	}
+	function scheduleScrollToLatest() {
+		if (scrollAfterTickPending) return;
+		scrollAfterTickPending = true;
+		void tick().then(() => {
+			scrollAfterTickPending = false;
+			if (followingLatest) scrollToLatest();
+		});
+	}
 
 	async function loadOlder() {
 		const el = scrollEl;
@@ -157,18 +168,16 @@
 			loadingOlderHere = false;
 		}
 	}
-
 	function onScroll() {
 		const el = scrollEl;
 		if (!el) return;
 		followingLatest = el.scrollHeight - el.clientHeight - el.scrollTop <= 64;
 		if (el.scrollTop <= 72) void loadOlder();
 	}
-
 	$effect(() => {
 		void conversationKey;
 		followingLatest = true;
-		void tick().then(scrollToLatest);
+		scheduleScrollToLatest();
 	});
 
 	// Incoming stream deltas must not steal the reader's position after they scroll away.
@@ -179,7 +188,12 @@
 			void last.content;
 			void last.toolItems;
 		}
-		if (followingLatest) untrack(scrollToLatest);
+		if (followingLatest) scheduleScrollToLatest();
+	});
+
+	$effect(() => {
+		void manualCompactionActivity;
+		if (followingLatest) scheduleScrollToLatest();
 	});
 </script>
 
@@ -233,7 +247,12 @@
 					/>
 				{/each}
 
-				{#if agentActivity}
+				{#if manualCompactionActivity}
+					<div class="context-activity" role="status" aria-live="polite" aria-atomic="true">
+						<span class="spinner"></span>
+						<span>{manualCompactionActivity}</span>
+					</div>
+				{:else if agentActivity}
 					<div class="agent-activity" role="status" aria-live="polite" aria-atomic="true">
 						<span class="spinner"></span>
 						<span>{agentActivity.label}</span>
@@ -307,7 +326,7 @@
 	}
 	.older-loading {
 		align-self: center;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-size: 0.75rem;
 		padding: 0.25rem 0.5rem;
 	}
@@ -347,7 +366,7 @@
 	.welcome p {
 		margin: 0;
 		font-size: 0.85rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.starter-prompts {
 		display: flex;
@@ -358,19 +377,24 @@
 		margin-top: 0.85rem;
 	}
 	.tool-activity,
-	.agent-activity {
+	.agent-activity,
+	.context-activity {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.5rem;
 		font-size: 0.78rem;
 		color: var(--color-ink-2);
 	}
-	.agent-activity {
+	.agent-activity,
+	.context-activity {
 		margin-top: 0.5rem;
 		font-size: 0.8125rem;
 	}
+	.context-activity {
+		color: var(--color-accent);
+	}
 	.activity-elapsed {
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-variant-numeric: tabular-nums;
 	}
 	.spinner {

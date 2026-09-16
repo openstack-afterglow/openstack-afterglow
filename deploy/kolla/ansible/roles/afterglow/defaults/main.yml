@@ -44,6 +44,10 @@ afterglow_operator_frontend_config_name: "afterglow.frontend.operator.generated.
 afterglow_operator_frontend_config_staging_path: "/tmp/{{ afterglow_operator_frontend_config_name }}.projected"
 afterglow_frontend_config_name: "afterglow.frontend.generated.conf"
 
+# ── 로그 디렉토리 소유권 ──────────────────────────────────────────────────────
+afterglow_log_owner_uid: 1000
+afterglow_log_owner_gid: 1000
+
 # ── 포트 ──────────────────────────────────────────────────────────────────────
 afterglow_backend_port: 8000
 afterglow_frontend_port: 3080
@@ -81,6 +85,9 @@ afterglow_valkey_port: "{{ valkey_server_port }}"
 afterglow_valkey_password: "{{ valkey_master_password | default('') }}"
 afterglow_redis_db_index: 5
 afterglow_redis_url: "redis://default:{{ afterglow_valkey_password }}@{{ afterglow_valkey_host }}:{{ afterglow_valkey_port }}/{{ afterglow_redis_db_index }}"
+afterglow_sentinel_enabled: true
+afterglow_sentinel_master_name: "{{ valkey_sentinel_monitor_name }}"
+afterglow_sentinel_hosts: "{% for host in groups['valkey'] %}{{ 'api' | kolla_address(host) }}:{{ valkey_sentinel_port }}{{ ',' if not loop.last else '' }}{% endfor %}"
 
 # ── Keystone ──────────────────────────────────────────────────────────────────
 afterglow_admin_keystone_user: "afterglow_admin"
@@ -96,9 +103,17 @@ afterglow_openstack_cacert: "{{ openstack_cacert | default('') }}"
 
 # ── Manila ────────────────────────────────────────────────────────────────────
 afterglow_manila_microversion: "2.65"
+afterglow_manila_client_version: "6.0.0"
 afterglow_manila_share_type: "cephfs"
 afterglow_ceph_monitors: ""
-afterglow_cephx_user: "client.afterglow"
+
+# 관리자 볼륨 삭제 복구용 Ceph RBD 검사/매핑 복원 (두 source가 모두 설정될 때만 활성)
+afterglow_rbd_conf_source: ""
+afterglow_rbd_keyring_source: ""
+afterglow_rbd_cluster_fsid: ""
+afterglow_rbd_volume_pools: {}
+# Manila expects the CephX ID without the "client." entity prefix.
+afterglow_cephx_user: "afterglow"
 afterglow_manila_shares:
   layer_store_rw:
     name: layer-store-rw
@@ -144,6 +159,10 @@ afterglow_service_chat_enabled: true
 afterglow_service_mcp_enabled: true
 # Shared only with the Lumen workload for the internal delegated-MCP bridge.
 afterglow_lumen_mcp_service_token: ""
+# K3s internal API credentials remain empty until supplied by the operator
+# secrets layer. Prechecks reject empty values before any container restart.
+afterglow_k3s_gpu_admission_token: ""
+afterglow_k3s_provisioning_token: ""
 
 # ── GHCR imagePullSecret ──────────────────────────────────────────────────────
 afterglow_image_pull_secret_b64: ""
@@ -159,11 +178,20 @@ afterglow_services:
     command: ["uvicorn", "app.main:app", "--host", "{{ afterglow_backend_listen_address }}", "--port", "{{ afterglow_backend_listen_port | string }}"]
     restart_policy: unless-stopped
     groups: ["0"]
-    volumes:
-      - "{{ afterglow_runtime_config_dir }}/{{ afterglow_generated_config_name }}:/app/afterglow.conf:ro"
-      - "{{ afterglow_runtime_config_dir }}/{{ afterglow_operator_config_name }}:/app/{{ afterglow_operator_config_name }}:ro"
-      - "{{ afterglow_runtime_config_dir }}/{{ afterglow_kolla_config_name }}:/app/{{ afterglow_kolla_config_name }}:ro"
-      - "kolla_logs:/var/log/kolla/"
+    volumes: >-
+      {{
+        [
+          afterglow_runtime_config_dir ~ '/' ~ afterglow_generated_config_name ~ ':/app/afterglow.conf:ro',
+          afterglow_runtime_config_dir ~ '/' ~ afterglow_operator_config_name ~ ':/app/' ~ afterglow_operator_config_name ~ ':ro',
+          afterglow_runtime_config_dir ~ '/' ~ afterglow_kolla_config_name ~ ':/app/' ~ afterglow_kolla_config_name ~ ':ro',
+          'kolla_logs:/var/log/kolla/'
+        ] + (
+          [
+            afterglow_rbd_conf_source ~ ':/etc/ceph/ceph.conf:ro',
+            afterglow_rbd_keyring_source ~ ':/etc/ceph/ceph.client.afterglow-rbd.keyring:ro'
+          ] if afterglow_rbd_conf_source and afterglow_rbd_keyring_source else []
+        )
+      }}
     healthcheck:
       test: ["CMD", "python", "-c", "from urllib.request import urlopen; response = urlopen('http://{{ afterglow_backend_listen_address }}:{{ afterglow_backend_listen_port }}/api/v1/health', timeout=5); assert response.status == 200"]
       interval: 30s
@@ -188,6 +216,7 @@ afterglow_services:
     enabled: "{{ enable_afterglow_frontend | bool }}"
     image: "{{ afterglow_frontend_image_ref }}"
     network_mode: host
+    command: ["node", "scripts/run-with-file-log.mjs", "node", "build"]
     restart_policy: unless-stopped
     volumes:
       - "{{ afterglow_runtime_config_dir }}/{{ afterglow_frontend_config_name }}:/app/afterglow.conf:ro"
@@ -239,6 +268,8 @@ afterglow_service_environments:
     PUBLIC_API_BASE: "{{ afterglow_public_api_base }}"
     ORIGIN: "{{ afterglow_public_endpoint_url }}"
     K3S_KUBECONFIG_ENCRYPTION_KEY: "{{ afterglow_kubeconfig_encryption_key }}"
+    K3S_GPU_ADMISSION_TOKEN: "{{ afterglow_k3s_gpu_admission_token }}"
+    K3S_PROVISIONING_TOKEN: "{{ afterglow_k3s_provisioning_token }}"
     LUMEN_MCP_SERVICE_TOKEN: "{{ afterglow_lumen_mcp_service_token }}"
     OS_SERVICE_PROJECT_ID: "{{ afterglow_service_project_id }}"
     UNION_LAYER_STORE_RW_SHARE_ID: "{{ afterglow_share_layer_store_rw_id }}"
@@ -250,14 +281,16 @@ afterglow_service_environments:
     PUBLIC_API_BASE: "{{ afterglow_public_api_base }}"
     HOST: "{{ afterglow_frontend_listen_address }}"
     PORT: "{{ afterglow_frontend_listen_port | string }}"
+    LOG_DIRECTORY: "/var/log/kolla/afterglow"
+    LOG_MAX_BYTES: "52428800"
   afterglow-notion-worker:
     DATABASE_URL: "{{ afterglow_database_url }}"
     REDIS_URL: "{{ afterglow_redis_url }}"
     OS_PASSWORD: "{{ afterglow_admin_keystone_password }}"
     OS_INTERFACE: "{{ afterglow_openstack_interface }}"
-    SECRET_KEY: "{{ afterglow_secret_key }}"
     K3S_KUBECONFIG_ENCRYPTION_KEY: "{{ afterglow_kubeconfig_encryption_key }}"
-
+    K3S_GPU_ADMISSION_TOKEN: "{{ afterglow_k3s_gpu_admission_token }}"
+    K3S_PROVISIONING_TOKEN: "{{ afterglow_k3s_provisioning_token }}"
 # Kolla's external frontend map selects one backend per host. This synthetic
 # service supplies that backend; it is never passed to the container start loop.
 afterglow_public_haproxy_services:

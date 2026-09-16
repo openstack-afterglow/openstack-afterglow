@@ -33,37 +33,44 @@
 <style>
   .page-header {
     display: flex;
+    min-width: 0;
     flex-direction: column;
     align-items: stretch;
     gap: 0.75rem;
     margin-bottom: 1.5rem;
   }
+  .page-header > :first-child {
+    min-width: 0;
+  }
   .page-header-breadcrumb {
     margin-bottom: 0.25rem;
-    font-size: 0.6875rem;
-    text-transform: uppercase;
-    letter-spacing: 0.16em;
+    font-size: 0.75rem;
+    letter-spacing: -0.01em;
     font-weight: 500;
-    color: var(--color-ink-3);
+    color: var(--color-ink-2);
   }
   .page-header-title {
     margin: 0;
-    font-size: 1.375rem;
-    font-weight: 700;
-    line-height: 1.15;
     color: var(--color-ink-0);
+    font-size: 1.25rem;
+    font-weight: 600;
+    line-height: 1.75rem;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
   }
   .page-header-subtitle {
+    max-width: 65ch;
     margin: 0.125rem 0 0;
-    font-size: 0.8125rem;
+    font-size: 0.875rem;
     color: var(--color-ink-2);
+    text-wrap: pretty;
   }
   .page-header-actions {
     display: flex;
+    width: 100%;
     flex-wrap: wrap;
     align-items: center;
-    gap: 0.625rem;
-    width: 100%;
+    gap: 0.5rem;
   }
   @media (min-width: 1024px) {
     .page-header {
@@ -73,11 +80,11 @@
       gap: 1rem;
     }
     .page-header-actions {
-      flex-wrap: nowrap;
       width: auto;
+      max-width: 60%;
       flex-shrink: 0;
+      justify-content: flex-end;
       margin-left: 1rem;
-      margin-top: 0.125rem;
     }
   }
 </style>

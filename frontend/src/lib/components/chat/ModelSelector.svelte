@@ -43,7 +43,8 @@
 		return models.filter(
 			(m) =>
 				m.display_name.toLowerCase().includes(q) ||
-				m.model_name.toLowerCase().includes(q) ||
+				(m.api_model_name || m.model_name).toLowerCase().includes(q) ||
+				(m.api_provider ?? '').toLowerCase().includes(q) ||
 				(m.provider ?? '').toLowerCase().includes(q)
 		);
 	});
@@ -183,7 +184,7 @@
 		padding: 0.25rem;
 		border-color: transparent;
 		background: transparent;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.trigger.compact:hover:not(:disabled) {
 		color: var(--color-ink-0);
@@ -196,7 +197,7 @@
 	}
 	.chev {
 		flex-shrink: 0;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.menu {
 		position: absolute;
@@ -212,7 +213,7 @@
 		border-radius: 0.6rem;
 		border: 1px solid var(--color-line);
 		background: var(--color-surface-raised);
-		box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+		box-shadow: var(--shadow-popover);
 	}
 	.menu.right {
 		left: auto;
@@ -232,7 +233,7 @@
 		border-radius: 0.45rem;
 		border: 1px solid var(--color-line);
 		background: var(--color-surface-base);
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.search input {
 		flex: 1;
@@ -290,7 +291,7 @@
 	}
 	.item-provider {
 		font-size: 0.68rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -298,7 +299,7 @@
 	.empty {
 		padding: 0.5rem 0.55rem;
 		font-size: 0.8125rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		list-style: none;
 	}
 </style>

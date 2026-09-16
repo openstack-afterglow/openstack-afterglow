@@ -1,23 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
 	ChatContractError,
-	defaultChatFeatureOptions,
 	parseChatPartsForDisplay,
 	parseChatPartsStrict,
-	parseChatRunEvent
+	parseChatRunEvent,
+	parseContextState
 } from '../chatContracts';
 
 describe('chatContracts', () => {
-	it('keeps the canonical safe defaults', () => {
-		expect(defaultChatFeatureOptions()).toMatchObject({
-			memory: true,
-			output_modalities: ['text'],
-			web_search: { enabled: false },
-			web_fetch: { enabled: false },
-			advisor: { enabled: false },
-			tool_policy: { mode: 'agent_default', approval_mode: 'required_for_mutations' }
-		});
-	});
 
 	it('rejects unknown input parts but safely degrades display parts', () => {
 		expect(() => parseChatPartsStrict([{ type: 'future_provider_block', secret: 'never render' }])).toThrow(ChatContractError);
@@ -60,6 +50,93 @@ describe('chatContracts', () => {
 				payload: { stage: 'queued', tool_name: 'web_search' }
 			})
 		).toThrow(ChatContractError);
+	});
+
+	it('requires run kind and strictly validates context.updated fields', () => {
+		const state = {
+			model_name: 'gpt-test',
+			context_limit: 16000,
+			output_reserve: 4096,
+			safety_reserve: 2048,
+			input_budget: 9856,
+			input_tokens: 9856,
+			utilization: 1.25,
+			measurement: 'estimated',
+			recommendation: 'required',
+			can_compact: true,
+			reason_code: null,
+			revision: 'rev-1',
+			checkpoint_id: null,
+			active_compaction_run_id: null
+		};
+		const breakdown = { scope: 'request', complete: true, uncounted: [], components: [
+			{ id: 'messages', tokens: 9856, measurement: 'estimated', count: 2, included: true, items: ['user:1', 'assistant:2'] }
+		] };
+		expect(() => parseContextState({ ...state, breakdown: { ...breakdown, components: [
+			{ ...breakdown.components[0], raw_prompt: 'private' }
+		] } })).toThrow(ChatContractError);
+		expect(() => parseContextState({ ...state, breakdown: { ...breakdown, components: [
+			{ ...breakdown.components[0], tokens: -1 }
+		] } })).toThrow(ChatContractError);
+		expect(() => parseContextState({ ...state, breakdown: { ...breakdown, uncounted: ['mcp_tools'] } })).toThrow(ChatContractError);
+		expect(() => parseContextState({ ...state, breakdown: { ...breakdown, components: [breakdown.components[0], breakdown.components[0]] } })).toThrow(ChatContractError);
+		expect(
+			parseChatRunEvent({
+				event_id: 'run-context:1',
+				run_id: 'run-context',
+				seq: 1,
+				type: 'run.started',
+				created_at: '2026-07-21T00:00:00Z',
+				payload: {
+					conversation_id: 'conv-1',
+					temp_thread_id: null,
+					model_name: 'gpt-test',
+					effective_features: {},
+					run_kind: 'compaction'
+				}
+			})
+		).toMatchObject({ type: 'run.started', payload: { run_kind: 'compaction' } });
+		expect(
+			parseChatRunEvent({
+				event_id: 'run-context:2',
+				run_id: 'run-context',
+				seq: 2,
+				type: 'context.updated',
+				created_at: '2026-07-21T00:00:01Z',
+				payload: { state, phase: 'compacted', cause: 'manual', before_tokens: 12000, after_tokens: 7000 }
+			})
+		).toMatchObject({ type: 'context.updated', payload: { state: { utilization: 1.25 }, phase: 'compacted' } });
+		expect(() =>
+			parseChatRunEvent({
+				event_id: 'run-context:2',
+				run_id: 'run-context',
+				seq: 2,
+				type: 'context.updated',
+				created_at: '2026-07-21T00:00:01Z',
+				payload: { state: { ...state, unsafe_prompt: 'secret' }, phase: 'compacted', cause: 'manual', before_tokens: 12000, after_tokens: 7000 }
+			})
+		).toThrow(ChatContractError);
+		expect(() => parseChatRunEvent({
+			event_id: 'run-context:1',
+			run_id: 'run-context',
+			seq: 1,
+			type: 'run.started',
+			created_at: '2026-07-21T00:00:00Z',
+			payload: {
+				conversation_id: 'conv-1',
+				temp_thread_id: null,
+				model_name: 'gpt-test',
+				effective_features: {}
+			}
+		})).toThrow(ChatContractError);
+		expect(() => parseChatRunEvent({
+			event_id: 'run-context:2',
+			run_id: 'run-context',
+			seq: 2,
+			type: 'context.updated',
+			created_at: '2026-07-21T00:00:01Z',
+			payload: { state: { ...state, utilization: -0.1 }, phase: 'compacted', cause: null, before_tokens: null, after_tokens: null }
+		})).toThrow(ChatContractError);
 	});
 
 	it('parses the backend awaiting-input approval stage without a tool name', () => {

@@ -1,6 +1,9 @@
 <script lang="ts">
+	import { downloadChatAsset } from '$lib/api/chatAttachments';
 	import { formatToolArgs, type ToolActivityItem } from '$lib/api/chatToolActivity';
 	import { taskLabelForTool } from '$lib/api/chatTaskLabels';
+	import { auth } from '$lib/stores/auth';
+	import { toast } from '$lib/stores/toast';
 
 	interface Props {
 		item: ToolActivityItem;
@@ -9,7 +12,7 @@
 
 	let open = $state(false);
 	const argsText = $derived(formatToolArgs(item.args));
-	const hasDetail = $derived(Boolean(argsText) || Boolean(item.result) || Boolean(item.errorCode));
+	const hasDetail = $derived(Boolean(argsText) || Boolean(item.result) || Boolean(item.errorCode) || Boolean(item.files?.length));
 	const taskName = $derived(taskLabelForTool(item.name));
 	const statusLabel = $derived(item.running ? '실행 중…' : item.status === 'failed' ? '실패' : '완료');
 	const durationLabel = $derived(
@@ -19,6 +22,35 @@
 				? `${item.durationMs}ms`
 				: `${(item.durationMs / 1_000).toFixed(item.durationMs < 10_000 ? 1 : 0)}s`
 	);
+
+	let downloadingAssetId = $state<string | null>(null);
+
+	function formatBytes(bytes: number): string {
+		if (bytes < 1024) return `${bytes} B`;
+		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+	}
+
+	async function downloadFile(file: NonNullable<ToolActivityItem['files']>[number]) {
+		if (downloadingAssetId) return;
+		downloadingAssetId = file.assetId;
+		try {
+			const blob = await downloadChatAsset(file.assetId, {
+				token: $auth.token ?? undefined,
+				projectId: $auth.projectId ?? undefined
+			});
+			const url = URL.createObjectURL(blob);
+			const link = document.createElement('a');
+			link.href = url;
+			link.download = file.name;
+			link.click();
+			URL.revokeObjectURL(url);
+		} catch {
+			toast.error('파일을 다운로드하지 못했습니다');
+		} finally {
+			downloadingAssetId = null;
+		}
+	}
 </script>
 
 <div class="tool-card" class:running={item.running} class:failed={item.status === 'failed'}>
@@ -60,6 +92,28 @@
 				<div class="detail-block">
 					<div class="detail-label">결과</div>
 					<pre class="detail-pre">{item.result}</pre>
+				</div>
+			{/if}
+			{#if item.files?.length}
+				<div class="detail-block">
+					<div class="detail-label">생성 파일</div>
+					<div class="file-list">
+						{#each item.files as file (file.assetId)}
+							<button
+								type="button"
+								class="file-row"
+								disabled={downloadingAssetId !== null}
+								onclick={() => downloadFile(file)}
+								aria-label={`${file.name} 다운로드`}
+							>
+								<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+									<path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" stroke-linecap="round" stroke-linejoin="round" />
+								</svg>
+								<span class="file-name">{file.name}</span>
+								<span class="file-size">{formatBytes(file.sizeBytes)}</span>
+							</button>
+						{/each}
+					</div>
 				</div>
 			{/if}
 			{#if item.errorCode}
@@ -107,11 +161,11 @@
 		color: var(--color-ink-1);
 	}
 	.tool-status {
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-size: 0.7rem;
 	}
 	.tool-duration {
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-size: 0.66rem;
 		font-variant-numeric: tabular-nums;
 		white-space: nowrap;
@@ -121,7 +175,7 @@
 	}
 	.chevron {
 		margin-left: auto;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		transition: transform 0.15s;
 	}
 	.chevron.open {
@@ -138,7 +192,7 @@
 		font-size: 0.66rem;
 		text-transform: uppercase;
 		letter-spacing: 0.03em;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		margin-bottom: 0.2rem;
 	}
 	.detail-pre {
@@ -156,6 +210,43 @@
 		max-height: 16rem;
 		overflow-y: auto;
 		color: var(--color-ink-1);
+	}
+	.file-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+	}
+	.file-row {
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr) auto;
+		align-items: center;
+		gap: 0.45rem;
+		width: 100%;
+		padding: 0.5rem 0.55rem;
+		border: 1px solid var(--color-line);
+		border-radius: 0.4rem;
+		background: var(--color-surface-base);
+		color: var(--color-ink-2);
+		cursor: pointer;
+		text-align: left;
+	}
+	.file-row:hover:not(:disabled) {
+		border-color: var(--color-line-2);
+		color: var(--color-ink-1);
+	}
+	.file-row:disabled {
+		opacity: 0.6;
+		cursor: wait;
+	}
+	.file-name {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-weight: 600;
+	}
+	.file-size {
+		color: var(--color-ink-2);
+		font-variant-numeric: tabular-nums;
 	}
 	.error-code {
 		display: inline-flex;

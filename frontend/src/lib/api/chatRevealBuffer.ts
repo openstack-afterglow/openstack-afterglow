@@ -1,166 +1,117 @@
 export interface ChatRevealBuffer {
-	append(delta: string, cadenceAtMs?: number, receivedAtMs?: number): void;
+	append(delta: string, receivedAtMs?: number): void;
 	reconcile(text: string): void;
 	frame(nowMs?: number): { text: string; pending: boolean };
-	finish(receivedAtMs?: number): void;
 	drain(): string;
 	clear(): void;
 }
 
-interface ScheduledChunk {
-	text: string;
-	startedAtMs: number;
-	endsAtMs: number;
-	revealedCharacters: number;
+const REVEAL_DEADLINE_MS = 100;
+
+function codePointLength(text: string): number {
+	return Array.from(text).length;
+}
+
+/** Return a prefix ending on a Unicode code-point boundary. */
+function safePrefix(text: string, codePoints: number): string {
+	if (codePoints <= 0) return '';
+	if (codePoints >= codePointLength(text)) return text;
+	const units = Array.from(text).slice(0, codePoints).join('');
+	return units;
+}
+
+function commonPrefix(left: string, right: string): string {
+	const leftPoints = Array.from(left);
+	const rightPoints = Array.from(right);
+	let count = 0;
+	while (count < leftPoints.length && leftPoints[count] === rightPoints[count]) count += 1;
+	return leftPoints.slice(0, count).join('');
 }
 
 /**
- * Smooths authoritative SSE chunks for display only. The journal text is never
- * changed: terminal events can always drain to the exact server-confirmed value.
- *
- * The newest chunk is briefly reserved. If another chunk arrives first, the
- * journal timestamps determine its playback duration while the browser clock
- * determines when that playback starts. A bounded fallback starts playback
- * when a provider pauses, so the reserve never turns a long upstream gap into
- * a second equally long visual gap.
+ * Smooths authoritative SSE text for display only. The browser receipt clock
+ * starts one bounded interpolation target; server cadence is deliberately not
+ * replayed, and drain always returns the exact authoritative text.
  */
-export function createChatRevealBuffer(options: {
-	reducedMotion: boolean;
-	maxHoldMs?: number;
-	maxPlaybackMs?: number;
-}): ChatRevealBuffer {
-	const maxHoldMs = Math.max(16, options.maxHoldMs ?? 200);
-	const maxPlaybackMs = Math.max(maxHoldMs, options.maxPlaybackMs ?? 1000);
+export function createChatRevealBuffer(options: { reducedMotion: boolean }): ChatRevealBuffer {
 	let authoritativeText = '';
 	let displayed = '';
-	let reservedChunk: { text: string; cadenceAtMs: number; receivedAtMs: number } | null = null;
-	let scheduledChunks: ScheduledChunk[] = [];
-	let nextScheduledAtMs = 0;
-	let fallbackPlaybackMs = maxPlaybackMs;
+	let pendingSinceMs: number | null = null;
+	let pendingBaseCodePoints = 0;
+	let lastFrameMs = Number.NEGATIVE_INFINITY;
 
-	function boundedPlaybackMs(durationMs: number) {
-		return Math.min(maxPlaybackMs, Math.max(16, durationMs));
-	}
-
-	function scheduleChunk(text: string, startedAtMs: number, durationMs: number) {
-		const startMs = Math.max(startedAtMs, nextScheduledAtMs);
-		const playbackMs = boundedPlaybackMs(durationMs);
-		scheduledChunks.push({
-			text,
-			startedAtMs: startMs,
-			endsAtMs: startMs + playbackMs,
-			revealedCharacters: 0
-		});
-		nextScheduledAtMs = startMs + playbackMs;
-	}
-
-	function scheduleReservedFromNextArrival(nextCadenceAtMs: number, nextReceivedAtMs: number) {
-		if (reservedChunk === null) return;
-		const playbackMs = boundedPlaybackMs(nextCadenceAtMs - reservedChunk.cadenceAtMs);
-		fallbackPlaybackMs = playbackMs;
-		scheduleChunk(reservedChunk.text, nextReceivedAtMs, playbackMs);
-	}
-
-	function scheduleReservedFallback(nowMs: number) {
-		if (reservedChunk === null || nowMs - reservedChunk.receivedAtMs < maxHoldMs) return;
-		scheduleChunk(
-			reservedChunk.text,
-			reservedChunk.receivedAtMs + maxHoldMs,
-			fallbackPlaybackMs
-		);
-		reservedChunk = null;
-	}
-
-	function revealScheduledChunks(nowMs: number) {
-		for (const chunk of scheduledChunks) {
-			if (nowMs < chunk.startedAtMs) break;
-
-			const durationMs = chunk.endsAtMs - chunk.startedAtMs;
-			const progress = Math.min(1, (nowMs - chunk.startedAtMs) / durationMs);
-			const revealCount = Math.floor(chunk.text.length * progress);
-			if (revealCount > chunk.revealedCharacters) {
-				displayed += chunk.text.slice(chunk.revealedCharacters, revealCount);
-				chunk.revealedCharacters = revealCount;
-			}
-			if (progress < 1) break;
+	function setTarget(receivedAtMs: number, resetWindow = false) {
+		if (displayed === authoritativeText) {
+			pendingSinceMs = null;
+			pendingBaseCodePoints = 0;
+			return;
 		}
-
-		while (
-			scheduledChunks[0] !== undefined &&
-			scheduledChunks[0].revealedCharacters === scheduledChunks[0].text.length
-		) {
-			scheduledChunks.shift();
+		if (pendingSinceMs === null || resetWindow) {
+			pendingSinceMs = receivedAtMs;
+			pendingBaseCodePoints = codePointLength(displayed);
 		}
-	}
-
-	function unrevealedText() {
-		return (
-			scheduledChunks
-				.map((chunk) => chunk.text.slice(chunk.revealedCharacters))
-				.join('') + (reservedChunk?.text ?? '')
-		);
 	}
 
 	return {
-		append(delta, cadenceAtMs = performance.now(), receivedAtMs = cadenceAtMs) {
+		append(delta, receivedAtMs = performance.now()) {
+			if (!delta) return;
 			authoritativeText += delta;
-			if (reservedChunk !== null) {
-				scheduleReservedFromNextArrival(cadenceAtMs, receivedAtMs);
-			}
-			reservedChunk = { text: delta, cadenceAtMs, receivedAtMs };
+			setTarget(receivedAtMs);
 		},
 		reconcile(text) {
 			authoritativeText = text;
-			if (!text.startsWith(displayed)) {
-				displayed = '';
-				scheduledChunks = [];
-				reservedChunk = null;
-				nextScheduledAtMs = 0;
-			}
-
-			const remainingText = text.slice(displayed.length);
-			if (remainingText !== unrevealedText()) {
-				scheduledChunks = [];
-				reservedChunk = remainingText
-					? {
-							text: remainingText,
-							cadenceAtMs: performance.now(),
-							receivedAtMs: performance.now()
-						}
-					: null;
-				nextScheduledAtMs = 0;
-			}
+			if (!text.startsWith(displayed)) displayed = commonPrefix(displayed, text);
+			// A correction starts a new authoritative baseline; reset the frame
+			// clock so synthetic receipt timestamps cannot leave it in the future.
+			const correctionAt = performance.now();
+			lastFrameMs = correctionAt;
+			setTarget(correctionAt, true);
 		},
 		frame(nowMs = performance.now()) {
+			const clock = Math.max(nowMs, lastFrameMs);
+			lastFrameMs = clock;
 			if (options.reducedMotion) {
 				displayed = authoritativeText;
-				scheduledChunks = [];
-				reservedChunk = null;
-			} else {
-				scheduleReservedFallback(nowMs);
-				revealScheduledChunks(nowMs);
+				pendingSinceMs = null;
+				pendingBaseCodePoints = 0;
+			} else if (pendingSinceMs !== null) {
+				const elapsed = Math.max(0, clock - pendingSinceMs);
+				const progress = Math.min(1, elapsed / REVEAL_DEADLINE_MS);
+				const targetLength = codePointLength(authoritativeText);
+				const baseLength = Math.min(pendingBaseCodePoints, targetLength);
+				const remaining = targetLength - baseLength;
+				const revealCount =
+					baseLength +
+					(elapsed > 0 && remaining > 0 ? Math.max(1, Math.floor(remaining * progress)) : 0);
+				const next = safePrefix(authoritativeText, revealCount);
+				// A late/out-of-order browser frame must not roll a completed
+				// deadline (or a newer correction baseline) backwards.
+				if (authoritativeText.startsWith(displayed) && next.length >= displayed.length) {
+					displayed = next;
+				}
+				if (progress >= 1) {
+					displayed = authoritativeText;
+					pendingSinceMs = null;
+					pendingBaseCodePoints = 0;
+				}
 			}
 			return {
 				text: displayed,
-				pending: scheduledChunks.length > 0 || reservedChunk !== null
+				pending: pendingSinceMs !== null
 			};
-		},
-		finish(receivedAtMs = performance.now()) {
-			if (reservedChunk === null) return;
-			scheduleChunk(reservedChunk.text, receivedAtMs, fallbackPlaybackMs);
-			reservedChunk = null;
 		},
 		drain() {
 			displayed = authoritativeText;
+			pendingSinceMs = null;
+			pendingBaseCodePoints = 0;
 			return displayed;
 		},
 		clear() {
 			authoritativeText = '';
 			displayed = '';
-			reservedChunk = null;
-			scheduledChunks = [];
-			nextScheduledAtMs = 0;
-			fallbackPlaybackMs = maxPlaybackMs;
+			pendingSinceMs = null;
+			pendingBaseCodePoints = 0;
+			lastFrameMs = Number.NEGATIVE_INFINITY;
 		}
 	};
 }

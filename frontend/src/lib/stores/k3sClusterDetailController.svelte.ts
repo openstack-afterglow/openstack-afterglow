@@ -1,5 +1,5 @@
 import { getContext, setContext } from 'svelte';
-import { api, ApiError, getBaseUrl } from '$lib/api/client';
+import { api, ApiError, fetchWithAuth } from '$lib/api/client';
 import { downloadBlobAs } from '$lib/utils/downloadBlob';
 import { streamK3sProgress } from '$lib/api/k3sSseStream';
 import { maybeMockHead, symbolNoMatch } from '$lib/mockup/transport';
@@ -144,13 +144,9 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
         kubeconfigAvailable = mock.ok;
         return;
       }
-      const res = await fetch(`${getBaseUrl()}${path}`, {
+      const res = await fetchWithAuth(path, {
         method: 'HEAD',
-        headers: {
-          ...(opts.token() ? { 'Authorization': `Bearer ${opts.token()!}` } : {}),
-          ...(opts.projectId() ? { 'X-Project-Id': opts.projectId()! } : {}),
-        },
-      });
+      }, opts.token(), opts.projectId());
       kubeconfigAvailable = res.ok;
     } catch {
       kubeconfigAvailable = false;

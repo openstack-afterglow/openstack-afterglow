@@ -6,10 +6,10 @@
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
+	import Alert from '$lib/components/ui/Alert.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import DbCreatePanel from '$lib/components/database/DbCreatePanel.svelte';
-	import GrafanaEmbed from '$lib/components/monitoring/GrafanaEmbed.svelte';
 	import type { DbInstance } from '$lib/types/database';
 	import { toast } from '$lib/stores/toast';
 
@@ -18,6 +18,7 @@
 	let refreshing = $state(false);
 	let deleting = $state<string | null>(null);
 	let restarting = $state<string | null>(null);
+	let loadError = $state<string | null>(null);
 
 	let showCreatePanel = $state(false);
 
@@ -28,10 +29,11 @@
 	async function load() {
 		if (instances.length === 0) loading = true;
 		else refreshing = true;
+		loadError = null;
 		try {
 			instances = await api.get<DbInstance[]>('/api/v1/database-instances?all_projects=true', token, projectId);
-		} catch {
-			instances = [];
+		} catch (error) {
+			loadError = error instanceof ApiError ? error.message : 'Trove DB 인스턴스 목록 조회에 실패했습니다.';
 		} finally {
 			loading = false;
 			refreshing = false;
@@ -81,7 +83,7 @@
 	<PageHeader breadcrumb="STORAGE / DATABASE INSTANCES" title="DB 인스턴스">
 		{#snippet actions()}
 			<button onclick={() => (showCreatePanel = true)}
-				class="text-xs text-white bg-amber-600 hover:bg-amber-500 transition-colors px-3 py-1.5 rounded border border-amber-500">+ 인스턴스 생성</button>
+				class="text-xs text-action-on-warm bg-action-warm hover:bg-action-warm-hover transition-colors px-3 py-1.5 rounded border border-action-warm">+ 인스턴스 생성</button>
 			<AutoRefreshControl
 				bind:active={ar.active}
 				bind:intervalSeconds={ar.intervalSeconds}
@@ -91,19 +93,25 @@
 			/>
 		{/snippet}
 	</PageHeader>
+	{#if loadError}
+		<Alert tone="danger" title="Trove DB 인스턴스를 불러오지 못했습니다">
+			{loadError}
+		</Alert>
+	{/if}
 
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={5} />
-	{:else if instances.length === 0}
-		<div class="text-gray-600 text-sm">DB 인스턴스가 없습니다</div>
-	{:else}
+	{:else if instances.length === 0 && !loadError}
+		<div class="text-ink-2 text-sm">DB 인스턴스가 없습니다</div>
+	{:else if instances.length > 0}
 		<div class="overflow-x-auto">
 			<table class="w-full text-sm">
 				<thead>
-					<tr class="border-b border-gray-800 text-gray-400 text-xs uppercase tracking-wide">
+					<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
 						<th class="text-left py-3 px-4 font-medium">이름</th>
 						<th class="text-left py-3 px-4 font-medium">상태</th>
 						<th class="text-left py-3 px-4 font-medium">Datastore</th>
+						<th class="text-left py-3 px-4 font-medium">프로젝트</th>
 						<th class="text-left py-3 px-4 font-medium">크기 (GB)</th>
 						<th class="text-left py-3 px-4 font-medium">ID</th>
 						<th class="text-left py-3 px-4 font-medium">생성일</th>
@@ -112,23 +120,24 @@
 				</thead>
 				<tbody>
 					{#each instances as inst}
-						<tr class="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
+						<tr class="border-b border-line/50 hover:bg-surface-sunken/30 transition-colors">
 							<td class="py-3 px-4">
-								<a href="/admin/database-instances/{inst.id}" class="text-amber-400 hover:text-amber-300 font-medium max-md:block max-md:max-w-[66vw] max-md:truncate" title={inst.name}>{inst.name}</a>
+								<a href="/admin/database-instances/{inst.id}" class="text-warm-text hover:text-warm-text-hover font-medium max-md:block max-md:max-w-[66vw] max-md:truncate" title={inst.name}>{inst.name}</a>
 							</td>
 							<td class="py-3 px-4"><StatusChip status={inst.status} /></td>
-							<td class="py-3 px-4 text-gray-300">{inst.datastore?.type ?? '-'} {inst.datastore?.version ?? ''}</td>
-							<td class="py-3 px-4 text-gray-300">{inst.size || '-'}</td>
-							<td class="py-3 px-4 text-gray-600 font-mono text-xs">{inst.id.slice(0, 8)}…</td>
-							<td class="py-3 px-4 text-gray-500 text-xs">{inst.created_at ? inst.created_at.slice(0, 10) : '-'}</td>
+							<td class="py-3 px-4 text-ink-2">{inst.datastore?.type ?? '-'} {inst.datastore?.version ?? ''}</td>
+							<td class="py-3 px-4 text-ink-2 font-mono text-xs">{inst.project_id || '-'}</td>
+							<td class="py-3 px-4 text-ink-2">{inst.size || '-'}</td>
+							<td class="py-3 px-4 text-ink-2 font-mono text-xs">{inst.id.slice(0, 8)}…</td>
+							<td class="py-3 px-4 text-ink-2 text-xs">{inst.created_at ? inst.created_at.slice(0, 10) : '-'}</td>
 							<td class="py-3 px-4 text-right">
 								<div class="flex justify-end gap-1">
 									<button onclick={() => restartInstance(inst.id, inst.name)} disabled={restarting === inst.id}
-										class="text-blue-400 hover:text-blue-300 disabled:text-gray-600 text-xs px-2 py-1 rounded border border-blue-900 hover:border-blue-700 disabled:border-gray-700 transition-colors">
+										class="text-warm-text hover:text-warm-text-hover disabled:text-ink-3 text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm disabled:border-line-2 transition-colors">
 										{restarting === inst.id ? '...' : '재시작'}
 									</button>
 									<button onclick={(e) => { e.stopPropagation(); deleteInstance(inst.id, inst.name); }} disabled={deleting === inst.id}
-										class="text-red-400 hover:text-red-300 disabled:text-gray-600 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 disabled:border-gray-700 transition-colors">
+										class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors">
 										{deleting === inst.id ? '...' : '삭제'}
 									</button>
 								</div>
@@ -140,10 +149,4 @@
 		</div>
 	{/if}
 
-	{#if !loading}
-	<div class="mt-8">
-		<h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">MySQL 메트릭 (mysqld_exporter)</h2>
-		<GrafanaEmbed dashboardKey="mysqld" height={400} />
-	</div>
-	{/if}
 </div>

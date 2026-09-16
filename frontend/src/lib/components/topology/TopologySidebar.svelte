@@ -38,8 +38,8 @@
 {#if routerRows.length > 0}
 	<button
 		type="button"
-		class="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide px-1 w-full text-left transition-colors
-		{isLight ? 'text-gray-600 hover:text-gray-800' : 'text-gray-500 hover:text-gray-400'}"
+		class="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide px-1 w-full text-left transition-colors
+		{isLight ? 'text-ink-2 hover:text-gray-800' : 'text-ink-2 hover:text-ink-2'}"
 		onclick={() => { groupCollapsed.router = !groupCollapsed.router; onScheduleMeasure(); }}
 	>
 		<span style="color: {isLight ? '#9ca3af' : '#4b5563'}">{groupCollapsed.router ? '▸' : '▾'}</span>
@@ -70,8 +70,8 @@
 {#if filteredLbItems.length > 0}
 	<button
 		type="button"
-		class="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide px-1 mt-1 w-full text-left transition-colors
-		{isLight ? 'text-gray-600 hover:text-gray-800' : 'text-gray-500 hover:text-gray-400'}"
+		class="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide px-1 mt-1 w-full text-left transition-colors
+		{isLight ? 'text-ink-2 hover:text-gray-800' : 'text-ink-2 hover:text-ink-2'}"
 		onclick={() => { groupCollapsed.lb = !groupCollapsed.lb; onScheduleMeasure(); }}
 	>
 		<span style="color: {isLight ? '#9ca3af' : '#4b5563'}">{groupCollapsed.lb ? '▸' : '▾'}</span>
@@ -99,8 +99,8 @@
 {#if instanceRows.length > 0}
 	<button
 		type="button"
-		class="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide px-1 mt-1 w-full text-left transition-colors
-		{isLight ? 'text-gray-600 hover:text-gray-800' : 'text-gray-500 hover:text-gray-400'}"
+		class="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide px-1 mt-1 w-full text-left transition-colors
+		{isLight ? 'text-ink-2 hover:text-gray-800' : 'text-ink-2 hover:text-ink-2'}"
 		onclick={() => { groupCollapsed.instance = !groupCollapsed.instance; onScheduleMeasure(); }}
 	>
 		<span style="color: {isLight ? '#9ca3af' : '#4b5563'}">{groupCollapsed.instance ? '▸' : '▾'}</span>

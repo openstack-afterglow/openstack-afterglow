@@ -111,7 +111,7 @@
 				{#each BUCKETS as b (b.key)}
 					<button
 						class="rounded px-2 py-0.5 text-xs {bucket === b.key
-							? 'bg-[var(--color-accent)] text-white'
+							? 'bg-[var(--color-accent)] text-ink-0'
 							: 'text-[var(--color-ink-3)] hover:text-[var(--color-ink-1)]'}"
 						onclick={() => setBucket(b.key)}>{b.label}</button
 					>
@@ -126,15 +126,15 @@
 			<div class="{cardCls} space-y-1 p-3">
 				{#each points as p (p.bucket)}
 					<div class="flex items-center gap-2">
-						<span class="w-24 shrink-0 truncate font-mono text-[10px] text-[var(--color-ink-3)]">{bucketLabel(String(p.bucket))}</span>
+						<span class="w-24 shrink-0 truncate font-mono text-xs text-[var(--color-ink-3)]">{bucketLabel(String(p.bucket))}</span>
 						<div class="flex h-3 flex-1 overflow-hidden rounded bg-[var(--color-surface-sunken)]">
 							<div class="h-full bg-[var(--color-accent)]" style="width: {((Number(p.web) || 0) / maxTotal) * 100}%" title="웹 {fmt(Number(p.web) || 0)}"></div>
 							<div class="h-full bg-[var(--color-state-success)]" style="width: {((Number(p.api) || 0) / maxTotal) * 100}%" title="API {fmt(Number(p.api) || 0)}"></div>
 						</div>
-						<span class="w-16 shrink-0 text-right text-[10px] text-[var(--color-ink-3)]">{fmt(Number(p.total) || 0)}</span>
+						<span class="w-16 shrink-0 text-right text-xs text-[var(--color-ink-3)]">{fmt(Number(p.total) || 0)}</span>
 					</div>
 				{/each}
-				<div class="mt-1 flex gap-3 text-[10px] text-[var(--color-ink-3)]">
+				<div class="mt-1 flex gap-3 text-xs text-[var(--color-ink-3)]">
 					<span><span class="inline-block h-2 w-2 rounded-sm bg-[var(--color-accent)]"></span> 웹</span>
 					<span><span class="inline-block h-2 w-2 rounded-sm bg-[var(--color-state-success)]"></span> API</span>
 				</div>

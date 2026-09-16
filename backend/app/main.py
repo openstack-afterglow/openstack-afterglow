@@ -2,7 +2,6 @@
 # Structured JSON logging
 # ---------------------------------------------------------------------------
 import logging
-import logging.handlers
 import os
 
 _STANDARD_LOG_KEYS = set(logging.LogRecord("", 0, "", 0, "", (), None).__dict__)
@@ -26,6 +25,7 @@ class _JSONFormatter(logging.Formatter):
 
 def _setup_logging() -> None:
     from app.config import get_settings
+    from app.utils.daily_size_handler import DailySizeHandler
     from app.utils.log import SensitiveDataFilter
 
     cfg = get_settings()
@@ -40,29 +40,17 @@ def _setup_logging() -> None:
     stream_handler.addFilter(sensitive_filter)
     root.addHandler(stream_handler)
 
-    log_path = cfg.log_file_path
     try:
-        os.makedirs(os.path.dirname(log_path), exist_ok=True)
-        if cfg.log_rotation_type == "time":
-            file_handler = logging.handlers.TimedRotatingFileHandler(
-                log_path,
-                when=cfg.log_rotation_when,
-                interval=cfg.log_rotation_interval,
-                backupCount=cfg.log_backup_count,
-                encoding="utf-8",
-            )
-        else:
-            file_handler = logging.handlers.RotatingFileHandler(
-                log_path,
-                maxBytes=cfg.log_max_bytes,
-                backupCount=cfg.log_backup_count,
-                encoding="utf-8",
-            )
+        file_handler = DailySizeHandler(
+            log_directory=cfg.log_directory,
+            max_bytes=cfg.log_max_bytes,
+            encoding="utf-8",
+        )
         file_handler.setFormatter(formatter)
         file_handler.addFilter(sensitive_filter)
         root.addHandler(file_handler)
     except OSError:
-        pass  # 로그 디렉터리 없으면 파일 핸들러 없이 진행
+        pass  # 로그 디렉터리 생성/접근 불가 시 파일 핸들러 없이 진행
 
     level = getattr(logging, cfg.log_level.upper(), logging.INFO)
     root.setLevel(level)
@@ -582,9 +570,11 @@ if _svc_cfg.service_zun_enabled:
     app.include_router(containers_router, prefix="/api/v1/containers", tags=["containers"])
 if _svc_cfg.service_k3s_enabled:
     from app.api.drover import drover_admin_router, drover_callback_router, drover_proxy_router
+    from app.api.internal_k3s import router as internal_k3s_router
     from app.api.k3s_shell_proxy import router as k3s_shell_proxy_router
 
-    # Baked machine callbacks and the WebSocket relay precede the authenticated catch-all.
+    # Internal endpoints and baked machine callbacks precede the authenticated catch-all proxy.
+    app.include_router(internal_k3s_router, prefix="/api/v1/internal/k3s", tags=["internal-k3s"])
     app.include_router(drover_callback_router, prefix="/api/v1/k3s", tags=["k3s-callback"])
     app.include_router(
         drover_callback_router,

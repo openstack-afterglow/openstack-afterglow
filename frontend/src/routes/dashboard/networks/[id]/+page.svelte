@@ -19,6 +19,9 @@
 	let deleting = $state(false);
 	let addingSubnet = $state(false);
 	let subnetError = $state('');
+	const canManageNetwork = $derived(
+		Boolean(network && ($auth.isSystemAdmin || (network.project_id && network.project_id === $auth.projectId)) && !network.is_external)
+	);
 
 	$effect(() => {
 		const id = $page.params.id;
@@ -44,8 +47,12 @@
 
 	async function deleteNetwork() {
 		if (!network) return;
-		if (network.is_external || network.is_shared) {
-			toast.warning('외부/공유 네트워크는 삭제할 수 없습니다.');
+		if (!canManageNetwork) {
+			toast.warning('현재 프로젝트가 소유한 네트워크만 삭제할 수 있습니다.');
+			return;
+		}
+		if (network.is_external) {
+			toast.warning('외부 네트워크는 삭제할 수 없습니다.');
 			return;
 		}
 		if (!await confirmDialog(`네트워크 "${network.name || network.id}"를 삭제하시겠습니까?`)) return;
@@ -61,7 +68,7 @@
 	}
 
 	async function addSubnet(form: { name: string; cidr: string; gateway: string; dhcp: boolean }): Promise<boolean> {
-		if (!network || !form.cidr.trim()) return false;
+		if (!canManageNetwork || !network || !form.cidr.trim()) return false;
 		addingSubnet = true;
 		subnetError = '';
 		try {
@@ -87,9 +94,9 @@
 	}
 </script>
 
-<div class="p-4 md:p-8 max-w-5xl mx-auto">
+<div class="p-4 md:p-6 max-w-5xl mx-auto">
 	<div class="mb-6">
-		<a href="/dashboard" class="text-gray-400 hover:text-gray-200 text-sm transition-colors">
+		<a href="/dashboard" class="text-ink-2 hover:text-ink-1 text-sm transition-colors">
 			← 대시보드
 		</a>
 	</div>
@@ -101,16 +108,16 @@
 	{:else if loading}
 		<LoadingSkeleton variant="card" rows={5} />
 	{:else if network}
-		<DashboardNetworkHeader {network} {deleting} onDelete={deleteNetwork} />
+		<DashboardNetworkHeader {network} {deleting} canManage={canManageNetwork} onDelete={deleteNetwork} />
 		<DashboardNetworkInfoCard {network} />
-		<div class="bg-gray-900 border border-gray-800 rounded-lg p-6 mb-4">
-			<h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-4">네트워크 토폴로지</h2>
+		<div class="bg-surface-base border border-line rounded-lg p-6 mb-4">
+			<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide mb-4">네트워크 토폴로지</h2>
 			<NetworkTopology {network} />
 		</div>
 		<DashboardSubnetSection
 			subnets={network.subnet_details}
 			networkName={network.name}
-			allowAdd={!network.is_external}
+			allowAdd={canManageNetwork}
 			{addingSubnet}
 			addError={subnetError}
 			onAdd={addSubnet}

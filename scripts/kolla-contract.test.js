@@ -66,6 +66,50 @@ test("Afterglow public endpoint controls every browser-facing origin", () => {
 	assert.doesNotMatch(defaults, /afterglow_external_url/)
 })
 
+test("Afterglow resolves the global service project once per play batch", () => {
+	const config = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/config.yml")
+	const lookup = config.slice(
+		config.indexOf("Config | Resolve Afterglow service project ID"),
+		config.indexOf("Config | Set resolved Afterglow service project ID"),
+	)
+
+	assert.match(lookup, /become: true/)
+	assert.match(lookup, /no_log: true/)
+	assert.match(lookup, /run_once: true/)
+})
+
+test("Afterglow fails prechecks before restart when K3s API credentials are absent", () => {
+	const defaults = readRepoFile("deploy/kolla/ansible/roles/afterglow/defaults/main.yml")
+	const precheck = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/precheck.yml")
+	const secrets = readRepoFile(
+		"deploy/kolla/ansible/roles/afterglow/tasks/preconditions_secrets.yml"
+	)
+
+	assert.match(defaults, /^afterglow_k3s_gpu_admission_token: ""$/m)
+	assert.match(defaults, /^afterglow_k3s_provisioning_token: ""$/m)
+	for (const taskFile of [precheck, secrets]) {
+		assert.match(taskFile, /afterglow_k3s_gpu_admission_token \| length >= 32/)
+		assert.match(taskFile, /afterglow_k3s_provisioning_token \| length >= 32/)
+		assert.match(taskFile, /afterglow_service_k3s_enabled \| bool/)
+	}
+})
+
+test("Afterglow checks the Keystone public catalog endpoint from every backend host", () => {
+	const precheck = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/precheck.yml")
+	const reachability = precheck.slice(
+		precheck.indexOf("Precheck | Verify Keystone public catalog endpoint from every Afterglow host"),
+		precheck.indexOf("Precheck | Verify K3s internal API credentials"),
+	)
+
+	assert.match(reachability, /ansible\.builtin\.uri:/)
+	assert.match(reachability, /url: "\{\{ keystone_public_url \| regex_replace\('\/\$', ''\) \}\}\/v3"/)
+	assert.match(reachability, /timeout: 10/)
+	assert.match(reachability, /validate_certs: "\{\{ not \(afterglow_openstack_insecure \| bool\) \}\}"/)
+	assert.match(reachability, /ca_path: "\{\{ afterglow_openstack_cacert \| default\(omit, true\) \}\}"/)
+	assert.match(reachability, /inventory_hostname in groups\['afterglow'\]/)
+	assert.doesNotMatch(reachability, /run_once:|delegate_to:/)
+})
+
 test("Afterglow frontend receives only a public runtime configuration", () => {
 	const defaults = readRepoFile("deploy/kolla/ansible/roles/afterglow/defaults/main.yml")
 	const vars = readRepoFile("deploy/kolla/ansible/roles/afterglow/vars/main.yml")
@@ -323,7 +367,7 @@ test("Kolla installer loads plugin variables from the standard config root", () 
 		fs.writeFileSync(fakeKollaBinary, "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 })
 		fs.writeFileSync(
 			fakeKollaPython,
-			'#!/usr/bin/env bash\nif [[ "${1:-}" == "-c" && "${2:-}" == *drover-kolla* ]]; then echo "0.2.19"; exit 0; fi\nif [[ "${1:-}" == "-c" && "${2:-}" == *lumen-kolla* ]]; then echo "0.1.8"; exit 0; fi\nexec "${KOLLA_TEST_PYTHON:?}" "$@"\n',
+			'#!/usr/bin/env bash\nif [[ "${1:-}" == "-c" && "${2:-}" == *drover-kolla* ]]; then echo "0.2.19"; exit 0; fi\nif [[ "${1:-}" == "-c" && "${2:-}" == *lumen-kolla* ]]; then echo "0.2.0"; exit 0; fi\nexec "${KOLLA_TEST_PYTHON:?}" "$@"\n',
 			{ mode: 0o755 }
 		)
 		fs.writeFileSync(
@@ -429,13 +473,18 @@ test("Plugin lifecycle dispatchers preserve stock actions and tag isolation", ()
 
 test("Plugin services derive data-plane and OpenStack topology from Kolla variables", () => {
 	const afterglowDefaults = readRepoFile("deploy/kolla/ansible/roles/afterglow/defaults/main.yml")
+	const afterglowBaseConfig = readRepoFile("deploy/kolla/ansible/roles/afterglow/templates/afterglow.conf.j2")
 	const afterglowConfig = readRepoFile("deploy/kolla/ansible/roles/afterglow/templates/afterglow.kolla.conf.j2")
 	const afterglowDatabase = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/preconditions_db.yml")
+	const afterglowPrecheck = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/precheck.yml")
 
 	assert.match(afterglowDefaults, /afterglow_database_address: "\{\{ database_address \}\}"/)
 	assert.match(afterglowDefaults, /afterglow_database_admin_user: "\{\{ database_user \}\}"/)
 	assert.match(afterglowDefaults, /afterglow_valkey_port: "\{\{ valkey_server_port \}\}"/)
 	assert.match(afterglowDefaults, /afterglow_valkey_password: "\{\{ valkey_master_password \| default\(''\) \}\}"/)
+	assert.match(afterglowDefaults, /afterglow_sentinel_enabled: true/)
+	assert.match(afterglowDefaults, /afterglow_sentinel_master_name: "\{\{ valkey_sentinel_monitor_name \}\}"/)
+	assert.match(afterglowDefaults, /afterglow_sentinel_hosts: ".*groups\['valkey'\].*kolla_address\(host\).*valkey_sentinel_port.*"/)
 	assert.match(afterglowDefaults, /afterglow_keystone_auth_url: "\{\{ keystone_internal_url \}\}"/)
 	assert.match(afterglowDefaults, /afterglow_keystone_project_domain_name: "\{\{ default_project_domain_name \}\}"/)
 	assert.match(afterglowDefaults, /afterglow_keystone_user_domain_name: "\{\{ default_user_domain_name \}\}"/)
@@ -443,6 +492,13 @@ test("Plugin services derive data-plane and OpenStack topology from Kolla variab
 	assert.match(afterglowConfig, /auth_url = "\{\{ afterglow_keystone_auth_url \}\}"/)
 	assert.match(afterglowConfig, /project_domain_name = "\{\{ afterglow_keystone_project_domain_name \}\}"/)
 	assert.match(afterglowDatabase, /login_host: "\{\{ afterglow_database_address \}\}"/)
+	for (const template of [afterglowBaseConfig, afterglowConfig]) {
+		assert.match(template, /sentinel_enabled = \{\{ afterglow_sentinel_enabled \| bool \| lower \}\}/)
+		assert.match(template, /sentinel_master_name = "\{\{ afterglow_sentinel_master_name \}\}"/)
+		assert.match(template, /sentinel_hosts = "\{\{ afterglow_sentinel_hosts \}\}"/)
+	}
+	assert.match(afterglowPrecheck, /valkey_sentinel_port is defined/)
+	assert.match(afterglowPrecheck, /valkey_sentinel_monitor_name is defined and valkey_sentinel_monitor_name \| length > 0/)
 
 	for (const service of ["waygate", "palimpsest"]) {
 		const defaults = readRepoFile(`deploy/kolla/ansible/roles/${service}/defaults/main.yml`)
@@ -592,13 +648,17 @@ test("Afterglow hands operator TOML to containers without surrendering Kolla-own
 		generatedConfig,
 		/client_secret = "\{\{ afterglow_oidc_client_secret \| default\(''\) \}\}"/
 	)
-	const runtimeMountSources = [
+	const directRuntimeMountSources = [
 		...defaults.matchAll(/^\s+- "([^"]+):\/app\/[^"]+:ro"$/gm),
 	].map((match) => match[1])
-	assert.equal(runtimeMountSources.length, 7)
-	for (const source of runtimeMountSources) {
+	assert.equal(directRuntimeMountSources.length, 4)
+	for (const source of directRuntimeMountSources) {
 		assert.ok(source.startsWith("{{ afterglow_runtime_config_dir }}/"))
 	}
+	assert.equal((backendService.match(/afterglow_runtime_config_dir ~ '\/'/g) ?? []).length, 3)
+	assert.match(backendService, /afterglow_rbd_conf_source ~ ':\/etc\/ceph\/ceph\.conf:ro'/)
+	assert.match(backendService, /afterglow_rbd_keyring_source ~ ':\/etc\/ceph\/ceph\.client\.afterglow-rbd\.keyring:ro'/)
+	assert.match(backendService, /if afterglow_rbd_conf_source and afterglow_rbd_keyring_source else \[\]/)
 	assert.match(configTask, /Config \| Stage and validate sanitized operator configuration/)
 	assert.match(configTask, /sanitize_operator_config\.py/)
 	assert.match(configTask, /Config \| Clear stale sanitized operator configuration staging file/)
@@ -718,7 +778,13 @@ test("Kolla plugin requires stock Kolla Valkey dependency and rejects standalone
 
 	for (const { name: service, dbIndex } of expectedRoles) {
 		const defaults = readRepoFile(`deploy/kolla/ansible/roles/${service}/defaults/main.yml`)
-		assert.match(defaults, new RegExp(`${service}_valkey_host: "\\{\\{ 'api' \\| kolla_address\\(groups\\['valkey'\\]\\[0\\]\\) \\}\\}"`))
+		if (service === "afterglow") {
+			assert.match(defaults, /afterglow_sentinel_enabled: true/)
+			assert.match(defaults, /afterglow_sentinel_master_name: "\{\{ valkey_sentinel_monitor_name \}\}"/)
+			assert.match(defaults, /afterglow_sentinel_hosts: ".*groups\['valkey'\].*valkey_sentinel_port.*"/)
+		} else {
+			assert.match(defaults, new RegExp(`${service}_valkey_host: "\\{\\{ 'api' \\| kolla_address\\(groups\\['valkey'\\]\\[0\\]\\) \\}\\}"`))
+		}
 		assert.match(defaults, new RegExp(`${service}_valkey_port: "\\{\\{ valkey_server_port \\}\\}"`))
 		assert.match(defaults, new RegExp(`${service}_valkey_password:`))
 		assert.match(defaults, new RegExp(`${service}_valkey_password:.*valkey_master_password`))
@@ -735,6 +801,10 @@ test("Kolla plugin requires stock Kolla Valkey dependency and rejects standalone
 		assert.match(precheck, /enable_valkey \| default\(false\) \| bool/)
 		assert.match(precheck, /groups\.get\('valkey', \[\]\) \| length > 0/)
 		assert.match(precheck, /valkey_master_password is defined and valkey_master_password \| length > 0/)
+		if (service === "afterglow") {
+			assert.match(precheck, /valkey_sentinel_port is defined/)
+			assert.match(precheck, /valkey_sentinel_monitor_name is defined and valkey_sentinel_monitor_name \| length > 0/)
+		}
 		assert.match(precheck, new RegExp(`when: enable_${service} \\| default\\(false\\) \\| bool`))
 		assert.match(precheck, /run_once: true/)
 		assert.match(precheck, /tags: precheck/)
@@ -1014,7 +1084,7 @@ test("Drover and Lumen Kolla role packaging, operator specifications, and instal
 	)
 	assert.match(
 		pyproject,
-		/lumen-kolla @ https:\/\/github\.com\/openstack-afterglow\/lumen\/releases\/download\/v0\.1\.8\/lumen_kolla-0\.1\.8-py3-none-any\.whl#sha256=fdef6b8ed0a8bb7f48364ba20cc9bb90471b162287d4d33f9cc13105c340a78b/
+		/lumen-kolla @ https:\/\/github\.com\/openstack-afterglow\/lumen\/releases\/download\/v0\.2\.0\/lumen_kolla-0\.2\.0-py3-none-any\.whl#sha256=d55e2b0ace06d232452f9dd2892a88912755e9d00e99de0e59d6738c5a3b2474/
 	)
 	assert.match(
 		pyproject,
@@ -1040,7 +1110,7 @@ test("Hermetic integration test for drover-kolla and lumen-kolla wheel installat
 	const droverRoleDir = path.join(rolesDir, "drover")
 	const droverDistInfoDir = path.join(rolesDir, "drover_kolla-0.2.19.dist-info")
 	const lumenRoleDir = path.join(rolesDir, "lumen")
-	const lumenDistInfoDir = path.join(rolesDir, "lumen_kolla-0.1.8.dist-info")
+	const lumenDistInfoDir = path.join(rolesDir, "lumen_kolla-0.2.0.dist-info")
 
 	const pluginConfigRoot = path.join(kollaConfigPath, "config", "afterglow")
 	const pluginGlobals = path.join(pluginConfigRoot, "globals.yml")
@@ -1074,7 +1144,7 @@ test("Hermetic integration test for drover-kolla and lumen-kolla wheel installat
 	}
 
 	try {
-		// 1. Setup mock installed drover-kolla 0.2.19 and lumen-kolla 0.1.8 wheel files in Python share/roles
+		// 1. Setup mock installed drover-kolla 0.2.19 and lumen-kolla 0.2.0 wheel files in Python share/roles
 		fs.mkdirSync(path.join(droverRoleDir, "defaults"), { recursive: true })
 		fs.mkdirSync(path.join(droverRoleDir, "tasks"), { recursive: true })
 		fs.mkdirSync(path.join(droverRoleDir, "templates"), { recursive: true })
@@ -1095,7 +1165,7 @@ test("Hermetic integration test for drover-kolla and lumen-kolla wheel installat
 		fs.writeFileSync(path.join(lumenRoleDir, "tasks", "main.yml"), "---\n- name: Lumen main task\n  ansible.builtin.debug:\n    msg: lumen\n")
 		fs.writeFileSync(path.join(lumenRoleDir, "tasks", "deploy.yml"), "---\n- name: Lumen deploy task\n  ansible.builtin.debug:\n    msg: deploy\n")
 		fs.writeFileSync(path.join(lumenRoleDir, "templates", "lumen.conf.j2"), "[DEFAULT]\n")
-		fs.writeFileSync(path.join(lumenDistInfoDir, "METADATA"), "Metadata-Version: 2.1\nName: lumen-kolla\nVersion: 0.1.8\n")
+		fs.writeFileSync(path.join(lumenDistInfoDir, "METADATA"), "Metadata-Version: 2.1\nName: lumen-kolla\nVersion: 0.2.0\n")
 
 		// Verify package roles are real package directories, not symlinks
 		assert.equal(fs.statSync(droverRoleDir).isDirectory(), true)
@@ -1104,7 +1174,7 @@ test("Hermetic integration test for drover-kolla and lumen-kolla wheel installat
 
 		assert.equal(fs.statSync(lumenRoleDir).isDirectory(), true)
 		assert.equal(fs.lstatSync(lumenRoleDir).isSymbolicLink(), false)
-		assert.match(fs.readFileSync(path.join(lumenDistInfoDir, "METADATA"), "utf8"), /Version: 0\.1\.8/)
+		assert.match(fs.readFileSync(path.join(lumenDistInfoDir, "METADATA"), "utf8"), /Version: 0\.2\.0/)
 
 		// 2. Setup mock Afterglow source role links targets & Kolla environment
 		for (const role of ["afterglow", "waygate", "palimpsest"]) {
@@ -1117,7 +1187,7 @@ test("Hermetic integration test for drover-kolla and lumen-kolla wheel installat
 		fs.writeFileSync(fakeKollaBinary, "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 })
 		fs.writeFileSync(
 			fakeKollaPython,
-			'#!/usr/bin/env bash\nif [[ "${1:-}" == "-c" && "${2:-}" == *drover-kolla* ]]; then echo "0.2.19"; exit 0; fi\nif [[ "${1:-}" == "-c" && "${2:-}" == *lumen-kolla* ]]; then echo "0.1.8"; exit 0; fi\nexec "${KOLLA_TEST_PYTHON:?}" "$@"\n',
+			'#!/usr/bin/env bash\nif [[ "${1:-}" == "-c" && "${2:-}" == *drover-kolla* ]]; then echo "0.2.19"; exit 0; fi\nif [[ "${1:-}" == "-c" && "${2:-}" == *lumen-kolla* ]]; then echo "0.2.0"; exit 0; fi\nexec "${KOLLA_TEST_PYTHON:?}" "$@"\n',
 			{ mode: 0o755 }
 		)
 		fs.writeFileSync(path.join(kollaAnsiblePath, "ansible", "site.yml"), "---\n- import_playbook: gather-facts.yml\n")

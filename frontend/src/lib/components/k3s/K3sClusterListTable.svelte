@@ -69,7 +69,7 @@
 
 	.k3s-table__selection-count,
 	.k3s-table__meta {
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 
 	.k3s-table__row {
@@ -97,6 +97,6 @@
 	}
 
 	.k3s-table__delete:hover {
-		color: color-mix(in oklab, var(--color-state-danger), white 20%);
+		color: color-mix(in oklab, var(--color-state-danger) 88%, var(--color-ink-0));
 	}
 </style>

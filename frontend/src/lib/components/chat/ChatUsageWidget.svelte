@@ -43,7 +43,7 @@
 		white-space: nowrap;
 	}
 	.usage-label {
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.usage-val {
 		font-variant-numeric: tabular-nums;

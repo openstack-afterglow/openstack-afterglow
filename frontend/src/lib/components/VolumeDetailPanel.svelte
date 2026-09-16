@@ -22,8 +22,8 @@
 		volumeId: () => volumeId,
 		token: () => $auth.token ?? undefined,
 		projectId: () => $auth.projectId ?? undefined,
-		onDeleted,
-		onClose,
+		onDeleted: () => onDeleted?.(),
+		onClose: () => onClose?.(),
 		volumeSnapshotsEnabled: () => $betaFeatures.volumeSnapshots,
 	});
 	provideVolumeDetailController(s);
@@ -48,7 +48,7 @@
 	{#if s.loading}
 		<div class="space-y-3">
 			{#each [1, 2, 3] as _}
-				<div class="h-12 bg-gray-800 rounded-lg animate-pulse"></div>
+				<div class="h-12 bg-surface-sunken rounded-lg animate-pulse"></div>
 			{/each}
 		</div>
 	{:else if s.error}

@@ -100,16 +100,6 @@
 	.chev {
 		transition: transform 0.12s;
 	}
-	.chev.open {
-		transform: rotate(180deg);
-	}
-	.scrim {
-		position: fixed;
-		inset: 0;
-		z-index: 20;
-		border: none;
-		background: transparent;
-	}
 	.menu {
 		position: absolute;
 		bottom: calc(100% + 0.3rem);

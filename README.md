@@ -21,7 +21,7 @@ Afterglow는 현재 [DMS Cloud 연구 클라우드 제공 콘솔](https://cloud.
 - **공유 데이터와 라이브러리** — Manila CephFS/NFS share와 스냅샷을 사용하고, squashfs 기반 content-addressable 불변 AI/ML 레이어를 VM에서 OverlayFS로 조합해 재사용합니다.
 - **운영과 관측** — 프로젝트·사용자·역할·쿼터, Grafana·Prometheus 연동, 감사 로그를 한 콘솔에서 관리합니다.
 
-구현 경로는 SvelteKit 프론트엔드 → FastAPI `/api/v1` 게이트웨이 → `openstacksdk` 기반 OpenStack 서비스이며, Redis가 캐시와 세션을 담당합니다. 상세한 흐름은 [아키텍처 문서](docs/architecture.md)와 [Palimpsest 레이어 문서](docs/palimpsest.md)를 참고하세요.
+브라우저의 SvelteKit 앱은 설정된 API base의 FastAPI `/api/v1` 게이트웨이를 직접 호출하고, 백엔드는 `openstacksdk` 기반 OpenStack 서비스와 통신합니다. SvelteKit은 UI/auth shell이며 API 중계 서버가 아닙니다. Redis는 캐시와 세션을 담당합니다. 현재 구조의 정본은 [루트 아키텍처](ARCHITECTURE.md)이고, 상세 도메인은 [Palimpsest 레이어 문서](docs/palimpsest.md)를 참고하세요. 코드·설정 변경 후에는 `python3 scripts/check_architecture.py --stamp --summary "<검토 요약>"` 및 `python3 scripts/check_architecture.py --staged`로 freshness를 확인합니다.
 
 
 ## 주요 기능
@@ -38,11 +38,11 @@ Afterglow는 현재 [DMS Cloud 연구 클라우드 제공 콘솔](https://cloud.
 git clone git@github.com:openstack-afterglow/openstack-afterglow.git
 cd openstack-afterglow
 cp afterglow.conf.example afterglow.conf   # OpenStack 자격증명 입력
-cp .env.example .env                       # 로컬 compose 전용: SECRET_KEY 교체 또는 dev-only allow 플래그 유지
-docker compose up -d                 # http://localhost:3000
+cp .env.example .env
+npm run services:up                  # docker-compose.dev.yml, http://localhost:3080
 ```
 
-`afterglow.conf`가 유일한 애플리케이션 설정 파일입니다. `.env.example`의 `AFTERGLOW_ALLOW_INSECURE=1`은 Docker Compose 로컬 개발 전용이며 Kubernetes/production에는 넣지 않습니다.
+개발 실행에는 sibling checkout `../lumen`, `../waygate`, `../drover`, `../palimpsest`와 실제 OpenStack 인증·service project 설정이 필요합니다. `services:up`은 private 로컬 설정과 키를 보존하며 현재 소스를 빌드합니다. `docker-compose.yml`은 frontend/backend만, `docker-compose.prod.yml`은 GHCR 이미지·TLS HAProxy·기본 catalog 연결을 담당합니다. 독립 서비스의 목적지는 `SERVICE_*_INTERNAL_URL` 또는 `[services]`로 선택할 수 있으며 원격 OpenStack 설정은 바꾸지 않습니다. 명령과 선행 조건은 [Compose 배포 가이드](docs/deployment.md#docker-compose-배포)를 따릅니다.
 
 ### 공개 MCP/OAuth
 
@@ -57,12 +57,13 @@ Kubernetes · ArgoCD · kolla-ansible 배포와 상세 설정은 아래 문서�
 
 | 문서 | 내용 |
 |---|---|
-| [시작하기 · 배포](docs/deployment.md) | Docker Compose · Kubernetes · ArgoCD · kolla-ansible |
-| [아키텍처](docs/architecture.md) | 시스템 구조, VM 생성 플로우, OverlayFS |
+| [루트 아키텍처](ARCHITECTURE.md) | 현재 ownership·runtime·데이터 경계와 갱신 규칙 |
+| [상세 배포](docs/deployment.md) | Docker Compose · Kubernetes · ArgoCD · kolla-ansible |
 | [k3s 클러스터](docs/k3s.md) | k3s 프로비저닝, 노드 구성, CoreOS 전환 |
-| [API 레퍼런스](docs/api-reference.md) | 전체 REST API |
+| [상세 API](docs/api-reference.md) | 전체 REST API |
 | [보안 모델](docs/security.md) | 인증·인가, IDOR 가드, HKDF 암호화, audit log |
 | [국소 기능테스트](docs/testing.md) | 개발 중 빠른 국소 기능 검증 가이드 |
+| [아키텍처 상세](docs/architecture.md) | 루트 정본에서 연결하는 historical/domain detail |
 
 릴리스 변경사항은 [CHANGELOG](CHANGELOG.md), 작업 기록·로드맵은 [`openspec/`](openspec/)(`openspec list`, 구 [milestone.md](milestone.md)에서 이관)를 참고하세요.
 
@@ -82,7 +83,7 @@ cd backend && uv sync && uv run uvicorn app.main:app --reload   # 백엔드 :800
 cd frontend && npm install && npm run dev                       # 프론트엔드 :3000
 npm run test:list                                               # 실행 가능한 국소 테스트 타깃 확인
 npm run test:target -- auth                                     # 예: 인증/세션 관련 국소 기능테스트
-npm run test:functional                                         # 일회용 전용 DB/캐시 기능테스트 (3307/5434/6380)
+npm run test:functional                                         # dev Compose test profile, 전용 3307/5434/6380
 npm run test:unit                                               # 오케스트레이터 + 백엔드/프론트엔드 단위 계층
 npm run test:gate                                               # 커밋/PR 전 확정 게이트 (test:all + lint:backend)
 ```

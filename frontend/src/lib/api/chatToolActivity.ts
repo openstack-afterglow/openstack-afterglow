@@ -9,6 +9,14 @@
  * UI 위험 로직이라 순수 함수로 격리해 단위 테스트한다.
  */
 
+export interface ToolActivityFile {
+	assetId: string;
+	name: string;
+	mimeType: string;
+	sizeBytes: number;
+}
+
+
 export interface ToolActivityItem {
 	/** tool_call_id — 호출과 결과를 잇는 키. 없을 수 있음. */
 	id: string | null;
@@ -26,6 +34,8 @@ export interface ToolActivityItem {
 	errorCode?: string | null;
 	/** 실행 경과 시간(ms). 라이브와 durable 기록 모두에서 제공될 수 있다. */
 	durationMs?: number | null;
+	/** Durable generated files owned by the current run principal. */
+	files?: ToolActivityFile[];
 }
 
 function asArray(value: unknown): unknown[] {
@@ -107,15 +117,37 @@ export function toolActivityFromCanonicalParts(value: unknown): ToolActivityItem
 			}
 			items.set(id, { id, name, args, result: null, running: part.status === 'running' || part.status === 'pending' });
 		} else if (type === 'tool_result') {
-			const content = asArray(part.content)
-				.map((entry) => {
-					if (!entry || typeof entry !== 'object') return '[unsupported]';
-					const resultPart = entry as Record<string, unknown>;
-					return resultPart.type === 'text' && typeof resultPart.text === 'string' ? resultPart.text : `[${String(resultPart.type ?? 'unknown')}]`;
-				})
+			const resultParts = asArray(part.content);
+			const content = resultParts
+				.filter((entry) => entry && typeof entry === 'object' && (entry as Record<string, unknown>).type === 'text')
+				.map((entry) => String((entry as Record<string, unknown>).text ?? ''))
 				.join('\n');
+			const files = resultParts.flatMap((entry): ToolActivityFile[] => {
+				if (!entry || typeof entry !== 'object') return [];
+				const resultPart = entry as Record<string, unknown>;
+				if (
+					resultPart.type !== 'file' ||
+					typeof resultPart.asset_id !== 'string' ||
+					typeof resultPart.name !== 'string' ||
+					typeof resultPart.mime_type !== 'string' ||
+					typeof resultPart.size_bytes !== 'number'
+				) return [];
+				return [{
+					assetId: resultPart.asset_id,
+					name: resultPart.name,
+					mimeType: resultPart.mime_type,
+					sizeBytes: resultPart.size_bytes
+				}];
+			});
 			const existing = items.get(id);
-			items.set(id, { id, name, args: existing?.args ?? null, result: content, running: false });
+			items.set(id, {
+				id,
+				name,
+				args: existing?.args ?? null,
+				result: content || null,
+				running: false,
+				...(files.length > 0 ? { files } : {})
+			});
 		}
 	}
 	return [...items.values()];
@@ -139,7 +171,8 @@ export function mergeToolActivity(items: readonly ToolActivityItem[]): ToolActiv
 			args: item.args ?? previous.args ?? null,
 			result: item.result ?? previous.result ?? null,
 			status: item.status ?? previous.status,
-			durationMs: item.durationMs ?? previous.durationMs ?? null
+			durationMs: item.durationMs ?? previous.durationMs ?? null,
+			files: item.files ?? previous.files
 		});
 	}
 	return order.map((key) => merged.get(key)!);

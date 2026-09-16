@@ -112,7 +112,7 @@
 	}
 </script>
 
-<Modal {open} {onClose}>
+<Modal {open} {onClose} ariaLabel="에이전트 관리">
 	<div class="panel">
 		<header class="head">
 			<div class="head-title">
@@ -200,7 +200,7 @@
 		border-radius: 0.9rem;
 		border: 1px solid var(--color-line);
 		background: var(--color-surface-raised);
-		box-shadow: 0 24px 64px rgba(0, 0, 0, 0.4);
+		box-shadow: var(--shadow-restraint);
 		overflow: hidden;
 	}
 	.head {
@@ -231,7 +231,7 @@
 		border: none;
 		border-radius: 0.5rem;
 		background: transparent;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		cursor: pointer;
 		transition: background 0.12s, color 0.12s;
 	}
@@ -246,7 +246,7 @@
 	}
 	.muted {
 		font-size: 0.8rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.list-head {
 		display: flex;
@@ -319,7 +319,7 @@
 	}
 	.desc {
 		font-size: 0.78rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		margin-top: 0.1rem;
 	}
 	.card-actions {
@@ -336,7 +336,7 @@
 		border: none;
 		border-radius: 0.45rem;
 		background: transparent;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		cursor: pointer;
 		transition: background 0.12s, color 0.12s;
 	}

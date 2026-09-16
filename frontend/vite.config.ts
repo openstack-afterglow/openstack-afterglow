@@ -1,5 +1,5 @@
-import tailwindcss from '@tailwindcss/vite';
 import { sveltekit } from '@sveltejs/kit/vite';
+import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 import { readFileSync } from 'fs';
 
@@ -10,6 +10,11 @@ export default defineConfig({
 	plugins: [tailwindcss(), sveltekit()],
 	define: {
 		__APP_VERSION__: JSON.stringify(pkg.version),
+	},
+	build: {
+		// Chat, Mermaid and Shiki are route/on-demand chunks; the largest emitted chunk
+		// is under 800 kB minified and remains independently lazy-loaded.
+		chunkSizeWarningLimit: 800,
 	},
 	server: isDocker
 		? {
@@ -24,12 +29,4 @@ export default defineConfig({
 				},
 			}
 		: undefined,
-	test: {
-		include: ['src/**/*.{test,spec}.{js,ts}'],
-		environment: 'jsdom',
-		globals: true,
-		resolve: {
-			conditions: ['browser'],
-		},
-	},
 });

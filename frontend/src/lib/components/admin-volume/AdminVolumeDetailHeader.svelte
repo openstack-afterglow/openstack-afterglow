@@ -10,7 +10,6 @@
 	const s = useAdminVolumeDetailController();
 </script>
 
-<div class="flex items-center justify-between px-5 py-4 border-b border-gray-800 flex-shrink-0">
-	<h2 class="text-sm font-semibold text-white truncate">{s.volume?.name || 'Volume'}</h2>
-	<button data-tour="admin-storage-detail-close" onclick={onClose} class="text-gray-400 hover:text-white text-xl leading-none ml-3 flex-shrink-0">×</button>
+<div class="flex items-center justify-between px-5 py-4 border-b border-line flex-shrink-0">
+	<h2 class="text-sm font-semibold text-ink-0 truncate">{s.volume?.name || 'Volume'}</h2>
 </div>

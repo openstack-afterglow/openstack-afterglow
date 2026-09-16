@@ -206,9 +206,11 @@ describe('administrator tour engine behavior', () => {
 			if (!document.querySelector('[data-tour="admin-compute-detail"]')) {
 				const detail = document.createElement('div');
 				detail.dataset.tour = 'admin-compute-detail';
+				// 실제 DOM 과 같은 계약: 상세 패널의 닫기는 SlidePanel 이 그리는 `[data-slide-panel-close]` 하나뿐이다.
+				// 자식 패널이 자기 × 를 또 그리던 중복을 제거하면서 투어 셀렉터도 이 정본으로 재배선했다.
 				const close = document.createElement('button');
 				close.textContent = 'close';
-				close.dataset.tour = 'admin-compute-detail-close';
+				close.setAttribute('data-slide-panel-close', '');
 				close.onclick = () => detail.remove();
 				detail.appendChild(close);
 				document.body.appendChild(detail);

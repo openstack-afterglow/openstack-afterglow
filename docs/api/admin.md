@@ -38,7 +38,7 @@ nav_order: 20
 | `GET` | `/api/v1/admin/overview/projects` | 프로젝트별 컴퓨트/스토리지 쿼터·사용량·GPU 인스턴스 수 |
 | `GET` | `/api/v1/admin/monitoring/summary` | 서비스 상태·리소스·알림을 종합한 모니터링 요약 |
 | `GET` | `/api/v1/admin/notifications` | 관리자 알림(이상 상태·경고) 목록 |
-| `GET` | `/api/v1/admin/topology` | 전체 프로젝트 네트워크/라우터/인스턴스 토폴로지 (`TopologyData`) |
+| `GET` | `/api/v1/admin/topology` | 전체 프로젝트 네트워크/라우터/인스턴스 토폴로지 (`AdminTopologyData`). 사용자용 `GET /api/v1/networks/topology` 응답에 더해 `networks[]`에 `provider_network_type` / `provider_segmentation_id` / `provider_physical_network`를 추가한다 (관리자 응답 전용). `instances[].is_database`는 Trove 전체 프로젝트 목록(`all_projects=True`)의 fixed IP 매칭으로 채우며 Trove 미배포 시 모두 `false` |
 | `GET` | `/api/v1/admin/timeseries/{resource_type}` | 리소스 유형별 시계열 스냅샷 (1시간 간격) |
 | `GET` | `/api/v1/admin/version` | 백엔드/배포 버전 정보 |
 
@@ -145,7 +145,7 @@ nav_order: 20
 ## 볼륨 관리
 
 ![전체 볼륨 관리](../../assets/admin-volume.png)
-*전체 프로젝트의 볼륨을 시계열 차트와 함께 일괄 조회 — 상태·크기·프로젝트별 필터링, 수정·삭제 지원*
+*전체 프로젝트의 볼륨을 시계열 차트와 함께 일괄 조회 — 양수 상태만 노출하는 상태·프로젝트 필터, 현재 page 선택, 확인 기반 부분 성공 일괄 삭제, 단건 수정·삭제 지원*
 
 | 메서드 | 경로 | 설명 | 요청 본문 |
 |--------|------|------|-----------|
@@ -153,6 +153,7 @@ nav_order: 20
 | `GET` | `/api/v1/admin/volumes/{volume_id}` | 볼륨 상세 조회 | - |
 | `PATCH` | `/api/v1/admin/volumes/{volume_id}` | 이름/설명 수정 | `name`, `description` (모두 선택) |
 | `DELETE` | `/api/v1/admin/volumes/{volume_id}` | 볼륨 삭제 (`204`) | - |
+| `POST` | `/api/v1/admin/volumes/bulk-delete` | 최대 50개 볼륨 일괄 삭제, ID별 성공/실패 반환 | `volume_ids` (중복 없는 1~50개) |
 | `POST` | `/api/v1/admin/volumes/{volume_id}/force-delete` | 강제 삭제 (`204`) | - |
 | `POST` | `/api/v1/admin/volumes/{volume_id}/extend` | 용량 확장 | `new_size` (현재보다 커야 함) |
 | `POST` | `/api/v1/admin/volumes/{volume_id}/reset-status` | 상태 강제 초기화 | `status` (기본 `available`) |
@@ -161,6 +162,27 @@ nav_order: 20
 | `POST` | `/api/v1/admin/volumes/{volume_id}/recover-delete` | 삭제 실패 복구 시도 | - |
 
 **제한**: `force-delete` / `reset-status`는 Cinder의 정상 상태 전이를 우회하므로 데이터 정합성 위험이 있습니다. 오류 상태 복구 용도로만 사용하고, `extend`는 축소가 불가능합니다.
+
+`bulk-delete`는 요청 순서대로 모든 ID를 처리하며 한 볼륨의 Cinder 거부가 다음 삭제를 중단하지 않습니다. 응답은 `{ "results": [{ "id": "...", "ok": true, "error": null }] }` 형태이고, 연결·상태 경쟁으로 삭제할 수 없는 볼륨은 `ok: false`와 항목별 오류 메시지를 반환합니다. 관리자 화면의 전체 선택은 현재 marker page에만 적용되며, 필터·page size·page·project scope 변경 시 초기화됩니다. 성공한 ID만 선택에서 제거하고 실패한 ID는 재확인을 위해 유지합니다. 상태 card와 선택지는 `status-summary`에서 count가 0보다 큰 상태만 표시합니다.
+
+새 filter/page/project 결과를 기다릴 때 이전 행을 즉시 지워 stale 선택을 막습니다. 확인 대기 중 결과 경계나 user/project가 바뀌면 요청을 보내지 않습니다. 같은 결과의 백그라운드 새로고침은 기존 행을 유지합니다. 항목별 실패는 고정된 공개 메시지이며 upstream 응답·접속 정보·credential을 응답이나 activity에 복제하지 않습니다.
+
+두 endpoint는 요청 token으로 만든 **system-admin connection**을 그대로 사용하며 volume project로 재범위화하지 않습니다. Cinder message는 원인 추정용 evidence일 뿐 삭제 허용 근거가 아닙니다. 진단은 Cinder volume/attachment/snapshot/backup/clone/group·migration, Nova attachment, 선택적 Ceph RBD 상태를 각각 `present | absent | unknown`으로 반환합니다. 필수 check 하나라도 `unknown`이면 fail-closed로 `recovery_available=false`이고 복구는 `blocked`입니다. 401/403, timeout, SDK/CLI parse 오류를 `absent`로 바꾸지 않습니다.
+
+RBD 검사가 활성화되면 `backend`에 `mode`, `classification`, pool, image name/id, size/order, parent를 반환합니다. Cinder의 404만으로 `already_deleted`를 확정하지 않습니다. RBD image/header/data/trash가 남아 있으면 `api_absent_backend_present`, 조회가 불완전하면 `backend_lookup_unknown`입니다. `rbd_id.volume-<uuid>`만 빠지고 directory·image id·size/order·parent·watcher/snapshot/child 상태가 일치할 때만 mapping을 복원합니다. 반대로 stale mapping 제거는 Cinder와 모든 backend artifact의 부재가 확인되고 mapping payload가 예상 image id와 정확히 같을 때만 실행합니다. Image data/header/trash 자체는 이 API가 삭제하지 않습니다.
+
+복구 결과 `status` 계약:
+
+- `deleted`, `already_deleted`: Cinder 부재와 활성화된 RBD backend 부재가 검증된 terminal success
+- `delete_submitted`: Cinder 삭제 요청은 수락됐지만 아직 Cinder record가 남아 있음
+- `backend_residue`: Cinder record는 사라졌지만 RBD residue가 확인됨
+- `backend_unverified`: Cinder record는 사라졌지만 RBD 검사가 비활성 또는 `unknown`
+- `blocked`: dependency, attachment, fresh `deleting`, 권한/인증, backend 불일치 또는 unknown 때문에 mutation하지 않음
+- `failed`: 허용된 mutation 자체가 실패함
+
+`verified_deleted`는 `deleted`/`already_deleted`에서만 `true`입니다. `backend_verification`은 `verified | unavailable | residue | unknown`, `quota_verification`은 `verified | mismatch | unavailable`을 별도로 반환합니다. UI는 terminal success에서만 상세 패널을 닫고 `delete_submitted`, residue, unverified 결과에서는 check·backend evidence를 유지한 채 상세를 새로고침합니다.
+
+Recovery는 볼륨별 Redis `NX EX=600` lock을 잡습니다. 같은 볼륨의 동시 요청은 HTTP 409, Redis 장애는 fail-closed HTTP 503이며 lock은 `finally`에서 소유 token과 일치할 때만 해제합니다. 모든 결과와 단계, backend/quota 검증은 감사 로그에 기록됩니다.
 
 ---
 
@@ -383,6 +405,14 @@ vendor_id/device_id → 표시 이름 매핑을 관리합니다.
 | `PUT` | `/api/v1/admin/gpu-quotas/{project_id}` | 프로젝트 GPU 쿼터 수정 |
 | `DELETE` | `/api/v1/admin/gpu-quotas/{project_id}/{gpu_type}` | 프로젝트 쿼터 유형별 삭제 → 기본값 복귀 (`204`) |
 
+사용자 flavor 목록은 Redis cache hit로 payload가 일반 dict가 된 경우에도 `FlavorInfo`로 다시 해석한 뒤 frontend visibility와 GPU 쿼터를 판정합니다(캐시 payload가 `extra_specs`를 이미 보존하므로 flavor별 Nova 재조회는 하지 않습니다). GPU quota DB, Nova server inventory, 또는 legacy flavor metadata를 확인할 수 없으면 GPU flavor를 목록에서 숨기거나 `in_use=0`으로 간주하지 않습니다. 해당 flavor는 `eligibility.selectable=false`와 `gpu_quota_unavailable` blocker를 유지하고, authority 실패는 warning으로 기록됩니다.
+
+GPU 사용량은 인증된 project scope와 대상 `project_id`가 다를 때만 Nova의 all-project inventory를 조회한 뒤 대상 project로 제한합니다. 같은 scope의 connection은 전역 inventory를 요청하지 않습니다. Microversion 2.47+ embedded flavor snapshot(`original_name` + `extra_specs`)은 `extra_specs`가 비어 있어도 authoritative로 취급하며 legacy snapshot만 flavor 상세를 조회합니다. 저장된 legacy alias(`RTX3090Ti` 등)는 읽기에서 canonical alias로 정규화하며 같은 alias의 중복 row는 `updated_at`이 가장 최신인 row(동률이면 `id`가 큰 row)의 limit를 사용합니다. PUT/DELETE도 같은 기준으로 survivor를 고른 뒤 중복 row를 제거합니다. Migration `079_normalize_gpu_quota_types.sql`은 동일 규칙으로 중복을 정리하고 `gpu_type`만 정규화하며 `updated_at`을 보존합니다.
+
+관리자 쿼터 화면은 `GET /api/v1/admin/gpu-aliases`의 클러스터 전체 alias(Flavor `pci_passthrough:alias` + Placement inventory), 전체 기본값, 선택 프로젝트의 effective quota/usage를 합쳐 GPU 타입 행을 구성합니다. 따라서 프로젝트에 저장된 row나 현재 사용량이 없어도 RTX3060·RTX3090 같은 클러스터 GPU 타입이 표시되며 즉시 프로젝트 limit을 설정할 수 있습니다. 별도 기본값이 없는 타입의 effective limit은 `0`입니다.
+
+Private GPU Flavor가 `extra_specs["afterglow:access_mode"] = "gpu_quota"`이면 access reconcile 대상입니다. Reconcile은 Flavor의 GPU 요구량을 effective project limit과 비교하고 Nova Flavor Access의 현재 tenant 목록을 읽어 `add`·`remove`·`none`을 계산합니다. `/api/v1/admin/flavors/access-reconcile`의 `apply=false`는 관리자 화면의 `권한 추가/회수 예정` 미리보기만 만들며 Nova 권한을 변경하지 않습니다. 실제 `addTenantAccess`/`removeTenantAccess` 호출은 `apply=true` 또는 `PUT /api/v1/admin/compute-policy/{project_id}`의 통합 정책 적용 시 수행됩니다. 관리자 Flavor 목록은 이 정책을 Private GPU 행의 `Quota 연동` 또는 `수동` 배지로 표시합니다.
+
 ---
 
 ## 이미지 관리
@@ -483,6 +513,26 @@ Nova·Cinder·Neutron·Manila·Heat·Zun 서비스 상태, API 엔드포인트, 
 
 응답은 `compute` / `block_storage` / `network` / `shared_file_system` / `orchestration` / `container` / `container_infra` / `endpoints` / `storage_pools` 필드로 구성됩니다.
 
+### 관리자 화면의 필터·정렬
+
+`/admin/services`의 9개 탭은 조회한 category 데이터 안에서 필터·검색·정렬합니다. 필터 조작은 추가 API 요청이나 클라우드 서비스 상태 변경을 일으키지 않습니다.
+
+| 탭 | 조합 가능한 조건 | 정렬 |
+|---|---|---|
+| Compute / Block Storage / File Storage / Orchestrator / Container / Magnum | Binary, Host, 표시되는 경우 Zone, Status, State | 표시되는 모든 열; Updated는 UTC 시각 기준 |
+| Network | Agent Type, Binary, Host, Zone, Alive, Admin State | 표시되는 모든 열; Alive와 Admin State는 독립 |
+| API Endpoints | 이름, 서비스 유형, 리전 | 이름, 서비스 유형, 리전 |
+| Storage Pools | backend, protocol, vendor | 이름, backend/protocol/vendor, 전체·남은·할당 용량(숫자) |
+
+- 조건은 AND로 적용합니다. 예: Network에서 `Alive=down`, `Host=compute2`, `Admin State=UP`을 동시에 선택할 수 있습니다. Alive 미확인은 down과 별개입니다.
+- 검색은 대소문자와 양끝 공백을 무시하고 공백으로 나눈 모든 검색어를 메타데이터에서 찾습니다. API Endpoints의 URL과 Storage Pools의 driver version도 검색 대상입니다.
+- 문자열은 `host2`가 `host10`보다 앞서는 자연 정렬이며, 용량은 표시 문자열이 아닌 숫자 기준입니다. 비어 있거나 유효하지 않은 정렬 값은 오름차순·내림차순 모두 마지막에 둡니다. 같은 값의 원래 순서는 유지합니다.
+- 표 머리글의 버튼은 클릭 또는 키보드로 방향을 전환하며 `aria-sort`를 제공합니다. 작은 화면에서는 표를 가로 스크롤하지 않고 상단 정렬 선택기와 방향 버튼을 사용할 수 있습니다.
+- 탭별 검색·필터·정렬은 페이지가 유지되는 동안 탭 전환과 수동/자동 새로고침 뒤에도 남습니다. 다른 페이지 이동이나 전체 새로고침 이후의 영속화는 하지 않습니다.
+- 초기 로딩과 백그라운드 새로고침을 구분합니다. 새로고침 중에는 기존 행에서 계속 필터·정렬할 수 있습니다. 선택지가 새 응답에서 사라져도 선택을 보존하며 `표시 / 전체` 건수와 초기화 동작을 제공합니다. 원본 0건과 조건에 맞는 결과 0건을 구분합니다.
+- User/project identity가 바뀌면 이전 서비스 행을 즉시 비우고 늦게 도착한 응답을 차단합니다. 같은 identity의 token 갱신은 기존 행과 필터를 유지하면서 새 요청 세대를 사용합니다.
+- 초기화는 현재 탭에만 적용하며 API Endpoints는 이름 오름차순, 나머지 탭은 응답 원본 순서로 돌아갑니다. 기존 lazy load·hover prefetch·선택 탭 refresh 계약은 바뀌지 않습니다.
+
 ---
 
 ## 공지사항 (announcements)
@@ -503,6 +553,8 @@ Nova·Cinder·Neutron·Manila·Heat·Zun 서비스 상태, API 엔드포인트, 
 - `severity`: `info` 등(기본 `info`).
 - `target_type`: 대상 범위(전체/프로젝트 등), `target_id`로 특정 대상 지정.
 - `starts_at`/`ends_at`으로 노출 기간, `is_active`로 활성 여부 제어.
+
+관리자 화면의 특정 사용자·프로젝트 대상은 긴 native 선택 목록 대신 `SearchSelect`로 고릅니다. 팝오버 검색은 표시 이름과 stable ID를 모두 대상으로 하며 키보드 방향키·Enter·Escape를 지원합니다. 대상 유형을 바꾸면 이전 `target_id` 선택은 제거됩니다. 사용자 후보는 `/api/v1/admin/users?limit=100`, 프로젝트 후보는 `/api/v1/admin/projects/names` 응답을 사용하며 생성 payload와 서버 권한 계약은 바뀌지 않습니다.
 
 ---
 

@@ -14,5 +14,5 @@ _PROXY_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]
 @router.api_route("", methods=_PROXY_METHODS)
 @router.api_route("/{path:path}", methods=_PROXY_METHODS)
 async def proxy_drover(path: str = "", *, request: Request) -> Response:
-    upstream_path = "/v1" if not path else f"/v1/{path}"
+    upstream_path = "/v1/" if not path else f"/v1/{path}"
     return await proxy("drover", request, upstream_path)

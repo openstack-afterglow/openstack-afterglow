@@ -155,7 +155,7 @@ describe('resolvedTheme', () => {
 		expect(get(resolvedTheme)).toBe('light');
 
 		// 시스템 다크모드 변경 이벤트 시뮬레이션
-		changeHandler?.({ matches: true });
+		(changeHandler as ((event: { matches: boolean }) => void) | null)?.({ matches: true });
 		expect(get(resolvedTheme)).toBe('dark');
 	});
 });

@@ -1,0 +1,657 @@
+name: afterglow-local-services
+
+# Standalone source development and isolated functional-test datastores.
+# The local-services runner validates and supplies private app credentials/keys.
+# Empty app inputs allow test-only parsing without cloud credentials; they do not
+# enable insecure application defaults. Select only test services for tests.
+x-local-os: &local-os
+  OS_AUTH_URL: ${AFTERGLOW_LOCAL_OS_AUTH_URL:-}
+  OS_USERNAME: ${AFTERGLOW_LOCAL_OS_USERNAME:-}
+  OS_PASSWORD: ${AFTERGLOW_LOCAL_OS_PASSWORD:-}
+  OS_PROJECT_NAME: ${AFTERGLOW_LOCAL_OS_PROJECT_NAME:-}
+  OS_SERVICE_PROJECT_ID: ${AFTERGLOW_LOCAL_OS_SERVICE_PROJECT_ID:-${OS_SERVICE_PROJECT_ID:-}}
+  OS_USER_DOMAIN_NAME: ${AFTERGLOW_LOCAL_OS_USER_DOMAIN_NAME:-}
+  OS_PROJECT_DOMAIN_NAME: ${AFTERGLOW_LOCAL_OS_PROJECT_DOMAIN_NAME:-}
+  OS_REGION_NAME: ${AFTERGLOW_LOCAL_OS_REGION_NAME:-}
+  OS_INTERFACE: ${AFTERGLOW_LOCAL_OS_INTERFACE:-}
+
+x-waygate-environment: &waygate-environment
+  <<: *local-os
+  DATABASE_URL: mysql+aiomysql://waygate:dev@service-mariadb:3306/waygate
+  REDIS_URL: redis://redis:6379/6
+  WAYGATE_ENCRYPTION_KEY: ${AFTERGLOW_LOCAL_ENCRYPTION_KEY:-}
+  WAYGATE_CONFIG_FILE: /etc/afterglow/afterglow.conf
+  WAYGATE_CALLBACK_BASE_URL: ${WAYGATE_CALLBACK_BASE_URL:-http://localhost:8010}
+  WAYGATE_KEY_NAME: ${WAYGATE_KEY_NAME:-}
+
+x-drover-environment: &drover-environment
+  <<: *local-os
+  DATABASE_URL: mysql+aiomysql://drover:dev@service-mariadb:3306/drover
+  REDIS_URL: redis://redis:6379/7
+  DROVER_KUBECONFIG_ENCRYPTION_KEY: ${AFTERGLOW_LOCAL_ENCRYPTION_KEY:-}
+  DROVER_CONFIG_FILE: /etc/afterglow/afterglow.conf
+  DROVER_CALLBACK_BASE_URL: ${DROVER_CALLBACK_BASE_URL:-http://localhost:8011}
+  SENTINEL_ENABLED: "false"
+  SENTINEL_HOSTS: ""
+
+x-lumen-environment: &lumen-environment
+  DATABASE_URL: mysql+aiomysql://lumen:dev@service-mariadb:3306/lumen
+  REDIS_URL: redis://redis:6379/8
+  CHAT_CHECKPOINTER_POSTGRES_URL: postgresql://lumen:dev@lumen-postgres:5432/lumen
+  CHAT_MEMORY_PGVECTOR_URL: ""
+  CHAT_SEMANTIC_MEMORY_ENABLED: "false"
+  KEYSTONE_AUTH_URL: ${AFTERGLOW_LOCAL_OS_AUTH_URL:-}
+  KEYSTONE_ADMIN_USERNAME: ${AFTERGLOW_LOCAL_OS_USERNAME:-}
+  KEYSTONE_ADMIN_PASSWORD: ${AFTERGLOW_LOCAL_OS_PASSWORD:-}
+  KEYSTONE_ADMIN_PROJECT: ${AFTERGLOW_LOCAL_OS_PROJECT_NAME:-}
+  KEYSTONE_DOMAIN: ${AFTERGLOW_LOCAL_OS_USER_DOMAIN_NAME:-}
+  KEYSTONE_REGION_NAME: ${AFTERGLOW_LOCAL_OS_REGION_NAME:-}
+  KEYSTONE_INTERFACE: ${AFTERGLOW_LOCAL_OS_INTERFACE:-}
+  LUMEN_ENCRYPTION_KEY: ${AFTERGLOW_LOCAL_ENCRYPTION_KEY:-}
+  LUMEN_MCP_SERVICE_TOKEN: ${AFTERGLOW_LOCAL_SERVICE_TOKEN:-}
+  MCP_CONTROL_PLANE_URL: ${LUMEN_MCP_CONTROL_PLANE_URL-http://backend:8000}
+
+x-palimpsest-environment: &palimpsest-environment
+  <<: *local-os
+  DATABASE_URL: mysql+asyncmy://palimpsest:dev@service-mariadb:3306/palimpsest
+  REDIS_URL: redis://redis:6379/9
+  PALIMPSEST_HUB_LOCAL_PATH: /var/lib/palimpsest/hub
+  SSL_VERIFY: ${PALIMPSEST_SSL_VERIFY:-true}
+
+x-afterglow-local-environment: &afterglow-local-environment
+  AFTERGLOW_ENV: development
+  AFTERGLOW_ALLOW_INSECURE: "0"
+  <<: *local-os
+  SECRET_KEY: ${AFTERGLOW_LOCAL_SECRET_KEY:-}
+  K3S_KUBECONFIG_ENCRYPTION_KEY: ${AFTERGLOW_LOCAL_ENCRYPTION_KEY:-}
+  DATABASE_URL: mysql+aiomysql://afterglow:dev@afterglow-mariadb:3306/afterglow
+  REDIS_URL: redis://redis:6379/0
+  SENTINEL_ENABLED: "false"
+  SENTINEL_HOSTS: ""
+  SERVICE_WAYGATE_INTERNAL_URL: ${SERVICE_WAYGATE_INTERNAL_URL-${AFTERGLOW_LOCAL_WAYGATE_INTERNAL_URL-http://waygate-api:8010}}
+  SERVICE_DROVER_INTERNAL_URL: ${SERVICE_DROVER_INTERNAL_URL-${AFTERGLOW_LOCAL_DROVER_INTERNAL_URL-http://drover-api:8011}}
+  SERVICE_LUMEN_INTERNAL_URL: ${SERVICE_LUMEN_INTERNAL_URL-${AFTERGLOW_LOCAL_LUMEN_INTERNAL_URL-http://lumen-api:8012}}
+  SERVICE_PALIMPSEST_INTERNAL_URL: ${SERVICE_PALIMPSEST_INTERNAL_URL-${AFTERGLOW_LOCAL_PALIMPSEST_INTERNAL_URL-http://palimpsest-api:8020}}
+
+x-afterglow-local-config-reader: &afterglow-local-config-reader
+  group_add:
+    - ${AFTERGLOW_LOCAL_CONFIG_GID:-0}
+
+services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  service-mariadb:
+    image: mariadb:11.4
+    environment:
+      MARIADB_ROOT_PASSWORD: dev
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    volumes:
+      - service-mariadb-data:/var/lib/mysql
+      - ./docker/mariadb/service-init.sql:/docker-entrypoint-initdb.d/00-services.sql:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  afterglow-mariadb:
+    image: mariadb:11.4
+    environment:
+      MARIADB_ROOT_PASSWORD: dev
+      MARIADB_DATABASE: afterglow
+      MARIADB_USER: afterglow
+      MARIADB_PASSWORD: dev
+    volumes:
+      - afterglow-mariadb-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  lumen-postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: lumen
+      POSTGRES_USER: lumen
+      POSTGRES_PASSWORD: dev
+    volumes:
+      - lumen-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "lumen", "-d", "lumen"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  waygate-migrate:
+    build:
+      context: ../waygate
+      dockerfile: Dockerfile
+      target: waygate-api
+    image: afterglow-local-services/waygate-api:current
+    <<: *afterglow-local-config-reader
+    environment: *waygate-environment
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./.local-services/afterglow.conf:/etc/afterglow/afterglow.conf:ro
+    command: python -m waygate.scripts.migrate --apply
+    depends_on:
+      redis:
+        condition: service_started
+      service-mariadb:
+        condition: service_healthy
+    restart: "no"
+
+  waygate-api:
+    build:
+      context: ../waygate
+      dockerfile: Dockerfile
+      target: waygate-api
+    image: afterglow-local-services/waygate-api:current
+    <<: *afterglow-local-config-reader
+    ports:
+      - "127.0.0.1:8010:8010"
+    environment: *waygate-environment
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./.local-services/afterglow.conf:/etc/afterglow/afterglow.conf:ro
+    depends_on:
+      waygate-migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8010/v1/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  waygate-worker:
+    build:
+      context: ../waygate
+      dockerfile: Dockerfile
+      target: waygate-worker
+    image: afterglow-local-services/waygate-worker:current
+    <<: *afterglow-local-config-reader
+    environment: *waygate-environment
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./.local-services/afterglow.conf:/etc/afterglow/afterglow.conf:ro
+    depends_on:
+      waygate-migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  drover-migrate:
+    build:
+      context: ../drover
+      dockerfile: Dockerfile
+      target: drover-api
+    image: afterglow-local-services/drover-api:current
+    <<: *afterglow-local-config-reader
+    environment: *drover-environment
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./.local-services/afterglow.conf:/etc/afterglow/afterglow.conf:ro
+    command: python -m drover.scripts.migrate --apply
+    depends_on:
+      redis:
+        condition: service_started
+      service-mariadb:
+        condition: service_healthy
+    restart: "no"
+
+  drover-api:
+    build:
+      context: ../drover
+      dockerfile: Dockerfile
+      target: drover-api
+    image: afterglow-local-services/drover-api:current
+    <<: *afterglow-local-config-reader
+    ports:
+      - "127.0.0.1:8011:8011"
+    environment: *drover-environment
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./.local-services/afterglow.conf:/etc/afterglow/afterglow.conf:ro
+    depends_on:
+      redis:
+        condition: service_started
+      drover-migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8011/v1/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  drover-worker:
+    build:
+      context: ../drover
+      dockerfile: Dockerfile
+      target: drover-worker
+    image: afterglow-local-services/drover-worker:current
+    <<: *afterglow-local-config-reader
+    environment: *drover-environment
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./.local-services/afterglow.conf:/etc/afterglow/afterglow.conf:ro
+    depends_on:
+      redis:
+        condition: service_started
+      drover-migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  lumen-migrate:
+    build:
+      context: ../lumen
+      dockerfile: Dockerfile
+      target: lumen-api
+    image: afterglow-local-services/lumen-api:current
+    environment: *lumen-environment
+    env_file:
+      - path: .env
+        required: false
+    command: python -m lumen.scripts.migrate --apply
+    depends_on:
+      redis:
+        condition: service_started
+      service-mariadb:
+        condition: service_healthy
+      lumen-postgres:
+        condition: service_healthy
+    restart: "no"
+
+  lumen-api:
+    build:
+      context: ../lumen
+      dockerfile: Dockerfile
+      target: lumen-api
+    image: afterglow-local-services/lumen-api:current
+    ports:
+      - "127.0.0.1:8012:8012"
+    environment: *lumen-environment
+    env_file:
+      - path: .env
+        required: false
+    depends_on:
+      lumen-migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8012/v1/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  lumen-worker:
+    build:
+      context: ../lumen
+      dockerfile: Dockerfile
+      target: lumen-worker
+    image: afterglow-local-services/lumen-worker:current
+    environment: *lumen-environment
+    env_file:
+      - path: .env
+        required: false
+    depends_on:
+      lumen-migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  palimpsest-bootstrap:
+    build:
+      context: ../palimpsest/hub
+      dockerfile: Dockerfile
+      target: palimpsest-hub-api
+    image: afterglow-local-services/palimpsest-hub-api:current
+    command: palimpsest-hub-bootstrap
+    environment: *palimpsest-environment
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - palimpsest-hub:/var/lib/palimpsest/hub
+    depends_on:
+      redis:
+        condition: service_started
+      service-mariadb:
+        condition: service_healthy
+    restart: "no"
+
+  palimpsest-api:
+    build:
+      context: ../palimpsest/hub
+      dockerfile: Dockerfile
+      target: palimpsest-hub-api
+    image: afterglow-local-services/palimpsest-hub-api:current
+    ports:
+      - "127.0.0.1:8020:8020"
+    environment: *palimpsest-environment
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - palimpsest-hub:/var/lib/palimpsest/hub
+    depends_on:
+      redis:
+        condition: service_started
+      palimpsest-bootstrap:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8020/v1/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  palimpsest-worker:
+    build:
+      context: ../palimpsest/hub
+      dockerfile: Dockerfile
+      target: palimpsest-hub-worker
+    image: afterglow-local-services/palimpsest-hub-worker:current
+    environment: *palimpsest-environment
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - palimpsest-hub:/var/lib/palimpsest/hub
+    depends_on:
+      redis:
+        condition: service_started
+      palimpsest-bootstrap:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: backend
+    image: afterglow-local-services/backend:current
+    <<: *afterglow-local-config-reader
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./.local-services/afterglow.conf:/app/afterglow.conf:ro
+      - ./.local-services/logs:/app/logs
+      - ${AFTERGLOW_LOCAL_CEPH_CONF:-/dev/null}:/etc/ceph/ceph.conf:ro
+      - ${AFTERGLOW_LOCAL_CEPH_KEYRING:-/dev/null}:/etc/ceph/ceph.client.afterglow-rbd.keyring:ro
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      <<: *afterglow-local-environment
+      CORS_ORIGINS: http://localhost:3080,http://127.0.0.1:3080
+      FRONTEND_BASE_URL: http://localhost:3080
+      PUBLIC_API_BASE: http://localhost:8000
+      MCP_PUBLIC_URL: http://localhost:8000/api/v1/mcp
+      MCP_OAUTH_CONSENT_URL: http://localhost:3080/oauth/mcp/authorize
+      LUMEN_MCP_SERVICE_TOKEN: ${AFTERGLOW_LOCAL_SERVICE_TOKEN:-}
+      SERVICE_K3S_ENABLED: "true"
+      SERVICE_WAYGATE_ENABLED: "true"
+      SERVICE_PALIMPSEST_ENABLED: "true"
+      SERVICE_CHAT_ENABLED: "true"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      afterglow-mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      waygate-api:
+        condition: service_healthy
+      drover-api:
+        condition: service_healthy
+      lumen-api:
+        condition: service_healthy
+      palimpsest-api:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: frontend
+    image: afterglow-local-services/frontend:current
+    <<: *afterglow-local-config-reader
+    ports:
+      - "127.0.0.1:3080:3080"
+    volumes:
+      - ./.local-services/afterglow.conf:/app/afterglow.conf:ro
+      - ./.local-services/logs:/app/logs
+    environment:
+      ORIGIN: http://localhost:3080
+      PUBLIC_API_BASE: http://localhost:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3080/health',{redirect:'error'}).then(async r=>{if(!r.ok||(await r.json()).status!=='ok')throw 1})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  notion-worker:
+    profiles: ["notion-worker"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: worker
+    image: afterglow-local-services/notion-worker:current
+    <<: *afterglow-local-config-reader
+    command: python -m app.notion_worker
+    volumes:
+      - ./.local-services/afterglow.conf:/app/afterglow.conf:ro
+      - ./.local-services/logs:/app/logs
+    environment: *afterglow-local-environment
+    env_file:
+      - path: .env
+        required: false
+    depends_on:
+      afterglow-mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  mariadb:
+    profiles: ["test"]
+    image: mariadb:11.4
+    ports:
+      - "127.0.0.1:3307:3306"
+    environment:
+      MARIADB_ROOT_PASSWORD: dev
+      MARIADB_DATABASE: afterglow_functional
+      MARIADB_USER: afterglow
+      MARIADB_PASSWORD: dev
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    tmpfs:
+      - /var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  postgres:
+    profiles: ["test"]
+    image: postgres:16
+    ports:
+      - "127.0.0.1:5434:5432"
+    environment:
+      POSTGRES_DB: afterglow_checkpoints
+      POSTGRES_USER: afterglow
+      POSTGRES_PASSWORD: dev
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U afterglow -d afterglow_checkpoints"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  test-redis:
+    profiles: ["test"]
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "no"]
+    ports:
+      - "127.0.0.1:6380:6379"
+    tmpfs:
+      - /data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  opensearch:
+    profiles: ["monitoring"]
+    image: opensearchproject/opensearch:2.13.0
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+    ports:
+      - "127.0.0.1:9200:9200"
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  opensearch-dashboards:
+    profiles: ["monitoring"]
+    image: opensearchproject/opensearch-dashboards:2.13.0
+    environment:
+      OPENSEARCH_HOSTS: http://opensearch:9200
+      DISABLE_SECURITY_DASHBOARDS_PLUGIN: "true"
+    ports:
+      - "127.0.0.1:5601:5601"
+    depends_on:
+      - opensearch
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  prometheus:
+    profiles: ["monitoring"]
+    image: prom/prometheus:v2.51.0
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prom-data:/prometheus
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  grafana:
+    profiles: ["monitoring"]
+    image: grafana/grafana:11.0.0
+    ports:
+      - "127.0.0.1:3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-changeme_grafana}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  redis-data:
+  service-mariadb-data:
+  afterglow-mariadb-data:
+  lumen-postgres-data:
+  palimpsest-hub:
+  opensearch-data:
+  prom-data:
+  grafana-data:

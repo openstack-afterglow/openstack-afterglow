@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { RunActivityItem } from '$lib/api/chatRunReducer';
 	import type { ToolActivityItem } from '$lib/api/chatToolActivity';
-	import { taskLabelForStage } from '$lib/api/chatTaskLabels';
+	import { taskLabelForContext, taskLabelForStage } from '$lib/api/chatTaskLabels';
 	import ToolCategoryGroup from './ToolCategoryGroup.svelte';
 	import ThinkingBlock from './ThinkingBlock.svelte';
 
@@ -22,6 +22,7 @@
 	const orderedItems = $derived([...items].sort((left, right) => left.seq - right.seq));
 	const taskItems = $derived(
 		orderedItems.filter((item) => {
+			if (item.kind === 'context') return active || item.phase === 'compacted';
 			if (item.kind === 'tool' || item.kind === 'reasoning') return true;
 			if (item.kind !== 'stage') return false;
 			if (item.stage === 'awaiting_input') return true;
@@ -42,8 +43,13 @@
 		return taskLabelForStage(item.stage, item.toolName) ?? '작업을 준비하는 중';
 	}
 
+	function contextLabel(item: Extract<RunActivityItem, { kind: 'context' }>): string {
+		return taskLabelForContext(item.phase, item.cause);
+	}
+
 	function isLive(item: RunActivityItem): boolean {
-		return item.kind === 'stage' || (item.kind === 'tool' && item.status === 'running');
+		if (!active) return false;
+		return item.kind === 'stage' || (item.kind === 'context' && item.phase === 'compacting') || (item.kind === 'tool' && item.status === 'running');
 	}
 
 	function toolItem(item: Extract<RunActivityItem, { kind: 'tool' }>): ToolActivityItem {
@@ -52,12 +58,23 @@
 			name: item.name,
 			args: JSON.stringify(item.arguments),
 			result: item.content
-				.map((part) => (part.type === 'text' ? part.text : `[${part.type}]`))
-				.join('\n'),
+				.filter((part) => part.type === 'text')
+				.map((part) => part.text)
+				.join('\n') || null,
 			running: item.status === 'running',
 			status: item.status === 'running' ? undefined : item.status,
 			errorCode: item.errorCode,
-			durationMs: item.durationMs
+			durationMs: item.durationMs,
+			files: item.content.flatMap((part) =>
+				part.type === 'file'
+					? [{
+							assetId: part.asset_id,
+							name: part.name,
+							mimeType: part.mime_type,
+							sizeBytes: part.size_bytes
+						}]
+					: []
+			)
 		};
 	}
 
@@ -107,6 +124,8 @@
 								items={entry.items.map(toolItem)}
 								active={active && entry.items.some((item) => item.status === 'running')}
 							/>
+						{:else if entry.item.kind === 'context'}
+							<p class="stage-label">{contextLabel(entry.item)}</p>
 						{:else if entry.item.kind === 'stage'}
 							<p class="stage-label">{stageLabel(entry.item)}</p>
 						{:else}
@@ -152,11 +171,11 @@
 		color: var(--color-ink-1);
 	}
 	.summary-count {
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.summary-chevron {
 		margin-left: auto;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		transition: transform 0.15s ease;
 	}
 	details[open] .summary-chevron {

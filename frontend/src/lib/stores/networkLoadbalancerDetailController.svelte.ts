@@ -2,6 +2,7 @@ import { confirmDialog } from '$lib/stores/confirm.svelte';
 import { api, ApiError } from '$lib/api/client';
 import { goto } from '$app/navigation';
 import type { LoadBalancerDetail, Listener, Pool, Member, LbStatusNode } from '$lib/types/loadbalancer';
+import { isDroverLoadBalancer, loadBalancerDeleteConfirmation } from '$lib/utils/droverLoadBalancer';
 import { toast } from '$lib/stores/toast';
 
 export interface NetworkLbDetailOpts {
@@ -20,7 +21,7 @@ export function createNetworkLoadbalancerDetailController(opts: NetworkLbDetailO
   let error = $state('');
   let saving = $state(false);
   let statusTree = $state<LbStatusNode | null>(null);
-
+  const isProtected = $derived(isDroverLoadBalancer(lb));
   const id = opts.lbId;
   const tok = opts.token;
   const pid = opts.projectId;
@@ -127,10 +128,12 @@ export function createNetworkLoadbalancerDetailController(opts: NetworkLbDetailO
   }
 
   async function deleteLb() {
-    if (!await confirmDialog(`로드밸런서 "${lb?.name || id()}"을 삭제하시겠습니까? (연결된 리스너/풀/멤버도 모두 삭제됩니다)`)) return;
+    const lbId = id();
+    const message = loadBalancerDeleteConfirmation(lb, lbId);
+    if (!await confirmDialog(message)) return;
     saving = true;
     try {
-      await api.delete(`/api/v1/loadbalancers/${id()}`, tok(), pid());
+      await api.delete(`/api/v1/loadbalancers/${lbId}`, tok(), pid());
       goto('/dashboard/network/loadbalancers');
     } catch (e) {
       toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
@@ -149,6 +152,7 @@ export function createNetworkLoadbalancerDetailController(opts: NetworkLbDetailO
     get error() { return error; },
     get saving() { return saving; },
     get statusTree() { return statusTree; },
+    get isProtected() { return isProtected; },
     fetchAll,
     loadPoolMembers,
     createListener,

@@ -2,12 +2,12 @@
 
 검증 항목:
 1. 모든 GPU quota 엔드포인트: non-admin → 403
-2. DB 미초기화 시 → 503
-3. 쿼터 계산 로직 (available = limit - in_use, -1 = 무제한)
-4. 정상 응답 (admin 허용, 200/204)
+2. Afterglow DB 상태와 무관하게 Drover 성공 응답 전달
+3. Drover 실패 시 503 fail-closed
+4. 쿼터 계산 로직 (available = limit - in_use, -1 = 무제한)
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -59,49 +59,87 @@ async def test_delete_gpu_quota_requires_admin(non_admin_client):
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# DB 미초기화 시 503 응답 테스트
+# DB 헬스 상태 무관 — Drover 프록시 정상 시 성공 응답
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
 @pytest.mark.asyncio
-async def test_get_default_gpu_quotas_db_not_initialized(admin_client):
-    with patch("app.database.is_db_available", return_value=False):
+async def test_get_default_gpu_quotas_succeeds(admin_client):
+    with patch("app.services.gpu_quota.get_project_gpu_quotas", return_value=[{"gpu_type": "RTX3090", "limit": 4}]):
+        resp = await admin_client.get("/api/v1/admin/gpu-quotas/defaults")
+    assert resp.status_code == 200
+    assert resp.json() == [{"gpu_type": "RTX3090", "limit": 4}]
+
+
+@pytest.mark.asyncio
+async def test_set_default_gpu_quota_succeeds(admin_client):
+    ret = {"project_id": "__default__", "gpu_type": "RTX3090", "limit": 4}
+    with (
+        patch("app.services.gpu_quota.set_project_gpu_quota", return_value=ret),
+        patch("app.api.identity.admin.invalidate") as mock_invalidate,
+    ):
+        resp = await admin_client.put("/api/v1/admin/gpu-quotas/defaults", json={"gpu_type": "RTX3090", "limit": 4})
+    assert resp.status_code == 200
+    assert resp.json() == ret
+    mock_invalidate.assert_awaited_once_with("afterglow:nova:*:flavors")
+
+
+@pytest.mark.asyncio
+async def test_delete_default_gpu_quota_succeeds(admin_client):
+    with patch("app.services.gpu_quota.delete_project_gpu_quota", return_value=True):
+        resp = await admin_client.delete("/api/v1/admin/gpu-quotas/defaults/RTX3090")
+    assert resp.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_get_gpu_quotas_succeeds(admin_client):
+    ret = [{"gpu_type": "RTX3090", "limit": 4, "in_use": 1, "available": 3}]
+    with patch("app.services.gpu_quota.get_effective_gpu_quota_status", return_value=ret):
+        resp = await admin_client.get("/api/v1/admin/gpu-quotas/proj-1")
+    assert resp.status_code == 200
+    assert resp.json() == ret
+
+
+@pytest.mark.asyncio
+async def test_set_gpu_quota_succeeds(admin_client):
+    ret = {"project_id": "proj-1", "gpu_type": "RTX3090", "limit": 2}
+    with (
+        patch("app.services.gpu_quota.set_project_gpu_quota", return_value=ret),
+        patch("app.api.identity.admin.invalidate") as mock_invalidate,
+    ):
+        resp = await admin_client.put("/api/v1/admin/gpu-quotas/proj-1", json={"gpu_type": "RTX3090", "limit": 2})
+    assert resp.status_code == 200
+    assert resp.json() == ret
+    mock_invalidate.assert_awaited_once_with("afterglow:nova:proj-1:flavors")
+
+
+@pytest.mark.asyncio
+async def test_delete_gpu_quota_succeeds(admin_client):
+    with patch("app.services.gpu_quota.delete_project_gpu_quota", return_value=True):
+        resp = await admin_client.delete("/api/v1/admin/gpu-quotas/proj-1/RTX3090")
+    assert resp.status_code == 204
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# GPU 서비스 예외 발생 시 503 응답 회귀 테스트
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+@pytest.mark.asyncio
+async def test_get_default_gpu_quotas_exception_returns_503(admin_client):
+    with patch(
+        "app.services.gpu_quota.get_project_gpu_quotas", side_effect=RuntimeError("GPU quota service unreachable")
+    ):
         resp = await admin_client.get("/api/v1/admin/gpu-quotas/defaults")
     assert resp.status_code == 503
 
 
 @pytest.mark.asyncio
-async def test_set_default_gpu_quota_db_not_initialized(admin_client):
-    with patch("app.database.is_db_available", return_value=False):
-        resp = await admin_client.put("/api/v1/admin/gpu-quotas/defaults", json={"gpu_type": "RTX3090", "limit": 4})
-    assert resp.status_code == 503
-
-
-@pytest.mark.asyncio
-async def test_delete_default_gpu_quota_db_not_initialized(admin_client):
-    with patch("app.database.is_db_available", return_value=False):
-        resp = await admin_client.delete("/api/v1/admin/gpu-quotas/defaults/RTX3090")
-    assert resp.status_code == 503
-
-
-@pytest.mark.asyncio
-async def test_get_gpu_quotas_db_not_initialized(admin_client):
-    with patch("app.database.is_db_available", return_value=False):
+async def test_get_gpu_quotas_exception_returns_503(admin_client):
+    with patch(
+        "app.services.gpu_quota.get_project_gpu_quotas", side_effect=RuntimeError("GPU quota service unreachable")
+    ):
         resp = await admin_client.get("/api/v1/admin/gpu-quotas/proj-1")
-    assert resp.status_code == 503
-
-
-@pytest.mark.asyncio
-async def test_set_gpu_quota_db_not_initialized(admin_client):
-    with patch("app.database.is_db_available", return_value=False):
-        resp = await admin_client.put("/api/v1/admin/gpu-quotas/proj-1", json={"gpu_type": "RTX3090", "limit": 2})
-    assert resp.status_code == 503
-
-
-@pytest.mark.asyncio
-async def test_delete_gpu_quota_db_not_initialized(admin_client):
-    with patch("app.database.is_db_available", return_value=False):
-        resp = await admin_client.delete("/api/v1/admin/gpu-quotas/proj-1/RTX3090")
     assert resp.status_code == 503
 
 
@@ -165,11 +203,8 @@ async def test_get_all_gpu_aliases_refreshes_db_overlay_before_discovery():
 
 
 async def test_get_default_gpu_quotas_success(admin_client):
-    mock_proxy = MagicMock()
-    mock_proxy.default_gpu_quotas.return_value = [{"gpu_type": "RTX3090", "limit": 4}]
-    with patch("app.database.is_db_available", return_value=True):
-        with patch("app.api.identity.admin.register_drover", return_value=mock_proxy):
-            resp = await admin_client.get("/api/v1/admin/gpu-quotas/defaults")
+    with patch("app.services.gpu_quota.get_project_gpu_quotas", return_value=[{"gpu_type": "RTX3090", "limit": 4}]):
+        resp = await admin_client.get("/api/v1/admin/gpu-quotas/defaults")
     assert resp.status_code == 200
     data = resp.json()
     assert data == [{"gpu_type": "RTX3090", "limit": 4}]
@@ -177,22 +212,17 @@ async def test_get_default_gpu_quotas_success(admin_client):
 
 @pytest.mark.asyncio
 async def test_get_default_gpu_quotas_empty(admin_client):
-    mock_proxy = MagicMock()
-    mock_proxy.default_gpu_quotas.return_value = []
-    with patch("app.database.is_db_available", return_value=True):
-        with patch("app.api.identity.admin.register_drover", return_value=mock_proxy):
-            resp = await admin_client.get("/api/v1/admin/gpu-quotas/defaults")
+    with patch("app.services.gpu_quota.get_project_gpu_quotas", return_value=[]):
+        resp = await admin_client.get("/api/v1/admin/gpu-quotas/defaults")
     assert resp.status_code == 200
     assert resp.json() == []
 
 
 @pytest.mark.asyncio
 async def test_set_default_gpu_quota_success(admin_client):
-    mock_proxy = MagicMock()
-    mock_proxy.set_default_gpu_quota.return_value = {"project_id": "__default__", "gpu_type": "RTX3090", "limit": 4}
-    with patch("app.database.is_db_available", return_value=True):
-        with patch("app.api.identity.admin.register_drover", return_value=mock_proxy):
-            resp = await admin_client.put("/api/v1/admin/gpu-quotas/defaults", json={"gpu_type": "RTX3090", "limit": 4})
+    ret = {"project_id": "__default__", "gpu_type": "RTX3090", "limit": 4}
+    with patch("app.services.gpu_quota.set_project_gpu_quota", return_value=ret):
+        resp = await admin_client.put("/api/v1/admin/gpu-quotas/defaults", json={"gpu_type": "RTX3090", "limit": 4})
     assert resp.status_code == 200
     data = resp.json()
     assert data["gpu_type"] == "RTX3090"
@@ -201,11 +231,8 @@ async def test_set_default_gpu_quota_success(admin_client):
 
 @pytest.mark.asyncio
 async def test_delete_default_gpu_quota_success(admin_client):
-    mock_proxy = MagicMock()
-    mock_proxy.delete_default_gpu_quota.return_value = None
-    with patch("app.database.is_db_available", return_value=True):
-        with patch("app.api.identity.admin.register_drover", return_value=mock_proxy):
-            resp = await admin_client.delete("/api/v1/admin/gpu-quotas/defaults/RTX3090")
+    with patch("app.services.gpu_quota.delete_project_gpu_quota", return_value=True):
+        resp = await admin_client.delete("/api/v1/admin/gpu-quotas/defaults/RTX3090")
     assert resp.status_code == 204
 
 
@@ -216,11 +243,9 @@ async def test_delete_default_gpu_quota_success(admin_client):
 
 @pytest.mark.asyncio
 async def test_set_gpu_quota_success(admin_client):
-    mock_proxy = MagicMock()
-    mock_proxy.set_project_gpu_quota.return_value = {"project_id": "proj-1", "gpu_type": "RTX3090", "limit": 2}
-    with patch("app.database.is_db_available", return_value=True):
-        with patch("app.api.identity.admin.register_drover", return_value=mock_proxy):
-            resp = await admin_client.put("/api/v1/admin/gpu-quotas/proj-1", json={"gpu_type": "RTX3090", "limit": 2})
+    ret = {"project_id": "proj-1", "gpu_type": "RTX3090", "limit": 2}
+    with patch("app.services.gpu_quota.set_project_gpu_quota", return_value=ret):
+        resp = await admin_client.put("/api/v1/admin/gpu-quotas/proj-1", json={"gpu_type": "RTX3090", "limit": 2})
     assert resp.status_code == 200
     data = resp.json()
     assert data["project_id"] == "proj-1"
@@ -230,11 +255,8 @@ async def test_set_gpu_quota_success(admin_client):
 
 @pytest.mark.asyncio
 async def test_delete_gpu_quota_success(admin_client):
-    mock_proxy = MagicMock()
-    mock_proxy.delete_project_gpu_quota.return_value = None
-    with patch("app.database.is_db_available", return_value=True):
-        with patch("app.api.identity.admin.register_drover", return_value=mock_proxy):
-            resp = await admin_client.delete("/api/v1/admin/gpu-quotas/proj-1/RTX3090")
+    with patch("app.services.gpu_quota.delete_project_gpu_quota", return_value=True):
+        resp = await admin_client.delete("/api/v1/admin/gpu-quotas/proj-1/RTX3090")
     assert resp.status_code == 204
 
 
@@ -243,12 +265,11 @@ async def test_delete_gpu_quota_success(admin_client):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
+@pytest.mark.asyncio
 async def test_get_gpu_quotas_available_calculation(admin_client):
-    mock_proxy = MagicMock()
-    mock_proxy.project_gpu_quotas.return_value = [{"gpu_type": "RTX3090", "limit": 4, "in_use": 1, "available": 3}]
-    with patch("app.database.is_db_available", return_value=True):
-        with patch("app.api.identity.admin.register_drover", return_value=mock_proxy):
-            resp = await admin_client.get("/api/v1/admin/gpu-quotas/proj-1")
+    ret = [{"gpu_type": "RTX3090", "limit": 4, "in_use": 1, "available": 3}]
+    with patch("app.services.gpu_quota.get_effective_gpu_quota_status", return_value=ret):
+        resp = await admin_client.get("/api/v1/admin/gpu-quotas/proj-1")
     assert resp.status_code == 200
     data = resp.json()
     assert len(data) == 1
@@ -257,8 +278,3 @@ async def test_get_gpu_quotas_available_calculation(admin_client):
     assert item["limit"] == 4
     assert item["in_use"] == 1
     assert item["available"] == 3
-
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# circuit breaker 가드 — is_db_available() False 시 빈 결과
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

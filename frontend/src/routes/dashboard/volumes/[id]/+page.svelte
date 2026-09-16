@@ -14,6 +14,7 @@
 	import VolumeBasicInfoCard from '$lib/components/volume/VolumeBasicInfoCard.svelte';
 	import VolumeAttachmentsTable from '$lib/components/volume/VolumeAttachmentsTable.svelte';
 	import { toast } from '$lib/stores/toast';
+	import { Alert, PageShell } from '$lib/components/ui';
 
 	let volume = $state<Volume | null>(null);
 	let attachedInstances = $state<Map<string, string>>(new Map());
@@ -93,17 +94,15 @@
 	}
 </script>
 
-<div class="p-4 md:p-8 max-w-4xl mx-auto">
+<PageShell max="5xl" class="space-y-4">
 	<div class="mb-6">
-		<a href="/dashboard" class="text-gray-400 hover:text-gray-200 text-sm transition-colors">
+		<a href="/dashboard" class="text-ink-2 hover:text-ink-1 text-sm transition-colors">
 			← 대시보드
 		</a>
 	</div>
 
 	{#if error}
-		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">
-			{error}
-		</div>
+		<Alert tone="danger">{error}</Alert>
 	{:else if loading}
 		<LoadingSkeleton variant="card" rows={5} />
 	{:else if volume}
@@ -121,4 +120,4 @@
 		<VolumeBasicInfoCard {volume} />
 		<VolumeAttachmentsTable attachments={volume.attachments} {attachedInstances} />
 	{/if}
-</div>
+</PageShell>

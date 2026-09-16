@@ -621,27 +621,54 @@ async def test_list_instances_filters_deleted():
 
 
 @pytest.mark.asyncio
-async def test_list_instances_admin_filters_deleted():
-    """list_instances_admin_all_projects도 deleted=1 행을 제외하는지 검증."""
+async def test_list_instances_admin_returns_tenant_trove_inventory():
+    """관리자 목록은 Trove proxy의 management inventory를 반환한다."""
     from app.services import trove as trove_svc
 
     raw_instances = [
-        {"id": "a1", "name": "ok", "status": "ACTIVE", "deleted": 0, "tenant_id": "p1"},
+        {"id": "a1", "name": "tenant-db", "status": "ACTIVE", "deleted": 0, "tenant_id": "p1"},
         {"id": "d1", "name": "gone", "status": "SHUTDOWN", "deleted": 1, "tenant_id": "p2"},
     ]
-
     mock_resp = MagicMock()
     mock_resp.json.return_value = {"instances": raw_instances}
     mock_resp.raise_for_status = MagicMock()
-
     mock_conn = MagicMock()
-    mock_conn.database.get_endpoint.return_value = "http://trove:8779/v1"
-    mock_conn.session.get.return_value = mock_resp
+    mock_conn.database.get.return_value = mock_resp
 
     result = trove_svc.list_instances_admin_all_projects(mock_conn)
-    ids = [r["id"] for r in result]
-    assert "a1" in ids
-    assert "d1" not in ids
+
+    assert result == [
+        {
+            "id": "a1",
+            "name": "tenant-db",
+            "status": "ACTIVE",
+            "datastore": {},
+            "flavor_id": "",
+            "flavor_ram": 0,
+            "flavor_vcpus": 0,
+            "size": 0,
+            "volume_used": 0,
+            "created_at": "",
+            "updated_at": "",
+            "hostname": "",
+            "ip": "",
+            "ips": [],
+            "address_map": {},
+            "links": [],
+            "project_id": "p1",
+        }
+    ]
+
+
+def test_list_instances_admin_propagates_management_failure():
+    """Trove management 장애를 tenant DB 0건으로 오인하지 않는다."""
+    from app.services import trove as trove_svc
+
+    mock_conn = MagicMock()
+    mock_conn.database.get.side_effect = RuntimeError("management unavailable")
+
+    with pytest.raises(RuntimeError, match="management unavailable"):
+        trove_svc.list_instances_admin_all_projects(mock_conn)
 
 
 @pytest.mark.asyncio

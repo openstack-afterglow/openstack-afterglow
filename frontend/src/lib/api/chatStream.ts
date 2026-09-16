@@ -1,10 +1,26 @@
-import { getBaseUrl } from './client';
-import { parseChatRunEvent, type ChatRunEvent, type ChatRunStatus } from './chatContracts';
+import { fetchWithAuth } from './client';
+import { ApiError } from './errors';
+import { parseChatRunEvent, parseContextState, type ChatRunDescriptor, type ChatRunEvent, type ChatRunStatus, type ContextState } from './chatContracts';
+export type { ChatRunDescriptor, ContextState } from './chatContracts';
 
 export class ChatProtocolError extends Error {
-	constructor(message: string) {
+	readonly status?: number;
+
+	constructor(message: string, status?: number) {
 		super(message);
 		this.name = 'ChatProtocolError';
+		this.status = status;
+	}
+}
+
+/** A non-2xx HTTP response from the chat API, with its status preserved. */
+export class ChatHttpError extends ChatProtocolError {
+	readonly status: number;
+
+	constructor(message: string, status: number) {
+		super(message, status);
+		this.name = 'ChatHttpError';
+		this.status = status;
 	}
 }
 
@@ -15,20 +31,17 @@ export class ChatRunReloadRequiredError extends ChatProtocolError {
 	}
 }
 
-export interface ChatRunDescriptor {
-	run_id: string;
-	conversation_id: string | null;
-	temp_thread_id: string | null;
-	status: ChatRunStatus;
-	events_url: string;
-	cancel_url: string;
-}
-
 export interface CreateChatRunOptions {
 	token?: string;
 	projectId?: string;
 	signal?: AbortSignal;
 	idempotencyKey?: string;
+}
+
+export interface PreviewChatContextOptions {
+	token?: string;
+	projectId?: string;
+	signal?: AbortSignal;
 }
 
 export interface FollowChatRunOptions {
@@ -66,11 +79,8 @@ function delay(milliseconds: number): Promise<void> {
 }
 
 
-function headers(token?: string, projectId?: string): HeadersInit {
-	const result: Record<string, string> = { Accept: 'text/event-stream' };
-	if (token) result.Authorization = `Bearer ${token}`;
-	if (projectId) result['X-Project-Id'] = projectId;
-	return result;
+function headers(): HeadersInit {
+	return { Accept: 'text/event-stream' };
 }
 
 function normalizeDescriptorUrl(url: unknown): string {
@@ -88,11 +98,18 @@ function normalizeDescriptorUrl(url: unknown): string {
 
 export function parseChatRunDescriptor(value: unknown): ChatRunDescriptor {
 	if (!isRecord(value)) throw new ChatProtocolError('invalid chat run descriptor');
+	const expectedKeys = ['run_id', 'conversation_id', 'temp_thread_id', 'status', 'run_kind', 'events_url', 'cancel_url'].sort();
+	const actualKeys = Object.keys(value).sort();
+	if (actualKeys.length !== expectedKeys.length || actualKeys.some((key, index) => key !== expectedKeys[index])) {
+		throw new ChatProtocolError('invalid chat run descriptor');
+	}
 	if (
 		typeof value.run_id !== 'string' ||
+		value.run_id.length === 0 ||
 		(typeof value.conversation_id !== 'string' && value.conversation_id !== null) ||
 		(typeof value.temp_thread_id !== 'string' && value.temp_thread_id !== null) ||
-		!isRunStatus(value.status)
+		!isRunStatus(value.status) ||
+		(value.run_kind !== 'completion' && value.run_kind !== 'compaction')
 	) {
 		throw new ChatProtocolError('invalid chat run descriptor');
 	}
@@ -103,6 +120,7 @@ export function parseChatRunDescriptor(value: unknown): ChatRunDescriptor {
 		conversation_id: value.conversation_id,
 		temp_thread_id: value.temp_thread_id,
 		status: value.status,
+		run_kind: value.run_kind,
 		events_url: eventsUrl,
 		cancel_url: cancelUrl
 	};
@@ -118,7 +136,7 @@ async function errorFrom(response: Response): Promise<Error> {
 	} catch {
 		// Keep the status-derived message when a proxy returned non-JSON.
 	}
-	return new ChatProtocolError(detail);
+	return new ChatHttpError(detail, response.status);
 }
 
 /** Creates exactly one durable run. The key remains stable for a caller retry. */
@@ -127,18 +145,36 @@ export async function createChatRun(
 	body: unknown,
 	{ token, projectId, signal, idempotencyKey = crypto.randomUUID() }: CreateChatRunOptions = {}
 ): Promise<ChatRunDescriptor> {
-	const response = await fetch(`${getBaseUrl()}${path}`, {
+	const response = await fetchWithAuth(path, {
 		method: 'POST',
 		headers: {
-			...headers(token, projectId),
+			...headers(),
 			'Content-Type': 'application/json',
 			'Idempotency-Key': idempotencyKey
 		},
 		body: JSON.stringify(body),
 		signal
-	});
+	}, token, projectId);
 	if (response.status !== 202) throw await errorFrom(response);
 	return parseChatRunDescriptor(await response.json());
+}
+
+export async function previewChatContext(
+	path: string,
+	body: unknown,
+	{ token, projectId, signal }: PreviewChatContextOptions = {}
+): Promise<ContextState> {
+	const response = await fetchWithAuth(path, {
+		method: 'POST',
+		headers: {
+			...headers(),
+			'Content-Type': 'application/json'
+		},
+		body: JSON.stringify(body),
+		signal
+	}, token, projectId);
+	if (!response.ok) throw await errorFrom(response);
+	return parseContextState(await response.json());
 }
 
 function takeFrames(buffer: string): { frames: SseFrame[]; rest: string } {
@@ -206,12 +242,12 @@ export async function* followChatRun(
 	while (true) {
 		let response: Response;
 		try {
-			response = await fetch(`${getBaseUrl()}${eventsUrlWithAfterSeq(descriptor.events_url, lastSeq)}`, {
-				headers: { ...headers(token, projectId), ...(lastSeq ? { 'Last-Event-ID': `${descriptor.run_id}:${lastSeq}` } : {}) },
+			response = await fetchWithAuth(eventsUrlWithAfterSeq(descriptor.events_url, lastSeq), {
+				headers: { ...headers(), ...(lastSeq ? { 'Last-Event-ID': `${descriptor.run_id}:${lastSeq}` } : {}) },
 				signal
-			});
+			}, token, projectId);
 		} catch (error) {
-			if (signal?.aborted) throw error;
+			if (signal?.aborted || error instanceof ApiError) throw error;
 			if (attempts >= waits.length) throw new ChatProtocolError('chat event stream disconnected');
 			await delay(waits[attempts++]);
 			continue;
@@ -249,11 +285,11 @@ export async function cancelChatRun(
 	descriptor: ChatRunDescriptor,
 	{ token, projectId, signal }: Omit<CreateChatRunOptions, 'idempotencyKey'> = {}
 ): Promise<void> {
-	const response = await fetch(`${getBaseUrl()}${descriptor.cancel_url}`, {
+	const response = await fetchWithAuth(descriptor.cancel_url, {
 		method: 'POST',
-		headers: headers(token, projectId),
+		headers: headers(),
 		signal
-	});
+	}, token, projectId);
 	if (!response.ok) throw await errorFrom(response);
 }
 

@@ -25,7 +25,7 @@
 
 {#if count > 0}
 	<div class="bulk-overlay-wrap" role="region" aria-label={ariaLabel} aria-busy={busy}>
-		<div class="bulk-overlay-panel">
+		<div class="bulk-overlay-panel material-overlay">
 			<div class="bulk-count" aria-live="polite"><strong>{count}</strong>개 선택됨</div>
 			<div class="bulk-actions">
 				{#each actions as action (action.key)}
@@ -59,24 +59,18 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: 1rem;
-		padding: 0.875rem 1rem;
-		border: 1px solid color-mix(in oklab, var(--color-accent-2) 34%, transparent);
-		border-radius: 1.125rem;
-		background:
-			linear-gradient(135deg, color-mix(in oklab, var(--color-accent-2) 20%, transparent), transparent 42%),
-			color-mix(in oklab, var(--color-surface-raised) 90%, transparent);
-		box-shadow:
-			0 18px 60px color-mix(in oklab, black 32%, transparent),
-			0 0 0 1px color-mix(in oklab, white 7%, transparent) inset;
-		backdrop-filter: blur(14px) saturate(1.15);
+		padding: 0.75rem 1rem;
+		border: 1px solid var(--color-line-2);
+		border-radius: var(--radius-xl);
+		box-shadow: var(--shadow-overlay-compact);
 		pointer-events: auto;
 		animation: bulk-rise var(--motion-duration-panel) var(--motion-ease-out);
 	}
 
 	.bulk-count {
-		color: var(--color-accent);
-		font-size: 0.9375rem;
-		font-weight: 700;
+		color: var(--color-ink-0);
+		font-size: 0.875rem;
+		font-weight: 600;
 		letter-spacing: -0.01em;
 		white-space: nowrap;
 	}
@@ -94,14 +88,13 @@
 	}
 
 	.bulk-btn {
-		border: 0;
-		border-radius: 0.75rem;
-		padding: 0.55rem 0.85rem;
-		color: white;
+		border: 1px solid color-mix(in oklab, var(--bulk-action-tone) 56%, var(--color-line));
+		border-radius: var(--radius-md);
+		padding: 0.5rem 0.75rem;
+		color: var(--color-ink-0);
 		font-size: 0.8125rem;
-		font-weight: 800;
+		font-weight: 600;
 		letter-spacing: -0.01em;
-		box-shadow: 0 8px 22px color-mix(in oklab, black 22%, transparent);
 		cursor: pointer;
 		transition:
 			transform var(--motion-duration-fast) var(--motion-ease-standard),
@@ -125,11 +118,7 @@
 	}
 
 	.bulk-btn {
-		background: linear-gradient(
-			135deg,
-			var(--bulk-action-tone),
-			color-mix(in oklab, var(--bulk-action-tone) 74%, black)
-		);
+		background: color-mix(in oklab, var(--bulk-action-tone) 22%, var(--color-surface-raised));
 	}
 
 	.bulk-clear {

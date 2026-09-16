@@ -37,4 +37,14 @@ describe('chat run status style', () => {
 		expect(getStatusStyle('complete')).toEqual({ tone: 'success', label: '완료' });
 		expect(getStatusStyle('error')).toEqual({ tone: 'danger', label: '오류' });
 	});
+
+	it('maps topology canvas operating states (Octavia / router) and falls back to neutral', () => {
+		expect(getStatusStyle('DEGRADED')).toEqual({ tone: 'danger' });
+		expect(getStatusStyle('OFFLINE')).toEqual({ tone: 'neutral' });
+		expect(getStatusStyle('NO_MONITOR')).toEqual({ tone: 'info' });
+		expect(getStatusStyle('DOWN')).toEqual({ tone: 'neutral' });
+		expect(getStatusStyle('UNKNOWN_STATUS')).toEqual({ tone: 'neutral' });
+		expect(getStatusStyle(null)).toEqual({ tone: 'neutral' });
+		expect(getStatusStyle(undefined)).toEqual({ tone: 'neutral' });
+	});
 });

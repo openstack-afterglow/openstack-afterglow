@@ -12,6 +12,13 @@ if TYPE_CHECKING:
 
 def _lb_to_dict(lb) -> dict:
     prov = getattr(lb, "provisioning_status", "") or ""
+    raw_tags = getattr(lb, "tags", None)
+    if raw_tags is None:
+        tags: list[str] = []
+    elif isinstance(raw_tags, (list, tuple, set)):
+        tags = [str(t) for t in raw_tags]
+    else:
+        tags = [str(raw_tags)]
     return {
         "id": lb.id,
         "name": lb.name or "",
@@ -24,6 +31,7 @@ def _lb_to_dict(lb) -> dict:
         "vip_network_id": getattr(lb, "vip_network_id", None),
         "vip_port_id": getattr(lb, "vip_port_id", None),
         "project_id": getattr(lb, "project_id", None),
+        "tags": tags,
     }
 
 

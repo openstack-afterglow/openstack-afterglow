@@ -163,7 +163,7 @@ async def test_service_proxy_range_and_headers_forwarding():
         yield b"chunk1"
         yield b"chunk2"
 
-    mock_response.aiter_bytes = fake_aiter
+    mock_response.aiter_raw = fake_aiter
     mock_response.aclose = AsyncMock()
 
     mock_client = MagicMock()

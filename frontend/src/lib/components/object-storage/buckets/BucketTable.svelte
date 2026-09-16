@@ -18,7 +18,7 @@
 <div class="overflow-x-auto">
 	<table class="w-full text-sm">
 		<thead>
-			<tr class="border-b border-gray-800 text-gray-400 text-xs uppercase tracking-wide">
+			<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
 				<th class="text-left py-3 px-4 font-medium">버킷 이름</th>
 				<th class="text-left py-3 px-4 font-medium">프로젝트</th>
 				<th class="text-left py-3 px-4 font-medium">오브젝트 수</th>

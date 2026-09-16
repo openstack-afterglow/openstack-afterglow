@@ -1,7 +1,7 @@
 {
   "name": "afterglow-monorepo",
   "private": true,
-  "version": "1.18.1",
+  "version": "1.21.0",
   "scripts": {
     "test": "npm run test:unit",
     "test:unit": "npm run test:target:js && npm run test:unit:backend && npm run test:unit:frontend",
@@ -11,7 +11,8 @@
     "test:functional": "node scripts/test-db.js",
     "test:live": "cd backend && AFTERGLOW_ALLOW_INSECURE=1 uv run python -m pytest tests/integration -v",
     "test:all": "npm run test:unit && npm run test:contract && npm run test:functional",
-    "test:gate": "npm run test:all && npm run lint:backend",
+    "test:gate": "npm run docs:check && npm run test:all && npm run lint:backend",
+    "docs:check": "python3 scripts/check_architecture.py",
     "test:backend": "npm run test:unit:backend",
     "test:frontend": "npm run test:unit:frontend",
     "test:parallel": "npm-run-all --parallel test:unit:backend test:unit:frontend",
@@ -19,6 +20,7 @@
     "test:target": "node scripts/test-target.js",
     "test:orchestration": "node --test scripts/test-target.test.js scripts/test-db.test.js scripts/github-actions-contract.test.js && node scripts/test-target.js --validate",
     "test:kolla:contract": "node --test scripts/kolla-contract.test.js",
+    "test:kolla:runtime": "node --test scripts/kolla-runtime-contract.test.js",
     "test:target:js": "npm run test:orchestration && npm run test:kolla:contract",
     "test:auth": "node scripts/test-target.js auth",
     "test:access": "node scripts/test-target.js access",
@@ -50,7 +52,12 @@
     "version:check": "node scripts/check-version-sync.js",
     "version:bump:patch": "npm version patch -m \"chore(release): v%s\"",
     "version:bump:minor": "npm version minor -m \"chore(release): v%s\"",
-    "version:bump:major": "npm version major -m \"chore(release): v%s\""
+    "version:bump:major": "npm version major -m \"chore(release): v%s\"",
+    "services:help": "node scripts/local-services.mjs help",
+    "services:up": "node scripts/local-services.mjs up",
+    "services:config": "node scripts/local-services.mjs config",
+    "services:smoke": "node scripts/local-services.mjs smoke",
+    "services:down": "node scripts/local-services.mjs down"
   },
   "devDependencies": {
     "npm-run-all": "^4.1.5"

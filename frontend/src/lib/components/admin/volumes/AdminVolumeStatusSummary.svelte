@@ -14,9 +14,11 @@
 	const knownStatuses = ['available', 'in-use', 'error', 'error_deleting', 'creating', 'deleting', 'attaching', 'detaching', 'reserved'];
 	const statusCounts = $derived(new Map((summary?.statuses ?? []).map((item) => [item.status, item.count])));
 	const statusRows = $derived([
-		...knownStatuses.map((status) => ({ status, count: statusCounts.get(status) ?? 0 })),
+		...knownStatuses
+			.map((status) => ({ status, count: statusCounts.get(status) ?? 0 }))
+			.filter((item) => item.count > 0),
 		...(summary?.statuses ?? [])
-			.filter((item) => !knownStatuses.includes(item.status))
+			.filter((item) => !knownStatuses.includes(item.status) && item.count > 0)
 			.map((item) => ({ status: item.status, count: item.count })),
 	]);
 

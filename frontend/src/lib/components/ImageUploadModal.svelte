@@ -2,6 +2,7 @@
 	import { uploadQueue } from '$lib/stores/uploadQueue';
 	import { parseImageReference, sanitizeImageFilename } from '$lib/utils/imageReference';
 	import Button from '$lib/components/ui/Button.svelte';
+	import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	interface Props {
 		open: boolean;
@@ -128,19 +129,20 @@
 </script>
 
 {#if open}
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
-		class="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
+		use:dialogFocus={{ enabled: true, onEscape: () => close() }}
+		class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 		onclick={close}
 		role="dialog"
 		aria-modal="true"
 		tabindex="-1"
-		onkeydown={(e) => e.key === 'Escape' && close()}
 	>
 		<div
-			class="bg-[var(--color-surface-raised)] border border-[var(--color-line)] rounded-xl p-6 w-full max-w-lg mx-4 shadow-2xl"
+			class="bg-[var(--color-surface-raised)] border border-[var(--color-line)] rounded-xl p-6 w-full max-w-lg mx-4 shadow-[var(--shadow-restraint)]"
 			onclick={(e) => e.stopPropagation()}
 			role="none"
-			onkeydown={(e) => e.stopPropagation()}
 		>
 			<h2 class="text-lg font-semibold text-[var(--color-ink-0)] mb-5">이미지 업로드</h2>
 
@@ -184,7 +186,7 @@
 						placeholder="ubuntu:latest"
 						class="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-line-2)] rounded-lg px-3 py-2 text-[var(--color-ink-0)] text-sm focus:outline-none focus:border-[var(--color-accent)]"
 					/>
-					<div class="text-[11px] text-[var(--color-ink-3)] mt-1">repository:tag 형식이며 tag를 생략하면 latest가 사용됩니다. 예: ubuntu:24.04</div>
+					<div class="text-xs text-[var(--color-ink-3)] mt-1">repository:tag 형식이며 tag를 생략하면 latest가 사용됩니다. 예: ubuntu:24.04</div>
 				</div>
 
 				<div class="grid grid-cols-2 gap-3">

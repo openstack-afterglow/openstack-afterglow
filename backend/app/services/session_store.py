@@ -226,6 +226,18 @@ async def blacklist_session(jti: str, reason: str = "") -> None:
     await r.eval(_BLACKLIST_SCRIPT, 1, _key(jti), reason)
 
 
+def session_seen_needs_touch(session: dict, ip: str, fp: str, *, now: int | None = None) -> bool:
+    """Redis EVAL 전에 이미 읽은 세션으로 last_seen 갱신 필요 여부를 판정한다."""
+    if session.get("last_ip") != ip or session.get("last_fp") != fp:
+        return True
+    try:
+        last_seen = int(session.get("last_seen", 0))
+    except (TypeError, ValueError):
+        return True
+    current = now if now is not None else int(datetime.now(UTC).timestamp())
+    return current - last_seen >= _TOUCH_THROTTLE_SECONDS
+
+
 async def touch_session_seen(jti: str, ip: str, fp: str) -> None:
     """last_ip / last_fp / last_seen 갱신 (마지막 사용 위치 추적).
 

@@ -3,6 +3,11 @@ import type { PublicSiteConfig } from '$lib/types/siteConfig';
 
 export type SiteConfig = PublicSiteConfig;
 
+export type SiteConfigPatch = Omit<Partial<PublicSiteConfig>, 'services' | 'runtime'> & {
+	services?: Partial<PublicSiteConfig['services']>;
+	runtime?: Partial<PublicSiteConfig['runtime']>;
+};
+
 const DEFAULTS: SiteConfig = {
 	site_name: 'Afterglow',
 	site_description: 'OpenStack VM + OverlayFS 배포 플랫폼',
@@ -23,7 +28,7 @@ const DEFAULTS: SiteConfig = {
 
 export const siteConfig = writable<SiteConfig>({ ...DEFAULTS });
 
-export function initSiteConfig(config: Partial<PublicSiteConfig>): void {
+export function initSiteConfig(config: SiteConfigPatch): void {
 	siteConfig.update((current) => ({
 		...current,
 		...config,

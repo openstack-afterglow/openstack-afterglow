@@ -119,9 +119,9 @@
 	}
 </script>
 
-<div class="p-4 md:p-8 max-w-5xl mx-auto">
+<div class="p-4 md:p-6 max-w-5xl mx-auto">
 	<div class="mb-6">
-		<a href="/admin/networks" class="text-gray-400 hover:text-gray-200 text-sm transition-colors">
+		<a href="/admin/networks" class="text-ink-2 hover:text-ink-1 text-sm transition-colors">
 			← 네트워크 목록
 		</a>
 	</div>

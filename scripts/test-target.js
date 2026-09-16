@@ -182,6 +182,7 @@ const targets = {
 			selectors: [
 				"tests/test_volumes.py",
 				"tests/test_volume_backups.py",
+				"tests/test_ceph_rbd.py",
 				"tests/test_volume_delete_recovery.py",
 				"tests/test_volume_extend.py",
 				"tests/test_volume_owner_check.py",
@@ -289,6 +290,13 @@ const targets = {
 		},
 		frontend: {
 			selectors: [
+				"src/lib/api/__tests__/chatTaskLabels.test.ts",
+				"src/lib/api/__tests__/chatRevealBuffer.test.ts",
+				"src/lib/components/chat/__tests__/ChatPanel.test.ts",
+				"src/lib/components/chat/__tests__/ChatInput.test.ts",
+				"src/lib/components/chat/__tests__/ModelPickerOverlay.test.ts",
+				"src/lib/components/chat/__tests__/ChatWindow.test.ts",
+				"src/lib/components/chat/__tests__/ChatSidebar.test.ts",
 				"src/lib/api/__tests__/chatStream.test.ts",
 				"src/lib/api/__tests__/chatContracts.test.ts",
 				"src/lib/api/__tests__/chatRunReducer.test.ts"
@@ -501,7 +509,7 @@ function buildFrontendStep(targetName, config) {
 		cwd: frontendDir,
 		cwdLabel: "frontend",
 		command: "npm",
-		args: ["run", "test", "--", ...selectors],
+		args: ["exec", "--", "vitest", "run", ...selectors],
 		envAdditions: {},
 		requiredEnv: []
 	};
@@ -546,7 +554,7 @@ function buildCustomFrontendStep(selectors) {
 		cwd: frontendDir,
 		cwdLabel: "frontend",
 		command: "npm",
-		args: ["run", "test", "--", ...selectors],
+		args: ["exec", "--", "vitest", "run", ...selectors],
 		envAdditions: {},
 		requiredEnv: []
 	};

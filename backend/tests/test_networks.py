@@ -7,7 +7,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.main import app
 from app.models.compute import InstanceInfo
-from app.models.storage import FloatingIpInfo, TopologyData
+from app.models.storage import FloatingIpInfo, NetworkInfo, SubnetDetail, TopologyData
 
 
 def make_fip(project_id: str = "test-project-123") -> FloatingIpInfo:
@@ -56,6 +56,49 @@ async def test_create_network_unauthenticated():
 
 
 @pytest.mark.asyncio
+async def test_create_network_with_subnet_returns_created_subnet(client):
+    network = NetworkInfo(id="net-1", name="app", status="ACTIVE")
+    subnet = SubnetDetail(id="subnet-1", name="app-subnet", cidr="10.10.0.0/24", gateway_ip="10.10.0.1")
+    with patch("app.api.network.networks.asyncio.to_thread", new=AsyncMock(side_effect=[network, subnet])) as to_thread:
+        resp = await client.post(
+            "/api/v1/networks",
+            json={"name": "app", "subnet": {"cidr": "10.10.0.0/24", "gateway_ip": "10.10.0.1"}},
+        )
+
+    assert resp.status_code == 201
+    assert resp.json()["subnets"] == ["subnet-1"]
+    assert resp.json()["cidrs"] == ["10.10.0.0/24"]
+    assert to_thread.await_args_list[1].args[2:] == ("net-1", "app-subnet", "10.10.0.0/24", "10.10.0.1", True)
+
+
+@pytest.mark.asyncio
+async def test_create_network_without_subnet_skips_subnet_creation(client):
+    network = NetworkInfo(id="net-1", name="app", status="ACTIVE")
+    with patch("app.api.network.networks.asyncio.to_thread", new=AsyncMock(return_value=network)) as to_thread:
+        resp = await client.post("/api/v1/networks", json={"name": "app"})
+
+    assert resp.status_code == 201
+    assert to_thread.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_create_network_rolls_back_when_requested_subnet_fails(client):
+    network = NetworkInfo(id="net-1", name="app", status="ACTIVE")
+    with patch(
+        "app.api.network.networks.asyncio.to_thread",
+        new=AsyncMock(side_effect=[network, RuntimeError("subnet unavailable"), None]),
+    ) as to_thread:
+        resp = await client.post(
+            "/api/v1/networks",
+            json={"name": "app", "subnet": {"cidr": "10.10.0.0/24"}},
+        )
+
+    assert resp.status_code == 500
+    assert resp.json()["detail"] == "내부 서버 오류"
+    assert to_thread.await_args_list[2].args[2:] == ("net-1",)
+
+
+@pytest.mark.asyncio
 async def test_get_network_unauthenticated():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         resp = await ac.get("/api/v1/networks/net-1")
@@ -71,10 +114,21 @@ async def test_delete_network_unauthenticated():
 
 @pytest.mark.asyncio
 async def test_delete_network_success(client):
-    with patch("app.api.network.networks.asyncio") as mock_asyncio:
-        mock_asyncio.to_thread = AsyncMock(return_value=None)
+    network = MagicMock(project_id="test-project-123", tenant_id=None)
+    with patch("app.api.network.networks.asyncio.to_thread", new=AsyncMock(side_effect=[network, None])):
         resp = await client.delete("/api/v1/networks/net-1")
     assert resp.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_delete_network_rejects_foreign_network(client, mock_conn):
+    foreign = MagicMock(project_id="other-project", tenant_id=None)
+    mock_conn.network.get_network.return_value = foreign
+    with patch("app.api.network.networks.neutron.delete_network") as delete_net:
+        resp = await client.delete("/api/v1/networks/net-foreign")
+
+    assert resp.status_code == 404
+    delete_net.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -87,10 +141,55 @@ async def test_create_subnet_unauthenticated():
 
 
 @pytest.mark.asyncio
+async def test_create_subnet_rejects_foreign_network(client, mock_conn):
+    foreign = MagicMock(project_id="other-project", tenant_id=None)
+    mock_conn.network.get_network.return_value = foreign
+    with patch("app.api.network.networks.neutron.create_subnet") as create:
+        resp = await client.post(
+            "/api/v1/networks/net-foreign/subnets", json={"name": "blocked", "cidr": "10.0.0.0/24"}
+        )
+
+    assert resp.status_code == 404
+    create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_set_default_network_rejects_foreign_network(client, mock_conn):
+    foreign = NetworkInfo(id="net-foreign", name="foreign", status="ACTIVE", project_id="other-project")
+    with patch("app.api.network.networks.neutron.get_network", return_value=foreign):
+        resp = await client.put("/api/v1/networks/default", json={"network_id": "net-foreign"})
+
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_create_subnet_rejects_network_without_owner(client, mock_conn):
+    mock_conn.network.get_network.return_value = MagicMock(project_id=None, tenant_id=None)
+    with patch("app.api.network.networks.neutron.create_subnet") as create:
+        resp = await client.post(
+            "/api/v1/networks/net-unowned/subnets", json={"name": "blocked", "cidr": "10.0.0.0/24"}
+        )
+
+    assert resp.status_code == 404
+    create.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_delete_subnet_unauthenticated():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         resp = await ac.delete("/api/v1/networks/subnets/sub-1")
     assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_delete_subnet_rejects_foreign_subnet(client, mock_conn):
+    foreign = MagicMock(project_id="other-project", tenant_id=None)
+    mock_conn.network.get_subnet.return_value = foreign
+    with patch("app.api.network.networks.neutron.delete_subnet") as delete_sub:
+        resp = await client.delete("/api/v1/networks/subnets/sub-foreign")
+
+    assert resp.status_code == 404
+    delete_sub.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -104,7 +203,7 @@ async def test_get_topology_unauthenticated():
 async def test_get_topology_includes_instance_project_id(client, mock_conn):
     """토폴로지 응답에 인스턴스 project_id가 포함되어야 함 (필터링 정상 작동 확인)."""
 
-    def fake_get_topology(conn):
+    def fake_get_topology(conn, **kwargs):
         return TopologyData()
 
     def fake_list_servers(conn):

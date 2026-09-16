@@ -72,10 +72,10 @@
 	.table-wrap { overflow-x: auto; }
 	table { width: 100%; border-collapse: collapse; min-width: 42rem; }
 	th, td { padding: 0.75rem 1rem; border-bottom: 1px solid var(--color-line); text-align: left; white-space: nowrap; }
-	th { color: var(--color-ink-3); font-size: 0.625rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+	th { color: var(--color-ink-2); font-size: 0.625rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
 	td { color: var(--color-ink-1); font-size: 0.75rem; }
 	tbody tr:hover { background: var(--color-surface-sunken); }
 	.tag-name { display: inline-block; margin-right: 0.4rem; color: var(--color-ink-0); font-family: var(--font-mono); font-weight: 600; }
-	.date { color: var(--color-ink-3); font-family: var(--font-mono); }
+	.date { color: var(--color-ink-2); font-family: var(--font-mono); }
 	.action-cell { text-align: right; }
 </style>

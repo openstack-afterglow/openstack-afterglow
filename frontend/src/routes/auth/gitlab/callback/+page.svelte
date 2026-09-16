@@ -61,7 +61,7 @@
 	});
 </script>
 
-<div class="min-h-screen bg-gray-950 flex items-center justify-center">
+<main id="main-content" tabindex="-1" class="min-h-screen bg-surface-canvas flex items-center justify-center">
 	<div class="w-full max-w-md px-4 text-center">
 		{#if loading}
 			<div class="flex flex-col items-center gap-4">
@@ -69,17 +69,17 @@
 					<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
 					<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
 				</svg>
-				<p class="text-gray-400 text-sm">GitLab 인증 처리 중...</p>
+				<p class="text-ink-2 text-sm">GitLab 인증 처리 중...</p>
 			</div>
 		{:else if error}
-			<div class="bg-gray-900 rounded-xl border border-gray-700 p-8 space-y-4">
+			<div class="bg-surface-base rounded-xl border border-line-2 p-8 space-y-4">
 				<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">
 					{error}
 				</div>
-				<a href="/login" class="block w-full text-center bg-gray-800 hover:bg-gray-700 text-gray-300 font-medium rounded-lg py-2.5 text-sm transition-colors">
+				<a href="/login" class="block w-full text-center bg-surface-sunken hover:bg-surface-selected text-ink-2 font-medium rounded-lg py-2.5 text-sm transition-colors">
 					로그인 페이지로 돌아가기
 				</a>
 			</div>
 		{/if}
 	</div>
-</div>
+</main>

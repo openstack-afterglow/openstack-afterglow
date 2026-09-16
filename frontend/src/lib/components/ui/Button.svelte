@@ -22,8 +22,12 @@
 		onclick?: (e: MouseEvent) => void;
 		onintent?: () => void;
 		href?: string;
+		target?: '_self' | '_blank';
+		rel?: string;
 		ariaLabel?: string;
+		ariaPressed?: boolean;
 		title?: string;
+		dataTour?: string;
 		class?: string;
 		children: Snippet;
 	}
@@ -36,8 +40,12 @@
 		onclick,
 		onintent,
 		href,
+		target,
+		rel,
 		ariaLabel,
+		ariaPressed,
 		title,
+		dataTour,
 		class: className = '',
 		children,
 	}: Props = $props();
@@ -54,13 +62,18 @@
 	function handleIntent() {
 		if (!disabled) onintent?.();
 	}
+	const anchorRel = $derived(target === '_blank' ? [rel, 'noreferrer'].filter(Boolean).join(' ') : rel);
 </script>
 
 {#if href}
 	<a
-		{href}
+		href={disabled ? undefined : href}
+		{target}
+		rel={anchorRel}
 		aria-label={ariaLabel}
 		aria-disabled={disabled}
+		tabindex={disabled ? -1 : undefined}
+		data-tour={dataTour}
 		{title}
 		onclick={handleAnchorClick}
 		onpointerenter={handleIntent}
@@ -70,7 +83,7 @@
 		{@render children()}
 	</a>
 {:else}
-	<button {type} {disabled} aria-label={ariaLabel} {title} {onclick} onpointerenter={handleIntent} onfocus={handleIntent} class="btn btn-{variant} btn-{size} {className}">
+	<button {type} {disabled} aria-label={ariaLabel} aria-pressed={ariaPressed} data-tour={dataTour} {title} {onclick} onpointerenter={handleIntent} onfocus={handleIntent} class="btn btn-{variant} btn-{size} {className}">
 		{@render children()}
 	</button>
 {/if}
@@ -81,7 +94,8 @@
 		align-items: center;
 		justify-content: center;
 		gap: 0.375rem;
-		border-radius: 0.5rem;
+		border-radius: var(--radius-md);
+		font-size: 0.8125rem;
 		font-weight: 500;
 		line-height: 1.2;
 		transition:
@@ -89,7 +103,8 @@
 			border-color var(--motion-duration-fast) var(--motion-ease-standard),
 			box-shadow var(--motion-duration-fast) var(--motion-ease-standard),
 			color var(--motion-duration-fast) var(--motion-ease-standard),
-			filter var(--motion-duration-fast) var(--motion-ease-standard);
+			filter var(--motion-duration-fast) var(--motion-ease-standard),
+			transform var(--motion-duration-fast) var(--motion-ease-standard);
 		border: 1px solid transparent;
 		cursor: pointer;
 		white-space: nowrap;
@@ -99,6 +114,9 @@
 	.btn:focus-visible {
 		outline: none;
 		box-shadow: var(--focus-ring);
+	}
+	.btn:active:not(:disabled):not([aria-disabled='true']) {
+		transform: translateY(1px);
 	}
 
 	.btn:disabled,
@@ -116,19 +134,16 @@
 	.btn-icon { width: 2rem; height: 2rem; padding: 0; font-size: 0.8125rem; }
 
 	.btn-primary {
-		background: var(--gradient-warm);
+		background: var(--color-warm);
 		color: var(--color-action-on-warm);
-		box-shadow: var(--glow-warm);
 	}
 	.btn-primary:hover:not(:disabled):not([aria-disabled='true']) {
-		filter: brightness(1.08);
-		box-shadow: 0 10px 28px color-mix(in oklab, var(--color-warm) 35%, transparent);
+		background: color-mix(in oklab, var(--color-warm) 88%, var(--color-ink-0));
 	}
 
 	.btn-accent {
 		background: var(--color-accent);
 		color: var(--color-action-on-accent);
-		box-shadow: var(--glow-accent);
 	}
 	.btn-accent:hover:not(:disabled):not([aria-disabled='true']) {
 		background: color-mix(in oklab, var(--color-accent) 88%, var(--color-ink-0));
@@ -184,7 +199,9 @@
 
 	.btn-danger-outline {
 		background: color-mix(in oklab, var(--color-state-danger) 15%, transparent);
-		color: var(--color-state-danger);
+		/* 라벨만 tone-text 로 올린다. 15% wash 위에서 danger 원색은 라이트에서 3.89:1 이라 AA 미달이고,
+		   danger-text 는 5.45:1 이다. 다크는 danger-text 가 danger 의 별칭이라 변화가 없다. */
+		color: var(--color-state-danger-text);
 		border-color: color-mix(in oklab, var(--color-state-danger) 35%, transparent);
 	}
 	.btn-danger-outline:hover:not(:disabled):not([aria-disabled='true']) {

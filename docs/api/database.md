@@ -75,6 +75,8 @@ Trove 기반 관리형 데이터베이스(DBaaS)를 프로비저닝하고 관리
 |----------|------|------|------|------|
 | `all_projects` | query | boolean | 아니오 | `true` 면 전체 프로젝트 조회. **시스템 admin 전용**(아니면 `403`) |
 
+시스템 admin의 `all_projects=true` 요청은 Trove 관리 API `/mgmt/instances`를 사용하며, 응답의 `tenant_id`를 `project_id`로 정규화합니다. 이 목록은 사용자가 Trove로 생성한 관리형 DB 인스턴스만 반환합니다. OpenStack control-plane MariaDB/MySQL이나 `mysqld_exporter` 대상은 포함하지 않습니다. 관리 API 조회가 실패하거나 응답 형식이 잘못된 경우 빈 배열이 아니라 `500`을 반환하므로, 관리 화면은 실제 0건과 조회 실패를 구분합니다.
+
 ### POST /api/v1/database-instances
 
 새 DB 인스턴스를 생성합니다. `is_public=true` 면 BUILD 완료 후 백그라운드에서 floating IP 자동 할당을 시도합니다(best-effort).

@@ -149,7 +149,7 @@ async def test_list_project_k3s_clusters_uses_catalog_sdk_and_redacts(monkeypatc
             ]
 
     monkeypatch.setattr(
-        "app.services.mcp_control_plane.k3s.register",
+        "app.services.mcp_control_plane.k3s.get_drover_proxy",
         lambda actual_conn: Proxy() if actual_conn is conn else None,
     )
 
@@ -175,7 +175,7 @@ async def test_list_project_k3s_clusters_uses_catalog_sdk_and_redacts(monkeypatc
 @pytest.mark.asyncio
 async def test_list_project_k3s_clusters_catalog_unavailable(monkeypatch):
     monkeypatch.setattr(
-        "app.services.mcp_control_plane.k3s.register",
+        "app.services.mcp_control_plane.k3s.get_drover_proxy",
         lambda _conn: (_ for _ in ()).throw(RuntimeError("catalog unavailable")),
     )
 
@@ -197,7 +197,7 @@ async def test_get_project_k3s_cluster_ownership_proof(monkeypatch):
             }
 
     monkeypatch.setattr(
-        "app.services.mcp_control_plane.k3s.register",
+        "app.services.mcp_control_plane.k3s.get_drover_proxy",
         lambda actual_conn: Proxy() if actual_conn is conn else None,
     )
 
@@ -385,7 +385,7 @@ async def test_list_project_waygate_servers_uses_catalog_sdk_and_redacts(monkeyp
         observed["conn"] = actual_conn
         return Proxy()
 
-    monkeypatch.setattr("app.services.mcp_control_plane.waygate.register", fake_register)
+    monkeypatch.setattr("app.services.mcp_control_plane.waygate.get_waygate_proxy", fake_register)
 
     servers = await list_project_waygate_servers(conn, "project-1", limit=1)
 
@@ -415,7 +415,7 @@ async def test_get_project_waygate_server_rejects_foreign_catalog_record(monkeyp
             }
 
     monkeypatch.setattr(
-        "app.services.mcp_control_plane.waygate.register",
+        "app.services.mcp_control_plane.waygate.get_waygate_proxy",
         lambda actual_conn: Proxy() if actual_conn is conn else None,
     )
 

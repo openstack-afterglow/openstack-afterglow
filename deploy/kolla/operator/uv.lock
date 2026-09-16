@@ -16,7 +16,7 @@ dependencies = [
 requires-dist = [
     { name = "drover-kolla", url = "https://github.com/openstack-afterglow/drover/releases/download/v0.2.19/drover_kolla-0.2.19-py3-none-any.whl" },
     { name = "kolla-ansible", git = "https://opendev.org/openstack/kolla-ansible?rev=34daacfbf2d5987f543787f57535b2bebe7dee19" },
-    { name = "lumen-kolla", url = "https://github.com/openstack-afterglow/lumen/releases/download/v0.1.8/lumen_kolla-0.1.8-py3-none-any.whl" },
+    { name = "lumen-kolla", url = "https://github.com/openstack-afterglow/lumen/releases/download/v0.2.0/lumen_kolla-0.2.0-py3-none-any.whl" },
 ]
 
 [[package]]
@@ -370,7 +370,7 @@ wheels = [
 
 [[package]]
 name = "cmd2"
-version = "4.2.2"
+version = "4.2.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "prompt-toolkit" },
@@ -378,9 +378,9 @@ dependencies = [
     { name = "rich" },
     { name = "rich-argparse" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a3/0e/9fe08d2e58a01336987a82ea0c3c78493d081af952a40fb28f3dd4cefde7/cmd2-4.2.2.tar.gz", hash = "sha256:8f1aff338f693be4c5ae0a1c928b17d728940e03386018615b25cdcd4abd6df3", size = 856874, upload-time = "2026-08-25T23:08:35.854Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/64/16/6864f7f344c0c83fbe78fdaf4c4ea280631ce2ad49efed98c61209106b3a/cmd2-4.2.3.tar.gz", hash = "sha256:b5543c81e01eea9445f1248879855b727c949d5af27c0390fbb8796f782783e9", size = 733039, upload-time = "2026-09-02T20:41:58.23Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/03/37/04dc440085600a5b4ad988400699c4277791a431d00fbe2e2508c514fd57/cmd2-4.2.2-py3-none-any.whl", hash = "sha256:68dde6144a452d28a92a351ef07561d5787021f6d77069a3734ddb65f7277a1c", size = 193602, upload-time = "2026-08-25T23:08:34.334Z" },
+    { url = "https://files.pythonhosted.org/packages/f3/db/c4a9d80c3be030903224dde7232c0b471352062e0c72d69ead6e98c243cf/cmd2-4.2.3-py3-none-any.whl", hash = "sha256:3ffecdbae14a1288fe7b5455c8481483186b6f394065b98a0e4899b6e2c048a8", size = 195480, upload-time = "2026-09-02T20:41:56.974Z" },
 ]
 
 [[package]]
@@ -523,13 +523,13 @@ dependencies = [
 
 [[package]]
 name = "lumen-kolla"
-version = "0.1.8"
-source = { url = "https://github.com/openstack-afterglow/lumen/releases/download/v0.1.8/lumen_kolla-0.1.8-py3-none-any.whl" }
+version = "0.2.0"
+source = { url = "https://github.com/openstack-afterglow/lumen/releases/download/v0.2.0/lumen_kolla-0.2.0-py3-none-any.whl" }
 dependencies = [
     { name = "kolla-ansible" },
 ]
 wheels = [
-    { url = "https://github.com/openstack-afterglow/lumen/releases/download/v0.1.8/lumen_kolla-0.1.8-py3-none-any.whl", hash = "sha256:fdef6b8ed0a8bb7f48364ba20cc9bb90471b162287d4d33f9cc13105c340a78b" },
+    { url = "https://github.com/openstack-afterglow/lumen/releases/download/v0.2.0/lumen_kolla-0.2.0-py3-none-any.whl", hash = "sha256:d55e2b0ace06d232452f9dd2892a88912755e9d00e99de0e59d6738c5a3b2474" },
 ]
 
 [package.metadata]

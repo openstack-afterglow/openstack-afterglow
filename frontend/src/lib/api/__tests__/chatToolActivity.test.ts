@@ -48,6 +48,45 @@ describe('toolActivityFromCanonicalParts', () => {
 			])
 		).toEqual([{ id: 'c1', name: 'mcp.search', args: '{"q":"union mount"}', result: 'result', running: false }]);
 	});
+
+	it('생성 파일 part를 다운로드 가능한 artifact로 보존한다', () => {
+		expect(
+			toolActivityFromCanonicalParts([
+				{ type: 'tool_call', call_id: 'c2', name: 'workspace.report', arguments: {}, status: 'running' },
+				{
+					type: 'tool_result',
+					call_id: 'c2',
+					name: 'workspace.report',
+					content: [
+						{
+							type: 'file',
+							asset_id: 'asset-1',
+							mime_type: 'text/csv',
+							name: 'report.csv',
+							size_bytes: 2048
+						}
+					],
+					is_error: false
+				}
+			])
+		).toEqual([
+			{
+				id: 'c2',
+				name: 'workspace.report',
+				args: '{}',
+				result: null,
+				running: false,
+				files: [
+					{
+						assetId: 'asset-1',
+						name: 'report.csv',
+						mimeType: 'text/csv',
+						sizeBytes: 2048
+					}
+				]
+			}
+		]);
+	});
 });
 
 describe('formatToolArgs', () => {

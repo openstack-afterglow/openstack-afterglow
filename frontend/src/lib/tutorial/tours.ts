@@ -313,7 +313,7 @@ function adminComputeSteps(): TourStep[] {
 		},
 		{
 			element: row,
-			prepare: () => clickTourElement('[data-tour="admin-compute-detail-close"]'),
+			prepare: () => clickTourElement('[data-slide-panel-close]'),
 			advanceOn: 'click',
 			advanceElement: '[data-tour="admin-compute-row-open"]',
 			skipReadyElement: ready,
@@ -378,7 +378,7 @@ function adminStorageSteps(): TourStep[] {
 		},
 		{
 			element: row,
-			prepare: () => clickTourElement('[data-tour="admin-storage-detail-close"]'),
+			prepare: () => clickTourElement('[data-slide-panel-close]'),
 			advanceOn: 'click',
 			advanceElement: '[data-tour="admin-storage-row-open"]',
 			skipReadyElement: ready,
@@ -472,11 +472,11 @@ function adminNetworkSteps(): TourStep[] {
 			readyElement: ready,
 			waitTimeoutMs: 20000,
 			title: '토폴로지 읽기',
-			description: '검색·트래픽 수치·네트워크 레인과 연결선을 함께 읽습니다.',
+			description: '검색·트래픽 수치·네트워크 존(레인)과 연결선을 함께 읽습니다.',
 		},
 		{
 			element: resource,
-			prepare: () => clickTourElement('[data-tour="admin-network-detail-close"]'),
+			prepare: () => clickTourElement('[data-slide-panel-close]'),
 			advanceOn: 'click',
 			skipReadyElement: ready,
 			skipIf: () => isTourElementMissing(resource),
@@ -489,7 +489,7 @@ function adminNetworkSteps(): TourStep[] {
 			element: '[data-tour="admin-network-detail"]',
 			prepare: () => clickTourElement(resource),
 			advanceOn: 'click',
-			advanceElement: '[data-tour="admin-network-detail-close"]',
+			advanceElement: '[data-slide-panel-close]',
 			skipReadyElement: ready,
 			skipIf: () => isTourElementMissing(resource),
 			showPrevious: true,
@@ -503,7 +503,7 @@ function adminNetworkSteps(): TourStep[] {
 			skipIf: () => isTourElementMissing('[data-tour="admin-network-legend"]'),
 			waitTimeoutMs: 20000,
 			title: '범례와 리소스 수',
-			description: '색·선의 의미와 하단 네트워크·라우터·인스턴스·Floating IP·로드밸런서 수를 확인합니다.',
+			description: '범례의 기호·연결선 의미와 하단 네트워크·라우터·인스턴스·Floating IP·로드밸런서 수를 확인합니다.',
 		},
 	];
 }
@@ -527,7 +527,7 @@ function adminContainersSteps(): TourStep[] {
 		},
 		{
 			element: row,
-			prepare: () => clickTourElement('[data-tour="admin-containers-detail-close"]'),
+			prepare: () => clickTourElement('[data-slide-panel-close]'),
 			advanceOn: 'click',
 			skipReadyElement: ready,
 			skipIf: () => isTourElementMissing(row),

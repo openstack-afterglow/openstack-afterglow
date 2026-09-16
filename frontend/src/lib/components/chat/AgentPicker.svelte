@@ -124,7 +124,7 @@
 		cursor: not-allowed;
 	}
 	.chev {
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.badge {
 		display: inline-flex;
@@ -177,7 +177,7 @@
 		border: none;
 		border-left: 1px solid color-mix(in oklab, var(--color-accent) 25%, var(--color-line));
 		background: transparent;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		cursor: pointer;
 		border-radius: 0 0.5rem 0.5rem 0;
 	}
@@ -196,7 +196,7 @@
 		border-radius: 0.6rem;
 		border: 1px solid var(--color-line);
 		background: var(--color-surface-raised);
-		box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+		box-shadow: var(--shadow-popover);
 		overflow: hidden;
 	}
 	.menu-scroll {
@@ -207,7 +207,7 @@
 	.menu-empty {
 		padding: 0.6rem 0.5rem;
 		font-size: 0.8rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.menu-item {
 		display: flex;

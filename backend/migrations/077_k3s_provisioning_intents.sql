@@ -1,0 +1,28 @@
+-- Durable, non-secret K3s Stampede provisioning intents.
+CREATE TABLE IF NOT EXISTS k3s_provisioning_intents (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    idempotency_key VARCHAR(128) NOT NULL,
+    project_id VARCHAR(64) NOT NULL,
+    cluster_id VARCHAR(64) NOT NULL,
+    nodegroup_id VARCHAR(64) NOT NULL,
+    name VARCHAR(128) NOT NULL,
+    flavor_id VARCHAR(64) NOT NULL,
+    image_id VARCHAR(64) NOT NULL,
+    network_id VARCHAR(64) NOT NULL,
+    boot_volume_size_gb INT NOT NULL,
+    volume_availability_zone VARCHAR(128) NOT NULL,
+    security_group_id VARCHAR(64) DEFAULT NULL,
+    metadata JSON DEFAULT NULL,
+    config_drive BOOLEAN NOT NULL DEFAULT FALSE,
+    request_hash CHAR(64) NOT NULL,
+    state VARCHAR(16) NOT NULL DEFAULT 'pending',
+    error_message TEXT DEFAULT NULL,
+    boot_volume_id VARCHAR(64) DEFAULT NULL,
+    server_id VARCHAR(64) DEFAULT NULL,
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    submitted_at DATETIME(6) DEFAULT NULL,
+    completed_at DATETIME(6) DEFAULT NULL,
+    updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    UNIQUE KEY uq_k3s_provisioning_intents_idempotency_key (idempotency_key),
+    KEY idx_k3s_provisioning_intents_project_state (project_id, state)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

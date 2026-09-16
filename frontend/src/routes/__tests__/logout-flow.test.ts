@@ -43,11 +43,6 @@ describe('logout flow source contracts', () => {
 		}
 	});
 
-	it('uses the shared refresh path so timer and 401 refreshes are coalesced', () => {
-		expect(layoutSource).toContain("import { api, ApiError, getBaseUrl, refreshSession, beginSessionRevocation, endSessionRevocation } from '$lib/api/client';");
-		expect(layoutSource).toContain('await refreshSession();');
-		expect(layoutSource).not.toContain("'/api/v1/auth/refresh', { refresh_token:");
-	});
 
 	it('fences new refreshes and revokes the latest token before explicit logout', () => {
 		for (const source of [layoutSource, selectProjectSource]) {

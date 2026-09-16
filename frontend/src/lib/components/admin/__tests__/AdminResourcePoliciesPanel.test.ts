@@ -11,6 +11,15 @@ vi.mock('$lib/api/client', () => ({
 
 import AdminResourcePoliciesPanel from '../AdminResourcePoliciesPanel.svelte';
 
+async function openBuilderFlavorPicker(): Promise<HTMLButtonElement> {
+	const trigger = (await screen.findByRole('button', {
+		name: 'Builder flavor 검색 및 선택'
+	})) as HTMLButtonElement;
+	await waitFor(() => expect(trigger.disabled).toBe(false));
+	await fireEvent.click(trigger);
+	return trigger;
+}
+
 describe('AdminResourcePoliciesPanel', () => {
 	let builderOptions: Array<{ id: string; name: string }>;
 
@@ -66,18 +75,17 @@ describe('AdminResourcePoliciesPanel', () => {
 
 	it('discovers an admin-scoped catalog and persists only the selected ID', async () => {
 		render(AdminResourcePoliciesPanel, { token: 'token', projectId: 'admin-project' });
-		const search = screen.getByLabelText('Builder flavor 검색 및 선택');
 
-		await fireEvent.focus(search);
 		await waitFor(() => expect(get).toHaveBeenCalledWith(
 			'/api/v1/admin/resource-policies/catalog/builder.flavor',
 			'token',
 			'admin-project'
 		));
+		const trigger = await openBuilderFlavorPicker();
 		await fireEvent.click(await screen.findByRole('option', { name: /CPU build/ }));
 		expect(document.cookie).toContain('builder.flavor');
 
-		const policyRow = search.closest('.policy-row') as HTMLElement | null;
+		const policyRow = trigger.closest('.policy-row') as HTMLElement | null;
 		if (!policyRow) throw new Error('Builder flavor policy row was not rendered');
 		await fireEvent.click(within(policyRow).getByRole('button', { name: '저장' }));
 
@@ -94,59 +102,79 @@ describe('AdminResourcePoliciesPanel', () => {
 		builderOptions = [{ id: 'flavor-only', name: 'Only flavor' }];
 		render(AdminResourcePoliciesPanel, { token: 'token', projectId: 'admin-project' });
 
-		await screen.findByDisplayValue('Only flavor');
+		await screen.findByText('Only flavor');
 		expect(document.cookie).toContain('flavor-only');
 		expect(put).not.toHaveBeenCalled();
 	});
 
-	it('filters the unified search and selection control by resource name or ID', async () => {
+	it('filters the catalog picker by resource name or ID', async () => {
 		render(AdminResourcePoliciesPanel, { token: 'token', projectId: 'admin-project' });
-		const search = screen.getByLabelText('Builder flavor 검색 및 선택');
 
-		await fireEvent.focus(search);
-		await screen.findByRole('option', { name: /CPU build/ });
+		await openBuilderFlavorPicker();
+		const search = screen.getByRole('combobox', { name: '이름 또는 ID로 검색' });
 		await fireEvent.input(search, { target: { value: 'gpu' } });
 		expect(screen.getByRole('option', { name: /GPU build/ })).toBeTruthy();
 		expect(screen.queryByRole('option', { name: /CPU build/ })).toBeNull();
 
 		await fireEvent.input(search, { target: { value: 'flavor-1' } });
 		expect(screen.getByRole('option', { name: /CPU build/ })).toBeTruthy();
-		expect(screen.queryByLabelText('Builder flavor 선택')).toBeNull();
+		expect(screen.queryByRole('option', { name: /GPU build/ })).toBeNull();
 	});
-	it('requires a confirmed option before saving a free-form query', async () => {
+
+	it('retries a failed catalog lookup when the picker opens', async () => {
+		const baseGet = get.getMockImplementation();
+		if (!baseGet) throw new Error('api.get implementation was not configured');
+		let attempts = 0;
+		get.mockImplementation((path: string, ...rest: unknown[]) => {
+			if (path.endsWith('/catalog/builder.flavor')) {
+				attempts += 1;
+				if (attempts === 1) return Promise.reject(new Error('catalog unavailable'));
+			}
+			return baseGet(path, ...rest);
+		});
 		render(AdminResourcePoliciesPanel, { token: 'token', projectId: 'admin-project' });
-		const search = screen.getByLabelText('Builder flavor 검색 및 선택');
 
-		await fireEvent.focus(search);
-		await screen.findByRole('option', { name: /CPU build/ });
-		await fireEvent.input(search, { target: { value: 'cpu' } });
+		await waitFor(() => expect(attempts).toBe(1));
+		await openBuilderFlavorPicker();
 
-		const policyRow = search.closest('.policy-row') as HTMLElement | null;
+		expect(await screen.findByRole('option', { name: /CPU build/ })).toBeTruthy();
+		expect(attempts).toBe(2);
+	});
+
+	it('clears a selection through the explicit no-selection option', async () => {
+		builderOptions = [{ id: 'flavor-only', name: 'Only flavor' }];
+		render(AdminResourcePoliciesPanel, { token: 'token', projectId: 'admin-project' });
+
+		await screen.findByText('Only flavor');
+		const trigger = await openBuilderFlavorPicker();
+		await fireEvent.click(screen.getByRole('option', { name: '선택 안 함' }));
+
+		const policyRow = trigger.closest('.policy-row') as HTMLElement | null;
 		if (!policyRow) throw new Error('Builder flavor policy row was not rendered');
-		await fireEvent.click(within(policyRow).getByRole('button', { name: '저장' }));
+		expect(within(policyRow).queryByText('flavor-only')).toBeNull();
 
-		expect(put).not.toHaveBeenCalled();
-		expect(screen.getByText(/목록에서 리소스를 선택한 뒤 저장하세요/)).toBeTruthy();
+		await fireEvent.click(within(policyRow).getByRole('button', { name: '저장' }));
+		await waitFor(() => expect(put).toHaveBeenCalledWith(
+			'/api/v1/admin/resource-policies/builder.flavor',
+			{ resource_id: null },
+			'token',
+			'admin-project'
+		));
 	});
 
-	it('supports keyboard navigation and selection in the unified combobox', async () => {
+	it('supports keyboard navigation and selection in the catalog picker', async () => {
 		render(AdminResourcePoliciesPanel, { token: 'token', projectId: 'admin-project' });
-		const search = screen.getByLabelText('Builder flavor 검색 및 선택') as HTMLInputElement;
 
-		await fireEvent.focus(search);
-		await screen.findByRole('option', { name: /CPU build/ });
+		const trigger = await openBuilderFlavorPicker();
+		const search = screen.getByRole('combobox', { name: '이름 또는 ID로 검색' });
 		await fireEvent.keyDown(search, { key: 'ArrowDown' });
-		const cpuOption = screen.getByRole('option', { name: /CPU build/ });
-		expect(search.getAttribute('aria-activedescendant')).toBe(cpuOption.id);
-
 		await fireEvent.keyDown(search, { key: 'ArrowDown' });
-		const gpuOption = screen.getByRole('option', { name: /GPU build/ });
-		expect(search.getAttribute('aria-activedescendant')).toBe(gpuOption.id);
 		await fireEvent.keyDown(search, { key: 'Enter' });
 
-		expect(search.value).toBe('GPU build');
+		expect(trigger.textContent).toContain('GPU build');
 		expect(document.cookie).toContain('flavor-2');
 		expect(screen.queryByRole('listbox')).toBeNull();
+		expect(document.activeElement).toBe(trigger);
 	});
 
 	it('renders Drover-owned K3s network and volume policy definitions', async () => {
@@ -175,8 +203,10 @@ describe('AdminResourcePoliciesPanel', () => {
 		document.cookie = `afterglow_resource_policy_draft=${encodeURIComponent(rawCookie)}; path=/`;
 		render(AdminResourcePoliciesPanel, { token: 'token', projectId: 'admin-project' });
 
-		const search = screen.getByLabelText('Builder flavor 검색 및 선택') as HTMLInputElement;
-		expect(search.value).toBe('');
+		const trigger = (await screen.findByRole('button', {
+			name: 'Builder flavor 검색 및 선택'
+		})) as HTMLButtonElement;
+		await waitFor(() => expect(trigger.textContent).toContain('이름 또는 ID로 검색·선택'));
 		await screen.findByText('Builder flavor');
 	});
 

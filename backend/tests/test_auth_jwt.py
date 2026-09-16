@@ -518,6 +518,44 @@ async def test_get_os_conn_constructor_failure_yields_503(
 
 
 @pytest.mark.asyncio
+async def test_admin_connection_request_resolves_auth_once(_ks_authenticate, _ks_get_user, _rate_limiter_off):
+    """관리자 연결 endpoint의 중첩 의존성은 요청당 Keystone 검증을 한 번만 수행한다."""
+    from httpx import ASGITransport, AsyncClient
+
+    from app.main import app
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        login = await ac.post(
+            "/api/v1/auth/login",
+            json={"username": "alice", "password": "pw", "project_name": "myproject"},
+        )
+        assert login.status_code == 200
+        access = login.json()["token"]
+
+    admin_info = dict(_KS_DATA, is_system_admin=True, roles=["admin", "member"])
+    validate = AsyncMock(return_value=admin_info)
+    fake_response = MagicMock()
+    fake_response.json.return_value = {"servers": []}
+    fake_conn = MagicMock()
+    fake_conn.compute.get_endpoint.return_value = "https://nova.example.test/v2.1"
+    fake_conn.session.get.return_value = fake_response
+
+    with (
+        patch("app.api.deps._cached_validate", new=validate),
+        patch("app.api.deps.keystone.get_openstack_connection", return_value=fake_conn),
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            response = await ac.get(
+                "/api/v1/admin/all-instances",
+                headers={"Authorization": f"Bearer {access}"},
+            )
+
+    assert response.status_code == 200
+    assert response.json() == {"items": [], "next_marker": None, "count": 0}
+    assert validate.await_count == 1
+
+
+@pytest.mark.asyncio
 async def test_system_admin_foreign_target_succeeds_and_never_validates_target(
     _ks_authenticate, _ks_get_user, _rate_limiter_off
 ):

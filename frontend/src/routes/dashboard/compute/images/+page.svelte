@@ -7,7 +7,6 @@
   import ImageDetailPanel from '$lib/components/ImageDetailPanel.svelte';
   import ImageUploadModal from '$lib/components/ImageUploadModal.svelte';
   import SlidePanel from '$lib/components/SlidePanel.svelte';
-  import PageHeader from '$lib/components/ui/PageHeader.svelte';
   import ImageDistroFilter from '$lib/components/dashboard/images/ImageDistroFilter.svelte';
   import ImageCatalogToolbar, { type CatalogViewMode } from '$lib/components/dashboard/images/ImageCatalogToolbar.svelte';
   import ImageRepositoryCard from '$lib/components/dashboard/images/ImageRepositoryCard.svelte';
@@ -18,7 +17,7 @@
   import { confirmDialog } from '$lib/stores/confirm.svelte';
   import { toast } from '$lib/stores/toast';
   import { partitionBulkIds } from '$lib/utils/bulkActions';
-  import { BulkSelectionOverlay, SelectionToolbar } from '$lib/components/ui';
+  import { Alert, BulkSelectionOverlay, Button, EmptyState, PageHeader, PageShell, ResourceToolbar, SelectionToolbar } from '$lib/components/ui';
 
   const ctrl = createImagesController({
     token: () => $auth.token ?? undefined,
@@ -133,8 +132,15 @@
 
 <ImageDropOverlay onFile={(f) => { ctrl.uploadInitialFile = f; ctrl.showUploadModal = true; }} />
 
-<div class="bulk-selection-page p-4 md:p-8">
+<PageShell class="bulk-selection-page space-y-4">
   <PageHeader breadcrumb="COMPUTE / IMAGES" title="이미지">
+    {#snippet actions()}
+      <Button onclick={() => { ctrl.uploadInitialFile = null; ctrl.showUploadModal = true; }} variant="primary">
+        + 이미지 업로드
+      </Button>
+    {/snippet}
+  </PageHeader>
+  <ResourceToolbar label="이미지 목록 도구">
     {#snippet actions()}
       <AutoRefreshControl
         bind:active={ar.active}
@@ -143,27 +149,20 @@
         refreshing={ctrl.refreshing}
         onManualRefresh={ctrl.forceRefresh}
       />
-      <button
+      <Button
         onclick={() => ctrl.sortOrder = ctrl.sortOrder === 'desc' ? 'asc' : 'desc'}
-        class="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white px-3 py-1.5 rounded-lg border border-gray-700 hover:border-gray-600 transition-colors"
-      >
-        날짜 {ctrl.sortOrder === 'desc' ? '↓ 최신순' : '↑ 오래된순'}
-      </button>
-      <button
-        onclick={() => { ctrl.uploadInitialFile = null; ctrl.showUploadModal = true; }}
-        class="flex items-center gap-1.5 text-xs text-white px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 transition-colors font-medium"
-      >
-        + 이미지 업로드
-      </button>
+        variant="secondary"
+        size="sm"
+      >날짜 {ctrl.sortOrder === 'desc' ? '↓ 최신순' : '↑ 오래된순'}</Button>
     {/snippet}
-  </PageHeader>
+  </ResourceToolbar>
 
-  {#if ctrl.error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{ctrl.error}</div>{/if}
+  {#if ctrl.error}<Alert tone="danger">{ctrl.error}</Alert>{/if}
 
   {#if ctrl.loading}
     <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3.5">
       {#each Array(8) as _}
-        <div class="animate-pulse h-32 bg-gray-900 border border-gray-800 rounded-2xl"></div>
+        <div class="animate-pulse h-32 bg-surface-base border border-line rounded-lg"></div>
       {/each}
     </div>
   {:else}
@@ -184,12 +183,10 @@
     <ImageDistroFilter bind:distroFilter={ctrl.distroFilter} counts={ctrl.distroGroups} />
 
     {#if ctrl.filteredImages.length === 0}
-      <div class="text-center py-20 text-gray-600">
-        <p class="text-lg">{ctrl.images.length === 0 ? '이미지가 없습니다' : '검색 결과가 없습니다'}</p>
-        {#if ctrl.images.length > 0}
-          <p class="text-sm mt-2">repository, tag, OS 필터를 바꿔보세요.</p>
-        {/if}
-      </div>
+      <EmptyState
+        headline={ctrl.images.length === 0 ? '이미지가 없습니다' : '검색 결과가 없습니다'}
+        description={ctrl.images.length > 0 ? 'repository, tag, OS 필터를 바꿔보세요.' : '이미지를 업로드하면 카탈로그에 표시됩니다.'}
+      />
     {:else if selectedRepositoryGroup}
       <ImageRepositoryDetail
         group={selectedRepositoryGroup}
@@ -269,7 +266,7 @@
     onClear={() => ctrl.selection.clear()}
   />
   {/if}
-</div>
+</PageShell>
 
 <ImageUploadModal
   bind:open={ctrl.showUploadModal}
@@ -281,7 +278,7 @@
 />
 
 {#if ctrl.selectedImageId}
-  <SlidePanel onClose={ctrl.closeImagePanel} width="w-full md:w-[60vw] max-w-2xl">
+  <SlidePanel onClose={ctrl.closeImagePanel} ariaLabel="이미지 상세" width="w-full md:w-[60vw] max-w-2xl">
     <ImageDetailPanel
       imageId={ctrl.selectedImageId}
       onClose={ctrl.closeImagePanel}

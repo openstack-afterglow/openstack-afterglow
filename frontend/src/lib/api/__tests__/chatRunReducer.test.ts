@@ -18,7 +18,7 @@ function event(seq: number, type: string, payload: object, createdAt = at) {
 describe('chat run reducer', () => {
 	it('accumulates ordered deltas and replaces them with canonical completed parts', () => {
 		let state = createRunViewState('run-1');
-		state = reduceRunEvent(state, event(1, 'run.started', { conversation_id: 'c1', temp_thread_id: null, model_name: 'm', effective_features: {} }));
+		state = reduceRunEvent(state, event(1, 'run.started', { conversation_id: 'c1', temp_thread_id: null, model_name: 'm', effective_features: {}, run_kind: 'completion' }));
 		state = reduceRunEvent(state, event(2, 'message.created', { message_id: '42', role: 'assistant', parent_id: '1' }));
 		state = reduceRunEvent(state, event(3, 'part.delta', { message_id: '42', part_index: 0, part_type: 'text', delta: 'hel' }));
 		state = reduceRunEvent(state, event(4, 'part.delta', { message_id: '42', part_index: 0, part_type: 'text', delta: 'lo' }));
@@ -155,9 +155,44 @@ describe('chat run reducer', () => {
 		expect(state.parts[1]).toEqual({ type: 'reasoning', text: '두 번째 판단', visibility: 'user' });
 	});
 
+	it('retains compaction context events without creating an assistant message', () => {
+		const contextState = {
+			model_name: 'm',
+			context_limit: 16000,
+			output_reserve: 4096,
+			safety_reserve: 2048,
+			input_budget: 9856,
+			input_tokens: 8000,
+			utilization: 8000 / 9856,
+			measurement: 'tokenizer',
+			recommendation: 'required',
+			can_compact: true,
+			reason_code: null,
+			revision: 'rev-1',
+			checkpoint_id: null,
+			active_compaction_run_id: 'run-1'
+		};
+		let state = createRunViewState('run-1');
+		state = reduceRunEvent(state, event(1, 'run.started', { conversation_id: 'c1', temp_thread_id: null, model_name: 'm', effective_features: {}, run_kind: 'compaction' }));
+		state = reduceRunEvent(
+			state,
+			event(2, 'context.updated', {
+				state: contextState,
+				phase: 'compacting',
+				cause: 'manual',
+				before_tokens: 8000,
+				after_tokens: null
+			})
+		);
+		expect(state.runKind).toBe('compaction');
+		expect(state.messageId).toBeNull();
+		expect(state.context).toMatchObject({ phase: 'compacting', cause: 'manual', before_tokens: 8000 });
+		expect(state.activity).toEqual([expect.objectContaining({ kind: 'context', phase: 'compacting' })]);
+	});
+
 	it('deduplicates old events and rejects a sequence gap', () => {
 		const state = createRunViewState('run-1');
-		const started = { conversation_id: null, temp_thread_id: null, model_name: 'm', effective_features: {} };
+		const started = { conversation_id: null, temp_thread_id: null, model_name: 'm', effective_features: {}, run_kind: 'completion' };
 		const afterStarted = reduceRunEvent(state, event(1, 'run.started', started));
 		expect(reduceRunEvent(afterStarted, event(1, 'run.started', started))).toBe(afterStarted);
 		expect(() => reduceRunEvent(afterStarted, event(3, 'run.started', started))).toThrow('sequence gap');

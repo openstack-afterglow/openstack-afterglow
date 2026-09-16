@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { taskLabelForStage, taskLabelForTool } from '../chatTaskLabels';
+import { taskLabelForContext, taskLabelForStage, taskLabelForTool } from '../chatTaskLabels';
 
 describe('taskLabelForTool', () => {
 	it('maps managed and built-in tools to user-facing task labels', () => {
@@ -20,5 +20,12 @@ describe('taskLabelForStage', () => {
 		expect(taskLabelForStage('tool_execution', 'managed_web_search')).toBe('웹 검색 진행 중');
 		expect(taskLabelForStage('awaiting_input', null)).toBe('작업 승인을 기다리는 중');
 		expect(taskLabelForStage('model_response', null)).toBeNull();
+	});
+
+	it('labels manual and automatic context compaction activity', () => {
+		expect(taskLabelForContext('compacting', 'manual')).toBe('컨텍스트 압축 중');
+		expect(taskLabelForContext('compacted', 'manual')).toBe('컨텍스트 압축 완료');
+		expect(taskLabelForContext('compacting', 'automatic')).toBe('컨텍스트 자동 압축 중');
+		expect(taskLabelForContext('compacted', 'automatic')).toBe('컨텍스트 자동 압축 완료');
 	});
 });

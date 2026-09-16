@@ -12,7 +12,7 @@ let idCounter = 0;
 
 beforeEach(() => {
 	idCounter = 0;
-	vi.mocked(crypto.randomUUID).mockImplementation(() => `id-${++idCounter}`);
+	vi.mocked(crypto.randomUUID).mockImplementation(() => `00000000-0000-4000-8000-${String(++idCounter).padStart(12, '0')}`);
 	vi.useFakeTimers();
 });
 

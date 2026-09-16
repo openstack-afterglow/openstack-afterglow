@@ -1,5 +1,5 @@
 import { api, ApiError } from '$lib/api/client';
-import type { TopologyData, TopologyTraffic, TopologyLoadBalancer } from '$lib/types/topology';
+import type { TopologyData, TopologyTraffic, TopologyLoadBalancer, TopologyTrafficHistory } from '$lib/types/topology';
 
 export interface AdminTopologyControllerOpts {
   token: () => string | undefined;
@@ -52,6 +52,20 @@ export function createAdminTopologyController(opts: AdminTopologyControllerOpts)
     } catch { /* silent — traffic=null 로 표시 유지 */ }
   }
 
+  /**
+   * 네트워크 사용량 히스토리. 네트워크 패널을 열 때 1회만 호출한다 —
+   * 폴링에 얹으면 Prometheus 부하가 네트워크 수만큼 곱해진다.
+   */
+  async function loadNetworkHistory(networkId: string, range: string): Promise<TopologyTrafficHistory | null> {
+    if (!opts.token()) return null;
+    return api.get<TopologyTrafficHistory>(
+      `/api/v1/networks/topology/traffic/history?network_id=${encodeURIComponent(networkId)}`
+        + `&range=${encodeURIComponent(range)}&all_projects=true`,
+      opts.token(),
+      opts.projectId(),
+    );
+  }
+
   function handleDocumentClick(e: MouseEvent) {
     const target = e.target as HTMLElement;
     if (!target.closest('.project-filter-wrapper')) {
@@ -60,6 +74,7 @@ export function createAdminTopologyController(opts: AdminTopologyControllerOpts)
   }
 
   return {
+    loadNetworkHistory,
     get data() { return data; },
     get traffic() { return traffic; },
     get loading() { return loading; },

@@ -128,5 +128,4 @@ Prometheus SD (`/api/v1/sd/...`) and the baked paths for VM agents use a separat
 
 ## Architecture Documentation
 
-For the overall system structure, authentication flow, and the VM creation / k3s provisioning / Union layer lifecycle sequences,
-see [Architecture](architecture.md); for relationships between modules, see the [class & workflow diagrams](../class-diagrams/).
+The current system boundaries, ownership, runtime, and authoritative data stores are documented in the [root `ARCHITECTURE.md`](https://github.com/openstack-afterglow/openstack-afterglow/blob/main/ARCHITECTURE.md). This site's [architecture detail](architecture.md) is a domain entry point, not a copy of the root snapshot. See the [class and workflow diagrams](../class-diagrams/) for module relationships.

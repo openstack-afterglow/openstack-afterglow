@@ -163,6 +163,10 @@ EXEMPT_HANDLERS: set[str] = {
     "snapshot",
     "preview",
     "execute",
+    # Internal K3s admission is read-only despite POST. Intent creation mutates
+    # DB-backed orchestration state read directly, not an OpenStack cache.
+    "k3s_gpu_admission",
+    "create_k3s_provisioning_intent",
 }
 
 # ---------------------------------------------------------------------------
@@ -171,6 +175,7 @@ EXEMPT_HANDLERS: set[str] = {
 # ---------------------------------------------------------------------------
 INVALIDATING_HELPERS: set[str] = {
     "_simple_action",  # compute/instances.py — start/stop/reboot/shelve/unshelve
+    "_invalidate_provisioning_caches",  # internal_k3s.py — Nova/Cinder submission
 }
 
 # ---------------------------------------------------------------------------

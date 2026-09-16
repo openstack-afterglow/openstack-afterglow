@@ -47,9 +47,8 @@ data:
     public_api_base = "http://afterglow.example.com"
 
     [logging]
-    rotation_type = "time"
-    rotation_when = "midnight"
-    backup_count = 10
+    log_directory = "/app/logs"
+    max_bytes = 52428800
 
     [cache]
     redis_url = "redis://redis.afterglow.svc.cluster.local:6379/0"

@@ -7,7 +7,11 @@
 		disabled?: boolean;
 		required?: boolean;
 		maxlength?: number;
+		inputmode?: 'text' | 'decimal' | 'numeric' | 'search' | 'email' | 'url' | 'tel';
 		element?: HTMLInputElement | null;
+		ariaLabel?: string;
+		ariaDescribedBy?: string;
+		ariaInvalid?: boolean;
 		class?: string;
 		oninput?: (event: Event) => void;
 		onkeydown?: (event: KeyboardEvent) => void;
@@ -21,11 +25,16 @@
 		disabled = false,
 		required = false,
 		maxlength,
+		inputmode,
+		ariaLabel,
+		ariaDescribedBy,
+		ariaInvalid = false,
 		element = $bindable(null),
 		class: className = '',
 		oninput,
 		onkeydown,
 	}: Props = $props();
+	const describedBy = $derived(ariaDescribedBy ?? (id ? `${id}-message` : undefined));
 </script>
 
 <input
@@ -37,6 +46,10 @@
 	{disabled}
 	{required}
 	{maxlength}
+	{inputmode}
+	aria-label={ariaLabel}
+	aria-describedby={describedBy}
+	aria-invalid={ariaInvalid || undefined}
 	{oninput}
 	{onkeydown}
 	class="control text-input {className}"
@@ -45,7 +58,7 @@
 <style>
 	.control {
 		width: 100%;
-		border-radius: 0.5rem;
+		border-radius: var(--radius-md);
 		border: 1px solid var(--color-line-2);
 		background: var(--color-surface-sunken);
 		color: var(--color-ink-0);
@@ -54,10 +67,10 @@
 		line-height: 1.4;
 		transition: border-color var(--motion-duration-fast) var(--motion-ease-standard), box-shadow var(--motion-duration-fast) var(--motion-ease-standard), background var(--motion-duration-fast) var(--motion-ease-standard);
 	}
-	.control::placeholder { color: var(--color-ink-3); }
-	.control:focus {
+	.control::placeholder { color: var(--color-ink-2); }
+	.control:focus-visible {
 		outline: none;
-		border-color: var(--color-accent);
+		border-color: var(--color-line-2);
 		box-shadow: var(--focus-ring);
 	}
 	.control:disabled {

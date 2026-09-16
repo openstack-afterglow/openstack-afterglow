@@ -29,7 +29,7 @@ Afterglow currently runs as the [DMS Cloud research-cloud delivery console](http
 | AI/ML libraries | Store squashfs/NFS content-addressable immutable layer chains on Manila shares and compose them with OverlayFS in consumer VMs for reuse |
 | Operations | Projects, users, roles, quotas, Grafana, Prometheus, and audit logs |
 
-The browser uses the SvelteKit frontend to reach the FastAPI `/api/v1` gateway; the backend talks to OpenStack services through `openstacksdk`, while Redis provides cache and session storage. See the [architecture documentation](../architecture.md) and [Palimpsest layer documentation](../palimpsest.md) for detailed flows.
+The browser's SvelteKit application calls the configured FastAPI `/api/v1` API base directly; SvelteKit is the UI/auth shell, not an API relay. The backend talks to OpenStack services through `openstacksdk`, while Redis provides cache and session support. The current architecture source of truth is the [root `ARCHITECTURE.md`](https://github.com/openstack-afterglow/openstack-afterglow/blob/main/ARCHITECTURE.md); see the [Palimpsest layer documentation](../palimpsest.md) for detailed flows.
 
 
 ---
@@ -41,7 +41,8 @@ The browser uses the SvelteKit frontend to reach the FastAPI `/api/v1` gateway; 
 | [Getting started](deployment.md) | Docker Compose / Kubernetes deployment |
 | [k3s cluster](k3s.md) | k3s provisioning and node management |
 | [Drover behavior specification](drover-workflow.md) | Planned vs current Drover cluster creation behavior and provisioning workflow |
-| [Architecture](../architecture.md) _(Korean)_ | System design and data flow |
+| [Root architecture](https://github.com/openstack-afterglow/openstack-afterglow/blob/main/ARCHITECTURE.md) | Current system boundaries, ownership, operational limits, and update rules |
+| [Architecture detail](architecture.md) | Documentation-site domain entry point |
 | [API reference](../api-reference.md) _(Korean)_ | Complete REST API specification |
 | [kolla-ansible deployment](../deployment.md#kolla-ansible-배포) | Single-playbook deployment inside OpenStack |
 | [Targeted testing](../testing.md) _(Korean)_ | Guide to choosing fast local feature-test targets |

@@ -1,4 +1,5 @@
-<div class="text-center py-20 text-gray-600">
-  <div class="text-5xl mb-4">🔀</div>
-  <p class="text-lg">라우터가 없습니다</p>
-</div>
+<script lang="ts">
+  import EmptyState from '$lib/components/ui/EmptyState.svelte';
+</script>
+
+<EmptyState headline="라우터가 없습니다" description="프로젝트의 첫 라우터를 생성하세요." />

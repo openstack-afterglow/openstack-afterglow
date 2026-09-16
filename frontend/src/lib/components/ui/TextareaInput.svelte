@@ -6,6 +6,9 @@
 		placeholder?: string;
 		disabled?: boolean;
 		required?: boolean;
+		ariaLabel?: string;
+		ariaDescribedBy?: string;
+		ariaInvalid?: boolean;
 		class?: string;
 	}
 
@@ -16,16 +19,20 @@
 		placeholder,
 		disabled = false,
 		required = false,
+		ariaLabel,
+		ariaDescribedBy,
+		ariaInvalid = false,
 		class: className = '',
 	}: Props = $props();
+	const describedBy = $derived(ariaDescribedBy ?? (id ? `${id}-message` : undefined));
 </script>
 
-<textarea {id} {rows} bind:value {placeholder} {disabled} {required} class="control textarea-input {className}"></textarea>
+<textarea {id} {rows} bind:value {placeholder} {disabled} {required} aria-label={ariaLabel} aria-describedby={describedBy} aria-invalid={ariaInvalid || undefined} class="control textarea-input {className}"></textarea>
 
 <style>
 	.control {
 		width: 100%;
-		border-radius: 0.5rem;
+		border-radius: var(--radius-md);
 		border: 1px solid var(--color-line-2);
 		background: var(--color-surface-sunken);
 		color: var(--color-ink-0);
@@ -35,10 +42,10 @@
 		transition: border-color var(--motion-duration-fast) var(--motion-ease-standard), box-shadow var(--motion-duration-fast) var(--motion-ease-standard), background var(--motion-duration-fast) var(--motion-ease-standard);
 		resize: vertical;
 	}
-	.control::placeholder { color: var(--color-ink-3); }
-	.control:focus {
+	.control::placeholder { color: var(--color-ink-2); }
+	.control:focus-visible {
 		outline: none;
-		border-color: var(--color-accent);
+		border-color: var(--color-line-2);
 		box-shadow: var(--focus-ring);
 	}
 	.control:disabled {

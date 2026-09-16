@@ -27,7 +27,7 @@ Afterglow는 현재 [DMS Cloud 연구 클라우드 제공 콘솔](https://cloud.
 | AI/ML 라이브러리 | squashfs/NFS content-addressable 불변 레이어 체인을 Manila share에 저장하고 소비 VM에서 OverlayFS로 조합·재사용 |
 | 운영 제어 | 프로젝트·사용자·역할·쿼터, Grafana·Prometheus, 감사 로그 |
 
-브라우저는 SvelteKit 프론트엔드를 통해 FastAPI `/api/v1` 게이트웨이에 접속하고, 백엔드는 `openstacksdk`로 OpenStack 서비스와 통신합니다. Redis는 캐시와 세션을 담당합니다. 자세한 흐름은 [아키텍처](architecture.md)와 [Palimpsest 레이어 문서](palimpsest.md)를 참고하세요.
+브라우저의 SvelteKit 앱은 설정된 API base의 FastAPI `/api/v1` 게이트웨이를 직접 호출하며, SvelteKit은 UI/auth shell이지 API 중계 서버가 아닙니다. 백엔드는 `openstacksdk`로 OpenStack 서비스와 통신하고 Redis는 캐시·세션 보조 저장소를 제공합니다. 현재 구조 정본은 [루트 ARCHITECTURE.md](https://github.com/openstack-afterglow/openstack-afterglow/blob/main/ARCHITECTURE.md)이고, 상세 흐름은 [Palimpsest 레이어 문서](palimpsest.md)를 참고하세요.
 
 
 ---
@@ -43,8 +43,8 @@ Afterglow는 현재 [DMS Cloud 연구 클라우드 제공 콘솔](https://cloud.
 | [Palimpsest 레이어 API](api/union.md) | squashfs 레이어 빌드/소비, digest 검색, 부모 체인 |
 | [Drover 동작 명세](drover-workflow.md) | Drover 클러스터 생성의 계획 대비 현재 동작과 실제 프로비저닝 워크플로우 |
 | [서비스 카탈로그 등록](openstack-service-catalog.md) | Drover, Lumen, Waygate Keystone service와 endpoint 등록 |
-| [아키텍처](architecture.md) | 시스템 설계 및 플로우 |
-| [API 레퍼런스](api-reference.md) | REST API 전체 명세 |
+| [루트 아키텍처](https://github.com/openstack-afterglow/openstack-afterglow/blob/main/ARCHITECTURE.md) | 현재 시스템 경계·ownership·운영 한계와 갱신 규칙 |
+| [아키텍처 상세](architecture.md) | 문서 사이트의 도메인별 안내 |
 | [국소 기능테스트](testing.md) | 개발 중 빠르게 실행할 테스트 타깃 선택 가이드 |
 | [클래스·workflow 다이어그램](class-diagrams/) | 모듈 관계와 주요 resource 작업 흐름 |
 

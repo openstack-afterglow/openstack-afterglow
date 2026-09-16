@@ -22,6 +22,10 @@ spec:
         app: frontend
     spec:
       terminationGracePeriodSeconds: 20
+      securityContext:
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: frontend
           image: ghcr.io/openstack-afterglow/afterglow:latest
@@ -76,6 +80,8 @@ spec:
             - name: afterglow-config-volume
               mountPath: /app/afterglow.conf
               subPath: afterglow.conf
+            - name: app-logs
+              mountPath: /app/logs
           resources:
             requests:
               memory: "128Mi"
@@ -90,3 +96,5 @@ spec:
             items:
               - key: afterglow.conf
                 path: afterglow.conf
+        - name: app-logs
+          emptyDir: {}

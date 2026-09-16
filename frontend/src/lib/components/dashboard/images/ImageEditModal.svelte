@@ -3,6 +3,7 @@
 	import { api, ApiError } from '$lib/api/client';
 	import type { ImageInfo } from '$lib/types/compute';
 	import Button from '$lib/components/ui/Button.svelte';
+	import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	let {
 		target,
@@ -58,19 +59,22 @@
 </script>
 
 {#if target}
-	<div class="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		use:dialogFocus={{ enabled: true, onEscape: () => onClose() }} class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 	     onclick={() => { onClose(); }}
 	     role="dialog" aria-modal="true" tabindex="-1"
-	     onkeydown={(e) => e.key === 'Escape' && onClose()}>
-		<div class="bg-[var(--color-surface-raised)] border border-[var(--color-line)] rounded-xl p-6 w-full max-w-md mx-4 shadow-2xl"
+>
+		<div class="bg-[var(--color-surface-raised)] border border-[var(--color-line)] rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]"
 		     onclick={(e) => e.stopPropagation()}
-		     role="none" onkeydown={(e) => e.stopPropagation()}>
+		     role="none">
 			<h2 class="text-lg font-semibold text-[var(--color-ink-0)] mb-5">이미지 메타데이터 편집</h2>
 			<div class="space-y-4">
 				<div>
 					<label class="block text-xs text-[var(--color-ink-2)] mb-1.5 uppercase tracking-wide">이름
 						<input bind:value={form.name} type="text" class="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-line-2)] rounded-lg px-3 py-2 text-[var(--color-ink-0)] text-sm focus:outline-none focus:border-[var(--color-accent)] mt-1.5" />
-						<span class="block text-[11px] text-[var(--color-ink-3)] mt-1">repository:tag 형식이며 tag를 생략하면 latest가 사용됩니다.</span>
+						<span class="block text-xs text-[var(--color-ink-3)] mt-1">repository:tag 형식이며 tag를 생략하면 latest가 사용됩니다.</span>
 					</label>
 				</div>
 				<div>

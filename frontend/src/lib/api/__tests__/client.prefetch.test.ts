@@ -312,6 +312,7 @@ describe('explicit scoped prefetch', () => {
 		const { api } = await loadClient();
 		const controller = new AbortController();
 		const prefetch = api.prefetch('/api/v1/items', undefined, undefined, { signal: controller.signal });
+		await vi.waitFor(() => expect(mockFetch).toHaveBeenCalledOnce());
 		controller.abort();
 		speculative.resolve(jsonResponse({ source: 'cancelled' }));
 		await prefetch;

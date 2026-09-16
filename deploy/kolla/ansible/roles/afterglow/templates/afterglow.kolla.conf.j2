@@ -26,6 +26,9 @@ frontend_base_url = "{{ afterglow_public_endpoint_url }}"
 
 [cache]
 redis_url = "{{ afterglow_redis_url }}"
+sentinel_enabled = {{ afterglow_sentinel_enabled | bool | lower }}
+sentinel_master_name = "{{ afterglow_sentinel_master_name }}"
+sentinel_hosts = "{{ afterglow_sentinel_hosts }}"
 
 [services]
 magnum = {{ afterglow_service_magnum_enabled | bool | lower }}
@@ -45,6 +48,8 @@ callback_base_url = "{{ afterglow_instance_health_callback_base_url }}"
 
 [k3s]
 kubeconfig_encryption_key = "{{ afterglow_kubeconfig_encryption_key | default('') }}"
+gpu_admission_token = "{{ afterglow_k3s_gpu_admission_token | default('') }}"
+# provisioning_token is injected as K3S_PROVISIONING_TOKEN from the secret environment.
 
 [union]
 layer_store_rw_share_id = "{{ afterglow_share_layer_store_rw_id }}"
@@ -58,3 +63,6 @@ auto_create_tables = false
 
 [cors]
 origins = "{{ afterglow_public_endpoint_url }}"
+[logging]
+log_directory = "/var/log/kolla/afterglow_api"
+max_bytes = 52428800

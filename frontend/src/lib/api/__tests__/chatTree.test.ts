@@ -194,14 +194,17 @@ describe('ChatUsage contract', () => {
 			lifetime_completion_tokens: 500,
 			lifetime_request_count: 1,
 			month_credited_cost: 7.2,
+			week_credited_cost: 2.5,
 			month_prompt_tokens: 1000,
 			month_completion_tokens: 500,
 			month_request_count: 1,
 			quota_used: 7.2,
-			quota_max: 1000
+			quota_max: 1000,
+			quota_weekly_max: 100
 		};
 
 		expect(usage.month_prompt_tokens + usage.month_completion_tokens).toBe(1500);
 		expect(usage.quota_used).toBe(usage.month_credited_cost);
+		expect(usage.week_credited_cost).toBe(2.5);
 	});
 });

@@ -10,7 +10,7 @@ import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.api.deps import CacheMode, cache_mode, get_os_conn, get_token_info, require_admin
 from app.services import activity, keystone, session_store
@@ -548,6 +548,75 @@ class QuotaUpdateRequest(BaseModel):
     ram: int | None = None
     volumes: int | None = None
     gigabytes: int | None = None
+
+
+class ComputePolicyUpdateRequest(QuotaUpdateRequest):
+    gpu_quotas: dict[str, int | None] = Field(default_factory=dict)
+    reconcile_flavor_access: bool = True
+
+
+@router.put("/compute-policy/{project_id}", dependencies=[Depends(require_admin)])
+async def update_project_compute_policy(
+    project_id: str,
+    req: ComputePolicyUpdateRequest,
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+):
+    """Apply staged Nova compute and Afterglow GPU policy, then reconcile managed access."""
+    from app.api.identity.admin_flavors import (
+        FlavorAccessReconcileRequest,
+        reconcile_quota_managed_flavor_access,
+    )
+    from app.services.gpu_quota import (
+        delete_project_gpu_quota,
+        set_project_gpu_quota,
+    )
+
+    compute_kwargs = {
+        key: value
+        for key, value in {
+            "instances": req.instances,
+            "cores": req.cores,
+            "ram": req.ram,
+        }.items()
+        if value is not None
+    }
+    try:
+        if compute_kwargs:
+            await asyncio.to_thread(
+                conn.compute.update_quota_set,
+                project_id,
+                **compute_kwargs,
+            )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Compute quota 수정 실패") from exc
+
+    errors: list[dict] = []
+    for gpu_type, limit in req.gpu_quotas.items():
+        try:
+            if limit is None:
+                await delete_project_gpu_quota(conn, project_id, gpu_type)
+            else:
+                await set_project_gpu_quota(conn, project_id, gpu_type, limit)
+        except Exception:
+            errors.append({"gpu_type": gpu_type, "code": "gpu_quota_apply_failed"})
+
+    reconcile = None
+    if req.reconcile_flavor_access:
+        reconcile = await reconcile_quota_managed_flavor_access(
+            FlavorAccessReconcileRequest(project_id=project_id, apply=True),
+            conn,
+        )
+        errors.extend(reconcile.get("errors", []))
+
+    await invalidate(f"afterglow:nova:{project_id}:flavors")
+    await invalidate(f"afterglow:dashboard:{project_id}:quotas")
+    return {
+        "project_id": project_id,
+        "status": "partial" if errors else "ok",
+        "errors": errors,
+        "access_reconcile": reconcile,
+        "enforcement_scope": "afterglow_admissions_only",
+    }
 
 
 @router.get("/quotas/{project_id}", dependencies=[Depends(require_admin)])

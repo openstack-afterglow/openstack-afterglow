@@ -1,11 +1,12 @@
 """network/loadbalancers.py 엔드포인트 단위 테스트 (17개)."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.main import app
+from app.services.octavia import _lb_to_dict
 
 
 @pytest.mark.asyncio
@@ -286,3 +287,40 @@ async def test_delete_health_monitor_success(client, mock_conn):
         resp = await client.delete("/api/v1/loadbalancers/lb-1/pools/pool-1/health-monitor/hm-1")
     assert resp.status_code == 204
     mock_oct.delete_health_monitor.assert_called_once_with(mock_conn, "hm-1")
+
+
+def test_lb_to_dict_preserves_tags():
+    lb = MagicMock()
+    lb.id = "lb-tags-1"
+    lb.name = "k3s-lb"
+    lb.description = "Drover LB"
+    lb.provisioning_status = "ACTIVE"
+    lb.operating_status = "ONLINE"
+    lb.vip_address = "192.0.2.50"
+    lb.vip_subnet_id = "sub-1"
+    lb.vip_network_id = None
+    lb.vip_port_id = None
+    lb.project_id = "proj-1"
+    lb.tags = ["drover.managed=true", "drover.resource_type=load_balancer"]
+
+    result = _lb_to_dict(lb)
+    assert result["tags"] == ["drover.managed=true", "drover.resource_type=load_balancer"]
+    assert result["project_id"] == "proj-1"
+
+
+def test_lb_to_dict_default_empty_tags():
+    lb = MagicMock()
+    lb.id = "lb-tags-2"
+    lb.name = "user-lb"
+    lb.description = ""
+    lb.provisioning_status = "ACTIVE"
+    lb.operating_status = "ONLINE"
+    lb.vip_address = "192.0.2.51"
+    lb.vip_subnet_id = "sub-1"
+    lb.vip_network_id = None
+    lb.vip_port_id = None
+    lb.project_id = "proj-1"
+    lb.tags = None
+
+    result = _lb_to_dict(lb)
+    assert result["tags"] == []

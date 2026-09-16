@@ -13,6 +13,22 @@
 
 인터랙티브 작업은 plan 모드에서 목표·범위·설계·완료 기준·제약을 먼저 확정한다. 하네스 작업은 승인된 태스크 명세를 입력으로 구현한다. 결과는 변경 파일, 검증 증거, 미완료 또는 위험을 정확히 보고한다. 새로운 기능이나 수정은 OpenSpec change를 먼저 만들고, 작업 중 checklist를 갱신하며, 완료 후 archive한다.
 
+## Architecture maintenance
+
+- 작업 시작 전에 root [`ARCHITECTURE.md`](ARCHITECTURE.md)를 읽는다. 이 문서는 현재 source의 정본이며 계획·roadmap·archive는 완료 증거가 아니다.
+- code/config/schema/dependency/deploy/test를 변경하면 영향받는 `ARCHITECTURE.md` 본문과 상세 `docs/`를 같은 변경에서 갱신한다. 구조 영향이 없는 bugfix/refactor도 최신 review summary에 no-structure-impact 이유를 남긴다.
+- 실제 source를 검토한 뒤 `python3 scripts/check_architecture.py --stamp --summary "<검토 요약>"`으로 stamp하고, 완료/commit 전 `python3 scripts/check_architecture.py --staged`를 통과시킨다. source와 문서가 충돌하면 source가 우선이다.
+- 이 저장소의 문서 freshness guard는 표준 라이브러리와 Git만 사용하며 자동 stage/commit하지 않는다. hook이 설치되지 않은 환경에서도 위 명령을 직접 실행한다.
+
+## Docker Compose 배포 계약
+
+- `docker-compose.yml`은 독립 실행 가능한 최소 기본값이며 Afterglow `frontend`와 `backend`만 정의한다. Redis·DB·형제 서비스는 외부 설정을 사용한다. 소스 빌드나 개발/운영 보조 서비스를 이 파일에 추가하지 않는다.
+- `docker-compose.dev.yml`은 현재 소스를 직접 빌드하는 개발 환경의 정본이다. Afterglow와 Lumen·Waygate·Drover(기존 Palimpsest 포함)를 로컬에서 실행하고 기본적으로 Compose service DNS로 통신한다. `SERVICE_*_INTERNAL_URL` 또는 private `[services]`로 목적지를 선택할 수 있고 명시적 빈 환경 변수는 카탈로그를 선택한다. 로컬 DB/cache/checkpointer·설정·키는 운영과 분리한다.
+- `docker-compose.prod.yml`은 GitHub/GHCR에서 빌드한 이미지를 pull·동기화하여 실행하는 운영 환경의 정본이다. `build:` 및 소스 빌드 fallback을 금지한다. HAProxy가 앞단에서 운영 인증서로 TLS 종료와 LB를 담당한다. 형제 서비스는 기본적으로 인증된 OpenStack service catalog endpoint를 사용하며 명시적 환경 변수/TOML override는 신뢰된 HTTPS endpoint만 허용한다. 개발 HTTP URL, 자동 self-signed 인증서 및 insecure secret 우회를 금지한다.
+- 세 파일은 각각 명시적인 `-f`로 선택한다. 개발은 `npm run services:up` 또는 준비된 private env와 `docker-compose.dev.yml`로 실행하며, implicit override나 별도의 installed-image 개발 경로를 두지 않는다.
+- 기능테스트 datastore도 `docker-compose.dev.yml`의 `test` profile이 정본이며 별도 test manifest를 두지 않는다. 실행기는 기본 `afterglow-test` project에서 `mariadb/postgres/test-redis`만 명시적으로 기동·종료한다. 전용 loopback 3307/5434/6380과 tmpfs를 사용하고 개발 DB/cache·named volume·orphan을 삭제하지 않는다. 테스트만 실행할 때 cloud credential을 요구하거나 앱을 함께 시작하지 않는다.
+- 모드 전환 시 기존 project·volume·암호화 키를 보존하고 다른 프로젝트를 중지/삭제하지 않는다. `down --volumes`와 광역 prune을 사용하지 않는다. Container health와 실제 authenticated dashboard/OpenStack 통신을 별도로 검증하고 upstream 오류를 성공으로 숨기지 않는다.
+
 ## 태스크 명세
 
 하네스 입력은 다음 형식을 사용한다.
@@ -83,7 +99,7 @@ milestone.md          OpenSpec redirect stub; append 대상이 아님
 - 계층별 테스트 계약:
   1. **단위 테스트 (Unit)**: `npm run test:unit:backend`, `npm run test:unit:frontend`, `npm run test:unit` (외부 네트워크·Docker·자격 증명 없음; 전체 unit은 오케스트레이터 회귀 포함)
   2. **소비자 계약 테스트 (Contract)**: `npm run test:contract` (`backend/tests/contracts/`의 BFF/SDK/catalog/ingress 경계)
-  3. **국소 기능 테스트 (Functional)**: `npm run test:functional` (실제 MariaDB/PostgreSQL/Redis를 쓰는 전용 일회용 Compose). 기본 자동 기동·종료. 재사용은 `--no-start`, 로컬 유지는 `--keep`.
+  3. **국소 기능 테스트 (Functional)**: `npm run test:functional` (`docker-compose.dev.yml`의 실제 MariaDB/PostgreSQL/Redis test profile). 기본 전용 project 자동 기동·종료이며 데이터는 tmpfs다. 재사용은 `--no-start`, 실행 중 유지/디버깅은 `--keep`이고 중지 시 데이터는 사라진다.
   4. **실제 환경 테스트 (Live OpenStack)**: `npm run test:live` (`live:{auth,admin,compute,network,storage,layers}`). 자격 증명/도달성 미비는 검증 공백으로 보고하지만, 사전조건 충족 뒤의 테스트 실패는 결함으로 처리한다.
 - 검증 진행 순서: exact selector → named target → cross-cutting target (`npm run test:all`).
 - `npm run test:list`로 target을 확인한다.

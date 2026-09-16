@@ -53,7 +53,7 @@ describe('K3s cluster detail tabs', () => {
 		});
 
 		render(Page);
-		const resourcesTab = await screen.findByRole('button', { name: '스택 리소스' });
+		const resourcesTab = await screen.findByRole('tab', { name: '스택 리소스' });
 		expect(mockGet).toHaveBeenCalledOnce();
 
 		await fireEvent.focus(resourcesTab);

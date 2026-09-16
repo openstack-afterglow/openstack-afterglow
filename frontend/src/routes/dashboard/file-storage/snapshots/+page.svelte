@@ -164,7 +164,7 @@
 		<PageHeader breadcrumb="FILE STORAGE / SNAPSHOTS" title="스냅샷">
 			{#snippet actions()}
 				<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} refreshing={refreshing || loading} onManualRefresh={forceRefresh} />
-				<button onclick={openCreateModal} onpointerenter={prefetchFileStorages} onfocus={prefetchFileStorages} class="bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">+ 스냅샷 생성</button>
+				<button onclick={openCreateModal} onpointerenter={prefetchFileStorages} onfocus={prefetchFileStorages} class="bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">+ 스냅샷 생성</button>
 			{/snippet}
 		</PageHeader>
 		{#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}

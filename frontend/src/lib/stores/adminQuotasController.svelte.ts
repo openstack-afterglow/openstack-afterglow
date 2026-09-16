@@ -1,3 +1,22 @@
+export interface FlavorReconcileOperation {
+  flavor_id: string;
+  flavor_name: string;
+  gpu_demand: Record<string, number>;
+  desired_access: boolean;
+  current_access: boolean;
+  action: 'add' | 'remove' | 'none';
+  applied?: boolean;
+}
+
+export interface FlavorReconcileResponse {
+  project_id: string;
+  applied: boolean;
+  status: 'ok' | 'partial';
+  operations: FlavorReconcileOperation[];
+  errors: Array<{ flavor_id?: string; flavor_name?: string; code: string; action?: string }>;
+  enforcement_scope: string;
+}
+
 import { api, ApiError } from '$lib/api/client';
 import type { Project, Quotas, GpuQuota, GpuDefaultQuota } from '$lib/types/quotas';
 
@@ -28,11 +47,26 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts) {
   let gpuDefaultSuccess = $state('');
   let gpuQuotaGeneration = 0;
   let quotaGeneration = 0;
+  let reconcilePreview = $state<FlavorReconcileResponse | null>(null);
+  let reconcileLoading = $state(false);
 
   const gpuQuotaMap = $derived(Object.fromEntries(gpuQuotas.map(q => [q.gpu_type, q])));
   const gpuDefaultMap = $derived(Object.fromEntries(gpuDefaults.map(q => [q.gpu_type, q.limit])));
   const allGpuTypes = $derived(
     [...new Set([...gpuAliases, ...gpuDefaults.map(d => d.gpu_type), ...gpuQuotas.map(q => q.gpu_type)])].sort()
+  );
+  const gpuQuotaRows = $derived(
+    allGpuTypes.map((gpuType): GpuQuota => {
+      const current = gpuQuotaMap[gpuType];
+      if (current) return current;
+      const limit = gpuDefaultMap[gpuType] ?? 0;
+      return {
+        gpu_type: gpuType,
+        limit,
+        in_use: 0,
+        available: limit === -1 ? -1 : limit,
+      };
+    }),
   );
 
   const tok = opts.token;
@@ -102,6 +136,7 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts) {
       if (owns()) quotaLoading = false;
     }
     await gpuPromise;
+    void loadReconcilePreview();
   }
 
   async function loadGpuQuotas(opts?: { background?: boolean }) {
@@ -126,6 +161,7 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts) {
     } finally {
       if (owns()) gpuQuotaLoading = false;
     }
+    void loadReconcilePreview();
   }
 
   async function setGpuQuota(gpuType: string, limit: number) {
@@ -146,6 +182,28 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts) {
       await loadGpuQuotas({ background: true });
     } catch (e) {
       gpuQuotaError = e instanceof ApiError ? e.message : 'GPU quota 삭제 실패';
+    }
+  }
+
+  async function loadReconcilePreview(gpuLimits?: Record<string, number>) {
+    const targetProjectId = selectedProjectId;
+    if (!targetProjectId) {
+      reconcilePreview = null;
+      return;
+    }
+    reconcileLoading = true;
+    try {
+      const res = await api.post<FlavorReconcileResponse>(
+        '/api/v1/admin/flavors/access-reconcile',
+        { project_id: targetProjectId, apply: false, gpu_limits: gpuLimits },
+        tok(),
+        pid(),
+      );
+      if (selectedProjectId === targetProjectId) reconcilePreview = res;
+    } catch {
+      if (selectedProjectId === targetProjectId) reconcilePreview = null;
+    } finally {
+      if (selectedProjectId === targetProjectId) reconcileLoading = false;
     }
   }
 
@@ -178,12 +236,16 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts) {
     get gpuQuotaMap() { return gpuQuotaMap; },
     get gpuDefaultMap() { return gpuDefaultMap; },
     get allGpuTypes() { return allGpuTypes; },
+    get gpuQuotaRows() { return gpuQuotaRows; },
     get gpuQuotaLoading() { return gpuQuotaLoading; },
     get gpuQuotaError() { return gpuQuotaError; },
     get gpuDefaultLoading() { return gpuDefaultLoading; },
     get gpuDefaultError() { return gpuDefaultError; },
     get gpuDefaultSuccess() { return gpuDefaultSuccess; },
     get gpuQuotas() { return gpuQuotas; },
+    get reconcilePreview() { return reconcilePreview; },
+    get reconcileLoading() { return reconcileLoading; },
+    loadReconcilePreview,
     loadProjects,
     loadGpuAliases,
     loadGpuDefaults,

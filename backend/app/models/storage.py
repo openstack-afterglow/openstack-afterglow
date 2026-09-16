@@ -91,33 +91,70 @@ class VolumeInfo(BaseModel):
 
 VolumeDeleteRootCause = Literal[
     "already_deleted",
+    "api_absent_backend_present",
     "attached_volume_delete_blocked",
-    "dependent_snapshot_or_backup",
-    "recoverable_error_deleting",
-    "recoverable_error_state",
+    "dependent_resource_present",
+    "authentication_scope_failed",
+    "authorization_denied",
+    "dependency_unknown",
+    "deleting_in_progress",
+    "backend_lookup_unknown",
+    "backend_inconsistent",
+    "backend_present_consistent",
+    "backend_absent_record_only",
+    "rbd_name_mapping_missing",
+    "recoverable_backend_unverified",
     "normal_delete_possible",
     "not_recoverable_status",
-    "unknown",
 ]
 
 VolumeDeleteRecoveryStatus = Literal[
     "deleted",
     "already_deleted",
     "delete_submitted",
+    "backend_residue",
+    "backend_unverified",
     "blocked",
     "failed",
 ]
 
 VolumeDeleteRecoveryAction = Literal[
     "diagnose",
-    "reset_status",
-    "delete",
-    "verify_after_delete",
+    "restore_name_mapping",
+    "verify_name_mapping",
+    "recheck_state",
     "force_delete",
+    "reset_attach_status",
     "verify_after_force_delete",
+    "backend_verify",
+    "cleanup_stale_name_mapping",
+    "quota_verify",
 ]
 
 VolumeDeleteRecoveryStepStatus = Literal["success", "skipped", "failed"]
+VolumeDeleteCheckState = Literal["present", "absent", "unknown"]
+VolumeDeleteCheckName = Literal[
+    "auth_preflight",
+    "volume_attachments",
+    "cinder_attachments",
+    "nova_attachments",
+    "snapshots",
+    "backups",
+    "clone_volumes",
+    "group_or_migration",
+    "backend_fsid",
+    "rbd_name_mapping",
+    "rbd_directory_entry",
+    "rbd_image_by_name",
+    "rbd_image_by_id",
+    "rbd_header",
+    "rbd_object_map",
+    "rbd_watchers",
+    "rbd_snapshots",
+    "rbd_parent_child_link",
+    "rbd_trash",
+    "rbd_data_objects",
+]
 
 
 class VolumeDeleteMessage(BaseModel):
@@ -138,20 +175,50 @@ class VolumeDeleteDependency(BaseModel):
     kind: Literal["snapshot", "backup"]
 
 
+class VolumeDeleteCheck(BaseModel):
+    name: VolumeDeleteCheckName
+    state: VolumeDeleteCheckState
+    detail: str | None = None
+
+
+class VolumeDeleteBackendInspection(BaseModel):
+    mode: Literal["unavailable", "inspected", "unknown"] = "unavailable"
+    classification: Literal[
+        "not_inspected",
+        "consistent",
+        "name_mapping_missing",
+        "absent",
+        "stale_name_mapping_only",
+        "inconsistent",
+        "unknown",
+    ] = "not_inspected"
+    pool: str | None = None
+    image_name: str | None = None
+    image_id: str | None = None
+    size_bytes: int | None = None
+    order: int | None = None
+    parent_spec: str | None = None
+
+
 class VolumeDeleteDiagnostic(BaseModel):
     volume_id: str
     status: str | None = None
     project_id: str | None = None
+    name: str | None = None
+    size_gb: int | None = None
+    backend_host: str | None = None
+    updated_at: str | None = None
     attachments: list[dict] = []
     dependencies: list[VolumeDeleteDependency] = []
     messages: list[VolumeDeleteMessage] = []
+    checks: list[VolumeDeleteCheck] = []
+    backend: VolumeDeleteBackendInspection = VolumeDeleteBackendInspection()
     root_cause_code: VolumeDeleteRootCause
     confidence: Literal["high", "medium", "low"]
     summary: str
     evidence: list[str] = []
     recommended_action: str
     recovery_available: bool
-    force_delete_available: bool
 
 
 class VolumeDeleteRecoveryStep(BaseModel):
@@ -165,6 +232,8 @@ class VolumeDeleteRecoveryResult(BaseModel):
     status: VolumeDeleteRecoveryStatus
     verified_deleted: bool
     final_status: str | None = None
+    backend_verification: Literal["verified", "unavailable", "residue", "unknown"] = "unavailable"
+    quota_verification: Literal["verified", "mismatch", "unavailable"] = "unavailable"
     diagnostic: VolumeDeleteDiagnostic
     steps: list[VolumeDeleteRecoveryStep] = []
 
@@ -177,6 +246,7 @@ class NetworkInfo(BaseModel):
     cidrs: list[str] = []
     is_external: bool = False
     is_shared: bool = False
+    project_id: str | None = None
 
 
 class SubnetDetail(BaseModel):
@@ -237,6 +307,7 @@ class NetworkDetail(BaseModel):
     is_shared: bool = False
     subnet_details: list[SubnetDetail] = []
     routers: list[RouterInfo] = []
+    project_id: str | None = None
 
 
 class AdminNetworkDetail(NetworkDetail):
@@ -397,8 +468,16 @@ class UpdateSubnetRequest(BaseModel):
     enable_dhcp: bool | None = None
 
 
+class CreateNetworkSubnetSpec(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    cidr: str
+    gateway_ip: str | None = None
+    enable_dhcp: bool = True
+
+
 class CreateNetworkRequest(BaseModel):
-    name: str
+    name: str = Field(..., min_length=1, max_length=255)
+    subnet: CreateNetworkSubnetSpec | None = None
 
 
 class CreateSubnetRequest(BaseModel):
@@ -439,7 +518,10 @@ class TopologyInstance(BaseModel):
     status: str
     project_id: str | None = None
     network_names: list[str] = []
-    ip_addresses: list[dict] = []  # [{addr, type, network_name}]
+    ip_addresses: list[dict] = []  # [{addr, type, network_name, network_id, port_id, mac_addr}]
+    flavor_name: str | None = None
+    image_id: str | None = None
+    is_database: bool = False  # Trove DB 인스턴스를 구성하는 Nova 인스턴스 여부
 
 
 class TopologyRouter(BaseModel):
@@ -454,6 +536,8 @@ class TopologyRouter(BaseModel):
     connected_subnet_ids: list[str] = []
     dvr_subnet_ids: list[str] = []
     project_id: str | None = None
+    enable_snat: bool | None = None  # 외부 게이트웨이 SNAT 여부 (게이트웨이 없으면 None)
+    routes: list[dict] = []  # [{destination, nexthop}] 정적 경로
 
 
 class TopologyNetwork(BaseModel):
@@ -464,6 +548,15 @@ class TopologyNetwork(BaseModel):
     is_shared: bool = False
     project_id: str | None = None
     subnet_details: list[SubnetDetail] = []
+    mtu: int | None = None
+
+
+class AdminTopologyNetwork(TopologyNetwork):
+    """관리자 토폴로지 전용 네트워크 — provider 세그먼트 메타데이터 포함."""
+
+    provider_network_type: str | None = None
+    provider_segmentation_id: int | None = None
+    provider_physical_network: str | None = None
 
 
 class TopologyLBMember(BaseModel):
@@ -504,6 +597,12 @@ class TopologyData(BaseModel):
     instances: list[TopologyInstance] = []
     floating_ips: list[FloatingIpInfo] = []
     load_balancers: list[TopologyLoadBalancer] = []
+
+
+class AdminTopologyData(TopologyData):
+    """관리자 토폴로지 응답 — 네트워크에 provider 메타데이터가 추가된다."""
+
+    networks: list[AdminTopologyNetwork] = []
 
 
 # ---------------------------------------------------------------------------

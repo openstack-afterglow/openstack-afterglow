@@ -101,8 +101,11 @@ function createAdminVolumeDetailController(opts: Options) {
 			if (result.status === 'deleted' || result.status === 'already_deleted') {
 				opts.onRefresh?.();
 				opts.onClose?.();
-			} else if (result.status === 'delete_submitted') {
-				await fetchVolume();
+			} else if (
+				result.status === 'delete_submitted' ||
+				result.status === 'backend_residue' ||
+				result.status === 'backend_unverified'
+			) {
 				opts.onRefresh?.();
 			}
 			return result;

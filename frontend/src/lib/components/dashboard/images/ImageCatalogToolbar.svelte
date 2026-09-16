@@ -134,7 +134,7 @@
 	.view-toggle { gap: 0.2rem; padding: 0.2rem; border: 1px solid var(--color-line); border-radius: 0.5rem; background: var(--color-surface-sunken); }
 	.toolbar-kicker {
 		margin: 0 0 0.25rem;
-		color: var(--color-warm);
+		color: var(--color-warm-text);
 		font-size: 0.625rem;
 		font-weight: 700;
 		letter-spacing: 0.14em;
@@ -144,7 +144,7 @@
 	.search-row { align-items: stretch; }
 	.search-field { position: relative; display: flex; align-items: center; flex: 1; min-width: 0; }
 	.search-field :global(.text-input) { padding-left: 2.35rem; padding-right: 2.25rem; }
-	.search-field svg { position: absolute; z-index: 1; left: 0.75rem; width: 1rem; height: 1rem; color: var(--color-ink-3); pointer-events: none; }
+	.search-field svg { position: absolute; z-index: 1; left: 0.75rem; width: 1rem; height: 1rem; color: var(--color-ink-2); pointer-events: none; }
 	.clear-search {
 		position: absolute;
 		right: 0.65rem;
@@ -161,10 +161,10 @@
 	.clear-search:hover { color: var(--color-ink-0); background: var(--color-surface-sunken); }
 	.filter-row { align-items: end; }
 	.filter-control { display: grid; gap: 0.3rem; min-width: 10rem; flex: 1; }
-	.filter-control label { color: var(--color-ink-3); font-size: 0.6875rem; font-weight: 600; }
+	.filter-control label { color: var(--color-ink-2); font-size: 0.6875rem; font-weight: 600; }
 	.sort-control { max-width: 13rem; }
 	.toolbar-footer { color: var(--color-ink-1); font-size: 0.75rem; }
-	.footer-muted { color: var(--color-ink-3); }
+	.footer-muted { color: var(--color-ink-2); }
 	@media (max-width: 42rem) {
 		.toolbar-heading, .search-row, .filter-row { align-items: stretch; flex-direction: column; }
 		.toolbar-heading { gap: 0.75rem; }

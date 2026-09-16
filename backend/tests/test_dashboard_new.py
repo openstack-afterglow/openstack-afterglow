@@ -49,7 +49,7 @@ async def test_overview_returns_stats(client, mock_conn, monkeypatch):
             return_value=SimpleNamespace(service_k3s_enabled=True),
         ),
         patch(
-            "app.api.common.dashboard.register_drover",
+            "app.api.common.dashboard.get_drover_proxy",
             return_value=MagicMock(cluster_stats=MagicMock(return_value={"total": 2, "active": 1})),
         ),
     ):
@@ -78,7 +78,7 @@ async def test_overview_marks_drover_unavailable_when_cluster_stats_fail(client,
             return_value=SimpleNamespace(service_k3s_enabled=True),
         ),
         patch(
-            "app.api.common.dashboard.register_drover",
+            "app.api.common.dashboard.get_drover_proxy",
             return_value=MagicMock(cluster_stats=MagicMock(side_effect=RuntimeError("Drover unavailable"))),
         ),
     ):

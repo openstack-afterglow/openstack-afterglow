@@ -217,7 +217,7 @@ async def _forward(
 
     async def stream_content():
         try:
-            async for chunk in upstream_response.aiter_bytes():
+            async for chunk in upstream_response.aiter_raw():
                 yield chunk
         finally:
             await upstream_response.aclose()

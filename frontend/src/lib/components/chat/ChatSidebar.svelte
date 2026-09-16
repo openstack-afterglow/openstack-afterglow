@@ -12,11 +12,13 @@
 		model_name: string | null;
 		workspace_id: number | null;
 		updated_at: string | null;
+		title_status?: 'idle' | 'pending' | 'ready' | 'failed' | 'unavailable';
 	}
 	interface Props {
 		conversations: Conversation[];
 		workspaces: Workspace[];
 		activeConvId: string | null;
+		newlyCreatedConversationId?: string | null;
 		tempMode?: boolean;
 		runningConversationIds?: ReadonlySet<string>;
 		busy?: boolean;
@@ -41,6 +43,7 @@
 		conversations,
 		workspaces,
 		activeConvId,
+		newlyCreatedConversationId = null,
 		tempMode = false,
 		runningConversationIds = new Set<string>(),
 		busy = false,
@@ -66,6 +69,11 @@
 	let searchRequest = 0;
 	let serverSearchResults = $state<Conversation[] | null>(null);
 	let userMenuOpen = $state(false);
+	$effect(() => {
+		if (open) return;
+		userMenuOpen = false;
+		workspaceMenuId = null;
+	});
 
 	$effect(() => {
 		const closeWorkspaceMenu = (event: PointerEvent) => {
@@ -79,6 +87,19 @@
 	let collapsed = $state<Record<string, boolean>>({});
 	function toggle(key: string) {
 		collapsed[key] = !collapsed[key];
+	}
+
+	let revealedConversationId: string | null = null;
+	$effect(() => {
+		if (!newlyCreatedConversationId || newlyCreatedConversationId === revealedConversationId) return;
+		const conversation = conversations.find((item) => item.id === newlyCreatedConversationId);
+		if (!conversation) return;
+		revealedConversationId = conversation.id;
+		if (conversation.workspace_id !== null) collapsed[`ws-${conversation.workspace_id}`] = false;
+	});
+
+	function conversationLabel(conversation: Conversation): string {
+		return conversation.title || (conversation.title_status === 'pending' ? '제목 요약 중' : '새 대화');
 	}
 
 	// 제목 드래그앤드롭으로 프로젝트 이동 (Codex식). 드래그 중인 대화 id + drop 대상.
@@ -178,10 +199,23 @@
 	});
 </script>
 
-<aside class="sidebar" class:closed={!open}>
+<aside
+	id="chat-history-drawer"
+	class="sidebar"
+	class:closed={!open}
+	aria-hidden={!open}
+	inert={!open}
+	aria-label="대화 기록"
+>
 	<header class="brand">
 		<span class="brand-name">Lumen</span>
-		<button type="button" class="brand-toggle" onclick={onToggle} aria-label="사이드바 접기" title="사이드바 접기">
+		<button
+			type="button"
+			class="brand-toggle"
+			onclick={onToggle}
+			aria-label={open ? '대화 기록 닫기' : '대화 기록 열기'}
+			title={open ? '대화 기록 닫기' : '대화 기록 열기'}
+		>
 			<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="2.5" /><path d="M10 4v16" /></svg>
 		</button>
 	</header>
@@ -260,7 +294,7 @@
 	</div>
 </aside>
 
-<Modal open={searchOpen} onClose={() => (searchOpen = false)}>
+<Modal open={searchOpen} onClose={() => (searchOpen = false)} ariaLabel="대화 검색">
 	<section class="chat-search-dialog" aria-label="대화 검색">
 		<div class="chat-search-input">
 			<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" stroke-linecap="round" /></svg>
@@ -273,7 +307,7 @@
 			{:else}
 				{#each searchResults as conversation (conversation.id)}
 					<button type="button" role="option" aria-selected={conversation.id === activeConvId} onclick={() => selectSearchResult(conversation)}>
-						<span class="truncate">{conversation.title ?? '새 대화'}</span>
+						<span class="truncate">{conversationLabel(conversation)}</span>
 						{#if conversation.model_name}
 							<small>{conversation.model_name}</small>
 						{/if}
@@ -339,6 +373,7 @@
 		class:dragging={draggingId === conv.id}
 		class:project-child={projectChild}
 		draggable={true}
+		role="listitem"
 		ondragstart={() => (draggingId = conv.id)}
 		ondragend={() => {
 			dropTargetKey = null;
@@ -346,7 +381,7 @@
 		}}
 	>
 		<button type="button" class="item" onclick={() => onSelect(conv)}>
-			<span class="item-title">{conv.title || '새 대화'}</span>
+			<span class="item-title">{conversationLabel(conv)}</span>
 			{#if runningConversationIds.has(conv.id)}
 				<span class="run-indicator" title="응답 생성 중" aria-label="응답 생성 중">
 					<span class="run-spinner" aria-hidden="true"></span>
@@ -376,26 +411,30 @@
 		display: flex;
 		flex-direction: column;
 		min-height: 0;
+		overflow: hidden;
 		border-right: 1px solid var(--color-line);
 		background: var(--color-surface-sunken);
-		transition: margin-left 0.22s ease;
+		transition: transform var(--motion-duration-panel) var(--motion-ease-out);
 	}
-	/* 데스크톱: 접으면 왼쪽으로 밀어내 본문이 전체 폭을 차지 */
+	/* Desktop retains the collapsible inline sidebar. */
 	.sidebar.closed {
 		margin-left: -16rem;
 	}
-	/* 모바일: 오버레이 드로어 — 흐름에서 빼내 본문은 항상 전체 폭, 열릴 때만 위에 겹침 */
-	@media (max-width: 768px) {
+	/* Compact shell: a viewport-bounded overlay drawer starts below the shared shell header. */
+	@media (width < 1024px) {
 		.sidebar {
 			position: absolute;
 			top: 0;
 			bottom: 0;
 			left: 0;
-			z-index: 40;
+			z-index: 2;
+			height: 100%;
+			max-height: 100%;
 			box-shadow: 2px 0 16px color-mix(in oklab, var(--color-ink-0) 18%, transparent);
 		}
 		.sidebar.closed {
-			margin-left: -17rem; /* 그림자까지 완전히 숨김 */
+			margin-left: 0;
+			transform: translateX(-100%);
 		}
 	}
 	.brand {
@@ -430,6 +469,12 @@
 		border-color: var(--color-line);
 		background: var(--color-surface-base);
 		color: var(--color-ink-0);
+	}
+	@media (width < 1024px) {
+		.brand-toggle {
+			width: 2.75rem;
+			height: 2.75rem;
+		}
 	}
 	.top {
 		display: flex;
@@ -489,7 +534,7 @@
 		border: 1px solid transparent;
 		border-radius: 0.55rem;
 		background: transparent;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-size: 0.8125rem;
 		cursor: pointer;
 	}
@@ -504,7 +549,7 @@
 		padding: 0.1rem 0.3rem;
 		border: 1px solid var(--color-line);
 		border-radius: 0.3rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-size: 0.65rem;
 	}
 	.chat-search-dialog {
@@ -540,7 +585,7 @@
 		padding: 0.12rem 0.35rem;
 		border: 1px solid var(--color-line);
 		border-radius: 0.3rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-size: 0.65rem;
 	}
 	.chat-search-results {
@@ -568,13 +613,13 @@
 		color: var(--color-ink-0);
 	}
 	.chat-search-results small {
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-size: 0.68rem;
 	}
 	.chat-search-empty {
 		margin: 0;
 		padding: 1.25rem 0.65rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-size: 0.8rem;
 	}
 	.list {
@@ -589,7 +634,7 @@
 	.empty {
 		padding: 1rem 0.75rem;
 		font-size: 0.78rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.group-row {
 		position: relative;
@@ -611,7 +656,7 @@
 		padding: 0.4rem 0.5rem;
 		border: none;
 		background: transparent;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-size: 0.7rem;
 		font-weight: 650;
 		letter-spacing: 0.03em;
@@ -630,7 +675,7 @@
 	}
 	.group-count {
 		flex-shrink: 0;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-weight: 550;
 	}
 	.group-actions {
@@ -659,7 +704,7 @@
 		border: none;
 		border-radius: 0.4rem;
 		background: transparent;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		cursor: pointer;
 	}
 	.group-action:hover,
@@ -707,7 +752,7 @@
 		border: none;
 		border-radius: 0.4rem;
 		background: transparent;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		font-size: 0.72rem;
 		cursor: pointer;
 	}
@@ -818,7 +863,7 @@
 		border: none;
 		border-radius: 0.4rem;
 		background: transparent;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 		cursor: pointer;
 		opacity: 0;
 		transition: opacity 0.12s, color 0.12s, background 0.12s;
@@ -830,6 +875,10 @@
 	.del:hover:not(:disabled) {
 		color: var(--color-state-danger);
 		background: color-mix(in oklab, var(--color-state-danger) 12%, transparent);
+	}
+	.del:disabled {
+		cursor: not-allowed;
+		opacity: 0.35;
 	}
 	.entries {
 		display: flex;
@@ -901,7 +950,7 @@
 	}
 	.dots {
 		flex-shrink: 0;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.truncate {
 		overflow: hidden;

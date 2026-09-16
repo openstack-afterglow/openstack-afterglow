@@ -27,12 +27,12 @@
 		placeholder="이름 검색"
 		bind:value={searchInput}
 		oninput={handleSearchInput}
-		class="bg-gray-800 border border-gray-700 text-sm text-gray-300 rounded-lg px-3 py-1.5 w-48 focus:outline-none focus:border-blue-500"
+		class="bg-surface-sunken border border-line-2 text-sm text-ink-2 rounded-lg px-3 py-1.5 w-48 focus:outline-none focus:border-action-warm"
 	/>
 	<select
 		bind:value={visibilityFilter}
 		onchange={onVisibilityChange}
-		class="bg-gray-800 border border-gray-700 text-sm text-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:border-blue-500"
+		class="bg-surface-sunken border border-line-2 text-sm text-ink-2 rounded-lg px-3 py-1.5 focus:outline-none focus:border-action-warm"
 	>
 		<option value="">공개 범위 전체</option>
 		<option value="public">Public</option>

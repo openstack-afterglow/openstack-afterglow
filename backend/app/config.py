@@ -3,18 +3,22 @@
 우선순위: 환경변수 > afterglow.conf (프로젝트 루트) > 기본값
 """
 
+import json
 import os
+import re
 import tomllib
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
-_EMPTY_ENV_TOML_FALLBACK_KEYS = frozenset({"GITLAB_OIDC_CLIENT_SECRET"})
+_EMPTY_ENV_TOML_FALLBACK_KEYS = frozenset(
+    {"GITLAB_OIDC_CLIENT_SECRET", "K3S_GPU_ADMISSION_TOKEN", "K3S_PROVISIONING_TOKEN"}
+)
 
 
 def is_development_loopback_http_url(value: str) -> bool:
@@ -105,6 +109,14 @@ def _load_toml() -> dict:
     flat["manila_nfs_sec_flavor"] = ost.get("manila_nfs_sec_flavor", "sys")
     flat["manila_cephx_key_timeout_seconds"] = ost.get("manila_cephx_key_timeout_seconds", 300)
     flat["ceph_monitors"] = ost.get("ceph_monitors", "")
+
+    ceph = data.get("ceph", {})
+    flat["ceph_rbd_conf_path"] = ceph.get("rbd_conf_path", "")
+    flat["ceph_rbd_keyring_path"] = ceph.get("rbd_keyring_path", "")
+    flat["ceph_rbd_client_name"] = ceph.get("rbd_client_name", "client.afterglow-rbd")
+    flat["ceph_rbd_cluster_fsid"] = ceph.get("rbd_cluster_fsid", "")
+    flat["ceph_rbd_command_timeout_seconds"] = ceph.get("rbd_command_timeout_seconds", 30)
+    flat["ceph_rbd_volume_pools"] = dict(ceph.get("rbd_volume_pools", {}) or {})
     flat["os_service_project_id"] = ost.get("service_project_id", "")
 
     app = data.get("app", {})
@@ -182,6 +194,8 @@ def _load_toml() -> dict:
     # Retained temporarily as the shared master key for existing ciphertext domains.
     k3s = data.get("k3s", {})
     flat["k3s_kubeconfig_encryption_key"] = k3s.get("kubeconfig_encryption_key", "")
+    flat["k3s_gpu_admission_token"] = k3s.get("gpu_admission_token", "")
+    flat["k3s_provisioning_token"] = k3s.get("provisioning_token", "")
 
     wr = data.get("worker_runtime", {})
     wr_workers = wr.get("workers", {})
@@ -208,8 +222,8 @@ def _load_toml() -> dict:
         "env_allowlist",
         (
             "AFTERGLOW_ENV,AFTERGLOW_ALLOW_INSECURE,SECRET_KEY,OS_PASSWORD,DATABASE_URL,"
-            "K3S_KUBECONFIG_ENCRYPTION_KEY,PROMETHEUS_PASSWORD,GITLAB_OIDC_CLIENT_SECRET,"
-            "NOTION_CONFIG_ENCRYPTION_KEY"
+            "K3S_KUBECONFIG_ENCRYPTION_KEY,K3S_GPU_ADMISSION_TOKEN,K3S_PROVISIONING_TOKEN,PROMETHEUS_PASSWORD,"
+            "GITLAB_OIDC_CLIENT_SECRET,NOTION_CONFIG_ENCRYPTION_KEY"
         ),
     )
     flat["worker_runtime_kubernetes_namespace"] = wr_k8s.get("namespace", "afterglow")
@@ -318,13 +332,9 @@ def _load_toml() -> dict:
     flat["cors_origins"] = cors.get("origins", "http://localhost:3080,http://localhost")
 
     log = data.get("logging", {})
-    flat["log_file_path"] = log.get("log_file_path", "/app/logs/afterglow-backend.log")
+    flat["log_directory"] = log.get("log_directory", "logs")
     flat["log_level"] = log.get("log_level", "INFO")
     flat["log_max_bytes"] = log.get("max_bytes", 52428800)
-    flat["log_backup_count"] = log.get("backup_count", 5)
-    flat["log_rotation_type"] = log.get("rotation_type", "size")
-    flat["log_rotation_when"] = log.get("rotation_when", "midnight")
-    flat["log_rotation_interval"] = log.get("rotation_interval", 1)
 
     return flat
 
@@ -365,6 +375,14 @@ class Settings(BaseSettings):
 
     # Ceph 모니터 (cloud-init CephFS 마운트용)
     ceph_monitors: str = ""
+
+    # 관리자 볼륨 삭제 복구용 Ceph RBD 검사/매핑 복원 (두 경로가 모두 설정될 때만 활성)
+    ceph_rbd_conf_path: str = ""
+    ceph_rbd_keyring_path: str = ""
+    ceph_rbd_client_name: str = "client.afterglow-rbd"
+    ceph_rbd_cluster_fsid: str = ""
+    ceph_rbd_command_timeout_seconds: int = 30
+    ceph_rbd_volume_pools: dict[str, str] = Field(default_factory=dict)
 
     # 앱 설정
     backend_port: int = 8000
@@ -458,6 +476,8 @@ class Settings(BaseSettings):
 
     # Shared legacy master key. Existing ciphertext domains still depend on it.
     k3s_kubeconfig_encryption_key: str = ""
+    k3s_gpu_admission_token: str = ""
+    k3s_provisioning_token: str = ""
 
     # Background worker runtime manager
     worker_runtime_mode: Literal["static", "docker", "kubernetes"] = "static"
@@ -478,8 +498,8 @@ class Settings(BaseSettings):
     worker_runtime_docker_logs_host_path: str = ""
     worker_runtime_docker_env_allowlist: str = (
         "AFTERGLOW_ENV,AFTERGLOW_ALLOW_INSECURE,SECRET_KEY,OS_PASSWORD,DATABASE_URL,"
-        "K3S_KUBECONFIG_ENCRYPTION_KEY,PROMETHEUS_PASSWORD,GITLAB_OIDC_CLIENT_SECRET,"
-        "NOTION_CONFIG_ENCRYPTION_KEY"
+        "K3S_KUBECONFIG_ENCRYPTION_KEY,K3S_GPU_ADMISSION_TOKEN,K3S_PROVISIONING_TOKEN,PROMETHEUS_PASSWORD,"
+        "GITLAB_OIDC_CLIENT_SECRET,NOTION_CONFIG_ENCRYPTION_KEY"
     )
     worker_runtime_kubernetes_namespace: str = "afterglow"
     worker_runtime_kubernetes_service_account_token_path: str = "/var/run/secrets/kubernetes.io/serviceaccount/token"
@@ -613,13 +633,9 @@ class Settings(BaseSettings):
     public_api_base: str = ""
 
     # 로깅 설정
-    log_file_path: str = "/app/logs/afterglow-backend.log"
+    log_directory: str = "logs"
     log_level: str = "INFO"
     log_max_bytes: int = 52428800  # 50MB
-    log_backup_count: int = 5
-    log_rotation_type: str = "size"  # "size" | "time"
-    log_rotation_when: str = "midnight"
-    log_rotation_interval: int = 1
 
     @field_validator("os_auth_url", mode="after")
     @classmethod
@@ -656,6 +672,10 @@ class Settings(BaseSettings):
         return [m.strip() for m in self.ceph_monitors.split(",") if m.strip()]
 
     @property
+    def ceph_rbd_enabled(self) -> bool:
+        return bool(self.ceph_rbd_conf_path.strip() and self.ceph_rbd_keyring_path.strip())
+
+    @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
@@ -669,6 +689,27 @@ class Settings(BaseSettings):
         is_production = env == "production"
         insecure_flag = os.environ.get("AFTERGLOW_ALLOW_INSECURE", "").strip() == "1"
 
+        ceph_paths = (
+            bool(self.ceph_rbd_conf_path.strip()),
+            bool(self.ceph_rbd_keyring_path.strip()),
+        )
+        if any(ceph_paths) and not all(ceph_paths):
+            raise ValueError("[ceph] rbd_conf_path와 rbd_keyring_path는 함께 설정하거나 모두 비워야 합니다")
+
+        if self.ceph_rbd_enabled:
+            if not self.ceph_rbd_cluster_fsid.strip() or not self.ceph_rbd_volume_pools:
+                raise ValueError(
+                    "[ceph] rbd_cluster_fsid와 rbd_volume_pools는 rbd_conf_path/rbd_keyring_path 설정 시 필수"
+                )
+            if re.fullmatch(r"client\.[A-Za-z0-9._-]{1,64}", self.ceph_rbd_client_name) is None:
+                raise ValueError(f"[ceph] 유효하지 않은 Ceph client 이름: {self.ceph_rbd_client_name!r}")
+            if self.ceph_rbd_command_timeout_seconds <= 0:
+                raise ValueError("[ceph] rbd_command_timeout_seconds는 양수여야 합니다")
+            for backend, pool in self.ceph_rbd_volume_pools.items():
+                if re.fullmatch(r"[A-Za-z0-9._@-]{1,64}", backend) is None:
+                    raise ValueError(f"[ceph] 유효하지 않은 Cinder backend 이름: {backend!r}")
+                if re.fullmatch(r"[A-Za-z0-9._-]{1,64}", pool) is None:
+                    raise ValueError(f"[ceph] 유효하지 않은 RBD pool 이름: {pool!r}")
         # production 환경에서는 INSECURE 우회 자체를 금지 — 운영 부팅 실수 차단.
         if is_production and insecure_flag:
             raise ValueError(
@@ -850,5 +891,5 @@ def get_settings() -> Settings:
         if env_key not in os.environ or (
             env_key in _EMPTY_ENV_TOML_FALLBACK_KEYS and os.environ[env_key] == "" and value != ""
         ):
-            os.environ[env_key] = str(value)
+            os.environ[env_key] = json.dumps(value) if isinstance(value, dict) else str(value)
     return Settings()

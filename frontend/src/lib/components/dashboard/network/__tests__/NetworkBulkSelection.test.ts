@@ -1,7 +1,10 @@
 vi.mock('$lib/api/client', () => ({
   api: {
     get: vi.fn(async (path: string) => path === '/api/v1/loadbalancers'
-      ? [{ id: 'lb-1', name: 'edge', status: 'ACTIVE', operating_status: 'ONLINE', vip_address: '192.0.2.10', vip_subnet_id: null }]
+      ? [
+          { id: 'lb-1', name: 'edge', status: 'ACTIVE', operating_status: 'ONLINE', vip_address: '192.0.2.10', vip_subnet_id: null, tags: [] },
+          { id: 'lb-2', name: 'drover-k3s', status: 'ACTIVE', operating_status: 'ONLINE', vip_address: '192.0.2.11', vip_subnet_id: null, tags: ['drover.managed=true', 'drover.resource_type=load_balancer'] },
+        ]
       : []),
     delete: vi.fn(async () => undefined),
   },
@@ -49,14 +52,14 @@ const common = {
 };
 
 describe('network bulk selection controls', () => {
-  it('keeps external networks unavailable while shared internal networks remain eligible', async () => {
+  it('excludes shared and external networks from mutation selection and menus', async () => {
     const onToggleAll = vi.fn();
     render(NetworksTableCard, {
       networks,
       defaultNetworkId: null,
       deleting: null,
       settingDefault: null,
-      selectableIds: new Set(['private-1', 'shared-1']),
+      selectableIds: new Set(['private-1']),
       ...common,
       onToggleAll,
       onOpenPanel: vi.fn(),
@@ -64,7 +67,8 @@ describe('network bulk selection controls', () => {
       onDelete: vi.fn(),
     });
     expect((screen.getByRole('checkbox', { name: 'public 선택' }) as HTMLInputElement).disabled).toBe(true);
-    expect((screen.getByRole('checkbox', { name: 'shared 선택' }) as HTMLInputElement).disabled).toBe(false);
+    expect((screen.getByRole('checkbox', { name: 'shared 선택' }) as HTMLInputElement).disabled).toBe(true);
+    expect(screen.queryByRole('button', { name: 'shared 네트워크 작업' })).toBeNull();
     const selectAll = screen.getByRole('checkbox', { name: '전체 네트워크 선택' });
     expect((selectAll as HTMLInputElement).disabled).toBe(false);
     await fireEvent.click(selectAll.closest('label')!);
@@ -114,7 +118,7 @@ describe('network bulk selection controls', () => {
     expect((screen.getByRole('checkbox', { name: 'custom 선택' }) as HTMLInputElement).disabled).toBe(false);
   });
 
-  it('renders load balancer route selection controls', async () => {
+  it('renders load balancer route selection controls and excludes protected resources', async () => {
     auth.set({
       token: 'token',
       refreshToken: null,
@@ -129,8 +133,11 @@ describe('network bulk selection controls', () => {
       federated: false,
     });
     render(LoadBalancerPage);
-    const checkbox = await screen.findByRole('checkbox', { name: 'edge 선택' });
-    expect((checkbox as HTMLInputElement).disabled).toBe(false);
+    const ordinaryCheckbox = await screen.findByRole('checkbox', { name: 'edge 선택' });
+    expect((ordinaryCheckbox as HTMLInputElement).disabled).toBe(false);
+    const protectedCheckbox = screen.getByRole('checkbox', { name: 'drover-k3s 선택' });
+    expect((protectedCheckbox as HTMLInputElement).disabled).toBe(true);
+
     const selectAll = screen.getByRole('checkbox', { name: '전체 로드밸런서 선택' });
     selectAll.click();
     expect(await screen.findByRole('region', { name: '선택한 로드밸런서 일괄 작업' })).toBeTruthy();

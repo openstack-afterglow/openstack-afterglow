@@ -90,7 +90,7 @@
 
 <!-- 슬라이드 패널 -->
 {#if selectedClusterId}
-	<SlidePanel onClose={closeClusterPanel}>
+	<SlidePanel onClose={closeClusterPanel} ariaLabel="Drover 클러스터 상세">
 		<K3sClusterDetailPanel clusterId={selectedClusterId} onClose={closeClusterPanel} adminMode={true} />
 	</SlidePanel>
 {/if}
@@ -157,7 +157,7 @@
 									{c.name}
 								</span>
 								{#if c.status_reason}
-									<div class="mt-0.5 max-w-40 truncate text-xs text-ink-3">{c.status_reason}</div>
+									<div class="mt-0.5 max-w-40 truncate text-xs text-ink-2">{c.status_reason}</div>
 								{/if}
 							</td>
 							<td>
@@ -168,8 +168,8 @@
 							</td>
 							<td class="font-mono text-ink-2">{c.server_ip || '-'}</td>
 							<td class="text-ink-2">1 서버 + {c.agent_vm_ids?.length ?? 0} / {c.agent_count} 에이전트</td>
-							<td class="text-ink-3">{c.k3s_version || '-'}</td>
-							<td class="text-ink-3">{c.created_at ? c.created_at.slice(0, 10) : '-'}</td>
+							<td class="text-ink-2">{c.k3s_version || '-'}</td>
+							<td class="text-ink-2">{c.created_at ? c.created_at.slice(0, 10) : '-'}</td>
 						</tr>
 					{/each}
 				</tbody>

@@ -43,8 +43,8 @@
 </script>
 
 {#if $authReady && !$auth.federated}
-<div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
-  <h3 class="text-sm font-semibold text-white mb-4">패스워드 변경</h3>
+<div class="bg-surface-base border border-line rounded-xl p-5">
+  <h3 class="text-sm font-semibold text-ink-0 mb-4">패스워드 변경</h3>
 
   {#if error}
     <div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-3 py-2 text-xs mb-3">{error}</div>
@@ -55,16 +55,16 @@
 
   <div class="space-y-3">
     <div>
-      <label class="block text-xs text-gray-400 mb-1">현재 패스워드</label>
-      <input type="password" bind:value={currentPassword} class="w-full bg-gray-800 border border-gray-700 focus:border-blue-500 text-white text-sm rounded-lg px-3 py-2 outline-none transition-colors" placeholder="현재 패스워드" />
+      <label class="block text-xs text-ink-2 mb-1" for="field-passwordsection-58">현재 패스워드</label>
+      <input id="field-passwordsection-58" type="password" bind:value={currentPassword} class="w-full bg-surface-sunken border border-line-2 focus:border-action-warm text-ink-0 text-sm rounded-lg px-3 py-2 outline-none transition-colors" placeholder="현재 패스워드" />
     </div>
     <div>
-      <label class="block text-xs text-gray-400 mb-1">새 패스워드</label>
-      <input type="password" bind:value={newPassword} class="w-full bg-gray-800 border border-gray-700 focus:border-blue-500 text-white text-sm rounded-lg px-3 py-2 outline-none transition-colors" placeholder="8자 이상" />
+      <label class="block text-xs text-ink-2 mb-1" for="field-passwordsection-62">새 패스워드</label>
+      <input id="field-passwordsection-62" type="password" bind:value={newPassword} class="w-full bg-surface-sunken border border-line-2 focus:border-action-warm text-ink-0 text-sm rounded-lg px-3 py-2 outline-none transition-colors" placeholder="8자 이상" />
     </div>
     <div>
-      <label class="block text-xs text-gray-400 mb-1">새 패스워드 확인</label>
-      <input type="password" bind:value={confirmPassword} class="w-full bg-gray-800 border border-gray-700 focus:border-blue-500 text-white text-sm rounded-lg px-3 py-2 outline-none transition-colors" placeholder="패스워드 재입력" />
+      <label class="block text-xs text-ink-2 mb-1" for="field-passwordsection-66">새 패스워드 확인</label>
+      <input id="field-passwordsection-66" type="password" bind:value={confirmPassword} class="w-full bg-surface-sunken border border-line-2 focus:border-action-warm text-ink-0 text-sm rounded-lg px-3 py-2 outline-none transition-colors" placeholder="패스워드 재입력" />
     </div>
   </div>
 
@@ -72,7 +72,7 @@
     <button
       onclick={changePassword}
       disabled={saving}
-      class="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm rounded-lg transition-colors"
+      class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover disabled:opacity-50 text-action-on-warm text-sm rounded-lg transition-colors"
     >{saving ? '변경 중...' : '패스워드 변경'}</button>
   </div>
 </div>

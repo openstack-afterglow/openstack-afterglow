@@ -72,6 +72,7 @@ export const STATUS_STYLES: Record<string, StatusStyle> = {
   FAILED:              { tone: 'danger' },
   DELETE_FAILED:       { tone: 'danger' },
   degraded:            { tone: 'danger' },
+  DEGRADED:            { tone: 'danger' },
   unhealthy:           { tone: 'danger' },
   timeout:             { tone: 'danger', label: 'timeout' },
 
@@ -92,12 +93,16 @@ export const STATUS_STYLES: Record<string, StatusStyle> = {
   IN_USE:              { tone: 'info' },
   Created:             { tone: 'info' },
   ONLINE_STANDBY:      { tone: 'info' },
+  NO_MONITOR:          { tone: 'info' },
   SHARED:              { tone: 'info' },
 
   // neutral — shelved / deleted / revoked or expired authority
   deleted:            { tone: 'neutral' },
   SHELVED:             { tone: 'neutral' },
   SHELVED_OFFLOADED:   { tone: 'neutral' },
+  // Octavia 운영 상태 OFFLINE / 라우터 admin-down
+  OFFLINE:             { tone: 'neutral' },
+  DOWN:                { tone: 'neutral' },
   reserved:            { tone: 'neutral' },
   RESERVED:            { tone: 'neutral' },
   revoked:             { tone: 'neutral', label: '폐기됨' },

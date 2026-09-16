@@ -25,10 +25,7 @@ Default 네트워크 관리와 실시간 트래픽 조회도 이 라우터에서
 
 ## 공통 사항
 
-- **소유권 검증**: 상세/삭제/수정 계열(`GET·DELETE /{network_id}`, 서브넷 `PUT·DELETE`, Floating IP `associate·disassociate·DELETE`)은
-  대상 리소스의 `project_id`가 토큰 프로젝트와 일치하는지 검사합니다. 불일치 시 `404`로 응답합니다(존재 은닉).
-- **외부/공유 네트워크 면제**: `GET /{network_id}`는 대상이 외부(`is_router_external`) 또는 공유(`is_shared`) 네트워크이면
-  cross-project 정상 노출로 간주하여 소유권 검증을 면제합니다.
+- **소유권 검증**: write 계열(`DELETE /{network_id}`, `PUT /default`, 서브넷 `POST·PUT·DELETE`)은 대상의 `project_id`가 토큰 프로젝트와 일치하고 비어 있지 않은 경우에만 처리합니다. 불일치 또는 소유자 metadata 누락은 `404`로 응답합니다(존재 은닉). 공유/외부 네트워크는 조회만 가능합니다.
 - **캐시**: 목록/토폴로지 응답은 Redis에 캐시됩니다. TTL은 `afterglow.conf`의 `[cache]` 항목으로 조정 가능하며 기본값은 아래 표와 같습니다.
   응답 헤더에 `?refresh=true`를 붙이거나 mutation(생성/삭제)이 발생하면 관련 캐시가 무효화됩니다.
 
@@ -83,7 +80,8 @@ Default 네트워크 관리와 실시간 트래픽 조회도 이 라우터에서
     "status": "ACTIVE",
     "subnets": ["uuid-string"],
     "is_external": false,
-    "is_shared": false
+    "is_shared": false,
+    "project_id": "uuid-string"
   }
 ]
 ```
@@ -96,6 +94,7 @@ Default 네트워크 관리와 실시간 트래픽 조회도 이 라우터에서
 | `subnets` | array[string] | 서브넷 UUID 목록 |
 | `is_external` | boolean | 외부 네트워크 여부 |
 | `is_shared` | boolean | 공유 네트워크 여부 |
+| `project_id` | string\|null | Neutron 네트워크 소유 프로젝트 UUID. UI mutation 권한 판정에 사용 |
 
 **오류**
 
@@ -146,6 +145,7 @@ Default 네트워크 관리와 실시간 트래픽 조회도 이 라우터에서
   "subnets": ["uuid-string"],
   "is_external": false,
   "is_shared": false,
+  "project_id": "uuid-string",
   "subnet_details": [
     {
       "id": "uuid-string",
@@ -257,8 +257,8 @@ DB에 이미 기록되어 있으면 빠르게 반환하고, 없으면 설정값(
 
 ### PUT /api/v1/networks/default
 
-사용자가 원하는 네트워크를 프로젝트의 Default 네트워크로 지정합니다. 서브넷 ID는 해당 네트워크의 첫 번째 서브넷을 사용합니다.
-지정 후 네트워크 목록 캐시를 무효화합니다.
+사용자가 **현재 프로젝트가 소유한** 네트워크를 프로젝트의 Default 네트워크로 지정합니다. 서브넷 ID는 해당 네트워크의 첫 번째 서브넷을 사용합니다.
+지정 후 네트워크 목록 캐시를 무효화합니다. 공유로 보이는 타 프로젝트 네트워크와 owner metadata가 없는 네트워크는 `404`로 거부합니다.
 
 **요청 본문**
 
@@ -297,7 +297,7 @@ DB에 이미 기록되어 있으면 빠르게 반환하고, 없으면 설정값(
 
 ### POST /api/v1/networks/{network_id}/subnets
 
-지정한 네트워크에 서브넷을 생성합니다.
+지정한 **현재 프로젝트 소유** 네트워크에 서브넷을 생성합니다. 공유 네트워크를 조회할 수 있어도 타 프로젝트 소유이거나 owner metadata가 없으면 `404`로 거부합니다.
 
 | 파라미터 | 위치 | 타입 | 필수 | 설명 |
 |----------|------|------|------|------|
@@ -327,6 +327,7 @@ DB에 이미 기록되어 있으면 빠르게 반환하고, 없으면 설정값(
 
 | 코드 | 설명 |
 |------|------|
+| `404` | 네트워크를 찾을 수 없음 / 소유권 불일치 / owner metadata 누락 |
 | `500` | 서브넷 생성 실패 (CIDR 충돌 등) |
 
 ### PUT /api/v1/networks/subnets/{subnet_id}
@@ -560,6 +561,11 @@ Floating IP를 삭제(반환)합니다. 삭제 후 목록 캐시를 무효화합
 
 토폴로지는 두 엔드포인트로 나뉩니다. **구조**(`/topology`)는 30초 캐시로 노드·엣지 관계를 반환하고,
 **트래픽**(`/topology/traffic`)은 캐시 없이 매 호출 실시간 rx/tx bps를 계산하는 단주기 폴링 전용 엔드포인트입니다.
+값은 Prometheus `rate(...[2m])` 로 계산한 **최근 2분 평균**입니다. 윈도우 상수는 `app.api.network.networks.TOPOLOGY_RATE_WINDOW` 이며 인스턴스 메트릭 차트(`instance_metrics.py`)와 **같은 값**입니다.
+
+> **이 윈도우를 좁히지 마십시오.** `rate()` 는 윈도우 안에 최소 2 샘플이 필요한데 **이 저장소는 운영 Prometheus 의 `scrape_interval` 을 제어하지 않습니다** — 운영은 Kolla 배포본이고 그 설정은 저장소 밖에 있습니다. `deploy/k8s*/monitoring/prometheus/configmap.yaml` 은 다른 배포 경로이며 운영 job 이름(`libvirt_exporter`, `openstack-instances-*`)과 일치하지도 않으므로 scrape 근거가 될 수 없습니다. 2026-09-11 에 이 값을 30초로 좁혔다가 운영(scrape 1분)에서 libvirt 쿼리가 0 시계열을 반환해 화면 트래픽이 통째로 사라진 회귀가 있었습니다. `backend/tests/test_topology_traffic.py::test_topology_window_is_not_narrower_than_rest_of_repo` 가 같은 메트릭을 읽는 다른 코드보다 좁아지지 않도록 고정합니다.
+
+> **실패 모드**: scrape 가 윈도우의 절반보다 느리면 `rate()` 가 결과를 주지 않아 그 인스턴스가 `instances`·`networks`·히스토리 `series` 에서 통째로 빠집니다 — 화면에는 `0` 이 아니라 값 없음(`—`)으로 보입니다. 2분 윈도우는 scrape 1분까지 견딥니다.
 
 ### 엔드포인트 목록
 
@@ -567,10 +573,11 @@ Floating IP를 삭제(반환)합니다. 삭제 후 목록 캐시를 무효화합
 |--------|------|------|
 | `GET` | `/api/v1/networks/topology` | 토폴로지 구조 (30초 캐시) |
 | `GET` | `/api/v1/networks/topology/traffic` | 실시간 트래픽 (rx/tx bps) |
+| `GET` | `/api/v1/networks/topology/traffic/history` | 네트워크 1개의 사용량 시계열 + 평균·최대 |
 
 ### GET /api/v1/networks/topology
 
-프로젝트의 전체 네트워크 토폴로지를 반환합니다. 네트워크, 라우터, 인스턴스, Floating IP, 로드밸런서 관계를 포함합니다.
+프로젝트의 전체 네트워크 토폴로지를 반환합니다. 네트워크, 라우터, 인스턴스, Floating IP, 로드밸런서 관계를 포함합니다. 인스턴스·라우터·Floating IP·로드밸런서는 현재 프로젝트 소유분만, 네트워크는 프로젝트 소유분과 external/shared 네트워크만 포함됩니다.
 user scope에서는 현재 프로젝트 소유 리소스 + 외부/공유 네트워크만 표시합니다. 응답은 30초간 캐시됩니다.
 
 **응답 (200 OK)** — `TopologyData`
@@ -585,7 +592,8 @@ user scope에서는 현재 프로젝트 소유 리소스 + 외부/공유 네트�
       "is_external": false,
       "is_shared": false,
       "project_id": "uuid-string",
-      "subnet_details": []
+      "subnet_details": [],
+      "mtu": 1450
     }
   ],
   "routers": [
@@ -600,7 +608,9 @@ user scope에서는 현재 프로젝트 소유 리소스 + 외부/공유 네트�
       "is_ha": false,
       "connected_subnet_ids": ["uuid-string"],
       "dvr_subnet_ids": [],
-      "project_id": "uuid-string"
+      "project_id": "uuid-string",
+      "enable_snat": true,
+      "routes": [{ "destination": "10.20.0.0/16", "nexthop": "192.168.1.254" }]
     }
   ],
   "instances": [
@@ -610,7 +620,19 @@ user scope에서는 현재 프로젝트 소유 리소스 + 외부/공유 네트�
       "status": "ACTIVE",
       "project_id": "uuid-string",
       "network_names": ["private-net"],
-      "ip_addresses": [{ "addr": "10.0.0.5", "type": "fixed", "network_name": "private-net", "network_id": "uuid-string" }]
+      "ip_addresses": [
+        {
+          "addr": "10.0.0.5",
+          "type": "fixed",
+          "network_name": "private-net",
+          "network_id": "uuid-string",
+          "port_id": "uuid-string",
+          "mac_addr": "fa:16:3e:00:00:01"
+        }
+      ],
+      "flavor_name": "m1.small",
+      "image_id": "uuid-string",
+      "is_database": false
     }
   ],
   "floating_ips": [],
@@ -635,10 +657,23 @@ user scope에서는 현재 프로젝트 소유 리소스 + 외부/공유 네트�
 
 | 그룹 | 필드 | 설명 |
 |------|------|------|
+| `networks[]` | `mtu` | 네트워크 MTU (Neutron 속성 없으면 `null`) |
 | `routers[]` | `is_distributed` / `is_ha` | DVR / HA 라우터 여부 |
 | `routers[]` | `external_gateway_ips` | 게이트웨이 외부 고정 IP (SNAT IP 포함) |
-| `instances[].ip_addresses[]` | `network_id` | 포트 매핑으로 보강된 소속 네트워크 UUID |
+| `routers[]` | `enable_snat` | 외부 게이트웨이 SNAT 여부. 게이트웨이가 없으면 `null` |
+| `routers[]` | `routes` | 정적 경로 `[{destination, nexthop}]` (형식이 어긋난 항목은 제외) |
+| `instances[]` | `flavor_name` / `image_id` | 인스턴스 flavor 이름·부팅 이미지 UUID (볼륨 부팅이면 `image_id`는 `null`) |
+| `instances[]` | `is_database` | Trove DB 인스턴스를 구성하는 Nova 인스턴스 여부. Trove fixed IP 와 일치할 때만 `true` (floating IP 는 매칭 제외) |
+| `instances[].ip_addresses[]` | `network_id` | compute 포트 매핑으로 보강된 소속 네트워크 UUID |
+| `instances[].ip_addresses[]` | `port_id` / `mac_addr` | 해당 IP를 가진 Neutron compute 포트 UUID·MAC. 포트가 없는 IP(floating 등)는 `null` |
 | `load_balancers[]` | `listeners` / `members` | LB에 연결된 리스너·멤버 요약 |
+
+> 포트 메타(`network_id` / `port_id` / `mac_addr`)와 `flavor_name` / `image_id` 는 모두 기존 Neutron/Nova
+> 배치 조회 결과에서 채우므로 OpenStack 호출 수는 변하지 않습니다.
+> `is_database` 는 optional 서비스인 Trove 인스턴스 목록 1회 조회로 채웁니다. Trove가 배포되지 않았거나
+> 조회가 실패하면 오류가 아니라 정상 상황으로 간주해 모든 인스턴스가 `is_database: false` 로 반환됩니다.
+> provider 세그먼트 메타(`provider_network_type` / `provider_segmentation_id` / `provider_physical_network`)는
+> 사용자 응답에 포함되지 않으며 관리자 전용 `GET /api/v1/admin/topology`(`AdminTopologyData`)에서만 반환됩니다.
 
 ### GET /api/v1/networks/topology/traffic
 
@@ -687,3 +722,68 @@ Prometheus 장애 시 트래픽 값은 0으로 폴백합니다.
 | 코드 | 설명 |
 |------|------|
 | `403` | `all_projects=true`를 시스템 admin이 아닌 사용자가 호출 |
+
+### GET /api/v1/networks/topology/traffic/history
+
+네트워크 **1개**의 rx/tx bps 시계열과 평균·최대·최근 통계를 반환합니다. 캔버스 네트워크 패널의 "사용량 추이" 섹션이 **패널을 열 때 1회**, 그리고 사용자가 구간 토글(15분·30분·1시간)을 바꿀 때 호출합니다.
+
+instant 엔드포인트와 **같은 귀속 규칙**을 씁니다 — 즉 이 값은 해당 네트워크에 붙은 NIC 들의 합이며 라우터↔스위치 트래픽이 아닙니다(라우터 exporter 없음). 같은 이유로 east-west(내부 인스턴스 간) 트래픽도 포함됩니다.
+
+설계 제약:
+
+- **폴링 금지.** 전체 네트워크에 대해 주기적으로 호출하면 Prometheus 부하가 네트워크 수만큼 곱해집니다.
+- `step_s` 의 계약은 **`scrape ≤ step ≤ window`** 입니다. 상한을 어기면 샘플 사이 트래픽이 그래프에서 빠지고, 하한을 어기면 같은 값이 반복되는 계단이 나옵니다(실측 scrape 60초에서 step 15초는 인접 동일값 75%, step 60초는 0%). scrape 를 알 수 없으므로 윈도우가 함의하는 최악(`window/2`)을 하한으로 씁니다 — `_history_step()` = `max(calc_step(range), window/2)`. `test_history_step_never_exceeds_rate_window` 와 `test_history_step_is_never_finer_than_scrape_implied_by_window` 가 양쪽 계약을 고정합니다.
+- `stats` 는 별도 `avg_over_time` 쿼리가 아니라 **반환한 `series` 에서 계산**합니다. 두 소스를 쓰면 그래프 최고점과 라벨 숫자가 어긋납니다.
+- `stats` 는 rx+tx 합계가 아니라 **방향별**입니다. instant 엔드포인트가 방향별 값을 주므로 합계로 내보내면 같은 패널에서 `▼ 5.8M ▲ 2.0M` 옆에 대조 불가능한 `7.8M` 이 붙습니다. `max` 의 rx·tx 는 서로 다른 시점일 수 있습니다(각 방향의 독립적인 최고값).
+- 현재 포트맵에 없는(삭제된) 인스턴스의 과거 트래픽은 귀속 대상이 없어 빠집니다 — instant 엔드포인트도 동일한 한계입니다.
+- node_exporter 폴백은 libvirt 미관측 + **단일 NIC** 인스턴스만 귀속합니다. 다중 NIC 는 device 이름으로 네트워크를 가릴 수 없습니다.
+
+| 파라미터 | 위치 | 타입 | 필수 | 설명 |
+|----------|------|------|------|------|
+| `network_id` | query | string | 예 | 조회할 네트워크 ID |
+| `range` | query | string | 아니오 | `15m`(기본) · `30m` · `1h` |
+| `all_projects` | query | boolean | 아니오 | 모든 프로젝트 포트 대상 (기본값 `false`). **시스템 admin 전용** |
+
+| `range` | 구간 | `step_s` (윈도우 2m 기준) | 표본 수 |
+|---------|------|---------------------------|---------|
+| `15m` | 900초 | 60초 | 15 |
+| `30m` | 1800초 | 60초 | 30 |
+| `1h` | 3600초 | 60초 | 60 |
+
+`step_s` 는 윈도우에 따라 달라집니다(`max(calc_step(range), window/2)`). 윈도우가 좁은 배포에서는 더 촘촘해집니다.
+
+**응답 (200 OK)**
+
+```json
+{
+  "network_id": "uuid-string",
+  "range": "15m",
+  "step_s": 60,
+  "window": "2m",
+  "series": [
+    { "ts": 1767225585, "rx_bps": 4096.0, "tx_bps": 8192.0 },
+    { "ts": 1767225600, "rx_bps": 5120.0, "tx_bps": 8192.0 }
+  ],
+  "stats": {
+    "avg": { "rx_bps": 4608.0, "tx_bps": 8192.0 },
+    "max": { "rx_bps": 5120.0, "tx_bps": 8192.0 },
+    "latest": { "rx_bps": 5120.0, "tx_bps": 8192.0 }
+  },
+  "_meta": { "source": "network_nic_sum", "router_traffic": "exporter_required" }
+}
+```
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `step_s` | integer | 표본 간격(초). rate 윈도우 이하임이 보장됩니다 |
+| `window` | string | 백엔드 rate 윈도우(`TOPOLOGY_RATE_WINDOW`) |
+| `series` | array | `{ts, rx_bps, tx_bps}` 표본. Prometheus 장애 시 빈 배열 |
+| `stats` | object | `series` 에서 계산한 방향별 `avg`·`max`·`latest`. 각 항목은 `{rx_bps, tx_bps}` 이고 표본이 없으면 `null`(0 과 구분) |
+| `_meta.source` | string | 항상 `network_nic_sum` — 라우터↔스위치가 아니라 NIC 합산임을 명시 |
+
+**오류**
+
+| 코드 | 설명 |
+|------|------|
+| `403` | `all_projects=true`를 시스템 admin이 아닌 사용자가 호출 |
+| `422` | `network_id` 누락 또는 `range` 가 허용값이 아님 |

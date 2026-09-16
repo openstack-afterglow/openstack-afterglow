@@ -83,7 +83,7 @@
 	}
 	.usage-value {
 		flex-shrink: 0;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.usage-current {
 		font-weight: 600;

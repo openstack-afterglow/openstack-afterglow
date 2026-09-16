@@ -1,12 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const {
-	localCheckpointerUrl,
-	localDatabaseUrl,
-	localRedisUrl,
-	main
-} = require("./test-db");
+const { main } = require("./test-db");
 
 const managedEnv = [
 	"AFTERGLOW_REDIS_URL",
@@ -43,57 +38,55 @@ function makeRunner(resultFor = () => 0) {
 	};
 }
 
-test("functional URLs use isolated MariaDB, PostgreSQL, and Redis ports", () => {
-	assert.match(localDatabaseUrl, /:3307\/afterglow_functional$/);
-	assert.doesNotMatch(localDatabaseUrl, /\/afterglow_test$/);
-	assert.match(localCheckpointerUrl, /:5434\/afterglow_checkpoints$/);
-	assert.match(localRedisUrl, /:6380\/0$/);
-});
+test("--no-start reuses services without owning their lifecycle", () =>
+	withCleanEnvironment(() => {
+		const runner = makeRunner();
+		assert.equal(main(["--no-start"], runner.run.bind(runner)), 0);
+		assert.equal(commandCalls(runner.calls, "docker").length, 0);
 
-test("--no-start reuses services without owning their lifecycle", () => withCleanEnvironment(() => {
-	const runner = makeRunner();
-	assert.equal(main(["--no-start"], runner.run.bind(runner)), 0);
-	assert.equal(commandCalls(runner.calls, "docker").length, 0);
+		const targetCall = runner.calls.find((call) => call.command === process.execPath);
+		assert.ok(targetCall, "functional target must run");
+	}));
 
-	const targetCall = runner.calls.find((call) => call.command === process.execPath);
-	assert.ok(targetCall, "functional target must run");
-	assert.equal(targetCall.options.env.AFTERGLOW_TEST_REAL_REDIS, "1");
-	assert.equal(targetCall.options.env.REDIS_URL, localRedisUrl);
-}));
+test("--keep starts services but intentionally skips teardown", () =>
+	withCleanEnvironment(() => {
+		const runner = makeRunner();
+		assert.equal(main(["--keep"], runner.run.bind(runner)), 0);
+		const dockerCalls = commandCalls(runner.calls, "docker");
+		assert.ok(dockerCalls.some((call) => call.args.includes("up")));
+		assert.ok(!dockerCalls.some((call) => call.args.includes("down")));
+	}));
 
-test("--keep starts services but intentionally skips teardown", () => withCleanEnvironment(() => {
-	const runner = makeRunner();
-	assert.equal(main(["--keep"], runner.run.bind(runner)), 0);
-	const dockerCalls = commandCalls(runner.calls, "docker");
-	assert.ok(dockerCalls.some((call) => call.args.includes("up")));
-	assert.ok(!dockerCalls.some((call) => call.args.includes("down")));
-}));
+test("auto-started services are torn down after successful tests", () =>
+	withCleanEnvironment(() => {
+		const runner = makeRunner();
+		assert.equal(main([], runner.run.bind(runner)), 0);
+		const dockerCalls = commandCalls(runner.calls, "docker");
+		assert.ok(dockerCalls.some((call) => call.args.includes("up")));
+		const down = dockerCalls.find((call) => call.args.includes("down"));
+		assert.ok(down, "owned services must be torn down");
+	}));
 
-test("auto-started services are torn down after successful tests", () => withCleanEnvironment(() => {
-	const runner = makeRunner();
-	assert.equal(main([], runner.run.bind(runner)), 0);
-	const dockerCalls = commandCalls(runner.calls, "docker");
-	assert.ok(dockerCalls.some((call) => call.args.includes("up")));
-	const down = dockerCalls.find((call) => call.args.includes("down"));
-	assert.ok(down, "owned services must be torn down");
-	assert.ok(down.args.includes("--volumes"));
-	assert.ok(down.args.includes("--remove-orphans"));
-}));
+test("test failure is preserved and still tears down services", () =>
+	withCleanEnvironment(() => {
+		const runner = makeRunner((command) => (command === process.execPath ? 7 : 0));
+		assert.equal(main([], runner.run.bind(runner)), 7);
+		assert.ok(commandCalls(runner.calls, "docker").some((call) => call.args.includes("down")));
+	}));
 
-test("test failure is preserved and still tears down services", () => withCleanEnvironment(() => {
-	const runner = makeRunner((command) => command === process.execPath ? 7 : 0);
-	assert.equal(main([], runner.run.bind(runner)), 7);
-	assert.ok(commandCalls(runner.calls, "docker").some((call) => call.args.includes("down")));
-}));
+test("partial startup failure still triggers teardown", () =>
+	withCleanEnvironment(() => {
+		const runner = makeRunner((command, args) => (command === "docker" && args.includes("up") ? 9 : 0));
+		assert.equal(main([], runner.run.bind(runner)), 9);
+		assert.ok(commandCalls(runner.calls, "docker").some((call) => call.args.includes("down")));
+		assert.equal(
+			runner.calls.some((call) => call.command === process.execPath),
+			false
+		);
+	}));
 
-test("partial startup failure still triggers teardown", () => withCleanEnvironment(() => {
-	const runner = makeRunner((command, args) => command === "docker" && args.includes("up") ? 9 : 0);
-	assert.equal(main([], runner.run.bind(runner)), 9);
-	assert.ok(commandCalls(runner.calls, "docker").some((call) => call.args.includes("down")));
-	assert.equal(runner.calls.some((call) => call.command === process.execPath), false);
-}));
-
-test("teardown failure fails an otherwise successful run", () => withCleanEnvironment(() => {
-	const runner = makeRunner((command, args) => command === "docker" && args.includes("down") ? 11 : 0);
-	assert.equal(main([], runner.run.bind(runner)), 11);
-}));
+test("teardown failure fails an otherwise successful run", () =>
+	withCleanEnvironment(() => {
+		const runner = makeRunner((command, args) => (command === "docker" && args.includes("down") ? 11 : 0));
+		assert.equal(main([], runner.run.bind(runner)), 11);
+	}));

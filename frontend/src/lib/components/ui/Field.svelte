@@ -23,9 +23,9 @@
 	</label>
 	{@render children()}
 	{#if error}
-		<p class="field-error">{error}</p>
+		<p id={forId ? `${forId}-message` : undefined} class="field-error" role="alert">{error}</p>
 	{:else if help}
-		<p class="field-help">{help}</p>
+		<p id={forId ? `${forId}-message` : undefined} class="field-help">{help}</p>
 	{/if}
 </div>
 

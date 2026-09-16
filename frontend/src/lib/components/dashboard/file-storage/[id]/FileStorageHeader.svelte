@@ -27,10 +27,10 @@
 
 <div class="flex items-start justify-between mb-6">
 	<div>
-		<h1 class="text-2xl font-bold text-white">{fileStorage.name || fileStorage.id}</h1>
+		<h1 class="text-2xl font-bold text-ink-0">{fileStorage.name || fileStorage.id}</h1>
 		<div class="flex items-center gap-2 mt-2">
 			<span
-				class="px-2 py-0.5 rounded text-xs font-medium {statusColor[fileStorage.status] ?? 'text-gray-400 bg-gray-800'}"
+				class="px-2 py-0.5 rounded text-xs font-medium {statusColor[fileStorage.status] ?? 'text-ink-2 bg-surface-sunken'}"
 			>
 				{fileStorage.status}
 			</span>
@@ -50,7 +50,7 @@
 		<button
 			onclick={onDelete}
 			disabled={deleting}
-			class="text-red-400 hover:text-red-300 disabled:text-gray-600 text-sm px-3 py-1.5 rounded border border-red-900 hover:border-red-700 disabled:border-gray-700 transition-colors"
+			class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-sm px-3 py-1.5 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors"
 		>
 			{deleting ? '삭제 중...' : '삭제'}
 		</button>

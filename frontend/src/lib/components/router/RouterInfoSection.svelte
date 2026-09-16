@@ -1,5 +1,6 @@
 <script lang="ts">
 	import DetailHeader from '$lib/components/ui/DetailHeader.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
 	import { useRouterDetailController } from '$lib/stores/routerDetailController.svelte';
 
 	const s = useRouterDetailController();
@@ -11,10 +12,8 @@
 	status={s.router!.status}
 >
 	{#snippet actions()}
-		<button
-			onclick={() => s.deleteRouter()}
-			disabled={s.saving}
-			class="text-red-400 hover:text-red-300 disabled:text-gray-600 text-sm px-3 py-1.5 rounded border border-red-900 hover:border-red-700 disabled:border-gray-700 transition-colors"
-		>삭제</button>
+		{#if s.canManageRouter}
+			<Button variant="danger-outline" size="sm" disabled={s.saving} onclick={() => s.deleteRouter()}>삭제</Button>
+		{/if}
 	{/snippet}
 </DetailHeader>

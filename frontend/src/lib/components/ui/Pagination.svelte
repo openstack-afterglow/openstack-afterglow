@@ -47,7 +47,7 @@
 		gap: 1rem;
 		margin-top: 0.75rem;
 		font-size: 0.75rem;
-		color: var(--color-ink-3);
+		color: var(--color-ink-2);
 	}
 	.pagination-meta {
 		display: flex;

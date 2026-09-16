@@ -11,7 +11,6 @@ import re
 from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 
-from drover_sdk import register as register_drover
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import and_, func, select
 
@@ -24,6 +23,7 @@ from app.services import neutron as neutron_svc
 from app.services import swift as swift_svc
 from app.services import trove as trove_svc
 from app.services.cache import cached_call, ttl_fast, ttl_normal, ttl_static
+from app.services.keystone import get_drover_proxy
 
 router = APIRouter()
 _logger = logging.getLogger(__name__)
@@ -119,17 +119,7 @@ def _recent_instances(servers: list[dict], limit: int = 5) -> list[dict]:
 
 def _list_flavors_as_dicts(conn):
     """플레이버 목록을 dict 리스트로 반환 (캐시 직렬화 호환)."""
-    return [
-        {
-            "id": f.id,
-            "name": f.name,
-            "vcpus": f.vcpus,
-            "ram": f.ram,
-            "disk": f.disk,
-            "extra_specs": f.extra_specs,
-        }
-        for f in nova.list_flavors(conn)
-    ]
+    return [f.model_dump() for f in nova.list_flavors(conn)]
 
 
 def _usage_hours(created_at: str | None) -> float:
@@ -270,7 +260,7 @@ async def get_dashboard_k3s_stats(
         raise HTTPException(status_code=400, detail="유효하지 않은 프로젝트 ID")
 
     try:
-        stats = await asyncio.to_thread(register_drover(conn).cluster_stats)
+        stats = await asyncio.to_thread(get_drover_proxy(conn).cluster_stats)
         return {
             "total": int(stats.get("total", 0)),
             "active": int(stats.get("active", 0)),
@@ -531,13 +521,16 @@ async def get_project_quotas(
     except Exception:
         raise HTTPException(status_code=500, detail="작업 실패")
 
-    # Drover owns GPU quota state independently of Afterglow's local database.
+    # Afterglow local GPU quota authority.
     gpu_quota: list[dict] = []
     gpu_quota_available = True
     try:
-        status_list = await asyncio.to_thread(register_drover(conn).gpu_quota_status)
+        from app.services.gpu_quota import get_effective_gpu_quota_status
+
+        pid = conn._afterglow_project_id
+        status_list = await get_effective_gpu_quota_status(conn, pid)
         if not isinstance(status_list, list):
-            raise ValueError("gpu_quota_status response is not a list")
+            raise ValueError("get_effective_gpu_quota_status response is not a list")
         gpu_quota = status_list
     except Exception:
         gpu_quota_available = False
@@ -616,10 +609,12 @@ async def get_gpu_available(
     # 프로젝트 GPU 쿼터 기반 필터링 + 가용량을 쿼터 상한 기준으로 표시
     try:
         from app.api.identity.admin_gpu import build_device_name_to_alias_map
+        from app.services.gpu_quota import get_effective_gpu_quota_status
 
-        status_list = await asyncio.to_thread(register_drover(conn).gpu_quota_status)
+        pid = conn._afterglow_project_id
+        status_list = await get_effective_gpu_quota_status(conn, pid)
         if not isinstance(status_list, list):
-            raise ValueError("gpu_quota_status response is not a list")
+            raise ValueError("get_effective_gpu_quota_status response is not a list")
         quotas = {
             item["gpu_type"]: item["limit"]
             for item in status_list
@@ -767,7 +762,7 @@ async def get_dashboard_overview(
     k3s_available = settings.service_k3s_enabled
     if k3s_available:
         try:
-            stats = await asyncio.to_thread(register_drover(conn).cluster_stats)
+            stats = await asyncio.to_thread(get_drover_proxy(conn).cluster_stats)
             k3s_count = int(stats.get("total", 0))
             k3s_active = int(stats.get("active", 0))
         except Exception:

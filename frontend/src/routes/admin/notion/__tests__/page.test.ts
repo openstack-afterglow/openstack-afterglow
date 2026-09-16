@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as ClientModule from '$lib/api/client';
 
 const apiMocks = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), delete: vi.fn() }));
 
@@ -11,11 +12,10 @@ vi.mock('$lib/stores/auth', () => ({
 		}
 	}
 }));
-vi.mock('$lib/api/client', () => ({
-	api: apiMocks,
-	ApiError: class ApiError extends Error {},
-	getBaseUrl: () => ''
-}));
+vi.mock('$lib/api/client', async (importOriginal) => {
+	const actual = await importOriginal<typeof ClientModule>();
+	return { ...actual, api: apiMocks };
+});
 vi.mock('$lib/stores/confirm.svelte', () => ({ confirmDialog: vi.fn() }));
 vi.mock('$lib/stores/toast', () => ({ toast: { error: vi.fn() } }));
 

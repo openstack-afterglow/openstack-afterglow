@@ -57,6 +57,6 @@ describe('AdminFileStorageTable', () => {
 		});
 
 		const row = screen.getByRole('button', { name: 'share-one' }).closest('tr');
-		expect(row?.className).toContain('bg-blue-900/10');
+		expect(row?.className).toContain('bg-surface-selected');
 	});
 });

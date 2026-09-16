@@ -1,4 +1,4 @@
-import type { RunStage } from './chatContracts';
+import type { ContextUpdatedPayload, RunStage } from './chatContracts';
 
 const TOOL_TASK_LABELS: Record<string, string> = {
 	managed_web_search: '웹 검색',
@@ -42,4 +42,13 @@ export function taskLabelForStage(stage: RunStage, toolName: string | null): str
 	if (stage === 'tool_execution' && toolName) return `${taskLabelForTool(toolName)} 진행 중`;
 	if (stage === 'awaiting_input') return '작업 승인을 기다리는 중';
 	return null;
+}
+
+export function taskLabelForContext(
+	phase: 'compacting' | 'compacted',
+	cause: ContextUpdatedPayload['cause']
+): string {
+	const automatic = cause === 'automatic';
+	if (phase === 'compacting') return automatic ? '컨텍스트 자동 압축 중' : '컨텍스트 압축 중';
+	return automatic ? '컨텍스트 자동 압축 완료' : '컨텍스트 압축 완료';
 }

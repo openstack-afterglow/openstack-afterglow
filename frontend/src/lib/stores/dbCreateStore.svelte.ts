@@ -40,6 +40,7 @@ interface DbCreateOpts {
 	open: () => boolean;
 	setOpen: (v: boolean) => void;
 	onCreated: () => void;
+	initialNics?: () => string[];
 	databaseBackupsEnabled?: () => boolean;
 }
 
@@ -167,7 +168,7 @@ export function createDbCreateStore(opts: DbCreateOpts) {
 				api.get<DbFlavor[]>('/api/v1/database-instances/flavors', t, p),
 				api.get<DbDatastore[]>('/api/v1/database-instances/datastores', t, p),
 			]);
-			if (flavors.length) flavorId = flavors[0].id;
+			if (flavors.length) flavorId = String(flavors[0].id);
 			if (datastores.length) {
 				datastoreType = datastores[0].name;
 				datastoreVersion = datastores[0].versions[0]?.name ?? '';
@@ -210,6 +211,7 @@ export function createDbCreateStore(opts: DbCreateOpts) {
 	$effect(() => {
 		if (!opts.open()) return;
 		resetForm();
+		selectedNics = opts.initialNics?.() ?? [];
 		loadMetadata();
 	});
 
