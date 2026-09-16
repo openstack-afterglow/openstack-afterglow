@@ -51,11 +51,11 @@ describe('BetaFeaturesSection', () => {
 		expect(squashfsToggle.checked).toBe(false);
 		expect(haToggle.checked).toBe(false);
 		expect(keyManagerToggle.checked).toBe(false);
+		expect(volumeBackupsToggle.checked).toBe(true);
 
 		await fireEvent.click(squashfsToggle);
 		await fireEvent.click(haToggle);
 		await fireEvent.click(keyManagerToggle);
-		await fireEvent.click(volumeBackupsToggle);
 		await fireEvent.click(fileStorageSnapshotsToggle);
 		await fireEvent.click(databaseBackupsToggle);
 

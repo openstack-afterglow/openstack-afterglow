@@ -11,6 +11,26 @@ describe('betaFeatures store', () => {
 		betaFeatures.set(DEFAULT_BETA_FEATURES);
 	});
 
+	it('enables volume backups when no browser preference exists', async () => {
+		localStorage.clear();
+		vi.resetModules();
+		const { betaFeatures: freshStore } = await import('../betaFeatures');
+
+		expect(get(freshStore)).toEqual(DEFAULT_BETA_FEATURES);
+		expect(get(freshStore).volumeBackups).toBe(true);
+		expect(localStorage.getItem('afterglow.beta.volumeBackups')).toBeNull();
+	});
+
+	it('preserves an explicit browser-local volume backup opt-out', async () => {
+		localStorage.clear();
+		localStorage.setItem('afterglow.beta.volumeBackups', 'false');
+		vi.resetModules();
+		const { betaFeatures: freshStore } = await import('../betaFeatures');
+
+		expect(get(freshStore).volumeBackups).toBe(false);
+		expect(get(freshStore).volumeSnapshots).toBe(false);
+	});
+
 	it('persists the squashfs beta toggle in localStorage', () => {
 		setBetaFeature('libraryConsume', true);
 
@@ -33,7 +53,7 @@ describe('betaFeatures store', () => {
 		expect(get(betaFeatures)).toEqual({ ...DEFAULT_BETA_FEATURES, keyManager: true });
 		expect(localStorage.getItem('afterglow.beta.keyManager')).toBe('true');
 		expect(localStorage.getItem('afterglow.beta.databaseBackups')).toBe('false');
-		expect(localStorage.getItem('afterglow.beta.volumeBackups')).toBe('false');
+		expect(localStorage.getItem('afterglow.beta.volumeBackups')).toBe('true');
 	});
 
 	it('persists the database backup beta toggle without enabling Key Manager', () => {

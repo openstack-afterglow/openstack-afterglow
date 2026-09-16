@@ -17,7 +17,7 @@ export const DEFAULT_BETA_FEATURES: BetaFeatures = {
 	libraryConsume: false,
 	haDeploy: false,
 	keyManager: false,
-	volumeBackups: false,
+	volumeBackups: true,
 	volumeSnapshots: false,
 	fileStorageSnapshots: false,
 	fileStorageShareNetworks: false,
@@ -38,7 +38,9 @@ const STORAGE_KEYS: Record<keyof BetaFeatures, string> = {
 };
 
 function readFlag(key: keyof BetaFeatures): boolean {
-	return browser ? localStorage.getItem(STORAGE_KEYS[key]) === 'true' : false;
+	if (!browser) return DEFAULT_BETA_FEATURES[key];
+	const stored = localStorage.getItem(STORAGE_KEYS[key]);
+	return stored === null ? DEFAULT_BETA_FEATURES[key] : stored === 'true';
 }
 
 function createBetaFeaturesStore() {

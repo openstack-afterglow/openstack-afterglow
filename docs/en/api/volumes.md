@@ -346,6 +346,8 @@ Cancels a transfer request. An already-accepted transfer cannot be canceled.
 > Tags: `volume-backups`  
 > Base path: `/api/v1/volumes/backups`
 
+When no browser preference is stored, the frontend shows the volume-backup navigation and flows by default. A user can still turn the feature off for the current browser in Account Settings, and an explicitly stored `false` preference remains authoritative. UI visibility does not prove that the Cinder backup service is available; production deployments must verify its `enabled`/`up` state separately.
+
 ### Endpoint List
 
 | Method | Path | Description |

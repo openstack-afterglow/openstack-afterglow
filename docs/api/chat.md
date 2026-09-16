@@ -69,9 +69,9 @@ Afterglow 백엔드는 모든 `/api/v1/chat/{path}` 요청을 내부 Lumen 서�
 | `GET /api/v1/chat/admin/providers/billing` | `/v1/admin/providers/billing` | 관리자: 모든 configured provider의 Lumen 귀속 일·주·월·누적 request/token/raw USD cost, OpenAI/Anthropic 공식 조직 report, OpenRouter/DeepSeek live 잔액/한도, 공식 console URL을 한 번에 조회 |
 | `GET /api/v1/chat/mcp-oauth/callback` | `/v1/mcp-oauth/callback` | MCP OAuth 브라우저 콜백 전달 |
 
-관리자 provider 화면의 **사용량 키 설정**은 direct OpenAI API와 Anthropic API에만 표시됩니다. 이 키는 Lumen이 inference key와 다른 AES-GCM/HKDF domain으로 암호화해 저장하며 organization cost/usage report에만 사용합니다. 브라우저와 API read 응답에는 키 값 대신 설정 여부만 반환됩니다. OpenAI는 현재 UTC 일·주·월 공식 비용·요청·토큰, Anthropic은 공식 비용·토큰을 표시합니다. Anthropic 공식 report에 없는 요청 수와 현재 달 범위로 계산할 수 없는 누적값은 `—`로 표시합니다.
+관리자 provider 화면의 **사용량 키 설정**은 direct OpenAI API와 Anthropic API에만 표시됩니다. 이 키는 Lumen이 inference key와 다른 AES-GCM/HKDF domain으로 암호화해 저장하며 organization cost/usage report에만 사용합니다. 브라우저와 API read 응답에는 키 값 대신 설정 여부만 반환됩니다. OpenAI는 현재 UTC 일·주·월 공식 비용·요청·토큰, Anthropic은 공식 비용·토큰을 표시합니다. Anthropic 공식 report에 없는 요청 수와 현재 달 범위로 계산할 수 없는 누적값은 `—`로 표시합니다. 두 provider의 공식 organization API는 현재 선불 잔액이나 구매 충전액을 반환하지 않으므로 UI는 비용에서 잔액을 역산하지 않고 공식 결제 console을 정본으로 안내합니다.
 
-Gemini의 선불 잔액·거래 내역은 Google AI Studio 결제 화면에서만 확인합니다. Perplexity Enterprise Computer Analytics API는 Computer 제품 분석용이므로 Sonar/API Platform 크레딧으로 표시하거나 그 key를 요청하지 않습니다. OpenRouter와 DeepSeek의 기존 inference-key 잔액 조회는 유지합니다. Provider별 실패와 bulk 실패는 provider CRUD를 막지 않습니다.
+DeepSeek의 공식 `/user/balance`는 통화별 총 account balance, 구매 충전액, 지급 credit을 제공하므로 `계정 크레딧`에 그대로 표시합니다. OpenRouter inference key의 `/api/v1/key`는 해당 key의 limit/remaining만 제공하므로 account-wide prepaid balance가 아니라 `API 키 한도`로 표시합니다. 계정 전체 구매/사용 credit API에는 별도 Management key가 필요하며 현재 Lumen credential 계약에는 포함되지 않습니다. Gemini의 선불 잔액·거래 내역은 Google AI Studio 결제 화면에서만 확인합니다. Perplexity Enterprise Computer Analytics API는 Computer 제품 분석용이므로 Sonar/API Platform 크레딧으로 표시하거나 그 key를 요청하지 않습니다. Provider별 실패와 bulk 실패는 provider CRUD를 막지 않습니다.
 
 배포 순서는 Lumen migration `011_provider_billing_admin_key.sql` → 호환 Lumen API → Afterglow backend/frontend입니다. 구 Lumen에는 bulk `GET /v1/admin/providers/billing`보다 동적 `PATCH /v1/admin/providers/{provider_id}`만 있을 수 있어, 새 Afterglow UI의 GET이 `provider_id="billing"` route에 매칭된 뒤 HTTP 405를 반환합니다. 이 오류는 관리자 키 부족이 아니라 Afterglow/Lumen 버전 불일치입니다.
 
@@ -271,7 +271,7 @@ Anthropic 스트리밍은 client가 열린 상태에서 `client.messages.stream(
 
 사용자 행의 **사용량**은 modal을 열어 `7d`, `30d`, `90d`, `1y`, 전체 기간과 web/API source를 필터링한다. 모델별 및 source별 aggregate와 timestamp, 입력/출력/총 token, raw USD, 차감 credit, API key attribution이 있는 cursor ledger를 표시한다. 숫자는 Lumen immutable usage log의 projection이며 Afterglow가 별도 accounting state를 저장하지 않는다.
 
-`/admin/chat` provider 설정은 모든 configured provider에 Lumen 귀속 일·주·월·누적 request/token/raw USD cost를 표시한다. OpenRouter는 API key limit·remaining과 provider-reported usage, DeepSeek는 통화별 total/purchased/granted balance와 사용 가능 상태를 추가로 보여준다. OpenAI처럼 저장된 inference credential로 공식 balance endpoint를 호출할 수 없는 provider는 자동 조회를 `지원하지 않음`으로 명시하고, 알려진 cloud provider에는 서버가 고정한 공식 HTTPS 결제·사용량 console action을 제공한다. Subscription credential, custom OpenAI-compatible base, local/unknown provider에는 오인 가능한 결제 링크를 제공하지 않는다. 결제 상태 조회 실패는 provider CRUD·실행 상태를 바꾸지 않으며 secret이나 upstream 원문 오류를 표시하지 않는다.
+`/admin/chat` provider 설정은 모든 configured provider에 Lumen 귀속 일·주·월·누적 request/token/raw USD cost를 표시한다. 별도 `계정 크레딧` 영역은 DeepSeek가 공식 반환한 통화별 총 잔액·구매 충전액·지급 credit을 표시하고, OpenRouter는 inference key의 limit/remaining을 account balance와 명확히 구분한다. Direct OpenAI/Anthropic의 공식 organization report는 비용·요청·token 사용량만 제공하므로 현재 잔액이나 충전액을 사용량에서 역산하지 않고 `공식 API 조회 미지원`과 결제 console action을 표시한다. Gemini와 그 밖의 console-only provider도 같은 fail-honest 규칙을 따른다. Subscription credential, custom OpenAI-compatible base, local/unknown provider에는 오인 가능한 결제 링크를 제공하지 않는다. 결제 상태 조회 실패는 provider CRUD·실행 상태를 바꾸지 않으며 secret이나 upstream 원문 오류를 표시하지 않는다.
 
 ### 실제 검증 기록
 
@@ -282,3 +282,4 @@ Anthropic 스트리밍은 client가 열린 상태에서 `client.messages.stream(
 - 수정된 Afterglow 설정 화면에서 렌더링된 두 Python 예제를 그대로 추출해 실행했으며 모두 실제 응답을 출력했다.
 - 2026-09-08 합성 provider HTTP 경계에서 OpenAI·Anthropic SDK 요청이 공개 ID와 `provider="perplexity"`를 Lumen resolver에 전달하고 Perplexity Agent API `/v1/responses` transport로 실행되며 응답 model은 공개 ID를 유지함을 확인했다. 실제 provider credential이나 외부 배포는 사용하지 않았다.
 - 키 발급·폐기나 서버 배포 설정 변경 없이 검증했다.
+- 2026-09-16 provider credit 표시는 focused provider-page 21건과 전체 frontend 1,331건을 통과했다. 실제 Vite surface에 합성 bulk billing boundary를 연결해 light/dark 각각 390·767·768·1023·1024·1440px에서 OpenRouter key-limit provenance, DeepSeek account balance, breakpoint 전환, action 배치와 horizontal overflow 부재를 확인했다. 이는 UI/contract 증거이며 live provider credential이나 배포 검증이 아니다.

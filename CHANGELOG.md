@@ -28,7 +28,8 @@
 
 - **API Search 선택과 답변 상단 출처** — Lumen이 native 검색을 지원하는 모델에 Search 선택을 연결하고 기본 검색 모델은 `Search · 기본`으로 표시한다. 검색 변경은 context preview와 completion 요청에 반영하며 managed 검색과 분리한다. 출처 번호·제목·도메인을 답변 위에 가로 목록으로 표시하고 작은 화면에서는 목록 안에서만 스크롤한다.
 
-- **관리자 AI 공급자 사용량·결제 상태** — `/admin/chat`의 모든 configured provider에 Lumen 귀속 일·주·월·누적 요청·토큰·raw USD cost를 표시한다. OpenRouter와 DeepSeek는 기존 inference key로 live 한도·잔액을 조회하고, direct OpenAI/Anthropic은 inference와 분리된 암호화 관리자 키를 UI에서 설정해 공식 조직 비용·사용량 report를 표시한다. Gemini는 AI Studio console-only, Perplexity Enterprise Computer Analytics는 API Platform billing과 다른 제품 범위임을 명시한다. 상태는 fresh reload fence가 있는 한 bulk BFF 요청으로 로드하며 실패해도 provider CRUD는 유지한다.
+- **관리자 AI 공급자 계정 크레딧·사용량 분리** — `/admin/chat`의 모든 configured provider에 Lumen 귀속 일·주·월·누적 요청·토큰·raw USD cost를 유지하면서 별도 `계정 크레딧` 영역을 추가했다. DeepSeek는 공식 API의 통화별 총 잔액·구매 충전액·지급 credit을 표시하고, OpenRouter는 inference key의 limit/remaining을 account-wide balance와 구분한다. Direct OpenAI/Anthropic은 별도 암호화 관리자 키로 공식 조직 비용·사용량 report를 표시하되 공식 API가 현재 선불 잔액·충전액을 반환하지 않음을 명시하고 결제 console로 연결한다. Gemini console-only와 Perplexity 제품 범위 제한, HTTPS-only 외부 action, bulk refresh fence와 provider CRUD 실패 격리를 유지한다.
+- **볼륨 백업 기본 활성화** — 저장된 브라우저 선호가 없으면 Cinder 볼륨 백업 메뉴와 흐름을 기본 노출한다. SSR과 브라우저 초기화가 선언된 beta 기본값을 동일하게 사용하며, 사용자가 현재 브라우저에서 명시적으로 끈 `false` 선호와 다른 beta 기능의 비활성 기본값은 유지한다. UI 노출과 실제 Cinder backup service 가용성은 별도로 검증한다.
 
 - **토폴로지 패킷 흐름 기본 표시** — 캔버스의 패킷 흐름 시뮬레이션을 기본 on으로 바꿨다. 툴바 체크박스로 끌 수 있고, `prefers-reduced-motion` 환경에서는 종전대로 토글과 무관하게 완전히 비활성이다.
 
