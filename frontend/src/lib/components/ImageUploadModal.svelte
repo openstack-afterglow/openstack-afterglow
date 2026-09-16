@@ -2,6 +2,7 @@
 	import { uploadQueue } from '$lib/stores/uploadQueue';
 	import { parseImageReference, sanitizeImageFilename } from '$lib/utils/imageReference';
 	import Button from '$lib/components/ui/Button.svelte';
+	import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	interface Props {
 		open: boolean;
@@ -129,18 +130,17 @@
 
 {#if open}
 	<div
+		use:dialogFocus={{ enabled: true, onEscape: () => close() }}
 		class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 		onclick={close}
 		role="dialog"
 		aria-modal="true"
 		tabindex="-1"
-		onkeydown={(e) => e.key === 'Escape' && close()}
 	>
 		<div
 			class="bg-[var(--color-surface-raised)] border border-[var(--color-line)] rounded-xl p-6 w-full max-w-lg mx-4 shadow-[var(--shadow-restraint)]"
 			onclick={(e) => e.stopPropagation()}
 			role="none"
-			onkeydown={(e) => e.stopPropagation()}
 		>
 			<h2 class="text-lg font-semibold text-[var(--color-ink-0)] mb-5">이미지 업로드</h2>
 

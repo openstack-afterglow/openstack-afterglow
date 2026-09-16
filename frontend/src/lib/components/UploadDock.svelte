@@ -5,33 +5,12 @@
 	let jobs = $state<UploadJob[]>([]);
 	let collapsed = $state(false);
 
-	// 자동 dismiss 타이머 (job id → timer id)
-	const timers = new Map<string, ReturnType<typeof setTimeout>>();
-
 	onMount(() => {
-		const unsub = uploadQueue.subscribe((list) => {
+		// 완료·취소 행은 각 행의 닫기 버튼으로만 사라진다. 타이머로 지우면 사용자가 결과를
+		// 읽기 전에 사라질 수 있다 (WCAG 2.2.1).
+		return uploadQueue.subscribe((list) => {
 			jobs = list;
-
-			// 새로 완료된 job 에 5초 dismiss 타이머
-			for (const j of list) {
-				if ((j.status === 'success' || j.status === 'canceled') && !timers.has(j.id)) {
-					const t = setTimeout(() => {
-						uploadQueue.remove(j.id);
-						timers.delete(j.id);
-					}, 5000);
-					timers.set(j.id, t);
-				}
-			}
-
-			// 더 이상 목록에 없는 job 의 타이머 정리
-			for (const [id, t] of timers) {
-				if (!list.find((j) => j.id === id)) {
-					clearTimeout(t);
-					timers.delete(id);
-				}
-			}
 		});
-		return unsub;
 	});
 
 	const visible = $derived(jobs.length > 0);

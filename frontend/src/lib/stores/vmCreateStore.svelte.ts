@@ -1206,12 +1206,12 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 				progress = 100;
 				progressMessage = '배포 완료';
 				toast.success('인스턴스 생성 완료');
-				setTimeout(() => {
-					if (destroyed) return;
+				// 완료 보고는 root layout 의 Toast 가 이어받는다. 타이머로 사용자를 이동시키지 않는다 (WCAG 2.2.1).
+				if (!destroyed) {
 					resetWizard();
 					closeWizard();
 					goto('/dashboard');
-				}, 1000);
+				}
 				return;
 			} catch (e) {
 				if (destroyed) return;
@@ -1264,14 +1264,14 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 				progressMessage = data.message;
 			}
 			toast.success('인스턴스 생성 완료');
-			setTimeout(() => {
-				if (destroyed) return;
+			// 완료 보고는 root layout 의 Toast 가 이어받는다. 타이머로 사용자를 이동시키지 않는다 (WCAG 2.2.1).
+			if (!destroyed) {
 				resetWizard();
 				adminSelectedProjectId = null;
 				adminSelectedProjectName = null;
 				closeWizard();
 				goto(opts.adminMode() ? '/admin/instances' : '/dashboard');
-			}, 1000);
+			}
 			return;
 		}
 
@@ -1313,14 +1313,14 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 							}
 							if (data.step === 'completed') {
 								toast.success(`인스턴스 생성 완료`);
-								setTimeout(() => {
-									if (destroyed) return;
+								// 완료 보고는 root layout 의 Toast 가 이어받는다. 타이머로 사용자를 이동시키지 않는다 (WCAG 2.2.1).
+								if (!destroyed) {
 									resetWizard();
 									adminSelectedProjectId = null;
 									adminSelectedProjectName = null;
 									closeWizard();
 									goto(opts.adminMode() ? '/admin/instances' : '/dashboard');
-								}, 1000);
+								}
 								return;
 							}
 							if (data.step === 'failed') {

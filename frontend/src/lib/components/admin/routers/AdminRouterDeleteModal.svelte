@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { AdminRouter } from '$lib/types/networks';
+	import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	let {
 		router = $bindable(),
@@ -28,8 +29,9 @@
 </script>
 
 {#if router}
-	<div class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50" onclick={() => { router = null; }} role="dialog" onkeydown={(e) => e.key === 'Escape' && (router = null)} tabindex="-1">
-		<div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-sm mx-4 shadow-[var(--shadow-restraint)]" onclick={(e) => e.stopPropagation()} role="none" onkeydown={(e) => e.stopPropagation()}>
+	<div
+		use:dialogFocus={{ enabled: true, onEscape: () => (router = null) }} class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50" onclick={() => { router = null; }} role="dialog" aria-modal="true" tabindex="-1">
+		<div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-sm mx-4 shadow-[var(--shadow-restraint)]" onclick={(e) => e.stopPropagation()} role="none">
 			<h2 class="text-lg font-semibold text-ink-0 mb-3">라우터 삭제</h2>
 			<p class="text-sm text-ink-2 mb-4"><span class="text-ink-0">{router.name || router.id.slice(0, 8)}</span> 라우터를 삭제하시겠습니까?</p>
 			{#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}

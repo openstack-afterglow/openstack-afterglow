@@ -79,11 +79,19 @@
     triggerEl?.focus();
   }
 
+  let wasOpen = false;
+
   $effect(() => {
     if (!open) {
+      // 키보드로 항목을 실행하면 포커스를 가진 버튼이 그대로 언마운트된다. 그러면 브라우저가
+      // 포커스를 <body> 로 되돌려 다음 Tab 이 문서 맨 위에서 다시 시작한다. Escape·바깥 클릭
+      // 경로에서는 activeElement 가 트리거나 바깥 요소이므로 이 가드는 동작하지 않는다.
+      if (wasOpen && document.activeElement === document.body) triggerEl?.focus();
+      wasOpen = false;
       pos = null;
       return;
     }
+    wasOpen = true;
     void prepareOpen();
   });
 
@@ -159,9 +167,15 @@
     background: transparent;
     transition: background var(--motion-duration-fast) var(--motion-ease-standard), color var(--motion-duration-fast) var(--motion-ease-standard);
   }
+  .action-trigger:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+  }
   .action-trigger:hover {
     color: var(--color-ink-0);
-    background: color-mix(in oklab, var(--color-surface-sunken) 65%, transparent);
+    /* sunken 을 섞으면 라이트에서 표면과 1.05:1 이라 hover 가 보이지 않는다. ink 를 섞어야
+       두 테마 모두에서 같은 세기로 눌린다. */
+    background: color-mix(in oklab, var(--color-ink-0) 8%, transparent);
   }
   .action-menu {
     position: fixed;

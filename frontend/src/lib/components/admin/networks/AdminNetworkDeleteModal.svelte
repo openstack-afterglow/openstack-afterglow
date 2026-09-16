@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { AdminNetwork } from '$lib/types/networks';
+	import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	let {
 		network,
@@ -34,10 +35,10 @@
 
 {#if network}
 	<div
+		use:dialogFocus={{ enabled: true, onEscape: () => onClose() }}
 		class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 		onclick={(event) => { if (event.target === event.currentTarget) (onClose)(); }}
-		role="dialog"
-		onkeydown={(e) => e.key === 'Escape' && onClose()}
+		role="dialog" aria-modal="true"
 		tabindex="-1"
 	>
 		<div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-sm mx-4 shadow-[var(--shadow-restraint)]">

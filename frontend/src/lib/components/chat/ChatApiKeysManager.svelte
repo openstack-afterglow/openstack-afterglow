@@ -10,6 +10,7 @@
 	import { formatCredit, isCreditInput } from '$lib/api/chatQuotas';
 	import type { ApiKey } from '$lib/api/chatUsage';
 	import type { ChatUsage } from '$lib/api/chatTree';
+	import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	let { usage = null }: { usage?: ChatUsage | null } = $props();
 
@@ -445,9 +446,16 @@ with Anthropic(
 
 <!-- 발급 직후 평문 키 1회 표시 모달 -->
 {#if issued}
-	<div class="fixed inset-0 z-50 flex items-center justify-center bg-surface-scrim/50 p-4" role="dialog" aria-modal="true">
+	<div
+		use:dialogFocus={{ enabled: true, onEscape: () => (issued = null) }}
+		class="fixed inset-0 z-50 flex items-center justify-center bg-surface-scrim/50 p-4"
+		role="dialog"
+		aria-modal="true"
+		aria-labelledby="issued-key-title"
+		tabindex="-1"
+	>
 		<div class="{cardCls} w-full max-w-lg p-6">
-			<h3 class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">API 키가 발급되었습니다</h3>
+			<h3 id="issued-key-title" class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">API 키가 발급되었습니다</h3>
 			<p class="mb-3 text-xs text-[var(--color-state-danger)]">
 				이 키는 지금 한 번만 표시됩니다. 안전한 곳에 저장하세요. 창을 닫으면 다시 볼 수 없습니다.
 			</p>

@@ -6,6 +6,7 @@
 	import DbCreateStep4Init from './wizard/DbCreateStep4Init.svelte';
 	import DbCreateStep5Advanced from './wizard/DbCreateStep5Advanced.svelte';
 	import { betaFeatures } from '$lib/stores/betaFeatures';
+	import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	let {
 		open = $bindable(false),
@@ -27,11 +28,11 @@
 {#if open}
 	<!-- 오버레이 -->
 	<div
+		use:dialogFocus={{ enabled: true, onEscape: () => (open = false) }}
 		class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 		onclick={(event) => {
 			if (event.target === event.currentTarget) open = false;
 		}}
-		onkeydown={(event) => event.key === 'Escape' && (open = false)}
 		tabindex="-1"
 		role="dialog"
 		aria-modal="true"

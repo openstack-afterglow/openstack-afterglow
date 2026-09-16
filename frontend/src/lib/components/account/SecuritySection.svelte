@@ -3,6 +3,7 @@
   import { api, ApiError, beginSessionRevocation, endSessionRevocation } from '$lib/api/client';
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
+  import { toast } from '$lib/stores/toast';
 
   const token = $derived($auth.token ?? undefined);
   const projectId = $derived($auth.projectId ?? undefined);
@@ -92,9 +93,10 @@
       await api.post('/api/v1/auth/logout-all', {}, logoutToken ?? undefined, projectId);
       success = '모든 세션이 폐기되었습니다. 다시 로그인해 주세요.';
       clearAuth();
-      setTimeout(() => {
-        void goto('/login', { replaceState: true }).finally(() => logoutInProgress.set(false));
-      }, 1500);
+      // duration 0 = 자동 소멸 없음. 확인 문구는 root layout 의 Toast 가 로그인 화면까지 옮기고
+      // 사용자가 직접 닫는다. 1.5초 타이머로 확인 문구를 빼앗지 않는다 (WCAG 2.2.1).
+      toast.success('모든 세션이 폐기되었습니다. 다시 로그인해 주세요.', 0);
+      void goto('/login', { replaceState: true }).finally(() => logoutInProgress.set(false));
     } catch (e) {
       error = e instanceof ApiError ? e.message : '세션 폐기 실패';
       logoutInProgress.set(false);

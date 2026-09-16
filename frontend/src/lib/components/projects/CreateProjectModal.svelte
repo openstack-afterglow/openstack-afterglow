@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
+	import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	let { onClose, onSuccess }: {
 		onClose: () => void;
@@ -31,7 +32,7 @@
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
-		if (e.key === 'Escape') onClose();
+		// Escape 는 dialogFocus 가 처리한다. 여기 남기면 두 번 닫힌다.
 		if (e.key === 'Enter' && name.trim()) submit();
 	}
 </script>
@@ -39,11 +40,11 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <div
+	use:dialogFocus={{ enabled: true, onEscape: onClose }}
 	class="fixed inset-0 z-50 flex items-center justify-center bg-surface-scrim/60"
 	onclick={(event) => {
 		if (event.target === event.currentTarget) onClose();
 	}}
-	onkeydown={handleKeydown}
 	tabindex="-1"
 	role="dialog"
 	aria-modal="true"

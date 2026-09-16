@@ -22,6 +22,7 @@
 	>
 		<button type="button" disabled>사용 불가</button>
 		<button type="button" onclick={() => { actionCount += 1; }}>시작</button>
+		<button type="button" onclick={() => { actionCount += 1; open = false; }}>재시작</button>
 		<button type="button">중지</button>
 	</ActionMenu>
 </div>

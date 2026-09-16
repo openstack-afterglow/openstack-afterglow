@@ -4,6 +4,7 @@
   import { api, ApiError } from '$lib/api/client';
   import { confirmDialog } from '$lib/stores/confirm.svelte';
   import { toast } from '$lib/stores/toast';
+  import { dialogFocus } from '$lib/utils/dialogFocus';
 
   interface Keypair {
     name: string;
@@ -108,8 +109,9 @@
 </script>
 
 {#if showModal}
-  <div class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50" onclick={() => showModal = false} role="dialog" aria-modal="true" tabindex="-1" onkeydown={(e) => e.key === 'Escape' && (showModal = false)}>
-    <div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]" onclick={(e) => e.stopPropagation()} role="none" onkeydown={(e) => e.stopPropagation()}>
+  <div
+		use:dialogFocus={{ enabled: true, onEscape: () => (showModal = false) }} class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50" onclick={() => showModal = false} role="dialog" aria-modal="true" tabindex="-1">
+    <div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]" onclick={(e) => e.stopPropagation()} role="none">
       {#if createdPrivateKey}
         <h2 class="text-lg font-semibold text-ink-0 mb-3">개인키 다운로드</h2>
         <p class="text-sm text-yellow-300 mb-3">이 키는 다시 표시되지 않습니다. 지금 저장하세요.</p>

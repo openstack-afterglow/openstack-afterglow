@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
 	import type { PodInfo } from '$lib/types/k3s';
+	import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	interface Props {
 		pod: PodInfo;
@@ -40,11 +41,11 @@
 </script>
 
 <div
+		use:dialogFocus={{ enabled: true, onEscape: () => onClose() }}
 	class="fixed inset-0 z-50 flex items-center justify-center bg-surface-scrim/70"
 	onclick={(event) => {
 		if (event.target === event.currentTarget) onClose();
 	}}
-	onkeydown={(event) => event.key === 'Escape' && onClose()}
 	tabindex="-1"
 	role="dialog"
 	aria-modal="true"

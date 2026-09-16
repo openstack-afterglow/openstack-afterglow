@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { AdminRouter } from '$lib/types/networks';
+	import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	let {
 		router = $bindable(),
@@ -33,8 +34,9 @@
 </script>
 
 {#if router}
-	<div class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50" onclick={() => { router = null; }} role="dialog" onkeydown={(e) => e.key === 'Escape' && (router = null)} tabindex="-1">
-		<div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]" onclick={(e) => e.stopPropagation()} role="none" onkeydown={(e) => e.stopPropagation()}>
+	<div
+		use:dialogFocus={{ enabled: true, onEscape: () => (router = null) }} class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50" onclick={() => { router = null; }} role="dialog" aria-modal="true" tabindex="-1">
+		<div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]" onclick={(e) => e.stopPropagation()} role="none">
 			<h2 class="text-lg font-semibold text-ink-0 mb-5">라우터 수정</h2>
 			{#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
 			<div>

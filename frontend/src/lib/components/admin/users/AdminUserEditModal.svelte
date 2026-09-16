@@ -2,6 +2,7 @@
   import type { User } from '$lib/types/common';
   import { auth } from '$lib/stores/auth';
   import { api, ApiError } from '$lib/api/client';
+  import { dialogFocus } from '$lib/utils/dialogFocus';
 
   let {
     user = $bindable<User | null>(),
@@ -118,10 +119,10 @@
 
 {#if user}
   <div
+    use:dialogFocus={{ enabled: true, onEscape: () => (user = null) }}
     class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
     onclick={(event) => { if (event.target === event.currentTarget) (() => { user = null; })(); }}
-    role="dialog"
-    onkeydown={(e) => e.key === 'Escape' && (user = null)}
+    role="dialog" aria-modal="true"
     tabindex="-1"
   >
     <div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]">

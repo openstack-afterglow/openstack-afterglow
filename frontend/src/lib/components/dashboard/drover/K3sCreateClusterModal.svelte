@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { api } from '$lib/api/client';
 	import type { K3sFlavor, K3sNetwork, K3sKeypair, K3sClusterTemplate } from '$lib/types/k3s';
+	import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	let {
 		open = $bindable(false),
@@ -74,12 +75,13 @@
 </script>
 
 {#if open}
-	<div class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
+	<div
+		use:dialogFocus={{ enabled: true, onEscape: () => (open = false) }} class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 		onclick={() => { open = false; }}
 		role="dialog" aria-modal="true" tabindex="-1"
-		onkeydown={(e) => e.key === 'Escape' && (open = false)}>
+>
 		<div data-tour="drover-create-form" class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-lg mx-4 shadow-[var(--shadow-restraint)]"
-			onclick={(e) => e.stopPropagation()} role="none" onkeydown={(e) => e.stopPropagation()}>
+			onclick={(e) => e.stopPropagation()} role="none">
 			<h2 class="text-lg font-semibold text-ink-0 mb-5">Drover 클러스터 생성</h2>
 			<div class="space-y-4">
 				{#if templates.length > 0}

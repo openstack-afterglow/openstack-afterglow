@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
+	import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	interface Project {
 		id: string;
@@ -157,16 +158,15 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
+		use:dialogFocus={{ enabled: true, onEscape: () => onClose() }}
 		class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 		onclick={onClose}
 		role="dialog" aria-modal="true" tabindex="-1"
-		onkeydown={(e) => e.key === 'Escape' && onClose()}
 	>
 		<div
 			class="bg-surface-base border border-line-2 rounded-xl w-full max-w-3xl mx-4 shadow-[var(--shadow-restraint)] max-h-[85vh] flex flex-col"
 			onclick={(e) => e.stopPropagation()}
 			role="none"
-			onkeydown={(e) => e.stopPropagation()}
 		>
 			<div class="flex items-center justify-between p-5 border-b border-line">
 				<div>
@@ -268,15 +268,15 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
+		use:dialogFocus={{ enabled: true, onEscape: () => { pendingAddUser = null; } }}
 		class="fixed inset-0 bg-surface-scrim/70 flex items-center justify-center z-[60]"
 		onclick={() => { pendingAddUser = null; }}
-		role="dialog" tabindex="-1"
+		role="dialog" aria-modal="true" tabindex="-1"
 	>
 		<div
 			class="bg-surface-base border border-line-2 rounded-xl p-5 w-full max-w-sm mx-4 shadow-[var(--shadow-restraint)]"
 			onclick={(e) => e.stopPropagation()}
 			role="none"
-			onkeydown={(e) => e.stopPropagation()}
 		>
 			<h3 class="text-base font-semibold text-ink-0 mb-3">{pendingAddUser.name} — 역할 선택</h3>
 			<select bind:value={pendingRoleId} class="w-full bg-surface-sunken border border-line-2 text-ink-0 text-sm rounded px-3 py-2 focus:outline-none focus:border-action-warm mb-4">
@@ -301,15 +301,15 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
+		use:dialogFocus={{ enabled: true, onEscape: () => { pendingAddGroup = null; } }}
 		class="fixed inset-0 bg-surface-scrim/70 flex items-center justify-center z-[60]"
 		onclick={() => { pendingAddGroup = null; }}
-		role="dialog" tabindex="-1"
+		role="dialog" aria-modal="true" tabindex="-1"
 	>
 		<div
 			class="bg-surface-base border border-line-2 rounded-xl p-5 w-full max-w-sm mx-4 shadow-[var(--shadow-restraint)]"
 			onclick={(e) => e.stopPropagation()}
 			role="none"
-			onkeydown={(e) => e.stopPropagation()}
 		>
 			<h3 class="text-base font-semibold text-ink-0 mb-3">[그룹] {pendingAddGroup.name} — 역할 선택</h3>
 			<select bind:value={pendingGroupRoleId} class="w-full bg-surface-sunken border border-line-2 text-ink-0 text-sm rounded px-3 py-2 focus:outline-none focus:border-action-warm mb-4">

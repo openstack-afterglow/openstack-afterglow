@@ -102,7 +102,7 @@
 	}
 
 	async function restartInstance(id: string, name: string) {
-		if (!await confirmDialog(`DB 인스턴스 "${name || id.slice(0, 8)}"를 재시작하시겠습니까?`)) return;
+		if (!await confirmDialog(`DB 인스턴스 "${name || id.slice(0, 8)}"를 재시작하시겠습니까?`, { confirmLabel: '재시작', confirmVariant: 'accent' })) return;
 		restarting = id;
 		try {
 			await api.post(`/api/v1/database-instances/${id}/restart`, {}, token, projectId);

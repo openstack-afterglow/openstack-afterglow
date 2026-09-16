@@ -96,6 +96,12 @@
 		balances: ProviderBillingBalance[];
 	}
 
+	type ProviderCreditState =
+		| { kind: 'account_balance'; balances: ProviderBillingBalance[]; isAvailable: boolean | null }
+		| { kind: 'api_key_limit'; limit: string | null; remaining: string | null; isFreeTier: boolean | null }
+		| { kind: 'unavailable'; message: string }
+		| { kind: 'unsupported'; message: string };
+
 	interface ProviderChoice {
 		value: string;
 		label: string;
@@ -310,14 +316,42 @@
 		return '프로바이더 사용량 API에 연결할 수 없습니다.';
 	}
 
-	function unsupportedBillingLabel(providerType: string): string {
-		if (providerType === 'gemini') {
+	function unsupportedCreditLabel(providerType: string): string {
+		const normalized = providerType.toLowerCase();
+		if (normalized === 'openai') {
+			return 'OpenAI 공식 API는 조직 비용과 사용량만 제공하며, 현재 선불 잔액과 충전액은 결제 콘솔에서 확인해야 합니다.';
+		}
+		if (normalized === 'anthropic') {
+			return 'Anthropic 공식 API는 조직 비용과 사용량만 제공하며, 현재 크레딧 잔액과 충전액은 결제 콘솔에서 확인해야 합니다.';
+		}
+		if (normalized === 'gemini') {
 			return 'Gemini 선불 잔액과 거래 내역은 공식 Google AI Studio 결제 화면에서만 확인할 수 있습니다.';
 		}
-		if (providerType === 'perplexity') {
+		if (normalized === 'perplexity') {
 			return 'Perplexity Enterprise Computer Analytics API는 Computer 제품 분석용이며 Sonar/API Platform 크레딧 조회 API가 아닙니다.';
 		}
-		return '이 프로바이더는 저장된 inference API 키로 잔액을 조회하는 공식 endpoint를 제공하지 않습니다.';
+		return '이 프로바이더는 저장된 API 키로 현재 계정 잔액이나 충전액을 조회하는 공식 endpoint를 제공하지 않습니다.';
+	}
+
+	function providerCreditState(billing: ProviderBilling): ProviderCreditState {
+		if (billing.capability === 'deepseek_balance') {
+			if (billing.status !== 'available') {
+				return { kind: 'unavailable', message: billingFailureLabel(billing.reason) };
+			}
+			return { kind: 'account_balance', balances: billing.balances, isAvailable: billing.is_available };
+		}
+		if (billing.capability === 'openrouter_key') {
+			if (billing.status !== 'available') {
+				return { kind: 'unavailable', message: billingFailureLabel(billing.reason) };
+			}
+			return {
+				kind: 'api_key_limit',
+				limit: billing.limit,
+				remaining: billing.remaining,
+				isFreeTier: billing.is_free_tier
+			};
+		}
+		return { kind: 'unsupported', message: unsupportedCreditLabel(billing.provider_type) };
 	}
 
 	function safeExternalUrl(value: string | null): string | undefined {
@@ -1253,7 +1287,61 @@
 							{:else}
 								{@const billingUrl = safeExternalUrl(billing.billing_url)}
 								{@const usageUrl = safeExternalUrl(billing.usage_url)}
-								<div class="mt-2 grid grid-cols-2 gap-2 lg:grid-cols-4">
+								{@const credit = providerCreditState(billing)}
+								<div class="mt-3 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-base)] p-3">
+									<div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+										<div class="min-w-0">
+											<div class="flex flex-wrap items-center gap-2">
+												<span class="text-xs font-semibold text-[var(--color-ink-1)]">계정 크레딧</span>
+												{#if credit.kind === 'account_balance'}
+													<Pill tone={credit.isAvailable ? 'success' : 'warning'} size="xs">공식 계정 잔액</Pill>
+												{:else if credit.kind === 'api_key_limit'}
+													<Pill tone="info" size="xs">API 키 한도</Pill>
+												{:else if credit.kind === 'unavailable'}
+													<Pill tone="warning" size="xs">조회 실패</Pill>
+												{:else}
+													<Pill tone="neutral" size="xs">공식 API 조회 미지원</Pill>
+												{/if}
+											</div>
+											{#if credit.kind === 'unavailable' || credit.kind === 'unsupported'}
+												<p class="mt-2 text-xs leading-relaxed text-[var(--color-ink-2)]">{credit.message} 잔액은 사용량에서 추정하지 않습니다.</p>
+											{:else if credit.kind === 'api_key_limit'}
+												<p class="mt-2 text-xs leading-relaxed text-[var(--color-ink-2)]">OpenRouter가 현재 API 키에 보고한 지출 한도입니다. 계정 전체 선불 잔액이 아닙니다.</p>
+											{/if}
+										</div>
+										{#if billingUrl}
+											<Button variant="outline" size="sm" href={billingUrl} target="_blank">크레딧 충전·결제 ↗</Button>
+										{/if}
+									</div>
+
+									{#if credit.kind === 'account_balance'}
+										{#if credit.balances.length === 0}
+											<p class="mt-3 text-xs text-[var(--color-ink-2)]">프로바이더가 반환한 잔액 항목이 없습니다.</p>
+										{:else}
+											{#each credit.balances as balance (balance.currency)}
+												<div class="mt-3">
+													<div class="mb-2 flex items-center justify-between gap-2">
+														<span class="text-xs font-medium text-[var(--color-ink-2)]">DeepSeek {balance.currency}</span>
+														<Pill tone={credit.isAvailable ? 'success' : 'warning'} size="xs">{credit.isAvailable ? '사용 가능' : '잔액 부족'}</Pill>
+													</div>
+													<div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
+														<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-2)]">현재 계정 잔액</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">{formatBillingAmount(balance.total)} {balance.currency}</div></div>
+														<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-2)]">구매 충전액</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">{formatBillingAmount(balance.purchased)} {balance.currency}</div></div>
+														<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-2)]">지급 크레딧</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">{formatBillingAmount(balance.granted)} {balance.currency}</div></div>
+													</div>
+												</div>
+											{/each}
+										{/if}
+									{:else if credit.kind === 'api_key_limit'}
+										<div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+											<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-2)]">API 키 남은 한도</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">{credit.remaining === null ? '제한 없음' : `$${formatBillingAmount(credit.remaining)}`}</div></div>
+											<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-2)]">API 키 지출 한도</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">{credit.limit === null ? '제한 없음' : `$${formatBillingAmount(credit.limit)}`}</div></div>
+										</div>
+										<p class="mt-2 text-xs text-[var(--color-ink-2)]">{credit.isFreeTier ? '무료 티어 키' : '유료 크레딧 키'}</p>
+									{/if}
+								</div>
+
+								<div class="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
 									<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3">
 										<div class="text-xs text-[var(--color-ink-2)]">이번 달 Lumen 사용</div>
 										<div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">${formatBillingAmount(billing.local_usage.raw_cost.monthly)}</div>
@@ -1273,10 +1361,8 @@
 								</div>
 								<p class="mt-2 text-xs tabular-nums text-[var(--color-ink-2)]">Lumen 원장 기준 · 오늘 ${formatBillingAmount(billing.local_usage.raw_cost.daily)} · 이번 주 ${formatBillingAmount(billing.local_usage.raw_cost.weekly)}</p>
 
-								{#if billing.status === 'unavailable'}
+								{#if billing.status === 'unavailable' && credit.kind !== 'unavailable'}
 									<Alert tone="warning" title="프로바이더 사용량 조회 실패" class="mt-3">{billingFailureLabel(billing.reason)}</Alert>
-								{:else if billing.status === 'unsupported'}
-									<Alert tone="info" title="공식 제공 범위 확인" class="mt-3">{unsupportedBillingLabel(billing.provider_type)} Lumen 사용량은 위에서 계속 집계합니다.</Alert>
 								{:else if (billing.capability === 'openai_admin_usage' || billing.capability === 'anthropic_admin_usage') && billing.provider_usage}
 									{@const providerUsage = billing.provider_usage}
 									<div class="mt-3">
@@ -1292,37 +1378,20 @@
 											<Alert tone="warning" title="일부 공식 보고서만 표시" class="mt-3">비용 또는 사용량 보고서 하나를 가져오지 못했습니다. 표시된 값만 최신 공식 응답입니다.</Alert>
 										{/if}
 									</div>
-								{:else if billing.capability === 'openrouter_key'}
+								{:else if billing.capability === 'openrouter_key' && billing.status === 'available'}
 									<div class="mt-3">
-										<div class="mb-2 text-xs font-semibold text-[var(--color-ink-2)]">OpenRouter API 키 한도</div>
-										<div class="grid grid-cols-2 gap-2 lg:grid-cols-4">
-											<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-2)]">남은 한도</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">${formatBillingAmount(billing.remaining)}</div></div>
-											<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-2)]">키 한도</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">${formatBillingAmount(billing.limit)}</div></div>
+										<div class="mb-2 text-xs font-semibold text-[var(--color-ink-2)]">OpenRouter 공급자 사용량</div>
+										<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
 											<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-2)]">이번 달 공급자 사용</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">${formatBillingAmount(billing.usage_monthly)}</div></div>
 											<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-2)]">누적 공급자 사용</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">${formatBillingAmount(billing.usage_total)}</div></div>
 										</div>
-										<p class="mt-2 text-xs text-[var(--color-ink-2)]">오늘 ${formatBillingAmount(billing.usage_daily)} · 이번 주 ${formatBillingAmount(billing.usage_weekly)} · {billing.is_free_tier ? '무료 티어' : '유료 크레딧'}</p>
-									</div>
-								{:else if billing.capability === 'deepseek_balance'}
-									<div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-										{#each billing.balances as balance (balance.currency)}
-											<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3">
-												<div class="flex items-center justify-between gap-2"><span class="text-xs text-[var(--color-ink-2)]">DeepSeek {balance.currency}</span><Pill tone={billing.is_available ? 'success' : 'warning'} size="xs">{billing.is_available ? '사용 가능' : '잔액 부족'}</Pill></div>
-												<div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">잔액 {formatBillingAmount(balance.total)}</div>
-												<div class="mt-1 text-xs tabular-nums text-[var(--color-ink-2)]">구매 {formatBillingAmount(balance.purchased)} · 지급 {formatBillingAmount(balance.granted)}</div>
-											</div>
-										{/each}
+										<p class="mt-2 text-xs text-[var(--color-ink-2)]">오늘 ${formatBillingAmount(billing.usage_daily)} · 이번 주 ${formatBillingAmount(billing.usage_weekly)}</p>
 									</div>
 								{/if}
 
-								{#if billingUrl || usageUrl}
+								{#if usageUrl && usageUrl !== billingUrl}
 									<div class="mt-3 flex flex-wrap gap-2">
-										{#if billingUrl}
-											<Button variant="outline" size="sm" href={billingUrl} target="_blank">크레딧 충전·결제 ↗</Button>
-										{/if}
-										{#if usageUrl && usageUrl !== billingUrl}
-											<Button variant="ghost" size="sm" href={usageUrl} target="_blank">프로바이더 사용량 ↗</Button>
-										{/if}
+										<Button variant="ghost" size="sm" href={usageUrl} target="_blank">프로바이더 사용량 ↗</Button>
 									</div>
 								{/if}
 							{/if}

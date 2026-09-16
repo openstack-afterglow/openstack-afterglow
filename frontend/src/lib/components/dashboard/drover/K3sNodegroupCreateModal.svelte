@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { api, ApiError } from '$lib/api/client';
 	import type { K3sFlavor, K3sNodegroup } from '$lib/types/k3s';
+	import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	let {
 		clusterId,
@@ -83,10 +84,10 @@
 </script>
 
 <div
+	use:dialogFocus={{ enabled: true, onEscape: () => onClose() }}
 	class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 	onclick={(event) => { if (event.target === event.currentTarget) (onClose)(); }}
-	onkeydown={(e) => e.key === 'Escape' && onClose()}
-	role="dialog"
+	role="dialog" aria-modal="true"
 	tabindex="-1"
 >
 	<div

@@ -2,6 +2,7 @@
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { toast } from '$lib/stores/toast';
+	import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	interface Transfer {
 		id: string;
@@ -130,18 +131,17 @@
 
 <!-- 배경 오버레이 -->
 <div
+	use:dialogFocus={{ enabled: true, onEscape: () => onClose() }}
 	class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 	onclick={onClose}
 	role="dialog"
 	aria-modal="true"
 	tabindex="-1"
-	onkeydown={(e) => e.key === 'Escape' && onClose()}
 >
 	<div
 		class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-lg mx-4 shadow-[var(--shadow-restraint)]"
 		onclick={(e) => e.stopPropagation()}
 		role="none"
-		onkeydown={(e) => e.stopPropagation()}
 	>
 		{#if mode === 'menu'}
 			<h2 class="text-lg font-semibold text-ink-0 mb-2">볼륨 이전</h2>

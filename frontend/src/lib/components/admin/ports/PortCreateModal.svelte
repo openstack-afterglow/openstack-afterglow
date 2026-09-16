@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { NetworkInfo } from '$lib/types/networks';
 	import type { ProjectName } from '$lib/types/adminPort';
+	import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	let {
 		open = $bindable(),
@@ -58,10 +59,10 @@
 
 {#if open}
 	<div
+		use:dialogFocus={{ enabled: true, onEscape: () => (open = false) }}
 		class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 		onclick={(event) => { if (event.target === event.currentTarget) (() => { open = false; })(); }}
-		role="dialog"
-		onkeydown={(e) => e.key === 'Escape' && (open = false)}
+		role="dialog" aria-modal="true"
 		tabindex="-1"
 	>
 		<div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]">

@@ -28,6 +28,16 @@ describe('ActionMenu', () => {
 		expect(document.activeElement).toBe(trigger);
 	});
 
+	it('returns focus to the trigger when an action closes the menu', async () => {
+		render(ActionMenuFixture);
+		const trigger = await openMenu();
+
+		await fireEvent.click(screen.getByRole('button', { name: '재시작' }));
+
+		expect(screen.queryByRole('group', { name: '인스턴스 작업 옵션' })).toBeNull();
+		await waitFor(() => expect(document.activeElement).toBe(trigger));
+	});
+
 	it('does not bubble an action click into the resource row', async () => {
 		render(ActionMenuFixture);
 		await openMenu();

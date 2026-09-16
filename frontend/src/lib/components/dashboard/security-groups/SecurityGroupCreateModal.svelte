@@ -34,9 +34,9 @@
 
 {#if open}
 	<div
+		use:dialogFocus={{ enabled: true, onEscape: () => (open = false) }}
 		class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 		onclick={() => { open = false; }}
-		onkeydown={(e) => e.key === 'Escape' && (open = false)}
 		role="dialog"
 		aria-modal="true"
 		tabindex="-1"
@@ -45,7 +45,6 @@
 			class="bg-surface-sunken border border-line-2 rounded-xl p-6 w-full max-w-sm mx-4"
 			onclick={(e) => e.stopPropagation()}
 			role="none"
-			onkeydown={(e) => e.stopPropagation()}
 		>
 			<h3 class="text-lg font-semibold text-ink-0 mb-4">보안 그룹 생성</h3>
 			<div class="space-y-3 mb-4">

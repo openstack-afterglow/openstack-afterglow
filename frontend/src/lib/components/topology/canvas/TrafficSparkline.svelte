@@ -52,7 +52,7 @@
 		height: 2.25rem;
 		overflow: visible;
 	}
-	.base { stroke: var(--color-line-1); stroke-width: 1; }
+	.base { stroke: var(--color-line); stroke-width: 1; }
 	polyline { fill: none; stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
 	.rx { stroke: var(--color-chart-1); }
 	.tx { stroke: var(--color-chart-2); }

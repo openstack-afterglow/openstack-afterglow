@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
+	import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	interface Props {
 		serverId: string;
@@ -42,10 +43,12 @@
 </script>
 
 <div
+	use:dialogFocus={{ enabled: true, onEscape: () => { if (phase !== 'executing') onClose(); } }}
 	class="material-scrim fixed inset-0 z-50 flex items-center justify-center bg-surface-scrim/60 p-4"
 	role="dialog"
 	aria-modal="true"
 	aria-label="인스턴스 강제 이주"
+	tabindex="-1"
 >
 	<div class="bg-surface-base border border-line-2 rounded-xl w-full max-w-lg shadow-[var(--shadow-restraint)]">
 		<!-- 헤더 -->
@@ -54,7 +57,7 @@
 				<h2 class="text-ink-0 font-semibold text-base">인스턴스 강제 이주 (Evacuate)</h2>
 				<p class="text-ink-2 text-xs mt-0.5 font-mono">{serverName} · {serverId.slice(0, 8)}</p>
 			</div>
-			<button onclick={onClose} class="text-ink-3 hover:text-ink-2 transition-colors text-lg leading-none">✕</button>
+			<button onclick={onClose} aria-label="대화상자 닫기" class="text-ink-2 hover:text-ink-1 transition-colors text-lg leading-none">✕</button>
 		</div>
 
 		<div class="px-6 py-5 space-y-4">

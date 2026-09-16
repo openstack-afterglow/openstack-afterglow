@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Group } from '$lib/types/adminGroup';
+	import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	interface Props {
 		target: Group | null;
@@ -13,10 +14,10 @@
 
 {#if target}
 	<div
+		use:dialogFocus={{ enabled: true, onEscape: () => (target = null) }}
 		class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 		onclick={(event) => { if (event.target === event.currentTarget) (() => { target = null; })(); }}
-		role="dialog"
-		onkeydown={(e) => e.key === 'Escape' && (target = null)}
+		role="dialog" aria-modal="true"
 		tabindex="-1"
 	>
 		<div

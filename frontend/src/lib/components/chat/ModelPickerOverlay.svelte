@@ -3,6 +3,7 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import { toast } from '$lib/stores/toast';
 	import ModelCapabilityBadges from './ModelCapabilityBadges.svelte';
+	import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	interface Props {
 		open: boolean;
@@ -82,7 +83,6 @@
 	}
 </script>
 
-<svelte:window onkeydown={(e) => open && e.key === 'Escape' && onClose()} />
 
 {#if open}
 	<button
@@ -92,7 +92,15 @@
 		aria-label="닫기"
 		onclick={onClose}
 	></button>
-	<div class="panel" role="dialog" aria-label="모델 선택" aria-describedby="model-picker-help" aria-modal="true">
+	<div
+		use:dialogFocus={{ enabled: true, onEscape: onClose }}
+		class="panel"
+		role="dialog"
+		aria-label="모델 선택"
+		aria-describedby="model-picker-help"
+		aria-modal="true"
+		tabindex="-1"
+	>
 		<header class="head">
 			<h2>모델 선택</h2>
 			<button type="button" class="close" onclick={onClose} aria-label="닫기">

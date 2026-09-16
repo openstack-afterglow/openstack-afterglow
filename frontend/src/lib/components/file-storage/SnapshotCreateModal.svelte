@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { FileStorage } from '$lib/types/fileStorage';
+	import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	let {
 		open = $bindable(),
@@ -41,18 +42,17 @@
 
 {#if open}
 	<div
+		use:dialogFocus={{ enabled: true, onEscape: () => (open = false) }}
 		class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 		onclick={() => (open = false)}
 		role="dialog"
 		aria-modal="true"
 		tabindex="-1"
-		onkeydown={(e) => e.key === 'Escape' && (open = false)}
 	>
 		<div
 			class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-lg mx-4 shadow-[var(--shadow-restraint)]"
 			onclick={(e) => e.stopPropagation()}
 			role="none"
-			onkeydown={(e) => e.stopPropagation()}
 		>
 			<h2 class="text-lg font-semibold text-ink-0 mb-5">스냅샷 생성</h2>
 			{#if fileStorages.length === 0}

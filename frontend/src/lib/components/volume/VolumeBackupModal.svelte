@@ -2,6 +2,7 @@
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import type { Volume } from '$lib/types/volume';
+	import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	let { volume, onclose, onsuccess }: {
 		volume: Volume | null;
@@ -53,18 +54,17 @@
 
 {#if volume}
 <div
+	use:dialogFocus={{ enabled: true, onEscape: () => onclose() }}
 	class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 	onclick={onclose}
 	role="dialog"
 	aria-modal="true"
 	tabindex="-1"
-	onkeydown={(e) => e.key === 'Escape' && onclose()}
 >
 	<div
 		class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]"
 		onclick={(e) => e.stopPropagation()}
 		role="none"
-		onkeydown={(e) => e.stopPropagation()}
 	>
 		<h2 class="text-lg font-semibold text-ink-0 mb-5">볼륨 백업 생성</h2>
 		<div class="space-y-4">

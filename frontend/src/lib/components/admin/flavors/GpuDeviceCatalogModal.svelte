@@ -3,6 +3,7 @@
 	import { api, ApiError } from '$lib/api/client';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import type { GpuCatalogDevice } from '$lib/types/gpu';
+	import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	let {
 		open = $bindable(false),
@@ -157,16 +158,15 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
+		use:dialogFocus={{ enabled: true, onEscape: () => close() }}
 		class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 		onclick={close}
 		role="dialog" aria-modal="true" tabindex="-1"
-		onkeydown={(e) => e.key === 'Escape' && close()}
 	>
 		<div
 			class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-3xl mx-4 shadow-[var(--shadow-restraint)] max-h-[85vh] flex flex-col"
 			onclick={(e) => e.stopPropagation()}
 			role="none"
-			onkeydown={(e) => e.stopPropagation()}
 		>
 			<div class="flex items-center justify-between mb-4">
 				<h2 class="text-lg font-semibold text-ink-0">GPU 장치 카탈로그</h2>

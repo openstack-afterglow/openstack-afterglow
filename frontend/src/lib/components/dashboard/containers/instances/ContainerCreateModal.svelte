@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { EnvVar, PortMapping } from '$lib/types/zunContainer';
+  import { dialogFocus } from '$lib/utils/dialogFocus';
 
   interface CreatePayload {
     name: string;
@@ -51,8 +52,9 @@
 </script>
 
 {#if open}
-  <div class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50" onclick={close} role="dialog" aria-modal="true" tabindex="-1" onkeydown={(e) => e.key === 'Escape' && close()}>
-    <div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-2xl mx-4 shadow-[var(--shadow-restraint)] max-h-[90vh] overflow-y-auto" onclick={(e) => e.stopPropagation()} role="none" onkeydown={(e) => e.stopPropagation()}>
+  <div
+		use:dialogFocus={{ enabled: true, onEscape: () => close() }} class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50" onclick={close} role="dialog" aria-modal="true" tabindex="-1">
+    <div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-2xl mx-4 shadow-[var(--shadow-restraint)] max-h-[90vh] overflow-y-auto" onclick={(e) => e.stopPropagation()} role="none">
       <h2 class="text-lg font-semibold text-ink-0 mb-5">컨테이너 생성</h2>
       <div class="space-y-4">
         <!-- 기본 설정 -->

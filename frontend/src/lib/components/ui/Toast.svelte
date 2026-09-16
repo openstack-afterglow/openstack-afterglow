@@ -14,6 +14,10 @@
 			role={t.type === 'error' ? 'alert' : 'status'}
 			aria-live={t.type === 'error' ? 'assertive' : 'polite'}
 			aria-atomic="true"
+			onmouseenter={() => toast.pause(t.id, 'hover')}
+			onmouseleave={() => toast.resume(t.id, 'hover')}
+			onfocusin={() => toast.pause(t.id, 'focus')}
+			onfocusout={() => toast.resume(t.id, 'focus')}
 		>
 			<span class="toast-icon flex-shrink-0 font-bold text-base leading-none mt-0.5" aria-hidden="true">
 				{#if t.type === 'success'}✓{:else if t.type === 'error'}✕{:else if t.type === 'warning'}⚠{:else}ℹ{/if}

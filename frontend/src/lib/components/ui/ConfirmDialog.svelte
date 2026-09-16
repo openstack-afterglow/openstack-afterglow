@@ -19,7 +19,7 @@
 				<p id="confirm-dialog-message" class="confirm-message">{dialogState.message}</p>
 				<div class="confirm-actions">
 					<Button onclick={dialogState.reject} variant="secondary">취소</Button>
-					<Button onclick={dialogState.accept} variant="danger">확인</Button>
+					<Button onclick={dialogState.accept} variant={dialogState.confirmVariant}>{dialogState.confirmLabel}</Button>
 				</div>
 			</Card>
 		</div>

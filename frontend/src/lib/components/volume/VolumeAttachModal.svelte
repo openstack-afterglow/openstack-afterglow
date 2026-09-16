@@ -1,23 +1,23 @@
 <script lang="ts">
   import { useVolumeDetailController } from '$lib/stores/volumeDetailController.svelte';
   import Button from '$lib/components/ui/Button.svelte';
+  import { dialogFocus } from '$lib/utils/dialogFocus';
 
   const s = useVolumeDetailController();
 </script>
 
 <div
+  use:dialogFocus={{ enabled: true, onEscape: () => s.closeAttachModal() }}
   class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-[60]"
   onclick={() => s.closeAttachModal()}
   role="dialog"
   aria-modal="true"
   tabindex="-1"
-  onkeydown={(e) => e.key === 'Escape' && s.closeAttachModal()}
 >
   <div
     class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-sm mx-4 shadow-[var(--shadow-restraint)]"
     onclick={(e) => e.stopPropagation()}
     role="none"
-    onkeydown={(e) => e.stopPropagation()}
   >
     <h3 class="text-base font-semibold text-ink-0 mb-4">인스턴스에 볼륨 연결</h3>
     <label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">인스턴스 선택

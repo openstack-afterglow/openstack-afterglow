@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { uploadQueue } from '$lib/stores/uploadQueue';
+	import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	interface Props {
 		containerName: string;
@@ -31,18 +32,15 @@
 		onClose();
 	}
 
-	function handleKeydown(e: KeyboardEvent) {
-		if (e.key === 'Escape') onClose();
-	}
 </script>
 
 <div
+	use:dialogFocus={{ enabled: true, onEscape: onClose }}
 	class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 	onclick={onClose}
 	role="dialog"
 	aria-modal="true"
 	tabindex="-1"
-	onkeydown={handleKeydown}
 >
 	<div
 		class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]"

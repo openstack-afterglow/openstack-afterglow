@@ -287,14 +287,21 @@ describe('admin chat model pricing', () => {
 
 		render(ProviderPage);
 
-		expect(await screen.findByText('남은 한도')).toBeTruthy();
+		expect(await screen.findByText('API 키 남은 한도')).toBeTruthy();
 		expect(screen.getByText('$75')).toBeTruthy();
-		expect(screen.getByText('구매 40 · 지급 8.5')).toBeTruthy();
+		expect(screen.getByText(/계정 전체 선불 잔액이 아닙니다/)).toBeTruthy();
+		expect(screen.getByText('현재 계정 잔액')).toBeTruthy();
+		expect(screen.getByText('48.5 USD')).toBeTruthy();
+		expect(screen.getByText('구매 충전액')).toBeTruthy();
+		expect(screen.getByText('40 USD')).toBeTruthy();
+		expect(screen.getByText('지급 크레딧')).toBeTruthy();
+		expect(screen.getByText('8.5 USD')).toBeTruthy();
 		const openAiRow = document.querySelector('[data-provider-id="4"]') as HTMLElement;
 		expect(within(openAiRow).getByText('$7.5')).toBeTruthy();
 		expect(within(openAiRow).getByText('12회')).toBeTruthy();
 		expect(within(openAiRow).getByText('12,345')).toBeTruthy();
-		expect(within(openAiRow).getByText('공식 콘솔 확인')).toBeTruthy();
+		expect(within(openAiRow).getByText('공식 API 조회 미지원')).toBeTruthy();
+		expect(within(openAiRow).getByText(/현재 선불 잔액과 충전액은 결제 콘솔에서 확인/)).toBeTruthy();
 		const paymentLink = within(openAiRow).getByRole('link', { name: '크레딧 충전·결제 ↗' });
 		expect(paymentLink.getAttribute('href')).toContain('platform.openai.com/settings/organization/billing');
 		expect(paymentLink.getAttribute('target')).toBe('_blank');
@@ -638,6 +645,31 @@ describe('admin chat model pricing', () => {
 		render(ProviderPage);
 		expect(await screen.findByText('공식 콘솔 확인')).toBeTruthy();
 		expect(screen.queryByRole('link', { name: '크레딧 충전·결제 ↗' })).toBeNull();
+	});
+
+	it('does not fabricate account credit when a supported provider lookup fails', async () => {
+		const deepSeek = { ...provider, id: 3, name: 'DeepSeek', provider_type: 'deepseek' };
+		get.mockImplementation((path: string) => {
+			if (path === '/api/v1/chat/admin/providers') return Promise.resolve([deepSeek]);
+			if (path === '/api/v1/chat/admin/models') return Promise.resolve([]);
+			if (path === '/api/v1/chat/admin/providers/billing') {
+				return Promise.resolve([
+					billingSnapshot(3, 'DeepSeek', 'deepseek', {
+						capability: 'deepseek_balance',
+						status: 'unavailable',
+						reason: 'provider_request_failed'
+					})
+				]);
+			}
+			return Promise.resolve([]);
+		});
+
+		render(ProviderPage);
+
+		expect(await screen.findByText('조회 실패')).toBeTruthy();
+		expect(screen.getByText(/프로바이더 사용량 API 요청이 실패했습니다/)).toBeTruthy();
+		expect(screen.getByText(/잔액은 사용량에서 추정하지 않습니다/)).toBeTruthy();
+		expect(screen.queryByText('현재 계정 잔액')).toBeNull();
 	});
 
 	it('stores and removes an admin usage key while fencing a stale pre-mutation response', async () => {

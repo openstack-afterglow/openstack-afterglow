@@ -31,12 +31,31 @@ describe('toast store', () => {
 		expect(toasts[0].message).toBe('성공 메시지');
 	});
 
-	it('error() 는 기본 6000ms duration', async () => {
+	it('error() 는 자동으로 사라지지 않는다 (duration 0)', async () => {
 		const { toast } = await import('../toast');
 		toast.error('오류 메시지');
 		const toasts = get(toast);
 		expect(toasts[0].type).toBe('error');
-		expect(toasts[0].duration).toBe(6000);
+		// 오류는 실패한 작업과 해결 단계를 담으므로 시간 제한을 두지 않는다 (WCAG 2.2.1).
+		expect(toasts[0].duration).toBe(0);
+	});
+
+	it('hover 중에는 자동 삭제 타이머가 멈추고 해제되면 남은 시간만큼 이어진다', async () => {
+		vi.useFakeTimers();
+		const { toast } = await import('../toast');
+		const id = toast.success('성공', 1000);
+
+		vi.advanceTimersByTime(400);
+		toast.pause(id, 'hover');
+		vi.advanceTimersByTime(5000);
+		expect(get(toast)).toHaveLength(1);
+
+		toast.resume(id, 'hover');
+		vi.advanceTimersByTime(599);
+		expect(get(toast)).toHaveLength(1);
+		vi.advanceTimersByTime(2);
+		expect(get(toast)).toHaveLength(0);
+		vi.useRealTimers();
 	});
 
 	it('warning() 추가', async () => {

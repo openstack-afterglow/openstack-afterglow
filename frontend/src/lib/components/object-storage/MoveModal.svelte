@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { useObjectBrowser } from '$lib/stores/objectBrowser.svelte';
+	import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	interface Props { bulk?: boolean; }
 	let { bulk = false }: Props = $props();
@@ -10,16 +11,15 @@
 
 {#if show}
 	<div
+		use:dialogFocus={{ enabled: true, onEscape: () => (bulk ? (s.showBulkMove = false) : (s.showMove = false)) }}
 		class="fixed inset-0 z-50 flex items-center justify-center bg-surface-scrim/70"
 		onclick={() => { if (bulk) s.showBulkMove = false; else s.showMove = false; }}
 		role="dialog" aria-modal="true" tabindex="-1"
-		onkeydown={(e) => e.key === 'Escape' && (bulk ? (s.showBulkMove = false) : (s.showMove = false))}
 	>
 		<div
 			class="bg-surface-base border border-line rounded-xl p-6 w-full max-w-md shadow-[var(--shadow-restraint)]"
 			onclick={(e) => e.stopPropagation()}
 			role="none"
-			onkeydown={(e) => e.stopPropagation()}
 		>
 			{#if bulk}
 				<h2 class="text-ink-0 font-semibold mb-1">일괄 이동</h2>

@@ -71,17 +71,16 @@ describe('SecuritySection logout navigation', () => {
 	});
 
 	it('replaces history with the login page after logging out every session', async () => {
-		vi.useFakeTimers();
 		render(SecuritySection);
 
 		await fireEvent.click(screen.getByRole('button', { name: '모든 위치에서 로그아웃' }));
 		await fireEvent.click(screen.getByRole('button', { name: '확인' }));
-		expect(get(logoutInProgress)).toBe(true);
 
-		await vi.runAllTimersAsync();
+		// 지연 없이 곧바로 이동한다. 1.5초 타이머가 다시 들어오면 waitFor 기본 대기 안에
+		// goto 가 호출되지 않아 이 단정이 깨진다.
+		await waitFor(() => expect(goto).toHaveBeenCalledWith('/login', { replaceState: true }));
 		expect(get(auth).token).toBeNull();
-		expect(goto).toHaveBeenCalledWith('/login', { replaceState: true });
-		expect(get(logoutInProgress)).toBe(false);
+		await waitFor(() => expect(get(logoutInProgress)).toBe(false));
 	});
 
 });

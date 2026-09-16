@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ShareNetwork } from '$lib/types/securityService';
+  import { dialogFocus } from '$lib/utils/dialogFocus';
 
   let {
     open = $bindable(),
@@ -24,12 +25,13 @@
 </script>
 
 {#if open}
-  <div class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
+  <div
+		use:dialogFocus={{ enabled: true, onEscape: () => (open = false) }} class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
     onclick={() => { open = false; }}
     role="dialog" aria-modal="true" tabindex="-1"
-    onkeydown={(e) => e.key === 'Escape' && (open = false)}>
+>
     <div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]"
-      onclick={(e) => e.stopPropagation()} role="none" onkeydown={(e) => e.stopPropagation()}>
+      onclick={(e) => e.stopPropagation()} role="none">
       <h2 class="text-lg font-semibold text-ink-0 mb-5">Share Network에 연결</h2>
       <div>
         <label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">Share Network

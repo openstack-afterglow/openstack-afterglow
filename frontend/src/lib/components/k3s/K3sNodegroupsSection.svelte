@@ -6,6 +6,7 @@
 	import K3sNodegroupCreateModal from '$lib/components/dashboard/drover/K3sNodegroupCreateModal.svelte';
 	import K3sNodegroupEditModal from '$lib/components/dashboard/drover/K3sNodegroupEditModal.svelte';
 	import type { K3sNodegroup } from '$lib/types/k3s';
+	import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	const s = useK3sClusterDetailController();
 
@@ -106,10 +107,10 @@
 
 {#if deleteTarget}
 	<div
+		use:dialogFocus={{ enabled: true, onEscape: () => (deleteTarget = null) }}
 		class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 		onclick={(event) => { if (event.target === event.currentTarget) (() => (deleteTarget = null))(); }}
-		onkeydown={(e) => e.key === 'Escape' && (deleteTarget = null)}
-		role="dialog"
+		role="dialog" aria-modal="true"
 		tabindex="-1"
 	>
 		<div

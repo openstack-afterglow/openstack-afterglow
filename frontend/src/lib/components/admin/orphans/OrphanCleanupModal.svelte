@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { OrphanKind, CleanupResult } from '$lib/types/orphan';
+	import { dialogFocus } from '$lib/utils/dialogFocus';
 	type Kind = OrphanKind;
 
 	let {
@@ -32,10 +33,10 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
+		use:dialogFocus={{ enabled: true, onEscape: () => onClose() }}
 		class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 		onclick={(event) => { if (event.target === event.currentTarget) (onClose)(); }}
-		role="dialog"
-		onkeydown={(e) => e.key === 'Escape' && onClose()}
+		role="dialog" aria-modal="true"
 		tabindex="-1"
 	>
 		<div

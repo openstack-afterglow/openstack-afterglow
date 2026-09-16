@@ -2,6 +2,7 @@
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { apiMut } from '$lib/api/mutations';
+	import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	let {
 		open = $bindable(false),
@@ -44,17 +45,16 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
+		use:dialogFocus={{ enabled: true, onEscape: () => close() }}
 		class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 		onclick={close}
 		role="dialog" aria-modal="true" tabindex="-1"
-		onkeydown={(e) => e.key === 'Escape' && close()}
 	>
 		<div
 			data-tour="volume-create-form"
 			class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]"
 			onclick={(e) => e.stopPropagation()}
 			role="none"
-			onkeydown={(e) => e.stopPropagation()}
 		>
 			<h2 class="text-lg font-semibold text-ink-0 mb-5">볼륨 생성</h2>
 			<div class="space-y-4">

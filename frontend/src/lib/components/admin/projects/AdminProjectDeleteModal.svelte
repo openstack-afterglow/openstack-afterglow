@@ -2,6 +2,7 @@
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { projectNames } from '$lib/stores/projectNames';
+	import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	interface Project {
 		id: string;
@@ -55,16 +56,15 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
+		use:dialogFocus={{ enabled: true, onEscape: () => onClose() }}
 		class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 		onclick={onClose}
 		role="dialog" aria-modal="true" tabindex="-1"
-		onkeydown={(e) => e.key === 'Escape' && onClose()}
 	>
 		<div
 			class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-sm mx-4 shadow-[var(--shadow-restraint)]"
 			onclick={(e) => e.stopPropagation()}
 			role="none"
-			onkeydown={(e) => e.stopPropagation()}
 		>
 			<h2 class="text-lg font-semibold text-ink-0 mb-3">프로젝트 삭제</h2>
 			<p class="text-sm text-ink-2 mb-2"><span class="text-ink-0 font-medium">{project.name}</span> 프로젝트를 삭제하시겠습니까?</p>
