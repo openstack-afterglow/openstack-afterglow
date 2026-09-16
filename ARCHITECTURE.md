@@ -272,9 +272,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "669d743c9fedc097adee9d8b0f78dae95561273925398378ec9afbba8ec3195f",
-  "reviewed_at": "2026-09-16T07:33:02Z",
-  "summary": "HIG 리뷰 잔여 지적 25건을 정리했다. 모든 role=dialog 표면을 dialogFocus 액션으로 통일해 오버레이 요소에 달려 죽어 있던 Escape 핸들러와 진입 불가능한 aria-modal 경계를 제거했고, ActionMenu 가 키보드 실행 후 포커스를 document.body 로 떨어뜨리던 결함을 고쳤다. toast 자동 삭제에 hover/focus 일시정지를 넣고 오류 토스트의 시간 제한을 없앴으며, VM 생성 마법사·admin 레이아웃·세션 폐기·업로드 독의 타이머 이동/삭제를 제거했다(WCAG 2.2.1). confirmDialog 에 동사와 variant 를 넘길 수 있게 확장했고, Spark·QuotaDonut·TrafficSparkline·HypervisorUsageBar 의 미정의 토큰·고정 hex·임계값 불일치를 토큰 계약으로 되돌렸다. 새 파일은 테스트 1개뿐이고 라우터·API·의존성 변경은 없다."
+  "source_sha256": "026870b0f5460379e0245f452afb4fc0194605ea862ce0913caba0a80e370470",
+  "reviewed_at": "2026-09-16T07:46:23Z",
+  "summary": "dialogFocus 전환에서 누락된 import 9건을 보완하고(use:dialogFocus 가 런타임에 해석되지 않던 상태), scrim 클릭이 남은 대화상자 56곳에 svelte-ignore 를 선언했으며, AdminDialogDismissal 테스트의 EvacuateModal prop 이름을 실제 시그니처(currentHost/onEvacuated)에 맞췄다. npm run check 가 0 errors 0 warnings 다. 구조 변경 없음(no-structure-impact)."
 }
 ```
 <!-- architecture-review:end -->

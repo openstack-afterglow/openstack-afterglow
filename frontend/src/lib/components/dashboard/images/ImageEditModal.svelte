@@ -59,6 +59,8 @@
 </script>
 
 {#if target}
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		use:dialogFocus={{ enabled: true, onEscape: () => onClose() }} class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 	     onclick={() => { onClose(); }}

@@ -45,7 +45,7 @@ describe('admin dialog dismissal', () => {
 	it('gives the evacuate dialog a named close control and an Escape route', async () => {
 		const onClose = vi.fn();
 		render(EvacuateModal, {
-			props: { serverId: 'i-1234567890', serverName: 'web-01', onClose, onDone: () => {} },
+			props: { serverId: 'i-1234567890', serverName: 'web-01', currentHost: 'compute-01', onClose, onEvacuated: () => {} },
 		});
 
 		const dialog = screen.getByRole('dialog', { name: '인스턴스 강제 이주' });

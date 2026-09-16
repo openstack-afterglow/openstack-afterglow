@@ -354,6 +354,13 @@
 		return { kind: 'unsupported', message: unsupportedCreditLabel(billing.provider_type) };
 	}
 
+	function availableBillingLabel(capability: ProviderBilling['capability']): string {
+		if (capability === 'openai_admin_usage' || capability === 'anthropic_admin_usage') return '조직 사용량 연동';
+		if (capability === 'deepseek_balance') return '계정 잔액 연동';
+		if (capability === 'openrouter_key') return 'API 키 한도 연동';
+		return '공급자 조회 연동';
+	}
+
 	function safeExternalUrl(value: string | null): string | undefined {
 		if (!value) return undefined;
 		try {
@@ -1272,7 +1279,7 @@
 							<div class="flex flex-wrap items-center gap-2">
 								<span class="text-xs font-semibold text-[var(--color-ink-1)]">사용량 · 결제 상태</span>
 								{#if billing?.status === 'available'}
-									<Pill tone="success" size="xs">{billing.capability === 'openai_admin_usage' || billing.capability === 'anthropic_admin_usage' ? '조직 사용량 연동' : '잔액 연동'}</Pill>
+									<Pill tone="success" size="xs">{availableBillingLabel(billing.capability)}</Pill>
 								{:else if billing?.status === 'unavailable'}
 									<Pill tone="warning" size="xs">공급자 조회 실패</Pill>
 								{:else if billing?.status === 'unsupported'}

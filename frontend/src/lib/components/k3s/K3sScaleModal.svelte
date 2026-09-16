@@ -1,4 +1,6 @@
 <script lang="ts">
+		import { dialogFocus } from '$lib/utils/dialogFocus';
+
 	interface Props {
 		deploymentName: string;
 		currentReplicas: number;
@@ -26,6 +28,8 @@
 	}
 </script>
 
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
 		use:dialogFocus={{ enabled: true, onEscape: () => onClose() }}
 	class="fixed inset-0 z-50 flex items-center justify-center bg-surface-scrim/60"

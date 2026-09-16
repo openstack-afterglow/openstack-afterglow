@@ -1,4 +1,6 @@
 <script lang="ts">
+		import { dialogFocus } from '$lib/utils/dialogFocus';
+
 	interface Props {
 		open: boolean;
 		creating: boolean;
@@ -20,6 +22,8 @@
 </script>
 
 {#if open}
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		use:dialogFocus={{ enabled: true, onEscape: () => (open = false) }}
 		class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
