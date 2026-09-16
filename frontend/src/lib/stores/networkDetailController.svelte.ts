@@ -22,6 +22,9 @@ function createNetworkDetailController(opts: Options) {
 	let selectedRouterId = $state('');
 	let selectedSubnetId = $state('');
 	let connectingRouter = $state(false);
+	let showSubnetForm = $state(false);
+	let addingSubnet = $state(false);
+	let subnetError = $state('');
 
 	const isUserPanel = $derived(opts.apiBase() === '/api/v1/networks');
 
@@ -32,6 +35,8 @@ function createNetworkDetailController(opts: Options) {
 		error = '';
 		network = null;
 		showRouterConnect = false;
+		showSubnetForm = false;
+		subnetError = '';
 		fetchNetwork();
 	});
 
@@ -79,6 +84,33 @@ function createNetworkDetailController(opts: Options) {
 		}
 	}
 
+	async function addSubnet(form: { name?: string; cidr: string; gateway: string; dhcp: boolean }): Promise<boolean> {
+		if (!isUserPanel || !network) return false;
+		addingSubnet = true;
+		subnetError = '';
+		try {
+			await api.post(
+				`${opts.apiBase()}/${network.id}/subnets`,
+				{
+					name: form.name?.trim() || `${network.name}-subnet`,
+					cidr: form.cidr,
+					gateway_ip: form.gateway || null,
+					enable_dhcp: form.dhcp,
+				},
+				opts.token(),
+				opts.projectId(),
+			);
+			showSubnetForm = false;
+			await fetchNetwork();
+			return true;
+		} catch (e) {
+			subnetError = e instanceof ApiError ? e.message : '서브넷 생성 실패';
+			return false;
+		} finally {
+			addingSubnet = false;
+		}
+	}
+
 	async function disconnectRouter(router: NetworkRouterInfo) {
 		const subnetIds = network?.subnet_details.map(s => s.id) ?? [];
 		const targetSubnet = router.connected_subnet_ids.find(sid => subnetIds.includes(sid));
@@ -108,6 +140,11 @@ function createNetworkDetailController(opts: Options) {
 		get selectedSubnetId() { return selectedSubnetId; },
 		set selectedSubnetId(v: string) { selectedSubnetId = v; },
 		get connectingRouter() { return connectingRouter; },
+		get showSubnetForm() { return showSubnetForm; },
+		set showSubnetForm(v: boolean) { showSubnetForm = v; },
+		get addingSubnet() { return addingSubnet; },
+		get subnetError() { return subnetError; },
+		addSubnet,
 		fetchNetwork,
 		openRouterConnect,
 		connectRouter,

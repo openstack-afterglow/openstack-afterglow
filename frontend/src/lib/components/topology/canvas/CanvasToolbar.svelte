@@ -11,19 +11,31 @@
 		/** 검색어가 없으면 null */
 		matchCount?: number | null;
 		searchElement?: HTMLInputElement | null;
+		editable?: boolean;
 		onfit: () => void;
 		onreset: () => void;
+		oncreatenetwork?: () => void;
+		oncreaterouter?: () => void;
+		oncreateinstance?: () => void;
+		oncreateloadbalancer?: () => void;
+		oncreatedatabase?: () => void;
 		onsearchkeydown?: (event: KeyboardEvent) => void;
-	}
 
+	}
 	let {
 		query = $bindable(''),
 		flowOn = $bindable(true),
 		reducedMotion = false,
 		matchCount = null,
 		searchElement = $bindable(null),
+		editable = false,
 		onfit,
 		onreset,
+		oncreatenetwork,
+		oncreaterouter,
+		oncreateinstance,
+		oncreateloadbalancer,
+		oncreatedatabase,
 		onsearchkeydown,
 	}: Props = $props();
 
@@ -53,6 +65,13 @@
 		<span class="hint" id={flowHintId}>시스템 '동작 줄이기' 설정으로 패킷 애니메이션이 비활성화됩니다</span>
 	{/if}
 	<div class="actions">
+		{#if editable}
+			<Button variant="accent" size="sm" onclick={oncreatenetwork}>+ 네트워크</Button>
+			<Button variant="secondary" size="sm" onclick={oncreaterouter}>+ 라우터</Button>
+			<Button variant="secondary" size="sm" onclick={oncreateinstance}>+ 인스턴스</Button>
+			<Button variant="secondary" size="sm" onclick={oncreateloadbalancer}>+ 로드밸런서</Button>
+			<Button variant="secondary" size="sm" onclick={oncreatedatabase}>+ DB</Button>
+		{/if}
 		<Button variant="secondary" size="sm" onclick={onfit}>화면 맞춤</Button>
 		<Button variant="secondary" size="sm" onclick={onreset}>배치 초기화</Button>
 	</div>

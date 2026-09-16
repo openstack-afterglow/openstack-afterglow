@@ -31,8 +31,9 @@
 		trunkNetIds,
 	} from './topologyGraph';
 	import { FIT_K_MAX, K_MAX, K_MIN, applyManualPositions, autoLayout, computeGeometry, contentBounds, nodeBounds, resolveManualOverlap, zoomAt as zoomAtPure } from './topologyLayout';
-	import type { CanvasEdge, CanvasNet, EdgeStyle, ManualPositions, Rect, ViewState } from './types';
+	import type { CanvasEdge, CanvasNet, EdgeStyle, ManualPositions, Pt, Rect, ViewState } from './types';
 	import { createViewport } from './viewport.svelte';
+	import { canLink, linkRequest, type TopologyLinkRequest } from './link-types';
 
 	interface Props {
 		data: TopologyData;
@@ -43,16 +44,24 @@
 		selectedId?: string | null;
 		/** 관리자 화면: 존 라벨에 VLAN/VXLAN·MTU pill 표시 */
 		adminView?: boolean;
+		/** 사용자 토폴로지에서만 실제 OpenStack 변경을 노출한다. */
+		editable?: boolean;
 		storageScope?: LayoutScope;
 		onSelectInstance?: (id: string) => void;
 		onSelectRouter?: (id: string) => void;
 		onSelectLoadBalancer?: (lb: TopologyLoadBalancer) => void;
 		onSelectNetwork?: (networkId: string) => void;
+		onCreateCable?: (request: TopologyLinkRequest) => void | Promise<void>;
+		onCreateNetwork?: () => void;
+		onCreateRouter?: () => void;
+		onCreateInstance?: (networkId: string | null) => void;
+		onCreateLoadBalancer?: () => void;
+		onCreateDatabase?: () => void;
 		onIntentInstance?: (id: string) => void;
 		onIntentRouter?: (id: string) => void;
 		onCancelIntent?: () => void;
-	}
 
+	}
 	let {
 		data,
 		traffic = null,
@@ -60,11 +69,18 @@
 		showAll = false,
 		selectedId: selectedIdProp = undefined,
 		adminView = false,
+		editable = false,
 		storageScope = 'user',
 		onSelectInstance,
 		onSelectRouter,
 		onSelectLoadBalancer,
 		onSelectNetwork,
+		onCreateCable,
+		onCreateNetwork,
+		onCreateRouter,
+		onCreateInstance,
+		onCreateLoadBalancer,
+		onCreateDatabase,
 		onIntentInstance,
 		onIntentRouter,
 		onCancelIntent,
@@ -167,6 +183,18 @@
 	let matchIdx = -1;
 	let liveText = $state('');
 	let liveTimer: ReturnType<typeof setTimeout> | null = null;
+	let linkFrom = $state<string | null>(null);
+	let linkPointerId = $state<number | null>(null);
+	let linkCursor = $state<Pt | null>(null);
+	const linkDraft = $derived.by(() => {
+		if (!linkFrom || !linkCursor) return null;
+		const source = pos.get(linkFrom);
+		return source ? { x1: source.x + source.w, y1: source.y + source.h / 2, x2: linkCursor.x, y2: linkCursor.y } : null;
+	});
+	const linkTargetIds = $derived.by(() => {
+		if (!editable || !linkFrom) return new Set<string>();
+		return new Set([...graph.nodes.keys()].filter((id) => canLink(graph, linkFrom!, id, projectId)));
+	});
 
 	function resolveSelected(id: string | null | undefined): string | null {
 		if (!id) return null;
@@ -259,6 +287,26 @@
 
 	function onNodeBlur() {
 		onCancelIntent?.();
+	}
+
+	function startLink(id: string) {
+		if (!editable || !graph.nodes.has(id)) return;
+		linkFrom = id;
+		const source = graph.nodes.get(id)!;
+		announce(`${KIND_LABEL[source.kind]} ${source.name}: 연결할 네트워크를 선택하세요`);
+	}
+
+	function finishLink(targetId: string) {
+		const sourceId = linkFrom;
+		linkFrom = null;
+		if (!sourceId) return;
+		const request = linkRequest(graph, sourceId, targetId, projectId);
+		if (!request) {
+			announce('이 리소스들은 연결할 수 없습니다');
+			return;
+		}
+		announce(`${request.label} 요청됨`);
+		void onCreateCable?.(request);
 	}
 
 	// ───────── 기하·스타일 파생
@@ -592,6 +640,18 @@
 		const onDown = (e: PointerEvent) => {
 			if (e.pointerType === 'mouse' && e.button !== 0) return;
 			if (closest(e.target, '[data-hud-control]')) return;
+			const handleNode = closest(e.target, '[data-node-id]');
+			const handleNodeId = handleNode?.getAttribute('data-node-id') ?? null;
+			if (handleNodeId && closest(e.target, '[data-link-source]')) {
+				e.preventDefault();
+				startLink(handleNodeId);
+				const point = local(e);
+				const view = currentView();
+				linkPointerId = e.pointerId;
+				linkCursor = { x: (point.x - view.panX) / view.k, y: (point.y - view.panY) / view.k };
+				try { el.setPointerCapture?.(e.pointerId); } catch { /* jsdom 등 미지원 환경 */ }
+				return;
+			}
 			try { el.setPointerCapture?.(e.pointerId); } catch { /* jsdom 등 미지원 환경 */ }
 			if (pointers.size === 0) pinchConsumed = false;
 			pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -645,6 +705,12 @@
 		};
 
 		const onMove = (e: PointerEvent) => {
+			if (linkPointerId === e.pointerId) {
+				const point = local(e);
+				const view = currentView();
+				linkCursor = { x: (point.x - view.panX) / view.k, y: (point.y - view.panY) / view.k };
+				return;
+			}
 			if (!pointers.has(e.pointerId)) return;
 			pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 			if (pinch) {
@@ -679,6 +745,19 @@
 		};
 
 		const onEnd = (e: PointerEvent) => {
+			if (linkPointerId === e.pointerId) {
+				const hit = document.elementFromPoint?.(e.clientX, e.clientY) ?? e.target;
+				const targetId = closest(hit, '[data-node-id]')?.getAttribute('data-node-id') ?? null;
+				linkPointerId = null;
+				linkCursor = null;
+				try { el.releasePointerCapture?.(e.pointerId); } catch { /* jsdom 등 미지원 환경 */ }
+				if (e.type === 'pointerup' && targetId && linkTargetIds.has(targetId)) finishLink(targetId);
+				else {
+					linkFrom = null;
+					announce('연결 만들기를 취소했습니다');
+				}
+				return;
+			}
 			pointers.delete(e.pointerId);
 			clearLongPress();
 			if (pinch) {
@@ -779,7 +858,16 @@
 			else if (e.key === '-' || e.key === '_') zoomBy(1 / 1.2);
 			else if (e.key === '0' || e.key === 'f' || e.key === 'F') fitAll();
 			else if (e.key === 'r' || e.key === 'R') resetLayout();
-			else if (e.key === 'Escape') { if (selectedId) clearSelection(); else handled = false; }
+			else if (e.key === 'Escape') {
+				if (linkFrom) {
+					linkFrom = null;
+					linkPointerId = null;
+					linkCursor = null;
+					announce('연결 만들기를 취소했습니다');
+				}
+				else if (selectedId) clearSelection();
+				else handled = false;
+			}
 			else if (e.key === '/') searchElement?.focus();
 			else handled = false;
 			if (handled) e.preventDefault();
@@ -945,13 +1033,17 @@
 <div class="canvas-root">
 	<CanvasToolbar
 		bind:query
-		bind:flowOn
-		bind:searchElement
+		oncreatenetwork={onCreateNetwork}
+		oncreaterouter={onCreateRouter}
+		oncreateinstance={() => onCreateInstance?.(selectedNetId)}
+		oncreateloadbalancer={onCreateLoadBalancer}
+		oncreatedatabase={onCreateDatabase}
+		onsearchkeydown={onSearchKeydown}
 		{reducedMotion}
+		{editable}
 		matchCount={match ? matchList.length : null}
 		onfit={fitAll}
 		onreset={resetLayout}
-		onsearchkeydown={onSearchKeydown}
 	/>
 
 	<div class="stage">
@@ -972,6 +1064,12 @@
 			<div class="world topology-world" class:is-gesturing={gesturing} data-lod={lod} style:transform={worldTransform}>
 				<CanvasZoneLayer zones={zoneRender} width={svgW} height={svgH} />
 				<CanvasEdgeLayer edges={edgeRender} width={svgW} height={svgH} />
+				{#if linkDraft}
+					<svg class="layer-link-draft" aria-hidden="true" width={svgW} height={svgH}>
+						<line x1={linkDraft.x1} y1={linkDraft.y1} x2={linkDraft.x2} y2={linkDraft.y2} />
+						<circle cx={linkDraft.x2} cy={linkDraft.y2} r="4" />
+					</svg>
+				{/if}
 				<svg class="layer-flow" aria-hidden="true" width={svgW} height={svgH}><g bind:this={flowGroupEl}></g></svg>
 				<div class="layer-nodes">
 					{#each layout.domOrder as id (id)}
@@ -990,6 +1088,10 @@
 								{nicRates}
 								rateText={node.kind === 'switch' ? fmtRate(traffic?.networks?.[node.netId]) : node.kind === 'lb' ? fmtRate(traffic?.load_balancers?.[id]) : null}
 								dataTour={id === firstRouterId ? 'admin-network-resource' : undefined}
+								setSelected={select}
+								linkEnabled={editable}
+								linkSource={id === linkFrom}
+								linkTarget={linkTargetIds.has(id)}
 								onselect={select}
 								onhover={setHover}
 								onfocusnode={onNodeFocus}
@@ -1056,6 +1158,9 @@
 	.world.is-gesturing { will-change: transform; }
 	.layer-flow { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
 	.layer-flow :global(.flow-dot) { fill: var(--net); stroke: var(--color-surface-base); stroke-width: 1; pointer-events: none; }
+	.layer-link-draft { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+	.layer-link-draft line { stroke: var(--color-accent); stroke-width: 2; stroke-dasharray: 6 4; }
+	.layer-link-draft circle { fill: var(--color-accent); }
 	/* 내부 통신(라우터 없는 망) 점은 테두리를 없애 게이트웨이 방향 점과 구분한다 — 색만으로 구분하지 않도록 범례에 설명이 있다 */
 	.layer-flow :global(.flow-dot.is-internal) { stroke: none; }
 	.layer-nodes { position: absolute; left: 0; top: 0; width: 0; height: 0; }

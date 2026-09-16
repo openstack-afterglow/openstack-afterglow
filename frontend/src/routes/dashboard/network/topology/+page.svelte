@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -12,13 +13,20 @@
 	import ToggleGroup from '$lib/components/ui/ToggleGroup.svelte';
 	import TopologyCanvas from '$lib/components/topology/canvas/TopologyCanvas.svelte';
 	import CanvasLegend from '$lib/components/topology/canvas/CanvasLegend.svelte';
-	import TopologyNetworkPanel from '$lib/components/topology/canvas/TopologyNetworkPanel.svelte';
+	import NetworkDetailPanel from '$lib/components/NetworkDetailPanel.svelte';
+	import NetworkCreateModal from '$lib/components/dashboard/network/networks/NetworkCreateModal.svelte';
+	import RouterCreateModal from '$lib/components/network/routers/RouterCreateModal.svelte';
+	import DbCreatePanel from '$lib/components/database/DbCreatePanel.svelte';
+	import { openWizard } from '$lib/stores/wizard';
+	import { toast } from '$lib/stores/toast';
+	import { type TopologyLinkRequest } from '$lib/components/topology/canvas/link-types';
 	import { DEFAULT_TOPOLOGY_VIEW, isTopologyView, readTopologyView, writeTopologyView, type TopologyView } from '$lib/utils/topologyViewPreference';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import TopologyLegend from '$lib/components/dashboard/network/topology/TopologyLegend.svelte';
 	import TopologySummary from '$lib/components/dashboard/network/topology/TopologySummary.svelte';
 	import LoadBalancerDetailPanel from '$lib/components/dashboard/network/topology/LoadBalancerDetailPanel.svelte';
-	import type { TopologyData, TopologyTraffic, TopologyLoadBalancer, TopologyTrafficHistory } from '$lib/types/topology';
+	import type { TopologyData, TopologyTraffic, TopologyLoadBalancer } from '$lib/types/topology';
+	import type { Network } from '$lib/types/networks';
 	import PageShell from '$lib/components/ui/PageShell.svelte';
 
 	let data = $state<TopologyData | null>(null);
@@ -30,6 +38,21 @@
 	let selectedRouterId = $state<string | null>(null);
 	let selectedLB = $state<TopologyLoadBalancer | null>(null);
 	let selectedNetworkId = $state<string | null>(null);
+	let showNetworkCreate = $state(false);
+	let showRouterCreate = $state(false);
+	let showDbCreate = $state(false);
+	let creatingNetwork = $state(false);
+	let createNetworkError = $state('');
+	const externalNetworks = $derived<Network[]>(
+		(data?.networks ?? []).filter((network) => network.is_external).map((network) => ({
+			id: network.id,
+			name: network.name,
+			status: network.status,
+			subnets: network.subnet_details.map((subnet) => subnet.id),
+			is_external: network.is_external,
+			is_shared: network.is_shared,
+		})),
+	);
 	// 뷰 선택(레인 | 캔버스)은 localStorage 'topology.view' 에 저장한다. 기본은 캔버스.
 	let view = $state<TopologyView>(DEFAULT_TOPOLOGY_VIEW);
 	onMount(() => { view = readTopologyView(); });
@@ -65,6 +88,57 @@
 	function onSelectNetwork(id: string) {
 		if (selectedNetworkId === id) { selectedNetworkId = null; }
 		else { selectedNetworkId = id; selectedInstanceId = null; selectedRouterId = null; selectedLB = null; }
+	}
+
+	async function createNetwork(body: Record<string, unknown>): Promise<boolean> {
+		creatingNetwork = true;
+		createNetworkError = '';
+		try {
+			await api.post('/api/v1/networks', body, $auth.token ?? undefined, $auth.projectId ?? undefined);
+			await fetchTopology({ refresh: true });
+			return true;
+		} catch (e) {
+			createNetworkError = e instanceof ApiError ? e.message : '네트워크 생성 실패';
+			return false;
+		} finally {
+			creatingNetwork = false;
+		}
+	}
+
+	async function createRouter(form: { name: string; external_network_id: string }): Promise<string | true> {
+		try {
+			const body: Record<string, string> = { name: form.name };
+			if (form.external_network_id) body.external_network_id = form.external_network_id;
+			await api.post('/api/v1/routers', body, $auth.token ?? undefined, $auth.projectId ?? undefined);
+			await fetchTopology({ refresh: true });
+			return true;
+		} catch (e) {
+			return e instanceof ApiError ? e.message : '라우터 생성 실패';
+		}
+	}
+
+	async function createCable(request: TopologyLinkRequest) {
+		try {
+			await api.post(request.url, request.body, $auth.token ?? undefined, $auth.projectId ?? undefined);
+			await fetchTopology({ refresh: true });
+			toast.success(`${request.label}을 완료했습니다.`);
+		} catch (e) {
+			toast.error(`${request.label} 실패: ${e instanceof ApiError ? e.message : String(e)}`);
+		}
+	}
+
+	function createInstance(networkId: string | null) {
+		const network = networkId ? data?.networks.find((candidate) => candidate.id === networkId) : null;
+		openWizard({ prefill: network ? { networkId: network.id, networkName: network.name } : undefined });
+	}
+
+	function createLoadBalancer() {
+		void goto('/dashboard/network/loadbalancers/new');
+	}
+
+	function onDatabaseCreated() {
+		showDbCreate = false;
+		void fetchTopology({ refresh: true });
 	}
 
 	function cancelIntent() {
@@ -113,25 +187,13 @@
 		} catch { /* silent — 토폴로지 표시는 traffic=null 로 유지 */ }
 	}
 
-	/**
-	 * 네트워크 사용량 히스토리. 네트워크 패널을 열 때 1회만 호출한다 —
-	 * 폴링(`arTraffic`)에 얹으면 Prometheus 부하가 네트워크 수만큼 곱해진다.
-	 */
-	async function loadNetworkHistory(networkId: string, range: string): Promise<TopologyTrafficHistory | null> {
-		if (!$auth.token) return null;
-		return api.get<TopologyTrafficHistory>(
-			`/api/v1/networks/topology/traffic/history?network_id=${encodeURIComponent(networkId)}&range=${encodeURIComponent(range)}`,
-			$auth.token ?? undefined,
-			$auth.projectId ?? undefined,
-		);
-	}
-
 	const arTraffic = createAutoRefresh(loadTraffic, {
 		storageKey: 'dashboard-network-topology-traffic',
 		defaultActive: true,
 		defaultInterval: 15,
 		intervalOptions: [10, 15, 30],
 	});
+
 
 	$effect(() => {
 		if (!$auth.token || !$auth.projectId) return;
@@ -202,10 +264,17 @@
 					projectId={$auth.projectId}
 					selectedId={topologySelectedId}
 					storageScope="user"
+					editable={true}
 					{onSelectInstance}
 					{onSelectRouter}
 					{onSelectLoadBalancer}
 					{onSelectNetwork}
+					onCreateCable={createCable}
+					onCreateNetwork={() => { showNetworkCreate = true; }}
+					onCreateRouter={() => { showRouterCreate = true; }}
+					onCreateInstance={createInstance}
+					onCreateLoadBalancer={createLoadBalancer}
+					onCreateDatabase={() => { showDbCreate = true; }}
 					{onIntentInstance}
 					{onIntentRouter}
 					onCancelIntent={cancelIntent}
@@ -262,14 +331,17 @@
 
 {#if selectedNetworkId && data}
 	<SlidePanel onClose={() => selectedNetworkId = null} ariaLabel="토폴로지 네트워크 상세" width="w-full md:w-[60vw] max-w-2xl">
-		<TopologyNetworkPanel
+		<NetworkDetailPanel
 			networkId={selectedNetworkId}
-			{data}
-			{traffic}
-			showProvider={false}
-			loadHistory={loadNetworkHistory}
-			{onSelectInstance}
-			{onSelectRouter}
+			apiBase="/api/v1/networks"
+			onClose={() => selectedNetworkId = null}
+			token={$auth.token ?? undefined}
+			projectId={$auth.projectId ?? undefined}
 		/>
 	</SlidePanel>
 {/if}
+
+<NetworkCreateModal bind:open={showNetworkCreate} creating={creatingNetwork} error={createNetworkError} onCreate={createNetwork} />
+<RouterCreateModal bind:open={showRouterCreate} {externalNetworks} onCreate={createRouter} />
+
+<DbCreatePanel bind:open={showDbCreate} onCreated={onDatabaseCreated} />

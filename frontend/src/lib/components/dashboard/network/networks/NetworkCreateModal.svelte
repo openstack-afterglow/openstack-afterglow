@@ -16,6 +16,7 @@
   let form = $state({
     name: '',
     addSubnet: false,
+    subnetName: '',
     cidr: '10.0.0.0/24',
     gateway: '',
     dhcp: true,
@@ -30,6 +31,7 @@
     const body: Record<string, unknown> = { name: form.name };
     if (form.addSubnet) {
       body.subnet = {
+        name: form.subnetName || `${form.name}-subnet`,
         cidr: form.cidr,
         gateway_ip: form.gateway || null,
         enable_dhcp: form.dhcp,
@@ -37,7 +39,7 @@
     }
     const ok = await onCreate(body);
     if (ok) {
-      form = { name: '', addSubnet: false, cidr: '10.0.0.0/24', gateway: '', dhcp: true };
+      form = { name: '', addSubnet: false, subnetName: '', cidr: '10.0.0.0/24', gateway: '', dhcp: true };
       open = false;
     }
   }
@@ -71,6 +73,11 @@
           <label for="addSubnet" class="text-sm text-ink-2">서브넷 함께 생성</label>
         </div>
         {#if form.addSubnet}
+          <div>
+            <label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">서브넷 이름 (선택)
+              <input bind:value={form.subnetName} type="text" placeholder="my-network-subnet" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5" />
+            </label>
+          </div>
           <div>
             <label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">CIDR
               <input bind:value={form.cidr} type="text" placeholder="10.0.0.0/24" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm font-mono focus:outline-none focus:border-action-warm mt-1.5" />

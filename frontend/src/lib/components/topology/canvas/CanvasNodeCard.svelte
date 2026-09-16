@@ -22,12 +22,17 @@
 		/** 스위치·LB 카드용 양방향 속도 문자열 */
 		rateText?: string | null;
 		dataTour?: string;
+		/** Canvas-owned controlled selection; used by staged resource cards as well as graph nodes. */
+		setSelected?: (id: string) => void;
+		linkSource?: boolean;
+		linkTarget?: boolean;
+		linkEnabled?: boolean;
 		onselect?: (id: string) => void;
 		onhover?: (id: string | null) => void;
 		onfocusnode?: (id: string) => void;
 		onblurnode?: (id: string) => void;
-	}
 
+	}
 	let {
 		node,
 		rect,
@@ -40,6 +45,10 @@
 		nicRates,
 		rateText = null,
 		dataTour,
+		setSelected,
+		linkSource = false,
+		linkTarget = false,
+		linkEnabled = false,
 		onselect,
 		onhover,
 		onfocusnode,
@@ -71,8 +80,12 @@
 
 	function handleClick(e: MouseEvent) {
 		// 포인터 선택은 뷰포트 pointerup 히트테스트가 담당한다. detail 0 은 키보드(Enter/Space)·프로그램 click 이다.
-		if (e.detail === 0) onselect?.(node.id);
+		if (e.detail === 0) {
+			if (setSelected) setSelected(node.id);
+			else onselect?.(node.id);
+		}
 	}
+
 </script>
 
 <button
@@ -84,6 +97,8 @@
 	class:is-dragging={dragging}
 	class:is-armed={armed}
 	class:is-error={node.status === 'ERROR'}
+	class:is-link-source={linkSource}
+	class:is-link-target={linkTarget}
 	data-node-id={node.id}
 	data-tour={dataTour}
 	aria-pressed={selected}
@@ -98,6 +113,12 @@
 	onfocus={() => onfocusnode?.(node.id)}
 	onblur={() => onblurnode?.(node.id)}
 >
+	{#if linkEnabled && (node.kind === 'vm' || node.kind === 'router')}
+		<span class="link-port link-port-output" data-link-source title="연결 시작" aria-hidden="true">↗</span>
+	{/if}
+	{#if linkTarget}
+		<span class="link-port link-port-input" data-link-target title="여기에 연결" aria-hidden="true">←</span>
+	{/if}
 	<span class="node-head">
 		<span class="node-glyph" aria-hidden="true">
 			{#if node.kind === 'vm' && node.isDatabase}
@@ -192,7 +213,7 @@
 		cursor: grab;
 		display: flex;
 		flex-direction: column;
-		overflow: hidden;
+		overflow: visible;
 		touch-action: none;
 		transition:
 			opacity var(--motion-duration-base) var(--motion-ease-standard),
@@ -248,7 +269,7 @@
 	.node-router .node-sub, .node-lb .node-sub { height: 26px; }
 	.node-router .node-head { border-left-color: var(--color-topology-gateway); }
 	.node-router .node-glyph { color: var(--color-topology-gateway); }
-	.nic-list { display: block; padding: 0 0 6px; margin: 0; }
+	.nic-list { display: block; overflow: hidden; padding: 0 0 6px; margin: 0; }
 	.nic-row {
 		display: flex;
 		align-items: center;
@@ -271,6 +292,27 @@
 	.nic-fip-row::before { background: transparent; width: 0; }
 	.nic-fip-row .nic-ip { color: var(--color-topology-external); }
 	.parked-note { display: flex; align-items: center; height: 20px; padding: 0 0.5rem; font-size: 0.75rem; color: var(--color-ink-2); }
+	.node.is-link-source { border-color: var(--color-accent); box-shadow: 0 0 0 4px var(--accent-ring); }
+	.node.is-link-target { border-color: var(--color-accent); }
+	.link-port {
+		position: absolute;
+		top: 50%;
+		z-index: 5;
+		display: grid;
+		place-items: center;
+		width: 1.25rem;
+		height: 1.25rem;
+		border: 1px solid var(--color-line-2);
+		border-radius: 999px;
+		background: var(--color-surface-raised);
+		color: var(--color-ink-1);
+		font-size: 0.75rem;
+		line-height: 1;
+		transform: translateY(-50%);
+		cursor: crosshair;
+	}
+	.link-port-output { right: -0.625rem; }
+	.link-port-input { left: -0.625rem; border-color: var(--color-accent); color: var(--color-accent); }
 	/* LOD: 축소 단계별로 bps → IP → 본문 순으로 숨긴다(부모 .world 의 data-lod) */
 	:global(.topology-world[data-lod='nobps']) .nic-bps { display: none; }
 	:global(.topology-world[data-lod='noip']) .nic-bps,

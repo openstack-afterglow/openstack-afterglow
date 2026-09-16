@@ -466,8 +466,16 @@ class UpdateSubnetRequest(BaseModel):
     enable_dhcp: bool | None = None
 
 
+class CreateNetworkSubnetSpec(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    cidr: str
+    gateway_ip: str | None = None
+    enable_dhcp: bool = True
+
+
 class CreateNetworkRequest(BaseModel):
-    name: str
+    name: str = Field(..., min_length=1, max_length=255)
+    subnet: CreateNetworkSubnetSpec | None = None
 
 
 class CreateSubnetRequest(BaseModel):

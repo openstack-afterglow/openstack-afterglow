@@ -89,9 +89,45 @@ async def create_network(
 ):
     try:
         result = await asyncio.to_thread(neutron.create_network, conn, req.name)
+        if req.subnet:
+            subnet_name = req.subnet.name or f"{req.name}-subnet"
+            try:
+                subnet = await asyncio.to_thread(
+                    neutron.create_subnet,
+                    conn,
+                    result.id,
+                    subnet_name,
+                    req.subnet.cidr,
+                    req.subnet.gateway_ip,
+                    req.subnet.enable_dhcp,
+                )
+            except Exception as exc:
+                try:
+                    await asyncio.to_thread(neutron.delete_network, conn, result.id)
+                except Exception:
+                    _logger.warning("서브넷 생성 실패 후 네트워크 롤백 실패", exc_info=True)
+                await rec(
+                    token_info,
+                    conn,
+                    resource_type="network",
+                    action="create",
+                    status="failed",
+                    resource_name=req.name,
+                    error_message=str(exc)[:500],
+                )
+                raise HTTPException(status_code=500, detail="서브넷 생성 실패") from exc
+            result = result.model_copy(
+                update={
+                    "subnets": [*result.subnets, subnet.id],
+                    "cidrs": [*result.cidrs, subnet.cidr],
+                }
+            )
+        await invalidate(f"afterglow:neutron:{conn._afterglow_project_id}:networks")
         await rec(token_info, conn, resource_type="network", action="create", resource_name=req.name)
         return result
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception as exc:
         await rec(
             token_info,
             conn,
@@ -99,9 +135,9 @@ async def create_network(
             action="create",
             status="failed",
             resource_name=req.name,
-            error_message=str(e)[:500],
+            error_message=str(exc)[:500],
         )
-        raise HTTPException(status_code=500, detail="네트워크 생성 실패")
+        raise HTTPException(status_code=500, detail="네트워크 생성 실패") from exc
 
 
 # ---------------------------------------------------------------------------

@@ -161,6 +161,8 @@ At ≥768px, the settings route allocates the return action and settings body wi
 
 캔버스 패킷 흐름 시뮬레이션은 기본 on이며 툴바 체크박스로 끌 수 있다. `prefers-reduced-motion`이면 토글과 무관하게 하드 off이고, 탭이 보이지 않거나 pinch 중이면 rAF 루프를 멈춘다.
 
+사용자 캔버스만 생성·연결 mutation을 노출한다. `TopologyCanvas`의 `link-types.ts`는 현재 프로젝트 소유 VM/라우터와 ACTIVE internal/external 네트워크 조합만 `POST /api/v1/instances/{id}/interfaces`, `POST /api/v1/routers/{id}/gateway`, `POST /api/v1/routers/{id}/interfaces`로 해석하며, 이미 연결된 NIC/인터페이스·DB 노드·공유/타 프로젝트 대상은 클라이언트에서도 거부하고 API 권한 검증이 최종 경계다. 출력 포트에서 대상 카드로 드래그하면 accent 점선 임시 케이블과 가능한 대상만 표시하고 성공 뒤 topology를 refresh한다. 툴바의 네트워크·라우터·인스턴스·로드밸런서·DB 생성은 기존 생성 플로우를 연다; 선택된 네트워크는 VM wizard의 network prefill로 전달한다. 네트워크 생성의 선택 subnet은 `CreateNetworkSubnetSpec`이며 subnet 실패 시 생성한 Neutron network를 최선으로 롤백하고 목록 cache를 무효화한다. 상세 패널은 사용자 `/api/v1/networks/{id}/subnets`에서 선택 subnet을 추가한다.
+
 ## Data and contracts
 
 ### 정본과 cache 분리
@@ -273,9 +275,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "e8770d448138cf23c4df5516acd4989eaa8c2061dc60f1447acb1ffa999841b7",
-  "reviewed_at": "2026-09-16T10:14:43Z",
-  "summary": "콘솔 테마 일관성 정리. DESIGN.md 가 이미 규정한 --color-ink-3(비활성 전용) 규칙을 실제로 이행해 Tailwind 클래스 1135곳과 scoped CSS 105곳을 ink-2 로 옮겼고(disabled/placeholder 157곳 보존), 0.75rem 미만 콘솔 타입 321곳을 사다리 위로 올렸다(사이드바·명령 팔레트 섬 26곳 제외). 감사에서 확정된 61건 중 라우터 카드 기하·표면 계층, 상태 톤의 의미 오용, 손으로 만든 StatusChip/Button/Pill/EmptyState, 정의되지 않은 토큰 참조(line-strong/ink-4/text-muted/color-sunken), literal black/white 로 섞은 hover, 하드코딩 그림자를 토큰 계약으로 되돌렸다. 토큰 이름·컴포넌트 API·라우터·의존성 변경 없음(no-structure-impact)."
+  "source_sha256": "6442bda3f12f50c68a76fce64d5f7c0b0fb1d3710bdc9fe64d5ebc5fcf9b4174",
+  "reviewed_at": "2026-09-16T11:42:30Z",
+  "summary": "Verified scoped topology creation, drag cables, optional subnets, UI entry points, and tutorial mutations."
 }
 ```
 <!-- architecture-review:end -->
