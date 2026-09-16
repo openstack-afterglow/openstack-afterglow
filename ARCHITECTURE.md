@@ -277,9 +277,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "641e61e1e2db441458a81de6500fa749c4137ac0620965c25392fb7e242558b1",
-  "reviewed_at": "2026-09-16T14:16:41Z",
-  "summary": "토폴로지 생성 버튼 및 케이블 드래그 연결, 연결 사전 확인 모달(TopologyLinkModal) 및 서브넷 생성 부분 성공 시 라우터 연결 재시도 보존, auto_gateway 첫 호스트 지정 목업 동기화"
+  "source_sha256": "1acfaa428f697b00897d5938c33a6cd37ca14a64cfe582deb962d88c4002f161",
+  "reviewed_at": "2026-09-16T14:55:34Z",
+  "summary": "Release 1.21.0 metadata synchronization after reviewing the current dev source; no new structural behavior beyond the documented topology ownership and canvas connection flows."
 }
 ```
 <!-- architecture-review:end -->
