@@ -277,9 +277,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "967abf1a7d52169d4bb47aa062bc1bb157b73aa347e2303fffd88eb9e1b5aa0d",
-  "reviewed_at": "2026-09-17T09:29:18Z",
-  "summary": "Cut over Kolla operator to [tool.uv.sources] git packages for drover-kolla, lumen-kolla, waygate-kolla, and palimpsest-kolla, and updated deploy docs and installer contracts"
+  "source_sha256": "ec4f0d1bafe053d94636dcc03bedd95a2340502ae5366a9da01be1c669110ef0",
+  "reviewed_at": "2026-09-17T09:35:44Z",
+  "summary": "Cut over Kolla operator to [tool.uv.sources] git packages for all sibling services and archive OpenSpec change"
 }
 ```
 <!-- architecture-review:end -->

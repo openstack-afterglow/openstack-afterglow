@@ -110,7 +110,7 @@ The `deploy/kolla/operator/` directory contains a canonical `uv` project
 - **`drover-kolla`**: Git source `v0.2.21` (`subdirectory = "deploy/kolla"`).
 - **`lumen-kolla`**: Git source `v0.2.1` (`subdirectory = "deploy/kolla"`).
 - **`waygate-kolla`**: Git source `v0.1.2` (`subdirectory = "deploy/kolla"`).
-- **`palimpsest-kolla`**: Git source `v0.1.2` (`subdirectory = "deploy/kolla"`).
+- **`palimpsest-kolla`**: Git source `v0.1.3` (`subdirectory = "deploy/kolla"`).
 
 ### 1. Legacy Symlink Migration
 

@@ -223,7 +223,7 @@ log "Waygate role verified at $WAYGATE_ROLE_DIR (waygate-kolla==$installed_wayga
 
 PALIMPSEST_ROLE_DIR="$ROLES_DIR/palimpsest"
 PALIMPSEST_LEGACY_ROLE_TARGET="$REPO_DIR/deploy/kolla/ansible/roles/palimpsest"
-PALIMPSEST_KOLLA_VERSION="0.1.2"
+PALIMPSEST_KOLLA_VERSION="0.1.3"
 if [[ -L "$PALIMPSEST_ROLE_DIR" ]]; then
   current_palimpsest_target=$(readlink "$PALIMPSEST_ROLE_DIR" || true)
   if [[ "$current_palimpsest_target" == "$PALIMPSEST_LEGACY_ROLE_TARGET" ]]; then

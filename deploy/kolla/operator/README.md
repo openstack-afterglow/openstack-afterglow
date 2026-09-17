@@ -10,7 +10,7 @@ The operator environment manages the dependencies required for running `kolla-an
 - **Drover Kolla Role**: pinned to git release tag `v0.2.21` (`drover-kolla`).
 - **Lumen Kolla Role**: pinned to git release tag `v0.2.1` (`lumen-kolla`).
 - **Waygate Kolla Role**: pinned to git release tag `v0.1.2` (`waygate-kolla`).
-- **Palimpsest Kolla Role**: pinned to git release tag `v0.1.2` (`palimpsest-kolla`).
+- **Palimpsest Kolla Role**: pinned to git release tag `v0.1.3` (`palimpsest-kolla`).
 ## Installation Options
 
 ### Option A: Git Source Dependencies via `[tool.uv.sources]`
@@ -35,7 +35,7 @@ kolla-ansible = { git = "https://opendev.org/openstack/kolla-ansible", rev = "34
 drover-kolla = { git = "https://github.com/openstack-afterglow/drover", rev = "v0.2.21", subdirectory = "deploy/kolla" }
 lumen-kolla = { git = "https://github.com/openstack-afterglow/lumen", rev = "v0.2.1", subdirectory = "deploy/kolla" }
 waygate-kolla = { git = "https://github.com/openstack-afterglow/waygate", rev = "v0.1.2", subdirectory = "deploy/kolla" }
-palimpsest-kolla = { git = "https://github.com/openstack-afterglow/palimpsest", rev = "v0.1.2", subdirectory = "deploy/kolla" }
+palimpsest-kolla = { git = "https://github.com/openstack-afterglow/palimpsest", rev = "v0.1.3", subdirectory = "deploy/kolla" }
 ```
 
 > **Note on Monorepo Subdirectories:** Because `drover`, `lumen`, `waygate`, and `palimpsest` maintain their core service runtime packages at the repository root and package their Kolla roles under `deploy/kolla`, `subdirectory = "deploy/kolla"` is required by `uv` to target the role wheel build correctly.
