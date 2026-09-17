@@ -116,14 +116,10 @@ All roots require Python 3.12 or newer. There are no `*-kolla` distributions,
 no `subdirectory = "deploy/kolla"` sources, and no plugin role becomes a Kolla
 default dependency merely by being installed.
 
-> **Current migration state:** The four sibling revisions still written in the
-> manifest are legacy tags retained until immutable root-wheel commits are
-> available. They do not resolve the root role owners above. The committed
-> `operator/uv.lock` still names the old `*-kolla` distributions and is
-> intentionally unchanged, so it cannot be used to synchronize this manifest.
-> Replace all sibling revisions with the verified immutable root commits and
-> regenerate the lock in that pinning change before synchronizing an operator
-> environment.
+The operator manifest pins each root distribution to an immutable Git commit
+SHA on the sibling `dev` branches, and `operator/uv.lock` is generated from
+those pins. Commit SHAs (never tags) are the synchronization contract; bumping
+a service means recording its new verified commit here and relocking.
 
 ### 1. Legacy Symlink Migration
 
@@ -156,16 +152,16 @@ done
 
 ### 2. Record and Sync the Operator Dependencies
 
-Once the four immutable root commits are known, record them without syncing a
+The committed manifest and lock already pin the verified root commits.
+To move a service to a newer verified commit, record it without syncing a
 local environment:
 
 ```bash
 cd deploy/kolla/operator
-uv add --no-sync "kolla-ansible @ git+https://opendev.org/openstack/kolla-ansible.git@34daacfbf2d5987f543787f57535b2bebe7dee19"
-uv add --no-sync "drover @ git+https://github.com/openstack-afterglow/drover.git@<drover-root-commit>"
-uv add --no-sync "lumen @ git+https://github.com/openstack-afterglow/lumen.git@<lumen-root-commit>"
-uv add --no-sync "waygate @ git+https://github.com/openstack-afterglow/waygate.git@<waygate-root-commit>"
-uv add --no-sync "palimpsest-local @ git+https://github.com/openstack-afterglow/palimpsest.git@<palimpsest-root-commit>"
+uv add --no-sync "drover @ git+https://github.com/openstack-afterglow/drover.git@<new-root-commit>"
+uv add --no-sync "lumen @ git+https://github.com/openstack-afterglow/lumen.git@<new-root-commit>"
+uv add --no-sync "waygate @ git+https://github.com/openstack-afterglow/waygate.git@<new-root-commit>"
+uv add --no-sync "palimpsest-local @ git+https://github.com/openstack-afterglow/palimpsest.git@<new-root-commit>"
 
 UV_PROJECT_ENVIRONMENT=/etc/kolla/.venv uv sync --inexact --no-install-project
 ```

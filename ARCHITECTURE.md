@@ -277,9 +277,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "ccbf69ffc6ca03885113380f72d9135a7c9e8a9b23b6ceae8accafab73953ca8",
-  "reviewed_at": "2026-09-17T15:36:48Z",
-  "summary": "Final pre-commit stamp: validator tests transferred to siblings, gate evidence recorded."
+  "source_sha256": "8800727dde164922791283ccc552fdc7235390188283eda974109fd3277c377d",
+  "reviewed_at": "2026-09-17T16:03:12Z",
+  "summary": "Operator manifest/lock pinned to verified sibling root commits (drover 3d21f785, lumen 3ab1f2ff, waygate 9933deb9, palimpsest 0f89d5d4); real-install verification passed (5 distributions, 4 shared-data roles, installer/uninstaller byte preservation); README pinning contract documented."
 }
 ```
 <!-- architecture-review:end -->
