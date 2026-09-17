@@ -202,7 +202,7 @@ At ≥768px, the settings route allocates the return action and settings body wi
 
 ### 빌드·배포
 
-`Dockerfile`은 backend/worker에 Python 3.12 slim, frontend build에 Bun 1, runtime에 Node 20을 사용한다. 현재 [`docker-build.yml`](.github/workflows/docker-build.yml)은 `linux/amd64` matrix만 활성화하며 arm64 항목은 주석 처리되어 있다. GitHub Actions가 이미지를 GHCR로 push하고, 배포 구성은 Kubernetes/Kustomize·Helm/ArgoCD 또는 [`deploy/kolla/site.yml`](deploy/kolla/site.yml)의 custom service role 경계를 사용한다. Kolla는 `afterglow`, `waygate`, `drover`, `lumen`, `palimpsest` inventory group을 별도로 검사한다. `deploy/kolla/install.sh`가 stock site import와 inventory/globals.d 연결을 준비하면 `/etc/kolla`에서 `kolla-ansible deploy -i multinode`가 custom 서비스를 함께 실행한다. 서비스·HAProxy 플레이는 `become: true`로 toolbox와 중첩/위임 task의 권한을 선언하며, operator 계정의 기존 sudo 권한을 전제로 한다. 형제 역할은 각 서비스 root distribution(`drover`, `lumen`, `waygate`, `palimpsest-local`)이 소유하고 Afterglow 역할만 in-tree 소스 심볼릭 링크로 관리한다. Afterglow 계약 테스트는 형제 checkout 없이 자체 역할·aggregate dispatch와 실제 Python metadata lookup 기반 설치/재설치/제거의 파일 보존을 검증한다. 현재 operator manifest는 root 이름으로 전환됐지만 legacy tag와 이전 lock이 남아 있으므로, immutable root commit pin과 lock 재생성 전에는 동기화 가능한 운영 환경으로 간주하지 않는다.
+`Dockerfile`은 backend/worker에 Python 3.12 slim, frontend build에 Bun 1, runtime에 Node 20을 사용한다. 현재 [`docker-build.yml`](.github/workflows/docker-build.yml)은 `linux/amd64` matrix만 활성화하며 arm64 항목은 주석 처리되어 있다. GitHub Actions가 이미지를 GHCR로 push하고, 배포 구성은 Kubernetes/Kustomize·Helm/ArgoCD 또는 [`deploy/kolla/site.yml`](deploy/kolla/site.yml)의 custom service role 경계를 사용한다. Kolla는 `afterglow`, `waygate`, `drover`, `lumen`, `palimpsest` inventory group을 별도로 검사한다. `deploy/kolla/install.sh`가 stock site import와 inventory/globals.d 연결을 준비하면 `/etc/kolla`에서 `kolla-ansible deploy -i multinode`가 custom 서비스를 함께 실행한다. 서비스·HAProxy 플레이는 `become: true`로 toolbox와 중첩/위임 task의 권한을 선언하며, operator 계정의 기존 sudo 권한을 전제로 한다. 형제 역할은 각 서비스 root distribution(`drover`, `lumen`, `waygate`, `palimpsest-local`)이 소유하고 Afterglow 역할만 in-tree 소스 심볼릭 링크로 관리한다. Afterglow 계약 테스트는 형제 checkout 없이 자체 역할·aggregate dispatch와 실제 Python metadata lookup 기반 설치/재설치/제거의 파일 보존을 검증한다. operator manifest와 lock은 형제 dev 브랜치의 검증된 immutable commit SHA(drover 3d21f785, lumen 3ab1f2ff, waygate 9933deb9, palimpsest c82bc0f)로 고정됐고, disposable venv에서 실제 설치·역할 shared-data 배치·installer/uninstaller 파일 보존까지 검증됐다.
 
 ### 선행 조건과 관측
 
@@ -277,9 +277,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "8800727dde164922791283ccc552fdc7235390188283eda974109fd3277c377d",
-  "reviewed_at": "2026-09-17T16:03:12Z",
-  "summary": "Operator manifest/lock pinned to verified sibling root commits (drover 3d21f785, lumen 3ab1f2ff, waygate 9933deb9, palimpsest 0f89d5d4); real-install verification passed (5 distributions, 4 shared-data roles, installer/uninstaller byte preservation); README pinning contract documented."
+  "source_sha256": "231c3f53305a91c3756debcdf336029518186e5d9d928765e6a39bde6c52f5da",
+  "reviewed_at": "2026-09-17T16:22:18Z",
+  "summary": "Prepare 1.23.0: aligned frontend/backend/Helm/Kolla versions, full immutable root source pins and regenerated operator lock; corrected stale migration documentation. Palimpsest release gate and operator main-merge handoff remain outstanding."
 }
 ```
 <!-- architecture-review:end -->

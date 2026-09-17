@@ -7,6 +7,18 @@
 
 ## [Unreleased]
 
+## [1.23.0] - 2026-09-18
+
+### Changed
+
+- **Kolla 형제 서비스 root 패키지 전환 완료** — Drover 0.2.22·Lumen 0.2.2·Waygate 0.1.3·Palimpsest(local) 0.1.4 root distribution이 Kolla role을 shared-data로 제공한다. Afterglow in-tree role은 `afterglow` 하나뿐이며, operator는 형제 dev 커밋 SHA(drover 3d21f785, lumen 3ab1f2ff, waygate 9933deb9, palimpsest c82bc0f)와 이를 재생성한 `operator/uv.lock`으로 고정한다.
+- **계약 테스트 소유권 정리** — 외부화된 역할에 대한 Afterglow 측 소스 역할 참조와 validator 회귀 테스트를 형제 저장소 소유로 이관하고, Afterglow 계약 스위트는 자체 역할·aggregate dispatch·installer 소유권 경계(root distribution metadata lookup, 설치/재설치/제거 후 파일 보존)를 검증한다.
+- **Kolla 테스트 환경 고정** — `deploy/kolla/README.md`가 legacy tag가 아닌 commit SHA pin을 동기화 계약으로 명시한다.
+
+### Fixed
+
+- Waygate 아키텍처 가드가 시스템 Python 3.9에서 stamp에 실패하던 `datetime.UTC` 참조를 수정하고, Lumen/Palimpsest의 ruff 0.16 포맷 드리프트를 정규화했다.
+
 ### Fixed
 
 - Kolla 계약 테스트에서 외부화된 Waygate·Palimpsest 소스 역할 참조를 제거하고, root distribution 메타데이터로 설치·재설치·제거 후 형제 역할과 운영자 파일의 보존을 검증한다. 테스트에 형제 checkout이나 임시 worktree 경로가 필요하지 않다.

@@ -1,6 +1,6 @@
 [project]
 name = "afterglow-api"
-version = "1.22.0"
+version = "1.23.0"
 description = "Afterglow - OpenStack VM deployment platform"
 requires-python = ">=3.12"
 dependencies = [

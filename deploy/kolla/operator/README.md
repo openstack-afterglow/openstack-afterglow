@@ -22,18 +22,14 @@ The controller and every root package require Python 3.12 or newer.
 
 ## Source declaration and current pin status
 
-`pyproject.toml` names the root distributions and uses root Git sources; it has
-no `subdirectory` source entries. The existing sibling revisions are retained
-only as migration placeholders. They predate the root-wheel role ownership
-cutover, so they are **not valid pins for this manifest**. The committed
-`uv.lock` is intentionally untouched and still locks `drover-kolla`,
-`lumen-kolla`, `waygate-kolla`, and `palimpsest-kolla`; it is likewise invalid
-for the root-package manifest.
+`pyproject.toml` names the root distributions and pins each Git source to a
+full immutable commit SHA, without `subdirectory` entries. `uv.lock` resolves
+those commits to the versions in the ownership table above. Kolla-Ansible
+remains independently pinned to `34daacfbf2d5987f543787f57535b2bebe7dee19`.
 
-Replace all four sibling revisions with immutable commits that contain the
-matching root wheel and role files, then regenerate the lock as part of that
-separate pinning change. Do not use `uv sync --frozen` until that lock has been
-updated.
+Use the committed lock for installation. Updating a service requires a tested
+root-package commit, an updated source pin, and a regenerated/reviewed lock;
+do not infer package versions from Git tag names.
 
 ## Updating root source dependencies
 
@@ -52,7 +48,7 @@ After reviewing the resulting manifest and lock, install into the actual Kolla
 environment:
 
 ```bash
-UV_PROJECT_ENVIRONMENT=/etc/kolla/.venv uv sync --inexact --no-install-project
+UV_PROJECT_ENVIRONMENT=/etc/kolla/.venv uv sync --frozen --inexact --no-install-project
 source /etc/kolla/.venv/bin/activate
 ```
 
