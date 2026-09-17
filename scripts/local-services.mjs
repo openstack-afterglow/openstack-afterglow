@@ -52,10 +52,10 @@ const RUNNING_SERVICES = [
 	'palimpsest-worker'
 ];
 const SIBLING_BUILDS = [
-	['Lumen', '../lumen/Dockerfile'],
-	['Drover', '../drover/Dockerfile'],
-	['Waygate', '../waygate/Dockerfile'],
-	['Palimpsest Hub', '../palimpsest/hub/Dockerfile']
+	['Lumen', '../lumen/docker/Dockerfile'],
+	['Drover', '../drover/docker/Dockerfile'],
+	['Waygate', '../waygate/docker/Dockerfile'],
+	['Palimpsest Hub', '../palimpsest/docker/hub/Dockerfile']
 ];
 
 function fail(message) {

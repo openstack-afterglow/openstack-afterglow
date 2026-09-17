@@ -65,7 +65,7 @@ The base backend optionally reads `.env`; frontend never receives backend secret
 
 ### 2. Start Services
 
-For current-source development, provide sibling checkouts `../lumen`, `../waygate`, `../drover`, `../palimpsest` (including `hub/Dockerfile`), Docker Compose 2.24+, Python 3.11+ and actual OpenStack credentials. Set the dedicated `[openstack] service_project_id` in the private config or `OS_SERVICE_PROJECT_ID` in `.env`; there is no admin-project fallback.
+For current-source development, provide sibling checkouts `../lumen`, `../waygate`, `../drover`, and `../palimpsest`; the first three require `docker/Dockerfile` and Palimpsest requires `docker/hub/Dockerfile`. Docker Compose 2.24+, Python 3.12+, and actual OpenStack credentials are required. Set the dedicated `[openstack] service_project_id` in the private config or `OS_SERVICE_PROJECT_ID` in `.env`; there is no admin-project fallback.
 
 ```bash
 npm run services:up

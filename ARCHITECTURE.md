@@ -202,7 +202,7 @@ At ≥768px, the settings route allocates the return action and settings body wi
 
 ### 빌드·배포
 
-`Dockerfile`은 backend/worker에 Python 3.12 slim, frontend build에 Bun 1, runtime에 Node 20을 사용한다. 현재 [`docker-build.yml`](.github/workflows/docker-build.yml)은 `linux/amd64` matrix만 활성화하며 arm64 항목은 주석 처리되어 있다. GitHub Actions가 이미지를 GHCR로 push하고, 배포 구성은 Kubernetes/Kustomize·Helm/ArgoCD 또는 [`deploy/kolla/site.yml`](deploy/kolla/site.yml)의 custom service role 경계를 사용한다. Kolla는 `afterglow`, `waygate`, `drover`, `lumen`, `palimpsest` inventory group을 별도로 검사한다. `deploy/kolla/install.sh`가 stock site import와 inventory/globals.d 연결을 준비하면 `/etc/kolla`에서 `kolla-ansible deploy -i multinode`가 custom 서비스를 함께 실행한다. 서비스·HAProxy 플레이는 `become: true`로 toolbox와 중첩/위임 task의 권한을 선언하며, operator 계정의 기존 sudo 권한을 전제로 한다. 형제 마이크로서비스 역할은 각 서비스 레포의 deploy/kolla 패키지(`drover-kolla`, `lumen-kolla`, `waygate-kolla`, `palimpsest-kolla`)가 `[tool.uv.sources]` Git 의존성으로 소유하며, Afterglow 역할만 in-tree 소스 심볼릭 링크로 관리한다. operator 의존성 설치는 `/etc/kolla/.venv` 환경에서 `uv sync --frozen --inexact --no-install-project`를 사용한다.
+`Dockerfile`은 backend/worker에 Python 3.12 slim, frontend build에 Bun 1, runtime에 Node 20을 사용한다. 현재 [`docker-build.yml`](.github/workflows/docker-build.yml)은 `linux/amd64` matrix만 활성화하며 arm64 항목은 주석 처리되어 있다. GitHub Actions가 이미지를 GHCR로 push하고, 배포 구성은 Kubernetes/Kustomize·Helm/ArgoCD 또는 [`deploy/kolla/site.yml`](deploy/kolla/site.yml)의 custom service role 경계를 사용한다. Kolla는 `afterglow`, `waygate`, `drover`, `lumen`, `palimpsest` inventory group을 별도로 검사한다. `deploy/kolla/install.sh`가 stock site import와 inventory/globals.d 연결을 준비하면 `/etc/kolla`에서 `kolla-ansible deploy -i multinode`가 custom 서비스를 함께 실행한다. 서비스·HAProxy 플레이는 `become: true`로 toolbox와 중첩/위임 task의 권한을 선언하며, operator 계정의 기존 sudo 권한을 전제로 한다. 형제 역할은 각 서비스 root distribution(`drover`, `lumen`, `waygate`, `palimpsest-local`)이 소유하고 Afterglow 역할만 in-tree 소스 심볼릭 링크로 관리한다. Afterglow 계약 테스트는 형제 checkout 없이 자체 역할·aggregate dispatch와 실제 Python metadata lookup 기반 설치/재설치/제거의 파일 보존을 검증한다. 현재 operator manifest는 root 이름으로 전환됐지만 legacy tag와 이전 lock이 남아 있으므로, immutable root commit pin과 lock 재생성 전에는 동기화 가능한 운영 환경으로 간주하지 않는다.
 
 ### 선행 조건과 관측
 
@@ -277,9 +277,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "b165cd0afdec38ac1b5339af0506b05540b930ee6f4b6f854e556cd6781290ac",
-  "reviewed_at": "2026-09-17T10:28:33Z",
-  "summary": "Correct PEP 503 registry details and document root package + subdirectory docker design pattern"
+  "source_sha256": "ccbf69ffc6ca03885113380f72d9135a7c9e8a9b23b6ceae8accafab73953ca8",
+  "reviewed_at": "2026-09-17T15:36:48Z",
+  "summary": "Final pre-commit stamp: validator tests transferred to siblings, gate evidence recorded."
 }
 ```
 <!-- architecture-review:end -->

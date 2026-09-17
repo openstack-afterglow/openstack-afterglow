@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Kolla 계약 테스트에서 외부화된 Waygate·Palimpsest 소스 역할 참조를 제거하고, root distribution 메타데이터로 설치·재설치·제거 후 형제 역할과 운영자 파일의 보존을 검증한다. 테스트에 형제 checkout이나 임시 worktree 경로가 필요하지 않다.
+
 ## [1.22.0] - 2026-09-17
 
 ### Added
