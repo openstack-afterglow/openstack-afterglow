@@ -154,7 +154,7 @@ fi
 
 DROVER_ROLE_DIR="$ROLES_DIR/drover"
 DROVER_LEGACY_ROLE_TARGET="$REPO_DIR/deploy/kolla/ansible/roles/drover"
-DROVER_KOLLA_VERSION="0.2.19"
+DROVER_KOLLA_VERSION="0.2.21"
 if [[ -L "$DROVER_ROLE_DIR" ]]; then
   current_drover_target=$(readlink "$DROVER_ROLE_DIR" || true)
   if [[ "$current_drover_target" == "$DROVER_LEGACY_ROLE_TARGET" ]]; then
@@ -177,7 +177,7 @@ log "Drover role verified at $DROVER_ROLE_DIR (drover-kolla==$installed_drover_k
 
 LUMEN_ROLE_DIR="$ROLES_DIR/lumen"
 LUMEN_LEGACY_ROLE_TARGET="$REPO_DIR/deploy/kolla/ansible/roles/lumen"
-LUMEN_KOLLA_VERSION="0.2.0"
+LUMEN_KOLLA_VERSION="0.2.1"
 if [[ -L "$LUMEN_ROLE_DIR" ]]; then
   current_lumen_target=$(readlink "$LUMEN_ROLE_DIR" || true)
   if [[ "$current_lumen_target" == "$LUMEN_LEGACY_ROLE_TARGET" ]]; then
@@ -198,10 +198,54 @@ installed_lumen_kolla_version=$(
   die "Expected lumen-kolla==$LUMEN_KOLLA_VERSION in the active Kolla environment, found '${installed_lumen_kolla_version:-not installed}'."
 log "Lumen role verified at $LUMEN_ROLE_DIR (lumen-kolla==$installed_lumen_kolla_version)"
 
-# Role symlinks (Afterglow, Waygate, Palimpsest)
+WAYGATE_ROLE_DIR="$ROLES_DIR/waygate"
+WAYGATE_LEGACY_ROLE_TARGET="$REPO_DIR/deploy/kolla/ansible/roles/waygate"
+WAYGATE_KOLLA_VERSION="0.1.1"
+if [[ -L "$WAYGATE_ROLE_DIR" ]]; then
+  current_waygate_target=$(readlink "$WAYGATE_ROLE_DIR" || true)
+  if [[ "$current_waygate_target" == "$WAYGATE_LEGACY_ROLE_TARGET" ]]; then
+    die "Legacy Afterglow-owned Waygate role symlink detected at $WAYGATE_ROLE_DIR. Verify it points to $WAYGATE_LEGACY_ROLE_TARGET, remove only that symlink with 'rm -- $WAYGATE_ROLE_DIR', then run 'UV_PROJECT_ENVIRONMENT=/etc/kolla/.venv uv sync --frozen --inexact --no-install-project' in deploy/kolla/operator before rerunning install.sh."
+  fi
+  die "Unexpected Waygate role symlink at $WAYGATE_ROLE_DIR -> $current_waygate_target. Refusing to replace or remove it."
+elif [[ ! -d "$WAYGATE_ROLE_DIR" ||
+        ! -f "$WAYGATE_ROLE_DIR/tasks/main.yml" ||
+        ! -f "$WAYGATE_ROLE_DIR/tasks/deploy.yml" ||
+        ! -f "$WAYGATE_ROLE_DIR/defaults/main.yml" ||
+        ! -f "$WAYGATE_ROLE_DIR/templates/waygate.conf.j2" ]]; then
+  die "Waygate role missing or invalid at $WAYGATE_ROLE_DIR. Install waygate-kolla==$WAYGATE_KOLLA_VERSION into the active Kolla environment with 'UV_PROJECT_ENVIRONMENT=/etc/kolla/.venv uv sync --frozen --inexact --no-install-project' in deploy/kolla/operator."
+fi
+installed_waygate_kolla_version=$(
+  "$KOLLA_PYTHON" -c 'from importlib.metadata import version; print(version("waygate-kolla"))' 2>/dev/null || true
+)
+[[ "$installed_waygate_kolla_version" == "$WAYGATE_KOLLA_VERSION" ]] ||
+  die "Expected waygate-kolla==$WAYGATE_KOLLA_VERSION in the active Kolla environment, found '${installed_waygate_kolla_version:-not installed}'."
+log "Waygate role verified at $WAYGATE_ROLE_DIR (waygate-kolla==$installed_waygate_kolla_version)"
+
+PALIMPSEST_ROLE_DIR="$ROLES_DIR/palimpsest"
+PALIMPSEST_LEGACY_ROLE_TARGET="$REPO_DIR/deploy/kolla/ansible/roles/palimpsest"
+PALIMPSEST_KOLLA_VERSION="0.1.2"
+if [[ -L "$PALIMPSEST_ROLE_DIR" ]]; then
+  current_palimpsest_target=$(readlink "$PALIMPSEST_ROLE_DIR" || true)
+  if [[ "$current_palimpsest_target" == "$PALIMPSEST_LEGACY_ROLE_TARGET" ]]; then
+    die "Legacy Afterglow-owned Palimpsest role symlink detected at $PALIMPSEST_ROLE_DIR. Verify it points to $PALIMPSEST_LEGACY_ROLE_TARGET, remove only that symlink with 'rm -- $PALIMPSEST_ROLE_DIR', then run 'UV_PROJECT_ENVIRONMENT=/etc/kolla/.venv uv sync --frozen --inexact --no-install-project' in deploy/kolla/operator before rerunning install.sh."
+  fi
+  die "Unexpected Palimpsest role symlink at $PALIMPSEST_ROLE_DIR -> $current_palimpsest_target. Refusing to replace or remove it."
+elif [[ ! -d "$PALIMPSEST_ROLE_DIR" ||
+        ! -f "$PALIMPSEST_ROLE_DIR/tasks/main.yml" ||
+        ! -f "$PALIMPSEST_ROLE_DIR/tasks/deploy.yml" ||
+        ! -f "$PALIMPSEST_ROLE_DIR/defaults/main.yml" ||
+        ! -f "$PALIMPSEST_ROLE_DIR/templates/palimpsest.conf.j2" ]]; then
+  die "Palimpsest role missing or invalid at $PALIMPSEST_ROLE_DIR. Install palimpsest-kolla==$PALIMPSEST_KOLLA_VERSION into the active Kolla environment with 'UV_PROJECT_ENVIRONMENT=/etc/kolla/.venv uv sync --frozen --inexact --no-install-project' in deploy/kolla/operator."
+fi
+installed_palimpsest_kolla_version=$(
+  "$KOLLA_PYTHON" -c 'from importlib.metadata import version; print(version("palimpsest-kolla"))' 2>/dev/null || true
+)
+[[ "$installed_palimpsest_kolla_version" == "$PALIMPSEST_KOLLA_VERSION" ]] ||
+  die "Expected palimpsest-kolla==$PALIMPSEST_KOLLA_VERSION in the active Kolla environment, found '${installed_palimpsest_kolla_version:-not installed}'."
+log "Palimpsest role verified at $PALIMPSEST_ROLE_DIR (palimpsest-kolla==$installed_palimpsest_kolla_version)"
+
+# Role symlink (Afterglow source role only)
 create_symlink_safe "$REPO_DIR/deploy/kolla/ansible/roles/afterglow" "$ROLES_DIR/afterglow" "afterglow role"
-create_symlink_safe "$REPO_DIR/deploy/kolla/ansible/roles/waygate" "$ROLES_DIR/waygate" "waygate role"
-create_symlink_safe "$REPO_DIR/deploy/kolla/ansible/roles/palimpsest" "$ROLES_DIR/palimpsest" "palimpsest role"
 
 # Aggregate playbook symlink (afterglow-site.yml)
 create_symlink_safe "$REPO_DIR/deploy/kolla/site.yml" "$KOLLA_DIR/ansible/afterglow-site.yml" "aggregate afterglow-site.yml playbook"
@@ -236,10 +280,10 @@ python3 "$REPO_DIR/deploy/kolla/patch_stock_site.py" install "$STOCK_SITE" || \
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo " Afterglow, Waygate, Drover (package-installed), Lumen (package-installed), and Palimpsest integration wiring installed."
+echo " Afterglow and package-installed sibling roles (Drover, Lumen, Waygate, Palimpsest) integration wiring installed."
 echo " The installer owns only its marked stock site.yml import, default"
-echo " inventory link, globals.d links, source role links (afterglow, waygate,"
-echo " palimpsest), and aggregate playbook link. Drover and Lumen roles are package-owned."
+echo " inventory link, globals.d links, source role link (afterglow), and aggregate"
+echo " playbook link. Drover, Lumen, Waygate, and Palimpsest roles are package-owned."
 echo ""
 echo " Activate the Kolla virtualenv, then from $KOLLA_CONFIG_DIR deploy with:"
 echo " kolla-ansible deploy -i multinode"

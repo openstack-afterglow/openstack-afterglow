@@ -360,6 +360,23 @@ test("Kolla installer loads plugin variables from the standard config root", () 
 		fs.writeFileSync(path.join(fixtureLumenRoleDir, "tasks", "deploy.yml"), "---\n- name: Lumen deploy\n  ansible.builtin.debug:\n    msg: deploy\n")
 		fs.writeFileSync(path.join(fixtureLumenRoleDir, "defaults", "main.yml"), "lumen_services: {}\n")
 		fs.writeFileSync(path.join(fixtureLumenRoleDir, "templates", "lumen.conf.j2"), "[lumen]\n")
+		const fixtureWaygateRoleDir = path.join(kollaAnsiblePath, "ansible", "roles", "waygate")
+		fs.mkdirSync(path.join(fixtureWaygateRoleDir, "tasks"), { recursive: true })
+		fs.mkdirSync(path.join(fixtureWaygateRoleDir, "defaults"), { recursive: true })
+		fs.mkdirSync(path.join(fixtureWaygateRoleDir, "templates"), { recursive: true })
+		fs.writeFileSync(path.join(fixtureWaygateRoleDir, "tasks", "main.yml"), "---\n- name: Waygate main\n  ansible.builtin.debug:\n    msg: waygate\n")
+		fs.writeFileSync(path.join(fixtureWaygateRoleDir, "tasks", "deploy.yml"), "---\n- name: Waygate deploy\n  ansible.builtin.debug:\n    msg: deploy\n")
+		fs.writeFileSync(path.join(fixtureWaygateRoleDir, "defaults", "main.yml"), "waygate_services: {}\n")
+		fs.writeFileSync(path.join(fixtureWaygateRoleDir, "templates", "waygate.conf.j2"), "[waygate]\n")
+
+		const fixturePalimpsestRoleDir = path.join(kollaAnsiblePath, "ansible", "roles", "palimpsest")
+		fs.mkdirSync(path.join(fixturePalimpsestRoleDir, "tasks"), { recursive: true })
+		fs.mkdirSync(path.join(fixturePalimpsestRoleDir, "defaults"), { recursive: true })
+		fs.mkdirSync(path.join(fixturePalimpsestRoleDir, "templates"), { recursive: true })
+		fs.writeFileSync(path.join(fixturePalimpsestRoleDir, "tasks", "main.yml"), "---\n- name: Palimpsest main\n  ansible.builtin.debug:\n    msg: palimpsest\n")
+		fs.writeFileSync(path.join(fixturePalimpsestRoleDir, "tasks", "deploy.yml"), "---\n- name: Palimpsest deploy\n  ansible.builtin.debug:\n    msg: deploy\n")
+		fs.writeFileSync(path.join(fixturePalimpsestRoleDir, "defaults", "main.yml"), "palimpsest_services: {}\n")
+		fs.writeFileSync(path.join(fixturePalimpsestRoleDir, "templates", "palimpsest.conf.j2"), "[palimpsest]\n")
 
 		fs.mkdirSync(pluginConfigRoot, { recursive: true })
 		fs.mkdirSync(legacyConfigRoot, { recursive: true })
@@ -367,7 +384,7 @@ test("Kolla installer loads plugin variables from the standard config root", () 
 		fs.writeFileSync(fakeKollaBinary, "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 })
 		fs.writeFileSync(
 			fakeKollaPython,
-			'#!/usr/bin/env bash\nif [[ "${1:-}" == "-c" && "${2:-}" == *drover-kolla* ]]; then echo "0.2.19"; exit 0; fi\nif [[ "${1:-}" == "-c" && "${2:-}" == *lumen-kolla* ]]; then echo "0.2.0"; exit 0; fi\nexec "${KOLLA_TEST_PYTHON:?}" "$@"\n',
+			'#!/usr/bin/env bash\nif [[ "${1:-}" == "-c" && "${2:-}" == *drover-kolla* ]]; then echo "0.2.21"; exit 0; fi\nif [[ "${1:-}" == "-c" && "${2:-}" == *lumen-kolla* ]]; then echo "0.2.1"; exit 0; fi\nif [[ "${1:-}" == "-c" && "${2:-}" == *waygate-kolla* ]]; then echo "0.1.1"; exit 0; fi\nif [[ "${1:-}" == "-c" && "${2:-}" == *palimpsest-kolla* ]]; then echo "0.1.2"; exit 0; fi\nexec "${KOLLA_TEST_PYTHON:?}" "$@"\n',
 			{ mode: 0o755 }
 		)
 		fs.writeFileSync(
@@ -1080,15 +1097,23 @@ test("Drover and Lumen Kolla role packaging, operator specifications, and instal
 	const pyproject = readRepoFile("deploy/kolla/operator/pyproject.toml")
 	assert.match(
 		pyproject,
-		/drover-kolla @ https:\/\/github\.com\/openstack-afterglow\/drover\/releases\/download\/v0\.2\.19\/drover_kolla-0\.2\.19-py3-none-any\.whl#sha256=9d11fdc3a07240a3d613ba878102668b0f9b5cf35b5bd3f3ce6e033426a12392/
+		/drover-kolla = \{ git = "https:\/\/github\.com\/openstack-afterglow\/drover", rev = "v0\.2\.21", subdirectory = "deploy\/kolla" \}/
 	)
 	assert.match(
 		pyproject,
-		/lumen-kolla @ https:\/\/github\.com\/openstack-afterglow\/lumen\/releases\/download\/v0\.2\.0\/lumen_kolla-0\.2\.0-py3-none-any\.whl#sha256=d55e2b0ace06d232452f9dd2892a88912755e9d00e99de0e59d6738c5a3b2474/
+		/lumen-kolla = \{ git = "https:\/\/github\.com\/openstack-afterglow\/lumen", rev = "v0\.2\.1", subdirectory = "deploy\/kolla" \}/
 	)
 	assert.match(
 		pyproject,
-		/kolla-ansible @ git\+https:\/\/opendev\.org\/openstack\/kolla-ansible@34daacfbf2d5987f543787f57535b2bebe7dee19/
+		/waygate-kolla = \{ git = "https:\/\/github\.com\/openstack-afterglow\/waygate", rev = "v0\.1\.1", subdirectory = "deploy\/kolla" \}/
+	)
+	assert.match(
+		pyproject,
+		/palimpsest-kolla = \{ git = "https:\/\/github\.com\/openstack-afterglow\/palimpsest", rev = "v0\.1\.2", subdirectory = "deploy\/kolla" \}/
+	)
+	assert.match(
+		pyproject,
+		/kolla-ansible = \{ git = "https:\/\/opendev\.org\/openstack\/kolla-ansible", rev = "34daacfbf2d5987f543787f57535b2bebe7dee19" \}/
 	)
 	assert.match(pyproject, /requires-python = ">=3\.11"/)
 
@@ -1108,10 +1133,13 @@ test("Hermetic integration test for drover-kolla and lumen-kolla wheel installat
 	const kollaAnsiblePath = path.join(temporaryDirectory, "share", "kolla-ansible")
 	const rolesDir = path.join(kollaAnsiblePath, "ansible", "roles")
 	const droverRoleDir = path.join(rolesDir, "drover")
-	const droverDistInfoDir = path.join(rolesDir, "drover_kolla-0.2.19.dist-info")
+	const droverDistInfoDir = path.join(rolesDir, "drover_kolla-0.2.21.dist-info")
 	const lumenRoleDir = path.join(rolesDir, "lumen")
-	const lumenDistInfoDir = path.join(rolesDir, "lumen_kolla-0.2.0.dist-info")
-
+	const lumenDistInfoDir = path.join(rolesDir, "lumen_kolla-0.2.1.dist-info")
+	const waygateRoleDir = path.join(rolesDir, "waygate")
+	const waygateDistInfoDir = path.join(rolesDir, "waygate_kolla-0.1.1.dist-info")
+	const palimpsestRoleDir = path.join(rolesDir, "palimpsest")
+	const palimpsestDistInfoDir = path.join(rolesDir, "palimpsest_kolla-0.1.2.dist-info")
 	const pluginConfigRoot = path.join(kollaConfigPath, "config", "afterglow")
 	const pluginGlobals = path.join(pluginConfigRoot, "globals.yml")
 	const pluginSecrets = path.join(pluginConfigRoot, "secrets.yml")
@@ -1154,7 +1182,7 @@ test("Hermetic integration test for drover-kolla and lumen-kolla wheel installat
 		fs.writeFileSync(path.join(droverRoleDir, "tasks", "main.yml"), "---\n- name: Drover main task\n  ansible.builtin.debug:\n    msg: drover\n")
 		fs.writeFileSync(path.join(droverRoleDir, "tasks", "deploy.yml"), "---\n- name: Drover deploy task\n  ansible.builtin.debug:\n    msg: deploy\n")
 		fs.writeFileSync(path.join(droverRoleDir, "templates", "drover.conf.j2"), "[DEFAULT]\n")
-		fs.writeFileSync(path.join(droverDistInfoDir, "METADATA"), "Metadata-Version: 2.1\nName: drover-kolla\nVersion: 0.2.19\n")
+		fs.writeFileSync(path.join(droverDistInfoDir, "METADATA"), "Metadata-Version: 2.1\nName: drover-kolla\nVersion: 0.2.21\n")
 
 		fs.mkdirSync(path.join(lumenRoleDir, "defaults"), { recursive: true })
 		fs.mkdirSync(path.join(lumenRoleDir, "tasks"), { recursive: true })
@@ -1165,19 +1193,47 @@ test("Hermetic integration test for drover-kolla and lumen-kolla wheel installat
 		fs.writeFileSync(path.join(lumenRoleDir, "tasks", "main.yml"), "---\n- name: Lumen main task\n  ansible.builtin.debug:\n    msg: lumen\n")
 		fs.writeFileSync(path.join(lumenRoleDir, "tasks", "deploy.yml"), "---\n- name: Lumen deploy task\n  ansible.builtin.debug:\n    msg: deploy\n")
 		fs.writeFileSync(path.join(lumenRoleDir, "templates", "lumen.conf.j2"), "[DEFAULT]\n")
-		fs.writeFileSync(path.join(lumenDistInfoDir, "METADATA"), "Metadata-Version: 2.1\nName: lumen-kolla\nVersion: 0.2.0\n")
+		fs.writeFileSync(path.join(lumenDistInfoDir, "METADATA"), "Metadata-Version: 2.1\nName: lumen-kolla\nVersion: 0.2.1\n")
+
+		fs.mkdirSync(path.join(waygateRoleDir, "defaults"), { recursive: true })
+		fs.mkdirSync(path.join(waygateRoleDir, "tasks"), { recursive: true })
+		fs.mkdirSync(path.join(waygateRoleDir, "templates"), { recursive: true })
+		fs.mkdirSync(waygateDistInfoDir, { recursive: true })
+		fs.writeFileSync(path.join(waygateRoleDir, "defaults", "main.yml"), "waygate_services: {}\n")
+		fs.writeFileSync(path.join(waygateRoleDir, "tasks", "main.yml"), "---\n- name: Waygate main task\n  ansible.builtin.debug:\n    msg: waygate\n")
+		fs.writeFileSync(path.join(waygateRoleDir, "tasks", "deploy.yml"), "---\n- name: Waygate deploy task\n  ansible.builtin.debug:\n    msg: deploy\n")
+		fs.writeFileSync(path.join(waygateRoleDir, "templates", "waygate.conf.j2"), "[DEFAULT]\n")
+		fs.writeFileSync(path.join(waygateDistInfoDir, "METADATA"), "Metadata-Version: 2.1\nName: waygate-kolla\nVersion: 0.1.1\n")
+
+		fs.mkdirSync(path.join(palimpsestRoleDir, "defaults"), { recursive: true })
+		fs.mkdirSync(path.join(palimpsestRoleDir, "tasks"), { recursive: true })
+		fs.mkdirSync(path.join(palimpsestRoleDir, "templates"), { recursive: true })
+		fs.mkdirSync(palimpsestDistInfoDir, { recursive: true })
+		fs.writeFileSync(path.join(palimpsestRoleDir, "defaults", "main.yml"), "palimpsest_services: {}\n")
+		fs.writeFileSync(path.join(palimpsestRoleDir, "tasks", "main.yml"), "---\n- name: Palimpsest main task\n  ansible.builtin.debug:\n    msg: palimpsest\n")
+		fs.writeFileSync(path.join(palimpsestRoleDir, "tasks", "deploy.yml"), "---\n- name: Palimpsest deploy task\n  ansible.builtin.debug:\n    msg: deploy\n")
+		fs.writeFileSync(path.join(palimpsestRoleDir, "templates", "palimpsest.conf.j2"), "[DEFAULT]\n")
+		fs.writeFileSync(path.join(palimpsestDistInfoDir, "METADATA"), "Metadata-Version: 2.1\nName: palimpsest-kolla\nVersion: 0.1.2\n")
 
 		// Verify package roles are real package directories, not symlinks
 		assert.equal(fs.statSync(droverRoleDir).isDirectory(), true)
 		assert.equal(fs.lstatSync(droverRoleDir).isSymbolicLink(), false)
-		assert.match(fs.readFileSync(path.join(droverDistInfoDir, "METADATA"), "utf8"), /Version: 0\.2\.19/)
+		assert.match(fs.readFileSync(path.join(droverDistInfoDir, "METADATA"), "utf8"), /Version: 0\.2\.21/)
 
 		assert.equal(fs.statSync(lumenRoleDir).isDirectory(), true)
 		assert.equal(fs.lstatSync(lumenRoleDir).isSymbolicLink(), false)
-		assert.match(fs.readFileSync(path.join(lumenDistInfoDir, "METADATA"), "utf8"), /Version: 0\.2\.0/)
+		assert.match(fs.readFileSync(path.join(lumenDistInfoDir, "METADATA"), "utf8"), /Version: 0\.2\.1/)
+
+		assert.equal(fs.statSync(waygateRoleDir).isDirectory(), true)
+		assert.equal(fs.lstatSync(waygateRoleDir).isSymbolicLink(), false)
+		assert.match(fs.readFileSync(path.join(waygateDistInfoDir, "METADATA"), "utf8"), /Version: 0\.1\.1/)
+
+		assert.equal(fs.statSync(palimpsestRoleDir).isDirectory(), true)
+		assert.equal(fs.lstatSync(palimpsestRoleDir).isSymbolicLink(), false)
+		assert.match(fs.readFileSync(path.join(palimpsestDistInfoDir, "METADATA"), "utf8"), /Version: 0\.1\.2/)
 
 		// 2. Setup mock Afterglow source role links targets & Kolla environment
-		for (const role of ["afterglow", "waygate", "palimpsest"]) {
+		for (const role of ["afterglow"]) {
 			fs.mkdirSync(path.join(rootDir, "deploy", "kolla", "ansible", "roles", role), { recursive: true })
 		}
 		fs.mkdirSync(pluginConfigRoot, { recursive: true })
@@ -1187,7 +1243,7 @@ test("Hermetic integration test for drover-kolla and lumen-kolla wheel installat
 		fs.writeFileSync(fakeKollaBinary, "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 })
 		fs.writeFileSync(
 			fakeKollaPython,
-			'#!/usr/bin/env bash\nif [[ "${1:-}" == "-c" && "${2:-}" == *drover-kolla* ]]; then echo "0.2.19"; exit 0; fi\nif [[ "${1:-}" == "-c" && "${2:-}" == *lumen-kolla* ]]; then echo "0.2.0"; exit 0; fi\nexec "${KOLLA_TEST_PYTHON:?}" "$@"\n',
+			'#!/usr/bin/env bash\nif [[ "${1:-}" == "-c" && "${2:-}" == *drover-kolla* ]]; then echo "0.2.21"; exit 0; fi\nif [[ "${1:-}" == "-c" && "${2:-}" == *lumen-kolla* ]]; then echo "0.2.1"; exit 0; fi\nif [[ "${1:-}" == "-c" && "${2:-}" == *waygate-kolla* ]]; then echo "0.1.1"; exit 0; fi\nif [[ "${1:-}" == "-c" && "${2:-}" == *palimpsest-kolla* ]]; then echo "0.1.2"; exit 0; fi\nexec "${KOLLA_TEST_PYTHON:?}" "$@"\n',
 			{ mode: 0o755 }
 		)
 		fs.writeFileSync(path.join(kollaAnsiblePath, "ansible", "site.yml"), "---\n- import_playbook: gather-facts.yml\n")
@@ -1204,14 +1260,14 @@ test("Hermetic integration test for drover-kolla and lumen-kolla wheel installat
 		assert.equal(installResult.status, 0, installResult.stderr)
 
 		// Verify symlinks for repository roles were created
-		for (const role of ["afterglow", "waygate", "palimpsest"]) {
+		for (const role of ["afterglow"]) {
 			const roleLink = path.join(rolesDir, role)
 			assert.equal(fs.existsSync(roleLink), true)
 			assert.equal(fs.lstatSync(roleLink).isSymbolicLink(), true)
 		}
 
 		// Verify package-installed drover and lumen roles remain real directories (NO symlinks created over them)
-		for (const roleDir of [droverRoleDir, lumenRoleDir]) {
+		for (const roleDir of [droverRoleDir, lumenRoleDir, waygateRoleDir, palimpsestRoleDir]) {
 			assert.equal(fs.lstatSync(roleDir).isSymbolicLink(), false)
 			assert.equal(fs.statSync(roleDir).isDirectory(), true)
 			assert.equal(fs.existsSync(path.join(roleDir, "tasks", "main.yml")), true)
@@ -1225,13 +1281,13 @@ test("Hermetic integration test for drover-kolla and lumen-kolla wheel installat
 		assert.equal(uninstallResult.status, 0, uninstallResult.stderr)
 
 		// Verify repository role symlinks removed
-		for (const role of ["afterglow", "waygate", "palimpsest"]) {
+		for (const role of ["afterglow"]) {
 			const roleLink = path.join(rolesDir, role)
 			assert.throws(() => fs.lstatSync(roleLink), { code: "ENOENT" })
 		}
 
 		// Verify package-installed drover and lumen roles and operator files remain UNTOUCHED
-		for (const roleDir of [droverRoleDir, lumenRoleDir]) {
+		for (const roleDir of [droverRoleDir, lumenRoleDir, waygateRoleDir, palimpsestRoleDir]) {
 			assert.equal(fs.existsSync(roleDir), true)
 			assert.equal(fs.statSync(roleDir).isDirectory(), true)
 			assert.equal(fs.lstatSync(roleDir).isSymbolicLink(), false)

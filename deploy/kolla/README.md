@@ -75,11 +75,11 @@ KOLLA_ANSIBLE_DIR=/etc/kolla/.venv/share/kolla-ansible \
 ```
 
 ### Installer-managed artifacts
-- Source role links under `$KOLLA_DIR/ansible/roles/`: `afterglow`,
-  `waygate`, and `palimpsest`.
+- Source role link under `$KOLLA_DIR/ansible/roles/`: `afterglow`.
 - Verified package-installed roles under `$KOLLA_DIR/ansible/roles/`: `drover`
-  (installed via `drover-kolla` wheel) and `lumen` (installed via `lumen-kolla`
-  wheel; installer validates non-symlink role paths and required lifecycle files).
+  (via `drover-kolla`), `lumen` (via `lumen-kolla`), `waygate` (via `waygate-kolla`),
+  and `palimpsest` (via `palimpsest-kolla`). Installer validates non-symlink
+  role paths and required lifecycle files.
 - Aggregate playbook: `$KOLLA_DIR/ansible/afterglow-site.yml` ->
   `deploy/kolla/site.yml`.
 - One marker-delimited `afterglow-site.yml` import in
@@ -107,8 +107,10 @@ The `deploy/kolla/operator/` directory contains a canonical `uv` project
 (`pyproject.toml` and committed `uv.lock`) specifying exact dependency pins:
 
 - **`kolla-ansible`**: git commit `34daacfbf2d5987f543787f57535b2bebe7dee19` (21.2.0).
-- **`drover-kolla`**: PEP 508 URL wheel release `v0.2.19` (`drover_kolla-0.2.19-py3-none-any.whl`).
-- **`lumen-kolla`**: PEP 508 URL wheel release `v0.2.0` (`lumen_kolla-0.2.0-py3-none-any.whl`).
+- **`drover-kolla`**: Git source `v0.2.21` (`subdirectory = "deploy/kolla"`).
+- **`lumen-kolla`**: Git source `v0.2.1` (`subdirectory = "deploy/kolla"`).
+- **`waygate-kolla`**: Git source `v0.1.1` (`subdirectory = "deploy/kolla"`).
+- **`palimpsest-kolla`**: Git source `v0.1.2` (`subdirectory = "deploy/kolla"`).
 
 ### 1. Legacy Symlink Migration
 
@@ -148,7 +150,7 @@ Follow this installation sequence:
 2. **Configure Operator Variables**: Populate `/etc/kolla/config/afterglow/globals.yml` and `secrets.yml`.
 3. **Run Integration Installer**: Run `./deploy/kolla/install.sh`.
 
-The installer validates that `$ROLES_DIR/drover` and `$ROLES_DIR/lumen` are valid package-installed directories (and not symlinks), wires source role symlinks (`afterglow`, `waygate`, `palimpsest`), and appends the `afterglow-site.yml` import to stock `site.yml`.
+The installer validates that `$ROLES_DIR/{drover,lumen,waygate,palimpsest}` are valid package-installed directories (and not symlinks), wires the source role symlink (`afterglow`), and appends the `afterglow-site.yml` import to stock `site.yml`.
 
 ---
 
@@ -427,8 +429,8 @@ It does not contact or mutate a cloud.
 
 ### Uninstaller Ownership Rules
 
-- **Source Roles**: Removes installer-managed symlinks for `afterglow`, `waygate`, and `palimpsest`.
+- **Source Roles**: Removes installer-managed symlink for `afterglow`.
 - **Stock Playbook**: Removes the `afterglow-site.yml` import block from `site.yml`.
 - **Aggregate Playbook & Globals.d**: Removes aggregate playbook link and `globals.d` links.
-- **Package-owned Roles**: `uninstall.sh` **never** deletes package-installed `drover` or `lumen` role files under `$ROLES_DIR/{drover,lumen}`. Package role lifecycle is managed via `uv` / package tooling.
+- **Package-owned Roles**: `uninstall.sh` **never** deletes package-installed `drover`, `lumen`, `waygate`, or `palimpsest` role files under `$ROLES_DIR`. Package role lifecycle is managed via `uv` / package tooling.
 - **Operator State**: Leaves `/etc/kolla/multinode`, plugin configuration, databases, containers, images, and source checkouts untouched.

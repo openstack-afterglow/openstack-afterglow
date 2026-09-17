@@ -109,10 +109,8 @@ python3 "$REPO_DIR/deploy/kolla/patch_stock_site.py" remove "$STOCK_SITE" || \
 # Remove aggregate playbook link after its stock import is gone.
 remove_symlink_safe "$REPO_DIR/deploy/kolla/site.yml" "$KOLLA_DIR/ansible/afterglow-site.yml" "aggregate afterglow-site.yml playbook"
 
-# Remove the three source role links (Drover and Lumen roles are package-installed via drover-kolla/lumen-kolla wheels).
+# Remove the Afterglow source role link (Drover, Lumen, Waygate, and Palimpsest roles are package-installed via their kolla packages).
 remove_symlink_safe "$REPO_DIR/deploy/kolla/ansible/roles/afterglow" "$ROLES_DIR/afterglow" "afterglow role"
-remove_symlink_safe "$REPO_DIR/deploy/kolla/ansible/roles/waygate" "$ROLES_DIR/waygate" "waygate role"
-remove_symlink_safe "$REPO_DIR/deploy/kolla/ansible/roles/palimpsest" "$ROLES_DIR/palimpsest" "palimpsest role"
 
 remove_symlink_safe "$MULTINODE_INVENTORY" "$DEFAULT_INVENTORY" "Kolla default multinode inventory"
 remove_symlink_safe "$KOLLA_CONFIG_DIR/group_vars" "$KOLLA_CONFIG_DIR/ansible/inventory/group_vars" "Kolla default group_vars"
@@ -124,7 +122,7 @@ echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo " Afterglow integration wiring removed."
 echo " The installer-owned stock site.yml import, default inventory link, globals.d"
-echo " links, and source role links (afterglow, waygate, palimpsest) were"
-echo " removed. Package-installed roles (drover-kolla, lumen-kolla), stock globals/passwords,"
+echo " links, and Afterglow source role link were removed."
+echo " Package-installed roles (drover-kolla, lumen-kolla, waygate-kolla, palimpsest-kolla),"
 echo " multinode inventory, plugin configuration, databases, containers, images,"
 echo " and source checkouts remain UNTOUCHED."

@@ -5,14 +5,20 @@ description = "Afterglow Kolla-Ansible operator environment specification"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "kolla-ansible @ git+https://opendev.org/openstack/kolla-ansible@34daacfbf2d5987f543787f57535b2bebe7dee19",
-    "drover-kolla @ https://github.com/openstack-afterglow/drover/releases/download/v0.2.19/drover_kolla-0.2.19-py3-none-any.whl#sha256=9d11fdc3a07240a3d613ba878102668b0f9b5cf35b5bd3f3ce6e033426a12392",
-    "lumen-kolla @ https://github.com/openstack-afterglow/lumen/releases/download/v0.2.0/lumen_kolla-0.2.0-py3-none-any.whl#sha256=d55e2b0ace06d232452f9dd2892a88912755e9d00e99de0e59d6738c5a3b2474",
+    "kolla-ansible",
+    "drover-kolla",
+    "lumen-kolla",
+    "waygate-kolla",
+    "palimpsest-kolla",
 ]
+
+[tool.uv.sources]
+kolla-ansible = { git = "https://opendev.org/openstack/kolla-ansible", rev = "34daacfbf2d5987f543787f57535b2bebe7dee19" }
+drover-kolla = { git = "https://github.com/openstack-afterglow/drover", rev = "v0.2.21", subdirectory = "deploy/kolla" }
+lumen-kolla = { git = "https://github.com/openstack-afterglow/lumen", rev = "v0.2.1", subdirectory = "deploy/kolla" }
+waygate-kolla = { git = "https://github.com/openstack-afterglow/waygate", rev = "v0.1.1", subdirectory = "deploy/kolla" }
+palimpsest-kolla = { git = "https://github.com/openstack-afterglow/palimpsest", rev = "v0.1.2", subdirectory = "deploy/kolla" }
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-[tool.hatch.metadata]
-allow-direct-references = true
