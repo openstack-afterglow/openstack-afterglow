@@ -151,6 +151,16 @@ before synchronizing an existing cloud; package synchronization is a one-time
 setup/update operation, not part of every deploy.
 
 > **Security Note:** Keep the operator project free of live secrets or deployment globals. Operator configuration belongs exclusively in `/etc/kolla/config/afterglow/`.
+Alternatively, packages can be installed directly via `pip` or `uv pip` into `/etc/kolla/.venv`:
+
+```bash
+/etc/kolla/.venv/bin/pip install \
+  "git+https://opendev.org/openstack/kolla-ansible.git@34daacfbf2d5987f543787f57535b2bebe7dee19" \
+  "git+https://github.com/openstack-afterglow/drover.git@v0.2.21#subdirectory=deploy/kolla" \
+  "git+https://github.com/openstack-afterglow/lumen.git@v0.2.1#subdirectory=deploy/kolla" \
+  "git+https://github.com/openstack-afterglow/waygate.git@v0.1.2#subdirectory=deploy/kolla" \
+  "git+https://github.com/openstack-afterglow/palimpsest.git@v0.1.3#subdirectory=deploy/kolla"
+```
 
 ### 3. Installation & Registration Order
 

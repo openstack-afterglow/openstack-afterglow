@@ -277,9 +277,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "b6d9aa2dbbf08e734a121fcfefc178a30d856016ac34a6d6c53e0868cedd044d",
-  "reviewed_at": "2026-09-17T09:38:24Z",
-  "summary": "Refine legacy symlink migration instructions to verify exact Afterglow targets before removal"
+  "source_sha256": "8054fe747d6d2a4634d22dd5a6fb1b0fe4bd4c28e1c4547b69232e0f32ffc4c0",
+  "reviewed_at": "2026-09-17T10:12:15Z",
+  "summary": "Document CLI pip/uv add commands and explain strategy to eliminate subdirectory requirements"
 }
 ```
 <!-- architecture-review:end -->
