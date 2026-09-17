@@ -9,7 +9,34 @@ The operator environment manages the dependencies required for running `kolla-an
 - **Kolla-Ansible**: pinned to git commit `34daacfbf2d5987f543787f57535b2bebe7dee19` (21.2.0).
 - **Drover Kolla Role**: pinned to wheel release `drover_kolla-0.2.19-py3-none-any.whl` (v0.2.19).
 - **Lumen Kolla Role**: pinned to wheel release `lumen_kolla-0.2.0-py3-none-any.whl` (v0.2.0).
-## Installation
+## Installation Options
+
+### Option A: Git Source Dependencies via `[tool.uv.sources]`
+
+To install and build Kolla packages directly from the official Git repositories (e.g., specific Git revisions or tags):
+
+```toml
+[project]
+name = "afterglow-kolla-operator"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "kolla-ansible",
+    "drover-kolla",
+    "lumen-kolla",
+    "palimpsest-kolla",
+]
+
+[tool.uv.sources]
+kolla-ansible = { git = "https://opendev.org/openstack/kolla-ansible", rev = "34daacfbf2d5987f543787f57535b2bebe7dee19" }
+drover-kolla = { git = "https://github.com/openstack-afterglow/drover", rev = "v0.2.21", subdirectory = "deploy/kolla" }
+lumen-kolla = { git = "https://github.com/openstack-afterglow/lumen", rev = "v0.2.1", subdirectory = "deploy/kolla" }
+palimpsest-kolla = { git = "https://github.com/openstack-afterglow/palimpsest", rev = "v0.1.1", subdirectory = "deploy/kolla" }
+```
+
+> **Note on Monorepo Subdirectories:** Because `drover`, `lumen`, and `palimpsest` maintain their core service runtime packages at the repository root and package their Kolla roles under `deploy/kolla`, `subdirectory = "deploy/kolla"` is required by `uv` to target the role wheel build correctly.
+
+### Option B: Frozen Wheel Environment Installation
 
 From this directory, explicitly target the environment used by Kolla:
 
