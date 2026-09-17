@@ -133,9 +133,10 @@ If `subdirectory` is omitted from a Git dependency, package tools (`pip`, `uv`) 
 
 ### Approaches to Eliminate `subdirectory`
 
-1. **Python Package Registry / Wheel Publishing (Recommended):**
-   Publish the built `.whl` files (via GitHub Actions) directly to **GitHub Packages (GHCR)** or **PyPI**.
-   When wheels are published to an index:
+1. **Python Package Index (PEP 503 / PyPI) or GitHub Releases Wheels:**
+   Publish the built `.whl` files to **PyPI**, an internal PEP 503 package index (such as devpi or Cloudsmith), or attach `.whl` assets directly to GitHub Releases.
+   *(Note: GitHub Packages / GHCR hosts OCI/Docker container images and does not implement a PEP 503 Python package index for `pip`).*
+   When wheels are published to a PEP 503 index:
    ```toml
    dependencies = [
        "kolla-ansible==21.2.0",
@@ -145,14 +146,20 @@ If `subdirectory` is omitted from a Git dependency, package tools (`pip`, `uv`) 
        "palimpsest-kolla==0.1.3",
    ]
    ```
-   The `[tool.uv.sources]` table and all `subdirectory` specifications are completely eliminated. Installation is as simple as `uv add drover-kolla==0.2.21` or `pip install drover-kolla==0.2.21`.
+   The `[tool.uv.sources]` table and all `subdirectory` specifications are completely eliminated.
 
-2. **Single-line PEP 508 URL (Inline Alternative):**
+2. **Root Python Package + Subdirectory Docker Strategy:**
+   Structure each microservice repository so that the **root `pyproject.toml`** defines the primary Python package and bundles the Kolla Ansible roles via `shared-data` / `data_files`, while container assets (`Dockerfile`, compose files) reside under a `docker/` subdirectory:
+   - Microservice runtime dependencies are declared under `[project.optional-dependencies] service = [...]` so installing the root package in the Kolla operator venv (`pip install git+...`) installs only the lightweight role files without pulling in heavy server dependencies (FastAPI, PyTorch, database drivers).
+   - Container builds invoke `docker build -f docker/Dockerfile .` and run `pip install .[service]`.
+   - Result: Root Git URLs (`git+https://...`) install directly without any `subdirectory` parameter.
+
+3. **Single-line PEP 508 URL (Inline Alternative):**
    Instead of separating `[tool.uv.sources]`, the subdirectory can be passed inline in the PEP 508 URL string:
    ```bash
    uv add "drover-kolla @ git+https://github.com/openstack-afterglow/drover.git@v0.2.21#subdirectory=deploy/kolla"
    ```
    This maintains standard PEP 508 compatibility without manual table editing.
 
-3. **Dedicated Repositories for Kolla Roles:**
+4. **Dedicated Repositories for Kolla Roles:**
    Splitting roles into dedicated repositories (`openstack-afterglow/drover-kolla`) places `pyproject.toml` at the root, removing the need for a subdirectory, at the expense of managing additional repositories.

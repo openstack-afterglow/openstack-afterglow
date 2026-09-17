@@ -277,9 +277,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "8054fe747d6d2a4634d22dd5a6fb1b0fe4bd4c28e1c4547b69232e0f32ffc4c0",
-  "reviewed_at": "2026-09-17T10:12:15Z",
-  "summary": "Document CLI pip/uv add commands and explain strategy to eliminate subdirectory requirements"
+  "source_sha256": "b165cd0afdec38ac1b5339af0506b05540b930ee6f4b6f854e556cd6781290ac",
+  "reviewed_at": "2026-09-17T10:28:33Z",
+  "summary": "Correct PEP 503 registry details and document root package + subdirectory docker design pattern"
 }
 ```
 <!-- architecture-review:end -->
