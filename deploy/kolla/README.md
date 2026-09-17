@@ -114,14 +114,22 @@ The `deploy/kolla/operator/` directory contains a canonical `uv` project
 
 ### 1. Legacy Symlink Migration
 
-If upgrading an environment that previously used Afterglow's source role symlinks for Drover, Lumen, Waygate, or Palimpsest:
+If upgrading an environment that previously used Afterglow's source role symlinks for Drover, Lumen, Waygate, or Palimpsest, verify and remove only symlinks targeting the legacy Afterglow checkout before syncing packages:
 
 ```bash
-# Remove legacy Afterglow source role symlinks if present
-rm -f /etc/kolla/.venv/share/kolla-ansible/ansible/roles/drover
-rm -f /etc/kolla/.venv/share/kolla-ansible/ansible/roles/lumen
-rm -f /etc/kolla/.venv/share/kolla-ansible/ansible/roles/waygate
-rm -f /etc/kolla/.venv/share/kolla-ansible/ansible/roles/palimpsest
+# Verify and remove only legacy Afterglow source role symlinks if present
+for role in drover lumen waygate palimpsest; do
+  role_target="/etc/kolla/.venv/share/kolla-ansible/ansible/roles/$role"
+  if [[ -L "$role_target" ]]; then
+    link_dest=$(readlink "$role_target" || true)
+    if [[ "$link_dest" == *"/deploy/kolla/ansible/roles/$role" ]]; then
+      rm -- "$role_target"
+      echo "Removed legacy $role symlink ($link_dest)"
+    else
+      echo "WARNING: Unexpected symlink at $role_target -> $link_dest (not an Afterglow source role; skipping)"
+    fi
+  fi
+done
 ```
 
 `install.sh` fail-closes with explicit migration instructions if a legacy symlink remains.

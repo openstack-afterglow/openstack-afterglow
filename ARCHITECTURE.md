@@ -277,9 +277,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "ec4f0d1bafe053d94636dcc03bedd95a2340502ae5366a9da01be1c669110ef0",
-  "reviewed_at": "2026-09-17T09:35:44Z",
-  "summary": "Cut over Kolla operator to [tool.uv.sources] git packages for all sibling services and archive OpenSpec change"
+  "source_sha256": "b6d9aa2dbbf08e734a121fcfefc178a30d856016ac34a6d6c53e0868cedd044d",
+  "reviewed_at": "2026-09-17T09:38:24Z",
+  "summary": "Refine legacy symlink migration instructions to verify exact Afterglow targets before removal"
 }
 ```
 <!-- architecture-review:end -->
