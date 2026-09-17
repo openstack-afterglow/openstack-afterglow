@@ -109,17 +109,19 @@ The `deploy/kolla/operator/` directory contains a canonical `uv` project
 - **`kolla-ansible`**: git commit `34daacfbf2d5987f543787f57535b2bebe7dee19` (21.2.0).
 - **`drover-kolla`**: Git source `v0.2.21` (`subdirectory = "deploy/kolla"`).
 - **`lumen-kolla`**: Git source `v0.2.1` (`subdirectory = "deploy/kolla"`).
-- **`waygate-kolla`**: Git source `v0.1.1` (`subdirectory = "deploy/kolla"`).
+- **`waygate-kolla`**: Git source `v0.1.2` (`subdirectory = "deploy/kolla"`).
 - **`palimpsest-kolla`**: Git source `v0.1.2` (`subdirectory = "deploy/kolla"`).
 
 ### 1. Legacy Symlink Migration
 
-If upgrading an environment that previously used Afterglow's central Drover or Lumen role sources:
+If upgrading an environment that previously used Afterglow's source role symlinks for Drover, Lumen, Waygate, or Palimpsest:
 
 ```bash
-# Remove legacy Afterglow Drover and Lumen symlinks if present
+# Remove legacy Afterglow source role symlinks if present
 rm -f /etc/kolla/.venv/share/kolla-ansible/ansible/roles/drover
 rm -f /etc/kolla/.venv/share/kolla-ansible/ansible/roles/lumen
+rm -f /etc/kolla/.venv/share/kolla-ansible/ansible/roles/waygate
+rm -f /etc/kolla/.venv/share/kolla-ansible/ansible/roles/palimpsest
 ```
 
 `install.sh` fail-closes with explicit migration instructions if a legacy symlink remains.

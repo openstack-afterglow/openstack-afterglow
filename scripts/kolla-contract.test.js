@@ -384,7 +384,7 @@ test("Kolla installer loads plugin variables from the standard config root", () 
 		fs.writeFileSync(fakeKollaBinary, "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 })
 		fs.writeFileSync(
 			fakeKollaPython,
-			'#!/usr/bin/env bash\nif [[ "${1:-}" == "-c" && "${2:-}" == *drover-kolla* ]]; then echo "0.2.21"; exit 0; fi\nif [[ "${1:-}" == "-c" && "${2:-}" == *lumen-kolla* ]]; then echo "0.2.1"; exit 0; fi\nif [[ "${1:-}" == "-c" && "${2:-}" == *waygate-kolla* ]]; then echo "0.1.1"; exit 0; fi\nif [[ "${1:-}" == "-c" && "${2:-}" == *palimpsest-kolla* ]]; then echo "0.1.2"; exit 0; fi\nexec "${KOLLA_TEST_PYTHON:?}" "$@"\n',
+			'#!/usr/bin/env bash\nif [[ "${1:-}" == "-c" && "${2:-}" == *drover-kolla* ]]; then echo "0.2.21"; exit 0; fi\nif [[ "${1:-}" == "-c" && "${2:-}" == *lumen-kolla* ]]; then echo "0.2.1"; exit 0; fi\nif [[ "${1:-}" == "-c" && "${2:-}" == *waygate-kolla* ]]; then echo "0.1.2"; exit 0; fi\nif [[ "${1:-}" == "-c" && "${2:-}" == *palimpsest-kolla* ]]; then echo "0.1.2"; exit 0; fi\nexec "${KOLLA_TEST_PYTHON:?}" "$@"\n',
 			{ mode: 0o755 }
 		)
 		fs.writeFileSync(
@@ -1105,7 +1105,7 @@ test("Drover and Lumen Kolla role packaging, operator specifications, and instal
 	)
 	assert.match(
 		pyproject,
-		/waygate-kolla = \{ git = "https:\/\/github\.com\/openstack-afterglow\/waygate", rev = "v0\.1\.1", subdirectory = "deploy\/kolla" \}/
+		/waygate-kolla = \{ git = "https:\/\/github\.com\/openstack-afterglow\/waygate", rev = "v0\.1\.2", subdirectory = "deploy\/kolla" \}/
 	)
 	assert.match(
 		pyproject,
@@ -1137,7 +1137,7 @@ test("Hermetic integration test for drover-kolla and lumen-kolla wheel installat
 	const lumenRoleDir = path.join(rolesDir, "lumen")
 	const lumenDistInfoDir = path.join(rolesDir, "lumen_kolla-0.2.1.dist-info")
 	const waygateRoleDir = path.join(rolesDir, "waygate")
-	const waygateDistInfoDir = path.join(rolesDir, "waygate_kolla-0.1.1.dist-info")
+	const waygateDistInfoDir = path.join(rolesDir, "waygate_kolla-0.1.2.dist-info")
 	const palimpsestRoleDir = path.join(rolesDir, "palimpsest")
 	const palimpsestDistInfoDir = path.join(rolesDir, "palimpsest_kolla-0.1.2.dist-info")
 	const pluginConfigRoot = path.join(kollaConfigPath, "config", "afterglow")
@@ -1203,7 +1203,7 @@ test("Hermetic integration test for drover-kolla and lumen-kolla wheel installat
 		fs.writeFileSync(path.join(waygateRoleDir, "tasks", "main.yml"), "---\n- name: Waygate main task\n  ansible.builtin.debug:\n    msg: waygate\n")
 		fs.writeFileSync(path.join(waygateRoleDir, "tasks", "deploy.yml"), "---\n- name: Waygate deploy task\n  ansible.builtin.debug:\n    msg: deploy\n")
 		fs.writeFileSync(path.join(waygateRoleDir, "templates", "waygate.conf.j2"), "[DEFAULT]\n")
-		fs.writeFileSync(path.join(waygateDistInfoDir, "METADATA"), "Metadata-Version: 2.1\nName: waygate-kolla\nVersion: 0.1.1\n")
+		fs.writeFileSync(path.join(waygateDistInfoDir, "METADATA"), "Metadata-Version: 2.1\nName: waygate-kolla\nVersion: 0.1.2\n")
 
 		fs.mkdirSync(path.join(palimpsestRoleDir, "defaults"), { recursive: true })
 		fs.mkdirSync(path.join(palimpsestRoleDir, "tasks"), { recursive: true })
@@ -1226,8 +1226,7 @@ test("Hermetic integration test for drover-kolla and lumen-kolla wheel installat
 
 		assert.equal(fs.statSync(waygateRoleDir).isDirectory(), true)
 		assert.equal(fs.lstatSync(waygateRoleDir).isSymbolicLink(), false)
-		assert.match(fs.readFileSync(path.join(waygateDistInfoDir, "METADATA"), "utf8"), /Version: 0\.1\.1/)
-
+		assert.match(fs.readFileSync(path.join(waygateDistInfoDir, "METADATA"), "utf8"), /Version: 0\.1\.2/)
 		assert.equal(fs.statSync(palimpsestRoleDir).isDirectory(), true)
 		assert.equal(fs.lstatSync(palimpsestRoleDir).isSymbolicLink(), false)
 		assert.match(fs.readFileSync(path.join(palimpsestDistInfoDir, "METADATA"), "utf8"), /Version: 0\.1\.2/)
@@ -1243,7 +1242,7 @@ test("Hermetic integration test for drover-kolla and lumen-kolla wheel installat
 		fs.writeFileSync(fakeKollaBinary, "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 })
 		fs.writeFileSync(
 			fakeKollaPython,
-			'#!/usr/bin/env bash\nif [[ "${1:-}" == "-c" && "${2:-}" == *drover-kolla* ]]; then echo "0.2.21"; exit 0; fi\nif [[ "${1:-}" == "-c" && "${2:-}" == *lumen-kolla* ]]; then echo "0.2.1"; exit 0; fi\nif [[ "${1:-}" == "-c" && "${2:-}" == *waygate-kolla* ]]; then echo "0.1.1"; exit 0; fi\nif [[ "${1:-}" == "-c" && "${2:-}" == *palimpsest-kolla* ]]; then echo "0.1.2"; exit 0; fi\nexec "${KOLLA_TEST_PYTHON:?}" "$@"\n',
+			'#!/usr/bin/env bash\nif [[ "${1:-}" == "-c" && "${2:-}" == *drover-kolla* ]]; then echo "0.2.21"; exit 0; fi\nif [[ "${1:-}" == "-c" && "${2:-}" == *lumen-kolla* ]]; then echo "0.2.1"; exit 0; fi\nif [[ "${1:-}" == "-c" && "${2:-}" == *waygate-kolla* ]]; then echo "0.1.2"; exit 0; fi\nif [[ "${1:-}" == "-c" && "${2:-}" == *palimpsest-kolla* ]]; then echo "0.1.2"; exit 0; fi\nexec "${KOLLA_TEST_PYTHON:?}" "$@"\n',
 			{ mode: 0o755 }
 		)
 		fs.writeFileSync(path.join(kollaAnsiblePath, "ansible", "site.yml"), "---\n- import_playbook: gather-facts.yml\n")

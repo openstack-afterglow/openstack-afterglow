@@ -20,7 +20,7 @@ requires-dist = [
     { name = "kolla-ansible", git = "https://opendev.org/openstack/kolla-ansible?rev=34daacfbf2d5987f543787f57535b2bebe7dee19" },
     { name = "lumen-kolla", git = "https://github.com/openstack-afterglow/lumen?subdirectory=deploy%2Fkolla&rev=v0.2.1" },
     { name = "palimpsest-kolla", git = "https://github.com/openstack-afterglow/palimpsest?subdirectory=deploy%2Fkolla&rev=v0.1.2" },
-    { name = "waygate-kolla", git = "https://github.com/openstack-afterglow/waygate?subdirectory=deploy%2Fkolla&rev=v0.1.1" },
+    { name = "waygate-kolla", git = "https://github.com/openstack-afterglow/waygate?subdirectory=deploy%2Fkolla&rev=v0.1.2" },
 ]
 
 [[package]]
@@ -952,8 +952,8 @@ wheels = [
 
 [[package]]
 name = "waygate-kolla"
-version = "0.1.1"
-source = { git = "https://github.com/openstack-afterglow/waygate?subdirectory=deploy%2Fkolla&rev=v0.1.1#d95f56a7e9f79e802ef90dc415f0a60cdc176d4f" }
+version = "0.1.2"
+source = { git = "https://github.com/openstack-afterglow/waygate?subdirectory=deploy%2Fkolla&rev=v0.1.2#0257ac17bb2baafc684aa065ee879fd50c324ef1" }
 dependencies = [
     { name = "kolla-ansible" },
 ]

@@ -16,7 +16,7 @@ dependencies = [
 kolla-ansible = { git = "https://opendev.org/openstack/kolla-ansible", rev = "34daacfbf2d5987f543787f57535b2bebe7dee19" }
 drover-kolla = { git = "https://github.com/openstack-afterglow/drover", rev = "v0.2.21", subdirectory = "deploy/kolla" }
 lumen-kolla = { git = "https://github.com/openstack-afterglow/lumen", rev = "v0.2.1", subdirectory = "deploy/kolla" }
-waygate-kolla = { git = "https://github.com/openstack-afterglow/waygate", rev = "v0.1.1", subdirectory = "deploy/kolla" }
+waygate-kolla = { git = "https://github.com/openstack-afterglow/waygate", rev = "v0.1.2", subdirectory = "deploy/kolla" }
 palimpsest-kolla = { git = "https://github.com/openstack-afterglow/palimpsest", rev = "v0.1.2", subdirectory = "deploy/kolla" }
 
 [build-system]

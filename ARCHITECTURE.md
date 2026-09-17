@@ -202,7 +202,7 @@ At ≥768px, the settings route allocates the return action and settings body wi
 
 ### 빌드·배포
 
-`Dockerfile`은 backend/worker에 Python 3.12 slim, frontend build에 Bun 1, runtime에 Node 20을 사용한다. 현재 [`docker-build.yml`](.github/workflows/docker-build.yml)은 `linux/amd64` matrix만 활성화하며 arm64 항목은 주석 처리되어 있다. GitHub Actions가 이미지를 GHCR로 push하고, 배포 구성은 Kubernetes/Kustomize·Helm/ArgoCD 또는 [`deploy/kolla/site.yml`](deploy/kolla/site.yml)의 custom service role 경계를 사용한다. Kolla는 `afterglow`, `waygate`, `drover`, `lumen`, `palimpsest` inventory group을 별도로 검사한다. `deploy/kolla/install.sh`가 stock site import와 inventory/globals.d 연결을 준비하면 `/etc/kolla`에서 `kolla-ansible deploy -i multinode`가 custom 서비스를 함께 실행한다. 서비스·HAProxy 플레이는 `become: true`로 toolbox와 중첩/위임 task의 권한을 선언하며, operator 계정의 기존 sudo 권한을 전제로 한다. Lumen 역할은 검증된 `lumen-kolla==0.2.0` wheel이 소유한다. operator 의존성 설치는 실제 Kolla 가상환경을 명시하고 `--inexact --no-install-project`를 사용한다. 이 개편의 live 검증 결과는 해당 OpenSpec outcome에 기록하며, 표준 명령의 fixture 검증과 전체 OpenStack 재배포를 구분한다.
+`Dockerfile`은 backend/worker에 Python 3.12 slim, frontend build에 Bun 1, runtime에 Node 20을 사용한다. 현재 [`docker-build.yml`](.github/workflows/docker-build.yml)은 `linux/amd64` matrix만 활성화하며 arm64 항목은 주석 처리되어 있다. GitHub Actions가 이미지를 GHCR로 push하고, 배포 구성은 Kubernetes/Kustomize·Helm/ArgoCD 또는 [`deploy/kolla/site.yml`](deploy/kolla/site.yml)의 custom service role 경계를 사용한다. Kolla는 `afterglow`, `waygate`, `drover`, `lumen`, `palimpsest` inventory group을 별도로 검사한다. `deploy/kolla/install.sh`가 stock site import와 inventory/globals.d 연결을 준비하면 `/etc/kolla`에서 `kolla-ansible deploy -i multinode`가 custom 서비스를 함께 실행한다. 서비스·HAProxy 플레이는 `become: true`로 toolbox와 중첩/위임 task의 권한을 선언하며, operator 계정의 기존 sudo 권한을 전제로 한다. 형제 마이크로서비스 역할은 각 서비스 레포의 deploy/kolla 패키지(`drover-kolla`, `lumen-kolla`, `waygate-kolla`, `palimpsest-kolla`)가 `[tool.uv.sources]` Git 의존성으로 소유하며, Afterglow 역할만 in-tree 소스 심볼릭 링크로 관리한다. operator 의존성 설치는 `/etc/kolla/.venv` 환경에서 `uv sync --frozen --inexact --no-install-project`를 사용한다.
 
 ### 선행 조건과 관측
 
@@ -277,9 +277,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "1863f5e9d6aa483d79212122de7e1af7d65eabacd672e75ac3cfd80c6351eb26",
-  "reviewed_at": "2026-09-17T09:21:14Z",
-  "summary": "Cut over Kolla operator to [tool.uv.sources] git packages for drover-kolla, lumen-kolla, waygate-kolla, and palimpsest-kolla"
+  "source_sha256": "967abf1a7d52169d4bb47aa062bc1bb157b73aa347e2303fffd88eb9e1b5aa0d",
+  "reviewed_at": "2026-09-17T09:29:18Z",
+  "summary": "Cut over Kolla operator to [tool.uv.sources] git packages for drover-kolla, lumen-kolla, waygate-kolla, and palimpsest-kolla, and updated deploy docs and installer contracts"
 }
 ```
 <!-- architecture-review:end -->

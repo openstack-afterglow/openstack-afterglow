@@ -200,7 +200,7 @@ log "Lumen role verified at $LUMEN_ROLE_DIR (lumen-kolla==$installed_lumen_kolla
 
 WAYGATE_ROLE_DIR="$ROLES_DIR/waygate"
 WAYGATE_LEGACY_ROLE_TARGET="$REPO_DIR/deploy/kolla/ansible/roles/waygate"
-WAYGATE_KOLLA_VERSION="0.1.1"
+WAYGATE_KOLLA_VERSION="0.1.2"
 if [[ -L "$WAYGATE_ROLE_DIR" ]]; then
   current_waygate_target=$(readlink "$WAYGATE_ROLE_DIR" || true)
   if [[ "$current_waygate_target" == "$WAYGATE_LEGACY_ROLE_TARGET" ]]; then
