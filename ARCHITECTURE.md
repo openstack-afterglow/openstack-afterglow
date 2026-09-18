@@ -279,9 +279,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "c8482eb826f65f331593eff5e9d7c62827fcde6d38b37e51efe6be358eaeff80",
-  "reviewed_at": "2026-09-18T23:07:24Z",
-  "summary": "Relax requires-python to >=3.11 in sibling root packages (drover/lumen/waygate/palimpsest) and afterglow-crypto for Kolla control-node (Python 3.11) compatibility; sync operator pins to the matching dev fix commits"
+  "source_sha256": "cc00bca0901bbafb0fa013d8162efdc0890e5ca259ac21e94534581b0002e015",
+  "reviewed_at": "2026-09-18T23:25:28Z",
+  "summary": "Relax requires-python to >=3.11 in sibling root packages and afterglow-crypto for Kolla control-node compatibility; sync operator pins to the final dev fix commits"
 }
 ```
 <!-- architecture-review:end -->

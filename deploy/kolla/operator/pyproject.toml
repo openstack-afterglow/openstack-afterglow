@@ -14,9 +14,9 @@ dependencies = [
 
 [tool.uv.sources]
 kolla-ansible = { git = "https://opendev.org/openstack/kolla-ansible.git", rev = "34daacfbf2d5987f543787f57535b2bebe7dee19" }
-drover = { git = "https://github.com/openstack-afterglow/drover.git", rev = "4b080a3929f6ee1eb9e8d1d4812fe257a8fc1d69" }
-lumen = { git = "https://github.com/openstack-afterglow/lumen.git", rev = "d0542d4e8aebd3624d45075c5ef3622b05b2a119" }
-waygate = { git = "https://github.com/openstack-afterglow/waygate.git", rev = "441404b89debdfc30c70ca90c54f844758409c86" }
+drover = { git = "https://github.com/openstack-afterglow/drover.git", rev = "0a6dcb87191b27534030b786068a7abf7d685e3e" }
+lumen = { git = "https://github.com/openstack-afterglow/lumen.git", rev = "fa6a09f7a6326ee7461a01e5d1af49bfeef7825a" }
+waygate = { git = "https://github.com/openstack-afterglow/waygate.git", rev = "6607dd7f6a10ac788e0184b289f48dc087b705d0" }
 palimpsest-local = { git = "https://github.com/openstack-afterglow/palimpsest.git", rev = "1f94a5c9abe4955dbf732bcfa329d63c913e523e" }
 
 [build-system]

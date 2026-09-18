@@ -16,11 +16,11 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "drover", git = "https://github.com/openstack-afterglow/drover.git?rev=4b080a3929f6ee1eb9e8d1d4812fe257a8fc1d69" },
+    { name = "drover", git = "https://github.com/openstack-afterglow/drover.git?rev=0a6dcb87191b27534030b786068a7abf7d685e3e" },
     { name = "kolla-ansible", git = "https://opendev.org/openstack/kolla-ansible.git?rev=34daacfbf2d5987f543787f57535b2bebe7dee19" },
-    { name = "lumen", git = "https://github.com/openstack-afterglow/lumen.git?rev=d0542d4e8aebd3624d45075c5ef3622b05b2a119" },
+    { name = "lumen", git = "https://github.com/openstack-afterglow/lumen.git?rev=fa6a09f7a6326ee7461a01e5d1af49bfeef7825a" },
     { name = "palimpsest-local", git = "https://github.com/openstack-afterglow/palimpsest.git?rev=1f94a5c9abe4955dbf732bcfa329d63c913e523e" },
-    { name = "waygate", git = "https://github.com/openstack-afterglow/waygate.git?rev=441404b89debdfc30c70ca90c54f844758409c86" },
+    { name = "waygate", git = "https://github.com/openstack-afterglow/waygate.git?rev=6607dd7f6a10ac788e0184b289f48dc087b705d0" },
 ]
 
 [[package]]
@@ -446,7 +446,7 @@ wheels = [
 [[package]]
 name = "drover"
 version = "0.2.22"
-source = { git = "https://github.com/openstack-afterglow/drover.git?rev=4b080a3929f6ee1eb9e8d1d4812fe257a8fc1d69#4b080a3929f6ee1eb9e8d1d4812fe257a8fc1d69" }
+source = { git = "https://github.com/openstack-afterglow/drover.git?rev=0a6dcb87191b27534030b786068a7abf7d685e3e#0a6dcb87191b27534030b786068a7abf7d685e3e" }
 
 [[package]]
 name = "hvac"
@@ -519,7 +519,7 @@ dependencies = [
 [[package]]
 name = "lumen"
 version = "0.2.2"
-source = { git = "https://github.com/openstack-afterglow/lumen.git?rev=d0542d4e8aebd3624d45075c5ef3622b05b2a119#d0542d4e8aebd3624d45075c5ef3622b05b2a119" }
+source = { git = "https://github.com/openstack-afterglow/lumen.git?rev=fa6a09f7a6326ee7461a01e5d1af49bfeef7825a#fa6a09f7a6326ee7461a01e5d1af49bfeef7825a" }
 
 [[package]]
 name = "markdown-it-py"
@@ -944,7 +944,7 @@ wheels = [
 [[package]]
 name = "waygate"
 version = "0.1.3"
-source = { git = "https://github.com/openstack-afterglow/waygate.git?rev=441404b89debdfc30c70ca90c54f844758409c86#441404b89debdfc30c70ca90c54f844758409c86" }
+source = { git = "https://github.com/openstack-afterglow/waygate.git?rev=6607dd7f6a10ac788e0184b289f48dc087b705d0#6607dd7f6a10ac788e0184b289f48dc087b705d0" }
 
 [[package]]
 name = "wcwidth"
