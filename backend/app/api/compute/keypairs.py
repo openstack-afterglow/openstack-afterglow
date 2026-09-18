@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.api.common.activity_recorder import rec
-from app.api.deps import CacheMode, cache_mode, get_os_conn, get_token_info
+from app.api.deps import CacheMode, cache_mode, get_os_conn, get_os_conn_write, get_token_info, require_project_write
 from app.rate_limit import limiter
 from app.services import nova
 from app.services.cache import cached_call, invalidation, keys, patch_list, ttl_slow
@@ -45,8 +45,8 @@ async def list_keypairs(
 async def create_keypair(
     request: Request,
     req: CreateKeypairRequest,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
-    token_info: dict = Depends(get_token_info),
+    conn: openstack.connection.Connection = Depends(get_os_conn_write),
+    token_info: dict = Depends(require_project_write),
 ):
     pid = conn._afterglow_project_id
     uid = token_info.get("user_id") or getattr(conn, "_afterglow_user_id", "")
@@ -78,8 +78,8 @@ async def create_keypair(
 async def delete_keypair(
     request: Request,
     keypair_name: str,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
-    token_info: dict = Depends(get_token_info),
+    conn: openstack.connection.Connection = Depends(get_os_conn_write),
+    token_info: dict = Depends(require_project_write),
 ):
     pid = conn._afterglow_project_id
     uid = token_info.get("user_id") or getattr(conn, "_afterglow_user_id", "")

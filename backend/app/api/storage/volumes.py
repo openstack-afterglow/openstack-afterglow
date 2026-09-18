@@ -12,7 +12,15 @@ from pydantic import BaseModel, Field
 
 from app.api.common.activity_recorder import rec
 from app.api.common.owner_check import assert_resource_owner
-from app.api.deps import CacheMode, cache_mode, get_os_conn, get_token_info, require_admin
+from app.api.deps import (
+    CacheMode,
+    cache_mode,
+    get_os_conn,
+    get_os_conn_write,
+    get_token_info,
+    require_admin,
+    require_project_write,
+)
 from app.models.storage import CreateVolumeRequest, ExtendVolumeRequest, VolumeInfo
 from app.rate_limit import limiter
 from app.services import cinder, nova
@@ -69,8 +77,8 @@ async def get_volume(
 async def create_volume(
     request: Request,
     req: CreateVolumeRequest,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
-    token_info: dict = Depends(get_token_info),
+    conn: openstack.connection.Connection = Depends(get_os_conn_write),
+    token_info: dict = Depends(require_project_write),
 ):
     pid = conn._afterglow_project_id
     try:
@@ -105,8 +113,8 @@ async def extend_volume(
     request: Request,
     volume_id: str,
     req: ExtendVolumeRequest,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
-    token_info: dict = Depends(get_token_info),
+    conn: openstack.connection.Connection = Depends(get_os_conn_write),
+    token_info: dict = Depends(require_project_write),
 ):
     """볼륨 용량 확장. available 및 in-use 볼륨 모두 지원 (Ceph online extend)."""
     await _assert_volume_owner(conn, volume_id, token_info)
@@ -153,8 +161,8 @@ async def extend_volume(
 @router.delete("/{volume_id}", status_code=204)
 async def delete_volume(
     volume_id: str,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
-    token_info: dict = Depends(get_token_info),
+    conn: openstack.connection.Connection = Depends(get_os_conn_write),
+    token_info: dict = Depends(require_project_write),
 ):
     pid = conn._afterglow_project_id
     await _assert_volume_owner(conn, volume_id, token_info)

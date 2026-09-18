@@ -54,6 +54,8 @@ manager 정보는 앱 DB(`project_roles` 테이블)에 저장됩니다.
 | 메서드 | 경로 | 인증 | 설명 |
 |--------|------|------|------|
 | `POST` | `/api/v1/projects` | 필요 | 프로젝트 생성 (생성자가 manager) |
+| `GET` | `/api/v1/projects/current/permissions` | 필요 | 현재 프로젝트에 대한 역할 및 실효 권한 조회 |
+| `GET` | `/api/v1/projects/{project_id}/permissions` | 필요 | 지정 프로젝트에 대한 역할 및 실효 권한 조회 |
 | `GET` | `/api/v1/projects/{project_id}/members` | manager | 프로젝트 멤버 목록 |
 | `POST` | `/api/v1/projects/{project_id}/invitations` | manager | 이메일 초대 생성 |
 | `GET` | `/api/v1/projects/{project_id}/invitations` | manager | 초대 목록 조회 |
@@ -68,6 +70,33 @@ manager 정보는 앱 DB(`project_roles` 테이블)에 저장됩니다.
 | `GET` | `/api/v1/invitations/{token}` | 없음 | 초대 링크 정보 조회 |
 | `POST` | `/api/v1/invitations/{token}/accept` | 필요 | 초대 수락 (이메일 일치 검증) |
 | `POST` | `/api/v1/invitations/{token}/decline` | 없음 | 초대 거절 |
+
+---
+
+## GET /api/v1/projects/current/permissions
+
+현재 활성 프로젝트 컨텍스트에 대한 호출자의 역할 및 실효 권한(`can_write`, `is_reader`, `is_manager` 등)을 조회합니다.
+
+### 응답 (200 OK)
+
+```json
+{
+  "project_id": "p-123",
+  "user_id": "u-456",
+  "roles": ["reader"],
+  "is_system_admin": false,
+  "is_manager": false,
+  "is_reader": true,
+  "can_read": true,
+  "can_write": false
+}
+```
+
+---
+
+## GET /api/v1/projects/{project_id}/permissions
+
+특정 프로젝트에 대한 호출자의 역할 및 실효 권한을 조회합니다. 호출자가 해당 프로젝트의 멤버가 아니거나 관리자가 아닌 경우 403 Forbidden을 반환합니다. `project_id`로 `current`를 전달하면 현재 활성 프로젝트의 권한을 반환합니다.
 
 ---
 

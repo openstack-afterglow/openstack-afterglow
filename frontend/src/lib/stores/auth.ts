@@ -207,6 +207,19 @@ export function getMockupProfile(): MockupProfileId | null {
 
 export const isLoggedIn = derived(auth, ($auth) => $auth.token !== null);
 export const isAdmin = derived(auth, ($auth) => $auth.isSystemAdmin === true);
+export const isReader = derived(
+	auth,
+	($auth) =>
+		!$auth.isSystemAdmin &&
+		$auth.roles.some((r) => r.toLowerCase() === 'reader') &&
+		!$auth.roles.some((r) => ['admin', 'member'].includes(r.toLowerCase()))
+);
+export const canWrite = derived(
+	auth,
+	($auth) =>
+		$auth.isSystemAdmin === true ||
+		$auth.roles.some((r) => ['admin', 'member'].includes(r.toLowerCase()))
+);
 
 export function setAuth(data: Partial<AuthState> & { token: string }) {
 	auth.update((state) => ({

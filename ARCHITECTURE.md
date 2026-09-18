@@ -221,6 +221,7 @@ Kolla 배포의 Afterglow cache/session client는 `valkey` inventory 전체의 S
 | VM callback/health agent | callback token 또는 baked health bearer의 제한된 resource | callback token은 Redis TTL 및 server/cluster binding 검사를 거치며 legacy path는 이미 배포된 cloud-init 호환에 한정한다. |
 | 형제 서비스 | 각각의 service endpoint·DB·worker·secret domain | Afterglow는 관리자 입력을 인증된 BFF로 Lumen에 전달할 뿐 provider billing key를 저장·복호화하지 않으며 Drover/Lumen/Waygate/Palimpsest DB, private key를 공유하거나 import하지 않는다. |
 | OpenStack 서비스 | Keystone project/RBAC와 resource owner | Nova/Neutron/Cinder/Manila/Octavia의 외부 API에 대한 2차 owner check와 입력 검증을 유지한다. |
+| 프로젝트 역할 RBAC | `admin`, `member`, `reader` 및 Afterglow DB `manager` | BFF 입구에서 `require_project_write`로 `reader`의 모든 mutation(인스턴스, 볼륨, 키페어 등)을 403으로 fail-closed 차단한다. 호출자의 역할 및 실효 권한은 `GET /api/v1/projects/current/permissions`로 조회할 수 있으며 프론트엔드는 `$isReader` 및 `$canWrite` store로 감지한다. |
 
 cloud-init 및 shell template 출력은 `shlex_quote`/검증된 입력을 사용하고, production boot는 insecure flag/default secret을 거부한다. 브라우저 localStorage 토큰과 CSP의 현재 한계, background task 종료, callback IP binding이 logging 중심인 점은 [`docs/security.md`](docs/security.md)의 알려진 제한을 따른다. 실제 credential·token·private key는 이 문서에 기록하지 않는다.
 
@@ -278,9 +279,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "ea92aedead804a351de4a0a8df5dffe96feb6c38c1265b694a84e2563de11c88",
-  "reviewed_at": "2026-09-18T11:21:24Z",
-  "summary": "Isolate Nova keypair cache by user_id instead of project_id, preventing cross-user SSH key leakage within shared projects"
+  "source_sha256": "1b65bc359ea5479657e0d8a9449947f0bed28c32d2cd53154920cf69d5b23a5c",
+  "reviewed_at": "2026-09-18T16:47:47Z",
+  "summary": "Enforce project-level RBAC role differentiation for reader and member mutations and add permissions introspection"
 }
 ```
 <!-- architecture-review:end -->

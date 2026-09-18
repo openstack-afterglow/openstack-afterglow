@@ -28,7 +28,15 @@ from pydantic import BaseModel, field_validator
 
 from app.api.common.activity_recorder import rec
 from app.api.common.owner_check import assert_instance_owner
-from app.api.deps import CacheMode, cache_mode, get_os_conn, get_token_info, require_admin
+from app.api.deps import (
+    CacheMode,
+    cache_mode,
+    get_os_conn,
+    get_os_conn_write,
+    get_token_info,
+    require_admin,
+    require_project_write,
+)
 from app.config import get_settings
 from app.models.compute import (
     AdminPasswordPrecheck,
@@ -188,7 +196,7 @@ async def list_cloud_init_library(token_info: dict = Depends(get_token_info)):
 @router.post("/cloud-init/presets", status_code=201)
 async def save_cloud_init_preset(
     req: CreateCloudInitPresetRequest,
-    token_info: dict = Depends(get_token_info),
+    token_info: dict = Depends(require_project_write),
 ):
     try:
         preset = await vm_cloud_init_library.create_preset(
@@ -206,7 +214,7 @@ async def save_cloud_init_preset(
 @router.delete("/cloud-init/library/{snippet_id}", status_code=204)
 async def delete_cloud_init_snippet(
     snippet_id: int,
-    token_info: dict = Depends(get_token_info),
+    token_info: dict = Depends(require_project_write),
 ):
     try:
         await vm_cloud_init_library.delete_snippet(user_id=token_info["user_id"], snippet_id=snippet_id)
@@ -246,8 +254,8 @@ async def get_instance(
 async def create_instance(
     request: Request,
     req: CreateInstanceRequest,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
-    token_info: dict = Depends(get_token_info),
+    conn: openstack.connection.Connection = Depends(get_os_conn_write),
+    token_info: dict = Depends(require_project_write),
 ):
     """동기식 인스턴스 생성 (기존 방식)."""
     settings = get_settings()
@@ -546,8 +554,8 @@ async def create_instance(
 @router.post("/async")
 async def create_instance_async(
     req: CreateInstanceRequest,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
-    token_info: dict = Depends(get_token_info),
+    conn: openstack.connection.Connection = Depends(get_os_conn_write),
+    token_info: dict = Depends(require_project_write),
 ):
     """SSE로 진행 상황을 스트리밍하는 비동기 인스턴스 생성."""
     settings = get_settings()
@@ -905,8 +913,8 @@ async def create_instance_async(
 async def bulk_instance_action(
     request: Request,
     body: BulkActionRequest,
-    conn=Depends(get_os_conn),
-    token_info: dict = Depends(get_token_info),
+    conn: openstack.connection.Connection = Depends(get_os_conn_write),
+    token_info: dict = Depends(require_project_write),
 ):
     """인스턴스 일괄 액션(start/stop/delete/reboot).
 
@@ -960,8 +968,8 @@ async def bulk_instance_action(
 async def delete_instance(
     request: Request,
     instance_id: str,
-    conn: openstack.connection.Connection = Depends(get_os_conn),
-    token_info: dict = Depends(get_token_info),
+    conn: openstack.connection.Connection = Depends(get_os_conn_write),
+    token_info: dict = Depends(require_project_write),
 ):
     pid = conn._afterglow_project_id
     try:
@@ -1542,6 +1550,7 @@ async def _simple_action(
     nova_fn: Callable,
     action_name: str,
 ) -> None:
+    require_project_write(token_info)
     pid = conn._afterglow_project_id
     try:
         server = await asyncio.to_thread(nova.get_server, conn, instance_id)
