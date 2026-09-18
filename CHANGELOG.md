@@ -7,6 +7,35 @@
 
 ## [Unreleased]
 
+## [1.23.0] - 2026-09-18
+
+### Changed
+
+- **Kolla 형제 서비스 root 패키지 전환 완료** — Drover 0.2.22·Lumen 0.2.2·Waygate 0.1.3·Palimpsest(local) 0.1.4 root distribution이 Kolla role을 shared-data로 제공한다. Afterglow in-tree role은 `afterglow` 하나뿐이며, operator는 형제 dev 커밋 SHA(drover 3d21f785, lumen 3ab1f2ff, waygate 9933deb9, palimpsest c82bc0f)와 이를 재생성한 `operator/uv.lock`으로 고정한다.
+- **계약 테스트 소유권 정리** — 외부화된 역할에 대한 Afterglow 측 소스 역할 참조와 validator 회귀 테스트를 형제 저장소 소유로 이관하고, Afterglow 계약 스위트는 자체 역할·aggregate dispatch·installer 소유권 경계(root distribution metadata lookup, 설치/재설치/제거 후 파일 보존)를 검증한다.
+- **Kolla 테스트 환경 고정** — `deploy/kolla/README.md`가 legacy tag가 아닌 commit SHA pin을 동기화 계약으로 명시한다.
+
+### Fixed
+
+- Waygate 아키텍처 가드가 시스템 Python 3.9에서 stamp에 실패하던 `datetime.UTC` 참조를 수정하고, Lumen/Palimpsest의 ruff 0.16 포맷 드리프트를 정규화했다.
+
+### Fixed
+
+- Kolla 계약 테스트에서 외부화된 Waygate·Palimpsest 소스 역할 참조를 제거하고, root distribution 메타데이터로 설치·재설치·제거 후 형제 역할과 운영자 파일의 보존을 검증한다. 테스트에 형제 checkout이나 임시 worktree 경로가 필요하지 않다.
+
+## [1.22.0] - 2026-09-17
+
+### Added
+
+- **Kolla 독립 서비스 명시적 릴리즈 버전 태그 지원** — Waygate, Palimpsest 등 독립 배포 서비스의 Kolla 이미지 사전 검증기(`validate_image_ref.py`)에서 `@sha256:...` 다이제스트뿐만 아니라 `:v0.1.0`, `:v0.2.20` 등 `latest`를 제외한 명시적 릴리즈 버전 태그 입력을 공식 허용하고, bare reference 및 가변 `:latest` 태그는 차단 유지.
+- **독립 형제 서비스 공식 릴리즈 연동** — Waygate `v0.1.0`, Drover `v0.2.20`, Lumen `v0.2.1`, Palimpsest Hub `v0.1.0`의 공식 릴리즈 버전을 확정하고 Kolla 기본 이미지 참조에 반영.
+
+### Changed
+
+- **디자인 시스템 및 HIG 검토 반영** — Apple HIG 상호작용 규칙, 반투명 플로팅 레이어 소재, 액션 컬러 복원, 라이트/다크 테마 명도/채도 보정.
+- **볼륨 백업 기본 활성화** — VM 및 볼륨 생성 시 백업 기본 활성화 정책 적용.
+- **상세 아키텍처 및 대화형 API 플로우 다이어그램 추가** — 인터랙티브 아키텍처 및 API 흐름도 문서화.
+
 ## [1.21.0] - 2026-09-16
 
 ### Added

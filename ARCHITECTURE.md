@@ -4,7 +4,7 @@
 
 Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 배포된 Drover·Lumen·Waygate·Palimpsest 서비스로 가는 인증된 BFF(gateway)이다. 브라우저 UI는 SvelteKit이 제공하지만 OpenStack 자원 생성과 권한 검사는 FastAPI 백엔드가 소유한다. 저장소 URL은 <https://github.com/openstack-afterglow/openstack-afterglow>이다.
 
-이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend 모두 `1.20.0`이며, backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`·Vite `8.2.0`을 manifest에 고정한다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
+이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend 모두 `1.22.0`이며, backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`·Vite `8.2.0`을 manifest에 고정한다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
 
 1분 요약:
 
@@ -174,6 +174,7 @@ At ≥768px, the settings route allocates the return action and settings body wi
 | Keystone 세션·refresh-JTI·단기 token 검증 | Keystone 및 Redis session state | Redis TTL cache (`afterglow:*`) | Redis cache miss는 Keystone 재검증이며 access JWT와 Keystone token을 동일시하지 않는다. |
 | Afterglow users/projects/metadata와 layer build records | Afterglow MariaDB via SQLAlchemy models/migrations | Redis invalidation/prefetch | DB ownership과 project scope가 source of truth다. |
 | OpenStack VM/network/volume/share와 RBD volume artifacts | Nova, Neutron, Cinder, Manila, Ceph RBD 등 각 서비스 | Afterglow Redis response cache; opt-in Ceph CLI read/repair adapter | cache가 실제 cloud resource state를 만들거나 확정하지 않는다. Volume 삭제 복구의 backend write는 검증된 `rbd_id.volume-<uuid>` mapping 복원/정리로 제한하며 Cinder와 Ceph가 계속 source of truth다. |
+| Nova SSH keypairs | Nova Compute (`user_id` scope) | Afterglow Redis user-scoped cache (`afterglow:user:{user_id}:keypairs`) | Keypair는 OpenStack Compute에서 프로젝트가 아닌 개별 사용자(`user_id`) 소유 리소스다. 캐시와 mutation은 반드시 `user_id`로 격리하며 동일 프로젝트 내 사용자 간에도 캐시를 공유하지 않는다. |
 | Drover cluster/job/operation/inventory와 project manager credential | Drover MariaDB | Drover Redis token/cache/lock 보조 | Drover API/worker가 lifecycle을 소유한다. Service account는 자신에게 role이 있는 service/admin project scope에서만 Keystone identity를 관리하고, tenant 자원은 암호화 저장된 `afterglow-cluster-mgr-<project>` 자격의 project-scoped connection으로 처리한다. 장기 worker 경로는 사용 후 keystoneauth HTTP pool과 openstacksdk connection을 모두 닫는다. |
 | Lumen run/event/checkpointer/provider state와 billing administrator key | Lumen MariaDB와 필요한 PostgreSQL 경계 | Lumen Redis wakeup/cache | Billing key는 Lumen의 별도 암호화 domain 소유이며 Afterglow read response에는 설정 여부만 나타난다. HTTP/SSE connection이 durable run 수명을 소유하지 않는다. |
 | Waygate gateway/client/agent state | Waygate MariaDB, VM 내부 WireGuard key | Waygate Redis status/token cache | server private key는 VM 내부이며 Afterglow에 저장하지 않는다. |
@@ -202,7 +203,7 @@ At ≥768px, the settings route allocates the return action and settings body wi
 
 ### 빌드·배포
 
-`Dockerfile`은 backend/worker에 Python 3.12 slim, frontend build에 Bun 1, runtime에 Node 20을 사용한다. 현재 [`docker-build.yml`](.github/workflows/docker-build.yml)은 `linux/amd64` matrix만 활성화하며 arm64 항목은 주석 처리되어 있다. GitHub Actions가 이미지를 GHCR로 push하고, 배포 구성은 Kubernetes/Kustomize·Helm/ArgoCD 또는 [`deploy/kolla/site.yml`](deploy/kolla/site.yml)의 custom service role 경계를 사용한다. Kolla는 `afterglow`, `waygate`, `drover`, `lumen`, `palimpsest` inventory group을 별도로 검사한다. `deploy/kolla/install.sh`가 stock site import와 inventory/globals.d 연결을 준비하면 `/etc/kolla`에서 `kolla-ansible deploy -i multinode`가 custom 서비스를 함께 실행한다. 서비스·HAProxy 플레이는 `become: true`로 toolbox와 중첩/위임 task의 권한을 선언하며, operator 계정의 기존 sudo 권한을 전제로 한다. Lumen 역할은 검증된 `lumen-kolla==0.2.0` wheel이 소유한다. operator 의존성 설치는 실제 Kolla 가상환경을 명시하고 `--inexact --no-install-project`를 사용한다. 이 개편의 live 검증 결과는 해당 OpenSpec outcome에 기록하며, 표준 명령의 fixture 검증과 전체 OpenStack 재배포를 구분한다.
+`Dockerfile`은 backend/worker에 Python 3.12 slim, frontend build에 Bun 1, runtime에 Node 20을 사용한다. 현재 [`docker-build.yml`](.github/workflows/docker-build.yml)은 `linux/amd64` matrix만 활성화하며 arm64 항목은 주석 처리되어 있다. GitHub Actions가 이미지를 GHCR로 push하고, 배포 구성은 Kubernetes/Kustomize·Helm/ArgoCD 또는 [`deploy/kolla/site.yml`](deploy/kolla/site.yml)의 custom service role 경계를 사용한다. Kolla는 `afterglow`, `waygate`, `drover`, `lumen`, `palimpsest` inventory group을 별도로 검사한다. `deploy/kolla/install.sh`가 stock site import와 inventory/globals.d 연결을 준비하면 `/etc/kolla`에서 `kolla-ansible deploy -i multinode`가 custom 서비스를 함께 실행한다. 서비스·HAProxy 플레이는 `become: true`로 toolbox와 중첩/위임 task의 권한을 선언하며, operator 계정의 기존 sudo 권한을 전제로 한다. 형제 역할은 각 서비스 root distribution(`drover`, `lumen`, `waygate`, `palimpsest-local`)이 소유하고 Afterglow 역할만 in-tree 소스 심볼릭 링크로 관리한다. Afterglow 계약 테스트는 형제 checkout 없이 자체 역할·aggregate dispatch와 실제 Python metadata lookup 기반 설치/재설치/제거의 파일 보존을 검증한다. operator manifest와 lock은 형제 dev 브랜치의 검증된 immutable commit SHA(drover 3d21f785, lumen 3ab1f2ff, waygate 9933deb9, palimpsest c82bc0f)로 고정됐고, disposable venv에서 실제 설치·역할 shared-data 배치·installer/uninstaller 파일 보존까지 검증됐다.
 
 ### 선행 조건과 관측
 
@@ -220,6 +221,7 @@ Kolla 배포의 Afterglow cache/session client는 `valkey` inventory 전체의 S
 | VM callback/health agent | callback token 또는 baked health bearer의 제한된 resource | callback token은 Redis TTL 및 server/cluster binding 검사를 거치며 legacy path는 이미 배포된 cloud-init 호환에 한정한다. |
 | 형제 서비스 | 각각의 service endpoint·DB·worker·secret domain | Afterglow는 관리자 입력을 인증된 BFF로 Lumen에 전달할 뿐 provider billing key를 저장·복호화하지 않으며 Drover/Lumen/Waygate/Palimpsest DB, private key를 공유하거나 import하지 않는다. |
 | OpenStack 서비스 | Keystone project/RBAC와 resource owner | Nova/Neutron/Cinder/Manila/Octavia의 외부 API에 대한 2차 owner check와 입력 검증을 유지한다. |
+| 프로젝트 역할 RBAC | `admin`, `member`, `reader` 및 Afterglow DB `manager` | BFF 입구에서 `require_project_write`로 `reader`의 모든 mutation(인스턴스, 볼륨, 키페어 등)을 403으로 fail-closed 차단한다. 호출자의 역할 및 실효 권한은 `GET /api/v1/projects/current/permissions`로 조회할 수 있으며 프론트엔드는 `$isReader` 및 `$canWrite` store로 감지한다. |
 
 cloud-init 및 shell template 출력은 `shlex_quote`/검증된 입력을 사용하고, production boot는 insecure flag/default secret을 거부한다. 브라우저 localStorage 토큰과 CSP의 현재 한계, background task 종료, callback IP binding이 logging 중심인 점은 [`docs/security.md`](docs/security.md)의 알려진 제한을 따른다. 실제 credential·token·private key는 이 문서에 기록하지 않는다.
 
@@ -277,9 +279,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "1acfaa428f697b00897d5938c33a6cd37ca14a64cfe582deb962d88c4002f161",
-  "reviewed_at": "2026-09-16T14:55:34Z",
-  "summary": "Release 1.21.0 metadata synchronization after reviewing the current dev source; no new structural behavior beyond the documented topology ownership and canvas connection flows."
+  "source_sha256": "1b65bc359ea5479657e0d8a9449947f0bed28c32d2cd53154920cf69d5b23a5c",
+  "reviewed_at": "2026-09-18T16:47:47Z",
+  "summary": "Enforce project-level RBAC role differentiation for reader and member mutations and add permissions introspection"
 }
 ```
 <!-- architecture-review:end -->

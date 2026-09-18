@@ -139,7 +139,7 @@ services:
   waygate-migrate:
     build:
       context: ../waygate
-      dockerfile: Dockerfile
+      dockerfile: docker/Dockerfile
       target: waygate-api
     image: afterglow-local-services/waygate-api:current
     <<: *afterglow-local-config-reader
@@ -160,7 +160,7 @@ services:
   waygate-api:
     build:
       context: ../waygate
-      dockerfile: Dockerfile
+      dockerfile: docker/Dockerfile
       target: waygate-api
     image: afterglow-local-services/waygate-api:current
     <<: *afterglow-local-config-reader
@@ -186,7 +186,7 @@ services:
   waygate-worker:
     build:
       context: ../waygate
-      dockerfile: Dockerfile
+      dockerfile: docker/Dockerfile
       target: waygate-worker
     image: afterglow-local-services/waygate-worker:current
     <<: *afterglow-local-config-reader
@@ -204,7 +204,7 @@ services:
   drover-migrate:
     build:
       context: ../drover
-      dockerfile: Dockerfile
+      dockerfile: docker/Dockerfile
       target: drover-api
     image: afterglow-local-services/drover-api:current
     <<: *afterglow-local-config-reader
@@ -225,7 +225,7 @@ services:
   drover-api:
     build:
       context: ../drover
-      dockerfile: Dockerfile
+      dockerfile: docker/Dockerfile
       target: drover-api
     image: afterglow-local-services/drover-api:current
     <<: *afterglow-local-config-reader
@@ -253,7 +253,7 @@ services:
   drover-worker:
     build:
       context: ../drover
-      dockerfile: Dockerfile
+      dockerfile: docker/Dockerfile
       target: drover-worker
     image: afterglow-local-services/drover-worker:current
     <<: *afterglow-local-config-reader
@@ -273,7 +273,7 @@ services:
   lumen-migrate:
     build:
       context: ../lumen
-      dockerfile: Dockerfile
+      dockerfile: docker/Dockerfile
       target: lumen-api
     image: afterglow-local-services/lumen-api:current
     environment: *lumen-environment
@@ -293,7 +293,7 @@ services:
   lumen-api:
     build:
       context: ../lumen
-      dockerfile: Dockerfile
+      dockerfile: docker/Dockerfile
       target: lumen-api
     image: afterglow-local-services/lumen-api:current
     ports:
@@ -316,7 +316,7 @@ services:
   lumen-worker:
     build:
       context: ../lumen
-      dockerfile: Dockerfile
+      dockerfile: docker/Dockerfile
       target: lumen-worker
     image: afterglow-local-services/lumen-worker:current
     environment: *lumen-environment
@@ -330,8 +330,8 @@ services:
 
   palimpsest-bootstrap:
     build:
-      context: ../palimpsest/hub
-      dockerfile: Dockerfile
+      context: ../palimpsest
+      dockerfile: docker/hub/Dockerfile
       target: palimpsest-hub-api
     image: afterglow-local-services/palimpsest-hub-api:current
     command: palimpsest-hub-bootstrap
@@ -350,8 +350,8 @@ services:
 
   palimpsest-api:
     build:
-      context: ../palimpsest/hub
-      dockerfile: Dockerfile
+      context: ../palimpsest
+      dockerfile: docker/hub/Dockerfile
       target: palimpsest-hub-api
     image: afterglow-local-services/palimpsest-hub-api:current
     ports:
@@ -377,8 +377,8 @@ services:
 
   palimpsest-worker:
     build:
-      context: ../palimpsest/hub
-      dockerfile: Dockerfile
+      context: ../palimpsest
+      dockerfile: docker/hub/Dockerfile
       target: palimpsest-hub-worker
     image: afterglow-local-services/palimpsest-hub-worker:current
     environment: *palimpsest-environment

@@ -352,6 +352,65 @@ async def require_project_manager(
     return token_info
 
 
+def require_project_write(token_info: dict = Depends(get_token_info)) -> dict:
+    """프로젝트 내 리소스 생성/수정/삭제(mutation) 권한 검증.
+
+    - system_admin: 허용
+    - role에 'admin' 또는 'member'가 포함된 경우: 허용
+    - role에 'reader'만 있거나 쓰기 권한이 없는 경우: 403 Forbidden
+    """
+    if token_info.get("is_system_admin", False):
+        return token_info
+
+    roles = {r.lower() for r in token_info.get("roles", []) if isinstance(r, str)}
+    if roles & {"admin", "member"}:
+        return token_info
+
+    raise HTTPException(
+        status_code=403,
+        detail="읽기 전용(reader) 권한으로는 리소스를 생성, 수정 또는 삭제할 수 없습니다.",
+    )
+
+
+async def get_caller_project_permissions(
+    project_id: str | None = None,
+    token_info: dict = Depends(get_token_info),
+) -> dict:
+    """호출자의 특정 프로젝트(또는 현재 컨텍스트)에 대한 실효 권한과 역할을 반환."""
+    effective_project_id = project_id or token_info.get("project_id") or ""
+    raw_roles = token_info.get("roles", [])
+    roles = [r.lower() for r in raw_roles if isinstance(r, str)]
+    is_sys_admin = bool(token_info.get("is_system_admin", False))
+    role_set = set(roles)
+
+    can_write = is_sys_admin or bool(role_set & {"admin", "member"})
+    is_reader = not can_write and ("reader" in role_set or len(role_set) == 0)
+
+    is_mgr = is_sys_admin
+    if not is_mgr and effective_project_id:
+        from app.database import get_session_factory
+        from app.services.project_service import is_project_manager
+
+        factory = get_session_factory()
+        if factory is not None:
+            try:
+                async with factory() as session:
+                    is_mgr = await is_project_manager(effective_project_id, token_info["user_id"], session)
+            except Exception:
+                _logger.warning("Failed to check project manager status for permissions", exc_info=True)
+
+    return {
+        "project_id": effective_project_id,
+        "user_id": token_info.get("user_id", ""),
+        "roles": roles,
+        "is_system_admin": is_sys_admin,
+        "is_manager": is_mgr,
+        "is_reader": is_reader,
+        "can_read": True,
+        "can_write": can_write,
+    }
+
+
 async def get_os_conn(
     token_info: dict = Depends(get_token_info),
 ) -> AsyncGenerator[openstack.connection.Connection, None]:
@@ -381,6 +440,17 @@ async def get_os_conn(
         yield conn
     finally:
         await asyncio.to_thread(conn.close)
+
+
+async def get_os_conn_write(
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+    _write_guard: dict = Depends(require_project_write),
+) -> openstack.connection.Connection:
+    """쓰기(mutation) 전용 openstack Connection 의존성.
+
+    require_project_write를 실행하여 reader 역할의 변경 시도를 403으로 차단한 뒤 conn 반환.
+    """
+    return conn
 
 
 async def cache_bypass(refresh: bool = Query(False)) -> bool:

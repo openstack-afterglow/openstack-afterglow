@@ -1,0 +1,225 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Drover K3s 클러스터 생성: BFF · callback · worker",
+    "output": "afterglow-drover-cluster-provisioning.html",
+    "viewBox": [
+      1040,
+      600
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "request-and-admission",
+        "label": "요청과 인증",
+        "focus": [
+          "browser",
+          "afterglow",
+          "drover"
+        ],
+        "note": "Afterglow는 caller JWT를 검증하고 Drover의 /v1 tenant API로만 전달한다."
+      },
+      {
+        "id": "control-plane-create",
+        "label": "control plane 생성",
+        "focus": [
+          "drover",
+          "keystone",
+          "openstack",
+          "server"
+        ],
+        "note": "Drover worker가 project manager credential을 통해 OpenStack 리소스와 server VM을 만든다."
+      },
+      {
+        "id": "callback-to-active",
+        "label": "callback 이후 ACTIVE",
+        "focus": [
+          "server",
+          "drover",
+          "agent"
+        ],
+        "note": "초기 요청 성공은 ACTIVE가 아니다. VM callback 뒤 agent provisioning이 끝나야 ACTIVE가 된다."
+      }
+    ]
+  },
+  "participants": [
+    {
+      "id": "browser",
+      "type": "frontend",
+      "label": "Drover dashboard",
+      "sublabel": "SvelteKit UI"
+    },
+    {
+      "id": "afterglow",
+      "type": "backend",
+      "label": "Afterglow BFF",
+      "sublabel": "/api/v1/k3s"
+    },
+    {
+      "id": "drover",
+      "type": "backend",
+      "label": "Drover",
+      "sublabel": "external control plane"
+    },
+    {
+      "id": "keystone",
+      "type": "security",
+      "label": "Keystone",
+      "sublabel": "catalog · manager"
+    },
+    {
+      "id": "openstack",
+      "type": "cloud",
+      "label": "OpenStack",
+      "sublabel": "Nova · Cinder · Neutron"
+    },
+    {
+      "id": "server",
+      "type": "external",
+      "label": "K3s server VM",
+      "sublabel": "cloud-init / Ignition"
+    },
+    {
+      "id": "agent",
+      "type": "external",
+      "label": "K3s agent VM",
+      "sublabel": "join worker"
+    }
+  ],
+  "segments": [
+    {
+      "from": 140,
+      "to": 230,
+      "label": "1 · 사용자 요청과 BFF 인증"
+    },
+    {
+      "from": 238,
+      "to": 350,
+      "label": "2 · Drover control-plane provisioning"
+    },
+    {
+      "from": 358,
+      "to": 505,
+      "label": "3 · VM callback 뒤 agent provisioning"
+    }
+  ],
+  "messages": [
+    {
+      "from": "browser",
+      "to": "afterglow",
+      "y": 165,
+      "label": "POST /api/v1/k3s/clusters · Bearer JWT · X-Project-Id?",
+      "variant": "emphasis"
+    },
+    {
+      "from": "afterglow",
+      "to": "drover",
+      "y": 195,
+      "label": "proxy → /v1/clusters · X-Auth-Token · project scope",
+      "variant": "security"
+    },
+    {
+      "from": "drover",
+      "to": "afterglow",
+      "y": 225,
+      "label": "202 / cluster descriptor · initial status",
+      "variant": "return"
+    },
+    {
+      "from": "drover",
+      "to": "keystone",
+      "y": 255,
+      "label": "bootstrap/reuse project manager identity",
+      "variant": "security"
+    },
+    {
+      "from": "drover",
+      "to": "openstack",
+      "y": 285,
+      "label": "create security group · boot volume · server VM",
+      "variant": "emphasis"
+    },
+    {
+      "from": "openstack",
+      "to": "server",
+      "y": 315,
+      "label": "boot with callback token + k3s userdata",
+      "variant": "default"
+    },
+    {
+      "from": "server",
+      "to": "afterglow",
+      "y": 345,
+      "label": "POST /api/k3s/callback · legacy dual-mount",
+      "variant": "security"
+    },
+    {
+      "from": "afterglow",
+      "to": "drover",
+      "y": 375,
+      "label": "pass through → /v1/callback · machine bearer",
+      "variant": "security"
+    },
+    {
+      "from": "drover",
+      "to": "openstack",
+      "y": 405,
+      "label": "callback success → provision agent VM(s)",
+      "variant": "emphasis"
+    },
+    {
+      "from": "openstack",
+      "to": "agent",
+      "y": 435,
+      "label": "boot · wait healthz · join K3S_URL with node token",
+      "variant": "default"
+    },
+    {
+      "from": "drover",
+      "to": "afterglow",
+      "y": 465,
+      "label": "persist ACTIVE or ERROR; later GET /clusters reflects state",
+      "variant": "return"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "afterglow",
+      "from": 174,
+      "to": 470,
+      "type": "backend"
+    },
+    {
+      "participant": "drover",
+      "from": 212,
+      "to": 470,
+      "type": "backend"
+    },
+    {
+      "participant": "keystone",
+      "from": 308,
+      "to": 326,
+      "type": "security"
+    },
+    {
+      "participant": "openstack",
+      "from": 346,
+      "to": 470,
+      "type": "cloud"
+    },
+    {
+      "participant": "server",
+      "from": 384,
+      "to": 470,
+      "type": "external"
+    },
+    {
+      "participant": "agent",
+      "from": 429,
+      "to": 450,
+      "type": "external"
+    }
+  ]
+}

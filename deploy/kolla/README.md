@@ -47,10 +47,10 @@ not grant sudo or change global Ansible settings.
    - A tag-selected plugin run reconciles the matching Kolla HAProxy fragments.
      Kolla recreates HAProxy only if their resulting configuration hash changes.
    - The plugin does not create external-VIP routes, DNS records, or TLS certificates. Existing Drover and Waygate public catalog URLs remain operator-owned ingress contracts.
-4. **Pinned GHCR Images**:
-   - DMSLab pulls published `ghcr.io/openstack-afterglow/*` images by exact linux/amd64 manifest digest. Production DMSLab stays digest-pinned. Do not use mutable `latest` or `dev` tags in production.
-   - Mutable tags are force-refreshed by `deploy`, `reconfigure`, `pull`, and `upgrade` lifecycle actions. Digest pins remain immutable and must be repinned to the published release's linux/amd64 digests when upgrading release versions.
-   - Source-build mode remains an optional development path; it is not used for the DMSLab deployment.
+4. **Published GHCR Images**:
+   - Services pull published `ghcr.io/openstack-afterglow/*` images using explicit release version tags (e.g. `:0.1.0`, `:0.2.20`, `:0.2.1`, `:v1.22.0`) or exact linux/amd64 manifest digests (`@sha256:...`).
+   - Mutable tags such as `latest` or bare unpinned references are prohibited by role precheck validators to prevent multi-controller divergence.
+   - Source-build mode remains an optional development path; it is not used for production deployment.
 5. **Datastores & Credential Reuse**:
    - **MariaDB**: Creates plugin-owned `_kolla` schemas (`afterglow_kolla`, `drover_kolla`, `lumen_kolla`, `waygate_kolla`, `palimpsest_kolla`).
    - **Valkey (Redis)**: Current Kolla deploys Valkey server+Sentinel. Afterglow gives its Redis client every Kolla Sentinel address and the Kolla monitor name, so cache/session writes follow a promoted master without rewriting configuration; the generated `redis_url` still carries the existing master password and service DB index. The plugin creates no Redis container, so a full or Valkey-tagged Kolla deployment (`enable_valkey: "yes"`) must establish Valkey before plugin-only tagged operations. Other plugin services retain the connection behavior defined by their own roles. Explicit service indexes remain (5: Afterglow, 6: Waygate, 7: Drover, 8: Lumen, 9: Palimpsest).
@@ -75,11 +75,12 @@ KOLLA_ANSIBLE_DIR=/etc/kolla/.venv/share/kolla-ansible \
 ```
 
 ### Installer-managed artifacts
-- Source role links under `$KOLLA_DIR/ansible/roles/`: `afterglow`,
-  `waygate`, and `palimpsest`.
-- Verified package-installed roles under `$KOLLA_DIR/ansible/roles/`: `drover`
-  (installed via `drover-kolla` wheel) and `lumen` (installed via `lumen-kolla`
-  wheel; installer validates non-symlink role paths and required lifecycle files).
+- Source role link under `$KOLLA_DIR/ansible/roles/`: `afterglow`.
+- Verified root-package roles under `$KOLLA_DIR/ansible/roles/`: `drover`
+  (via `drover==0.2.22`), `lumen` (via `lumen==0.2.2`), `waygate`
+  (via `waygate==0.1.3`), and `palimpsest` (via
+  `palimpsest-local==0.1.4`). Installer validates non-symlink role paths and
+  required lifecycle files.
 - Aggregate playbook: `$KOLLA_DIR/ansible/afterglow-site.yml` ->
   `deploy/kolla/site.yml`.
 - One marker-delimited `afterglow-site.yml` import in
@@ -103,52 +104,83 @@ unexpected, `install.sh` aborts rather than replacing it.
 
 ## Operator Environment & Package Setup
 
-The `deploy/kolla/operator/` directory contains a canonical `uv` project
-(`pyproject.toml` and committed `uv.lock`) specifying exact dependency pins:
+`deploy/kolla/operator/pyproject.toml` is a dependency-only `uv` manifest for
+`kolla-ansible` and the root service distributions:
 
-- **`kolla-ansible`**: git commit `34daacfbf2d5987f543787f57535b2bebe7dee19` (21.2.0).
-- **`drover-kolla`**: PEP 508 URL wheel release `v0.2.19` (`drover_kolla-0.2.19-py3-none-any.whl`).
-- **`lumen-kolla`**: PEP 508 URL wheel release `v0.2.0` (`lumen_kolla-0.2.0-py3-none-any.whl`).
+- **`drover==0.2.22`** owns the `drover` role.
+- **`lumen==0.2.2`** owns the `lumen` role.
+- **`waygate==0.1.3`** owns the `waygate` role.
+- **`palimpsest-local==0.1.4`** owns the `palimpsest` role.
+
+All roots require Python 3.12 or newer. There are no `*-kolla` distributions,
+no `subdirectory = "deploy/kolla"` sources, and no plugin role becomes a Kolla
+default dependency merely by being installed.
+
+The operator manifest pins each root distribution to an immutable Git commit
+SHA on the sibling `dev` branches, and `operator/uv.lock` is generated from
+those pins. Commit SHAs (never tags) are the synchronization contract; bumping
+a service means recording its new verified commit here and relocking.
 
 ### 1. Legacy Symlink Migration
 
-If upgrading an environment that previously used Afterglow's central Drover or Lumen role sources:
+If an older installation linked a sibling role to a known legacy Afterglow
+checkout, remove only an **exact** match. Replace the placeholder with that
+checkout's absolute path. A missing/relative path or any different link target
+fails closed and leaves every link untouched:
 
 ```bash
-# Remove legacy Afterglow Drover and Lumen symlinks if present
-rm -f /etc/kolla/.venv/share/kolla-ansible/ansible/roles/drover
-rm -f /etc/kolla/.venv/share/kolla-ansible/ansible/roles/lumen
+legacy_afterglow_checkout=/absolute/path/to/the/legacy/afterglow
+[[ "$legacy_afterglow_checkout" = /* && -d "$legacy_afterglow_checkout/deploy/kolla" ]] || {
+  echo "Set legacy_afterglow_checkout to the known absolute Afterglow checkout." >&2
+  exit 1
+}
+
+for role in drover lumen waygate palimpsest; do
+  role_target="/etc/kolla/.venv/share/kolla-ansible/ansible/roles/$role"
+  expected_target="$legacy_afterglow_checkout/deploy/kolla/ansible/roles/$role"
+  if [[ -L "$role_target" ]]; then
+    actual_target=$(readlink "$role_target" || true)
+    if [[ "$actual_target" != "$expected_target" ]]; then
+      echo "Refusing to remove unexpected $role_target -> $actual_target" >&2
+      exit 1
+    fi
+    rm -- "$role_target"
+    echo "Removed legacy $role symlink ($actual_target)"
+  fi
+done
 ```
 
-`install.sh` fail-closes with explicit migration instructions if a legacy symlink remains.
+### 2. Record and Sync the Operator Dependencies
 
-### 2. Operator Virtual Environment Sync
-
-To sync the operator environment into Kolla's virtual environment:
+The committed manifest and lock already pin the verified root commits.
+To move a service to a newer verified commit, record it without syncing a
+local environment:
 
 ```bash
 cd deploy/kolla/operator
-UV_PROJECT_ENVIRONMENT=/etc/kolla/.venv uv sync --frozen --inexact --no-install-project
+uv add --no-sync "drover @ git+https://github.com/openstack-afterglow/drover.git@<new-root-commit>"
+uv add --no-sync "lumen @ git+https://github.com/openstack-afterglow/lumen.git@<new-root-commit>"
+uv add --no-sync "waygate @ git+https://github.com/openstack-afterglow/waygate.git@<new-root-commit>"
+uv add --no-sync "palimpsest-local @ git+https://github.com/openstack-afterglow/palimpsest.git@<new-root-commit>"
+
+UV_PROJECT_ENVIRONMENT=/etc/kolla/.venv uv sync --inexact --no-install-project
 ```
 
-This targets the actual Kolla environment, installs the role wheels as real
-package-owned directories, and preserves unrelated installed operator packages
-with `--inexact`. `--no-install-project` avoids treating this dependency-only
-operator manifest as an application package. Review the pinned Kolla version
-before synchronizing an existing cloud; package synchronization is a one-time
-setup/update operation, not part of every deploy.
-
-> **Security Note:** Keep the operator project free of live secrets or deployment globals. Operator configuration belongs exclusively in `/etc/kolla/config/afterglow/`.
+`--no-install-project` is required: the operator manifest has dependencies but
+no application package. `--inexact` preserves unrelated packages in the Kolla
+environment. After the lock is regenerated and reviewed, use the organization
+approved locked/frozen synchronization policy for later updates.
 
 ### 3. Installation & Registration Order
 
-Follow this installation sequence:
+1. **Sync root packages** with the explicit-environment command above.
+2. **Configure operator variables** in `/etc/kolla/config/afterglow/globals.yml`
+   and `secrets.yml`.
+3. **Run the integration installer**: `./deploy/kolla/install.sh`.
 
-1. **Sync Operator Packages**: Run the explicit-environment command above in `deploy/kolla/operator`.
-2. **Configure Operator Variables**: Populate `/etc/kolla/config/afterglow/globals.yml` and `secrets.yml`.
-3. **Run Integration Installer**: Run `./deploy/kolla/install.sh`.
-
-The installer validates that `$ROLES_DIR/drover` and `$ROLES_DIR/lumen` are valid package-installed directories (and not symlinks), wires source role symlinks (`afterglow`, `waygate`, `palimpsest`), and appends the `afterglow-site.yml` import to stock `site.yml`.
+The installer validates that `$ROLES_DIR/{drover,lumen,waygate,palimpsest}` are
+package-owned directories (not symlinks), wires only the source `afterglow`
+role symlink, and appends the `afterglow-site.yml` import to stock `site.yml`.
 
 ---
 
@@ -400,8 +432,9 @@ kolla-ansible deploy -i multinode --tags afterglow,lumen
 
 Check API/worker state on the selected controllers and test public HTTP routes.
 An API liveness response does not prove DB, Redis, PostgreSQL or authenticated
-application operations. Verify those dependencies as well. The role pin is
-`lumen-kolla==0.2.0`; installation refuses a different version rather than
+application operations. Verify those dependencies as well. The installer requires
+the matching root distribution versions listed in [Operator Environment & Package
+Setup](#operator-environment--package-setup) and refuses a mismatch rather than
 silently downgrading an existing deployment.
 
 The canonical operator files are `config/afterglow/globals.yml` and
@@ -417,6 +450,14 @@ structure/installer contracts. After installing the operator environment,
 isolated role fixtures, including privilege inheritance and negative controls.
 It does not contact or mutate a cloud.
 
+`node scripts/kolla-contract.test.js` checks the in-tree Afterglow role,
+aggregate dispatch, and installer ownership boundary without sibling checkouts.
+Its disposable installed-role fixtures use root-distribution metadata read by
+the real Python `importlib.metadata`; install/reinstall/uninstall must preserve
+all sibling role bytes and operator files. These fixtures do not prove wheel
+installation or execute sibling Ansible tasks. Each sibling repository owns
+its role-asset tests; real package installation remains a separate release gate.
+
 ---
 
 ## Uninstallation & Role Ownership
@@ -427,8 +468,8 @@ It does not contact or mutate a cloud.
 
 ### Uninstaller Ownership Rules
 
-- **Source Roles**: Removes installer-managed symlinks for `afterglow`, `waygate`, and `palimpsest`.
+- **Source Roles**: Removes installer-managed symlink for `afterglow`.
 - **Stock Playbook**: Removes the `afterglow-site.yml` import block from `site.yml`.
 - **Aggregate Playbook & Globals.d**: Removes aggregate playbook link and `globals.d` links.
-- **Package-owned Roles**: `uninstall.sh` **never** deletes package-installed `drover` or `lumen` role files under `$ROLES_DIR/{drover,lumen}`. Package role lifecycle is managed via `uv` / package tooling.
+- **Package-owned Roles**: `uninstall.sh` **never** deletes package-installed `drover`, `lumen`, `waygate`, or `palimpsest` role files under `$ROLES_DIR`. Package role lifecycle is managed via `uv` / package tooling.
 - **Operator State**: Leaves `/etc/kolla/multinode`, plugin configuration, databases, containers, images, and source checkouts untouched.

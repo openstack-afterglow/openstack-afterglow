@@ -1,0 +1,236 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "VM 생성 API: admission · OpenStack orchestration · SSE rollback",
+    "output": "afterglow-vm-provisioning.html",
+    "viewBox": [
+      1040,
+      600
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "admission",
+        "label": "입력 검증과 admission",
+        "focus": [
+          "browser",
+          "api",
+          "policy"
+        ],
+        "note": "API는 project-scoped connection, placement, flavor/GPU admission을 확인한 뒤에만 provisioning을 시작한다."
+      },
+      {
+        "id": "provisioning",
+        "label": "OpenStack provisioning",
+        "focus": [
+          "api",
+          "manila",
+          "cinder",
+          "nova",
+          "neutron"
+        ],
+        "note": "선택된 옵션에 따라 Manila, Cinder, cloud-init, Nova, Neutron이 순서대로 조합된다."
+      },
+      {
+        "id": "completion-and-rollback",
+        "label": "SSE 완료와 rollback",
+        "focus": [
+          "browser",
+          "api",
+          "neutron",
+          "nova",
+          "cinder",
+          "manila"
+        ],
+        "note": "SSE COMPLETED는 API orchestration 완료이며, 실패 시 새로 만든 리소스만 역순 best-effort로 정리한다."
+      }
+    ]
+  },
+  "participants": [
+    {
+      "id": "browser",
+      "type": "frontend",
+      "label": "VM wizard",
+      "sublabel": "SvelteKit client"
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "Afterglow API",
+      "sublabel": "/instances/async"
+    },
+    {
+      "id": "policy",
+      "type": "security",
+      "label": "Placement/quota",
+      "sublabel": "project · AZ · GPU"
+    },
+    {
+      "id": "manila",
+      "type": "cloud",
+      "label": "Manila",
+      "sublabel": "optional share + access"
+    },
+    {
+      "id": "cinder",
+      "type": "cloud",
+      "label": "Cinder",
+      "sublabel": "boot / upper volumes"
+    },
+    {
+      "id": "nova",
+      "type": "cloud",
+      "label": "Nova",
+      "sublabel": "server + attachments"
+    },
+    {
+      "id": "neutron",
+      "type": "cloud",
+      "label": "Neutron",
+      "sublabel": "network + floating IP"
+    }
+  ],
+  "segments": [
+    {
+      "from": 140,
+      "to": 220,
+      "label": "1 · authenticated request and admission"
+    },
+    {
+      "from": 228,
+      "to": 370,
+      "label": "2 · conditional OpenStack resource creation"
+    },
+    {
+      "from": 378,
+      "to": 505,
+      "label": "3 · SSE completion or failure cleanup"
+    }
+  ],
+  "messages": [
+    {
+      "from": "browser",
+      "to": "api",
+      "y": 165,
+      "label": "POST /api/v1/instances/async · JSON · Accept: text/event-stream",
+      "variant": "emphasis"
+    },
+    {
+      "from": "api",
+      "to": "policy",
+      "y": 195,
+      "label": "resolve project network/AZ · validate flavor and GPU quota",
+      "variant": "security"
+    },
+    {
+      "from": "api",
+      "to": "manila",
+      "y": 225,
+      "label": "if libraries/data mounts: share or access rules",
+      "variant": "emphasis"
+    },
+    {
+      "from": "api",
+      "to": "cinder",
+      "y": 255,
+      "label": "create image boot volume; optional OverlayFS upper volume",
+      "variant": "emphasis"
+    },
+    {
+      "from": "api",
+      "to": "nova",
+      "y": 285,
+      "label": "compose cloud-init + metadata; create server",
+      "variant": "emphasis"
+    },
+    {
+      "from": "api",
+      "to": "nova",
+      "y": 315,
+      "label": "attach upper / new / existing requested volumes",
+      "variant": "default"
+    },
+    {
+      "from": "api",
+      "to": "neutron",
+      "y": 345,
+      "label": "tenant network only: allocate + associate external floating IP",
+      "variant": "default"
+    },
+    {
+      "from": "api",
+      "to": "browser",
+      "y": 375,
+      "label": "SSE: COMPLETED 100% + instance_id; invalidate VM cache",
+      "variant": "return"
+    },
+    {
+      "from": "api",
+      "to": "neutron",
+      "y": 405,
+      "label": "on failure: delete newly allocated floating IP",
+      "variant": "security"
+    },
+    {
+      "from": "api",
+      "to": "nova",
+      "y": 435,
+      "label": "then delete created server",
+      "variant": "security"
+    },
+    {
+      "from": "api",
+      "to": "cinder",
+      "y": 465,
+      "label": "then delete new volumes only; revoke access/delete dynamic share",
+      "variant": "security"
+    },
+    {
+      "from": "api",
+      "to": "browser",
+      "y": 495,
+      "label": "SSE: FAILED; generic error for non-admin",
+      "variant": "return"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "api",
+      "from": 174,
+      "to": 500,
+      "type": "backend"
+    },
+    {
+      "participant": "policy",
+      "from": 210,
+      "to": 226,
+      "type": "security"
+    },
+    {
+      "participant": "manila",
+      "from": 288,
+      "to": 308,
+      "type": "cloud"
+    },
+    {
+      "participant": "cinder",
+      "from": 324,
+      "to": 500,
+      "type": "cloud"
+    },
+    {
+      "participant": "nova",
+      "from": 396,
+      "to": 500,
+      "type": "cloud"
+    },
+    {
+      "participant": "neutron",
+      "from": 468,
+      "to": 500,
+      "type": "cloud"
+    }
+  ]
+}

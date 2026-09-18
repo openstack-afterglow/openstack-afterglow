@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_token_info, require_project_manager
+from app.api.deps import get_caller_project_permissions, get_token_info, require_project_manager
 from app.database import get_session
 from app.models.db import ProjectInvitation, ProjectRole
 
@@ -24,6 +24,17 @@ class CreateProjectRequest(BaseModel):
 class CreateInvitationRequest(BaseModel):
     email: str
     keystone_role: str = "member"
+
+
+class ProjectPermissionsResponse(BaseModel):
+    project_id: str
+    user_id: str
+    roles: list[str]
+    is_system_admin: bool
+    is_manager: bool
+    is_reader: bool
+    can_read: bool
+    can_write: bool
 
 
 # ─── 프로젝트 생성 ────────────────────────────────────────────────────────────
@@ -48,6 +59,68 @@ async def create_project(
         username=token_info.get("username", ""),
         session=session,
     )
+
+
+# ─── 권한 및 역할 조회 ────────────────────────────────────────────────────────
+
+
+@router.get("/current/permissions", response_model=ProjectPermissionsResponse)
+async def get_current_project_permissions(
+    token_info: dict = Depends(get_token_info),
+):
+    """현재 활성 프로젝트에 대한 호출자의 역할 및 실효 권한 조회."""
+    return await get_caller_project_permissions(token_info=token_info)
+
+
+@router.get("/{project_id}/permissions", response_model=ProjectPermissionsResponse)
+async def get_project_permissions(
+    project_id: str = Path(...),
+    token_info: dict = Depends(get_token_info),
+):
+    """지정된 프로젝트에 대한 호출자의 역할 및 실효 권한 조회.
+
+    'current'를 넘기면 현재 프로젝트의 권한을 반환합니다.
+    """
+    if project_id == "current":
+        return await get_caller_project_permissions(token_info=token_info)
+
+    # 다른 프로젝트 조회 시 소속 여부(Keystone rescope) 검증
+    if not token_info.get("is_system_admin", False) and project_id != token_info.get("project_id"):
+        from app.api.deps import _cached_validate
+
+        try:
+            scoped = await _cached_validate(token_info["token"], project_id)
+            roles = [r.lower() for r in scoped.get("roles", []) if isinstance(r, str)]
+            role_set = set(roles)
+            can_write = bool(role_set & {"admin", "member"})
+            is_reader = not can_write and ("reader" in role_set or len(role_set) == 0)
+
+            is_mgr = False
+            from app.database import get_session_factory
+            from app.services.project_service import is_project_manager
+
+            factory = get_session_factory()
+            if factory is not None:
+                try:
+                    async with factory() as session:
+                        is_mgr = await is_project_manager(project_id, token_info["user_id"], session)
+                except Exception:
+                    pass
+
+            return {
+                "project_id": project_id,
+                "user_id": token_info.get("user_id", ""),
+                "roles": roles,
+                "is_system_admin": False,
+                "is_manager": is_mgr,
+                "is_reader": is_reader,
+                "can_read": True,
+                "can_write": can_write,
+            }
+        except Exception:
+            raise HTTPException(status_code=403, detail="해당 프로젝트에 대한 접근 권한이 없습니다.")
+
+    return await get_caller_project_permissions(project_id=project_id, token_info=token_info)
 
 
 # ─── 멤버 조회 ────────────────────────────────────────────────────────────────

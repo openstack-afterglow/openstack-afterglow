@@ -141,7 +141,7 @@ Runner는 다른 project를 자동 삭제하지 않습니다.
 사전 조건은 다음과 같습니다.
 
 - Docker Compose **2.24 이상** (optional env file 지원).
-- Python **3.11 이상** (표준 `tomllib`)과 이 checkout의 `afterglow.conf`, `.env`. Python은 `backend/.venv/bin/python`을 우선 사용하고, 없으면 `python3`를 사용합니다.
+- Python **3.12 이상**과 이 checkout의 `afterglow.conf`, `.env`. Python은 `backend/.venv/bin/python`을 우선 사용하고, 없으면 `python3`를 사용합니다.
   root 원본은 변경하지 않습니다. 첫 실행은 `afterglow.conf`를 private
   `.local-services/afterglow.conf`로 복사하고, 별도 JWT/암호화/service key를
   `.local-services/secrets.json`에 생성합니다. 디렉터리는 0700, config snapshot은 0640이며
@@ -156,7 +156,8 @@ Runner는 다른 project를 자동 삭제하지 않습니다.
 - 로컬 Drover API/worker/migration은 `SENTINEL_ENABLED=false`, `SENTINEL_HOSTS` 빈 값으로 고정하여 private TOML의 운영 Sentinel 설정을 상속하지 않습니다. 실제 cache client도 local Redis를 사용하며 runner가 이 격리를 검사합니다.
 - Kubernetes 환경에서 복사한 public OpenStack 경로가 로컬 Docker에 맞는지는 별도로 확인합니다. VPN/internal catalog 접근이 가능한 로컬 환경은 snapshot의 `[openstack] auth_url`에 검증한 versioned internal Keystone URL을, `interface`에 `internal`을 지정할 수 있습니다. 원본 설정과 secret은 보존하고 snapshot 변경 전 `.local-services/backups/`에 mode 0600 백업을 둡니다. Internal 경로도 503이면 상류 OpenStack 장애이며 로컬 재배포나 timeout 연장으로 정상 처리하지 않습니다.
 - 현재 소스 build 모드에는 sibling checkout `../lumen`, `../drover`, `../waygate`,
-  `../palimpsest`가 필요합니다. 마지막 checkout에서는 `hub/Dockerfile`도 필요합니다.
+  `../palimpsest`가 필요합니다. 앞의 세 checkout에는 `docker/Dockerfile`, Palimpsest에는
+  `docker/hub/Dockerfile`이 있어야 합니다.
 - 실제 provider key를 추가하려면 **로컬** Lumen 관리 UI/API에 등록합니다. 운영 provider DB나
   암호화된 key를 복제하지 않습니다. 키가 없어도 모델 metadata와 context-preview는 검증할 수
   있지만, 실제 provider completion 검증은 별도 자격 증명이 필요합니다.
@@ -314,7 +315,8 @@ Afterglow와 Lumen은 Kolla 배포 호스트에서 표준 명령으로 함께 �
 최초 한 번 [Kolla 설치·설정 가이드](../deploy/kolla/README.md)에 따라 다음을 준비합니다.
 
 - `/etc/kolla/multinode`의 `afterglow`, `lumen` 그룹과 기존 OpenStack inventory
-- 실제 Kolla 가상 환경에 설치한 고정 버전 역할 패키지 (`lumen-kolla==0.2.0`)
+- 실제 Kolla 가상 환경에 설치한 root 역할 패키지 (`drover==0.2.22`, `lumen==0.2.2`,
+  `waygate==0.1.3`, `palimpsest-local==0.1.4`)
 - `/etc/kolla/config/afterglow/globals.yml` 및 `secrets.yml`, globals.d 연결
 - 기존 MariaDB·Valkey, Lumen PostgreSQL 설정, 고정 이미지와 API 공개 경로
 - 대상 호스트에서 암호 입력 없이 sudo를 사용할 수 있는 배포 SSH 계정

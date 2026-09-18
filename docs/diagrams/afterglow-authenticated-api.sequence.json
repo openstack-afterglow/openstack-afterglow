@@ -1,0 +1,207 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Afterglow 인증 API 요청: 로그인·refresh·project scope",
+    "output": "afterglow-authenticated-api.html",
+    "viewBox": [
+      1080,
+      600
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "사용자",
+      "sublabel": "browser session"
+    },
+    {
+      "id": "frontend",
+      "type": "frontend",
+      "label": "Afterglow Frontend",
+      "sublabel": "SvelteKit · auth store"
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "Afterglow API",
+      "sublabel": "FastAPI /api/v1"
+    },
+    {
+      "id": "redis",
+      "type": "database",
+      "label": "Redis / Valkey",
+      "sublabel": "Keystone session"
+    },
+    {
+      "id": "keystone",
+      "type": "security",
+      "label": "Keystone",
+      "sublabel": "identity · catalog · RBAC"
+    },
+    {
+      "id": "openstack",
+      "type": "cloud",
+      "label": "OpenStack API",
+      "sublabel": "caller-scoped resource API"
+    }
+  ],
+  "segments": [
+    {
+      "from": 145,
+      "to": 310,
+      "label": "1 · Login and server session"
+    },
+    {
+      "from": 320,
+      "to": 405,
+      "label": "2 · Refresh before an expiring request"
+    },
+    {
+      "from": 415,
+      "to": 510,
+      "label": "3 · Authorized resource request"
+    }
+  ],
+  "messages": [
+    {
+      "id": "submit-login",
+      "from": "user",
+      "to": "frontend",
+      "y": 160,
+      "label": "submit domain · username · password",
+      "variant": "default"
+    },
+    {
+      "id": "login-request",
+      "from": "frontend",
+      "to": "api",
+      "y": 185,
+      "label": "POST /api/v1/auth/login",
+      "variant": "emphasis"
+    },
+    {
+      "id": "keystone-auth",
+      "from": "api",
+      "to": "keystone",
+      "y": 215,
+      "label": "validate Keystone credentials",
+      "variant": "security"
+    },
+    {
+      "id": "keystone-catalog",
+      "from": "keystone",
+      "to": "api",
+      "y": 245,
+      "label": "token · catalog · roles",
+      "variant": "return"
+    },
+    {
+      "id": "persist-server-session",
+      "from": "api",
+      "to": "redis",
+      "y": 275,
+      "label": "bind Keystone session + refresh JTI",
+      "variant": "security"
+    },
+    {
+      "id": "jwt-pair",
+      "from": "api",
+      "to": "frontend",
+      "y": 300,
+      "label": "access JWT + rotating refresh JWT",
+      "variant": "return"
+    },
+    {
+      "id": "refresh-request",
+      "from": "frontend",
+      "to": "api",
+      "y": 335,
+      "label": "POST /api/v1/auth/refresh",
+      "variant": "emphasis"
+    },
+    {
+      "id": "refresh-session-check",
+      "from": "api",
+      "to": "redis",
+      "y": 365,
+      "label": "validate session · rotate refresh JTI",
+      "variant": "security"
+    },
+    {
+      "id": "refreshed-jwts",
+      "from": "api",
+      "to": "frontend",
+      "y": 395,
+      "label": "new access JWT (+ refresh JWT)",
+      "variant": "return"
+    },
+    {
+      "id": "resource-request",
+      "from": "frontend",
+      "to": "api",
+      "y": 425,
+      "label": "GET /api/v1/networks?cache=true · Authorization · X-Project-Id?",
+      "variant": "emphasis"
+    },
+    {
+      "id": "scope-and-catalog",
+      "from": "api",
+      "to": "keystone",
+      "y": 450,
+      "label": "verify JWT · authorize rescope · resolve catalog",
+      "variant": "security"
+    },
+    {
+      "id": "resource-call",
+      "from": "api",
+      "to": "openstack",
+      "y": 480,
+      "label": "caller-scoped openstacksdk request",
+      "variant": "emphasis"
+    },
+    {
+      "id": "json-response",
+      "from": "api",
+      "to": "frontend",
+      "y": 505,
+      "label": "200 JSON",
+      "variant": "return"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "frontend",
+      "from": 185,
+      "to": 510,
+      "type": "frontend"
+    },
+    {
+      "participant": "api",
+      "from": 185,
+      "to": 510,
+      "type": "backend"
+    },
+    {
+      "participant": "redis",
+      "from": 270,
+      "to": 405,
+      "type": "database"
+    },
+    {
+      "participant": "keystone",
+      "from": 210,
+      "to": 460,
+      "type": "security"
+    },
+    {
+      "participant": "openstack",
+      "from": 470,
+      "to": 485,
+      "type": "cloud"
+    }
+  ]
+}

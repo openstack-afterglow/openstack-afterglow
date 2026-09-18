@@ -50,7 +50,7 @@ async def test_list_keypairs_cache_opt_in(client, mock_conn):
     assert resp.status_code == 200
     assert captured.get("enabled") is True
     assert captured.get("refresh") is False
-    assert "keypairs" in captured.get("key", "")
+    assert captured.get("key") == f"afterglow:user:{mock_conn._afterglow_user_id}:keypairs"
 
 
 @pytest.mark.asyncio
@@ -120,8 +120,7 @@ async def test_create_keypair_patches_cache(client, mock_conn):
     assert resp.status_code == 201
     mock_patch_list.assert_called_once()
     key_arg = mock_patch_list.call_args[0][0]
-    assert "nova" in key_arg
-    assert "keypairs" in key_arg
+    assert key_arg == f"afterglow:user:{mock_conn._afterglow_user_id}:keypairs"
     # add 키워드 인자가 전달되어야 함
     assert "add" in mock_patch_list.call_args[1]
     assert mock_patch_list.call_args[1]["add"]["name"] == "new-key"
@@ -155,7 +154,42 @@ async def test_delete_keypair_patches_cache(client, mock_conn):
     assert resp.status_code == 204
     mock_patch_list.assert_called_once()
     key_arg = mock_patch_list.call_args[0][0]
-    assert "nova" in key_arg
-    assert "keypairs" in key_arg
+    assert key_arg == f"afterglow:user:{mock_conn._afterglow_user_id}:keypairs"
     assert mock_patch_list.call_args[1].get("remove") is True
     mock_mutation_count.assert_called_once_with("nova", mock_conn._afterglow_project_id)
+
+
+@pytest.mark.asyncio
+async def test_cross_user_keypair_cache_isolation_in_same_project(client, mock_conn):
+    """동일한 프로젝트 내의 서로 다른 사용자는 서로의 키페어 캐시를 공유하지 않아야 한다."""
+    captured_calls = []
+
+    async def mock_cached_call(key, ttl, fn, *, enabled=True, refresh=False, **kw):
+        captured_calls.append({"key": key, "result": fn()})
+        return captured_calls[-1]["result"]
+
+    alice_keys = [make_keypair("alice-key")]
+    bob_keys = [make_keypair("bob-key")]
+
+    from app.api.deps import get_token_info
+    from app.main import app
+
+    with patch("app.api.compute.keypairs.cached_call", new=mock_cached_call):
+        # 1. Alice (user-1) accesses /api/v1/keypairs in shared-proj
+        app.dependency_overrides[get_token_info] = lambda: {"user_id": "alice-uid", "project_id": "shared-proj"}
+        with patch("app.api.compute.keypairs.nova.list_keypairs", return_value=alice_keys):
+            resp_alice = await client.get("/api/v1/keypairs?cache=true")
+            assert resp_alice.status_code == 200
+            assert resp_alice.json()[0]["name"] == "alice-key"
+
+        # 2. Bob (user-2) accesses /api/v1/keypairs in the SAME shared-proj
+        app.dependency_overrides[get_token_info] = lambda: {"user_id": "bob-uid", "project_id": "shared-proj"}
+        with patch("app.api.compute.keypairs.nova.list_keypairs", return_value=bob_keys):
+            resp_bob = await client.get("/api/v1/keypairs?cache=true")
+            assert resp_bob.status_code == 200
+            assert resp_bob.json()[0]["name"] == "bob-key"
+    # 3. Assert separate cache keys were used for Alice and Bob
+    assert len(captured_calls) == 2
+    assert captured_calls[0]["key"] == "afterglow:user:alice-uid:keypairs"
+    assert captured_calls[1]["key"] == "afterglow:user:bob-uid:keypairs"
+    assert captured_calls[0]["key"] != captured_calls[1]["key"]

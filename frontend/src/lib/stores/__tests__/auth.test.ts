@@ -17,6 +17,8 @@ describe('auth store', () => {
   let setAuth: typeof import('../auth')['setAuth'];
   let clearAuth: typeof import('../auth')['clearAuth'];
   let isAdmin: typeof import('../auth')['isAdmin'];
+  let isReader: typeof import('../auth')['isReader'];
+  let canWrite: typeof import('../auth')['canWrite'];
 
   beforeEach(async () => {
     vi.resetModules();
@@ -25,6 +27,8 @@ describe('auth store', () => {
     setAuth = mod.setAuth;
     clearAuth = mod.clearAuth;
     isAdmin = mod.isAdmin;
+    isReader = mod.isReader;
+    canWrite = mod.canWrite;
     clearAuth();
   });
 
@@ -58,6 +62,28 @@ describe('auth store', () => {
     setAuth({ token: 'tok', userId: 'u', username: 'u', projectId: 'p', projectName: 'p', accessExpiresAt: null, roles: ['admin'], isSystemAdmin: false });
     expect(get(isAdmin)).toBe(false);
   });
+  it('isReader와 canWrite는 roles에 따라 정확히 계산됨', () => {
+    // 1. reader 단독
+    setAuth({ token: 'tok', userId: 'u', username: 'u', projectId: 'p', projectName: 'p', accessExpiresAt: null, roles: ['reader'], isSystemAdmin: false });
+    expect(get(isReader)).toBe(true);
+    expect(get(canWrite)).toBe(false);
+
+    // 2. member 포함
+    setAuth({ token: 'tok', userId: 'u', username: 'u', projectId: 'p', projectName: 'p', accessExpiresAt: null, roles: ['member'], isSystemAdmin: false });
+    expect(get(isReader)).toBe(false);
+    expect(get(canWrite)).toBe(true);
+
+    // 3. reader + member 복합
+    setAuth({ token: 'tok', userId: 'u', username: 'u', projectId: 'p', projectName: 'p', accessExpiresAt: null, roles: ['reader', 'member'], isSystemAdmin: false });
+    expect(get(isReader)).toBe(false);
+    expect(get(canWrite)).toBe(true);
+
+    // 4. system admin은 reader role이 있어도 canWrite=true, isReader=false
+    setAuth({ token: 'tok', userId: 'u', username: 'u', projectId: 'p', projectName: 'p', accessExpiresAt: null, roles: ['reader'], isSystemAdmin: true });
+    expect(get(isReader)).toBe(false);
+    expect(get(canWrite)).toBe(true);
+  });
+
 
   it('clearAuth 후 초기 상태로 복원', () => {
     setAuth({ token: 'tok', userId: 'u', username: 'u', projectId: 'p', projectName: 'p', accessExpiresAt: null, roles: ['admin'] });
