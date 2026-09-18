@@ -174,6 +174,7 @@ At ≥768px, the settings route allocates the return action and settings body wi
 | Keystone 세션·refresh-JTI·단기 token 검증 | Keystone 및 Redis session state | Redis TTL cache (`afterglow:*`) | Redis cache miss는 Keystone 재검증이며 access JWT와 Keystone token을 동일시하지 않는다. |
 | Afterglow users/projects/metadata와 layer build records | Afterglow MariaDB via SQLAlchemy models/migrations | Redis invalidation/prefetch | DB ownership과 project scope가 source of truth다. |
 | OpenStack VM/network/volume/share와 RBD volume artifacts | Nova, Neutron, Cinder, Manila, Ceph RBD 등 각 서비스 | Afterglow Redis response cache; opt-in Ceph CLI read/repair adapter | cache가 실제 cloud resource state를 만들거나 확정하지 않는다. Volume 삭제 복구의 backend write는 검증된 `rbd_id.volume-<uuid>` mapping 복원/정리로 제한하며 Cinder와 Ceph가 계속 source of truth다. |
+| Nova SSH keypairs | Nova Compute (`user_id` scope) | Afterglow Redis user-scoped cache (`afterglow:user:{user_id}:keypairs`) | Keypair는 OpenStack Compute에서 프로젝트가 아닌 개별 사용자(`user_id`) 소유 리소스다. 캐시와 mutation은 반드시 `user_id`로 격리하며 동일 프로젝트 내 사용자 간에도 캐시를 공유하지 않는다. |
 | Drover cluster/job/operation/inventory와 project manager credential | Drover MariaDB | Drover Redis token/cache/lock 보조 | Drover API/worker가 lifecycle을 소유한다. Service account는 자신에게 role이 있는 service/admin project scope에서만 Keystone identity를 관리하고, tenant 자원은 암호화 저장된 `afterglow-cluster-mgr-<project>` 자격의 project-scoped connection으로 처리한다. 장기 worker 경로는 사용 후 keystoneauth HTTP pool과 openstacksdk connection을 모두 닫는다. |
 | Lumen run/event/checkpointer/provider state와 billing administrator key | Lumen MariaDB와 필요한 PostgreSQL 경계 | Lumen Redis wakeup/cache | Billing key는 Lumen의 별도 암호화 domain 소유이며 Afterglow read response에는 설정 여부만 나타난다. HTTP/SSE connection이 durable run 수명을 소유하지 않는다. |
 | Waygate gateway/client/agent state | Waygate MariaDB, VM 내부 WireGuard key | Waygate Redis status/token cache | server private key는 VM 내부이며 Afterglow에 저장하지 않는다. |
@@ -277,9 +278,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "231c3f53305a91c3756debcdf336029518186e5d9d928765e6a39bde6c52f5da",
-  "reviewed_at": "2026-09-17T16:22:18Z",
-  "summary": "Prepare 1.23.0: aligned frontend/backend/Helm/Kolla versions, full immutable root source pins and regenerated operator lock; corrected stale migration documentation. Palimpsest release gate and operator main-merge handoff remain outstanding."
+  "source_sha256": "ea92aedead804a351de4a0a8df5dffe96feb6c38c1265b694a84e2563de11c88",
+  "reviewed_at": "2026-09-18T11:21:24Z",
+  "summary": "Isolate Nova keypair cache by user_id instead of project_id, preventing cross-user SSH key leakage within shared projects"
 }
 ```
 <!-- architecture-review:end -->
