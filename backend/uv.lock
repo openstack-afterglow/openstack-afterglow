@@ -84,7 +84,7 @@ worker = [
 
 [package.metadata]
 requires-dist = [
-    { name = "afterglow-crypto", git = "https://github.com/openstack-afterglow/afterglow-crypto.git?rev=aee36e8ea173e486f443fa816de4e6397d11cff2" },
+    { name = "afterglow-crypto", git = "https://github.com/openstack-afterglow/afterglow-crypto.git?rev=65ff43db4d386d65436411fc0642ebc3044bd517" },
     { name = "aiofiles", specifier = "==24.1.0" },
     { name = "aiomysql", specifier = ">=0.2.0" },
     { name = "aiosmtplib", specifier = ">=3.0.0" },
@@ -150,7 +150,7 @@ worker = [
 [[package]]
 name = "afterglow-crypto"
 version = "0.1.1"
-source = { git = "https://github.com/openstack-afterglow/afterglow-crypto.git?rev=aee36e8ea173e486f443fa816de4e6397d11cff2#aee36e8ea173e486f443fa816de4e6397d11cff2" }
+source = { git = "https://github.com/openstack-afterglow/afterglow-crypto.git?rev=65ff43db4d386d65436411fc0642ebc3044bd517#65ff43db4d386d65436411fc0642ebc3044bd517" }
 dependencies = [
     { name = "cryptography" },
 ]
