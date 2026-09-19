@@ -366,6 +366,65 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	if (profile === 'admin' && pathname === '/api/v1/admin/libraries/builds') return state.admin.library.builds;
 	if (profile === 'admin' && pathname === '/api/v1/admin/libraries/imports') return state.admin.library.imports;
 	if (profile === 'admin' && pathname === '/api/v1/admin/libraries/consumes') return state.admin.library.consumes;
+	if (profile === 'admin' && pathname === '/api/v1/palimpsest/builds/dockerfile/fetch-url') {
+		const payload = body as { url?: string } | null;
+		const url = payload?.url ?? 'https://example.com/Dockerfile';
+		return {
+			dockerfile: 'FROM ubuntu:24.04\nRUN apt-get update && apt-get install -y curl\nENV APP_ENV=production\nWORKDIR /app\n',
+			url,
+			filename: 'Dockerfile',
+			size_bytes: 98,
+		};
+	}
+	if (profile === 'admin' && pathname === '/api/v1/palimpsest/builds/dockerfile/plan') {
+		const payload = body as { dockerfile?: string; layer_prefix?: string; profile_name?: string } | null;
+		return {
+			source_type: 'inline_dockerfile',
+			dockerfile_digest: 'sha256:mockdockerfiledigest00000000000000000000000000000000000000000000',
+			parent_digest: null,
+			ubuntu_base: 'ubuntu-24.04',
+			cached_artifact_ids: [],
+			steps: [
+				{ name: `${payload?.layer_prefix ?? 'custom'}-01-run`, instruction: 'RUN', args: 'apt-get update', step_digest: 'sha256:mockstep1000000000000000000000000000000000000000000000000000000' },
+				{ name: `${payload?.layer_prefix ?? 'custom'}-02-env`, instruction: 'ENV', args: 'APP_ENV=production', step_digest: 'sha256:mockstep2000000000000000000000000000000000000000000000000000000' },
+				{ name: `${payload?.layer_prefix ?? 'custom'}-03-workdir`, instruction: 'WORKDIR', args: '/app', step_digest: 'sha256:mockstep3000000000000000000000000000000000000000000000000000000' },
+			],
+		};
+	}
+	if (profile === 'admin' && pathname === '/api/v1/palimpsest/builds/dockerfile') {
+		const payload = body as { dockerfile?: string; layer_prefix?: string; profile_name?: string; base_image_id?: string } | null;
+		const newJob = {
+			id: state.admin.library.imports.length + 101,
+			status: 'building',
+			progress_step: 'preparing',
+			progress_pct: 10,
+			error_message: null,
+			github_url: '',
+			commit_sha: '',
+			dockerfile_path: 'inline:Dockerfile',
+			layer_prefix: payload?.layer_prefix ?? 'custom',
+			profile_name: payload?.profile_name || (payload?.layer_prefix ?? 'custom'),
+			ubuntu_base: 'ubuntu-24.04',
+			base_image_id: payload?.base_image_id ?? 'fixture-image-ubuntu',
+			base_image_name: 'Ubuntu 24.04 LTS (Fixture)',
+			planned_layers: [
+				{ name: `${payload?.layer_prefix ?? 'custom'}-01-run`, line: 2, instruction: 'RUN' },
+			],
+			artifact_ids: [],
+			build_ids: [],
+			created_at: new Date().toISOString(),
+			completed_at: null,
+		};
+		state.admin.library.imports = [newJob, ...state.admin.library.imports];
+		return {
+			...newJob,
+			source_type: 'inline_dockerfile',
+			dockerfile_digest: 'sha256:mockdockerfiledigest00000000000000000000000000000000000000000000',
+			parent_digest: null,
+			cached_artifact_ids: [],
+			planned_step_count: 1,
+		};
+	}
 
 	if (profile === 'admin' && pathname === '/api/v1/admin/topology') return state.topology;
 	if (profile === 'admin' && pathname === '/api/v1/admin/all-containers') return state.admin.containers;

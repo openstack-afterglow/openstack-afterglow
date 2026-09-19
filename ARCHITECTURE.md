@@ -145,7 +145,7 @@ At ≥768px, the settings route allocates the return action and settings body wi
 
 ### Palimpsest와 제거된 Union
 
-현행 routes는 `backend/app/api/palimpsest/{layers,builds,hub}.py`와 admin route, retained library/squashfs services를 사용한다. [`backend/app/main.py`](backend/app/main.py)는 구 `/api/v1/union` router를 mount하지 않는다. `union_layers`·`union_templates`·`union_user_mounts` 같은 이전 metadata는 보존될 수 있으나 공개 API가 아니다. retained [`backend/app/services/layer_build.py`](backend/app/services/layer_build.py), `recipe_blocks.py`, `palimpsest_kvm.py`는 squashfs build/consume 또는 선택 KVM 경계를 설명하며, 독립 Palimpsest Hub의 `/v1` API와 같은 실행 모델로 취급하지 않는다.
+현행 routes는 `backend/app/api/palimpsest/{layers,builds,hub}.py`와 admin route, retained library/squashfs services를 사용한다. [`backend/app/main.py`](backend/app/main.py)는 구 `/api/v1/union` router를 mount하지 않는다. `union_layers`·`union_templates`·`union_user_mounts` 같은 이전 metadata는 보존될 수 있으나 공개 API가 아니다. retained [`backend/app/services/layer_build.py`](backend/app/services/layer_build.py), `recipe_blocks.py`, `palimpsest_kvm.py`는 squashfs build/consume 또는 선택 KVM 경계를 설명하며, 독립 Palimpsest Hub의 `/v1` API와 같은 실행 모델로 취급하지 않는다. 관리자 인터페이스(`/admin/libraries`)의 Palimpsest Dockerfile 스튜디오는 URL 가져오기(SSRF 필터링이 적용된 `POST /api/v1/palimpsest/builds/dockerfile/fetch-url`), 로컬 파일 업로드, 인라인 텍스트 편집기 및 템플릿 프리셋을 지원하며, `POST /api/v1/palimpsest/builds/dockerfile/plan`으로 단계별 캐시 및 지시어를 미리보고 `POST /api/v1/palimpsest/builds/dockerfile`로 squashfs 체인을 빌드한다. 빌드 완료된 잡이나 프로필은 원클릭 액션을 통해 소비 인스턴스 생성 폼(`POST /api/v1/admin/libraries/consume`)으로 직행해 실제 OverlayFS VM으로 즉시 실행할 수 있다.
 
 ### 네트워크 토폴로지
 
@@ -279,9 +279,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "cc00bca0901bbafb0fa013d8162efdc0890e5ca259ac21e94534581b0002e015",
-  "reviewed_at": "2026-09-18T23:25:28Z",
-  "summary": "Relax requires-python to >=3.11 in sibling root packages and afterglow-crypto for Kolla control-node compatibility; sync operator pins to the final dev fix commits"
+  "source_sha256": "018345cf75c48306089ce177c32f00e7a386e6183dabd165bb57e2ede27833f2",
+  "reviewed_at": "2026-09-19T08:09:11Z",
+  "summary": "Palimpsest admin multi-mode Dockerfile build, plan preview, and live execution workflow"
 }
 ```
 <!-- architecture-review:end -->
