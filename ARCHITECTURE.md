@@ -279,9 +279,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "1b65bc359ea5479657e0d8a9449947f0bed28c32d2cd53154920cf69d5b23a5c",
-  "reviewed_at": "2026-09-18T16:47:47Z",
-  "summary": "Enforce project-level RBAC role differentiation for reader and member mutations and add permissions introspection"
+  "source_sha256": "cc00bca0901bbafb0fa013d8162efdc0890e5ca259ac21e94534581b0002e015",
+  "reviewed_at": "2026-09-18T23:25:28Z",
+  "summary": "Relax requires-python to >=3.11 in sibling root packages and afterglow-crypto for Kolla control-node compatibility; sync operator pins to the final dev fix commits"
 }
 ```
 <!-- architecture-review:end -->

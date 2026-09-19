@@ -36,7 +36,7 @@ dependencies = [
     "Pillow==12.3.0",
     "pypdf==6.15.0",
     "mutagen==1.47.0",
-    "afterglow-crypto @ git+https://github.com/openstack-afterglow/afterglow-crypto.git@aee36e8ea173e486f443fa816de4e6397d11cff2",
+    "afterglow-crypto @ git+https://github.com/openstack-afterglow/afterglow-crypto.git@65ff43db4d386d65436411fc0642ebc3044bd517",
     "waygate-sdk @ git+https://github.com/openstack-afterglow/waygate.git@1c59b5e86d3c3c1b9d3397b38301ee9bc401cf03#subdirectory=sdk",
     "drover-sdk @ git+https://github.com/openstack-afterglow/drover.git@bd4caa490eb3c21fdeb9cc8f008aaf02f72264ef#subdirectory=sdk",
 ]
