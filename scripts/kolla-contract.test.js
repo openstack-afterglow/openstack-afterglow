@@ -966,15 +966,21 @@ test("Kolla operator tag-promotion script and workflow preserve immutable releas
 	const workflow = readRepoFile(".github/workflows/promote-kolla-role-tags.yml")
 	const operatorReadme = readRepoFile("deploy/kolla/operator/README.md")
 	const kollaReadme = readRepoFile("deploy/kolla/README.md")
+	const installer = readRepoFile("deploy/kolla/install.sh")
 
 	assert.match(script, /TAG_RE = re\.compile\(r"\^v/)
 	assert.match(script, /def select_tag\(/)
 	assert.match(script, /def verify_tag_source\(/)
+	assert.match(script, /"--tag"/)
 	assert.match(workflow, /schedule:\n\s+- cron: /)
 	assert.match(workflow, /promote_kolla_role_tags\.py --latest/)
 	assert.match(workflow, /automation\/kolla-role-tags/)
+	assert.match(workflow, /git config user\.name "github-actions\[bot\]"/)
 	assert.match(operatorReadme, /python3 scripts\/promote_kolla_role_tags\.py --latest/)
+	assert.match(operatorReadme, /uv add --no-sync --tag vX\.Y\.Z "drover @ git\+/)
 	assert.match(kollaReadme, /Each root package promotion is bound to its immutable `vX\.Y\.Z` release tag\./)
+	assert.match(installer, /read_locked_version\.py/)
+	assert.doesNotMatch(installer, /DROVER_VERSION="0\.2\.22"/)
 
 	const unitResult = spawnSync(
 		"uv",

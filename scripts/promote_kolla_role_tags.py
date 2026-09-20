@@ -145,6 +145,7 @@ def verify_tag_source(operator_dir: Path, service_name: str, service: Service) -
 def promote(operator_dir: Path, names: list[str]) -> bool:
     changed = False
     root = operator_dir.parent.parent.parent
+    promoted: list[str] = []
     for name in names:
         service = SERVICES[name]
         current = lock_version(operator_dir, service.distribution)
@@ -157,18 +158,18 @@ def promote(operator_dir: Path, names: list[str]) -> bool:
             "uv",
             "add",
             "--no-sync",
-            f"{service.distribution} @ git+{service.repository}@{selected}",
+            "--tag",
+            selected,
+            f"{service.distribution} @ git+{service.repository}",
             cwd=operator_dir,
         )
+        promoted.append(name)
         changed = True
     if changed:
         run("uv", "lock", "--refresh", cwd=operator_dir)
-        for name in names:
-            service = SERVICES[name]
-            if configured_tag(operator_dir, service.distribution) is not None:
-                verify_tag_source(operator_dir, name, service)
+        for name in promoted:
+            verify_tag_source(operator_dir, name, SERVICES[name])
     return changed
-
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)

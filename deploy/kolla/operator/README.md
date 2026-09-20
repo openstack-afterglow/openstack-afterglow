@@ -75,10 +75,10 @@ the exact release tag—never a branch—and regenerate the lock from this
 directory:
 
 ```bash
-uv add --no-sync "drover @ git+https://github.com/openstack-afterglow/drover.git@vX.Y.Z"
-uv add --no-sync "lumen @ git+https://github.com/openstack-afterglow/lumen.git@vX.Y.Z"
-uv add --no-sync "waygate @ git+https://github.com/openstack-afterglow/waygate.git@vX.Y.Z"
-uv add --no-sync "palimpsest-local @ git+https://github.com/openstack-afterglow/palimpsest.git@vX.Y.Z"
+uv add --no-sync --tag vX.Y.Z "drover @ git+https://github.com/openstack-afterglow/drover.git"
+uv add --no-sync --tag vX.Y.Z "lumen @ git+https://github.com/openstack-afterglow/lumen.git"
+uv add --no-sync --tag vX.Y.Z "waygate @ git+https://github.com/openstack-afterglow/waygate.git"
+uv add --no-sync --tag vX.Y.Z "palimpsest-local @ git+https://github.com/openstack-afterglow/palimpsest.git"
 uv lock --refresh
 ```
 

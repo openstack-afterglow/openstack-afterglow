@@ -50,6 +50,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           branch="automation/kolla-role-tags"
           git switch -C "$branch"
           git add ARCHITECTURE.md deploy/kolla/operator/pyproject.toml deploy/kolla/operator/uv.lock

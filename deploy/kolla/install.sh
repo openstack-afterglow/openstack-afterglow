@@ -151,10 +151,22 @@ if [[ "$KOLLA_ANSIBLE_BIN" == /* ]]; then
   candidate_kolla_python="$(dirname "$KOLLA_ANSIBLE_BIN")/python"
   [[ -x "$candidate_kolla_python" ]] && KOLLA_PYTHON="$candidate_kolla_python"
 fi
+OPERATOR_LOCK="$REPO_DIR/deploy/kolla/operator/uv.lock"
+[[ -r "$OPERATOR_LOCK" ]] || die "Operator lockfile not found at $OPERATOR_LOCK"
+
+get_locked_version() {
+  local dist="$1"
+  local ver
+  ver=$("$KOLLA_PYTHON" "$REPO_DIR/deploy/kolla/read_locked_version.py" "$OPERATOR_LOCK" "$dist" 2>/dev/null || true)
+  if [[ -z "$ver" ]]; then
+    die "Failed to determine expected version for $dist from $OPERATOR_LOCK"
+  fi
+  echo "$ver"
+}
 
 DROVER_ROLE_DIR="$ROLES_DIR/drover"
 DROVER_LEGACY_ROLE_TARGET="$REPO_DIR/deploy/kolla/ansible/roles/drover"
-DROVER_VERSION="0.2.22"
+DROVER_VERSION=$(get_locked_version "drover")
 if [[ -L "$DROVER_ROLE_DIR" ]]; then
   current_drover_target=$(readlink "$DROVER_ROLE_DIR" || true)
   if [[ "$current_drover_target" == "$DROVER_LEGACY_ROLE_TARGET" ]]; then
@@ -177,7 +189,7 @@ log "Drover role verified at $DROVER_ROLE_DIR (drover==$installed_drover_version
 
 LUMEN_ROLE_DIR="$ROLES_DIR/lumen"
 LUMEN_LEGACY_ROLE_TARGET="$REPO_DIR/deploy/kolla/ansible/roles/lumen"
-LUMEN_VERSION="0.2.2"
+LUMEN_VERSION=$(get_locked_version "lumen")
 if [[ -L "$LUMEN_ROLE_DIR" ]]; then
   current_lumen_target=$(readlink "$LUMEN_ROLE_DIR" || true)
   if [[ "$current_lumen_target" == "$LUMEN_LEGACY_ROLE_TARGET" ]]; then
@@ -200,7 +212,7 @@ log "Lumen role verified at $LUMEN_ROLE_DIR (lumen==$installed_lumen_version)"
 
 WAYGATE_ROLE_DIR="$ROLES_DIR/waygate"
 WAYGATE_LEGACY_ROLE_TARGET="$REPO_DIR/deploy/kolla/ansible/roles/waygate"
-WAYGATE_VERSION="0.1.3"
+WAYGATE_VERSION=$(get_locked_version "waygate")
 if [[ -L "$WAYGATE_ROLE_DIR" ]]; then
   current_waygate_target=$(readlink "$WAYGATE_ROLE_DIR" || true)
   if [[ "$current_waygate_target" == "$WAYGATE_LEGACY_ROLE_TARGET" ]]; then
@@ -223,7 +235,7 @@ log "Waygate role verified at $WAYGATE_ROLE_DIR (waygate==$installed_waygate_ver
 
 PALIMPSEST_ROLE_DIR="$ROLES_DIR/palimpsest"
 PALIMPSEST_LEGACY_ROLE_TARGET="$REPO_DIR/deploy/kolla/ansible/roles/palimpsest"
-PALIMPSEST_VERSION="0.1.4"
+PALIMPSEST_VERSION=$(get_locked_version "palimpsest-local")
 if [[ -L "$PALIMPSEST_ROLE_DIR" ]]; then
   current_palimpsest_target=$(readlink "$PALIMPSEST_ROLE_DIR" || true)
   if [[ "$current_palimpsest_target" == "$PALIMPSEST_LEGACY_ROLE_TARGET" ]]; then
