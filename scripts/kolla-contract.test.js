@@ -959,3 +959,27 @@ test("Installer and uninstaller preserve root-package roles and operator files",
 		fs.rmSync(temporaryDirectory, { recursive: true, force: true })
 	}
 })
+
+test("Kolla operator tag-promotion script and workflow preserve immutable release contract", () => {
+	const script = readRepoFile("scripts/promote_kolla_role_tags.py")
+	const testScript = readRepoFile("scripts/test_promote_kolla_role_tags.py")
+	const workflow = readRepoFile(".github/workflows/promote-kolla-role-tags.yml")
+	const operatorReadme = readRepoFile("deploy/kolla/operator/README.md")
+	const kollaReadme = readRepoFile("deploy/kolla/README.md")
+
+	assert.match(script, /TAG_RE = re\.compile\(r"\^v/)
+	assert.match(script, /def select_tag\(/)
+	assert.match(script, /def verify_tag_source\(/)
+	assert.match(workflow, /schedule:\n\s+- cron: /)
+	assert.match(workflow, /promote_kolla_role_tags\.py --latest/)
+	assert.match(workflow, /automation\/kolla-role-tags/)
+	assert.match(operatorReadme, /python3 scripts\/promote_kolla_role_tags\.py --latest/)
+	assert.match(kollaReadme, /Each root package promotion is bound to its immutable `vX\.Y\.Z` release tag\./)
+
+	const unitResult = spawnSync(
+		"uv",
+		["run", "--no-project", "--python", "3.11", "python", "-m", "unittest", "scripts/test_promote_kolla_role_tags.py"],
+		{ cwd: rootDir, encoding: "utf8" }
+	)
+	assert.equal(unitResult.status, 0, unitResult.stderr || unitResult.stdout)
+})

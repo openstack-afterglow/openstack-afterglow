@@ -1,0 +1,65 @@
+name: Promote Kolla role release tags
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: promote-kolla-role-tags
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: Open operator tag-promotion pull request
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+
+      - name: Promote released root-package tags
+        run: python3 scripts/promote_kolla_role_tags.py --latest
+
+      - name: Detect promotion
+        id: diff
+        run: |
+          if git diff --quiet -- deploy/kolla/operator/pyproject.toml deploy/kolla/operator/uv.lock; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Stamp source-backed architecture review
+        if: steps.diff.outputs.changed == 'true'
+        run: >-
+          python3 scripts/check_architecture.py --stamp
+          --summary "operator: promote package-owned Kolla roles to immutable sibling release tags"
+
+      - name: Create or update promotion pull request
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          branch="automation/kolla-role-tags"
+          git switch -C "$branch"
+          git add ARCHITECTURE.md deploy/kolla/operator/pyproject.toml deploy/kolla/operator/uv.lock
+          git commit -m "chore(kolla): promote released root-package tags"
+          git push --force-with-lease origin "HEAD:$branch"
+
+          if ! gh pr list --base main --head "$branch" --state open --json url --jq 'length > 0' | grep -qx true; then
+            gh pr create \
+              --base main \
+              --head "$branch" \
+              --title "chore(kolla): promote released root-package tags" \
+              --body "Promotes the dependency-only Kolla operator to newly published immutable root-package tags. The committed uv.lock records each tag's resolved commit. Review and merge before any operator environment is changed."
+          fi

@@ -203,7 +203,7 @@ At ≥768px, the settings route allocates the return action and settings body wi
 
 ### 빌드·배포
 
-`Dockerfile`은 backend/worker에 Python 3.12 slim, frontend build에 Bun 1, runtime에 Node 20을 사용한다. 현재 [`docker-build.yml`](.github/workflows/docker-build.yml)은 `linux/amd64` matrix만 활성화하며 arm64 항목은 주석 처리되어 있다. GitHub Actions가 이미지를 GHCR로 push하고, 배포 구성은 Kubernetes/Kustomize·Helm/ArgoCD 또는 [`deploy/kolla/site.yml`](deploy/kolla/site.yml)의 custom service role 경계를 사용한다. Kolla는 `afterglow`, `waygate`, `drover`, `lumen`, `palimpsest` inventory group을 별도로 검사한다. `deploy/kolla/install.sh`가 stock site import와 inventory/globals.d 연결을 준비하면 `/etc/kolla`에서 `kolla-ansible deploy -i multinode`가 custom 서비스를 함께 실행한다. 서비스·HAProxy 플레이는 `become: true`로 toolbox와 중첩/위임 task의 권한을 선언하며, operator 계정의 기존 sudo 권한을 전제로 한다. 형제 역할은 각 서비스 root distribution(`drover`, `lumen`, `waygate`, `palimpsest-local`)이 소유하고 Afterglow 역할만 in-tree 소스 심볼릭 링크로 관리한다. Afterglow 계약 테스트는 형제 checkout 없이 자체 역할·aggregate dispatch와 실제 Python metadata lookup 기반 설치/재설치/제거의 파일 보존을 검증한다. operator manifest와 lock은 형제 dev 브랜치의 검증된 immutable commit SHA(drover 3d21f785, lumen 3ab1f2ff, waygate 9933deb9, palimpsest c82bc0f)로 고정됐고, disposable venv에서 실제 설치·역할 shared-data 배치·installer/uninstaller 파일 보존까지 검증됐다.
+`Dockerfile`은 backend/worker에 Python 3.12 slim, frontend build에 Bun 1, runtime에 Node 20을 사용한다. 현재 [`docker-build.yml`](.github/workflows/docker-build.yml)은 `linux/amd64` matrix만 활성화하며 arm64 항목은 주석 처리되어 있다. GitHub Actions가 이미지를 GHCR로 push하고, 배포 구성은 Kubernetes/Kustomize·Helm/ArgoCD 또는 [`deploy/kolla/site.yml`](deploy/kolla/site.yml)의 custom service role 경계를 사용한다. Kolla는 `afterglow`, `waygate`, `drover`, `lumen`, `palimpsest` inventory group을 별도로 검사한다. `deploy/kolla/install.sh`가 stock site import와 inventory/globals.d 연결을 준비하면 `/etc/kolla`에서 `kolla-ansible deploy -i multinode`가 custom 서비스를 함께 실행한다. 서비스·HAProxy 플레이는 `become: true`로 toolbox와 중첩/위임 task의 권한을 선언하며, operator 계정의 기존 sudo 권한을 전제로 한다. 형제 역할은 각 서비스 root distribution(`drover`, `lumen`, `waygate`, `palimpsest-local`)이 소유하고 Afterglow 역할만 in-tree 소스 심볼릭 링크로 관리한다. Afterglow 계약 테스트는 형제 checkout 없이 자체 역할·aggregate dispatch와 실제 Python metadata lookup 기반 설치/재설치/제거의 파일 보존을 검증한다. `deploy/kolla/operator/`는 `kolla-ansible`과 네 root distribution을 frozen `uv.lock`으로 동기화한다. 형제의 immutable stable `vX.Y.Z` tag는 같은 root distribution version과 package-owned role을 가져야 하며, hourly `promote-kolla-role-tags` workflow가 현재 locked version보다 낮지 않은 최신 tag를 `tool.uv.sources`의 `tag`로 승격한 뒤 resolved commit lock과 architecture stamp를 포함한 단일 review PR을 연다. branch/bare Git URL/mutable `latest`는 배포에서 금지하고, review PR의 merge 전에는 control node가 새 release를 발견·설치하지 않는다. 현재 태그가 아직 없는 release는 기존 full commit pin을 유지한다.
 
 ### 선행 조건과 관측
 
@@ -279,9 +279,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "018345cf75c48306089ce177c32f00e7a386e6183dabd165bb57e2ede27833f2",
-  "reviewed_at": "2026-09-19T08:09:11Z",
-  "summary": "Palimpsest admin multi-mode Dockerfile build, plan preview, and live execution workflow"
+  "source_sha256": "241e9883cb2ec7669b33224591d11d82e9d6f375299a289957b1bf9e6c78b926",
+  "reviewed_at": "2026-09-20T07:42:18Z",
+  "summary": "Define immutable release-tag promotion contract for package-owned Kolla roles with automated workflow and script guard"
 }
 ```
 <!-- architecture-review:end -->

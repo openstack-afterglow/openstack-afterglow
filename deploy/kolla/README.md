@@ -112,14 +112,17 @@ unexpected, `install.sh` aborts rather than replacing it.
 - **`waygate==0.1.3`** owns the `waygate` role.
 - **`palimpsest-local==0.1.4`** owns the `palimpsest` role.
 
-All roots require Python 3.12 or newer. There are no `*-kolla` distributions,
+All roots require Python 3.11 or newer. There are no `*-kolla` distributions,
 no `subdirectory = "deploy/kolla"` sources, and no plugin role becomes a Kolla
 default dependency merely by being installed.
 
-The operator manifest pins each root distribution to an immutable Git commit
-SHA on the sibling `dev` branches, and `operator/uv.lock` is generated from
-those pins. Commit SHAs (never tags) are the synchronization contract; bumping
-a service means recording its new verified commit here and relocking.
+Each root package promotion is bound to its immutable `vX.Y.Z` release tag.
+The operator manifest records that tag by name; `operator/uv.lock` records the
+resolved commit, so frozen synchronization gives every controller the same
+artifact. Branches, bare Git URLs, mutable `latest` labels, and tag rewrites
+are prohibited. The tag must exactly match root-package metadata and carry the
+package-owned role. The scheduled Afterglow workflow opens a reviewed PR when
+a newer eligible sibling tag appears; merging that PR is the promotion boundary.
 
 ### 1. Legacy Symlink Migration
 
@@ -150,26 +153,25 @@ for role in drover lumen waygate palimpsest; do
 done
 ```
 
-### 2. Record and Sync the Operator Dependencies
+### 2. Promote and Sync the Operator Dependencies
 
-The committed manifest and lock already pin the verified root commits.
-To move a service to a newer verified commit, record it without syncing a
-local environment:
+Do not make a Kolla control node discover a remote "latest" release at install
+time. From a reviewed Afterglow checkout, the scheduled
+`promote-kolla-role-tags` workflow (or its manual dispatch) records each new
+eligible sibling `vX.Y.Z` tag by name and opens a promotion PR. Review and
+merge that PR first; its lock is the release set to install.
+
+Then, from the promoted checkout:
 
 ```bash
 cd deploy/kolla/operator
-uv add --no-sync "drover @ git+https://github.com/openstack-afterglow/drover.git@<new-root-commit>"
-uv add --no-sync "lumen @ git+https://github.com/openstack-afterglow/lumen.git@<new-root-commit>"
-uv add --no-sync "waygate @ git+https://github.com/openstack-afterglow/waygate.git@<new-root-commit>"
-uv add --no-sync "palimpsest-local @ git+https://github.com/openstack-afterglow/palimpsest.git@<new-root-commit>"
-
-UV_PROJECT_ENVIRONMENT=/etc/kolla/.venv uv sync --inexact --no-install-project
+UV_PROJECT_ENVIRONMENT=/etc/kolla/.venv uv sync --frozen --inexact --no-install-project
 ```
 
 `--no-install-project` is required: the operator manifest has dependencies but
 no application package. `--inexact` preserves unrelated packages in the Kolla
-environment. After the lock is regenerated and reviewed, use the organization
-approved locked/frozen synchronization policy for later updates.
+environment. `--frozen` rejects a changed tag or an unreviewed manifest instead
+of resolving a different release on one controller.
 
 ### 3. Installation & Registration Order
 
