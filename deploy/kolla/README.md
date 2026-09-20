@@ -165,13 +165,14 @@ Then, from the promoted checkout:
 
 ```bash
 cd deploy/kolla/operator
-UV_PROJECT_ENVIRONMENT=/etc/kolla/.venv uv sync --frozen --inexact --no-install-project
+UV_PROJECT_ENVIRONMENT=/etc/kolla/.venv uv sync --locked --inexact --no-install-project
 ```
 
 `--no-install-project` is required: the operator manifest has dependencies but
 no application package. `--inexact` preserves unrelated packages in the Kolla
-environment. `--frozen` rejects a changed tag or an unreviewed manifest instead
-of resolving a different release on one controller.
+environment. `--locked` asserts that `pyproject.toml` matches `uv.lock` and fails
+if the manifest was edited without relocking, ensuring every controller installs
+the exact reviewed commits.
 
 ### 3. Installation & Registration Order
 

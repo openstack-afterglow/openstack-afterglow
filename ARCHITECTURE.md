@@ -279,9 +279,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "c064df867d6e4e5793157b60c01fcd5863c5e26643cc12a13bd18606c3aae06a",
-  "reviewed_at": "2026-09-20T07:50:04Z",
-  "summary": "Derive installer expected versions dynamically from operator lock and enforce explicit tag promotion with unconditional verification"
+  "source_sha256": "ad90b8b3b687cfcab48c6413eadfa29ea38e6d7d174e71bd76387ca22cb29cb5",
+  "reviewed_at": "2026-09-20T07:58:50Z",
+  "summary": "Exercise real install.sh E2E against promoted lock with stale rejection and updated acceptance; correct uv sync documentation"
 }
 ```
 <!-- architecture-review:end -->

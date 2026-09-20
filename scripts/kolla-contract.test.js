@@ -11,9 +11,9 @@ function readRepoFile(relativePath) {
 	return fs.readFileSync(path.join(rootDir, relativePath), "utf8")
 }
 
-function createInstalledServiceFixtures(directory, rolesDir, pythonPath) {
+function createInstalledServiceFixtures(directory, rolesDir, pythonPath, customPackages) {
 	const metadataDir = path.join(directory, "python-metadata")
-	const packages = [
+	const packages = customPackages || [
 		["drover", "drover", "0.2.22"],
 		["lumen", "lumen", "0.2.2"],
 		["waygate", "waygate", "0.1.3"],
@@ -955,6 +955,80 @@ test("Installer and uninstaller preserve root-package roles and operator files",
 			assert.equal(fs.lstatSync(path.join(rolesDir, role)).isSymbolicLink(), false)
 		}
 		for (const [file, content] of originalFiles) assert.deepEqual(fs.readFileSync(file), content, file)
+	} finally {
+		fs.rmSync(temporaryDirectory, { recursive: true, force: true })
+	}
+})
+
+test("Installer rejects stale package versions and accepts promoted operator lock versions", () => {
+	const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "afterglow-kolla-promoted-"))
+	const kollaConfigPath = path.join(temporaryDirectory, "etc", "kolla")
+	const kollaAnsiblePath = path.join(temporaryDirectory, "share", "kolla-ansible")
+	const rolesDir = path.join(kollaAnsiblePath, "ansible", "roles")
+	const pluginConfigRoot = path.join(kollaConfigPath, "config", "afterglow")
+	const fakeKollaBinary = path.join(temporaryDirectory, "bin", "kolla-ansible")
+	const pythonResult = spawnSync("uv", ["run", "--project", path.join(rootDir, "backend"), "python", "-c", "import sys; print(sys.executable)"], { encoding: "utf8" })
+	assert.equal(pythonResult.status, 0, pythonResult.stderr)
+
+	try {
+		// Create an isolated promoted uv.lock where drover is promoted to 0.2.23
+		const promotedLockPath = path.join(temporaryDirectory, "uv.lock")
+		const currentLock = fs.readFileSync(path.join(rootDir, "deploy/kolla/operator/uv.lock"), "utf8")
+		const promotedLock = currentLock.replace(
+			/name = "drover"\nversion = "0\.2\.22"/,
+			'name = "drover"\nversion = "0.2.23"'
+		)
+		fs.writeFileSync(promotedLockPath, promotedLock)
+
+		// Set up environment where installed metadata still has stale drover 0.2.22
+		const staleMetadataDir = createInstalledServiceFixtures(
+			temporaryDirectory,
+			rolesDir,
+			path.join(temporaryDirectory, "bin", "python"),
+			[
+				["drover", "drover", "0.2.22"],
+				["lumen", "lumen", "0.2.2"],
+				["waygate", "waygate", "0.1.3"],
+				["palimpsest", "palimpsest-local", "0.1.4"],
+			]
+		)
+
+		const commandEnvironment = {
+			...process.env,
+			AFTERGLOW_REPO_DIR: rootDir,
+			AFTERGLOW_OPERATOR_LOCK: promotedLockPath,
+			KOLLA_ANSIBLE_BIN: fakeKollaBinary,
+			KOLLA_TEST_PYTHON: pythonResult.stdout.trim(),
+			KOLLA_TEST_METADATA: staleMetadataDir,
+			KOLLA_ANSIBLE_DIR: kollaAnsiblePath,
+			KOLLA_CONFIG_PATH: kollaConfigPath,
+		}
+
+		fs.mkdirSync(pluginConfigRoot, { recursive: true })
+		fs.writeFileSync(fakeKollaBinary, "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 })
+		fs.writeFileSync(path.join(kollaAnsiblePath, "ansible", "site.yml"), "---\n- import_playbook: gather-facts.yml\n")
+		fs.writeFileSync(path.join(kollaConfigPath, "multinode"), "[control]\ncontroller\n")
+		fs.writeFileSync(path.join(kollaConfigPath, "globals.yml"), "kolla_base: true\n")
+		fs.writeFileSync(path.join(pluginConfigRoot, "globals.yml"), "enable_afterglow: true\n", { mode: 0o640 })
+		fs.writeFileSync(path.join(pluginConfigRoot, "secrets.yml"), "afterglow_secret: test\n", { mode: 0o600 })
+
+		const installer = path.join(rootDir, "deploy/kolla/install.sh")
+
+		// 1. Run install.sh with stale metadata (0.2.22) against promoted lock (0.2.23) -> MUST FAIL!
+		const staleResult = spawnSync("bash", [installer], { encoding: "utf8", env: commandEnvironment })
+		assert.notEqual(staleResult.status, 0, "install.sh must fail when installed package version does not match promoted lock")
+		assert.match(staleResult.stderr, /Expected drover==0\.2\.23 in the active Kolla environment, found '0\.2\.22'/)
+
+		// 2. Upgrade installed metadata to 0.2.23 (simulating uv sync in Kolla environment)
+		fs.rmSync(path.join(staleMetadataDir, "drover-0.2.22.dist-info"), { recursive: true, force: true })
+		const newDistInfo = path.join(staleMetadataDir, "drover-0.2.23.dist-info")
+		fs.mkdirSync(newDistInfo, { recursive: true })
+		fs.writeFileSync(path.join(newDistInfo, "METADATA"), "Metadata-Version: 2.1\nName: drover\nVersion: 0.2.23\n")
+
+		// Run install.sh with updated metadata (0.2.23) against promoted lock -> MUST SUCCEED!
+		const successResult = spawnSync("bash", [installer], { encoding: "utf8", env: commandEnvironment })
+		assert.equal(successResult.status, 0, successResult.stderr)
+		assert.match(successResult.stdout, /Drover role verified at .* \(drover==0\.2\.23\)/)
 	} finally {
 		fs.rmSync(temporaryDirectory, { recursive: true, force: true })
 	}

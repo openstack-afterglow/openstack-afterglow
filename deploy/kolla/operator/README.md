@@ -27,7 +27,7 @@ Kolla-Ansible remains independently pinned to
 `34daacfbf2d5987f543787f57535b2bebe7dee19`. A promoted root package uses an
 explicit immutable Git `tag = "vX.Y.Z"`; `uv.lock` then records that tag's
 resolved commit. The lock—not a floating Git ref—is what every controller
-installs with `uv sync --frozen`.
+installs with `uv sync --locked`.
 
 The operator must never consume a branch, a bare repository URL, or a mutable
 `latest` label. A sibling release is promotable only when all of these are
@@ -86,7 +86,7 @@ After the reviewed manifest and lock are present, install them into the actual
 Kolla environment:
 
 ```bash
-UV_PROJECT_ENVIRONMENT=/etc/kolla/.venv uv sync --frozen --inexact --no-install-project
+UV_PROJECT_ENVIRONMENT=/etc/kolla/.venv uv sync --locked --inexact --no-install-project
 source /etc/kolla/.venv/bin/activate
 ```
 

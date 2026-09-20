@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 import importlib.util
 import os
+import re
 import subprocess
 import tempfile
 import unittest
@@ -86,18 +87,30 @@ class PromotionIntegrationTests(unittest.TestCase):
         self._git("add", "pyproject.toml", cwd=self.sibling_repo)
         self._git("commit", "-m", "v0.2.23 release", cwd=self.sibling_repo)
         self._git("tag", "v0.2.23", cwd=self.sibling_repo)
-
     def _setup_operator_project(self) -> None:
         self.operator_dir.mkdir(parents=True)
-        v22_sha = self._git("rev-parse", "v0.2.22^{commit}", cwd=self.sibling_repo).strip()
+        repo_root = Path(__file__).resolve().parents[1]
+        # Copy actual operator pyproject.toml and uv.lock as realistic starting base
+        current_pyproject = (repo_root / "deploy/kolla/operator/pyproject.toml").read_text(encoding="utf-8")
+        current_lock = (repo_root / "deploy/kolla/operator/uv.lock").read_text(encoding="utf-8")
+
+        # Override drover source to point to local sibling repo
         repo_url = f"file://{self.sibling_repo.resolve()}"
-        (self.operator_dir / "pyproject.toml").write_text(
-            '[project]\nname = "test-operator"\nversion = "0.1.0"\nrequires-python = ">=3.11"\ndependencies = ["drover"]\n'
-            f'[tool.uv.sources]\ndrover = {{ git = "{repo_url}", rev = "{v22_sha}" }}\n'
-            '[build-system]\nrequires = ["hatchling"]\nbuild-backend = "hatchling.build"\n',
-            encoding="utf-8",
+        v22_sha = self._git("rev-parse", "v0.2.22^{commit}", cwd=self.sibling_repo).strip()
+        patched_pyproject = re.sub(
+            r'drover = \{[^\}]+\}',
+            f'drover = {{ git = "{repo_url}", rev = "{v22_sha}" }}',
+            current_pyproject,
         )
-        subprocess.run(["uv", "lock"], cwd=self.operator_dir, check=True, capture_output=True)
+        (self.operator_dir / "pyproject.toml").write_text(patched_pyproject, encoding="utf-8")
+
+        # Patch uv.lock drover source to point to local sibling repo with 0.2.22
+        patched_lock = re.sub(
+            r'(\{\s*name\s*=\s*"drover",\s*git\s*=\s*")[^"]+("\s*\})',
+            rf'\g<1>{repo_url}?rev={v22_sha}#{v22_sha}\g<2>',
+            current_lock,
+        )
+        (self.operator_dir / "uv.lock").write_text(patched_lock, encoding="utf-8")
 
     def test_promote_higher_tag_and_installer_lock_derivation(self) -> None:
         repo_url = f"file://{self.sibling_repo.resolve()}"
@@ -107,11 +120,10 @@ class PromotionIntegrationTests(unittest.TestCase):
             changed = _PROMOTER.promote(self.operator_dir, ["drover"])
             self.assertTrue(changed)
 
-            # Verify pyproject.toml has tag = "v0.2.23"
+            # Verify pyproject.toml has drover tag = "v0.2.23" and no drover rev
             pyproject = (self.operator_dir / "pyproject.toml").read_text(encoding="utf-8")
-            self.assertIn('tag = "v0.2.23"', pyproject)
-            self.assertNotIn("rev =", pyproject)
-
+            self.assertIn(f'drover = {{ git = "{repo_url}", tag = "v0.2.23" }}', pyproject)
+            self.assertNotIn(f'drover = {{ git = "{repo_url}", rev =', pyproject)
             # Verify uv.lock entry
             lock_text = (self.operator_dir / "uv.lock").read_text(encoding="utf-8")
             self.assertIn("drover", lock_text)
@@ -130,16 +142,90 @@ class PromotionIntegrationTests(unittest.TestCase):
                 check=True,
             )
             expected_version = res.stdout.strip()
-            self.assertEqual(expected_version, "0.2.23")
+            # 1. Run real install.sh against promoted lock with stale installed metadata (0.2.22) -> MUST FAIL!
+            stale_res = self._run_install("0.2.22")
+            self.assertNotEqual(stale_res.returncode, 0)
+            self.assertIn("Expected drover==0.2.23 in the active Kolla environment, found '0.2.22'", stale_res.stderr)
 
-            # Verify that installer's version expectation rejects 0.2.22 and accepts 0.2.23
-            installed_stale = "0.2.22"
-            self.assertNotEqual(installed_stale, expected_version)
-            installed_new = "0.2.23"
-            self.assertEqual(installed_new, expected_version)
+            # 2. Run real install.sh against promoted lock with updated metadata (0.2.23) -> MUST SUCCEED!
+            success_res = self._run_install("0.2.23")
+            self.assertEqual(success_res.returncode, 0, f"install.sh failed: {success_res.stderr}")
+            self.assertIn("Drover role verified at", success_res.stdout)
+            self.assertIn("(drover==0.2.23)", success_res.stdout)
         finally:
             _PROMOTER.SERVICES.clear()
             _PROMOTER.SERVICES.update(orig_services)
+
+    def _run_install(self, installed_drover_version: str) -> subprocess.CompletedProcess[str]:
+        kolla_base = self.base / f"kolla-{installed_drover_version}"
+        kolla_base.mkdir(parents=True, exist_ok=True)
+        share_dir = kolla_base / "share/kolla-ansible"
+        roles_dir = share_dir / "ansible/roles"
+        etc_kolla = kolla_base / "etc/kolla"
+        plugin_root = etc_kolla / "config/afterglow"
+        bin_dir = kolla_base / "bin"
+        metadata_dir = kolla_base / "metadata"
+        for d in (roles_dir, plugin_root, bin_dir, metadata_dir):
+            d.mkdir(parents=True, exist_ok=True)
+
+        packages = [
+            ("drover", installed_drover_version),
+            ("lumen", "0.2.2"),
+            ("waygate", "0.1.3"),
+            ("palimpsest", "0.1.4"),
+        ]
+        for role, ver in packages:
+            rdir = roles_dir / role
+            for sub in ("tasks", "defaults", "templates"):
+                (rdir / sub).mkdir(parents=True, exist_ok=True)
+            (rdir / "tasks/main.yml").write_text("---\n[]\n", encoding="utf-8")
+            (rdir / "tasks/deploy.yml").write_text("---\n[]\n", encoding="utf-8")
+            (rdir / "defaults/main.yml").write_text(f"{role}_services: {{}}\n", encoding="utf-8")
+            (rdir / f"templates/{role}.conf.j2").write_text("[DEFAULT]\n", encoding="utf-8")
+
+            dist_name = "palimpsest-local" if role == "palimpsest" else role
+            dist_info = metadata_dir / f"{dist_name.replace('-', '_')}-{ver}.dist-info"
+            dist_info.mkdir(parents=True, exist_ok=True)
+            (dist_info / "METADATA").write_text(
+                f"Metadata-Version: 2.1\nName: {dist_name}\nVersion: {ver}\n", encoding="utf-8"
+            )
+        root_repo = Path(__file__).resolve().parents[1]
+        # Find python with PyYAML available (matching kolla-contract.test.js)
+        python_bin = subprocess.run(
+            ["uv", "run", "--project", str(root_repo / "backend"), "python", "-c", "import sys; print(sys.executable)"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+
+        fake_py = bin_dir / "python"
+        fake_py.write_text(
+            f'#!/usr/bin/env bash\nexport PYTHONPATH="{metadata_dir.resolve()}:$PYTHONPATH"\nexec "{python_bin}" "$@"\n',
+            encoding="utf-8",
+        )
+        fake_py.chmod(0o755)
+        fake_bin = bin_dir / "kolla-ansible"
+        fake_bin.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+        fake_bin.chmod(0o755)
+
+        (share_dir / "ansible").mkdir(parents=True, exist_ok=True)
+        (share_dir / "ansible/site.yml").write_text("---\n- import_playbook: gather-facts.yml\n", encoding="utf-8")
+        (etc_kolla / "multinode").write_text("[control]\ncontroller\n", encoding="utf-8")
+        (etc_kolla / "globals.yml").write_text("kolla_base: true\n", encoding="utf-8")
+        (plugin_root / "globals.yml").write_text("enable_afterglow: true\n", encoding="utf-8")
+        (plugin_root / "secrets.yml").write_text("afterglow_secret: test\n", encoding="utf-8")
+
+        root_repo = Path(__file__).resolve().parents[1]
+        env = {
+            **os.environ,
+            "AFTERGLOW_REPO_DIR": str(root_repo),
+            "AFTERGLOW_OPERATOR_LOCK": str((self.operator_dir / "uv.lock").resolve()),
+            "KOLLA_ANSIBLE_BIN": str(fake_bin),
+            "KOLLA_ANSIBLE_DIR": str(share_dir),
+            "KOLLA_CONFIG_PATH": str(etc_kolla),
+        }
+        installer = root_repo / "deploy/kolla/install.sh"
+        return subprocess.run(["bash", str(installer)], env=env, capture_output=True, text=True, check=False)
 
 if __name__ == "__main__":
     unittest.main()

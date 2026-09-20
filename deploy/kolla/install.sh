@@ -151,7 +151,7 @@ if [[ "$KOLLA_ANSIBLE_BIN" == /* ]]; then
   candidate_kolla_python="$(dirname "$KOLLA_ANSIBLE_BIN")/python"
   [[ -x "$candidate_kolla_python" ]] && KOLLA_PYTHON="$candidate_kolla_python"
 fi
-OPERATOR_LOCK="$REPO_DIR/deploy/kolla/operator/uv.lock"
+OPERATOR_LOCK="${AFTERGLOW_OPERATOR_LOCK:-$REPO_DIR/deploy/kolla/operator/uv.lock}"
 [[ -r "$OPERATOR_LOCK" ]] || die "Operator lockfile not found at $OPERATOR_LOCK"
 
 get_locked_version() {
