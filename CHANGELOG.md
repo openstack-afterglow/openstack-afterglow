@@ -10,6 +10,7 @@
 ### Fixed
 
 - **로컬 Palimpsest Hub source build 복구** — dev Compose와 local-services preflight를 실제 sibling layout인 repository-root context + `docker/hub/Dockerfile`에 맞춰, backend/frontend 재생성 시 dependency build가 존재하지 않는 `hub/Dockerfile`에서 중단되던 회귀를 수정했다.
+- **Apple Silicon backend source build 복구** — Backend image가 OpenTofu `linux_amd64` archive를 고정하고 GitHub release를 한 번만 내려받던 계약을 `TARGETARCH` 기반 `amd64`/`arm64` 선택, 공식 SHA-256 pin 검증, bounded retry로 교체했다. OpenTofu acquisition을 별도 stage로 격리해 일시적 download 실패가 대용량 runtime package layer를 무효화하지 않는다.
 
 ## [1.24.0] - 2026-09-21
 

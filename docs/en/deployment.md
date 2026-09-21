@@ -67,6 +67,8 @@ The base backend optionally reads `.env`; frontend never receives backend secret
 
 For current-source development, provide sibling checkouts `../lumen`, `../waygate`, `../drover`, and `../palimpsest`; the first three require `docker/Dockerfile`. Palimpsest requires `docker/hub/Dockerfile`, which copies `hub/src` and the Hub package metadata, so Compose uses the `../palimpsest` repository root as its build context. Docker Compose 2.24+, Python 3.12+, and actual OpenStack credentials are required. Set the dedicated `[openstack] service_project_id` in the private config or `OS_SERVICE_PROJECT_ID` in `.env`; there is no admin-project fallback.
 
+Backend source builds select the OpenTofu archive matching BuildKit `TARGETARCH` (`amd64` or `arm64`). Release downloads use bounded retries for transient GitHub 5xx responses and must match the SHA-256 pinned from the official release manifest. Unsupported architectures fail explicitly, and the OpenTofu download stage is isolated from the large runtime-package layer.
+
 ```bash
 npm run services:up
 

@@ -251,7 +251,7 @@ At ≥768px, the settings route allocates the return action and settings body wi
 
 ### 빌드·배포
 
-`Dockerfile`은 backend/worker에 Python 3.12 slim, frontend build에 Bun 1, runtime에 Node 20을 사용한다. 현재 [`docker-build.yml`](.github/workflows/docker-build.yml)은 `linux/amd64` matrix만 활성화하며 arm64 항목은 주석 처리되어 있다. GitHub Actions가 이미지를 GHCR로 push하고, 배포 구성은 Kubernetes/Kustomize·Helm/ArgoCD 또는 [`deploy/kolla/site.yml`](deploy/kolla/site.yml)의 custom service role 경계를 사용한다. Kolla는 `afterglow`, `waygate`, `drover`, `lumen`, `palimpsest` inventory group을 별도로 검사한다. `deploy/kolla/install.sh`가 stock site import와 inventory/globals.d 연결을 준비하면 `/etc/kolla`에서 `kolla-ansible deploy -i multinode`가 custom 서비스를 함께 실행한다. 서비스·HAProxy 플레이는 `become: true`로 toolbox와 중첩/위임 task의 권한을 선언하며, operator 계정의 기존 sudo 권한을 전제로 한다. 형제 역할은 각 서비스 root distribution(`drover`, `lumen`, `waygate`, `palimpsest-local`)이 소유하고 Afterglow 역할만 in-tree 소스 심볼릭 링크로 관리한다. `install.sh`는 `deploy/kolla/read_locked_version.py`로 `deploy/kolla/operator/uv.lock`에서 형제 패키지의 기대 버전을 동적으로 읽어 활성 Kolla 환경의 설치 메타데이터와 대조 검증한다. Afterglow 계약 테스트는 형제 checkout 없이 자체 역할·aggregate dispatch와 실제 Python metadata lookup 기반 설치/재설치/제거의 파일 보존을 검증한다. `deploy/kolla/operator/`는 `kolla-ansible`과 네 root distribution을 frozen `uv.lock`으로 동기화한다. 형제의 immutable stable `vX.Y.Z` tag는 같은 root distribution version과 package-owned role을 가져야 하며, hourly `promote-kolla-role-tags` workflow가 현재 locked version보다 낮지 않은 최신 tag를 `tool.uv.sources`의 `tag`로 승격한 뒤 resolved commit lock과 architecture stamp를 포함한 단일 review PR을 연다. branch/bare Git URL/mutable `latest`는 배포에서 금지하고, review PR의 merge 전에는 control node가 새 release를 발견·설치하지 않는다. 현재 태그가 아직 없는 release는 기존 full commit pin을 유지한다.
+`Dockerfile`은 backend/worker에 Python 3.12 slim, frontend build에 Bun 1, runtime에 Node 20을 사용한다. Backend의 OpenTofu acquisition은 runtime package 설치와 분리된 stage에서 BuildKit `TARGETARCH`를 `amd64`/`arm64`로 fail-closed 매핑하고, transient GitHub 오류를 bounded retry하며, 공식 release manifest에서 pin한 architecture별 SHA-256을 확인한 binary만 runtime stage에 복사한다. 현재 [`docker-build.yml`](.github/workflows/docker-build.yml)은 `linux/amd64` matrix만 활성화하며 arm64 항목은 주석 처리되어 있지만, dev source build는 native `arm64`도 지원한다. GitHub Actions가 이미지를 GHCR로 push하고, 배포 구성은 Kubernetes/Kustomize·Helm/ArgoCD 또는 [`deploy/kolla/site.yml`](deploy/kolla/site.yml)의 custom service role 경계를 사용한다. Kolla는 `afterglow`, `waygate`, `drover`, `lumen`, `palimpsest` inventory group을 별도로 검사한다. `deploy/kolla/install.sh`가 stock site import와 inventory/globals.d 연결을 준비하면 `/etc/kolla`에서 `kolla-ansible deploy -i multinode`가 custom 서비스를 함께 실행한다. 서비스·HAProxy 플레이는 `become: true`로 toolbox와 중첩/위임 task의 권한을 선언하며, operator 계정의 기존 sudo 권한을 전제로 한다. 형제 역할은 각 서비스 root distribution(`drover`, `lumen`, `waygate`, `palimpsest`)에서 설치되고 release archive wheel은 tag version과 일치하는 immutable GitHub URL·SHA-256을 사용한다.
 
 Cloud Shell은 일반 Afterglow image matrix의 예외다. 같은 workflow의 전용 `cloud-shell` build target이 `linux/amd64`와 `linux/arm64` manifest를 게시하고, production config/Kolla precheck는 이 multi-architecture manifest의 immutable digest를 요구한다. Image는 UID 1000 shell, OpenStack CLI/plugin, setuid bootstrap만 포함하고 credential은 image layer나 persistent home이 아니라 container `/dev/shm` tmpfs에만 생성한다.
 
@@ -338,9 +338,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "2c3a5e9fb202b4862124c656ccf5ea6f491fd4ebf051b21ffe24b3386eb5b013",
-  "reviewed_at": "2026-09-21T14:19:57Z",
-  "summary": "OpenSpec improve-vm-create-github-cloud-init archive 이동만 반영; source 구조 변경 없음"
+  "source_sha256": "4f4f365d39d44ca30adc5e204a97670f6b699724b7e2219af1137ec0984e81a2",
+  "reviewed_at": "2026-09-21T15:00:15Z",
+  "summary": "Reviewed backend OpenTofu installer isolation, amd64/arm64 target selection, retry policy, and pinned checksum verification; runtime topology unchanged."
 }
 ```
 <!-- architecture-review:end -->

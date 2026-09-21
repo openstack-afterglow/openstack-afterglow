@@ -13,6 +13,30 @@
 # Backend 스테이지
 # ─────────────────────────────────────────────────────────────────────────────
 
+# ── OpenTofu installer (architecture-aware, verified download) ──────────────
+FROM python:3.12-slim AS tofu-installer
+
+ARG TOFU_VERSION=1.8.3
+ARG TARGETARCH
+ARG TOFU_SHA256_AMD64=dc44b452a407648a40900eea5ceca2dd586dd084ae085863dba997331dcf8225
+ARG TOFU_SHA256_ARM64=c3ea55a86aaf22729be63371176fdefa40ae9632a6b620c64b98d7fb3a13205e
+
+RUN case "${TARGETARCH}" in \
+        amd64) tofu_sha256="${TOFU_SHA256_AMD64}" ;; \
+        arm64) tofu_sha256="${TOFU_SHA256_ARM64}" ;; \
+        *) echo "Unsupported OpenTofu target architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl unzip \
+    && curl --fail --show-error --location \
+        --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 120 \
+        --connect-timeout 15 \
+        "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_${TARGETARCH}.zip" \
+        -o /tmp/tofu.zip \
+    && echo "${tofu_sha256}  /tmp/tofu.zip" | sha256sum --check --strict - \
+    && unzip /tmp/tofu.zip tofu -d /usr/local/bin/ \
+    && /usr/local/bin/tofu version
+
 # ── Backend 빌더 (gcc 컴파일용, 최종 이미지에 포함되지 않음) ─────────────────
 FROM python:3.12-slim AS backend-builder
 
@@ -47,13 +71,11 @@ COPY backend/scripts/ ./scripts/
 # .pyc 직접 사용으로 cold start 가속
 RUN python -m compileall -q app/
 
-# OpenTofu CLI 설치 (MPL-2.0, ~80MB)
-ARG TOFU_VERSION=1.8.3
-RUN apt-get update && apt-get install -y --no-install-recommends curl unzip ffmpeg qemu-utils ceph-common \
-    && curl -fsSL "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_amd64.zip" -o /tmp/tofu.zip \
-    && unzip /tmp/tofu.zip tofu -d /usr/local/bin/ \
-    && rm /tmp/tofu.zip \
-    && apt-get purge -y --auto-remove curl unzip \
+# OpenTofu binary is selected from BuildKit's native target architecture and
+# checksum-verified in the isolated installer stage.
+COPY --from=tofu-installer /usr/local/bin/tofu /usr/local/bin/tofu
+
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg qemu-utils ceph-common \
     && rbd --version \
     && rados --version \
     && rm -rf /var/lib/apt/lists/*

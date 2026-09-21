@@ -159,6 +159,7 @@ Runner는 다른 project를 자동 삭제하지 않습니다.
   `../palimpsest`가 필요합니다. 앞의 세 checkout에는 `docker/Dockerfile`, Palimpsest에는
   `docker/hub/Dockerfile`이 있어야 합니다. 이 Dockerfile은 `hub/src`와 Hub package metadata를
   복사하므로 Compose는 `../palimpsest` repository root를 build context로 사용합니다.
+- Backend source build는 BuildKit `TARGETARCH`의 `amd64` 또는 `arm64`에 맞는 OpenTofu archive를 선택합니다. Release archive는 일시적 GitHub 5xx에 bounded retry를 적용하고 공식 release manifest에서 고정한 SHA-256과 일치해야 설치됩니다. 지원하지 않는 architecture는 명시적으로 실패하며, OpenTofu download stage는 대용량 runtime package 설치와 분리됩니다.
 - 실제 provider key를 추가하려면 **로컬** Lumen 관리 UI/API에 등록합니다. 운영 provider DB나
   암호화된 key를 복제하지 않습니다. 키가 없어도 모델 metadata와 context-preview는 검증할 수
   있지만, 실제 provider completion 검증은 별도 자격 증명이 필요합니다.
