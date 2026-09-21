@@ -92,11 +92,34 @@ class FlavorInfo(BaseModel):
         return int(m.group(1)) if m.group(1) else 1
 
 
+class GitHubSshLookupRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=39)
+
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, value: str) -> str:
+        from app.services.ssh_access import normalize_github_username
+
+        normalized = normalize_github_username(value)
+        if not normalized:
+            raise ValueError("GitHub 사용자 ID 형식이 유효하지 않습니다.")
+        return normalized
+
+
+class GitHubSshUserHistory(BaseModel):
+    id: int
+    login: str
+    verified_at: str
+
+
 class GitHubSshProfile(BaseModel):
+    id: int
     login: str
     name: str | None = None
-    avatar_url: str | None = None
-    public_key_count: int
+    public_email: str | None = None
+    html_url: str
+    has_public_keys: bool
+    verified_at: str
 
 
 class InstanceInfo(BaseModel):

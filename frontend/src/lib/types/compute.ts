@@ -39,6 +39,22 @@ export interface DashboardOverviewSummary {
   recent_instances: DashboardRecentInstance[];
 }
 
+export interface GithubSshProfile {
+  id: number;
+  login: string;
+  name: string | null;
+  public_email: string | null;
+  html_url: string;
+  has_public_keys: boolean;
+  verified_at: string;
+}
+
+export interface GithubSshHistoryEntry {
+  id: number;
+  login: string;
+  verified_at: string;
+}
+
 export interface ImageInfo {
   id: string;
   name: string;

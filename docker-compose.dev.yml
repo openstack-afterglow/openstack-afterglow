@@ -332,8 +332,8 @@ services:
 
   palimpsest-bootstrap:
     build:
-      context: ../palimpsest/hub
-      dockerfile: Dockerfile
+      context: ../palimpsest
+      dockerfile: docker/hub/Dockerfile
       target: palimpsest-hub-api
     image: afterglow-local-services/palimpsest-hub-api:current
     command: palimpsest-hub-bootstrap
@@ -352,8 +352,8 @@ services:
 
   palimpsest-api:
     build:
-      context: ../palimpsest/hub
-      dockerfile: Dockerfile
+      context: ../palimpsest
+      dockerfile: docker/hub/Dockerfile
       target: palimpsest-hub-api
     image: afterglow-local-services/palimpsest-hub-api:current
     ports:
@@ -379,8 +379,8 @@ services:
 
   palimpsest-worker:
     build:
-      context: ../palimpsest/hub
-      dockerfile: Dockerfile
+      context: ../palimpsest
+      dockerfile: docker/hub/Dockerfile
       target: palimpsest-hub-worker
     image: afterglow-local-services/palimpsest-hub-worker:current
     environment: *palimpsest-environment

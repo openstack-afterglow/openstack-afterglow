@@ -77,6 +77,9 @@ describe('ProjectSelector', () => {
 
 		expect(screen.getByText('두 번째 프로젝트')).toBeTruthy();
 		expect(screen.queryByRole('status', { name: 'Loading' })).toBeNull();
+		const menu = screen.getByRole('menu');
+		expect(menu.parentElement).toBe(document.body);
+		expect(menu.className).toContain('z-[var(--z-popover)]');
 	});
 
 	it('closes Cloud Shell before replacing the project-scoped token', async () => {

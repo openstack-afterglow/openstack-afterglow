@@ -469,7 +469,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		const needsSchedulingReset = wizardState.scheduling !== normalizeSchedulingForBeta(betaState, wizardState.scheduling);
 		const needsGithubSshReset =
 			!githubSshEligible &&
-			(wizardState.sshAccessMode !== 'keypair' || wizardState.githubUsername !== '');
+			(wizardState.sshAccessMode !== 'keypair' || wizardState.githubUsername !== '' || wizardState.githubProfile !== null);
 		const needsSquashfsReset = !squashfsEligible && wizardState.squashfsMode !== null;
 		const needsStrategyReset = !visibleStepIds.includes(4) && wizardState.strategy !== null;
 		const isVisibleStep = visibleStepIds.includes(wizardState.step as WizardStepId);
@@ -489,8 +489,8 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 			if (!visibleStepIds.includes(4) && next.strategy !== null) {
 				next = { ...next, strategy: null };
 			}
-			if (!githubSshEligible && (next.sshAccessMode !== 'keypair' || next.githubUsername !== '')) {
-				next = { ...next, sshAccessMode: 'keypair', githubUsername: '' };
+			if (!githubSshEligible && (next.sshAccessMode !== 'keypair' || next.githubUsername !== '' || next.githubProfile !== null)) {
+				next = { ...next, sshAccessMode: 'keypair', githubUsername: '', githubProfile: null };
 			}
 			if (nextVisibleStep !== null && next.step !== nextVisibleStep) {
 				next = { ...next, step: nextVisibleStep };
@@ -520,6 +520,8 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 					sshAccessMode: wizardState.sshAccessMode,
 					keyName: wizardState.keyName,
 					githubUsername: wizardState.githubUsername,
+					githubProfile: wizardState.githubProfile,
+
 				});
 			case 6: return true;
 			default: return false;
@@ -1085,6 +1087,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 			sshAccessMode: mode,
 			keyName: mode === 'github' ? null : w.keyName,
 			githubUsername: mode === 'keypair' ? '' : w.githubUsername,
+			githubProfile: mode === 'keypair' ? null : w.githubProfile,
 		}));
 	}
 

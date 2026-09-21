@@ -560,6 +560,32 @@ class VmCloudInitSnippet(Base):
     )
 
 
+class VmGithubSshUser(Base):
+    """Recently verified GitHub SSH identities scoped to one Afterglow user."""
+
+    __tablename__ = "vm_github_ssh_users"
+
+    id: Mapped[int] = mapped_column(BIGINT, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(VARCHAR(64), nullable=False)
+    github_user_id: Mapped[int] = mapped_column(BIGINT, nullable=False)
+    github_login: Mapped[str] = mapped_column(VARCHAR(39), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True).with_variant(DATETIME(fsp=6), "mysql").with_variant(DATETIME(fsp=6), "mariadb"),
+        nullable=False,
+        default=_now,
+    )
+    verified_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True).with_variant(DATETIME(fsp=6), "mysql").with_variant(DATETIME(fsp=6), "mariadb"),
+        nullable=False,
+        default=_now,
+    )
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "github_user_id", name="uq_vm_github_ssh_user_identity"),
+        Index("idx_vm_github_ssh_users_user_verified", "user_id", "verified_at"),
+    )
+
+
 class ResourcePolicy(Base):
     """Global admin-owned selection of a discovered OpenStack resource."""
 

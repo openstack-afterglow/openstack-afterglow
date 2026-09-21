@@ -144,7 +144,7 @@ async def admin_create_instance_async(
     )
 
     settings = get_settings()
-    await _verify_github_ssh(req)
+    req = await _verify_github_ssh(req, token_info=token_info)
 
     resolved_libs = lib_svc.resolve_with_deps(req.libraries)
 

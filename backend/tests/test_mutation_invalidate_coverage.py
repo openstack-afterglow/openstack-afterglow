@@ -134,6 +134,12 @@ EXEMPT_HANDLERS: set[str] = {
     "create_announcement_endpoint",
     "update_announcement_endpoint",
     "delete_announcement_endpoint",
+    # GitHub SSH verification: writes only the caller's own DB-backed GitHub
+    # verification history, which GET /instances/github-users/history reads
+    # straight from the DB. The GitHub profile lookup cache is keyed by GitHub
+    # login and intentionally survives (rate-limit protection); no per-project
+    # OpenStack resource cache or mutation count is affected.
+    "lookup_github_ssh_user",
     # Palimpsest inline Dockerfile build: the handler only creates a LayerImportJob
     # row. Artifacts and profiles appear later, inside run_dockerfile_import_job,
     # which is where `afterglow:union_layer:*` is invalidated. Invalidating at

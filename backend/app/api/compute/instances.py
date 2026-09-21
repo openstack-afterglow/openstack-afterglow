@@ -46,7 +46,9 @@ from app.models.compute import (
     CloudInitSnippetLibrary,
     CreateCloudInitPresetRequest,
     CreateInstanceRequest,
+    GitHubSshLookupRequest,
     GitHubSshProfile,
+    GitHubSshUserHistory,
     InstanceInfo,
     StorageAttachRequest,
     UpdateSecurityGroupsRequest,
@@ -79,15 +81,28 @@ async def _record_cloud_init_history_best_effort(token_info: dict, userdata: str
         logger.warning("cloud-init 실행 이력 저장 실패", extra={"user_id": token_info.get("user_id")})
 
 
-async def _verify_github_ssh(req: CreateInstanceRequest) -> None:
+def _github_http_exception(exc: Exception, *, not_found_status: int = 422) -> HTTPException:
+    if isinstance(exc, github_ssh.GitHubSshRateLimited):
+        headers = {"Retry-After": str(exc.retry_after)} if exc.retry_after is not None else None
+        return HTTPException(status_code=429, detail=str(exc), headers=headers)
+    if isinstance(exc, github_ssh.GitHubSshNotFound):
+        return HTTPException(status_code=not_found_status, detail=str(exc))
+    if isinstance(exc, github_ssh.GitHubSshInvalid):
+        return HTTPException(status_code=422, detail=str(exc))
+    return HTTPException(status_code=503, detail=str(exc))
+
+
+async def _verify_github_ssh(req: CreateInstanceRequest, *, token_info: dict) -> CreateInstanceRequest:
     if not req.github_username:
-        return
+        return req
     try:
-        await github_ssh.resolve_profile(req.github_username)
-    except github_ssh.GitHubSshInvalid as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except github_ssh.GitHubSshUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        profile = await github_ssh.verify_and_record(
+            user_id=token_info["user_id"],
+            username=req.github_username,
+        )
+    except (github_ssh.GitHubSshInvalid, github_ssh.GitHubSshUnavailable) as exc:
+        raise _github_http_exception(exc) from exc
+    return req.model_copy(update={"github_username": str(profile["login"])})
 
 
 router = APIRouter()
@@ -247,15 +262,25 @@ async def delete_cloud_init_snippet(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
-@router.get("/github/users/{username}", response_model=GitHubSshProfile)
-@limiter.limit("20/minute")
-async def get_github_ssh_profile(request: Request, username: str, _token_info: dict = Depends(get_token_info)):
+@router.get("/github-users/history", response_model=list[GitHubSshUserHistory])
+async def list_github_ssh_history(token_info: dict = Depends(get_token_info)):
     try:
-        return await github_ssh.resolve_profile(username)
-    except github_ssh.GitHubSshInvalid as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return await github_ssh.list_history(user_id=token_info["user_id"])
     except github_ssh.GitHubSshUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise _github_http_exception(exc) from exc
+
+
+@router.post("/github-users/lookup", response_model=GitHubSshProfile)
+@limiter.limit("10/minute")
+async def lookup_github_ssh_user(
+    request: Request,
+    req: GitHubSshLookupRequest,
+    token_info: dict = Depends(require_project_write),
+):
+    try:
+        return await github_ssh.verify_and_record(user_id=token_info["user_id"], username=req.username)
+    except (github_ssh.GitHubSshInvalid, github_ssh.GitHubSshUnavailable) as exc:
+        raise _github_http_exception(exc, not_found_status=404) from exc
 
 
 @router.get("/{instance_id}", response_model=InstanceInfo)
@@ -291,7 +316,7 @@ async def create_instance(
 ):
     """동기식 인스턴스 생성 (기존 방식)."""
     settings = get_settings()
-    await _verify_github_ssh(req)
+    req = await _verify_github_ssh(req, token_info=token_info)
 
     from app.services.instance_names import ensure_unique_instance_name
 
@@ -596,7 +621,7 @@ async def create_instance_async(
 ):
     """SSE로 진행 상황을 스트리밍하는 비동기 인스턴스 생성."""
     settings = get_settings()
-    await _verify_github_ssh(req)
+    req = await _verify_github_ssh(req, token_info=token_info)
     from app.services.instance_names import ensure_unique_instance_name
 
     try:

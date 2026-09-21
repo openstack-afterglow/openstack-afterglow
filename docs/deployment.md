@@ -157,8 +157,8 @@ Runner는 다른 project를 자동 삭제하지 않습니다.
 - Kubernetes 환경에서 복사한 public OpenStack 경로가 로컬 Docker에 맞는지는 별도로 확인합니다. VPN/internal catalog 접근이 가능한 로컬 환경은 snapshot의 `[openstack] auth_url`에 검증한 versioned internal Keystone URL을, `interface`에 `internal`을 지정할 수 있습니다. 원본 설정과 secret은 보존하고 snapshot 변경 전 `.local-services/backups/`에 mode 0600 백업을 둡니다. Internal 경로도 503이면 상류 OpenStack 장애이며 로컬 재배포나 timeout 연장으로 정상 처리하지 않습니다.
 - 현재 소스 build 모드에는 sibling checkout `../lumen`, `../drover`, `../waygate`,
   `../palimpsest`가 필요합니다. 앞의 세 checkout에는 `docker/Dockerfile`, Palimpsest에는
-  Hub package root의 `hub/Dockerfile`이 있어야 합니다. Compose는 이 파일의 `COPY src` 경계를
-  지키기 위해 `../palimpsest/hub`를 build context로 사용합니다.
+  `docker/hub/Dockerfile`이 있어야 합니다. 이 Dockerfile은 `hub/src`와 Hub package metadata를
+  복사하므로 Compose는 `../palimpsest` repository root를 build context로 사용합니다.
 - 실제 provider key를 추가하려면 **로컬** Lumen 관리 UI/API에 등록합니다. 운영 provider DB나
   암호화된 key를 복제하지 않습니다. 키가 없어도 모델 metadata와 context-preview는 검증할 수
   있지만, 실제 provider completion 검증은 별도 자격 증명이 필요합니다.

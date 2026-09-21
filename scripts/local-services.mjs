@@ -55,7 +55,7 @@ const SIBLING_BUILDS = [
 	['Lumen', '../lumen/docker/Dockerfile'],
 	['Drover', '../drover/docker/Dockerfile'],
 	['Waygate', '../waygate/docker/Dockerfile'],
-	['Palimpsest Hub', '../palimpsest/hub/Dockerfile']
+	['Palimpsest Hub', '../palimpsest/docker/hub/Dockerfile']
 ];
 
 function fail(message) {

@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **로컬 Palimpsest Hub source build 복구** — dev Compose와 local-services preflight를 실제 sibling layout인 repository-root context + `docker/hub/Dockerfile`에 맞춰, backend/frontend 재생성 시 dependency build가 존재하지 않는 `hub/Dockerfile`에서 중단되던 회귀를 수정했다.
+
 ## [1.24.0] - 2026-09-21
 
 ### Added

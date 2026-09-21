@@ -394,11 +394,18 @@ async def consume_public_squashfs(
         raise HTTPException(status_code=401, detail="프로젝트 스코프가 필요합니다")
     if req.github_username:
         try:
-            await github_ssh.resolve_profile(req.github_username)
+            profile = await github_ssh.verify_and_record(
+                user_id=token_info["user_id"],
+                username=req.github_username,
+            )
+        except github_ssh.GitHubSshRateLimited as exc:
+            headers = {"Retry-After": str(exc.retry_after)} if exc.retry_after is not None else None
+            raise HTTPException(status_code=429, detail=str(exc), headers=headers) from exc
         except github_ssh.GitHubSshInvalid as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except github_ssh.GitHubSshUnavailable as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
+        req = req.model_copy(update={"github_username": str(profile["login"])})
 
     async with factory() as session:
         artifacts = (
