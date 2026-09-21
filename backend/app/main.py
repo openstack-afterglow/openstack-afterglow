@@ -136,6 +136,7 @@ _mark("api.compute")
 from app.api.container import clusters_router, containers_router
 
 _mark("api.container")
+from app.api.cloud_shell import router as cloud_shell_router
 
 # ---------------------------------------------------------------------------
 # app.api.identity (admin, auth, sub-routers)
@@ -349,6 +350,7 @@ _AUDIT_PREFIX_MAP: list[tuple[str, str]] = [
     ("/api/v1/instances", "instance"),
     ("/api/v1/keypairs", "keypair"),
     ("/api/v1/networks", "network"),
+    ("/api/v1/cloud-shell", "cloud_shell"),
     ("/api/v1/containers", "container"),
     ("/api/v1/libraries", "library"),
     ("/api/v1/volumes", "volume"),
@@ -568,6 +570,8 @@ if _svc_cfg.service_magnum_enabled:
     app.include_router(clusters_router, prefix="/api/v1/clusters", tags=["clusters"])
 if _svc_cfg.service_zun_enabled:
     app.include_router(containers_router, prefix="/api/v1/containers", tags=["containers"])
+if _svc_cfg.service_cloud_shell_enabled:
+    app.include_router(cloud_shell_router, prefix="/api/v1/cloud-shell", tags=["cloud-shell"])
 if _svc_cfg.service_k3s_enabled:
     from app.api.drover import drover_admin_router, drover_callback_router, drover_proxy_router
     from app.api.internal_k3s import router as internal_k3s_router
@@ -1092,8 +1096,12 @@ async def _deferred_load_gpu_catalog() -> None:
     _logger.warning("GPU 장치 카탈로그 DB 로드 최종 실패 — 내장/config 카탈로그로 동작")
 
 
+_cloud_shell_reconcile_task: asyncio.Task[None] | None = None
+
+
 @app.on_event("startup")
 async def start_background_workers():
+    global _cloud_shell_reconcile_task
     # Redis 연결 pre-warm (첫 health check 지연 방지)
     try:
         from app.services.cache import _get_redis
@@ -1130,6 +1138,14 @@ async def start_background_workers():
     if _svc_cfg.service_mcp_enabled:
         await start_mcp_transport()
         asyncio.create_task(_mcp_cleanup_loop())
+    if _svc_cfg.service_cloud_shell_enabled:
+        from app.services.cloud_shell import reconcile_once, reconciliation_loop
+
+        try:
+            await reconcile_once()
+        except Exception:
+            _logger.warning("Cloud Shell startup reconciliation failed closed", exc_info=True)
+        _cloud_shell_reconcile_task = asyncio.create_task(reconciliation_loop())
 
     if _db_cfg.worker_runtime_mode != "static" and _db_cfg.worker_runtime_reconcile_interval > 0:
         from app.services.worker_runtime import reconcile_loop
@@ -1144,8 +1160,14 @@ async def start_background_workers():
 
 @app.on_event("shutdown")
 async def shutdown_event():
+    global _cloud_shell_reconcile_task
     from app.database import close_db
     from app.services import prom_query
+
+    if _cloud_shell_reconcile_task is not None:
+        _cloud_shell_reconcile_task.cancel()
+        await asyncio.gather(_cloud_shell_reconcile_task, return_exceptions=True)
+        _cloud_shell_reconcile_task = None
 
     await stop_mcp_transport()
     await close_db()

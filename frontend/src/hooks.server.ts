@@ -50,14 +50,27 @@ async function serveAppShell(
 	}
 }
 
-// connect-src에 API + S3 URL 추가 (presigned PUT 허용)
+// API는 HTTP fetch와 같은 origin의 WebSocket terminal transport를 사용한다.
+// S3는 presigned HTTP(S) upload만 허용한다.
 function buildConnectSrc(siteConfig: PublicSiteConfig): string {
-	const parts = ["'self'"];
-	for (const raw of [siteConfig.runtime.api_base, siteConfig.runtime.s3_base]) {
+	const parts = new Set(["'self'"]);
+	const apiBase = siteConfig.runtime.api_base;
+	for (const raw of [apiBase, siteConfig.runtime.s3_base]) {
 		if (!raw) continue;
-		parts.push(raw);
+		parts.add(raw);
 	}
-	return parts.join(' ');
+	if (apiBase) {
+		try {
+			const websocket = new URL(apiBase);
+			if (websocket.protocol === 'http:' || websocket.protocol === 'https:') {
+				websocket.protocol = websocket.protocol === 'https:' ? 'wss:' : 'ws:';
+				parts.add(websocket.origin);
+			}
+		} catch {
+			// Relative API paths stay covered by 'self'.
+		}
+	}
+	return [...parts].join(' ');
 }
 
 function addOrigin(parts: Set<string>, raw: string): void {

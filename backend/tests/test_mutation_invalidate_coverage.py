@@ -65,6 +65,9 @@ EXEMPT_ROUTERS: set[str] = {
     "k3s/pods.py",  # TODO: Phase C/D — k3s pod ops
     "k3s/secrets.py",  # TODO: Phase C/D — k3s secret ops
     "k3s/shell.py",  # ephemeral shell ticket — no OS resource cache state
+    # Global Cloud Shell tickets and workspace resets read Zun/Cinder state directly;
+    # this router has no app resource-cache namespace to invalidate.
+    "cloud_shell.py",
     "k3s/templates.py",  # TODO: Phase C/D — k3s cluster templates
     "k3s/workloads.py",  # TODO: Phase C/D — k3s workload ops
     "union/layers.py",  # TODO: Phase C/D — Union layers

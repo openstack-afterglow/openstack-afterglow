@@ -336,7 +336,25 @@ data:
     magnum = false
     manila = true
     zun = true
+    cloud_shell = false
     k3s = true
+
+    [cloud_shell]
+    service_project_id = ""
+    image = ""
+    network_id = ""
+    security_group = ""
+    auth_url = ""
+    interface = "internal"
+    volume_type = ""
+    home_size_gib = 5
+    cpu = 1.0
+    memory_mib = 1024
+    idle_timeout_seconds = 1200
+    max_session_seconds = 3600
+    ticket_ttl_seconds = 60
+    reconcile_interval_seconds = 60
+    zun_websocket_origin = ""
 
     [instance_health]
     callback_base_url = "https://example.com/"

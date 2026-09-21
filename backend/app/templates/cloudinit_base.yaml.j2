@@ -1,6 +1,6 @@
 #cloud-config
-# Union: OpenStack VM 자동 OverlayFS 설정
-# 전략: {{ strategy }}   라이브러리: {{ libraries | join(", ") }}
+# Afterglow VM managed bootstrap
+{% if has_layers %}# Legacy layer strategy: {{ strategy }}   libraries: {{ libraries | join(", ") }}{% endif %}
 
 {% if github_ssh_import_id %}
 ssh_import_id:
@@ -10,6 +10,7 @@ ssh_import_id:
 package_update: false
 package_upgrade: false
 
+{% if has_cephfs or has_nfs or (has_layers and strategy == "dynamic") %}
 packages:
 {% if has_cephfs %}
   - ceph-common
@@ -17,10 +18,13 @@ packages:
 {% if has_nfs %}
   - nfs-common
 {% endif %}
-{% if strategy == "dynamic" %}
+{% if has_layers and strategy == "dynamic" %}
   - python3-pip
 {% endif %}
-
+{% else %}
+packages: []
+{% endif %}
+{% if has_layers or gpu_available or data_mounts %}
 write_files:
 {% if has_cephfs %}
   # CephX 키링 파일 (CephFS 공유별)
@@ -41,6 +45,7 @@ write_files:
       mon host = {{ ceph_monitors }}
 {% endif %}
 
+{% if has_layers %}
   # OverlayFS 설정 스크립트
   - path: /opt/union/overlay_setup.sh
     permissions: "0750"
@@ -85,7 +90,8 @@ write_files:
       [Install]
       WantedBy=multi-user.target
 
-{% if union_ro_share_export %}
+{% endif %}
+{% if has_layers and union_ro_share_export %}
   # envmgr 설정 (layer-store-ro export 경로 포함)
   - path: /etc/envmgr-union.conf
     permissions: "0600"
@@ -97,18 +103,22 @@ write_files:
 {% endif %}
 
 {% if gpu_available %}
-  # GPU 스택(드라이버 + DCGM 데몬 + dcgm-exporter) 설치 스크립트
-  # 베이스 이미지에 무엇이 있든 idempotent 하게 동작 — nvidia-smi/nvidia-dcgm/dcgm-exporter 가
-  # 이미 있으면 각각 skip, 없으면 자동 설치.
-  - path: /opt/union/install_dcgm_exporter.sh
+  # GPU 스택(드라이버 + packaged DCGM daemon/exporter) 설치 스크립트
+  - path: /opt/afterglow/install_gpu_monitoring.sh
     permissions: "0750"
     content: |
       #!/usr/bin/env bash
       set -euo pipefail
-      VER="{{ dcgm_exporter_version }}"
       export DEBIAN_FRONTEND=noninteractive
 
-      # ── 1. NVIDIA 드라이버 (없을 때만) ─────────────────────────────────
+      ARCH_DEB="$(dpkg --print-architecture)"
+      case "$ARCH_DEB" in
+        amd64) CUDA_REPO_ARCH=x86_64 ;;
+        arm64) CUDA_REPO_ARCH=sbsa ;;
+        *) echo "unsupported NVIDIA repository architecture: $ARCH_DEB" >&2; exit 1 ;;
+      esac
+
+      # NVIDIA 드라이버 (없을 때만)
       if ! command -v nvidia-smi >/dev/null 2>&1; then
         echo "[gpu-install] NVIDIA 드라이버 미발견 — ubuntu-drivers autoinstall"
         apt-get update
@@ -116,66 +126,26 @@ write_files:
         ubuntu-drivers autoinstall
       fi
 
-      # ── 2. CUDA repo + DCGM 데몬 (nvidia-dcgm) ─────────────────────────
-      if ! systemctl list-unit-files nvidia-dcgm.service >/dev/null 2>&1; then
-        echo "[gpu-install] nvidia-dcgm 데몬 미발견 — CUDA repo 등록 후 설치"
-        . /etc/os-release
-        DISTRO="ubuntu${VERSION_ID//./}"
-        ARCH_DEB="$(dpkg --print-architecture)"
-        KEYRING_PKG="cuda-keyring_1.1-1_all.deb"
-        if [ ! -f /usr/share/keyrings/cuda-archive-keyring.gpg ]; then
-          curl -fsSL "https://developer.download.nvidia.com/compute/cuda/repos/${DISTRO}/${ARCH_DEB}/${KEYRING_PKG}" \
-               -o "/tmp/${KEYRING_PKG}"
-          dpkg -i "/tmp/${KEYRING_PKG}"
-          apt-get update
-        fi
-        apt-get install -y datacenter-gpu-manager
+      # NVIDIA CUDA repository + supported DCGM packages
+      . /etc/os-release
+      DISTRO="ubuntu${VERSION_ID//./}"
+      KEYRING_PKG="cuda-keyring_1.1-1_all.deb"
+      if [ ! -f /usr/share/keyrings/cuda-archive-keyring.gpg ]; then
+        curl -fsSL \
+          "https://developer.download.nvidia.com/compute/cuda/repos/${DISTRO}/${CUDA_REPO_ARCH}/${KEYRING_PKG}" \
+          -o "/tmp/${KEYRING_PKG}"
+        dpkg -i "/tmp/${KEYRING_PKG}"
+        rm -f "/tmp/${KEYRING_PKG}"
       fi
+      apt-get update
+      apt-get install -y \
+        datacenter-gpu-manager \
+        datacenter-gpu-manager-exporter
       systemctl enable --now nvidia-dcgm.service
-
-      # ── 3. dcgm-exporter 바이너리 ──────────────────────────────────────
-      if ! command -v dcgm-exporter >/dev/null 2>&1; then
-        ARCH="$(uname -m)"
-        case "$ARCH" in
-          x86_64) ARCH=amd64 ;;
-          aarch64) ARCH=arm64 ;;
-          *) echo "unsupported arch: $ARCH" >&2; exit 1 ;;
-        esac
-        TARBALL="dcgm-exporter-${VER}-linux-${ARCH}.tar.gz"
-        URL="https://github.com/NVIDIA/dcgm-exporter/releases/download/${VER}/${TARBALL}"
-        TMP=$(mktemp -d)
-        cd "$TMP"
-        curl -fsSL "$URL" -o "$TARBALL"
-        tar -xzf "$TARBALL"
-        install -m 0755 dcgm-exporter /usr/local/bin/dcgm-exporter
-        install -d -m 0755 /etc/dcgm-exporter
-        install -m 0644 etc/default-counters.csv /etc/dcgm-exporter/default-counters.csv
-        rm -rf "$TMP"
-      fi
-
-  # DCGM Exporter systemd unit — nvidia-dcgm 데몬 의존
-  - path: /etc/systemd/system/dcgm-exporter.service
-    content: |
-      [Unit]
-      Description=NVIDIA DCGM Exporter (Prometheus)
-      After=network-online.target nvidia-dcgm.service
-      Wants=network-online.target
-      Requires=nvidia-dcgm.service
-
-      [Service]
-      Type=simple
-      ExecStart=/usr/local/bin/dcgm-exporter \
-        --address=0.0.0.0:9400 \
-        --collectors=/etc/dcgm-exporter/default-counters.csv
-      Restart=on-failure
-      RestartSec=10s
-      AmbientCapabilities=CAP_SYS_ADMIN
-
-      [Install]
-      WantedBy=multi-user.target
+      systemctl enable --now nvidia-dcgm-exporter.service
 {% endif %}
 
-{% if union_cephx_rotate_hours > 0 %}
+{% if has_layers and union_cephx_rotate_hours > 0 %}
   # CephX 키 회전 스크립트 (ExecStart 대상 — write_files 주입 필수)
   - path: /usr/local/bin/envmgr-rotate-key.sh
     permissions: "0750"
@@ -279,10 +249,15 @@ write_files:
       [Install]
       WantedBy=multi-user.target
 {% endif %}
+{% else %}
+write_files: []
+{% endif %}
 
+{% if has_layers or gpu_available or data_mounts %}
 runcmd:
-  - mkdir -p /opt/layers/lower /opt/layers/upper /opt/layers/work /opt/layers/merged /opt/union/scripts /var/lib/union
   - systemctl daemon-reload
+{% if has_layers %}
+  - mkdir -p /opt/layers/lower /opt/layers/upper /opt/layers/work /opt/layers/merged /opt/union/scripts /var/lib/union
   - systemctl enable union-overlay
   - systemctl start union-overlay
 {% if health_check_script %}
@@ -291,17 +266,21 @@ runcmd:
 {% if strategy == "dynamic" %}
   - /opt/union/dynamic_install.sh
 {% endif %}
+{% endif %}
 {% if gpu_available %}
-  - /opt/union/install_dcgm_exporter.sh
-  - systemctl daemon-reload
-  - systemctl enable --now dcgm-exporter.service
+  - /opt/afterglow/install_gpu_monitoring.sh
 {% endif %}
 {% if data_mounts %}
   - systemctl enable --now afterglow-data-mounts.service
 {% endif %}
+{% else %}
+runcmd: []
+{% endif %}
 
 final_message: |
-  Union VM 초기화 완료.
+  Afterglow VM 초기화 완료.
+{% if has_layers %}
   전략: {{ strategy }}
   라이브러리: {{ libraries | join(", ") }}
   OverlayFS 상세: journalctl -u union-overlay --no-pager | tail -20
+{% endif %}

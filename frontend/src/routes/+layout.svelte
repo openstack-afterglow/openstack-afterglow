@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, untrack } from 'svelte';
+	import { onDestroy, onMount, untrack } from 'svelte';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { get } from 'svelte/store';
@@ -28,6 +28,10 @@
 	import { buildMockAuth } from '$lib/mockup/auth';
 	import { MOCKUP_QUERY_KEY, MOCKUP_SESSION_KEY, MOCKUP_SERVICE_OVERRIDES, isMockupProfileId, isMockupPathAllowed, getMockupHomePath } from '$lib/mockup/contracts';
 	import type { MockupProfileId } from '$lib/mockup/contracts';
+	import CloudShellTrigger from '$lib/components/cloud-shell/CloudShellTrigger.svelte';
+	import CloudShellAuthorizeDialog from '$lib/components/cloud-shell/CloudShellAuthorizeDialog.svelte';
+	import CloudShellDock from '$lib/components/cloud-shell/CloudShellDock.svelte';
+	import { cloudShell } from '$lib/stores/cloudShell.svelte';
 	import './layout.css';
 
 	let { children, data } = $props();
@@ -220,12 +224,26 @@
 		($auth.username ?? 'U').slice(0, 2).toUpperCase()
 	);
 
-	const publicRoutes = ['/', '/login', '/auth/gitlab/callback'];
-	const projectAgnosticRoutes = ['/', '/login', '/auth/gitlab/callback', '/select-project'];
+	const publicRoutes = ['/', '/login', '/auth/gitlab/callback', '/oauth/claude/authorize'];
+	const projectAgnosticRoutes = ['/', '/login', '/auth/gitlab/callback', '/select-project', '/oauth/claude/authorize'];
 
 	const isInvitationRoute = $derived($page.url.pathname.startsWith('/invitations/'));
-	const shelllessRoutes = ['/', '/login', '/auth/gitlab/callback', '/select-project'];
+	const shelllessRoutes = ['/', '/login', '/auth/gitlab/callback', '/select-project', '/oauth/claude/authorize'];
 	const showAppChrome = $derived($isLoggedIn && !shelllessRoutes.includes($page.url.pathname) && !isInvitationRoute);
+	$effect(() => {
+		const token = $auth.token;
+		const projectId = $auth.projectId;
+		const enabled = $siteConfig.services.cloud_shell && !mockup.active && !isMockAuthActive();
+		if (!enabled || !token || !projectId) {
+			cloudShell.bindIdentity(null);
+			return;
+		}
+		cloudShell.bindIdentity({
+			token,
+			projectId,
+			projectName: $auth.projectName || projectId,
+		});
+	});
 	$effect(() => {
 		if (!$sidebarOpen || typeof document === 'undefined') return;
 		const onKeyDown = (event: KeyboardEvent) => {
@@ -337,6 +355,10 @@
 		};
 	});
 
+	onDestroy(() => {
+		void cloudShell.close('destroy', { keepDock: false });
+	});
+
 	// 테마 변경 시 <html> 클래스 업데이트
 	$effect(() => {
 		if (typeof document === 'undefined') return;
@@ -353,6 +375,8 @@
 			logoutConfirming = false;
 		}
 		if (!confirmed) return;
+
+		await cloudShell.close('logout', { keepDock: false });
 
 		logoutInProgress.set(true);
 		try {
@@ -442,6 +466,10 @@
 						사용자 모드
 					</a>
 				{/if}
+			{/if}
+
+			{#if $siteConfig.services.cloud_shell && !mockup.active}
+				<CloudShellTrigger />
 			{/if}
 
 			<!-- 테마 토글 -->
@@ -537,6 +565,11 @@
 	{#if !mockup.active || mockupAdminActive}
 		<CmdPalette />
 	{/if}
+{/if}
+
+{#if $isLoggedIn && $siteConfig.services.cloud_shell && !mockup.active}
+	<CloudShellAuthorizeDialog />
+	<CloudShellDock />
 {/if}
 
 {#if $isLoggedIn}

@@ -9,6 +9,8 @@ NVIDIA 드라이버 + dcgm-exporter 설치 단계가 user-data 에 포함되는�
 
 import base64
 
+import yaml
+
 from app.services import cloudinit
 
 
@@ -26,70 +28,57 @@ def _generate(gpu_available: bool) -> str:
 
 
 def test_gpu_userdata_includes_install_script():
-    """gpu_available=True 시 install_dcgm_exporter.sh 가 write_files 에 포함."""
+    """gpu_available=True includes the packaged monitoring installer."""
     yaml = _generate(gpu_available=True)
-    assert "/opt/union/install_dcgm_exporter.sh" in yaml
+    assert "/opt/afterglow/install_gpu_monitoring.sh" in yaml
     assert "ubuntu-drivers autoinstall" in yaml, "NVIDIA 드라이버 자동 설치 스크립트 누락"
 
 
-def test_gpu_userdata_runcmd_runs_install_script():
-    """gpu_available=True 시 runcmd 에 install_dcgm_exporter.sh 실행 커맨드 포함."""
-    yaml = _generate(gpu_available=True)
-    # runcmd 에 두 항목이 모두 포함되어야 함 (순서 무관)
-    assert "/opt/union/install_dcgm_exporter.sh" in yaml
-    assert "dcgm-exporter.service" in yaml
-    assert "systemctl enable --now dcgm-exporter.service" in yaml
+def test_gpu_userdata_runcmd_runs_packaged_services():
+    """GPU bootstrap runs its installer and enables NVIDIA's packaged services."""
+    rendered = _generate(gpu_available=True)
+    assert "/opt/afterglow/install_gpu_monitoring.sh" in rendered
+    assert "systemctl enable --now nvidia-dcgm.service" in rendered
+    assert "systemctl enable --now nvidia-dcgm-exporter.service" in rendered
 
 
-def test_gpu_userdata_includes_dcgm_systemd_unit():
-    """gpu_available=True 시 dcgm-exporter.service unit 파일이 user-data 에 포함."""
-    yaml = _generate(gpu_available=True)
-    assert "/etc/systemd/system/dcgm-exporter.service" in yaml
-    assert "ExecStart=/usr/local/bin/dcgm-exporter" in yaml
-    assert "0.0.0.0:9400" in yaml
+def test_gpu_userdata_uses_supported_dcgm_packages_without_custom_unit():
+    rendered = _generate(gpu_available=True)
+    assert "datacenter-gpu-manager" in rendered
+    assert "datacenter-gpu-manager-exporter" in rendered
+    assert "/etc/systemd/system/dcgm-exporter.service" not in rendered
+    assert "/usr/local/bin/dcgm-exporter" not in rendered
 
 
 def test_non_gpu_userdata_omits_gpu_install():
     """gpu_available=False 시 NVIDIA / DCGM 설치 항목이 모두 부재."""
     yaml = _generate(gpu_available=False)
-    assert "install_dcgm_exporter.sh" not in yaml
+    assert "install_gpu_monitoring.sh" not in yaml
     assert "ubuntu-drivers" not in yaml
     assert "dcgm-exporter" not in yaml
     assert "nvidia" not in yaml.lower()
 
 
-def test_gpu_userdata_exports_cuda_env():
-    """gpu_available=True 시 /etc/profile.d/union-env.sh 에 CUDA_HOME export 포함."""
-    yaml = _generate(gpu_available=True)
-    assert 'export CUDA_HOME="/usr/local/cuda"' in yaml
+def test_gpu_only_userdata_omits_layer_environment():
+    """GPU-only bootstrap must not create the retained layer environment."""
+    rendered = _generate(gpu_available=True)
+    assert "/etc/profile.d/union-env.sh" not in rendered
+    assert "/opt/union/overlay_setup.sh" not in rendered
+    assert "union-overlay.service" not in rendered
 
 
 # ---------------------------------------------------------------------------
-# Handler-side: /async 핸들러의 cloud-init 분기 회귀 테스트
-# (libraries=[] + GPU flavor 인스턴스가 user-data 없이 생성되던 버그 회귀 방지)
+# Generated cloud-config contract for GPU-only instances
 # ---------------------------------------------------------------------------
 
 
-def test_async_handler_generates_userdata_for_gpu_only_instance():
-    """libraries=[] + flavor.is_gpu=True 시 generate_userdata 가 호출되어야 한다.
+def test_gpu_only_userdata_is_structured_cloud_config():
+    """The real renderer emits typed lists while retaining GPU bootstrap."""
+    rendered = _generate(gpu_available=True)
+    document = yaml.safe_load(rendered)
 
-    기존 버그: `/async` 핸들러가 `if resolved_libs:` 안에서만 userdata 생성 →
-    GPU flavor 만 선택한 인스턴스가 user-data 없이 부팅 → NVIDIA 미설치.
-
-    이 테스트는 분기 조건을 직접 검증 — `resolved_libs or gpu_available` 이
-    False 가 되는 경우에만 userdata=None 이 허용됨.
-    """
-    # 분기 진리표 검증
-    cases = [
-        # (resolved_libs, gpu_available, should_generate_userdata)
-        ([], False, False),  # 일반 인스턴스 — userdata 불필요
-        ([], True, True),  # GPU only — userdata 필요 (기존 버그 케이스)
-        (["torch"], False, True),  # libraries only — userdata 필요
-        (["torch"], True, True),  # libraries + GPU — userdata 필요
-    ]
-    for resolved_libs, gpu_available, expected in cases:
-        actual = bool(resolved_libs or gpu_available)
-        assert actual is expected, (
-            f"resolved_libs={resolved_libs!r}, gpu_available={gpu_available!r} "
-            f"→ expected userdata={expected}, got {actual}"
-        )
+    assert document["packages"] == []
+    assert isinstance(document["write_files"], list)
+    assert isinstance(document["runcmd"], list)
+    assert any(entry.get("path") == "/opt/afterglow/install_gpu_monitoring.sh" for entry in document["write_files"])
+    assert "/opt/afterglow/install_gpu_monitoring.sh" in document["runcmd"]

@@ -4,6 +4,7 @@
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
   import { toast } from '$lib/stores/toast';
+  import { cloudShell } from '$lib/stores/cloudShell.svelte';
 
   const token = $derived($auth.token ?? undefined);
   const projectId = $derived($auth.projectId ?? undefined);
@@ -65,6 +66,7 @@
       await api.delete(`/api/v1/auth/sessions/${jti}`, token, projectId);
       await loadSessions();
       if (sessions.length === 0) {
+        await cloudShell.close('logout', { keepDock: false });
         logoutInProgress.set(true);
         clearAuth();
         try {
@@ -85,6 +87,7 @@
     revoking = true;
     error = '';
     success = '';
+    await cloudShell.close('logout', { keepDock: false });
     logoutInProgress.set(true);
     try {
       const pendingRefresh = beginSessionRevocation();

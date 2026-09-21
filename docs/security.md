@@ -39,6 +39,35 @@
 - Kolla HA에서는 backend가 모든 Valkey Sentinel을 통해 현재 master를 해석하고 `redis_url`의 사용자명·비밀번호·DB index를 발견된 master 연결에 적용한다. replica로 승격 정보가 어긋나거나 master 쓰기가 불가능하면 refresh/session 검증은 503으로 fail-closed하며, 브라우저에서 이를 terminal 401로 바꾸지 않는다.
 - 외부/presigned URL은 이 복구 경로와 브라우저 Authorization 주입 대상이 아니다. `downloadAuthenticated`는 설정된 API origin의 `/api/v1/` 경로만 인증하고 다른 URL은 자격 없이 요청한다. logout revocation fence와 늦은 401/cross-tab 회전 winner 보호를 유지한다.
 
+### Claude Gateway 승인 shell과 BFF 경계
+
+- `/oauth/claude/authorize`는 device verification URL로 직접 열 수 있는 public UI shell이다. Complete-link의 `user_code`는 허용 alphabet/length로 검증·정규화해 `sessionStorage`에만 보존하고 `history.replaceState`로 query를 제거한다. Page response와 document는 `Cache-Control: no-store`, `Referrer-Policy: no-referrer`를 사용한다.
+- Shell 진입 marker는 password/GitLab login과 project selection을 거쳐 같은 route로 복귀시키지만 권한 자체가 아니다. Approve/deny는 access bearer와 current `X-Project-Id`가 필요한 `/api/v1/chat/claude-gateway/authorize` BFF에서만 가능하다. Catch-all Lumen proxy의 `Depends(get_token_info)`가 unauthenticated request를 401로 거부한다.
+- Afterglow는 device code, issued Gateway API key 또는 provider credential을 DB/localStorage에 저장하지 않는다. Lumen이 user/project binding, hashed grant/key, one-time consume, fixed scope와 24시간 expiry를 소유한다. UI는 current project, exact scopes와 expiry를 승인 전에 표시한다.
+- Invalid/expired/consumed code는 safe OAuth reason을 사용자 행동으로 바꾸어 새 Claude Code connection을 안내한다. Browser/client logs와 analytics에 query code나 credential을 넣지 않는다.
+
+### 전역 Cloud Shell 자격·격리 경계
+
+- Cloud Shell 승인은 현재 Afterglow access JWT와 `X-Project-Id`를 다시 검증하고, Keystone에서 같은 사용자·프로젝트로 scoped된 token의 사용자/project/만료를 대조합니다. 만료까지 120초 미만인 token은 새 세션에 사용하지 않습니다.
+- Redis ticket에는 scoped Keystone token이 짧은 `ticket_ttl_seconds` 동안 포함됩니다. 티켓은 high-entropy opaque 값이고 목적(`cloud-shell`)이 묶이며 원자적으로 한 번만 소비됩니다. Consume 뒤 ticket key는 삭제되고 active ownership key에는 token 대신 서명된 fingerprint/session metadata만 남습니다. Redis가 불가하면 ticket/lock/heartbeat 경로는 503/4500으로 fail-closed합니다.
+- 브라우저는 Keystone token, 서비스 프로젝트 자격, Zun exec URL을 받지 않습니다. Backend가 Zun binary WebSocket에 직접 연결하고 browser에는 configured public Afterglow API relay만 노출합니다. Frontend CSP `connect-src`는 설정된 API HTTP(S) origin과 정확히 대응하는 WS(S) origin만 추가합니다. Handshake 뒤 `Origin`을 frontend/CORS allowlist와 정확히 비교하며 누락·userinfo·path/query가 있는 origin도 거부합니다.
+- Bootstrap은 PTY echo를 먼저 끈 뒤 bounded payload를 받고, token을 `/dev/shm/afterglow/secure.yaml`의 UID/GID 1000·mode 0600 파일에만 씁니다. `/dev/shm`은 컨테이너 tmpfs이고 영구 Cinder mount `/home/cloudshell`과 분리됩니다. 그 뒤 UID/GID 1000, 빈 supplementary group, `no-new-privs`, 비어 있는 inheritable/ambient/bounding capability로 `bash --login`을 exec합니다. Image layer와 persistent home에는 credential을 쓰지 않습니다.
+- Zun 컨테이너는 privileged=false, 고정 CPU/RAM, 운영자 지정 network/security group, 한 개의 managed home volume만 사용합니다. Security group은 전용 service project 소유이며 ingress rule이 없어야 합니다. Dedicated project service credential은 Zun/Cinder lifecycle에만 사용하고 shell 안에는 caller-scoped token만 들어갑니다.
+- 영구 홈과 컨테이너는 이름만으로 채택/삭제하지 않습니다. HMAC signature, service-project resource metadata, user/workspace/session fingerprint, expiry가 모두 맞아야 합니다. 중복·collision·metadata 불일치·조회 실패는 자동 정리 대신 fail-closed 상태로 남깁니다.
+- 사용자당 전역 singleton reservation/active key가 다른 탭과 프로젝트의 동시 세션을 막습니다. Project switch/logout은 먼저 relay를 닫고 container cleanup을 요청합니다. Idle/max expiry, browser disconnect, backend restart 뒤에는 exact managed container cleanup과 startup/interval reconciler가 보조하지만 persistent home은 명시적 reset 전까지 유지합니다.
+- Audit은 `cloud_shell.start`, `cloud_shell.end`, `cloud_shell.reset`의 project/user/status와 safe error code만 기록합니다. Ticket, Keystone token, bootstrap payload, exec URL, terminal bytes는 audit/application log에 기록하지 않습니다. Terminal 내용 자체는 Afterglow DB에 저장하지 않습니다.
+
+주요 위협과 남은 경계:
+
+| 위협 | 완화 | 남은 운영 책임 |
+|---|---|---|
+| Ticket 재사용·다른 protocol 사용 | purpose-bound atomic consume, 짧은 TTL, user-wide reservation | Redis TLS/auth와 접근 제어 |
+| Cross-site WebSocket hijacking | exact Origin allowlist, opaque ticket | 공개 ingress의 HTTPS/WSS 및 WebSocket upgrade |
+| Token의 영구 홈 유출 | PTY echo off, tmpfs 0600 config, ephemeral container, token은 home에 미기록 | Zun compute/root와 memory dump 접근 통제 |
+| 서비스 프로젝트 resource 탈취/오삭제 | dedicated project, signed exact metadata, duplicate/collision fail-closed | project/network/security-group/quotas와 `SECRET_KEY` lifecycle |
+| 컨테이너 escape·outbound 남용 | non-privileged, no capabilities, no-new-privs, fixed resources, ingress-free SG | Zun runtime hardening, registry provenance, egress allowlist/monitoring |
+| 중단 뒤 orphan | lease heartbeat, exact cleanup, startup/interval reconciliation | cleanup alerting, staging expiry 검증, 수동 보존 정책 |
+
 ### 리버스 프록시 IP 추출
 
 - `X-Forwarded-For` / `X-Real-IP` 헤더는 `settings.trusted_proxies` (CIDR 리스트)

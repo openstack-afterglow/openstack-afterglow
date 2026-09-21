@@ -8,6 +8,7 @@ import ChatPanel from '../ChatPanel.svelte';
 const mocks = vi.hoisted(() => ({
 	get: vi.fn(),
 	post: vi.fn(),
+	patch: vi.fn(),
 	createRun: vi.fn(),
 	followRun: vi.fn(),
 	cancelRun: vi.fn(),
@@ -19,18 +20,25 @@ const mocks = vi.hoisted(() => ({
 			super(message);
 			this.status = status;
 		}
-	}
+	},
+	ApiError: class ApiError extends Error {
+		status: number;
+		constructor(message: string, status: number) {
+			super(message);
+			this.status = status;
+		}
+	},
 }));
 
 vi.mock('$lib/api/client', () => ({
 	api: {
 		get: mocks.get,
 		post: mocks.post,
-		patch: vi.fn(),
+		patch: mocks.patch,
 		put: vi.fn(),
 		delete: vi.fn()
 	},
-	ApiError: class ApiError extends Error {}
+	ApiError: mocks.ApiError
 }));
 
 vi.mock('$app/navigation', () => ({ goto: mocks.goto }));
@@ -365,7 +373,7 @@ describe('ChatPanel', () => {
 					}
 				];
 			}
-			if (path === '/api/v1/chat/conversations/conv-manual/messages?limit=40') {
+			if (path === '/api/v1/chat/conversations/conv-manual/messages?anchor=latest&limit=40') {
 				return {
 					messages: [
 						{ id: 'm1', conversation_id: 'conv-manual', role: 'user', content: '안녕하세요', created_at: at }
@@ -469,7 +477,7 @@ describe('ChatPanel', () => {
 					}
 				];
 			}
-			if (path === '/api/v1/chat/conversations/conv-resume-c/messages?limit=40') {
+			if (path === '/api/v1/chat/conversations/conv-resume-c/messages?anchor=latest&limit=40') {
 				return {
 					messages: [
 						{ id: 'm-prior', conversation_id: 'conv-resume-c', role: 'user', content: '이전 대화', created_at: at }
@@ -836,6 +844,105 @@ describe('ChatPanel', () => {
 
 		await screen.findByText('생성을 중단했습니다.');
 		await waitFor(() => expect(screen.getAllByRole('button', { name: '복사' })).toHaveLength(2));
+	});
+
+	it('keeps at most three 40-message pages and performs one request per history step', async () => {
+		const fallback = mocks.get.getMockImplementation()!;
+		const page = (start: number, hasBefore: boolean, beforeCursor: string | null, hasAfter: boolean, afterCursor: string | null) => ({
+			messages: Array.from({ length: 40 }, (_, offset) => ({
+				id: String(start + offset), conversation_id: 'conv-history', role: 'user' as const,
+				parent_id: start + offset === 1 ? null : String(start + offset - 1),
+				content: `history-${start + offset}`, created_at: at, position: start + offset - 1, branch: null
+			})),
+			active_leaf_id: '160', history_revision: 7, has_before: hasBefore, has_after: hasAfter,
+			before_cursor: beforeCursor, after_cursor: afterCursor
+		});
+		mocks.get.mockImplementation(async (path: string, ...args: unknown[]) => {
+			if (path === '/api/v1/chat/conversations') {
+				return [{ id: 'conv-history', title: '긴 대화', model_name: 'model-1', workspace_id: null }];
+			}
+			if (path.endsWith('/messages?anchor=latest&limit=40')) return page(121, true, 'cursor-4', false, null);
+			if (path.includes('cursor=cursor-4')) return page(81, true, 'cursor-3', true, 'after-3');
+			if (path.includes('cursor=cursor-3')) return page(41, true, 'cursor-2', true, 'after-2');
+			if (path.includes('cursor=cursor-2')) return page(1, false, null, true, 'after-1');
+			return fallback(path, ...args);
+		});
+
+		render(ChatPanel);
+		await fireEvent.click(await screen.findByRole('button', { name: '대화 기록과 설정 열기' }));
+		await fireEvent.click(await screen.findByRole('button', { name: '긴 대화' }));
+		await screen.findByText('history-160');
+		for (const cursor of ['cursor-4', 'cursor-3', 'cursor-2']) {
+			await fireEvent.click(screen.getByRole('button', { name: '이전' }));
+			await waitFor(() => expect(mocks.get.mock.calls.some(([path]) => String(path).includes(`cursor=${cursor}`))).toBe(true));
+		}
+
+		await screen.findByText('history-1');
+		expect(screen.queryByText('history-160')).toBeNull();
+		const historyRequests = mocks.get.mock.calls.filter(([path]) => String(path).includes('/conv-history/messages?'));
+		expect(historyRequests).toHaveLength(4);
+		expect(document.querySelectorAll('[data-history-message-id]')).toHaveLength(120);
+	});
+
+	it('alerts on a stale cursor and re-queries the latest window exactly once', async () => {
+		const fallback = mocks.get.getMockImplementation()!;
+		let latestRequests = 0;
+		mocks.get.mockImplementation(async (path: string, ...args: unknown[]) => {
+			if (path === '/api/v1/chat/conversations') {
+				return [{ id: 'conv-stale', title: '변경된 대화', model_name: 'model-1', workspace_id: null }];
+			}
+			if (path.endsWith('/messages?anchor=latest&limit=40')) {
+				latestRequests += 1;
+				return {
+					messages: [{ id: latestRequests, conversation_id: 'conv-stale', role: 'user', parent_id: null, content: latestRequests === 1 ? 'old-latest' : 'refreshed-latest', created_at: at }],
+					active_leaf_id: latestRequests, history_revision: latestRequests, has_before: latestRequests === 1,
+					has_after: false, before_cursor: latestRequests === 1 ? 'stale-cursor' : null, after_cursor: null
+				};
+			}
+			if (path.includes('cursor=stale-cursor')) throw new mocks.ApiError('stale', 409);
+			return fallback(path, ...args);
+		});
+
+		render(ChatPanel);
+		await fireEvent.click(await screen.findByRole('button', { name: '대화 기록과 설정 열기' }));
+		await fireEvent.click(await screen.findByRole('button', { name: '변경된 대화' }));
+		await screen.findByText('old-latest');
+		await fireEvent.click(screen.getByRole('button', { name: '이전' }));
+
+		await screen.findByText('refreshed-latest');
+		expect(screen.getByRole('alert').textContent).toContain('대화 기록이 변경되어 최신 위치를 다시 불러왔습니다.');
+		expect(latestRequests).toBe(2);
+		expect(mocks.get.mock.calls.filter(([path]) => String(path).includes('/conv-stale/messages?'))).toHaveLength(3);
+	});
+
+	it('switches versions with server-projected sibling ids and recursive descent', async () => {
+		const fallback = mocks.get.getMockImplementation()!;
+		mocks.patch.mockResolvedValue({ active_leaf_id: 99 });
+		mocks.get.mockImplementation(async (path: string, ...args: unknown[]) => {
+			if (path === '/api/v1/chat/conversations') {
+				return [{ id: 'conv-branch', title: '분기 대화', model_name: 'model-1', workspace_id: null }];
+			}
+			if (path.includes('/conv-branch/messages?')) {
+				return {
+					messages: [{ id: 42, conversation_id: 'conv-branch', role: 'assistant', parent_id: 1, content: 'current branch', created_at: at, branch: { previous_id: 41, next_id: null } }],
+					active_leaf_id: 42, history_revision: 3, has_before: false, has_after: false, before_cursor: null, after_cursor: null
+				};
+			}
+			return fallback(path, ...args);
+		});
+
+		render(ChatPanel);
+		await fireEvent.click(await screen.findByRole('button', { name: '대화 기록과 설정 열기' }));
+		await fireEvent.click(await screen.findByRole('button', { name: '분기 대화' }));
+		await screen.findByText('current branch');
+		await fireEvent.click(screen.getByRole('button', { name: '이전 버전' }));
+
+		await waitFor(() => expect(mocks.patch).toHaveBeenCalledWith(
+			'/api/v1/chat/conversations/conv-branch/active-leaf',
+			{ message_id: 41, descend: true },
+			'token',
+			'project-1'
+		));
 	});
 
 });

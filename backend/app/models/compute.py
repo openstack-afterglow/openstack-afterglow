@@ -92,6 +92,13 @@ class FlavorInfo(BaseModel):
         return int(m.group(1)) if m.group(1) else 1
 
 
+class GitHubSshProfile(BaseModel):
+    login: str
+    name: str | None = None
+    avatar_url: str | None = None
+    public_key_count: int
+
+
 class InstanceInfo(BaseModel):
     id: str
     name: str
@@ -130,6 +137,7 @@ class CreateInstanceRequest(BaseModel):
     availability_zone: str | None = None
     security_groups: list[str] = []
     userdata: str | None = None
+
     boot_volume_size_gb: int | None = Field(None, ge=1, le=16384)
     delete_boot_volume_on_termination: bool = False
     additional_volume_ids: list[str] = []

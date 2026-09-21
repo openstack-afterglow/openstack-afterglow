@@ -59,6 +59,7 @@ export interface WizardState {
 	keyName: string | null;
 	sshAccessMode: 'keypair' | 'github';
 	githubUsername: string;
+
 	securityGroups: string[];
 	cloudInit: string;
 	bootVolumeSizeGb: number;

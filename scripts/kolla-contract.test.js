@@ -1063,3 +1063,49 @@ test("Kolla operator tag-promotion script and workflow preserve immutable releas
 	)
 	assert.equal(unitResult.status, 0, unitResult.stderr || unitResult.stdout)
 })
+
+test("Cloud Shell Kolla contract is dedicated, immutable, and fail-closed", () => {
+	const defaults = readRepoFile("deploy/kolla/ansible/roles/afterglow/defaults/main.yml")
+	const configTasks = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/config.yml")
+	const keystone = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/preconditions_keystone.yml")
+	const precheck = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/precheck_cloud_shell.yml")
+	const baseConfig = readRepoFile("deploy/kolla/ansible/roles/afterglow/templates/afterglow.conf.j2")
+	const finalConfig = readRepoFile("deploy/kolla/ansible/roles/afterglow/templates/afterglow.kolla.conf.j2")
+	const sample = readRepoFile("deploy/kolla/globals.afterglow.sample.yml")
+
+	assert.match(defaults, /^afterglow_cloud_shell_project_name: "afterglow-cloud-shell"$/m)
+	assert.match(defaults, /^afterglow_cloud_shell_image: ""$/m)
+	assert.match(defaults, /^afterglow_service_cloud_shell_enabled: false$/m)
+	assert.match(configTasks, /Config \| Resolve Cloud Shell service project ID/)
+	assert.match(configTasks, /afterglow_cloud_shell_project_id != afterglow_service_project_id/)
+	assert.match(keystone, /module_name: openstack\.cloud\.role_assignment/)
+	assert.match(keystone, /Create exactly one project named/)
+	const registration = keystone.slice(0, keystone.indexOf("Keystone | Resolve pre-created Cloud Shell project"))
+	assert.doesNotMatch(registration, /afterglow_cloud_shell_project_name/)
+
+	for (const dependency of [
+		"enable_zun",
+		"enable_kuryr",
+		"enable_etcd",
+		"docker_configure_for_zun",
+		"containerd_configure_for_zun",
+		"zun_configure_for_cinder_ceph",
+		"zun-compute",
+	]) {
+		assert.match(precheck, new RegExp(dependency.replace("-", "\\-")))
+	}
+	assert.match(precheck, /@sha256:\[0-9a-fA-F\]\{64\}/)
+	assert.match(precheck, /security group rule list --ingress/)
+	assert.match(precheck, /appcontainer list -f json/)
+	assert.match(precheck, /volume list --limit 1 -f json/)
+	assert.match(precheck, /docker\n\s+- manifest\n\s+- inspect/)
+
+	for (const template of [baseConfig, finalConfig]) {
+		assert.match(template, /cloud_shell = \{\{ \(afterglow_service_cloud_shell_enabled/)
+		assert.match(template, /\[cloud_shell\]/)
+		assert.match(template, /service_project_id = "\{\{ afterglow_cloud_shell_project_id \}\}"/)
+		assert.match(template, /zun_websocket_origin = "\{\{ afterglow_cloud_shell_zun_websocket_origin \}\}"/)
+	}
+	assert.match(sample, /afterglow_cloud_shell_image: "ghcr\.io\/openstack-afterglow\/afterglow-cloud-shell@sha256:/)
+	assert.match(sample, /^afterglow_service_cloud_shell_enabled: false$/m)
+})

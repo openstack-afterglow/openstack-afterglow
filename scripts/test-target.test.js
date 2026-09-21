@@ -343,6 +343,8 @@ test("package.json contains exact command contract scripts and no obsolete scrip
 	assert.equal(scripts["test:live"], "cd backend && AFTERGLOW_ALLOW_INSECURE=1 uv run python -m pytest tests/integration -v");
 	assert.equal(scripts["test:all"], "npm run test:unit && npm run test:contract && npm run test:functional");
 	assert.equal(scripts["test:gate"], "npm run docs:check && npm run test:all && npm run lint:backend");
+	assert.equal(scripts["test:cloud-shell"], "node scripts/test-target.js cloud-shell");
+	assert.match(scripts["test:cloud-shell:image"], /docker build --target cloud-shell/);
 
 	assert.equal(scripts["test:backend:app"], undefined);
 	assert.equal(scripts["test:backend:integration"], undefined);
@@ -394,6 +396,20 @@ test("CI separates pure orchestration from uv-backed Kolla contracts", () => {
 	assert.deepEqual(osInterfaceFallbacks, ["public", "public"]);
 });
 
+test("Cloud Shell image has isolated smoke coverage and multi-architecture publication", () => {
+	const workflow = fs.readFileSync(path.join(rootDir, ".github", "workflows", "docker-build.yml"), "utf-8");
+	const testWorkflow = fs.readFileSync(path.join(rootDir, ".github", "workflows", "test.yml"), "utf-8");
+
+	assert.match(workflow, /options: \[all, afterglow, backend, frontend, worker, cloud-shell\]/);
+	assert.match(workflow, /\^\(cloud-shell\/\|Dockerfile\$\|\\\.dockerignore\$\)/);
+	assert.match(workflow, /^  build-cloud-shell:\s*$/m);
+	assert.match(workflow, /name: Build Cloud Shell \(amd64 \+ arm64\)/);
+	assert.match(workflow, /target: cloud-shell\s+platforms: linux\/amd64,linux\/arm64/);
+	assert.match(workflow, /afterglow-cloud-shell/);
+	assert.match(testWorkflow, /^  test-cloud-shell:\s*$/m);
+	assert.match(testWorkflow, /run: npm run test:cloud-shell:image/);
+});
+
 test("pull requests cannot schedule the self-hosted image build matrix", () => {
 	const workflow = fs.readFileSync(path.join(rootDir, ".github", "workflows", "docker-build.yml"), "utf-8");
 	const buildStart = workflow.indexOf("\n  build:");
@@ -404,7 +420,7 @@ test("pull requests cannot schedule the self-hosted image build matrix", () => {
 	assert.match(buildJob, /runs-on: \$\{\{ matrix\.runner \}\}/);
 	assert.match(
 		buildJob,
-		/if: needs\.changes\.outputs\.is_pr != 'true' && needs\.changes\.outputs\.targets != '\[\]'/
+		/if: needs\.changes\.outputs\.is_pr != 'true' && needs\.changes\.outputs\.standard_targets != '\[\]'/
 	);
 });
 

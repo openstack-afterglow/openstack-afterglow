@@ -30,6 +30,42 @@
     fail_msg: "Afterglow service project '{{ afterglow_service_project_name }}' must exist before configuration rendering"
   when: inventory_hostname in groups['afterglow']
 
+- name: Config | Resolve Cloud Shell service project ID
+  become: true
+  kolla_toolbox:
+    container_engine: "{{ kolla_container_engine }}"
+    module_name: openstack.cloud.project_info
+    module_args:
+      auth: "{{ openstack_auth }}"
+      name: "{{ afterglow_cloud_shell_project_name }}"
+  register: afterglow_cloud_shell_project_lookup
+  changed_when: false
+  no_log: true
+  run_once: true
+  when:
+    - inventory_hostname in groups['afterglow']
+    - afterglow_service_cloud_shell_enabled | bool
+    - afterglow_cloud_shell_project_id | default('') | length == 0
+
+- name: Config | Set resolved Cloud Shell service project ID
+  ansible.builtin.set_fact:
+    afterglow_cloud_shell_project_id: "{{ afterglow_cloud_shell_project_lookup.projects[0].id }}"
+  when:
+    - inventory_hostname in groups['afterglow']
+    - afterglow_service_cloud_shell_enabled | bool
+    - afterglow_cloud_shell_project_id | default('') | length == 0
+    - afterglow_cloud_shell_project_lookup.projects | default([]) | length == 1
+
+- name: Config | Require exactly one dedicated Cloud Shell project
+  ansible.builtin.assert:
+    that:
+      - afterglow_cloud_shell_project_id | default('') | length > 0
+      - afterglow_cloud_shell_project_id != afterglow_service_project_id
+    fail_msg: "Cloud Shell project '{{ afterglow_cloud_shell_project_name }}' must resolve uniquely and differ from the Afterglow service project"
+  when:
+    - inventory_hostname in groups['afterglow']
+    - afterglow_service_cloud_shell_enabled | bool
+
 - name: Config | Ensure Afterglow runtime config directory exists
   become: true
   ansible.builtin.file:

@@ -305,6 +305,131 @@ body {
   }
 }
 
+/* Global Cloud Shell: mobile bottom sheet, tablet/desktop non-modal dock. */
+.cloud-shell-dock {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: var(--z-panel);
+  display: flex;
+  min-height: 15rem;
+  height: min(32rem, 70dvh);
+  max-height: 88dvh;
+  flex-direction: column;
+  overflow: visible;
+  border-top: 1px solid var(--color-line-2);
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-restraint);
+  transition: height var(--motion-duration-panel) var(--motion-ease-out);
+}
+
+.cloud-shell-header {
+  display: flex;
+  min-height: 2.75rem;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--color-line);
+  padding: 0 0.5rem 0 1rem;
+  background: var(--color-surface-raised);
+}
+
+.cloud-shell-resize-handle {
+  display: none;
+}
+
+.cloud-shell-maximize-control {
+  display: none !important;
+}
+
+.cloud-shell-dock--minimized {
+  min-height: 2.75rem;
+  height: 2.75rem;
+}
+
+.cloud-shell-dock--minimized .cloud-shell-header {
+  border-bottom: 0;
+}
+
+.cloud-shell-dock--maximized {
+  top: var(--app-header-height);
+  min-height: 0;
+  height: auto;
+  max-height: none;
+}
+
+@media (min-width: 768px) {
+  .cloud-shell-dock {
+    left: var(--app-sidebar-width);
+    min-height: 15rem;
+    height: clamp(15rem, var(--cloud-shell-user-height, 45dvh), 70dvh);
+    max-height: 70dvh;
+  }
+
+  .cloud-shell-maximize-control {
+    display: inline-flex !important;
+  }
+
+  .cloud-shell-dock--minimized {
+    min-height: 2.75rem;
+    height: 2.75rem;
+  }
+
+  .cloud-shell-dock--maximized {
+    min-height: 0;
+    height: auto;
+    max-height: none;
+  }
+
+  .cloud-shell-resize-handle {
+    position: absolute;
+    top: -0.375rem;
+    right: 0;
+    left: 0;
+    display: block;
+    height: 0.75rem;
+    cursor: ns-resize;
+    touch-action: none;
+  }
+
+  .cloud-shell-resize-handle::after {
+    position: absolute;
+    top: 0.25rem;
+    left: 50%;
+    width: 3rem;
+    height: 0.1875rem;
+    border-radius: 999px;
+    background: var(--color-line-2);
+    content: '';
+    transform: translateX(-50%);
+  }
+
+  .cloud-shell-resize-handle:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+  }
+
+  .cloud-shell-dock--minimized .cloud-shell-resize-handle,
+  .cloud-shell-dock--maximized .cloud-shell-resize-handle {
+    display: none;
+  }
+}
+
+@media (min-width: 1024px) {
+  .cloud-shell-dock {
+    height: clamp(15rem, var(--cloud-shell-user-height, 22.5rem), 70dvh);
+  }
+
+  .cloud-shell-dock--minimized {
+    height: 2.75rem;
+  }
+
+  .cloud-shell-dock--maximized {
+    height: auto;
+  }
+}
+
 @media (forced-colors: active) {
   :focus-visible {
     outline: 2px solid CanvasText !important;

@@ -5,6 +5,7 @@
 	import { api, ApiError } from '$lib/api/client';
 	import { projectList, type Project } from '$lib/stores/projectList';
 	import LoadingSpinner from './LoadingSpinner.svelte';
+	import { cloudShell } from '$lib/stores/cloudShell.svelte';
 	import CreateProjectModal from './projects/CreateProjectModal.svelte';
 
 	let { direction = 'up' }: { direction?: 'up' | 'down' } = $props();
@@ -25,6 +26,7 @@
 		if (project.id === $auth.projectId) { isOpen = false; return; }
 
 		switching = true;
+		await cloudShell.close('project-switch', { keepDock: false });
 		try {
 			const resp = await api.post<{
 				token: string;

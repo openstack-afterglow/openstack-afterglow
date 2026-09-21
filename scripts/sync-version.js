@@ -19,23 +19,27 @@ const fe = JSON.parse(fs.readFileSync(fePath, "utf-8"));
 fe.version = version;
 fs.writeFileSync(fePath, JSON.stringify(fe, null, "\t") + "\n");
 
-// 2) backend/pyproject.toml — 최상위 [project] 블록의 version 한 줄만 치환
-const pyPath = path.join(root, "backend/pyproject.toml");
-const py = fs.readFileSync(pyPath, "utf-8");
-if (!/^version\s*=\s*"[^"]*"/m.test(py)) {
-	console.error("backend/pyproject.toml: version line not found");
-	process.exit(1);
+// 2) Python project versions and lockfiles
+function syncPythonProject(relativeDirectory, label) {
+	const directory = path.join(root, relativeDirectory);
+	const pyprojectPath = path.join(directory, "pyproject.toml");
+	const pyproject = fs.readFileSync(pyprojectPath, "utf-8");
+	if (!/^version\s*=\s*"[^"]*"/m.test(pyproject)) {
+		console.error(`${label}/pyproject.toml: version line not found`);
+		process.exit(1);
+	}
+	const patched = pyproject.replace(/^(version\s*=\s*)"[^"]*"/m, `$1"${version}"`);
+	fs.writeFileSync(pyprojectPath, patched);
+	try {
+		execSync("uv lock --quiet", { cwd: directory, stdio: "inherit" });
+	} catch {
+		console.error(`${label}/uv.lock 갱신 실패 — uv 가 설치되어 있어야 합니다`);
+		process.exit(1);
+	}
 }
-const patched = py.replace(/^(version\s*=\s*)"[^"]*"/m, `$1"${version}"`);
-fs.writeFileSync(pyPath, patched);
 
-// 3) backend/uv.lock 갱신 — pyproject version 필드가 바뀌었으므로 재생성 필요
-try {
-	execSync("uv lock --quiet", { cwd: path.join(root, "backend"), stdio: "inherit" });
-} catch {
-	console.error("uv lock 실패 — uv 가 설치되어 있어야 합니다");
-	process.exit(1);
-}
+syncPythonProject("backend", "backend");
+syncPythonProject("cloud-shell", "cloud-shell");
 
 // 4) helm/afterglow/Chart.yaml — version 및 appVersion 갱신
 const chartPath = path.join(root, "helm/afterglow/Chart.yaml");

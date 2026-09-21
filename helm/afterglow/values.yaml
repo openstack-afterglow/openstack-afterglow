@@ -535,11 +535,32 @@ services:
   magnum: false
   manila: true
   zun: false
+  cloud_shell: false
   k3s: true
   swift: false
   trove: false
   barbican: false
   mcp: false
+
+# -----------------------------------------------------------------------------
+# [cloud_shell]
+# -----------------------------------------------------------------------------
+cloudShell:
+  serviceProjectId: ""
+  image: ""
+  networkId: ""
+  securityGroup: ""
+  authUrl: ""
+  interface: "internal"
+  volumeType: ""
+  homeSizeGib: 5
+  cpu: 1.0
+  memoryMib: 1024
+  idleTimeoutSeconds: 1200
+  maxSessionSeconds: 3600
+  ticketTtlSeconds: 60
+  reconcileIntervalSeconds: 60
+  zunWebsocketOrigin: ""
 
 # -----------------------------------------------------------------------------
 # [mcp]

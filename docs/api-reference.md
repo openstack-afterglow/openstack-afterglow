@@ -104,6 +104,7 @@ Prometheus SD(`/api/v1/sd/...`)와 VM 에이전트용 baked 경로는 별도의 
 | 문서 | 기본 경로 | 설명 |
 |------|-----------|------|
 | [컨테이너 (Containers)](api/containers.md) | `/api/v1/clusters`, `/api/v1/containers` | Magnum 클러스터, Zun 컨테이너 — *선택* |
+| [전역 Cloud Shell](api/cloud-shell.md) | `/api/v1/cloud-shell` | 승인 ticket, 영구 홈 상태/reset, binary terminal WebSocket — *선택* |
 | [k3s 클러스터 (k3s)](api/k3s.md) | `/api/v1/k3s/clusters` | 경량 Kubernetes 프로비저닝(SSE), 스케일, kubeconfig, 인증서, 노드그룹 — *선택* |
 | [k3s 리소스 관리](api/k3s-resources.md) | `/api/v1/k3s/clusters/...` | 클러스터 내부 k8s 리소스(pods/deployments/services/configmaps/secrets/shell) — *선택* |
 

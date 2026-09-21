@@ -1,6 +1,7 @@
 <script lang="ts">
   import { auth, logoutInProgress, setAuth } from '$lib/stores/auth';
   import { api, ApiError } from '$lib/api/client';
+  import { cloudShell } from '$lib/stores/cloudShell.svelte';
 
   interface Project {
     id: string;
@@ -42,6 +43,7 @@
     if (proj.id === $auth.projectId) return;
 
     switching = true;
+    await cloudShell.close('project-switch', { keepDock: false });
     try {
       const resp = await api.post<{
         token: string;

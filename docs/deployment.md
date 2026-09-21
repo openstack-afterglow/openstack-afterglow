@@ -157,7 +157,8 @@ Runner는 다른 project를 자동 삭제하지 않습니다.
 - Kubernetes 환경에서 복사한 public OpenStack 경로가 로컬 Docker에 맞는지는 별도로 확인합니다. VPN/internal catalog 접근이 가능한 로컬 환경은 snapshot의 `[openstack] auth_url`에 검증한 versioned internal Keystone URL을, `interface`에 `internal`을 지정할 수 있습니다. 원본 설정과 secret은 보존하고 snapshot 변경 전 `.local-services/backups/`에 mode 0600 백업을 둡니다. Internal 경로도 503이면 상류 OpenStack 장애이며 로컬 재배포나 timeout 연장으로 정상 처리하지 않습니다.
 - 현재 소스 build 모드에는 sibling checkout `../lumen`, `../drover`, `../waygate`,
   `../palimpsest`가 필요합니다. 앞의 세 checkout에는 `docker/Dockerfile`, Palimpsest에는
-  `docker/hub/Dockerfile`이 있어야 합니다.
+  Hub package root의 `hub/Dockerfile`이 있어야 합니다. Compose는 이 파일의 `COPY src` 경계를
+  지키기 위해 `../palimpsest/hub`를 build context로 사용합니다.
 - 실제 provider key를 추가하려면 **로컬** Lumen 관리 UI/API에 등록합니다. 운영 provider DB나
   암호화된 key를 복제하지 않습니다. 키가 없어도 모델 metadata와 context-preview는 검증할 수
   있지만, 실제 provider completion 검증은 별도 자격 증명이 필요합니다.
@@ -218,6 +219,10 @@ fallback하는 개발 모드는 없습니다. Published image 실행은 prod man
 npm run services:config
 docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml up -d --build --wait
 
+# 이미 실행 중인 dependency는 유지하고 Afterglow frontend/backend만 재빌드·재생성
+docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml \
+  up -d --no-deps --force-recreate --build backend frontend
+
 # 기존 선택적 개발 모니터링 profile
 docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml --profile monitoring up -d
 ```
@@ -256,8 +261,15 @@ Dev runner는 shell/`.env` → nonempty `.local-services/afterglow.conf` → Com
 사용합니다. [주소 예시와 우선순위](openstack-service-catalog.md#로컬-direct-서비스-엔드포인트-오버라이드-direct-service-endpoint-overrides)를 따르세요.
 
 `LUMEN_MCP_CONTROL_PLANE_URL`은 Lumen이 Afterglow를 호출할 주소입니다. 브라우저의
-`PUBLIC_API_BASE` 및 원격 VM의 Waygate/Drover callback URL은 별도이며, 원격 VM callback에는
-개발 컨테이너 DNS나 `localhost`가 아닌 VM에서 도달 가능한 주소가 필요합니다.
+`PUBLIC_API_BASE`와 Waygate callback origin은 별도입니다. 전체 local stack을 준비하거나
+Waygate API/worker를 시작할 때는 `WAYGATE_PUBLIC_BASE_URL=https://waygate.example.com`처럼
+gateway VM에서 도달 가능한 HTTP(S) origin을 명시해야 합니다. `services:config`는 검증된 값을
+private `compose.env`에 보존하고 Compose가 이를 `WAYGATE_CALLBACK_BASE_URL`로 전달합니다.
+새 VM callback은 이 origin의 direct Waygate `/v1/servers/.../agent` 경로를 사용합니다.
+개발 컨테이너 DNS, `localhost`, loopback 주소와 Afterglow BFF 경로를 사용하지 않습니다.
+Waygate가 이미 실행 중일 때 `--no-deps`로 frontend/backend만 재생성하는 명령은 이 값 없이도
+manifest를 parse할 수 있지만, 빈 값으로 Waygate 자체를 시작하면 service startup validation이
+fail-closed합니다.
 
 ### 4. 운영 이미지와 TLS HAProxy
 
@@ -356,6 +368,83 @@ Kolla의 monitor 이름으로 현재 master를 찾습니다. `redis_url`은 사�
 증명하지 못합니다.
 
 서비스 카탈로그 검증은 [등록 튜토리얼](openstack-service-catalog.md)을 참고하세요.
+
+---
+
+## 전역 Cloud Shell 선택 배포
+
+Cloud Shell은 Afterglow backend Pod/container 안에서 shell을 실행하지 않습니다. 운영자가 미리 만든 **전용 OpenStack 프로젝트**에서 사용자별·논리 프로젝트별 Cinder 홈과 세션별 Zun 컨테이너를 실행합니다. 일반 Afterglow 서비스 프로젝트, 사용자 tenant 프로젝트, Cloud Shell 프로젝트는 서로 달라야 합니다.
+
+#### OpenStack 선행 조건
+
+1. `afterglow-cloud-shell` 같은 전용 프로젝트를 하나 만들고 UUID를 고정합니다. 이름이 중복되면 활성화하지 않습니다.
+2. Afterglow service user에 이 전용 프로젝트의 `admin` 역할만 추가합니다. 사용자 Keystone token으로 Zun/Cinder lifecycle을 관리하지 않습니다.
+3. 전용 프로젝트에 router가 연결된 routed network와 **ingress rule이 하나도 없는 egress 전용 security group**을 운영자가 만듭니다. Afterglow/Kolla 역할은 project, network, router, security group을 만들거나 삭제하지 않습니다.
+4. Zun, Kuryr, etcd, Docker/containerd Zun integration, Cinder-backed Zun volume mount와 하나 이상의 `zun-compute`를 준비합니다. Backend에서 Keystone/Cinder/Zun API와 Zun exec WebSocket endpoint에 접근할 수 있어야 합니다.
+5. `cloud-shell` 이미지를 `linux/amd64`와 `linux/arm64` manifest로 게시하고 운영 설정에는 반드시 `@sha256:<manifest-digest>`를 사용합니다. `latest`나 bare tag는 사용하지 않습니다.
+6. Cinder volume count/gigabytes와 Zun container/CPU/RAM quota는 **전용 프로젝트**에 적용합니다. 사용자 tenant quota를 Cloud Shell 용량으로 사용하거나 늘리지 않습니다. 최대 동시 세션은 전역 사용자당 1개지만 영구 홈은 사용자×논리 프로젝트마다 하나이므로 예상 project 수를 volume quota에 반영합니다.
+
+기본 runtime 설정 예시:
+
+```toml
+[services]
+zun = true
+cloud_shell = true
+
+[cloud_shell]
+service_project_id = "<dedicated-project-uuid>"
+image = "ghcr.io/openstack-afterglow/afterglow-cloud-shell@sha256:<64-hex-digest>"
+network_id = "<dedicated-routed-network-uuid>"
+security_group = "afterglow-cloud-shell-egress"
+auth_url = "https://keystone.example.com:5000/v3"
+interface = "public"
+volume_type = "ceph"
+home_size_gib = 5
+cpu = 1.0
+memory_mib = 1024
+idle_timeout_seconds = 1200
+max_session_seconds = 3600
+ticket_ttl_seconds = 60
+reconcile_interval_seconds = 60
+zun_websocket_origin = "wss://zun.example.com"
+```
+
+`auth_url`과 `zun_websocket_origin`은 backend가 신뢰하는 고정 HTTPS/WSS endpoint입니다. 브라우저에 공개되는 값이 아니며 redirect나 untrusted HTTP fallback을 허용하지 않습니다. `SECRET_KEY`는 관리 volume/container metadata HMAC에도 쓰이므로 홈을 유지하는 동안 회전하면 기존 리소스를 자동 채택하지 않습니다.
+
+#### Kolla
+
+`/etc/kolla/config/afterglow/globals.yml`에 `afterglow_service_zun_enabled: true`, `afterglow_service_cloud_shell_enabled: true`와 `afterglow_cloud_shell_*` 값을 설정합니다. `afterglow_cloud_shell_image`는 digest-pinned manifest, `project_id`, `network_id`, `security_group`, public auth URL과 Zun WSS origin은 명시 값이어야 합니다. Stock Kolla 변수 `enable_zun`, `enable_kuryr`, `enable_etcd`, `docker_configure_for_zun`, `containerd_configure_for_zun`, `zun_configure_for_cinder_ceph`도 모두 활성화합니다.
+
+```bash
+cd /etc/kolla
+kolla-ansible prechecks -i multinode --tags afterglow
+kolla-ansible deploy -i multinode --tags afterglow
+```
+
+Precheck는 전용 project 분리, network/security-group 소유권, ingress 0건, project-scoped Zun/Cinder list, 선택 volume type, 모든 `zun-compute`의 image manifest 접근을 fail-closed 확인합니다. Keystone 단계는 미리 만든 project를 정확히 하나만 찾고 Afterglow service user의 `admin` role assignment만 보장합니다.
+
+#### Kubernetes와 Helm
+
+`generate_k8s.py`는 같은 `[services]`와 `[cloud_shell]` 값을 ConfigMap의 `afterglow.conf`에 렌더합니다. Helm은 `services.zun`, `services.cloudShell`, `cloudShell.*` values를 같은 계약으로 렌더합니다. Secret 값은 추가되지 않습니다. Backend Pod egress policy와 cluster DNS가 Keystone/Cinder/Zun API, Zun WSS, registry에 도달하도록 별도로 허용하고, browser ingress는 기존 `/api/` WebSocket upgrade를 보존합니다.
+
+#### 확인, live smoke, rollback
+
+```bash
+# 정적/모의 lifecycle과 배포 계약
+npm run test:cloud-shell
+npm run test:cloud-shell:image
+npm run test:kolla:contract
+
+# 실제 승인 → OpenStack CLI → 종료 → 홈 재사용 → 초기화 (resource mutation)
+# username은 tests/integration/credentials.toml [user]의 disposable identity와 정확히 일치해야 한다.
+CLOUD_SHELL_LIVE_USER_IDENTITY=cloud-shell-smoke \
+CLOUD_SHELL_LIVE_CONFIRM=reset-disposable-home \
+npm run test:live:cloud-shell
+```
+
+Live target은 일반 사용자 integration credential, Redis, 활성화된 Cloud Shell 설정, 실제 Zun/Cinder/Neutron, 게시된 이미지를 요구합니다. `CLOUD_SHELL_LIVE_USER_IDENTITY`는 선택된 integration username과 정확히 일치해야 하고 `CLOUD_SHELL_LIVE_CONFIRM=reset-disposable-home`을 별도로 지정해야 합니다. Test는 첫 조회에서 active session 또는 기존 home이 하나라도 있으면 mutation 전에 실패하므로 운영 사용자 workspace를 채택하거나 삭제하지 않습니다. 오직 absent/inactive baseline에서 자신이 만든 홈만 마지막에 초기화합니다. 별도로 shell에서 catalog/DNS와 허용한 outbound 목적지를 확인하되 secret/token을 출력하지 않습니다. 기본 최대 세션은 1시간이므로 expiry·재조정은 unit contract와 운영 staging의 짧은 허용 설정에서 확인하고 production 값을 검증 목적으로 낮추지 않습니다.
+
+Rollback은 먼저 `cloud_shell=false`로 재배포해 새 승인과 router mount를 중지합니다. 최대 세션 시간과 reconciler 정리가 지난 뒤 전용 프로젝트의 managed Zun container가 0인지 확인합니다. 사용자 홈 Cinder volume은 자동 삭제하지 않습니다. 보존/백업/삭제 정책을 정한 뒤 managed metadata가 일치하는 volume만 처리하고, 마지막에 service-user role·network·project를 운영 절차로 제거합니다. 설정을 되돌리는 과정에서 tenant volume이나 이름만 같은 resource를 삭제하지 않습니다.
 
 ---
 

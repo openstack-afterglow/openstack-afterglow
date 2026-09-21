@@ -23,6 +23,7 @@ class SiteServicesResponse(BaseModel):
     magnum: bool
     manila: bool
     zun: bool
+    cloud_shell: bool
     k3s: bool
     trove: bool
     swift: bool

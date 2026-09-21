@@ -80,6 +80,8 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
 | `fault` | object \| null | ERROR 상태의 fault 정보 `{message, code, created}` |
 | `host` | string \| null | 하이퍼바이저 호스트 (관리자 스코프에서만 채워짐) |
 
+`union_*` 응답 필드는 retained layer 라이브러리를 선택한 VM에서만 Nova metadata로 저장됩니다. 라이브러리가 없는 plain/GPU/data-mount VM은 해당 metadata key를 만들지 않으며 응답 파서는 누락된 필드를 `[]`/`null`로 반환합니다.
+
 ### GET /api/v1/instances/availability-zones
 
 사용 가능한 가용 영역(AZ) 목록을 반환합니다. 인스턴스 생성 시 `availability_zone` 선택에 사용합니다.
@@ -148,6 +150,15 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
 | `data_mounts` | array | 아니오 | 기존 Manila share 직접 마운트 `{file_storage_id, mount_point, read_only}` |
 
 > `data_mounts[].mount_point`는 `/mnt`, `/data`, `/srv`, `/home` 하위 절대 경로만 허용되며 `..`/`.` 세그먼트 및 `/opt`·`/etc`·`/usr`·`/var` 등 시스템 경로는 거부됩니다. NFS share 마운트에는 `network_id`(subnet CIDR 해석용)가 필요합니다.
+
+**cloud-init 및 metadata 경계**
+
+- `libraries`가 실제로 resolve된 경우에만 OverlayFS script/unit, `/etc/profile.d/union-env.sh`, layer health report/token, `union_libraries`·`union_strategy`·`union_share_ids`·`union_upper_volume_id`·`union_health_id` Nova metadata를 생성합니다.
+- plain VM은 typed empty `packages`/`write_files`/`runcmd` cloud-config를 사용합니다. GPU-only와 `data_mounts`-only VM은 각 bootstrap만 유지하고 layer artifact 또는 `union_*` placeholder를 만들지 않습니다.
+- direct data mount lifecycle은 새 `afterglow_data_share_ids` metadata를 사용합니다. 기존 VM 정리를 위해 읽기 경로에서만 과거 `union_data_share_ids`를 fallback으로 허용합니다.
+- GPU VM은 `/opt/afterglow/install_gpu_monitoring.sh`가 NVIDIA CUDA repository의 `datacenter-gpu-manager`와 `datacenter-gpu-manager-exporter` 패키지를 설치하고 vendor `nvidia-dcgm`/`nvidia-dcgm-exporter` unit을 활성화합니다. repository architecture는 `amd64 → x86_64`, `arm64 → sbsa`만 허용하고 그 외에는 설치를 중단합니다.
+
+이 계약은 새로 생성되는 VM의 rendered user-data에 적용되며 기존 guest를 자동 변경하지 않습니다. Palimpsest/SquashFS artifact 생성·외부 consume 경로는 VM의 retained library 선택 여부와 별도입니다.
 
 **전략 설명**
 

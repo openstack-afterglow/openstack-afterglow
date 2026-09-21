@@ -171,7 +171,12 @@
 	let armedId = $state<string | null>(null);
 
 	const lod = $derived(vp.k >= 0.9 ? 'full' : vp.k >= 0.65 ? 'nobps' : vp.k >= 0.5 ? 'noip' : 'compact');
-	const badgesHidden = $derived(vp.k < 0.45);
+	// `compact`(k < 0.5) 는 카드의 `.node-sub` 를 통째로 숨긴다 = 카드의 rate 가 사라진다.
+	// 배지 임계를 같은 값에 맞춰 "이 배율 아래에서는 트래픽 숫자를 읽지 않는다" 를 한 규칙으로 둔다
+	// (존 라벨의 CIDR·VLAN·MTU 는 HUD 라 LOD 와 무관하게 남는다).
+	// 남은 uplink 배지는 카드에 없는 값을 들고 있으므로 중복 때문이 아니라 **가독성** 때문에 접는다 —
+	// 0.45 였을 때는 [0.45, 0.5) 에서 카드가 전부 비어 있는데 배지만 떠 근거 없이 눈에 띄었다.
+	const badgesHidden = $derived(vp.k < 0.5);
 	const worldTransform = $derived(`translate(${vp.panX}px, ${vp.panY}px) scale(${vp.k})`);
 	const gridSize = $derived(`${120 * vp.k}px ${120 * vp.k}px, ${120 * vp.k}px ${120 * vp.k}px, ${24 * vp.k}px ${24 * vp.k}px, ${24 * vp.k}px ${24 * vp.k}px`);
 	const gridPosition = $derived(`${vp.panX}px ${vp.panY}px`);
@@ -445,18 +450,20 @@
 		const seenUplinkRouters = new Set<string>();
 		for (const e of graph.edges) {
 			if (e.kind !== 'trunk') continue;
-			// provider uplink 배지는 **값이 실제로 달라질 때만** 그린다.
-			// 라우터가 tenant 망을 하나만 물면 `trunkNetIds` 가 `[N]` 한 개라
-			// uplink 배지(`하위망 합산`)와 그 tenant 트렁크 배지(`네트워크 합산`)와
-			// 스위치 카드가 **같은 숫자를 세 번** 찍는다. 게다가 배지는 라우터↔스위치
-			// 중점에 놓이는데 라우터 x 는 intNetIds 로만 정해지므로(topologyLayout `routerHome`)
-			// 그 중점이 남의 존 안에 떨어져 VM 카드를 덮는다.
+			// 배지는 **스위치 카드가 못 보여주는 것**, 즉 2개 이상 네트워크의 합만 그린다.
+			// `trunkNetIds` 가 한 개면 `edgeRate` 가 `traffic.networks[netId]` 그대로라
+			// 그 옆 스위치 카드(`fmtRate(traffic.networks[node.netId])`)와 **같은 숫자**다.
+			// tenant 트렁크는 `trunkNetIds` 가 항상 `[e.netId]` 한 개이므로 여기서 전부 걸러지고,
+			// 살아남는 배지는 정의상 언제나 uplink 다(`CanvasHud` 가 캡션 분기를 두지 않는 이유).
 			// 실측(2026-09-13, Neutron 라우터 30개 전수): tenant 망을 2개 이상 무는 라우터는 0개.
+			//
+			// 별개의 기존 결함 — 배지는 라우터↔스위치 중점에 놓이는데 라우터 x 는 intNetIds 로만
+			// 정해지므로(topologyLayout `routerHome`) 그 중점이 남의 존 안에 떨어져 카드를 덮을 수
+			// 있다. 남기는 배지도 이 결함을 그대로 가진다. 이 게이트가 고치는 것이 아니다.
+			if (trunkNetIds(e, graph).length < 2) continue;
+			// 한 라우터가 provider 트렁크를 둘 이상 물면(게이트웨이 + shared interface)
+			// `trunkNetIds` 가 같아 **같은 합을 provider 마다 반복**한다. 하나만 남긴다.
 			if (isUplinkTrunk(e, graph)) {
-				// 하위 tenant 망이 하나뿐이면 tenant 배지와 같은 값이라 접는다.
-				if (trunkNetIds(e, graph).length < 2) continue;
-				// 한 라우터가 provider 트렁크를 둘 이상 물면(게이트웨이 + shared interface)
-				// `trunkNetIds` 가 같아 **같은 합을 provider 마다 반복**한다. 하나만 남긴다.
 				if (seenUplinkRouters.has(e.from)) continue;
 				seenUplinkRouters.add(e.from);
 			}
@@ -467,7 +474,6 @@
 				key: e.key,
 				netId: e.netId,
 				netName: graph.netById.get(e.netId)?.name ?? '',
-				uplink: isUplinkTrunk(e, graph),
 				sx: g.mid.x * k + panX,
 				sy: g.mid.y * k + panY,
 				rateText: fmtRate(edgeRate(e, traffic, graph)),

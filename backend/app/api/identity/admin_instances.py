@@ -19,6 +19,7 @@ from app.models import compute as compute_models
 from app.models.compute import CreateInstanceRequest
 from app.models.progress import ProgressMessage, ProgressStep
 from app.services import cinder, cloudinit, keystone, neutron, nova, vm_cloud_init_library
+from app.services import instance_orchestration as instance_orch
 from app.services import libraries as lib_svc
 from app.services.instance_names import ensure_unique_instance_name
 
@@ -139,10 +140,12 @@ async def admin_create_instance_async(
     from app.api.compute.instances import (
         _prepare_dynamic_file_storage,
         _prepare_prebuilt_file_storages,
+        _verify_github_ssh,
     )
-    from app.services import instance_orchestration as instance_orch
 
     settings = get_settings()
+    await _verify_github_ssh(req)
+
     resolved_libs = lib_svc.resolve_with_deps(req.libraries)
 
     conn = await asyncio.to_thread(_make_admin_conn, req.project_id, token_info.get("user_id", ""))
@@ -209,6 +212,7 @@ async def admin_create_instance_async(
             file_storages_info = []
             _sse_health_id = ""
             _sse_health_token = ""
+            _sse_report_url = ""
 
             if resolved_libs:
                 yield send_progress(ProgressStep.MANILA_PREPARING, 0, "파일 스토리지 준비 중...")
@@ -285,20 +289,10 @@ async def admin_create_instance_async(
 
             if resolved_libs or gpu_available:
                 yield send_progress(ProgressStep.USERDATA_GENERATING, 60, "cloud-init 생성 중...")
-                import uuid as _uuid2
-
-                _sse_health_id = str(_uuid2.uuid4())
-                _sse_report_url = settings.instance_health_callback_base_url or ""
-                if _sse_report_url:
-                    try:
-                        from app.services import instance_health as _ih2
-
-                        _sse_health_token = await _ih2.issue_report_token(_sse_health_id, req.project_id)
-                    except Exception:
-                        logger.warning("SSE 헬스 토큰 발급 실패", exc_info=True)
-                else:
-                    _sse_report_url = ""
-
+                if resolved_libs:
+                    _sse_health_id, _sse_report_url, _sse_health_token = await instance_orch.try_issue_health_token(
+                        req.project_id, settings
+                    )
                 userdata = cloudinit.generate_userdata(
                     libraries=resolved_libs,
                     strategy=req.strategy,
@@ -320,22 +314,15 @@ async def admin_create_instance_async(
             yield send_progress(ProgressStep.SERVER_CREATING, 65, "Nova 서버 생성 중...")
             _sse_effective_sgs: list[str] | None = list(req.security_groups) if req.security_groups else None
 
-            meta = {
-                "union_libraries": ",".join(resolved_libs) if resolved_libs else "none",
-                "union_strategy": req.strategy or "none",
-                "union_share_ids": (
-                    ",".join([s.get("file_storage_id", "") for s in file_storages_info])
-                    if file_storages_info
-                    else "none"
-                ),
-                "union_upper_volume_id": upper_volume_id or "none",
-                "scheduling": req.scheduling,
-            }
-            if req.scheduling == "ha":
-                meta["HA_Enabled"] = "True"
-            if resolved_libs and _sse_health_token:
-                meta["union_health_id"] = _sse_health_id
-
+            meta = instance_orch.build_instance_meta(
+                resolved_libs,
+                file_storages_info,
+                upper_volume_id,
+                req.scheduling,
+                req.strategy or "none",
+                _sse_health_id if resolved_libs else "",
+                _sse_health_token,
+            )
             server = await asyncio.to_thread(
                 nova.create_server,
                 conn,

@@ -10,7 +10,7 @@ const DEFAULTS: PublicSiteConfig = {
 	logo_light_path: '/logo-dark.png',
 	favicon_path: '/favicon.ico',
 	refresh_interval_ms: 5000,
-	services: { magnum: false, manila: false, zun: false, k3s: false, trove: false, swift: false, barbican: false, waygate: false, chat: false, mcp: false },
+	services: { magnum: false, manila: false, zun: false, cloud_shell: false, k3s: false, trove: false, swift: false, barbican: false, waygate: false, chat: false, mcp: false },
 	mcp_url: '',
 	runtime: {
 		api_base: 'http://localhost:8000',
@@ -134,6 +134,7 @@ export function loadPublicSiteConfig(): PublicSiteConfig {
 				magnum: Boolean(services.magnum ?? false),
 				manila: Boolean(services.manila ?? false),
 				zun: Boolean(services.zun ?? false),
+				cloud_shell: Boolean(services.cloud_shell ?? false) && Boolean(services.zun ?? false),
 				k3s: Boolean(services.k3s ?? false),
 				trove: Boolean(services.trove ?? false),
 				swift: Boolean(services.swift ?? false),

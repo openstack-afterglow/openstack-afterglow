@@ -95,6 +95,12 @@ def test_lumen_feature_gate_routes_inclusion():
         ("get", "/api/v1/chat/models", "/v1/chat/models", None),
         ("patch", "/api/v1/chat/api-keys/7", "/v1/api-keys/7", {"name": "laptop"}),
         (
+            "post",
+            "/api/v1/chat/claude-gateway/authorize",
+            "/v1/claude-gateway/authorize",
+            {"user_code": "ABCD-2345", "action": "approve"},
+        ),
+        (
             "put",
             "/api/v1/chat/admin/quotas/user-1",
             "/v1/admin/quotas/user-1",

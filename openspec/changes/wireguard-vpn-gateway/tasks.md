@@ -34,17 +34,19 @@
 - [x] QR 코드 — 프론트 `qrcode` 의존성 추가(bun.lock/package-lock.json 동기화), `getClientConfigText` 헬퍼, 클라이언트별 QR 버튼 + 모달(백엔드는 `.conf` 텍스트만 제공)
 - [x] `vpn`→`waygate` 클린 컷오버 — 테스트 6종 리네임, 빈 `app/api/vpn`·`routes/.../vpn` 제거, 로그 프리픽스·사용자 대면 문자열 통일
 - [x] `afterglow.conf.example [waygate]` 활성화 체크리스트 보강(callback_base_url 도달성 강조)
-- [ ] ⏳ 실환경 end-to-end 검증(런북) — 실제 OpenStack + WireGuard 클라이언트 필요, CI 로 증명 불가. **B/C 착수 전 게이트.**
+- [ ] ⏳ 실환경 기본 end-to-end 검증 — standalone Waygate server create → ACTIVE, client `.conf`, 실제 WireGuard handshake와 delete cleanup (실제 OpenStack + WireGuard 클라이언트 필요)
 
-### Phase 2 — 다중 테넌트 네트워크 연결 (코드 완료 · 실환경 라우팅 검증 대기)
+### Phase 2 — 다중 테넌트 네트워크 연결 (코드·모의 계약 완료, 실환경 검증 대기)
 
-- [x] `app/api/waygate/attachments.py` 신규 — `POST/GET/DELETE /{server_id}/networks` (사용자 JWT + `_get_owned_server` 소유권)
-- [x] `app/services/waygate_network.py` — `nova.attach_interface` 기반 attach + `waygate_network_attachments` 기록(CIDR 해석·중복/타프로젝트 거부), detach는 포트 삭제. DB 헬퍼(create/list/get/update/delete) 추가
-- [x] desired-state에 `nat_networks` 반영 + 에이전트 masquerade — `render_agent_desired_state`/`WaygateAgentDesiredState`에 `nat_networks`, `reconcile.py`에 🔴 핫플러그 NIC DHCP 구성 + 전용 체인 idempotent MASQUERADE(shell 미사용), 템플릿 packages에 iptables/iproute2/isc-dhcp-client
-- [x] 클라이언트 `.conf` AllowedIPs에 attach CIDR 병합(`render_client_conf` nat_cidrs, 중복 제거)
-- [x] 프론트 — `lib/api/waygate.ts` attach/list/detach + `lib/types/waygate.ts` + 상세 패널 "연결된 네트워크" 섹션/모달
-- [x] `test_waygate_network.py` — attach/detach 소유권(IDOR), network_id/nat_mode 검증, 중복/타프로젝트 거부, desired-state nat_networks, `.conf` nat_cidrs 병합
-- [ ] ⏳ 실환경 라우팅 검증 — attach 후 터널로 내부 인스턴스 도달(SNAT+핫플러그 NIC), CI 불가
+- [x] Waygate `waygate/api/attachments.py` — `POST/GET/DELETE /v1/servers/{server_id}/networks`와 project ownership 경계
+- [x] Waygate `waygate/services/network.py` — 선택한 IPv4 `subnet_id`로 Neutron port `fixed_ips`를 제한하고 port ID로 Nova attach; 실패 rollback과 detach port 정리
+- [x] desired-state `nat_networks`, 에이전트 hot-plug NIC DHCP/SNAT, 클라이언트 `.conf` `AllowedIPs` CIDR 병합 유지
+- [x] Afterglow `/dashboard/network/waygate` — project-visible non-external network와 subnet `SearchSelect`, 단일 subnet 자동 선택, 빈 subnet submit 차단, 명시적 `{network_id, subnet_id, nat_mode: "snat"}` 제출
+- [x] Afterglow BFF attach/list/detach 계약과 named `waygate` frontend target 추가
+- [x] direct Waygate callback origin을 `WAYGATE_PUBLIC_BASE_URL`로 필수화하고 API/worker가 missing/localhost/loopback URL을 fail-closed 거부
+- [x] Waygate network rollback/ownership/IPv4/callback 회귀와 기본 skip인 opt-in live lifecycle harness 추가
+- [ ] ⏳ 실제 OpenStack lifecycle 검증 — create → ACTIVE → 명시 subnet attach/list/detach → delete/404 수렴
+- [ ] ⏳ 실제 WireGuard data-plane 검증 — 클라이언트 handshake 후 터널로 선택 subnet 내부 인스턴스 도달(SNAT+핫플러그 NIC)
 
 ### Phase 3 — 백업 / 마이그레이션 (코드 완료)
 

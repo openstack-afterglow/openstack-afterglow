@@ -178,31 +178,31 @@ describe('TopologyCanvas', () => {
 		expect(within(app).queryByText(/^MTU /)).toBeNull();
 	});
 
-	it('provider uplink 배지는 하위 tenant 망이 2개 이상일 때만 그린다', () => {
+	it('트렁크 배지는 네트워크를 2개 이상 합칠 때만 그린다', () => {
 		renderCanvas();
 		const badges = Array.from(document.querySelectorAll<HTMLButtonElement>('button[data-trunk-badge]'));
 		// 트렁크는 5개(edge-router: pub+web+app, transit-router: transit+app)지만
-		// transit-router 는 tenant 망이 net-app 하나뿐이라 uplink 배지가 net-app 배지와
-		// **같은 숫자**가 된다 → 그리지 않는다.
-		expect(badges).toHaveLength(4);
-
-		// edge-router 는 tenant 망이 web + app 둘이라 합(19.8M)이 어느 한쪽과도 다르다 → 남는다
-		const uplink = badges.find((b) => b.dataset.trunkBadge === 'trunk:rtr-edge>sw:net-pub')!;
+		// `trunkNetIds` 가 2개 이상인 것은 edge-router 의 provider uplink(web+app) 하나뿐이다.
+		expect(badges).toHaveLength(1);
+		const uplink = badges[0];
+		expect(uplink.dataset.trunkBadge).toBe('trunk:rtr-edge>sw:net-pub');
 		expect(uplink.textContent).toContain('▼ 19.8M');
 		expect(uplink.textContent).toContain('▲ 8.0M');
+		// 그려질 수 있는 캡션은 이것 하나뿐이다 — `네트워크 합산` 으로 뒤바뀌면 범위를 오독하게 된다
 		expect(uplink.textContent).toContain('하위망 합산');
 		expect(uplink.getAttribute('title')).toBe('라우터별 하위 네트워크 합산 트래픽 · 라우터 exporter 없음');
 
-		// transit-router 의 uplink 배지는 없다. 있었다면 net-app 배지와 같은 14.0M 을 반복하고
-		// 그 중점이 자기 존 밖(provider 쪽)에 떨어져 남의 카드를 덮었다.
+		// tenant 트렁크는 `trunkNetIds` 가 `[netId]` 한 개라 `edgeRate` 가 `networks[netId]` 그대로다.
+		// 배지를 그리면 바로 옆 스위치 카드와 **같은 숫자**를 두 번 찍는다 → 접는다.
+		expect(badges.some((b) => b.dataset.trunkBadge === 'trunk:rtr-edge>sw:net-app')).toBe(false);
+		// transit-router 의 uplink 도 하위 tenant 망이 net-app 하나뿐이라 같은 이유로 접힌다.
 		expect(badges.some((b) => b.dataset.trunkBadge === 'trunk:rtr-transit>sw:net-transit')).toBe(false);
 
-		const appBadge = badges.find((b) => b.dataset.trunkBadge === 'trunk:rtr-edge>sw:net-app')!;
-		expect(appBadge.textContent).toContain('▼ 14.0M');
-		expect(appBadge.textContent).toContain('네트워크 합산');
-		expect(appBadge.getAttribute('title')).toBe('연결 네트워크 합산 트래픽 · 라우터 exporter 없음');
+		// 접힌 값은 사라지지 않는다 — 스위치 카드가 그대로 들고 있다
+		const swApp = document.querySelector<HTMLElement>('button[data-node-id="sw:net-app"]')!;
+		expect(swApp.textContent).toContain('▼ 14.0M');
 
-		// 배지를 접어도 선 자체와 그 설명(hit title)은 남는다 — 링크가 사라지는 게 아니다
+		// 선 자체와 그 설명(hit title)도 남는다 — 링크가 사라지는 게 아니다
 		const hit = document.querySelector('path[data-edge-key="trunk:rtr-edge>sw:net-app"]')!;
 		expect(hit.querySelector('title')!.textContent).toContain('연결 네트워크 합산 트래픽');
 		expect(document.querySelector('path[data-edge-key="trunk:rtr-transit>sw:net-transit"]')).toBeTruthy();
@@ -227,9 +227,30 @@ describe('TopologyCanvas', () => {
 		other.connected_subnet_ids = [];
 		other.interface_ips = [];
 		renderCanvas({ data, showAll: true, projectId: null });
+		// `trunkNetIds` 가 빈 배열이므로 일반 게이트(`length < 2`)가 잡는다 — 합칠 것이 없다
 		expect(document.querySelector('button[data-trunk-badge="trunk:rtr-other>sw:net-pub"]')).toBeNull();
 		// 선 자체는 남는다
 		expect(document.querySelector('path[data-edge-key="trunk:rtr-other>sw:net-pub"]')).toBeTruthy();
+	});
+
+	it('배지 숨김 임계와 카드 compact 임계는 같은 배율이다', async () => {
+		renderCanvas();
+		const viewport = screen.getByRole('application', { name: '네트워크 토폴로지 캔버스' });
+		const seen = new Set<boolean>();
+		for (let i = 0; i < 20; i++) {
+			const k = viewOf().k;
+			const hidden = document.querySelector<HTMLElement>('[data-badges]')!.dataset.badges === 'hidden';
+			const compact = worldEl().dataset.lod === 'compact';
+			// 두 임계가 어긋나면 카드는 `.node-sub` 가 통째로 숨겨졌는데 배지만 떠 있는
+			// 배율 구간이 생긴다(구 0.45 vs 0.5). 값이 아니라 **일치**를 고정한다.
+			expect(hidden, `k=${k}`).toBe(compact);
+			seen.add(hidden);
+			if (hidden) break;
+			await fireWheel(viewport, { deltaY: 100, ctrlKey: true });   // ctrl+휠은 항상 확대·축소
+			await flushFrame();
+		}
+		// 두 상태를 다 보지 못했으면 위 단정이 공허하다
+		expect([...seen].sort()).toEqual([false, true]);
 	});
 
 	it('트렁크 굵기에 하한이 없다 — edgeIntensity 결과가 그대로 stroke-width 가 된다', () => {

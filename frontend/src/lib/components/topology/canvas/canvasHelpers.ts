@@ -56,11 +56,12 @@ export const NET_KIND_LABEL: Record<CanvasNetKind, string> = {
 	internal: '내부',
 };
 
-/** 하위 네트워크 스위치 쪽 라우터 트렁크 배지. */
-export const TRUNK_CAPTION = '네트워크 합산';
-export const TRUNK_TITLE = '연결 네트워크 합산 트래픽 · 라우터 exporter 없음';
-
-/** provider 스위치 쪽 라우터 uplink 배지. 라우터가 직접 무는 하위 네트워크들만 합산한다. */
+/**
+ * 트렁크 배지 캡션. **uplink 용 한 쌍뿐이다** — 배지는 `trunkNetIds.length >= 2` 일 때만
+ * 그려지는데 그 조건은 uplink 트렁크에서만 성립한다(다른 트렁크는 `[netId]` 한 개).
+ * 하위 스위치 쪽 트렁크 값은 배지가 아니라 그 스위치 노드 카드가 직접 보여준다.
+ * 라우터가 직접 무는 하위 네트워크들만 합산한다 — provider 네트워크 전체 합이 아니다.
+ */
 export const UPLINK_CAPTION = '하위망 합산';
 export const UPLINK_TITLE = '라우터별 하위 네트워크 합산 트래픽 · 라우터 exporter 없음';
 

@@ -39,23 +39,6 @@ def _mkdir_lines(runcmd: list[str]) -> list[str]:
     return [cmd for cmd in runcmd if cmd.startswith("mkdir")]
 
 
-def test_mkdir_runcmd_no_brace_expansion():
-    """runcmd 의 mkdir 라인에 bash brace expansion 패턴이 없어야 한다."""
-    encoded = generate_userdata(**_COMMON_ARGS, file_storages=[])
-    for line in _mkdir_lines(_get_runcmd(encoded)):
-        assert "{" not in line and "}" not in line, (
-            f"runcmd mkdir 에 brace 패턴 발견 — dash 에서 literal 디렉토리로 생성됨: {line!r}"
-        )
-
-
-def test_mkdir_runcmd_contains_all_required_dirs():
-    """runcmd mkdir 라인이 lower/upper/work/merged 4개 디렉토리를 모두 포함해야 한다."""
-    encoded = generate_userdata(**_COMMON_ARGS, file_storages=[])
-    mkdir_text = " ".join(_mkdir_lines(_get_runcmd(encoded)))
-    for d in _REQUIRED_DIRS:
-        assert d in mkdir_text, f"runcmd mkdir 에 {d!r} 가 없음"
-
-
 def test_mkdir_runcmd_dirs_present_with_file_storages():
     """file_storages 가 있을 때도 기본 4개 디렉토리 인자는 유지된다."""
     fs = [

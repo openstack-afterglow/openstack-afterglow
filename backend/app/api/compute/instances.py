@@ -46,6 +46,7 @@ from app.models.compute import (
     CloudInitSnippetLibrary,
     CreateCloudInitPresetRequest,
     CreateInstanceRequest,
+    GitHubSshProfile,
     InstanceInfo,
     StorageAttachRequest,
     UpdateSecurityGroupsRequest,
@@ -53,7 +54,7 @@ from app.models.compute import (
 )
 from app.models.progress import ProgressMessage, ProgressStep
 from app.rate_limit import limiter
-from app.services import cinder, cloudinit, glance, keystone, manila, neutron, nova, vm_cloud_init_library
+from app.services import cinder, cloudinit, github_ssh, glance, keystone, manila, neutron, nova, vm_cloud_init_library
 from app.services import instance_orchestration as instance_orch
 from app.services import libraries as lib_svc
 from app.services.cache import (
@@ -78,7 +79,27 @@ async def _record_cloud_init_history_best_effort(token_info: dict, userdata: str
         logger.warning("cloud-init 실행 이력 저장 실패", extra={"user_id": token_info.get("user_id")})
 
 
+async def _verify_github_ssh(req: CreateInstanceRequest) -> None:
+    if not req.github_username:
+        return
+    try:
+        await github_ssh.resolve_profile(req.github_username)
+    except github_ssh.GitHubSshInvalid as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except github_ssh.GitHubSshUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 router = APIRouter()
+
+_DATA_SHARE_METADATA_KEY = "afterglow_data_share_ids"
+_LEGACY_DATA_SHARE_METADATA_KEY = "union_data_share_ids"
+
+
+def _data_share_metadata_value(server) -> str:
+    """Read the current data-mount metadata key with legacy VM fallback."""
+    metadata = server.metadata or {}
+    return metadata.get(_DATA_SHARE_METADATA_KEY, metadata.get(_LEGACY_DATA_SHARE_METADATA_KEY, ""))
 
 
 async def _resolve_create_placement(
@@ -226,6 +247,17 @@ async def delete_cloud_init_snippet(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+@router.get("/github/users/{username}", response_model=GitHubSshProfile)
+@limiter.limit("20/minute")
+async def get_github_ssh_profile(request: Request, username: str, _token_info: dict = Depends(get_token_info)):
+    try:
+        return await github_ssh.resolve_profile(username)
+    except github_ssh.GitHubSshInvalid as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except github_ssh.GitHubSshUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @router.get("/{instance_id}", response_model=InstanceInfo)
 async def get_instance(
     instance_id: str,
@@ -259,12 +291,15 @@ async def create_instance(
 ):
     """동기식 인스턴스 생성 (기존 방식)."""
     settings = get_settings()
+    await _verify_github_ssh(req)
+
     from app.services.instance_names import ensure_unique_instance_name
 
     try:
         req = req.model_copy(update={"name": await asyncio.to_thread(ensure_unique_instance_name, conn, req.name)})
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     resolved_libs = lib_svc.resolve_with_deps(req.libraries)
 
     req, compute_availability_zone, volume_availability_zone = await _resolve_create_placement(
@@ -388,14 +423,15 @@ async def create_instance(
         # ------------------------------------------------------------------
         # 4. cloud-init userdata 생성
         # ------------------------------------------------------------------
-        # 헬스 리포트 토큰 발급 + userdata (libraries·GPU·data_mounts 있을 때만)
+        # Layer health credentials belong only to resolved-library instances.
         project_id = conn._afterglow_project_id
         _health_id = ""
         _report_url = ""
         _health_token = ""
         userdata = None
-        if resolved_libs or gpu_available or data_mounts_info:
+        if resolved_libs:
             _health_id, _report_url, _health_token = await instance_orch.try_issue_health_token(project_id, settings)
+        if resolved_libs or gpu_available or data_mounts_info:
             userdata = cloudinit.generate_userdata(
                 libraries=resolved_libs,
                 strategy=req.strategy,
@@ -434,8 +470,9 @@ async def create_instance(
             _health_id if resolved_libs else "",
             _health_token,
         )
+
         if data_mounts_info:
-            meta["union_data_share_ids"] = ",".join(dm["file_storage_id"] for dm in data_mounts_info)
+            meta[_DATA_SHARE_METADATA_KEY] = ",".join(dm["file_storage_id"] for dm in data_mounts_info)
 
         # upper 볼륨을 두 번째 블록 디바이스로 추가
         # (Nova block_device_mapping_v2 에 추가 볼륨 연결)
@@ -559,12 +596,14 @@ async def create_instance_async(
 ):
     """SSE로 진행 상황을 스트리밍하는 비동기 인스턴스 생성."""
     settings = get_settings()
+    await _verify_github_ssh(req)
     from app.services.instance_names import ensure_unique_instance_name
 
     try:
         req = req.model_copy(update={"name": await asyncio.to_thread(ensure_unique_instance_name, conn, req.name)})
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     resolved_libs = lib_svc.resolve_with_deps(req.libraries)
 
     req, compute_availability_zone, volume_availability_zone = await _resolve_create_placement(
@@ -698,17 +737,17 @@ async def create_instance_async(
                 yield send_progress(ProgressStep.UPPER_VOLUME_CREATING, 60, "Upper 볼륨 준비 완료")
 
             # Step 4: cloud-init userdata 생성 (60-65%)
-            # libraries 또는 GPU flavor 둘 중 하나라도 있으면 user-data 필요:
-            # - libraries → OverlayFS + Manila 마운트 + 환경변수
-            # - GPU only → NVIDIA 드라이버 + dcgm-exporter 설치 (libraries 없어도 필수)
+            # Layer health credentials remain layer-owned; GPU/data mounts still
+            # receive independent managed user-data.
             _sse_health_id = ""
+            _sse_report_url = ""
             _sse_health_token = ""
-            if resolved_libs or gpu_available or data_mounts_info:
-                yield send_progress(ProgressStep.USERDATA_GENERATING, 60, "cloud-init 생성 중...")
+            if resolved_libs:
                 _sse_health_id, _sse_report_url, _sse_health_token = await instance_orch.try_issue_health_token(
                     conn._afterglow_project_id, settings
                 )
-
+            if resolved_libs or gpu_available or data_mounts_info:
+                yield send_progress(ProgressStep.USERDATA_GENERATING, 60, "cloud-init 생성 중...")
                 userdata = cloudinit.generate_userdata(
                     libraries=resolved_libs,
                     strategy=req.strategy or "none",
@@ -747,8 +786,9 @@ async def create_instance_async(
                 _sse_health_id if resolved_libs else "",
                 _sse_health_token,
             )
+
             if data_mounts_info:
-                meta["union_data_share_ids"] = ",".join(dm["file_storage_id"] for dm in data_mounts_info)
+                meta[_DATA_SHARE_METADATA_KEY] = ",".join(dm["file_storage_id"] for dm in data_mounts_info)
 
             server = await asyncio.to_thread(
                 nova.create_server,
@@ -1048,7 +1088,7 @@ async def delete_instance(
             logger.warning(f"prebuilt access rule 정리 중 svc_conn 획득 실패: {ex}")
 
     # data mount CephX access rule 정리 (best-effort, user conn 사용)
-    _data_share_meta = (server.metadata or {}).get("union_data_share_ids", "")
+    _data_share_meta = _data_share_metadata_value(server)
     if _data_share_meta and _data_share_meta != "none":
         _instance_name = server.name
         for _fsi in [s for s in _data_share_meta.split(",") if s]:
@@ -1521,7 +1561,7 @@ async def _bulk_delete_one(
             pass
 
     # data mount CephX access rule 정리 (best-effort)
-    _data_meta = (server.metadata or {}).get("union_data_share_ids", "")
+    _data_meta = _data_share_metadata_value(server)
     if _data_meta and _data_meta != "none":
         for _fsi in [s for s in _data_meta.split(",") if s]:
             try:
@@ -2304,7 +2344,7 @@ async def list_storage_attachments(
         raise HTTPException(status_code=404, detail="인스턴스를 찾을 수 없습니다")
     assert_instance_owner(server, conn, token_info)
 
-    meta_val = (server.metadata or {}).get("union_data_share_ids", "")
+    meta_val = _data_share_metadata_value(server)
     if not meta_val or meta_val == "none":
         return []
 
@@ -2367,15 +2407,15 @@ async def detach_storage(
 
     # 메타데이터에서 제거
     try:
-        meta_val = (server.metadata or {}).get("union_data_share_ids", "")
+        meta_val = _data_share_metadata_value(server)
         ids = [s for s in meta_val.split(",") if s and s != file_storage_id] if meta_val and meta_val != "none" else []
         await asyncio.to_thread(
             conn.compute.set_server_metadata,
             instance_id,
-            {"union_data_share_ids": ",".join(ids) if ids else "none"},
+            {_DATA_SHARE_METADATA_KEY: ",".join(ids) if ids else "none"},
         )
     except Exception as e:
-        logger.warning(f"union_data_share_ids 메타데이터 갱신 실패: {e}")
+        logger.warning(f"data share 메타데이터 갱신 실패: {e}")
 
     _pid = conn._afterglow_project_id
     await invalidate(f"afterglow:nova:{_pid}:instance:{instance_id}")
@@ -2383,9 +2423,9 @@ async def detach_storage(
 
 
 def _merge_data_share_meta(server, new_share_id: str) -> dict:
-    """서버 메타데이터의 union_data_share_ids에 share_id를 추가한 dict 반환."""
-    meta_val = (server.metadata or {}).get("union_data_share_ids", "")
+    """Add a share ID to the current data-mount metadata field."""
+    meta_val = _data_share_metadata_value(server)
     ids = [s for s in meta_val.split(",") if s] if meta_val and meta_val != "none" else []
     if new_share_id not in ids:
         ids.append(new_share_id)
-    return {"union_data_share_ids": ",".join(ids)}
+    return {_DATA_SHARE_METADATA_KEY: ",".join(ids)}

@@ -18,6 +18,10 @@ afterglow_backend_image_ref: "{{ 'afterglow-local/backend:' ~ (afterglow_source_
 afterglow_frontend_image_ref: "{{ 'afterglow-local/frontend:' ~ (afterglow_source_version | truncate(12, True, '')) if (afterglow_source_mode | bool) else (afterglow_frontend_image ~ ':' ~ afterglow_image_tag) }}"
 afterglow_worker_image_ref: "{{ 'afterglow-local/worker:' ~ (afterglow_source_version | truncate(12, True, '')) if (afterglow_source_mode | bool) else (afterglow_worker_image ~ ':' ~ afterglow_image_tag) }}"
 
+# Zun workload image for the browser Cloud Shell. Production deployments must
+# pin the published multi-architecture manifest by digest.
+afterglow_cloud_shell_image: ""
+
 # ── 토글 (DMSLab 기본: backend/frontend만 활성화) ────────────────────────────
 enable_afterglow: "no"
 enable_afterglow_backend: "{{ enable_afterglow }}"
@@ -101,6 +105,25 @@ afterglow_keystone_interface: "{{ afterglow_openstack_interface }}"
 afterglow_openstack_insecure: "{{ openstack_insecure | default(false) }}"
 afterglow_openstack_cacert: "{{ openstack_cacert | default('') }}"
 
+# ── Cloud Shell ──────────────────────────────────────────────────────────────
+# The project, network, router, and security group are operator-owned. This
+# role resolves and validates them but never creates or deletes them.
+afterglow_cloud_shell_project_name: "afterglow-cloud-shell"
+afterglow_cloud_shell_project_id: ""
+afterglow_cloud_shell_network_id: ""
+afterglow_cloud_shell_security_group: ""
+afterglow_cloud_shell_auth_url: "{{ keystone_public_url | regex_replace('/$', '') }}/v3"
+afterglow_cloud_shell_interface: "public"
+afterglow_cloud_shell_volume_type: ""
+afterglow_cloud_shell_home_size_gib: 5
+afterglow_cloud_shell_cpu: 1.0
+afterglow_cloud_shell_memory_mib: 1024
+afterglow_cloud_shell_idle_timeout_seconds: 1200
+afterglow_cloud_shell_max_session_seconds: 3600
+afterglow_cloud_shell_ticket_ttl_seconds: 60
+afterglow_cloud_shell_reconcile_interval_seconds: 60
+afterglow_cloud_shell_zun_websocket_origin: ""
+
 # ── Manila ────────────────────────────────────────────────────────────────────
 afterglow_manila_microversion: "2.65"
 afterglow_manila_client_version: "6.0.0"
@@ -150,6 +173,7 @@ afterglow_service_manila_enabled: false
 afterglow_service_swift_enabled: false
 afterglow_service_k3s_enabled: true
 afterglow_service_zun_enabled: false
+afterglow_service_cloud_shell_enabled: false
 afterglow_service_trove_enabled: false
 afterglow_service_magnum_enabled: false
 afterglow_service_barbican_enabled: false

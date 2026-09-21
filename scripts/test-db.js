@@ -17,6 +17,7 @@ function run(command, args, options = {}) {
 	const result = spawnSync(command, args, {
 		cwd: rootDir,
 		stdio: "inherit",
+		env: process.env,
 		...options
 	});
 	if (result.error) {

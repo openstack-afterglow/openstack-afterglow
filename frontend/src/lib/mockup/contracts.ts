@@ -67,6 +67,7 @@ export const MOCKUP_SERVICE_OVERRIDES = {
 	magnum: true,
 	manila: true,
 	zun: true,
+	cloud_shell: false,
 	k3s: true,
 	trove: true,
 	swift: true,

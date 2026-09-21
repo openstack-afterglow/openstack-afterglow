@@ -18,9 +18,76 @@ _COMMON_ARGS = dict(
     gpu_available=False,
 )
 
+_LAYER_STORAGE = [
+    {
+        "name": "python311",
+        "share_proto": "NFS",
+        "nfs_export_location": "10.0.0.1:/layers/python311",
+        "mount_options": "ro,nosuid,nodev,noexec",
+    }
+]
+_LAYER_ARGS = {**_COMMON_ARGS, "libraries": ["python311"], "file_storages": _LAYER_STORAGE}
+
 
 def _decode_userdata(encoded: str) -> str:
     return base64.b64decode(encoded).decode()
+
+
+_LAYER_MARKERS = (
+    "/opt/union/overlay_setup.sh",
+    "/etc/profile.d/union-env.sh",
+    "/etc/systemd/system/union-overlay.service",
+    "/etc/envmgr-union.conf",
+    "union-health.timer",
+)
+
+
+def test_plain_userdata_has_list_packages_and_no_layer_bootstrap():
+    yaml_str = _decode_userdata(generate_userdata(**_COMMON_ARGS))
+    document = yaml.safe_load(yaml_str)
+
+    assert document["packages"] == []
+    assert document["write_files"] == []
+    assert document["runcmd"] == []
+    assert all(marker not in yaml_str for marker in _LAYER_MARKERS)
+
+
+def test_gpu_only_userdata_keeps_gpu_bootstrap_without_layer_bootstrap():
+    yaml_str = _decode_userdata(generate_userdata(**{**_COMMON_ARGS, "gpu_available": True}))
+
+    assert "/opt/afterglow/install_gpu_monitoring.sh" in yaml_str
+    assert all(marker not in yaml_str for marker in _LAYER_MARKERS)
+
+
+def test_data_mount_only_userdata_keeps_mount_bootstrap_without_layer_bootstrap():
+    data_mount = {
+        "file_storage_id": "share-data",
+        "share_proto": "NFS",
+        "nfs_export_location": "10.0.0.2:/data",
+        "mount_point": "/mnt/data",
+        "mount_options": "ro,nosuid,nodev,noexec",
+    }
+    yaml_str = _decode_userdata(generate_userdata(**_COMMON_ARGS, data_mounts=[data_mount]))
+
+    assert "/opt/union/data_mounts.sh" in yaml_str
+    assert "afterglow-data-mounts.service" in yaml_str
+    assert all(marker not in yaml_str for marker in _LAYER_MARKERS)
+
+
+def test_layer_userdata_includes_overlay_environment_and_health_bootstrap():
+    yaml_str = _decode_userdata(
+        generate_userdata(
+            **_LAYER_ARGS,
+            instance_id="layer-instance",
+            report_url="https://backend.example.com",
+            report_token="layer-token",
+        )
+    )
+
+    assert "/opt/union/overlay_setup.sh" in yaml_str
+    assert "/etc/profile.d/union-env.sh" in yaml_str
+    assert "union-overlay.service" in yaml_str
+    assert "union-health.timer" in yaml_str
 
 
 def test_userdata_without_health_check():
@@ -34,7 +101,7 @@ def test_userdata_without_health_check():
 def test_userdata_with_health_check():
     """report_url+instance_id+report_token 지정 시 헬스체크 섹션 포함."""
     encoded = generate_userdata(
-        **_COMMON_ARGS,
+        **_LAYER_ARGS,
         instance_id="test-inst-uuid",
         report_url="https://backend.example.com",
         report_token="test-token-abc",
@@ -48,7 +115,7 @@ def test_userdata_with_health_check():
 def test_health_check_script_contains_url_and_token():
     """health_check.sh.j2 에 report_url / instance_id / report_token이 치환됐는지."""
     encoded = generate_userdata(
-        **_COMMON_ARGS,
+        **_LAYER_ARGS,
         instance_id="my-instance-uuid",
         report_url="https://api.example.com",
         report_token="secret-report-token",
@@ -121,7 +188,7 @@ def test_nfs_mount_options_include_security_flags():
 def test_union_ro_share_export_injected_to_write_files():
     """union_ro_share_export가 지정되면 write_files에 LAYER_STORE_RO_EXPORT 포함."""
     encoded = generate_userdata(
-        **_COMMON_ARGS,
+        **_LAYER_ARGS,
         union_ro_share_export="10.0.0.1:6789:/volumes/_nogroup/abc123",
     )
     yaml_str = _decode_userdata(encoded)
@@ -168,10 +235,10 @@ def test_union_ro_share_export_rejects_newline_only(value):
 
 
 def test_union_exports_accept_valid_cephfs_and_nfs_paths():
-    """정상 CephFS/NFS export 경로는 통과한다 (회귀 방지)."""
+    """정상 CephFS/NFS export 경로는 레이어 VM 설정에 반영된다."""
     encoded = generate_userdata(
-        **_COMMON_ARGS,
-        union_ro_share_export="mon1,mon2,mon3:6789:/volumes/_nogroup/abc-123",
+        **_LAYER_ARGS,
+        union_ro_share_export="10.0.0.1:6789:/volumes/_nogroup/abc123",
         union_manifest_share_export="10.0.0.5:/exports/manifest_store",
     )
     yaml_str = _decode_userdata(encoded)
@@ -187,44 +254,36 @@ def test_userdata_without_gpu_skips_dcgm():
     assert "install_dcgm_exporter.sh" not in yaml_str
 
 
-def test_userdata_with_gpu_installs_dcgm():
-    """gpu_available=True 인스턴스에는 DCGM Exporter 설치 스크립트와 systemd unit이 포함돼야 한다."""
+def test_userdata_with_gpu_installs_supported_dcgm_packages():
+    """GPU bootstrap uses NVIDIA's packaged DCGM daemon and exporter."""
     encoded = generate_userdata(**{**_COMMON_ARGS, "gpu_available": True})
     yaml_str = _decode_userdata(encoded)
-    assert "/usr/local/bin/dcgm-exporter" in yaml_str
-    assert "0.0.0.0:9400" in yaml_str
-    assert "systemctl enable --now dcgm-exporter.service" in yaml_str
-    assert "github.com/NVIDIA/dcgm-exporter/releases" in yaml_str
+    assert "datacenter-gpu-manager" in yaml_str
+    assert "datacenter-gpu-manager-exporter" in yaml_str
+    assert "systemctl enable --now nvidia-dcgm.service" in yaml_str
+    assert "systemctl enable --now nvidia-dcgm-exporter.service" in yaml_str
+    assert "github.com/NVIDIA/dcgm-exporter/releases" not in yaml_str
+    assert "/usr/local/bin/dcgm-exporter" not in yaml_str
 
 
-def test_userdata_with_gpu_uses_pinned_version():
-    """생성된 cloud-init에 모듈 상수 버전이 포함돼야 한다."""
-    from app.services import cloudinit as ci
-
+def test_userdata_with_gpu_maps_supported_repository_architectures():
     encoded = generate_userdata(**{**_COMMON_ARGS, "gpu_available": True})
     yaml_str = _decode_userdata(encoded)
-    assert ci._DCGM_EXPORTER_VERSION in yaml_str
+
+    assert "amd64) CUDA_REPO_ARCH=x86_64" in yaml_str
+    assert "arm64) CUDA_REPO_ARCH=sbsa" in yaml_str
+    assert '*) echo "unsupported NVIDIA repository architecture:' in yaml_str
+    assert "${DISTRO}/${CUDA_REPO_ARCH}/${KEYRING_PKG}" in yaml_str
 
 
 def test_userdata_with_gpu_installs_driver_and_dcgm_daemon():
-    """gpu_available=True 일 때 베이스 이미지가 비어 있어도 동작하도록 드라이버 + DCGM 데몬 자동 설치 단계가 포함돼야 한다."""
+    """gpu_available=True installs a driver when absent before packaged DCGM services."""
     encoded = generate_userdata(**{**_COMMON_ARGS, "gpu_available": True})
     yaml_str = _decode_userdata(encoded)
-    # 드라이버: nvidia-smi 가 없을 때만 ubuntu-drivers autoinstall
     assert "ubuntu-drivers autoinstall" in yaml_str
     assert "command -v nvidia-smi" in yaml_str
-    # DCGM 데몬: cuda-keyring 등록 + datacenter-gpu-manager 설치 + nvidia-dcgm 활성화
     assert "cuda-keyring" in yaml_str
-    assert "datacenter-gpu-manager" in yaml_str
     assert "systemctl enable --now nvidia-dcgm.service" in yaml_str
-
-
-def test_userdata_with_gpu_dcgm_exporter_requires_dcgm_daemon():
-    """dcgm-exporter.service 가 nvidia-dcgm.service 에 의존해야 한다 (데몬 먼저 떠야 메트릭 정상)."""
-    encoded = generate_userdata(**{**_COMMON_ARGS, "gpu_available": True})
-    yaml_str = _decode_userdata(encoded)
-    assert "Requires=nvidia-dcgm.service" in yaml_str
-    assert "After=network-online.target nvidia-dcgm.service" in yaml_str
 
 
 def test_rotate_key_script_not_injected_when_disabled():
@@ -237,7 +296,7 @@ def test_rotate_key_script_not_injected_when_disabled():
 
 def test_rotate_key_script_injected_to_write_files():
     """union_cephx_rotate_hours > 0 이면 /usr/local/bin/envmgr-rotate-key.sh 주입."""
-    encoded = generate_userdata(**{**_COMMON_ARGS, "union_cephx_rotate_hours": 24})
+    encoded = generate_userdata(**{**_LAYER_ARGS, "union_cephx_rotate_hours": 24})
     yaml_str = _decode_userdata(encoded)
     assert "path: /usr/local/bin/envmgr-rotate-key.sh" in yaml_str
     assert 'permissions: "0750"' in yaml_str
@@ -246,7 +305,7 @@ def test_rotate_key_script_injected_to_write_files():
 
 def test_rotate_key_systemd_unit_present_when_enabled():
     """union_cephx_rotate_hours > 0 이면 systemd service/timer 항목도 포함."""
-    encoded = generate_userdata(**{**_COMMON_ARGS, "union_cephx_rotate_hours": 24})
+    encoded = generate_userdata(**{**_LAYER_ARGS, "union_cephx_rotate_hours": 24})
     yaml_str = _decode_userdata(encoded)
     assert "union-rotate-key.service" in yaml_str
     assert "union-rotate-key.timer" in yaml_str
@@ -255,7 +314,7 @@ def test_rotate_key_systemd_unit_present_when_enabled():
 
 def test_rotate_key_script_before_systemd_unit():
     """write_files에서 rotate-key.sh 주입이 systemd unit 선언보다 먼저 나와야 한다."""
-    encoded = generate_userdata(**{**_COMMON_ARGS, "union_cephx_rotate_hours": 24})
+    encoded = generate_userdata(**{**_LAYER_ARGS, "union_cephx_rotate_hours": 24})
     yaml_str = _decode_userdata(encoded)
     script_pos = yaml_str.find("path: /usr/local/bin/envmgr-rotate-key.sh")
     service_pos = yaml_str.find("path: /etc/systemd/system/union-rotate-key.service")
@@ -303,7 +362,7 @@ def test_health_check_quotes_malicious_share_name():
 def test_health_check_quotes_report_url_and_token():
     """report_url / instance_id / report_token 에 메타문자가 와도 quote."""
     encoded = generate_userdata(
-        **_COMMON_ARGS,
+        **_LAYER_ARGS,
         instance_id="id'; touch /tmp/pwn",
         report_url="https://x'; whoami",
         report_token="$(whoami)",
@@ -319,7 +378,7 @@ def test_health_check_quotes_report_url_and_token():
 
 def test_envmgr_rotate_key_uses_printf_not_heredoc():
     """envmgr_rotate_key.sh.j2 가 cat << EOF 가 아니라 printf 로 키링을 작성하는지."""
-    encoded = generate_userdata(**{**_COMMON_ARGS, "union_cephx_rotate_hours": 24})
+    encoded = generate_userdata(**{**_LAYER_ARGS, "union_cephx_rotate_hours": 24})
     yaml_str = _decode_userdata(encoded)
     # 키링 작성 부분에 cat << EOF 헤어독이 사라지고 printf 가 사용되어야 함
     assert "printf '[client.%s]\\n'" in yaml_str

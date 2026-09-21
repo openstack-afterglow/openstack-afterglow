@@ -18,7 +18,7 @@ on:
         required: false
         default: 'all'
         type: choice
-        options: [all, afterglow, backend, frontend, worker]
+        options: [all, afterglow, backend, frontend, worker, cloud-shell]
       run_live_openstack:
         description: 'Run manual live OpenStack scenarios'
         required: false
@@ -48,7 +48,9 @@ jobs:
       pull-requests: read
     outputs:
       targets: ${{ steps.set-targets.outputs.targets }}
+      standard_targets: ${{ steps.standard-targets.outputs.targets }}
       effective_ref: ${{ steps.eff-ref.outputs.ref }}
+      cloud_shell: ${{ steps.filter.outputs.cloud_shell }}
       is_pr: ${{ steps.eff-ref.outputs.is_pr }}
     steps:
       - name: Checkout
@@ -81,6 +83,7 @@ jobs:
           if [[ "$CHANGED" == "ALL" ]] || echo "$CHANGED" | grep -qE '^\.github/workflows/docker-build\.yml$'; then
             echo "afterglow=true" >> $GITHUB_OUTPUT
             echo "frontend=true" >> $GITHUB_OUTPUT
+            echo "cloud_shell=true" >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -96,11 +99,18 @@ jobs:
             echo "frontend=false" >> $GITHUB_OUTPUT
           fi
 
+          if echo "$CHANGED" | grep -qE '^(cloud-shell/|Dockerfile$|\.dockerignore$)'; then
+            echo "cloud_shell=true" >> $GITHUB_OUTPUT
+          else
+            echo "cloud_shell=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Build target list
         id: set-targets
         env:
           CHANGED_AFTERGLOW: ${{ steps.filter.outputs.afterglow }}
           CHANGED_FRONTEND: ${{ steps.filter.outputs.frontend }}
+          CHANGED_CLOUD_SHELL: ${{ steps.filter.outputs.cloud_shell }}
           DISPATCH_TARGETS: ${{ inputs.targets }}
           EFFECTIVE_REF: ${{ steps.eff-ref.outputs.ref }}
         run: |
@@ -109,7 +119,8 @@ jobs:
               backend) echo 'targets=["backend"]' >> $GITHUB_OUTPUT ;;
               frontend) echo 'targets=["frontend"]' >> $GITHUB_OUTPUT ;;
               worker) echo 'targets=["worker"]' >> $GITHUB_OUTPUT ;;
-              afterglow|all) echo 'targets=["backend","frontend","worker"]' >> $GITHUB_OUTPUT ;;
+              cloud-shell) echo 'targets=["cloud-shell"]' >> $GITHUB_OUTPUT ;;
+              afterglow|all) echo 'targets=["backend","frontend","worker","cloud-shell"]' >> $GITHUB_OUTPUT ;;
               *) echo "Unsupported dispatch target: ${DISPATCH_TARGETS}" >&2; exit 1 ;;
             esac
             exit 0
@@ -117,7 +128,7 @@ jobs:
 
           # dev 브랜치 이외(main, v* 태그, PR)는 Afterglow 전체 빌드
           if [[ "${EFFECTIVE_REF}" != "refs/heads/dev" ]]; then
-            echo 'targets=["backend","frontend","worker"]' >> $GITHUB_OUTPUT
+            echo 'targets=["backend","frontend","worker","cloud-shell"]' >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -129,17 +140,26 @@ jobs:
           if [[ "${CHANGED_FRONTEND}" == "true" || "${CHANGED_AFTERGLOW}" == "true" ]]; then
             TARGETS=$(echo "$TARGETS" | jq -c '. + ["frontend"]')
           fi
+          if [[ "${CHANGED_CLOUD_SHELL}" == "true" ]]; then
+            TARGETS=$(echo "$TARGETS" | jq -c '. + ["cloud-shell"]')
+          fi
           echo "targets=${TARGETS}" >> $GITHUB_OUTPUT
+
+      - name: Build standard target list
+        id: standard-targets
+        env:
+          TARGETS: ${{ steps.set-targets.outputs.targets }}
+        run: echo "targets=$(echo "$TARGETS" | jq -c 'map(select(. != "cloud-shell"))')" >> $GITHUB_OUTPUT
 
   # ─── per-arch 빌드: self-hosted linux(amd64) / macos(arm64) native 빌드 ───
   build:
     name: Build ${{ matrix.target }} (${{ matrix.arch }})
     needs: changes
-    if: needs.changes.outputs.is_pr != 'true' && needs.changes.outputs.targets != '[]'
+    if: needs.changes.outputs.is_pr != 'true' && needs.changes.outputs.standard_targets != '[]'
     strategy:
       fail-fast: false
       matrix:
-        target: ${{ fromJSON(needs.changes.outputs.targets) }}
+        target: ${{ fromJSON(needs.changes.outputs.standard_targets) }}
         # arm64 빌드 비활성화 — arm64 self-hosted(macOS) 러너가 상시 가동되지 않아
         # 빌드 잡이 queued 로 정체되고 manifest 병합까지 막혀 :dev 태그가 갱신되지 않았다.
         # arm64 가 다시 필요하면 아래 원본 2줄(arch 배열 + include 항목)의 주석을 되살린다.
@@ -297,18 +317,101 @@ jobs:
           cache-from: type=registry,ref=${{ steps.img.outputs.name }}:cache-${{ matrix.arch }}
           cache-to: ${{ needs.changes.outputs.is_pr != 'true' && format('type=registry,ref={0}:cache-{1},mode=max', steps.img.outputs.name, matrix.arch) || '' }}
 
+  # Cloud Shell is published for both supported architectures from a hosted
+  # Linux runner. QEMU avoids depending on the intentionally disabled macOS
+  # arm64 runner used by the legacy image matrix.
+  build-cloud-shell:
+    name: Build Cloud Shell (amd64 + arm64)
+    needs: changes
+    if: needs.changes.outputs.is_pr != 'true' && contains(fromJSON(needs.changes.outputs.targets), 'cloud-shell')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Install uv (tag push only)
+        if: startsWith(needs.changes.outputs.effective_ref, 'refs/tags/v')
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Setup Node (tag push only)
+        if: startsWith(needs.changes.outputs.effective_ref, 'refs/tags/v')
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Apply tag version (tag push only)
+        if: startsWith(needs.changes.outputs.effective_ref, 'refs/tags/v')
+        env:
+          GITHUB_REF: ${{ needs.changes.outputs.effective_ref }}
+        run: npm run version:apply-tag
+
+      - name: Verify version sync
+        run: bash scripts/check-version-sync.sh
+        env:
+          GITHUB_REF: ${{ needs.changes.outputs.effective_ref }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME || github.actor }}
+          password: ${{ secrets.REGISTRY_PASSWORD || secrets.GITHUB_TOKEN }}
+
+      - name: Resolve tags
+        id: tags
+        env:
+          EFFECTIVE_REF: ${{ needs.changes.outputs.effective_ref }}
+        run: |
+          IMAGE="${REGISTRY}/${IMAGE_OWNER}/afterglow-cloud-shell"
+          echo 'values<<EOF' >> $GITHUB_OUTPUT
+          if [[ "${EFFECTIVE_REF}" == refs/tags/v* ]]; then
+            echo "${IMAGE}:${EFFECTIVE_REF#refs/tags/}" >> $GITHUB_OUTPUT
+            echo "${IMAGE}:latest" >> $GITHUB_OUTPUT
+          elif [[ "${EFFECTIVE_REF}" == refs/heads/main ]]; then
+            echo "${IMAGE}:nightly" >> $GITHUB_OUTPUT
+          else
+            echo "${IMAGE}:dev" >> $GITHUB_OUTPUT
+          fi
+          echo 'EOF' >> $GITHUB_OUTPUT
+
+      - name: Build and push Cloud Shell
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          target: cloud-shell
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.values }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/afterglow-cloud-shell:cache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/afterglow-cloud-shell:cache,mode=max
+
   # ─── manifest 통합: 두 arch 태그를 합쳐 단일 멀티플랫폼 태그로 push ───
   manifest:
     name: Manifest ${{ matrix.target }}
     needs: [changes, build]
-    if: needs.changes.outputs.is_pr != 'true' && needs.changes.outputs.targets != '[]'
+    if: needs.changes.outputs.is_pr != 'true' && needs.changes.outputs.standard_targets != '[]'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     strategy:
       matrix:
-        target: ${{ fromJSON(needs.changes.outputs.targets) }}
+        target: ${{ fromJSON(needs.changes.outputs.standard_targets) }}
 
     steps:
       - name: Set up Docker Buildx

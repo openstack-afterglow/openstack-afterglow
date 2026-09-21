@@ -15,6 +15,7 @@ const baseConfig: PublicSiteConfig = {
 		magnum: false,
 		manila: false,
 		zun: false,
+		cloud_shell: false,
 		k3s: false,
 		trove: false,
 		swift: false,
@@ -79,6 +80,17 @@ describe('frontend health', () => {
 
 		expect(response.status).toBe(200);
 		expect(await response.json()).toEqual({ status: 'ok' });
+	});
+
+	it('allows the API WebSocket origin used by terminal transports', async () => {
+		const { handle } = await loadHandle();
+		const request = createRequest('http://frontend.example.com/login');
+
+		const response = await handle({ event: request.event, resolve: request.resolve });
+
+		expect(response.headers.get('Content-Security-Policy')).toContain(
+			"connect-src 'self' https://api.example.com wss://api.example.com",
+		);
 	});
 });
 

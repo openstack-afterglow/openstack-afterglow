@@ -7,6 +7,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.main import app
 from app.models.containers import ZunContainerInfo
+from app.services.ws_ticket import consume_ticket
 
 
 def _make_container():
@@ -134,10 +135,12 @@ async def test_create_exec_ticket_unauthenticated():
 
 
 @pytest.mark.asyncio
-async def test_create_exec_ticket_success(client):
-    mock_redis = AsyncMock()
-    mock_redis.setex = AsyncMock(return_value=None)
-    with patch("app.services.cache._get_redis", new=AsyncMock(return_value=mock_redis)):
-        resp = await client.post("/api/v1/containers/c-1/exec-ticket")
-    assert resp.status_code == 201
-    assert "ticket" in resp.json()
+async def test_create_exec_ticket_is_single_use(client):
+    response = await client.post("/api/v1/containers/c-1/exec-ticket")
+    assert response.status_code == 201
+    ticket = response.json()["ticket"]
+
+    payload = await consume_ticket(ticket, expected_kind="container-exec")
+    assert payload is not None
+    assert payload["container_id"] == "c-1"
+    assert await consume_ticket(ticket, expected_kind="container-exec") is None

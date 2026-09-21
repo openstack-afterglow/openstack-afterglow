@@ -74,7 +74,6 @@ const targets = {
 				"src/lib/utils/__tests__/authFlow.test.ts",
 				"src/lib/components/auth/__tests__/LoginBrandHeader.test.ts",
 				"src/routes/__tests__/gitlab-auth-paths.test.ts",
-				"src/routes/__tests__/logout-flow.test.ts",
 				"src/lib/config/site.test.ts"
 			]
 		}
@@ -116,6 +115,21 @@ const targets = {
 		},
 		frontend: {
 			selectors: ["src/lib/config/site.test.ts", "src/lib/server/config.test.ts"]
+		}
+	},
+	"cloud-shell": {
+		description: "Cloud Shell config, lifecycle, tickets, isolation, and protocol",
+		liveServices: "none",
+		backend: {
+			selectors: ["tests/test_cloud_shell.py", "tests/test_cloud_shell_live_safety.py"]
+		},
+		frontend: {
+			selectors: [
+				"src/lib/stores/cloudShell.svelte.test.ts",
+				"src/lib/components/cloud-shell/CloudShellTerminal.test.ts",
+				"src/lib/components/__tests__/ProjectSelector.test.ts",
+				"src/lib/config/statusColors.test.ts"
+			]
 		}
 	},
 	chat: {
@@ -280,6 +294,9 @@ const targets = {
 		liveServices: "none",
 		backend: {
 			selectors: ["tests/contracts/test_waygate_proxy.py", "tests/contracts/test_waygate_agent.py"]
+		},
+		frontend: {
+			selectors: ["src/routes/dashboard/network/waygate/__tests__/page.test.ts"]
 		}
 	},
 	lumen: {
@@ -380,6 +397,14 @@ const targets = {
 		liveServices: "Redis + OpenStack credentials",
 		backend: {
 			selectors: ["tests/integration/test_storage.py", "tests/integration/test_file_storage.py"]
+		}
+	},
+	"live:cloud-shell": {
+		description: "Live Cloud Shell approve, CLI, home reuse, cleanup, and reset",
+		liveServices: "Redis + Keystone + Zun + Cinder + Neutron + published Cloud Shell image",
+		backend: {
+			selectors: ["tests/integration/test_cloud_shell.py"],
+			extraArgs: ["-m", "slow"]
 		}
 	},
 	"live:layers": {

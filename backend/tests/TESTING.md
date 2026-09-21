@@ -112,6 +112,18 @@ export AFTERGLOW_TEST_USER_DOMAIN=Default
 admin 계정은 `afterglow.conf [openstack]`으로 폴백되므로 로컬에서 별도 설정 없이도 admin 테스트는 동작한다.
 일반 유저 계정이 없으면 `user_client` 픽스처가 필요한 테스트는 자동으로 **skip** 된다.
 
+### Cloud Shell live smoke 안전 게이트
+
+`npm run test:live:cloud-shell`은 persistent home을 초기화하는 destructive scenario다. 전용 disposable `[user]` credential 외에는 사용하지 않는다.
+
+```bash
+CLOUD_SHELL_LIVE_USER_IDENTITY=cloud-shell-smoke \
+CLOUD_SHELL_LIVE_CONFIRM=reset-disposable-home \
+npm run test:live:cloud-shell
+```
+
+Identity 환경 변수는 실제 integration username과 정확히 일치해야 한다. Confirmation 값은 literal `reset-disposable-home`이다. 첫 workspace 조회에 active session 또는 기존 home이 있으면 test는 mutation 전에 실패하며 그 resource를 정리하지 않는다.
+
 ---
 
 ## 테스트 픽스처

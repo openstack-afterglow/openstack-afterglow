@@ -8,6 +8,8 @@
   import StatusChip from '$lib/components/ui/StatusChip.svelte';
   import Modal from '$lib/components/ui/Modal.svelte';
   import Alert from '$lib/components/ui/Alert.svelte';
+  import Button from '$lib/components/ui/Button.svelte';
+  import ToggleGroup from '$lib/components/ui/ToggleGroup.svelte';
   import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 
   // ---------------------------------------------------------------------------
@@ -265,6 +267,12 @@
   // Palimpsest Dockerfile 스튜디오 상태
   // ---------------------------------------------------------------------------
   type DockerfileInputMode = 'editor' | 'url' | 'upload' | 'github';
+  const dockerfileModeOptions = [
+    { value: 'editor', label: '직접 작성' },
+    { value: 'url', label: 'URL 가져오기' },
+    { value: 'upload', label: '파일 업로드' },
+    { value: 'github', label: 'GitHub 커밋' },
+  ];
   let dockerfileMode = $state<DockerfileInputMode>('editor');
   let dockerfileText = $state(`FROM ubuntu:24.04\nRUN apt-get update && apt-get install -y curl git\nENV APP_ENV=production\nWORKDIR /app\n`);
   let dockerfileUrl = $state('');
@@ -1283,15 +1291,33 @@
 
 <div class="flex flex-col h-full overflow-auto bg-surface-base text-ink-1 p-6">
   <div data-tour="admin-library-header">
-  <PageHeader title="Palimpsest 레이어 관리" breadcrumb="Palimpsest">
-    {#snippet actions()}
-      <TutorialStartButton tour="admin-library" compactOnMobile />
-      <button
-        onclick={() => loadAll(true)}
-        class="text-xs text-ink-2 hover:text-ink-0 transition-colors px-3 py-1.5 rounded border border-line-2 hover:border-line-2"
-      >새로고침</button>
-    {/snippet}
-  </PageHeader>
+    <PageHeader title="Palimpsest 레이어 관리" breadcrumb="Palimpsest" subtitle="레이어를 만들고, 조합하고, OverlayFS VM으로 실행하는 관리자 작업 공간입니다.">
+      {#snippet actions()}
+        <TutorialStartButton tour="admin-library" compactOnMobile />
+        <button
+          onclick={() => loadAll(true)}
+          class="text-xs text-ink-2 hover:text-ink-0 transition-colors px-3 py-1.5 rounded border border-line-2 hover:border-line-2"
+        >새로고침</button>
+      {/snippet}
+    </PageHeader>
+  </div>
+  <div class="mb-5 grid grid-cols-2 md:grid-cols-4 border-y border-line py-3" aria-label="Palimpsest 현황">
+    <div class="px-3 first:pl-0 md:border-r md:border-line">
+      <p class="text-xs text-ink-2">봉인된 레이어</p>
+      <p class="mt-1 text-lg font-semibold tabular-nums text-ink-0">{sealedArtifacts.length}</p>
+    </div>
+    <div class="px-3 md:border-r md:border-line">
+      <p class="text-xs text-ink-2">저장된 프로필</p>
+      <p class="mt-1 text-lg font-semibold tabular-nums text-ink-0">{profiles.length}</p>
+    </div>
+    <div class="px-3 border-t border-line pt-3 md:border-t-0 md:border-r md:pt-0">
+      <p class="text-xs text-ink-2">진행 중인 빌드</p>
+      <p class="mt-1 text-lg font-semibold tabular-nums text-warm-text">{activeBuilds.length + activeImportJobs.length}</p>
+    </div>
+    <div class="px-3 border-t border-line pt-3 md:border-t-0 md:pt-0">
+      <p class="text-xs text-ink-2">실행 중인 VM</p>
+      <p class="mt-1 text-lg font-semibold tabular-nums text-state-success">{consumes.filter((consume) => CONSUME_BLOCKING_STATUSES.has((consume.status || '').toLowerCase())).length}</p>
+    </div>
   </div>
 
   {#if error}
@@ -1304,11 +1330,11 @@
   {#if loading}
     <LoadingSkeleton rows={4} />
   {:else}
-    <div class="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8" data-tour="admin-library-ready">
+    <div class="grid grid-cols-1 xl:grid-cols-12 gap-5 mb-8" data-tour="admin-library-ready">
       <!-- ------------------------------------------------------------------ -->
       <!-- System/tool 레이어 빌드                                             -->
       <!-- ------------------------------------------------------------------ -->
-      <section class="bg-surface-sunken border border-line-2 rounded-xl p-5" data-tour="admin-library-system">
+      <section class="xl:col-span-4 min-w-0 bg-surface-raised border border-line rounded-lg p-5" data-tour="admin-library-system">
         <h2 class="text-sm font-semibold text-ink-0 mb-1">System/tool 레이어</h2>
         <p class="text-xs text-ink-2 mb-4">
           uv preset은 Python runtime 부모로 쓰는 curl-installed uv tool 레이어를 만들고,
@@ -1355,20 +1381,24 @@
             {/if}
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <button
+            <Button
+              variant="secondary"
+              size="sm"
               onclick={triggerUvBuild}
               disabled={systemSubmitting || !systemForm.layer_name || !systemForm.base_image_id}
-              class="w-full py-2 px-4 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 disabled:cursor-not-allowed text-action-on-warm text-sm font-medium rounded-lg transition-colors"
+              class="w-full"
             >
               {systemSubmitting ? '빌드 시작 중...' : 'uv preset 빌드'}
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="accent"
+              size="sm"
               onclick={triggerSystemAptBuild}
               disabled={systemSubmitting || !systemForm.layer_name || !systemForm.base_image_id || systemAptPackages.length === 0 || systemInvalidAptPackages.length > 0}
-              class="w-full py-2 px-4 bg-emerald-700 hover:bg-emerald-600 disabled:bg-surface-selected disabled:text-ink-3 disabled:cursor-not-allowed text-ink-0 text-sm font-medium rounded-lg transition-colors"
+              class="w-full"
             >
               {systemSubmitting ? '빌드 시작 중...' : 'apt package layer 빌드'}
-            </button>
+            </Button>
           </div>
           <div class="mt-4 border-t border-line-2 pt-4 space-y-3">
             <div>
@@ -1409,13 +1439,15 @@
                 레이어 자체에는 /usr hook만 저장하고, 소비 VM에서 cuda-keyring + nvidia-dkms-*-open을 설치합니다.
               </p>
             </div>
-            <button
+            <Button
+              variant="accent"
+              size="sm"
               onclick={triggerNvidiaDriverBuild}
               disabled={nvidiaSubmitting || !nvidiaForm.layer_name || !nvidiaForm.base_image_id || !nvidiaBranchValid}
-              class="w-full py-2 px-4 bg-purple-700 hover:bg-purple-600 disabled:bg-surface-selected disabled:text-ink-3 disabled:cursor-not-allowed text-ink-0 text-sm font-medium rounded-lg transition-colors"
+              class="w-full"
             >
               {nvidiaSubmitting ? '빌드 시작 중...' : 'NVIDIA driver template 빌드'}
-            </button>
+            </Button>
           </div>
         </div>
       </section>
@@ -1423,7 +1455,7 @@
       <!-- ------------------------------------------------------------------ -->
       <!-- GitHub Dockerfile import                                           -->
       <!-- ------------------------------------------------------------------ -->
-      <section class="bg-surface-sunken border border-line-2 rounded-xl p-5" data-tour="admin-library-import">
+      <section class="xl:col-span-8 min-w-0 bg-surface-raised border border-line rounded-lg p-5" data-tour="admin-library-import">
         <div class="flex items-center justify-between mb-1">
           <h2 class="text-sm font-semibold text-ink-0">Palimpsest Dockerfile 빌드</h2>
           <span class="text-xs px-2 py-0.5 rounded bg-surface-base border border-line-2 text-ink-2 font-mono">관리자 전용</span>
@@ -1433,36 +1465,15 @@
         </p>
 
         <!-- 모드 선택 탭 -->
-        <div class="flex items-center gap-1 p-1 bg-surface-base border border-line-2 rounded-lg mb-3 text-xs">
-          <button
-            type="button"
-            onclick={() => dockerfileMode = 'editor'}
-            class="flex-1 py-1.5 px-2 rounded-md font-medium transition-colors {dockerfileMode === 'editor' ? 'bg-surface-selected text-ink-0 shadow-sm' : 'text-ink-2 hover:text-ink-0'}"
-          >
-            직접 작성 / 편집
-          </button>
-          <button
-            type="button"
-            onclick={() => dockerfileMode = 'url'}
-            class="flex-1 py-1.5 px-2 rounded-md font-medium transition-colors {dockerfileMode === 'url' ? 'bg-surface-selected text-ink-0 shadow-sm' : 'text-ink-2 hover:text-ink-0'}"
-          >
-            URL 가져오기
-          </button>
-          <button
-            type="button"
-            onclick={() => dockerfileMode = 'upload'}
-            class="flex-1 py-1.5 px-2 rounded-md font-medium transition-colors {dockerfileMode === 'upload' ? 'bg-surface-selected text-ink-0 shadow-sm' : 'text-ink-2 hover:text-ink-0'}"
-          >
-            파일 업로드
-          </button>
-          <button
-            type="button"
-            onclick={() => dockerfileMode = 'github'}
-            class="flex-1 py-1.5 px-2 rounded-md font-medium transition-colors {dockerfileMode === 'github' ? 'bg-surface-selected text-ink-0 shadow-sm' : 'text-ink-2 hover:text-ink-0'}"
-          >
-            GitHub 커밋
-          </button>
-        </div>
+        <ToggleGroup
+          value={dockerfileMode}
+          options={dockerfileModeOptions}
+          onchange={(value) => dockerfileMode = value as DockerfileInputMode}
+          size="sm"
+          fullWidth
+          ariaLabel="Dockerfile 입력 방식"
+          class="mb-4"
+        />
 
         <div class="space-y-3">
           {#if dockerfileMode === 'url'}
@@ -1659,31 +1670,34 @@
           <!-- 액션 버튼 -->
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
             {#if dockerfileMode !== 'github'}
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                size="sm"
                 onclick={previewDockerfilePlan}
                 disabled={planLoading || !dockerfileText.trim() || !importForm.layer_prefix.trim()}
-                class="py-2 px-3 bg-surface-base border border-line-2 hover:border-line-2 text-ink-0 disabled:text-ink-3 disabled:cursor-not-allowed text-xs font-medium rounded-lg transition-colors"
+                class="w-full"
               >
                 {planLoading ? '계획 계산 중...' : '빌드 계획 미리보기'}
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
                 onclick={submitInlineDockerfileBuild}
                 disabled={importSubmitting || !dockerfileText.trim() || !importForm.layer_prefix.trim()}
-                class="py-2 px-3 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 disabled:cursor-not-allowed text-action-on-warm text-xs font-medium rounded-lg transition-colors"
+                class="w-full"
               >
                 {importSubmitting ? '빌드 시작 중...' : 'Dockerfile 빌드 시작'}
-              </button>
+              </Button>
             {:else}
-              <button
-                type="button"
+              <Button
+                variant="accent"
+                size="sm"
                 onclick={submitDockerfileImport}
                 disabled={importSubmitting || !importForm.github_url.trim() || !importForm.layer_prefix.trim() || !importForm.base_image_id}
-                class="sm:col-span-2 py-2 px-4 bg-sky-700 hover:bg-sky-600 disabled:bg-surface-selected disabled:text-ink-3 disabled:cursor-not-allowed text-ink-0 text-sm font-medium rounded-lg transition-colors"
+                class="w-full sm:col-span-2"
               >
                 {importSubmitting ? 'Import 시작 중...' : 'GitHub Dockerfile import 시작'}
-              </button>
+              </Button>
             {/if}
           </div>
 
@@ -1731,7 +1745,7 @@
       <!-- ------------------------------------------------------------------ -->
       <!-- Python runtime 레이어 빌드                                         -->
       <!-- ------------------------------------------------------------------ -->
-      <section class="bg-surface-sunken border border-line-2 rounded-xl p-5" data-tour="admin-library-python">
+      <section class="xl:col-span-4 min-w-0 bg-surface-raised border border-line rounded-lg p-5" data-tour="admin-library-python">
         <h2 class="text-sm font-semibold text-ink-0 mb-1">Python runtime 레이어</h2>
         <p class="text-xs text-ink-2 mb-4">
           uv 레이어 위에 CPython runtime만 추가합니다. pip 패키지는 별도 패키지 레이어에서 설치합니다.
@@ -1787,20 +1801,22 @@
               <p class="text-xs text-indigo-200/70">상속 Ubuntu: {ubuntuBaseLabel(selectedPythonParentArtifact)}</p>
             </div>
           {/if}
-          <button
+          <Button
+            variant="accent"
+            size="sm"
             onclick={triggerPythonBuild}
             disabled={pythonSubmitting || !pythonForm.layer_name || !pythonForm.python_version || !pythonForm.parent_artifact_id}
-            class="w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-surface-selected disabled:text-ink-3 disabled:cursor-not-allowed text-ink-0 text-sm font-medium rounded-lg transition-colors"
+            class="w-full"
           >
             {pythonSubmitting ? '빌드 시작 중...' : 'Python runtime 레이어 빌드'}
-          </button>
+          </Button>
         </div>
       </section>
 
       <!-- ------------------------------------------------------------------ -->
       <!-- Python 패키지 레이어 빌드                                           -->
       <!-- ------------------------------------------------------------------ -->
-      <section class="bg-surface-sunken border border-line-2 rounded-xl p-5">
+      <section class="xl:col-span-4 min-w-0 bg-surface-raised border border-line rounded-lg p-5">
         <h2 class="text-sm font-semibold text-ink-0 mb-1">Python 패키지 레이어</h2>
         <p class="text-xs text-ink-2 mb-4">
           Python lineage가 포함된 부모 위에 pip 패키지만 추가합니다. 버전 pin과 안전한 constraint만 허용됩니다.
@@ -1895,20 +1911,22 @@
               <p class="mt-1 text-xs text-ink-2">pip source 옵션을 빌드에 함께 전달합니다.</p>
             {/if}
           </div>
-          <button
+          <Button
+            variant="accent"
+            size="sm"
             onclick={triggerPackageBuild}
             disabled={packageSubmitting || !packageForm.layer_name || !packageForm.parent_artifact_id || packageSpecs.length === 0 || packageInvalidSpecs.length > 0 || packageInvalidUrls.length > 0}
-            class="w-full py-2 px-4 bg-purple-600 hover:bg-purple-500 disabled:bg-surface-selected disabled:text-ink-3 disabled:cursor-not-allowed text-ink-0 text-sm font-medium rounded-lg transition-colors"
+            class="w-full"
           >
             {packageSubmitting ? '빌드 시작 중...' : 'Python 패키지 레이어 빌드'}
-          </button>
+          </Button>
         </div>
       </section>
 
       <!-- ------------------------------------------------------------------ -->
       <!-- 소비 인스턴스 생성                                                  -->
       <!-- ------------------------------------------------------------------ -->
-      <section id="admin-library-consume" class="bg-surface-sunken border border-line-2 rounded-xl p-5">
+      <section id="admin-library-consume" class="xl:col-span-4 min-w-0 bg-surface-raised border border-line rounded-lg p-5">
         <h2 class="text-sm font-semibold text-ink-0 mb-1">소비 인스턴스 생성</h2>
         <p class="text-xs text-ink-2 mb-4">
           프로필의 레이어 체인을 각자 별도 NFS share에서 RO 마운트하고
@@ -2016,13 +2034,15 @@
             ></textarea>
             <p class="mt-1 text-xs text-ink-2">직접 입력한 공개키가 있으면 위 키페어 선택보다 우선합니다.</p>
           </div>
-          <button
+          <Button
+            variant="primary"
+            size="sm"
             onclick={triggerConsume}
             disabled={consumeSubmitting || !consumeForm.profile_name || !consumeForm.server_name || !consumeForm.flavor_id || consumeProfileHasMixedUbuntuBases}
-            class="w-full py-2 px-4 bg-purple-600 hover:bg-purple-500 disabled:bg-surface-selected disabled:text-ink-3 disabled:cursor-not-allowed text-ink-0 text-sm font-medium rounded-lg transition-colors"
+            class="w-full"
           >
             {consumeSubmitting ? '인스턴스 생성 중...' : '소비 인스턴스 생성'}
-          </button>
+          </Button>
         </div>
       </section>
     </div>

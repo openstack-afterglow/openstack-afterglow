@@ -32,6 +32,14 @@ export const STATUS_STYLES: Record<string, StatusStyle> = {
   read:                { tone: 'info', label: '읽기' },
   manage:              { tone: 'warning', label: '관리' },
 
+
+  // Global Cloud Shell session lifecycle.
+  cloud_shell_preparing:   { tone: 'warning', pulse: true, label: '준비 중' },
+  cloud_shell_authorizing: { tone: 'info', pulse: true, label: '인증 중' },
+  cloud_shell_ready:       { tone: 'success', label: '연결됨' },
+  cloud_shell_ending:      { tone: 'warning', pulse: true, label: '종료 중' },
+  cloud_shell_closed:      { tone: 'neutral', label: '종료됨' },
+  cloud_shell_error:       { tone: 'danger', label: '오류' },
   // warning + pulse — active transitions (building, deleting, detaching)
   BUILD:               { tone: 'warning', pulse: true },
   PENDING:             { tone: 'warning', pulse: true },

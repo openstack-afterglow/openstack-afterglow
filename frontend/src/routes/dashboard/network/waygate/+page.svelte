@@ -14,7 +14,7 @@
 	import FormModal from '$lib/components/ui/FormModal.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
-	import SelectInput from '$lib/components/ui/SelectInput.svelte';
+	import SearchSelect from '$lib/components/ui/SearchSelect.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import SlidePanel from '$lib/components/SlidePanel.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -26,6 +26,7 @@
 	import SelectionToolbar from '$lib/components/ui/SelectionToolbar.svelte';
 	import * as waygateApi from '$lib/api/waygate';
 	import type { WaygateServer, WaygateClient, WaygateNetworkAttachment } from '$lib/types/waygate';
+	import type { Network, NetworkDetail, SubnetDetail } from '$lib/types/networks';
 	import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
 	import { executeBulkMutations } from '$lib/utils/bulkActions';
 
@@ -307,10 +308,29 @@
 	let attachmentsLoading = $state(false);
 	let attachmentsError = $state('');
 	let showAttachModal = $state(false);
-	let availableNetworks = $state<{ id: string; name: string }[]>([]);
+	let availableNetworks = $state<Network[]>([]);
+	let networksLoading = $state(false);
+	let availableSubnets = $state<SubnetDetail[]>([]);
+	let subnetsLoading = $state(false);
 	let attachNetworkId = $state('');
+	let attachSubnetId = $state('');
+	let attachSubnetRequest = 0;
 	let attaching = $state(false);
 	let attachError = $state('');
+	const networkOptions = $derived(
+		availableNetworks.map((network) => ({
+			value: network.id,
+			label: network.name || network.id,
+			description: network.name ? network.id : undefined,
+		}))
+	);
+	const subnetOptions = $derived(
+		availableSubnets.map((subnet) => ({
+			value: subnet.id,
+			label: subnet.name || subnet.cidr,
+			description: subnet.name ? subnet.cidr : subnet.id,
+		}))
+	);
 
 	async function fetchAttachments(serverId: string) {
 		attachmentsLoading = true;
@@ -328,19 +348,60 @@
 		showAttachModal = true;
 		attachError = '';
 		attachNetworkId = '';
+		attachSubnetId = '';
+		availableSubnets = [];
+		attachSubnetRequest += 1;
+		networksLoading = true;
 		try {
-			availableNetworks = await api.get<{ id: string; name: string }[]>('/api/v1/networks', token, projectId);
-		} catch {
+			const networks = await api.get<Network[]>('/api/v1/networks', token, projectId);
+			availableNetworks = networks.filter((network) => !network.is_external);
+		} catch (e) {
 			availableNetworks = [];
+			attachError = e instanceof ApiError ? e.message : '네트워크 목록 조회 실패';
+		} finally {
+			networksLoading = false;
+		}
+	}
+
+	function closeAttachModal() {
+		showAttachModal = false;
+		attachError = '';
+		attachSubnetRequest += 1;
+	}
+
+	async function selectAttachNetwork(networkId: string) {
+		attachNetworkId = networkId;
+		attachSubnetId = '';
+		availableSubnets = [];
+		attachError = '';
+		const requestId = ++attachSubnetRequest;
+		if (!networkId) return;
+
+		subnetsLoading = true;
+		try {
+			const network = await api.get<NetworkDetail>(`/api/v1/networks/${networkId}`, token, projectId);
+			if (requestId !== attachSubnetRequest || networkId !== attachNetworkId) return;
+			availableSubnets = network.subnet_details;
+			if (availableSubnets.length === 1) attachSubnetId = availableSubnets[0].id;
+		} catch (e) {
+			if (requestId !== attachSubnetRequest || networkId !== attachNetworkId) return;
+			attachError = e instanceof ApiError ? e.message : '서브넷 목록 조회 실패';
+		} finally {
+			if (requestId === attachSubnetRequest) subnetsLoading = false;
 		}
 	}
 
 	async function submitAttach() {
-		if (!selectedServerId || !attachNetworkId) return;
+		if (!selectedServerId || !attachNetworkId || !attachSubnetId || subnetsLoading) return;
 		attaching = true;
 		attachError = '';
 		try {
-			await waygateApi.attachNetwork(selectedServerId, { network_id: attachNetworkId }, token, projectId);
+			await waygateApi.attachNetwork(
+				selectedServerId,
+				{ network_id: attachNetworkId, subnet_id: attachSubnetId, nat_mode: 'snat' },
+				token,
+				projectId
+			);
 			showAttachModal = false;
 			toast.success('네트워크 연결이 시작되었습니다');
 			await fetchAttachments(selectedServerId);
@@ -578,7 +639,7 @@
 				<Alert tone="warning" class="mb-4">{selectedServer.status_reason}</Alert>
 			{/if}
 
-			<dl class="grid grid-cols-2 gap-x-6 gap-y-3 text-sm mb-8 bg-[var(--color-surface-raised)] border border-[var(--color-line)] rounded-xl p-4">
+			<dl class="grid grid-cols-1 gap-3 text-sm mb-8 bg-[var(--color-surface-raised)] border border-[var(--color-line)] rounded-xl p-4 xl:grid-cols-2 xl:gap-x-6">
 				<div>
 					<dt class="text-xs text-[var(--color-ink-3)] uppercase tracking-wide">엔드포인트</dt>
 					<dd class="text-[var(--color-ink-1)] font-mono">{selectedServer.endpoint_ip ?? '-'}:{selectedServer.listen_port}</dd>
@@ -627,51 +688,49 @@
 					<div class="text-sm">발급된 클라이언트가 없습니다</div>
 				</div>
 			{:else}
-				<TableShell>
-					<table>
-						<thead>
-							<tr>
-								<th>이름</th>
-								<th>터널 IP</th>
-								<th>상태</th>
-								<th>마지막 핸드셰이크</th>
-								<th>생성일</th>
-								<th></th>
-							</tr>
-						</thead>
-						<tbody>
-							{#each clients as client (client.id)}
-								<tr>
-									<td class="text-[var(--color-ink-0)]">{client.name}</td>
-									<td class="text-[var(--color-ink-2)] text-xs font-mono">{client.tunnel_ip}</td>
-									<td><StatusChip status={clientStatusLabel(client)} /></td>
-									<td class="text-[var(--color-ink-2)] text-xs">{formatDate(client.last_handshake_at)}</td>
-									<td class="text-[var(--color-ink-2)] text-xs">{formatDate(client.created_at)}</td>
-									<td>
-										<div class="flex gap-2 justify-end">
-											<button
-												onclick={() => downloadConfig(client)}
-												disabled={downloadingClientId === client.id}
-												class="text-xs text-[var(--color-accent)] hover:opacity-80 disabled:opacity-50"
-											>{downloadingClientId === client.id ? '다운로드 중...' : '.conf 다운로드'}</button>
-											<button
-												onclick={() => openQr(client)}
-												class="text-xs text-[var(--color-accent)] hover:opacity-80"
-											>QR</button>
-											<button onclick={() => toggleClient(client)} class="text-xs text-[var(--color-ink-2)] hover:text-[var(--color-ink-0)]">
-												{client.enabled ? '비활성화' : '활성화'}
-											</button>
-											<button onclick={() => deleteClient(client)} class="text-xs text-[var(--color-state-danger)] hover:opacity-80">삭제</button>
+				<div class="space-y-3">
+					{#each clients as client (client.id)}
+						<div class="rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-4">
+							<div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+								<div class="min-w-0">
+									<div class="flex flex-wrap items-center gap-2">
+										<span class="font-medium text-[var(--color-ink-0)] break-all">{client.name}</span>
+										<StatusChip status={clientStatusLabel(client)} />
+									</div>
+									<dl class="mt-3 grid grid-cols-1 gap-2 text-xs lg:grid-cols-3">
+										<div>
+											<dt class="text-[var(--color-ink-3)]">터널 IP</dt>
+											<dd class="mt-0.5 font-mono text-[var(--color-ink-1)] break-all">{client.tunnel_ip}</dd>
 										</div>
-									</td>
-								</tr>
-							{/each}
-						</tbody>
-					</table>
-				</TableShell>
+										<div>
+											<dt class="break-keep text-[var(--color-ink-3)]">마지막 핸드셰이크</dt>
+											<dd class="mt-0.5 break-keep text-[var(--color-ink-1)]">{formatDate(client.last_handshake_at)}</dd>
+										</div>
+										<div>
+											<dt class="break-keep text-[var(--color-ink-3)]">생성일</dt>
+											<dd class="mt-0.5 break-keep text-[var(--color-ink-1)]">{formatDate(client.created_at)}</dd>
+										</div>
+									</dl>
+								</div>
+								<div class="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 lg:max-w-44 lg:justify-end">
+									<button
+										onclick={() => downloadConfig(client)}
+										disabled={downloadingClientId === client.id}
+										class="text-xs text-[var(--color-accent)] hover:opacity-80 disabled:opacity-50"
+									>{downloadingClientId === client.id ? '다운로드 중...' : '.conf 다운로드'}</button>
+									<button onclick={() => openQr(client)} class="text-xs text-[var(--color-accent)] hover:opacity-80">QR</button>
+									<button onclick={() => toggleClient(client)} class="text-xs text-[var(--color-ink-2)] hover:text-[var(--color-ink-0)]">
+										{client.enabled ? '비활성화' : '활성화'}
+									</button>
+									<button onclick={() => deleteClient(client)} class="text-xs text-[var(--color-state-danger)] hover:opacity-80">삭제</button>
+								</div>
+							</div>
+						</div>
+					{/each}
+				</div>
 			{/if}
 
-			<p class="text-xs text-[var(--color-ink-3)] mt-4">
+			<p class="mt-4 break-keep text-xs text-[var(--color-ink-3)]">
 				<code>.conf</code> 파일을 다운로드하거나, <strong>QR</strong> 버튼으로 모바일 WireGuard 앱에서 바로 스캔해 등록할 수 있습니다.
 			</p>
 
@@ -697,32 +756,32 @@
 					연결된 테넌트 네트워크가 없습니다. 연결하면 VPN 클라이언트가 그 네트워크 내부로 접근할 수 있습니다.
 				</div>
 			{:else}
-				<TableShell>
-					<table>
-						<thead>
-							<tr>
-								<th>네트워크</th>
-								<th>CIDR</th>
-								<th>NAT</th>
-								<th>상태</th>
-								<th></th>
-							</tr>
-						</thead>
-						<tbody>
-							{#each attachments as att (att.id)}
-								<tr>
-									<td class="text-[var(--color-ink-2)] text-xs font-mono">{att.network_id}</td>
-									<td class="text-[var(--color-ink-2)] text-xs font-mono">{att.cidr ?? '-'}</td>
-									<td class="text-[var(--color-ink-2)] text-xs">{att.nat_mode}</td>
-									<td><StatusChip status={att.status} /></td>
-									<td>
-										<button onclick={() => detachNetwork(att)} class="text-xs text-[var(--color-state-danger)] hover:opacity-80">해제</button>
-									</td>
-								</tr>
-							{/each}
-						</tbody>
-					</table>
-				</TableShell>
+				<div class="space-y-3">
+					{#each attachments as att (att.id)}
+						<div class="rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-4">
+							<div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+								<dl class="grid min-w-0 flex-1 grid-cols-1 gap-2 text-xs lg:grid-cols-3">
+									<div>
+										<dt class="text-[var(--color-ink-3)]">네트워크</dt>
+										<dd class="mt-0.5 font-mono text-[var(--color-ink-1)] break-all">{att.network_id}</dd>
+									</div>
+									<div>
+										<dt class="text-[var(--color-ink-3)]">CIDR</dt>
+										<dd class="mt-0.5 font-mono text-[var(--color-ink-1)] break-all">{att.cidr ?? '-'}</dd>
+									</div>
+									<div>
+										<dt class="text-[var(--color-ink-3)]">NAT</dt>
+										<dd class="mt-0.5 text-[var(--color-ink-1)]">{att.nat_mode}</dd>
+									</div>
+								</dl>
+								<div class="flex shrink-0 items-center gap-3">
+									<StatusChip status={att.status} />
+									<button onclick={() => detachNetwork(att)} class="text-xs text-[var(--color-state-danger)] hover:opacity-80">해제</button>
+								</div>
+							</div>
+						</div>
+					{/each}
+				</div>
 			{/if}
 
 			<div class="flex items-center justify-between mb-3 mt-8">
@@ -738,7 +797,7 @@
 					title={selectedServer.status !== 'ACTIVE' ? 'Waygate 서버가 ACTIVE 상태여야 가져올 수 있습니다' : undefined}
 				>가져오기</Button>
 			</div>
-			<p class="text-xs text-[var(--color-ink-3)] mt-2">
+			<p class="mt-2 break-keep text-xs text-[var(--color-ink-3)]">
 				클라이언트 키는 입력한 패스프레이즈로 암호화되어 번들에 저장됩니다. 다른 Waygate 서버로 이전할 때 같은 패스프레이즈로 가져오세요.
 				(서버 키는 이전되지 않으므로 가져온 뒤 클라이언트는 <code>.conf</code> 를 다시 내려받아야 합니다.)
 			</p>
@@ -779,7 +838,7 @@
 		{:else if qrDataUrl}
 			<div class="flex flex-col items-center gap-3">
 				<img src={qrDataUrl} alt="WireGuard 설정 QR 코드" width="288" height="288" class="rounded-lg bg-surface-base p-2" />
-				<p class="text-xs text-[var(--color-ink-3)] text-center">
+				<p class="break-keep text-center text-xs text-[var(--color-ink-3)]">
 					모바일 WireGuard 앱에서 "QR 코드로 추가"를 선택해 스캔하세요.
 				</p>
 			</div>
@@ -790,32 +849,59 @@
 <FormModal
 	bind:open={showAttachModal}
 	title="네트워크 연결"
-	submitLabel="연결"
 	submitting={attaching}
-	onSubmit={submitAttach}
-	onClose={() => { showAttachModal = false; attachError = ''; }}
+	onClose={closeAttachModal}
 >
 	<div class="space-y-4">
 		<Field label="테넌트 네트워크" required>
-			{#if availableNetworks.length === 0}
-				<p class="text-xs text-[var(--color-ink-3)]">사용 가능한 네트워크가 없거나 조회에 실패했습니다.</p>
-			{:else}
-				<SelectInput bind:value={attachNetworkId} ariaLabel="연결할 네트워크 선택">
-					<option value="" disabled>네트워크 선택</option>
-					{#each availableNetworks as net (net.id)}
-						<option value={net.id}>{net.name} ({net.id.slice(0, 8)})</option>
-					{/each}
-				</SelectInput>
-			{/if}
+			<SearchSelect
+				id="waygate-attach-network"
+				value={attachNetworkId}
+				options={networkOptions}
+				placeholder="네트워크 선택"
+				searchPlaceholder="이름 또는 ID로 네트워크 검색"
+				emptyText="연결 가능한 네트워크가 없습니다"
+				loading={networksLoading}
+				ariaLabel="연결할 네트워크 선택"
+				onchange={selectAttachNetwork}
+			/>
 		</Field>
-		<p class="text-xs text-[var(--color-ink-3)]">
-			연결하면 VPN 클라이언트의 <code>.conf</code> AllowedIPs 에 이 네트워크 CIDR 이 추가됩니다.
+		{#if !networksLoading && availableNetworks.length === 0 && !attachError}
+			<Alert tone="warning">프로젝트에서 사용할 수 있는 내부 네트워크가 없습니다.</Alert>
+		{/if}
+		<Field label="서브넷" required>
+			<SearchSelect
+				id="waygate-attach-subnet"
+				value={attachSubnetId}
+				options={subnetOptions}
+				placeholder={attachNetworkId ? '서브넷 선택' : '먼저 네트워크를 선택하세요'}
+				searchPlaceholder="이름 또는 CIDR로 서브넷 검색"
+				emptyText="연결 가능한 서브넷이 없습니다"
+				loading={subnetsLoading}
+				disabled={!attachNetworkId || availableSubnets.length === 0}
+				ariaLabel="연결할 서브넷 선택"
+				onchange={(value) => (attachSubnetId = value)}
+			/>
+		</Field>
+		{#if attachNetworkId && !subnetsLoading && availableSubnets.length === 0 && !attachError}
+			<Alert tone="warning">선택한 네트워크에 연결 가능한 서브넷이 없습니다.</Alert>
+		{/if}
+		<p class="break-keep text-xs text-[var(--color-ink-3)]">
+			연결하면 VPN 클라이언트의 <code>.conf</code> AllowedIPs 에 선택한 서브넷 CIDR 이 추가됩니다.
 			기존에 발급된 클라이언트는 <code>.conf</code> 를 다시 내려받아야 반영됩니다.
 		</p>
 		{#if attachError}
-			<p class="text-sm text-[var(--color-state-danger)]">{attachError}</p>
+			<Alert tone="danger">{attachError}</Alert>
 		{/if}
 	</div>
+	{#snippet actions()}
+		<Button onclick={closeAttachModal} variant="secondary" disabled={attaching}>취소</Button>
+		<Button
+			onclick={submitAttach}
+			variant="primary"
+			disabled={attaching || networksLoading || subnetsLoading || !attachNetworkId || !attachSubnetId}
+		>{attaching ? '처리 중...' : '연결'}</Button>
+	{/snippet}
 </FormModal>
 
 <FormModal

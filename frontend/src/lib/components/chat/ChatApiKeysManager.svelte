@@ -38,8 +38,11 @@
 			openai: { sdk_base_url: string };
 			anthropic: { sdk_base_url: string };
 		};
+		clients: {
+			codex: { base_url: string };
+		};
 	}
-	let sdkBases = $state<{ openai: string; anthropic: string } | null>(null);
+	let sdkBases = $state<{ openai: string; anthropic: string; codex: string } | null>(null);
 	let guideLoading = $state(false);
 	let guideError = $state('');
 	let guideGeneration = 0;
@@ -64,7 +67,8 @@
 			if (generation !== guideGeneration) return;
 			sdkBases = {
 				openai: sdkBaseUrl(discovery.endpoints?.openai?.sdk_base_url),
-				anthropic: sdkBaseUrl(discovery.endpoints?.anthropic?.sdk_base_url)
+				anthropic: sdkBaseUrl(discovery.endpoints?.anthropic?.sdk_base_url),
+				codex: sdkBaseUrl(discovery.clients?.codex?.base_url)
 			};
 		} catch {
 			if (generation !== guideGeneration) return;
@@ -118,6 +122,30 @@ with Anthropic(
     for block in response.content:
         if block.type == "text":
             print(block.text)` : '');
+
+	const codexConfigExample = $derived(sdkBases ? `model_provider = "lumen"
+model = "replace-with-Lumen-model-ID"
+
+[model_providers.lumen]
+name = "Lumen Responses"
+base_url = ${JSON.stringify(sdkBases.codex)}
+env_key = "LUMEN_API_KEY"
+wire_api = "responses"
+requires_openai_auth = false
+supports_websockets = false
+
+# 같은 모델 ID가 여러 프로바이더에 있을 때만 아래 값을 설정하세요.
+# http_headers = { "X-Lumen-Provider" = "provider-id" }` : '');
+	const claudeCodeExample = $derived(sdkBases ? `export ANTHROPIC_BASE_URL=${JSON.stringify(sdkBases.anthropic)}
+export ANTHROPIC_AUTH_TOKEN="$LUMEN_API_KEY"
+export ANTHROPIC_MODEL="$LUMEN_MODEL"
+export ANTHROPIC_DEFAULT_SONNET_MODEL="$LUMEN_MODEL"
+export ANTHROPIC_DEFAULT_OPUS_MODEL="$LUMEN_MODEL"
+export ANTHROPIC_DEFAULT_HAIKU_MODEL="$LUMEN_MODEL"
+
+# 같은 모델 ID가 여러 프로바이더에 있을 때만 아래 값을 설정하세요.
+# export ANTHROPIC_CUSTOM_HEADERS="X-Lumen-Provider: $LUMEN_PROVIDER"
+claude` : '');
 
 	async function load() {
 		if (!token) return;
@@ -438,6 +466,34 @@ with Anthropic(
 				</Button>
 			</div>
 			<pre class="{codeCls} max-w-full whitespace-pre" role="region" aria-label="Anthropic SDK Python 예제"><code>{anthropicExample}</code></pre>
+			<div class="mb-1 mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+				<div>
+					<p class="text-xs text-ink-2">Codex CLI (Responses)</p>
+					<p class="mt-0.5 text-xs text-ink-3">
+						발급한 일반 Lumen API 키를 <code>LUMEN_API_KEY</code>로 내보내고, 아래 내용을
+						<code>~/.codex/config.toml</code>에 저장하세요. 모델 값은 모델 선택창의 API ID로 바꾸세요.
+					</p>
+				</div>
+				<Button variant="ghost" size="sm" onclick={() => copyText(codexConfigExample, 'Codex 설정을 복사했습니다')}>
+					설정 복사
+				</Button>
+			</div>
+			<pre class="{codeCls} max-w-full whitespace-pre" role="region" aria-label="Codex CLI 연결 설정"><code>{codexConfigExample}</code></pre>
+			<p class="mt-2 text-xs text-ink-3">
+				저장 후 <code>codex --strict-config</code>로 실행하세요. Codex는 Claude Gateway가 아닌 Lumen Responses API를 직접 사용합니다.
+			</p>
+			<div class="mb-1 mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+				<div>
+					<p class="text-xs text-ink-2">Claude Code (Anthropic API)</p>
+					<p class="mt-0.5 text-xs text-ink-3">
+						발급한 일반 Lumen API 키와 모델 선택창의 API ID를 환경 변수에 설정한 뒤 실행하세요. 현재 Claude Code는 Lumen Anthropic Messages API를 직접 사용합니다.
+					</p>
+				</div>
+				<Button variant="ghost" size="sm" onclick={() => copyText(claudeCodeExample, 'Claude Code 설정을 복사했습니다')}>
+					명령 복사
+				</Button>
+			</div>
+			<pre class="{codeCls} max-w-full whitespace-pre" role="region" aria-label="Claude Code 연결 명령"><code>{claudeCodeExample}</code></pre>
 		{:else}
 			<p class="text-xs text-ink-2">로그인 후 Lumen 연결 정보를 확인할 수 있습니다.</p>
 		{/if}

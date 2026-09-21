@@ -358,6 +358,40 @@ def get_admin_connection_for_project(project_id: str) -> openstack.connection.Co
     )
 
 
+def get_cloud_shell_project_connection() -> openstack.connection.Connection:
+    """Return a service-account connection scoped only to the dedicated shell project.
+
+    Caller tokens are never used for Zun/Cinder lifecycle operations. The project
+    scope is deployment configuration, not request input, so tenant data cannot
+    redirect service credentials into an arbitrary project.
+    """
+    import openstack
+
+    settings = get_settings()
+    project_id = settings.cloud_shell_service_project_id.strip()
+    if not project_id:
+        raise RuntimeError("Cloud Shell service project is not configured")
+    conn = openstack.connect(
+        load_envvars=False,
+        load_yaml_config=False,
+        auth_url=settings.cloud_shell_auth_url,
+        auth_type="password",
+        username=settings.os_username,
+        password=settings.os_password,
+        project_id=project_id,
+        user_domain_name=settings.os_user_domain_name,
+        project_domain_name=settings.os_project_domain_name,
+        region_name=settings.os_region_name,
+        interface=settings.cloud_shell_interface,
+        api_timeout=30,
+        verify=settings.ssl_verify,
+        app_name="afterglow-cloud-shell",
+        **_owned_service_connection_options(settings),
+    )
+    conn._afterglow_project_id = project_id
+    return conn
+
+
 def get_admin_project_connection() -> openstack.connection.Connection:
     """afterglow admin 크리덴셜로 admin 프로젝트에 스코프된 연결.
 

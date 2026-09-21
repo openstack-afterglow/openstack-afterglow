@@ -4,6 +4,7 @@
 # 사용법:
 #   docker build --target backend -t afterglow-api .
 #   docker build --target frontend -t afterglow .
+#   docker build --target cloud-shell -t afterglow-cloud-shell .
 #
 # docker-compose에서는 build.target으로 자동 지정됩니다.
 # ===========================================================================
@@ -134,6 +135,63 @@ USER appuser
 # Default command for the sole remaining Afterglow integration worker.
 CMD ["python", "-m", "app.notion_worker"]
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Cloud Shell stage
+# Ephemeral Zun container with a persistent Cinder-backed home directory.
+# ─────────────────────────────────────────────────────────────────────────────
+
+FROM python:3.12-slim AS cloud-shell-builder
+
+WORKDIR /opt/cloud-shell
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libc6-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY cloud-shell/pyproject.toml cloud-shell/uv.lock ./
+COPY cloud-shell/src/ ./src/
+RUN UV_COMPILE_BYTECODE=1 uv sync --frozen --no-dev --no-editable \
+    && gcc -O2 -D_FORTIFY_SOURCE=3 -fstack-protector-strong -Wl,-z,relro,-z,now \
+        -o /tmp/afterglow-cloud-shell-bootstrap src/bootstrap_launcher.c
+
+FROM python:3.12-slim AS cloud-shell
+
+COPY --from=cloud-shell-builder /opt/cloud-shell/.venv /opt/cloud-shell/.venv
+COPY --from=cloud-shell-builder /tmp/afterglow-cloud-shell-bootstrap /usr/local/bin/afterglow-cloud-shell-bootstrap
+COPY cloud-shell/profile.sh /etc/profile.d/afterglow-cloud-shell.sh
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash \
+    ca-certificates \
+    curl \
+    dnsutils \
+    iproute2 \
+    iputils-ping \
+    jq \
+    less \
+    netcat-openbsd \
+    openssh-client \
+    procps \
+    util-linux \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /root/.cache \
+    && groupadd --gid 1000 cloudshell \
+    && useradd --uid 1000 --gid 1000 --create-home --home-dir /home/cloudshell --shell /bin/bash cloudshell \
+    && chown root:cloudshell /usr/local/bin/afterglow-cloud-shell-bootstrap \
+    && chmod 4750 /usr/local/bin/afterglow-cloud-shell-bootstrap \
+    && chmod 0644 /etc/profile.d/afterglow-cloud-shell.sh
+
+ENV PATH="/opt/cloud-shell/.venv/bin:$PATH" \
+    HOME="/home/cloudshell" \
+    SHELL="/bin/bash"
+
+USER 1000:1000
+WORKDIR /home/cloudshell
+
+CMD ["sleep", "infinity"]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Frontend 스테이지

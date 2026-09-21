@@ -21,7 +21,9 @@ x-waygate-environment: &waygate-environment
   REDIS_URL: redis://redis:6379/6
   WAYGATE_ENCRYPTION_KEY: ${AFTERGLOW_LOCAL_ENCRYPTION_KEY:-}
   WAYGATE_CONFIG_FILE: /etc/afterglow/afterglow.conf
-  WAYGATE_CALLBACK_BASE_URL: ${WAYGATE_CALLBACK_BASE_URL:-http://localhost:8010}
+  # Keep unrelated/build-only Compose commands parseable; Waygate API/worker startup
+  # and the full-stack runner still reject an empty or VM-unreachable callback URL.
+  WAYGATE_CALLBACK_BASE_URL: ${WAYGATE_PUBLIC_BASE_URL:-}
   WAYGATE_KEY_NAME: ${WAYGATE_KEY_NAME:-}
 
 x-drover-environment: &drover-environment
@@ -330,8 +332,8 @@ services:
 
   palimpsest-bootstrap:
     build:
-      context: ../palimpsest
-      dockerfile: docker/hub/Dockerfile
+      context: ../palimpsest/hub
+      dockerfile: Dockerfile
       target: palimpsest-hub-api
     image: afterglow-local-services/palimpsest-hub-api:current
     command: palimpsest-hub-bootstrap
@@ -350,8 +352,8 @@ services:
 
   palimpsest-api:
     build:
-      context: ../palimpsest
-      dockerfile: docker/hub/Dockerfile
+      context: ../palimpsest/hub
+      dockerfile: Dockerfile
       target: palimpsest-hub-api
     image: afterglow-local-services/palimpsest-hub-api:current
     ports:
@@ -377,8 +379,8 @@ services:
 
   palimpsest-worker:
     build:
-      context: ../palimpsest
-      dockerfile: docker/hub/Dockerfile
+      context: ../palimpsest/hub
+      dockerfile: Dockerfile
       target: palimpsest-hub-worker
     image: afterglow-local-services/palimpsest-hub-worker:current
     environment: *palimpsest-environment

@@ -55,7 +55,7 @@ const SIBLING_BUILDS = [
 	['Lumen', '../lumen/docker/Dockerfile'],
 	['Drover', '../drover/docker/Dockerfile'],
 	['Waygate', '../waygate/docker/Dockerfile'],
-	['Palimpsest Hub', '../palimpsest/docker/hub/Dockerfile']
+	['Palimpsest Hub', '../palimpsest/hub/Dockerfile']
 ];
 
 function fail(message) {
@@ -214,8 +214,11 @@ function assertIsolatedConfiguration() {
 	for (const name of ['lumen-api', 'lumen-worker', 'lumen-migrate']) {
 		if (new URL(config.services[name].environment.CHAT_CHECKPOINTER_POSTGRES_URL).hostname !== 'lumen-postgres') fail(`${name} would reuse a non-local checkpointer.`);
 	}
+	const waygateCallbackBaseUrl = String(config.services['waygate-api'].environment.WAYGATE_CALLBACK_BASE_URL ?? '').trim();
+	if (!waygateCallbackBaseUrl) fail('WAYGATE_PUBLIC_BASE_URL is required for the full local stack. Set it to an HTTP(S) URL reachable from gateway VMs; use a targeted --no-deps Compose command only when Waygate is already running.');
 	console.log(`Isolation checked: ${PROJECT}; local databases, cache, volumes, network and loopback ports.`);
 	composeInputs.AFTERGLOW_LOCAL_OS_SERVICE_PROJECT_ID = config.services['drover-api'].environment.OS_SERVICE_PROJECT_ID;
+	composeInputs.WAYGATE_PUBLIC_BASE_URL = waygateCallbackBaseUrl;
 	for (const name of ['SERVICE_WAYGATE_INTERNAL_URL', 'SERVICE_DROVER_INTERNAL_URL', 'SERVICE_LUMEN_INTERNAL_URL', 'SERVICE_PALIMPSEST_INTERNAL_URL']) {
 		composeInputs[name] = config.services.backend.environment[name] ?? '';
 	}

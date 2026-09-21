@@ -14,7 +14,11 @@ import ChatApiKeysManager from '../ChatApiKeysManager.svelte';
 const discovery = {
 	endpoints: {
 		openai: { sdk_base_url: 'https://inference.example/tenant/v1' },
-		anthropic: { sdk_base_url: 'https://inference.example/tenant' }
+		anthropic: { sdk_base_url: 'https://inference.example/tenant' },
+		gateway: { base_url: 'https://inference.example/tenant/v1/claude-gateway' }
+	},
+	clients: {
+		codex: { base_url: 'https://inference.example/tenant/v1' }
 	}
 };
 
@@ -64,9 +68,21 @@ describe('ChatApiKeysManager connection guide', () => {
 		const snippets = Array.from(container.querySelectorAll('pre code'), (code) => code.textContent!);
 		expect(snippets[0]).toContain('base_url="https://inference.example/tenant/v1"');
 		expect(snippets[1]).toContain('base_url="https://inference.example/tenant"');
+		expect(snippets[2]).toContain('model_provider = "lumen"');
+		expect(snippets[2]).toContain('base_url = "https://inference.example/tenant/v1"');
+		expect(snippets[2]).toContain('wire_api = "responses"');
+		expect(snippets[2]).toContain('env_key = "LUMEN_API_KEY"');
+		expect(snippets[2]).toContain('requires_openai_auth = false');
+		expect(snippets[3]).toContain('export ANTHROPIC_BASE_URL="https://inference.example/tenant"');
+		expect(snippets[3]).toContain('export ANTHROPIC_AUTH_TOKEN="$LUMEN_API_KEY"');
+		expect(snippets[3]).toContain('export ANTHROPIC_MODEL="$LUMEN_MODEL"');
+		expect(snippets[3]).toContain('export ANTHROPIC_CUSTOM_HEADERS="X-Lumen-Provider: $LUMEN_PROVIDER"');
+		expect(snippets[3]).not.toContain('/claude-gateway');
 		expect(examples(container)).not.toContain('api.localhost');
 		expect(examples(container)).not.toContain('messages=[...]');
 		expect(screen.getAllByRole('button', { name: '예제 복사' })).toHaveLength(2);
+		expect(screen.getByRole('button', { name: '설정 복사' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: '명령 복사' })).toBeTruthy();
 		expect(snippets[0]).toContain('{"provider": os.environ["LUMEN_PROVIDER"]}');
 		expect(snippets[1]).toContain('{"provider": os.environ["LUMEN_PROVIDER"]}');
 		expect(screen.getByText(/동일한 API ID가 여러 프로바이더에 등록된 경우에만/)).toBeTruthy();
@@ -85,6 +101,20 @@ describe('ChatApiKeysManager connection guide', () => {
 
 		expect(writeText).toHaveBeenCalledWith(expect.stringContaining('from openai import OpenAI'));
 		expect(writeText).toHaveBeenCalledWith(expect.stringContaining('client.chat.completions.create'));
+
+		await fireEvent.click(screen.getByRole('button', { name: '설정 복사' }));
+		const codexConfig = writeText.mock.calls.at(-1)?.[0] as string;
+		expect(codexConfig).toContain('model_provider = "lumen"');
+		expect(codexConfig).toContain('wire_api = "responses"');
+		expect(codexConfig).toContain('base_url = "https://inference.example/tenant/v1"');
+		expect(codexConfig).not.toContain('browser-token');
+
+		await fireEvent.click(screen.getByRole('button', { name: '명령 복사' }));
+		const claudeSetup = writeText.mock.calls.at(-1)?.[0] as string;
+		expect(claudeSetup).toContain('ANTHROPIC_BASE_URL="https://inference.example/tenant"');
+		expect(claudeSetup).toContain('ANTHROPIC_AUTH_TOKEN="$LUMEN_API_KEY"');
+		expect(claudeSetup).not.toContain('browser-token');
+		expect(claudeSetup).not.toContain('/claude-gateway');
 	});
 
 	it('keeps key management available but hides examples until discovery retry succeeds', async () => {
@@ -107,8 +137,10 @@ describe('ChatApiKeysManager connection guide', () => {
 		mocks.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/compat') ? {
 			endpoints: {
 				openai: { sdk_base_url: 'https://user:password@inference.example/v1' },
-				anthropic: discovery.endpoints.anthropic
-			}
+				anthropic: discovery.endpoints.anthropic,
+				gateway: discovery.endpoints.gateway
+			},
+			clients: discovery.clients,
 		} : []));
 		const { container } = render(ChatApiKeysManager);
 		await screen.findByRole('alert');
@@ -127,10 +159,14 @@ describe('ChatApiKeysManager connection guide', () => {
 		await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/api/v1/chat/compat', 'browser-token', 'project-1'));
 		auth.update((state) => ({ ...state, projectId: 'project-2' }));
 		await waitFor(() => expect(examples(container)).toContain(discovery.endpoints.openai.sdk_base_url));
-		resolvePrevious({ endpoints: {
-			openai: { sdk_base_url: 'https://previous.example/v1' },
-			anthropic: { sdk_base_url: 'https://previous.example' }
-		} });
+		resolvePrevious({
+			endpoints: {
+				openai: { sdk_base_url: 'https://previous.example/v1' },
+				anthropic: { sdk_base_url: 'https://previous.example' },
+				gateway: { base_url: 'https://previous.example/v1/claude-gateway' }
+			},
+			clients: { codex: { base_url: 'https://previous.example/v1' } }
+		});
 		await previous;
 		await tick();
 		expect(examples(container)).toContain(discovery.endpoints.openai.sdk_base_url);

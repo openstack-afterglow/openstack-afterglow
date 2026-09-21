@@ -7,6 +7,20 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Lumen active-path history와 Claude Gateway 연결** — 채팅은 Lumen의 revision-fenced opaque cursor를 사용해 40개씩 최대 3페이지를 유지하고 처음/이전/다음/최신 탐색, prepend viewport 보존, stale-cursor 단일 복구, old-window 새 응답/전송 처리를 제공한다. Claude Code는 public device issue/poll을 Lumen과 직접 수행하고 Afterglow의 `/oauth/claude/authorize` shell 및 authenticated BFF로 현재 사용자·프로젝트 승인/거부를 완료하며, 설정 화면은 discovery가 광고한 Gateway 주소만 안내한다.
+- **전역 Cloud Shell** — Root header에서 현재 프로젝트 권한을 승인한 뒤 전용 service project의 ephemeral Zun 세션과 사용자×프로젝트별 5GiB Cinder 홈을 사용하는 binary xterm을 연다. 사용자 전역 single-session ticket/lease, project switch·logout cleanup, idle/max expiry와 orphan reconciliation, HMAC-managed reset, Origin·frame 검증, tmpfs Keystone credential, non-root/capability-free multi-architecture image를 포함한다. Mobile bottom sheet와 tablet/desktop resize dock, token-based 공통 terminal theme, Kubernetes/Helm/Kolla config·precheck, API/security/deployment 문서와 opt-in live scenario를 함께 제공한다.
+- **Waygate 명시적 테넌트 서브넷 연결** — VPN 상세 화면에서 프로젝트 내부 네트워크와 IPv4 서브넷을 검색·선택해 정확한 `{network_id, subnet_id, nat_mode}` 계약으로 연결하고, client 설정 다운로드·QR·연결 상태를 panel-safe 반응형 카드로 제공한다. Waygate는 선택된 서브넷의 Neutron port를 생성·추적하고 attach/detach 실패를 rollback하며, gateway VM callback은 operator가 지정한 직접 public HTTP(S) origin만 허용한다.
+
+### Fixed
+
+- **VM cloud-init bootstrap 경계와 GPU monitoring 설치 복구** — library가 없는 plain/GPU/data-mount VM에서 legacy OverlayFS artifact, layer health token/report, `union_*` Nova metadata를 제거하고 typed empty cloud-config list를 보장했다. GPU/data mount bootstrap은 독립 유지하며 DCGM GitHub tarball/custom unit을 NVIDIA repository의 `datacenter-gpu-manager`·`datacenter-gpu-manager-exporter`와 vendor units로 교체하고 repository architecture를 fail-closed 매핑한다.
+
+- **Cloud Shell terminal·live smoke 안전성** — 비동기 xterm mount 뒤 `ready` 전이가 stdin을 실제로 활성화하고, dock 최소화 중에도 같은 terminal instance와 scrollback을 유지한다. Destructive live smoke는 명시적 disposable username·확인 문구를 요구하고 기존 session/home이 있으면 mutation 전에 거부한다.
+- **선택적 Compose 재빌드의 Waygate callback parse 실패** — shared Compose anchor의 필수 변수 보간이 모든 service 선택 전에 실행되던 문제를 제거했다. 이미 실행 중인 dependency를 유지하는 `--no-deps` frontend/backend 재생성은 Waygate public URL 없이 parse할 수 있고, full local stack과 Waygate API/worker는 실제 VM-reachable callback URL을 계속 fail-closed로 요구한다.
+- **토폴로지 트렁크 배지가 스위치 카드와 같은 숫자를 반복하던 문제** — 1.23.0 에서 provider uplink 배지만 접었으나, tenant 트렁크 배지는 `trunkNetIds` 가 항상 네트워크 하나라 `traffic.networks[netId]` 그대로였고 이는 바로 옆 가상 스위치 카드가 이미 찍는 값과 같았다. 이제 배지는 **네트워크를 2개 이상 합칠 때만** 그려 스위치 카드가 못 보여주는 것만 맡는다. 값은 사라지지 않고 스위치 카드에 그대로 있으며, 트렁크 선의 굵기(`switchThroughput` 추정)와 hover 설명도 유지된다. 배지 표시 임계도 카드가 보조 행을 숨기는 LOD 경계(`k < 0.5`)에 맞춰, 카드는 비었는데 배지만 떠 있던 구간을 없앴다.
+
 ## [1.23.0] - 2026-09-18
 
 ### Changed

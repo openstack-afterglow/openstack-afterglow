@@ -25,9 +25,8 @@ import os
 import sys
 import tempfile
 import tomllib
-from urllib.parse import urlparse
-
 from pathlib import Path
+from urllib.parse import urlparse
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 상수
@@ -95,9 +94,7 @@ def _config_override_paths(config_path: Path) -> list[Path]:
     return [overrides[key] for key in sorted(overrides)]
 
 
-def load_config(
-    config_path: Path, extra_override_paths: list[Path] | None = None
-) -> dict:
+def load_config(config_path: Path, extra_override_paths: list[Path] | None = None) -> dict:
     """afterglow.conf와 오버라이드 파일을 로드하고 딥 머지한다."""
     with open(config_path, "rb") as f:
         cfg = tomllib.load(f)
@@ -106,9 +103,7 @@ def load_config(
     for override_path in extra_override_paths or []:
         resolved_path = override_path.resolve()
         if not resolved_path.is_file():
-            raise FileNotFoundError(
-                f"오버라이드 파일을 찾을 수 없습니다: {resolved_path}"
-            )
+            raise FileNotFoundError(f"오버라이드 파일을 찾을 수 없습니다: {resolved_path}")
         if resolved_path not in override_paths:
             override_paths.append(resolved_path)
     # 알파벳순으로 자동 오버라이드를 적용한 뒤 명시적 오버라이드를 적용한다.
@@ -254,13 +249,9 @@ def _derive_public_api_base_for_k8s(cfg: dict) -> str:
 def _validate_k8s_secret_key(secret_key: str) -> None:
     """K8s 배포용 SECRET_KEY가 운영 fail-closed 조건을 만족하는지 확인."""
     if not secret_key:
-        raise ValueError(
-            "K8s secret.yaml 생성을 위해 [app].secret_key 또는 SECRET_KEY 값을 설정해야 합니다."
-        )
+        raise ValueError("K8s secret.yaml 생성을 위해 [app].secret_key 또는 SECRET_KEY 값을 설정해야 합니다.")
     if secret_key == "change-me-in-production":
-        raise ValueError(
-            "K8s secret.yaml에는 기본 SECRET_KEY(change-me-in-production)를 사용할 수 없습니다."
-        )
+        raise ValueError("K8s secret.yaml에는 기본 SECRET_KEY(change-me-in-production)를 사용할 수 없습니다.")
     if len(secret_key) < 32:
         raise ValueError("K8s secret.yaml의 SECRET_KEY는 32자 이상이어야 합니다.")
 
@@ -378,9 +369,7 @@ def render_secret(cfg: dict, namespace: str = "afterglow") -> str:
         )
 
     ssh_private_key = builder.get("ssh_private_key", "")
-    builder_key_value = (
-        _yaml_block_scalar(ssh_private_key) if ssh_private_key else _yaml_str("")
-    )
+    builder_key_value = _yaml_block_scalar(ssh_private_key) if ssh_private_key else _yaml_str("")
     lines.extend(
         [
             "",
@@ -416,6 +405,7 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     nova = cfg.get("nova", {})
     gpu = cfg.get("gpu", {})
     svc = cfg.get("services", {})
+    cloud_shell = cfg.get("cloud_shell", {})
     instance_health = cfg.get("instance_health", {})
     builder = cfg.get("builder", {})
     palimpsest = cfg.get("palimpsest", {})
@@ -440,12 +430,8 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     lines.append("[openstack]")
     lines.append(f"auth_url = {_toml_str(os_cfg.get('auth_url', ''))}")
     lines.append(f"project_name = {_toml_str(os_cfg.get('project_name', 'admin'))}")
-    lines.append(
-        f"project_domain_name = {_toml_str(os_cfg.get('project_domain_name', 'Default'))}"
-    )
-    lines.append(
-        f"user_domain_name = {_toml_str(os_cfg.get('user_domain_name', 'Default'))}"
-    )
+    lines.append(f"project_domain_name = {_toml_str(os_cfg.get('project_domain_name', 'Default'))}")
+    lines.append(f"user_domain_name = {_toml_str(os_cfg.get('user_domain_name', 'Default'))}")
     lines.append(f"region_name = {_toml_str(os_cfg.get('region_name', 'RegionOne'))}")
     lines.append(f"username = {_toml_str(os_cfg.get('username', 'admin'))}")
     lines.append("# password는 secret.yaml의 OS_PASSWORD 환경변수로 주입됩니다")
@@ -465,28 +451,18 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     lines.append(f"trash_retention_days = {os_cfg.get('trash_retention_days', 30)}")
     lines.append("")
     lines.append("# Manila NFS 설정")
-    lines.append(
-        f"manila_nfs_root_squash = {_toml_bool(os_cfg.get('manila_nfs_root_squash', True))}"
-    )
-    lines.append(
-        f"manila_nfs_sec_flavor = {_toml_str(os_cfg.get('manila_nfs_sec_flavor', 'sys'))}"
-    )
-    lines.append(
-        f"manila_cephx_key_timeout_seconds = {os_cfg.get('manila_cephx_key_timeout_seconds', 300)}"
-    )
+    lines.append(f"manila_nfs_root_squash = {_toml_bool(os_cfg.get('manila_nfs_root_squash', True))}")
+    lines.append(f"manila_nfs_sec_flavor = {_toml_str(os_cfg.get('manila_nfs_sec_flavor', 'sys'))}")
+    lines.append(f"manila_cephx_key_timeout_seconds = {os_cfg.get('manila_cephx_key_timeout_seconds', 300)}")
     lines.append(f"interface = {_toml_str(os_cfg.get('interface', 'internal'))}")
     lines.append("")
     # [ceph]
     lines.append("[ceph]")
     lines.append(f"rbd_conf_path = {_toml_str(ceph.get('rbd_conf_path', ''))}")
     lines.append(f"rbd_keyring_path = {_toml_str(ceph.get('rbd_keyring_path', ''))}")
-    lines.append(
-        f"rbd_client_name = {_toml_str(ceph.get('rbd_client_name', 'client.afterglow-rbd'))}"
-    )
+    lines.append(f"rbd_client_name = {_toml_str(ceph.get('rbd_client_name', 'client.afterglow-rbd'))}")
     lines.append(f"rbd_cluster_fsid = {_toml_str(ceph.get('rbd_cluster_fsid', ''))}")
-    lines.append(
-        f"rbd_command_timeout_seconds = {ceph.get('rbd_command_timeout_seconds', 30)}"
-    )
+    lines.append(f"rbd_command_timeout_seconds = {ceph.get('rbd_command_timeout_seconds', 30)}")
     lines.append("[ceph.rbd_volume_pools]")
     for backend, pool in sorted((ceph.get("rbd_volume_pools", {}) or {}).items()):
         lines.append(f"{_toml_str(str(backend))} = {_toml_str(str(pool))}")
@@ -504,12 +480,8 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     lines.append("")
     lines.append("# 로고 및 파비콘 경로 (frontend/static/ 기준)")
     lines.append(f"logo_path = {_toml_str(app.get('logo_path', '/logo.png'))}")
-    lines.append(
-        f"logo_dark_path = {_toml_str(app.get('logo_dark_path', '/logo-white.png'))}"
-    )
-    lines.append(
-        f"logo_light_path = {_toml_str(app.get('logo_light_path', '/logo-dark.png'))}"
-    )
+    lines.append(f"logo_dark_path = {_toml_str(app.get('logo_dark_path', '/logo-white.png'))}")
+    lines.append(f"logo_light_path = {_toml_str(app.get('logo_light_path', '/logo-dark.png'))}")
     lines.append(f"favicon_path = {_toml_str(app.get('favicon_path', '/favicon.ico'))}")
     lines.append("")
     lines.append("# 프론트엔드 대시보드 자동 새로고침 간격 (밀리초)")
@@ -519,12 +491,8 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     lines.append(f"frontend_base_url = {_toml_str(app.get('frontend_base_url', ''))}")
     lines.append(f"public_api_base = {_toml_str(public_api_base)}")
     lines.append("")
-    lines.append(
-        "# 리버스 프록시 신뢰 CIDR — X-Forwarded-For / X-Real-IP 를 신뢰할 주소 범위"
-    )
-    lines.append(
-        f"trusted_proxies = {_toml_str(app.get('trusted_proxies', '127.0.0.1/32,::1/128'))}"
-    )
+    lines.append("# 리버스 프록시 신뢰 CIDR — X-Forwarded-For / X-Real-IP 를 신뢰할 주소 범위")
+    lines.append(f"trusted_proxies = {_toml_str(app.get('trusted_proxies', '127.0.0.1/32,::1/128'))}")
     lines.append("")
 
     # [logging] (선택)
@@ -543,16 +511,10 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     lines.append(f"sentinel_master_name = {_toml_str(REDIS_SENTINEL_MASTER)}")
     lines.append(f"sentinel_hosts = {_toml_str(REDIS_SENTINEL_K8S)}")
     lines.append("# TTL 티어 (초)")
-    lines.append(
-        f"ttl_fast = {cache.get('ttl_fast', 15)}      # 인스턴스, 볼륨, 플로팅IP"
-    )
-    lines.append(
-        f"ttl_normal = {cache.get('ttl_normal', 30)}    # 네트워크, 라우터, 대시보드"
-    )
+    lines.append(f"ttl_fast = {cache.get('ttl_fast', 15)}      # 인스턴스, 볼륨, 플로팅IP")
+    lines.append(f"ttl_normal = {cache.get('ttl_normal', 30)}    # 네트워크, 라우터, 대시보드")
     lines.append(f"ttl_slow = {cache.get('ttl_slow', 60)}      # 키페어, 보안그룹")
-    lines.append(
-        f"ttl_static = {cache.get('ttl_static', 300)}   # 이미지, 플레이버, 토큰 검증"
-    )
+    lines.append(f"ttl_static = {cache.get('ttl_static', 300)}   # 이미지, 플레이버, 토큰 검증")
     lines.append(f"default_ttl_seconds = {cache.get('default_ttl_seconds', 30)}")
     lines.append(f"backend = {_toml_str(cache.get('backend', 'redis'))}")
     lines.append(f"dynamic_threshold_low = {cache.get('dynamic_threshold_low', 5)}")
@@ -570,9 +532,7 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     lines.append(f"timeout_seconds = {sess.get('timeout_seconds', 3600)}")
     lines.append(f"jwt_access_ttl = {sess.get('jwt_access_ttl', 900)}")
     lines.append(f"jwt_refresh_ttl = {sess.get('jwt_refresh_ttl', 604800)}")
-    lines.append(
-        f"token_ip_binding_mode = {_toml_str(sess.get('token_ip_binding_mode', 'subnet'))}"
-    )
+    lines.append(f"token_ip_binding_mode = {_toml_str(sess.get('token_ip_binding_mode', 'subnet'))}")
     lines.append("")
 
     # [nova]
@@ -625,6 +585,7 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
         "palimpsest",
         "chat",
         "mcp",
+        "cloud_shell",
     ):
         if svc_name in svc:
             lines.append(f"{svc_name} = {_toml_bool(svc[svc_name])}")
@@ -636,15 +597,34 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     ):
         if endpoint_name in svc:
             lines.append(f"{endpoint_name} = {_toml_str(svc[endpoint_name])}")
+    lines.append("")
+    lines.append("[cloud_shell]")
+    for key, default in (
+        ("service_project_id", ""),
+        ("image", ""),
+        ("network_id", ""),
+        ("security_group", ""),
+        ("auth_url", ""),
+        ("interface", "internal"),
+        ("volume_type", ""),
+        ("home_size_gib", 5),
+        ("cpu", 1.0),
+        ("memory_mib", 1024),
+        ("idle_timeout_seconds", 1200),
+        ("max_session_seconds", 3600),
+        ("ticket_ttl_seconds", 60),
+        ("reconcile_interval_seconds", 60),
+        ("zun_websocket_origin", ""),
+    ):
+        lines.append(f"{key} = {_toml_val(cloud_shell.get(key, default))}")
+    lines.append("")
     if mcp:
         lines.append("[mcp]")
         for key in ("public_url", "oauth_consent_url"):
             if key in mcp:
                 lines.append(f"{key} = {_toml_str(mcp[key])}")
         if "lumen_service_token" in mcp:
-            lines.append(
-                "# lumen_service_token is injected as LUMEN_MCP_SERVICE_TOKEN from secret.yaml"
-            )
+            lines.append("# lumen_service_token is injected as LUMEN_MCP_SERVICE_TOKEN from secret.yaml")
         for key in (
             "authorization_ticket_ttl_seconds",
             "access_token_ttl_seconds",
@@ -667,21 +647,13 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
 
     # [instance_health]
     lines.append("[instance_health]")
-    lines.append(
-        f"callback_base_url = {_toml_str(instance_health.get('callback_base_url', ''))}"
-    )
+    lines.append(f"callback_base_url = {_toml_str(instance_health.get('callback_base_url', ''))}")
     lines.append("")
     # [k3s]
     lines.append("[k3s]")
-    lines.append(
-        "# kubeconfig_encryption_key is injected as K3S_KUBECONFIG_ENCRYPTION_KEY from secret.yaml"
-    )
-    lines.append(
-        "# gpu_admission_token is injected as K3S_GPU_ADMISSION_TOKEN from secret.yaml"
-    )
-    lines.append(
-        "# provisioning_token is injected as K3S_PROVISIONING_TOKEN from secret.yaml"
-    )
+    lines.append("# kubeconfig_encryption_key is injected as K3S_KUBECONFIG_ENCRYPTION_KEY from secret.yaml")
+    lines.append("# gpu_admission_token is injected as K3S_GPU_ADMISSION_TOKEN from secret.yaml")
+    lines.append("# provisioning_token is injected as K3S_PROVISIONING_TOKEN from secret.yaml")
     lines.append("")
     # [worker_runtime] (non-secret runtime manager config)
     wr_workers = worker_runtime.get("workers", {})
@@ -703,18 +675,10 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     lines.append(f"socket_path = {_toml_str(wr_docker.get('socket_path', ''))}")
     lines.append(f"image = {_toml_str(wr_docker.get('image', ''))}")
     lines.append(f"network = {_toml_str(wr_docker.get('network', ''))}")
-    lines.append(
-        f"config_mount = {_toml_str(wr_docker.get('config_mount', '/app/afterglow.conf'))}"
-    )
-    lines.append(
-        f"config_host_path = {_toml_str(wr_docker.get('config_host_path', ''))}"
-    )
-    lines.append(
-        f"gpu_config_mount = {_toml_str(wr_docker.get('gpu_config_mount', '/app/config.gpu.toml'))}"
-    )
-    lines.append(
-        f"gpu_config_host_path = {_toml_str(wr_docker.get('gpu_config_host_path', ''))}"
-    )
+    lines.append(f"config_mount = {_toml_str(wr_docker.get('config_mount', '/app/afterglow.conf'))}")
+    lines.append(f"config_host_path = {_toml_str(wr_docker.get('config_host_path', ''))}")
+    lines.append(f"gpu_config_mount = {_toml_str(wr_docker.get('gpu_config_mount', '/app/config.gpu.toml'))}")
+    lines.append(f"gpu_config_host_path = {_toml_str(wr_docker.get('gpu_config_host_path', ''))}")
     lines.append(f"logs_mount = {_toml_str(wr_docker.get('logs_mount', '/app/logs'))}")
     lines.append(f"logs_host_path = {_toml_str(wr_docker.get('logs_host_path', ''))}")
     lines.append(
@@ -722,18 +686,14 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     )
     lines.append("")
     lines.append("[worker_runtime.kubernetes]")
-    lines.append(
-        f"namespace = {_toml_str(namespace or wr_k8s.get('namespace', 'afterglow'))}"
-    )
+    lines.append(f"namespace = {_toml_str(namespace or wr_k8s.get('namespace', 'afterglow'))}")
     lines.append(
         f"service_account_token_path = {_toml_str(wr_k8s.get('service_account_token_path', '/var/run/secrets/kubernetes.io/serviceaccount/token'))}"
     )
     lines.append(
         f"service_account_ca_path = {_toml_str(wr_k8s.get('service_account_ca_path', '/var/run/secrets/kubernetes.io/serviceaccount/ca.crt'))}"
     )
-    lines.append(
-        f"manage_deployments = {_toml_bool(wr_k8s.get('manage_deployments', False))}"
-    )
+    lines.append(f"manage_deployments = {_toml_bool(wr_k8s.get('manage_deployments', False))}")
     lines.append("")
 
     # [database] (url은 비밀, 나머지는 포함)
@@ -753,9 +713,7 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
         if "unhealthy_seconds" in db:
             lines.append(f"unhealthy_seconds = {db['unhealthy_seconds']}")
         if "db_auto_backup_cron" in db:
-            lines.append(
-                f"db_auto_backup_cron = {_toml_str(db['db_auto_backup_cron'])}"
-            )
+            lines.append(f"db_auto_backup_cron = {_toml_str(db['db_auto_backup_cron'])}")
         lines.append("")
 
     # [cors]
@@ -766,19 +724,13 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     # [gitlab_oidc]
     lines.append("[gitlab_oidc]")
     lines.append(f"enabled = {_toml_bool(oidc.get('enabled', False))}")
-    lines.append(
-        f"gitlab_url = {_toml_str(oidc.get('gitlab_url', 'https://gitlab.com'))}"
-    )
+    lines.append(f"gitlab_url = {_toml_str(oidc.get('gitlab_url', 'https://gitlab.com'))}")
     lines.append(f"client_id = {_toml_str(oidc.get('client_id', ''))}")
-    lines.append(
-        "# client_secret은 secret.yaml의 GITLAB_OIDC_CLIENT_SECRET 환경변수로 주입됩니다"
-    )
+    lines.append("# client_secret은 secret.yaml의 GITLAB_OIDC_CLIENT_SECRET 환경변수로 주입됩니다")
     lines.append(f"idp_id = {_toml_str(oidc.get('idp_id', 'gitlab'))}")
     lines.append(f"protocol_id = {_toml_str(oidc.get('protocol_id', 'openid'))}")
     lines.append(f"redirect_uri = {_toml_str(oidc.get('redirect_uri', ''))}")
-    lines.append(
-        f"scopes = {_toml_str(oidc.get('scopes', 'openid email profile read_user'))}"
-    )
+    lines.append(f"scopes = {_toml_str(oidc.get('scopes', 'openid email profile read_user'))}")
     lines.append("")
 
     # [smtp]
@@ -789,9 +741,7 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
         lines.append(f"port = {smtp.get('port', 587)}")
         lines.append(f"username = {_toml_str(smtp.get('username', ''))}")
         lines.append("# password는 secret.yaml의 SMTP_PASSWORD 환경변수로 주입됩니다")
-        lines.append(
-            f"from_address = {_toml_str(smtp.get('from_address', 'noreply@afterglow.example.com'))}"
-        )
+        lines.append(f"from_address = {_toml_str(smtp.get('from_address', 'noreply@afterglow.example.com'))}")
         lines.append(f"from_name = {_toml_str(smtp.get('from_name', 'Afterglow'))}")
         lines.append(f"use_tls = {_toml_bool(smtp.get('use_tls', True))}")
         lines.append(f"timeout_seconds = {smtp.get('timeout_seconds', 10)}")
@@ -803,87 +753,47 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
 
     # [monitoring]
     lines.append("[monitoring]")
-    lines.append(
-        f"prometheus_base_url = {_toml_str(mon.get('prometheus_base_url', 'http://prometheus:9090'))}"
-    )
-    lines.append(
-        f"prometheus_username = {_toml_str(mon.get('prometheus_username', ''))}"
-    )
-    lines.append(
-        "# prometheus_password는 secret.yaml의 PROMETHEUS_PASSWORD 환경변수로 주입됩니다"
-    )
+    lines.append(f"prometheus_base_url = {_toml_str(mon.get('prometheus_base_url', 'http://prometheus:9090'))}")
+    lines.append(f"prometheus_username = {_toml_str(mon.get('prometheus_username', ''))}")
+    lines.append("# prometheus_password는 secret.yaml의 PROMETHEUS_PASSWORD 환경변수로 주입됩니다")
     lines.append(f"scrape_cidr = {_toml_str(mon.get('scrape_cidr', ''))}")
     lines.append(f"auto_sg_enabled = {_toml_bool(mon.get('auto_sg_enabled', True))}")
-    lines.append(
-        f"node_exporter_sg_name = {_toml_str(mon.get('node_exporter_sg_name', 'node_exporter'))}"
-    )
-    lines.append(
-        f"dcgm_exporter_sg_name = {_toml_str(mon.get('dcgm_exporter_sg_name', 'dcgm_exporter'))}"
-    )
+    lines.append(f"node_exporter_sg_name = {_toml_str(mon.get('node_exporter_sg_name', 'node_exporter'))}")
+    lines.append(f"dcgm_exporter_sg_name = {_toml_str(mon.get('dcgm_exporter_sg_name', 'dcgm_exporter'))}")
     lines.append(f"node_exporter_port = {mon.get('node_exporter_port', 9100)}")
     lines.append(f"dcgm_exporter_port = {mon.get('dcgm_exporter_port', 9400)}")
     lines.append(f"libvirt_exporter_port = {mon.get('libvirt_exporter_port', 9177)}")
-    lines.append(
-        f"gpu_flavor_prefix = {_toml_str(mon.get('gpu_flavor_prefix', 'gpu.'))}"
-    )
+    lines.append(f"gpu_flavor_prefix = {_toml_str(mon.get('gpu_flavor_prefix', 'gpu.'))}")
     lines.append(f"grafana_base_url = {_toml_str(mon.get('grafana_base_url', ''))}")
     lines.append("# sd_token은 secret.yaml의 MONITORING_SD_TOKEN 환경변수로 주입됩니다")
     dashboards = mon.get("dashboards", {})
     lines.append("")
     lines.append("[monitoring.dashboards]")
-    lines.append(
-        f"node_uid = {_toml_str(dashboards.get('node_uid', 'afterglow-node'))}"
-    )
-    lines.append(
-        f"rabbitmq_uid = {_toml_str(dashboards.get('rabbitmq_uid', 'afterglow-rabbitmq'))}"
-    )
-    lines.append(
-        f"mysqld_uid = {_toml_str(dashboards.get('mysqld_uid', 'afterglow-mysqld'))}"
-    )
-    lines.append(
-        f"memcached_uid = {_toml_str(dashboards.get('memcached_uid', 'afterglow-memcached'))}"
-    )
-    lines.append(
-        f"etcd_uid = {_toml_str(dashboards.get('etcd_uid', 'afterglow-etcd'))}"
-    )
-    lines.append(
-        f"haproxy_uid = {_toml_str(dashboards.get('haproxy_uid', 'afterglow-haproxy'))}"
-    )
-    lines.append(
-        f"libvirt_uid = {_toml_str(dashboards.get('libvirt_uid', 'afterglow-libvirt'))}"
-    )
-    lines.append(
-        f"openstack_uid = {_toml_str(dashboards.get('openstack_uid', 'afterglow-openstack'))}"
-    )
-    lines.append(
-        f"ceph_uid = {_toml_str(dashboards.get('ceph_uid', 'afterglow-ceph'))}"
-    )
-    lines.append(
-        f"instance_cpu_uid = {_toml_str(dashboards.get('instance_cpu_uid', 'afterglow-instance-cpu'))}"
-    )
-    lines.append(
-        f"instance_gpu_uid = {_toml_str(dashboards.get('instance_gpu_uid', 'afterglow-instance-gpu'))}"
-    )
+    lines.append(f"node_uid = {_toml_str(dashboards.get('node_uid', 'afterglow-node'))}")
+    lines.append(f"rabbitmq_uid = {_toml_str(dashboards.get('rabbitmq_uid', 'afterglow-rabbitmq'))}")
+    lines.append(f"mysqld_uid = {_toml_str(dashboards.get('mysqld_uid', 'afterglow-mysqld'))}")
+    lines.append(f"memcached_uid = {_toml_str(dashboards.get('memcached_uid', 'afterglow-memcached'))}")
+    lines.append(f"etcd_uid = {_toml_str(dashboards.get('etcd_uid', 'afterglow-etcd'))}")
+    lines.append(f"haproxy_uid = {_toml_str(dashboards.get('haproxy_uid', 'afterglow-haproxy'))}")
+    lines.append(f"libvirt_uid = {_toml_str(dashboards.get('libvirt_uid', 'afterglow-libvirt'))}")
+    lines.append(f"openstack_uid = {_toml_str(dashboards.get('openstack_uid', 'afterglow-openstack'))}")
+    lines.append(f"ceph_uid = {_toml_str(dashboards.get('ceph_uid', 'afterglow-ceph'))}")
+    lines.append(f"instance_cpu_uid = {_toml_str(dashboards.get('instance_cpu_uid', 'afterglow-instance-cpu'))}")
+    lines.append(f"instance_gpu_uid = {_toml_str(dashboards.get('instance_gpu_uid', 'afterglow-instance-gpu'))}")
     lines.append("")
 
     # [notion]
     if notion.get("config_encryption_key"):
         lines.append("[notion]")
-        lines.append(
-            "# config_encryption_key는 secret.yaml의 NOTION_CONFIG_ENCRYPTION_KEY 환경변수로 주입됩니다"
-        )
+        lines.append("# config_encryption_key는 secret.yaml의 NOTION_CONFIG_ENCRYPTION_KEY 환경변수로 주입됩니다")
         lines.append("")
 
     # [security]
     security = cfg.get("security", {})
     lines.append("[security]")
-    lines.append(
-        f"admin_legacy_project_policy = {_toml_bool(security.get('admin_legacy_project_policy', False))}"
-    )
+    lines.append(f"admin_legacy_project_policy = {_toml_bool(security.get('admin_legacy_project_policy', False))}")
     lines.append(f"login_max_attempts = {security.get('login_max_attempts', 10)}")
-    lines.append(
-        f"login_lockout_seconds = {security.get('login_lockout_seconds', 300)}"
-    )
+    lines.append(f"login_lockout_seconds = {security.get('login_lockout_seconds', 300)}")
     lines.append(f"login_backoff_base = {security.get('login_backoff_base', 2)}")
     lines.append("")
 
@@ -964,11 +874,7 @@ def render_configmap(cfg: dict, namespace: str = "afterglow") -> str:
     lines.extend(
         [
             "  ceph.conf: |",
-            *(
-                ["    " + line for line in ceph_conf_content.splitlines()]
-                if ceph_conf_content
-                else ["    "]
-            ),
+            *(["    " + line for line in ceph_conf_content.splitlines()] if ceph_conf_content else ["    "]),
         ]
     )
 
@@ -1198,10 +1104,7 @@ def main() -> None:
     print("  적용 방법:")
     print(f"    kubectl apply -f {secret_path}")
     print(f"    kubectl apply -f {configmap_path}")
-    print(
-        f"    # grafana-deployment.yaml is Helm/ArgoCD-managed; do not apply it directly: "
-        f"{grafana_deployment_path}"
-    )
+    print(f"    # grafana-deployment.yaml is Helm/ArgoCD-managed; do not apply it directly: {grafana_deployment_path}")
     print(f"    kubectl rollout restart deployment -n {args.namespace}")
 
 

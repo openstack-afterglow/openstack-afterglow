@@ -1,11 +1,14 @@
 """libraries=[] 시 Manila·upper 볼륨 미호출 회귀 테스트 (sync + SSE)."""
 
+import base64
 import json
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.models.compute import InstanceInfo
+from app.services import cloudinit
 from app.services.resource_policies import ResourcePolicyValidationError
 
 
@@ -101,7 +104,7 @@ async def test_sync_no_libraries_skips_manila_and_upper(client, mock_conn):
             return_value=_make_volume("boot-vol"),
         ),
         patch("app.api.compute.instances.cinder.rename_volume", return_value=None),
-        patch("app.api.compute.instances.nova.create_server", return_value=_make_server()),
+        patch("app.api.compute.instances.nova.create_server", return_value=_make_server()) as mock_create_server,
         patch("app.api.compute.instances.neutron.list_networks", return_value=[]),
         patch(
             "app.api.compute.instances.instance_orch.resolve_default_network",
@@ -113,7 +116,6 @@ async def test_sync_no_libraries_skips_manila_and_upper(client, mock_conn):
             new_callable=AsyncMock,
             return_value=[],
         ),
-        patch("app.api.compute.instances.instance_orch.build_instance_meta", return_value={}),
         patch(
             "app.api.compute.instances.instance_orch.try_issue_health_token",
             new_callable=AsyncMock,
@@ -134,6 +136,8 @@ async def test_sync_no_libraries_skips_manila_and_upper(client, mock_conn):
     mock_manila.assert_not_called()
     mock_upper.assert_not_called()
     mock_health_token.assert_not_called()
+    metadata = mock_create_server.call_args.kwargs["metadata"]
+    assert not any(key.startswith("union_") for key in metadata)
 
 
 @pytest.mark.asyncio
@@ -146,7 +150,7 @@ async def test_sse_no_libraries_skips_manila_and_upper(client, mock_conn):
             return_value=_make_volume("boot-vol"),
         ),
         patch("app.api.compute.instances.cinder.rename_volume", return_value=None),
-        patch("app.api.compute.instances.nova.create_server", return_value=_make_server()),
+        patch("app.api.compute.instances.nova.create_server", return_value=_make_server()) as mock_create_server,
         patch("app.api.compute.instances.neutron.list_networks", return_value=[]),
         patch(
             "app.api.compute.instances.instance_orch.resolve_default_network",
@@ -158,7 +162,6 @@ async def test_sse_no_libraries_skips_manila_and_upper(client, mock_conn):
             new_callable=AsyncMock,
             return_value=[],
         ),
-        patch("app.api.compute.instances.instance_orch.build_instance_meta", return_value={}),
         patch(
             "app.api.compute.instances.instance_orch.try_issue_health_token",
             new_callable=AsyncMock,
@@ -180,7 +183,114 @@ async def test_sse_no_libraries_skips_manila_and_upper(client, mock_conn):
     mock_manila.assert_not_called()
     mock_upper.assert_not_called()
     mock_health_token.assert_not_called()
+    metadata = mock_create_server.call_args.kwargs["metadata"]
+    assert not any(key.startswith("union_") for key in metadata)
 
     events = [json.loads(line[6:]) for line in resp.text.splitlines() if line.startswith("data: ")]
     steps = [e.get("step") for e in events]
     assert "completed" in steps, f"completed 이벤트 없음: {steps}"
+
+
+@pytest.mark.asyncio
+async def test_sse_gpu_only_generates_gpu_userdata_without_layer_state(client, mock_conn):
+    admission = SimpleNamespace(gpu_requested={"GPU": 1})
+    with (
+        patch("app.api.compute.instances.nova.list_flavors", return_value=[_make_flavor()]),
+        patch("app.services.flavor_eligibility.admit_flavor", new_callable=AsyncMock, return_value=admission),
+        patch("app.services.flavor_eligibility.release_admission", new_callable=AsyncMock),
+        patch(
+            "app.api.compute.instances.cinder.create_volume_from_image",
+            return_value=_make_volume("boot-vol"),
+        ),
+        patch("app.api.compute.instances.cinder.rename_volume", return_value=None),
+        patch("app.api.compute.instances.nova.create_server", return_value=_make_server()) as mock_create_server,
+        patch("app.api.compute.instances.neutron.list_networks", return_value=[]),
+        patch(
+            "app.api.compute.instances.instance_orch.resolve_default_network",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "app.api.compute.instances.instance_orch.compute_effective_security_groups",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+        patch(
+            "app.api.compute.instances.instance_orch.try_issue_health_token",
+            new_callable=AsyncMock,
+            return_value=("health-id", "https://health.example", "health-token"),
+        ) as mock_health_token,
+        patch(
+            "app.api.compute.instances.cloudinit.generate_userdata", wraps=cloudinit.generate_userdata
+        ) as mock_generate,
+        patch("app.api.compute.instances.rec", new_callable=AsyncMock),
+        patch("app.api.compute.instances.invalidate", new_callable=AsyncMock),
+        patch(
+            "app.api.compute.instances.cache_invalidation.invalidate_mutation_count",
+            new_callable=AsyncMock,
+        ),
+    ):
+        resp = await client.post("/api/v1/instances/async", json=PAYLOAD)
+
+    assert resp.status_code == 200, resp.text
+    mock_generate.assert_called_once()
+    mock_health_token.assert_not_called()
+    create_kwargs = mock_create_server.call_args.kwargs
+    rendered = base64.b64decode(create_kwargs["userdata"]).decode()
+    assert "datacenter-gpu-manager-exporter" in rendered
+    assert "/opt/union/overlay_setup.sh" not in rendered
+    assert not any(key.startswith("union_") for key in create_kwargs["metadata"])
+
+
+@pytest.mark.asyncio
+async def test_sync_data_mount_only_has_no_layer_health_or_metadata(client, mock_conn):
+    mount_info = {
+        "file_storage_id": "share-data",
+        "share_proto": "NFS",
+        "nfs_export_location": "10.0.0.2:/data",
+        "mount_point": "/mnt/data",
+        "mount_options": "ro,nosuid,nodev,noexec",
+    }
+    payload = {**PAYLOAD, "data_mounts": [{"file_storage_id": "share-data", "mount_point": "/mnt/data"}]}
+    with (
+        patch("app.api.compute.instances.nova.list_flavors", return_value=[_make_flavor()]),
+        patch(
+            "app.api.compute.instances.cinder.create_volume_from_image",
+            return_value=_make_volume("boot-vol"),
+        ),
+        patch("app.api.compute.instances.cinder.rename_volume", return_value=None),
+        patch("app.api.compute.instances.nova.create_server", return_value=_make_server()) as mock_create_server,
+        patch("app.api.compute.instances.neutron.list_networks", return_value=[]),
+        patch(
+            "app.api.compute.instances.instance_orch.resolve_default_network",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "app.api.compute.instances.instance_orch.compute_effective_security_groups",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+        patch("app.api.compute.instances._prepare_data_mounts", new_callable=AsyncMock, return_value=[mount_info]),
+        patch(
+            "app.api.compute.instances.instance_orch.try_issue_health_token",
+            new_callable=AsyncMock,
+            return_value=("health-id", "https://health.example", "health-token"),
+        ) as mock_health_token,
+        patch("app.api.compute.instances.rec", new_callable=AsyncMock),
+        patch("app.api.compute.instances.invalidate", new_callable=AsyncMock),
+        patch(
+            "app.api.compute.instances.cache_invalidation.invalidate_mutation_count",
+            new_callable=AsyncMock,
+        ),
+    ):
+        resp = await client.post("/api/v1/instances", json=payload)
+
+    assert resp.status_code == 201, resp.text
+    mock_health_token.assert_not_called()
+    create_kwargs = mock_create_server.call_args.kwargs
+    rendered = base64.b64decode(create_kwargs["userdata"]).decode()
+    assert "afterglow-data-mounts.service" in rendered
+    assert "/opt/union/overlay_setup.sh" not in rendered
+    assert not any(key.startswith("union_") for key in create_kwargs["metadata"])
+    assert create_kwargs["metadata"]["afterglow_data_share_ids"] == "share-data"

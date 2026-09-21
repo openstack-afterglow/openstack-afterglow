@@ -1,6 +1,9 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
   import { api, getWebSocketUrl } from '$lib/api/client';
+  import '@xterm/xterm/css/xterm.css';
+  import { resolvedTheme } from '$lib/stores/theme';
+  import { getTerminalTheme } from '$lib/utils/terminalTheme';
 
   interface Props {
     open: boolean;
@@ -25,6 +28,13 @@
     }
   });
 
+  $effect(() => {
+    const activeTheme = $resolvedTheme;
+    if (!terminal || typeof document === 'undefined') return;
+    void activeTheme;
+    terminal.options.theme = getTerminalTheme();
+  });
+
   async function openConsole() {
     // DOM이 렌더된 후 터미널 초기화
     await new Promise(r => setTimeout(r, 100));
@@ -35,8 +45,8 @@
     const { FitAddon } = await import('@xterm/addon-fit');
 
     terminal = new Terminal({
-      theme: { background: '#0f172a', foreground: '#e2e8f0', cursor: '#60a5fa' },
-      fontFamily: 'monospace',
+      theme: getTerminalTheme(),
+      fontFamily: 'var(--font-mono)',
       fontSize: 13,
       cursorBlink: true,
     });
@@ -138,5 +148,5 @@
       <button onclick={closeConsole} class="text-xs text-ink-2 hover:text-ink-0 transition-colors">✕ 닫기</button>
     </div>
   </div>
-  <div bind:this={terminalEl} class="w-full" style="height: 320px; background: #0f172a;"></div>
+  <div bind:this={terminalEl} class="h-80 w-full bg-surface-canvas"></div>
 </div>

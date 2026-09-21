@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { get } from 'svelte/store';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -77,5 +77,48 @@ describe('ProjectSelector', () => {
 
 		expect(screen.getByText('두 번째 프로젝트')).toBeTruthy();
 		expect(screen.queryByRole('status', { name: 'Loading' })).toBeNull();
+	});
+
+	it('closes Cloud Shell before replacing the project-scoped token', async () => {
+		const { default: ProjectSelector } = await import('../ProjectSelector.svelte');
+		const { api } = await import('$lib/api/client');
+		const { auth, setAuth } = await import('$lib/stores/auth');
+		const { projectList } = await import('$lib/stores/projectList');
+		const { cloudShell } = await import('$lib/stores/cloudShell.svelte');
+		projectList.reset();
+		setAuth({
+			token: 'token-a',
+			userId: 'user-1',
+			projectId: 'project-1',
+			projectName: '현재 프로젝트',
+		});
+		const projects = [
+			{ id: 'project-1', name: '현재 프로젝트' },
+			{ id: 'project-2', name: '두 번째 프로젝트' },
+		];
+		window.localStorage.setItem(
+			'afterglow.projects.user-1',
+			JSON.stringify({ data: projects, ts: Date.now() }),
+		);
+		projectList.prefetch('token-a', 'user-1');
+		const close = vi.spyOn(cloudShell, 'close').mockResolvedValue();
+		vi.mocked(api.post).mockResolvedValue({
+			token: 'token-b',
+			refresh_token: 'refresh-b',
+			expires_at: '2030-01-01T00:00:00Z',
+			project_id: 'project-2',
+			project_name: '두 번째 프로젝트',
+			roles: [],
+			is_system_admin: false,
+		});
+
+		render(ProjectSelector, { direction: 'down' });
+		await fireEvent.click(screen.getByRole('button', { name: /현재 프로젝트/ }));
+		await fireEvent.click(screen.getByRole('button', { name: /두 번째 프로젝트/ }));
+		await waitFor(() => expect(get(auth).projectId).toBe('project-2'));
+
+		expect(close).toHaveBeenCalledWith('project-switch', { keepDock: false });
+		expect(close.mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(api.post).mock.invocationCallOrder[0]);
+		close.mockRestore();
 	});
 });

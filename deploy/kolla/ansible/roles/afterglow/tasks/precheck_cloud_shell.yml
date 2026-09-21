@@ -1,0 +1,217 @@
+---
+- name: Cloud Shell precheck | Validate stock Kolla Zun topology
+  ansible.builtin.assert:
+    that:
+      - afterglow_service_zun_enabled | bool
+      - enable_zun | default(false) | bool
+      - enable_kuryr | default(false) | bool
+      - enable_etcd | default(false) | bool
+      - docker_configure_for_zun | default(false) | bool
+      - containerd_configure_for_zun | default(false) | bool
+      - zun_configure_for_cinder_ceph | default(false) | bool
+      - groups.get('zun-compute', []) | length > 0
+    fail_msg: "Cloud Shell requires stock Kolla Zun, Kuryr, etcd, Docker/containerd Zun integration, Cinder Ceph mounts, and at least one zun-compute host"
+  run_once: true
+
+- name: Cloud Shell precheck | Validate static configuration
+  ansible.builtin.assert:
+    that:
+      - afterglow_cloud_shell_project_name is match('^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$')
+      - afterglow_cloud_shell_project_name != afterglow_service_project_name
+      - afterglow_cloud_shell_network_id is match('^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$')
+      - afterglow_cloud_shell_security_group is match('^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$')
+      - afterglow_cloud_shell_image is match('^[^\s:@]+(?:/[^\s:@]+)+@sha256:[0-9a-fA-F]{64}$')
+      - afterglow_cloud_shell_auth_url is match('^https://[^/?#\s]+(?::[0-9]+)?/v3/?$')
+      - afterglow_cloud_shell_zun_websocket_origin is match('^wss://[^/?#\s]+(?::[0-9]+)?$')
+      - afterglow_cloud_shell_interface in ['public', 'internal']
+      - afterglow_cloud_shell_home_size_gib | int >= 1
+      - afterglow_cloud_shell_home_size_gib | int <= 100
+      - afterglow_cloud_shell_cpu | float > 0
+      - afterglow_cloud_shell_memory_mib | int >= 512
+      - afterglow_cloud_shell_idle_timeout_seconds | int >= 300
+      - afterglow_cloud_shell_idle_timeout_seconds | int <= 7200
+      - afterglow_cloud_shell_max_session_seconds | int >= afterglow_cloud_shell_idle_timeout_seconds | int
+      - afterglow_cloud_shell_ticket_ttl_seconds | int >= 15
+      - afterglow_cloud_shell_ticket_ttl_seconds | int <= 120
+      - afterglow_cloud_shell_reconcile_interval_seconds | int > 0
+    fail_msg: "Cloud Shell requires an operator-owned project/network/egress-only security group, an immutable image digest, trusted HTTPS/WSS endpoints, and bounded resources"
+  run_once: true
+
+- name: Cloud Shell precheck | Resolve dedicated project
+  become: true
+  community.docker.docker_container_exec:
+    container: kolla_toolbox
+    command: >-
+      openstack --os-cloud=kolla project show
+      {{ afterglow_cloud_shell_project_id if afterglow_cloud_shell_project_id | default('') | length > 0 else afterglow_cloud_shell_project_name }}
+      -f json
+  register: afterglow_cloud_shell_project_check
+  failed_when: false
+  changed_when: false
+  run_once: true
+  delegate_to: "{{ groups['afterglow'][0] }}"
+
+- name: Cloud Shell precheck | Require unique dedicated project
+  ansible.builtin.assert:
+    that:
+      - afterglow_cloud_shell_project_check.rc | default(1) == 0
+      - (afterglow_cloud_shell_project_check.stdout | from_json).id | default('') | length > 0
+      - afterglow_cloud_shell_project_id | default('') | length == 0 or (afterglow_cloud_shell_project_check.stdout | from_json).id == afterglow_cloud_shell_project_id
+    fail_msg: "Cloud Shell project must exist uniquely and match afterglow_cloud_shell_project_id when that override is set"
+  run_once: true
+
+- name: Cloud Shell precheck | Record dedicated project ID
+  ansible.builtin.set_fact:
+    afterglow_cloud_shell_precheck_project_id: "{{ (afterglow_cloud_shell_project_check.stdout | from_json).id }}"
+  run_once: true
+
+- name: Cloud Shell precheck | Resolve general Afterglow service project
+  become: true
+  community.docker.docker_container_exec:
+    container: kolla_toolbox
+    command: >-
+      openstack --os-cloud=kolla project show
+      {{ afterglow_service_project_id if afterglow_service_project_id | default('') | length > 0 else afterglow_service_project_name }}
+      -f json
+  register: afterglow_general_project_check
+  failed_when: false
+  changed_when: false
+  run_once: true
+  delegate_to: "{{ groups['afterglow'][0] }}"
+
+- name: Cloud Shell precheck | Require project isolation
+  ansible.builtin.assert:
+    that:
+      - afterglow_general_project_check.rc | default(1) == 0
+      - (afterglow_general_project_check.stdout | from_json).id != afterglow_cloud_shell_precheck_project_id
+    fail_msg: "The Cloud Shell project must differ from the general Afterglow service project"
+  run_once: true
+
+- name: Cloud Shell precheck | Inspect configured network in dedicated scope
+  become: true
+  community.docker.docker_container_exec:
+    container: kolla_toolbox
+    command: >-
+      openstack --os-cloud=kolla --os-project-id={{ afterglow_cloud_shell_precheck_project_id }}
+      network show {{ afterglow_cloud_shell_network_id }} -f json
+  register: afterglow_cloud_shell_network_check
+  failed_when: false
+  changed_when: false
+  run_once: true
+  delegate_to: "{{ groups['afterglow'][0] }}"
+
+- name: Cloud Shell precheck | Inspect configured security group in dedicated scope
+  become: true
+  community.docker.docker_container_exec:
+    container: kolla_toolbox
+    command: >-
+      openstack --os-cloud=kolla --os-project-id={{ afterglow_cloud_shell_precheck_project_id }}
+      security group show {{ afterglow_cloud_shell_security_group }} -f json
+  register: afterglow_cloud_shell_security_group_check
+  failed_when: false
+  changed_when: false
+  run_once: true
+  delegate_to: "{{ groups['afterglow'][0] }}"
+
+- name: Cloud Shell precheck | List ingress rules for configured security group
+  become: true
+  community.docker.docker_container_exec:
+    container: kolla_toolbox
+    command: >-
+      openstack --os-cloud=kolla --os-project-id={{ afterglow_cloud_shell_precheck_project_id }}
+      security group rule list --ingress {{ afterglow_cloud_shell_security_group }} -f json
+  register: afterglow_cloud_shell_ingress_check
+  failed_when: false
+  changed_when: false
+  run_once: true
+  delegate_to: "{{ groups['afterglow'][0] }}"
+
+- name: Cloud Shell precheck | Require project-owned egress-only network policy
+  ansible.builtin.assert:
+    that:
+      - afterglow_cloud_shell_network_check.rc | default(1) == 0
+      - (afterglow_cloud_shell_network_check.stdout | from_json).project_id == afterglow_cloud_shell_precheck_project_id
+      - afterglow_cloud_shell_security_group_check.rc | default(1) == 0
+      - (afterglow_cloud_shell_security_group_check.stdout | from_json).project_id == afterglow_cloud_shell_precheck_project_id
+      - afterglow_cloud_shell_ingress_check.rc | default(1) == 0
+      - afterglow_cloud_shell_ingress_check.stdout | from_json | length == 0
+    fail_msg: "Cloud Shell network and security group must belong to the dedicated project, and the security group must contain no ingress rules"
+  run_once: true
+
+- name: Cloud Shell precheck | Authenticate to Zun in dedicated scope
+  become: true
+  community.docker.docker_container_exec:
+    container: kolla_toolbox
+    command: >-
+      openstack --os-cloud=kolla --os-project-id={{ afterglow_cloud_shell_precheck_project_id }}
+      appcontainer list -f json
+  register: afterglow_cloud_shell_zun_check
+  failed_when: false
+  changed_when: false
+  run_once: true
+  delegate_to: "{{ groups['afterglow'][0] }}"
+
+- name: Cloud Shell precheck | Authenticate to Cinder in dedicated scope
+  become: true
+  community.docker.docker_container_exec:
+    container: kolla_toolbox
+    command: >-
+      openstack --os-cloud=kolla --os-project-id={{ afterglow_cloud_shell_precheck_project_id }}
+      volume list --limit 1 -f json
+  register: afterglow_cloud_shell_cinder_check
+  failed_when: false
+  changed_when: false
+  run_once: true
+  delegate_to: "{{ groups['afterglow'][0] }}"
+
+- name: Cloud Shell precheck | Inspect configured Cinder volume type
+  become: true
+  community.docker.docker_container_exec:
+    container: kolla_toolbox
+    command: >-
+      openstack --os-cloud=kolla --os-project-id={{ afterglow_cloud_shell_precheck_project_id }}
+      volume type show {{ afterglow_cloud_shell_volume_type }} -f json
+  register: afterglow_cloud_shell_volume_type_check
+  failed_when: false
+  changed_when: false
+  run_once: true
+  delegate_to: "{{ groups['afterglow'][0] }}"
+  when: afterglow_cloud_shell_volume_type | length > 0
+
+- name: Cloud Shell precheck | Require authenticated Zun and Cinder access
+  ansible.builtin.assert:
+    that:
+      - afterglow_cloud_shell_zun_check.rc | default(1) == 0
+      - afterglow_cloud_shell_cinder_check.rc | default(1) == 0
+      - afterglow_cloud_shell_volume_type | length == 0 or afterglow_cloud_shell_volume_type_check.rc | default(1) == 0
+    fail_msg: "Dedicated Cloud Shell scope must authenticate to Zun and Cinder and access the configured volume type"
+  run_once: true
+
+- name: Cloud Shell precheck | Inspect immutable image from every Zun compute host
+  become: true
+  ansible.builtin.command:
+    argv:
+      - docker
+      - manifest
+      - inspect
+      - "{{ afterglow_cloud_shell_image }}"
+  register: afterglow_cloud_shell_image_checks
+  failed_when: false
+  changed_when: false
+  no_log: true
+  loop: "{{ groups['zun-compute'] }}"
+  loop_control:
+    label: "{{ item }}"
+  run_once: true
+  delegate_to: "{{ item }}"
+
+- name: Cloud Shell precheck | Require image access from every Zun compute host
+  ansible.builtin.assert:
+    that:
+      - item.rc | default(1) == 0
+    fail_msg: "A Zun compute host cannot access the configured immutable Cloud Shell image"
+  no_log: true
+  loop: "{{ afterglow_cloud_shell_image_checks.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item | default('zun-compute') }}"
+  run_once: true

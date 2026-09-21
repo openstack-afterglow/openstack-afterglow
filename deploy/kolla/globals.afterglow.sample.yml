@@ -45,6 +45,9 @@ afterglow_image_tag: "v1.23.0"
 afterglow_backend_image_ref: "{{ afterglow_backend_image }}:{{ afterglow_image_tag }}"
 afterglow_frontend_image_ref: "{{ afterglow_frontend_image }}:{{ afterglow_image_tag }}"
 afterglow_worker_image_ref: "{{ afterglow_worker_image }}:{{ afterglow_image_tag }}"
+# Cloud Shell is a Zun workload, not a Kolla-managed long-running service.
+# Enable it only with a published multi-architecture manifest digest.
+# afterglow_cloud_shell_image: "ghcr.io/openstack-afterglow/afterglow-cloud-shell@sha256:<64-hex-digest>"
 
 # Independently released extracted services support explicit release version
 # tags (e.g. :0.2.20) as well as immutable linux/amd64 manifest digests (@sha256:...).
@@ -140,6 +143,7 @@ afterglow_database_user: "afterglow_kolla"
 afterglow_admin_keystone_user: "afterglow_admin"
 afterglow_service_project_name: "afterglow-service"
 
+afterglow_cloud_shell_project_name: "afterglow-cloud-shell"
 drover_database_name: "drover_kolla"
 drover_database_user: "drover_kolla"
 drover_keystone_user: "drover"
@@ -210,6 +214,27 @@ afterglow_service_mcp_enabled: true
 afterglow_service_manila_enabled: false
 afterglow_service_swift_enabled: false
 afterglow_service_zun_enabled: false
+afterglow_service_cloud_shell_enabled: false
+
+# Cloud Shell production prerequisites. The operator creates the dedicated
+# project, routed network, router, and ingress-free egress security group.
+# Stock Kolla must also set enable_zun, enable_kuryr, enable_etcd,
+# docker_configure_for_zun, containerd_configure_for_zun, and
+# zun_configure_for_cinder_ceph to "yes" and populate the zun-compute group.
+# afterglow_cloud_shell_project_id: "00000000-0000-0000-0000-000000000000"
+# afterglow_cloud_shell_network_id: "00000000-0000-0000-0000-000000000000"
+# afterglow_cloud_shell_security_group: "afterglow-cloud-shell-egress"
+# afterglow_cloud_shell_auth_url: "https://openstack.example.com:5000/v3"
+# afterglow_cloud_shell_interface: "public"
+# afterglow_cloud_shell_volume_type: "ceph"
+# afterglow_cloud_shell_home_size_gib: 5
+# afterglow_cloud_shell_cpu: 1.0
+# afterglow_cloud_shell_memory_mib: 1024
+# afterglow_cloud_shell_idle_timeout_seconds: 1200
+# afterglow_cloud_shell_max_session_seconds: 3600
+# afterglow_cloud_shell_ticket_ttl_seconds: 60
+# afterglow_cloud_shell_reconcile_interval_seconds: 60
+# afterglow_cloud_shell_zun_websocket_origin: "wss://zun.example.com"
 afterglow_service_trove_enabled: false
 afterglow_service_magnum_enabled: false
 afterglow_service_barbican_enabled: false

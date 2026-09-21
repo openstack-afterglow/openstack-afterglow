@@ -17,6 +17,15 @@ describe('chat run status style', () => {
 		expect(getStatusStyle('expired')).toEqual({ tone: 'neutral', label: '만료됨' });
 	});
 
+	it('maps Cloud Shell phases to explicit text and semantic tones', () => {
+		expect(getStatusStyle('cloud_shell_preparing')).toEqual({ tone: 'warning', pulse: true, label: '준비 중' });
+		expect(getStatusStyle('cloud_shell_authorizing')).toEqual({ tone: 'info', pulse: true, label: '인증 중' });
+		expect(getStatusStyle('cloud_shell_ready')).toEqual({ tone: 'success', label: '연결됨' });
+		expect(getStatusStyle('cloud_shell_ending')).toEqual({ tone: 'warning', pulse: true, label: '종료 중' });
+		expect(getStatusStyle('cloud_shell_closed')).toEqual({ tone: 'neutral', label: '종료됨' });
+		expect(getStatusStyle('cloud_shell_error')).toEqual({ tone: 'danger', label: '오류' });
+	});
+
 	it('maps every Palimpsest export state to an explicit semantic style', () => {
 		expect(getStatusStyle('queued')).toEqual({ tone: 'neutral', label: '대기 중' });
 		expect(getStatusStyle('downloading')).toEqual({

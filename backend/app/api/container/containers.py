@@ -6,7 +6,6 @@ if TYPE_CHECKING:
     import openstack
 import asyncio
 import logging
-import secrets
 
 from fastapi import (
     APIRouter,
@@ -30,6 +29,7 @@ from app.rate_limit import limiter
 from app.services import cache, zun
 from app.services.cache import invalidation, keys
 from app.services.service_proxy import join_version_aware_url
+from app.services.ws_ticket import WebSocketTicketError, consume_ticket, issue_ticket
 from app.services.zun import ZunServiceUnavailable
 
 logger = logging.getLogger(__name__)
@@ -191,21 +191,19 @@ async def create_exec_ticket(
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
     """WebSocket exec 연결에 사용할 일회용 티켓 발급 (30초 유효)."""
-    import json
-
-    from app.services.cache import _get_redis
-
-    ticket = secrets.token_urlsafe(32)
-    payload = json.dumps(
-        {
-            "container_id": container_id,
-            "user_id": conn._afterglow_user_id,
-            "project_id": conn._afterglow_project_id,
-            "token": conn._afterglow_token,
-        }
-    )
-    r = await _get_redis()
-    await r.setex(f"afterglow:ws-ticket:{ticket}", 30, payload)
+    try:
+        ticket = await issue_ticket(
+            "container-exec",
+            {
+                "container_id": container_id,
+                "user_id": conn._afterglow_user_id,
+                "project_id": conn._afterglow_project_id,
+                "token": conn._afterglow_token,
+            },
+            ttl_seconds=30,
+        )
+    except WebSocketTicketError:
+        raise HTTPException(status_code=503, detail="WebSocket 티켓 저장소를 사용할 수 없습니다") from None
     return {"ticket": ticket}
 
 
@@ -222,20 +220,16 @@ async def container_exec_ws(
     await websocket.accept()
     conn = None
     try:
-        import json
-
         from app.services import keystone
-        from app.services.cache import _get_redis
 
-        r = await _get_redis()
-        ticket_key = f"afterglow:ws-ticket:{ticket}"
-        payload_bytes = await r.get(ticket_key)
-        if not payload_bytes:
+        try:
+            payload = await consume_ticket(ticket, expected_kind="container-exec")
+        except WebSocketTicketError:
             await websocket.close(code=4001)
             return
-        await r.delete(ticket_key)  # 일회용: 즉시 삭제
-
-        payload = json.loads(payload_bytes)
+        if payload is None:
+            await websocket.close(code=4001)
+            return
         if payload.get("container_id") != container_id:
             await websocket.close(code=4001)
             return
