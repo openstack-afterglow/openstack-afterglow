@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [1.24.0] - 2026-09-21
+
 ### Added
 
 - **Lumen active-path history와 Claude Gateway 연결** — 채팅은 Lumen의 revision-fenced opaque cursor를 사용해 40개씩 최대 3페이지를 유지하고 처음/이전/다음/최신 탐색, prepend viewport 보존, stale-cursor 단일 복구, old-window 새 응답/전송 처리를 제공한다. Claude Code는 public device issue/poll을 Lumen과 직접 수행하고 Afterglow의 `/oauth/claude/authorize` shell 및 authenticated BFF로 현재 사용자·프로젝트 승인/거부를 완료하며, 설정 화면은 discovery가 광고한 Gateway 주소만 안내한다.

@@ -333,9 +333,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "f81ec03987bf7d231e44c292be83ad9ddcbe7b5292ed60e74e60765ed7f3a7ce",
-  "reviewed_at": "2026-09-21T09:55:03Z",
-  "summary": "토폴로지 캔버스 휠 제스처 판정 완화(고해상도 휠 확대 복구)와 휠 버튼 드래그 화면 이동 추가"
+  "source_sha256": "25016021e28ef6bdd0205b3385cf3e6fe810621269eac8ac81f06fffda4cfff6",
+  "reviewed_at": "2026-09-21T12:17:06Z",
+  "summary": "Reviewed the v1.24.0 Cloud Shell, chat and Gateway, Waygate and topology, branding and deployment, and VM bootstrap release; preserved service boundaries, scoped retained layer artifacts to resolved libraries, and moved GPU monitoring to NVIDIA packages."
 }
 ```
 <!-- architecture-review:end -->
