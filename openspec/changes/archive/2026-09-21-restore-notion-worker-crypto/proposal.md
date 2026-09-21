@@ -34,4 +34,5 @@ None.
 - Kolla rollout from `/etc/kolla` (`prechecks` then `reconfigure`, `--tags afterglow`): 0 failed hosts.
 - `dms-controller1/2/3` `afterglow_notion_worker`: pinned digest, image id `sha256:b824c430331db039f1060c040b6399e83406fd508f9ee31f8dc3d7cb37d9e648`, `running`, restart count 0, zero `ModuleNotFoundError` after restart.
 - Live cycle: `Notion target 1 동기화 완료 (instances=40)` on all three controllers; `notion_targets.last_sync` advanced to `2026-09-21T16:26:54` after the 16:24 restart.
+- Administrator surface: authenticated `GET https://cloud.dmslab.re.kr/api/v1/admin/notion/targets` (Keystone admin login through `POST /api/v1/auth/login`, `require_admin`) returned `200` with target 1 `last_sync`/`hypervisors_last_sync`/`gpu_spec_last_sync` = `2026-09-21T16:26:54`, beyond the pre-rollout `2026-09-15T11:26:43Z`.
 - Unchanged surfaces: `afterglow_backend`/`afterglow_frontend` remain `v1.21.0` and healthy; public frontend 200 and `/api/v1/health` `{"status":"ok"}`.
