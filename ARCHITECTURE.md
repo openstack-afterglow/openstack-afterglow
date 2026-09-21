@@ -339,8 +339,8 @@ Architecture maintenance는 다음 규칙을 따른다.
 {
   "schema_version": 1,
   "source_sha256": "2c3a5e9fb202b4862124c656ccf5ea6f491fd4ebf051b21ffe24b3386eb5b013",
-  "reviewed_at": "2026-09-21T14:18:48Z",
-  "summary": "VM 생성 GitHub SSH 사전 검증과 wizard 검증 UI, Palimpsest Hub compose context 회귀 수정을 source 검토 후 문서에 반영"
+  "reviewed_at": "2026-09-21T14:19:57Z",
+  "summary": "OpenSpec improve-vm-create-github-cloud-init archive 이동만 반영; source 구조 변경 없음"
 }
 ```
 <!-- architecture-review:end -->
