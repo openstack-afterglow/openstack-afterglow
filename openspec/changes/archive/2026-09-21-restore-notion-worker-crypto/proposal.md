@@ -26,3 +26,12 @@ None.
 - Operational contracts: `ARCHITECTURE.md`, `docs/deployment.md`, `CHANGELOG.md`
 - Production: `ghcr.io/openstack-afterglow/afterglow-worker`, `/etc/kolla/config/afterglow/globals.yml`, and the `afterglow_notion_worker` containers on DMSLab controllers
 - No API, database schema, encryption format, or stored ciphertext change
+
+## Verification evidence
+
+- Published worker manifest: `ghcr.io/openstack-afterglow/afterglow-worker@sha256:3936ad2543c088a0db7b2a1068401858be578ade9139fde8290c450ee79fd09e` (commit `51d7e818`, Docker Build & Push run 35623925700).
+- Image smoke against the published digest: `afterglow-crypto=0.1.1`, module resolved at `/app/.venv/lib/python3.12/site-packages/afterglow_crypto/__init__.py`.
+- Kolla rollout from `/etc/kolla` (`prechecks` then `reconfigure`, `--tags afterglow`): 0 failed hosts.
+- `dms-controller1/2/3` `afterglow_notion_worker`: pinned digest, image id `sha256:b824c430331db039f1060c040b6399e83406fd508f9ee31f8dc3d7cb37d9e648`, `running`, restart count 0, zero `ModuleNotFoundError` after restart.
+- Live cycle: `Notion target 1 동기화 완료 (instances=40)` on all three controllers; `notion_targets.last_sync` advanced to `2026-09-21T16:26:54` after the 16:24 restart.
+- Unchanged surfaces: `afterglow_backend`/`afterglow_frontend` remain `v1.21.0` and healthy; public frontend 200 and `/api/v1/health` `{"status":"ok"}`.

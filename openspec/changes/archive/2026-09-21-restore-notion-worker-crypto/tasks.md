@@ -20,15 +20,15 @@
 
 ## 4. Publication and production recovery
 
-- [ ] 4.1 Commit and push the verified `dev` change to trigger the canonical image workflow
-- [ ] 4.2 Wait for the Docker Build & Push workflow and resolve the worker manifest digest for the pushed commit
-- [ ] 4.3 Validate and repair controller host trust without disabling SSH host verification
-- [ ] 4.4 Pin only `afterglow_worker_image_ref` to the immutable worker digest
-- [ ] 4.5 Run Kolla Afterglow prechecks and the service-scoped rollout from `/etc/kolla`
-- [ ] 4.6 Verify intended controllers run the expected digest with stable process state and clean startup logs
-- [ ] 4.7 Verify a successful Notion target cycle and an advancing `notion_targets.last_sync`
+- [x] 4.1 Commit and push the verified `dev` change to trigger the canonical image workflow
+- [x] 4.2 Wait for the Docker Build & Push workflow and resolve the worker manifest digest for the pushed commit
+- [x] 4.3 Validate and repair controller host trust without disabling SSH host verification
+- [x] 4.4 Pin only `afterglow_worker_image_ref` to the immutable worker digest
+- [x] 4.5 Run Kolla Afterglow prechecks and the service-scoped rollout from `/etc/kolla`
+- [x] 4.6 Verify intended controllers run the expected digest with stable process state and clean startup logs
+- [x] 4.7 Verify a successful Notion target cycle and an advancing `notion_targets.last_sync`
 
 ## 5. Completion
 
-- [ ] 5.1 Archive the completed OpenSpec change
-- [ ] 5.2 Commit and push the archive plus final documentation evidence
+- [x] 5.1 Archive the completed OpenSpec change
+- [x] 5.2 Commit and push the archive plus final documentation evidence
