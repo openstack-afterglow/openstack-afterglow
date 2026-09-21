@@ -36,7 +36,7 @@ dependencies = [
     "Pillow==12.3.0",
     "pypdf==6.15.0",
     "mutagen==1.47.0",
-    "afterglow-crypto @ git+https://github.com/openstack-afterglow/afterglow-crypto.git@65ff43db4d386d65436411fc0642ebc3044bd517",
+    "afterglow-crypto",
     "waygate-sdk @ git+https://github.com/openstack-afterglow/waygate.git@1c59b5e86d3c3c1b9d3397b38301ee9bc401cf03#subdirectory=sdk",
     "drover-sdk @ git+https://github.com/openstack-afterglow/drover.git@bd4caa490eb3c21fdeb9cc8f008aaf02f72264ef#subdirectory=sdk",
 ]
@@ -105,6 +105,7 @@ indent-style = "space"
 # 워커 전용 의존성 (fastapi/uvicorn/boto3/asyncssh 등 API 전용 패키지 제외).
 # Dockerfile worker 스테이지에서 uv sync --only-group worker 로 설치.
 worker = [
+    "afterglow-crypto",
     "openstacksdk==3.3.0",
     "python-keystoneclient==5.4.0",
     "jinja2==3.1.6",
@@ -127,6 +128,9 @@ packages = ["app"]
 
 [tool.hatch.metadata]
 allow-direct-references = true
+
+[tool.uv.sources]
+afterglow-crypto = { path = "../services/afterglow-crypto" }
 
 [tool.uv]
 package = false

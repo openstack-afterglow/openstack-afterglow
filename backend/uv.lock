@@ -65,6 +65,7 @@ kvm = [
 
 [package.dev-dependencies]
 worker = [
+    { name = "afterglow-crypto" },
     { name = "aiomysql" },
     { name = "apscheduler" },
     { name = "drover-sdk" },
@@ -84,7 +85,7 @@ worker = [
 
 [package.metadata]
 requires-dist = [
-    { name = "afterglow-crypto", git = "https://github.com/openstack-afterglow/afterglow-crypto.git?rev=65ff43db4d386d65436411fc0642ebc3044bd517" },
+    { name = "afterglow-crypto", directory = "../services/afterglow-crypto" },
     { name = "aiofiles", specifier = "==24.1.0" },
     { name = "aiomysql", specifier = ">=0.2.0" },
     { name = "aiosmtplib", specifier = ">=3.0.0" },
@@ -130,6 +131,7 @@ provides-extras = ["kvm", "dev"]
 
 [package.metadata.requires-dev]
 worker = [
+    { name = "afterglow-crypto", directory = "../services/afterglow-crypto" },
     { name = "aiomysql", specifier = ">=0.2.0" },
     { name = "apscheduler", specifier = ">=3.10" },
     { name = "drover-sdk", git = "https://github.com/openstack-afterglow/drover.git?subdirectory=sdk&rev=bd4caa490eb3c21fdeb9cc8f008aaf02f72264ef" },
@@ -150,10 +152,13 @@ worker = [
 [[package]]
 name = "afterglow-crypto"
 version = "0.1.1"
-source = { git = "https://github.com/openstack-afterglow/afterglow-crypto.git?rev=65ff43db4d386d65436411fc0642ebc3044bd517#65ff43db4d386d65436411fc0642ebc3044bd517" }
+source = { directory = "../services/afterglow-crypto" }
 dependencies = [
     { name = "cryptography" },
 ]
+
+[package.metadata]
+requires-dist = [{ name = "cryptography", specifier = ">=42.0.0" }]
 
 [[package]]
 name = "aiofiles"

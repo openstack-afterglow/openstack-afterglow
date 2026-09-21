@@ -302,6 +302,18 @@ docker compose --env-file /path/to/production.env -f docker-compose.prod.yml up 
 발행하므로 ARM에서 published 이미지를 실행하려면 호환 manifest 확인 또는 명시적
 `DOCKER_DEFAULT_PLATFORM=linux/amd64` emulation이 필요합니다. Dev 소스 빌드는 native입니다.
 
+Backend와 Notion worker가 사용하는 `afterglow-crypto`의 정본은 이 저장소의
+`services/afterglow-crypto`입니다. uv는 이를 regular path distribution으로 설치하므로
+최종 image가 build-context source path를 필요로 하지 않습니다. Worker image를 게시하기
+전에는 실제 배포 architecture로 build한 뒤 최종 image 안에서 다음 smoke를 실행합니다.
+
+```bash
+docker buildx build --platform linux/amd64 --target worker --load \
+  -t afterglow-worker:test .
+npm run test:worker:image -- afterglow-worker:test
+```
+
+
 기본 운영은 이미 설치된 형제 서비스의 **Keystone internal catalog endpoint**로 통신합니다.
 운영 backend/Notion worker는 unset endpoint를 덮어쓰지 않으므로 TOML 또는 카탈로그를
 사용합니다. 명시적인 `SERVICE_*_INTERNAL_URL`/TOML override는 신뢰된 **HTTPS** URL만
@@ -353,6 +365,26 @@ custom service와 HAProxy 플레이에 `become: true`가 선언되어 있어 별
 kolla-ansible prechecks -i multinode --tags afterglow,lumen
 kolla-ansible reconfigure -i multinode --tags afterglow,lumen
 ```
+
+Notion worker만 복구할 때도 mutable tag를 운영 설정에 남기지 않습니다. 검증한
+`linux/amd64` manifest의 digest를 확인한 뒤 `/etc/kolla/config/afterglow/globals.yml`의
+`afterglow_worker_image_ref`만 `ghcr.io/openstack-afterglow/afterglow-worker@sha256:<digest>`로
+고정하고 backend/frontend image ref는 유지합니다. SSH host identity를 먼저 검증하고,
+배포 계정으로 `/etc/kolla`에서 다음 표준 경로를 실행합니다.
+
+```bash
+source /etc/kolla/.venv/bin/activate
+cd /etc/kolla
+kolla-ansible prechecks -i multinode --tags afterglow
+kolla-ansible reconfigure -i multinode --tags afterglow
+```
+
+완료 판정에는 각 controller의 running image digest와 restart count, worker startup/error
+로그뿐 아니라 `Notion target ... 동기화 완료` 로그와 배포 전보다 증가한
+`notion_targets.last_sync`가 필요합니다. Container가 `running`이어도 실제 timestamp가
+전진하지 않으면 복구되지 않은 상태입니다. Rollback은 이전 worker digest를 복원하고 같은
+service-scoped reconfigure를 반복합니다.
+
 
 배포 후 각 대상에서 `afterglow_backend`, `afterglow_frontend`, `lumen_api`,
 `lumen_worker` 상태와 공개 health 경로를 확인합니다. liveness HTTP 200과

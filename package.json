@@ -27,6 +27,7 @@
     "test:config": "node scripts/test-target.js config",
     "test:cloud-shell": "node scripts/test-target.js cloud-shell",
     "test:cloud-shell:image": "uv run --project cloud-shell ruff check cloud-shell && uv run --project cloud-shell ruff format --check cloud-shell && uv run --project cloud-shell pytest -q cloud-shell/tests/test_bootstrap.py && docker build --target cloud-shell -t afterglow-cloud-shell:test . && uv run --project cloud-shell python cloud-shell/tests/image_smoke.py afterglow-cloud-shell:test",
+    "test:worker:image": "python3 scripts/worker-image-smoke.py",
     "test:crypto": "node scripts/test-target.js crypto",
     "test:db:target": "node scripts/test-target.js db",
     "test:instances": "node scripts/test-target.js instances",
