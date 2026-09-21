@@ -29,9 +29,9 @@ function renderCanvas(props: Partial<Record<string, unknown>> = {}) {
 function firePointer(
 	type: 'pointerdown' | 'pointerup' | 'pointercancel',
 	target: Element,
-	init: { pointerId: number; clientX?: number; clientY?: number; pointerType?: string },
+	init: { pointerId: number; clientX?: number; clientY?: number; pointerType?: string; button?: number },
 ) {
-	const ev = new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: init.clientX ?? 0, clientY: init.clientY ?? 0 });
+	const ev = new MouseEvent(type, { bubbles: true, cancelable: true, button: init.button ?? 0, clientX: init.clientX ?? 0, clientY: init.clientY ?? 0 });
 	Object.defineProperty(ev, 'pointerId', { value: init.pointerId });
 	Object.defineProperty(ev, 'pointerType', { value: init.pointerType ?? 'mouse' });
 	return fireEvent(target, ev);
@@ -455,14 +455,55 @@ describe('TopologyCanvas', () => {
 		expect(after.panY).toBe(before.panY - 120);
 	});
 
+	it('휠 버튼(가운데) 드래그는 노드 위에서 눌러도 화면만 이동한다', async () => {
+		renderCanvas();
+		const viewport = screen.getByRole('application', { name: '네트워크 토폴로지 캔버스' });
+		const card = cardOf('vm-web-01')!;
+		const cardBefore = card.style.transform;
+		const before = viewOf();
+		// 노드 카드 위에서 휠 버튼을 누른다 — 왼쪽 버튼이었다면 노드 드래그가 걸린다
+		await firePointer('pointerdown', card, { pointerId: 1, clientX: 100, clientY: 100, button: 1 });
+		await fireEvent(viewport, pointerMove({ pointerId: 1, clientX: 160, clientY: 140 }));
+		await flushFrame();
+		const after = viewOf();
+		// 뷰가 커서를 따라 이동하고 배율은 그대로다
+		expect(after.k).toBe(before.k);
+		expect(after.panX).toBe(before.panX + 60);
+		expect(after.panY).toBe(before.panY + 40);
+		// 노드는 제자리에 있고 수동 배치 핀도 생기지 않는다
+		expect(cardOf('vm-web-01')!.style.transform).toBe(cardBefore);
+		await firePointer('pointerup', viewport, { pointerId: 1, clientX: 160, clientY: 140, button: 1 });
+		expect(screen.queryByRole('button', { name: /^수동 배치/ })).toBeNull();
+	});
+
+	it('휠 버튼을 움직이지 않고 떼면 선택도 선택 해제도 하지 않는다', async () => {
+		const onSelectInstance = vi.fn();
+		renderCanvas({ onSelectInstance });
+		const viewport = screen.getByRole('application', { name: '네트워크 토폴로지 캔버스' });
+		// 먼저 왼쪽 클릭으로 선택해 둔다
+		await firePointer('pointerdown', cardOf('vm-web-01')!, { pointerId: 1, clientX: 100, clientY: 100 });
+		await firePointer('pointerup', viewport, { pointerId: 1, clientX: 100, clientY: 100 });
+		expect(onSelectInstance).toHaveBeenCalledTimes(1);
+		const selected = cardOf('vm-web-01')!.getAttribute('aria-pressed');
+
+		// 배경에서 휠 버튼을 눌렀다 떼도 선택이 풀리지 않아야 한다(왼쪽 버튼이면 clearSelection 이다)
+		await firePointer('pointerdown', viewport, { pointerId: 2, clientX: 400, clientY: 400, button: 1 });
+		await firePointer('pointerup', viewport, { pointerId: 2, clientX: 400, clientY: 400, button: 1 });
+		expect(cardOf('vm-web-01')!.getAttribute('aria-pressed')).toBe(selected);
+		expect(onSelectInstance).toHaveBeenCalledTimes(1);
+	});
+
 	it('한 프레임에 들어온 휠 델타는 마지막 값이 아니라 합산되어 적용된다', async () => {
 		renderCanvas();
 		const viewport = screen.getByRole('application', { name: '네트워크 토폴로지 캔버스' });
 		const before = viewOf();
-		// 트랙패드 관성 스크롤은 한 프레임에 여러 이벤트를 보낸다 → pendingView 에 누적되어야 한다
-		await fireWheel(viewport, { deltaY: 120 });
-		await fireWheel(viewport, { deltaY: 120 });
+		// 트랙패드 관성 스크롤은 한 프레임에 여러 이벤트를 보낸다 → pendingView 에 누적되어야 한다.
+		// 가로 성분을 실어 장치 판정이 확실히 트랙패드(= 이동)가 되게 한다 — 이 테스트가 보는 것은
+		// 휴리스틱이 아니라 누적이다.
+		await fireWheel(viewport, { deltaX: 40, deltaY: 120 });
+		await fireWheel(viewport, { deltaX: 40, deltaY: 120 });
 		await flushFrame();
+		expect(viewOf().panX).toBe(before.panX - 80);
 		expect(viewOf().panY).toBe(before.panY - 240);
 	});
 

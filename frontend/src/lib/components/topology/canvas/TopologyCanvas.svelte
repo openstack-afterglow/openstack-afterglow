@@ -629,6 +629,8 @@
 		moved: boolean;
 		type: string;
 		dragArmed: boolean;
+		/** 휠 버튼 드래그: 노드를 잡지도, 놓을 때 선택하지도 않고 오직 화면만 이동한다. */
+		panOnly: boolean;
 	};
 	type Pinch = { k0: number; view0: ViewState; mid0: { x: number; y: number }; dist0: number };
 	let pinching = false;
@@ -655,9 +657,13 @@
 		};
 
 		const onDown = (e: PointerEvent) => {
-			if (e.pointerType === 'mouse' && e.button !== 0) return;
+			// 휠 버튼(button 1)은 화면 이동 전용이다. 브라우저 기본 자동 스크롤(가운데 클릭 후 커서 추종)을
+			// 막아야 뷰가 두 번 움직이지 않는다 — pointerdown 만으로는 부족해 mousedown·auxclick 도 함께 막는다.
+			const panOnly = e.pointerType === 'mouse' && e.button === 1;
+			if (e.pointerType === 'mouse' && e.button !== 0 && !panOnly) return;
+			if (panOnly) e.preventDefault();
 			if (closest(e.target, '[data-hud-control]')) return;
-			const handleEl = closest(e.target, '[data-link-handle]') || closest(e.target, '[data-link-source]');
+			const handleEl = panOnly ? null : closest(e.target, '[data-link-handle]') || closest(e.target, '[data-link-source]');
 			if (handleEl && (onConnect || onCreateCable)) {
 				const sourceId = handleEl.getAttribute('data-link-handle') || closest(handleEl, '[data-node-id]')?.getAttribute('data-node-id');
 				if (sourceId) {
@@ -697,9 +703,10 @@
 			}
 			// 세 번째 이후 포인터는 새 제스처를 만들지 않는다(놓을 때 select/clearSelection 오발화 방지)
 			if (pinchConsumed) return;
-			const nodeEl = closest(e.target, '[data-node-id]');
-			const zoneEl = closest(e.target, '[data-zone-net]');
-			const edgeEl = closest(e.target, '[data-edge-net]');
+			// 휠 버튼은 노드 위에서 눌러도 노드를 잡지 않는다 — 대상을 배경으로 고정해 이동 경로로만 보낸다
+			const nodeEl = panOnly ? null : closest(e.target, '[data-node-id]');
+			const zoneEl = panOnly ? null : closest(e.target, '[data-zone-net]');
+			const edgeEl = panOnly ? null : closest(e.target, '[data-edge-net]');
 			const id = nodeEl?.getAttribute('data-node-id') ?? null;
 			const p = id ? pos.get(id) : null;
 			gesture = {
@@ -712,6 +719,7 @@
 				moved: false,
 				type: e.pointerType,
 				dragArmed: Boolean(id) && e.pointerType !== 'touch',
+				panOnly,
 			};
 			if (!nodeEl) el.focus({ preventScroll: true });
 			if (nodeEl && e.pointerType === 'touch') {
@@ -812,6 +820,8 @@
 			gesturing = false;
 			// 취소된 제스처는 대기 중인 드래그 프레임을 반영하지 않고 버린다
 			if (e.type === 'pointercancel') { pendingDrag = null; return; }
+			// 휠 버튼은 움직이지 않고 떼도 아무 일이 없어야 한다 — 선택도 선택 해제도 하지 않는다
+			if (g.panOnly) return;
 			if (!g.moved) {
 				if (g.target === 'node' && g.id) {
 					select(g.id);
@@ -902,6 +912,13 @@
 		};
 
 		const onLeave = () => { if (link) { link = null; resumeFlow(); } };
+		// Windows·Linux Chrome 은 가운데 버튼 mousedown 에서 자동 스크롤 위젯을 띄운다.
+		// pointerdown 의 preventDefault 만으로는 막히지 않아 mousedown 을, 그리고 떼는 순간의
+		// auxclick(가운데 클릭 = 새 탭 열기 등)도 함께 막는다.
+		const onAuxDown = (e: MouseEvent) => { if (e.button === 1) e.preventDefault(); };
+		const onAuxClick = (e: MouseEvent) => { if (e.button === 1) e.preventDefault(); };
+		el.addEventListener('mousedown', onAuxDown);
+		el.addEventListener('auxclick', onAuxClick);
 		el.addEventListener('pointerleave', onLeave);
 		el.addEventListener('pointerdown', onDown);
 		el.addEventListener('pointermove', onMove);
@@ -924,6 +941,8 @@
 			el.removeEventListener('pointerout', onOut);
 			el.removeEventListener('keydown', onKey);
 			el.removeEventListener('pointerleave', onLeave);
+			el.removeEventListener('mousedown', onAuxDown);
+			el.removeEventListener('auxclick', onAuxClick);
 		};
 	});
 
@@ -1155,7 +1174,7 @@
 			{/if}
 		</div>
 		<p class="stage-help" id={helpId}>
-			트랙패드 두 손가락 스크롤로 화면 이동, 마우스 휠·<span class="mono">Ctrl</span>(<span class="mono">⌘</span>)+휠·핀치로 확대·축소. 캔버스에 포커스한 뒤 화살표로 화면 이동(<span class="mono">Shift</span>와 함께 누르면 크게), <span class="mono">+</span>/<span class="mono">-</span> 확대·축소, <span class="mono">0</span>·<span class="mono">f</span> 화면 맞춤, <span class="mono">r</span> 배치 초기화, <span class="mono">/</span> 검색, <span class="mono">Esc</span> 선택 해제. 노드에 포커스한 뒤 <span class="mono">Enter</span>로 상세, <span class="mono">Shift+화살표</span>로 노드 이동. 카드 오른쪽 점을 끌어 다른 카드에 놓으면 연결(인스턴스↔스위치는 새 인터페이스, 라우터↔스위치는 게이트웨이), <span class="mono">Esc</span> 취소. 키보드는 카드 상세 패널의 연결 기능을 사용합니다.
+			마우스 휠·<span class="mono">Ctrl</span>(<span class="mono">⌘</span>)+휠·핀치로 확대·축소, 휠 버튼(가운데)이나 배경을 끌어서 화면 이동. 트랙패드는 두 손가락 스크롤로 화면 이동. 캔버스에 포커스한 뒤 화살표로 화면 이동(<span class="mono">Shift</span>와 함께 누르면 크게), <span class="mono">+</span>/<span class="mono">-</span> 확대·축소, <span class="mono">0</span>·<span class="mono">f</span> 화면 맞춤, <span class="mono">r</span> 배치 초기화, <span class="mono">/</span> 검색, <span class="mono">Esc</span> 선택 해제. 노드에 포커스한 뒤 <span class="mono">Enter</span>로 상세, <span class="mono">Shift+화살표</span>로 노드 이동. 카드 오른쪽 점을 끌어 다른 카드에 놓으면 연결(인스턴스↔스위치는 새 인터페이스, 라우터↔스위치는 게이트웨이), <span class="mono">Esc</span> 취소. 키보드는 카드 상세 패널의 연결 기능을 사용합니다.
 		</p>
 	</div>
 

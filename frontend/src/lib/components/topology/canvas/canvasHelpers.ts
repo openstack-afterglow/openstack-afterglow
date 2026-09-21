@@ -66,22 +66,32 @@ export const UPLINK_CAPTION = '하위망 합산';
 export const UPLINK_TITLE = '라우터별 하위 네트워크 합산 트래픽 · 라우터 exporter 없음';
 
 /**
+ * 마우스 휠로 볼 최소 `|deltaY|`(px). 트랙패드의 느린 두 손가락 스크롤은 한 자릿수 픽셀로 들어오고,
+ * 마우스 휠은 고해상도로 노치를 쪼개도 노치 조각이 이보다 크다.
+ */
+export const MOUSE_WHEEL_MIN_DELTA = 10;
+
+/**
  * 휠 이벤트가 **마우스 휠**인지 추정한다. 브라우저는 입력 장치를 알려주지 않으므로 휴리스틱이다.
  *
  * - Firefox: 마우스 휠은 줄/페이지 단위(`deltaMode !== 0`), 트랙패드는 픽셀 단위(0).
  * - Chrome·Safari: 둘 다 픽셀 단위지만 비표준 `wheelDeltaY` 가 마우스 휠에서 120 의 배수로 온다(노치 단위).
  * - 트랙패드는 가로 성분(`deltaX`)과 소수점 델타가 흔하다 — 하나라도 있으면 트랙패드로 본다.
  *
- * 판단 근거가 없으면 **트랙패드로 본다**(= 이동). 잘못 확대되는 것이 잘못 이동하는 것보다 훨씬 거슬리고,
- * 트랙패드 관성 스크롤을 확대로 오판하면 뷰가 크게 튄다.
+ * 트랙패드 표식이 하나도 없으면 **마우스 휠로 본다**. 예전에는 `wheelDeltaY` 가 120 의 배수가
+ * 아니면 전부 트랙패드로 떨어뜨렸는데, 고해상도 휠(자유 회전 마우스 등)은 노치를 잘게 쪼개
+ * 보고하므로 **휠을 굴려도 확대가 되지 않았다**. 120 배수는 이제 확정 증거로만 쓴다.
  */
 export function isMouseWheel(e: WheelEvent): boolean {
 	if (e.deltaMode !== 0) return true;
 	if (e.deltaX !== 0) return false;
 	if (!Number.isInteger(e.deltaY)) return false;
 	const notch = (e as WheelEvent & { wheelDeltaY?: number }).wheelDeltaY;
-	if (typeof notch === 'number' && notch !== 0) return Math.abs(notch) % 120 === 0;
-	return false;
+	// Windows·Chrome 은 노치당 deltaY 가 100 이어도 wheelDeltaY 를 120 으로 정규화한다 → 확정 증거.
+	if (typeof notch === 'number' && notch !== 0 && Math.abs(notch) % 120 === 0) return true;
+	// 남은 구분은 크기뿐이다. 가로 성분도 소수점도 없는 트랙패드 이벤트는 느린 두 손가락
+	// 스크롤이고 한 자릿수 픽셀로 들어온다. 휠은 고해상도라도 노치 조각이 이보다 크다.
+	return Math.abs(e.deltaY) >= MOUSE_WHEEL_MIN_DELTA;
 }
 
 /**

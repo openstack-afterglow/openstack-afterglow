@@ -19,6 +19,7 @@
 
 - **Cloud Shell terminal·live smoke 안전성** — 비동기 xterm mount 뒤 `ready` 전이가 stdin을 실제로 활성화하고, dock 최소화 중에도 같은 terminal instance와 scrollback을 유지한다. Destructive live smoke는 명시적 disposable username·확인 문구를 요구하고 기존 session/home이 있으면 mutation 전에 거부한다.
 - **선택적 Compose 재빌드의 Waygate callback parse 실패** — shared Compose anchor의 필수 변수 보간이 모든 service 선택 전에 실행되던 문제를 제거했다. 이미 실행 중인 dependency를 유지하는 `--no-deps` frontend/backend 재생성은 Waygate public URL 없이 parse할 수 있고, full local stack과 Waygate API/worker는 실제 VM-reachable callback URL을 계속 fail-closed로 요구한다.
+- **토폴로지 캔버스에서 마우스 휠로 확대가 되지 않던 문제** — 입력 장치 추정이 `wheelDeltaY` 가 120 의 배수가 아니면 전부 트랙패드로 떨어뜨려, 노치를 잘게 쪼개 보고하는 고해상도 휠(자유 회전 마우스 등)에서는 휠을 굴려도 화면만 움직였다. 이제 120 배수는 확정 증거로만 쓰고, 트랙패드 표식(가로 성분·소수점 델타·한 자릿수 픽셀 델타)이 하나도 없으면 마우스 휠로 본다. 트랙패드 두 손가락 스크롤의 화면 이동은 그대로다. 아울러 **마우스 휠 버튼(가운데) 드래그로 화면 이동**을 추가했다 — 노드 위에서 눌러도 노드를 잡지 않고 이동만 하며, 움직이지 않고 떼도 선택이 바뀌지 않고, 브라우저 기본 자동 스크롤과 가운데 클릭 동작은 막는다.
 - **토폴로지 트렁크 배지가 스위치 카드와 같은 숫자를 반복하던 문제** — 1.23.0 에서 provider uplink 배지만 접었으나, tenant 트렁크 배지는 `trunkNetIds` 가 항상 네트워크 하나라 `traffic.networks[netId]` 그대로였고 이는 바로 옆 가상 스위치 카드가 이미 찍는 값과 같았다. 이제 배지는 **네트워크를 2개 이상 합칠 때만** 그려 스위치 카드가 못 보여주는 것만 맡는다. 값은 사라지지 않고 스위치 카드에 그대로 있으며, 트렁크 선의 굵기(`switchThroughput` 추정)와 hover 설명도 유지된다. 배지 표시 임계도 카드가 보조 행을 숨기는 LOD 경계(`k < 0.5`)에 맞춰, 카드는 비었는데 배지만 떠 있던 구간을 없앴다.
 
 ## [1.23.0] - 2026-09-18
