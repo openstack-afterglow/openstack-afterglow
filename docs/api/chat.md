@@ -134,6 +134,8 @@ Lumen은 외부 프로그램을 위한 OpenAI/Anthropic 호환 API를 제공한�
 
 채팅 설정은 `/dashboard/chat/settings?section=…` 전용 페이지다. 사이드바 사용자 메뉴의 **설정** 또는 작성창의 사용량 명령은 이 route로 이동하고, 사용량·API 키·메모리·MCP·도구·스킬을 desktop side navigation 및 mobile horizontal navigation으로 전환한다. MCP OAuth는 `section=mcp`, API 키 자동화는 `section=apikeys` deep link로 같은 페이지의 지정 section에 복귀한다. **API 키 → 연결 방법**은 인증된 `GET /api/v1/chat/compat` BFF를 통해 Lumen `GET /v1/compat`의 SDK/CLI별 base URL을 표시한다.
 
+연결 방법의 Codex·Claude Code·OpenAI·Claude 선택 탭은 자체 스크롤바 없이 모두 표시된다. 모바일(`<768px`)에서는 두 열로 배치되고, 태블릿에서는 필요하면 줄바꿈한다. 긴 설정 예제 코드만 가로로 스크롤할 수 있다.
+
 - OpenAI: `endpoints.openai.sdk_base_url`을 그대로 사용한다. `/v1`이 포함된다.
 - Anthropic SDK와 Claude Code: `endpoints.anthropic.sdk_base_url`을 그대로 사용한다. client가 `/v1/messages`를 붙이므로 직접 `/v1`을 추가하지 않는다.
 - Codex: `clients.codex.base_url`을 custom provider의 `base_url`로 사용하고 `wire_api = "responses"`를 선택한다. 일반 Lumen API 키를 환경 변수로 읽는다.

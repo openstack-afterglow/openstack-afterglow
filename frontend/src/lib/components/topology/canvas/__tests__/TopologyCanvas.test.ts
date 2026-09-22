@@ -6,6 +6,7 @@ import TopologyCanvas from '../TopologyCanvas.svelte';
 import { buildGraph, edgeStyle } from '../topologyGraph';
 import { edgeIntensity, NO_TELEMETRY_STYLE } from '../canvasHelpers';
 import { layoutStorageKey } from '../layoutStorage';
+import { K_MIN } from '../topologyLayout';
 import { P, makeFixture, makeTraffic } from './fixtures';
 
 function renderCanvas(props: Partial<Record<string, unknown>> = {}) {
@@ -51,7 +52,7 @@ function fireWheel(target: Element, init: { deltaX?: number; deltaY?: number; de
 		ctrlKey: init.ctrlKey ?? false, metaKey: init.metaKey ?? false,
 		clientX: 200, clientY: 200,
 	});
-	// jsdom 은 비표준 wheelDeltaY 를 만들지 않는다. 마우스 휠(120 배수)을 재현할 때만 주입한다.
+	// 비표준 wheelDeltaY 가 있어도 장치 판별에 쓰지 않는 계약을 재현한다.
 	if (init.wheelDeltaY !== undefined) Object.defineProperty(ev, 'wheelDeltaY', { value: init.wheelDeltaY });
 	return fireEvent(target, ev);
 }
@@ -442,17 +443,26 @@ describe('TopologyCanvas', () => {
 		expect(Math.max(...cableW)).toBeGreaterThan(Math.min(...trunkW));
 	});
 
-	it('트랙패드 두 손가락 스크롤은 확대·축소가 아니라 위치를 이동한다', async () => {
+	it('휠은 장치를 가리지 않고 확대·축소한다 — 트랙패드 모양 이벤트도 마찬가지', async () => {
 		renderCanvas();
 		const viewport = screen.getByRole('application', { name: '네트워크 토폴로지 캔버스' });
-		const before = viewOf();
-		await fireWheel(viewport, { deltaX: 40, deltaY: 120 });
-		await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))));
-		const after = viewOf();
-		// 배율은 그대로, 위치만 스크롤 방향으로 이동한다
-		expect(after.k).toBe(before.k);
-		expect(after.panX).toBe(before.panX - 40);
-		expect(after.panY).toBe(before.panY - 120);
+		// 아래 넷은 모두 예전 휴리스틱이 "트랙패드 = 이동"으로 분류하던 프로파일이다.
+		// 장치 추정을 버렸으므로 이제 전부 확대·축소다(실제 마우스에서 확대가 안 되던 원인).
+		for (const profile of [
+			{ deltaX: 40, deltaY: 120 },        // 가로 성분 있음
+			{ deltaY: 4.5 },                    // 소수점 — macOS 는 마우스 휠에도 이렇게 보낸다
+			{ deltaY: 3 },                      // 한 자릿수
+			{ deltaY: -53, wheelDeltaY: 64 },   // 고해상도 휠(120 배수 아님)
+		]) {
+			const before = viewOf();
+			await fireWheel(viewport, profile);
+			await flushFrame();
+			const after = viewOf();
+			const label = JSON.stringify(profile);
+			expect(after.k, label).not.toBe(before.k);
+			// 아래로 굴리면 축소, 위로 굴리면 확대
+			expect(after.k > before.k, label).toBe(profile.deltaY < 0);
+		}
 	});
 
 	it('휠 버튼(가운데) 드래그는 노드 위에서 눌러도 화면만 이동한다', async () => {
@@ -497,21 +507,60 @@ describe('TopologyCanvas', () => {
 		renderCanvas();
 		const viewport = screen.getByRole('application', { name: '네트워크 토폴로지 캔버스' });
 		const before = viewOf();
-		// 트랙패드 관성 스크롤은 한 프레임에 여러 이벤트를 보낸다 → pendingView 에 누적되어야 한다.
-		// 가로 성분을 실어 장치 판정이 확실히 트랙패드(= 이동)가 되게 한다 — 이 테스트가 보는 것은
-		// 휴리스틱이 아니라 누적이다.
-		await fireWheel(viewport, { deltaX: 40, deltaY: 120 });
-		await fireWheel(viewport, { deltaX: 40, deltaY: 120 });
+		// 클램프에 걸리면 누적이 아닌 이유로 값이 맞아버린다 — 단정의 전제를 먼저 고정한다
+		expect(before.k * Math.exp(-0.36)).toBeGreaterThan(K_MIN);
+		// 관성 스크롤은 한 프레임에 여러 이벤트를 보낸다 → pendingView 에 누적되어야 한다.
+		// 마지막 값만 적용되면 배율이 한 번치(exp(-0.18))만 줄어든다.
+		await fireWheel(viewport, { deltaY: 120 });
+		await fireWheel(viewport, { deltaY: 120 });
 		await flushFrame();
-		expect(viewOf().panX).toBe(before.panX - 80);
-		expect(viewOf().panY).toBe(before.panY - 240);
+		expect(viewOf().k).toBeCloseTo(before.k * Math.exp(-0.18) * Math.exp(-0.18), 6);
 	});
 
-	it('마우스 휠(120 배수 노치)은 커서 기준으로 확대·축소한다', async () => {
+	it('페이지 단위 휠(deltaMode 2) 한 칸이 줌 전 구간을 건너뛰지 않는다', async () => {
 		renderCanvas();
 		const viewport = screen.getByRole('application', { name: '네트워크 토폴로지 캔버스' });
 		const before = viewOf();
-		// Chrome·Safari 는 마우스 휠에서 wheelDeltaY 를 120 의 배수로 보고한다 → 트랙패드 스크롤과 구분된다
+		// unit 이 뷰포트 높이(420~820)라 상한이 없으면 exp(-820*0.0015)=0.29 배 → 한 번에 K_MIN 으로 처박힌다
+		await fireWheel(viewport, { deltaY: 1, deltaMode: 2 });
+		await flushFrame();
+		const after = viewOf();
+		expect(after.k).toBeLessThan(before.k);          // 축소는 된다
+		expect(after.k).toBeGreaterThan(K_MIN);          // 바닥까지 가지는 않는다
+		// 이벤트 하나가 배율을 1.45배(= exp(250*0.0015)) 넘게 바꾸지 못한다
+		expect(before.k / after.k).toBeLessThanOrEqual(Math.exp(250 * 0.0015) + 1e-9);
+	});
+
+	it('순수 가로 휠은 배율을 건드리지 않고 가로로만 이동한다', async () => {
+		renderCanvas();
+		const viewport = screen.getByRole('application', { name: '네트워크 토폴로지 캔버스' });
+		const before = viewOf();
+		// deltaY 가 0 이면 exp(0)=1 이라 예전에는 배율도 위치도 그대로인 채 아무 일도 없었다
+		await fireWheel(viewport, { deltaX: 60, deltaY: 0 });
+		await flushFrame();
+		const after = viewOf();
+		expect(after.k).toBe(before.k);
+		expect(after.panX).toBe(before.panX - 60);
+		expect(after.panY).toBe(before.panY);
+	});
+
+	it('ctrl+휠(트랙패드 핀치)은 확대하고 브라우저 페이지 줌으로 새지 않는다', async () => {
+		renderCanvas();
+		const viewport = screen.getByRole('application', { name: '네트워크 토폴로지 캔버스' });
+		const before = viewOf();
+		const ev = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -100, ctrlKey: true, clientX: 200, clientY: 200 });
+		await fireEvent(viewport, ev);
+		await flushFrame();
+		expect(viewOf().k).toBeGreaterThan(before.k);
+		// preventDefault 가 빠지면 캔버스가 아니라 브라우저 전체가 확대된다
+		expect(ev.defaultPrevented).toBe(true);
+	});
+
+	it('비표준 wheelDeltaY 값이 있는 세로 휠도 커서 기준으로 확대·축소한다', async () => {
+		renderCanvas();
+		const viewport = screen.getByRole('application', { name: '네트워크 토폴로지 캔버스' });
+		const before = viewOf();
+		// 비표준 wheelDeltaY 와 무관하게 세로 deltaY 의 부호로 커서 기준 줌을 결정한다.
 		await fireWheel(viewport, { deltaY: -100, wheelDeltaY: 120 });
 		await flushFrame();
 		const after = viewOf();
@@ -519,8 +568,8 @@ describe('TopologyCanvas', () => {
 		expect(after.panX).toBeCloseTo(200 * (1 - after.k), 4);
 	});
 
-	it('줄 단위(deltaMode=1) 휠은 마우스 휠로 보아 확대하며, 줄→픽셀 정규화가 배율에 반영된다', async () => {
-		// Firefox 는 마우스 휠만 줄 단위로 보고한다(트랙패드는 픽셀 단위) → 줄 단위면 마우스 휠이다.
+	it('줄 단위(deltaMode=1) 휠은 줄→픽셀 정규화 후 확대한다', async () => {
+		// deltaMode 는 장치 판별이 아니라 델타 크기의 단위만 지정한다.
 		const lines = (() => {
 			renderCanvas();
 			const vp = screen.getByRole('application', { name: '네트워크 토폴로지 캔버스' });
