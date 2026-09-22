@@ -14,9 +14,13 @@ export interface UploadJob {
 	total: number;
 	startTime: number;
 	error?: string;
+	sha256?: string;
 	abort?: () => void;
 	onComplete?: (job: UploadJob) => void;
 }
+
+/** 브라우저 SHA-256 계산 상한. 초과분은 서버가 저장 바이트로만 무결성을 검증한다. */
+export const CLIENT_HASH_MAX_BYTES = 256 * 1024 * 1024;
 
 interface UploadResponse {
 	success: boolean;
@@ -24,6 +28,26 @@ interface UploadResponse {
 	bytes: number;
 	etag: string;
 	content_type?: string;
+	sha256?: string;
+	detected_content_type?: string;
+}
+
+/** Blob.arrayBuffer 가 없는 런타임(구형 Safari, jsdom)에서도 바이트를 읽는다. */
+function fileBytes(file: File): Promise<ArrayBuffer> {
+	if (typeof file.arrayBuffer === 'function') return file.arrayBuffer();
+	const { promise, resolve, reject } = Promise.withResolvers<ArrayBuffer>();
+	const reader = new FileReader();
+	reader.onload = () => resolve(reader.result as ArrayBuffer);
+	reader.onerror = () => reject(reader.error ?? new Error('파일을 읽지 못했습니다'));
+	reader.readAsArrayBuffer(file);
+	return promise;
+}
+
+async function sha256Hex(file: File): Promise<string> {
+	const digest = await crypto.subtle.digest('SHA-256', await fileBytes(file));
+	return Array.from(new Uint8Array(digest))
+		.map((b) => b.toString(16).padStart(2, '0'))
+		.join('');
 }
 
 const jobs = writable<UploadJob[]>([]);
@@ -77,23 +101,37 @@ function enqueue(
 		if (params.prefix) formData.append('prefix', params.prefix);
 	}
 
-	const { promise, abort } = api.uploadWithProgress<UploadResponse>(
-		uploadUrl,
-		formData,
-		(e) => _patch(id, { loaded: e.loaded }),
-		params.token,
-		params.projectId
-	);
-	_patch(id, { abort });
+	let canceledBeforeStart = false;
+	_patch(id, { abort: () => { canceledBeforeStart = true; } });
 
-	promise
-		.then(() => _patch(id, { loaded: file.size, status: 'success' }, true))
+	void (async () => {
+		if (kind === 'object' && file.size <= CLIENT_HASH_MAX_BYTES && globalThis.crypto?.subtle) {
+			try {
+				formData.append('sha256', await sha256Hex(file));
+			} catch {
+				throw new Error('무결성 해시 계산 실패');
+			}
+		}
+		if (canceledBeforeStart) throw new DOMException('aborted', 'AbortError');
+
+		const { promise, abort } = api.uploadWithProgress<UploadResponse>(
+			uploadUrl,
+			formData,
+			(e) => _patch(id, { loaded: e.loaded }),
+			params.token,
+			params.projectId
+		);
+		_patch(id, { abort });
+		return promise;
+	})()
+		.then((res) => _patch(id, { loaded: file.size, status: 'success', sha256: res?.sha256 }, true))
 		.catch((e: unknown) => {
-			const isCancel =
-				(e instanceof ApiError && e.status === 0) ||
-				(e instanceof Error && e.name === 'AbortError');
-			const msg = e instanceof ApiError ? e.message : ((e as Error)?.message ?? '업로드 실패');
-			_patch(id, { status: isCancel ? 'canceled' : 'error', error: msg }, true);
+			// DOMException 은 환경에 따라 Error 를 상속하지 않으므로 name/message 로 판정한다.
+			const named = typeof e === 'object' && e !== null ? e : {};
+			const name = 'name' in named && typeof named.name === 'string' ? named.name : '';
+			const message = 'message' in named && typeof named.message === 'string' ? named.message : '';
+			const isCancel = (e instanceof ApiError && e.status === 0) || name === 'AbortError';
+			_patch(id, { status: isCancel ? 'canceled' : 'error', error: message || '업로드 실패' }, true);
 		});
 
 	return id;

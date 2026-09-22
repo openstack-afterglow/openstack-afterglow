@@ -66,6 +66,7 @@ OpenStack Swift(Ceph RGW) 기반의 오브젝트 스토리지를 관리합니다
 | `GET` | `/api/v1/object-storage/{container}/objects/{object_name}/download` | 오브젝트 다운로드 |
 | `GET` | `/api/v1/object-storage/{container}/objects/{object_name}/metadata` | 오브젝트 메타데이터 |
 | `GET` | `/api/v1/object-storage/{container}/objects/{object_name}/preview` | 오브젝트 인라인 미리보기 |
+| `GET` | `/api/v1/object-storage/{container}/objects/{object_name}/thumbnail` | 이미지·PDF 축소 미리보기(WebP) |
 | `DELETE` | `/api/v1/object-storage/{container}/objects/{object_name}` | 오브젝트 삭제(소프트/영구) |
 | `POST` | `/api/v1/object-storage/{container}/objects/bulk-delete` | 오브젝트 일괄 삭제 |
 | `POST` | `/api/v1/object-storage/{container}/objects/directory` | 가상 디렉토리 생성 |
@@ -175,17 +176,44 @@ Afterglow는 세 가지 업로드 방식을 제공합니다. 용도에 맞게 �
 
 ### POST /api/v1/object-storage/{container}/upload — 백엔드 프록시 업로드
 
-브라우저 → RGW 직접 PUT의 CORS 차단을 회피하기 위한 프록시 흐름입니다. 클라이언트가 backend로 form 업로드하면, 백엔드가 `{container}-quarantine` 버킷으로 스트리밍 업로드(boto3, 5 GB+ 자동 multipart) → 보안 스캔(placeholder) → target 버킷으로 server-side copy → quarantine 원본 삭제를 수행합니다.
+브라우저 → RGW 직접 PUT의 CORS 차단을 회피하기 위한 프록시 흐름입니다. 클라이언트가 backend로 form 업로드하면, 백엔드가 내용 검사 → `{container}-quarantine` 버킷으로 스트리밍 업로드(boto3, 5 GB+ 자동 multipart) → 저장 객체 검증 → target 버킷으로 server-side copy → quarantine 원본 삭제를 수행합니다.
 
 | 파라미터 | 위치 | 타입 | 필수 | 설명 |
 |----------|------|------|------|------|
 | `file` | form-data | file | 예 | 업로드할 파일 |
 | `prefix` | form-data | string | 아니오 | 오브젝트 키 앞에 붙일 prefix |
+| `sha256` | form-data | string | 아니오 | 브라우저가 계산한 64자 소문자 hex SHA-256. 프론트엔드는 256 MiB 이하 파일에만 계산해 보냅니다. 형식이 어긋나면 `422` |
+
+**형식 검사.** 안티바이러스가 아니라 좁은 형식 정책입니다. 파일 앞부분(8 KiB)의 magic byte로 실제 형식을 판정하고, 아래 **두 가지만** 거부합니다(`400`).
+
+- **렌더링 확장자 위장** — `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.bmp`, `.pdf`의 내용이 해당 형식이 아니면 거부합니다. 이 확장자들은 축소본·미리보기로 브라우저에 인라인 해석되기 때문이며, 내용을 식별할 수 없는 경우도 거부합니다.
+- **실행 파일 위장** — PE(`MZ`)·ELF·Mach-O 이미지가 실행 파일이 아닌 확장자를 달고 있으면 거부합니다. `.exe`, `.dll`, `.so`, `.bin`, 확장자 없음 등 정직한 이름이면 그대로 업로드됩니다.
+
+그 외에는 거부하지 않고 탐지 결과만 기록합니다. `.html`·`.svg`·`.js`·`.sh`·`.tar.gz`와 ZIP 컨테이너인 Office 문서(`.docx`/`.xlsx`/`.pptx`)는 정상 업로드됩니다. 다운로드는 `Content-Disposition: attachment`이고 `/preview`는 Authorization 헤더를 요구하므로 최상위 탐색으로 실행되는 경로가 없습니다. 브라우저가 신고한 `Content-Type`은 그대로 보존하며, 비어 있거나 `application/octet-stream`일 때만 탐지 결과 또는 확장자 추론으로 채웁니다.
+
+**무결성 검증.** 서버가 spooled 파일을 한 번 훑어 크기·SHA-256·MD5를 계산합니다. `sha256`이 오면 `hmac.compare_digest`로 비교하고(불일치 `400`), quarantine 저장 객체는 HEAD 한 번으로 검증합니다 — 단일 PUT은 ETag(=content MD5) 비교, multipart는 크기와 part 수 비교입니다. 객체 전체를 다시 내려받지 않습니다. 승격 후 대상 객체의 크기가 어긋나면 그 객체를 삭제하고 `502`로 실패합니다.
+
+검증된 digest와 탐지 형식은 업로드 시점에 `x-amz-meta-sha256` / `x-amz-meta-detected-content-type`으로 부착합니다. server-side copy는 기본 `MetadataDirective=COPY`이므로 `Content-Type`과 user metadata가 대상 객체까지 그대로 따라가며, metadata 응답의 `sha256`/`detected_content_type` 필드로 노출됩니다.
 
 - 파일 이름이 비었거나 정규화 후 `unnamed`이면 `400`.
 - 크기가 `app_max_upload_gb`(기본 10 GB)를 초과하면 `413`.
-- 클라이언트 disconnect 감지 시 진행 중인 multipart 업로드를 abort하고 quarantine을 정리합니다(`499`).
-- 컨테이너 검증 실패 시 `404`.
+- 클라이언트 disconnect 감지 시 검사 loop와 multipart 업로드를 중단하고 quarantine을 정리합니다(`499`).
+- 컨테이너 검증 실패 시 `404`. 모든 실패 경로에서 quarantine 객체를 정리합니다.
+- `reader` 역할은 `require_project_write`로 `403` 거부됩니다.
+
+**응답 (200 OK)**
+
+```json
+{
+  "success": true,
+  "name": "docs/report.pdf",
+  "bytes": 20480,
+  "etag": "…",
+  "content_type": "application/pdf",
+  "sha256": "…",
+  "detected_content_type": "application/pdf"
+}
+```
 
 ---
 
@@ -230,6 +258,14 @@ Afterglow는 세 가지 업로드 방식을 제공합니다. 용도에 맞게 �
 ### GET /api/v1/object-storage/{container}/objects/{object_name}/preview
 
 오브젝트를 인라인으로 미리보기합니다(`Content-Disposition: inline`). 이미지·텍스트 등 브라우저 내장 뷰어용. 없으면 `404`.
+
+### GET /api/v1/object-storage/{container}/objects/{object_name}/thumbnail
+
+이미지(PNG/JPEG/GIF/WebP/BMP/TIFF)와 PDF 첫 페이지를 최대 320px WebP로 렌더링해 반환합니다. 오브젝트 브라우저 그리드가 사용하며, 호출자의 Swift 연결로 읽으므로 별도의 공개 URL이 생기지 않습니다.
+
+- 결과는 `afterglow:swift:{project}:thumbnail:*` 키로 24시간 캐시하고 응답에 `Cache-Control: private, max-age=3600`과 원본 `ETag`를 붙입니다. Redis 장애는 캐시 미스로 처리합니다.
+- 지원하지 않는 형식은 `415`, 64 MiB 초과 원본은 `413`(HEAD 단계에서 본문을 읽기 전에 거부), 디코딩 실패는 `422`, 오브젝트 부재는 `404`.
+- 렌더링은 픽셀 수 4천만 상한과 PDFium 전역 lock을 적용하며, 알파 채널이 있는 원본(PNG/GIF)은 투명도를 유지합니다.
 
 ### DELETE /api/v1/object-storage/{container}/objects/{object_name}
 

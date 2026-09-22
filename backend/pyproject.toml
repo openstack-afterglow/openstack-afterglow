@@ -39,6 +39,7 @@ dependencies = [
     "afterglow-crypto",
     "waygate-sdk @ git+https://github.com/openstack-afterglow/waygate.git@1c59b5e86d3c3c1b9d3397b38301ee9bc401cf03#subdirectory=sdk",
     "drover-sdk @ git+https://github.com/openstack-afterglow/drover.git@bd4caa490eb3c21fdeb9cc8f008aaf02f72264ef#subdirectory=sdk",
+    "pypdfium2==5.13.0",
 ]
 
 [build-system]

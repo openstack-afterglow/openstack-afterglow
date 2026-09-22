@@ -7,8 +7,16 @@
 
 ## [Unreleased]
 
-### Fixed
+### Changed
 
+- **Lumen 클라이언트별 연결 안내** — 채팅 API 키 설정에서 Codex, Claude Code, OpenAI, Claude 문서를 한꺼번에 펼치지 않고 네 개의 선택 버튼으로 분리했다. 기본 Codex 문서만 표시하고 선택한 클라이언트의 설치·환경 변수·설정 예제와 복사 동작만 교체하므로 긴 연결 안내를 훑지 않아도 된다.
+- **오브젝트 업로드 무결성·형식 검사** — 백엔드 프록시 업로드가 no-op 스캔 대신 실제 바이트를 본다. 업로드 스트림을 한 번 훑어 SHA-256을 계산해 브라우저 값과 비교하고, 저장된 객체는 ETag·part 수로 검증한 뒤에만 공개한다. 형식 정책은 좁게 유지해 인라인 렌더링 확장자(`.png`/`.pdf` 등)의 내용 위장과 확장자를 속인 실행 파일만 거부하고, 나머지 파일은 탐지한 형식을 기록만 한다. 검증된 digest와 탐지 형식은 객체 메타데이터와 업로드 dock의 `SHA-256 확인` 표시로 노출된다.
+
+### Fixed
+- **채팅 클라이언트 탭 스크롤바 제거** — 공유 Tabs의 가로 스크롤 설정과 탭 테두리 때문에 연결 방법 선택줄에 1px 세로 스크롤바가 나타나던 문제를 해당 화면에서만 수정했다. 좁은 화면에는 네 탭을 두 열로 모두 노출하고, 긴 설정 코드 블록의 가로 스크롤은 유지한다.
+- **오브젝트 브라우저 폴더 진입 복구** — 컨테이너 탐색 상태 초기화 effect가 `prefix`를 의존성으로 추적해, 폴더를 열면 즉시 루트로 되돌아가던 문제를 고쳤다. 초기화는 이제 컨테이너·프로젝트가 바뀔 때만 실행된다.
+
+- **토폴로지 캔버스 휠 확대·축소 복구** — 휠 이벤트의 입력 장치를 추정해 마우스 휠은 확대, 트랙패드 두 손가락 스크롤은 화면 이동으로 가르던 휴리스틱을 없앴다. 브라우저가 장치를 알려주지 않아 근본적으로 맞출 수 없었고, 두 차례 완화(`wheelDeltaY` 120 배수 → 크기 임계)에도 실제 마우스에서 휠이 계속 이동으로 분류돼 확대가 되지 않았다 — macOS 는 마우스 휠에도 부드러운 스크롤을 적용해 소수점 `deltaY` 를 보내므로 "소수점 = 트랙패드" 규칙에서 이미 걸린다. 이제 **휠은 장치를 가리지 않고 항상 커서 기준 확대·축소**다. 배율이 델타에 비례해 트랙패드의 작은 델타는 작은 확대로 부드럽게 누적되며, 화면 이동은 배경 드래그·휠 버튼 드래그·화살표 키가 맡는다.
 - **로컬 Palimpsest Hub source build 복구** — dev Compose와 local-services preflight를 실제 sibling layout인 repository-root context + `docker/hub/Dockerfile`에 맞춰, backend/frontend 재생성 시 dependency build가 존재하지 않는 `hub/Dockerfile`에서 중단되던 회귀를 수정했다.
 - **Apple Silicon backend source build 복구** — Backend image가 OpenTofu `linux_amd64` archive를 고정하고 GitHub release를 한 번만 내려받던 계약을 `TARGETARCH` 기반 `amd64`/`arm64` 선택, 공식 SHA-256 pin 검증, bounded retry로 교체했다. OpenTofu acquisition을 별도 stage로 격리해 일시적 download 실패가 대용량 runtime package layer를 무효화하지 않는다.
 - **Kolla Notion worker 암호화 의존성 복구** — worker-only uv group에서 누락된 `afterglow-crypto`를 저장소의 `services/afterglow-crypto` 정본으로 backend/worker 모두에 regular-install하고, 최종 worker image 안의 Notion config 암복호화 smoke와 immutable-digest Kolla 검증 절차를 추가했다.
@@ -16,6 +24,7 @@
 ## [1.24.0] - 2026-09-21
 
 ### Added
+- **오브젝트 브라우저 그리드 보기** — 사용자 버킷 탐색기가 기본적으로 파일 카드 그리드를 보여준다. 폴더는 한 줄짜리 카드로 구분해 더블클릭·Enter로 진입하고, 이미지·PDF는 백엔드가 만든 320px WebP 축소본을 viewport 진입 시점에 가져와 표시하며, 나머지는 큰 형식 아이콘으로 대체한다. 미리보기는 모달로 열려 이미지·PDF·텍스트를 넓게 보여주고, 기존 트리 목록은 툴바 토글로 유지되며 선택은 브라우저에 저장된다.
 
 - **Lumen active-path history와 Claude Gateway 연결** — 채팅은 Lumen의 revision-fenced opaque cursor를 사용해 40개씩 최대 3페이지를 유지하고 처음/이전/다음/최신 탐색, prepend viewport 보존, stale-cursor 단일 복구, old-window 새 응답/전송 처리를 제공한다. Claude Code는 public device issue/poll을 Lumen과 직접 수행하고 Afterglow의 `/oauth/claude/authorize` shell 및 authenticated BFF로 현재 사용자·프로젝트 승인/거부를 완료하며, 설정 화면은 discovery가 광고한 Gateway 주소만 안내한다.
 - **전역 Cloud Shell** — Root header에서 현재 프로젝트 권한을 승인한 뒤 전용 service project의 ephemeral Zun 세션과 사용자×프로젝트별 5GiB Cinder 홈을 사용하는 binary xterm을 연다. 사용자 전역 single-session ticket/lease, project switch·logout cleanup, idle/max expiry와 orphan reconciliation, HMAC-managed reset, Origin·frame 검증, tmpfs Keystone credential, non-root/capability-free multi-architecture image를 포함한다. Mobile bottom sheet와 tablet/desktop resize dock, token-based 공통 terminal theme, Kubernetes/Helm/Kolla config·precheck, API/security/deployment 문서와 opt-in live scenario를 함께 제공한다.

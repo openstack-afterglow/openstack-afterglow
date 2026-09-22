@@ -612,9 +612,11 @@ if _svc_cfg.service_trove_enabled:
     app.include_router(trove_router, prefix="/api/v1/database-instances", tags=["database"])
 if _svc_cfg.service_swift_enabled:
     from app.api.object_storage.containers import router as swift_router
+    from app.api.object_storage.thumbnails import router as swift_thumbnail_router
     from app.api.object_storage.upload import router as swift_upload_router
 
     app.include_router(swift_router, prefix="/api/v1/object-storage", tags=["object-storage"])
+    app.include_router(swift_thumbnail_router, prefix="/api/v1/object-storage", tags=["object-storage"])
     app.include_router(swift_upload_router, prefix="/api/v1/object-storage", tags=["object-storage-upload"])
 if _svc_cfg.service_barbican_enabled:
     from app.api.secrets import containers_router, orders_router, secrets_router

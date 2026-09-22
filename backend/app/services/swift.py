@@ -706,9 +706,14 @@ def delete_object(conn, container: str, name: str) -> None:
 
 
 def get_object_metadata(conn, container: str, name: str) -> dict:
-    """오브젝트 상세 메타데이터 반환."""
+    """오브젝트 상세 메타데이터 반환.
+
+    Upload inspection 결과는 S3 user metadata 로 기록되며 Swift API 에서는
+    소문자 `X-Object-Meta-*` 키로 노출된다. 없으면 빈 문자열이다.
+    """
     _apply_endpoint_override(conn)
     meta = conn.object_store.get_object_metadata(name, container=container)
+    custom = getattr(meta, "metadata", None) or {}
     return {
         "name": meta.name or name,
         "container": container,
@@ -719,6 +724,8 @@ def get_object_metadata(conn, container: str, name: str) -> dict:
         "content_encoding": getattr(meta, "content_encoding", "") or "",
         "content_disposition": getattr(meta, "content_disposition", "") or "",
         "delete_at": str(getattr(meta, "delete_at", "") or ""),
+        "sha256": str(custom.get("sha256", "") or ""),
+        "detected_content_type": str(custom.get("detected-content-type", "") or ""),
     }
 
 

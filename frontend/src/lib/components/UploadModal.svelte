@@ -62,6 +62,9 @@
 				}}
 				class="w-full text-sm text-ink-2 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:bg-surface-selected file:text-ink-0 hover:file:bg-surface-selected"
 			/>
+			<p class="text-xs text-ink-2">
+				업로드한 파일은 형식·구조 검사와 SHA-256 무결성 검증을 거칩니다. 실행 파일과 활성 문서는 거부됩니다.
+			</p>
 			{#if error}
 				<p class="text-red-400 text-xs">{error}</p>
 			{/if}
