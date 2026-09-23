@@ -422,10 +422,10 @@ test("pull requests cannot schedule the self-hosted image build matrix", () => {
 	assert.ok(buildStart >= 0 && manifestStart > buildStart, "docker workflow build job must exist");
 	assert.match(buildJob, /runs-on: \$\{\{ matrix\.runner \}\}/);
 	// pr-dedup 이 push 에서 skipped 이므로 build 조건은 !cancelled() 와 changes 결과를 명시한다.
-	// PR 제외(is_pr)와 빈 target 제외 조건은 그대로 유지해야 한다.
+	// PR 제외(event 리터럴 + 보조 is_pr)와 빈 target 제외 조건은 그대로 유지해야 한다.
 	assert.match(
 		buildJob,
-		/if: \$\{\{ !cancelled\(\) && needs\.changes\.result == 'success' && needs\.changes\.outputs\.is_pr != 'true' && needs\.changes\.outputs\.standard_targets != '\[\]' \}\}/
+		/if: \$\{\{ github\.event_name != 'pull_request' && !cancelled\(\) && needs\.changes\.result == 'success' && needs\.changes\.outputs\.is_pr != 'true' && needs\.changes\.outputs\.standard_targets != '\[\]' \}\}/
 	);
 });
 

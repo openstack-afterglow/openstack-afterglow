@@ -57,11 +57,32 @@ A second review of the change set found one medium and six low issues. It also n
   - The AGENTS.md CI rules scope now covers every workflow and `scripts/ci/`.
   - This change stays open for the post-merge items.
 
+### Review round 3
+
+A third review found two medium and seven low issues.
+
+- **Medium: dedup trusted tree identity alone.**
+  - `pr-dedup` skipped `test-pr` whenever the merge tree equalled the dev head tree. It assumed a dev push run had tested that commit.
+  - The push trigger's `paths-ignore` breaks that assumption. A dev push that touches only `.argocd-source-*.yaml` or the dev `kustomization.yaml` creates no push run, yet those files are `check_architecture.py` input. A stale ARCHITECTURE stamp could therefore reach `main` with only skipped tests.
+  - The script now also requires a `docker-build.yml` push run for the head SHA, in any status, through the Actions runs API with `actions: read`. Zero runs or any API error runs the tests.
+- **Medium: rule 10 had no contract.**
+  - Moving a `test.yml` job or the `changes` job to self-hosted survived the suite. So did forcing `is_pr=false`, which would let the self-hosted, `packages: write` build run for PRs.
+  - `build`, `build-cloud-shell` and `manifest` now start their `if` with `github.event_name != 'pull_request'`. A contract parses every workflow and enforces this for every non-hosted job. It requires GitHub-hosted `ubuntu-*` for PR-reachable jobs and for every `test.yml` job, bans `pull_request_target`, and pins the `is_pr` step.
+- **Low, fixed.**
+  - Both detector diffs use `--no-renames`, so a file moved out of an image directory, or out of `helm/afterglow/`, still counts at its source path.
+  - `test.yml` layer steps are pinned as gating, with exact commands, and `test-live`'s `if` is pinned.
+  - `test-pr` no longer inherits secrets.
+  - The vitest comment labels its local measurement.
+  - The ARCHITECTURE.md Code map lists `pr-dedup.js`, `helm-publish-decision.js` and `helm-release.yml`.
+  - The post-merge tasks now measure the PR path (`pr-dedup` plus `test-pr`). The projected added latency is recorded and labelled as a projection.
+- **Low, no change.** The first change was archived with two open post-merge tasks. They are carried here, and this change stays open until they are measured.
+
 ## Impact
 
 Affects:
 
 - `.github/workflows/docker-build.yml`, `.github/workflows/test.yml` and `.github/workflows/helm-release.yml`
+- `frontend/vitest.config.ts` (comment only)
 - `scripts/ci/detect-build-targets.js`, `scripts/ci/image-revision.js`, `scripts/ci/verify-vitest-shard.js`, `scripts/ci/pr-dedup.js` and `scripts/ci/helm-publish-decision.js`, with their tests
 - `package.json` `test:orchestration` and its pin in `scripts/test-target.test.js`
 - `scripts/github-actions-contract.test.js`

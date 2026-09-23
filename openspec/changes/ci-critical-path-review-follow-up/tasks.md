@@ -70,9 +70,49 @@
   - `backend/tests/TESTING.md`.
 - [x] Verify. Mutation-check 33 single-edit regressions with a scratch harness that restores from memory, and confirm that the worktree diff is unchanged afterwards. All 33 fail the suite. Also run `test:orchestration`, `test:kolla:contract`, `test:unit:backend`, `test:contract`, both real vitest shards with the verifier, ruff, actionlint, and the architecture stamp with `--staged`.
 
+### Review round 3 fixes (commit `fix: address CI review round 2`)
+
+- [x] `pr-dedup` requires a push run for the head SHA.
+  - Tree identity alone no longer skips. The script also calls `gh api repos/<repo>/actions/workflows/docker-build.yml/runs?head_sha=<sha>&event=push&per_page=100`, with the query in the path because `-f` without `-X GET` would send a POST. It re-checks `head_sha`, `event` and a numeric `id`, in any status.
+  - Zero runs, an API error or malformed JSON gives `skip=false`. The job gains `actions: read` and passes `GH_TOKEN` only through the step env. The notice links the push run and the head commit.
+  - Why: a dev push that touches only `paths-ignore` files (`.argocd-source-*.yaml`, the dev `kustomization.yaml`) creates no push run. Those files are still `check_architecture.py` input. Reproduced in a scratch clone of `ce75d0d1`: appending one line to `deploy/k8s-template/overlays/dev/kustomization.yaml` and committing makes the check report a stale source snapshot.
+- [x] `pr-dedup` tests.
+  - Fake-exec unit tests cover zero runs, runs for another SHA or event, a non-numeric id, a missing `workflow_runs`, `null` and `[]` bodies, an API error, malformed JSON, the exact `gh api` argv, a malformed base repo, and no lookup for differing trees.
+  - The real-git CLI test puts a fake `gh` first on `PATH`, so it never reaches the real `gh` or the network. It covers one run (skip), zero runs and exit 1 (test). It checks that fork, dependabot and diverged cases make no `gh` call.
+- [x] Rule 10 contract.
+  - `build`, `build-cloud-shell` and `manifest` put `github.event_name != 'pull_request'` first in their `if`. `is_pr` stays as a secondary check.
+  - The contract parses every workflow under the top-level `jobs:`. A job whose `runs-on` is not a one-line hosted label (self-hosted, `${{ matrix.runner }}`, a list or a group) must have that literal as a top-level conjunct, with no top-level `||`.
+  - PR-reachable jobs (`pr-dedup`, `changes`) and every job of `test-pr`'s callee `test.yml` must use `ubuntu-*`. `pull_request_target` is banned. The `Resolve effective ref` step that computes `is_pr` is pinned exactly.
+- [x] `detect-build-targets.js`: both diffs use `--no-renames`.
+  - The contract pins each call site separately. A unit test covers a rename-out diff for images and one for Helm.
+  - Real-git tests `git mv` a 12-line file out of `backend/` and out of `helm/afterglow/`. They check the event-basis diff, the published-revision diff and the Helm decision. They also check the fixture premise, that default rename detection reports only the destination.
+- [x] Gating contracts for `test.yml`.
+  - These steps must be unconditional, must not continue on error or swallow their exit code, and must run exactly their pinned command: architecture freshness, orchestration, version sync, deps sync, ruff check and format, backend unit, Cloud Shell smoke, contract, Kolla contract, functional, frontend install and live.
+  - Required layer jobs have no job-level `if` or `continue-on-error`. `test-live`'s `if` is pinned exactly, with no status function.
+- [x] `test-pr` drops `secrets: inherit`. The only secret consumers in `test.yml` are the opt-in live jobs, and `test-pr` sets `run_live_openstack: false`. The contract pins its absence on `test-pr` and its presence on `test`.
+- [x] `frontend/vitest.config.ts`: the `pool: 'threads'` comment now labels its numbers as a local `--maxWorkers=3` measurement, not a CI result.
+- [x] Docs.
+  - ARCHITECTURE.md: the Code map row gains `pr-dedup.js`, `helm-publish-decision.js` and `helm-release.yml`. `CI와 이미지 발행` gains the dedup condition, the rule 10 contract, `--no-renames`, the corrected known limitations and the projected PR-path latency. There is also a round 3 entry.
+  - AGENTS.md (CLAUDE.md): rules 8, 9, 10 and 11.
+  - `backend/tests/TESTING.md`.
+- [x] Verify.
+  - `test:orchestration`: 100/100.
+  - Mutation check: 29 single-edit regressions, applied with a harness that restores from memory, and the worktree diff was unchanged afterwards. 28 fail the suite. The survivor is a control case that moves the build matrix to `ubuntu-latest`, which is not a rule violation.
+  - actionlint: `docker-build.yml` has 14 SC2086 infos, as before. `helm-release.yml` has 1 and `test.yml` has 0.
+  - The architecture stamp passes with `--staged`.
+  - A live read-only call of `findPushRun` against the real GitHub API used the local `gh` with the user's token.
+    - For dev head `3c461c7f` it returned push run `35898360384`, the same id that `gh run list` shows.
+    - For the dependabot PR head `cf69d3cd`, whose branch is not a push trigger branch, it returned `null`.
+    - This confirms the response shape and the GET path.
+
 ### Post-merge follow-up (needs real GitHub Actions runs)
 
 - [ ] Measure 20+ real runs after merge: the critical-path median and p90 and the per-job times. Record them against the 143 s baseline (median, p90 155 s) in this change. CI rule 1 requires this before any effect is claimed.
+- [ ] Measure the PR path separately: `pr-dedup` plus `test-pr`, from run creation to the last required job, for 20+ PRs that are not deduplicated (feature, dependabot or diverged). Record how much `pr-dedup` adds. It is a serial pre-gate that cannot be made conditional because of the transitive-skip constraint.
+  - The projection is about 9 s median (p90 12 s, max 47 s). It comes from a similar job: `Detect changed targets` in the 20 dev→main PR runs of 2026-09-16 to 23, measured from job creation to completion. It excludes `pr-dedup`'s extra depth-1 fetch and API call.
+  - Also record how often dev→main PRs are deduplicated.
+- [ ] Confirm on a real dev→main PR that the job token's `actions: read` is enough for the push-run lookup and that the notice links that run. The endpoint and response shape were already checked read-only with a user token. Historical data: in the 20 dev→main PR runs of 2026-09-16 to 23, the push run for the same head SHA was created 2 to 1128 s before the PR run (median 3 s). Confirm that a dev push touching only `paths-ignore` files makes the PR run `test-pr`.
+- [ ] Confirm that `test-pr` without `secrets: inherit` still passes on a real PR, with `detect-live` and `test-live` skipped.
 - [ ] Confirm on a real dev push:
   - `test-pr` is skipped, and `changes` runs on `test` only;
   - `changes` reads the revision labels (the first push after merge uses the event basis, because existing images are unlabelled);

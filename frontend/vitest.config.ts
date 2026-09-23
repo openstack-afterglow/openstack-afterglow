@@ -36,7 +36,8 @@ export default defineConfig({
 		environment: 'jsdom',
 		globals: true,
 		// 기본 forks 대비 worker_threads 가 파일당 환경·import 비용을 줄인다.
-		// CI 동등(--maxWorkers=3) 실측: 전체 247 파일 2회 모두 통과, wall time 약 -14.8%.
+		// 로컬 --maxWorkers=3 측정(CI 실행 아님): 전체 247 파일 2회 모두 통과, 로컬 wall time 약 -14.8%.
+		// CI 효과는 OpenSpec ci-critical-path-review-follow-up 의 병합 후 실측으로만 기록한다.
 		pool: 'threads',
 	},
 });

@@ -21,6 +21,8 @@
 //        :dev 이동은 manifest 의 stale re-run 가드가 막는다.
 //      - diverged, 또는 revision 을 읽은 뒤의 compare/fetch/diff 실패: 그 target 을 빌드한다(fail-safe).
 // - push 의 마지막 커밋만 보는 tip-only 비교(첫 부모와 HEAD 의 diff)는 쓰지 않는다.
+// - 두 diff 모두 `--no-renames` 다. 기본 rename 감지는 이미지 디렉터리 밖으로 옮긴 파일을 도착 경로로만 보고해
+//   원래 target 을 빌드하지 않는다(Helm 발행 판단도 collectEventChanges 를 공유한다).
 //
 // 경로 규칙(Afterglow 배포 세트): backend/worker 는 afterglow 규칙, frontend 는 frontend 규칙 또는
 // afterglow 규칙, cloud-shell 은 cloud-shell 규칙. backend/worker 가 빌드되면 frontend 도 함께 빌드한다.
@@ -193,7 +195,7 @@ function collectEventChanges({ eventName, before, forced, sha }, exec = defaultE
 	}
 	try {
 		return {
-			files: splitLines(exec("git", ["diff", "--name-only", before, head])),
+			files: splitLines(exec("git", ["diff", "--no-renames", "--name-only", before, head])),
 			basis: `${before}..${head}`,
 			unexpected: false,
 		};
@@ -220,7 +222,7 @@ function collectPublished({ target, imageRef, sha, repository }, exec = defaultE
 	// ahead | identical: 발행 revision 이 HEAD 의 조상이다. 두 tree 비교에는 이력이 필요 없다.
 	try {
 		exec("git", ["fetch", "--no-tags", "--depth=1", "origin", revision]);
-		return { kind: "diff", revision, files: splitLines(exec("git", ["diff", "--name-only", revision, sha])) };
+		return { kind: "diff", revision, files: splitLines(exec("git", ["diff", "--no-renames", "--name-only", revision, sha])) };
 	} catch (error) {
 		return { kind: "error", revision, reason: `${target} fetch/diff failed: ${error.message.split("\n")[0]}` };
 	}

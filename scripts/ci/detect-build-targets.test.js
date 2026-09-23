@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -8,6 +9,7 @@ const {
 	ALL_TARGETS,
 	collectAndDecide,
 	collectEventChanges,
+	collectPublished,
 	decideTargets,
 	main,
 	targetsForFiles,
@@ -62,7 +64,7 @@ function devPushEnv(overrides = {}) {
 }
 
 const fetchBefore = [`git fetch --no-tags --depth=1 origin ${BEFORE}`, ""];
-const diffBefore = (files) => [`git diff --name-only ${BEFORE} ${HEAD}`, files.join("\n")];
+const diffBefore = (files) => [`git diff --no-renames --name-only ${BEFORE} ${HEAD}`, files.join("\n")];
 const inspect = (image, response) => [
 	`docker buildx imagetools inspect ghcr.io/openstack-afterglow/${image}:dev --format {{json .Image}}`,
 	response,
@@ -238,8 +240,8 @@ test("published-revision basis rebuilds a target whose earlier build failed (car
 		[`gh api repos/${REPO}/compare/${PUB}...${HEAD} --jq .status`, "ahead"],
 		[`gh api repos/${REPO}/compare/${BEFORE}...${HEAD} --jq .status`, "ahead"],
 		[`git fetch --no-tags --depth=1 origin ${PUB}`, ""],
-		[`git diff --name-only ${PUB} ${HEAD}`, "backend/app/api/deps.py\ndocs/index.md"],
-		[`git diff --name-only ${BEFORE} ${HEAD}`, "docs/index.md"],
+		[`git diff --no-renames --name-only ${PUB} ${HEAD}`, "backend/app/api/deps.py\ndocs/index.md"],
+		[`git diff --no-renames --name-only ${BEFORE} ${HEAD}`, "docs/index.md"],
 	]);
 	const result = collectAndDecide(devPushEnv(), exec);
 	// backend 가 다시 빌드되고, 배포 세트 규칙으로 frontend 도 함께 빌드된다. worker 는 최신이다.
@@ -269,7 +271,7 @@ test("compare statuses: identical/ahead use the diff, behind falls back, diverge
 				inspect("afterglow-cloud-shell", JSON.stringify(config(published))),
 				[/gh api .*compare/, status],
 				[`git fetch --no-tags --depth=1 origin ${published}`, ""],
-				[`git diff --name-only ${published} ${HEAD}`, "cloud-shell/bootstrap.sh"],
+				[`git diff --no-renames --name-only ${published} ${HEAD}`, "cloud-shell/bootstrap.sh"],
 			]),
 		).targets;
 	assert.deepEqual(run("ahead"), ["cloud-shell"]);
@@ -300,7 +302,7 @@ test("any error after a published revision is read builds that target", () => {
 		...base,
 		[/compare/, "ahead"],
 		[`git fetch --no-tags --depth=1 origin ${PUB}`, ""],
-		[`git diff --name-only ${PUB} ${HEAD}`, new Error("bad object")],
+		[`git diff --no-renames --name-only ${PUB} ${HEAD}`, new Error("bad object")],
 	]);
 	assert.deepEqual(collectAndDecide(devPushEnv(), diffError).targets, ["frontend"]);
 });
@@ -315,7 +317,7 @@ test("a docker-build.yml change since the published revision rebuilds that targe
 		inspect("afterglow-cloud-shell", JSON.stringify(config())),
 		[/compare/, "ahead"],
 		[`git fetch --no-tags --depth=1 origin ${PUB}`, ""],
-		[`git diff --name-only ${PUB} ${HEAD}`, ".github/workflows/docker-build.yml"],
+		[`git diff --no-renames --name-only ${PUB} ${HEAD}`, ".github/workflows/docker-build.yml"],
 	]);
 	// worker 가 선택되면 배포 세트 규칙으로 frontend 도 함께 빌드한다.
 	assert.deepEqual(collectAndDecide(devPushEnv(), exec).targets, ["frontend", "worker"]);
@@ -331,7 +333,7 @@ test("a frontend published revision behind a backend change rebuilds frontend", 
 		inspect("afterglow-cloud-shell", JSON.stringify(config())),
 		[/compare/, "ahead"],
 		[`git fetch --no-tags --depth=1 origin ${PUB}`, ""],
-		[`git diff --name-only ${PUB} ${HEAD}`, "backend/app/main.py"],
+		[`git diff --no-renames --name-only ${PUB} ${HEAD}`, "backend/app/main.py"],
 	]);
 	assert.deepEqual(collectAndDecide(devPushEnv(), exec).targets, ["frontend"]);
 });
@@ -361,5 +363,92 @@ test("main writes targets, standard_targets and cloud_shell to GITHUB_OUTPUT", (
 		assert.equal(fs.existsSync(bad), false);
 	} finally {
 		fs.rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("a file moved out of an image directory rebuilds the target it left", () => {
+	// `--no-renames` 는 rename 을 삭제+추가로 보고한다. 기본 rename 감지는 도착 경로(tools_moved/)만 보고한다.
+	const exec = fakeExec([fetchBefore, diffBefore(["backend/app/api/__init__.py", "tools_moved/__init__.py"]), allUnlabeled]);
+	const result = collectAndDecide(devPushEnv(), exec);
+	assert.deepEqual(result.targets, ["backend", "frontend", "worker"]);
+	assert.ok(exec.calls.includes(`git diff --no-renames --name-only ${BEFORE} ${HEAD}`));
+	assert.equal(exec.calls.some((call) => call.startsWith("git diff ") && !call.includes("--no-renames")), false);
+});
+
+// ─── 실제 git: 이미지 디렉터리 밖으로 옮긴 파일(rename-out) ─────────────────────────────
+const GIT_ENV = {
+	...process.env,
+	GIT_CONFIG_GLOBAL: "/dev/null",
+	GIT_CONFIG_NOSYSTEM: "1",
+	GIT_AUTHOR_NAME: "ci",
+	GIT_AUTHOR_EMAIL: "ci@example.invalid",
+	GIT_COMMITTER_NAME: "ci",
+	GIT_COMMITTER_EMAIL: "ci@example.invalid",
+	GIT_TERMINAL_PROMPT: "0",
+};
+
+function git(cwd, ...args) {
+	return execFileSync("git", args, { cwd, env: GIT_ENV, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+}
+
+/**
+ * origin: A 에 `from` 이 있고 B 가 그것을 `to` 로 git mv 한다. 내용이 여러 줄이어야 git 이 rename 으로 짝짓는다
+ * (빈 파일은 짝짓지 않아 `--no-renames` 유무와 무관하게 통과한다). workspace 는 B 만 depth=1 로 가져온다.
+ */
+function scratchMove(from, to) {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "detect-targets-git-"));
+	const origin = path.join(dir, "origin");
+	const workspace = path.join(dir, "workspace");
+	fs.mkdirSync(path.join(origin, path.dirname(from)), { recursive: true });
+	git(origin, "init", "-q", "-b", "dev");
+	// GitHub 처럼 도달 가능한 임의 SHA 의 fetch 를 허용한다(before 는 광고된 ref 끝이 아니다).
+	git(origin, "config", "uploadpack.allowReachableSHA1InWant", "true");
+	const content = Array.from({ length: 12 }, (_, i) => `line ${i}: content that moves between directories\n`).join("");
+	fs.writeFileSync(path.join(origin, from), content);
+	fs.writeFileSync(path.join(origin, "README.md"), "readme\n");
+	git(origin, "add", ".");
+	git(origin, "commit", "-q", "-m", "A");
+	const before = git(origin, "rev-parse", "HEAD");
+	fs.mkdirSync(path.join(origin, path.dirname(to)), { recursive: true });
+	git(origin, "mv", from, to);
+	git(origin, "commit", "-q", "-m", "B");
+	const head = git(origin, "rev-parse", "HEAD");
+	// fixture 확인: 기본 rename 감지는 도착 경로만 보고한다.
+	assert.equal(git(origin, "diff", "--name-only", before, head), to);
+
+	fs.mkdirSync(workspace);
+	git(workspace, "init", "-q", "-b", "dev");
+	git(workspace, "remote", "add", "origin", `file://${origin}`);
+	git(workspace, "fetch", "-q", "--no-tags", "--depth=1", "origin", head);
+	git(workspace, "checkout", "-q", "--detach", "FETCH_HEAD");
+	return { dir, workspace, before, head };
+}
+
+/** git 은 workspace 에서 실제로 실행하고 나머지(docker/gh)는 fallback fake 로 보낸다. */
+function realGit(cwd, fallback) {
+	return (cmd, args) => (cmd === "git" ? execFileSync("git", args, { cwd, env: GIT_ENV, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }) : fallback(cmd, args));
+}
+
+test("real git: a file moved out of backend/ rebuilds backend from the event and published-revision diffs", () => {
+	const repo = scratchMove("backend/app/api/__init__.py", "tools_moved/__init__.py");
+	try {
+		const event = collectEventChanges({ eventName: "push", before: repo.before, forced: "false", sha: repo.head }, realGit(repo.workspace, fakeExec([])));
+		assert.deepEqual([...event.files].sort(), ["backend/app/api/__init__.py", "tools_moved/__init__.py"]);
+		assert.ok(targetsForFiles(event.files).includes("backend"));
+
+		const published = collectPublished(
+			{ target: "backend", imageRef: "ghcr.io/o/afterglow-api:dev", sha: repo.head, repository: REPO },
+			realGit(
+				repo.workspace,
+				fakeExec([
+					[/^docker buildx imagetools inspect ghcr\.io\/o\/afterglow-api:dev --format/, JSON.stringify(config(repo.before))],
+					[`gh api repos/${REPO}/compare/${repo.before}...${repo.head} --jq .status`, "ahead"],
+				]),
+			),
+		);
+		assert.equal(published.kind, "diff", JSON.stringify(published));
+		assert.deepEqual([...published.files].sort(), ["backend/app/api/__init__.py", "tools_moved/__init__.py"]);
+	} finally {
+		fs.rmSync(repo.dir, { recursive: true, force: true });
 	}
 });

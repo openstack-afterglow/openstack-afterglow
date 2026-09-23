@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -40,7 +41,7 @@ function mainPush(overrides = {}) {
 }
 
 const fetchBefore = [`git fetch --no-tags --depth=1 origin ${BEFORE}`, ""];
-const diffBefore = (files) => [`git diff --name-only ${BEFORE} ${HEAD}`, files.join("\n")];
+const diffBefore = (files) => [`git diff --no-renames --name-only ${BEFORE} ${HEAD}`, files.join("\n")];
 
 test("a multi-commit main push whose earlier commit touched the chart publishes", () => {
 	// before..HEAD 는 push 의 모든 커밋을 포함한다. 과거 tip-only diff 는 마지막 커밋(docs)만 봤다.
@@ -48,7 +49,7 @@ test("a multi-commit main push whose earlier commit touched the chart publishes"
 	const result = decidePublish(mainPush(), exec);
 	assert.equal(result.publish, true);
 	assert.deepEqual(result.files, ["helm/afterglow/values.yaml"]);
-	assert.ok(exec.calls.includes(`git diff --name-only ${BEFORE} ${HEAD}`));
+	assert.ok(exec.calls.includes(`git diff --no-renames --name-only ${BEFORE} ${HEAD}`));
 	assert.equal(exec.calls.some((call) => call.includes("HEAD^1")), false);
 });
 
@@ -58,6 +59,14 @@ test("a main push without chart changes skips the publish", () => {
 		assert.equal(result.publish, false, JSON.stringify(files));
 		assert.deepEqual(result.warnings, []);
 	}
+});
+
+test("a chart file moved out of helm/afterglow/ publishes", () => {
+	// `--no-renames` 는 rename 을 삭제+추가로 보고한다. 기본 rename 감지는 도착 경로만 보고해 발행을 놓친다.
+	const exec = fakeExec([fetchBefore, diffBefore(["archive/configmap.yaml", "helm/afterglow/templates/configmap.yaml"])]);
+	const result = decidePublish(mainPush(), exec);
+	assert.equal(result.publish, true);
+	assert.deepEqual(result.files, ["helm/afterglow/templates/configmap.yaml"]);
 });
 
 test("zero before, forced push, invalid before, fetch and diff failures publish", () => {
@@ -116,6 +125,61 @@ test("main writes publish exactly once, annotates unexpected failures and never 
 		});
 		assert.equal(thrown.code, 0);
 		assert.equal(thrown.output, "publish=true\n");
+	} finally {
+		fs.rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+// ─── 실제 git: chart 파일을 helm/afterglow/ 밖으로 옮긴 main push ─────────────────────────
+const GIT_ENV = {
+	...process.env,
+	GIT_CONFIG_GLOBAL: "/dev/null",
+	GIT_CONFIG_NOSYSTEM: "1",
+	GIT_AUTHOR_NAME: "ci",
+	GIT_AUTHOR_EMAIL: "ci@example.invalid",
+	GIT_COMMITTER_NAME: "ci",
+	GIT_COMMITTER_EMAIL: "ci@example.invalid",
+	GIT_TERMINAL_PROMPT: "0",
+};
+
+function git(cwd, ...args) {
+	return execFileSync("git", args, { cwd, env: GIT_ENV, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+}
+
+test("real git: a chart file moved out of helm/afterglow/ publishes", () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "helm-publish-git-"));
+	const origin = path.join(dir, "origin");
+	const workspace = path.join(dir, "workspace");
+	const from = "helm/afterglow/templates/configmap.yaml";
+	const to = "archive/configmap.yaml";
+	try {
+		fs.mkdirSync(path.join(origin, path.dirname(from)), { recursive: true });
+		git(origin, "init", "-q", "-b", "main");
+		git(origin, "config", "uploadpack.allowReachableSHA1InWant", "true");
+		// 여러 줄 내용이어야 git 이 rename 으로 짝짓는다(빈 파일은 flag 유무와 무관하게 통과한다).
+		fs.writeFileSync(path.join(origin, from), Array.from({ length: 12 }, (_, i) => `key${i}: value ${i}\n`).join(""));
+		git(origin, "add", ".");
+		git(origin, "commit", "-q", "-m", "A");
+		const before = git(origin, "rev-parse", "HEAD");
+		fs.mkdirSync(path.join(origin, "archive"));
+		git(origin, "mv", from, to);
+		git(origin, "commit", "-q", "-m", "B");
+		const head = git(origin, "rev-parse", "HEAD");
+		assert.equal(git(origin, "diff", "--name-only", before, head), to, "fixture: default rename detection reports only the destination");
+
+		fs.mkdirSync(workspace);
+		git(workspace, "init", "-q", "-b", "main");
+		git(workspace, "remote", "add", "origin", `file://${origin}`);
+		git(workspace, "fetch", "-q", "--no-tags", "--depth=1", "origin", head);
+		git(workspace, "checkout", "-q", "--detach", "FETCH_HEAD");
+
+		const exec = (cmd, args) => {
+			assert.equal(cmd, "git");
+			return execFileSync("git", args, { cwd: workspace, env: GIT_ENV, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+		};
+		const result = decidePublish(mainPush({ GITHUB_SHA: head, EVENT_BEFORE: before }), exec);
+		assert.equal(result.publish, true, JSON.stringify(result.reasons));
+		assert.deepEqual(result.files, [from]);
 	} finally {
 		fs.rmSync(dir, { recursive: true, force: true });
 	}

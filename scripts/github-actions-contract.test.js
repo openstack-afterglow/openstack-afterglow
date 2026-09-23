@@ -99,6 +99,55 @@ function assertGatingStep(step, label) {
 	assert.doesNotMatch(step, /\|\|\s*(true\b|:(?=\s|$))/m, `${label} must not swallow its exit code`)
 }
 
+test("every test layer step gates its job and runs exactly its pinned command", () => {
+	// CI 규정 11번: 안전 단계는 존재만이 아니라 게이트하는지도 고정한다. `|| true` 만이 무력화 방법은 아니므로
+	// (예: `run: "true"`, 다른 명령) step 의 run 줄도 정확히 고정한다.
+	const gating = {
+		"version-check": [
+			["Check architecture freshness", "python3 scripts/check_architecture.py"],
+			["Test target orchestration", "npm run test:orchestration"],
+			["Check versions aligned", "bash scripts/check-version-sync.sh"],
+		],
+		"test-backend": [
+			["Sync deps (dev)", "uv sync --frozen --extra dev"],
+			["Lint ruff check", "uv run ruff check ."],
+			["Lint ruff format check", "uv run ruff format --check ."],
+			["Unit tests", "npm run test:unit:backend"],
+		],
+		"test-cloud-shell": [["Image and bootstrap smoke", "npm run test:cloud-shell:image"]],
+		"test-contract": [
+			["Sync deps (dev)", "uv sync --frozen --extra dev"],
+			["Contract tests", "npm run test:contract"],
+			["Kolla contract tests", "npm run test:kolla:contract"],
+		],
+		"test-functional": [
+			["Sync deps (dev)", "uv sync --frozen --extra dev"],
+			["Functional tests", "npm run test:functional -- --no-start"],
+		],
+		"test-frontend": [["Install", "bun install --frozen-lockfile"]],
+		"test-live": [["Live OpenStack tests", "npm run test:live"]],
+	}
+	for (const [jobName, steps] of Object.entries(gating)) {
+		const job = jobBlock(testWorkflow, jobName)
+		// 필수 계층 잡은 조건 없이 실행된다. opt-in 인 test-live 의 if 는 아래에서 정확히 고정한다.
+		if (jobName !== "test-live") assert.doesNotMatch(job, /^    if:/m, `${jobName} must not be conditional`)
+		assert.doesNotMatch(job, /^    continue-on-error:/m, `${jobName} must fail the workflow`)
+		for (const [name, command] of steps) {
+			const step = stepBlock(job, name)
+			assertGatingStep(step, `${jobName} "${name}"`)
+			const runs = (step.match(/^\s+run:.*$/gm) || []).map((line) => line.trim())
+			assert.deepEqual(runs, [`run: ${command}`], `${jobName} "${name}" must run exactly ${command}`)
+		}
+	}
+	// architecture freshness 는 version-check 의 첫 명령이다(tag-only version 처리보다 먼저).
+	const versionCheck = jobBlock(testWorkflow, "version-check")
+	assert.ok(versionCheck.indexOf("Check architecture freshness") < versionCheck.indexOf("- uses: actions/setup-node@v4"))
+
+	// 실제 자격 증명을 쓰는 test-live 는 status 함수 없이(암묵적 success()) detect-live 결과만 본다.
+	// always()·!cancelled() 가 붙으면 version-check 나 테스트 계층이 실패해도 live 테스트가 돈다.
+	assert.equal(jobIf(jobBlock(testWorkflow, "test-live")), "${{ needs.detect-live.outputs.enabled == 'true' }}")
+})
+
 test("frontend runs as a verified 2-way vitest shard matrix", () => {
 	const job = jobBlock(testWorkflow, "test-frontend")
 	assert.match(job, /name: Frontend \(unit tests \$\{\{ matrix\.shard \}\}\/2\)/)
@@ -167,11 +216,15 @@ test("service containers use the dev compose test-profile health timing", () => 
 	}
 })
 
-test("PR dedup skips only same-repo dev PRs whose merge tree equals the head tree", () => {
+test("PR dedup skips only same-repo dev PRs whose merge tree equals the head tree and whose push run exists", () => {
 	const job = jobBlock(dockerWorkflow, "pr-dedup")
 	assert.match(job, /^    if: github\.event_name == 'pull_request'\s*$/m)
 	assert.match(job, /runs-on: ubuntu-latest/)
-	assert.match(job, /^    permissions:\n      contents: read\n    outputs:\n      skip: \$\{\{ steps\.dedup\.outputs\.skip \}\}\n/m)
+	// actions: read 는 head SHA 의 docker-build.yml push 실행 조회용이다. 쓰기 권한은 없다.
+	assert.match(
+		job,
+		/^    permissions:\n      contents: read\n      actions: read\n    outputs:\n      skip: \$\{\{ steps\.dedup\.outputs\.skip \}\}\n/m,
+	)
 	// 판단 step 은 항상 성공하므로 job-level continue-on-error 는 인프라 실패만 가린다. 실패는 red 로 드러낸다.
 	assert.doesNotMatch(job, /^    continue-on-error:/m, "pr-dedup must not hide its own failure")
 
@@ -180,8 +233,9 @@ test("PR dedup skips only same-repo dev PRs whose merge tree equals the head tre
 	assert.match(checkout, /continue-on-error: true/)
 	assert.match(checkout, /persist-credentials: false/)
 
-	const dedup = stepBlock(job, "Compare merge tree with head tree")
+	const dedup = stepBlock(job, "Compare trees and find the push run")
 	assert.match(dedup, /id: dedup/)
+	assert.match(dedup, /^          GH_TOKEN: \$\{\{ github\.token \}\}$/m)
 	assert.match(dedup, /HEAD_REPO: \$\{\{ github\.event\.pull_request\.head\.repo\.full_name \}\}/)
 	assert.match(dedup, /BASE_REPO: \$\{\{ github\.repository \}\}/)
 	assert.match(dedup, /HEAD_REF: \$\{\{ github\.head_ref \}\}/)
@@ -205,13 +259,18 @@ test("PR dedup skips only same-repo dev PRs whose merge tree equals the head tre
 	// workflow 어디에도 skip=true 를 쓰는 경로가 없다(인라인 판단으로 되돌리며 기본값을 뒤집는 회귀 방지).
 	assert.doesNotMatch(dockerWorkflow, /skip=true/)
 	assert.equal((job.match(/GITHUB_OUTPUT/g) || []).length, 1, "the workflow writes only the skip=false fallback")
-	assert.ok(fs.existsSync(path.join(rootDir, "scripts", "ci", "pr-dedup.js")))
+	// 실행 존재 확인은 이 workflow 파일의 push 실행을 조회한다(정확한 argv 는 pr-dedup.test.js 가 고정한다).
+	const dedupScript = fs.readFileSync(path.join(rootDir, "scripts", "ci", "pr-dedup.js"), "utf8")
+	assert.match(dedupScript, /const PUSH_WORKFLOW = "docker-build\.yml";/)
+	assert.match(dedupScript, /actions\/workflows\/\$\{PUSH_WORKFLOW\}\/runs\?head_sha=\$\{headSha\}&event=push&per_page=100/)
 
 	// push/dispatch caller 에는 skipped 조상이 없어야 한다(암묵적 success() 가 내부 잡을 건너뛰지 않도록).
 	const testJob = jobBlock(dockerWorkflow, "test")
 	assert.doesNotMatch(testJob, /^    needs:/m)
 	assert.match(testJob, /^    if: github\.event_name != 'pull_request'\s*$/m)
 	assert.match(testJob, /uses: \.\/\.github\/workflows\/test\.yml/)
+	// push/dispatch caller 만 opt-in live 테스트용 secrets 를 넘긴다.
+	assert.match(testJob, /^    secrets: inherit\s*$/m)
 
 	// test-pr 는 status 함수(!cancelled())를 쓰므로 암묵적 success() 가 없다. push/dispatch 에서 skipped 인
 	// pr-dedup 의 outputs.skip 은 '' 이므로 event 조건이 맨 앞에서 PR 이외 이벤트를 막아야 한다.
@@ -223,6 +282,8 @@ test("PR dedup skips only same-repo dev PRs whose merge tree equals the head tre
 	)
 	assert.match(prTestJob, /uses: \.\/\.github\/workflows\/test\.yml/)
 	assert.match(prTestJob, /run_live_openstack: false/)
+	// PR 코드를 실행하는 caller 는 live 를 끄므로 저장소 secrets 를 reusable workflow 에 넘기지 않는다.
+	assert.doesNotMatch(prTestJob, /^    secrets:/m, "test-pr must not pass repository secrets")
 })
 
 test("image target detection diffs event.before on push, never only the tip commit", () => {
@@ -239,6 +300,19 @@ test("image target detection diffs event.before on push, never only the tip comm
 	// 레지스트리 자격 증명과 compare 토큰은 push 에서만 사용한다(PR 코드가 이 job 을 실행한다).
 	// checkout 토큰도 .git/config 에 남기지 않는다.
 	assert.match(stepBlock(job, "Checkout"), /persist-credentials: false/)
+	// is_pr 는 build 의 보조 PR 제외와 build-push 의 push 여부를 정한다. 항상 false 를 쓰는 회귀를 막는다.
+	assert.equal(
+		runBlock(stepBlock(job, "Resolve effective ref")),
+		[
+			"run: |",
+			'          echo "ref=$GITHUB_REF" >> $GITHUB_OUTPUT',
+			'          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then',
+			'            echo "is_pr=true" >> $GITHUB_OUTPUT',
+			"          else",
+			'            echo "is_pr=false" >> $GITHUB_OUTPUT',
+			"          fi",
+		].join("\n"),
+	)
 	const login = stepBlock(job, "Log in to registry (push only")
 	assert.match(login, /id: registry-login/)
 	assert.match(login, /if: github\.event_name == 'push'/)
@@ -251,7 +325,10 @@ test("image target detection diffs event.before on push, never only the tip comm
 	const detect = fs.readFileSync(path.join(rootDir, "scripts", "ci", "detect-build-targets.js"), "utf8")
 	assert.match(detect, /env\.EVENT_BEFORE/)
 	assert.match(detect, /"fetch", "--no-tags", "--depth=1", "origin", before/)
-	assert.match(detect, /"diff", "--name-only", before, head/)
+	// rename 감지가 켜져 있으면 이미지 디렉터리 밖으로 옮긴 파일이 도착 경로로만 보고된다. 두 diff 를 따로 고정한다.
+	assert.match(detect, /exec\("git", \["diff", "--no-renames", "--name-only", before, head\]\)/)
+	assert.match(detect, /exec\("git", \["diff", "--no-renames", "--name-only", revision, sha\]\)/)
+	assert.equal((detect.match(/exec\("git", \["diff"/g) || []).length, 2, "the detector has exactly two git diff calls")
 	assert.ok(!detect.includes("HEAD^1"), "the detector must not keep a tip-only first-parent diff")
 	assert.match(detect, /env\.REGISTRY_LOGIN_OUTCOME === "failure"/)
 })
@@ -310,7 +387,7 @@ test("jobs after a skipped test caller state explicit status checks", () => {
 	for (const job of ["build", "build-cloud-shell", "manifest"]) {
 		assert.match(
 			jobBlock(dockerWorkflow, job),
-			/^    if: \$\{\{ !cancelled\(\) && needs\.changes\.result == 'success' && needs\.changes\.outputs\.is_pr != 'true' && /m,
+			/^    if: \$\{\{ github\.event_name != 'pull_request' && !cancelled\(\) && needs\.changes\.result == 'success' && needs\.changes\.outputs\.is_pr != 'true' && /m,
 			`${job} must not rely on implicit success()`,
 		)
 	}
@@ -394,5 +471,186 @@ test("push runs are never cancelled by a concurrency group", () => {
 				`${name}: cancel-in-progress must not apply to push runs (${value})`,
 			)
 		}
+	}
+})
+
+// ─── CI 규정 10번: public 저장소의 pull_request 코드를 self-hosted runner 에서 실행하지 않는다 ───────────
+/** top-level `jobs:` 아래의 job 이름 → 블록. `on:` 아래의 2칸 키(push, pull_request 등)는 job 이 아니다. */
+function workflowJobs(workflow) {
+	const lines = workflow.split("\n")
+	const start = lines.findIndex((line) => /^jobs:\s*$/.test(line))
+	assert.ok(start >= 0, "workflow must have a top-level jobs: key")
+	const jobs = new Map()
+	let name = null
+	let body = []
+	for (const line of lines.slice(start + 1)) {
+		if (/^[^\s#]/.test(line)) break
+		const key = /^  ([A-Za-z0-9_-]+):\s*(#.*)?$/.exec(line)
+		if (key) {
+			if (name) jobs.set(name, body.join("\n"))
+			name = key[1]
+			body = [line]
+		} else if (name) {
+			body.push(line)
+		}
+	}
+	if (name) jobs.set(name, body.join("\n"))
+	return jobs
+}
+
+/** job 의 한 줄 `runs-on:` 값(따옴표·주석 제거). 없으면 null, block list/mapping 이면 "". */
+function runsOnValue(job) {
+	const match = /^    runs-on:(.*)$/m.exec(job)
+	if (!match) return null
+	return match[1].replace(/\s+#.*$/, "").trim().replace(/^(['"])(.*)\1$/, "$2")
+}
+
+// GitHub-hosted 로 인정하는 것은 한 줄 리터럴 label 뿐이다. expression(`${{ matrix.runner }}`), 목록, group/labels
+// mapping, 사용자 label 은 self-hosted 일 수 있는 것으로 본다(fail-closed).
+const HOSTED_LABEL = /^(ubuntu|windows|macos)-[A-Za-z0-9.]+$/
+const PR_EXCLUSION = "github.event_name != 'pull_request'"
+
+/** GitHub expression 의 최상위 `&&` 항. 최상위 `||` 가 있으면 null(어떤 항도 전체를 제한하지 못한다). */
+function topLevelConjuncts(expression) {
+	const parts = []
+	let depth = 0
+	let quoted = false
+	let current = ""
+	for (let i = 0; i < expression.length; i++) {
+		const char = expression[i]
+		if (quoted) {
+			current += char
+			if (char === "'") {
+				if (expression[i + 1] === "'") {
+					current += "'"
+					i++
+				} else {
+					quoted = false
+				}
+			}
+			continue
+		}
+		if (char === "'") quoted = true
+		else if (char === "(") depth++
+		else if (char === ")") depth--
+		else if (depth === 0 && expression.startsWith("||", i)) return null
+		else if (depth === 0 && expression.startsWith("&&", i)) {
+			parts.push(current.trim())
+			current = ""
+			i++
+			continue
+		}
+		current += char
+	}
+	parts.push(current.trim())
+	return parts
+}
+
+/** job 의 `if:` 가 최상위 conjunct 로 `github.event_name != 'pull_request'` 를 갖는지. */
+function excludesPullRequests(job) {
+	const match = /^    if:(.*)$/m.exec(job)
+	if (!match) return false
+	let expression = match[1].trim()
+	const wrapped = /^\$\{\{([\s\S]*)\}\}$/.exec(expression)
+	if (wrapped) expression = wrapped[1].trim()
+	const parts = topLevelConjuncts(expression)
+	return parts !== null && parts.includes(PR_EXCLUSION)
+}
+
+function triggeredByPullRequest(workflow) {
+	const lines = workflow.split("\n")
+	const start = lines.findIndex((line) => /^on:/.test(line))
+	assert.ok(start >= 0, "workflow must declare on:")
+	if (/\bpull_request\b/.test(lines[start])) return true
+	for (const line of lines.slice(start + 1)) {
+		if (/^[^\s#]/.test(line)) break
+		// mapping 형식(`  pull_request:`)과 block list 형식(`  - pull_request`)
+		if (/^  pull_request:/.test(line) || /^  - pull_request\s*$/.test(line)) return true
+	}
+	return false
+}
+
+test("the PR-exclusion parser only accepts a real top-level conjunct", () => {
+	assert.deepEqual(topLevelConjuncts("a && b"), ["a", "b"])
+	assert.equal(topLevelConjuncts(`${PR_EXCLUSION} && b || c`), null)
+	assert.deepEqual(topLevelConjuncts(`(${PR_EXCLUSION} || x) && c`), [`(${PR_EXCLUSION} || x)`, "c"])
+	assert.deepEqual(topLevelConjuncts("'a && b' && c"), ["'a && b'", "c"])
+	assert.deepEqual(topLevelConjuncts("'it''s || x' && c"), ["'it''s || x'", "c"])
+	assert.equal(excludesPullRequests(`    if: \${{ ${PR_EXCLUSION} && !cancelled() }}`), true)
+	assert.equal(excludesPullRequests(`    if: ${PR_EXCLUSION}`), true)
+	assert.equal(excludesPullRequests(`    if: \${{ ${PR_EXCLUSION} || always() }}`), false)
+	assert.equal(excludesPullRequests(`    if: \${{ !(${PR_EXCLUSION}) }}`), false)
+	assert.equal(excludesPullRequests("    if: needs.changes.outputs.is_pr != 'true'"), false)
+	assert.equal(excludesPullRequests("    runs-on: ubuntu-latest"), false)
+	assert.equal(runsOnValue("    runs-on: ubuntu-latest"), "ubuntu-latest")
+	assert.equal(runsOnValue("    runs-on: 'ubuntu-24.04'  # pinned"), "ubuntu-24.04")
+	assert.equal(HOSTED_LABEL.test(runsOnValue("    runs-on: [self-hosted, linux, x64]")), false)
+	assert.equal(HOSTED_LABEL.test(runsOnValue("    runs-on: ${{ matrix.runner }}")), false)
+	assert.equal(HOSTED_LABEL.test(runsOnValue("    runs-on:\n      group: build")), false)
+	assert.equal(triggeredByPullRequest("on: [push, pull_request]\njobs:\n"), true)
+	assert.equal(triggeredByPullRequest("on:\n  - push\n  - pull_request\njobs:\n"), true)
+	assert.equal(triggeredByPullRequest("on:\n  pull_request:\n    branches: [main]\njobs:\n"), true)
+	assert.equal(triggeredByPullRequest("on:\n  push:\n    branches: [main]\njobs:\n  pull_request:\n"), false)
+	assert.equal(triggeredByPullRequest("on:\n  - push\n  - workflow_dispatch\njobs:\n"), false)
+})
+
+test("pull_request code never runs on a self-hosted runner", () => {
+	const byName = new Map(allWorkflows)
+	const prReachableCallees = new Set()
+	const nonHosted = []
+	for (const [name, text] of allWorkflows) {
+		// pull_request_target 은 base 저장소 권한과 secrets 로 실행되고 `!= 'pull_request'` 로도 제외되지 않는다.
+		assert.doesNotMatch(text, /\bpull_request_target\b/, `${name} must not use pull_request_target`)
+		const prTriggered = triggeredByPullRequest(text)
+		const jobs = workflowJobs(text)
+		assert.ok(jobs.size > 0, `${name} must have jobs`)
+		for (const [job, block] of jobs) {
+			const label = `${name} ${job}`
+			const excluded = excludesPullRequests(block)
+			const runsOn = runsOnValue(block)
+			if (runsOn === null) {
+				// reusable workflow caller: PR 에서 도달하면 호출 대상의 모든 잡을 아래에서 확인한다.
+				assert.match(block, /^    uses:/m, `${label} must declare runs-on or call a reusable workflow`)
+				if (prTriggered && !excluded) {
+					const callee = /^    uses: \.\/\.github\/workflows\/([A-Za-z0-9_.-]+)\s*$/m.exec(block)
+					assert.ok(callee, `${label} is reachable on pull_request and must call a local reusable workflow`)
+					prReachableCallees.add(callee[1])
+				}
+				continue
+			}
+			if (!HOSTED_LABEL.test(runsOn)) {
+				nonHosted.push(label)
+				assert.ok(
+					excluded,
+					`${label} runs on ${runsOn || "a block-form runner"}, so its if must have the top-level conjunct ${PR_EXCLUSION}`,
+				)
+			}
+			if (prTriggered && !excluded) {
+				assert.match(runsOn, HOSTED_LABEL, `${label} is reachable on pull_request and must use a GitHub-hosted label`)
+			}
+		}
+	}
+	// 분류기 sanity: self-hosted build matrix(runs-on: ${{ matrix.runner }})는 non-hosted 로 잡힌다.
+	assert.ok(nonHosted.includes("docker-build.yml build"), nonHosted.join(", "))
+	const dockerJobs = workflowJobs(dockerWorkflow)
+	assert.equal(dockerJobs.has("push"), false, "on: keys are not jobs")
+	// PR 이 publishing 잡(packages: write)을 예약하지 못한다. step 이 계산하는 is_pr 는 보조 확인일 뿐이다.
+	for (const job of ["build", "build-cloud-shell", "manifest"]) {
+		assert.equal(excludesPullRequests(dockerJobs.get(job)), true, `${job} must exclude pull_request by event name`)
+	}
+	// PR 에서 실행되는 docker-build 잡과 test-pr 의 호출 대상은 GitHub-hosted ubuntu 이다.
+	for (const job of ["pr-dedup", "changes"]) {
+		assert.equal(excludesPullRequests(dockerJobs.get(job)), false, `${job} runs on pull_request`)
+		assert.match(runsOnValue(dockerJobs.get(job)), /^ubuntu-/, `${job} runs PR code`)
+	}
+	assert.ok(prReachableCallees.has("test.yml"), [...prReachableCallees].join(", "))
+	for (const callee of prReachableCallees) {
+		assert.ok(byName.has(callee), `${callee} must exist`)
+		for (const [job, block] of workflowJobs(byName.get(callee))) {
+			assert.match(runsOnValue(block) ?? "", /^ubuntu-/, `${callee} ${job} runs PR code and must use ubuntu-*`)
+		}
+	}
+	for (const [job, block] of workflowJobs(testWorkflow)) {
+		assert.match(runsOnValue(block) ?? "", /^ubuntu-/, `test.yml ${job} must use a GitHub-hosted ubuntu label`)
 	}
 })

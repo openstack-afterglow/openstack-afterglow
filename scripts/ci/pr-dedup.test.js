@@ -5,7 +5,7 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
-const { decide, main } = require("./pr-dedup.js");
+const { decide, findPushRun, main, pushRunsEndpoint } = require("./pr-dedup.js");
 
 const SCRIPT = path.join(__dirname, "pr-dedup.js");
 const REPO = "openstack-afterglow/openstack-afterglow";
@@ -33,6 +33,10 @@ function fakeExec(routes) {
 const fetchHead = [`git fetch --no-tags --depth=1 origin ${HEAD}`, ""];
 const mergeTree = (tree) => ["git rev-parse HEAD^{tree}", `${tree}\n`];
 const headTree = (tree) => [`git rev-parse ${HEAD}^{tree}`, `${tree}\n`];
+// query 는 경로에 있어야 한다. `gh api -f ...` 는 `-X GET` 없이 POST 를 보낸다. 정확한 argv 로 고정한다.
+const RUNS_CALL = `gh api repos/${REPO}/actions/workflows/docker-build.yml/runs?head_sha=${HEAD}&event=push&per_page=100`;
+const pushRun = (overrides = {}) => ({ id: 4242, head_sha: HEAD, event: "push", head_branch: "dev", status: "in_progress", ...overrides });
+const runsApi = (runs) => [RUNS_CALL, JSON.stringify({ total_count: runs.length, workflow_runs: runs })];
 
 function sameRepoDev(overrides = {}) {
 	return {
@@ -59,13 +63,55 @@ function run(env, exec) {
 	}
 }
 
-test("a same-repo dev PR whose merge tree equals the head tree is skipped with a commit link", () => {
-	const exec = fakeExec([fetchHead, mergeTree(TREE), headTree(TREE)]);
+test("a same-repo dev PR whose merge tree equals the head tree and whose push run exists is skipped with run and commit links", () => {
+	const exec = fakeExec([fetchHead, mergeTree(TREE), headTree(TREE), runsApi([pushRun()])]);
 	const result = run(sameRepoDev(), exec);
 	assert.equal(result.code, 0);
 	assert.equal(result.output, "skip=true\n");
-	assert.match(result.stdout, /^::notice title=Layered Tests deduplicated::PR merge tree a{40} equals dev head 2{40} tree/m);
+	assert.match(result.stdout, /^::notice title=Layered Tests deduplicated::PR merge tree a{40} equals dev head 2{40} tree and push run 4242/m);
+	assert.ok(result.stdout.includes(`https://github.com/${REPO}/actions/runs/4242`), result.stdout);
 	assert.ok(result.stdout.includes(`https://github.com/${REPO}/commit/${HEAD}`), result.stdout);
+	assert.deepEqual(exec.calls, [fetchHead[0], mergeTree(TREE)[0], headTree(TREE)[0], RUNS_CALL]);
+	assert.equal(pushRunsEndpoint(REPO, HEAD), RUNS_CALL.slice("gh api ".length));
+});
+
+test("equal trees without a docker-build.yml push run for the head SHA are tested", () => {
+	// paths-ignore 만 바꾼 dev push 는 push 실행을 만들지 않는다. 그 tree 는 아무도 테스트하지 않았다.
+	const cases = [
+		["zero runs", runsApi([])],
+		["a run for another SHA", runsApi([pushRun({ head_sha: "3".repeat(40) })])],
+		["a pull_request run for the SHA", runsApi([pushRun({ event: "pull_request" })])],
+		["a run without a numeric id", runsApi([pushRun({ id: "4242" })])],
+		["no workflow_runs array", [RUNS_CALL, JSON.stringify({ total_count: 1 })]],
+		["a JSON null body", [RUNS_CALL, "null"]],
+		["a JSON array body", [RUNS_CALL, "[]"]],
+	];
+	for (const [label, api] of cases) {
+		const exec = fakeExec([fetchHead, mergeTree(TREE), headTree(TREE), api]);
+		const result = run(sameRepoDev(), exec);
+		assert.equal(result.code, 0, label);
+		assert.equal(result.output, "skip=false\n", label);
+		assert.doesNotMatch(result.stdout, /::notice/, label);
+		assert.ok(exec.calls.includes(RUNS_CALL), label);
+	}
+	const zero = run(sameRepoDev(), fakeExec([fetchHead, mergeTree(TREE), headTree(TREE), runsApi([])]));
+	assert.match(zero.stdout, /no docker-build\.yml push run exists for that commit/);
+});
+
+test("run lookup API errors and malformed JSON run the tests and warn", () => {
+	for (const api of [
+		[RUNS_CALL, new Error("gh: Resource not accessible by integration (HTTP 403)")],
+		[RUNS_CALL, "<html>rate limited</html>"],
+		[RUNS_CALL, ""],
+	]) {
+		const result = run(sameRepoDev(), fakeExec([fetchHead, mergeTree(TREE), headTree(TREE), api]));
+		assert.equal(result.code, 0);
+		assert.equal(result.output, "skip=false\n");
+		assert.match(result.stdout, /^::warning title=PR dedup::PR dedup check failed \(/m);
+	}
+	assert.throws(() => findPushRun(REPO, HEAD, fakeExec([[RUNS_CALL, "not json"]])));
+	assert.equal(findPushRun(REPO, HEAD, fakeExec([runsApi([])])), null);
+	assert.equal(findPushRun(REPO, HEAD, fakeExec([runsApi([pushRun({ event: "workflow_dispatch" }), pushRun()])])).id, 4242);
 });
 
 test("fork, dependabot, non-dev and malformed-SHA PRs are tested without touching git", () => {
@@ -73,6 +119,8 @@ test("fork, dependabot, non-dev and malformed-SHA PRs are tested without touchin
 		["fork PR from a branch named dev", { HEAD_REPO: "attacker/openstack-afterglow" }],
 		["unknown head repository", { HEAD_REPO: "" }],
 		["unknown base repository", { BASE_REPO: "" }],
+		["malformed base repository", { HEAD_REPO: "owner/name/extra", BASE_REPO: "owner/name/extra" }],
+		["base repository with a query", { HEAD_REPO: "owner/name?x=1", BASE_REPO: "owner/name?x=1" }],
 		["dependabot head ref", { HEAD_REF: "dependabot/npm_and_yarn/frontend/vite-7.1.0" }],
 		["dependabot author on dev", { PR_AUTHOR: "dependabot[bot]" }],
 		["feature branch", { HEAD_REF: "feature/x" }],
@@ -94,15 +142,17 @@ test("fork, dependabot, non-dev and malformed-SHA PRs are tested without touchin
 	}
 });
 
-test("differing trees are tested", () => {
-	const result = run(sameRepoDev(), fakeExec([fetchHead, mergeTree(TREE), headTree(OTHER_TREE)]));
+test("differing trees are tested without a run lookup", () => {
+	const exec = fakeExec([fetchHead, mergeTree(TREE), headTree(OTHER_TREE), runsApi([pushRun()])]);
+	const result = run(sameRepoDev(), exec);
 	assert.equal(result.output, "skip=false\n");
 	assert.match(result.stdout, /differs from head tree/);
+	assert.equal(exec.calls.includes(RUNS_CALL), false);
 });
 
 test("empty or malformed tree hashes never count as equal", () => {
 	for (const tree of ["", "not-a-tree", "A".repeat(40)]) {
-		const result = run(sameRepoDev(), fakeExec([fetchHead, mergeTree(tree), headTree(tree)]));
+		const result = run(sameRepoDev(), fakeExec([fetchHead, mergeTree(tree), headTree(tree), runsApi([pushRun()])]));
 		assert.equal(result.output, "skip=false\n", JSON.stringify(tree));
 	}
 });
@@ -126,9 +176,11 @@ test("fetch and rev-parse failures run the tests and warn", () => {
 	assert.equal(odd.output, "skip=false\n");
 });
 
-test("decide returns true only for equal valid trees", () => {
-	assert.equal(decide({ headRepo: REPO, baseRepo: REPO, headRef: "dev", headSha: HEAD }, fakeExec([fetchHead, mergeTree(TREE), headTree(TREE)])).skip, true);
-	assert.equal(decide({ headRepo: REPO, baseRepo: REPO, headRef: "dev", headSha: HEAD }, fakeExec([fetchHead, mergeTree(TREE), headTree(OTHER_TREE)])).skip, false);
+test("decide returns true only for equal valid trees with an existing push run", () => {
+	const input = { headRepo: REPO, baseRepo: REPO, headRef: "dev", headSha: HEAD };
+	assert.equal(decide(input, fakeExec([fetchHead, mergeTree(TREE), headTree(TREE), runsApi([pushRun()])])).skip, true);
+	assert.equal(decide(input, fakeExec([fetchHead, mergeTree(TREE), headTree(TREE), runsApi([])])).skip, false);
+	assert.equal(decide(input, fakeExec([fetchHead, mergeTree(TREE), headTree(OTHER_TREE)])).skip, false);
 	assert.equal(decide({}, fakeExec([])).skip, false);
 });
 
@@ -185,47 +237,110 @@ function scratchPr({ divergedMain }) {
 	return { dir, workspace, devSha };
 }
 
-function runCli(workspace, env) {
+/**
+ * PATH 앞에 두는 가짜 `gh`. 실제 gh(로그인된 keyring 토큰)와 네트워크를 절대 쓰지 않는다.
+ * argv 가 기대한 runs 조회와 정확히 같을 때만 FAKE_GH_RESPONSE 를 출력하고 FAKE_GH_EXIT 로 끝난다. 호출은 FAKE_GH_LOG 에 남긴다.
+ */
+function installFakeGh(dir) {
+	const bin = path.join(dir, "bin");
+	fs.mkdirSync(bin);
+	const gh = path.join(bin, "gh");
+	fs.writeFileSync(
+		gh,
+		[
+			"#!/bin/sh",
+			'printf \'%s\\n\' "$*" >> "$FAKE_GH_LOG"',
+			'if [ "$#" -ne 2 ] || [ "$1" != "api" ] || [ "$2" != "$FAKE_GH_EXPECT" ]; then',
+			'  echo "fake gh: unexpected arguments: $*" >&2',
+			"  exit 64",
+			"fi",
+			'printf \'%s\' "$FAKE_GH_RESPONSE"',
+			'exit "${FAKE_GH_EXIT:-0}"',
+			"",
+		].join("\n"),
+	);
+	fs.chmodSync(gh, 0o755);
+	return bin;
+}
+
+function runCli(workspace, env, gh) {
 	const output = path.join(workspace, "..", "github-output");
+	const log = path.join(workspace, "..", "gh-calls");
 	fs.writeFileSync(output, "");
+	fs.writeFileSync(log, "");
 	const result = spawnSync(process.execPath, [SCRIPT], {
 		cwd: workspace,
-		env: { ...GIT_ENV, ...env, GITHUB_OUTPUT: output },
+		env: {
+			...GIT_ENV,
+			...env,
+			PATH: `${gh.bin}${path.delimiter}${process.env.PATH}`,
+			GH_TOKEN: "",
+			FAKE_GH_LOG: log,
+			FAKE_GH_EXPECT: pushRunsEndpoint(env.BASE_REPO, env.HEAD_SHA),
+			FAKE_GH_RESPONSE: gh.response ?? "",
+			FAKE_GH_EXIT: String(gh.exit ?? 0),
+			GITHUB_OUTPUT: output,
+		},
 		encoding: "utf8",
 		timeout: 60_000,
 	});
-	return { status: result.status, stdout: result.stdout, stderr: result.stderr, output: fs.readFileSync(output, "utf8") };
+	return {
+		status: result.status,
+		stdout: result.stdout,
+		stderr: result.stderr,
+		output: fs.readFileSync(output, "utf8"),
+		ghCalls: fs.readFileSync(log, "utf8").split("\n").filter(Boolean),
+	};
 }
 
-test("real git: equal merge and head trees skip, and every other case tests", () => {
+test("real git: equal trees skip only when the push run exists, and every other case tests", () => {
 	const same = scratchPr({ divergedMain: false });
 	const diverged = scratchPr({ divergedMain: true });
 	try {
 		const base = { HEAD_REPO: REPO, BASE_REPO: REPO, HEAD_REF: "dev", PR_AUTHOR: "jung-geun", GITHUB_SERVER_URL: "https://github.com" };
+		const runs = (sha, list) => JSON.stringify({ total_count: list.length, workflow_runs: list.map((id) => ({ id, head_sha: sha, event: "push" })) });
+		const gh = (dir, response, exit = 0) => ({ bin: installFakeGh(dir), response, exit });
+		const sameGh = gh(same.dir, runs(same.devSha, [77]));
 
-		const skipped = runCli(same.workspace, { ...base, HEAD_SHA: same.devSha });
+		const skipped = runCli(same.workspace, { ...base, HEAD_SHA: same.devSha }, sameGh);
 		assert.equal(skipped.status, 0, skipped.stderr);
 		assert.equal(skipped.output, "skip=true\n", skipped.stdout);
+		assert.ok(skipped.stdout.includes(`/actions/runs/77`), skipped.stdout);
 		assert.ok(skipped.stdout.includes(`/commit/${same.devSha}`), skipped.stdout);
+		assert.deepEqual(skipped.ghCalls, [`api ${pushRunsEndpoint(REPO, same.devSha)}`]);
 
-		const fork = runCli(same.workspace, { ...base, HEAD_REPO: "attacker/openstack-afterglow", HEAD_SHA: same.devSha });
+		// paths-ignore 만 바꾼 push 처럼 push 실행이 없다: 같은 tree 여도 테스트한다.
+		const noRun = runCli(same.workspace, { ...base, HEAD_SHA: same.devSha }, { ...sameGh, response: runs(same.devSha, []) });
+		assert.equal(noRun.status, 0, noRun.stderr);
+		assert.equal(noRun.output, "skip=false\n", noRun.stdout);
+		assert.match(noRun.stdout, /no docker-build\.yml push run exists/);
+
+		const apiError = runCli(same.workspace, { ...base, HEAD_SHA: same.devSha }, { ...sameGh, response: "", exit: 1 });
+		assert.equal(apiError.status, 0, apiError.stderr);
+		assert.equal(apiError.output, "skip=false\n", apiError.stdout);
+		assert.match(apiError.stdout, /::warning title=PR dedup::/);
+
+		const fork = runCli(same.workspace, { ...base, HEAD_REPO: "attacker/openstack-afterglow", HEAD_SHA: same.devSha }, sameGh);
 		assert.equal(fork.output, "skip=false\n", fork.stdout);
+		assert.deepEqual(fork.ghCalls, []);
 
-		const dependabot = runCli(same.workspace, { ...base, HEAD_REF: "dependabot/npm_and_yarn/x", HEAD_SHA: same.devSha });
+		const dependabot = runCli(same.workspace, { ...base, HEAD_REF: "dependabot/npm_and_yarn/x", HEAD_SHA: same.devSha }, sameGh);
 		assert.equal(dependabot.output, "skip=false\n", dependabot.stdout);
+		assert.deepEqual(dependabot.ghCalls, []);
 
-		const malformed = runCli(same.workspace, { ...base, HEAD_SHA: "HEAD" });
+		const malformed = runCli(same.workspace, { ...base, HEAD_SHA: "HEAD" }, sameGh);
 		assert.equal(malformed.output, "skip=false\n", malformed.stdout);
 
-		const unfetchable = runCli(same.workspace, { ...base, HEAD_SHA: "f".repeat(40) });
+		const unfetchable = runCli(same.workspace, { ...base, HEAD_SHA: "f".repeat(40) }, sameGh);
 		assert.equal(unfetchable.status, 0, unfetchable.stderr);
 		assert.equal(unfetchable.output, "skip=false\n", unfetchable.stdout);
 		assert.match(unfetchable.stdout, /::warning title=PR dedup::/);
 
-		const differs = runCli(diverged.workspace, { ...base, HEAD_SHA: diverged.devSha });
+		const differs = runCli(diverged.workspace, { ...base, HEAD_SHA: diverged.devSha }, gh(diverged.dir, runs(diverged.devSha, [78])));
 		assert.equal(differs.status, 0, differs.stderr);
 		assert.equal(differs.output, "skip=false\n", differs.stdout);
 		assert.match(differs.stdout, /differs from head tree/);
+		assert.deepEqual(differs.ghCalls, []);
 	} finally {
 		fs.rmSync(same.dir, { recursive: true, force: true });
 		fs.rmSync(diverged.dir, { recursive: true, force: true });

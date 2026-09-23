@@ -191,23 +191,28 @@ npm run test:gate
    - push는 `github.event.before..github.sha`로 비교한다. zero SHA·forced push·fetch 실패 시에는 전체를 대상으로 한다.
    - PR은 base..head로 비교한다. Afterglow 이미지 target 감지는 PR에서 빌드하지 않으므로 PR diff를 계산하지 않는다.
    - `HEAD^1..HEAD`처럼 push의 마지막 커밋만 보는 비교는 금지한다. 이미지 target 감지(`scripts/ci/detect-build-targets.js`)와 Helm chart 발행 판단(`scripts/ci/helm-publish-decision.js`)이 같은 event 기준 구현을 쓴다.
+   - 변경 파일 목록은 rename 감지 없이 만든다(`git diff --no-renames --name-only`). 기본 rename 감지는 경로 규칙 밖으로 옮긴 파일을 도착 경로로만 보고해 원래 대상을 놓친다.
    - 기준을 만들지 못해 전체로 fallback할 때, 예상하지 못한 원인(fetch/diff 실패, 잘못된 before SHA)은 `::warning::`으로 남긴다. 비용 변화가 조용히 지나가지 않게 하려는 것이다.
    - 발행 산출물(이미지 등)은 실제 발행된 revision을 기준으로 판단한다. `org.opencontainers.image.revision` label을 쓰며, 규칙은 `scripts/ci/detect-build-targets.js`에 있다.
    - 발행 revision을 읽지 못한 레지스트리 오류(인증·전송·rate limit)는 부재로 취급하지 않고 더 빌드하며 경고한다. 이미지·label이 없는 bootstrap만 event 기준으로 fallback한다.
 9. **중복 실행은 입력 동일성으로만 제거한다.**
-   - 같은 저장소의 브랜치에서 온 PR이고 merge 트리가 head 트리와 같을 때만 PR 테스트를 건너뛴다. 현재 구성(`docker-build.yml` `pr-dedup`, 규칙은 `scripts/ci/pr-dedup.js`)은 여기에 head ref `dev` 조건을 더한다.
+   - 같은 저장소의 브랜치에서 온 PR이고 merge 트리가 head 트리와 같을 때만 PR 테스트를 건너뛴다. 현재 구성(`docker-build.yml` `pr-dedup`, 규칙은 `scripts/ci/pr-dedup.js`)은 여기에 두 조건을 더한다. head ref가 `dev`여야 하고, 그 head SHA의 `docker-build.yml` push 실행이 존재해야 한다.
    - fork PR과 dependabot PR은 항상 테스트한다.
    - 브랜치 이름만으로 판단하지 않는다. fork의 동명 브랜치로 우회할 수 있다.
-   - 판단 오류는 테스트 실행(skip=false)으로 처리한다.
-   - 건너뛴 PR은 같은 입력을 테스트한 push 실행에 결과를 맡긴다. 병합자는 dedup notice의 head commit 링크에서 그 SHA의 dev push 실행이 green인지 확인한 뒤 병합한다. tree가 같다는 것은 그 실행이 통과했다는 뜻이 아니다.
+   - tree가 같다고 해서 같은 입력을 테스트한 실행이 있는 것은 아니다. push trigger의 `paths-ignore`에 걸린 push는 실행을 만들지 않는데, 그 경로의 파일도 테스트 입력이다(예: `check_architecture.py`의 source snapshot). 그래서 건너뛰기 전에 그 SHA의 push 실행이 존재하는지 확인한다. 실행이 0건이면 테스트한다. 결론은 보지 않는다. synchronize 시점에는 push 실행이 대개 아직 진행 중이기 때문이다.
+   - 판단 오류(git·API·JSON)는 테스트 실행(skip=false)으로 처리한다.
+   - 건너뛴 PR은 같은 입력을 테스트한 push 실행에 결과를 맡긴다. 병합자는 dedup notice의 실행 링크에서 그 push 실행이 green인지 확인한 뒤 병합한다. 실행이 존재한다고 해서 그 실행이 통과한 것은 아니다.
    - push 실행에는 `cancel-in-progress`를 두지 않는다. 오래된 실행의 재발행은 발행 revision 가드로 막는다.
    - 가드는 ancestry만으로 판단하지 않는다. 이번 SHA가 태그가 추적하는 브랜치(`:dev`→`dev`, `:nightly`→`main`, 실행 ref가 아님)의 끝이면(force-push rollback 포함) 발행하고, 그 브랜치 끝이 바뀌었고 발행본이 더 새로울 때만 건너뛴다. rollback할 때는 되돌릴 commit의 진행 중인 실행을 취소한다.
 10. **보안: public 저장소의 `pull_request` 코드를 self-hosted runner에서 실행하지 않는다.**
     - 워크플로우 YAML의 `if:`는 PR이 수정할 수 있으므로, runner group의 저장소 제한과 fork PR 승인 설정으로도 보장한다.
     - PR 이벤트에서는 레지스트리 자격 증명을 쓰는 step을 실행하지 않는다.
+    - 한 줄 리터럴 GitHub-hosted label이 아닌 runner(self-hosted, matrix expression, 목록·group)를 쓰는 잡은 `if:`에 `github.event_name != 'pull_request'`를 최상위 conjunct로 둔다. step 출력(`is_pr` 등)만으로 PR을 제외하지 않는다.
+    - PR에서 도달하는 잡과 PR caller가 부르는 reusable workflow(`test.yml`)의 모든 잡은 GitHub-hosted `ubuntu-*`에서 실행한다. `pull_request_target`은 쓰지 않는다. `scripts/github-actions-contract.test.js`가 모든 workflow를 파싱해 이를 고정한다. 이 계약은 실수로 인한 회귀를 막는 장치일 뿐이다. PR이 YAML을 고칠 수 있다는 위 전제는 그대로다.
+    - PR 코드를 실행하는 reusable workflow caller에는 쓰지 않는 `secrets: inherit`를 두지 않는다(`test-pr`).
 11. **CI 형태는 계약 테스트로 고정한다.**
     - 샤드 수, 게이트 병렬성, dedup 조건, diff 기준 같은 불변식을 저장소의 테스트로 검증해 회귀를 막는다. `scripts/github-actions-contract.test.js`, `scripts/test-target.test.js`, `scripts/ci/*.test.js`가 `npm run test:orchestration`에서 실행된다. 모든 `scripts/ci/*.test.js`가 여기에 포함되는지도 계약이 확인한다.
-    - 안전 단계는 존재만이 아니라 게이트하는지도 고정한다. 검증·guard step에 `if:`, `continue-on-error:`, `|| true`가 붙거나 오류 arm이 사라지면 계약이 실패해야 한다.
+    - 안전 단계는 존재만이 아니라 게이트하는지도 고정한다. 검증·guard step과 필수 테스트 계층 step에 `if:`, `continue-on-error:`, `|| true`가 붙거나, 명령이 바뀌거나, 오류 arm이 사라지면 계약이 실패해야 한다. 실제 자격 증명을 쓰는 opt-in 잡(`test-live`)의 `if:`에는 status 함수(`always()` 등)를 두지 않는다.
     - 판단 로직은 workflow 인라인 쉘보다 `scripts/ci/`의 테스트 가능한 스크립트에 둔다. 계약은 workflow가 그 스크립트를 호출하는지를 고정하고, 규칙은 스크립트의 단위 테스트가 고정한다.
     - 불변식을 바꾸면 계약 테스트를 같은 변경에서 의도적으로 갱신한다.
 12. **지속 개선.**
