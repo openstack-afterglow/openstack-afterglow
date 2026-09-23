@@ -142,6 +142,20 @@
   - the architecture stamp with `--staged`;
   - `test:functional` selects only `-m db` tests (`scripts/test-db.js` → `test-target.js db`), which the guard exempts, so the DNS block cannot affect it. It was not run, because Docker is not allowed in this task.
 
+### Final review fixes (commit `docs: correct the Kolla promotion PR testing claim`)
+
+- [x] Correct the rule 3 claim about `promote-kolla-role-tags.yml` in AGENTS.md (CLAUDE.md) and ARCHITECTURE.md `게이트 병렬성`, and add the merger steps to `deploy/kolla/operator/README.md`.
+  - The old text said the workflow's PR "goes through tests". It does not. The workflow pushes `automation/kolla-role-tags` with the `GITHUB_TOKEN` that checkout persists, and it runs `gh pr create` with `GH_TOKEN: ${{ github.token }}`. It has no `token:` input and no `secrets.*` reference. GitHub starts no new workflow run for events raised by `GITHUB_TOKEN` (only `workflow_dispatch` and `repository_dispatch` are exempt). So `docker-build.yml`'s `pull_request` trigger never fires on that PR, and the hourly force-push never fires `synchronize`.
+  - The new text says:
+    - the workflow publishes nothing, so rule 3's publish gating does not apply;
+    - its PR gets no automatic checks, and a maintainer must close and reopen it before merging;
+    - while the promotion is unmerged, every hourly run force-pushes a new commit built from `main`, so right before merging the maintainer confirms that the PR head is the commit the checks ran on, and reopens again if it is not;
+    - `workflow_dispatch` of `docker-build.yml` on that branch must not be used, because dispatch takes the `test` → build → push path and pushes `dev`-family tags for a non-`main`, non-tag ref;
+    - the post-merge `main` push run gates image publication only, not the merged lock reaching a Kolla operator environment.
+  - The workflow and its contract are unchanged. No branch protection or required-check claim is made, because those settings were not read.
+- [x] Evidence: the workflow source, and GitHub's documented `GITHUB_TOKEN` trigger behavior. On 2026-09-24, `gh pr list --head automation/kolla-role-tags --state all` returned `[]`, so no real promotion PR exists to cite.
+- [x] Re-stamp ARCHITECTURE and pass `check_architecture.py --staged`, `test:orchestration` and `docs:check`.
+
 ### Post-merge follow-up (needs real GitHub Actions runs)
 
 - [ ] Measure 20+ real runs after merge: the critical-path median and p90 and the per-job times. Record them against the 143 s baseline (median, p90 155 s) in this change. CI rule 1 requires this before any effect is claimed.
@@ -162,6 +176,14 @@
 - [ ] Decide whether to close the shared `<base>-<arch>` race. The fix is either a SHA-scoped intermediate reference with retention cleanup, or a build-push `digest` handed to the manifest leg through a per-target artifact. Either one must be verified on the self-hosted runner, including re-run semantics.
 - [ ] Confirm on a real `pull_request` run that the functional services with `--health-start-period 30s --health-start-interval 2s` become healthy with no slower service wait than the 2 s/20 baseline.
 - [ ] Decide how `helm-release.yml` (Helm chart OCI publish) and `docs.yml` (GitHub Pages deploy) are gated on the whole `Layered Tests` result, as canonical rule 3 requires. Today neither waits for the tests. Options: call them from `docker-build.yml` behind `needs: [test]`, or trigger them with `workflow_run` on a successful `Docker Build & Push` run for the same SHA.
+  - `promote-kolla-role-tags.yml` is out of scope for this item because it publishes nothing. That is the only reason. Its PR is not tested automatically; see the next item.
+- [ ] Owner decision for `promote-kolla-role-tags.yml`: make its `automation/kolla-role-tags` PR start `pull_request` checks. Today no checks start, because the branch push and `gh pr create` use `GITHUB_TOKEN`.
+  - Options:
+    - a GitHub App installation token (for example from `actions/create-github-app-token`), used for both the checkout push credential and `GH_TOKEN`;
+    - a fine-grained PAT limited to this repository, with `contents: write` and `pull-requests: write`.
+  - Either one needs a new repository secret. Creating that secret is an owner action, and an AI agent must not create it.
+  - After the secret exists, change the workflow and add a contract that pins the token source. Then confirm on a real promotion PR that `Layered Tests (PR)` starts on open and on the hourly force-push.
+  - Until then, a maintainer closes and reopens each promotion PR before merging, and checks that the head did not change afterwards. See AGENTS.md rule 3.
 - [ ] Owner actions for rule 10 (settings; an AI agent must not change them):
   - org owner: Organization settings → Actions → Runner groups → the group of the `[self-hosted, linux, x64]` runner → Repository access. Limit it to the repositories that need the runner, and check whether public repositories are allowed. On 2026-09-24 this could not be read (HTTP 403, needs `admin:org`).
   - repo admin: Settings → Actions → General → "Approval for running fork pull request workflows from contributors" → "Require approval for all external contributors". It was `first_time_contributors` on 2026-09-24.

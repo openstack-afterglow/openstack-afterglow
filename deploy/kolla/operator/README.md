@@ -48,6 +48,15 @@ human review boundary; merging it is what permits the tag to reach a Kolla
 environment. Trigger the workflow manually after a release when an immediate
 promotion is needed.
 
+The workflow opens and updates the PR with `GITHUB_TOKEN`, so GitHub starts no
+`pull_request` checks on it, including after its hourly force-push. While the
+promotion is unmerged, every hourly run force-pushes a new commit built from
+`main`. Before merging, close and reopen the PR so that `Layered Tests (PR)`
+runs, then confirm that the PR head is still the commit those checks ran on;
+if it is not, close and reopen it again. Do not dispatch
+`docker-build.yml` on `automation/kolla-role-tags`: a dispatch builds and
+pushes `dev`-family images from that branch.
+
 Until the current root-package versions are tagged, their existing full commit
 pins remain valid and intentionally stay unchanged. Do not invent or move a
 tag just to change this representation.
