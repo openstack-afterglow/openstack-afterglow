@@ -13,6 +13,13 @@ const {
 	targetsForFiles,
 } = require("./detect-build-targets.js");
 
+/** execFileSync 처럼 stderr 를 가진 명령 실패. */
+function commandError(stderr) {
+	const error = new Error(`Command failed: docker buildx imagetools inspect\n${stderr}`);
+	error.stderr = stderr;
+	return error;
+}
+
 const BEFORE = "1".repeat(40);
 const HEAD = "2".repeat(40);
 const PUB = "3".repeat(40);
@@ -86,27 +93,22 @@ test("workflow_dispatch maps the requested set and rejects unknown values", () =
 	assert.throws(() => decide("database"), /Unsupported dispatch target: database/);
 });
 
-test("main, tags and pull requests build every target without registry access", () => {
+test("main, tags and pull requests build every target without git, registry or API access", () => {
 	for (const [eventName, ref] of [
 		["push", "refs/heads/main"],
 		["push", "refs/tags/v1.2.3"],
 		["pull_request", "refs/pull/78/merge"],
 	]) {
-		const exec = fakeExec([[/git diff --name-only HEAD\^1 HEAD/, "frontend/a.ts"]]);
+		// 어떤 명령도 허용하지 않는 fake exec: PR 은 diff 를 계산하지 않는다(PR 은 빌드하지 않는다).
+		const exec = fakeExec([]);
 		const result = collectAndDecide(
 			{ GITHUB_EVENT_NAME: eventName, EFFECTIVE_REF: ref, GITHUB_SHA: HEAD, EVENT_BEFORE: BEFORE, IMAGE_OWNER: "o" },
 			exec,
 		);
 		assert.deepEqual(result.targets, ALL_TARGETS, `${eventName} ${ref}`);
-		assert.equal(exec.calls.some((call) => /^(docker|gh) /.test(call)), false, `${eventName} ${ref}`);
+		assert.deepEqual(exec.calls, [], `${eventName} ${ref}`);
 	}
-});
-
-test("pull requests use the merge commit's HEAD^1..HEAD as the informational full PR diff", () => {
-	const exec = fakeExec([["git diff --name-only HEAD^1 HEAD", "frontend/a.ts\nbackend/b.py"]]);
-	const event = collectEventChanges({ eventName: "pull_request", sha: HEAD }, exec);
-	assert.deepEqual(event.files, ["frontend/a.ts", "backend/b.py"]);
-	assert.deepEqual(exec.calls, ["git diff --name-only HEAD^1 HEAD"]);
+	assert.equal(collectEventChanges({ eventName: "pull_request", sha: HEAD }, fakeExec([])).files, null);
 });
 
 test("dev push diffs github.event.before..HEAD, never only the tip commit", () => {
@@ -118,7 +120,7 @@ test("dev push diffs github.event.before..HEAD, never only the tip commit", () =
 });
 
 test("a multi-commit dev push that touched backend in an earlier commit still builds backend", () => {
-	// before..HEAD 는 모든 push 커밋을 포함한다. 과거 HEAD^1..HEAD 는 마지막 커밋(frontend)만 봤다.
+	// before..HEAD 는 모든 push 커밋을 포함한다. 과거 tip-only diff 는 마지막 커밋(frontend)만 봤다.
 	const exec = fakeExec([fetchBefore, diffBefore(["backend/app/api/deps.py", "frontend/src/a.ts"]), allUnlabeled]);
 	assert.deepEqual(collectAndDecide(devPushEnv(), exec).targets, ["backend", "frontend", "worker"]);
 });
@@ -145,11 +147,54 @@ test("docker-build.yml changes build everything on the event basis", () => {
 	assert.deepEqual(collectAndDecide(devPushEnv(), exec).targets, ALL_TARGETS);
 });
 
-test("no image paths and unreadable published labels build nothing", () => {
-	const exec = fakeExec([fetchBefore, diffBefore(["docs/index.md"]), [/imagetools inspect/, new Error("unauthorized")]]);
-	const result = collectAndDecide(devPushEnv(), exec);
-	assert.deepEqual(result.targets, []);
-	assert.equal(exec.calls.some((call) => call.startsWith("gh ")), false);
+test("no image paths and images that are not published (bootstrap) build nothing", () => {
+	for (const response of [commandError("ERROR: manifest unknown"), commandError("ERROR: not found"), JSON.stringify(config())]) {
+		const exec = fakeExec([fetchBefore, diffBefore(["docs/index.md"]), [/imagetools inspect/, response]]);
+		const result = collectAndDecide(devPushEnv(), exec);
+		assert.deepEqual(result.targets, [], String(response));
+		assert.deepEqual(result.warnings, []);
+		assert.equal(exec.calls.some((call) => call.startsWith("gh ")), false);
+	}
+});
+
+test("a registry failure while reading published revisions builds those targets and warns", () => {
+	for (const stderr of [
+		"ERROR: failed to authorize: 401 Unauthorized",
+		"ERROR: denied: requested access to the resource is denied",
+		"ERROR: dial tcp: i/o timeout",
+	]) {
+		const exec = fakeExec([fetchBefore, diffBefore(["docs/index.md"]), [/imagetools inspect/, commandError(stderr)]]);
+		const result = collectAndDecide(devPushEnv(), exec);
+		assert.deepEqual(result.targets, ALL_TARGETS, stderr);
+		assert.equal(result.warnings.length, ALL_TARGETS.length, stderr);
+		assert.ok(result.warnings.every((warning) => warning.includes(stderr)), stderr);
+	}
+
+	// 일부 target 만 실패하면 그 target(과 배포 세트 규칙)만 추가로 빌드한다.
+	const partial = fakeExec([
+		fetchBefore,
+		diffBefore(["docs/index.md"]),
+		inspect("afterglow-api", JSON.stringify(config())),
+		inspect("afterglow-worker", JSON.stringify(config())),
+		inspect("afterglow", JSON.stringify(config())),
+		inspect("afterglow-cloud-shell", commandError("ERROR: toomanyrequests: rate limit exceeded")),
+	]);
+	assert.deepEqual(collectAndDecide(devPushEnv(), partial).targets, ["cloud-shell"]);
+});
+
+test("a failed registry login is reported as a warning", () => {
+	const lines = [];
+	const exec = fakeExec([fetchBefore, diffBefore(["frontend/a.ts"]), [/imagetools inspect/, commandError("ERROR: 401 Unauthorized")]]);
+	assert.equal(main(devPushEnv({ REGISTRY_LOGIN_OUTCOME: "failure" }), { exec, stdout: { write: (line) => lines.push(line) } }), 0);
+	const output = lines.join("");
+	assert.match(output, /^::warning title=Image target detection::Registry login failed/m);
+	assert.match(output, /^::warning title=Image target detection::backend: published revision check failed/m);
+	assert.match(output, /^targets=\["backend","frontend","worker","cloud-shell"\]$/m);
+
+	const quiet = [];
+	const ok = fakeExec([fetchBefore, diffBefore(["frontend/a.ts"]), allUnlabeled]);
+	assert.equal(main(devPushEnv({ REGISTRY_LOGIN_OUTCOME: "success" }), { exec: ok, stdout: { write: (line) => quiet.push(line) } }), 0);
+	assert.doesNotMatch(quiet.join(""), /::warning::|::warning /);
 });
 
 test("targets already selected by the event basis are not inspected", () => {

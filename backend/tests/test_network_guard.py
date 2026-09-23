@@ -2,6 +2,7 @@
 
 import errno
 import socket
+import threading
 
 import pytest
 
@@ -49,8 +50,50 @@ def test_non_loopback_connect_is_blocked_and_recorded(_block_non_loopback_networ
             sock.connect(("192.0.2.1", 9))
     assert isinstance(excinfo.value, OSError)
     assert excinfo.value.errno == errno.ECONNREFUSED
-    assert blocked == [repr(("192.0.2.1", 9))]
+    assert blocked == [f"{('192.0.2.1', 9)!r} [thread {threading.current_thread().name}]"]
     blocked.clear()  # 의도된 시도이므로 teardown 실패를 막는다.
+
+
+def test_blocked_connect_records_the_attempting_thread(_block_non_loopback_network):
+    blocked = _block_non_loopback_network
+    errors: list[BaseException] = []
+
+    def attempt():
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            try:
+                sock.connect(("192.0.2.1", 9))
+            except NonLoopbackConnectBlocked as exc:
+                errors.append(exc)
+
+    worker = threading.Thread(target=attempt, name="leaked-background-worker")
+    worker.start()
+    worker.join(timeout=5)
+    assert len(errors) == 1
+    assert blocked == [f"{('192.0.2.1', 9)!r} [thread leaked-background-worker]"]
+    blocked.clear()
+
+
+@pytest.mark.parametrize("with_flags", [False, True])
+def test_non_loopback_udp_sendto_is_blocked(_block_non_loopback_network, with_flags):
+    blocked = _block_non_loopback_network
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        args = (b"x", 0, ("192.0.2.1", 53)) if with_flags else (b"x", ("192.0.2.1", 53))
+        with pytest.raises(NonLoopbackConnectBlocked):
+            sock.sendto(*args)
+    assert len(blocked) == 1
+    assert blocked[0].startswith(repr(("192.0.2.1", 53)))
+    blocked.clear()
+
+
+def test_loopback_udp_sendto_is_allowed(_block_non_loopback_network):
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as server:
+        server.bind(("127.0.0.1", 0))
+        server.settimeout(5)
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
+            assert client.sendto(b"ok", server.getsockname()) == 2
+            assert client.sendto(b"ok", 0, server.getsockname()) == 2
+        assert server.recv(2) == b"ok"
+    assert _block_non_loopback_network == []
 
 
 def test_hostname_connect_is_blocked_before_resolution(_block_non_loopback_network):

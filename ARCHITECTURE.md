@@ -276,9 +276,9 @@ Cloud Shell은 일반 Afterglow image matrix의 예외다. 같은 workflow의 �
 
 [`docker-build.yml`](.github/workflows/docker-build.yml)이 push(`main`, `dev`, `v*`), `main` 대상 PR, `workflow_dispatch`의 유일한 진입점이고 [`test.yml`](.github/workflows/test.yml)을 reusable `Layered Tests`로 호출한다. 2026-09 기준선(실행 40건)의 크리티컬 패스 중앙값은 143초(p90 155초)였고 가장 긴 잡은 frontend(126초)였다. CI 형태를 바꾸면 [CLAUDE.md](CLAUDE.md)의 `CI 파이프라인 성능 규정`에 따라 전후 실측을 남긴다.
 
-- **게이트 병렬성**: `version-check`(architecture freshness, `test:orchestration`, version sync)는 다른 잡의 `needs:`가 아니다. `test-backend`, `test-cloud-shell`, `test-contract`, `test-functional`, `test-frontend`, `detect-live`는 t=0에 병렬로 시작한다. 이미지 빌드는 `changes`가 reusable workflow 전체(`needs: [test, test-pr]`)를 기다리므로 `version-check` 실패도 여전히 빌드를 막는다. push/dispatch는 needs 없는 `test` caller가, PR은 `pr-dedup` 뒤의 `test-pr` caller가 같은 `test.yml`을 호출한다.
+- **게이트 병렬성**: `version-check`(architecture freshness, `test:orchestration`, version sync)는 어떤 테스트 잡의 `needs:`도 아니다. `test-backend`, `test-cloud-shell`, `test-contract`, `test-functional`, `test-frontend`, `detect-live`는 t=0에 병렬로 시작한다. 실제 자격 증명을 쓰는 마지막 opt-in 잡 `test-live`만 `version-check`와 모든 테스트 계층을 기다린다. 이미지 빌드는 `changes`가 reusable workflow 전체(`needs: [test, test-pr]`)를 기다리므로 `version-check` 실패도 여전히 빌드를 막는다. push/dispatch는 needs 없는 `test` caller가, PR은 `pr-dedup` 뒤의 `test-pr` caller가 같은 `test.yml`을 호출한다.
 - **테스트 잡**:
-  - `test-frontend`는 `shard: [1, 2]` matrix(`fail-fast: false`)이며 `vitest run --shard=N/2`를 직접 호출한다. [`scripts/ci/verify-vitest-shard.js`](scripts/ci/verify-vitest-shard.js)가 JSON 보고서로 검사하며, 실행 파일 수가 0이거나 전체 스위트(`src/**/*.{test,spec}.{js,ts}`) 이상이면, 또는 실패 테스트가 있으면 실패한다. `run-with-file-log` node test는 shard 1에서만 실행한다. Vitest는 `pool: 'threads'`이고 DOM이 필요 없는 57개 파일은 `// @vitest-environment node`로 실행한다.
+  - `test-frontend`는 `shard: [1, 2]` matrix(`fail-fast: false`)이며 `vitest run --shard=N/2`를 직접 호출한다. [`scripts/ci/verify-vitest-shard.js`](scripts/ci/verify-vitest-shard.js)가 JSON 보고서로 검사한다. 실행 파일 수가 Vitest 4 분할(`floor(n/count)`, 앞쪽 `n % count`개 shard는 1개 추가. 247개면 124/123)이 그 shard에 배정하는 수와 다르면, 또는 실패 테스트가 있으면 실패한다. 전체 스위트는 include `src/**/*.{test,spec}.{js,ts}`로 세며 `vitest.config.ts`에 `exclude`/`projects`가 없다는 것을 계약 테스트가 고정한다. `run-with-file-log` node test는 shard 1에서만 실행한다. Vitest는 `pool: 'threads'`이고 DOM이 필요 없는 57개 파일은 `// @vitest-environment node`로 실행한다.
   - `test-backend`의 `test:unit:backend`는 `pytest-xdist -n 4 --dist worksteal`이다. 4 vCPU runner에 맞춘 고정값이며 `-n auto`는 쓰지 않는다. [`backend/tests/conftest.py`](backend/tests/conftest.py)의 autouse guard가 unit/contract 계층의 non-loopback connect를 차단한다(`tests/integration/`과 `db` marker 제외).
   - `test-functional`의 MariaDB/PostgreSQL/Redis service health check는 `docker-compose.dev.yml` `test` profile과 같은 2초 interval, 5초 timeout, 20 retries이다. 이 잡은 경로와 무관하게 항상 실행한다.
 - **PR 중복 제거**: PR 전용 `pr-dedup` 잡은 세 조건을 모두 만족할 때만 `skip=true`를 낸다.
@@ -286,20 +286,21 @@ Cloud Shell은 일반 Afterglow image matrix의 예외다. 같은 workflow의 �
   - `head_ref`가 `dev`이다.
   - PR merge commit tree가 head commit tree와 같다.
 
-  오류가 나면 `skip=false`이다. 그 결과 fork·dependabot·diverged PR과 push/dispatch는 항상 테스트한다. push 경로의 `test` caller는 `needs`가 없다. skipped 조상이 암묵적 `success()`를 통해 reusable workflow 내부 잡까지 건너뛰게 할 수 있기 때문이다. push에서는 `test-pr`, PR에서는 `test`가 skipped이므로 `changes`, `build`, `build-cloud-shell`, `manifest`는 `!cancelled()`와 앞 잡 결과를 명시한다. `pr-dedup`은 `continue-on-error`이며, 실패하면 skip 출력이 비어 PR 테스트가 실행된다.
+  오류가 나면 `skip=false`이다. 그 결과 fork·dependabot·diverged PR과 push/dispatch는 항상 테스트한다. push 경로의 `test` caller는 `needs`가 없다. skipped 조상이 암묵적 `success()`를 통해 reusable workflow 내부 잡까지 건너뛰게 할 수 있기 때문이다. `test-pr`의 `if`는 `github.event_name == 'pull_request' && !cancelled() && needs.pr-dedup.outputs.skip != 'true'`이다. `!cancelled()` 같은 status 함수가 있으면 암묵적 `success()`가 붙지 않고, push/dispatch에서 skipped인 `pr-dedup`의 `outputs.skip`은 빈 문자열이므로 event 조건 없이는 `test-pr`이 push마다 실행된다. 따라서 push/dispatch에서는 `test-pr`, PR에서는 `test`가 skipped이다. `changes`는 각 caller 결과를 자기 이벤트에만 연결한다(push/dispatch는 `test`, PR은 `test-pr`의 `success`). 두 결과를 `||`로 합치면 한 caller의 통과가 다른 caller의 실패를 가린다. `build`, `build-cloud-shell`, `manifest`는 `!cancelled()`와 앞 잡 결과를 명시한다. `pr-dedup`은 `continue-on-error`이며, 실패하면 skip 출력이 비어 PR 테스트가 실행된다.
 - **이미지 target 감지**: [`scripts/ci/detect-build-targets.js`](scripts/ci/detect-build-targets.js)가 규칙을 소유한다.
   - dev push는 `github.event.before..HEAD`를 비교한다. all-zero before, forced push, fetch/diff 실패는 전체 빌드이다.
-  - dev push에서는 target별로 발행된 `:dev` 이미지의 `org.opencontainers.image.revision`도 읽는다. 그 revision이 HEAD의 조상(compare `ahead`/`identical`)이면 `git diff <rev> HEAD`를 더해 실패한 이전 실행의 누락 target을 다시 빌드한다. label을 읽을 수 없거나 `behind`이면 event 기준만 쓴다. `diverged`와 이후 오류는 그 target을 빌드한다.
+  - dev push에서는 target별로 발행된 `:dev` 이미지의 `org.opencontainers.image.revision`도 읽는다. 그 revision이 HEAD의 조상(compare `ahead`/`identical`)이면 `git diff <rev> HEAD`를 더해 실패한 이전 실행의 누락 target을 다시 빌드한다. 이미지가 없거나(`not found`/`manifest unknown`) label이 없는 bootstrap 경우와 `behind`이면 event 기준만 쓴다. 레지스트리 인증·전송·rate limit·형식 오류, `diverged`, 이후 compare/fetch/diff 오류는 그 target을 빌드하고 `::warning::`을 남긴다. registry login 단계가 실패해도 경고한다. 조회 오류를 부재로 취급하면 carry-over 복구가 조용히 꺼지기 때문이다.
   - 경로 규칙은 afterglow(`backend/`, `Dockerfile`, `.dockerignore`, `services/afterglow-crypto/`), frontend, cloud-shell이며 `docker-build.yml` 변경은 전체 빌드이다. backend/worker가 빌드되면 frontend도 함께 빌드한다.
-  - `main`, `v*` 태그, PR은 전체이고 dispatch는 입력 매핑이다. PR 참고 diff는 merge commit의 `HEAD^1..HEAD`(PR 전체 변경)이며 PR은 빌드하지 않는다.
+  - `main`, `v*` 태그, PR은 전체이고 dispatch는 입력 매핑이다. PR은 빌드하지 않으므로 diff를 계산하지 않는다. `changes` checkout은 `persist-credentials: false`여서 PR 코드가 `.git/config`의 토큰을 읽을 수 없다. public 저장소라 before/revision fetch는 익명으로 동작하며 실패하면 fail-safe로 더 빌드한다.
 - **발행**:
   - 모든 build step이 `org.opencontainers.image.revision=${{ github.sha }}` label을 붙인다.
   - `manifest`는 target별 `fail-fast: false` matrix이며 다른 target의 빌드 실패와 무관하게 실행된다. 각 leg는 [`scripts/ci/image-revision.js`](scripts/ci/image-revision.js) `verify`로 `<base>-amd64` digest를 얻고, 그 digest의 revision이 `github.sha`인지 확인한다. 아니면 실패하고, 맞으면 검증한 digest로만 태그를 만든다.
-  - `:dev`/`:nightly` 이동 전에는 `guard`가 현재 발행 revision과 `github.sha`를 compare API로 비교한다. `behind`(오래된 실행의 재실행)이면 `::notice::` 후 건너뛰고, 알 수 없으면 진행한다. Cloud Shell은 build-push가 태그를 직접 push하므로 같은 guard를 빌드 전에 평가한다.
+  - `:dev`/`:nightly` 이동 전에는 `guard <image> <sha> <repo> <tracked-ref>`가 세 가지를 확인한다. `<tracked-ref>`는 실행 ref가 아니라 태그가 추적하는 브랜치다(`:dev`→`refs/heads/dev`, `:nightly`→`refs/heads/main`). 다른 브랜치의 `workflow_dispatch`도 `:dev`로 가기 때문이다. 확인하는 것은 현재 발행 revision을 읽었고 `github.sha`와 다른지, 추적 브랜치 끝(`gh api repos/<repo>/git/ref/heads/<branch>`)이 `github.sha`가 아닌지, compare API가 `behind`(발행본이 더 새로움)인지이다. 셋 다 참인 오래된 실행의 재실행만 `::notice::` 후 건너뛴다. `github.sha`가 추적 브랜치 끝이면 정상 push든 force-push rollback이든 발행한다. tip·revision·compare를 알 수 없으면 `::warning::`과 함께 진행한다. Cloud Shell은 build-push가 태그를 직접 push하므로 같은 guard를 빌드 전에 평가한다.
   - push 실행에는 `cancel-in-progress`를 두지 않는다.
 - **알려진 한계**:
-  - per-arch `<base>-amd64` 중간 태그와 registry cache는 stale 재실행도 덮어쓴다. 최종 브랜치 태그만 가드된다.
+  - per-arch `<base>-amd64` 중간 태그는 SHA 간에 공유되고 push 실행에는 concurrency group이 없다. 더 새로운 실행 B가 태그를 push한 뒤 더 오래된 동시 실행 A가 같은 태그를 덮어쓰면, B의 manifest `verify`는 revision 불일치로 실패하고(run이 red), A는 guard를 통과해 `:dev`를 A의 SHA로 발행한다. 다른 SHA의 이미지를 발행하지는 않으며(`verify`가 digest를 고정한다), 다음 dev push의 발행 revision 기준이 B의 target을 다시 빌드할 때까지 `:dev`가 뒤처진다. 해소하려면 SHA 범위 중간 참조나 build digest artifact 전달이 필요하며 [`ci-critical-path-review-follow-up`](openspec/changes/ci-critical-path-review-follow-up/tasks.md)에 남겼다. registry cache와 중간 태그는 stale 재실행도 덮어쓰며 최종 브랜치 태그만 가드된다.
   - Cloud Shell guard는 빌드 전에 평가되므로 동시에 도는 더 새로운 실행과의 경합이 남는다.
+  - force-push rollback 시점에 되돌릴 commit의 실행이 아직 진행 중이면, 그 실행이 rollback 뒤에 끝나며 잘못된 이미지를 다시 발행할 수 있다(compare(rollback, bad)가 `ahead`). rollback할 때는 진행 중인 실행을 취소한다.
   - 기존 이미지에는 revision label이 없으므로 첫 dev push는 event 기준만 사용한다.
   - `docker buildx imagetools inspect` 출력(`Digest:` 줄, 단일/다중 플랫폼 `.Image` 형태)은 fixture로만 검증했다.
   - `paths-ignore`만 바꾼 dev push는 push 실행이 없으므로 같은 tree의 dedup PR도 테스트되지 않는다. 그 경로는 테스트 입력이 아니다.
@@ -352,6 +353,15 @@ cloud-init 및 shell template 출력은 `shlex_quote`/검증된 입력을 사용
 
 이 증거는 로컬 재현과 계약 검증이며 GHCR·compare API 실호출 검증은 아니다.
 
+2026-09-24 CI 개편 독립 리뷰 후속 수정은 `test-pr`의 event 조건, event별 `changes` gate, 태그가 추적하는 브랜치의 끝을 확인하는 stale re-run guard, `readRevision`의 present/absent/error 구분, `test-live`의 `version-check` 대기, 정확한 Vitest shard 크기 검증, PR diff 제거와 `persist-credentials: false`, network guard의 thread 기록과 UDP `sendto` 차단을 반영했다. 로컬 증거는 다음과 같다.
+
+- `npm run test:orchestration`은 75/75, `test:kolla:contract`는 25/25를 통과했다. workflow 한 줄 회귀 16개(예: `test-pr` event 조건 제거, `||` gate 복원, 3인자 guard, guard를 추적 브랜치 대신 실행 ref로 호출, `:nightly`의 추적 브랜치를 `dev`로 변경, `test-live`에서 `version-check` 제거)는 모두 계약 테스트가 실패로 잡았다.
+- `test:unit:backend`는 2927건, `test:contract`는 131건, `test:functional`은 27건(3 deselected)을 통과했다. functional 실행 뒤 `afterglow-test` project는 내려갔다. ruff check/format도 통과했다.
+- 실제 `vitest run --shard=1/2`와 `--shard=2/2`는 124/123개 파일을 실행했다. 두 shard는 겹치지 않고 합쳐 247개이며 강화한 검증기를 통과했다. 다른 index로 검증한 보고서는 거부됐다.
+- `actionlint`는 기존과 같은 SC2086 info 14건만 보고했다.
+
+GitHub Actions 실제 실행, GHCR 조회, `gh api` git refs/compare 실호출은 검증하지 않았으며 [`ci-critical-path-review-follow-up`](openspec/changes/ci-critical-path-review-follow-up/tasks.md)의 병합 후 작업으로 남아 있다.
+
 | 목적 | 정확한 명령 | 외부 전제 |
 |---|---|---|
 | backend 개발 서버 | `cd backend && uv sync && uv run uvicorn app.main:app --reload` | Python 3.12, uv, 설정된 `afterglow.conf` |
@@ -394,7 +404,7 @@ Architecture maintenance는 다음 규칙을 따른다.
 5. 문서와 의도한 source를 함께 stage한 뒤 `python3 scripts/check_architecture.py --staged`를 실행한다. 이 검사는 자동 stage/commit하지 않는다.
 6. source와 문서가 충돌하면 source가 정본이다. 현재 구현과 계획/roadmap을 구분해 바로 수정한다.
 
-로컬 hook은 `.pre-commit-config.yaml`의 `architecture` hook이며 `python3 scripts/check_architecture.py --staged`를 실행한다. CI의 `version-check` job도 checkout 직후 tag-only version 처리보다 먼저 같은 working check를 실행한다. 이 job은 테스트 잡과 병렬로 실행되며, 실패는 `docker-build.yml` `changes`의 `needs: [test, test-pr]`를 통해 이미지 빌드를 막는다. hook 설치 여부를 전제로 하지 말고 직접 guard 명령을 항상 사용할 수 있어야 한다.
+로컬 hook은 `.pre-commit-config.yaml`의 `architecture` hook이며 `python3 scripts/check_architecture.py --staged`를 실행한다. CI의 `version-check` job도 checkout 직후 tag-only version 처리보다 먼저 같은 working check를 실행한다. 이 job은 테스트 잡과 병렬로 실행되며, 실패는 `docker-build.yml` `changes`의 `needs: [test, test-pr]`를 통해 이미지 빌드를 막고 opt-in `test-live`도 막는다. hook 설치 여부를 전제로 하지 말고 직접 guard 명령을 항상 사용할 수 있어야 한다.
 
 최신 검토는 누적 changelog 대신 아래 단일 marker block으로 표현한다. placeholder digest는 parent가 모든 의도된 변경 후 guard stamp로 교체한다.
 
@@ -402,9 +412,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "7b6a9dd78d0ce3d91c13c1fcd3d9680a21bd75483fffed7276a436003332ff84",
-  "reviewed_at": "2026-09-23T19:57:24Z",
-  "summary": "CI critical-path overhaul, re-reviewed before commit against the ci-perf worktree source: test.yml test jobs no longer need version-check, frontend runs a 2-way vitest shard matrix called directly and verified by scripts/ci/verify-vitest-shard.js (run-with-file-log node test on shard 1 only), MariaDB/PostgreSQL/Redis health checks match the compose test profile (2s/5s/20), backend unit runs pytest-xdist -n 4 --dist worksteal behind an autouse non-loopback network guard with the Keystone revoke and Prometheus usage tests mocked; docker-build.yml adds the same-repo dev PR tree dedup (pr-dedup) feeding a separate test-pr caller, changes needs [test, test-pr] and selects targets with scripts/ci/detect-build-targets.js (push event.before basis plus published :dev org.opencontainers.image.revision basis, never tip-only HEAD^1), labels every build with the revision, gates changes/build/build-cloud-shell/manifest with explicit !cancelled() result checks, publishes per-target fail-fast:false manifests only from digests verified by scripts/ci/image-revision.js, and skips stale re-run retags; contracts pinned in scripts/github-actions-contract.test.js and scripts/test-target.test.js; docs in ARCHITECTURE.md, backend/tests/TESTING.md, docs/testing.md and AGENTS.md (CLAUDE.md) CI rules. The only dependency change is the pytest-xdist backend dev extra (uv.lock adds pytest-xdist 3.8.0 and execnet 2.1.2); no application runtime, API, schema, afterglow.conf or compose/k8s deployment manifest change."
+  "source_sha256": "0cd5e15d64a23827a7d3adc15a0f0987819598447d4ffed41db97fc22c9db64d",
+  "reviewed_at": "2026-09-23T20:36:49Z",
+  "summary": "CI overhaul review follow-up, reviewed against the ci-perf worktree source: docker-build.yml test-pr now runs only when github.event_name == 'pull_request' (a !cancelled() status check had dropped the implicit success() so the skipped pr-dedup's empty skip output let test-pr run on every push), and changes ties each caller result to its own event instead of test || test-pr; the stale re-run guard (scripts/ci/image-revision.js guard <image> <sha> <repo> <tracked-ref>) reads the tip of the branch the tag tracks (:dev->refs/heads/dev, :nightly->refs/heads/main via the manifest tracked_ref output and the Cloud Shell TRACKED_REF, not the run ref, so a feature-branch dispatch cannot move :dev backward) via gh api git/ref and skips only when that tip moved on and compare says behind, so force-push rollbacks publish; readRevision returns present/absent/error and detect-build-targets.js builds on registry errors with ::warning:: annotations (also for a failed registry-login outcome), drops the unused PR diff and fetch-depth 2, and the changes checkout uses persist-credentials false; test.yml test-live also needs version-check and test-cloud-shell; verify-vitest-shard.js requires the exact Vitest 4 shard size and the contract pins no exclude/projects in vitest.config.ts; the backend network guard records the attempting thread and blocks non-loopback UDP sendto; the shared <base>-<arch> intermediate tag race and the rollback-vs-in-flight-run race are documented as known limitations; ARCHITECTURE.md, AGENTS.md (CLAUDE.md) CI rules 3/8/9 and backend/tests/TESTING.md corrected; open OpenSpec change ci-critical-path-review-follow-up tracks the post-merge measurement. No application runtime, API, schema, afterglow.conf, dependency or deployment manifest change."
 }
 ```
 <!-- architecture-review:end -->

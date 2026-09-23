@@ -98,6 +98,9 @@ jobs:
   # push/dispatch 와 PR 은 서로 다른 caller job 으로 같은 reusable workflow 를 호출한다.
   # push 경로의 caller 는 needs 가 없어 skipped 조상이 없다. skipped 조상이 있으면 암묵적 success() 가
   # reusable workflow 내부 잡까지 건너뛰게 할 수 있으므로, PR 전용 pr-dedup 은 test-pr 에만 건다.
+  # test-pr 의 if 는 status 함수(!cancelled())를 쓰므로 암묵적 success() 가 붙지 않는다. push/dispatch 에서
+  # pr-dedup 이 skipped 이면 outputs.skip 이 '' 이라 `!= 'true'` 가 참이 된다. 그래서 event_name 조건을
+  # 맨 앞에 명시해 test-pr 가 PR 이외 이벤트에서 절대 실행되지 않게 한다.
   test:
     name: Layered Tests
     if: github.event_name != 'pull_request'
@@ -109,7 +112,7 @@ jobs:
   test-pr:
     name: Layered Tests (PR)
     needs: pr-dedup
-    if: ${{ !cancelled() && needs.pr-dedup.outputs.skip != 'true' }}
+    if: ${{ github.event_name == 'pull_request' && !cancelled() && needs.pr-dedup.outputs.skip != 'true' }}
     uses: ./.github/workflows/test.yml
     with:
       run_live_openstack: false
@@ -119,13 +122,15 @@ jobs:
   # 규칙과 fail-safe 는 scripts/ci/detect-build-targets.js(단위 테스트 포함)가 소유한다.
   # - push: github.event.before..HEAD (before 를 depth=1 로 fetch). zero SHA·forced·fetch/diff 실패는 전체.
   # - dev push: 발행된 :dev 이미지의 org.opencontainers.image.revision 기준 diff 를 target 별로 더한다
-  #   (실패한 이전 실행의 누락분 복구). label 조회 불가는 event 기준, 이후 오류는 그 target 빌드.
-  # - PR: merge commit 의 HEAD^1..HEAD 가 PR 전체 diff 이다(참고용, PR 은 빌드하지 않는다).
-  # push 에서는 test-pr, PR 에서는 test 가 skipped 이므로 암묵적 success() 대신 결과를 명시적으로 확인한다.
+  #   (실패한 이전 실행의 누락분 복구). label 없음·이미지 없음(bootstrap)만 event 기준이고,
+  #   레지스트리 인증·전송 오류와 이후 compare/fetch/diff 오류는 그 target 을 빌드한다.
+  # - main·태그·PR 은 전체 target 이다. PR 은 diff 를 계산하지 않고 빌드 잡도 실행하지 않는다.
+  # push/dispatch 에서는 test-pr, PR 에서는 test 가 skipped 이므로 암묵적 success() 대신 결과를 명시한다.
+  # 각 caller 결과는 자기 이벤트에만 연결한다. `||` 로 합치면 한 caller 의 통과가 다른 caller 의 실패를 가린다.
   changes:
     name: Detect changed targets
     needs: [test, test-pr]
-    if: ${{ !cancelled() && (needs.test.result == 'success' || needs.test-pr.result == 'success') }}
+    if: ${{ !cancelled() && ((github.event_name != 'pull_request' && needs.test.result == 'success') || (github.event_name == 'pull_request' && needs.test-pr.result == 'success')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -138,11 +143,13 @@ jobs:
       cloud_shell: ${{ steps.set-targets.outputs.cloud_shell }}
       is_pr: ${{ steps.eff-ref.outputs.is_pr }}
     steps:
+      # PR 이벤트에서는 PR 코드(detect 스크립트)가 이 잡을 실행하므로 토큰을 .git/config 에 남기지 않는다.
+      # public 저장소라 before/published revision fetch 는 익명으로 동작하고, 실패하면 fail-safe 로 더 빌드한다.
       - name: Checkout
         uses: actions/checkout@v5
         with:
           ref: ${{ github.sha }}
-          fetch-depth: 2
+          persist-credentials: false
 
       # push/PR/workflow_dispatch 이벤트는 github.ref 가 정확한 ref 를 직접 가리킨다.
       - name: Resolve effective ref
@@ -156,8 +163,9 @@ jobs:
           fi
 
       # 발행 revision 조회(읽기 전용)는 push 에서만 한다. PR 코드가 레지스트리 자격 증명을 보지 않는다.
-      # 로그인 실패는 revision 조회 불가로 처리되어 event.before 기준으로 fallback 한다.
+      # 로그인 실패는 detect 스크립트가 ::warning:: 으로 알리고, 이어지는 조회 오류로 해당 target 을 빌드한다.
       - name: Log in to registry (push only, read published revisions)
+        id: registry-login
         if: github.event_name == 'push'
         continue-on-error: true
         uses: docker/login-action@v4
@@ -173,6 +181,7 @@ jobs:
           EVENT_FORCED: ${{ github.event.forced }}
           DISPATCH_TARGETS: ${{ inputs.targets }}
           EFFECTIVE_REF: ${{ steps.eff-ref.outputs.ref }}
+          REGISTRY_LOGIN_OUTCOME: ${{ steps.registry-login.outcome }}
           GH_TOKEN: ${{ github.event_name == 'push' && github.token || '' }}
         run: node scripts/ci/detect-build-targets.js
 
@@ -416,9 +425,12 @@ jobs:
           fi
           echo 'EOF' >> $GITHUB_OUTPUT
 
-      # Stale re-run 가드: 브랜치 태그(:dev/:nightly)의 현재 발행 revision 이 이번 SHA 보다 새로우면
-      # (compare=behind) 빌드·push 를 건너뛴다. revision 을 모르면 진행한다. 버전 태그는 항상 발행한다.
-      # 가드는 빌드 전에 평가되므로, 동시에 실행 중인 더 새로운 실행이 이 빌드 도중 발행하는 경합은 남는다.
+      # Stale re-run 가드: 이번 SHA 가 태그가 추적하는 브랜치(:dev→dev, :nightly→main)의 끝이 아니고(tip != sha),
+      # 그 태그의 현재 발행 revision 이 이번 SHA 보다 새로우면(compare=behind) 빌드·push 를 건너뛴다. 이번 SHA 가
+      # 추적 브랜치 끝이면(정상 push, force-push rollback) 항상 발행한다. tip·revision 을 모르면 진행한다.
+      # 추적 브랜치는 실행 ref 가 아니다. 다른 브랜치의 workflow_dispatch 도 :dev 로 가므로 dev 끝과 비교한다.
+      # 버전 태그는 항상 발행한다. 가드는 빌드 전에 평가되므로, 동시에 실행 중인 더 새로운 실행이 이 빌드 도중
+      # 발행하는 경합은 남는다.
       - name: Stale re-run guard
         id: guard
         env:
@@ -428,11 +440,13 @@ jobs:
           publish=true
           if [[ "${EFFECTIVE_REF}" != refs/tags/v* ]]; then
             BRANCH_TAG="${REGISTRY}/${IMAGE_OWNER}/afterglow-cloud-shell:dev"
+            TRACKED_REF="refs/heads/dev"
             if [[ "${EFFECTIVE_REF}" == refs/heads/main ]]; then
               BRANCH_TAG="${REGISTRY}/${IMAGE_OWNER}/afterglow-cloud-shell:nightly"
+              TRACKED_REF="refs/heads/main"
             fi
             set +e
-            node scripts/ci/image-revision.js guard "${BRANCH_TAG}" "${GITHUB_SHA}" "${GITHUB_REPOSITORY}"
+            node scripts/ci/image-revision.js guard "${BRANCH_TAG}" "${GITHUB_SHA}" "${GITHUB_REPOSITORY}" "${TRACKED_REF}"
             rc=$?
             set -e
             case "$rc" in
@@ -509,24 +523,29 @@ jobs:
           EFFECTIVE_REF: ${{ needs.changes.outputs.effective_ref }}
           IMG: ${{ steps.img.outputs.name }}
         run: |
+          # tracked_ref 는 브랜치 태그가 추적하는 브랜치다(:nightly→main, :dev→dev). 실행 ref 와 다를 수 있다
+          # (다른 브랜치의 workflow_dispatch 도 :dev 로 간다). stale re-run 가드는 이 브랜치의 끝과 비교한다.
           if [[ "${EFFECTIVE_REF}" == refs/tags/v* ]]; then
             VTAG="${EFFECTIVE_REF#refs/tags/}"
-            primary="${IMG}:${VTAG}"; extra="${IMG}:latest"; base="${VTAG}"; branch_tag=false
+            primary="${IMG}:${VTAG}"; extra="${IMG}:latest"; base="${VTAG}"; branch_tag=false; tracked_ref=""
           elif [[ "${EFFECTIVE_REF}" == refs/heads/main ]]; then
-            primary="${IMG}:nightly"; extra=""; base="nightly"; branch_tag=true
+            primary="${IMG}:nightly"; extra=""; base="nightly"; branch_tag=true; tracked_ref="refs/heads/main"
           else
-            primary="${IMG}:dev"; extra=""; base="dev"; branch_tag=true
+            primary="${IMG}:dev"; extra=""; base="dev"; branch_tag=true; tracked_ref="refs/heads/dev"
           fi
           {
             echo "primary=${primary}"
             echo "extra=${extra}"
             echo "base=${base}"
             echo "branch_tag=${branch_tag}"
+            echo "tracked_ref=${tracked_ref}"
           } >> "$GITHUB_OUTPUT"
 
       # 이 target 의 per-arch 이미지가 이번 SHA 로 발행됐는지 확인한다. per-arch 태그는 SHA 가 아니라
       # `<base>-<arch>` 이므로 digest 를 먼저 얻고 그 digest 의 revision label 이 github.sha 인지 본다.
       # 빌드가 실패했거나 다른 실행이 태그를 덮어썼으면 이 leg 를 실패시킨다. 검증한 digest 로만 manifest 를 만든다.
+      # 알려진 한계(ARCHITECTURE.md): `<base>-<arch>` 는 SHA 간에 공유되므로 더 오래된 동시 실행이 늦게 push 하면
+      # 더 새로운 실행의 이 검증이 실패하고 :dev 는 다음 push 의 carry-over 까지 뒤처진다. 다른 SHA 의 이미지는 발행하지 않는다.
       - name: Verify per-arch images for this revision
         id: verify
         env:
@@ -542,8 +561,9 @@ jobs:
 
       # arm64 빌드 비활성화 상태 — amd64 단일 소스로 최종 태그를 만든다.
       # arm64 를 되살리면 SOURCES 에 "${IMG}@${{ steps.verify.outputs.arm64 }}" 를 추가한다.
-      # Stale re-run 가드: 브랜치 태그(:dev/:nightly)의 현재 발행 revision 이 이번 SHA 보다 새로우면
-      # (compare=behind) retag 를 건너뛴다. 발행 revision 을 모르면 진행한다. 버전 태그/latest 는 가드하지 않는다.
+      # Stale re-run 가드: 이번 SHA 가 태그가 추적하는 브랜치(:dev→dev, :nightly→main)의 끝이 아니고(tip != sha)
+      # 그 태그의 현재 발행 revision 이 이번 SHA 보다 새로우면(compare=behind) retag 를 건너뛴다. 이번 SHA 가 추적
+      # 브랜치 끝이면(force-push rollback 포함) 발행한다. tip·revision 을 모르면 진행한다. 버전 태그/latest 는 가드하지 않는다.
       - name: Create multi-arch manifest
         env:
           GH_TOKEN: ${{ github.token }}
@@ -551,12 +571,13 @@ jobs:
           PRIMARY: ${{ steps.tags.outputs.primary }}
           EXTRA: ${{ steps.tags.outputs.extra }}
           BRANCH_TAG: ${{ steps.tags.outputs.branch_tag }}
+          TRACKED_REF: ${{ steps.tags.outputs.tracked_ref }}
           AMD64_DIGEST: ${{ steps.verify.outputs.amd64 }}
         run: |
           SOURCES=("${IMG}@${AMD64_DIGEST}")
           if [[ "${BRANCH_TAG}" == "true" ]]; then
             set +e
-            node scripts/ci/image-revision.js guard "${PRIMARY}" "${GITHUB_SHA}" "${GITHUB_REPOSITORY}"
+            node scripts/ci/image-revision.js guard "${PRIMARY}" "${GITHUB_SHA}" "${GITHUB_REPOSITORY}" "${TRACKED_REF}"
             rc=$?
             set -e
             case "$rc" in

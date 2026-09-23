@@ -5,19 +5,21 @@
 //
 // 규칙
 // - workflow_dispatch: 입력 targets 를 그대로 매핑한다(지원하지 않는 값은 exit 1).
-// - dev 브랜치 push 이외(main, v* 태그, PR): 전체 빌드. PR 은 빌드 잡 자체가 실행되지 않는다.
+// - dev 브랜치 push 이외(main, v* 태그, PR): 전체 빌드. diff 를 계산하지 않는다.
+//   PR 은 빌드 잡 자체가 실행되지 않으므로 PR diff 도 계산하지 않는다.
 // - dev push: 두 기준의 합집합.
 //   1) event 기준: `git diff <github.event.before> HEAD`. before 를 depth=1 로 fetch 한다.
 //      all-zero before(새 브랜치), forced push, fetch/diff 실패는 전체 빌드.
 //   2) 발행 revision 기준(실패한 이전 실행의 누락분 복구): target 별로 현재 발행된 :dev 이미지의
 //      org.opencontainers.image.revision 을 읽는다.
-//      - label 없음/조회 불가: event 기준만 사용한다.
+//      - 이미지 없음(not found/manifest unknown) 또는 label 없음(bootstrap): event 기준만 사용한다.
+//      - 레지스트리 인증·전송·rate limit·형식 오류: 그 target 을 빌드하고 ::warning:: 을 남긴다.
+//        조회 실패를 부재로 취급하면 carry-over 복구가 조용히 꺼진다.
 //      - HEAD 의 조상(compare ahead/identical): `git diff <rev> HEAD` 를 그 target 의 경로 규칙으로 판정.
 //      - behind(발행본이 HEAD 보다 새로움 = 오래된 실행의 재실행): event 기준만 사용한다.
 //        :dev 이동은 manifest 의 stale re-run 가드가 막는다.
 //      - diverged, 또는 revision 을 읽은 뒤의 compare/fetch/diff 실패: 그 target 을 빌드한다(fail-safe).
-// - PR 참고 diff 는 merge commit 의 `HEAD^1..HEAD` 이다. PR merge commit 의 첫 부모는 base 브랜치
-//   끝이므로 이 비교가 PR 전체 변경(base..head 를 합친 결과)이다. push 에는 이 비교를 쓰지 않는다.
+// - push 의 마지막 커밋만 보는 tip-only 비교(첫 부모와 HEAD 의 diff)는 쓰지 않는다.
 //
 // 경로 규칙(Afterglow 배포 세트): backend/worker 는 afterglow 규칙, frontend 는 frontend 규칙 또는
 // afterglow 규칙, cloud-shell 은 cloud-shell 규칙. backend/worker 가 빌드되면 frontend 도 함께 빌드한다.
@@ -105,7 +107,7 @@ function splitLines(output) {
  * @param {string[]|null} [input.eventChanges] dev push 의 event 기준 변경 파일. null 이면 기준 없음(전체 빌드).
  * @param {string} [input.eventBasis] eventChanges 를 만든 기준 설명(로그용).
  * @param {Record<string, {kind: string, files?: string[], revision?: string, reason?: string}>} [input.published]
- *   kind: selected | unreadable | behind | diverged | error | diff
+ *   kind: selected | absent | behind | diverged | error | diff. 항목이 없으면(미조회) event 기준만 쓴다.
  */
 function decideTargets(input) {
 	const reasons = [];
@@ -141,8 +143,8 @@ function decideTargets(input) {
 			reasons.push(`${target}: selected by the event basis`);
 			continue;
 		}
-		if (!entry || entry.kind === "unreadable") {
-			reasons.push(`${target}: published revision unreadable (${entry?.reason || "not inspected"}); event basis only`);
+		if (!entry || entry.kind === "absent") {
+			reasons.push(`${target}: no published revision (${entry?.reason || "not inspected"}); event basis only`);
 			continue;
 		}
 		if (entry.kind === "behind") {
@@ -172,17 +174,9 @@ function decideTargets(input) {
 	return { targets: ordered(selected), reasons };
 }
 
-/** event 기준 변경 파일. 기준을 만들 수 없으면 files=null. */
+/** push 의 event 기준 변경 파일(`before..HEAD`). 기준을 만들 수 없으면 files=null. */
 function collectEventChanges({ eventName, before, forced, sha }, exec = defaultExec) {
 	const head = SHA_RE.test(sha ?? "") ? sha : "HEAD";
-	if (eventName === "pull_request") {
-		// merge commit 의 첫 부모 = base 끝 → HEAD^1..HEAD 가 PR 전체 diff.
-		try {
-			return { files: splitLines(exec("git", ["diff", "--name-only", "HEAD^1", "HEAD"])), basis: "PR merge HEAD^1..HEAD" };
-		} catch (error) {
-			return { files: null, basis: `PR diff failed: ${error.message.split("\n")[0]}` };
-		}
-	}
 	if (eventName !== "push") return { files: null, basis: `${eventName} has no push basis` };
 	if (!before || isZeroSha(before)) return { files: null, basis: "all-zero before (new ref)" };
 	if (!SHA_RE.test(before)) return { files: null, basis: `invalid before SHA ${JSON.stringify(before)}` };
@@ -199,10 +193,12 @@ function collectEventChanges({ eventName, before, forced, sha }, exec = defaultE
 	}
 }
 
-/** target 하나의 발행 revision 기준. */
+/** target 하나의 발행 revision 기준. 조회 오류는 부재가 아니라 error(빌드)다. */
 function collectPublished({ target, imageRef, sha, repository }, exec = defaultExec) {
-	const revision = readRevision(imageRef, exec);
-	if (!revision) return { kind: "unreadable", reason: `${imageRef} has no readable revision label` };
+	const published = readRevision(imageRef, exec);
+	if (published.kind === "absent") return { kind: "absent", reason: published.reason };
+	if (published.kind !== "present") return { kind: "error", reason: published.reason };
+	const revision = published.revision;
 	if (revision === sha) return { kind: "diff", revision, files: [] };
 	let status;
 	try {
@@ -228,8 +224,8 @@ function collectAndDecide(env, exec = defaultExec) {
 	const input = { eventName, ref, dispatchTargets: env.DISPATCH_TARGETS };
 
 	const devPush = eventName === "push" && ref === DEV_REF;
-	// event diff 는 dev push(선택 빌드)와 PR(참고용)에서만 계산한다. main/태그/dispatch 는 전체 또는 입력 매핑이다.
-	if (devPush || eventName === "pull_request") {
+	// event diff 는 dev push(선택 빌드)에서만 계산한다. main/태그/PR 은 전체, dispatch 는 입력 매핑이다.
+	if (devPush) {
 		const event = collectEventChanges({ eventName, before: env.EVENT_BEFORE, forced: env.EVENT_FORCED, sha }, exec);
 		input.eventChanges = event.files;
 		input.eventBasis = event.basis;
@@ -247,14 +243,28 @@ function collectAndDecide(env, exec = defaultExec) {
 			if (alreadySelected.has(target)) {
 				input.published[target] = { kind: "selected" };
 			} else if (!owner || !SHA_RE.test(sha)) {
-				input.published[target] = { kind: "unreadable", reason: "missing IMAGE_OWNER or GITHUB_SHA" };
+				input.published[target] = { kind: "error", reason: "missing IMAGE_OWNER or GITHUB_SHA" };
 			} else {
 				input.published[target] = collectPublished({ target, imageRef, sha, repository }, exec);
 			}
 		}
 	}
 
-	return { ...decideTargets(input), input };
+	return { ...decideTargets(input), input, warnings: collectWarnings(env, input) };
+}
+
+/** 조용히 넘어가면 안 되는 상태를 ::warning:: annotation 문구로 모은다. */
+function collectWarnings(env, input) {
+	const warnings = [];
+	if (env.REGISTRY_LOGIN_OUTCOME === "failure") {
+		warnings.push(
+			"Registry login failed; published :dev revisions may be unreadable, so affected targets are built instead of carried over",
+		);
+	}
+	for (const [target, entry] of Object.entries(input.published || {})) {
+		if (entry?.kind === "error") warnings.push(`${target}: published revision check failed (${entry.reason}); building ${target}`);
+	}
+	return warnings;
 }
 
 function main(env = process.env, { exec = defaultExec, stdout = process.stdout } = {}) {
@@ -267,6 +277,7 @@ function main(env = process.env, { exec = defaultExec, stdout = process.stdout }
 	}
 	const targets = result.targets;
 	const standard = targets.filter((target) => target !== "cloud-shell");
+	for (const warning of result.warnings) stdout.write(`::warning title=Image target detection::${warning}\n`);
 	for (const reason of result.reasons) stdout.write(`${reason}\n`);
 	if (Array.isArray(result.input.eventChanges)) {
 		stdout.write(`changed files (${result.input.eventChanges.length}):\n`);

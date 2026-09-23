@@ -167,10 +167,12 @@ npm run test:gate
    - 절감 효과는 합산되지 않으므로 가장 긴 잡부터 줄인다. 효과는 실제 CI 전후 수치로만 주장한다.
 2. **목표 지표를 먼저 정한다.** 이 저장소는 public이고 무료 GitHub-hosted `ubuntu-latest`(4 vCPU)를 쓰므로 wall-clock(대기 시간)이 목표다. private 저장소나 유료 runner는 runner-minutes(비용)도 함께 본다.
 3. **게이트 잡을 다른 잡 앞에 두지 않는다.**
-   - 버전·문서·아키텍처 검사 같은 fail-fast 잡은 테스트 잡의 `needs:`로 걸지 말고 병렬로 실행한다. `test.yml`의 `version-check`는 어떤 잡의 `needs:`도 아니다.
+   - 버전·문서·아키텍처 검사 같은 fail-fast 잡은 테스트 잡의 `needs:`로 걸지 말고 병렬로 실행한다. `test.yml`의 `version-check`는 어떤 테스트 잡의 `needs:`도 아니다. 실제 자격 증명을 쓰는 마지막 opt-in 잡 `test-live`만 이를 기다린다.
    - 빌드·배포 게이팅은 테스트 워크플로우 전체 결과로 한다. `docker-build.yml`의 `changes`가 `needs: [test, test-pr]`로 이를 맡는다.
    - skipped 잡 뒤의 잡은 암묵적 `success()`에 기대지 말고 `!cancelled()`와 앞 잡 결과를 명시한다.
-   - reusable workflow caller에는 skipped 조상을 두지 않는다. 내부 잡까지 건너뛸 수 있으므로 push와 PR caller를 분리한다(`test`/`test-pr`).
+   - `if:`에 `!cancelled()` 같은 status 함수를 쓰면 암묵적 `success()`가 사라진다. skipped 잡의 output은 빈 문자열이므로 `needs.X.outputs.Y != 'true'` 같은 조건은 X가 skipped여도 참이 된다. 특정 이벤트 전용 잡은 `github.event_name` 조건을 맨 앞에 명시한다.
+   - reusable workflow caller에는 skipped 조상을 두지 않는다. 내부 잡까지 건너뛸 수 있으므로 push와 PR caller를 분리한다(`test`/`test-pr`). `test-pr`은 `github.event_name == 'pull_request'`에서만 실행된다.
+   - 여러 caller 결과로 게이팅할 때는 각 결과를 자기 이벤트에 연결한다. `needs.a.result == 'success' || needs.b.result == 'success'`처럼 합치면 한 caller의 통과가 다른 caller의 실패를 가린다.
 4. **잡당 고정비를 측정한다.**
    - checkout, 의존성 설치, 서비스 준비 시간을 잰다. 캐시 복원이 재설치보다 느리면 캐시를 쓰지 않는다.
    - 서비스 컨테이너 health-check는 짧은 interval(예: 2초)과 충분한 retries(또는 start-period)로 설정한다. `test.yml`의 MariaDB/PostgreSQL/Redis는 `docker-compose.dev.yml` `test` profile과 같은 2s/5s/20이다.
@@ -187,14 +189,16 @@ npm run test:gate
    - 병렬 실행(pytest-xdist 등)의 워커 수는 CI vCPU에 맞춰 명시한다(`-n 4`, `-n auto` 금지).
 8. **변경 감지의 diff 기준을 정확히 한다.**
    - push는 `github.event.before..github.sha`로 비교한다. zero SHA·forced push·fetch 실패 시에는 전체를 대상으로 한다.
-   - PR은 base..head로 비교한다. PR merge commit의 `HEAD^1..HEAD`가 이에 해당한다.
+   - PR은 base..head로 비교한다. Afterglow 이미지 target 감지는 PR에서 빌드하지 않으므로 PR diff를 계산하지 않는다.
    - `HEAD^1..HEAD`처럼 push의 마지막 커밋만 보는 비교는 금지한다.
    - 발행 산출물(이미지 등)은 실제 발행된 revision을 기준으로 판단한다. `org.opencontainers.image.revision` label을 쓰며, 규칙은 `scripts/ci/detect-build-targets.js`에 있다.
+   - 발행 revision을 읽지 못한 레지스트리 오류(인증·전송·rate limit)는 부재로 취급하지 않고 더 빌드하며 경고한다. 이미지·label이 없는 bootstrap만 event 기준으로 fallback한다.
 9. **중복 실행은 입력 동일성으로만 제거한다.**
    - 같은 저장소의 브랜치에서 온 PR이고 merge 트리가 head 트리와 같을 때만 PR 테스트를 건너뛴다(`docker-build.yml` `pr-dedup`).
    - fork PR과 dependabot PR은 항상 테스트한다.
    - 브랜치 이름만으로 판단하지 않는다. fork의 동명 브랜치로 우회할 수 있다.
    - push 실행에는 `cancel-in-progress`를 두지 않는다. 오래된 실행의 재발행은 발행 revision 가드로 막는다.
+   - 가드는 ancestry만으로 판단하지 않는다. 이번 SHA가 태그가 추적하는 브랜치(`:dev`→`dev`, `:nightly`→`main`, 실행 ref가 아님)의 끝이면(force-push rollback 포함) 발행하고, 그 브랜치 끝이 바뀌었고 발행본이 더 새로울 때만 건너뛴다. rollback할 때는 되돌릴 commit의 진행 중인 실행을 취소한다.
 10. **보안: public 저장소의 `pull_request` 코드를 self-hosted runner에서 실행하지 않는다.**
     - 워크플로우 YAML의 `if:`는 PR이 수정할 수 있으므로, runner group의 저장소 제한과 fork PR 승인 설정으로도 보장한다.
     - PR 이벤트에서는 레지스트리 자격 증명을 쓰는 step을 실행하지 않는다.

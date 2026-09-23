@@ -92,3 +92,5 @@
 
   Deferred: needs a real dev push and a real dev→main PR after merge.
 - [x] Archive with `openspec archive ci-critical-path-overhaul --skip-specs --yes` in the same commit as the change. The two post-merge items above stay open and are archived as deferred follow-ups.
+
+The two open post-merge items, and the review fixes made after archiving, are tracked in the open change `openspec/changes/ci-critical-path-review-follow-up/`.

@@ -10,9 +10,10 @@ on:
         type: boolean
         default: false
 jobs:
-  # ─── 게이트 병렬성: version-check 는 다른 잡의 needs: 가 아니다 ────────────────
+  # ─── 게이트 병렬성: version-check 는 어떤 테스트 잡의 needs: 도 아니다 ──────────
   # 모든 테스트 잡은 t=0 에 병렬로 시작한다. 이미지 빌드 게이팅은 docker-build.yml 의
   # `changes` 잡이 이 reusable workflow 전체(`needs: [test, test-pr]`)에 걸어 보장한다.
+  # 마지막 opt-in 잡인 test-live 만 실제 자격 증명을 쓰기 전에 version-check 를 기다린다.
   version-check:
     name: Version + orchestration checks
     runs-on: ubuntu-latest
@@ -319,9 +320,11 @@ jobs:
           fi
 
   # ─── 실제 OpenStack 테스트: detect-live.outputs.enabled == 'true' 시만 실행 ───
+  # 실제 자격 증명을 쓰므로 version-check(architecture freshness, orchestration 계약, version sync)와
+  # 모든 테스트 계층이 통과한 뒤에만 실행한다. 마지막 잡이라 다른 잡의 t=0 시작에는 영향이 없다.
   test-live:
     name: Backend (live OpenStack tests)
-    needs: [test-backend, test-contract, test-functional, test-frontend, detect-live]
+    needs: [version-check, test-backend, test-cloud-shell, test-contract, test-functional, test-frontend, detect-live]
     runs-on: ubuntu-latest
     if: ${{ needs.detect-live.outputs.enabled == 'true' }}
     services:

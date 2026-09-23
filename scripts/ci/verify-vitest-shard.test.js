@@ -4,7 +4,7 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
-const { listSuiteFiles, main, parseShard, verifyShardReport } = require("./verify-vitest-shard.js");
+const { expectedShardSize, listSuiteFiles, main, parseShard, verifyShardReport } = require("./verify-vitest-shard.js");
 
 function report(names, overrides = {}) {
 	return {
@@ -57,10 +57,36 @@ test("parseShard accepts index/count with count >= 2", () => {
 	assert.throws(() => parseShard("1"), /index/);
 });
 
+test("expectedShardSize matches the vitest 4 distributed shard range", () => {
+	// 로컬 실측: 247 파일 → 124 / 123.
+	assert.equal(expectedShardSize(247, { index: 1, count: 2 }), 124);
+	assert.equal(expectedShardSize(247, { index: 2, count: 2 }), 123);
+	assert.equal(expectedShardSize(4, { index: 1, count: 2 }), 2);
+	// count > 2 에서는 ceil 분할(3,3,3,1)이 아니라 앞쪽 샤드에 나머지를 하나씩 준다(3,3,2,2).
+	assert.deepEqual([1, 2, 3, 4].map((index) => expectedShardSize(10, { index, count: 4 })), [3, 3, 2, 2]);
+	for (const [total, count] of [[247, 2], [247, 3], [10, 4], [5, 5], [3, 4]]) {
+		const sizes = Array.from({ length: count }, (_, i) => expectedShardSize(total, { index: i + 1, count }));
+		assert.equal(sizes.reduce((sum, size) => sum + size, 0), total, `${total}/${count}`);
+	}
+});
+
 test("a real partial shard passes", () => {
 	const result = verifyShardReport(report(["/a", "/b"]), 4, { index: 1, count: 2 });
 	assert.equal(result.ok, true, result.errors.join("; "));
 	assert.equal(result.ranFiles, 2);
+	assert.equal(verifyShardReport(report(["/a", "/b"]), 3, { index: 1, count: 2 }).ok, true);
+	assert.equal(verifyShardReport(report(["/c"]), 3, { index: 2, count: 2 }).ok, true);
+});
+
+test("a shard whose size differs from the vitest split fails", () => {
+	// 파일 walk 가 vitest 보다 많이 세면(예: vitest exclude 추가) 전체 스위트(vitest 기준 4개)를 돈 샤드도
+	// 예전 `0 < ran < suite(5)` 검사를 통과했다. 정확한 분할 크기(3)와 비교하면 실패한다.
+	const wholeSuite = verifyShardReport(report(["/a", "/b", "/c", "/d"]), 5, { index: 1, count: 2 });
+	assert.equal(wholeSuite.ok, false);
+	assert.match(wholeSuite.errors.join("\n"), /ran 4 files but vitest assigns 3 of 5/);
+	const tooFew = verifyShardReport(report(["/a"]), 4, { index: 1, count: 2 });
+	assert.equal(tooFew.ok, false);
+	assert.match(tooFew.errors.join("\n"), /ran 1 files but vitest assigns 2 of 4/);
 });
 
 test("a shard that silently ran the whole suite fails", () => {

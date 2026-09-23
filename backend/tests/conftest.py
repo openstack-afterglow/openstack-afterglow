@@ -21,6 +21,7 @@ os.environ.setdefault("SERVICE_CHAT_ENABLED", "true")
 import errno
 import ipaddress
 import socket
+import threading
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -69,10 +70,12 @@ _rate_limiter.enabled = False
 # ──────────────────────────────────────────────────────────────────
 # 단위·계약 테스트는 hermetic 해야 한다. 로컬 afterglow.conf 가 있을 때 실제
 # Keystone/Prometheus 로 접속하던 테스트가 있었으므로, loopback 이외 주소로의
-# TCP/UDP connect 를 차단하고 해당 테스트를 실패시킨다. 실 환경 계층
+# TCP/UDP connect 와 connect 없는 UDP sendto 를 차단하고 해당 테스트를 실패시킨다. 실 환경 계층
 # (tests/integration/) 과 실 datastore 를 쓰는 functional(`db` marker) 테스트는 제외한다.
 # unix socket 과 loopback(127.0.0.0/8, ::1, localhost) 은 허용한다.
-# 한계: C 레벨 DNS 조회(getaddrinfo)는 socket.connect 를 거치지 않아 차단하지 않는다.
+# 기록에는 시도한 thread 이름을 붙인다. 이전 테스트가 남긴 background thread/task 의 connect 는
+# 그때 실행 중인 테스트에 기록되므로 thread 이름으로 출처를 구분한다.
+# 한계: C 레벨 DNS 조회(getaddrinfo)와 sendmsg 는 차단하지 않는다.
 
 _TESTS_DIR = Path(__file__).resolve().parent
 _NETWORK_GUARD_EXEMPT_DIRS = (_TESTS_DIR / "integration",)
@@ -123,11 +126,12 @@ def _block_non_loopback_network(request, monkeypatch):
     blocked: list[str] = []
     original_connect = socket.socket.connect
     original_connect_ex = socket.socket.connect_ex
+    original_sendto = socket.socket.sendto
 
     def _is_blocked(sock: socket.socket, address: object) -> bool:
         if sock.family not in _INET_FAMILIES or _is_loopback_target(address):
             return False
-        blocked.append(repr(address))
+        blocked.append(f"{address!r} [thread {threading.current_thread().name}]")
         return True
 
     def guarded_connect(self, address, *args, **kwargs):
@@ -143,8 +147,18 @@ def _block_non_loopback_network(request, monkeypatch):
             return errno.ECONNREFUSED
         return original_connect_ex(self, address, *args, **kwargs)
 
+    def guarded_sendto(self, data, *args):
+        # sendto(data, address) 와 sendto(data, flags, address) 모두 주소는 마지막 위치 인자다.
+        if args and _is_blocked(self, args[-1]):
+            raise NonLoopbackConnectBlocked(
+                errno.ECONNREFUSED,
+                f"unit/contract tests must not send to non-loopback address {args[-1]!r}",
+            )
+        return original_sendto(self, data, *args)
+
     monkeypatch.setattr(socket.socket, "connect", guarded_connect)
     monkeypatch.setattr(socket.socket, "connect_ex", guarded_connect_ex)
+    monkeypatch.setattr(socket.socket, "sendto", guarded_sendto)
     yield blocked
     if blocked:
         pytest.fail(

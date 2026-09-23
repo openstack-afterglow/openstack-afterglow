@@ -5,8 +5,9 @@
 //
 // `npm run test:unit:frontend -- --shard=1/2` 는 내부 npm 이 인자를 삼켜 각 샤드가 전체 스위트를 조용히
 // 실행한다. CI 는 vitest 를 직접 호출하고 JSON reporter 결과를 이 스크립트로 검증한다.
-// - 이 샤드가 실행한 파일 수 > 0
-// - 이 샤드가 실행한 파일 수 < 전체 스위트 파일 수(vitest include `src/**/*.{test,spec}.{js,ts}`)
+// - 이 샤드가 실행한 파일 수 == vitest 샤드 분할이 이 샤드에 배정하는 파일 수
+//   (전체 스위트는 vitest include `src/**/*.{test,spec}.{js,ts}` 로 센다. vitest.config.ts 에 exclude/projects 가
+//   없어야 두 수가 같으며 scripts/github-actions-contract.test.js 가 이를 고정한다.)
 // - 실패한 테스트·파일 없음
 //
 // usage: node scripts/ci/verify-vitest-shard.js --report <vitest-json> --shard <index>/<count> [--root <frontend dir>]
@@ -36,6 +37,15 @@ function listSuiteFiles(root) {
 	return files.sort();
 }
 
+/**
+ * Vitest 4 BaseSequencer.calculateShardRange 와 같은 분할: 모든 샤드가 floor(n/count) 개를 받고
+ * 앞쪽 n % count 개 샤드가 1개씩 더 받는다. count=2 이면 ceil/floor 분할과 같다(247 → 124/123).
+ */
+function expectedShardSize(total, { index, count }) {
+	const base = Math.floor(total / count);
+	return base + (index <= total % count ? 1 : 0);
+}
+
 function parseShard(value) {
 	const match = /^(\d+)\/(\d+)$/.exec(String(value ?? ""));
 	if (!match) throw new Error(`--shard must be <index>/<count>, got ${JSON.stringify(value)}`);
@@ -58,12 +68,18 @@ function verifyShardReport(report, suiteFileCount, shard) {
 	}
 	const ranFiles = new Set(results.map((result) => result?.name).filter(Boolean)).size;
 	const label = shard ? `${shard.index}/${shard.count}` : "?";
+	const expected = shard && suiteFileCount > 0 ? expectedShardSize(suiteFileCount, shard) : null;
 
+	if (!shard) errors.push("shard index/count is required");
 	if (!(suiteFileCount > 0)) errors.push(`full suite file count is ${suiteFileCount}; cannot verify sharding`);
 	if (ranFiles === 0) errors.push(`shard ${label} ran no test files`);
 	if (suiteFileCount > 0 && ranFiles >= suiteFileCount) {
 		errors.push(
 			`shard ${label} ran ${ranFiles} of ${suiteFileCount} files; --shard was not applied (the whole suite ran)`,
+		);
+	} else if (expected !== null && ranFiles > 0 && ranFiles !== expected) {
+		errors.push(
+			`shard ${label} ran ${ranFiles} files but vitest assigns ${expected} of ${suiteFileCount}; the suite count or vitest include/exclude drifted`,
 		);
 	}
 	const failedFiles = results.filter((result) => result?.status === "failed").map((result) => result.name);
@@ -72,7 +88,7 @@ function verifyShardReport(report, suiteFileCount, shard) {
 	if (Number(report.numFailedTestSuites) > 0) errors.push(`${report.numFailedTestSuites} failed suites`);
 	if (report.success !== true) errors.push("vitest reported success=false");
 
-	const summary = `shard ${label}: ${ranFiles} of ${suiteFileCount} files, ${report.numTotalTests ?? "?"} tests (${report.numPassedTests ?? "?"} passed)`;
+	const summary = `shard ${label}: ${ranFiles} of ${suiteFileCount} files (expected ${expected ?? "?"}), ${report.numTotalTests ?? "?"} tests (${report.numPassedTests ?? "?"} passed)`;
 	return { ok: errors.length === 0, errors, ranFiles, summary };
 }
 
@@ -111,7 +127,7 @@ function main(argv, { stdout = process.stdout, cwd = process.cwd() } = {}) {
 	return 0;
 }
 
-module.exports = { listSuiteFiles, main, parseShard, verifyShardReport };
+module.exports = { expectedShardSize, listSuiteFiles, main, parseShard, verifyShardReport };
 
 if (require.main === module) {
 	process.exitCode = main(process.argv.slice(2));
