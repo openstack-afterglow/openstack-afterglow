@@ -105,7 +105,7 @@
     - For the dependabot PR head `cf69d3cd`, whose branch is not a push trigger branch, it returned `null`.
     - This confirms the response shape and the GET path.
 
-### Review round 4 fixes (commit `fix: address CI review round 3`)
+### Review round 4 fixes (commits `fix: address CI review round 3` and `fix: make the rule 10 trigger parser fail closed`)
 
 - [x] Network guard teardown is pinned.
   - The guard moves to `backend/tests/_network_guard.py`. `backend/tests/conftest.py` imports its fixture, so it stays autouse for every backend test.
@@ -126,7 +126,7 @@
   - It is now a pure function, `selfHostedPrViolations`, with synthetic tests.
   - These triggers count as PR-reachable: `pull_request`, `pull_request_review`, `pull_request_review_comment`, `issue_comment`, `workflow_run` and `merge_group`.
   - A non-hosted job needs an allow-list conjunct such as `github.event_name == 'push'`. The deny-list `!= 'pull_request'` is enough only when `pull_request` is the workflow's only PR-reachable trigger.
-  - Trigger parsing covers the scalar, inline list, block list and mapping forms.
+  - Trigger parsing covers the scalar, inline list, block list and mapping forms. It also fails closed on forms it does not parse (a flow mapping, a quoted key). A PR-reachable event name that appears as a word in the comment-stripped `on:` block is always counted.
 - [x] Docs.
   - AGENTS.md (CLAUDE.md) rule 3 follows canonical rule 3. Publishes and deploys are gated on the whole test result, and PR verification builds that publish nothing may run in parallel.
   - Rule 3 names the current exceptions (`helm-release.yml`, `docs.yml`) and the documented `pr-dedup` pre-gate.
@@ -138,8 +138,9 @@
   - `test:orchestration` 103/103;
   - `test:unit:backend` 2948 passed, `test:contract` 131 passed, ruff check and format;
   - actionlint: `test.yml` 0, and `docker-build.yml` 14 SC2086 infos as before;
-  - scratch mutations (restored from memory, worktree diff unchanged afterwards), listed in ARCHITECTURE.md;
-  - the architecture stamp with `--staged`.
+  - 31 distinct scratch mutations, all killed (restored from memory, worktree diff unchanged afterwards), listed in ARCHITECTURE.md;
+  - the architecture stamp with `--staged`;
+  - `test:functional` selects only `-m db` tests (`scripts/test-db.js` → `test-target.js db`), which the guard exempts, so the DNS block cannot affect it. It was not run, because Docker is not allowed in this task.
 
 ### Post-merge follow-up (needs real GitHub Actions runs)
 

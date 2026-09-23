@@ -423,18 +423,18 @@ GitHub Actions 실제 실행은 검증하지 않았다. job 토큰의 `actions: 
 - `verify-vitest-shard.test.js`의 실패 사례는 모두 유효한 2-of-4 보고서에서 시작하고 오류 목록 전체를 비교한다.
 - 계약이 `pr-dedup`·`changes`와 workflow-level `env`의 `secrets` 참조 위치를 고정한다.
 - functional·live service에 `--health-start-period 30s`와 `--health-start-interval 2s`를 더했다.
-- CI 규정 10번 계약이 `issue_comment`·`workflow_run`·review 이벤트·`merge_group`을 PR 도달 trigger로 보고, 그런 workflow의 non-hosted 잡에 allow-list를 요구한다.
+- CI 규정 10번 계약이 `issue_comment`·`workflow_run`·review 이벤트·`merge_group`을 PR 도달 trigger로 보고, 그런 workflow의 non-hosted 잡에 allow-list를 요구한다. 파서가 모르는 `on:` 형식(flow mapping, 따옴표 key)도 주석을 뺀 `on:` 블록의 이벤트 이름 단어 검색으로 포함한다(fail-closed).
 - CI 규정 3번(발행·배포만 테스트 전체 결과로 게이팅)과 10번(YAML guard + settings-level 통제, owner 작업 경로)의 문구를 canonical 규정에 맞췄다.
 
 로컬 증거는 다음과 같다.
 
 - `npm run test:orchestration` 103/103, `test:unit:backend` 2948건, `test:contract` 131건, ruff check/format을 통과했다.
-- scratch 회귀 30개를 메모리 원본 복원 harness로 적용했다. 30개 모두 suite를 실패시켰고, 실행 전후 worktree diff는 같았다.
+- 서로 다른 scratch 회귀 31개를 메모리 원본 복원 harness로 적용했다. 31개 모두 suite를 실패시켰고, 실행 전후 worktree diff는 같았다.
   - guard: teardown 무력화, autouse 해제, conftest import 제거, connect·DNS 기록 제거, `getaddrinfo` 미patch, 이름 판정 반전, IP literal을 조회로 판정.
   - shard 검증기: 네 검사 각각 제거, `success === false`로 완화.
   - secrets: `pr-dedup` step env, Detect step env, workflow-level env, `toJSON(secrets)`, bracket 참조.
   - health: start-period·start-interval 제거, 값 변경, retries 변경.
-  - 규정 10번: `docker-build.yml`에 `issue_comment`·`workflow_run` 추가, build `if`의 event conjunct 제거·최상위 `|| always()`, `claude.yml`·`pr-dedup`·`test.yml` 잡의 self-hosted 이동.
+  - 규정 10번: `docker-build.yml`에 `issue_comment`·`workflow_run`·따옴표 key `"issue_comment"` 추가, build `if`의 event conjunct 제거·최상위 `|| always()`, `claude.yml`·`pr-dedup`·`test.yml` 잡의 self-hosted 이동, trigger 단어 검색 제거.
   - 대조 변형: `pr-dedup` 주석의 `secrets.X`와 `docker-build.yml`의 `schedule` trigger 추가는 통과했다.
 - `actionlint`는 `test.yml` 0건, `docker-build.yml`은 기존과 같은 SC2086 info 14건이다.
 
@@ -490,9 +490,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "0ffa621feed4d7a866b85cf05917ab9c4e8e1d68cd016bf61d8d95876d9692f7",
-  "reviewed_at": "2026-09-23T23:08:50Z",
-  "summary": "CI review round 4: reviewed backend/tests/_network_guard.py (moved from conftest, adds getaddrinfo DNS block, subprocess teardown test), conftest import, test.yml health start-period/start-interval, github-actions-contract secrets and PR-reachable-trigger rule 10 checks, verify-vitest-shard test; ARCHITECTURE CI section, AGENTS rules 3/4/7/10, TESTING.md and docs/testing.md updated to match source"
+  "source_sha256": "a58501abf568ab10a3af0db7ff35c071f44b0daf4af0dbf6f2a718507ec99fbf",
+  "reviewed_at": "2026-09-23T23:12:55Z",
+  "summary": "CI review round 4: reviewed backend/tests/_network_guard.py (moved from conftest, adds getaddrinfo DNS block, subprocess teardown test), conftest import, test.yml health start-period/start-interval, github-actions-contract secrets and PR-reachable-trigger rule 10 checks with fail-closed trigger word scan, verify-vitest-shard test; ARCHITECTURE CI section, AGENTS rules 3/4/7/10, TESTING.md and docs/testing.md updated to match source"
 }
 ```
 <!-- architecture-review:end -->

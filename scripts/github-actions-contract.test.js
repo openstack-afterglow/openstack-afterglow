@@ -611,24 +611,41 @@ const PR_REACHABLE_EVENTS = new Set([
 	"merge_group",
 ])
 
-/** `on:` 의 trigger 이름. scalar(`on: push`), inline list, block list(`  - push`), mapping(`  push:`) 형식. */
+/**
+ * `on:` 의 trigger 이름. scalar(`on: push`), inline list, block list(`  - push`), mapping(`  push:`) 형식을 파싱한다.
+ * 파서가 모르는 형식(flow mapping `on: {issue_comment: ...}`, 따옴표 key `  "workflow_run":`)에서도 PR 도달 trigger 를
+ * 놓치지 않도록, 주석을 뺀 `on:` 블록에 PR 도달 이벤트 이름이 단어로 나오면 더한다(fail-closed).
+ * `\bpull_request\b` 는 `pull_request_review`·`pull_request_target` 안에서 매치하지 않는다.
+ */
 function workflowTriggers(workflow) {
 	const lines = workflow.split("\n")
 	const start = lines.findIndex((line) => /^on:/.test(line))
 	assert.ok(start >= 0, "workflow must declare on:")
-	const inline = lines[start].slice(3).replace(/\s+#.*$/, "").trim()
-	if (inline) {
-		return inline
-			.replace(/^\[|\]$/g, "")
-			.split(",")
-			.map((name) => name.trim().replace(/^(['"])(.*)\1$/, "$2"))
-			.filter(Boolean)
-	}
-	const triggers = []
+	const block = [lines[start].slice(3)]
 	for (const line of lines.slice(start + 1)) {
 		if (/^[^\s#]/.test(line)) break
-		const key = /^  (?:- )?([A-Za-z_]+)(?=\s*(?::|#|$))/.exec(line)
-		if (key) triggers.push(key[1])
+		block.push(line)
+	}
+	const uncommented = block.map((line) => line.replace(/(^|\s)#.*$/, "")).join("\n")
+
+	const triggers = []
+	const inline = block[0].replace(/\s+#.*$/, "").trim()
+	if (inline) {
+		triggers.push(
+			...inline
+				.replace(/^\[|\]$/g, "")
+				.split(",")
+				.map((name) => name.trim().replace(/^(['"])(.*)\1$/, "$2"))
+				.filter(Boolean),
+		)
+	} else {
+		for (const line of block.slice(1)) {
+			const key = /^  (?:- )?([A-Za-z_]+)(?=\s*(?::|#|$))/.exec(line)
+			if (key) triggers.push(key[1])
+		}
+	}
+	for (const event of PR_REACHABLE_EVENTS) {
+		if (!triggers.includes(event) && new RegExp(`\\b${event}\\b`).test(uncommented)) triggers.push(event)
 	}
 	return triggers
 }
@@ -735,6 +752,10 @@ test("workflow triggers parse in scalar, inline list, block list and mapping for
 	)
 	// jobs: 아래의 2칸 키는 trigger 가 아니다.
 	assert.deepEqual(workflowTriggers("on:\n  push:\n    branches: [main]\njobs:\n  pull_request:\n"), ["push"])
+	// 파서가 모르는 형식에서도 PR 도달 이벤트 이름은 단어 검색으로 더한다. 주석과 다른 이벤트의 접두사는 무시한다.
+	assert.ok(workflowTriggers("on: {issue_comment: {types: [created]}}\njobs:\n").includes("issue_comment"))
+	assert.ok(workflowTriggers('on:\n  "workflow_run":\n    workflows: [x]\njobs:\n').includes("workflow_run"))
+	assert.deepEqual(workflowTriggers("on:\n  push:  # not issue_comment\n  pull_request_review:\njobs:\n"), ["push", "pull_request_review"])
 	assert.deepEqual(workflowTriggers("on:\n  - push\n  - workflow_dispatch\njobs:\n"), ["push", "workflow_dispatch"])
 })
 
@@ -751,6 +772,9 @@ test("the rule 10 check treats issue_comment and workflow_run as PR-reachable", 
 		// 제외되지 않은 hosted job 은 허용되고, reusable caller 는 호출 대상까지 확인한다.
 		assert.deepEqual(check(workflow(`  ${event}:`, "    runs-on: ubuntu-latest")), [], `${event} on a hosted runner`)
 	}
+	// 파서가 모르는 형식(flow mapping, 따옴표 key)도 PR 도달 trigger 로 본다.
+	assert.equal(check(`name: x\non: {issue_comment: {types: [created]}}\njobs:\n  j:\n${selfHosted(PR_EXCLUSION)}\n    steps:\n      - run: true\n`).length, 1)
+	assert.equal(check(workflow('  "workflow_run":\n    workflows: [x]', selfHosted(PR_EXCLUSION))).length, 1)
 	// allow-list 가 PR 도달 이벤트면 제외가 아니다.
 	assert.equal(check(workflow("  issue_comment:", selfHosted("github.event_name == 'issue_comment'"))).length, 1)
 	assert.equal(check(workflow("  pull_request:", selfHosted("github.event_name == 'pull_request_target'"))).length, 2)
