@@ -101,14 +101,27 @@ test("an empty shard, a missing report shape and an unknown suite size fail", ()
 	assert.match(verifyShardReport(report(["/a"]), 0, { index: 1, count: 2 }).errors.join("\n"), /full suite file count is 0/);
 });
 
-test("failed tests, failed files and success=false fail the shard", () => {
+test("failed tests, failed files and success=false each fail an otherwise valid shard", () => {
+	// 각 경우는 크기 검사를 통과하는 보고서(2 of 4, shard 1/2)에서 시작하므로 해당 조건 하나만 실패 원인이다.
 	const shard = { index: 1, count: 2 };
-	assert.equal(verifyShardReport(report(["/a"], { numFailedTests: 1 }), 4, shard).ok, false);
-	assert.equal(verifyShardReport(report(["/a"], { numFailedTestSuites: 1 }), 4, shard).ok, false);
-	assert.equal(verifyShardReport(report(["/a"], { success: false }), 4, shard).ok, false);
-	const failedFile = report(["/a"]);
-	failedFile.testResults[0].status = "failed";
-	assert.match(verifyShardReport(failedFile, 4, shard).errors.join("\n"), /failed files: \/a/);
+	const valid = () => report(["/a", "/b"]);
+	assert.deepEqual(verifyShardReport(valid(), 4, shard).errors, [], "the base report is a valid shard");
+
+	const cases = [
+		["failed tests", { ...valid(), numFailedTests: 1 }, "1 failed tests"],
+		["failed suites", { ...valid(), numFailedTestSuites: 1 }, "1 failed suites"],
+		["success=false", { ...valid(), success: false }, "vitest reported success=false"],
+		["success missing", { ...valid(), success: undefined }, "vitest reported success=false"],
+	];
+	const failedFile = valid();
+	failedFile.testResults[1].status = "failed";
+	cases.push(["failed file", failedFile, "failed files: /b"]);
+
+	for (const [label, input, message] of cases) {
+		const result = verifyShardReport(input, 4, shard);
+		assert.equal(result.ok, false, label);
+		assert.deepEqual(result.errors, [message], label);
+	}
 });
 
 test("main reads the report, counts the suite and emits annotations on failure", () => {

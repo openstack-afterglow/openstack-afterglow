@@ -97,7 +97,7 @@ milestone.md          OpenSpec redirect stub; append 대상이 아님
 
 - 백엔드 엔드포인트 구현에는 반드시 `backend/tests/` pytest를 함께 작성한다. 테스트 없는 endpoint는 미완료다.
 - 계층별 테스트 계약:
-  1. **단위 테스트 (Unit)**: `npm run test:unit:backend`, `npm run test:unit:frontend`, `npm run test:unit` (외부 네트워크·Docker·자격 증명 없음; 전체 unit은 오케스트레이터 회귀 포함). backend unit은 `pytest-xdist -n 4 --dist worksteal`로 실행하며 `backend/tests/conftest.py` network guard가 non-loopback connect를 실패시킨다.
+  1. **단위 테스트 (Unit)**: `npm run test:unit:backend`, `npm run test:unit:frontend`, `npm run test:unit` (외부 네트워크·Docker·자격 증명 없음; 전체 unit은 오케스트레이터 회귀 포함). backend unit은 `pytest-xdist -n 4 --dist worksteal`로 실행하며 `backend/tests/_network_guard.py` network guard(`conftest.py`가 autouse로 등록)가 non-loopback connect·UDP `sendto`와 localhost 이외 호스트 이름의 DNS 조회(`socket.getaddrinfo`)를 실패시킨다.
   2. **소비자 계약 테스트 (Contract)**: `npm run test:contract` (`backend/tests/contracts/`의 BFF/SDK/catalog/ingress 경계)
   3. **국소 기능 테스트 (Functional)**: `npm run test:functional` (`docker-compose.dev.yml`의 실제 MariaDB/PostgreSQL/Redis test profile). 기본 전용 project 자동 기동·종료이며 데이터는 tmpfs다. 재사용은 `--no-start`, 실행 중 유지/디버깅은 `--keep`이고 중지 시 데이터는 사라진다.
   4. **실제 환경 테스트 (Live OpenStack)**: `npm run test:live` (`live:{auth,admin,compute,network,storage,layers}`). 자격 증명/도달성 미비는 검증 공백으로 보고하지만, 사전조건 충족 뒤의 테스트 실패는 결함으로 처리한다.
@@ -168,14 +168,18 @@ npm run test:gate
 2. **목표 지표를 먼저 정한다.** 이 저장소는 public이고 무료 GitHub-hosted `ubuntu-latest`(4 vCPU)를 쓰므로 wall-clock(대기 시간)이 목표다. private 저장소나 유료 runner는 runner-minutes(비용)도 함께 본다.
 3. **게이트 잡을 다른 잡 앞에 두지 않는다.**
    - 버전·문서·아키텍처 검사 같은 fail-fast 잡은 테스트 잡의 `needs:`로 걸지 말고 병렬로 실행한다. `test.yml`의 `version-check`는 어떤 테스트 잡의 `needs:`도 아니다. 실제 자격 증명을 쓰는 마지막 opt-in 잡 `test-live`만 이를 기다린다.
-   - 빌드·배포 게이팅은 테스트 워크플로우 전체 결과로 한다. `docker-build.yml`의 `changes`가 `needs: [test, test-pr]`로 이를 맡는다.
+   - 이미지·패키지 **발행(push)과 배포**는 테스트 워크플로우 전체 결과로 게이팅한다. 아무것도 발행하지 않는 PR 검증 빌드는 테스트와 병렬로 돌려도 되며 이 규칙에 맞는다.
+   - 현재 구성: `docker-build.yml`의 이미지 발행(`build`, `build-cloud-shell`, `manifest`)은 `changes`가 `needs: [test, test-pr]`로 게이팅한다. PR은 이미지를 빌드하지 않으므로 PR 검증 빌드는 없다.
+   - 현재 예외: `helm-release.yml`(main push와 `v*` 태그의 Helm chart OCI 발행)과 `docs.yml`(main push의 GitHub Pages 배포)은 별도 workflow라 `Layered Tests` 결과를 기다리지 않는다. 연결 방식은 `openspec/changes/ci-critical-path-review-follow-up`에 남겼다. `promote-kolla-role-tags.yml`은 발행이 아니라 PR을 여는 workflow이고, 그 PR이 테스트를 거친다.
+   - 문서화된 예외: `docker-build.yml`의 `pr-dedup`은 fail-fast 검사가 아니지만 모든 PR에서 `test-pr` 앞에 놓이는 직렬 잡이다. 중복 판단이 `test-pr` 실행 여부의 입력이고, 아래 transitive skip 제약 때문에 조건부로 만들 수 없다. 추가 지연은 추정치(중앙값 약 9초)뿐이며 PR 경로 실측은 같은 follow-up change에 남아 있다.
    - skipped 잡 뒤의 잡은 암묵적 `success()`에 기대지 말고 `!cancelled()`와 앞 잡 결과를 명시한다.
    - `if:`에 `!cancelled()` 같은 status 함수를 쓰면 암묵적 `success()`가 사라진다. skipped 잡의 output은 빈 문자열이므로 `needs.X.outputs.Y != 'true'` 같은 조건은 X가 skipped여도 참이 된다. 특정 이벤트 전용 잡은 `github.event_name` 조건을 맨 앞에 명시한다.
    - reusable workflow caller에는 skipped 조상을 두지 않는다. 내부 잡까지 건너뛸 수 있으므로 push와 PR caller를 분리한다(`test`/`test-pr`). `test-pr`은 `github.event_name == 'pull_request'`에서만 실행된다.
    - 여러 caller 결과로 게이팅할 때는 각 결과를 자기 이벤트에 연결한다. `needs.a.result == 'success' || needs.b.result == 'success'`처럼 합치면 한 caller의 통과가 다른 caller의 실패를 가린다.
 4. **잡당 고정비를 측정한다.**
    - checkout, 의존성 설치, 서비스 준비 시간을 잰다. 캐시 복원이 재설치보다 느리면 캐시를 쓰지 않는다.
-   - 서비스 컨테이너 health-check는 짧은 interval(예: 2초)과 충분한 retries(또는 start-period)로 설정한다. `test.yml`의 MariaDB/PostgreSQL/Redis는 `docker-compose.dev.yml` `test` profile과 같은 2s/5s/20이다.
+   - 서비스 컨테이너 health-check는 짧은 interval(예: 2초)과 충분한 retries(또는 start-period)로 설정한다. `test.yml`의 MariaDB/PostgreSQL/Redis(functional·live)는 interval/timeout/retries가 `docker-compose.dev.yml` `test` profile과 같은 2s/5s/20이다.
+   - compose test profile은 tmpfs를 쓰지만 CI service는 tmpfs 없이 container 디스크에서 초기화하므로, CI에만 `--health-start-period 30s`를 더한다. Docker 25+는 start period 동안 `--health-start-interval`(기본 5초) 간격으로 검사하므로 이것도 2s로 둔다(API 1.44+). 그래야 정상 경로의 준비 대기가 늘지 않는다.
 5. **샤딩은 고정비가 작을 때만 한다.**
    - 테스트 러너가 작업을 나누는 단위(vitest는 파일)로 균형을 맞춘다.
    - 샤드 명령은 러너를 직접 호출한다. 래퍼 스크립트 뒤에 `-- --shard`를 붙이면 인자가 전달되지 않아 전체 스위트가 조용히 돌 수 있다(`npm run test:unit:frontend -- --shard`가 그랬다).
@@ -185,7 +189,9 @@ npm run test:gate
    - 먼저 순서를 섞어(shuffle) 2회 이상 실행해 상태 누수를 확인하고, 안전한 파일만 명시적으로 opt-in한다.
    - `vi.stubGlobal`·전역 상태를 바꾼 테스트는 반드시 복원한다.
 7. **테스트는 hermetic해야 병렬화할 수 있다.**
-   - 단위 테스트는 실제 외부 서비스(Keystone, Prometheus 등)에 접속하지 않는다. 로컬 설정 파일(`afterglow.conf`)이 있느냐에 따라 결과나 시간이 달라지면 결함이다. `backend/tests/conftest.py` network guard가 이를 강제한다.
+   - 단위 테스트는 실제 외부 서비스(Keystone, Prometheus 등)에 접속하지 않는다. 로컬 설정 파일(`afterglow.conf`)이 있느냐에 따라 결과나 시간이 달라지면 결함이다.
+   - `backend/tests/_network_guard.py` guard(`conftest.py`가 autouse로 등록)가 강제하는 범위는 unit/contract 계층의 네트워크 접근이다. non-loopback connect·UDP `sendto`와 localhost 이외 호스트 이름의 `socket.getaddrinfo`(DNS 조회)를 차단한다. 앱 코드가 차단 예외를 삼켜도 teardown에서 테스트를 실패시키며, 이 teardown은 별도 pytest 프로세스 테스트가 고정한다. DNS까지 막는 이유는 CI에 `afterglow.conf`가 없어서다. 기본값(`http://prometheus:9090` 등)의 이름은 connect 전에 DNS에서 실패하므로, DNS를 막지 않으면 mock이 빠진 테스트가 CI에서 통과한다.
+   - guard가 강제하지 않는 것: 설정 파일 로딩은 격리하지 않는다. 네트워크 호출 없이 `afterglow.conf` 값에만 의존하는 결과 차이는 잡지 못한다. `socket.getaddrinfo`를 거치지 않는 이름 해석과 `sendmsg`도 차단하지 않는다.
    - 병렬 실행(pytest-xdist 등)의 워커 수는 CI vCPU에 맞춰 명시한다(`-n 4`, `-n auto` 금지).
 8. **변경 감지의 diff 기준을 정확히 한다.**
    - push는 `github.event.before..github.sha`로 비교한다. zero SHA·forced push·fetch 실패 시에는 전체를 대상으로 한다.
@@ -205,11 +211,20 @@ npm run test:gate
    - push 실행에는 `cancel-in-progress`를 두지 않는다. 오래된 실행의 재발행은 발행 revision 가드로 막는다.
    - 가드는 ancestry만으로 판단하지 않는다. 이번 SHA가 태그가 추적하는 브랜치(`:dev`→`dev`, `:nightly`→`main`, 실행 ref가 아님)의 끝이면(force-push rollback 포함) 발행하고, 그 브랜치 끝이 바뀌었고 발행본이 더 새로울 때만 건너뛴다. rollback할 때는 되돌릴 commit의 진행 중인 실행을 취소한다.
 10. **보안: public 저장소의 `pull_request` 코드를 self-hosted runner에서 실행하지 않는다.**
-    - 워크플로우 YAML의 `if:`는 PR이 수정할 수 있으므로, runner group의 저장소 제한과 fork PR 승인 설정으로도 보장한다.
+    - 워크플로우 YAML의 `if:` guard를 둔다. PR이 YAML을 수정할 수 있으므로 settings-level 통제(runner group의 저장소 제한, fork PR 승인 설정)로도 보장한다. 두 층이 모두 필요하다.
     - PR 이벤트에서는 레지스트리 자격 증명을 쓰는 step을 실행하지 않는다.
-    - 한 줄 리터럴 GitHub-hosted label이 아닌 runner(self-hosted, matrix expression, 목록·group)를 쓰는 잡은 `if:`에 `github.event_name != 'pull_request'`를 최상위 conjunct로 둔다. step 출력(`is_pr` 등)만으로 PR을 제외하지 않는다.
-    - PR에서 도달하는 잡과 PR caller가 부르는 reusable workflow(`test.yml`)의 모든 잡은 GitHub-hosted `ubuntu-*`에서 실행한다. `pull_request_target`은 쓰지 않는다. `scripts/github-actions-contract.test.js`가 모든 workflow를 파싱해 이를 고정한다. 이 계약은 실수로 인한 회귀를 막는 장치일 뿐이다. PR이 YAML을 고칠 수 있다는 위 전제는 그대로다.
-    - PR 코드를 실행하는 reusable workflow caller에는 쓰지 않는 `secrets: inherit`를 두지 않는다(`test-pr`).
+    - PR에서 도달하는 trigger는 `pull_request`만이 아니다. `pull_request_review`, `pull_request_review_comment`, `issue_comment`, `workflow_run`, `merge_group`도 PR 코드를 실행하거나 PR head를 checkout할 수 있다. `pull_request_target`은 쓰지 않는다.
+    - 한 줄 리터럴 GitHub-hosted label이 아닌 runner(self-hosted, matrix expression, 목록·group)를 쓰는 잡은 `if:`의 최상위 conjunct로 PR을 제외한다. PR에서 도달하는 trigger가 `pull_request`뿐인 workflow에서는 `github.event_name != 'pull_request'`로 충분하다. 다른 PR 도달 trigger가 있으면 allow-list(`github.event_name == 'push'` 등 PR에서 도달하지 않는 이벤트)를 쓴다. 그 이벤트들에서 `!= 'pull_request'`는 항상 참이기 때문이다. step 출력(`is_pr` 등)만으로 PR을 제외하지 않는다.
+    - PR에서 도달하는 잡과 PR caller가 부르는 reusable workflow(`test.yml`)의 모든 잡은 GitHub-hosted `ubuntu-*`에서 실행한다. `scripts/github-actions-contract.test.js`가 모든 workflow를 파싱해 이 YAML guard를 고정한다. PR은 YAML과 계약을 함께 고칠 수 있으므로 아래 settings-level 통제가 함께 필요하다.
+    - PR 코드를 실행하는 reusable workflow caller에는 쓰지 않는 `secrets: inherit`를 두지 않는다(`test-pr`). PR 코드를 실행하는 `pr-dedup`·`changes`는 push 전용 registry login step 밖에서 `secrets`를 참조하지 않는다(계약이 고정한다). workflow-level `env`의 `REGISTRY`(`secrets.REGISTRY_URL`, registry host이며 자격 증명이 아니다)는 모든 잡에 상속된다.
+    - settings-level 통제는 owner 작업이다. AI 에이전트는 설정을 바꾸지 않는다. 2026-09-24 read-only 조회 결과는 다음과 같다.
+      - 저장소는 organization `openstack-afterglow` 소유의 public 저장소이고 org plan은 free다.
+      - 저장소 수준 self-hosted runner는 0개다(`GET .../actions/runners`). build matrix가 쓰는 `[self-hosted, linux, x64]` runner는 저장소가 아니라 organization 이상 수준에서 제공된다(목록은 권한 부족으로 확인하지 못했다).
+      - runner group 설정은 사용 가능한 토큰으로 읽지 못했다(HTTP 403, `admin:org` 필요). 현재 저장소 제한 상태는 확인하지 않았다.
+      - fork PR 승인 정책(`GET repos/openstack-afterglow/openstack-afterglow/actions/permissions/fork-pr-contributor-approval`)은 `first_time_contributors`다.
+    - owner가 할 일:
+      - org owner: Organization settings → Actions → Runner groups → 그 runner가 속한 group → Repository access에서 그 runner를 쓸 저장소만 선택하고, public 저장소 허용 여부를 확인한다.
+      - repo admin: Settings → Actions → General → "Approval for running fork pull request workflows from contributors" → "Require approval for all external contributors"를 선택한다.
 11. **CI 형태는 계약 테스트로 고정한다.**
     - 샤드 수, 게이트 병렬성, dedup 조건, diff 기준 같은 불변식을 저장소의 테스트로 검증해 회귀를 막는다. `scripts/github-actions-contract.test.js`, `scripts/test-target.test.js`, `scripts/ci/*.test.js`가 `npm run test:orchestration`에서 실행된다. 모든 `scripts/ci/*.test.js`가 여기에 포함되는지도 계약이 확인한다.
     - 안전 단계는 존재만이 아니라 게이트하는지도 고정한다. 검증·guard step과 필수 테스트 계층 step에 `if:`, `continue-on-error:`, `|| true`가 붙거나, 명령이 바뀌거나, 오류 arm이 사라지면 계약이 실패해야 한다. 실제 자격 증명을 쓰는 opt-in 잡(`test-live`)의 `if:`에는 status 함수(`always()` 등)를 두지 않는다.

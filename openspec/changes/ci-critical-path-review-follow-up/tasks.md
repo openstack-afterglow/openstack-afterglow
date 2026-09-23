@@ -105,6 +105,42 @@
     - For the dependabot PR head `cf69d3cd`, whose branch is not a push trigger branch, it returned `null`.
     - This confirms the response shape and the GET path.
 
+### Review round 4 fixes (commit `fix: address CI review round 3`)
+
+- [x] Network guard teardown is pinned.
+  - The guard moves to `backend/tests/_network_guard.py`. `backend/tests/conftest.py` imports its fixture, so it stays autouse for every backend test.
+  - `test_teardown_fails_a_test_that_swallows_the_blocked_connect` runs a separate `python -m pytest -p tests._network_guard` process with the `PYTEST_*` env removed. Its inner tests swallow a blocked connect and a blocked DNS lookup, and a loopback control must pass cleanly. The test asserts `3 passed, 2 errors` and the exact teardown messages.
+  - `test_guard_is_autouse_for_tests_that_do_not_request_it` checks that conftest still registers the fixture as autouse.
+- [x] The network guard also blocks `socket.getaddrinfo` for host names other than localhost. IP literals, `None` and `localhost` pass.
+  - Why: without `afterglow.conf` (CI), default URLs such as `http://prometheus:9090` fail in DNS before any `connect`, so a test with a missing mock passed in CI.
+  - Reproduced: the origin/dev `test_dashboard_new.py` with no conf and no env override now gives `12 passed, 2 errors`, with `getaddrinfo('prometheus')` recorded from the `asyncio_0`/`asyncio_1` executor threads. With only the DNS patch removed, the same run gives `12 passed` and no errors.
+  - The full backend unit suite passed with the DNS guard, with no product test changes.
+- [x] Rule 7 wording now says exactly what the guard covers: connect, UDP `sendto` and `getaddrinfo` DNS. It does not isolate `afterglow.conf` loading, and it does not cover name resolution outside `socket.getaddrinfo` or `sendmsg`.
+- [x] `verify-vitest-shard.test.js`: each failure case starts from a valid 2-of-4 report. It asserts that `errors` is exactly the one expected message, and it has a positive control.
+- [x] Secrets contract.
+  - `pr-dedup` has no `secrets` reference, ignoring comment lines.
+  - `changes` references `secrets` only inside the push-only `Log in to registry` step.
+  - The workflow-level `env` has exactly one secrets reference, the `REGISTRY` host.
+- [x] Service health: the three functional services and the live Redis add `--health-start-period 30s` and `--health-start-interval 2s`. Docker 25+ probes at the start interval (default 5 s) during the start period, so without 2 s the happy path would slow down. The contract pins all five flags on all four services.
+- [x] Rule 10 contract.
+  - It is now a pure function, `selfHostedPrViolations`, with synthetic tests.
+  - These triggers count as PR-reachable: `pull_request`, `pull_request_review`, `pull_request_review_comment`, `issue_comment`, `workflow_run` and `merge_group`.
+  - A non-hosted job needs an allow-list conjunct such as `github.event_name == 'push'`. The deny-list `!= 'pull_request'` is enough only when `pull_request` is the workflow's only PR-reachable trigger.
+  - Trigger parsing covers the scalar, inline list, block list and mapping forms.
+- [x] Docs.
+  - AGENTS.md (CLAUDE.md) rule 3 follows canonical rule 3. Publishes and deploys are gated on the whole test result, and PR verification builds that publish nothing may run in parallel.
+  - Rule 3 names the current exceptions (`helm-release.yml`, `docs.yml`) and the documented `pr-dedup` pre-gate.
+  - Rule 4 covers the start period, and rule 7 is narrowed.
+  - Rule 10 keeps the YAML guards and requires the settings-level controls. It records the 2026-09-24 read-only state and the exact owner settings paths.
+  - ARCHITECTURE.md, `backend/tests/TESTING.md`, `docs/testing.md` and the `test.yml` comment are updated to match.
+  - The archived `2026-09-23-ci-critical-path-overhaul/proposal.md` gains a one-line superseded-in-part note.
+- [x] Verify:
+  - `test:orchestration` 103/103;
+  - `test:unit:backend` 2948 passed, `test:contract` 131 passed, ruff check and format;
+  - actionlint: `test.yml` 0, and `docker-build.yml` 14 SC2086 infos as before;
+  - scratch mutations (restored from memory, worktree diff unchanged afterwards), listed in ARCHITECTURE.md;
+  - the architecture stamp with `--staged`.
+
 ### Post-merge follow-up (needs real GitHub Actions runs)
 
 - [ ] Measure 20+ real runs after merge: the critical-path median and p90 and the per-job times. Record them against the 143 s baseline (median, p90 155 s) in this change. CI rule 1 requires this before any effect is claimed.
@@ -123,4 +159,9 @@
 - [ ] Confirm on a real multi-commit `main` push that `helm-release.yml` `check-changes` fetches `github.event.before` and publishes only when `helm/afterglow/` changed in the pushed range.
 - [ ] Confirm that the frontend shard jobs report Node 22 (`node --version` in the setup-node step log).
 - [ ] Decide whether to close the shared `<base>-<arch>` race. The fix is either a SHA-scoped intermediate reference with retention cleanup, or a build-push `digest` handed to the manifest leg through a per-target artifact. Either one must be verified on the self-hosted runner, including re-run semantics.
+- [ ] Confirm on a real `pull_request` run that the functional services with `--health-start-period 30s --health-start-interval 2s` become healthy with no slower service wait than the 2 s/20 baseline.
+- [ ] Decide how `helm-release.yml` (Helm chart OCI publish) and `docs.yml` (GitHub Pages deploy) are gated on the whole `Layered Tests` result, as canonical rule 3 requires. Today neither waits for the tests. Options: call them from `docker-build.yml` behind `needs: [test]`, or trigger them with `workflow_run` on a successful `Docker Build & Push` run for the same SHA.
+- [ ] Owner actions for rule 10 (settings; an AI agent must not change them):
+  - org owner: Organization settings → Actions → Runner groups → the group of the `[self-hosted, linux, x64]` runner → Repository access. Limit it to the repositories that need the runner, and check whether public repositories are allowed. On 2026-09-24 this could not be read (HTTP 403, needs `admin:org`).
+  - repo admin: Settings → Actions → General → "Approval for running fork pull request workflows from contributors" → "Require approval for all external contributors". It was `first_time_contributors` on 2026-09-24.
 - [ ] Archive this change with `openspec archive ci-critical-path-review-follow-up --skip-specs --yes` once the items above are done.

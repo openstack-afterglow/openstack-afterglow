@@ -124,8 +124,12 @@ jobs:
         run: npm run test:kolla:contract
 
   # ─── 국소 기능 테스트 — 무조건 항상 실행 ──────────────────────────────────
-  # health-check 는 docker-compose.dev.yml `test` profile 과 같은 값(2s/5s/20)이다.
-  # 짧은 interval 이 준비 대기 시간을 줄이고 retries 20 이 느린 초기화를 흡수한다.
+  # health-check interval/timeout/retries 는 docker-compose.dev.yml `test` profile 과 같은 값(2s/5s/20)이다.
+  # 짧은 interval 이 준비 대기 시간을 줄인다. compose test profile 은 tmpfs 를 쓰지만 CI service 는 tmpfs 없이
+  # container 디스크에서 초기화하므로, CI 에만 start-period 30s 를 더해 느린 runner 의 cold init 예산을 늘린다
+  # (약 40초 → 약 70초 이상). start-period 동안의 실패는 retries 에 세지 않고, 그 동안 성공하면 바로 healthy 다.
+  # Docker 25+ 는 start-period 동안 start-interval(기본 5초) 간격으로 검사하므로 start-interval 도 2s 로 둔다
+  # (API 1.44+. ubuntu-24.04 runner image 20260907 은 Docker 28.0.4). 그래야 정상 경로의 준비 대기가 늘지 않는다.
   test-functional:
     name: Disposable local functional tests
     runs-on: ubuntu-latest
@@ -144,6 +148,8 @@ jobs:
           --health-interval=2s
           --health-timeout=5s
           --health-retries=20
+          --health-start-period=30s
+          --health-start-interval=2s
       postgres:
         image: postgres:16
         env:
@@ -157,6 +163,8 @@ jobs:
           --health-interval=2s
           --health-timeout=5s
           --health-retries=20
+          --health-start-period=30s
+          --health-start-interval=2s
       redis:
         image: redis:7-alpine
         ports:
@@ -166,6 +174,8 @@ jobs:
           --health-interval 2s
           --health-timeout 5s
           --health-retries 20
+          --health-start-period 30s
+          --health-start-interval 2s
     steps:
       - uses: actions/checkout@v5
 
@@ -344,6 +354,8 @@ jobs:
           --health-interval 2s
           --health-timeout 5s
           --health-retries 20
+          --health-start-period 30s
+          --health-start-interval 2s
     steps:
       - uses: actions/checkout@v5
 

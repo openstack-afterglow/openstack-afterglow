@@ -198,14 +198,20 @@ test("frontend runs as a verified 2-way vitest shard matrix", () => {
 	assert.doesNotMatch(vitestConfig, /\b(exclude|projects|workspace)\s*:/)
 })
 
-test("service containers use the dev compose test-profile health timing", () => {
-	const intervals = Array.from(testWorkflow.matchAll(/--health-interval[= ](\S+)/g), (m) => m[1])
-	const timeouts = Array.from(testWorkflow.matchAll(/--health-timeout[= ](\S+)/g), (m) => m[1])
-	const retries = Array.from(testWorkflow.matchAll(/--health-retries[= ](\S+)/g), (m) => m[1])
-	assert.equal(intervals.length, 4, "mariadb, postgres, functional redis and live redis")
-	assert.deepEqual([...new Set(intervals)], ["2s"])
-	assert.deepEqual([...new Set(timeouts)], ["5s"])
-	assert.deepEqual([...new Set(retries)], ["20"])
+test("service containers use the dev compose test-profile health timing plus a CI start period", () => {
+	const values = (flag) => Array.from(testWorkflow.matchAll(new RegExp(`--${flag}[= ](\\S+)`, "g")), (m) => m[1])
+	// mariadb, postgres, functional redis, live redis. 각 flag 는 service 마다 정확히 한 번이다.
+	for (const [flag, value] of [
+		["health-interval", "2s"],
+		["health-timeout", "5s"],
+		["health-retries", "20"],
+		// CI service 는 tmpfs 가 아니므로 cold init 예산을 늘린다. start-period 동안의 실패는 retries 에 세지 않는다.
+		["health-start-period", "30s"],
+		// Docker 25+ 는 start-period 동안 start-interval(기본 5초)로 검사한다. 2s 로 두어 정상 경로를 늦추지 않는다.
+		["health-start-interval", "2s"],
+	]) {
+		assert.deepEqual(values(flag), [value, value, value, value], flag)
+	}
 
 	const compose = fs.readFileSync(path.join(rootDir, "docker-compose.dev.yml"), "utf8")
 	for (const service of ["mariadb", "postgres", "test-redis"]) {
@@ -284,6 +290,38 @@ test("PR dedup skips only same-repo dev PRs whose merge tree equals the head tre
 	assert.match(prTestJob, /run_live_openstack: false/)
 	// PR 코드를 실행하는 caller 는 live 를 끄므로 저장소 secrets 를 reusable workflow 에 넘기지 않는다.
 	assert.doesNotMatch(prTestJob, /^    secrets:/m, "test-pr must not pass repository secrets")
+})
+
+/** `#` 주석 줄을 뺀 블록. 주석의 secrets 설명은 참조가 아니다. */
+function withoutComments(block) {
+	return block
+		.split("\n")
+		.filter((line) => !/^\s*#/.test(line))
+		.join("\n")
+}
+
+// `${{ secrets.X }}`, `secrets['X']`, `toJSON(secrets)`. 단어 secrets 만으로는 매치하지 않는다.
+const SECRETS_REF = /\bsecrets\s*[.[]|toJSON\(\s*secrets\s*\)/
+
+test("jobs that run PR code reference no secrets outside the push-only registry login", () => {
+	// pr-dedup 과 changes 는 PR 이벤트에서 PR 코드(scripts/ci/*.js)를 실행한다(CI 규정 10번).
+	assert.doesNotMatch(withoutComments(jobBlock(dockerWorkflow, "pr-dedup")), SECRETS_REF, "pr-dedup must not reference secrets")
+	const changes = jobBlock(dockerWorkflow, "changes")
+	const login = stepBlock(changes, "Log in to registry (push only, read published revisions)")
+	assert.match(login, /^        if: github\.event_name == 'push'$/m)
+	assert.match(withoutComments(login), SECRETS_REF, "sanity: the push-only login step holds the registry secrets")
+	assert.doesNotMatch(
+		withoutComments(changes.replace(login, "")),
+		SECRETS_REF,
+		"changes may reference secrets only in the push-only registry login step",
+	)
+	// workflow-level env 는 PR 잡에도 상속된다. 허용하는 secrets 참조는 레지스트리 host(자격 증명 아님) 하나뿐이다.
+	const env = /^env:\n((?: {2}.*\n|\s*\n)*)/m.exec(dockerWorkflow)
+	assert.ok(env, "docker-build.yml must declare a workflow-level env")
+	assert.deepEqual(
+		withoutComments(env[1]).split("\n").filter((line) => SECRETS_REF.test(line)),
+		["  REGISTRY: ${{ secrets.REGISTRY_URL || 'ghcr.io' }}"],
+	)
 })
 
 test("image target detection diffs event.before on push, never only the tip commit", () => {
@@ -546,28 +584,125 @@ function topLevelConjuncts(expression) {
 	return parts
 }
 
-/** job 의 `if:` 가 최상위 conjunct 로 `github.event_name != 'pull_request'` 를 갖는지. */
-function excludesPullRequests(job) {
+/** job `if:` 의 최상위 conjunct. `if:` 가 없거나 최상위 `||` 가 있으면 []. */
+function jobConjuncts(job) {
 	const match = /^    if:(.*)$/m.exec(job)
-	if (!match) return false
+	if (!match) return []
 	let expression = match[1].trim()
 	const wrapped = /^\$\{\{([\s\S]*)\}\}$/.exec(expression)
 	if (wrapped) expression = wrapped[1].trim()
-	const parts = topLevelConjuncts(expression)
-	return parts !== null && parts.includes(PR_EXCLUSION)
+	return topLevelConjuncts(expression) ?? []
 }
 
-function triggeredByPullRequest(workflow) {
+/** job 의 `if:` 가 최상위 conjunct 로 `github.event_name != 'pull_request'` 를 갖는지. */
+function excludesPullRequests(job) {
+	return jobConjuncts(job).includes(PR_EXCLUSION)
+}
+
+// PR 코드가 실행되거나 PR head 를 checkout 할 수 있는 trigger. pull_request_target 은 아래에서 따로 금지한다.
+// issue_comment·workflow_run 은 기본 브랜치의 workflow 로 실행되지만 job 이 PR head(head_sha 등)를 checkout 할 수 있고,
+// 이 이벤트에서 `github.event_name != 'pull_request'` 는 항상 참이므로 PR 을 제외하지 못한다.
+const PR_REACHABLE_EVENTS = new Set([
+	"pull_request",
+	"pull_request_review",
+	"pull_request_review_comment",
+	"issue_comment",
+	"workflow_run",
+	"merge_group",
+])
+
+/** `on:` 의 trigger 이름. scalar(`on: push`), inline list, block list(`  - push`), mapping(`  push:`) 형식. */
+function workflowTriggers(workflow) {
 	const lines = workflow.split("\n")
 	const start = lines.findIndex((line) => /^on:/.test(line))
 	assert.ok(start >= 0, "workflow must declare on:")
-	if (/\bpull_request\b/.test(lines[start])) return true
+	const inline = lines[start].slice(3).replace(/\s+#.*$/, "").trim()
+	if (inline) {
+		return inline
+			.replace(/^\[|\]$/g, "")
+			.split(",")
+			.map((name) => name.trim().replace(/^(['"])(.*)\1$/, "$2"))
+			.filter(Boolean)
+	}
+	const triggers = []
 	for (const line of lines.slice(start + 1)) {
 		if (/^[^\s#]/.test(line)) break
-		// mapping 형식(`  pull_request:`)과 block list 형식(`  - pull_request`)
-		if (/^  pull_request:/.test(line) || /^  - pull_request\s*$/.test(line)) return true
+		const key = /^  (?:- )?([A-Za-z_]+)(?=\s*(?::|#|$))/.exec(line)
+		if (key) triggers.push(key[1])
 	}
-	return false
+	return triggers
+}
+
+/**
+ * job 이 workflow 의 PR 도달 trigger 에서 모두 제외되는지.
+ * - allow-list: 최상위 conjunct `github.event_name == '<PR 도달이 아닌 이벤트>'`(push, workflow_dispatch 등)는 모두 제외한다.
+ * - deny-list: `github.event_name != 'pull_request'` 는 PR 도달 trigger 가 pull_request 뿐일 때만 충분하다.
+ */
+function excludedFromPrEvents(job, prEvents) {
+	const parts = jobConjuncts(job)
+	const allowListed = parts.some((part) => {
+		const match = /^github\.event_name == '([a-z_]+)'$/.exec(part)
+		return match !== null && !PR_REACHABLE_EVENTS.has(match[1]) && match[1] !== "pull_request_target"
+	})
+	if (allowListed) return true
+	return parts.includes(PR_EXCLUSION) && prEvents.every((event) => event === "pull_request")
+}
+
+/**
+ * CI 규정 10번 검사(순수 함수). workflows 는 [파일 이름, 내용] 목록이다.
+ * - non-hosted runner(한 줄 hosted label 이 아닌 모든 것)를 쓰는 job 은 PR 도달 trigger 에서 제외돼야 한다. trigger 가
+ *   아직 없어도 allow-list 나 `!= 'pull_request'` conjunct 를 요구한다(나중에 pull_request 가 추가돼도 막히도록).
+ * - PR 에서 도달하는 job 은 hosted label 이어야 하고, PR 에서 도달하는 reusable caller 의 호출 대상은 모든 job 이 ubuntu-* 이다.
+ */
+function selfHostedPrViolations(workflows) {
+	const byName = new Map(workflows)
+	const violations = []
+	const nonHosted = []
+	const prReachableCallees = new Set()
+	for (const [name, text] of workflows) {
+		// pull_request_target 은 base 저장소 권한과 secrets 로 실행되고 `!= 'pull_request'` 로도 제외되지 않는다.
+		if (/\bpull_request_target\b/.test(text)) violations.push(`${name} must not use pull_request_target`)
+		const prEvents = workflowTriggers(text).filter((event) => PR_REACHABLE_EVENTS.has(event))
+		const jobs = workflowJobs(text)
+		if (jobs.size === 0) violations.push(`${name} must have jobs`)
+		for (const [job, block] of jobs) {
+			const label = `${name} ${job}`
+			const prReachable = prEvents.length > 0 && !excludedFromPrEvents(block, prEvents)
+			const runsOn = runsOnValue(block)
+			if (runsOn === null) {
+				// reusable workflow caller: PR 에서 도달하면 호출 대상의 모든 잡을 아래에서 확인한다.
+				if (!/^    uses:/m.test(block)) violations.push(`${label} must declare runs-on or call a reusable workflow`)
+				if (prReachable) {
+					const callee = /^    uses: \.\/\.github\/workflows\/([A-Za-z0-9_.-]+)\s*$/m.exec(block)
+					if (callee) prReachableCallees.add(callee[1])
+					else violations.push(`${label} is reachable from PR events and must call a local reusable workflow`)
+				}
+				continue
+			}
+			if (!HOSTED_LABEL.test(runsOn)) {
+				nonHosted.push(label)
+				const guarded = excludedFromPrEvents(block, prEvents.length > 0 ? prEvents : ["pull_request"])
+				if (!guarded) {
+					violations.push(
+						`${label} runs on ${runsOn || "a block-form runner"}; its if needs a top-level allow-list conjunct ` +
+							`(github.event_name == 'push' etc.) or ${PR_EXCLUSION} when pull_request is its only PR trigger ` +
+							`(PR triggers: ${prEvents.join(", ") || "none"})`,
+					)
+				}
+			}
+			// hosted label 이 아닌 job 은 위 guard 로 PR 도달에서 제외되므로, PR 에서 도달하는 job 은 모두 hosted 이다.
+		}
+	}
+	for (const callee of prReachableCallees) {
+		if (!byName.has(callee)) {
+			violations.push(`${callee} must exist`)
+			continue
+		}
+		for (const [job, block] of workflowJobs(byName.get(callee))) {
+			if (!/^ubuntu-/.test(runsOnValue(block) ?? "")) violations.push(`${callee} ${job} runs PR code and must use ubuntu-*`)
+		}
+	}
+	return { violations, nonHosted, prReachableCallees }
 }
 
 test("the PR-exclusion parser only accepts a real top-level conjunct", () => {
@@ -587,49 +722,57 @@ test("the PR-exclusion parser only accepts a real top-level conjunct", () => {
 	assert.equal(HOSTED_LABEL.test(runsOnValue("    runs-on: [self-hosted, linux, x64]")), false)
 	assert.equal(HOSTED_LABEL.test(runsOnValue("    runs-on: ${{ matrix.runner }}")), false)
 	assert.equal(HOSTED_LABEL.test(runsOnValue("    runs-on:\n      group: build")), false)
-	assert.equal(triggeredByPullRequest("on: [push, pull_request]\njobs:\n"), true)
-	assert.equal(triggeredByPullRequest("on:\n  - push\n  - pull_request\njobs:\n"), true)
-	assert.equal(triggeredByPullRequest("on:\n  pull_request:\n    branches: [main]\njobs:\n"), true)
-	assert.equal(triggeredByPullRequest("on:\n  push:\n    branches: [main]\njobs:\n  pull_request:\n"), false)
-	assert.equal(triggeredByPullRequest("on:\n  - push\n  - workflow_dispatch\njobs:\n"), false)
+})
+
+test("workflow triggers parse in scalar, inline list, block list and mapping form", () => {
+	assert.deepEqual(workflowTriggers("on: issue_comment\njobs:\n"), ["issue_comment"])
+	assert.deepEqual(workflowTriggers("on: [push, pull_request]\njobs:\n"), ["push", "pull_request"])
+	assert.deepEqual(workflowTriggers("on: ['push', \"workflow_run\"]  # quoted\njobs:\n"), ["push", "workflow_run"])
+	assert.deepEqual(workflowTriggers("on:\n  - push\n  - pull_request\njobs:\n"), ["push", "pull_request"])
+	assert.deepEqual(
+		workflowTriggers("on:\n  # comment\n  pull_request:\n    branches: [main]\n  workflow_run:\n    workflows: [x]\n  push: {branches: [main]}\njobs:\n"),
+		["pull_request", "workflow_run", "push"],
+	)
+	// jobs: 아래의 2칸 키는 trigger 가 아니다.
+	assert.deepEqual(workflowTriggers("on:\n  push:\n    branches: [main]\njobs:\n  pull_request:\n"), ["push"])
+	assert.deepEqual(workflowTriggers("on:\n  - push\n  - workflow_dispatch\njobs:\n"), ["push", "workflow_dispatch"])
+})
+
+test("the rule 10 check treats issue_comment and workflow_run as PR-reachable", () => {
+	const workflow = (on, job) => `name: x\non:\n${on}\njobs:\n  j:\n${job}\n    steps:\n      - run: true\n`
+	const selfHosted = (condition) => `${condition ? `    if: ${condition}\n` : ""}    runs-on: [self-hosted, linux, x64]`
+	const check = (text) => selfHostedPrViolations([["w.yml", text]]).violations
+	// deny-list 는 pull_request 만 제외한다. issue_comment/workflow_run/리뷰 이벤트에서는 항상 참이다.
+	for (const event of ["issue_comment", "workflow_run", "pull_request_review", "pull_request_review_comment", "merge_group"]) {
+		assert.equal(check(workflow(`  ${event}:`, selfHosted(PR_EXCLUSION))).length, 1, `${event} with the deny-list only`)
+		assert.equal(check(workflow(`  push:\n  ${event}:`, selfHosted(PR_EXCLUSION))).length, 1, `push + ${event} with the deny-list only`)
+		// allow-list 는 모든 PR 도달 이벤트를 제외한다.
+		assert.deepEqual(check(workflow(`  push:\n  ${event}:`, selfHosted("github.event_name == 'push'"))), [], `${event} + allow-list`)
+		// 제외되지 않은 hosted job 은 허용되고, reusable caller 는 호출 대상까지 확인한다.
+		assert.deepEqual(check(workflow(`  ${event}:`, "    runs-on: ubuntu-latest")), [], `${event} on a hosted runner`)
+	}
+	// allow-list 가 PR 도달 이벤트면 제외가 아니다.
+	assert.equal(check(workflow("  issue_comment:", selfHosted("github.event_name == 'issue_comment'"))).length, 1)
+	assert.equal(check(workflow("  pull_request:", selfHosted("github.event_name == 'pull_request_target'"))).length, 2)
+	// pull_request 만 있으면 deny-list 로 충분하다. trigger 가 없어도 non-hosted job 에는 guard 를 요구한다.
+	assert.deepEqual(check(workflow("  push:\n  pull_request:", selfHosted(PR_EXCLUSION))), [])
+	assert.deepEqual(check(workflow("  schedule:\n    - cron: '0 0 * * *'", selfHosted(PR_EXCLUSION))), [])
+	assert.equal(check(workflow("  schedule:\n    - cron: '0 0 * * *'", selfHosted(null))).length, 1)
+	assert.equal(check(workflow("  push:\n  pull_request:", selfHosted(`${PR_EXCLUSION} || always()`))).length, 1)
+	// PR 에서 도달하는 reusable caller 의 호출 대상은 모든 job 이 ubuntu-* 여야 한다.
+	const caller = workflow("  issue_comment:", "    uses: ./.github/workflows/callee.yml")
+	const callee = (runsOn) => `name: c\non:\n  workflow_call:\njobs:\n  k:\n    runs-on: ${runsOn}\n    steps:\n      - run: true\n`
+	assert.deepEqual(selfHostedPrViolations([["w.yml", caller], ["callee.yml", callee("ubuntu-latest")]]).violations, [])
+	assert.equal(
+		selfHostedPrViolations([["w.yml", caller], ["callee.yml", callee("[self-hosted, linux, x64]")]]).violations.length,
+		2,
+		"the callee's self-hosted job is reachable and unguarded",
+	)
 })
 
 test("pull_request code never runs on a self-hosted runner", () => {
-	const byName = new Map(allWorkflows)
-	const prReachableCallees = new Set()
-	const nonHosted = []
-	for (const [name, text] of allWorkflows) {
-		// pull_request_target 은 base 저장소 권한과 secrets 로 실행되고 `!= 'pull_request'` 로도 제외되지 않는다.
-		assert.doesNotMatch(text, /\bpull_request_target\b/, `${name} must not use pull_request_target`)
-		const prTriggered = triggeredByPullRequest(text)
-		const jobs = workflowJobs(text)
-		assert.ok(jobs.size > 0, `${name} must have jobs`)
-		for (const [job, block] of jobs) {
-			const label = `${name} ${job}`
-			const excluded = excludesPullRequests(block)
-			const runsOn = runsOnValue(block)
-			if (runsOn === null) {
-				// reusable workflow caller: PR 에서 도달하면 호출 대상의 모든 잡을 아래에서 확인한다.
-				assert.match(block, /^    uses:/m, `${label} must declare runs-on or call a reusable workflow`)
-				if (prTriggered && !excluded) {
-					const callee = /^    uses: \.\/\.github\/workflows\/([A-Za-z0-9_.-]+)\s*$/m.exec(block)
-					assert.ok(callee, `${label} is reachable on pull_request and must call a local reusable workflow`)
-					prReachableCallees.add(callee[1])
-				}
-				continue
-			}
-			if (!HOSTED_LABEL.test(runsOn)) {
-				nonHosted.push(label)
-				assert.ok(
-					excluded,
-					`${label} runs on ${runsOn || "a block-form runner"}, so its if must have the top-level conjunct ${PR_EXCLUSION}`,
-				)
-			}
-			if (prTriggered && !excluded) {
-				assert.match(runsOn, HOSTED_LABEL, `${label} is reachable on pull_request and must use a GitHub-hosted label`)
-			}
-		}
-	}
+	const { violations, nonHosted, prReachableCallees } = selfHostedPrViolations(allWorkflows)
+	assert.deepEqual(violations, [])
 	// 분류기 sanity: self-hosted build matrix(runs-on: ${{ matrix.runner }})는 non-hosted 로 잡힌다.
 	assert.ok(nonHosted.includes("docker-build.yml build"), nonHosted.join(", "))
 	const dockerJobs = workflowJobs(dockerWorkflow)
@@ -644,12 +787,6 @@ test("pull_request code never runs on a self-hosted runner", () => {
 		assert.match(runsOnValue(dockerJobs.get(job)), /^ubuntu-/, `${job} runs PR code`)
 	}
 	assert.ok(prReachableCallees.has("test.yml"), [...prReachableCallees].join(", "))
-	for (const callee of prReachableCallees) {
-		assert.ok(byName.has(callee), `${callee} must exist`)
-		for (const [job, block] of workflowJobs(byName.get(callee))) {
-			assert.match(runsOnValue(block) ?? "", /^ubuntu-/, `${callee} ${job} runs PR code and must use ubuntu-*`)
-		}
-	}
 	for (const [job, block] of workflowJobs(testWorkflow)) {
 		assert.match(runsOnValue(block) ?? "", /^ubuntu-/, `test.yml ${job} must use a GitHub-hosted ubuntu label`)
 	}

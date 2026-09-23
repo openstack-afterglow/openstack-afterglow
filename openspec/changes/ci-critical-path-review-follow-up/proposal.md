@@ -77,6 +77,26 @@ A third review found two medium and seven low issues.
   - The post-merge tasks now measure the PR path (`pr-dedup` plus `test-pr`). The projected added latency is recorded and labelled as a projection.
 - **Low, no change.** The first change was archived with two open post-merge tasks. They are carried here, and this change stays open until they are measured.
 
+### Review round 4
+
+A fourth review found one medium and nine low issues. It also clarified canonical rules 3 and 10.
+
+- **Medium: nothing tested the network guard's teardown.** The teardown is the only thing that fails a non-hermetic test when app code swallows the blocked connect, and every guard test cleared the record before teardown. The guard now lives in `backend/tests/_network_guard.py`, and conftest imports it. A subprocess test loads it as a plugin and asserts that a swallowed connect and a swallowed DNS lookup each end in a teardown error.
+- **Low, fixed.**
+  - Rule 7 overclaimed. In CI (no `afterglow.conf`) a missing mock failed in DNS before `connect` and passed. The guard now also blocks host-name `getaddrinfo`, and rule 7 states that config loading is not isolated.
+  - The shard verifier's failure-case test was vacuous for three of its four checks.
+  - No contract kept secrets out of `pr-dedup` and `changes`.
+  - The service health budget had no start period. CI now adds `--health-start-period 30s` with `--health-start-interval 2s`.
+  - The rule 10 contract modelled only `pull_request`. `issue_comment`, `workflow_run`, review events and `merge_group` now count as PR-reachable, and they need an allow-list.
+  - The archived proposal had no superseded note.
+- **Low, documented or tracked, no code change.**
+  - Dedup on existence rather than on the push run's result is an accepted trade-off, documented in ARCHITECTURE.md.
+  - The `pr-dedup` pre-gate is now named in rule 3 as a documented exception. Its latency measurement stays a post-merge task.
+  - The shared per-arch tag race stays a post-merge decision.
+- **Canonical rule alignment.**
+  - Rule 3: only publishes and deploys are gated on the whole test result, so PR verification builds that publish nothing may run in parallel. `helm-release.yml` and `docs.yml` are recorded as current exceptions, with a follow-up task.
+  - Rule 10 keeps the YAML guards and adds the settings-level controls. The repository is org-owned, and the runner-group state was unreadable, so both controls are recorded as owner actions with their exact settings paths.
+
 ## Impact
 
 Affects:
@@ -86,7 +106,7 @@ Affects:
 - `scripts/ci/detect-build-targets.js`, `scripts/ci/image-revision.js`, `scripts/ci/verify-vitest-shard.js`, `scripts/ci/pr-dedup.js` and `scripts/ci/helm-publish-decision.js`, with their tests
 - `package.json` `test:orchestration` and its pin in `scripts/test-target.test.js`
 - `scripts/github-actions-contract.test.js`
-- `backend/tests/conftest.py` and `backend/tests/test_network_guard.py`
-- `ARCHITECTURE.md`, `AGENTS.md` and `backend/tests/TESTING.md`
+- `backend/tests/conftest.py`, `backend/tests/_network_guard.py` and `backend/tests/test_network_guard.py`
+- `ARCHITECTURE.md`, `AGENTS.md`, `backend/tests/TESTING.md`, `docs/testing.md` and the archived `2026-09-23-ci-critical-path-overhaul/proposal.md` (note only)
 
 There is no application runtime, API, schema, configuration or deployment manifest change. The post-merge items stay open in this change, because they need real GitHub Actions runs.

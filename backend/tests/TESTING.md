@@ -46,6 +46,7 @@ npm run test:gate
 ```
 backend/tests/
 ├── conftest.py                  # unit 기본: mock OpenStack + fakeredis, functional: real Redis
+├── _network_guard.py            # unit/contract non-loopback 네트워크 가드(conftest 가 autouse 로 등록)
 ├── test_*.py                    # 단위 또는 db-marked local functional 테스트
 ├── test_endpoint_inventory.py  # 라우트 카탈로그 회귀 방지
 ├── contracts/                   # 추출 서비스 소비자 계약
@@ -178,13 +179,13 @@ AFTERGLOW_ALLOW_INSECURE=1 uv run pytest tests/ --ignore=tests/integration -v -k
 
 ## GitHub Actions CI 파이프라인 구조
 
-GitHub Actions 워크플로 `.github/workflows/test.yml`은 `.github/workflows/docker-build.yml`이 reusable `Layered Tests`로 호출한다. 아래 잡 중 `test-live`를 제외한 모든 잡은 서로 `needs:` 없이 t=0에 병렬로 시작한다. 이미지 빌드는 `docker-build.yml`의 `changes`가 이 workflow 전체 결과(`needs: [test, test-pr]`)를 기다려 게이팅한다. push/dispatch는 `test`, PR은 `test-pr` caller가 호출한다.
+GitHub Actions 워크플로 `.github/workflows/test.yml`은 `.github/workflows/docker-build.yml`이 reusable `Layered Tests`로 호출한다. 아래 잡 중 `test-live`를 제외한 모든 잡은 서로 `needs:` 없이 t=0에 병렬로 시작한다. 이미지 빌드·발행은 `docker-build.yml`의 `changes`가 이 workflow 전체 결과(`needs: [test, test-pr]`)를 기다려 게이팅한다. PR은 이미지를 빌드하지 않는다. push/dispatch는 `test`, PR은 `test-pr` caller가 호출한다.
 
 - `version-check`: architecture freshness, 태그/버전 정렬, pure Node target-runner 오케스트레이션(`test:orchestration`: workflow 계약과 `scripts/ci/*` 단위 테스트 포함) 확인. 테스트 잡의 선행 조건이 아니며, 실제 자격 증명을 쓰는 `test-live`만 이 잡을 기다린다.
-- `test-backend`: ruff와 backend unit. `test:unit:backend`는 `pytest-xdist -n 4 --dist worksteal`로 4 vCPU runner에 맞춰 실행한다(`-n auto` 금지). unit/contract 계층은 `tests/conftest.py`의 network guard로 non-loopback connect와 UDP `sendto`가 차단되며, 차단 기록에는 시도한 thread 이름이 붙는다.
+- `test-backend`: ruff와 backend unit. `test:unit:backend`는 `pytest-xdist -n 4 --dist worksteal`로 4 vCPU runner에 맞춰 실행한다(`-n auto` 금지). unit/contract 계층은 `tests/_network_guard.py` network guard(`tests/conftest.py`가 autouse로 등록)로 non-loopback connect, UDP `sendto`, localhost 이외 호스트 이름의 `socket.getaddrinfo`(DNS 조회)가 차단된다. 차단 기록에는 시도한 thread 이름이 붙는다. 앱 코드가 예외를 삼켜도 teardown이 테스트를 실패시키며, `tests/test_network_guard.py`가 plugin 모듈만 올린 별도 pytest 프로세스로 이를 검증한다. 설정 파일(`afterglow.conf`) 로딩은 격리하지 않는다.
 - `test-cloud-shell`: Cloud Shell image build와 bootstrap smoke (`test:cloud-shell:image`)
 - `test-contract`: 추출 서비스 소비자 계약과 uv-backed Kolla helper 계약
-- `test-functional`: 실제 MariaDB/PostgreSQL/Redis를 쓰는 local functional (`test:functional -- --no-start`). 경로와 무관하게 항상 실행한다. service health check는 `docker-compose.dev.yml` `test` profile과 같은 2s interval / 5s timeout / 20 retries이다.
+- `test-functional`: 실제 MariaDB/PostgreSQL/Redis를 쓰는 local functional (`test:functional -- --no-start`). 경로와 무관하게 항상 실행한다. service health check의 interval/timeout/retries는 `docker-compose.dev.yml` `test` profile과 같은 2s / 5s / 20이다. CI service는 tmpfs가 아니므로 CI에만 start-period 30s와 start-interval 2s를 더한다.
 - `test-frontend`: SvelteKit unit을 `shard: [1, 2]` matrix로 나눠 실행한다.
   - `vitest run --shard=N/2`를 직접 호출한다. `npm run test:unit:frontend -- --shard`는 인자가 전달되지 않아 전체 스위트가 돈다.
   - `scripts/ci/verify-vitest-shard.js`가 JSON 보고서로 각 shard가 Vitest 분할이 배정하는 정확한 파일 수(247개면 124/123)를 실행했고 실패가 없는지 검증한다.

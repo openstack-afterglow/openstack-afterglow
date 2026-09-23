@@ -1,3 +1,5 @@
+> **Superseded in part** by [`openspec/changes/ci-critical-path-review-follow-up`](../../ci-critical-path-review-follow-up/proposal.md) (review rounds 1-4). This archived proposal is kept as history. Where it differs from that change, `ARCHITECTURE.md` `CI와 이미지 발행` and the CLAUDE.md CI rules describe the current design. Examples of superseded text below: a `continue-on-error` dedup job, a `test-pr` condition without the event conjunct, the `HEAD^1..HEAD` PR diff, a `changes` gate that runs when either caller succeeded, and dedup on tree identity alone.
+
 ## Why
 
 The `Layered Tests` workflow (`.github/workflows/test.yml`, called from `.github/workflows/docker-build.yml`) is the gate every dev push and every PR to `main` waits on. The repository is public and uses free GitHub-hosted `ubuntu-latest` runners (4 vCPU), so wall-clock time is the metric that matters, not runner minutes.
