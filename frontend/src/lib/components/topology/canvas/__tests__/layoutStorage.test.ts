@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { clearManualPositions, layoutStorageKey, loadManualPositions, parseManualPositions, saveManualPositions } from '../layoutStorage';
 

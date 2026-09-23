@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 import { get } from 'svelte/store';
 

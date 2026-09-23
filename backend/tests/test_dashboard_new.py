@@ -1,7 +1,7 @@
 """Phase 50b — 신규 대시보드 endpoint 단위 테스트 (overview/usage-stats/usage-report/activity)."""
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -150,6 +150,11 @@ async def test_usage_stats_returns_expected_structure(client, mock_conn, monkeyp
                 "server_usages": [],
             },
         ),
+        patch(
+            "app.api.common.dashboard.prom_query.query_instant_multi",
+            new_callable=AsyncMock,
+            return_value=[],
+        ) as mock_prom,
     ):
         resp = await client.get("/api/v1/dashboard/usage-stats?range=30d")
 
@@ -159,6 +164,8 @@ async def test_usage_stats_returns_expected_structure(client, mock_conn, monkeyp
     assert "top_instances" in data
     assert "volumes_by_type" in data
     assert data["instance_hours"] == 72.0
+    # 인스턴스별 CPU/RAM instant query 는 실제 Prometheus 대신 mock 으로만 나간다.
+    assert mock_prom.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -170,6 +177,11 @@ async def test_usage_stats_top_instances_sorted_by_vcpus(client, mock_conn, monk
         patch("app.api.common.dashboard._list_servers_as_dicts", return_value=MOCK_SERVERS),
         patch("app.api.common.dashboard._list_flavors_as_dicts", return_value=MOCK_FLAVORS),
         patch("app.api.common.dashboard.nova.get_project_usage", return_value={}),
+        patch(
+            "app.api.common.dashboard.prom_query.query_instant_multi",
+            new_callable=AsyncMock,
+            return_value=[],
+        ) as mock_prom,
     ):
         resp = await client.get("/api/v1/dashboard/usage-stats")
 
@@ -179,6 +191,7 @@ async def test_usage_stats_top_instances_sorted_by_vcpus(client, mock_conn, monk
     assert len(instances) >= 1
     vcpus = [i["vcpus"] for i in instances]
     assert vcpus == sorted(vcpus, reverse=True)
+    assert mock_prom.await_count == 2
 
 
 @pytest.mark.asyncio

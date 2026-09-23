@@ -172,11 +172,17 @@ class TestSessionStore:
         await store_session("jti-rev-2", "ks-tok-2", "proj-1", "user-42", exp)
         await store_session("jti-other", "ks-tok-3", "proj-1", "user-99", exp)
 
-        count = await revoke_user_sessions("user-42")
+        # 기본 revoke_keystone=True 경로를 유지하되 실제 Keystone 호출은 막는다.
+        mock_revoke = MagicMock()
+        with patch("app.services.keystone.revoke_token", mock_revoke):
+            count = await revoke_user_sessions("user-42")
         assert count == 2
         assert await get_session("jti-rev-1") is None
         assert await get_session("jti-rev-2") is None
         assert await get_session("jti-other") is not None
+        # 대상 유저의 Keystone 토큰만 폐기하고 다른 유저의 토큰은 건드리지 않는다.
+        assert {c.args[0] for c in mock_revoke.call_args_list} == {"ks-tok-1", "ks-tok-2"}
+        assert mock_revoke.call_count == 2
 
     @pytest.mark.asyncio
     async def test_revoke_user_sessions_empty(self):

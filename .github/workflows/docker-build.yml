@@ -29,28 +29,113 @@ env:
   REGISTRY: ${{ secrets.REGISTRY_URL || 'ghcr.io' }}
   IMAGE_OWNER: ${{ github.repository_owner }}
 
+# 동시성 그룹의 cancel-in-progress 를 push 실행에 두지 않는다. 각 dev push 는 자기 이미지를 발행해야
+# 하며, 취소된 push 실행은 대상 이미지를 빌드하지 않은 채 남긴다. 실행 순서 문제는 manifest 의
+# stale re-run 가드(발행 revision 비교)가 담당한다.
 jobs:
+  # ─── PR 중복 테스트 제거: 입력(tree)이 dev push 실행과 같을 때만 건너뛴다 ───
+  # 같은 저장소의 `dev` 브랜치에서 온 PR 이고 PR merge commit tree 가 head commit tree 와 같으면,
+  # 동일한 tree 를 dev push 실행이 이미 테스트한다. fork PR·dependabot PR·diverged PR 은 항상 테스트한다.
+  # 브랜치 이름만으로 판단하지 않는다(fork 의 동명 `dev` 브랜치는 head repo 비교로 걸러진다).
+  # 판단 중 오류가 나면 skip=false(테스트 실행)다. push/dispatch 에서는 이 잡이 실행되지 않는다.
+  pr-dedup:
+    name: PR duplicate-input check
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    # 이 잡의 실패가 PR 테스트를 막지 않게 한다(실패 시 skip 출력이 비어 test-pr 가 실행된다).
+    continue-on-error: true
+    permissions:
+      contents: read
+    outputs:
+      skip: ${{ steps.dedup.outputs.skip }}
+    steps:
+      - name: Checkout PR merge commit
+        continue-on-error: true
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Compare merge tree with head tree
+        id: dedup
+        env:
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_REPO: ${{ github.repository }}
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          skip=false
+          decide() {
+            if [ "$HEAD_REPO" != "$BASE_REPO" ]; then
+              echo "head repository ${HEAD_REPO} is not ${BASE_REPO}; testing"
+              return 0
+            fi
+            if [ "$HEAD_REF" != "dev" ]; then
+              echo "head ref is not dev; testing"
+              return 0
+            fi
+            if ! printf '%s' "$HEAD_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+              echo "head SHA is malformed; testing"
+              return 0
+            fi
+            git fetch --no-tags --depth=1 origin "$HEAD_SHA" || return 1
+            merge_tree=$(git rev-parse 'HEAD^{tree}') || return 1
+            head_tree=$(git rev-parse "${HEAD_SHA}^{tree}") || return 1
+            if [ -n "$merge_tree" ] && [ "$merge_tree" = "$head_tree" ]; then
+              skip=true
+              echo "::notice title=Layered Tests deduplicated::PR merge tree ${merge_tree} equals dev head ${HEAD_SHA} tree; the dev push run tests the same input."
+            else
+              echo "merge tree ${merge_tree} differs from head tree ${head_tree}; testing"
+            fi
+          }
+          if ! decide; then
+            skip=false
+            echo "::warning::PR dedup check failed; running Layered Tests"
+          fi
+          echo "skip=${skip}" >> "$GITHUB_OUTPUT"
+
   # ─── 테스트: 레이어드 테스트 통과 후에만 빌드로 진행 ───
+  # push/dispatch 와 PR 은 서로 다른 caller job 으로 같은 reusable workflow 를 호출한다.
+  # push 경로의 caller 는 needs 가 없어 skipped 조상이 없다. skipped 조상이 있으면 암묵적 success() 가
+  # reusable workflow 내부 잡까지 건너뛰게 할 수 있으므로, PR 전용 pr-dedup 은 test-pr 에만 건다.
   test:
     name: Layered Tests
+    if: github.event_name != 'pull_request'
     uses: ./.github/workflows/test.yml
     with:
       run_live_openstack: ${{ github.event_name == 'workflow_dispatch' && inputs.run_live_openstack }}
     secrets: inherit
 
+  test-pr:
+    name: Layered Tests (PR)
+    needs: pr-dedup
+    if: ${{ !cancelled() && needs.pr-dedup.outputs.skip != 'true' }}
+    uses: ./.github/workflows/test.yml
+    with:
+      run_live_openstack: false
+    secrets: inherit
+
   # ─── 변경 감지: dev 브랜치에서만 선택적 빌드, 나머지는 항상 전체 빌드 ───
+  # 규칙과 fail-safe 는 scripts/ci/detect-build-targets.js(단위 테스트 포함)가 소유한다.
+  # - push: github.event.before..HEAD (before 를 depth=1 로 fetch). zero SHA·forced·fetch/diff 실패는 전체.
+  # - dev push: 발행된 :dev 이미지의 org.opencontainers.image.revision 기준 diff 를 target 별로 더한다
+  #   (실패한 이전 실행의 누락분 복구). label 조회 불가는 event 기준, 이후 오류는 그 target 빌드.
+  # - PR: merge commit 의 HEAD^1..HEAD 가 PR 전체 diff 이다(참고용, PR 은 빌드하지 않는다).
+  # push 에서는 test-pr, PR 에서는 test 가 skipped 이므로 암묵적 success() 대신 결과를 명시적으로 확인한다.
   changes:
     name: Detect changed targets
-    needs: test
+    needs: [test, test-pr]
+    if: ${{ !cancelled() && (needs.test.result == 'success' || needs.test-pr.result == 'success') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: read
+      packages: read
     outputs:
       targets: ${{ steps.set-targets.outputs.targets }}
-      standard_targets: ${{ steps.standard-targets.outputs.targets }}
+      standard_targets: ${{ steps.set-targets.outputs.standard_targets }}
       effective_ref: ${{ steps.eff-ref.outputs.ref }}
-      cloud_shell: ${{ steps.filter.outputs.cloud_shell }}
+      cloud_shell: ${{ steps.set-targets.outputs.cloud_shell }}
       is_pr: ${{ steps.eff-ref.outputs.is_pr }}
     steps:
       - name: Checkout
@@ -70,92 +155,33 @@ jobs:
             echo "is_pr=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Detect file changes
-        id: filter
-        run: |
-          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
-            exit 0
-          fi
+      # 발행 revision 조회(읽기 전용)는 push 에서만 한다. PR 코드가 레지스트리 자격 증명을 보지 않는다.
+      # 로그인 실패는 revision 조회 불가로 처리되어 event.before 기준으로 fallback 한다.
+      - name: Log in to registry (push only, read published revisions)
+        if: github.event_name == 'push'
+        continue-on-error: true
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME || github.actor }}
+          password: ${{ secrets.REGISTRY_PASSWORD || secrets.GITHUB_TOKEN }}
 
-          CHANGED=$(git diff --name-only HEAD^1 HEAD 2>/dev/null || echo "ALL")
-
-          # 비교 불가(초기 커밋 등)와 빌드 파이프라인 변경은 Afterglow 이미지를 모두 빌드한다.
-          if [[ "$CHANGED" == "ALL" ]] || echo "$CHANGED" | grep -qE '^\.github/workflows/docker-build\.yml$'; then
-            echo "afterglow=true" >> $GITHUB_OUTPUT
-            echo "frontend=true" >> $GITHUB_OUTPUT
-            echo "cloud_shell=true" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          if echo "$CHANGED" | grep -qE '^(backend/|Dockerfile$|\.dockerignore$|services/afterglow-crypto/)'; then
-            echo "afterglow=true" >> $GITHUB_OUTPUT
-          else
-            echo "afterglow=false" >> $GITHUB_OUTPUT
-          fi
-
-          if echo "$CHANGED" | grep -qE '^(frontend/|Dockerfile$|\.dockerignore$)'; then
-            echo "frontend=true" >> $GITHUB_OUTPUT
-          else
-            echo "frontend=false" >> $GITHUB_OUTPUT
-          fi
-
-          if echo "$CHANGED" | grep -qE '^(cloud-shell/|Dockerfile$|\.dockerignore$)'; then
-            echo "cloud_shell=true" >> $GITHUB_OUTPUT
-          else
-            echo "cloud_shell=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Build target list
+      - name: Detect build targets
         id: set-targets
         env:
-          CHANGED_AFTERGLOW: ${{ steps.filter.outputs.afterglow }}
-          CHANGED_FRONTEND: ${{ steps.filter.outputs.frontend }}
-          CHANGED_CLOUD_SHELL: ${{ steps.filter.outputs.cloud_shell }}
+          EVENT_BEFORE: ${{ github.event.before }}
+          EVENT_FORCED: ${{ github.event.forced }}
           DISPATCH_TARGETS: ${{ inputs.targets }}
           EFFECTIVE_REF: ${{ steps.eff-ref.outputs.ref }}
-        run: |
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            case "${DISPATCH_TARGETS}" in
-              backend) echo 'targets=["backend"]' >> $GITHUB_OUTPUT ;;
-              frontend) echo 'targets=["frontend"]' >> $GITHUB_OUTPUT ;;
-              worker) echo 'targets=["worker"]' >> $GITHUB_OUTPUT ;;
-              cloud-shell) echo 'targets=["cloud-shell"]' >> $GITHUB_OUTPUT ;;
-              afterglow|all) echo 'targets=["backend","frontend","worker","cloud-shell"]' >> $GITHUB_OUTPUT ;;
-              *) echo "Unsupported dispatch target: ${DISPATCH_TARGETS}" >&2; exit 1 ;;
-            esac
-            exit 0
-          fi
-
-          # dev 브랜치 이외(main, v* 태그, PR)는 Afterglow 전체 빌드
-          if [[ "${EFFECTIVE_REF}" != "refs/heads/dev" ]]; then
-            echo 'targets=["backend","frontend","worker","cloud-shell"]' >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          TARGETS="[]"
-          if [[ "${CHANGED_AFTERGLOW}" == "true" ]]; then
-            TARGETS=$(echo "$TARGETS" | jq -c '. + ["backend", "worker"]')
-          fi
-          # Backend/worker와 frontend는 같은 dev 배포 세트로 갱신한다.
-          if [[ "${CHANGED_FRONTEND}" == "true" || "${CHANGED_AFTERGLOW}" == "true" ]]; then
-            TARGETS=$(echo "$TARGETS" | jq -c '. + ["frontend"]')
-          fi
-          if [[ "${CHANGED_CLOUD_SHELL}" == "true" ]]; then
-            TARGETS=$(echo "$TARGETS" | jq -c '. + ["cloud-shell"]')
-          fi
-          echo "targets=${TARGETS}" >> $GITHUB_OUTPUT
-
-      - name: Build standard target list
-        id: standard-targets
-        env:
-          TARGETS: ${{ steps.set-targets.outputs.targets }}
-        run: echo "targets=$(echo "$TARGETS" | jq -c 'map(select(. != "cloud-shell"))')" >> $GITHUB_OUTPUT
+          GH_TOKEN: ${{ github.event_name == 'push' && github.token || '' }}
+        run: node scripts/ci/detect-build-targets.js
 
   # ─── per-arch 빌드: self-hosted linux(amd64) / macos(arm64) native 빌드 ───
   build:
     name: Build ${{ matrix.target }} (${{ matrix.arch }})
     needs: changes
-    if: needs.changes.outputs.is_pr != 'true' && needs.changes.outputs.standard_targets != '[]'
+    # PR 은 self-hosted 빌드 matrix 를 예약할 수 없다. !cancelled() + 결과 확인은 skipped test/test-pr 조상 대비다.
+    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.is_pr != 'true' && needs.changes.outputs.standard_targets != '[]' }}
     strategy:
       fail-fast: false
       matrix:
@@ -302,6 +328,7 @@ jobs:
           platforms: ${{ matrix.platform }}
           push: ${{ needs.changes.outputs.is_pr != 'true' }}
           tags: ${{ steps.img.outputs.name }}:${{ steps.tag.outputs.base }}-${{ matrix.arch }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
 
       # amd64 (Linux, docker-container driver): registry cache 사용
       - name: Build & push amd64 (docker-container driver)
@@ -314,6 +341,7 @@ jobs:
           platforms: ${{ matrix.platform }}
           push: ${{ needs.changes.outputs.is_pr != 'true' }}
           tags: ${{ steps.img.outputs.name }}:${{ steps.tag.outputs.base }}-${{ matrix.arch }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=registry,ref=${{ steps.img.outputs.name }}:cache-${{ matrix.arch }}
           cache-to: ${{ needs.changes.outputs.is_pr != 'true' && format('type=registry,ref={0}:cache-{1},mode=max', steps.img.outputs.name, matrix.arch) || '' }}
 
@@ -323,7 +351,7 @@ jobs:
   build-cloud-shell:
     name: Build Cloud Shell (amd64 + arm64)
     needs: changes
-    if: needs.changes.outputs.is_pr != 'true' && contains(fromJSON(needs.changes.outputs.targets), 'cloud-shell')
+    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.is_pr != 'true' && contains(fromJSON(needs.changes.outputs.targets), 'cloud-shell') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -388,7 +416,35 @@ jobs:
           fi
           echo 'EOF' >> $GITHUB_OUTPUT
 
+      # Stale re-run 가드: 브랜치 태그(:dev/:nightly)의 현재 발행 revision 이 이번 SHA 보다 새로우면
+      # (compare=behind) 빌드·push 를 건너뛴다. revision 을 모르면 진행한다. 버전 태그는 항상 발행한다.
+      # 가드는 빌드 전에 평가되므로, 동시에 실행 중인 더 새로운 실행이 이 빌드 도중 발행하는 경합은 남는다.
+      - name: Stale re-run guard
+        id: guard
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EFFECTIVE_REF: ${{ needs.changes.outputs.effective_ref }}
+        run: |
+          publish=true
+          if [[ "${EFFECTIVE_REF}" != refs/tags/v* ]]; then
+            BRANCH_TAG="${REGISTRY}/${IMAGE_OWNER}/afterglow-cloud-shell:dev"
+            if [[ "${EFFECTIVE_REF}" == refs/heads/main ]]; then
+              BRANCH_TAG="${REGISTRY}/${IMAGE_OWNER}/afterglow-cloud-shell:nightly"
+            fi
+            set +e
+            node scripts/ci/image-revision.js guard "${BRANCH_TAG}" "${GITHUB_SHA}" "${GITHUB_REPOSITORY}"
+            rc=$?
+            set -e
+            case "$rc" in
+              0) ;;
+              3) publish=false ;;
+              *) echo "::error::stale re-run guard failed with exit ${rc}"; exit "$rc" ;;
+            esac
+          fi
+          echo "publish=${publish}" >> "$GITHUB_OUTPUT"
+
       - name: Build and push Cloud Shell
+        if: steps.guard.outputs.publish == 'true'
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -397,23 +453,35 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.tags.outputs.values }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/afterglow-cloud-shell:cache
           cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/afterglow-cloud-shell:cache,mode=max
 
   # ─── manifest 통합: 두 arch 태그를 합쳐 단일 멀티플랫폼 태그로 push ───
+  # target 별로 독립 실행한다. 다른 target 의 빌드가 실패해도 이 target 의 per-arch 이미지가
+  # 이번 SHA(revision label)로 발행됐으면 manifest 를 만든다. fail-fast 를 끄지 않으면 한 leg 실패가
+  # 나머지 leg 를 취소한다.
   manifest:
     name: Manifest ${{ matrix.target }}
     needs: [changes, build]
-    if: needs.changes.outputs.is_pr != 'true' && needs.changes.outputs.standard_targets != '[]'
+    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.is_pr != 'true' && needs.changes.outputs.standard_targets != '[]' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     strategy:
+      fail-fast: false
       matrix:
         target: ${{ fromJSON(needs.changes.outputs.standard_targets) }}
 
     steps:
+      - name: Checkout CI scripts
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          sparse-checkout: scripts/ci
+          persist-credentials: false
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
@@ -439,44 +507,65 @@ jobs:
         id: tags
         env:
           EFFECTIVE_REF: ${{ needs.changes.outputs.effective_ref }}
+          IMG: ${{ steps.img.outputs.name }}
         run: |
           if [[ "${EFFECTIVE_REF}" == refs/tags/v* ]]; then
             VTAG="${EFFECTIVE_REF#refs/tags/}"
-            echo "primary=${{ steps.img.outputs.name }}:${VTAG}" >> $GITHUB_OUTPUT
-            echo "extra=${{ steps.img.outputs.name }}:latest" >> $GITHUB_OUTPUT
-            echo "base=${VTAG}" >> $GITHUB_OUTPUT
+            primary="${IMG}:${VTAG}"; extra="${IMG}:latest"; base="${VTAG}"; branch_tag=false
           elif [[ "${EFFECTIVE_REF}" == refs/heads/main ]]; then
-            echo "primary=${{ steps.img.outputs.name }}:nightly" >> $GITHUB_OUTPUT
-            echo "extra=" >> $GITHUB_OUTPUT
-            echo "base=nightly" >> $GITHUB_OUTPUT
+            primary="${IMG}:nightly"; extra=""; base="nightly"; branch_tag=true
           else
-            echo "primary=${{ steps.img.outputs.name }}:dev" >> $GITHUB_OUTPUT
-            echo "extra=" >> $GITHUB_OUTPUT
-            echo "base=dev" >> $GITHUB_OUTPUT
+            primary="${IMG}:dev"; extra=""; base="dev"; branch_tag=true
           fi
+          {
+            echo "primary=${primary}"
+            echo "extra=${extra}"
+            echo "base=${base}"
+            echo "branch_tag=${branch_tag}"
+          } >> "$GITHUB_OUTPUT"
+
+      # 이 target 의 per-arch 이미지가 이번 SHA 로 발행됐는지 확인한다. per-arch 태그는 SHA 가 아니라
+      # `<base>-<arch>` 이므로 digest 를 먼저 얻고 그 digest 의 revision label 이 github.sha 인지 본다.
+      # 빌드가 실패했거나 다른 실행이 태그를 덮어썼으면 이 leg 를 실패시킨다. 검증한 digest 로만 manifest 를 만든다.
+      - name: Verify per-arch images for this revision
+        id: verify
+        env:
+          IMG: ${{ steps.img.outputs.name }}
+          BASE: ${{ steps.tags.outputs.base }}
+        run: |
+          # arm64 빌드 비활성화 상태 — 복구 시 ARCHES="amd64 arm64"
+          ARCHES="amd64"
+          for arch in ${ARCHES}; do
+            digest=$(node scripts/ci/image-revision.js verify "${IMG}:${BASE}-${arch}" "${GITHUB_SHA}")
+            echo "${arch}=${digest}" >> "$GITHUB_OUTPUT"
+          done
 
       # arm64 빌드 비활성화 상태 — amd64 단일 소스로 최종 태그를 만든다.
-      # arm64 를 되살리면 이 amd64 전용 블록을 주석 처리하고 아래 "원본(2-arch)" 블록을 되살린다.
+      # arm64 를 되살리면 SOURCES 에 "${IMG}@${{ steps.verify.outputs.arm64 }}" 를 추가한다.
+      # Stale re-run 가드: 브랜치 태그(:dev/:nightly)의 현재 발행 revision 이 이번 SHA 보다 새로우면
+      # (compare=behind) retag 를 건너뛴다. 발행 revision 을 모르면 진행한다. 버전 태그/latest 는 가드하지 않는다.
       - name: Create multi-arch manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMG: ${{ steps.img.outputs.name }}
+          PRIMARY: ${{ steps.tags.outputs.primary }}
+          EXTRA: ${{ steps.tags.outputs.extra }}
+          BRANCH_TAG: ${{ steps.tags.outputs.branch_tag }}
+          AMD64_DIGEST: ${{ steps.verify.outputs.amd64 }}
         run: |
-          BASE="${{ steps.tags.outputs.base }}"
-          IMG="${{ steps.img.outputs.name }}"
-          docker buildx imagetools create \
-            -t "${{ steps.tags.outputs.primary }}" \
-            "${IMG}:${BASE}-amd64"
-          if [ -n "${{ steps.tags.outputs.extra }}" ]; then
-            docker buildx imagetools create \
-              -t "${{ steps.tags.outputs.extra }}" \
-              "${IMG}:${BASE}-amd64"
+          SOURCES=("${IMG}@${AMD64_DIGEST}")
+          if [[ "${BRANCH_TAG}" == "true" ]]; then
+            set +e
+            node scripts/ci/image-revision.js guard "${PRIMARY}" "${GITHUB_SHA}" "${GITHUB_REPOSITORY}"
+            rc=$?
+            set -e
+            case "$rc" in
+              0) ;;
+              3) exit 0 ;;
+              *) echo "::error::stale re-run guard failed with exit ${rc}"; exit "$rc" ;;
+            esac
           fi
-          # ── 원본 (amd64 + arm64 멀티아치) — arm64 러너 복구 시 되살릴 것 ──
-          # docker buildx imagetools create \
-          #   -t "${{ steps.tags.outputs.primary }}" \
-          #   "${IMG}:${BASE}-amd64" \
-          #   "${IMG}:${BASE}-arm64"
-          # if [ -n "${{ steps.tags.outputs.extra }}" ]; then
-          #   docker buildx imagetools create \
-          #     -t "${{ steps.tags.outputs.extra }}" \
-          #     "${IMG}:${BASE}-amd64" \
-          #     "${IMG}:${BASE}-arm64"
-          # fi
+          docker buildx imagetools create -t "${PRIMARY}" "${SOURCES[@]}"
+          if [ -n "${EXTRA}" ]; then
+            docker buildx imagetools create -t "${EXTRA}" "${SOURCES[@]}"
+          fi

@@ -35,5 +35,8 @@ export default defineConfig({
 		include: ['src/**/*.{test,spec}.{js,ts}'],
 		environment: 'jsdom',
 		globals: true,
+		// 기본 forks 대비 worker_threads 가 파일당 환경·import 비용을 줄인다.
+		// CI 동등(--maxWorkers=3) 실측: 전체 247 파일 2회 모두 통과, wall time 약 -14.8%.
+		pool: 'threads',
 	},
 });

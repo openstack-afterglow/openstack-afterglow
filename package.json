@@ -5,7 +5,7 @@
   "scripts": {
     "test": "npm run test:unit",
     "test:unit": "npm run test:target:js && npm run test:unit:backend && npm run test:unit:frontend",
-    "test:unit:backend": "cd backend && AFTERGLOW_ALLOW_INSECURE=1 uv run python -m pytest tests/ -v --ignore=tests/integration --ignore=tests/contracts -m \"not db and not contract\"",
+    "test:unit:backend": "cd backend && AFTERGLOW_ALLOW_INSECURE=1 uv run python -m pytest tests/ -v --ignore=tests/integration --ignore=tests/contracts -m \"not db and not contract\" -n 4 --dist worksteal",
     "test:unit:frontend": "cd frontend && npm test",
     "test:contract": "node scripts/test-target.js contracts",
     "test:functional": "node scripts/test-db.js",
@@ -18,7 +18,7 @@
     "test:parallel": "npm-run-all --parallel test:unit:backend test:unit:frontend",
     "test:list": "node scripts/test-target.js --list",
     "test:target": "node scripts/test-target.js",
-    "test:orchestration": "node --test scripts/test-target.test.js scripts/test-db.test.js scripts/github-actions-contract.test.js && node scripts/test-target.js --validate",
+    "test:orchestration": "node --test scripts/test-target.test.js scripts/test-db.test.js scripts/github-actions-contract.test.js scripts/ci/detect-build-targets.test.js scripts/ci/image-revision.test.js scripts/ci/verify-vitest-shard.test.js && node scripts/test-target.js --validate",
     "test:kolla:contract": "node --test scripts/kolla-contract.test.js",
     "test:kolla:runtime": "node --test scripts/kolla-runtime-contract.test.js",
     "test:target:js": "npm run test:orchestration && npm run test:kolla:contract",

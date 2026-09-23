@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { parseChatRunEvent } from '../chatContracts';
 import { createRunViewState, reduceRunEvent } from '../chatRunReducer';

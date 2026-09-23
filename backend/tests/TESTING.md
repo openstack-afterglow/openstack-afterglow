@@ -178,12 +178,18 @@ AFTERGLOW_ALLOW_INSECURE=1 uv run pytest tests/ --ignore=tests/integration -v -k
 
 ## GitHub Actions CI 파이프라인 구조
 
-GitHub Actions 워크플로 `.github/workflows/test.yml`:
+GitHub Actions 워크플로 `.github/workflows/test.yml`은 `.github/workflows/docker-build.yml`이 reusable `Layered Tests`로 호출한다. 아래 잡 중 `test-live`를 제외한 모든 잡은 서로 `needs:` 없이 t=0에 병렬로 시작한다. 이미지 빌드는 `docker-build.yml`의 `changes`가 이 workflow 전체 결과(`needs: [test, test-pr]`)를 기다려 게이팅한다. push/dispatch는 `test`, PR은 `test-pr` caller가 호출한다.
 
-- `version-check`: 태그/버전 정렬과 pure Node target-runner 오케스트레이션 확인
-- `test-backend`: backend unit + ruff
+- `version-check`: architecture freshness, 태그/버전 정렬, pure Node target-runner 오케스트레이션(`test:orchestration`: workflow 계약과 `scripts/ci/*` 단위 테스트 포함) 확인. 다른 잡의 선행 조건이 아니다.
+- `test-backend`: ruff와 backend unit. `test:unit:backend`는 `pytest-xdist -n 4 --dist worksteal`로 4 vCPU runner에 맞춰 실행한다(`-n auto` 금지). unit/contract 계층은 `tests/conftest.py`의 network guard로 non-loopback connect가 차단된다.
+- `test-cloud-shell`: Cloud Shell image build와 bootstrap smoke (`test:cloud-shell:image`)
 - `test-contract`: 추출 서비스 소비자 계약과 uv-backed Kolla helper 계약
-- `test-functional`: 실제 MariaDB/PostgreSQL/Redis를 쓰는 local functional (`test:functional -- --no-start`)
-- `test-frontend`: SvelteKit unit
+- `test-functional`: 실제 MariaDB/PostgreSQL/Redis를 쓰는 local functional (`test:functional -- --no-start`). 경로와 무관하게 항상 실행한다. service health check는 `docker-compose.dev.yml` `test` profile과 같은 2s interval / 5s timeout / 20 retries이다.
+- `test-frontend`: SvelteKit unit을 `shard: [1, 2]` matrix로 나눠 실행한다.
+  - `vitest run --shard=N/2`를 직접 호출한다. `npm run test:unit:frontend -- --shard`는 인자가 전달되지 않아 전체 스위트가 돈다.
+  - `scripts/ci/verify-vitest-shard.js`가 JSON 보고서로 각 shard가 0개 초과, 전체 스위트 미만의 파일을 실행했고 실패가 없는지 검증한다.
+  - `run-with-file-log` node test는 shard 1에서만 실행한다.
 - `detect-live`: `workflow_dispatch`에서 `run_live_openstack=true`로 명시한 경우에만 Keystone 토큰 POST 및 network endpoint 도달성 검사
 - `test-live`: 수동 opt-in과 사전조건을 모두 충족한 경우에만 실제 OpenStack scenario (`test:live`) 실행; push/PR 기본 CI에서는 제외
+
+`docker-build.yml`의 PR 전용 `pr-dedup` 잡은 같은 저장소 `dev` 브랜치에서 온 PR이고 merge tree가 head tree와 같을 때만 `test-pr`(`Layered Tests (PR)`)를 건너뛴다. 같은 tree는 dev push 실행이 테스트한다. fork·dependabot·diverged PR과 판단 오류는 항상 테스트한다. 이미지 target 감지, 발행 revision 기준, manifest 검증, stale re-run 가드는 root `ARCHITECTURE.md`의 `CI와 이미지 발행`을 참고한다.

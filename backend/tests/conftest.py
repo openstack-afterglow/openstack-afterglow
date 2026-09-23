@@ -18,6 +18,10 @@ os.environ.setdefault("SERVICE_SWIFT_ENABLED", "true")
 os.environ.setdefault("SERVICE_WAYGATE_ENABLED", "true")
 os.environ.setdefault("SERVICE_CHAT_ENABLED", "true")
 
+import errno
+import ipaddress
+import socket
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -58,6 +62,97 @@ def pytest_collection_modifyitems(config, items):
 # state 가 다음 테스트에 누수되거나 동일 IP 로 5/min 같은 제한에 부딪히는 것을 회피.
 # 실제 limiter 의 IP 추출/거부 동작은 tests/test_rate_limit_proxies.py 에서 별도 검증.
 _rate_limiter.enabled = False
+
+
+# ──────────────────────────────────────────────────────────────────
+# 단위/계약 계층 non-loopback 네트워크 가드
+# ──────────────────────────────────────────────────────────────────
+# 단위·계약 테스트는 hermetic 해야 한다. 로컬 afterglow.conf 가 있을 때 실제
+# Keystone/Prometheus 로 접속하던 테스트가 있었으므로, loopback 이외 주소로의
+# TCP/UDP connect 를 차단하고 해당 테스트를 실패시킨다. 실 환경 계층
+# (tests/integration/) 과 실 datastore 를 쓰는 functional(`db` marker) 테스트는 제외한다.
+# unix socket 과 loopback(127.0.0.0/8, ::1, localhost) 은 허용한다.
+# 한계: C 레벨 DNS 조회(getaddrinfo)는 socket.connect 를 거치지 않아 차단하지 않는다.
+
+_TESTS_DIR = Path(__file__).resolve().parent
+_NETWORK_GUARD_EXEMPT_DIRS = (_TESTS_DIR / "integration",)
+_INET_FAMILIES = (socket.AF_INET, socket.AF_INET6)
+
+
+class NonLoopbackConnectBlocked(ConnectionRefusedError):
+    """단위/계약 테스트가 loopback 이외 주소로 connect 하려 할 때 발생."""
+
+
+def _is_loopback_target(address: object) -> bool:
+    """connect() 대상이 loopback/unspecified 주소인지 판정한다. 호스트 이름은 localhost 만 허용."""
+    host = address[0] if isinstance(address, tuple) and address else address
+    if isinstance(host, bytes):
+        host = host.decode(errors="replace")
+    if not isinstance(host, str):
+        return False
+    host = host.strip("[]").split("%", 1)[0]
+    if host == "" or host.lower() == "localhost":
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        # 이름 기반 주소는 해석(DNS) 전에 차단한다.
+        return False
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    return ip.is_loopback or ip.is_unspecified
+
+
+def _network_guard_exempt(node: pytest.Item) -> bool:
+    if node.get_closest_marker("db") is not None:
+        return True
+    path = Path(str(node.path)).resolve()
+    return any(path.is_relative_to(exempt) for exempt in _NETWORK_GUARD_EXEMPT_DIRS)
+
+
+@pytest.fixture(autouse=True)
+def _block_non_loopback_network(request, monkeypatch):
+    """단위/계약 테스트의 non-loopback connect 를 차단하고, 시도가 있었다면 테스트를 실패시킨다.
+
+    yield 값은 차단된 주소 목록이다. 가드 자체를 검증하는 테스트는 목록을 비워 teardown 실패를 피한다.
+    """
+    if _network_guard_exempt(request.node):
+        yield None
+        return
+
+    blocked: list[str] = []
+    original_connect = socket.socket.connect
+    original_connect_ex = socket.socket.connect_ex
+
+    def _is_blocked(sock: socket.socket, address: object) -> bool:
+        if sock.family not in _INET_FAMILIES or _is_loopback_target(address):
+            return False
+        blocked.append(repr(address))
+        return True
+
+    def guarded_connect(self, address, *args, **kwargs):
+        if _is_blocked(self, address):
+            raise NonLoopbackConnectBlocked(
+                errno.ECONNREFUSED,
+                f"unit/contract tests must not connect to non-loopback address {address!r}",
+            )
+        return original_connect(self, address, *args, **kwargs)
+
+    def guarded_connect_ex(self, address, *args, **kwargs):
+        if _is_blocked(self, address):
+            return errno.ECONNREFUSED
+        return original_connect_ex(self, address, *args, **kwargs)
+
+    monkeypatch.setattr(socket.socket, "connect", guarded_connect)
+    monkeypatch.setattr(socket.socket, "connect_ex", guarded_connect_ex)
+    yield blocked
+    if blocked:
+        pytest.fail(
+            "non-hermetic test: blocked non-loopback connect to "
+            + ", ".join(sorted(set(blocked)))
+            + " (mock the external service instead)",
+            pytrace=False,
+        )
 
 
 def make_mock_conn(project_id: str = "test-project-123") -> MagicMock:

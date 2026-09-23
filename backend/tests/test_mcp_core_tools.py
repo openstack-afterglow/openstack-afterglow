@@ -39,7 +39,9 @@ async def test_project_quotas_uses_only_the_exact_project_and_fixed_safe_fields(
 
     result = await dashboard.project_quotas(object(), project_id="project-a", manila_enabled=False)
 
-    assert calls == [("compute", "project-a"), ("storage", "project-a"), ("network", "project-a")]
+    # 세 source 는 asyncio.to_thread 로 동시에 실행되므로 호출 순서는 보장되지 않는다.
+    # 각 source 가 정확한 project 로 한 번씩만 호출됐는지만 확인한다.
+    assert sorted(calls) == [("compute", "project-a"), ("network", "project-a"), ("storage", "project-a")]
     assert result == {
         "compute": {
             "instances": {"limit": 10, "in_use": 2},

@@ -97,7 +97,7 @@ milestone.md          OpenSpec redirect stub; append 대상이 아님
 
 - 백엔드 엔드포인트 구현에는 반드시 `backend/tests/` pytest를 함께 작성한다. 테스트 없는 endpoint는 미완료다.
 - 계층별 테스트 계약:
-  1. **단위 테스트 (Unit)**: `npm run test:unit:backend`, `npm run test:unit:frontend`, `npm run test:unit` (외부 네트워크·Docker·자격 증명 없음; 전체 unit은 오케스트레이터 회귀 포함)
+  1. **단위 테스트 (Unit)**: `npm run test:unit:backend`, `npm run test:unit:frontend`, `npm run test:unit` (외부 네트워크·Docker·자격 증명 없음; 전체 unit은 오케스트레이터 회귀 포함). backend unit은 `pytest-xdist -n 4 --dist worksteal`로 실행하며 `backend/tests/conftest.py` network guard가 non-loopback connect를 실패시킨다.
   2. **소비자 계약 테스트 (Contract)**: `npm run test:contract` (`backend/tests/contracts/`의 BFF/SDK/catalog/ingress 경계)
   3. **국소 기능 테스트 (Functional)**: `npm run test:functional` (`docker-compose.dev.yml`의 실제 MariaDB/PostgreSQL/Redis test profile). 기본 전용 project 자동 기동·종료이며 데이터는 tmpfs다. 재사용은 `--no-start`, 실행 중 유지/디버깅은 `--keep`이고 중지 시 데이터는 사라진다.
   4. **실제 환경 테스트 (Live OpenStack)**: `npm run test:live` (`live:{auth,admin,compute,network,storage,layers}`). 자격 증명/도달성 미비는 검증 공백으로 보고하지만, 사전조건 충족 뒤의 테스트 실패는 결함으로 처리한다.
@@ -156,6 +156,57 @@ npm run test:gate
 3. `union.md`: content-addressable, single-parent, 3-lock 불변성, GC 설계 원칙
 
 `.sqsh` blob byte sha256을 digest로 사용한다. 재현은 기존 layer 재사용, 재빌드는 새 digest layer 추가다. 기존 layer를 덮어쓰지 않는다.
+
+## CI 파이프라인 성능 규정
+
+근거는 두 가지다. 하나는 2026-09 afterglow CI 실측이다(실행 40건, `Layered Tests` 크리티컬 패스 중앙값 143초, p90 155초). 다른 하나는 Linear의 CI 개편 사례다. `.github/workflows/test.yml`, `.github/workflows/docker-build.yml`, `scripts/ci/`를 바꾸는 모든 변경은 아래 규칙을 따른다. 현재 구조는 `ARCHITECTURE.md`의 `CI와 이미지 발행`이 정본이다.
+
+1. **측정 먼저, 추정 금지.**
+   - CI를 바꾸기 전과 후에 최근 20회 이상 실행의 잡·스텝 시간을 `gh run list` / `gh api .../actions/runs/<id>/jobs`로 수집한다.
+   - 크리티컬 패스(실행 생성부터 마지막 필수 잡 종료까지)의 중앙값과 p90을 변경 기록(OpenSpec proposal, PR, 커밋 본문)에 남긴다.
+   - 절감 효과는 합산되지 않으므로 가장 긴 잡부터 줄인다. 효과는 실제 CI 전후 수치로만 주장한다.
+2. **목표 지표를 먼저 정한다.** 이 저장소는 public이고 무료 GitHub-hosted `ubuntu-latest`(4 vCPU)를 쓰므로 wall-clock(대기 시간)이 목표다. private 저장소나 유료 runner는 runner-minutes(비용)도 함께 본다.
+3. **게이트 잡을 다른 잡 앞에 두지 않는다.**
+   - 버전·문서·아키텍처 검사 같은 fail-fast 잡은 테스트 잡의 `needs:`로 걸지 말고 병렬로 실행한다. `test.yml`의 `version-check`는 어떤 잡의 `needs:`도 아니다.
+   - 빌드·배포 게이팅은 테스트 워크플로우 전체 결과로 한다. `docker-build.yml`의 `changes`가 `needs: [test, test-pr]`로 이를 맡는다.
+   - skipped 잡 뒤의 잡은 암묵적 `success()`에 기대지 말고 `!cancelled()`와 앞 잡 결과를 명시한다.
+   - reusable workflow caller에는 skipped 조상을 두지 않는다. 내부 잡까지 건너뛸 수 있으므로 push와 PR caller를 분리한다(`test`/`test-pr`).
+4. **잡당 고정비를 측정한다.**
+   - checkout, 의존성 설치, 서비스 준비 시간을 잰다. 캐시 복원이 재설치보다 느리면 캐시를 쓰지 않는다.
+   - 서비스 컨테이너 health-check는 짧은 interval(예: 2초)과 충분한 retries(또는 start-period)로 설정한다. `test.yml`의 MariaDB/PostgreSQL/Redis는 `docker-compose.dev.yml` `test` profile과 같은 2s/5s/20이다.
+5. **샤딩은 고정비가 작을 때만 한다.**
+   - 테스트 러너가 작업을 나누는 단위(vitest는 파일)로 균형을 맞춘다.
+   - 샤드 명령은 러너를 직접 호출한다. 래퍼 스크립트 뒤에 `-- --shard`를 붙이면 인자가 전달되지 않아 전체 스위트가 조용히 돌 수 있다(`npm run test:unit:frontend -- --shard`가 그랬다).
+   - 샤드별 실행 파일 수를 CI에서 검증한다(`scripts/ci/verify-vitest-shard.js`).
+6. **격리 해제는 opt-in으로만 한다.**
+   - `isolate: false`, 워커 간 모듈 공유 같은 최적화는 전역에 적용하지 않는다. `--no-isolate`는 순서 의존 실패와 OOM으로 기각됐다.
+   - 먼저 순서를 섞어(shuffle) 2회 이상 실행해 상태 누수를 확인하고, 안전한 파일만 명시적으로 opt-in한다.
+   - `vi.stubGlobal`·전역 상태를 바꾼 테스트는 반드시 복원한다.
+7. **테스트는 hermetic해야 병렬화할 수 있다.**
+   - 단위 테스트는 실제 외부 서비스(Keystone, Prometheus 등)에 접속하지 않는다. 로컬 설정 파일(`afterglow.conf`)이 있느냐에 따라 결과나 시간이 달라지면 결함이다. `backend/tests/conftest.py` network guard가 이를 강제한다.
+   - 병렬 실행(pytest-xdist 등)의 워커 수는 CI vCPU에 맞춰 명시한다(`-n 4`, `-n auto` 금지).
+8. **변경 감지의 diff 기준을 정확히 한다.**
+   - push는 `github.event.before..github.sha`로 비교한다. zero SHA·forced push·fetch 실패 시에는 전체를 대상으로 한다.
+   - PR은 base..head로 비교한다. PR merge commit의 `HEAD^1..HEAD`가 이에 해당한다.
+   - `HEAD^1..HEAD`처럼 push의 마지막 커밋만 보는 비교는 금지한다.
+   - 발행 산출물(이미지 등)은 실제 발행된 revision을 기준으로 판단한다. `org.opencontainers.image.revision` label을 쓰며, 규칙은 `scripts/ci/detect-build-targets.js`에 있다.
+9. **중복 실행은 입력 동일성으로만 제거한다.**
+   - 같은 저장소의 브랜치에서 온 PR이고 merge 트리가 head 트리와 같을 때만 PR 테스트를 건너뛴다(`docker-build.yml` `pr-dedup`).
+   - fork PR과 dependabot PR은 항상 테스트한다.
+   - 브랜치 이름만으로 판단하지 않는다. fork의 동명 브랜치로 우회할 수 있다.
+   - push 실행에는 `cancel-in-progress`를 두지 않는다. 오래된 실행의 재발행은 발행 revision 가드로 막는다.
+10. **보안: public 저장소의 `pull_request` 코드를 self-hosted runner에서 실행하지 않는다.**
+    - 워크플로우 YAML의 `if:`는 PR이 수정할 수 있으므로, runner group의 저장소 제한과 fork PR 승인 설정으로도 보장한다.
+    - PR 이벤트에서는 레지스트리 자격 증명을 쓰는 step을 실행하지 않는다.
+11. **CI 형태는 계약 테스트로 고정한다.**
+    - 샤드 수, 게이트 병렬성, dedup 조건, diff 기준 같은 불변식을 저장소의 테스트로 검증해 회귀를 막는다. `scripts/github-actions-contract.test.js`, `scripts/test-target.test.js`, `scripts/ci/*.test.js`가 `npm run test:orchestration`에서 실행된다.
+    - 불변식을 바꾸면 계약 테스트를 같은 변경에서 의도적으로 갱신한다.
+12. **지속 개선.**
+    - CI를 바꾸는 변경에는 전후 실측을 첨부한다.
+    - 다음 중 하나가 생기면 위 1번 절차로 다시 측정하고 가장 긴 잡부터 개선한다.
+      - 크리티컬 패스 중앙값이 기록된 기준(143초)보다 20% 이상 나빠진다.
+      - 테스트 수가 크게 늘어난다.
+      - 새 테스트 계층이 추가된다.
 
 ## 보안 개발 가이드라인
 

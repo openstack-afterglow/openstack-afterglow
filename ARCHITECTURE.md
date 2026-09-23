@@ -83,6 +83,7 @@ graph LR
 | [`frontend/src/lib/components/topology/canvas/`](frontend/src/lib/components/topology/canvas/) `buildGraph`, `autoLayout`, `TopologyCanvas.svelte` 및 [`backend/app/services/neutron.py`](backend/app/services/neutron.py) `get_topology`, `build_compute_port_index` | 토폴로지 구조(30초 cache)·트래픽(15초 poll) 응답을 캔버스 뷰(네트워크당 가상 스위치, GW 네트워크 존에 소속되는 라우터, 멀티 NIC 존 교차, 결정론적 배치)와 레인 뷰로 투영; provider 세그먼트는 관리자 응답 모델에만 | UI → `/api/v1/networks/topology`·`/api/v1/admin/topology` → Neutron/Nova/Octavia adapter |
 | [`backend/app/api/object_storage/`](backend/app/api/object_storage/) `upload.py`, `thumbnails.py` 및 [`backend/app/services/upload_inspection.py`](backend/app/services/upload_inspection.py), [`backend/app/services/thumbnails.py`](backend/app/services/thumbnails.py), [`backend/app/services/s3.py`](backend/app/services/s3.py) | 브라우저 업로드는 한 번의 순차 읽기로 크기·SHA-256·MD5를 계산하고 magic byte로 실제 형식을 판정한다. 렌더링 확장자 위장과 실행 파일 위장 두 가지만 거부하고 나머지는 탐지 형식만 기록한다. quarantine 저장 객체는 HEAD의 ETag/part 수로 검증한 뒤 승격한다. 이미지·PDF 축소본은 호출자 Swift 연결로 읽어 bounded WebP로 렌더링하고 project-scoped Redis에 캐시한다 | browser → `/api/v1/object-storage` (`require_project_write`) → RGW S3 + Swift; digest·탐지 형식은 업로드 시점 user metadata 로 남아 copy 를 따라간다 |
 | [`frontend/src/lib/components/object-storage/`](frontend/src/lib/components/object-storage/) `ObjectCardGrid.svelte`, `ObjectFileCard.svelte`, `ObjectFolderCard.svelte`, `ObjectPreviewModal.svelte` 및 [`frontend/src/lib/stores/objectBrowser.svelte.ts`](frontend/src/lib/stores/objectBrowser.svelte.ts) | 사용자 버킷 탐색기는 그리드(기본)와 트리 목록을 `objectBrowser.view`로 유지하고, 폴더는 카드 더블클릭/Enter로 진입한다. 축소본은 viewport 진입 시 최대 4개 동시 요청으로 가져오며 세대 fence로 떠난 폴더의 늦은 응답을 버리고 blob URL을 회수한다. 업로드는 256 MiB 이하 파일의 SHA-256을 브라우저에서 계산해 함께 보낸다 | UI → 인증된 `/api/v1/object-storage`; 컨테이너/프로젝트 변경만 탐색 상태를 초기화한다 |
+| [`.github/workflows/test.yml`](.github/workflows/test.yml), [`.github/workflows/docker-build.yml`](.github/workflows/docker-build.yml), [`scripts/ci/`](scripts/ci/) `detect-build-targets.js`, `image-revision.js`, `verify-vitest-shard.js` | Layered Tests 병렬 job graph, frontend vitest 2-way shard 검증, PR 중복 입력 dedup, 이미지 target 감지(event.before·발행 revision 기준), per-target manifest 검증과 stale re-run 가드 | GitHub Actions → repo scripts → GHCR/GitHub compare API; 불변식은 [`scripts/github-actions-contract.test.js`](scripts/github-actions-contract.test.js)가 고정 |
 
 의존 방향은 화면이 OpenStack SDK를 직접 부르지 않고 `frontend → FastAPI → service adapter/OpenStack`로 흐르는 것을 기준으로 한다. Lumen의 model/tool/provider 실행과 공개 ID의 내부 route 해석, Drover의 job/operation worker, Waygate의 gateway state, Palimpsest Hub의 SQL/blob은 이 저장소의 code map에 들어오지 않는다.
 
@@ -271,6 +272,38 @@ At ≥768px, the settings route allocates the return action and settings body wi
 
 Cloud Shell은 일반 Afterglow image matrix의 예외다. 같은 workflow의 전용 `cloud-shell` build target이 `linux/amd64`와 `linux/arm64` manifest를 게시하고, production config/Kolla precheck는 이 multi-architecture manifest의 immutable digest를 요구한다. Image는 UID 1000 shell, OpenStack CLI/plugin, setuid bootstrap만 포함하고 credential은 image layer나 persistent home이 아니라 container `/dev/shm` tmpfs에만 생성한다.
 
+### CI와 이미지 발행
+
+[`docker-build.yml`](.github/workflows/docker-build.yml)이 push(`main`, `dev`, `v*`), `main` 대상 PR, `workflow_dispatch`의 유일한 진입점이고 [`test.yml`](.github/workflows/test.yml)을 reusable `Layered Tests`로 호출한다. 2026-09 기준선(실행 40건)의 크리티컬 패스 중앙값은 143초(p90 155초)였고 가장 긴 잡은 frontend(126초)였다. CI 형태를 바꾸면 [CLAUDE.md](CLAUDE.md)의 `CI 파이프라인 성능 규정`에 따라 전후 실측을 남긴다.
+
+- **게이트 병렬성**: `version-check`(architecture freshness, `test:orchestration`, version sync)는 다른 잡의 `needs:`가 아니다. `test-backend`, `test-cloud-shell`, `test-contract`, `test-functional`, `test-frontend`, `detect-live`는 t=0에 병렬로 시작한다. 이미지 빌드는 `changes`가 reusable workflow 전체(`needs: [test, test-pr]`)를 기다리므로 `version-check` 실패도 여전히 빌드를 막는다. push/dispatch는 needs 없는 `test` caller가, PR은 `pr-dedup` 뒤의 `test-pr` caller가 같은 `test.yml`을 호출한다.
+- **테스트 잡**:
+  - `test-frontend`는 `shard: [1, 2]` matrix(`fail-fast: false`)이며 `vitest run --shard=N/2`를 직접 호출한다. [`scripts/ci/verify-vitest-shard.js`](scripts/ci/verify-vitest-shard.js)가 JSON 보고서로 검사하며, 실행 파일 수가 0이거나 전체 스위트(`src/**/*.{test,spec}.{js,ts}`) 이상이면, 또는 실패 테스트가 있으면 실패한다. `run-with-file-log` node test는 shard 1에서만 실행한다. Vitest는 `pool: 'threads'`이고 DOM이 필요 없는 57개 파일은 `// @vitest-environment node`로 실행한다.
+  - `test-backend`의 `test:unit:backend`는 `pytest-xdist -n 4 --dist worksteal`이다. 4 vCPU runner에 맞춘 고정값이며 `-n auto`는 쓰지 않는다. [`backend/tests/conftest.py`](backend/tests/conftest.py)의 autouse guard가 unit/contract 계층의 non-loopback connect를 차단한다(`tests/integration/`과 `db` marker 제외).
+  - `test-functional`의 MariaDB/PostgreSQL/Redis service health check는 `docker-compose.dev.yml` `test` profile과 같은 2초 interval, 5초 timeout, 20 retries이다. 이 잡은 경로와 무관하게 항상 실행한다.
+- **PR 중복 제거**: PR 전용 `pr-dedup` 잡은 세 조건을 모두 만족할 때만 `skip=true`를 낸다.
+  - head repository가 이 저장소이다.
+  - `head_ref`가 `dev`이다.
+  - PR merge commit tree가 head commit tree와 같다.
+
+  오류가 나면 `skip=false`이다. 그 결과 fork·dependabot·diverged PR과 push/dispatch는 항상 테스트한다. push 경로의 `test` caller는 `needs`가 없다. skipped 조상이 암묵적 `success()`를 통해 reusable workflow 내부 잡까지 건너뛰게 할 수 있기 때문이다. push에서는 `test-pr`, PR에서는 `test`가 skipped이므로 `changes`, `build`, `build-cloud-shell`, `manifest`는 `!cancelled()`와 앞 잡 결과를 명시한다. `pr-dedup`은 `continue-on-error`이며, 실패하면 skip 출력이 비어 PR 테스트가 실행된다.
+- **이미지 target 감지**: [`scripts/ci/detect-build-targets.js`](scripts/ci/detect-build-targets.js)가 규칙을 소유한다.
+  - dev push는 `github.event.before..HEAD`를 비교한다. all-zero before, forced push, fetch/diff 실패는 전체 빌드이다.
+  - dev push에서는 target별로 발행된 `:dev` 이미지의 `org.opencontainers.image.revision`도 읽는다. 그 revision이 HEAD의 조상(compare `ahead`/`identical`)이면 `git diff <rev> HEAD`를 더해 실패한 이전 실행의 누락 target을 다시 빌드한다. label을 읽을 수 없거나 `behind`이면 event 기준만 쓴다. `diverged`와 이후 오류는 그 target을 빌드한다.
+  - 경로 규칙은 afterglow(`backend/`, `Dockerfile`, `.dockerignore`, `services/afterglow-crypto/`), frontend, cloud-shell이며 `docker-build.yml` 변경은 전체 빌드이다. backend/worker가 빌드되면 frontend도 함께 빌드한다.
+  - `main`, `v*` 태그, PR은 전체이고 dispatch는 입력 매핑이다. PR 참고 diff는 merge commit의 `HEAD^1..HEAD`(PR 전체 변경)이며 PR은 빌드하지 않는다.
+- **발행**:
+  - 모든 build step이 `org.opencontainers.image.revision=${{ github.sha }}` label을 붙인다.
+  - `manifest`는 target별 `fail-fast: false` matrix이며 다른 target의 빌드 실패와 무관하게 실행된다. 각 leg는 [`scripts/ci/image-revision.js`](scripts/ci/image-revision.js) `verify`로 `<base>-amd64` digest를 얻고, 그 digest의 revision이 `github.sha`인지 확인한다. 아니면 실패하고, 맞으면 검증한 digest로만 태그를 만든다.
+  - `:dev`/`:nightly` 이동 전에는 `guard`가 현재 발행 revision과 `github.sha`를 compare API로 비교한다. `behind`(오래된 실행의 재실행)이면 `::notice::` 후 건너뛰고, 알 수 없으면 진행한다. Cloud Shell은 build-push가 태그를 직접 push하므로 같은 guard를 빌드 전에 평가한다.
+  - push 실행에는 `cancel-in-progress`를 두지 않는다.
+- **알려진 한계**:
+  - per-arch `<base>-amd64` 중간 태그와 registry cache는 stale 재실행도 덮어쓴다. 최종 브랜치 태그만 가드된다.
+  - Cloud Shell guard는 빌드 전에 평가되므로 동시에 도는 더 새로운 실행과의 경합이 남는다.
+  - 기존 이미지에는 revision label이 없으므로 첫 dev push는 event 기준만 사용한다.
+  - `docker buildx imagetools inspect` 출력(`Digest:` 줄, 단일/다중 플랫폼 `.Image` 형태)은 fixture로만 검증했다.
+  - `paths-ignore`만 바꾼 dev push는 push 실행이 없으므로 같은 tree의 dedup PR도 테스트되지 않는다. 그 경로는 테스트 입력이 아니다.
+
 ### 선행 조건과 관측
 
 Dev Compose API는 private Redis·local DB와 `.local-services/afterglow.conf`를 사용하고 형제 서비스는 자체 migration/bootstrap 완료를 요구한다. 기본 두-service Compose는 별도로 접근 가능한 DB/cache가 필요하다. Prod Compose는 실제 secret, DB, Keystone 설정과 HTTPS origins·인증서가 필요하며 앱·worker 소스를 빌드하지 않는다. Kolla는 inventory group, 설정된 image/config, migration 및 해당 OpenStack endpoint가 필요하다. MariaDB schema 변경은 `backend/migrations` SQL 적용 여부를 운영자가 확인해야 하며, backend 부팅의 deferred table creation이 모든 migration을 대신하지 않는다. 구조화 JSON 로그는 backend의 `logs/` 또는 컨테이너 로그로 수집하며, Prometheus metrics/HTTP SD와 Grafana integration은 설정된 외부 관측 시스템에 선택적으로 연결된다.
@@ -311,6 +344,14 @@ cloud-init 및 shell template 출력은 `shlex_quote`/검증된 입력을 사용
 
 2026-09-22 이번 커밋 검토에서 채팅 연결 안내·토폴로지 휠의 focused frontend 51건과 `svelte-check` 0 errors/warnings를 다시 확인했다. 실제 Chrome에서 합성 auth/discovery로 채팅 안내의 기본 Codex·Claude Code 전환과 단일 panel을 확인했고 390/767/768/1023/1024/1440px에서 페이지 가로 overflow 및 탭 내부 scrollbar가 없었다. 관리자 튜토리얼의 합성 토폴로지는 같은 폭에서 세로 휠에 따라 배율이 변하고, 순수 가로 휠에서는 배율을 유지한 채 이동했다. 이는 합성 데이터·자동화 휠 입력의 UI 증거이며 실제 하드웨어 휠이나 live Lumen·Keystone·OpenStack 배포 검증은 아니다. 두 변경 모두 API·인증·영속 상태·배포 구조를 바꾸지 않는다.
 
+2026-09-24 CI 크리티컬 패스 개편은 CI 형태를 바꾸는 변경이며 실제 GitHub Actions 전후 수치는 병합 뒤 측정한다. 로컬에서는 세 가지를 확인했다.
+
+- `npm run test:orchestration`이 통과했다. workflow 불변식 계약과 `scripts/ci/*.test.js` 단위 테스트가 여기에 포함된다.
+- 실제 `vitest run --shard=1/2`와 `--shard=2/2`는 각각 124/123개 파일을 실행했다. 두 shard는 겹치지 않고 합쳐 247개 파일 전체를 덮었으며 shard 검증기를 통과했다. `--shard` 없이 실행한 보고서는 검증기가 거부했다.
+- `actionlint`는 변경한 workflow에 새 issue가 없었다. 남은 항목은 기존 step의 SC2086 info뿐이다.
+
+이 증거는 로컬 재현과 계약 검증이며 GHCR·compare API 실호출 검증은 아니다.
+
 | 목적 | 정확한 명령 | 외부 전제 |
 |---|---|---|
 | backend 개발 서버 | `cd backend && uv sync && uv run uvicorn app.main:app --reload` | Python 3.12, uv, 설정된 `afterglow.conf` |
@@ -318,6 +359,7 @@ cloud-init 및 shell template 출력은 `shlex_quote`/검증된 입력을 사용
 | guard working check | `python3 scripts/check_architecture.py` | Python 3와 Git만; source를 읽고 ARCHITECTURE review digest를 비교 |
 | guard staged check | `python3 scripts/check_architecture.py --staged` | 검토한 문서와 source를 index에 함께 stage |
 | guard stamp | `python3 scripts/check_architecture.py --stamp --summary "<실제 검토 요약>"` | 본문 검토 후 working source와 문서를 갱신 |
+| CI 오케스트레이션·workflow 계약 | `npm run test:orchestration` | Node 20+; 네트워크·Docker 불필요(`scripts/ci/*`는 fake exec로 검증) |
 | guard regression | `npm run test:target -- backend:tests/test_architecture_guard.py` | backend dev 환경, subprocess가 일회용 Git fixture를 사용 |
 | targeted backend | `npm run test:target -- backend:tests/<path>` | 선택한 테스트의 명시적 외부 전제 |
 | 전체 기존 gate | `npm run test:gate` | disposable DB/Redis와 backend/frontend dependency; 2026-09-14 최종 gate 통과 |
@@ -336,7 +378,7 @@ architecture 회귀 테스트는 API mock으로 문서를 확인하지 않고 �
 | layer/build/consume/Hub | `backend/app/api/palimpsest/`, `backend/app/services/{layer_build,recipe_blocks}.py`, models/migrations | root Palimpsest boundary/data, `docs/palimpsest.md`, `docs/squashfs-layer-pipeline.md`, layer tests |
 | 관리자 전체 볼륨 목록·상태·삭제 | `frontend/src/routes/admin/volumes/`, `frontend/src/lib/components/admin/volumes/`, `backend/app/api/identity/admin.py` | root Code map/Runtime flows, `DESIGN.md` Resource selection, `docs/api/admin.md`, admin volume backend/frontend tests |
 | 관리자 공지 작성·사용자 알림 표시 | `frontend/src/routes/admin/announcements/`, `frontend/src/routes/dashboard/notifications/`, `frontend/src/routes/+layout.svelte`, `frontend/src/lib/stores/adminAnnouncementsController.svelte.ts` | root Runtime flows, `DESIGN.md` Forms, `docs/api/admin.md`, `docs/api/system-services.md`, frontend picker/notification tests |
-| config, dependency, Docker/Kolla/Helm/CI | `backend/pyproject.toml`, `package.json`, `Dockerfile`, `docker-compose.yml`, `deploy/`, `.github/workflows/` | root Overview/Deployment/Verification, exact config/deploy docs, guard stamp |
+| config, dependency, Docker/Kolla/Helm/CI | `backend/pyproject.toml`, `package.json`, `Dockerfile`, `docker-compose.yml`, `deploy/`, `.github/workflows/`, `scripts/ci/` | root Overview/Deployment/Verification(CI와 이미지 발행 포함), exact config/deploy docs, [`scripts/github-actions-contract.test.js`](scripts/github-actions-contract.test.js)·`scripts/ci/*.test.js` 계약, CLAUDE.md `CI 파이프라인 성능 규정`의 전후 실측, guard stamp |
 | bugfix/refactor with no structure impact | affected source and tests | root Maintenance summary에 no-structure-impact 이유를 남기고 stale digest를 새로 검토 |
 
 완료 순서는 source를 읽고 영향받는 상세 문서와 root `ARCHITECTURE.md`를 같은 변경에서 갱신한 뒤 guard를 stamp하고, 변경된 문서와 source를 stage하여 `--staged`를 실행하는 것이다. 계획 문서나 과거 roadmap만으로 현재 구현 상태를 바꾸지 않는다.
@@ -352,7 +394,7 @@ Architecture maintenance는 다음 규칙을 따른다.
 5. 문서와 의도한 source를 함께 stage한 뒤 `python3 scripts/check_architecture.py --staged`를 실행한다. 이 검사는 자동 stage/commit하지 않는다.
 6. source와 문서가 충돌하면 source가 정본이다. 현재 구현과 계획/roadmap을 구분해 바로 수정한다.
 
-로컬 hook은 `.pre-commit-config.yaml`의 `architecture` hook이며 `python3 scripts/check_architecture.py --staged`를 실행한다. CI의 `version-check` job도 checkout 직후 tag-only version 처리보다 먼저 같은 working check를 실행한다. hook 설치 여부를 전제로 하지 말고 직접 guard 명령을 항상 사용할 수 있어야 한다.
+로컬 hook은 `.pre-commit-config.yaml`의 `architecture` hook이며 `python3 scripts/check_architecture.py --staged`를 실행한다. CI의 `version-check` job도 checkout 직후 tag-only version 처리보다 먼저 같은 working check를 실행한다. 이 job은 테스트 잡과 병렬로 실행되며, 실패는 `docker-build.yml` `changes`의 `needs: [test, test-pr]`를 통해 이미지 빌드를 막는다. hook 설치 여부를 전제로 하지 말고 직접 guard 명령을 항상 사용할 수 있어야 한다.
 
 최신 검토는 누적 changelog 대신 아래 단일 marker block으로 표현한다. placeholder digest는 parent가 모든 의도된 변경 후 guard stamp로 교체한다.
 
@@ -360,9 +402,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "a44a8517a70ac439fdfc7dd857e8e105545203f825db5f2768b7e1c87c691f54",
-  "reviewed_at": "2026-09-23T07:40:04Z",
-  "summary": "Prompt-cache pricing admin: optional independent cache read / 5m write / 1h write prices in ChatConfiguration (changed-only PATCH, 0E-10 normalized, older-Lumen rows without cache keys shown as unsupported with inputs hidden), usage.updated parser accepts the six Lumen cache and advisor-cache kinds so the frontend deploys before Lumen, byte-exact BFF contract test, docs and OpenSpec archive; reviewed source in an isolated index that excludes the concurrent live-provider-model-onboarding work."
+  "source_sha256": "7b6a9dd78d0ce3d91c13c1fcd3d9680a21bd75483fffed7276a436003332ff84",
+  "reviewed_at": "2026-09-23T19:57:24Z",
+  "summary": "CI critical-path overhaul, re-reviewed before commit against the ci-perf worktree source: test.yml test jobs no longer need version-check, frontend runs a 2-way vitest shard matrix called directly and verified by scripts/ci/verify-vitest-shard.js (run-with-file-log node test on shard 1 only), MariaDB/PostgreSQL/Redis health checks match the compose test profile (2s/5s/20), backend unit runs pytest-xdist -n 4 --dist worksteal behind an autouse non-loopback network guard with the Keystone revoke and Prometheus usage tests mocked; docker-build.yml adds the same-repo dev PR tree dedup (pr-dedup) feeding a separate test-pr caller, changes needs [test, test-pr] and selects targets with scripts/ci/detect-build-targets.js (push event.before basis plus published :dev org.opencontainers.image.revision basis, never tip-only HEAD^1), labels every build with the revision, gates changes/build/build-cloud-shell/manifest with explicit !cancelled() result checks, publishes per-target fail-fast:false manifests only from digests verified by scripts/ci/image-revision.js, and skips stale re-run retags; contracts pinned in scripts/github-actions-contract.test.js and scripts/test-target.test.js; docs in ARCHITECTURE.md, backend/tests/TESTING.md, docs/testing.md and AGENTS.md (CLAUDE.md) CI rules. The only dependency change is the pytest-xdist backend dev extra (uv.lock adds pytest-xdist 3.8.0 and execnet 2.1.2); no application runtime, API, schema, afterglow.conf or compose/k8s deployment manifest change."
 }
 ```
 <!-- architecture-review:end -->

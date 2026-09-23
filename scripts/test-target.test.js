@@ -332,12 +332,12 @@ test("package.json contains exact command contract scripts and no obsolete scrip
 	const pkg = JSON.parse(fs.readFileSync(path.join(rootDir, "package.json"), "utf-8"));
 	const scripts = pkg.scripts;
 
-	assert.equal(scripts["test:unit:backend"], "cd backend && AFTERGLOW_ALLOW_INSECURE=1 uv run python -m pytest tests/ -v --ignore=tests/integration --ignore=tests/contracts -m \"not db and not contract\"");
+	assert.equal(scripts["test:unit:backend"], "cd backend && AFTERGLOW_ALLOW_INSECURE=1 uv run python -m pytest tests/ -v --ignore=tests/integration --ignore=tests/contracts -m \"not db and not contract\" -n 4 --dist worksteal");
 	assert.equal(scripts["test:unit:frontend"], "cd frontend && npm test");
 	assert.equal(scripts["test:unit"], "npm run test:target:js && npm run test:unit:backend && npm run test:unit:frontend");
 	assert.equal(scripts["test:contract"], "node scripts/test-target.js contracts");
 	assert.equal(scripts["test:functional"], "node scripts/test-db.js");
-	assert.equal(scripts["test:orchestration"], "node --test scripts/test-target.test.js scripts/test-db.test.js scripts/github-actions-contract.test.js && node scripts/test-target.js --validate");
+	assert.equal(scripts["test:orchestration"], "node --test scripts/test-target.test.js scripts/test-db.test.js scripts/github-actions-contract.test.js scripts/ci/detect-build-targets.test.js scripts/ci/image-revision.test.js scripts/ci/verify-vitest-shard.test.js && node scripts/test-target.js --validate");
 	assert.equal(scripts["test:kolla:contract"], "node --test scripts/kolla-contract.test.js");
 	assert.equal(scripts["test:target:js"], "npm run test:orchestration && npm run test:kolla:contract");
 	assert.equal(scripts["test:live"], "cd backend && AFTERGLOW_ALLOW_INSECURE=1 uv run python -m pytest tests/integration -v");
@@ -401,7 +401,10 @@ test("Cloud Shell image has isolated smoke coverage and multi-architecture publi
 	const testWorkflow = fs.readFileSync(path.join(rootDir, ".github", "workflows", "test.yml"), "utf-8");
 
 	assert.match(workflow, /options: \[all, afterglow, backend, frontend, worker, cloud-shell\]/);
-	assert.match(workflow, /\^\(cloud-shell\/\|Dockerfile\$\|\\\.dockerignore\$\)/);
+	// 경로 규칙은 단위 테스트된 target 감지 스크립트가 소유하고 workflow 는 그 스크립트를 호출한다.
+	const detectScript = fs.readFileSync(path.join(rootDir, "scripts", "ci", "detect-build-targets.js"), "utf-8");
+	assert.match(detectScript, /\^\(cloud-shell\/\|Dockerfile\$\|\\\.dockerignore\$\)/);
+	assert.match(workflow, /run: node scripts\/ci\/detect-build-targets\.js/);
 	assert.match(workflow, /^  build-cloud-shell:\s*$/m);
 	assert.match(workflow, /name: Build Cloud Shell \(amd64 \+ arm64\)/);
 	assert.match(workflow, /target: cloud-shell\s+platforms: linux\/amd64,linux\/arm64/);
@@ -418,9 +421,11 @@ test("pull requests cannot schedule the self-hosted image build matrix", () => {
 
 	assert.ok(buildStart >= 0 && manifestStart > buildStart, "docker workflow build job must exist");
 	assert.match(buildJob, /runs-on: \$\{\{ matrix\.runner \}\}/);
+	// pr-dedup 이 push 에서 skipped 이므로 build 조건은 !cancelled() 와 changes 결과를 명시한다.
+	// PR 제외(is_pr)와 빈 target 제외 조건은 그대로 유지해야 한다.
 	assert.match(
 		buildJob,
-		/if: needs\.changes\.outputs\.is_pr != 'true' && needs\.changes\.outputs\.standard_targets != '\[\]'/
+		/if: \$\{\{ !cancelled\(\) && needs\.changes\.result == 'success' && needs\.changes\.outputs\.is_pr != 'true' && needs\.changes\.outputs\.standard_targets != '\[\]' \}\}/
 	);
 });
 

@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { buildGraph } from '../topologyGraph';
 import { attachableSubnets, canStartLink, linkTargets, resolveLink } from '../topologyLink';

@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { beforeEach, describe, expect, it } from 'vitest';
 import { get } from 'svelte/store';
 import type { PublicSiteConfig } from '$lib/types/siteConfig';
