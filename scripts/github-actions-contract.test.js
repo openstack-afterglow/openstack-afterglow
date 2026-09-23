@@ -39,6 +39,20 @@ function stepBlock(job, name) {
 	return next < 0 ? rest : rest.slice(0, next + 1)
 }
 
+/** step 의 `run: |` literal block(키 줄 + 키보다 깊게 들여쓴 줄). 뒤따르는 주석·다음 job 은 포함하지 않는다. */
+function runBlock(step) {
+	const lines = step.split("\n")
+	const start = lines.findIndex((line) => /^\s+run: \|\s*$/.test(line))
+	assert.ok(start >= 0, "step must have a run: | block")
+	const keyIndent = lines[start].search(/\S/)
+	const body = []
+	for (const line of lines.slice(start + 1)) {
+		if (line.trim() !== "" && line.search(/\S/) <= keyIndent) break
+		body.push(line)
+	}
+	return [lines[start].trim(), ...body].join("\n").trimEnd()
+}
+
 /** job 블록의 `    if: ...` 한 줄 값. */
 function jobIf(job) {
 	const match = /^    if: (.+)$/m.exec(job)
@@ -78,13 +92,34 @@ test("functional tests always run and live tests wait on version-check and every
 	)
 })
 
+/** step 이 조건 없이 실행되고 실패가 잡을 실패시키는지(`if:`·`continue-on-error:`·`|| true` 없음). */
+function assertGatingStep(step, label) {
+	assert.doesNotMatch(step, /^\s+if:/m, `${label} must not be conditional`)
+	assert.doesNotMatch(step, /^\s+continue-on-error:/m, `${label} must fail its job`)
+	assert.doesNotMatch(step, /\|\|\s*(true\b|:(?=\s|$))/m, `${label} must not swallow its exit code`)
+}
+
 test("frontend runs as a verified 2-way vitest shard matrix", () => {
 	const job = jobBlock(testWorkflow, "test-frontend")
 	assert.match(job, /name: Frontend \(unit tests \$\{\{ matrix\.shard \}\}\/2\)/)
 	assert.match(job, /strategy:\s+fail-fast: false\s+matrix:\s+shard: \[1, 2\]/)
+	// 잡 자체도 조건 없이 실행되고 실패를 드러낸다.
+	assert.doesNotMatch(job, /^    if:/m, "test-frontend must not be conditional")
+	assert.doesNotMatch(job, /^    continue-on-error:/m, "test-frontend must fail the workflow")
+
+	// vitest bin(`#!/usr/bin/env node`)과 검증기는 setup-node 의 Node 22 로 실행한다. Node 25+ 의 내장
+	// Web Storage 가 jsdom 테스트와 충돌하므로 runner image 의 기본 Node 에 맡기지 않는다.
+	const setupNode = job.match(/- uses: actions\/setup-node@v4\n\s+with:\n\s+node-version: "22"\n/g) || []
+	assert.equal(setupNode.length, 1, "test-frontend pins Node 22 once")
+	assert.equal((job.match(/actions\/setup-node@/g) || []).length, 1)
+	assert.ok(job.indexOf("actions/setup-node@v4") < job.indexOf("Test (vitest shard"), "Node is set up before vitest runs")
+	const versionCheckNode = /- uses: actions\/setup-node@v4\n\s+with:\n\s+node-version: "(\d+)"/.exec(jobBlock(testWorkflow, "version-check"))
+	assert.ok(versionCheckNode, "version-check sets up Node")
+	assert.equal(versionCheckNode[1], "22", "frontend shards use the same Node major as version-check")
 
 	// 래퍼(npm run/npm test) 뒤의 `-- --shard` 는 인자가 전달되지 않으므로 vitest 를 직접 호출한다.
 	const run = stepBlock(job, "Test (vitest shard")
+	assertGatingStep(run, "vitest shard step")
 	assert.match(run, /\.\/node_modules\/\.bin\/vitest run/)
 	assert.match(run, /--shard=\$\{\{ matrix\.shard \}\}\/2/)
 	assert.match(run, /--reporter=json/)
@@ -94,6 +129,7 @@ test("frontend runs as a verified 2-way vitest shard matrix", () => {
 	assert.doesNotMatch(job, /npm run test:unit:frontend|run: npm test/)
 
 	const verify = stepBlock(job, "Verify shard file count")
+	assertGatingStep(verify, "shard verifier step")
 	assert.match(verify, /node \.\.\/scripts\/ci\/verify-vitest-shard\.js/)
 	assert.ok(verify.includes(`--report ${report[1]}`), "verifier must read the report vitest wrote")
 	assert.match(verify, /--shard \$\{\{ matrix\.shard \}\}\/2/)
@@ -135,25 +171,41 @@ test("PR dedup skips only same-repo dev PRs whose merge tree equals the head tre
 	const job = jobBlock(dockerWorkflow, "pr-dedup")
 	assert.match(job, /^    if: github\.event_name == 'pull_request'\s*$/m)
 	assert.match(job, /runs-on: ubuntu-latest/)
-	assert.match(job, /permissions:\s+contents: read\s+outputs:/)
-	assert.match(job, /HEAD_REPO: \$\{\{ github\.event\.pull_request\.head\.repo\.full_name \}\}/)
-	assert.match(job, /BASE_REPO: \$\{\{ github\.repository \}\}/)
-	assert.match(job, /HEAD_REF: \$\{\{ github\.head_ref \}\}/)
-	assert.match(job, /HEAD_SHA: \$\{\{ github\.event\.pull_request\.head\.sha \}\}/)
+	assert.match(job, /^    permissions:\n      contents: read\n    outputs:\n      skip: \$\{\{ steps\.dedup\.outputs\.skip \}\}\n/m)
+	// 판단 step 은 항상 성공하므로 job-level continue-on-error 는 인프라 실패만 가린다. 실패는 red 로 드러낸다.
+	assert.doesNotMatch(job, /^    continue-on-error:/m, "pr-dedup must not hide its own failure")
 
-	const script = job.slice(job.indexOf("run: |"))
-	// 공격자가 정하는 브랜치 이름은 env 로만 전달한다(쉘 보간 금지).
-	assert.doesNotMatch(script, /\$\{\{/)
-	assert.match(script, /"\$HEAD_REPO" != "\$BASE_REPO"/)
-	assert.match(script, /"\$HEAD_REF" != "dev"/)
-	assert.match(script, /git fetch --no-tags --depth=1 origin "\$HEAD_SHA"/)
-	assert.match(script, /git rev-parse 'HEAD\^\{tree\}'/)
-	assert.match(script, /git rev-parse "\$\{HEAD_SHA\}\^\{tree\}"/)
-	assert.match(script, /"\$merge_tree" = "\$head_tree"/)
-	assert.match(script, /^\s+skip=false\s*$/m)
-	assert.equal(script.match(/>> "\$GITHUB_OUTPUT"/g).length, 1, "skip is written exactly once")
+	// checkout 실패는 다음 step 의 fallback 이 skip=false 로 처리한다.
+	const checkout = stepBlock(job, "Checkout PR merge commit")
+	assert.match(checkout, /continue-on-error: true/)
+	assert.match(checkout, /persist-credentials: false/)
 
-	assert.match(job, /^    continue-on-error: true\s*$/m)
+	const dedup = stepBlock(job, "Compare merge tree with head tree")
+	assert.match(dedup, /id: dedup/)
+	assert.match(dedup, /HEAD_REPO: \$\{\{ github\.event\.pull_request\.head\.repo\.full_name \}\}/)
+	assert.match(dedup, /BASE_REPO: \$\{\{ github\.repository \}\}/)
+	assert.match(dedup, /HEAD_REF: \$\{\{ github\.head_ref \}\}/)
+	assert.match(dedup, /HEAD_SHA: \$\{\{ github\.event\.pull_request\.head\.sha \}\}/)
+	assert.match(dedup, /PR_AUTHOR: \$\{\{ github\.event\.pull_request\.user\.login \}\}/)
+
+	// 규칙은 scripts/ci/pr-dedup.js(단위·실제 git 테스트)가 소유한다. step 은 스크립트를 부르고, 스크립트를 실행하지
+	// 못하면 skip=false 를 쓴다. 공격자가 정하는 값은 env 로만 전달한다(쉘 보간 금지).
+	const run = runBlock(dedup)
+	assert.doesNotMatch(run, /\$\{\{/)
+	assert.equal(
+		run,
+		[
+			"run: |",
+			"          node scripts/ci/pr-dedup.js || {",
+			'            echo "::warning title=PR dedup::pr-dedup.js did not complete; running Layered Tests"',
+			'            echo "skip=false" >> "$GITHUB_OUTPUT"',
+			"          }",
+		].join("\n"),
+	)
+	// workflow 어디에도 skip=true 를 쓰는 경로가 없다(인라인 판단으로 되돌리며 기본값을 뒤집는 회귀 방지).
+	assert.doesNotMatch(dockerWorkflow, /skip=true/)
+	assert.equal((job.match(/GITHUB_OUTPUT/g) || []).length, 1, "the workflow writes only the skip=false fallback")
+	assert.ok(fs.existsSync(path.join(rootDir, "scripts", "ci", "pr-dedup.js")))
 
 	// push/dispatch caller 에는 skipped 조상이 없어야 한다(암묵적 success() 가 내부 잡을 건너뛰지 않도록).
 	const testJob = jobBlock(dockerWorkflow, "test")
@@ -192,7 +244,9 @@ test("image target detection diffs event.before on push, never only the tip comm
 	assert.match(login, /if: github\.event_name == 'push'/)
 	assert.match(job, /REGISTRY_LOGIN_OUTCOME: \$\{\{ steps\.registry-login\.outcome \}\}/)
 	assert.match(job, /GH_TOKEN: \$\{\{ github\.event_name == 'push' && github\.token \|\| '' \}\}/)
-	assert.match(job, /packages: read/)
+	// 최소 권한: PR diff 를 계산하지 않으므로 pull-requests 권한이 없다. packages: read 는 push 의 발행 revision 조회용이다.
+	assert.match(job, /^    permissions:\n      contents: read\n      packages: read\n    outputs:\n/m)
+	assert.doesNotMatch(job, /pull-requests:/)
 
 	const detect = fs.readFileSync(path.join(rootDir, "scripts", "ci", "detect-build-targets.js"), "utf8")
 	assert.match(detect, /env\.EVENT_BEFORE/)
@@ -200,6 +254,49 @@ test("image target detection diffs event.before on push, never only the tip comm
 	assert.match(detect, /"diff", "--name-only", before, head/)
 	assert.ok(!detect.includes("HEAD^1"), "the detector must not keep a tip-only first-parent diff")
 	assert.match(detect, /env\.REGISTRY_LOGIN_OUTCOME === "failure"/)
+})
+
+const workflowDir = path.join(rootDir, ".github", "workflows")
+const allWorkflows = fs
+	.readdirSync(workflowDir)
+	.filter((name) => /\.ya?ml$/.test(name))
+	.map((name) => [name, fs.readFileSync(path.join(workflowDir, name), "utf8")])
+
+test("no workflow or CI script decides changes from the tip commit alone", () => {
+	// CI 규정 8번: push 는 github.event.before..github.sha 로 비교한다. 마지막 커밋만 보는 비교는 금지한다.
+	const tipOnly = /HEAD\^1?(?=[\s.'"]|$)|HEAD~1\b/m
+	assert.ok(allWorkflows.length >= 7)
+	for (const [name, text] of allWorkflows) assert.doesNotMatch(text, tipOnly, name)
+	const ciDir = path.join(rootDir, "scripts", "ci")
+	for (const name of fs.readdirSync(ciDir).filter((file) => file.endsWith(".js") && !file.endsWith(".test.js"))) {
+		assert.doesNotMatch(fs.readFileSync(path.join(ciDir, name), "utf8"), tipOnly, `scripts/ci/${name}`)
+	}
+})
+
+test("the Helm chart publish decision diffs event.before on main pushes and fails safe", () => {
+	const helmWorkflow = fs.readFileSync(path.join(workflowDir, "helm-release.yml"), "utf8")
+	const job = jobBlock(helmWorkflow, "check-changes")
+	assert.doesNotMatch(job, /fetch-depth:/, "no tip-only comparison needs a second commit")
+	assert.match(job, /^    permissions:\n      contents: read\n    outputs:\n      should_publish: \$\{\{ steps\.decide\.outputs\.publish \}\}\n/m)
+	const decide = stepBlock(job, "Decide whether to publish")
+	assert.match(decide, /id: decide/)
+	assert.match(decide, /EVENT_BEFORE: \$\{\{ github\.event\.before \}\}/)
+	assert.match(decide, /EVENT_FORCED: \$\{\{ github\.event\.forced \}\}/)
+	assert.match(decide, /run: node scripts\/ci\/helm-publish-decision\.js\n/)
+	assertGatingStep(decide, "helm publish decision")
+	assert.match(jobBlock(helmWorkflow, "helm-publish"), /^    if: needs\.check-changes\.outputs\.should_publish == 'true'\s*$/m)
+
+	// event 기준과 fail-safe 는 이미지 target 감지와 같은 구현을 쓴다.
+	const helper = fs.readFileSync(path.join(rootDir, "scripts", "ci", "helm-publish-decision.js"), "utf8")
+	assert.match(helper, /const \{ collectEventChanges \} = require\("\.\/detect-build-targets\.js"\)/)
+	assert.match(helper, /const CHART_PATH = \/\^helm\\\/afterglow\\\/\//)
+})
+
+test("every scripts/ci test runs in test:orchestration", () => {
+	const orchestration = JSON.parse(fs.readFileSync(path.join(rootDir, "package.json"), "utf8")).scripts["test:orchestration"]
+	const ciTests = fs.readdirSync(path.join(rootDir, "scripts", "ci")).filter((name) => name.endsWith(".test.js"))
+	assert.ok(ciTests.length >= 5)
+	for (const name of ciTests) assert.ok(orchestration.includes(`scripts/ci/${name}`), `test:orchestration must run scripts/ci/${name}`)
 })
 
 test("every image build records its source revision", () => {
@@ -245,7 +342,27 @@ test("manifests publish per target from verified digests behind a stale re-run g
 	)
 	assert.ok(create.indexOf("image-revision.js guard") < create.indexOf("imagetools create"))
 	assert.doesNotMatch(create, /imagetools create[^\n]*:\$\{BASE\}-amd64/)
-	assert.match(create, /3\) exit 0 ;;/)
+	// guard exit code 는 정확히 세 갈래다: 0 발행, 3 stale 건너뜀, 그 밖(예: 인자 누락 exit 2)은 leg 실패.
+	// `*) ;;` 나 추가 arm 으로 오류를 삼키면 guard 가 조용히 꺼진 채 발행한다.
+	const guardCase = (skipArm) =>
+		new RegExp(
+			String.raw`image-revision\.js guard [^\n]*\n\s+rc=\$\?\n\s+set -e\n\s+case "\$rc" in\n\s+0\) ;;\n\s+3\) ` +
+				skipArm +
+				String.raw` ;;\n\s+\*\) echo "::error::stale re-run guard failed with exit \$\{rc\}"; exit "\$rc" ;;\n\s+esac\n`,
+		)
+	assert.match(create, guardCase("exit 0"))
+	assert.match(create, /set \+e\n\s+node scripts\/ci\/image-revision\.js guard /)
+	const errorArms = dockerWorkflow.match(/^\s+\*\) echo "::error::stale re-run guard failed with exit \$\{rc\}"; exit "\$rc" ;;$/gm) || []
+	assert.equal(errorArms.length, 2, "both guard call sites fail on unexpected exit codes")
+	assert.equal((dockerWorkflow.match(/case "\$rc" in/g) || []).length, 2)
+	for (const [name, step] of [
+		["verify", verify],
+		["create", create],
+		["final tags", finalTags],
+	]) {
+		assertGatingStep(step, `manifest ${name} step`)
+	}
+	assert.doesNotMatch(job, /^    continue-on-error:/m)
 
 	const cloudShell = jobBlock(dockerWorkflow, "build-cloud-shell")
 	const guard = stepBlock(cloudShell, "Stale re-run guard")
@@ -259,6 +376,11 @@ test("manifests publish per target from verified digests behind a stale re-run g
 	const guardCalls = dockerWorkflow.match(/image-revision\.js guard [^\n]*/g) || []
 	assert.equal(guardCalls.length, 2)
 	for (const call of guardCalls) assert.match(call, / "\$\{TRACKED_REF\}"$/, call)
+	assert.match(guard, guardCase("publish=false"))
+	assert.match(guard, /^\s+publish=true\n\s+if \[\[ "\$\{EFFECTIVE_REF\}" != refs\/tags\/v\* \]\]; then\n/m)
+	assert.match(guard, /echo "publish=\$\{publish\}" >> "\$GITHUB_OUTPUT"/)
+	assertGatingStep(guard, "Cloud Shell stale re-run guard")
+	assert.doesNotMatch(cloudShell, /^    continue-on-error:/m)
 	assert.match(stepBlock(cloudShell, "Build and push Cloud Shell"), /if: steps\.guard\.outputs\.publish == 'true'/)
 	assert.ok(cloudShell.indexOf("Stale re-run guard") < cloudShell.indexOf("Build and push Cloud Shell"))
 })

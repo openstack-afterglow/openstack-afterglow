@@ -197,6 +197,9 @@ jobs:
   # ─── frontend 2-way 샤딩 ───────────────────────────────────────────────
   # vitest 를 직접 호출한다. `npm run test:unit:frontend -- --shard=N/2` 는 내부 npm 이 인자를
   # 삼켜 각 샤드가 전체 스위트를 조용히 실행하므로, 샤드별 실행 파일 수를 JSON 보고서로 검증한다.
+  # vitest bin(`#!/usr/bin/env node`)과 검증기는 runner 기본 Node 가 아니라 setup-node 의 Node 22 로 실행한다.
+  # Node 25 부터 기본 활성화된 내장 Web Storage(localStorage)가 jsdom 의 것과 충돌해 jsdom 테스트가 깨질 수 있으므로
+  # runner image 의 Node 갱신에 흔들리지 않게 version-check 와 같은 major 22 로 고정한다.
   test-frontend:
     name: Frontend (unit tests ${{ matrix.shard }}/2)
     runs-on: ubuntu-latest
@@ -206,6 +209,10 @@ jobs:
         shard: [1, 2]
     steps:
       - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
 
       - uses: oven-sh/setup-bun@v2
         with:

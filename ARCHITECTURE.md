@@ -278,32 +278,40 @@ Cloud Shell은 일반 Afterglow image matrix의 예외다. 같은 workflow의 �
 
 - **게이트 병렬성**: `version-check`(architecture freshness, `test:orchestration`, version sync)는 어떤 테스트 잡의 `needs:`도 아니다. `test-backend`, `test-cloud-shell`, `test-contract`, `test-functional`, `test-frontend`, `detect-live`는 t=0에 병렬로 시작한다. 실제 자격 증명을 쓰는 마지막 opt-in 잡 `test-live`만 `version-check`와 모든 테스트 계층을 기다린다. 이미지 빌드는 `changes`가 reusable workflow 전체(`needs: [test, test-pr]`)를 기다리므로 `version-check` 실패도 여전히 빌드를 막는다. push/dispatch는 needs 없는 `test` caller가, PR은 `pr-dedup` 뒤의 `test-pr` caller가 같은 `test.yml`을 호출한다.
 - **테스트 잡**:
-  - `test-frontend`는 `shard: [1, 2]` matrix(`fail-fast: false`)이며 `vitest run --shard=N/2`를 직접 호출한다. [`scripts/ci/verify-vitest-shard.js`](scripts/ci/verify-vitest-shard.js)가 JSON 보고서로 검사한다. 실행 파일 수가 Vitest 4 분할(`floor(n/count)`, 앞쪽 `n % count`개 shard는 1개 추가. 247개면 124/123)이 그 shard에 배정하는 수와 다르면, 또는 실패 테스트가 있으면 실패한다. 전체 스위트는 include `src/**/*.{test,spec}.{js,ts}`로 세며 `vitest.config.ts`에 `exclude`/`projects`가 없다는 것을 계약 테스트가 고정한다. `run-with-file-log` node test는 shard 1에서만 실행한다. Vitest는 `pool: 'threads'`이고 DOM이 필요 없는 57개 파일은 `// @vitest-environment node`로 실행한다.
+  - `test-frontend`는 `shard: [1, 2]` matrix(`fail-fast: false`)이며 `vitest run --shard=N/2`를 직접 호출한다. [`scripts/ci/verify-vitest-shard.js`](scripts/ci/verify-vitest-shard.js)가 JSON 보고서로 검사한다. 실행 파일 수가 Vitest 4 분할(`floor(n/count)`, 앞쪽 `n % count`개 shard는 1개 추가. 247개면 124/123)이 그 shard에 배정하는 수와 다르면, 또는 실패 테스트가 있으면 실패한다. 전체 스위트는 include `src/**/*.{test,spec}.{js,ts}`로 세며 `vitest.config.ts`에 `exclude`/`projects`가 없다는 것을 계약 테스트가 고정한다. `run-with-file-log` node test는 shard 1에서만 실행한다. 두 shard는 `actions/setup-node@v4`로 `version-check`와 같은 Node 22를 쓴다. vitest bin(`#!/usr/bin/env node`)이 runner image의 기본 Node를 따라가지 않게 하려는 것이다. Node 25부터 기본 활성화된 내장 Web Storage(`localStorage`)가 jsdom 테스트와 충돌할 수 있다. 계약 테스트는 shard 단계와 검증 단계에 `if:`·`continue-on-error:`·`|| true`가 없다는 것도 고정한다. Vitest는 `pool: 'threads'`이고 DOM이 필요 없는 57개 파일은 `// @vitest-environment node`로 실행한다.
   - `test-backend`의 `test:unit:backend`는 `pytest-xdist -n 4 --dist worksteal`이다. 4 vCPU runner에 맞춘 고정값이며 `-n auto`는 쓰지 않는다. [`backend/tests/conftest.py`](backend/tests/conftest.py)의 autouse guard가 unit/contract 계층의 non-loopback connect를 차단한다(`tests/integration/`과 `db` marker 제외).
   - `test-functional`의 MariaDB/PostgreSQL/Redis service health check는 `docker-compose.dev.yml` `test` profile과 같은 2초 interval, 5초 timeout, 20 retries이다. 이 잡은 경로와 무관하게 항상 실행한다.
-- **PR 중복 제거**: PR 전용 `pr-dedup` 잡은 세 조건을 모두 만족할 때만 `skip=true`를 낸다.
+- **PR 중복 제거**: PR 전용 `pr-dedup` 잡의 판단은 [`scripts/ci/pr-dedup.js`](scripts/ci/pr-dedup.js)가 소유한다. fake exec 단위 테스트와 scratch git 저장소에서 CLI를 실행하는 테스트가 있다. 다음 조건을 모두 만족할 때만 `skip=true`를 낸다.
   - head repository가 이 저장소이다.
+  - PR 작성자가 dependabot이 아니다.
   - `head_ref`가 `dev`이다.
-  - PR merge commit tree가 head commit tree와 같다.
+  - head SHA가 40자리 소문자 hex이다.
+  - PR merge commit tree가 head commit tree와 같고, 둘 다 유효한 tree hash이다.
 
-  오류가 나면 `skip=false`이다. 그 결과 fork·dependabot·diverged PR과 push/dispatch는 항상 테스트한다. push 경로의 `test` caller는 `needs`가 없다. skipped 조상이 암묵적 `success()`를 통해 reusable workflow 내부 잡까지 건너뛰게 할 수 있기 때문이다. `test-pr`의 `if`는 `github.event_name == 'pull_request' && !cancelled() && needs.pr-dedup.outputs.skip != 'true'`이다. `!cancelled()` 같은 status 함수가 있으면 암묵적 `success()`가 붙지 않고, push/dispatch에서 skipped인 `pr-dedup`의 `outputs.skip`은 빈 문자열이므로 event 조건 없이는 `test-pr`이 push마다 실행된다. 따라서 push/dispatch에서는 `test-pr`, PR에서는 `test`가 skipped이다. `changes`는 각 caller 결과를 자기 이벤트에만 연결한다(push/dispatch는 `test`, PR은 `test-pr`의 `success`). 두 결과를 `||`로 합치면 한 caller의 통과가 다른 caller의 실패를 가린다. `build`, `build-cloud-shell`, `manifest`는 `!cancelled()`와 앞 잡 결과를 명시한다. `pr-dedup`은 `continue-on-error`이며, 실패하면 skip 출력이 비어 PR 테스트가 실행된다.
+  그 밖의 경우와 fetch·rev-parse 오류는 `skip=false`와 `::warning::`이다. 스크립트는 항상 exit 0이고 `skip`을 마지막에 한 번만 쓴다. checkout 실패 등으로 스크립트를 실행하지 못하면 step의 fallback이 `skip=false`를 쓴다. 공격자가 정하는 head ref와 head repo는 env로만 전달한다. 그 결과 fork·dependabot·diverged PR과 push/dispatch는 항상 테스트한다. `skip=true`의 `::notice::`에는 head commit 링크가 있다. skip은 dev push 실행이 같은 입력을 테스트한다는 뜻이지 그 실행이 통과했다는 뜻이 아니다. push 경로의 `test` caller는 `needs`가 없다. skipped 조상이 암묵적 `success()`를 통해 reusable workflow 내부 잡까지 건너뛰게 할 수 있기 때문이다. `test-pr`의 `if`는 `github.event_name == 'pull_request' && !cancelled() && needs.pr-dedup.outputs.skip != 'true'`이다. `!cancelled()` 같은 status 함수가 있으면 암묵적 `success()`가 붙지 않고, push/dispatch에서 skipped인 `pr-dedup`의 `outputs.skip`은 빈 문자열이므로 event 조건 없이는 `test-pr`이 push마다 실행된다. 따라서 push/dispatch에서는 `test-pr`, PR에서는 `test`가 skipped이다. `changes`는 각 caller 결과를 자기 이벤트에만 연결한다(push/dispatch는 `test`, PR은 `test-pr`의 `success`). 두 결과를 `||`로 합치면 한 caller의 통과가 다른 caller의 실패를 가린다. `build`, `build-cloud-shell`, `manifest`는 `!cancelled()`와 앞 잡 결과를 명시한다. `pr-dedup`에는 job-level `continue-on-error`가 없다. 판단 step은 오류를 `skip=false`로 바꿔 항상 성공하므로, 이 잡이 실패하는 것은 인프라 오류뿐이다. 그때 실행은 red가 되고, `test-pr`은 `!cancelled()`와 빈 `skip` 출력 때문에 여전히 예약된다. 선행 잡이 실패한 caller 아래에서 GitHub이 reusable workflow 내부 잡을 실제로 실행하는지는 실제 실행으로 확인하지 않았으며, 병합 후 확인 항목으로 남아 있다.
 - **이미지 target 감지**: [`scripts/ci/detect-build-targets.js`](scripts/ci/detect-build-targets.js)가 규칙을 소유한다.
-  - dev push는 `github.event.before..HEAD`를 비교한다. all-zero before, forced push, fetch/diff 실패는 전체 빌드이다.
+  - dev push는 `github.event.before..HEAD`를 비교한다. all-zero before, forced push, fetch/diff 실패는 전체 빌드이다. 잘못된 before와 fetch/diff 실패는 예상하지 못한 경우이므로 `::warning::`도 남긴다. 예를 들어 익명 fetch가 막히면 모든 dev push가 전체 빌드가 되는데, 이 비용 변화가 조용히 지나가지 않게 하려는 것이다. 새 ref와 forced push는 예상된 경우라 경고하지 않는다.
   - dev push에서는 target별로 발행된 `:dev` 이미지의 `org.opencontainers.image.revision`도 읽는다. 그 revision이 HEAD의 조상(compare `ahead`/`identical`)이면 `git diff <rev> HEAD`를 더해 실패한 이전 실행의 누락 target을 다시 빌드한다. 이미지가 없거나(`not found`/`manifest unknown`) label이 없는 bootstrap 경우와 `behind`이면 event 기준만 쓴다. 레지스트리 인증·전송·rate limit·형식 오류, `diverged`, 이후 compare/fetch/diff 오류는 그 target을 빌드하고 `::warning::`을 남긴다. registry login 단계가 실패해도 경고한다. 조회 오류를 부재로 취급하면 carry-over 복구가 조용히 꺼지기 때문이다.
   - 경로 규칙은 afterglow(`backend/`, `Dockerfile`, `.dockerignore`, `services/afterglow-crypto/`), frontend, cloud-shell이며 `docker-build.yml` 변경은 전체 빌드이다. backend/worker가 빌드되면 frontend도 함께 빌드한다.
-  - `main`, `v*` 태그, PR은 전체이고 dispatch는 입력 매핑이다. PR은 빌드하지 않으므로 diff를 계산하지 않는다. `changes` checkout은 `persist-credentials: false`여서 PR 코드가 `.git/config`의 토큰을 읽을 수 없다. public 저장소라 before/revision fetch는 익명으로 동작하며 실패하면 fail-safe로 더 빌드한다.
+  - `main`, `v*` 태그, PR은 전체이고 dispatch는 입력 매핑이다. PR은 빌드하지 않으므로 diff를 계산하지 않는다. `changes` checkout은 `persist-credentials: false`여서 PR 코드가 `.git/config`의 토큰을 읽을 수 없다. `changes` 권한은 `contents: read`와 `packages: read`뿐이다. `packages: read`는 dev push의 발행 revision 조회용이다. PR에서는 login step이 실행되지 않고 `GH_TOKEN`이 빈 값이다. PR diff를 계산하지 않으므로 `pull-requests` 권한은 없다. public 저장소라 before/revision fetch는 익명으로 동작하며 실패하면 fail-safe로 더 빌드한다.
 - **발행**:
   - 모든 build step이 `org.opencontainers.image.revision=${{ github.sha }}` label을 붙인다.
   - `manifest`는 target별 `fail-fast: false` matrix이며 다른 target의 빌드 실패와 무관하게 실행된다. 각 leg는 [`scripts/ci/image-revision.js`](scripts/ci/image-revision.js) `verify`로 `<base>-amd64` digest를 얻고, 그 digest의 revision이 `github.sha`인지 확인한다. 아니면 실패하고, 맞으면 검증한 digest로만 태그를 만든다.
   - `:dev`/`:nightly` 이동 전에는 `guard <image> <sha> <repo> <tracked-ref>`가 세 가지를 확인한다. `<tracked-ref>`는 실행 ref가 아니라 태그가 추적하는 브랜치다(`:dev`→`refs/heads/dev`, `:nightly`→`refs/heads/main`). 다른 브랜치의 `workflow_dispatch`도 `:dev`로 가기 때문이다. 확인하는 것은 현재 발행 revision을 읽었고 `github.sha`와 다른지, 추적 브랜치 끝(`gh api repos/<repo>/git/ref/heads/<branch>`)이 `github.sha`가 아닌지, compare API가 `behind`(발행본이 더 새로움)인지이다. 셋 다 참인 오래된 실행의 재실행만 `::notice::` 후 건너뛴다. `github.sha`가 추적 브랜치 끝이면 정상 push든 force-push rollback이든 발행한다. tip·revision·compare를 알 수 없으면 `::warning::`과 함께 진행한다. Cloud Shell은 build-push가 태그를 직접 push하므로 같은 guard를 빌드 전에 평가한다.
   - push 실행에는 `cancel-in-progress`를 두지 않는다.
+- **Helm chart 발행**: [`helm-release.yml`](.github/workflows/helm-release.yml)의 `check-changes`(권한 `contents: read`)는 [`scripts/ci/helm-publish-decision.js`](scripts/ci/helm-publish-decision.js)로 발행 여부를 정한다. 이 스크립트는 이미지 target 감지와 같은 `collectEventChanges`를 쓴다.
+  - `v*` 태그와 `workflow_dispatch`는 항상 발행한다.
+  - `main` push는 `github.event.before..github.sha`에 `helm/afterglow/` 변경이 있을 때만 발행한다. 과거의 마지막 커밋만 보는 비교는 fast-forward로 여러 커밋이 들어온 push에서 앞 커밋의 chart 변경을 놓쳤다.
+  - all-zero before, forced push, 잘못된 before, fetch/diff 실패, 판단 중 예외는 발행한다(fail-safe). 예상하지 못한 실패는 `::warning::`을 남긴다.
+  - 계약 테스트는 모든 workflow와 `scripts/ci/*.js`에 마지막 커밋만 보는 비교가 없다는 것을 고정한다.
 - **알려진 한계**:
   - per-arch `<base>-amd64` 중간 태그는 SHA 간에 공유되고 push 실행에는 concurrency group이 없다. 더 새로운 실행 B가 태그를 push한 뒤 더 오래된 동시 실행 A가 같은 태그를 덮어쓰면, B의 manifest `verify`는 revision 불일치로 실패하고(run이 red), A는 guard를 통과해 `:dev`를 A의 SHA로 발행한다. 다른 SHA의 이미지를 발행하지는 않으며(`verify`가 digest를 고정한다), 다음 dev push의 발행 revision 기준이 B의 target을 다시 빌드할 때까지 `:dev`가 뒤처진다. 해소하려면 SHA 범위 중간 참조나 build digest artifact 전달이 필요하며 [`ci-critical-path-review-follow-up`](openspec/changes/ci-critical-path-review-follow-up/tasks.md)에 남겼다. registry cache와 중간 태그는 stale 재실행도 덮어쓰며 최종 브랜치 태그만 가드된다.
   - Cloud Shell guard는 빌드 전에 평가되므로 동시에 도는 더 새로운 실행과의 경합이 남는다.
   - force-push rollback 시점에 되돌릴 commit의 실행이 아직 진행 중이면, 그 실행이 rollback 뒤에 끝나며 잘못된 이미지를 다시 발행할 수 있다(compare(rollback, bad)가 `ahead`). rollback할 때는 진행 중인 실행을 취소한다.
   - 기존 이미지에는 revision label이 없으므로 첫 dev push는 event 기준만 사용한다.
   - `docker buildx imagetools inspect` 출력(`Digest:` 줄, 단일/다중 플랫폼 `.Image` 형태)은 fixture로만 검증했다.
-  - `paths-ignore`만 바꾼 dev push는 push 실행이 없으므로 같은 tree의 dedup PR도 테스트되지 않는다. 그 경로는 테스트 입력이 아니다.
+  - `pr-dedup`은 tree 동일성만 본다. HEAD SHA의 dev push 실행이 존재하는지, 통과했는지는 확인하지 않는다. dev push 실행이 실패·취소됐거나 `paths-ignore`만 바꾼 push여서 실행이 없으면, dev→main PR에는 skipped 테스트만 보일 수 있다. `main`에는 required status check가 없고 병합은 수동이다. 따라서 병합자는 dedup notice의 commit 링크에서 그 SHA의 dev push `Layered Tests`가 green인지 확인한다. check-runs 결과로 skip을 제한하는 방식은 synchronize 시점에 push 실행이 아직 진행 중이라 거의 skip하지 못하므로 채택하지 않았다.
+  - `paths-ignore`만 바꾼 dev push는 push 실행이 없으므로 같은 tree의 dedup PR도 테스트되지 않는다. 그 경로의 파일은 테스트 입력이 아니지만, 위와 같이 부모 commit의 실행 결과는 병합자가 확인한다.
 
 ### 선행 조건과 관측
 
@@ -362,6 +370,26 @@ cloud-init 및 shell template 출력은 `shlex_quote`/검증된 입력을 사용
 
 GitHub Actions 실제 실행, GHCR 조회, `gh api` git refs/compare 실호출은 검증하지 않았으며 [`ci-critical-path-review-follow-up`](openspec/changes/ci-critical-path-review-follow-up/tasks.md)의 병합 후 작업으로 남아 있다.
 
+2026-09-24 CI 개편 2차 리뷰 후속 수정은 다음을 반영했다.
+
+- `pr-dedup` 판단을 인라인 쉘에서 `scripts/ci/pr-dedup.js`로 옮겼다. dependabot 작성자 거부, commit 링크 notice, 스크립트 실패 시 `skip=false` fallback을 더하고 job-level `continue-on-error`를 제거했다.
+- `changes`의 `pull-requests: read`를 제거했다.
+- detector가 예상하지 못한 event 기준 실패를 경고한다.
+- `helm-release.yml`이 `scripts/ci/helm-publish-decision.js`로 `github.event.before..github.sha`를 비교한다.
+- frontend shard가 Node 22를 고정한다.
+- 계약이 안전 step의 게이트 여부(`if:`·`continue-on-error:`·`|| true`·guard `case` arm)를 고정한다.
+
+로컬 증거는 다음과 같다.
+
+- `npm run test:orchestration` 91/91과 `test:kolla:contract` 25/25를 통과했다. `pr-dedup.test.js`의 실제 git 테스트는 `file://` origin의 scratch clone에서 PR merge commit을 checkout한 뒤 CLI를 실행한다. 같은 tree는 `skip=true`, fork·dependabot·잘못된 SHA·fetch 불가 SHA·diverged tree는 `skip=false`였다.
+- 한 곳만 바꾼 scratch 회귀 33개를 메모리에서 복원하는 harness로 적용했고 모두 suite를 실패시켰다. 실행 전후 worktree diff는 같았다. 예로는 스크립트 기본값 `skip=true`, head repo·head ref·SHA 검사 제거, fallback `skip=true`, 검증 step의 `if: false`·`continue-on-error: true`·`|| true`, guard 오류 arm의 `*) ;;` 치환, `pull-requests: read` 복원, helm-release tip-only diff 복원, setup-node 제거가 있다.
+- `test:unit:backend` 2927건, `test:contract` 131건, ruff check/format을 통과했다.
+- 실제 `vitest run --shard=1/2`와 `--shard=2/2`는 124/123개 파일(621/801 tests)을 실행했고 shard 검증기를 통과했다. `run-with-file-log` 9건도 통과했다. 로컬 Node는 24.14.1이며 Node 22 자체로는 실행하지 않았다.
+- 같은 jsdom `localStorage` 테스트 5개 파일은 Node 24.14.1에서 66건 모두 통과했다. Node 26.3.1에서는 `localStorage`가 undefined여서 4개 파일, 64건이 실패했다.
+- `actionlint`는 `docker-build.yml`에서 기존과 같은 SC2086 info 14건을 보고했다. `helm-release.yml`은 4건에서 1건으로 줄었으며, 남은 1건은 바꾸지 않은 chart version step에 있다. `test.yml`은 0건이다.
+
+`test:functional`은 datastore·backend 코드 변경이 없고 이번 작업의 Docker 제약 때문에 실행하지 않았다. GitHub Actions 실제 실행은 검증하지 않았다. 예를 들어 실패한 `pr-dedup` 뒤에서 reusable workflow 내부 잡이 실행되는지, 실제 multi-commit `main` push의 chart 발행 판단 등이다. 이는 [`ci-critical-path-review-follow-up`](openspec/changes/ci-critical-path-review-follow-up/tasks.md)의 병합 후 작업으로 남아 있다.
+
 | 목적 | 정확한 명령 | 외부 전제 |
 |---|---|---|
 | backend 개발 서버 | `cd backend && uv sync && uv run uvicorn app.main:app --reload` | Python 3.12, uv, 설정된 `afterglow.conf` |
@@ -369,7 +397,7 @@ GitHub Actions 실제 실행, GHCR 조회, `gh api` git refs/compare 실호출�
 | guard working check | `python3 scripts/check_architecture.py` | Python 3와 Git만; source를 읽고 ARCHITECTURE review digest를 비교 |
 | guard staged check | `python3 scripts/check_architecture.py --staged` | 검토한 문서와 source를 index에 함께 stage |
 | guard stamp | `python3 scripts/check_architecture.py --stamp --summary "<실제 검토 요약>"` | 본문 검토 후 working source와 문서를 갱신 |
-| CI 오케스트레이션·workflow 계약 | `npm run test:orchestration` | Node 20+; 네트워크·Docker 불필요(`scripts/ci/*`는 fake exec로 검증) |
+| CI 오케스트레이션·workflow 계약 | `npm run test:orchestration` | Node 20+와 Git; 네트워크·Docker 불필요(`scripts/ci/*`는 fake exec로, `pr-dedup`은 추가로 로컬 scratch Git 저장소로 검증) |
 | guard regression | `npm run test:target -- backend:tests/test_architecture_guard.py` | backend dev 환경, subprocess가 일회용 Git fixture를 사용 |
 | targeted backend | `npm run test:target -- backend:tests/<path>` | 선택한 테스트의 명시적 외부 전제 |
 | 전체 기존 gate | `npm run test:gate` | disposable DB/Redis와 backend/frontend dependency; 2026-09-14 최종 gate 통과 |
@@ -412,9 +440,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "0cd5e15d64a23827a7d3adc15a0f0987819598447d4ffed41db97fc22c9db64d",
-  "reviewed_at": "2026-09-23T20:36:49Z",
-  "summary": "CI overhaul review follow-up, reviewed against the ci-perf worktree source: docker-build.yml test-pr now runs only when github.event_name == 'pull_request' (a !cancelled() status check had dropped the implicit success() so the skipped pr-dedup's empty skip output let test-pr run on every push), and changes ties each caller result to its own event instead of test || test-pr; the stale re-run guard (scripts/ci/image-revision.js guard <image> <sha> <repo> <tracked-ref>) reads the tip of the branch the tag tracks (:dev->refs/heads/dev, :nightly->refs/heads/main via the manifest tracked_ref output and the Cloud Shell TRACKED_REF, not the run ref, so a feature-branch dispatch cannot move :dev backward) via gh api git/ref and skips only when that tip moved on and compare says behind, so force-push rollbacks publish; readRevision returns present/absent/error and detect-build-targets.js builds on registry errors with ::warning:: annotations (also for a failed registry-login outcome), drops the unused PR diff and fetch-depth 2, and the changes checkout uses persist-credentials false; test.yml test-live also needs version-check and test-cloud-shell; verify-vitest-shard.js requires the exact Vitest 4 shard size and the contract pins no exclude/projects in vitest.config.ts; the backend network guard records the attempting thread and blocks non-loopback UDP sendto; the shared <base>-<arch> intermediate tag race and the rollback-vs-in-flight-run race are documented as known limitations; ARCHITECTURE.md, AGENTS.md (CLAUDE.md) CI rules 3/8/9 and backend/tests/TESTING.md corrected; open OpenSpec change ci-critical-path-review-follow-up tracks the post-merge measurement. No application runtime, API, schema, afterglow.conf, dependency or deployment manifest change."
+  "source_sha256": "977d8e6d5b80049c33191d48a68d49621df6787b92206a8852d3eeecbe83f90b",
+  "reviewed_at": "2026-09-23T21:43:38Z",
+  "summary": "CI review round 2, reviewed against the ci-perf worktree source: pr-dedup's decision moved from inline shell to scripts/ci/pr-dedup.js (always exit 0, writes skip once, skip=true only for a same-repo non-dependabot dev PR with a 40-hex head SHA whose merge and head trees are equal valid hashes; notice links the head commit) with fake-exec unit tests and a real scratch-git CLI test; the workflow step runs it with a skip=false fallback and the job-level continue-on-error is removed (infra failures now turn the run red; whether reusable-workflow inner jobs run under a failed caller dependency is an open post-merge check); changes drops pull-requests: read and keeps packages: read for the push-only registry read; detect-build-targets.js flags unexpected event-basis failures (invalid before, fetch/diff failure) and warns on dev pushes; helm-release.yml check-changes replaces the tip-only HEAD^1 diff and fetch-depth 2 with scripts/ci/helm-publish-decision.js reusing collectEventChanges (before..sha, zero/forced/invalid/fetch/diff failure or exception publishes) and gains contents: read; test.yml test-frontend pins Node 22 via actions/setup-node before vitest (Node 26.3.1 reproduced jsdom localStorage failures locally); github-actions-contract.test.js pins the dedup step, permissions, gating (no if/continue-on-error/|| true on shard, verifier and guard steps, exact guard case arms), a tip-only-diff ban across all workflows and scripts/ci, the Helm decision wiring and that every scripts/ci test runs in test:orchestration (package.json and its test-target pin updated); AGENTS.md (CLAUDE.md) CI rules scope widened to all workflows and scripts/ci with rules 8, 9 and 11 extended, ARCHITECTURE.md CI section and backend/tests/TESTING.md corrected; open OpenSpec change ci-critical-path-review-follow-up records round 2 and new post-merge checks. No application runtime, API, schema, afterglow.conf, dependency or deployment manifest change."
 }
 ```
 <!-- architecture-review:end -->

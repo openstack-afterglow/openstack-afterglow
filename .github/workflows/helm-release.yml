@@ -11,31 +11,29 @@ on:
         required: false
 
 jobs:
+  # ─── chart 발행 판단: push 의 모든 커밋(github.event.before..github.sha)을 본다 ───
+  # 규칙과 fail-safe 는 scripts/ci/helm-publish-decision.js(단위 테스트 포함)가 소유한다(CI 규정 8번).
+  # - 태그·workflow_dispatch 는 항상 발행한다.
+  # - main push 는 before 를 depth=1 로 fetch 해 before..sha 에 helm/afterglow/ 변경이 있을 때 발행한다.
+  #   zero SHA·forced push·fetch/diff 실패는 발행한다. 첫 부모와 HEAD 처럼 마지막 커밋만 비교하면 fast-forward 로
+  #   여러 커밋이 들어온 push 에서 앞 커밋의 chart 변경을 놓친다.
   check-changes:
     name: Check helm changes
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       should_publish: ${{ steps.decide.outputs.publish }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-        with:
-          fetch-depth: 2
 
       - name: Decide whether to publish
         id: decide
-        run: |
-          if [[ "$GITHUB_REF_TYPE" == "tag" ]] || [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
-            echo "publish=true" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          CHANGED=$(git diff --name-only HEAD^1 HEAD 2>/dev/null | grep -c '^helm/afterglow/' || echo 0)
-          if [[ "$CHANGED" -gt 0 ]]; then
-            echo "publish=true" >> $GITHUB_OUTPUT
-          else
-            echo "publish=false" >> $GITHUB_OUTPUT
-            echo "helm 파일 변경 없음 — chart publish 건너뜀"
-          fi
+        env:
+          EVENT_BEFORE: ${{ github.event.before }}
+          EVENT_FORCED: ${{ github.event.forced }}
+        run: node scripts/ci/helm-publish-decision.js
 
   helm-publish:
     name: Package & Push Helm Chart

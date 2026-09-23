@@ -40,12 +40,30 @@ An independent review of the archived change `ci-critical-path-overhaul` (commit
 - **Network guard.** Each blocked entry records the attempting thread's name. UDP `sendto` to a non-loopback address is blocked in both the 2-argument and 3-argument forms.
 - **Docs.** ARCHITECTURE.md `CI와 이미지 발행`, AGENTS.md (CLAUDE.md) `CI 파이프라인 성능 규정` rules 3, 8 and 9, `backend/tests/TESTING.md`, and the workflow comments now match the source.
 
+### Review round 2
+
+A second review of the change set found one medium and six low issues. It also named three extra items.
+
+- **Medium.** The contract did not pin the default of the inline `pr-dedup` shell. Flipping its first `skip=false` to `skip=true` passed the whole suite, and every early return would then have skipped the tests of fork and dependabot PRs. The decision now lives in `scripts/ci/pr-dedup.js`. Fake-exec unit tests and a real-git test pin its behaviour, and the contract pins the workflow step that calls it.
+- **Low, fixed in this change.**
+  - Contracts now require the shard, verifier and guard steps to gate. They must carry no `if:`, `continue-on-error:` or `|| true`, and both guard `case` blocks must keep exact arms.
+  - `changes` drops the unused `pull-requests: read`.
+  - Unexpected event-basis failures in the image detector now emit `::warning::`.
+  - The dedup notice links the head commit, and CI rule 9 tells the merger to confirm that the dev push run is green.
+  - `pr-dedup` drops its job-level `continue-on-error`. Whether GitHub runs reusable-workflow inner jobs under a failed caller dependency is a post-merge check.
+  - `helm-release.yml` no longer uses a tip-only diff. `scripts/ci/helm-publish-decision.js` reuses the detector's event basis.
+- **Extra items.**
+  - The frontend shard jobs pin Node 22. Node 26.3.1 was reproduced locally to break jsdom `localStorage` tests.
+  - The AGENTS.md CI rules scope now covers every workflow and `scripts/ci/`.
+  - This change stays open for the post-merge items.
+
 ## Impact
 
 Affects:
 
-- `.github/workflows/docker-build.yml` and `.github/workflows/test.yml`
-- `scripts/ci/detect-build-targets.js`, `scripts/ci/image-revision.js` and `scripts/ci/verify-vitest-shard.js`, with their tests
+- `.github/workflows/docker-build.yml`, `.github/workflows/test.yml` and `.github/workflows/helm-release.yml`
+- `scripts/ci/detect-build-targets.js`, `scripts/ci/image-revision.js`, `scripts/ci/verify-vitest-shard.js`, `scripts/ci/pr-dedup.js` and `scripts/ci/helm-publish-decision.js`, with their tests
+- `package.json` `test:orchestration` and its pin in `scripts/test-target.test.js`
 - `scripts/github-actions-contract.test.js`
 - `backend/tests/conftest.py` and `backend/tests/test_network_guard.py`
 - `ARCHITECTURE.md`, `AGENTS.md` and `backend/tests/TESTING.md`

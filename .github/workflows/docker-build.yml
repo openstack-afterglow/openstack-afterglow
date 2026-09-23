@@ -34,21 +34,24 @@ env:
 # stale re-run 가드(발행 revision 비교)가 담당한다.
 jobs:
   # ─── PR 중복 테스트 제거: 입력(tree)이 dev push 실행과 같을 때만 건너뛴다 ───
+  # 규칙과 fail-safe 는 scripts/ci/pr-dedup.js(fake exec 단위 테스트와 실제 git 테스트 포함)가 소유한다.
   # 같은 저장소의 `dev` 브랜치에서 온 PR 이고 PR merge commit tree 가 head commit tree 와 같으면,
-  # 동일한 tree 를 dev push 실행이 이미 테스트한다. fork PR·dependabot PR·diverged PR 은 항상 테스트한다.
+  # 동일한 tree 를 dev push 실행이 테스트한다. fork PR·dependabot PR·diverged PR 은 항상 테스트한다.
   # 브랜치 이름만으로 판단하지 않는다(fork 의 동명 `dev` 브랜치는 head repo 비교로 걸러진다).
-  # 판단 중 오류가 나면 skip=false(테스트 실행)다. push/dispatch 에서는 이 잡이 실행되지 않는다.
+  # skip 은 dev push 실행이 "같은 입력을 테스트한다"는 뜻이지 "통과했다"는 뜻이 아니다. notice 의 commit 링크로
+  # 병합자가 그 실행의 결과를 확인한다. push/dispatch 에서는 이 잡이 실행되지 않는다.
+  # job-level continue-on-error 는 두지 않는다. 판단 step 은 오류를 skip=false 로 바꿔 항상 성공하므로, 이 잡이
+  # 실패하는 것은 인프라 오류뿐이고 그때는 실행을 red 로 드러낸다(가려진 실패 위에서 test-pr 를 믿지 않는다).
   pr-dedup:
     name: PR duplicate-input check
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    # 이 잡의 실패가 PR 테스트를 막지 않게 한다(실패 시 skip 출력이 비어 test-pr 가 실행된다).
-    continue-on-error: true
     permissions:
       contents: read
     outputs:
       skip: ${{ steps.dedup.outputs.skip }}
     steps:
+      # 실패해도 다음 step 의 fallback 이 skip=false 를 쓴다.
       - name: Checkout PR merge commit
         continue-on-error: true
         uses: actions/checkout@v5
@@ -56,6 +59,8 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
+      # 공격자가 정하는 값(head ref, head repo)은 env 로만 전달한다. 스크립트는 항상 exit 0 이고 skip 을 한 번만 쓴다.
+      # 스크립트를 실행하지 못하면(checkout 실패 등) fallback 이 skip=false 를 쓴다.
       - name: Compare merge tree with head tree
         id: dedup
         env:
@@ -63,36 +68,12 @@ jobs:
           BASE_REPO: ${{ github.repository }}
           HEAD_REF: ${{ github.head_ref }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
-          skip=false
-          decide() {
-            if [ "$HEAD_REPO" != "$BASE_REPO" ]; then
-              echo "head repository ${HEAD_REPO} is not ${BASE_REPO}; testing"
-              return 0
-            fi
-            if [ "$HEAD_REF" != "dev" ]; then
-              echo "head ref is not dev; testing"
-              return 0
-            fi
-            if ! printf '%s' "$HEAD_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
-              echo "head SHA is malformed; testing"
-              return 0
-            fi
-            git fetch --no-tags --depth=1 origin "$HEAD_SHA" || return 1
-            merge_tree=$(git rev-parse 'HEAD^{tree}') || return 1
-            head_tree=$(git rev-parse "${HEAD_SHA}^{tree}") || return 1
-            if [ -n "$merge_tree" ] && [ "$merge_tree" = "$head_tree" ]; then
-              skip=true
-              echo "::notice title=Layered Tests deduplicated::PR merge tree ${merge_tree} equals dev head ${HEAD_SHA} tree; the dev push run tests the same input."
-            else
-              echo "merge tree ${merge_tree} differs from head tree ${head_tree}; testing"
-            fi
+          node scripts/ci/pr-dedup.js || {
+            echo "::warning title=PR dedup::pr-dedup.js did not complete; running Layered Tests"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
           }
-          if ! decide; then
-            skip=false
-            echo "::warning::PR dedup check failed; running Layered Tests"
-          fi
-          echo "skip=${skip}" >> "$GITHUB_OUTPUT"
 
   # ─── 테스트: 레이어드 테스트 통과 후에만 빌드로 진행 ───
   # push/dispatch 와 PR 은 서로 다른 caller job 으로 같은 reusable workflow 를 호출한다.
@@ -132,9 +113,12 @@ jobs:
     needs: [test, test-pr]
     if: ${{ !cancelled() && ((github.event_name != 'pull_request' && needs.test.result == 'success') || (github.event_name == 'pull_request' && needs.test-pr.result == 'success')) }}
     runs-on: ubuntu-latest
+    # contents: read 는 checkout 과 before/revision fetch, compare API 용이다. packages: read 는 dev push 의
+    # 발행 revision 조회(registry login)용이며 PR 에서는 쓰지 않는다. PR 에서는 토큰을 스크립트에 넘기지 않는다
+    # (GH_TOKEN 이 '', login step 이 push 전용, persist-credentials: false). PR diff 를 계산하지 않으므로
+    # pull-requests 권한은 두지 않는다.
     permissions:
       contents: read
-      pull-requests: read
       packages: read
     outputs:
       targets: ${{ steps.set-targets.outputs.targets }}

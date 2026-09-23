@@ -126,19 +126,40 @@ test("a multi-commit dev push that touched backend in an earlier commit still bu
 });
 
 test("zero before, forced push, fetch failure and diff failure build everything", () => {
+	// 마지막 값: 예상하지 못한 기준 실패(::warning::)인지. 새 ref 와 forced push 는 예상된 경우라 조용하다.
 	const cases = [
-		[devPushEnv({ EVENT_BEFORE: ZERO }), []],
-		[devPushEnv({ EVENT_BEFORE: "" }), []],
-		[devPushEnv({ EVENT_FORCED: "true" }), []],
-		[devPushEnv({ EVENT_BEFORE: "not-a-sha" }), []],
-		[devPushEnv(), [[/git fetch/, new Error("fatal: remote error: upload-pack: not our ref")]]],
-		[devPushEnv(), [fetchBefore, [/git diff/, new Error("fatal: bad object")]]],
+		[devPushEnv({ EVENT_BEFORE: ZERO }), [], false],
+		[devPushEnv({ EVENT_BEFORE: "" }), [], false],
+		[devPushEnv({ EVENT_FORCED: "true" }), [], false],
+		[devPushEnv({ EVENT_BEFORE: "not-a-sha" }), [], true],
+		[devPushEnv(), [[/git fetch/, new Error("fatal: remote error: upload-pack: not our ref")]], true],
+		[devPushEnv(), [fetchBefore, [/git diff/, new Error("fatal: bad object")]], true],
 	];
-	for (const [env, routes] of cases) {
+	for (const [env, routes, warns] of cases) {
 		const exec = fakeExec(routes);
 		const result = collectAndDecide(env, exec);
 		assert.deepEqual(result.targets, ALL_TARGETS, JSON.stringify(result.reasons));
 		assert.equal(exec.calls.some((call) => /^(docker|gh) /.test(call)), false);
+		const basisWarnings = result.warnings.filter((warning) => warning.startsWith("Dev push event basis is unavailable"));
+		assert.equal(basisWarnings.length, warns ? 1 : 0, JSON.stringify(result.warnings));
+		if (warns) assert.ok(basisWarnings[0].includes(result.input.eventBasis), basisWarnings[0]);
+	}
+});
+
+test("an unexpected event-basis failure is annotated, not only logged", () => {
+	const lines = [];
+	const exec = fakeExec([[/git fetch/, new Error("fatal: could not read Username for 'https://github.com'")]]);
+	assert.equal(main(devPushEnv(), { exec, stdout: { write: (line) => lines.push(line) } }), 0);
+	const output = lines.join("");
+	assert.match(output, /^::warning title=Image target detection::Dev push event basis is unavailable \(fetch of before 1{40} failed: /m);
+	assert.match(output, /^targets=\["backend","frontend","worker","cloud-shell"\]$/m);
+
+	// main/태그/PR/dispatch 는 event 기준을 쓰지 않으므로 이 경고가 없다.
+	for (const env of [
+		{ GITHUB_EVENT_NAME: "push", EFFECTIVE_REF: "refs/heads/main", GITHUB_SHA: HEAD, EVENT_BEFORE: "not-a-sha" },
+		{ GITHUB_EVENT_NAME: "pull_request", EFFECTIVE_REF: "refs/pull/1/merge", GITHUB_SHA: HEAD },
+	]) {
+		assert.deepEqual(collectAndDecide(env, fakeExec([])).warnings, [], JSON.stringify(env));
 	}
 });
 

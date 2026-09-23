@@ -337,7 +337,7 @@ test("package.json contains exact command contract scripts and no obsolete scrip
 	assert.equal(scripts["test:unit"], "npm run test:target:js && npm run test:unit:backend && npm run test:unit:frontend");
 	assert.equal(scripts["test:contract"], "node scripts/test-target.js contracts");
 	assert.equal(scripts["test:functional"], "node scripts/test-db.js");
-	assert.equal(scripts["test:orchestration"], "node --test scripts/test-target.test.js scripts/test-db.test.js scripts/github-actions-contract.test.js scripts/ci/detect-build-targets.test.js scripts/ci/image-revision.test.js scripts/ci/verify-vitest-shard.test.js && node scripts/test-target.js --validate");
+	assert.equal(scripts["test:orchestration"], "node --test scripts/test-target.test.js scripts/test-db.test.js scripts/github-actions-contract.test.js scripts/ci/detect-build-targets.test.js scripts/ci/helm-publish-decision.test.js scripts/ci/image-revision.test.js scripts/ci/pr-dedup.test.js scripts/ci/verify-vitest-shard.test.js && node scripts/test-target.js --validate");
 	assert.equal(scripts["test:kolla:contract"], "node --test scripts/kolla-contract.test.js");
 	assert.equal(scripts["test:target:js"], "npm run test:orchestration && npm run test:kolla:contract");
 	assert.equal(scripts["test:live"], "cd backend && AFTERGLOW_ALLOW_INSECURE=1 uv run python -m pytest tests/integration -v");

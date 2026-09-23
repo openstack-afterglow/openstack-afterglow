@@ -9,7 +9,8 @@
 //   PR 은 빌드 잡 자체가 실행되지 않으므로 PR diff 도 계산하지 않는다.
 // - dev push: 두 기준의 합집합.
 //   1) event 기준: `git diff <github.event.before> HEAD`. before 를 depth=1 로 fetch 한다.
-//      all-zero before(새 브랜치), forced push, fetch/diff 실패는 전체 빌드.
+//      all-zero before(새 브랜치), forced push, fetch/diff 실패는 전체 빌드. 잘못된 before 와 fetch/diff 실패는
+//      예상하지 못한 경우이므로 ::warning:: 을 남긴다(예: 익명 fetch 가 막히면 모든 dev push 가 전체 빌드가 된다).
 //   2) 발행 revision 기준(실패한 이전 실행의 누락분 복구): target 별로 현재 발행된 :dev 이미지의
 //      org.opencontainers.image.revision 을 읽는다.
 //      - 이미지 없음(not found/manifest unknown) 또는 label 없음(bootstrap): event 기준만 사용한다.
@@ -174,22 +175,30 @@ function decideTargets(input) {
 	return { targets: ordered(selected), reasons };
 }
 
-/** push 의 event 기준 변경 파일(`before..HEAD`). 기준을 만들 수 없으면 files=null. */
+/**
+ * push 의 event 기준 변경 파일(`before..HEAD`). 기준을 만들 수 없으면 files=null.
+ * unexpected=true 는 예상하지 못한 기준 실패(잘못된 before SHA, fetch/diff 실패)다. 호출자는 전체 대상으로
+ * fail-safe 하되 비용 변화가 조용히 지나가지 않게 ::warning:: 을 남긴다. 새 ref(zero SHA)·forced push 는 예상된 경우다.
+ */
 function collectEventChanges({ eventName, before, forced, sha }, exec = defaultExec) {
 	const head = SHA_RE.test(sha ?? "") ? sha : "HEAD";
-	if (eventName !== "push") return { files: null, basis: `${eventName} has no push basis` };
-	if (!before || isZeroSha(before)) return { files: null, basis: "all-zero before (new ref)" };
-	if (!SHA_RE.test(before)) return { files: null, basis: `invalid before SHA ${JSON.stringify(before)}` };
-	if (String(forced) === "true") return { files: null, basis: "forced push" };
+	if (eventName !== "push") return { files: null, basis: `${eventName} has no push basis`, unexpected: false };
+	if (!before || isZeroSha(before)) return { files: null, basis: "all-zero before (new ref)", unexpected: false };
+	if (!SHA_RE.test(before)) return { files: null, basis: `invalid before SHA ${JSON.stringify(before)}`, unexpected: true };
+	if (String(forced) === "true") return { files: null, basis: "forced push", unexpected: false };
 	try {
 		exec("git", ["fetch", "--no-tags", "--depth=1", "origin", before]);
 	} catch (error) {
-		return { files: null, basis: `fetch of before ${before} failed: ${error.message.split("\n")[0]}` };
+		return { files: null, basis: `fetch of before ${before} failed: ${error.message.split("\n")[0]}`, unexpected: true };
 	}
 	try {
-		return { files: splitLines(exec("git", ["diff", "--name-only", before, head])), basis: `${before}..${head}` };
+		return {
+			files: splitLines(exec("git", ["diff", "--name-only", before, head])),
+			basis: `${before}..${head}`,
+			unexpected: false,
+		};
 	} catch (error) {
-		return { files: null, basis: `diff ${before}..${head} failed: ${error.message.split("\n")[0]}` };
+		return { files: null, basis: `diff ${before}..${head} failed: ${error.message.split("\n")[0]}`, unexpected: true };
 	}
 }
 
@@ -229,6 +238,7 @@ function collectAndDecide(env, exec = defaultExec) {
 		const event = collectEventChanges({ eventName, before: env.EVENT_BEFORE, forced: env.EVENT_FORCED, sha }, exec);
 		input.eventChanges = event.files;
 		input.eventBasis = event.basis;
+		input.eventBasisUnexpected = event.unexpected === true;
 	}
 
 	// 발행 revision 은 dev push 에서만, event 기준이 있을 때만 읽는다(PR 에서는 레지스트리에 접근하지 않는다).
@@ -256,6 +266,9 @@ function collectAndDecide(env, exec = defaultExec) {
 /** 조용히 넘어가면 안 되는 상태를 ::warning:: annotation 문구로 모은다. */
 function collectWarnings(env, input) {
 	const warnings = [];
+	if (input.eventBasisUnexpected === true && !Array.isArray(input.eventChanges)) {
+		warnings.push(`Dev push event basis is unavailable (${input.eventBasis}); building every target`);
+	}
 	if (env.REGISTRY_LOGIN_OUTCOME === "failure") {
 		warnings.push(
 			"Registry login failed; published :dev revisions may be unreadable, so affected targets are built instead of carried over",

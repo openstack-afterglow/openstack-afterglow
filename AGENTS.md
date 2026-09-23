@@ -159,7 +159,7 @@ npm run test:gate
 
 ## CI 파이프라인 성능 규정
 
-근거는 두 가지다. 하나는 2026-09 afterglow CI 실측이다(실행 40건, `Layered Tests` 크리티컬 패스 중앙값 143초, p90 155초). 다른 하나는 Linear의 CI 개편 사례다. `.github/workflows/test.yml`, `.github/workflows/docker-build.yml`, `scripts/ci/`를 바꾸는 모든 변경은 아래 규칙을 따른다. 현재 구조는 `ARCHITECTURE.md`의 `CI와 이미지 발행`이 정본이다.
+근거는 두 가지다. 하나는 2026-09 afterglow CI 실측이다(실행 40건, `Layered Tests` 크리티컬 패스 중앙값 143초, p90 155초). 다른 하나는 Linear의 CI 개편 사례다. CI를 바꾸는 모든 변경은 아래 규칙을 따른다. 여기에는 `.github/workflows/`의 모든 workflow와 `scripts/ci/`가 포함된다. 현재 구조는 `ARCHITECTURE.md`의 `CI와 이미지 발행`이 정본이다.
 
 1. **측정 먼저, 추정 금지.**
    - CI를 바꾸기 전과 후에 최근 20회 이상 실행의 잡·스텝 시간을 `gh run list` / `gh api .../actions/runs/<id>/jobs`로 수집한다.
@@ -190,20 +190,25 @@ npm run test:gate
 8. **변경 감지의 diff 기준을 정확히 한다.**
    - push는 `github.event.before..github.sha`로 비교한다. zero SHA·forced push·fetch 실패 시에는 전체를 대상으로 한다.
    - PR은 base..head로 비교한다. Afterglow 이미지 target 감지는 PR에서 빌드하지 않으므로 PR diff를 계산하지 않는다.
-   - `HEAD^1..HEAD`처럼 push의 마지막 커밋만 보는 비교는 금지한다.
+   - `HEAD^1..HEAD`처럼 push의 마지막 커밋만 보는 비교는 금지한다. 이미지 target 감지(`scripts/ci/detect-build-targets.js`)와 Helm chart 발행 판단(`scripts/ci/helm-publish-decision.js`)이 같은 event 기준 구현을 쓴다.
+   - 기준을 만들지 못해 전체로 fallback할 때, 예상하지 못한 원인(fetch/diff 실패, 잘못된 before SHA)은 `::warning::`으로 남긴다. 비용 변화가 조용히 지나가지 않게 하려는 것이다.
    - 발행 산출물(이미지 등)은 실제 발행된 revision을 기준으로 판단한다. `org.opencontainers.image.revision` label을 쓰며, 규칙은 `scripts/ci/detect-build-targets.js`에 있다.
    - 발행 revision을 읽지 못한 레지스트리 오류(인증·전송·rate limit)는 부재로 취급하지 않고 더 빌드하며 경고한다. 이미지·label이 없는 bootstrap만 event 기준으로 fallback한다.
 9. **중복 실행은 입력 동일성으로만 제거한다.**
-   - 같은 저장소의 브랜치에서 온 PR이고 merge 트리가 head 트리와 같을 때만 PR 테스트를 건너뛴다(`docker-build.yml` `pr-dedup`).
+   - 같은 저장소의 브랜치에서 온 PR이고 merge 트리가 head 트리와 같을 때만 PR 테스트를 건너뛴다. 현재 구성(`docker-build.yml` `pr-dedup`, 규칙은 `scripts/ci/pr-dedup.js`)은 여기에 head ref `dev` 조건을 더한다.
    - fork PR과 dependabot PR은 항상 테스트한다.
    - 브랜치 이름만으로 판단하지 않는다. fork의 동명 브랜치로 우회할 수 있다.
+   - 판단 오류는 테스트 실행(skip=false)으로 처리한다.
+   - 건너뛴 PR은 같은 입력을 테스트한 push 실행에 결과를 맡긴다. 병합자는 dedup notice의 head commit 링크에서 그 SHA의 dev push 실행이 green인지 확인한 뒤 병합한다. tree가 같다는 것은 그 실행이 통과했다는 뜻이 아니다.
    - push 실행에는 `cancel-in-progress`를 두지 않는다. 오래된 실행의 재발행은 발행 revision 가드로 막는다.
    - 가드는 ancestry만으로 판단하지 않는다. 이번 SHA가 태그가 추적하는 브랜치(`:dev`→`dev`, `:nightly`→`main`, 실행 ref가 아님)의 끝이면(force-push rollback 포함) 발행하고, 그 브랜치 끝이 바뀌었고 발행본이 더 새로울 때만 건너뛴다. rollback할 때는 되돌릴 commit의 진행 중인 실행을 취소한다.
 10. **보안: public 저장소의 `pull_request` 코드를 self-hosted runner에서 실행하지 않는다.**
     - 워크플로우 YAML의 `if:`는 PR이 수정할 수 있으므로, runner group의 저장소 제한과 fork PR 승인 설정으로도 보장한다.
     - PR 이벤트에서는 레지스트리 자격 증명을 쓰는 step을 실행하지 않는다.
 11. **CI 형태는 계약 테스트로 고정한다.**
-    - 샤드 수, 게이트 병렬성, dedup 조건, diff 기준 같은 불변식을 저장소의 테스트로 검증해 회귀를 막는다. `scripts/github-actions-contract.test.js`, `scripts/test-target.test.js`, `scripts/ci/*.test.js`가 `npm run test:orchestration`에서 실행된다.
+    - 샤드 수, 게이트 병렬성, dedup 조건, diff 기준 같은 불변식을 저장소의 테스트로 검증해 회귀를 막는다. `scripts/github-actions-contract.test.js`, `scripts/test-target.test.js`, `scripts/ci/*.test.js`가 `npm run test:orchestration`에서 실행된다. 모든 `scripts/ci/*.test.js`가 여기에 포함되는지도 계약이 확인한다.
+    - 안전 단계는 존재만이 아니라 게이트하는지도 고정한다. 검증·guard step에 `if:`, `continue-on-error:`, `|| true`가 붙거나 오류 arm이 사라지면 계약이 실패해야 한다.
+    - 판단 로직은 workflow 인라인 쉘보다 `scripts/ci/`의 테스트 가능한 스크립트에 둔다. 계약은 workflow가 그 스크립트를 호출하는지를 고정하고, 규칙은 스크립트의 단위 테스트가 고정한다.
     - 불변식을 바꾸면 계약 테스트를 같은 변경에서 의도적으로 갱신한다.
 12. **지속 개선.**
     - CI를 바꾸는 변경에는 전후 실측을 첨부한다.
