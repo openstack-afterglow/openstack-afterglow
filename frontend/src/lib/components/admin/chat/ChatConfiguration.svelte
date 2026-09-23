@@ -143,10 +143,131 @@
 		effective_input_price_per_million: string | null;
 		effective_output_price_per_million: string | null;
 		effective_price_source: 'manual' | 'models.dev' | 'litellm' | 'partial' | 'unpriced' | `perplexity_agent_api_${string}` | null;
+		// Prompt-cache prices are manual-only (no catalog fallback). Absent/null means the
+		// component is billed at 0 USD until an administrator sets it. Optional because an
+		// older Lumen may not return them yet.
+		cache_read_price_per_million?: string | null;
+		cache_write_price_per_million?: string | null;
+		cache_write_1h_price_per_million?: string | null;
 		models_dev_model_id: string | null;
 		price_source: 'manual' | 'models.dev' | null;
 		capabilities?: ModelCapabilities | null;
 		effective_capabilities?: ModelCapabilities | null;
+	}
+
+	type CachePriceKey =
+		| 'cache_read_price_per_million'
+		| 'cache_write_price_per_million'
+		| 'cache_write_1h_price_per_million';
+	type CachePriceInputs = Record<CachePriceKey, string>;
+	type CachePriceErrors = Partial<Record<CachePriceKey, string>>;
+	type CachePriceValues = Record<CachePriceKey, string | null>;
+
+	// Cache prices are optional and independent of each other and of the input/output pair rule.
+	const CACHE_PRICE_FIELDS: { key: CachePriceKey; label: string; slug: string }[] = [
+		{ key: 'cache_read_price_per_million', label: '캐시 읽기', slug: 'read' },
+		{ key: 'cache_write_price_per_million', label: '캐시 쓰기 5분', slug: 'write-5m' },
+		{ key: 'cache_write_1h_price_per_million', label: '캐시 쓰기 1시간', slug: 'write-1h' }
+	];
+	// Plain non-negative decimal; rejects exponent, hex, sign, Infinity/NaN. Lumen owns precision.
+	const CACHE_PRICE_PATTERN = /^\d+(?:\.\d+)?$/;
+	const CACHE_PRICE_ERROR = '0 이상의 숫자로 입력하세요 (예: 0.3)';
+
+	function emptyCachePriceInputs(): CachePriceInputs {
+		return {
+			cache_read_price_per_million: '',
+			cache_write_price_per_million: '',
+			cache_write_1h_price_per_million: ''
+		};
+	}
+
+	// Any all-zero decimal, including Python Decimal's scientific zero ("0E-10") that Lumen
+	// serializes for a stored 0. Requires a zero digit so "", "." or "E5" never match.
+	const ZERO_DECIMAL_PATTERN = /^[+-]?(?:0+(?:\.0*)?|\.0+)(?:E[+-]?\d+)?$/i;
+
+	/** Only zero is emitted in scientific form, so a zero-only rule suffices; never float-converted. */
+	function normalizeDecimalString(price: string): string {
+		if (ZERO_DECIMAL_PATTERN.test(price.trim())) return '0';
+		return formatPricePerMillion(price);
+	}
+
+	function cachePriceInputsFrom(model: Model): CachePriceInputs {
+		// Strip storage trailing zeros ("0.3000000000" → "0.3", "0E-10" → "0") for readability; same decimal value.
+		const prefill = (price: string | null | undefined) =>
+			price === null || price === undefined || price === '' ? '' : normalizeDecimalString(price);
+		return {
+			cache_read_price_per_million: prefill(model.cache_read_price_per_million),
+			cache_write_price_per_million: prefill(model.cache_write_price_per_million),
+			cache_write_1h_price_per_million: prefill(model.cache_write_1h_price_per_million)
+		};
+	}
+
+	function cachePriceError(raw: string): string | undefined {
+		const value = raw.trim();
+		if (!value || CACHE_PRICE_PATTERN.test(value)) return undefined;
+		return CACHE_PRICE_ERROR;
+	}
+
+	/** Blank → null (unset / clear). The trimmed string is forwarded as-is, never float round-tripped. */
+	function parseCachePrices(inputs: CachePriceInputs): { values: CachePriceValues; errors: CachePriceErrors } {
+		const values = {} as CachePriceValues;
+		const errors: CachePriceErrors = {};
+		for (const { key } of CACHE_PRICE_FIELDS) {
+			const message = cachePriceError(inputs[key]);
+			if (message) errors[key] = message;
+			values[key] = inputs[key].trim() || null;
+		}
+		return { values, errors };
+	}
+
+	/**
+	 * Edit form: only keys whose trimmed input differs from the prefill. A value sets it, a blank
+	 * clears a previously set price with null. Untouched keys are neither validated nor sent.
+	 */
+	function changedCachePrices(
+		inputs: CachePriceInputs,
+		baseline: CachePriceInputs
+	): { values: Partial<CachePriceValues>; errors: CachePriceErrors } {
+		const values: Partial<CachePriceValues> = {};
+		const errors: CachePriceErrors = {};
+		for (const { key } of CACHE_PRICE_FIELDS) {
+			const value = inputs[key].trim();
+			if (value === baseline[key]) continue;
+			const message = cachePriceError(value);
+			if (message) errors[key] = message;
+			values[key] = value || null;
+		}
+		return { values, errors };
+	}
+
+	/** Once a field shows an error, re-check it while the admin corrects it. */
+	function recheckCachePrice(errors: CachePriceErrors, key: CachePriceKey, raw: string): CachePriceErrors {
+		if (!errors[key]) return errors;
+		const next = { ...errors };
+		const message = cachePriceError(raw);
+		if (message) next[key] = message;
+		else delete next[key];
+		return next;
+	}
+
+	function presentCachePrices(values: CachePriceValues): Partial<CachePriceValues> {
+		return Object.fromEntries(Object.entries(values).filter(([, value]) => value !== null));
+	}
+
+	function formatCachePrice(price: string | null | undefined): string {
+		if (price === null || price === undefined || price === '') return '미설정';
+		return normalizeDecimalString(price);
+	}
+
+	function cachePriceState(model: Model): 'none' | 'partial' | 'all' {
+		const set = CACHE_PRICE_FIELDS.filter(({ key }) => model[key] !== null && model[key] !== undefined && model[key] !== '').length;
+		if (set === 0) return 'none';
+		return set === CACHE_PRICE_FIELDS.length ? 'all' : 'partial';
+	}
+
+	// A Lumen that predates cache pricing omits the keys entirely; null means an admin cleared the price.
+	function cachePricingSupported(model: Model): boolean {
+		return CACHE_PRICE_FIELDS.some(({ key }) => key in model);
 	}
 
 	const token = $derived($auth.token ?? undefined);
@@ -154,6 +275,8 @@
 
 	let providers = $state<Provider[]>([]);
 	let models = $state<Model[]>([]);
+	// An empty list cannot tell the Lumen version apart, so the create form keeps its cache inputs then.
+	const cachePricingAvailable = $derived(models.length === 0 || models.some(cachePricingSupported));
 	let loading = $state(true);
 	let error = $state('');
 	let billingByProvider = $state<Record<number, ProviderBilling>>({});
@@ -199,11 +322,15 @@
 	let mDisplay = $state('');
 	let mInputPrice = $state('');
 	let mOutputPrice = $state('');
+	let mCachePrices = $state<CachePriceInputs>(emptyCachePriceInputs());
+	let mCacheErrors = $state<CachePriceErrors>({});
 	let addingModel = $state(false);
 
 	let editingPrice = $state<Model | null>(null);
 	let editInputPrice = $state('');
 	let editOutputPrice = $state('');
+	let editCachePrices = $state<CachePriceInputs>(emptyCachePriceInputs());
+	let editCacheErrors = $state<CachePriceErrors>({});
 
 	interface ModelsDevProvider { id: string; name: string; model_count: number }
 	interface ModelsDevModel {
@@ -802,13 +929,27 @@
 			toast.error('프로바이더와 모델명을 입력하세요');
 			return;
 		}
+		if (!cachePricingAvailable) {
+			// Hidden cache inputs (an older Lumen) must neither send stale values nor block the create.
+			mCachePrices = emptyCachePriceInputs();
+			mCacheErrors = {};
+		}
+		const cache = parseCachePrices(mCachePrices);
+		mCacheErrors = cache.errors;
 		const prices = pricePayload(mInputPrice, mOutputPrice);
-		if (prices === undefined) return;
+		if (prices === undefined || Object.keys(cache.errors).length > 0) return;
 		addingModel = true;
 		try {
 			await api.post(
 				'/api/v1/chat/admin/models',
-				{ provider_id: mProviderId, model_name: mName.trim(), display_name: mDisplay.trim() || null, ...prices },
+				{
+					provider_id: mProviderId,
+					model_name: mName.trim(),
+					display_name: mDisplay.trim() || null,
+					...prices,
+					// Blank cache prices are omitted on create; the model starts with no cache rate.
+					...presentCachePrices(cache.values)
+				},
 				token,
 				projectId
 			);
@@ -816,6 +957,8 @@
 			mDisplay = '';
 			mInputPrice = '';
 			mOutputPrice = '';
+			mCachePrices = emptyCachePriceInputs();
+			mCacheErrors = {};
 			await load();
 			toast.success('모델이 추가되었습니다');
 		} catch (e) {
@@ -844,14 +987,29 @@
 		editingPrice = model;
 		editInputPrice = model.input_price_per_million ?? '';
 		editOutputPrice = model.output_price_per_million ?? '';
+		editCachePrices = cachePriceInputsFrom(model);
+		editCacheErrors = {};
 	}
 
 	async function savePrice() {
 		if (!editingPrice) return;
-		const prices = pricePayload(editInputPrice, editOutputPrice);
-		if (!prices) return;
+		const cache = changedCachePrices(editCachePrices, cachePriceInputsFrom(editingPrice));
+		editCacheErrors = cache.errors;
+		// Send only what changed. Lumen marks a model manual (clearing its models.dev metadata and
+		// blocking later imports) whenever an input/output key is present, so an untouched pair stays
+		// absent. When either side changed, both are sent to satisfy Lumen's pair rule.
+		const pairChanged =
+			editInputPrice.trim() !== (editingPrice.input_price_per_million ?? '') ||
+			editOutputPrice.trim() !== (editingPrice.output_price_per_million ?? '');
+		const prices = pairChanged ? pricePayload(editInputPrice, editOutputPrice) : {};
+		if (prices === undefined || Object.keys(cache.errors).length > 0) return;
+		const body = { ...prices, ...cache.values };
+		if (Object.keys(body).length === 0) {
+			editingPrice = null;
+			return;
+		}
 		try {
-			await api.patch(`/api/v1/chat/admin/models/${editingPrice.id}`, prices, token, projectId);
+			await api.patch(`/api/v1/chat/admin/models/${editingPrice.id}`, body, token, projectId);
 			editingPrice = null;
 			await load();
 			toast.success('모델 가격을 저장했습니다');
@@ -1635,6 +1793,28 @@
 				<input class={inputCls} inputmode="decimal" placeholder="입력 가격 (USD / 1M tokens)" bind:value={mInputPrice} />
 				<input class={inputCls} inputmode="decimal" placeholder="출력 가격 (USD / 1M tokens)" bind:value={mOutputPrice} />
 			</div>
+			{#if cachePricingAvailable}
+			<div class="mt-4 border-t border-[var(--color-line)] pt-4" role="group" aria-labelledby="model-create-cache-heading" data-testid="model-create-cache-prices">
+				<p id="model-create-cache-heading" class="text-xs font-semibold text-[var(--color-ink-1)]">프롬프트 캐시 단가 (선택)</p>
+				<p class="mt-1 text-xs leading-relaxed text-[var(--color-ink-2)]">
+					입력·출력 가격과 별도로 항목마다 저장합니다. 비워 둔 항목의 캐시 토큰은 단가를 설정할 때까지 0 USD로 청구하며 LiteLLM·models.dev 기본 단가로 대체하지 않습니다.
+				</p>
+				<div class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+					{#each CACHE_PRICE_FIELDS as field (field.key)}
+						<Field label={field.label} for="model-create-cache-{field.slug}" help="USD / 1M tokens" error={mCacheErrors[field.key]}>
+							<TextInput
+								id="model-create-cache-{field.slug}"
+								inputmode="decimal"
+								placeholder="예: 0.3"
+								bind:value={mCachePrices[field.key]}
+								ariaInvalid={Boolean(mCacheErrors[field.key])}
+								oninput={(event) => (mCacheErrors = recheckCachePrice(mCacheErrors, field.key, (event.currentTarget as HTMLInputElement).value))}
+							/>
+						</Field>
+					{/each}
+				</div>
+			</div>
+			{/if}
 			<div class="mt-3 flex justify-end">
 				<Button onclick={addModel} disabled={addingModel || providers.length === 0}>
 					{addingModel ? '추가 중…' : '+ 모델 추가'}
@@ -1697,6 +1877,19 @@
 							<div class="mt-1 text-xs text-[var(--color-ink-2)]">
 								입력 {formatPricePerMillion(m.effective_input_price_per_million)} · 출력 {formatPricePerMillion(m.effective_output_price_per_million)} USD / 1M tokens
 							</div>
+							{#if !cachePricingSupported(m)}
+								<div class="mt-0.5 text-xs text-[var(--color-ink-2)]" data-testid="model-cache-prices">
+									캐시 단가 미지원 · 이 Lumen 버전은 캐시 단가를 받지 않습니다
+								</div>
+							{:else if cachePriceState(m) === 'none'}
+								<div class="mt-0.5 text-xs text-[var(--color-ink-2)]" data-testid="model-cache-prices">
+									캐시 단가 미설정 · 캐시 토큰은 단가를 설정할 때까지 0 USD로 청구됩니다
+								</div>
+							{:else}
+								<div class="mt-0.5 text-xs tabular-nums text-[var(--color-ink-2)]" data-testid="model-cache-prices">
+									캐시 읽기 {formatCachePrice(m.cache_read_price_per_million)} · 캐시 쓰기 5분 {formatCachePrice(m.cache_write_price_per_million)} · 캐시 쓰기 1시간 {formatCachePrice(m.cache_write_1h_price_per_million)} USD / 1M tokens{cachePriceState(m) === 'partial' ? ' · 미설정 항목은 0 USD로 청구' : ''}
+								</div>
+							{/if}
 						</div>
 						</div>
 						<div class="flex flex-wrap items-center justify-end gap-x-3 gap-y-2 border-t border-[var(--color-line)] pt-3 text-xs sm:shrink-0 sm:border-t-0 sm:pt-0">
@@ -1716,13 +1909,39 @@
 
 	{#if section === 'models'}
 	<Modal open={editingPrice !== null} onClose={() => (editingPrice = null)} ariaLabel="모델 가격 수정">
-		<div class="w-[min(32rem,calc(100vw-2rem))] rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-5 shadow-[var(--shadow-restraint)]">
+		<div class="max-h-[calc(100vh-2rem)] w-[min(32rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-5 shadow-[var(--shadow-restraint)]">
 			<h3 class="text-base font-semibold text-[var(--color-ink-1)]">모델 가격 수정</h3>
-			<p class="mt-1 text-sm text-[var(--color-ink-3)]">두 가격을 함께 저장하거나 모두 비우면 LiteLLM 기본 가격을 사용합니다.</p>
+			<p class="mt-1 text-sm text-[var(--color-ink-2)]">입력·출력 가격은 함께 저장하거나 모두 비우면 LiteLLM 기본 가격을 사용합니다.</p>
 			<div class="mt-4 grid gap-3 sm:grid-cols-2">
-				<input class={inputCls} inputmode="decimal" placeholder="입력 USD / 1M tokens" bind:value={editInputPrice} />
-				<input class={inputCls} inputmode="decimal" placeholder="출력 USD / 1M tokens" bind:value={editOutputPrice} />
+				<Field label="입력" for="model-edit-input-price">
+					<TextInput id="model-edit-input-price" inputmode="decimal" placeholder="USD / 1M tokens" bind:value={editInputPrice} />
+				</Field>
+				<Field label="출력" for="model-edit-output-price">
+					<TextInput id="model-edit-output-price" inputmode="decimal" placeholder="USD / 1M tokens" bind:value={editOutputPrice} />
+				</Field>
 			</div>
+			{#if editingPrice && cachePricingSupported(editingPrice)}
+			<div class="mt-4 border-t border-[var(--color-line)] pt-4" role="group" aria-labelledby="model-edit-cache-heading">
+				<p id="model-edit-cache-heading" class="text-sm font-semibold text-[var(--color-ink-1)]">프롬프트 캐시 단가 (선택)</p>
+				<p class="mt-1 text-xs leading-relaxed text-[var(--color-ink-2)]">
+					항목마다 따로 저장하며 입력·출력 가격과 함께 입력할 필요가 없습니다. 비우고 저장하면 해당 단가를 지우고, 그 캐시 토큰은 다시 설정할 때까지 0 USD로 청구됩니다. LiteLLM·models.dev 기본 단가로 대체하지 않습니다.
+				</p>
+				<div class="mt-3 grid gap-3 sm:grid-cols-3">
+					{#each CACHE_PRICE_FIELDS as field (field.key)}
+						<Field label={field.label} for="model-edit-cache-{field.slug}" help="USD / 1M tokens" error={editCacheErrors[field.key]}>
+							<TextInput
+								id="model-edit-cache-{field.slug}"
+								inputmode="decimal"
+								placeholder="예: 0.3"
+								bind:value={editCachePrices[field.key]}
+								ariaInvalid={Boolean(editCacheErrors[field.key])}
+								oninput={(event) => (editCacheErrors = recheckCachePrice(editCacheErrors, field.key, (event.currentTarget as HTMLInputElement).value))}
+							/>
+						</Field>
+					{/each}
+				</div>
+			</div>
+			{/if}
 			<div class="mt-5 flex justify-end gap-2">
 				<Button variant="secondary" onclick={() => (editingPrice = null)}>취소</Button>
 				<Button onclick={savePrice}>저장</Button>
@@ -1733,8 +1952,9 @@
 	<Modal bind:open={modelsDevOpen} ariaLabel="models.dev 추천 가격">
 		<div class="max-h-[calc(100vh-2rem)] w-[min(48rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-5 shadow-[var(--shadow-restraint)]">
 			<h3 class="text-base font-semibold text-[var(--color-ink-1)]">models.dev 추천 가격</h3>
-			<p class="mt-1 text-sm text-[var(--color-ink-3)]">
+			<p class="mt-1 text-sm text-[var(--color-ink-2)]">
 				<a class="underline" href="https://models.dev" target="_blank" rel="noreferrer">models.dev</a>의 기본 input/output 단가만 적용합니다. 수동 확정 가격은 덮어쓰지 않습니다.
+				캐시 단가는 가져오지 않으므로 각 모델의 <strong class="font-medium text-[var(--color-ink-1)]">가격 수정</strong>에서 직접 설정하세요.
 			</p>
 			{#if modelsDevError}<Alert tone="warning" class="mt-3">{modelsDevError}</Alert>{/if}
 			<div class="mt-4 space-y-3">
@@ -1796,7 +2016,7 @@
 							{#if modelsDevSelections[model.id]}
 								{@const selected = modelsDevModels.find((external) => external.id === modelsDevSelections[model.id])}
 								{#if selected && selected.unsupported_price_fields.length > 0}
-									<Alert tone="warning" class="mt-2">tier/cache/reasoning/audio 단가는 적용하지 않습니다: {selected.unsupported_price_fields.join(', ')}</Alert>
+									<Alert tone="warning" class="mt-2">tier/cache/reasoning/audio 단가는 적용하지 않습니다: {selected.unsupported_price_fields.join(', ')}. 캐시 단가는 적용 후 가격 수정에서 설정할 수 있습니다.</Alert>
 								{/if}
 							{/if}
 						</div>

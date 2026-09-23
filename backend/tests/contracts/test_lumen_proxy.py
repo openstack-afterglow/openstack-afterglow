@@ -505,6 +505,92 @@ async def test_subscription_auth_proxy_preserves_safe_error_and_no_store(api_cli
     assert response.json() == error_body
 
 
+_CACHE_PRICED_MODEL = {
+    "id": 3,
+    "provider_id": 1,
+    "model_name": "anthropic/claude-test",
+    "input_price_per_million": "3",
+    "output_price_per_million": "15",
+    "cache_read_price_per_million": "0.3",
+    "cache_write_price_per_million": "3.75",
+    "cache_write_1h_price_per_million": None,
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method", "path", "body", "status_code", "response_body"),
+    [
+        (
+            "POST",
+            "/api/v1/chat/admin/models",
+            {
+                "provider_id": 1,
+                "model_name": "anthropic/claude-test",
+                "display_name": None,
+                "input_price_per_million": None,
+                "output_price_per_million": None,
+                "cache_read_price_per_million": "0.3",
+            },
+            201,
+            _CACHE_PRICED_MODEL,
+        ),
+        (
+            "PATCH",
+            "/api/v1/chat/admin/models/3",
+            {
+                "input_price_per_million": "3",
+                "output_price_per_million": "15",
+                "cache_read_price_per_million": None,
+                "cache_write_price_per_million": "3.75",
+                "cache_write_1h_price_per_million": None,
+            },
+            200,
+            _CACHE_PRICED_MODEL,
+        ),
+        ("GET", "/api/v1/chat/admin/models", None, 200, [_CACHE_PRICED_MODEL]),
+    ],
+)
+async def test_admin_model_routes_forward_cache_price_fields_byte_exact(
+    api_client,
+    method,
+    path,
+    body,
+    status_code,
+    response_body,
+):
+    """The BFF has no model schema: optional cache prices, including explicit nulls, pass through."""
+    app.dependency_overrides[get_token_info] = _authenticated
+    request_bytes = json.dumps(body).encode() if body is not None else b""
+    response_bytes = json.dumps(response_body).encode()
+    received = []
+
+    async def handler(request):
+        received.append((request.method, request.url.path, await request.aread()))
+        return HttpxResponse(
+            status_code,
+            headers={"content-type": "application/json"},
+            stream=httpx.ByteStream(response_bytes),
+        )
+
+    upstream = AsyncClient(transport=httpx.MockTransport(handler))
+    with (
+        patch("app.services.service_proxy._get_internal_endpoint", return_value="http://isolated.test/v1"),
+        patch("app.services.service_proxy.httpx.AsyncClient", return_value=upstream),
+    ):
+        request_kwargs = (
+            {"content": request_bytes, "headers": {"content-type": "application/json"}} if body is not None else {}
+        )
+        response = await api_client.request(method, path, **request_kwargs)
+
+    assert response.status_code == status_code
+    assert response.content == response_bytes
+    forwarded_method, forwarded_path, forwarded_bytes = received.pop()
+    assert forwarded_method == method
+    assert forwarded_path == f"/v1{path.removeprefix('/api/v1/chat')}"
+    assert forwarded_bytes == request_bytes
+
+
 @pytest.mark.asyncio
 async def test_lumen_proxy_unavailable_catalog_503(api_client):
     app.dependency_overrides[get_token_info] = _authenticated

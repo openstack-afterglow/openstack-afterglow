@@ -199,7 +199,7 @@ export interface ChatConversationTitleMetadata {
 }
 export interface UsageComponent {
 	segment_id: string;
-	kind: 'input_tokens' | 'output_tokens' | 'cached_input_tokens' | 'reasoning_tokens' | 'embedding_tokens' | 'web_search_requests' | 'web_search_context' | 'web_fetch_requests' | 'web_fetch_context' | 'advisor_input_tokens' | 'advisor_output_tokens' | 'image_units' | 'audio_input_seconds' | 'audio_output_seconds' | 'video_seconds' | 'sandbox_seconds' | 'provider_adjustment';
+	kind: 'input_tokens' | 'output_tokens' | 'cached_input_tokens' | 'cache_read_input_tokens' | 'cache_creation_5m_input_tokens' | 'cache_creation_1h_input_tokens' | 'reasoning_tokens' | 'embedding_tokens' | 'web_search_requests' | 'web_search_context' | 'web_fetch_requests' | 'web_fetch_context' | 'advisor_input_tokens' | 'advisor_output_tokens' | 'advisor_cache_read_tokens' | 'advisor_cache_creation_5m_tokens' | 'advisor_cache_creation_1h_tokens' | 'image_units' | 'audio_input_seconds' | 'audio_output_seconds' | 'video_seconds' | 'sandbox_seconds' | 'provider_adjustment';
 	quantity: string;
 	unit: 'token' | 'request' | 'context' | 'image' | 'second' | 'usd';
 	unit_price_usd: string;
@@ -498,7 +498,7 @@ function decimal(value: unknown, label: string, negative = false): string {
 function usageComponent(value: unknown): UsageComponent {
 	const component = record(value, 'usage component');
 	exact(component, ['segment_id', 'kind', 'quantity', 'unit', 'unit_price_usd', 'cost_usd', 'source', 'model_name', 'metadata'], 'usage component');
-	const kind = enumValue(component.kind, ['input_tokens', 'output_tokens', 'cached_input_tokens', 'reasoning_tokens', 'embedding_tokens', 'web_search_requests', 'web_search_context', 'web_fetch_requests', 'web_fetch_context', 'advisor_input_tokens', 'advisor_output_tokens', 'image_units', 'audio_input_seconds', 'audio_output_seconds', 'video_seconds', 'sandbox_seconds', 'provider_adjustment'] as const, 'usage kind');
+	const kind = enumValue(component.kind, ['input_tokens', 'output_tokens', 'cached_input_tokens', 'cache_read_input_tokens', 'cache_creation_5m_input_tokens', 'cache_creation_1h_input_tokens', 'reasoning_tokens', 'embedding_tokens', 'web_search_requests', 'web_search_context', 'web_fetch_requests', 'web_fetch_context', 'advisor_input_tokens', 'advisor_output_tokens', 'advisor_cache_read_tokens', 'advisor_cache_creation_5m_tokens', 'advisor_cache_creation_1h_tokens', 'image_units', 'audio_input_seconds', 'audio_output_seconds', 'video_seconds', 'sandbox_seconds', 'provider_adjustment'] as const, 'usage kind');
 	const metadata = record(component.metadata, 'usage metadata');
 	const safeMetadata: Record<string, string | number | boolean | null> = {};
 	for (const [key, item] of Object.entries(metadata)) {

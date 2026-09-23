@@ -413,6 +413,7 @@ describe("admin chat model pricing", () => {
         {
           input_price_per_million: "3",
           output_price_per_million: "9",
+          // The editor sends only changed keys; untouched cache prices stay absent.
         },
         "token",
         "project",
