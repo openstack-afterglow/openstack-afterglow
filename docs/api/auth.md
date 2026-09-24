@@ -197,6 +197,8 @@ access JWT와 refresh JWT를 발급합니다. 이후 인증이 필요한 모든 
 현재 세션을 로그아웃합니다. refresh 세션 삭제 + Keystone 토큰 revoke + 검증/세션
 캐시 무효화를 수행합니다.
 
+브라우저는 진행 중인 refresh 또는 서버 폐기 요청이 실패해도 로컬 로그아웃을 완료합니다. 서버 폐기 확인에 실패했다면 성공으로 숨기지 않고 이 기기에서만 로그아웃했음을 알립니다.
+
 ### 응답 (200 OK)
 
 ```json
@@ -227,6 +229,10 @@ refresh 토큰으로 인증합니다.
 | 상태 코드 | 설명 |
 |-----------|------|
 | `401` | 유효하지 않은 refresh 토큰 / 세션 만료 / 세션 차단(블랙리스트) |
+| `429` | 갱신 요청 제한; 브라우저는 Retry-After cooldown을 적용 |
+| `503` | Redis/Keystone 연결·검증 장애; 현재 요청은 거부하고 세션은 재시도를 위해 보존 |
+
+Keystone가 token authentication에서 반환하는 `404 Failed to validate token`과 `404 Could not recognize Fernet token`은 무효 token으로 분류해 `401`로 변환합니다. 일반 endpoint/resource 404는 인증 무효를 확정하지 못하므로 `503`입니다. 브라우저는 background refresh의 401에도 인증을 정리해 로그인으로 이동하고, 503/네트워크 실패에는 재시도·로그아웃을 제공하는 지속적인 인증 복구 dialog를 표시합니다. 서비스의 일반 resource 오류는 이 전역 인증 상태로 승격하지 않습니다.
 
 ---
 

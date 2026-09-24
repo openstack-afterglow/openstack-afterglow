@@ -37,7 +37,7 @@ export function startSessionRefreshLifecycle({
 		}
 
 		void refreshSession().catch(() => {
-			// Request-driven recovery owns terminal auth; transient failures retry later.
+			// The shared refresh coordinator publishes recovery UI or clears terminal auth.
 		});
 	};
 

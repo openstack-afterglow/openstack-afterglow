@@ -505,6 +505,46 @@ async def test_subscription_auth_proxy_preserves_safe_error_and_no_store(api_cli
     assert response.json() == error_body
 
 
+@pytest.mark.asyncio
+async def test_provider_discovery_preserves_safe_failure_without_session_unauthorized(api_client):
+    """Provider-key rejection is not a browser session 401 or a successful fallback list."""
+    app.dependency_overrides[get_token_info] = _authenticated
+    body = {
+        "provider_id": 7,
+        "models": [],
+        "source": "none",
+        "fetched_at": "2026-09-23T00:00:00Z",
+        "live_status": "error",
+        "complete": False,
+        "error": {
+            "code": "discovery_invalid_key",
+            "message": "프로바이더 API 키가 유효하지 않습니다",
+            "retryable": False,
+        },
+        "candidates": [],
+    }
+
+    def handler(request):
+        assert request.url.path == "/v1/admin/providers/7/available-models"
+        assert request.headers["x-auth-token"] == "caller-token"
+        return HttpxResponse(
+            200,
+            headers={"content-type": "application/json", "cache-control": "no-store"},
+            stream=httpx.ByteStream(json.dumps(body).encode()),
+        )
+
+    upstream = AsyncClient(transport=httpx.MockTransport(handler))
+    with (
+        patch("app.services.service_proxy._get_internal_endpoint", return_value="http://isolated.test/v1"),
+        patch("app.services.service_proxy.httpx.AsyncClient", return_value=upstream),
+    ):
+        response = await api_client.get("/api/v1/chat/admin/providers/7/available-models")
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert response.json() == body
+
+
 _CACHE_PRICED_MODEL = {
     "id": 3,
     "provider_id": 1,

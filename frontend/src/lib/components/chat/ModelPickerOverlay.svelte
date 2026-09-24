@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { AvailableModel } from '$lib/api/chatTree';
 	import Button from '$lib/components/ui/Button.svelte';
+	import Alert from '$lib/components/ui/Alert.svelte';
 	import { toast } from '$lib/stores/toast';
 	import ModelCapabilityBadges from './ModelCapabilityBadges.svelte';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
@@ -11,8 +12,11 @@
 		value: string;
 		onSelect: (modelName: string) => void;
 		onClose: () => void;
+		onRefresh?: () => void;
+		refreshing?: boolean;
+		refreshError?: string;
 	}
-	let { open, models, value, onSelect, onClose }: Props = $props();
+	let { open, models, value, onSelect, onClose, onRefresh, refreshing = false, refreshError = '' }: Props = $props();
 
 	let query = $state('');
 	let activeProvider = $state<string | null>(null);
@@ -103,10 +107,18 @@
 	>
 		<header class="head">
 			<h2>모델 선택</h2>
+			{#if onRefresh}
+				<Button variant="secondary" size="sm" onclick={onRefresh} disabled={refreshing}>
+					{refreshing ? '갱신 중…' : '목록 새로고침'}
+				</Button>
+			{/if}
 			<button type="button" class="close" onclick={onClose} aria-label="닫기">
 				<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 6L6 18M6 6l12 12" stroke-linecap="round" /></svg>
 			</button>
 		</header>
+		{#if refreshError}
+			<Alert tone="danger" class="mx-4 mb-2">{refreshError}</Alert>
+		{/if}
 
 		<div class="search">
 			<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" stroke-linecap="round" /></svg>

@@ -228,6 +228,8 @@ docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml 
 docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml --profile monitoring up -d
 ```
 
+Lumen migration이 `ModuleNotFoundError: lumen_plugin_api`로 SQL 실행 전에 종료되면 sibling Lumen의 workspace dependency/lock/runtime source가 일치하는 이미지인지 확인합니다. 현재 Lumen Docker build는 `uv sync --locked`와 최종 non-root runtime의 migration CLI import 검사를 수행합니다. 컨테이너에 임시 package를 설치하거나 migration ledger/volume을 삭제하지 말고, `lumen-api`/`lumen-worker`를 중지하고 local schema를 백업한 뒤 source build → migration → API/worker 시작 순서로 복구합니다. `npm run services:up`은 같은 dev manifest와 project를 사용해 전체 local readiness를 확인합니다.
+
 ### 로컬 서비스 포트와 경계
 
 | 서비스 | Loopback port | 확인 경로 | 비고 |

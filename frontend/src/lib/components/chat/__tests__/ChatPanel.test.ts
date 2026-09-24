@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
 import { auth } from '$lib/stores/auth';
 import { parseChatRunEvent } from '$lib/api/chatContracts';
+import { invalidateChatModels } from '$lib/stores/chatModels';
 import ChatPanel from '../ChatPanel.svelte';
 
 const mocks = vi.hoisted(() => ({
@@ -147,6 +148,75 @@ beforeEach(() => {
 });
 
 describe('ChatPanel', () => {
+	it('refreshes an opened picker after invalidation without replacing a valid selection', async () => {
+		const fallback = mocks.get.getMockImplementation()!;
+		let catalog = [{ id: 1, model_name: 'model-1', display_name: 'Model 1' }];
+		mocks.get.mockImplementation((path: string, ...args: unknown[]) =>
+			path === '/api/v1/chat/models' ? Promise.resolve(catalog) : fallback(path, ...args));
+		render(ChatPanel);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Model 1' }));
+		catalog = [{ id: 2, model_name: 'new-opaque-id', display_name: 'New model' }, ...catalog];
+		invalidateChatModels();
+		expect(await screen.findByText('New model')).toBeTruthy();
+		catalog = [{ id: 4, model_name: 'another-opaque-id', display_name: 'Another new model' }, ...catalog];
+		await fireEvent.click(screen.getByRole('button', { name: '목록 새로고침' }));
+		expect(await screen.findByText('Another new model')).toBeTruthy();
+		await fireEvent.keyDown(document, { key: 'Escape' });
+		expect(screen.getByRole('button', { name: 'Model 1' })).toBeTruthy();
+	});
+
+	it('rejects late catalog responses and preserves the current model after a refresh failure', async () => {
+		const fallback = mocks.get.getMockImplementation()!;
+		let resolveOld!: (value: unknown) => void;
+		let mode = 'initial';
+		mocks.get.mockImplementation((path: string, ...args: unknown[]) => {
+			if (path !== '/api/v1/chat/models') return fallback(path, ...args);
+			if (mode === 'pending') return new Promise((resolve) => { resolveOld = resolve; });
+			if (mode === 'failed') return Promise.reject(new Error('unavailable'));
+			return Promise.resolve([{ id: 1, model_name: 'model-1', display_name: mode === 'fresh' ? 'Fresh model' : 'Model 1' }]);
+		});
+		render(ChatPanel);
+		await screen.findByRole('button', { name: 'Model 1' });
+		mode = 'pending';
+		await fireEvent(window, new Event('focus'));
+		mode = 'fresh';
+		invalidateChatModels();
+		await screen.findByRole('button', { name: 'Fresh model' });
+		resolveOld([{ id: 3, model_name: 'obsolete', display_name: 'Obsolete model' }]);
+		await tick();
+		expect(screen.queryByRole('button', { name: 'Obsolete model' })).toBeNull();
+		mode = 'failed';
+		await fireEvent(window, new Event('focus'));
+		await tick();
+		expect(screen.getByRole('button', { name: 'Fresh model' })).toBeTruthy();
+	});
+
+	it('selects an available replacement on visible refresh and fences old project responses', async () => {
+		const fallback = mocks.get.getMockImplementation()!;
+		let catalog = [{ id: 1, model_name: 'model-1', display_name: 'Model 1' }];
+		let resolveOld!: (value: unknown) => void;
+		let pending = false;
+		mocks.get.mockImplementation((path: string, requestToken: string, project: string) => {
+			if (path !== '/api/v1/chat/models') return fallback(path, requestToken, project);
+			if (pending && project === 'project-1') return new Promise((resolve) => { resolveOld = resolve; });
+			return Promise.resolve(catalog);
+		});
+		render(ChatPanel);
+		await screen.findByRole('button', { name: 'Model 1' });
+		catalog = [{ id: 2, model_name: 'model-2', display_name: 'Model 2' }];
+		await fireEvent(document, new Event('visibilitychange'));
+		await screen.findByRole('button', { name: 'Model 2' });
+		pending = true;
+		await fireEvent(window, new Event('focus'));
+		catalog = [{ id: 3, model_name: 'model-3', display_name: 'Other project model' }];
+		auth.update((state) => ({ ...state, projectId: 'project-2' }));
+		await screen.findByRole('button', { name: 'Other project model' });
+		resolveOld([{ id: 1, model_name: 'model-1', display_name: 'Old project model' }]);
+		await tick();
+		expect(screen.getByRole('button', { name: 'Other project model' })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'Old project model' })).toBeNull();
+	});
+
 	it('recalculates active context when Search is enabled and disabled', async () => {
 		const fallback = mocks.get.getMockImplementation()!;
 		mocks.get.mockImplementation(async (path: string, ...args: unknown[]) => {

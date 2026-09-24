@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from drover_sdk.proxy import Proxy as DroverProxy
 from keystoneauth1 import session as ks_session
+from keystoneauth1.exceptions.http import NotFound, Unauthorized
 from keystoneauth1.identity import v3
 from waygate_sdk.proxy import Proxy as WaygateProxy
 
@@ -244,7 +245,17 @@ def validate_token(token: str, project_id: str = "") -> dict:
 
     auth_plugin = v3.Token(**kwargs)
     sess = ks_session.Session(auth=auth_plugin, timeout=30, verify=settings.ssl_verify)
-    access = auth_plugin.get_access(sess)
+    try:
+        access = auth_plugin.get_access(sess)
+    except NotFound as exc:
+        # TokenNotFound also covers unreadable/expired Fernet tokens. Do not
+        # mistake an arbitrary endpoint/proxy 404 for invalid credentials.
+        if exc.message.partition(" (HTTP ")[0] in {
+            "Failed to validate token",
+            "Could not recognize Fernet token",
+        }:
+            raise Unauthorized(message="Invalid Keystone token", request_id=exc.request_id) from exc
+        raise
 
     return {
         "token": access.auth_token,

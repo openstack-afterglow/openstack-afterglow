@@ -336,6 +336,16 @@ Anthropic 스트리밍은 client가 열린 상태에서 `client.messages.stream(
 - `max_tokens` 상한은 서버 정책을 따른다. 폐기된 키는 인증에 사용할 수 없다.
 - Discovery의 공개 주소는 SDK 연결 설정이며, health 응답만으로 모델/provider 실행 성공을 판정하지 않는다.
 
+### 모델 발견·검토·등록
+
+관리자 `GET /api/v1/chat/admin/providers/{provider_id}/available-models`는 Lumen의 동일 `/v1/admin/providers/...` 응답을 그대로 전달한다. `models`·`source` 외에 `provider_id`, `fetched_at`, `live_status`, `complete`, safe `error`, 최소 `candidates` metadata를 반환한다. 정상 빈 live 응답은 그대로 유지한다. Live 실패·한도 초과·중간 페이지 실패에는 정적 fallback이나 부분 목록을 주지 않으며, 정적 후보는 미지원 인증/설정에서만 제공한다. 발견된 ID는 가격·고급 capability·추론 성공을 보증하지 않는다. Discovery는 등록된 모델이나 가격을 수정하지 않는다.
+
+신규 후보는 선택 후 provider·ID·표시명과 수동 입력/출력 가격을 검토해 기존 `POST /api/v1/chat/admin/models`로 등록한다. 두 가격을 명시한 경우 등록·활성화할 수 있고, 미확인은 `is_active:false`로 저장한 뒤 기존 가격 수정 또는 models.dev 명시적 mapping을 거쳐 활성화한다. 수동 ID 입력과 독립 optional cache 단가도 유지한다. 알 수 없는 가격은 Lumen admission에서 차단하고 다른 모델의 가격·기능을 이름 유사성으로 추정하지 않는다. API context/token limit은 검토 참고 정보이며 고급 기능 override를 자동 생성하지 않는다.
+
+Discovery 응답은 generation, provider, token/project와 화면 수명으로 격리한다. 순차 등록은 시작 시 provider·credential scope·모델 선택을 고정하며 provider/scope 전환 후 남은 등록을 중단한다. 오래된 성공·실패·finally가 새 provider의 목록·선택·loading을 바꾸지 않는다. 일부 등록 실패는 성공 항목과 구분한다.
+
+관리자 모델 변경 후 `chatModels.ts`가 같은 탭과 BroadcastChannel을 통해 목록 무효화 신호만 보낸다(credential·model payload 저장 없음). 열린 `ChatPanel`은 이 신호와 focus/visible/online 복귀, 모델 선택기의 **목록 새로고침**으로 active 목록을 다시 읽고 유효한 선택을 보존한다. 사라진 선택만 저장된 유효 모델 또는 첫 가용 모델로 대체한다. 세대·token/project fence가 늦은 응답을 버리고 일시적 조회 실패는 현재 목록을 비우지 않으며 선택기 안에서 오류와 재시도를 제공한다.
+
 ### 관리자 quota·사용량·provider 결제 화면
 
 `/admin/chat/quotas`는 Lumen quota envelope의 시스템 기본 월 한도와 각 사용자 개인 override를 분리해 표시한다. `기본값 복원`은 해당 지갑의 월·주간 설정만 `NULL` 상속 상태로 되돌리며 과거 usage ledger를 삭제하지 않는다. 독립 주간 ceiling이 없으면 **월 한도 내 무제한**으로 표시하지만 Lumen 월 admission은 계속 강제된다. 상단 환산 안내는 Lumen이 반환한 `credit_per_usd`, `usd_per_credit`, 공식 formula를 사용하므로 frontend 상수가 아니다.

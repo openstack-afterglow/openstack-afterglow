@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
+	import { onChatModelsInvalidated } from '$lib/stores/chatModels';
 	import { api, ApiError } from '$lib/api/client';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
@@ -137,6 +138,10 @@
 	let contextCause = $state<ContextUpdatedPayload['cause']>(null);
 	let manualCompacting = $state(false);
 	let models = $state<AvailableModel[]>([]);
+	let modelsRefreshing = $state(false);
+	let modelsError = $state('');
+	let modelRequestGeneration = 0;
+	let modelScope = '';
 	let selectedModel = $state('');
 	let effort = $state('auto'); // auto=provider 기본, none=명시적 비활성.
 	let searchEnabled = $state(false);
@@ -344,6 +349,7 @@
 
 	onMount(() => {
 		const reconcile = () => {
+			void loadModels();
 			void refreshServerRunSnapshot();
 			void refreshConversationsMetadata();
 			checkAndStartPendingTitlePolling();
@@ -359,7 +365,9 @@
 		window.addEventListener('focus', reconcile);
 		window.addEventListener('online', reconcile);
 		document.addEventListener('visibilitychange', onVisibility);
+		const stopModelInvalidation = onChatModelsInvalidated(() => void loadModels());
 		return () => {
+			stopModelInvalidation();
 			window.removeEventListener('focus', reconcile);
 			window.removeEventListener('online', reconcile);
 			document.removeEventListener('visibilitychange', onVisibility);
@@ -845,22 +853,32 @@
 		return api.get<Conversation[]>(`/api/v1/chat/conversations/search?${params}`, token, projectId);
 	}
 	async function loadModels() {
-		if (!token || !projectId) return;
+		const generation = ++modelRequestGeneration;
+		const requestToken = token;
+		const requestProject = projectId;
+		if (!requestToken || !requestProject || destroyed) return;
+		modelsRefreshing = true;
+		modelsError = '';
 		try {
-			models = await api.get<AvailableModel[]>('/api/v1/chat/models', token, projectId);
-			if (!selectedModel && models.length) {
-				// 새 채팅은 마지막에 선택한 모델로 시작(localStorage). 없으면 첫 모델.
+			const loaded = await api.get<AvailableModel[]>('/api/v1/chat/models', requestToken, requestProject);
+			if (destroyed || generation !== modelRequestGeneration || token !== requestToken || projectId !== requestProject) return;
+			models = loaded;
+			if (!models.some((model) => model.model_name === selectedModel)) {
 				let last: string | null = null;
 				try {
 					last = typeof localStorage !== 'undefined' ? localStorage.getItem(_LAST_MODEL_KEY) : null;
 				} catch {
-					last = null;
+					// Browser storage is optional.
 				}
-				selectedModel =
-					last && models.some((m) => m.model_name === last) ? last : models[0].model_name;
+				selectedModel = last && models.some((model) => model.model_name === last)
+					? last : models[0]?.model_name ?? '';
 			}
 		} catch {
-			models = [];
+			if (!destroyed && generation === modelRequestGeneration && token === requestToken && projectId === requestProject) {
+				modelsError = '모델 목록을 갱신하지 못했습니다. 목록 새로고침으로 다시 시도하세요.';
+			}
+		} finally {
+			if (!destroyed && generation === modelRequestGeneration && token === requestToken && projectId === requestProject) modelsRefreshing = false;
 		}
 	}
 	function normalizeMessagePage(page: MessagesResponse): MessagesResponse {
@@ -2333,6 +2351,14 @@
 		untrack(() => {
 			invalidateContextPreview();
 			teardownAllTitlePolling();
+			const scope = `${$auth.userId ?? ''}:${projectId ?? ''}`;
+			if (!token || scope !== modelScope) {
+				models = [];
+				selectedModel = '';
+				modelsRefreshing = false;
+				modelsError = '';
+				modelScope = scope;
+			}
 			void (async () => {
 				await Promise.allSettled([restoreInitialSelection(), loadModels(), loadUsage()]);
 				// 보조: 에이전트·프로젝트·확장(tool/MCP/skill)은 초기 버스트에서 제외해 풀 경합 완화.
@@ -2596,6 +2622,9 @@
 	value={activeModelName}
 	onSelect={chooseModel}
 	onClose={() => (modelPickerOpen = false)}
+	onRefresh={() => void loadModels()}
+	refreshing={modelsRefreshing}
+	refreshError={modelsError}
 />
 
 <style>

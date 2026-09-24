@@ -43,6 +43,8 @@
 			onclick={close}
 			aria-label="대화상자 닫기"
 			tabindex={dismissible ? 0 : -1}
+			disabled={!dismissible}
+			aria-hidden={!dismissible}
 		></button>
 		<div class="relative z-[1] max-h-full max-w-full overflow-y-auto">
 			{@render children()}

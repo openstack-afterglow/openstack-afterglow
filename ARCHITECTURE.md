@@ -93,7 +93,7 @@ graph LR
 
 1. `POST /api/v1/auth/login`이 Keystone credential을 검증하고 Afterglow access/refresh JWT 쌍을 반환한다.
 2. Keystone token과 refresh-JTI에 묶인 session/검증 정보는 Redis에 둔다. 브라우저 `localStorage`의 JWT는 Redis Keystone session의 복제본이 아니다.
-3. `frontend/src/lib/api/client.ts`의 `fetchWithAuth`와 XHR 공통 복구 정책은 만료 120초 이내 인증 요청을 보내기 전에 `/api/v1/auth/refresh`를 coalesce하고 진행 중 회전을 기다린다. JSON·채팅/SSE handshake·첨부·업로드/다운로드는 401 직후 갱신하거나 이미 회전한 live token으로 한 번만 재시도하며, 소비 중인 스트림은 재실행하지 않는다. `sessionRefreshLifecycle.ts`는 mount/focus/visible 복귀 때 즉시 만료를 확인하고 60초 보조 주기를 유지한다. terminal 401이면 auth를 비우고 `/login`으로 이동하지만 refresh 503/429/network는 세션과 기존 cooldown을 보존한다. logout은 revocation fence를 유지하고 caller 취소는 공유 refresh를 취소하지 않는다.
+3. `frontend/src/lib/api/client.ts`의 `fetchWithAuth`와 XHR 공통 복구 정책은 만료 120초 이내 인증 요청을 보내기 전에 `/api/v1/auth/refresh`를 coalesce하고 진행 중 회전을 기다린다. JSON·채팅/SSE handshake·첨부·업로드/다운로드는 401 직후 갱신하거나 이미 회전한 live token으로 한 번만 재시도하며, 소비 중인 스트림은 재실행하지 않는다. `sessionRefreshLifecycle.ts`는 mount/focus/visible 복귀 때 즉시 만료를 확인하고 60초 보조 주기를 유지한다. Background refresh의 terminal 401도 auth를 비우고 `/login`으로 이동한다. Keystone의 token-specific `Failed to validate token` 또는 `Could not recognize Fernet token` 404는 adapter에서 Unauthorized로 정규화하며 일반 404·연결 장애는 503을 유지한다. Refresh 또는 `/auth/me`의 retryable 실패는 token에 묶인 비영속 `authRecovery`와 blocking root dialog로 드러내며, mounted 페이지의 작성 내용과 자격 증명을 보존하고 기존 cooldown 이후 재시도 또는 명시적 logout을 제공한다. 성공·identity 변경은 gate를 해제하고 오래된 실패는 새 로그인을 덮어쓰지 않는다. Logout은 진행 중인 refresh가 실패해도 로컬 정리를 완료하고 서버 폐기 미확인은 경고한다. 서비스·데이터 소유권과 TTL 구조는 바뀌지 않는다.
 4. `X-Project-Id`가 생략되면 JWT project를 사용한다. 다른 project로 전환할 때 서버가 허용한 rescope만 수행하며, project-scoped connection과 resource ownership을 다시 적용한다.
 
 ### 전역 Cloud Shell 승인·세션
@@ -168,6 +168,12 @@ Afterglow가 catalog service type 또는 `SERVICE_*_INTERNAL_URL`을 통해 endp
 네트워크 연결 모달은 `/api/v1/networks`에서 project-visible non-external network만 표시하고, 선택 즉시 `/api/v1/networks/{id}`의 subnet detail을 새로 읽어 이전 subnet 선택을 폐기한다. network와 subnet은 공통 `SearchSelect`로 고르고 단일 subnet은 자동 선택하며 0개면 submit을 비활성화한다. 제출 body는 `{network_id, subnet_id, nat_mode: "snat"}`로 명시적이다. Waygate는 해당 subnet으로 제한한 Neutron port를 만들고 그 `port_id`를 Nova에 attach하며, 실패 시 port/attachment를 rollback한다. 활성 CIDR은 agent SNAT와 새 client `.conf`의 `AllowedIPs`에 반영된다.
 
 새 gateway cloud-init callback은 operator가 제공한 `WAYGATE_PUBLIC_BASE_URL`을 컨테이너의 `WAYGATE_CALLBACK_BASE_URL`로 전달해 만든 direct Waygate `/v1/servers/{id}/agent/...` URL만 사용한다. route substring으로 BFF/direct 경로를 추론하지 않는다. API/worker는 빈 값, localhost, loopback/unspecified URL을 startup과 provisioning 전에 fail-closed 거부한다. Afterglow agent passthrough는 기존 baked VM 호환 경계다.
+
+### 신규 provider 모델 onboarding
+
+`ChatConfiguration`은 Lumen이 소유한 provider별 `available-models` 응답으로 live 성공·정상 empty·safe 실패·미지원을 구분한다. Live 실패·중간 페이지 실패·한도 초과에 정적 fallback이나 부분 후보를 제공하지 않으며 미지원 설정의 정적 목록만 참고용으로 표시한다. Discovery는 모델·가격·capability를 저장하지 않는다. 공개 ID·provider metadata·표시명과 수동 입력/출력 단가를 검토한 뒤 기존 CRUD로 등록·활성화하거나 비활성 저장한다. 정적 catalog 가격은 exact model entry만 인정하고 미확인은 native admission이 거부한다. 최신 모델명이나 유사 모델 가격·기능을 Afterglow에 hardcode하지 않는다.
+
+조회는 generation/provider/token/project/화면 수명 fence를 사용하고 순차 등록은 provider·선택 ID·인증 scope snapshot을 고정한다. `frontend/src/lib/stores/chatModels.ts`는 같은 탭 event와 BroadcastChannel 무효화 신호만 전달하며 credential·model payload를 저장하지 않는다. `ChatPanel.loadModels`는 신호·focus·visible·online 및 선택기의 명시적 목록 새로고침에 active 목록을 읽고 유효한 선택을 보존한다. 오래된 generation/token/project 응답을 버리고 실패는 기존 목록을 지우지 않으며 선택기에 오류와 재시도를 제공한다.
 
 ### Chat navigation, Search, and citations
 
@@ -250,6 +256,7 @@ At ≥768px, the settings route allocates the return action and settings body wi
 - 관리자 볼륨 RBD 검사는 opt-in이다. Backend image에는 `ceph-common`이 있고, dev/prod Compose·Kolla·Kubernetes는 operator-provided `ceph.conf`와 dedicated CephX keyring을 `/etc/ceph`에 read-only mount한다. 두 파일 경로·cluster FSID·backend→pool map이 모두 있어야 활성화하며, 기존 Cinder-only 배포는 기능이 비활성인 채 `backend_unverified`를 반환한다. `client.admin`을 사용하지 않고 pool/object-prefix가 제한된 identity를 배포한다.
 - `npm run services:up`은 dev manifest 하나를 `afterglow-local-services` project로 source-build하며 conventional loopback ports `3080/8000/8010/8011/8012/8020/6379`를 사용한다. 기존 profile용 local/source overlay와 installed-image 개발 fallback은 제거했다. 이전 `afterglow` 컨테이너가 있으면 시작 전에 거부하며 다른 project를 자동 삭제하지 않는다. API/worker는 sibling Dockerfile, `.local-services/`의 private config/키, 전용 MariaDB schemas·PostgreSQL checkpointer·Redis·named volume/network를 재사용한다. `services:config`/`up`은 literal escaping된 0600 `compose.env`를 준비한다. Datastore URL은 literal이고 ignored override는 읽지 않는다. `services:smoke`는 migration/worker/BFF/context와 Lumen administrator billing 계약 및 실제 dashboard overview summary/quotas를 검사한다. 상류 Nova 503은 전체 smoke 실패이며 container health로 성공을 대신하지 않는다. OpenStack mutation이나 provider completion은 실행하지 않는다.
 - Dev Compose의 Palimpsest API/bootstrap/worker는 sibling repository root `../palimpsest`를 build context로 사용하고 `docker/hub/Dockerfile`을 빌드한다. Dockerfile의 `COPY hub/src`와 `COPY hub/{pyproject.toml,uv.lock}`가 이 root context를 요구하며 Runner preflight도 같은 파일을 검사한다. Service/image/runtime ownership은 바꾸지 않는다.
+- Dev Lumen API/migration/worker는 sibling Lumen workspace를 포함한 이미지를 사용한다. Lumen Dockerfile의 `uv sync --locked`와 최종 non-root migration CLI import smoke가 stale lock 또는 editable plugin source 누락을 build 단계에서 차단한다. Afterglow의 service topology·DB/credential ownership은 바꾸지 않으며, import failure 복구를 위해 ledger나 persistent volume을 삭제하지 않는다.
 - 로컬 Drover readiness는 DB/cache/migration뿐 아니라 명시한 dedicated service project의 실제 Keystone authorization을 검사한다. Local snapshot 또는 `.env`에 service project UUID가 없으면 시작 전에 거부하고 admin-project fallback을 하지 않는다. 이 조건은 기존 인증/소유권 경계를 유지하며 새 service나 schema를 추가하지 않는다.
 - Local config snapshot은 0700 private directory 안의 0640 파일이며 실제 파일 GID를 snapshot reader에만 supplemental group으로 전달한다. Image UID는 그대로 두고 secrets/compose.env는 0600을 유지한다. Drover API/worker/migration은 Sentinel을 명시적으로 끄고 host 목록을 비우며 runner가 GID·cache 격리를 검사한다. 실제 non-root container의 config read와 Drover cache client의 local Redis PING을 검증했다.
 - Waygate/Drover의 BFF discovery root는 canonical upstream `/v1/`로 전달하여 내부 hostname redirect 대신 version JSON을 반환한다. Lumen의 async 인증 dependency는 동일한 Keystone 검증을 thread pool에서 실행해 병행 UI 요청이 이벤트 루프를 직렬로 막지 않도록 한다. Token/project/admin 판정과 fail-closed 응답은 변경하지 않는다.
@@ -492,9 +499,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "348333a83fca3f9149ac56a398926c6c026cd149dc6aadfd47bbb49581c24001",
-  "reviewed_at": "2026-09-23T23:29:31Z",
-  "summary": "CI final review: reviewed .github/workflows/promote-kolla-role-tags.yml (branch push via checkout-persisted GITHUB_TOKEN, gh pr create with GH_TOKEN github.token, no token input or secrets, hourly new-commit force-push while unmerged) and docker-build.yml triggers, dispatch base-tag and push paths; corrected AGENTS rule 3 and ARCHITECTURE gate parallelism: promotion PR publishes nothing but starts no pull_request checks, maintainer close/reopen before merge and head check, no dispatch on that branch, post-merge main run gates images only; deploy/kolla/operator/README.md merger steps; workflow and contracts unchanged"
+  "source_sha256": "2544ff3da5fd5e6630779d024b2dd993bf8cae31adbe682f9d944a3ef97bb14f",
+  "reviewed_at": "2026-09-24T15:47:30Z",
+  "summary": "Integrated origin/dev CI changes with live-model onboarding and auth recovery; preserved BFF ownership, documented both Keystone invalid-token 404 signals, and excluded unrelated scratch files."
 }
 ```
 <!-- architecture-review:end -->

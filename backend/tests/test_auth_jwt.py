@@ -375,6 +375,40 @@ async def test_refresh_keystone_transient_failure_returns_503_and_preserves_sess
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("message", "expected_status"),
+    [
+        ("Failed to validate token", 401),
+        ("Could not recognize Fernet token", 401),
+        ("The resource could not be found.", 503),
+    ],
+)
+async def test_keystone_token_not_found_is_not_an_endpoint_outage(
+    _ks_authenticate, _ks_get_user, _rate_limiter_off, message, expected_status
+):
+    from httpx import ASGITransport, AsyncClient
+    from keystoneauth1.exceptions.http import NotFound
+
+    from app.main import app
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        login = await ac.post(
+            "/api/v1/auth/login",
+            json={"username": "alice", "password": "pw", "project_name": "myproject"},
+        )
+        credentials = login.json()
+        with patch("app.services.keystone.v3.Token") as plugin:
+            plugin.return_value.get_access.side_effect = NotFound(message=message)
+            me = await ac.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {credentials['token']}"})
+            refresh = await ac.post("/api/v1/auth/refresh", json={"refresh_token": credentials["refresh_token"]})
+        assert me.status_code == expected_status
+        assert refresh.status_code == expected_status
+        with patch("app.services.keystone.validate_token", return_value=dict(_KS_DATA)):
+            recovered = await ac.post("/api/v1/auth/refresh", json={"refresh_token": credentials["refresh_token"]})
+        assert recovered.status_code == (401 if expected_status == 401 else 200)
+
+
+@pytest.mark.asyncio
 async def test_logout_revokes_refresh_session(_ks_authenticate, _ks_get_user, _ks_validate_ok, _rate_limiter_off):
     """로그아웃 후 refresh 토큰으로 갱신 시도 시 401을 반환해야 한다."""
     from httpx import ASGITransport, AsyncClient
