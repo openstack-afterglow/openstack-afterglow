@@ -11,3 +11,40 @@
         password: "{{ afterglow_admin_keystone_password }}"
         role: admin
   no_log: true
+
+- name: Keystone | Resolve pre-created Cloud Shell project
+  become: true
+  kolla_toolbox:
+    container_engine: "{{ kolla_container_engine }}"
+    module_name: openstack.cloud.project_info
+    module_args:
+      auth: "{{ openstack_auth }}"
+      name: "{{ afterglow_cloud_shell_project_name }}"
+  register: afterglow_cloud_shell_keystone_project
+  changed_when: false
+  no_log: true
+  run_once: true
+  when: afterglow_service_cloud_shell_enabled | bool
+
+- name: Keystone | Require one operator-created Cloud Shell project
+  ansible.builtin.assert:
+    that:
+      - afterglow_cloud_shell_keystone_project.projects | default([]) | length == 1
+    fail_msg: "Create exactly one project named '{{ afterglow_cloud_shell_project_name }}' before enabling Cloud Shell"
+  run_once: true
+  when: afterglow_service_cloud_shell_enabled | bool
+
+- name: Keystone | Grant Afterglow admin access to Cloud Shell project
+  become: true
+  kolla_toolbox:
+    container_engine: "{{ kolla_container_engine }}"
+    module_name: openstack.cloud.role_assignment
+    module_args:
+      auth: "{{ openstack_auth }}"
+      user: "{{ afterglow_admin_keystone_user }}"
+      project: "{{ afterglow_cloud_shell_keystone_project.projects[0].id }}"
+      role: admin
+      state: present
+  no_log: true
+  run_once: true
+  when: afterglow_service_cloud_shell_enabled | bool

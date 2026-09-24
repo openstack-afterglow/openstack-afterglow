@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { buildServiceFilters, createServiceListState, filterAndSortRows, serviceTimestamp, type ServiceListField } from '../serviceList';
 

@@ -95,6 +95,12 @@ def test_lumen_feature_gate_routes_inclusion():
         ("get", "/api/v1/chat/models", "/v1/chat/models", None),
         ("patch", "/api/v1/chat/api-keys/7", "/v1/api-keys/7", {"name": "laptop"}),
         (
+            "post",
+            "/api/v1/chat/claude-gateway/authorize",
+            "/v1/claude-gateway/authorize",
+            {"user_code": "ABCD-2345", "action": "approve"},
+        ),
+        (
             "put",
             "/api/v1/chat/admin/quotas/user-1",
             "/v1/admin/quotas/user-1",
@@ -497,6 +503,132 @@ async def test_subscription_auth_proxy_preserves_safe_error_and_no_store(api_cli
     assert response.status_code == status_code
     assert response.headers["cache-control"] == "no-store"
     assert response.json() == error_body
+
+
+@pytest.mark.asyncio
+async def test_provider_discovery_preserves_safe_failure_without_session_unauthorized(api_client):
+    """Provider-key rejection is not a browser session 401 or a successful fallback list."""
+    app.dependency_overrides[get_token_info] = _authenticated
+    body = {
+        "provider_id": 7,
+        "models": [],
+        "source": "none",
+        "fetched_at": "2026-09-23T00:00:00Z",
+        "live_status": "error",
+        "complete": False,
+        "error": {
+            "code": "discovery_invalid_key",
+            "message": "프로바이더 API 키가 유효하지 않습니다",
+            "retryable": False,
+        },
+        "candidates": [],
+    }
+
+    def handler(request):
+        assert request.url.path == "/v1/admin/providers/7/available-models"
+        assert request.headers["x-auth-token"] == "caller-token"
+        return HttpxResponse(
+            200,
+            headers={"content-type": "application/json", "cache-control": "no-store"},
+            stream=httpx.ByteStream(json.dumps(body).encode()),
+        )
+
+    upstream = AsyncClient(transport=httpx.MockTransport(handler))
+    with (
+        patch("app.services.service_proxy._get_internal_endpoint", return_value="http://isolated.test/v1"),
+        patch("app.services.service_proxy.httpx.AsyncClient", return_value=upstream),
+    ):
+        response = await api_client.get("/api/v1/chat/admin/providers/7/available-models")
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert response.json() == body
+
+
+_CACHE_PRICED_MODEL = {
+    "id": 3,
+    "provider_id": 1,
+    "model_name": "anthropic/claude-test",
+    "input_price_per_million": "3",
+    "output_price_per_million": "15",
+    "cache_read_price_per_million": "0.3",
+    "cache_write_price_per_million": "3.75",
+    "cache_write_1h_price_per_million": None,
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method", "path", "body", "status_code", "response_body"),
+    [
+        (
+            "POST",
+            "/api/v1/chat/admin/models",
+            {
+                "provider_id": 1,
+                "model_name": "anthropic/claude-test",
+                "display_name": None,
+                "input_price_per_million": None,
+                "output_price_per_million": None,
+                "cache_read_price_per_million": "0.3",
+            },
+            201,
+            _CACHE_PRICED_MODEL,
+        ),
+        (
+            "PATCH",
+            "/api/v1/chat/admin/models/3",
+            {
+                "input_price_per_million": "3",
+                "output_price_per_million": "15",
+                "cache_read_price_per_million": None,
+                "cache_write_price_per_million": "3.75",
+                "cache_write_1h_price_per_million": None,
+            },
+            200,
+            _CACHE_PRICED_MODEL,
+        ),
+        ("GET", "/api/v1/chat/admin/models", None, 200, [_CACHE_PRICED_MODEL]),
+    ],
+)
+async def test_admin_model_routes_forward_cache_price_fields_byte_exact(
+    api_client,
+    method,
+    path,
+    body,
+    status_code,
+    response_body,
+):
+    """The BFF has no model schema: optional cache prices, including explicit nulls, pass through."""
+    app.dependency_overrides[get_token_info] = _authenticated
+    request_bytes = json.dumps(body).encode() if body is not None else b""
+    response_bytes = json.dumps(response_body).encode()
+    received = []
+
+    async def handler(request):
+        received.append((request.method, request.url.path, await request.aread()))
+        return HttpxResponse(
+            status_code,
+            headers={"content-type": "application/json"},
+            stream=httpx.ByteStream(response_bytes),
+        )
+
+    upstream = AsyncClient(transport=httpx.MockTransport(handler))
+    with (
+        patch("app.services.service_proxy._get_internal_endpoint", return_value="http://isolated.test/v1"),
+        patch("app.services.service_proxy.httpx.AsyncClient", return_value=upstream),
+    ):
+        request_kwargs = (
+            {"content": request_bytes, "headers": {"content-type": "application/json"}} if body is not None else {}
+        )
+        response = await api_client.request(method, path, **request_kwargs)
+
+    assert response.status_code == status_code
+    assert response.content == response_bytes
+    forwarded_method, forwarded_path, forwarded_bytes = received.pop()
+    assert forwarded_method == method
+    assert forwarded_path == f"/v1{path.removeprefix('/api/v1/chat')}"
+    assert forwarded_bytes == request_bytes
 
 
 @pytest.mark.asyncio

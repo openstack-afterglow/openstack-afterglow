@@ -8,6 +8,8 @@
   import StatusChip from '$lib/components/ui/StatusChip.svelte';
   import Modal from '$lib/components/ui/Modal.svelte';
   import Alert from '$lib/components/ui/Alert.svelte';
+  import Button from '$lib/components/ui/Button.svelte';
+  import ToggleGroup from '$lib/components/ui/ToggleGroup.svelte';
   import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 
   // ---------------------------------------------------------------------------
@@ -260,6 +262,41 @@
 
   let importForm = $state({ github_url: '', ref: '', dockerfile_path: 'Dockerfile', layer_prefix: '', profile_name: '', base_image_id: '' });
   let importSubmitting = $state(false);
+
+  // ---------------------------------------------------------------------------
+  // Palimpsest Dockerfile 스튜디오 상태
+  // ---------------------------------------------------------------------------
+  type DockerfileInputMode = 'editor' | 'url' | 'upload' | 'github';
+  const dockerfileModeOptions = [
+    { value: 'editor', label: '직접 작성' },
+    { value: 'url', label: 'URL 가져오기' },
+    { value: 'upload', label: '파일 업로드' },
+    { value: 'github', label: 'GitHub 커밋' },
+  ];
+  let dockerfileMode = $state<DockerfileInputMode>('editor');
+  let dockerfileText = $state(`FROM ubuntu:24.04\nRUN apt-get update && apt-get install -y curl git\nENV APP_ENV=production\nWORKDIR /app\n`);
+  let dockerfileUrl = $state('');
+  let dockerfileFetching = $state(false);
+  let dockerfileFetchError = $state('');
+  let uploadedFileName = $state('');
+
+  interface DockerfilePlanStep {
+    name: string;
+    instruction: string;
+    args: string;
+    step_digest?: string | null;
+  }
+  interface DockerfilePlanResponse {
+    source_type: string;
+    dockerfile_digest: string;
+    parent_digest: string | null;
+    ubuntu_base: string;
+    cached_artifact_ids: number[];
+    steps: DockerfilePlanStep[];
+  }
+  let dockerfilePlan = $state<DockerfilePlanResponse | null>(null);
+  let planLoading = $state(false);
+  let planError = $state('');
 
   let keypairs = $state<Keypair[]>([]);
   const selectedConsumeProfile = $derived(profiles.find(p => p.name === consumeForm.profile_name));
@@ -791,6 +828,150 @@
     }
   }
 
+  function applyDockerfileTemplate(preset: 'ubuntu24' | 'python312' | 'buildtools') {
+    if (preset === 'ubuntu24') {
+      dockerfileText = `FROM ubuntu:24.04\nRUN apt-get update && apt-get install -y curl git vim\nENV LANG=C.UTF-8\nWORKDIR /workspace\n`;
+      if (!importForm.layer_prefix) importForm.layer_prefix = 'ubuntu-base';
+    } else if (preset === 'python312') {
+      dockerfileText = `FROM ubuntu:24.04\nRUN apt-get update && apt-get install -y python3 python3-pip python3-venv curl\nENV PYTHONUNBUFFERED=1\nWORKDIR /app\nRUN pip install --no-cache-dir requests pydantic\n`;
+      if (!importForm.layer_prefix) importForm.layer_prefix = 'py312-env';
+    } else if (preset === 'buildtools') {
+      dockerfileText = `FROM ubuntu:24.04\nRUN apt-get update && apt-get install -y build-essential cmake ninja-build git curl\nWORKDIR /build\n`;
+      if (!importForm.layer_prefix) importForm.layer_prefix = 'cpp-tools';
+    }
+    dockerfilePlan = null;
+    planError = '';
+  }
+
+  async function fetchDockerfileFromUrl() {
+    const targetUrl = dockerfileUrl.trim();
+    if (!targetUrl || dockerfileFetching) return;
+    dockerfileFetching = true;
+    dockerfileFetchError = '';
+    try {
+      const res = await api.post<{ dockerfile: string; url: string; filename: string; size_bytes: number }>(
+        '/api/v1/palimpsest/builds/dockerfile/fetch-url',
+        { url: targetUrl },
+        token,
+        projectId,
+      );
+      dockerfileText = res.dockerfile;
+      uploadedFileName = res.filename;
+      dockerfileMode = 'editor';
+      dockerfilePlan = null;
+      planError = '';
+      if (!importForm.layer_prefix) {
+        const cleanName = res.filename.replace(/^Dockerfile\.?/i, '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+        importForm.layer_prefix = cleanName ? `${cleanName}-layer` : 'custom-layer';
+      }
+      message = `URL에서 Dockerfile을 성공적으로 불러왔습니다 (${res.filename}, ${res.size_bytes} bytes).`;
+    } catch (e) {
+      dockerfileFetchError = e instanceof ApiError ? e.message : 'URL에서 Dockerfile을 가져오지 못했습니다';
+    } finally {
+      dockerfileFetching = false;
+    }
+  }
+
+  function handleDockerFileUpload(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (!input.files || input.files.length === 0) return;
+    const file = input.files[0];
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result;
+      if (typeof text === 'string') {
+        dockerfileText = text;
+        uploadedFileName = file.name;
+        dockerfileMode = 'editor';
+        dockerfilePlan = null;
+        planError = '';
+        if (!importForm.layer_prefix) {
+          const cleanName = file.name.replace(/^Dockerfile\.?/i, '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+          importForm.layer_prefix = cleanName ? `${cleanName}-layer` : 'custom-layer';
+        }
+        message = `로컬 파일 '${file.name}'을(를) 불러왔습니다.`;
+      }
+    };
+    reader.onerror = () => {
+      dockerfileFetchError = '파일을 읽는 중 오류가 발생했습니다.';
+    };
+    reader.readAsText(file);
+  }
+
+  async function previewDockerfilePlan() {
+    if (planLoading) return;
+    planLoading = true;
+    planError = '';
+    dockerfilePlan = null;
+    try {
+      const body: Record<string, string> = {
+        dockerfile: dockerfileText,
+        layer_prefix: importForm.layer_prefix.trim() || 'demo',
+      };
+      if (importForm.profile_name.trim()) body.profile_name = importForm.profile_name.trim();
+      if (importForm.base_image_id) body.base_image_id = importForm.base_image_id;
+
+      const res = await api.post<DockerfilePlanResponse>(
+        '/api/v1/palimpsest/builds/dockerfile/plan',
+        body,
+        token,
+        projectId,
+      );
+      dockerfilePlan = res;
+    } catch (e) {
+      planError = e instanceof ApiError ? e.message : '빌드 계획을 생성하지 못했습니다';
+    } finally {
+      planLoading = false;
+    }
+  }
+
+  async function submitInlineDockerfileBuild() {
+    if (importSubmitting) return;
+    if (!dockerfileText.trim()) {
+      error = 'Dockerfile 본문이 비어 있습니다';
+      return;
+    }
+    if (!importForm.layer_prefix.trim()) {
+      error = 'Layer prefix를 입력하세요';
+      return;
+    }
+    importSubmitting = true;
+    error = '';
+    message = '';
+    try {
+      const body: Record<string, string> = {
+        dockerfile: dockerfileText,
+        layer_prefix: importForm.layer_prefix.trim(),
+      };
+      if (importForm.profile_name.trim()) body.profile_name = importForm.profile_name.trim();
+      if (importForm.base_image_id) body.base_image_id = importForm.base_image_id;
+
+      const result = await api.post<LayerImportJob>(
+        '/api/v1/palimpsest/builds/dockerfile',
+        body,
+        token,
+        projectId,
+      );
+      message = `Palimpsest Dockerfile 빌드 시작 (ID: ${result.id}, profile: ${result.profile_name})`;
+      dockerfilePlan = null;
+      await Promise.allSettled([loadImportJobs(true), loadBuilds(true), loadArtifacts(true), loadProfiles(true)]);
+    } catch (e) {
+      error = e instanceof ApiError ? `Dockerfile 빌드 시작 실패: ${e.message}` : '네트워크 오류';
+    } finally {
+      importSubmitting = false;
+    }
+  }
+
+  function launchConsumeWithProfile(profileName: string) {
+    consumeForm.profile_name = profileName;
+    consumeForm.server_name = `${profileName}-vm-${Math.floor(1000 + Math.random() * 9000)}`;
+    const consumeSection = document.getElementById('admin-library-consume');
+    if (consumeSection) {
+      consumeSection.scrollIntoView({ behavior: 'smooth' });
+    }
+    message = `프로필 '${profileName}'이(가) 소비 인스턴스 생성 폼에 설정되었습니다. Flavor 및 키페어를 확인한 뒤 생성을 진행하세요.`;
+  }
+
   // ---------------------------------------------------------------------------
   // 빌드 상세 모달
   // ---------------------------------------------------------------------------
@@ -1110,15 +1291,33 @@
 
 <div class="flex flex-col h-full overflow-auto bg-surface-base text-ink-1 p-6">
   <div data-tour="admin-library-header">
-  <PageHeader title="Palimpsest 레이어 관리" breadcrumb="Palimpsest">
-    {#snippet actions()}
-      <TutorialStartButton tour="admin-library" compactOnMobile />
-      <button
-        onclick={() => loadAll(true)}
-        class="text-xs text-ink-2 hover:text-ink-0 transition-colors px-3 py-1.5 rounded border border-line-2 hover:border-line-2"
-      >새로고침</button>
-    {/snippet}
-  </PageHeader>
+    <PageHeader title="Palimpsest 레이어 관리" breadcrumb="Palimpsest" subtitle="레이어를 만들고, 조합하고, OverlayFS VM으로 실행하는 관리자 작업 공간입니다.">
+      {#snippet actions()}
+        <TutorialStartButton tour="admin-library" compactOnMobile />
+        <button
+          onclick={() => loadAll(true)}
+          class="text-xs text-ink-2 hover:text-ink-0 transition-colors px-3 py-1.5 rounded border border-line-2 hover:border-line-2"
+        >새로고침</button>
+      {/snippet}
+    </PageHeader>
+  </div>
+  <div class="mb-5 grid grid-cols-2 md:grid-cols-4 border-y border-line py-3" aria-label="Palimpsest 현황">
+    <div class="px-3 first:pl-0 md:border-r md:border-line">
+      <p class="text-xs text-ink-2">봉인된 레이어</p>
+      <p class="mt-1 text-lg font-semibold tabular-nums text-ink-0">{sealedArtifacts.length}</p>
+    </div>
+    <div class="px-3 md:border-r md:border-line">
+      <p class="text-xs text-ink-2">저장된 프로필</p>
+      <p class="mt-1 text-lg font-semibold tabular-nums text-ink-0">{profiles.length}</p>
+    </div>
+    <div class="px-3 border-t border-line pt-3 md:border-t-0 md:border-r md:pt-0">
+      <p class="text-xs text-ink-2">진행 중인 빌드</p>
+      <p class="mt-1 text-lg font-semibold tabular-nums text-warm-text">{activeBuilds.length + activeImportJobs.length}</p>
+    </div>
+    <div class="px-3 border-t border-line pt-3 md:border-t-0 md:pt-0">
+      <p class="text-xs text-ink-2">실행 중인 VM</p>
+      <p class="mt-1 text-lg font-semibold tabular-nums text-state-success">{consumes.filter((consume) => CONSUME_BLOCKING_STATUSES.has((consume.status || '').toLowerCase())).length}</p>
+    </div>
   </div>
 
   {#if error}
@@ -1131,11 +1330,11 @@
   {#if loading}
     <LoadingSkeleton rows={4} />
   {:else}
-    <div class="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8" data-tour="admin-library-ready">
+    <div class="grid grid-cols-1 xl:grid-cols-12 gap-5 mb-8" data-tour="admin-library-ready">
       <!-- ------------------------------------------------------------------ -->
       <!-- System/tool 레이어 빌드                                             -->
       <!-- ------------------------------------------------------------------ -->
-      <section class="bg-surface-sunken border border-line-2 rounded-xl p-5" data-tour="admin-library-system">
+      <section class="xl:col-span-4 min-w-0 bg-surface-raised border border-line rounded-lg p-5" data-tour="admin-library-system">
         <h2 class="text-sm font-semibold text-ink-0 mb-1">System/tool 레이어</h2>
         <p class="text-xs text-ink-2 mb-4">
           uv preset은 Python runtime 부모로 쓰는 curl-installed uv tool 레이어를 만들고,
@@ -1182,20 +1381,24 @@
             {/if}
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <button
+            <Button
+              variant="secondary"
+              size="sm"
               onclick={triggerUvBuild}
               disabled={systemSubmitting || !systemForm.layer_name || !systemForm.base_image_id}
-              class="w-full py-2 px-4 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 disabled:cursor-not-allowed text-action-on-warm text-sm font-medium rounded-lg transition-colors"
+              class="w-full"
             >
               {systemSubmitting ? '빌드 시작 중...' : 'uv preset 빌드'}
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="accent"
+              size="sm"
               onclick={triggerSystemAptBuild}
               disabled={systemSubmitting || !systemForm.layer_name || !systemForm.base_image_id || systemAptPackages.length === 0 || systemInvalidAptPackages.length > 0}
-              class="w-full py-2 px-4 bg-emerald-700 hover:bg-emerald-600 disabled:bg-surface-selected disabled:text-ink-3 disabled:cursor-not-allowed text-ink-0 text-sm font-medium rounded-lg transition-colors"
+              class="w-full"
             >
               {systemSubmitting ? '빌드 시작 중...' : 'apt package layer 빌드'}
-            </button>
+            </Button>
           </div>
           <div class="mt-4 border-t border-line-2 pt-4 space-y-3">
             <div>
@@ -1236,13 +1439,15 @@
                 레이어 자체에는 /usr hook만 저장하고, 소비 VM에서 cuda-keyring + nvidia-dkms-*-open을 설치합니다.
               </p>
             </div>
-            <button
+            <Button
+              variant="accent"
+              size="sm"
               onclick={triggerNvidiaDriverBuild}
               disabled={nvidiaSubmitting || !nvidiaForm.layer_name || !nvidiaForm.base_image_id || !nvidiaBranchValid}
-              class="w-full py-2 px-4 bg-purple-700 hover:bg-purple-600 disabled:bg-surface-selected disabled:text-ink-3 disabled:cursor-not-allowed text-ink-0 text-sm font-medium rounded-lg transition-colors"
+              class="w-full"
             >
               {nvidiaSubmitting ? '빌드 시작 중...' : 'NVIDIA driver template 빌드'}
-            </button>
+            </Button>
           </div>
         </div>
       </section>
@@ -1250,43 +1455,146 @@
       <!-- ------------------------------------------------------------------ -->
       <!-- GitHub Dockerfile import                                           -->
       <!-- ------------------------------------------------------------------ -->
-      <section class="bg-surface-sunken border border-line-2 rounded-xl p-5" data-tour="admin-library-import">
-        <h2 class="text-sm font-semibold text-ink-0 mb-1">GitHub Dockerfile import</h2>
-        <p class="text-xs text-ink-2 mb-4">
-          GitHub repository의 pinned commit Dockerfile을 지원되는 RUN/COPY/ADD/WORKDIR/ENV subset으로 squashfs layer chain과 profile로 가져옵니다.
+      <section class="xl:col-span-8 min-w-0 bg-surface-raised border border-line rounded-lg p-5" data-tour="admin-library-import">
+        <div class="flex items-center justify-between mb-1">
+          <h2 class="text-sm font-semibold text-ink-0">Palimpsest Dockerfile 빌드</h2>
+          <span class="text-xs px-2 py-0.5 rounded bg-surface-base border border-line-2 text-ink-2 font-mono">관리자 전용</span>
+        </div>
+        <p class="text-xs text-ink-2 mb-3">
+          URL, 파일 업로드, 직접 작성으로 Dockerfile을 가져와 squashfs 레이어로 빌드하고 즉시 소비 인스턴스로 실행합니다.
         </p>
+
+        <!-- 모드 선택 탭 -->
+        <ToggleGroup
+          value={dockerfileMode}
+          options={dockerfileModeOptions}
+          onchange={(value) => dockerfileMode = value as DockerfileInputMode}
+          size="sm"
+          fullWidth
+          ariaLabel="Dockerfile 입력 방식"
+          class="mb-4"
+        />
+
         <div class="space-y-3">
-          <div>
-            <label class="block text-xs text-ink-2 mb-1" for="dockerfile-github-url">GitHub URL *</label>
-            <input
-              id="dockerfile-github-url"
-              type="url"
-              placeholder="https://github.com/org/repo"
-              bind:value={importForm.github_url}
-              class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
-            />
-          </div>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {#if dockerfileMode === 'url'}
             <div>
-              <label class="block text-xs text-ink-2 mb-1" for="dockerfile-ref">Commit SHA / ref *</label>
+              <label class="block text-xs text-ink-2 mb-1" for="dockerfile-fetch-url">Dockerfile URL *</label>
+              <div class="flex gap-2">
+                <input
+                  id="dockerfile-fetch-url"
+                  type="url"
+                  placeholder="https://.../Dockerfile 또는 GitHub blob URL"
+                  bind:value={dockerfileUrl}
+                  class="flex-1 bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
+                />
+                <button
+                  type="button"
+                  onclick={fetchDockerfileFromUrl}
+                  disabled={dockerfileFetching || !dockerfileUrl.trim()}
+                  class="px-3 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 disabled:cursor-not-allowed text-action-on-warm text-xs font-medium rounded-lg transition-colors whitespace-nowrap"
+                >
+                  {dockerfileFetching ? '가져오는 중...' : '가져오기'}
+                </button>
+              </div>
+              {#if dockerfileFetchError}
+                <Alert tone="danger" class="mt-2">{dockerfileFetchError}</Alert>
+              {:else}
+                <p class="mt-1 text-xs text-ink-2">GitHub blob, GitLab raw, 일반 HTTP/HTTPS URL을 지원합니다 (SSRF 보호 적용).</p>
+              {/if}
+            </div>
+          {/if}
+
+          {#if dockerfileMode === 'upload'}
+            <div>
+              <label class="block text-xs text-ink-2 mb-1" for="dockerfile-file-upload">로컬 Dockerfile 선택 *</label>
+              <div class="border-2 border-dashed border-line-2 hover:border-action-warm rounded-lg p-4 text-center bg-surface-base transition-colors">
+                <input
+                  id="dockerfile-file-upload"
+                  type="file"
+                  accept=".dockerfile,Dockerfile,text/*"
+                  onchange={handleDockerFileUpload}
+                  class="block w-full text-xs text-ink-2 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-surface-selected file:text-ink-0 hover:file:bg-surface-selected/80 cursor-pointer"
+                />
+                {#if uploadedFileName}
+                  <p class="mt-2 text-xs text-warm-text font-mono">선택된 파일: {uploadedFileName}</p>
+                {:else}
+                  <p class="mt-2 text-xs text-ink-2">로컬 PC의 Dockerfile 파일을 선택하세요.</p>
+                {/if}
+              </div>
+            </div>
+          {/if}
+
+          {#if dockerfileMode === 'editor' || (dockerfileMode !== 'github' && dockerfileText)}
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label class="block text-xs text-ink-2" for="dockerfile-editor-text">
+                  Dockerfile 본문 {uploadedFileName ? `(${uploadedFileName})` : ''} *
+                </label>
+                <div class="flex items-center gap-1">
+                  <span class="text-xs text-ink-2 mr-1">템플릿:</span>
+                  <button
+                    type="button"
+                    onclick={() => applyDockerfileTemplate('ubuntu24')}
+                    class="text-xs px-2 py-0.5 rounded bg-surface-base border border-line-2 text-ink-2 hover:text-ink-0 hover:border-action-warm transition-colors"
+                  >Ubuntu 24.04</button>
+                  <button
+                    type="button"
+                    onclick={() => applyDockerfileTemplate('python312')}
+                    class="text-xs px-2 py-0.5 rounded bg-surface-base border border-line-2 text-ink-2 hover:text-ink-0 hover:border-action-warm transition-colors"
+                  >Python 3.12</button>
+                  <button
+                    type="button"
+                    onclick={() => applyDockerfileTemplate('buildtools')}
+                    class="text-xs px-2 py-0.5 rounded bg-surface-base border border-line-2 text-ink-2 hover:text-ink-0 hover:border-action-warm transition-colors"
+                  >C/C++ 도구</button>
+                </div>
+              </div>
+              <textarea
+                id="dockerfile-editor-text"
+                rows="6"
+                bind:value={dockerfileText}
+                placeholder="FROM ubuntu:24.04&#10;RUN apt-get update && apt-get install -y curl&#10;ENV APP_ENV=production&#10;WORKDIR /app"
+                class="w-full bg-surface-base border border-line-2 rounded-lg p-2.5 text-xs text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm font-mono resize-y"
+              ></textarea>
+              <p class="mt-0.5 text-xs text-ink-2">지원 문법: FROM, RUN, ENV, WORKDIR (COPY/ADD는 빌드 컨텍스트가 없으므로 GitHub 커밋 모드 사용)</p>
+            </div>
+          {/if}
+
+          {#if dockerfileMode === 'github'}
+            <div>
+              <label class="block text-xs text-ink-2 mb-1" for="dockerfile-github-url">GitHub URL *</label>
               <input
-                id="dockerfile-ref"
-                type="text"
-                placeholder="40자 commit SHA 권장"
-                bind:value={importForm.ref}
+                id="dockerfile-github-url"
+                type="url"
+                placeholder="https://github.com/org/repo"
+                bind:value={importForm.github_url}
                 class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
               />
             </div>
-            <div>
-              <label class="block text-xs text-ink-2 mb-1" for="dockerfile-path">Dockerfile path</label>
-              <input
-                id="dockerfile-path"
-                type="text"
-                bind:value={importForm.dockerfile_path}
-                class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
-              />
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs text-ink-2 mb-1" for="dockerfile-ref">Commit SHA / ref *</label>
+                <input
+                  id="dockerfile-ref"
+                  type="text"
+                  placeholder="40자 commit SHA 권장"
+                  bind:value={importForm.ref}
+                  class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
+                />
+              </div>
+              <div>
+                <label class="block text-xs text-ink-2 mb-1" for="dockerfile-path">Dockerfile path</label>
+                <input
+                  id="dockerfile-path"
+                  type="text"
+                  bind:value={importForm.dockerfile_path}
+                  class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
+                />
+              </div>
             </div>
-          </div>
+          {/if}
+
+          <!-- 공통 레이어 빌드 옵션 -->
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label class="block text-xs text-ink-2 mb-1" for="dockerfile-layer-prefix">Layer prefix *</label>
@@ -1320,16 +1628,82 @@
                 <option value={image.id}>{baseImageLabel(image)}</option>
               {/each}
             </select>
+            <p class="mt-1 text-xs text-ink-2">FROM 이미지의 Ubuntu 버전과 일치해야 합니다.</p>
           </div>
-          <button
-            onclick={submitDockerfileImport}
-            disabled={importSubmitting || !importForm.github_url.trim() || !importForm.layer_prefix.trim() || !importForm.base_image_id}
-            class="w-full py-2 px-4 bg-sky-700 hover:bg-sky-600 disabled:bg-surface-selected disabled:text-ink-3 disabled:cursor-not-allowed text-ink-0 text-sm font-medium rounded-lg transition-colors"
-          >
-            {importSubmitting ? 'Import 시작 중...' : 'Dockerfile import 시작'}
-          </button>
+
+          <!-- 빌드 계획 미리보기 결과 표시 -->
+          {#if planError}
+            <Alert tone="danger">
+              <span class="font-semibold">계획 오류:</span> {planError}
+            </Alert>
+          {/if}
+
+          {#if dockerfilePlan}
+            <div class="p-3 bg-surface-base border border-line-2 rounded-lg space-y-2 text-xs">
+              <div class="flex items-center justify-between">
+                <span class="font-semibold text-ink-0">빌드 계획 (미리보기)</span>
+                <span class="text-ink-2 font-mono">{dockerfilePlan.ubuntu_base}</span>
+              </div>
+              <div class="text-ink-2 font-mono truncate" title={dockerfilePlan.dockerfile_digest}>
+                Digest: {dockerfilePlan.dockerfile_digest.slice(0, 20)}…
+              </div>
+              <div class="space-y-1 max-h-36 overflow-y-auto">
+                {#each dockerfilePlan.steps as step, idx}
+                  {@const isCached = dockerfilePlan.cached_artifact_ids.length > idx}
+                  <div class="flex items-center justify-between gap-2 p-1.5 rounded bg-surface-sunken border border-line-2">
+                    <div class="flex items-center gap-1.5 min-w-0">
+                      <span class="font-semibold text-ink-1">#{idx + 1}</span>
+                      <span class="px-1.5 py-0.5 rounded font-mono text-xs bg-surface-selected text-ink-0">{step.instruction}</span>
+                      <span class="font-mono text-ink-2 truncate max-w-xs">{step.args}</span>
+                    </div>
+                    {#if isCached}
+                      <span class="text-xs text-state-success font-mono whitespace-nowrap">캐시 재사용</span>
+                    {:else}
+                      <span class="text-xs text-warm-text font-mono whitespace-nowrap">신규 빌드</span>
+                    {/if}
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/if}
+
+          <!-- 액션 버튼 -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+            {#if dockerfileMode !== 'github'}
+              <Button
+                variant="secondary"
+                size="sm"
+                onclick={previewDockerfilePlan}
+                disabled={planLoading || !dockerfileText.trim() || !importForm.layer_prefix.trim()}
+                class="w-full"
+              >
+                {planLoading ? '계획 계산 중...' : '빌드 계획 미리보기'}
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onclick={submitInlineDockerfileBuild}
+                disabled={importSubmitting || !dockerfileText.trim() || !importForm.layer_prefix.trim()}
+                class="w-full"
+              >
+                {importSubmitting ? '빌드 시작 중...' : 'Dockerfile 빌드 시작'}
+              </Button>
+            {:else}
+              <Button
+                variant="accent"
+                size="sm"
+                onclick={submitDockerfileImport}
+                disabled={importSubmitting || !importForm.github_url.trim() || !importForm.layer_prefix.trim() || !importForm.base_image_id}
+                class="w-full sm:col-span-2"
+              >
+                {importSubmitting ? 'Import 시작 중...' : 'GitHub Dockerfile import 시작'}
+              </Button>
+            {/if}
+          </div>
+
+          <!-- importJobs 테이블 -->
           {#if importJobs.length > 0}
-            <div class="border border-line-2 rounded-lg overflow-hidden">
+            <div class="border border-line-2 rounded-lg overflow-hidden mt-3">
               <table class="min-w-full text-xs">
                 <thead class="bg-surface-base text-ink-2">
                   <tr>
@@ -1337,6 +1711,7 @@
                     <th class="px-3 py-2 text-left">Profile</th>
                     <th class="px-3 py-2 text-left">Base image</th>
                     <th class="px-3 py-2 text-left">Status</th>
+                    <th class="px-3 py-2 text-right">실행</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-line">
@@ -1346,6 +1721,18 @@
                       <td class="px-3 py-2 font-mono">{job.profile_name}</td>
                       <td class="px-3 py-2 text-ink-2">{job.base_image_name || shortId(job.base_image_id)}</td>
                       <td class="px-3 py-2"><StatusChip status={job.status} /></td>
+                      <td class="px-3 py-2 text-right">
+                        {#if job.status === 'complete'}
+                          <button
+                            type="button"
+                            onclick={() => launchConsumeWithProfile(job.profile_name)}
+                            class="px-2 py-1 rounded bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-xs font-medium transition-colors"
+                            title="이 프로필로 OverlayFS 소비 VM 인스턴스 즉시 생성"
+                          >
+                            인스턴스 실행
+                          </button>
+                        {/if}
+                      </td>
                     </tr>
                   {/each}
                 </tbody>
@@ -1358,7 +1745,7 @@
       <!-- ------------------------------------------------------------------ -->
       <!-- Python runtime 레이어 빌드                                         -->
       <!-- ------------------------------------------------------------------ -->
-      <section class="bg-surface-sunken border border-line-2 rounded-xl p-5" data-tour="admin-library-python">
+      <section class="xl:col-span-4 min-w-0 bg-surface-raised border border-line rounded-lg p-5" data-tour="admin-library-python">
         <h2 class="text-sm font-semibold text-ink-0 mb-1">Python runtime 레이어</h2>
         <p class="text-xs text-ink-2 mb-4">
           uv 레이어 위에 CPython runtime만 추가합니다. pip 패키지는 별도 패키지 레이어에서 설치합니다.
@@ -1414,20 +1801,22 @@
               <p class="text-xs text-indigo-200/70">상속 Ubuntu: {ubuntuBaseLabel(selectedPythonParentArtifact)}</p>
             </div>
           {/if}
-          <button
+          <Button
+            variant="accent"
+            size="sm"
             onclick={triggerPythonBuild}
             disabled={pythonSubmitting || !pythonForm.layer_name || !pythonForm.python_version || !pythonForm.parent_artifact_id}
-            class="w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-surface-selected disabled:text-ink-3 disabled:cursor-not-allowed text-ink-0 text-sm font-medium rounded-lg transition-colors"
+            class="w-full"
           >
             {pythonSubmitting ? '빌드 시작 중...' : 'Python runtime 레이어 빌드'}
-          </button>
+          </Button>
         </div>
       </section>
 
       <!-- ------------------------------------------------------------------ -->
       <!-- Python 패키지 레이어 빌드                                           -->
       <!-- ------------------------------------------------------------------ -->
-      <section class="bg-surface-sunken border border-line-2 rounded-xl p-5">
+      <section class="xl:col-span-4 min-w-0 bg-surface-raised border border-line rounded-lg p-5">
         <h2 class="text-sm font-semibold text-ink-0 mb-1">Python 패키지 레이어</h2>
         <p class="text-xs text-ink-2 mb-4">
           Python lineage가 포함된 부모 위에 pip 패키지만 추가합니다. 버전 pin과 안전한 constraint만 허용됩니다.
@@ -1522,20 +1911,22 @@
               <p class="mt-1 text-xs text-ink-2">pip source 옵션을 빌드에 함께 전달합니다.</p>
             {/if}
           </div>
-          <button
+          <Button
+            variant="accent"
+            size="sm"
             onclick={triggerPackageBuild}
             disabled={packageSubmitting || !packageForm.layer_name || !packageForm.parent_artifact_id || packageSpecs.length === 0 || packageInvalidSpecs.length > 0 || packageInvalidUrls.length > 0}
-            class="w-full py-2 px-4 bg-purple-600 hover:bg-purple-500 disabled:bg-surface-selected disabled:text-ink-3 disabled:cursor-not-allowed text-ink-0 text-sm font-medium rounded-lg transition-colors"
+            class="w-full"
           >
             {packageSubmitting ? '빌드 시작 중...' : 'Python 패키지 레이어 빌드'}
-          </button>
+          </Button>
         </div>
       </section>
 
       <!-- ------------------------------------------------------------------ -->
       <!-- 소비 인스턴스 생성                                                  -->
       <!-- ------------------------------------------------------------------ -->
-      <section class="bg-surface-sunken border border-line-2 rounded-xl p-5">
+      <section id="admin-library-consume" class="xl:col-span-4 min-w-0 bg-surface-raised border border-line rounded-lg p-5">
         <h2 class="text-sm font-semibold text-ink-0 mb-1">소비 인스턴스 생성</h2>
         <p class="text-xs text-ink-2 mb-4">
           프로필의 레이어 체인을 각자 별도 NFS share에서 RO 마운트하고
@@ -1643,13 +2034,15 @@
             ></textarea>
             <p class="mt-1 text-xs text-ink-2">직접 입력한 공개키가 있으면 위 키페어 선택보다 우선합니다.</p>
           </div>
-          <button
+          <Button
+            variant="primary"
+            size="sm"
             onclick={triggerConsume}
             disabled={consumeSubmitting || !consumeForm.profile_name || !consumeForm.server_name || !consumeForm.flavor_id || consumeProfileHasMixedUbuntuBases}
-            class="w-full py-2 px-4 bg-purple-600 hover:bg-purple-500 disabled:bg-surface-selected disabled:text-ink-3 disabled:cursor-not-allowed text-ink-0 text-sm font-medium rounded-lg transition-colors"
+            class="w-full"
           >
             {consumeSubmitting ? '인스턴스 생성 중...' : '소비 인스턴스 생성'}
-          </button>
+          </Button>
         </div>
       </section>
     </div>
@@ -1788,6 +2181,13 @@
                             <div class="flex justify-end gap-2">
                               <button
                                 type="button"
+                                onclick={() => launchConsumeWithProfile(profile.name)}
+                                class="px-2 py-1 rounded bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-xs font-medium transition-colors"
+                                title="이 프로필로 OverlayFS 소비 VM 인스턴스 즉시 생성"
+                              >
+                                인스턴스 실행
+                              </button>
+                              <button
                                 onclick={() => {
                                   profileForm.name = profile.name;
                                   profileForm.selectedLayers = normalizeProfileLayers(profile.layers);

@@ -4,6 +4,9 @@
   import { createShellTicket } from '$lib/api/k3sResources';
   import { auth } from '$lib/stores/auth';
   import { getBaseUrl } from '$lib/api/client';
+  import '@xterm/xterm/css/xterm.css';
+  import { resolvedTheme } from '$lib/stores/theme';
+  import { getTerminalTheme } from '$lib/utils/terminalTheme';
 
   const s = useK3sClusterDetailController();
 
@@ -42,19 +45,21 @@
     ws.send(frame);
   }
 
+  $effect(() => {
+    const activeTheme = $resolvedTheme;
+    if (!terminal || typeof document === 'undefined') return;
+    void activeTheme;
+    terminal.options.theme = getTerminalTheme();
+  });
+
   async function initTerminal() {
     if (!terminalEl) return;
     const { Terminal } = await import('@xterm/xterm');
     const { FitAddon } = await import('@xterm/addon-fit');
 
     terminal = new Terminal({
-      theme: {
-        background: '#0f172a',
-        foreground: '#e2e8f0',
-        cursor: '#60a5fa',
-        selectionBackground: '#334155',
-      },
-      fontFamily: "'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace",
+      theme: getTerminalTheme(),
+      fontFamily: 'var(--font-mono)',
       fontSize: 13,
       cursorBlink: true,
       convertEol: true,

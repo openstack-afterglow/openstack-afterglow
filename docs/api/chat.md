@@ -49,6 +49,8 @@ Afterglow 백엔드는 모든 `/api/v1/chat/{path}` 요청을 내부 Lumen 서�
 | `GET /api/v1/chat/models` | `/v1/chat/models` | 사용 가능한 LLM 모델 목록 조회 |
 | `GET /api/v1/chat/conversations` | `/v1/conversations` | 대화 목록 조회 |
 | `POST /api/v1/chat/conversations` | `/v1/conversations` | 신규 대화 생성 |
+| `GET /api/v1/chat/conversations/{id}/messages?anchor=latest\|first&limit=40` | `/v1/conversations/{id}/messages` | active-path message page; opaque `before_cursor`/`after_cursor`를 후속 `cursor` query로 그대로 전달 |
+| `PATCH /api/v1/chat/conversations/{id}/active-leaf` | `/v1/conversations/{id}/active-leaf` | sibling message ID와 `descend=true`로 selected branch의 newest descendant까지 활성 경로 전환 |
 | `POST /api/v1/chat/conversations/{id}/completions` | `/v1/conversations/{id}/completions` | 실행을 접수하고 `202` run descriptor 반환; 이후 events URL로 SSE 구독 |
 | `POST /api/v1/chat/conversations/{id}/context-preview` | `/v1/conversations/{id}/context-preview` | 현재 모델·기능·작성 중 입력까지 반영한 context token 예산과 압축 권고를 읽기 전용으로 계산 |
 | `POST /api/v1/chat/conversations/{id}/compactions` | `/v1/conversations/{id}/compactions` | `expected_context_revision`과 `Idempotency-Key`로 수동 압축 run을 접수하고 `202` descriptor 반환 |
@@ -65,8 +67,12 @@ Afterglow 백엔드는 모든 `/api/v1/chat/{path}` 요청을 내부 Lumen 서�
 | `PUT /api/v1/chat/admin/quotas/{user_id}` | `/v1/admin/quotas/{user_id}` | 관리자: 사용자 개인 월·주간 override 설정(`null`은 명시적 무제한) |
 | `DELETE /api/v1/chat/admin/quotas/{user_id}` | `/v1/admin/quotas/{user_id}` | 관리자: 개인 override를 지우고 시스템 기본값 상속으로 복원 |
 | `GET /api/v1/chat/admin/stats/users/{user_id}` | `/v1/admin/stats/users/{user_id}` | 관리자: 기간·모델·web/API source·timestamp/token/cost별 사용자 usage ledger |
+| `GET /api/v1/chat/admin/models` | `/v1/admin/models` | 관리자: 등록 모델과 입력·출력 가격, 모델별 프롬프트 캐시 단가 `cache_read_price_per_million`·`cache_write_price_per_million`(5분 쓰기)·`cache_write_1h_price_per_million`(decimal 문자열 또는 `null`) 조회 |
+| `POST /api/v1/chat/admin/models` | `/v1/admin/models` | 관리자: 모델 등록. 캐시 단가 세 항목은 선택이며 서로, 그리고 입력·출력 가격 쌍 규칙과도 독립이다. Afterglow UI는 비운 항목을 보내지 않는다 |
+| `PATCH /api/v1/chat/admin/models/{model_id}` | `/v1/admin/models/{model_id}` | 관리자: 가격·활성 상태 변경. 캐시 단가 key가 있으면 설정하고 `null`이면 해제하며, key가 없으면 기존 값을 유지한다. 가격 수정 화면은 바뀐 key만 보낸다. 입력·출력 key가 있으면 Lumen이 모델을 수동 가격으로 바꾸므로(models.dev metadata 해제, 이후 import 차단) 둘 다 그대로면 보내지 않는다 |
 | `PATCH /api/v1/chat/admin/providers/{provider_id}` | `/v1/admin/providers/{provider_id}` | 관리자: inference key와 별개인 direct OpenAI/Anthropic 조직 사용량 관리자 키 설정·교체·제거 |
 | `GET /api/v1/chat/admin/providers/billing` | `/v1/admin/providers/billing` | 관리자: 모든 configured provider의 Lumen 귀속 일·주·월·누적 request/token/raw USD cost, OpenAI/Anthropic 공식 조직 report, OpenRouter/DeepSeek live 잔액/한도, 공식 console URL을 한 번에 조회 |
+| `POST /api/v1/chat/claude-gateway/authorize` | `/v1/claude-gateway/authorize` | authenticated current user/project가 8자리 Claude Code device user code를 approve/deny |
 | `GET /api/v1/chat/mcp-oauth/callback` | `/v1/mcp-oauth/callback` | MCP OAuth 브라우저 콜백 전달 |
 
 관리자 provider 화면의 **사용량 키 설정**은 direct OpenAI API와 Anthropic API에만 표시됩니다. 이 키는 Lumen이 inference key와 다른 AES-GCM/HKDF domain으로 암호화해 저장하며 organization cost/usage report에만 사용합니다. 브라우저와 API read 응답에는 키 값 대신 설정 여부만 반환됩니다. OpenAI는 현재 UTC 일·주·월 공식 비용·요청·토큰, Anthropic은 공식 비용·토큰을 표시합니다. Anthropic 공식 report에 없는 요청 수와 현재 달 범위로 계산할 수 없는 누적값은 `—`로 표시합니다. 두 provider의 공식 organization API는 현재 선불 잔액이나 구매 충전액을 반환하지 않으므로 UI는 비용에서 잔액을 역산하지 않고 공식 결제 console을 정본으로 안내합니다.
@@ -74,6 +80,20 @@ Afterglow 백엔드는 모든 `/api/v1/chat/{path}` 요청을 내부 Lumen 서�
 DeepSeek의 공식 `/user/balance`는 통화별 총 account balance, 구매 충전액, 지급 credit을 제공하므로 `계정 크레딧`에 그대로 표시합니다. OpenRouter inference key의 `/api/v1/key`는 해당 key의 limit/remaining만 제공하므로 account-wide prepaid balance가 아니라 `API 키 한도`로 표시합니다. 계정 전체 구매/사용 credit API에는 별도 Management key가 필요하며 현재 Lumen credential 계약에는 포함되지 않습니다. Gemini의 선불 잔액·거래 내역은 Google AI Studio 결제 화면에서만 확인합니다. Perplexity Enterprise Computer Analytics API는 Computer 제품 분석용이므로 Sonar/API Platform 크레딧으로 표시하거나 그 key를 요청하지 않습니다. Provider별 실패와 bulk 실패는 provider CRUD를 막지 않습니다.
 
 배포 순서는 Lumen migration `011_provider_billing_admin_key.sql` → 호환 Lumen API → Afterglow backend/frontend입니다. 구 Lumen에는 bulk `GET /v1/admin/providers/billing`보다 동적 `PATCH /v1/admin/providers/{provider_id}`만 있을 수 있어, 새 Afterglow UI의 GET이 `provider_id="billing"` route에 매칭된 뒤 HTTP 405를 반환합니다. 이 오류는 관리자 키 부족이 아니라 Afterglow/Lumen 버전 불일치입니다.
+
+### Active-path 기록 탐색
+
+대화 화면은 Lumen의 전체 message graph를 다운로드하거나 browser에서 parent graph를 재구성하지 않습니다. Initial/latest/first page와 cursor page는 active-path projection에 이미 root-to-leaf로 정렬되어 있으며 각 message의 `branch.previous_id`/`next_id`가 version 탐색을 제공합니다. Browser는 40개 page를 최대 3개(120 messages)만 보존합니다. **처음/이전/다음/최신**은 모든 breakpoint에서 explicit action이며 한 번 누를 때 Lumen request도 정확히 한 번 발생합니다.
+
+이전 page prepend는 첫 visible `data-history-message-id`의 top offset을 render 전후 비교해 viewport를 보존합니다. Opposite edge page를 버려도 edge cursor가 남아 다시 가져올 수 있습니다. Selection generation, local mutation epoch, token/project와 conversation identity가 바뀐 response는 적용하지 않습니다. Branch change로 cursor revision이 stale해져 409가 오면 alert를 표시하고 latest page를 한 번만 다시 조회합니다.
+
+사용자가 old window를 읽는 동안 run이 끝나면 transcript를 강제로 latest로 이동하지 않고 **새 응답이 도착했습니다** action을 표시합니다. Old window에서 전송하면 input을 지우기 전에 latest page를 먼저 가져와 새 turn parent를 live edge에 연결합니다. Stream draft도 old window 위에 섞지 않습니다.
+
+### Claude Code 연결과 legacy device endpoint
+
+현재 Claude Code 연결은 채팅 설정 **API 키 → 연결 방법**의 ordinary Anthropic API 설정을 사용합니다. `GET /api/v1/chat/compat`의 `endpoints.anthropic.sdk_base_url`을 `ANTHROPIC_BASE_URL`로, 발급한 일반 Lumen API 키를 `ANTHROPIC_AUTH_TOKEN`으로 전달하며 선택한 public model ID를 Claude model 환경 변수에 지정합니다.
+
+`/oauth/claude/authorize`와 `/api/v1/chat/claude-gateway/authorize`는 Lumen이 구현한 기존 custom device flow 승인 화면입니다. Claude Code 2.1.278의 현재 Claude Apps Gateway login은 administrator-managed settings, 공식 gateway `/protocol`, OIDC device authorization, refresh session을 요구하므로 이 custom flow와 호환되지 않습니다. 설정 화면은 이를 Claude Code 연결 방법으로 광고하지 않습니다. 공식 Claude Apps Gateway를 별도로 배포하지 않은 환경에서는 직접 API-key 경로를 사용합니다.
 
 ### Context 사용량과 압축
 
@@ -93,7 +113,7 @@ DeepSeek의 공식 `/user/balance`는 통화별 총 account balance, 구매 충�
 
 모든 화면 폭에서 채팅 영역 상단 **기록**과 **출처 N**을 사용할 수 있습니다. 모바일은 모델/에이전트와 기록/출처를 두 행으로 배치합니다. 1024px 미만의 기록은 bounded drawer, desktop은 inline sidebar이며 설정 메뉴의 기존 **채팅으로 돌아가기**와 project별 선택 복원을 유지합니다. 출처 패널은 mobile에서 full-screen modal, tablet/desktop에서 공통 비모달 panel 계약을 따릅니다. Escape/바깥 영역으로 닫으면 trigger로 focus가 복원됩니다.
 
-가격 admission과 실행은 Lumen 소유입니다. Perplexity Agent Sonar·GLM-5.3의 공식 token 가격을 조회하며 Sonar의 Agent API와 legacy API 가격을 구분합니다. 알 수 없는 모델 가격을 0으로 처리하지 않습니다. Native Search는 기존 token 기반 크레딧 계약을 유지하므로 provider의 별도 검색 요청/툴 부가요금은 로컬 크레딧 비용에 포함되지 않습니다.
+가격 admission과 실행은 Lumen 소유입니다. Perplexity Agent Sonar·GLM-5.3의 공식 token 가격을 조회하며 Sonar의 Agent API와 legacy API 가격을 구분합니다. 알 수 없는 모델의 입력·출력 가격을 0으로 처리하지 않습니다. 예외는 모델별 프롬프트 캐시 단가(캐시 읽기, 캐시 쓰기 5분, 캐시 쓰기 1시간)입니다. 관리자가 설정하지 않은 캐시 항목의 token은 0 USD로 청구됩니다. 그 항목의 token이 0보다 크고 입력·출력 가격이 설정되어 있으면 원장 `pricing_status`는 `partial`이 되며, token이 0인 캐시 항목은 상태에 영향을 주지 않습니다. 이 변경 이전에 고정된 pricing snapshot에는 캐시 key가 없으므로 단가 미설정과 같이 취급합니다. 이 단가는 LiteLLM·models.dev catalog 값으로 대체하지 않습니다. 대체하면 배포 시점부터 예고 없이 과금이 시작되기 때문입니다. Native Search는 기존 token 기반 크레딧 계약을 유지하므로 provider의 별도 검색 요청/툴 부가요금은 로컬 크레딧 비용에 포함되지 않습니다.
 
 ---
 
@@ -115,12 +135,14 @@ Lumen은 외부 프로그램을 위한 OpenAI/Anthropic 호환 API를 제공한�
 
 ### 연결 주소 확인
 
-채팅 설정은 `/dashboard/chat/settings?section=…` 전용 페이지다. 사이드바 사용자 메뉴의 **설정** 또는 작성창의 사용량 명령은 이 route로 이동하고, 사용량·API 키·메모리·MCP·도구·스킬을 desktop side navigation 및 mobile horizontal navigation으로 전환한다. MCP OAuth는 `section=mcp`, API 키 자동화는 `section=apikeys` deep link로 같은 페이지의 지정 section에 복귀한다. **API 키 → 연결 방법**은 인증된 `GET /api/v1/chat/compat` BFF를 통해 Lumen `GET /v1/compat`의 SDK별 `base_url`을 표시한다.
+채팅 설정은 `/dashboard/chat/settings?section=…` 전용 페이지다. 사이드바 사용자 메뉴의 **설정** 또는 작성창의 사용량 명령은 이 route로 이동하고, 사용량·API 키·메모리·MCP·도구·스킬을 desktop side navigation 및 mobile horizontal navigation으로 전환한다. MCP OAuth는 `section=mcp`, API 키 자동화는 `section=apikeys` deep link로 같은 페이지의 지정 section에 복귀한다. **API 키 → 연결 방법**은 인증된 `GET /api/v1/chat/compat` BFF를 통해 Lumen `GET /v1/compat`의 SDK/CLI별 base URL을 표시한다.
+
+연결 방법의 Codex·Claude Code·OpenAI·Claude 선택 탭은 자체 스크롤바 없이 모두 표시된다. 모바일(`<768px`)에서는 두 열로 배치되고, 태블릿에서는 필요하면 줄바꿈한다. 긴 설정 예제 코드만 가로로 스크롤할 수 있다.
 
 - OpenAI: `endpoints.openai.sdk_base_url`을 그대로 사용한다. `/v1`이 포함된다.
-- Anthropic: `endpoints.anthropic.sdk_base_url`을 그대로 사용한다. SDK가 `/v1/messages`를 붙이므로 직접 `/v1`을 추가하지 않는다.
-- 대시보드 호스트 앞에 `api.`를 붙여 추측하지 않는다. localhost에서 실행하는 Afterglow도 연결된 Lumen의 공개 주소를 사용한다.
-- Discovery 조회 실패 시 화면은 주소를 추측하지 않고 오류와 재시도를 표시한다.
+- Anthropic SDK와 Claude Code: `endpoints.anthropic.sdk_base_url`을 그대로 사용한다. client가 `/v1/messages`를 붙이므로 직접 `/v1`을 추가하지 않는다.
+- Codex: `clients.codex.base_url`을 custom provider의 `base_url`로 사용하고 `wire_api = "responses"`를 선택한다. 일반 Lumen API 키를 환경 변수로 읽는다.
+- 대시보드 호스트 앞에 `api.`를 붙여 추측하지 않는다. localhost에서 실행하는 Afterglow도 연결된 Lumen의 공개 주소를 사용한다. Discovery 조회 실패 시 화면은 주소를 추측하지 않고 오류와 재시도를 표시한다.
 
 2026-09-06 실제 SDK로 확인한 DMSLab 배포 주소:
 
@@ -133,6 +155,51 @@ Lumen은 외부 프로그램을 위한 OpenAI/Anthropic 호환 API를 제공한�
 이 표는 해당 배포의 검증 결과다. 다른 배포는 자신의 Lumen discovery 응답을 따른다. Lumen의 공개 주소 설정, ingress 및 인증서가 서로 일치해야 한다.
 
 > 과거 안내 주소 `https://api.cloud.dmslab.re.kr/v1`은 이 배포에서 사용하지 않는다. 실제 서버 인증서의 `*.dmslab.re.kr`은 `lumen.dmslab.re.kr`은 포함하지만 두 단계 하위 이름인 `api.cloud.dmslab.re.kr`은 포함하지 않는다. 기존 주소는 SDK의 TLS 호스트 검증에서 `APIConnectionError`로 실패했다. `verify=False`로 우회하지 않는다.
+
+### Codex CLI (Responses)
+
+채팅 설정 **API 키 → 연결 방법**에서 복사한 내용을 `~/.codex/config.toml`에 저장한다. `base_url`은 예시를 고정하지 않고 현재 Lumen discovery의 `clients.codex.base_url`을 그대로 표시한다.
+
+```toml
+model_provider = "lumen"
+model = "replace-with-Lumen-model-ID"
+
+[model_providers.lumen]
+name = "Lumen Responses"
+base_url = "https://lumen.example/v1"
+env_key = "LUMEN_API_KEY"
+wire_api = "responses"
+requires_openai_auth = false
+supports_websockets = false
+
+# 같은 모델 ID가 여러 프로바이더에 있을 때만 설정한다.
+# http_headers = { "X-Lumen-Provider" = "provider-id" }
+```
+
+`model`에는 모델 선택창의 **ID 복사** 값인 provider model ID를 넣고, 발급한 일반 API 키는 `LUMEN_API_KEY` 환경 변수로 전달한다. 설정 파일에 키를 쓰지 않는다. 같은 공개 model ID가 여러 provider에 등록된 경우에만 `X-Lumen-Provider`를 지정한다. 저장 후 `codex --strict-config`로 실행한다. Codex는 요청마다 대화 input 전체를 다시 보낼 수 있고 Lumen Responses endpoint는 이 full-input tool continuation을 처리한다.
+
+### Claude Code CLI (Anthropic Messages)
+
+현재 Claude Code는 Lumen의 ordinary Anthropic Messages endpoint에 일반 API 키로 직접 연결한다. API 키나 모델 ID를 설정 파일에 저장하지 않고 환경 변수로 주입한다.
+
+```bash
+export LUMEN_API_KEY="발급 직후 한 번 표시된 API 키"
+export LUMEN_MODEL="모델 선택창에서 복사한 API ID"
+export ANTHROPIC_BASE_URL="https://lumen.example"
+export ANTHROPIC_AUTH_TOKEN="$LUMEN_API_KEY"
+export ANTHROPIC_MODEL="$LUMEN_MODEL"
+export ANTHROPIC_DEFAULT_SONNET_MODEL="$LUMEN_MODEL"
+export ANTHROPIC_DEFAULT_OPUS_MODEL="$LUMEN_MODEL"
+export ANTHROPIC_DEFAULT_HAIKU_MODEL="$LUMEN_MODEL"
+
+# 같은 공개 모델 ID가 여러 provider에 있을 때만 설정한다.
+# export LUMEN_PROVIDER="provider-id"
+# export ANTHROPIC_CUSTOM_HEADERS="X-Lumen-Provider: $LUMEN_PROVIDER"
+
+claude
+```
+
+설정 화면의 복사 명령은 discovery가 반환한 Anthropic base URL을 그대로 사용한다. Lumen은 Claude Code가 보내는 native tool/thinking block, `context_management`, `output_config`, `anthropic-*` protocol header를 Anthropic-format provider 경계까지 보존하되 caller의 `Authorization`/`x-api-key`는 upstream provider credential로 전달하지 않는다. Current Claude Apps Gateway의 `/login`은 위 직접 API 경로와 다른 제품이며 Lumen custom device endpoint로 대체할 수 없다.
 
 ### API 키와 모델 ID
 
@@ -166,10 +233,14 @@ os.environ["LUMEN_MODEL"] = "gpt-5.6-luna"
 
 | 형식 | 메서드 · 경로 | 설명 |
 | --- | --- | --- |
-| Discovery | `GET /v1/compat` | SDK별 연결 정보, 인증 scope, 기능 안내 |
+| Discovery | `GET /v1/compat` | SDK/Gateway별 연결 정보, 인증 scope, stream 안내 |
 | OpenAI | `GET /v1/models` | API 키로 사용 가능한 모델 조회 |
-| OpenAI | `POST /v1/chat/completions` | 일반·스트리밍 completion |
-| Anthropic | `POST /v1/messages` | 일반·스트리밍 completion |
+| OpenAI | `POST /v1/chat/completions` | 일반·스트리밍 Chat Completions |
+| OpenAI | `POST /v1/responses` | stateless Responses object와 native SSE events |
+| Codex | `POST /v1/responses` | custom `responses` provider의 text·function-call·full-input continuation |
+| Anthropic | `POST /v1/messages` | Anthropic-native 일반·스트리밍 Messages |
+| Anthropic | `POST /v1/messages/count_tokens` | Anthropic-native input token count |
+| Legacy Lumen device API | configured base의 `/oauth/device/code`, `/oauth/token`, `/v1/messages` | custom 24시간 credential protocol. Claude Code 2.1.278의 current Apps Gateway login과 호환되지 않으며 연결 가이드에 노출하지 않음 |
 
 `GET /v1/models`의 `data[].id`가 SDK의 공개 `model` 값이고 `data[].providers`가 같은 ID를 제공하는 활성 provider type 목록이다. 모델 선택창에서 복사한 API ID와 같은 값이다. OpenAI 전용 가상 모델 `lumen`이 목록에 있다면 서버 기본 모델을 사용하는 durable 실행을 의미한다. 특정 모델을 호출하거나 Anthropic 예제를 실행할 때는 모델 선택창에서 복사한 공개 API ID를 사용하고 내부 route는 사용하지 않는다.
 
@@ -265,11 +336,23 @@ Anthropic 스트리밍은 client가 열린 상태에서 `client.messages.stream(
 - `max_tokens` 상한은 서버 정책을 따른다. 폐기된 키는 인증에 사용할 수 없다.
 - Discovery의 공개 주소는 SDK 연결 설정이며, health 응답만으로 모델/provider 실행 성공을 판정하지 않는다.
 
+### 모델 발견·검토·등록
+
+관리자 `GET /api/v1/chat/admin/providers/{provider_id}/available-models`는 Lumen의 동일 `/v1/admin/providers/...` 응답을 그대로 전달한다. `models`·`source` 외에 `provider_id`, `fetched_at`, `live_status`, `complete`, safe `error`, 최소 `candidates` metadata를 반환한다. 정상 빈 live 응답은 그대로 유지한다. Live 실패·한도 초과·중간 페이지 실패에는 정적 fallback이나 부분 목록을 주지 않으며, 정적 후보는 미지원 인증/설정에서만 제공한다. 발견된 ID는 가격·고급 capability·추론 성공을 보증하지 않는다. Discovery는 등록된 모델이나 가격을 수정하지 않는다.
+
+신규 후보는 선택 후 provider·ID·표시명과 수동 입력/출력 가격을 검토해 기존 `POST /api/v1/chat/admin/models`로 등록한다. 두 가격을 명시한 경우 등록·활성화할 수 있고, 미확인은 `is_active:false`로 저장한 뒤 기존 가격 수정 또는 models.dev 명시적 mapping을 거쳐 활성화한다. 수동 ID 입력과 독립 optional cache 단가도 유지한다. 알 수 없는 가격은 Lumen admission에서 차단하고 다른 모델의 가격·기능을 이름 유사성으로 추정하지 않는다. API context/token limit은 검토 참고 정보이며 고급 기능 override를 자동 생성하지 않는다.
+
+Discovery 응답은 generation, provider, token/project와 화면 수명으로 격리한다. 순차 등록은 시작 시 provider·credential scope·모델 선택을 고정하며 provider/scope 전환 후 남은 등록을 중단한다. 오래된 성공·실패·finally가 새 provider의 목록·선택·loading을 바꾸지 않는다. 일부 등록 실패는 성공 항목과 구분한다.
+
+관리자 모델 변경 후 `chatModels.ts`가 같은 탭과 BroadcastChannel을 통해 목록 무효화 신호만 보낸다(credential·model payload 저장 없음). 열린 `ChatPanel`은 이 신호와 focus/visible/online 복귀, 모델 선택기의 **목록 새로고침**으로 active 목록을 다시 읽고 유효한 선택을 보존한다. 사라진 선택만 저장된 유효 모델 또는 첫 가용 모델로 대체한다. 세대·token/project fence가 늦은 응답을 버리고 일시적 조회 실패는 현재 목록을 비우지 않으며 선택기 안에서 오류와 재시도를 제공한다.
+
 ### 관리자 quota·사용량·provider 결제 화면
 
 `/admin/chat/quotas`는 Lumen quota envelope의 시스템 기본 월 한도와 각 사용자 개인 override를 분리해 표시한다. `기본값 복원`은 해당 지갑의 월·주간 설정만 `NULL` 상속 상태로 되돌리며 과거 usage ledger를 삭제하지 않는다. 독립 주간 ceiling이 없으면 **월 한도 내 무제한**으로 표시하지만 Lumen 월 admission은 계속 강제된다. 상단 환산 안내는 Lumen이 반환한 `credit_per_usd`, `usd_per_credit`, 공식 formula를 사용하므로 frontend 상수가 아니다.
 
 사용자 행의 **사용량**은 modal을 열어 `7d`, `30d`, `90d`, `1y`, 전체 기간과 web/API source를 필터링한다. 모델별 및 source별 aggregate와 timestamp, 입력/출력/총 token, raw USD, 차감 credit, API key attribution이 있는 cursor ledger를 표시한다. 숫자는 Lumen immutable usage log의 projection이며 Afterglow가 별도 accounting state를 저장하지 않는다.
+
+`/admin/chat/models`의 모델 등록 form과 **가격 수정** modal에는 입력·출력 가격 아래에 선택 항목인 **프롬프트 캐시 단가**(캐시 읽기, 캐시 쓰기 5분, 캐시 쓰기 1시간, USD / 1M tokens)가 있다. 세 항목은 서로 독립이며 입력·출력 가격 쌍 규칙을 적용하지 않는다. 음수가 아닌 일반 소수(`^\d+(\.\d+)?$`)만 받고, 오류는 제출 전에 `Field` error로 표시한다. 입력한 문자열은 trim만 하고 float로 변환하지 않은 채 전달하며, 정밀도 한도는 Lumen이 검증한다. 등록 시 비운 항목은 보내지 않는다. 가격 수정은 prefill과 달라진 key만 보낸다. 캐시 단가는 값을 넣으면 설정하고, 기존 값을 비우면 `null`로 해제하며, 손대지 않은 항목은 보내지도 검증하지도 않는다. 입력·출력 가격은 한쪽이라도 바뀐 경우에만 쌍 규칙에 따라 둘 다 보낸다. 입력·출력 key가 있으면 Lumen이 모델을 `manual`로 바꾸고 models.dev metadata를 지워 이후 models.dev import를 막으므로, 캐시 단가만 수정하면 models.dev 가격 출처가 유지된다. 바뀐 항목이 없으면 요청 없이 닫는다. Lumen이 저장된 0을 `0E-10` 같은 지수 표기로 돌려주면 목록과 prefill은 `0`으로 표시한다. 모델 목록은 설정된 캐시 단가를 표시하고, 설정되지 않은 항목은 캐시 token이 단가 설정 전까지 0 USD로 청구된다고 표시한다. 응답에 cache key 자체가 없으면(cache 단가 이전 Lumen) 0 USD 안내 대신 미지원으로 표시하고 가격 수정의 cache 입력을 숨기며, 불러온 모델이 모두 그런 응답이면 등록 form의 cache 입력도 숨긴다. models.dev 가져오기는 여전히 캐시 단가를 적용하지 않고 가격 수정에서 설정하도록 안내한다. Afterglow BFF는 모델 schema 없이 요청·응답 byte를 그대로 전달한다(`backend/tests/contracts/test_lumen_proxy.py`). 배포 순서는 Afterglow frontend → cache 단가를 지원하는 Lumen이다. 새 Lumen은 `usage.updated`에 `cache_read_input_tokens`, `cache_creation_5m_input_tokens`, `cache_creation_1h_input_tokens`, `advisor_cache_read_tokens`, `advisor_cache_creation_5m_tokens`, `advisor_cache_creation_1h_tokens` component를 보내며, 이 kind를 모르는 이전 frontend의 strict parser(`frontend/src/lib/api/chatContracts.ts`)는 그 event에서 멈춰 캐시 토큰이 있는 web run을 완료하지 못한다. 새 frontend는 이전 Lumen에서도 동작한다: 모델이 하나 이상 로드되면 cache key가 없는 응답을 미지원으로 표시하고 cache key를 보내지 않는다. 모델이 하나도 없으면 Lumen 버전을 구분할 수 없어 등록 form이 cache 입력을 유지하므로, 이전 Lumen에서 cache 단가를 채워 첫 모델을 등록하면 Lumen이 422로 거절한다.
 
 `/admin/chat` provider 설정은 모든 configured provider에 Lumen 귀속 일·주·월·누적 request/token/raw USD cost를 표시한다. 별도 `계정 크레딧` 영역은 DeepSeek가 공식 반환한 통화별 총 잔액·구매 충전액·지급 credit을 표시하고, OpenRouter는 inference key의 limit/remaining을 account balance와 명확히 구분한다. Direct OpenAI/Anthropic의 공식 organization report는 비용·요청·token 사용량만 제공하므로 현재 잔액이나 충전액을 사용량에서 역산하지 않고 `공식 API 조회 미지원`과 결제 console action을 표시한다. Gemini와 그 밖의 console-only provider도 같은 fail-honest 규칙을 따른다. Subscription credential, custom OpenAI-compatible base, local/unknown provider에는 오인 가능한 결제 링크를 제공하지 않는다. 결제 상태 조회 실패는 provider CRUD·실행 상태를 바꾸지 않으며 secret이나 upstream 원문 오류를 표시하지 않는다.
 
@@ -281,5 +364,7 @@ Anthropic 스트리밍은 client가 열린 상태에서 `client.messages.stream(
 - Anthropic SDK 1.4.0: 일반 completion HTTP 200, 스트리밍 완료 및 `stop_reason="end_turn"`.
 - 수정된 Afterglow 설정 화면에서 렌더링된 두 Python 예제를 그대로 추출해 실행했으며 모두 실제 응답을 출력했다.
 - 2026-09-08 합성 provider HTTP 경계에서 OpenAI·Anthropic SDK 요청이 공개 ID와 `provider="perplexity"`를 Lumen resolver에 전달하고 Perplexity Agent API `/v1/responses` transport로 실행되며 응답 model은 공개 ID를 유지함을 확인했다. 실제 provider credential이나 외부 배포는 사용하지 않았다.
+- 2026-09-20 설치된 Codex CLI 0.154.0을 격리된 Lumen process stack과 합성 provider에 직접 연결해 text turn과 실제 `exec_command` function call, `function_call_output`을 포함한 full-input 후속 요청, 최종 응답을 확인했다. `prompt_cache_key`는 provider로 전달되고 로컬 session/turn 정보가 든 `client_metadata`는 Lumen 경계에서 제거됐다. 이는 실제 Codex wire 호환성 증거이며 live 외부 provider·Keystone 배포 증거는 아니다.
+- 2026-09-20 설치된 Claude Code 2.1.278을 격리된 Lumen process stack과 합성 Anthropic provider에 직접 연결해 streaming text 응답과 실제 local `Bash` tool 실행, `tool_result` 후속 요청, 최종 `CLAUDE_TOOL_CONTINUATION_OK`를 확인했다. 최초 실행에서 422를 만든 `context_management`/`output_config` 수용과 `anthropic-*` protocol header 전달을 수정한 뒤 확인했으며, live Anthropic credential·운영 배포 증거는 아니다. 같은 버전의 current Apps Gateway login contract는 Lumen legacy device API와 호환되지 않으므로 UI의 device-login 주장을 제거했다.
 - 키 발급·폐기나 서버 배포 설정 변경 없이 검증했다.
 - 2026-09-16 provider credit 표시는 focused provider-page 21건과 전체 frontend 1,331건을 통과했다. 실제 Vite surface에 합성 bulk billing boundary를 연결해 light/dark 각각 390·767·768·1023·1024·1440px에서 OpenRouter key-limit provenance, DeepSeek account balance, breakpoint 전환, action 배치와 horizontal overflow 부재를 확인했다. 이는 UI/contract 증거이며 live provider credential이나 배포 검증이 아니다.

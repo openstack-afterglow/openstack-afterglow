@@ -6,6 +6,9 @@ import type { MockupProfileId } from '$lib/mockup/contracts';
 export const authReady = writable(false);
 export const logoutInProgress = writable(false);
 
+// Transient verification failure for this token only; never persisted as credentials.
+export const authRecovery = writable<{ token: string; retryAt: number } | null>(null);
+
 
 export interface Project {
 	id: string;
@@ -118,6 +121,9 @@ let persistenceMode: AuthPersistenceMode = initialContext.mode;
 let mockupProfile: MockupProfileId | null = initialContext.mode === 'mock' ? readMockupProfile() : null;
 
 export const auth = writable<AuthState>(initialContext.state);
+auth.subscribe((state) => {
+	authRecovery.update((failure) => failure?.token === state.token ? failure : null);
+});
 if (initialContext.mode === 'mock' && initialContext.state.token) {
 	authReady.set(true);
 }

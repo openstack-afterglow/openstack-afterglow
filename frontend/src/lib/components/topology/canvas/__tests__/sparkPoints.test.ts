@@ -1,3 +1,4 @@
+// @vitest-environment node
 // 스파크라인 좌표 계산. rx/tx 를 같은 축에 올리는 계약과 표본 1개 처리를 고정한다.
 import { describe, expect, it } from 'vitest';
 import { sparkPoints } from '../canvasHelpers';

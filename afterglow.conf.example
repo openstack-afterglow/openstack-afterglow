@@ -153,6 +153,7 @@ default_network_cidr = "192.168.0.0/24"       # 자동 생성 네트워크의 �
 magnum = false      # K8s 클러스터 (Heat 포함)
 manila = false      # 공유 파일 시스템
 zun = false         # 컨테이너
+cloud_shell = false # 전역 Cloud Shell (Zun + 전용 서비스 프로젝트/네트워크/보안 그룹 필요)
 k3s = false         # k3s 자체 관리 Kubernetes 클러스터
 swift = false       # 오브젝트 스토리지
 trove = false       # DBaaS (Database as a Service)
@@ -171,6 +172,28 @@ waygate_internal_url = ""
 drover_internal_url = ""
 lumen_internal_url = ""
 palimpsest_internal_url = ""
+
+[cloud_shell]
+# 모든 컨테이너와 영구 홈 볼륨은 사용자 프로젝트가 아니라 이 전용 프로젝트에 생성됩니다.
+# 운영자는 프로젝트/네트워크/라우터/egress-only 보안 그룹/쿼터를 명시적으로 준비해야 합니다.
+service_project_id = ""
+image = "ghcr.io/openstack-afterglow/afterglow-cloud-shell@sha256:replace-with-published-digest"
+network_id = ""
+security_group = ""
+# Cloud Shell 내부 OpenStack CLI가 사용할 Keystone v3 URL. 운영은 HTTPS만 허용합니다.
+auth_url = "https://keystone.example.com/v3"
+interface = "internal"
+volume_type = ""
+home_size_gib = 5
+cpu = 1.0
+memory_mib = 1024
+idle_timeout_seconds = 1200
+max_session_seconds = 3600
+ticket_ttl_seconds = 60
+reconcile_interval_seconds = 60
+# Zun exec proxy의 정확한 origin. 운영은 WSS만 허용합니다(경로/쿼리 금지).
+zun_websocket_origin = "wss://zun-ws.example.com"
+
 [mcp]
 # Inbound consumer MCP control plane. Keep services.mcp=false until the Stage 2 publish gate passes.
 # 외부 MCP 클라이언트가 접속하는 정확한 Streamable HTTP resource URL. 비우거나 도메인만

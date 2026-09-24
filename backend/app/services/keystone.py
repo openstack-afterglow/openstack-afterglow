@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from drover_sdk.proxy import Proxy as DroverProxy
 from keystoneauth1 import session as ks_session
+from keystoneauth1.exceptions.http import NotFound, Unauthorized
 from keystoneauth1.identity import v3
 from waygate_sdk.proxy import Proxy as WaygateProxy
 
@@ -244,7 +245,17 @@ def validate_token(token: str, project_id: str = "") -> dict:
 
     auth_plugin = v3.Token(**kwargs)
     sess = ks_session.Session(auth=auth_plugin, timeout=30, verify=settings.ssl_verify)
-    access = auth_plugin.get_access(sess)
+    try:
+        access = auth_plugin.get_access(sess)
+    except NotFound as exc:
+        # TokenNotFound also covers unreadable/expired Fernet tokens. Do not
+        # mistake an arbitrary endpoint/proxy 404 for invalid credentials.
+        if exc.message.partition(" (HTTP ")[0] in {
+            "Failed to validate token",
+            "Could not recognize Fernet token",
+        }:
+            raise Unauthorized(message="Invalid Keystone token", request_id=exc.request_id) from exc
+        raise
 
     return {
         "token": access.auth_token,
@@ -356,6 +367,40 @@ def get_admin_connection_for_project(project_id: str) -> openstack.connection.Co
         verify=settings.ssl_verify,
         **_owned_service_connection_options(settings),
     )
+
+
+def get_cloud_shell_project_connection() -> openstack.connection.Connection:
+    """Return a service-account connection scoped only to the dedicated shell project.
+
+    Caller tokens are never used for Zun/Cinder lifecycle operations. The project
+    scope is deployment configuration, not request input, so tenant data cannot
+    redirect service credentials into an arbitrary project.
+    """
+    import openstack
+
+    settings = get_settings()
+    project_id = settings.cloud_shell_service_project_id.strip()
+    if not project_id:
+        raise RuntimeError("Cloud Shell service project is not configured")
+    conn = openstack.connect(
+        load_envvars=False,
+        load_yaml_config=False,
+        auth_url=settings.cloud_shell_auth_url,
+        auth_type="password",
+        username=settings.os_username,
+        password=settings.os_password,
+        project_id=project_id,
+        user_domain_name=settings.os_user_domain_name,
+        project_domain_name=settings.os_project_domain_name,
+        region_name=settings.os_region_name,
+        interface=settings.cloud_shell_interface,
+        api_timeout=30,
+        verify=settings.ssl_verify,
+        app_name="afterglow-cloud-shell",
+        **_owned_service_connection_options(settings),
+    )
+    conn._afterglow_project_id = project_id
+    return conn
 
 
 def get_admin_project_connection() -> openstack.connection.Connection:

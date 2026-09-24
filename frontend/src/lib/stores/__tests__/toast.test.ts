@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { afterEach, describe, it, expect, beforeEach, vi } from 'vitest';
 import { get } from 'svelte/store';
 

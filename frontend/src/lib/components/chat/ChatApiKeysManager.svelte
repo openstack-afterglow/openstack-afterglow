@@ -7,6 +7,7 @@
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
+	import Tabs from '$lib/components/ui/Tabs.svelte';
 	import { formatCredit, isCreditInput } from '$lib/api/chatQuotas';
 	import type { ApiKey } from '$lib/api/chatUsage';
 	import type { ChatUsage } from '$lib/api/chatTree';
@@ -38,8 +39,19 @@
 			openai: { sdk_base_url: string };
 			anthropic: { sdk_base_url: string };
 		};
+		clients: {
+			codex: { base_url: string };
+		};
 	}
-	let sdkBases = $state<{ openai: string; anthropic: string } | null>(null);
+	type ClientGuide = 'codex' | 'claude-code' | 'openai' | 'claude';
+	const clientGuideTabs: Array<{ value: ClientGuide; label: string; panelId: string }> = [
+		{ value: 'codex', label: 'Codex', panelId: 'api-key-guide-codex-panel' },
+		{ value: 'claude-code', label: 'Claude Code', panelId: 'api-key-guide-claude-code-panel' },
+		{ value: 'openai', label: 'OpenAI', panelId: 'api-key-guide-openai-panel' },
+		{ value: 'claude', label: 'Claude', panelId: 'api-key-guide-claude-panel' }
+	];
+	let activeGuide = $state<ClientGuide>('codex');
+	let sdkBases = $state<{ openai: string; anthropic: string; codex: string } | null>(null);
 	let guideLoading = $state(false);
 	let guideError = $state('');
 	let guideGeneration = 0;
@@ -64,7 +76,8 @@
 			if (generation !== guideGeneration) return;
 			sdkBases = {
 				openai: sdkBaseUrl(discovery.endpoints?.openai?.sdk_base_url),
-				anthropic: sdkBaseUrl(discovery.endpoints?.anthropic?.sdk_base_url)
+				anthropic: sdkBaseUrl(discovery.endpoints?.anthropic?.sdk_base_url),
+				codex: sdkBaseUrl(discovery.clients?.codex?.base_url)
 			};
 		} catch {
 			if (generation !== guideGeneration) return;
@@ -118,6 +131,30 @@ with Anthropic(
     for block in response.content:
         if block.type == "text":
             print(block.text)` : '');
+
+	const codexConfigExample = $derived(sdkBases ? `model_provider = "lumen"
+model = "replace-with-Lumen-model-ID"
+
+[model_providers.lumen]
+name = "Lumen Responses"
+base_url = ${JSON.stringify(sdkBases.codex)}
+env_key = "LUMEN_API_KEY"
+wire_api = "responses"
+requires_openai_auth = false
+supports_websockets = false
+
+# 같은 모델 ID가 여러 프로바이더에 있을 때만 아래 값을 설정하세요.
+# http_headers = { "X-Lumen-Provider" = "provider-id" }` : '');
+	const claudeCodeExample = $derived(sdkBases ? `export ANTHROPIC_BASE_URL=${JSON.stringify(sdkBases.anthropic)}
+export ANTHROPIC_AUTH_TOKEN="$LUMEN_API_KEY"
+export ANTHROPIC_MODEL="$LUMEN_MODEL"
+export ANTHROPIC_DEFAULT_SONNET_MODEL="$LUMEN_MODEL"
+export ANTHROPIC_DEFAULT_OPUS_MODEL="$LUMEN_MODEL"
+export ANTHROPIC_DEFAULT_HAIKU_MODEL="$LUMEN_MODEL"
+
+# 같은 모델 ID가 여러 프로바이더에 있을 때만 아래 값을 설정하세요.
+# export ANTHROPIC_CUSTOM_HEADERS="X-Lumen-Provider: $LUMEN_PROVIDER"
+claude` : '');
 
 	async function load() {
 		if (!token) return;
@@ -414,30 +451,89 @@ with Anthropic(
 				연결 정보 다시 불러오기
 			</Button>
 		{:else if sdkBases}
-			<p class="mb-2 text-xs text-ink-2">
-				Lumen이 제공한 공개 API 주소입니다. 대시보드 주소와 다를 수 있으며, SDK별 base_url을 그대로 사용하세요.
+			<p class="mb-4 text-sm leading-6 text-ink-2">
+				Lumen이 제공한 공개 API 주소를 사용합니다. 대시보드 주소와 다를 수 있으므로 선택한 클라이언트 문서의
+				주소와 설정을 그대로 사용하세요. 예제 요청은 실제 API 사용량을 차감합니다.
 			</p>
-			<p class="mb-2 text-xs text-ink-2">
-				<code>LUMEN_API_KEY</code> 환경 변수에 발급한 키를,
-				<code>LUMEN_MODEL</code>에 모델 선택창의 <strong>ID 복사</strong>로 복사한 API ID를 설정하세요.
-				동일한 API ID가 여러 프로바이더에 등록된 경우에만 <code>LUMEN_PROVIDER</code>에 표시된 provider 값을 설정하세요.
-				아래 예제는 실제 요청을 보내며 API 사용량이 차감됩니다.
-			</p>
-			<p class="mb-3 text-xs text-ink-2">패키지 설치: <code>python -m pip install openai anthropic</code></p>
-			<div class="mb-1 flex items-center justify-between gap-2">
-				<p class="text-xs text-ink-2">OpenAI SDK (Python)</p>
-				<Button variant="ghost" size="sm" onclick={() => copyText(openaiExample, 'OpenAI 예제를 복사했습니다')}>
-					예제 복사
-				</Button>
+			<Tabs
+				id="api-key-client-guides"
+				value={activeGuide}
+				items={clientGuideTabs}
+				onchange={(value) => { activeGuide = value as ClientGuide; }}
+				ariaLabel="Lumen 연결 클라이언트"
+				class="mb-4"
+			/>
+			<div
+				id={`api-key-guide-${activeGuide}-panel`}
+				role="tabpanel"
+				aria-labelledby={`api-key-client-guides-${activeGuide}`}
+				tabindex="0"
+				class="min-w-0"
+			>
+				{#if activeGuide === 'codex'}
+					<div class="mb-2 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+						<div>
+							<p class="text-sm font-medium text-ink-1">Codex CLI (Responses)</p>
+							<p class="mt-1 text-sm leading-6 text-ink-2">
+								발급한 키를 <code>LUMEN_API_KEY</code>로 내보내고 아래 내용을 <code>~/.codex/config.toml</code>에
+								저장하세요. 모델 값은 모델 선택창의 API ID로 바꾸고, 같은 ID가 여러 프로바이더에 있을 때만
+								<code>X-Lumen-Provider</code> 설정을 사용하세요.
+							</p>
+						</div>
+						<Button variant="ghost" size="sm" onclick={() => copyText(codexConfigExample, 'Codex 설정을 복사했습니다')}>
+							설정 복사
+						</Button>
+					</div>
+					<pre class="{codeCls} max-w-full whitespace-pre" role="region" aria-label="Codex CLI 연결 설정"><code>{codexConfigExample}</code></pre>
+					<p class="mt-2 text-sm leading-6 text-ink-2">
+						저장 후 <code>codex --strict-config</code>로 실행하세요. Codex는 Lumen Responses API를 직접 사용합니다.
+					</p>
+				{:else if activeGuide === 'claude-code'}
+					<div class="mb-2 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+						<div>
+							<p class="text-sm font-medium text-ink-1">Claude Code (Anthropic API)</p>
+							<p class="mt-1 text-sm leading-6 text-ink-2">
+								발급한 키를 <code>LUMEN_API_KEY</code>에, 모델 선택창의 API ID를 <code>LUMEN_MODEL</code>에 설정한 뒤
+								명령을 실행하세요. 같은 ID가 여러 프로바이더에 있을 때만 주석의 custom header를 활성화하세요.
+							</p>
+						</div>
+						<Button variant="ghost" size="sm" onclick={() => copyText(claudeCodeExample, 'Claude Code 설정을 복사했습니다')}>
+							명령 복사
+						</Button>
+					</div>
+					<pre class="{codeCls} max-w-full whitespace-pre" role="region" aria-label="Claude Code 연결 명령"><code>{claudeCodeExample}</code></pre>
+				{:else if activeGuide === 'openai'}
+					<div class="mb-2 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+						<div>
+							<p class="text-sm font-medium text-ink-1">OpenAI SDK (Python)</p>
+							<p class="mt-1 text-sm leading-6 text-ink-2">
+								<code>python -m pip install openai</code>로 패키지를 설치하고, <code>LUMEN_API_KEY</code>와
+								<code>LUMEN_MODEL</code>을 설정하세요. 같은 API ID가 여러 프로바이더에 있을 때만
+								<code>LUMEN_PROVIDER</code>를 추가하세요.
+							</p>
+						</div>
+						<Button variant="ghost" size="sm" onclick={() => copyText(openaiExample, 'OpenAI 예제를 복사했습니다')}>
+							예제 복사
+						</Button>
+					</div>
+					<pre class="{codeCls} max-w-full whitespace-pre" role="region" aria-label="OpenAI SDK Python 예제"><code>{openaiExample}</code></pre>
+				{:else}
+					<div class="mb-2 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+						<div>
+							<p class="text-sm font-medium text-ink-1">Claude SDK (Anthropic Python)</p>
+							<p class="mt-1 text-sm leading-6 text-ink-2">
+								<code>python -m pip install anthropic</code>으로 패키지를 설치하고, <code>LUMEN_API_KEY</code>와
+								<code>LUMEN_MODEL</code>을 설정하세요. 같은 API ID가 여러 프로바이더에 있을 때만
+								<code>LUMEN_PROVIDER</code>를 추가하세요.
+							</p>
+						</div>
+						<Button variant="ghost" size="sm" onclick={() => copyText(anthropicExample, 'Claude 예제를 복사했습니다')}>
+							예제 복사
+						</Button>
+					</div>
+					<pre class="{codeCls} max-w-full whitespace-pre" role="region" aria-label="Claude SDK Python 예제"><code>{anthropicExample}</code></pre>
+				{/if}
 			</div>
-			<pre class="{codeCls} max-w-full whitespace-pre" role="region" aria-label="OpenAI SDK Python 예제"><code>{openaiExample}</code></pre>
-			<div class="mb-1 mt-3 flex items-center justify-between gap-2">
-				<p class="text-xs text-ink-2">Anthropic SDK (Python)</p>
-				<Button variant="ghost" size="sm" onclick={() => copyText(anthropicExample, 'Anthropic 예제를 복사했습니다')}>
-					예제 복사
-				</Button>
-			</div>
-			<pre class="{codeCls} max-w-full whitespace-pre" role="region" aria-label="Anthropic SDK Python 예제"><code>{anthropicExample}</code></pre>
 		{:else}
 			<p class="text-xs text-ink-2">로그인 후 Lumen 연결 정보를 확인할 수 있습니다.</p>
 		{/if}
@@ -467,3 +563,25 @@ with Anthropic(
 		</div>
 	</div>
 {/if}
+
+<style>
+	/* The shared scrollable Tabs row also gains a 1px vertical scrollbar from its tab borders. */
+	section :global(#api-key-client-guides) {
+		flex-wrap: wrap;
+		overflow: visible;
+	}
+
+	@media (max-width: 767px) {
+		section :global(#api-key-client-guides) {
+			display: grid;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+
+		section :global(#api-key-client-guides > button) {
+			min-width: 0;
+			margin-bottom: 0;
+			padding-inline: 0.5rem;
+			white-space: normal;
+		}
+	}
+</style>

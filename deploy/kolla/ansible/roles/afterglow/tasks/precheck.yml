@@ -82,6 +82,13 @@
     - enable_afterglow | bool
     - afterglow_public_haproxy_enabled | bool
 
+
+- name: Precheck | Verify Cloud Shell deployment contract
+  ansible.builtin.include_tasks: precheck_cloud_shell.yml
+  when:
+    - enable_afterglow | bool
+    - afterglow_service_cloud_shell_enabled | bool
+  tags: precheck
 - name: Precheck | Prepare Manila CLI authentication
   ansible.builtin.include_tasks: manila_cli_auth.yml
   when: enable_afterglow | bool and afterglow_service_manila_enabled | bool

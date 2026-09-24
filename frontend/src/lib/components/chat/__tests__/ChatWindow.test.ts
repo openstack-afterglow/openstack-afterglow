@@ -310,28 +310,47 @@ describe('ChatWindow', () => {
 		expect(getByRole('button', { name: '새 응답 따라가기' })).toBeTruthy();
 	});
 
-	it('preserves scroll offset while its older-history callback prepends messages', async () => {
-		let scroll: HTMLDivElement;
-		const onLoadOlder = vi.fn(async () => {
-			Object.defineProperty(scroll, 'scrollHeight', { configurable: true, value: 1_200 });
+	it('uses explicit bidirectional controls and preserves a visible message anchor', async () => {
+		let top = 100;
+		const onLoadBefore = vi.fn(async () => { top = 140; });
+		const onLoadAfter = vi.fn(async () => {});
+		const onLoadFirst = vi.fn(async () => true);
+		const onLoadLatest = vi.fn(async () => true);
+		const message = {
+			id: 'answer', conversation_id: 'conversation', parent_id: null,
+			role: 'assistant' as const, content: 'bounded history', created_at: null
+		};
+		const view = render(ChatWindow, {
+			activePath: [message], models: [], hasBefore: true, hasAfter: true,
+			onLoadBefore, onLoadAfter, onLoadFirst, onLoadLatest, ...callbacks
 		});
-		const { container } = render(ChatWindow, {
-			activePath: [],
-			models: [],
-			hasOlder: true,
-			onLoadOlder,
-			...callbacks
-		});
-		scroll = container.querySelector('.scroll') as HTMLDivElement;
-		Object.defineProperties(scroll, {
-			scrollHeight: { configurable: true, value: 1_000 },
-			clientHeight: { configurable: true, value: 100 },
-			scrollTop: { configurable: true, value: 0, writable: true }
-		});
+		const scroll = view.container.querySelector('.scroll') as HTMLDivElement;
+		const anchor = view.container.querySelector('[data-history-message-id="answer"]') as HTMLDivElement;
+		Object.defineProperty(scroll, 'scrollTop', { configurable: true, value: 50, writable: true });
+		vi.spyOn(scroll, 'getBoundingClientRect').mockReturnValue({ top: 0 } as DOMRect);
+		vi.spyOn(anchor, 'getBoundingClientRect').mockImplementation(() => ({ top, bottom: top + 20 } as DOMRect));
 
+		expect(view.getByRole('button', { name: '처음' })).toBeTruthy();
+		expect(view.getByRole('button', { name: '최신' })).toBeTruthy();
 		await fireEvent.scroll(scroll);
+		expect(onLoadBefore).not.toHaveBeenCalled();
 
-		expect(onLoadOlder).toHaveBeenCalledOnce();
-		expect(scroll.scrollTop).toBe(200);
+		const beforeNavigation = scroll.scrollTop;
+		await fireEvent.click(view.getByRole('button', { name: '이전' }));
+		expect(onLoadBefore).toHaveBeenCalledOnce();
+		expect(scroll.scrollTop).toBe(beforeNavigation + 40);
+	});
+
+	it('shows a latest-window action when a run completes off-window', () => {
+		const message = {
+			id: 'answer', conversation_id: 'conversation', parent_id: null,
+			role: 'assistant' as const, content: 'old window', created_at: null
+		};
+		const view = render(ChatWindow, {
+			activePath: [message], models: [], hasAfter: true, newHistoryActivity: true,
+			onLoadLatest: vi.fn(async () => true), onLoadFirst: vi.fn(async () => true), ...callbacks
+		});
+		expect(view.getByText('새 응답이 도착했습니다.')).toBeTruthy();
+		expect(view.getByRole('button', { name: '최신 응답 보기' })).toBeTruthy();
 	});
 });

@@ -36,6 +36,8 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
 8. [관리자 패스워드 재설정](#8-관리자-패스워드-재설정)
 9. [데이터 스토리지 연결](#9-데이터-스토리지-연결-storage-attachments)
 10. [리소스 메트릭](#10-리소스-메트릭)
+11. [GitHub SSH 사용자 확인](#11-github-ssh-사용자-확인)
+12. [cloud-init 스니펫 라이브러리](#12-cloud-init-스니펫-라이브러리)
 
 ---
 
@@ -79,6 +81,8 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
 | `user_id` / `project_id` | string \| null | 소유 사용자/프로젝트 |
 | `fault` | object \| null | ERROR 상태의 fault 정보 `{message, code, created}` |
 | `host` | string \| null | 하이퍼바이저 호스트 (관리자 스코프에서만 채워짐) |
+
+`union_*` 응답 필드는 retained layer 라이브러리를 선택한 VM에서만 Nova metadata로 저장됩니다. 라이브러리가 없는 plain/GPU/data-mount VM은 해당 metadata key를 만들지 않으며 응답 파서는 누락된 필드를 `[]`/`null`로 반환합니다.
 
 ### GET /api/v1/instances/availability-zones
 
@@ -146,8 +150,19 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
 | `additional_volume_ids` | array[string] | 아니오 | 생성 직후 연결할 기존 볼륨 UUID 목록 |
 | `new_volumes` | array | 아니오 | 신규 생성·연결할 볼륨 `{name, size_gb}` 목록 |
 | `data_mounts` | array | 아니오 | 기존 Manila share 직접 마운트 `{file_storage_id, mount_point, read_only}` |
+| `userdata` | string | 아니오 | 사용자 cloud-init. 관리형 cloud-config 뒤에 병합 (최대 64 KiB) |
+| `github_username` | string | 아니오 | GitHub 공개키 SSH 접근. Ubuntu 이미지 직접 부팅에서만 사용하며 생성 전에 서버가 GitHub 프로필·공개키를 재검증 |
 
 > `data_mounts[].mount_point`는 `/mnt`, `/data`, `/srv`, `/home` 하위 절대 경로만 허용되며 `..`/`.` 세그먼트 및 `/opt`·`/etc`·`/usr`·`/var` 등 시스템 경로는 거부됩니다. NFS share 마운트에는 `network_id`(subnet CIDR 해석용)가 필요합니다.
+
+**cloud-init 및 metadata 경계**
+
+- `libraries`가 실제로 resolve된 경우에만 OverlayFS script/unit, `/etc/profile.d/union-env.sh`, layer health report/token, `union_libraries`·`union_strategy`·`union_share_ids`·`union_upper_volume_id`·`union_health_id` Nova metadata를 생성합니다.
+- plain VM은 typed empty `packages`/`write_files`/`runcmd` cloud-config를 사용합니다. GPU-only와 `data_mounts`-only VM은 각 bootstrap만 유지하고 layer artifact 또는 `union_*` placeholder를 만들지 않습니다.
+- direct data mount lifecycle은 새 `afterglow_data_share_ids` metadata를 사용합니다. 기존 VM 정리를 위해 읽기 경로에서만 과거 `union_data_share_ids`를 fallback으로 허용합니다.
+- GPU VM은 `/opt/afterglow/install_gpu_monitoring.sh`가 NVIDIA CUDA repository의 `datacenter-gpu-manager`와 `datacenter-gpu-manager-exporter` 패키지를 설치하고 vendor `nvidia-dcgm`/`nvidia-dcgm-exporter` unit을 활성화합니다. repository architecture는 `amd64 → x86_64`, `arm64 → sbsa`만 허용하고 그 외에는 설치를 중단합니다.
+
+이 계약은 새로 생성되는 VM의 rendered user-data에 적용되며 기존 guest를 자동 변경하지 않습니다. Palimpsest/SquashFS artifact 생성·외부 consume 경로는 VM의 retained library 선택 여부와 별도입니다.
 
 **전략 설명**
 
@@ -161,6 +176,9 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
 **오류**
 - `400 Bad Request` — boot source 검증 실패(`image_id`/`boot_volume_id` 동시 지정 또는 둘 다 누락), 볼륨 상태 불량, 이름 정규화 실패
 - `409 Conflict` — GPU 쿼터 초과
+- `422 Unprocessable Entity` — `github_username` 형식 오류, GitHub 사용자/조직 부적합, 공개 SSH 키 없음
+- `429 Too Many Requests` — GitHub API 요청 한도 도달(`Retry-After` 헤더 포함)
+- `503 Service Unavailable` — GitHub 조회 실패로 검증 불가(생성 전에 차단)
 - `500 Internal Server Error` — 생성 실패(리소스는 역순 롤백됨). 비관리자에게는 상세 원인이 숨겨집니다
 
 ### POST /api/v1/instances/async
@@ -632,3 +650,74 @@ Prometheus(node_exporter 우선, 테넌트망 격리 인스턴스는 libvirt-exp
 ```
 
 > Prometheus 연결 불가 시 `prometheus_available: false`, `stats: {}`, `recommendation: null`로 응답합니다.
+
+
+---
+
+## 11. GitHub SSH 사용자 확인
+
+GitHub 공개키 SSH 접근을 선택한 VM 생성 전에 GitHub 사용자 존재와 공개 SSH 키 등록 여부를 확인하고, 사용자별 최근 확인 이력을 유지합니다. 조회는 `https://api.github.com`으로 고정되며 리디렉션을 따르지 않고 10분 캐시를 사용합니다. 키 본문·이름·이메일 등 GitHub 콘텐츠는 저장하지 않고 `github_user_id`/`login`/`verified_at`만 사용자 범위로 보관합니다(최근 20건).
+
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| `POST` | `/api/v1/instances/github-users/lookup` | GitHub 사용자 검증 후 이력 기록 (10/분) |
+| `GET` | `/api/v1/instances/github-users/history` | 최근 검증된 GitHub 사용자 목록 (최대 20건) |
+
+### POST /api/v1/instances/github-users/lookup
+
+**요청 본문**
+
+```json
+{ "username": "octocat" }
+```
+
+**응답 (200 OK)**
+
+```json
+{
+  "id": 583231,
+  "login": "octocat",
+  "name": "The Octocat",
+  "public_email": null,
+  "html_url": "https://github.com/octocat",
+  "has_public_keys": true,
+  "verified_at": "2026-09-20T02:11:04.512334+00:00"
+}
+```
+
+**오류**
+- `404 Not Found` — GitHub 사용자 없음
+- `422 Unprocessable Entity` — 사용자 ID 형식 오류, 개인 사용자 아님, 공개 SSH 키 없음
+- `429 Too Many Requests` — GitHub API rate limit (`Retry-After`)
+- `503 Service Unavailable` — GitHub 조회 실패 또는 이력 저장 실패
+
+### GET /api/v1/instances/github-users/history
+
+**응답 (200 OK)** — `[{ "id": 583231, "login": "octocat", "verified_at": "2026-09-20T02:11:04.512334+00:00" }]`
+
+---
+
+## 12. cloud-init 스니펫 라이브러리
+
+사용자별 cloud-init 실행 이력(최근 20건 자동 기록)과 명명된 재사용 프리셋을 관리합니다. 내용은 애플리케이션 DB에 암호화 저장되며 프로젝트가 아닌 사용자 범위입니다.
+
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| `GET` | `/api/v1/instances/cloud-init/library` | 실행 이력 + 저장된 프리셋 조회 |
+| `POST` | `/api/v1/instances/cloud-init/presets` | 프리셋 저장 (같은 이름은 덮어쓰기) |
+| `DELETE` | `/api/v1/instances/cloud-init/library/{snippet_id}` | 이력/프리셋 항목 삭제 |
+
+**GET 응답 (200 OK)**
+
+```json
+{
+  "history": [{ "id": 12, "kind": "history", "name": null, "content": "#cloud-config\n", "created_at": "2026-09-20T02:00:00+00:00" }],
+  "presets": [{ "id": 3, "kind": "preset", "name": "bootstrap", "content": "#cloud-config\n", "created_at": "2026-09-19T08:00:00+00:00" }]
+}
+```
+
+**POST 요청 본문**: `{ "name": "bootstrap", "content": "#cloud-config\npackages: [git]" }` (`name` 1–100자, `content` 1–65536자) → `201 Created`
+
+**오류**
+- `404 Not Found` — 삭제 대상 스니펫 없음(다른 사용자 소유 포함)
+- `503 Service Unavailable` — DB 미초기화

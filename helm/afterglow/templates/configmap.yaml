@@ -138,9 +138,26 @@ data:
     # GPU 디바이스 맵은 config.gpu.toml에서 관리됩니다
 
     [services]
-    {{- range $svc := list "magnum" "manila" "zun" "k3s" "swift" "trove" "barbican" "mcp" }}
+    {{- range $svc := list "magnum" "manila" "zun" "cloud_shell" "k3s" "swift" "trove" "barbican" "mcp" }}
     {{ $svc }} = {{ index $.Values.services $svc }}
     {{- end }}
+
+    [cloud_shell]
+    service_project_id = {{ .Values.cloudShell.serviceProjectId | quote }}
+    image = {{ .Values.cloudShell.image | quote }}
+    network_id = {{ .Values.cloudShell.networkId | quote }}
+    security_group = {{ .Values.cloudShell.securityGroup | quote }}
+    auth_url = {{ .Values.cloudShell.authUrl | quote }}
+    interface = {{ .Values.cloudShell.interface | quote }}
+    volume_type = {{ .Values.cloudShell.volumeType | quote }}
+    home_size_gib = {{ .Values.cloudShell.homeSizeGib }}
+    cpu = {{ .Values.cloudShell.cpu }}
+    memory_mib = {{ .Values.cloudShell.memoryMib }}
+    idle_timeout_seconds = {{ .Values.cloudShell.idleTimeoutSeconds }}
+    max_session_seconds = {{ .Values.cloudShell.maxSessionSeconds }}
+    ticket_ttl_seconds = {{ .Values.cloudShell.ticketTtlSeconds }}
+    reconcile_interval_seconds = {{ .Values.cloudShell.reconcileIntervalSeconds }}
+    zun_websocket_origin = {{ .Values.cloudShell.zunWebsocketOrigin | quote }}
 
     [mcp]
     public_url = {{ .Values.mcp.publicUrl | quote }}

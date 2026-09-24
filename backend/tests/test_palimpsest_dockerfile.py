@@ -358,20 +358,28 @@ async def test_build_routes_are_mounted_under_v1():
 
     assert paths == {
         "/api/v1/palimpsest/builds/dockerfile",
+        "/api/v1/palimpsest/builds/dockerfile/fetch-url",
         "/api/v1/palimpsest/builds/dockerfile/plan",
     }
 
 
 @pytest.mark.parametrize(
-    "path",
-    ["/api/v1/palimpsest/builds/dockerfile", "/api/v1/palimpsest/builds/dockerfile/plan"],
+    "path,payload",
+    [
+        (
+            "/api/v1/palimpsest/builds/dockerfile",
+            {"dockerfile": "FROM ubuntu:24.04\nRUN true\n", "layer_prefix": "demo"},
+        ),
+        (
+            "/api/v1/palimpsest/builds/dockerfile/plan",
+            {"dockerfile": "FROM ubuntu:24.04\nRUN true\n", "layer_prefix": "demo"},
+        ),
+        ("/api/v1/palimpsest/builds/dockerfile/fetch-url", {"url": "https://example.com/Dockerfile"}),
+    ],
 )
-async def test_inline_build_is_admin_only(non_admin_client, path):
-    # 🔴 임의 셸 실행 표면이다 — 일반 사용자에게 열려 있으면 안 된다
-    resp = await non_admin_client.post(
-        path, json={"dockerfile": "FROM ubuntu:24.04\nRUN true\n", "layer_prefix": "demo"}
-    )
-
+async def test_inline_build_is_admin_only(non_admin_client, path, payload):
+    # 🔴 관리자 전용 표면이다 — 일반 사용자에게 열려 있으면 안 된다
+    resp = await non_admin_client.post(path, json=payload)
     assert resp.status_code == 403
 
 
@@ -404,6 +412,70 @@ async def test_inline_build_reports_fully_cached_plan_as_409(admin_client):
         )
 
     assert resp.status_code == 409
+
+
+async def test_fetch_dockerfile_url_happy_path(admin_client):
+    sample_dockerfile = b"FROM ubuntu:24.04\nRUN apt-get update\n"
+    mock_resp = MagicMock()
+    mock_resp.geturl.return_value = "https://raw.githubusercontent.com/org/repo/main/Dockerfile"
+    mock_resp.read.return_value = sample_dockerfile
+    mock_resp.__enter__.return_value = mock_resp
+
+    with (
+        patch("urllib.request.urlopen", return_value=mock_resp),
+        patch("app.api.palimpsest.builds._validate_safe_url"),
+    ):
+        resp = await admin_client.post(
+            "/api/v1/palimpsest/builds/dockerfile/fetch-url",
+            json={"url": "https://raw.githubusercontent.com/org/repo/main/Dockerfile"},
+        )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["dockerfile"] == "FROM ubuntu:24.04\nRUN apt-get update\n"
+    assert data["filename"] == "Dockerfile"
+    assert data["size_bytes"] == len(sample_dockerfile)
+
+
+async def test_fetch_dockerfile_url_normalizes_github_blob(admin_client):
+    sample_dockerfile = b"FROM ubuntu:24.04\nENV FOO=bar\n"
+    mock_resp = MagicMock()
+    mock_resp.geturl.return_value = "https://raw.githubusercontent.com/myorg/myrepo/v1.0.0/deploy/Dockerfile"
+    mock_resp.read.return_value = sample_dockerfile
+    mock_resp.__enter__.return_value = mock_resp
+
+    with (
+        patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen,
+        patch("app.api.palimpsest.builds._validate_safe_url"),
+    ):
+        resp = await admin_client.post(
+            "/api/v1/palimpsest/builds/dockerfile/fetch-url",
+            json={"url": "https://github.com/myorg/myrepo/blob/v1.0.0/deploy/Dockerfile"},
+        )
+
+    assert resp.status_code == 200
+    # urllib 에 전달된 Request 객체의 full_url 이 raw URL 로 변환되었는지 검증
+    req_arg = mock_urlopen.call_args[0][0]
+    assert req_arg.full_url == "https://raw.githubusercontent.com/myorg/myrepo/v1.0.0/deploy/Dockerfile"
+
+
+@pytest.mark.parametrize(
+    "invalid_url,match_msg",
+    [
+        ("http://127.0.0.1/Dockerfile", "로컬/사설 네트워크"),
+        ("http://localhost:8080/Dockerfile", "로컬/사설 네트워크"),
+        ("ftp://example.com/Dockerfile", "http 또는 https"),
+        ("http://169.254.169.254/latest/meta-data", "로컬/사설 네트워크"),
+        ("http://10.0.0.1/Dockerfile", "로컬/사설 네트워크"),
+    ],
+)
+async def test_fetch_dockerfile_url_rejects_ssrf_and_invalid_schemes(admin_client, invalid_url, match_msg):
+    resp = await admin_client.post(
+        "/api/v1/palimpsest/builds/dockerfile/fetch-url",
+        json={"url": invalid_url},
+    )
+    assert resp.status_code == 422
+    assert match_msg in resp.json()["detail"]
 
 
 def test_source_type_constants_are_distinct():

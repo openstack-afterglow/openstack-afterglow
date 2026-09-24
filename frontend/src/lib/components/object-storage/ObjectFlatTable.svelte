@@ -2,7 +2,7 @@
 	import { useObjectBrowser } from '$lib/stores/objectBrowser.svelte';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import FileIcon from '$lib/components/ui/FileIcon.svelte';
-	import { formatStorage, formatDate, shortContentType } from '$lib/utils/format';
+	import { formatObjectSize, formatDate, shortContentType } from '$lib/utils/format';
 
 	const s = useObjectBrowser();
 
@@ -85,10 +85,7 @@
 							</div>
 						</td>
 						<td class="py-3 px-4 text-ink-2 whitespace-nowrap">
-							{isDir ? '-' : obj.bytes >= 1073741824
-								? formatStorage(Math.round(obj.bytes / 1073741824))
-								: obj.bytes >= 1048576 ? `${(obj.bytes / 1048576).toFixed(1)} MB`
-								: `${(obj.bytes / 1024).toFixed(1)} KB`}
+							{isDir ? '-' : formatObjectSize(obj.bytes)}
 						</td>
 						<td class="py-3 px-4 text-ink-2 text-xs whitespace-nowrap" title={isDir ? 'folder' : obj.content_type || '-'}>
 							{isDir ? '폴더' : shortContentType(obj.content_type)}

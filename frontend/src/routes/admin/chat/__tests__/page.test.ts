@@ -23,21 +23,19 @@ const mocks = vi.hoisted(() => {
     put: vi.fn(),
     deleteRequest: vi.fn(),
     confirmDialog: vi.fn(),
+    invalidateChatModels: vi.fn(),
+    authScope: { token: "token", projectId: "project", isSystemAdmin: true },
+    authListeners: new Set<(value: { token: string; projectId: string; isSystemAdmin: boolean }) => void>(),
     ApiError,
   };
 });
 
 vi.mock("$lib/stores/auth", () => ({
   auth: {
-    subscribe(
-      run: (value: {
-        token: string;
-        projectId: string;
-        isSystemAdmin: boolean;
-      }) => void,
-    ) {
-      run({ token: "token", projectId: "project", isSystemAdmin: true });
-      return () => {};
+    subscribe(run: (value: { token: string; projectId: string; isSystemAdmin: boolean }) => void) {
+      mocks.authListeners.add(run);
+      run(mocks.authScope);
+      return () => mocks.authListeners.delete(run);
     },
   },
 }));
@@ -51,6 +49,9 @@ vi.mock("$lib/api/client", () => ({
   },
   ApiError: mocks.ApiError,
 }));
+vi.mock("$lib/stores/chatModels", () => ({
+  invalidateChatModels: mocks.invalidateChatModels,
+}));
 vi.mock("$lib/stores/confirm.svelte", () => ({
   confirmDialog: mocks.confirmDialog,
 }));
@@ -59,6 +60,10 @@ vi.mock("$lib/stores/toast", () => ({
 }));
 
 const { get, post, patch, put, deleteRequest, confirmDialog, ApiError } = mocks;
+function setAuthScope(token: string, projectId: string) {
+  mocks.authScope = { token, projectId, isSystemAdmin: true };
+  for (const listener of mocks.authListeners) listener(mocks.authScope);
+}
 
 import ModelPage from "../models/+page.svelte";
 import ProviderPage from "../+page.svelte";
@@ -198,10 +203,25 @@ function queueInitialLoads() {
     return Promise.resolve([]);
   });
 }
+function discoveryResponse(providerId: number, candidates: { id: string; display_name?: string | null; purpose?: "chat" | "non_chat" | "unknown"; input_token_limit?: number | null; output_token_limit?: number | null }[], overrides: Record<string, unknown> = {}) {
+  return {
+    provider_id: providerId,
+    fetched_at: "2026-09-23T10:00:00Z",
+    live_status: "success",
+    complete: true,
+    error: null,
+    source: "api",
+    models: candidates.map((candidate) => candidate.id),
+    candidates,
+    ...overrides,
+  };
+}
 
 describe("admin chat model pricing", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.authListeners.clear();
+    mocks.authScope = { token: "token", projectId: "project", isSystemAdmin: true };
     queueInitialLoads();
   });
 
@@ -413,6 +433,7 @@ describe("admin chat model pricing", () => {
         {
           input_price_per_million: "3",
           output_price_per_million: "9",
+          // The editor sends only changed keys; untouched cache prices stay absent.
         },
         "token",
         "project",
@@ -798,7 +819,7 @@ describe("admin chat model pricing", () => {
       if (path === "/api/v1/chat/admin/models/title")
         return Promise.resolve({ model_id: null });
       if (path === "/api/v1/chat/admin/providers/7/available-models") {
-        return Promise.resolve({ models: [opaqueModel], source: "litellm" });
+        return Promise.resolve(discoveryResponse(7, [{ id: opaqueModel, purpose: "unknown" }], { source: "litellm", live_status: "unsupported", complete: false }));
       }
       return Promise.resolve([]);
     });
@@ -808,20 +829,370 @@ describe("admin chat model pricing", () => {
     await fireEvent.click(
       screen.getByRole("button", { name: "모델 불러오기" }),
     );
-    expect(await screen.findByText(/정적 카탈로그 후보/)).toBeTruthy();
+    expect(await screen.findByText(/구독 카탈로그 후보/)).toBeTruthy();
     await fireEvent.click(screen.getByRole("checkbox", { name: opaqueModel }));
-    await fireEvent.click(
-      screen.getByRole("button", { name: "선택 모델 등록" }),
-    );
+    await fireEvent.click(screen.getByRole("button", { name: "선택 모델 검토" }));
+    expect(post).not.toHaveBeenCalled();
+    expect(within(screen.getByTestId("model-registration-review")).getByText(/캐시 단가와 기능은 별도 확인/)).toBeTruthy();
+    expect((screen.getByRole("button", { name: "가격 확인 후 등록·활성화" }) as HTMLButtonElement).disabled).toBe(true);
+    await fireEvent.click(screen.getByRole("button", { name: "비활성으로 저장" }));
 
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith(
         "/api/v1/chat/admin/models",
-        { provider_id: 7, model_name: opaqueModel },
+        { provider_id: 7, model_name: opaqueModel, is_active: false },
         "token",
         "project",
       ),
     );
+    await waitFor(() => expect(mocks.invalidateChatModels).toHaveBeenCalledTimes(1));
+  });
+  it("requires a complete explicit price pair to register and activate without inferring capabilities", async () => {
+    get.mockImplementation((path: string) => {
+      if (path === "/api/v1/chat/admin/providers") return Promise.resolve([provider]);
+      if (path === "/api/v1/chat/admin/models") return Promise.resolve([]);
+      if (path.endsWith("/available-models")) return Promise.resolve(discoveryResponse(1, [{ id: "opaque/id-v1", display_name: "Provider Label", purpose: "chat", input_token_limit: 128000, output_token_limit: 8192 }]));
+      return Promise.resolve([]);
+    });
+    post.mockResolvedValue({});
+    render(ModelPage);
+    await screen.findAllByRole("option", { name: "OpenAI" });
+    await fireEvent.click(screen.getByRole("button", { name: "모델 불러오기" }));
+    await screen.findByRole("checkbox", { name: "opaque/id-v1" });
+    await fireEvent.click(screen.getByRole("checkbox", { name: "opaque/id-v1" }));
+    await fireEvent.click(screen.getByRole("button", { name: "선택 모델 검토" }));
+    const review = screen.getByTestId("model-registration-review");
+    expect(within(review).getByText(/입력 한도 128000 · 출력 한도 8192/)).toBeTruthy();
+    expect((screen.getByRole("textbox", { name: "표시 이름 · opaque/id-v1" }) as HTMLInputElement).value).toBe("Provider Label");
+    expect((screen.getByRole("button", { name: "가격 확인 후 등록·활성화" }) as HTMLButtonElement).disabled).toBe(true);
+    await fireEvent.input(screen.getByRole("textbox", { name: "입력 단가 · opaque/id-v1" }), { target: { value: "1.25" } });
+    expect((screen.getByRole("button", { name: "비활성으로 저장" }) as HTMLButtonElement).disabled).toBe(true);
+    await fireEvent.input(screen.getByRole("textbox", { name: "출력 단가 · opaque/id-v1" }), { target: { value: "5" } });
+    await fireEvent.input(screen.getByRole("textbox", { name: "표시 이름 · opaque/id-v1" }), { target: { value: "Reviewed Name" } });
+    expect((screen.getByRole("button", { name: "가격 확인 후 등록·활성화" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(post).not.toHaveBeenCalled();
+    await fireEvent.click(screen.getByRole("button", { name: "가격 확인 후 등록·활성화" }));
+    await waitFor(() => expect(post).toHaveBeenCalledWith(
+      "/api/v1/chat/admin/models",
+      { provider_id: 1, model_name: "opaque/id-v1", display_name: "Reviewed Name", input_price_per_million: "1.25", output_price_per_million: "5", is_active: true },
+      "token", "project",
+    ));
+    expect(post.mock.calls[0][1]).not.toHaveProperty("capabilities");
+    await waitFor(() => expect(mocks.invalidateChatModels).toHaveBeenCalledTimes(1));
+  });
+
+  it("fences A success after provider B starts, including stale finally", async () => {
+    const a = Promise.withResolvers<unknown>();
+    const b = Promise.withResolvers<unknown>();
+    get.mockImplementation((path: string) => {
+      if (path === "/api/v1/chat/admin/providers") return Promise.resolve([provider, { ...provider, id: 2, name: "Provider B" }]);
+      if (path === "/api/v1/chat/admin/models") return Promise.resolve([]);
+      if (path.endsWith("/1/available-models")) return a.promise;
+      if (path.endsWith("/2/available-models")) return b.promise;
+      return Promise.resolve([]);
+    });
+    render(ModelPage);
+    await screen.findAllByRole("option", { name: "Provider B" });
+    await fireEvent.change(screen.getByRole("combobox", { name: "조회 프로바이더" }), { target: { value: "1" } });
+    await fireEvent.click(screen.getByRole("button", { name: "모델 불러오기" }));
+    await fireEvent.change(screen.getByRole("combobox", { name: "조회 프로바이더" }), { target: { value: "2" } });
+    await fireEvent.click(screen.getByRole("button", { name: "모델 불러오기" }));
+    a.resolve(discoveryResponse(1, [{ id: "old-A", purpose: "chat" }]));
+    await Promise.resolve();
+    expect(screen.queryByText("old-A")).toBeNull();
+    expect(screen.getByText("모델 목록을 불러오는 중…")).toBeTruthy();
+    b.resolve(discoveryResponse(2, [{ id: "new-B", purpose: "chat" }]));
+    expect(await screen.findByText("new-B")).toBeTruthy();
+    expect(screen.queryByText("old-A")).toBeNull();
+  });
+
+  it("does not let stale A error or finally dismiss B loading", async () => {
+    const a = Promise.withResolvers<unknown>();
+    const b = Promise.withResolvers<unknown>();
+    get.mockImplementation((path: string) => {
+      if (path === "/api/v1/chat/admin/providers") return Promise.resolve([provider, { ...provider, id: 2, name: "Provider B" }]);
+      if (path === "/api/v1/chat/admin/models") return Promise.resolve([]);
+      if (path.endsWith("/1/available-models")) return a.promise;
+      if (path.endsWith("/2/available-models")) return b.promise;
+      return Promise.resolve([]);
+    });
+    render(ModelPage);
+    await screen.findAllByRole("option", { name: "Provider B" });
+    await fireEvent.change(screen.getByRole("combobox", { name: "조회 프로바이더" }), { target: { value: "1" } });
+    await fireEvent.click(screen.getByRole("button", { name: "모델 불러오기" }));
+    await fireEvent.change(screen.getByRole("combobox", { name: "조회 프로바이더" }), { target: { value: "2" } });
+    await fireEvent.click(screen.getByRole("button", { name: "모델 불러오기" }));
+    a.reject(new ApiError("secret upstream detail", 503));
+    await Promise.resolve();
+    expect(screen.getByText("모델 목록을 불러오는 중…")).toBeTruthy();
+    expect(screen.queryByText(/secret upstream detail/)).toBeNull();
+    b.resolve(discoveryResponse(2, [], { live_status: "empty" }));
+    expect(await screen.findByText(/정상적으로 조회했지만 반환된 모델이 없습니다/)).toBeTruthy();
+    expect(screen.getByTestId("discovery-provenance").textContent).toContain("정상 빈 결과");
+    expect(mocks.invalidateChatModels).not.toHaveBeenCalled();
+  });
+
+  it("fences close and reopen while showing unsupported static provenance", async () => {
+    const closed = Promise.withResolvers<unknown>();
+    const retried = Promise.withResolvers<unknown>();
+    let calls = 0;
+    get.mockImplementation((path: string) => {
+      if (path === "/api/v1/chat/admin/providers") return Promise.resolve([provider]);
+      if (path === "/api/v1/chat/admin/models") return Promise.resolve([]);
+      if (path.endsWith("/available-models")) return ++calls === 1 ? closed.promise : retried.promise;
+      return Promise.resolve([]);
+    });
+    render(ModelPage);
+    await screen.findAllByRole("option", { name: "OpenAI" });
+    await fireEvent.click(screen.getByRole("button", { name: "모델 불러오기" }));
+    await fireEvent.click(screen.getByRole("button", { name: "조회 닫기" }));
+    expect(screen.queryByTestId("model-discovery")).toBeNull();
+    await fireEvent.click(screen.getByRole("button", { name: "모델 불러오기" }));
+    closed.resolve(discoveryResponse(1, [{ id: "closed-model" }]));
+    await Promise.resolve();
+    expect(screen.queryByText("closed-model")).toBeNull();
+    expect(screen.getByText("모델 목록을 불러오는 중…")).toBeTruthy();
+    retried.resolve(discoveryResponse(1, [{ id: "static-model", display_name: "Visible Label", purpose: "unknown" }], {
+      source: "litellm", live_status: "unsupported", complete: false,
+    }));
+    expect(await screen.findByText("static-model")).toBeTruthy();
+    expect(screen.getByText("Visible Label")).toBeTruthy();
+    expect(screen.getByTestId("discovery-provenance").textContent).toContain("미지원");
+    expect(screen.getByTestId("discovery-provenance").textContent).toContain("불완전");
+    await fireEvent.input(screen.getByRole("searchbox", { name: "후보 모델 필터" }), { target: { value: "visible label" } });
+    expect(screen.getByRole("checkbox", { name: "static-model" })).toBeTruthy();
+  });
+
+  it("keeps failed candidates selected and freezes the provider through sequential registration", async () => {
+    const first = Promise.withResolvers<unknown>();
+    get.mockImplementation((path: string) => {
+      if (path === "/api/v1/chat/admin/providers") return Promise.resolve([provider, { ...provider, id: 2, name: "Provider B" }]);
+      if (path === "/api/v1/chat/admin/models") return Promise.resolve([]);
+      if (path.endsWith("/1/available-models")) return Promise.resolve(discoveryResponse(1, [
+        { id: "chat-A", purpose: "chat" }, { id: "chat-B", purpose: "unknown" }, { id: "embed-C", purpose: "non_chat" },
+      ]));
+      return Promise.resolve([]);
+    });
+    post.mockImplementation((_path: string, body: { model_name: string }) => body.model_name === "chat-A" ? first.promise : Promise.reject(new ApiError("already exists", 409)));
+    render(ModelPage);
+    await screen.findAllByRole("option", { name: "Provider B" });
+    await fireEvent.change(screen.getByRole("combobox", { name: "조회 프로바이더" }), { target: { value: "1" } });
+    await fireEvent.click(screen.getByRole("button", { name: "모델 불러오기" }));
+    await screen.findByRole("checkbox", { name: "chat-A" });
+    expect((screen.getByRole("checkbox", { name: "embed-C" }) as HTMLInputElement).disabled).toBe(true);
+    await fireEvent.click(screen.getByRole("button", { name: "전체 선택" }));
+    await fireEvent.click(screen.getByRole("button", { name: "선택 모델 검토" }));
+    expect(post).not.toHaveBeenCalled();
+    expect(within(screen.getByTestId("model-registration-review")).queryByText("embed-C")).toBeNull();
+    await fireEvent.click(screen.getByRole("button", { name: "비활성으로 저장" }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    first.resolve({});
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
+    expect(post.mock.calls.map(([, body]) => body)).toEqual([
+      { provider_id: 1, model_name: "chat-A", is_active: false },
+      { provider_id: 1, model_name: "chat-B", is_active: false },
+    ]);
+    await waitFor(() => expect(within(screen.getByTestId("model-registration-review")).getByText("등록 실패 · 이 모델만 재시도")).toBeTruthy());
+    expect(within(screen.getByTestId("model-registration-review")).getByText("등록됨 · 재요청하지 않음")).toBeTruthy();
+    await fireEvent.click(screen.getByRole("button", { name: "취소" }));
+    expect((screen.getByRole("checkbox", { name: "chat-B" }) as HTMLInputElement).checked).toBe(true);
+    expect(screen.queryByRole("checkbox", { name: "chat-A" })).toBeNull();
+    expect(mocks.invalidateChatModels).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries only failed IDs without reposting successful registrations", async () => {
+    let secondAttempts = 0;
+    get.mockImplementation((path: string) => {
+      if (path === "/api/v1/chat/admin/providers") return Promise.resolve([provider]);
+      if (path === "/api/v1/chat/admin/models") return Promise.resolve([]);
+      if (path.endsWith("/available-models")) return Promise.resolve(discoveryResponse(1, [{ id: "first", purpose: "chat" }, { id: "second", purpose: "chat" }]));
+      return Promise.resolve([]);
+    });
+    post.mockImplementation((_path: string, body: { model_name: string }) => body.model_name === "first" || ++secondAttempts > 1
+      ? Promise.resolve({}) : Promise.reject(new ApiError("duplicate", 409)));
+    render(ModelPage);
+    await screen.findAllByRole("option", { name: "OpenAI" });
+    await fireEvent.click(screen.getByRole("button", { name: "모델 불러오기" }));
+    await screen.findByRole("checkbox", { name: "first" });
+    await fireEvent.click(screen.getByRole("button", { name: "전체 선택" }));
+    await fireEvent.click(screen.getByRole("button", { name: "선택 모델 검토" }));
+    await fireEvent.click(screen.getByRole("button", { name: "비활성으로 저장" }));
+    await screen.findByText("등록 실패 · 이 모델만 재시도");
+    await fireEvent.click(await screen.findByRole("button", { name: "비활성으로 저장" }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(3));
+    expect(post.mock.calls.map(([, body]) => body.model_name)).toEqual(["first", "second", "second"]);
+    await waitFor(() => expect(screen.queryByTestId("model-registration-review")).toBeNull());
+    expect(mocks.invalidateChatModels).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops remaining registration requests when provider or scope changes", async () => {
+    const pending = Promise.withResolvers<unknown>();
+    get.mockImplementation((path: string) => {
+      if (path === "/api/v1/chat/admin/providers") return Promise.resolve([provider, { ...provider, id: 2, name: "Provider B" }]);
+      if (path === "/api/v1/chat/admin/models") return Promise.resolve([]);
+      if (path.endsWith("/1/available-models")) return Promise.resolve(discoveryResponse(1, [
+        { id: "first", purpose: "chat" }, { id: "second", purpose: "chat" },
+      ]));
+      return Promise.resolve([]);
+    });
+    post.mockReturnValue(pending.promise);
+    render(ModelPage);
+    await screen.findAllByRole("option", { name: "Provider B" });
+    await fireEvent.change(screen.getByRole("combobox", { name: "조회 프로바이더" }), { target: { value: "1" } });
+    await fireEvent.click(screen.getByRole("button", { name: "모델 불러오기" }));
+    await screen.findByRole("checkbox", { name: "first" });
+    await fireEvent.click(screen.getByRole("button", { name: "전체 선택" }));
+    await fireEvent.click(screen.getByRole("button", { name: "선택 모델 검토" }));
+    await fireEvent.click(screen.getByRole("button", { name: "비활성으로 저장" }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    await fireEvent.change(screen.getByRole("combobox", { name: "조회 프로바이더" }), { target: { value: "2" } });
+    setAuthScope("new-token", "new-project");
+    pending.resolve({});
+    await Promise.resolve();
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(post).toHaveBeenCalledWith("/api/v1/chat/admin/models", { provider_id: 1, model_name: "first", is_active: false }, "token", "project");
+    expect(screen.queryByTestId("model-discovery")).toBeNull();
+  });
+
+  it("labels stored inactive, unknown prices and unknown capability independently", async () => {
+    get.mockImplementation((path: string) => {
+      if (path === "/api/v1/chat/admin/providers") return Promise.resolve([provider]);
+      if (path === "/api/v1/chat/admin/models") return Promise.resolve([
+        { ...models[0], id: 100, model_name: "no-price", display_name: "No price", is_active: false, effective_price_source: "unpriced", effective_input_price_per_million: null, effective_output_price_per_million: null, capabilities: null, effective_capabilities: null },
+        { ...models[0], id: 101, model_name: "basic-price", display_name: "Basic price", is_active: true, capabilities: null, effective_capabilities: null },
+      ]);
+      return Promise.resolve([]);
+    });
+    render(ModelPage);
+    await screen.findByText("No price");
+    expect(screen.getByText("비활성 · 저장됨")).toBeTruthy();
+    expect(screen.getByText("활성 · 저장됨")).toBeTruthy();
+    expect(screen.getByText("가격 미확인", { selector: ".pill" })).toBeTruthy();
+    expect(screen.getByText("기본 텍스트 단가 표시됨")).toBeTruthy();
+    expect(screen.getAllByText("고급 기능 미확인")).toHaveLength(2);
+    await fireEvent.click(screen.getByRole("button", { name: "활성화" }));
+    expect(patch).not.toHaveBeenCalled();
+  });
+  it("requires explicit capability opt-in without copying transport-gated flags or changing prices", async () => {
+    get.mockImplementation((path: string) => {
+      if (path === "/api/v1/chat/admin/providers") return Promise.resolve([provider]);
+      if (path === "/api/v1/chat/admin/models") return Promise.resolve([{ ...models[0], capabilities: null, capability_source: null, effective_capability_source: "litellm", effective_capabilities: { vision: false, reasoning: false, tool_call: false, attachment: false, web_search: true, context_limit: null } }]);
+      return Promise.resolve([]);
+    });
+    patch.mockResolvedValue({});
+    render(ModelPage);
+    await screen.findByText("고급 기능 미확인");
+    await fireEvent.click(screen.getByRole("button", { name: "기능 수정" }));
+    expect(screen.getByRole("dialog", { name: "모델 기능 수정" })).toBeTruthy();
+    await fireEvent.click(screen.getByRole("checkbox", { name: "이미지 입력 (Vision)" }));
+    await fireEvent.input(screen.getByRole("textbox", { name: "컨텍스트 한도" }), { target: { value: "16000" } });
+    await fireEvent.click(screen.getByRole("button", { name: "기능 설정 저장" }));
+    await waitFor(() => expect(patch).toHaveBeenCalledWith("/api/v1/chat/admin/models/10", {
+      capabilities: { vision: true, reasoning: false, tool_call: false, attachment: false, modalities: null, reasoning_options: [], context_limit: 16000 },
+    }, "token", "project"));
+    expect(patch.mock.calls[0][1]).not.toHaveProperty("input_price_per_million");
+    expect(JSON.stringify(patch.mock.calls[0][1])).not.toContain("web_search");
+    await waitFor(() => expect(mocks.invalidateChatModels).toHaveBeenCalledTimes(1));
+  });
+  it("shows a discovered input limit as an editable context draft without saving until confirmed", async () => {
+    get.mockImplementation((path: string) => {
+      if (path === "/api/v1/chat/admin/providers") return Promise.resolve([provider]);
+      if (path === "/api/v1/chat/admin/models") return Promise.resolve([{ ...models[0], model_name: "opaque/context-id", is_active: false, capabilities: null, effective_capabilities: { vision: false, context_limit: null }, capability_source: null, effective_capability_source: "litellm" }]);
+      if (path.endsWith("/available-models")) return Promise.resolve(discoveryResponse(1, [{ id: "opaque/context-id", input_token_limit: 8192, output_token_limit: 2048, purpose: "chat" }]));
+      return Promise.resolve([]);
+    });
+    render(ModelPage);
+    await screen.findAllByRole("option", { name: "OpenAI" });
+    await fireEvent.click(screen.getByRole("button", { name: "모델 불러오기" }));
+    await screen.findByTestId("discovery-provenance");
+    await fireEvent.click(screen.getByRole("button", { name: "기능 수정" }));
+    expect(screen.getByText(/입력 한도 8192 tokens를 컨텍스트 한도 초안/)).toBeTruthy();
+    expect((screen.getByRole("textbox", { name: "컨텍스트 한도" }) as HTMLInputElement).value).toBe("8192");
+    expect(patch).not.toHaveBeenCalled();
+  });
+
+  it("retains stored modalities and reasoning options in a capability override PATCH", async () => {
+    const modalities = { input: ["text", "image"], output: ["text"] };
+    const reasoningOptions = [{ type: "effort", values: ["low", "high"] }];
+    get.mockImplementation((path: string) => {
+      if (path === "/api/v1/chat/admin/providers") return Promise.resolve([provider]);
+      if (path === "/api/v1/chat/admin/models") return Promise.resolve([{ ...models[0], capabilities: { vision: true, reasoning: true, tool_call: false, attachment: false, modalities, reasoning_options: reasoningOptions, context_limit: 32000 }, capability_source: "override", effective_capability_source: "override" }]);
+      return Promise.resolve([]);
+    });
+    patch.mockResolvedValue({});
+    render(ModelPage);
+    await screen.findByText("관리자 기능 설정 · 실행 미검증");
+    await fireEvent.click(screen.getByRole("button", { name: "기능 수정" }));
+    await fireEvent.click(screen.getByRole("button", { name: "기능 설정 저장" }));
+    await waitFor(() => expect(patch).toHaveBeenCalledWith("/api/v1/chat/admin/models/10", {
+      capabilities: { vision: true, reasoning: true, tool_call: false, attachment: false, modalities, reasoning_options: reasoningOptions, context_limit: 32000 },
+    }, "token", "project"));
+  });
+
+  it("isolates discovery across token and project changes", async () => {
+    const oldScope = Promise.withResolvers<unknown>();
+    const newScope = Promise.withResolvers<unknown>();
+    get.mockImplementation((path: string, token: string) => {
+      if (path === "/api/v1/chat/admin/providers") return Promise.resolve([provider]);
+      if (path === "/api/v1/chat/admin/models") return Promise.resolve([]);
+      if (path.endsWith("/available-models")) return token === "token" ? oldScope.promise : newScope.promise;
+      return Promise.resolve([]);
+    });
+    render(ModelPage);
+    await screen.findAllByRole("option", { name: "OpenAI" });
+    await fireEvent.click(screen.getByRole("button", { name: "모델 불러오기" }));
+    setAuthScope("next-token", "next-project");
+    await waitFor(() => expect(screen.queryByTestId("model-discovery")).toBeNull());
+    await fireEvent.click(screen.getByRole("button", { name: "모델 불러오기" }));
+    oldScope.reject(new ApiError("old credential error", 403));
+    await Promise.resolve();
+    expect(screen.getByText("모델 목록을 불러오는 중…")).toBeTruthy();
+    expect(screen.queryByText(/old credential error/)).toBeNull();
+    newScope.resolve(discoveryResponse(1, [{ id: "new-credential-model", purpose: "chat" }]));
+    expect(await screen.findByText("new-credential-model")).toBeTruthy();
+    expect(get).toHaveBeenCalledWith("/api/v1/chat/admin/providers/1/available-models", "next-token", "next-project");
+  });
+
+  it("retries a safe discovery error without treating it as a normal empty response", async () => {
+    let attempts = 0;
+    get.mockImplementation((path: string) => {
+      if (path === "/api/v1/chat/admin/providers") return Promise.resolve([provider]);
+      if (path === "/api/v1/chat/admin/models") return Promise.resolve([]);
+      if (path.endsWith("/available-models")) return Promise.resolve(++attempts === 1
+        ? discoveryResponse(1, [{ id: "unsafe-error-candidate", purpose: "chat" }], { source: "none", live_status: "error", complete: false, error: { code: "provider_timeout", message: "연결 시간 초과", retryable: true } })
+        : discoveryResponse(1, [{ id: "retry-success", purpose: "chat" }]));
+      return Promise.resolve([]);
+    });
+    render(ModelPage);
+    await screen.findAllByRole("option", { name: "OpenAI" });
+    await fireEvent.click(screen.getByRole("button", { name: "모델 불러오기" }));
+    expect(await screen.findByText(/연결 시간 초과/)).toBeTruthy();
+    expect(screen.getByTestId("discovery-provenance").textContent).toContain("실패");
+    expect(screen.queryByText(/정상적으로 조회했지만 반환된 모델이 없습니다/)).toBeNull();
+    expect(screen.queryByRole("checkbox", { name: "unsafe-error-candidate" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "선택 모델 검토" })).toBeNull();
+    await fireEvent.click(screen.getByRole("button", { name: "다시 조회" }));
+    expect(await screen.findByText("retry-success")).toBeTruthy();
+    expect(screen.queryByText(/연결 시간 초과/)).toBeNull();
+    expect(mocks.invalidateChatModels).not.toHaveBeenCalled();
+  });
+
+  it("does not render a discovery response after the page is destroyed", async () => {
+    const pending = Promise.withResolvers<unknown>();
+    get.mockImplementation((path: string) => {
+      if (path === "/api/v1/chat/admin/providers") return Promise.resolve([provider]);
+      if (path === "/api/v1/chat/admin/models") return Promise.resolve([]);
+      if (path.endsWith("/available-models")) return pending.promise;
+      return Promise.resolve([]);
+    });
+    const view = render(ModelPage);
+    await screen.findAllByRole("option", { name: "OpenAI" });
+    await fireEvent.click(screen.getByRole("button", { name: "모델 불러오기" }));
+    view.unmount();
+    pending.resolve(discoveryResponse(1, [{ id: "late-result" }]));
+    await Promise.resolve();
+    expect(screen.queryByText("late-result")).toBeNull();
+    expect(mocks.invalidateChatModels).not.toHaveBeenCalled();
   });
 
   it("keeps provider controls available when the bulk billing load fails", async () => {

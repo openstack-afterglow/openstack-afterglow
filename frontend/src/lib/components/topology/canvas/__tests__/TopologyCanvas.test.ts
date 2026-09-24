@@ -6,6 +6,7 @@ import TopologyCanvas from '../TopologyCanvas.svelte';
 import { buildGraph, edgeStyle } from '../topologyGraph';
 import { edgeIntensity, NO_TELEMETRY_STYLE } from '../canvasHelpers';
 import { layoutStorageKey } from '../layoutStorage';
+import { K_MIN } from '../topologyLayout';
 import { P, makeFixture, makeTraffic } from './fixtures';
 
 function renderCanvas(props: Partial<Record<string, unknown>> = {}) {
@@ -29,9 +30,9 @@ function renderCanvas(props: Partial<Record<string, unknown>> = {}) {
 function firePointer(
 	type: 'pointerdown' | 'pointerup' | 'pointercancel',
 	target: Element,
-	init: { pointerId: number; clientX?: number; clientY?: number; pointerType?: string },
+	init: { pointerId: number; clientX?: number; clientY?: number; pointerType?: string; button?: number },
 ) {
-	const ev = new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: init.clientX ?? 0, clientY: init.clientY ?? 0 });
+	const ev = new MouseEvent(type, { bubbles: true, cancelable: true, button: init.button ?? 0, clientX: init.clientX ?? 0, clientY: init.clientY ?? 0 });
 	Object.defineProperty(ev, 'pointerId', { value: init.pointerId });
 	Object.defineProperty(ev, 'pointerType', { value: init.pointerType ?? 'mouse' });
 	return fireEvent(target, ev);
@@ -51,7 +52,7 @@ function fireWheel(target: Element, init: { deltaX?: number; deltaY?: number; de
 		ctrlKey: init.ctrlKey ?? false, metaKey: init.metaKey ?? false,
 		clientX: 200, clientY: 200,
 	});
-	// jsdom 은 비표준 wheelDeltaY 를 만들지 않는다. 마우스 휠(120 배수)을 재현할 때만 주입한다.
+	// 비표준 wheelDeltaY 가 있어도 장치 판별에 쓰지 않는 계약을 재현한다.
 	if (init.wheelDeltaY !== undefined) Object.defineProperty(ev, 'wheelDeltaY', { value: init.wheelDeltaY });
 	return fireEvent(target, ev);
 }
@@ -178,31 +179,31 @@ describe('TopologyCanvas', () => {
 		expect(within(app).queryByText(/^MTU /)).toBeNull();
 	});
 
-	it('provider uplink 배지는 하위 tenant 망이 2개 이상일 때만 그린다', () => {
+	it('트렁크 배지는 네트워크를 2개 이상 합칠 때만 그린다', () => {
 		renderCanvas();
 		const badges = Array.from(document.querySelectorAll<HTMLButtonElement>('button[data-trunk-badge]'));
 		// 트렁크는 5개(edge-router: pub+web+app, transit-router: transit+app)지만
-		// transit-router 는 tenant 망이 net-app 하나뿐이라 uplink 배지가 net-app 배지와
-		// **같은 숫자**가 된다 → 그리지 않는다.
-		expect(badges).toHaveLength(4);
-
-		// edge-router 는 tenant 망이 web + app 둘이라 합(19.8M)이 어느 한쪽과도 다르다 → 남는다
-		const uplink = badges.find((b) => b.dataset.trunkBadge === 'trunk:rtr-edge>sw:net-pub')!;
+		// `trunkNetIds` 가 2개 이상인 것은 edge-router 의 provider uplink(web+app) 하나뿐이다.
+		expect(badges).toHaveLength(1);
+		const uplink = badges[0];
+		expect(uplink.dataset.trunkBadge).toBe('trunk:rtr-edge>sw:net-pub');
 		expect(uplink.textContent).toContain('▼ 19.8M');
 		expect(uplink.textContent).toContain('▲ 8.0M');
+		// 그려질 수 있는 캡션은 이것 하나뿐이다 — `네트워크 합산` 으로 뒤바뀌면 범위를 오독하게 된다
 		expect(uplink.textContent).toContain('하위망 합산');
 		expect(uplink.getAttribute('title')).toBe('라우터별 하위 네트워크 합산 트래픽 · 라우터 exporter 없음');
 
-		// transit-router 의 uplink 배지는 없다. 있었다면 net-app 배지와 같은 14.0M 을 반복하고
-		// 그 중점이 자기 존 밖(provider 쪽)에 떨어져 남의 카드를 덮었다.
+		// tenant 트렁크는 `trunkNetIds` 가 `[netId]` 한 개라 `edgeRate` 가 `networks[netId]` 그대로다.
+		// 배지를 그리면 바로 옆 스위치 카드와 **같은 숫자**를 두 번 찍는다 → 접는다.
+		expect(badges.some((b) => b.dataset.trunkBadge === 'trunk:rtr-edge>sw:net-app')).toBe(false);
+		// transit-router 의 uplink 도 하위 tenant 망이 net-app 하나뿐이라 같은 이유로 접힌다.
 		expect(badges.some((b) => b.dataset.trunkBadge === 'trunk:rtr-transit>sw:net-transit')).toBe(false);
 
-		const appBadge = badges.find((b) => b.dataset.trunkBadge === 'trunk:rtr-edge>sw:net-app')!;
-		expect(appBadge.textContent).toContain('▼ 14.0M');
-		expect(appBadge.textContent).toContain('네트워크 합산');
-		expect(appBadge.getAttribute('title')).toBe('연결 네트워크 합산 트래픽 · 라우터 exporter 없음');
+		// 접힌 값은 사라지지 않는다 — 스위치 카드가 그대로 들고 있다
+		const swApp = document.querySelector<HTMLElement>('button[data-node-id="sw:net-app"]')!;
+		expect(swApp.textContent).toContain('▼ 14.0M');
 
-		// 배지를 접어도 선 자체와 그 설명(hit title)은 남는다 — 링크가 사라지는 게 아니다
+		// 선 자체와 그 설명(hit title)도 남는다 — 링크가 사라지는 게 아니다
 		const hit = document.querySelector('path[data-edge-key="trunk:rtr-edge>sw:net-app"]')!;
 		expect(hit.querySelector('title')!.textContent).toContain('연결 네트워크 합산 트래픽');
 		expect(document.querySelector('path[data-edge-key="trunk:rtr-transit>sw:net-transit"]')).toBeTruthy();
@@ -227,9 +228,30 @@ describe('TopologyCanvas', () => {
 		other.connected_subnet_ids = [];
 		other.interface_ips = [];
 		renderCanvas({ data, showAll: true, projectId: null });
+		// `trunkNetIds` 가 빈 배열이므로 일반 게이트(`length < 2`)가 잡는다 — 합칠 것이 없다
 		expect(document.querySelector('button[data-trunk-badge="trunk:rtr-other>sw:net-pub"]')).toBeNull();
 		// 선 자체는 남는다
 		expect(document.querySelector('path[data-edge-key="trunk:rtr-other>sw:net-pub"]')).toBeTruthy();
+	});
+
+	it('배지 숨김 임계와 카드 compact 임계는 같은 배율이다', async () => {
+		renderCanvas();
+		const viewport = screen.getByRole('application', { name: '네트워크 토폴로지 캔버스' });
+		const seen = new Set<boolean>();
+		for (let i = 0; i < 20; i++) {
+			const k = viewOf().k;
+			const hidden = document.querySelector<HTMLElement>('[data-badges]')!.dataset.badges === 'hidden';
+			const compact = worldEl().dataset.lod === 'compact';
+			// 두 임계가 어긋나면 카드는 `.node-sub` 가 통째로 숨겨졌는데 배지만 떠 있는
+			// 배율 구간이 생긴다(구 0.45 vs 0.5). 값이 아니라 **일치**를 고정한다.
+			expect(hidden, `k=${k}`).toBe(compact);
+			seen.add(hidden);
+			if (hidden) break;
+			await fireWheel(viewport, { deltaY: 100, ctrlKey: true });   // ctrl+휠은 항상 확대·축소
+			await flushFrame();
+		}
+		// 두 상태를 다 보지 못했으면 위 단정이 공허하다
+		expect([...seen].sort()).toEqual([false, true]);
 	});
 
 	it('트렁크 굵기에 하한이 없다 — edgeIntensity 결과가 그대로 stroke-width 가 된다', () => {
@@ -421,35 +443,124 @@ describe('TopologyCanvas', () => {
 		expect(Math.max(...cableW)).toBeGreaterThan(Math.min(...trunkW));
 	});
 
-	it('트랙패드 두 손가락 스크롤은 확대·축소가 아니라 위치를 이동한다', async () => {
+	it('휠은 장치를 가리지 않고 확대·축소한다 — 트랙패드 모양 이벤트도 마찬가지', async () => {
 		renderCanvas();
 		const viewport = screen.getByRole('application', { name: '네트워크 토폴로지 캔버스' });
+		// 아래 넷은 모두 예전 휴리스틱이 "트랙패드 = 이동"으로 분류하던 프로파일이다.
+		// 장치 추정을 버렸으므로 이제 전부 확대·축소다(실제 마우스에서 확대가 안 되던 원인).
+		for (const profile of [
+			{ deltaX: 40, deltaY: 120 },        // 가로 성분 있음
+			{ deltaY: 4.5 },                    // 소수점 — macOS 는 마우스 휠에도 이렇게 보낸다
+			{ deltaY: 3 },                      // 한 자릿수
+			{ deltaY: -53, wheelDeltaY: 64 },   // 고해상도 휠(120 배수 아님)
+		]) {
+			const before = viewOf();
+			await fireWheel(viewport, profile);
+			await flushFrame();
+			const after = viewOf();
+			const label = JSON.stringify(profile);
+			expect(after.k, label).not.toBe(before.k);
+			// 아래로 굴리면 축소, 위로 굴리면 확대
+			expect(after.k > before.k, label).toBe(profile.deltaY < 0);
+		}
+	});
+
+	it('휠 버튼(가운데) 드래그는 노드 위에서 눌러도 화면만 이동한다', async () => {
+		renderCanvas();
+		const viewport = screen.getByRole('application', { name: '네트워크 토폴로지 캔버스' });
+		const card = cardOf('vm-web-01')!;
+		const cardBefore = card.style.transform;
 		const before = viewOf();
-		await fireWheel(viewport, { deltaX: 40, deltaY: 120 });
-		await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))));
+		// 노드 카드 위에서 휠 버튼을 누른다 — 왼쪽 버튼이었다면 노드 드래그가 걸린다
+		await firePointer('pointerdown', card, { pointerId: 1, clientX: 100, clientY: 100, button: 1 });
+		await fireEvent(viewport, pointerMove({ pointerId: 1, clientX: 160, clientY: 140 }));
+		await flushFrame();
 		const after = viewOf();
-		// 배율은 그대로, 위치만 스크롤 방향으로 이동한다
+		// 뷰가 커서를 따라 이동하고 배율은 그대로다
 		expect(after.k).toBe(before.k);
-		expect(after.panX).toBe(before.panX - 40);
-		expect(after.panY).toBe(before.panY - 120);
+		expect(after.panX).toBe(before.panX + 60);
+		expect(after.panY).toBe(before.panY + 40);
+		// 노드는 제자리에 있고 수동 배치 핀도 생기지 않는다
+		expect(cardOf('vm-web-01')!.style.transform).toBe(cardBefore);
+		await firePointer('pointerup', viewport, { pointerId: 1, clientX: 160, clientY: 140, button: 1 });
+		expect(screen.queryByRole('button', { name: /^수동 배치/ })).toBeNull();
+	});
+
+	it('휠 버튼을 움직이지 않고 떼면 선택도 선택 해제도 하지 않는다', async () => {
+		const onSelectInstance = vi.fn();
+		renderCanvas({ onSelectInstance });
+		const viewport = screen.getByRole('application', { name: '네트워크 토폴로지 캔버스' });
+		// 먼저 왼쪽 클릭으로 선택해 둔다
+		await firePointer('pointerdown', cardOf('vm-web-01')!, { pointerId: 1, clientX: 100, clientY: 100 });
+		await firePointer('pointerup', viewport, { pointerId: 1, clientX: 100, clientY: 100 });
+		expect(onSelectInstance).toHaveBeenCalledTimes(1);
+		const selected = cardOf('vm-web-01')!.getAttribute('aria-pressed');
+
+		// 배경에서 휠 버튼을 눌렀다 떼도 선택이 풀리지 않아야 한다(왼쪽 버튼이면 clearSelection 이다)
+		await firePointer('pointerdown', viewport, { pointerId: 2, clientX: 400, clientY: 400, button: 1 });
+		await firePointer('pointerup', viewport, { pointerId: 2, clientX: 400, clientY: 400, button: 1 });
+		expect(cardOf('vm-web-01')!.getAttribute('aria-pressed')).toBe(selected);
+		expect(onSelectInstance).toHaveBeenCalledTimes(1);
 	});
 
 	it('한 프레임에 들어온 휠 델타는 마지막 값이 아니라 합산되어 적용된다', async () => {
 		renderCanvas();
 		const viewport = screen.getByRole('application', { name: '네트워크 토폴로지 캔버스' });
 		const before = viewOf();
-		// 트랙패드 관성 스크롤은 한 프레임에 여러 이벤트를 보낸다 → pendingView 에 누적되어야 한다
+		// 클램프에 걸리면 누적이 아닌 이유로 값이 맞아버린다 — 단정의 전제를 먼저 고정한다
+		expect(before.k * Math.exp(-0.36)).toBeGreaterThan(K_MIN);
+		// 관성 스크롤은 한 프레임에 여러 이벤트를 보낸다 → pendingView 에 누적되어야 한다.
+		// 마지막 값만 적용되면 배율이 한 번치(exp(-0.18))만 줄어든다.
 		await fireWheel(viewport, { deltaY: 120 });
 		await fireWheel(viewport, { deltaY: 120 });
 		await flushFrame();
-		expect(viewOf().panY).toBe(before.panY - 240);
+		expect(viewOf().k).toBeCloseTo(before.k * Math.exp(-0.18) * Math.exp(-0.18), 6);
 	});
 
-	it('마우스 휠(120 배수 노치)은 커서 기준으로 확대·축소한다', async () => {
+	it('페이지 단위 휠(deltaMode 2) 한 칸이 줌 전 구간을 건너뛰지 않는다', async () => {
 		renderCanvas();
 		const viewport = screen.getByRole('application', { name: '네트워크 토폴로지 캔버스' });
 		const before = viewOf();
-		// Chrome·Safari 는 마우스 휠에서 wheelDeltaY 를 120 의 배수로 보고한다 → 트랙패드 스크롤과 구분된다
+		// unit 이 뷰포트 높이(420~820)라 상한이 없으면 exp(-820*0.0015)=0.29 배 → 한 번에 K_MIN 으로 처박힌다
+		await fireWheel(viewport, { deltaY: 1, deltaMode: 2 });
+		await flushFrame();
+		const after = viewOf();
+		expect(after.k).toBeLessThan(before.k);          // 축소는 된다
+		expect(after.k).toBeGreaterThan(K_MIN);          // 바닥까지 가지는 않는다
+		// 이벤트 하나가 배율을 1.45배(= exp(250*0.0015)) 넘게 바꾸지 못한다
+		expect(before.k / after.k).toBeLessThanOrEqual(Math.exp(250 * 0.0015) + 1e-9);
+	});
+
+	it('순수 가로 휠은 배율을 건드리지 않고 가로로만 이동한다', async () => {
+		renderCanvas();
+		const viewport = screen.getByRole('application', { name: '네트워크 토폴로지 캔버스' });
+		const before = viewOf();
+		// deltaY 가 0 이면 exp(0)=1 이라 예전에는 배율도 위치도 그대로인 채 아무 일도 없었다
+		await fireWheel(viewport, { deltaX: 60, deltaY: 0 });
+		await flushFrame();
+		const after = viewOf();
+		expect(after.k).toBe(before.k);
+		expect(after.panX).toBe(before.panX - 60);
+		expect(after.panY).toBe(before.panY);
+	});
+
+	it('ctrl+휠(트랙패드 핀치)은 확대하고 브라우저 페이지 줌으로 새지 않는다', async () => {
+		renderCanvas();
+		const viewport = screen.getByRole('application', { name: '네트워크 토폴로지 캔버스' });
+		const before = viewOf();
+		const ev = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -100, ctrlKey: true, clientX: 200, clientY: 200 });
+		await fireEvent(viewport, ev);
+		await flushFrame();
+		expect(viewOf().k).toBeGreaterThan(before.k);
+		// preventDefault 가 빠지면 캔버스가 아니라 브라우저 전체가 확대된다
+		expect(ev.defaultPrevented).toBe(true);
+	});
+
+	it('비표준 wheelDeltaY 값이 있는 세로 휠도 커서 기준으로 확대·축소한다', async () => {
+		renderCanvas();
+		const viewport = screen.getByRole('application', { name: '네트워크 토폴로지 캔버스' });
+		const before = viewOf();
+		// 비표준 wheelDeltaY 와 무관하게 세로 deltaY 의 부호로 커서 기준 줌을 결정한다.
 		await fireWheel(viewport, { deltaY: -100, wheelDeltaY: 120 });
 		await flushFrame();
 		const after = viewOf();
@@ -457,8 +568,8 @@ describe('TopologyCanvas', () => {
 		expect(after.panX).toBeCloseTo(200 * (1 - after.k), 4);
 	});
 
-	it('줄 단위(deltaMode=1) 휠은 마우스 휠로 보아 확대하며, 줄→픽셀 정규화가 배율에 반영된다', async () => {
-		// Firefox 는 마우스 휠만 줄 단위로 보고한다(트랙패드는 픽셀 단위) → 줄 단위면 마우스 휠이다.
+	it('줄 단위(deltaMode=1) 휠은 줄→픽셀 정규화 후 확대한다', async () => {
+		// deltaMode 는 장치 판별이 아니라 델타 크기의 단위만 지정한다.
 		const lines = (() => {
 			renderCanvas();
 			const vp = screen.getByRole('application', { name: '네트워크 토폴로지 캔버스' });

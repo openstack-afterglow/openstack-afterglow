@@ -34,6 +34,7 @@ sentinel_hosts = "{{ afterglow_sentinel_hosts }}"
 magnum = {{ afterglow_service_magnum_enabled | bool | lower }}
 manila = {{ afterglow_service_manila_enabled | bool | lower }}
 zun = {{ afterglow_service_zun_enabled | bool | lower }}
+cloud_shell = {{ (afterglow_service_cloud_shell_enabled | bool and afterglow_service_zun_enabled | bool) | lower }}
 k3s = {{ afterglow_service_k3s_enabled | bool | lower }}
 swift = {{ afterglow_service_swift_enabled | bool | lower }}
 trove = {{ afterglow_service_trove_enabled | bool | lower }}
@@ -42,6 +43,23 @@ waygate = {{ afterglow_service_waygate_enabled | bool | lower }}
 palimpsest = {{ afterglow_service_palimpsest_enabled | bool | lower }}
 chat = {{ afterglow_service_chat_enabled | bool | lower }}
 mcp = {{ afterglow_service_mcp_enabled | bool | lower }}
+
+[cloud_shell]
+service_project_id = "{{ afterglow_cloud_shell_project_id }}"
+image = "{{ afterglow_cloud_shell_image }}"
+network_id = "{{ afterglow_cloud_shell_network_id }}"
+security_group = "{{ afterglow_cloud_shell_security_group }}"
+auth_url = "{{ afterglow_cloud_shell_auth_url }}"
+interface = "{{ afterglow_cloud_shell_interface }}"
+volume_type = "{{ afterglow_cloud_shell_volume_type }}"
+home_size_gib = {{ afterglow_cloud_shell_home_size_gib }}
+cpu = {{ afterglow_cloud_shell_cpu }}
+memory_mib = {{ afterglow_cloud_shell_memory_mib }}
+idle_timeout_seconds = {{ afterglow_cloud_shell_idle_timeout_seconds }}
+max_session_seconds = {{ afterglow_cloud_shell_max_session_seconds }}
+ticket_ttl_seconds = {{ afterglow_cloud_shell_ticket_ttl_seconds }}
+reconcile_interval_seconds = {{ afterglow_cloud_shell_reconcile_interval_seconds }}
+zun_websocket_origin = "{{ afterglow_cloud_shell_zun_websocket_origin }}"
 
 [instance_health]
 callback_base_url = "{{ afterglow_instance_health_callback_base_url }}"

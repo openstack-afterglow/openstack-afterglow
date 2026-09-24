@@ -10,6 +10,10 @@ on:
         type: boolean
         default: false
 jobs:
+  # ─── 게이트 병렬성: version-check 는 어떤 테스트 잡의 needs: 도 아니다 ──────────
+  # 모든 테스트 잡은 t=0 에 병렬로 시작한다. 이미지 빌드 게이팅은 docker-build.yml 의
+  # `changes` 잡이 이 reusable workflow 전체(`needs: [test, test-pr]`)에 걸어 보장한다.
+  # 마지막 opt-in 잡인 test-live 만 실제 자격 증명을 쓰기 전에 version-check 를 기다린다.
   version-check:
     name: Version + orchestration checks
     runs-on: ubuntu-latest
@@ -39,7 +43,6 @@ jobs:
 
   test-backend:
     name: Backend (unit tests + lint)
-    needs: version-check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -72,9 +75,28 @@ jobs:
           AFTERGLOW_ALLOW_INSECURE: "1"
         run: npm run test:unit:backend
 
+  test-cloud-shell:
+    name: Cloud Shell image and bootstrap
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Apply tag version (tag push only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GITHUB_REF: ${{ github.ref }}
+        run: npm run version:apply-tag
+
+      - name: Image and bootstrap smoke
+        run: npm run test:cloud-shell:image
+
   test-contract:
     name: Service contract tests
-    needs: version-check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -102,9 +124,14 @@ jobs:
         run: npm run test:kolla:contract
 
   # ─── 국소 기능 테스트 — 무조건 항상 실행 ──────────────────────────────────
+  # health-check interval/timeout/retries 는 docker-compose.dev.yml `test` profile 과 같은 값(2s/5s/20)이다.
+  # 짧은 interval 이 준비 대기 시간을 줄인다. compose test profile 은 tmpfs 를 쓰지만 CI service 는 tmpfs 없이
+  # container 디스크에서 초기화하므로, CI 에만 start-period 30s 를 더해 느린 runner 의 cold init 예산을 늘린다
+  # (약 40초 → 약 70초 이상). start-period 동안의 실패는 retries 에 세지 않고, 그 동안 성공하면 바로 healthy 다.
+  # Docker 25+ 는 start-period 동안 start-interval(기본 5초) 간격으로 검사하므로 start-interval 도 2s 로 둔다
+  # (API 1.44+. ubuntu-24.04 runner image 20260907 은 Docker 28.0.4). 그래야 정상 경로의 준비 대기가 늘지 않는다.
   test-functional:
     name: Disposable local functional tests
-    needs: version-check
     runs-on: ubuntu-latest
     services:
       mariadb:
@@ -118,9 +145,11 @@ jobs:
           - 3307:3306
         options: >-
           --health-cmd="healthcheck.sh --connect --innodb_initialized"
-          --health-interval=10s
+          --health-interval=2s
           --health-timeout=5s
-          --health-retries=10
+          --health-retries=20
+          --health-start-period=30s
+          --health-start-interval=2s
       postgres:
         image: postgres:16
         env:
@@ -131,18 +160,22 @@ jobs:
           - 5434:5432
         options: >-
           --health-cmd="pg_isready -U afterglow -d afterglow_checkpoints"
-          --health-interval=10s
+          --health-interval=2s
           --health-timeout=5s
-          --health-retries=10
+          --health-retries=20
+          --health-start-period=30s
+          --health-start-interval=2s
       redis:
         image: redis:7-alpine
         ports:
           - 6380:6379
         options: >-
           --health-cmd "redis-cli ping"
-          --health-interval 10s
+          --health-interval 2s
           --health-timeout 5s
-          --health-retries 5
+          --health-retries 20
+          --health-start-period 30s
+          --health-start-interval 2s
     steps:
       - uses: actions/checkout@v5
 
@@ -171,12 +204,25 @@ jobs:
           AFTERGLOW_TEST_CHECKPOINTER_POSTGRES_URL: postgresql://afterglow:dev@127.0.0.1:5434/afterglow_checkpoints
         run: npm run test:functional -- --no-start
 
+  # ─── frontend 2-way 샤딩 ───────────────────────────────────────────────
+  # vitest 를 직접 호출한다. `npm run test:unit:frontend -- --shard=N/2` 는 내부 npm 이 인자를
+  # 삼켜 각 샤드가 전체 스위트를 조용히 실행하므로, 샤드별 실행 파일 수를 JSON 보고서로 검증한다.
+  # vitest bin(`#!/usr/bin/env node`)과 검증기는 runner 기본 Node 가 아니라 setup-node 의 Node 22 로 실행한다.
+  # Node 25 부터 기본 활성화된 내장 Web Storage(localStorage)가 jsdom 의 것과 충돌해 jsdom 테스트가 깨질 수 있으므로
+  # runner image 의 Node 갱신에 흔들리지 않게 version-check 와 같은 major 22 로 고정한다.
   test-frontend:
-    name: Frontend (unit tests)
-    needs: version-check
+    name: Frontend (unit tests ${{ matrix.shard }}/2)
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -186,13 +232,33 @@ jobs:
         working-directory: frontend
         run: bun install --frozen-lockfile
 
-      - name: Test
-        run: npm run test:unit:frontend
+      - name: Test (vitest shard ${{ matrix.shard }}/2)
+        working-directory: frontend
+        run: >-
+          ./node_modules/.bin/vitest run
+          --shard=${{ matrix.shard }}/2
+          --reporter=default
+          --reporter=github-actions
+          --reporter=json
+          --outputFile.json=${{ runner.temp }}/vitest-shard-${{ matrix.shard }}.json
+
+      - name: Verify shard file count
+        working-directory: frontend
+        run: >-
+          node ../scripts/ci/verify-vitest-shard.js
+          --report ${{ runner.temp }}/vitest-shard-${{ matrix.shard }}.json
+          --shard ${{ matrix.shard }}/2
+          --root .
+
+      # frontend `npm test` 의 두 번째 단계. 샤드와 무관하므로 shard 1 에서만 한 번 실행한다.
+      - name: Test runner log helper (shard 1 only)
+        if: matrix.shard == 1
+        working-directory: frontend
+        run: node --test scripts/run-with-file-log.test.mjs
 
   # ─── secret 존재 여부 + Keystone 인증 probe를 job output으로 노출 ──────────
   detect-live:
     name: Detect live OpenStack credentials
-    needs: version-check
     runs-on: ubuntu-latest
     if: ${{ inputs.run_live_openstack }}
     outputs:
@@ -271,9 +337,11 @@ jobs:
           fi
 
   # ─── 실제 OpenStack 테스트: detect-live.outputs.enabled == 'true' 시만 실행 ───
+  # 실제 자격 증명을 쓰므로 version-check(architecture freshness, orchestration 계약, version sync)와
+  # 모든 테스트 계층이 통과한 뒤에만 실행한다. 마지막 잡이라 다른 잡의 t=0 시작에는 영향이 없다.
   test-live:
     name: Backend (live OpenStack tests)
-    needs: [test-backend, test-contract, test-functional, test-frontend, detect-live]
+    needs: [version-check, test-backend, test-cloud-shell, test-contract, test-functional, test-frontend, detect-live]
     runs-on: ubuntu-latest
     if: ${{ needs.detect-live.outputs.enabled == 'true' }}
     services:
@@ -283,9 +351,11 @@ jobs:
           - 6379:6379
         options: >-
           --health-cmd "redis-cli ping"
-          --health-interval 10s
+          --health-interval 2s
           --health-timeout 5s
-          --health-retries 5
+          --health-retries 20
+          --health-start-period 30s
+          --health-start-interval 2s
     steps:
       - uses: actions/checkout@v5
 

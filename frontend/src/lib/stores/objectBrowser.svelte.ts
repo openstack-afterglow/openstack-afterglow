@@ -1,10 +1,11 @@
-import { setContext, getContext } from 'svelte';
+import { setContext, getContext, untrack } from 'svelte';
 import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 import { api, ApiError, fetchWithAuth, getBaseUrl } from '$lib/api/client';
 import { downloadBlobAs } from '$lib/utils/downloadBlob';
 import { uploadQueue } from '$lib/stores/uploadQueue';
 import type { SwiftContainer } from '$lib/types/common';
-import type { SwiftObject, SwiftObjectMeta } from '$lib/types/objectStorage';
+import { THUMBNAILABLE_TYPES, THUMBNAIL_MAX_SOURCE_BYTES, type SwiftObject, type SwiftObjectMeta } from '$lib/types/objectStorage';
+import { readObjectView, writeObjectView, type ObjectView } from '$lib/utils/objectViewPreference';
 import { confirmDialog } from '$lib/stores/confirm.svelte';
 import { pruneSelectionByIds } from '$lib/utils/selectionSet';
 import { executeBulkMutations } from '$lib/utils/bulkActions';
@@ -92,6 +93,76 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 	let dirLoading = $state<SvelteSet<string>>(new SvelteSet());
 	let allObjectsCache = $state<SwiftObject[] | null>(null);
 	let allObjectsLoading = $state(false);
+	let viewMode = $state<ObjectView>(readObjectView());
+
+	// ——— thumbnail (user 그리드 전용) ———
+	// 값이 '' 이면 미지원/실패 — etag 가 바뀌기 전까지 다시 요청하지 않는다.
+	const thumbUrls = new SvelteMap<string, string>();
+	const thumbPending = new SvelteSet<string>();
+	const thumbQueue: SwiftObject[] = [];
+	const THUMB_CONCURRENCY = 4;
+	let thumbInflight = 0;
+	// 폴더 이동·컨테이너 전환·언마운트마다 증가한다. 이미 떠난 세대의 응답은
+	// 현재 map 을 덮어쓰지 않고 자신이 만든 blob URL 만 회수한다.
+	let thumbGeneration = 0;
+
+	function thumbKey(obj: SwiftObject) {
+		return `${obj.name}@${obj.etag}`;
+	}
+
+	function isThumbnailable(obj: SwiftObject) {
+		return THUMBNAILABLE_TYPES.has(obj.content_type) && obj.bytes > 0 && obj.bytes <= THUMBNAIL_MAX_SOURCE_BYTES;
+	}
+
+	function thumbnailUrl(obj: SwiftObject): string | undefined {
+		return thumbUrls.get(thumbKey(obj));
+	}
+
+	function requestThumbnail(obj: SwiftObject) {
+		const key = thumbKey(obj);
+		if (isDirectory(obj) || thumbUrls.has(key) || thumbPending.has(key)) return;
+		if (!isThumbnailable(obj)) { thumbUrls.set(key, ''); return; }
+		thumbPending.add(key);
+		thumbQueue.push(obj);
+		pumpThumbnails();
+	}
+
+	function pumpThumbnails() {
+		while (thumbInflight < THUMB_CONCURRENCY && thumbQueue.length) {
+			const obj = thumbQueue.shift()!;
+			const key = thumbKey(obj);
+			thumbInflight++;
+			const generation = thumbGeneration;
+			void (async () => {
+				let url = '';
+				try {
+					const res = await fetchWithAuth(
+						`/api/v1/object-storage/${encodeURIComponent(opts.containerName())}/objects/${encObj(obj.name)}/thumbnail`,
+						{}, opts.token(), opts.projectId()
+					);
+					if (res.ok) url = URL.createObjectURL(await res.blob());
+				} catch { /* 아이콘으로 대체 */ }
+				if (generation === thumbGeneration) {
+					thumbUrls.set(key, url);
+					thumbPending.delete(key);
+				} else if (url) {
+					URL.revokeObjectURL(url);
+				}
+				thumbInflight--;
+				pumpThumbnails();
+			})();
+		}
+	}
+
+	function disposeThumbnails() {
+		thumbGeneration++;
+		for (const url of thumbUrls.values()) if (url) URL.revokeObjectURL(url);
+		thumbUrls.clear();
+		thumbPending.clear();
+		thumbQueue.length = 0;
+	}
+
+
 
 	// ——— derived ———
 	const breadcrumbs = $derived(
@@ -257,6 +328,7 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 			searchScope = 'current';
 			expandedDirs.clear();
 			dirCache.clear();
+			disposeThumbnails();
 			allObjectsCache = null;
 		}
 		loadCurrent();
@@ -400,10 +472,12 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 		}));
 	});
 
+	// 그리드는 현재 prefix 의 직속 자식만 보여준다 — expandedDirs 와 무관하다.
+	const gridRows = $derived(() => treeRows().filter((row) => row.depth === 0));
+
 	function visibleObjectNames(): string[] {
-		return opts.mode() === 'user'
-			? treeRows().map((row) => row.obj.name)
-			: filteredObjects().map((object) => object.name);
+		if (opts.mode() !== 'user') return filteredObjects().map((object) => object.name);
+		return (viewMode === 'grid' ? gridRows() : treeRows()).map((row) => row.obj.name);
 	}
 
 	function visibleSelectedCount(): number {
@@ -710,33 +784,39 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 		}
 	});
 
+	// 컨테이너/프로젝트가 바뀔 때만 초기화한다. 본문은 prefix 등 자체 상태를 읽으므로
+	// untrack 하지 않으면 navigatePrefix 가 이 effect 를 다시 돌려 prefix 를 ''로 되돌린다.
 	$effect(() => {
 		const cn = opts.containerName();
 		const pid = opts.projectId();
-		prefix = '';
-		objects = [];
-		selected = new Set();
-		filterText = '';
-		selectedMeta = null;
-		showPreview = false;
-		containerMeta = null;
-		showMove = false;
-		showBulkMove = false;
-		moveDest = '';
-		moveSelectedDir = '';
-		moveDestinationChosen = false;
-		moveError = '';
-		moveContainers = [];
-		moveDirectories = [];
-		if (opts.mode() === 'user') {
-			searchScope = 'current';
-			expandedDirs.clear();
-			dirCache.clear();
-			allObjectsCache = null;
-		}
-		if (!cn || !pid) return;
-		loadCurrent();
-		loadContainerMeta();
+		const mode = opts.mode();
+		untrack(() => {
+			prefix = '';
+			objects = [];
+			selected = new Set();
+			filterText = '';
+			selectedMeta = null;
+			showPreview = false;
+			containerMeta = null;
+			showMove = false;
+			showBulkMove = false;
+			moveDest = '';
+			moveSelectedDir = '';
+			moveDestinationChosen = false;
+			moveError = '';
+			moveContainers = [];
+			moveDirectories = [];
+			if (mode === 'user') {
+				searchScope = 'current';
+				expandedDirs.clear();
+				dirCache.clear();
+				disposeThumbnails();
+				allObjectsCache = null;
+			}
+			if (!cn || !pid) return;
+			loadCurrent();
+			loadContainerMeta();
+		});
 	});
 
 	// ——— 반환 ———
@@ -815,10 +895,20 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 		get dirLoading() { return dirLoading; },
 		get allObjectsCache() { return allObjectsCache; },
 		get allObjectsLoading() { return allObjectsLoading; },
+		get viewMode() { return viewMode; },
+		set viewMode(v: ObjectView) {
+			if (viewMode === v) return;
+			viewMode = v;
+			writeObjectView(v);
+			// 그리드에는 펼친 트리 검색 범위가 없다.
+			if (v === 'grid' && searchScope === 'expanded') searchScope = 'current';
+			selected = new Set();
+		},
 		// derived
 		get breadcrumbs() { return breadcrumbs; },
 		get filteredObjects() { return filteredObjects(); },
 		get treeRows() { return treeRows(); },
+		get gridRows() { return gridRows(); },
 		get selectedCount() { return selected.size; },
 		get visibleObjectCount() { return visibleObjectNames().length; },
 		get visibleSelectedCount() { return visibleSelectedCount(); },
@@ -830,6 +920,10 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 		sortIcon,
 		breadcrumbPrefix,
 		encObj,
+		isThumbnailable,
+		thumbnailUrl,
+		requestThumbnail,
+		disposeThumbnails,
 		// handlers
 		load,
 		refreshAll,

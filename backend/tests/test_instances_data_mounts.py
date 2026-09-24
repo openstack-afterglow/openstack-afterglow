@@ -117,6 +117,7 @@ async def test_attach_nfs_storage_success(client, mock_conn):
     assert data["share_proto"] == "NFS"
     assert "/mnt/mydata" in data["mount_command"]
     assert data["keyring_file"] is None
+    mock_conn.compute.set_server_metadata.assert_called_once_with("inst-1", {"afterglow_data_share_ids": "share-1"})
 
 
 @pytest.mark.asyncio

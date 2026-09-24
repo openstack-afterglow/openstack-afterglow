@@ -27,6 +27,16 @@ from sqlalchemy.exc import ArgumentError
 from app.api.deps import get_os_conn, get_token_info
 from app.main import app
 from app.rate_limit import limiter as _rate_limiter
+
+# 단위/계약 계층 non-loopback 네트워크 가드. 구현과 한계는 tests/_network_guard.py 에 있다.
+# conftest 가 fixture 를 import 하므로 tests/ 아래 모든 테스트에 autouse 로 적용된다(tests/integration/ 과
+# `db` marker 는 가드 내부에서 제외). 별도 plugin 모듈인 이유는 teardown 강제를 별도 pytest 프로세스에서
+# `-p tests._network_guard` 로 검증하기 위해서다(tests/test_network_guard.py).
+from tests._network_guard import (  # noqa: F401 — pytest 는 conftest namespace 의 fixture 를 등록한다
+    NonLoopbackConnectBlocked,
+    _block_non_loopback_network,
+    _is_loopback_target,
+)
 from tests.db_target_safety import (
     UnsafeDatabaseTargetError,
     assert_isolated_test_database,

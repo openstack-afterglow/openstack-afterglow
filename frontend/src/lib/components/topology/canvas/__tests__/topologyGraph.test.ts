@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { allocateFlowDots, assignTenantColors, buildGraph, buildMemberEdges, edgeRate, edgeStyle, FLOW_DOT_BUDGET, FLOW_MIN_BPS, flowStreams, matchesQuery, relatedSet, switchThroughput, trunkIntensityBps } from '../topologyGraph';
 import { edgeIntensity, flowDotCount } from '../canvasHelpers';

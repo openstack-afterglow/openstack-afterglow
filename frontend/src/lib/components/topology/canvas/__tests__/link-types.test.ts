@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { buildGraph, switchId } from '../topologyGraph';
 import { canLink, linkRequest } from '../link-types';

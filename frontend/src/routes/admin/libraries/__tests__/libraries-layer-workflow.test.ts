@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -66,5 +67,24 @@ describe('/admin/libraries layer workflow UI contract', () => {
 		expect(source).toContain('/api/v1/admin/libraries/imports/dockerfile');
 		expect(source).toContain('activeImportJobs');
 		expect(source).toContain('void loadImportJobs()');
+	});
+
+	it('supports multi-mode Dockerfile studio with URL fetch, file upload, templates, plan preview, and inline build', () => {
+		expect(source).toContain('Palimpsest Dockerfile 빌드');
+		expect(source).toContain('dockerfileMode');
+		expect(source).toContain('/api/v1/palimpsest/builds/dockerfile/fetch-url');
+		expect(source).toContain('/api/v1/palimpsest/builds/dockerfile/plan');
+		expect(source).toContain('/api/v1/palimpsest/builds/dockerfile');
+		expect(source).toContain('applyDockerfileTemplate');
+		expect(source).toContain('handleDockerFileUpload');
+		expect(source).toContain('previewDockerfilePlan');
+		expect(source).toContain('submitInlineDockerfileBuild');
+		expect(source).toContain('빌드 계획 미리보기');
+	});
+
+	it('wires completed Dockerfile build jobs and saved profiles to direct instance execution (consume)', () => {
+		expect(source).toContain('launchConsumeWithProfile');
+		expect(source).toContain('id="admin-library-consume"');
+		expect(source).toContain('인스턴스 실행');
 	});
 });

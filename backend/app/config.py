@@ -11,6 +11,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
+from uuid import UUID
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
@@ -157,6 +158,7 @@ def _load_toml() -> dict:
     flat["service_magnum_enabled"] = svc.get("magnum", False)
     flat["service_manila_enabled"] = svc.get("manila", False)
     flat["service_zun_enabled"] = svc.get("zun", False)
+    flat["service_cloud_shell_enabled"] = svc.get("cloud_shell", False)
     flat["service_k3s_enabled"] = svc.get("k3s", False)
     flat["service_trove_enabled"] = svc.get("trove", False)
     flat["service_swift_enabled"] = svc.get("swift", False)
@@ -169,6 +171,23 @@ def _load_toml() -> dict:
     flat["service_drover_internal_url"] = svc.get("drover_internal_url", "")
     flat["service_lumen_internal_url"] = svc.get("lumen_internal_url", "")
     flat["service_palimpsest_internal_url"] = svc.get("palimpsest_internal_url", "")
+
+    cloud_shell = data.get("cloud_shell", {})
+    flat["cloud_shell_service_project_id"] = cloud_shell.get("service_project_id", "")
+    flat["cloud_shell_image"] = cloud_shell.get("image", "")
+    flat["cloud_shell_network_id"] = cloud_shell.get("network_id", "")
+    flat["cloud_shell_security_group"] = cloud_shell.get("security_group", "")
+    flat["cloud_shell_auth_url"] = cloud_shell.get("auth_url", "")
+    flat["cloud_shell_interface"] = cloud_shell.get("interface", "internal")
+    flat["cloud_shell_volume_type"] = cloud_shell.get("volume_type", "")
+    flat["cloud_shell_home_size_gib"] = cloud_shell.get("home_size_gib", 5)
+    flat["cloud_shell_cpu"] = cloud_shell.get("cpu", 1.0)
+    flat["cloud_shell_memory_mib"] = cloud_shell.get("memory_mib", 1024)
+    flat["cloud_shell_idle_timeout_seconds"] = cloud_shell.get("idle_timeout_seconds", 1200)
+    flat["cloud_shell_max_session_seconds"] = cloud_shell.get("max_session_seconds", 3600)
+    flat["cloud_shell_ticket_ttl_seconds"] = cloud_shell.get("ticket_ttl_seconds", 60)
+    flat["cloud_shell_reconcile_interval_seconds"] = cloud_shell.get("reconcile_interval_seconds", 60)
+    flat["cloud_shell_zun_websocket_origin"] = cloud_shell.get("zun_websocket_origin", "")
     mcp = data.get("mcp", {})
     flat["mcp_public_url"] = mcp.get("public_url", "")
     flat["mcp_oauth_consent_url"] = mcp.get("oauth_consent_url", "")
@@ -457,6 +476,7 @@ class Settings(BaseSettings):
     service_magnum_enabled: bool = False
     service_manila_enabled: bool = False
     service_zun_enabled: bool = False
+    service_cloud_shell_enabled: bool = False
     service_k3s_enabled: bool = False
     service_trove_enabled: bool = False
     service_swift_enabled: bool = False
@@ -471,6 +491,25 @@ class Settings(BaseSettings):
     service_drover_internal_url: str = ""
     service_lumen_internal_url: str = ""
     service_palimpsest_internal_url: str = ""
+
+    # Global Cloud Shell resources live only in a dedicated service project.
+    # User tokens are separately re-scoped to the selected logical project and
+    # are never used for Zun/Cinder lifecycle operations.
+    cloud_shell_service_project_id: str = ""
+    cloud_shell_image: str = ""
+    cloud_shell_network_id: str = ""
+    cloud_shell_security_group: str = ""
+    cloud_shell_auth_url: str = ""
+    cloud_shell_interface: Literal["public", "internal", "admin"] = "internal"
+    cloud_shell_volume_type: str = ""
+    cloud_shell_home_size_gib: int = 5
+    cloud_shell_cpu: float = 1.0
+    cloud_shell_memory_mib: int = 1024
+    cloud_shell_idle_timeout_seconds: int = 1200
+    cloud_shell_max_session_seconds: int = 3600
+    cloud_shell_ticket_ttl_seconds: int = 60
+    cloud_shell_reconcile_interval_seconds: int = 60
+    cloud_shell_zun_websocket_origin: str = ""
     # Generic instance health-report callback.
     instance_health_callback_base_url: str = ""
 
@@ -710,6 +749,76 @@ class Settings(BaseSettings):
                     raise ValueError(f"[ceph] 유효하지 않은 Cinder backend 이름: {backend!r}")
                 if re.fullmatch(r"[A-Za-z0-9._-]{1,64}", pool) is None:
                     raise ValueError(f"[ceph] 유효하지 않은 RBD pool 이름: {pool!r}")
+        cloud_shell_bounds = (
+            ("home_size_gib", self.cloud_shell_home_size_gib, 1, 100),
+            ("cpu", self.cloud_shell_cpu, 0.1, 8.0),
+            ("memory_mib", self.cloud_shell_memory_mib, 256, 32768),
+            ("idle_timeout_seconds", self.cloud_shell_idle_timeout_seconds, 60, 3600),
+            ("max_session_seconds", self.cloud_shell_max_session_seconds, 300, 14400),
+            ("ticket_ttl_seconds", self.cloud_shell_ticket_ttl_seconds, 10, 120),
+            ("reconcile_interval_seconds", self.cloud_shell_reconcile_interval_seconds, 15, 600),
+        )
+        for field, value, lower, upper in cloud_shell_bounds:
+            if not lower <= value <= upper:
+                raise ValueError(f"cloud_shell.{field} must be between {lower} and {upper}")
+        if self.cloud_shell_max_session_seconds < self.cloud_shell_idle_timeout_seconds:
+            raise ValueError("cloud_shell.max_session_seconds may not be shorter than idle_timeout_seconds")
+        if self.service_cloud_shell_enabled:
+            required = {
+                "service_project_id": self.cloud_shell_service_project_id,
+                "image": self.cloud_shell_image,
+                "network_id": self.cloud_shell_network_id,
+                "security_group": self.cloud_shell_security_group,
+                "auth_url": self.cloud_shell_auth_url,
+                "zun_websocket_origin": self.cloud_shell_zun_websocket_origin,
+            }
+            missing = [field for field, value in required.items() if not value.strip()]
+            if missing:
+                raise ValueError(f"enabled Cloud Shell requires: {', '.join(missing)}")
+            if not self.service_zun_enabled:
+                raise ValueError("services.cloud_shell=true requires services.zun=true")
+            try:
+                UUID(self.cloud_shell_service_project_id)
+            except ValueError as exc:
+                raise ValueError("cloud_shell.service_project_id must be a UUID") from exc
+            if self.cloud_shell_service_project_id == self.os_service_project_id:
+                raise ValueError("Cloud Shell requires a dedicated service project")
+
+            auth_url = urlsplit(self.cloud_shell_auth_url)
+            auth_is_trusted = (
+                auth_url.scheme == "https"
+                and bool(auth_url.netloc)
+                and not auth_url.username
+                and not auth_url.password
+                and not auth_url.query
+                and not auth_url.fragment
+                and auth_url.path.rstrip("/").endswith("/v3")
+            ) or (
+                is_development_loopback_http_url(self.cloud_shell_auth_url)
+                and auth_url.path.rstrip("/").endswith("/v3")
+            )
+            if not auth_is_trusted:
+                raise ValueError("cloud_shell.auth_url must be trusted HTTPS /v3 or development loopback HTTP")
+
+            ws_origin = urlsplit(self.cloud_shell_zun_websocket_origin)
+            ws_is_loopback = (
+                env == "development"
+                and ws_origin.scheme == "ws"
+                and (ws_origin.hostname or "").lower() in _LOOPBACK_HOSTS
+            )
+            if (
+                ws_origin.scheme not in {"wss", "ws"}
+                or not ws_origin.netloc
+                or ws_origin.username
+                or ws_origin.password
+                or ws_origin.path not in {"", "/"}
+                or ws_origin.query
+                or ws_origin.fragment
+                or (ws_origin.scheme == "ws" and not ws_is_loopback)
+            ):
+                raise ValueError("cloud_shell.zun_websocket_origin must be WSS or development loopback WS")
+            if is_production and re.search(r"@sha256:[0-9a-f]{64}$", self.cloud_shell_image) is None:
+                raise ValueError("production Cloud Shell image must use an immutable sha256 digest")
         # production 환경에서는 INSECURE 우회 자체를 금지 — 운영 부팅 실수 차단.
         if is_production and insecure_flag:
             raise ValueError(

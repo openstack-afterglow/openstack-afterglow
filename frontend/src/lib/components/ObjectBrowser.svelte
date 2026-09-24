@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
 	import { createObjectBrowserStore, provideObjectBrowser } from '$lib/stores/objectBrowser.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import UploadModal from '$lib/components/UploadModal.svelte';
@@ -11,6 +11,8 @@
 	import ObjectTreeTable from '$lib/components/object-storage/ObjectTreeTable.svelte';
 	import ObjectMetaPanel from '$lib/components/object-storage/ObjectMetaPanel.svelte';
 	import ObjectTrashView from '$lib/components/object-storage/ObjectTrashView.svelte';
+	import ObjectCardGrid from '$lib/components/object-storage/ObjectCardGrid.svelte';
+	import ObjectPreviewModal from '$lib/components/object-storage/ObjectPreviewModal.svelte';
 	import NewDirModal from '$lib/components/object-storage/NewDirModal.svelte';
 	import RenameModal from '$lib/components/object-storage/RenameModal.svelte';
 	import MoveModal from '$lib/components/object-storage/MoveModal.svelte';
@@ -34,6 +36,7 @@
 		projectId: () => projectId,
 	});
 	provideObjectBrowser(s);
+	onDestroy(() => s.disposeThumbnails());
 
 	const storageKey = untrack(() => mode === 'user' ? 'object-browser-user' : 'object-browser-admin');
 
@@ -136,13 +139,16 @@
 		<RenameModal />
 		<MoveModal />
 		<MoveModal bulk />
+		<ObjectPreviewModal />
 
 		<div class="flex flex-col gap-4 lg:flex-row lg:gap-6">
 			<div class="flex-1 min-w-0 relative">
-				{#if mode === 'user'}
-					<ObjectTreeTable />
-				{:else}
+				{#if mode !== 'user'}
 					<ObjectFlatTable />
+				{:else if s.viewMode === 'grid'}
+					<ObjectCardGrid />
+				{:else}
+					<ObjectTreeTable />
 				{/if}
 			</div>
 			<ObjectMetaPanel />

@@ -8,6 +8,7 @@
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
 	import CreateProjectModal from '$lib/components/projects/CreateProjectModal.svelte';
+	import { cloudShell } from '$lib/stores/cloudShell.svelte';
 
 	import { postAuthDestination } from '$lib/utils/mcpConsent';
 	let projects = $state<Project[]>([]);
@@ -58,6 +59,7 @@
 		const token = $auth.token;
 		if (!token || switching) return;
 		switching = true;
+		await cloudShell.close('project-switch', { keepDock: false });
 		try {
 			const resp = await api.post<{
 				token: string;
@@ -109,6 +111,8 @@
 			logoutConfirming = false;
 		}
 		if (!confirmed) return;
+
+		await cloudShell.close('logout', { keepDock: false });
 
 		logoutInProgress.set(true);
 		try {

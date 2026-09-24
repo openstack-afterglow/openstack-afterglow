@@ -1,3 +1,4 @@
+// @vitest-environment node
 // 사용량 → 선 굵기·불투명도(연속)와 흐름 점 빈도 계약.
 import { describe, expect, it } from 'vitest';
 import {

@@ -37,9 +37,12 @@ export function isSshAccessReady(input: {
 	sshAccessMode: 'keypair' | 'github';
 	keyName: string | null;
 	githubUsername: string;
+	githubProfile?: { login: string; has_public_keys: boolean } | null;
 }): boolean {
 	if (input.adminMode) return true;
-	return input.sshAccessMode === 'github'
-		? isValidGithubUsername(input.githubUsername)
-		: Boolean(input.keyName);
+	if (input.sshAccessMode !== 'github') return Boolean(input.keyName);
+	const profile = input.githubProfile;
+	return isValidGithubUsername(input.githubUsername)
+		&& profile?.login.toLowerCase() === normalizeGithubUsername(input.githubUsername).toLowerCase()
+		&& profile.has_public_keys;
 }

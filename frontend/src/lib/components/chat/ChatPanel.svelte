@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
+	import { onChatModelsInvalidated } from '$lib/stores/chatModels';
 	import { api, ApiError } from '$lib/api/client';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
@@ -42,13 +43,10 @@
 	} from '$lib/api/chatContracts';
 	import { SvelteMap } from 'svelte/reactivity';
 	import {
-		buildActivePath,
 		lastAssistantModel,
-		siblingLeafInDirection,
 		type AvailableModel,
 		type ChatUsage,
-		type ChatMessage as ChatMsg,
-		type ChatTreeNode
+		type ChatMessage as ChatMsg
 	} from '$lib/api/chatTree';
 	import type { Agent } from '$lib/api/chatAgents';
 	import type { Workspace, WorkspacePayload } from '$lib/api/chatWorkspaces';
@@ -81,11 +79,15 @@
 	}
 	interface MessagesResponse {
 		messages: ChatMsg[];
-		tree_nodes: ChatTreeNode[];
-		active_leaf_id: string | null;
-		has_more: boolean;
-		next_before_id: string | null;
+		active_leaf_id: number | string | null;
+		history_revision: number;
+		has_before: boolean;
+		has_after: boolean;
+		before_cursor: string | null;
+		after_cursor: string | null;
 	}
+	const HISTORY_PAGE_SIZE = 40;
+	const HISTORY_WINDOW_PAGES = 3;
 	type DisplayMessage = ChatMsg & {
 		streaming?: boolean;
 		metrics?: StreamMetrics | null;
@@ -136,6 +138,10 @@
 	let contextCause = $state<ContextUpdatedPayload['cause']>(null);
 	let manualCompacting = $state(false);
 	let models = $state<AvailableModel[]>([]);
+	let modelsRefreshing = $state(false);
+	let modelsError = $state('');
+	let modelRequestGeneration = 0;
+	let modelScope = '';
 	let selectedModel = $state('');
 	let effort = $state('auto'); // auto=provider 기본, none=명시적 비활성.
 	let searchEnabled = $state(false);
@@ -205,15 +211,18 @@
 	}
 	let streaming = $state(false);
 	let runningConversationIds = $state<Set<string>>(new Set());
-	let treeNodes = $state<ChatTreeNode[]>([]);
+	let historyPages = $state<MessagesResponse[]>([]);
 	let tempThreadId = $state<string | null>(null);
 	let tempMode = $state(false);
 	const hasContextScope = $derived(Boolean(activeConvId || (tempMode && tempThreadId)));
 	let tempMessages = $state<DisplayMessage[]>([]);
 	let treeLoading = $state(false); // 분기/재생성 대상 전환 등 트리 재조회 중
 	let historyLoading = $state(false);
-	let historyHasMore = $state(false);
-	let historyBeforeId = $state<string | null>(null);
+	let historyNewActivity = $state(false);
+	const historyHasBefore = $derived(historyPages[0]?.has_before ?? false);
+	const historyHasAfter = $derived(historyPages[historyPages.length - 1]?.has_after ?? false);
+	const historyBeforeCursor = $derived(historyPages[0]?.before_cursor ?? null);
+	const historyAfterCursor = $derived(historyPages[historyPages.length - 1]?.after_cursor ?? null);
 	let usage = $state<ChatUsage | null>(null);
 	// 생성 속도(tok/s)는 저장하지 않는 런타임 계측값 — 이번 세션 동안 메시지 id 로 유지한다.
 	// done 후 loadMessages 로 낙관적 draft 가 권위 메시지로 교체되면 새 리프 id 에 재부착한다.
@@ -340,6 +349,7 @@
 
 	onMount(() => {
 		const reconcile = () => {
+			void loadModels();
 			void refreshServerRunSnapshot();
 			void refreshConversationsMetadata();
 			checkAndStartPendingTitlePolling();
@@ -355,7 +365,9 @@
 		window.addEventListener('focus', reconcile);
 		window.addEventListener('online', reconcile);
 		document.addEventListener('visibilitychange', onVisibility);
+		const stopModelInvalidation = onChatModelsInvalidated(() => void loadModels());
 		return () => {
+			stopModelInvalidation();
 			window.removeEventListener('focus', reconcile);
 			window.removeEventListener('online', reconcile);
 			document.removeEventListener('visibilitychange', onVisibility);
@@ -380,7 +392,7 @@
 		currentRun = null;
 	}
 
-	const activePath = $derived(buildActivePath(allMessages, activeLeafId));
+	const activePath = $derived(allMessages);
 	const activeConv = $derived(conversations.find((c) => c.id === activeConvId) ?? null);
 
 	// 현재 대화(또는 예약된 신규 대화)의 프로젝트. 입력창 위 선택기가 표시/변경.
@@ -422,7 +434,7 @@
 	}
 
 	const displayPath = $derived.by(() => {
-		if (stream && (stream.temp ? tempMode : stream.conversationId === activeConvId)) {
+		if (stream && !historyHasAfter && (stream.temp ? tempMode : stream.conversationId === activeConvId)) {
 			return [...stream.base, stream.assistant];
 		}
 		if (tempMode) return tempMessages;
@@ -451,7 +463,6 @@
 			}
 		});
 	});
-	const treeSource = $derived(tempMode || (stream && stream.conversationId === activeConvId) ? [] : treeNodes);
 	const tempToggleLocked = $derived(streaming || activeConvId !== null || tempMessages.length > 0);
 
 	const compactCommandReason = $derived.by(() => {
@@ -842,77 +853,180 @@
 		return api.get<Conversation[]>(`/api/v1/chat/conversations/search?${params}`, token, projectId);
 	}
 	async function loadModels() {
-		if (!token || !projectId) return;
+		const generation = ++modelRequestGeneration;
+		const requestToken = token;
+		const requestProject = projectId;
+		if (!requestToken || !requestProject || destroyed) return;
+		modelsRefreshing = true;
+		modelsError = '';
 		try {
-			models = await api.get<AvailableModel[]>('/api/v1/chat/models', token, projectId);
-			if (!selectedModel && models.length) {
-				// 새 채팅은 마지막에 선택한 모델로 시작(localStorage). 없으면 첫 모델.
+			const loaded = await api.get<AvailableModel[]>('/api/v1/chat/models', requestToken, requestProject);
+			if (destroyed || generation !== modelRequestGeneration || token !== requestToken || projectId !== requestProject) return;
+			models = loaded;
+			if (!models.some((model) => model.model_name === selectedModel)) {
 				let last: string | null = null;
 				try {
 					last = typeof localStorage !== 'undefined' ? localStorage.getItem(_LAST_MODEL_KEY) : null;
 				} catch {
-					last = null;
+					// Browser storage is optional.
 				}
-				selectedModel =
-					last && models.some((m) => m.model_name === last) ? last : models[0].model_name;
+				selectedModel = last && models.some((model) => model.model_name === last)
+					? last : models[0]?.model_name ?? '';
 			}
 		} catch {
-			models = [];
+			if (!destroyed && generation === modelRequestGeneration && token === requestToken && projectId === requestProject) {
+				modelsError = '모델 목록을 갱신하지 못했습니다. 목록 새로고침으로 다시 시도하세요.';
+			}
+		} finally {
+			if (!destroyed && generation === modelRequestGeneration && token === requestToken && projectId === requestProject) modelsRefreshing = false;
 		}
 	}
-	async function loadMessages(convId: string, selection = selectionGeneration): Promise<boolean> {
-		if (!token || !projectId) return false;
-		const res = await api.get<MessagesResponse>(
-			`/api/v1/chat/conversations/${convId}/messages?limit=40`,
-			token,
-			projectId
-		);
-		if (
-			destroyed ||
-			selection !== selectionGeneration ||
-			tempMode ||
-			activeConvId !== convId
-		)
-			return false;
-		allMessages = res.messages ?? [];
-		treeNodes = res.tree_nodes ?? [];
-		activeLeafId = res.active_leaf_id ?? null;
-		historyHasMore = Boolean(res.has_more);
-		historyBeforeId = res.next_before_id ?? null;
-		syncSelectedModel();
-		return true;
+	function normalizeMessagePage(page: MessagesResponse): MessagesResponse {
+		return {
+			...page,
+			messages: (page.messages ?? []).map((message) => ({
+				...message,
+				id: String(message.id),
+				parent_id: message.parent_id === null ? null : String(message.parent_id),
+				content: message.content ?? ''
+			}))
+		};
 	}
 
-	async function loadOlderMessages(): Promise<void> {
+	function historyRequestIsCurrent(
+		convId: string,
+		selection: number,
+		mutationEpoch: number,
+		requestToken: string,
+		requestProjectId: string
+	): boolean {
+		return !destroyed && !tempMode && activeConvId === convId && selectionGeneration === selection &&
+			localMutationEpoch === mutationEpoch && token === requestToken && projectId === requestProjectId;
+	}
+
+	function applyHistoryPages(pages: MessagesResponse[], clearNewActivity: boolean): void {
+		historyPages = pages;
+		allMessages = pages.flatMap((page) => page.messages);
+		const leaf = pages[pages.length - 1]?.active_leaf_id ?? null;
+		activeLeafId = leaf === null ? null : String(leaf);
+		if (clearNewActivity) historyNewActivity = false;
+		syncSelectedModel();
+	}
+
+	async function requestMessagePage(
+		convId: string,
+		params: URLSearchParams,
+		requestToken: string,
+		requestProjectId: string
+	): Promise<MessagesResponse> {
+		const response = await api.get<MessagesResponse>(
+			`/api/v1/chat/conversations/${convId}/messages?${params}`,
+			requestToken,
+			requestProjectId
+		);
+		return normalizeMessagePage(response);
+	}
+
+	async function replaceHistoryWindow(
+		anchor: 'first' | 'latest',
+		selection = selectionGeneration
+	): Promise<boolean> {
 		const convId = activeConvId;
-		const beforeId = historyBeforeId;
-		if (!token || !projectId || !convId || !beforeId || !historyHasMore || historyLoading) return;
-		const selection = selectionGeneration;
+		const requestToken = token;
+		const requestProjectId = projectId;
+		if (!convId || !requestToken || !requestProjectId || historyLoading) return false;
+		const mutationEpoch = localMutationEpoch;
 		historyLoading = true;
 		try {
-			const params = new URLSearchParams({ limit: '40', before_id: String(beforeId) });
-			const res = await api.get<MessagesResponse>(
-				`/api/v1/chat/conversations/${convId}/messages?${params}`,
-				token,
-				projectId
-			);
-			if (destroyed || selection !== selectionGeneration || activeConvId !== convId || tempMode) return;
-			const seen = new Set(allMessages.map((message) => String(message.id)));
-			allMessages = [...(res.messages ?? []).filter((message) => !seen.has(String(message.id))), ...allMessages];
-			historyHasMore = Boolean(res.has_more);
-			if (res.tree_nodes?.length) treeNodes = res.tree_nodes;
-			historyBeforeId = res.next_before_id ?? null;
+			const params = new URLSearchParams({ anchor, limit: String(HISTORY_PAGE_SIZE) });
+			const page = await requestMessagePage(convId, params, requestToken, requestProjectId);
+			if (!historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId)) return false;
+			applyHistoryPages([page], anchor === 'latest');
+			return true;
+		} catch (cause) {
+			if (historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId)) {
+				error = cause instanceof Error ? cause.message : '대화 기록을 불러오지 못했습니다.';
+			}
+			return false;
 		} finally {
-			if (!destroyed && selection === selectionGeneration && activeConvId === convId) historyLoading = false;
+			if (!destroyed && activeConvId === convId && selectionGeneration === selection) historyLoading = false;
 		}
 	}
 
-	// 활성 경로의 마지막 assistant 모델을 상단 셀렉터에 반영한다.
-	// select/switch/regenerate-done/fork 모두 loadMessages 를 지나므로 여기 단일 지점에 둔다.
-	// 단, 현재 등록된 models 목록에 존재하는 모델일 때만 반영(삭제/이름변경 모델로 셀렉터가 깨지지 않게).
+	async function loadMessages(convId: string, selection = selectionGeneration): Promise<boolean> {
+		if (activeConvId !== convId) return false;
+		return replaceHistoryWindow('latest', selection);
+	}
+
+	async function loadHistoryDirection(direction: 'before' | 'after'): Promise<void> {
+		const convId = activeConvId;
+		const cursor = direction === 'before' ? historyBeforeCursor : historyAfterCursor;
+		const hasMore = direction === 'before' ? historyHasBefore : historyHasAfter;
+		const requestToken = token;
+		const requestProjectId = projectId;
+		if (!convId || !cursor || !hasMore || !requestToken || !requestProjectId || historyLoading) return;
+		const selection = selectionGeneration;
+		const mutationEpoch = localMutationEpoch;
+		historyLoading = true;
+		try {
+			const page = await requestMessagePage(
+				convId,
+				new URLSearchParams({ cursor, limit: String(HISTORY_PAGE_SIZE) }),
+				requestToken,
+				requestProjectId
+			);
+			if (!historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId)) return;
+			const next = direction === 'before' ? [page, ...historyPages] : [...historyPages, page];
+			if (next.length > HISTORY_WINDOW_PAGES) {
+				if (direction === 'before') next.pop();
+				else next.shift();
+			}
+			applyHistoryPages(next, false);
+		} catch (cause) {
+			if (!historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId)) return;
+			if (cause instanceof ApiError && cause.status === 409) {
+				error = '대화 기록이 변경되어 최신 위치를 다시 불러왔습니다.';
+				try {
+					const latest = await requestMessagePage(
+						convId,
+						new URLSearchParams({ anchor: 'latest', limit: String(HISTORY_PAGE_SIZE) }),
+						requestToken,
+						requestProjectId
+					);
+					if (historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId)) {
+						applyHistoryPages([latest], true);
+					}
+				} catch (recoveryCause) {
+					if (historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId)) {
+						error = recoveryCause instanceof Error ? recoveryCause.message : '최신 대화 기록을 불러오지 못했습니다.';
+					}
+				}
+				return;
+			}
+			error = cause instanceof Error ? cause.message : '대화 기록을 불러오지 못했습니다.';
+		} finally {
+			if (!destroyed && activeConvId === convId && selectionGeneration === selection) historyLoading = false;
+		}
+	}
+
+	async function refreshHistoryAfterRun(
+		conversationId: string,
+		selection = selectionGeneration,
+		metrics: StreamMetrics | null = null
+	): Promise<boolean> {
+		if (activeConvId !== conversationId || tempMode) return false;
+		if (historyHasAfter || historyLoading) {
+			historyNewActivity = true;
+			return false;
+		}
+		const loaded = await loadMessages(conversationId, selection);
+		if (loaded && metrics && activeLeafId) metricsById.set(activeLeafId, metrics);
+		return loaded;
+	}
+
 	function syncSelectedModel() {
-		const m = lastAssistantModel(buildActivePath(allMessages, activeLeafId));
-		if (m && models.some((x) => x.model_name === m)) selectedModel = m;
+		const modelName = lastAssistantModel(allMessages);
+		if (modelName && models.some((model) => model.model_name === modelName)) selectedModel = modelName;
 	}
 
 	async function loadUsage() {
@@ -1067,12 +1181,12 @@
 		view = 'chat';
 		pendingWorkspaceId = null;
 		tempMode = false;
-		historyHasMore = false;
-		historyBeforeId = null;
+		historyPages = [];
+		historyNewActivity = false;
 		historyLoading = false;
 		closeSidebarOnMobile();
 		metricsById.clear(); // 런타임 tok/s 계측값은 대화 전환 시 초기화(누적 방지)
-		treeNodes = [];
+		allMessages = [];
 		activeConvId = conv.id;
 		if (projectId) saveActiveConversationId(projectId, conv.id);
 		if (conv.model_name) selectedModel = conv.model_name;
@@ -1098,8 +1212,8 @@
 		view = 'chat';
 		pendingWorkspaceId = null;
 		tempMode = false;
-		historyHasMore = false;
-		historyBeforeId = null;
+		historyPages = [];
+		historyNewActivity = false;
 		historyLoading = false;
 		closeSidebarOnMobile();
 		metricsById.clear();
@@ -1107,7 +1221,6 @@
 		newlyCreatedConversationId = null;
 		if (projectId) clearActiveConversationId(projectId);
 		allMessages = [];
-		treeNodes = [];
 		activeLeafId = null;
 		tempMessages = [];
 		error = null;
@@ -1137,14 +1250,13 @@
 		pendingWorkspaceId = null;
 		closeSidebarOnMobile();
 		tempMode = true;
-		historyHasMore = false;
-		historyBeforeId = null;
+		historyPages = [];
+		historyNewActivity = false;
 		historyLoading = false;
 		rememberTempThread(null);
 		if (projectId) clearActiveConversationId(projectId);
 		activeConvId = null;
 		allMessages = [];
-		treeNodes = [];
 		activeLeafId = null;
 		tempMessages = [];
 		error = null;
@@ -1421,7 +1533,7 @@
 					scheduleMetadataRefresh();
 					void executeContextPreview();
 					if (descriptor.conversation_id && activeConvId === descriptor.conversation_id && !tempMode) {
-						await loadMessages(descriptor.conversation_id, selectionGeneration);
+						await refreshHistoryAfterRun(descriptor.conversation_id, selectionGeneration);
 					}
 					return;
 				} else if (evt.type === 'run.failed' || evt.type === 'run.canceled') {
@@ -1707,7 +1819,7 @@
 					void executeContextPreview();
 					if (descriptor.conversation_id && activeConvId === descriptor.conversation_id && !tempMode) {
 						setConversationRun(descriptor.conversation_id, false);
-						await loadMessages(descriptor.conversation_id, selectionGeneration);
+						await refreshHistoryAfterRun(descriptor.conversation_id, selectionGeneration);
 						scheduleMetadataRefresh();
 					}
 					return;
@@ -1770,7 +1882,7 @@
 					!destroyed
 				) {
 					setConversationRun(conversationId, false);
-					await loadMessages(conversationId, selectionGeneration);
+					await refreshHistoryAfterRun(conversationId, selectionGeneration);
 				}
 				return;
 			}
@@ -1807,9 +1919,7 @@
 					setConversationRun(conversationId, false);
 					if (activeConvId === conversationId && !tempMode) {
 						const selection = selectionGeneration;
-						if (await loadMessages(conversationId, selection) && metrics && activeLeafId) {
-							metricsById.set(activeLeafId, metrics);
-						}
+						await refreshHistoryAfterRun(conversationId, selection, metrics);
 					}
 					scheduleMetadataRefresh();
 					void loadUsage();
@@ -1856,11 +1966,15 @@
 			return;
 		}
 		error = null;
-		input = '';
 		if (attachments.some((attachment) => attachment.status === 'uploading')) {
 			error = '첨부 업로드가 완료된 뒤 전송할 수 있습니다.';
 			return;
 		}
+		if (!tempMode && activeConvId && historyHasAfter) {
+			const loadedLatest = await replaceHistoryWindow('latest');
+			if (!loadedLatest) return;
+		}
+		input = '';
 		const inputParts: UserInputPart[] = [{ type: 'text', text }, ...toInputParts(attachments)];
 		attachments = [];
 		const clientTimezone = browserTimezone();
@@ -1938,9 +2052,7 @@
 				setConversationRun(convId!, false);
 				if (activeConvId === convId && !tempMode) {
 					const selection = selectionGeneration;
-					if (await loadMessages(convId!, selection) && metrics && activeLeafId) {
-						metricsById.set(activeLeafId, metrics);
-					}
+					await refreshHistoryAfterRun(convId!, selection, metrics);
 				}
 				scheduleMetadataRefresh();
 				void loadUsage();
@@ -2030,9 +2142,7 @@
 				setConversationRun(conversationId, false);
 				if (activeConvId === conversationId && !tempMode) {
 					const selection = selectionGeneration;
-					if (await loadMessages(conversationId, selection) && metrics && activeLeafId) {
-						metricsById.set(activeLeafId, metrics);
-					}
+					await refreshHistoryAfterRun(conversationId, selection, metrics);
 				}
 				scheduleMetadataRefresh();
 				void loadUsage();
@@ -2085,9 +2195,7 @@
 					setConversationRun(convId!, false);
 					if (activeConvId === convId && !tempMode) {
 						const selection = selectionGeneration;
-						if (await loadMessages(convId!, selection) && metrics && activeLeafId) {
-							metricsById.set(activeLeafId, metrics);
-						}
+						await refreshHistoryAfterRun(convId!, selection, metrics);
 					}
 					scheduleMetadataRefresh();
 					void loadUsage();
@@ -2123,9 +2231,7 @@
 				setConversationRun(conversationId, false);
 				if (activeConvId === conversationId && !tempMode) {
 					const selection = selectionGeneration;
-					if (await loadMessages(conversationId, selection) && metrics && activeLeafId) {
-						metricsById.set(activeLeafId, metrics);
-					}
+					await refreshHistoryAfterRun(conversationId, selection, metrics);
 				}
 				scheduleMetadataRefresh();
 				void loadUsage();
@@ -2137,24 +2243,23 @@
 
 	// --- 버전 전환 ---
 	async function switchVersion(messageId: string, direction: -1 | 1) {
-		if (streaming || tempMode || !activeConvId || !token || !projectId) return;
-		const msg = allMessages.find((m) => m.id === messageId);
-		if (!msg) return;
-		const targetLeaf = siblingLeafInDirection(treeNodes, msg, direction);
-		if (!targetLeaf) return;
+		if (streaming || historyLoading || tempMode || !activeConvId || !token || !projectId) return;
+		const message = allMessages.find((candidate) => candidate.id === messageId);
+		const siblingId = direction === -1 ? message?.branch?.previous_id : message?.branch?.next_id;
+		if (siblingId === null || siblingId === undefined) return;
+		const conversationId = activeConvId;
 		treeLoading = true;
 		try {
 			await api.patch(
-				`/api/v1/chat/conversations/${activeConvId}/active-leaf`,
-				{ message_id: targetLeaf },
+				`/api/v1/chat/conversations/${conversationId}/active-leaf`,
+				{ message_id: siblingId, descend: true },
 				token,
 				projectId
 			);
-			activeLeafId = targetLeaf; // 낙관적
-			await loadMessages(activeConvId);
+			await loadMessages(conversationId);
 			void executeContextPreview();
-		} catch (e) {
-			error = e instanceof Error ? e.message : '버전 전환에 실패했습니다';
+		} catch (cause) {
+			error = cause instanceof Error ? cause.message : '버전 전환에 실패했습니다';
 		} finally {
 			treeLoading = false;
 		}
@@ -2246,6 +2351,14 @@
 		untrack(() => {
 			invalidateContextPreview();
 			teardownAllTitlePolling();
+			const scope = `${$auth.userId ?? ''}:${projectId ?? ''}`;
+			if (!token || scope !== modelScope) {
+				models = [];
+				selectedModel = '';
+				modelsRefreshing = false;
+				modelsError = '';
+				modelScope = scope;
+			}
 			void (async () => {
 				await Promise.allSettled([restoreInitialSelection(), loadModels(), loadUsage()]);
 				// 보조: 에이전트·프로젝트·확장(tool/MCP/skill)은 초기 버스트에서 제외해 풀 경합 완화.
@@ -2399,7 +2512,6 @@
 		<div class="chat-workspace" class:empty-workspace={isEmpty} class:temp-mode={tempMode}>
 		<ChatWindow
 			activePath={displayPath}
-			treeNodes={treeSource}
 			{metricsById}
 			{models}
 			busy={streaming}
@@ -2412,9 +2524,14 @@
 			starterPrompts={lumenStarterPrompts}
 			onStarterPrompt={insertLumenStarterPrompt}
 			conversationKey={activeConvId ?? (tempMode ? tempThreadId ?? 'temporary' : '')}
-			hasOlder={historyHasMore}
-			loadingOlder={historyLoading}
-			onLoadOlder={loadOlderMessages}
+			hasBefore={historyHasBefore}
+			hasAfter={historyHasAfter}
+			loadingHistory={historyLoading}
+			newHistoryActivity={historyNewActivity}
+			onLoadBefore={activeConvId && !tempMode ? () => loadHistoryDirection('before') : undefined}
+			onLoadAfter={activeConvId && !tempMode ? () => loadHistoryDirection('after') : undefined}
+			onLoadFirst={activeConvId && !tempMode ? () => replaceHistoryWindow('first') : undefined}
+			onLoadLatest={activeConvId && !tempMode ? () => replaceHistoryWindow('latest') : undefined}
 			onCopy={copy}
 			{manualCompactionActivity}
 			onRegenerate={regenerate}
@@ -2505,6 +2622,9 @@
 	value={activeModelName}
 	onSelect={chooseModel}
 	onClose={() => (modelPickerOpen = false)}
+	onRefresh={() => void loadModels()}
+	refreshing={modelsRefreshing}
+	refreshError={modelsError}
 />
 
 <style>

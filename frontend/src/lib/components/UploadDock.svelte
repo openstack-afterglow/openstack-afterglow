@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { uploadQueue, type UploadJob } from '$lib/stores/uploadQueue';
+	import { Pill } from '$lib/components/ui';
 
 	let jobs = $state<UploadJob[]>([]);
 	let collapsed = $state(false);
@@ -129,11 +130,16 @@
 							</div>
 						{/if}
 
-						<div class="text-xs {j.status === 'error' ? 'text-red-400' : j.status === 'success' ? 'text-green-400' : 'text-ink-2'}">
-							{#if j.status === 'error'}
-								{j.error ?? '업로드 실패'}
-							{:else}
-								{statusLabel(j)}
+						<div class="flex items-center gap-2">
+							<div class="text-xs {j.status === 'error' ? 'text-state-danger-text' : j.status === 'success' ? 'text-state-success-text' : 'text-ink-2'}">
+								{#if j.status === 'error'}
+									{j.error ?? '업로드 실패'}
+								{:else}
+									{statusLabel(j)}
+								{/if}
+							</div>
+							{#if j.status === 'success' && j.sha256}
+								<Pill tone="success" size="xs" dot class="shrink-0">SHA-256 확인</Pill>
 							{/if}
 						</div>
 					</div>

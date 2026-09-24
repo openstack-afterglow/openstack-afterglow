@@ -22,11 +22,16 @@
 		dim: boolean;
 	}
 
+	/**
+	 * 트렁크 배지. 그려지는 배지는 **언제나 provider uplink** 다 —
+	 * `hudBadges` 게이트가 `trunkNetIds.length >= 2` 를 요구하는데
+	 * `trunkNetIds` 는 uplink 가 아닌 트렁크에 `[netId]` 한 개만 돌려주기 때문이다.
+	 * 그래서 캡션 분기(구 `uplink ? … : TRUNK_CAPTION`)를 두지 않는다.
+	 */
 	export interface HudBadgeItem {
 		key: string;
 		netId: string;
 		netName: string;
-		uplink: boolean;
 		sx: number;
 		sy: number;
 		rateText: string;
@@ -37,7 +42,7 @@
 <script lang="ts">
 	// 스크린 공간 HUD: 존 라벨 칩과 트렁크 배지. 버튼에만 pointer-events 를 준다.
 	import Pill from '$lib/components/ui/Pill.svelte';
-	import { TRUNK_CAPTION, TRUNK_TITLE, UPLINK_CAPTION, UPLINK_TITLE } from './canvasHelpers';
+	import { UPLINK_CAPTION, UPLINK_TITLE } from './canvasHelpers';
 
 	interface Props {
 		labels: readonly HudLabelItem[];
@@ -98,14 +103,14 @@
 				class:is-dim={b.dim}
 				data-hud-control
 				data-trunk-badge={b.key}
-				title={b.uplink ? UPLINK_TITLE : TRUNK_TITLE}
-				aria-label="{b.netName} 트렁크 배지 ({b.uplink ? UPLINK_CAPTION : TRUNK_CAPTION}) {b.rateText}"
+				title={UPLINK_TITLE}
+				aria-label="{b.netName} 트렁크 배지 ({UPLINK_CAPTION}) {b.rateText}"
 				style:--sx="{b.sx}px"
 				style:--sy="{b.sy}px"
 				onclick={() => onselectnet(b.netId)}
 			>
 				<span class="badge-rate">{b.rateText}</span>
-				<span class="badge-cap">{b.uplink ? UPLINK_CAPTION : TRUNK_CAPTION}</span>
+				<span class="badge-cap">{UPLINK_CAPTION}</span>
 			</button>
 		{/each}
 	{/if}

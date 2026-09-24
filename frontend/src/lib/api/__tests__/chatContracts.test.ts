@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import {
 	ChatContractError,
@@ -14,6 +15,37 @@ describe('chatContracts', () => {
 		expect(parseChatPartsForDisplay([{ type: 'future_provider_block', secret: 'never render' }])).toEqual([
 			{ type: 'unknown', original_type: 'future_provider_block' }
 		]);
+	});
+
+	it('accepts the prompt-cache usage kinds and still rejects unknown kinds', () => {
+		const component = (kind: string, source = 'executor') => ({
+			segment_id: 'executor:aggregate',
+			kind,
+			quantity: '10',
+			unit: 'token',
+			unit_price_usd: '0',
+			cost_usd: '0',
+			source,
+			model_name: 'claude-sonnet-4-6',
+			metadata: {}
+		});
+		const event = (components: unknown[]) => ({
+			event_id: 'run-1:3',
+			run_id: 'run-1',
+			seq: 3,
+			type: 'usage.updated',
+			created_at: '2026-09-23T00:00:00Z',
+			payload: { components, prompt_tokens: 60, completion_tokens: 10, raw_cost: '0', credited_cost: '0' }
+		});
+		const cacheKinds = ['cache_read_input_tokens', 'cache_creation_5m_input_tokens', 'cache_creation_1h_input_tokens'];
+		const advisorCacheKinds = ['advisor_cache_read_tokens', 'advisor_cache_creation_5m_tokens', 'advisor_cache_creation_1h_tokens'];
+		const parsed = parseChatRunEvent(event([
+			...cacheKinds.map((kind) => component(kind)),
+			...advisorCacheKinds.map((kind) => component(kind, 'advisor'))
+		]));
+		expect(parsed).toMatchObject({ type: 'usage.updated' });
+		expect(parsed.type === 'usage.updated' && parsed.payload.components.map((item) => item.kind)).toEqual([...cacheKinds, ...advisorCacheKinds]);
+		expect(() => parseChatRunEvent(event([component('future_cache_tokens')]))).toThrow(ChatContractError);
 	});
 
 	it('validates a canonical part-completed event and rejects cursor mismatch', () => {

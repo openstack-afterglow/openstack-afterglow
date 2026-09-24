@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -26,11 +27,16 @@ describe('VM creation helpers', () => {
 		expect(isGithubSshEligible({ adminMode: true, bootSource: 'image', selectedImageIsUbuntu: true })).toBe(false);
 	});
 
-	it('validates GitHub usernames and active SSH access source', () => {
+	it('validates GitHub usernames and requires a verified profile for GitHub SSH', () => {
 		expect(isValidGithubUsername('octo-cat')).toBe(true);
 		expect(isValidGithubUsername('octo--cat')).toBe(false);
 		expect(isValidGithubUsername('octo cat')).toBe(false);
-		expect(isSshAccessReady({ adminMode: false, sshAccessMode: 'github', keyName: null, githubUsername: 'octocat' })).toBe(true);
-		expect(isSshAccessReady({ adminMode: false, sshAccessMode: 'github', keyName: null, githubUsername: 'bad name' })).toBe(false);
+
+		const verified = { login: 'OctoCat', has_public_keys: true };
+		expect(isSshAccessReady({ adminMode: false, sshAccessMode: 'github', keyName: null, githubUsername: 'octocat', githubProfile: verified })).toBe(true);
+		expect(isSshAccessReady({ adminMode: false, sshAccessMode: 'github', keyName: null, githubUsername: 'octocat' })).toBe(false);
+		expect(isSshAccessReady({ adminMode: false, sshAccessMode: 'github', keyName: null, githubUsername: 'someone-else', githubProfile: verified })).toBe(false);
+		expect(isSshAccessReady({ adminMode: false, sshAccessMode: 'github', keyName: null, githubUsername: 'octocat', githubProfile: { login: 'OctoCat', has_public_keys: false } })).toBe(false);
+		expect(isSshAccessReady({ adminMode: false, sshAccessMode: 'keypair', keyName: 'kp-1', githubUsername: '', githubProfile: null })).toBe(true);
 	});
 });

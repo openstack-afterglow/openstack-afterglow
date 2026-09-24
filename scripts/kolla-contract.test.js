@@ -11,9 +11,9 @@ function readRepoFile(relativePath) {
 	return fs.readFileSync(path.join(rootDir, relativePath), "utf8")
 }
 
-function createInstalledServiceFixtures(directory, rolesDir, pythonPath) {
+function createInstalledServiceFixtures(directory, rolesDir, pythonPath, customPackages) {
 	const metadataDir = path.join(directory, "python-metadata")
-	const packages = [
+	const packages = customPackages || [
 		["drover", "drover", "0.2.22"],
 		["lumen", "lumen", "0.2.2"],
 		["waygate", "waygate", "0.1.3"],
@@ -958,4 +958,154 @@ test("Installer and uninstaller preserve root-package roles and operator files",
 	} finally {
 		fs.rmSync(temporaryDirectory, { recursive: true, force: true })
 	}
+})
+
+test("Installer rejects stale package versions and accepts promoted operator lock versions", () => {
+	const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "afterglow-kolla-promoted-"))
+	const kollaConfigPath = path.join(temporaryDirectory, "etc", "kolla")
+	const kollaAnsiblePath = path.join(temporaryDirectory, "share", "kolla-ansible")
+	const rolesDir = path.join(kollaAnsiblePath, "ansible", "roles")
+	const pluginConfigRoot = path.join(kollaConfigPath, "config", "afterglow")
+	const fakeKollaBinary = path.join(temporaryDirectory, "bin", "kolla-ansible")
+	const pythonResult = spawnSync("uv", ["run", "--project", path.join(rootDir, "backend"), "python", "-c", "import sys; print(sys.executable)"], { encoding: "utf8" })
+	assert.equal(pythonResult.status, 0, pythonResult.stderr)
+
+	try {
+		// Create an isolated promoted uv.lock where drover is promoted to 0.2.23
+		const promotedLockPath = path.join(temporaryDirectory, "uv.lock")
+		const currentLock = fs.readFileSync(path.join(rootDir, "deploy/kolla/operator/uv.lock"), "utf8")
+		const promotedLock = currentLock.replace(
+			/name = "drover"\nversion = "0\.2\.22"/,
+			'name = "drover"\nversion = "0.2.23"'
+		)
+		fs.writeFileSync(promotedLockPath, promotedLock)
+
+		// Set up environment where installed metadata still has stale drover 0.2.22
+		const staleMetadataDir = createInstalledServiceFixtures(
+			temporaryDirectory,
+			rolesDir,
+			path.join(temporaryDirectory, "bin", "python"),
+			[
+				["drover", "drover", "0.2.22"],
+				["lumen", "lumen", "0.2.2"],
+				["waygate", "waygate", "0.1.3"],
+				["palimpsest", "palimpsest-local", "0.1.4"],
+			]
+		)
+
+		const commandEnvironment = {
+			...process.env,
+			AFTERGLOW_REPO_DIR: rootDir,
+			AFTERGLOW_OPERATOR_LOCK: promotedLockPath,
+			KOLLA_ANSIBLE_BIN: fakeKollaBinary,
+			KOLLA_TEST_PYTHON: pythonResult.stdout.trim(),
+			KOLLA_TEST_METADATA: staleMetadataDir,
+			KOLLA_ANSIBLE_DIR: kollaAnsiblePath,
+			KOLLA_CONFIG_PATH: kollaConfigPath,
+		}
+
+		fs.mkdirSync(pluginConfigRoot, { recursive: true })
+		fs.writeFileSync(fakeKollaBinary, "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 })
+		fs.writeFileSync(path.join(kollaAnsiblePath, "ansible", "site.yml"), "---\n- import_playbook: gather-facts.yml\n")
+		fs.writeFileSync(path.join(kollaConfigPath, "multinode"), "[control]\ncontroller\n")
+		fs.writeFileSync(path.join(kollaConfigPath, "globals.yml"), "kolla_base: true\n")
+		fs.writeFileSync(path.join(pluginConfigRoot, "globals.yml"), "enable_afterglow: true\n", { mode: 0o640 })
+		fs.writeFileSync(path.join(pluginConfigRoot, "secrets.yml"), "afterglow_secret: test\n", { mode: 0o600 })
+
+		const installer = path.join(rootDir, "deploy/kolla/install.sh")
+
+		// 1. Run install.sh with stale metadata (0.2.22) against promoted lock (0.2.23) -> MUST FAIL!
+		const staleResult = spawnSync("bash", [installer], { encoding: "utf8", env: commandEnvironment })
+		assert.notEqual(staleResult.status, 0, "install.sh must fail when installed package version does not match promoted lock")
+		assert.match(staleResult.stderr, /Expected drover==0\.2\.23 in the active Kolla environment, found '0\.2\.22'/)
+
+		// 2. Upgrade installed metadata to 0.2.23 (simulating uv sync in Kolla environment)
+		fs.rmSync(path.join(staleMetadataDir, "drover-0.2.22.dist-info"), { recursive: true, force: true })
+		const newDistInfo = path.join(staleMetadataDir, "drover-0.2.23.dist-info")
+		fs.mkdirSync(newDistInfo, { recursive: true })
+		fs.writeFileSync(path.join(newDistInfo, "METADATA"), "Metadata-Version: 2.1\nName: drover\nVersion: 0.2.23\n")
+
+		// Run install.sh with updated metadata (0.2.23) against promoted lock -> MUST SUCCEED!
+		const successResult = spawnSync("bash", [installer], { encoding: "utf8", env: commandEnvironment })
+		assert.equal(successResult.status, 0, successResult.stderr)
+		assert.match(successResult.stdout, /Drover role verified at .* \(drover==0\.2\.23\)/)
+	} finally {
+		fs.rmSync(temporaryDirectory, { recursive: true, force: true })
+	}
+})
+
+test("Kolla operator tag-promotion script and workflow preserve immutable release contract", () => {
+	const script = readRepoFile("scripts/promote_kolla_role_tags.py")
+	const testScript = readRepoFile("scripts/test_promote_kolla_role_tags.py")
+	const workflow = readRepoFile(".github/workflows/promote-kolla-role-tags.yml")
+	const operatorReadme = readRepoFile("deploy/kolla/operator/README.md")
+	const kollaReadme = readRepoFile("deploy/kolla/README.md")
+	const installer = readRepoFile("deploy/kolla/install.sh")
+
+	assert.match(script, /TAG_RE = re\.compile\(r"\^v/)
+	assert.match(script, /def select_tag\(/)
+	assert.match(script, /def verify_tag_source\(/)
+	assert.match(script, /"--tag"/)
+	assert.match(workflow, /schedule:\n\s+- cron: /)
+	assert.match(workflow, /promote_kolla_role_tags\.py --latest/)
+	assert.match(workflow, /automation\/kolla-role-tags/)
+	assert.match(workflow, /git config user\.name "github-actions\[bot\]"/)
+	assert.match(operatorReadme, /python3 scripts\/promote_kolla_role_tags\.py --latest/)
+	assert.match(operatorReadme, /uv add --no-sync --tag vX\.Y\.Z "drover @ git\+/)
+	assert.match(kollaReadme, /Each root package promotion is bound to its immutable `vX\.Y\.Z` release tag\./)
+	assert.match(installer, /read_locked_version\.py/)
+	assert.doesNotMatch(installer, /DROVER_VERSION="0\.2\.22"/)
+
+	const unitResult = spawnSync(
+		"uv",
+		["run", "--no-project", "--python", "3.11", "python", "-m", "unittest", "scripts/test_promote_kolla_role_tags.py"],
+		{ cwd: rootDir, encoding: "utf8" }
+	)
+	assert.equal(unitResult.status, 0, unitResult.stderr || unitResult.stdout)
+})
+
+test("Cloud Shell Kolla contract is dedicated, immutable, and fail-closed", () => {
+	const defaults = readRepoFile("deploy/kolla/ansible/roles/afterglow/defaults/main.yml")
+	const configTasks = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/config.yml")
+	const keystone = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/preconditions_keystone.yml")
+	const precheck = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/precheck_cloud_shell.yml")
+	const baseConfig = readRepoFile("deploy/kolla/ansible/roles/afterglow/templates/afterglow.conf.j2")
+	const finalConfig = readRepoFile("deploy/kolla/ansible/roles/afterglow/templates/afterglow.kolla.conf.j2")
+	const sample = readRepoFile("deploy/kolla/globals.afterglow.sample.yml")
+
+	assert.match(defaults, /^afterglow_cloud_shell_project_name: "afterglow-cloud-shell"$/m)
+	assert.match(defaults, /^afterglow_cloud_shell_image: ""$/m)
+	assert.match(defaults, /^afterglow_service_cloud_shell_enabled: false$/m)
+	assert.match(configTasks, /Config \| Resolve Cloud Shell service project ID/)
+	assert.match(configTasks, /afterglow_cloud_shell_project_id != afterglow_service_project_id/)
+	assert.match(keystone, /module_name: openstack\.cloud\.role_assignment/)
+	assert.match(keystone, /Create exactly one project named/)
+	const registration = keystone.slice(0, keystone.indexOf("Keystone | Resolve pre-created Cloud Shell project"))
+	assert.doesNotMatch(registration, /afterglow_cloud_shell_project_name/)
+
+	for (const dependency of [
+		"enable_zun",
+		"enable_kuryr",
+		"enable_etcd",
+		"docker_configure_for_zun",
+		"containerd_configure_for_zun",
+		"zun_configure_for_cinder_ceph",
+		"zun-compute",
+	]) {
+		assert.match(precheck, new RegExp(dependency.replace("-", "\\-")))
+	}
+	assert.match(precheck, /@sha256:\[0-9a-fA-F\]\{64\}/)
+	assert.match(precheck, /security group rule list --ingress/)
+	assert.match(precheck, /appcontainer list -f json/)
+	assert.match(precheck, /volume list --limit 1 -f json/)
+	assert.match(precheck, /docker\n\s+- manifest\n\s+- inspect/)
+
+	for (const template of [baseConfig, finalConfig]) {
+		assert.match(template, /cloud_shell = \{\{ \(afterglow_service_cloud_shell_enabled/)
+		assert.match(template, /\[cloud_shell\]/)
+		assert.match(template, /service_project_id = "\{\{ afterglow_cloud_shell_project_id \}\}"/)
+		assert.match(template, /zun_websocket_origin = "\{\{ afterglow_cloud_shell_zun_websocket_origin \}\}"/)
+	}
+	assert.match(sample, /afterglow_cloud_shell_image: "ghcr\.io\/openstack-afterglow\/afterglow-cloud-shell@sha256:/)
+	assert.match(sample, /^afterglow_service_cloud_shell_enabled: false$/m)
 })

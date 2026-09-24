@@ -112,14 +112,17 @@ unexpected, `install.sh` aborts rather than replacing it.
 - **`waygate==0.1.3`** owns the `waygate` role.
 - **`palimpsest-local==0.1.4`** owns the `palimpsest` role.
 
-All roots require Python 3.12 or newer. There are no `*-kolla` distributions,
+All roots require Python 3.11 or newer. There are no `*-kolla` distributions,
 no `subdirectory = "deploy/kolla"` sources, and no plugin role becomes a Kolla
 default dependency merely by being installed.
 
-The operator manifest pins each root distribution to an immutable Git commit
-SHA on the sibling `dev` branches, and `operator/uv.lock` is generated from
-those pins. Commit SHAs (never tags) are the synchronization contract; bumping
-a service means recording its new verified commit here and relocking.
+Each root package promotion is bound to its immutable `vX.Y.Z` release tag.
+The operator manifest records that tag by name; `operator/uv.lock` records the
+resolved commit, so frozen synchronization gives every controller the same
+artifact. Branches, bare Git URLs, mutable `latest` labels, and tag rewrites
+are prohibited. The tag must exactly match root-package metadata and carry the
+package-owned role. The scheduled Afterglow workflow opens a reviewed PR when
+a newer eligible sibling tag appears; merging that PR is the promotion boundary.
 
 ### 1. Legacy Symlink Migration
 
@@ -150,26 +153,26 @@ for role in drover lumen waygate palimpsest; do
 done
 ```
 
-### 2. Record and Sync the Operator Dependencies
+### 2. Promote and Sync the Operator Dependencies
 
-The committed manifest and lock already pin the verified root commits.
-To move a service to a newer verified commit, record it without syncing a
-local environment:
+Do not make a Kolla control node discover a remote "latest" release at install
+time. From a reviewed Afterglow checkout, the scheduled
+`promote-kolla-role-tags` workflow (or its manual dispatch) records each new
+eligible sibling `vX.Y.Z` tag by name and opens a promotion PR. Review and
+merge that PR first; its lock is the release set to install.
+
+Then, from the promoted checkout:
 
 ```bash
 cd deploy/kolla/operator
-uv add --no-sync "drover @ git+https://github.com/openstack-afterglow/drover.git@<new-root-commit>"
-uv add --no-sync "lumen @ git+https://github.com/openstack-afterglow/lumen.git@<new-root-commit>"
-uv add --no-sync "waygate @ git+https://github.com/openstack-afterglow/waygate.git@<new-root-commit>"
-uv add --no-sync "palimpsest-local @ git+https://github.com/openstack-afterglow/palimpsest.git@<new-root-commit>"
-
-UV_PROJECT_ENVIRONMENT=/etc/kolla/.venv uv sync --inexact --no-install-project
+UV_PROJECT_ENVIRONMENT=/etc/kolla/.venv uv sync --locked --inexact --no-install-project
 ```
 
 `--no-install-project` is required: the operator manifest has dependencies but
 no application package. `--inexact` preserves unrelated packages in the Kolla
-environment. After the lock is regenerated and reviewed, use the organization
-approved locked/frozen synchronization policy for later updates.
+environment. `--locked` asserts that `pyproject.toml` matches `uv.lock` and fails
+if the manifest was edited without relocking, ensuring every controller installs
+the exact reviewed commits.
 
 ### 3. Installation & Registration Order
 
@@ -328,6 +331,31 @@ kolla-ansible reconfigure --tags afterglow
 Set `afterglow_public_endpoint_url` to the browser-facing HTTP(S) origin without a path. The role renders it into the frontend `ORIGIN`, backend CORS origin, frontend base URL, OAuth callback, and instance-health callback base. The DMSLab configuration uses `https://cloud.dmslab.re.kr`.
 
 `afterglow_public_api_base` is the browser API origin. DMSLab's ingress routes `https://cloud.dmslab.re.kr/api/v1` to the backend, so it uses the same HTTPS origin and avoids mixed-content requests.
+
+### Global Cloud Shell
+
+Cloud Shell is a Zun workload in an operator-owned dedicated project; it is not a long-running Kolla container. Before enabling it, create exactly one project, a routed network, and an egress-only security group with no ingress rules. The role never creates or deletes those resources. Set dedicated Cinder and Zun quotas on that project rather than changing tenant quotas.
+
+Required plugin globals:
+
+```yaml
+afterglow_service_zun_enabled: true
+afterglow_service_cloud_shell_enabled: true
+afterglow_cloud_shell_project_name: "afterglow-cloud-shell"
+afterglow_cloud_shell_project_id: "<dedicated-project-uuid>"
+afterglow_cloud_shell_image: "ghcr.io/openstack-afterglow/afterglow-cloud-shell@sha256:<64-hex-digest>"
+afterglow_cloud_shell_network_id: "<dedicated-network-uuid>"
+afterglow_cloud_shell_security_group: "afterglow-cloud-shell-egress"
+afterglow_cloud_shell_auth_url: "https://keystone.example.com:5000/v3"
+afterglow_cloud_shell_zun_websocket_origin: "wss://zun.example.com"
+afterglow_cloud_shell_volume_type: "ceph"
+```
+
+Stock Kolla must also enable `enable_zun`, `enable_kuryr`, `enable_etcd`, `docker_configure_for_zun`, `containerd_configure_for_zun`, and `zun_configure_for_cinder_ceph`, with at least one host in `zun-compute`. The Cloud Shell image must be an immutable multi-architecture manifest digest accessible from every Zun compute host.
+
+`kolla-ansible prechecks -i multinode --tags afterglow` verifies that the dedicated project differs from the general Afterglow service project, network and security group ownership match, ingress rules are empty, scoped Zun/Cinder calls succeed, and every Zun compute can inspect the image. Keystone setup grants the existing Afterglow service user `admin` in the pre-created project; it does not provision the project or networking.
+
+Disable `afterglow_service_cloud_shell_enabled` before rollback. Wait through the maximum session/reconciliation window and verify no managed Zun containers remain. Persistent home volumes are deliberately retained until the operator applies an explicit backup/deletion policy; remove the role assignment and dedicated project only after that decision. See [`docs/deployment.md`](../../docs/deployment.md#전역-cloud-shell-선택-배포) for runtime settings, verification, and rollback order.
 
 ### Kolla External HAProxy Route
 

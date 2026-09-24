@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_BETA_FEATURES } from '$lib/stores/betaFeatures';
 import { allNavItems } from './nav';

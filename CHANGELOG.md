@@ -7,6 +7,42 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **신규 모델 조회·검토 등록** — Lumen의 bounded live 모델 후보를 출처·완전성·오류와 함께 표시하고 표시명·입력/출력 단가를 검토한 뒤 등록·활성화하거나 비활성 저장한다. 별도 기능 편집에서만 명시 override를 적용하며, 조회 실패는 정적 fallback으로 숨기지 않는다. 열린 채팅 선택기는 목록 새로고침과 변경 신호로 새 모델을 반영하되 기존 유효 선택을 유지한다.
+- **Lumen 클라이언트별 연결 안내** — 채팅 API 키 설정에서 Codex, Claude Code, OpenAI, Claude 문서를 한꺼번에 펼치지 않고 네 개의 선택 버튼으로 분리했다. 기본 Codex 문서만 표시하고 선택한 클라이언트의 설치·환경 변수·설정 예제와 복사 동작만 교체하므로 긴 연결 안내를 훑지 않아도 된다.
+- **오브젝트 업로드 무결성·형식 검사** — 백엔드 프록시 업로드가 no-op 스캔 대신 실제 바이트를 본다. 업로드 스트림을 한 번 훑어 SHA-256을 계산해 브라우저 값과 비교하고, 저장된 객체는 ETag·part 수로 검증한 뒤에만 공개한다. 형식 정책은 좁게 유지해 인라인 렌더링 확장자(`.png`/`.pdf` 등)의 내용 위장과 확장자를 속인 실행 파일만 거부하고, 나머지 파일은 탐지한 형식을 기록만 한다. 검증된 digest와 탐지 형식은 객체 메타데이터와 업로드 dock의 `SHA-256 확인` 표시로 노출된다.
+
+### Fixed
+- **인증 장애의 숨은 재시도 제거** — Keystone token 검증의 `404 Failed to validate token`을 실제 세션 무효(401)로 처리하고 background refresh만 만료되어도 로그인 화면으로 전환한다. 실제 503·네트워크 장애에는 작성 중인 화면을 보존한 인증 복구 dialog에서 재시도·로그아웃을 제공하며, 진행 중 refresh가 실패해도 로컬 로그아웃은 완료한다. 서버 세션 폐기를 확인하지 못하면 이를 별도로 알린다.
+- **로컬 Lumen migration 이미지 누락 복구** — sibling plugin workspace의 현재 lock·설치·runtime source를 반영해 SQL 실행 전 `lumen_plugin_api` import 실패를 복구했다. Lumen 이미지 빌드가 stale lock을 거부하고 최종 non-root runtime에서 migration CLI import를 검사하도록 강화했으며, API/worker/controller의 amd64·arm64 실행과 로컬 migration 재실행을 확인했다.
+- **모델 조회·등록 경합 격리** — provider 전환, 화면 닫기, 재조회와 인증 scope 변경 뒤 도착한 응답을 버리고 bulk 등록의 provider·선택 snapshot을 고정한다. 등록 실패 항목만 남겨 재시도할 수 있다.
+- **채팅 클라이언트 탭 스크롤바 제거** — 공유 Tabs의 가로 스크롤 설정과 탭 테두리 때문에 연결 방법 선택줄에 1px 세로 스크롤바가 나타나던 문제를 해당 화면에서만 수정했다. 좁은 화면에는 네 탭을 두 열로 모두 노출하고, 긴 설정 코드 블록의 가로 스크롤은 유지한다.
+- **오브젝트 브라우저 폴더 진입 복구** — 컨테이너 탐색 상태 초기화 effect가 `prefix`를 의존성으로 추적해, 폴더를 열면 즉시 루트로 되돌아가던 문제를 고쳤다. 초기화는 이제 컨테이너·프로젝트가 바뀔 때만 실행된다.
+
+- **토폴로지 캔버스 휠 확대·축소 복구** — 휠 이벤트의 입력 장치를 추정해 마우스 휠은 확대, 트랙패드 두 손가락 스크롤은 화면 이동으로 가르던 휴리스틱을 없앴다. 브라우저가 장치를 알려주지 않아 근본적으로 맞출 수 없었고, 두 차례 완화(`wheelDeltaY` 120 배수 → 크기 임계)에도 실제 마우스에서 휠이 계속 이동으로 분류돼 확대가 되지 않았다 — macOS 는 마우스 휠에도 부드러운 스크롤을 적용해 소수점 `deltaY` 를 보내므로 "소수점 = 트랙패드" 규칙에서 이미 걸린다. 이제 **휠은 장치를 가리지 않고 항상 커서 기준 확대·축소**다. 배율이 델타에 비례해 트랙패드의 작은 델타는 작은 확대로 부드럽게 누적되며, 화면 이동은 배경 드래그·휠 버튼 드래그·화살표 키가 맡는다.
+- **로컬 Palimpsest Hub source build 복구** — dev Compose와 local-services preflight를 실제 sibling layout인 repository-root context + `docker/hub/Dockerfile`에 맞춰, backend/frontend 재생성 시 dependency build가 존재하지 않는 `hub/Dockerfile`에서 중단되던 회귀를 수정했다.
+- **Apple Silicon backend source build 복구** — Backend image가 OpenTofu `linux_amd64` archive를 고정하고 GitHub release를 한 번만 내려받던 계약을 `TARGETARCH` 기반 `amd64`/`arm64` 선택, 공식 SHA-256 pin 검증, bounded retry로 교체했다. OpenTofu acquisition을 별도 stage로 격리해 일시적 download 실패가 대용량 runtime package layer를 무효화하지 않는다.
+- **Kolla Notion worker 암호화 의존성 복구** — worker-only uv group에서 누락된 `afterglow-crypto`를 저장소의 `services/afterglow-crypto` 정본으로 backend/worker 모두에 regular-install하고, 최종 worker image 안의 Notion config 암복호화 smoke와 immutable-digest Kolla 검증 절차를 추가했다.
+
+## [1.24.0] - 2026-09-21
+
+### Added
+- **오브젝트 브라우저 그리드 보기** — 사용자 버킷 탐색기가 기본적으로 파일 카드 그리드를 보여준다. 폴더는 한 줄짜리 카드로 구분해 더블클릭·Enter로 진입하고, 이미지·PDF는 백엔드가 만든 320px WebP 축소본을 viewport 진입 시점에 가져와 표시하며, 나머지는 큰 형식 아이콘으로 대체한다. 미리보기는 모달로 열려 이미지·PDF·텍스트를 넓게 보여주고, 기존 트리 목록은 툴바 토글로 유지되며 선택은 브라우저에 저장된다.
+
+- **Lumen active-path history와 Claude Gateway 연결** — 채팅은 Lumen의 revision-fenced opaque cursor를 사용해 40개씩 최대 3페이지를 유지하고 처음/이전/다음/최신 탐색, prepend viewport 보존, stale-cursor 단일 복구, old-window 새 응답/전송 처리를 제공한다. Claude Code는 public device issue/poll을 Lumen과 직접 수행하고 Afterglow의 `/oauth/claude/authorize` shell 및 authenticated BFF로 현재 사용자·프로젝트 승인/거부를 완료하며, 설정 화면은 discovery가 광고한 Gateway 주소만 안내한다.
+- **전역 Cloud Shell** — Root header에서 현재 프로젝트 권한을 승인한 뒤 전용 service project의 ephemeral Zun 세션과 사용자×프로젝트별 5GiB Cinder 홈을 사용하는 binary xterm을 연다. 사용자 전역 single-session ticket/lease, project switch·logout cleanup, idle/max expiry와 orphan reconciliation, HMAC-managed reset, Origin·frame 검증, tmpfs Keystone credential, non-root/capability-free multi-architecture image를 포함한다. Mobile bottom sheet와 tablet/desktop resize dock, token-based 공통 terminal theme, Kubernetes/Helm/Kolla config·precheck, API/security/deployment 문서와 opt-in live scenario를 함께 제공한다.
+- **Waygate 명시적 테넌트 서브넷 연결** — VPN 상세 화면에서 프로젝트 내부 네트워크와 IPv4 서브넷을 검색·선택해 정확한 `{network_id, subnet_id, nat_mode}` 계약으로 연결하고, client 설정 다운로드·QR·연결 상태를 panel-safe 반응형 카드로 제공한다. Waygate는 선택된 서브넷의 Neutron port를 생성·추적하고 attach/detach 실패를 rollback하며, gateway VM callback은 operator가 지정한 직접 public HTTP(S) origin만 허용한다.
+
+### Fixed
+
+- **VM cloud-init bootstrap 경계와 GPU monitoring 설치 복구** — library가 없는 plain/GPU/data-mount VM에서 legacy OverlayFS artifact, layer health token/report, `union_*` Nova metadata를 제거하고 typed empty cloud-config list를 보장했다. GPU/data mount bootstrap은 독립 유지하며 DCGM GitHub tarball/custom unit을 NVIDIA repository의 `datacenter-gpu-manager`·`datacenter-gpu-manager-exporter`와 vendor units로 교체하고 repository architecture를 fail-closed 매핑한다.
+
+- **Cloud Shell terminal·live smoke 안전성** — 비동기 xterm mount 뒤 `ready` 전이가 stdin을 실제로 활성화하고, dock 최소화 중에도 같은 terminal instance와 scrollback을 유지한다. Destructive live smoke는 명시적 disposable username·확인 문구를 요구하고 기존 session/home이 있으면 mutation 전에 거부한다.
+- **선택적 Compose 재빌드의 Waygate callback parse 실패** — shared Compose anchor의 필수 변수 보간이 모든 service 선택 전에 실행되던 문제를 제거했다. 이미 실행 중인 dependency를 유지하는 `--no-deps` frontend/backend 재생성은 Waygate public URL 없이 parse할 수 있고, full local stack과 Waygate API/worker는 실제 VM-reachable callback URL을 계속 fail-closed로 요구한다.
+- **토폴로지 캔버스에서 마우스 휠로 확대가 되지 않던 문제** — 입력 장치 추정이 `wheelDeltaY` 가 120 의 배수가 아니면 전부 트랙패드로 떨어뜨려, 노치를 잘게 쪼개 보고하는 고해상도 휠(자유 회전 마우스 등)에서는 휠을 굴려도 화면만 움직였다. 이제 120 배수는 확정 증거로만 쓰고, 트랙패드 표식(가로 성분·소수점 델타·한 자릿수 픽셀 델타)이 하나도 없으면 마우스 휠로 본다. 트랙패드 두 손가락 스크롤의 화면 이동은 그대로다. 아울러 **마우스 휠 버튼(가운데) 드래그로 화면 이동**을 추가했다 — 노드 위에서 눌러도 노드를 잡지 않고 이동만 하며, 움직이지 않고 떼도 선택이 바뀌지 않고, 브라우저 기본 자동 스크롤과 가운데 클릭 동작은 막는다.
+- **토폴로지 트렁크 배지가 스위치 카드와 같은 숫자를 반복하던 문제** — 1.23.0 에서 provider uplink 배지만 접었으나, tenant 트렁크 배지는 `trunkNetIds` 가 항상 네트워크 하나라 `traffic.networks[netId]` 그대로였고 이는 바로 옆 가상 스위치 카드가 이미 찍는 값과 같았다. 이제 배지는 **네트워크를 2개 이상 합칠 때만** 그려 스위치 카드가 못 보여주는 것만 맡는다. 값은 사라지지 않고 스위치 카드에 그대로 있으며, 트렁크 선의 굵기(`switchThroughput` 추정)와 hover 설명도 유지된다. 배지 표시 임계도 카드가 보조 행을 숨기는 LOD 경계(`k < 0.5`)에 맞춰, 카드는 비었는데 배지만 떠 있던 구간을 없앴다.
+
 ## [1.23.0] - 2026-09-18
 
 ### Changed

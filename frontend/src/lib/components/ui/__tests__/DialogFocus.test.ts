@@ -46,11 +46,13 @@ describe('dialogFocus', () => {
 		render(DialogFocusFixture);
 		await fireEvent.click(screen.getByRole('button', { name: '잠금 열기' }));
 		const dialog = screen.getByRole('dialog', { name: '잠금 대화상자' });
+		const complete = within(dialog).getByRole('button', { name: '완료' });
+		await waitFor(() => expect(document.activeElement).toBe(complete));
 		await fireEvent.keyDown(document, { key: 'Escape' });
 		expect(screen.getByRole('dialog', { name: '잠금 대화상자' })).toBe(dialog);
-		await fireEvent.click(within(dialog).getByRole('button', { name: '대화상자 닫기' }));
-		expect(screen.getByRole('dialog', { name: '잠금 대화상자' })).toBe(dialog);
-		await fireEvent.click(within(dialog).getByRole('button', { name: '완료' }));
+		await fireEvent.keyDown(complete, { key: 'Tab' });
+		expect(document.activeElement).toBe(complete);
+		await fireEvent.click(complete);
 		expect(screen.queryByRole('dialog', { name: '잠금 대화상자' })).toBeNull();
 	});
 });

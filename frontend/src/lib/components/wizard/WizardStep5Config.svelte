@@ -1,15 +1,18 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { get } from 'svelte/store';
 	import { api, ApiError } from '$lib/api/client';
 	import { auth } from '$lib/stores/auth';
 	import { wizard } from '$lib/stores/wizard';
 	import { useVmCreate } from '$lib/stores/vmCreateStore.svelte';
 	import { Alert, Button, Field, TextInput, ToggleGroup } from '$lib/components/ui';
+	import { CLOUD_INIT_PRESETS } from '$lib/config/cloudInitPresets';
+
 	import {
 		isValidGithubUsername,
 		normalizeRequestedInstanceName,
 	} from '$lib/utils/instanceCreate';
+	import type { GithubSshHistoryEntry, GithubSshProfile } from '$lib/types/compute';
 
 	const s = useVmCreate();
 	const normalizedInstanceName = $derived(normalizeRequestedInstanceName($wizard.instanceName));
@@ -33,6 +36,91 @@
 	let cloudInitLibraryError = $state('');
 	let cloudInitLibraryLoading = $state(false);
 	let cloudInitPresetSaving = $state(false);
+	let cloudInitFileInput: HTMLInputElement;
+	let cloudInitSelection = $state('');
+	let githubLookupStatus = $state<'idle' | 'loading' | 'valid' | 'error'>('idle');
+	let githubLookupError = $state('');
+	let githubHistory = $state<GithubSshHistoryEntry[]>([]);
+	let githubLookupTimer: ReturnType<typeof setTimeout> | undefined;
+	let githubVerifiedFor = '';
+	let githubHistoryRequested = false;
+	let githubPendingFor = '';
+
+	function githubKey(value: string): string {
+		return value.trim().toLowerCase();
+	}
+
+	async function loadGithubHistory() {
+		const { token, projectId } = get(auth);
+		if (!token) return;
+		githubHistoryRequested = true;
+		try {
+			githubHistory = await api.get<GithubSshHistoryEntry[]>(
+				'/api/v1/instances/github-users/history',
+				token,
+				projectId ?? undefined,
+			);
+		} catch {
+			githubHistory = [];
+		}
+	}
+
+	async function verifyGithubUsername(username: string) {
+		const { token, projectId } = get(auth);
+		if (!token) return;
+		githubPendingFor = githubKey(username);
+		githubLookupStatus = 'loading';
+		githubLookupError = '';
+		if (get(wizard).githubProfile) wizard.update(w => ({ ...w, githubProfile: null }));
+		try {
+			const profile = await api.post<GithubSshProfile>(
+				'/api/v1/instances/github-users/lookup',
+				{ username },
+				token,
+				projectId ?? undefined,
+			);
+			if (githubKey(get(wizard).githubUsername) !== githubKey(username)) return;
+			githubVerifiedFor = githubKey(profile.login);
+			githubLookupStatus = 'valid';
+			wizard.update(w => ({ ...w, githubUsername: profile.login, githubProfile: profile }));
+			await loadGithubHistory();
+		} catch (error) {
+			if (githubKey(get(wizard).githubUsername) !== githubKey(username)) return;
+			githubLookupStatus = 'error';
+			githubLookupError = error instanceof ApiError ? error.message : 'GitHub 사용자를 확인하지 못했습니다.';
+		} finally {
+			if (githubPendingFor === githubKey(username)) githubPendingFor = '';
+		}
+	}
+
+	function selectGithubHistoryEntry(login: string) {
+		wizard.update(w => ({ ...w, githubUsername: login, githubProfile: null }));
+	}
+
+	$effect(() => {
+		const username = $wizard.githubUsername.trim();
+		const enabled = $wizard.sshAccessMode === 'github' && s.githubSshEligible;
+		clearTimeout(githubLookupTimer);
+		if (!enabled || !isValidGithubUsername(username)) {
+			githubVerifiedFor = '';
+			githubLookupStatus = 'idle';
+			githubLookupError = '';
+			if ($wizard.githubProfile) wizard.update(w => ({ ...w, githubProfile: null }));
+			return;
+		}
+		if (githubVerifiedFor === githubKey(username) || githubPendingFor === githubKey(username)) return;
+		githubLookupTimer = setTimeout(() => void verifyGithubUsername(username), 400);
+		return () => clearTimeout(githubLookupTimer);
+	});
+
+	$effect(() => {
+		if ($wizard.sshAccessMode === 'github' && s.githubSshEligible && !githubHistoryRequested) {
+			void loadGithubHistory();
+		}
+	});
+
+	onDestroy(() => clearTimeout(githubLookupTimer));
+
 
 	async function loadCloudInitLibrary() {
 		const { token, projectId } = get(auth);
@@ -94,6 +182,33 @@
 			await loadCloudInitLibrary();
 		} catch (error) {
 			cloudInitLibraryError = error instanceof ApiError ? error.message : 'cloud-init 항목을 삭제하지 못했습니다.';
+		}
+	}
+
+function applyCloudInitPreset(event: Event) {
+	const preset = CLOUD_INIT_PRESETS.find(item => item.id === (event.target as HTMLSelectElement).value);
+	if (preset) {
+		wizard.update(w => ({ ...w, cloudInit: preset.content }));
+		cloudInitSelection = preset.label;
+	}
+}
+
+	async function loadCloudInitFile(event: Event) {
+		const file = (event.target as HTMLInputElement).files?.[0];
+		(event.target as HTMLInputElement).value = '';
+		if (!file) return;
+		if (file.size > 65_536) {
+			cloudInitLibraryError = 'cloud-init 파일은 64 KiB 이하여야 합니다.';
+			return;
+		}
+		try {
+			const content = await file.text();
+			if (!content || content.length > 65_536 || content.includes('\u0000')) throw new Error();
+			wizard.update(w => ({ ...w, cloudInit: content }));
+			cloudInitSelection = `파일: ${file.name}`;
+			cloudInitLibraryError = '';
+		} catch {
+			cloudInitLibraryError = '비어 있지 않은 UTF-8 텍스트 cloud-init 파일만 불러올 수 있습니다.';
 		}
 	}
 
@@ -197,6 +312,34 @@
 			>
 				<TextInput id="github-username" bind:value={$wizard.githubUsername} placeholder="예: octocat" />
 			</Field>
+			{#if githubHistory.length > 0}
+				<div class="mt-2 flex flex-wrap items-center gap-1.5">
+					<span class="text-xs text-ink-2">최근 확인:</span>
+					{#each githubHistory as entry (entry.id)}
+						<Button
+							variant={githubKey($wizard.githubUsername) === githubKey(entry.login) ? 'secondary' : 'subtle'}
+							size="xs"
+							onclick={() => selectGithubHistoryEntry(entry.login)}
+						>
+							@{entry.login}
+						</Button>
+					{/each}
+				</div>
+			{/if}
+			<div class="mt-2 text-xs" aria-live="polite">
+				{#if githubLookupStatus === 'loading'}<span class="text-ink-2">GitHub 공개 SSH 키를 확인 중…</span>
+				{:else if githubLookupStatus === 'valid' && $wizard.githubProfile}
+					<span class="text-positive">
+						@{$wizard.githubProfile.login} 공개 SSH 키 확인됨{$wizard.githubProfile.name ? ` · ${$wizard.githubProfile.name}` : ''}
+					</span>
+					<a
+						class="ml-1.5 text-accent underline underline-offset-2"
+						href={$wizard.githubProfile.html_url}
+						target="_blank"
+						rel="noopener noreferrer"
+					>GitHub 프로필</a>
+				{:else if githubLookupStatus === 'error'}<span class="text-danger">{githubLookupError}</span>{/if}
+			</div>
 		{:else}
 			<label for="create-keypair" class="block text-[11.5px] font-semibold text-ink-2 tracking-tight flex items-center gap-1.5 mb-1.5">
 				키페어 <span class="text-red-400">*</span>
@@ -342,27 +485,38 @@
 	</label>
 	<div class="relative">
 		<div class="absolute top-2 right-2 flex gap-1 z-[2] bg-surface-base border border-line-2 rounded-md p-0.5">
-			<button type="button" disabled class="px-2 py-1 text-[10.5px] font-mono text-ink-2 rounded opacity-50 cursor-not-allowed">예제 ▾</button>
-			<button type="button" disabled class="px-2 py-1 text-[10.5px] font-mono text-ink-2 rounded opacity-50 cursor-not-allowed">YAML ✓</button>
+			<select aria-label="기본 cloud-init 프리셋" onchange={applyCloudInitPreset} class="px-2 py-1 text-[10.5px] font-mono bg-surface-base text-ink-1 rounded">
+				<option value="">기본 예제 ▾</option>
+				{#each CLOUD_INIT_PRESETS as preset}<option value={preset.id}>{preset.label}</option>{/each}
+			</select>
+			<Button type="button" variant="subtle" size="sm" onclick={() => cloudInitFileInput.click()}>파일 열기</Button>
+			<input bind:this={cloudInitFileInput} type="file" accept=".yaml,.yml,.txt,text/plain" class="sr-only" onchange={loadCloudInitFile} />
 		</div>
 		<textarea
 			id="cloud-init"
 			bind:value={$wizard.cloudInit}
 			rows="8"
 			placeholder="#cloud-config&#10;package_update: true&#10;packages:&#10;  - htop"
-			class="w-full p-3.5 font-mono text-xs bg-[#0f172a] text-ink-1 rounded-lg border border-line-2 outline-none min-h-[140px] resize-y leading-relaxed focus:border-action-warm"
+			class="w-full p-3.5 font-mono text-xs bg-surface-sunken text-ink-1 rounded-lg border border-line-2 outline-none min-h-[140px] resize-y leading-relaxed focus:border-action-warm"
 		></textarea>
 	</div>
-	<div class="mt-3 border border-line-2 rounded-lg p-3 space-y-3">
-		<div class="grid grid-cols-1 @lg/panel:grid-cols-[1fr_auto] gap-2 items-end">
-			<Field label="저장 이름" for="cloud-init-preset-name" help="프리셋은 계정에 암호화되어 저장됩니다.">
-				<TextInput id="cloud-init-preset-name" bind:value={cloudInitPresetName} placeholder="예: 초기 패키지 설치" />
-			</Field>
-			<Button type="button" variant="secondary" size="sm" onclick={saveCloudInitPreset} disabled={cloudInitPresetSaving}>
-				{cloudInitPresetSaving ? '저장 중...' : '현재 내용 저장'}
-			</Button>
+	{#if cloudInitSelection}
+		<p class="mt-2 text-xs text-positive" aria-live="polite">적용됨: {cloudInitSelection}</p>
+	{/if}
+	{#if $wizard.cloudInit.trim()}
+		<div class="mt-3 border border-line-2 rounded-lg p-3 space-y-3">
+			<div class="grid grid-cols-1 @lg/panel:grid-cols-[1fr_auto] gap-2 items-end">
+				<Field label="저장 이름" for="cloud-init-preset-name" help="프리셋은 계정에 암호화되어 저장됩니다.">
+					<TextInput id="cloud-init-preset-name" bind:value={cloudInitPresetName} placeholder="예: 초기 패키지 설치" />
+				</Field>
+				<Button type="button" variant="secondary" size="sm" onclick={saveCloudInitPreset} disabled={cloudInitPresetSaving}>
+					{cloudInitPresetSaving ? '저장 중...' : '현재 내용 저장'}
+				</Button>
+			</div>
 		</div>
+	{/if}
 
+	<div class="mt-3 border border-line-2 rounded-lg p-3 space-y-3">
 		<div class="grid grid-cols-1 @lg/panel:grid-cols-2 gap-2">
 			<div>
 				<label for="cloud-init-load" class="block text-[11.5px] font-semibold text-ink-2 mb-1">저장된 항목 불러오기</label>

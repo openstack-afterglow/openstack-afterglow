@@ -133,22 +133,21 @@ def build_instance_meta(
     health_id: str,
     health_token: str,
 ) -> dict:
-    """Nova metadata dict 생성. 순수 함수.
-
-    union_health_id는 health_token과 health_id가 모두 truthy일 때만 포함.
-    GPU-only 인스턴스(libraries 없음) 등에서 health_id를 빈 문자열로 전달하면 미포함.
-    """
-    meta: dict = {
-        "union_libraries": ",".join(resolved_libs) if resolved_libs else "none",
-        "union_strategy": strategy or "none",
-        "union_share_ids": (
-            ",".join([s.get("file_storage_id", "") for s in file_storages]) if file_storages else "none"
-        ),
-        "union_upper_volume_id": upper_volume_id or "none",
-        "scheduling": scheduling,
-    }
+    """Create Nova metadata while keeping retained Union fields layer-owned."""
+    meta: dict = {"scheduling": scheduling}
     if scheduling == "ha":
         meta["HA_Enabled"] = "True"
+    if not resolved_libs:
+        return meta
+
+    meta.update(
+        {
+            "union_libraries": ",".join(resolved_libs),
+            "union_strategy": strategy or "none",
+            "union_share_ids": ",".join(s.get("file_storage_id", "") for s in file_storages),
+            "union_upper_volume_id": upper_volume_id or "none",
+        }
+    )
     if health_token and health_id:
         meta["union_health_id"] = health_id
     return meta

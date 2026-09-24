@@ -20,6 +20,13 @@ export function formatStorage(gb: number): string {
 	return `${gb.toLocaleString()} GB`;
 }
 
+/** 오브젝트 바이트를 GB/MB/KB 로 포맷 (오브젝트 목록·그리드 공용) */
+export function formatObjectSize(bytes: number): string {
+	if (bytes >= 1073741824) return formatStorage(Math.round(bytes / 1073741824));
+	if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(1)} MB`;
+	return `${(bytes / 1024).toFixed(1)} KB`;
+}
+
 /** 긴 MIME 타입을 짧은 라벨로 변환 (예: application/vnd.openxmlformats-...presentation → PPTX) */
 const MIME_SHORT: Record<string, string> = {
 	'application/pdf': 'PDF',

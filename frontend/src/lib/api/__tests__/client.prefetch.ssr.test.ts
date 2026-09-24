@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it, vi } from 'vitest';
 
 const { mockFetch } = vi.hoisted(() => ({ mockFetch: vi.fn() }));

@@ -65,6 +65,9 @@ EXEMPT_ROUTERS: set[str] = {
     "k3s/pods.py",  # TODO: Phase C/D — k3s pod ops
     "k3s/secrets.py",  # TODO: Phase C/D — k3s secret ops
     "k3s/shell.py",  # ephemeral shell ticket — no OS resource cache state
+    # Global Cloud Shell tickets and workspace resets read Zun/Cinder state directly;
+    # this router has no app resource-cache namespace to invalidate.
+    "cloud_shell.py",
     "k3s/templates.py",  # TODO: Phase C/D — k3s cluster templates
     "k3s/workloads.py",  # TODO: Phase C/D — k3s workload ops
     "union/layers.py",  # TODO: Phase C/D — Union layers
@@ -131,6 +134,12 @@ EXEMPT_HANDLERS: set[str] = {
     "create_announcement_endpoint",
     "update_announcement_endpoint",
     "delete_announcement_endpoint",
+    # GitHub SSH verification: writes only the caller's own DB-backed GitHub
+    # verification history, which GET /instances/github-users/history reads
+    # straight from the DB. The GitHub profile lookup cache is keyed by GitHub
+    # login and intentionally survives (rate-limit protection); no per-project
+    # OpenStack resource cache or mutation count is affected.
+    "lookup_github_ssh_user",
     # Palimpsest inline Dockerfile build: the handler only creates a LayerImportJob
     # row. Artifacts and profiles appear later, inside run_dockerfile_import_job,
     # which is where `afterglow:union_layer:*` is invalidated. Invalidating at
@@ -138,6 +147,8 @@ EXEMPT_HANDLERS: set[str] = {
     "build_from_inline_dockerfile",
     # Plan preview is read-only despite being POST (the body carries the Dockerfile).
     "preview_inline_dockerfile_plan",
+    # Remote Dockerfile fetch is read-only despite being POST (the body carries the URL).
+    "fetch_dockerfile_from_url",
     "mark_announcement_read",
     # 사용자별 튜토리얼(투어) 진행 이력 upsert — DB에서 매 요청 직접 읽는 per-user 상태로,
     # cached_call/app 캐시 레이어를 거치지 않으며 per-project OpenStack 리소스 캐시와도

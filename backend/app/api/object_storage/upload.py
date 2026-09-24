@@ -1,20 +1,19 @@
-"""백엔드 프록시 업로드 흐름 (Phase 9).
+"""백엔드 프록시 업로드 흐름.
 
 흐름:
   1. multipart/form-data 로 파일 수신 (FastAPI UploadFile)
   2. 컨테이너 소유권 검증 (swift.get_container_metadata)
-  3. quarantine 버킷 ensure (boto3 ensure_bucket)
-  4. boto3 streaming upload (upload_fileobj + TransferConfig, 5GB+ 자동 multipart)
-  5. 보안 스캔 placeholder (_scan_object — Phase 10 에서 ClamAV 등 연동)
+  3. 무결성/형식 검사 (`upload_inspection.inspect_upload`)
+  4. quarantine 버킷 ensure 후 boto3 streaming upload (5GB+ 자동 multipart)
+  5. 저장된 객체 검증 (`verify_quarantine_object`)
   6. server-side copy → target 버킷, quarantine 원본 삭제
   7. 메타데이터 반환
 
-브라우저 → RGW 직접 PUT 의 CORS 차단 문제를 회피.
+브라우저 → RGW 직접 PUT 의 CORS 차단을 회피한다.
 
 취소(cancel): 클라가 connection 을 끊으면 disconnect watcher 가 cancel_event 를
-set → boto3 Callback 이 다음 part 시점에 UploadCanceled raise → multipart 자동
-abort → quarantine 정리. copy 단계까지 진입한 경우는 server-side 라 짧으므로
-중단하지 않음.
+set → inspection loop 와 boto3 Callback 이 UploadCanceled raise → multipart 자동
+abort → quarantine 정리.
 """
 
 from __future__ import annotations
@@ -25,19 +24,16 @@ import threading
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 
-from app.api.deps import get_os_conn, get_token_info
+from app.api.deps import get_os_conn_write, get_token_info
 from app.api.object_storage.containers import _sanitize_object_name
 from app.config import get_settings
+from app.services import cache, upload_inspection
 from app.services import s3 as s3_svc
 from app.services import swift as swift_svc
+from app.services.cache import invalidation
 
 router = APIRouter(tags=["object-storage-upload"])
 _logger = logging.getLogger(__name__)
-
-
-def _scan_object(client, bucket: str, key: str) -> bool:
-    """보안 스캔 placeholder. ClamAV/VirusTotal 등 동기 호출 위치 (Phase 10)."""
-    return True
 
 
 @router.post("/{container}/upload")
@@ -46,17 +42,16 @@ async def upload_object(
     request: Request,
     file: UploadFile = File(...),
     prefix: str = Form(""),
-    conn=Depends(get_os_conn),
+    sha256: str | None = Form(None, pattern=r"^[0-9a-f]{64}$"),
+    conn=Depends(get_os_conn_write),
     token_info: dict = Depends(get_token_info),
 ):
-    """백엔드 프록시 업로드: 클라 → backend (form) → quarantine S3 → 검증 → target S3.
+    """클라 → backend (form) → quarantine S3 → 검증 → target S3.
 
-    - 5GB+ 자동 multipart (boto3 upload_fileobj + TransferConfig)
-    - 검증 실패 시 quarantine 객체 정리, 400
-    - 클라 disconnect 시 boto3 Callback 으로 UploadCanceled raise → multipart abort
-    - 모든 예외 시 quarantine 정리 보장
+    - 검사 실패 400, 저장 불일치 502, 취소 499. 모든 실패 경로에서 quarantine 정리.
+    - `sha256` 은 선택이다. 프론트엔드는 256 MiB 이하 파일에만 계산해 보낸다.
     """
-    _logger.warning(
+    _logger.info(
         "[upload-entry] container=%s prefix=%r filename=%r content_type=%r size=%r",
         container,
         prefix,
@@ -84,12 +79,15 @@ async def upload_object(
     settings = get_settings()
     max_bytes = settings.app_max_upload_gb * 1024**3
     incoming_size = getattr(file, "size", None)
-    if incoming_size is not None and incoming_size > max_bytes:
+    if incoming_size is None:
+        file.file.seek(0, 2)
+        incoming_size = file.file.tell()
+        file.file.seek(0)
+    if incoming_size > max_bytes:
         raise HTTPException(
             status_code=413,
             detail=f"업로드 파일이 최대 허용 크기({settings.app_max_upload_gb}GB)를 초과합니다",
         )
-
     content_type = file.content_type or "application/octet-stream"
 
     cancel_event = threading.Event()
@@ -118,6 +116,13 @@ async def upload_object(
             _logger.warning("disconnect watcher 오류", exc_info=True)
 
     def _do_pipeline() -> dict:
+        inspection = upload_inspection.inspect_upload(
+            file.file,
+            file.filename or "",
+            content_type,
+            expected_sha256=sha256,
+            should_cancel=cancel_event.is_set,
+        )
         client = s3_svc.get_user_s3_client(
             token_info["token"],
             token_info["user_id"],
@@ -130,14 +135,30 @@ async def upload_object(
                 quarantine_bucket,
                 object_name,
                 file.file,
-                content_type,
+                inspection.content_type,
                 cancel_event=cancel_event,
+                metadata={
+                    "sha256": inspection.sha256,
+                    "detected-content-type": inspection.detected_content_type or "unknown",
+                },
             )
             if cancel_event.is_set():
                 raise s3_svc.UploadCanceled("client disconnected")
-            if not _scan_object(client, quarantine_bucket, object_name):
-                raise HTTPException(status_code=400, detail="보안 스캔 실패")
-            return s3_svc.move_to_target(client, quarantine_bucket, container, object_name)
+            s3_svc.verify_quarantine_object(
+                client,
+                quarantine_bucket,
+                object_name,
+                expected_size=inspection.size,
+                expected_md5=inspection.md5,
+            )
+            meta = s3_svc.move_to_target(
+                client, quarantine_bucket, container, object_name, expected_size=inspection.size
+            )
+            return {
+                **meta,
+                "sha256": inspection.sha256,
+                "detected_content_type": inspection.detected_content_type,
+            }
         except BaseException:
             # 모든 종료 경로에서 quarantine 정리 (성공 시는 move_to_target 가 이미 삭제)
             _safe_delete_quarantine(client, quarantine_bucket, object_name)
@@ -148,18 +169,25 @@ async def upload_object(
         meta = await asyncio.to_thread(_do_pipeline)
     except s3_svc.UploadCanceled:
         _logger.info("upload aborted: container=%s name=%s", container, object_name)
-        # 499 = "Client Closed Request" (nginx 관행). 클라는 이미 connection
-        # 닫혔으므로 응답은 도달하지 않음. 로그/메트릭 분류용.
         raise HTTPException(status_code=499, detail="업로드가 취소되었습니다")
+    except upload_inspection.UploadRejected as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except s3_svc.IntegrityError:
+        _logger.error("저장 무결성 검증 실패: container=%s name=%s", container, object_name, exc_info=True)
+        raise HTTPException(
+            status_code=502, detail="무결성 검증 실패: 저장된 객체가 업로드 내용과 일치하지 않습니다"
+        ) from None
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         _logger.exception("upload 실패: container=%s name=%s", container, object_name)
-        raise HTTPException(status_code=500, detail=f"업로드 실패: {e!s:.200}")
+        raise HTTPException(status_code=500, detail="업로드에 실패했습니다")
     finally:
         cancel_event.set()
         watch_task.cancel()
 
+    await cache.invalidate(f"afterglow:swift:{token_info['project_id']}:*")
+    await invalidation.invalidate_mutation_count("swift", token_info["project_id"])
     return {"success": True, **meta}
 
 

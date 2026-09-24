@@ -65,7 +65,9 @@ The base backend optionally reads `.env`; frontend never receives backend secret
 
 ### 2. Start Services
 
-For current-source development, provide sibling checkouts `../lumen`, `../waygate`, `../drover`, and `../palimpsest`; the first three require `docker/Dockerfile` and Palimpsest requires `docker/hub/Dockerfile`. Docker Compose 2.24+, Python 3.12+, and actual OpenStack credentials are required. Set the dedicated `[openstack] service_project_id` in the private config or `OS_SERVICE_PROJECT_ID` in `.env`; there is no admin-project fallback.
+For current-source development, provide sibling checkouts `../lumen`, `../waygate`, `../drover`, and `../palimpsest`; the first three require `docker/Dockerfile`. Palimpsest requires `docker/hub/Dockerfile`, which copies `hub/src` and the Hub package metadata, so Compose uses the `../palimpsest` repository root as its build context. Docker Compose 2.24+, Python 3.12+, and actual OpenStack credentials are required. Set the dedicated `[openstack] service_project_id` in the private config or `OS_SERVICE_PROJECT_ID` in `.env`; there is no admin-project fallback.
+
+Backend source builds select the OpenTofu archive matching BuildKit `TARGETARCH` (`amd64` or `arm64`). Release downloads use bounded retries for transient GitHub 5xx responses and must match the SHA-256 pinned from the official release manifest. Unsupported architectures fail explicitly, and the OpenTofu download stage is isolated from the large runtime-package layer.
 
 ```bash
 npm run services:up
@@ -73,6 +75,10 @@ npm run services:up
 # Prepare private inputs for explicit Compose commands:
 npm run services:config
 docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml up -d --build --wait
+
+# Keep running dependencies; rebuild and recreate only Afterglow frontend/backend:
+docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml \
+  up -d --no-deps --force-recreate --build backend frontend
 
 # Development-only monitoring:
 docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml --profile monitoring up -d
@@ -99,9 +105,13 @@ than dev DNS and accept explicit trusted HTTPS endpoints in production.
 See [endpoint examples and precedence](../openstack-service-catalog.md#로컬-direct-서비스-엔드포인트-오버라이드-direct-service-endpoint-overrides).
 
 The reverse Lumen → Afterglow connection uses `LUMEN_MCP_CONTROL_PLANE_URL` (dev default
-`http://backend:8000`). Browser `PUBLIC_API_BASE` and remote-VM
-`WAYGATE_CALLBACK_BASE_URL`/`DROVER_CALLBACK_BASE_URL` are separate: use addresses reachable
-from those callers, never container DNS or the development host's loopback for remote VMs.
+`http://backend:8000`). Browser `PUBLIC_API_BASE` and the remote-VM Waygate callback are
+separate. Full-stack preparation or Waygate startup requires `WAYGATE_PUBLIC_BASE_URL` to be
+an HTTP(S) origin reachable from gateway VMs; `services:config` preserves the validated value
+in private `compose.env`, and Compose passes it as `WAYGATE_CALLBACK_BASE_URL`. Never use
+container DNS, localhost, loopback, or an Afterglow BFF path. A targeted `--no-deps`
+frontend/backend recreation can parse the manifest without this value when Waygate is already
+running, but starting Waygate with an empty value fails closed in its API/worker startup validation.
 
 Development keeps the existing `afterglow-local-services` project, volume identities and encryption keys. `.local-services/` is private (0700); the config snapshot is 0640 and only its mounting services receive the file's GID through `group_add`, preserving non-root image users on Linux. Keys and generated `compose.env` remain 0600; none of these files may be printed or committed. Datastore URLs are literal local addresses, preventing shell/environment production database settings from redirecting local migrations. Local Drover API/worker/migration explicitly disable Sentinel and clear its host list so copied production settings cannot redirect the cache. Sibling service traffic defaults to Compose DNS and accepts explicit endpoint selection. OpenStack itself remains real and external. Missing sibling source fails before startup; there is no installed-image development fallback.
 
@@ -318,7 +328,77 @@ helm template afterglow helm/afterglow --namespace afterglow \
   --set secrets.databaseUrl='mysql+asyncmy://afterglow:<db-password>@mariadb/afterglow'
 ```
 
+## Optional Global Cloud Shell Deployment
+
+Cloud Shell never runs a user shell in the Afterglow backend. It creates a per-user × logical-project Cinder home and a per-session Zun container in one operator-created **dedicated OpenStack project**. That project must differ from both the general Afterglow service project and every user tenant.
+
+### OpenStack prerequisites
+
+1. Create exactly one dedicated project and pin its UUID. Grant the Afterglow service user `admin` in that project; user tokens never manage Zun or Cinder lifecycle resources.
+2. Create a routed network and an egress-only security group with zero ingress rules in that project. Afterglow and its Kolla role validate these resources but never create or delete the project, router, network, or security group.
+3. Enable Zun, Kuryr, etcd, Docker/containerd Zun integration, Cinder-backed Zun volume mounts, and at least one `zun-compute`. The backend must reach Keystone, Cinder, Zun HTTP, and the Zun exec WebSocket endpoint.
+4. Publish the `cloud-shell` image as a `linux/amd64` + `linux/arm64` manifest and configure the exact `@sha256:<manifest-digest>`. Mutable or bare tags are not a production contract.
+5. Apply Cinder volume/gigabyte and Zun container/CPU/RAM quotas to the dedicated project, not to user tenants. There is one concurrent session per user globally, but each user × logical project may retain one home volume.
+
+```toml
+[services]
+zun = true
+cloud_shell = true
+
+[cloud_shell]
+service_project_id = "<dedicated-project-uuid>"
+image = "ghcr.io/openstack-afterglow/afterglow-cloud-shell@sha256:<64-hex-digest>"
+network_id = "<dedicated-routed-network-uuid>"
+security_group = "afterglow-cloud-shell-egress"
+auth_url = "https://keystone.example.com:5000/v3"
+interface = "public"
+volume_type = "ceph"
+home_size_gib = 5
+cpu = 1.0
+memory_mib = 1024
+idle_timeout_seconds = 1200
+max_session_seconds = 3600
+ticket_ttl_seconds = 60
+reconcile_interval_seconds = 60
+zun_websocket_origin = "wss://zun.example.com"
+```
+
+`auth_url` and `zun_websocket_origin` are fixed trusted HTTPS/WSS backend destinations, not browser configuration. Do not add redirect or untrusted HTTP fallback. `SECRET_KEY` signs managed volume/container metadata; rotating it while homes remain intentionally prevents automatic adoption of those old resources.
+
+### Kolla, Kubernetes, and Helm
+
+For Kolla, set `afterglow_service_zun_enabled`, `afterglow_service_cloud_shell_enabled`, and every required `afterglow_cloud_shell_*` value in `/etc/kolla/config/afterglow/globals.yml`. Stock Kolla must also enable `enable_zun`, `enable_kuryr`, `enable_etcd`, `docker_configure_for_zun`, `containerd_configure_for_zun`, and `zun_configure_for_cinder_ceph`.
+
+```bash
+cd /etc/kolla
+kolla-ansible prechecks -i multinode --tags afterglow
+kolla-ansible deploy -i multinode --tags afterglow
+```
+
+The precheck fails closed on project isolation, network/security-group ownership, any ingress rule, project-scoped Zun/Cinder access, the configured volume type, and image-manifest access from every `zun-compute`. Keystone setup resolves exactly one pre-created project and only ensures the Afterglow service user's role assignment.
+
+`generate_k8s.py` renders the same `[services]` and `[cloud_shell]` contract into the ConfigMap. Helm exposes matching `services.zun`, `services.cloudShell`, and `cloudShell.*` values. Permit backend egress to Keystone/Cinder/Zun/WSS and the registry, and preserve WebSocket upgrades on the existing `/api/` ingress.
+
+### Verification and rollback
+
+```bash
+npm run test:cloud-shell
+npm run test:cloud-shell:image
+npm run test:kolla:contract
+
+# Destructive live scenario: approve, CLI, close, home reuse, reset.
+# The identity must exactly match the disposable [user] integration credential.
+CLOUD_SHELL_LIVE_USER_IDENTITY=cloud-shell-smoke \
+CLOUD_SHELL_LIVE_CONFIRM=reset-disposable-home \
+npm run test:live:cloud-shell
+```
+
+The live target requires a non-production integration user, Redis, enabled Cloud Shell configuration, real Zun/Cinder/Neutron, and the published image. `CLOUD_SHELL_LIVE_USER_IDENTITY` must exactly match the selected integration username, and `CLOUD_SHELL_LIVE_CONFIRM=reset-disposable-home` must be set independently. The test fails before mutation if its initial status has an active session or any existing home, so it cannot adopt or delete an ordinary user's workspace. It resets only the home it created from an absent/inactive baseline. Check catalog/DNS and approved outbound connectivity from the shell without printing tokens. The default maximum session is one hour; validate expiry/reconciliation with contract tests or a dedicated staging deployment rather than lowering production timeouts for a smoke run.
+
+To roll back, deploy `cloud_shell=false` first so no new ticket or WebSocket route is available. After the maximum session window and reconciler cleanup, verify that the dedicated project has no managed Zun containers. Home volumes are not deleted automatically: apply an explicit backup/retention/deletion policy to signature-matching managed volumes, then remove the service-user role and operator-owned network/project last. Never delete tenant volumes or a resource selected only by name.
+
 ---
+
 
 ## ArgoCD GitOps Deployment
 

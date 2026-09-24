@@ -1,7 +1,7 @@
 import { browser } from '$app/environment';
 import { get } from 'svelte/store';
 import { siteConfig } from '$lib/config/site';
-import { auth, logoutInProgress } from '$lib/stores/auth';
+import { auth, authRecovery, logoutInProgress } from '$lib/stores/auth';
 import { ApiError } from '$lib/api/errors';
 import {
 	getActiveMockupProfile,
@@ -102,6 +102,7 @@ async function handleUnauthorized(): Promise<void> {
 	// Mark synchronously before any import or refresh wait so concurrent 401s
 	// cannot run a competing clear-and-redirect sequence.
 	_redirectingTo401 = true;
+	const rejectedToken = get(auth).token;
 	try {
 		if (_refreshPromise) {
 			try {
@@ -112,14 +113,14 @@ async function handleUnauthorized(): Promise<void> {
 			}
 		}
 
-		if (get(logoutInProgress) || AUTH_PUBLIC_PATHS.has(window.location.pathname)) return;
+		if (get(logoutInProgress)) return;
 		const [{ clearAuth }, { goto }] = await Promise.all([
 			import('$lib/stores/auth'),
 			import('$app/navigation'),
 		]);
-		if (get(logoutInProgress)) return;
+		if (get(logoutInProgress) || get(auth).token !== rejectedToken) return;
 		clearAuth();
-		await goto('/login', { replaceState: true });
+		if (!AUTH_PUBLIC_PATHS.has(window.location.pathname)) await goto('/login', { replaceState: true });
 	} catch {
 		if (!get(logoutInProgress)) window.location.replace('/login');
 	} finally {
@@ -225,6 +226,7 @@ async function tryRefresh({ allowDuringRevocation = false }: { allowDuringRevoca
 				signal: AbortSignal.timeout(15_000),
 			});
 		} catch (err) {
+			if (get(auth).token !== state.token) return get(auth).token;
 			_refreshSettledFailure = {
 				kind: 'retryable',
 				accessToken: state.token,
@@ -232,8 +234,11 @@ async function tryRefresh({ allowDuringRevocation = false }: { allowDuringRevoca
 				error: err,
 				retryAt: Date.now() + DEFAULT_REFRESH_RETRY_COOLDOWN_MS,
 			};
+			if (state.token) authRecovery.set({ token: state.token, retryAt: _refreshSettledFailure.retryAt });
 			throw err;
 		}
+
+		if (get(auth).token !== state.token) return get(auth).token;
 
 		if (!res.ok) {
 			// refresh 토큰은 1회용(회전 시 폐기) — 동시에 다른 탭이 회전에 성공해
@@ -263,6 +268,7 @@ async function tryRefresh({ allowDuringRevocation = false }: { allowDuringRevoca
 			} catch {
 				detail = await res.text().catch(() => res.statusText);
 			}
+			if (get(auth).token !== state.token) return get(auth).token;
 			const err = new ApiError(res.status, detail);
 			const retryAfterHeader = res.headers?.get?.('Retry-After') ?? res.headers?.get?.('retry-after');
 			const retryAt = res.status === 429
@@ -275,6 +281,7 @@ async function tryRefresh({ allowDuringRevocation = false }: { allowDuringRevoca
 				error: err,
 				retryAt,
 			};
+			if (state.token) authRecovery.set({ token: state.token, retryAt });
 			throw err;
 		}
 
@@ -299,8 +306,12 @@ async function tryRefresh({ allowDuringRevocation = false }: { allowDuringRevoca
 }
 
 /** Refresh the current session through the shared, coalesced refresh flow. */
-export function refreshSession(): Promise<string | null> {
-	return tryRefresh();
+export async function refreshSession(): Promise<string | null> {
+	const token = await tryRefresh();
+	if (!token && get(auth).token && !_sessionRevocationInProgress && !get(logoutInProgress)) {
+		await handleUnauthorized();
+	}
+	return token;
 }
 
 /**

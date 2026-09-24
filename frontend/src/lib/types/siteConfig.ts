@@ -11,6 +11,7 @@ export interface PublicSiteConfig {
 		magnum: boolean;
 		manila: boolean;
 		zun: boolean;
+		cloud_shell: boolean;
 		k3s: boolean;
 		trove: boolean;
 		swift: boolean;

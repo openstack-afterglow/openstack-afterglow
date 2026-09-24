@@ -5,6 +5,7 @@
 	import { api, ApiError } from '$lib/api/client';
 	import { projectList, type Project } from '$lib/stores/projectList';
 	import LoadingSpinner from './LoadingSpinner.svelte';
+	import { cloudShell } from '$lib/stores/cloudShell.svelte';
 	import CreateProjectModal from './projects/CreateProjectModal.svelte';
 
 	let { direction = 'up' }: { direction?: 'up' | 'down' } = $props();
@@ -13,6 +14,31 @@
 	let error = $state('');
 	let isOpen = $state(false);
 	let dropdownRef: HTMLDivElement | null = $state(null);
+	let triggerRef: HTMLButtonElement | null = $state(null);
+	let menuRef: HTMLDivElement | null = $state(null);
+	let menuStyle = $state('');
+
+	function portal(node: HTMLElement) {
+		document.body.appendChild(node);
+		queueMicrotask(positionMenu);
+		return { destroy: () => node.remove() };
+	}
+
+	function positionMenu() {
+		if (!triggerRef || typeof window === 'undefined') return;
+		if (window.innerWidth < 640) {
+			menuStyle = 'left:0;right:0;bottom:0;width:100%;';
+			return;
+		}
+		const rect = triggerRef.getBoundingClientRect();
+		const viewportPadding = 8;
+		const gap = 4;
+		const width = Math.min(256, window.innerWidth - viewportPadding * 2);
+		const left = Math.min(Math.max(viewportPadding, rect.left), window.innerWidth - viewportPadding - width);
+		menuStyle = direction === 'down'
+			? `left:${left}px;top:${rect.bottom + gap}px;width:${width}px;`
+			: `left:${left}px;bottom:${window.innerHeight - rect.top + gap}px;width:${width}px;`;
+	}
 	let showCreateModal = $state(false);
 	const mockupActive = $derived($page.data.mockup?.active === true);
 	const showInitialLoading = $derived(
@@ -25,6 +51,7 @@
 		if (project.id === $auth.projectId) { isOpen = false; return; }
 
 		switching = true;
+		await cloudShell.close('project-switch', { keepDock: false });
 		try {
 			const resp = await api.post<{
 				token: string;
@@ -70,10 +97,21 @@
 	}
 
 	function handleClickOutside(event: MouseEvent) {
-		if (dropdownRef && !dropdownRef.contains(event.target as Node)) {
-			isOpen = false;
-		}
+		const target = event.target as Node;
+		if (!dropdownRef?.contains(target) && !menuRef?.contains(target)) isOpen = false;
 	}
+
+	$effect(() => {
+		if (!isOpen || typeof window === 'undefined') return;
+		const update = () => positionMenu();
+		queueMicrotask(update);
+		window.addEventListener('resize', update);
+		window.addEventListener('scroll', update, true);
+		return () => {
+			window.removeEventListener('resize', update);
+			window.removeEventListener('scroll', update, true);
+		};
+	});
 
 	onMount(() => {
 		document.addEventListener('click', handleClickOutside);
@@ -83,6 +121,8 @@
 
 <div class="relative" bind:this={dropdownRef}>
 	<button
+		bind:this={triggerRef}
+		type="button"
 		onclick={() => {
 			if (switching) return;
 			isOpen = !isOpen;
@@ -91,6 +131,8 @@
 			}
 		}}
 		disabled={switching}
+		aria-haspopup="menu"
+		aria-expanded={isOpen}
 		class="flex items-center gap-2 px-3 py-1.5 bg-surface-sunken hover:bg-surface-selected disabled:bg-surface-sunken/50 rounded-lg text-sm transition-colors"
 	>
 		{#if showInitialLoading || switching}
@@ -107,7 +149,7 @@
 	</button>
 
 	{#if isOpen && !showInitialLoading}
-		<div class="fixed left-0 bottom-0 w-full sm:absolute sm:left-0 sm:w-64 max-h-[50vh] bg-surface-base border border-line-2 rounded-t-lg sm:rounded-lg shadow-[var(--shadow-restraint)] sm:shadow-[var(--shadow-popover)] z-50 overflow-hidden {direction === 'down' ? 'sm:bottom-auto sm:top-full sm:mt-1' : 'sm:top-auto sm:bottom-full sm:mb-1'}">
+		<div use:portal bind:this={menuRef} role="menu" style={menuStyle} class="fixed left-0 bottom-0 w-full sm:bottom-auto sm:w-64 max-h-[50vh] bg-surface-base border border-line-2 rounded-t-lg sm:rounded-lg shadow-[var(--shadow-restraint)] sm:shadow-[var(--shadow-popover)] z-[var(--z-popover)] overflow-hidden">
 			{#if error}
 				<div class="p-3 text-sm text-red-400">{error}</div>
 			{:else if $projectList.projects.length === 0}

@@ -26,9 +26,9 @@
 		reasoning?: string;
 		/** Durable run journal에서 복원한 순차 실행 과정(draft 전용). */
 		activityItems?: RunActivityItem[];
-		/** 형제 버전 정보 (index/total). total>1 이면 ‹ n/m › 노출 */
-		siblingIndex?: number;
-		siblingTotal?: number;
+		/** Server-projected adjacent sibling availability for branch navigation. */
+		hasPreviousVersion?: boolean;
+		hasNextVersion?: boolean;
 		/** 스트리밍 중 여부(액션 숨김) */
 		busy?: boolean;
 		/** 에이전트 바인딩 중 — 모델 선택 대신 단순 재생성만 */
@@ -48,8 +48,8 @@
 		toolItems = [],
 		reasoning = '',
 		activityItems = [],
-		siblingIndex = 1,
-		siblingTotal = 1,
+		hasPreviousVersion = false,
+		hasNextVersion = false,
 		busy = false,
 		modelLocked = false,
 		modelDisplayName = null,
@@ -186,13 +186,13 @@
 
 		{#snippet footer()}
 			<div class="actions" class:user={isUser} class:retryable>
-				{#if siblingTotal > 1}
+				{#if hasPreviousVersion || hasNextVersion}
 					<div class="versions">
-						<button type="button" class="ver-arrow" disabled={siblingIndex <= 1 || busy} onclick={onPrevVersion} aria-label="이전 버전" title="이전 버전">
+						<button type="button" class="ver-arrow" disabled={!hasPreviousVersion || busy} onclick={onPrevVersion} aria-label="이전 버전" title="이전 버전">
 							<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round" /></svg>
 						</button>
-						<span class="ver-count">{siblingIndex}/{siblingTotal}</span>
-						<button type="button" class="ver-arrow" disabled={siblingIndex >= siblingTotal || busy} onclick={onNextVersion} aria-label="다음 버전" title="다음 버전">
+						<span class="ver-count">버전</span>
+						<button type="button" class="ver-arrow" disabled={!hasNextVersion || busy} onclick={onNextVersion} aria-label="다음 버전" title="다음 버전">
 							<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round" /></svg>
 						</button>
 					</div>

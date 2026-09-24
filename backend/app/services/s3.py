@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import hmac
 import logging
 
 _logger = logging.getLogger(__name__)
@@ -109,6 +110,14 @@ class UploadCanceled(Exception):
     """클라이언트 disconnect 등으로 업로드가 취소되었을 때 raise."""
 
 
+MULTIPART_THRESHOLD = 8 * 1024 * 1024
+MULTIPART_CHUNKSIZE = 8 * 1024 * 1024
+
+
+class IntegrityError(Exception):
+    """저장된 객체가 업로드한 내용과 일치하지 않는다."""
+
+
 def stream_upload_to_quarantine(
     client,
     quarantine_bucket: str,
@@ -116,12 +125,16 @@ def stream_upload_to_quarantine(
     file_stream,
     content_type: str,
     cancel_event=None,
+    metadata: dict[str, str] | None = None,
 ) -> None:
     """boto3 upload_fileobj + TransferConfig 로 quarantine 버킷에 streaming upload.
 
-    multipart_threshold=8MB, multipart_chunksize=8MB, max_concurrency=4.
-    5 GB 이상은 자동 multipart upload, 5 TiB 까지 단일 호출로 처리.
+    5 GB 이상은 자동 multipart upload, 5 TiB 까지 단일 호출로 처리한다.
     file_stream 은 SpooledTemporaryFile 등 read/seek 지원 객체여야 한다.
+
+    metadata 는 업로드 시점에 부착한다. 이후 server-side copy 는 기본
+    ``MetadataDirective=COPY`` 이므로 ContentType 과 user metadata 가 대상
+    객체까지 그대로 따라간다.
 
     cancel_event (threading.Event) 가 set 되면 다음 part 진행 시점에
     UploadCanceled 를 raise → boto3 가 multipart 자동 abort.
@@ -129,8 +142,8 @@ def stream_upload_to_quarantine(
     from boto3.s3.transfer import TransferConfig
 
     config = TransferConfig(
-        multipart_threshold=8 * 1024 * 1024,
-        multipart_chunksize=8 * 1024 * 1024,
+        multipart_threshold=MULTIPART_THRESHOLD,
+        multipart_chunksize=MULTIPART_CHUNKSIZE,
         max_concurrency=4,
         use_threads=True,
     )
@@ -139,14 +152,46 @@ def stream_upload_to_quarantine(
         if cancel_event is not None and cancel_event.is_set():
             raise UploadCanceled("client disconnected")
 
+    extra: dict = {"ContentType": content_type}
+    if metadata:
+        extra["Metadata"] = metadata
+
     client.upload_fileobj(
         Fileobj=file_stream,
         Bucket=quarantine_bucket,
         Key=key,
-        ExtraArgs={"ContentType": content_type},
+        ExtraArgs=extra,
         Config=config,
         Callback=_progress,
     )
+
+
+def verify_quarantine_object(client, bucket: str, key: str, *, expected_size: int, expected_md5: str) -> dict:
+    """HEAD 한 번으로 저장된 바이트가 업로드한 내용과 같은지 확인한다.
+
+    단일 PUT 객체의 ETag 는 content MD5 이므로 그대로 비교한다. Multipart 는
+    part 별 MD5 의 다이제스트라 내용 해시가 아니며, ``s3transfer`` 가 chunk
+    크기를 조정할 수 있는 영역(10 000 parts 초과, 약 80 GiB)은 이 경로의
+    상한(기본 10 GB) 밖이므로 size 와 part 수를 불변식으로 검증한다.
+    객체 전체를 다시 내려받지 않는다 — 10 GiB 업로드가 20 GiB 다운로드가 된다.
+    """
+    head = client.head_object(Bucket=bucket, Key=key)
+    size = int(head.get("ContentLength", -1))
+    etag = (head.get("ETag") or "").strip('"')
+    if size != expected_size:
+        raise IntegrityError("size mismatch")
+    if "-" not in etag:
+        if not hmac.compare_digest(etag, expected_md5):
+            raise IntegrityError("etag mismatch")
+        return head
+    try:
+        parts = int(etag.rsplit("-", 1)[1])
+    except ValueError:
+        raise IntegrityError("etag mismatch") from None
+    expected_parts = max(1, -(-expected_size // MULTIPART_CHUNKSIZE))
+    if parts != expected_parts:
+        raise IntegrityError("multipart part count mismatch")
+    return head
 
 
 def copy_object(client, src_bucket: str, src_key: str, dst_bucket: str, dst_key: str) -> None:
@@ -168,16 +213,18 @@ def move_to_target(
     quarantine_bucket: str,
     target_bucket: str,
     key: str,
+    expected_size: int | None = None,
 ) -> dict:
     """quarantine → target server-side copy + quarantine 원본 삭제.
 
-    boto3 client.copy() 가 RGW 내부에서 CopyObject (≤5 GiB) 또는
-    UploadPartCopy multipart copy (>5 GiB) 를 자동 선택. 모두 server-side
-    동작이므로 백엔드는 명령어만 보내고 데이터는 RGW 안에서 직접 이동 —
-    백엔드 통과 0 바이트, 5 GiB+ 파일도 추가 chunking 불요.
+    데이터는 RGW 안에서 이동하므로 백엔드 통과 바이트는 0이다. expected_size 가
+    주어지면 승격된 객체의 크기를 확인하고, 어긋나면 대상 객체를 지운 뒤 실패한다.
     """
     copy_object(client, quarantine_bucket, key, target_bucket, key)
     head = client.head_object(Bucket=target_bucket, Key=key)
+    if expected_size is not None and int(head.get("ContentLength", -1)) != expected_size:
+        delete_object(client, target_bucket, key)
+        raise IntegrityError("target size mismatch")
     delete_object(client, quarantine_bucket, key)
     return {
         "name": key,

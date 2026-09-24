@@ -32,6 +32,7 @@ const { goto, clearAuth, mockFetch, auth, logoutInProgress, setAuth, session, lo
 vi.mock('$app/navigation', () => ({ goto }));
 vi.mock('$lib/stores/auth', () => ({
 	auth,
+	authRecovery: { set: vi.fn() },
 	clearAuth,
 	getMockupProfile: () => null,
 	isMockAuthActive: () => false,
@@ -83,6 +84,13 @@ describe('unauthorized API redirect', () => {
 
 		expect(goto).toHaveBeenCalledWith('/login', { replaceState: true });
 		expect(replace).not.toHaveBeenCalled();
+	});
+
+	it('clears a rejected background refresh without waiting for a protected request', async () => {
+		const { refreshSession } = await import('../client');
+		await expect(refreshSession()).resolves.toBeNull();
+		await vi.waitFor(() => expect(clearAuth).toHaveBeenCalledOnce());
+		expect(goto).toHaveBeenCalledWith('/login', { replaceState: true });
 	});
 
 	it('uses location.replace when Svelte navigation rejects', async () => {

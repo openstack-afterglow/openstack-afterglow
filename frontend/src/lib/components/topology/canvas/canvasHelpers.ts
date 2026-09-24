@@ -56,41 +56,16 @@ export const NET_KIND_LABEL: Record<CanvasNetKind, string> = {
 	internal: '내부',
 };
 
-/** 하위 네트워크 스위치 쪽 라우터 트렁크 배지. */
-export const TRUNK_CAPTION = '네트워크 합산';
-export const TRUNK_TITLE = '연결 네트워크 합산 트래픽 · 라우터 exporter 없음';
-
-/** provider 스위치 쪽 라우터 uplink 배지. 라우터가 직접 무는 하위 네트워크들만 합산한다. */
+/**
+ * 트렁크 배지 캡션. **uplink 용 한 쌍뿐이다** — 배지는 `trunkNetIds.length >= 2` 일 때만
+ * 그려지는데 그 조건은 uplink 트렁크에서만 성립한다(다른 트렁크는 `[netId]` 한 개).
+ * 하위 스위치 쪽 트렁크 값은 배지가 아니라 그 스위치 노드 카드가 직접 보여준다.
+ * 라우터가 직접 무는 하위 네트워크들만 합산한다 — provider 네트워크 전체 합이 아니다.
+ */
 export const UPLINK_CAPTION = '하위망 합산';
 export const UPLINK_TITLE = '라우터별 하위 네트워크 합산 트래픽 · 라우터 exporter 없음';
 
-/**
- * 휠 이벤트가 **마우스 휠**인지 추정한다. 브라우저는 입력 장치를 알려주지 않으므로 휴리스틱이다.
- *
- * - Firefox: 마우스 휠은 줄/페이지 단위(`deltaMode !== 0`), 트랙패드는 픽셀 단위(0).
- * - Chrome·Safari: 둘 다 픽셀 단위지만 비표준 `wheelDeltaY` 가 마우스 휠에서 120 의 배수로 온다(노치 단위).
- * - 트랙패드는 가로 성분(`deltaX`)과 소수점 델타가 흔하다 — 하나라도 있으면 트랙패드로 본다.
- *
- * 판단 근거가 없으면 **트랙패드로 본다**(= 이동). 잘못 확대되는 것이 잘못 이동하는 것보다 훨씬 거슬리고,
- * 트랙패드 관성 스크롤을 확대로 오판하면 뷰가 크게 튄다.
- */
-export function isMouseWheel(e: WheelEvent): boolean {
-	if (e.deltaMode !== 0) return true;
-	if (e.deltaX !== 0) return false;
-	if (!Number.isInteger(e.deltaY)) return false;
-	const notch = (e as WheelEvent & { wheelDeltaY?: number }).wheelDeltaY;
-	if (typeof notch === 'number' && notch !== 0) return Math.abs(notch) % 120 === 0;
-	return false;
-}
-
-/**
- * 휠 제스처의 의도. `ctrl`/`⌘`+휠과 트랙패드 핀치(브라우저가 ctrlKey wheel 로 보고)는 항상 확대·축소이고,
- * 그 밖에는 마우스 휠이면 확대·축소, 트랙패드 두 손가락 스크롤이면 위치 이동이다.
- */
-export function wheelIntent(e: WheelEvent): 'zoom' | 'pan' {
-	if (e.ctrlKey || e.metaKey) return 'zoom';
-	return isMouseWheel(e) ? 'zoom' : 'pan';
-}
+/* 휠 제스처 처리는 `TopologyCanvas.svelte` 의 `onWheel` 에 있다(장치 추정 없음). */
 
 /**
  * 스파크라인 폴리라인 좌표. `peak` 를 rx/tx 공용 상한으로 써서 두 선을 같은 축에 올린다.

@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { onMount, untrack } from 'svelte';
+	import { onDestroy, onMount, untrack } from 'svelte';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { get } from 'svelte/store';
-	import { auth, authReady, isLoggedIn, isAdmin, clearAuth, logoutInProgress, enterMockAuth, exitMockAuth, getMockupProfile, isMockAuthActive } from '$lib/stores/auth';
+	import { auth, authReady, authRecovery, isLoggedIn, isAdmin, clearAuth, logoutInProgress, enterMockAuth, exitMockAuth, getMockupProfile, isMockAuthActive } from '$lib/stores/auth';
 	import { theme, resolvedTheme } from '$lib/stores/theme';
 	import { api, ApiError, getBaseUrl, refreshSession, beginSessionRevocation, endSessionRevocation } from '$lib/api/client';
 	import ProjectSelector from '$lib/components/ProjectSelector.svelte';
@@ -21,6 +21,9 @@
 	import CmdPalette from '$lib/components/CmdPalette.svelte';
 	import { palette } from '$lib/stores/palette';
 	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
+	import Modal from '$lib/components/ui/Modal.svelte';
+	import Card from '$lib/components/ui/Card.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
 	import MockupBanner from '$lib/components/mockup/MockupBanner.svelte';
@@ -28,6 +31,10 @@
 	import { buildMockAuth } from '$lib/mockup/auth';
 	import { MOCKUP_QUERY_KEY, MOCKUP_SESSION_KEY, MOCKUP_SERVICE_OVERRIDES, isMockupProfileId, isMockupPathAllowed, getMockupHomePath } from '$lib/mockup/contracts';
 	import type { MockupProfileId } from '$lib/mockup/contracts';
+	import CloudShellTrigger from '$lib/components/cloud-shell/CloudShellTrigger.svelte';
+	import CloudShellAuthorizeDialog from '$lib/components/cloud-shell/CloudShellAuthorizeDialog.svelte';
+	import CloudShellDock from '$lib/components/cloud-shell/CloudShellDock.svelte';
+	import { cloudShell } from '$lib/stores/cloudShell.svelte';
 	import './layout.css';
 
 	let { children, data } = $props();
@@ -46,10 +53,36 @@
 	const themedFaviconPath = $derived(resolveFaviconPath($siteConfig, effectiveBrandTheme));
 	const mockup = $derived(data.mockup);
 	const mockupAdminActive = $derived(mockup.active && mockup.profile === 'admin');
+	const publicRoutes = ['/', '/login', '/auth/gitlab/callback', '/oauth/claude/authorize'];
 	let lastVerifiedToken: string | null = null;
 	let authVerifyNonce = $state(0);
 	let unreadFetchSerial = 0;
 	let sidebarTrigger = $state<HTMLButtonElement | null>(null);
+	let recoveryBusy = $state(false);
+	let recoveryClock = $state(Date.now());
+	const authenticationUnavailable = $derived(
+		!!$auth.token && $authRecovery?.token === $auth.token
+		&& !mockup.active && !isMockAuthActive() && !publicRoutes.includes($page.url.pathname),
+	);
+	const recoveryWait = $derived(Math.max(0, Math.ceil((($authRecovery?.retryAt ?? 0) - recoveryClock) / 1000)));
+	$effect(() => {
+		if (!authenticationUnavailable) return;
+		recoveryClock = Date.now();
+		const timer = window.setInterval(() => { recoveryClock = Date.now(); }, 1000);
+		return () => window.clearInterval(timer);
+	});
+
+	async function retryAuthentication() {
+		if (recoveryBusy || $logoutInProgress || recoveryWait > 0) return;
+		recoveryBusy = true;
+		try {
+			await refreshSession();
+		} catch {
+			// The coordinator keeps the recovery screen and updates its cooldown.
+		} finally {
+			recoveryBusy = false;
+		}
+	}
 
 	replaceSiteConfig(initialSiteConfig);
 
@@ -220,12 +253,25 @@
 		($auth.username ?? 'U').slice(0, 2).toUpperCase()
 	);
 
-	const publicRoutes = ['/', '/login', '/auth/gitlab/callback'];
-	const projectAgnosticRoutes = ['/', '/login', '/auth/gitlab/callback', '/select-project'];
+	const projectAgnosticRoutes = ['/', '/login', '/auth/gitlab/callback', '/select-project', '/oauth/claude/authorize'];
 
 	const isInvitationRoute = $derived($page.url.pathname.startsWith('/invitations/'));
-	const shelllessRoutes = ['/', '/login', '/auth/gitlab/callback', '/select-project'];
+	const shelllessRoutes = ['/', '/login', '/auth/gitlab/callback', '/select-project', '/oauth/claude/authorize'];
 	const showAppChrome = $derived($isLoggedIn && !shelllessRoutes.includes($page.url.pathname) && !isInvitationRoute);
+	$effect(() => {
+		const token = $auth.token;
+		const projectId = $auth.projectId;
+		const enabled = $siteConfig.services.cloud_shell && !mockup.active && !isMockAuthActive();
+		if (!enabled || !token || !projectId) {
+			cloudShell.bindIdentity(null);
+			return;
+		}
+		cloudShell.bindIdentity({
+			token,
+			projectId,
+			projectName: $auth.projectName || projectId,
+		});
+	});
 	$effect(() => {
 		if (!$sidebarOpen || typeof document === 'undefined') return;
 		const onKeyDown = (event: KeyboardEvent) => {
@@ -265,6 +311,7 @@
 				);
 				if (get(auth).token !== token || mockup.active || isMockAuthActive()) return;
 				auth.update((s) => ({ ...s, isSystemAdmin: me.is_system_admin === true, roles: me.roles ?? s.roles, federated: me.auth_method === 'federated' }));
+				authRecovery.set(null);
 				authReady.set(true);
 			} catch (err) {
 				if (get(auth).token === token && !mockup.active && !isMockAuthActive()) {
@@ -272,6 +319,10 @@
 						authReady.set(false);
 						clearAuth();
 					} else {
+						authReady.set(false);
+						if (get(authRecovery)?.token !== token) {
+							authRecovery.set({ token, retryAt: Date.now() + 5000 });
+						}
 						setTimeout(() => {
 							if (get(auth).token === token && !mockup.active && !isMockAuthActive() && lastVerifiedToken === token) {
 								lastVerifiedToken = null;
@@ -337,32 +388,45 @@
 		};
 	});
 
+	onDestroy(() => {
+		void cloudShell.close('destroy', { keepDock: false });
+	});
+
 	// 테마 변경 시 <html> 클래스 업데이트
 	$effect(() => {
 		if (typeof document === 'undefined') return;
 		document.documentElement.classList.toggle('light', themeReady && $resolvedTheme === 'light');
 	});
 
-	async function logout() {
+	async function logout(confirmed = false) {
 		if ($logoutInProgress || logoutConfirming) return;
-		logoutConfirming = true;
-		let confirmed: boolean;
-		try {
-			confirmed = await confirmDialog('로그아웃하시겠습니까?');
-		} finally {
-			logoutConfirming = false;
+		if (!confirmed) {
+			logoutConfirming = true;
+			try {
+				confirmed = await confirmDialog('로그아웃하시겠습니까?');
+			} finally {
+				logoutConfirming = false;
+			}
+			if (!confirmed) return;
 		}
-		if (!confirmed) return;
+
+		await cloudShell.close('logout', { keepDock: false });
 
 		logoutInProgress.set(true);
+		let revocationFailed = false;
 		try {
 			const pendingRefresh = beginSessionRevocation();
-			await pendingRefresh;
+			try {
+				await pendingRefresh;
+			} catch {
+				// A failed refresh must never prevent explicit local logout.
+				revocationFailed = true;
+			}
 			const logoutToken = $auth.token;
 			if (logoutToken) {
 				try {
 					await api.post('/api/v1/auth/logout', {}, logoutToken, $auth.projectId ?? undefined);
-				} catch { /* 실패해도 로컬 정리는 진행 */ }
+				} catch { revocationFailed = true; }
 			}
 			const mockLogout = isMockAuthActive();
 			if (mockLogout) {
@@ -372,7 +436,8 @@
 			}
 			clearAuth();
 			await goto(mockLogout ? '/login?tutorial=off' : '/login', { replaceState: true });
-			toast.success('정상적으로 로그아웃 되었습니다.');
+			if (revocationFailed) toast.warning('이 기기에서 로그아웃했습니다. 서버 세션 폐기는 확인하지 못했습니다.');
+			else toast.success('정상적으로 로그아웃 되었습니다.');
 		} finally {
 			endSessionRevocation();
 			logoutInProgress.set(false);
@@ -442,6 +507,10 @@
 						사용자 모드
 					</a>
 				{/if}
+			{/if}
+
+			{#if $siteConfig.services.cloud_shell && !mockup.active}
+				<CloudShellTrigger />
 			{/if}
 
 			<!-- 테마 토글 -->
@@ -521,7 +590,7 @@
 
 			<!-- 로그아웃 -->
 			<button
-				onclick={logout}
+				onclick={() => logout()}
 				disabled={$logoutInProgress}
 				aria-label="로그아웃"
 				class="flex size-11 items-center justify-center rounded-md text-ink-2 transition-colors hover:bg-surface-sunken hover:text-state-danger focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] lg:size-8"
@@ -539,6 +608,11 @@
 	{/if}
 {/if}
 
+{#if $isLoggedIn && $siteConfig.services.cloud_shell && !mockup.active}
+	<CloudShellAuthorizeDialog />
+	<CloudShellDock />
+{/if}
+
 {#if $isLoggedIn}
 	<ConfirmDialog />
 {/if}
@@ -554,3 +628,25 @@
 <div class="min-h-[100dvh] bg-surface-canvas text-ink-1 {mockup.active ? 'mockup-active' : ''}">
 	{@render children()}
 </div>
+
+{#if authenticationUnavailable}
+<div class="fixed inset-0 z-[calc(var(--z-command)+2)]">
+<Modal open={authenticationUnavailable} dismissible={false} labelledBy="auth-recovery-title">
+	<div class="w-[min(28rem,calc(100vw-2rem))]">
+		<Card surface="modal" padding="lg">
+			<div class="space-y-4">
+				<h2 id="auth-recovery-title" class="text-lg font-semibold text-ink-0">인증 서비스에 연결할 수 없습니다</h2>
+				<p role="alert" class="text-sm leading-relaxed text-ink-1">로그인 상태를 확인할 수 없어 작업을 잠시 중단했습니다. 연결이 복구되면 계속할 수 있으며, 현재 화면의 작성 내용은 유지됩니다.</p>
+				<p class="text-xs text-ink-2">다시 시도하거나 이 기기에서 로그아웃할 수 있습니다.</p>
+				<div class="flex flex-wrap justify-end gap-3">
+					<Button variant="secondary" disabled={$logoutInProgress} onclick={() => logout(true)}>로그아웃</Button>
+					<Button disabled={recoveryBusy || $logoutInProgress || recoveryWait > 0} onclick={retryAuthentication}>
+						{recoveryBusy ? '확인 중…' : recoveryWait > 0 ? `${recoveryWait}초 후 다시 시도` : '다시 시도'}
+					</Button>
+				</div>
+			</div>
+		</Card>
+	</div>
+</Modal>
+</div>
+{/if}

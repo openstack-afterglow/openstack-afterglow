@@ -10,9 +10,14 @@ commit 을 고정해 받아오는 경로다. 여기는 **본문을 직접 올리
 빌드 컨텍스트가 없으므로 `COPY`/`ADD` 는 거부한다(파서가 `allow_build_context=False`).
 """
 
-from __future__ import annotations
-
+import ipaddress
 import logging
+import re
+import socket
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import PurePosixPath
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -48,6 +53,63 @@ class InlineDockerfileBuildRequest(BaseModel):
         if not value.strip():
             raise ValueError("Dockerfile 본문이 비어 있습니다")
         return value
+
+
+class FetchDockerfileUrlRequest(BaseModel):
+    """원격 URL에서 Dockerfile 본문을 안전하게 가져온다."""
+
+    url: str = Field(..., min_length=1, max_length=2048, description="Dockerfile을 호스팅하는 HTTP/HTTPS URL")
+
+    @field_validator("url")
+    @classmethod
+    def _check_url(cls, value: str) -> str:
+        v = value.strip()
+        if not v:
+            raise ValueError("URL이 비어 있습니다")
+        return v
+
+
+_GITHUB_BLOB_RE = re.compile(r"^https://github\.com/([^/]+)/([^/]+)/blob/([^/]+)/(.*)$")
+
+
+def _normalize_dockerfile_url(raw_url: str) -> str:
+    """GitHub blob URL을 raw URL로 정규화한다."""
+    match = _GITHUB_BLOB_RE.match(raw_url)
+    if match:
+        owner, repo, ref, path = match.groups()
+        return f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{path}"
+    return raw_url
+
+
+def _validate_safe_url(url: str) -> urllib.parse.SplitResult:
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme.lower() not in {"http", "https"}:
+        raise HTTPException(status_code=422, detail="http 또는 https URL만 지원됩니다")
+    hostname = parsed.hostname
+    if not hostname:
+        raise HTTPException(status_code=422, detail="유효한 호스트가 포함된 URL이어야 합니다")
+
+    # SSRF 차단: IP 직접 입력 및 DNS 해석 결과 검증
+    try:
+        ip = ipaddress.ip_address(hostname)
+        if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+            raise HTTPException(status_code=422, detail="로컬/사설 네트워크 주소는 접근할 수 없습니다")
+    except ValueError:
+        if hostname.lower() in {"localhost", "metadata", "metadata.google.internal"} or hostname.lower().endswith(
+            ".local"
+        ):
+            raise HTTPException(status_code=422, detail="로컬/사설 네트워크 주소는 접근할 수 없습니다")
+        try:
+            addr_info = socket.getaddrinfo(hostname, None)
+            for item in addr_info:
+                sockaddr = item[4]
+                ip = ipaddress.ip_address(sockaddr[0])
+                if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+                    raise HTTPException(status_code=422, detail="로컬/사설 네트워크 주소는 접근할 수 없습니다")
+        except socket.gaierror as exc:
+            raise HTTPException(status_code=422, detail=f"호스트를 확인할 수 없습니다: {hostname}") from exc
+
+    return parsed
 
 
 @router.post("/dockerfile", dependencies=[Depends(require_admin)])
@@ -123,6 +185,55 @@ async def preview_inline_dockerfile_plan(
             }
             for step in plan.planned_layers
         ],
+    }
+
+
+@router.post("/dockerfile/fetch-url", dependencies=[Depends(require_admin)])
+async def fetch_dockerfile_from_url(req: FetchDockerfileUrlRequest) -> dict[str, Any]:
+    """원격 URL(GitHub raw, GitLab, 일반 HTTP/S)에서 Dockerfile 텍스트를 가져온다."""
+    normalized_url = _normalize_dockerfile_url(req.url)
+    _validate_safe_url(normalized_url)
+
+    request = urllib.request.Request(
+        normalized_url,
+        headers={
+            "User-Agent": "afterglow-palimpsest-import/1.0",
+            "Accept": "text/plain, text/x-dockerfile, text/plain;charset=utf-8, */*",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as resp:
+            final_url = resp.geturl()
+            _validate_safe_url(final_url)
+            raw = resp.read(_MAX_DOCKERFILE_CHARS + 1)
+    except urllib.error.HTTPError as exc:
+        raise HTTPException(
+            status_code=exc.code if exc.code in {400, 403, 404} else 502,
+            detail=f"원격 서버 오류: HTTP {exc.code}",
+        ) from exc
+    except urllib.error.URLError as exc:
+        raise HTTPException(status_code=502, detail=f"원격 URL에 연결할 수 없습니다: {exc.reason}") from exc
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail="원격 URL 요청 시간이 초과되었습니다") from exc
+
+    if len(raw) > _MAX_DOCKERFILE_CHARS:
+        raise HTTPException(status_code=422, detail="Dockerfile 크기는 1MiB 이하여야 합니다")
+
+    try:
+        content = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(status_code=422, detail="Dockerfile은 UTF-8 인코딩 텍스트여야 합니다") from exc
+
+    if not content.strip():
+        raise HTTPException(status_code=422, detail="가져온 Dockerfile 본문이 비어 있습니다")
+
+    filename = PurePosixPath(urllib.parse.urlsplit(normalized_url).path).name or "Dockerfile"
+
+    return {
+        "dockerfile": content,
+        "url": normalized_url,
+        "filename": filename,
+        "size_bytes": len(raw),
     }
 
 

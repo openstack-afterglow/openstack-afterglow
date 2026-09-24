@@ -7,7 +7,7 @@
 	import { REDUCED_MOTION_QUERY } from '$lib/design/tokens';
 	import type { TopologyData, TopologyLoadBalancer, TopologyTraffic } from '$lib/types/topology';
 	import { prefersReducedMotion } from '$lib/utils/motion';
-	import { fmtRate, fmtRateShort, KIND_LABEL, NET_KIND_LABEL, clamp, wheelIntent } from './canvasHelpers';
+	import { fmtRate, fmtRateShort, KIND_LABEL, NET_KIND_LABEL, clamp } from './canvasHelpers';
 	import CanvasEdgeLayer, { type EdgeRenderItem } from './CanvasEdgeLayer.svelte';
 	import CanvasHud, { type HudBadgeItem, type HudLabelItem } from './CanvasHud.svelte';
 	import CanvasNodeCard from './CanvasNodeCard.svelte';
@@ -171,7 +171,12 @@
 	let armedId = $state<string | null>(null);
 
 	const lod = $derived(vp.k >= 0.9 ? 'full' : vp.k >= 0.65 ? 'nobps' : vp.k >= 0.5 ? 'noip' : 'compact');
-	const badgesHidden = $derived(vp.k < 0.45);
+	// `compact`(k < 0.5) 는 카드의 `.node-sub` 를 통째로 숨긴다 = 카드의 rate 가 사라진다.
+	// 배지 임계를 같은 값에 맞춰 "이 배율 아래에서는 트래픽 숫자를 읽지 않는다" 를 한 규칙으로 둔다
+	// (존 라벨의 CIDR·VLAN·MTU 는 HUD 라 LOD 와 무관하게 남는다).
+	// 남은 uplink 배지는 카드에 없는 값을 들고 있으므로 중복 때문이 아니라 **가독성** 때문에 접는다 —
+	// 0.45 였을 때는 [0.45, 0.5) 에서 카드가 전부 비어 있는데 배지만 떠 근거 없이 눈에 띄었다.
+	const badgesHidden = $derived(vp.k < 0.5);
 	const worldTransform = $derived(`translate(${vp.panX}px, ${vp.panY}px) scale(${vp.k})`);
 	const gridSize = $derived(`${120 * vp.k}px ${120 * vp.k}px, ${120 * vp.k}px ${120 * vp.k}px, ${24 * vp.k}px ${24 * vp.k}px, ${24 * vp.k}px ${24 * vp.k}px`);
 	const gridPosition = $derived(`${vp.panX}px ${vp.panY}px`);
@@ -445,18 +450,20 @@
 		const seenUplinkRouters = new Set<string>();
 		for (const e of graph.edges) {
 			if (e.kind !== 'trunk') continue;
-			// provider uplink 배지는 **값이 실제로 달라질 때만** 그린다.
-			// 라우터가 tenant 망을 하나만 물면 `trunkNetIds` 가 `[N]` 한 개라
-			// uplink 배지(`하위망 합산`)와 그 tenant 트렁크 배지(`네트워크 합산`)와
-			// 스위치 카드가 **같은 숫자를 세 번** 찍는다. 게다가 배지는 라우터↔스위치
-			// 중점에 놓이는데 라우터 x 는 intNetIds 로만 정해지므로(topologyLayout `routerHome`)
-			// 그 중점이 남의 존 안에 떨어져 VM 카드를 덮는다.
+			// 배지는 **스위치 카드가 못 보여주는 것**, 즉 2개 이상 네트워크의 합만 그린다.
+			// `trunkNetIds` 가 한 개면 `edgeRate` 가 `traffic.networks[netId]` 그대로라
+			// 그 옆 스위치 카드(`fmtRate(traffic.networks[node.netId])`)와 **같은 숫자**다.
+			// tenant 트렁크는 `trunkNetIds` 가 항상 `[e.netId]` 한 개이므로 여기서 전부 걸러지고,
+			// 살아남는 배지는 정의상 언제나 uplink 다(`CanvasHud` 가 캡션 분기를 두지 않는 이유).
 			// 실측(2026-09-13, Neutron 라우터 30개 전수): tenant 망을 2개 이상 무는 라우터는 0개.
+			//
+			// 별개의 기존 결함 — 배지는 라우터↔스위치 중점에 놓이는데 라우터 x 는 intNetIds 로만
+			// 정해지므로(topologyLayout `routerHome`) 그 중점이 남의 존 안에 떨어져 카드를 덮을 수
+			// 있다. 남기는 배지도 이 결함을 그대로 가진다. 이 게이트가 고치는 것이 아니다.
+			if (trunkNetIds(e, graph).length < 2) continue;
+			// 한 라우터가 provider 트렁크를 둘 이상 물면(게이트웨이 + shared interface)
+			// `trunkNetIds` 가 같아 **같은 합을 provider 마다 반복**한다. 하나만 남긴다.
 			if (isUplinkTrunk(e, graph)) {
-				// 하위 tenant 망이 하나뿐이면 tenant 배지와 같은 값이라 접는다.
-				if (trunkNetIds(e, graph).length < 2) continue;
-				// 한 라우터가 provider 트렁크를 둘 이상 물면(게이트웨이 + shared interface)
-				// `trunkNetIds` 가 같아 **같은 합을 provider 마다 반복**한다. 하나만 남긴다.
 				if (seenUplinkRouters.has(e.from)) continue;
 				seenUplinkRouters.add(e.from);
 			}
@@ -467,7 +474,6 @@
 				key: e.key,
 				netId: e.netId,
 				netName: graph.netById.get(e.netId)?.name ?? '',
-				uplink: isUplinkTrunk(e, graph),
 				sx: g.mid.x * k + panX,
 				sy: g.mid.y * k + panY,
 				rateText: fmtRate(edgeRate(e, traffic, graph)),
@@ -623,11 +629,19 @@
 		moved: boolean;
 		type: string;
 		dragArmed: boolean;
+		/** 휠 버튼 드래그: 노드를 잡지도, 놓을 때 선택하지도 않고 오직 화면만 이동한다. */
+		panOnly: boolean;
 	};
 	type Pinch = { k0: number; view0: ViewState; mid0: { x: number; y: number }; dist0: number };
 	let pinching = false;
 	/** 존/배경 더블클릭 억제용: 직전 클릭 판정의 대상과 시각 */
 	const DBL_SUPPRESS_MS = 300;
+	/**
+	 * 휠 한 이벤트가 배율에 기여할 수 있는 최대 `|deltaY * unit|`(px). 250 이면 이벤트당 최대 1.45배다.
+	 * 상한이 없으면 `deltaMode: 2`(페이지 단위)에서 `unit` 이 뷰포트 높이(420~820)라
+	 * **한 칸 굴린 것만으로** 줌 전 구간(`ln(K_MAX/K_MIN)/0.0015 ≈ 1226`)을 넘어 반대쪽 끝에 처박힌다.
+	 */
+	const ZOOM_DELTA_CAP = 250;
 
 	$effect(() => {
 		const el = viewportEl;
@@ -649,9 +663,13 @@
 		};
 
 		const onDown = (e: PointerEvent) => {
-			if (e.pointerType === 'mouse' && e.button !== 0) return;
+			// 휠 버튼(button 1)은 화면 이동 전용이다. 브라우저 기본 자동 스크롤(가운데 클릭 후 커서 추종)을
+			// 막아야 뷰가 두 번 움직이지 않는다 — pointerdown 만으로는 부족해 mousedown·auxclick 도 함께 막는다.
+			const panOnly = e.pointerType === 'mouse' && e.button === 1;
+			if (e.pointerType === 'mouse' && e.button !== 0 && !panOnly) return;
+			if (panOnly) e.preventDefault();
 			if (closest(e.target, '[data-hud-control]')) return;
-			const handleEl = closest(e.target, '[data-link-handle]') || closest(e.target, '[data-link-source]');
+			const handleEl = panOnly ? null : closest(e.target, '[data-link-handle]') || closest(e.target, '[data-link-source]');
 			if (handleEl && (onConnect || onCreateCable)) {
 				const sourceId = handleEl.getAttribute('data-link-handle') || closest(handleEl, '[data-node-id]')?.getAttribute('data-node-id');
 				if (sourceId) {
@@ -691,9 +709,10 @@
 			}
 			// 세 번째 이후 포인터는 새 제스처를 만들지 않는다(놓을 때 select/clearSelection 오발화 방지)
 			if (pinchConsumed) return;
-			const nodeEl = closest(e.target, '[data-node-id]');
-			const zoneEl = closest(e.target, '[data-zone-net]');
-			const edgeEl = closest(e.target, '[data-edge-net]');
+			// 휠 버튼은 노드 위에서 눌러도 노드를 잡지 않는다 — 대상을 배경으로 고정해 이동 경로로만 보낸다
+			const nodeEl = panOnly ? null : closest(e.target, '[data-node-id]');
+			const zoneEl = panOnly ? null : closest(e.target, '[data-zone-net]');
+			const edgeEl = panOnly ? null : closest(e.target, '[data-edge-net]');
 			const id = nodeEl?.getAttribute('data-node-id') ?? null;
 			const p = id ? pos.get(id) : null;
 			gesture = {
@@ -706,6 +725,7 @@
 				moved: false,
 				type: e.pointerType,
 				dragArmed: Boolean(id) && e.pointerType !== 'touch',
+				panOnly,
 			};
 			if (!nodeEl) el.focus({ preventScroll: true });
 			if (nodeEl && e.pointerType === 'touch') {
@@ -806,6 +826,8 @@
 			gesturing = false;
 			// 취소된 제스처는 대기 중인 드래그 프레임을 반영하지 않고 버린다
 			if (e.type === 'pointercancel') { pendingDrag = null; return; }
+			// 휠 버튼은 움직이지 않고 떼도 아무 일이 없어야 한다 — 선택도 선택 해제도 하지 않는다
+			if (g.panOnly) return;
 			if (!g.moved) {
 				if (g.target === 'node' && g.id) {
 					select(g.id);
@@ -827,19 +849,35 @@
 			}
 		};
 
+		/**
+		 * 휠은 세로 성분이 있으면 **장치를 가리지 않고 항상** 커서 기준 확대·축소다.
+		 * 예전에는 `wheelIntent`/`isMouseWheel` 이 이벤트 하나만 보고 마우스 휠과 트랙패드
+		 * 두 손가락 스크롤을 갈라 후자를 이동으로 보냈는데, 브라우저가 장치를 알려주지 않아
+		 * 맞출 수 없었다 — macOS 는 마우스 휠에도 부드러운 스크롤을 적용해 소수점 `deltaY` 를
+		 * 보내므로 "소수점 = 트랙패드" 규칙에 먼저 걸려 **휠로 확대가 되지 않았다**.
+		 * 배율은 `exp(step * 0.0015)`(`step` = 이벤트당 상한을 건 `-deltaY * unit`)이라
+		 * 델타에 비례하고, 작은 델타는 작은 확대로 부드럽게 누적된다.
+		 */
 		const onWheel = (e: WheelEvent) => {
 			e.preventDefault();
 			// deltaMode: 0 픽셀, 1 줄, 2 페이지
 			const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientHeight || window.innerHeight : 1;
 			const v = currentView();
-			if (wheelIntent(e) === 'zoom') {
-				// 마우스 휠, ctrl/⌘+휠, 트랙패드 핀치는 커서 기준 확대·축소
-				const r = el.getBoundingClientRect();
-				pendingView = zoomAtPure(v, e.clientX - r.left, e.clientY - r.top, v.k * Math.exp(-e.deltaY * unit * 0.0015));
-			} else {
-				// 트랙패드 두 손가락 스크롤은 위치 이동(스크롤 방향으로 뷰가 따라간다)
-				pendingView = { k: v.k, panX: v.panX - e.deltaX * unit, panY: v.panY - e.deltaY * unit };
+			// 순수 가로 제스처는 **정의상 확대가 아니다** — 장치 추정 없이 가로 이동으로 보낸다.
+			// (`Shift`+휠도 브라우저가 deltaX 로 보고한다.) 이 분기가 없으면 exp(0)=1 이라
+			// 배율도 위치도 그대로인 채 preventDefault 만 먹어 캔버스가 멈춘 것처럼 보인다.
+			if (e.deltaY === 0 && e.deltaX !== 0) {
+				pendingView = { k: v.k, panX: v.panX - e.deltaX * unit, panY: v.panY };
+				schedule();
+				return;
 			}
+			// 세로 성분이 있으면 장치를 가리지 않고 커서 기준 확대·축소다(ctrl/⌘+휠·핀치 포함).
+			// 배율이 델타에 비례하므로 트랙패드의 작은 델타는 작은 확대로 부드럽게 누적된다.
+			// 지수부는 이벤트 하나 단위로 자른다 — `deltaMode: 2`(페이지)면 `unit` 이 뷰포트 높이라
+			// 한 칸 굴린 것만으로 0.35~2.2 전 구간(ln(6.286)/0.0015 ≈ 1226)을 넘어 반대쪽 끝에 처박힌다.
+			const step = clamp(-e.deltaY * unit, -ZOOM_DELTA_CAP, ZOOM_DELTA_CAP);
+			const r = el.getBoundingClientRect();
+			pendingView = zoomAtPure(v, e.clientX - r.left, e.clientY - r.top, v.k * Math.exp(step * 0.0015));
 			schedule();
 		};
 
@@ -896,6 +934,13 @@
 		};
 
 		const onLeave = () => { if (link) { link = null; resumeFlow(); } };
+		// Windows·Linux Chrome 은 가운데 버튼 mousedown 에서 자동 스크롤 위젯을 띄운다.
+		// pointerdown 의 preventDefault 만으로는 막히지 않아 mousedown 을, 그리고 떼는 순간의
+		// auxclick(가운데 클릭 = 새 탭 열기 등)도 함께 막는다.
+		const onAuxDown = (e: MouseEvent) => { if (e.button === 1) e.preventDefault(); };
+		const onAuxClick = (e: MouseEvent) => { if (e.button === 1) e.preventDefault(); };
+		el.addEventListener('mousedown', onAuxDown);
+		el.addEventListener('auxclick', onAuxClick);
 		el.addEventListener('pointerleave', onLeave);
 		el.addEventListener('pointerdown', onDown);
 		el.addEventListener('pointermove', onMove);
@@ -918,6 +963,8 @@
 			el.removeEventListener('pointerout', onOut);
 			el.removeEventListener('keydown', onKey);
 			el.removeEventListener('pointerleave', onLeave);
+			el.removeEventListener('mousedown', onAuxDown);
+			el.removeEventListener('auxclick', onAuxClick);
 		};
 	});
 
@@ -1149,7 +1196,7 @@
 			{/if}
 		</div>
 		<p class="stage-help" id={helpId}>
-			트랙패드 두 손가락 스크롤로 화면 이동, 마우스 휠·<span class="mono">Ctrl</span>(<span class="mono">⌘</span>)+휠·핀치로 확대·축소. 캔버스에 포커스한 뒤 화살표로 화면 이동(<span class="mono">Shift</span>와 함께 누르면 크게), <span class="mono">+</span>/<span class="mono">-</span> 확대·축소, <span class="mono">0</span>·<span class="mono">f</span> 화면 맞춤, <span class="mono">r</span> 배치 초기화, <span class="mono">/</span> 검색, <span class="mono">Esc</span> 선택 해제. 노드에 포커스한 뒤 <span class="mono">Enter</span>로 상세, <span class="mono">Shift+화살표</span>로 노드 이동. 카드 오른쪽 점을 끌어 다른 카드에 놓으면 연결(인스턴스↔스위치는 새 인터페이스, 라우터↔스위치는 게이트웨이), <span class="mono">Esc</span> 취소. 키보드는 카드 상세 패널의 연결 기능을 사용합니다.
+			휠·트랙패드 두 손가락 스크롤·핀치로 확대·축소, 휠 버튼(가운데)이나 배경을 끌어서 화면 이동. 캔버스에 포커스한 뒤 화살표로 화면 이동(<span class="mono">Shift</span>와 함께 누르면 크게), <span class="mono">+</span>/<span class="mono">-</span> 확대·축소, <span class="mono">0</span>·<span class="mono">f</span> 화면 맞춤, <span class="mono">r</span> 배치 초기화, <span class="mono">/</span> 검색, <span class="mono">Esc</span> 선택 해제. 노드에 포커스한 뒤 <span class="mono">Enter</span>로 상세, <span class="mono">Shift+화살표</span>로 노드 이동. 카드 오른쪽 점을 끌어 다른 카드에 놓으면 연결(인스턴스↔스위치는 새 인터페이스, 라우터↔스위치는 게이트웨이), <span class="mono">Esc</span> 취소. 키보드는 카드 상세 패널의 연결 기능을 사용합니다.
 		</p>
 	</div>
 

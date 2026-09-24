@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { useObjectBrowser } from '$lib/stores/objectBrowser.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
+	import { ToggleGroup } from '$lib/components/ui';
+	import type { ObjectView } from '$lib/utils/objectViewPreference';
 
 	interface ArState { active: boolean; intervalSeconds: number; intervalOptions: number[]; }
 	interface Props { ar: ArState; onManualRefresh: () => void; }
@@ -29,12 +31,27 @@
 			class="text-xs text-ink-2 bg-surface-sunken border border-line-2 rounded-lg px-2 py-1.5 focus:outline-none focus:border-indigo-500"
 		>
 			<option value="current">현재 폴더</option>
-			<option value="expanded">펼친 트리</option>
+			{#if s.viewMode === 'list'}
+				<option value="expanded">펼친 트리</option>
+			{/if}
 			<option value="all">전체 버킷</option>
 		</select>
 		{#if s.searchScope === 'all' && s.allObjectsLoading}
 			<span class="text-xs text-ink-2">전체 인덱싱 중...</span>
 		{/if}
+	{/if}
+
+	{#if s.mode === 'user'}
+		<ToggleGroup
+			size="xs"
+			ariaLabel="보기 방식"
+			value={s.viewMode}
+			options={[
+				{ value: 'grid', label: '그리드' },
+				{ value: 'list', label: '목록' },
+			]}
+			onchange={(v) => { s.viewMode = v as ObjectView; }}
+		/>
 	{/if}
 
 	<button

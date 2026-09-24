@@ -2,12 +2,7 @@
 	import { tick } from 'svelte';
 	import ChatMessage from './ChatMessage.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
-	import {
-		getSiblingInfo,
-		type AvailableModel,
-		type ChatMessage as ChatMsg,
-		type ChatTreeNode
-	} from '$lib/api/chatTree';
+	import { type AvailableModel, type ChatMessage as ChatMsg } from '$lib/api/chatTree';
 	import { projectMessagesForDisplay } from '$lib/api/chatTree';
 	import type { StreamMetrics } from '$lib/api/chatMetrics';
 	import { toolActivityFromCanonicalParts, type ToolActivityItem } from '$lib/api/chatToolActivity';
@@ -32,7 +27,6 @@
 
 	interface Props {
 		activePath: DisplayMessage[];
-		treeNodes?: ChatTreeNode[];
 		models: AvailableModel[];
 		busy?: boolean;
 		loading?: boolean;
@@ -47,9 +41,14 @@
 		starterPrompts?: readonly StarterPrompt[];
 		onStarterPrompt?: (prompt: string) => void;
 		conversationKey?: string;
-		hasOlder?: boolean;
-		loadingOlder?: boolean;
-		onLoadOlder?: () => Promise<void>;
+		hasBefore?: boolean;
+		hasAfter?: boolean;
+		loadingHistory?: boolean;
+		newHistoryActivity?: boolean;
+		onLoadBefore?: () => Promise<void>;
+		onLoadAfter?: () => Promise<void>;
+		onLoadFirst?: () => Promise<boolean>;
+		onLoadLatest?: () => Promise<boolean>;
 		onCopy: (text: string) => void;
 		onRegenerate: (messageId: string, modelName: string) => void;
 		onRetry: (messageId: string) => void;
@@ -58,7 +57,6 @@
 	}
 	let {
 		activePath,
-		treeNodes = [],
 		models,
 		busy = false,
 		loading = false,
@@ -72,9 +70,14 @@
 		starterPrompts = [],
 		onStarterPrompt,
 		conversationKey = '',
-		hasOlder = false,
-		loadingOlder = false,
-		onLoadOlder,
+		hasBefore = false,
+		hasAfter = false,
+		loadingHistory = false,
+		newHistoryActivity = false,
+		onLoadBefore,
+		onLoadAfter,
+		onLoadFirst,
+		onLoadLatest,
 		onCopy,
 		onRegenerate,
 		onRetry,
@@ -84,7 +87,7 @@
 
 	let scrollEl = $state<HTMLDivElement | null>(null);
 	let followingLatest = $state(true);
-	let loadingOlderHere = false;
+	let navigatingHistory = $state(false);
 	let activityNow = $state(Date.now());
 	let scrollAfterTickPending = false;
 
@@ -129,14 +132,6 @@
 		return models.find((m) => m.model_name === name)?.display_name ?? name;
 	}
 
-	function siblingInfo(msg: DisplayMessage) {
-		// 스트리밍 중인 낙관적 메시지(id 없음)는 형제 계산 제외
-		if (msg.streaming || !treeNodes.some((node) => node.id === msg.id)) {
-			return { index: 1, total: 1 };
-		}
-		const info = getSiblingInfo(treeNodes, msg);
-		return { index: info.index, total: info.total };
-	}
 	const displayedPath = $derived<DisplayMessage[]>(projectMessagesForDisplay(activePath) as DisplayMessage[]);
 
 	function scrollToLatest() {
@@ -154,25 +149,56 @@
 		});
 	}
 
-	async function loadOlder() {
-		const el = scrollEl;
-		if (!el || !hasOlder || loadingOlder || loadingOlderHere || !onLoadOlder) return;
-		loadingOlderHere = true;
-		const oldHeight = el.scrollHeight;
-		const oldTop = el.scrollTop;
+	function viewportAnchor(): { id: string; top: number } | null {
+		const container = scrollEl;
+		if (!container) return null;
+		const viewportTop = container.getBoundingClientRect().top;
+		for (const element of container.querySelectorAll<HTMLElement>('[data-history-message-id]')) {
+			const rect = element.getBoundingClientRect();
+			if (rect.bottom >= viewportTop) return { id: element.dataset.historyMessageId ?? '', top: rect.top };
+		}
+		return null;
+	}
+
+	async function moveHistory(direction: 'before' | 'after') {
+		const loader = direction === 'before' ? onLoadBefore : onLoadAfter;
+		if (!loader || navigatingHistory || loadingHistory) return;
+		const anchor = viewportAnchor();
+		navigatingHistory = true;
 		try {
-			await onLoadOlder();
+			await loader();
 			await tick();
-			el.scrollTop = oldTop + el.scrollHeight - oldHeight;
+			if (!anchor || !scrollEl) return;
+			const retained = Array.from(scrollEl.querySelectorAll<HTMLElement>('[data-history-message-id]'))
+				.find((element) => element.dataset.historyMessageId === anchor.id);
+			if (retained) scrollEl.scrollTop += retained.getBoundingClientRect().top - anchor.top;
 		} finally {
-			loadingOlderHere = false;
+			navigatingHistory = false;
 		}
 	}
+
+	async function jumpHistory(anchor: 'first' | 'latest') {
+		const loader = anchor === 'first' ? onLoadFirst : onLoadLatest;
+		if (!loader || navigatingHistory || loadingHistory) return;
+		navigatingHistory = true;
+		try {
+			const loaded = await loader();
+			await tick();
+			if (!loaded || !scrollEl) return;
+			if (anchor === 'latest') scrollToLatest();
+			else {
+				scrollEl.scrollTop = 0;
+				followingLatest = !hasAfter;
+			}
+		} finally {
+			navigatingHistory = false;
+		}
+	}
+
 	function onScroll() {
 		const el = scrollEl;
 		if (!el) return;
 		followingLatest = el.scrollHeight - el.clientHeight - el.scrollTop <= 64;
-		if (el.scrollTop <= 72) void loadOlder();
 	}
 	$effect(() => {
 		void conversationKey;
@@ -221,32 +247,46 @@
 			</div>
 		{:else}
 			<div class="stream">
-				{#if loadingOlder}
-					<div class="older-loading" role="status">이전 메시지를 불러오는 중…</div>
+				{#if onLoadFirst && onLoadLatest}
+					<nav class="history-nav" aria-label="대화 기록 이동">
+						<Button variant="ghost" size="xs" onclick={() => jumpHistory('first')} disabled={!hasBefore || navigatingHistory || loadingHistory}>처음</Button>
+						<Button variant="ghost" size="xs" onclick={() => moveHistory('before')} disabled={!hasBefore || navigatingHistory || loadingHistory}>이전</Button>
+						<Button variant="ghost" size="xs" onclick={() => moveHistory('after')} disabled={!hasAfter || navigatingHistory || loadingHistory}>다음</Button>
+						<Button variant="ghost" size="xs" onclick={() => jumpHistory('latest')} disabled={!hasAfter || navigatingHistory || loadingHistory}>최신</Button>
+					</nav>
+				{/if}
+				{#if loadingHistory}
+					<div class="history-loading" role="status">대화 기록을 불러오는 중…</div>
+				{/if}
+				{#if newHistoryActivity}
+					<div class="history-activity" role="status">
+						<span>새 응답이 도착했습니다.</span>
+						<Button variant="accent" size="xs" onclick={() => jumpHistory('latest')}>최신 응답 보기</Button>
+					</div>
 				{/if}
 				{#each displayedPath as msg (msg.id)}
-					{@const info = siblingInfo(msg)}
-					<ChatMessage
-						message={msg}
-						{models}
-						{busy}
-						{modelLocked}
-						metrics={msg.metrics ?? metricsById.get(msg.id) ?? null}
-						toolItems={restoredToolItems(msg)}
-						reasoning={msg.reasoning ?? ''}
-						activityItems={msg.activityItems ?? msg.execution?.activity ?? []}
-						siblingIndex={info.index}
-						siblingTotal={info.total}
-						modelDisplayName={modelDisplay(msg.model_name)}
-						{onCopy}
-						onRegenerate={(model) => onRegenerate(msg.id, model)}
-						onRetry={() => onRetry(msg.id)}
-						onFork={() => onFork(msg.id)}
-						onPrevVersion={() => onSwitchVersion(msg.id, -1)}
-						onNextVersion={() => onSwitchVersion(msg.id, 1)}
-					/>
+					<div data-history-message-id={msg.id}>
+						<ChatMessage
+							message={msg}
+							{models}
+							{busy}
+							{modelLocked}
+							metrics={msg.metrics ?? metricsById.get(msg.id) ?? null}
+							toolItems={restoredToolItems(msg)}
+							reasoning={msg.reasoning ?? ''}
+							activityItems={msg.activityItems ?? msg.execution?.activity ?? []}
+							hasPreviousVersion={msg.branch?.previous_id !== null && msg.branch?.previous_id !== undefined}
+							hasNextVersion={msg.branch?.next_id !== null && msg.branch?.next_id !== undefined}
+							modelDisplayName={modelDisplay(msg.model_name)}
+							{onCopy}
+							onRegenerate={(model) => onRegenerate(msg.id, model)}
+							onRetry={() => onRetry(msg.id)}
+							onFork={() => onFork(msg.id)}
+							onPrevVersion={() => onSwitchVersion(msg.id, -1)}
+							onNextVersion={() => onSwitchVersion(msg.id, 1)}
+						/>
+					</div>
 				{/each}
-
 				{#if manualCompactionActivity}
 					<div class="context-activity" role="status" aria-live="polite" aria-atomic="true">
 						<span class="spinner"></span>
@@ -270,8 +310,8 @@
 
 	{#if !empty && !followingLatest}
 		<div class="latest-control">
-			<Button variant="accent" size="sm" onclick={scrollToLatest}>
-				{busy ? '새 응답 따라가기' : '최신 메시지로'}
+			<Button variant="accent" size="sm" onclick={() => hasAfter ? jumpHistory('latest') : scrollToLatest()}>
+				{hasAfter ? '최신 기록으로' : busy ? '새 응답 따라가기' : '최신 메시지로'}
 			</Button>
 		</div>
 	{/if}
@@ -324,11 +364,38 @@
 		max-width: 52rem;
 		margin: 0 auto;
 	}
-	.older-loading {
+	.history-nav {
+		position: sticky;
+		top: 0;
+		z-index: 2;
+		align-self: center;
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		gap: 0.25rem;
+		padding: 0.25rem;
+		border: 1px solid var(--color-line);
+		border-radius: var(--radius-md);
+		background: var(--color-surface-raised);
+	}
+	.history-loading {
 		align-self: center;
 		color: var(--color-ink-2);
 		font-size: 0.75rem;
 		padding: 0.25rem 0.5rem;
+	}
+	.history-activity {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		padding: 0.75rem;
+		border: 1px solid var(--color-line);
+		border-radius: var(--radius-md);
+		background: var(--color-surface-sunken);
+		color: var(--color-ink-1);
+		font-size: 0.8rem;
 	}
 	.latest-control {
 		position: absolute;

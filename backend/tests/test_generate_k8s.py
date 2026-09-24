@@ -144,6 +144,51 @@ def test_render_toml_includes_worker_runtime_defaults():
     assert "manage_deployments = false" in result
 
 
+def test_render_toml_includes_complete_cloud_shell_config():
+    result = _render_toml_for_k8s(
+        {
+            "services": {"zun": True, "cloud_shell": True},
+            "cloud_shell": {
+                "service_project_id": "22222222-2222-4222-8222-222222222222",
+                "image": "ghcr.io/example/afterglow-cloud-shell@sha256:" + "a" * 64,
+                "network_id": "network-id",
+                "security_group": "egress-only",
+                "auth_url": "https://identity.example.test/v3",
+                "interface": "internal",
+                "volume_type": "fast",
+                "home_size_gib": 8,
+                "cpu": 1.5,
+                "memory_mib": 2048,
+                "idle_timeout_seconds": 900,
+                "max_session_seconds": 2700,
+                "ticket_ttl_seconds": 45,
+                "reconcile_interval_seconds": 30,
+                "zun_websocket_origin": "wss://zun.example.test",
+            },
+        }
+    )
+
+    assert "[services]" in result
+    assert "zun = true" in result
+    assert "cloud_shell = true" in result
+    assert "[cloud_shell]" in result
+    assert 'service_project_id = "22222222-2222-4222-8222-222222222222"' in result
+    assert 'image = "ghcr.io/example/afterglow-cloud-shell@sha256:' + "a" * 64 + '"' in result
+    assert 'network_id = "network-id"' in result
+    assert 'security_group = "egress-only"' in result
+    assert 'auth_url = "https://identity.example.test/v3"' in result
+    assert 'interface = "internal"' in result
+    assert 'volume_type = "fast"' in result
+    assert "home_size_gib = 8" in result
+    assert "cpu = 1.5" in result
+    assert "memory_mib = 2048" in result
+    assert "idle_timeout_seconds = 900" in result
+    assert "max_session_seconds = 2700" in result
+    assert "ticket_ttl_seconds = 45" in result
+    assert "reconcile_interval_seconds = 30" in result
+    assert 'zun_websocket_origin = "wss://zun.example.test"' in result
+
+
 def test_render_toml_includes_logging_config():
     result = _render_toml_for_k8s({"logging": {"log_directory": "/app/logs", "max_bytes": 52428800}})
 

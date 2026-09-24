@@ -4,6 +4,7 @@
 	import { api, ApiError } from '$lib/api/client';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
+	import { invalidateChatModels } from '$lib/stores/chatModels';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import ChatExtensionsManager from '$lib/components/chat/ChatExtensionsManager.svelte';
@@ -143,10 +144,133 @@
 		effective_input_price_per_million: string | null;
 		effective_output_price_per_million: string | null;
 		effective_price_source: 'manual' | 'models.dev' | 'litellm' | 'partial' | 'unpriced' | `perplexity_agent_api_${string}` | null;
+		// Prompt-cache prices are manual-only (no catalog fallback). Absent/null means the
+		// component is billed at 0 USD until an administrator sets it. Optional because an
+		// older Lumen may not return them yet.
+		cache_read_price_per_million?: string | null;
+		cache_write_price_per_million?: string | null;
+		cache_write_1h_price_per_million?: string | null;
 		models_dev_model_id: string | null;
 		price_source: 'manual' | 'models.dev' | null;
 		capabilities?: ModelCapabilities | null;
 		effective_capabilities?: ModelCapabilities | null;
+		capability_source?: string | null;
+		effective_capability_source?: string | null;
+	}
+
+	type CachePriceKey =
+		| 'cache_read_price_per_million'
+		| 'cache_write_price_per_million'
+		| 'cache_write_1h_price_per_million';
+	type CachePriceInputs = Record<CachePriceKey, string>;
+	type CachePriceErrors = Partial<Record<CachePriceKey, string>>;
+	type CachePriceValues = Record<CachePriceKey, string | null>;
+
+	// Cache prices are optional and independent of each other and of the input/output pair rule.
+	const CACHE_PRICE_FIELDS: { key: CachePriceKey; label: string; slug: string }[] = [
+		{ key: 'cache_read_price_per_million', label: '캐시 읽기', slug: 'read' },
+		{ key: 'cache_write_price_per_million', label: '캐시 쓰기 5분', slug: 'write-5m' },
+		{ key: 'cache_write_1h_price_per_million', label: '캐시 쓰기 1시간', slug: 'write-1h' }
+	];
+	// Plain non-negative decimal; rejects exponent, hex, sign, Infinity/NaN. Lumen owns precision.
+	const CACHE_PRICE_PATTERN = /^\d+(?:\.\d+)?$/;
+	const CACHE_PRICE_ERROR = '0 이상의 숫자로 입력하세요 (예: 0.3)';
+
+	function emptyCachePriceInputs(): CachePriceInputs {
+		return {
+			cache_read_price_per_million: '',
+			cache_write_price_per_million: '',
+			cache_write_1h_price_per_million: ''
+		};
+	}
+
+	// Any all-zero decimal, including Python Decimal's scientific zero ("0E-10") that Lumen
+	// serializes for a stored 0. Requires a zero digit so "", "." or "E5" never match.
+	const ZERO_DECIMAL_PATTERN = /^[+-]?(?:0+(?:\.0*)?|\.0+)(?:E[+-]?\d+)?$/i;
+
+	/** Only zero is emitted in scientific form, so a zero-only rule suffices; never float-converted. */
+	function normalizeDecimalString(price: string): string {
+		if (ZERO_DECIMAL_PATTERN.test(price.trim())) return '0';
+		return formatPricePerMillion(price);
+	}
+
+	function cachePriceInputsFrom(model: Model): CachePriceInputs {
+		// Strip storage trailing zeros ("0.3000000000" → "0.3", "0E-10" → "0") for readability; same decimal value.
+		const prefill = (price: string | null | undefined) =>
+			price === null || price === undefined || price === '' ? '' : normalizeDecimalString(price);
+		return {
+			cache_read_price_per_million: prefill(model.cache_read_price_per_million),
+			cache_write_price_per_million: prefill(model.cache_write_price_per_million),
+			cache_write_1h_price_per_million: prefill(model.cache_write_1h_price_per_million)
+		};
+	}
+
+	function cachePriceError(raw: string): string | undefined {
+		const value = raw.trim();
+		if (!value || CACHE_PRICE_PATTERN.test(value)) return undefined;
+		return CACHE_PRICE_ERROR;
+	}
+
+	/** Blank → null (unset / clear). The trimmed string is forwarded as-is, never float round-tripped. */
+	function parseCachePrices(inputs: CachePriceInputs): { values: CachePriceValues; errors: CachePriceErrors } {
+		const values = {} as CachePriceValues;
+		const errors: CachePriceErrors = {};
+		for (const { key } of CACHE_PRICE_FIELDS) {
+			const message = cachePriceError(inputs[key]);
+			if (message) errors[key] = message;
+			values[key] = inputs[key].trim() || null;
+		}
+		return { values, errors };
+	}
+
+	/**
+	 * Edit form: only keys whose trimmed input differs from the prefill. A value sets it, a blank
+	 * clears a previously set price with null. Untouched keys are neither validated nor sent.
+	 */
+	function changedCachePrices(
+		inputs: CachePriceInputs,
+		baseline: CachePriceInputs
+	): { values: Partial<CachePriceValues>; errors: CachePriceErrors } {
+		const values: Partial<CachePriceValues> = {};
+		const errors: CachePriceErrors = {};
+		for (const { key } of CACHE_PRICE_FIELDS) {
+			const value = inputs[key].trim();
+			if (value === baseline[key]) continue;
+			const message = cachePriceError(value);
+			if (message) errors[key] = message;
+			values[key] = value || null;
+		}
+		return { values, errors };
+	}
+
+	/** Once a field shows an error, re-check it while the admin corrects it. */
+	function recheckCachePrice(errors: CachePriceErrors, key: CachePriceKey, raw: string): CachePriceErrors {
+		if (!errors[key]) return errors;
+		const next = { ...errors };
+		const message = cachePriceError(raw);
+		if (message) next[key] = message;
+		else delete next[key];
+		return next;
+	}
+
+	function presentCachePrices(values: CachePriceValues): Partial<CachePriceValues> {
+		return Object.fromEntries(Object.entries(values).filter(([, value]) => value !== null));
+	}
+
+	function formatCachePrice(price: string | null | undefined): string {
+		if (price === null || price === undefined || price === '') return '미설정';
+		return normalizeDecimalString(price);
+	}
+
+	function cachePriceState(model: Model): 'none' | 'partial' | 'all' {
+		const set = CACHE_PRICE_FIELDS.filter(({ key }) => model[key] !== null && model[key] !== undefined && model[key] !== '').length;
+		if (set === 0) return 'none';
+		return set === CACHE_PRICE_FIELDS.length ? 'all' : 'partial';
+	}
+
+	// A Lumen that predates cache pricing omits the keys entirely; null means an admin cleared the price.
+	function cachePricingSupported(model: Model): boolean {
+		return CACHE_PRICE_FIELDS.some(({ key }) => key in model);
 	}
 
 	const token = $derived($auth.token ?? undefined);
@@ -154,7 +278,10 @@
 
 	let providers = $state<Provider[]>([]);
 	let models = $state<Model[]>([]);
+	// An empty list cannot tell the Lumen version apart, so the create form keeps its cache inputs then.
+	const cachePricingAvailable = $derived(models.length === 0 || models.some(cachePricingSupported));
 	let loading = $state(true);
+	let loadGeneration = 0;
 	let error = $state('');
 	let billingByProvider = $state<Record<number, ProviderBilling>>({});
 	let billingLoading = $state(false);
@@ -199,11 +326,24 @@
 	let mDisplay = $state('');
 	let mInputPrice = $state('');
 	let mOutputPrice = $state('');
+	let mCachePrices = $state<CachePriceInputs>(emptyCachePriceInputs());
+	let mCacheErrors = $state<CachePriceErrors>({});
 	let addingModel = $state(false);
 
 	let editingPrice = $state<Model | null>(null);
 	let editInputPrice = $state('');
 	let editOutputPrice = $state('');
+	let editCachePrices = $state<CachePriceInputs>(emptyCachePriceInputs());
+	let editCacheErrors = $state<CachePriceErrors>({});
+	let editingCapabilities = $state<Model | null>(null);
+	let capVision = $state(false);
+	let capReasoning = $state(false);
+	let capToolCall = $state(false);
+	let capAttachment = $state(false);
+	let capContextLimit = $state('');
+	let capSuggestedInputLimit = $state<number | null>(null);
+	let capSaving = $state(false);
+	let capError = $state('');
 
 	interface ModelsDevProvider { id: string; name: string; model_count: number }
 	interface ModelsDevModel {
@@ -237,14 +377,79 @@
 	const selectedCount = $derived(Object.values(selectedModelIds).filter(Boolean).length);
 	const allModelsSelected = $derived(models.length > 0 && selectedCount === models.length);
 
-	// 모델 discovery (프로바이더 API에서 목록 불러오기 → 필터 → 선택 등록)
+	// Discovery is advisory: only administrator-entered price pairs can authorize activation.
+	interface DiscoveryCandidate {
+		id: string;
+		display_name?: string | null;
+		purpose?: 'chat' | 'non_chat' | 'unknown';
+		generation_methods?: string[];
+		input_token_limit?: number | null;
+		output_token_limit?: number | null;
+	}
+	interface DiscoveryResult {
+		provider_id: number;
+		fetched_at: string;
+		live_status: 'success' | 'empty' | 'unsupported' | 'error';
+		complete: boolean;
+		error: { code: string; message: string; retryable: boolean } | null;
+		candidates: DiscoveryCandidate[];
+		models: string[];
+		source: 'api' | 'litellm' | 'none';
+	}
+	interface RegistrationEntry {
+		name: string;
+		displayName: string;
+		inputPrice: string;
+		outputPrice: string;
+		inputTokenLimit: number | null;
+		outputTokenLimit: number | null;
+		purpose: 'chat' | 'non_chat' | 'unknown';
+	}
+	interface RegistrationReview {
+		providerId: number;
+		providerName: string;
+		entries: RegistrationEntry[];
+		token: string | undefined;
+		projectId: string | undefined;
+	}
 	let discoverId = $state<number | null>(null);
-	let available = $state<string[]>([]);
-	let availSource = $state('');
+	let discovery = $state<DiscoveryResult | null>(null);
+	let discoveryError = $state('');
 	let availFilter = $state('');
 	let selectedAvail = $state<Record<string, boolean>>({});
 	let discovering = $state(false);
 	let registeringBulk = $state(false);
+	let registrationReview = $state<RegistrationReview | null>(null);
+	let registrationOutcomes = $state<Record<string, 'success' | 'failed'>>({});
+	let registrationMode = $state<'inactive' | 'active' | null>(null);
+	let discoveryGeneration = 0;
+	let registrationGeneration = 0;
+	let discoveryScopeToken: string | undefined;
+	let discoveryScopeProjectId: string | undefined;
+	let destroyed = false;
+
+	function resetDiscovery() {
+		++discoveryGeneration;
+		++registrationGeneration;
+		discoverId = null;
+		discovery = null;
+		discoveryError = '';
+		availFilter = '';
+		selectedAvail = {};
+		discovering = false;
+		registeringBulk = false;
+		registrationReview = null;
+		registrationOutcomes = {};
+		registrationMode = null;
+	}
+
+	function discoveryIsCurrent(generation: number, providerId: number, requestToken: string | undefined, requestProjectId: string | undefined) {
+		return !destroyed && generation === discoveryGeneration && discoverId === providerId && mProviderId === providerId && token === requestToken && projectId === requestProjectId;
+	}
+
+	function registrationIsCurrent(generation: number, review: RegistrationReview) {
+		return !destroyed && generation === registrationGeneration && discoverId === review.providerId && mProviderId === review.providerId && token === review.token && projectId === review.projectId;
+	}
 
 	function cleanShortModelName(name: string): string {
 		if (!name) return '';
@@ -294,11 +499,27 @@
 	}
 
 	const filteredAvailable = $derived.by(() => {
-		if (discoverId === null) return [];
+		if (discoverId === null || !discovery || discovery.live_status === 'error') return [];
 		const reg = registeredNames(discoverId);
-		const f = availFilter.toLowerCase();
-		return available.filter((m) => m.toLowerCase().includes(f) && !reg.has(m));
+		const filter = availFilter.toLocaleLowerCase();
+		const candidates = discovery.candidates;
+		return candidates.filter((candidate) =>
+			!reg.has(candidate.id) && registrationOutcomes[candidate.id] !== 'success' && `${candidate.id} ${candidate.display_name ?? ''}`.toLocaleLowerCase().includes(filter)
+		);
 	});
+
+	function reviewPriceError(entry: RegistrationEntry): string | undefined {
+		const input = entry.inputPrice.trim();
+		const output = entry.outputPrice.trim();
+		if (!input && !output) return undefined;
+		if (!CACHE_PRICE_PATTERN.test(input) || !CACHE_PRICE_PATTERN.test(output)) return '입력·출력 단가를 모두 0 이상의 숫자로 입력하세요.';
+		return undefined;
+	}
+
+	function reviewCanActivate(review: RegistrationReview): boolean {
+		return review.entries.filter((entry) => registrationOutcomes[entry.name] !== 'success')
+			.every((entry) => entry.inputPrice.trim() !== '' && entry.outputPrice.trim() !== '' && !reviewPriceError(entry));
+	}
 
 	function formatBillingAmount(value: string | null): string {
 		if (value === null) return '—';
@@ -415,24 +636,29 @@
 
 	async function load({ freshBilling = false }: { freshBilling?: boolean } = {}) {
 		if (!token) return;
+		const generation = ++loadGeneration;
+		const requestToken = token;
+		const requestProjectId = projectId;
 		++billingRequestGeneration;
 		billingByProvider = {};
 		billingLoading = false;
 		loading = true;
 		try {
 			const [ps, ms] = await Promise.all([
-				api.get<Provider[]>('/api/v1/chat/admin/providers', token, projectId),
-				api.get<Model[]>('/api/v1/chat/admin/models', token, projectId)
+				api.get<Provider[]>('/api/v1/chat/admin/providers', requestToken, requestProjectId),
+				api.get<Model[]>('/api/v1/chat/admin/models', requestToken, requestProjectId)
 			]);
+			if (generation !== loadGeneration || requestToken !== token || requestProjectId !== projectId || destroyed) return;
 			providers = ps;
 			if (mProviderId === '' && ps.length === 1) mProviderId = ps[0].id;
 			models = ms;
 			void loadProviderBilling({ fresh: freshBilling });
 			error = '';
 		} catch (e) {
+			if (generation !== loadGeneration || requestToken !== token || requestProjectId !== projectId || destroyed) return;
 			error = e instanceof ApiError ? `조회 실패 (${e.status})` : '서버 오류';
 		} finally {
-			loading = false;
+			if (generation === loadGeneration && requestToken === token && requestProjectId === projectId && !destroyed) loading = false;
 		}
 	}
 
@@ -477,6 +703,7 @@
 		if (!(await confirmDialog('프로바이더를 삭제하시겠습니까? 연결된 모델도 함께 삭제됩니다.'))) return;
 		try {
 			await api.delete(`/api/v1/chat/admin/providers/${id}`, token, projectId);
+			invalidateChatModels();
 			await load();
 		} catch {
 			toast.error('삭제 실패');
@@ -802,20 +1029,37 @@
 			toast.error('프로바이더와 모델명을 입력하세요');
 			return;
 		}
+		if (!cachePricingAvailable) {
+			// Hidden cache inputs (an older Lumen) must neither send stale values nor block the create.
+			mCachePrices = emptyCachePriceInputs();
+			mCacheErrors = {};
+		}
+		const cache = parseCachePrices(mCachePrices);
+		mCacheErrors = cache.errors;
 		const prices = pricePayload(mInputPrice, mOutputPrice);
-		if (prices === undefined) return;
+		if (prices === undefined || Object.keys(cache.errors).length > 0) return;
 		addingModel = true;
 		try {
 			await api.post(
 				'/api/v1/chat/admin/models',
-				{ provider_id: mProviderId, model_name: mName.trim(), display_name: mDisplay.trim() || null, ...prices },
+				{
+					provider_id: mProviderId,
+					model_name: mName.trim(),
+					display_name: mDisplay.trim() || null,
+					...prices,
+					// Blank cache prices are omitted on create; the model starts with no cache rate.
+					...presentCachePrices(cache.values)
+				},
 				token,
 				projectId
 			);
+			invalidateChatModels();
 			mName = '';
 			mDisplay = '';
 			mInputPrice = '';
 			mOutputPrice = '';
+			mCachePrices = emptyCachePriceInputs();
+			mCacheErrors = {};
 			await load();
 			toast.success('모델이 추가되었습니다');
 		} catch (e) {
@@ -844,19 +1088,101 @@
 		editingPrice = model;
 		editInputPrice = model.input_price_per_million ?? '';
 		editOutputPrice = model.output_price_per_million ?? '';
+		editCachePrices = cachePriceInputsFrom(model);
+		editCacheErrors = {};
 	}
 
 	async function savePrice() {
 		if (!editingPrice) return;
-		const prices = pricePayload(editInputPrice, editOutputPrice);
-		if (!prices) return;
+		const cache = changedCachePrices(editCachePrices, cachePriceInputsFrom(editingPrice));
+		editCacheErrors = cache.errors;
+		// Send only what changed. Lumen marks a model manual (clearing its models.dev metadata and
+		// blocking later imports) whenever an input/output key is present, so an untouched pair stays
+		// absent. When either side changed, both are sent to satisfy Lumen's pair rule.
+		const pairChanged =
+			editInputPrice.trim() !== (editingPrice.input_price_per_million ?? '') ||
+			editOutputPrice.trim() !== (editingPrice.output_price_per_million ?? '');
+		const prices = pairChanged ? pricePayload(editInputPrice, editOutputPrice) : {};
+		if (prices === undefined || Object.keys(cache.errors).length > 0) return;
+		const body = { ...prices, ...cache.values };
+		if (Object.keys(body).length === 0) {
+			editingPrice = null;
+			return;
+		}
 		try {
-			await api.patch(`/api/v1/chat/admin/models/${editingPrice.id}`, prices, token, projectId);
+			await api.patch(`/api/v1/chat/admin/models/${editingPrice.id}`, body, token, projectId);
+			invalidateChatModels();
 			editingPrice = null;
 			await load();
 			toast.success('모델 가격을 저장했습니다');
 		} catch (e) {
 			toast.error(e instanceof ApiError ? e.message : '가격 저장 실패');
+		}
+	}
+
+	function capabilityStatus(model: Model): string {
+		if (model.capability_source === 'override') return '관리자 기능 설정 · 실행 미검증';
+		const caps = model.effective_capabilities ?? model.capabilities;
+		if ((model.effective_capability_source || model.capability_source) && (caps?.vision || caps?.reasoning || caps?.tool_call || caps?.attachment || caps?.context_limit)) {
+			return '기능 메타데이터 · 실행 미검증';
+		}
+		return '고급 기능 미확인';
+	}
+
+	function openCapabilityEditor(model: Model) {
+		editingCapabilities = model;
+		const caps = model.capabilities ?? model.effective_capabilities;
+		capVision = caps?.vision ?? false;
+		capReasoning = caps?.reasoning ?? false;
+		capToolCall = caps?.tool_call ?? false;
+		capAttachment = caps?.attachment ?? false;
+		capSuggestedInputLimit = !model.capabilities && !model.effective_capabilities?.context_limit && discoverId === model.provider_id
+			? discovery?.candidates?.find((candidate) => candidate.id === model.model_name)?.input_token_limit ?? null
+			: null;
+		capContextLimit = model.capabilities
+			? model.capabilities.context_limit == null ? '' : String(model.capabilities.context_limit)
+			: model.effective_capabilities?.context_limit
+				? String(model.effective_capabilities.context_limit)
+				: capSuggestedInputLimit != null ? String(capSuggestedInputLimit) : '';
+		capError = '';
+	}
+
+	function contextLimitError(raw: string): string | undefined {
+		const value = raw.trim();
+		if (!value) return undefined;
+		const parsed = Number(value);
+		return /^\d+$/.test(value) && Number.isSafeInteger(parsed) && parsed > 0
+			? undefined : '컨텍스트 한도는 1 이상의 정수로 입력하세요.';
+	}
+
+	async function saveCapabilities() {
+		if (!editingCapabilities || capSaving) return;
+		const value = capContextLimit.trim();
+		if (contextLimitError(value)) return;
+		const contextLimit = value ? Number(value) : null;
+		const model = editingCapabilities;
+		capSaving = true;
+		capError = '';
+		try {
+			await api.patch(`/api/v1/chat/admin/models/${model.id}`, {
+				capabilities: {
+					vision: capVision,
+					reasoning: capReasoning,
+					tool_call: capToolCall,
+					attachment: capAttachment,
+					modalities: model.capabilities?.modalities ?? null,
+					reasoning_options: model.capabilities?.reasoning_options ?? [],
+					context_limit: contextLimit
+				}
+			}, token, projectId);
+			invalidateChatModels();
+			editingCapabilities = null;
+			await load();
+			toast.success('모델 기능 설정을 저장했습니다. 실행 지원은 별도로 확인하세요.');
+		} catch (e) {
+			capError = e instanceof ApiError ? e.message : '기능 저장에 실패했습니다. 다시 시도하세요.';
+		} finally {
+			capSaving = false;
 		}
 	}
 
@@ -960,6 +1286,7 @@
 				models_dev_provider_id: selectedModelsDevProviderId,
 				selections
 			}, token, projectId);
+			invalidateChatModels();
 			modelsDevOpen = false;
 			await load();
 			toast.success('models.dev 추천 가격을 적용했습니다');
@@ -972,70 +1299,137 @@
 
 	async function discover(providerId: number) {
 		if (discoverId === providerId) {
-			discoverId = null;
+			resetDiscovery();
 			return;
 		}
+		resetDiscovery();
 		discoverId = providerId;
+		await retryDiscovery();
+	}
+
+	async function retryDiscovery() {
+		const providerId = discoverId;
+		if (providerId === null || mProviderId !== providerId || registeringBulk) return;
+		const generation = ++discoveryGeneration;
+		const requestToken = token;
+		const requestProjectId = projectId;
 		discovering = true;
-		available = [];
-		availSource = '';
-		availFilter = '';
+		discoveryError = '';
+		discovery = null;
 		selectedAvail = {};
+		registrationReview = null;
+		registrationOutcomes = {};
 		try {
-			const res = await api.get<{ models: string[]; source: string }>(
+			const result = await api.get<DiscoveryResult>(
 				`/api/v1/chat/admin/providers/${providerId}/available-models`,
-				token,
-				projectId
+				requestToken,
+				requestProjectId
 			);
-			available = res.models;
-			availSource = res.source;
-			if (res.models.length === 0) {
-				toast.error('모델을 찾지 못했습니다 (API 키/Base URL 확인)');
+			if (!discoveryIsCurrent(generation, providerId, requestToken, requestProjectId)) return;
+			if (result.provider_id !== undefined && result.provider_id !== providerId) {
+				discoveryError = '다른 프로바이더의 조회 결과를 받았습니다. 다시 조회하세요.';
+				return;
 			}
-		} catch (e) {
-			toast.error(e instanceof ApiError ? e.message : '모델 조회 실패');
-			discoverId = null;
+			discovery = result.live_status === 'error'
+				? { ...result, source: 'none', models: [], candidates: [], complete: false }
+				: result;
+		} catch {
+			if (discoveryIsCurrent(generation, providerId, requestToken, requestProjectId)) {
+				discoveryError = '모델 조회에 실패했습니다. 연결과 API 키를 확인한 뒤 다시 조회하세요.';
+			}
 		} finally {
-			discovering = false;
+			if (discoveryIsCurrent(generation, providerId, requestToken, requestProjectId)) discovering = false;
 		}
 	}
 
-	async function registerSelected() {
-		if (discoverId === null) return;
-		const names = Object.keys(selectedAvail).filter((k) => selectedAvail[k]);
-		if (names.length === 0) {
-			toast.error('등록할 모델을 선택하세요');
+	function reviewSelected() {
+		if (discoverId === null || !discovery || discovery.live_status === 'error' || registeringBulk) return;
+		const registered = registeredNames(discoverId);
+		const candidates = discovery.candidates
+			.filter((candidate) => selectedAvail[candidate.id] && candidate.purpose !== 'non_chat' && !registered.has(candidate.id) && registrationOutcomes[candidate.id] !== 'success');
+		if (candidates.length === 0) {
+			toast.error('등록할 채팅 후보 모델을 선택하세요');
 			return;
 		}
+		registrationOutcomes = {};
+		registrationMode = null;
+		registrationReview = {
+			providerId: discoverId,
+			providerName: providerName(discoverId),
+			entries: candidates.map((candidate) => ({
+				name: candidate.id,
+				displayName: candidate.display_name ?? '',
+				inputPrice: '',
+				outputPrice: '',
+				inputTokenLimit: candidate.input_token_limit ?? null,
+				outputTokenLimit: candidate.output_token_limit ?? null,
+				purpose: candidate.purpose ?? 'unknown'
+			})),
+			token,
+			projectId
+		};
+	}
+
+	async function registerSelected(activate: boolean) {
+		if (!registrationReview || registeringBulk || (registrationMode && registrationMode !== (activate ? 'active' : 'inactive'))) return;
+		const review: RegistrationReview = {
+			...registrationReview,
+			entries: registrationReview.entries.map((entry) => ({ ...entry }))
+		};
+		const pending = review.entries.filter((entry) => registrationOutcomes[entry.name] !== 'success');
+		if (pending.some((entry) => reviewPriceError(entry)) || (activate && !reviewCanActivate(review))) {
+			toast.error('활성화하려면 각 모델의 정확한 입력·출력 단가를 함께 입력하세요');
+			return;
+		}
+		const generation = ++registrationGeneration;
+		if (!registrationIsCurrent(generation, review)) return;
+		registrationMode = activate ? 'active' : 'inactive';
 		registeringBulk = true;
 		let ok = 0;
 		const failed: string[] = [];
 		try {
-			for (const name of names) {
+			for (const entry of pending) {
+				if (!registrationIsCurrent(generation, review)) break;
+				const inputPrice = entry.inputPrice.trim();
+				const outputPrice = entry.outputPrice.trim();
 				try {
 					await api.post(
 						'/api/v1/chat/admin/models',
-						{ provider_id: discoverId, model_name: name },
-						token,
-						projectId
+						{
+							provider_id: review.providerId,
+							model_name: entry.name,
+							...(entry.displayName.trim() ? { display_name: entry.displayName.trim() } : {}),
+							...(inputPrice && outputPrice ? { input_price_per_million: inputPrice, output_price_per_million: outputPrice } : {}),
+							is_active: activate
+						},
+						review.token,
+						review.projectId
 					);
 					ok++;
+					invalidateChatModels();
+					if (registrationIsCurrent(generation, review)) registrationOutcomes = { ...registrationOutcomes, [entry.name]: 'success' };
 				} catch {
-					failed.push(name);
+					failed.push(entry.name);
+					if (registrationIsCurrent(generation, review)) registrationOutcomes = { ...registrationOutcomes, [entry.name]: 'failed' };
 				}
 			}
-			await load();
-			if (ok > 0) toast.success(`${ok}개 모델을 등록했습니다`);
-			if (failed.length > 0) toast.error(`${failed.length}개 등록 실패 (중복 등)`);
-			selectedAvail = {};
+			if (!registrationIsCurrent(generation, review)) return;
+			if (ok > 0) await load();
+			if (!registrationIsCurrent(generation, review)) return;
+			if (ok > 0) toast.success(`${ok}개 모델을 ${activate ? '등록·활성화' : '비활성 상태로 저장'}했습니다`);
+			if (failed.length > 0) toast.error(`${failed.length}개 등록 실패. 실패한 후보만 재시도할 수 있습니다.`);
+			selectedAvail = Object.fromEntries(failed.map((name) => [name, true]));
+			if (failed.length === 0) registrationReview = null;
 		} finally {
-			registeringBulk = false;
+			if (registrationIsCurrent(generation, review)) registeringBulk = false;
 		}
 	}
 
 	function toggleAllFiltered(checked: boolean) {
 		const next = { ...selectedAvail };
-		for (const m of filteredAvailable) next[m] = checked;
+		for (const candidate of filteredAvailable) {
+			if (candidate.purpose !== 'non_chat') next[candidate.id] = checked;
+		}
 		selectedAvail = next;
 	}
 
@@ -1043,6 +1437,7 @@
 		if (!(await confirmDialog('모델을 삭제하시겠습니까?'))) return;
 		try {
 			await api.delete(`/api/v1/chat/admin/models/${id}`, token, projectId);
+			invalidateChatModels();
 			await load();
 		} catch {
 			toast.error('삭제 실패');
@@ -1069,6 +1464,7 @@
 				try {
 					await api.delete(`/api/v1/chat/admin/models/${id}`, token, projectId);
 					ok++;
+					invalidateChatModels();
 				} catch {
 					failed.push(String(id));
 				}
@@ -1083,8 +1479,13 @@
 	}
 
 	async function toggleModel(m: Model) {
+		if (!m.is_active && (m.effective_input_price_per_million == null || m.effective_output_price_per_million == null)) {
+			toast.error('입력·출력 단가가 미확인입니다. 가격 수정 또는 models.dev 가격 적용 후 활성화하세요.');
+			return;
+		}
 		try {
 			await api.patch(`/api/v1/chat/admin/models/${m.id}`, { is_active: !m.is_active }, token, projectId);
+			invalidateChatModels();
 			await load();
 		} catch {
 			toast.error('변경 실패');
@@ -1104,6 +1505,7 @@
 		try {
 			const target = m.is_title_model ? null : m.id;
 			await api.put('/api/v1/chat/admin/title-model', { model_id: target }, token, projectId);
+			invalidateChatModels();
 			models = models.map((x) => ({ ...x, is_title_model: x.id === target }));
 			toast.success(target ? '제목 요약 모델로 지정했습니다' : '제목 요약 모델을 해제했습니다');
 		} catch (e) {
@@ -1119,6 +1521,11 @@
 	const unsubscribeAuthScope = auth.subscribe((state) => {
 		const nextToken = state.token ?? undefined;
 		const nextProjectId = state.projectId ?? undefined;
+		if (discoveryScopeToken !== nextToken || discoveryScopeProjectId !== nextProjectId) {
+			discoveryScopeToken = nextToken;
+			discoveryScopeProjectId = nextProjectId;
+			resetDiscovery();
+		}
 		if (
 			authModalOpen &&
 			(authScopeToken !== nextToken || authScopeProjectId !== nextProjectId)
@@ -1134,6 +1541,9 @@
 	});
 
 	onDestroy(() => {
+		destroyed = true;
+		++loadGeneration;
+		resetDiscovery();
 		unsubscribeAuthScope();
 		invalidateAuthSession();
 	});
@@ -1554,7 +1964,7 @@
 		</p>
 		<div class="{cardCls} mb-4 p-5">
 			<div class="flex flex-col gap-3 sm:flex-row sm:items-center">
-				<select class={inputCls} bind:value={mProviderId}>
+				<select class={inputCls} aria-label="조회 프로바이더" bind:value={mProviderId} onchange={resetDiscovery}>
 					<option value="">프로바이더 선택</option>
 					{#each providers as p (p.id)}
 						<option value={p.id}>{p.name}</option>
@@ -1583,48 +1993,78 @@
 					</Button>
 				</div>
 			</div>
-			{#if discoverId === mProviderId}
-				<div class="mt-4 border-t border-[var(--color-line)] pt-4">
+			{#if discoverId === mProviderId && discoverId !== null}
+				<div class="mt-4 border-t border-[var(--color-line)] pt-4" data-testid="model-discovery">
+					<div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+						<p class="text-sm font-semibold text-[var(--color-ink-1)]">조회 후보 · {providerName(discoverId)}</p>
+						<div class="flex gap-2">
+							<Button variant="secondary" size="sm" onclick={retryDiscovery} disabled={discovering || registeringBulk}>다시 조회</Button>
+							<Button variant="ghost" size="sm" onclick={resetDiscovery}>조회 닫기</Button>
+						</div>
+					</div>
 					{#if discovering}
-						<p class="text-sm text-[var(--color-ink-3)]">모델 목록을 불러오는 중…</p>
-					{:else if available.length === 0}
-						<p class="text-sm text-[var(--color-ink-3)]">불러온 모델이 없습니다. API 키/Base URL을 확인하거나 직접 추가하세요.</p>
-					{:else}
-						<div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-							<span class="text-xs text-[var(--color-ink-3)]">
-								{availSource === 'api' ? '프로바이더 API' : 'LiteLLM 정적 목록'} · 전체 {available.length}개 · 미등록 {filteredAvailable.length}개
-							</span>
-							<div class="flex items-center gap-2 text-xs">
-								<button class={rowActionCls} onclick={() => toggleAllFiltered(true)}>전체 선택</button>
-								<button class={rowActionCls} onclick={() => toggleAllFiltered(false)}>선택 해제</button>
-							</div>
-						</div>
-						{#if isSubscriptionProviderId(mProviderId)}
-							<Alert tone="info" class="mb-3">정적 카탈로그 후보입니다. 현재 구독 등급에서 실제 사용할 수 있는 모델인지는 보장되지 않습니다.</Alert>
+						<p class="text-sm text-[var(--color-ink-2)]">모델 목록을 불러오는 중…</p>
+					{:else if discoveryError}
+						<Alert tone="warning">{discoveryError}</Alert>
+					{:else if discovery}
+						<p class="mb-3 text-xs text-[var(--color-ink-2)]" data-testid="discovery-provenance">
+							출처: {discovery.source === 'api' ? '프로바이더 API' : discovery.source === 'litellm' ? 'LiteLLM 정적 목록' : '제공된 목록 없음'}
+							· 실시간 조회: {discovery.live_status === 'success' ? '응답' : discovery.live_status === 'empty' ? '정상 빈 결과' : discovery.live_status === 'unsupported' ? '미지원' : discovery.live_status === 'error' ? '실패' : '상태 미확인'}
+							· 완전성: {discovery.complete === true ? '전체' : discovery.complete === false ? '불완전' : '미확인'}
+							{#if discovery.fetched_at} · 조회 시각: {discovery.fetched_at}{/if}
+							· 전체 {discovery.models.length}개 · 미등록 {filteredAvailable.length}개
+						</p>
+						{#if discovery.error}
+							<Alert tone="warning" class="mb-3">{discovery.error.message} {discovery.error.retryable ? '다시 조회할 수 있습니다.' : '연결 설정을 확인하세요.'}</Alert>
 						{/if}
-						<input class="{inputCls} mb-3" placeholder="모델 필터 (예: gpt-4)" bind:value={availFilter} />
-						<div class="max-h-64 space-y-1 overflow-y-auto rounded border border-[var(--color-line)] bg-[var(--color-surface-base)] p-2">
-							{#each filteredAvailable as mid (mid)}
-								<label class="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm text-[var(--color-ink-1)] hover:bg-[var(--color-line)]">
-									<input type="checkbox" bind:checked={selectedAvail[mid]} />
-									<span class="truncate">{mid}</span>
-								</label>
-							{:else}
-								<p class="px-2 py-1 text-sm text-[var(--color-ink-3)]">필터에 맞는 미등록 모델이 없습니다.</p>
-							{/each}
-						</div>
-						<div class="mt-3 flex justify-end">
-							<Button onclick={registerSelected} disabled={registeringBulk}>
-								{registeringBulk ? '등록 중…' : '선택 모델 등록'}
-							</Button>
-						</div>
+						{#if discovery.live_status === 'error' && !discovery.error}
+							<Alert tone="warning" class="mb-3">실시간 모델 조회에 실패했습니다. 연결을 확인하고 다시 조회하세요.</Alert>
+						{/if}
+						{#if discovery.live_status === 'empty' && discovery.models.length === 0}
+							<Alert tone="info">정상적으로 조회했지만 반환된 모델이 없습니다. 필요하면 직접 추가하세요.</Alert>
+						{:else if discovery.live_status === 'unsupported' && discovery.models.length === 0}
+							<Alert tone="info">이 프로바이더는 모델 조회를 지원하지 않습니다. 직접 추가할 수 있습니다.</Alert>
+						{:else if discovery.models.length === 0 && !discovery.error && discovery.live_status !== 'error'}
+							<Alert tone="info">제공된 후보가 없습니다. 조회 상태를 확인하거나 직접 추가하세요.</Alert>
+						{/if}
+						{#if discovery.models.length > 0 && discovery.live_status !== 'error'}
+							<Alert tone="info" class="mb-3">조회 후보는 가격이나 실행 가능성의 증거가 아닙니다. 정확한 입력·출력 및 캐시 단가와 기능을 확인한 뒤 활성화하세요.</Alert>
+							{#if isSubscriptionProviderId(mProviderId)}
+								<Alert tone="info" class="mb-3">구독 카탈로그 후보입니다. 현재 구독 등급에서 실제 사용할 수 있는 모델인지는 보장되지 않습니다.</Alert>
+							{/if}
+							<div class="mb-3 flex flex-wrap gap-3 text-xs">
+								<Button variant="ghost" size="xs" onclick={() => toggleAllFiltered(true)}>전체 선택</Button>
+								<Button variant="ghost" size="xs" onclick={() => toggleAllFiltered(false)}>선택 해제</Button>
+							</div>
+							<div class="mb-3">
+								<Field label="후보 모델 필터" for="discovery-candidate-filter">
+									<TextInput id="discovery-candidate-filter" type="search" placeholder="모델 ID 또는 표시 이름 검색" bind:value={availFilter} />
+								</Field>
+							</div>
+							<div class="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-base)] p-2">
+								{#each filteredAvailable as candidate (candidate.id)}
+									<label class="flex items-start gap-2 rounded-md px-2 py-2 text-sm text-[var(--color-ink-1)] hover:bg-[var(--color-surface-selected)]">
+										<input class="mt-1" type="checkbox" aria-label={candidate.id} disabled={candidate.purpose === 'non_chat' || registeringBulk} bind:checked={selectedAvail[candidate.id]} />
+										<span class="min-w-0 break-all"><span class="block font-mono">{candidate.id}</span>
+											{#if candidate.display_name}<span class="block text-xs text-[var(--color-ink-2)]">{candidate.display_name}</span>{/if}
+											<span class="block text-xs text-[var(--color-ink-2)]">{candidate.purpose === 'non_chat' ? '채팅 외 용도 · 자동 등록 불가' : candidate.purpose === 'chat' ? '채팅 후보 · 실행 미검증' : '용도 미확인 · 검토 필요'}</span>
+										</span>
+									</label>
+								{:else}
+									<p class="px-2 py-1 text-sm text-[var(--color-ink-2)]">필터에 맞는 미등록 모델이 없습니다.</p>
+								{/each}
+							</div>
+							<div class="mt-3 flex justify-end">
+								<Button onclick={reviewSelected} disabled={registeringBulk}>선택 모델 검토</Button>
+							</div>
+						{/if}
 					{/if}
 				</div>
 			{/if}
 		</div>
 		<div class="{cardCls} mb-4 p-5">
 			<div class="grid grid-cols-1 gap-3 md:grid-cols-5">
-				<select class={inputCls} bind:value={mProviderId}>
+				<select class={inputCls} aria-label="수동 등록 프로바이더" bind:value={mProviderId} onchange={resetDiscovery}>
 					<option value="">프로바이더 선택</option>
 					{#each providers as p (p.id)}
 						<option value={p.id}>{p.name}</option>
@@ -1635,6 +2075,28 @@
 				<input class={inputCls} inputmode="decimal" placeholder="입력 가격 (USD / 1M tokens)" bind:value={mInputPrice} />
 				<input class={inputCls} inputmode="decimal" placeholder="출력 가격 (USD / 1M tokens)" bind:value={mOutputPrice} />
 			</div>
+			{#if cachePricingAvailable}
+			<div class="mt-4 border-t border-[var(--color-line)] pt-4" role="group" aria-labelledby="model-create-cache-heading" data-testid="model-create-cache-prices">
+				<p id="model-create-cache-heading" class="text-xs font-semibold text-[var(--color-ink-1)]">프롬프트 캐시 단가 (선택)</p>
+				<p class="mt-1 text-xs leading-relaxed text-[var(--color-ink-2)]">
+					입력·출력 가격과 별도로 항목마다 저장합니다. 비워 둔 항목의 캐시 토큰은 단가를 설정할 때까지 0 USD로 청구하며 LiteLLM·models.dev 기본 단가로 대체하지 않습니다.
+				</p>
+				<div class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+					{#each CACHE_PRICE_FIELDS as field (field.key)}
+						<Field label={field.label} for="model-create-cache-{field.slug}" help="USD / 1M tokens" error={mCacheErrors[field.key]}>
+							<TextInput
+								id="model-create-cache-{field.slug}"
+								inputmode="decimal"
+								placeholder="예: 0.3"
+								bind:value={mCachePrices[field.key]}
+								ariaInvalid={Boolean(mCacheErrors[field.key])}
+								oninput={(event) => (mCacheErrors = recheckCachePrice(mCacheErrors, field.key, (event.currentTarget as HTMLInputElement).value))}
+							/>
+						</Field>
+					{/each}
+				</div>
+			</div>
+			{/if}
 			<div class="mt-3 flex justify-end">
 				<Button onclick={addModel} disabled={addingModel || providers.length === 0}>
 					{addingModel ? '추가 중…' : '+ 모델 추가'}
@@ -1670,21 +2132,19 @@
 							<div class="min-w-0 flex-1">
 							<div class="flex flex-wrap items-center gap-2">
 								<span class="truncate text-sm font-medium text-[var(--color-ink-1)]">{displayModelTitle(m)}</span>
-								<span
-									class="rounded px-1.5 py-0.5 text-xs {m.is_active
-										? 'bg-[var(--color-state-success)]/15 text-[var(--color-state-success)]'
-										: 'bg-[var(--color-line)] text-[var(--color-ink-3)]'}"
-								>
-									{m.is_active ? '활성' : '비활성'}
-								</span>
+								<Pill tone={m.is_active ? 'success' : 'neutral'} size="xs">{m.is_active ? '활성 · 저장됨' : '비활성 · 저장됨'}</Pill>
 								{#if m.is_title_model}
 									<span class="rounded bg-[var(--color-accent)]/15 px-1.5 py-0.5 text-xs text-[var(--color-accent)]">
 										제목 요약
 									</span>
 								{/if}
 								<Pill tone={m.price_source === 'manual' ? 'success' : m.price_source === 'models.dev' ? 'accent' : 'neutral'} size="xs">
-									{m.price_source === 'manual' ? '수동' : m.price_source === 'models.dev' ? 'models.dev' : m.effective_price_source?.startsWith('perplexity_agent_api_') ? 'Perplexity 공식 가격' : 'LiteLLM 기본값'}
+									{m.price_source === 'manual' ? '수동' : m.price_source === 'models.dev' ? 'models.dev' : m.effective_price_source?.startsWith('perplexity_agent_api_') ? 'Perplexity 공식 가격' : m.effective_price_source === 'litellm' ? 'LiteLLM 기본값' : '가격 출처 미확인'}
 								</Pill>
+								<Pill tone={m.effective_input_price_per_million != null && m.effective_output_price_per_million != null ? 'accent' : 'warning'} size="xs">
+									{m.effective_input_price_per_million != null && m.effective_output_price_per_million != null ? '기본 텍스트 단가 표시됨' : '가격 미확인'}
+								</Pill>
+								<Pill tone={capabilityStatus(m) === '고급 기능 미확인' ? 'neutral' : 'accent'} size="xs">{capabilityStatus(m)}</Pill>
 								<ModelCapabilityBadges caps={m.capabilities || m.effective_capabilities} size="xs" />
 							</div>
 							<div class="mt-0.5 text-xs text-[var(--color-ink-3)]">
@@ -1697,6 +2157,19 @@
 							<div class="mt-1 text-xs text-[var(--color-ink-2)]">
 								입력 {formatPricePerMillion(m.effective_input_price_per_million)} · 출력 {formatPricePerMillion(m.effective_output_price_per_million)} USD / 1M tokens
 							</div>
+							{#if !cachePricingSupported(m)}
+								<div class="mt-0.5 text-xs text-[var(--color-ink-2)]" data-testid="model-cache-prices">
+									캐시 단가 미지원 · 이 Lumen 버전은 캐시 단가를 받지 않습니다
+								</div>
+							{:else if cachePriceState(m) === 'none'}
+								<div class="mt-0.5 text-xs text-[var(--color-ink-2)]" data-testid="model-cache-prices">
+									캐시 단가 미설정 · 캐시 토큰은 단가를 설정할 때까지 0 USD로 청구됩니다
+								</div>
+							{:else}
+								<div class="mt-0.5 text-xs tabular-nums text-[var(--color-ink-2)]" data-testid="model-cache-prices">
+									캐시 읽기 {formatCachePrice(m.cache_read_price_per_million)} · 캐시 쓰기 5분 {formatCachePrice(m.cache_write_price_per_million)} · 캐시 쓰기 1시간 {formatCachePrice(m.cache_write_1h_price_per_million)} USD / 1M tokens{cachePriceState(m) === 'partial' ? ' · 미설정 항목은 0 USD로 청구' : ''}
+								</div>
+							{/if}
 						</div>
 						</div>
 						<div class="flex flex-wrap items-center justify-end gap-x-3 gap-y-2 border-t border-[var(--color-line)] pt-3 text-xs sm:shrink-0 sm:border-t-0 sm:pt-0">
@@ -1704,6 +2177,7 @@
 								{m.is_title_model ? '제목요약 해제' : '제목요약 지정'}
 							</button>
 							<button class={rowActionCls} onclick={() => openPriceEditor(m)}>가격 수정</button>
+							<Button variant="ghost" size="xs" onclick={() => openCapabilityEditor(m)}>기능 수정</Button>
 							<button class={rowActionCls} onclick={() => toggleModel(m)}>{m.is_active ? '비활성화' : '활성화'}</button>
 							<button class="text-[var(--color-state-danger)] transition-opacity hover:opacity-80" onclick={() => deleteModel(m.id)}>삭제</button>
 						</div>
@@ -1715,14 +2189,84 @@
 	{/if}
 
 	{#if section === 'models'}
+	<Modal open={registrationReview !== null} onClose={() => { if (!registeringBulk) registrationReview = null; }} dismissible={!registeringBulk} ariaLabel="선택 모델 등록 검토">
+		<div class="max-h-[calc(100vh-2rem)] w-[min(32rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-5 shadow-[var(--shadow-restraint)]" data-testid="model-registration-review">
+			<h3 class="text-base font-semibold text-[var(--color-ink-1)]">선택 모델 등록 검토</h3>
+			{#if registrationReview}
+				<p class="mt-2 text-sm text-[var(--color-ink-2)]">프로바이더: {registrationReview.providerName} · {registrationReview.entries.length}개 후보</p>
+				<Alert tone="warning" class="mt-3">조회 결과는 가격·기능·실행 가능성을 검증하지 않습니다. 비활성 저장 후 가격 수정 또는 models.dev 가격에서 정확한 단가를 지정할 수 있습니다. 활성화는 관리자 입력 단가가 모두 있을 때만 가능하며, 캐시 단가와 기능은 별도 확인이 필요합니다.</Alert>
+				<div class="mt-4 max-h-[min(50vh,28rem)] space-y-3 overflow-y-auto">
+					{#each registrationReview.entries as entry, index (entry.name)}
+						<div class="rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-base)] p-3" data-testid="registration-entry">
+							<p class="break-all font-mono text-sm text-[var(--color-ink-1)]">{entry.name}</p>
+							<p class="mt-1 text-xs text-[var(--color-ink-2)]">
+								{entry.purpose === 'unknown' ? '용도 미확인 · 채팅 실행 미검증' : '채팅 후보 · 실행 미검증'}
+								· 제공된 입력 한도 {entry.inputTokenLimit ?? '미확인'} · 출력 한도 {entry.outputTokenLimit ?? '미확인'} tokens (참고용, 기능 설정에 반영하지 않음)
+							</p>
+							{#if registrationOutcomes[entry.name] === 'success'}
+								<Pill tone="success" size="sm">등록됨 · 재요청하지 않음</Pill>
+							{:else}
+								{#if registrationOutcomes[entry.name] === 'failed'}<Pill tone="warning" size="sm">등록 실패 · 이 모델만 재시도</Pill>{/if}
+								<div class="mt-3 grid gap-3 sm:grid-cols-2">
+									<div class="sm:col-span-2">
+										<Field label="표시 이름 · {entry.name}" for="review-display-{index}">
+											<TextInput id="review-display-{index}" placeholder="선택 사항" bind:value={entry.displayName} disabled={registeringBulk} />
+										</Field>
+									</div>
+									<Field label="입력 단가 · {entry.name}" for="review-input-{index}" help="USD / 1M tokens" error={reviewPriceError(entry)}>
+										<TextInput id="review-input-{index}" inputmode="decimal" placeholder="예: 2" bind:value={entry.inputPrice} disabled={registeringBulk} ariaInvalid={Boolean(reviewPriceError(entry))} />
+									</Field>
+									<Field label="출력 단가 · {entry.name}" for="review-output-{index}" help="USD / 1M tokens" error={reviewPriceError(entry)}>
+										<TextInput id="review-output-{index}" inputmode="decimal" placeholder="예: 8" bind:value={entry.outputPrice} disabled={registeringBulk} ariaInvalid={Boolean(reviewPriceError(entry))} />
+									</Field>
+								</div>
+							{/if}
+						</div>
+					{/each}
+				</div>
+				<div class="mt-5 flex flex-wrap justify-end gap-2">
+					<Button variant="secondary" onclick={() => (registrationReview = null)} disabled={registeringBulk}>취소</Button>
+					<Button onclick={() => registerSelected(false)} disabled={registeringBulk || registrationMode === 'active' || registrationReview.entries.some((entry) => registrationOutcomes[entry.name] !== 'success' && Boolean(reviewPriceError(entry)))}>{registeringBulk ? '등록 중…' : '비활성으로 저장'}</Button>
+					<Button variant="accent" onclick={() => registerSelected(true)} disabled={registeringBulk || registrationMode === 'inactive' || !reviewCanActivate(registrationReview)}>가격 확인 후 등록·활성화</Button>
+				</div>
+			{/if}
+		</div>
+	</Modal>
+
 	<Modal open={editingPrice !== null} onClose={() => (editingPrice = null)} ariaLabel="모델 가격 수정">
-		<div class="w-[min(32rem,calc(100vw-2rem))] rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-5 shadow-[var(--shadow-restraint)]">
+		<div class="max-h-[calc(100vh-2rem)] w-[min(32rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-5 shadow-[var(--shadow-restraint)]">
 			<h3 class="text-base font-semibold text-[var(--color-ink-1)]">모델 가격 수정</h3>
-			<p class="mt-1 text-sm text-[var(--color-ink-3)]">두 가격을 함께 저장하거나 모두 비우면 LiteLLM 기본 가격을 사용합니다.</p>
+			<p class="mt-1 text-sm text-[var(--color-ink-2)]">입력·출력 가격은 함께 저장하거나 모두 비우면 수동 단가가 해제됩니다. 대체 단가가 없으면 가격 미확인으로 표시됩니다.</p>
 			<div class="mt-4 grid gap-3 sm:grid-cols-2">
-				<input class={inputCls} inputmode="decimal" placeholder="입력 USD / 1M tokens" bind:value={editInputPrice} />
-				<input class={inputCls} inputmode="decimal" placeholder="출력 USD / 1M tokens" bind:value={editOutputPrice} />
+				<Field label="입력" for="model-edit-input-price">
+					<TextInput id="model-edit-input-price" inputmode="decimal" placeholder="USD / 1M tokens" bind:value={editInputPrice} />
+				</Field>
+				<Field label="출력" for="model-edit-output-price">
+					<TextInput id="model-edit-output-price" inputmode="decimal" placeholder="USD / 1M tokens" bind:value={editOutputPrice} />
+				</Field>
 			</div>
+			{#if editingPrice && cachePricingSupported(editingPrice)}
+			<div class="mt-4 border-t border-[var(--color-line)] pt-4" role="group" aria-labelledby="model-edit-cache-heading">
+				<p id="model-edit-cache-heading" class="text-sm font-semibold text-[var(--color-ink-1)]">프롬프트 캐시 단가 (선택)</p>
+				<p class="mt-1 text-xs leading-relaxed text-[var(--color-ink-2)]">
+					항목마다 따로 저장하며 입력·출력 가격과 함께 입력할 필요가 없습니다. 비우고 저장하면 해당 단가를 지우고, 그 캐시 토큰은 다시 설정할 때까지 0 USD로 청구됩니다. LiteLLM·models.dev 기본 단가로 대체하지 않습니다.
+				</p>
+				<div class="mt-3 grid gap-3 sm:grid-cols-3">
+					{#each CACHE_PRICE_FIELDS as field (field.key)}
+						<Field label={field.label} for="model-edit-cache-{field.slug}" help="USD / 1M tokens" error={editCacheErrors[field.key]}>
+							<TextInput
+								id="model-edit-cache-{field.slug}"
+								inputmode="decimal"
+								placeholder="예: 0.3"
+								bind:value={editCachePrices[field.key]}
+								ariaInvalid={Boolean(editCacheErrors[field.key])}
+								oninput={(event) => (editCacheErrors = recheckCachePrice(editCacheErrors, field.key, (event.currentTarget as HTMLInputElement).value))}
+							/>
+						</Field>
+					{/each}
+				</div>
+			</div>
+			{/if}
 			<div class="mt-5 flex justify-end gap-2">
 				<Button variant="secondary" onclick={() => (editingPrice = null)}>취소</Button>
 				<Button onclick={savePrice}>저장</Button>
@@ -1730,11 +2274,41 @@
 		</div>
 	</Modal>
 
+	<Modal open={editingCapabilities !== null} onClose={() => { if (!capSaving) editingCapabilities = null; }} dismissible={!capSaving} ariaLabel="모델 기능 수정">
+		<div class="max-h-[calc(100vh-2rem)] w-[min(32rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-5 shadow-[var(--shadow-restraint)]">
+			<h3 class="text-base font-semibold text-[var(--color-ink-1)]">모델 기능 수정</h3>
+			{#if editingCapabilities}
+				<p class="mt-2 break-all font-mono text-sm text-[var(--color-ink-1)]">{editingCapabilities.model_name}</p>
+				<Alert tone="warning" class="mt-3">현재 기능 출처: {editingCapabilities.effective_capability_source ?? '미확인'}. 표시된 카탈로그 정보는 실행 검증이 아닙니다. 저장하면 선택한 기능을 관리자 수동 설정으로 지정합니다. 웹 검색·컴팩션은 이 설정으로 켤 수 없습니다.</Alert>
+				{#if capSuggestedInputLimit !== null}
+					<p class="mt-3 text-sm text-[var(--color-ink-2)]">조회 후보의 입력 한도 {capSuggestedInputLimit} tokens를 컨텍스트 한도 초안으로 채웠습니다. 입력 한도와 전체 컨텍스트 한도는 다를 수 있으므로 확인 후 저장하세요.</p>
+				{/if}
+				<div class="mt-4 grid gap-3 sm:grid-cols-2">
+					<label class="flex items-center gap-2 text-sm text-[var(--color-ink-1)]"><input type="checkbox" bind:checked={capVision} disabled={capSaving} />이미지 입력 (Vision)</label>
+					<label class="flex items-center gap-2 text-sm text-[var(--color-ink-1)]"><input type="checkbox" bind:checked={capReasoning} disabled={capSaving} />추론 (Reasoning)</label>
+					<label class="flex items-center gap-2 text-sm text-[var(--color-ink-1)]"><input type="checkbox" bind:checked={capToolCall} disabled={capSaving} />도구 호출 (Tools)</label>
+					<label class="flex items-center gap-2 text-sm text-[var(--color-ink-1)]"><input type="checkbox" bind:checked={capAttachment} disabled={capSaving} />파일 첨부 (Files)</label>
+				</div>
+				<div class="mt-4">
+					<Field label="컨텍스트 한도" for="model-capability-context" help="전체 컨텍스트 tokens · 미확인이면 비워두세요" error={contextLimitError(capContextLimit)}>
+						<TextInput id="model-capability-context" inputmode="numeric" placeholder="예: 128000" bind:value={capContextLimit} disabled={capSaving} ariaInvalid={Boolean(contextLimitError(capContextLimit))} />
+					</Field>
+				</div>
+				{#if capError}<Alert tone="warning" class="mt-3">{capError}</Alert>{/if}
+				<div class="mt-5 flex justify-end gap-2">
+					<Button variant="secondary" onclick={() => (editingCapabilities = null)} disabled={capSaving}>취소</Button>
+					<Button onclick={saveCapabilities} disabled={capSaving || Boolean(contextLimitError(capContextLimit))}>{capSaving ? '저장 중…' : '기능 설정 저장'}</Button>
+				</div>
+			{/if}
+		</div>
+	</Modal>
+
 	<Modal bind:open={modelsDevOpen} ariaLabel="models.dev 추천 가격">
 		<div class="max-h-[calc(100vh-2rem)] w-[min(48rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-5 shadow-[var(--shadow-restraint)]">
 			<h3 class="text-base font-semibold text-[var(--color-ink-1)]">models.dev 추천 가격</h3>
-			<p class="mt-1 text-sm text-[var(--color-ink-3)]">
+			<p class="mt-1 text-sm text-[var(--color-ink-2)]">
 				<a class="underline" href="https://models.dev" target="_blank" rel="noreferrer">models.dev</a>의 기본 input/output 단가만 적용합니다. 수동 확정 가격은 덮어쓰지 않습니다.
+				캐시 단가는 가져오지 않으므로 각 모델의 <strong class="font-medium text-[var(--color-ink-1)]">가격 수정</strong>에서 직접 설정하세요.
 			</p>
 			{#if modelsDevError}<Alert tone="warning" class="mt-3">{modelsDevError}</Alert>{/if}
 			<div class="mt-4 space-y-3">
@@ -1796,7 +2370,7 @@
 							{#if modelsDevSelections[model.id]}
 								{@const selected = modelsDevModels.find((external) => external.id === modelsDevSelections[model.id])}
 								{#if selected && selected.unsupported_price_fields.length > 0}
-									<Alert tone="warning" class="mt-2">tier/cache/reasoning/audio 단가는 적용하지 않습니다: {selected.unsupported_price_fields.join(', ')}</Alert>
+									<Alert tone="warning" class="mt-2">tier/cache/reasoning/audio 단가는 적용하지 않습니다: {selected.unsupported_price_fields.join(', ')}. 캐시 단가는 적용 후 가격 수정에서 설정할 수 있습니다.</Alert>
 								{/if}
 							{/if}
 						</div>

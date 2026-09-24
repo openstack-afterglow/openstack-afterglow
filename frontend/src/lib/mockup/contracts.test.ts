@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 
 import { ADMIN_ALLOWED_PATHS, getMockupHomePath, isMockupPathAllowed } from './contracts';

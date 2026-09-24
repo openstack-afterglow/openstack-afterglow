@@ -1,3 +1,4 @@
+import type { GithubSshProfile } from '$lib/types/compute';
 import { writable } from 'svelte/store';
 import { sidebarOpen } from './sidebar';
 
@@ -59,6 +60,9 @@ export interface WizardState {
 	keyName: string | null;
 	sshAccessMode: 'keypair' | 'github';
 	githubUsername: string;
+	githubProfile: GithubSshProfile | null;
+
+
 	securityGroups: string[];
 	cloudInit: string;
 	bootVolumeSizeGb: number;
@@ -93,6 +97,8 @@ const initial: WizardState = {
 	keyName: null,
 	sshAccessMode: 'keypair',
 	githubUsername: '',
+	githubProfile: null,
+
 	securityGroups: [],
 	cloudInit: '',
 	bootVolumeSizeGb: 20,

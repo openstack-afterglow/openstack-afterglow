@@ -16,11 +16,13 @@
 		}).join(', ');
 	});
 	const reviewInstanceName = $derived(normalizeRequestedInstanceName($wizard.instanceName));
-	const reviewSshAccess = $derived(
-		$wizard.sshAccessMode === 'github'
-			? `GitHub: ${normalizeGithubUsername($wizard.githubUsername)}`
-			: $wizard.keyName ?? '없음',
-	);
+	const reviewSshAccess = $derived.by(() => {
+		if ($wizard.sshAccessMode !== 'github') return $wizard.keyName ?? '없음';
+		const profile = $wizard.githubProfile;
+		const login = profile?.login ?? normalizeGithubUsername($wizard.githubUsername);
+		if (!profile) return `GitHub: ${login} (미확인)`;
+		return `GitHub: ${login} · 공개 SSH 키 확인됨${profile.name ? ` (${profile.name})` : ''}`;
+	});
 </script>
 
 <h2 class="text-lg font-semibold text-ink-0 mb-4">최종 확인</h2>

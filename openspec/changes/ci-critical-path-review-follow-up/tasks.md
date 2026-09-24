@@ -1,0 +1,190 @@
+## Implementation Tasks
+
+### Review fixes (commit `fix: address CI overhaul review findings`)
+
+- [x] `test-pr`: prepend `github.event_name == 'pull_request' &&` to its `if`, so it never runs on push or dispatch.
+- [x] `changes`: tie each caller result to its event instead of `needs.test.result == 'success' || needs.test-pr.result == 'success'`.
+- [x] Contracts:
+  - pin both exact expressions and reject a bare `||` between caller results;
+  - mutation-check 16 single-line workflow regressions, and all 16 fail the suite:
+    - the expression reversions, and the push leg without its event;
+    - both 3-argument guards, and both guards keyed to the run's ref instead of the tracked branch;
+    - `:nightly` or Cloud Shell nightly tracking `dev`, `:dev` tracking the run's ref, and the dropped `TRACKED_REF` env;
+    - the dropped `persist-credentials` and the dropped login outcome;
+    - a restored `fetch-depth: 2`;
+    - `test-live` without `version-check` or without `test-cloud-shell`.
+- [x] Stale re-run guard: add the `<tracked-ref>` argument and a branch-tip read. Skip only when the tip is known, the tip differs from `sha` and compare reports `behind`, so a force-push rollback publishes. Both call sites pass the branch the tag tracks (`:dev`→`dev`, `:nightly`→`main`), not the run's ref, so a `workflow_dispatch` from another branch cannot move `:dev` backward.
+- [x] `readRevision`: return `present`, `absent` or `error`. The detector builds on `error`. `::warning::` annotations cover error targets and a failed `registry-login` outcome.
+- [x] Detector: remove the PR diff computation, drop `fetch-depth: 2`, and set `persist-credentials: false` on the `changes` checkout.
+- [x] `test-live`: add `version-check` and `test-cloud-shell` to its `needs`.
+- [x] Shard verifier: require the exact Vitest 4 shard size, and pin the absence of `exclude`, `projects` and `workspace` in `vitest.config.ts`.
+- [x] Network guard: record the thread name, and block non-loopback UDP `sendto` in both argument forms.
+- [x] Document two known limitations in ARCHITECTURE.md: the shared per-arch tag race (also in the workflow comment), and a rollback that races an in-flight run for the rolled-back commit (mitigation: cancel in-flight runs when rolling back).
+- [x] Correct ARCHITECTURE.md, AGENTS.md (CLAUDE.md) rules 3, 8 and 9, `backend/tests/TESTING.md` and the workflow comments.
+- [x] Verify:
+  - actionlint: 14 SC2086 info findings in `docker-build.yml`, as before;
+  - `test:orchestration` 75/75 and `test:kolla:contract`;
+  - `test:unit:backend` 2927 passed and `test:contract` 131 passed;
+  - `test:functional` 27 passed, with `afterglow-test` torn down;
+  - ruff check and format;
+  - real `vitest run --shard=1/2` and `--shard=2/2`: 124 and 123 files, disjoint, union 247. The tightened verifier passed both and rejected a mismatched index.
+- [x] Re-stamp ARCHITECTURE and pass `check_architecture.py --staged` and `docs:check`.
+
+### Review round 2 fixes (commit `fix: address CI review round 1`)
+
+- [x] `pr-dedup`: move the decision from inline shell to `scripts/ci/pr-dedup.js`.
+  - The step now runs `node scripts/ci/pr-dedup.js`. If the script cannot run (for example after a failed checkout), a fallback writes `skip=false`.
+  - The script always exits 0 and writes `skip` once, last. Only equal, valid merge and head trees give `skip=true`.
+  - It also rejects a dependabot author (`PR_AUTHOR`). The `::notice::` links the head commit so the merger can check that commit's dev push run.
+  - Unit tests (fake exec) cover:
+    - a fork (including a fork branch named `dev`) and an unknown repo;
+    - a dependabot head ref and a dependabot author;
+    - non-dev refs;
+    - malformed SHAs (empty, short, upper-case, trailing newline, option prefix);
+    - empty or malformed tree hashes;
+    - fetch and rev-parse failures, and a non-Error throw;
+    - equal and unequal trees.
+  - A real-git test runs the CLI in a scratch clone of a `file://` origin with the PR merge commit checked out. It covers equal trees, a fork, dependabot, a malformed SHA, an unfetchable SHA and diverged trees.
+- [x] `pr-dedup`: drop the job-level `continue-on-error`, so that an infrastructure failure turns the run red instead of hiding it. The checkout keeps its step-level `continue-on-error`. Rewrite the unverified ARCHITECTURE.md claim about what happens when `pr-dedup` fails.
+- [x] Contract hardening. The contract now pins:
+  - the `pr-dedup` `run:` block exactly, its env and its permissions, and that it has no job-level `continue-on-error`;
+  - that no `skip=true` appears anywhere in the workflow;
+  - that `test-frontend`, its vitest shard step and its verify step have no `if:`, `continue-on-error:` or `|| true`;
+  - the full `case "$rc"` arms at both guard call sites, where exactly two `*)` error arms fail the leg;
+  - that the manifest and Cloud Shell guard steps have no `continue-on-error`.
+- [x] `changes`: remove the unused `pull-requests: read`. Keep `packages: read`, with a comment that it is used only by the dev push registry read. The contract pins the exact permissions block.
+- [x] `detect-build-targets.js`:
+  - `collectEventChanges` flags unexpected basis failures (fetch or diff failure, invalid before SHA);
+  - `collectWarnings` emits `::warning::` for them on dev pushes;
+  - a zero SHA and a forced push stay quiet.
+- [x] `helm-release.yml` `check-changes`:
+  - replace the tip-only `git diff HEAD^1 HEAD` (and `fetch-depth: 2`) with `scripts/ci/helm-publish-decision.js`. It reuses `collectEventChanges`, so `github.event.before..github.sha` is compared, and a zero SHA, forced push, invalid before, fetch or diff failure, or exception publishes;
+  - add `contents: read`;
+  - add unit tests;
+  - the contract bans a tip-only diff in every workflow and in every `scripts/ci/*.js` file.
+- [x] `test-frontend`: pin Node 22 with `actions/setup-node@v4` before vitest, the same major as `version-check`. Reproduced locally: five jsdom `localStorage` test files pass on Node 24.14.1 (66 tests). On Node 26.3.1, four of them fail (64 tests) because `localStorage` is undefined.
+- [x] `test:orchestration` runs the two new test files. A contract checks that every `scripts/ci/*.test.js` is listed there.
+- [x] Docs:
+  - AGENTS.md (CLAUDE.md) CI rules: the scope now covers every workflow and `scripts/ci/`; rule 8 covers the shared event basis and its warning; rule 9 adds the merger's green-push-run check and keeps the canonical same-repo and tree-identity condition; rule 11 adds gating contracts and scripts over inline shell;
+  - ARCHITECTURE.md `CI와 이미지 발행`;
+  - `backend/tests/TESTING.md`.
+- [x] Verify. Mutation-check 33 single-edit regressions with a scratch harness that restores from memory, and confirm that the worktree diff is unchanged afterwards. All 33 fail the suite. Also run `test:orchestration`, `test:kolla:contract`, `test:unit:backend`, `test:contract`, both real vitest shards with the verifier, ruff, actionlint, and the architecture stamp with `--staged`.
+
+### Review round 3 fixes (commit `fix: address CI review round 2`)
+
+- [x] `pr-dedup` requires a push run for the head SHA.
+  - Tree identity alone no longer skips. The script also calls `gh api repos/<repo>/actions/workflows/docker-build.yml/runs?head_sha=<sha>&event=push&per_page=100`, with the query in the path because `-f` without `-X GET` would send a POST. It re-checks `head_sha`, `event` and a numeric `id`, in any status.
+  - Zero runs, an API error or malformed JSON gives `skip=false`. The job gains `actions: read` and passes `GH_TOKEN` only through the step env. The notice links the push run and the head commit.
+  - Why: a dev push that touches only `paths-ignore` files (`.argocd-source-*.yaml`, the dev `kustomization.yaml`) creates no push run. Those files are still `check_architecture.py` input. Reproduced in a scratch clone of `ce75d0d1`: appending one line to `deploy/k8s-template/overlays/dev/kustomization.yaml` and committing makes the check report a stale source snapshot.
+- [x] `pr-dedup` tests.
+  - Fake-exec unit tests cover zero runs, runs for another SHA or event, a non-numeric id, a missing `workflow_runs`, `null` and `[]` bodies, an API error, malformed JSON, the exact `gh api` argv, a malformed base repo, and no lookup for differing trees.
+  - The real-git CLI test puts a fake `gh` first on `PATH`, so it never reaches the real `gh` or the network. It covers one run (skip), zero runs and exit 1 (test). It checks that fork, dependabot and diverged cases make no `gh` call.
+- [x] Rule 10 contract.
+  - `build`, `build-cloud-shell` and `manifest` put `github.event_name != 'pull_request'` first in their `if`. `is_pr` stays as a secondary check.
+  - The contract parses every workflow under the top-level `jobs:`. A job whose `runs-on` is not a one-line hosted label (self-hosted, `${{ matrix.runner }}`, a list or a group) must have that literal as a top-level conjunct, with no top-level `||`.
+  - PR-reachable jobs (`pr-dedup`, `changes`) and every job of `test-pr`'s callee `test.yml` must use `ubuntu-*`. `pull_request_target` is banned. The `Resolve effective ref` step that computes `is_pr` is pinned exactly.
+- [x] `detect-build-targets.js`: both diffs use `--no-renames`.
+  - The contract pins each call site separately. A unit test covers a rename-out diff for images and one for Helm.
+  - Real-git tests `git mv` a 12-line file out of `backend/` and out of `helm/afterglow/`. They check the event-basis diff, the published-revision diff and the Helm decision. They also check the fixture premise, that default rename detection reports only the destination.
+- [x] Gating contracts for `test.yml`.
+  - These steps must be unconditional, must not continue on error or swallow their exit code, and must run exactly their pinned command: architecture freshness, orchestration, version sync, deps sync, ruff check and format, backend unit, Cloud Shell smoke, contract, Kolla contract, functional, frontend install and live.
+  - Required layer jobs have no job-level `if` or `continue-on-error`. `test-live`'s `if` is pinned exactly, with no status function.
+- [x] `test-pr` drops `secrets: inherit`. The only secret consumers in `test.yml` are the opt-in live jobs, and `test-pr` sets `run_live_openstack: false`. The contract pins its absence on `test-pr` and its presence on `test`.
+- [x] `frontend/vitest.config.ts`: the `pool: 'threads'` comment now labels its numbers as a local `--maxWorkers=3` measurement, not a CI result.
+- [x] Docs.
+  - ARCHITECTURE.md: the Code map row gains `pr-dedup.js`, `helm-publish-decision.js` and `helm-release.yml`. `CI와 이미지 발행` gains the dedup condition, the rule 10 contract, `--no-renames`, the corrected known limitations and the projected PR-path latency. There is also a round 3 entry.
+  - AGENTS.md (CLAUDE.md): rules 8, 9, 10 and 11.
+  - `backend/tests/TESTING.md`.
+- [x] Verify.
+  - `test:orchestration`: 100/100.
+  - Mutation check: 29 single-edit regressions, applied with a harness that restores from memory, and the worktree diff was unchanged afterwards. 28 fail the suite. The survivor is a control case that moves the build matrix to `ubuntu-latest`, which is not a rule violation.
+  - actionlint: `docker-build.yml` has 14 SC2086 infos, as before. `helm-release.yml` has 1 and `test.yml` has 0.
+  - The architecture stamp passes with `--staged`.
+  - A live read-only call of `findPushRun` against the real GitHub API used the local `gh` with the user's token.
+    - For dev head `3c461c7f` it returned push run `35898360384`, the same id that `gh run list` shows.
+    - For the dependabot PR head `cf69d3cd`, whose branch is not a push trigger branch, it returned `null`.
+    - This confirms the response shape and the GET path.
+
+### Review round 4 fixes (commits `fix: address CI review round 3` and `fix: make the rule 10 trigger parser fail closed`)
+
+- [x] Network guard teardown is pinned.
+  - The guard moves to `backend/tests/_network_guard.py`. `backend/tests/conftest.py` imports its fixture, so it stays autouse for every backend test.
+  - `test_teardown_fails_a_test_that_swallows_the_blocked_connect` runs a separate `python -m pytest -p tests._network_guard` process with the `PYTEST_*` env removed. Its inner tests swallow a blocked connect and a blocked DNS lookup, and a loopback control must pass cleanly. The test asserts `3 passed, 2 errors` and the exact teardown messages.
+  - `test_guard_is_autouse_for_tests_that_do_not_request_it` checks that conftest still registers the fixture as autouse.
+- [x] The network guard also blocks `socket.getaddrinfo` for host names other than localhost. IP literals, `None` and `localhost` pass.
+  - Why: without `afterglow.conf` (CI), default URLs such as `http://prometheus:9090` fail in DNS before any `connect`, so a test with a missing mock passed in CI.
+  - Reproduced: the origin/dev `test_dashboard_new.py` with no conf and no env override now gives `12 passed, 2 errors`, with `getaddrinfo('prometheus')` recorded from the `asyncio_0`/`asyncio_1` executor threads. With only the DNS patch removed, the same run gives `12 passed` and no errors.
+  - The full backend unit suite passed with the DNS guard, with no product test changes.
+- [x] Rule 7 wording now says exactly what the guard covers: connect, UDP `sendto` and `getaddrinfo` DNS. It does not isolate `afterglow.conf` loading, and it does not cover name resolution outside `socket.getaddrinfo` or `sendmsg`.
+- [x] `verify-vitest-shard.test.js`: each failure case starts from a valid 2-of-4 report. It asserts that `errors` is exactly the one expected message, and it has a positive control.
+- [x] Secrets contract.
+  - `pr-dedup` has no `secrets` reference, ignoring comment lines.
+  - `changes` references `secrets` only inside the push-only `Log in to registry` step.
+  - The workflow-level `env` has exactly one secrets reference, the `REGISTRY` host.
+- [x] Service health: the three functional services and the live Redis add `--health-start-period 30s` and `--health-start-interval 2s`. Docker 25+ probes at the start interval (default 5 s) during the start period, so without 2 s the happy path would slow down. The contract pins all five flags on all four services.
+- [x] Rule 10 contract.
+  - It is now a pure function, `selfHostedPrViolations`, with synthetic tests.
+  - These triggers count as PR-reachable: `pull_request`, `pull_request_review`, `pull_request_review_comment`, `issue_comment`, `workflow_run` and `merge_group`.
+  - A non-hosted job needs an allow-list conjunct such as `github.event_name == 'push'`. The deny-list `!= 'pull_request'` is enough only when `pull_request` is the workflow's only PR-reachable trigger.
+  - Trigger parsing covers the scalar, inline list, block list and mapping forms. It also fails closed on forms it does not parse (a flow mapping, a quoted key). A PR-reachable event name that appears as a word in the comment-stripped `on:` block is always counted.
+- [x] Docs.
+  - AGENTS.md (CLAUDE.md) rule 3 follows canonical rule 3. Publishes and deploys are gated on the whole test result, and PR verification builds that publish nothing may run in parallel.
+  - Rule 3 names the current exceptions (`helm-release.yml`, `docs.yml`) and the documented `pr-dedup` pre-gate.
+  - Rule 4 covers the start period, and rule 7 is narrowed.
+  - Rule 10 keeps the YAML guards and requires the settings-level controls. It records the 2026-09-24 read-only state and the exact owner settings paths.
+  - ARCHITECTURE.md, `backend/tests/TESTING.md`, `docs/testing.md` and the `test.yml` comment are updated to match.
+  - The archived `2026-09-23-ci-critical-path-overhaul/proposal.md` gains a one-line superseded-in-part note.
+- [x] Verify:
+  - `test:orchestration` 103/103;
+  - `test:unit:backend` 2948 passed, `test:contract` 131 passed, ruff check and format;
+  - actionlint: `test.yml` 0, and `docker-build.yml` 14 SC2086 infos as before;
+  - 31 distinct scratch mutations, all killed (restored from memory, worktree diff unchanged afterwards), listed in ARCHITECTURE.md;
+  - the architecture stamp with `--staged`;
+  - `test:functional` selects only `-m db` tests (`scripts/test-db.js` → `test-target.js db`), which the guard exempts, so the DNS block cannot affect it. It was not run, because Docker is not allowed in this task.
+
+### Final review fixes (commit `docs: correct the Kolla promotion PR testing claim`)
+
+- [x] Correct the rule 3 claim about `promote-kolla-role-tags.yml` in AGENTS.md (CLAUDE.md) and ARCHITECTURE.md `게이트 병렬성`, and add the merger steps to `deploy/kolla/operator/README.md`.
+  - The old text said the workflow's PR "goes through tests". It does not. The workflow pushes `automation/kolla-role-tags` with the `GITHUB_TOKEN` that checkout persists, and it runs `gh pr create` with `GH_TOKEN: ${{ github.token }}`. It has no `token:` input and no `secrets.*` reference. GitHub starts no new workflow run for events raised by `GITHUB_TOKEN` (only `workflow_dispatch` and `repository_dispatch` are exempt). So `docker-build.yml`'s `pull_request` trigger never fires on that PR, and the hourly force-push never fires `synchronize`.
+  - The new text says:
+    - the workflow publishes nothing, so rule 3's publish gating does not apply;
+    - its PR gets no automatic checks, and a maintainer must close and reopen it before merging;
+    - while the promotion is unmerged, every hourly run force-pushes a new commit built from `main`, so right before merging the maintainer confirms that the PR head is the commit the checks ran on, and reopens again if it is not;
+    - `workflow_dispatch` of `docker-build.yml` on that branch must not be used, because dispatch takes the `test` → build → push path and pushes `dev`-family tags for a non-`main`, non-tag ref;
+    - the post-merge `main` push run gates image publication only, not the merged lock reaching a Kolla operator environment.
+  - The workflow and its contract are unchanged. No branch protection or required-check claim is made, because those settings were not read.
+- [x] Evidence: the workflow source, and GitHub's documented `GITHUB_TOKEN` trigger behavior. On 2026-09-24, `gh pr list --head automation/kolla-role-tags --state all` returned `[]`, so no real promotion PR exists to cite.
+- [x] Re-stamp ARCHITECTURE and pass `check_architecture.py --staged`, `test:orchestration` and `docs:check`.
+
+### Post-merge follow-up (needs real GitHub Actions runs)
+
+- [ ] Measure 20+ real runs after merge: the critical-path median and p90 and the per-job times. Record them against the 143 s baseline (median, p90 155 s) in this change. CI rule 1 requires this before any effect is claimed.
+- [ ] Measure the PR path separately: `pr-dedup` plus `test-pr`, from run creation to the last required job, for 20+ PRs that are not deduplicated (feature, dependabot or diverged). Record how much `pr-dedup` adds. It is a serial pre-gate that cannot be made conditional because of the transitive-skip constraint.
+  - The projection is about 9 s median (p90 12 s, max 47 s). It comes from a similar job: `Detect changed targets` in the 20 dev→main PR runs of 2026-09-16 to 23, measured from job creation to completion. It excludes `pr-dedup`'s extra depth-1 fetch and API call.
+  - Also record how often dev→main PRs are deduplicated.
+- [ ] Confirm on a real dev→main PR that the job token's `actions: read` is enough for the push-run lookup and that the notice links that run. The endpoint and response shape were already checked read-only with a user token. Historical data: in the 20 dev→main PR runs of 2026-09-16 to 23, the push run for the same head SHA was created 2 to 1128 s before the PR run (median 3 s). Confirm that a dev push touching only `paths-ignore` files makes the PR run `test-pr`.
+- [ ] Confirm that `test-pr` without `secrets: inherit` still passes on a real PR, with `detect-live` and `test-live` skipped.
+- [ ] Confirm on a real dev push:
+  - `test-pr` is skipped, and `changes` runs on `test` only;
+  - `changes` reads the revision labels (the first push after merge uses the event basis, because existing images are unlabelled);
+  - `manifest` verify parses real `docker buildx imagetools inspect` output;
+  - the guard reads the branch tip with `gh api .../git/ref/heads/dev`.
+- [ ] Confirm on a real dev→main PR that `pr-dedup` skips `test-pr` and its notice links the head commit, and that a diverged PR runs it.
+- [ ] Force `pr-dedup` to fail once on a real PR (for example a temporary `exit 1` in the job's setup outside the fail-safe step). Confirm that `test-pr` is scheduled and the `test.yml` inner jobs actually execute. If they are skipped, the run is red but the PR tests never ran. The gate then needs a different design, for example `test-pr` without `needs`, reading the dedup result inside `test.yml`.
+- [ ] Confirm on a real multi-commit `main` push that `helm-release.yml` `check-changes` fetches `github.event.before` and publishes only when `helm/afterglow/` changed in the pushed range.
+- [ ] Confirm that the frontend shard jobs report Node 22 (`node --version` in the setup-node step log).
+- [ ] Decide whether to close the shared `<base>-<arch>` race. The fix is either a SHA-scoped intermediate reference with retention cleanup, or a build-push `digest` handed to the manifest leg through a per-target artifact. Either one must be verified on the self-hosted runner, including re-run semantics.
+- [ ] Confirm on a real `pull_request` run that the functional services with `--health-start-period 30s --health-start-interval 2s` become healthy with no slower service wait than the 2 s/20 baseline.
+- [ ] Decide how `helm-release.yml` (Helm chart OCI publish) and `docs.yml` (GitHub Pages deploy) are gated on the whole `Layered Tests` result, as canonical rule 3 requires. Today neither waits for the tests. Options: call them from `docker-build.yml` behind `needs: [test]`, or trigger them with `workflow_run` on a successful `Docker Build & Push` run for the same SHA.
+  - `promote-kolla-role-tags.yml` is out of scope for this item because it publishes nothing. That is the only reason. Its PR is not tested automatically; see the next item.
+- [ ] Owner decision for `promote-kolla-role-tags.yml`: make its `automation/kolla-role-tags` PR start `pull_request` checks. Today no checks start, because the branch push and `gh pr create` use `GITHUB_TOKEN`.
+  - Options:
+    - a GitHub App installation token (for example from `actions/create-github-app-token`), used for both the checkout push credential and `GH_TOKEN`;
+    - a fine-grained PAT limited to this repository, with `contents: write` and `pull-requests: write`.
+  - Either one needs a new repository secret. Creating that secret is an owner action, and an AI agent must not create it.
+  - After the secret exists, change the workflow and add a contract that pins the token source. Then confirm on a real promotion PR that `Layered Tests (PR)` starts on open and on the hourly force-push.
+  - Until then, a maintainer closes and reopens each promotion PR before merging, and checks that the head did not change afterwards. See AGENTS.md rule 3.
+- [ ] Owner actions for rule 10 (settings; an AI agent must not change them):
+  - org owner: Organization settings → Actions → Runner groups → the group of the `[self-hosted, linux, x64]` runner → Repository access. Limit it to the repositories that need the runner, and check whether public repositories are allowed. On 2026-09-24 this could not be read (HTTP 403, needs `admin:org`).
+  - repo admin: Settings → Actions → General → "Approval for running fork pull request workflows from contributors" → "Require approval for all external contributors". It was `first_time_contributors` on 2026-09-24.
+- [ ] Archive this change with `openspec archive ci-critical-path-review-follow-up --skip-specs --yes` once the items above are done.

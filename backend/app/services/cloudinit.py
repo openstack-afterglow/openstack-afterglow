@@ -44,7 +44,6 @@ _VERSIONS = {
     "jupyter": "4.2.0",
 }
 
-_DCGM_EXPORTER_VERSION = "4.2.0-4.1.0"
 
 # cloud-init YAML에 보간되는 값의 형식 검증 — 개행/특수문자로 YAML 구조가
 # 파괴되어 임의 write_files/runcmd가 주입되는 것을 차단한다 (심층 방어).
@@ -102,11 +101,10 @@ def compose_userdata(
     custom_userdata: str | None,
     github_username: str | None = None,
 ) -> str | None:
-    """Preserve arbitrary user-data; use multipart only when managed data coexists."""
+    """Preserve arbitrary user-data while adding managed GitHub SSH cloud-config."""
     username = normalize_github_username(github_username)
     if managed_userdata is None and username:
         managed_userdata = generate_github_ssh_userdata(username)
-
     if not custom_userdata:
         return managed_userdata
     if managed_userdata is None:
@@ -170,34 +168,37 @@ def generate_userdata(
 
     resolved_libs = lib_svc.resolve_with_deps(libraries)
 
-    # lowerdir 체인 생성 (의존성이 높은 라이브러리가 앞에 오도록)
-    # 역순으로 정렬하여 가장 구체적인(의존성이 높은) 라이브러리가 맨 앞에 오도록 함
-    # 예: vllm:torch:python311 → lowerdir=vllm:torch:python311
-    lowerdir_paths = [f"/opt/layers/lower_{s['name']}" for s in file_storages]
+    has_layers = bool(file_storages)
 
-    # PYTHONPATH 동적 생성
-    python_version = "3.11"  # 기본 Python 버전
-    for lib in resolved_libs:
-        if lib == "python311":
-            python_version = "3.11"
-            break
-    pythonpath = f"/opt/layers/merged/usr/local/lib/python{python_version}/site-packages"
-
-    overlay_script = _jinja.get_template("overlay_setup.sh.j2").render(
-        file_storages=file_storages,
-        upper_device=upper_device,
-        lowerdirs=":".join(lowerdir_paths),
-        pythonpath=pythonpath,
-        gpu_available=gpu_available,
-    )
-
+    overlay_script = ""
     dynamic_script = ""
-    if strategy == "dynamic":
-        dynamic_script = _jinja.get_template("strategy_dynamic.sh.j2").render(
-            libraries=resolved_libs,
-            versions=_VERSIONS,
+    pythonpath = ""
+    if has_layers:
+        # lowerdir 체인 생성 (의존성이 높은 라이브러리가 앞에 오도록)
+        # 예: vllm:torch:python311 → lowerdir=vllm:torch:python311
+        lowerdir_paths = [f"/opt/layers/lower_{s['name']}" for s in file_storages]
+
+        python_version = "3.11"
+        for lib in resolved_libs:
+            if lib == "python311":
+                python_version = "3.11"
+                break
+        pythonpath = f"/opt/layers/merged/usr/local/lib/python{python_version}/site-packages"
+
+        overlay_script = _jinja.get_template("overlay_setup.sh.j2").render(
+            file_storages=file_storages,
+            upper_device=upper_device,
+            lowerdirs=":".join(lowerdir_paths),
+            pythonpath=pythonpath,
             gpu_available=gpu_available,
         )
+
+        if strategy == "dynamic":
+            dynamic_script = _jinja.get_template("strategy_dynamic.sh.j2").render(
+                libraries=resolved_libs,
+                versions=_VERSIONS,
+                gpu_available=gpu_available,
+            )
 
     # CephFS 관련 정보가 필요한지 확인 (data_mounts 포함)
     has_cephfs = any(fs.get("share_proto", "CEPHFS") == "CEPHFS" for fs in file_storages) or any(
@@ -208,7 +209,7 @@ def generate_userdata(
     )
 
     health_check_script = ""
-    if report_url and instance_id and report_token:
+    if has_layers and report_url and instance_id and report_token:
         health_check_script = _jinja.get_template("health_check.sh.j2").render(
             report_url=report_url,
             instance_id=instance_id,
@@ -217,7 +218,7 @@ def generate_userdata(
         )
 
     rotate_key_script = ""
-    if union_cephx_rotate_hours > 0:
+    if has_layers and union_cephx_rotate_hours > 0:
         rotate_key_script = _jinja.get_template("envmgr_rotate_key.sh.j2").render(
             union_cephx_rotate_hours=union_cephx_rotate_hours,
         )
@@ -232,6 +233,7 @@ def generate_userdata(
         strategy=strategy,
         libraries=resolved_libs,
         file_storages=file_storages,
+        has_layers=has_layers,
         ceph_monitors=ceph_monitors,
         overlay_script=overlay_script,
         dynamic_script=dynamic_script,
@@ -246,7 +248,6 @@ def generate_userdata(
         union_manifest_share_export=union_manifest_share_export or "",
         union_cephx_rotate_hours=union_cephx_rotate_hours,
         rotate_key_script=rotate_key_script,
-        dcgm_exporter_version=_DCGM_EXPORTER_VERSION,
         data_mounts=_data_mounts,
         data_mounts_script=data_mounts_script,
         github_ssh_import_id=github_ssh_import_id,

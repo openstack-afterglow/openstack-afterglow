@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, it, expect } from 'vitest';
 import { formatDate, formatNumber, formatStorage, shortContentType } from '../format';
 

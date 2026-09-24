@@ -172,11 +172,17 @@ class TestSessionStore:
         await store_session("jti-rev-2", "ks-tok-2", "proj-1", "user-42", exp)
         await store_session("jti-other", "ks-tok-3", "proj-1", "user-99", exp)
 
-        count = await revoke_user_sessions("user-42")
+        # 기본 revoke_keystone=True 경로를 유지하되 실제 Keystone 호출은 막는다.
+        mock_revoke = MagicMock()
+        with patch("app.services.keystone.revoke_token", mock_revoke):
+            count = await revoke_user_sessions("user-42")
         assert count == 2
         assert await get_session("jti-rev-1") is None
         assert await get_session("jti-rev-2") is None
         assert await get_session("jti-other") is not None
+        # 대상 유저의 Keystone 토큰만 폐기하고 다른 유저의 토큰은 건드리지 않는다.
+        assert {c.args[0] for c in mock_revoke.call_args_list} == {"ks-tok-1", "ks-tok-2"}
+        assert mock_revoke.call_count == 2
 
     @pytest.mark.asyncio
     async def test_revoke_user_sessions_empty(self):
@@ -366,6 +372,40 @@ async def test_refresh_keystone_transient_failure_returns_503_and_preserves_sess
         assert r_recovered.status_code == 200
         assert "token" in r_recovered.json()
         assert r_recovered.json()["refresh_token"] != refresh_token
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("message", "expected_status"),
+    [
+        ("Failed to validate token", 401),
+        ("Could not recognize Fernet token", 401),
+        ("The resource could not be found.", 503),
+    ],
+)
+async def test_keystone_token_not_found_is_not_an_endpoint_outage(
+    _ks_authenticate, _ks_get_user, _rate_limiter_off, message, expected_status
+):
+    from httpx import ASGITransport, AsyncClient
+    from keystoneauth1.exceptions.http import NotFound
+
+    from app.main import app
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        login = await ac.post(
+            "/api/v1/auth/login",
+            json={"username": "alice", "password": "pw", "project_name": "myproject"},
+        )
+        credentials = login.json()
+        with patch("app.services.keystone.v3.Token") as plugin:
+            plugin.return_value.get_access.side_effect = NotFound(message=message)
+            me = await ac.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {credentials['token']}"})
+            refresh = await ac.post("/api/v1/auth/refresh", json={"refresh_token": credentials["refresh_token"]})
+        assert me.status_code == expected_status
+        assert refresh.status_code == expected_status
+        with patch("app.services.keystone.validate_token", return_value=dict(_KS_DATA)):
+            recovered = await ac.post("/api/v1/auth/refresh", json={"refresh_token": credentials["refresh_token"]})
+        assert recovered.status_code == (401 if expected_status == 401 else 200)
 
 
 @pytest.mark.asyncio

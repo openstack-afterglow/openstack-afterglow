@@ -29,6 +29,21 @@ python3 scripts/check_architecture.py --staged
 - API는 Redis의 10분 per-volume lock으로 recovery를 직렬화하고 lock storage 장애 시 503으로 거부합니다. Cinder force-delete가 attached 400을 반환한 경우에만 attach status를 한 번 reset하고 한 번 재시도합니다.
 - `deleted`/`already_deleted`만 terminal success입니다. `delete_submitted`, `backend_residue`, `backend_unverified`는 관리자 상세 화면을 유지하며 backend/quota verification을 별도 필드로 노출합니다. Ceph 설정이 없는 기존 배포는 계속 동작하지만 backend 삭제 완료를 주장하지 않습니다.
 
+## 전역 Cloud Shell 경계
+
+Global Cloud Shell은 기존 프로젝트별 Zun container terminal이나 k3s exec overlay의 별칭이 아닙니다. Root layout에 한 번 mount되는 사용자 shell이며 route 이동에는 유지되고 project 전환·logout 전에 종료됩니다. UI는 `cloudShell.svelte.ts` singleton state machine이 consent → ticketing → provisioning → authorizing → ready → ending/error를 소유하고, terminal bytes는 xterm과 WebSocket 사이에 binary로만 전달합니다.
+
+Backend는 두 credential domain을 분리합니다.
+
+- Caller-scoped Keystone token: 승인 시 current user/project를 재검증하고 shell 안의 OpenStack CLI 권한으로만 사용합니다. Browser에 반환하지 않고 ephemeral container의 `/dev/shm/afterglow` tmpfs에 0600으로 주입합니다.
+- Dedicated service-project connection: Cinder home, Zun container/exec, cleanup/reconciliation lifecycle에만 사용합니다. 일반 Afterglow service project와 Cloud Shell project는 같을 수 없습니다.
+
+Redis의 purpose-bound single-use ticket이 HTTP 승인과 WebSocket을 연결하고 user-wide reservation/active/heartbeat key가 전체 탭·프로젝트에서 한 세션만 허용합니다. 영구 Cinder home은 user×logical-project fingerprint와 HMAC metadata로 식별하고, ephemeral Zun container는 user/workspace/session/expiry label과 HMAC signature로 식별합니다. 이름 충돌, 중복, signature 불일치, Cinder/Zun 조회 실패는 정리 대상으로 추정하지 않습니다.
+
+Zun exec upstream은 binary subprotocol이고 Afterglow WebSocket은 terminal input/output을 최대 64KiB binary frame으로 relay합니다. Text는 bounded resize/ping/status/ready/error control뿐입니다. Backend가 fixed Origin allowlist를 검사하고, idle/max expiry·disconnect·project switch·logout 뒤 exact container를 삭제한 다음 lease를 해제합니다. Startup/interval reconciler는 signed managed orphan만 삭제합니다. Persistent home reset은 active reservation/lease가 없고 detached `available`인 exact managed volume만 삭제합니다.
+
+배포는 운영자가 미리 만든 dedicated project, routed network, ingress-free egress security group, Cinder-backed Zun, multi-architecture digest-pinned image와 project quota를 요구합니다. 상세 설정·precheck·rollback은 [배포 가이드](deployment.md#전역-cloud-shell-선택-배포), API/protocol은 [Cloud Shell API](api/cloud-shell.md), threat model은 [보안 모델](security.md#전역-cloud-shell-자격격리-경계)을 따릅니다.
+
 ## 채팅 컨텍스트 검사와 로컬 실행 경계
 
 `ChatContextPanel`은 Lumen의 optional `ContextState.breakdown`을 표시하며 Afterglow가 토큰이나 모델 한도를 재추정하지 않는다. `preview`는 다음 요청의 준비 상태이고 `request`는 worker의 실제 요청 상태다. 각 component는 안전한 이름/ID, 개수, 토큰 수, 측정 방식과 포함 여부를 전달한다. 메시지·시스템/프로젝트 지침·메모리·스킬·에이전트·요약·도구·MCP·첨부·framing을 구분하되 본문/비밀은 표시하지 않는다.
@@ -39,6 +54,14 @@ python3 scripts/check_architecture.py --staged
 - 컨텍스트는 요청 크기이며 사용량 청구, 월/주간 credit quota와 별개다. 모델 한도는 Lumen의 정확한 catalog 항목 또는 양수 관리자 override가 소유한다.
 
 설정 화면은 tablet/desktop에서 parent 높이를 나눠 쓰고 내용 영역만 스크롤한다. Mobile은 자연스러운 main scroll을 유지한다. 검사 패널은 기존 `SlidePanel`의 mobile modal, tablet/desktop bounded panel, Escape/focus 복원 계약을 사용한다.
+
+## 채팅 active-path window와 Claude Gateway
+
+Afterglow browser는 Lumen message graph를 소유하지 않고 active-path page projection만 소비합니다. `ChatPanel`은 40-message page를 최대 3개 유지하고 `before_cursor`/`after_cursor`를 opaque하게 BFF에 돌려줍니다. **처음/이전/다음/최신**은 explicit one-request actions이며 `ChatWindow`가 visible message anchor offset을 보존합니다. Selection generation, mutation epoch, conversation, token과 project guard가 늦은 response를 차단합니다. 409 stale cursor는 alert와 단 한 번의 latest reload로 복구합니다. Old window run completion은 badge만 표시하고 send는 live edge를 먼저 불러옵니다.
+
+Branch version control은 message에 포함된 `branch.previous_id`/`next_id`를 사용해 authenticated BFF의 active-leaf PATCH에 `descend=true`를 보냅니다. Parent graph reconstruction, cursor signing/revision, active-path transaction과 history persistence는 Lumen 소유입니다.
+
+Claude Code는 discovery의 Gateway base에서 public OAuth device issuance/poll을 하고 Afterglow `/oauth/claude/authorize`는 login-safe approval shell만 소유합니다. Code는 session-scoped marker/storage에 보존하되 URL에서 제거합니다. 실제 approve/deny는 bearer/project-authenticated `/api/v1/chat/claude-gateway/authorize` BFF가 Lumen `/v1/claude-gateway/authorize`로 전달합니다. Afterglow는 발급 credential/device code를 DB에 저장하거나 Claude compatibility request를 실행하지 않습니다. Settings의 connection helper는 discovery URL만 사용하고 24시간 만료 뒤 재연결을 안내합니다.
 
 Compose 배포는 세 독립 manifest로 나눈다. `docker-compose.yml`은 published frontend/backend만 실행하고 외부 DB/cache를 사용한다. `docker-compose.dev.yml`은 전체 current-source local stack이며 `services:config/up/smoke/down`은 [로컬 서비스 스택](deployment.md)의 `afterglow-local-services` project·기본 loopback 3080/8000·sibling API ports와 private 입력/volume을 보존한다. `docker-compose.prod.yml`은 source build 없이 GHCR 이미지를 pull하며 HAProxy TLS·DNS round-robin을 제공한다. 운영 앱 port는 private이고 sibling은 기본적으로 catalog로 연결하며, 별도 profiles로만 sibling API/worker/migration을 실행한다. 이 worker들은 Afterglow backend process에 내장되지 않는다. Smoke는 Lumen 관리자 billing 계약과 dashboard summary/quotas까지 검사하므로 상류 Nova 503을 container health 성공으로 숨기지 않는다. 모델 metadata/context-preview 성공과 실제 유료 provider completion은 서로 다른 증거다.
 
