@@ -8,10 +8,10 @@ application.
 
 | Distribution | Installed role | Required version |
 | --- | --- | --- |
-| `drover` | `drover` | `0.2.22` |
-| `lumen` | `lumen` | `0.2.2` |
-| `waygate` | `waygate` | `0.1.3` |
-| `palimpsest-local` | `palimpsest` | `0.1.4` |
+| `drover` | `drover` | `0.2.23` |
+| `lumen` | `lumen` | `0.3.0` |
+| `waygate` | `waygate` | `0.1.4` |
+| `palimpsest-local` | `palimpsest` | `0.2.0` |
 
 Each root wheel owns its role files. No separate `*-kolla` distribution is
 installed, and installing one of these packages does not make its role a Kolla
@@ -56,10 +56,6 @@ runs, then confirm that the PR head is still the commit those checks ran on;
 if it is not, close and reopen it again. Do not dispatch
 `docker-build.yml` on `automation/kolla-role-tags`: a dispatch builds and
 pushes `dev`-family images from that branch.
-
-Until the current root-package versions are tagged, their existing full commit
-pins remain valid and intentionally stay unchanged. Do not invent or move a
-tag just to change this representation.
 
 To inspect or manually generate the same reviewed update from the repository
 root:
