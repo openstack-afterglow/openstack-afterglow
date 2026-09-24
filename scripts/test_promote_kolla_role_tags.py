@@ -133,7 +133,7 @@ class PromotionIntegrationTests(unittest.TestCase):
             # Verify unconditional verification passes
             _PROMOTER.verify_tag_source(self.operator_dir, "drover", _PROMOTER.SERVICES["drover"])
 
-            # Verify read_locked_version helper extracts 0.2.23
+            # Verify read_locked_version helper extracts the promoted fixture tag version
             read_script = Path(__file__).resolve().parents[1] / "deploy/kolla/read_locked_version.py"
             res = subprocess.run(
                 [sys.executable, str(read_script), str(self.operator_dir / "uv.lock"), "drover"],
@@ -142,16 +142,17 @@ class PromotionIntegrationTests(unittest.TestCase):
                 check=True,
             )
             expected_version = res.stdout.strip()
-            # 1. Run real install.sh against promoted lock with stale installed metadata (0.2.22) -> MUST FAIL!
+            self.assertEqual(expected_version, "0.2.23")
+            # 1. Run real install.sh against promoted lock with stale installed metadata -> MUST FAIL!
             stale_res = self._run_install("0.2.22")
             self.assertNotEqual(stale_res.returncode, 0)
-            self.assertIn("Expected drover==0.2.23 in the active Kolla environment, found '0.2.22'", stale_res.stderr)
+            self.assertIn(f"Expected drover=={expected_version} in the active Kolla environment, found '0.2.22'", stale_res.stderr)
 
-            # 2. Run real install.sh against promoted lock with updated metadata (0.2.23) -> MUST SUCCEED!
-            success_res = self._run_install("0.2.23")
+            # 2. Run real install.sh against promoted lock with updated metadata -> MUST SUCCEED!
+            success_res = self._run_install(expected_version)
             self.assertEqual(success_res.returncode, 0, f"install.sh failed: {success_res.stderr}")
             self.assertIn("Drover role verified at", success_res.stdout)
-            self.assertIn("(drover==0.2.23)", success_res.stdout)
+            self.assertIn(f"(drover=={expected_version})", success_res.stdout)
         finally:
             _PROMOTER.SERVICES.clear()
             _PROMOTER.SERVICES.update(orig_services)
@@ -168,11 +169,25 @@ class PromotionIntegrationTests(unittest.TestCase):
         for d in (roles_dir, plugin_root, bin_dir, metadata_dir):
             d.mkdir(parents=True, exist_ok=True)
 
+        root_repo = Path(__file__).resolve().parents[1]
+        read_script = root_repo / "deploy/kolla/read_locked_version.py"
+        base_lock = root_repo / "deploy/kolla/operator/uv.lock"
+
+        def locked(dist: str) -> str:
+            return subprocess.run(
+                [sys.executable, str(read_script), str(base_lock), dist],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
+
+        # Only drover is promoted here; the other roots keep whatever the real
+        # operator lock currently requires so the fixture never drifts on release.
         packages = [
             ("drover", installed_drover_version),
-            ("lumen", "0.2.2"),
-            ("waygate", "0.1.3"),
-            ("palimpsest", "0.1.4"),
+            ("lumen", locked("lumen")),
+            ("waygate", locked("waygate")),
+            ("palimpsest", locked("palimpsest-local")),
         ]
         for role, ver in packages:
             rdir = roles_dir / role
@@ -189,7 +204,6 @@ class PromotionIntegrationTests(unittest.TestCase):
             (dist_info / "METADATA").write_text(
                 f"Metadata-Version: 2.1\nName: {dist_name}\nVersion: {ver}\n", encoding="utf-8"
             )
-        root_repo = Path(__file__).resolve().parents[1]
         # Find python with PyYAML available (matching kolla-contract.test.js)
         python_bin = subprocess.run(
             ["uv", "run", "--project", str(root_repo / "backend"), "python", "-c", "import sys; print(sys.executable)"],

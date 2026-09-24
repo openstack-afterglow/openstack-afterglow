@@ -501,9 +501,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "0043a79cc1fd47e746f71289f59da206f5328b47251c7bbce8a861e4cd9ec2a5",
-  "reviewed_at": "2026-09-24T22:56:06Z",
-  "summary": "Reviewed 1.25.0 version synchronization, immutable released Drover/Waygate SDK revisions, coordinated Kolla sample refs and package-owned role tag promotion. Runtime ownership is unchanged; production rollout and new Palimpsest activation require separate evidence."
+  "source_sha256": "b00485d432a5e8880c11920a0b09bd4fb9695f80b53db9691fa09d49de552837",
+  "reviewed_at": "2026-09-24T23:05:38Z",
+  "summary": "Installer contract fixtures now derive lumen/waygate/palimpsest versions from the real operator lock and model stale drover metadata relative to the locked version; no runtime or deployment structure change."
 }
 ```
 <!-- architecture-review:end -->
