@@ -499,9 +499,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "2544ff3da5fd5e6630779d024b2dd993bf8cae31adbe682f9d944a3ef97bb14f",
-  "reviewed_at": "2026-09-24T15:47:30Z",
-  "summary": "Integrated origin/dev CI changes with live-model onboarding and auth recovery; preserved BFF ownership, documented both Keystone invalid-token 404 signals, and excluded unrelated scratch files."
+  "source_sha256": "50d6e973ee5c52b4a29822cc16961053b0b8a5a2996f6692e0fc78d9d46cf8ec",
+  "reviewed_at": "2026-09-24T20:00:27Z",
+  "summary": "operator: promote package-owned Kolla roles to immutable sibling release tags"
 }
 ```
 <!-- architecture-review:end -->

@@ -14,10 +14,10 @@ dependencies = [
 
 [tool.uv.sources]
 kolla-ansible = { git = "https://opendev.org/openstack/kolla-ansible.git", rev = "34daacfbf2d5987f543787f57535b2bebe7dee19" }
-drover = { git = "https://github.com/openstack-afterglow/drover.git", rev = "0a6dcb87191b27534030b786068a7abf7d685e3e" }
-lumen = { git = "https://github.com/openstack-afterglow/lumen.git", rev = "fa6a09f7a6326ee7461a01e5d1af49bfeef7825a" }
-waygate = { git = "https://github.com/openstack-afterglow/waygate.git", rev = "6607dd7f6a10ac788e0184b289f48dc087b705d0" }
-palimpsest-local = { git = "https://github.com/openstack-afterglow/palimpsest.git", rev = "1f94a5c9abe4955dbf732bcfa329d63c913e523e" }
+drover = { git = "https://github.com/openstack-afterglow/drover.git", tag = "v0.2.23" }
+lumen = { git = "https://github.com/openstack-afterglow/lumen.git", tag = "v0.3.0" }
+waygate = { git = "https://github.com/openstack-afterglow/waygate.git", tag = "v0.1.4" }
+palimpsest-local = { git = "https://github.com/openstack-afterglow/palimpsest.git", tag = "v0.2.0" }
 
 [build-system]
 requires = ["hatchling"]
