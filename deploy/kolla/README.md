@@ -79,7 +79,7 @@ KOLLA_ANSIBLE_DIR=/etc/kolla/.venv/share/kolla-ansible \
 - Verified root-package roles under `$KOLLA_DIR/ansible/roles/`: `drover`
   (via `drover==0.2.23`), `lumen` (via `lumen==0.3.0`), `waygate`
   (via `waygate==0.1.4`), and `palimpsest` (via
-  `palimpsest-local==0.2.0`). Installer validates non-symlink role paths and
+  `palimpsest-local==0.2.1`). Installer validates non-symlink role paths and
   required lifecycle files.
 - Aggregate playbook: `$KOLLA_DIR/ansible/afterglow-site.yml` ->
   `deploy/kolla/site.yml`.
@@ -110,7 +110,7 @@ unexpected, `install.sh` aborts rather than replacing it.
 - **`drover==0.2.23`** owns the `drover` role.
 - **`lumen==0.3.0`** owns the `lumen` role.
 - **`waygate==0.1.4`** owns the `waygate` role.
-- **`palimpsest-local==0.2.0`** owns the `palimpsest` role.
+- **`palimpsest-local==0.2.1`** owns the `palimpsest` role.
 
 All roots require Python 3.11 or newer. There are no `*-kolla` distributions,
 no `subdirectory = "deploy/kolla"` sources, and no plugin role becomes a Kolla

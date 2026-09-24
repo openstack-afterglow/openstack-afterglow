@@ -274,7 +274,7 @@ At ≥768px, the settings route allocates the return action and settings body wi
 
 오브젝트 축소본 렌더링은 backend 의존성 `Pillow`와 `pypdfium2==5.13.0`을 사용한다. 두 패키지 모두 `cp312` 대상의 `manylinux_2_17_{x86_64,aarch64}` wheel을 제공하므로 amd64 CI 이미지와 arm64 dev 소스 빌드가 같은 lock으로 설치되며 시스템 rasterizer 패키지를 추가하지 않는다.
 
-Afterglow 1.25.0의 operator 정본은 Drover `v0.2.23`, Lumen `v0.3.0`, Waygate `v0.1.4`, Palimpsest root `v0.2.0`의 immutable Git tag와 이를 해석한 `deploy/kolla/operator/uv.lock`이다. Backend/worker의 Drover·Waygate SDK도 같은 서비스 릴리즈의 정확한 commit으로 고정하며 SDK 자체 버전은 형제 저장소의 독립 계약을 유지한다. Operator sync는 `--locked --inexact --no-install-project`로 기존 Kolla 도구를 보존한다. 이 source promotion은 운영 이미지 발행·배포 완료의 증거가 아니며, rollout은 별도로 digest와 실제 인증 경로를 검증한다.
+Afterglow 1.25.0의 operator 정본은 Drover `v0.2.23`, Lumen `v0.3.0`, Waygate `v0.1.4`, Palimpsest root `v0.2.1`의 immutable Git tag와 이를 해석한 `deploy/kolla/operator/uv.lock`이다. Backend/worker의 Drover·Waygate SDK도 같은 서비스 릴리즈의 정확한 commit으로 고정하며 SDK 자체 버전은 형제 저장소의 독립 계약을 유지한다. Operator sync는 `--locked --inexact --no-install-project`로 기존 Kolla 도구를 보존한다. 이 source promotion은 운영 이미지 발행·배포 완료의 증거가 아니며, rollout은 별도로 digest와 실제 인증 경로를 검증한다.
 
 운영 worker 복구는 검증한 `linux/amd64` manifest의 immutable digest만 `afterglow_worker_image_ref`에 고정하고 backend/frontend ref는 유지한다. Kolla precheck와 service-scoped rollout 뒤 모든 대상 controller의 running image digest, restart state, worker completion log, `notion_targets.last_sync` 전진을 함께 확인하며 container `running`만으로 성공 처리하지 않는다.
 
@@ -501,9 +501,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "b00485d432a5e8880c11920a0b09bd4fb9695f80b53db9691fa09d49de552837",
-  "reviewed_at": "2026-09-24T23:05:38Z",
-  "summary": "Installer contract fixtures now derive lumen/waygate/palimpsest versions from the real operator lock and model stale drover metadata relative to the locked version; no runtime or deployment structure change."
+  "source_sha256": "d9ffc7ba4a4ca969391d08354dffbaae71b038cbfe21b7a797cc0f2f6f143649",
+  "reviewed_at": "2026-09-24T23:38:10Z",
+  "summary": "Operator lock promoted to Palimpsest v0.2.1 (Kolla env stringification hotfix). Deployment input only; no app change."
 }
 ```
 <!-- architecture-review:end -->
