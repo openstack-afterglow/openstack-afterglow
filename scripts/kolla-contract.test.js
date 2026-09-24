@@ -11,14 +11,33 @@ function readRepoFile(relativePath) {
 	return fs.readFileSync(path.join(rootDir, relativePath), "utf8")
 }
 
+// Read a root distribution's resolved version from the real operator lock so
+// installer fixtures never drift when a release promotes new tags.
+function lockedVersion(distribution) {
+	const lock = readRepoFile("deploy/kolla/operator/uv.lock")
+	const match = lock.match(new RegExp(`\\[\\[package\\]\\]\\nname = "${distribution}"\\nversion = "([^"]+)"`))
+	assert.ok(match, `operator lock has no resolved ${distribution}`)
+	return match[1]
+}
+
+function decrementPatch(version) {
+	const [major, minor, patch] = version.split(".").map(Number)
+	assert.ok(patch > 0, `cannot derive a stale version below ${version}`)
+	return `${major}.${minor}.${patch - 1}`
+}
+
+function lockedServicePackages(overrides = {}) {
+	return [
+		["drover", "drover", overrides.drover ?? lockedVersion("drover")],
+		["lumen", "lumen", lockedVersion("lumen")],
+		["waygate", "waygate", lockedVersion("waygate")],
+		["palimpsest", "palimpsest-local", lockedVersion("palimpsest-local")],
+	]
+}
+
 function createInstalledServiceFixtures(directory, rolesDir, pythonPath, customPackages) {
 	const metadataDir = path.join(directory, "python-metadata")
-	const packages = customPackages || [
-		["drover", "drover", "0.2.22"],
-		["lumen", "lumen", "0.2.2"],
-		["waygate", "waygate", "0.1.3"],
-		["palimpsest", "palimpsest-local", "0.1.4"],
-	]
+	const packages = customPackages || lockedServicePackages()
 	for (const [role, distribution, version] of packages) {
 		const roleDir = path.join(rolesDir, role)
 		for (const subdirectory of ["tasks", "defaults", "templates"]) {
@@ -971,26 +990,17 @@ test("Installer rejects stale package versions and accepts promoted operator loc
 	assert.equal(pythonResult.status, 0, pythonResult.stderr)
 
 	try {
-		// Create an isolated promoted uv.lock where drover is promoted to 0.2.23
-		const promotedLockPath = path.join(temporaryDirectory, "uv.lock")
-		const currentLock = fs.readFileSync(path.join(rootDir, "deploy/kolla/operator/uv.lock"), "utf8")
-		const promotedLock = currentLock.replace(
-			/name = "drover"\nversion = "0\.2\.22"/,
-			'name = "drover"\nversion = "0.2.23"'
-		)
-		fs.writeFileSync(promotedLockPath, promotedLock)
+		// The real operator lock already pins the promoted drover version. Model a
+		// Kolla environment whose installed metadata is one patch release behind it.
+		const promotedVersion = lockedVersion("drover")
+		const staleVersion = decrementPatch(promotedVersion)
+		const promotedLockPath = path.join(rootDir, "deploy/kolla/operator/uv.lock")
 
-		// Set up environment where installed metadata still has stale drover 0.2.22
 		const staleMetadataDir = createInstalledServiceFixtures(
 			temporaryDirectory,
 			rolesDir,
 			path.join(temporaryDirectory, "bin", "python"),
-			[
-				["drover", "drover", "0.2.22"],
-				["lumen", "lumen", "0.2.2"],
-				["waygate", "waygate", "0.1.3"],
-				["palimpsest", "palimpsest-local", "0.1.4"],
-			]
+			lockedServicePackages({ drover: staleVersion })
 		)
 
 		const commandEnvironment = {
@@ -1014,21 +1024,21 @@ test("Installer rejects stale package versions and accepts promoted operator loc
 
 		const installer = path.join(rootDir, "deploy/kolla/install.sh")
 
-		// 1. Run install.sh with stale metadata (0.2.22) against promoted lock (0.2.23) -> MUST FAIL!
+		// 1. Run install.sh with stale installed metadata against the promoted lock -> MUST FAIL!
 		const staleResult = spawnSync("bash", [installer], { encoding: "utf8", env: commandEnvironment })
 		assert.notEqual(staleResult.status, 0, "install.sh must fail when installed package version does not match promoted lock")
-		assert.match(staleResult.stderr, /Expected drover==0\.2\.23 in the active Kolla environment, found '0\.2\.22'/)
+		assert.match(staleResult.stderr, new RegExp(`Expected drover==${promotedVersion.replaceAll(".", "\\.")} in the active Kolla environment, found '${staleVersion.replaceAll(".", "\\.")}'`))
 
-		// 2. Upgrade installed metadata to 0.2.23 (simulating uv sync in Kolla environment)
-		fs.rmSync(path.join(staleMetadataDir, "drover-0.2.22.dist-info"), { recursive: true, force: true })
-		const newDistInfo = path.join(staleMetadataDir, "drover-0.2.23.dist-info")
+		// 2. Upgrade installed metadata to the promoted version (simulating uv sync in Kolla environment)
+		fs.rmSync(path.join(staleMetadataDir, `drover-${staleVersion}.dist-info`), { recursive: true, force: true })
+		const newDistInfo = path.join(staleMetadataDir, `drover-${promotedVersion}.dist-info`)
 		fs.mkdirSync(newDistInfo, { recursive: true })
-		fs.writeFileSync(path.join(newDistInfo, "METADATA"), "Metadata-Version: 2.1\nName: drover\nVersion: 0.2.23\n")
+		fs.writeFileSync(path.join(newDistInfo, "METADATA"), `Metadata-Version: 2.1\nName: drover\nVersion: ${promotedVersion}\n`)
 
-		// Run install.sh with updated metadata (0.2.23) against promoted lock -> MUST SUCCEED!
+		// Run install.sh with updated metadata against the promoted lock -> MUST SUCCEED!
 		const successResult = spawnSync("bash", [installer], { encoding: "utf8", env: commandEnvironment })
 		assert.equal(successResult.status, 0, successResult.stderr)
-		assert.match(successResult.stdout, /Drover role verified at .* \(drover==0\.2\.23\)/)
+		assert.match(successResult.stdout, new RegExp(`Drover role verified at .* \\(drover==${promotedVersion.replaceAll(".", "\\.")}\\)`))
 	} finally {
 		fs.rmSync(temporaryDirectory, { recursive: true, force: true })
 	}

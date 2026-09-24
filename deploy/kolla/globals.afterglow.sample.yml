@@ -41,7 +41,7 @@ enable_lumen_source_build: false
 enable_waygate_source_build: false
 enable_palimpsest_source_build: false
 
-afterglow_image_tag: "v1.24.0"
+afterglow_image_tag: "v1.25.0"
 afterglow_backend_image_ref: "{{ afterglow_backend_image }}:{{ afterglow_image_tag }}"
 afterglow_frontend_image_ref: "{{ afterglow_frontend_image }}:{{ afterglow_image_tag }}"
 afterglow_worker_image_ref: "{{ afterglow_worker_image }}:{{ afterglow_image_tag }}"
@@ -50,17 +50,17 @@ afterglow_worker_image_ref: "{{ afterglow_worker_image }}:{{ afterglow_image_tag
 # afterglow_cloud_shell_image: "ghcr.io/openstack-afterglow/afterglow-cloud-shell@sha256:<64-hex-digest>"
 
 # Independently released extracted services support explicit release version
-# tags (e.g. :0.2.20) as well as immutable linux/amd64 manifest digests (@sha256:...).
+# tags (e.g. :v0.2.23) as well as immutable linux/amd64 manifest digests (@sha256:...).
 # Bare references and mutable `:latest` tags are prohibited by precheck validators.
 
-drover_api_image_ref: "ghcr.io/openstack-afterglow/drover-api:0.2.20"
-drover_worker_image_ref: "ghcr.io/openstack-afterglow/drover-worker:0.2.20"
-waygate_api_image_ref: "ghcr.io/openstack-afterglow/waygate-api:0.1.0"
-waygate_worker_image_ref: "ghcr.io/openstack-afterglow/waygate-worker:0.1.0"
-lumen_api_image_ref: "ghcr.io/openstack-afterglow/lumen-api:0.2.1"
-lumen_worker_image_ref: "ghcr.io/openstack-afterglow/lumen-worker:0.2.1"
-palimpsest_api_image_ref: "ghcr.io/openstack-afterglow/palimpsest-hub-api:0.1.0"
-palimpsest_worker_image_ref: "ghcr.io/openstack-afterglow/palimpsest-hub-worker:0.1.0"
+drover_api_image_ref: "ghcr.io/openstack-afterglow/drover-api:v0.2.23"
+drover_worker_image_ref: "ghcr.io/openstack-afterglow/drover-worker:v0.2.23"
+waygate_api_image_ref: "ghcr.io/openstack-afterglow/waygate-api:0.1.4"
+waygate_worker_image_ref: "ghcr.io/openstack-afterglow/waygate-worker:0.1.4"
+lumen_api_image_ref: "ghcr.io/openstack-afterglow/lumen-api:0.3.0"
+lumen_worker_image_ref: "ghcr.io/openstack-afterglow/lumen-worker:0.3.0"
+palimpsest_api_image_ref: "ghcr.io/openstack-afterglow/palimpsest-hub-api:0.2.0"
+palimpsest_worker_image_ref: "ghcr.io/openstack-afterglow/palimpsest-hub-worker:0.2.0"
 # ── 3. HAProxy VIP Listeners and Controller Upstreams ────────────────────────
 # Kolla HAProxy owns the VIP ports. App containers bind only the controller API
 # addresses on private upstream ports; Heat retains VIP port 8000.
