@@ -11,7 +11,7 @@ application.
 | `drover` | `drover` | `0.2.23` |
 | `lumen` | `lumen` | `0.3.0` |
 | `waygate` | `waygate` | `0.1.4` |
-| `palimpsest-local` | `palimpsest` | `0.2.1` |
+| `palimpsest-local` | `palimpsest` | `0.2.2` |
 
 Each root wheel owns its role files. No separate `*-kolla` distribution is
 installed, and installing one of these packages does not make its role a Kolla

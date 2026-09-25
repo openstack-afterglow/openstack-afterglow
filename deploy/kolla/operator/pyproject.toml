@@ -17,7 +17,7 @@ kolla-ansible = { git = "https://opendev.org/openstack/kolla-ansible.git", rev =
 drover = { git = "https://github.com/openstack-afterglow/drover.git", tag = "v0.2.23" }
 lumen = { git = "https://github.com/openstack-afterglow/lumen.git", tag = "v0.3.0" }
 waygate = { git = "https://github.com/openstack-afterglow/waygate.git", tag = "v0.1.4" }
-palimpsest-local = { git = "https://github.com/openstack-afterglow/palimpsest.git", tag = "v0.2.1" }
+palimpsest-local = { git = "https://github.com/openstack-afterglow/palimpsest.git", tag = "v0.2.2" }
 
 [build-system]
 requires = ["hatchling"]
