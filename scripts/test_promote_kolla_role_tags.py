@@ -187,7 +187,7 @@ class PromotionIntegrationTests(unittest.TestCase):
             ("drover", installed_drover_version),
             ("lumen", locked("lumen")),
             ("waygate", locked("waygate")),
-            ("palimpsest", locked("palimpsest-local")),
+            ("palimpsest", locked("palimpsest-client")),
         ]
         for role, ver in packages:
             rdir = roles_dir / role
@@ -198,7 +198,7 @@ class PromotionIntegrationTests(unittest.TestCase):
             (rdir / "defaults/main.yml").write_text(f"{role}_services: {{}}\n", encoding="utf-8")
             (rdir / f"templates/{role}.conf.j2").write_text("[DEFAULT]\n", encoding="utf-8")
 
-            dist_name = "palimpsest-local" if role == "palimpsest" else role
+            dist_name = "palimpsest-client" if role == "palimpsest" else role
             dist_info = metadata_dir / f"{dist_name.replace('-', '_')}-{ver}.dist-info"
             dist_info.mkdir(parents=True, exist_ok=True)
             (dist_info / "METADATA").write_text(

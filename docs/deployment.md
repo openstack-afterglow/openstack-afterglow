@@ -342,8 +342,8 @@ Afterglow와 Lumen은 Kolla 배포 호스트에서 표준 명령으로 함께 �
 최초 한 번 [Kolla 설치·설정 가이드](../deploy/kolla/README.md)에 따라 다음을 준비합니다.
 
 - `/etc/kolla/multinode`의 `afterglow`, `lumen` 그룹과 기존 OpenStack inventory
-- 실제 Kolla 가상 환경에 설치한 root 역할 패키지 (`drover==0.2.22`, `lumen==0.2.2`,
-  `waygate==0.1.3`, `palimpsest-local==0.1.4`)
+- 실제 Kolla 가상 환경에 설치한 root 역할 패키지 (`drover==0.2.23`, `lumen==0.3.0`,
+  `waygate==0.1.4`, `palimpsest-client==0.2.3`)
 - `/etc/kolla/config/afterglow/globals.yml` 및 `secrets.yml`, globals.d 연결
 - 기존 MariaDB·Valkey, Lumen PostgreSQL 설정, 고정 이미지와 API 공개 경로
 - 대상 호스트에서 암호 입력 없이 sudo를 사용할 수 있는 배포 SSH 계정
@@ -789,6 +789,13 @@ Kubernetes 또는 외부 MariaDB에서는 운영 DB 접근 권한을 가진 관�
 SHOW COLUMNS FROM chat_messages LIKE 'created_at_local';
 SHOW COLUMNS FROM chat_messages LIKE 'created_timezone';
 ```
+
+Kolla Afterglow `deploy`·`reconfigure`는 생성된 config를 사용해, `upgrade`는 pull한
+image와 기존 생성 config를 사용해 backend를 시작하기 **전에** 일회성 DB bootstrap을
+실행합니다. 운영 API에서 `auto_create_tables=false`여도 신규 ORM table은 이 단계에서
+생성됩니다. 기존 테이블에 새 컬럼을 추가하는 변경에는 위 수동 SQL 적용이 여전히
+필수이며, bootstrap 성공이나 `/api/v1/health` 200만으로 인증된 업무 경로를 검증했다고
+보지 않습니다.
 
 ### Kubernetes
 

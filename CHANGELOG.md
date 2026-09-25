@@ -7,6 +7,18 @@
 
 ## [Unreleased]
 
+### Added
+
+- **소유 VM 플레이버 리사이즈** — 프로젝트 쓰기 권한 사용자는 본인 VM의 플레이버를 현재 자원 대비 증분 쿼터로 평가한 뒤 리사이즈하고, `VERIFY_RESIZE` 상태에서 확인하거나 되돌릴 수 있다. 이미지 기반 VM은 디스크 축소를 거부하며 관리자 경로는 유지한다.
+
+### Changed
+
+- **Palimpsest root 배포판 이름 전환** — Kolla operator가 Palimpsest role을 `palimpsest-client` `v0.2.3`에서 설치한다. 이전 `palimpsest-local`은 같은 role 파일을 소유하므로 설치기가 남은 배포판을 거부하고, operator 안내에 제거 후 재설치 절차를 추가했다.
+
+### Fixed
+
+- **운영 GitHub SSH 확인 이력 503 복구** — 운영 MariaDB에 누락된 `vm_github_ssh_users`를 검토된 migration 080으로 생성해 GitHub 프로필·공개키 확인 뒤 이력 기록이 503으로 실패하던 경로를 복구했다. Kolla `reconfigure`·`upgrade`도 새 backend를 시작하기 전에 일회성 DB bootstrap을 실행해 신규 테이블을 누락하지 않는다. 기존 테이블 변경은 여전히 별도의 SQL migration을 먼저 적용한다.
+
 ## [1.25.0] - 2026-09-25
 
 ### Added

@@ -271,9 +271,21 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
 | `POST` | `/api/v1/instances/{instance_id}/shelve` | 인스턴스 쉘브 (리소스 해제, 디스크 유지, 30/분) |
 | `POST` | `/api/v1/instances/{instance_id}/unshelve` | 쉘브된 인스턴스 복원 (30/분) |
 | `GET` | `/api/v1/instances/{instance_id}/console` | VNC 콘솔 URL 반환 |
+| `GET` | `/api/v1/instances/{instance_id}/resize-flavors` | 현재 VM 기준 변경 가능한 플레이버와 증분 쿼터 적격성 |
+| `POST` | `/api/v1/instances/{instance_id}/resize` | 소유 VM의 cold resize 요청 |
+| `POST` | `/api/v1/instances/{instance_id}/confirm-resize` | `VERIFY_RESIZE` 결과 확정 |
+| `POST` | `/api/v1/instances/{instance_id}/revert-resize` | `VERIFY_RESIZE` 결과 되돌리기 |
 | `GET` | `/api/v1/instances/{instance_id}/log` | 콘솔 로그 반환 |
 
-각 제어 액션은 소유권 검증 후 수행되며, 모두 **`204 No Content`** 를 반환합니다. `start`는 정지(`SHUTOFF`) 상태, `stop`은 실행 상태를 전제로 하며, 상태가 맞지 않으면 하위 Nova 오류가 `500`으로 전달됩니다.
+기존 start/stop/reboot/shelve/unshelve 제어 액션은 소유권 검증 후 **`204 No Content`** 를 반환합니다. `start`는 정지(`SHUTOFF`) 상태, `stop`은 실행 상태를 전제로 하며, 상태가 맞지 않으면 하위 Nova 오류가 `500`으로 전달됩니다.
+
+### 소유 인스턴스 리사이즈
+
+프로젝트의 쓰기 권한을 가진 사용자는 자신이 소유한 VM의 플레이버를 변경할 수 있습니다. `GET /api/v1/instances/{instance_id}/resize-flavors`는 현재 플레이버를 기준으로 보이는 플레이버의 `FlavorInfo` 목록과 `eligibility`(선택 가능 여부와 quota blocker)를 반환합니다. 코어·RAM·GPU 쿼터는 생성 총량이 아닌 **현재 플레이버 대비 증가분**으로 평가합니다. 현재와 동일한 플레이버는 선택할 수 없으며, 이미지 기반 VM은 플레이버 디스크 축소도 선택할 수 없습니다. 볼륨 기반 VM은 플레이버 디스크 축소 제약에서 제외됩니다.
+
+`POST /api/v1/instances/{instance_id}/resize` 요청 본문은 `{ "flavor_id": "target-flavor-id" }`입니다. 서버는 요청 시 인스턴스 소유권, 쓰기 권한, 대상 플레이버, 디스크 제약 및 최신 쿼터를 다시 검증하므로 조회 결과를 클라이언트에서 변경해도 우회할 수 없습니다. Nova cold resize는 VM 재시작을 수반합니다. 응답의 `status`는 `resizing`이며 VM이 `VERIFY_RESIZE`가 된 뒤 `POST .../confirm-resize`(`status: confirmed`) 또는 `POST .../revert-resize`(`status: reverting`) 중 하나를 선택해야 합니다. 일반 사용자 경로와 별도로 관리자 전용 `/api/v1/admin/instances/{id}/resize`, `/confirm-resize`, `/revert-resize`는 계속 유지됩니다.
+
+타 프로젝트 소유 또는 없는 인스턴스는 404, 읽기 전용 사용자 mutation은 403입니다. 유효하지 않은 상태·대상·quota는 요청을 거부하며 Nova 실행 실패는 성공 응답으로 바꾸지 않습니다.
 
 ### GET /api/v1/instances/{instance_id}/console
 

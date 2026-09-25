@@ -68,7 +68,7 @@ graph LR
 | [`frontend/src/lib/api/client.ts`](frontend/src/lib/api/client.ts) `api`, `fetchWithAuth`, `tryRefresh`, `request` | API base, Authorization, 요청 전 refresh 직렬화와 fetch/XHR 401 복구, 403 처리, prefetch/invalidation | UI → FastAPI |
 | [`frontend/src/lib/stores/auth.ts`](frontend/src/lib/stores/auth.ts) `auth`, `setAuth`, `setProject`, `clearAuth` | 브라우저 auth state와 project scope 영속화 | UI state → API client |
 | [`frontend/src/hooks.server.ts`](frontend/src/hooks.server.ts) `handle` | public path, backend prefix, SPA fallback, CSP/보안 헤더 | SvelteKit request shell |
-| [`backend/app/api/compute/instances.py`](backend/app/api/compute/instances.py) `create_instance`, `create_instance_async`, `delete_instance` | Nova/Cinder/Manila/Neutron 조합, SSE, 역순 rollback과 FIP cleanup | compute API → OpenStack adapters |
+| [`backend/app/api/compute/instances.py`](backend/app/api/compute/instances.py) `create_instance`, `create_instance_async`, `delete_instance`, `resize_owned_instance`, `confirm_owned_resize`, `revert_owned_resize` | Nova/Cinder/Manila/Neutron VM 생성·SSE·역순 rollback·FIP cleanup; 소유권/프로젝트 쓰기 권한이 적용된 cold resize와 VERIFY_RESIZE 확정/복귀 | compute API → OpenStack adapters/`flavor_eligibility` |
 | [`backend/app/api/drover/`](backend/app/api/drover/) | Drover callback/admin/proxy compatibility | Afterglow BFF → Drover endpoint |
 | [`backend/app/api/lumen/`](backend/app/api/lumen/) | authenticated `/api/v1/chat/{path}` forwarding, including legacy Lumen custom-device approve/deny; MCP callback/delegated bridge | Afterglow BFF → Lumen; public device issue/poll and CLI inference never terminate here |
 | [`frontend/src/lib/components/chat/ChatPanel.svelte`](frontend/src/lib/components/chat/ChatPanel.svelte), [`frontend/src/lib/components/chat/ChatWindow.svelte`](frontend/src/lib/components/chat/ChatWindow.svelte), [`frontend/src/lib/components/chat/ChatMessage.svelte`](frontend/src/lib/components/chat/ChatMessage.svelte) | 40-message active-path pages, max-three-page window, explicit first/previous/next/latest, viewport anchor, stale-cursor recovery, old-window run/send behavior와 server sibling branch switching | UI → authenticated `/api/v1/chat` BFF; browser는 tree graph/cursor payload를 해석하지 않는다 |
@@ -95,6 +95,10 @@ graph LR
 2. Keystone token과 refresh-JTI에 묶인 session/검증 정보는 Redis에 둔다. 브라우저 `localStorage`의 JWT는 Redis Keystone session의 복제본이 아니다.
 3. `frontend/src/lib/api/client.ts`의 `fetchWithAuth`와 XHR 공통 복구 정책은 만료 120초 이내 인증 요청을 보내기 전에 `/api/v1/auth/refresh`를 coalesce하고 진행 중 회전을 기다린다. JSON·채팅/SSE handshake·첨부·업로드/다운로드는 401 직후 갱신하거나 이미 회전한 live token으로 한 번만 재시도하며, 소비 중인 스트림은 재실행하지 않는다. `sessionRefreshLifecycle.ts`는 mount/focus/visible 복귀 때 즉시 만료를 확인하고 60초 보조 주기를 유지한다. Background refresh의 terminal 401도 auth를 비우고 `/login`으로 이동한다. Keystone의 token-specific `Failed to validate token` 또는 `Could not recognize Fernet token` 404는 adapter에서 Unauthorized로 정규화하며 일반 404·연결 장애는 503을 유지한다. Refresh 또는 `/auth/me`의 retryable 실패는 token에 묶인 비영속 `authRecovery`와 blocking root dialog로 드러내며, mounted 페이지의 작성 내용과 자격 증명을 보존하고 기존 cooldown 이후 재시도 또는 명시적 logout을 제공한다. 성공·identity 변경은 gate를 해제하고 오래된 실패는 새 로그인을 덮어쓰지 않는다. Logout은 진행 중인 refresh가 실패해도 로컬 정리를 완료하고 서버 폐기 미확인은 경고한다. 서비스·데이터 소유권과 TTL 구조는 바뀌지 않는다.
 4. `X-Project-Id`가 생략되면 JWT project를 사용한다. 다른 project로 전환할 때 서버가 허용한 rescope만 수행하며, project-scoped connection과 resource ownership을 다시 적용한다.
+
+### 소유 인스턴스 플레이버 변경
+
+사용자 인스턴스 상세는 `/api/v1/instances/{id}/resize-flavors`를 읽어 현재 Nova 플레이버 대비 증분 코어·RAM·GPU 적격성을 표시한다. 서버는 조회와 POST 시 현재 플레이버의 식별 가능 여부, 동일 플레이버 및 이미지 기반 VM의 디스크 축소 불가, 프로젝트 범위 쿼터를 확인한다. 볼륨 기반 VM은 플레이버 디스크 축소 제약에서 제외한다. POST `/api/v1/instances/{id}/resize`, `/confirm-resize`, `/revert-resize`는 `require_project_write`, Nova 서버 소유권 검사, 상태(`ACTIVE`/`SHUTOFF` → `VERIFY_RESIZE`)와 성공 후 인스턴스/목록 캐시 무효화를 거친다. 관리자 전용 `/api/v1/admin/instances/{id}/...` 작업은 그대로 유지하며, 프론트엔드는 사용자/관리자 모드에 맞는 경로를 선택한다. Nova cold resize에는 다운타임 및 confirm/revert 결정이 따른다. 상세 계약은 [`docs/api/instances.md`](docs/api/instances.md)와 [`docs/api/flavors.md`](docs/api/flavors.md)를 따른다.
 
 ### 전역 Cloud Shell 승인·세션
 
@@ -272,9 +276,11 @@ At ≥768px, the settings route allocates the return action and settings body wi
 
 `Dockerfile`은 backend/worker에 Python 3.12 slim, frontend build에 Bun 1, runtime에 Node 20을 사용한다. Backend의 OpenTofu acquisition은 runtime package 설치와 분리된 stage에서 BuildKit `TARGETARCH`를 `amd64`/`arm64`로 fail-closed 매핑하고, transient GitHub 오류를 bounded retry하며, 공식 release manifest에서 pin한 architecture별 SHA-256을 확인한 binary만 runtime stage에 복사한다. 현재 [`docker-build.yml`](.github/workflows/docker-build.yml)은 `linux/amd64` matrix만 활성화하며 arm64 항목은 주석 처리되어 있지만, dev source build는 native `arm64`도 지원한다. GitHub Actions가 이미지를 GHCR로 push하고, 배포 구성은 Kubernetes/Kustomize·Helm/ArgoCD 또는 [`deploy/kolla/site.yml`](deploy/kolla/site.yml)의 custom service role 경계를 사용한다. Kolla는 `afterglow`, `waygate`, `drover`, `lumen`, `palimpsest` inventory group을 별도로 검사한다. `deploy/kolla/install.sh`가 stock site import와 inventory/globals.d 연결을 준비하면 `/etc/kolla`에서 `kolla-ansible deploy -i multinode`가 custom 서비스를 함께 실행한다. 서비스·HAProxy 플레이는 `become: true`로 toolbox와 중첩/위임 task의 권한을 선언하며, operator 계정의 기존 sudo 권한을 전제로 한다. 형제 역할은 각 서비스 root distribution(`drover`, `lumen`, `waygate`, `palimpsest`)에서 설치되고 release archive wheel은 tag version과 일치하는 immutable GitHub URL·SHA-256을 사용한다.
 
+Kolla Afterglow `deploy`·`reconfigure`는 config 생성 뒤, `upgrade`는 새 image pull 뒤 기존 생성 config로 backend 시작·policy seed 전에 package image의 일회성 DB bootstrap(`create_tables`)을 실행한다. Bootstrap은 실패 시 rollout을 차단하며 `auto_create_tables=false`인 운영 backend에도 누락된 신규 ORM table을 생성한다. 기존 테이블의 컬럼 변경은 `create_all`이 처리하지 않으므로 `backend/migrations/manifest.txt`의 해당 SQL을 배포 전에 별도로 적용해야 한다. 2026-09-25 실제 `POST /api/v1/instances/github-users/lookup` 503은 GitHub API 장애가 아니라 운영 DB `vm_github_ssh_users` 누락(MariaDB 1146)으로 history 저장이 실패한 사건이다. checksum을 대조한 `080_vm_github_ssh_users.sql`의 한 테이블만 운영 DB에 적용하고 공개 GitHub SSH 조회→임시 history 기록·조회·삭제를 검증했으며 backend는 healthy/restart 0이었다. 이 운영 복구는 아직 Kolla 역할 변경의 운영 rollout 증거가 아니다.
+
 오브젝트 축소본 렌더링은 backend 의존성 `Pillow`와 `pypdfium2==5.13.0`을 사용한다. 두 패키지 모두 `cp312` 대상의 `manylinux_2_17_{x86_64,aarch64}` wheel을 제공하므로 amd64 CI 이미지와 arm64 dev 소스 빌드가 같은 lock으로 설치되며 시스템 rasterizer 패키지를 추가하지 않는다.
 
-Afterglow 1.25.0의 operator 정본은 Drover `v0.2.23`, Lumen `v0.3.0`, Waygate `v0.1.4`, Palimpsest root `v0.2.2`의 immutable Git tag와 이를 해석한 `deploy/kolla/operator/uv.lock`이다. Backend/worker의 Drover·Waygate SDK도 같은 서비스 릴리즈의 정확한 commit으로 고정하며 SDK 자체 버전은 형제 저장소의 독립 계약을 유지한다. Operator sync는 `--locked --inexact --no-install-project`로 기존 Kolla 도구를 보존한다. Palimpsest 0.2.2는 Hub volume root의 UID1000 소유권을 bootstrap 전에 설정하는 Kolla role 수정이다. 이 source promotion은 운영 이미지 발행·배포 완료의 증거가 아니며, rollout은 별도로 digest와 실제 인증 업로드 경로를 검증한다.
+Afterglow 1.25.0 이후 operator 정본은 Drover `v0.2.23`, Lumen `v0.3.0`, Waygate `v0.1.4`, Palimpsest root `palimpsest-client` `v0.2.3`의 immutable Git tag와 이를 해석한 `deploy/kolla/operator/uv.lock`이다. Backend/worker의 Drover·Waygate SDK도 같은 서비스 릴리즈의 정확한 commit으로 고정하며 SDK 자체 버전은 형제 저장소의 독립 계약을 유지한다. Operator sync는 `--locked --inexact --no-install-project`로 기존 Kolla 도구를 보존한다. Palimpsest 0.2.2는 Hub volume root의 UID1000 소유권을 bootstrap 전에 설정하는 Kolla role 수정이고, 0.2.3은 같은 role을 유지한 채 root 배포판 이름을 `palimpsest-local`에서 `palimpsest-client`로 바꾼다. 두 배포판은 같은 role 파일을 설치하고 `--inexact` sync는 퇴역 배포판을 지우지 않으므로 `install.sh`는 `palimpsest-local` metadata가 남아 있으면 거부하고, operator README의 uninstall 후 `--reinstall-package palimpsest-client` 절차를 요구한다. 이 source promotion은 운영 이미지 발행·배포 완료의 증거가 아니며, rollout은 별도로 digest와 실제 인증 업로드 경로를 검증한다.
 
 운영 worker 복구는 검증한 `linux/amd64` manifest의 immutable digest만 `afterglow_worker_image_ref`에 고정하고 backend/frontend ref는 유지한다. Kolla precheck와 service-scoped rollout 뒤 모든 대상 controller의 running image digest, restart state, worker completion log, `notion_targets.last_sync` 전진을 함께 확인하며 container `running`만으로 성공 처리하지 않는다.
 
@@ -350,6 +356,8 @@ Kolla 배포의 Afterglow cache/session client는 `valkey` inventory 전체의 S
 cloud-init 및 shell template 출력은 `shlex_quote`/검증된 입력을 사용하고, production boot는 insecure flag/default secret을 거부한다. 브라우저 localStorage 토큰과 CSP의 현재 한계, background task 종료, callback IP binding이 logging 중심인 점은 [`docs/security.md`](docs/security.md)의 알려진 제한을 따른다. 실제 credential·token·private key는 이 문서에 기록하지 않는다.
 
 ## Development and verification
+
+소유 VM 리사이즈는 사용자 전용 route와 상태/소유권/쓰기 권한 경계를 추가했다. `instances.py`는 현재 플레이버 대비 쿼터 증분을 조회와 제출에 각각 적용하고 동일 플레이버·이미지 기반 VM의 디스크 축소·숨김 플레이버·부적절한 상태를 거부하며, owner project metadata가 없는 일반 사용자 요청도 404로 차단한다. UI controller는 사용자/관리자 경로를 분기하고 두 모드 모두 인스턴스별 증분 eligibility를 읽으며 reader action을 숨긴다. 로컬에서 resize backend 32건, `instances` 도메인 backend 270건/frontend 35건, design 109건, `svelte-check` 0 errors를 확인했다. amd64/arm64 이미지 빌드와 dev Compose backend/frontend 배포·health 및 배포 이미지의 리사이즈 선택 규칙을 확인했으나, 실제 Nova 리사이즈 및 confirm/revert는 실행하지 않았다.
 
 개발 명령은 저장소 root에서 실행한다. 2026-09-14 관리자 볼륨 변경은 focused backend 19건, frontend 11건, `svelte-check` 0 errors/0 warnings와 실제 Vite tutorial 화면의 390/767/768/1023/1024/1440px 선택·상태 필터·확인 dialog를 통과했다. 최종 `npm run test:gate`는 backend 2734건, frontend 1307건과 test runner 9건, contract 124건, functional 24건 및 backend lint를 통과했다. 브라우저 증거는 합성 데이터 UI/contract 검증이며 live OpenStack 삭제 검증은 아니다. 실행하지 않은 계층은 `test-passed`나 `live-verified`로 표기하지 않는다.
 
@@ -503,9 +511,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "160b85957780e3f496dc7980023ccce327df293e017e17820a960817054dac25",
-  "reviewed_at": "2026-09-25T00:22:38Z",
-  "summary": "Operator role promoted to Palimpsest v0.2.2; named Hub volume owner initialized before bootstrap, no app/image change; live upload proof pending."
+  "source_sha256": "a31eb1a3e2f0d416bf5e807a7f3bf13f695084e5cfc432b29c588a6fabfdf8e4",
+  "reviewed_at": "2026-09-25T16:15:53Z",
+  "summary": "Reviewed owned VM resize authorization, resource-delta eligibility, confirmation and frontend user/admin routing; integrated the verified Kolla GitHub history bootstrap and Palimpsest package cutover on dev. Live Nova resize has not been exercised; Kolla production role awaits owner merge."
 }
 ```
 <!-- architecture-review:end -->

@@ -187,6 +187,8 @@ EXEMPT_HANDLERS: set[str] = {
 INVALIDATING_HELPERS: set[str] = {
     "_simple_action",  # compute/instances.py — start/stop/reboot/shelve/unshelve
     "_invalidate_provisioning_caches",  # internal_k3s.py — Nova/Cinder submission
+    "_invalidate_resized_instance",  # compute/instances.py — owned resize
+    "_finish_owned_resize",  # compute/instances.py — owned confirm/revert-resize, delegates to _invalidate_resized_instance
 }
 
 # ---------------------------------------------------------------------------

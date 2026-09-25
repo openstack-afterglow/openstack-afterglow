@@ -5,14 +5,14 @@
 		source,
 		onReady,
 	}: {
-		source: { id: string; projectId: string };
+		source: { id: string; projectId: string; adminMode?: boolean };
 		onReady: (controller: ReturnType<typeof createInstanceDetailController>) => void;
 	} = $props();
 
 	const controller = createInstanceDetailController({
 		instanceId: () => source.id,
 		effectiveProjectId: () => source.projectId,
-		adminMode: () => false,
+		adminMode: () => source.adminMode ?? false,
 		onDelete: () => undefined,
 	});
 

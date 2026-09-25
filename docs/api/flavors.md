@@ -40,6 +40,7 @@ Nova 플레이버(인스턴스 스펙) 카탈로그를 조회합니다.
 > - Afterglow GPU 쿼터 및 단기 예약은 대시보드와 Afterglow 생성 요청을 보호합니다. 이미 Flavor 접근 권한(addTenantAccess)이 부여된 프로젝트의 CLI 또는 직접 Nova API 생성은 Nova 자체 쿼터 한계가 적용됩니다.
 > - 시스템 관리자가 `afterglow:frontend_visible=false`로 설정한 플레이버는 쿼터 적격성 판정 전에 일반 사용자 응답에서 제외됩니다. 설정이 없으면 기존 호환성을 위해 노출됩니다.
 > - 이 설정은 Afterglow의 VM·Resize·K3s 플레이버 선택 화면에만 적용됩니다. Nova의 Public/Private 상태, Flavor Access, CLI 및 직접 Nova API 접근 권한은 변경하지 않습니다.
+> - 이 목록의 `eligibility`는 새 VM **생성**에 필요한 전체 자원 수요입니다. 기존 VM 리사이즈 선택에는 `GET /api/v1/instances/{instance_id}/resize-flavors`를 사용하여 현재 플레이버 대비 증분 수요와 디스크 제약을 평가합니다. 두 응답을 서로 대신 사용하지 않습니다.
 
 ### 요청 헤더
 
