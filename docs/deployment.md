@@ -790,6 +790,13 @@ SHOW COLUMNS FROM chat_messages LIKE 'created_at_local';
 SHOW COLUMNS FROM chat_messages LIKE 'created_timezone';
 ```
 
+Kolla Afterglow `deploy`·`reconfigure`는 생성된 config를 사용해, `upgrade`는 pull한
+image와 기존 생성 config를 사용해 backend를 시작하기 **전에** 일회성 DB bootstrap을
+실행합니다. 운영 API에서 `auto_create_tables=false`여도 신규 ORM table은 이 단계에서
+생성됩니다. 기존 테이블에 새 컬럼을 추가하는 변경에는 위 수동 SQL 적용이 여전히
+필수이며, bootstrap 성공이나 `/api/v1/health` 200만으로 인증된 업무 경로를 검증했다고
+보지 않습니다.
+
 ### Kubernetes
 
 ```bash

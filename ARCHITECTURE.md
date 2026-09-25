@@ -272,6 +272,8 @@ At ≥768px, the settings route allocates the return action and settings body wi
 
 `Dockerfile`은 backend/worker에 Python 3.12 slim, frontend build에 Bun 1, runtime에 Node 20을 사용한다. Backend의 OpenTofu acquisition은 runtime package 설치와 분리된 stage에서 BuildKit `TARGETARCH`를 `amd64`/`arm64`로 fail-closed 매핑하고, transient GitHub 오류를 bounded retry하며, 공식 release manifest에서 pin한 architecture별 SHA-256을 확인한 binary만 runtime stage에 복사한다. 현재 [`docker-build.yml`](.github/workflows/docker-build.yml)은 `linux/amd64` matrix만 활성화하며 arm64 항목은 주석 처리되어 있지만, dev source build는 native `arm64`도 지원한다. GitHub Actions가 이미지를 GHCR로 push하고, 배포 구성은 Kubernetes/Kustomize·Helm/ArgoCD 또는 [`deploy/kolla/site.yml`](deploy/kolla/site.yml)의 custom service role 경계를 사용한다. Kolla는 `afterglow`, `waygate`, `drover`, `lumen`, `palimpsest` inventory group을 별도로 검사한다. `deploy/kolla/install.sh`가 stock site import와 inventory/globals.d 연결을 준비하면 `/etc/kolla`에서 `kolla-ansible deploy -i multinode`가 custom 서비스를 함께 실행한다. 서비스·HAProxy 플레이는 `become: true`로 toolbox와 중첩/위임 task의 권한을 선언하며, operator 계정의 기존 sudo 권한을 전제로 한다. 형제 역할은 각 서비스 root distribution(`drover`, `lumen`, `waygate`, `palimpsest`)에서 설치되고 release archive wheel은 tag version과 일치하는 immutable GitHub URL·SHA-256을 사용한다.
 
+Kolla Afterglow `deploy`·`reconfigure`는 config 생성 뒤, `upgrade`는 새 image pull 뒤 기존 생성 config로 backend 시작·policy seed 전에 package image의 일회성 DB bootstrap(`create_tables`)을 실행한다. Bootstrap은 실패 시 rollout을 차단하며 `auto_create_tables=false`인 운영 backend에도 누락된 신규 ORM table을 생성한다. 기존 테이블의 컬럼 변경은 `create_all`이 처리하지 않으므로 `backend/migrations/manifest.txt`의 해당 SQL을 배포 전에 별도로 적용해야 한다. 2026-09-25 실제 `POST /api/v1/instances/github-users/lookup` 503은 GitHub API 장애가 아니라 운영 DB `vm_github_ssh_users` 누락(MariaDB 1146)으로 history 저장이 실패한 사건이다. checksum을 대조한 `080_vm_github_ssh_users.sql`의 한 테이블만 운영 DB에 적용하고 공개 GitHub SSH 조회→임시 history 기록·조회·삭제를 검증했으며 backend는 healthy/restart 0이었다. 이 운영 복구는 아직 Kolla 역할 변경의 운영 rollout 증거가 아니다.
+
 오브젝트 축소본 렌더링은 backend 의존성 `Pillow`와 `pypdfium2==5.13.0`을 사용한다. 두 패키지 모두 `cp312` 대상의 `manylinux_2_17_{x86_64,aarch64}` wheel을 제공하므로 amd64 CI 이미지와 arm64 dev 소스 빌드가 같은 lock으로 설치되며 시스템 rasterizer 패키지를 추가하지 않는다.
 
 Afterglow 1.25.0 이후 operator 정본은 Drover `v0.2.23`, Lumen `v0.3.0`, Waygate `v0.1.4`, Palimpsest root `palimpsest-client` `v0.2.3`의 immutable Git tag와 이를 해석한 `deploy/kolla/operator/uv.lock`이다. Backend/worker의 Drover·Waygate SDK도 같은 서비스 릴리즈의 정확한 commit으로 고정하며 SDK 자체 버전은 형제 저장소의 독립 계약을 유지한다. Operator sync는 `--locked --inexact --no-install-project`로 기존 Kolla 도구를 보존한다. Palimpsest 0.2.2는 Hub volume root의 UID1000 소유권을 bootstrap 전에 설정하는 Kolla role 수정이고, 0.2.3은 같은 role을 유지한 채 root 배포판 이름을 `palimpsest-local`에서 `palimpsest-client`로 바꾼다. 두 배포판은 같은 role 파일을 설치하고 `--inexact` sync는 퇴역 배포판을 지우지 않으므로 `install.sh`는 `palimpsest-local` metadata가 남아 있으면 거부하고, operator README의 uninstall 후 `--reinstall-package palimpsest-client` 절차를 요구한다. 이 source promotion은 운영 이미지 발행·배포 완료의 증거가 아니며, rollout은 별도로 digest와 실제 인증 업로드 경로를 검증한다.
@@ -503,9 +505,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "fb5314c8c39b566816e070b220bf5177c38bac2a6e681634ea83b3585fff3264",
-  "reviewed_at": "2026-09-25T08:34:06Z",
-  "summary": "Operator root distribution now palimpsest-client v0.2.3; immutable lock resolves fc729e3b; old palimpsest-local metadata fails closed before link mutation; identical role and Hub runtime topology."
+  "source_sha256": "1f26a7194a89ba4416f4b869ccfb730878171980a24595f199627a5f44db4859",
+  "reviewed_at": "2026-09-25T13:49:57Z",
+  "summary": "GitHub SSH lookup 503 traced to missing vm_github_ssh_users in production (MariaDB 1146); applied checksum-matched migration 080, live profile/history smoke passed with disposable row cleaned; Kolla reconfigure and upgrade now bootstrap schema before seed/start, existing-table ALTER remains manual; production role rollout pending owner merge."
 }
 ```
 <!-- architecture-review:end -->

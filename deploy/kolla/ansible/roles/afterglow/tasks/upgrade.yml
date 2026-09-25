@@ -2,6 +2,9 @@
 - name: Include pull tasks
   ansible.builtin.include_tasks: pull.yml
 
+- name: Include bootstrap service tasks
+  ansible.builtin.include_tasks: bootstrap_service.yml
+
 - name: Include seed runtime policies tasks
   ansible.builtin.include_tasks: seed_runtime_policies.yml
 

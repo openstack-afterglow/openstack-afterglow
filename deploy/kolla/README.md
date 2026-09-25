@@ -446,6 +446,16 @@ kolla-ansible reconfigure -i multinode --tags afterglow
 kolla-ansible reconfigure -i multinode --tags afterglow,waygate,drover,lumen,palimpsest
 ```
 
+Afterglow `deploy` and `reconfigure` run the one-shot schema bootstrap after
+rendering configuration, before policy seeding and backend start. `upgrade`
+bootstraps the pulled image against the existing generated configuration before
+seeding or restarting. This creates missing ORM tables even when the running
+backend sets `auto_create_tables=false`; a bootstrap failure stops the lifecycle
+before an incompatible backend can start. `create_all` cannot add columns to
+existing tables. Apply reviewed SQL migrations from `backend/migrations/manifest.txt`
+before rollout whenever an existing table changes, and verify the authenticated
+application path rather than treating `/health` as database readiness.
+
 `-i multinode` explicitly selects `/etc/kolla/multinode` when run from
 `/etc/kolla`. Omitting `-i` uses the installer's link to that same inventory.
 Custom `-p` and `-e @...` arguments are diagnostic overrides, not normal setup.
