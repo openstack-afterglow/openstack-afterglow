@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Palimpsest root 배포판 이름 전환** — Kolla operator가 Palimpsest role을 `palimpsest-client` `v0.2.3`에서 설치한다. 이전 `palimpsest-local`은 같은 role 파일을 소유하므로 설치기가 남은 배포판을 거부하고, operator 안내에 제거 후 재설치 절차를 추가했다.
+
 ## [1.25.0] - 2026-09-25
 
 ### Added

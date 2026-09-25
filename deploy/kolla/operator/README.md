@@ -11,7 +11,7 @@ application.
 | `drover` | `drover` | `0.2.23` |
 | `lumen` | `lumen` | `0.3.0` |
 | `waygate` | `waygate` | `0.1.4` |
-| `palimpsest-local` | `palimpsest` | `0.2.2` |
+| `palimpsest-client` | `palimpsest` | `0.2.3` |
 
 Each root wheel owns its role files. No separate `*-kolla` distribution is
 installed, and installing one of these packages does not make its role a Kolla
@@ -83,7 +83,7 @@ directory:
 uv add --no-sync --tag vX.Y.Z "drover @ git+https://github.com/openstack-afterglow/drover.git"
 uv add --no-sync --tag vX.Y.Z "lumen @ git+https://github.com/openstack-afterglow/lumen.git"
 uv add --no-sync --tag vX.Y.Z "waygate @ git+https://github.com/openstack-afterglow/waygate.git"
-uv add --no-sync --tag vX.Y.Z "palimpsest-local @ git+https://github.com/openstack-afterglow/palimpsest.git"
+uv add --no-sync --tag vX.Y.Z "palimpsest-client @ git+https://github.com/openstack-afterglow/palimpsest.git"
 uv lock --refresh
 ```
 
@@ -98,6 +98,18 @@ source /etc/kolla/.venv/bin/activate
 `--no-install-project` is required because this operator project is a dependency
 manifest, not an application. `--inexact` preserves unrelated packages already
 needed by the cloud operator.
+
+Palimpsest 0.2.3 renamed its root distribution from `palimpsest-local` to
+`palimpsest-client`; both install the same `palimpsest` role files. Because
+`--inexact` never removes the retired distribution, migrate an existing Kolla
+environment explicitly before running `../install.sh`:
+
+```bash
+uv pip uninstall --python /etc/kolla/.venv/bin/python palimpsest-local
+UV_PROJECT_ENVIRONMENT=/etc/kolla/.venv uv sync --locked --inexact --no-install-project --reinstall-package palimpsest-client
+```
+
+The installer refuses to continue while `palimpsest-local` metadata remains.
 
 ## Install and lifecycle
 

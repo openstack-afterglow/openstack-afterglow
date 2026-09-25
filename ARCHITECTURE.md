@@ -274,7 +274,7 @@ At ≥768px, the settings route allocates the return action and settings body wi
 
 오브젝트 축소본 렌더링은 backend 의존성 `Pillow`와 `pypdfium2==5.13.0`을 사용한다. 두 패키지 모두 `cp312` 대상의 `manylinux_2_17_{x86_64,aarch64}` wheel을 제공하므로 amd64 CI 이미지와 arm64 dev 소스 빌드가 같은 lock으로 설치되며 시스템 rasterizer 패키지를 추가하지 않는다.
 
-Afterglow 1.25.0의 operator 정본은 Drover `v0.2.23`, Lumen `v0.3.0`, Waygate `v0.1.4`, Palimpsest root `v0.2.2`의 immutable Git tag와 이를 해석한 `deploy/kolla/operator/uv.lock`이다. Backend/worker의 Drover·Waygate SDK도 같은 서비스 릴리즈의 정확한 commit으로 고정하며 SDK 자체 버전은 형제 저장소의 독립 계약을 유지한다. Operator sync는 `--locked --inexact --no-install-project`로 기존 Kolla 도구를 보존한다. Palimpsest 0.2.2는 Hub volume root의 UID1000 소유권을 bootstrap 전에 설정하는 Kolla role 수정이다. 이 source promotion은 운영 이미지 발행·배포 완료의 증거가 아니며, rollout은 별도로 digest와 실제 인증 업로드 경로를 검증한다.
+Afterglow 1.25.0 이후 operator 정본은 Drover `v0.2.23`, Lumen `v0.3.0`, Waygate `v0.1.4`, Palimpsest root `palimpsest-client` `v0.2.3`의 immutable Git tag와 이를 해석한 `deploy/kolla/operator/uv.lock`이다. Backend/worker의 Drover·Waygate SDK도 같은 서비스 릴리즈의 정확한 commit으로 고정하며 SDK 자체 버전은 형제 저장소의 독립 계약을 유지한다. Operator sync는 `--locked --inexact --no-install-project`로 기존 Kolla 도구를 보존한다. Palimpsest 0.2.2는 Hub volume root의 UID1000 소유권을 bootstrap 전에 설정하는 Kolla role 수정이고, 0.2.3은 같은 role을 유지한 채 root 배포판 이름을 `palimpsest-local`에서 `palimpsest-client`로 바꾼다. 두 배포판은 같은 role 파일을 설치하고 `--inexact` sync는 퇴역 배포판을 지우지 않으므로 `install.sh`는 `palimpsest-local` metadata가 남아 있으면 거부하고, operator README의 uninstall 후 `--reinstall-package palimpsest-client` 절차를 요구한다. 이 source promotion은 운영 이미지 발행·배포 완료의 증거가 아니며, rollout은 별도로 digest와 실제 인증 업로드 경로를 검증한다.
 
 운영 worker 복구는 검증한 `linux/amd64` manifest의 immutable digest만 `afterglow_worker_image_ref`에 고정하고 backend/frontend ref는 유지한다. Kolla precheck와 service-scoped rollout 뒤 모든 대상 controller의 running image digest, restart state, worker completion log, `notion_targets.last_sync` 전진을 함께 확인하며 container `running`만으로 성공 처리하지 않는다.
 
@@ -503,9 +503,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "160b85957780e3f496dc7980023ccce327df293e017e17820a960817054dac25",
-  "reviewed_at": "2026-09-25T00:22:38Z",
-  "summary": "Operator role promoted to Palimpsest v0.2.2; named Hub volume owner initialized before bootstrap, no app/image change; live upload proof pending."
+  "source_sha256": "fb5314c8c39b566816e070b220bf5177c38bac2a6e681634ea83b3585fff3264",
+  "reviewed_at": "2026-09-25T08:34:06Z",
+  "summary": "Operator root distribution now palimpsest-client v0.2.3; immutable lock resolves fc729e3b; old palimpsest-local metadata fails closed before link mutation; identical role and Hub runtime topology."
 }
 ```
 <!-- architecture-review:end -->

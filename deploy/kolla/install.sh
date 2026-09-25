@@ -235,7 +235,14 @@ log "Waygate role verified at $WAYGATE_ROLE_DIR (waygate==$installed_waygate_ver
 
 PALIMPSEST_ROLE_DIR="$ROLES_DIR/palimpsest"
 PALIMPSEST_LEGACY_ROLE_TARGET="$REPO_DIR/deploy/kolla/ansible/roles/palimpsest"
-PALIMPSEST_VERSION=$(get_locked_version "palimpsest-local")
+PALIMPSEST_VERSION=$(get_locked_version "palimpsest-client")
+# palimpsest-client replaced palimpsest-local and installs the same role files.
+# A leftover old distribution would later delete them on uninstall, so refuse it.
+legacy_palimpsest_version=$(
+  "$KOLLA_PYTHON" -c 'from importlib.metadata import version; print(version("palimpsest-local"))' 2>/dev/null || true
+)
+[[ -z "$legacy_palimpsest_version" ]] ||
+  die "Retired distribution palimpsest-local==$legacy_palimpsest_version is still installed in the active Kolla environment and shares the Palimpsest role files. Run 'uv pip uninstall --python $KOLLA_PYTHON palimpsest-local', then 'UV_PROJECT_ENVIRONMENT=/etc/kolla/.venv uv sync --locked --inexact --no-install-project --reinstall-package palimpsest-client' in deploy/kolla/operator before rerunning install.sh."
 if [[ -L "$PALIMPSEST_ROLE_DIR" ]]; then
   current_palimpsest_target=$(readlink "$PALIMPSEST_ROLE_DIR" || true)
   if [[ "$current_palimpsest_target" == "$PALIMPSEST_LEGACY_ROLE_TARGET" ]]; then
@@ -247,14 +254,14 @@ elif [[ ! -d "$PALIMPSEST_ROLE_DIR" ||
         ! -f "$PALIMPSEST_ROLE_DIR/tasks/deploy.yml" ||
         ! -f "$PALIMPSEST_ROLE_DIR/defaults/main.yml" ||
         ! -f "$PALIMPSEST_ROLE_DIR/templates/palimpsest.conf.j2" ]]; then
-  die "Palimpsest role missing or invalid at $PALIMPSEST_ROLE_DIR. Install palimpsest-local==$PALIMPSEST_VERSION into the active Kolla environment with 'UV_PROJECT_ENVIRONMENT=/etc/kolla/.venv uv sync --inexact --no-install-project' in deploy/kolla/operator."
+  die "Palimpsest role missing or invalid at $PALIMPSEST_ROLE_DIR. Install palimpsest-client==$PALIMPSEST_VERSION into the active Kolla environment with 'UV_PROJECT_ENVIRONMENT=/etc/kolla/.venv uv sync --inexact --no-install-project' in deploy/kolla/operator."
 fi
 installed_palimpsest_version=$(
-  "$KOLLA_PYTHON" -c 'from importlib.metadata import version; print(version("palimpsest-local"))' 2>/dev/null || true
+  "$KOLLA_PYTHON" -c 'from importlib.metadata import version; print(version("palimpsest-client"))' 2>/dev/null || true
 )
 [[ "$installed_palimpsest_version" == "$PALIMPSEST_VERSION" ]] ||
-  die "Expected palimpsest-local==$PALIMPSEST_VERSION in the active Kolla environment, found '${installed_palimpsest_version:-not installed}'."
-log "Palimpsest role verified at $PALIMPSEST_ROLE_DIR (palimpsest-local==$installed_palimpsest_version)"
+  die "Expected palimpsest-client==$PALIMPSEST_VERSION in the active Kolla environment, found '${installed_palimpsest_version:-not installed}'."
+log "Palimpsest role verified at $PALIMPSEST_ROLE_DIR (palimpsest-client==$installed_palimpsest_version)"
 
 # Role symlink (Afterglow source role only)
 create_symlink_safe "$REPO_DIR/deploy/kolla/ansible/roles/afterglow" "$ROLES_DIR/afterglow" "afterglow role"

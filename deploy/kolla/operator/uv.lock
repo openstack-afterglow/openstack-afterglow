@@ -10,7 +10,7 @@ dependencies = [
     { name = "drover" },
     { name = "kolla-ansible" },
     { name = "lumen" },
-    { name = "palimpsest-local" },
+    { name = "palimpsest-client" },
     { name = "waygate" },
 ]
 
@@ -19,7 +19,7 @@ requires-dist = [
     { name = "drover", git = "https://github.com/openstack-afterglow/drover.git?tag=v0.2.23" },
     { name = "kolla-ansible", git = "https://opendev.org/openstack/kolla-ansible.git?rev=34daacfbf2d5987f543787f57535b2bebe7dee19" },
     { name = "lumen", git = "https://github.com/openstack-afterglow/lumen.git?tag=v0.3.0" },
-    { name = "palimpsest-local", git = "https://github.com/openstack-afterglow/palimpsest.git?tag=v0.2.2" },
+    { name = "palimpsest-client", git = "https://github.com/openstack-afterglow/palimpsest.git?tag=v0.2.3" },
     { name = "waygate", git = "https://github.com/openstack-afterglow/waygate.git?tag=v0.1.4" },
 ]
 
@@ -683,9 +683,9 @@ wheels = [
 ]
 
 [[package]]
-name = "palimpsest-local"
-version = "0.2.2"
-source = { git = "https://github.com/openstack-afterglow/palimpsest.git?tag=v0.2.2#ea942d4598018e4d769185a17455d6fb1c7b83e9" }
+name = "palimpsest-client"
+version = "0.2.3"
+source = { git = "https://github.com/openstack-afterglow/palimpsest.git?tag=v0.2.3#fc729e3bb33ed9a4a860ad0d8c1c79b192891331" }
 
 [[package]]
 name = "passlib"
