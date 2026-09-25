@@ -28,7 +28,7 @@ Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 �
 | k3s/Drover 연동 | `partial` | `test-defined` | Afterglow의 compatibility/admin 경로와 독립 Drover control plane을 혼동하지 않는다. | [`backend/app/api/drover/`](backend/app/api/drover/), [`backend/tests/contracts/test_drover_proxy.py`](backend/tests/contracts/test_drover_proxy.py) |
 | Lumen chat BFF, bounded history, settings, CLI guides, quota/usage projection | `partial` | active-history/full gate plus focused Claude guide 8, Svelte diagnostics, actual Claude Code 2.1.278 CLI and responsive guide surface passed (2026-09-20) | 실행·provider·secret·journal·active-path projection·cursor·API-key/device credential·quota는 Lumen 소유다. Afterglow는 authenticated BFF, bounded 40×3 history window, legacy custom-device approval shell, direct ordinary-key Claude Code/Responses Codex guide와 settings/quota/usage UI를 제공한다. Current Claude Apps Gateway login은 legacy shell과 호환된다고 advertise하지 않는다. | [`backend/app/api/lumen/`](backend/app/api/lumen/), [`frontend/src/lib/components/chat/ChatPanel.svelte`](frontend/src/lib/components/chat/ChatPanel.svelte), [`frontend/src/lib/components/chat/ChatApiKeysManager.svelte`](frontend/src/lib/components/chat/ChatApiKeysManager.svelte), [`frontend/src/routes/oauth/claude/authorize/`](frontend/src/routes/oauth/claude/authorize/), [`docs/api/chat.md`](docs/api/chat.md) |
 | Waygate BFF·VPN UI·legacy agent callback 전달 | `partial` | focused proxy contract 8건과 VPN UI interaction 2건 통과 | 브라우저 control plane은 구현됐지만 실제 OpenStack port hot-plug, WireGuard handshake와 내부 인스턴스 data plane은 live 검증 전이다. Waygate DB/worker와 standalone `/v1` API는 형제 서비스가 소유한다. | [`backend/app/api/waygate/`](backend/app/api/waygate/), [`frontend/src/routes/dashboard/network/waygate/+page.svelte`](frontend/src/routes/dashboard/network/waygate/+page.svelte), [`docs/api/vpn.md`](docs/api/vpn.md) |
-| Palimpsest layer/build/Hub BFF | `partial` | `test-defined` | 구 `/api/v1/union` 표면은 제거됐고, retained squashfs 흐름과 독립 Hub를 별도 경계로 유지한다. | [`backend/app/api/palimpsest/`](backend/app/api/palimpsest/), [`backend/tests/test_palimpsest_api.py`](backend/tests/test_palimpsest_api.py) |
+| Palimpsest layer/build/Hub BFF | `partial` | `test-defined`; DMSLAB authenticated BFF → Hub `/v1/`·`/health`·layers 200 (2026-09-25) | 구 `/api/v1/union` 표면은 제거됐고, retained squashfs 흐름과 독립 Hub를 별도 경계로 유지한다. 운영은 Hub 0.2.0 이미지를 controller1 단일 local volume으로 실행하며 layer push/build lifecycle은 live 검증 전이다. | [`backend/app/api/palimpsest/`](backend/app/api/palimpsest/), [`backend/tests/test_palimpsest_api.py`](backend/tests/test_palimpsest_api.py) |
 | architecture snapshot freshness guard | `implemented` | `test-passed` (`npm run test:target -- backend:tests/test_architecture_guard.py`, 13 passed, 2026-09-08) | guard는 문서가 source를 정직하게 설명했는지 자연어까지 판정하지 않는다. | [`scripts/check_architecture.py`](scripts/check_architecture.py), [`backend/tests/test_architecture_guard.py`](backend/tests/test_architecture_guard.py) |
 
 ## System context
@@ -274,7 +274,7 @@ At ≥768px, the settings route allocates the return action and settings body wi
 
 오브젝트 축소본 렌더링은 backend 의존성 `Pillow`와 `pypdfium2==5.13.0`을 사용한다. 두 패키지 모두 `cp312` 대상의 `manylinux_2_17_{x86_64,aarch64}` wheel을 제공하므로 amd64 CI 이미지와 arm64 dev 소스 빌드가 같은 lock으로 설치되며 시스템 rasterizer 패키지를 추가하지 않는다.
 
-Afterglow 1.25.0의 operator 정본은 Drover `v0.2.23`, Lumen `v0.3.0`, Waygate `v0.1.4`, Palimpsest root `v0.2.1`의 immutable Git tag와 이를 해석한 `deploy/kolla/operator/uv.lock`이다. Backend/worker의 Drover·Waygate SDK도 같은 서비스 릴리즈의 정확한 commit으로 고정하며 SDK 자체 버전은 형제 저장소의 독립 계약을 유지한다. Operator sync는 `--locked --inexact --no-install-project`로 기존 Kolla 도구를 보존한다. 이 source promotion은 운영 이미지 발행·배포 완료의 증거가 아니며, rollout은 별도로 digest와 실제 인증 경로를 검증한다.
+Afterglow 1.25.0의 operator 정본은 Drover `v0.2.23`, Lumen `v0.3.0`, Waygate `v0.1.4`, Palimpsest root `v0.2.2`의 immutable Git tag와 이를 해석한 `deploy/kolla/operator/uv.lock`이다. Backend/worker의 Drover·Waygate SDK도 같은 서비스 릴리즈의 정확한 commit으로 고정하며 SDK 자체 버전은 형제 저장소의 독립 계약을 유지한다. Operator sync는 `--locked --inexact --no-install-project`로 기존 Kolla 도구를 보존한다. Palimpsest 0.2.2는 Hub volume root의 UID1000 소유권을 bootstrap 전에 설정하는 Kolla role 수정이다. 이 source promotion은 운영 이미지 발행·배포 완료의 증거가 아니며, rollout은 별도로 digest와 실제 인증 업로드 경로를 검증한다.
 
 운영 worker 복구는 검증한 `linux/amd64` manifest의 immutable digest만 `afterglow_worker_image_ref`에 고정하고 backend/frontend ref는 유지한다. Kolla precheck와 service-scoped rollout 뒤 모든 대상 controller의 running image digest, restart state, worker completion log, `notion_targets.last_sync` 전진을 함께 확인하며 container `running`만으로 성공 처리하지 않는다.
 
@@ -451,6 +451,8 @@ GitHub Actions 실제 실행은 검증하지 않았다. job 토큰의 `actions: 
 
 2026-09-24 CI 개편 최종 리뷰 후속 수정은 CI 규정 3번의 잘못된 주장을 고쳤다. 이전 문구는 `promote-kolla-role-tags.yml`이 연 PR이 테스트를 거친다고 했지만, workflow source에는 `token:` 입력도 `secrets.*` 참조도 없다. 브랜치 push와 PR 생성이 모두 `GITHUB_TOKEN`으로 이루어지므로 GitHub 문서 동작상 `pull_request` 실행이 시작되지 않는다. AGENTS.md(CLAUDE.md) 규정 3번과 위 `게이트 병렬성`은 이제 발행 게이팅 비대상, 자동 검사 부재, maintainer의 close/reopen 재실행, 이 브랜치의 dispatch 금지, 병합 뒤 `main` 실행이 이미지 발행만 게이팅한다는 점을 적는다. [`deploy/kolla/operator/README.md`](deploy/kolla/operator/README.md)에도 병합 전 close/reopen과 dispatch 금지를 적었다. workflow와 계약 테스트는 바꾸지 않았다. 2026-09-24 `gh pr list --head automation/kolla-role-tags --state all`은 빈 목록을 반환했다. 실제 promotion PR이 아직 없으므로 근거는 workflow source와 GitHub 문서 동작이며, 실행 증거는 없다. App/PAT 토큰 전환은 [`ci-critical-path-review-follow-up`](openspec/changes/ci-critical-path-review-follow-up/tasks.md)의 owner 작업으로 남았다.
 
+2026-09-25 1.25.0 릴리즈와 DMSLAB Kolla 배포는 [`openspec/changes/release-five-services-kolla/tasks.md`](openspec/changes/release-five-services-kolla/tasks.md)에 증거를 기록했다. 요약: 다섯 저장소 모두 dev→main PR 병합 commit에 annotated tag(Afterglow v1.25.0, Lumen v0.3.0, Drover v0.2.23, Waygate v0.1.4, Palimpsest v0.2.0→v0.2.1)를 붙였고 각 태그 workflow가 통과했다. 12개 이미지 전부 merge SHA와 일치하는 OCI revision의 amd64 digest로 운영에 고정했으며, amd64 발행본과 arm64(Lumen 발행본, 나머지는 태그 checkout native build)에서 실제 package version·`platform.machine()`·(API) `app.main` import와 OpenTofu 실행·(worker) crypto smoke를 확인했다. wireguard-dmslab에서는 백업(`/etc/kolla/afterglow-release-backups/20260924T231244Z`) 뒤 legacy waygate/palimpsest role link를 installer 절차대로 제거하고 locked operator env를 동기화했으며, precheck→reconfigure(afterglow,waygate,drover,lumen)→deploy(palimpsest)→reconfigure(afterglow) 순으로 3개 controller 29 container가 pinned digest로 healthy·restart 0(HAProxy reconcile 창의 `lumen_worker` startup-exit 재시작 제외)이다. 서비스 계정 로그인으로 dashboard overview·Drover k3s-stats `available: true`·Lumen 모델 29·Waygate discovery·Palimpsest Hub BFF가 200이었다. Palimpsest는 운영 Afterglow backend가 8020/18020을 쓰므로 8021/18021로 배치했고 `palimpsest.dmslab.re.kr` CNAME과 wildcard 인증서로 공개 경로가 200이다. Palimpsest v0.2.0 Kolla role의 boolean `SSL_VERIFY`(docker_container 거부)는 v0.2.1로 수정해 재배포했다. PyPI trusted publisher 미등록으로 Palimpsest PyPI 발행은 실패했고 배포에는 영향이 없다. VM/K3s/Waygate VM/provider inference/Cloud Shell/layer build lifecycle은 실행하지 않았다.
+
 | 목적 | 정확한 명령 | 외부 전제 |
 |---|---|---|
 | backend 개발 서버 | `cd backend && uv sync && uv run uvicorn app.main:app --reload` | Python 3.12, uv, 설정된 `afterglow.conf` |
@@ -501,9 +503,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "d9ffc7ba4a4ca969391d08354dffbaae71b038cbfe21b7a797cc0f2f6f143649",
-  "reviewed_at": "2026-09-24T23:38:10Z",
-  "summary": "Operator lock promoted to Palimpsest v0.2.1 (Kolla env stringification hotfix). Deployment input only; no app change."
+  "source_sha256": "160b85957780e3f496dc7980023ccce327df293e017e17820a960817054dac25",
+  "reviewed_at": "2026-09-25T00:22:38Z",
+  "summary": "Operator role promoted to Palimpsest v0.2.2; named Hub volume owner initialized before bootstrap, no app/image change; live upload proof pending."
 }
 ```
 <!-- architecture-review:end -->
