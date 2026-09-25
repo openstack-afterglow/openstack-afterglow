@@ -68,7 +68,7 @@ graph LR
 | [`frontend/src/lib/api/client.ts`](frontend/src/lib/api/client.ts) `api`, `fetchWithAuth`, `tryRefresh`, `request` | API base, Authorization, 요청 전 refresh 직렬화와 fetch/XHR 401 복구, 403 처리, prefetch/invalidation | UI → FastAPI |
 | [`frontend/src/lib/stores/auth.ts`](frontend/src/lib/stores/auth.ts) `auth`, `setAuth`, `setProject`, `clearAuth` | 브라우저 auth state와 project scope 영속화 | UI state → API client |
 | [`frontend/src/hooks.server.ts`](frontend/src/hooks.server.ts) `handle` | public path, backend prefix, SPA fallback, CSP/보안 헤더 | SvelteKit request shell |
-| [`backend/app/api/compute/instances.py`](backend/app/api/compute/instances.py) `create_instance`, `create_instance_async`, `delete_instance` | Nova/Cinder/Manila/Neutron 조합, SSE, 역순 rollback과 FIP cleanup | compute API → OpenStack adapters |
+| [`backend/app/api/compute/instances.py`](backend/app/api/compute/instances.py) `create_instance`, `create_instance_async`, `delete_instance`, `resize_owned_instance`, `confirm_owned_resize`, `revert_owned_resize` | Nova/Cinder/Manila/Neutron VM 생성·SSE·역순 rollback·FIP cleanup; 소유권/프로젝트 쓰기 권한이 적용된 cold resize와 VERIFY_RESIZE 확정/복귀 | compute API → OpenStack adapters/`flavor_eligibility` |
 | [`backend/app/api/drover/`](backend/app/api/drover/) | Drover callback/admin/proxy compatibility | Afterglow BFF → Drover endpoint |
 | [`backend/app/api/lumen/`](backend/app/api/lumen/) | authenticated `/api/v1/chat/{path}` forwarding, including legacy Lumen custom-device approve/deny; MCP callback/delegated bridge | Afterglow BFF → Lumen; public device issue/poll and CLI inference never terminate here |
 | [`frontend/src/lib/components/chat/ChatPanel.svelte`](frontend/src/lib/components/chat/ChatPanel.svelte), [`frontend/src/lib/components/chat/ChatWindow.svelte`](frontend/src/lib/components/chat/ChatWindow.svelte), [`frontend/src/lib/components/chat/ChatMessage.svelte`](frontend/src/lib/components/chat/ChatMessage.svelte) | 40-message active-path pages, max-three-page window, explicit first/previous/next/latest, viewport anchor, stale-cursor recovery, old-window run/send behavior와 server sibling branch switching | UI → authenticated `/api/v1/chat` BFF; browser는 tree graph/cursor payload를 해석하지 않는다 |
@@ -95,6 +95,10 @@ graph LR
 2. Keystone token과 refresh-JTI에 묶인 session/검증 정보는 Redis에 둔다. 브라우저 `localStorage`의 JWT는 Redis Keystone session의 복제본이 아니다.
 3. `frontend/src/lib/api/client.ts`의 `fetchWithAuth`와 XHR 공통 복구 정책은 만료 120초 이내 인증 요청을 보내기 전에 `/api/v1/auth/refresh`를 coalesce하고 진행 중 회전을 기다린다. JSON·채팅/SSE handshake·첨부·업로드/다운로드는 401 직후 갱신하거나 이미 회전한 live token으로 한 번만 재시도하며, 소비 중인 스트림은 재실행하지 않는다. `sessionRefreshLifecycle.ts`는 mount/focus/visible 복귀 때 즉시 만료를 확인하고 60초 보조 주기를 유지한다. Background refresh의 terminal 401도 auth를 비우고 `/login`으로 이동한다. Keystone의 token-specific `Failed to validate token` 또는 `Could not recognize Fernet token` 404는 adapter에서 Unauthorized로 정규화하며 일반 404·연결 장애는 503을 유지한다. Refresh 또는 `/auth/me`의 retryable 실패는 token에 묶인 비영속 `authRecovery`와 blocking root dialog로 드러내며, mounted 페이지의 작성 내용과 자격 증명을 보존하고 기존 cooldown 이후 재시도 또는 명시적 logout을 제공한다. 성공·identity 변경은 gate를 해제하고 오래된 실패는 새 로그인을 덮어쓰지 않는다. Logout은 진행 중인 refresh가 실패해도 로컬 정리를 완료하고 서버 폐기 미확인은 경고한다. 서비스·데이터 소유권과 TTL 구조는 바뀌지 않는다.
 4. `X-Project-Id`가 생략되면 JWT project를 사용한다. 다른 project로 전환할 때 서버가 허용한 rescope만 수행하며, project-scoped connection과 resource ownership을 다시 적용한다.
+
+### 소유 인스턴스 플레이버 변경
+
+사용자 인스턴스 상세는 `/api/v1/instances/{id}/resize-flavors`를 읽어 현재 Nova 플레이버 대비 증분 코어·RAM·GPU 적격성을 표시한다. 서버는 조회와 POST 시 현재 플레이버의 식별 가능 여부, 동일 플레이버 및 이미지 기반 VM의 디스크 축소 불가, 프로젝트 범위 쿼터를 확인한다. 볼륨 기반 VM은 플레이버 디스크 축소 제약에서 제외한다. POST `/api/v1/instances/{id}/resize`, `/confirm-resize`, `/revert-resize`는 `require_project_write`, Nova 서버 소유권 검사, 상태(`ACTIVE`/`SHUTOFF` → `VERIFY_RESIZE`)와 성공 후 인스턴스/목록 캐시 무효화를 거친다. 관리자 전용 `/api/v1/admin/instances/{id}/...` 작업은 그대로 유지하며, 프론트엔드는 사용자/관리자 모드에 맞는 경로를 선택한다. Nova cold resize에는 다운타임 및 confirm/revert 결정이 따른다. 상세 계약은 [`docs/api/instances.md`](docs/api/instances.md)와 [`docs/api/flavors.md`](docs/api/flavors.md)를 따른다.
 
 ### 전역 Cloud Shell 승인·세션
 
@@ -353,6 +357,8 @@ cloud-init 및 shell template 출력은 `shlex_quote`/검증된 입력을 사용
 
 ## Development and verification
 
+소유 VM 리사이즈는 사용자 전용 route와 상태/소유권/쓰기 권한 경계를 추가했다. `instances.py`는 현재 플레이버 대비 쿼터 증분을 조회와 제출에 각각 적용하고 동일 플레이버·이미지 기반 VM의 디스크 축소·숨김 플레이버·부적절한 상태를 거부하며, owner project metadata가 없는 일반 사용자 요청도 404로 차단한다. UI controller는 사용자/관리자 경로를 분기하고 두 모드 모두 인스턴스별 증분 eligibility를 읽으며 reader action을 숨긴다. 로컬에서 resize backend 32건, `instances` 도메인 backend 270건/frontend 35건, design 109건, `svelte-check` 0 errors를 확인했다. amd64/arm64 이미지 빌드와 dev Compose backend/frontend 배포·health 및 배포 이미지의 리사이즈 선택 규칙을 확인했으나, 실제 Nova 리사이즈 및 confirm/revert는 실행하지 않았다.
+
 개발 명령은 저장소 root에서 실행한다. 2026-09-14 관리자 볼륨 변경은 focused backend 19건, frontend 11건, `svelte-check` 0 errors/0 warnings와 실제 Vite tutorial 화면의 390/767/768/1023/1024/1440px 선택·상태 필터·확인 dialog를 통과했다. 최종 `npm run test:gate`는 backend 2734건, frontend 1307건과 test runner 9건, contract 124건, functional 24건 및 backend lint를 통과했다. 브라우저 증거는 합성 데이터 UI/contract 검증이며 live OpenStack 삭제 검증은 아니다. 실행하지 않은 계층은 `test-passed`나 `live-verified`로 표기하지 않는다.
 
 2026-09-14 관리자 Trove inventory 수정은 focused backend 36건과 frontend page/mock/design 24건을 통과했다. 실제 Vite tutorial 화면에서 tenant-created sample DB와 owning project를 390/767/768/1023/1024/1508px에서 확인했고 page overflow는 없었으며 `mysqld_exporter` iframe은 렌더되지 않았다. 이는 합성 Trove 응답의 UI/contract 증거이며 live OpenStack Trove management 호출은 아니다.
@@ -505,9 +511,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "1f26a7194a89ba4416f4b869ccfb730878171980a24595f199627a5f44db4859",
-  "reviewed_at": "2026-09-25T13:49:57Z",
-  "summary": "GitHub SSH lookup 503 traced to missing vm_github_ssh_users in production (MariaDB 1146); applied checksum-matched migration 080, live profile/history smoke passed with disposable row cleaned; Kolla reconfigure and upgrade now bootstrap schema before seed/start, existing-table ALTER remains manual; production role rollout pending owner merge."
+  "source_sha256": "a31eb1a3e2f0d416bf5e807a7f3bf13f695084e5cfc432b29c588a6fabfdf8e4",
+  "reviewed_at": "2026-09-25T16:15:53Z",
+  "summary": "Reviewed owned VM resize authorization, resource-delta eligibility, confirmation and frontend user/admin routing; integrated the verified Kolla GitHub history bootstrap and Palimpsest package cutover on dev. Live Nova resize has not been exercised; Kolla production role awaits owner merge."
 }
 ```
 <!-- architecture-review:end -->

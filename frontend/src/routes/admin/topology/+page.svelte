@@ -187,7 +187,7 @@
 
 {#if ctrl.selectedInstanceId}
 	<SlidePanel onClose={() => ctrl.selectedInstanceId = null} ariaLabel="토폴로지 인스턴스 상세">
-		<InstanceDetailPanel instanceId={ctrl.selectedInstanceId} onClose={() => ctrl.selectedInstanceId = null} showHost={true} />
+		<InstanceDetailPanel instanceId={ctrl.selectedInstanceId} adminProjectId={ctrl.data?.instances.find((instance) => instance.id === ctrl.selectedInstanceId)?.project_id ?? null} onClose={() => ctrl.selectedInstanceId = null} showHost={true} />
 	</SlidePanel>
 {/if}
 

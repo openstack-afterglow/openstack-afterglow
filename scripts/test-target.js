@@ -179,13 +179,15 @@ const targets = {
 				"tests/test_admin_instances.py",
 				"tests/test_admin_instances_health.py",
 				"tests/test_admin_instance_recovery.py",
-				"tests/test_admin_resize.py"
+				"tests/test_admin_resize.py",
+				"tests/test_instance_resize.py"
 			]
 		},
 		frontend: {
 			selectors: [
 				"src/lib/components/instance/__tests__",
-				"src/lib/components/admin/__tests__/AdminInstanceTable.test.ts"
+				"src/lib/components/admin/__tests__/AdminInstanceTable.test.ts",
+				"src/lib/stores/__tests__/instanceDetailController.resize.test.ts"
 			]
 		}
 	},
