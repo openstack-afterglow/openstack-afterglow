@@ -342,7 +342,7 @@ Afterglow와 Lumen은 Kolla 배포 호스트에서 표준 명령으로 함께 �
 최초 한 번 [Kolla 설치·설정 가이드](../deploy/kolla/README.md)에 따라 다음을 준비합니다.
 
 - `/etc/kolla/multinode`의 `afterglow`, `lumen` 그룹과 기존 OpenStack inventory
-- 실제 Kolla 가상 환경에 설치한 root 역할 패키지 (`drover==0.2.23`, `lumen==0.3.0`,
+- 실제 Kolla 가상 환경에 설치한 root 역할 패키지 (`drover==0.2.24`, `lumen==0.3.0`,
   `waygate==0.1.4`, `palimpsest-client==0.2.3`)
 - `/etc/kolla/config/afterglow/globals.yml` 및 `secrets.yml`, globals.d 연결
 - 기존 MariaDB·Valkey, Lumen PostgreSQL 설정, 고정 이미지와 API 공개 경로

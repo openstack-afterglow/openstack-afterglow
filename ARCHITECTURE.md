@@ -282,7 +282,7 @@ Kolla Afterglow `deploy`·`reconfigure`는 config 생성 뒤, `upgrade`는 새 i
 
 오브젝트 축소본 렌더링은 backend 의존성 `Pillow`와 `pypdfium2==5.13.0`을 사용한다. 두 패키지 모두 `cp312` 대상의 `manylinux_2_17_{x86_64,aarch64}` wheel을 제공하므로 amd64 CI 이미지와 arm64 dev 소스 빌드가 같은 lock으로 설치되며 시스템 rasterizer 패키지를 추가하지 않는다.
 
-Afterglow 1.25.0 이후 operator 정본은 Drover `v0.2.23`, Lumen `v0.3.0`, Waygate `v0.1.4`, Palimpsest root `palimpsest-client` `v0.2.3`의 immutable Git tag와 이를 해석한 `deploy/kolla/operator/uv.lock`이다. Backend/worker의 Drover·Waygate SDK도 같은 서비스 릴리즈의 정확한 commit으로 고정하며 SDK 자체 버전은 형제 저장소의 독립 계약을 유지한다. Operator sync는 `--locked --inexact --no-install-project`로 기존 Kolla 도구를 보존한다. Palimpsest 0.2.2는 Hub volume root의 UID1000 소유권을 bootstrap 전에 설정하는 Kolla role 수정이고, 0.2.3은 같은 role을 유지한 채 root 배포판 이름을 `palimpsest-local`에서 `palimpsest-client`로 바꾼다. 두 배포판은 같은 role 파일을 설치하고 `--inexact` sync는 퇴역 배포판을 지우지 않으므로 `install.sh`는 `palimpsest-local` metadata가 남아 있으면 거부하고, operator README의 uninstall 후 `--reinstall-package palimpsest-client` 절차를 요구한다. 이 source promotion은 운영 이미지 발행·배포 완료의 증거가 아니며, rollout은 별도로 digest와 실제 인증 업로드 경로를 검증한다.
+Afterglow 1.26.0 이후 operator 정본은 Drover `v0.2.24`, Lumen `v0.3.0`, Waygate `v0.1.4`, Palimpsest root `palimpsest-client` `v0.2.3`의 immutable Git tag와 이를 해석한 `deploy/kolla/operator/uv.lock`이다. Backend/worker의 Drover·Waygate SDK도 같은 서비스 릴리즈의 정확한 commit(Drover는 `v0.2.24` merge `cacc2573`, SDK 자체는 변경 없는 `0.2.21`)으로 고정하며 SDK 자체 버전은 형제 저장소의 독립 계약을 유지한다. Operator sync는 `--locked --inexact --no-install-project`로 기존 Kolla 도구를 보존한다. Palimpsest 0.2.2는 Hub volume root의 UID1000 소유권을 bootstrap 전에 설정하는 Kolla role 수정이고, 0.2.3은 같은 role을 유지한 채 root 배포판 이름을 `palimpsest-local`에서 `palimpsest-client`로 바꾼다. 두 배포판은 같은 role 파일을 설치하고 `--inexact` sync는 퇴역 배포판을 지우지 않으므로 `install.sh`는 `palimpsest-local` metadata가 남아 있으면 거부하고, operator README의 uninstall 후 `--reinstall-package palimpsest-client` 절차를 요구한다. 이 source promotion은 운영 이미지 발행·배포 완료의 증거가 아니며, rollout은 별도로 digest와 실제 인증 업로드 경로를 검증한다.
 
 운영 worker 복구는 검증한 `linux/amd64` manifest의 immutable digest만 `afterglow_worker_image_ref`에 고정하고 backend/frontend ref는 유지한다. Kolla precheck와 service-scoped rollout 뒤 모든 대상 controller의 running image digest, restart state, worker completion log, `notion_targets.last_sync` 전진을 함께 확인하며 container `running`만으로 성공 처리하지 않는다.
 
@@ -513,9 +513,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "e6535cdd9eaf790ff93d292654c222c4d31d5cbf7d84ca70c4e493d0feb6b63d",
-  "reviewed_at": "2026-09-26T14:14:09Z",
-  "summary": "Reviewed frontend/src/lib/api/{chatEffort,chatTree}.ts, chat/ChatInput.svelte, chat/ChatPanel.svelte (send, temp, preview, compaction, retry and regenerate paths) and the unchanged BFF passthrough backend/app/api/lumen/proxy.py. The effort picker offers none only when Lumen /v1/chat/models reports reasoning_none_supported, and regenerate normalizes against the model that runs; no new module, route, storage or ownership boundary. Unit-tested only; not browser-verified against a live Lumen."
+  "source_sha256": "185761887e929555e1654816e889d6ea3f145c44feb8e0bd654095cb132d6100",
+  "reviewed_at": "2026-09-26T15:04:54Z",
+  "summary": "1.26.0 release integration on top of b9d79e89: operator lock and backend drover-sdk pin promoted to Drover v0.2.24 (SDK code unchanged), promotion fixture no longer inherits the live lock version, Kolla docs/sample globals updated. Retains b9d79e89 review: effort picker offers none only when Lumen reports reasoning_none_supported, no new module/route/storage boundary. No Afterglow source topology change."
 }
 ```
 <!-- architecture-review:end -->

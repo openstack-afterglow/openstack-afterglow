@@ -16,7 +16,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "drover", git = "https://github.com/openstack-afterglow/drover.git?tag=v0.2.23" },
+    { name = "drover", git = "https://github.com/openstack-afterglow/drover.git?tag=v0.2.24" },
     { name = "kolla-ansible", git = "https://opendev.org/openstack/kolla-ansible.git?rev=34daacfbf2d5987f543787f57535b2bebe7dee19" },
     { name = "lumen", git = "https://github.com/openstack-afterglow/lumen.git?tag=v0.3.0" },
     { name = "palimpsest-client", git = "https://github.com/openstack-afterglow/palimpsest.git?tag=v0.2.3" },
@@ -445,8 +445,8 @@ wheels = [
 
 [[package]]
 name = "drover"
-version = "0.2.23"
-source = { git = "https://github.com/openstack-afterglow/drover.git?tag=v0.2.23#96fdf876ea2e9ea26c932cad6c32d118ae33d91f" }
+version = "0.2.24"
+source = { git = "https://github.com/openstack-afterglow/drover.git?tag=v0.2.24#cacc25735c5ba4930c9bfa7712539c238506f18a" }
 
 [[package]]
 name = "hvac"

@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+## [1.26.0] - 2026-09-26
+
+VM 플레이버 리사이즈 엔드포인트가 추가되어 MINOR 릴리즈다. K3s 라우팅·OCCM 수정은 Drover `v0.2.24`에 있으며, Afterglow는 운영자 lock과 Drover SDK commit을 그 릴리즈로 올린다.
+
 ### Added
 
 - **소유 VM 플레이버 리사이즈** — 프로젝트 쓰기 권한 사용자는 본인 VM의 플레이버를 현재 자원 대비 증분 쿼터로 평가한 뒤 리사이즈하고, `VERIFY_RESIZE` 상태에서 확인하거나 되돌릴 수 있다. 이미지 기반 VM은 디스크 축소를 거부하며 관리자 경로는 유지한다.
@@ -14,12 +18,13 @@
 ### Changed
 
 - **Palimpsest root 배포판 이름 전환** — Kolla operator가 Palimpsest role을 `palimpsest-client` `v0.2.3`에서 설치한다. 이전 `palimpsest-local`은 같은 role 파일을 소유하므로 설치기가 남은 배포판을 거부하고, operator 안내에 제거 후 재설치 절차를 추가했다.
+- **Drover 생성 네트워크 선택 UI** — Afterglow 생성 대화상자는 내부 `Default` 자동 선택과 Tenant 네트워크 선택을 제거했다. 외부 Provider 네트워크만 명시적으로 고를 수 있고, 선택을 비우면 Drover의 관리자 기본 정책에 맡긴다. 내부 NIC는 클러스터 생성 후 추가하도록 안내한다. Provider NIC 고정·Pod 라우팅 구현은 별도의 Drover 변경이다.
+- **Drover v0.2.24 운영자 승격** — Kolla operator lock과 backend `drover-sdk` 고정 commit을 Drover `v0.2.24`(merge `cacc2573`)로 올렸다. SDK 코드는 바뀌지 않았다(`0.2.21`). 이 릴리즈에서 K3s Pod 응답 라우팅 규칙이 네트워크 재구성·재부팅 뒤에도 유지되고, 게스트 플러그인이 public Keystone endpoint로 인증하며, OCCM이 노드 초기화와 LoadBalancer Service를 단독으로 맡고 클러스터 삭제 시 함께 정리된다. 검증 범위는 Drover `docs/release-0.2.24.md`에 있다.
 
 ### Fixed
 
 - **지원하지 않는 추론 끄기 숨김** — 채팅 추론 강도 선택기는 Lumen `/v1/chat/models`의 `reasoning_none_supported`가 true인 모델에만 "없음"을 노출한다. gpt-5·o3·gemini-2.5-pro처럼 Lumen이 `none`을 422로 거부하는 모델에서 전송 실패를 막는다. 현재 선택과 다른 모델로 재생성할 때도 실행 모델 기준으로 정규화한다. Lumen의 422 변경보다 먼저 또는 함께 배포한다.
 - **운영 GitHub SSH 확인 이력 503 복구** — 운영 MariaDB에 누락된 `vm_github_ssh_users`를 검토된 migration 080으로 생성해 GitHub 프로필·공개키 확인 뒤 이력 기록이 503으로 실패하던 경로를 복구했다. Kolla `reconfigure`·`upgrade`도 새 backend를 시작하기 전에 일회성 DB bootstrap을 실행해 신규 테이블을 누락하지 않는다. 기존 테이블 변경은 여전히 별도의 SQL migration을 먼저 적용한다.
-- **Drover 외부 provider 직접 연결** — 클러스터 생성의 내부 `Default` 자동 선택과 Tenant 네트워크 선택을 제거했다. 외부 provider만 명시 선택할 수 있으며 선택을 생략하면 Drover 관리자 기본 정책을 사용한다. 내부 NIC는 생성 후 추가하고 K3s 기본 네트워크와 분리한다.
 
 ## [1.25.0] - 2026-09-25
 
