@@ -7,6 +7,14 @@
 
 ## [Unreleased]
 
+## [1.26.1] - 2026-09-27
+
+K3s 클러스터 삭제의 floating IP 보존 수정은 Drover `v0.2.25`에 있으며, Afterglow는 운영자 lock과 Drover SDK commit을 그 릴리즈로 올리는 PATCH 릴리즈다.
+
+### Fixed
+
+- **보존 요청한 OCCM floating IP 유지** — Kolla operator lock과 backend `drover-sdk` 고정 commit을 Drover `v0.2.25`(merge `a18f207a`)로 올렸다. SDK 코드는 바뀌지 않았다(`0.2.21`). Drover `v0.2.24`는 클러스터 삭제 때 OCCM이 만든 LoadBalancer floating IP를 모두 삭제했다. 이제 `loadbalancer.openstack.org/keep-floatingip: "true"` Service의 IP는 OCCM처럼 남기고, Kubernetes를 읽지 못해 보존 의사를 알 수 없을 때도 남긴다. 검증 범위는 Drover `docs/release-0.2.25.md`에 있다.
+
 ## [1.26.0] - 2026-09-26
 
 VM 플레이버 리사이즈 엔드포인트가 추가되어 MINOR 릴리즈다. K3s 라우팅·OCCM 수정은 Drover `v0.2.24`에 있으며, Afterglow는 운영자 lock과 Drover SDK commit을 그 릴리즈로 올린다.
