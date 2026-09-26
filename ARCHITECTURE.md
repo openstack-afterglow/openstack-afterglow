@@ -165,6 +165,8 @@ Managed cloud-config always renders `packages` as a YAML list. No-feature create
 
 Afterglow가 catalog service type 또는 `SERVICE_*_INTERNAL_URL`을 통해 endpoint를 얻으면 `service_proxy.py`가 허용된 forwarded header와 caller token을 전달한다. 브라우저가 임의의 internal URL을 정하거나 형제 서비스 DB에 접근하지 않는다. Drover의 K3s inventory/operations, Lumen의 chat execution/journal/provider, Waygate의 WireGuard VM/agent, Palimpsest Hub의 upload/download/export는 각각 서비스 경계 뒤에 있다. Afterglow `internal_k3s.py`의 제한된 provisioning/GPU admission은 Drover 전체 Nova 호출을 대체하지 않는다.
 
+Drover 생성 모달(`K3sCreateClusterModal.svelte`)은 `/api/v1/networks`의 `is_external=true` 항목만 선택지로 노출하고 내부 `Default` 이름 자동 선택과 Tenant/Provider 전환을 제공하지 않는다. 빈 선택은 기존 caller가 `network_id`를 생략하여 Drover의 관리자 외부 provider 기본 정책을 사용하고, 명시 선택은 해당 ID를 그대로 전달한다. 노드는 provider 네트워크에 직접 연결하며 내부 NIC는 생성 후 별도 attach 경로로 추가한다. API admission·guest NIC pin·작업 snapshot의 소유자는 독립 Drover이며 Afterglow는 이를 중복 구현하지 않는다. 상세 계약은 [`docs/api/k3s.md`](docs/api/k3s.md)를 따른다.
+
 ### Waygate VPN control plane과 네트워크 연결
 
 브라우저의 `/dashboard/network/waygate`는 Afterglow `/api/v1/waygate/servers/...` BFF만 호출한다. BFF는 caller token, `X-Project-Id`, method와 JSON body를 catalog 또는 trusted internal URL에서 발견한 Waygate `/v1/servers/...`에 전달하며 Waygate가 project ownership과 lifecycle을 소유한다. 서버 목록/상태, client `.conf` 다운로드와 browser-local QR, network attachment를 한 상세 패널에서 다룬다.
@@ -511,9 +513,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "a31eb1a3e2f0d416bf5e807a7f3bf13f695084e5cfc432b29c588a6fabfdf8e4",
-  "reviewed_at": "2026-09-25T16:15:53Z",
-  "summary": "Reviewed owned VM resize authorization, resource-delta eligibility, confirmation and frontend user/admin routing; integrated the verified Kolla GitHub history bootstrap and Palimpsest package cutover on dev. Live Nova resize has not been exercised; Kolla production role awaits owner merge."
+  "source_sha256": "f42abcad1252adedbe4ff5f2f884ed978ccaf2c269af23b94e493541ec050ba6",
+  "reviewed_at": "2026-09-26T09:20:08Z",
+  "summary": "Reviewed external-provider-only K3s create UI, omitted administrator default payload, and bounded internally scrollable mobile dialog. Existing BFF schema and service topology unchanged."
 }
 ```
 <!-- architecture-review:end -->
