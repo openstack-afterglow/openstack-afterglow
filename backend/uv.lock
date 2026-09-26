@@ -11,7 +11,7 @@ resolution-markers = [
 
 [[package]]
 name = "afterglow-api"
-version = "1.25.0"
+version = "1.26.0"
 source = { virtual = "." }
 dependencies = [
     { name = "afterglow-crypto" },
@@ -95,7 +95,7 @@ requires-dist = [
     { name = "asyncssh", specifier = ">=2.18" },
     { name = "beautifulsoup4", specifier = "==4.14.3" },
     { name = "boto3", specifier = ">=1.35.0" },
-    { name = "drover-sdk", git = "https://github.com/openstack-afterglow/drover.git?subdirectory=sdk&rev=96fdf876ea2e9ea26c932cad6c32d118ae33d91f" },
+    { name = "drover-sdk", git = "https://github.com/openstack-afterglow/drover.git?subdirectory=sdk&rev=cacc25735c5ba4930c9bfa7712539c238506f18a" },
     { name = "fakeredis", extras = ["lua"], marker = "extra == 'dev'", specifier = ">=2.21" },
     { name = "fastapi", specifier = "==0.136.3" },
     { name = "httpcore", specifier = "==1.0.9" },
@@ -138,7 +138,7 @@ worker = [
     { name = "afterglow-crypto", directory = "../services/afterglow-crypto" },
     { name = "aiomysql", specifier = ">=0.2.0" },
     { name = "apscheduler", specifier = ">=3.10" },
-    { name = "drover-sdk", git = "https://github.com/openstack-afterglow/drover.git?subdirectory=sdk&rev=96fdf876ea2e9ea26c932cad6c32d118ae33d91f" },
+    { name = "drover-sdk", git = "https://github.com/openstack-afterglow/drover.git?subdirectory=sdk&rev=cacc25735c5ba4930c9bfa7712539c238506f18a" },
     { name = "httpx", specifier = "==0.28.1" },
     { name = "idna", specifier = ">=3.15" },
     { name = "jinja2", specifier = "==3.1.6" },
@@ -568,7 +568,7 @@ wheels = [
 [[package]]
 name = "drover-sdk"
 version = "0.2.21"
-source = { git = "https://github.com/openstack-afterglow/drover.git?subdirectory=sdk&rev=96fdf876ea2e9ea26c932cad6c32d118ae33d91f#96fdf876ea2e9ea26c932cad6c32d118ae33d91f" }
+source = { git = "https://github.com/openstack-afterglow/drover.git?subdirectory=sdk&rev=cacc25735c5ba4930c9bfa7712539c238506f18a#cacc25735c5ba4930c9bfa7712539c238506f18a" }
 dependencies = [
     { name = "openstacksdk" },
 ]

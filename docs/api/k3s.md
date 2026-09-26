@@ -201,13 +201,15 @@ SSE 스트림으로 클러스터를 비동기 생성합니다. **Rate limit: 5�
 | `name` | string | — | 클러스터 이름. 영문/숫자로 시작, 영문·숫자·하이픈·언더스코어 (최대 63자). 미지정 시 `k3s-<hex8>` 자동 생성 |
 | `agent_count` | int | — | 워커 노드 수. 기본 `1`, 범위 `0~10` |
 | `agent_flavor_id` | string | — | 워커 플레이버. 미설정 시 관리자 `k3s.default_agent_flavor` 정책 |
-| `network_id` | string | — | 네트워크 ID. 미설정 시 default 네트워크 자동 결정/폴백 |
+| `network_id` | string | — | 생성 시 직접 연결할 외부 Provider 네트워크 ID. 미지정 시 관리자 외부 Provider 기본 네트워크 정책에 위임 |
 | `key_name` | string | — | SSH 키페어 이름 |
 | `os_type` | string | — | `ubuntu`(기본) 또는 `fcos`. `fcos` 는 `k3s_fcos_image_id` 설정 필요 |
 | `allowed_cidrs` | string[] | — | SSH/API(22·6443) 접근 허용 CIDR. 미지정 시 `0.0.0.0/0`. **최대 20개**, 유효 CIDR 검증 |
 | `template_id` | string | — | 클러스터 템플릿. 지정 시 기본값 병합(본문 명시값 우선) |
 | `master_count` | int | — | `1`(단일) 또는 `3`(embedded-etcd HA). 그 외 값은 `422` |
 | `stampede_enabled` | bool | — | Stampede 오토스케일 모드(개발 단계, 기본 `false`) |
+
+Drover 생성 화면은 `is_external` 네트워크만 선택지로 보여줍니다. **관리자 외부 Provider 기본 네트워크 사용**을 선택하면 `network_id`를 요청에서 생략하고, 외부 Provider 네트워크를 직접 선택하면 해당 ID를 전송합니다. 초기 클러스터 노드는 이 Provider 네트워크에 직접 연결됩니다. 내부 네트워크는 생성 시 선택하지 않으며, 필요한 경우 생성 후 아래 노드 인터페이스 API로 별도 NIC를 추가합니다.
 
 > 서버 이미지/플레이버, 에이전트 플레이버(`agent_count>0`), FCOS 이미지 미설정 시 `503` 을 반환합니다.
 
@@ -246,6 +248,8 @@ SSE 스트림으로 클러스터를 비동기 생성합니다. **Rate limit: 5�
 ## 노드 네트워크 인터페이스
 
 서버/에이전트 VM 에 추가 Neutron 포트를 attach/detach 합니다. `vm_id` 가 해당 클러스터 소속이 아니면 `403`.
+
+내부 네트워크 NIC는 클러스터 생성 이후 노드별 추가 연결로 구성합니다. 생성 화면의 초기 Provider 네트워크 선택을 대체하지 않습니다.
 
 | 메서드 | 경로 | 설명 |
 |--------|------|------|

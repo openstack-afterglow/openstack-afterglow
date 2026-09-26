@@ -41,7 +41,7 @@ enable_lumen_source_build: false
 enable_waygate_source_build: false
 enable_palimpsest_source_build: false
 
-afterglow_image_tag: "v1.25.0"
+afterglow_image_tag: "v1.26.0"
 afterglow_backend_image_ref: "{{ afterglow_backend_image }}:{{ afterglow_image_tag }}"
 afterglow_frontend_image_ref: "{{ afterglow_frontend_image }}:{{ afterglow_image_tag }}"
 afterglow_worker_image_ref: "{{ afterglow_worker_image }}:{{ afterglow_image_tag }}"
@@ -50,11 +50,11 @@ afterglow_worker_image_ref: "{{ afterglow_worker_image }}:{{ afterglow_image_tag
 # afterglow_cloud_shell_image: "ghcr.io/openstack-afterglow/afterglow-cloud-shell@sha256:<64-hex-digest>"
 
 # Independently released extracted services support explicit release version
-# tags (e.g. :v0.2.23) as well as immutable linux/amd64 manifest digests (@sha256:...).
+# tags (e.g. :v0.2.24) as well as immutable linux/amd64 manifest digests (@sha256:...).
 # Bare references and mutable `:latest` tags are prohibited by precheck validators.
 
-drover_api_image_ref: "ghcr.io/openstack-afterglow/drover-api:v0.2.23"
-drover_worker_image_ref: "ghcr.io/openstack-afterglow/drover-worker:v0.2.23"
+drover_api_image_ref: "ghcr.io/openstack-afterglow/drover-api:v0.2.24"
+drover_worker_image_ref: "ghcr.io/openstack-afterglow/drover-worker:v0.2.24"
 waygate_api_image_ref: "ghcr.io/openstack-afterglow/waygate-api:0.1.4"
 waygate_worker_image_ref: "ghcr.io/openstack-afterglow/waygate-worker:0.1.4"
 lumen_api_image_ref: "ghcr.io/openstack-afterglow/lumen-api:0.3.0"

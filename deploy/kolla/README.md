@@ -48,7 +48,7 @@ not grant sudo or change global Ansible settings.
      Kolla recreates HAProxy only if their resulting configuration hash changes.
    - The plugin does not create external-VIP routes, DNS records, or TLS certificates. Existing Drover and Waygate public catalog URLs remain operator-owned ingress contracts.
 4. **Published GHCR Images**:
-   - Services pull published `ghcr.io/openstack-afterglow/*` images using explicit release version tags (Afterglow `:v1.25.0`, Drover `:v0.2.23`, Waygate `:0.1.4`, Lumen `:0.3.0`, Palimpsest Hub `:0.2.0`) or exact linux/amd64 manifest digests (`@sha256:...`).
+   - Services pull published `ghcr.io/openstack-afterglow/*` images using explicit release version tags (Afterglow `:v1.26.0`, Drover `:v0.2.24`, Waygate `:0.1.4`, Lumen `:0.3.0`, Palimpsest Hub `:0.2.0`) or exact linux/amd64 manifest digests (`@sha256:...`).
    - Mutable tags such as `latest` or bare unpinned references are prohibited by role precheck validators to prevent multi-controller divergence.
    - Source-build mode remains an optional development path; it is not used for production deployment.
 5. **Datastores & Credential Reuse**:
@@ -77,7 +77,7 @@ KOLLA_ANSIBLE_DIR=/etc/kolla/.venv/share/kolla-ansible \
 ### Installer-managed artifacts
 - Source role link under `$KOLLA_DIR/ansible/roles/`: `afterglow`.
 - Verified root-package roles under `$KOLLA_DIR/ansible/roles/`: `drover`
-  (via `drover==0.2.23`), `lumen` (via `lumen==0.3.0`), `waygate`
+  (via `drover==0.2.24`), `lumen` (via `lumen==0.3.0`), `waygate`
   (via `waygate==0.1.4`), and `palimpsest` (via
   `palimpsest-client==0.2.3`). Installer validates non-symlink role paths and
   required lifecycle files, and refuses a leftover retired `palimpsest-local`
@@ -108,7 +108,7 @@ unexpected, `install.sh` aborts rather than replacing it.
 `deploy/kolla/operator/pyproject.toml` is a dependency-only `uv` manifest for
 `kolla-ansible` and the root service distributions:
 
-- **`drover==0.2.23`** owns the `drover` role.
+- **`drover==0.2.24`** owns the `drover` role.
 - **`lumen==0.3.0`** owns the `lumen` role.
 - **`waygate==0.1.4`** owns the `waygate` role.
 - **`palimpsest-client==0.2.3`** owns the `palimpsest` role (renamed from
