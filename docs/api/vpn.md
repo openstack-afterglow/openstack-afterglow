@@ -60,7 +60,7 @@ Content-Type: application/json
 |---|---|---|
 | `POST` | `.../{server_id}/clients` | 클라이언트 발급, `201` |
 | `GET` | `.../{server_id}/clients` | 클라이언트 목록과 최근 상태 |
-| `PATCH` | `.../{server_id}/clients/{client_id}` | 이름 또는 활성 상태 변경 |
+| `PATCH` | `.../{server_id}/clients/{client_id}` | 이름, 활성 상태, DNS/MTU/PersistentKeepalive 변경 |
 | `DELETE` | `.../{server_id}/clients/{client_id}` | 클라이언트 soft delete, `204` |
 | `GET` | `.../{server_id}/clients/{client_id}/config` | WireGuard `.conf` 다운로드 |
 
@@ -73,9 +73,17 @@ Content-Type: application/json
 {
   "name": "operator-laptop",
   "allowed_ips": ["10.240.0.0/24"],
-  "dns": "1.1.1.1"
+  "dns": "1.1.1.1, 9.9.9.9",
+  "mtu": 1380,
+  "persistent_keepalive": 25
 }
 ```
+
+`dns`는 쉼표로 구분한 최대 두 개의 주소/호스트 이름이며 빈 값·`null`은 DNS 줄을 생략합니다. `mtu`는 `576–9000` 정수 또는 `null`(WireGuard 자동값), `persistent_keepalive`는 `0–65535`초 정수이고 기본값 `25`, `0`은 비활성화입니다. `PATCH`에서 생략한 필드는 유지되고 `dns`/`mtu`의 명시적 `null`은 저장값을 지웁니다. `name`, `enabled`, `persistent_keepalive`의 `null`은 거부됩니다. 이 설정은 클라이언트 측 `.conf`에만 반영되므로 기존 클라이언트는 저장 후 `.conf`를 다시 받거나 QR을 다시 스캔해야 합니다.
+
+새 클라이언트는 전용 32바이트 난수 사전 공유 키(PSK)를 자동 생성해 암호화 저장하고, 같은 키를 발급/다운로드 `.conf`와 에이전트 desired-state에 포함합니다. 목록·상세·PATCH 응답은 키 자체가 아니라 `psk_enabled` boolean만 반환합니다. 기존 클라이언트는 연결이 끊기지 않도록 PSK를 자동으로 추가하거나 교체하지 않으며, import는 번들의 키를 보존합니다.
+
+클라이언트 응답의 `rx_bytes`/`tx_bytes`는 게이트웨이 WireGuard peer 관점의 누적 카운터이고 `last_reported_at`은 그 값을 담은 에이전트 상태 보고를 Waygate가 받은 시각입니다. Afterglow UI는 클라이언트 관점으로 표시하므로 `클라이언트 수신 RX = tx_bytes`, `클라이언트 송신 TX = rx_bytes`입니다. 브라우저는 열린 프로젝트·서버의 클라이언트별 보고를 최대 60개만 보관하고, 서로 다른 두 보고의 서버 시각 차이로 bytes/s를 계산합니다. 같은/이전 시각 보고는 무시하고, 카운터 감소(재시작·재활성화), 90초 초과 간격, 보고·peer 누락은 속도 공백으로 남기며, 비활성 클라이언트와 서버/프로젝트 전환은 이력을 비웁니다. 누적량은 첫 보고부터 표시하고 속도는 두 번째 연속 보고 뒤에 표시합니다.
 
 서버가 `ACTIVE`이고 서버 공개키가 등록된 경우에만 발급합니다. Waygate가 X25519 키쌍과 다음 터널 IP를 생성하고 private key를 AES-256-GCM으로 암호화해 저장합니다. 생성 응답에는 `tunnel_conf`가 포함됩니다. 설정 다운로드는 저장된 키를 복호화해 최신 활성 네트워크 CIDR까지 `AllowedIPs`에 병합하여 다시 렌더합니다.
 

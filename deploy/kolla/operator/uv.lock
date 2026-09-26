@@ -20,7 +20,7 @@ requires-dist = [
     { name = "kolla-ansible", git = "https://opendev.org/openstack/kolla-ansible.git?rev=34daacfbf2d5987f543787f57535b2bebe7dee19" },
     { name = "lumen", git = "https://github.com/openstack-afterglow/lumen.git?tag=v0.3.0" },
     { name = "palimpsest-client", git = "https://github.com/openstack-afterglow/palimpsest.git?tag=v0.2.3" },
-    { name = "waygate", git = "https://github.com/openstack-afterglow/waygate.git?tag=v0.1.4" },
+    { name = "waygate", git = "https://github.com/openstack-afterglow/waygate.git?tag=v0.2.0" },
 ]
 
 [[package]]
@@ -943,8 +943,8 @@ wheels = [
 
 [[package]]
 name = "waygate"
-version = "0.1.4"
-source = { git = "https://github.com/openstack-afterglow/waygate.git?tag=v0.1.4#39d724776d1abb11f7ed2c28328674daaa6a9918" }
+version = "0.2.0"
+source = { git = "https://github.com/openstack-afterglow/waygate.git?tag=v0.2.0#572393905d50ef4cd7c90232bba43bb0cf40efbd" }
 
 [[package]]
 name = "wcwidth"
