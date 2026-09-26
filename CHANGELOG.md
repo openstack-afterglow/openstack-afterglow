@@ -7,6 +7,16 @@
 
 ## [Unreleased]
 
+## [1.27.0] - 2026-09-27
+
+### Added
+
+- **Waygate 클라이언트 설정·실측 트래픽** — 인증된 VPN 화면에서 클라이언트별 DNS, 선택적 MTU, PersistentKeepalive(0 비활성화)를 발급·수정하고 PSK 사용 여부와 재import 필요성을 표시한다. 클라이언트 RX/TX 누적량·속도는 실제 agent 보고의 gateway 카운터를 반대로 매핑한 값이며, 최대 60개 보고로 구성한 낮은 대비의 카드 배경 wave는 누락·지연·카운터 초기화 시 가짜 속도를 만들지 않는다. `.conf` 다운로드·QR은 계속 제공한다. Waygate 0.2.0의 migration 003 및 API가 선행되어야 하며, 이 기능 코드는 이 release preparation 시점에 운영에 배포하지 않았다.
+
+### Changed
+
+- **Waygate 0.2.0 pin** — Kolla operator root role은 공개된 `v0.2.0` tag/lock을, backend·worker SDK dependency는 그 release merge commit `572393905d50ef4cd7c90232bba43bb0cf40efbd`를 사용한다. SDK 자체 버전은 `0.1.2`로 유지한다.
+
 ## [1.26.1] - 2026-09-27
 
 K3s 클러스터 삭제의 floating IP 보존 수정은 Drover `v0.2.25`에 있으며, Afterglow는 운영자 lock과 Drover SDK commit을 그 릴리즈로 올리는 PATCH 릴리즈다.

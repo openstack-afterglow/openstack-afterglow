@@ -1,4 +1,4 @@
-// Waygate 타입 — backend/app/models/waygate.py 응답과 정확히 일치시킨다.
+// Waygate standalone API responses, forwarded by the authenticated Afterglow BFF.
 
 export interface WaygateServer {
 	id: string;
@@ -30,11 +30,16 @@ export interface WaygateClient {
 	tunnel_ip: string;
 	allowed_ips: string[];
 	dns: string | null;
+	mtu: number | null;
+	persistent_keepalive: number;
+	psk_enabled: boolean;
 	created_at: string | null;
 	updated_at: string | null;
 	// Redis 상태 병합
 	online: boolean | null;
 	last_handshake_at: string | null;
+	last_reported_at: string | null;
+	// Gateway perspective peer counters; UI client RX is tx_bytes and client TX is rx_bytes.
 	rx_bytes: number | null;
 	tx_bytes: number | null;
 }
@@ -47,12 +52,17 @@ export interface WaygateClientCreateResult extends WaygateClient {
 export interface WaygateClientCreateRequest {
 	name: string;
 	allowed_ips?: string[];
-	dns?: string;
+	dns?: string | null;
+	mtu?: number | null;
+	persistent_keepalive?: number;
 }
 
 export interface WaygateClientUpdateRequest {
 	name?: string;
 	enabled?: boolean;
+	dns?: string | null;
+	mtu?: number | null;
+	persistent_keepalive?: number;
 }
 
 // 네트워크 연결 (Phase 2) — 멀티 NIC + SNAT

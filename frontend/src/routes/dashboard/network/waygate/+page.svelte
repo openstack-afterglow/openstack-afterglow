@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { siteConfig } from '$lib/config/site';
 	import { api, ApiError } from '$lib/api/client';
@@ -25,6 +25,17 @@
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
 	import SelectionToolbar from '$lib/components/ui/SelectionToolbar.svelte';
 	import * as waygateApi from '$lib/api/waygate';
+	import ClientSettingsFields from '$lib/components/waygate/ClientSettingsFields.svelte';
+	import ClientTraffic from '$lib/components/waygate/ClientTraffic.svelte';
+	import { appendClientTraffic, type ClientTrafficHistory } from '$lib/utils/waygateTraffic';
+	import {
+		emptyWaygateClientDraft,
+		waygateClientCreateBody,
+		waygateClientDraft,
+		waygateClientUpdateBody,
+		type WaygateClientDraft,
+		type WaygateClientDraftErrors,
+	} from '$lib/utils/waygateClientSettings';
 	import type { WaygateServer, WaygateClient, WaygateNetworkAttachment } from '$lib/types/waygate';
 	import type { Network, NetworkDetail, SubnetDetail } from '$lib/types/networks';
 	import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
@@ -153,30 +164,60 @@
 	let clients = $state<WaygateClient[]>([]);
 	let clientsLoading = $state(false);
 	let clientsError = $state('');
+	// Real report history for the open server/project only; never shared across scopes.
+	let trafficHistories = $state<Record<string, ClientTrafficHistory>>({});
+	let trafficNow = $state(Date.now());
+	let clientScope = '';
+	let clientRequest = 0;
 
 	async function fetchClients(serverId: string) {
+		const scope = `${projectId ?? ''}:${serverId}`;
+		const request = ++clientRequest;
 		clientsLoading = true;
 		try {
-			clients = await waygateApi.listClients(serverId, token, projectId);
+			const next = await waygateApi.listClients(serverId, token, projectId);
+			if (request !== clientRequest || scope !== clientScope) return;
+			const now = Date.now();
+			const histories: Record<string, ClientTrafficHistory> = {};
+			for (const client of next) {
+				if (client.enabled) histories[client.id] = appendClientTraffic(trafficHistories[client.id], client, now);
+			}
+			trafficHistories = histories;
+			trafficNow = now;
+			clients = next;
 			clientsError = '';
 		} catch (e) {
+			if (request !== clientRequest || scope !== clientScope) return;
 			clientsError = e instanceof ApiError ? e.message : '클라이언트 조회 실패';
 		} finally {
-			clientsLoading = false;
+			if (request === clientRequest) clientsLoading = false;
 		}
 	}
 
 	$effect(() => {
 		const id = selectedServerId;
-		if (!id) {
-			clients = [];
-			attachments = [];
-			return;
-		}
+		const scope = `${projectId ?? ''}:${id ?? ''}`;
 		untrack(() => {
+			clientScope = scope;
+			clientRequest += 1;
+			clients = [];
+			trafficHistories = {};
+			clientsError = '';
+			clientsLoading = false;
+			if (!id) {
+				attachments = [];
+				return;
+			}
 			fetchClients(id);
 			fetchAttachments(id);
 		});
+	});
+
+	// Stale reports become visibly stale even when auto-refresh is paused.
+	$effect(() => {
+		if (!selectedServerId) return;
+		const timer = setInterval(() => { trafficNow = Date.now(); }, 5000);
+		return () => clearInterval(timer);
 	});
 
 	// 상세 패널이 열려있는 동안 서버 상태 + 클라이언트 상태를 함께 갱신
@@ -196,32 +237,84 @@
 	);
 
 	let showClientModal = $state(false);
-	let newClientName = $state('');
+	let newClientDraft = $state<WaygateClientDraft>(emptyWaygateClientDraft());
+	let newClientErrors = $state<WaygateClientDraftErrors>({});
+	let newClientFields = $state<ReturnType<typeof ClientSettingsFields> | null>(null);
 	let clientCreating = $state(false);
 	let clientCreateError = $state('');
 
-	async function createClient() {
-		if (!selectedServerId) return;
-		clientCreating = true;
+	function openClientModal() {
+		newClientDraft = emptyWaygateClientDraft();
+		newClientErrors = {};
 		clientCreateError = '';
+		showClientModal = true;
+	}
+
+	async function createClient() {
+		if (!selectedServerId || clientCreating) return;
+		const parsed = waygateClientCreateBody(newClientDraft);
+		clientCreateError = '';
+		if (!parsed.ok) {
+			newClientErrors = parsed.errors;
+			await tick();
+			newClientFields?.focusFirstError();
+			return;
+		}
+		newClientErrors = {};
+		const serverId = selectedServerId;
+		clientCreating = true;
 		try {
-			const result = await waygateApi.createClient(
-				selectedServerId,
-				{ name: newClientName.trim() },
-				token,
-				projectId
-			);
+			const result = await waygateApi.createClient(serverId, parsed.body, token, projectId);
 			showClientModal = false;
-			newClientName = '';
 			toast.success('Waygate 클라이언트가 발급되었습니다');
 			// 발급 직후 응답에 평문 .conf가 포함되어 있으므로 바로 다운로드 제공
 			const blob = new Blob([result.tunnel_conf], { type: 'text/plain' });
 			downloadBlobAs(blob, `${result.name}.conf`);
-			await fetchClients(selectedServerId);
+			if (serverId === selectedServerId) await fetchClients(serverId);
 		} catch (e) {
 			clientCreateError = e instanceof ApiError ? e.message : '클라이언트 발급 실패';
 		} finally {
 			clientCreating = false;
+		}
+	}
+
+	let editingClient = $state<WaygateClient | null>(null);
+	let editClientDraft = $state<WaygateClientDraft>(emptyWaygateClientDraft());
+	let editClientErrors = $state<WaygateClientDraftErrors>({});
+	let editClientFields = $state<ReturnType<typeof ClientSettingsFields> | null>(null);
+	let clientSaving = $state(false);
+	let clientSaveError = $state('');
+
+	function openEditClient(client: WaygateClient) {
+		editingClient = client;
+		editClientDraft = waygateClientDraft(client);
+		editClientErrors = {};
+		clientSaveError = '';
+	}
+
+	async function saveClientSettings() {
+		const client = editingClient;
+		if (!selectedServerId || !client || clientSaving) return;
+		const parsed = waygateClientUpdateBody(client, editClientDraft);
+		clientSaveError = '';
+		if (!parsed.ok) {
+			editClientErrors = parsed.errors;
+			await tick();
+			editClientFields?.focusFirstError();
+			return;
+		}
+		editClientErrors = {};
+		const serverId = selectedServerId;
+		clientSaving = true;
+		try {
+			await waygateApi.updateClient(serverId, client.id, parsed.body, token, projectId);
+			editingClient = null;
+			toast.success('설정을 저장했습니다. 기기에서 .conf 또는 QR을 다시 가져오세요.');
+			if (serverId === selectedServerId) await fetchClients(serverId);
+		} catch (e) {
+			clientSaveError = e instanceof ApiError ? e.message : '클라이언트 설정 저장 실패';
+		} finally {
+			clientSaving = false;
 		}
 	}
 
@@ -669,7 +762,7 @@
 			<div class="flex items-center justify-between mb-3">
 				<h3 class="text-sm font-medium text-[var(--color-ink-1)]">클라이언트</h3>
 				<Button
-					onclick={() => { showClientModal = true; clientCreateError = ''; }}
+					onclick={openClientModal}
 					variant="accent"
 					size="sm"
 					disabled={selectedServer.status !== 'ACTIVE'}
@@ -710,6 +803,18 @@
 											<dt class="break-keep text-[var(--color-ink-3)]">생성일</dt>
 											<dd class="mt-0.5 break-keep text-[var(--color-ink-1)]">{formatDate(client.created_at)}</dd>
 										</div>
+										<div>
+											<dt class="text-ink-2">DNS</dt>
+											<dd class="mt-0.5 font-mono text-[var(--color-ink-1)] break-all">{client.dns ?? '없음'}</dd>
+										</div>
+										<div>
+											<dt class="text-ink-2">MTU · Keepalive</dt>
+											<dd class="mt-0.5 text-[var(--color-ink-1)]">{client.mtu ?? '자동'} · {client.persistent_keepalive === 0 ? '비활성화' : `${client.persistent_keepalive}초`}</dd>
+										</div>
+										<div>
+											<dt class="text-ink-2">PSK</dt>
+											<dd class="mt-0.5 text-[var(--color-ink-1)]">{client.psk_enabled ? '사용 중' : '없음'}</dd>
+										</div>
 									</dl>
 								</div>
 								<div class="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 lg:max-w-44 lg:justify-end">
@@ -719,12 +824,14 @@
 										class="text-xs text-[var(--color-accent)] hover:opacity-80 disabled:opacity-50"
 									>{downloadingClientId === client.id ? '다운로드 중...' : '.conf 다운로드'}</button>
 									<button onclick={() => openQr(client)} class="text-xs text-[var(--color-accent)] hover:opacity-80">QR</button>
+									<Button onclick={() => openEditClient(client)} variant="ghost" size="xs">설정</Button>
 									<button onclick={() => toggleClient(client)} class="text-xs text-[var(--color-ink-2)] hover:text-[var(--color-ink-0)]">
 										{client.enabled ? '비활성화' : '활성화'}
 									</button>
 									<button onclick={() => deleteClient(client)} class="text-xs text-[var(--color-state-danger)] hover:opacity-80">삭제</button>
 								</div>
 							</div>
+							<ClientTraffic {client} history={trafficHistories[client.id]} now={trafficNow} />
 						</div>
 					{/each}
 				</div>
@@ -813,14 +920,32 @@
 	onSubmit={createClient}
 	onClose={() => { showClientModal = false; clientCreateError = ''; }}
 >
-	<div class="space-y-4">
-		<Field label="이름" required>
-			<TextInput bind:value={newClientName} placeholder="my-laptop" />
-		</Field>
-		{#if clientCreateError}
-			<p class="text-sm text-[var(--color-state-danger)]">{clientCreateError}</p>
-		{/if}
-	</div>
+	<ClientSettingsFields bind:this={newClientFields} bind:draft={newClientDraft} errors={newClientErrors} disabled={clientCreating} />
+	{#if clientCreateError}
+		<Alert tone="danger" class="mt-4">{clientCreateError}</Alert>
+	{/if}
+</FormModal>
+
+<FormModal
+	open={editingClient !== null}
+	title={editingClient ? `${editingClient.name} 설정` : '클라이언트 설정'}
+	submitLabel="저장"
+	submitting={clientSaving}
+	onSubmit={saveClientSettings}
+	onClose={() => { editingClient = null; clientSaveError = ''; }}
+>
+	{#if editingClient}
+		<ClientSettingsFields
+			bind:this={editClientFields}
+			bind:draft={editClientDraft}
+			errors={editClientErrors}
+			disabled={clientSaving}
+			pskEnabled={editingClient.psk_enabled}
+		/>
+	{/if}
+	{#if clientSaveError}
+		<Alert tone="danger" class="mt-4">{clientSaveError}</Alert>
+	{/if}
 </FormModal>
 
 <Modal open={qrClient !== null} onClose={closeQr} ariaLabel="Waygate 클라이언트 QR 코드">
