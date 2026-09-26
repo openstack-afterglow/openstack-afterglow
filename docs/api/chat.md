@@ -46,7 +46,7 @@ Afterglow 백엔드는 모든 `/api/v1/chat/{path}` 요청을 내부 Lumen 서�
 
 | 메서드 · 경로 | 상위 위임 경로 | 설명 |
 |--------------|----------------|------|
-| `GET /api/v1/chat/models` | `/v1/chat/models` | 사용 가능한 LLM 모델 목록 조회 |
+| `GET /api/v1/chat/models` | `/v1/chat/models` | 사용 가능한 LLM 모델 목록 조회. `reasoning_none_supported`가 true인 모델에만 추론 강도 "없음"(`reasoning_effort="none"`)을 노출한다. Lumen은 그 밖의 모델에서 `none`을 422로 거부하며, 값이 없으면(구버전 Lumen) 숨긴다 |
 | `GET /api/v1/chat/conversations` | `/v1/conversations` | 대화 목록 조회 |
 | `POST /api/v1/chat/conversations` | `/v1/conversations` | 신규 대화 생성 |
 | `GET /api/v1/chat/conversations/{id}/messages?anchor=latest\|first&limit=40` | `/v1/conversations/{id}/messages` | active-path message page; opaque `before_cursor`/`after_cursor`를 후속 `cursor` query로 그대로 전달 |

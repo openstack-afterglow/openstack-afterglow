@@ -41,6 +41,8 @@
 		contextError?: string | null;
 		/** 현재 모델 능력 — effort 선택기·배지·첨부 게이팅. */
 		modelCaps?: ModelCapabilities | null;
+		/** Lumen `reasoning_none_supported` — true일 때만 effort "없음"을 노출. */
+		reasoningNoneSupported?: boolean;
 		searchEnabled?: boolean;
 	/** 선택된 thinking effort(auto=provider 기본, none=명시적 비활성). */
 	effort?: string | null;
@@ -79,6 +81,7 @@
 		contextError = null,
 		placeholder = '메시지를 입력하세요  (Enter 전송 · Shift+Enter 줄바꿈)',
 		modelCaps = null,
+		reasoningNoneSupported = false,
 		searchEnabled = $bindable(false),
 		effort = $bindable(null),
 		attachments = $bindable([]),
@@ -355,7 +358,7 @@
 		if (e.dataTransfer?.files?.length) void addFiles(e.dataTransfer.files);
 	}
 
-	const effortOptions = $derived(effortOptionsFor(modelCaps));
+	const effortOptions = $derived(effortOptionsFor(modelCaps, reasoningNoneSupported));
 	const showEffort = $derived(effortOptions.length > 0);
 
 	// 내용에 맞춰 높이 자동 조절(최대 12rem)
