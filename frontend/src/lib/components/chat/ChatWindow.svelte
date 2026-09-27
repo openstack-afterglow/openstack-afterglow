@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { tick } from 'svelte';
+	import { onDestroy, tick, untrack } from 'svelte';
 	import ChatMessage from './ChatMessage.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import { type AvailableModel, type ChatMessage as ChatMsg } from '$lib/api/chatTree';
@@ -41,13 +41,11 @@
 		starterPrompts?: readonly StarterPrompt[];
 		onStarterPrompt?: (prompt: string) => void;
 		conversationKey?: string;
+		scrollFence?: object;
 		hasBefore?: boolean;
-		hasAfter?: boolean;
 		loadingHistory?: boolean;
 		newHistoryActivity?: boolean;
-		onLoadBefore?: () => Promise<void>;
-		onLoadAfter?: () => Promise<void>;
-		onLoadFirst?: () => Promise<boolean>;
+		onLoadBefore?: () => Promise<boolean>;
 		onLoadLatest?: () => Promise<boolean>;
 		onCopy: (text: string) => void;
 		onRegenerate: (messageId: string, modelName: string) => void;
@@ -70,13 +68,11 @@
 		starterPrompts = [],
 		onStarterPrompt,
 		conversationKey = '',
+		scrollFence,
 		hasBefore = false,
-		hasAfter = false,
 		loadingHistory = false,
 		newHistoryActivity = false,
 		onLoadBefore,
-		onLoadAfter,
-		onLoadFirst,
 		onLoadLatest,
 		onCopy,
 		onRegenerate,
@@ -89,7 +85,21 @@
 	let followingLatest = $state(true);
 	let navigatingHistory = $state(false);
 	let activityNow = $state(Date.now());
-	let scrollAfterTickPending = false;
+	let scrollAfterTickGeneration = -1;
+	let scrollGeneration = 0;
+	let previousScrollTop = 0;
+	let olderLoadArmed = false;
+	let pendingPrepend: {
+		generation: number;
+		key: string;
+		fence: object | undefined;
+		element: HTMLDivElement | null;
+		anchor: { id: string; top: number } | null;
+		restored: boolean;
+	} | null = null;
+	let lastWheelAt = -Infinity;
+	let touchStartY: number | null = null;
+	onDestroy(() => { scrollGeneration++; });
 
 	$effect(() => {
 		if (!agentActivity) return;
@@ -137,73 +147,152 @@
 	function scrollToLatest() {
 		const el = scrollEl;
 		if (!el) return;
+		olderLoadArmed = false;
 		el.scrollTop = el.scrollHeight;
+		previousScrollTop = el.scrollTop;
 		followingLatest = true;
 	}
 	function scheduleScrollToLatest() {
-		if (scrollAfterTickPending) return;
-		scrollAfterTickPending = true;
+		const generation = scrollGeneration;
+		if (scrollAfterTickGeneration === generation) return;
+		scrollAfterTickGeneration = generation;
+		const key = conversationKey;
+		const fence = scrollFence;
 		void tick().then(() => {
-			scrollAfterTickPending = false;
-			if (followingLatest) scrollToLatest();
+			if (scrollAfterTickGeneration === generation) scrollAfterTickGeneration = -1;
+			if (generation === scrollGeneration && key === conversationKey && fence === scrollFence && followingLatest && !navigatingHistory) scrollToLatest();
 		});
 	}
 
 	function viewportAnchor(): { id: string; top: number } | null {
 		const container = scrollEl;
 		if (!container) return null;
-		const viewportTop = container.getBoundingClientRect().top;
+		const viewport = container.getBoundingClientRect();
 		for (const element of container.querySelectorAll<HTMLElement>('[data-history-message-id]')) {
 			const rect = element.getBoundingClientRect();
-			if (rect.bottom >= viewportTop) return { id: element.dataset.historyMessageId ?? '', top: rect.top };
+			if (rect.bottom > viewport.top && rect.top < viewport.bottom) return { id: element.dataset.historyMessageId ?? '', top: rect.top };
 		}
 		return null;
 	}
 
-	async function moveHistory(direction: 'before' | 'after') {
-		const loader = direction === 'before' ? onLoadBefore : onLoadAfter;
-		if (!loader || navigatingHistory || loadingHistory) return;
-		const anchor = viewportAnchor();
+	function restorePrepend(request: NonNullable<typeof pendingPrepend>) {
+		if (request.restored || pendingPrepend !== request || request.generation !== scrollGeneration ||
+			request.key !== conversationKey || request.fence !== scrollFence || scrollEl !== request.element || !request.element) return;
+		request.restored = true;
+		const anchor = request.anchor;
+		if (!anchor) return;
+		const retained = Array.from(request.element.querySelectorAll<HTMLElement>('[data-history-message-id]'))
+			.find((node) => node.dataset.historyMessageId === anchor.id);
+		if (retained) request.element.scrollTop += retained.getBoundingClientRect().top - anchor.top;
+		previousScrollTop = request.element.scrollTop;
+	}
+
+	// Measure the message actually visible just before Svelte inserts older rows.
+	// Wheel/touch intent during a request need not have moved the viewport at all.
+	$effect.pre(() => {
+		const firstId = displayedPath[0]?.id;
+		const request = pendingPrepend;
+		if (!request || request.anchor || request.generation !== scrollGeneration ||
+			request.key !== conversationKey || request.fence !== scrollFence || scrollEl !== request.element || !request.element) return;
+		const oldFirstId = request.element.querySelector<HTMLElement>('[data-history-message-id]')?.dataset.historyMessageId;
+		if (!oldFirstId || firstId === oldFirstId || !displayedPath.some((message) => message.id === oldFirstId)) return;
+		request.anchor = viewportAnchor();
+		void tick().then(() => restorePrepend(request));
+	});
+
+	async function moveHistory() {
+		if (!onLoadBefore || navigatingHistory || loadingHistory) return;
+		const generation = scrollGeneration;
+		const key = conversationKey;
+		const fence = scrollFence;
+		const request = pendingPrepend = { generation, key, fence, element: scrollEl, anchor: null, restored: false };
 		navigatingHistory = true;
 		try {
-			await loader();
+			await onLoadBefore();
 			await tick();
-			if (!anchor || !scrollEl) return;
-			const retained = Array.from(scrollEl.querySelectorAll<HTMLElement>('[data-history-message-id]'))
-				.find((element) => element.dataset.historyMessageId === anchor.id);
-			if (retained) scrollEl.scrollTop += retained.getBoundingClientRect().top - anchor.top;
+			restorePrepend(request);
 		} finally {
-			navigatingHistory = false;
+			if (pendingPrepend === request) pendingPrepend = null;
+			if (generation === scrollGeneration && key === conversationKey && fence === scrollFence) navigatingHistory = false;
 		}
 	}
 
-	async function jumpHistory(anchor: 'first' | 'latest') {
-		const loader = anchor === 'first' ? onLoadFirst : onLoadLatest;
-		if (!loader || navigatingHistory || loadingHistory) return;
+	async function jumpHistory() {
+		if (!onLoadLatest || navigatingHistory || loadingHistory) return;
+		const generation = scrollGeneration;
+		const key = conversationKey;
+		const fence = scrollFence;
 		navigatingHistory = true;
 		try {
-			const loaded = await loader();
+			const loaded = await onLoadLatest();
 			await tick();
-			if (!loaded || !scrollEl) return;
-			if (anchor === 'latest') scrollToLatest();
-			else {
-				scrollEl.scrollTop = 0;
-				followingLatest = !hasAfter;
-			}
+			if (loaded && generation === scrollGeneration && key === conversationKey && fence === scrollFence) scrollToLatest();
 		} finally {
-			navigatingHistory = false;
+			if (generation === scrollGeneration && key === conversationKey && fence === scrollFence) navigatingHistory = false;
 		}
 	}
 
+	function loadOlderOnUpwardInput() {
+		if (!olderLoadArmed || !scrollEl || scrollEl.scrollTop > 120 || !hasBefore || loadingHistory || navigatingHistory) return;
+		olderLoadArmed = false;
+		followingLatest = false;
+		void moveHistory();
+	}
+	function onWheel(event: WheelEvent) {
+		if (event.deltaY === 0) return;
+		const freshGesture = event.timeStamp - lastWheelAt > 400;
+		lastWheelAt = event.timeStamp;
+		if (event.deltaY > 0) {
+			olderLoadArmed = false;
+			return;
+		}
+		if (freshGesture && !loadingHistory && !navigatingHistory) olderLoadArmed = true;
+		// A short page cannot emit a scroll event; upward wheel input still loads history.
+		loadOlderOnUpwardInput();
+	}
+	function onTouchStart(event: TouchEvent) {
+		touchStartY = event.touches[0]?.clientY ?? null;
+		if (!navigatingHistory && !loadingHistory) olderLoadArmed = true;
+	}
+	function onTouchMove(event: TouchEvent) {
+		if (touchStartY !== null && (event.touches[0]?.clientY ?? touchStartY) > touchStartY + 8) loadOlderOnUpwardInput();
+	}
+	function onPointerDown(event: PointerEvent) {
+		if (event.pointerType === 'mouse' && event.target === scrollEl) {
+			if (!navigatingHistory && !loadingHistory) olderLoadArmed = true;
+		}
+	}
 	function onScroll() {
 		const el = scrollEl;
 		if (!el) return;
+		const upward = el.scrollTop < previousScrollTop;
+		previousScrollTop = el.scrollTop;
+		if (navigatingHistory) return;
 		followingLatest = el.scrollHeight - el.clientHeight - el.scrollTop <= 64;
+		if (upward) loadOlderOnUpwardInput();
 	}
+	let lastScrollFence: object | undefined = undefined;
 	$effect(() => {
-		void conversationKey;
+		if (scrollFence === lastScrollFence) return;
+		lastScrollFence = scrollFence;
+		scrollGeneration++;
+		navigatingHistory = false;
+		olderLoadArmed = false;
+		lastWheelAt = -Infinity;
+		touchStartY = null;
+	});
+	let lastConversationKey: string | undefined = undefined;
+	$effect(() => {
+		if (conversationKey === lastConversationKey) return;
+		lastConversationKey = conversationKey;
+		scrollGeneration++;
+		previousScrollTop = 0;
+		olderLoadArmed = false;
+		lastWheelAt = -Infinity;
+		touchStartY = null;
+		navigatingHistory = false;
 		followingLatest = true;
-		scheduleScrollToLatest();
+		untrack(scheduleScrollToLatest);
 	});
 
 	// Incoming stream deltas must not steal the reader's position after they scroll away.
@@ -223,11 +312,13 @@
 	});
 </script>
 
+<svelte:window onpointerdown={onPointerDown} />
+
 <div class="window">
 	{#if loading}
 		<div class="load-bar" role="status" aria-label="불러오는 중"><span></span></div>
 	{/if}
-	<div class="scroll" bind:this={scrollEl} onscroll={onScroll}>
+	<div class="scroll" bind:this={scrollEl} role="region" aria-label="대화 기록" onscroll={onScroll} onwheel={onWheel} ontouchstart={onTouchStart} ontouchmove={onTouchMove}>
 		{#if empty}
 			<div class="welcome">
 				<div class="welcome-mark">
@@ -247,21 +338,13 @@
 			</div>
 		{:else}
 			<div class="stream">
-				{#if onLoadFirst && onLoadLatest}
-					<nav class="history-nav" aria-label="대화 기록 이동">
-						<Button variant="ghost" size="xs" onclick={() => jumpHistory('first')} disabled={!hasBefore || navigatingHistory || loadingHistory}>처음</Button>
-						<Button variant="ghost" size="xs" onclick={() => moveHistory('before')} disabled={!hasBefore || navigatingHistory || loadingHistory}>이전</Button>
-						<Button variant="ghost" size="xs" onclick={() => moveHistory('after')} disabled={!hasAfter || navigatingHistory || loadingHistory}>다음</Button>
-						<Button variant="ghost" size="xs" onclick={() => jumpHistory('latest')} disabled={!hasAfter || navigatingHistory || loadingHistory}>최신</Button>
-					</nav>
-				{/if}
 				{#if loadingHistory}
 					<div class="history-loading" role="status">대화 기록을 불러오는 중…</div>
 				{/if}
 				{#if newHistoryActivity}
 					<div class="history-activity" role="status">
 						<span>새 응답이 도착했습니다.</span>
-						<Button variant="accent" size="xs" onclick={() => jumpHistory('latest')}>최신 응답 보기</Button>
+						<Button variant="accent" size="xs" onclick={jumpHistory}>최신 응답 보기</Button>
 					</div>
 				{/if}
 				{#each displayedPath as msg (msg.id)}
@@ -310,8 +393,8 @@
 
 	{#if !empty && !followingLatest}
 		<div class="latest-control">
-			<Button variant="accent" size="sm" onclick={() => hasAfter ? jumpHistory('latest') : scrollToLatest()}>
-				{hasAfter ? '최신 기록으로' : busy ? '새 응답 따라가기' : '최신 메시지로'}
+			<Button variant="accent" size="sm" onclick={() => newHistoryActivity ? jumpHistory() : scrollToLatest()}>
+				{busy ? '새 응답 따라가기' : '최신 메시지로'}
 			</Button>
 		</div>
 	{/if}
@@ -355,6 +438,7 @@
 		flex: 1;
 		min-height: 0;
 		overflow-y: auto;
+		overflow-anchor: none;
 		padding: 1.5rem 1rem;
 	}
 	.stream {
@@ -363,20 +447,6 @@
 		gap: 1.25rem;
 		max-width: 52rem;
 		margin: 0 auto;
-	}
-	.history-nav {
-		position: sticky;
-		top: 0;
-		z-index: 2;
-		align-self: center;
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: center;
-		gap: 0.25rem;
-		padding: 0.25rem;
-		border: 1px solid var(--color-line);
-		border-radius: var(--radius-md);
-		background: var(--color-surface-raised);
 	}
 	.history-loading {
 		align-self: center;

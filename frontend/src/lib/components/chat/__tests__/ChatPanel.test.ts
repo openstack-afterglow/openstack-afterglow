@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
 import { auth } from '$lib/stores/auth';
 import { parseChatRunEvent } from '$lib/api/chatContracts';
+import { clearActiveConversationId } from '$lib/api/chatSession';
 import { invalidateChatModels } from '$lib/stores/chatModels';
 import ChatPanel from '../ChatPanel.svelte';
 
@@ -62,6 +63,17 @@ function flushAnimationFrames() {
 	for (const callback of queued) callback(performance.now());
 }
 
+let nextHistoryWheelAt = 1000;
+async function scrollUp(scroll: HTMLDivElement) {
+	scroll.scrollTop = 300;
+	await fireEvent.scroll(scroll);
+	const wheel = new WheelEvent('wheel', { bubbles: true, deltaY: -500 });
+	Object.defineProperty(wheel, 'timeStamp', { value: nextHistoryWheelAt += 500 });
+	await fireEvent(scroll, wheel);
+	scroll.scrollTop = 50;
+	await fireEvent.scroll(scroll);
+}
+
 const at = '2026-07-26T00:00:00Z';
 
 function event(seq: number, type: string, payload: object) {
@@ -77,6 +89,7 @@ function event(seq: number, type: string, payload: object) {
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	clearActiveConversationId('project-1');
 	auth.set({
 		token: 'token',
 		refreshToken: null,
@@ -916,7 +929,7 @@ describe('ChatPanel', () => {
 		await waitFor(() => expect(screen.getAllByRole('button', { name: '복사' })).toHaveLength(2));
 	});
 
-	it('keeps at most three 40-message pages and performs one request per history step', async () => {
+	it('opens the latest page and loads all earlier pages by scrolling without discarding the tail', async () => {
 		const fallback = mocks.get.getMockImplementation()!;
 		const page = (start: number, hasBefore: boolean, beforeCursor: string | null, hasAfter: boolean, afterCursor: string | null) => ({
 			messages: Array.from({ length: 40 }, (_, offset) => ({
@@ -942,16 +955,254 @@ describe('ChatPanel', () => {
 		await fireEvent.click(await screen.findByRole('button', { name: '대화 기록과 설정 열기' }));
 		await fireEvent.click(await screen.findByRole('button', { name: '긴 대화' }));
 		await screen.findByText('history-160');
+		const scroll = document.querySelector('.scroll') as HTMLDivElement;
+		Object.defineProperties(scroll, {
+			scrollTop: { configurable: true, value: 50, writable: true },
+			scrollHeight: { configurable: true, value: 1000 },
+			clientHeight: { configurable: true, value: 100 }
+		});
 		for (const cursor of ['cursor-4', 'cursor-3', 'cursor-2']) {
-			await fireEvent.click(screen.getByRole('button', { name: '이전' }));
+			scroll.scrollTop = 50;
+			await scrollUp(scroll);
 			await waitFor(() => expect(mocks.get.mock.calls.some(([path]) => String(path).includes(`cursor=${cursor}`))).toBe(true));
+			await waitFor(() => expect(document.querySelectorAll('[data-history-message-id]')).toHaveLength(
+				cursor === 'cursor-4' ? 80 : cursor === 'cursor-3' ? 120 : 160
+			));
 		}
 
 		await screen.findByText('history-1');
-		expect(screen.queryByText('history-160')).toBeNull();
+		expect(screen.getByText('history-160')).toBeTruthy();
 		const historyRequests = mocks.get.mock.calls.filter(([path]) => String(path).includes('/conv-history/messages?'));
 		expect(historyRequests).toHaveLength(4);
-		expect(document.querySelectorAll('[data-history-message-id]')).toHaveLength(120);
+		expect(document.querySelectorAll('[data-history-message-id]')).toHaveLength(160);
+		await scrollUp(scroll);
+		expect(mocks.get.mock.calls.filter(([path]) => String(path).includes('/conv-history/messages?'))).toHaveLength(4);
+	});
+	it('replays a resumed run without duplicating or erasing its persisted assistant snapshot', async () => {
+		const replay = Promise.withResolvers<void>();
+		const continueReplay = Promise.withResolvers<void>();
+		const finish = Promise.withResolvers<void>();
+		let terminal = false;
+		const fallback = mocks.get.getMockImplementation()!;
+		const descriptor = { run_id: 'run-1', conversation_id: 'conv-replay', temp_thread_id: null, status: 'running', run_kind: 'completion', events_url: '/events', cancel_url: '/cancel' };
+		mocks.get.mockImplementation(async (path: string, ...args: unknown[]) => {
+			if (path === '/api/v1/chat/conversations') return [{ id: 'conv-replay', title: '재연결 대화', model_name: 'model-1', workspace_id: null }];
+			if (path.includes('/conv-replay/messages?')) return {
+				messages: [
+					{ id: 'u', conversation_id: 'conv-replay', parent_id: null, role: 'user', content: 'question', created_at: at },
+					{ id: 'a', conversation_id: 'conv-replay', parent_id: 'u', role: 'assistant', content: terminal ? 'persisted prefix continued' : 'persisted prefix', created_at: at }
+				],
+				active_leaf_id: 'a', history_revision: 1, has_before: false, before_cursor: null, has_after: false, after_cursor: null
+			};
+			if (path === '/api/v1/chat/conversations/conv-replay/runs?active=true') return terminal ? [] : [descriptor];
+			return fallback(path, ...args);
+		});
+		mocks.followRun.mockImplementation(async function* () {
+			await replay.promise;
+			yield event(1, 'message.created', { message_id: 'a', role: 'assistant', parent_id: 'u' });
+			yield event(2, 'part.delta', { message_id: 'a', part_index: 0, part_type: 'text', delta: 'persisted ' });
+			await continueReplay.promise;
+			yield event(3, 'part.delta', { message_id: 'a', part_index: 0, part_type: 'text', delta: 'prefix continued' });
+			yield event(3, 'part.delta', { message_id: 'a', part_index: 0, part_type: 'text', delta: 'prefix continued' });
+			await finish.promise;
+			terminal = true;
+			yield event(4, 'run.completed', { status: 'completed', message_id: 'a' });
+		});
+		render(ChatPanel);
+		await fireEvent.click(await screen.findByRole('button', { name: '대화 기록과 설정 열기' }));
+		await fireEvent.click(await screen.findByRole('button', { name: '재연결 대화' }));
+		await screen.findByText('persisted prefix');
+		await waitFor(() => expect(mocks.followRun).toHaveBeenCalledOnce());
+		replay.resolve();
+		await waitFor(() => {
+			flushAnimationFrames();
+			expect(document.querySelectorAll('[data-history-message-id]')).toHaveLength(2);
+			expect(screen.getByText('persisted prefix')).toBeTruthy();
+		});
+		continueReplay.resolve();
+		await waitFor(() => {
+			flushAnimationFrames();
+			expect(screen.getByText('persisted prefix continued')).toBeTruthy();
+		});
+		finish.resolve();
+		await waitFor(() => expect(mocks.get.mock.calls.filter(([path]) => String(path).includes('/conv-replay/messages?'))).toHaveLength(2));
+		expect(document.querySelectorAll('[data-history-message-id="a"]')).toHaveLength(1);
+		expect(screen.getByText('persisted prefix continued')).toBeTruthy();
+	});
+
+	it('replaces obsolete descendants after regeneration instead of merging the old branch back', async () => {
+		const fallback = mocks.get.getMockImplementation()!;
+		let regenerated = false;
+		mocks.get.mockImplementation(async (path: string, ...args: unknown[]) => {
+			if (path === '/api/v1/chat/conversations') return [{ id: 'conv-regen', title: '재생성 대화', model_name: 'model-1', workspace_id: null }];
+			if (path.includes('/conv-regen/messages?')) return {
+				messages: [
+					{ id: 'u', conversation_id: 'conv-regen', role: 'user', parent_id: null, content: 'root question', created_at: at },
+					{ id: regenerated ? 'new-a' : 'old-a', conversation_id: 'conv-regen', role: 'assistant', parent_id: 'u', content: regenerated ? 'new branch answer' : 'obsolete answer', model_name: 'model-1', created_at: at },
+					...(!regenerated ? [{ id: 'old-u', conversation_id: 'conv-regen', role: 'user', parent_id: 'old-a', content: 'obsolete descendant', created_at: at }] : [])
+				],
+				active_leaf_id: regenerated ? 'new-a' : 'old-u', history_revision: regenerated ? 2 : 1,
+				has_before: false, before_cursor: null, has_after: false, after_cursor: null
+			};
+			return fallback(path, ...args);
+		});
+		mocks.createRun.mockResolvedValue({ run_id: 'run-1', conversation_id: 'conv-regen', temp_thread_id: null, status: 'running', run_kind: 'completion', events_url: '/events', cancel_url: '/cancel' });
+		mocks.followRun.mockImplementation(async function* () {
+			yield event(1, 'message.created', { message_id: 'new-a', role: 'assistant', parent_id: 'u' });
+			yield event(2, 'part.delta', { message_id: 'new-a', part_index: 0, part_type: 'text', delta: 'new branch answer' });
+			regenerated = true;
+			yield event(3, 'run.completed', { status: 'completed', message_id: 'new-a' });
+		});
+		render(ChatPanel);
+		await fireEvent.click(await screen.findByRole('button', { name: '대화 기록과 설정 열기' }));
+		await fireEvent.click(await screen.findByRole('button', { name: '재생성 대화' }));
+		await screen.findByText('obsolete descendant');
+		await fireEvent.click(screen.getByTitle('다른 모델로 재생성'));
+		await fireEvent.click(screen.getByRole('option', { name: /Model 1/ }));
+		await screen.findByText('new branch answer');
+		await waitFor(() => expect(mocks.get.mock.calls.filter(([path]) => String(path).includes('/conv-regen/messages?'))).toHaveLength(2));
+		expect(screen.queryByText('obsolete answer')).toBeNull();
+		expect(screen.queryByText('obsolete descendant')).toBeNull();
+		expect(screen.getByText('root question')).toBeTruthy();
+	});
+
+	it('merges an overlapping older page with a live SSE message and its terminal reload', async () => {
+		const finish = Promise.withResolvers<void>();
+		const fallback = mocks.get.getMockImplementation()!;
+		const message = (id: string, role: 'user' | 'assistant', content: string) => ({
+			id, conversation_id: 'conv-live', role, parent_id: null, content, created_at: at
+		});
+		let latestRequests = 0;
+		mocks.get.mockImplementation(async (path: string, ...args: unknown[]) => {
+			if (path === '/api/v1/chat/conversations') return [{ id: 'conv-live', title: '진행 대화', model_name: 'model-1', workspace_id: null }];
+			if (path.endsWith('/conv-live/messages?anchor=latest&limit=40')) {
+				latestRequests++;
+				return {
+					messages: latestRequests === 1 ? [message('m2', 'user', 'recent')] :
+						[message('m2', 'user', 'recent'), message('m3', 'user', 'question'), message('assistant-live', 'assistant', 'final answer')],
+					active_leaf_id: latestRequests === 1 ? 'm2' : 'assistant-live', history_revision: 1,
+					has_before: true, before_cursor: 'older', has_after: false, after_cursor: null
+				};
+			}
+			if (path.includes('/conv-live/messages?cursor=older')) return {
+				messages: [message('m1', 'user', 'earlier'), message('m2', 'user', 'recent')],
+				active_leaf_id: 'm2', history_revision: 1,
+				has_before: false, before_cursor: null, has_after: true, after_cursor: 'newer'
+			};
+			if (path === '/api/v1/chat/conversations/conv-live/runs?active=true') return [];
+			return fallback(path, ...args);
+		});
+		mocks.createRun.mockResolvedValue({
+			run_id: 'run-1', conversation_id: 'conv-live', temp_thread_id: null,
+			status: 'running', run_kind: 'completion', events_url: '/events', cancel_url: '/cancel'
+		});
+		mocks.followRun.mockImplementation(async function* () {
+			yield event(1, 'message.created', { message_id: 'assistant-live', role: 'assistant', parent_id: 'm3' });
+			yield event(2, 'part.delta', { message_id: 'assistant-live', part_index: 0, part_type: 'text', delta: 'live answer' });
+			await finish.promise;
+			yield event(3, 'run.completed', { status: 'completed', message_id: 'assistant-live' });
+		});
+
+		render(ChatPanel);
+		await fireEvent.click(await screen.findByRole('button', { name: '대화 기록과 설정 열기' }));
+		await fireEvent.click(await screen.findByRole('button', { name: '진행 대화' }));
+		await screen.findByText('recent');
+		await fireEvent.input(screen.getByRole('textbox'), { target: { value: 'question' } });
+		await fireEvent.click(screen.getByRole('button', { name: '전송' }));
+		await waitFor(() => {
+			flushAnimationFrames();
+			expect(screen.getByText('live answer')).toBeTruthy();
+		});
+		const scroll = document.querySelector('.scroll') as HTMLDivElement;
+		Object.defineProperties(scroll, {
+			scrollTop: { configurable: true, value: 50, writable: true },
+			scrollHeight: { configurable: true, value: 1000 },
+			clientHeight: { configurable: true, value: 100 }
+		});
+		await scrollUp(scroll);
+		await screen.findByText('earlier');
+		expect(document.querySelectorAll('[data-history-message-id="m2"]')).toHaveLength(1);
+		expect(document.querySelectorAll('[data-history-message-id="assistant-live"]')).toHaveLength(1);
+		finish.resolve();
+		await screen.findByText('final answer');
+		expect(screen.getByText('earlier')).toBeTruthy();
+		expect(document.querySelectorAll('[data-history-message-id="m2"]')).toHaveLength(1);
+		expect(document.querySelectorAll('[data-history-message-id="assistant-live"]')).toHaveLength(1);
+	});
+
+	it('ignores an older page that resolves after another conversation is selected', async () => {
+		const oldPage = Promise.withResolvers<object>();
+		const fallback = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation(async (path: string, ...args: unknown[]) => {
+			if (path === '/api/v1/chat/conversations') return [
+				{ id: 'conv-a', title: '대화 A', model_name: 'model-1', workspace_id: null },
+				{ id: 'conv-b', title: '대화 B', model_name: 'model-1', workspace_id: null }
+			];
+			if (path.includes('/conv-a/messages?cursor=older')) return oldPage.promise;
+			if (path.includes('/messages?anchor=latest&limit=40')) {
+				const a = path.includes('/conv-a/');
+				return {
+					messages: [{ id: a ? 'a' : 'b', conversation_id: a ? 'conv-a' : 'conv-b', role: 'user', parent_id: null, content: a ? 'first conversation' : 'second conversation', created_at: at }],
+					active_leaf_id: a ? 'a' : 'b', history_revision: 1,
+					has_before: a, before_cursor: a ? 'older' : null, has_after: false, after_cursor: null
+				};
+			}
+			return fallback(path, ...args);
+		});
+		render(ChatPanel);
+		await fireEvent.click(await screen.findByRole('button', { name: '대화 기록과 설정 열기' }));
+		await fireEvent.click(await screen.findByRole('button', { name: '대화 A' }));
+		await screen.findByText('first conversation');
+		const scroll = document.querySelector('.scroll') as HTMLDivElement;
+		Object.defineProperties(scroll, {
+			scrollTop: { configurable: true, value: 50, writable: true },
+			scrollHeight: { configurable: true, value: 1000 },
+			clientHeight: { configurable: true, value: 100 }
+		});
+		await scrollUp(scroll);
+		await waitFor(() => expect(mocks.get.mock.calls.some(([path]) => String(path).includes('/conv-a/messages?cursor=older'))).toBe(true));
+		await fireEvent.click(screen.getByRole('button', { name: '대화 기록과 설정 열기' }));
+		await fireEvent.click(screen.getByRole('button', { name: '대화 B' }));
+		await screen.findByText('second conversation');
+		oldPage.resolve({
+			messages: [{ id: 'stale', conversation_id: 'conv-a', role: 'user', parent_id: null, content: 'stale content', created_at: at }],
+			active_leaf_id: 'stale', history_revision: 1, has_before: false, before_cursor: null, has_after: true, after_cursor: null
+		});
+		await tick();
+		expect(screen.queryByText('stale content')).toBeNull();
+		expect(screen.getByText('second conversation')).toBeTruthy();
+	});
+
+
+	it.each(['no progress', 'failure'])('bounds older cursor requests after %s', async (outcome) => {
+		const fallback = mocks.get.getMockImplementation()!;
+		const page = {
+			messages: [{ id: 'only', conversation_id: 'conv-stall', role: 'user', parent_id: null, content: 'only message', created_at: at }],
+			active_leaf_id: 'only', history_revision: 1,
+			has_before: true, before_cursor: 'stuck', has_after: false, after_cursor: null
+		};
+		mocks.get.mockImplementation(async (path: string, ...args: unknown[]) => {
+			if (path === '/api/v1/chat/conversations') return [{ id: 'conv-stall', title: '멈춘 기록', model_name: 'model-1', workspace_id: null }];
+			if (outcome === 'failure' && path.includes('/conv-stall/messages?cursor=')) throw new Error('history unavailable');
+			if (path.includes('/conv-stall/messages?')) return page;
+			return fallback(path, ...args);
+		});
+		render(ChatPanel);
+		await fireEvent.click(await screen.findByRole('button', { name: '대화 기록과 설정 열기' }));
+		await fireEvent.click(await screen.findByRole('button', { name: '멈춘 기록' }));
+		await screen.findByText('only message');
+		const scroll = document.querySelector('.scroll') as HTMLDivElement;
+		Object.defineProperties(scroll, {
+			scrollTop: { configurable: true, value: 50, writable: true },
+			scrollHeight: { configurable: true, value: 1000 },
+			clientHeight: { configurable: true, value: 100 }
+		});
+		await scrollUp(scroll);
+		await waitFor(() => expect(mocks.get.mock.calls.filter(([path]) => String(path).includes('/conv-stall/messages?cursor=stuck'))).toHaveLength(1));
+		await tick();
+		await scrollUp(scroll);
+		await waitFor(() => expect(mocks.get.mock.calls.filter(([path]) => String(path).includes('/conv-stall/messages?cursor=stuck'))).toHaveLength(outcome === 'failure' ? 2 : 1));
+		expect(screen.getByText('only message')).toBeTruthy();
 	});
 
 	it('alerts on a stale cursor and re-queries the latest window exactly once', async () => {
@@ -977,7 +1228,13 @@ describe('ChatPanel', () => {
 		await fireEvent.click(await screen.findByRole('button', { name: '대화 기록과 설정 열기' }));
 		await fireEvent.click(await screen.findByRole('button', { name: '변경된 대화' }));
 		await screen.findByText('old-latest');
-		await fireEvent.click(screen.getByRole('button', { name: '이전' }));
+		const scroll = document.querySelector('.scroll') as HTMLDivElement;
+		Object.defineProperties(scroll, {
+			scrollTop: { configurable: true, value: 50, writable: true },
+			scrollHeight: { configurable: true, value: 1000 },
+			clientHeight: { configurable: true, value: 100 }
+		});
+		await scrollUp(scroll);
 
 		await screen.findByText('refreshed-latest');
 		expect(screen.getByRole('alert').textContent).toContain('대화 기록이 변경되어 최신 위치를 다시 불러왔습니다.');
