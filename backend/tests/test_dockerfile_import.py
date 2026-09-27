@@ -1,20 +1,55 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from contextlib import contextmanager
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from app.services.dockerfile_import import (
     DockerfileImportError,
     DockerfilePlan,
-    _dockerfile_cloud_init_script,
-    parse_dockerfile_plan,
+    parse_dockerfile_source,
     parse_github_url,
     prepare_dockerfile_import,
     validate_dockerfile_path,
     validate_layer_name,
 )
+from tests.test_palimpsest_dockerfile import FakeGlance, glance_conn, glance_image
+
+_SHA = "a" * 40
+
+
+def _parse_github(dockerfile: str, *, profile_name: str = "demo"):
+    return parse_dockerfile_source(
+        dockerfile,
+        layer_prefix="demo",
+        profile_name=profile_name,
+        commit_sha=_SHA,
+        dockerfile_path="Dockerfile",
+        allow_build_context=True,
+    )
+
+
+@contextmanager
+def _pinned_github(dockerfile: str):
+    """GitHub 네트워크 I/O 대역: 커밋 고정·archive·Dockerfile 본문."""
+    with (
+        patch("app.services.dockerfile_import.resolve_github_commit", return_value=_SHA),
+        patch("app.services.dockerfile_import.fetch_pinned_archive", return_value=b"archive"),
+        patch("app.services.dockerfile_import.fetch_pinned_dockerfile", return_value=dockerfile),
+    ):
+        yield
+
+
+def _prepare_github(conn) -> DockerfilePlan:
+    return prepare_dockerfile_import(
+        conn,
+        github_url="https://github.com/acme/widgets",
+        ref=None,
+        dockerfile_path="Dockerfile",
+        layer_prefix="demo",
+        profile_name=None,
+    )
 
 
 def test_parse_github_url_accepts_only_canonical_public_repo():
@@ -56,15 +91,10 @@ def test_parse_dockerfile_supported_subset_plans_layers_deterministically():
         && touch /opt/app/ready
     """
 
-    ubuntu_base, layers = parse_dockerfile_plan(
-        dockerfile,
-        layer_prefix="demo",
-        profile_name="demo-profile",
-        commit_sha="a" * 40,
-        dockerfile_path="Dockerfile",
-    )
+    parsed = _parse_github(dockerfile, profile_name="demo-profile")
+    layers = parsed.planned_layers
 
-    assert ubuntu_base == "ubuntu-22.04"
+    assert parsed.from_ref == "ubuntu:22.04"
     assert [layer["instruction"] for layer in layers] == ["ENV", "WORKDIR", "COPY", "ADD", "RUN"]
     assert [layer["name"] for layer in layers] == [
         "demo-01-env-app-home-opt",
@@ -78,15 +108,8 @@ def test_parse_dockerfile_supported_subset_plans_layers_deterministically():
 
 
 def test_parse_dockerfile_env_key_value_form():
-    ubuntu_base, layers = parse_dockerfile_plan(
-        "FROM ubuntu:22.04\nENV PATH /usr/local/bin\nRUN echo $PATH",
-        layer_prefix="demo",
-        profile_name="demo",
-        commit_sha="a" * 40,
-        dockerfile_path="Dockerfile",
-    )
+    layers = _parse_github("FROM ubuntu:22.04\nENV PATH /usr/local/bin\nRUN echo $PATH").planned_layers
 
-    assert ubuntu_base == "ubuntu-22.04"
     assert layers[0]["instruction"] == "ENV"
     assert layers[0]["payload"]["env"] == {"PATH": "/usr/local/bin"}
     assert layers[1]["payload"]["env"]["PATH"] == "/usr/local/bin"
@@ -97,7 +120,6 @@ def test_parse_dockerfile_env_key_value_form():
     [
         ("FROM ubuntu:22.04 AS base\nRUN true", "FROM AS"),
         ("FROM ubuntu:22.04\nFROM ubuntu:22.04\nRUN true", "multi-stage"),
-        ("FROM debian:12\nRUN true", "FROM"),
         ("FROM ubuntu:22.04\nARG TOKEN", "ARG"),
         ("FROM ubuntu:22.04\nCOPY ../secret /x", "traversal"),
         ("FROM ubuntu:22.04\nADD https://example.com/a /x", "remote URL"),
@@ -106,118 +128,88 @@ def test_parse_dockerfile_env_key_value_form():
 )
 def test_parse_dockerfile_rejects_unsafe_or_unsupported_instructions(dockerfile, message):
     with pytest.raises(DockerfileImportError, match=message):
-        parse_dockerfile_plan(
-            dockerfile,
-            layer_prefix="demo",
-            profile_name="demo",
-            commit_sha="a" * 40,
-            dockerfile_path="Dockerfile",
-        )
+        _parse_github(dockerfile)
 
 
-def test_prepare_dockerfile_import_rejects_from_base_mismatch():
-    conn = MagicMock()
-    conn.image.get_image.return_value = SimpleNamespace(
-        id="img-22",
-        name="ubuntu-22.04",
-        status="active",
-        os_distro="ubuntu",
-        os_version="22.04",
+def test_prepare_dockerfile_import_resolves_exact_glance_name_and_build_context():
+    conn = glance_conn(
+        glance_image("img-22", "ubuntu:22.04", release="22.04"),
+        glance_image("img-24", "ubuntu:24.04"),
     )
 
-    with (
-        patch("app.services.dockerfile_import.resolve_github_commit", return_value="a" * 40),
-        patch("app.services.dockerfile_import.fetch_pinned_archive", return_value=b"archive"),
-        patch("app.services.dockerfile_import.fetch_pinned_dockerfile", return_value="FROM ubuntu:20.04\nRUN true"),
-    ):
-        with pytest.raises(DockerfileImportError, match="일치하지 않습니다"):
-            prepare_dockerfile_import(
-                conn,
-                github_url="https://github.com/acme/widgets",
-                ref=None,
-                dockerfile_path="Dockerfile",
-                layer_prefix="demo",
-                profile_name=None,
-                base_image_id="img-22",
-            )
+    with _pinned_github("FROM ubuntu:22.04\nCOPY src/ /opt/src/\nRUN make -C /opt/src"):
+        plan = _prepare_github(conn)
+
+    assert plan.base_image_snapshot["base_image_id"] == "img-22"
+    assert plan.base_image_snapshot["ubuntu_base"] == "ubuntu-22.04"
+    assert plan.commit_sha == _SHA
+    # GitHub 소스는 커밋 archive 가 빌드 컨텍스트다
+    assert [layer["instruction"] for layer in plan.planned_layers] == ["COPY", "RUN"]
 
 
-def test_dockerfile_cloud_init_mounts_outputs_rw_and_executes_real_steps():
-    job = SimpleNamespace(
-        repo_owner="acme",
-        repo_name="widgets",
-        commit_sha="a" * 40,
-        dockerfile_path="Dockerfile",
-        planned_layers=[
-            {
-                "name": "demo-01-run-echo",
-                "instruction": "RUN",
-                "payload": {"command": "echo hi", "env": {}, "workdir": "/"},
-            }
-        ],
-    )
+def test_prepare_dockerfile_import_resolves_glance_name_tag_from():
+    conn = glance_conn(glance_image("img-cuda", "cuda:12.4-runtime", release="22.04"))
 
-    script = _dockerfile_cloud_init_script(job, ["10.0.0.1:/share-1"], "tok")
+    with _pinned_github("FROM cuda:12.4-runtime\nRUN true"):
+        plan = _prepare_github(conn)
 
-    assert "https://codeload.github.com/acme/widgets/tar.gz/" + "a" * 40 in script
-    assert "nfs4 rw,nofail" in script
-    assert "chroot" in script
-    assert "mksquashfs" in script
-    assert "-latest.sqsh" in script
+    assert plan.base_image_snapshot["base_image_id"] == "img-cuda"
+    assert plan.base_image_snapshot["ubuntu_base"] == "ubuntu-22.04"
+
+
+def test_prepare_dockerfile_import_resolves_unique_tag_and_rejects_missing_release():
+    conn = glance_conn(glance_image("img-22", "jammy-golden", release="22.04"))
+
+    with _pinned_github("FROM ubuntu:22.04\nRUN true"):
+        plan = _prepare_github(conn)
+
+    assert plan.base_image_snapshot["base_image_id"] == "img-22"
+
+    with _pinned_github("FROM ubuntu:20.04\nRUN true"), pytest.raises(ValueError, match="없습니다"):
+        _prepare_github(conn)
+
+
+@pytest.mark.parametrize(
+    "dockerfile",
+    [
+        "FROM cuda:12.4-runtime\nRUN true",
+        "FROM palimpsest/py@sha256:" + "a" * 64 + "\nRUN true",
+    ],
+)
+def test_prepare_dockerfile_import_rejects_unusable_from(dockerfile):
+    conn = glance_conn(glance_image("img-22", "ubuntu:22.04", release="22.04"))
+
+    with _pinned_github(dockerfile), pytest.raises(ValueError):
+        _prepare_github(conn)
 
 
 @pytest.mark.asyncio
-async def test_dockerfile_import_route_enqueues_validated_job(admin_client, mock_conn):
-
-    plan = DockerfilePlan(
-        github_url="https://github.com/acme/widgets",
-        repo_owner="acme",
-        repo_name="widgets",
-        commit_sha="a" * 40,
-        dockerfile_path="Dockerfile",
-        layer_prefix="demo",
-        profile_name="demo",
-        base_image_snapshot={"ubuntu_base": "ubuntu-22.04", "base_image_id": "img-22"},
-        planned_layers=[],
+@pytest.mark.parametrize(
+    "dockerfile",
+    [
+        "FROM cuda:12.4-runtime\nRUN true",
+        "FROM jammy-staging\nRUN true",
+        "FROM ubuntu:20.04\nRUN true",
+    ],
+)
+async def test_dockerfile_import_route_rejects_unusable_glance_base_as_400_without_job(
+    admin_client, mock_conn, dockerfile
+):
+    mock_conn.image = FakeGlance(
+        glance_image("img-22", "ubuntu:22.04", release="22.04"),
+        glance_image("img-staging", "jammy-staging", release="22.04", status="queued"),
     )
+    body = {
+        "github_url": "https://github.com/acme/widgets",
+        "dockerfile_path": "Dockerfile",
+        "layer_prefix": "demo",
+    }
+
     with (
-        patch("app.services.dockerfile_import.prepare_dockerfile_import", return_value=plan) as mock_prepare,
-        patch(
-            "app.services.dockerfile_import.create_import_job",
-            new_callable=AsyncMock,
-            return_value={"id": 7, "status": "queued"},
-        ) as mock_create,
+        _pinned_github(dockerfile),
+        patch("app.services.dockerfile_import.create_import_job", new_callable=AsyncMock) as mock_create,
     ):
-        resp = await admin_client.post(
-            "/api/v1/admin/libraries/imports/dockerfile",
-            json={
-                "github_url": "https://github.com/acme/widgets",
-                "dockerfile_path": "Dockerfile",
-                "layer_prefix": "demo",
-                "base_image_id": "img-22",
-            },
-        )
-
-    assert resp.status_code == 200
-    assert resp.json() == {"id": 7, "status": "queued"}
-    assert mock_prepare.call_args.args[0] is mock_conn
-    mock_create.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_dockerfile_import_route_maps_base_image_validation_to_400(admin_client):
-    with patch(
-        "app.services.dockerfile_import.prepare_dockerfile_import", side_effect=ValueError("base image inactive")
-    ):
-        resp = await admin_client.post(
-            "/api/v1/admin/libraries/imports/dockerfile",
-            json={
-                "github_url": "https://github.com/acme/widgets",
-                "dockerfile_path": "Dockerfile",
-                "layer_prefix": "demo",
-                "base_image_id": "img-22",
-            },
-        )
+        resp = await admin_client.post("/api/v1/admin/libraries/imports/dockerfile", json=body)
 
     assert resp.status_code == 400
-    assert "base image inactive" in resp.text
+    mock_create.assert_not_awaited()

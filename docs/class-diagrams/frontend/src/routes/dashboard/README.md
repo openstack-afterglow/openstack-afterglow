@@ -78,6 +78,11 @@ class T_frontend_src_routes_dashboard_usage_report_page_svelte_FlavorHour_e5de7a
   +flavor: string
   +instance_count: number
   +usage_hours: number
+  +vcpus: number
+  +ram_mb: number
+  +gpu_count: number
+  +vcpu_hours: number
+  +gpu_hours: number
 }
 %% source-type: frontend/src/routes/dashboard/usage-report/+page.svelte::UsageReport
 class T_frontend_src_routes_dashboard_usage_report_page_svelte_UsageReport_9cb3af297315["UsageReport (frontend/src/routes/dashboard/usage-report/+page.svelte)"] {
@@ -87,6 +92,8 @@ class T_frontend_src_routes_dashboard_usage_report_page_svelte_UsageReport_9cb3a
   +end: string
   +stats: object
   +flavor_hours: Array~FlavorHour~
+  +instance_usage: Array~InstanceUsage~
+  +quota: object
   +forecast: object
 }
 T_frontend_src_routes_dashboard_page_svelte_TrendData_615106e58416 --> T_frontend_src_routes_dashboard_page_svelte_TrendSeries_8ef23d005874 : associates
@@ -102,6 +109,10 @@ T_frontend_src_routes_dashboard_usage_report_page_svelte_UsageReport_9cb3af29731
 |---|---|
 | `TrendSeries & object` | `TrendSeries & { unit: string }` |
 | `Array~number~` | `number[]` |
-| `object` | `{ instance_hours: number; vcpu_hours: number; active_instances: number; total_instances: number; }` |
+| `object` (`stats`) | `{ instance_hours: number; vcpu_hours: number; ram_gb_hours: number; gpu_hours: number; active_instances: number; total_instances: number; }` |
 | `Array~FlavorHour~` | `FlavorHour[]` |
-| `object` | `{ vcpu_pct: number; }` |
+| `Array~InstanceUsage~` | `InstanceUsage[]` — 서버 식별자·플레이버·시간·상태·스펙·시작/종료 시각 |
+| `object` (`quota`) | compute/storage/GPU availability, `instances/vcpus/ram_mb/volume_gb/volumes: QuotaItem`, `gpu: GpuQuotaRow[]` |
+| `object` (`forecast`) | `{ window_days: number; horizon_days: number; vcpus: ForecastEntry; ram_mb: ForecastEntry; volume_gb: ForecastEntry; gpu: Record<string, ForecastEntry>; }` |
+
+사용량 보고서의 상세 중첩 타입 및 예측 의미는 [대시보드 API 계약](../../../../../api/dashboard.md#get-apiv1dashboardusage-report)을 따른다. 로컬 렌더링용 `ForecastRow`, `InventoryRow`, `InventoryGroup`은 이 요약 다이어그램에서 생략한다.

@@ -165,14 +165,6 @@ export const LEGACY_VISUAL_DEBT: VisualDebtBaseline = {
 		count: 3,
 		tokens: ["#374151","bg-gray-800","text-gray-400"],
 	},
-	"frontend/src/lib/components/admin/images/AdminImagesFilters.svelte": {
-		count: 8,
-		tokens: ["bg-gray-800","border-blue-500","border-gray-700","text-gray-300"],
-	},
-	"frontend/src/lib/components/admin/images/AdminImagesTable.svelte": {
-		count: 20,
-		tokens: ["bg-gray-800","bg-gray-800/50","border-gray-800","border-gray-800/50","text-blue-300","text-blue-400","text-gray-400","text-gray-500","text-green-300","text-green-400","text-orange-300","text-orange-400","text-red-300","text-red-400"],
-	},
 	"frontend/src/lib/components/admin/images/ImageEditModal.svelte": {
 		count: 20,
 		tokens: ["bg-blue-500","bg-blue-600","bg-gray-800","bg-gray-900","bg-red-900/40","border-blue-500","border-gray-600","border-gray-700","border-red-700","text-gray-400","text-red-300"],
@@ -1637,10 +1629,6 @@ export const LEGACY_VISUAL_DEBT: VisualDebtBaseline = {
 		count: 18,
 		tokens: ["bg-amber-900/30","bg-blue-900/30","bg-cyan-900/30","bg-green-900/30","bg-orange-900/30","bg-purple-900/30","bg-red-900/30","bg-rose-900/30","text-amber-400","text-blue-400","text-cyan-400","text-green-400","text-orange-400","text-purple-400","text-red-400","text-rose-400"],
 	},
-	"frontend/src/lib/types/adminImage.ts": {
-		count: 8,
-		tokens: ["bg-blue-900/30","bg-gray-800","bg-green-900/30","bg-yellow-900/30","text-blue-400","text-gray-400","text-green-400","text-yellow-400"],
-	},
 	"frontend/src/lib/types/cluster.ts": {
 		count: 18,
 		tokens: ["bg-blue-900/30","bg-green-900/30","bg-orange-900/30","bg-red-900/30","bg-yellow-900/30","text-blue-400","text-gray-400","text-green-400","text-orange-400","text-red-400","text-yellow-400"],
@@ -1728,10 +1716,6 @@ export const LEGACY_VISUAL_DEBT: VisualDebtBaseline = {
 	"frontend/src/routes/admin/hypervisors/+page.svelte": {
 		count: 9,
 		tokens: ["bg-blue-900/50","border-blue-500/50","border-gray-800","text-blue-300","text-gray-400","text-gray-500","text-gray-600"],
-	},
-	"frontend/src/routes/admin/images/+page.svelte": {
-		count: 9,
-		tokens: ["bg-blue-600","bg-gray-700","bg-gray-800","bg-red-900/40","border-red-700","text-gray-400","text-gray-500","text-gray-600","text-red-300"],
 	},
 	"frontend/src/routes/admin/instances/+page.svelte": {
 		count: 7,
@@ -2016,10 +2000,6 @@ export const LEGACY_VISUAL_DEBT: VisualDebtBaseline = {
 	"frontend/src/routes/dashboard/topology/+page.svelte": {
 		count: 22,
 		tokens: ["#052e16","#0d9488","#0f172a","#1c1400","#1c1917","#22c55e","#3b82f6","#450a0a","#64748b","#78716c","#ea580c","#ef4444","#f59e0b","bg-gray-900","bg-red-900/40","border-gray-800","border-red-700","text-gray-200","text-gray-400","text-gray-500","text-red-300"],
-	},
-	"frontend/src/routes/dashboard/usage-report/+page.svelte": {
-		count: 19,
-		tokens: ["bg-gray-700","bg-gray-800","bg-gray-800/30","bg-gray-900","border-gray-800","border-gray-800/50","text-gray-400","text-gray-500"],
 	},
 	"frontend/src/routes/dashboard/usage/+page.svelte": {
 		count: 18,

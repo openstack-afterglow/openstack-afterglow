@@ -16,6 +16,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import PurePosixPath
@@ -25,11 +26,16 @@ from app.config import get_settings
 from app.database import get_session_factory
 from app.models.db import LayerArtifact, LayerBuild, LayerImportJob, LayerProfile
 from app.services import manila, neutron, nova
-from app.services.layer_base_images import resolve_base_image_snapshot
+from app.services.layer_base_images import (
+    FROM_REF_RE,
+    list_base_images,
+    resolve_from_reference,
+    resolve_glance_base_snapshot,
+)
 from app.services.layer_build import LAYER_BUILD_IMAGE_PACKAGES, _wait_for_shutoff
-from app.services.layer_ubuntu import normalize_ubuntu_base
 from app.services.palimpsest_digest import parse_digest_sentinels
-from app.services.palimpsest_layers import resolve_digest_fields
+from app.services.palimpsest_kvm import MAX_LAYER_DISKS
+from app.services.palimpsest_layers import load_lineage, resolve_digest_fields
 
 _logger = logging.getLogger(__name__)
 
@@ -72,19 +78,15 @@ SOURCE_INLINE = "inline_dockerfile"
 
 # FROM 이 기존 Palimpsest 레이어를 가리키는 형태: `FROM palimpsest/<name>@sha256:<64hex>`
 _PALIMPSEST_FROM_RE = re.compile(r"^palimpsest/([a-z0-9][a-z0-9.+\-]{0,63})@(sha256:[0-9a-f]{64})$")
-_UBUNTU_FROM_VALUES = {"ubuntu:18.04", "ubuntu:20.04", "ubuntu:22.04", "ubuntu:24.04"}
 
 
 @dataclass(frozen=True)
 class ParsedDockerfile:
-    """Dockerfile 한 편을 해석한 결과.
+    """One FROM target plus the steps to build on it."""
 
-    `ubuntu_base` 와 `parent_digest` 는 **배타적**이다 — FROM 이 ubuntu 이미지면 앞엣것,
-    기존 Palimpsest 레이어면 뒤엣것이 채워지고 base 는 부모에게서 상속한다.
-    """
-
-    ubuntu_base: str | None
+    from_ref: str | None
     parent_digest: str | None
+    from_line: int | None
     planned_layers: list[dict]
 
 
@@ -110,7 +112,10 @@ class DockerfilePlan:
 
 
 class DockerfileImportError(ValueError):
-    pass
+    def __init__(self, message: str, *, line: int | None = None, detail: str | None = None):
+        super().__init__(message)
+        self.line = line
+        self.detail = detail if detail is not None else message
 
 
 def _now() -> datetime:
@@ -118,7 +123,7 @@ def _now() -> datetime:
 
 
 def _line_error(line: int, message: str) -> DockerfileImportError:
-    return DockerfileImportError(f"Dockerfile line {line}: {message}")
+    return DockerfileImportError(f"Dockerfile line {line}: {message}", line=line, detail=message)
 
 
 def validate_layer_name(value: str, *, field: str) -> str:
@@ -325,6 +330,130 @@ def _parse_env(args: str, line: int) -> dict:
     return {key: value}
 
 
+def _parse_dockerfile_with_diagnostics(
+    text: str,
+    *,
+    layer_prefix: str,
+    profile_name: str,
+    commit_sha: str | None,
+    dockerfile_path: str | None,
+    allow_build_context: bool,
+) -> tuple[ParsedDockerfile | None, list[DockerfileImportError]]:
+    """Parse once for lint and build; recover after independent instruction errors."""
+    prefix = validate_layer_name(layer_prefix, field="layer_prefix")
+    validate_layer_name(profile_name or layer_prefix, field="profile_name")
+    from_ref: str | None = None
+    parent_digest: str | None = None
+    from_line: int | None = None
+    seen_from = False
+    planned: list[dict] = []
+    diagnostics: list[DockerfileImportError] = []
+    env: dict[str, str] = {}
+    workdir = "/"
+    try:
+        lines = _logical_lines(text)
+    except DockerfileImportError as exc:
+        return None, [exc]
+    for line, logical in lines:
+        try:
+            match = re.match(r"^([A-Za-z]+)\s+(.*)$", logical)
+            if not match:
+                raise _line_error(line, "Dockerfile instruction 형식이 아닙니다")
+            instruction = match.group(1).upper()
+            args = match.group(2).strip()
+            if instruction == "FROM":
+                if seen_from:
+                    raise _line_error(line, "multi-stage FROM은 지원하지 않습니다")
+                from_line = line
+                seen_from = True
+                if " AS " in f" {args.upper()} " or args.startswith("--"):
+                    raise _line_error(line, "FROM AS/flags는 지원하지 않습니다")
+                if args == "scratch":
+                    raise _line_error(
+                        line, "FROM scratch는 지원하지 않습니다 — Ubuntu Glance 이미지 또는 기존 레이어를 사용하세요"
+                    )
+                palimpsest_match = _PALIMPSEST_FROM_RE.match(args)
+                if palimpsest_match:
+                    parent_digest = palimpsest_match.group(2)
+                elif args.startswith("palimpsest/"):
+                    raise _line_error(line, "FROM palimpsest 레이어 참조 형식이 유효하지 않습니다")
+                elif FROM_REF_RE.fullmatch(args):
+                    from_ref = args
+                else:
+                    raise _line_error(
+                        line,
+                        "FROM은 Ubuntu tag, Glance 이미지 이름/UUID 또는 palimpsest/<name>@sha256:<64hex>여야 합니다",
+                    )
+                continue
+            if not seen_from:
+                raise _line_error(line, "첫 instruction은 FROM이어야 합니다")
+            payload: dict[str, Any]
+            if instruction == "RUN":
+                if (
+                    not args
+                    or args.startswith("--")
+                    or "--mount" in args
+                    or "--network" in args
+                    or "--security" in args
+                ):
+                    raise _line_error(line, "지원하지 않는 RUN 옵션입니다")
+                payload = {"command": args, "env": dict(env), "workdir": workdir}
+            elif instruction in {"COPY", "ADD"}:
+                if not allow_build_context:
+                    raise _line_error(
+                        line,
+                        f"{instruction}은 업로드한 Dockerfile에서 지원하지 않습니다 — 빌드 컨텍스트가 없습니다. GitHub 소스를 사용하세요",
+                    )
+                payload = _parse_copy_add(instruction, args, line)
+            elif instruction == "ENV":
+                updates = _parse_env(args, line)
+                env.update(updates)
+                payload = {"env": updates, "full_env": dict(env)}
+            elif instruction == "WORKDIR":
+                workdir = _validate_container_path(args, line, dest=True)
+                payload = {"workdir": workdir}
+            elif instruction in _UNSUPPORTED:
+                raise _line_error(line, f"{instruction}은 v1 Dockerfile import에서 지원하지 않습니다")
+            else:
+                raise _line_error(line, f"알 수 없는 instruction: {instruction}")
+            name = f"{prefix}-{len(planned) + 1:02d}-{_slug(instruction + ' ' + args)}"
+            if len(name) > 64:
+                raise _line_error(
+                    line, f"생성될 layer name이 64자를 초과합니다: {name!r}; 더 짧은 layer_prefix를 사용하세요"
+                )
+            planned.append(
+                {
+                    "name": name,
+                    "line": line,
+                    "instruction": instruction,
+                    "args": args,
+                    "payload": payload,
+                    "source_metadata": {
+                        "dockerfile_line": line,
+                        "dockerfile_instruction": instruction,
+                        "commit_sha": commit_sha,
+                        "dockerfile_path": dockerfile_path,
+                    },
+                }
+            )
+        except DockerfileImportError as exc:
+            diagnostics.append(exc)
+    if not seen_from:
+        diagnostics.append(
+            DockerfileImportError(
+                "Dockerfile에는 FROM <ubuntu:<version> | Glance 이미지 이름/UUID | palimpsest/<name>@sha256:<64hex>> 가 필요합니다"
+            )
+        )
+    elif not planned and not diagnostics:
+        diagnostics.append(
+            DockerfileImportError("Dockerfile에는 layer로 변환할 RUN/COPY/ADD/ENV/WORKDIR instruction이 필요합니다")
+        )
+    parsed = ParsedDockerfile(
+        from_ref=from_ref, parent_digest=parent_digest, from_line=from_line, planned_layers=planned
+    )
+    return parsed, diagnostics
+
+
 def parse_dockerfile_source(
     text: str,
     *,
@@ -333,131 +462,43 @@ def parse_dockerfile_source(
     commit_sha: str | None,
     dockerfile_path: str | None,
     allow_build_context: bool = True,
+    diagnostics: list[dict] | None = None,
 ) -> ParsedDockerfile:
-    """Dockerfile 을 레이어 계획으로 해석한다.
-
-    `allow_build_context=False`(inline 업로드)면 **COPY/ADD 를 거부**한다 — 빌드 컨텍스트로
-    쓸 파일이 없기 때문이다. GitHub 소스는 커밋에 고정된 archive 가 컨텍스트가 되므로 허용한다.
-    """
-    prefix = validate_layer_name(layer_prefix, field="layer_prefix")
-    validate_layer_name(profile_name or layer_prefix, field="profile_name")
-    from_base: str | None = None
-    parent_digest: str | None = None
-    seen_from = False
-    planned: list[dict] = []
-    env: dict[str, str] = {}
-    workdir = "/"
-    for line, logical in _logical_lines(text):
-        match = re.match(r"^([A-Za-z]+)\s+(.*)$", logical)
-        if not match:
-            raise _line_error(line, "Dockerfile instruction 형식이 아닙니다")
-        instruction = match.group(1).upper()
-        args = match.group(2).strip()
-        if instruction == "FROM":
-            if seen_from:
-                raise _line_error(line, "multi-stage FROM은 지원하지 않습니다")
-            if " AS " in f" {args.upper()} " or "--" in args:
-                raise _line_error(line, "FROM AS/flags는 지원하지 않습니다")
-            if args == "scratch":
-                raise _line_error(
-                    line, "FROM scratch는 지원하지 않습니다 — 레이어는 Ubuntu base 또는 기존 레이어 위에 쌓입니다"
-                )
-            palimpsest_match = _PALIMPSEST_FROM_RE.match(args)
-            if palimpsest_match:
-                # 기존 Palimpsest 레이어 위에 쌓는다. ubuntu_base 는 부모에게서 상속하므로
-                # 여기서 정하지 않는다(호출자가 부모 artifact 를 조회해 채운다).
-                parent_digest = palimpsest_match.group(2)
-            elif args in _UBUNTU_FROM_VALUES:
-                from_base = normalize_ubuntu_base(args.replace(":", "-"))
-            else:
-                raise _line_error(
-                    line,
-                    "FROM은 ubuntu:18.04|20.04|22.04|24.04 또는 palimpsest/<name>@sha256:<64hex>만 지원합니다",
-                )
-            seen_from = True
-            continue
-        if not seen_from:
-            raise _line_error(line, "첫 instruction은 FROM이어야 합니다")
-        payload: dict[str, Any]
-        if instruction == "RUN":
-            if not args or args.startswith("--") or "--mount" in args or "--network" in args or "--security" in args:
-                raise _line_error(line, "지원하지 않는 RUN 옵션입니다")
-            payload = {"command": args, "env": dict(env), "workdir": workdir}
-        elif instruction in {"COPY", "ADD"}:
-            if not allow_build_context:
-                raise _line_error(
-                    line,
-                    f"{instruction}은 업로드한 Dockerfile에서 지원하지 않습니다 "
-                    "— 빌드 컨텍스트가 없습니다. GitHub 소스를 사용하세요",
-                )
-            payload = _parse_copy_add(instruction, args, line)
-        elif instruction == "ENV":
-            updates = _parse_env(args, line)
-            env.update(updates)
-            payload = {"env": updates, "full_env": dict(env)}
-        elif instruction == "WORKDIR":
-            workdir = _validate_container_path(args, line, dest=True)
-            payload = {"workdir": workdir}
-        elif instruction in _UNSUPPORTED:
-            raise _line_error(line, f"{instruction}은 v1 Dockerfile import에서 지원하지 않습니다")
-        else:
-            raise _line_error(line, f"알 수 없는 instruction: {instruction}")
-        name = f"{prefix}-{len(planned) + 1:02d}-{_slug(instruction + ' ' + args)}"
-        if len(name) > 64:
-            raise _line_error(
-                line, f"생성될 layer name이 64자를 초과합니다: {name!r}; 더 짧은 layer_prefix를 사용하세요"
-            )
-        planned.append(
-            {
-                "name": name,
-                "line": line,
-                "instruction": instruction,
-                "args": args,
-                "payload": payload,
-                "source_metadata": {
-                    "dockerfile_line": line,
-                    "dockerfile_instruction": instruction,
-                    "commit_sha": commit_sha,
-                    "dockerfile_path": dockerfile_path,
-                },
-            }
-        )
-    if not seen_from:
-        raise DockerfileImportError(
-            "Dockerfile에는 FROM ubuntu:<version> 또는 FROM palimpsest/<name>@sha256:<64hex>가 필요합니다"
-        )
-    if not planned:
-        raise DockerfileImportError("Dockerfile에는 layer로 변환할 RUN/COPY/ADD/ENV/WORKDIR instruction이 필요합니다")
-    return ParsedDockerfile(ubuntu_base=from_base, parent_digest=parent_digest, planned_layers=planned)
-
-
-def parse_dockerfile_plan(
-    text: str, *, layer_prefix: str, profile_name: str, commit_sha: str, dockerfile_path: str
-) -> tuple[str, list[dict]]:
-    """`parse_dockerfile_source` 의 GitHub 경로 호환 래퍼 — `(ubuntu_base, planned)` 를 돌려준다.
-
-    FROM 이 Palimpsest 레이어를 가리키면 ubuntu_base 가 없으므로 이 래퍼로는 표현할 수 없다.
-    그 경우 `parse_dockerfile_source` 를 직접 쓸 것.
-    """
-    parsed = parse_dockerfile_source(
+    """Parse a build using the same syntax diagnostics as the editor lint."""
+    parsed, errors = _parse_dockerfile_with_diagnostics(
         text,
         layer_prefix=layer_prefix,
         profile_name=profile_name,
         commit_sha=commit_sha,
         dockerfile_path=dockerfile_path,
-        allow_build_context=True,
+        allow_build_context=allow_build_context,
     )
-    if parsed.ubuntu_base is None:
-        raise DockerfileImportError(
-            "FROM palimpsest/<name>@sha256:… 은 이 경로에서 지원하지 않습니다 (inline 빌드 API를 사용하세요)"
-        )
-    return parsed.ubuntu_base, parsed.planned_layers
+    if diagnostics is not None:
+        diagnostics.extend({"line": exc.line, "message": exc.detail} for exc in errors)
+        return parsed if parsed is not None else ParsedDockerfile(None, None, None, [])
+    if errors:
+        raise errors[0]
+    assert parsed is not None
+    return parsed
+
+
+def resolve_dockerfile_base_image(conn: Any, parsed: ParsedDockerfile) -> dict:
+    """Resolve the sole root image selection from FROM; fail on ambiguity."""
+    if parsed.parent_digest or not parsed.from_ref:
+        raise ValueError("root FROM must identify a Glance image")
+    try:
+        return resolve_glance_base_snapshot(conn, parsed.from_ref)
+    except ValueError as exc:
+        raise _line_error(parsed.from_line, str(exc)) from exc
+    except Exception:
+        _logger.warning("[dockerfile] Glance base image 조회 실패")
+        raise DockerfileImportError("Glance 이미지 목록을 조회하지 못했습니다") from None
 
 
 def compute_step_digest(parent_ref: str, instruction: str, args: str) -> str:
     """빌드 캐시 키 — 같은 부모 위의 같은 명령이면 같은 값.
 
-    `parent_ref` 는 부모 레이어의 `chain_id`(있으면) 또는 루트일 때 ubuntu base 키다.
+    `parent_ref` 는 부모 레이어의 `chain_id` 또는 루트 Glance image ID다.
     Docker 의 레이어 캐시와 같은 개념이고, Palimpsest 의 chain_id 가 "여기까지의 스택"을
     한 값으로 대표해 주기 때문에 성립한다.
 
@@ -468,6 +509,109 @@ def compute_step_digest(parent_ref: str, instruction: str, args: str) -> str:
     return "sha256:" + hashlib.sha256(payload).hexdigest()
 
 
+async def parent_chain_depth(artifact: Any) -> int:
+    """Count the sealed parent and its ancestors without consulting the build cache."""
+    factory = get_session_factory()
+    if factory is None:
+        raise DockerfileImportError("DB가 초기화되지 않았습니다")
+    async with factory() as session:
+        return len(await load_lineage(session, artifact))
+
+
+async def lint_dockerfile(conn: Any, *, dockerfile_text: str, layer_prefix: str | None) -> dict:
+    """Return syntax, Glance resolution and local-KVM estimates without build side effects."""
+    diagnostics: list[dict] = []
+    prefix = "layer"
+    if layer_prefix:
+        try:
+            prefix = validate_layer_name(layer_prefix, field="layer_prefix")
+        except DockerfileImportError as exc:
+            diagnostics.append({"line": None, "message": exc.detail})
+    if len(dockerfile_text.encode("utf-8")) > _MAX_DOCKERFILE_BYTES:
+        diagnostics.append({"line": None, "message": "Dockerfile 크기는 1MiB 이하여야 합니다"})
+        parsed = ParsedDockerfile(None, None, None, [])
+    elif not dockerfile_text.strip():
+        diagnostics.append({"line": None, "message": "Dockerfile 본문이 비어 있습니다"})
+        parsed = ParsedDockerfile(None, None, None, [])
+    else:
+        parsed = parse_dockerfile_source(
+            dockerfile_text,
+            layer_prefix=prefix,
+            profile_name=prefix,
+            commit_sha=None,
+            dockerfile_path=None,
+            allow_build_context=False,
+            diagnostics=diagnostics,
+        )
+
+    from_info: dict = {
+        "line": parsed.from_line,
+        "ref": parsed.from_ref or parsed.parent_digest,
+        "kind": None,
+        "image": None,
+        "parent": None,
+        "completions": [],
+        "error": None,
+        "note": None,
+    }
+    inherited = 0
+    if parsed.parent_digest:
+        from_info["kind"] = "palimpsest"
+        try:
+            parent = await resolve_parent_layer(parsed.parent_digest)
+            _snapshot_from_artifact(parent)
+            inherited = await parent_chain_depth(parent)
+            from_info["parent"] = {
+                "id": parent.id,
+                "name": parent.name,
+                "blob_digest": parent.blob_digest,
+                "ubuntu_base": parent.ubuntu_base,
+                "base_image_name": parent.base_image_name,
+                "chain_depth": inherited,
+            }
+        except DockerfileImportError as exc:
+            from_info["error"] = str(exc)
+    elif parsed.from_ref:
+        try:
+            images = await asyncio.to_thread(list_base_images, conn)
+        except Exception:
+            _logger.warning("[dockerfile_lint] Glance base image 목록 조회 실패", exc_info=True)
+            from_info["error"] = "Glance 이미지 목록을 조회하지 못했습니다"
+        else:
+            resolution = resolve_from_reference(images, parsed.from_ref)
+            from_info.update(
+                kind=resolution.kind,
+                image=resolution.image,
+                error=resolution.error,
+                note=resolution.note,
+                completions=resolution.completions,
+            )
+
+    new = len(parsed.planned_layers)
+    total = inherited + new
+    warnings: list[dict] = []
+    if total > MAX_LAYER_DISKS:
+        warnings.append(
+            {
+                "line": None,
+                "message": f"예상 체인 길이 {total}개가 로컬 KVM 레이어 상한 {MAX_LAYER_DISKS}개를 넘습니다 — RUN을 합치거나 부모 체인을 줄이세요",
+            }
+        )
+    return {
+        "valid": not diagnostics and from_info["error"] is None,
+        "diagnostics": diagnostics,
+        "warnings": warnings,
+        "from": from_info,
+        "layers": {
+            "new": new,
+            "inherited": inherited,
+            "total": total,
+            "limit": MAX_LAYER_DISKS,
+            "by_instruction": dict(Counter(step["instruction"] for step in parsed.planned_layers)),
+        },
+    }
+
+
 def prepare_dockerfile_import(
     conn,
     *,
@@ -476,27 +620,24 @@ def prepare_dockerfile_import(
     dockerfile_path: str,
     layer_prefix: str,
     profile_name: str | None,
-    base_image_id: str,
 ) -> DockerfilePlan:
     repo = parse_github_url(github_url)
     path = validate_dockerfile_path(dockerfile_path)
     prefix = validate_layer_name(layer_prefix, field="layer_prefix")
     profile = validate_layer_name(profile_name or prefix, field="profile_name")
-    base_snapshot = resolve_base_image_snapshot(conn, base_image_id)
     sha = resolve_github_commit(repo, ref)
     fetch_pinned_archive(repo, sha)
     dockerfile = fetch_pinned_dockerfile(repo, sha, path)
-    from_base, layers = parse_dockerfile_plan(
+    parsed = parse_dockerfile_source(
         dockerfile,
         layer_prefix=prefix,
         profile_name=profile,
         commit_sha=sha,
         dockerfile_path=path,
     )
-    if from_base != base_snapshot["ubuntu_base"]:
-        raise DockerfileImportError(
-            f"Dockerfile FROM({from_base})과 선택한 Glance image({base_snapshot['ubuntu_base']})가 일치하지 않습니다"
-        )
+    if parsed.parent_digest:
+        raise _line_error(parsed.from_line, "GitHub import에서는 Palimpsest 부모 FROM을 지원하지 않습니다")
+    base_snapshot = resolve_dockerfile_base_image(conn, parsed)
     return DockerfilePlan(
         github_url=repo.canonical_url,
         repo_owner=repo.owner,
@@ -506,7 +647,7 @@ def prepare_dockerfile_import(
         layer_prefix=prefix,
         profile_name=profile,
         base_image_snapshot=base_snapshot,
-        planned_layers=layers,
+        planned_layers=parsed.planned_layers,
     )
 
 
@@ -516,13 +657,11 @@ async def prepare_inline_dockerfile_import(
     dockerfile_text: str,
     layer_prefix: str,
     profile_name: str | None,
-    base_image_id: str | None,
 ) -> DockerfilePlan:
     """사용자가 올린 Dockerfile 본문을 레이어 계획으로 만든다.
 
-    GitHub 경로와 달리 **빌드 컨텍스트가 없으므로 COPY/ADD 를 거부**한다.
-    `FROM palimpsest/<name>@sha256:…` 이면 base 이미지는 부모에게서 상속하고,
-    `FROM ubuntu:<ver>` 이면 호출자가 준 Glance 이미지와 일치해야 한다.
+    `FROM palimpsest/<name>@sha256:…` 는 부모 이미지를 상속한다.
+    루트 FROM 은 Glance 에서 active Ubuntu 이미지를 선택한다.
     """
     if not dockerfile_text or not dockerfile_text.strip():
         raise DockerfileImportError("Dockerfile 본문이 비어 있습니다")
@@ -541,29 +680,21 @@ async def prepare_inline_dockerfile_import(
         allow_build_context=False,
     )
 
+    parent = None
     if parsed.parent_digest:
         parent = await resolve_parent_layer(parsed.parent_digest)
         base_snapshot = _snapshot_from_artifact(parent)
         root_ref = parent.chain_id or parsed.parent_digest
     else:
-        if not base_image_id:
-            raise DockerfileImportError("FROM ubuntu:<version> 을 쓰려면 base_image_id 가 필요합니다")
-        base_snapshot = resolve_base_image_snapshot(conn, base_image_id)
-        if parsed.ubuntu_base != base_snapshot["ubuntu_base"]:
-            raise DockerfileImportError(
-                f"Dockerfile FROM({parsed.ubuntu_base})과 선택한 Glance image"
-                f"({base_snapshot['ubuntu_base']})가 일치하지 않습니다"
-            )
-        root_ref = base_snapshot["ubuntu_base"]
+        base_snapshot = await asyncio.to_thread(resolve_dockerfile_base_image, conn, parsed)
+        root_ref = f"glance:{base_snapshot['base_image_id']}"
 
     annotated = await apply_build_cache(parsed.planned_layers, root_ref=root_ref)
     cached_ids, planned = split_cached_prefix(annotated)
 
     # `FROM palimpsest/…` 의 부모도 재사용 접두부의 일부다 — 빌드 루프가 여기서 이어 쌓는다.
-    if parsed.parent_digest:
-        parent_artifact = await resolve_parent_layer(parsed.parent_digest)
-        cached_ids = [parent_artifact.id, *cached_ids]
-
+    if parent:
+        cached_ids = [parent.id, *cached_ids]
     if not planned:
         raise DockerfileImportError(
             "모든 단계가 이미 빌드되어 있습니다 — 새로 만들 레이어가 없습니다. 기존 프로파일을 그대로 사용하세요"
@@ -616,6 +747,8 @@ def _snapshot_from_artifact(artifact) -> dict:
     `FROM palimpsest/...` 는 부모와 같은 Ubuntu base 위에서만 성립한다 — 다른 base 로
     쌓으면 ABI 가 어긋난다(union.md §4.2 의 다중 상속 위험과 같은 이유).
     """
+    if not artifact.base_image_id:
+        raise DockerfileImportError("부모 레이어에 Glance base image ID가 없습니다 — snapshot 백필이 필요합니다")
     return {
         "ubuntu_base": artifact.ubuntu_base,
         "base_image_id": artifact.base_image_id,

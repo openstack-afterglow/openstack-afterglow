@@ -1,12 +1,16 @@
 <script lang="ts">
-	import { OS_LOGOS, OS_EMOJI, osLabel } from '$lib/utils/imageOs';
+	import { OS_LOGOS, OS_EMOJI } from '$lib/utils/imageOs';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import Pill from '$lib/components/ui/Pill.svelte';
 	import type { ImageInfo } from '$lib/types/compute';
+	import ImageVerificationBadge from '$lib/components/image/ImageVerificationBadge.svelte';
+	import ImageDigest from '$lib/components/image/ImageDigest.svelte';
+	import { imageReferenceParts, imageVerificationStatus } from '$lib/stores/imageCatalog.svelte';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
 
 	let {
 		img,
+		current,
 		isOwner,
 		toggling,
 		deleting,
@@ -20,6 +24,7 @@
 		onDelete,
 	}: {
 		img: ImageInfo;
+		current: boolean;
 		isOwner: boolean;
 		toggling: boolean;
 		deleting: boolean;
@@ -32,6 +37,7 @@
 		onEdit: (img: ImageInfo) => void;
 		onDelete: (id: string, name: string) => void;
 	} = $props();
+	const reference = $derived(imageReferenceParts(img));
 
 	function formatSize(bytes: number | null): string {
 		if (!bytes) return '-';
@@ -45,7 +51,7 @@
 	data-selected={selected}
 >
 	<!-- Header: selection + icon + detail -->
-	<div class="flex items-center gap-2.5">
+	<div class="flex items-start gap-2.5 min-w-0">
 		<SelectionCheckbox
 			checked={selected}
 			disabled={!selectable || selectionDisabled}
@@ -68,17 +74,19 @@
 			class="flex-1 min-w-0 text-left"
 			onclick={() => onSelect(img.id)}
 		>
-			<div class="text-[var(--color-ink-0)] text-[13px] font-medium truncate font-mono">{img.repository ?? img.name}</div>
-			<div class="flex items-center gap-1.5 mt-1">
-				<span class="text-xs text-[var(--color-ink-3)] font-mono">tag</span>
-				<Pill tone={img.tag === 'latest' || !img.tag ? 'warm' : 'accent'} size="xs">{img.tag ?? 'latest'}</Pill>
+			<div class="text-[var(--color-ink-0)] text-[13px] font-medium font-mono break-all">{reference.repository}</div>
+			<div class="flex items-start gap-1.5 mt-1 min-w-0">
+				<span class="text-xs text-[var(--color-ink-2)] font-mono shrink-0">tag</span>
+				<Pill tone={reference.tag === 'latest' ? 'warm' : 'accent'} size="xs" class="image-tag">{reference.tag}</Pill>
 			</div>
 		</button>
 	</div>
 
 	<!-- Footer: status + visibility + size -->
-	<div class="flex items-center gap-2 text-xs">
+	<div class="flex flex-wrap items-center gap-2 text-xs">
+		<Pill tone={current ? 'accent' : 'neutral'} size="xs">{current ? '현재' : '이전'}</Pill>
 		<StatusChip status={img.status} />
+		<ImageVerificationBadge status={imageVerificationStatus(img)} />
 		{#if img.visibility === 'public'}
 			<Pill tone="info" size="xs">공개</Pill>
 		{:else if img.visibility === 'shared'}
@@ -88,12 +96,13 @@
 		{:else}
 			<Pill tone="neutral" size="xs">비공개</Pill>
 		{/if}
-		<span class="ml-auto text-[var(--color-ink-3)]">{formatSize(img.size ?? null)}</span>
+		<span class="ml-auto text-[var(--color-ink-2)]">{formatSize(img.size ?? null)}</span>
 	</div>
+	<ImageDigest image={img} />
 
 	<!-- Actions (own images only) -->
 	{#if isOwner}
-		<div class="flex items-center gap-1 pt-1 border-t border-[var(--color-line)]">
+		<div class="flex flex-wrap items-center gap-1 pt-1 border-t border-[var(--color-line)]">
 			{#if img.status === 'active' || img.status === 'deactivated'}
 				<button
 					onclick={() => onToggleActivation(img)}
@@ -113,3 +122,7 @@
 		</div>
 	{/if}
 </article>
+
+<style>
+	:global(.image-tag) { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+</style>

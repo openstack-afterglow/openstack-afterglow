@@ -21,13 +21,14 @@ from pathlib import PurePosixPath
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.api.deps import get_os_conn, require_admin
 from app.services.dockerfile_import import (
     DockerfileImportError,
     compute_step_digest,
     create_import_job,
+    lint_dockerfile,
     prepare_inline_dockerfile_import,
 )
 
@@ -41,11 +42,11 @@ _MAX_DOCKERFILE_CHARS = 1024 * 1024
 class InlineDockerfileBuildRequest(BaseModel):
     """업로드한 Dockerfile 로 레이어 체인을 빌드한다."""
 
+    model_config = ConfigDict(extra="forbid")
+
     dockerfile: str = Field(..., min_length=1, max_length=_MAX_DOCKERFILE_CHARS)
     layer_prefix: str
     profile_name: str | None = None
-    # `FROM ubuntu:<ver>` 일 때 필수. `FROM palimpsest/<name>@sha256:…` 이면 부모에게서 상속한다.
-    base_image_id: str | None = None
 
     @field_validator("dockerfile")
     @classmethod
@@ -53,6 +54,13 @@ class InlineDockerfileBuildRequest(BaseModel):
         if not value.strip():
             raise ValueError("Dockerfile 본문이 비어 있습니다")
         return value
+
+
+class DockerfileLintRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    dockerfile: str = Field(..., max_length=_MAX_DOCKERFILE_CHARS)
+    layer_prefix: str | None = None
 
 
 class FetchDockerfileUrlRequest(BaseModel):
@@ -128,7 +136,6 @@ async def build_from_inline_dockerfile(
             dockerfile_text=req.dockerfile,
             layer_prefix=req.layer_prefix,
             profile_name=req.profile_name,
-            base_image_id=req.base_image_id,
         )
     except DockerfileImportError as exc:
         message = str(exc)
@@ -151,6 +158,12 @@ async def build_from_inline_dockerfile(
     }
 
 
+@router.post("/dockerfile/lint", dependencies=[Depends(require_admin)])
+async def lint_inline_dockerfile(req: DockerfileLintRequest, conn=Depends(get_os_conn)) -> dict[str, Any]:
+    """Read-only validation; build and plan still validate independently."""
+    return await lint_dockerfile(conn, dockerfile_text=req.dockerfile, layer_prefix=req.layer_prefix)
+
+
 @router.post("/dockerfile/plan", dependencies=[Depends(require_admin)])
 async def preview_inline_dockerfile_plan(
     req: InlineDockerfileBuildRequest,
@@ -163,7 +176,6 @@ async def preview_inline_dockerfile_plan(
             dockerfile_text=req.dockerfile,
             layer_prefix=req.layer_prefix,
             profile_name=req.profile_name,
-            base_image_id=req.base_image_id,
         )
     except DockerfileImportError as exc:
         message = str(exc)

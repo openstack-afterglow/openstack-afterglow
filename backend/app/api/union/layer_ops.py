@@ -12,7 +12,7 @@ from datetime import UTC, datetime, timedelta
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from sqlalchemy import desc, select
 
 from app.api.deps import get_os_conn, require_admin
@@ -20,8 +20,8 @@ from app.database import get_session_factory
 from app.services.cache import invalidate
 from app.services.layer_base_images import (
     legacy_snapshot_for_ubuntu_base,
+    list_base_images,
     resolve_base_image_snapshot,
-    snapshot_from_image,
     validate_base_image_id,
 )
 from app.services.layer_ubuntu import normalize_ubuntu_base
@@ -378,17 +378,13 @@ class LayerProfileRequest(BaseModel):
 
 
 class DockerfileImportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     github_url: str
     ref: str | None = None
     dockerfile_path: str = "Dockerfile"
     layer_prefix: str
     profile_name: str | None = None
-    base_image_id: str
-
-    @field_validator("base_image_id")
-    @classmethod
-    def validate_import_base_image_id(cls, v: str) -> str:
-        return validate_base_image_id(v)
 
 
 class PublicationRequest(BaseModel):
@@ -538,52 +534,13 @@ def _effective_build_ubuntu_base(req: LayerBuildRequest, parent_row, lineage: li
     return parent_base
 
 
-def _image_attr(img, name: str, default=None):
-    if isinstance(img, dict):
-        return img.get(name, default)
-    return getattr(img, name, default)
-
-
-def _base_image_response(img) -> dict | None:
-    snapshot = snapshot_from_image(img)
-    ubuntu_base = snapshot.get("ubuntu_base")
-    if not ubuntu_base:
-        return None
-    status = str(_image_attr(img, "status", "") or "").lower()
-    if status != "active":
-        return None
-    return {
-        "id": snapshot["base_image_id"],
-        "name": snapshot.get("base_image_name") or "",
-        "status": status,
-        "ubuntu_base": ubuntu_base,
-        "size": _image_attr(img, "size", 0) or 0,
-        "min_disk": snapshot.get("base_image_min_disk") or 0,
-        "min_ram": _image_attr(img, "min_ram", 0) or 0,
-        "disk_format": _image_attr(img, "disk_format", "") or "",
-        "visibility": snapshot.get("base_image_visibility") or "private",
-        "owner": snapshot.get("base_image_owner") or "",
-        "checksum": snapshot.get("base_image_checksum"),
-        "os_hash_algo": snapshot.get("base_image_os_hash_algo"),
-        "os_hash_value": snapshot.get("base_image_os_hash_value"),
-        "created_at": str(_image_attr(img, "created_at")) if _image_attr(img, "created_at", None) else None,
-    }
-
-
 @router.get("/base-images", dependencies=[Depends(require_admin)])
 async def list_layer_base_images(conn=Depends(get_os_conn)) -> list[dict]:
     """Active Ubuntu Glance images that can boot layer builder/consumer VMs."""
 
-    def _list() -> list[dict]:
-        items: list[dict] = []
-        for img in conn.image.images():
-            item = _base_image_response(img)
-            if item is not None:
-                items.append(item)
-        return sorted(items, key=lambda item: (item["ubuntu_base"], item["name"], item["id"]))
-
     try:
-        return await asyncio.to_thread(_list)
+        return await asyncio.to_thread(list_base_images, conn)
+
     except Exception:
         _logger.warning("[layer_ops] base image 목록 조회 실패", exc_info=True)
         raise HTTPException(status_code=500, detail="base image 목록 조회 실패")
@@ -602,7 +559,6 @@ async def create_dockerfile_import(req: DockerfileImportRequest, conn=Depends(ge
             dockerfile_path=req.dockerfile_path,
             layer_prefix=req.layer_prefix,
             profile_name=req.profile_name,
-            base_image_id=req.base_image_id,
         )
         return await create_import_job(plan)
     except (DockerfileImportError, ValueError) as exc:

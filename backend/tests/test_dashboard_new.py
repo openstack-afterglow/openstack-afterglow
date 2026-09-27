@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from tests.conftest import patch_redis_cache_miss
+from tests.conftest import patch_redis_cache_miss, patch_usage_report_deps
 
 MOCK_SERVERS = [
     {"id": "s1", "status": "ACTIVE", "flavor_id": "f1", "flavor_name": "c2.medium", "name": "web-01"},
@@ -146,7 +146,7 @@ async def test_usage_stats_returns_expected_structure(client, mock_conn, monkeyp
             "app.api.common.dashboard.nova.get_project_usage",
             return_value={
                 "total_hours": 72.0,
-                "total_vcpu_hours": 144.0,
+                "total_vcpus_usage": 144.0,
                 "server_usages": [],
             },
         ),
@@ -164,6 +164,7 @@ async def test_usage_stats_returns_expected_structure(client, mock_conn, monkeyp
     assert "top_instances" in data
     assert "volumes_by_type" in data
     assert data["instance_hours"] == 72.0
+    assert data["vcpu_hours"] == 144.0
     # 인스턴스별 CPU/RAM instant query 는 실제 Prometheus 대신 mock 으로만 나간다.
     assert mock_prom.await_count == 2
 
@@ -228,63 +229,82 @@ async def test_usage_stats_unauthenticated(non_admin_client, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
+def _usage_server(instance_id: str, flavor: str, *, vcpus: int, memory_mb: int, hours: float) -> dict:
+    """One row in the shape returned by nova.get_project_usage."""
+    return {
+        "instance_id": instance_id,
+        "name": f"vm-{instance_id}",
+        "flavor": flavor,
+        "vcpus": vcpus,
+        "memory_mb": memory_mb,
+        "local_gb": 20,
+        "hours": hours,
+        "state": "active",
+        "started_at": "2026-08-01T10:00:00+00:00",
+        "ended_at": None,
+        "uptime": int(hours * 3600),
+    }
+
+
 @pytest.mark.asyncio
 async def test_usage_report_structure(client, mock_conn, monkeypatch):
-    """stats / flavor_hours / quota 구조 반환."""
+    """Nova 서비스 실제 모양에서 flavor 이름·vCPU·h·쿼터·GPU 예측을 반환."""
     patch_redis_cache_miss(monkeypatch)
-    with (
-        patch(
-            "app.api.common.dashboard.nova.get_project_usage",
-            return_value={
-                "total_hours": 240.0,
-                "total_vcpu_hours": 480.0,
-                "server_usages": [
-                    {"flavor": "c2.medium", "hours": 120.0, "state": "active"},
-                    {"flavor": "c4.large", "hours": 120.0, "state": "active"},
-                ],
-            },
-        ),
-        patch(
-            "app.api.common.dashboard.nova.get_project_quota",
-            return_value={
-                "cores": {"in_use": 6, "limit": 20},
-            },
-        ),
+    with patch_usage_report_deps(
+        usage={
+            "total_hours": 180.0,
+            "total_vcpus_usage": 480.0,
+            "total_memory_mb_usage": 983040.0,
+            "total_local_gb_usage": 3600.0,
+            "server_usages": [
+                _usage_server("s1", "c2.medium", vcpus=2, memory_mb=4096, hours=120.0),
+                _usage_server("s2", "c4.large", vcpus=4, memory_mb=8192, hours=60.0),
+            ],
+        },
+        quota={"cores": {"in_use": 6, "limit": 20}},
+        volume_quota={"gigabytes": {"in_use": 100, "limit": 1000}},
+        flavors=MOCK_FLAVORS,
+        gpu=[{"project_id": "p", "gpu_type": "A10", "limit": 4, "in_use": 1, "available": 3}],
     ):
         resp = await client.get("/api/v1/dashboard/usage-report?range=30d")
 
     assert resp.status_code == 200
     data = resp.json()
     assert data["range"] == "30d"
-    assert data["stats"]["instance_hours"] == 240.0
-    assert len(data["flavor_hours"]) == 2
-    assert data["quota"]["vcpus_in_use"] == 6
-    assert data["forecast"]["vcpu_pct"] == 30.0
+    assert data["stats"]["instance_hours"] == 180.0
+    flavors = {f["flavor"]: f for f in data["flavor_hours"]}
+    assert set(flavors) == {"c2.medium", "c4.large"}
+    assert "unknown" not in flavors
+    assert flavors["c4.large"]["vcpus"] == 4
+    assert flavors["c4.large"]["vcpu_hours"] == 240.0
+    assert data["stats"]["vcpu_hours"] == 480.0
+    assert data["stats"]["ram_gb_hours"] == 960.0
+    assert data["quota"]["vcpus"] == {"in_use": 6, "limit": 20}
+    assert data["forecast"]["vcpus"]["current_pct"] == 30.0
+    assert data["forecast"]["gpu"]["A10"]["current_pct"] == 25.0
 
 
 @pytest.mark.asyncio
 async def test_usage_report_flavor_hours_sorted(client, mock_conn, monkeypatch):
     """flavor_hours는 usage_hours 내림차순 정렬."""
     patch_redis_cache_miss(monkeypatch)
-    with (
-        patch(
-            "app.api.common.dashboard.nova.get_project_usage",
-            return_value={
-                "total_hours": 300.0,
-                "total_vcpu_hours": 600.0,
-                "server_usages": [
-                    {"flavor": "small", "hours": 50.0, "state": "active"},
-                    {"flavor": "large", "hours": 250.0, "state": "active"},
-                ],
-            },
-        ),
-        patch("app.api.common.dashboard.nova.get_project_quota", return_value={}),
+    with patch_usage_report_deps(
+        usage={
+            "total_hours": 300.0,
+            "total_vcpus_usage": 600.0,
+            "total_memory_mb_usage": 0.0,
+            "total_local_gb_usage": 0.0,
+            "server_usages": [
+                _usage_server("s1", "small", vcpus=2, memory_mb=2048, hours=50.0),
+                _usage_server("s2", "large", vcpus=2, memory_mb=8192, hours=250.0),
+            ],
+        },
     ):
         resp = await client.get("/api/v1/dashboard/usage-report?range=7d")
 
     assert resp.status_code == 200
     hours = [fh["usage_hours"] for fh in resp.json()["flavor_hours"]]
-    assert hours == sorted(hours, reverse=True)
+    assert hours == [250.0, 50.0]
 
 
 # ---------------------------------------------------------------------------

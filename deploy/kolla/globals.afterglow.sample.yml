@@ -41,7 +41,7 @@ enable_lumen_source_build: false
 enable_waygate_source_build: false
 enable_palimpsest_source_build: false
 
-afterglow_image_tag: "v1.27.0"
+afterglow_image_tag: "v1.28.0"
 afterglow_backend_image_ref: "{{ afterglow_backend_image }}:{{ afterglow_image_tag }}"
 afterglow_frontend_image_ref: "{{ afterglow_frontend_image }}:{{ afterglow_image_tag }}"
 afterglow_worker_image_ref: "{{ afterglow_worker_image }}:{{ afterglow_image_tag }}"
@@ -57,8 +57,8 @@ drover_api_image_ref: "ghcr.io/openstack-afterglow/drover-api:v0.2.25"
 drover_worker_image_ref: "ghcr.io/openstack-afterglow/drover-worker:v0.2.25"
 waygate_api_image_ref: "ghcr.io/openstack-afterglow/waygate-api:0.2.0"
 waygate_worker_image_ref: "ghcr.io/openstack-afterglow/waygate-worker:0.2.0"
-lumen_api_image_ref: "ghcr.io/openstack-afterglow/lumen-api:0.3.0"
-lumen_worker_image_ref: "ghcr.io/openstack-afterglow/lumen-worker:0.3.0"
+lumen_api_image_ref: "ghcr.io/openstack-afterglow/lumen-api:0.3.1"
+lumen_worker_image_ref: "ghcr.io/openstack-afterglow/lumen-worker:0.3.1"
 palimpsest_api_image_ref: "ghcr.io/openstack-afterglow/palimpsest-hub-api:0.2.0"
 palimpsest_worker_image_ref: "ghcr.io/openstack-afterglow/palimpsest-hub-worker:0.2.0"
 # ── 3. HAProxy VIP Listeners and Controller Upstreams ────────────────────────

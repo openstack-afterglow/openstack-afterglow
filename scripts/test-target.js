@@ -261,7 +261,8 @@ const targets = {
 		},
 		frontend: {
 			selectors: [
-				"src/routes/admin/libraries/__tests__/libraries-layer-workflow.test.ts",
+				"src/routes/admin/libraries/__tests__/dockerfile-lint.test.ts",
+				"src/lib/components/admin/libraries/__tests__/DockerfileLintPanel.test.ts",
 				"src/lib/components/wizard/__tests__/vm-create-squashfs-beta.test.ts"
 			]
 		}

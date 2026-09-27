@@ -76,3 +76,26 @@ def test_create_and_rename_store_canonical_name():
     result = update_image_metadata(conn, "image-1", name="ubuntu:24.04")
     assert conn.image.update_image.call_args.kwargs["name"] == "ubuntu:24.04"
     assert (result.repository, result.tag) == ("ubuntu", "24.04")
+
+
+def test_metadata_update_keeps_protected_image_state():
+    conn = MagicMock()
+    updated = _image("ubuntu:24.04")
+    updated.is_protected = True
+    conn.image.update_image.return_value = updated
+
+    result = update_image_metadata(conn, "image-1", name="ubuntu:24.04")
+
+    assert result.protected is True
+
+
+def test_image_list_coerces_missing_protection_state_to_false():
+    conn = MagicMock()
+    conn._afterglow_project_id = "project-1"
+    image = _image("ubuntu:24.04")
+    image.is_protected = None
+    conn.image.images.side_effect = [[], [], [], [image]]
+
+    result = list_images(conn, "project-1")
+
+    assert [(entry.id, entry.protected) for entry in result] == [(image.id, False)]

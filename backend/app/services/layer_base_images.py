@@ -3,13 +3,19 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import Any
+
+from openstack.exceptions import NotFoundException
 
 from app.services.layer_ubuntu import normalize_ubuntu_base
 
 IMAGE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _NAME_UBUNTU_RE = re.compile(r"ubuntu[^0-9]*(18\.04|20\.04|22\.04|24\.04)", re.IGNORECASE)
 _SUPPORTED_RELEASES = {"18.04", "20.04", "22.04", "24.04"}
+FROM_REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+\-]{0,127}$")
+UBUNTU_TAG_RE = re.compile(r"^ubuntu:(\d{2}\.\d{2})$")
+FROM_COMPLETION_LIMIT = 20
 
 
 def _attr(img: Any, name: str, default: Any = None) -> Any:
@@ -108,6 +114,128 @@ def snapshot_from_image(img: Any) -> dict:
     }
 
 
+def base_image_item(img: Any) -> dict | None:
+    """Project-visible active Ubuntu image in the admin base-image response format."""
+    snapshot = snapshot_from_image(img)
+    ubuntu_base = snapshot.get("ubuntu_base")
+    if not ubuntu_base or not snapshot.get("base_image_id"):
+        return None
+    status = str(_attr(img, "status", "") or "").lower()
+    if status != "active":
+        return None
+    return {
+        "id": snapshot["base_image_id"],
+        "name": snapshot.get("base_image_name") or "",
+        "status": status,
+        "ubuntu_base": ubuntu_base,
+        "size": _attr(img, "size", 0) or 0,
+        "min_disk": snapshot.get("base_image_min_disk") or 0,
+        "min_ram": _attr(img, "min_ram", 0) or 0,
+        "disk_format": _attr(img, "disk_format", "") or "",
+        "visibility": snapshot.get("base_image_visibility") or "private",
+        "owner": snapshot.get("base_image_owner") or "",
+        "checksum": snapshot.get("base_image_checksum"),
+        "os_hash_algo": snapshot.get("base_image_os_hash_algo"),
+        "os_hash_value": snapshot.get("base_image_os_hash_value"),
+        "created_at": str(_attr(img, "created_at")) if _attr(img, "created_at", None) else None,
+    }
+
+
+def list_base_images(conn: Any) -> list[dict]:
+    items = [item for img in conn.image.images() if (item := base_image_item(img)) is not None]
+    return sorted(items, key=lambda item: (item["ubuntu_base"], item["name"], item["id"]))
+
+
+@dataclass(frozen=True)
+class FromResolution:
+    ref: str
+    kind: str | None
+    image: dict | None
+    error: str | None
+    note: str | None
+    completions: list[dict]
+
+
+def _completions(images: list[dict]) -> list[dict]:
+    latest: dict[str, dict] = {}
+    for image in images:
+        name = image["name"]
+        ref = name if FROM_REF_RE.fullmatch(name) else image["id"]
+        previous = latest.get(ref)
+        if previous is None or (str(image.get("created_at") or ""), image["id"]) > (
+            str(previous.get("created_at") or ""),
+            previous["id"],
+        ):
+            latest[ref] = image
+    return [
+        {
+            "ref": ref,
+            "id": image["id"],
+            "name": image["name"],
+            "ubuntu_base": image["ubuntu_base"],
+            "created_at": image.get("created_at"),
+        }
+        for ref, image in sorted(latest.items(), key=lambda pair: (pair[1]["ubuntu_base"], pair[1]["name"]))[
+            :FROM_COMPLETION_LIMIT
+        ]
+    ]
+
+
+def resolve_from_reference(images: list[dict], ref: str) -> FromResolution:
+    """Prefer exact name, then ID, then a unique supported Ubuntu release tag."""
+    named = [image for image in images if image["name"] == ref]
+    if named:
+        selected = max(named, key=lambda image: (str(image.get("created_at") or ""), image["id"]))
+        note = (
+            f"같은 이름의 이미지 {len(named)}개 중 최신(created_at) 이미지를 선택했습니다" if len(named) > 1 else None
+        )
+        return FromResolution(ref, "glance_name", selected, None, note, [])
+    by_id = next((image for image in images if image["id"] == ref), None)
+    if by_id:
+        return FromResolution(ref, "glance_id", by_id, None, None, [])
+    tag = UBUNTU_TAG_RE.fullmatch(ref)
+    if tag:
+        release = tag.group(1)
+        if release not in _SUPPORTED_RELEASES:
+            return FromResolution(
+                ref,
+                "ubuntu_tag",
+                None,
+                f"지원하는 Ubuntu 버전은 18.04/20.04/22.04/24.04 입니다 (요청: {release})",
+                None,
+                [],
+            )
+        candidates = [image for image in images if image["ubuntu_base"] == f"ubuntu-{release}"]
+        if len(candidates) == 1:
+            return FromResolution(ref, "ubuntu_tag", candidates[0], None, None, [])
+        if candidates:
+            return FromResolution(
+                ref,
+                "ubuntu_tag",
+                None,
+                f"Ubuntu {release} 이미지가 {len(candidates)}개 있습니다 — FROM에 아래 이미지 이름 또는 UUID를 지정하세요",
+                None,
+                _completions(candidates),
+            )
+        return FromResolution(ref, "ubuntu_tag", None, f"Glance에 active Ubuntu {release} 이미지가 없습니다", None, [])
+    return FromResolution(
+        ref,
+        None,
+        None,
+        f"Glance에서 active Ubuntu 이미지 '{ref}'를 찾을 수 없습니다",
+        None,
+        _completions([image for image in images if image["name"].lower().startswith(ref.lower())]),
+    )
+
+
+def resolve_glance_base_snapshot(conn: Any, ref: str) -> dict:
+    resolution = resolve_from_reference(list_base_images(conn), ref)
+    if resolution.image is None:
+        choices = ": " + ", ".join(item["ref"] for item in resolution.completions[:5]) if resolution.completions else ""
+        raise ValueError(f"{resolution.error}{choices}")
+    return resolve_base_image_snapshot(conn, resolution.image["id"])
+
+
 def validate_base_image_id(base_image_id: str) -> str:
     value = str(base_image_id or "").strip()
     if not IMAGE_ID_RE.match(value):
@@ -118,7 +246,10 @@ def validate_base_image_id(base_image_id: str) -> str:
 def resolve_base_image_snapshot(conn: Any, base_image_id: str, expected_ubuntu_base: str | None = None) -> dict:
     """Fetch and validate an active supported Ubuntu Glance image."""
     image_id = validate_base_image_id(base_image_id)
-    img = conn.image.get_image(image_id)
+    try:
+        img = conn.image.get_image(image_id)
+    except NotFoundException as exc:
+        raise ValueError("base_image_id에 해당하는 Glance 이미지를 찾을 수 없습니다") from exc
     if img is None:
         raise ValueError("base_image_id에 해당하는 Glance 이미지를 찾을 수 없습니다")
     status = (_string(_attr(img, "status")) or "").lower()

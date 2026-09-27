@@ -12,9 +12,9 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from app.api.deps import get_os_conn, require_admin
-from app.models.compute import ImageDetail
-from app.services import glance
+from app.api.deps import get_os_conn, get_token_info, require_admin
+from app.models.compute import ImageDetail, ImageInfo
+from app.services import glance, image_verification
 from app.services.image_refs import ImageReferenceError, image_reference_fields, normalize_image_reference
 
 _logger = logging.getLogger(__name__)
@@ -38,6 +38,10 @@ class AdminUpdatePropertiesRequest(BaseModel):
     remove: list[str] | None = None
 
 
+class VerificationRequest(BaseModel):
+    verified: bool
+
+
 def _serialize_image(img) -> dict:
     display_name, repository, tag = image_reference_fields(getattr(img, "name", None))
     return {
@@ -54,7 +58,9 @@ def _serialize_image(img) -> dict:
         "visibility": img.visibility or "private",
         "owner": img.owner or "",
         "created_at": str(img.created_at) if img.created_at else None,
-        "protected": getattr(img, "is_protected", False),
+        "protected": bool(getattr(img, "is_protected", False)),
+        "os_hash_algo": getattr(img, "hash_algo", None),
+        "os_hash_value": getattr(img, "hash_value", None),
     }
 
 
@@ -112,9 +118,12 @@ async def list_admin_images(
             next_marker = page[-1]["id"] if page and has_more else None
             return {"items": page, "next_marker": next_marker, "count": len(page)}
 
-        if search:
-            return await asyncio.to_thread(_list_search)
-        return await asyncio.to_thread(_list_paged)
+        result = await asyncio.to_thread(_list_search if search else _list_paged)
+        result["items"] = [
+            image.model_dump()
+            for image in await image_verification.enrich([ImageInfo.model_validate(item) for item in result["items"]])
+        ]
+        return result
     except Exception:
         _logger.warning("관리자 이미지 목록 조회 실패", exc_info=True)
         raise HTTPException(status_code=500, detail="이미지 목록 조회 실패")
@@ -127,9 +136,30 @@ async def get_admin_image(
 ):
     """이미지 상세 조회."""
     try:
-        return await asyncio.to_thread(glance.get_image, conn, image_id)
+        image = await asyncio.to_thread(glance.get_image, conn, image_id)
     except Exception:
         raise HTTPException(status_code=404, detail="이미지를 찾을 수 없습니다")
+    return (await image_verification.enrich([image]))[0]
+
+
+@router.put("/images/{image_id}/verification", response_model=ImageDetail, dependencies=[Depends(require_admin)])
+async def set_admin_image_verification(
+    image_id: str,
+    req: VerificationRequest,
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+    token_info: dict = Depends(get_token_info),
+):
+    try:
+        image = await asyncio.to_thread(glance.get_image, conn, image_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail="이미지를 찾을 수 없습니다")
+    try:
+        await image_verification.set_verification(image, verified=req.verified, actor_id=token_info["user_id"])
+    except image_verification.ImageNotVerifiable as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except image_verification.VerificationUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return (await image_verification.enrich([image]))[0]
 
 
 @router.patch("/images/{image_id}", dependencies=[Depends(require_admin)])
@@ -157,7 +187,7 @@ async def update_admin_image(
             req.min_ram,
             req.visibility,
         )
-        return result
+        return (await image_verification.enrich([result]))[0]
     except Exception as e:
         _logger.warning("이미지 수정 실패: %s", e)
 
@@ -172,13 +202,14 @@ async def update_admin_image_properties(
 ):
     """이미지 임의 properties 추가/수정/삭제 (관리자)."""
     try:
-        return await asyncio.to_thread(
+        result = await asyncio.to_thread(
             glance.update_image_properties,
             conn,
             image_id,
             req.set,
             req.remove,
         )
+        return (await image_verification.enrich([result]))[0]
     except Exception as e:
         _logger.warning("이미지 properties 수정 실패 image=%s: %s", image_id, e)
         raise HTTPException(status_code=400, detail=f"properties 수정 실패: {e}")
@@ -196,6 +227,10 @@ async def delete_admin_image(
         _logger.warning("이미지 삭제 실패: %s", e)
 
         raise HTTPException(status_code=400, detail="이미지 삭제 실패")
+    try:
+        await image_verification.remove_deleted_image(image_id)
+    except image_verification.VerificationUnavailable:
+        _logger.warning("Deleted image %s retained an inaccessible verification row", image_id)
 
 
 @router.post("/images/{image_id}/deactivate", dependencies=[Depends(require_admin)], status_code=200)

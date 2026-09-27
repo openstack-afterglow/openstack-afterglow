@@ -148,6 +148,10 @@ OpenStack Swift(Ceph RGW) 기반의 오브젝트 스토리지를 관리합니다
 | `prefix` | query | string | `""` | 조회할 경로 prefix |
 | `delimiter` | query | string | `"/"` | `/`(기본): 현재 prefix의 직속 파일·서브디렉토리만. `""`: 전체 오브젝트를 flat하게 반환 |
 
+응답 항목은 `name`, `bytes`, `content_type`, `last_modified`, `etag`, `is_dir`입니다. 서버는 호출자의 Swift 연결로 container JSON 목록을 `format=json`·`prefix`·`delimiter`·`marker`로 끝까지 페이지 조회합니다. `delimiter="/"`이면 Swift `subdir` 항목을 `is_dir=true`, `bytes=0`, `content_type="application/directory"`인 폴더로 반환하므로 `path/` marker 객체 없이 `path/sub/file`만 저장된 암묵적 폴더도 계층마다 탐색할 수 있습니다. 실제 marker 객체와 같은 이름의 `subdir`는 한 항목으로 합치고 marker 메타데이터를 우선하며, 현재 prefix 자신의 marker는 계층 목록에서 제외합니다. `foo`와 `foo/`처럼 이름이 다른 키는 합치지 않습니다. `delimiter=""`는 저장된 객체만 반환하고 가상 폴더를 만들지 않습니다.
+
+목록 조회는 전부 성공했을 때만 반환·캐시합니다. 첫 페이지나 후속 페이지의 Swift 오류, JSON 배열이 아닌 응답, 이름이 없는 항목, 진행하지 않는 marker는 부분 목록이나 빈 목록이 아니라 `500 오브젝트 목록 조회 실패`입니다(5xx detail은 공통 오류 처리기가 가립니다). 빈 container만 `[]`입니다.
+
 Afterglow는 세 가지 업로드 방식을 제공합니다. 용도에 맞게 선택합니다.
 
 ### POST /api/v1/object-storage/{container}/objects — multipart 업로드
@@ -300,6 +304,8 @@ Afterglow는 세 가지 업로드 방식을 제공합니다. 용도에 맞게 �
 | `objects` | array[string] | 예 | 삭제 대상 (1–1000개) |
 | `recursive` | boolean | 아니오 | `true`이면 `/`로 끝나는 디렉토리 하위 전체 삭제 |
 
+재귀 삭제는 삭제 직전 flat 목록에 실제로 저장된 키만 처리합니다. 하위 marker는 그 하위 객체보다 나중에, 요청한 폴더의 실제 marker는 모든 하위 객체가 성공한 뒤 마지막에 처리하며, marker가 없는 암묵적 폴더에는 marker 삭제·복사를 시도하지 않습니다. Swift DELETE 응답이 2xx가 아니면(marker의 raw DELETE 포함) 그 키는 실패입니다. 모든 저장 키가 성공하면 요청한 논리 폴더 이름도 `deleted`에 포함합니다. 하위 객체가 하나라도 실패하면 폴더는 `deleted`에 넣지 않고 실제 marker를 남기며, 목록 조회 실패나 저장된 키가 하나도 없는 폴더는 `failed`입니다.
+
 **응답 (200 OK)**: `{ "deleted": [...], "failed": [{"name": ..., "error": ...}] }`
 
 ### POST /api/v1/object-storage/{container}/objects/directory
@@ -314,7 +320,7 @@ Afterglow는 세 가지 업로드 방식을 제공합니다. 용도에 맞게 �
 |------|------|------|------|
 | `path` | string | 예 | 디렉토리 경로 (1–1024자) |
 
-**응답**: `201 Created`
+**응답**: `201 Created`. Swift marker PUT 응답이 2xx가 아니면 성공으로 보고하지 않고 `500`입니다.
 
 ### POST /api/v1/object-storage/{container}/objects/copy
 
@@ -330,6 +336,8 @@ Afterglow는 세 가지 업로드 방식을 제공합니다. 용도에 맞게 �
 | `destination` | string | 예 | 대상 오브젝트 키 |
 | `dest_container` | string\|null | 아니오 | 대상 컨테이너. 생략 시 동일 컨테이너 |
 
+Swift COPY 응답이 2xx가 아니면 `500`이며 성공으로 보고하지 않습니다.
+
 ### POST /api/v1/object-storage/{container}/objects/move
 
 오브젝트를 이동합니다. `destination`이 `/`로 끝나면 원본 파일명을 자동으로 붙입니다(예: `source="a/b.txt"`, `destination="folder/"` → `folder/b.txt`).
@@ -339,6 +347,10 @@ Afterglow는 세 가지 업로드 방식을 제공합니다. 용도에 맞게 �
 | `source` | string | 예 | 원본 오브젝트 키 |
 | `destination` | string | 예 | 대상 오브젝트 키 또는 디렉토리 경로 |
 | `dest_container` | string\|null | 아니오 | 대상 컨테이너. 생략 시 동일 컨테이너 |
+
+`source`가 `/`로 끝나는 폴더이면 원본 prefix의 flat 목록(실제 marker 포함)을 먼저 얻은 뒤 모든 키를 대상 prefix로 복사하고, 복사가 모두 성공한 뒤에만 원본을 삭제합니다. marker가 없는 폴더에는 새 marker를 만들지 않으며, 원본 목록이 비어 있거나 조회에 실패하면 복사·삭제 없이 실패합니다.
+
+Swift COPY 응답이 2xx가 아니면 파일·폴더 모두 원본을 삭제하지 않고 `500`입니다. 원본은 그대로 남고, 실패 전에 이미 복사된 대상 키는 남을 수 있습니다. 같은 컨테이너에서 대상 경로가 원본과 같으면 아무 것도 변경하지 않고 `200`을 반환합니다. 폴더를 자기 하위 경로로 옮기거나, 대상 키가 다른 원본 키와 겹치는 같은 컨테이너 이동은 변경 전에 `400`입니다. 이 규칙은 이름 변경·다른 버킷 이동·단건 휴지통 이동·복구가 공유합니다.
 
 ### POST /api/v1/object-storage/{container}/objects/rename
 

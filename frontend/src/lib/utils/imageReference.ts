@@ -30,6 +30,8 @@ export function sanitizeImageFilename(filename: string): string {
 }
 export interface SearchableImageReference {
 	name: string;
+	id?: string;
+	os_hash_value?: string | null;
 	repository?: string | null;
 	tag?: string | null;
 	os_distro?: string | null;
@@ -41,6 +43,8 @@ export function imageReferenceSearchText(image: SearchableImageReference): strin
 		image.name,
 		image.repository ?? '',
 		image.tag ?? 'latest',
+		image.id ?? '',
+		image.os_hash_value ?? '',
 		image.os_distro ?? '',
 		image.os_type ?? '',
 	].join(' ').toLocaleLowerCase();

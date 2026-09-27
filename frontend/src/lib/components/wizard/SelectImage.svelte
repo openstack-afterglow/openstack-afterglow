@@ -1,5 +1,7 @@
 <script lang="ts">
 	import type { ImageInfo } from '$lib/types/compute';
+	import ImageDigest from '$lib/components/image/ImageDigest.svelte';
+	import { currentImagesByReference } from '$lib/stores/imageCatalog.svelte';
 	import { imageReferenceMatchesQuery, parseImageReference } from '$lib/utils/imageReference';
 	import type { ImageReferenceParts } from '$lib/utils/imageReference';
 	let { images, selectedId, onSelect }: {
@@ -58,19 +60,25 @@
 		return distroLogos[distro ?? ''] ?? null;
 	}
 
+	const currentImages = $derived([...currentImagesByReference(images).values()]);
+	const currentIds = $derived(new Set(currentImages.map(image => image.id)));
+	const previousSelected = $derived(selectedId && !currentIds.has(selectedId)
+		? images.find(image => image.id === selectedId) ?? null
+		: null);
+	const previousSelectedMissing = $derived(selectedId !== null && !currentIds.has(selectedId) && !previousSelected);
 	const distros = $derived(
-		[...new Set(images.map(i => i.os_distro ?? '기타'))].sort((a, b) => {
+		[...new Set(currentImages.map(i => i.os_distro ?? '기타'))].sort((a, b) => {
 			if (a === '기타') return 1;
 			if (b === '기타') return -1;
 			return a.localeCompare(b);
 		})
 	);
 
-	// filtered by distro chip then by search term
+	// Resolve each reference from the full input before applying UI filters.
 	const distroFiltered = $derived(
 		activeDistro === null
-			? images
-			: images.filter(i => (i.os_distro ?? '기타') === activeDistro)
+			? currentImages
+			: currentImages.filter(i => (i.os_distro ?? '기타') === activeDistro)
 	);
 
 	const filteredImages = $derived(
@@ -153,9 +161,9 @@
 					class="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition-all {activeDistro === null
 						? 'bg-[var(--color-accent)] text-[var(--color-action-on-accent)]'
 						: 'bg-[var(--color-surface-raised)] text-[var(--color-ink-2)] hover:bg-[var(--color-surface-base)]'}"
-				>전체 <span class="font-mono text-[10.5px] opacity-70">{images.length}</span></button>
+				>전체 <span class="font-mono text-[10.5px] opacity-70">{currentImages.length}</span></button>
 				{#each distros as d}
-					{@const count = images.filter(i => (i.os_distro ?? '기타') === d).length}
+					{@const count = currentImages.filter(i => (i.os_distro ?? '기타') === d).length}
 					<button
 						onclick={() => activeDistro = d}
 						class="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition-all {activeDistro === d
@@ -168,16 +176,32 @@
 	</div>
 {/if}
 
+{#if previousSelected || previousSelectedMissing}
+	<section aria-label="이전에 선택한 이미지" class="mb-4 rounded-xl border border-[var(--color-line-2)] bg-[var(--color-surface-sunken)] p-4 text-sm text-[var(--color-ink-1)]">
+		<p class="mb-2 font-semibold">이전에 선택한 이미지 · 현재 tag 이미지와 다릅니다</p>
+		{#if previousSelected}
+			<p class="font-mono">{referenceParts(previousSelected).name} · {previousSelected.status}</p>
+			<ImageDigest image={previousSelected} />
+		{:else}
+			<p>선택한 이미지가 목록에 없습니다.</p>
+		{/if}
+		<code class="block break-all text-xs" aria-label={`이전에 선택한 이미지 ID: ${selectedId}`}>ID {selectedId}</code>
+		<p class="mt-2 text-xs text-[var(--color-ink-2)]">현재 이미지를 사용하려면 아래에서 직접 선택하세요.</p>
+	</section>
+{/if}
+
 <!-- 이미지 카드 그리드 -->
 <div class="grid grid-cols-1 @lg/panel:grid-cols-2 @3xl/panel:grid-cols-3 gap-3">
 	{#each filteredImages as img}
 		{@const reference = referenceParts(img)}
 		<button
+			type="button"
+			disabled={img.status !== 'active'}
 			onclick={() => onSelect(img.id, selectionName(img, reference))}
-			aria-label={`${reference.name} 이미지 선택`}
-			class="relative text-left p-4 rounded-xl border transition-all hover:-translate-y-px hover:shadow-md {selectedId === img.id
+			aria-label={img.status === 'active' ? `${reference.name} 이미지 선택` : `${reference.name} 이미지 선택 불가 (${img.status})`}
+			class="relative text-left p-4 rounded-xl border transition-all enabled:hover:-translate-y-px enabled:hover:shadow-md disabled:cursor-not-allowed {selectedId === img.id
 				? 'border-[var(--color-accent)] bg-[var(--color-accent)]/10 ring-1 ring-[var(--color-accent)]/30'
-				: 'border-[var(--color-line)] bg-[var(--color-surface-raised)] hover:border-[var(--color-line-2)]'}"
+				: 'border-[var(--color-line)] bg-[var(--color-surface-raised)] enabled:hover:border-[var(--color-line-2)]'}"
 		>
 			<!-- 선택 체크마크 (우측 상단 pill) -->
 			{#if selectedId === img.id}
@@ -210,16 +234,18 @@
 			<!-- 메타 -->
 			<div class="flex items-center gap-2 text-xs text-[var(--color-ink-3)] font-mono pt-2 mt-2 border-t border-[var(--color-line)]">
 				<span class="px-1.5 py-0.5 bg-[var(--color-surface-sunken)] border border-[var(--color-line)] rounded text-[var(--color-ink-2)] text-xs">tag:{reference.tag}</span>
+				<span>현재 · {img.status}</span>
 				{#if img.disk_format}
 					<span class="px-1.5 py-0.5 bg-[var(--color-surface-sunken)] border border-[var(--color-line)] rounded text-[var(--color-ink-2)] text-xs lowercase">{img.disk_format}</span>
 				{/if}
 				{#if img.min_disk}
 					<span>{img.min_disk} GB</span>
 				{/if}
-				{#if img.updated_at ?? img.created_at}
-					<span class="ml-auto">{formatDate(img.updated_at ?? img.created_at ?? null)}</span>
+				{#if img.created_at}
+					<span class="ml-auto">{formatDate(img.created_at)}</span>
 				{/if}
 			</div>
+			<ImageDigest image={img} />
 		</button>
 	{/each}
 
