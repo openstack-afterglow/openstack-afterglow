@@ -11,6 +11,56 @@ const callbacks = {
 	onSwitchVersion: () => {}
 };
 
+const historyMessage = (id: string, conversation_id = 'a') => ({
+	id, conversation_id, parent_id: null, role: 'user' as const, content: id, created_at: null
+});
+
+// jsdom has no layout or native scroll anchoring. Model fixed-height DOM rows whose
+// rectangles follow the actual row order and the current scrollTop after a prepend.
+function historyGeometry(container: HTMLElement) {
+	let currentScrollTop = 0;
+	const getScroll = () => {
+		const el = container.querySelector<HTMLDivElement>('.scroll')!;
+		if (el && !Object.getOwnPropertyDescriptor(el, 'scrollTop')?.set) {
+			Object.defineProperties(el, {
+				scrollTop: {
+					configurable: true,
+					get: () => currentScrollTop,
+					set: (v) => { currentScrollTop = v; }
+				},
+				scrollHeight: {
+					configurable: true,
+					get: () => el.querySelectorAll('[data-history-message-id]').length * 80
+				},
+				clientHeight: { configurable: true, value: 100 }
+			});
+		}
+		return el;
+	};
+	getScroll();
+	const original = Element.prototype.getBoundingClientRect;
+	const geometry = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+		const scroll = getScroll();
+		if (this === scroll) return { top: 0, bottom: 100 } as DOMRect;
+		if (this.hasAttribute('data-history-message-id')) {
+			const rows = Array.from(scroll.querySelectorAll('[data-history-message-id]'));
+			const top = rows.indexOf(this) * 80 - scroll.scrollTop;
+			return { top, bottom: top + 80 } as DOMRect;
+		}
+		return original.call(this);
+	});
+	return {
+		get scroll() { return getScroll(); },
+		visible: () => {
+			const scroll = getScroll();
+			const row = Array.from(scroll.querySelectorAll<HTMLElement>('[data-history-message-id]'))
+				.find((node) => node.getBoundingClientRect().bottom > 0);
+			return { id: row?.dataset.historyMessageId, top: row?.getBoundingClientRect().top };
+		},
+		restore: () => geometry.mockRestore()
+	};
+}
+
 describe('ChatWindow', () => {
 	it('shows safe ordered sources above the corresponding answer while streaming and after reload', async () => {
 		const message = {
@@ -310,35 +360,186 @@ describe('ChatWindow', () => {
 		expect(getByRole('button', { name: '새 응답 따라가기' })).toBeTruthy();
 	});
 
-	it('uses explicit bidirectional controls and preserves a visible message anchor', async () => {
-		let top = 100;
-		const onLoadBefore = vi.fn(async () => { top = 140; });
-		const onLoadAfter = vi.fn(async () => {});
-		const onLoadFirst = vi.fn(async () => true);
-		const onLoadLatest = vi.fn(async () => true);
-		const message = {
-			id: 'answer', conversation_id: 'conversation', parent_id: null,
-			role: 'assistant' as const, content: 'bounded history', created_at: null
-		};
-		const view = render(ChatWindow, {
-			activePath: [message], models: [], hasBefore: true, hasAfter: true,
-			onLoadBefore, onLoadAfter, onLoadFirst, onLoadLatest, ...callbacks
-		});
-		const scroll = view.container.querySelector('.scroll') as HTMLDivElement;
-		const anchor = view.container.querySelector('[data-history-message-id="answer"]') as HTMLDivElement;
-		Object.defineProperty(scroll, 'scrollTop', { configurable: true, value: 50, writable: true });
-		vi.spyOn(scroll, 'getBoundingClientRect').mockReturnValue({ top: 0 } as DOMRect);
-		vi.spyOn(anchor, 'getBoundingClientRect').mockImplementation(() => ({ top, bottom: top + 20 } as DOMRect));
+	it('loads older messages on deliberate upward scroll and keeps the displayed row in place', async () => {
+		const messages = ['answer', 'second', 'third', 'fourth', 'fifth'].map((id) => historyMessage(id));
+		const pending = Promise.withResolvers<boolean>();
+		const onLoadBefore = vi.fn(() => pending.promise);
+		const props = { models: [], hasBefore: true, conversationKey: 'a', onLoadBefore, ...callbacks };
+		const view = render(ChatWindow, { ...props, activePath: messages });
+		await tick();
+		const fixture = historyGeometry(view.container);
+		const scroll = fixture.scroll;
+		try {
+			scroll.scrollTop = 300;
+			await fireEvent.scroll(scroll);
+			await fireEvent.wheel(scroll, { deltaY: -30 });
+			expect(onLoadBefore).not.toHaveBeenCalled();
+			scroll.scrollTop = 50;
+			const before = fixture.visible();
+			await fireEvent.scroll(scroll);
+			await view.rerender({ ...props, activePath: [historyMessage('older-1'), historyMessage('older-2'), historyMessage('older-3'), ...messages] });
+			pending.resolve(true);
+			await tick();
+			expect(onLoadBefore).toHaveBeenCalledOnce();
+			expect(fixture.visible()).toEqual(before);
+			expect(scroll.scrollTop).toBe(290);
+		} finally {
+			fixture.restore();
+		}
+	});
 
-		expect(view.getByRole('button', { name: '처음' })).toBeTruthy();
-		expect(view.getByRole('button', { name: '최신' })).toBeTruthy();
+	it.each(['overscroll', 'down then up'])('preserves the latest visible row across a delayed prepend after %s', async (movement) => {
+		const pending = Promise.withResolvers<boolean>();
+		const onLoadBefore = vi.fn(() => pending.promise);
+		const props = { models: [], hasBefore: true, conversationKey: 'a', onLoadBefore, ...callbacks };
+		const current = [historyMessage('first'), historyMessage('second'), historyMessage('third'), historyMessage('fourth')];
+		const view = render(ChatWindow, { ...props, activePath: current });
+		await tick();
+		const fixture = historyGeometry(view.container);
+		const scroll = fixture.scroll;
+		const wheelAt = async (timeStamp: number, deltaY: number) => {
+			const wheel = new WheelEvent('wheel', { bubbles: true, deltaY });
+			Object.defineProperty(wheel, 'timeStamp', { value: timeStamp });
+			await fireEvent(scroll, wheel);
+		};
+		try {
+			await wheelAt(1_000, -30);
+			expect(onLoadBefore).toHaveBeenCalledOnce();
+			if (movement === 'overscroll') {
+				await wheelAt(1_050, -30);
+				await fireEvent.touchStart(scroll, { touches: [{ clientY: 100 }] });
+				await fireEvent.touchMove(scroll, { touches: [{ clientY: 140 }] });
+			} else {
+				await wheelAt(1_050, 120);
+				scroll.scrollTop = 125;
+				await fireEvent.scroll(scroll);
+				scroll.scrollTop = 90;
+				await fireEvent.scroll(scroll);
+				await wheelAt(1_100, -30);
+			}
+			const before = fixture.visible();
+			expect(before).toEqual(movement === 'overscroll' ? { id: 'first', top: 0 } : { id: 'second', top: -10 });
+			await view.rerender({ ...props, activePath: [historyMessage('older-1'), historyMessage('older-2'), historyMessage('older-3'), ...current] });
+			await tick();
+			expect(fixture.visible()).toEqual(before);
+			await wheelAt(1_150, -30);
+			pending.resolve(true);
+			await tick();
+			await tick();
+			await fireEvent.scroll(scroll); // synthetic programmatic scroll from compensation
+			await wheelAt(1_200, -30); // same gesture's residual events
+			expect(fixture.visible()).toEqual(before);
+			expect(onLoadBefore).toHaveBeenCalledOnce();
+		} finally {
+			fixture.restore();
+		}
+	});
+
+	it('keeps a short latest page on open but loads history on upward wheel input', async () => {
+		const onLoadBefore = vi.fn(async () => true);
+		const view = render(ChatWindow, {
+			activePath: [{ id: 'first', conversation_id: 'a', parent_id: null, role: 'user', content: 'short page', created_at: null }],
+			models: [], hasBefore: true, onLoadBefore, ...callbacks
+		});
+		await tick();
+		const scroll = view.container.querySelector('.scroll') as HTMLDivElement;
+		Object.defineProperties(scroll, {
+			scrollTop: { configurable: true, value: 0, writable: true },
+			scrollHeight: { configurable: true, value: 100 },
+			clientHeight: { configurable: true, value: 100 }
+		});
 		await fireEvent.scroll(scroll);
 		expect(onLoadBefore).not.toHaveBeenCalled();
-
-		const beforeNavigation = scroll.scrollTop;
-		await fireEvent.click(view.getByRole('button', { name: '이전' }));
+		await fireEvent.wheel(scroll, { deltaY: -30 });
 		expect(onLoadBefore).toHaveBeenCalledOnce();
-		expect(scroll.scrollTop).toBe(beforeNavigation + 40);
+	});
+
+	it('requests one older page per upward touch gesture even when the transcript is short', async () => {
+		const onLoadBefore = vi.fn(async () => true);
+		const view = render(ChatWindow, {
+			activePath: [{ id: 'first', conversation_id: 'a', parent_id: null, role: 'user', content: 'short mobile page', created_at: null }],
+			models: [], hasBefore: true, onLoadBefore, ...callbacks
+		});
+		await tick();
+		const scroll = view.getByRole('region', { name: '대화 기록' }) as HTMLDivElement;
+		Object.defineProperties(scroll, {
+			scrollTop: { configurable: true, value: 0, writable: true },
+			scrollHeight: { configurable: true, value: 100 },
+			clientHeight: { configurable: true, value: 100 }
+		});
+		await fireEvent.touchStart(scroll, { touches: [{ clientY: 100 }] });
+		await fireEvent.touchMove(scroll, { touches: [{ clientY: 125 }] });
+		await tick();
+		expect(onLoadBefore).toHaveBeenCalledOnce();
+		await fireEvent.touchMove(scroll, { touches: [{ clientY: 160 }] });
+		expect(onLoadBefore).toHaveBeenCalledOnce();
+		await fireEvent.touchStart(scroll, { touches: [{ clientY: 100 }] });
+		await fireEvent.touchMove(scroll, { touches: [{ clientY: 125 }] });
+		expect(onLoadBefore).toHaveBeenCalledTimes(2);
+	});
+
+	it('loads at most one page per wheel gesture, including programmatic scroll after restore', async () => {
+		const onLoadBefore = vi.fn(async () => true);
+		const view = render(ChatWindow, {
+			activePath: [{ id: 'anchor', conversation_id: 'a', parent_id: null, role: 'user', content: 'reader', created_at: null }],
+			models: [], hasBefore: true, onLoadBefore, ...callbacks
+		});
+		await tick();
+		const scroll = view.getByRole('region', { name: '대화 기록' }) as HTMLDivElement;
+		Object.defineProperties(scroll, {
+			scrollTop: { configurable: true, value: 0, writable: true },
+			scrollHeight: { configurable: true, value: 200 },
+			clientHeight: { configurable: true, value: 100 }
+		});
+		const wheelAt = async (timeStamp: number) => {
+			const event = new WheelEvent('wheel', { bubbles: true, deltaY: -100 });
+			Object.defineProperty(event, 'timeStamp', { value: timeStamp });
+			await fireEvent(scroll, event);
+			await tick();
+		};
+		await wheelAt(1_000);
+		expect(onLoadBefore).toHaveBeenCalledOnce();
+		scroll.scrollTop = 50;
+		await fireEvent.scroll(scroll);
+		scroll.scrollTop = 0;
+		await fireEvent.scroll(scroll);
+		await wheelAt(1_050);
+		expect(onLoadBefore).toHaveBeenCalledOnce();
+		await wheelAt(1_500);
+		expect(onLoadBefore).toHaveBeenCalledTimes(2);
+	});
+
+	it.each(['conversation', 'request fence'])('does not restore a stale view after changing the %s even with a shared message ID', async (change) => {
+		const pending = Promise.withResolvers<boolean>();
+		const onLoadBefore = vi.fn(() => pending.promise);
+		const message = (conversation: string) => ({ ...historyMessage('shared-anchor', conversation), content: conversation });
+		const props = { models: [], hasBefore: true, onLoadBefore, scrollFence: {}, ...callbacks };
+		const conversationKey = change === 'conversation' ? 'b' : 'a';
+		const view = render(ChatWindow, { ...props, conversationKey: 'a', activePath: [message('a'), historyMessage('tail', 'a')] });
+		await tick();
+		const fixture = historyGeometry(view.container);
+		const scroll = fixture.scroll;
+		try {
+			await fireEvent.wheel(scroll, { deltaY: -30 });
+			expect(onLoadBefore).toHaveBeenCalledOnce();
+			const nextProps = { ...props, conversationKey, scrollFence: {}, activePath: [message('b'), historyMessage('tail-b1', 'b'), historyMessage('tail-b2', 'b'), historyMessage('tail-b3', 'b')] };
+			await view.rerender(nextProps);
+			await tick();
+			scroll.scrollTop = 17;
+			await fireEvent.scroll(scroll);
+			await view.rerender({ ...nextProps, activePath: [historyMessage('b-older', 'b'), ...nextProps.activePath] });
+			await tick();
+			const newView = fixture.visible();
+			expect(newView).toEqual({ id: 'b-older', top: -17 });
+			pending.resolve(true);
+			await tick();
+			await tick();
+			expect(fixture.visible()).toEqual(newView);
+			expect(scroll.scrollTop).toBe(17);
+			expect(view.getByText('b')).toBeTruthy();
+		} finally {
+			fixture.restore();
+		}
 	});
 
 	it('shows a latest-window action when a run completes off-window', () => {
@@ -347,8 +548,8 @@ describe('ChatWindow', () => {
 			role: 'assistant' as const, content: 'old window', created_at: null
 		};
 		const view = render(ChatWindow, {
-			activePath: [message], models: [], hasAfter: true, newHistoryActivity: true,
-			onLoadLatest: vi.fn(async () => true), onLoadFirst: vi.fn(async () => true), ...callbacks
+			activePath: [message], models: [], newHistoryActivity: true,
+			onLoadLatest: vi.fn(async () => true), ...callbacks
 		});
 		expect(view.getByText('새 응답이 도착했습니다.')).toBeTruthy();
 		expect(view.getByRole('button', { name: '최신 응답 보기' })).toBeTruthy();

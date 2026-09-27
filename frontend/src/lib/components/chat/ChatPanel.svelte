@@ -87,7 +87,6 @@
 		after_cursor: string | null;
 	}
 	const HISTORY_PAGE_SIZE = 40;
-	const HISTORY_WINDOW_PAGES = 3;
 	type DisplayMessage = ChatMsg & {
 		streaming?: boolean;
 		metrics?: StreamMetrics | null;
@@ -126,7 +125,8 @@
 	let conversations = $state<Conversation[]>([]);
 	let newlyCreatedConversationId = $state<string | null>(null);
 	let newlyCreatedConversationEpoch = 0;
-	let localMutationEpoch = 0;
+	let localMutationEpoch = $state(0);
+	const historyScrollFence = $derived({ token, projectId, mutation: localMutationEpoch });
 
 	// Context state & compaction
 	let contextState = $state<ContextState | null>(null);
@@ -172,7 +172,7 @@
 		features.tool_policy.enabled_mcp_ids = selectedMcpIds;
 		return features;
 	}
-	let selectionGeneration = 0;
+	let selectionGeneration = $state(0);
 	let restoredConversationProjectId: string | null = null;
 	let allMessages = $state<ChatMsg[]>([]);
 	let activeLeafId = $state<string | null>(null);
@@ -212,17 +212,35 @@
 	let streaming = $state(false);
 	let runningConversationIds = $state<Set<string>>(new Set());
 	let historyPages = $state<MessagesResponse[]>([]);
+	let blockedBeforeCursor = $state<string | null>(null);
 	let tempThreadId = $state<string | null>(null);
 	let tempMode = $state(false);
 	const hasContextScope = $derived(Boolean(activeConvId || (tempMode && tempThreadId)));
 	let tempMessages = $state<DisplayMessage[]>([]);
 	let treeLoading = $state(false); // 분기/재생성 대상 전환 등 트리 재조회 중
 	let historyLoading = $state(false);
+	let historyRequestCompletion: Promise<void> | null = null;
+	function beginHistoryRequest(): () => void {
+		historyLoading = true;
+		let resolve!: () => void;
+		const completion = new Promise<void>((done) => { resolve = done; });
+		historyRequestCompletion = completion;
+		return () => {
+			if (historyRequestCompletion === completion) {
+				historyRequestCompletion = null;
+				historyLoading = false;
+			}
+			resolve();
+		};
+	}
+	function resetHistoryRequest(): void {
+		// A previous view can still finish its fetch; it must not gate the new view.
+		historyRequestCompletion = null;
+		historyLoading = false;
+	}
 	let historyNewActivity = $state(false);
-	const historyHasBefore = $derived(historyPages[0]?.has_before ?? false);
-	const historyHasAfter = $derived(historyPages[historyPages.length - 1]?.has_after ?? false);
+	const historyHasBefore = $derived((historyPages[0]?.has_before ?? false) && historyPages[0]?.before_cursor !== blockedBeforeCursor);
 	const historyBeforeCursor = $derived(historyPages[0]?.before_cursor ?? null);
-	const historyAfterCursor = $derived(historyPages[historyPages.length - 1]?.after_cursor ?? null);
 	let usage = $state<ChatUsage | null>(null);
 	// 생성 속도(tok/s)는 저장하지 않는 런타임 계측값 — 이번 세션 동안 메시지 id 로 유지한다.
 	// done 후 loadMessages 로 낙관적 draft 가 권위 메시지로 교체되면 새 리프 id 에 재부착한다.
@@ -333,7 +351,11 @@
 		assistant: DisplayMessage;
 		conversationId: string | null;
 		temp: boolean;
+		replaceBranch?: boolean;
+		replayPending?: boolean;
 	} | null>(null);
+	// A failed terminal reload must not erase the answer the reader just saw.
+	let completedStream = $state<typeof stream>(null);
 	let currentRun = $state<ChatRunDescriptor | null>(null);
 	let compactionFollowRunId: string | null = null;
 	let tmpSeq = 0;
@@ -393,6 +415,7 @@
 		toolActivity = null;
 		agentActivity = null;
 		stream = null;
+		completedStream = null;
 		currentRun = null;
 	}
 
@@ -438,8 +461,24 @@
 	}
 
 	const displayPath = $derived.by(() => {
-		if (stream && !historyHasAfter && (stream.temp ? tempMode : stream.conversationId === activeConvId)) {
-			return [...stream.base, stream.assistant];
+		const visibleRun = stream ?? completedStream;
+		if (visibleRun && !historyPages[historyPages.length - 1]?.has_after && (visibleRun.temp ? tempMode : visibleRun.conversationId === activeConvId)) {
+			if (visibleRun.temp) return [...visibleRun.base, visibleRun.assistant];
+			// Keep prepended history while retaining the run's branch and optimistic turn.
+			const firstBaseId = visibleRun.base[0]?.id;
+			const baseIndex = firstBaseId ? activePath.findIndex((msg) => msg.id === firstBaseId) : -1;
+			const prefix = baseIndex > 0 ? activePath.slice(0, baseIndex) : [];
+			const byId = new Map<string, DisplayMessage>();
+			const snapshots = new Map(activePath.map((message) => [message.id, message]));
+			for (const msg of [...prefix, ...visibleRun.base]) byId.set(msg.id, snapshots.get(msg.id) ?? msg);
+			if (visibleRun.replayPending) return [...byId.values()];
+			const draft = visibleRun.assistant;
+			const persisted = byId.get(draft.id);
+			// Journal replay starts at sequence one: do not erase an already persisted
+			// prefix while the replay catches up to that snapshot.
+			byId.set(draft.id, persisted && persisted.content.startsWith(draft.content)
+				? { ...draft, content: persisted.content, parts: persisted.parts } : draft);
+			return [...byId.values()];
 		}
 		if (tempMode) return tempMessages;
 		if (failedSubmission?.conversationId === activeConvId) return [...activePath, failedSubmission.message];
@@ -910,10 +949,16 @@
 
 	function applyHistoryPages(pages: MessagesResponse[], clearNewActivity: boolean): void {
 		historyPages = pages;
-		allMessages = pages.flatMap((page) => page.messages);
+		// Overlapping cursor windows have one canonical message per id; newer pages win.
+		const byId = new Map<string, ChatMsg>();
+		for (const page of pages) for (const message of page.messages) byId.set(message.id, message);
+		allMessages = [...byId.values()];
 		const leaf = pages[pages.length - 1]?.active_leaf_id ?? null;
 		activeLeafId = leaf === null ? null : String(leaf);
-		if (clearNewActivity) historyNewActivity = false;
+		if (clearNewActivity) {
+			historyNewActivity = false;
+			completedStream = null;
+		}
 		syncSelectedModel();
 	}
 
@@ -931,21 +976,30 @@
 		return normalizeMessagePage(response);
 	}
 
-	async function replaceHistoryWindow(
-		anchor: 'first' | 'latest',
-		selection = selectionGeneration
-	): Promise<boolean> {
+	async function replaceHistoryWindow(selection = selectionGeneration, preserveHistory = true): Promise<boolean> {
 		const convId = activeConvId;
 		const requestToken = token;
 		const requestProjectId = projectId;
 		if (!convId || !requestToken || !requestProjectId || historyLoading) return false;
 		const mutationEpoch = localMutationEpoch;
-		historyLoading = true;
+		const finishHistory = beginHistoryRequest();
 		try {
-			const params = new URLSearchParams({ anchor, limit: String(HISTORY_PAGE_SIZE) });
-			const page = await requestMessagePage(convId, params, requestToken, requestProjectId);
+			const page = await requestMessagePage(
+				convId, new URLSearchParams({ anchor: 'latest', limit: String(HISTORY_PAGE_SIZE) }),
+				requestToken, requestProjectId
+			);
 			if (!historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId)) return false;
-			applyHistoryPages([page], anchor === 'latest');
+			const canMerge = preserveHistory && historyPages.length > 0 && !historyPages[historyPages.length - 1].has_after;
+			blockedBeforeCursor = null;
+			if (canMerge) {
+				const previous = historyPages[historyPages.length - 1];
+				const merged = new Map(previous.messages.map((message) => [message.id, message]));
+				for (const message of page.messages) merged.set(message.id, message);
+				applyHistoryPages([
+					...historyPages.slice(0, -1),
+					{ ...page, messages: [...merged.values()], has_before: previous.has_before, before_cursor: previous.before_cursor }
+				], true);
+			} else applyHistoryPages([page], true);
 			return true;
 		} catch (cause) {
 			if (historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId)) {
@@ -953,25 +1007,24 @@
 			}
 			return false;
 		} finally {
-			if (!destroyed && activeConvId === convId && selectionGeneration === selection) historyLoading = false;
+			finishHistory();
 		}
 	}
 
-	async function loadMessages(convId: string, selection = selectionGeneration): Promise<boolean> {
+	async function loadMessages(convId: string, selection = selectionGeneration, preserveHistory = true): Promise<boolean> {
 		if (activeConvId !== convId) return false;
-		return replaceHistoryWindow('latest', selection);
+		return replaceHistoryWindow(selection, preserveHistory);
 	}
 
-	async function loadHistoryDirection(direction: 'before' | 'after'): Promise<void> {
+	async function loadOlderHistory(): Promise<boolean> {
 		const convId = activeConvId;
-		const cursor = direction === 'before' ? historyBeforeCursor : historyAfterCursor;
-		const hasMore = direction === 'before' ? historyHasBefore : historyHasAfter;
+		const cursor = historyBeforeCursor;
 		const requestToken = token;
 		const requestProjectId = projectId;
-		if (!convId || !cursor || !hasMore || !requestToken || !requestProjectId || historyLoading) return;
+		if (!convId || !cursor || !historyHasBefore || !requestToken || !requestProjectId || historyLoading || treeLoading) return false;
 		const selection = selectionGeneration;
 		const mutationEpoch = localMutationEpoch;
-		historyLoading = true;
+		const finishHistory = beginHistoryRequest();
 		try {
 			const page = await requestMessagePage(
 				convId,
@@ -979,15 +1032,18 @@
 				requestToken,
 				requestProjectId
 			);
-			if (!historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId)) return;
-			const next = direction === 'before' ? [page, ...historyPages] : [...historyPages, page];
-			if (next.length > HISTORY_WINDOW_PAGES) {
-				if (direction === 'before') next.pop();
-				else next.shift();
+			if (!historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId)) return false;
+			const known = new Set(allMessages.map((message) => message.id));
+			const addsMessages = page.messages.some((message) => !known.has(message.id));
+			if (!addsMessages || page.before_cursor === cursor) {
+				blockedBeforeCursor = cursor;
+				if (!addsMessages) return false;
 			}
-			applyHistoryPages(next, false);
+			applyHistoryPages([page, ...historyPages], false);
+			return true;
 		} catch (cause) {
-			if (!historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId)) return;
+			if (!historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId)) return false;
+			// A failed request is retried only on another deliberate upward gesture.
 			if (cause instanceof ApiError && cause.status === 409) {
 				error = '대화 기록이 변경되어 최신 위치를 다시 불러왔습니다.';
 				try {
@@ -1005,11 +1061,12 @@
 						error = recoveryCause instanceof Error ? recoveryCause.message : '최신 대화 기록을 불러오지 못했습니다.';
 					}
 				}
-				return;
+				return false;
 			}
 			error = cause instanceof Error ? cause.message : '대화 기록을 불러오지 못했습니다.';
+			return false;
 		} finally {
-			if (!destroyed && activeConvId === convId && selectionGeneration === selection) historyLoading = false;
+			finishHistory();
 		}
 	}
 
@@ -1019,12 +1076,22 @@
 		metrics: StreamMetrics | null = null
 	): Promise<boolean> {
 		if (activeConvId !== conversationId || tempMode) return false;
-		if (historyHasAfter || historyLoading) {
+		const mutationEpoch = localMutationEpoch;
+		const requestToken = token;
+		const requestProjectId = projectId;
+		while (historyRequestCompletion) await historyRequestCompletion;
+		if (!requestToken || !requestProjectId ||
+			!historyRequestIsCurrent(conversationId, selection, mutationEpoch, requestToken, requestProjectId)) return false;
+		if (historyPages[historyPages.length - 1]?.has_after && !(stream ?? completedStream)?.replaceBranch) {
 			historyNewActivity = true;
 			return false;
 		}
-		const loaded = await loadMessages(conversationId, selection);
+		const loaded = await loadMessages(conversationId, selection, !(stream ?? completedStream)?.replaceBranch);
 		if (loaded && metrics && activeLeafId) metricsById.set(activeLeafId, metrics);
+		if (!loaded && stream?.conversationId === conversationId &&
+			historyRequestIsCurrent(conversationId, selection, mutationEpoch, requestToken, requestProjectId)) {
+			completedStream = stream;
+		}
 		return loaded;
 	}
 
@@ -1186,8 +1253,10 @@
 		pendingWorkspaceId = null;
 		tempMode = false;
 		historyPages = [];
+		blockedBeforeCursor = null;
 		historyNewActivity = false;
-		historyLoading = false;
+		resetHistoryRequest();
+		treeLoading = false;
 		closeSidebarOnMobile();
 		metricsById.clear(); // 런타임 tok/s 계측값은 대화 전환 시 초기화(누적 방지)
 		allMessages = [];
@@ -1217,8 +1286,10 @@
 		pendingWorkspaceId = null;
 		tempMode = false;
 		historyPages = [];
+		blockedBeforeCursor = null;
 		historyNewActivity = false;
-		historyLoading = false;
+		resetHistoryRequest();
+		treeLoading = false;
 		closeSidebarOnMobile();
 		metricsById.clear();
 		activeConvId = null;
@@ -1255,8 +1326,10 @@
 		closeSidebarOnMobile();
 		tempMode = true;
 		historyPages = [];
+		blockedBeforeCursor = null;
 		historyNewActivity = false;
-		historyLoading = false;
+		resetHistoryRequest();
+		treeLoading = false;
 		rememberTempThread(null);
 		if (projectId) clearActiveConversationId(projectId);
 		activeConvId = null;
@@ -1713,8 +1786,17 @@
 		try {
 			for await (const evt of followChatRun(descriptor, { token, projectId, signal: controller.signal })) {
 				if (destroyed || generation !== streamGeneration) return;
+				if (evt.seq <= runState.lastSeq) continue;
 				runState = reduceRunEvent(runState, evt);
 				if (evt.type === 'message.created') {
+					if (evt.payload.role === 'assistant') {
+						draft.id = evt.payload.message_id;
+						if (stream) stream.replayPending = false;
+					}
+					if (evt.payload.role === 'assistant' && evt.payload.parent_id && stream) {
+						const user = stream.base[stream.base.length - 1];
+						if (user?.role === 'user' && user.id.startsWith('tmp-')) user.id = evt.payload.parent_id;
+					}
 					reveal.clear();
 					text = '';
 					reasoning = '';
@@ -1804,6 +1886,7 @@
 					if (contextPhase === 'compacting') contextPhase = 'ready';
 					if (generation !== streamGeneration || destroyed) return;
 					draft.streaming = false;
+					if (evt.payload.message_id) draft.id = evt.payload.message_id;
 					await onDone(latestMetrics);
 					if (generation !== streamGeneration || destroyed) return;
 					endStream();
@@ -1816,8 +1899,10 @@
 					contextCause = null;
 					if (contextPhase === 'compacting') contextPhase = 'ready';
 					draft.streaming = false;
+					if (evt.payload.message_id) draft.id = evt.payload.message_id;
 					if (stream?.temp && stream.assistant === draft) tempMessages = [...stream.base, draft];
 					error = evt.payload.safe_message;
+					if (stream && !stream.temp) completedStream = stream;
 					endStream();
 					scheduleMetadataRefresh();
 					void executeContextPreview();
@@ -1871,6 +1956,7 @@
 	async function resumeActiveRun(conversationId: string) {
 		if (!token || !projectId || tempMode || currentRun) return;
 		const generation = streamGeneration;
+		const wasRunning = runningConversationIds.has(conversationId);
 		try {
 			const payload = await api.get<unknown[]>(
 				`/api/v1/chat/conversations/${conversationId}/runs?active=true`,
@@ -1886,7 +1972,7 @@
 					!destroyed
 				) {
 					setConversationRun(conversationId, false);
-					await refreshHistoryAfterRun(conversationId, selectionGeneration);
+					if (wasRunning) await refreshHistoryAfterRun(conversationId, selectionGeneration);
 				}
 				return;
 			}
@@ -1915,10 +2001,10 @@
 			streaming = true;
 			currentRun = descriptor;
 			setConversationRun(conversationId, true);
-			stream = { base: activePath, assistant: draft, conversationId, temp: false };
+			stream = { base: activePath, assistant: draft, conversationId, temp: false, replayPending: true };
 			void followRun(
 				descriptor,
-				draft,
+				stream.assistant,
 				async (metrics) => {
 					setConversationRun(conversationId, false);
 					if (activeConvId === conversationId && !tempMode) {
@@ -1974,8 +2060,8 @@
 			error = '첨부 업로드가 완료된 뒤 전송할 수 있습니다.';
 			return;
 		}
-		if (!tempMode && activeConvId && historyHasAfter) {
-			const loadedLatest = await replaceHistoryWindow('latest');
+		if (!tempMode && activeConvId && (completedStream || historyPages[historyPages.length - 1]?.has_after)) {
+			const loadedLatest = await replaceHistoryWindow();
 			if (!loadedLatest) return;
 		}
 		input = '';
@@ -2122,14 +2208,15 @@
 
 	// --- 재생성 ---
 	async function regenerate(messageId: string, modelName: string) {
-		if (streaming || tempMode || !activeConvId || !token || !projectId) return;
+		if (streaming || historyLoading || tempMode || !activeConvId || !token || !projectId) return;
 		const conversationId = activeConvId;
 		error = null;
 		const idx = activePath.findIndex((m) => m.id === messageId);
 		if (idx === -1) return;
+		localMutationEpoch += 1;
 		invalidateContextPreview();
 		streaming = true;
-		stream = { base: activePath.slice(0, idx), assistant: newAssistantDraft(modelName || selectedModel), conversationId, temp: false };
+		stream = { base: activePath.slice(0, idx), assistant: newAssistantDraft(modelName || selectedModel), conversationId, temp: false, replaceBranch: true };
 		const live = stream.assistant; // 프록시 경유(반응성)
 
 		await runStream(
@@ -2218,6 +2305,8 @@
 		const message = activePath[idx];
 		const targetRunId = message?.execution?.run_id;
 		if (idx === -1 || message?.role !== 'user' || !targetRunId || message.execution?.retryable !== true) return;
+		if (historyLoading) return;
+		localMutationEpoch += 1;
 		error = null;
 		invalidateContextPreview();
 		streaming = true;
@@ -2225,7 +2314,8 @@
 			base: activePath.slice(0, idx + 1),
 			assistant: newAssistantDraft(selectedModel),
 			conversationId,
-			temp: false
+			temp: false,
+			replaceBranch: true
 		};
 		const live = stream.assistant;
 		await runStream(
@@ -2253,20 +2343,26 @@
 		const siblingId = direction === -1 ? message?.branch?.previous_id : message?.branch?.next_id;
 		if (siblingId === null || siblingId === undefined) return;
 		const conversationId = activeConvId;
+		const selection = selectionGeneration;
+		const requestToken = token;
+		const requestProjectId = projectId;
+		localMutationEpoch += 1;
+		const mutationEpoch = localMutationEpoch;
 		treeLoading = true;
 		try {
 			await api.patch(
 				`/api/v1/chat/conversations/${conversationId}/active-leaf`,
 				{ message_id: siblingId, descend: true },
-				token,
-				projectId
+				requestToken,
+				requestProjectId
 			);
-			await loadMessages(conversationId);
+			if (!historyRequestIsCurrent(conversationId, selection, mutationEpoch, requestToken, requestProjectId)) return;
+			await loadMessages(conversationId, selection, false);
 			void executeContextPreview();
 		} catch (cause) {
-			error = cause instanceof Error ? cause.message : '버전 전환에 실패했습니다';
+			if (historyRequestIsCurrent(conversationId, selection, mutationEpoch, requestToken, requestProjectId)) error = cause instanceof Error ? cause.message : '버전 전환에 실패했습니다';
 		} finally {
-			treeLoading = false;
+			if (selection === selectionGeneration) treeLoading = false;
 		}
 	}
 
@@ -2528,15 +2624,13 @@
 			empty={isEmpty}
 			starterPrompts={lumenStarterPrompts}
 			onStarterPrompt={insertLumenStarterPrompt}
-			conversationKey={activeConvId ?? (tempMode ? tempThreadId ?? 'temporary' : '')}
+			conversationKey={`${selectionGeneration}:${projectId}:${activeConvId ?? (tempMode ? tempThreadId ?? 'temporary' : '')}`}
+			scrollFence={historyScrollFence}
 			hasBefore={historyHasBefore}
-			hasAfter={historyHasAfter}
 			loadingHistory={historyLoading}
 			newHistoryActivity={historyNewActivity}
-			onLoadBefore={activeConvId && !tempMode ? () => loadHistoryDirection('before') : undefined}
-			onLoadAfter={activeConvId && !tempMode ? () => loadHistoryDirection('after') : undefined}
-			onLoadFirst={activeConvId && !tempMode ? () => replaceHistoryWindow('first') : undefined}
-			onLoadLatest={activeConvId && !tempMode ? () => replaceHistoryWindow('latest') : undefined}
+			onLoadBefore={activeConvId && !tempMode ? loadOlderHistory : undefined}
+			onLoadLatest={activeConvId && !tempMode ? () => replaceHistoryWindow() : undefined}
 			onCopy={copy}
 			{manualCompactionActivity}
 			onRegenerate={regenerate}
