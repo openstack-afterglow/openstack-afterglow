@@ -318,6 +318,9 @@
 	{#if loading}
 		<div class="load-bar" role="status" aria-label="불러오는 중"><span></span></div>
 	{/if}
+	{#if !empty && loadingHistory}
+		<div class="history-loading" role="status">대화 기록을 불러오는 중…</div>
+	{/if}
 	<div class="scroll" bind:this={scrollEl} role="region" aria-label="대화 기록" onscroll={onScroll} onwheel={onWheel} ontouchstart={onTouchStart} ontouchmove={onTouchMove}>
 		{#if empty}
 			<div class="welcome">
@@ -338,9 +341,6 @@
 			</div>
 		{:else}
 			<div class="stream">
-				{#if loadingHistory}
-					<div class="history-loading" role="status">대화 기록을 불러오는 중…</div>
-				{/if}
 				{#if newHistoryActivity}
 					<div class="history-activity" role="status">
 						<span>새 응답이 도착했습니다.</span>
@@ -449,7 +449,15 @@
 		margin: 0 auto;
 	}
 	.history-loading {
-		align-self: center;
+		position: absolute;
+		top: 1rem;
+		left: 50%;
+		transform: translateX(-50%);
+		z-index: 2;
+		pointer-events: none;
+		border: 1px solid var(--color-line);
+		border-radius: var(--radius-md);
+		background: var(--color-surface-sunken);
 		color: var(--color-ink-2);
 		font-size: 0.75rem;
 		padding: 0.25rem 0.5rem;

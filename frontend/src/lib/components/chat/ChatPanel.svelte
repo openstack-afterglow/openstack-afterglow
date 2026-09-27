@@ -233,6 +233,11 @@
 			resolve();
 		};
 	}
+	function resetHistoryRequest(): void {
+		// A previous view can still finish its fetch; it must not gate the new view.
+		historyRequestCompletion = null;
+		historyLoading = false;
+	}
 	let historyNewActivity = $state(false);
 	const historyHasBefore = $derived((historyPages[0]?.has_before ?? false) && historyPages[0]?.before_cursor !== blockedBeforeCursor);
 	const historyBeforeCursor = $derived(historyPages[0]?.before_cursor ?? null);
@@ -1250,7 +1255,7 @@
 		historyPages = [];
 		blockedBeforeCursor = null;
 		historyNewActivity = false;
-		historyLoading = false;
+		resetHistoryRequest();
 		treeLoading = false;
 		closeSidebarOnMobile();
 		metricsById.clear(); // 런타임 tok/s 계측값은 대화 전환 시 초기화(누적 방지)
@@ -1283,7 +1288,7 @@
 		historyPages = [];
 		blockedBeforeCursor = null;
 		historyNewActivity = false;
-		historyLoading = false;
+		resetHistoryRequest();
 		treeLoading = false;
 		closeSidebarOnMobile();
 		metricsById.clear();
@@ -1323,7 +1328,7 @@
 		historyPages = [];
 		blockedBeforeCursor = null;
 		historyNewActivity = false;
-		historyLoading = false;
+		resetHistoryRequest();
 		treeLoading = false;
 		rememberTempThread(null);
 		if (projectId) clearActiveConversationId(projectId);
@@ -1951,6 +1956,7 @@
 	async function resumeActiveRun(conversationId: string) {
 		if (!token || !projectId || tempMode || currentRun) return;
 		const generation = streamGeneration;
+		const wasRunning = runningConversationIds.has(conversationId);
 		try {
 			const payload = await api.get<unknown[]>(
 				`/api/v1/chat/conversations/${conversationId}/runs?active=true`,
@@ -1965,7 +1971,6 @@
 					generation === streamGeneration &&
 					!destroyed
 				) {
-					const wasRunning = runningConversationIds.has(conversationId);
 					setConversationRun(conversationId, false);
 					if (wasRunning) await refreshHistoryAfterRun(conversationId, selectionGeneration);
 				}

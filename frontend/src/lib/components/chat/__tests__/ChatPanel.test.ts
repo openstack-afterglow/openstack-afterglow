@@ -1172,6 +1172,85 @@ describe('ChatPanel', () => {
 		expect(screen.queryByText('stale content')).toBeNull();
 		expect(screen.getByText('second conversation')).toBeTruthy();
 	});
+	it('reloads a new conversation answer while the previous view still has a slow history request', async () => {
+		const oldPage = Promise.withResolvers<object>();
+		const fallback = mocks.get.getMockImplementation()!;
+		let newPageRequests = 0;
+		mocks.get.mockImplementation(async (path: string, ...args: unknown[]) => {
+			if (path === '/api/v1/chat/conversations') return [{ id: 'conv-old', title: '이전 대화', model_name: 'model-1', workspace_id: null }];
+			if (path.includes('/conv-old/messages?cursor=older')) return oldPage.promise;
+			if (path.includes('/conv-old/messages?')) return {
+				messages: [{ id: 'old', conversation_id: 'conv-old', role: 'user', parent_id: null, content: 'old question', created_at: at }],
+				active_leaf_id: 'old', history_revision: 1, has_before: true, before_cursor: 'older', has_after: false, after_cursor: null
+			};
+			if (path.includes('/conv-new/messages?')) {
+				newPageRequests++;
+				return {
+					messages: [{ id: 'new-answer', conversation_id: 'conv-new', role: 'assistant', parent_id: null, content: 'persisted new answer', created_at: at }],
+					active_leaf_id: 'new-answer', history_revision: 1, has_before: false, before_cursor: null, has_after: false, after_cursor: null
+				};
+			}
+			return fallback(path, ...args);
+		});
+		mocks.post.mockResolvedValue({ id: 'conv-new', title: null, model_name: 'model-1', workspace_id: null });
+		mocks.createRun.mockResolvedValue({
+			run_id: 'run-1', conversation_id: 'conv-new', temp_thread_id: null,
+			status: 'running', run_kind: 'completion', events_url: '/events', cancel_url: '/cancel'
+		});
+		mocks.followRun.mockImplementation(async function* () {
+			yield event(1, 'run.completed', { status: 'completed', message_id: 'new-answer' });
+		});
+		render(ChatPanel);
+		await fireEvent.click(await screen.findByRole('button', { name: '대화 기록과 설정 열기' }));
+		await fireEvent.click(await screen.findByRole('button', { name: '이전 대화' }));
+		await screen.findByText('old question');
+		const scroll = document.querySelector('.scroll') as HTMLDivElement;
+		Object.defineProperties(scroll, {
+			scrollTop: { configurable: true, value: 50, writable: true },
+			scrollHeight: { configurable: true, value: 1000 },
+			clientHeight: { configurable: true, value: 100 }
+		});
+		await scrollUp(scroll);
+		await waitFor(() => expect(mocks.get.mock.calls.some(([path]) => String(path).includes('/conv-old/messages?cursor=older'))).toBe(true));
+		await fireEvent.click(document.querySelector('button.rail-action[aria-label="새 채팅"]') as HTMLButtonElement);
+		await fireEvent.input(screen.getByRole('textbox'), { target: { value: 'new question' } });
+		await fireEvent.click(screen.getByRole('button', { name: '전송' }));
+		await screen.findByText('persisted new answer');
+		expect(newPageRequests).toBe(1);
+		oldPage.resolve({ messages: [], active_leaf_id: null, history_revision: 1, has_before: false, before_cursor: null, has_after: true, after_cursor: null });
+	});
+
+	it('reloads a completed answer when global and local run snapshots race on reconnect', async () => {
+		const noActiveRuns = Promise.withResolvers<object[]>();
+		const fallback = mocks.get.getMockImplementation()!;
+		const run = { run_id: 'run-recover', conversation_id: 'conv-recover', temp_thread_id: null,
+			status: 'running', run_kind: 'completion', events_url: '/events', cancel_url: '/cancel' };
+		let globalSnapshots = 0;
+		let historyReads = 0;
+		mocks.get.mockImplementation(async (path: string, ...args: unknown[]) => {
+			if (path === '/api/v1/chat/conversations') return [{ id: 'conv-recover', title: '복구 대화', model_name: 'model-1', workspace_id: null }];
+			if (path === '/api/v1/chat/runs?active=true') return ++globalSnapshots === 1 ? [run] : [];
+			if (path === '/api/v1/chat/conversations/conv-recover/runs?active=true') return noActiveRuns.promise;
+			if (path.includes('/conv-recover/messages?')) return {
+				messages: historyReads++ === 0
+					? [{ id: 'question', conversation_id: 'conv-recover', role: 'user', parent_id: null, content: 'saved question', created_at: at }]
+					: [{ id: 'question', conversation_id: 'conv-recover', role: 'user', parent_id: null, content: 'saved question', created_at: at },
+						{ id: 'answer', conversation_id: 'conv-recover', role: 'assistant', parent_id: 'question', content: 'saved completed answer', created_at: at }],
+				active_leaf_id: historyReads === 1 ? 'question' : 'answer', history_revision: 1,
+				has_before: false, before_cursor: null, has_after: false, after_cursor: null
+			};
+			return fallback(path, ...args);
+		});
+		render(ChatPanel);
+		await screen.findByText('saved question');
+		await waitFor(() => expect(mocks.get.mock.calls.some(([path]) => String(path).endsWith('/conv-recover/runs?active=true'))).toBe(true));
+		window.dispatchEvent(new Event('focus'));
+		await waitFor(() => expect(globalSnapshots).toBeGreaterThan(1));
+		noActiveRuns.resolve([]);
+		await screen.findByText('saved completed answer');
+		expect(historyReads).toBeGreaterThan(1);
+	});
+
 
 
 	it.each(['no progress', 'failure'])('bounds older cursor requests after %s', async (outcome) => {

@@ -555,9 +555,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "554ec8f88b4cec616bb7a075677feea20bfa1f3ea7973cfc1298deb0d1ccac51",
-  "reviewed_at": "2026-09-27T14:42:32Z",
-  "summary": "Chat history upward pagination, DOM anchor compensation, and obsolete controls cleanup verified with 1540 frontend tests, Svelte check, and multi-arch container smoke."
+  "source_sha256": "15ee2cece584cc57a5a7bd79c6241be9e5bde69b915cf078415915340e8e28f5",
+  "reviewed_at": "2026-09-27T16:36:46Z",
+  "summary": "Chat history request completion reset on conversation switches and banner positioning decoupled from scrollable transcript."
 }
 ```
 <!-- architecture-review:end -->
