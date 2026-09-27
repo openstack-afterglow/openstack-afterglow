@@ -316,6 +316,8 @@ Kolla Afterglow `deploy`·`reconfigure`는 config 생성 뒤, `upgrade`는 새 i
 
 Afterglow 1.27.0 operator 정본은 Drover `v0.2.25`, Lumen `v0.3.0`, Waygate `v0.2.0`, Palimpsest root `palimpsest-client` `v0.2.3`의 immutable Git tag와 이를 해석한 `deploy/kolla/operator/uv.lock`이다. Backend/worker의 Drover·Waygate SDK도 같은 서비스 릴리즈의 정확한 commit(Drover `v0.2.25` merge `a18f207a`, SDK `0.2.21`; Waygate `v0.2.0` merge `5723939`, SDK `0.1.2`)으로 고정하며 SDK 자체 버전은 형제 저장소의 독립 계약을 유지한다. Operator sync는 `--locked --inexact --no-install-project`로 기존 Kolla 도구를 보존한다. Palimpsest 0.2.2는 Hub volume root의 UID1000 소유권을 bootstrap 전에 설정하는 Kolla role 수정이고, 0.2.3은 같은 role을 유지한 채 root 배포판 이름을 `palimpsest-local`에서 `palimpsest-client`로 바꾼다. 두 배포판은 같은 role 파일을 설치하고 `--inexact` sync는 퇴역 배포판을 지우지 않으므로 `install.sh`는 `palimpsest-local` metadata가 남아 있으면 거부하고, operator README의 uninstall 후 `--reinstall-package palimpsest-client` 절차를 요구한다. 이 source promotion은 운영 이미지 발행·배포 완료의 증거가 아니며, rollout은 별도로 digest와 실제 인증 업로드 경로를 검증한다.
 
+Afterglow 1.28.0 준비 작업트리의 operator는 Lumen root role만 `v0.3.1` tag/lock으로 갱신하며 Drover `v0.2.25`, Waygate `v0.2.0`과 Palimpsest root `v0.2.3` pin은 유지한다. Palimpsest 0.2.4는 Astra 승인과 KVM runner 격리 결정 전까지 게시·운영 승격하지 않는다. Lumen package·API/worker/controller/sandbox tag workflow의 결과와 이미지 digest는 각각 별도로 확인해야 하며, 이 문단은 Kolla 배포나 외부 Anthropic/OpenAI 유료 추론 수용 증거가 아니다.
+
 운영 worker 복구는 검증한 `linux/amd64` manifest의 immutable digest만 `afterglow_worker_image_ref`에 고정하고 backend/frontend ref는 유지한다. Kolla precheck와 service-scoped rollout 뒤 모든 대상 controller의 running image digest, restart state, worker completion log, `notion_targets.last_sync` 전진을 함께 확인하며 container `running`만으로 성공 처리하지 않는다.
 
 
@@ -549,9 +551,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "abbe631cdd976b671c233124f5cebbd0ab8b06a8c6a37373e9c8f6f58ac54a91",
-  "reviewed_at": "2026-09-27T06:35:56Z",
-  "summary": "Reviewed 1.28.0 backend image approvals, Dockerfile parent lint, Swift object handling and quota/usage frontend flows; formatted three regression modules after full functional gate; operator sibling pins/cloud deployment remain pending"
+  "source_sha256": "74326cfb21e7ec33c6f42db8035b5bfe11a2c25f7fb244ba06bf194034e1ad60",
+  "reviewed_at": "2026-09-27T07:51:24Z",
+  "summary": "Reviewed operator Lumen v0.3.1 immutable source/lock, verified isolated installed role and kept Palimpsest v0.2.3 pending Astra and KVM runner isolation; no production rollout or paid provider acceptance"
 }
 ```
 <!-- architecture-review:end -->

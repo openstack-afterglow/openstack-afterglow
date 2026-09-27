@@ -25,6 +25,10 @@
 - **이미지 보호 상태·Dockerfile 검사 일치** — Glance 메타데이터 수정 응답에도 보호 상태를 유지하고, SDK가 보호 값을 비워 보낸 이미지의 목록 조회가 실패하지 않는다. 잘못된 `FROM` 이후의 유효 지시어도 lint 예상치에 남기고 부모의 base image ID 누락을 plan/build와 동일하게 거부한다. 인라인 Glance 조회가 이벤트 루프를 막거나 장애 내부정보를 노출하지 않도록 했다.
 - **사용량 화면의 현황·RAM 비율** — 부가 quota 요청이 지연되어도 사용량 보고서를 먼저 표시하고, strict Nova/Cinder 쿼터가 실패하면 정규화된 현황 0/무제한을 숨긴다. 1GB 미만 RAM도 반올림 전에 사용률을 계산한다.
 
+### Changed
+
+- **Lumen 0.3.1 operator pin 준비** — Kolla operator root role tag/lock 및 API·worker sample image를 새 릴리스에 맞춘다. Palimpsest root 0.2.4와 수정된 Hub image 승격은 Astra 승인·KVM runner 격리 결정까지 보류하며, 이 변경만으로 운영 배포나 실제 provider 추론을 주장하지 않는다.
+
 ## [1.27.0] - 2026-09-27
 
 ### Added

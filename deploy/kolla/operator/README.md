@@ -9,7 +9,7 @@ application.
 | Distribution | Installed role | Required version |
 | --- | --- | --- |
 | `drover` | `drover` | `0.2.25` |
-| `lumen` | `lumen` | `0.3.0` |
+| `lumen` | `lumen` | `0.3.1` |
 | `waygate` | `waygate` | `0.2.0` |
 | `palimpsest-client` | `palimpsest` | `0.2.3` |
 

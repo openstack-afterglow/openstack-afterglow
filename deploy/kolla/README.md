@@ -77,7 +77,7 @@ KOLLA_ANSIBLE_DIR=/etc/kolla/.venv/share/kolla-ansible \
 ### Installer-managed artifacts
 - Source role link under `$KOLLA_DIR/ansible/roles/`: `afterglow`.
 - Verified root-package roles under `$KOLLA_DIR/ansible/roles/`: `drover`
-  (via `drover==0.2.25`), `lumen` (via `lumen==0.3.0`), `waygate`
+  (via `drover==0.2.25`), `lumen` (via `lumen==0.3.1`), `waygate`
   (via `waygate==0.2.0`), and `palimpsest` (via
   `palimpsest-client==0.2.3`). Installer validates non-symlink role paths and
   required lifecycle files, and refuses a leftover retired `palimpsest-local`
@@ -109,7 +109,7 @@ unexpected, `install.sh` aborts rather than replacing it.
 `kolla-ansible` and the root service distributions:
 
 - **`drover==0.2.25`** owns the `drover` role.
-- **`lumen==0.3.0`** owns the `lumen` role.
+- **`lumen==0.3.1`** owns the `lumen` role.
 - **`waygate==0.2.0`** owns the `waygate` role.
 - **`palimpsest-client==0.2.3`** owns the `palimpsest` role (renamed from
   `palimpsest-local` in 0.2.3; see the operator README for migration).
