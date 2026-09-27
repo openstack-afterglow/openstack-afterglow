@@ -7,6 +7,11 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **채팅 기록 최신 우선·위로 자동 로드** — 저장 대화는 최신 40개를 하단에서 열고 의도적인 상향 스크롤마다 opaque before cursor의 이전 page를 중복 없이 누적한다. 기존 처음/이전/다음/최신 버튼과 3-page eviction을 없애며 prepend viewport, 늦은 응답/branch 전환, stream 중 읽기 위치를 보존한다. Fork의 title/leaf는 별개지만 공유된 조상의 message ID는 같으며 BFF는 Lumen graph를 저장하거나 해석하지 않는다.
+- 이 UI의 공유 메시지 동작에는 Lumen migration 019와 동일 revision의 API/worker maintenance cutover가 선행돼야 한다. Production provider inference, GPT/Claude/title, image digest, Kolla rollout은 이 로컬 UI 변경만으로 검증되지 않았다.
+
 ## [1.28.0] - 2026-09-27
 
 ### Added

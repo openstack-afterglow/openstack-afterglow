@@ -50,6 +50,7 @@ Afterglow 백엔드는 모든 `/api/v1/chat/{path}` 요청을 내부 Lumen 서�
 | `GET /api/v1/chat/conversations` | `/v1/conversations` | 대화 목록 조회 |
 | `POST /api/v1/chat/conversations` | `/v1/conversations` | 신규 대화 생성 |
 | `GET /api/v1/chat/conversations/{id}/messages?anchor=latest\|first&limit=40` | `/v1/conversations/{id}/messages` | active-path message page; opaque `before_cursor`/`after_cursor`를 후속 `cursor` query로 그대로 전달 |
+| `POST /api/v1/chat/conversations/{id}/fork` | `/v1/conversations/{id}/fork` | 선택 view에서 reachable한 `message_id`의 조상 ID만 참조하는 독립 제목·leaf mapping 생성; BFF는 graph ID/암호화 payload를 만들지 않음 |
 | `PATCH /api/v1/chat/conversations/{id}/active-leaf` | `/v1/conversations/{id}/active-leaf` | sibling message ID와 `descend=true`로 selected branch의 newest descendant까지 활성 경로 전환 |
 | `POST /api/v1/chat/conversations/{id}/completions` | `/v1/conversations/{id}/completions` | 실행을 접수하고 `202` run descriptor 반환; 이후 events URL로 SSE 구독 |
 | `POST /api/v1/chat/conversations/{id}/context-preview` | `/v1/conversations/{id}/context-preview` | 현재 모델·기능·작성 중 입력까지 반영한 context token 예산과 압축 권고를 읽기 전용으로 계산 |
@@ -83,11 +84,15 @@ DeepSeek의 공식 `/user/balance`는 통화별 총 account balance, 구매 충�
 
 ### Active-path 기록 탐색
 
-대화 화면은 Lumen의 전체 message graph를 다운로드하거나 browser에서 parent graph를 재구성하지 않습니다. Initial/latest/first page와 cursor page는 active-path projection에 이미 root-to-leaf로 정렬되어 있으며 각 message의 `branch.previous_id`/`next_id`가 version 탐색을 제공합니다. Browser는 40개 page를 최대 3개(120 messages)만 보존합니다. **처음/이전/다음/최신**은 모든 breakpoint에서 explicit action이며 한 번 누를 때 Lumen request도 정확히 한 번 발생합니다.
+대화 화면은 Lumen의 전체 message graph를 다운로드하거나 browser에서 parent graph를 재구성하지 않습니다. 대화를 새로 열거나 다시 선택하면 `anchor=latest&limit=40` 한 page로 시작해 맨 아래를 보여 줍니다. 사용자 스크롤이 transcript 상단 경계로 올라올 때만 opaque `before_cursor`를 다음 요청의 `cursor`에 그대로 넣어 이전 40개를 한 번 가져옵니다. 누적 prefix의 message ID는 deduplicate하며, 반대쪽 page를 버리거나 **처음/이전/다음/최신** 수동 이동 버튼으로 대체하지 않습니다. 반환된 각 page는 root-to-leaf display order이고 `branch.previous_id`/`next_id`는 server가 제공하는 version ID입니다.
 
-이전 page prepend는 첫 visible `data-history-message-id`의 top offset을 render 전후 비교해 viewport를 보존합니다. Opposite edge page를 버려도 edge cursor가 남아 다시 가져올 수 있습니다. Selection generation, local mutation epoch, token/project와 conversation identity가 바뀐 response는 적용하지 않습니다. Branch change로 cursor revision이 stale해져 409가 오면 alert를 표시하고 latest page를 한 번만 다시 조회합니다.
+Prepend 직전 실제로 보이는 `data-history-message-id`와 top offset을 측정하고 DOM 갱신 뒤 같은 ID의 위치를 보존합니다. Fetch 대기 중 실제로 아래/위로 스크롤했다면 요청 시작 때의 ID가 아닌 새로 보이는 ID를 보존합니다. 맨 위에서 반복된 wheel/touch overscroll은 이동으로 간주하지 않습니다. Programmatic 초기 하단 이동·anchor 복구·overscroll의 잔여 wheel은 다른 이전 page를 연쇄 조회하지 않습니다. One-in-flight, selection generation, local mutation epoch, token/project, conversation identity와 branch fence가 다른 response 및 비동기 scroll 보정은 적용하지 않습니다. Branch change로 cursor revision이 stale해져 409가 오면 alert를 표시하고 latest page를 한 번만 다시 조회합니다.
 
-사용자가 old window를 읽는 동안 run이 끝나면 transcript를 강제로 latest로 이동하지 않고 **새 응답이 도착했습니다** action을 표시합니다. Old window에서 전송하면 input을 지우기 전에 latest page를 먼저 가져와 새 turn parent를 live edge에 연결합니다. Stream draft도 old window 위에 섞지 않습니다.
+한 번의 wheel 연속 입력 또는 touch gesture는 이전 page를 최대 하나 요청합니다. 실패하면 같은 입력의 잔여 이벤트가 반복 요청하지 않으며, 다음 의도적 상향 입력으로 다시 시도할 수 있습니다. 진전이 없는 cursor는 더 조회하지 않습니다.
+
+사용자가 이전 기록을 읽는 동안 run이 끝나면 transcript를 강제로 latest로 이동하지 않고 **새 응답이 도착했습니다** action을 표시합니다. Stream의 최신 base와 누적된 과거 prefix를 병합하고 완료 후 같은 revision이면 누적 ID를 보존하며, retry/regenerate가 명시적으로 잘라낸 suffix는 다시 넣지 않습니다. Old window에서 전송하면 input을 지우기 전에 latest page를 먼저 가져와 새 turn parent를 live edge에 연결합니다. Stream draft는 old window 위에 섞지 않습니다.
+
+신규 fork는 Lumen migration 019 뒤에만 공유 graph/membership 의미를 갖습니다. 지정 message의 선택된 조상은 ID·암호화 본문·asset 링크를 복제하지 않지만 source-only sibling은 fork에서 접근할 수 없습니다. 반환 message의 `conversation_id`는 요청한 view이고 title/leaf/revision은 독립입니다. Source 삭제 뒤에도 살아 있는 fork에서 이전 기록을 볼 수 있으며 마지막 view 삭제가 graph/message/asset-link를 정리합니다. Run retry 원본·usage ledger는 공유 ID만으로 fork 소유로 바뀌지 않습니다. 기존 copied fork는 데이터 무손실 우선으로 별도 graph에 남습니다. 운영 cutover에는 writer stop·MariaDB backup·Lumen migration/worker 재시작이 선행돼야 합니다.
 
 ### Claude Code 연결과 legacy device endpoint
 
