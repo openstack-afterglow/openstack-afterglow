@@ -209,6 +209,10 @@ class LayerBuild(Base):
 
 ---
 
+Dockerfile을 통한 체인 빌드 역시 이 squashfs/Manila 파이프라인을 사용한다. 관리자 입력의
+`FROM` Glance 이미지 이름/UUID 또는 유일한 Ubuntu tag 해석, 읽기 전용 lint와 inline/GitHub
+컨텍스트 차이는 [Palimpsest Dockerfile 계약](palimpsest.md#44-dockerfile-로-레이어-빌드)에 있다.
+
 ## API 엔드포인트
 
 모든 엔드포인트: `Depends(require_admin)` 필수. 경로 prefix: `/api/v1/admin/libraries`

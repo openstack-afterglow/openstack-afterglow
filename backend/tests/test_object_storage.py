@@ -11,6 +11,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from requests import Response
+from requests.adapters import BaseAdapter
 
 from app.main import app
 
@@ -289,27 +291,324 @@ def test_get_container_metadata_no_segments():
     assert result["bytes"] == 500 * 1024**2
 
 
+def _swift_listing_response(rows, status=200):
+    response = Response()
+    response.status_code = status
+    response.url = "http://swift.test/v1/AUTH_test/bucket"
+    response._content = json.dumps(rows).encode()
+    return response
+
+
+class _InProcessSwift(BaseAdapter):
+    """Swift account behind a real openstacksdk Proxy; requests reach this adapter, never a socket.
+
+    ``fail_when(method, container, key, query)`` may return an HTTP status to inject for a request.
+    """
+
+    def __init__(self, containers: dict[str, dict[str, bytes]], page_size: int):
+        super().__init__()
+        self.containers = containers
+        self.page_size = page_size
+        self.requests: list[tuple[str, str, str, dict[str, str]]] = []
+        self.fail_when = lambda _method, _container, _key, _query: None
+
+    def send(self, request, **_kwargs):
+        url = urllib.parse.urlsplit(request.url)
+        parts = url.path.split("/", 4)  # ["", "v1", "AUTH_test", container, key]
+        container = urllib.parse.unquote(parts[3]) if len(parts) > 3 else ""
+        key = urllib.parse.unquote(parts[4]) if len(parts) > 4 else ""
+        query = dict(urllib.parse.parse_qsl(url.query, keep_blank_values=True))
+        self.requests.append((request.method, container, key, query))
+        injected = self.fail_when(request.method, container, key, query)
+        status, body = (
+            (injected, b'{"error": "injected"}') if injected else self._handle(request, container, key, query)
+        )
+        response = Response()
+        response.status_code = status
+        response._content = body
+        response.headers["Content-Length"] = str(len(body))
+        response.url = request.url
+        response.request = request
+        response.reason = "fixture"
+        return response
+
+    def close(self):
+        pass
+
+    def mutations(self) -> list[tuple[str, str, str]]:
+        return [
+            (method, container, key)
+            for method, container, key, _ in self.requests
+            if method in {"PUT", "DELETE"} and key
+        ]
+
+    def _handle(self, request, container: str, key: str, query: dict[str, str]) -> tuple[int, bytes]:
+        method = request.method
+        if not container:
+            return 200, b"[]"
+        objects = self.containers.get(container)
+        if not key:
+            if method == "PUT":
+                self.containers.setdefault(container, {})
+                return 201, b""
+            if objects is None:
+                return 404, b""
+            return (200, json.dumps(self._listing(objects, query)).encode()) if method == "GET" else (204, b"")
+        if objects is None:
+            return 404, b""
+        if method == "PUT":
+            source = request.headers.get("X-Copy-From")
+            if source is None:
+                objects[key] = request.body or b""
+                return 201, b""
+            src_container, _, src_key = source.lstrip("/").partition("/")
+            data = self.containers.get(urllib.parse.unquote(src_container), {}).get(urllib.parse.unquote(src_key))
+            if data is None:
+                return 404, b""
+            objects[key] = data
+            return 201, b""
+        if method == "DELETE":
+            return (204, b"") if objects.pop(key, None) is not None else (404, b"")
+        if key not in objects:
+            return 404, b""
+        return 200, objects[key] if method == "GET" else b""
+
+    def _listing(self, objects: dict[str, bytes], query: dict[str, str]) -> list[dict]:
+        prefix, delimiter, marker = (query.get(field, "") for field in ("prefix", "delimiter", "marker"))
+        rows = {}
+        for key, data in objects.items():
+            if not key.startswith(prefix):
+                continue
+            cut = key.find(delimiter, len(prefix)) if delimiter else -1
+            if cut >= 0:
+                rows[key[: cut + len(delimiter)]] = {"subdir": key[: cut + len(delimiter)]}
+            else:
+                content_type = "application/directory" if key.endswith("/") else "text/plain"
+                rows[key] = {
+                    "name": key,
+                    "bytes": len(data),
+                    "content_type": content_type,
+                    "last_modified": "2026-09-26T01:00:00Z",
+                    "hash": "abc",
+                }
+        limit = min(int(query.get("limit", 10000)), self.page_size)
+        return [rows[name] for name in sorted(rows) if name > marker][:limit]
+
+
+def _swift_conn(stored: dict[str, bytes], *, page_size: int = 2, container: str = "bucket", extra: tuple = ()):
+    """Real openstacksdk Connection whose object-store HTTP requests are served in process."""
+    import openstack.connection
+    import requests
+    from keystoneauth1 import session as ks_session
+    from keystoneauth1.noauth import NoAuth
+
+    swift = _InProcessSwift({container: dict(stored), **{name: {} for name in extra}}, page_size)
+    http = requests.Session()
+    http.mount("http://swift.test/", swift)
+    endpoint = "http://swift.test/v1/AUTH_test"
+    conn = openstack.connection.Connection(
+        session=ks_session.Session(auth=NoAuth(endpoint=endpoint), session=http),
+        object_store_endpoint_override=endpoint,
+    )
+    return conn, swift
+
+
+def test_list_objects_collision_explicit_marker_and_flat_prefix():
+    from app.services.swift import list_objects
+
+    stored = {key: b"" for key in ("foo", "foo/", "foo/a.txt", "foobar/b.txt", "empty/")}
+    conn, swift = _swift_conn(stored, page_size=1)
+    with patch("app.services.swift._apply_endpoint_override"):
+        root = list_objects(conn, "bucket", delimiter="/")
+        nested = list_objects(conn, "bucket", prefix="foo/", delimiter="/")
+        flat = list_objects(conn, "bucket", prefix="foo/", delimiter="")
+    assert [(row["name"], row["is_dir"]) for row in root] == [
+        ("empty/", True),
+        ("foo", False),
+        ("foo/", True),
+        ("foobar/", True),
+    ]
+    assert [row["name"] for row in nested] == ["foo/a.txt"]
+    assert [row["name"] for row in flat] == ["foo/", "foo/a.txt"]
+    listings = [
+        query for method, name, key, query in swift.requests if method == "GET" and name == "bucket" and not key
+    ]
+    assert any(query.get("marker") == "foo/" and query.get("prefix") == "foo/" for query in listings)
+    assert all(query["limit"] == "10000" and query["format"] == "json" for query in listings)
+
+
+@pytest.mark.parametrize(
+    "rows",
+    [
+        (
+            [{"subdir": "foo/"}],
+            [
+                {"name": "foo/", "bytes": 0, "content_type": "application/directory", "hash": "stored"},
+                {"subdir": "foo/bar/"},
+            ],
+        ),
+        (
+            [{"name": "foo/", "bytes": 0, "content_type": "application/directory", "hash": "stored"}],
+            [{"subdir": "foo/"}, {"subdir": "foo/bar/"}],
+        ),
+    ],
+)
+def test_list_objects_prefers_stored_marker_across_page_orders(rows):
+    from app.services.swift import list_objects
+
+    conn = MagicMock()
+    conn.object_store.objects.return_value = iter(())
+    conn.object_store.get.side_effect = [
+        _swift_listing_response(rows[0]),
+        _swift_listing_response(rows[1]),
+        _swift_listing_response([]),
+    ]
+    with patch("app.services.swift._apply_endpoint_override"):
+        result = list_objects(conn, "bucket", delimiter="/")
+    assert [item["name"] for item in result].count("foo/") == 1
+    assert next(item for item in result if item["name"] == "foo/")["etag"] == "stored"
+    assert {item["name"] for item in result} == {"foo/", "foo/bar/"}
+
+
+def test_list_objects_filters_own_marker_without_losing_following_page():
+    from app.services.swift import list_objects
+
+    seen = []
+    responses = [
+        _swift_listing_response([{"name": "foo/", "content_type": "application/directory"}]),
+        _swift_listing_response([{"subdir": "foo/deep/"}]),
+        _swift_listing_response([]),
+    ]
+    conn = MagicMock()
+    conn.object_store.objects.return_value = iter(())
+
+    def get(_path, *, params):
+        seen.append(params.get("marker"))
+        return responses.pop(0)
+
+    conn.object_store.get.side_effect = get
+    with patch("app.services.swift._apply_endpoint_override"):
+        assert [item["name"] for item in list_objects(conn, "bucket", prefix="foo/", delimiter="/")] == ["foo/deep/"]
+    assert seen == [None, "foo/", "foo/deep/"]
+
+
+def test_list_objects_preserves_encoded_container_and_opaque_keys():
+    from app.services.swift import list_objects
+
+    key = "한글 +%/공백 +%/파일.png"
+    conn, swift = _swift_conn({key: b"x"}, container="버킷 +%")
+    with patch("app.services.swift._apply_endpoint_override"):
+        result = list_objects(conn, "버킷 +%", prefix="한글 +%/공백 +%/", delimiter="/")
+    assert [item["name"] for item in result] == [key]
+    # The in-process server decodes the real HTTP URL, so this proves one-time encoding end to end.
+    listing = next(
+        query for method, name, obj, query in swift.requests if method == "GET" and name == "버킷 +%" and not obj
+    )
+    assert listing["prefix"] == "한글 +%/공백 +%/"
+
+
+@pytest.mark.parametrize("status", [403, 404, 503])
+@pytest.mark.parametrize("after_page", [False, True])
+def test_list_objects_never_returns_partial_results_on_http_failure(status, after_page):
+    from openstack.exceptions import HttpException
+
+    from app.services.swift import list_objects
+
+    conn = MagicMock()
+    error = _swift_listing_response({"error": "Swift unavailable"}, status=status)
+    pages = [_swift_listing_response([{"name": "visible.txt", "bytes": 1}])] if after_page else []
+    conn.object_store.get.side_effect = [*pages, error]
+    with patch("app.services.swift._apply_endpoint_override"), pytest.raises(HttpException):
+        list_objects(conn, "bucket")
+
+
+@pytest.mark.parametrize(
+    "first_page,second_page,error",
+    [
+        ({"items": []}, None, ValueError),
+        ([{"name": "valid"}], "not json", ValueError),
+        ([{"name": "same"}], [{"name": "same"}], RuntimeError),
+        ([{"subdir": "a/"}], [{"unexpected": "row"}], ValueError),
+    ],
+)
+def test_list_objects_rejects_malformed_or_stalled_pages(first_page, second_page, error):
+    from app.services.swift import list_objects
+
+    conn = MagicMock()
+    responses = [_swift_listing_response(first_page)]
+    if second_page == "not json":
+        bad = _swift_listing_response([])
+        bad._content = b"{broken"
+        responses.append(bad)
+    elif second_page is not None:
+        responses.append(_swift_listing_response(second_page))
+    conn.object_store.get.side_effect = responses
+    with patch("app.services.swift._apply_endpoint_override"), pytest.raises(error):
+        list_objects(conn, "bucket", delimiter="/")
+
+
+def test_list_objects_handles_204_and_empty_json_only_as_empty():
+    from app.services.swift import list_objects
+
+    for response in (_swift_listing_response([], status=204), _swift_listing_response([])):
+        conn = MagicMock()
+        conn.object_store.get.return_value = response
+        conn.object_store.objects.return_value = iter(())
+        with patch("app.services.swift._apply_endpoint_override"):
+            assert list_objects(conn, "bucket") == []
+
+
+def test_list_objects_navigates_unmarked_nested_files():
+    """Swift subdir entries, not stored marker objects, supply each navigation level."""
+    from app.services.swift import list_objects
+
+    conn = MagicMock()
+    conn.object_store.objects.return_value = iter(())  # segments only; SDK loses delimiter/subdir
+    pages = {
+        "": [{"subdir": "tenant/"}],
+        "tenant/": [{"subdir": f"tenant/chat-{letter}/"} for letter in "abcd"],
+        "tenant/chat-a/": [
+            {
+                "name": "tenant/chat-a/p1_00_keep_arch.png",
+                "bytes": 5242880,
+                "content_type": "image/png",
+                "last_modified": "2026-09-26T01:00:00Z",
+                "hash": "abc",
+            }
+        ],
+    }
+
+    def get(_path, *, params):
+        rows = pages.get(params.get("prefix", ""), [])
+        marker = params.get("marker")
+        if marker:
+            rows = [row for row in rows if (row.get("name") or row.get("subdir")) > marker]
+        return _swift_listing_response(rows[:2])
+
+    conn.object_store.get.side_effect = get
+    with patch("app.services.swift._apply_endpoint_override"):
+        assert [o["name"] for o in list_objects(conn, "bucket", delimiter="/")] == ["tenant/"]
+        assert [o["name"] for o in list_objects(conn, "bucket", prefix="tenant/", delimiter="/")] == [
+            f"tenant/chat-{letter}/" for letter in "abcd"
+        ]
+        assert list_objects(conn, "bucket", prefix="tenant/chat-a/", delimiter="/") == [
+            {
+                "name": "tenant/chat-a/p1_00_keep_arch.png",
+                "bytes": 5242880,
+                "content_type": "image/png",
+                "last_modified": "2026-09-26T01:00:00Z",
+                "etag": "abc",
+                "is_dir": False,
+            }
+        ]
+    assert conn.object_store.get.call_args_list[0].kwargs["params"]["delimiter"] == "/"
+
+
 def test_list_objects_enriches_slo_sizes():
     """SLO 매니페스트의 bytes 가 segments 합계로 교체된다."""
     from unittest.mock import MagicMock, patch
 
     from app.services.swift import list_objects
-
-    # 정규 컨테이너에는 매니페스트(1.6 KB)와 일반 파일이 보임
-    manifest = MagicMock()
-    manifest.name = "big.zip"
-    manifest.size = 1638
-    manifest.content_type = "application/zip"
-    manifest.last_modified_at = ""
-    manifest.etag = ""
-    manifest.subdir = None
-    normal = MagicMock()
-    normal.name = "small.txt"
-    normal.size = 100
-    normal.content_type = "text/plain"
-    normal.last_modified_at = ""
-    normal.etag = ""
-    normal.subdir = None
 
     # segments 컨테이너에는 big.zip/00000000, big.zip/00000001 두 segment
     seg0 = MagicMock()
@@ -320,15 +619,16 @@ def test_list_objects_enriches_slo_sizes():
     seg1.size = 500 * 1024**2  # 500 MiB
 
     conn = MagicMock()
-
-    def objects_side_effect(container, **kwargs):
-        if container == "test":
-            return iter([manifest, normal])
-        if container == "test_segments":
-            return iter([seg0, seg1])
-        return iter([])
-
-    conn.object_store.objects.side_effect = objects_side_effect
+    conn.object_store.get.side_effect = [
+        _swift_listing_response(
+            [
+                {"name": "big.zip", "bytes": 1638, "content_type": "application/zip"},
+                {"name": "small.txt", "bytes": 100, "content_type": "text/plain"},
+            ]
+        ),
+        _swift_listing_response([]),
+    ]
+    conn.object_store.objects.return_value = iter([seg0, seg1])  # SLO segments retain SDK listing
 
     with patch("app.services.swift._apply_endpoint_override"):
         result = list_objects(conn, "test")
@@ -346,29 +646,249 @@ def test_list_objects_no_segments_container_keeps_sizes():
 
     from app.services.swift import list_objects
 
-    obj = MagicMock()
-    obj.name = "file.bin"
-    obj.size = 12345
-    obj.content_type = "application/octet-stream"
-    obj.last_modified_at = ""
-    obj.etag = ""
-    obj.subdir = None
-
     conn = MagicMock()
-
-    def objects_side_effect(container, **kwargs):
-        if container == "test":
-            return iter([obj])
-        # _segments LIST 시도 시 404 시뮬레이션
-        raise Exception("404")
-
-    conn.object_store.objects.side_effect = objects_side_effect
+    conn.object_store.get.side_effect = [
+        _swift_listing_response([{"name": "file.bin", "bytes": 12345, "content_type": "application/octet-stream"}]),
+        _swift_listing_response([]),
+    ]
+    # The optional _segments container is missing; preserve Swift's original bytes.
+    conn.object_store.objects.side_effect = Exception("404")
 
     with patch("app.services.swift._apply_endpoint_override"):
         result = list_objects(conn, "test")
 
     assert len(result) == 1
     assert result[0]["bytes"] == 12345
+
+
+@pytest.mark.parametrize(
+    "marker,children,dest_container",
+    [
+        (False, ["foo/a.txt", "foo/sub/b.txt"], "bucket"),
+        (True, ["foo/a.txt", "foo/sub/b.txt"], "bucket"),
+        (True, [], "bucket"),
+        (False, ["foo/a.txt"], "other"),
+    ],
+)
+def test_move_directory_copies_stored_snapshot_before_deleting(marker, children, dest_container):
+    from app.services.swift import move_object
+
+    stored = {key: b"payload" for key in ["foo", "foobar/a.txt", *children]}
+    if marker:
+        stored["foo/"] = b""
+    conn, swift = _swift_conn(stored, page_size=1, extra=("other",))
+    dest = "renamed/" if dest_container == "bucket" else "foo/"
+    with patch("app.services.swift._apply_endpoint_override"):
+        result = move_object(conn, "bucket", "foo/", dest_container, dest)
+    moved = {dest + key[len("foo/") :] for key in [*children, *(["foo/"] if marker else [])]}
+    assert result["destination"] == dest
+    assert set(swift.containers["bucket"]) == {"foo", "foobar/a.txt"} | (moved if dest_container == "bucket" else set())
+    assert set(swift.containers["other"]) == (moved if dest_container == "other" else set())
+    writes = swift.mutations()
+    first_delete = next(index for index, (method, _, _) in enumerate(writes) if method == "DELETE")
+    assert {key for method, _, key in writes[:first_delete]} == moved  # every copy precedes any delete
+    assert all(method == "DELETE" for method, _, _ in writes[first_delete:])
+
+
+def test_move_directory_missing_or_unlistable_source_does_not_mutate():
+    from openstack.exceptions import HttpException, ResourceNotFound
+
+    from app.services.swift import move_object
+
+    conn, swift = _swift_conn({"foo": b"x", "foobar/a.txt": b"x"}, extra=("other",))
+    with patch("app.services.swift._apply_endpoint_override"):
+        with pytest.raises(ResourceNotFound):
+            move_object(conn, "bucket", "foo/", "other", "renamed/")
+        swift.fail_when = lambda method, _container, key, _query: 503 if method == "GET" and not key else None
+        with pytest.raises(HttpException):
+            move_object(conn, "bucket", "foo/", "other", "renamed/")
+    assert swift.mutations() == []
+
+
+@pytest.mark.parametrize("status", [403, 404, 503])
+@pytest.mark.parametrize("operation", ["folder rename", "file rename", "file trash"])
+def test_failed_copy_response_never_deletes_the_source(operation, status):
+    """Raw SDK proxy PUTs return error responses instead of raising; a failed COPY must stop the move."""
+    from openstack.exceptions import HttpException
+
+    from app.services.swift import rename_object, soft_delete_object
+
+    stored = {"foo/a.txt": b"a", "foo/b.txt": b"b", "note.txt": b"n"}
+    conn, swift = _swift_conn(stored, page_size=1, extra=("bucket-trash",))
+    failing = {
+        "folder rename": ("bucket", "renamed/b.txt"),  # the first child copy succeeds
+        "file rename": ("bucket", "renamed.txt"),
+    }
+
+    def fail_when(method, container, key, _query):
+        if method != "PUT" or not key:
+            return None
+        if operation == "file trash":
+            return status if container == "bucket-trash" else None
+        return status if (container, key) == failing[operation] else None
+
+    swift.fail_when = fail_when
+    run = {
+        "folder rename": lambda: rename_object(conn, "bucket", "foo/", "renamed/"),
+        "file rename": lambda: rename_object(conn, "bucket", "note.txt", "renamed.txt"),
+        "file trash": lambda: soft_delete_object(conn, "bucket", "note.txt"),
+    }[operation]
+    with patch("app.services.swift._apply_endpoint_override"), pytest.raises(HttpException):
+        run()
+    assert [write for write in swift.mutations() if write[0] == "DELETE"] == []
+    assert {key: swift.containers["bucket"][key] for key in stored} == stored
+
+
+@pytest.mark.parametrize("marker", [False, True])
+def test_recursive_permanent_delete_reports_folder_after_stored_keys(marker):
+    from app.services.swift import bulk_delete_objects
+
+    stored = {"foo": b"x", "foobar/x": b"x", "foo/a.txt": b"x", "foo/deep/x": b"x"}
+    if marker:
+        stored["foo/"] = b""
+    conn, swift = _swift_conn(stored, page_size=1)
+    with patch("app.services.swift._apply_endpoint_override"):
+        result = bulk_delete_objects(conn, "bucket", ["foo/"], recursive=True)
+    assert result == {"deleted": ["foo/deep/x", "foo/a.txt", "foo/"], "failed": []}
+    deletes = [key for method, _, key in swift.mutations() if method == "DELETE"]
+    assert deletes == ["foo/deep/x", "foo/a.txt", *(["foo/"] if marker else [])]
+    assert set(swift.containers["bucket"]) == {"foo", "foobar/x"}
+
+
+@pytest.mark.parametrize("failing_key", ["foo/b", "foo/"])
+def test_recursive_delete_failure_response_leaves_folder_unclaimed(failing_key):
+    from app.services.swift import bulk_delete_objects
+
+    conn, swift = _swift_conn({"foo/": b"", "foo/a": b"a", "foo/b": b"b"})
+    swift.fail_when = lambda method, _container, key, _query: 503 if method == "DELETE" and key == failing_key else None
+    with patch("app.services.swift._apply_endpoint_override"):
+        result = bulk_delete_objects(conn, "bucket", ["foo/", "missing/"], recursive=True)
+    assert "foo/" not in result["deleted"]
+    assert [item["name"] for item in result["failed"]] == [failing_key, "missing/"]
+    assert {"foo/", failing_key} <= set(swift.containers["bucket"])  # the real marker stays with its content
+
+
+def test_recursive_trash_moves_nested_markers_after_descendants():
+    from app.services.swift import bulk_soft_delete_objects
+
+    stored = {"foo/sub/": b"", "foo/sub/x": b"x", "foo/y": b"y", "foobar/z": b"z"}
+    conn, swift = _swift_conn(stored, page_size=1, extra=("bucket-trash",))
+    with patch("app.services.swift._apply_endpoint_override"):
+        result = bulk_soft_delete_objects(conn, "bucket", ["foo/"], recursive=True)
+    assert result == {"moved": ["foo/y", "foo/sub/x", "foo/sub/", "foo/"], "failed": []}
+    assert set(swift.containers["bucket"]) == {"foobar/z"}
+    assert sorted(key.split("/", 2)[2] for key in swift.containers["bucket-trash"]) == [
+        "foo/sub/",
+        "foo/sub/x",
+        "foo/y",
+    ]
+
+
+@pytest.mark.parametrize("name", ["foo/", "note.txt"])
+def test_same_container_identical_move_is_a_no_op(name):
+    from app.services.swift import rename_object
+
+    stored = {"foo/a.txt": b"a", "note.txt": b"n"}
+    conn, swift = _swift_conn(stored)
+    with patch("app.services.swift._apply_endpoint_override"):
+        assert rename_object(conn, "bucket", name, name)["destination"] == name
+    assert swift.requests == []
+    assert swift.containers["bucket"] == stored
+
+
+@pytest.mark.parametrize(
+    "stored,source,destination",
+    [
+        ({"foo/a": b"a", "foo/sub/a": b"s"}, "foo/", "foo/sub/"),  # into its own descendant
+        ({"foo/bar/y": b"y", "foo/bar/bar/y": b"b"}, "foo/bar/", "foo/"),  # a target is another source
+    ],
+)
+def test_overlapping_same_container_move_is_rejected_before_any_write(stored, source, destination):
+    from app.services.swift import InvalidObjectMove, rename_object
+
+    conn, swift = _swift_conn(stored)
+    with patch("app.services.swift._apply_endpoint_override"), pytest.raises(InvalidObjectMove):
+        rename_object(conn, "bucket", source, destination)
+    assert swift.mutations() == []
+    assert swift.containers["bucket"] == stored
+
+
+def test_create_directory_requires_successful_marker_put():
+    from openstack.exceptions import HttpException
+
+    from app.services.swift import create_directory
+
+    conn, swift = _swift_conn({})
+    swift.fail_when = lambda method, _container, key, _query: 507 if method == "PUT" and key == "fresh/" else None
+    with patch("app.services.swift._apply_endpoint_override"):
+        with pytest.raises(HttpException):
+            create_directory(conn, "bucket", "fresh")
+        assert swift.containers["bucket"] == {}
+        swift.fail_when = lambda *_args: None
+        assert create_directory(conn, "bucket", "fresh") == {"name": "fresh/", "container": "bucket"}
+    assert swift.containers["bucket"] == {"fresh/": b""}
+
+
+@pytest.mark.asyncio
+async def test_object_listing_route_navigates_and_rejects_failed_page_without_caching(client, mock_conn):
+    stored = {"tenant/chat-a/p1_00_keep_arch.png": b"image", "tenant/chat-b/file.txt": b"", "empty/": b""}
+    conn, swift = _swift_conn(stored, page_size=1)
+    mock_conn.object_store = conn.object_store
+    url = "/api/v1/object-storage/bucket/objects"
+    with patch("app.services.swift._apply_endpoint_override"):
+        root = await client.get(url + "?cache=true")
+        subdirs = await client.get(url, params={"prefix": "tenant/"})
+        file = await client.get(url, params={"prefix": "tenant/chat-a/"})
+        flat = await client.get(url, params={"prefix": "tenant/", "delimiter": ""})
+    assert root.status_code == subdirs.status_code == file.status_code == flat.status_code == 200
+    assert {row["name"] for row in root.json()} == {"empty/", "tenant/"}
+    assert {row["name"] for row in subdirs.json()} == {"tenant/chat-a/", "tenant/chat-b/"}
+    assert file.json()[0]["name"] == "tenant/chat-a/p1_00_keep_arch.png"
+    assert all(row["name"] != "tenant/" for row in flat.json())
+    assert len(flat.json()) == 2
+    first_listing = next(
+        query for method, name, key, query in swift.requests if method == "GET" and name == "bucket" and not key
+    )
+    assert first_listing["delimiter"] == "/"
+
+    # A later page failure is neither cached as a partial list nor returned as 200.
+    failing_url = url + "?prefix=tenant/chat-b/&cache=true"
+    swift.fail_when = lambda method, _container, key, query: (
+        503 if method == "GET" and not key and query.get("marker") == "tenant/chat-b/file.txt" else None
+    )
+    with patch("app.services.swift._apply_endpoint_override"):
+        failed = await client.get(failing_url)
+    assert failed.status_code == 500
+    # main.py intentionally redacts 5xx details; the route still logs its public error.
+    assert failed.json()["detail"] == "내부 서버 오류"
+    swift.fail_when = lambda *_args: None
+    with patch("app.services.swift._apply_endpoint_override"):
+        recovered = await client.get(failing_url)
+    assert recovered.status_code == 200
+    assert [row["name"] for row in recovered.json()] == ["tenant/chat-b/file.txt"]
+
+
+@pytest.mark.asyncio
+async def test_move_routes_noop_identical_reject_overlap_and_keep_source_on_copy_failure(client, mock_conn):
+    stored = {"foo/a.txt": b"a", "foo/b.txt": b"b"}
+    conn, swift = _swift_conn(stored, extra=("other",))
+    mock_conn.object_store = conn.object_store
+    base = "/api/v1/object-storage/bucket/objects"
+    with patch("app.services.swift._apply_endpoint_override"):
+        same = await client.post(base + "/rename", json={"source": "foo/", "new_name": "foo/"})
+        nested = await client.post(base + "/move", json={"source": "foo/", "destination": "foo/sub/"})
+        swift.fail_when = lambda method, container, key, _query: (
+            507 if method == "PUT" and container == "other" else None
+        )
+        failed = await client.post(
+            base + "/move", json={"source": "foo/", "destination": "moved/", "dest_container": "other"}
+        )
+    assert same.status_code == 200
+    assert nested.status_code == 400
+    assert nested.json()["detail"] == "폴더를 자기 자신 안으로 이동할 수 없습니다"
+    assert failed.status_code == 500
+    assert swift.containers["bucket"] == stored
+    assert [write for write in swift.mutations() if write[0] == "DELETE"] == []
 
 
 def test_upload_small_object_no_slo():
@@ -483,6 +1003,7 @@ def test_delete_slo_object_purges_segments():
     mock_meta = MagicMock()
     mock_meta.is_static_large_object = True
     conn.object_store.get_object_metadata.return_value = mock_meta
+    conn.object_store.delete.return_value = _swift_listing_response([], status=204)
 
     with patch("app.services.swift._apply_endpoint_override"):
         delete_object(conn, "bucket", "big.bin")
@@ -1151,7 +1672,7 @@ async def test_delete_object_invalidates_cache(client, mock_conn):
     from unittest.mock import AsyncMock, patch
 
     with (
-        patch("app.services.swift.delete_object", return_value=None),
+        patch("app.services.swift.soft_delete_object", return_value={}),  # DELETE defaults to trash
         patch("app.api.object_storage.containers.cache.invalidate", new_callable=AsyncMock) as mock_inv,
         patch(
             "app.api.object_storage.containers.invalidation.invalidate_mutation_count", new_callable=AsyncMock

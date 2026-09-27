@@ -17,6 +17,10 @@ const MOCK_IMAGES = [
 	{
 		id: 'fixture-image-ubuntu',
 		name: 'Ubuntu 24.04 LTS',
+		repository: 'ubuntu',
+		tag: '24.04',
+		verification_status: 'verified',
+		verified_at: NOW_ISO,
 		status: 'active',
 		visibility: 'public',
 		size: 2361393152,
@@ -38,6 +42,10 @@ const MOCK_IMAGES = [
 	{
 		id: 'fixture-image-rocky',
 		name: 'Rocky Linux 9',
+		repository: 'rocky',
+		tag: '9',
+		verification_status: 'unverified',
+		verified_at: null,
 		status: 'active',
 		visibility: 'public',
 		size: 1932735283,
@@ -320,11 +328,33 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	}
 
 
+	if (method === 'POST' && profile === 'admin' && pathname === '/api/v1/palimpsest/builds/dockerfile/lint') {
+		return {
+			valid: true,
+			diagnostics: [],
+			warnings: [],
+			from: {
+				line: 1, ref: 'ubuntu:24.04', kind: 'ubuntu_tag',
+				image: state.admin.library.baseImages[0] ?? null, parent: null,
+				completions: [], error: null, note: null,
+			},
+			layers: { new: 3, inherited: 0, total: 3, limit: 25, by_instruction: { RUN: 1, ENV: 1, WORKDIR: 1 } },
+		};
+	}
 	if (profile === 'admin' && method !== 'GET') mockUnsupported();
 
 	if (profile === 'admin' && pathname === '/api/v1/admin/projects/names') {
 		return state.projects.map(({ id, name }) => ({ id, name }));
 	}
+	if (profile === 'admin' && pathname === '/api/v1/admin/images') {
+		const marker = params.get('marker');
+		const start = marker ? MOCK_IMAGES.findIndex((image) => image.id === marker) + 1 : 0;
+		const limit = Math.max(1, Math.min(100, Number(params.get('limit') || 20)));
+		const items = MOCK_IMAGES.slice(start, start + limit);
+		return { items, count: items.length, next_marker: start + limit < MOCK_IMAGES.length ? items.at(-1)?.id ?? null : null };
+	}
+	const adminImageId = pathname.match(/^\/api\/v1\/admin\/images\/([^/]+)$/)?.[1];
+	if (profile === 'admin' && adminImageId) return MOCK_IMAGES.find((image) => image.id === adminImageId) ?? mockUnsupported();
 	if (profile === 'admin' && pathname === '/api/v1/admin/all-instances') {
 		let items = [...state.admin.instances];
 		const name = params.get('name')?.toLowerCase();
@@ -392,7 +422,7 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 		};
 	}
 	if (profile === 'admin' && pathname === '/api/v1/palimpsest/builds/dockerfile') {
-		const payload = body as { dockerfile?: string; layer_prefix?: string; profile_name?: string; base_image_id?: string } | null;
+		const payload = body as { dockerfile?: string; layer_prefix?: string; profile_name?: string } | null;
 		const newJob = {
 			id: state.admin.library.imports.length + 101,
 			status: 'building',
@@ -405,7 +435,7 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 			layer_prefix: payload?.layer_prefix ?? 'custom',
 			profile_name: payload?.profile_name || (payload?.layer_prefix ?? 'custom'),
 			ubuntu_base: 'ubuntu-24.04',
-			base_image_id: payload?.base_image_id ?? 'fixture-image-ubuntu',
+			base_image_id: 'fixture-image-ubuntu',
 			base_image_name: 'Ubuntu 24.04 LTS (Fixture)',
 			planned_layers: [
 				{ name: `${payload?.layer_prefix ?? 'custom'}-01-run`, line: 2, instruction: 'RUN' },
@@ -651,16 +681,47 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 		};
 	}
 	if (method === 'GET' && pathname === '/api/v1/dashboard/usage-report') {
+		const { compute, storage } = state.quotas;
 		return {
 			range: params.get('range') ?? '30d',
 			start: '2026-06-09T00:00:00Z',
 			end: NOW_ISO,
-			stats: { instance_hours: 4320, vcpu_hours: 17280, active_instances: 6, total_instances: 8 },
+			stats: { instance_hours: 4320, vcpu_hours: 17280, ram_gb_hours: 69120, gpu_hours: 720, active_instances: 6, total_instances: 8 },
 			flavor_hours: [
-				{ flavor: 'cpu.4c_8g', instance_count: 4, usage_hours: 2160 },
-				{ flavor: 'gpu.8c_64g_a10', instance_count: 1, usage_hours: 720 },
+				{ flavor: 'cpu.4c_8g', instance_count: 4, usage_hours: 2160, vcpus: 4, ram_mb: 8192, gpu_count: 0, vcpu_hours: 8640, gpu_hours: 0 },
+				{ flavor: 'gpu.8c_64g_a10', instance_count: 1, usage_hours: 720, vcpus: 8, ram_mb: 65536, gpu_count: 1, vcpu_hours: 5760, gpu_hours: 720 },
 			],
-			forecast: { vcpu_pct: 31 },
+			instance_usage: state.instances.slice(0, 2).map((item, index) => ({
+				instance_id: item.id,
+				name: item.name,
+				flavor: index === 0 ? 'cpu.4c_8g' : 'gpu.8c_64g_a10',
+				state: 'active',
+				hours: 720,
+				started_at: '2026-06-10T00:00:00+00:00',
+				ended_at: null,
+				vcpus: index === 0 ? 4 : 8,
+				memory_mb: index === 0 ? 8192 : 65536,
+				gpu_count: index === 0 ? 0 : 1,
+			})),
+			quota: {
+				compute_available: true,
+				storage_available: true,
+				instances: structuredClone(compute.instances),
+				vcpus: structuredClone(compute.cores),
+				ram_mb: structuredClone(compute.ram),
+				volume_gb: structuredClone(storage.gigabytes),
+				volumes: structuredClone(storage.volumes),
+				gpu: [{ gpu_type: 'A10', in_use: 1, limit: 2 }],
+				gpu_available: true,
+			},
+			forecast: {
+				window_days: 7,
+				horizon_days: 30,
+				vcpus: { current_pct: 28.1, slope_per_day: 0.57, projected_pct: 41.4, days_to_limit: 161, trend_available: true, series: [30, 30, 32, 32, 34, 36, 36] },
+				ram_mb: { current_pct: 32.8, slope_per_day: 1024, projected_pct: 44.5, days_to_limit: 172, trend_available: true, series: [73728, 73728, 77824, 77824, 81920, 86016, 86016] },
+				volume_gb: { current_pct: 15.6, slope_per_day: null, projected_pct: null, days_to_limit: null, trend_available: false, series: [] },
+				gpu: { A10: { current_pct: 50, slope_per_day: 0, projected_pct: 50, days_to_limit: null, trend_available: true, series: [1, 1, 1, 1, 1, 1, 1] } },
+			},
 		};
 	}
 

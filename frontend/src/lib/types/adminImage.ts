@@ -1,9 +1,6 @@
-export interface AdminImage {
-	id: string;
-	name: string;
-	status: string;
-	repository?: string;
-	tag?: string;
+import type { ImageInfo } from './compute';
+
+export interface AdminImage extends ImageInfo {
 	size: number;
 	min_disk: number;
 	min_ram: number;
@@ -38,10 +35,3 @@ export interface PagedResponse<T> {
 	next_marker: string | null;
 	count: number;
 }
-
-export const visibilityColor: Record<string, string> = {
-	public:    'text-green-400 bg-green-900/30',
-	community: 'text-blue-400 bg-blue-900/30',
-	shared:    'text-yellow-400 bg-yellow-900/30',
-	private:   'text-gray-400 bg-gray-800',
-};

@@ -16,10 +16,12 @@
 
 from __future__ import annotations
 
+import json
 import time
 from unittest.mock import MagicMock, patch
 
 import pytest
+from requests import Response
 
 # ---------------------------------------------------------------------------
 # 서비스 단위 — soft_delete_object
@@ -147,15 +149,16 @@ def test_list_trash_objects_parses_key_format():
     conn = _make_conn()
     epoch = int(time.time())
 
-    fake_obj = MagicMock()
-    fake_obj.name = f"{epoch}/abc12345/docs/report.pdf"
-    fake_obj.subdir = None
-    fake_obj.size = 1024
-    fake_obj.content_type = "application/pdf"
-    fake_obj.last_modified_at = ""
-    fake_obj.etag = "abc"
-
-    conn.object_store.objects.return_value = [fake_obj]
+    response = Response()
+    response.status_code = 200
+    response.url = "http://swift.test/v1/AUTH_test/my-bucket-trash"
+    response._content = json.dumps(
+        [{"name": f"{epoch}/abc12345/docs/report.pdf", "bytes": 1024, "content_type": "application/pdf"}]
+    ).encode()
+    empty = Response()
+    empty.status_code = 204
+    conn.object_store.get.side_effect = [response, empty]
+    conn.object_store.objects.return_value = iter(())
 
     with patch("app.services.swift._apply_endpoint_override"):
         result = list_trash_objects(conn, "my-bucket")
@@ -171,7 +174,11 @@ def test_list_trash_objects_returns_empty_when_no_trash_bucket():
     from app.services.swift import list_trash_objects
 
     conn = _make_conn()
-    conn.object_store.objects.side_effect = Exception("container not found")
+    response = Response()
+    response.status_code = 404
+    response.url = "http://swift.test/v1/AUTH_test/my-bucket-trash"
+    response._content = b'{"error": "container not found"}'
+    conn.object_store.get.return_value = response
 
     with patch("app.services.swift._apply_endpoint_override"):
         result = list_trash_objects(conn, "my-bucket")

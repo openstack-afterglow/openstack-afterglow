@@ -11,6 +11,7 @@
   import Button from '$lib/components/ui/Button.svelte';
   import ToggleGroup from '$lib/components/ui/ToggleGroup.svelte';
   import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
+  import DockerfileLintPanel, { type DockerfileLintResponse } from '$lib/components/admin/libraries/DockerfileLintPanel.svelte';
 
   // ---------------------------------------------------------------------------
   // 타입
@@ -260,7 +261,7 @@
   });
   let consumeSubmitting = $state(false);
 
-  let importForm = $state({ github_url: '', ref: '', dockerfile_path: 'Dockerfile', layer_prefix: '', profile_name: '', base_image_id: '' });
+  let importForm = $state({ github_url: '', ref: '', dockerfile_path: 'Dockerfile', layer_prefix: '', profile_name: '' });
   let importSubmitting = $state(false);
 
   // ---------------------------------------------------------------------------
@@ -279,6 +280,44 @@
   let dockerfileFetching = $state(false);
   let dockerfileFetchError = $state('');
   let uploadedFileName = $state('');
+  let dockerfileLint = $state<DockerfileLintResponse | null>(null);
+  let lintLoading = $state(false);
+  let lintError = $state('');
+  let lintSeq = 0;
+
+  async function runDockerfileLint(text: string, prefix: string, seq: number, requestToken: string, requestProjectId: string | undefined) {
+    try {
+      const body: Record<string, string> = { dockerfile: text };
+      if (prefix) body.layer_prefix = prefix;
+      const result = await api.post<DockerfileLintResponse>(
+        '/api/v1/palimpsest/builds/dockerfile/lint', body, requestToken, requestProjectId,
+      );
+      if (seq === lintSeq) dockerfileLint = result;
+    } catch (e) {
+      if (seq === lintSeq) {
+        dockerfileLint = null;
+        lintError = e instanceof ApiError ? e.message : '네트워크 오류';
+      }
+    } finally {
+      if (seq === lintSeq) lintLoading = false;
+    }
+  }
+
+  $effect(() => {
+    const text = dockerfileText;
+    const prefix = importForm.layer_prefix.trim();
+    const mode = dockerfileMode;
+    const requestToken = token;
+    const requestProjectId = projectId;
+    const seq = ++lintSeq;
+    dockerfileLint = null;
+    lintError = '';
+    const shouldLint = mode !== 'github' && !!text.trim() && !!requestToken;
+    lintLoading = shouldLint;
+    if (!shouldLint || !requestToken) return;
+    const timer = setTimeout(() => { void runDockerfileLint(text, prefix, seq, requestToken, requestProjectId); }, 600);
+    return () => clearTimeout(timer);
+  });
 
   interface DockerfilePlanStep {
     name: string;
@@ -377,7 +416,6 @@
       baseImages = await api.get<LayerBaseImage[]>('/api/v1/admin/libraries/base-images', token, projectId, { refresh });
       if (!systemForm.base_image_id && baseImages.length > 0) systemForm.base_image_id = baseImages[0].id;
       if (!nvidiaForm.base_image_id && baseImages.length > 0) nvidiaForm.base_image_id = baseImages[0].id;
-      if (!importForm.base_image_id && baseImages.length > 0) importForm.base_image_id = baseImages[0].id;
     } catch {
       baseImages = [];
     }
@@ -814,7 +852,6 @@
         github_url: importForm.github_url.trim(),
         dockerfile_path: importForm.dockerfile_path.trim() || 'Dockerfile',
         layer_prefix: importForm.layer_prefix.trim(),
-        base_image_id: importForm.base_image_id,
       };
       if (importForm.ref.trim()) body.ref = importForm.ref.trim();
       if (importForm.profile_name.trim()) body.profile_name = importForm.profile_name.trim();
@@ -909,7 +946,6 @@
         layer_prefix: importForm.layer_prefix.trim() || 'demo',
       };
       if (importForm.profile_name.trim()) body.profile_name = importForm.profile_name.trim();
-      if (importForm.base_image_id) body.base_image_id = importForm.base_image_id;
 
       const res = await api.post<DockerfilePlanResponse>(
         '/api/v1/palimpsest/builds/dockerfile/plan',
@@ -944,7 +980,6 @@
         layer_prefix: importForm.layer_prefix.trim(),
       };
       if (importForm.profile_name.trim()) body.profile_name = importForm.profile_name.trim();
-      if (importForm.base_image_id) body.base_image_id = importForm.base_image_id;
 
       const result = await api.post<LayerImportJob>(
         '/api/v1/palimpsest/builds/dockerfile',
@@ -1556,7 +1591,7 @@
                 placeholder="FROM ubuntu:24.04&#10;RUN apt-get update && apt-get install -y curl&#10;ENV APP_ENV=production&#10;WORKDIR /app"
                 class="w-full bg-surface-base border border-line-2 rounded-lg p-2.5 text-xs text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm font-mono resize-y"
               ></textarea>
-              <p class="mt-0.5 text-xs text-ink-2">지원 문법: FROM, RUN, ENV, WORKDIR (COPY/ADD는 빌드 컨텍스트가 없으므로 GitHub 커밋 모드 사용)</p>
+              <p class="mt-0.5 text-xs text-ink-2">지원 문법: FROM, RUN, ENV, WORKDIR (COPY/ADD는 빌드 컨텍스트가 없으므로 GitHub 커밋 모드 사용). FROM은 ubuntu:18.04|20.04|22.04|24.04, Glance 이미지 이름/UUID, palimpsest/&lt;name&gt;@sha256:…를 지원하며 Glance에서 자동 해석됩니다.</p>
             </div>
           {/if}
 
@@ -1617,19 +1652,9 @@
               />
             </div>
           </div>
-          <div>
-            <label class="block text-xs text-ink-2 mb-1" for="dockerfile-base-image">Glance base image *</label>
-            <select
-              id="dockerfile-base-image"
-              bind:value={importForm.base_image_id}
-              class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 focus:outline-none focus:border-action-warm"
-            >
-              {#each baseImages as image}
-                <option value={image.id}>{baseImageLabel(image)}</option>
-              {/each}
-            </select>
-            <p class="mt-1 text-xs text-ink-2">FROM 이미지의 Ubuntu 버전과 일치해야 합니다.</p>
-          </div>
+          {#if dockerfileMode !== 'github'}
+            <DockerfileLintPanel lint={dockerfileLint} loading={lintLoading} requestError={lintError} />
+          {/if}
 
           <!-- 빌드 계획 미리보기 결과 표시 -->
           {#if planError}
@@ -1674,7 +1699,7 @@
                 variant="secondary"
                 size="sm"
                 onclick={previewDockerfilePlan}
-                disabled={planLoading || !dockerfileText.trim() || !importForm.layer_prefix.trim()}
+                disabled={planLoading || !dockerfileText.trim() || !importForm.layer_prefix.trim() || (dockerfileLint !== null && !dockerfileLint.valid)}
                 class="w-full"
               >
                 {planLoading ? '계획 계산 중...' : '빌드 계획 미리보기'}
@@ -1683,7 +1708,7 @@
                 variant="primary"
                 size="sm"
                 onclick={submitInlineDockerfileBuild}
-                disabled={importSubmitting || !dockerfileText.trim() || !importForm.layer_prefix.trim()}
+                disabled={importSubmitting || !dockerfileText.trim() || !importForm.layer_prefix.trim() || (dockerfileLint !== null && !dockerfileLint.valid)}
                 class="w-full"
               >
                 {importSubmitting ? '빌드 시작 중...' : 'Dockerfile 빌드 시작'}
@@ -1693,7 +1718,7 @@
                 variant="accent"
                 size="sm"
                 onclick={submitDockerfileImport}
-                disabled={importSubmitting || !importForm.github_url.trim() || !importForm.layer_prefix.trim() || !importForm.base_image_id}
+                disabled={importSubmitting || !importForm.github_url.trim() || !importForm.layer_prefix.trim()}
                 class="w-full sm:col-span-2"
               >
                 {importSubmitting ? 'Import 시작 중...' : 'GitHub Dockerfile import 시작'}

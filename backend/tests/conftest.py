@@ -18,7 +18,8 @@ os.environ.setdefault("SERVICE_SWIFT_ENABLED", "true")
 os.environ.setdefault("SERVICE_WAYGATE_ENABLED", "true")
 os.environ.setdefault("SERVICE_CHAT_ENABLED", "true")
 
-from unittest.mock import AsyncMock, MagicMock
+from contextlib import contextmanager
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -201,6 +202,30 @@ def patch_redis_cache_miss(monkeypatch):
     fake.delete.return_value = None
     monkeypatch.setattr("app.services.cache._get_client", lambda: fake)
     return fake
+
+
+@contextmanager
+def patch_usage_report_deps(*, usage=None, quota=None, volume_quota=None, flavors=None, gpu=None):
+    """Patch every usage-report source; values that are exceptions become side effects.
+
+    The GPU source reaches the database and Nova, so every usage-report test must
+    patch it even when GPU rows are irrelevant.
+    """
+
+    def _source(target: str, value):
+        if isinstance(value, BaseException):
+            return patch(target, side_effect=value)
+        return patch(target, return_value=value)
+
+    gpu_status = AsyncMock(side_effect=gpu) if isinstance(gpu, BaseException) else AsyncMock(return_value=gpu or [])
+    with (
+        _source("app.api.common.dashboard.nova.get_project_usage", usage or {}),
+        _source("app.api.common.dashboard.nova.get_project_quota", quota or {}),
+        _source("app.api.common.dashboard.cinder.get_volume_quota", volume_quota or {}),
+        _source("app.api.common.dashboard._list_flavors_as_dicts", flavors or []),
+        patch("app.services.gpu_quota.get_effective_gpu_quota_status", new=gpu_status),
+    ):
+        yield gpu_status
 
 
 @pytest.fixture

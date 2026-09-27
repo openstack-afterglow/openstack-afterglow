@@ -2,6 +2,8 @@
 
 from unittest.mock import MagicMock
 
+from openstack.image.v2.image import Image
+
 from app.services.glance import get_image
 
 
@@ -13,8 +15,8 @@ def _make_img(
     os_hash_value: str | None = "abc123",
     direct_url: str | None = "rbd://pool/vol",
     is_hidden: bool | None = False,
-) -> MagicMock:
-    img = MagicMock()
+) -> Image:
+    img = Image()
     img.id = "img-test-001"
     img.name = "test-image"
     img.status = "active"
@@ -30,8 +32,8 @@ def _make_img(
     img.tags = []
     img.properties = dict(props or {})
     img.os_distro = os_distro
-    img.os_hash_algo = os_hash_algo
-    img.os_hash_value = os_hash_value
+    img.hash_algo = os_hash_algo
+    img.hash_value = os_hash_value
     img.direct_url = direct_url
     img.is_hidden = is_hidden
     img.is_protected = False
@@ -41,7 +43,7 @@ def _make_img(
     return img
 
 
-def _make_conn(img: MagicMock) -> MagicMock:
+def _make_conn(img: Image) -> MagicMock:
     conn = MagicMock()
     conn.image.get_image.return_value = img
     return conn

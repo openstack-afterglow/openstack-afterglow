@@ -153,7 +153,7 @@ export는 클라이언트와 네트워크 연결 정보를 포함하지만 서�
 
 ## 검증 경계
 
-모의 계약과 단위 테스트는 BFF 전달, 명시 서브넷 port attach, 실패 롤백, detach 정리, callback URL fail-closed, 클라이언트 설정/QR 흐름을 검증합니다. 실제 OpenStack data plane은 별도 환경 검증이 필요합니다.
+모의 계약과 단위 테스트는 BFF 전달, 명시 서브넷 port attach, 실패 롤백, detach 정리, callback URL fail-closed, 클라이언트 설정/QR 흐름, 클라이언트 설정 검증과 트래픽 이력 경계(중복·역순·reset·누락·지연)를 검증합니다. 실제 OpenStack data plane은 별도 환경 검증이 필요합니다.
 
 Waygate의 opt-in lifecycle 검증은 다음 환경값으로 실행합니다.
 

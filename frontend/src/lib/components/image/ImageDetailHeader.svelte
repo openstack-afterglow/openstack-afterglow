@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { useImageDetailController } from '$lib/stores/imageDetailController.svelte';
 	import { visibilityBadge, visibilityLabel } from '$lib/utils/format';
+	import ImageVerificationBadge from './ImageVerificationBadge.svelte';
+	import { imageVerificationStatus } from '$lib/stores/imageCatalog.svelte';
 
 	interface Props {
 		onClose?: () => void;
@@ -13,12 +15,13 @@
 <div class="flex items-start justify-between px-6 py-4 border-b border-[var(--color-line)] shrink-0">
 	<div class="min-w-0 pr-4">
 		{#if s.image}
-			<h2 class="text-lg font-bold text-ink-0 truncate">{s.image.name}</h2>
-			<div class="text-xs text-[var(--color-ink-3)] font-mono mt-1">repository: {s.image.repository ?? s.image.name} · tag: {s.image.tag ?? 'latest'}</div>
+			<h2 class="text-lg font-bold text-ink-0 break-all">{s.image.name}</h2>
+			<div class="text-xs text-[var(--color-ink-2)] font-mono mt-1 break-all">repository: {s.image.repository ?? s.image.name} · tag: {s.image.tag ?? 'latest'}</div>
 			<div class="flex items-center gap-2 mt-1.5 flex-wrap">
 				<span class="px-2 py-0.5 rounded text-xs font-medium {s.image.status === 'active' ? 'text-[var(--color-state-success)] bg-[var(--color-state-success)]/15' : 'text-[var(--color-ink-2)] bg-[var(--color-surface-sunken)]'}">
 					{s.image.status}
 				</span>
+				<ImageVerificationBadge status={imageVerificationStatus(s.image)} />
 				<span class="px-2 py-0.5 rounded text-xs font-medium {visibilityBadge(s.image.visibility)}">
 					{visibilityLabel(s.image.visibility)}
 				</span>

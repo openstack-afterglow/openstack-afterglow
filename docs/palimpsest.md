@@ -126,13 +126,35 @@ Dockerfile 한 편이 곧 레이어 체인이 된다. 명령 하나가 레이어
 | GitHub (commit 고정) | `POST /api/v1/admin/libraries/imports/dockerfile` | 커밋 archive — `COPY`/`ADD` 사용 가능 |
 | 업로드(inline) | `POST /api/v1/palimpsest/builds/dockerfile` | **없음 — `COPY`/`ADD` 거부** |
 
-계획만 미리 보려면 `POST /api/v1/palimpsest/builds/dockerfile/plan`.
+`POST /api/v1/palimpsest/builds/dockerfile/plan`은 캐시를 포함한 빌드 계획을 미리 본다.
+`POST /api/v1/palimpsest/builds/dockerfile/lint`는 관리자 전용 읽기 검사다.
+`{"dockerfile":"FROM ubuntu:24.04\nRUN true", "layer_prefix":"demo"}`를 받아
+`valid`, `diagnostics` (`line`, `message`), `warnings` (`line`, `message`), `from`
+(`line`, `ref`, `kind`, `image`, `parent`, `error`, `note`, `completions`) 및 `layers`
+(`new`, `inherited`, `total`, `limit`, `by_instruction`)를 반환한다. 문법 오류가 여러 줄이면
+한 번에 모두 보고, 해석 가능한 FROM은 문법 오류와 무관하게 미리 확인한다. `from.image`는
+활성 Ubuntu Glance 이미지 목록의 항목이며 부모 참조는 `from.parent`에 계보 깊이까지 포함한다.
+tag가 모호하면 `completions[].ref`를 FROM에 복사할 수 있다. 로컬 KVM 디스크 상한 25개를
+넘으면 `warnings`로 알리되 OpenStack 빌드 제출을 막지는 않는다. 린트는 잡·빌드 캐시·VM을
+생성하지 않고 실제 `/plan`과 빌드는 독립적으로 다시 검사한다. 인라인과 URL/파일 입력에는
+빌드 컨텍스트가 없으므로 `COPY`/`ADD`를 오류로 보고한다.
+`FROM` 행이 유효하지 않아도 뒤따르는 정상 지시어의 예상 레이어 수는 계속 계산한다.
+부모 레이어에 Glance base image ID가 없으면 lint와 plan/build 모두 snapshot 백필 오류를 반환한다.
+Glance 조회 장애는 인라인 plan/build에서 내부 오류나 자격 증명 원문을 노출하지 않고 안전한 오류로 반환한다.
 
 ### 지원하는 문법
 
-- `FROM ubuntu:18.04|20.04|22.04|24.04` — 새 체인을 시작한다. Glance base image 와 일치해야 한다.
-- `FROM palimpsest/<name>@sha256:<64hex>` — **기존 레이어 위에 쌓는다**. Ubuntu base 는 부모에게서
-  상속한다(다른 base 위에 쌓으면 ABI 가 어긋난다 — union.md §4.2 와 같은 이유).
+- `FROM ubuntu:18.04|20.04|22.04|24.04` — 새 체인을 시작한다. 그 버전에 해당하는
+  active Glance 이미지가 정확히 하나일 때 자동 선택한다. 같은 이름의 정확한 Glance 이미지가
+  있으면 이름 조회가 먼저 적용된다. 후보가 둘 이상이면 lint가 제시한 개별 이미지 이름/UUID를
+  FROM에 넣어 지정한다. 다른 Ubuntu release tag는 거부한다.
+- `FROM <Glance image name:tag>` (또는 image UUID) — 현재 관리자의 Glance catalog에서 정확히
+  일치하는 이름을 우선, 이어 UUID를 찾는다. 같은 이름이 여러 개면 `created_at` 최신 이미지
+  (동일 시각이면 ID 순서)가 선택되며 lint에 안내한다. 선택된 이미지는 active이고 지원하는
+  Ubuntu 이미지여야 한다. Dockerfile 요청에는 별도 `base_image_id` 선택 필드가 없다.
+- `FROM palimpsest/<name>@sha256:<64hex>` — **기존 레이어 위에 쌓는다**. Ubuntu base 및
+  Glance image ID는 부모에게서 상속한다(다른 base 위에 쌓으면 ABI가 어긋난다 — union.md §4.2).
+  GitHub import에서는 이 부모 형식을 지원하지 않는다.
 - `RUN` · `ENV` · `WORKDIR` — 각각 레이어가 된다. `ENV`/`WORKDIR` 는 뒤따르는 `RUN` 에 반영된다.
 - `COPY` · `ADD` — GitHub 소스에서만.
 
@@ -142,9 +164,9 @@ Dockerfile 한 편이 곧 레이어 체인이 된다. 명령 하나가 레이어
 ### 빌드 캐시
 
 `step_digest = sha256(부모 참조 + "\n" + 정규화된 instruction)`. 같은 부모 위에 같은 명령이 이미
-sealed artifact 로 있으면 그 단계를 다시 빌드하지 않는다. 부모 참조는 루트에서는 Ubuntu base 키,
-이후에는 부모의 `chain_id` 다 — Palimpsest 의 chain_id 가 "여기까지의 스택"을 한 값으로 대표하기 때문에
-성립한다.
+sealed artifact 로 있으면 그 단계를 다시 빌드하지 않는다. 새 루트 단계의 부모 참조는
+`glance:<image-id>`로 이미지 UUID를 포함한다(같은 Ubuntu 버전의 서로 다른 이미지 캐시 충돌 방지).
+이후 단계는 부모의 `chain_id`로 스택 전체를 대표한다.
 
 **선두 연속 구간만 재사용한다.** 중간부터 건너뛰면 다른 스택이 되기 때문이다. 모든 단계가 캐시에
 맞으면 만들 게 없다는 뜻이므로 409 를 준다(기존 프로파일을 그대로 쓰면 된다).

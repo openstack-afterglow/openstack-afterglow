@@ -311,6 +311,23 @@ describe('mockup transport', () => {
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
+	it('allows Dockerfile lint preview without enabling administrator mutations', async () => {
+		sessionStorage.clear();
+		sessionStorage.setItem(MOCKUP_SESSION_KEY, 'admin');
+		vi.resetModules();
+		// Reinitialize the mutable singleton fixture after selecting the administrator session.
+		const { maybeMockJson } = await import('./transport');
+		const payload = { dockerfile: 'FROM ubuntu:24.04\nRUN true\n', layer_prefix: 'example' };
+
+		expect(await maybeMockJson('POST', '/api/v1/palimpsest/builds/dockerfile/lint', payload)).toMatchObject({
+			valid: true,
+			from: { ref: 'ubuntu:24.04', kind: 'ubuntu_tag' },
+		});
+		await expect(maybeMockJson('POST', '/api/v1/palimpsest/builds/dockerfile', payload))
+			.rejects.toMatchObject({ status: 409 });
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
 
 	it('serves every administrator tour contract with filters and no network access', async () => {
 		sessionStorage.clear();

@@ -48,7 +48,7 @@ not grant sudo or change global Ansible settings.
      Kolla recreates HAProxy only if their resulting configuration hash changes.
    - The plugin does not create external-VIP routes, DNS records, or TLS certificates. Existing Drover and Waygate public catalog URLs remain operator-owned ingress contracts.
 4. **Published GHCR Images**:
-   - Services pull published `ghcr.io/openstack-afterglow/*` images using explicit release version tags (Afterglow `:v1.26.1`, Drover `:v0.2.25`, Waygate `:0.1.4`, Lumen `:0.3.0`, Palimpsest Hub `:0.2.0`) or exact linux/amd64 manifest digests (`@sha256:...`).
+   - Services pull published `ghcr.io/openstack-afterglow/*` images using explicit release version tags (Afterglow `:v1.28.0`, Drover `:v0.2.25`, Waygate `:0.2.0`, Lumen `:0.3.0`, Palimpsest Hub `:0.2.0`) or exact linux/amd64 manifest digests (`@sha256:...`).
    - Mutable tags such as `latest` or bare unpinned references are prohibited by role precheck validators to prevent multi-controller divergence.
    - Source-build mode remains an optional development path; it is not used for production deployment.
 5. **Datastores & Credential Reuse**:
@@ -78,7 +78,7 @@ KOLLA_ANSIBLE_DIR=/etc/kolla/.venv/share/kolla-ansible \
 - Source role link under `$KOLLA_DIR/ansible/roles/`: `afterglow`.
 - Verified root-package roles under `$KOLLA_DIR/ansible/roles/`: `drover`
   (via `drover==0.2.25`), `lumen` (via `lumen==0.3.0`), `waygate`
-  (via `waygate==0.1.4`), and `palimpsest` (via
+  (via `waygate==0.2.0`), and `palimpsest` (via
   `palimpsest-client==0.2.3`). Installer validates non-symlink role paths and
   required lifecycle files, and refuses a leftover retired `palimpsest-local`
   distribution that shares the Palimpsest role files.
@@ -110,7 +110,7 @@ unexpected, `install.sh` aborts rather than replacing it.
 
 - **`drover==0.2.25`** owns the `drover` role.
 - **`lumen==0.3.0`** owns the `lumen` role.
-- **`waygate==0.1.4`** owns the `waygate` role.
+- **`waygate==0.2.0`** owns the `waygate` role.
 - **`palimpsest-client==0.2.3`** owns the `palimpsest` role (renamed from
   `palimpsest-local` in 0.2.3; see the operator README for migration).
 

@@ -36,6 +36,9 @@ def list_images(conn: openstack.connection.Connection, project_id: str | None = 
                 created_at=str(img.created_at) if img.created_at else None,
                 owner=getattr(img, "owner", None) or getattr(img, "project_id", None),
                 visibility=getattr(img, "visibility", None),
+                protected=bool(getattr(img, "is_protected", False)),
+                os_hash_algo=getattr(img, "hash_algo", None),
+                os_hash_value=getattr(img, "hash_value", None),
             )
         )
 
@@ -70,8 +73,8 @@ def get_image(conn: openstack.connection.Connection, image_id: str) -> ImageDeta
     # SDK 가 Image 본문 필드로 따로 노출하는 키들을 properties 에 병합 (OpenStack CLI 와 동일한 뷰)
     _sdk_fields: dict = {
         "os_distro": getattr(img, "os_distro", None),
-        "os_hash_algo": getattr(img, "os_hash_algo", None),
-        "os_hash_value": getattr(img, "os_hash_value", None),
+        "os_hash_algo": getattr(img, "hash_algo", None),
+        "os_hash_value": getattr(img, "hash_value", None),
         "direct_url": getattr(img, "direct_url", None),
     }
     is_hidden = getattr(img, "is_hidden", None)
@@ -103,8 +106,8 @@ def get_image(conn: openstack.connection.Connection, image_id: str) -> ImageDeta
         protected=getattr(img, "is_protected", False) or False,
         tags=list(getattr(img, "tags", None) or []),
         properties=raw_props,
-        os_hash_algo=getattr(img, "os_hash_algo", None),
-        os_hash_value=getattr(img, "os_hash_value", None),
+        os_hash_algo=getattr(img, "hash_algo", None),
+        os_hash_value=getattr(img, "hash_value", None),
         direct_url=getattr(img, "direct_url", None),
     )
 
@@ -201,6 +204,10 @@ def update_image_metadata(
         os_distro=od,
         created_at=str(img.created_at) if img.created_at else None,
         owner=getattr(img, "owner", None) or getattr(img, "project_id", None),
+        visibility=getattr(img, "visibility", None),
+        protected=bool(getattr(img, "is_protected", False)),
+        os_hash_algo=getattr(img, "hash_algo", None),
+        os_hash_value=getattr(img, "hash_value", None),
     )
 
 

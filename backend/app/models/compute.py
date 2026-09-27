@@ -25,6 +25,12 @@ class ImageInfo(BaseModel):
     created_at: str | None = None
     owner: str | None = None
     visibility: str | None = None
+    protected: bool = False
+    verification_status: Literal["verified", "unverified", "unavailable"] = "unverified"
+    verified_at: str | None = None
+    # Glance-owned digest fields are carried through the raw image cache for DB matching.
+    os_hash_algo: str | None = None
+    os_hash_value: str | None = None
 
 
 class ImageDetail(ImageInfo):
@@ -32,11 +38,8 @@ class ImageDetail(ImageInfo):
     container_format: str | None = None
     virtual_size: int | None = None
     updated_at: str | None = None
-    protected: bool = False
     tags: list[str] = []
     properties: dict = {}
-    os_hash_algo: str | None = None
-    os_hash_value: str | None = None
     direct_url: str | None = None
 
 
