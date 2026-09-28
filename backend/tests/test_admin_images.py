@@ -57,6 +57,16 @@ async def test_list_admin_images_search_substring_case_insensitive(admin_client,
 
 
 @pytest.mark.asyncio
+async def test_list_admin_images_coerces_unknown_protection_to_false(admin_client, mock_conn):
+    mock_conn.image.images.return_value = iter([_make_image("img-1", "ubuntu:24.04", is_protected=None)])
+
+    resp = await admin_client.get("/api/v1/admin/images")
+
+    assert resp.status_code == 200
+    assert resp.json()["items"][0]["protected"] is False
+
+
+@pytest.mark.asyncio
 async def test_list_admin_images_search_no_match(admin_client, mock_conn):
     images = [
         _make_image("1", "ubuntu-24.04"),

@@ -111,10 +111,11 @@
 
   $effect(() => {
     const pid = $auth.projectId;
+    const token = $auth.token;
     untrack(() => {
       ctrl.selection.clear();
-      if (!pid) return;
       ctrl.loading = true;
+      if (!pid || !token) return;
       void ctrl.fetchImages();
     });
   });

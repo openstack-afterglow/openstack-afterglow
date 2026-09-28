@@ -131,40 +131,69 @@
 	let chatUsage = $state<ChatUsage | null>(null);
 	// Period/project changes can overlap in-flight requests; only the latest may publish.
 	let requestSerial = 0;
+	let chatUsageSerial = 0;
+	let reportToken: string | undefined;
+	let reportProjectId: string | undefined;
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
 
 	async function fetchData() {
-		if (!token || !projectId) return;
 		const serial = ++requestSerial;
+		if (!token || !projectId) {
+			data = null;
+			inventory = null;
+			chatUsage = null;
+			loading = false;
+			return;
+		}
+		const requestToken = token, requestProjectId = projectId, requestPeriod = period;
+		const owns = () => serial === requestSerial && token === requestToken && projectId === requestProjectId && period === requestPeriod;
+		if (requestToken !== reportToken || requestProjectId !== reportProjectId) {
+			data = null;
+			inventory = null;
+			chatUsage = null;
+		}
+		reportToken = requestToken;
+		reportProjectId = requestProjectId;
 		loading = !data;
 		error = null;
-		const [report, quotas] = await Promise.allSettled([
-			api.get<UsageReport>(`/api/v1/dashboard/usage-report?range=${period}`, token, projectId),
-			api.get<DashboardQuotas>('/api/v1/dashboard/quotas', token, projectId),
-		]);
-		if (serial !== requestSerial) return;
-		if (report.status === 'fulfilled') {
-			data = report.value;
-		} else {
-			error = report.reason instanceof Error ? report.reason.message : '데이터 로딩 실패';
+		inventoryState = 'loading';
+		void api.get<DashboardQuotas>('/api/v1/dashboard/quotas', requestToken, requestProjectId).then(
+			(quotas) => {
+				if (!owns()) return;
+				inventory = quotas;
+				inventoryState = 'ready';
+			},
+			() => {
+				if (!owns()) return;
+				inventory = null;
+				inventoryState = 'error';
+			},
+		);
+		try {
+			const report = await api.get<UsageReport>(`/api/v1/dashboard/usage-report?range=${requestPeriod}`, requestToken, requestProjectId);
+			if (owns()) data = report;
+		} catch (reason) {
+			if (owns()) error = reason instanceof Error ? reason.message : '데이터 로딩 실패';
+		} finally {
+			if (owns()) loading = false;
 		}
-		if (quotas.status === 'fulfilled') {
-			inventory = quotas.value;
-			inventoryState = 'ready';
-		} else {
-			inventoryState = 'error';
-		}
-		loading = false;
 	}
 
 	async function fetchChatUsage() {
-		if (!token || !projectId) return;
-		try {
-			chatUsage = await api.get<ChatUsage>('/api/v1/chat/usage', token, projectId);
-		} catch {
+		const serial = ++chatUsageSerial;
+		if (!token || !projectId) {
 			chatUsage = null;
+			return;
+		}
+		const requestToken = token, requestProjectId = projectId;
+		const owns = () => serial === chatUsageSerial && token === requestToken && projectId === requestProjectId;
+		try {
+			const usage = await api.get<ChatUsage>('/api/v1/chat/usage', requestToken, requestProjectId);
+			if (owns()) chatUsage = usage;
+		} catch {
+			if (owns()) chatUsage = null;
 		}
 	}
 
@@ -219,8 +248,8 @@
 			{ label: 'vCPU', used: quota.vcpus.in_use, total: quota.vcpus.limit, unit: '', limit: quota.vcpus.limit, entry: forecast.vcpus, scale: 1 },
 			{
 				label: 'RAM',
-				used: Math.round(quota.ram_mb.in_use / 1024),
-				total: quota.ram_mb.limit === -1 ? -1 : Math.round(quota.ram_mb.limit / 1024),
+				used: quota.ram_mb.in_use / 1024,
+				total: quota.ram_mb.limit === -1 ? -1 : quota.ram_mb.limit / 1024,
 				unit: 'GB',
 				limit: quota.ram_mb.limit,
 				entry: forecast.ram_mb,
@@ -284,7 +313,7 @@
 			},
 			{
 				title: '블록 스토리지',
-				rows: quotaRows([
+				rows: data?.quota.storage_available === false ? [] : quotaRows([
 					['볼륨', storage?.volumes],
 					['스냅샷', storage?.snapshots],
 					['백업', storage?.backups],
@@ -293,7 +322,7 @@
 			},
 			{
 				title: '컴퓨트 한도',
-				rows: quotaRows([
+				rows: data?.quota.compute_available === false ? [] : quotaRows([
 					['인스턴스', compute?.instances],
 					['서버 그룹', compute?.server_groups],
 				]),
@@ -640,7 +669,7 @@
 								{#each group.rows as row (row.label)}
 									<CapacityBar label={row.label} used={row.item.in_use} total={row.item.limit} unit={row.unit} size="xs" />
 								{/each}
-								{#if group.title === '컴퓨트 한도' && isQuotaItem(inventory?.compute.key_pairs)}
+								{#if group.title === '컴퓨트 한도' && data.quota.compute_available !== false && isQuotaItem(inventory?.compute.key_pairs)}
 									<StatTile label="키페어 한도 (사용자별)" value={inventory.compute.key_pairs.limit === -1 ? '무제한' : inventory.compute.key_pairs.limit} accent="blue" flat />
 								{/if}
 							</section>

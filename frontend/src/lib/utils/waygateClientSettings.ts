@@ -99,7 +99,6 @@ export function waygateServerUpdateBody(draft: WaygateClientDraft): WaygateClien
 	if (Object.keys(errors).length) return { ok: false, errors };
 	return { ok: true, body: { dns: values.dns, persistent_keepalive: values.persistentKeepalive } };
 }
-
 export function waygateClientCreateBody(draft: WaygateClientDraft): WaygateClientSettingsResult<WaygateClientCreateRequest> {
 	const { errors, values } = parseDraft(draft);
 	if (Object.keys(errors).length) return { ok: false, errors };

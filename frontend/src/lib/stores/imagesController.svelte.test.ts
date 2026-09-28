@@ -321,4 +321,52 @@ describe('createImagesController repository catalog', () => {
     controller.searchQuery = versionIds[0].slice(0, -1);
     expect(ids(controller.filteredImages)).toEqual([versionIds[2], versionIds[1], versionIds[0]]);
   });
+
+  it('keeps the newer project catalog when an older request completes last', async () => {
+    let projectId = 'project-a';
+    let resolveOld!: (value: ImageInfo[]) => void;
+    let resolveNew!: (value: ImageInfo[]) => void;
+    const oldRequest = new Promise<ImageInfo[]>((resolve) => { resolveOld = resolve; });
+    const newRequest = new Promise<ImageInfo[]>((resolve) => { resolveNew = resolve; });
+    vi.mocked(api.get).mockReturnValueOnce(oldRequest).mockReturnValueOnce(newRequest);
+    const controller = createImagesController({ token: () => 'token', projectId: () => projectId });
+
+    const oldFetch = controller.fetchImages();
+    projectId = 'project-b';
+    const newFetch = controller.fetchImages();
+    resolveNew([images[1]]);
+    await newFetch;
+    resolveOld([images[0]]);
+    await oldFetch;
+
+    expect(controller.images.map((image) => image.id)).toEqual(['ubuntu-2404']);
+    expect(controller.error).toBe('');
+    expect(controller.loading).toBe(false);
+    expect(vi.mocked(api.get).mock.calls.map(([, , project]) => project)).toEqual(['project-a', 'project-b']);
+  });
+
+  it('does not let an old token failure end the newer request or replace its error state', async () => {
+    let token = 'token-a';
+    let rejectOld!: (error: Error) => void;
+    let resolveNew!: (value: ImageInfo[]) => void;
+    const oldRequest = new Promise<ImageInfo[]>((_, reject) => { rejectOld = reject; });
+    const newRequest = new Promise<ImageInfo[]>((resolve) => { resolveNew = resolve; });
+    vi.mocked(api.get).mockReturnValueOnce(oldRequest).mockReturnValueOnce(newRequest);
+    const controller = createImagesController({ token: () => token, projectId: () => 'project' });
+
+    const oldFetch = controller.fetchImages();
+    token = 'token-b';
+    const newFetch = controller.fetchImages();
+    rejectOld(new Error('expired token'));
+    await oldFetch;
+    expect(controller.error).toBe('');
+    expect(controller.loading).toBe(true);
+
+    resolveNew([images[2]]);
+    await newFetch;
+    expect(controller.images.map((image) => image.id)).toEqual(['ubuntu-minimal-2404']);
+    expect(controller.error).toBe('');
+    expect(controller.loading).toBe(false);
+    expect(vi.mocked(api.get).mock.calls.map(([, receivedToken]) => receivedToken)).toEqual(['token-a', 'token-b']);
+  });
 });

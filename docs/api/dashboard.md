@@ -123,7 +123,7 @@ nav_order: 70
 | `object_storage` | Swift의 `container_count`, `object_count`, `bytes_used` 통계 |
 | `database` | Trove의 `instances_count` 통계 |
 
-프론트엔드는 Manila·Swift·Trove를 사이트 서비스 설정으로 게이트하고, 부분 응답에서 `{limit, in_use}`가 없는 항목은 표시하지 않습니다. 키페어는 사용자 범위 리소스이며 Nova 프로젝트 쿼터에서 사용량을 제공하지 않으므로 **사용자별 한도만** 표시합니다. Swift·Trove는 쿼터 비율이 아닌 개수/용량 통계입니다. 이 요청이 실패해도 병렬로 불러온 사용량 리포트는 유지하고 현황 섹션에 경고를 표시합니다.
+프론트엔드는 Manila·Swift·Trove를 사이트 서비스 설정으로 게이트하고, 부분 응답에서 `{limit, in_use}`가 없는 항목은 표시하지 않습니다. 사용량 보고서의 `compute_available=false` 또는 `storage_available=false`이면 해당 full 응답 그룹을 표시하지 않아 정규화된 0/무제한 값을 정상 쿼터로 오인하지 않습니다. 키페어는 사용자 범위 리소스이며 Nova 프로젝트 쿼터에서 사용량을 제공하지 않으므로 **사용자별 한도만** 표시합니다. Swift·Trove는 쿼터 비율이 아닌 개수/용량 통계입니다. 보고서와 현황은 별도로 응답을 반영하므로 이 요청이 지연되어도 보고서를 먼저 표시하고, 실패하면 현황 섹션에 경고를 표시합니다. RAM 한도 그래프는 MB에서 소수 GB로 변환한 값으로 비율을 계산합니다.
 
 ### GET /api/v1/dashboard/gpu-available
 

@@ -48,7 +48,7 @@ not grant sudo or change global Ansible settings.
      Kolla recreates HAProxy only if their resulting configuration hash changes.
    - The plugin does not create external-VIP routes, DNS records, or TLS certificates. Existing Drover and Waygate public catalog URLs remain operator-owned ingress contracts.
 4. **Published GHCR Images**:
-   - Services pull published `ghcr.io/openstack-afterglow/*` images using explicit release version tags (Afterglow `:v1.25.0`, Drover `:v0.2.23`, Waygate `:0.1.4`, Lumen `:0.3.0`, Palimpsest Hub `:0.2.0`) or exact linux/amd64 manifest digests (`@sha256:...`).
+   - Services pull published `ghcr.io/openstack-afterglow/*` images using explicit release version tags (Afterglow `:v1.28.0`, Drover `:v0.2.25`, Waygate `:0.2.0`, Lumen `:0.3.0`, Palimpsest Hub `:0.2.0`) or exact linux/amd64 manifest digests (`@sha256:...`).
    - Mutable tags such as `latest` or bare unpinned references are prohibited by role precheck validators to prevent multi-controller divergence.
    - Source-build mode remains an optional development path; it is not used for production deployment.
 5. **Datastores & Credential Reuse**:
@@ -77,10 +77,11 @@ KOLLA_ANSIBLE_DIR=/etc/kolla/.venv/share/kolla-ansible \
 ### Installer-managed artifacts
 - Source role link under `$KOLLA_DIR/ansible/roles/`: `afterglow`.
 - Verified root-package roles under `$KOLLA_DIR/ansible/roles/`: `drover`
-  (via `drover==0.2.23`), `lumen` (via `lumen==0.3.0`), `waygate`
-  (via `waygate==0.1.4`), and `palimpsest` (via
-  `palimpsest-local==0.2.2`). Installer validates non-symlink role paths and
-  required lifecycle files.
+  (via `drover==0.2.25`), `lumen` (via `lumen==0.3.1`), `waygate`
+  (via `waygate==0.2.0`), and `palimpsest` (via
+  `palimpsest-client==0.2.3`). Installer validates non-symlink role paths and
+  required lifecycle files, and refuses a leftover retired `palimpsest-local`
+  distribution that shares the Palimpsest role files.
 - Aggregate playbook: `$KOLLA_DIR/ansible/afterglow-site.yml` ->
   `deploy/kolla/site.yml`.
 - One marker-delimited `afterglow-site.yml` import in
@@ -107,10 +108,11 @@ unexpected, `install.sh` aborts rather than replacing it.
 `deploy/kolla/operator/pyproject.toml` is a dependency-only `uv` manifest for
 `kolla-ansible` and the root service distributions:
 
-- **`drover==0.2.23`** owns the `drover` role.
-- **`lumen==0.3.0`** owns the `lumen` role.
-- **`waygate==0.1.4`** owns the `waygate` role.
-- **`palimpsest-local==0.2.2`** owns the `palimpsest` role.
+- **`drover==0.2.25`** owns the `drover` role.
+- **`lumen==0.3.1`** owns the `lumen` role.
+- **`waygate==0.2.0`** owns the `waygate` role.
+- **`palimpsest-client==0.2.3`** owns the `palimpsest` role (renamed from
+  `palimpsest-local` in 0.2.3; see the operator README for migration).
 
 All roots require Python 3.11 or newer. There are no `*-kolla` distributions,
 no `subdirectory = "deploy/kolla"` sources, and no plugin role becomes a Kolla
@@ -443,6 +445,16 @@ kolla-ansible reconfigure -i multinode --tags afterglow
 # Reconfigure all five plugin services
 kolla-ansible reconfigure -i multinode --tags afterglow,waygate,drover,lumen,palimpsest
 ```
+
+Afterglow `deploy` and `reconfigure` run the one-shot schema bootstrap after
+rendering configuration, before policy seeding and backend start. `upgrade`
+bootstraps the pulled image against the existing generated configuration before
+seeding or restarting. This creates missing ORM tables even when the running
+backend sets `auto_create_tables=false`; a bootstrap failure stops the lifecycle
+before an incompatible backend can start. `create_all` cannot add columns to
+existing tables. Apply reviewed SQL migrations from `backend/migrations/manifest.txt`
+before rollout whenever an existing table changes, and verify the authenticated
+application path rather than treating `/health` as database readiness.
 
 `-i multinode` explicitly selects `/etc/kolla/multinode` when run from
 `/etc/kolla`. Omitting `-i` uses the installer's link to that same inventory.

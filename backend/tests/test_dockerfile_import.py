@@ -183,6 +183,17 @@ def test_prepare_dockerfile_import_rejects_unusable_glance_from():
         _prepare_github(conn)
 
 
+def test_prepare_github_palimpsest_from_defers_base_to_verified_parent():
+    digest = "sha256:" + "a" * 64
+    with _pinned_github(f"FROM palimpsest/py@{digest}\nRUN true"):
+        plan = _prepare_github(glance_conn())
+
+    assert plan.parent_digest == digest
+    assert plan.parent_name == "py"
+    assert plan.base_image_snapshot == {}
+    assert [step["instruction"] for step in plan.planned_layers] == ["RUN"]
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "dockerfile",
@@ -193,9 +204,7 @@ def test_prepare_dockerfile_import_rejects_unusable_glance_from():
         "FROM palimpsest/py@sha256:" + "a" * 64 + "\nRUN true",
     ],
 )
-async def test_dockerfile_import_route_rejects_unusable_glance_base_as_400_without_job(
-    admin_client, mock_conn, dockerfile
-):
+async def test_dockerfile_import_route_rejects_unusable_from_as_400_without_job(admin_client, mock_conn, dockerfile):
     mock_conn.image = FakeGlance(
         glance_image("img-22", "ubuntu:22.04", release="22.04"),
         glance_image("img-staging", "jammy-staging", release="22.04", status="queued"),

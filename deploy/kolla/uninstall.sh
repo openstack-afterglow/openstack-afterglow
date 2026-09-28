@@ -123,6 +123,6 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo " Afterglow integration wiring removed."
 echo " The installer-owned stock site.yml import, default inventory link, globals.d"
 echo " links, and Afterglow source role link were removed."
-echo " Package-installed root roles (drover, lumen, waygate, palimpsest-local),"
+echo " Package-installed root roles (drover, lumen, waygate, palimpsest-client),"
 echo " multinode inventory, plugin configuration, databases, containers, images,"
 echo " and source checkouts remain UNTOUCHED."

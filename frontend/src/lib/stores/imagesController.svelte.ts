@@ -25,6 +25,9 @@ export function createImagesController(opts: ImagesControllerOpts) {
   let uploadInitialFile = $state<File | null>(null);
   let bulkActioning = $state(false);
   const selection = createResourceSelection();
+  let fetchGeneration = 0;
+  let fetchToken: string | undefined;
+  let fetchProjectId: string | undefined;
 
   function openImagePanel(id: string) {
     selectedImageId = id;
@@ -46,14 +49,28 @@ export function createImagesController(opts: ImagesControllerOpts) {
   }
 
   async function fetchImages(fetchOpts?: { refresh?: boolean }) {
+    const generation = ++fetchGeneration;
+    const token = opts.token();
+    const projectId = opts.projectId();
+    if (token !== fetchToken || projectId !== fetchProjectId) {
+      images = [];
+      selection.clear();
+      error = '';
+      loading = true;
+    }
+    fetchToken = token;
+    fetchProjectId = projectId;
+    const owns = () => generation === fetchGeneration && opts.token() === token && opts.projectId() === projectId;
     try {
-      images = await api.get<ImageInfo[]>('/api/v1/images', opts.token(), opts.projectId(), fetchOpts);
+      const fetched = await api.get<ImageInfo[]>('/api/v1/images', token, projectId, fetchOpts);
+      if (!owns()) return;
+      images = fetched;
       selection.retain(images.map((image) => image.id));
       error = '';
     } catch (e) {
-      error = e instanceof ApiError ? `조회 실패 (${e.status})` : '서버 오류';
+      if (owns()) error = e instanceof ApiError ? `조회 실패 (${e.status})` : '서버 오류';
     } finally {
-      loading = false;
+      if (owns()) loading = false;
     }
   }
 

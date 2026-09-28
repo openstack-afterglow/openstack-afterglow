@@ -1,6 +1,8 @@
 import type { WaygateClient } from '$lib/types/waygate';
 
 export const WAYGATE_TRAFFIC_LIMIT = 60;
+/** Legacy user workspace does not supply cadence; retain its upstream 90-second window. */
+export const WAYGATE_TRAFFIC_STALE_MS = 90_000;
 /** Old gateway images report on the 15-second reconcile cycle without cadence metadata. */
 const LEGACY_REPORT_INTERVAL_SECONDS = 15;
 
@@ -48,7 +50,7 @@ export function appendClientTraffic(
 	history: ClientTrafficHistory | undefined,
 	report: Report,
 	now: number,
-	freshnessMs: number
+	freshnessMs = WAYGATE_TRAFFIC_STALE_MS
 ): ClientTrafficHistory {
 	const previous = history ?? { samples: [], reportAvailable: false };
 	const timestamp = report.last_reported_at ? Date.parse(report.last_reported_at) : NaN;
@@ -81,7 +83,7 @@ export function appendClientTraffic(
 	};
 }
 
-export function currentClientTraffic(history: ClientTrafficHistory | undefined, now: number, freshnessMs: number) {
+export function currentClientTraffic(history: ClientTrafficHistory | undefined, now: number, freshnessMs = WAYGATE_TRAFFIC_STALE_MS) {
 	const last = history?.samples.at(-1);
 	// Cached reports continue aging after arrival; polling never extends their freshness.
 	const fresh = !!last && !!history?.reportAvailable &&

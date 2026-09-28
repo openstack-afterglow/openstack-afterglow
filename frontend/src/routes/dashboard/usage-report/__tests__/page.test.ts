@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import { get, writable } from 'svelte/store';
+import { tick } from 'svelte';
 import { siteConfig } from '$lib/config/site';
+import { auth, type AuthState } from '$lib/stores/auth';
 
 const { mockGet } = vi.hoisted(() => ({ mockGet: vi.fn() }));
 
@@ -16,6 +18,11 @@ vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 
 import Page from '../+page.svelte';
 
+const initialAuth: AuthState = {
+	token: 'token', refreshToken: null, accessExpiresAt: null,
+	userId: 'test-user', username: 'tester', projectId: 'project', projectName: 'Project One',
+	availableProjects: [], roles: [], isSystemAdmin: false, federated: false,
+};
 const trend = (overrides: Record<string, unknown> = {}) => ({
 	current_pct: 28.1,
 	slope_per_day: 0.57,
@@ -94,6 +101,7 @@ describe('usage report page', () => {
 
 	beforeEach(() => {
 		mockGet.mockReset();
+		auth.set(initialAuth);
 		siteConfig.update((config) => ({ ...config, services: { ...config.services, manila: true, swift: false, trove: false } }));
 	});
 
@@ -141,5 +149,77 @@ describe('usage report page', () => {
 		expect(await screen.findByText('무제한')).toBeTruthy();
 		expect(screen.getByText('추세 데이터 없음')).toBeTruthy();
 		expect(screen.queryByText('쿼터 임박')).toBeNull();
+	});
+
+	it('publishes the report while the optional inventory request is still pending', async () => {
+		let resolveInventory!: (value: unknown) => void;
+		const pendingInventory = new Promise((resolve) => { resolveInventory = resolve; });
+		mockSources(report(), pendingInventory);
+
+		render(Page);
+
+		expect(await screen.findByText('cpu.4c_8g', {}, { timeout: 400 })).toBeTruthy();
+		expect(screen.queryByText('라우터')).toBeNull();
+		resolveInventory(QUOTAS);
+		expect(await screen.findByText('라우터')).toBeTruthy();
+	});
+
+	it('does not present normalized zero inventory for services whose strict quota failed', async () => {
+		mockSources(
+			report({ quota: { compute_available: false, storage_available: false } }),
+			Promise.resolve({
+				...QUOTAS,
+				compute: { instances: { limit: -1, in_use: 0 }, key_pairs: { limit: -1, in_use: 0 } },
+				storage: { volumes: { limit: -1, in_use: 0 } },
+			}),
+		);
+
+		render(Page);
+
+		expect(await screen.findByText('라우터')).toBeTruthy();
+		expect(screen.getByText('컴퓨트 쿼터를 불러오지 못했습니다')).toBeTruthy();
+		expect(screen.getByText('블록 스토리지 쿼터를 불러오지 못했습니다')).toBeTruthy();
+		expect(screen.queryByText('컴퓨트 한도')).toBeNull();
+		expect(screen.queryByRole('region', { name: '블록 스토리지' })).toBeNull();
+		expect(screen.queryByText('키페어 한도 (사용자별)')).toBeNull();
+	});
+
+	it('calculates the RAM quota bar using sub-GB allocations', async () => {
+		mockSources(
+			report({ quota: { ram_mb: { limit: 512, in_use: 256 } }, forecast: { ram_mb: trend({ current_pct: 50 }) } }),
+			Promise.resolve(QUOTAS),
+		);
+
+		render(Page);
+
+		const ramBar = (await screen.findByText('RAM')).closest('.usage-bar');
+		expect(ramBar?.textContent?.replace(/\s+/g, '')).toContain('0.25GB/0.5GB50%');
+		expect(ramBar?.querySelector('.usage-fill')?.getAttribute('style')).toContain('width: 50%');
+	});
+
+	it('ignores late report and chat usage from another project', async () => {
+		let resolveOldReport!: (value: unknown) => void;
+		let resolveOldChat!: (value: unknown) => void;
+		const oldReport = new Promise((resolve) => { resolveOldReport = resolve; });
+		const oldChat = new Promise((resolve) => { resolveOldChat = resolve; });
+		mockGet.mockImplementation((path: string, _token: string, project: string) => {
+			if (path.startsWith('/api/v1/dashboard/usage-report')) return project === 'project' ? oldReport : Promise.resolve(report());
+			if (path === '/api/v1/dashboard/quotas') return Promise.resolve(QUOTAS);
+			if (path === '/api/v1/chat/usage') return project === 'project' ? oldChat : Promise.reject(new Error('unavailable'));
+			return Promise.reject(new Error('unexpected path'));
+		});
+
+		render(Page);
+		await tick();
+		expect(mockGet).toHaveBeenCalledWith('/api/v1/chat/usage', 'token', 'project');
+		auth.set({ ...initialAuth, token: 'token-2', projectId: 'project-2', projectName: 'Project Two' });
+		expect(await screen.findByText('cpu.4c_8g')).toBeTruthy();
+		resolveOldReport({ ...report(), flavor_hours: [{ ...report().flavor_hours[0], flavor: 'old-project-flavor' }] });
+		resolveOldChat({ found: true, month_prompt_tokens: 123456789, month_completion_tokens: 0, month_credited_cost: 0, month_request_count: 1, quota_used: 1, quota_max: 10 });
+		await oldReport;
+		await oldChat;
+		await tick();
+		expect(screen.queryByText('old-project-flavor')).toBeNull();
+		expect(screen.queryAllByText('123,456,789')).toHaveLength(0);
 	});
 });

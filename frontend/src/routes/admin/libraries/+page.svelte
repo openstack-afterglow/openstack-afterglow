@@ -206,6 +206,7 @@
   let profileDeletingName = $state('');
   let profileDeleteError = $state('');
 
+
   let importForm = $state({ github_url: '', ref: '', dockerfile_path: 'Dockerfile', layer_prefix: '', profile_name: '' });
   let importSubmitting = $state(false);
   const pinnedCommitValid = $derived(/^[a-f0-9]{40}$/i.test(importForm.ref.trim()));
@@ -415,6 +416,7 @@
   async function loadBaseImages(refresh = false) {
     try {
       baseImages = await api.get<LayerBaseImage[]>('/api/v1/admin/libraries/base-images', token, projectId, { refresh });
+
     } catch {
       baseImages = [];
     }

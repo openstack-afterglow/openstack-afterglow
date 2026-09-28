@@ -36,7 +36,7 @@ def list_images(conn: openstack.connection.Connection, project_id: str | None = 
                 created_at=str(img.created_at) if img.created_at else None,
                 owner=getattr(img, "owner", None) or getattr(img, "project_id", None),
                 visibility=getattr(img, "visibility", None),
-                protected=getattr(img, "is_protected", False),
+                protected=bool(getattr(img, "is_protected", False)),
                 os_hash_algo=getattr(img, "hash_algo", None),
                 os_hash_value=getattr(img, "hash_value", None),
             )
@@ -205,6 +205,7 @@ def update_image_metadata(
         created_at=str(img.created_at) if img.created_at else None,
         owner=getattr(img, "owner", None) or getattr(img, "project_id", None),
         visibility=getattr(img, "visibility", None),
+        protected=bool(getattr(img, "is_protected", False)),
         os_hash_algo=getattr(img, "hash_algo", None),
         os_hash_value=getattr(img, "hash_value", None),
     )

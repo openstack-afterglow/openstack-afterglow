@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	WAYGATE_TRAFFIC_LIMIT,
+	WAYGATE_TRAFFIC_STALE_MS,
 	waygateTrafficFreshnessMs,
 	appendClientTraffic,
 	currentClientTraffic,
@@ -79,6 +80,16 @@ describe('Waygate client traffic history', () => {
 		// Polling the same cached report does not extend freshness beyond the report's age.
 		history = appendClientTraffic(history, report(10, 100, 200), base + 56_000, legacyFreshnessMs);
 		expect(currentClientTraffic(history, base + 56_000, legacyFreshnessMs)).toEqual({ fresh: false, rxRate: null, txRate: null });
+	});
+
+	it('keeps the upstream 90-second window when no admin cadence is supplied', () => {
+		let history = appendClientTraffic(undefined, report(0, 0, 0), base + 85_000);
+		history = appendClientTraffic(history, report(10, 100, 200), base + 95_000);
+		expect(currentClientTraffic(history, base + 95_000)).toEqual({ fresh: true, rxRate: 20, txRate: 10 });
+		history = appendClientTraffic(history, report(10, 100, 200), base + 101_000);
+		expect(currentClientTraffic(history, base + 101_000)).toEqual({ fresh: false, rxRate: null, txRate: null });
+		const gap = appendClientTraffic(history, report(10 + WAYGATE_TRAFFIC_STALE_MS / 1000 + 1, 200, 400), base + 101_000);
+		expect(gap.samples.at(-1)?.rxRate).toBeNull();
 	});
 
 	it('tracks fast, slow and legacy report cadences without inventing rates across gaps', () => {

@@ -104,12 +104,19 @@ class PromotionIntegrationTests(unittest.TestCase):
         )
         (self.operator_dir / "pyproject.toml").write_text(patched_pyproject, encoding="utf-8")
 
-        # Patch uv.lock drover source to point to local sibling repo with 0.2.22
+        # Patch uv.lock drover source and resolved package to the local sibling repo at 0.2.22. The package
+        # entry must be rewritten too; otherwise the fixture inherits the real lock's promoted version.
         patched_lock = re.sub(
             r'(\{\s*name\s*=\s*"drover",\s*git\s*=\s*")[^"]+("\s*\})',
             rf'\g<1>{repo_url}?rev={v22_sha}#{v22_sha}\g<2>',
             current_lock,
         )
+        patched_lock, package_count = re.subn(
+            r'(\[\[package\]\]\nname = "drover"\nversion = ")[^"]+("\nsource = \{ git = ")[^"]+(" \})',
+            rf'\g<1>0.2.22\g<2>{repo_url}?rev={v22_sha}#{v22_sha}\g<3>',
+            patched_lock,
+        )
+        assert package_count == 1, "operator lock must contain exactly one drover package entry"
         (self.operator_dir / "uv.lock").write_text(patched_lock, encoding="utf-8")
 
     def test_promote_higher_tag_and_installer_lock_derivation(self) -> None:
@@ -187,7 +194,7 @@ class PromotionIntegrationTests(unittest.TestCase):
             ("drover", installed_drover_version),
             ("lumen", locked("lumen")),
             ("waygate", locked("waygate")),
-            ("palimpsest", locked("palimpsest-local")),
+            ("palimpsest", locked("palimpsest-client")),
         ]
         for role, ver in packages:
             rdir = roles_dir / role
@@ -198,7 +205,7 @@ class PromotionIntegrationTests(unittest.TestCase):
             (rdir / "defaults/main.yml").write_text(f"{role}_services: {{}}\n", encoding="utf-8")
             (rdir / f"templates/{role}.conf.j2").write_text("[DEFAULT]\n", encoding="utf-8")
 
-            dist_name = "palimpsest-local" if role == "palimpsest" else role
+            dist_name = "palimpsest-client" if role == "palimpsest" else role
             dist_info = metadata_dir / f"{dist_name.replace('-', '_')}-{ver}.dist-info"
             dist_info.mkdir(parents=True, exist_ok=True)
             (dist_info / "METADATA").write_text(

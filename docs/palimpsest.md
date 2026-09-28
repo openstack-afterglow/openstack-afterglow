@@ -140,6 +140,9 @@ tag가 모호하면 `completions[].ref`를 FROM에 복사할 수 있다. 로컬 
 넘으면 `warnings`로 알리되 OpenStack 빌드 제출을 막지는 않는다. 린트는 잡·빌드 캐시·VM을
 생성하지 않고 실제 `/plan`과 빌드는 독립적으로 다시 검사한다. 인라인과 URL/파일 입력에는
 빌드 컨텍스트가 없으므로 `COPY`/`ADD`를 오류로 보고한다.
+`FROM` 행이 유효하지 않아도 뒤따르는 정상 지시어의 예상 레이어 수는 계속 계산한다.
+부모 레이어에 Glance base image ID가 없으면 lint와 plan/build 모두 snapshot 백필 오류를 반환한다.
+Glance 조회 장애는 인라인 plan/build에서 내부 오류나 자격 증명 원문을 노출하지 않고 안전한 오류로 반환한다.
 
 ### 지원하는 문법
 

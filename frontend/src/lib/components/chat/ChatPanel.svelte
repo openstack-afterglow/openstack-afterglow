@@ -23,7 +23,7 @@
 	} from '$lib/api/chatMetrics';
 	import type { ToolActivityItem } from '$lib/api/chatToolActivity';
 	import { aggregateCitations } from '$lib/api/chatCitations';
-	import { normalizeEffort } from '$lib/api/chatEffort';
+	import { effortForModel, normalizeEffort } from '$lib/api/chatEffort';
 	import { createChatRevealBuffer } from '$lib/api/chatRevealBuffer';
 	import { createChatRunAttachment } from '$lib/api/chatRunAttachment';
 	import { taskLabelForStage, taskLabelForTool } from '$lib/api/chatTaskLabels';
@@ -271,7 +271,11 @@
 
 	// 모델을 바꾸면 현재 effort 가 새 모델에 없을 수 있으므로 정규화(없으면 null=서버 기본).
 	$effect(() => {
-		const normalized = normalizeEffort(effort, selectedModelObj?.capabilities);
+		const normalized = normalizeEffort(
+			effort,
+			selectedModelObj?.capabilities,
+			selectedModelObj?.reasoning_none_supported
+		);
 		if (normalized !== effort) effort = normalized;
 	});
 
@@ -2133,7 +2137,8 @@
 			{
 				model_id: modelName || selectedModel,
 				features: selectedFeatureOptions(activeAgent?.model_name || modelName || selectedModel),
-				reasoning_effort: effort,
+				// 재생성 모델은 composer 모델과 다를 수 있으므로 실제 실행 모델 기준으로 정규화한다.
+				reasoning_effort: effortForModel(effort, models, activeAgent?.model_name || modelName || selectedModel),
 				client_timezone: browserTimezone(),
 				skill_ids: selectedSkillIds,
 			},
@@ -2568,6 +2573,7 @@
 					{token}
 					{projectId}
 					modelCaps={selectedModelObj?.capabilities}
+					reasoningNoneSupported={selectedModelObj?.reasoning_none_supported === true}
 					{streaming}
 					{contextState}
 					hasContextScope={hasContextScope}

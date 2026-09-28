@@ -28,7 +28,7 @@ SERVICES: dict[str, Service] = {
     "drover": Service("drover", "https://github.com/openstack-afterglow/drover.git"),
     "lumen": Service("lumen", "https://github.com/openstack-afterglow/lumen.git"),
     "waygate": Service("waygate", "https://github.com/openstack-afterglow/waygate.git"),
-    "palimpsest": Service("palimpsest-local", "https://github.com/openstack-afterglow/palimpsest.git"),
+    "palimpsest": Service("palimpsest-client", "https://github.com/openstack-afterglow/palimpsest.git"),
 }
 TAG_RE = re.compile(r"^v(?P<major>0|[1-9][0-9]*)\.(?P<minor>0|[1-9][0-9]*)\.(?P<patch>0|[1-9][0-9]*)$")
 

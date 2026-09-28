@@ -1,6 +1,6 @@
 [project]
 name = "afterglow-api"
-version = "1.25.0"
+version = "1.29.0"
 description = "Afterglow - OpenStack VM deployment platform"
 requires-python = ">=3.12"
 dependencies = [
@@ -38,8 +38,8 @@ dependencies = [
     "pypdf==6.15.0",
     "mutagen==1.47.0",
     "afterglow-crypto",
-    "waygate-sdk @ git+https://github.com/openstack-afterglow/waygate.git@39d724776d1abb11f7ed2c28328674daaa6a9918#subdirectory=sdk",
-    "drover-sdk @ git+https://github.com/openstack-afterglow/drover.git@96fdf876ea2e9ea26c932cad6c32d118ae33d91f#subdirectory=sdk",
+    "waygate-sdk @ git+https://github.com/openstack-afterglow/waygate.git@572393905d50ef4cd7c90232bba43bb0cf40efbd#subdirectory=sdk",
+    "drover-sdk @ git+https://github.com/openstack-afterglow/drover.git@a18f207a0b297160b22747753e2657a9047e205a#subdirectory=sdk",
     "pypdfium2==5.13.0",
 ]
 
@@ -122,8 +122,8 @@ worker = [
     "pyyaml>=6.0",
     "idna>=3.15",
     "apscheduler>=3.10",
-    "waygate-sdk @ git+https://github.com/openstack-afterglow/waygate.git@39d724776d1abb11f7ed2c28328674daaa6a9918#subdirectory=sdk",
-    "drover-sdk @ git+https://github.com/openstack-afterglow/drover.git@96fdf876ea2e9ea26c932cad6c32d118ae33d91f#subdirectory=sdk",
+    "waygate-sdk @ git+https://github.com/openstack-afterglow/waygate.git@572393905d50ef4cd7c90232bba43bb0cf40efbd#subdirectory=sdk",
+    "drover-sdk @ git+https://github.com/openstack-afterglow/drover.git@a18f207a0b297160b22747753e2657a9047e205a#subdirectory=sdk",
 ]
 
 [tool.hatch.build.targets.wheel]

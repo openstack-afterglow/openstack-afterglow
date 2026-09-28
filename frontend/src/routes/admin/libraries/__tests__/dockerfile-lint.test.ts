@@ -321,7 +321,8 @@ describe('administrator Dockerfile lint', () => {
         await vi.waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/v1/admin/libraries/imports/dockerfile', {
             github_url: 'https://github.com/example/repo', ref: 'c'.repeat(40), dockerfile_path: 'Dockerfile', layer_prefix: 'sample', consumer: expectedConsumer,
         }, 'token', 'project'));
-        for (const [, body] of mocks.post.mock.calls) {
+        for (const [path, body] of mocks.post.mock.calls) {
+            if (path !== '/api/v1/palimpsest/builds/dockerfile' && path !== '/api/v1/admin/libraries/imports/dockerfile') continue;
             expect(body.consumer).not.toHaveProperty('image_id');
             expect(body.consumer).not.toHaveProperty('base_image_id');
             expect(body.consumer).not.toHaveProperty('profile_name');

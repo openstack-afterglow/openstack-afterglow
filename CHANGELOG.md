@@ -7,18 +7,14 @@
 
 ## [Unreleased]
 
+## [1.29.0] - 2026-09-28
+
 ### Added
 - **보안 그룹 쿼터·사용 현황·규칙 편집 동선** — 사용자 화면에서 현재 프로젝트의 그룹 및 규칙 허용량·사용량과 보안 그룹을 사용하는 인스턴스를 표시한다. 각 규칙의 IPv4/IPv6을 별도 열로 확인하고, 규칙은 표 안에서 CIDR 또는 같은 프로젝트의 보안 그룹을 대상으로 추가한다. 비워 둔 원격 IP에는 IP 버전별 전체 대역, 끝 포트에는 시작 포트를 적용한다. 직접 수정할 수 없는 Neutron 규칙은 기존 설정을 복사해 명시적으로 제거·재생성하며 그 사이 정책 변경을 안내한다.
 - **관리자 프로젝트별 전체 리소스 쿼터** — 기존 인스턴스·vCPU·RAM·볼륨·용량 및 GPU 정책을 유지하면서 Cinder 스냅샷, Neutron 네트워크·서브넷·포트·라우터·Floating IP·보안 그룹/규칙, 활성화된 Manila 공유·용량·스냅샷·공유 네트워크·그룹/그룹 스냅샷 한도를 조회·조정한다. Nova 추가 쿼터도 제공되는 경우 표시한다. 서비스별로 변경 항목만 저장하고 누락된 사용량·미지원 필드를 0 한도로 오인하지 않는다. 멀티서비스 API 일부 실패는 부분 성공으로 표시한다.
 - **관리자 이벤트 뷰어** — 기존 활동 이력을 시스템 관리자 전용 전역 타임라인·상세·필터 및 서비스·프로젝트·페이지·액션별 실패 집계로 조회한다. 인증된 변경 요청의 성공/실패와 Keystone/GitLab 로그인 성공을 기록하고, 선택적 RabbitMQ oslo.messaging 알림을 별도 출처로 영속 수집한다. 리소스 ID·요청 ID·사용자·프로젝트·에러를 함께 조사할 수 있지만 알림 발행이 꺼진 OpenStack 작업이나 수집 이전 기록까지 보장하지는 않는다.
 - **관리자 서비스 탐색과 Waygate 작업 공간** — Drover·Lumen·Palimpsest·Waygate를 관리자 `서비스` 그룹과 검색 팔레트에 모으고 템플릿·채팅 설정 하위 경로를 유지한다. `/admin/waygate`는 사용자 Network의 `/dashboard/network/waygate`와 UI 기능을 공유하지만 관리자 문맥으로 표시한다. 두 화면 모두 프로젝트 미선택 시 요청하지 않으며 프로젝트 전환 후 이전 서버·클라이언트·첨부 네트워크·트래픽·다운로드 응답을 폐기한다.
-- **Waygate 클라이언트 설정·실측 트래픽** — 인증된 VPN 화면에서 클라이언트별 DNS, 선택적 MTU, PersistentKeepalive(0 비활성화)를 발급·수정하고 PSK 사용 여부와 재import 필요성을 표시한다. 클라이언트 RX/TX 누적량·속도는 실제 agent 보고의 gateway 카운터를 반대로 매핑한 값이며, 최대 60개 보고로 구성한 낮은 대비의 카드 배경 wave는 누락·지연·카운터 초기화 시 가짜 속도를 만들지 않는다. `.conf` 다운로드·QR은 계속 제공한다. 로컬 kernel WireGuard/BFF/browser 검증만 완료했으며 이 기능 코드는 운영에 배포하지 않았다.
 - **Waygate 실시간 피어와 상속 설정** — 프로젝트 네트워크 이름과 UUID를 함께 표시하고, 피어 전용 끔/1/2/5/10/15/30/60초 자동 갱신을 기존 서버·네트워크 갱신과 분리한다. 수신 보고의 실제 간격·시각으로 지연과 미확인 상태를 구별하고 이전 프로젝트·서버의 늦은 응답을 버린다. 서버 DNS·PersistentKeepalive 기본값을 상속하는 클라이언트는 다운로드·QR·목록에서 변경을 동적으로 반영하며 DNS 생략과 keepalive 0을 명시 override로 유지한다. 기존 클라이언트의 키/PSK는 변경하지 않고 MTU는 클라이언트별로만 관리한다. 다운로드·QR·설정 아이콘과 활성화·삭제 동작은 좁은 화면에서도 같은 순서로 제공한다.
-- **소유 VM 플레이버 리사이즈** — 프로젝트 쓰기 권한 사용자는 본인 VM의 플레이버를 현재 자원 대비 증분 쿼터로 평가한 뒤 리사이즈하고, `VERIFY_RESIZE` 상태에서 확인하거나 되돌릴 수 있다. 이미지 기반 VM은 디스크 축소를 거부하며 관리자 경로는 유지한다.
-- **기간 사용량·다중 리소스 쿼터 예측** — vCPU·RAM·타입별 GPU의 최근 7일 할당 추세로 30일 예상 사용률과 한도 도달일을 표시한다. 블록 스토리지는 Cinder의 현재 사용량을 제공하고, 인스턴스별 사용 시간과 네트워크·스토리지·컴퓨트·선택적 Manila/Swift/Trove 현황을 추가했다.
-- **관리자 이미지 repository 카탈로그와 검증** — 전체 marker 페이지를 모아 repository/tag 카드로 탐색하고 최신 업로드 기준으로 정렬한다. 기존 관리 작업은 desktop 표와 mobile/tablet 카드에 유지한다. DB 소유 승인 기록과 Glance 정체성·해시를 대조해 tag별 검증/미검증/조회 불가를 구분하며, 관리자 새 업로드 자동 승인과 명시적 승인·해제를 제공한다. 기존 public 이미지에는 검증을 소급 부여하지 않는다.
-- **중복 이미지 tag의 현재·이전 업로드 구분** — 동일 repository/tag의 최신 생성 UUID를 현재로 표시하고 이전 업로드를 Glance SHA-512/256과 UUID로 조회·검색한다. 같은 해시도 별도 업로드로 보존하며, 필터나 업로드 진행 상태로 과거 이미지를 현재로 대체하지 않는다. VM 선택기는 현재 tag만 제시하고 비활성 대상 선택을 막는다. Glance 삭제 보호 상태를 목록에서 유지해 보호된 UUID에는 관리자 삭제 동작을 제공하지 않는다.
-- **Palimpsest Dockerfile Glance FROM·실시간 검사** — `FROM`만으로 활성 Ubuntu Glance 이미지 이름/UUID 또는 버전별 유일한 이미지를 선택하고, 중복 버전 tag에는 복사 가능한 후보를 제시한다. 동일 이름은 최신 생성 이미지를 고르며 독립 `base_image_id` 입력은 제거했다. 이미지별 캐시를 분리하고 관리자 전용 lint가 문법 오류·해석된 이미지·새/상속/전체 레이어 예상치를 행별로 표시한다. 스튜디오는 600ms 지연 검사하며 실제 빌드에서 재검증한다.
 - **Palimpsest Dockerfile 전체 루트 빌드·SSH VM** — FROM만으로도 Glance의 부팅하지 않은 volume clone에서 전체 루트 squashfs를 생성한다. 후속 Dockerfile 명령은 child-first OverlayFS 변경분으로 봉인하고 실제 blob SHA-256 기반 계보만 재사용한다. 기존 `/usr` 부분 계보는 거부한다. GitHub commit context의 COPY/ADD를 지원하며 inline은 context 없이 빌드한다. URL 가져오기는 공인 DNS 응답에 연결을 고정하고 redirect마다 다시 검증한다. Builder가 Manila share에 원자적으로 남긴 token-bound manifest는 Nova console 유무와 무관하게 일회용 read-only SSH 검증 VM에서 모든 blob의 실제 바이트와 대조한 뒤에만 봉인한다. 소비 VM은 전용 Cinder upper의 initramfs root overlay로 재부팅한다. Nova console이 없어도 guest가 post-reboot overlay/SSH 상태를 확인한 뒤 `/run`에 기록한 token을 backend의 임시 Ed25519 SSH 키로 검사한다. SSH 검증 경로는 guest 키를 제거해야만 활성화되며 console 검증 경로는 키 제거를 시도한다. local private key는 성공/실패 모두 삭제한다. DMSLab OpenStack에서 실제 루트·명령 레이어 빌드, 캐시 재사용, SSH 소비 VM 생성과 재부팅 후 upper 영속성을 검증했으며 운영 배포는 별도다.
 
 ### Fixed
@@ -28,10 +24,64 @@
 - **Palimpsest 완료 작업의 VM 재실행** — 관리자 작업 기록에서 봉인된 Dockerfile job의 `import_id`로 새 VM을 만들 수 있다. 작업 당시의 root→delta artifact ID와 봉인·계보를 재검증하며 변경된 프로필 이름에서 최신 artifact를 다시 선택하지 않는다. 구형 임포트 작업은 계속 표시하지만 Dockerfile digest가 없어 지원하지 않는 VM 실행 버튼을 보여주지 않는다. 프로필 기반 기존 API는 유지한다.
 - **Lumen 밝은 테마 작성창 대비** — 입력창·placeholder·포커스 경계·도구/첨부·비활성 전송 상태를 기존 surface/ink/line 토큰에 맞춰 밝은 테마에서 읽을 수 있게 조정한다. 어두운 테마의 색상 계약은 유지한다.
 - **Drover 외부 provider 직접 연결** — 클러스터 생성의 내부 `Default` 자동 선택과 Tenant 네트워크 선택을 제거했다. 외부 provider만 명시 선택할 수 있으며 선택을 생략하면 Drover 관리자 기본 정책을 사용한다. 내부 NIC는 생성 후 추가하고 K3s 기본 네트워크와 분리한다.
+
+## [1.28.0] - 2026-09-27
+
+### Added
+- **기간 사용량·다중 리소스 쿼터 예측** — vCPU·RAM·타입별 GPU의 최근 7일 할당 추세로 30일 예상 사용률과 한도 도달일을 표시한다. 블록 스토리지는 Cinder의 현재 사용량을 제공하고, 인스턴스별 사용 시간과 네트워크·스토리지·컴퓨트·선택적 Manila/Swift/Trove 현황을 추가했다.
+- **관리자 이미지 repository 카탈로그와 검증** — 전체 marker 페이지를 모아 repository/tag 카드로 탐색하고 최신 업로드 기준으로 정렬한다. 기존 관리 작업은 desktop 표와 mobile/tablet 카드에 유지한다. DB 소유 승인 기록과 Glance 정체성·해시를 대조해 tag별 검증/미검증/조회 불가를 구분하며, 관리자 새 업로드 자동 승인과 명시적 승인·해제를 제공한다. 기존 public 이미지에는 검증을 소급 부여하지 않는다.
+- **중복 이미지 tag의 현재·이전 업로드 구분** — 동일 repository/tag의 최신 생성 UUID를 현재로 표시하고 이전 업로드를 Glance SHA-512/256과 UUID로 조회·검색한다. 같은 해시도 별도 업로드로 보존하며, 필터나 업로드 진행 상태로 과거 이미지를 현재로 대체하지 않는다. VM 선택기는 현재 tag만 제시하고 비활성 대상 선택을 막는다. Glance 삭제 보호 상태를 목록에서 유지해 보호된 UUID에는 관리자 삭제 동작을 제공하지 않는다.
+- **Palimpsest Dockerfile Glance FROM·실시간 검사** — `FROM`만으로 활성 Ubuntu Glance 이미지 이름/UUID 또는 버전별 유일한 이미지를 선택하고, 중복 버전 tag에는 복사 가능한 후보를 제시한다. 동일 이름은 최신 생성 이미지를 고르며 독립 `base_image_id` 입력은 제거했다. 이미지별 캐시를 분리하고 관리자 전용 lint가 문법 오류·해석된 이미지·새/상속/전체 레이어 예상치를 행별로 표시한다. 스튜디오는 600ms 지연 검사하며 실제 빌드에서 재검증한다.
+
+### Fixed
 - **Nova 사용량 리포트 정상화** — SDK의 플레이버·시작/종료 시각과 `total_vcpus_usage`를 보존해 `unknown` 플레이버 및 0 vCPU 시간 문제를 수정하고, 90일 조회가 30일로 축소되던 오류를 수정했다.
 - **불완전한 quota 응답 구분** — 사용량 리포트의 Nova·Cinder 원본 quota를 strict 모드로 검사하고 캐시를 분리해, 빈 응답이나 사용량 누락을 정상 0 사용량·무제한으로 오인하지 않는다.
 - **Object Storage 암묵적 폴더 탐색** — 폴더 marker 없이 `path/sub/file`로만 저장된 객체도 Horizon처럼 폴더→하위 폴더→파일 순서로 탐색한다. openstacksdk가 버리던 Swift `delimiter`/`subdir`를 원본 JSON 목록에서 끝까지 페이지 조회해 보존하고, 중간 페이지 오류를 빈 목록으로 캐시하지 않는다. 이런 폴더의 이름 변경·이동·휴지통/영구 삭제는 실제 저장된 키만 처리해 없는 marker 때문에 실패하지 않으며 새 marker를 만들지 않는다.
 - **Object Storage 이동 중 원본 유실 방지** — SDK raw 요청은 오류 응답에도 예외를 내지 않아, 실패한 Swift COPY를 성공으로 보고 원본을 삭제할 수 있었다. 복사·marker 생성·raw 삭제는 2xx 응답만 성공으로 처리하고, 복사가 실패하면 파일·폴더 이동/이름 변경/휴지통 이동은 원본을 지우지 않는다. 같은 이름으로 이름 변경하면 아무 것도 바꾸지 않고, 폴더를 자기 하위로 옮기거나 대상이 원본과 겹치는 이동은 변경 전에 `400`으로 거부한다.
+- **프로젝트 전환 중 이미지 목록 혼동 방지** — 대시보드 이미지 요청을 프로젝트·인증 토큰·요청 순서에 묶어, 이전 요청이 늦게 성공하거나 실패해도 새 프로젝트의 카탈로그·로딩·오류 상태를 덮어쓰지 않는다.
+- **이미지 보호 상태·Dockerfile 검사 일치** — Glance 메타데이터 수정 응답에도 보호 상태를 유지하고, SDK가 보호 값을 비워 보낸 이미지의 목록 조회가 실패하지 않는다. 잘못된 `FROM` 이후의 유효 지시어도 lint 예상치에 남기고 부모의 base image ID 누락을 plan/build와 동일하게 거부한다. 인라인 Glance 조회가 이벤트 루프를 막거나 장애 내부정보를 노출하지 않도록 했다.
+- **사용량 화면의 현황·RAM 비율** — 부가 quota 요청이 지연되어도 사용량 보고서를 먼저 표시하고, strict Nova/Cinder 쿼터가 실패하면 정규화된 현황 0/무제한을 숨긴다. 1GB 미만 RAM도 반올림 전에 사용률을 계산한다.
+
+### Changed
+
+- **Lumen 0.3.1 operator pin 준비** — Kolla operator root role tag/lock 및 API·worker sample image를 새 릴리스에 맞춘다. Palimpsest root 0.2.4와 수정된 Hub image 승격은 Astra 승인·KVM runner 격리 결정까지 보류하며, 이 변경만으로 운영 배포나 실제 provider 추론을 주장하지 않는다.
+
+## [1.27.0] - 2026-09-27
+
+### Added
+
+- **Waygate 클라이언트 설정·실측 트래픽** — 인증된 VPN 화면에서 클라이언트별 DNS, 선택적 MTU, PersistentKeepalive(0 비활성화)를 발급·수정하고 PSK 사용 여부와 재import 필요성을 표시한다. 클라이언트 RX/TX 누적량·속도는 실제 agent 보고의 gateway 카운터를 반대로 매핑한 값이며, 최대 60개 보고로 구성한 낮은 대비의 카드 배경 wave는 누락·지연·카운터 초기화 시 가짜 속도를 만들지 않는다. `.conf` 다운로드·QR은 계속 제공한다. Waygate 0.2.0의 migration 003 및 API가 선행되어야 하며, 이 기능 코드는 이 release preparation 시점에 운영에 배포하지 않았다.
+
+### Changed
+
+- **Waygate 0.2.0 pin** — Kolla operator root role은 공개된 `v0.2.0` tag/lock을, backend·worker SDK dependency는 그 release merge commit `572393905d50ef4cd7c90232bba43bb0cf40efbd`를 사용한다. SDK 자체 버전은 `0.1.2`로 유지한다.
+
+## [1.26.1] - 2026-09-27
+
+K3s 클러스터 삭제의 floating IP 보존 수정은 Drover `v0.2.25`에 있으며, Afterglow는 운영자 lock과 Drover SDK commit을 그 릴리즈로 올리는 PATCH 릴리즈다.
+
+### Fixed
+
+- **보존 요청한 OCCM floating IP 유지** — Kolla operator lock과 backend `drover-sdk` 고정 commit을 Drover `v0.2.25`(merge `a18f207a`)로 올렸다. SDK 코드는 바뀌지 않았다(`0.2.21`). Drover `v0.2.24`는 클러스터 삭제 때 OCCM이 만든 LoadBalancer floating IP를 모두 삭제했다. 이제 `loadbalancer.openstack.org/keep-floatingip: "true"` Service의 IP는 OCCM처럼 남기고, Kubernetes를 읽지 못해 보존 의사를 알 수 없을 때도 남긴다. 검증 범위는 Drover `docs/release-0.2.25.md`에 있다.
+
+## [1.26.0] - 2026-09-26
+
+VM 플레이버 리사이즈 엔드포인트가 추가되어 MINOR 릴리즈다. K3s 라우팅·OCCM 수정은 Drover `v0.2.24`에 있으며, Afterglow는 운영자 lock과 Drover SDK commit을 그 릴리즈로 올린다.
+
+### Added
+
+- **소유 VM 플레이버 리사이즈** — 프로젝트 쓰기 권한 사용자는 본인 VM의 플레이버를 현재 자원 대비 증분 쿼터로 평가한 뒤 리사이즈하고, `VERIFY_RESIZE` 상태에서 확인하거나 되돌릴 수 있다. 이미지 기반 VM은 디스크 축소를 거부하며 관리자 경로는 유지한다.
+
+### Changed
+
+- **Palimpsest root 배포판 이름 전환** — Kolla operator가 Palimpsest role을 `palimpsest-client` `v0.2.3`에서 설치한다. 이전 `palimpsest-local`은 같은 role 파일을 소유하므로 설치기가 남은 배포판을 거부하고, operator 안내에 제거 후 재설치 절차를 추가했다.
+- **Drover 생성 네트워크 선택 UI** — Afterglow 생성 대화상자는 내부 `Default` 자동 선택과 Tenant 네트워크 선택을 제거했다. 외부 Provider 네트워크만 명시적으로 고를 수 있고, 선택을 비우면 Drover의 관리자 기본 정책에 맡긴다. 내부 NIC는 클러스터 생성 후 추가하도록 안내한다. Provider NIC 고정·Pod 라우팅 구현은 별도의 Drover 변경이다.
+- **Drover v0.2.24 운영자 승격** — Kolla operator lock과 backend `drover-sdk` 고정 commit을 Drover `v0.2.24`(merge `cacc2573`)로 올렸다. SDK 코드는 바뀌지 않았다(`0.2.21`). 이 릴리즈에서 K3s Pod 응답 라우팅 규칙이 네트워크 재구성·재부팅 뒤에도 유지되고, 게스트 플러그인이 public Keystone endpoint로 인증하며, OCCM이 노드 초기화와 LoadBalancer Service를 단독으로 맡고 클러스터 삭제 시 함께 정리된다. 검증 범위는 Drover `docs/release-0.2.24.md`에 있다.
+
+### Fixed
+
+- **지원하지 않는 추론 끄기 숨김** — 채팅 추론 강도 선택기는 Lumen `/v1/chat/models`의 `reasoning_none_supported`가 true인 모델에만 "없음"을 노출한다. gpt-5·o3·gemini-2.5-pro처럼 Lumen이 `none`을 422로 거부하는 모델에서 전송 실패를 막는다. 현재 선택과 다른 모델로 재생성할 때도 실행 모델 기준으로 정규화한다. Lumen의 422 변경보다 먼저 또는 함께 배포한다.
+- **운영 GitHub SSH 확인 이력 503 복구** — 운영 MariaDB에 누락된 `vm_github_ssh_users`를 검토된 migration 080으로 생성해 GitHub 프로필·공개키 확인 뒤 이력 기록이 503으로 실패하던 경로를 복구했다. Kolla `reconfigure`·`upgrade`도 새 backend를 시작하기 전에 일회성 DB bootstrap을 실행해 신규 테이블을 누락하지 않는다. 기존 테이블 변경은 여전히 별도의 SQL migration을 먼저 적용한다.
 
 ## [1.25.0] - 2026-09-25
 

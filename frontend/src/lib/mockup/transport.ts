@@ -344,7 +344,14 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	if (method === 'POST' && profile === 'admin' && pathname === '/api/v1/admin/flavors/access-reconcile') {
 		return { project_id: String((body as { project_id?: string } | undefined)?.project_id ?? ''), applied: false, status: 'ok', operations: [], errors: [], enforcement_scope: 'afterglow_admissions_only' };
 	}
-	if (profile === 'admin' && method !== 'GET') mockUnsupported();
+	if (profile === 'admin' && method !== 'GET') {
+		const dockerfileFixture = method === 'POST' && [
+			'/api/v1/palimpsest/builds/dockerfile/fetch-url',
+			'/api/v1/palimpsest/builds/dockerfile/plan',
+			'/api/v1/palimpsest/builds/dockerfile',
+		].includes(pathname);
+		if (!dockerfileFixture) mockUnsupported();
+	}
 
 	if (profile === 'admin' && pathname === '/api/v1/admin/projects/names') {
 		return state.projects.map(({ id, name }) => ({ id, name }));

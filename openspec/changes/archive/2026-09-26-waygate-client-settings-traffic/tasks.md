@@ -8,3 +8,7 @@
 ## Parent integration
 - [x] Run focused tests, diagnostics and actual authenticated browser QA at mobile/tablet/desktop and reduced motion.
 - [x] Stamp architecture after integrated source review; complete and archive this change only after smoke.
+
+## Release-branch parent integration
+- [x] Run release-branch focused and full gate, diagnostics, and Chromium QA with scoped auth/Waygate fixtures at desktop/tablet/mobile and reduced motion; actual authenticated BFF and Linux WireGuard data-plane smoke were separately exercised before branch integration.
+- [x] Review integrated release-branch source and architecture, then stamp/check the source snapshot after browser smoke.

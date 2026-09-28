@@ -13,6 +13,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import threading
 from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -241,8 +243,7 @@ def test_instruction_before_from_is_rejected():
         _parse("RUN true\nFROM ubuntu:24.04\n")
 
 
-def test_from_only_is_a_complete_root_recipe_and_relative_paths_follow_workdir():
-    assert _parse("FROM ubuntu:24.04\n").planned_layers == []
+def test_relative_paths_follow_workdir():
     parsed = _parse(
         "FROM ubuntu:24.04\nWORKDIR /srv/app\nWORKDIR src\nCOPY config.json .\nRUN pwd\n",
         allow_build_context=True,
@@ -360,7 +361,7 @@ async def test_cache_never_reuses_a_legacy_delta_without_a_full_root():
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     from app.models.db import LayerArtifact, LayerBuild
-    from app.services.dockerfile_import import apply_build_cache
+    from app.services.dockerfile_import import apply_build_cache, resolve_parent_layer
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     try:
@@ -393,6 +394,9 @@ async def test_cache_never_reuses_a_legacy_delta_without_a_full_root():
             )
         assert result[0]["cached"] is False
         assert result[0]["reuse_artifact_id"] is None
+        with patch("app.services.dockerfile_import.get_session_factory", return_value=factory):
+            with pytest.raises(DockerfileImportError, match="전체 루트 계보"):
+                await resolve_parent_layer(_DIGEST_A, name="legacy-delta")
     finally:
         await engine.dispose()
 
@@ -402,7 +406,7 @@ async def test_root_cache_requires_exact_glance_fingerprint_and_complete_lineage
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     from app.models.db import LayerArtifact, LayerBuild
-    from app.services.dockerfile_import import find_cached_root
+    from app.services.dockerfile_import import find_cached_root, resolve_parent_layer
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     try:
@@ -456,6 +460,9 @@ async def test_root_cache_requires_exact_glance_fingerprint_and_complete_lineage
                 )
                 is None
             )
+            assert (await resolve_parent_layer(_DIGEST_A, name="root-first")).id == older.id
+            with pytest.raises(DockerfileImportError, match="전체 루트 계보"):
+                await resolve_parent_layer(_DIGEST_A, name="root-second")
     finally:
         await engine.dispose()
 
@@ -624,6 +631,28 @@ async def test_inline_import_resolves_conventional_tag_by_exact_glance_name():
     assert plan.base_image_snapshot["ubuntu_base"] == "ubuntu-24.04"
 
 
+async def test_inline_glance_lookup_does_not_block_other_requests():
+    started = threading.Event()
+    finish = threading.Event()
+
+    def slow_glance_lookup(conn, parsed):
+        started.set()
+        if not finish.wait(timeout=5):
+            raise TimeoutError("Glance lookup prevented the event loop from progressing")
+        return _snapshot()
+
+    with patch("app.services.dockerfile_import.resolve_dockerfile_base_image", side_effect=slow_glance_lookup):
+        request = asyncio.create_task(_prepare_inline(glance_conn(), "FROM ubuntu:24.04\nRUN true\n"))
+        try:
+            started_before_timeout = await asyncio.to_thread(started.wait, 2)
+        finally:
+            finish.set()
+        plan = await request
+    assert started_before_timeout
+
+    assert plan.base_image_snapshot["base_image_id"] == "img-1"
+
+
 async def test_inline_import_selects_newest_duplicate_glance_name():
     conn = glance_conn(
         glance_image("older", "team-base", created_at="2025-01-01T00:00:00Z"),
@@ -732,10 +761,10 @@ async def test_inline_import_records_digest_and_source_type():
     assert plan.planned_layers[0]["source_metadata"]["source_type"] == SOURCE_INLINE
 
 
-async def test_from_only_import_plans_the_full_root_even_without_instructions():
-    plan = await _prepare_inline(glance_conn(glance_image("img-24", "ubuntu:24.04")), "FROM ubuntu:24.04\n")
-    assert plan.base_image_snapshot["base_image_id"] == "img-24"
-    assert plan.planned_layers == [] and plan.cached_artifact_ids == []
+@pytest.mark.parametrize("from_ref", ["ubuntu:24.04", f"palimpsest/py@{_DIGEST_A}"])
+async def test_from_only_import_rejects_empty_layer_plan(from_ref):
+    with pytest.raises(DockerfileImportError, match="instruction이 필요"):
+        await _prepare_inline(glance_conn(glance_image("img-24", "ubuntu:24.04")), f"FROM {from_ref}\n")
 
 
 async def test_inline_import_inherits_base_from_palimpsest_parent():
@@ -819,7 +848,7 @@ async def test_inline_build_surfaces_parse_error_as_422(admin_client):
 
 async def test_inline_build_rejects_missing_or_unsafe_consumer_ssh_identity_before_queueing(admin_client, mock_conn):
     mock_conn.image = FakeGlance(glance_image("img-24", "ubuntu:24.04"))
-    body = {"dockerfile": "FROM ubuntu:24.04\n", "layer_prefix": "demo"}
+    body = {"dockerfile": "FROM ubuntu:24.04\nRUN true\n", "layer_prefix": "demo"}
     with (
         _cache_miss(),
         patch("app.services.dockerfile_import.find_cached_root", AsyncMock(return_value=None)),
@@ -870,6 +899,21 @@ async def test_build_endpoint_rejects_unresolved_from_without_creating_job(admin
         )
 
     assert resp.status_code == 422
+    create_job.assert_not_awaited()
+
+
+@pytest.mark.parametrize("path", ["/api/v1/palimpsest/builds/dockerfile", "/api/v1/palimpsest/builds/dockerfile/plan"])
+async def test_inline_glance_failure_returns_safe_error_without_starting_job(admin_client, mock_conn, path):
+    mock_conn.image.images.side_effect = RuntimeError("private provider credential")
+    with patch("app.api.palimpsest.builds.create_import_job", new_callable=AsyncMock) as create_job:
+        resp = await admin_client.post(
+            path,
+            json={"dockerfile": "FROM ubuntu:24.04\nRUN true\n", "layer_prefix": "demo"},
+        )
+
+    assert resp.status_code == 422
+    assert "Glance 이미지 목록을 조회하지 못했습니다" in resp.json()["detail"]
+    assert "private provider credential" not in resp.text
     create_job.assert_not_awaited()
 
 
@@ -927,6 +971,17 @@ async def test_lint_valid_dockerfile_resolves_ubuntu_tag_and_counts_layers(admin
     }
 
 
+async def test_lint_from_only_reports_no_buildable_instructions(admin_client, mock_conn):
+    mock_conn.image = FakeGlance(glance_image("img-24", "ubuntu:24.04"))
+
+    data = await _lint(admin_client, "FROM ubuntu:24.04\n")
+
+    assert data["valid"] is False
+    assert any("instruction이 필요" in item["message"] for item in data["diagnostics"])
+    assert data["from"]["image"]["id"] == "img-24"
+    assert data["layers"]["new"] == 0
+
+
 async def test_lint_whitespace_only_editor_returns_diagnostic(admin_client):
     data = await _lint(admin_client, "   ")
 
@@ -972,6 +1027,16 @@ async def test_lint_collects_all_syntax_errors_and_preserves_valid_steps(admin_c
     assert "COPY" in data["diagnostics"][1]["message"]
     assert data["from"]["kind"] == "ubuntu_tag"
     assert data["layers"] == {"new": 1, "inherited": 0, "total": 1, "limit": 25, "by_instruction": {"RUN": 1}}
+
+
+async def test_lint_invalid_from_does_not_hide_following_valid_layers(admin_client):
+    data = await _lint(admin_client, "FROM scratch\nRUN true\nENV A=1\n")
+
+    assert data["valid"] is False
+    assert [diagnostic["line"] for diagnostic in data["diagnostics"]] == [1]
+    assert "scratch" in data["diagnostics"][0]["message"]
+    assert data["layers"]["new"] == 2
+    assert data["layers"]["by_instruction"] == {"RUN": 1, "ENV": 1}
 
 
 @pytest.mark.parametrize(
@@ -1052,8 +1117,7 @@ async def test_lint_parent_chain_counts_inherited_layers_and_kvm_warning(admin_c
         id=7,
         name="py",
         blob_digest=_DIGEST_A,
-        ubuntu_base="ubuntu-22.04",
-        base_image_name="ubuntu-22.04",
+        **{**_snapshot("ubuntu-22.04"), "base_image_name": "ubuntu-22.04"},
     )
     with (
         patch("app.services.dockerfile_import.resolve_parent_layer", AsyncMock(return_value=parent)),
@@ -1103,6 +1167,24 @@ async def test_lint_reports_missing_palimpsest_parent_without_discarding_estimat
     assert data["from"]["line"] == 2
     assert data["from"]["parent"] is None
     assert "찾을 수 없습니다" in data["from"]["error"]
+    assert data["layers"]["new"] == 1
+
+
+async def test_lint_rejects_parent_missing_glance_base_image_id(admin_client):
+    parent = SimpleNamespace(
+        id=7,
+        name="py",
+        blob_digest=_DIGEST_A,
+        **{**_snapshot("ubuntu-22.04"), "base_image_id": None},
+    )
+    with (
+        patch("app.services.dockerfile_import.resolve_parent_layer", AsyncMock(return_value=parent)),
+        patch("app.services.dockerfile_import.parent_chain_depth", AsyncMock(return_value=1)),
+    ):
+        data = await _lint(admin_client, f"FROM palimpsest/py@{_DIGEST_A}\nRUN true\n")
+
+    assert data["valid"] is False
+    assert "snapshot 백필" in data["from"]["error"]
     assert data["layers"]["new"] == 1
 
 

@@ -25,6 +25,8 @@ export interface AvailableModel {
 	provider?: string;
 	capabilities?: ModelCapabilities | null;
 	context_limit?: number | null;
+	/** Lumen admission이 reasoning_effort="none"을 받는지(없으면 false로 취급). */
+	reasoning_none_supported?: boolean;
 }
 
 /** 원장 기반 채팅 사용량. 백엔드 GET /chat/usage 계약 전체. */

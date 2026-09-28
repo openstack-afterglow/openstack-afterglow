@@ -58,7 +58,7 @@ def _serialize_image(img) -> dict:
         "visibility": img.visibility or "private",
         "owner": img.owner or "",
         "created_at": str(img.created_at) if img.created_at else None,
-        "protected": getattr(img, "is_protected", False),
+        "protected": bool(getattr(img, "is_protected", False)),
         "os_hash_algo": getattr(img, "hash_algo", None),
         "os_hash_value": getattr(img, "hash_value", None),
     }

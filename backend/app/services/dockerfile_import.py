@@ -382,6 +382,8 @@ def _parse_dockerfile_with_diagnostics(
             if instruction == "FROM":
                 if seen_from:
                     raise _line_error(line, "multi-stage FROM은 지원하지 않습니다")
+                from_line = line
+                seen_from = True
                 if " AS " in f" {args.upper()} " or args.startswith("--"):
                     raise _line_error(line, "FROM AS/flags는 지원하지 않습니다")
                 if args == "scratch":
@@ -401,8 +403,7 @@ def _parse_dockerfile_with_diagnostics(
                         line,
                         "FROM은 Ubuntu tag, Glance 이미지 이름/UUID 또는 palimpsest/<name>@sha256:<64hex>여야 합니다",
                     )
-                from_line = line
-                seen_from = True
+
                 continue
             if not seen_from:
                 raise _line_error(line, "첫 instruction은 FROM이어야 합니다")
@@ -467,6 +468,10 @@ def _parse_dockerfile_with_diagnostics(
                 "Dockerfile에는 FROM <ubuntu:<version> | Glance 이미지 이름/UUID | palimpsest/<name>@sha256:<64hex>> 가 필요합니다"
             )
         )
+    elif not planned and not diagnostics:
+        diagnostics.append(
+            DockerfileImportError("Dockerfile에는 layer로 변환할 RUN/COPY/ADD/ENV/WORKDIR instruction이 필요합니다")
+        )
     parsed = ParsedDockerfile(
         from_ref=from_ref,
         parent_digest=parent_digest,
@@ -517,6 +522,9 @@ def resolve_dockerfile_base_image(conn: Any, parsed: ParsedDockerfile) -> dict:
         return resolve_glance_base_snapshot(conn, parsed.from_ref)
     except ValueError as exc:
         raise _line_error(parsed.from_line, str(exc)) from exc
+    except Exception:
+        _logger.warning("[dockerfile] Glance base image 조회 실패")
+        raise DockerfileImportError("Glance 이미지 목록을 조회하지 못했습니다") from None
 
 
 def compute_step_digest(parent_ref: str, instruction: str, args: str) -> str:
@@ -580,6 +588,7 @@ async def lint_dockerfile(conn: Any, *, dockerfile_text: str, layer_prefix: str 
         from_info["kind"] = "palimpsest"
         try:
             parent = await resolve_parent_layer(parsed.parent_digest, name=parsed.parent_name)
+            _snapshot_from_artifact(parent)
             inherited = await parent_chain_depth(parent)
             from_info["parent"] = {
                 "id": parent.id,
@@ -810,7 +819,7 @@ async def prepare_inline_dockerfile_import(
         parent = await resolve_parent_layer(parsed.parent_digest, name=parsed.parent_name)
         base_snapshot = _snapshot_from_artifact(parent)
     else:
-        base_snapshot = resolve_dockerfile_base_image(conn, parsed)
+        base_snapshot = await asyncio.to_thread(resolve_dockerfile_base_image, conn, parsed)
     digest = "sha256:" + hashlib.sha256(raw).hexdigest()
     return await finalize_dockerfile_plan(
         DockerfilePlan(

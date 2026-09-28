@@ -31,7 +31,7 @@ function lockedServicePackages(overrides = {}) {
 		["drover", "drover", overrides.drover ?? lockedVersion("drover")],
 		["lumen", "lumen", lockedVersion("lumen")],
 		["waygate", "waygate", lockedVersion("waygate")],
-		["palimpsest", "palimpsest-local", lockedVersion("palimpsest-local")],
+		["palimpsest", "palimpsest-client", lockedVersion("palimpsest-client")],
 	]
 }
 
@@ -1039,6 +1039,56 @@ test("Installer rejects stale package versions and accepts promoted operator loc
 		const successResult = spawnSync("bash", [installer], { encoding: "utf8", env: commandEnvironment })
 		assert.equal(successResult.status, 0, successResult.stderr)
 		assert.match(successResult.stdout, new RegExp(`Drover role verified at .* \\(drover==${promotedVersion.replaceAll(".", "\\.")}\\)`))
+	} finally {
+		fs.rmSync(temporaryDirectory, { recursive: true, force: true })
+	}
+})
+
+test("Installer refuses a leftover retired palimpsest-local distribution", () => {
+	const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "afterglow-kolla-retired-"))
+	const kollaConfigPath = path.join(temporaryDirectory, "etc", "kolla")
+	const kollaAnsiblePath = path.join(temporaryDirectory, "share", "kolla-ansible")
+	const rolesDir = path.join(kollaAnsiblePath, "ansible", "roles")
+	const pluginConfigRoot = path.join(kollaConfigPath, "config", "afterglow")
+	const fakeKollaBinary = path.join(temporaryDirectory, "bin", "kolla-ansible")
+	const pythonResult = spawnSync("uv", ["run", "--project", path.join(rootDir, "backend"), "python", "-c", "import sys; print(sys.executable)"], { encoding: "utf8" })
+	assert.equal(pythonResult.status, 0, pythonResult.stderr)
+
+	try {
+		// A controller that synchronized palimpsest-client with --inexact still has the
+		// pre-rename distribution, which records ownership of the same role files.
+		const metadataDir = createInstalledServiceFixtures(temporaryDirectory, rolesDir, path.join(temporaryDirectory, "bin", "python"))
+		const retiredDistInfo = path.join(metadataDir, "palimpsest_local-0.2.2.dist-info")
+		fs.mkdirSync(retiredDistInfo, { recursive: true })
+		fs.writeFileSync(path.join(retiredDistInfo, "METADATA"), "Metadata-Version: 2.1\nName: palimpsest-local\nVersion: 0.2.2\n")
+
+		fs.mkdirSync(pluginConfigRoot, { recursive: true })
+		fs.writeFileSync(fakeKollaBinary, "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 })
+		fs.writeFileSync(path.join(kollaAnsiblePath, "ansible", "site.yml"), "---\n- import_playbook: gather-facts.yml\n")
+		fs.writeFileSync(path.join(kollaConfigPath, "multinode"), "[control]\ncontroller\n")
+		fs.writeFileSync(path.join(kollaConfigPath, "globals.yml"), "kolla_base: true\n")
+		fs.writeFileSync(path.join(pluginConfigRoot, "globals.yml"), "enable_afterglow: true\n", { mode: 0o640 })
+		fs.writeFileSync(path.join(pluginConfigRoot, "secrets.yml"), "afterglow_secret: test\n", { mode: 0o600 })
+		const commandEnvironment = {
+			...process.env,
+			AFTERGLOW_REPO_DIR: rootDir,
+			KOLLA_ANSIBLE_BIN: fakeKollaBinary,
+			KOLLA_TEST_PYTHON: pythonResult.stdout.trim(),
+			KOLLA_TEST_METADATA: metadataDir,
+			KOLLA_ANSIBLE_DIR: kollaAnsiblePath,
+			KOLLA_CONFIG_PATH: kollaConfigPath,
+		}
+		const installer = path.join(rootDir, "deploy/kolla/install.sh")
+
+		const retiredResult = spawnSync("bash", [installer], { encoding: "utf8", env: commandEnvironment })
+		assert.notEqual(retiredResult.status, 0, "install.sh must refuse a leftover palimpsest-local distribution")
+		assert.match(retiredResult.stderr, /Retired distribution palimpsest-local==0\.2\.2 is still installed/)
+		assert.equal(fs.existsSync(path.join(rolesDir, "afterglow")), false, "no link may be created before the refusal")
+
+		fs.rmSync(retiredDistInfo, { recursive: true, force: true })
+		const successResult = spawnSync("bash", [installer], { encoding: "utf8", env: commandEnvironment })
+		assert.equal(successResult.status, 0, successResult.stderr)
+		assert.match(successResult.stdout, new RegExp(`Palimpsest role verified at .* \\(palimpsest-client==${lockedVersion("palimpsest-client").replaceAll(".", "\\.")}\\)`))
 	} finally {
 		fs.rmSync(temporaryDirectory, { recursive: true, force: true })
 	}
