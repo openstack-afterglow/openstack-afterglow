@@ -11,6 +11,7 @@
   import Button from '$lib/components/ui/Button.svelte';
   import ToggleGroup from '$lib/components/ui/ToggleGroup.svelte';
   import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
+  import DockerfileLintPanel, { type DockerfileLintResponse } from '$lib/components/admin/libraries/DockerfileLintPanel.svelte';
 
   // ---------------------------------------------------------------------------
   // 타입
@@ -74,9 +75,9 @@
     progress_step: string | null;
     progress_pct: number;
     error_message: string | null;
-    github_url: string;
-    commit_sha: string;
-    dockerfile_path: string;
+    github_url: string | null;
+    commit_sha: string | null;
+    dockerfile_path: string | null;
     layer_prefix: string;
     profile_name: string;
     ubuntu_base: string;
@@ -87,6 +88,11 @@
     build_ids: number[];
     created_at: string | null;
     completed_at: string | null;
+    source_type?: string;
+    dockerfile_digest?: string | null;
+    consume_id?: number | null;
+    consumer_status?: string | null;
+    consumer_spec?: { server_name?: string; flavor_id: string; network_id?: string; key_name?: string; ssh_public_key?: string; ssh_username?: string } | null;
   }
 
   interface LayerConsume {
@@ -124,30 +130,6 @@
 
   const activeBuilds = $derived(builds.filter(b => !TERMINAL.has(b.status)));
   const activeImportJobs = $derived(importJobs.filter(job => !TERMINAL.has(job.status)));
-
-  // ---------------------------------------------------------------------------
-  // 빌드 폼
-  // ---------------------------------------------------------------------------
-
-  // System/tool 레이어 빌드 폼
-  let systemForm = $state({ layer_name: '', apt_packages: '', base_image_id: '' });
-  let systemSubmitting = $state(false);
-  let nvidiaForm = $state({ layer_name: '', nvidia_driver_branch: '580', base_image_id: '' });
-  let nvidiaSubmitting = $state(false);
-
-  // Python runtime 레이어 빌드 폼
-  let pythonForm = $state({ layer_name: '', python_version: '3.11', parent_artifact_id: '' });
-  let pythonSubmitting = $state(false);
-
-  // Python 패키지 레이어 빌드 폼
-  let packageForm = $state({ layer_name: '', pip_packages: '', pip_index_url: '', pip_extra_index_urls: '', pip_find_links: '', parent_artifact_id: '' });
-  let packageSubmitting = $state(false);
-
-  const PIP_SPEC_RE = /^[A-Za-z0-9][A-Za-z0-9._\[\],<>=!~+*\-]*$/;
-  const APT_PACKAGE_RE = /^[a-z0-9][a-z0-9.+-]*$/;
-  const NVIDIA_DRIVER_BRANCHES = ['550', '570', '575', '580'];
-  const VERSION_CLAUSE_PREFIX_RE = /^[<>=!~]/;
-  const PIP_SOURCE_FORBIDDEN_RE = /[\r\n\t '"`$\\;|<>]/;
 
   // 프로필 구성 폼
   interface ArtifactSummary {
@@ -215,53 +197,73 @@
   interface LayerProfile { id: number; name: string; layers: string[]; is_published: boolean; created_at: string | null; updated_at: string | null; }
   let artifacts = $state<LayerArtifact[]>([]);
   let profiles = $state<LayerProfile[]>([]);
-  let profileForm = $state({ name: '', selectedLayers: [] as string[] });
+  let selectedProfileId = $state<number | null>(null);
+  const selectedHistoricalProfile = $derived(profiles.find(profile => profile.id === selectedProfileId));
   let publicationUpdating = $state('');
-  const profileNameValid = $derived(/^[a-z0-9][a-z0-9.+-]*$/.test(profileForm.name));
   // 봉인 완료된 artifact만 부모 후보로 사용
   const sealedArtifacts = $derived(artifacts.filter(a => a.is_sealed));
-  const uvParentArtifacts = $derived(sealedArtifacts.filter(a => a.kind === 'uv'));
-  const packageParentArtifacts = $derived(sealedArtifacts.filter(a => artifactLineageHasKind(a, 'python')));
-  const selectedPythonParentArtifact = $derived(uvParentArtifacts.find(a => String(a.id) === pythonForm.parent_artifact_id));
-  const selectedPackageParentArtifact = $derived(packageParentArtifacts.find(a => String(a.id) === packageForm.parent_artifact_id));
-  const selectedProfileUbuntuBases = $derived(uniqueUbuntuBasesForLayerNames(profileForm.selectedLayers));
-  const selectedProfileBaseImageIds = $derived(uniqueBaseImageIdsForLayerNames(profileForm.selectedLayers));
-  const profileHasMixedUbuntuBases = $derived(selectedProfileUbuntuBases.length > 1 || selectedProfileBaseImageIds.length > 1);
-  const packageSpecs = $derived(splitPackageSpecs(packageForm.pip_packages));
-  const systemAptPackages = $derived(splitAptPackages(systemForm.apt_packages));
-  const systemInvalidAptPackages = $derived(invalidAptPackages(systemForm.apt_packages));
-  const nvidiaBranchValid = $derived(NVIDIA_DRIVER_BRANCHES.includes(nvidiaForm.nvidia_driver_branch.trim()));
-  const packageInvalidSpecs = $derived(invalidPackageSpecs(packageForm.pip_packages));
-  const packageExtraIndexUrls = $derived(splitUrlLines(packageForm.pip_extra_index_urls));
-  const packageFindLinks = $derived(splitUrlLines(packageForm.pip_find_links));
-  const packageInvalidUrls = $derived(invalidPipSourceUrls([
-    packageForm.pip_index_url.trim(),
-    ...packageExtraIndexUrls,
-    ...packageFindLinks,
-  ]));
-  let profileSubmitting = $state(false);
   let profileMessage = $state('');
-  let profileError = $state('');
   let profileDeletingName = $state('');
   let profileDeleteError = $state('');
 
-  // ---------------------------------------------------------------------------
-  // 소비 폼
-  // ---------------------------------------------------------------------------
-
-  let consumeForm = $state({
-    profile_name: '',
-    server_name: '',
-    flavor_id: '',
-    network_id: '',
-    key_name: '',
-    ssh_public_key: '',
-    ssh_username: '',
-  });
-  let consumeSubmitting = $state(false);
-
-  let importForm = $state({ github_url: '', ref: '', dockerfile_path: 'Dockerfile', layer_prefix: '', profile_name: '', base_image_id: '' });
+  let importForm = $state({ github_url: '', ref: '', dockerfile_path: 'Dockerfile', layer_prefix: '', profile_name: '' });
   let importSubmitting = $state(false);
+  const pinnedCommitValid = $derived(/^[a-f0-9]{40}$/i.test(importForm.ref.trim()));
+  type DockerfileExecutionTarget = 'build' | 'instance';
+  const dockerfileTargetOptions = [
+    { value: 'build', label: '레이어만 빌드' },
+    { value: 'instance', label: '인스턴스까지 생성' },
+  ];
+  let dockerfileTarget = $state<DockerfileExecutionTarget>('build');
+  let dockerfileConsumer = $state({ server_name: '', flavor_id: '', network_id: '', key_name: '', ssh_public_key: '', ssh_username: '' });
+  const dockerfileConsumerReady = $derived(
+    dockerfileTarget === 'build' || (
+      !!dockerfileConsumer.flavor_id.trim() &&
+      (!!dockerfileConsumer.key_name.trim() || !!dockerfileConsumer.ssh_public_key.trim())
+    )
+  );
+  function buildDockerfileConsumer() {
+    if (dockerfileTarget !== 'instance') return undefined;
+    const consumer: Record<string, string> = { flavor_id: dockerfileConsumer.flavor_id.trim() };
+    if (dockerfileConsumer.server_name.trim()) consumer.server_name = dockerfileConsumer.server_name.trim();
+    if (dockerfileConsumer.network_id.trim()) consumer.network_id = dockerfileConsumer.network_id.trim();
+    if (dockerfileConsumer.key_name) consumer.key_name = dockerfileConsumer.key_name;
+    if (dockerfileConsumer.ssh_public_key.trim()) consumer.ssh_public_key = dockerfileConsumer.ssh_public_key.trim();
+    if (dockerfileConsumer.ssh_username.trim()) consumer.ssh_username = dockerfileConsumer.ssh_username.trim();
+    return consumer;
+  }
+  let selectedImportId = $state<number | null>(null);
+  const selectedImport = $derived(importJobs.find(job => job.id === selectedImportId));
+  let importLoadError = $state('');
+  let historyConsumeTargetId = $state<number | null>(null);
+  let historyConsumer = $state({ server_name: '', flavor_id: '', network_id: '', key_name: '', ssh_public_key: '', ssh_username: '' });
+  let historyConsumeSubmitting = $state(false);
+  let historyConsumeError = $state('');
+  const historyConsumerReady = $derived(
+    !!historyConsumer.flavor_id.trim() && (!!historyConsumer.key_name.trim() || !!historyConsumer.ssh_public_key.trim())
+  );
+
+  async function consumeCompletedImport(job: LayerImportJob) {
+    if (historyConsumeSubmitting || job.status !== 'complete' || !job.dockerfile_digest || !historyConsumerReady || !job.artifact_ids?.length) return;
+    historyConsumeSubmitting = true;
+    historyConsumeError = '';
+    try {
+      const body: Record<string, string | number> = { import_id: job.id, flavor_id: historyConsumer.flavor_id.trim() };
+      if (historyConsumer.server_name.trim()) body.server_name = historyConsumer.server_name.trim();
+      if (historyConsumer.network_id.trim()) body.network_id = historyConsumer.network_id.trim();
+      if (historyConsumer.key_name.trim()) body.key_name = historyConsumer.key_name.trim();
+      if (historyConsumer.ssh_public_key.trim()) body.ssh_public_key = historyConsumer.ssh_public_key.trim();
+      if (historyConsumer.ssh_username.trim()) body.ssh_username = historyConsumer.ssh_username.trim();
+      const result = await api.post<{ consume_id: number; server_id: string }>('/api/v1/admin/libraries/consume', body, token, projectId);
+      message = `작업 #${job.id}의 artifact로 VM ${result.server_id} 생성 완료`;
+      historyConsumeTargetId = null;
+      await loadConsumes(true);
+    } catch (e) {
+      historyConsumeError = e instanceof ApiError ? e.message : 'VM 생성에 실패했습니다';
+    } finally {
+      historyConsumeSubmitting = false;
+    }
+  }
 
   // ---------------------------------------------------------------------------
   // Palimpsest Dockerfile 스튜디오 상태
@@ -274,11 +276,51 @@
     { value: 'github', label: 'GitHub 커밋' },
   ];
   let dockerfileMode = $state<DockerfileInputMode>('editor');
+  let dockerfileAuthoringRevision = 0;
+
   let dockerfileText = $state(`FROM ubuntu:24.04\nRUN apt-get update && apt-get install -y curl git\nENV APP_ENV=production\nWORKDIR /app\n`);
   let dockerfileUrl = $state('');
   let dockerfileFetching = $state(false);
   let dockerfileFetchError = $state('');
   let uploadedFileName = $state('');
+  let dockerfileLint = $state<DockerfileLintResponse | null>(null);
+  let lintLoading = $state(false);
+  let lintError = $state('');
+  let lintSeq = 0;
+
+  async function runDockerfileLint(text: string, prefix: string, seq: number, requestToken: string, requestProjectId: string | undefined) {
+    try {
+      const body: Record<string, string> = { dockerfile: text };
+      if (prefix) body.layer_prefix = prefix;
+      const result = await api.post<DockerfileLintResponse>(
+        '/api/v1/palimpsest/builds/dockerfile/lint', body, requestToken, requestProjectId,
+      );
+      if (seq === lintSeq) dockerfileLint = result;
+    } catch (e) {
+      if (seq === lintSeq) {
+        dockerfileLint = null;
+        lintError = e instanceof ApiError ? e.message : '네트워크 오류';
+      }
+    } finally {
+      if (seq === lintSeq) lintLoading = false;
+    }
+  }
+
+  $effect(() => {
+    const text = dockerfileText;
+    const prefix = importForm.layer_prefix.trim();
+    const mode = dockerfileMode;
+    const requestToken = token;
+    const requestProjectId = projectId;
+    const seq = ++lintSeq;
+    dockerfileLint = null;
+    lintError = '';
+    const shouldLint = mode !== 'github' && !!text.trim() && !!requestToken;
+    lintLoading = shouldLint;
+    if (!shouldLint || !requestToken) return;
+    const timer = setTimeout(() => { void runDockerfileLint(text, prefix, seq, requestToken, requestProjectId); }, 600);
+    return () => clearTimeout(timer);
+  });
 
   interface DockerfilePlanStep {
     name: string;
@@ -297,19 +339,17 @@
   let dockerfilePlan = $state<DockerfilePlanResponse | null>(null);
   let planLoading = $state(false);
   let planError = $state('');
+  let planSeq = 0;
+  $effect(() => {
+    // A plan belongs to this exact authoring input, never to a later edit.
+    dockerfileText; importForm.layer_prefix; importForm.profile_name; dockerfileMode; token; projectId;
+    ++planSeq;
+    dockerfilePlan = null;
+    planError = '';
+    planLoading = false;
+  });
 
   let keypairs = $state<Keypair[]>([]);
-  const selectedConsumeProfile = $derived(profiles.find(p => p.name === consumeForm.profile_name));
-  const selectedConsumeProfileUbuntuBases = $derived(
-    selectedConsumeProfile ? uniqueUbuntuBasesForLayerNames(selectedConsumeProfile.layers) : [],
-  );
-  const selectedConsumeProfileBaseImageIds = $derived(
-    selectedConsumeProfile ? uniqueBaseImageIdsForLayerNames(selectedConsumeProfile.layers) : [],
-  );
-  const selectedConsumeProfileBaseImage = $derived(
-    selectedConsumeProfileBaseImageIds.length === 1 ? baseImageForId(selectedConsumeProfileBaseImageIds[0]) : null,
-  );
-  const consumeProfileHasMixedUbuntuBases = $derived(selectedConsumeProfileUbuntuBases.length > 1 || selectedConsumeProfileBaseImageIds.length > 1);
 
 
   // ---------------------------------------------------------------------------
@@ -375,9 +415,6 @@
   async function loadBaseImages(refresh = false) {
     try {
       baseImages = await api.get<LayerBaseImage[]>('/api/v1/admin/libraries/base-images', token, projectId, { refresh });
-      if (!systemForm.base_image_id && baseImages.length > 0) systemForm.base_image_id = baseImages[0].id;
-      if (!nvidiaForm.base_image_id && baseImages.length > 0) nvidiaForm.base_image_id = baseImages[0].id;
-      if (!importForm.base_image_id && baseImages.length > 0) importForm.base_image_id = baseImages[0].id;
     } catch {
       baseImages = [];
     }
@@ -386,8 +423,9 @@
   async function loadImportJobs(refresh = true) {
     try {
       importJobs = await api.get<LayerImportJob[]>('/api/v1/admin/libraries/imports', token, projectId, { refresh });
+      importLoadError = '';
     } catch {
-      importJobs = [];
+      importLoadError = '작업 기록을 갱신하지 못했습니다. 새로고침으로 다시 시도하세요.';
     }
   }
 
@@ -410,7 +448,12 @@
   $effect(() => {
     const interval = setInterval(() => {
       void loadBuilds(true);
-      if (activeImportJobs.length > 0) void loadImportJobs();
+      void loadImportJobs();
+      if (activeImportJobs.length > 0 || activeBuilds.length > 0) {
+        void loadArtifacts(true);
+        void loadProfiles(true);
+        void loadConsumes(true);
+      }
     }, activeBuilds.length > 0 || activeImportJobs.length > 0 ? 10_000 : 30_000);
     return () => clearInterval(interval);
   });
@@ -419,255 +462,8 @@
     if (!token) return;
     untrack(() => loadAll());
   });
-  // ---------------------------------------------------------------------------
-  // 빌드 트리거
-  // ---------------------------------------------------------------------------
 
-  async function triggerUvBuild() {
-    if (systemSubmitting) return;
-    systemSubmitting = true;
-    error = '';
-    message = '';
-    try {
-      const result = await api.post<{ build_id: number; layer_name: string; status: string }>(
-        '/api/v1/admin/libraries/build',
-        { layer_name: systemForm.layer_name, kind: 'uv', base_image_id: systemForm.base_image_id },
-        token,
-        projectId,
-      );
-      message = `uv 레이어 빌드 시작 (ID: ${result.build_id}, 레이어: ${result.layer_name})`;
-      await Promise.allSettled([loadBuilds(true), loadArtifacts(true)]);
-    } catch (e) {
-      error = e instanceof ApiError ? `빌드 트리거 실패: ${e.message}` : '네트워크 오류';
-    } finally {
-      systemSubmitting = false;
-    }
-  }
 
-  async function triggerSystemAptBuild() {
-    if (systemSubmitting) return;
-    const aptPackages = splitAptPackages(systemForm.apt_packages);
-    const invalidPackages = aptPackages.filter(pkg => !APT_PACKAGE_RE.test(pkg));
-    if (aptPackages.length === 0) {
-      error = 'apt 패키지를 1개 이상 입력하세요';
-      return;
-    }
-    if (invalidPackages.length > 0) {
-      error = `apt 패키지명 형식 오류: ${invalidPackages.join(', ')}`;
-      return;
-    }
-    systemSubmitting = true;
-    error = '';
-    message = '';
-    try {
-      const result = await api.post<{ build_id: number; layer_name: string; status: string }>(
-        '/api/v1/admin/libraries/build',
-        { layer_name: systemForm.layer_name, kind: 'system', apt_packages: aptPackages, base_image_id: systemForm.base_image_id },
-        token,
-        projectId,
-      );
-      message = `apt system 레이어 빌드 시작 (ID: ${result.build_id}, 레이어: ${result.layer_name})`;
-      await Promise.allSettled([loadBuilds(true), loadArtifacts(true)]);
-    } catch (e) {
-      error = e instanceof ApiError ? `빌드 트리거 실패: ${e.message}` : '네트워크 오류';
-    } finally {
-      systemSubmitting = false;
-    }
-  }
-
-  async function triggerNvidiaDriverBuild() {
-    if (nvidiaSubmitting) return;
-    const branch = nvidiaForm.nvidia_driver_branch.trim();
-    if (!nvidiaForm.layer_name) {
-      error = 'NVIDIA 레이어 이름을 입력하세요';
-      return;
-    }
-    if (!nvidiaBranchValid) {
-      error = `NVIDIA 드라이버 브랜치는 ${NVIDIA_DRIVER_BRANCHES.join(', ')} 중 하나여야 합니다`;
-      return;
-    }
-    nvidiaSubmitting = true;
-    error = '';
-    message = '';
-    try {
-      const result = await api.post<{ build_id: number; layer_name: string; status: string }>(
-        '/api/v1/admin/libraries/build',
-        { layer_name: nvidiaForm.layer_name, kind: 'nvidia', nvidia_driver_branch: branch, base_image_id: nvidiaForm.base_image_id },
-        token,
-        projectId,
-      );
-      message = `NVIDIA 드라이버 템플릿 레이어 빌드 시작 (ID: ${result.build_id}, 레이어: ${result.layer_name}, branch: ${branch})`;
-      await Promise.allSettled([loadBuilds(true), loadArtifacts(true)]);
-    } catch (e) {
-      error = e instanceof ApiError ? `빌드 트리거 실패: ${e.message}` : '네트워크 오류';
-    } finally {
-      nvidiaSubmitting = false;
-    }
-  }
-
-  async function triggerPythonBuild() {
-    if (pythonSubmitting) return;
-    pythonSubmitting = true;
-    error = '';
-    message = '';
-    try {
-      const result = await api.post<{ build_id: number; layer_name: string; parent_artifact_id: number | null; status: string }>(
-        '/api/v1/admin/libraries/build',
-        {
-          layer_name: pythonForm.layer_name,
-          kind: 'python',
-          python_version: pythonForm.python_version,
-          parent_artifact_id: Number(pythonForm.parent_artifact_id),
-        },
-        token,
-        projectId,
-      );
-      message = `Python runtime 레이어 빌드 시작 (ID: ${result.build_id}, 레이어: ${result.layer_name}, 부모 ID: ${result.parent_artifact_id})`;
-      await Promise.allSettled([loadBuilds(true), loadArtifacts(true)]);
-    } catch (e) {
-      error = e instanceof ApiError ? `빌드 트리거 실패: ${e.message}` : '네트워크 오류';
-    } finally {
-      pythonSubmitting = false;
-    }
-  }
-
-  async function triggerPackageBuild() {
-    if (packageSubmitting) return;
-    const specs = splitPackageSpecs(packageForm.pip_packages);
-    const invalidSpecs = specs.filter(spec => !PIP_SPEC_RE.test(spec));
-    const pipIndexUrl = packageForm.pip_index_url.trim();
-    const pipExtraIndexUrls = splitUrlLines(packageForm.pip_extra_index_urls);
-    const pipFindLinks = splitUrlLines(packageForm.pip_find_links);
-    const invalidUrls = invalidPipSourceUrls([pipIndexUrl, ...pipExtraIndexUrls, ...pipFindLinks]);
-    if (specs.length === 0) {
-      error = '패키지 스펙을 1개 이상 입력하세요';
-      return;
-    }
-    if (invalidSpecs.length > 0) {
-      error = `패키지 스펙 형식 오류: ${invalidSpecs.join(', ')}`;
-      return;
-    }
-    if (invalidUrls.length > 0) {
-      error = `pip source URL 형식 오류: ${invalidUrls.join(', ')}`;
-      return;
-    }
-    packageSubmitting = true;
-    error = '';
-    message = '';
-    try {
-      const body: Record<string, unknown> = {
-        layer_name: packageForm.layer_name,
-        kind: 'pip',
-        pip_packages: specs,
-        parent_artifact_id: Number(packageForm.parent_artifact_id),
-      };
-      if (pipIndexUrl) body.pip_index_url = pipIndexUrl;
-      if (pipExtraIndexUrls.length > 0) body.pip_extra_index_urls = pipExtraIndexUrls;
-      if (pipFindLinks.length > 0) body.pip_find_links = pipFindLinks;
-      const result = await api.post<{ build_id: number; layer_name: string; parent_artifact_id: number | null; status: string }>(
-        '/api/v1/admin/libraries/build',
-        body,
-        token,
-        projectId,
-      );
-      message = `Python 패키지 레이어 빌드 시작 (ID: ${result.build_id}, 레이어: ${result.layer_name}, 부모 ID: ${result.parent_artifact_id})`;
-      await Promise.allSettled([loadBuilds(true), loadArtifacts(true)]);
-    } catch (e) {
-      error = e instanceof ApiError ? `빌드 트리거 실패: ${e.message}` : '네트워크 오류';
-    } finally {
-      packageSubmitting = false;
-    }
-  }
-
-  async function upsertProfile() {
-    if (profileSubmitting) return;
-    if (profileHasMixedUbuntuBases) {
-      profileError = `base image가 섞인 프로필은 저장할 수 없습니다: ${selectedProfileBaseImageIds.join(', ') || selectedProfileUbuntuBases.join(', ')}`;
-      return;
-    }
-    profileSubmitting = true;
-    profileError = '';
-    profileMessage = '';
-    try {
-      const layers = normalizeProfileLayers(profileForm.selectedLayers);
-      const result = await api.post<{ id: number; name: string; layers: string[] }>(
-        '/api/v1/admin/libraries/profiles',
-        { name: profileForm.name, layers },
-        token,
-        projectId,
-      );
-      profileMessage = `프로필 '${result.name}' 저장 완료 (레이어: ${result.layers.join(', ')})`;
-      profileForm.selectedLayers = result.layers;
-      await loadProfiles(true);
-    } catch (e) {
-      profileError = e instanceof ApiError ? `프로필 저장 실패: ${e.message}` : '네트워크 오류';
-    } finally {
-      profileSubmitting = false;
-    }
-  }
-
-  function uniqueLayerNames(layers: string[]): string[] {
-    const seen = new Set<string>();
-    const result: string[] = [];
-    for (const layer of layers) {
-      if (seen.has(layer)) continue;
-      seen.add(layer);
-      result.push(layer);
-    }
-    return result;
-  }
-
-  function lineageNamesForArtifact(artifact: LayerArtifact | ArtifactSummary): string[] {
-    const chain = 'lineage' in artifact && artifact.lineage?.length
-      ? artifact.lineage
-      : [artifact as ArtifactSummary];
-    return uniqueLayerNames(chain.map(node => node.name));
-  }
-
-  function lineageNamesForLayerName(layerName: string): string[] {
-    const artifact = sealedArtifacts.find(a => a.name === layerName);
-    return artifact ? lineageNamesForArtifact(artifact) : [layerName];
-  }
-
-  function normalizeProfileLayers(layers: string[]): string[] {
-    const expanded: string[] = [];
-    for (const layer of layers) {
-      expanded.push(...lineageNamesForLayerName(layer));
-    }
-    return uniqueLayerNames(expanded);
-  }
-
-  function selectedLayerDependsOn(layerName: string, ancestorName: string): boolean {
-    const lineage = lineageNamesForLayerName(layerName);
-    const ancestorIndex = lineage.indexOf(ancestorName);
-    const layerIndex = lineage.lastIndexOf(layerName);
-    return ancestorIndex >= 0 && layerIndex >= 0 && ancestorIndex < layerIndex;
-  }
-
-  function removeProfileLayerCascade(layerName: string) {
-    profileForm.selectedLayers = normalizeProfileLayers(
-      profileForm.selectedLayers.filter(
-        selected => selected !== layerName && !selectedLayerDependsOn(selected, layerName),
-      ),
-    );
-  }
-
-  function toggleProfileArtifact(artifact: LayerArtifact) {
-    if (profileForm.selectedLayers.includes(artifact.name)) {
-      removeProfileLayerCascade(artifact.name);
-      return;
-    }
-    profileForm.selectedLayers = normalizeProfileLayers([
-      ...profileForm.selectedLayers,
-      ...lineageNamesForArtifact(artifact),
-    ]);
-  }
-
-  function isAutoIncludedParent(layerName: string): boolean {
-    return profileForm.selectedLayers.some(
-      selected => selected !== layerName && selectedLayerDependsOn(selected, layerName),
-    );
-  }
 
   function blockingConsumesForProfile(profileName: string): LayerConsume[] {
     return consumes.filter(
@@ -689,10 +485,6 @@
         token,
         projectId,
       );
-      if (profileForm.name === profile.name) {
-        profileForm.name = '';
-        profileForm.selectedLayers = [];
-      }
       profileMessage = `프로필 '${profile.name}' 삭제 완료`;
       await Promise.allSettled([loadProfiles(true), loadConsumes(true), loadArtifacts(true)]);
     } catch (e) {
@@ -759,68 +551,27 @@
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // 소비 인스턴스 생성
-  // ---------------------------------------------------------------------------
-
-  async function triggerConsume() {
-    if (consumeSubmitting) return;
-    if (consumeProfileHasMixedUbuntuBases) {
-      error = `선택한 프로필의 Ubuntu base가 섞여 있습니다: ${selectedConsumeProfileUbuntuBases.join(', ')}`;
-      return;
-    }
-    consumeSubmitting = true;
-    error = '';
-    message = '';
-    try {
-      const body: Record<string, string> = {
-        profile_name: consumeForm.profile_name,
-        server_name: consumeForm.server_name,
-        flavor_id: consumeForm.flavor_id,
-      };
-      if (consumeForm.network_id) body.network_id = consumeForm.network_id;
-      if (consumeForm.key_name) body.key_name = consumeForm.key_name;
-      if (consumeForm.ssh_public_key.trim()) body.ssh_public_key = consumeForm.ssh_public_key.trim();
-      if (consumeForm.ssh_username) body.ssh_username = consumeForm.ssh_username;
-
-      const result = await api.post<{ consume_id: number; server_id: string; status: string }>(
-        '/api/v1/admin/libraries/consume',
-        body,
-        token,
-        projectId,
-      );
-      const sshSource = consumeForm.ssh_public_key
-        ? '직접 입력 공개키'
-        : (consumeForm.key_name || '');
-      const sshNote = sshSource
-        ? `, SSH key=${sshSource}${consumeForm.ssh_username ? `, user=${consumeForm.ssh_username}` : ', user=기본 이미지 사용자'}`
-        : '';
-      message = `소비 인스턴스 생성됨 (ID: ${result.consume_id}, 서버: ${result.server_id?.slice(0, 8)}…${sshNote}). 내부 네트워크 IP는 상세에서 확인하세요.`;
-      await loadConsumes(true);
-    } catch (e) {
-      error = e instanceof ApiError ? `소비 인스턴스 생성 실패: ${e.message}` : '네트워크 오류';
-    } finally {
-      consumeSubmitting = false;
-    }
-  }
 
   async function submitDockerfileImport() {
-    if (importSubmitting) return;
+    if (importSubmitting || !pinnedCommitValid || !importForm.github_url.trim() || !importForm.layer_prefix.trim() || !dockerfileConsumerReady) return;
     importSubmitting = true;
     error = '';
     message = '';
     try {
-      const body: Record<string, string> = {
+      const body: Record<string, unknown> = {
         github_url: importForm.github_url.trim(),
         dockerfile_path: importForm.dockerfile_path.trim() || 'Dockerfile',
         layer_prefix: importForm.layer_prefix.trim(),
-        base_image_id: importForm.base_image_id,
       };
       if (importForm.ref.trim()) body.ref = importForm.ref.trim();
       if (importForm.profile_name.trim()) body.profile_name = importForm.profile_name.trim();
+      const consumer = buildDockerfileConsumer();
+      if (consumer) body.consumer = consumer;
       const result = await api.post<LayerImportJob>('/api/v1/admin/libraries/imports/dockerfile', body, token, projectId);
+      importJobs = [result, ...importJobs.filter(job => job.id !== result.id)];
+      selectedImportId = result.id;
       message = `Dockerfile import 시작 (ID: ${result.id}, profile: ${result.profile_name})`;
-      await Promise.allSettled([loadImportJobs(true), loadBuilds(true), loadArtifacts(true), loadProfiles(true)]);
+      await Promise.allSettled([loadImportJobs(true), loadBuilds(true), loadConsumes(true), loadArtifacts(true), loadProfiles(true)]);
     } catch (e) {
       error = e instanceof ApiError ? `Dockerfile import 실패: ${e.message}` : '네트워크 오류';
     } finally {
@@ -828,24 +579,11 @@
     }
   }
 
-  function applyDockerfileTemplate(preset: 'ubuntu24' | 'python312' | 'buildtools') {
-    if (preset === 'ubuntu24') {
-      dockerfileText = `FROM ubuntu:24.04\nRUN apt-get update && apt-get install -y curl git vim\nENV LANG=C.UTF-8\nWORKDIR /workspace\n`;
-      if (!importForm.layer_prefix) importForm.layer_prefix = 'ubuntu-base';
-    } else if (preset === 'python312') {
-      dockerfileText = `FROM ubuntu:24.04\nRUN apt-get update && apt-get install -y python3 python3-pip python3-venv curl\nENV PYTHONUNBUFFERED=1\nWORKDIR /app\nRUN pip install --no-cache-dir requests pydantic\n`;
-      if (!importForm.layer_prefix) importForm.layer_prefix = 'py312-env';
-    } else if (preset === 'buildtools') {
-      dockerfileText = `FROM ubuntu:24.04\nRUN apt-get update && apt-get install -y build-essential cmake ninja-build git curl\nWORKDIR /build\n`;
-      if (!importForm.layer_prefix) importForm.layer_prefix = 'cpp-tools';
-    }
-    dockerfilePlan = null;
-    planError = '';
-  }
 
   async function fetchDockerfileFromUrl() {
     const targetUrl = dockerfileUrl.trim();
     if (!targetUrl || dockerfileFetching) return;
+    const revision = ++dockerfileAuthoringRevision;
     dockerfileFetching = true;
     dockerfileFetchError = '';
     try {
@@ -855,6 +593,7 @@
         token,
         projectId,
       );
+      if (revision !== dockerfileAuthoringRevision || dockerfileMode !== 'url' || dockerfileUrl.trim() !== targetUrl) return;
       dockerfileText = res.dockerfile;
       uploadedFileName = res.filename;
       dockerfileMode = 'editor';
@@ -866,9 +605,11 @@
       }
       message = `URL에서 Dockerfile을 성공적으로 불러왔습니다 (${res.filename}, ${res.size_bytes} bytes).`;
     } catch (e) {
-      dockerfileFetchError = e instanceof ApiError ? e.message : 'URL에서 Dockerfile을 가져오지 못했습니다';
+      if (revision === dockerfileAuthoringRevision && dockerfileMode === 'url') {
+        dockerfileFetchError = e instanceof ApiError ? e.message : 'URL에서 Dockerfile을 가져오지 못했습니다';
+      }
     } finally {
-      dockerfileFetching = false;
+      if (revision === dockerfileAuthoringRevision) dockerfileFetching = false;
     }
   }
 
@@ -876,8 +617,11 @@
     const input = event.target as HTMLInputElement;
     if (!input.files || input.files.length === 0) return;
     const file = input.files[0];
+    const revision = ++dockerfileAuthoringRevision;
+    dockerfileFetchError = '';
     const reader = new FileReader();
     reader.onload = (e) => {
+      if (revision !== dockerfileAuthoringRevision || dockerfileMode !== 'upload') return;
       const text = e.target?.result;
       if (typeof text === 'string') {
         dockerfileText = text;
@@ -893,13 +637,16 @@
       }
     };
     reader.onerror = () => {
-      dockerfileFetchError = '파일을 읽는 중 오류가 발생했습니다.';
+      if (revision === dockerfileAuthoringRevision && dockerfileMode === 'upload') {
+        dockerfileFetchError = '파일을 읽는 중 오류가 발생했습니다.';
+      }
     };
     reader.readAsText(file);
   }
 
   async function previewDockerfilePlan() {
-    if (planLoading) return;
+    if (planLoading || lintLoading || dockerfileLint?.valid === false) return;
+    const seq = ++planSeq;
     planLoading = true;
     planError = '';
     dockerfilePlan = null;
@@ -909,7 +656,6 @@
         layer_prefix: importForm.layer_prefix.trim() || 'demo',
       };
       if (importForm.profile_name.trim()) body.profile_name = importForm.profile_name.trim();
-      if (importForm.base_image_id) body.base_image_id = importForm.base_image_id;
 
       const res = await api.post<DockerfilePlanResponse>(
         '/api/v1/palimpsest/builds/dockerfile/plan',
@@ -917,16 +663,16 @@
         token,
         projectId,
       );
-      dockerfilePlan = res;
+      if (seq === planSeq) dockerfilePlan = res;
     } catch (e) {
-      planError = e instanceof ApiError ? e.message : '빌드 계획을 생성하지 못했습니다';
+      if (seq === planSeq) planError = e instanceof ApiError ? e.message : '빌드 계획을 생성하지 못했습니다';
     } finally {
-      planLoading = false;
+      if (seq === planSeq) planLoading = false;
     }
   }
 
   async function submitInlineDockerfileBuild() {
-    if (importSubmitting) return;
+    if (importSubmitting || lintLoading || dockerfileLint?.valid === false || !dockerfileConsumerReady) return;
     if (!dockerfileText.trim()) {
       error = 'Dockerfile 본문이 비어 있습니다';
       return;
@@ -939,12 +685,13 @@
     error = '';
     message = '';
     try {
-      const body: Record<string, string> = {
+      const body: Record<string, unknown> = {
         dockerfile: dockerfileText,
         layer_prefix: importForm.layer_prefix.trim(),
       };
       if (importForm.profile_name.trim()) body.profile_name = importForm.profile_name.trim();
-      if (importForm.base_image_id) body.base_image_id = importForm.base_image_id;
+      const consumer = buildDockerfileConsumer();
+      if (consumer) body.consumer = consumer;
 
       const result = await api.post<LayerImportJob>(
         '/api/v1/palimpsest/builds/dockerfile',
@@ -952,9 +699,11 @@
         token,
         projectId,
       );
+      importJobs = [result, ...importJobs.filter(job => job.id !== result.id)];
+      selectedImportId = result.id;
       message = `Palimpsest Dockerfile 빌드 시작 (ID: ${result.id}, profile: ${result.profile_name})`;
       dockerfilePlan = null;
-      await Promise.allSettled([loadImportJobs(true), loadBuilds(true), loadArtifacts(true), loadProfiles(true)]);
+      await Promise.allSettled([loadImportJobs(true), loadBuilds(true), loadConsumes(true), loadArtifacts(true), loadProfiles(true)]);
     } catch (e) {
       error = e instanceof ApiError ? `Dockerfile 빌드 시작 실패: ${e.message}` : '네트워크 오류';
     } finally {
@@ -962,15 +711,6 @@
     }
   }
 
-  function launchConsumeWithProfile(profileName: string) {
-    consumeForm.profile_name = profileName;
-    consumeForm.server_name = `${profileName}-vm-${Math.floor(1000 + Math.random() * 9000)}`;
-    const consumeSection = document.getElementById('admin-library-consume');
-    if (consumeSection) {
-      consumeSection.scrollIntoView({ behavior: 'smooth' });
-    }
-    message = `프로필 '${profileName}'이(가) 소비 인스턴스 생성 폼에 설정되었습니다. Flavor 및 키페어를 확인한 뒤 생성을 진행하세요.`;
-  }
 
   // ---------------------------------------------------------------------------
   // 빌드 상세 모달
@@ -1129,23 +869,6 @@
     return value;
   }
 
-  function uniqueBaseImageIdsForLayerNames(layers: string[]): string[] {
-    const ids = new Set<string>();
-    for (const layerName of normalizeProfileLayers(layers)) {
-      const artifact = sealedArtifacts.find(a => a.name === layerName);
-      if (artifact?.base_image_id) ids.add(artifact.base_image_id);
-    }
-    return [...ids].sort();
-  }
-
-  function uniqueUbuntuBasesForLayerNames(layers: string[]): string[] {
-    const bases = new Set<string>();
-    for (const layerName of normalizeProfileLayers(layers)) {
-      const artifact = sealedArtifacts.find(a => a.name === layerName);
-      if (artifact) bases.add(normalizeUbuntuBase(artifact.ubuntu_base));
-    }
-    return [...bases].sort();
-  }
   function fmtDate(iso: string | null | undefined): string {
     if (!iso) return '—';
     return parseISO(iso).toLocaleString('ko-KR');
@@ -1161,74 +884,6 @@
     return `${Math.floor(m / 60)}시간 ${m % 60}분`;
   }
 
-  function artifactLineageHasKind(artifact: LayerArtifact | ArtifactSummary, kind: string): boolean {
-    const chain = 'lineage' in artifact && artifact.lineage?.length
-      ? artifact.lineage
-      : [artifact as ArtifactSummary];
-    return chain.some(node => node.kind === kind);
-  }
-
-
-  function shouldSplitPackageComma(raw: string, index: number): boolean {
-    const rest = raw.slice(index).trimStart();
-    return /^[A-Za-z0-9]/.test(rest) && !VERSION_CLAUSE_PREFIX_RE.test(rest);
-  }
-
-  function splitPackageSpecs(raw: string): string[] {
-    const specs: string[] = [];
-    let current = '';
-    let bracketDepth = 0;
-    for (let i = 0; i < raw.length; i += 1) {
-      const ch = raw[i];
-      if (ch === '[') bracketDepth += 1;
-      if (ch === ']') bracketDepth = Math.max(0, bracketDepth - 1);
-      if (ch === '\r' || ch === '\n' || (ch === ',' && bracketDepth === 0 && shouldSplitPackageComma(raw, i + 1))) {
-        if (current.trim()) specs.push(current.trim());
-        current = '';
-        if (ch === '\r' && raw[i + 1] === '\n') i += 1;
-        continue;
-      }
-      current += ch;
-    }
-    if (current.trim()) specs.push(current.trim());
-    return specs;
-  }
-
-  function invalidPackageSpecs(raw: string): string[] {
-    return splitPackageSpecs(raw).filter(spec => !PIP_SPEC_RE.test(spec));
-  }
-
-  function splitAptPackages(raw: string): string[] {
-    return raw.split(/[\s,]+/).map(pkg => pkg.trim()).filter(Boolean);
-  }
-
-  function invalidAptPackages(raw: string): string[] {
-    return splitAptPackages(raw).filter(pkg => !APT_PACKAGE_RE.test(pkg));
-  }
-
-  function splitUrlLines(raw: string): string[] {
-    return raw.split(/\r?\n/).map(url => url.trim()).filter(Boolean);
-  }
-
-  function isValidPipSourceUrl(raw: string): boolean {
-    if (!raw) return true;
-    if (PIP_SOURCE_FORBIDDEN_RE.test(raw)) return false;
-    try {
-      const url = new URL(raw);
-      return (url.protocol === 'http:' || url.protocol === 'https:')
-        && Boolean(url.hostname)
-        && !url.username
-        && !url.password
-        && !url.search
-        && !url.hash;
-    } catch {
-      return false;
-    }
-  }
-
-  function invalidPipSourceUrls(urls: string[]): string[] {
-    return urls.filter(url => url && !isValidPipSourceUrl(url));
-  }
 
   function artifactChainLabel(artifact: LayerArtifact | ArtifactSummary): string {
     const chain = 'lineage' in artifact && artifact.lineage?.length
@@ -1291,7 +946,7 @@
 
 <div class="flex flex-col h-full overflow-auto bg-surface-base text-ink-1 p-6">
   <div data-tour="admin-library-header">
-    <PageHeader title="Palimpsest 레이어 관리" breadcrumb="Palimpsest" subtitle="레이어를 만들고, 조합하고, OverlayFS VM으로 실행하는 관리자 작업 공간입니다.">
+    <PageHeader title="Palimpsest 레이어 관리" breadcrumb="Palimpsest" subtitle="Dockerfile로 루트 레이어를 빌드하고 선택적으로 SSH VM을 생성합니다. 기존 기록도 이곳에서 조회합니다.">
       {#snippet actions()}
         <TutorialStartButton tour="admin-library" compactOnMobile />
         <button
@@ -1330,132 +985,8 @@
   {#if loading}
     <LoadingSkeleton rows={4} />
   {:else}
-    <div class="grid grid-cols-1 xl:grid-cols-12 gap-5 mb-8" data-tour="admin-library-ready">
-      <!-- ------------------------------------------------------------------ -->
-      <!-- System/tool 레이어 빌드                                             -->
-      <!-- ------------------------------------------------------------------ -->
-      <section class="xl:col-span-4 min-w-0 bg-surface-raised border border-line rounded-lg p-5" data-tour="admin-library-system">
-        <h2 class="text-sm font-semibold text-ink-0 mb-1">System/tool 레이어</h2>
-        <p class="text-xs text-ink-2 mb-4">
-          uv preset은 Python runtime 부모로 쓰는 curl-installed uv tool 레이어를 만들고,
-          apt package layer는 apt로 설치 가능한 시스템 패키지를 캡처합니다.
-          NVIDIA template은 소비 VM 부팅 시 해당 커널에 맞춰 open DKMS 드라이버를 설치하는 hook 레이어입니다.
-        </p>
-        <div class="space-y-3">
-          <div>
-            <label class="block text-xs text-ink-2 mb-1" for="system-layer-name">레이어 이름 *</label>
-            <input
-              id="system-layer-name"
-              type="text"
-              placeholder="예: uv 또는 sys-tools"
-              bind:value={systemForm.layer_name}
-              class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
-            />
-          </div>
-          <div>
-            <label class="block text-xs text-ink-2 mb-1" for="system-base-image">Glance base image *</label>
-            <select
-              id="system-base-image"
-              bind:value={systemForm.base_image_id}
-              class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 focus:outline-none focus:border-action-warm"
-            >
-              {#each baseImages as image}
-                <option value={image.id}>{baseImageLabel(image)}</option>
-              {/each}
-            </select>
-            <p class="mt-1 text-xs text-ink-2">uv preset과 apt system layer는 선택한 실제 Glance image fingerprint를 저장합니다.</p>
-          </div>
-          <div>
-            <label class="block text-xs text-ink-2 mb-1" for="system-apt-packages">apt 패키지 (system layer)</label>
-            <textarea
-              id="system-apt-packages"
-              rows="3"
-              placeholder="curl, nfs-common squashfs-tools"
-              bind:value={systemForm.apt_packages}
-              class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
-            ></textarea>
-            {#if systemInvalidAptPackages.length > 0}
-              <p class="mt-1 text-xs text-red-300">apt 패키지명 형식 오류: {systemInvalidAptPackages.join(', ')}</p>
-            {:else if systemAptPackages.length > 0}
-              <p class="mt-1 text-xs text-ink-2">전송 예정: {systemAptPackages.join(', ')}</p>
-            {/if}
-          </div>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              onclick={triggerUvBuild}
-              disabled={systemSubmitting || !systemForm.layer_name || !systemForm.base_image_id}
-              class="w-full"
-            >
-              {systemSubmitting ? '빌드 시작 중...' : 'uv preset 빌드'}
-            </Button>
-            <Button
-              variant="accent"
-              size="sm"
-              onclick={triggerSystemAptBuild}
-              disabled={systemSubmitting || !systemForm.layer_name || !systemForm.base_image_id || systemAptPackages.length === 0 || systemInvalidAptPackages.length > 0}
-              class="w-full"
-            >
-              {systemSubmitting ? '빌드 시작 중...' : 'apt package layer 빌드'}
-            </Button>
-          </div>
-          <div class="mt-4 border-t border-line-2 pt-4 space-y-3">
-            <div>
-              <label class="block text-xs text-ink-2 mb-1" for="nvidia-layer-name">NVIDIA 템플릿 레이어 이름 *</label>
-              <input
-                id="nvidia-layer-name"
-                type="text"
-                placeholder="예: nvidia-driver-580"
-                bind:value={nvidiaForm.layer_name}
-                class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
-              />
-            </div>
-            <div>
-              <label class="block text-xs text-ink-2 mb-1" for="nvidia-base-image">Glance base image *</label>
-              <select
-                id="nvidia-base-image"
-                bind:value={nvidiaForm.base_image_id}
-                class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 focus:outline-none focus:border-action-warm"
-              >
-                {#each baseImages as image}
-                  <option value={image.id}>{baseImageLabel(image)}</option>
-                {/each}
-              </select>
-              <p class="mt-1 text-xs text-ink-2">NVIDIA hook 레이어도 선택한 실제 Glance image 계열의 소비 VM에서만 사용하세요.</p>
-            </div>
-            <div>
-              <label class="block text-xs text-ink-2 mb-1" for="nvidia-driver-branch">NVIDIA driver branch</label>
-              <select
-                id="nvidia-driver-branch"
-                bind:value={nvidiaForm.nvidia_driver_branch}
-                class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 focus:outline-none focus:border-action-warm"
-              >
-                {#each NVIDIA_DRIVER_BRANCHES as branch}
-                  <option value={branch}>{branch}</option>
-                {/each}
-              </select>
-              <p class="mt-1 text-xs text-ink-2">
-                레이어 자체에는 /usr hook만 저장하고, 소비 VM에서 cuda-keyring + nvidia-dkms-*-open을 설치합니다.
-              </p>
-            </div>
-            <Button
-              variant="accent"
-              size="sm"
-              onclick={triggerNvidiaDriverBuild}
-              disabled={nvidiaSubmitting || !nvidiaForm.layer_name || !nvidiaForm.base_image_id || !nvidiaBranchValid}
-              class="w-full"
-            >
-              {nvidiaSubmitting ? '빌드 시작 중...' : 'NVIDIA driver template 빌드'}
-            </Button>
-          </div>
-        </div>
-      </section>
-
-      <!-- ------------------------------------------------------------------ -->
-      <!-- GitHub Dockerfile import                                           -->
-      <!-- ------------------------------------------------------------------ -->
-      <section class="xl:col-span-8 min-w-0 bg-surface-raised border border-line rounded-lg p-5" data-tour="admin-library-import">
+    <div class="mb-8" data-tour="admin-library-ready">
+      <section class="min-w-0 bg-surface-raised border border-line rounded-lg p-5" data-tour="admin-library-import">
         <div class="flex items-center justify-between mb-1">
           <h2 class="text-sm font-semibold text-ink-0">Palimpsest Dockerfile 빌드</h2>
           <span class="text-xs px-2 py-0.5 rounded bg-surface-base border border-line-2 text-ink-2 font-mono">관리자 전용</span>
@@ -1468,7 +999,11 @@
         <ToggleGroup
           value={dockerfileMode}
           options={dockerfileModeOptions}
-          onchange={(value) => dockerfileMode = value as DockerfileInputMode}
+          onchange={(value) => {
+            ++dockerfileAuthoringRevision;
+            dockerfileFetching = false;
+            dockerfileMode = value as DockerfileInputMode;
+          }}
           size="sm"
           fullWidth
           ariaLabel="Dockerfile 입력 방식"
@@ -1485,6 +1020,7 @@
                   type="url"
                   placeholder="https://.../Dockerfile 또는 GitHub blob URL"
                   bind:value={dockerfileUrl}
+                  oninput={() => { ++dockerfileAuthoringRevision; dockerfileFetching = false; }}
                   class="flex-1 bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
                 />
                 <button
@@ -1530,35 +1066,19 @@
                 <label class="block text-xs text-ink-2" for="dockerfile-editor-text">
                   Dockerfile 본문 {uploadedFileName ? `(${uploadedFileName})` : ''} *
                 </label>
-                <div class="flex items-center gap-1">
-                  <span class="text-xs text-ink-2 mr-1">템플릿:</span>
-                  <button
-                    type="button"
-                    onclick={() => applyDockerfileTemplate('ubuntu24')}
-                    class="text-xs px-2 py-0.5 rounded bg-surface-base border border-line-2 text-ink-2 hover:text-ink-0 hover:border-action-warm transition-colors"
-                  >Ubuntu 24.04</button>
-                  <button
-                    type="button"
-                    onclick={() => applyDockerfileTemplate('python312')}
-                    class="text-xs px-2 py-0.5 rounded bg-surface-base border border-line-2 text-ink-2 hover:text-ink-0 hover:border-action-warm transition-colors"
-                  >Python 3.12</button>
-                  <button
-                    type="button"
-                    onclick={() => applyDockerfileTemplate('buildtools')}
-                    class="text-xs px-2 py-0.5 rounded bg-surface-base border border-line-2 text-ink-2 hover:text-ink-0 hover:border-action-warm transition-colors"
-                  >C/C++ 도구</button>
-                </div>
               </div>
               <textarea
                 id="dockerfile-editor-text"
                 rows="6"
                 bind:value={dockerfileText}
+                oninput={() => ++dockerfileAuthoringRevision}
                 placeholder="FROM ubuntu:24.04&#10;RUN apt-get update && apt-get install -y curl&#10;ENV APP_ENV=production&#10;WORKDIR /app"
                 class="w-full bg-surface-base border border-line-2 rounded-lg p-2.5 text-xs text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm font-mono resize-y"
               ></textarea>
-              <p class="mt-0.5 text-xs text-ink-2">지원 문법: FROM, RUN, ENV, WORKDIR (COPY/ADD는 빌드 컨텍스트가 없으므로 GitHub 커밋 모드 사용)</p>
+              <p class="mt-0.5 text-xs text-ink-2">지원 문법: FROM, RUN, ENV, WORKDIR (COPY/ADD는 빌드 컨텍스트가 없으므로 GitHub 커밋 모드 사용). FROM은 ubuntu:18.04|20.04|22.04|24.04, Glance 이미지 이름/UUID, palimpsest/&lt;name&gt;@sha256:…를 지원하며 Glance에서 자동 해석됩니다.</p>
             </div>
           {/if}
+          {#if dockerfileMode === 'upload' && dockerfileFetchError}<Alert tone="danger">{dockerfileFetchError}</Alert>{/if}
 
           {#if dockerfileMode === 'github'}
             <div>
@@ -1573,11 +1093,11 @@
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
-                <label class="block text-xs text-ink-2 mb-1" for="dockerfile-ref">Commit SHA / ref *</label>
+                <label class="block text-xs text-ink-2 mb-1" for="dockerfile-ref">Commit SHA *</label>
                 <input
                   id="dockerfile-ref"
                   type="text"
-                  placeholder="40자 commit SHA 권장"
+                  placeholder="40자 commit SHA 필수"
                   bind:value={importForm.ref}
                   class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
                 />
@@ -1592,6 +1112,10 @@
                 />
               </div>
             </div>
+            <p class="text-xs text-ink-2">명시적인 FROM이 있는 Dockerfile을 고정 커밋에서 가져옵니다. 서버가 FROM과 빌드 컨텍스트를 검증한 뒤 같은 작업 기록에 추가합니다.</p>
+            {#if importForm.ref && !pinnedCommitValid}
+              <p class="text-xs text-red-300">브랜치나 태그 대신 40자리 commit SHA를 입력하세요.</p>
+            {/if}
           {/if}
 
           <!-- 공통 레이어 빌드 옵션 -->
@@ -1617,19 +1141,21 @@
               />
             </div>
           </div>
-          <div>
-            <label class="block text-xs text-ink-2 mb-1" for="dockerfile-base-image">Glance base image *</label>
-            <select
-              id="dockerfile-base-image"
-              bind:value={importForm.base_image_id}
-              class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 focus:outline-none focus:border-action-warm"
-            >
-              {#each baseImages as image}
-                <option value={image.id}>{baseImageLabel(image)}</option>
-              {/each}
-            </select>
-            <p class="mt-1 text-xs text-ink-2">FROM 이미지의 Ubuntu 버전과 일치해야 합니다.</p>
-          </div>
+          <ToggleGroup value={dockerfileTarget} options={dockerfileTargetOptions} onchange={(value) => dockerfileTarget = value as DockerfileExecutionTarget} size="sm" fullWidth ariaLabel="Dockerfile 실행 목표" />
+          {#if dockerfileTarget === 'instance'}
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-surface-base border border-line-2 rounded-lg" aria-label="Dockerfile 소비 VM 설정">
+              <p class="md:col-span-2 text-xs text-ink-2">베이스 이미지와 프로필은 Dockerfile의 FROM과 설정된 이름에서 자동으로 이어받습니다.</p>
+              <div><label class="block text-xs text-ink-2 mb-1" for="dockerfile-consumer-flavor">소비 VM Flavor ID *</label><input id="dockerfile-consumer-flavor" type="text" bind:value={dockerfileConsumer.flavor_id} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
+              <div><label class="block text-xs text-ink-2 mb-1" for="dockerfile-consumer-server">소비 VM 서버 이름 (선택)</label><input id="dockerfile-consumer-server" type="text" bind:value={dockerfileConsumer.server_name} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
+              <div><label class="block text-xs text-ink-2 mb-1" for="dockerfile-consumer-network">소비 VM Network ID (선택)</label><input id="dockerfile-consumer-network" type="text" bind:value={dockerfileConsumer.network_id} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
+              <div><label class="block text-xs text-ink-2 mb-1" for="dockerfile-consumer-keypair">소비 VM 접속 키페어 (SSH 공개키가 없을 때 필수)</label><select id="dockerfile-consumer-keypair" bind:value={dockerfileConsumer.key_name} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0"><option value="">선택 안 함</option>{#each keypairs as kp}<option value={kp.name}>{kp.name}</option>{/each}</select></div>
+              <div><label class="block text-xs text-ink-2 mb-1" for="dockerfile-consumer-user">소비 VM SSH 사용자 (선택)</label><input id="dockerfile-consumer-user" type="text" bind:value={dockerfileConsumer.ssh_username} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
+              <div><label class="block text-xs text-ink-2 mb-1" for="dockerfile-consumer-pubkey">소비 VM SSH 공개키 (키페어가 없을 때 필수)</label><textarea id="dockerfile-consumer-pubkey" rows="2" bind:value={dockerfileConsumer.ssh_public_key} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 font-mono"></textarea></div>
+            </div>
+          {/if}
+          {#if dockerfileMode !== 'github'}
+            <DockerfileLintPanel lint={dockerfileLint} loading={lintLoading} requestError={lintError} />
+          {/if}
 
           <!-- 빌드 계획 미리보기 결과 표시 -->
           {#if planError}
@@ -1647,20 +1173,16 @@
               <div class="text-ink-2 font-mono truncate" title={dockerfilePlan.dockerfile_digest}>
                 Digest: {dockerfilePlan.dockerfile_digest.slice(0, 20)}…
               </div>
+              <p class="text-state-success">캐시 재사용 artifact: {dockerfilePlan.cached_artifact_ids.map(id => `#${id}`).join(', ') || '없음'}</p>
               <div class="space-y-1 max-h-36 overflow-y-auto">
                 {#each dockerfilePlan.steps as step, idx}
-                  {@const isCached = dockerfilePlan.cached_artifact_ids.length > idx}
                   <div class="flex items-center justify-between gap-2 p-1.5 rounded bg-surface-sunken border border-line-2">
                     <div class="flex items-center gap-1.5 min-w-0">
                       <span class="font-semibold text-ink-1">#{idx + 1}</span>
                       <span class="px-1.5 py-0.5 rounded font-mono text-xs bg-surface-selected text-ink-0">{step.instruction}</span>
                       <span class="font-mono text-ink-2 truncate max-w-xs">{step.args}</span>
                     </div>
-                    {#if isCached}
-                      <span class="text-xs text-state-success font-mono whitespace-nowrap">캐시 재사용</span>
-                    {:else}
                       <span class="text-xs text-warm-text font-mono whitespace-nowrap">신규 빌드</span>
-                    {/if}
                   </div>
                 {/each}
               </div>
@@ -1674,7 +1196,7 @@
                 variant="secondary"
                 size="sm"
                 onclick={previewDockerfilePlan}
-                disabled={planLoading || !dockerfileText.trim() || !importForm.layer_prefix.trim()}
+                disabled={planLoading || lintLoading || dockerfileFetching || !dockerfileText.trim() || !importForm.layer_prefix.trim() || (dockerfileLint !== null && !dockerfileLint.valid)}
                 class="w-full"
               >
                 {planLoading ? '계획 계산 중...' : '빌드 계획 미리보기'}
@@ -1683,7 +1205,7 @@
                 variant="primary"
                 size="sm"
                 onclick={submitInlineDockerfileBuild}
-                disabled={importSubmitting || !dockerfileText.trim() || !importForm.layer_prefix.trim()}
+                disabled={importSubmitting || lintLoading || dockerfileFetching || !dockerfileConsumerReady || !dockerfileText.trim() || !importForm.layer_prefix.trim() || (dockerfileLint !== null && !dockerfileLint.valid)}
                 class="w-full"
               >
                 {importSubmitting ? '빌드 시작 중...' : 'Dockerfile 빌드 시작'}
@@ -1693,7 +1215,7 @@
                 variant="accent"
                 size="sm"
                 onclick={submitDockerfileImport}
-                disabled={importSubmitting || !importForm.github_url.trim() || !importForm.layer_prefix.trim() || !importForm.base_image_id}
+                disabled={importSubmitting || !dockerfileConsumerReady || !pinnedCommitValid || !importForm.github_url.trim() || !importForm.layer_prefix.trim()}
                 class="w-full sm:col-span-2"
               >
                 {importSubmitting ? 'Import 시작 중...' : 'GitHub Dockerfile import 시작'}
@@ -1702,8 +1224,52 @@
           </div>
 
           <!-- importJobs 테이블 -->
+          <h3 class="text-sm font-semibold text-ink-0">Dockerfile 작업 기록</h3>
+          {#if importLoadError}<Alert tone="danger">{importLoadError}</Alert>{/if}
+          {#if selectedImport}
+            <section aria-label="선택한 Dockerfile 작업" class="p-3 border border-line-2 rounded-lg space-y-2 text-xs">
+              <p class="font-mono">#{selectedImport.id} · {selectedImport.profile_name} · {selectedImport.source_type || 'github'}</p>
+              <StatusChip status={selectedImport.status} />
+              <p>{selectedImport.progress_step || selectedImport.status} · {selectedImport.progress_pct}%</p>
+              <progress class="w-full" aria-label="Dockerfile 작업 진행률" max="100" value={selectedImport.progress_pct}></progress>
+              {#if selectedImport.error_message}<Alert tone="danger">{selectedImport.error_message}</Alert>{/if}
+              <p>Base: {selectedImport.base_image_name || selectedImport.base_image_id || selectedImport.ubuntu_base}</p>
+              {#if selectedImport.github_url}<p class="break-all">{selectedImport.github_url} · {selectedImport.commit_sha} · {selectedImport.dockerfile_path}</p>{/if}
+              {#if selectedImport.dockerfile_digest}<p class="break-all">Digest: {selectedImport.dockerfile_digest}</p>{/if}
+              <p>Artifact: {selectedImport.artifact_ids?.map(id => `#${id}`).join(', ') || '—'}</p>
+              <p>Build: {selectedImport.build_ids?.map(id => `#${id}`).join(', ') || '—'}</p>
+              {#if selectedImport.consume_id || selectedImport.consumer_status || selectedImport.consumer_spec}
+                <p>소비 VM: {selectedImport.consume_id ? `#${selectedImport.consume_id}` : '예약됨'} · {selectedImport.consumer_status || '대기'} {#if selectedImport.consumer_spec}({selectedImport.consumer_spec.server_name || '자동 이름'} · {selectedImport.consumer_spec.flavor_id}){/if}</p>
+                {#if selectedImport.consume_id}
+                  <button type="button" class="underline" onclick={() => { selectedConsumeId = selectedImport.consume_id!; consumeDetailOpen = true; }}>소비 VM #{selectedImport.consume_id} 상세</button>
+                {/if}
+              {/if}
+              {#if selectedImport.status === 'complete' && selectedImport.dockerfile_digest && selectedImport.artifact_ids?.length}
+                <Button variant="secondary" size="sm" onclick={() => { historyConsumeTargetId = historyConsumeTargetId === selectedImport.id ? null : selectedImport.id; historyConsumeError = ''; }} disabled={historyConsumeSubmitting}>
+                  {historyConsumeTargetId === selectedImport.id ? 'VM 생성 설정 닫기' : '이 작업의 artifact로 VM 생성'}
+                </Button>
+                {#if historyConsumeTargetId === selectedImport.id}
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-surface-base border border-line-2 rounded-lg" aria-label="작업 artifact 소비 VM 설정">
+                    <p class="md:col-span-2 text-ink-2">작업 #{selectedImport.id}의 봉인된 artifact #{selectedImport.artifact_ids.join(', #')}을 사용합니다. 현재 프로필 이름으로 재조회하지 않습니다.</p>
+                    <div><label class="block text-ink-2 mb-1" for="history-consumer-flavor">Flavor ID *</label><input id="history-consumer-flavor" type="text" bind:value={historyConsumer.flavor_id} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
+                    <div><label class="block text-ink-2 mb-1" for="history-consumer-server">서버 이름 (선택)</label><input id="history-consumer-server" type="text" bind:value={historyConsumer.server_name} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
+                    <div><label class="block text-ink-2 mb-1" for="history-consumer-network">Network ID (선택)</label><input id="history-consumer-network" type="text" bind:value={historyConsumer.network_id} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
+                    <div><label class="block text-ink-2 mb-1" for="history-consumer-keypair">접속 키페어 (SSH 공개키가 없을 때 필수)</label><select id="history-consumer-keypair" bind:value={historyConsumer.key_name} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0"><option value="">선택 안 함</option>{#each keypairs as kp}<option value={kp.name}>{kp.name}</option>{/each}</select></div>
+                    <div><label class="block text-ink-2 mb-1" for="history-consumer-user">SSH 사용자 (선택)</label><input id="history-consumer-user" type="text" bind:value={historyConsumer.ssh_username} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
+                    <div><label class="block text-ink-2 mb-1" for="history-consumer-pubkey">SSH 공개키 (키페어가 없을 때 필수)</label><textarea id="history-consumer-pubkey" rows="2" bind:value={historyConsumer.ssh_public_key} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 font-mono"></textarea></div>
+                    {#if historyConsumeError}<div class="md:col-span-2"><Alert tone="danger">{historyConsumeError}</Alert></div>{/if}
+                    <div class="md:col-span-2"><Button variant="primary" size="sm" onclick={() => consumeCompletedImport(selectedImport)} disabled={!historyConsumerReady || historyConsumeSubmitting}>{historyConsumeSubmitting ? 'VM 생성 중...' : '선택한 작업으로 VM 생성'}</Button></div>
+                  </div>
+                {/if}
+              {/if}
+              <p>생성: {fmtDate(selectedImport.created_at)} · 완료: {fmtDate(selectedImport.completed_at)}</p>
+              {#each selectedImport.planned_layers ?? [] as step}
+                <p class="font-mono">L{step.line} · {step.name} · {step.instruction}</p>
+              {/each}
+            </section>
+          {/if}
           {#if importJobs.length > 0}
-            <div class="border border-line-2 rounded-lg overflow-hidden mt-3">
+            <div class="border border-line-2 rounded-lg overflow-x-auto mt-3">
               <table class="min-w-full text-xs">
                 <thead class="bg-surface-base text-ink-2">
                   <tr>
@@ -1711,28 +1277,15 @@
                     <th class="px-3 py-2 text-left">Profile</th>
                     <th class="px-3 py-2 text-left">Base image</th>
                     <th class="px-3 py-2 text-left">Status</th>
-                    <th class="px-3 py-2 text-right">실행</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-line">
                   {#each importJobs as job}
                     <tr>
-                      <td class="px-3 py-2 text-ink-2">#{job.id}</td>
+                      <td class="px-3 py-2 text-ink-2"><button type="button" class="underline" aria-label={`작업 #${job.id} 상세`} onclick={() => selectedImportId = job.id}>#{job.id}</button></td>
                       <td class="px-3 py-2 font-mono">{job.profile_name}</td>
                       <td class="px-3 py-2 text-ink-2">{job.base_image_name || shortId(job.base_image_id)}</td>
-                      <td class="px-3 py-2"><StatusChip status={job.status} /></td>
-                      <td class="px-3 py-2 text-right">
-                        {#if job.status === 'complete'}
-                          <button
-                            type="button"
-                            onclick={() => launchConsumeWithProfile(job.profile_name)}
-                            class="px-2 py-1 rounded bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-xs font-medium transition-colors"
-                            title="이 프로필로 OverlayFS 소비 VM 인스턴스 즉시 생성"
-                          >
-                            인스턴스 실행
-                          </button>
-                        {/if}
-                      </td>
+                      <td class="px-3 py-2"><StatusChip status={job.status} /><p class="mt-1">{job.progress_step || job.status} · {job.progress_pct}%</p>{#if job.consumer_status || job.consume_id}<p>VM {job.consume_id ? `#${job.consume_id}` : ''} {job.consumer_status || ''}</p>{/if}{#if job.error_message}<p class="text-red-300">{job.error_message}</p>{/if}</td>
                     </tr>
                   {/each}
                 </tbody>
@@ -1742,309 +1295,6 @@
         </div>
       </section>
 
-      <!-- ------------------------------------------------------------------ -->
-      <!-- Python runtime 레이어 빌드                                         -->
-      <!-- ------------------------------------------------------------------ -->
-      <section class="xl:col-span-4 min-w-0 bg-surface-raised border border-line rounded-lg p-5" data-tour="admin-library-python">
-        <h2 class="text-sm font-semibold text-ink-0 mb-1">Python runtime 레이어</h2>
-        <p class="text-xs text-ink-2 mb-4">
-          uv 레이어 위에 CPython runtime만 추가합니다. pip 패키지는 별도 패키지 레이어에서 설치합니다.
-        </p>
-        <div class="space-y-3">
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="block text-xs text-ink-2 mb-1" for="python-layer-name">레이어 이름 *</label>
-              <input
-                id="python-layer-name"
-                type="text"
-                placeholder="예: python311"
-                bind:value={pythonForm.layer_name}
-                class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
-              />
-            </div>
-            <div>
-              <label class="block text-xs text-ink-2 mb-1" for="python-ver">Python 버전 *</label>
-              <input
-                id="python-ver"
-                type="text"
-                placeholder="3.11"
-                bind:value={pythonForm.python_version}
-                class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
-              />
-            </div>
-          </div>
-          <div>
-            <label class="block text-xs text-ink-2 mb-1" for="python-parent">부모 uv 레이어 *</label>
-            {#if uvParentArtifacts.length > 0}
-              <select
-                id="python-parent"
-                bind:value={pythonForm.parent_artifact_id}
-                class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 focus:outline-none focus:border-indigo-500"
-              >
-                <option value="">uv 레이어를 선택하세요</option>
-                {#each uvParentArtifacts as a}
-                  <option value={String(a.id)}>#{a.id} {artifactChainLabel(a)} ({fmtRelative(a.created_at)})</option>
-                {/each}
-              </select>
-            {:else}
-              <div class="text-xs text-ink-2 italic px-3 py-2 bg-surface-base border border-line-2 rounded-lg">
-                먼저 uv 레이어를 빌드하세요
-              </div>
-            {/if}
-          </div>
-          {#if selectedPythonParentArtifact}
-            <div class="px-3 py-2 bg-indigo-900/20 border border-indigo-700/40 rounded-lg space-y-1">
-              <div class="text-xs text-indigo-300">
-                stacked 빌드: <span class="font-mono">{artifactChainLabel(selectedPythonParentArtifact)}</span> → <span class="font-mono">{pythonForm.layer_name || '(새 레이어)'}</span>
-              </div>
-              <p class="text-xs text-indigo-200/70">부모 uv artifact ID #{selectedPythonParentArtifact.id} 위에 Python runtime delta만 생성합니다.</p>
-              <p class="text-xs text-indigo-200/70">상속 Ubuntu: {ubuntuBaseLabel(selectedPythonParentArtifact)}</p>
-            </div>
-          {/if}
-          <Button
-            variant="accent"
-            size="sm"
-            onclick={triggerPythonBuild}
-            disabled={pythonSubmitting || !pythonForm.layer_name || !pythonForm.python_version || !pythonForm.parent_artifact_id}
-            class="w-full"
-          >
-            {pythonSubmitting ? '빌드 시작 중...' : 'Python runtime 레이어 빌드'}
-          </Button>
-        </div>
-      </section>
-
-      <!-- ------------------------------------------------------------------ -->
-      <!-- Python 패키지 레이어 빌드                                           -->
-      <!-- ------------------------------------------------------------------ -->
-      <section class="xl:col-span-4 min-w-0 bg-surface-raised border border-line rounded-lg p-5">
-        <h2 class="text-sm font-semibold text-ink-0 mb-1">Python 패키지 레이어</h2>
-        <p class="text-xs text-ink-2 mb-4">
-          Python lineage가 포함된 부모 위에 pip 패키지만 추가합니다. 버전 pin과 안전한 constraint만 허용됩니다.
-        </p>
-        <div class="space-y-3">
-          <div>
-            <label class="block text-xs text-ink-2 mb-1" for="package-layer-name">레이어 이름 *</label>
-            <input
-              id="package-layer-name"
-              type="text"
-              placeholder="예: scientific-py"
-              bind:value={packageForm.layer_name}
-              class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
-            />
-          </div>
-          <div>
-            <label class="block text-xs text-ink-2 mb-1" for="package-parent">부모 Python lineage 레이어 *</label>
-            {#if packageParentArtifacts.length > 0}
-              <select
-                id="package-parent"
-                bind:value={packageForm.parent_artifact_id}
-                class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 focus:outline-none focus:border-indigo-500"
-              >
-                <option value="">Python lineage 레이어를 선택하세요</option>
-                {#each packageParentArtifacts as a}
-                  <option value={String(a.id)}>#{a.id} {artifactChainLabel(a)} ({a.kind}{a.python_version ? ` · py${a.python_version}` : ''} · {fmtRelative(a.created_at)})</option>
-                {/each}
-              </select>
-            {:else}
-              <div class="text-xs text-ink-2 italic px-3 py-2 bg-surface-base border border-line-2 rounded-lg">
-                먼저 Python runtime 레이어를 빌드하세요
-              </div>
-            {/if}
-          </div>
-          {#if selectedPackageParentArtifact}
-            <div class="px-3 py-2 bg-indigo-900/20 border border-indigo-700/40 rounded-lg space-y-1">
-              <div class="text-xs text-indigo-300">
-                package delta: <span class="font-mono">{artifactChainLabel(selectedPackageParentArtifact)}</span> → <span class="font-mono">{packageForm.layer_name || '(새 레이어)'}</span>
-              </div>
-              <p class="text-xs text-indigo-200/70">부모 artifact ID #{selectedPackageParentArtifact.id}의 Python runtime을 재사용합니다.</p>
-              <p class="text-xs text-indigo-200/70">상속 Ubuntu: {ubuntuBaseLabel(selectedPackageParentArtifact)}</p>
-            </div>
-          {/if}
-          <div>
-            <label class="block text-xs text-ink-2 mb-1" for="package-pip">pip 패키지 스펙 *</label>
-            <textarea
-              id="package-pip"
-              rows="3"
-              placeholder="numpy==1.26.4, pandas==2.2.2, scikit-learn==1.5.1&#10;numpy>=1.24,<2"
-              bind:value={packageForm.pip_packages}
-              class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
-            ></textarea>
-            {#if packageInvalidSpecs.length > 0}
-              <p class="mt-1 text-xs text-red-300">패키지 스펙 형식 오류: {packageInvalidSpecs.join(', ')}</p>
-            {:else if packageSpecs.length > 0}
-              <p class="mt-1 text-xs text-ink-2">전송 예정: {packageSpecs.join(', ')}</p>
-            {/if}
-          </div>
-          <div>
-            <label class="block text-xs text-ink-2 mb-1" for="package-index-url">pip index URL (선택)</label>
-            <input
-              id="package-index-url"
-              type="url"
-              placeholder="https://download.pytorch.org/whl/cpu"
-              bind:value={packageForm.pip_index_url}
-              class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
-            />
-            <p class="mt-1 text-xs text-ink-2">pip install --index-url 값입니다. 인증정보, query, fragment는 허용하지 않습니다.</p>
-          </div>
-          <div>
-            <label class="block text-xs text-ink-2 mb-1" for="package-extra-index-urls">extra index URLs (선택, 줄당 1개)</label>
-            <textarea
-              id="package-extra-index-urls"
-              rows="2"
-              placeholder="https://pypi.org/simple"
-              bind:value={packageForm.pip_extra_index_urls}
-              class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
-            ></textarea>
-          </div>
-          <div>
-            <label class="block text-xs text-ink-2 mb-1" for="package-find-links">find-links URLs (선택, 줄당 1개)</label>
-            <textarea
-              id="package-find-links"
-              rows="2"
-              placeholder="https://download.pytorch.org/whl/cpu/torch_stable.html"
-              bind:value={packageForm.pip_find_links}
-              class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
-            ></textarea>
-            {#if packageInvalidUrls.length > 0}
-              <p class="mt-1 text-xs text-red-300">pip source URL 형식 오류: {packageInvalidUrls.join(', ')}</p>
-            {:else if packageForm.pip_index_url.trim() || packageExtraIndexUrls.length > 0 || packageFindLinks.length > 0}
-              <p class="mt-1 text-xs text-ink-2">pip source 옵션을 빌드에 함께 전달합니다.</p>
-            {/if}
-          </div>
-          <Button
-            variant="accent"
-            size="sm"
-            onclick={triggerPackageBuild}
-            disabled={packageSubmitting || !packageForm.layer_name || !packageForm.parent_artifact_id || packageSpecs.length === 0 || packageInvalidSpecs.length > 0 || packageInvalidUrls.length > 0}
-            class="w-full"
-          >
-            {packageSubmitting ? '빌드 시작 중...' : 'Python 패키지 레이어 빌드'}
-          </Button>
-        </div>
-      </section>
-
-      <!-- ------------------------------------------------------------------ -->
-      <!-- 소비 인스턴스 생성                                                  -->
-      <!-- ------------------------------------------------------------------ -->
-      <section id="admin-library-consume" class="xl:col-span-4 min-w-0 bg-surface-raised border border-line rounded-lg p-5">
-        <h2 class="text-sm font-semibold text-ink-0 mb-1">소비 인스턴스 생성</h2>
-        <p class="text-xs text-ink-2 mb-4">
-          프로필의 레이어 체인을 각자 별도 NFS share에서 RO 마운트하고
-          OverlayFS로 합성한 VM을 생성합니다.
-        </p>
-        <div class="space-y-3">
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="block text-xs text-ink-2 mb-1" for="consume-profile">프로필 *</label>
-              {#if profiles.length > 0}
-                <select
-                  id="consume-profile"
-                  bind:value={consumeForm.profile_name}
-                  class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 focus:outline-none focus:border-action-warm"
-                >
-                  <option value="">선택하세요</option>
-                  {#each profiles as p}
-                    <option value={p.name}>{p.name} ({p.layers.length}개 레이어)</option>
-                  {/each}
-                </select>
-              {:else}
-                <input
-                  id="consume-profile"
-                  type="text"
-                  placeholder="프로필 이름"
-                  bind:value={consumeForm.profile_name}
-                  class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
-                />
-              {/if}
-              {#if selectedConsumeProfileBaseImage}
-                <p class="mt-1 text-xs text-ink-2">기본 이미지: {baseImageLabel(selectedConsumeProfileBaseImage)} 사용</p>
-              {:else if selectedConsumeProfileBaseImageIds.length === 1}
-                <p class="mt-1 text-xs text-ink-2">기본 이미지 ID: {shortId(selectedConsumeProfileBaseImageIds[0])} 사용</p>
-              {:else if consumeProfileHasMixedUbuntuBases}
-                <p class="mt-1 text-xs text-yellow-300">base image가 섞인 프로필입니다: {selectedConsumeProfileBaseImageIds.join(', ') || selectedConsumeProfileUbuntuBases.join(', ')}</p>
-              {/if}
-            </div>
-            <div>
-              <label class="block text-xs text-ink-2 mb-1" for="server-name">서버 이름 *</label>
-              <input
-                id="server-name"
-                type="text"
-                placeholder="layer-consumer-01"
-                bind:value={consumeForm.server_name}
-                class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
-              />
-            </div>
-          </div>
-          <div>
-            <label class="block text-xs text-ink-2 mb-1" for="flavor-id">Flavor ID *</label>
-            <input
-              id="flavor-id"
-              type="text"
-              placeholder="flavor UUID 또는 이름"
-              bind:value={consumeForm.flavor_id}
-              class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
-            />
-          </div>
-          <div>
-            <label class="block text-xs text-ink-2 mb-1" for="network-id">Network ID (선택)</label>
-            <input
-              id="network-id"
-              type="text"
-              placeholder="기본 네트워크"
-              bind:value={consumeForm.network_id}
-              class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
-            />
-            <p class="mt-1 text-xs text-ink-2">소비 VM 이미지는 프로필 레이어가 저장한 Glance base image fingerprint에서 자동 결정됩니다.</p>
-          </div>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label class="block text-xs text-ink-2 mb-1" for="consume-keypair">접속 키페어 (선택)</label>
-              <select
-                id="consume-keypair"
-                bind:value={consumeForm.key_name}
-                class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 focus:outline-none focus:border-action-warm"
-              >
-                <option value="">선택 안 함</option>
-                {#each keypairs as kp}
-                  <option value={kp.name}>{kp.name}</option>
-                {/each}
-              </select>
-              <p class="mt-1 text-xs text-ink-2">현재 로그인한 프로젝트/사용자 범위에서 보이는 키페어만 선택됩니다.</p>
-            </div>
-            <div>
-              <label class="block text-xs text-ink-2 mb-1" for="consume-ssh-username">SSH 사용자 (선택)</label>
-              <input
-                id="consume-ssh-username"
-                type="text"
-                placeholder="비우면 이미지 기본 사용자"
-                bind:value={consumeForm.ssh_username}
-                class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
-              />
-              <p class="mt-1 text-xs text-ink-2">키나 공개키를 넣은 경우에만 사용됩니다. VM에는 Floating IP를 붙이지 않으므로 내부 IP로 접속해야 합니다.</p>
-            </div>
-          </div>
-          <div>
-            <label class="block text-xs text-ink-2 mb-1" for="consume-ssh-public-key">SSH 공개키 직접 입력 (선택)</label>
-            <textarea
-              id="consume-ssh-public-key"
-              rows="3"
-              placeholder="다른 사용자의 공개키를 직접 붙여넣을 때 사용"
-              bind:value={consumeForm.ssh_public_key}
-              class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm font-mono resize-none"
-            ></textarea>
-            <p class="mt-1 text-xs text-ink-2">직접 입력한 공개키가 있으면 위 키페어 선택보다 우선합니다.</p>
-          </div>
-          <Button
-            variant="primary"
-            size="sm"
-            onclick={triggerConsume}
-            disabled={consumeSubmitting || !consumeForm.profile_name || !consumeForm.server_name || !consumeForm.flavor_id || consumeProfileHasMixedUbuntuBases}
-            class="w-full"
-          >
-            {consumeSubmitting ? '인스턴스 생성 중...' : '소비 인스턴스 생성'}
-          </Button>
-        </div>
-      </section>
     </div>
 
     <!-- ---------------------------------------------------------------------- -->
@@ -2052,107 +1302,23 @@
     <!-- ---------------------------------------------------------------------- -->
     <div class="mb-8">
       <section class="bg-surface-sunken border border-line-2 rounded-xl p-5" data-tour="admin-library-profile">
-        <h2 class="text-sm font-semibold text-ink-0 mb-1">프로필 구성</h2>
+        <h2 class="text-sm font-semibold text-ink-0 mb-1">프로필 기록</h2>
         <p class="text-xs text-ink-2 mb-4">
-          빌드된 레이어를 순서대로 묶어 named 프로필로 저장합니다.
-          소비 인스턴스는 이 프로필의 레이어 스택을 OverlayFS로 마운트합니다.
-          <span class="text-ink-2">(표시는 base→상위 레이어 순서, 소비 시 topmost 우선순위로 변환)</span>
+          Dockerfile 빌드로 생성된 프로필과 기존 프로필의 계보·공개 상태를 조회하고 관리합니다. 새 VM은 상단 Dockerfile 빌드에서 생성합니다.
         </p>
-        {#if profileError}
-          <div class="mb-3 p-2 bg-red-900/40 border border-red-700 rounded text-red-300 text-xs">{profileError}</div>
-        {/if}
         {#if profileDeleteError}
           <div class="mb-3 p-2 bg-red-900/40 border border-red-700 rounded text-red-300 text-xs">{profileDeleteError}</div>
         {/if}
         {#if profileMessage}
           <div class="mb-3 p-2 bg-green-900/40 border border-green-700 rounded text-green-300 text-xs">{profileMessage}</div>
         {/if}
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <p class="text-xs text-ink-2 mb-2">빌드된 레이어 (클릭해 선택)</p>
-            {#if artifacts.length === 0}
-              <p class="text-xs text-ink-2 italic">아직 빌드된 레이어가 없습니다</p>
-            {:else}
-              <div class="space-y-1 max-h-40 overflow-y-auto">
-                {#each artifacts as a}
-                  {@const selected = profileForm.selectedLayers.includes(a.name)}
-                  <button
-                    type="button"
-                    onclick={() => toggleProfileArtifact(a)}
-                    disabled={!a.is_sealed}
-                    title={!a.is_sealed ? '봉인 전 — 빌드 완료 후 사용 가능' : artifactChainLabel(a)}
-                    class="w-full text-left px-3 py-2 rounded-lg text-xs transition-colors
-                      {!a.is_sealed ? 'opacity-40 cursor-not-allowed bg-surface-base border border-line text-ink-2' :
-                       selected ? 'bg-action-warm/50 border border-action-warm text-action-on-warm' :
-                       'bg-surface-base border border-line-2 text-ink-2 hover:border-line-2'}"
-                  >
-                    <div class="flex items-center gap-2">
-                      <span class="font-mono flex-1">#{a.id} {a.name}</span>
-                      <span class="text-xs px-1.5 py-0.5 rounded {a.kind === 'uv' ? 'bg-surface-selected/60 text-warm-text' : 'bg-indigo-900/60 text-indigo-300'}">{a.kind}</span>
-                      {#if selected}
-                        <span class="text-xs text-warm-text">#{profileForm.selectedLayers.indexOf(a.name) + 1}</span>
-                      {/if}
-                    </div>
-                    <div class="mt-1 text-xs text-ink-2 truncate">체인: {artifactChainLabel(a)}</div>
-                    <div class="mt-0.5 text-xs text-ink-2 truncate">Ubuntu: {ubuntuBaseLabel(a)}</div>
-                    {#if packageLabel(a) !== '—'}
-                      <div class="mt-0.5 text-xs text-ink-2 truncate">요청 패키지: {packageLabel(a)}</div>
-                    {/if}
-                  </button>
-                {/each}
-              </div>
-            {/if}
+        {#if selectedHistoricalProfile}
+          <div class="mb-3 p-3 border border-line-2 rounded text-xs" aria-label="선택한 프로필">
+            <p class="font-mono">#{selectedHistoricalProfile.id} {selectedHistoricalProfile.name}</p>
+            <p>{selectedHistoricalProfile.layers.join(' → ')}</p>
+            <p>생성: {fmtDate(selectedHistoricalProfile.created_at)} · 수정: {fmtDate(selectedHistoricalProfile.updated_at)}</p>
           </div>
-          <div class="space-y-3">
-            <div>
-              <p class="text-xs text-ink-2 mb-1">선택된 레이어 순서</p>
-              {#if profileForm.selectedLayers.length === 0}
-                <p class="text-xs text-ink-2 italic">레이어를 선택하세요</p>
-              {:else}
-                <div class="space-y-1">
-                  {#each profileForm.selectedLayers as layer, i}
-                    <div class="flex items-center gap-2 text-xs text-ink-2 px-2 py-1 bg-surface-base rounded">
-                      <span class="text-ink-2 w-4 text-right">{i + 1}</span>
-                      <div class="flex-1 min-w-0">
-                        <span class="font-mono">{layer}</span>
-                        {#if isAutoIncludedParent(layer)}
-                          <span class="ml-2 text-xs text-warm-text">상위 부모 자동 포함</span>
-                        {/if}
-                      </div>
-                      <button type="button" onclick={() => removeProfileLayerCascade(layer)} class="text-ink-2 hover:text-red-400 transition-colors">✕</button>
-                    </div>
-                  {/each}
-                </div>
-              {/if}
-              {#if selectedProfileBaseImageIds.length === 1}
-                <p class="mt-2 text-xs text-ink-2">프로필 base image: {artifactBaseImageLabel(sealedArtifacts.find(a => a.base_image_id === selectedProfileBaseImageIds[0]) ?? { ubuntu_base: selectedProfileUbuntuBases[0], base_image_id: selectedProfileBaseImageIds[0] })}</p>
-              {:else if profileHasMixedUbuntuBases}
-                <div class="mt-2 px-3 py-2 bg-yellow-900/30 border border-yellow-700/50 rounded text-xs text-yellow-200">
-                  base image가 섞여 있습니다: {selectedProfileBaseImageIds.join(', ') || selectedProfileUbuntuBases.join(', ')}. 저장/소비 전 같은 Glance base image 레이어만 선택하세요.
-                </div>
-              {/if}
-            </div>
-            <div>
-              <label class="block text-xs text-ink-2 mb-1" for="profile-name-input">프로필 이름 *</label>
-              <input
-                id="profile-name-input"
-                type="text"
-                placeholder="예: default"
-                pattern="[a-z0-9][a-z0-9.+-]*"
-                bind:value={profileForm.name}
-                class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
-              />
-              {#if profileForm.name && !profileNameValid}
-                <p class="mt-1 text-xs text-red-400">소문자, 숫자, 점, 하이픈만 사용할 수 있습니다. 예: base-uv</p>
-              {/if}
-            </div>
-            <button
-              onclick={upsertProfile}
-              disabled={profileSubmitting || !profileForm.name || !profileNameValid || profileForm.selectedLayers.length === 0 || profileHasMixedUbuntuBases}
-              class="w-full py-2 px-4 bg-teal-700 hover:bg-teal-600 disabled:bg-surface-selected disabled:text-ink-3 disabled:cursor-not-allowed text-ink-0 text-sm font-medium rounded-lg transition-colors"
-            >
-              {profileSubmitting ? '저장 중...' : '프로필 저장'}
-            </button>
+        {/if}
             {#if profiles.length > 0}
               <div class="pt-3 border-t border-line-2">
                 <p class="text-xs text-ink-2 mb-2">저장된 프로필</p>
@@ -2180,22 +1346,10 @@
                           <td class="px-3 py-2">
                             <div class="flex justify-end gap-2">
                               <button
-                                type="button"
-                                onclick={() => launchConsumeWithProfile(profile.name)}
-                                class="px-2 py-1 rounded bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-xs font-medium transition-colors"
-                                title="이 프로필로 OverlayFS 소비 VM 인스턴스 즉시 생성"
-                              >
-                                인스턴스 실행
-                              </button>
-                              <button
-                                onclick={() => {
-                                  profileForm.name = profile.name;
-                                  profileForm.selectedLayers = normalizeProfileLayers(profile.layers);
-                                  profileDeleteError = '';
-                                }}
+                                onclick={() => selectedProfileId = profile.id}
                                 class="px-2 py-1 rounded border border-line-2 text-ink-2 hover:border-gray-400 transition-colors"
                               >
-                                불러오기
+                                상세
                               </button>
                               <button
                                 type="button"
@@ -2223,8 +1377,6 @@
                 </div>
               </div>
             {/if}
-          </div>
-        </div>
       </section>
     </div>
 

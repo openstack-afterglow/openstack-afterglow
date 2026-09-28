@@ -1,6 +1,8 @@
 import { api } from './client';
 import type {
 	WaygateServer,
+	WaygateServerCreateRequest,
+	WaygateServerUpdateRequest,
 	WaygateClient,
 	WaygateClientCreateResult,
 	WaygateClientCreateRequest,
@@ -20,11 +22,11 @@ export async function listServers(
 }
 
 export async function createServer(
-	name: string,
+	body: WaygateServerCreateRequest,
 	token: string | undefined,
 	projectId: string | undefined
 ): Promise<WaygateServer> {
-	return api.post<WaygateServer>(BASE, { name }, token, projectId);
+	return api.post<WaygateServer>(BASE, body, token, projectId);
 }
 
 export async function getServer(
@@ -32,7 +34,16 @@ export async function getServer(
 	token: string | undefined,
 	projectId: string | undefined
 ): Promise<WaygateServer> {
-	return api.get<WaygateServer>(`${BASE}/${serverId}`, token, projectId);
+	return api.get<WaygateServer>(`${BASE}/${serverId}`, token, projectId, { refresh: true });
+}
+
+export async function updateServer(
+	serverId: string,
+	body: WaygateServerUpdateRequest,
+	token: string | undefined,
+	projectId: string | undefined
+): Promise<WaygateServer> {
+	return api.patch<WaygateServer>(`${BASE}/${serverId}`, body, token, projectId);
 }
 
 export async function deleteServer(
@@ -48,7 +59,7 @@ export async function listClients(
 	token: string | undefined,
 	projectId: string | undefined
 ): Promise<WaygateClient[]> {
-	return api.get<WaygateClient[]>(`${BASE}/${serverId}/clients`, token, projectId);
+	return api.get<WaygateClient[]>(`${BASE}/${serverId}/clients`, token, projectId, { refresh: true });
 }
 
 export async function createClient(

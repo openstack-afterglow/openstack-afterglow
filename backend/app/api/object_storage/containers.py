@@ -28,6 +28,7 @@ from app.models.storage import (
 )
 from app.services import cache
 from app.services.cache import invalidation, keys
+from app.services.swift import InvalidObjectMove
 
 router = APIRouter()
 _logger = logging.getLogger(__name__)
@@ -886,6 +887,8 @@ async def move_object(
         result = await asyncio.to_thread(
             swift.move_object, conn, container_name, body.source, dest_container, dest_name
         )
+    except InvalidObjectMove as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception:
         _logger.exception("오브젝트 이동 실패: %s -> %s", body.source, body.destination)
         raise HTTPException(status_code=500, detail="오브젝트 이동 실패")
@@ -907,6 +910,8 @@ async def rename_object(
 
     try:
         result = await asyncio.to_thread(swift.rename_object, conn, container_name, body.source, body.new_name)
+    except InvalidObjectMove as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception:
         _logger.exception("오브젝트 이름 변경 실패: %s -> %s", body.source, body.new_name)
         raise HTTPException(status_code=500, detail="오브젝트 이름 변경 실패")

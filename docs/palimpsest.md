@@ -19,6 +19,8 @@ afterglow에는 역사적으로 레이어 관련 코드가 **세 갈래**로 자
 | 2세대 "union" | `UnionLayer`(492) `UnionTemplate`(542) `UnionUserMount`(562) | `services/union_layers.py`, `scripts/layerbuild.py`, `scripts/envmgr-*.sh` | `/api/v1/union` | 코드만 존재, 인프라 미배포 |
 | 3세대 "squashfs" | `LayerBuild`(296) `LayerConsume`(350) `LayerArtifact`(373) `LayerProfile`(469) | `services/layer_build.py`, `layer_builder.py`, `recipe_blocks.py`, `cloud_init_builder.py`, `dockerfile_import.py`, `builder_vm.py`, `manila.py` | `/api/v1/admin/libraries`, `/api/v1/libraries/squashfs` | **실제 배포·운영 중** |
 
+3세대 운영 상태는 기존 squashfs 경로의 상태다. 아래 4.4의 새 Dockerfile 전체-root/Cinder-upper 경로는 DMSLab OpenStack에서 실제 루트·단계 빌드, 캐시 재사용, SSH 소비 VM(`afterglow-pal-proof-20260927`, `f98f198d-7003-4189-a846-6a3f2ca40d10`), 재부팅 후 overlay/upper 영속성, 임시 빌더 정리까지 검증했으며 운영 컨테이너 배포는 별도 단계다.
+
 ### Palimpsest의 처리 방침
 
 | 대상 | 처리 |
@@ -119,21 +121,38 @@ NFS의 마운트 옵션 교체가 아니라 **다른 스토리지 토폴로지**
 
 ## 4.4. Dockerfile 로 레이어 빌드
 
-Dockerfile 한 편이 곧 레이어 체인이 된다. 명령 하나가 레이어 하나다(Docker 와 같은 모델).
+Dockerfile 한 편은 Glance 이미지 전체 루트(`dockerfile-root` squashfs)에서 시작하는 레이어 체인이다. FROM만 있어도 전체 루트 artifact와 profile을 만든다. 이후 지원하는 명령 하나마다 변경분(`dockerfile` squashfs) 한 개를 봉인한다. 임시 builder 자체의 `/usr`나 부팅 후 변경된 root를 FROM의 대체물로 사용하지 않는다.
 
 | 소스 | 엔드포인트 | 빌드 컨텍스트 |
 |---|---|---|
 | GitHub (commit 고정) | `POST /api/v1/admin/libraries/imports/dockerfile` | 커밋 archive — `COPY`/`ADD` 사용 가능 |
 | 업로드(inline) | `POST /api/v1/palimpsest/builds/dockerfile` | **없음 — `COPY`/`ADD` 거부** |
 
-계획만 미리 보려면 `POST /api/v1/palimpsest/builds/dockerfile/plan`.
+`POST /api/v1/palimpsest/builds/dockerfile/plan`은 캐시를 포함한 빌드 계획을 미리 본다.
+`POST /api/v1/palimpsest/builds/dockerfile/lint`는 관리자 전용 읽기 검사다.
+`{"dockerfile":"FROM ubuntu:24.04\nRUN true", "layer_prefix":"demo"}`를 받아
+`valid`, `diagnostics` (`line`, `message`), `warnings` (`line`, `message`), `from`
+(`line`, `ref`, `kind`, `image`, `parent`, `error`, `note`, `completions`) 및 `layers`
+(`new`, `inherited`, `total`, `limit`, `by_instruction`)를 반환한다. 문법 오류가 여러 줄이면
+한 번에 모두 보고, 해석 가능한 FROM은 문법 오류와 무관하게 미리 확인한다. `from.image`는
+활성 Ubuntu Glance 이미지 목록의 항목이며 부모 참조는 `from.parent`에 계보 깊이까지 포함한다.
+tag가 모호하면 `completions[].ref`를 FROM에 복사할 수 있다. 로컬 KVM 디스크 상한 25개를
+넘으면 `warnings`로 알리되 OpenStack 빌드 제출을 막지는 않는다. 린트는 잡·빌드 캐시·VM을
+생성하지 않고 실제 `/plan`과 빌드는 독립적으로 다시 검사한다. 인라인과 URL/파일 입력에는
+빌드 컨텍스트가 없으므로 `COPY`/`ADD`를 오류로 보고한다.
 
 ### 지원하는 문법
 
-- `FROM ubuntu:18.04|20.04|22.04|24.04` — 새 체인을 시작한다. Glance base image 와 일치해야 한다.
-- `FROM palimpsest/<name>@sha256:<64hex>` — **기존 레이어 위에 쌓는다**. Ubuntu base 는 부모에게서
-  상속한다(다른 base 위에 쌓으면 ABI 가 어긋난다 — union.md §4.2 와 같은 이유).
-- `RUN` · `ENV` · `WORKDIR` — 각각 레이어가 된다. `ENV`/`WORKDIR` 는 뒤따르는 `RUN` 에 반영된다.
+- `FROM ubuntu:18.04|20.04|22.04|24.04` — 새 체인을 시작한다. 그 버전에 해당하는
+  active Glance 이미지가 정확히 하나일 때 자동 선택한다. 같은 이름의 정확한 Glance 이미지가
+  있으면 이름 조회가 먼저 적용된다. 후보가 둘 이상이면 lint가 제시한 개별 이미지 이름/UUID를
+  FROM에 넣어 지정한다. 다른 Ubuntu release tag는 거부한다.
+- `FROM <Glance image name:tag>` (또는 image UUID) — 현재 관리자의 Glance catalog에서 정확히
+  일치하는 이름을 우선, 이어 UUID를 찾는다. 같은 이름이 여러 개면 `created_at` 최신 이미지
+  (동일 시각이면 ID 순서)가 선택되며 lint에 안내한다. 선택된 이미지는 active이고 지원하는
+  Ubuntu 이미지여야 한다. Dockerfile 요청에는 별도 `base_image_id` 선택 필드가 없다.
+- `FROM palimpsest/<name>@sha256:<64hex>` — 같은 Glance 이미지의 **봉인되고 digest가 준비된 전체 루트**에서 이어진 부모 체인 위에 쌓는다. `/usr` 전용 등 기존 partial-root artifact는 거부한다. Ubuntu base 및 Glance image ID를 부모에게서 상속하며, inline과 GitHub 모두 동일하게 검증한다.
+- `RUN` · `ENV` · `WORKDIR` — 각각 레이어가 된다. `FROM palimpsest/<name>@sha256:…`는 부모 전체 계보의 누적 `ENV`와 `WORKDIR`를 복원하며, 자식의 상대 `WORKDIR`와 뒤따르는 `RUN`에도 반영한다. `RUN` 환경은 복합 셸 명령 전체에 전달한다.
 - `COPY` · `ADD` — GitHub 소스에서만.
 
 거부: `FROM scratch`, multi-stage `FROM … AS`, `FROM --platform=…`, heredoc,
@@ -141,19 +160,44 @@ Dockerfile 한 편이 곧 레이어 체인이 된다. 명령 하나가 레이어
 
 ### 빌드 캐시
 
-`step_digest = sha256(부모 참조 + "\n" + 정규화된 instruction)`. 같은 부모 위에 같은 명령이 이미
-sealed artifact 로 있으면 그 단계를 다시 빌드하지 않는다. 부모 참조는 루트에서는 Ubuntu base 키,
-이후에는 부모의 `chain_id` 다 — Palimpsest 의 chain_id 가 "여기까지의 스택"을 한 값으로 대표하기 때문에
-성립한다.
+`step_digest = sha256("dockerfile-full-root-v2\n" + 부모 chain_id + "\n" + 정규화된 instruction)`. 실행기가 생성하는 guest 파일 형식이 바뀌어 과거 ENV 레이어를 잘못 재사용하지 않도록 v2 namespace를 사용한다. 기존 봉인 artifact의 digest/내용은 변경하지 않는다. 첫 루트는 고정 문자열이 아니라 Glance 이미지 UUID·강한 hash/checksum에 정확히 일치하는 실제 `dockerfile-root` squashfs의 blob SHA-256 및 `chain_id`로 식별한다. 실제 루트 digest가 생기기 전에는 어떠한 단계도 캐시하지 않는다. 각 명령은 직전 artifact의 `chain_id`를 부모로 삼고, GitHub `COPY`/`ADD`는 pin된 commit도 키에 포함한다.
 
-**선두 연속 구간만 재사용한다.** 중간부터 건너뛰면 다른 스택이 되기 때문이다. 모든 단계가 캐시에
-맞으면 만들 게 없다는 뜻이므로 409 를 준다(기존 프로파일을 그대로 쓰면 된다).
+**선두 연속 구간만 재사용한다.** 모든 단계가 캐시에 맞거나 FROM만 있는 경우에도 import job은 정상 완료되어 기존 봉인 체인을 profile에 연결한다(필요하면 SSH 소비 VM 생성). 오래된 partial-root 체인, 이미지 지문 불일치, 미봉인/미완성 digest는 캐시나 FROM 부모가 될 수 없다.
+
+
+### 전체 루트 빌드와 SSH 소비
+
+빌드는 service-project 일회용 Ubuntu builder에 **부팅하지 않은** Glance→Cinder 볼륨 복제본을 attach하고, 볼륨 serial을 확인해 read-only로 mount한다. `/dev`, `/proc`, `/sys`, cloud-init state, 머신 ID, SSH host/private key를 제외하고 전체 root squashfs를 별도 Manila NFS share에 만든다. builder는 root와 각 명령의 OverlayFS upper 변경분을 개별 share에 쓰고 byte SHA-256·MD5·size를 계산한다. 모든 단계가 성공한 뒤 첫 번째 share에 token-bound manifest를 원자적으로 저장하고 Nova console에도 보고를 시도한다. 정상 SHUTOFF를 확인한 다음 console 출력 여부와 무관하게 일회용 SSH VM에 각 share의 read-only 권한만 부여해 NFS manifest의 token·순서를 확인하고 모든 실제 squashfs 바이트의 SHA-256·MD5·size를 다시 검증한다. 실패·누락은 봉인하지 않는다. 검증 뒤 검증 VM/접근 권한, builder 접근 권한 및 임시 Nova/Cinder/Neutron 자원을 정리한 다음에만 root→명령 순서의 parent/chain digest와 profile을 한 DB 트랜잭션으로 봉인한다. 실패한 미봉인 share는 정리한다.
+
+DMSLab Nova는 Cinder volume UUID의 하이픈을 포함한 앞 20자만 virtio serial로 노출한다. Builder와 소비 guest는 `/dev/vdX` 순서를 가정하지 않고, serial에서 하이픈을 제거한 hex 접두사(최소 17자)를 지정된 volume UUID와 대조한다. 부트 디스크·불일치·중복을 제외하며 root 복제본은 Ubuntu 파일시스템만 읽기 전용 mount하고 upper는 빈 전용 디스크만 포맷한다.
+
+Glance 복제본은 builder 부트 이미지의 파일시스템 UUID를 그대로 가진다. `findmnt SOURCE /`가 복제본을 부트 장치로 잘못 나타내는 환경에서 builder는 실제 `/` mount의 `MAJ:MIN`과 각 block device의 `MAJ:MIN`을 비교한다. 유일한 부트 디스크를 확인하지 못하면 안전하게 거부한다.
+
+재사용하는 각 ancestor는 읽기 전용 NFS에서 SHA-256을 검증하며 일회용 builder 로컬 디스크에 복사하고 input share를 먼저 unmount한다. SquashFS lower의 backing file은 로컬 복사본이다. 빌드 완료 시 manifest를 저장하고 lower를 해제한 뒤 `losetup -a`의 backing path가 일치하는 loop만 detach하고 output NFS share를 unmount한 후 shutdown한다. 실제 NFS-backed SquashFS loop는 `losetup -j`에서 누락되고 `losetup -a`로 detach를 시도해도 input share를 `device is busy`로 붙잡았으므로 입력 blob을 직접 loop mount하지 않는다.
+
+Manila가 동일 share에 반환한 여러 NFS export 위치는 builder 입력/출력과 일회용 검증 VM에서 순서대로 시도한다. 각 mount 최대 15초, 전체 180초·12회전 이내이며 모든 위치가 실패하면 봉인을 거부한다. 검증 manifest 또는 byte digest가 틀리면 mount 성공과 무관하게 봉인을 거부한다. `ENV` delta는 일반 SSH의 비로그인 명령에 `sshd SetEnv`, login shell과 대화형 세션에 profile script, systemd 서비스에 `DefaultEnvironment`로 전달한다. `WORKDIR`는 이후 `RUN`과 대화형 로그인 셸의 시작 디렉터리이며 비로그인 SSH 명령에 임의 `cd`를 강제하지 않는다.
+
+두 import API의 선택적 `consumer`는 flavor, network, server 이름과 SSH keypair 또는 public key를 받는다. SSH 공개키와 placement는 인증된 관리자 요청 중 확정하며 비밀키는 저장하지 않는다. import 응답은 `consumer_requested`, `consumer_status`, `consume_id`를 제공하고 완료 뒤 `/api/v1/admin/libraries/consumes/{id}`로 작업을 추적한다. 소비 VM은 child-first 변경분들과 전체 root를 NFS read-only·digest 검증 후 합성하고 전용 쓰기 upper를 사용한다. `/var/lib/cloud`와 머신 identity는 원래 bootstrap disk에서 유지한다. 활성화는 initramfs root overlay 부팅·재부팅 뒤 health token이 관측될 때에만 완료된다. SSH username에 `root`는 허용하지 않는다. 이미지 내용 실행과 NFS export는 관리자 권한·service project 정책에 한정한다.
+
+전체 루트 소비자는 첫 부팅 시 각 share의 Manila NFS export 후보를 순서대로 시도하고 실제 `.sqsh` digest를 검증해 Cinder `blobs/`에 보관한 뒤 NFS를 해제한다. root fstab에 NFS 자동 마운트를 남기지 않으므로 다음 부팅은 해당 로컬 blob으로만 진행한다. 기존 `/usr` 전용 소비자의 fstab 마운트 동작은 유지한다.
+
+Import의 `artifact_ids`와 소비 레코드는 root→delta 계보 순서로 저장한다. 소비 validation은 이 순서로 parent 연결을 확인한 뒤 guest NFS manifest에만 delta→root(child-first)로 뒤집어 제공한다. 저장된 ID를 먼저 뒤집으면 전체 루트 계보 검사에서 소비 VM 생성이 거부된다.
+
+완료된 Dockerfile 작업 기록에서 새 VM을 실행할 때는 관리자 `POST /api/v1/admin/libraries/consume`에 `import_id`와 VM 설정을 보내며, `profile_name`을 함께 보내지 않는다. 서버는 작업에 기록된 정확한 `artifact_ids`가 모두 봉인된 연속 root→delta 계보인지 다시 확인하고 같은 IDs를 소비 레코드에 고정한다. 프로필이 나중에 다른 artifact를 가리켜도 과거 작업의 VM 내용은 바뀌지 않는다. 별도 `profile_name` 선택자는 기존 관리 API 호환용으로 유지한다.
+
+Nova console이 없는 설치에서는 root 소비 VM의 guest health unit이 overlay `/`와 SSH 활성화를 확인한 다음 `/run/afterglow-layer-ready`에 일회용 token을 기록한다. Backend는 VM 생성 시 생성한 임시 Ed25519 공개키만 guest의 사용자 계정에 넣고, private key로 SSH에서 token·`findmnt / = overlay`·SSH active를 확인한다. SSH만으로 상태를 증명한 경우 임시 공개키 회수까지 성공해야 `active`가 된다. Console로 상태를 증명한 경우 회수는 시도하고 실패를 경고로 남긴다. 모든 경우 local private key 파일은 삭제한다. 연결·token·root 상태를 확인할 수 없으면 VM을 `active`로 기록하지 않으며 진단 가능한 VM을 보존한다. Backend에서 소비 VM의 provider IP:22에 도달할 수 있어야 console 없는 환경의 readiness proof가 가능하다.
+
+소비 생성은 별도의 빈 Cinder volume(`upper_volume_size_gb`)을 먼저 준비하고 Nova server의 비부팅 block-device mapping(`boot_index=-1`, `delete_on_termination=true`)으로 붙인다. 첫 부팅 guest는 volume UUID의 serial과 부팅 디스크가 아닌 빈 장치를 검증한 뒤 **그 volume만** ext4로 포맷한다. NFS의 모든 `.sqsh`는 SHA-256 검증 후 같은 volume의 `blobs/`에 복사하며 upper/work도 그곳에 둔다. `layer-identity-merge.py`는 부팅하지 않은 Glance 루트에 아직 없는 첫 부팅 cloud-init SSH 계정(`ubuntu` 등)을 실제 소비자 `/`의 `/etc/{passwd,shadow,group,gshadow}`에서 `$ROOT_UPPER/etc`로 병합하고 `/home/<user>` 및 `.ssh` 소유권을 맞춘다. `$ROOT_UPPER/etc/fstab`에는 `/boot`·`/boot/efi`만 남기고 `multi-user.target.wants/layer-{activate,health}.service`와 `initramfs-tools` hook(`prereqs` 인자 처리 포함)을 보존한다. initramfs는 저장된 파일시스템 UUID로 volume을 mount해 네트워크 없이 child-first root stack을 구성한다. Nova 생성 전 실패하면 Cinder volume·port·access rule을 정리하고, 생성 후 health 실패는 VM과 진단 가능한 attached volume을 보존한다. 기존 `/usr` profile은 이 부팅 경로와 volume allocation을 사용하지 않는다.
+
+Image-backed 부트와 별도 upper를 함께 요청할 때는 Nova BDM에 Glance 이미지와 일치하는 `image→local, boot_index=0` 항목, 그리고 `volume→volume, boot_index=-1` upper 항목을 모두 보낸다. 비부팅 볼륨만 BDM으로 전달하면 실제 Nova가 부트 순서를 거부한다.
 
 ### 🔴 보안
 
 **inline Dockerfile 의 `RUN` 은 임의 셸 명령이다.** 실행은 격리된 임시 Builder VM 안에서만 일어나고
 모든 보간이 `shlex.quote` 되지만, 그럼에도 이 경로는 **관리자 전용**이다. 일반 사용자 개방은
 격리 강도·쿼터·네트워크 정책이 선행되어야 하는 별도 결정이다.
+
+GitHub context는 커밋 SHA를 고정하고 archive path traversal·link·special entry를 거부한다. 압축 archive 50MiB, 압축 해제 일반 파일 총량 512MiB, entry 5000개가 상한이다. 이 경로는 임의의 GitHub 저장소/스크립트를 관리자 권한의 일회용 builder에서 실행하므로 신뢰할 수 있는 소스만 선택한다.
 
 ## 4.5. 허브 (레이어 레지스트리)
 

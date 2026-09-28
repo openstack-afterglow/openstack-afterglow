@@ -26,6 +26,7 @@
 		rel?: string;
 		ariaLabel?: string;
 		ariaPressed?: boolean;
+		ariaExpanded?: boolean;
 		title?: string;
 		dataTour?: string;
 		class?: string;
@@ -44,6 +45,7 @@
 		rel,
 		ariaLabel,
 		ariaPressed,
+		ariaExpanded,
 		title,
 		dataTour,
 		class: className = '',
@@ -83,7 +85,7 @@
 		{@render children()}
 	</a>
 {:else}
-	<button {type} {disabled} aria-label={ariaLabel} aria-pressed={ariaPressed} data-tour={dataTour} {title} {onclick} onpointerenter={handleIntent} onfocus={handleIntent} class="btn btn-{variant} btn-{size} {className}">
+	<button {type} {disabled} aria-label={ariaLabel} aria-pressed={ariaPressed} aria-expanded={ariaExpanded} data-tour={dataTour} {title} {onclick} onpointerenter={handleIntent} onfocus={handleIntent} class="btn btn-{variant} btn-{size} {className}">
 		{@render children()}
 	</button>
 {/if}

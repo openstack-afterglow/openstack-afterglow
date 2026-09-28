@@ -209,6 +209,26 @@ class LayerBuild(Base):
 
 ---
 
+Dockerfile import는 기존 `/usr` 전용 `uv`/`python`/`packages` 체인을 재사용하지 않는다. 서비스 프로젝트의 임시 builder는 active Ubuntu Glance 이미지에서 생성한 **부팅하지 않은** Cinder 볼륨을 volume serial로 식별하고 read-only mount한다. `/var/lib/cloud`, `/etc/machine-id`, host/private SSH key 등 VM별 비밀과 런타임 mount를 제외한 파일시스템 전체를 `kind=dockerfile-root` squashfs로 보관한다. FROM만 있는 계획도 이 root artifact와 profile을 봉인한다. GitHub는 commit pin archive를 받고 inline 파일은 빌드 컨텍스트가 없으므로 COPY/ADD를 허용하지 않는다.
+
+DMSLab Nova는 Cinder volume UUID를 하이픈이 포함된 20자 virtio serial로 잘라 노출한다. Guest는 `/dev/vdX` 순서를 가정하지 않고 serial의 하이픈을 제거한 최소 17자 hex 접두사를 해당 volume UUID와 대조한다. 부트 디스크·다중 일치 항목은 거부하고, Glance 복제본은 Ubuntu root partition만 read-only mount한다. 소비 upper는 같은 방법으로 식별한 **빈 전용 디스크**만 포맷한다.
+
+Glance→Cinder 복제본은 builder 부트 이미지와 root 파일시스템 UUID가 중복되므로 `findmnt SOURCE /`로 부트 디스크를 식별하지 않는다. Builder는 실제 mount의 `MAJ:MIN`을 `lsblk` 파티션의 kernel 장치 번호와 대조하고 확인되지 않거나 여러 개인 경우 실패한다.
+
+Builder는 각 cached ancestor를 NFS에서 SHA-256을 계산하며 로컬 일회용 디스크로 복사·검증하고 입력 share를 즉시 해제한 다음 로컬 blob을 squashfs lower로 mount한다. Manifest 기록 후 cached·new lower를 해제하고 `losetup -a`의 정확한 backing path로 해당 loop만 detach한 뒤 출력 NFS를 unmount하고 shutdown한다. NFS에서 `losetup -j`가 loop를 놓치고 명시적인 `losetup -d` 뒤에도 NFS-backed loop가 input share를 `device is busy`로 붙잡는 사례가 있어 입력 blob을 직접 loop mount하지 않는다.
+
+각 RUN/COPY/ADD/ENV/WORKDIR는 이미 완성된 child-first squashfs stack 위의 OverlayFS upper만 자신의 Manila share에 squashfs로 기록한다(`kind=dockerfile`). 삭제는 upper의 overlay whiteout·opaque metadata에 남으므로 root+모든 변경분을 child-first로 다시 합성할 때 삭제된 root 파일이 되살아나면 안 된다. Builder는 마지막 단계 뒤 첫 share에 빌드 token과 모든 새 레이어의 byte SHA-256/MD5/size가 있는 manifest를 원자적으로 기록하고 console 출력도 시도한다. 정상 SHUTOFF 이후 Nova console 내용에 관계없이 read-only 일회용 검증 VM으로 manifest token·계획 순서와 **실제 각 blob 바이트**의 digest/size를 확인해야 한다. 누락·불일치·접근 오류는 실패로 처리하고 검증 VM/임시 access rule을 제거한다. 그 뒤에만 writable share 권한을 거두고 임시 VM·volume·port를 정리한 뒤 한 트랜잭션으로 `blob_digest`, `chain_id`, `digest_state=ready`, parent link, profile을 기록한다. 기존 sealed full-root 계보만 캐시와 FROM 부모가 된다. 같은 Glance UUID라도 강한 hash/checksum이 바뀌면 root snapshot을 다시 생성한다.
+
+부모 FROM은 root-first 계보 전체를 새 작업의 cached ancestor로 전달하고 각 ancestor의 누적 `ENV`·`WORKDIR` 메타데이터에서 실행 상태를 복구한다. 새 단계의 `RUN`은 해당 환경과 현재 작업 디렉터리를 실제 chroot 프로세스에 적용한다. `ENV` 단계는 비로그인 SSH/로그인 셸/systemd 서비스별 환경 파일을 생성하고 `WORKDIR`는 대화형 로그인 셸의 시작 경로를 기록한다. Manila가 반환한 NFS export 위치가 여러 개면 builder 입력·출력과 일회용 검증 VM은 첫 위치의 mount 실패 시 나머지 위치를 시도한다. 최대 12회전·180초, 각 mount 최대 15초로 제한하고 모든 위치가 실패하거나 manifest/digest가 틀리면 artifact를 봉인하지 않는다.
+
+선택적 SSH 소비는 `layer_import_jobs.consumer_spec`(공개키와 검증된 placement, private key 없음)과 `consume_id`로 import에 연결된다. `layer_consumes`는 **별도 Cinder upper volume**(Nova 비부팅 BDM, VM 삭제 시 삭제)에 검증된 sqsh·OverlayFS upper/work를 저장한다. 첫 부팅에 실제 부착 volume serial/빈 장치를 확인한 후 ext4를 생성한다. 전체 루트 소비는 각 share의 모든 검증된 Manila NFS export를 순차·유한하게 시도하고, 읽어 온 바이트의 digest를 대조한 뒤 NFS를 해제한다. root에는 NFS fstab 자동 mount를 남기지 않으며 initramfs는 파일시스템 UUID로 Cinder volume을 찾아 재부팅 시 NFS에 의존하지 않고 child-first root stack을 구성한다. health token은 새 root에서만 나타나야 active가 된다. boot 디스크의 cloud-init state와 머신 고유 값은 합성 root에 덮이지 않는다. Nova 생성 전 오류는 전용 volume·port·share 접근을 철회하고, 생성 후 오류는 진단 가능한 VM을 남긴다. 기존 `/usr` 전용 profile의 fstab/소비/빌드 경로는 별도로 유지한다. 관리자 입력·엔드포인트는 [Palimpsest Dockerfile 계약](palimpsest.md#44-dockerfile-로-레이어-빌드)에 있다.
+
+Nova의 image-backed root 소비 BDM은 `image_id`와 동일 UUID의 `image→local, boot_index=0` 부트 entry를 명시하고, upper Cinder 볼륨은 `volume→volume, boot_index=-1`로 별도 지정한다. 비부팅 upper만 명시하면 Nova가 부팅 디스크를 찾지 못해 400을 반환한다.
+
+`layer_import_jobs.artifact_ids`와 `layer_consumes.artifact_ids`는 root→delta 순서다. 소비 서비스는 이 순서에서 root·parent 연결을 검증하고 guest manifest를 만들 때만 역순(delta→root)으로 mount와 digest를 내보낸다.
+
+Nova serial console이 404/공백인 경우 root 소비 VM은 `layer-health.service`가 post-reboot overlay `/` 및 SSH 상태를 확인한 뒤 `/run/afterglow-layer-ready`에 쓴 token을 일회용 backend SSH 키로 읽어 비교한다. 비교는 SSH로 보낸 명령에 token을 포함하지 않고 backend에서 수행하며 `findmnt /`의 `overlay`와 SSH `active`도 검사한다. Backend가 VM의 fixed IP SSH에 도달하지 못하거나 파일/값이 틀리면 성공으로 간주하지 않는다. SSH 증명 경로에서는 VM authorized_keys의 일회용 항목 회수 실패도 성공으로 처리하지 않는다. Console만으로 증명한 경우 회수를 시도하고 실패를 경고하며, local private key는 모든 경로에서 삭제한다. 기존 `/usr` 소비는 console 완료 계약을 유지한다.
+
 ## API 엔드포인트
 
 모든 엔드포인트: `Depends(require_admin)` 필수. 경로 prefix: `/api/v1/admin/libraries`

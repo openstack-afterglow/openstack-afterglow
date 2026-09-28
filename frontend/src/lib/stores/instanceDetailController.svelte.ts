@@ -1,6 +1,6 @@
 import { get } from 'svelte/store';
 import { getContext, setContext } from 'svelte';
-import { auth } from '$lib/stores/auth';
+import { auth, canWrite } from '$lib/stores/auth';
 import { api, ApiError } from '$lib/api/client';
 import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 import { isTransitional } from '$lib/utils/instanceStatus';
@@ -59,10 +59,12 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	let consoleOpenMessage = $state('');
 	let consoleOpenError = $state('');
 
-	// Admin domain state
+	// Detail actions: password and migration remain admin-only.
 	let passwordPrecheck = $state<PasswordPrecheck | null>(null);
 	let passwordPrecheckLoading = $state(false);
+	// Resize is available in both writable user and admin detail modes.
 	let resizeFlavors = $state<FlavorOption[]>([]);
+	let resizeFlavorsLoading = $state(false);
 	let resizeLoading = $state(false);
 	let resizeError = $state('');
 	let migrateHosts = $state<{ name: string; state: string; status: string; cpu_model: string | null }[]>([]);
@@ -439,23 +441,42 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		}
 	}
 
-	// Admin: resize
+	// Admin detail keeps the administrative mutation path; project detail uses its own instance routes.
+	function canResize() { return get(canWrite); }
+	function resizePath(action: 'resize' | 'confirm-resize' | 'revert-resize') {
+		return `/api/v1/${opts.adminMode() ? 'admin/' : ''}instances/${instance!.id}/${action}`;
+	}
+	function resizeProjectId() { return opts.adminMode() ? ownPid() : opts.effectiveProjectId(); }
+	function selectableResizeFlavor(flavorId: string) {
+		return flavorId !== instance?.flavor_id && resizeFlavors.some(f =>
+			f.id === flavorId && (!!instance?.flavor_id || f.name !== instance?.flavor_name) && f.eligibility?.selectable !== false
+		);
+	}
+
 	async function loadResizeFlavors() {
+		if (!instance || !canResize()) return;
+		const id = instance.id;
 		resizeFlavors = [];
 		resizeError = '';
+		resizeFlavorsLoading = true;
 		try {
-			resizeFlavors = await api.get<FlavorOption[]>('/api/v1/flavors', tok(), ownPid());
-		} catch {
-			resizeFlavors = [];
+			const flavors = await api.get<FlavorOption[]>(
+				`/api/v1/instances/${id}/resize-flavors`, tok(), resizeProjectId()
+			);
+			if (instance?.id === id) resizeFlavors = flavors;
+		} catch (e) {
+			if (instance?.id === id) resizeError = e instanceof ApiError ? e.message : '플레이버 목록을 가져올 수 없습니다';
+		} finally {
+			resizeFlavorsLoading = false;
 		}
 	}
 
 	async function doResize(flavorId: string): Promise<boolean> {
-		if (!instance) return false;
+		if (!instance || !canResize() || !['ACTIVE', 'SHUTOFF'].includes(instance.status) || resizeFlavorsLoading || resizeLoading || !selectableResizeFlavor(flavorId)) return false;
 		resizeLoading = true;
 		resizeError = '';
 		try {
-			await api.post(`/api/v1/admin/instances/${instance.id}/resize`, { flavor_id: flavorId }, tok(), ownPid());
+			await api.post(resizePath('resize'), { flavor_id: flavorId }, tok(), resizeProjectId());
 			await fetchInstance(instance.id, { silent: true });
 			return true;
 		} catch (e) {
@@ -467,11 +488,12 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	}
 
 	async function revertResize() {
-		if (!instance) return;
+		if (!instance || !canResize() || instance.status !== 'VERIFY_RESIZE') return;
 		if (!(await confirmDialog('리사이즈를 취소하고 이전 플레이버로 복귀하시겠습니까?'))) return;
+		if (!canResize() || instance.status !== 'VERIFY_RESIZE' || actioning) return;
 		actioning = 'revert-resize';
 		try {
-			await api.post(`/api/v1/admin/instances/${instance.id}/revert-resize`, {}, tok(), ownPid());
+			await api.post(resizePath('revert-resize'), {}, tok(), resizeProjectId());
 			await fetchInstance(instance.id, { silent: true });
 		} catch (e) {
 			toast.error('리사이즈 취소 실패: ' + (e instanceof ApiError ? e.message : String(e)));
@@ -481,11 +503,12 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	}
 
 	async function confirmResize() {
-		if (!instance) return;
+		if (!instance || !canResize() || instance.status !== 'VERIFY_RESIZE') return;
 		if (!(await confirmDialog('리사이즈를 확인하시겠습니까?'))) return;
+		if (!canResize() || instance.status !== 'VERIFY_RESIZE' || actioning) return;
 		actioning = 'confirm-resize';
 		try {
-			await api.post(`/api/v1/admin/instances/${instance.id}/confirm-resize`, {}, tok(), ownPid());
+			await api.post(resizePath('confirm-resize'), {}, tok(), resizeProjectId());
 			await fetchInstance(instance.id, { silent: true });
 		} catch (e) {
 			toast.error('리사이즈 확인 실패: ' + (e instanceof ApiError ? e.message : String(e)));
@@ -632,6 +655,8 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		get passwordPrecheck() { return passwordPrecheck; },
 		get passwordPrecheckLoading() { return passwordPrecheckLoading; },
 		get resizeFlavors() { return resizeFlavors; },
+		get resizeFlavorsLoading() { return resizeFlavorsLoading; },
+		selectableResizeFlavor,
 		get resizeLoading() { return resizeLoading; },
 		get resizeError() { return resizeError; },
 		set resizeError(v: string) { resizeError = v; },

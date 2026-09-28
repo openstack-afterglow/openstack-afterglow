@@ -13,7 +13,7 @@ from typing import Literal
 from urllib.parse import urlsplit
 from uuid import UUID
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
@@ -110,6 +110,11 @@ def _load_toml() -> dict:
     flat["manila_nfs_sec_flavor"] = ost.get("manila_nfs_sec_flavor", "sys")
     flat["manila_cephx_key_timeout_seconds"] = ost.get("manila_cephx_key_timeout_seconds", 300)
     flat["ceph_monitors"] = ost.get("ceph_monitors", "")
+
+    notifications = data.get("openstack_notifications", {})
+    for key in ("enabled", "amqp_url", "queue_prefix", "bindings", "max_message_bytes", "retry_seconds"):
+        if key in notifications:
+            flat[f"openstack_notifications_{key}"] = notifications[key]
 
     ceph = data.get("ceph", {})
     flat["ceph_rbd_conf_path"] = ceph.get("rbd_conf_path", "")
@@ -358,6 +363,21 @@ def _load_toml() -> dict:
     return flat
 
 
+class OpenStackNotificationBinding(BaseModel):
+    """One service exchange and its explicitly selected notification routing keys."""
+
+    enabled: bool = True
+    exchange: str = Field(min_length=1, max_length=255)
+    routing_keys: list[str] = Field(min_length=1, max_length=32)
+
+    @field_validator("routing_keys")
+    @classmethod
+    def validate_routing_keys(cls, values: list[str]) -> list[str]:
+        if any(not re.fullmatch(r"[A-Za-z0-9_.*#-]{1,255}", value) for value in values):
+            raise ValueError("notification routing keys must be bounded AMQP topic keys")
+        return list(dict.fromkeys(values))
+
+
 class Settings(BaseSettings):
     # OpenStack 인증
     os_auth_url: str = ""
@@ -370,6 +390,23 @@ class Settings(BaseSettings):
     os_interface: str = "internal"
     os_insecure: bool = False
     os_cacert: str = ""
+
+    # Optional native RabbitMQ/oslo notification consumer; never uses Keystone credentials.
+    openstack_notifications_enabled: bool = False
+    openstack_notifications_amqp_url: SecretStr = SecretStr("")
+    openstack_notifications_queue_prefix: str = Field(
+        default="afterglow.notifications", pattern=r"^[A-Za-z0-9_.-]{1,120}$"
+    )
+    openstack_notifications_bindings: dict[str, OpenStackNotificationBinding] = Field(default_factory=dict)
+    openstack_notifications_max_message_bytes: int = Field(default=1048576, ge=1024, le=16777216)
+    openstack_notifications_retry_seconds: float = Field(default=5, ge=1, le=300)
+
+    @field_validator("openstack_notifications_bindings")
+    @classmethod
+    def validate_notification_services(cls, values: dict) -> dict:
+        if len(values) > 32 or any(not re.fullmatch(r"[a-z][a-z0-9_-]{0,31}", key) for key in values):
+            raise ValueError("notification bindings require at most 32 bounded service names")
+        return values
 
     # Manila 설정
     os_service_project_id: str = (

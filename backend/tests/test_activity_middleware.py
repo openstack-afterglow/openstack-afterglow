@@ -74,6 +74,10 @@ def test_resource_for_path_admin_projects():
     assert rid == "proj-abc"
 
 
+def test_admin_volume_failure_is_classified_as_volume():
+    assert _resource_for_path("/api/v1/admin/volumes/vol-1/extend") == ("volume", "vol-1")
+
+
 def test_resource_for_path_not_in_allowlist_auth():
     assert _resource_for_path("/api/v1/auth/login") is None
 
@@ -113,7 +117,7 @@ async def test_auto_log_created_when_no_manual_log():
     mock_rec.assert_awaited_once()
     kw = mock_rec.call_args.kwargs
     assert kw["resource_type"] == "instance"
-    assert kw["action"] == "create"
+    assert kw["action"] == "instance.create"
     assert kw["project_id"] == "proj-test"
     assert kw["user_id"] == "user-test"
     assert kw["status"] == "success"
@@ -121,14 +125,14 @@ async def test_auto_log_created_when_no_manual_log():
 
 @pytest.mark.asyncio
 async def test_auto_log_suppressed_when_manual_log_present():
-    """핸들러가 record() 를 호출하면(= holder["logged"]=True) 자동 로그 skip."""
+    """명시적인 성공 기록이 있을 때 집계 중복 행을 만들지 않는다."""
     req = _make_request("PATCH", "/api/v1/instances/inst-1", _DEFAULT_TOKEN_INFO)
 
     async def call_next(r):
-        # record() 호출 시 _audit_ctx 의 공유 dict 를 직접 세팅 (실제 record() 동작 재현)
         holder = _audit_ctx.get()
         if holder is not None:
             holder["logged"] = True
+            holder["recorded_status"] = "success"
         return JSONResponse({"ok": True}, status_code=200)
 
     with patch.object(_main_module, "_record_activity", new=AsyncMock()) as mock_rec:
@@ -139,16 +143,67 @@ async def test_auto_log_suppressed_when_manual_log_present():
 
 
 @pytest.mark.asyncio
-async def test_auto_log_skipped_on_error_response():
-    """4xx/5xx 응답에서는 자동 로그를 생성하지 않는다."""
-    req = _make_request("POST", "/api/v1/keypairs", _DEFAULT_TOKEN_INFO)
+async def test_started_event_does_not_hide_terminal_failure():
+    req = _make_request("POST", "/api/v1/instances", _DEFAULT_TOKEN_INFO)
 
     async def call_next(r):
-        return JSONResponse({"detail": "err"}, status_code=400)
+        holder = _audit_ctx.get()
+        holder["logged"] = True
+        holder["recorded_status"] = "started"
+        r.state.audit_error = "인스턴스 배치 시도 횟수 초과"
+        return JSONResponse({"detail": "인스턴스 배치 시도 횟수 초과"}, status_code=503)
 
     with patch.object(_main_module, "_record_activity", new=AsyncMock()) as mock_rec:
         await activity_audit_middleware(req, call_next)
+    assert mock_rec.call_args.kwargs["status"] == "failed"
+    assert mock_rec.call_args.kwargs["error_message"] == "인스턴스 배치 시도 횟수 초과"
 
+
+@pytest.mark.asyncio
+async def test_unhandled_authenticated_mutation_is_recorded_without_exception_text():
+    req = _make_request("POST", "/api/v1/volumes", _DEFAULT_TOKEN_INFO)
+
+    async def call_next(_request):
+        raise RuntimeError("token=do-not-store")
+
+    with patch.object(_main_module, "_record_activity", new=AsyncMock()) as mock_rec:
+        with pytest.raises(RuntimeError):
+            await activity_audit_middleware(req, call_next)
+
+    mock_rec.assert_awaited_once()
+    assert mock_rec.call_args.kwargs["status"] == "failed"
+    assert mock_rec.call_args.kwargs["http_status"] == 500
+    assert mock_rec.call_args.kwargs["error_message"] is None
+
+
+@pytest.mark.asyncio
+async def test_failed_mutation_is_searchable_by_actor_and_failure():
+    req = _make_request("POST", "/api/v1/volumes", _DEFAULT_TOKEN_INFO)
+
+    async def call_next(r):
+        r.state.audit_error = "최대 시도 횟수 초과"
+        return JSONResponse({"detail": "최대 시도 횟수 초과"}, status_code=409)
+
+    with patch.object(_main_module, "_record_activity", new=AsyncMock()) as mock_rec:
+        resp = await activity_audit_middleware(req, call_next)
+
+    assert resp.status_code == 409
+    assert resp.headers["X-Request-Id"] == mock_rec.call_args.kwargs["request_id"]
+    assert mock_rec.call_args.kwargs["status"] == "failed"
+    assert mock_rec.call_args.kwargs["http_status"] == 409
+    assert mock_rec.call_args.kwargs["error_message"] == "최대 시도 횟수 초과"
+    assert mock_rec.call_args.kwargs["project_id"] == "proj-test"
+
+
+@pytest.mark.asyncio
+async def test_stream_handshake_is_not_mistaken_for_successful_creation():
+    req = _make_request("POST", "/api/v1/instances/async", _DEFAULT_TOKEN_INFO)
+
+    async def call_next(r):
+        return JSONResponse({}, headers={"content-type": "text/event-stream"})
+
+    with patch.object(_main_module, "_record_activity", new=AsyncMock()) as mock_rec:
+        await activity_audit_middleware(req, call_next)
     mock_rec.assert_not_awaited()
 
 
@@ -196,7 +251,7 @@ async def test_auto_log_skipped_for_unregistered_path():
 
 @pytest.mark.asyncio
 async def test_auto_log_delete_action():
-    """DELETE 메서드는 action='delete' 로 기록된다."""
+    """삭제 이력을 리소스 유형과 함께 검색할 수 있다."""
     req = _make_request("DELETE", "/api/v1/keypairs/key-xyz", _DEFAULT_TOKEN_INFO)
 
     async def call_next(r):
@@ -206,8 +261,7 @@ async def test_auto_log_delete_action():
         await activity_audit_middleware(req, call_next)
 
     mock_rec.assert_awaited_once()
-    assert mock_rec.call_args.kwargs["action"] == "delete"
-    assert mock_rec.call_args.kwargs["resource_type"] == "keypair"
+    assert mock_rec.call_args.kwargs["action"] == "keypair.delete"
     assert mock_rec.call_args.kwargs["resource_id"] == "key-xyz"
 
 

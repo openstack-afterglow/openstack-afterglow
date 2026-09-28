@@ -9,6 +9,7 @@ import logging
 import math
 import re
 from collections import defaultdict
+from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -23,6 +24,7 @@ from app.services import neutron as neutron_svc
 from app.services import swift as swift_svc
 from app.services import trove as trove_svc
 from app.services.cache import cached_call, ttl_fast, ttl_normal, ttl_static
+from app.services.flavor_eligibility import parse_gpu_demand
 from app.services.keystone import get_drover_proxy
 
 router = APIRouter()
@@ -160,6 +162,84 @@ def _gpu_count_from_flavor(name: str, extra_specs: dict) -> int:
     if m:
         return int(m.group(1)) if m.group(1) else 1
     return 0
+
+
+_FORECAST_WINDOW_DAYS = 7
+_FORECAST_HORIZON_DAYS = 30
+
+
+def _quota_pct(in_use: float, limit: float) -> float | None:
+    """Return a bounded quota percentage, or ``None`` for unlimited/unknown limits."""
+    if limit > 0:
+        return min(100.0, round(in_use / limit * 100, 1))
+    return None
+
+
+def _allocation_series(
+    rows: list[dict],
+    sample_times: list[datetime],
+    weight: Callable[[dict], float],
+) -> list[float]:
+    """Sum the allocation weight of usage rows alive at each sample time."""
+    series: list[float] = []
+    for sample in sample_times:
+        total = 0.0
+        for row in rows:
+            started = row["started"]
+            ended = row["ended"]
+            if started is not None and started <= sample and (ended is None or ended > sample):
+                total += weight(row)
+        series.append(round(total, 2))
+    return series
+
+
+def _linear_forecast(
+    series: list[float],
+    *,
+    in_use: float,
+    limit: float,
+    has_rows: bool,
+    window_days: int = _FORECAST_WINDOW_DAYS,
+    horizon_days: int = _FORECAST_HORIZON_DAYS,
+) -> dict:
+    """Extend the least-squares daily slope of the recent allocation window."""
+    points = series[-window_days:]
+    trend_available = has_rows and len(points) >= 2
+    slope: float | None = None
+    if trend_available:
+        count = len(points)
+        x_mean = (count - 1) / 2
+        y_mean = sum(points) / count
+        denominator = sum((x - x_mean) ** 2 for x in range(count))
+        slope = round(sum((x - x_mean) * (y - y_mean) for x, y in enumerate(points)) / denominator, 2)
+
+    projected_pct: float | None = None
+    days_to_limit: int | None = None
+    if limit > 0 and slope is not None:
+        projected_pct = max(0.0, min(100.0, round((in_use + slope * horizon_days) / limit * 100, 1)))
+        if in_use >= limit:
+            days_to_limit = 0
+        elif slope > 0:
+            days_to_limit = math.ceil((limit - in_use) / slope)
+    return {
+        "current_pct": _quota_pct(in_use, limit),
+        "slope_per_day": slope,
+        "projected_pct": projected_pct,
+        "days_to_limit": days_to_limit,
+        "trend_available": trend_available,
+        "series": series,
+    }
+
+
+def _usage_quota_entry(source: object, key: str) -> dict:
+    """Return integer quota use/limit; unavailable entries are an explicit zero pair."""
+    entry = source.get(key) if isinstance(source, dict) else None
+    if isinstance(entry, dict) and "limit" in entry and "in_use" in entry:
+        try:
+            return {"in_use": int(entry["in_use"]), "limit": int(entry["limit"])}
+        except (TypeError, ValueError):
+            pass
+    return {"in_use": 0, "limit": 0}
 
 
 @router.get("/summary")
@@ -937,26 +1017,28 @@ async def get_dashboard_usage_stats(
             for k, v in sorted(vol_by_type.items(), key=lambda x: -x[1])
         ],
         "instance_hours": usage_data.get("total_hours", 0) if isinstance(usage_data, dict) else 0,
-        "vcpu_hours": usage_data.get("total_vcpu_hours", 0) if isinstance(usage_data, dict) else 0,
+        "vcpu_hours": usage_data.get("total_vcpus_usage", 0) if isinstance(usage_data, dict) else 0,
     }
 
 
 @router.get("/usage-report")
 async def get_dashboard_usage_report(
     response: Response,
-    period: str = Query("30d", alias="range", description="7d|14d|30d"),
+    period: str = Query("30d", alias="range", description="7d|14d|30d|90d"),
     conn: openstack.connection.Connection = Depends(get_os_conn),
     cm: CacheMode = Depends(cache_mode),
 ):
-    """사용량 리포트: 기간별 일별 사용량 + flavor 시간 + 쿼터 예측."""
+    """사용량 리포트: 기간 사용량, flavor/인스턴스 시간, 리소스별 쿼터 추세 예측."""
+    from app.services.gpu_quota import get_effective_gpu_quota_status
+
     project_id = conn._afterglow_project_id
     today = date.today()
-    days = {"7d": 7, "14d": 14, "30d": 30}.get(period, 30)
+    days = {"7d": 7, "14d": 14, "30d": 30, "90d": 90}.get(period, 30)
     start_dt = (today - timedelta(days=days)).isoformat()
     end_dt = today.isoformat()
 
     try:
-        nova_usage, compute_q = await asyncio.gather(
+        nova_usage, compute_q, volume_q, flavor_list, gpu_status = await asyncio.gather(
             cached_call(
                 f"afterglow:dashboard:{project_id}:nova_usage:{start_dt}:{end_dt}",
                 ttl_fast(),
@@ -965,70 +1047,168 @@ async def get_dashboard_usage_report(
                 refresh=cm.refresh,
             ),
             cached_call(
-                f"afterglow:nova:{project_id}:quota",
+                f"afterglow:nova:{project_id}:quota:strict",
                 ttl_normal(),
-                lambda: nova.get_project_quota(conn, project_id),
+                lambda: nova.get_project_quota(conn, project_id, strict=True),
                 enabled=cm.enabled,
                 refresh=cm.refresh,
             ),
+            cached_call(
+                f"afterglow:cinder:{project_id}:quota:strict",
+                ttl_normal(),
+                lambda: cinder.get_volume_quota(conn, project_id, strict=True),
+                enabled=cm.enabled,
+                refresh=cm.refresh,
+            ),
+            cached_call(
+                f"afterglow:nova:{project_id}:flavors",
+                ttl_static(),
+                lambda: _list_flavors_as_dicts(conn),
+                enabled=cm.enabled,
+                refresh=cm.refresh,
+            ),
+            get_effective_gpu_quota_status(conn, project_id),
             return_exceptions=True,
         )
     except Exception:
         raise HTTPException(status_code=500, detail="사용량 리포트 조회 실패")
 
-    usage = nova_usage if not isinstance(nova_usage, Exception) else {}
-    quota = compute_q if not isinstance(compute_q, Exception) else {}
+    usage = nova_usage if isinstance(nova_usage, dict) else {}
+    quota = compute_q if isinstance(compute_q, dict) else {}
+    volume_quota = volume_q if isinstance(volume_q, dict) else {}
+    flavors = flavor_list if isinstance(flavor_list, list) else []
+    gpu_available = isinstance(gpu_status, list)
+    if not gpu_available:
+        _logger.warning(
+            "GPU quota 조회 실패",
+            exc_info=gpu_status if isinstance(gpu_status, BaseException) else None,
+        )
+    gpu_rows = gpu_status if gpu_available else []
 
-    # 서버별 사용 시간 → flavor 집계
-    server_usages = usage.get("server_usages", []) if isinstance(usage, dict) else []
+    flavors_by_name = {f["name"]: f for f in flavors if isinstance(f, dict) and isinstance(f.get("name"), str)}
+    rows: list[dict] = []
+    for su in usage.get("server_usages") or []:
+        if not isinstance(su, dict):
+            continue
+        flavor_name = su.get("flavor") or "unknown"
+        gpu_map = parse_gpu_demand(flavors_by_name.get(flavor_name) or {"name": flavor_name, "extra_specs": {}})
+        rows.append(
+            {
+                "su": su,
+                "flavor": flavor_name,
+                "hours": float(su.get("hours") or 0.0),
+                "vcpus": int(su.get("vcpus") or 0),
+                "memory_mb": int(su.get("memory_mb") or 0),
+                "gpu": gpu_map,
+                "gpu_count": sum(gpu_map.values()),
+                "started": nova.parse_nova_timestamp(su.get("started_at")),
+                "ended": nova.parse_nova_timestamp(su.get("ended_at")),
+            }
+        )
+
     flavor_map: dict[str, dict] = {}
-    for su in server_usages:
-        fname = su.get("flavor", "unknown")
-        if fname not in flavor_map:
-            flavor_map[fname] = {"flavor": fname, "instance_count": 0, "usage_hours": 0.0}
-        flavor_map[fname]["instance_count"] += 1
-        flavor_map[fname]["usage_hours"] += su.get("hours", 0.0)
+    for row in rows:
+        entry = flavor_map.get(row["flavor"])
+        if entry is None:
+            entry = flavor_map[row["flavor"]] = {
+                "flavor": row["flavor"],
+                "instance_count": 0,
+                "usage_hours": 0.0,
+                "vcpus": row["vcpus"],
+                "ram_mb": row["memory_mb"],
+                "gpu_count": row["gpu_count"],
+                "vcpu_hours": 0.0,
+                "gpu_hours": 0.0,
+            }
+        entry["instance_count"] += 1
+        entry["usage_hours"] += row["hours"]
+        entry["vcpu_hours"] += row["hours"] * row["vcpus"]
+        entry["gpu_hours"] += row["hours"] * row["gpu_count"]
+    flavor_hours = sorted(flavor_map.values(), key=lambda item: -item["usage_hours"])[:15]
+    for entry in flavor_hours:
+        for key in ("usage_hours", "vcpu_hours", "gpu_hours"):
+            entry[key] = round(entry[key], 1)
 
-    total_hours = (
-        usage.get("total_hours", sum(su.get("hours", 0) for su in server_usages)) if isinstance(usage, dict) else 0.0
-    )
-    total_vcpu_hours = usage.get("total_vcpu_hours", 0.0) if isinstance(usage, dict) else 0.0
+    instance_usage = [
+        {
+            "instance_id": str(row["su"].get("instance_id") or ""),
+            "name": str(row["su"].get("name") or ""),
+            "flavor": row["flavor"],
+            "state": str(row["su"].get("state") or ""),
+            "hours": round(row["hours"], 1),
+            "started_at": row["started"].isoformat() if row["started"] else None,
+            "ended_at": row["ended"].isoformat() if row["ended"] else None,
+            "vcpus": row["vcpus"],
+            "memory_mb": row["memory_mb"],
+            "gpu_count": row["gpu_count"],
+        }
+        for row in sorted(rows, key=lambda item: -item["hours"])[:10]
+    ]
 
-    # 쿼터 조회
-    cores_q = quota.get("cores", {}) if isinstance(quota, dict) else {}
-    ram_q = quota.get("ram", {}) if isinstance(quota, dict) else {}
-    storage_q = quota.get("gigabytes", {}) if isinstance(quota, dict) else {}
+    total_hours = float(usage.get("total_hours", sum(row["hours"] for row in rows)) or 0.0)
+    stats = {
+        "instance_hours": round(total_hours, 2),
+        "vcpu_hours": round(float(usage.get("total_vcpus_usage") or 0.0), 2),
+        "ram_gb_hours": round(float(usage.get("total_memory_mb_usage") or 0.0) / 1024, 2),
+        "gpu_hours": round(sum(row["hours"] * row["gpu_count"] for row in rows), 2),
+        "active_instances": sum(1 for row in rows if row["su"].get("state") == "active"),
+        "total_instances": len(rows),
+    }
 
-    vcpus_in_use = cores_q.get("in_use", 0)
-    vcpus_limit = cores_q.get("limit", 0)
-    ram_in_use = ram_q.get("in_use", 0)
-    ram_limit = ram_q.get("limit", 0)
-    storage_in_use = storage_q.get("in_use", 0)
-    storage_limit = storage_q.get("limit", 0)
+    vcpus_quota = _usage_quota_entry(quota, "cores")
+    ram_quota = _usage_quota_entry(quota, "ram")
+    volume_gb_quota = _usage_quota_entry(volume_quota, "gigabytes")
+    gpu_quota = [
+        {"gpu_type": r["gpu_type"], "in_use": int(r.get("in_use") or 0), "limit": int(r.get("limit") or 0)}
+        for r in gpu_rows
+        if isinstance(r, dict) and isinstance(r.get("gpu_type"), str) and (r.get("limit") != 0 or r.get("in_use"))
+    ]
 
-    def _pct(used: float, limit: float) -> float:
-        return min(100.0, round((used / limit * 100) if limit > 0 else 0.0, 1))
+    # The last sample is the Nova query window end (today 00:00 UTC).
+    end_midnight = datetime(today.year, today.month, today.day, tzinfo=UTC)
+    samples = [end_midnight - timedelta(days=days - 1 - i) for i in range(days)]
+    has_rows = any(row["started"] is not None for row in rows)
+
+    def _resource_forecast(weight: Callable[[dict], float], entry: dict) -> dict:
+        return _linear_forecast(
+            _allocation_series(rows, samples, weight),
+            in_use=entry["in_use"],
+            limit=entry["limit"],
+            has_rows=has_rows,
+        )
 
     response.headers["Cache-Control"] = "private, max-age=60"
     return {
         "range": period,
         "start": start_dt,
         "end": end_dt,
-        "stats": {
-            "instance_hours": round(float(total_hours), 2),
-            "vcpu_hours": round(float(total_vcpu_hours), 2),
-            "active_instances": len([s for s in server_usages if s.get("state") == "active"]),
-            "total_instances": len(server_usages),
-        },
-        "flavor_hours": sorted(flavor_map.values(), key=lambda x: -x["usage_hours"])[:15],
+        "stats": stats,
+        "flavor_hours": flavor_hours,
+        "instance_usage": instance_usage,
         "quota": {
-            "vcpus_in_use": vcpus_in_use,
-            "vcpus_limit": vcpus_limit,
+            "compute_available": isinstance(quota.get("cores"), dict),
+            "storage_available": isinstance(volume_quota.get("gigabytes"), dict),
+            "instances": _usage_quota_entry(quota, "instances"),
+            "vcpus": vcpus_quota,
+            "ram_mb": ram_quota,
+            "volume_gb": volume_gb_quota,
+            "volumes": _usage_quota_entry(volume_quota, "volumes"),
+            "gpu": gpu_quota,
+            "gpu_available": gpu_available,
         },
         "forecast": {
-            "vcpu_pct": _pct(vcpus_in_use, vcpus_limit),
-            "memory_pct": _pct(ram_in_use, ram_limit),
-            "storage_pct": _pct(storage_in_use, storage_limit),
+            "window_days": _FORECAST_WINDOW_DAYS,
+            "horizon_days": _FORECAST_HORIZON_DAYS,
+            "vcpus": _resource_forecast(lambda r: float(r["vcpus"]), vcpus_quota),
+            "ram_mb": _resource_forecast(lambda r: float(r["memory_mb"]), ram_quota),
+            # Cinder has no historical allocation API; report current use only.
+            "volume_gb": _linear_forecast(
+                [], in_use=volume_gb_quota["in_use"], limit=volume_gb_quota["limit"], has_rows=False
+            ),
+            "gpu": {
+                item["gpu_type"]: _resource_forecast(lambda r, t=item["gpu_type"]: float(r["gpu"].get(t, 0)), item)
+                for item in gpu_quota
+            },
         },
     }
 

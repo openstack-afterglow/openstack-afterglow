@@ -28,10 +28,18 @@ class ActivityLog(Base):
     action: Mapped[str] = mapped_column(VARCHAR(48), nullable=False)
     status: Mapped[str] = mapped_column(VARCHAR(16), nullable=False)
     error_message: Mapped[str | None] = mapped_column(TEXT)
+    request_id: Mapped[str | None] = mapped_column(VARCHAR(64))
+    external_id: Mapped[str | None] = mapped_column(VARCHAR(128), unique=True)
+    event_type: Mapped[str | None] = mapped_column(VARCHAR(128))
+    service: Mapped[str | None] = mapped_column(VARCHAR(32))
+    source: Mapped[str | None] = mapped_column(VARCHAR(16))
+    page: Mapped[str | None] = mapped_column(VARCHAR(255))
+    http_status: Mapped[int | None] = mapped_column()
     extra: Mapped[dict | None] = mapped_column(JSON)
 
     __table_args__ = (
         Index("idx_activity_project_created", "project_id", "created_at"),
+        Index("idx_activity_created_id", "created_at", "id"),
         Index("idx_activity_user_created", "user_id", "created_at"),
         Index("idx_activity_resource", "resource_type", "resource_id"),
     )

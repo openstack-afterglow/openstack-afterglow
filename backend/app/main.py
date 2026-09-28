@@ -82,6 +82,7 @@ def _mark(label: str) -> None:
 # ---------------------------------------------------------------------------
 import asyncio
 import json
+import re
 import time
 from datetime import UTC, datetime
 
@@ -242,6 +243,9 @@ async def sanitized_http_exception_handler(request: Request, exc: HTTPException)
     request body parsing 예외(MultiPartException 등)를 generic 400 으로 wrap 해
     detail 만으로 진단 어려움 대응.
     """
+    # Only client-visible failure detail is eligible for the audit record.
+    if (exc.status_code < 500 or getattr(exc, "_afterglow_safe_public_detail", False)) and isinstance(exc.detail, str):
+        request.state.audit_error = exc.detail
     if exc.status_code >= 500:
         _logger.error(
             "HTTP %d: %s %s — %s",
@@ -284,7 +288,7 @@ if _ClientDisconnect is not None:
         return JSONResponse(status_code=499, content={"detail": "클라이언트 연결 종료"})
 
 
-from app.services.activity import _audit_ctx
+from app.services.activity import _audit_ctx, service_for_resource
 from app.services.activity import record as _record_activity
 
 
@@ -339,6 +343,12 @@ _AUDIT_PREFIX_MAP: list[tuple[str, str]] = [
     ("/api/v1/admin/palimpsest", "palimpsest_layer"),
     ("/api/v1/palimpsest", "palimpsest_layer"),
     ("/api/v1/admin/images", "image"),
+    ("/api/v1/admin/instances", "instance"),
+    ("/api/v1/admin/volumes", "volume"),
+    ("/api/v1/admin/networks", "network"),
+    ("/api/v1/admin/floating-ips", "floating_ip"),
+    ("/api/v1/admin/flavors", "flavor"),
+    ("/api/v1/admin/users", "user"),
     ("/api/v1/admin/projects", "project"),
     ("/api/v1/waygate/servers", "waygate_server"),
     ("/api/v1/loadbalancers", "load_balancer"),
@@ -414,7 +424,7 @@ async def request_logging_middleware(request: Request, call_next):
     return response
 
 
-_CORS_ALLOW_HEADERS = "Content-Type, X-Project-Id, Authorization, Idempotency-Key, Last-Event-ID"
+_CORS_ALLOW_HEADERS = "Content-Type, X-Project-Id, X-Afterglow-Page, Authorization, Idempotency-Key, Last-Event-ID"
 _CORS_ALLOW_METHODS = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
 
 
@@ -454,54 +464,84 @@ async def cors_middleware(request: Request, call_next):
         response.headers["Access-Control-Allow-Credentials"] = "true"
         response.headers["Access-Control-Allow-Methods"] = _CORS_ALLOW_METHODS
         response.headers["Access-Control-Allow-Headers"] = _CORS_ALLOW_HEADERS
+        response.headers["Access-Control-Expose-Headers"] = "X-Request-Id"
         response.headers["Vary"] = "Origin"
     return response
 
 
 @app.middleware("http")
 async def activity_audit_middleware(request: Request, call_next):
-    """mutation(POST/PUT/PATCH/DELETE) 성공 시 명시적 로그가 없으면 자동 1행 기록.
+    """Record authenticated resource mutations, including rejected/failed attempts.
 
-    수동 rec()/record() 호출이 있으면 _audit_ctx 공유 dict 를 통해 신호를 수신하고
-    자동 로깅을 건너뛴다 (중복 방지). 기존 218개 수동 호출은 그대로 유지.
+    Explicit endpoint records own their result; never duplicate one in middleware.
+    A streaming endpoint must record its terminal result itself: a 200 handshake
+    is not evidence that the operation succeeded.
     """
+    from uuid import uuid4
+
     is_mut = request.method in ("POST", "PUT", "PATCH", "DELETE")
+    mapped = _resource_for_path(request.url.path) if is_mut else None
+    page = request.headers.get("X-Afterglow-Page", "")
+    if len(page) > 255 or not re.fullmatch(r"/(?:dashboard|admin|account)(?:/[a-z0-9_:\-]*)?", page):
+        page = ""
     holder: dict = {"logged": False}
+    if mapped:
+        holder["request_id"] = f"req-{uuid4().hex}"
+        holder["service"] = service_for_resource(mapped[0])
+        holder["source"] = "afterglow"
+        holder["page"] = page or None
+
+    async def record_outcome(status_code: int, *, streaming: bool = False, raised: bool = False) -> None:
+        if not mapped or streaming:
+            return
+        outcome = "failed" if status_code >= 400 else "started" if status_code == 202 else "success"
+        if holder.get("recorded_status") == outcome or (outcome == "started" and holder["logged"]):
+            return
+
+        info = getattr(request.state, "token_info", None)
+        if not info or not info.get("project_id") or not info.get("user_id"):
+            return
+        rtype, rid = mapped
+        path_parts = request.url.path.rstrip("/").split("/")
+        operation = path_parts[-1] if rid and path_parts[-1] != rid else None
+        verb = {"POST": "create", "PUT": "update", "PATCH": "update", "DELETE": "delete"}[request.method]
+        action = f"{rtype}.{operation or verb}"
+        # Never persist exception text or response bodies: either may contain secrets.
+        detail = getattr(request.state, "audit_error", None) if outcome == "failed" and not raised else None
+        try:
+            await _record_activity(
+                project_id=info["project_id"],
+                user_id=info["user_id"],
+                username=info.get("username", ""),
+                resource_type=rtype,
+                action=action,
+                status=outcome,
+                resource_id=rid,
+                error_message=detail,
+                http_status=status_code,
+                request_id=holder["request_id"],
+                service=holder["service"],
+                page=page or None,
+                source="afterglow",
+            )
+        except Exception:
+            _logger.warning("activity audit write failed", exc_info=True)
+
     tok = _audit_ctx.set(holder) if is_mut else None
     try:
         response = await call_next(request)
+    except Exception:
+        await record_outcome(500, raised=True)
+        raise
     finally:
         if tok is not None:
             _audit_ctx.reset(tok)
 
-    if is_mut and not holder["logged"] and 200 <= response.status_code < 300:
-        info = getattr(request.state, "token_info", None)
-        mapped = _resource_for_path(request.url.path)
-        if info and mapped:
-            rtype, rid = mapped
-            pid = info.get("project_id", "")
-            uid = info.get("user_id", "")
-            uname = info.get("username", "")
-            if pid and uid:
-                action = {
-                    "POST": "create",
-                    "PUT": "update",
-                    "PATCH": "update",
-                    "DELETE": "delete",
-                }[request.method]
-                try:
-                    await _record_activity(
-                        project_id=pid,
-                        user_id=uid,
-                        username=uname,
-                        resource_type=rtype,
-                        action=action,
-                        status="success",
-                        resource_id=rid,
-                    )
-                except Exception:
-                    pass  # best-effort: 응답을 차단하지 않는다
-
+    if mapped:
+        response.headers["X-Request-Id"] = holder["request_id"]
+    await record_outcome(
+        response.status_code, streaming=response.headers.get("content-type", "").startswith("text/event-stream")
+    )
     return response
 
 
@@ -1099,11 +1139,12 @@ async def _deferred_load_gpu_catalog() -> None:
 
 
 _cloud_shell_reconcile_task: asyncio.Task[None] | None = None
+_notification_collector = None
 
 
 @app.on_event("startup")
 async def start_background_workers():
-    global _cloud_shell_reconcile_task
+    global _cloud_shell_reconcile_task, _notification_collector
     # Redis 연결 pre-warm (첫 health check 지연 방지)
     try:
         from app.services.cache import _get_redis
@@ -1132,6 +1173,12 @@ async def start_background_workers():
             asyncio.create_task(_deferred_create_tables())
         else:
             asyncio.create_task(_deferred_load_gpu_catalog())
+    if _db_cfg.openstack_notifications_enabled:
+        if not _db_cfg.database_url:
+            raise RuntimeError("OpenStack notification collection requires a persistent database")
+        from app.services.openstack_notifications import start_notification_collector
+
+        _notification_collector = await start_notification_collector(_db_cfg)
 
     asyncio.create_task(_snapshot_loop())
     asyncio.create_task(_auto_backup_loop())
@@ -1162,7 +1209,7 @@ async def start_background_workers():
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    global _cloud_shell_reconcile_task
+    global _cloud_shell_reconcile_task, _notification_collector
     from app.database import close_db
     from app.services import prom_query
 
@@ -1171,6 +1218,10 @@ async def shutdown_event():
         await asyncio.gather(_cloud_shell_reconcile_task, return_exceptions=True)
         _cloud_shell_reconcile_task = None
 
+    from app.services.openstack_notifications import stop_notification_collector
+
+    await stop_notification_collector(_notification_collector)
+    _notification_collector = None
     await stop_mcp_transport()
     await close_db()
     await prom_query.aclose_client()

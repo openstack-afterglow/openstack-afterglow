@@ -2,6 +2,8 @@
 	import { api } from '$lib/api/client';
 	import type { K3sFlavor, K3sNetwork, K3sKeypair, K3sClusterTemplate } from '$lib/types/k3s';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
+	import Field from '$lib/components/ui/Field.svelte';
+	import SelectInput from '$lib/components/ui/SelectInput.svelte';
 
 	let {
 		open = $bindable(false),
@@ -30,7 +32,6 @@
 	} = $props();
 
 	let form = $state({ name: '', agent_count: 1, agent_flavor_id: '', network_id: '', key_name: '', os_type: 'ubuntu', template_id: '', master_count: 1, stampede_enabled: false });
-	let networkCategory = $state<'tenant' | 'provider'>('tenant');
 	let flavors = $state<K3sFlavor[]>([]);
 	let networks = $state<K3sNetwork[]>([]);
 	let keypairs = $state<K3sKeypair[]>([]);
@@ -39,7 +40,6 @@
 	$effect(() => {
 		if (open) {
 			form = { name: '', agent_count: 1, agent_flavor_id: '', network_id: '', key_name: '', os_type: 'ubuntu', template_id: '', master_count: 1, stampede_enabled: false };
-			networkCategory = 'tenant';
 			void loadDeps();
 		}
 	});
@@ -52,10 +52,10 @@
 				api.get<K3sKeypair[]>('/api/v1/keypairs', token, projectId),
 				api.get<K3sClusterTemplate[]>('/api/v1/k3s/cluster-templates', token, projectId).catch(() => []),
 			]);
-			const defaultNet = networks.find(n => !n.is_external && (n.name === 'Default' || n.name === 'default'));
-			if (defaultNet) form.network_id = defaultNet.id;
+			if (form.network_id && !networks.some(n => n.is_external && n.id === form.network_id)) form.network_id = '';
 		} catch {
 			flavors = []; networks = []; keypairs = [];
+			form.network_id = '';
 		}
 	}
 
@@ -68,10 +68,6 @@
 		if (tmpl.os_type) form.os_type = tmpl.os_type;
 	}
 
-	function categoryChange(c: 'tenant' | 'provider') {
-		networkCategory = c;
-		form.network_id = '';
-	}
 </script>
 
 {#if open}
@@ -82,7 +78,7 @@
 		onclick={() => { open = false; }}
 		role="dialog" aria-modal="true" tabindex="-1"
 >
-		<div data-tour="drover-create-form" class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-lg mx-4 shadow-[var(--shadow-restraint)]"
+		<div data-tour="drover-create-form" class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto mx-4 shadow-[var(--shadow-restraint)]"
 			onclick={(e) => e.stopPropagation()} role="none">
 			<h2 class="text-lg font-semibold text-ink-0 mb-5">Drover 클러스터 생성</h2>
 			<div class="space-y-4">
@@ -176,26 +172,15 @@
 					</label>
 				</div>
 				<div>
-					<div class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">네트워크</div>
-					<div class="flex gap-2 mb-2">
-						<button type="button"
-							onclick={() => categoryChange('tenant')}
-							class="flex-1 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors {networkCategory === 'tenant' ? 'border-action-warm bg-surface-selected/30 text-warm-text' : 'border-line-2 bg-surface-sunken text-ink-2 hover:border-line-2'}">
-							Tenant
-						</button>
-						<button type="button"
-							onclick={() => categoryChange('provider')}
-							class="flex-1 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors {networkCategory === 'provider' ? 'border-orange-500 bg-orange-900/30 text-orange-300' : 'border-line-2 bg-surface-sunken text-ink-2 hover:border-line-2'}">
-							Provider
-						</button>
-					</div>
-					<select bind:value={form.network_id}
-						class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm">
-						<option value="">{networkCategory === 'tenant' ? '기본값 사용' : '선택 안 함'}</option>
-						{#each networks.filter(n => networkCategory === 'provider' ? n.is_external : !n.is_external) as n}
-							<option value={n.id}>{n.name || n.id.slice(0,12)}</option>
-						{/each}
-					</select>
+					<Field label="외부 Provider 네트워크 (선택)" for="drover-provider-network"
+						help="클러스터 노드는 외부 Provider 네트워크에 직접 연결됩니다. 내부 네트워크 NIC는 생성 후 노드에 추가로 연결할 수 있습니다.">
+						<SelectInput id="drover-provider-network" bind:value={form.network_id}>
+							<option value="">관리자 외부 Provider 기본 네트워크 사용</option>
+							{#each networks.filter(n => n.is_external) as n}
+								<option value={n.id}>{n.name || n.id.slice(0,12)}</option>
+							{/each}
+						</SelectInput>
+					</Field>
 				</div>
 				<div>
 					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">키페어 (선택)

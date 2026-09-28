@@ -270,30 +270,32 @@ def test_create_file_storage_nfs_omits_share_network_when_dhss_false():
     assert "share_network_id" not in captured["body"]["share"]
 
 
-def test_create_file_storage_nfs_includes_share_network_on_type_lookup_failure():
-    """list_share_types 조회 실패 시 보수적 fallback: share_network_id 포함."""
+@pytest.mark.parametrize("share_types", [Exception("conn fail"), [], [{"name": "nfstype", "extra_specs": {}}]])
+def test_create_file_storage_rejects_unknown_dhss_before_allocation(share_types):
+    """An unknown NFS share type's DHSS mode must not create an invalid network-bound share."""
     from app.services import manila as manila_svc
 
-    captured: dict = {}
     fake_client = MagicMock()
-    fake_client.post.side_effect = lambda path, body: (
-        captured.update({"body": body}) or {"share": {"id": "s4", "status": "available"}}
-    )
-    fake_client.get.return_value = _make_nfs_share_response("s4")
+    fake_client.post.side_effect = AssertionError("must not create a share with unknown DHSS")
+    with (
+        patch("app.services.manila.get_client", return_value=fake_client),
+        patch(
+            "app.services.manila.list_share_types",
+            side_effect=share_types if isinstance(share_types, Exception) else None,
+            return_value=share_types if not isinstance(share_types, Exception) else None,
+        ),
+        pytest.raises(RuntimeError, match="DHSS"),
+    ):
+        manila_svc.create_file_storage(
+            conn=MagicMock(),
+            name="f",
+            size_gb=10,
+            share_network_id="net-uuid",
+            share_type="nfstype",
+            share_proto="NFS",
+        )
 
-    with patch("app.services.manila.get_client", return_value=fake_client):
-        with patch("time.sleep"):
-            with patch("app.services.manila.list_share_types", side_effect=Exception("conn fail")):
-                manila_svc.create_file_storage(
-                    conn=MagicMock(),
-                    name="f",
-                    size_gb=10,
-                    share_network_id="net-uuid",
-                    share_type="nfstype",
-                    share_proto="NFS",
-                )
-
-    assert captured["body"]["share"]["share_network_id"] == "net-uuid"
+    fake_client.post.assert_not_called()
 
 
 def test_create_file_storage_error_status_deletes_share_and_raises():

@@ -18,6 +18,7 @@ from app.api.deps import (
 from app.config import get_settings
 from app.models.auth import GitLabCallbackRequest, LoginRequest, ProjectInfo, TokenResponse, UserInfo
 from app.rate_limit import limiter
+from app.services import activity as activity_svc
 from app.services import cache, jwt_service, keystone, login_guard, session_store
 from app.services.cache import cached_call, keys, ttl_fast, ttl_normal, ttl_static
 from app.services.recent_projects import get_recent_project_ids, record_project_access
@@ -185,7 +186,7 @@ async def login(request: Request, req: LoginRequest, background_tasks: Backgroun
     background_tasks.add_task(_prewarm_dashboard, data["token"], data["project_id"])
     background_tasks.add_task(record_project_access, data["user_id"], data["project_id"])
 
-    return await _build_token_response(
+    response = await _build_token_response(
         keystone_token=data["token"],
         project_id=data["project_id"],
         project_name=data["project_name"],
@@ -200,6 +201,17 @@ async def login(request: Request, req: LoginRequest, background_tasks: Backgroun
         device_type=device_type,
         os=os_name,
     )
+    await activity_svc.record(
+        project_id=data["project_id"],
+        user_id=data["user_id"],
+        username=data["username"],
+        resource_type="auth",
+        action="login",
+        status="success",
+        source="afterglow",
+        service="keystone",
+    )
+    return response
 
 
 @router.get("/me", response_model=UserInfo)
@@ -544,4 +556,15 @@ async def gitlab_callback(
         default_project_id=data.get("default_project_id", "") or "",
     )
     response.delete_cookie(key=_GITLAB_OIDC_STATE_COOKIE, path=_GITLAB_OIDC_STATE_COOKIE_PATH)
+    await activity_svc.record(
+        project_id=data["project_id"],
+        user_id=data["user_id"],
+        username=data["username"],
+        resource_type="auth",
+        action="login",
+        status="success",
+        source="afterglow",
+        service="keystone",
+        extra={"method": "federated"},
+    )
     return token_response

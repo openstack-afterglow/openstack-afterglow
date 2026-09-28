@@ -27,7 +27,7 @@ from openstack.exceptions import ConflictException, HttpException
 from pydantic import BaseModel, field_validator
 
 from app.api.common.activity_recorder import rec
-from app.api.common.owner_check import assert_instance_owner
+from app.api.common.owner_check import assert_instance_owner, assert_project_resource_owner
 from app.api.deps import (
     CacheMode,
     cache_mode,
@@ -46,6 +46,8 @@ from app.models.compute import (
     CloudInitSnippetLibrary,
     CreateCloudInitPresetRequest,
     CreateInstanceRequest,
+    FlavorInfo,
+    FlavorQuotaBlocker,
     GitHubSshLookupRequest,
     GitHubSshProfile,
     GitHubSshUserHistory,
@@ -304,6 +306,147 @@ async def get_instance(
         )
     except Exception:
         raise HTTPException(status_code=404, detail="인스턴스를 찾을 수 없습니다")
+
+
+class InstanceResizeRequest(BaseModel):
+    flavor_id: str
+
+
+_RESIZABLE_STATUSES = frozenset({"ACTIVE", "SHUTOFF"})
+
+
+async def _owned_resize_server(conn, token_info: dict, instance_id: str):
+    try:
+        server = await asyncio.to_thread(nova.get_server, conn, instance_id)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail="인스턴스를 찾을 수 없습니다") from exc
+    assert_project_resource_owner(server, conn, token_info, not_found_detail="인스턴스를 찾을 수 없습니다")
+    return server
+
+
+def _resize_current_flavor(server, flavors: list[FlavorInfo]) -> FlavorInfo:
+    current = next((flavor for flavor in flavors if flavor.id == server.flavor_id), None)
+    if current is None and not server.flavor_id and server.flavor_name:
+        matches = [flavor for flavor in flavors if flavor.name == server.flavor_name]
+        current = matches[0] if len(matches) == 1 else None
+    if current is None:
+        raise HTTPException(status_code=409, detail="현재 플레이버를 확인할 수 없습니다")
+    return current
+
+
+def _resize_target_blockers(target: FlavorInfo, current: FlavorInfo, *, image_backed: bool) -> list[FlavorQuotaBlocker]:
+    blockers = []
+    if target.id == current.id:
+        blockers.append(FlavorQuotaBlocker(code="same_flavor"))
+    if image_backed and target.disk < current.disk:
+        blockers.append(FlavorQuotaBlocker(code="disk_shrink"))
+    return blockers
+
+
+async def _invalidate_resized_instance(project_id: str, instance_id: str) -> None:
+    await invalidate(f"afterglow:nova:{project_id}:instance:{instance_id}")
+    await invalidate(f"afterglow:nova:{project_id}:instances")
+    await cache_invalidation.invalidate_mutation_count("nova", project_id)
+
+
+@router.get("/{instance_id}/resize-flavors", response_model=list[FlavorInfo])
+async def list_instance_resize_flavors(
+    instance_id: str,
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+    token_info: dict = Depends(get_token_info),
+):
+    from app.services.flavor_eligibility import evaluate_project_flavors, is_flavor_frontend_visible
+
+    server = await _owned_resize_server(conn, token_info, instance_id)
+    if server.status.upper() not in _RESIZABLE_STATUSES:
+        raise HTTPException(status_code=409, detail="현재 상태에서는 리사이즈할 수 없습니다")
+    flavors = await asyncio.to_thread(nova.list_flavors, conn)
+    current = _resize_current_flavor(server, flavors)
+    visible = [flavor for flavor in flavors if is_flavor_frontend_visible(flavor)]
+    evaluated = await evaluate_project_flavors(
+        conn, server.project_id or conn._afterglow_project_id, visible, current_flavor=current
+    )
+    for flavor in evaluated:
+        blockers = _resize_target_blockers(flavor, current, image_backed=bool(server.image_id))
+        if blockers:
+            flavor.eligibility = flavor.eligibility.model_copy(
+                update={"selectable": False, "blockers": [*flavor.eligibility.blockers, *blockers]}
+            )
+    return evaluated
+
+
+@router.post("/{instance_id}/resize")
+async def resize_owned_instance(
+    instance_id: str,
+    req: InstanceResizeRequest,
+    conn: openstack.connection.Connection = Depends(get_os_conn_write),
+    token_info: dict = Depends(require_project_write),
+):
+    from app.services.flavor_eligibility import (
+        FlavorEligibilityDenied,
+        FlavorEligibilityUnavailable,
+        is_flavor_frontend_visible,
+        require_flavor_eligible,
+    )
+
+    server = await _owned_resize_server(conn, token_info, instance_id)
+    if server.status.upper() not in _RESIZABLE_STATUSES:
+        raise HTTPException(status_code=409, detail="현재 상태에서는 리사이즈할 수 없습니다")
+    flavors = await asyncio.to_thread(nova.list_flavors, conn)
+    current = _resize_current_flavor(server, flavors)
+    target = next(
+        (flavor for flavor in flavors if flavor.id == req.flavor_id and is_flavor_frontend_visible(flavor)), None
+    )
+    if target is None:
+        raise HTTPException(status_code=400, detail="Invalid flavor ID")
+    blockers = _resize_target_blockers(target, current, image_backed=bool(server.image_id))
+    if blockers:
+        raise HTTPException(status_code=409, detail=", ".join(blocker.code for blocker in blockers))
+    project_id = server.project_id or conn._afterglow_project_id
+    try:
+        await require_flavor_eligible(conn, project_id, target, current_flavor=current)
+    except FlavorEligibilityDenied as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except FlavorEligibilityUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        await asyncio.to_thread(nova.resize_server, conn, instance_id, target.id)
+    except Exception as exc:
+        logger.warning("Instance resize failed: %s", exc)
+        raise HTTPException(status_code=400, detail="리사이즈 실패") from exc
+    await _invalidate_resized_instance(project_id, instance_id)
+    return {"status": "resizing"}
+
+
+async def _finish_owned_resize(conn, token_info: dict, instance_id: str, *, confirm: bool) -> dict:
+    server = await _owned_resize_server(conn, token_info, instance_id)
+    if server.status.upper() != "VERIFY_RESIZE":
+        raise HTTPException(status_code=409, detail="리사이즈 확인 대기 상태가 아닙니다")
+    try:
+        await asyncio.to_thread(nova.confirm_resize_server if confirm else nova.revert_resize_server, conn, instance_id)
+    except Exception as exc:
+        logger.warning("Instance resize %s failed: %s", "confirmation" if confirm else "revert", exc)
+        raise HTTPException(status_code=400, detail="리사이즈 처리 실패") from exc
+    await _invalidate_resized_instance(server.project_id or conn._afterglow_project_id, instance_id)
+    return {"status": "confirmed" if confirm else "reverting"}
+
+
+@router.post("/{instance_id}/confirm-resize")
+async def confirm_owned_resize(
+    instance_id: str,
+    conn: openstack.connection.Connection = Depends(get_os_conn_write),
+    token_info: dict = Depends(require_project_write),
+):
+    return await _finish_owned_resize(conn, token_info, instance_id, confirm=True)
+
+
+@router.post("/{instance_id}/revert-resize")
+async def revert_owned_resize(
+    instance_id: str,
+    conn: openstack.connection.Connection = Depends(get_os_conn_write),
+    token_info: dict = Depends(require_project_write),
+):
+    return await _finish_owned_resize(conn, token_info, instance_id, confirm=False)
 
 
 @router.post("", response_model=InstanceInfo, status_code=201)

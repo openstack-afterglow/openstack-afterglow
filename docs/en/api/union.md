@@ -564,7 +564,8 @@ Creates a layer consume instance. Creates a VM that RO-mounts the `layer-store-r
 
 | Parameter | In | Type | Required | Default | Description |
 |-----------|-----|------|----------|---------|-------------|
-| `profile_name` | body | string | Yes | — | Name of the profile to consume (layer name rules) |
+| `profile_name` | body | string | One of two | `null` | Current profile name (layer name rules) |
+| `import_id` | body | positive integer | One of two | `null` | Exact artifact ID chain from a completed Dockerfile job |
 | `flavor_id` | body | string | Yes | — | Nova flavor (`^[a-zA-Z0-9\-_.]+$`) |
 | `server_name` | body | string \| null | No | `null` | Normalized instance name |
 | `image_id` | body | string \| null | No | `null` | Base image UUID |
@@ -573,11 +574,11 @@ Creates a layer consume instance. Creates a VM that RO-mounts the `layer-store-r
 | `ssh_public_key` | body | string \| null | No | `null` | SSH public key (format validated) |
 | `ssh_username` | body | string \| null | No | `null` | SSH username. `root` not allowed |
 
-**Parameter dependencies**: `ssh_username` must be specified together with `key_name` or `ssh_public_key`.
+**Parameter dependencies**: Specify exactly one of `profile_name` and `import_id`. The latter consumes the completed job's sealed root-to-delta artifact IDs, not the current artifacts matching its profile name. `ssh_username` requires `key_name` or `ssh_public_key`.
 
-**Response (200 OK)**: `{ "consume_id": <int>, "server_id": "<uuid>", "status": "active" }`
+**Response (200 OK)**: `{ "consume_id": <int>, "server_id": "<uuid>", "status": "active", "ready": true }` after guest root/SSH readiness.
 
-**Error responses**: `400 Bad Request` — keypair public key lookup failure, etc.
+**Errors**: `422` for invalid selector combination/format; `400` for unfinished job, missing/unsealed/mismatched artifact lineage, or keypair lookup failure.
 
 ### GET /api/v1/admin/libraries/consumes · GET /api/v1/admin/libraries/consumes/{consume_id}
 

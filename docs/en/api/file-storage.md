@@ -119,6 +119,8 @@ Creates a new Manila share. **Rate limit: 5/min**
 
 When `share_type`/`share_network_id` are omitted, the config file defaults apply. The default share type differs by protocol — `NFS` uses `os_manila_nfs_share_type`, otherwise `os_manila_share_type`.
 
+For NFS shares, `share_network_id` is sent to Manila only when the selected share type has `DHSS=True`. It is omitted for `DHSS=False`; if the share type's DHSS mode cannot be determined, creation fails before allocating a share.
+
 **Request body** — `CreateFileStorageRequest`
 
 ```json

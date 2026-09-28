@@ -37,6 +37,7 @@ async def test_all_administrator_tour_ids_are_whitelisted():
         "admin-compute",
         "admin-storage",
         "admin-library",
+        "admin-waygate",
         "admin-network",
         "admin-containers",
         "admin-key-manager",
@@ -49,6 +50,8 @@ async def test_all_administrator_tour_ids_are_whitelisted():
         tuple(tutorial_status_service.validate_tour_id(tour_id) for tour_id in administrator_tour_ids)
         == administrator_tour_ids
     )
+
+    assert tutorial_status_service.validate_tour_id("waygate") == "waygate"
 
 
 @pytest.mark.parametrize("status", ["completed", "dismissed"])

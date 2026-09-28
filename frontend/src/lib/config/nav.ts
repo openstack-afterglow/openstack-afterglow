@@ -5,6 +5,7 @@ export interface NavItem {
   href: string;
   service: string | null;
   beta?: keyof BetaFeatures;
+  topLevel?: boolean;
 }
 
 export interface NavSection {
@@ -116,6 +117,7 @@ export const userNavSections: NavSection[] = [
       { label: '라우터', href: '/dashboard/network/routers', service: null },
       { label: '로드밸런서', href: '/dashboard/network/loadbalancers', service: null },
       { label: '보안 그룹', href: '/dashboard/network/security-groups', service: null },
+      { label: 'Waygate', href: '/dashboard/network/waygate', service: 'waygate' },
     ],
   },
 ];
@@ -144,14 +146,6 @@ export const adminNavSections: NavSection[] = [
     ],
   },
   {
-    label: 'Palimpsest',
-    prefix: '/admin/libraries',
-    icon: 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253',
-    items: [
-      { label: '레이어 관리', href: '/admin/libraries', service: null },
-    ],
-  },
-  {
     label: '네트워크',
     prefix: '/admin/topology',
     icon: 'M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9',
@@ -170,7 +164,22 @@ export const adminNavSections: NavSection[] = [
     icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4',
     items: [
       { label: '전체 컨테이너', href: '/admin/containers', service: 'zun' },
-      { label: 'Drover', href: '/admin/drover', service: 'k3s' },
+    ],
+  },
+  {
+    label: '서비스',
+    prefix: '/admin/drover',
+    icon: 'M4 7h16M4 12h16M4 17h16',
+    items: [
+      { label: 'Drover', href: '/admin/drover', service: 'k3s', topLevel: true },
+      { label: 'Lumen', href: '/admin/chat', service: 'chat', topLevel: true },
+      { label: 'Palimpsest', href: '/admin/libraries', service: null, topLevel: true },
+      { label: 'Waygate', href: '/admin/waygate', service: 'waygate', topLevel: true },
+      { label: '클러스터 템플릿', href: '/admin/drover/templates', service: 'k3s' },
+      { label: '채팅 통계', href: '/admin/chat/stats', service: 'chat' },
+      { label: '사용자 쿼터', href: '/admin/chat/quotas', service: 'chat' },
+      { label: '모델 설정', href: '/admin/chat/models', service: 'chat' },
+      { label: '도구 설정', href: '/admin/chat/tools', service: 'chat' },
     ],
   },
   {
@@ -188,6 +197,15 @@ export const adminNavSections: NavSection[] = [
     icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z',
     items: [
       { label: '통합 모니터링', href: '/admin/monitoring', service: null },
+      { label: '노드', href: '/admin/monitoring/node', service: null },
+      { label: 'MySQL', href: '/admin/monitoring/mysql', service: null },
+      { label: 'HAProxy', href: '/admin/monitoring/haproxy', service: null },
+      { label: 'RabbitMQ', href: '/admin/monitoring/rabbitmq', service: null },
+      { label: 'Memcached', href: '/admin/monitoring/memcached', service: null },
+      { label: 'etcd', href: '/admin/monitoring/etcd', service: null },
+      { label: 'Libvirt', href: '/admin/monitoring/libvirt', service: null },
+      { label: 'OpenStack', href: '/admin/monitoring/openstack', service: null },
+      { label: 'Ceph', href: '/admin/monitoring/ceph', service: null },
     ],
   },
   {
@@ -196,7 +214,10 @@ export const adminNavSections: NavSection[] = [
     icon: 'M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z',
     items: [
       { label: '서비스 상태', href: '/admin/services', service: null },
+      { label: '운영 이벤트', href: '/admin/events', service: null },
+      { label: '고아 리소스', href: '/admin/orphans', service: null },
       { label: 'Notion 연동', href: '/admin/notion', service: null },
+      { label: '공지 관리', href: '/admin/announcements', service: null },
       { label: '기본 설정', href: '/admin/settings', service: null },
     ],
   },
@@ -210,16 +231,23 @@ export const adminNavSections: NavSection[] = [
       { label: '쿼터', href: '/admin/quotas', service: null },
       { label: '그룹', href: '/admin/groups', service: null },
       { label: '역할', href: '/admin/roles', service: null },
+      { label: '시스템 관리자', href: '/admin/system-admins', service: null },
     ],
   },
 ];
 
+export function isNavSectionActive(section: NavSection, pathname: string): boolean {
+  const matches = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+  return matches(section.prefix) || section.extraPrefixes?.some(matches) === true || section.items.some((item) => matches(item.href));
+}
+
 export function allNavItems(isAdmin: boolean, betaFeatures: BetaFeatures): Array<NavItem & { section: string }> {
   const sections = isAdmin ? adminNavSections : userNavSections;
-  return sections.flatMap((section) => {
+  const overview = isAdmin ? [{ label: '개요', href: '/admin', service: null, section: '개요' }] : [];
+  return [...overview, ...sections.flatMap((section) => {
     if (section.beta && !betaFeatures[section.beta]) return [];
     return section.items
       .filter((item) => !item.beta || betaFeatures[item.beta])
       .map((item) => ({ ...item, service: item.service ?? section.service ?? null, section: section.label }));
-  });
+  })];
 }

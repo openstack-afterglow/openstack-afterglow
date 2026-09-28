@@ -6,9 +6,11 @@ export const TOUR_IDS = [
 	'vm-create',
 	'volume',
 	'drover',
+	'waygate',
 	'admin-compute',
 	'admin-storage',
 	'admin-library',
+	'admin-waygate',
 	'admin-network',
 	'admin-containers',
 	'admin-key-manager',
@@ -68,6 +70,7 @@ const TOUR_META: Record<TourId, { label: string; summary: string }> = {
 	'vm-create': { label: 'VM 생성', summary: '위저드로 인스턴스를 만들고 배포 과정을 지켜봅니다.' },
 	volume: { label: '볼륨 생성·관리', summary: '블록 볼륨을 만들고 목록에서 관리 작업을 살펴봅니다.' },
 	drover: { label: 'Drover 클러스터', summary: 'k3s Kubernetes 클러스터를 프로비저닝하고 접속 정보를 받습니다.' },
+	waygate: { label: 'Waygate', summary: '현재 프로젝트의 서버와 클라이언트, 연결된 네트워크를 살펴봅니다.' },
 	'admin-compute': {
 		label: 'Compute 관리',
 		summary: '전체 인스턴스 상태·용량·필터와 안전한 상세 조회를 살펴봅니다.',
@@ -80,6 +83,7 @@ const TOUR_META: Record<TourId, { label: string; summary: string }> = {
 		label: '라이브러리 관리',
 		summary: '레이어 빌드부터 프로필·아티팩트·소비 상태까지 읽는 순서를 살펴봅니다.',
 	},
+	'admin-waygate': { label: 'Waygate 관리', summary: '선택한 프로젝트의 Waygate 서버와 연결을 관리 작업 공간에서 확인합니다.' },
 	'admin-network': {
 		label: '네트워크 관리',
 		summary: '프로젝트 필터와 전역 토폴로지의 연결·트래픽 범례를 살펴봅니다.',
@@ -408,31 +412,21 @@ function adminLibrarySteps(): TourStep[] {
 			route: '/admin/libraries',
 			readyElement: '[data-tour="admin-library-ready"]',
 			waitTimeoutMs: 20000,
-			title: '라이브러리 워크플로',
+			title: 'Palimpsest Dockerfile 작업 공간',
 			description:
-				'레이어 빌드부터 프로필·아티팩트·소비 상태까지 읽는 순서를 살펴봅니다. 어떤 제출 버튼도 누르지 않습니다.',
-		},
-		{
-			element: '[data-tour="admin-library-system"]',
-			title: '기반 레이어',
-			description: 'uv·apt·NVIDIA 템플릿은 공통 기반 레이어를 만듭니다. base image와 패키지 입력만 확인합니다.',
+				'Dockerfile에서 전체 루트와 변경 레이어를 빌드하고 선택적으로 SSH VM을 생성하는 흐름과 기존 기록을 살펴봅니다.',
 		},
 		{
 			element: '[data-tour="admin-library-import"]',
-			title: 'Dockerfile 가져오기',
+			title: 'Dockerfile 빌드와 SSH VM',
 			description:
-				'고정된 Git commit의 Dockerfile을 레이어 체인과 프로필로 변환하는 입력과 import 기록을 확인합니다.',
-		},
-		{
-			element: '[data-tour="admin-library-python"]',
-			title: 'Python 계층',
-			description: 'uv 부모 위에 Python runtime을, Python lineage 위에 pip 패키지 레이어를 쌓는 순서를 확인합니다.',
+				'직접 작성·URL·파일·고정 GitHub commit에서 Dockerfile을 가져오고 lint·계획·작업 기록·VM 실행 목표를 확인합니다.',
 		},
 		{
 			element: '[data-tour="admin-library-profile"]',
-			title: '프로필 구성',
+			title: '프로필 기록',
 			description:
-				'봉인된 같은 base image 레이어를 순서대로 묶어 소비 가능한 프로필을 구성합니다. 저장·공개·삭제는 실행하지 않습니다.',
+				'Dockerfile 빌드로 만들어진 프로필과 기존 프로필의 계보·공개 상태를 확인합니다. 저장·공개·삭제는 실행하지 않습니다.',
 		},
 		{
 			element: '[data-tour="admin-library-artifacts"]',
@@ -766,13 +760,33 @@ function adminIdentitySteps(): TourStep[] {
 	];
 }
 
+function waygateSteps(route: string, title: string): TourStep[] {
+	return [
+		{
+			element: '[data-tour="waygate-header"]',
+			route,
+			title,
+			description: '현재 선택한 프로젝트의 Waygate 서버만 표시됩니다. 다른 프로젝트로 바꾸면 상세와 선택도 초기화됩니다.',
+		},
+		{
+			element: '[data-tour="waygate-list"]',
+			readyElement: '[data-tour="waygate-ready"]',
+			waitTimeoutMs: 20000,
+			title: '서버 목록',
+			description: '서버 상태와 클라이언트 수를 확인하고 행을 눌러 상세를 열 수 있습니다.',
+		},
+	];
+}
+
 const STEP_BUILDERS: Record<TourId, () => TourStep[]> = {
 	'vm-create': vmCreateSteps,
 	volume: volumeSteps,
 	drover: droverSteps,
+	waygate: () => waygateSteps('/dashboard/network/waygate', '네트워크 Waygate'),
 	'admin-compute': adminComputeSteps,
 	'admin-storage': adminStorageSteps,
 	'admin-library': adminLibrarySteps,
+	'admin-waygate': () => waygateSteps('/admin/waygate', 'Waygate 관리'),
 	'admin-network': adminNetworkSteps,
 	'admin-containers': adminContainersSteps,
 	'admin-key-manager': adminKeyManagerSteps,

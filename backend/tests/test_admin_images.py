@@ -4,6 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.models.compute import ImageInfo
+
 
 def _make_image(img_id: str, name: str, **extra) -> SimpleNamespace:
     base = {
@@ -127,6 +129,23 @@ async def test_list_admin_images_no_visibility_no_filter(admin_client, mock_conn
 
 
 @pytest.mark.asyncio
+async def test_list_admin_images_preserves_protected_and_duplicate_uploads(admin_client, mock_conn):
+    images = [
+        _make_image("older", "ubuntu:latest", is_protected=True, hash_algo="sha512", hash_value="a" * 128),
+        _make_image("newer", "ubuntu:latest", is_protected=False, hash_algo="sha512", hash_value="a" * 128),
+    ]
+    mock_conn.image.images.return_value = iter(images)
+
+    resp = await admin_client.get("/api/v1/admin/images")
+
+    assert resp.status_code == 200
+    assert [(item["id"], item["protected"], item["os_hash_value"]) for item in resp.json()["items"]] == [
+        ("older", True, "a" * 128),
+        ("newer", False, "a" * 128),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_get_admin_image_requires_admin(non_admin_client):
     resp = await non_admin_client.get("/api/v1/admin/images/img-1")
     assert resp.status_code == 403
@@ -142,14 +161,15 @@ async def test_patch_admin_image_requires_admin(non_admin_client):
 async def test_patch_admin_image_normalizes_latest_and_explicit_tag(admin_client):
     from unittest.mock import patch
 
-    updated = _make_image("img-1", "ubuntu:24.04")
+    updated = ImageInfo.model_validate(vars(_make_image("img-1", "ubuntu:24.04")))
     with patch("app.api.identity.admin_images.glance.update_image_metadata", return_value=updated) as update:
         resp = await admin_client.patch("/api/v1/admin/images/img-1", json={"name": "ubuntu:24.04"})
     assert resp.status_code == 200
     assert update.call_args.args[2] == "ubuntu:24.04"
 
     with patch(
-        "app.api.identity.admin_images.glance.update_image_metadata", return_value=_make_image("img-1", "ubuntu:latest")
+        "app.api.identity.admin_images.glance.update_image_metadata",
+        return_value=ImageInfo.model_validate(vars(_make_image("img-1", "ubuntu:latest"))),
     ) as update:
         resp = await admin_client.patch("/api/v1/admin/images/img-1", json={"name": "ubuntu"})
     assert resp.status_code == 200

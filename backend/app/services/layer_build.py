@@ -16,6 +16,7 @@ import asyncio
 import base64
 import json
 import logging
+import os
 import re
 import textwrap
 import uuid
@@ -23,7 +24,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from app.config import get_settings
-from app.services import cloudinit, manila, neutron, nova
+from app.services import cinder, cloudinit, layer_consume_ssh, manila, neutron, nova
 from app.services.cloud_init_builder import render_user_data
 from app.services.layer_base_images import legacy_snapshot_for_ubuntu_base
 from app.services.layer_ubuntu import normalize_ubuntu_base
@@ -86,6 +87,49 @@ _FAILURE_SENTINEL = "::AFTERGLOW::FAILURE::"
 _CONSOLE_EXCERPT_CHARS = 12000
 _DEFAULT_NVIDIA_DRIVER_BRANCH = "580"
 _NVIDIA_DRIVER_BRANCH_VALUES = {"550", "570", "575", "580"}
+
+
+_CONSUME_POLL_INTERVAL = 5
+_CONSUME_MAX_WAIT = 900
+
+
+async def _wait_for_consume_health(
+    conn,
+    server_id: str,
+    token: str,
+    *,
+    ssh_host: str | None = None,
+    ssh_key_path: str | None = None,
+    ssh_username: str = "ubuntu",
+) -> bool:
+    """Prove the mounted root through Nova console or the guest's one-use SSH key."""
+    success = f"{_SUCCESS_SENTINEL}{token}"
+    failure = f"{_FAILURE_SENTINEL}{token}"
+    console_unavailable = False
+    for _ in range(_CONSUME_MAX_WAIT // _CONSUME_POLL_INTERVAL):
+        server = await asyncio.to_thread(conn.compute.get_server, server_id)
+        state = str(getattr(server, "status", "") or "").upper()
+        if state in {"ERROR", "DELETED", "SOFT_DELETED"}:
+            raise RuntimeError(f"consumer VM entered {state} before guest health")
+        try:
+            console = await asyncio.to_thread(nova.get_console_output, conn, server_id, _CONSOLE_EXCERPT_CHARS)
+        except Exception:
+            if not console_unavailable:
+                _logger.warning("[layer_consume] guest console unavailable: %s", server_id, exc_info=True)
+                console_unavailable = True
+        else:
+            if failure in console:
+                raise RuntimeError("consumer guest layer activation failed")
+            if success in console:
+                return False
+        if (
+            ssh_host
+            and ssh_key_path
+            and await layer_consume_ssh.guest_root_is_ready(ssh_host, ssh_username, ssh_key_path, token)
+        ):
+            return True
+        await asyncio.sleep(_CONSUME_POLL_INTERVAL)
+    raise TimeoutError("consumer guest did not report layer mount health")
 
 
 def nvidia_driver_apt_packages(driver_branch: str | None = None) -> list[str]:
@@ -152,6 +196,170 @@ LAYER_CONSUME_IMAGE_PACKAGES = ("nfs-common", "squashfs-tools")
 # base64 인코딩 후 cloud-init write_files에 주입
 # ---------------------------------------------------------------------------
 
+_ROOT_INITRAMFS_DEPS = """\
+#!/bin/sh
+set -e
+. /usr/share/initramfs-tools/hook-functions
+copy_exec /usr/bin/sha256sum /usr/bin
+copy_exec "$(command -v blkid)" /sbin
+"""
+
+
+_ROOT_IDENTITY_MERGE_PY = """\
+import os
+import shutil
+import sys
+from pathlib import Path
+
+layer, upper, username, consumer = map(Path, sys.argv[1:])
+name = str(username)
+upper_etc = upper / "etc"
+
+def row(path, account):
+    return next((line for line in path.read_text().splitlines() if line.split(":", 1)[0] == account), None)
+
+source_passwd = layer / "etc/passwd"
+consumer_passwd = consumer / "etc/passwd"
+account = row(source_passwd, name)
+if account is None:
+    account = row(consumer_passwd, name)
+    if account is None:
+        raise RuntimeError("consumer SSH account was not provisioned")
+    uid = account.split(":")[2]
+    if any(line.split(":")[2] == uid for line in source_passwd.read_text().splitlines()):
+        raise RuntimeError("consumer SSH UID conflicts with Dockerfile user")
+    upper_etc.mkdir(parents=True, exist_ok=True)
+    for filename in ("passwd", "shadow", "group", "gshadow"):
+        source = layer / "etc" / filename
+        destination = upper_etc / filename
+        shutil.copy2(source, destination)
+        extra = row(consumer / "etc" / filename, name)
+        if extra is None:
+            raise RuntimeError("consumer SSH identity is incomplete")
+        if row(destination, name) is None:
+            with destination.open("a") as handle:
+                handle.write(extra + "\\n")
+    for filename in ("group", "gshadow"):
+        destination = upper_etc / filename
+        original = destination.read_text().splitlines()
+        consumer_rows = (consumer / "etc" / filename).read_text().splitlines()
+        for index, line in enumerate(original):
+            fields = line.split(":")
+            if fields[0] not in {"sudo", "adm"}:
+                continue
+            baseline = next((value for value in consumer_rows if value.startswith(fields[0] + ":")), "")
+            if name in baseline.split(":")[-1].split(",") and name not in fields[-1].split(","):
+                fields[-1] = ",".join(filter(None, (fields[-1], name)))
+                original[index] = ":".join(fields)
+        destination.write_text("\\n".join(original) + "\\n")
+
+uid, gid = (int(value) for value in account.split(":")[2:4])
+home_dir = upper / "home" / name
+if home_dir.is_dir():
+    os.chown(home_dir, uid, gid)
+ssh_dir = home_dir / ".ssh"
+if ssh_dir.is_dir():
+    for directory, dirs, files in os.walk(ssh_dir):
+        os.chown(directory, uid, gid)
+        for filename in files:
+            os.chown(os.path.join(directory, filename), uid, gid)
+"""
+
+_ROOT_UPPER_DEVICE_PY = """\
+import json
+import subprocess
+import sys
+import time
+import uuid
+
+volume_id = str(uuid.UUID(sys.argv[1])).replace('-', '').lower()
+boot_source = subprocess.check_output(['findmnt', '-n', '-o', 'SOURCE', '/'], text=True).strip()
+boot_disk = subprocess.check_output(['lsblk', '-n', '-o', 'PKNAME', boot_source], text=True).strip()
+deadline = time.monotonic() + 180
+while time.monotonic() < deadline:
+    disks = json.loads(subprocess.check_output(
+        ['lsblk', '-J', '-o', 'NAME,TYPE,PATH,SERIAL,FSTYPE'], text=True
+    ))['blockdevices']
+    matches = [disk for disk in disks if disk['type'] == 'disk' and disk['name'] != boot_disk
+               and len((disk.get('serial') or '').replace('-', '')) >= 17
+               and volume_id.startswith((disk.get('serial') or '').replace('-', '').lower())]
+    if len(matches) > 1:
+        raise RuntimeError('ambiguous Cinder upper volume serial')
+    if matches:
+        disk = matches[0]
+        if disk.get('children') or disk.get('fstype'):
+            raise RuntimeError('Cinder upper volume is not an empty dedicated disk')
+        print(disk['path'])
+        break
+    time.sleep(2)
+else:
+    raise TimeoutError('Cinder upper volume did not attach by serial')
+"""
+
+
+_ROOT_INITRAMFS_HOOK = """\
+#!/bin/sh
+# initramfs-tools local-bottom: the original boot disk is mounted at rootmnt.
+case "${1:-}" in
+    prereqs) exit 0 ;;
+esac
+set -eu
+base=/run/afterglow/base-root
+layers=/run/afterglow/sqsh
+state=/run/afterglow/state
+mkdir -p "$base" "$layers" "$state"
+conf="${rootmnt}/etc/afterglow/layers/root.conf"
+[ -s "$conf" ] || { echo 'afterglow: root layer manifest missing' >&2; exit 1; }
+uuid_file="${rootmnt}/etc/afterglow/layers/root-upper-uuid"
+[ -s "$uuid_file" ] || { echo 'afterglow: dedicated upper UUID missing' >&2; exit 1; }
+uuid="$(cat "$uuid_file")"
+case "$uuid" in
+    ????????-????-????-????-????????????) ;;
+    *) echo 'afterglow: invalid upper filesystem UUID' >&2; exit 1 ;;
+esac
+case "$uuid" in
+    *[!0-9a-fA-F-]*) echo 'afterglow: invalid upper filesystem UUID' >&2; exit 1 ;;
+esac
+device="$(/sbin/blkid -U "$uuid")"
+[ -b "$device" ] || { echo 'afterglow: dedicated upper device unavailable' >&2; exit 1; }
+mount -t ext4 -o rw "$device" "$state" || exit 1
+[ -d "$state/upper" ] && [ -d "$state/work" ] || { echo 'afterglow: root upper missing' >&2; exit 1; }
+lower=
+index=0
+while IFS='|' read -r unused file digest; do
+    [ -n "$file" ] || continue
+    case "$file" in
+        *[!a-zA-Z0-9.+_-]*|'') echo 'afterglow: invalid layer filename' >&2; exit 1 ;;
+    esac
+    src="$state/blobs/${index}.sqsh"
+    [ -s "$src" ] || { echo "afterglow: missing cached layer $index" >&2; exit 1; }
+    if [ -n "$digest" ]; then
+        case "$digest" in
+            sha256:????????????????????????????????????????????????????????????????) ;;
+            *) echo 'afterglow: invalid layer digest' >&2; exit 1 ;;
+        esac
+        printf '%s  %s\\n' "${digest#sha256:}" "$src" | sha256sum -c - || exit 1
+    fi
+    dir="$layers/$index"
+    mkdir -p "$dir"
+    mount -t squashfs -o ro,loop "$src" "$dir" || exit 1
+    lower="${lower:+${lower}:}${dir}"
+    index=$((index + 1))
+done < "$conf"
+[ "$index" -gt 0 ] || { echo 'afterglow: empty root lineage' >&2; exit 1; }
+# The immutable filesystem is a child-first lower stack. Keep the bootstrap
+# filesystem writable for its private cloud-init state, never as a lowerdir.
+mount -o remount,rw "$rootmnt" || exit 1
+mount --move "$rootmnt" "$base" || exit 1
+# Child-first deltas (including OverlayFS whiteouts) override the oldest full
+# root image. The boot disk only supplies private writable consumer state.
+mount -t overlay overlay -o "lowerdir=${lower},upperdir=${state}/upper,workdir=${state}/work" "$rootmnt" || exit 1
+# Preserve the consumer's completed first-boot cloud-init state, not builder data.
+mkdir -p "$rootmnt/var/lib/cloud"
+mount --bind "$base/var/lib/cloud" "$rootmnt/var/lib/cloud" || exit 1
+"""
+
+
 _LAYER_ACTIVATE_SH = """\
 #!/usr/bin/env bash
 # layer-activate.sh — squashfs 레이어 마운트 + OverlayFS 합성 (VM 측)
@@ -205,8 +413,40 @@ LOCAL_PROFILE_DIR="${LOCAL_PROFILE_DIR:-/etc/afterglow/layers}"
 LOG="/var/log/layer-activate.log"
 exec >> "$LOG" 2>&1
 echo "[$(date)] layer-activate 시작: profile=${PROFILE} target=${OVERLAY_TARGET}"
+if [ "$OVERLAY_TARGET" = "/" ] && [ -f /etc/afterglow/root-staged ]; then
+    if [ "$(findmnt -n -o FSTYPE /)" != overlay ] || ! mountpoint -q /var/lib/cloud; then
+        echo '[ERROR] staged root did not boot through overlay' >&2
+        exit 1
+    fi
+    echo "[$(date)] Root OverlayFS health verified"
+    exit 0
+fi
 
-mkdir -p "$SQSH_BASE" "$CACHE_DIR" "$LOCAL_UPPER" "$LOCAL_WORK"
+if [ "$OVERLAY_TARGET" = "/" ]; then
+    [[ "${ROOT_UPPER_VOLUME_ID:-}" =~ ^[0-9a-fA-F-]{36}$ ]] || { echo '[ERROR] Cinder upper volume ID missing' >&2; exit 1; }
+    [ ! -e /etc/afterglow/layers/root-upper-uuid ] || { echo '[ERROR] root upper already prepared' >&2; exit 1; }
+    upper_device="$(python3 /usr/local/bin/layer-upper-device.py "$ROOT_UPPER_VOLUME_ID")"
+    [ -b "$upper_device" ] || { echo '[ERROR] Cinder upper device unavailable' >&2; exit 1; }
+    if blkid -p "$upper_device" >/dev/null 2>&1; then
+        echo '[ERROR] Cinder upper is not empty; refusing to format' >&2
+        exit 1
+    fi
+    mkfs.ext4 -q -F "$upper_device"
+    mkdir -p /run/afterglow/state
+    mount -t ext4 -o rw "$upper_device" /run/afterglow/state
+    upper_uuid="$(blkid -s UUID -o value "$upper_device")"
+    [[ "$upper_uuid" =~ ^[0-9a-fA-F-]{8}-[0-9a-fA-F-]{4}-[0-9a-fA-F-]{4}-[0-9a-fA-F-]{4}-[0-9a-fA-F-]{12}$ ]] || exit 1
+    echo "$upper_uuid" > /etc/afterglow/layers/root-upper-uuid
+    mkdir -p /run/afterglow/state/upper /run/afterglow/state/work /run/afterglow/state/blobs
+    CACHE_DIR=/run/afterglow/state/blobs
+    ROOT_LAYER_INDEX=0
+fi
+
+
+mkdir -p "$SQSH_BASE" "$CACHE_DIR"
+if [ "$OVERLAY_TARGET" != "/" ]; then
+    mkdir -p "$LOCAL_UPPER" "$LOCAL_WORK"
+fi
 _ensure_nfs_mount() {
     local mntpt="$1"
     if mountpoint -q "$mntpt" 2>/dev/null; then
@@ -221,6 +461,51 @@ _ensure_nfs_mount() {
         sleep 5
     done
     mount "$mntpt"
+}
+
+_stage_root_layer() {
+    local index="$1" mntpt="$2" file="$3" digest="$4" cache="$5"
+    local candidate export round remaining mount_timeout
+    local deadline=$(( $(date +%s) + 180 ))
+    [ -n "$digest" ] || { echo '[ERROR] sealed root digest missing' >&2; exit 1; }
+    # NFS is only needed during staging; initramfs reads verified Cinder blobs.
+    for ((round=1; round<=12; round++)); do
+        while IFS='|' read -r candidate export; do
+            [ "$candidate" = "$index" ] || continue
+            [ -n "$export" ] || { echo '[ERROR] empty root export' >&2; exit 1; }
+            remaining=$((deadline - $(date +%s)))
+            [ "$remaining" -gt 0 ] || break
+            mount_timeout=$((remaining < 15 ? remaining : 15))
+            if mountpoint -q "$mntpt" 2>/dev/null; then
+                echo '[ERROR] root staging mountpoint already in use' >&2
+                exit 1
+            fi
+            if ! timeout "${mount_timeout}s" mount -t nfs4 -o ro,soft,timeo=50,retrans=3,retry=0 "$export" "$mntpt"; then
+                echo "[WARN] root export mount failed: ${export}" >&2
+                continue
+            fi
+            if [ -f "$mntpt/images/$file" ] && cp -- "$mntpt/images/$file" "${cache}.tmp"; then
+                # A readable blob with the wrong digest is corrupt, not a reason
+                # to trust a different endpoint. Never publish unverified bytes.
+                if ! printf '%s  %s\\n' "${digest#sha256:}" "${cache}.tmp" | sha256sum -c -; then
+                    rm -f -- "${cache}.tmp"
+                    umount "$mntpt" || exit 1
+                    exit 1
+                fi
+                umount "$mntpt" || exit 1
+                mv -- "${cache}.tmp" "$cache"
+                return 0
+            fi
+            rm -f -- "${cache}.tmp"
+            umount "$mntpt" || exit 1
+            echo "[WARN] root blob unavailable on ${export}: ${file}" >&2
+        done < "${LOCAL_PROFILE_DIR}/root-exports.conf"
+        remaining=$((deadline - $(date +%s)))
+        [ "$round" -lt 12 ] && [ "$remaining" -gt 0 ] || break
+        sleep "$((remaining < 5 ? remaining : 5))"
+    done
+    echo "[ERROR] no usable root export for layer ${index}" >&2
+    exit 1
 }
 
 _layer_lowerdir() {
@@ -245,19 +530,30 @@ if [ ! -f "$LOCAL_CONF" ]; then
 fi
 
 LOWER_DIRS=""
-while IFS='|' read -r MNTPT SQSH_FILE; do
+while IFS='|' read -r MNTPT SQSH_FILE DIGEST; do
     MNTPT="${MNTPT//[[:space:]]/}"
     SQSH_FILE="${SQSH_FILE//[[:space:]]/}"
     [ -z "$MNTPT" ] && continue
     _validate_mountpoint "$MNTPT"
     _validate_sqsh "$SQSH_FILE"
-    _ensure_nfs_mount "$MNTPT"
+    if [ -n "$DIGEST" ] && ! [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+        echo '[ERROR] invalid layer digest' >&2
+        exit 1
+    fi
+    if [ "$OVERLAY_TARGET" != "/" ]; then
+        _ensure_nfs_mount "$MNTPT"
+    fi
 
 
     LAYER_KEY="${SQSH_FILE%.sqsh}"
     SQSH_NFS="${MNTPT}/images/${SQSH_FILE}"
     SQSH_CACHE="${CACHE_DIR}/${LAYER_KEY}.sqsh"
     MOUNT_POINT="${SQSH_BASE}/${LAYER_KEY}"
+
+    if [ "$OVERLAY_TARGET" = "/" ] && mountpoint -q "$MOUNT_POINT"; then
+        echo '[ERROR] duplicate Dockerfile layer mount' >&2
+        exit 1
+    fi
 
     if mountpoint -q "$MOUNT_POINT" 2>/dev/null; then
         LAYER_LOWER="$(_layer_lowerdir "$MOUNT_POINT")"
@@ -266,24 +562,30 @@ while IFS='|' read -r MNTPT SQSH_FILE; do
     fi
     mkdir -p "$MOUNT_POINT"
 
-    if [ -f "$SQSH_NFS" ]; then
-        _nfs_size="$(stat -c%s "$SQSH_NFS" 2>/dev/null || echo 0)"
-        _cache_size="$(stat -c%s "$SQSH_CACHE" 2>/dev/null || echo -1)"
-        if [ ! -f "$SQSH_CACHE" ] || \\
-           [ "$SQSH_NFS" -nt "$SQSH_CACHE" ] || \\
-           [ "$_nfs_size" != "$_cache_size" ]; then
-            cp "$SQSH_NFS" "${SQSH_CACHE}.tmp" 2>/dev/null \\
-                && mv "${SQSH_CACHE}.tmp" "$SQSH_CACHE" || true
-        fi
-    fi
-
-    if [ -f "$SQSH_CACHE" ]; then
+    if [ "$OVERLAY_TARGET" = "/" ]; then
+        SQSH_CACHE="${CACHE_DIR}/${ROOT_LAYER_INDEX}.sqsh"
+        _stage_root_layer "$ROOT_LAYER_INDEX" "$MNTPT" "$SQSH_FILE" "$DIGEST" "$SQSH_CACHE"
+        ROOT_LAYER_INDEX=$((ROOT_LAYER_INDEX + 1))
         SQSH_SRC="$SQSH_CACHE"
-    elif [ -f "$SQSH_NFS" ]; then
-        SQSH_SRC="$SQSH_NFS"
     else
-        echo "[ERROR] 이미지 없음: ${SQSH_NFS}" >&2
-        exit 1
+        if [ -f "$SQSH_NFS" ]; then
+            _nfs_size="$(stat -c%s "$SQSH_NFS" 2>/dev/null || echo 0)"
+            _cache_size="$(stat -c%s "$SQSH_CACHE" 2>/dev/null || echo -1)"
+            if [ ! -f "$SQSH_CACHE" ] || \
+               [ "$SQSH_NFS" -nt "$SQSH_CACHE" ] || \
+               [ "$_nfs_size" != "$_cache_size" ]; then
+                cp "$SQSH_NFS" "${SQSH_CACHE}.tmp" 2>/dev/null \
+                    && mv "${SQSH_CACHE}.tmp" "$SQSH_CACHE" || true
+            fi
+        fi
+        if [ -f "$SQSH_CACHE" ]; then
+            SQSH_SRC="$SQSH_CACHE"
+        elif [ -f "$SQSH_NFS" ]; then
+            SQSH_SRC="$SQSH_NFS"
+        else
+            echo "[ERROR] 이미지 없음: ${SQSH_NFS}" >&2
+            exit 1
+        fi
     fi
 
     mount -t squashfs "$SQSH_SRC" "$MOUNT_POINT" -o ro
@@ -311,6 +613,72 @@ _run_layer_hooks() {
         echo "[$(date)] hook 완료: ${hook}"
     done < <(find "$hook_dir" -maxdepth 1 -type f -name '*.sh' -perm -0100 -print0 | sort -z)
 }
+
+if [ "$OVERLAY_TARGET" = "/" ]; then
+    command -v update-initramfs >/dev/null || { echo '[ERROR] initramfs-tools required' >&2; exit 1; }
+    modprobe overlay
+    modprobe squashfs
+    modprobe loop
+    [ -d /etc/initramfs-tools/scripts/local-bottom ] || { echo '[ERROR] initramfs-tools missing' >&2; exit 1; }
+    [ "$(findmnt -n -o FSTYPE /run/afterglow/state)" = ext4 ] || { echo '[ERROR] Cinder upper not mounted' >&2; exit 1; }
+    ROOT_UPPER=/run/afterglow/state/upper
+    [ "$ROOT_LAYER_INDEX" -gt 0 ] || { echo '[ERROR] root layers missing' >&2; exit 1; }
+    for ((index=0; index<ROOT_LAYER_INDEX; index++)); do
+        [ -s "/run/afterglow/state/blobs/${index}.sqsh" ] || { echo '[ERROR] missing staged root layer' >&2; exit 1; }
+    done
+    cp -- "$LOCAL_CONF" /etc/afterglow/layers/root.conf
+    # Keep Dockerfile-created users, SSH configuration and application files.
+    # Only transient directories are opaque; private host keys are replaced.
+    for path in var/log tmp var/tmp; do
+        mkdir -p "$ROOT_UPPER/$path"
+        if [ -d "/$path" ]; then
+            cp -a "/$path/." "$ROOT_UPPER/$path/"
+        fi
+        python3 -c 'import os,sys; os.setxattr(sys.argv[1], "trusted.overlay.opaque", b"y")' \
+            "$ROOT_UPPER/$path"
+    done
+    for path in etc/machine-id etc/hostname etc/layer-profile; do
+        [ -f "/$path" ] || continue
+        mkdir -p "$ROOT_UPPER/$(dirname "$path")"
+        cp -a -- "/$path" "$ROOT_UPPER/$path"
+    done
+    if [ -f /etc/fstab ]; then
+        mkdir -p "$ROOT_UPPER/etc"
+        awk '$1 !~ /^#/ && ($2 == "/boot" || $2 == "/boot/efi")' /etc/fstab > "$ROOT_UPPER/etc/fstab"
+    fi
+    for path in etc/afterglow/layers/root.conf etc/afterglow/layers/root-upper-uuid \
+                etc/afterglow/layer-health.sh etc/systemd/system/layer-activate.service \
+                etc/systemd/system/layer-health.service \
+                etc/systemd/system/multi-user.target.wants/layer-activate.service \
+                etc/systemd/system/multi-user.target.wants/layer-health.service \
+                etc/initramfs-tools/scripts/local-bottom/afterglow-root \
+                etc/initramfs-tools/hooks/afterglow-root \
+                etc/netplan/50-cloud-init.yaml etc/sudoers.d/90-cloud-init-users \
+                root/.ssh "home/${CONSUMER_SSH_USER:-ubuntu}/.ssh"; do
+        [ -e "/$path" ] || continue
+        mkdir -p "$ROOT_UPPER/$(dirname "$path")"
+        cp -a -- "/$path" "$ROOT_UPPER/$path"
+    done
+    mkdir -p "$ROOT_UPPER/etc/ssh"
+    for key in /etc/ssh/ssh_host_*; do
+        [ -f "$key" ] || continue
+        cp -a -- "$key" "$ROOT_UPPER/etc/ssh/"
+    done
+    COMPOSED_ROOT=/mnt/afterglow-composed-root
+    mkdir -p "$COMPOSED_ROOT"
+    mount -t overlay overlay -o "lowerdir=${LOWER_DIRS}" "$COMPOSED_ROOT"
+    python3 /usr/local/bin/layer-identity-merge.py "$COMPOSED_ROOT" "$ROOT_UPPER" \
+        "${CONSUMER_SSH_USER:-ubuntu}" /
+    umount "$COMPOSED_ROOT"
+    mkdir -p "$ROOT_UPPER/usr/local/bin"
+    cp -a /usr/local/bin/layer-*.sh /usr/local/bin/layer-*.py "$ROOT_UPPER/usr/local/bin/"
+    touch /etc/afterglow/root-staged
+    cp -a /etc/afterglow/root-staged "$ROOT_UPPER/etc/afterglow/"
+    printf 'overlay\nsquashfs\nloop\next4\n' >> /etc/initramfs-tools/modules
+    update-initramfs -u -k "$(uname -r)"
+    # cloud-init power_state reboots only after all user-data scripts finish.
+    exit 42
+fi
 
 if mountpoint -q "$OVERLAY_TARGET" 2>/dev/null; then
     _ft="$(findmnt -n -o FSTYPE "$OVERLAY_TARGET" 2>/dev/null || true)"
@@ -469,10 +837,10 @@ async def _wait_for_shutoff(conn, server_id: str, build_db_id: int | None, build
         if status == "ACTIVE" and waited > 60:
             try:
                 partial = await asyncio.to_thread(nova.get_console_output, conn, server_id, _CONSOLE_EXCERPT_CHARS)
-                if success_tok in partial:
+                if success_tok in partial and not early_success:
                     early_success = True
                     await _update_build_db(build_db_id, console_log_excerpt=partial[-_CONSOLE_EXCERPT_CHARS:])
-                elif failure_tok in partial:
+                elif failure_tok in partial and not early_failure:
                     early_failure = True
                     await _update_build_db(build_db_id, console_log_excerpt=partial[-_CONSOLE_EXCERPT_CHARS:])
             except Exception:
@@ -495,17 +863,26 @@ def render_layer_consume_user_data(
     ssh_public_key: str | None = None,
     ssh_username: str | None = None,
     github_username: str | None = None,
+    *,
+    root_mode: bool = False,
+    health_token: str | None = None,
+    digests: list[str | None] | None = None,
+    root_upper_volume_id: str | None = None,
+    health_ssh_public_key: str | None = None,
+    root_export_candidates: list[list[str]] | None = None,
 ) -> str:
     """소비 VM cloud-init YAML 문자열을 반환한다 (per-layer-share 방식).
 
-    각 레이어가 자기 전용 NFS share를 가지므로 N개의 fstab 항목을 생성한다.
-    conf 파일 형식: 줄당 "<nfs_mountpoint>|<sqsh_filename>" (child-first = 최상위).
+    Legacy /usr mounts use one fstab automount per layer; full-root staging
+    tries each validated Manila export in order and unmounts it after copying.
+    root.conf remains the child-first cached-blob manifest for initramfs.
 
     Args:
         profile_name: 레이어 프로필 이름 (^[a-z0-9][a-z0-9.+-]*$). 개행 불허.
         mounts:       [(export_path, sqsh_filename), ...] child-first 순서.
                       export_path: Manila NFS export 경로. 개행·셸 메타문자 불허.
                       sqsh_filename: share /images/ 아래 .sqsh 파일명.
+        root_export_candidates: root-only candidate paths per layer, in mounts order.
     """
     if not _LAYER_NAME_RE.match(profile_name):
         raise ValueError(f"유효하지 않은 프로필 이름: {profile_name!r}")
@@ -513,6 +890,32 @@ def render_layer_consume_user_data(
         raise ValueError("프로필 이름에 개행 문자 불허")
     if not mounts:
         raise ValueError("mounts 목록이 비어 있습니다")
+    if digests is not None:
+        if len(digests) != len(mounts):
+            raise ValueError("layer digest count does not match mounts")
+        if any(value and not re.fullmatch(r"sha256:[0-9a-f]{64}", value) for value in digests):
+            raise ValueError("invalid layer digest")
+    if root_mode and (not digests or any(not digest for digest in digests)):
+        raise ValueError("dockerfile lineage requires sealed blob digests")
+
+    if root_mode:
+        if not isinstance(root_upper_volume_id, str) or not re.fullmatch(
+            r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+            root_upper_volume_id,
+        ):
+            raise ValueError("root mode requires a dedicated Cinder upper volume ID")
+    elif root_upper_volume_id is not None:
+        raise ValueError("Cinder upper volume only applies to root mode")
+    if health_ssh_public_key:
+        if not root_mode:
+            raise ValueError("temporary health SSH key applies only to root mode")
+        validate_ssh_public_key(health_ssh_public_key)
+    if root_export_candidates is not None and (
+        not root_mode
+        or len(root_export_candidates) != len(mounts)
+        or any(not group for group in root_export_candidates)
+    ):
+        raise ValueError("root export candidates must match mounts")
 
     # Manila 반환 동적값 검증 (신뢰하지 않음)
     _SQSH_RE = re.compile(r"^[a-z0-9][a-z0-9.+\-]*\.sqsh$")
@@ -523,6 +926,12 @@ def render_layer_consume_user_data(
             raise ValueError("NFS export 경로에 개행 문자 불허")
         if not _SQSH_RE.match(sqsh_filename):
             raise ValueError(f"유효하지 않은 sqsh 파일명: {sqsh_filename!r}")
+    if root_export_candidates is not None:
+        for group, (primary, _) in zip(root_export_candidates, mounts, strict=True):
+            if group[0] != primary or any(
+                not isinstance(export, str) or not _NFS_EXPORT_RE.fullmatch(export) for export in group
+            ):
+                raise ValueError("invalid root export candidates")
 
     if ssh_public_key:
         validate_ssh_public_key(ssh_public_key)
@@ -534,17 +943,67 @@ def render_layer_consume_user_data(
     github_username = normalize_github_username(github_username)
     if github_username and (ssh_public_key or ssh_username):
         raise ValueError("github_username은 ssh_public_key 또는 ssh_username과 함께 사용할 수 없습니다")
+    if health_token is None:
+        health_token = uuid.uuid4().hex
+    if not re.fullmatch(r"[0-9a-f]{32}", health_token):
+        raise ValueError("invalid layer health token")
 
     activate_b64 = base64.b64encode(_LAYER_ACTIVATE_SH.encode()).decode()
 
     # layer-activate-auto.sh — /etc/layer-profile 에서 프로필 읽어 activate 실행
-    auto_sh = textwrap.dedent("""\
+    auto_sh = textwrap.dedent(f"""\
         #!/usr/bin/env bash
         set -euo pipefail
         PROFILE="$(cat /etc/layer-profile | tr -d '[:space:]')"
-        exec /usr/local/bin/layer-activate.sh "$PROFILE"
+        if OVERLAY_TARGET={"/" if root_mode else "/usr"} ROOT_UPPER_VOLUME_ID={root_upper_volume_id or ""} CONSUMER_SSH_USER={ssh_username or "ubuntu"} /usr/local/bin/layer-activate.sh "$PROFILE"; then
+            if [ "$(findmnt -n -o FSTYPE {"/" if root_mode else "/usr"})" != overlay ]; then
+                {{ echo '{_FAILURE_SENTINEL}{health_token}' > /dev/console; }} 2>/dev/null || :
+                exit 1
+            fi
+        else
+            status=$?
+            if [ "$status" -eq 42 ] && [ {"1" if root_mode else "0"} -eq 1 ]; then
+                exit 0
+            fi
+            {{ echo '{_FAILURE_SENTINEL}{health_token}' > /dev/console; }} 2>/dev/null || :
+            exit "$status"
+        fi
     """)
     auto_b64 = base64.b64encode(auto_sh.encode()).decode()
+    health_sh = textwrap.dedent(f"""\
+        #!/usr/bin/env bash
+        set -euo pipefail
+        if [ {"1" if root_mode else "0"} -eq 1 ] && [ -f /etc/afterglow/root-staged ] \\
+            && [ "$(findmnt -n -o FSTYPE /)" != overlay ]; then
+            exit 0
+        fi
+        if [ "$(findmnt -n -o FSTYPE {"/" if root_mode else "/usr"})" != overlay ] \\
+            || ! systemctl is-active --quiet ssh.service \\
+            || ! ss -ltn '( sport = :22 )' | grep -q LISTEN; then
+            {{ echo '{_FAILURE_SENTINEL}{health_token}' > /dev/console; }} 2>/dev/null || :
+            exit 1
+        fi
+        echo '{health_token}' > {layer_consume_ssh.READY_FILE}
+        chmod 600 {layer_consume_ssh.READY_FILE}
+        {{ echo '{_SUCCESS_SENTINEL}{health_token}' > /dev/console; }} 2>/dev/null || :
+    """)
+    health_b64 = base64.b64encode(health_sh.encode()).decode()
+
+    health_unit = textwrap.dedent("""\
+        [Unit]
+        Description=Verify layer overlay and SSH readiness
+        After=layer-activate.service ssh.service network-online.target
+        Requires=layer-activate.service ssh.service
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=yes
+        ExecStart=/etc/afterglow/layer-health.sh
+
+        [Install]
+        WantedBy=multi-user.target
+    """)
+    health_unit_b64 = base64.b64encode(health_unit.encode()).decode()
 
     # systemd unit — network-online 후 실행 (automount가 NFS 마운트 처리)
     unit = textwrap.dedent("""\
@@ -570,15 +1029,28 @@ def render_layer_consume_user_data(
     profile_b64 = base64.b64encode((profile_name + "\n").encode()).decode()
 
     # conf 파일: 줄당 "<nfs_mountpoint>|<sqsh_filename>" (child-first)
-    conf_lines = [f"/mnt/nfs-layers/{i}|{sqsh}" for i, (_, sqsh) in enumerate(mounts)]
+    conf_lines = [
+        f"/mnt/nfs-layers/{i}|{sqsh}" + (f"|{digests[i]}" if digests and digests[i] else "")
+        for i, (_, sqsh) in enumerate(mounts)
+    ]
     local_conf_b64 = base64.b64encode(("\n".join(conf_lines) + "\n").encode()).decode()
 
-    # N개 fstab 항목 — 각 레이어 share를 /mnt/nfs-layers/<i>에 마운트
-    fstab_lines = "".join(
-        f"{export}  /mnt/nfs-layers/{i}  nfs4  ro,hard,timeo=50,retrans=3,_netdev,x-systemd.automount  0  0\n"
-        for i, (export, _) in enumerate(mounts)
+    # Only legacy /usr uses fstab automount. Root staging unmounts NFS before
+    # reboot and initramfs then reads verified blobs from the Cinder volume.
+    fstab_lines = (
+        ""
+        if root_mode
+        else "".join(
+            f"{export}  /mnt/nfs-layers/{i}  nfs4  ro,hard,timeo=50,retrans=3,_netdev,x-systemd.automount  0  0\n"
+            for i, (export, _) in enumerate(mounts)
+        )
     )
     fstab_b64 = base64.b64encode(fstab_lines.encode()).decode()
+    if root_mode:
+        root_exports = root_export_candidates or [[export] for export, _ in mounts]
+        root_exports_b64 = base64.b64encode(
+            "".join(f"{i}|{export}\n" for i, group in enumerate(root_exports) for export in group).encode()
+        ).decode()
 
     # /mnt/nfs-layers/<i> 디렉터리 생성 runcmd
     nfs_dirs = " ".join(f"/mnt/nfs-layers/{i}" for i in range(len(mounts)))
@@ -603,6 +1075,12 @@ def render_layer_consume_user_data(
                 "ssh_authorized_keys:",
                 f"  - {quoted_ssh_key}",
             ]
+    if health_ssh_public_key:
+        if not ssh_lines:
+            ssh_lines = ["ssh_authorized_keys:"]
+        ssh_lines.append(
+            f"{'      ' if ssh_public_key and ssh_username else '  '}- {json.dumps(health_ssh_public_key)}"
+        )
 
     parts = [
         "#cloud-config",
@@ -628,6 +1106,10 @@ def render_layer_consume_user_data(
         "    encoding: b64",
         f"    content: {auto_b64}",
         '    permissions: "0755"',
+        "  - path: /etc/afterglow/layer-health.sh",
+        "    encoding: b64",
+        f"    content: {health_b64}",
+        '    permissions: "0755"',
         "  - path: /etc/layer-profile",
         "    encoding: b64",
         f"    content: {profile_b64}",
@@ -637,16 +1119,57 @@ def render_layer_consume_user_data(
         "  - path: /etc/systemd/system/layer-activate.service",
         "    encoding: b64",
         f"    content: {unit_b64}",
-        "  - path: /etc/fstab",
+        "  - path: /etc/systemd/system/layer-health.service",
         "    encoding: b64",
-        "    append: true",
-        f"    content: {fstab_b64}",
+        f"    content: {health_unit_b64}",
+        *(
+            [
+                "  - path: /etc/initramfs-tools/scripts/local-bottom/afterglow-root",
+                "    encoding: b64",
+                f"    content: {base64.b64encode(_ROOT_INITRAMFS_HOOK.encode()).decode()}",
+                '    permissions: "0755"',
+                "  - path: /etc/initramfs-tools/hooks/afterglow-root",
+                "    encoding: b64",
+                f"    content: {base64.b64encode(_ROOT_INITRAMFS_DEPS.encode()).decode()}",
+                '    permissions: "0755"',
+                "  - path: /usr/local/bin/layer-identity-merge.py",
+                "    encoding: b64",
+                f"    content: {base64.b64encode(_ROOT_IDENTITY_MERGE_PY.encode()).decode()}",
+                '    permissions: "0755"',
+                "  - path: /usr/local/bin/layer-upper-device.py",
+                "    encoding: b64",
+                f"    content: {base64.b64encode(_ROOT_UPPER_DEVICE_PY.encode()).decode()}",
+                '    permissions: "0755"',
+                "  - path: /etc/afterglow/layers/root-exports.conf",
+                "    encoding: b64",
+                f"    content: {root_exports_b64}",
+            ]
+            if root_mode
+            else []
+        ),
+        *(
+            ["  - path: /etc/fstab", "    encoding: b64", "    append: true", f"    content: {fstab_b64}"]
+            if not root_mode
+            else []
+        ),
+        *(
+            [
+                "power_state:",
+                "  mode: reboot",
+                "  delay: now",
+                "  condition: test -f /etc/afterglow/root-staged",
+            ]
+            if root_mode
+            else []
+        ),
         "runcmd:",
         "  - mkdir -p /etc/afterglow/layers",
         f"  - mkdir -p {nfs_dirs} /mnt/sqsh /var/cache/layers /var/lib/overlay/upper /var/lib/overlay/work",
         "  - systemctl daemon-reload",
         "  - systemctl enable layer-activate.service",
+        "  - systemctl enable layer-health.service",
         "  - systemctl start layer-activate.service",
+        "  - systemctl start layer-health.service",
     ]
 
     return "\n".join(parts) + "\n"
@@ -1147,6 +1670,133 @@ async def resolve_layer_consume_resource_snapshot(
     }
 
 
+def _consumer_artifact_entry(art, settings) -> dict:
+    snapshot = _artifact_base_image_snapshot(art, settings)
+    return {
+        "id": art.id,
+        "name": art.name,
+        "kind": getattr(art, "kind", None),
+        "parent_id": getattr(art, "parent_id", None),
+        "blob_digest": getattr(art, "blob_digest", None),
+        "share_id": art.share_id,
+        "sqsh_filename": art.sqsh_filename,
+        "ubuntu_base": normalize_ubuntu_base(snapshot.get("ubuntu_base")),
+        "base_image_id": snapshot.get("base_image_id"),
+        "base_image_checksum": snapshot.get("base_image_checksum"),
+        "base_image_os_hash_algo": snapshot.get("base_image_os_hash_algo"),
+        "base_image_os_hash_value": snapshot.get("base_image_os_hash_value"),
+    }
+
+
+async def resolve_import_consume_artifacts(import_id: int) -> tuple[str, list[dict]]:
+    """Resolve one completed import's exact sealed root-first chain, not its mutable profile."""
+    from app.database import get_session_factory
+    from app.models.db import LayerArtifact, LayerImportJob
+
+    factory = get_session_factory()
+    if factory is None:
+        raise RuntimeError("DB 연결이 초기화되지 않았습니다")
+    async with factory() as session:
+        job = await session.get(LayerImportJob, import_id)
+        if job is None or job.status != "complete":
+            raise RuntimeError(f"완료된 Dockerfile 작업을 찾을 수 없습니다: {import_id}")
+        ids = job.artifact_ids
+        if (
+            not isinstance(ids, list)
+            or not ids
+            or any(type(item) is not int or item <= 0 for item in ids)
+            or len(ids) != len(set(ids))
+        ):
+            raise RuntimeError("Dockerfile 작업의 artifact IDs가 유효하지 않습니다")
+        artifacts = []
+        settings = get_settings()
+        for index, artifact_id in enumerate(ids):
+            art = await session.get(LayerArtifact, artifact_id)
+            if art is None or not art.is_sealed or not art.share_id or not art.blob_digest:
+                raise RuntimeError(f"봉인된 작업 artifact를 찾을 수 없습니다: {artifact_id}")
+            expected_parent = None if index == 0 else ids[index - 1]
+            expected_kind = "dockerfile-root" if index == 0 else "dockerfile"
+            if art.parent_id != expected_parent or art.kind != expected_kind:
+                raise RuntimeError("Dockerfile 작업의 artifact lineage가 일치하지 않습니다")
+            artifacts.append(_consumer_artifact_entry(art, settings))
+        return job.profile_name, artifacts
+
+
+async def resolve_admin_consume_artifacts(profile_name: str) -> list[dict]:
+    """Freeze a sealed profile and its complete root ancestry by artifact ID."""
+    from sqlalchemy import select
+
+    from app.database import get_session_factory
+    from app.models.db import LayerArtifact, LayerProfile
+
+    async with get_session_factory()() as session:
+        profile = (
+            await session.execute(select(LayerProfile).where(LayerProfile.name == profile_name))
+        ).scalar_one_or_none()
+        if profile is None or not profile.layers:
+            raise RuntimeError(f"프로필을 찾을 수 없거나 레이어가 비어 있습니다: {profile_name!r}")
+        selected = []
+        for name in profile.layers:
+            art = (
+                await session.execute(
+                    select(LayerArtifact)
+                    .where(LayerArtifact.name == name)
+                    .where(LayerArtifact.is_sealed.is_(True))
+                    .order_by(LayerArtifact.created_at.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            if art is None:
+                raise RuntimeError(f"봉인된 레이어 아티팩트를 찾을 수 없습니다: {name!r}")
+            selected.append(art)
+        if any(art.kind in {"dockerfile-root", "dockerfile"} for art in selected):
+            child = selected[0]
+            lineage = []
+            seen = set()
+            while child is not None:
+                if child.id in seen or not child.is_sealed:
+                    raise RuntimeError("dockerfile-root lineage is cyclic or unsealed")
+                seen.add(child.id)
+                lineage.append(child)
+                if child.parent_id is None:
+                    break
+                child = await session.get(LayerArtifact, child.parent_id)
+                if child is None:
+                    raise RuntimeError("dockerfile-root lineage is incomplete")
+            if lineage[-1].kind != "dockerfile-root":
+                raise RuntimeError("dockerfile lineage has no sealed full root")
+            lineage.reverse()
+            selected_ids = [art.id for art in selected]
+            if selected_ids != [art.id for art in reversed(lineage)] and selected_ids != [lineage[-1].id]:
+                raise RuntimeError("프로필의 dockerfile-root lineage가 일치하지 않습니다")
+            selected = lineage
+        settings = get_settings()
+        return [_consumer_artifact_entry(art, settings) for art in selected]
+
+
+async def validate_consume_image_identity(conn, artifacts: list[dict], image_id: str | None = None) -> None:
+    """Reject drifted/inaccessible Glance images before allocating a consumer."""
+    from app.services.layer_base_images import resolve_base_image_snapshot
+
+    if not artifacts:
+        raise RuntimeError("소비할 레이어 목록이 비어 있습니다")
+    base_ids = {str(entry.get("base_image_id") or "") for entry in artifacts}
+    bases = {normalize_ubuntu_base(entry.get("ubuntu_base")) for entry in artifacts}
+    if "" in base_ids or len(base_ids) != 1 or len(bases) != 1:
+        raise RuntimeError("프로필 레이어의 base image가 일치하지 않습니다")
+    base_id = next(iter(base_ids))
+    if image_id and image_id != base_id:
+        raise RuntimeError("요청 image_id가 프로필 base image와 일치하지 않습니다")
+    try:
+        live_image = await asyncio.to_thread(resolve_base_image_snapshot, conn, base_id, next(iter(bases)))
+    except ValueError as exc:
+        raise RuntimeError(str(exc)) from exc
+    for fingerprint_field in ("base_image_checksum", "base_image_os_hash_algo", "base_image_os_hash_value"):
+        for entry in artifacts:
+            if entry.get(fingerprint_field) and str(entry[fingerprint_field]) != str(live_image.get(fingerprint_field)):
+                raise RuntimeError(f"base image identity mismatch: {fingerprint_field}")
+
+
 async def run_layer_consume(
     consume_db_id: int | None,
     profile_name: str,
@@ -1175,7 +1825,7 @@ async def run_layer_consume(
     from sqlalchemy import select as _select
 
     from app.database import get_session_factory
-    from app.models.db import LayerArtifact, LayerProfile
+    from app.models.db import LayerArtifact
 
     settings = get_settings()
     resource_snapshot = resource_snapshot or {}
@@ -1193,25 +1843,12 @@ async def run_layer_consume(
     owns_share_connection = share_conn is None
     port_id: str | None = None
     server_id: str | None = None
+    upper_volume_id: str | None = None
     consume_ro_access_ids: list[tuple[str, str]] = []
-
-    def _artifact_entry_from_row(art) -> dict:
-        snapshot = _artifact_base_image_snapshot(art, settings)
-        return {
-            "id": art.id,
-            "name": art.name,
-            "share_id": art.share_id,
-            "sqsh_filename": art.sqsh_filename,
-            "ubuntu_base": normalize_ubuntu_base(snapshot.get("ubuntu_base")),
-            "base_image_id": snapshot.get("base_image_id"),
-            "base_image_checksum": snapshot.get("base_image_checksum"),
-            "base_image_os_hash_algo": snapshot.get("base_image_os_hash_algo"),
-            "base_image_os_hash_value": snapshot.get("base_image_os_hash_value"),
-        }
+    health_key_path: str | None = None
+    health_public_key: str | None = None
 
     try:
-        await _update_consume_db(consume_db_id, status="creating")
-
         if resolved_artifacts is not None:
             artifact_entries = list(resolved_artifacts)
         elif artifact_ids is not None:
@@ -1228,35 +1865,11 @@ async def run_layer_consume(
                 missing = [artifact_id for artifact_id in ordered_ids if artifact_id not in by_id]
                 if missing:
                     raise RuntimeError(f"레이어 artifact를 찾을 수 없습니다: {missing}")
-                artifact_entries = [_artifact_entry_from_row(by_id[artifact_id]) for artifact_id in ordered_ids]
+                artifact_entries = [
+                    _consumer_artifact_entry(by_id[artifact_id], settings) for artifact_id in ordered_ids
+                ]
         else:
-            profile_layers: list[str] = []
-            async with get_session_factory()() as _prof_session:
-                _prof_row = (
-                    await _prof_session.execute(_select(LayerProfile).where(LayerProfile.name == profile_name))
-                ).scalar_one_or_none()
-                if _prof_row is None:
-                    raise RuntimeError(f"프로필을 찾을 수 없습니다: {profile_name!r}")
-                profile_layers = list(_prof_row.layers)
-
-            if not profile_layers:
-                raise RuntimeError(f"프로필 {profile_name!r}의 레이어 목록이 비어 있습니다")
-
-            artifact_entries = []
-            async with get_session_factory()() as _art_session:
-                for layer_name in profile_layers:
-                    art = (
-                        await _art_session.execute(
-                            _select(LayerArtifact)
-                            .where(LayerArtifact.name == layer_name)
-                            .where(LayerArtifact.is_sealed.is_(True))
-                            .order_by(LayerArtifact.created_at.desc())
-                            .limit(1)
-                        )
-                    ).scalar_one_or_none()
-                    if art is None:
-                        raise RuntimeError(f"봉인된 레이어 아티팩트를 찾을 수 없습니다: {layer_name!r}")
-                    artifact_entries.append(_artifact_entry_from_row(art))
+            artifact_entries = await resolve_admin_consume_artifacts(profile_name)
 
         if not artifact_entries:
             raise RuntimeError("소비할 레이어 목록이 비어 있습니다")
@@ -1291,13 +1904,36 @@ async def run_layer_consume(
         if image_id and image_id != profile_base_image_id:
             raise RuntimeError("요청 image_id가 프로필 base image와 일치하지 않습니다")
         effective_image_id = profile_base_image_id
+        root_mode = any(entry.get("kind") in {"dockerfile-root", "dockerfile"} for entry in artifact_entries)
+        if root_mode:
+            if artifact_entries[0].get("kind") != "dockerfile-root":
+                raise RuntimeError("dockerfile lineage must begin with dockerfile-root")
+            if any(entry.get("kind") != "dockerfile" for entry in artifact_entries[1:]):
+                raise RuntimeError("dockerfile-root must be followed only by dockerfile deltas")
+            for index, entry in enumerate(artifact_entries):
+                expected_parent = None if index == 0 else artifact_entries[index - 1].get("id")
+                if entry.get("parent_id") != expected_parent:
+                    raise RuntimeError("dockerfile-root lineage is incomplete or out of order")
+            if any(not entry.get("blob_digest") for entry in artifact_entries):
+                raise RuntimeError("dockerfile lineage requires sealed blob digests")
+        for field in ("base_image_checksum", "base_image_os_hash_algo", "base_image_os_hash_value"):
+            recorded = {str(entry[field]) for entry in artifact_entries if entry.get(field)}
+            if len(recorded) > 1:
+                raise RuntimeError(f"프로필 레이어의 {field}가 일치하지 않습니다")
 
+        for entry in artifact_entries:
+            digest = entry.get("blob_digest")
+            if digest and not re.fullmatch(r"sha256:[0-9a-f]{64}", str(digest)):
+                raise RuntimeError(f"invalid sealed blob digest: {entry.get('id')}")
         if owned_compute_conn is None:
             from app.services.keystone import get_admin_connection_for_project
 
             owned_compute_conn = await asyncio.to_thread(
                 get_admin_connection_for_project, service_project_snapshot["id"]
             )
+        await validate_consume_image_identity(owned_compute_conn, artifact_entries, image_id)
+        await _update_consume_db(consume_db_id, status="creating")
+
         if owned_share_conn is None:
             owned_share_conn = owned_compute_conn
         from app.services.instance_names import ensure_unique_instance_name
@@ -1317,7 +1953,10 @@ async def run_layer_consume(
         await _update_consume_db(consume_db_id, port_id=port_id)
 
         mounts: list[tuple[str, str]] = []
+        root_exports: list[list[str]] = []
         for share_id, sqsh_filename in layer_share_info:
+            existing_rules = await asyncio.to_thread(manila.list_access_rules, owned_share_conn, share_id)
+            existing_ids = {item.get("id") for item in existing_rules}
             rule = await asyncio.to_thread(
                 manila.ensure_nfs_access_rule,
                 owned_share_conn,
@@ -1327,21 +1966,41 @@ async def run_layer_consume(
                 root_squash=False,
                 sec_flavor="sys",
             )
-            consume_ro_access_ids.append((share_id, rule["access_id"]))
+            if rule["access_id"] not in existing_ids:
+                consume_ro_access_ids.append((share_id, rule["access_id"]))
 
             export_locations = await asyncio.to_thread(manila.get_export_locations, owned_share_conn, share_id)
             if not export_locations:
                 raise RuntimeError(f"share {share_id}의 export location이 없습니다")
             mounts.append((export_locations[0], sqsh_filename))
+            if root_mode:
+                root_exports.append(export_locations)
             _logger.info("[layer_consume] share RO rule: share=%s access=%s", share_id, rule["access_id"])
 
+        health_token = uuid.uuid4().hex
         mounts_child_first = list(reversed(mounts))
+        root_exports_child_first = list(reversed(root_exports)) if root_mode else None
+        if root_mode:
+            upper_volume = await asyncio.to_thread(
+                cinder.create_empty_volume,
+                owned_compute_conn,
+                f"afterglow-root-upper-{token}",
+                settings.upper_volume_size_gb,
+            )
+            upper_volume_id = upper_volume.id
+            health_key_path, health_public_key = layer_consume_ssh.create_health_key()
         user_data_str = render_layer_consume_user_data(
             profile_name,
             mounts_child_first,
             ssh_public_key=ssh_public_key,
             ssh_username=ssh_username,
             github_username=github_username,
+            root_mode=root_mode,
+            health_token=health_token,
+            digests=[entry.get("blob_digest") for entry in reversed(artifact_entries)] if root_mode else None,
+            root_upper_volume_id=upper_volume_id,
+            health_ssh_public_key=health_public_key,
+            root_export_candidates=root_exports_child_first,
         )
         user_data_b64 = cloudinit.compose_userdata(
             base64.b64encode(user_data_str.encode()).decode(),
@@ -1355,16 +2014,56 @@ async def run_layer_consume(
             flavor_id=resolved_flavor_id,
             networks=[{"port": port_id}],
             user_data=user_data_b64,
+            **(
+                {
+                    "block_device_mapping_v2": [
+                        {
+                            "boot_index": 0,
+                            "uuid": effective_image_id,
+                            "source_type": "image",
+                            "destination_type": "local",
+                        },
+                        {
+                            "boot_index": -1,
+                            "uuid": upper_volume_id,
+                            "source_type": "volume",
+                            "destination_type": "volume",
+                            "delete_on_termination": True,
+                        },
+                    ]
+                }
+                if root_mode
+                else {}
+            ),
             metadata={
                 "union_type": "layer-consumer",
                 "layer_profile": profile_name,
                 "ubuntu_base": profile_ubuntu_base,
                 "base_image_id": profile_base_image_id,
                 "afterglow_managed": "true",
+                **({"union_upper_volume_id": upper_volume_id} if root_mode else {}),
             },
         )
         server_id = server.id
-        await _update_consume_db(consume_db_id, server_id=server_id, status="active", completed=True)
+        await _update_consume_db(consume_db_id, server_id=server_id)
+        proven_by_ssh = await _wait_for_consume_health(
+            owned_compute_conn,
+            server_id,
+            health_token,
+            ssh_host=fixed_ip if root_mode else None,
+            ssh_key_path=health_key_path,
+            ssh_username=ssh_username or "ubuntu",
+        )
+        if health_key_path and health_public_key:
+            try:
+                await layer_consume_ssh.remove_health_key(
+                    fixed_ip, ssh_username or "ubuntu", health_key_path, health_public_key
+                )
+            except Exception:
+                if proven_by_ssh:
+                    raise
+                _logger.warning("[layer_consume] temporary guest SSH key removal failed", exc_info=True)
+        await _update_consume_db(consume_db_id, status="active", completed=True)
         _logger.info("[layer_consume] 소비 VM 생성: %s (%s), profile=%s", server_name, server_id, profile_name)
         return server_id
 
@@ -1377,6 +2076,13 @@ async def run_layer_consume(
             completed=True,
         )
         if not server_id:
+            if upper_volume_id and owned_compute_conn is not None:
+                try:
+                    await asyncio.to_thread(cinder.delete_volume, owned_compute_conn, upper_volume_id)
+                except Exception:
+                    _logger.warning(
+                        "[layer_consume] unclaimed Cinder upper cleanup failed: %s", upper_volume_id, exc_info=True
+                    )
             if owned_share_conn is not None:
                 for _sid, _aid in consume_ro_access_ids:
                     try:
@@ -1396,6 +2102,11 @@ async def run_layer_consume(
         raise
 
     finally:
+        if health_key_path:
+            try:
+                os.unlink(health_key_path)
+            except FileNotFoundError:
+                pass
         connections_to_close: list[object] = []
         if owns_compute_connection and owned_compute_conn is not None:
             connections_to_close.append(owned_compute_conn)

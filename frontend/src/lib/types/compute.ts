@@ -60,6 +60,8 @@ export interface ImageInfo {
   name: string;
   status: string;
   visibility?: string;
+  verification_status?: 'verified' | 'unverified' | 'unavailable' | null;
+  verified_at?: string | null;
   repository?: string;
   tag?: string;
   size?: number;
@@ -67,9 +69,11 @@ export interface ImageInfo {
   min_ram?: number;
   disk_format?: string;
   container_format?: string;
-  created_at?: string;
-  updated_at?: string;
+  created_at?: string | null;
+  updated_at?: string | null;
   owner?: string;
+  os_hash_algo?: string | null;
+  os_hash_value?: string | null;
   protected?: boolean;
   tags?: string[];
   os_distro?: string | null;

@@ -613,6 +613,36 @@ def get_network_quota(conn: openstack.connection.Connection, project_id: str, *,
             return {key: {"limit": -1, "in_use": 0} for key in keys}
 
 
+def get_security_group_quota(conn: openstack.connection.Connection, project_id: str) -> dict:
+    """Only detailed Neutron quota carries authoritative group/rule usage."""
+    import math
+
+    quota = conn.network.get_quota(project_id, details=True)
+    raw = quota.to_dict(original_names=True) if hasattr(quota, "to_dict") else quota
+    result = {}
+    for key in ("security_group", "security_group_rule"):
+        entry = raw.get(key) if isinstance(raw, dict) else None
+        if not isinstance(entry, dict) or "limit" not in entry:
+            raise ValueError(f"missing Neutron quota: {key}")
+        usage_key = "used" if "used" in entry else "in_use" if "in_use" in entry else None
+        if usage_key is None:
+            raise ValueError(f"missing Neutron quota usage: {key}")
+        limit, used = entry["limit"], entry[usage_key]
+        if (
+            not isinstance(limit, (int, float))
+            or isinstance(limit, bool)
+            or not math.isfinite(limit)
+            or limit < -1
+            or not isinstance(used, (int, float))
+            or isinstance(used, bool)
+            or not math.isfinite(used)
+            or used < 0
+        ):
+            raise ValueError(f"malformed Neutron quota: {key}")
+        result[key] = {"limit": limit, "in_use": used}
+    return result
+
+
 def list_floating_ips(conn: openstack.connection.Connection, project_id: str | None = None) -> list[FloatingIpInfo]:
     kwargs: dict = {}
     if project_id:
@@ -1072,6 +1102,7 @@ def _sg_to_dict(sg) -> dict:
                 "port_range_max": r.get("port_range_max"),
                 "remote_ip_prefix": r.get("remote_ip_prefix"),
                 "ethertype": r.get("ethertype"),
+                "remote_group_id": r.get("remote_group_id"),
             }
             for r in (sg.security_group_rules or [])
         ],
@@ -1129,11 +1160,33 @@ def create_security_group_rule(
         "port_range_max": rule.port_range_max,
         "remote_ip_prefix": rule.remote_ip_prefix,
         "ethertype": rule.ether_type,
+        "remote_group_id": getattr(rule, "remote_group_id", None),
     }
 
 
 def delete_security_group_rule(conn: openstack.connection.Connection, rule_id: str) -> None:
     conn.network.delete_security_group_rule(rule_id, ignore_missing=True)
+
+
+def list_security_group_instances(conn: openstack.connection.Connection, project_id: str, sg_id: str) -> list[dict]:
+    """Resolve distinct compute-port members against caller-scoped Nova."""
+    instance_ids: set[str] = set()
+    for port in conn.network.ports(project_id=project_id):
+        if (
+            _project_id(port) == project_id
+            and (getattr(port, "device_owner", None) or "").startswith("compute:")
+            and getattr(port, "device_id", None)
+            and sg_id in (getattr(port, "security_group_ids", None) or [])
+        ):
+            instance_ids.add(port.device_id)
+    instances = []
+    for instance_id in sorted(instance_ids):
+        server = conn.compute.get_server(instance_id)
+        if server is None:
+            raise LookupError(f"Nova server unavailable: {instance_id}")
+        if _project_id(server) == project_id:
+            instances.append({"id": instance_id, "name": server.name, "status": server.status})
+    return instances
 
 
 _UNION_EGRESS_RULES: list[dict] = [

@@ -28,6 +28,7 @@
   const selectedRepositoryGroup = $derived(
     ctrl.allRepositoryGroups.find((group) => group.repository === selectedRepository) ?? null
   );
+  const currentImageIds = $derived(new Set(ctrl.allRepositoryGroups.flatMap((group) => group.tags.map((version) => version.current.id))));
 
   function changeViewMode(mode: CatalogViewMode) {
     viewMode = mode;
@@ -149,18 +150,13 @@
         refreshing={ctrl.refreshing}
         onManualRefresh={ctrl.forceRefresh}
       />
-      <Button
-        onclick={() => ctrl.sortOrder = ctrl.sortOrder === 'desc' ? 'asc' : 'desc'}
-        variant="secondary"
-        size="sm"
-      >날짜 {ctrl.sortOrder === 'desc' ? '↓ 최신순' : '↑ 오래된순'}</Button>
     {/snippet}
   </ResourceToolbar>
 
   {#if ctrl.error}<Alert tone="danger">{ctrl.error}</Alert>{/if}
 
   {#if ctrl.loading}
-    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3.5">
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
       {#each Array(8) as _}
         <div class="animate-pulse h-32 bg-surface-base border border-line rounded-lg"></div>
       {/each}
@@ -171,6 +167,7 @@
       bind:repositoryFilter={ctrl.repositoryFilter}
       bind:tagFilter={ctrl.tagFilter}
       bind:sortMode={ctrl.sortMode}
+      bind:verificationFilter={ctrl.verificationFilter}
       {viewMode}
       repositoryOptions={ctrl.repositoryOptions}
       tagOptions={ctrl.tagOptions}
@@ -185,7 +182,7 @@
     {#if ctrl.filteredImages.length === 0}
       <EmptyState
         headline={ctrl.images.length === 0 ? '이미지가 없습니다' : '검색 결과가 없습니다'}
-        description={ctrl.images.length > 0 ? 'repository, tag, OS 필터를 바꿔보세요.' : '이미지를 업로드하면 카탈로그에 표시됩니다.'}
+        description={ctrl.images.length > 0 ? 'repository, tag, OS, 검증 필터를 바꿔보세요.' : '이미지를 업로드하면 카탈로그에 표시됩니다.'}
       />
     {:else if selectedRepositoryGroup}
       <ImageRepositoryDetail
@@ -194,7 +191,7 @@
         onOpenTag={openRepositoryTag}
       />
     {:else if viewMode === 'repositories'}
-      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
         {#each ctrl.repositoryGroups as group (group.repository)}
           <ImageRepositoryCard
             {group}
@@ -215,10 +212,11 @@
           onToggle={() => ctrl.selection.toggleAll(ownedImageIds)}
         />
       </div>
-      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3.5">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
         {#each ctrl.filteredImages as img (img.id)}
           <ImageCard
             {img}
+            current={currentImageIds.has(img.id)}
             isOwner={img.owner === $auth.projectId}
             toggling={ctrl.togglingId === img.id}
             deleting={ctrl.deleting === img.id}

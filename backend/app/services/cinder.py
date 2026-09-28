@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import openstack
 
 from app.models.storage import VolumeInfo
+
+_logger = logging.getLogger(__name__)
 
 
 def create_volume_from_image(
@@ -41,7 +44,14 @@ def create_empty_volume(
         kwargs["availability_zone"] = availability_zone
 
     vol = conn.block_storage.create_volume(**kwargs)
-    vol = conn.block_storage.wait_for_status(vol, status="available", wait=120)
+    try:
+        vol = conn.block_storage.wait_for_status(vol, status="available", wait=120)
+    except Exception:
+        try:
+            conn.block_storage.delete_volume(vol.id, ignore_missing=True)
+        except Exception:
+            _logger.warning("Failed to delete unavailable empty volume %s", vol.id, exc_info=True)
+        raise
     return _vol_to_info(vol)
 
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -267,8 +267,29 @@ def get_project_quota(conn: openstack.connection.Connection, project_id: str, *,
         }
 
 
+def parse_nova_timestamp(value: object) -> datetime | None:
+    """Parse Nova's usage timestamp as an aware UTC datetime."""
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed
+
+
 def get_project_usage(conn: openstack.connection.Connection, project_id: str, start: str, end: str) -> dict:
     """Nova simple-tenant-usage API로 기간별 사용량 조회."""
+
+    def _field(s, key: str, default):
+        return s.get(key, default) if isinstance(s, dict) else getattr(s, key, default)
+
+    def _timestamp(value: object) -> str | None:
+        parsed = parse_nova_timestamp(value)
+        return parsed.isoformat() if parsed else None
+
     try:
         # openstacksdk get_usage는 datetime 객체를 기대함 (문자열 전달 시 AttributeError)
         start_dt = datetime.strptime(start, "%Y-%m-%d")
@@ -282,13 +303,17 @@ def get_project_usage(conn: openstack.connection.Connection, project_id: str, st
             "total_hours": getattr(usage, "total_hours", 0.0),
             "server_usages": [
                 {
-                    "name": s.get("name", "") if isinstance(s, dict) else getattr(s, "name", ""),
-                    "instance_id": s.get("instance_id", "") if isinstance(s, dict) else getattr(s, "instance_id", ""),
-                    "vcpus": s.get("vcpus", 0) if isinstance(s, dict) else getattr(s, "vcpus", 0),
-                    "memory_mb": s.get("memory_mb", 0) if isinstance(s, dict) else getattr(s, "memory_mb", 0),
-                    "local_gb": s.get("local_gb", 0) if isinstance(s, dict) else getattr(s, "local_gb", 0),
-                    "hours": s.get("hours", 0.0) if isinstance(s, dict) else getattr(s, "hours", 0.0),
-                    "state": s.get("state", "") if isinstance(s, dict) else getattr(s, "state", ""),
+                    "name": _field(s, "name", ""),
+                    "instance_id": _field(s, "instance_id", ""),
+                    "flavor": str(_field(s, "flavor", "") or ""),
+                    "vcpus": _field(s, "vcpus", 0),
+                    "memory_mb": _field(s, "memory_mb", 0),
+                    "local_gb": _field(s, "local_gb", 0),
+                    "hours": _field(s, "hours", 0.0),
+                    "state": _field(s, "state", ""),
+                    "started_at": _timestamp(_field(s, "started_at", None)),
+                    "ended_at": _timestamp(_field(s, "ended_at", None)),
+                    "uptime": int(_field(s, "uptime", 0) or 0),
                 }
                 for s in server_usages
             ],

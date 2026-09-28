@@ -130,6 +130,114 @@
 		{ value: 'perplexity', label: 'Perplexity (Agent API · Router · Sonar)', providerType: 'perplexity', authMode: 'api_key' },
 		{ value: 'xai', label: 'xAI (Grok)', providerType: 'xai', authMode: 'api_key' }
 	];
+	type ModelKind = 'text' | 'image' | 'tts' | 'stt' | 'realtime';
+	type MediaRateKey = 'image_per_unit' | 'audio_per_character' | 'audio_per_second' | 'audio_per_minute' | 'realtime_input_per_minute' | 'realtime_output_per_minute';
+	type MediaPricing = Partial<Record<MediaRateKey, string> & { image_variants: Record<string, string> }>;
+	interface MediaVariantRow { id: number; name: string; price: string }
+	const MEDIA_FIELDS: Record<Exclude<ModelKind, 'text'>, { key: MediaRateKey; label: string; unit: string }[]> = {
+		image: [{ key: 'image_per_unit', label: '이미지 기본 단가', unit: 'USD / 이미지 1장' }],
+		tts: [
+			{ key: 'audio_per_character', label: '음성 생성 문자 단가', unit: 'USD / 글자' },
+			{ key: 'audio_per_second', label: '음성 생성 시간 단가', unit: 'USD / 초' }
+		],
+		stt: [{ key: 'audio_per_minute', label: '음성 인식 단가', unit: 'USD / 분' }],
+		realtime: [
+			{ key: 'realtime_input_per_minute', label: '실시간 음성 입력 단가', unit: 'USD / 분' },
+			{ key: 'realtime_output_per_minute', label: '실시간 음성 출력 단가', unit: 'USD / 분' }
+		]
+	};
+	const MEDIA_LABELS: Record<ModelKind, string> = { text: '텍스트', image: '이미지', tts: '음성 생성 (TTS)', stt: '음성 인식 (STT)', realtime: '실시간 음성' };
+	function mediaFields(kind: ModelKind | undefined): { key: MediaRateKey; label: string; unit: string }[] {
+		return !kind || kind === 'text' ? [] : MEDIA_FIELDS[kind];
+	}
+	function emptyMediaRates(): Record<MediaRateKey, string> {
+		return { image_per_unit: '', audio_per_character: '', audio_per_second: '', audio_per_minute: '', realtime_input_per_minute: '', realtime_output_per_minute: '' };
+	}
+	let nextVariantId = 0;
+	function rowsFromPricing(pricing: MediaPricing | null | undefined): MediaVariantRow[] {
+		return Object.entries(pricing?.image_variants ?? {}).map(([name, price]) => ({ id: ++nextVariantId, name, price: String(price) }));
+	}
+	function ratesFromPricing(pricing: MediaPricing | null | undefined): Record<MediaRateKey, string> {
+		return {
+			image_per_unit: pricing?.image_per_unit ?? '',
+			audio_per_character: pricing?.audio_per_character ?? '',
+			audio_per_second: pricing?.audio_per_second ?? '',
+			audio_per_minute: pricing?.audio_per_minute ?? '',
+			realtime_input_per_minute: pricing?.realtime_input_per_minute ?? '',
+			realtime_output_per_minute: pricing?.realtime_output_per_minute ?? ''
+		};
+	}
+	// Lumen serializes very small Decimal rates with exponents; preserve them as strings.
+	const MEDIA_PRICE_PATTERN = /^(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+	function mediaPricePayload(kind: Exclude<ModelKind, 'text'>, rates: Record<MediaRateKey, string>, rows: MediaVariantRow[]): MediaPricing | null | undefined {
+		const pricing: MediaPricing = {};
+		for (const field of MEDIA_FIELDS[kind]) {
+			const value = rates[field.key].trim();
+			if (value && !MEDIA_PRICE_PATTERN.test(value)) {
+				toast.error(`${field.label}: 0 이상의 유한한 USD 단가를 입력하세요`);
+				return undefined;
+			}
+			if (value) pricing[field.key] = value;
+		}
+		if (kind === 'image' && rows.length > 500) {
+			toast.error('이미지 variant 가격은 최대 500개까지 설정할 수 있습니다');
+			return undefined;
+		}
+		if (kind === 'image' && rows.length) {
+			const variants: Record<string, string> = Object.create(null);
+			for (const row of rows) {
+				const name = row.name.trim();
+				const price = row.price.trim();
+				if (!/^[1-9][0-9]*x[1-9][0-9]*:[A-Za-z][A-Za-z0-9_-]*$/.test(name) || !price || !MEDIA_PRICE_PATTERN.test(price) || name in variants) {
+					toast.error('이미지 variant는 중복 없는 size:quality (예: 1024x1024:high)와 0 이상의 USD / 장 단가가 필요합니다');
+					return undefined;
+				}
+				variants[name] = price;
+			}
+			pricing.image_variants = variants;
+		}
+		return Object.keys(pricing).length ? pricing : null;
+	}
+	function mediaPriceSummary(model: Model): string {
+		const kind = model.model_kind ?? 'text';
+		if (kind === 'text') return '';
+		const pricing = model.media_pricing;
+		const rates = MEDIA_FIELDS[kind].filter(({ key }) => pricing?.[key] != null)
+			.map(({ key, label, unit }) => `${label} ${formatPricePerMillion(pricing?.[key])} ${unit}`);
+		const variants = kind === 'image' ? Object.entries(pricing?.image_variants ?? {})
+			.map(([name, price]) => `${name}: ${formatPricePerMillion(price)} USD / 장`) : [];
+		return [...rates, ...variants].join(' · ') || '단가 미설정';
+	}
+	function mediaReadiness(model: Model): string {
+		const feature = model.model_kind === 'image' ? 'image_output' : model.model_kind === 'stt' ? 'audio_input' : 'audio_output';
+		const gate = model.effective_capabilities?.feature_gates?.[feature];
+		return gate?.reason_code === 'route_unavailable'
+			? '실행 경로 없음 · 실행 불가'
+			: `실행 미검증 · 경로 확인 필요${gate?.reason_code ? ` (${gate.reason_code})` : ''}`;
+	}
+	function mediaCapability(model: Model): string {
+		const kind = model.model_kind ?? 'text';
+		const features = kind === 'image' ? ['image_output'] : kind === 'stt' ? ['audio_input'] : kind === 'realtime' ? ['audio_input', 'audio_output'] : ['audio_output'];
+		const names: Record<string, string> = { image_output: '이미지 출력', audio_input: '오디오 입력', audio_output: '오디오 출력' };
+		const priced = features.every((feature) => model.effective_capabilities?.feature_gates?.[feature]?.pricing_available === true);
+		return `${features.map((feature) => names[feature]).join('·')} · ${priced ? '해당 기능 단가 표시됨' : '해당 기능 단가 미확인'}`;
+	}
+
+	function mediaPricingEquals(a: MediaPricing | null, b: MediaPricing | null): boolean {
+		const left = a ?? {}, right = b ?? {};
+		const keys = Object.keys(left) as (keyof MediaPricing)[];
+		if (keys.length !== Object.keys(right).length) return false;
+		return keys.every((key) => {
+			if (key === 'image_variants') {
+				const av = left.image_variants ?? {}, bv = right.image_variants ?? {};
+				return Object.keys(av).length === Object.keys(bv).length && Object.entries(av).every(([name, price]) => bv[name] === price);
+			}
+			return left[key] === right[key];
+		});
+	}
+
+
+
 	interface Model {
 		id: number;
 		provider_id: number;
@@ -138,6 +246,8 @@
 		api_provider?: string;
 		display_name: string | null;
 		is_active: boolean;
+		model_kind?: ModelKind;
+		media_pricing?: MediaPricing | null;
 		is_title_model?: boolean;
 		input_price_per_million: string | null;
 		output_price_per_million: string | null;
@@ -324,8 +434,11 @@
 	let mProviderId = $state<number | ''>('');
 	let mName = $state('');
 	let mDisplay = $state('');
+	let mKind = $state<ModelKind>('text');
 	let mInputPrice = $state('');
 	let mOutputPrice = $state('');
+	let mMediaRates = $state<Record<MediaRateKey, string>>(emptyMediaRates());
+	let mMediaVariants = $state<MediaVariantRow[]>([]);
 	let mCachePrices = $state<CachePriceInputs>(emptyCachePriceInputs());
 	let mCacheErrors = $state<CachePriceErrors>({});
 	let addingModel = $state(false);
@@ -335,6 +448,8 @@
 	let editOutputPrice = $state('');
 	let editCachePrices = $state<CachePriceInputs>(emptyCachePriceInputs());
 	let editCacheErrors = $state<CachePriceErrors>({});
+	let editMediaRates = $state<Record<MediaRateKey, string>>(emptyMediaRates());
+	let editMediaVariants = $state<MediaVariantRow[]>([]);
 	let editingCapabilities = $state<Model | null>(null);
 	let capVision = $state(false);
 	let capReasoning = $state(false);
@@ -786,6 +901,11 @@
 		return provider ? providerAuthMode(provider) !== 'api_key' : false;
 	}
 
+	function mediaProviderSupported(providerId: number | ''): boolean {
+		const provider = providers.find((candidate) => candidate.id === providerId);
+		return !!provider && providerAuthMode(provider) === 'api_key' && !provider.api_base && ['openai', 'gemini'].includes(provider.provider_type);
+	}
+
 	function clearProviderSecrets() {
 		pApiBase = '';
 		pApiKey = '';
@@ -1029,30 +1149,43 @@
 			toast.error('프로바이더와 모델명을 입력하세요');
 			return;
 		}
-		if (!cachePricingAvailable) {
-			// Hidden cache inputs (an older Lumen) must neither send stale values nor block the create.
-			mCachePrices = emptyCachePriceInputs();
-			mCacheErrors = {};
+		let body: Record<string, unknown>;
+		if (mKind === 'text') {
+			if (!cachePricingAvailable) {
+				// Hidden cache inputs (an older Lumen) must neither send stale values nor block the create.
+				mCachePrices = emptyCachePriceInputs();
+				mCacheErrors = {};
+			}
+			const cache = parseCachePrices(mCachePrices);
+			mCacheErrors = cache.errors;
+			const prices = pricePayload(mInputPrice, mOutputPrice);
+			if (prices === undefined || Object.keys(cache.errors).length > 0) return;
+			body = {
+				provider_id: mProviderId,
+				model_name: mName.trim(),
+				display_name: mDisplay.trim() || null,
+				...prices,
+				// Blank cache prices are omitted on create; the model starts with no cache rate.
+				...presentCachePrices(cache.values)
+			};
+		} else {
+			if (!mediaProviderSupported(mProviderId)) {
+				toast.error('미디어 모델은 직접 연결된 OpenAI 또는 Gemini API-key 프로바이더에만 등록할 수 있습니다. 구독 및 호환 API는 지원하지 않습니다.');
+				return;
+			}
+			const pricing = mediaPricePayload(mKind, mMediaRates, mMediaVariants);
+			if (pricing === undefined) return;
+			body = {
+				provider_id: mProviderId,
+				model_name: mName.trim(),
+				display_name: mDisplay.trim() || null,
+				model_kind: mKind,
+				...(pricing ? { media_pricing: pricing } : {})
+			};
 		}
-		const cache = parseCachePrices(mCachePrices);
-		mCacheErrors = cache.errors;
-		const prices = pricePayload(mInputPrice, mOutputPrice);
-		if (prices === undefined || Object.keys(cache.errors).length > 0) return;
 		addingModel = true;
 		try {
-			await api.post(
-				'/api/v1/chat/admin/models',
-				{
-					provider_id: mProviderId,
-					model_name: mName.trim(),
-					display_name: mDisplay.trim() || null,
-					...prices,
-					// Blank cache prices are omitted on create; the model starts with no cache rate.
-					...presentCachePrices(cache.values)
-				},
-				token,
-				projectId
-			);
+			await api.post('/api/v1/chat/admin/models', body, token, projectId);
 			invalidateChatModels();
 			mName = '';
 			mDisplay = '';
@@ -1060,6 +1193,8 @@
 			mOutputPrice = '';
 			mCachePrices = emptyCachePriceInputs();
 			mCacheErrors = {};
+			mMediaRates = emptyMediaRates();
+			mMediaVariants = [];
 			await load();
 			toast.success('모델이 추가되었습니다');
 		} catch (e) {
@@ -1090,10 +1225,34 @@
 		editOutputPrice = model.output_price_per_million ?? '';
 		editCachePrices = cachePriceInputsFrom(model);
 		editCacheErrors = {};
+		if ((model.model_kind ?? 'text') !== 'text') {
+			editMediaRates = ratesFromPricing(model.media_pricing);
+			editMediaVariants = model.model_kind === 'image' ? rowsFromPricing(model.media_pricing) : [];
+		}
 	}
 
 	async function savePrice() {
 		if (!editingPrice) return;
+		const kind = editingPrice.model_kind;
+		if (kind && kind !== 'text') {
+			const pricing = mediaPricePayload(kind, editMediaRates, editMediaVariants);
+			if (pricing === undefined) return;
+			const baseline = editingPrice.media_pricing ?? null;
+			if (mediaPricingEquals(pricing, baseline)) {
+				editingPrice = null;
+				return;
+			}
+			try {
+				await api.patch(`/api/v1/chat/admin/models/${editingPrice.id}`, { media_pricing: pricing }, token, projectId);
+				invalidateChatModels();
+				editingPrice = null;
+				await load();
+				toast.success('미디어 단가를 저장했습니다');
+			} catch (e) {
+				toast.error(e instanceof ApiError ? e.message : '가격 저장 실패');
+			}
+			return;
+		}
 		const cache = changedCachePrices(editCachePrices, cachePriceInputsFrom(editingPrice));
 		editCacheErrors = cache.errors;
 		// Send only what changed. Lumen marks a model manual (clearing its models.dev metadata and
@@ -1255,7 +1414,7 @@
 			modelsDevModels = result.models;
 			modelsDevSelections = Object.fromEntries(
 				models
-					.filter((model) => model.provider_id === modelsDevProvider?.id && model.price_source !== 'manual')
+					.filter((model) => model.provider_id === modelsDevProvider?.id && (model.model_kind ?? 'text') === 'text' && model.price_source !== 'manual')
 					.flatMap((model) => {
 						const exact = result.models.find((external) => external.price_available && external.id === model.model_name);
 						return exact ? [[model.id, exact.id]] : [];
@@ -1273,7 +1432,7 @@
 	async function importModelsDevPrices() {
 		if (!modelsDevProvider) return;
 		const selections = Object.entries(modelsDevSelections)
-			.filter(([, externalId]) => externalId)
+			.filter(([localModelId, externalId]) => externalId && models.some((model) => model.id === Number(localModelId) && (model.model_kind ?? 'text') === 'text'))
 			.map(([localModelId, modelsDevModelId]) => ({ local_model_id: Number(localModelId), models_dev_model_id: modelsDevModelId }));
 		if (selections.length === 0) {
 			toast.error('가격을 적용할 모델을 선택하세요');
@@ -1479,7 +1638,7 @@
 	}
 
 	async function toggleModel(m: Model) {
-		if (!m.is_active && (m.effective_input_price_per_million == null || m.effective_output_price_per_million == null)) {
+		if ((m.model_kind ?? 'text') === 'text' && !m.is_active && (m.effective_input_price_per_million == null || m.effective_output_price_per_million == null)) {
 			toast.error('입력·출력 단가가 미확인입니다. 가격 수정 또는 models.dev 가격 적용 후 활성화하세요.');
 			return;
 		}
@@ -1993,6 +2152,7 @@
 					</Button>
 				</div>
 			</div>
+			<p class="mt-2 text-xs text-[var(--color-ink-3)]">조회 후보 등록 및 models.dev 가격 적용은 텍스트 모델 전용입니다. 미디어 종류와 단가는 아래에서 직접 지정하세요.</p>
 			{#if discoverId === mProviderId && discoverId !== null}
 				<div class="mt-4 border-t border-[var(--color-line)] pt-4" data-testid="model-discovery">
 					<div class="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -2063,19 +2223,54 @@
 			{/if}
 		</div>
 		<div class="{cardCls} mb-4 p-5">
-			<div class="grid grid-cols-1 gap-3 md:grid-cols-5">
+			<div class="grid grid-cols-1 gap-3 md:grid-cols-3">
 				<select class={inputCls} aria-label="수동 등록 프로바이더" bind:value={mProviderId} onchange={resetDiscovery}>
 					<option value="">프로바이더 선택</option>
 					{#each providers as p (p.id)}
 						<option value={p.id}>{p.name}</option>
 					{/each}
 				</select>
+				<select class={inputCls} aria-label="모델 종류" value={mKind} onchange={(event) => (mKind = event.currentTarget.value as ModelKind)}>
+					{#each Object.entries(MEDIA_LABELS) as [kind, label]}
+						<option value={kind}>{label}</option>
+					{/each}
+				</select>
 				<input class={inputCls} placeholder="모델명 (예: gpt-4o)" bind:value={mName} />
 				<input class={inputCls} placeholder="표시 이름 (선택)" bind:value={mDisplay} />
+			</div>
+			{#if mKind === 'text'}
+			<div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
 				<input class={inputCls} inputmode="decimal" placeholder="입력 가격 (USD / 1M tokens)" bind:value={mInputPrice} />
 				<input class={inputCls} inputmode="decimal" placeholder="출력 가격 (USD / 1M tokens)" bind:value={mOutputPrice} />
 			</div>
-			{#if cachePricingAvailable}
+			{:else}
+				{#if mProviderId && !mediaProviderSupported(mProviderId)}
+					<Alert tone="warning" class="mt-3">미디어 모델은 직접 연결된 OpenAI·Gemini API-key 프로바이더만 등록할 수 있습니다. 구독 또는 호환 API에서는 사용할 수 없습니다.</Alert>
+				{/if}
+				<p class="mt-3 text-xs text-[var(--color-ink-2)]">미디어 단가는 정확한 단위로만 저장됩니다. 비워두면 미설정이며, 단가를 등록해도 실행 경로는 아직 제공되지 않습니다. 조회 후보와 models.dev 가격은 텍스트 모델 전용입니다.</p>
+				<div class="mt-3 grid gap-3 sm:grid-cols-2">
+					{#each mediaFields(mKind) as field (field.key)}
+						<Field label={field.label} for="model-create-{field.key}" help={field.unit}>
+							<TextInput id="model-create-{field.key}" inputmode="decimal" placeholder="예: 0.04" bind:value={mMediaRates[field.key]} />
+						</Field>
+					{/each}
+				</div>
+				{#if mKind === 'image'}
+				<div class="mt-3 space-y-2">
+					<p class="text-xs font-semibold text-[var(--color-ink-1)]">이미지 size:quality별 단가 (선택)</p>
+					<p class="text-xs text-[var(--color-ink-2)]">variant가 있으면 기본 단가 대신 정확히 일치하는 size:quality 단가를 사용합니다. 예: 1024x1024:high · USD / 장.</p>
+					{#each mMediaVariants as row (row.id)}
+						<div class="flex flex-wrap items-center gap-2">
+							<input class="{inputCls} min-w-32 flex-1" aria-label="이미지 variant 이름" placeholder="1024x1024:high" bind:value={row.name} />
+							<input class="{inputCls} min-w-32 flex-1" aria-label="이미지 variant 단가" inputmode="decimal" placeholder="USD / 이미지 1장" bind:value={row.price} />
+							<Button variant="ghost" size="xs" onclick={() => (mMediaVariants = mMediaVariants.filter((item) => item.id !== row.id))}>삭제</Button>
+						</div>
+					{/each}
+					<Button variant="secondary" size="sm" onclick={() => (mMediaVariants = [...mMediaVariants, { id: ++nextVariantId, name: '', price: '' }])}>+ variant 추가</Button>
+				</div>
+				{/if}
+			{/if}
+			{#if mKind === 'text' && cachePricingAvailable}
 			<div class="mt-4 border-t border-[var(--color-line)] pt-4" role="group" aria-labelledby="model-create-cache-heading" data-testid="model-create-cache-prices">
 				<p id="model-create-cache-heading" class="text-xs font-semibold text-[var(--color-ink-1)]">프롬프트 캐시 단가 (선택)</p>
 				<p class="mt-1 text-xs leading-relaxed text-[var(--color-ink-2)]">
@@ -2098,7 +2293,7 @@
 			</div>
 			{/if}
 			<div class="mt-3 flex justify-end">
-				<Button onclick={addModel} disabled={addingModel || providers.length === 0}>
+				<Button onclick={addModel} disabled={addingModel || providers.length === 0 || (mKind !== 'text' && !!mProviderId && !mediaProviderSupported(mProviderId))}>
 					{addingModel ? '추가 중…' : '+ 모델 추가'}
 				</Button>
 			</div>
@@ -2132,12 +2327,14 @@
 							<div class="min-w-0 flex-1">
 							<div class="flex flex-wrap items-center gap-2">
 								<span class="truncate text-sm font-medium text-[var(--color-ink-1)]">{displayModelTitle(m)}</span>
-								<Pill tone={m.is_active ? 'success' : 'neutral'} size="xs">{m.is_active ? '활성 · 저장됨' : '비활성 · 저장됨'}</Pill>
+							<Pill tone={m.is_active ? 'success' : 'neutral'} size="xs">{(m.model_kind ?? 'text') === 'text' ? (m.is_active ? '활성 · 저장됨' : '비활성 · 저장됨') : (m.is_active ? '관리 활성 · 실행 별도' : '관리 비활성 · 저장됨')}</Pill>
+							<Pill tone="neutral" size="xs">{MEDIA_LABELS[m.model_kind ?? 'text']}</Pill>
 								{#if m.is_title_model}
 									<span class="rounded bg-[var(--color-accent)]/15 px-1.5 py-0.5 text-xs text-[var(--color-accent)]">
 										제목 요약
 									</span>
 								{/if}
+							{#if (m.model_kind ?? 'text') === 'text'}
 								<Pill tone={m.price_source === 'manual' ? 'success' : m.price_source === 'models.dev' ? 'accent' : 'neutral'} size="xs">
 									{m.price_source === 'manual' ? '수동' : m.price_source === 'models.dev' ? 'models.dev' : m.effective_price_source?.startsWith('perplexity_agent_api_') ? 'Perplexity 공식 가격' : m.effective_price_source === 'litellm' ? 'LiteLLM 기본값' : '가격 출처 미확인'}
 								</Pill>
@@ -2146,6 +2343,10 @@
 								</Pill>
 								<Pill tone={capabilityStatus(m) === '고급 기능 미확인' ? 'neutral' : 'accent'} size="xs">{capabilityStatus(m)}</Pill>
 								<ModelCapabilityBadges caps={m.capabilities || m.effective_capabilities} size="xs" />
+							{:else}
+								<Pill tone={m.media_pricing && Object.keys(m.media_pricing).length ? 'accent' : 'warning'} size="xs">{m.media_pricing && Object.keys(m.media_pricing).length ? '미디어 단가 설정됨' : '미디어 단가 미설정'}</Pill>
+								<Pill tone="warning" size="xs">{mediaReadiness(m)}</Pill>
+							{/if}
 							</div>
 							<div class="mt-0.5 text-xs text-[var(--color-ink-3)]">
 								<div class="break-all">API ID: <code class="font-mono">{publicModelName(m)}</code> · provider: <code class="font-mono">{m.api_provider || providerType(m.provider_id)}</code></div>
@@ -2154,6 +2355,7 @@
 								{/if}
 								<div class="mt-0.5">{providerName(m.provider_id)}</div>
 							</div>
+							{#if (m.model_kind ?? 'text') === 'text'}
 							<div class="mt-1 text-xs text-[var(--color-ink-2)]">
 								입력 {formatPricePerMillion(m.effective_input_price_per_million)} · 출력 {formatPricePerMillion(m.effective_output_price_per_million)} USD / 1M tokens
 							</div>
@@ -2170,14 +2372,20 @@
 									캐시 읽기 {formatCachePrice(m.cache_read_price_per_million)} · 캐시 쓰기 5분 {formatCachePrice(m.cache_write_price_per_million)} · 캐시 쓰기 1시간 {formatCachePrice(m.cache_write_1h_price_per_million)} USD / 1M tokens{cachePriceState(m) === 'partial' ? ' · 미설정 항목은 0 USD로 청구' : ''}
 								</div>
 							{/if}
+							{:else}
+								<div class="mt-1 break-words text-xs text-[var(--color-ink-2)]" data-testid="model-media-prices">{mediaPriceSummary(m)}</div>
+								<div class="mt-0.5 text-xs text-[var(--color-ink-2)]">기능: {mediaCapability(m)} · 단가는 실행 가능 여부를 보장하지 않습니다.</div>
+							{/if}
 						</div>
 						</div>
 						<div class="flex flex-wrap items-center justify-end gap-x-3 gap-y-2 border-t border-[var(--color-line)] pt-3 text-xs sm:shrink-0 sm:border-t-0 sm:pt-0">
-							<button class={rowActionCls} onclick={() => setTitleModel(m)}>
-								{m.is_title_model ? '제목요약 해제' : '제목요약 지정'}
-							</button>
+							{#if (m.model_kind ?? 'text') === 'text'}
+								<button class={rowActionCls} onclick={() => setTitleModel(m)}>
+									{m.is_title_model ? '제목요약 해제' : '제목요약 지정'}
+								</button>
+							{/if}
 							<button class={rowActionCls} onclick={() => openPriceEditor(m)}>가격 수정</button>
-							<Button variant="ghost" size="xs" onclick={() => openCapabilityEditor(m)}>기능 수정</Button>
+							{#if (m.model_kind ?? 'text') === 'text'}<Button variant="ghost" size="xs" onclick={() => openCapabilityEditor(m)}>기능 수정</Button>{/if}
 							<button class={rowActionCls} onclick={() => toggleModel(m)}>{m.is_active ? '비활성화' : '활성화'}</button>
 							<button class="text-[var(--color-state-danger)] transition-opacity hover:opacity-80" onclick={() => deleteModel(m.id)}>삭제</button>
 						</div>
@@ -2236,7 +2444,31 @@
 	<Modal open={editingPrice !== null} onClose={() => (editingPrice = null)} ariaLabel="모델 가격 수정">
 		<div class="max-h-[calc(100vh-2rem)] w-[min(32rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-5 shadow-[var(--shadow-restraint)]">
 			<h3 class="text-base font-semibold text-[var(--color-ink-1)]">모델 가격 수정</h3>
-			<p class="mt-1 text-sm text-[var(--color-ink-2)]">입력·출력 가격은 함께 저장하거나 모두 비우면 수동 단가가 해제됩니다. 대체 단가가 없으면 가격 미확인으로 표시됩니다.</p>
+			{#if editingPrice && (editingPrice.model_kind ?? 'text') !== 'text'}
+				<p class="mt-1 text-sm text-[var(--color-ink-2)]">{MEDIA_LABELS[editingPrice.model_kind ?? 'text']} 단위별 정확한 USD 단가를 입력하세요. 비워두면 미설정으로 저장되며 단가만 설정해도 실행할 수 없습니다.</p>
+				<div class="mt-4 grid gap-3 sm:grid-cols-2">
+					{#each mediaFields(editingPrice.model_kind) as field (field.key)}
+						<Field label={field.label} for="model-edit-{field.key}" help={field.unit}>
+							<TextInput id="model-edit-{field.key}" inputmode="decimal" placeholder="예: 0.04" bind:value={editMediaRates[field.key]} />
+						</Field>
+					{/each}
+				</div>
+				{#if editingPrice.model_kind === 'image'}
+				<div class="mt-4 space-y-2">
+					<p class="text-xs font-semibold text-[var(--color-ink-1)]">이미지 size:quality별 단가 (선택)</p>
+					<p class="text-xs text-[var(--color-ink-2)]">variant가 있으면 기본 단가 대신 정확히 일치하는 size:quality 단가를 사용합니다. 예: 1024x1024:high · USD / 장.</p>
+					{#each editMediaVariants as row (row.id)}
+						<div class="flex flex-wrap items-center gap-2">
+							<input class="{inputCls} min-w-32 flex-1" aria-label="이미지 variant 이름" placeholder="1024x1024:high" bind:value={row.name} />
+							<input class="{inputCls} min-w-32 flex-1" aria-label="이미지 variant 단가" inputmode="decimal" placeholder="USD / 이미지 1장" bind:value={row.price} />
+							<Button variant="ghost" size="xs" onclick={() => (editMediaVariants = editMediaVariants.filter((item) => item.id !== row.id))}>삭제</Button>
+						</div>
+					{/each}
+					<Button variant="secondary" size="sm" onclick={() => (editMediaVariants = [...editMediaVariants, { id: ++nextVariantId, name: '', price: '' }])}>+ variant 추가</Button>
+				</div>
+				{/if}
+			{:else}
+				<p class="mt-1 text-sm text-[var(--color-ink-2)]">입력·출력 가격은 함께 저장하거나 모두 비우면 수동 단가가 해제됩니다. 대체 단가가 없으면 가격 미확인으로 표시됩니다.</p>
 			<div class="mt-4 grid gap-3 sm:grid-cols-2">
 				<Field label="입력" for="model-edit-input-price">
 					<TextInput id="model-edit-input-price" inputmode="decimal" placeholder="USD / 1M tokens" bind:value={editInputPrice} />
@@ -2266,6 +2498,7 @@
 					{/each}
 				</div>
 			</div>
+			{/if}
 			{/if}
 			<div class="mt-5 flex justify-end gap-2">
 				<Button variant="secondary" onclick={() => (editingPrice = null)}>취소</Button>
@@ -2341,7 +2574,7 @@
 				<p class="mt-4 text-sm text-[var(--color-ink-3)]">가격표를 불러오는 중…</p>
 			{:else}
 				<div class="mt-4 space-y-2">
-					{#each models.filter((model) => model.provider_id === modelsDevProvider?.id) as model (model.id)}
+					{#each models.filter((model) => model.provider_id === modelsDevProvider?.id && (model.model_kind ?? 'text') === 'text') as model (model.id)}
 						<div class="rounded-lg border border-[var(--color-line)] p-3">
 							<div class="flex items-center gap-2">
 								<input

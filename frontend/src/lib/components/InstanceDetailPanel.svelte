@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { auth } from '$lib/stores/auth';
+	import { auth, canWrite } from '$lib/stores/auth';
 	import { goto } from '$app/navigation';
 	import { api } from '$lib/api/client';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
@@ -97,6 +97,7 @@
 	}
 
 	async function openResizeModal(preselectId?: string) {
+		if (!$canWrite || !s.instance || !['ACTIVE', 'SHUTOFF'].includes(s.instance.status)) return;
 		s.resizeError = '';
 		resizePreselectFlavorId = preselectId ?? '';
 		showResizeModal = true;
@@ -134,6 +135,7 @@
 		<LoadingSkeleton variant="card" rows={6} />
 	{:else if s.instance}
 		<InstanceHeader
+			canMutate={$canWrite}
 			{adminProjectId}
 			onOpenMigrateModal={openMigrateModal}
 			onOpenPasswordModal={openPasswordModal}
@@ -141,7 +143,7 @@
 			onOpenEvacuateModal={openEvacuateModal}
 		/>
 
-		{#if recommendation?.underutilized}
+		{#if $canWrite && (s.instance.status === 'ACTIVE' || s.instance.status === 'SHUTOFF') && recommendation?.underutilized}
 			<div class="bg-surface-selected/40 border border-action-warm text-warm-text rounded-lg px-4 py-3 text-sm mb-4 flex items-center justify-between gap-4">
 				<span>
 					최근 7일 평균 CPU {summaryCpuAvg != null ? summaryCpuAvg.toFixed(1) : '—'}% · RAM {summaryMemAvg != null ? summaryMemAvg.toFixed(1) : '—'}% — 사용량이 낮습니다.
@@ -182,7 +184,7 @@
 {#if showPasswordModal}
 	<PasswordModal onClose={() => { showPasswordModal = false; }} />
 {/if}
-{#if showResizeModal}
+{#if showResizeModal && $canWrite}
 	<ResizeModal preselectFlavorId={resizePreselectFlavorId} onClose={() => { showResizeModal = false; }} />
 {/if}
 {#if showEvacuateModal && s.instance}

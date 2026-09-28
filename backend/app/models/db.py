@@ -26,6 +26,20 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+class ImageVerification(Base):
+    """Server-owned approval for one exact Glance image incarnation and digest."""
+
+    __tablename__ = "image_verifications"
+
+    image_id: Mapped[str] = mapped_column(VARCHAR(64), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(VARCHAR(64), nullable=False)
+    image_created_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False)
+    hash_algorithm: Mapped[str] = mapped_column(VARCHAR(16), nullable=False)
+    hash_value: Mapped[str] = mapped_column(VARCHAR(128), nullable=False)
+    verified_by: Mapped[str] = mapped_column(VARCHAR(64), nullable=False)
+    verified_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6), nullable=False, default=_now)
+
+
 class GpuDeviceCatalog(Base):
     """관리자가 추가한 GPU PCI 장치 카탈로그. 내장 기본값 + afterglow.conf 위에 overlay된다."""
 
@@ -375,6 +389,11 @@ class LayerImportJob(Base):
     artifact_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
     build_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
     resource_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Validated admin request captured before the builder runs; no API token/private key.
+    consumer_spec: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    consume_id: Mapped[int | None] = mapped_column(
+        INT, ForeignKey("layer_consumes.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -117,6 +117,8 @@ Manila 공유 파일 시스템(CephFS/NFS)을 관리합니다.
 
 `share_type`/`share_network_id`를 생략하면 설정 파일의 기본값이 적용됩니다. 프로토콜에 따라 기본 share 타입이 달라집니다 — `NFS`는 `os_manila_nfs_share_type`, 그 외는 `os_manila_share_type`.
 
+NFS share의 `share_network_id`는 선택한 share type이 `DHSS=True`일 때만 Manila에 전달됩니다. `DHSS=False`이면 제외하고, share type의 DHSS 값을 확인할 수 없으면 잘못된 share를 생성하지 않고 오류로 중단합니다.
+
 **요청 본문** — `CreateFileStorageRequest`
 
 ```json

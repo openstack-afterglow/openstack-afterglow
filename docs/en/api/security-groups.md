@@ -38,6 +38,8 @@ Manages Neutron security groups and rules. Used to control network traffic acces
 | Method | Path | Description |
 |--------|------|------|
 | `GET` | `/api/v1/security-groups` | Security group list (60s cache) |
+| `GET` | `/api/v1/security-groups/quota` | Project security-group and rule limits/usage |
+| `GET` | `/api/v1/security-groups/{sg_id}/instances` | Project instances using the group on compute ports |
 | `POST` | `/api/v1/security-groups` | Create security group |
 | `DELETE` | `/api/v1/security-groups/{sg_id}` | Delete security group |
 
@@ -61,11 +63,33 @@ Returns the project's security group list. The response is cached for 60 seconds
         "port_range_min": null,
         "port_range_max": null,
         "remote_ip_prefix": null,
-        "ethertype": "IPv4"
+        "ethertype": "IPv4",
+        "remote_group_id": null
       }
     ]
   }
 ]
+```
+
+Each rule includes `remote_group_id`: `null` for CIDR targets, otherwise the referenced project security-group UUID. The UI resolves the group's name while retaining its UUID.
+
+### GET /api/v1/security-groups/quota
+
+Returns the current project's Neutron security-group/rule quota `limit` and actual `in_use`. `limit: -1` is unlimited. Missing or failed detailed usage is an error, never silently treated as zero.
+
+```json
+{
+  "security_group": { "limit": 10, "in_use": 2 },
+  "security_group_rule": { "limit": 100, "in_use": 7 }
+}
+```
+
+### GET /api/v1/security-groups/{sg_id}/instances
+
+Requires ownership of the group in the current project. Joins project Neutron compute ports carrying the group with Nova servers; each instance appears once even with multiple matching ports. A lookup error is not returned as an empty list.
+
+```json
+[{ "id": "instance-uuid", "name": "app-vm", "status": "ACTIVE" }]
 ```
 
 ### POST /api/v1/security-groups
@@ -103,7 +127,7 @@ Deletes a security group. The default security group cannot be deleted.
 ## 2. Security Group Rules
 
 ![Security group rule detail](../../../assets/security-group-detail.png)
-*Security group inbound/outbound rule list — edit protocol/port range/source CIDR and add rules*
+*The in-table IP version column shows each rule's `ethertype` (`IPv4`/`IPv6`); creation and removal stay inside the table. Neutron does not edit rule match fields in place; the edit action copies values for an explicit remove-and-create flow. Policy changes between those two requests.*
 
 ### Endpoint List
 
@@ -136,7 +160,10 @@ Adds a new rule to a security group.
 | `port_range_min` | integer | No | Minimum port number |
 | `port_range_max` | integer | No | Maximum port number |
 | `remote_ip_prefix` | string | No | Remote IP range (CIDR notation, e.g., `0.0.0.0/0`) |
+| `remote_group_id` | string | No | Remote security-group UUID owned by the current project; mutually exclusive with `remote_ip_prefix` |
 | `ethertype` | string | No | Ethertype (`IPv4`, `IPv6`, default: `IPv4`) |
+
+Choose CIDR or a remote security group, not both. If neither is supplied (or CIDR is blank), IPv4 uses `0.0.0.0/0` and IPv6 uses `::/0`. Omitting the end port when a start port is present creates a single-port rule. No default CIDR is sent with a group target.
 
 | direction allowed value | Description |
 |-------------------|------|
@@ -161,7 +188,8 @@ Adds a new rule to a security group.
   "port_range_max": 22,
   "remote_ip_prefix": "0.0.0.0/0",
   "ethertype": "IPv4",
-  "security_group_id": "uuid-string"
+  "security_group_id": "uuid-string",
+  "remote_group_id": null
 }
 ```
 

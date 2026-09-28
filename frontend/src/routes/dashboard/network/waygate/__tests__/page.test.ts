@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { writable } from 'svelte/store';
 
 const mocks = vi.hoisted(() => ({
@@ -77,10 +77,14 @@ const client = {
 	tunnel_ip: '10.240.0.2',
 	allowed_ips: ['10.240.0.0/24'],
 	dns: '1.1.1.1',
+	mtu: null,
+	persistent_keepalive: 0,
+	psk_enabled: false,
 	created_at: '2026-09-20T00:00:00Z',
 	updated_at: '2026-09-20T00:00:00Z',
 	online: true,
 	last_handshake_at: '2026-09-20T00:00:10Z',
+	last_reported_at: '2026-09-20T00:00:10Z',
 	rx_bytes: 128,
 	tx_bytes: 256,
 };
@@ -118,6 +122,7 @@ const networks = [
 function installApiResponses() {
 	mocks.get.mockImplementation((path: string) => {
 		if (path === '/api/v1/waygate/servers') return Promise.resolve([server]);
+		if (path === '/api/v1/waygate/servers/server-1') return Promise.resolve(server);
 		if (path === '/api/v1/waygate/servers/server-1/clients') return Promise.resolve([client]);
 		if (path === '/api/v1/waygate/servers/server-1/networks') return Promise.resolve([]);
 		if (path === '/api/v1/networks') return Promise.resolve(networks);
@@ -170,6 +175,10 @@ async function openServerPanel() {
 	expect(await screen.findByText('operator-laptop')).toBeTruthy();
 }
 
+function settingMode(field: 'DNS' | 'PersistentKeepalive') {
+	return within(screen.getByRole('group', { name: accessibleName => accessibleName === `${field} 설정 방식` }));
+}
+
 beforeEach(() => {
 	Element.prototype.animate = vi.fn().mockReturnValue({
 		finished: Promise.resolve(),
@@ -195,7 +204,7 @@ describe('Waygate dashboard', () => {
 		await openServerPanel();
 
 		await fireEvent.click(screen.getByRole('button', { name: '+ 네트워크 연결' }));
-		await vi.waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/api/v1/networks', 'token-1', 'project-1'));
+		await vi.waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/api/v1/networks', 'token-1', 'project-1', { refresh: true }));
 
 		const networkSelect = screen.getByRole('button', { name: '연결할 네트워크 선택' });
 		await fireEvent.click(networkSelect);
@@ -225,10 +234,10 @@ describe('Waygate dashboard', () => {
 	it('downloads client config and renders a QR code from the same config', async () => {
 		await openServerPanel();
 
-		await fireEvent.click(screen.getByRole('button', { name: '.conf 다운로드' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'operator-laptop .conf 다운로드' }));
 		await vi.waitFor(() => expect(mocks.downloadBlobAs).toHaveBeenCalledWith(expect.any(Blob), 'operator-laptop.conf'));
 
-		await fireEvent.click(screen.getByRole('button', { name: 'QR' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'operator-laptop QR' }));
 		const qrImage = await screen.findByRole('img', { name: 'WireGuard 설정 QR 코드' });
 		expect(qrImage.getAttribute('src')).toBe('data:image/png;base64,wireguard');
 		expect(mocks.toDataURL).toHaveBeenCalledWith('[Interface]\nPrivateKey = secret', {
@@ -236,5 +245,66 @@ describe('Waygate dashboard', () => {
 			margin: 2,
 			width: 320,
 		});
+	});
+
+	it('issues a client with tunnel settings and keeps download handling', async () => {
+		await openServerPanel();
+		mocks.post.mockResolvedValueOnce({ ...client, id: 'client-2', name: 'phone', psk_enabled: true, tunnel_conf: '[Interface]' });
+
+		await fireEvent.click(screen.getByRole('button', { name: '+ 클라이언트 발급' }));
+		expect(screen.getByText(/32바이트 난수로 자동 생성/)).toBeTruthy();
+		await fireEvent.click(settingMode('DNS').getByRole('button', { name: '직접 지정' }));
+		await fireEvent.click(settingMode('PersistentKeepalive').getByRole('button', { name: '직접 지정' }));
+		await fireEvent.input(screen.getByLabelText(/이름/), { target: { value: 'phone' } });
+		await fireEvent.input(screen.getByLabelText('DNS'), { target: { value: '9.9.9.9,1.1.1.1' } });
+		await fireEvent.input(screen.getByLabelText('MTU'), { target: { value: '1280' } });
+		await fireEvent.input(screen.getByLabelText(/PersistentKeepalive/, { selector: 'input' }), { target: { value: '0' } });
+		await fireEvent.click(screen.getByRole('button', { name: '발급' }));
+
+		await vi.waitFor(() => expect(mocks.post).toHaveBeenCalledWith(
+			'/api/v1/waygate/servers/server-1/clients',
+			{ name: 'phone', inherit_dns: false, inherit_persistent_keepalive: false, dns: '9.9.9.9, 1.1.1.1', mtu: 1280, persistent_keepalive: 0 },
+			'token-1',
+			'project-1'
+		));
+		expect(mocks.downloadBlobAs).toHaveBeenCalledWith(expect.any(Blob), 'phone.conf');
+	});
+
+	it('blocks invalid settings and focuses the first invalid field', async () => {
+		await openServerPanel();
+		await fireEvent.click(screen.getByRole('button', { name: '+ 클라이언트 발급' }));
+		await fireEvent.input(screen.getByLabelText(/이름/), { target: { value: 'phone' } });
+		await fireEvent.input(screen.getByLabelText('MTU'), { target: { value: '9001' } });
+		await fireEvent.click(screen.getByRole('button', { name: '발급' }));
+
+		expect(await screen.findByText(/576–9000 사이의 정수/)).toBeTruthy();
+		expect(document.activeElement).toBe(screen.getByLabelText('MTU'));
+		expect(mocks.post).not.toHaveBeenCalled();
+	});
+
+	it('edits retained settings, clears blanks explicitly and requires reimport', async () => {
+		await openServerPanel();
+		await fireEvent.click(screen.getByRole('button', { name: 'operator-laptop 설정' }));
+		expect((screen.getByLabelText(/PersistentKeepalive/, { selector: 'input' }) as HTMLInputElement).value).toBe('0');
+		expect(screen.getByText(/다시 가져와야 적용됩니다/)).toBeTruthy();
+		expect(screen.getByText(/자동으로 추가하지 않습니다/)).toBeTruthy();
+		await fireEvent.input(screen.getByLabelText('DNS'), { target: { value: '' } });
+		await fireEvent.click(screen.getByRole('button', { name: '저장' }));
+
+		await vi.waitFor(() => expect(mocks.patch).toHaveBeenCalledWith(
+			'/api/v1/waygate/servers/server-1/clients/client-1',
+			{ inherit_dns: false, inherit_persistent_keepalive: false, dns: null, mtu: null, persistent_keepalive: 0 },
+			'token-1',
+			'project-1'
+		));
+	});
+
+	it('shows gateway counters from the client perspective without inventing a rate', async () => {
+		await openServerPanel();
+		const traffic = screen.getByRole('region', { name: 'operator-laptop 클라이언트 기준 트래픽' });
+		expect(traffic.textContent).toMatch(/클라이언트 수신 RX\s*256 B/);
+		expect(traffic.textContent).toMatch(/클라이언트 송신 TX\s*128 B/);
+		expect(traffic.textContent).toContain('속도 —');
+		expect(traffic.querySelector('svg')).toBeNull();
 	});
 });

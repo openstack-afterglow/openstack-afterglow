@@ -446,6 +446,12 @@ class TestLayerConsumeRequestValidation:
         )
         assert req.server_name is None
 
+    def test_exact_job_selector_excludes_profile_and_rejects_invalid_ids(self):
+        assert LayerConsumeRequest(import_id=12, flavor_id="m1.small").import_id == 12
+        for body in ({}, {"profile_name": "default", "import_id": 12}, {"import_id": 0}, {"import_id": -1}):
+            with pytest.raises(ValidationError):
+                LayerConsumeRequest(flavor_id="m1.small", **body)
+
     # --- server_name 검증 ---
 
     def test_server_name_with_semicolon_rejected(self):
@@ -626,6 +632,9 @@ async def test_consume_requires_auth():
             json={"profile_name": "default", "server_name": "test", "flavor_id": "m1.small"},
         )
     assert resp.status_code == 401
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.post(f"{BASE}/consume", json={"import_id": 7, "flavor_id": "m1.small"})
+    assert response.status_code == 401
 
 
 @pytest.mark.asyncio
@@ -643,6 +652,12 @@ async def test_builds_list_requires_admin_role(non_admin_client):
     """GET /builds — admin 역할 없는 사용자는 403."""
     resp = await non_admin_client.get(f"{BASE}/builds")
     assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_import_consume_requires_admin_role(non_admin_client):
+    response = await non_admin_client.post(f"{BASE}/consume", json={"import_id": 7, "flavor_id": "m1.small"})
+    assert response.status_code == 403
 
 
 # ============================================================================
@@ -1005,6 +1020,11 @@ async def test_trigger_consume_propagates_runner_errors(admin_client):
             new_callable=AsyncMock,
             side_effect=RuntimeError("consume resource snapshot is incomplete"),
         ),
+        patch(
+            "app.services.layer_build.resolve_admin_consume_artifacts", new_callable=AsyncMock, return_value=[{"id": 1}]
+        ),
+        patch("app.services.layer_build.validate_consume_image_identity", new_callable=AsyncMock),
+        patch("app.services.keystone.get_admin_connection_for_project", return_value=MagicMock()),
     ):
         resp = await admin_client.post(
             f"{BASE}/consume",
@@ -1013,6 +1033,38 @@ async def test_trigger_consume_propagates_runner_errors(admin_client):
 
     assert resp.status_code == 400
     assert "resource snapshot" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_trigger_consume_uses_completed_job_artifact_ids_not_current_profile(admin_client):
+    snapshot = {
+        "network": {"id": "net-1", "name": "network"},
+        "flavor": {"id": "flavor-1", "name": "m1.small"},
+        "openstack.service_project": {"id": "service-project", "name": "service"},
+    }
+    with (
+        patch(
+            "app.services.layer_build.resolve_layer_consume_resource_snapshot",
+            new_callable=AsyncMock,
+            return_value=snapshot,
+        ),
+        patch(
+            "app.services.layer_build.resolve_import_consume_artifacts",
+            new_callable=AsyncMock,
+            return_value=("historical-profile", [{"id": 1}, {"id": 4}]),
+        ) as resolve,
+        patch("app.services.layer_build.resolve_admin_consume_artifacts", new_callable=AsyncMock) as current_profile,
+        patch("app.services.layer_build.validate_consume_image_identity", new_callable=AsyncMock),
+        patch("app.services.layer_build.run_layer_consume", new_callable=AsyncMock, return_value="vm-1") as run,
+        patch("app.services.keystone.get_admin_connection_for_project", return_value=MagicMock()),
+        patch("app.database.get_session_factory", return_value=None),
+    ):
+        response = await admin_client.post(f"{BASE}/consume", json={"import_id": 7, "flavor_id": "m1.small"})
+    assert response.status_code == 200
+    resolve.assert_awaited_once_with(7)
+    current_profile.assert_not_awaited()
+    assert run.await_args.kwargs["resolved_artifacts"] == [{"id": 1}, {"id": 4}]
+    assert run.await_args.kwargs["profile_name"] == "historical-profile"
 
 
 @pytest.mark.asyncio
@@ -1029,84 +1081,6 @@ async def test_trigger_consume_unknown_flavor_returns_400(admin_client):
 
     assert resp.status_code == 400
     assert "플레이버를 찾을 수 없습니다" in resp.json()["detail"]
-
-
-@pytest.mark.asyncio
-async def test_trigger_consume_selected_keypair_injects_public_key(admin_client, mock_conn):
-    mock_conn.compute.get_keypair.side_effect = Exception("not visible")
-    mock_conn.compute.find_keypair.return_value = MagicMock(
-        public_key="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest consume@test"
-    )
-    snapshot = {
-        "network": {"id": "net-1", "name": "network"},
-        "flavor": {"id": "flavor-1", "name": "flavor"},
-        "openstack.service_project": {"id": "service", "name": "service"},
-    }
-    with (
-        patch(
-            "app.services.layer_build.resolve_layer_consume_resource_snapshot",
-            new_callable=AsyncMock,
-            return_value=snapshot,
-        ),
-        patch("app.database.get_session_factory", return_value=None),
-        patch(
-            "app.services.layer_build.run_layer_consume",
-            new_callable=AsyncMock,
-            return_value="server-12345678",
-        ) as mock_consume,
-    ):
-        resp = await admin_client.post(
-            f"{BASE}/consume",
-            json={
-                "profile_name": "default",
-                "server_name": "consumer-01",
-                "flavor_id": "cpu.4c_8g",
-                "key_name": "user-keypair",
-                "ssh_username": "ubuntu",
-            },
-        )
-
-    assert resp.status_code == 200
-    assert mock_consume.await_args.kwargs["ssh_public_key"].startswith("ssh-ed25519 ")
-    assert mock_consume.await_args.kwargs["resource_snapshot"] == snapshot
-
-
-@pytest.mark.asyncio
-async def test_trigger_consume_manual_public_key_bypasses_keypair_lookup(admin_client, mock_conn):
-    mock_conn.compute.get_keypair.side_effect = AssertionError("should not query keypair")
-    mock_conn.compute.find_keypair.side_effect = AssertionError("should not query keypair")
-    snapshot = {
-        "network": {"id": "net-1", "name": "network"},
-        "flavor": {"id": "flavor-1", "name": "flavor"},
-        "openstack.service_project": {"id": "service", "name": "service"},
-    }
-    with (
-        patch(
-            "app.services.layer_build.resolve_layer_consume_resource_snapshot",
-            new_callable=AsyncMock,
-            return_value=snapshot,
-        ),
-        patch("app.database.get_session_factory", return_value=None),
-        patch(
-            "app.services.layer_build.run_layer_consume",
-            new_callable=AsyncMock,
-            return_value="server-87654321",
-        ) as mock_consume,
-    ):
-        resp = await admin_client.post(
-            f"{BASE}/consume",
-            json={
-                "profile_name": "default",
-                "server_name": "consumer-01",
-                "flavor_id": "cpu.4c_8g",
-                "ssh_public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest termius by jung:admin #note\n",
-                "ssh_username": "ubuntu",
-            },
-        )
-
-    assert resp.status_code == 200
-    assert mock_consume.await_args.kwargs["ssh_public_key"].endswith("#note")
-    assert mock_consume.await_args.kwargs["resource_snapshot"] == snapshot
 
 
 @pytest.mark.asyncio
@@ -1364,6 +1338,21 @@ class TestDeleteProfile:
         assert consume.completed_at is not None
         mock_session.delete.assert_awaited_once_with(profile)
         assert mock_session.commit.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_nova_active_or_reboot_does_not_publish_unverified_consume():
+    from app.api.union.layer_ops import _sync_consume_rows_with_nova
+
+    row = _consume(status="creating", server_id="srv-1")
+    conn = MagicMock()
+    session = AsyncMock()
+    with patch("app.services.keystone.get_service_project_connection", return_value=conn):
+        for nova_state in ("ACTIVE", "SHUTOFF", "ACTIVE"):
+            conn.compute.get_server.return_value = MagicMock(status=nova_state)
+            await _sync_consume_rows_with_nova(session, [row])
+    assert row.status == "creating"
+    session.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio

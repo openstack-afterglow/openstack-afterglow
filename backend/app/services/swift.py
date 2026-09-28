@@ -1,7 +1,8 @@
 """Swift / Ceph RGW (Object Storage) 서비스 래퍼.
 
 openstacksdk의 conn.object_store 프록시를 사용.
-서비스가 없거나 오류 시 빈 목록/기본값을 반환하여 optional 서비스로 동작.
+대부분의 조회는 서비스가 없거나 오류 시 빈 목록/기본값을 반환하여 optional 서비스로 동작한다.
+오브젝트 목록(list_objects)은 부분·빈 결과가 캐시되지 않도록 오류를 전파한다.
 
 주의: Swift "컨테이너"는 오브젝트 스토리지 버킷을 의미.
 Zun "컨테이너"와 혼동 방지를 위해 변수/응답 키에 object_storage_ 접두어 사용.
@@ -62,6 +63,15 @@ def _apply_endpoint_override(conn) -> None:
     if override:
         conn.object_store._endpoint_override = override
         _logger.debug("Swift endpoint override 적용: %s", override)
+
+
+def _require_swift_success(response, action: str) -> None:
+    """Raw proxy requests default to raise_exc=False; only a 2xx Swift write succeeded."""
+    from openstack.exceptions import raise_from_response
+
+    raise_from_response(response, error_message=f"Swift {action} failed")
+    if not 200 <= response.status_code < 300:
+        raise RuntimeError(f"Swift {action} returned HTTP {response.status_code}")
 
 
 def list_containers(
@@ -460,59 +470,83 @@ def _enrich_slo_sizes(conn, container: str, results: list[dict], prefix: str = "
 
 
 def list_objects(conn, container: str, prefix: str = "", delimiter: str = "") -> list[dict]:
-    """컨테이너 내 오브젝트 목록 반환.
+    """List stored objects and Swift's delimiter-generated, unstored subdirectories.
 
-    delimiter="/"를 사용하면 현재 prefix 바로 아래 파일/폴더만 반환한다.
-    폴더(subdir)는 {"name": "folder/", "is_dir": True}로 반환된다.
-    SLO 매니페스트는 segments 합산으로 bytes 를 보정한다.
+    The SDK's Object resource drops delimiter and subdir, so this listing must use
+    the caller's authenticated proxy and paginate the raw Swift JSON response.
     """
+    import urllib.parse
+
+    from openstack.exceptions import raise_from_response
+
     _apply_endpoint_override(conn)
+    path = "/" + urllib.parse.quote(container, safe="")
+    params: dict[str, str | int] = {"format": "json", "limit": 10000}
+    if prefix:
+        params["prefix"] = prefix
+    if delimiter:
+        params["delimiter"] = delimiter
+    entries: dict[str, dict] = {}
+    marker: str | None = None
     try:
-        kwargs = {}
-        if prefix:
-            kwargs["prefix"] = prefix
-        if delimiter:
-            kwargs["delimiter"] = delimiter
-        results = []
-        seen_subdirs: set[str] = set()
-        for o in conn.object_store.objects(container, **kwargs):
-            # delimiter 사용 시 Swift는 subdir pseudo-directory 엔트리를 반환
-            subdir = getattr(o, "subdir", None)
-            if subdir:
-                seen_subdirs.add(subdir)
-                results.append(
-                    {
-                        "name": subdir,
-                        "bytes": 0,
-                        "content_type": "application/directory",
-                        "last_modified": "",
-                        "etag": "",
-                        "is_dir": True,
-                    }
-                )
-            else:
-                name = o.name or ""
-                # subdir 엔트리와 동일한 directory marker 오브젝트는 중복 제외
-                if name in seen_subdirs:
+        while True:
+            if marker is not None:
+                params["marker"] = marker
+            response = conn.object_store.get(path, params=params)
+            if response.status_code == 204:
+                break
+            if response.status_code != 200:
+                raise_from_response(response)
+                raise RuntimeError(f"Swift object listing returned HTTP {response.status_code}")
+            page = response.json()
+            if not isinstance(page, list):
+                raise ValueError("Swift object listing must be a JSON array")
+            if not page:
+                break
+            for row in page:
+                if not isinstance(row, dict):
+                    raise ValueError("Swift object listing row must be an object")
+                name = row.get("name")
+                subdir = row.get("subdir")
+                key = name if name is not None else subdir
+                if not isinstance(key, str) or not key:
+                    raise ValueError("Swift object listing row has no valid name or subdir")
+                if delimiter and key == prefix:
+                    continue  # current folder marker is not its own child
+                if name is None:
+                    if delimiter:
+                        entries.setdefault(
+                            key,
+                            {
+                                "name": key,
+                                "bytes": 0,
+                                "content_type": "application/directory",
+                                "last_modified": "",
+                                "etag": "",
+                                "is_dir": True,
+                            },
+                        )
                     continue
-                # 명시적 directory marker 오브젝트 (trailing slash + application/directory)
-                ct = getattr(o, "content_type", "") or ""
-                is_dir = name.endswith("/") and ct in ("application/directory", "")
-                results.append(
-                    {
-                        "name": name,
-                        "bytes": getattr(o, "size", None) or getattr(o, "content_length", 0) or 0,
-                        "content_type": ct,
-                        "last_modified": str(getattr(o, "last_modified_at", "") or ""),
-                        "etag": getattr(o, "etag", "") or "",
-                        "is_dir": is_dir,
-                    }
-                )
+                content_type = row.get("content_type") or ""
+                entries[key] = {
+                    "name": key,
+                    "bytes": row.get("bytes") or 0,
+                    "content_type": content_type,
+                    "last_modified": str(row.get("last_modified") or ""),
+                    "etag": row.get("hash") or "",
+                    "is_dir": key.endswith("/") and content_type in ("application/directory", ""),
+                }
+            last = page[-1]
+            next_marker = last.get("name") if last.get("name") is not None else last.get("subdir")
+            if marker is not None and next_marker <= marker:
+                raise RuntimeError("Swift object listing marker did not advance")
+            marker = next_marker
+        results = list(entries.values())
         _enrich_slo_sizes(conn, container, results, prefix=prefix)
         return results
     except Exception:
         _logger.debug("Swift 오브젝트 목록 조회 실패 container=%s", container, exc_info=True)
-        return []
+        raise
 
 
 # Ceph RGW 단일 PUT 한계(rgw_max_put_size 기본 5 GiB) 직전까지 단일 객체로 저장.
@@ -678,7 +712,7 @@ def delete_object(conn, container: str, name: str) -> None:
     _apply_endpoint_override(conn)
     if name.endswith("/"):
         encoded = "/" + urllib.parse.quote(container, safe="") + "/" + urllib.parse.quote(name, safe="/")
-        conn.object_store.delete(encoded)
+        _require_swift_success(conn.object_store.delete(encoded), "directory marker delete")
         return
 
     # SLO manifest 여부 확인 — segments quota 누수 방지
@@ -700,7 +734,7 @@ def delete_object(conn, container: str, name: str) -> None:
             + urllib.parse.quote(name, safe="/")
             + "?multipart-manifest=delete"
         )
-        conn.object_store.delete(encoded)
+        _require_swift_success(conn.object_store.delete(encoded), "SLO manifest delete")
     else:
         conn.object_store.delete_object(name, ignore_missing=False, container=container)
 
@@ -734,6 +768,35 @@ def get_object_metadata(conn, container: str, name: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def _remove_folder_keys(conn, container: str, name: str, remove, done: list[str], failed: list[dict]) -> None:
+    """Remove only stored keys below ``name``; report the logical folder after all succeed."""
+    try:
+        children = list_objects(conn, container, prefix=name, delimiter="")
+    except Exception as e:
+        failed.append({"name": name, "error": str(e)})
+        return
+    if not children:
+        failed.append({"name": name, "error": "Object not found"})
+        return
+    failures_before = len(failed)
+    # Descending keys handle nested stored markers after their descendants.
+    for child_name in sorted((child["name"] for child in children if child["name"] != name), reverse=True):
+        try:
+            remove(conn, container, child_name)
+            done.append(child_name)
+        except Exception as e:
+            failed.append({"name": child_name, "error": str(e)})
+    if len(failed) != failures_before:
+        return  # keep a real marker while its folder still has stored content
+    if any(child["name"] == name for child in children):
+        try:
+            remove(conn, container, name)
+        except Exception as e:
+            failed.append({"name": name, "error": str(e)})
+            return
+    done.append(name)
+
+
 def bulk_delete_objects(conn, container: str, names: list[str], recursive: bool = False) -> dict:
     """여러 오브젝트를 삭제한다.
 
@@ -746,22 +809,8 @@ def bulk_delete_objects(conn, container: str, names: list[str], recursive: bool 
 
     for name in names:
         if name.endswith("/") and recursive:
-            # 디렉토리 하위 전체 나열 후 삭제
-            try:
-                children = list_objects(conn, container, prefix=name, delimiter="")
-            except Exception as e:
-                failed.append({"name": name, "error": str(e)})
-                continue
-            for child in children:
-                child_name = child["name"]
-                if child_name == name:
-                    continue  # directory marker 자체는 나중에 삭제
-                try:
-                    delete_object(conn, container, child_name)
-                    deleted.append(child_name)
-                except Exception as e:
-                    failed.append({"name": child_name, "error": str(e)})
-        # directory marker 또는 일반 파일 삭제
+            _remove_folder_keys(conn, container, name, delete_object, deleted, failed)
+            continue
         try:
             delete_object(conn, container, name)
             deleted.append(name)
@@ -782,10 +831,11 @@ def create_directory(conn, container: str, path: str) -> dict:
     _apply_endpoint_override(conn)
     dir_name = path.rstrip("/") + "/"
     encoded_path = "/" + urllib.parse.quote(container, safe="") + "/" + urllib.parse.quote(dir_name, safe="/")
-    conn.object_store.put(
+    response = conn.object_store.put(
         encoded_path,
         headers={"Content-Type": "application/directory", "Content-Length": "0"},
     )
+    _require_swift_success(response, "directory marker create")
     return {"name": dir_name, "container": container}
 
 
@@ -819,15 +869,20 @@ def copy_object(
     if extra_headers:
         headers.update(extra_headers)
     try:
-        proxy.put(encoded_dest, headers=headers)
+        response = proxy.put(encoded_dest, headers=headers)
     finally:
         proxy.timeout = original_timeout
+    _require_swift_success(response, "object copy")
     return {
         "source": source,
         "destination": dest_name,
         "source_container": container,
         "dest_container": dest_container,
     }
+
+
+class InvalidObjectMove(ValueError):
+    """A same-container move whose destination would contain or overwrite its own source keys."""
 
 
 def move_object(
@@ -840,30 +895,39 @@ def move_object(
     """오브젝트를 이동한다 (copy + delete).
 
     source가 디렉토리(trailing '/')이면 하위 파일 전체를 재귀적으로 복사 후 삭제한다.
+    같은 컨테이너의 동일 경로는 변경 없이 성공하고, 원본과 겹치는 대상은 변경 전에 거부한다.
     """
+    result = {
+        "source": source,
+        "destination": dest_name,
+        "source_container": container,
+        "dest_container": dest_container,
+    }
+    same_container = dest_container == container
+    if same_container and dest_name == source:
+        return result  # copying onto itself, then deleting the source, would destroy it
     if source.endswith("/"):
-        # 디렉토리: 하위 파일 전체 나열 후 복사
+        from openstack.exceptions import ResourceNotFound
+
+        if same_container and dest_name.startswith(source):
+            raise InvalidObjectMove("폴더를 자기 자신 안으로 이동할 수 없습니다")
         children = list_objects(conn, container, prefix=source, delimiter="")
-        # directory marker 자체도 포함하여 복사
-        copy_object(conn, container, source, dest_container, dest_name)
-        for child in children:
-            child_name = child["name"]
-            if child_name == source:
-                continue
-            new_child_name = dest_name + child_name[len(source) :]
-            copy_object(conn, container, child_name, dest_container, new_child_name)
-        # 원본 삭제 (하위 파일 먼저, 마커 나중)
-        for child in children:
-            if child["name"] != source:
-                delete_object(conn, container, child["name"])
-        delete_object(conn, container, source)
-        return {
-            "source": source,
-            "destination": dest_name,
-            "source_container": container,
-            "dest_container": dest_container,
-        }
-    result = copy_object(conn, container, source, dest_container, dest_name)
+        if not children:
+            raise ResourceNotFound(f"Swift object not found: {source}")
+        sources = [child["name"] for child in children]
+        targets = [dest_name + name[len(source) :] for name in sources]
+        if same_container and not set(sources).isdisjoint(targets):
+            raise InvalidObjectMove("이동 대상 경로가 원본 오브젝트와 겹칩니다")
+        # Copy the complete, pre-mutation flat snapshot before removing any source.
+        for name, target in zip(sources, targets, strict=True):
+            copy_object(conn, container, name, dest_container, target)
+        for name in sources:
+            if name != source:
+                delete_object(conn, container, name)
+        if source in sources:
+            delete_object(conn, container, source)
+        return result
+    copy_object(conn, container, source, dest_container, dest_name)
     delete_object(conn, container, source)
     return result
 
@@ -961,20 +1025,8 @@ def bulk_soft_delete_objects(conn, container: str, names: list[str], recursive: 
 
     for name in names:
         if name.endswith("/") and recursive:
-            try:
-                children = list_objects(conn, container, prefix=name, delimiter="")
-            except Exception as e:
-                failed.append({"name": name, "error": str(e)})
-                continue
-            for child in children:
-                child_name = child["name"]
-                if child_name == name:
-                    continue
-                try:
-                    soft_delete_object(conn, container, child_name)
-                    moved.append(child_name)
-                except Exception as e:
-                    failed.append({"name": child_name, "error": str(e)})
+            _remove_folder_keys(conn, container, name, soft_delete_object, moved, failed)
+            continue
         try:
             soft_delete_object(conn, container, name)
             moved.append(name)

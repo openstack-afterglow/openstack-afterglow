@@ -28,4 +28,20 @@ describe('ImageCatalogToolbar', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '필터 초기화' }));
 		expect(onClear).toHaveBeenCalledOnce();
 	});
+
+	it('treats trust selection as a clearable filter and offers upload-time order', async () => {
+		const onClear = vi.fn();
+		render(ImageCatalogToolbar, { onClear });
+		const trust = screen.getByRole('combobox', { name: '신뢰 상태' }) as HTMLSelectElement;
+		await fireEvent.change(trust, { target: { value: 'unavailable' } });
+		expect(trust.value).toBe('unavailable');
+		await fireEvent.click(screen.getByRole('button', { name: '필터 초기화' }));
+		expect(onClear).toHaveBeenCalledOnce();
+
+		const sort = screen.getByRole('combobox', { name: '정렬' }) as HTMLSelectElement;
+		expect(sort.value).toBe('newest');
+		expect([...sort.options].map((option) => option.value)).toEqual(['relevance', 'newest', 'oldest', 'name']);
+		await fireEvent.change(sort, { target: { value: 'oldest' } });
+		expect(sort.value).toBe('oldest');
+	});
 });

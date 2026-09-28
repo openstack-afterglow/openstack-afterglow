@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import openstack
 import asyncio
+import logging
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
@@ -14,11 +15,12 @@ from app.api.deps import CacheMode, cache_mode, get_os_conn, get_token_info
 from app.config import get_settings
 from app.models.compute import ImageDetail, ImageInfo
 from app.rate_limit import limiter
-from app.services import glance
+from app.services import glance, image_verification
 from app.services.cache import cached_call, invalidate, ttl_static
 from app.services.image_refs import ImageReferenceError, image_reference_fields, normalize_image_reference
 
 router = APIRouter()
+_logger = logging.getLogger(__name__)
 
 
 class UpdateImageRequest(BaseModel):
@@ -42,13 +44,16 @@ async def list_images(
     conn: openstack.connection.Connection = Depends(get_os_conn), cm: CacheMode = Depends(cache_mode)
 ):
     pid = conn._afterglow_project_id
-    return await cached_call(
+    raw = await cached_call(
         f"afterglow:glance:{pid}:images",
         ttl_static(),
-        lambda: [img.model_dump() for img in glance.list_images(conn, pid)],
+        lambda: [
+            img.model_dump(exclude={"verification_status", "verified_at"}) for img in glance.list_images(conn, pid)
+        ],
         enabled=cm.enabled,
         refresh=cm.refresh,
     )
+    return await image_verification.enrich([ImageInfo.model_validate(item) for item in raw])
 
 
 @router.post("", status_code=201)
@@ -65,7 +70,6 @@ async def upload_image(
 ):
     """이미지 파일 업로드 (multipart/form-data). raw / qcow2 / vmdk 등 주요 포맷 지원."""
     pid = conn._afterglow_project_id
-
     if disk_format not in glance._ALLOWED_DISK_FORMATS:
         raise HTTPException(
             status_code=400,
@@ -106,20 +110,67 @@ async def upload_image(
             data=file.file,
             properties=props or None,
         )
-        await invalidate(f"afterglow:glance:{pid}:images")
-        await rec(token_info, conn, resource_type="image", action="create", resource_id=getattr(img, "id", None))
-        display_name, repository, tag = image_reference_fields(getattr(img, "name", None))
-        return {
-            "id": img.id,
-            "name": display_name,
-            "repository": repository,
-            "tag": tag,
-            "status": img.status,
-            "disk_format": img.disk_format,
-        }
     except Exception as e:
-        await rec(token_info, conn, resource_type="image", action="create", status="failed", error_message=str(e)[:500])
-        raise HTTPException(status_code=500, detail=f"이미지 업로드 실패: {e}")
+        await rec(
+            token_info,
+            conn,
+            resource_type="image",
+            action="create",
+            status="failed",
+            error_message=str(e)[:500],
+        )
+        raise HTTPException(status_code=500, detail=f"이미지 업로드 실패: {e}") from e
+
+    try:
+        await invalidate(f"afterglow:glance:{pid}:images")
+        await rec(
+            token_info,
+            conn,
+            resource_type="image",
+            action="create",
+            resource_id=img.id,
+        )
+    except Exception:
+        _logger.warning("Uploaded image %s cache/audit update failed", img.id, exc_info=True)
+    verification_status = "unverified"
+    verified_at = None
+    verification_message = None
+    if is_admin:
+        # SDK direct PUT completes before return; the returned resource may still
+        # be queued, so fetch the post-upload Glance digest before approval.
+        try:
+            current = await asyncio.to_thread(glance.get_image, conn, img.id)
+            await image_verification.set_verification(current, verified=True, actor_id=token_info["user_id"])
+            projected = (await image_verification.enrich([current]))[0]
+            verification_status = projected.verification_status
+            verified_at = projected.verified_at
+            if verification_status != "verified":
+                verification_message = (
+                    "이미지는 업로드되었지만 검증 상태를 확인하지 못했습니다. 상세 상태를 다시 확인하세요."
+                )
+        except Exception:
+            _logger.warning("Uploaded image %s created without verification", img.id, exc_info=True)
+            verification_status = "unavailable"
+            verification_message = (
+                "이미지는 업로드되었지만 관리자 검증을 기록하지 못했습니다. 상세 상태를 확인하고 다시 승인하세요."
+            )
+    else:
+        projected = (await image_verification.enrich([ImageInfo(id=img.id, name=normalized_name, status=img.status)]))[
+            0
+        ]
+        verification_status = projected.verification_status
+    display_name, repository, tag = image_reference_fields(getattr(img, "name", None))
+    return {
+        "id": img.id,
+        "name": display_name,
+        "repository": repository,
+        "tag": tag,
+        "status": img.status,
+        "disk_format": img.disk_format,
+        "verification_status": verification_status,
+        "verified_at": verified_at,
+        "verification_message": verification_message,
+    }
 
 
 @router.get("/{image_id}", response_model=ImageDetail)
@@ -128,9 +179,10 @@ async def get_image_detail(
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
     try:
-        return await asyncio.to_thread(glance.get_image, conn, image_id)
+        image = await asyncio.to_thread(glance.get_image, conn, image_id)
     except Exception:
         raise HTTPException(status_code=404, detail="이미지를 찾을 수 없습니다")
+    return (await image_verification.enrich([image]))[0]
 
 
 @router.delete("/{image_id}", status_code=204)
@@ -140,9 +192,16 @@ async def delete_image(
 ):
     try:
         await asyncio.to_thread(glance.delete_image, conn, image_id)
-        await invalidate(f"afterglow:glance:{getattr(conn, '_afterglow_project_id', None)}:images")
     except Exception:
         raise HTTPException(status_code=500, detail="이미지 삭제 실패")
+    try:
+        await invalidate(f"afterglow:glance:{getattr(conn, '_afterglow_project_id', None)}:images")
+    except Exception:
+        _logger.warning("Deleted image %s cache invalidation failed", image_id, exc_info=True)
+    try:
+        await image_verification.remove_deleted_image(image_id)
+    except image_verification.VerificationUnavailable:
+        _logger.warning("Deleted image %s retained an inaccessible verification row", image_id)
 
 
 @router.patch("/{image_id}", response_model=ImageInfo)
@@ -170,7 +229,7 @@ async def update_image(
             req.visibility,
         )
         await invalidate(f"afterglow:glance:{getattr(conn, '_afterglow_project_id', None)}:images")
-        return result
+        return (await image_verification.enrich([result]))[0]
     except Exception:
         raise HTTPException(status_code=500, detail="이미지 메타데이터 수정 실패")
 
@@ -191,13 +250,15 @@ async def update_image_properties(
     if not is_admin and img.owner != conn._afterglow_project_id:
         raise HTTPException(status_code=403, detail="본인 소유 이미지만 수정할 수 있습니다")
     try:
-        return await asyncio.to_thread(
+        result = await asyncio.to_thread(
             glance.update_image_properties,
             conn,
             image_id,
             req.set,
             req.remove,
         )
+        await invalidate(f"afterglow:glance:{conn._afterglow_project_id}:images")
+        return (await image_verification.enrich([result]))[0]
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"properties 수정 실패: {e}")
 

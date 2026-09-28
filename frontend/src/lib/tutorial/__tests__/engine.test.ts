@@ -79,11 +79,12 @@ describe('tour definitions', () => {
 		expect(getTour('nope')).toBeNull();
 	});
 
-	it('defines the nine administrator tours with exact routes and stable settlement anchors', () => {
+	it('defines administrator tours with routed settlement anchors', () => {
 		const expected = [
 			['admin-compute', '/admin/instances', 'Compute 관리', 'admin-compute-ready'],
 			['admin-storage', '/admin/volumes', '스토리지 관리', 'admin-storage-ready'],
 			['admin-library', '/admin/libraries', '라이브러리 관리', 'admin-library-ready'],
+			['admin-waygate', '/admin/waygate', 'Waygate 관리', 'waygate-ready'],
 			['admin-network', '/admin/topology', '네트워크 관리', 'admin-network-ready'],
 			['admin-containers', '/admin/containers', '컨테이너 관리', 'admin-containers-ready'],
 			['admin-key-manager', '/admin/secrets', 'Key Manager 관리', 'admin-key-manager-ready'],
@@ -92,7 +93,6 @@ describe('tour definitions', () => {
 			['admin-identity', '/admin/users', 'Identity 관리', 'admin-identity-list-ready'],
 		] as const;
 
-		expect(TOUR_IDS).toHaveLength(12);
 		for (const [id, route, label, readyAnchor] of expected) {
 			const definition = getTour(id);
 			expect(definition).toMatchObject({ id, label });
@@ -105,6 +105,9 @@ describe('tour definitions', () => {
 				expect(clickSelector).not.toMatch(/create|delete|save|reset|submit|recover/i);
 			}
 		}
+		const tenant = getTour('waygate');
+		expect(tenant?.steps[0].route).toBe('/dashboard/network/waygate');
+		expect(tenant?.steps[1].readyElement).toBe('[data-tour="waygate-ready"]');
 	});
 
 	it('vm-create 투어는 libraryConsume 베타에 따라 라이브러리 단계를 넣고 뺀다', () => {

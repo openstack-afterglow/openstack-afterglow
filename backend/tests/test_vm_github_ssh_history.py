@@ -71,7 +71,7 @@ async def test_public_squashfs_consume_rejects_unverified_github_before_database
                 flavor_id="flavor-1",
                 github_username="octocat",
             ),
-            conn=MagicMock(_afterglow_project_id="project-a"),
+            conn=MagicMock(_afterglow_project_id="project-a", _afterglow_authenticated_project_id="project-a"),
             token_info={"project_id": "project-a", "user_id": "user-a"},
         )
 

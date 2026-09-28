@@ -2,39 +2,49 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.services.layer_build import (
-    _CONSOLE_EXCERPT_CHARS,
-    LAYER_BUILD_IMAGE_PACKAGES,
-    LAYER_CONSUME_IMAGE_PACKAGES,
-    render_layer_consume_user_data,
+    _wait_for_shutoff,
     run_layer_build,
 )
 
 
-def test_layer_build_persists_large_console_excerpt():
-    assert _CONSOLE_EXCERPT_CHARS >= 12000
-
-
-def test_layer_preinstall_packages_match_cloud_init_fallbacks():
-    consume_user_data = render_layer_consume_user_data(
-        "default",
-        [("10.0.0.1:/layers/python", "python311-latest.sqsh")],
+@pytest.mark.asyncio
+async def test_builder_retains_first_failure_trace_during_noisy_shutdown():
+    token = "a" * 32
+    conn = SimpleNamespace(
+        compute=SimpleNamespace(
+            get_server=MagicMock(
+                side_effect=[
+                    SimpleNamespace(status="ACTIVE"),
+                    SimpleNamespace(status="ACTIVE"),
+                    SimpleNamespace(status="SHUTOFF"),
+                ]
+            )
+        )
     )
+    with (
+        patch("app.services.layer_build._SHUTOFF_POLL_INTERVAL", 61),
+        patch("app.services.layer_build.asyncio.sleep", new_callable=AsyncMock),
+        patch("app.services.layer_build._update_build_db", new_callable=AsyncMock) as update,
+        patch(
+            "app.services.layer_build.nova.get_console_output",
+            side_effect=[
+                f"Traceback: source device not found\n::AFTERGLOW::FAILURE::{token}",
+                f"{'shutdown noise' * 1000}\n::AFTERGLOW::FAILURE::{token}",
+            ],
+        ),
+    ):
+        assert await _wait_for_shutoff(conn, "builder", 7, token) == (False, True)
 
-    assert set(LAYER_BUILD_IMAGE_PACKAGES) == {"curl", "nfs-common", "squashfs-tools"}
-    assert set(LAYER_CONSUME_IMAGE_PACKAGES) == {"nfs-common", "squashfs-tools"}
-    for package in LAYER_CONSUME_IMAGE_PACKAGES:
-        assert f"  - {package}" in consume_user_data
-    preinstall = (
-        Path(__file__).resolve().parents[2] / "layers/cloud-init/layer-image-preinstall.cloud-config.yaml"
-    ).read_text()
-    for package in [*LAYER_BUILD_IMAGE_PACKAGES, "ceph-common", "ca-certificates"]:
-        assert f"  - {package}" in preinstall
+    excerpts = [
+        call.kwargs["console_log_excerpt"] for call in update.await_args_list if "console_log_excerpt" in call.kwargs
+    ]
+    assert excerpts == [f"Traceback: source device not found\n::AFTERGLOW::FAILURE::{token}"]
 
 
 @pytest.mark.asyncio

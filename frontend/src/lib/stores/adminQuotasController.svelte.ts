@@ -18,14 +18,56 @@ export interface FlavorReconcileResponse {
 }
 
 import { api, ApiError } from '$lib/api/client';
-import type { Project, Quotas, GpuQuota, GpuDefaultQuota } from '$lib/types/quotas';
+import type { Project, Quotas, QuotaUpdateResponse, GpuQuota, GpuDefaultQuota } from '$lib/types/quotas';
 
 export interface AdminQuotasControllerOpts {
   token: () => string | undefined;
   projectId: () => string | undefined;
 }
 
-export function createAdminQuotasController(opts: AdminQuotasControllerOpts) {
+export interface AdminQuotasController {
+  readonly projects: Project[];
+  selectedProjectId: string;
+  selectedProjectName: string;
+  projectSearch: string;
+  readonly quotas: Quotas | null;
+  readonly loading: boolean;
+  readonly refreshing: boolean;
+  readonly quotaLoading: boolean;
+  readonly saving: boolean;
+  readonly savingSection: string | null;
+  readonly saveError: string;
+  readonly saveSuccess: string;
+  readonly sectionErrors: Record<string, string>;
+  readonly sectionSuccesses: Record<string, string>;
+  readonly gpuQuotaMap: Record<string, GpuQuota>;
+  readonly gpuDefaultMap: Record<string, number>;
+  readonly allGpuTypes: string[];
+  readonly gpuQuotaRows: GpuQuota[];
+  readonly gpuQuotaLoading: boolean;
+  readonly gpuQuotaError: string;
+  readonly gpuDefaultLoading: boolean;
+  readonly gpuDefaultError: string;
+  readonly gpuDefaultSuccess: string;
+  readonly gpuQuotas: GpuQuota[];
+  readonly reconcilePreview: FlavorReconcileResponse | null;
+  readonly reconcileLoading: boolean;
+  loadReconcilePreview: (gpuLimits?: Record<string, number>) => Promise<void>;
+  loadProjects: () => Promise<void>;
+  loadGpuAliases: () => Promise<void>;
+  loadGpuDefaults: (opts?: { background?: boolean }) => Promise<void>;
+  loadQuotas: (opts?: { preserveStatus?: boolean; background?: boolean }) => Promise<boolean>;
+  loadGpuQuotas: (opts?: { background?: boolean }) => Promise<void>;
+  setGpuDefault: (gpuType: string, limit: number) => Promise<void>;
+  setGpuQuota: (gpuType: string, limit: number) => Promise<void>;
+  deleteGpuQuota: (gpuType: string) => Promise<void>;
+  saveSectionQuotas: (
+    section: 'compute' | 'volume' | 'network' | 'file_storage',
+    changes: Record<string, number>,
+  ) => Promise<{ success: boolean; status?: string; updated?: string[]; errors?: Record<string, string>; refreshed?: boolean; refreshError?: string }>;
+}
+
+export function createAdminQuotasController(opts: AdminQuotasControllerOpts): AdminQuotasController {
   let projects = $state<Project[]>([]);
   let selectedProjectId = $state('');
   let selectedProjectName = $state('');
@@ -35,8 +77,11 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts) {
   let refreshing = $state(false);
   let quotaLoading = $state(false);
   let saving = $state(false);
+  let savingSection = $state<string | null>(null);
   let saveError = $state('');
   let saveSuccess = $state('');
+  let sectionErrors = $state<Record<string, string>>({});
+  let sectionSuccesses = $state<Record<string, string>>({});
   let gpuAliases = $state<string[]>([]);
   let gpuQuotas = $state<GpuQuota[]>([]);
   let gpuDefaults = $state<GpuDefaultQuota[]>([]);
@@ -47,6 +92,7 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts) {
   let gpuDefaultSuccess = $state('');
   let gpuQuotaGeneration = 0;
   let quotaGeneration = 0;
+  let saveGeneration = 0;
   let reconcilePreview = $state<FlavorReconcileResponse | null>(null);
   let reconcileLoading = $state(false);
 
@@ -114,7 +160,7 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts) {
     }
   }
 
-  async function loadQuotas() {
+  async function loadQuotas(opts?: { preserveStatus?: boolean; background?: boolean }): Promise<boolean> {
     const targetProjectId = selectedProjectId;
     const requestToken = tok();
     const requestProjectId = pid();
@@ -123,20 +169,28 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts) {
       && selectedProjectId === targetProjectId
       && tok() === requestToken
       && pid() === requestProjectId;
-    if (!targetProjectId) { quotas = null; quotaLoading = false; return; }
-    quotaLoading = true; saveError = ''; saveSuccess = '';
+    if (!targetProjectId) { quotas = null; quotaLoading = false; return false; }
+    if (!opts?.background) quotaLoading = true;
+    if (!opts?.preserveStatus) {
+      saveError = '';
+      saveSuccess = '';
+      sectionErrors = {};
+      sectionSuccesses = {};
+    }
     const quotaPromise = api.get<Quotas>(`/api/v1/admin/quotas/${targetProjectId}`, requestToken, requestProjectId);
-    const gpuPromise = loadGpuQuotas();
+    if (!opts?.background) void loadGpuQuotas();
     try {
       const loadedQuotas = await quotaPromise;
-      if (owns()) quotas = loadedQuotas;
+      if (!owns()) return false;
+      quotas = loadedQuotas;
+      if (!opts?.background) void loadReconcilePreview();
+      return true;
     } catch {
-      if (owns()) quotas = null;
+      if (owns() && !opts?.background) quotas = null;
+      return false;
     } finally {
       if (owns()) quotaLoading = false;
     }
-    await gpuPromise;
-    void loadReconcilePreview();
   }
 
   async function loadGpuQuotas(opts?: { background?: boolean }) {
@@ -207,21 +261,106 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts) {
     }
   }
 
-  async function saveQuotas(form: { instances: number; cores: number; ram: number; volumes: number; gigabytes: number }) {
-    if (!selectedProjectId) return;
-    saving = true; saveError = ''; saveSuccess = '';
+  async function saveSectionQuotas(
+    section: 'compute' | 'volume' | 'network' | 'file_storage',
+    changes: Record<string, number>,
+  ): Promise<{ success: boolean; status?: string; updated?: string[]; errors?: Record<string, string>; refreshed?: boolean; refreshError?: string }> {
+    const targetProjectId = selectedProjectId;
+    const requestToken = tok();
+    const requestProjectId = pid();
+    const generation = quotaGeneration;
+    const saveRequest = ++saveGeneration;
+    const validContext = () => saveRequest === saveGeneration
+      && selectedProjectId === targetProjectId
+      && tok() === requestToken
+      && pid() === requestProjectId;
+    const owns = () => generation === quotaGeneration && validContext();
+
+    if (!targetProjectId || !owns()) {
+      return { success: false };
+    }
+
+    if (Object.keys(changes).length === 0) {
+      return { success: false };
+    }
+
+    const payload = changes;
+
+    saving = true;
+    savingSection = section;
+    const nextErrors = { ...sectionErrors };
+    delete nextErrors[section];
+    sectionErrors = nextErrors;
+    const nextSuccesses = { ...sectionSuccesses };
+    delete nextSuccesses[section];
+    sectionSuccesses = nextSuccesses;
+    saveError = '';
+    saveSuccess = '';
+
     try {
-      await api.put(`/api/v1/admin/quotas/${selectedProjectId}`, form, tok(), pid());
-      saveSuccess = '저장되었습니다';
-      await loadQuotas();
-    } catch (e) { saveError = e instanceof ApiError ? e.message : '저장 실패'; }
-    finally { saving = false; }
+      const res = await api.put<QuotaUpdateResponse>(
+        `/api/v1/admin/quotas/${targetProjectId}`,
+        payload,
+        requestToken,
+        requestProjectId,
+      );
+
+      if (!owns()) {
+        return { success: false };
+      }
+
+      const sectionErr = res.errors?.[section];
+      if (res.updated?.includes(section) && !sectionErr) {
+        const refreshed = await loadQuotas({ preserveStatus: true, background: true });
+        if (!validContext()) return { ...res, success: false };
+        if (refreshed) {
+          sectionSuccesses = { ...sectionSuccesses, [section]: '저장되었습니다' };
+          saveSuccess = '저장되었습니다';
+          return { ...res, success: true, refreshed: true };
+        }
+        const refreshError = '쿼터를 다시 불러올 수 없습니다. 다시 시도해주세요.';
+        sectionErrors = { ...sectionErrors, [section]: refreshError };
+        saveError = refreshError;
+        return { ...res, success: true, refreshed: false, refreshError };
+      }
+      const errMsg = sectionErr || Object.values(res.errors ?? {}).join(', ') || '일부 쿼터 저장 실패';
+      sectionErrors = { ...sectionErrors, [section]: errMsg };
+      saveError = errMsg;
+      return { ...res, success: false };
+    } catch (e) {
+      if (validContext()) {
+        const errMsg = e instanceof ApiError ? e.message : '저장 실패';
+        sectionErrors = { ...sectionErrors, [section]: errMsg };
+        saveError = errMsg;
+      }
+      return { success: false };
+    } finally {
+      if (validContext()) {
+        saving = false;
+        savingSection = null;
+      }
+    }
   }
+
 
   return {
     get projects() { return projects; },
     get selectedProjectId() { return selectedProjectId; },
-    set selectedProjectId(v: string) { selectedProjectId = v; },
+    set selectedProjectId(v: string) {
+      if (selectedProjectId !== v) {
+        selectedProjectId = v;
+        ++quotaGeneration;
+        ++saveGeneration;
+        quotas = null;
+        quotaLoading = !!v;
+        saving = false;
+        savingSection = null;
+        saveError = '';
+        saveSuccess = '';
+        sectionErrors = {};
+        sectionSuccesses = {};
+      }
+    },
     get selectedProjectName() { return selectedProjectName; },
     set selectedProjectName(v: string) { selectedProjectName = v; },
     get projectSearch() { return projectSearch; },
@@ -231,8 +370,11 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts) {
     get refreshing() { return refreshing; },
     get quotaLoading() { return quotaLoading; },
     get saving() { return saving; },
+    get savingSection() { return savingSection; },
     get saveError() { return saveError; },
     get saveSuccess() { return saveSuccess; },
+    get sectionErrors() { return sectionErrors; },
+    get sectionSuccesses() { return sectionSuccesses; },
     get gpuQuotaMap() { return gpuQuotaMap; },
     get gpuDefaultMap() { return gpuDefaultMap; },
     get allGpuTypes() { return allGpuTypes; },
@@ -254,6 +396,6 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts) {
     setGpuDefault,
     setGpuQuota,
     deleteGpuQuota,
-    saveQuotas,
+    saveSectionQuotas,
   };
 }

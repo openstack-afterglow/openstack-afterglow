@@ -34,6 +34,45 @@ manila_cephx_key_timeout_seconds = 300  # CephX key 발급 폴링 최대 대기(
 # Ceph 모니터 (cloud-init CephFS 마운트용, 콤마 구분)
 ceph_monitors = ""
 
+# Native oslo.messaging notifications (RabbitMQ AMQP 0-9-1 only).
+# AMQP client ships with backend dependencies; consumption is disabled unless enabled.
+# Set AMQP URL ONLY in protected config or OPENSTACK_NOTIFICATIONS_AMQP_URL environment.
+# Use amqps:// with a trusted CA in production; credentials must be URL-encoded.
+# Services must publish oslo_messaging_notifications driver=messaging or messagingv2.
+# These are EXAMPLES: use the actual control_exchange and <notification-topic>.<priority>.
+# Do not use RPC method names or event_type strings as routing keys. Exchanges must exist;
+# collector checks them passively, never changes their type/durability. Concrete routing
+# keys work with direct/topic exchanges; wildcards require a topic exchange.
+# Nova versioned notifications often use versioned_notifications.info/error instead
+# of notifications.info/error. Enable both sets explicitly if the deployment emits both.
+[openstack_notifications]
+enabled = false
+amqp_url = ""
+queue_prefix = "afterglow.notifications"
+retry_seconds = 5
+max_message_bytes = 1048576
+
+# Dedicated durable queue per service/exchange/routing-key; no TTL, auto-delete or purge.
+# Disable a binding/service to stop consumption; its existing queue/backlog is retained.
+# Changing/removing keys leaves old queues for explicit operator cleanup/drain.
+# Durable queues only survive broker restart with persistent publisher messages.
+[openstack_notifications.bindings.nova]
+enabled = true
+exchange = "nova"
+routing_keys = ["versioned_notifications.info", "versioned_notifications.error"]
+[openstack_notifications.bindings.cinder]
+enabled = true
+exchange = "cinder"
+routing_keys = ["notifications.info", "notifications.error"]
+[openstack_notifications.bindings.neutron]
+enabled = true
+exchange = "neutron"
+routing_keys = ["notifications.info", "notifications.error"]
+[openstack_notifications.bindings.keystone]
+enabled = true
+exchange = "keystone"
+routing_keys = ["notifications.info", "notifications.error"]
+
 # Ceph RBD backend 검사/복원 (관리자 볼륨 삭제 복구 전용, 선택). 두 경로가 모두 비어 있으면 비활성.
 [ceph]
 rbd_conf_path = ""                 # 예: /etc/ceph/ceph.conf

@@ -30,6 +30,18 @@ nav_order: 20
 
 ---
 
+## 이벤트 조사
+
+| 메서드 | 경로 | 설명 |
+|---|---|---|
+| `GET` | `/api/v1/admin/events` | 모든 프로젝트의 활동·OpenStack 알림을 필터/커서로 조회 |
+| `GET` | `/api/v1/admin/events/stats` | 현재 필터의 서비스·프로젝트·페이지·액션별 성공/실패 집계 |
+| `GET` | `/api/v1/admin/events/{id}` | 실패 원인, actor, 대상과 요청/외부 이벤트 식별자 확인 |
+
+필터, 수집 전제 및 기존 활동 API와의 차이는 [관리자 이벤트](events.md)를 참조하세요.
+
+---
+
 ## 클러스터 개요·모니터링
 
 | 메서드 | 경로 | 설명 |
@@ -237,7 +249,7 @@ Recovery는 볼륨별 Redis `NX EX=600` lock을 잡습니다. 같은 볼륨의 �
 | `DELETE` | `/api/v1/admin/libraries/artifacts/{id}` | artifact 삭제 |
 | `POST` | `/api/v1/admin/libraries/profiles` | 레이어 프로필 생성/갱신 |
 | `DELETE` | `/api/v1/admin/libraries/profiles/{profile_name}` | 레이어 프로필 삭제 |
-| `POST` | `/api/v1/admin/libraries/consume` | 프로필 소비 인스턴스 생성 |
+| `POST` | `/api/v1/admin/libraries/consume` | 프로필 또는 완료된 Dockerfile 작업의 고정 artifact ID로 소비 인스턴스 생성 |
 | `GET` | `/api/v1/admin/libraries/consumes` | 소비 인스턴스 목록 |
 
 ---
@@ -294,16 +306,36 @@ Zun 서비스 활성화 시에만 사용 가능합니다.
 
 ## 쿼터 관리
 
-| 메서드 | 경로 | 설명 | 요청 본문 |
-|--------|------|------|-----------|
-| `GET` | `/api/v1/admin/quotas/{project_id}` | 프로젝트 컴퓨트/볼륨 쿼터·사용량 조회 | - |
-| `PUT` | `/api/v1/admin/quotas/{project_id}` | 프로젝트 쿼터 수정 | `instances`, `cores`, `ram`(MB), `volumes`, `gigabytes` (모두 선택) |
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| `GET` | `/api/v1/admin/quotas/{project_id}` | 대상 프로젝트의 Nova·Cinder·Neutron·선택적 Manila 쿼터 한도와 사용량 조회 |
+| `PUT` | `/api/v1/admin/quotas/{project_id}` | 요청 본문에 포함된 쿼터만 대상 프로젝트에 적용 |
+
+`GET` 응답의 `compute`, `volume`, `network`, `file_storage`는 각 서비스의 `{필드명: {limit, in_use}}` 객체입니다. `limit: -1`은 무제한입니다. 상세 사용량을 조회하지 못한 서비스는 **`null`**이며 `availability[서비스] = false`, `errors[서비스] = "quota_unavailable"`입니다. Manila가 비활성화되었으면 `file_storage: null`과 `errors.file_storage = "service_disabled"`입니다. 배포 환경이 노출하지 않는 개별 필드는 0으로 채우지 않고 생략하므로 해당 항목을 조정할 수 없습니다. 다른 서비스 조회 실패가 정상 서비스의 쿼터를 숨기지는 않습니다.
+
+| 서비스 | `GET` 필드 (프로바이더 이름) | `PUT` 필드 (변경할 항목만 전송) |
+|--------|------------------------------|-----------------------------------|
+| `compute` (Nova) | `instances`, `cores`, `ram` (MB), `metadata_items`, `key_pairs`, `server_groups`, `server_group_members`, `injected_files`, `injected_file_content_bytes`, `injected_file_path_bytes` | 동일 |
+| `volume` (Cinder) | `volumes`, `snapshots`, `gigabytes` (볼륨·스냅샷의 총 GiB) | 동일 |
+| `network` (Neutron) | `network`, `subnet`, `port`, `router`, `floatingip`, `security_group`, `security_group_rule` | 동일 |
+| `file_storage` (Manila) | `shares`, `gigabytes`, `snapshots`, `snapshot_gigabytes`, `share_networks`, `share_groups`, `share_group_snapshots` | `shares`, `share_gigabytes`, `share_snapshots`, `share_snapshot_gigabytes`, `share_networks`, `share_groups`, `share_group_snapshots` |
 
 ```json
 {
+  "project_id": "project-uuid",
   "compute": {"instances": {"limit": 20, "in_use": 5}, "cores": {"limit": 40, "in_use": 10}, "ram": {"limit": 81920, "in_use": 20480}},
-  "volume": {"volumes": {"limit": 10, "in_use": 3}, "gigabytes": {"limit": 1000, "in_use": 200}}
+  "volume": {"volumes": {"limit": 10, "in_use": 3}, "snapshots": {"limit": 10, "in_use": 2}, "gigabytes": {"limit": 1000, "in_use": 200}},
+  "network": {"security_group": {"limit": 20, "in_use": 4}, "security_group_rule": {"limit": 100, "in_use": 12}},
+  "file_storage": {"shares": {"limit": 10, "in_use": 2}, "share_groups": {"limit": 5, "in_use": 1}},
+  "availability": {"compute": true, "volume": true, "network": true, "file_storage": true},
+  "errors": {}
 }
+```
+
+`PUT`은 최상위 JSON 정수 필드로 한도 `-1` 이상을 받습니다. 빈 본문·`null`·지원하지 않는 필드는 `422`입니다. 서비스마다 독립적으로 적용되므로 관리자 화면은 수정한 서비스의 필드만 저장합니다. 여러 서비스를 함께 변경하는 API 요청이 부분 성공하면 `status: "partial"`, 성공한 `updated` 서비스 목록, 실패한 `errors` (`update_failed` 또는 `service_disabled`)를 반환합니다. 부분 성공을 원자적 성공으로 간주하지 말고 다시 조회해야 합니다. GPU 한도 및 flavor access는 별도의 관리자 GPU/compute-policy API를 사용합니다.
+
+```json
+{"status":"updated","project_id":"project-uuid","updated":["network"],"errors":{}}
 ```
 
 ---

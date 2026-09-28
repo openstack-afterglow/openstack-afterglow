@@ -83,7 +83,7 @@ docker compose --env-file /dev/null -f docker-compose.dev.yml -p afterglow-test 
 | `db` | local functional DB selector. 보통 환경·teardown까지 소유하는 `npm run test:functional`을 사용합니다. |
 | `instances` | Nova 인스턴스 API, 메타데이터/메트릭/헬스, 인스턴스 UI를 바꿨을 때 |
 | `storage` | Cinder/Manila/Swift 스토리지 API 또는 스토리지 UI를 바꿨을 때 |
-| `layers` | admin libraries, squashfs, union layer build/consume 플로우를 바꿨을 때 |
+| `layers` | admin libraries, squashfs, union layer build/consume 플로우를 바꿨을 때. Dockerfile 편집기의 FROM 해석·lint 상호작용과 후보 표시도 포함합니다. |
 | `k3s` | k3s API, cloud-init, 보안, 플러그인, nodegroup 테스트를 건드렸을 때 |
 | `workers` | worker runtime, notion worker 템플릿/동작을 바꿨을 때 |
 | `design` | 디자인 시스템 규칙, raw visual debt guardrail을 확인할 때 (`npm run test:frontend:design`) |

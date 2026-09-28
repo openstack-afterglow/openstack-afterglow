@@ -790,6 +790,12 @@ SHOW COLUMNS FROM chat_messages LIKE 'created_at_local';
 SHOW COLUMNS FROM chat_messages LIKE 'created_timezone';
 ```
 
+### 선택적 OpenStack notification 수집
+
+관리자 이벤트 뷰어의 Afterglow 요청 기록은 기본 동작이지만, **Afterglow 이외의 CLI/Horizon/OpenStack 내부 이벤트는 자동으로 나타나지 않습니다.** 각 Nova/Cinder/Neutron/Keystone 등의 `oslo_messaging_notifications` driver와 `transport_url`·topic/routing key를 실제 운영 설정에서 확인하고, Afterglow가 접근하는 전용 최소 권한 RabbitMQ 계정과 durable queue를 준비하세요. 서비스별 exchange·notification topic은 설치마다 다릅니다. `afterglow.conf.example`의 `[openstack_notifications]`와 `bindings`는 예시이며 해당 서비스가 발행하지 않는 이벤트는 소비할 수 없습니다.
+
+운영 DB에 `083_activity_event_metadata.sql` migration을 **backend 롤아웃 전에** 적용하고, AMQP URL은 공개 ConfigMap 대신 비밀 환경변수 `OPENSTACK_NOTIFICATIONS_AMQP_URL` 또는 보호된 private config로 주입합니다. TLS `amqps://`와 broker 인증서를 사용하고 알림 exchange의 read/bind 및 Afterglow queue 관리만 허용하세요. 처음에는 `enabled=false`로 배포하여 기존 활동 이력과 관리자 권한을 확인한 뒤 수집을 켜고, Nova `instance.create.error`와 정상 종료 이벤트 각각이 별도 source `openstack` 행으로 나타나는지 검증합니다. 서버가 여러 replica여도 같은 durable queue 이름을 사용해 메시지를 경쟁 소비하고 `external_id`의 DB UNIQUE 제약으로 중복을 차단합니다. DB 장애 시 ack하지 않고 재전달하지만, 알림 발행자의 persistent delivery와 broker 내구성 설정 없이는 재시작 후 전달을 보장할 수 없습니다. broker/발행자 장애나 알림 자체 미발행도 누락 가능성이 남습니다. 알림은 원본 응답 본문/credential을 저장하지 않으며 actor가 없는 이벤트에 사용자를 추정하지 않습니다. API 사용법과 조사 범위는 [관리자 이벤트](api/events.md)를 따릅니다.
+
 ### Kubernetes
 
 ```bash

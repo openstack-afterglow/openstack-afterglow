@@ -1,18 +1,15 @@
 <script lang="ts">
 	import { Button, Card, Pill, SelectInput, TextInput } from '$lib/components/ui';
+	import type { CatalogOption, CatalogSortMode, VerificationFilter } from '$lib/stores/imageCatalog.svelte';
 
-	export interface CatalogOption {
-		value: string;
-		label: string;
-		count?: number;
-	}
 	export type CatalogViewMode = 'repositories' | 'tags';
 
 	let {
 		searchQuery = $bindable(''),
 		repositoryFilter = $bindable('all'),
 		tagFilter = $bindable('all'),
-		sortMode = $bindable<'relevance' | 'updated' | 'name'>('relevance'),
+		verificationFilter = $bindable<VerificationFilter>('all'),
+		sortMode = $bindable<CatalogSortMode>('newest'),
 		viewMode = 'repositories',
 		repositoryOptions = [],
 		tagOptions = [],
@@ -25,7 +22,8 @@
 		searchQuery?: string;
 		repositoryFilter?: string;
 		tagFilter?: string;
-		sortMode?: 'relevance' | 'updated' | 'name';
+		verificationFilter?: VerificationFilter;
+		sortMode?: CatalogSortMode;
 		viewMode?: CatalogViewMode;
 		repositoryOptions?: CatalogOption[];
 		tagOptions?: CatalogOption[];
@@ -36,7 +34,7 @@
 		onViewModeChange?: (mode: CatalogViewMode) => void;
 	} = $props();
 
-	const hasFilters = $derived(Boolean(searchQuery.trim() || repositoryFilter !== 'all' || tagFilter !== 'all'));
+	const hasFilters = $derived(Boolean(searchQuery.trim() || repositoryFilter !== 'all' || tagFilter !== 'all' || verificationFilter !== 'all'));
 </script>
 
 <Card surface="subtle" padding="lg" class="catalog-toolbar">
@@ -66,7 +64,7 @@
 				id="image-catalog-search"
 				type="search"
 				bind:value={searchQuery}
-				placeholder="ubuntu, ubuntu:24.04, registry.example/ubuntu"
+				placeholder="repository:tag, SHA 해시 또는 이미지 UUID"
 				class="search-input"
 			/>
 			{#if searchQuery}
@@ -97,11 +95,21 @@
 				{/each}
 			</SelectInput>
 		</div>
+		<div class="filter-control">
+			<label for="image-verification-filter">신뢰 상태</label>
+			<SelectInput id="image-verification-filter" bind:value={verificationFilter}>
+				<option value="all">모든 신뢰 상태</option>
+				<option value="verified">검증됨</option>
+				<option value="unverified">미검증</option>
+				<option value="unavailable">검증 불가</option>
+			</SelectInput>
+		</div>
 		<div class="filter-control sort-control">
 			<label for="image-sort-mode">정렬</label>
 			<SelectInput id="image-sort-mode" bind:value={sortMode}>
 				<option value="relevance">관련도순</option>
-				<option value="updated">최근 업데이트순</option>
+				<option value="newest">최신순</option>
+				<option value="oldest">오래된순</option>
 				<option value="name">이름순</option>
 			</SelectInput>
 		</div>
@@ -129,8 +137,8 @@
 		align-items: center;
 		gap: 0.75rem;
 	}
-	.toolbar-heading { justify-content: space-between; gap: 1rem; }
-	.heading-actions { gap: 0.85rem; }
+	.toolbar-heading { justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+	.heading-actions { gap: 0.85rem; flex-wrap: wrap; }
 	.view-toggle { gap: 0.2rem; padding: 0.2rem; border: 1px solid var(--color-line); border-radius: 0.5rem; background: var(--color-surface-sunken); }
 	.toolbar-kicker {
 		margin: 0 0 0.25rem;
@@ -159,14 +167,17 @@
 		cursor: pointer;
 	}
 	.clear-search:hover { color: var(--color-ink-0); background: var(--color-surface-sunken); }
-	.filter-row { align-items: end; }
-	.filter-control { display: grid; gap: 0.3rem; min-width: 10rem; flex: 1; }
+	.filter-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; }
+	.filter-control { display: grid; gap: 0.3rem; min-width: 0; }
 	.filter-control label { color: var(--color-ink-2); font-size: 0.6875rem; font-weight: 600; }
-	.sort-control { max-width: 13rem; }
+	@media (min-width: 80rem) {
+		.filter-row { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+	}
 	.toolbar-footer { color: var(--color-ink-1); font-size: 0.75rem; }
 	.footer-muted { color: var(--color-ink-2); }
-	@media (max-width: 42rem) {
-		.toolbar-heading, .search-row, .filter-row { align-items: stretch; flex-direction: column; }
+	@media (max-width: 767px) {
+		.toolbar-heading, .search-row { align-items: stretch; flex-direction: column; }
+		.filter-row { grid-template-columns: minmax(0, 1fr); }
 		.toolbar-heading { gap: 0.75rem; }
 		.heading-actions { justify-content: space-between; }
 		.filter-control, .sort-control { max-width: none; min-width: 0; }

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from collections.abc import Iterable
+from typing import TYPE_CHECKING, Annotated
 
 if TYPE_CHECKING:
     import openstack
@@ -10,10 +11,11 @@ import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.deps import CacheMode, cache_mode, get_os_conn, get_token_info, require_admin
-from app.services import activity, keystone, session_store
+from app.config import get_settings
+from app.services import activity, keystone, manila, session_store
 from app.services import login_guard as _login_guard
 from app.services.cache import cached_call, invalidate, ttl_slow
 
@@ -542,17 +544,136 @@ async def list_project_members(
 # ============================================================================
 
 
-class QuotaUpdateRequest(BaseModel):
-    instances: int | None = None
-    cores: int | None = None
-    ram: int | None = None
-    volumes: int | None = None
-    gigabytes: int | None = None
+QuotaLimit = Annotated[int, Field(strict=True, ge=-1)]
 
 
-class ComputePolicyUpdateRequest(QuotaUpdateRequest):
+class ComputeQuotaRequest(BaseModel):
+    instances: QuotaLimit | None = None
+    cores: QuotaLimit | None = None
+    ram: QuotaLimit | None = None
+
+
+class QuotaUpdateRequest(ComputeQuotaRequest):
+    model_config = ConfigDict(extra="forbid")
+
+    key_pairs: QuotaLimit | None = None
+    server_groups: QuotaLimit | None = None
+    server_group_members: QuotaLimit | None = None
+    injected_files: QuotaLimit | None = None
+    injected_file_content_bytes: QuotaLimit | None = None
+    injected_file_path_bytes: QuotaLimit | None = None
+    metadata_items: QuotaLimit | None = None
+    volumes: QuotaLimit | None = None
+    snapshots: QuotaLimit | None = None
+    gigabytes: QuotaLimit | None = None
+    backups: QuotaLimit | None = None
+    backup_gigabytes: QuotaLimit | None = None
+    network: QuotaLimit | None = None
+    subnet: QuotaLimit | None = None
+    port: QuotaLimit | None = None
+    router: QuotaLimit | None = None
+    floatingip: QuotaLimit | None = None
+    security_group: QuotaLimit | None = None
+    security_group_rule: QuotaLimit | None = None
+    shares: QuotaLimit | None = None
+    share_gigabytes: QuotaLimit | None = None
+    share_snapshots: QuotaLimit | None = None
+    share_snapshot_gigabytes: QuotaLimit | None = None
+    share_networks: QuotaLimit | None = None
+    share_groups: QuotaLimit | None = None
+    share_group_snapshots: QuotaLimit | None = None
+
+
+class ComputePolicyUpdateRequest(ComputeQuotaRequest):
     gpu_quotas: dict[str, int | None] = Field(default_factory=dict)
     reconcile_flavor_access: bool = True
+
+
+# Request keys are unique even where two providers use the same quota name.
+_QUOTA_FIELDS = {
+    "compute": {
+        key: key
+        for key in (
+            "instances",
+            "cores",
+            "ram",
+            "key_pairs",
+            "server_groups",
+            "server_group_members",
+            "injected_files",
+            "injected_file_content_bytes",
+            "injected_file_path_bytes",
+            "metadata_items",
+        )
+    },
+    "volume": {key: key for key in ("volumes", "snapshots", "gigabytes", "backups", "backup_gigabytes")},
+    "network": {
+        key: key
+        for key in ("network", "subnet", "port", "router", "floatingip", "security_group", "security_group_rule")
+    },
+    "file_storage": {
+        "shares": "shares",
+        "share_gigabytes": "gigabytes",
+        "share_snapshots": "snapshots",
+        "share_snapshot_gigabytes": "snapshot_gigabytes",
+        "share_networks": "share_networks",
+        "share_groups": "share_groups",
+        "share_group_snapshots": "share_group_snapshots",
+    },
+}
+
+
+def _quota_entries(raw: object, keys: Iterable[str]) -> dict:
+    """Keep only actual usage-bearing entries; never invent a limit or usage."""
+    if not isinstance(raw, dict):
+        raise ValueError("quota set is malformed")
+    entries = {}
+    for key in keys:
+        item = raw.get(key)
+        if item is None:
+            continue  # Some deployments do not expose every optional quota.
+        if (
+            not isinstance(item, dict)
+            or not all(
+                isinstance(item.get(field), int) and not isinstance(item[field], bool) for field in ("limit", "in_use")
+            )
+            or item["limit"] < -1
+            or item["in_use"] < 0
+        ):
+            raise ValueError("quota usage is malformed")
+        entries[key] = {"limit": item["limit"], "in_use": item["in_use"]}
+    if not entries:
+        raise ValueError("quota set has no usage")
+    return entries
+
+
+def _get_admin_quota_section(conn, project_id: str, section: str) -> dict:
+    if section in ("compute", "volume"):
+        proxy = conn.compute if section == "compute" else conn.block_storage
+        url = f"{proxy.get_endpoint()}/os-quota-sets/{project_id}"
+        if section == "compute":
+            url += "/detail"
+            params = None
+        else:
+            params = {"usage": "true"}
+        response = conn.session.get(url, params=params) if params else conn.session.get(url)
+        response.raise_for_status()
+        payload = response.json()
+        raw = payload.get("quota_set") if isinstance(payload, dict) else None
+    elif section == "network":
+        quota = conn.network.get_quota(project_id, details=True)
+        raw = quota.to_dict(original_names=True) if hasattr(quota, "to_dict") else quota
+    else:
+        payload = manila.get_client(conn).get(f"quota-sets/{project_id}/detail")
+        raw = payload.get("quota_set") if isinstance(payload, dict) else None
+
+    if section == "network" and isinstance(raw, dict):
+        # Neutron calls the measured count 'used' rather than 'in_use'.
+        raw = {
+            key: {**value, "in_use": value.get("used", value.get("in_use"))} if isinstance(value, dict) else value
+            for key, value in raw.items()
+        }
+    return _quota_entries(raw, _QUOTA_FIELDS[section].values())
 
 
 @router.put("/compute-policy/{project_id}", dependencies=[Depends(require_admin)])
@@ -624,37 +745,30 @@ async def get_project_quotas(
     project_id: str,
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
-    """프로젝트 쿼터 조회 (Compute + Volume, 실제 사용량 포함)."""
-
-    def _get():
-        result: dict = {"compute": {}, "volume": {}}
-        compute_endpoint = conn.compute.get_endpoint()
-        bs_endpoint = conn.block_storage.get_endpoint()
+    """Read the target project's usage-bearing quota sets independently."""
+    enabled = bool(get_settings().service_manila_enabled)
+    result: dict = {
+        "project_id": project_id,
+        "compute": None,
+        "volume": None,
+        "network": None,
+        "file_storage": None,
+        "availability": {},
+        "errors": {},
+    }
+    for section in _QUOTA_FIELDS:
+        if section == "file_storage" and not enabled:
+            result["availability"][section] = False
+            result["errors"][section] = "service_disabled"
+            continue
         try:
-            cq = conn.session.get(f"{compute_endpoint}/os-quota-sets/{project_id}/detail")
-            qs = cq.json().get("quota_set", {})
-            for key in ("instances", "cores", "ram"):
-                q = qs.get(key, {})
-                result["compute"][key] = {"limit": q.get("limit", 0), "in_use": q.get("in_use", 0)}
+            result[section] = await asyncio.to_thread(_get_admin_quota_section, conn, project_id, section)
+            result["availability"][section] = True
         except Exception:
-            result["compute"] = {}
-        try:
-            bq = conn.session.get(f"{bs_endpoint}/os-quota-sets/{project_id}", params={"usage": "true"})
-            bqs = bq.json().get("quota_set", {})
-            for key in ("volumes", "gigabytes"):
-                q = bqs.get(key, {})
-                if isinstance(q, dict):
-                    result["volume"][key] = {"limit": q.get("limit", 0), "in_use": q.get("in_use", 0)}
-                else:
-                    result["volume"][key] = {"limit": q, "in_use": 0}
-        except Exception:
-            result["volume"] = {}
-        return result
-
-    try:
-        return await asyncio.to_thread(_get)
-    except Exception:
-        raise HTTPException(status_code=500, detail="쿼터 조회 실패")
+            _logger.warning("Admin %s quota read failed", section, exc_info=True)
+            result["availability"][section] = False
+            result["errors"][section] = "quota_unavailable"
+    return result
 
 
 @router.put("/quotas/{project_id}", dependencies=[Depends(require_admin)])
@@ -663,40 +777,51 @@ async def update_project_quotas(
     req: QuotaUpdateRequest,
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
-    """프로젝트 쿼터 수정."""
+    """Apply only supplied quota sections; one provider's failure cannot hide another's success."""
+    supplied = req.model_dump(exclude_unset=True)
+    if not supplied or any(value is None for value in supplied.values()):
+        raise HTTPException(status_code=422, detail="쿼터 값이 필요합니다")
 
-    def _update():
+    updated: list[str] = []
+    errors: dict[str, str] = {}
+    for section, mapping in _QUOTA_FIELDS.items():
+        kwargs = {provider_key: supplied[key] for key, provider_key in mapping.items() if key in supplied}
+        if not kwargs:
+            continue
+        if section == "file_storage" and not get_settings().service_manila_enabled:
+            errors[section] = "service_disabled"
+            continue
         try:
-            # Compute quotas
-            compute_kwargs: dict = {}
-            if req.instances is not None:
-                compute_kwargs["instances"] = req.instances
-            if req.cores is not None:
-                compute_kwargs["cores"] = req.cores
-            if req.ram is not None:
-                compute_kwargs["ram"] = req.ram
-            if compute_kwargs:
-                conn.compute.update_quota_set(project_id, **compute_kwargs)
+            if section == "compute":
+                await asyncio.to_thread(conn.compute.update_quota_set, project_id, **kwargs)
+            elif section == "volume":
+                await asyncio.to_thread(conn.block_storage.update_quota_set, project_id, **kwargs)
+            elif section == "network":
+                await asyncio.to_thread(conn.network.update_quota, project_id, **kwargs)
+            else:
+                client = await asyncio.to_thread(manila.get_client, conn)
+                await asyncio.to_thread(client.put, f"quota-sets/{project_id}", {"quota_set": kwargs})
+        except Exception:
+            _logger.warning("Admin %s quota update failed", section, exc_info=True)
+            errors[section] = "update_failed"
+            continue
 
-            # Volume quotas
-            volume_kwargs: dict = {}
-            if req.volumes is not None:
-                volume_kwargs["volumes"] = req.volumes
-            if req.gigabytes is not None:
-                volume_kwargs["gigabytes"] = req.gigabytes
-            if volume_kwargs:
-                conn.block_storage.update_quota_set(project_id, **volume_kwargs)
-
-            return {"status": "updated"}
-        except Exception as e:
-            _logger.warning("쿼터 수정 실패: %s", e)
-
-            raise HTTPException(status_code=400, detail="쿼터 수정 실패")
-
-    try:
-        return await asyncio.to_thread(_update)
-    except HTTPException:
-        raise
+        updated.append(section)
+    if updated:
+        # Both dashboard views combine all providers; the usage report also
+        # caches Nova/Cinder quota snapshots independently.
+        await invalidate(f"afterglow:dashboard:{project_id}:quotas")
+        await invalidate(f"afterglow:dashboard:{project_id}:quotas:overview")
+        if "compute" in updated:
+            await invalidate(f"afterglow:nova:{project_id}:quota:strict")
+        if "volume" in updated:
+            await invalidate(f"afterglow:cinder:{project_id}:quota:strict")
+    return {
+        "project_id": project_id,
+        "status": "partial" if errors else "updated",
+        "updated": updated,
+        "errors": errors,
+    }
 
 
 # ============================================================================

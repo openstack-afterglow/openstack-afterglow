@@ -4,13 +4,14 @@
 
 	interface Props {
 		adminProjectId: string | null;
+		canMutate: boolean;
 		onOpenMigrateModal: (type: 'live' | 'cold') => void;
 		onOpenPasswordModal: () => void;
 		onOpenResizeModal: () => void;
 		onOpenEvacuateModal: () => void;
 	}
 
-	let { adminProjectId, onOpenMigrateModal, onOpenPasswordModal, onOpenResizeModal, onOpenEvacuateModal }: Props = $props();
+	let { adminProjectId, canMutate, onOpenMigrateModal, onOpenPasswordModal, onOpenResizeModal, onOpenEvacuateModal }: Props = $props();
 
 	const s = useInstanceDetailController();
 
@@ -78,39 +79,41 @@
 							콘솔 열기
 						{/if}
 					</button>
-					<button
-						onclick={() => s.performAction('stop')}
-						disabled={!!s.actioning}
-						class="{btn.base} {btn.yellow}"
-					>{s.actioning === 'stop' ? '정지 중...' : '정지'}</button>
-					<button
-						onclick={() => s.performAction('reboot')}
-						disabled={!!s.actioning}
-						class="{btn.base} {btn.blue}"
-					>{s.actioning === 'reboot' ? '재부팅 중...' : '재부팅'}</button>
+					{#if canMutate}
+						<button
+							onclick={() => s.performAction('stop')}
+							disabled={!!s.actioning}
+							class="{btn.base} {btn.yellow}"
+						>{s.actioning === 'stop' ? '정지 중...' : '정지'}</button>
+						<button
+							onclick={() => s.performAction('reboot')}
+							disabled={!!s.actioning}
+							class="{btn.base} {btn.blue}"
+						>{s.actioning === 'reboot' ? '재부팅 중...' : '재부팅'}</button>
+					{/if}
 				{/if}
-				{#if s.instance!.status === 'SHUTOFF'}
+				{#if canMutate && s.instance!.status === 'SHUTOFF'}
 					<button
 						onclick={() => s.performAction('start')}
 						disabled={!!s.actioning}
 						class="{btn.base} {btn.green}"
 					>{s.actioning === 'start' ? '시작 중...' : '시작'}</button>
 				{/if}
-				{#if s.instance!.status === 'ACTIVE' || s.instance!.status === 'SHUTOFF'}
+				{#if canMutate && (s.instance!.status === 'ACTIVE' || s.instance!.status === 'SHUTOFF')}
 					<button
 						onclick={() => s.performAction('shelve')}
 						disabled={!!s.actioning}
 						class="{btn.base} {btn.purple}"
 					>{s.actioning === 'shelve' ? '보관 중...' : '보관'}</button>
 				{/if}
-				{#if s.instance!.status === 'SHELVED_OFFLOADED' || s.instance!.status === 'SHELVED'}
+				{#if canMutate && (s.instance!.status === 'SHELVED_OFFLOADED' || s.instance!.status === 'SHELVED')}
 					<button
 						onclick={() => s.performAction('unshelve')}
 						disabled={!!s.actioning}
 						class="{btn.base} {btn.green}"
 					>{s.actioning === 'unshelve' ? '보관 해제 중...' : '보관 해제'}</button>
 				{/if}
-				{#if s.instance!.status === 'VERIFY_RESIZE'}
+				{#if canMutate && s.instance!.status === 'VERIFY_RESIZE'}
 					<button
 						onclick={s.confirmResize}
 						disabled={!!s.actioning}
@@ -122,7 +125,7 @@
 						class="{btn.base} {btn.yellow}"
 					>{s.actioning === 'revert-resize' ? '취소 중...' : '되돌리기'}</button>
 				{/if}
-				{#if !adminProjectId}
+				{#if canMutate && !adminProjectId}
 					<button
 						onclick={s.deleteInstance}
 						disabled={s.deleting}
@@ -141,8 +144,8 @@
 				</div>
 			{/if}
 
-			{#if adminProjectId}
-				<!-- 2행: 라이브 마이그레이션, 콜드 마이그레이션, 리사이즈 -->
+			{#if adminProjectId && canMutate}
+				<!-- 2행: 라이브 마이그레이션, 콜드 마이그레이션 -->
 				<div class="flex items-center gap-2 flex-wrap justify-end">
 					{#if s.instance!.status === 'MIGRATING'}
 						<button
@@ -167,11 +170,6 @@
 								disabled={!!s.actioning}
 								class="{btn.base} {btn.teal}"
 							>콜드 마이그레이션</button>
-							<button
-								onclick={onOpenResizeModal}
-								disabled={!!s.actioning}
-								class="{btn.base} {btn.violet}"
-							>리사이즈</button>
 						{/if}
 					{/if}
 				</div>
@@ -194,6 +192,11 @@
 						disabled={s.deleting}
 						class="{btn.base} {btn.red}"
 					>{s.deleting ? '삭제 중...' : '삭제'}</button>
+				</div>
+			{/if}
+			{#if canMutate && (s.instance!.status === 'ACTIVE' || s.instance!.status === 'SHUTOFF')}
+				<div class="flex items-center gap-2 flex-wrap justify-end">
+					<button onclick={() => onOpenResizeModal()} disabled={!!s.actioning} class="{btn.base} {btn.violet}">리사이즈</button>
 				</div>
 			{/if}
 		</div>

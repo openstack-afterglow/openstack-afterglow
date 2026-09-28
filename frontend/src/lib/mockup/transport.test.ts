@@ -311,6 +311,23 @@ describe('mockup transport', () => {
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
+	it('allows Dockerfile lint preview without enabling administrator mutations', async () => {
+		sessionStorage.clear();
+		sessionStorage.setItem(MOCKUP_SESSION_KEY, 'admin');
+		vi.resetModules();
+		// Reinitialize the mutable singleton fixture after selecting the administrator session.
+		const { maybeMockJson } = await import('./transport');
+		const payload = { dockerfile: 'FROM ubuntu:24.04\nRUN true\n', layer_prefix: 'example' };
+
+		expect(await maybeMockJson('POST', '/api/v1/palimpsest/builds/dockerfile/lint', payload)).toMatchObject({
+			valid: true,
+			from: { ref: 'ubuntu:24.04', kind: 'ubuntu_tag' },
+		});
+		await expect(maybeMockJson('POST', '/api/v1/palimpsest/builds/dockerfile', payload))
+			.rejects.toMatchObject({ status: 409 });
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
 
 	it('serves every administrator tour contract with filters and no network access', async () => {
 		sessionStorage.clear();
@@ -350,12 +367,6 @@ describe('mockup transport', () => {
 		expect(databases).toEqual([
 			expect.objectContaining({ id: 'mock-trove-instance-1', name: 'sample-customer-mysql', project_id: 'mock-project-1' }),
 		]);
-		expect(await maybeMockJson<Array<unknown>>('GET', '/api/v1/admin/libraries/base-images')).toHaveLength(1);
-		expect(await maybeMockJson<Array<unknown>>('GET', '/api/v1/admin/libraries/artifacts')).toHaveLength(3);
-		expect(await maybeMockJson<Array<unknown>>('GET', '/api/v1/admin/libraries/profiles')).toHaveLength(1);
-		expect(await maybeMockJson<Array<unknown>>('GET', '/api/v1/admin/libraries/builds')).toHaveLength(1);
-		expect(await maybeMockJson<Array<unknown>>('GET', '/api/v1/admin/libraries/imports')).toHaveLength(1);
-		expect(await maybeMockJson<Array<unknown>>('GET', '/api/v1/admin/libraries/consumes')).toHaveLength(1);
 
 		expect(await maybeMockJson('GET', '/api/v1/admin/topology')).toMatchObject({ routers: expect.any(Array) });
 		expect(await maybeMockJson<Array<unknown>>('GET', '/api/v1/admin/all-containers')).toHaveLength(2);

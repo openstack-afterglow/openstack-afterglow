@@ -1,4 +1,4 @@
-// Waygate 타입 — backend/app/models/waygate.py 응답과 정확히 일치시킨다.
+// Waygate standalone API responses, forwarded by the authenticated Afterglow BFF.
 
 export interface WaygateServer {
 	id: string;
@@ -11,13 +11,25 @@ export interface WaygateServer {
 	listen_port: number;
 	tunnel_cidr: string;
 	dns: string | null;
-	mtu: number | null;
+	persistent_keepalive: number;
 	server_public_key: string | null;
 	created_at: string | null;
 	updated_at: string | null;
 	// Redis 최신 상태 병합 (에이전트가 마지막으로 보고한 시각/피어 수)
 	last_status_reported_at: string | null;
 	peer_count: number | null;
+	report_interval_seconds?: number | null;
+}
+
+export interface WaygateServerCreateRequest {
+	name?: string;
+	dns?: string | null;
+	persistent_keepalive?: number;
+}
+
+export interface WaygateServerUpdateRequest {
+	dns?: string | null;
+	persistent_keepalive?: number;
 }
 
 export interface WaygateClient {
@@ -30,11 +42,19 @@ export interface WaygateClient {
 	tunnel_ip: string;
 	allowed_ips: string[];
 	dns: string | null;
+	mtu: number | null;
+	persistent_keepalive: number;
+	inherit_dns?: boolean;
+	inherit_persistent_keepalive?: boolean;
+	psk_enabled: boolean;
 	created_at: string | null;
 	updated_at: string | null;
 	// Redis 상태 병합
 	online: boolean | null;
 	last_handshake_at: string | null;
+	last_reported_at: string | null;
+	report_interval_seconds?: number | null;
+	// Gateway perspective peer counters; UI client RX is tx_bytes and client TX is rx_bytes.
 	rx_bytes: number | null;
 	tx_bytes: number | null;
 }
@@ -47,12 +67,21 @@ export interface WaygateClientCreateResult extends WaygateClient {
 export interface WaygateClientCreateRequest {
 	name: string;
 	allowed_ips?: string[];
-	dns?: string;
+	dns?: string | null;
+	mtu?: number | null;
+	persistent_keepalive?: number;
+	inherit_dns: boolean;
+	inherit_persistent_keepalive: boolean;
 }
 
 export interface WaygateClientUpdateRequest {
 	name?: string;
 	enabled?: boolean;
+	dns?: string | null;
+	mtu?: number | null;
+	persistent_keepalive?: number;
+	inherit_dns?: boolean;
+	inherit_persistent_keepalive?: boolean;
 }
 
 // 네트워크 연결 (Phase 2) — 멀티 NIC + SNAT

@@ -41,7 +41,7 @@ describe('admin quota loading graph', () => {
 		expect(screen.getByTestId('gpu-loading').textContent).toBe('loading');
 		newGpu.resolve([{ gpu_type: 'gpu-a', limit: 1 }]);
 		await latest;
-		expect(screen.getByTestId('gpu-count').textContent).toBe('1');
+		await vi.waitFor(() => expect(screen.getByTestId('gpu-count').textContent).toBe('1'));
 
 		oldQuota.resolve({ marker: 'old' });
 		oldGpu.resolve([]);

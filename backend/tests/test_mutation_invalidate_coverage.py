@@ -145,6 +145,9 @@ EXEMPT_HANDLERS: set[str] = {
     # which is where `afterglow:union_layer:*` is invalidated. Invalidating at
     # request time would clear the cache before anything changed.
     "build_from_inline_dockerfile",
+    # Lint reads Dockerfile syntax, Glance images and parent lineage only;
+    # POST carries editor content and neither creates jobs nor mutates caches.
+    "lint_inline_dockerfile",
     # Plan preview is read-only despite being POST (the body carries the Dockerfile).
     "preview_inline_dockerfile_plan",
     # Remote Dockerfile fetch is read-only despite being POST (the body carries the URL).
@@ -187,6 +190,8 @@ EXEMPT_HANDLERS: set[str] = {
 INVALIDATING_HELPERS: set[str] = {
     "_simple_action",  # compute/instances.py — start/stop/reboot/shelve/unshelve
     "_invalidate_provisioning_caches",  # internal_k3s.py — Nova/Cinder submission
+    "_invalidate_resized_instance",  # compute/instances.py — owned resize
+    "_finish_owned_resize",  # compute/instances.py — owned confirm/revert-resize, delegates to _invalidate_resized_instance
 }
 
 # ---------------------------------------------------------------------------

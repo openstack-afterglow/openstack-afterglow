@@ -41,6 +41,7 @@ export const ADMIN_ALLOWED_PATHS = [
 	'/admin/monitoring',
 	'/admin/services',
 	'/admin/users',
+	'/admin/quotas',
 ] as const;
 
 const PROFILE_ALLOWED_PATHS: Record<MockupProfileId, readonly string[]> = {

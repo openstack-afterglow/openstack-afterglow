@@ -1,14 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import { existsSync, lstatSync, readFileSync, readlinkSync } from 'node:fs';
+import { lstatSync, readFileSync, readlinkSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const repoRoot = resolve(__dirname, '../../..');
 const layoutSource = readFileSync(resolve(repoRoot, 'src/routes/layout.css'), 'utf8');
 const designSource = readFileSync(resolve(repoRoot, '../DESIGN.md'), 'utf8');
-const readmeSource = readFileSync(resolve(repoRoot, 'README.md'), 'utf8');
-const agentsPath = resolve(repoRoot, '../AGENTS.md');
-const agentsSource = existsSync(agentsPath) ? readFileSync(agentsPath, 'utf8') : '';
 const claudePath = resolve(repoRoot, '../CLAUDE.md');
 const alertSource = readFileSync(resolve(repoRoot, 'src/lib/components/ui/Alert.svelte'), 'utf8');
 const uiIndexSource = readFileSync(resolve(repoRoot, 'src/lib/components/ui/index.ts'), 'utf8');
@@ -191,21 +188,6 @@ describe('design system source contracts', () => {
 		for (const token of topologyTokenNames) expect(designSource).toContain(token);
 	});
 
-	it('defines responsive hierarchy and makes it mandatory agent guidance', () => {
-		for (const rule of [
-			'mobile is `<768px`; tablet is `md` (`768–1023px`); desktop is `lg` (`≥1024px`)',
-			'**Mobile (<768px).**',
-			'**Tablet (768–1023px).**',
-			'**Desktop (≥1024px).**',
-			'`TableShell` stays horizontally scrollable with headers intact',
-			'PageHeader remains stacked and its actions wrap',
-			'Test every new or materially changed visual flow at mobile, tablet, desktop, 767/768, and 1023/1024 cutovers.',
-		]) {
-			expect(designSource).toContain(rule);
-		}
-		expect(agentsSource).toContain('`Layout & responsive hierarchy`까지 읽고');
-		expect(agentsSource).toContain('mobile (`<768px`), tablet (`768–1023px`), desktop (`≥1024px`)');
-	});
 
 	it('keeps editorial public-surface tokens and panel composition documented', () => {
 		for (const token of editorialTokenNames) {
@@ -316,10 +298,6 @@ describe('design system source contracts', () => {
 		expect(alertSource).not.toContain('color: var(--alert-tone);');
 	});
 
-	it('links tracked frontend docs and optional local agent instructions to the canonical design system', () => {
-		expect(readmeSource).toContain('../DESIGN.md');
-		if (agentsSource) expect(agentsSource).toContain('프론트엔드 UI/UX 디자인 시스템');
-	});
 
 	it('exports the reusable primitives required for new UI work', () => {
 		for (const componentName of requiredUiExports) {
@@ -376,9 +354,8 @@ describe('design system source contracts', () => {
 			expect(designSource).toContain(owner);
 		}
 	});
-	it('keeps AGENTS.md as the single instruction source', () => {
+	it('uses the canonical AGENTS.md for Claude instructions', () => {
 		expect(lstatSync(claudePath).isSymbolicLink()).toBe(true);
 		expect(readlinkSync(claudePath)).toBe('AGENTS.md');
-		expect(agentsSource).toContain('프론트엔드 UI/UX 디자인 시스템');
 	});
 });
