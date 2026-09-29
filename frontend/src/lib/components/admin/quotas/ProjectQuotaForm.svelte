@@ -48,8 +48,6 @@
 				{ key: 'volumes', label: '볼륨', help: '생성 가능한 볼륨 수' },
 				{ key: 'snapshots', label: '스냅샷', help: '생성 가능한 볼륨 스냅샷 수' },
 				{ key: 'gigabytes', label: '총 용량 (GB)', help: '할당 가능한 볼륨 총 용량 (GB)', unit: 'GB' },
-				{ key: 'backups', label: '백업', help: '생성 가능한 볼륨 백업 수' },
-				{ key: 'backup_gigabytes', label: '백업 용량 (GB)', help: '볼륨 백업의 총 용량 (GB)', unit: 'GB' },
 			],
 		},
 		{
@@ -63,7 +61,7 @@
 				{ key: 'router', label: '라우터', help: '생성 가능한 가상 라우터 수' },
 				{ key: 'floatingip', label: '플로팅 IP', help: '할당 가능한 공인 IP(플로팅 IP) 수' },
 				{ key: 'security_group', label: '보안 그룹', help: '생성 가능한 보안 그룹 수' },
-				{ key: 'security_group_rule', label: '보안 그룹 규칙', help: '보안 그룹당 생성 가능한 규칙 수' },
+				{ key: 'security_group_rule', label: '보안 그룹 규칙', help: '프로젝트에서 생성 가능한 보안 그룹 규칙 수' },
 			],
 		},
 		{
@@ -97,7 +95,7 @@
 		savingSection?: string | null;
 		sectionErrors?: Record<string, string>;
 		sectionSuccesses?: Record<string, string>;
-		onSaveSection?: (section: SectionId, changes: Record<string, number>) => Promise<{ success: boolean; status?: string; updated?: string[]; errors?: Record<string, string>; refreshed?: boolean; refreshError?: string }>;
+		onSaveSection: (section: SectionId, changes: Record<string, number>) => Promise<{ success: boolean; status?: string; updated?: string[]; errors?: Record<string, string>; refreshed?: boolean; refreshError?: string }>;
 	} = $props();
 
 	let drafts = $state<Record<SectionId, Record<string, number | null>>>({
@@ -191,7 +189,6 @@
 		if (Object.keys(payload).length === 0) {
 			return;
 		}
-		if (!onSaveSection) return;
 
 		const targetProjectId = projectId;
 		localSavingSection = secId;

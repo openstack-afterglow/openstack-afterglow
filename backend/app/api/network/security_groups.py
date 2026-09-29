@@ -80,7 +80,7 @@ async def list_security_groups(
 @router.get("/quota")
 async def get_security_group_quota(conn: openstack.connection.Connection = Depends(get_os_conn)):
     try:
-        return neutron.get_security_group_quota(conn, conn._afterglow_project_id)
+        return await asyncio.to_thread(neutron.get_security_group_quota, conn, conn._afterglow_project_id)
     except Exception:
         raise HTTPException(status_code=503, detail="보안 그룹 할당량 조회 실패")
 
@@ -93,7 +93,7 @@ async def get_security_group_instances(
 ):
     await _get_sg_with_owner_check(conn, sg_id, token_info)
     try:
-        return neutron.list_security_group_instances(conn, conn._afterglow_project_id, sg_id)
+        return await asyncio.to_thread(neutron.list_security_group_instances, conn, conn._afterglow_project_id, sg_id)
     except Exception:
         raise HTTPException(status_code=500, detail="보안 그룹 인스턴스 조회 실패")
 

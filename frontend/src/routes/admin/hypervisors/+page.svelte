@@ -14,6 +14,7 @@
 	import type { HypervisorRow } from '$lib/components/admin/hypervisors/HypervisorTable.svelte';
 	import HypervisorDetailPanel from '$lib/components/admin/hypervisors/HypervisorDetailPanel.svelte';
 	import type { HypervisorDetail } from '$lib/components/admin/hypervisors/HypervisorDetailPanel.svelte';
+	import type { HostRelocationResult } from '$lib/components/admin/hypervisors/HypervisorDetailPanel.svelte';
 	import HypervisorMigrateModal from '$lib/components/admin/hypervisors/HypervisorMigrateModal.svelte';
 	import type { AggregatedHost, GpuType, GpuResponse } from '$lib/types/gpu';
 
@@ -28,11 +29,15 @@
 
 	let selectedDetail = $state<HypervisorDetail | null>(null);
 	let detailLoading = $state(false);
+	let selectedId = $state<string | null>(null);
+	let actionPending = $state(false);
+	let actionError = $state('');
+	let relocationResult = $state<HostRelocationResult | null>(null);
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
 
-	async function load() {
+	async function load(): Promise<boolean> {
 		if (hypervisors.length === 0) loading = true;
 		else refreshing = true;
 		// GPU 정보(gpu-hosts)는 실패해도 하이퍼바이저 목록 표시에는 영향 없음
@@ -40,7 +45,7 @@
 			api.get<HypervisorRow[]>('/api/v1/admin/hypervisors', token, projectId),
 			api.get<GpuResponse>('/api/v1/admin/gpu-hosts', token, projectId),
 		]);
-		hypervisors = hvResult.status === 'fulfilled' ? hvResult.value : [];
+		if (hvResult.status === 'fulfilled') hypervisors = hvResult.value;
 		if (gpuResult.status === 'fulfilled') {
 			gpuHostMap = new Map((gpuResult.value.aggregated_hosts ?? []).map((h) => [h.name, h]));
 			gpuTypes = gpuResult.value.gpu_types ?? [];
@@ -50,6 +55,7 @@
 		}
 		loading = false;
 		refreshing = false;
+		return hvResult.status === 'fulfilled';
 	}
 
 	// 하이퍼바이저 행에 GPU 사용량·모델 결합 (gpu-hosts 호스트명 = hypervisor_hostname)
@@ -78,15 +84,66 @@
 				})
 	);
 
-	async function loadDetail(hvId: string) {
-		detailLoading = true;
-		selectedDetail = null;
-		try {
-			selectedDetail = await api.get<HypervisorDetail>(`/api/v1/admin/hypervisors/${hvId}`, token, projectId);
-		} catch {
+	async function loadDetail(hvId: string, reset = true): Promise<boolean> {
+		if (reset) {
+			selectedId = hvId;
+			actionError = '';
+			relocationResult = null;
 			selectedDetail = null;
+		}
+		if (reset) detailLoading = true;
+		try {
+			const next = await api.get<HypervisorDetail>(`/api/v1/admin/hypervisors/${hvId}`, token, projectId);
+			if (selectedId === hvId) selectedDetail = next;
+			return true;
+		} catch {
+			if (selectedId === hvId && reset) selectedDetail = null;
+			return false;
 		} finally {
-			detailLoading = false;
+			if (reset) detailLoading = false;
+		}
+	}
+
+	async function refreshHost(hvId: string) {
+		const [listOk, detailOk] = await Promise.all([load(), loadDetail(hvId, false)]);
+		if (!listOk || !detailOk) actionError = '요청은 접수되었지만 목록 또는 상세 새로고침에 실패했습니다. 다시 확인하세요.';
+	}
+
+	async function scheduleHost(enabled: boolean, reason?: string): Promise<boolean> {
+		if (actionPending || !selectedDetail || (!enabled && !reason?.trim())) return false;
+		const hvId = selectedDetail.id;
+		actionPending = true;
+		actionError = '';
+		relocationResult = null;
+		try {
+			await api.put(`/api/v1/admin/hypervisors/${hvId}/service`, enabled ? { status: 'enabled' } : { status: 'disabled', reason: reason!.trim() }, token, projectId);
+			await refreshHost(hvId);
+			return true;
+		} catch (e) {
+			actionError = e instanceof Error ? e.message : '스케줄링 변경 요청에 실패했습니다.';
+			return false;
+		} finally {
+			actionPending = false;
+		}
+	}
+
+	async function relocateHost(mode: 'migrate' | 'evacuate', fenced: boolean): Promise<boolean> {
+		if (actionPending || !selectedDetail || selectedDetail.servers.length === 0 ||
+			(mode === 'migrate' && (selectedDetail.state !== 'up' || selectedDetail.status !== 'disabled')) ||
+			(mode === 'evacuate' && (selectedDetail.state !== 'down' || !fenced))) return false;
+		const hvId = selectedDetail.id;
+		actionPending = true;
+		actionError = '';
+		relocationResult = null;
+		try {
+			relocationResult = await api.post<HostRelocationResult>(`/api/v1/admin/hypervisors/${hvId}/relocate`, mode === 'evacuate' ? { mode, fenced: true } : { mode }, token, projectId);
+			await refreshHost(hvId);
+			return true;
+		} catch (e) {
+			actionError = e instanceof Error ? e.message : '호스트 이동 요청에 실패했습니다.';
+			return false;
+		} finally {
+			actionPending = false;
 		}
 	}
 
@@ -132,7 +189,7 @@
 		showMigrateModal = true;
 	}
 
-	const ar = createAutoRefresh(load, {
+	const ar = createAutoRefresh(async () => { await load(); }, {
 		storageKey: 'admin-hypervisors',
 		invokeOnMount: false,
 		defaultActive: true,
@@ -181,25 +238,32 @@
 		{/if}
 			<HypervisorTable
 				hypervisors={sortedHypervisors}
-				selectedId={selectedDetail?.id ?? null}
+				selectedId={selectedId}
 				{sortColumn}
 				{sortAsc}
 				onSort={toggleSort}
-				onSelect={loadDetail}
+				onSelect={(id) => { if (!actionPending) void loadDetail(id); }}
 			/>
 	{/if}
 </div>
 
 {#if selectedDetail !== null || detailLoading}
+	{#key selectedId}
 	<HypervisorDetailPanel
 		detail={selectedDetail}
 		loading={detailLoading}
 		projectNameMap={$projectNames}
 		gpus={selectedDetail ? (gpuHostMap.get(selectedDetail.hypervisor_hostname)?.gpus ?? []) : []}
-		onClose={() => { selectedDetail = null; }}
+		pending={actionPending}
+		error={actionError}
+		result={relocationResult}
+		onSchedule={scheduleHost}
+		onRelocate={relocateHost}
+		onClose={() => { if (!actionPending) { selectedDetail = null; selectedId = null; } }}
 		onMigrate={openMigrate}
 		onOpenDetail={openInstanceDetail}
 	/>
+	{/key}
 {/if}
 </div>
 

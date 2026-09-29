@@ -33,6 +33,7 @@
 		saveActiveConversationId
 	} from '$lib/api/chatSession';
 	import { toInputParts, type ChatAttachment } from '$lib/api/chatAttachments';
+	import { takeAudioTranscript } from '$lib/api/audioChatHandoff';
 	import {
 		defaultChatFeatureOptions,
 		type ChatPart,
@@ -352,6 +353,8 @@
 	});
 
 	onMount(() => {
+		const handedOff = $auth.userId && $auth.projectId ? takeAudioTranscript($auth.userId, $auth.projectId) : null;
+		if (handedOff !== null) input = handedOff;
 		const reconcile = () => {
 			void loadModels();
 			void refreshServerRunSnapshot();
@@ -2488,6 +2491,9 @@
 			</div>
 			<div class="head-right">
 					{@render historyToggle()}
+					<button type="button" class="sources-btn" onclick={() => goto('/dashboard/chat/images')} title="이미지 Studio 열기">이미지 Studio</button>
+					<button type="button" class="sources-btn" onclick={() => goto('/dashboard/chat/audio')} title="오디오 Studio 열기">오디오 Studio</button>
+					<button type="button" class="sources-btn" onclick={() => goto('/dashboard/chat/realtime')} title="실시간 음성 열기">실시간 음성</button>
 					<button type="button" class="sources-btn" onclick={() => (sourcesOpen = !sourcesOpen)} aria-haspopup="dialog" aria-expanded={sourcesOpen} aria-controls="chat-sources-panel" title="이 대화의 출처 보기">
 						<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" stroke-linecap="round" stroke-linejoin="round" /></svg>
 						출처 {allCitations.length}
@@ -2926,6 +2932,7 @@
 		grid-row: 1;
 		display: flex;
 		align-items: center;
+		flex-wrap: wrap;
 		gap: 0.5rem;
 		justify-content: flex-end;
 		min-width: 0;

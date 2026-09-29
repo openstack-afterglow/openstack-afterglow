@@ -58,6 +58,9 @@ describe('Waygate client traffic history', () => {
 		let history = feed([0, 0, 0]);
 		history = appendClientTraffic(history, { last_reported_at: null, rx_bytes: null, tx_bytes: null }, base + 5000, legacyFreshnessMs);
 		expect(currentClientTraffic(history, base + 5000, legacyFreshnessMs).fresh).toBe(false);
+		const missing = history;
+		history = appendClientTraffic(history, { last_reported_at: null, rx_bytes: null, tx_bytes: null }, base + 6000, legacyFreshnessMs);
+		expect(history).toBe(missing);
 		history = appendClientTraffic(history, report(10, 100, 100), base + 10_000, legacyFreshnessMs);
 		expect(history.samples.at(-1)?.rxRate).toBeNull();
 		history = appendClientTraffic(history, report(20, null, null), base + 20_000, legacyFreshnessMs);

@@ -2,12 +2,15 @@
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import { formatNumber, formatStorage } from '$lib/utils/format';
 	import type { GpuDevice } from '$lib/types/gpu';
+	import Button from '$lib/components/ui/Button.svelte';
+	import Alert from '$lib/components/ui/Alert.svelte';
 
 	export interface HypervisorDetail {
 		id: string;
 		hypervisor_hostname: string;
 		state: string;
 		status: string;
+		disabled_reason?: string | null;
 		hypervisor_type: string;
 		hypervisor_version: number;
 		host_ip: string;
@@ -28,6 +31,35 @@
 		servers: { id: string; name: string; status: string; project_id: string; flavor: string }[];
 	}
 
+	export interface HostRelocationItem {
+		id: string;
+		name: string;
+		action: 'live-migrate' | 'cold-migrate' | 'evacuate' | null;
+		outcome: 'requested' | 'failed' | 'skipped';
+		detail?: string;
+	}
+
+	export interface HostRelocationResult {
+		source_host: string;
+		mode: 'migrate' | 'evacuate';
+		items: HostRelocationItem[];
+	}
+
+	const OUTCOME_LABEL: Record<HostRelocationItem['outcome'], string> = { requested: '요청됨', failed: '실패', skipped: '건너뜀' };
+	const ACTION_LABEL: Record<NonNullable<HostRelocationItem['action']>, string> = {
+		'live-migrate': '라이브 마이그레이션',
+		'cold-migrate': '콜드 마이그레이션',
+		evacuate: '대피',
+	};
+	function countOutcome(r: HostRelocationResult, outcome: HostRelocationItem['outcome']): number {
+		return r.items.filter((item) => item.outcome === outcome).length;
+	}
+
+	let intent = $state<'enable' | 'disable' | 'migrate' | 'evacuate' | null>(null);
+	let reason = $state('');
+	let fenced = $state(false);
+	function choose(next: typeof intent) { intent = next; reason = ''; fenced = false; }
+
 	let {
 		detail,
 		loading,
@@ -36,6 +68,11 @@
 		onClose,
 		onMigrate,
 		onOpenDetail,
+		pending = false,
+		error = '',
+		result = null,
+		onSchedule,
+		onRelocate,
 	}: {
 		detail: HypervisorDetail | null;
 		loading: boolean;
@@ -44,7 +81,21 @@
 		onClose: () => void;
 		onMigrate: (serverId: string, serverName: string, type: 'live' | 'cold') => void;
 		onOpenDetail: (serverId: string, projectId: string) => void;
+		pending?: boolean;
+		error?: string;
+		result?: HostRelocationResult | null;
+		onSchedule: (enabled: boolean, reason?: string) => Promise<boolean>;
+		onRelocate: (mode: 'migrate' | 'evacuate', fenced: boolean) => Promise<boolean>;
 	} = $props();
+
+	async function submitIntent() {
+		const current = intent;
+		if (pending || current === null) return;
+		const accepted = current === 'enable' || current === 'disable'
+			? await onSchedule(current === 'enable', reason.trim())
+			: await onRelocate(current, fenced);
+		if (accepted) choose(null);
+	}
 </script>
 
 <div class="w-96 border-l border-line bg-surface-canvas flex flex-col overflow-hidden flex-shrink-0">
@@ -62,9 +113,19 @@
 				<h3 class="text-xs text-ink-2 uppercase tracking-wide mb-3">기본 정보</h3>
 				<dl class="space-y-2 text-xs">
 					<div class="flex justify-between">
-						<dt class="text-ink-2">상태</dt>
-						<dd class="{detail.state === 'up' && detail.status === 'enabled' ? 'text-green-400' : 'text-red-400'}">{detail.state}/{detail.status}</dd>
+						<dt class="text-ink-2">연결 상태</dt>
+						<dd class={detail.state === 'up' ? 'text-[var(--color-state-success-text)]' : 'text-[var(--color-state-danger-text)]'}>{detail.state === 'up' ? '정상 (up)' : '중단 (down)'}</dd>
 					</div>
+					<div class="flex justify-between">
+						<dt class="text-ink-2">스케줄링</dt>
+						<dd class={detail.status === 'enabled' ? 'text-[var(--color-state-success-text)]' : 'text-[var(--color-state-warning-text)]'}>{detail.status === 'enabled' ? '허용 (enabled)' : '차단 (disabled)'}</dd>
+					</div>
+					{#if detail.status === 'disabled' && detail.disabled_reason}
+					<div class="flex justify-between gap-4">
+						<dt class="text-ink-2 flex-shrink-0">비활성화 사유</dt>
+						<dd class="text-ink-2 text-right break-all">{detail.disabled_reason}</dd>
+					</div>
+					{/if}
 					<div class="flex justify-between">
 						<dt class="text-ink-2">호스트 IP</dt>
 						<dd class="text-ink-2 font-mono">{detail.host_ip || '-'}</dd>
@@ -101,6 +162,58 @@
 					{/if}
 				</dl>
 			</div>
+
+			<section class="bg-surface-base border border-line rounded-xl p-4 space-y-3" aria-label="호스트 운영 작업">
+				<h3 class="text-xs text-ink-2 uppercase tracking-wide">호스트 운영 작업</h3>
+				<p class="text-xs text-ink-2">스케줄링 변경은 인스턴스를 이동시키지 않습니다.</p>
+				{#if detail.status === 'enabled'}
+					<Button variant="secondary" size="sm" disabled={pending} onclick={() => choose('disable')}>스케줄링 비활성화</Button>
+				{:else}
+					<Button variant="secondary" size="sm" disabled={pending} onclick={() => choose('enable')}>스케줄링 활성화</Button>
+				{/if}
+				{#if detail.servers.length > 0 && detail.state === 'up' && detail.status === 'disabled'}
+					<Button variant="outline" size="sm" disabled={pending} onclick={() => choose('migrate')}>모든 인스턴스 마이그레이션</Button>
+				{:else if detail.servers.length > 0 && detail.state === 'down'}
+					<Button variant="danger-outline" size="sm" disabled={pending} onclick={() => choose('evacuate')}>모든 인스턴스 대피</Button>
+				{:else if detail.servers.length > 0 && detail.state === 'up'}
+					<p class="text-xs text-ink-2">전체 인스턴스 마이그레이션은 스케줄링을 비활성화한 뒤에만 요청할 수 있습니다.</p>
+				{/if}
+				{#if intent}
+					<div class="border border-line rounded-lg p-3 space-y-3 text-xs" role="group" aria-label="호스트 작업 확인">
+						{#if intent === 'disable'}
+							<p>이 호스트에 새 인스턴스가 배치되지 않도록 스케줄링을 중지합니다. 기존 인스턴스는 이동하지 않습니다.</p>
+							<label class="block text-ink-2" for="host-disable-reason">비활성화 사유 (필수)</label>
+							<input id="host-disable-reason" class="w-full bg-surface-sunken border border-line rounded-md p-2 text-ink-0" bind:value={reason} disabled={pending} />
+						{:else if intent === 'enable'}
+							<p>스케줄링을 활성화하여 새 인스턴스의 배치를 다시 허용하시겠습니까? 호스트의 연결 상태는 별개입니다.</p>
+						{:else if intent === 'migrate'}
+							<p>이 호스트의 모든 인스턴스에 마이그레이션을 요청하시겠습니까? ACTIVE는 라이브, SHUTOFF는 콜드 마이그레이션을 요청하고 그 외 상태는 건너뜁니다. 목적지는 Nova 스케줄러가 선택하며, 각 요청은 비동기이고 완료를 보장하지 않습니다.</p>
+						{:else}
+							<Alert tone="warning" title="split-brain 위험">호스트가 down으로 표시되어도 실제로 정지된 것은 아닙니다. 원본 호스트가 전원 차단 또는 펜싱되지 않았다면 동일 인스턴스가 두 호스트에서 동시에 실행되어 디스크가 손상될 수 있습니다 (split-brain). 먼저 원본 호스트의 전원 차단 또는 펜싱을 직접 확인하세요.</Alert>
+							<p>목적지는 Nova 스케줄러가 선택하며, 각 대피 요청은 비동기이고 완료를 보장하지 않습니다.</p>
+							<label class="flex gap-2 items-start"><input type="checkbox" bind:checked={fenced} disabled={pending} /> 원본 호스트가 펜싱되어 실행되지 않음을 확인했습니다</label>
+						{/if}
+						<div class="flex gap-2">
+							<Button variant={intent === 'evacuate' ? 'danger' : 'accent'} size="sm" disabled={pending || (intent === 'disable' && !reason.trim()) || (intent === 'evacuate' && !fenced)} onclick={submitIntent}>{pending ? '요청 중...' : intent === 'enable' ? '스케줄링 활성화 확인' : intent === 'disable' ? '스케줄링 비활성화 확인' : intent === 'migrate' ? '마이그레이션 요청' : '대피 요청'}</Button>
+							<Button variant="ghost" size="sm" disabled={pending} onclick={() => choose(null)}>취소</Button>
+						</div>
+					</div>
+				{/if}
+				{#if error}<Alert tone="danger">{error}</Alert>{/if}
+				{#if result}
+					<div role="status" aria-label="호스트 이동 요청 결과" class="text-xs space-y-2">
+						<p>{result.source_host} {result.mode === 'migrate' ? '마이그레이션' : '대피'} 요청 결과 · 요청 {countOutcome(result, 'requested')}건 · 실패 {countOutcome(result, 'failed')}건 · 건너뜀 {countOutcome(result, 'skipped')}건</p>
+						<p class="text-ink-2">요청은 비동기입니다. '요청됨'은 Nova가 요청을 접수했다는 뜻이며 인스턴스 이동 완료를 의미하지 않습니다.</p>
+						<ul class="space-y-1">
+							{#each result.items as item (item.id)}
+								<li class={item.outcome === 'failed' ? 'text-[var(--color-state-danger-text)]' : item.outcome === 'skipped' ? 'text-ink-2' : 'text-ink-0'}>
+									{item.name || item.id} ({item.id}): {OUTCOME_LABEL[item.outcome]}{item.action ? ` · ${ACTION_LABEL[item.action]}` : ''}{item.detail ? ` · ${item.detail}` : ''}
+								</li>
+							{/each}
+						</ul>
+					</div>
+				{/if}
+			</section>
 
 			<!-- 리소스 현황 -->
 			<div class="bg-surface-base border border-line rounded-xl p-4">

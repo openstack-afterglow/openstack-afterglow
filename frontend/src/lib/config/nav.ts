@@ -36,7 +36,7 @@ export const userNavSections: NavSection[] = [
     icon: 'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4',
     items: [
       { label: '볼륨 목록', href: '/dashboard/volumes', service: null },
-      { label: '볼륨 백업', href: '/dashboard/volumes/backups', service: null, beta: 'volumeBackups' },
+      { label: '볼륨 백업', href: '/dashboard/volumes/backups', service: null },
       { label: '볼륨 스냅샷', href: '/dashboard/volumes/snapshots', service: null, beta: 'volumeSnapshots' },
     ],
   },
@@ -73,7 +73,7 @@ export const userNavSections: NavSection[] = [
     service: 'trove',
     items: [
       { label: 'DB 인스턴스', href: '/dashboard/database/instances', service: null },
-      { label: 'DB 백업', href: '/dashboard/database/backups', service: null, beta: 'databaseBackups' },
+      { label: 'DB 백업', href: '/dashboard/database/backups', service: null },
     ],
   },
   {
@@ -104,6 +104,8 @@ export const userNavSections: NavSection[] = [
     service: 'chat',
     items: [
       { label: 'Lumen', href: '/dashboard/chat', service: 'chat' },
+      { label: '이미지 Studio', href: '/dashboard/chat/images', service: 'chat' },
+      { label: '오디오 Studio', href: '/dashboard/chat/audio', service: 'chat' }
     ],
   },
   {

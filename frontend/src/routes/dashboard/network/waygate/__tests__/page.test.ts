@@ -263,7 +263,7 @@ describe('Waygate dashboard', () => {
 
 		await vi.waitFor(() => expect(mocks.post).toHaveBeenCalledWith(
 			'/api/v1/waygate/servers/server-1/clients',
-			{ name: 'phone', inherit_dns: false, inherit_persistent_keepalive: false, dns: '9.9.9.9, 1.1.1.1', mtu: 1280, persistent_keepalive: 0 },
+			{ name: 'phone', dns: '9.9.9.9, 1.1.1.1', mtu: 1280, persistent_keepalive: 0 },
 			'token-1',
 			'project-1'
 		));

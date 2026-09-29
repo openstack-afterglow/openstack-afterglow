@@ -54,7 +54,7 @@ export function appendClientTraffic(
 ): ClientTrafficHistory {
 	const previous = history ?? { samples: [], reportAvailable: false };
 	const timestamp = report.last_reported_at ? Date.parse(report.last_reported_at) : NaN;
-	if (!Number.isFinite(timestamp)) return { samples: previous.samples, reportAvailable: false };
+	if (!Number.isFinite(timestamp)) return previous.reportAvailable ? { samples: previous.samples, reportAvailable: false } : previous;
 	const last = previous.samples.at(-1);
 	// Repeated polling and delayed reports never create extra points or deltas.
 	if (last && timestamp <= last.timestamp) return previous;

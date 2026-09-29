@@ -12,8 +12,6 @@
 	import VolumeBackupRestoreModal from '$lib/components/volume/backups/VolumeBackupRestoreModal.svelte';
 	import VolumeBackupListTable from '$lib/components/volume/backups/VolumeBackupListTable.svelte';
 	import { toast } from '$lib/stores/toast';
-	import { betaFeatures } from '$lib/stores/betaFeatures';
-	import BetaFeatureGate from '$lib/components/ui/BetaFeatureGate.svelte';
 	import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
 	import { executeBulkMutations } from '$lib/utils/bulkActions';
 	import BulkSelectionOverlay, { type BulkSelectionAction } from '$lib/components/ui/BulkSelectionOverlay.svelte';
@@ -30,30 +28,36 @@
 	let bulkBusy = $state(false);
 	const selection = createResourceSelection();
 	const selectableIds = $derived(new Set(backups.map((backup) => backup.id)));
-	const volumeBackupsEnabled = $derived($betaFeatures.volumeBackups);
-
-	function clearBackupsState() {
-		backups = [];
-		volumes = [];
-		error = '';
-	}
 
 	async function fetchBackups() {
-		if (!volumeBackupsEnabled) { clearBackupsState(); loading = false; return; }
+		const token = $auth.token ?? undefined;
+		const projectId = $auth.projectId;
+		if (!projectId) return;
 		try {
-			backups = await api.get<VolumeBackup[]>('/api/v1/volumes/backups', $auth.token ?? undefined, $auth.projectId ?? undefined);
+			const next = await api.get<VolumeBackup[]>('/api/v1/volumes/backups', token, projectId);
+			if ($auth.projectId !== projectId) return;
+			backups = next;
 			error = '';
-		} catch (e) { error = e instanceof ApiError ? `조회 실패 (${e.status})` : '서버 오류'; }
-		finally { loading = false; }
+		} catch (e) {
+			if ($auth.projectId === projectId) error = e instanceof ApiError ? `조회 실패 (${e.status})` : '서버 오류';
+		} finally {
+			if ($auth.projectId === projectId) loading = false;
+		}
 	}
 
 	async function fetchVolumes() {
-		if (!volumeBackupsEnabled) { volumes = []; return; }
-		try { volumes = await api.get<Volume[]>('/api/v1/volumes', $auth.token ?? undefined, $auth.projectId ?? undefined); } catch { volumes = []; }
+		const token = $auth.token ?? undefined;
+		const projectId = $auth.projectId;
+		if (!projectId) return;
+		try {
+			const next = await api.get<Volume[]>('/api/v1/volumes', token, projectId);
+			if ($auth.projectId === projectId) volumes = next;
+		} catch {
+			if ($auth.projectId === projectId) volumes = [];
+		}
 	}
 
 	function prefetchVolumes() {
-		if (!volumeBackupsEnabled) return;
 		void api.prefetch('/api/v1/volumes', $auth.token ?? undefined, $auth.projectId ?? undefined);
 	}
 
@@ -63,19 +67,17 @@
 	}
 
 	async function createBackup(form: { volume_id: string; name: string; description: string; incremental: boolean }): Promise<string | true> {
-		if (!volumeBackupsEnabled) return '볼륨 백업 베타 기능이 꺼져 있습니다.';
 		try { await api.post('/api/v1/volumes/backups', form, $auth.token ?? undefined, $auth.projectId ?? undefined); await fetchBackups(); return true; }
 		catch (e) { return e instanceof ApiError ? e.message : '생성 실패'; }
 	}
 
 	async function restoreBackup(backupId: string): Promise<{ volume_id: string; volume_name: string } | string> {
-		if (!volumeBackupsEnabled) return '볼륨 백업 베타 기능이 꺼져 있습니다.';
 		try { return await api.post<{ volume_id: string; volume_name: string }>(`/api/v1/volumes/backups/${backupId}/restore`, {}, $auth.token ?? undefined, $auth.projectId ?? undefined); }
 		catch (e) { return e instanceof ApiError ? e.message : '복원 실패'; }
 	}
 
 	async function deleteBackup(id: string, name: string) {
-		if (!volumeBackupsEnabled || !await confirmDialog(`백업 "${name || id.slice(0, 8)}"을 삭제하시겠습니까?`)) return;
+		if (!await confirmDialog(`백업 "${name || id.slice(0, 8)}"을 삭제하시겠습니까?`)) return;
 		deleting = id;
 		try { await api.delete(`/api/v1/volumes/backups/${id}`, $auth.token ?? undefined, $auth.projectId ?? undefined); selection.remove([id]); await fetchBackups(); }
 		catch (e) { toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e))); }
@@ -103,35 +105,39 @@
 
 	$effect(() => {
 		const pid = $auth.projectId;
-		if (!volumeBackupsEnabled) { clearBackupsState(); selection.clear(); loading = false; return; }
-		if (!pid) return;
-		untrack(() => { selection.clear(); fetchBackups(); });
+		untrack(() => {
+			selection.clear();
+			backups = [];
+			volumes = [];
+			error = '';
+			selectedBackup = null;
+			showModal = false;
+			showRestoreModal = false;
+			loading = Boolean(pid);
+			if (pid) void fetchBackups();
+		});
 	});
 	$effect(() => { const ids = selectableIds; untrack(() => selection.retain(ids)); });
 </script>
 
-{#if !volumeBackupsEnabled}
-	<PageShell><BetaFeatureGate title="볼륨 백업은 베타 기능입니다" /></PageShell>
-{:else}
-	<VolumeBackupCreateModal bind:open={showModal} {volumes} onCreate={createBackup} />
-	<VolumeBackupRestoreModal bind:open={showRestoreModal} backup={selectedBackup} onRestore={restoreBackup} />
-	<PageShell class="bulk-selection-page space-y-4">
-		<PageHeader breadcrumb="VOLUMES / BACKUPS" title="볼륨 백업">
-			{#snippet actions()}
-				<Button onclick={openCreate} onintent={prefetchVolumes} variant="primary">+ 백업 생성</Button>
-			{/snippet}
-		</PageHeader>
-		<ResourceToolbar label="볼륨 백업 목록 도구">
-			{#snippet actions()}<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} refreshing={refreshing} onManualRefresh={forceRefresh} />{/snippet}
-		</ResourceToolbar>
-		{#if error}<Alert tone="danger">{error}</Alert>{/if}
-		{#if loading}
-			<LoadingSkeleton variant="table" rows={4} />
-		{:else if backups.length === 0}
-			<EmptyState headline="볼륨 백업이 없습니다" description="필요한 볼륨의 복구 지점을 생성하세요." />
-		{:else}
-			<VolumeBackupListTable {backups} deletingId={deleting} selectedIds={selection.ids} selectableIds={selectableIds} selectionDisabled={bulkBusy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} onRestore={(b) => { selectedBackup = b; showRestoreModal = true; }} onDelete={deleteBackup} />
-			<BulkSelectionOverlay count={selection.count} ariaLabel="선택한 볼륨 백업 일괄 작업" actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
-		{/if}
-	</PageShell>
-{/if}
+<VolumeBackupCreateModal bind:open={showModal} {volumes} onCreate={createBackup} />
+<VolumeBackupRestoreModal bind:open={showRestoreModal} backup={selectedBackup} onRestore={restoreBackup} />
+<PageShell class="bulk-selection-page space-y-4">
+	<PageHeader breadcrumb="VOLUMES / BACKUPS" title="볼륨 백업">
+		{#snippet actions()}
+			<Button onclick={openCreate} onintent={prefetchVolumes} variant="primary">+ 백업 생성</Button>
+		{/snippet}
+	</PageHeader>
+	<ResourceToolbar label="볼륨 백업 목록 도구">
+		{#snippet actions()}<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} refreshing={refreshing} onManualRefresh={forceRefresh} />{/snippet}
+	</ResourceToolbar>
+	{#if error}<Alert tone="danger">{error}</Alert>{/if}
+	{#if loading}
+		<LoadingSkeleton variant="table" rows={4} />
+	{:else if backups.length === 0}
+		<EmptyState headline="볼륨 백업이 없습니다" description="필요한 볼륨의 복구 지점을 생성하세요." />
+	{:else}
+		<VolumeBackupListTable {backups} deletingId={deleting} selectedIds={selection.ids} selectableIds={selectableIds} selectionDisabled={bulkBusy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} onRestore={(b) => { selectedBackup = b; showRestoreModal = true; }} onDelete={deleteBackup} />
+		<BulkSelectionOverlay count={selection.count} ariaLabel="선택한 볼륨 백업 일괄 작업" actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
+	{/if}
+</PageShell>

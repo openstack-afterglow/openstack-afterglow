@@ -28,7 +28,7 @@ def _read_sources(conn):
         "injected_file_path_bytes",
         "metadata_items",
     )
-    cinder = _entries("volumes", "snapshots", "gigabytes", "backups", "backup_gigabytes")
+    cinder = _entries("volumes", "snapshots", "gigabytes")
     neutron = _entries(
         "network",
         "subnet",
@@ -178,8 +178,6 @@ async def test_write_maps_all_sections_and_invalidates_target_cache(admin_client
         "volumes": 7,
         "snapshots": 8,
         "gigabytes": 100,
-        "backups": 3,
-        "backup_gigabytes": 50,
         "network": 1,
         "subnet": 2,
         "port": 3,
@@ -226,8 +224,6 @@ async def test_write_maps_all_sections_and_invalidates_target_cache(admin_client
         volumes=7,
         snapshots=8,
         gigabytes=100,
-        backups=3,
-        backup_gigabytes=50,
     )
     mock_conn.network.update_quota.assert_called_once_with(
         TARGET,

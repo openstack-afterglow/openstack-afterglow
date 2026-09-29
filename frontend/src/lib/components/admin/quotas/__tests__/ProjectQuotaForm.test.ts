@@ -41,6 +41,8 @@ const sampleQuotas: Quotas = {
 	},
 };
 
+const unusedSave = async () => ({ success: false });
+
 describe('ProjectQuotaForm', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -50,6 +52,7 @@ describe('ProjectQuotaForm', () => {
 		render(ProjectQuotaForm, {
 			quotas: sampleQuotas,
 			projectId: 'proj-123',
+			onSaveSection: unusedSave,
 		});
 
 		expect(screen.getByText('Compute 쿼터')).not.toBeNull();
@@ -90,6 +93,7 @@ describe('ProjectQuotaForm', () => {
 		render(ProjectQuotaForm, {
 			quotas: quotasWithUnlimited,
 			projectId: 'proj-123',
+			onSaveSection: unusedSave,
 		});
 
 		const fipInput = screen.getByTestId('quota-network-floatingip') as HTMLInputElement;
@@ -106,6 +110,7 @@ describe('ProjectQuotaForm', () => {
 		render(ProjectQuotaForm, {
 			quotas: quotasManilaDisabled,
 			projectId: 'proj-123',
+			onSaveSection: unusedSave,
 		});
 
 		expect(screen.getByText('파일 스토리지(Manila) 서비스가 활성화되어 있지 않습니다.')).not.toBeNull();
@@ -123,6 +128,7 @@ describe('ProjectQuotaForm', () => {
 		render(ProjectQuotaForm, {
 			quotas: quotasNetworkError,
 			projectId: 'proj-123',
+			onSaveSection: unusedSave,
 		});
 
 		const networkAlert = within(screen.getByTestId('quota-section-network')).getByRole('alert');
@@ -311,6 +317,7 @@ describe('ProjectQuotaForm', () => {
 		render(ProjectQuotaForm, {
 			quotas: sampleQuotas,
 			projectId: 'proj-123',
+			onSaveSection: unusedSave,
 		});
 
 		const coresInput = screen.getByTestId('quota-compute-cores') as HTMLInputElement;

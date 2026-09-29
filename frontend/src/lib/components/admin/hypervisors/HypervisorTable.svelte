@@ -53,7 +53,8 @@
 						호스트명 <span class="text-ink-2">{sortIcon('name')}</span>
 					</button>
 				</th>
-				<th class="text-left py-2 pr-4">상태</th>
+				<th class="text-left py-2 pr-4">연결 상태</th>
+				<th class="text-left py-2 pr-4">스케줄링</th>
 				<th class="text-left py-2 pr-4">
 					<button onclick={() => onSort('running_vms')} class="hover:text-ink-0 transition-colors flex items-center gap-1">
 						VM 수 <span class="text-ink-2">{sortIcon('running_vms')}</span>
@@ -94,9 +95,8 @@
 					<td class="p-0">
 						<button type="button" onclick={() => onSelect(h.id)} class="block w-full py-2 pr-4 font-mono text-ink-0 hover:text-warm-text-hover transition-colors text-left" title={h.name}>{h.name}</button>
 					</td>
-					<td class="py-2 pr-4">
-						<span class="{h.state === 'up' && h.status === 'enabled' ? 'text-green-400' : 'text-red-400'}">{h.state}/{h.status}</span>
-					</td>
+					<td class="py-2 pr-4"><span class={h.state === 'up' ? 'text-[var(--color-state-success-text)]' : 'text-[var(--color-state-danger-text)]'}>{h.state === 'up' ? '정상 (up)' : '중단 (down)'}</span></td>
+					<td class="py-2 pr-4"><span class={h.status === 'enabled' ? 'text-[var(--color-state-success-text)]' : 'text-[var(--color-state-warning-text)]'}>{h.status === 'enabled' ? '허용 (enabled)' : '차단 (disabled)'}</span></td>
 					<td class="py-2 pr-4 text-ink-2">{formatNumber(h.running_vms)}</td>
 					<td class="py-2 pr-4 text-ink-2 font-mono text-xs max-lg:hidden">{h.cpu_model ?? '-'}</td>
 					<td class="py-2 pr-4">

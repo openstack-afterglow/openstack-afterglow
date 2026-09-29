@@ -6,6 +6,7 @@
 </script>
 
 <div class="flex gap-2 flex-wrap">
+  <Button onclick={() => s.openRenameModal()} size="sm" variant="secondary">이름 변경</Button>
   {#if s.volume!.status === 'available'}
     <Button onclick={() => s.openAttachModal()} size="sm">인스턴스에 연결</Button>
   {/if}

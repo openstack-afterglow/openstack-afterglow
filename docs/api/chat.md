@@ -42,11 +42,16 @@ Lumen 워크로드가 Afterglow의 MCP 제어면을 호출하는 `/api/v1/mcp/lu
 
 ## 주요 프록시 엔드포인트
 
-Afterglow 백엔드는 모든 `/api/v1/chat/{path}` 요청을 내부 Lumen 서비스 URL의 `/v1/{path}` 경로로 투명하게 위임하며, SSE(Server-Sent Events) 스트리밍 응답의 비버퍼링 전달을 보장합니다.
+Afterglow 백엔드는 대부분의 `/api/v1/chat/{path}` 요청을 내부 Lumen 서비스 URL의 `/v1/{path}` 경로로 위임합니다. `models`, `images/generations`, `images/edits`, `audio/speech`, `audio/transcriptions`는 아래 `/v1/chat/...` 경로로 명시적으로 매핑합니다. 요청 본문과 콘텐츠 유형을 보존하고, SSE 및 바이너리 응답을 재인코딩하지 않고 스트리밍합니다. Realtime admission/WS만 별도 scoped ticket route가 소유합니다.
 
 | 메서드 · 경로 | 상위 위임 경로 | 설명 |
 |--------------|----------------|------|
 | `GET /api/v1/chat/models` | `/v1/chat/models` | 사용 가능한 LLM 모델 목록 조회. `reasoning_none_supported`가 true인 모델에만 추론 강도 "없음"(`reasoning_effort="none"`)을 노출한다. Lumen은 그 밖의 모델에서 `none`을 422로 거부하며, 값이 없으면(구버전 Lumen) 숨긴다 |
+| `POST /api/v1/chat/images/generations`, `/images/edits` | `/v1/chat/images/generations`, `/edits` | durable image run 접수. JSON prompt 및 소유한 scanned edit asset ID, UUID `Idempotency-Key` 필수 |
+| `POST /api/v1/chat/audio/speech` | `/v1/chat/audio/speech` | 음성 생성 요청을 전달하고 오디오 응답 바이트와 Content-Type을 보존 |
+| `POST /api/v1/chat/audio/transcriptions` | `/v1/chat/audio/transcriptions` | 저장된 오디오 asset ID를 담은 JSON 전사 요청을 전달하고 응답 바이트와 Content-Type을 보존 |
+| `POST /api/v1/chat/realtime/sessions` | `/v1/chat/realtime/sessions` | 인증된 current user/project로 Lumen session을 접수하고 60초 one-use browser ticket만 반환 |
+| `WS /api/v1/chat/realtime/ws?ticket=<opaque>` | `WS /v1/chat/realtime/sessions/{session_id}/ws` | 동일 origin 정책과 한 번 쓰는 browser ticket 검사 후 Lumen connect token을 internal 헤더로 전달. Provider key는 브라우저에 미노출 |
 | `GET /api/v1/chat/conversations` | `/v1/conversations` | 대화 목록 조회 |
 | `POST /api/v1/chat/conversations` | `/v1/conversations` | 신규 대화 생성 |
 | `GET /api/v1/chat/conversations/{id}/messages?anchor=latest\|first&limit=40` | `/v1/conversations/{id}/messages` | active-path message page; opaque `before_cursor`/`after_cursor`를 후속 `cursor` query로 그대로 전달 |
@@ -74,6 +79,14 @@ Afterglow 백엔드는 모든 `/api/v1/chat/{path}` 요청을 내부 Lumen 서�
 | `GET /api/v1/chat/admin/providers/billing` | `/v1/admin/providers/billing` | 관리자: 모든 configured provider의 Lumen 귀속 일·주·월·누적 request/token/raw USD cost, OpenAI/Anthropic 공식 조직 report, OpenRouter/DeepSeek live 잔액/한도, 공식 console URL을 한 번에 조회 |
 | `POST /api/v1/chat/claude-gateway/authorize` | `/v1/claude-gateway/authorize` | authenticated current user/project가 8자리 Claude Code device user code를 approve/deny |
 | `GET /api/v1/chat/mcp-oauth/callback` | `/v1/mcp-oauth/callback` | MCP OAuth 브라우저 콜백 전달 |
+
+### 실시간 음성 browser session
+
+`GET /api/v1/chat/models?model_kind=realtime`와 `GET /api/v1/chat/capabilities?model_id=<id>&model_kind=realtime`의 양방향 오디오 gate, 정확한 USD 가격, voice·sample-rate readiness를 먼저 확인합니다. 사용자가 **음성 세션 시작**을 누를 때에만 `getUserMedia` permission을 요청하고, `POST /api/v1/chat/realtime/sessions`에 `{model_id:"<id>",voice:"alloy",max_duration_seconds:300}` 및 UUID `Idempotency-Key`를 보냅니다. BFF는 Lumen의 provider key나 `connect_token`을 반환하지 않고 `{session_id,status,model_name,provider_type,expires_in_seconds,expires_at,ticket,websocket_path:"/api/v1/chat/realtime/ws"}`만 반환합니다. `ticket`은 Redis 60초, project-scoped, 단일 소비이며 일반 auth token을 WebSocket URL에 넣지 않습니다.
+
+브라우저는 반환된 경로에 ticket으로 WSS 연결하고 `session.ready`의 `input_sample_rate_hz`(Gemini 16 kHz/OpenAI 24 kHz)에 맞춰 mono PCM16 worklet을 시작합니다. `audio.input.append`의 base64 chunk, `audio.output.delta`의 24 kHz playback, 자막 delta, `session.interrupted`, `response.cancel`을 처리합니다. 브라우저 프로젝트/사용자 변경·로그아웃·세션 종료 시 microphone track, AudioContext, playback, socket과 표시 자막을 즉시 정리합니다. 원본 오디오는 Afterglow→Lumen→선택 provider로 전송되며 Afterglow/Lumen은 원본 PCM·실시간 자막을 DB/S3에 보존하지 않습니다. Provider의 데이터 처리 정책은 별도로 확인해야 합니다. 생성 이미지·유한 오디오의 durable run/asset·usage는 **Lumen**이 소유합니다. 장애 시 upstream usage가 확정되지 않으면 Lumen hold가 unknown으로 남으며 BFF는 이를 임의 정산하지 않습니다.
+
+OpenAI의 **응답 끊기**는 `response.cancel`로 세션을 유지하지만 Gemini Live에는 동일한 wire 명령이 없어 버튼을 **응답 끊기 · 세션 종료**로 표시하고 microphone/WS를 종료합니다. Gemini의 대화 중 자동 barge-in은 provider VAD가 담당합니다.
 
 관리자 provider 화면의 **사용량 키 설정**은 direct OpenAI API와 Anthropic API에만 표시됩니다. 이 키는 Lumen이 inference key와 다른 AES-GCM/HKDF domain으로 암호화해 저장하며 organization cost/usage report에만 사용합니다. 브라우저와 API read 응답에는 키 값 대신 설정 여부만 반환됩니다. OpenAI는 현재 UTC 일·주·월 공식 비용·요청·토큰, Anthropic은 공식 비용·토큰을 표시합니다. Anthropic 공식 report에 없는 요청 수와 현재 달 범위로 계산할 수 없는 누적값은 `—`로 표시합니다. 두 provider의 공식 organization API는 현재 선불 잔액이나 구매 충전액을 반환하지 않으므로 UI는 비용에서 잔액을 역산하지 않고 공식 결제 console을 정본으로 안내합니다.
 

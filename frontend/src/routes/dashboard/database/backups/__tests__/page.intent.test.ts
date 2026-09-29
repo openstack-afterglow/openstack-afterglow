@@ -19,9 +19,6 @@ vi.mock('$lib/api/client', () => ({
 vi.mock('$lib/stores/auth', () => ({
 	auth: writable({ token: 'token', projectId: 'project' }),
 }));
-vi.mock('$lib/stores/betaFeatures', () => ({
-	betaFeatures: writable({ databaseBackups: true }),
-}));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 	createAutoRefresh: () => ({
 		active: false,

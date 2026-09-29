@@ -307,7 +307,7 @@ describe('Waygate attachment network names', () => {
 describe('Waygate server defaults and dynamic client inheritance', () => {
 	const defaults = { dns: '9.9.9.9', persistent_keepalive: 40 };
 	const updatedDefaults = { dns: '1.1.1.1, 8.8.8.8', persistent_keepalive: 0 };
-	const inheritedRequest = { name: 'new-laptop', inherit_dns: true, inherit_persistent_keepalive: true, mtu: null };
+	const inheritedRequest = { name: 'new-laptop', mtu: null };
 	const inheritedClient = { ...client, ...defaults, mtu: null, inherit_dns: true, inherit_persistent_keepalive: true };
 	let currentServer = { ...server('a'), ...defaults };
 	let currentClients: Array<typeof client & { dns?: string | null; mtu?: number | null; inherit_dns?: boolean; inherit_persistent_keepalive?: boolean }>;
@@ -408,9 +408,9 @@ describe('Waygate server defaults and dynamic client inheritance', () => {
 	});
 
 	it.each([
-		{ field: 'DNS' as const, label: /^DNS$/, value: '', override: { inherit_dns: false, dns: null } },
-		{ field: 'DNS' as const, label: /^DNS$/, value: defaults.dns, override: { inherit_dns: false, dns: defaults.dns } },
-		{ field: 'PersistentKeepalive' as const, label: /PersistentKeepalive/, value: '0', override: { inherit_persistent_keepalive: false, persistent_keepalive: 0 } },
+		{ field: 'DNS' as const, label: /^DNS$/, value: '', override: { dns: null } },
+		{ field: 'DNS' as const, label: /^DNS$/, value: defaults.dns, override: { dns: defaults.dns } },
+		{ field: 'PersistentKeepalive' as const, label: /PersistentKeepalive/, value: '0', override: { persistent_keepalive: 0 } },
 	])('submits explicit $field value "$value" independently of the other inherited field', async ({ field, label, value, override }) => {
 		render(WaygateWorkspace);
 		await openDetail();

@@ -5,14 +5,17 @@
 
   interface Props {
     ar: { active: boolean; intervalSeconds: number; intervalOptions: number[] };
-    onClose?: () => void;
   }
-  let { ar = $bindable(), onClose }: Props = $props();
+  let { ar = $bindable() }: Props = $props();
 
   const s = useVolumeDetailController();
 </script>
 
-<DetailHeader title={s.volume?.name || 'Volume'} status={s.volume?.status ?? null}>
+<DetailHeader
+  title={s.volume ? s.volume.name || s.volume.id : '볼륨'}
+  subtitle={s.volume?.name ? s.volume.id : undefined}
+  status={s.volume?.status ?? null}
+>
   {#snippet actions()}
     <AutoRefreshControl
       bind:active={ar.active}
@@ -21,6 +24,6 @@
       refreshing={s.loading}
       onManualRefresh={() => s.loadAll()}
     />
-    <!-- 닫기 버튼은 SlidePanel 이 제공한다(`[data-slide-panel-close]`) -->
+    <!-- 닫기는 SlidePanel(`[data-slide-panel-close]`) 또는 전체 화면 라우트의 목록 링크가 제공한다 -->
   {/snippet}
 </DetailHeader>

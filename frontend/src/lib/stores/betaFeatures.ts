@@ -5,36 +5,30 @@ export interface BetaFeatures {
 	libraryConsume: boolean;
 	haDeploy: boolean;
 	keyManager: boolean;
-	volumeBackups: boolean;
 	volumeSnapshots: boolean;
 	fileStorageSnapshots: boolean;
 	fileStorageShareNetworks: boolean;
 	fileStorageSecurityServices: boolean;
-	databaseBackups: boolean;
 }
 
 export const DEFAULT_BETA_FEATURES: BetaFeatures = {
 	libraryConsume: false,
 	haDeploy: false,
 	keyManager: false,
-	volumeBackups: true,
 	volumeSnapshots: false,
 	fileStorageSnapshots: false,
 	fileStorageShareNetworks: false,
 	fileStorageSecurityServices: false,
-	databaseBackups: false,
 };
 
 const STORAGE_KEYS: Record<keyof BetaFeatures, string> = {
 	libraryConsume: 'afterglow.beta.libraryConsume',
 	haDeploy: 'afterglow.beta.haDeploy',
 	keyManager: 'afterglow.beta.keyManager',
-	volumeBackups: 'afterglow.beta.volumeBackups',
 	volumeSnapshots: 'afterglow.beta.volumeSnapshots',
 	fileStorageSnapshots: 'afterglow.beta.fileStorageSnapshots',
 	fileStorageShareNetworks: 'afterglow.beta.fileStorageShareNetworks',
 	fileStorageSecurityServices: 'afterglow.beta.fileStorageSecurityServices',
-	databaseBackups: 'afterglow.beta.databaseBackups',
 };
 
 function readFlag(key: keyof BetaFeatures): boolean {

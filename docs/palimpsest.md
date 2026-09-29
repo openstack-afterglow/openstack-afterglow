@@ -19,7 +19,7 @@ afterglow에는 역사적으로 레이어 관련 코드가 **세 갈래**로 자
 | 2세대 "union" | `UnionLayer`(492) `UnionTemplate`(542) `UnionUserMount`(562) | `services/union_layers.py`, `scripts/layerbuild.py`, `scripts/envmgr-*.sh` | `/api/v1/union` | 코드만 존재, 인프라 미배포 |
 | 3세대 "squashfs" | `LayerBuild`(296) `LayerConsume`(350) `LayerArtifact`(373) `LayerProfile`(469) | `services/layer_build.py`, `layer_builder.py`, `recipe_blocks.py`, `cloud_init_builder.py`, `dockerfile_import.py`, `builder_vm.py`, `manila.py` | `/api/v1/admin/libraries`, `/api/v1/libraries/squashfs` | **실제 배포·운영 중** |
 
-3세대 운영 상태는 기존 squashfs 경로의 상태다. 아래 4.4의 새 Dockerfile 전체-root/Cinder-upper 경로는 DMSLab OpenStack에서 실제 루트·단계 빌드, 캐시 재사용, SSH 소비 VM(`afterglow-pal-proof-20260927`, `f98f198d-7003-4189-a846-6a3f2ca40d10`), 재부팅 후 overlay/upper 영속성, 임시 빌더 정리까지 검증했으며 운영 컨테이너 배포는 별도 단계다.
+3세대 운영 상태는 기존 squashfs 경로도 포함한다. 아래 4.4의 Dockerfile 전체-root/Cinder-upper 경로는 DMSLab OpenStack에서 루트·단계 빌드, 캐시 재사용, SSH 소비 VM(`afterglow-pal-proof-20260927`, `c8b5e99e-83b5-4199-8f9f-dec2343e759d`), 재부팅 후 overlay/upper 영속성, 임시 빌더 정리까지 검증했다. Afterglow 1.29.0 백엔드·워커·프런트엔드는 Kolla에 배포되었지만, 운영자의 인증된 Dockerfile 빌드·소비 화면과 API는 아직 검증되지 않았다.
 
 ### Palimpsest의 처리 방침
 

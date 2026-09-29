@@ -177,6 +177,9 @@ EXEMPT_HANDLERS: set[str] = {
     "snapshot",
     "preview",
     "execute",
+    # Realtime session state belongs to Lumen. The BFF creates only an expiring
+    # browser WebSocket ticket; neither mutation changes an Afterglow resource cache.
+    "create_session",
     # Internal K3s admission is read-only despite POST. Intent creation mutates
     # DB-backed orchestration state read directly, not an OpenStack cache.
     "k3s_gpu_admission",

@@ -5,7 +5,6 @@
 	import DbCreateStep3Access from './wizard/DbCreateStep3Access.svelte';
 	import DbCreateStep4Init from './wizard/DbCreateStep4Init.svelte';
 	import DbCreateStep5Advanced from './wizard/DbCreateStep5Advanced.svelte';
-	import { betaFeatures } from '$lib/stores/betaFeatures';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	let {
@@ -23,7 +22,6 @@
 		setOpen: (v) => { open = v; },
 		onCreated: () => onCreated(),
 		initialNics: () => (initialNetworkId ? [initialNetworkId] : []),
-		databaseBackupsEnabled: () => $betaFeatures.databaseBackups,
 	});
 	provideDbCreate(s);
 </script>

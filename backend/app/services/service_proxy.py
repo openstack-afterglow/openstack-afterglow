@@ -170,6 +170,7 @@ async def _forward(
     *,
     endpoint: str | None,
     headers: dict[str, str],
+    read_timeout: float | None = None,
 ) -> Response:
     if not endpoint:
         return JSONResponse(
@@ -190,7 +191,7 @@ async def _forward(
     content = request.stream() if request.method in {"POST", "PUT", "PATCH", "DELETE"} else None
     settings = get_settings()
     client = httpx.AsyncClient(
-        timeout=httpx.Timeout(30.0, connect=5.0),
+        timeout=httpx.Timeout(30.0, connect=5.0, read=read_timeout if read_timeout is not None else 30.0),
         verify=settings.ssl_verify,
     )
     try:
@@ -228,7 +229,9 @@ async def _forward(
     return response
 
 
-async def proxy(service_type: str, request: Request, upstream_path: str) -> Response:
+async def proxy(
+    service_type: str, request: Request, upstream_path: str, *, read_timeout: float | None = None
+) -> Response:
     """Proxy a browser request using its validated caller-scoped Keystone token."""
     token_info = getattr(request.state, "token_info", None)
     token = token_info.get("token") if token_info else None
@@ -246,7 +249,9 @@ async def proxy(service_type: str, request: Request, upstream_path: str) -> Resp
     headers["x-project-id"] = connection_project_id
     if service_type == "lumen" and logical_project_id != connection_project_id:
         headers["x-target-project-id"] = logical_project_id
-    return await _forward(service_type, request, upstream_path, endpoint=endpoint, headers=headers)
+    return await _forward(
+        service_type, request, upstream_path, endpoint=endpoint, headers=headers, read_timeout=read_timeout
+    )
 
 
 async def get_json(service_type: str, request: Request, upstream_path: str) -> Any:

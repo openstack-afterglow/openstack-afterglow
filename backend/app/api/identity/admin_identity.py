@@ -566,8 +566,6 @@ class QuotaUpdateRequest(ComputeQuotaRequest):
     volumes: QuotaLimit | None = None
     snapshots: QuotaLimit | None = None
     gigabytes: QuotaLimit | None = None
-    backups: QuotaLimit | None = None
-    backup_gigabytes: QuotaLimit | None = None
     network: QuotaLimit | None = None
     subnet: QuotaLimit | None = None
     port: QuotaLimit | None = None
@@ -606,7 +604,7 @@ _QUOTA_FIELDS = {
             "metadata_items",
         )
     },
-    "volume": {key: key for key in ("volumes", "snapshots", "gigabytes", "backups", "backup_gigabytes")},
+    "volume": {key: key for key in ("volumes", "snapshots", "gigabytes")},
     "network": {
         key: key
         for key in ("network", "subnet", "port", "router", "floatingip", "security_group", "security_group_rule")
@@ -756,18 +754,34 @@ async def get_project_quotas(
         "availability": {},
         "errors": {},
     }
-    for section in _QUOTA_FIELDS:
-        if section == "file_storage" and not enabled:
-            result["availability"][section] = False
-            result["errors"][section] = "service_disabled"
-            continue
+    sections = [section for section in _QUOTA_FIELDS if section != "file_storage" or enabled]
+    if not enabled:
+        result["availability"]["file_storage"] = False
+        result["errors"]["file_storage"] = "service_disabled"
+
+    # The connection belongs to this request. Settle every worker before it
+    # closes, including when the HTTP request is cancelled mid-flight.
+    calls = asyncio.gather(
+        *(asyncio.to_thread(_get_admin_quota_section, conn, project_id, section) for section in sections),
+        return_exceptions=True,
+    )
+    try:
+        values = await asyncio.shield(calls)
+    except BaseException:
         try:
-            result[section] = await asyncio.to_thread(_get_admin_quota_section, conn, project_id, section)
-            result["availability"][section] = True
-        except Exception:
-            _logger.warning("Admin %s quota read failed", section, exc_info=True)
+            await asyncio.shield(calls)
+        except BaseException:
+            pass
+        raise
+
+    for section, value in zip(sections, values, strict=True):
+        if isinstance(value, BaseException):
+            _logger.warning("Admin %s quota read failed", section, exc_info=value)
             result["availability"][section] = False
             result["errors"][section] = "quota_unavailable"
+        else:
+            result[section] = value
+            result["availability"][section] = True
     return result
 
 

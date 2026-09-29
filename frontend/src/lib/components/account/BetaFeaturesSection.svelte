@@ -3,12 +3,10 @@
 
 	const validatingFeatures = [
 		{ key: 'keyManager', label: 'Key Manager 표시', description: 'Barbican Key Manager 화면을 사이드바와 직접 경로에서 노출합니다.' },
-		{ key: 'volumeBackups', label: '볼륨 백업 표시', description: '볼륨 백업 목록, 생성, 복원, 자동 백업 설정을 노출합니다.' },
 		{ key: 'volumeSnapshots', label: '볼륨 스냅샷 표시', description: '볼륨 스냅샷 목록과 생성 액션을 노출합니다.' },
 		{ key: 'fileStorageSnapshots', label: '파일 스토리지 스냅샷 표시', description: '파일 스토리지 스냅샷 목록과 생성 액션을 노출합니다.' },
 		{ key: 'fileStorageShareNetworks', label: 'Share 네트워크 표시', description: '파일 스토리지 Share 네트워크 목록과 생성 플로우를 노출합니다.' },
 		{ key: 'fileStorageSecurityServices', label: 'Security Service 표시', description: '파일 스토리지 Security Service 목록과 연결 플로우를 노출합니다.' },
-		{ key: 'databaseBackups', label: 'DB 백업 표시', description: 'DB 백업 목록, 생성, 복원, 자동 백업 설정을 노출합니다.' },
 	] as const;
 </script>
 

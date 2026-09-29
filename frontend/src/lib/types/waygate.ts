@@ -70,8 +70,6 @@ export interface WaygateClientCreateRequest {
 	dns?: string | null;
 	mtu?: number | null;
 	persistent_keepalive?: number;
-	inherit_dns: boolean;
-	inherit_persistent_keepalive: boolean;
 }
 
 export interface WaygateClientUpdateRequest {

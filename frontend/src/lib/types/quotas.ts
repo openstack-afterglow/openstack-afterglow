@@ -17,8 +17,6 @@ export interface VolumeQuotas {
 	volumes?: QuotaLimit;
 	snapshots?: QuotaLimit;
 	gigabytes?: QuotaLimit;
-	backups?: QuotaLimit;
-	backup_gigabytes?: QuotaLimit;
 	[key: string]: QuotaLimit | undefined;
 }
 export interface NetworkQuotas {

@@ -14,12 +14,12 @@ describe('allNavItems service inheritance', () => {
 		expect(byHref.get('/dashboard/compute/instances')?.service).toBeNull();
 	});
 
-	it('includes volume backups but not other disabled beta routes by default', () => {
+	it('includes volume and database backups while keeping snapshots gated by default', () => {
 		const hrefs = allNavItems(false, DEFAULT_BETA_FEATURES).map(item => item.href);
 
 		expect(hrefs).toContain('/dashboard/volumes/backups');
+		expect(hrefs).toContain('/dashboard/database/backups');
 		expect(hrefs).not.toContain('/dashboard/volumes/snapshots');
-		expect(hrefs).not.toContain('/dashboard/database/backups');
 	});
 
 	it('keeps explicit item service gates for admin routes', () => {

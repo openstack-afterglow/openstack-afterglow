@@ -1485,10 +1485,6 @@ export const LEGACY_VISUAL_DEBT: VisualDebtBaseline = {
 		count: 5,
 		tokens: ["bg-gray-900","border-gray-700","text-gray-300","text-gray-400","text-gray-500"],
 	},
-	"frontend/src/lib/components/volume/VolumeAttachmentsTable.svelte": {
-		count: 11,
-		tokens: ["bg-gray-900","border-gray-800","border-gray-800/50","text-blue-300","text-blue-400","text-gray-400","text-gray-500"],
-	},
 	"frontend/src/lib/components/volume/VolumeAttachModal.svelte": {
 		count: 8,
 		tokens: ["bg-gray-800","bg-gray-900","border-blue-500","border-gray-600","border-gray-700","text-gray-400","text-red-400"],
@@ -1496,10 +1492,6 @@ export const LEGACY_VISUAL_DEBT: VisualDebtBaseline = {
 	"frontend/src/lib/components/volume/VolumeBackupModal.svelte": {
 		count: 25,
 		tokens: ["bg-blue-500","bg-blue-600","bg-gray-700","bg-gray-800","bg-gray-900","bg-red-900/20","border-blue-500","border-gray-600","border-gray-700","border-red-800","text-gray-300","text-gray-400","text-gray-500","text-red-400"],
-	},
-	"frontend/src/lib/components/volume/VolumeBasicInfoCard.svelte": {
-		count: 9,
-		tokens: ["bg-gray-900","border-gray-800","text-gray-300","text-gray-400","text-gray-500"],
 	},
 	"frontend/src/lib/components/volume/VolumeCreateModal.svelte": {
 		count: 18,
@@ -1520,10 +1512,6 @@ export const LEGACY_VISUAL_DEBT: VisualDebtBaseline = {
 	"frontend/src/lib/components/volume/VolumeListTable.svelte": {
 		count: 48,
 		tokens: ["bg-[#0B1220]","bg-blue-600","bg-blue-900/30","bg-cyan-500/15","bg-gray-700","bg-gray-800","bg-gray-800/30","border-blue-800","border-cyan-500/30","border-gray-700","border-gray-800","text-amber-400","text-blue-400","text-cyan-400","text-emerald-400","text-gray-300","text-gray-500","text-green-400","text-red-300","text-red-400","text-rose-300","text-rose-400","text-violet-400"],
-	},
-	"frontend/src/lib/components/volume/VolumePageHeader.svelte": {
-		count: 43,
-		tokens: ["bg-amber-900/30","bg-blue-900/30","bg-cyan-900/30","bg-gray-800","bg-green-900/30","bg-indigo-900/30","bg-orange-900/30","bg-purple-900/30","bg-red-900/30","bg-rose-900/30","bg-sky-900/30","bg-teal-900/30","border-gray-700","border-red-700","border-red-900","text-amber-400","text-blue-400","text-cyan-400","text-gray-300","text-gray-400","text-gray-600","text-green-400","text-indigo-400","text-orange-400","text-purple-400","text-red-300","text-red-400","text-rose-400","text-sky-400","text-teal-400"],
 	},
 	"frontend/src/lib/components/volume/VolumesEmptyState.svelte": {
 		count: 3,
@@ -2004,10 +1992,6 @@ export const LEGACY_VISUAL_DEBT: VisualDebtBaseline = {
 	"frontend/src/routes/dashboard/usage/+page.svelte": {
 		count: 18,
 		tokens: ["bg-gray-700","bg-gray-800","bg-gray-800/30","bg-gray-900","border-gray-800","border-gray-800/50","text-gray-400","text-gray-500"],
-	},
-	"frontend/src/routes/dashboard/volumes/[id]/+page.svelte": {
-		count: 5,
-		tokens: ["bg-red-900/40","border-red-700","text-gray-200","text-gray-400","text-red-300"],
 	},
 	"frontend/src/routes/dashboard/volumes/+page.svelte": {
 		count: 5,

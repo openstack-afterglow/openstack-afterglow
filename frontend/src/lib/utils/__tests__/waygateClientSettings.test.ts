@@ -26,35 +26,35 @@ const server: WaygateServer = {
 };
 
 describe('Waygate client settings', () => {
-
-	it('issues clients with explicit inheritance flags and independent MTU', () => {
-		expect(waygateClientCreateBody({ ...emptyWaygateClientDraft(), name: 'phone' })).toEqual({
+	it('creates clients without unsupported inheritance fields while retaining overrides', () => {
+		expect(waygateClientCreateBody({ ...emptyWaygateClientDraft(), name: 'pieroot-macbook' })).toEqual({
 			ok: true,
-			body: { name: 'phone', inherit_dns: true, inherit_persistent_keepalive: true, mtu: null },
+			body: { name: 'pieroot-macbook', mtu: null },
 		});
-		expect(waygateClientCreateBody({ ...emptyWaygateClientDraft(), name: 'phone', mtu: '576', dns: 'invalid;dns', persistentKeepalive: 'bad' })).toEqual({
+		expect(waygateClientCreateBody({ ...emptyWaygateClientDraft(), name: 'pieroot-macbook', inheritDns: false, inheritPersistentKeepalive: false, dns: '1.1.1.1', persistentKeepalive: '0' })).toEqual({
 			ok: true,
-			body: { name: 'phone', inherit_dns: true, inherit_persistent_keepalive: true, mtu: 576 },
+			body: { name: 'pieroot-macbook', dns: '1.1.1.1', persistent_keepalive: 0, mtu: null },
 		});
 	});
+
 
 	it('switches DNS and keepalive inheritance independently without comparing server defaults', () => {
 		const draft = { ...emptyWaygateClientDraft(), name: 'phone', dns: server.dns ?? '', persistentKeepalive: '0' };
 		draft.inheritDns = false;
 		expect(waygateClientCreateBody(draft)).toEqual({
 			ok: true,
-			body: { name: 'phone', inherit_dns: false, inherit_persistent_keepalive: true, dns: server.dns, mtu: null },
+			body: { name: 'phone', dns: server.dns, mtu: null },
 		});
 		draft.inheritPersistentKeepalive = false;
 		draft.dns = ' ';
 		expect(waygateClientCreateBody(draft)).toEqual({
 			ok: true,
-			body: { name: 'phone', inherit_dns: false, inherit_persistent_keepalive: false, dns: null, persistent_keepalive: 0, mtu: null },
+			body: { name: 'phone', dns: null, persistent_keepalive: 0, mtu: null },
 		});
 		draft.inheritDns = true;
 		expect(waygateClientCreateBody(draft)).toEqual({
 			ok: true,
-			body: { name: 'phone', inherit_dns: true, inherit_persistent_keepalive: false, persistent_keepalive: 0, mtu: null },
+			body: { name: 'phone', persistent_keepalive: 0, mtu: null },
 		});
 	});
 
@@ -130,7 +130,7 @@ describe('Waygate client settings', () => {
 		for (const [mtu, keepalive] of [['576', '65535'], ['9000', '0']]) {
 			expect(waygateClientCreateBody({ ...emptyWaygateClientDraft(), name: 'a', mtu, inheritPersistentKeepalive: false, persistentKeepalive: keepalive })).toEqual({
 				ok: true,
-				body: { name: 'a', inherit_dns: true, inherit_persistent_keepalive: false, persistent_keepalive: Number(keepalive), mtu: Number(mtu) },
+				body: { name: 'a', persistent_keepalive: Number(keepalive), mtu: Number(mtu) },
 			});
 		}
 	});

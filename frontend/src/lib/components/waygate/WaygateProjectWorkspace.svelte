@@ -29,6 +29,7 @@
 	import ClientSettingsFields from '$lib/components/waygate/ClientSettingsFields.svelte';
 	import ClientTraffic from '$lib/components/waygate/ClientTraffic.svelte';
 	import { appendClientTraffic, waygateTrafficFreshnessMs, type ClientTrafficHistory } from '$lib/utils/waygateTraffic';
+	import { reconcileById, sameJsonValue } from '$lib/utils/reconcileById';
 	import {
 		emptyWaygateClientDraft,
 		WAYGATE_KEEPALIVE_DEFAULT,
@@ -127,7 +128,7 @@
 			if (!detail.current()) return;
 			serverRequest += 1;
 			serverDetailRequest += 1;
-			servers = servers.map((server) => server.id === detail.id ? updated : server);
+			if (!sameJsonValue(selectedServer, updated)) servers = servers.map((server) => server.id === detail.id ? updated : server);
 			showDefaultsModal = false;
 			toast.success('서버 기본값을 저장했습니다. 상속 중인 클라이언트에 적용됩니다.');
 			await fetchClients(detail.id, true);
@@ -158,7 +159,7 @@
 		try {
 			const next = await pending;
 			if (!isCurrent() || request !== serverRequest) return;
-			servers = next;
+			servers = reconcileById(servers, next);
 			if (selection.count > 0) selection.retain(servers.map((server) => server.id));
 			if (selectedServerId && !servers.some((server) => server.id === selectedServerId)) closePanel();
 			error = '';
@@ -260,7 +261,7 @@
 			const server = await pending;
 			if (!detail.current() || request !== serverDetailRequest) return;
 			serverRequest += 1;
-			servers = servers.map((item) => item.id === serverId ? server : item);
+			if (!sameJsonValue(selectedServer, server)) servers = servers.map((item) => item.id === serverId ? server : item);
 		} catch (e) {
 			if (!detail.current() || request !== serverDetailRequest) return;
 			if (e instanceof ApiError && e.status === 404) {
@@ -290,9 +291,11 @@
 		trafficHistories = {};
 		clientsError = '';
 		clientsLoading = false;
+		clientsLoaded = false;
 		attachments = [];
 		attachmentsError = '';
 		attachmentsLoading = false;
+		attachmentsLoaded = false;
 		showDefaultsModal = false;
 		defaultsSaving = false;
 		showClientModal = false;
@@ -334,6 +337,7 @@
 	// ---- 클라이언트(peer) 관리 ----
 	let clients = $state<WaygateClient[]>([]);
 	let clientsLoading = $state(false);
+	let clientsLoaded = $state(false);
 	let clientsError = $state('');
 	// Real report history for the open server/project only; never shared across scopes.
 	let trafficHistories = $state<Record<string, ClientTrafficHistory>>({});
@@ -349,7 +353,6 @@
 			clientsLoading = false;
 			return;
 		}
-		if (afterMutation) clientsLoading = true;
 		while (clientInFlight.has(serverId)) {
 			if (!afterMutation) return;
 			clientRequest += 1;
@@ -361,7 +364,7 @@
 			}
 		}
 		const request = ++clientRequest;
-		clientsLoading = true;
+		clientsLoading = !clientsLoaded;
 		const pending = waygateApi.listClients(serverId, token, projectId);
 		clientInFlight.set(serverId, pending);
 		try {
@@ -369,19 +372,31 @@
 			if (!detail.current() || request !== clientRequest) return;
 			const now = Date.now();
 			const histories: Record<string, ClientTrafficHistory> = {};
+			let historiesChanged = false;
+			let enabledCount = 0;
 			for (const client of next) {
-				if (client.enabled) histories[client.id] = appendClientTraffic(trafficHistories[client.id], client, now, waygateTrafficFreshnessMs(client.report_interval_seconds, peerAr.intervalSeconds));
+				if (!client.enabled) continue;
+				enabledCount++;
+				const previous = trafficHistories[client.id];
+				const history = appendClientTraffic(previous, client, now, waygateTrafficFreshnessMs(client.report_interval_seconds, peerAr.intervalSeconds));
+				histories[client.id] = history;
+				if (history !== previous) historiesChanged = true;
 			}
-			trafficHistories = histories;
-			trafficNow = now;
-			clients = next;
+			if (historiesChanged || Object.keys(trafficHistories).length !== enabledCount) {
+				trafficHistories = histories;
+				trafficNow = now;
+			}
+			clients = reconcileById(clients, next);
 			clientsError = '';
 		} catch (e) {
 			if (!detail.current() || request !== clientRequest) return;
 			clientsError = e instanceof ApiError ? e.message : '클라이언트 조회 실패';
 		} finally {
 			if (clientInFlight.get(serverId) === pending) clientInFlight.delete(serverId);
-			if (detail.current() && request === clientRequest) clientsLoading = false;
+			if (detail.current() && request === clientRequest) {
+				clientsLoaded = true;
+				clientsLoading = false;
+			}
 		}
 	}
 
@@ -647,6 +662,7 @@
 	// ---- 네트워크 연결 (Phase 2 — 멀티 NIC + SNAT) ----
 	let attachments = $state<WaygateNetworkAttachment[]>([]);
 	let attachmentsLoading = $state(false);
+	let attachmentsLoaded = $state(false);
 	let attachmentsError = $state('');
 	let attachmentRequest = 0;
 	const attachmentInFlight = new Map<string, Promise<WaygateNetworkAttachment[]>>();
@@ -687,7 +703,6 @@
 	async function fetchAttachments(serverId: string, afterMutation = false) {
 		const detail = captureDetail();
 		if (!detail || serverId !== detail.id) return;
-		if (afterMutation) attachmentsLoading = true;
 		while (attachmentInFlight.has(serverId)) {
 			if (!afterMutation) return;
 			attachmentRequest += 1;
@@ -695,20 +710,23 @@
 			if (!detail.current()) return;
 		}
 		const request = ++attachmentRequest;
-		attachmentsLoading = true;
+		attachmentsLoading = !attachmentsLoaded;
 		const pending = waygateApi.listAttachments(serverId, token, projectId);
 		attachmentInFlight.set(serverId, pending);
 		try {
 			const next = await pending;
 			if (!detail.current() || request !== attachmentRequest) return;
-			attachments = next;
+			attachments = reconcileById(attachments, next);
 			attachmentsError = '';
 		} catch (e) {
 			if (!detail.current() || request !== attachmentRequest) return;
 			attachmentsError = e instanceof ApiError ? e.message : '네트워크 연결 조회 실패';
 		} finally {
 			if (attachmentInFlight.get(serverId) === pending) attachmentInFlight.delete(serverId);
-			if (detail.current() && request === attachmentRequest) attachmentsLoading = false;
+			if (detail.current() && request === attachmentRequest) {
+				attachmentsLoaded = true;
+				attachmentsLoading = false;
+			}
 		}
 	}
 
@@ -728,11 +746,10 @@
 			const networks = await pending;
 			if (!current()) return;
 			// Keep the project API's visibility rules, including shared networks.
-			visibleNetworks = networks;
+			visibleNetworks = reconcileById(visibleNetworks, networks);
 			networksError = '';
 		} catch (e) {
 			if (!current()) return;
-			visibleNetworks = [];
 			networksError = e instanceof ApiError ? e.message : '네트워크 목록 조회 실패';
 		} finally {
 			if (networksInFlight === pending) networksInFlight = null;

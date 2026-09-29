@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 _ROUTERS = {
     "lumen_callback_router": ".callback",
     "lumen_proxy_router": ".proxy",
+    "lumen_realtime_router": ".realtime",
 }
 
 
@@ -25,9 +26,11 @@ def register_lumen(app: FastAPI, settings: Any = None) -> bool:
 
     from app.api.lumen.callback import router as lumen_callback_router
     from app.api.lumen.proxy import router as lumen_proxy_router
+    from app.api.lumen.realtime import router as lumen_realtime_router
 
     # Browser callback is state-bound and intentionally has no browser bearer dependency.
     app.include_router(lumen_callback_router, prefix="/api/v1/chat", tags=["chat-callback"])
+    app.include_router(lumen_realtime_router, prefix="/api/v1/chat", tags=["chat-realtime"])
     app.include_router(lumen_proxy_router, prefix="/api/v1/chat", tags=["chat"])
     return True
 

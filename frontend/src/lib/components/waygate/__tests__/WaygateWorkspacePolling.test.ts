@@ -139,6 +139,47 @@ describe('Waygate visible detail polling', () => {
 		expect(mocks.get).toHaveBeenCalledWith(clientsPath, 'token-a', 'project-a', { refresh: true });
 	});
 
+	it('keeps loaded empty lists visible during unchanged peer and attachment polls', async () => {
+		const nextClients = deferred<unknown[]>();
+		const nextAttachments = deferred<unknown[]>();
+		let clientReads = 0;
+		let attachmentReads = 0;
+		mocks.get.mockImplementation((path: string) => {
+			if (path === base) return Promise.resolve([server('a')]);
+			if (path === detailPath) return Promise.resolve(server('a'));
+			if (path === clientsPath) return ++clientReads === 1 ? Promise.resolve([]) : nextClients.promise;
+			if (path === attachmentsPath) return ++attachmentReads === 1 ? Promise.resolve([]) : nextAttachments.promise;
+			if (path === catalogPath) return Promise.resolve([]);
+			throw new Error(`Unexpected GET ${path}`);
+		});
+		render(WaygateWorkspace);
+		await openDetail();
+		const emptyClients = panel().getByText('발급된 클라이언트가 없습니다');
+		const emptyNetworks = panel().getByText(/연결된 테넌트 네트워크가 없습니다/);
+		await advance(15_000);
+		expect(calls(clientsPath)).toBe(2);
+		expect(calls(attachmentsPath)).toBe(2);
+		expect(panel().getByText('발급된 클라이언트가 없습니다')).toBe(emptyClients);
+		expect(panel().getByText(/연결된 테넌트 네트워크가 없습니다/)).toBe(emptyNetworks);
+		expect(panel().queryByRole('status', { name: '불러오는 중' })).toBeNull();
+		expect(screen.getByRole('dialog', { name: 'Waygate 서버 상세' }).querySelector('.refresh-icon.animate-spin')).toBeNull();
+		nextClients.resolve([]);
+		nextAttachments.resolve([]);
+		await settle();
+		expect(panel().getByText('발급된 클라이언트가 없습니다')).toBe(emptyClients);
+		expect(panel().getByText(/연결된 테넌트 네트워크가 없습니다/)).toBe(emptyNetworks);
+		mocks.get.mockRejectedValueOnce(new ApiError(503, 'clients temporarily unavailable'));
+		await advance(1000);
+		expect(panel().getByText('발급된 클라이언트가 없습니다')).toBe(emptyClients);
+		expect(panel().getByText('clients temporarily unavailable')).toBeTruthy();
+		expect(panel().queryByRole('status', { name: '불러오는 중' })).toBeNull();
+		mocks.get.mockResolvedValueOnce([client('new-client')]);
+		await advance(1000);
+		expect(panel().getByText('new-client')).toBeTruthy();
+		expect(panel().queryByText('발급된 클라이언트가 없습니다')).toBeNull();
+		expect(panel().queryByText('clients temporarily unavailable')).toBeNull();
+	});
+
 	it('turns peer polling Off without stopping metadata and manually refreshes only clients', async () => {
 		render(WaygateWorkspace);
 		await openDetail();

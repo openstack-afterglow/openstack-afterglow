@@ -11,6 +11,8 @@ vi.mock('$app/stores', async () => {
 
 import { page } from '$app/stores';
 import { initSiteConfig, siteConfig } from '$lib/config/site';
+import { allNavItems } from '$lib/config/nav';
+import { DEFAULT_BETA_FEATURES } from '$lib/stores/betaFeatures';
 import Sidebar from '../Sidebar.svelte';
 
 // The SvelteKit readable is replaced with a writable store by the mock above.
@@ -29,7 +31,9 @@ beforeEach(async () => {
 
 afterEach(() => {
 	cleanup();
-	siteConfig.update((current) => ({ ...current, services: { ...current.services, k3s: false } }));
+	siteConfig.update((current) => ({ ...current, services: { ...current.services, k3s: false, trove: false } }));
+	localStorage.removeItem('afterglow.beta.volumeBackups');
+	localStorage.removeItem('afterglow.beta.databaseBackups');
 });
 
 describe('Sidebar navigation ownership', () => {
@@ -70,5 +74,20 @@ describe('Sidebar navigation ownership', () => {
 		render(Sidebar);
 
 		expect(screen.getByRole('link', { name: 'Drover' }).getAttribute('aria-current')).toBe('page');
+	});
+
+	it('shows volume and database backup destinations despite obsolete browser opt-outs', async () => {
+		localStorage.setItem('afterglow.beta.volumeBackups', 'false');
+		localStorage.setItem('afterglow.beta.databaseBackups', 'false');
+		initSiteConfig({ services: { trove: true } });
+		await navigate('/dashboard/volumes/backups');
+		render(Sidebar);
+
+		expect(screen.getByRole('link', { name: '볼륨 백업' }).getAttribute('aria-current')).toBe('page');
+		await fireEvent.click(screen.getByRole('button', { name: /Database/ }));
+		expect(screen.getByRole('link', { name: 'DB 백업' }).getAttribute('href')).toBe('/dashboard/database/backups');
+		const indexed = allNavItems(false, DEFAULT_BETA_FEATURES).map((item) => item.href);
+		expect(indexed).toContain('/dashboard/volumes/backups');
+		expect(indexed).toContain('/dashboard/database/backups');
 	});
 });

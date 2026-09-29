@@ -106,8 +106,6 @@ export function waygateClientCreateBody(draft: WaygateClientDraft): WaygateClien
 		ok: true,
 		body: {
 			name: values.name,
-			inherit_dns: draft.inheritDns,
-			inherit_persistent_keepalive: draft.inheritPersistentKeepalive,
 			...(!draft.inheritDns ? { dns: values.dns } : {}),
 			...(!draft.inheritPersistentKeepalive ? { persistent_keepalive: values.persistentKeepalive } : {}),
 			mtu: values.mtu,

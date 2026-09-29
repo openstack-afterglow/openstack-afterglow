@@ -16,12 +16,12 @@
 		selectionDisabled = false,
 		onToggleSelect,
 		onToggleAll,
-		volumeBackupsEnabled = true,
 		volumeSnapshotsEnabled = true,
 		isSystemAdmin,
 		onOpenDetail,
 		onActionMenuOpen,
 		onActionMenuClose,
+		onRename,
 		onBoot,
 		onExtend,
 		onBackup,
@@ -42,12 +42,12 @@
 		selectionDisabled?: boolean;
 		onToggleSelect: (id: string) => void;
 		onToggleAll: () => void;
-		volumeBackupsEnabled?: boolean;
 		volumeSnapshotsEnabled?: boolean;
 		isSystemAdmin: boolean;
 		onOpenDetail: (id: string) => void;
 		onActionMenuOpen: (id: string) => void;
 		onActionMenuClose: () => void;
+		onRename: (vol: Volume) => void;
 		onBoot: (vol: Volume) => void;
 		onExtend: (vol: Volume) => void;
 		onBackup: (vol: Volume) => void;
@@ -58,9 +58,7 @@
 		onToggleAutoBackup: (id: string) => void;
 	} = $props();
 
-	const volumeGridClass = $derived(volumeBackupsEnabled
-		? 'grid grid-cols-[32px_1fr_60px_0px_32px_0px_0px_0px_0px] sm:grid-cols-[32px_1.6fr_70px_90px_100px_0px_0px_0px_0px] lg:grid-cols-[32px_1.6fr_70px_90px_100px_1fr_80px_80px_56px]'
-		: 'grid grid-cols-[32px_1fr_60px_0px_32px_0px_0px_0px] sm:grid-cols-[32px_1.6fr_70px_90px_100px_0px_0px_0px] lg:grid-cols-[32px_1.6fr_70px_90px_100px_1fr_80px_56px]');
+	const volumeGridClass = 'grid grid-cols-[32px_1fr_60px_0px_32px_0px_0px_0px_0px] sm:grid-cols-[32px_1.6fr_70px_90px_100px_0px_0px_0px_0px] lg:grid-cols-[32px_1.6fr_70px_90px_100px_1fr_80px_80px_56px]';
 	const selectedSelectableCount = $derived([...selectedIds].filter((id) => selectableIds.has(id)).length);
 </script>
 
@@ -73,7 +71,7 @@
 		<div class="whitespace-nowrap">상태</div>
 		<div class="hidden lg:block">연결</div>
 		<div class="hidden lg:block">부트</div>
-		{#if volumeBackupsEnabled}<div class="hidden lg:block text-center whitespace-nowrap">자동 백업</div>{/if}
+		<div class="hidden lg:block text-center whitespace-nowrap">자동 백업</div>
 		<div class="hidden lg:block"></div>
 	</div>
 	{#each volumes as vol (vol.id)}
@@ -136,19 +134,17 @@
 					{/if}
 				{/if}
 			</div>
-			{#if volumeBackupsEnabled}
-				<!-- 자동 백업 토글 -->
-				<div class="hidden lg:flex justify-center" onclick={(e) => e.stopPropagation()} role="none">
-					<button
-						onclick={(e) => { e.stopPropagation(); onToggleAutoBackup(vol.id); }}
-						disabled={autoBackupToggling === vol.id}
-						title={autoBackupConfigs.has(vol.id) ? '자동 백업 비활성화' : '자동 백업 활성화'}
-						class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out disabled:opacity-50 {autoBackupConfigs.has(vol.id) ? 'bg-action-warm' : 'bg-surface-selected'}"
-					>
-						<span class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-surface-base shadow ring-0 transition duration-200 ease-in-out {autoBackupConfigs.has(vol.id) ? 'translate-x-4' : 'translate-x-0'}"></span>
-					</button>
-				</div>
-			{/if}
+			<!-- 자동 백업 토글 -->
+			<div class="hidden lg:flex justify-center" onclick={(e) => e.stopPropagation()} role="none">
+				<button
+					onclick={(e) => { e.stopPropagation(); onToggleAutoBackup(vol.id); }}
+					disabled={autoBackupToggling === vol.id}
+					title={autoBackupConfigs.has(vol.id) ? '자동 백업 비활성화' : '자동 백업 활성화'}
+					class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out disabled:opacity-50 {autoBackupConfigs.has(vol.id) ? 'bg-action-warm' : 'bg-surface-selected'}"
+				>
+					<span class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-surface-base shadow ring-0 transition duration-200 ease-in-out {autoBackupConfigs.has(vol.id) ? 'translate-x-4' : 'translate-x-0'}"></span>
+				</button>
+			</div>
 			<!-- 액션 드롭다운 -->
 			<div class="flex justify-end" role="none">
 				<ActionMenu
@@ -163,6 +159,13 @@
 					>
 						<svg class="w-3.5 h-3.5 text-warm-text" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
 						연결
+					</button>
+					<button
+						onclick={() => { onActionMenuClose(); onRename(vol); }}
+						class="w-full text-left px-3 py-1.5 text-[13px] text-ink-2 hover:text-ink-0 hover:bg-surface-sunken transition-colors flex items-center gap-2"
+					>
+						<svg class="w-3.5 h-3.5 text-warm-text" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536M9 13l6.232-6.232a2.5 2.5 0 113.536 3.536L12.536 16.536 8 18l1.464-4.536z" /></svg>
+						이름 변경
 					</button>
 					{#if vol.status === 'available' && vol.bootable}
 						<button
@@ -191,7 +194,7 @@
 							스냅샷 생성
 						</button>
 					{/if}
-					{#if volumeBackupsEnabled && (vol.status === 'available' || vol.status === 'in-use')}
+					{#if vol.status === 'available' || vol.status === 'in-use'}
 						<button
 							onclick={() => { onActionMenuClose(); onBackup(vol); }}
 							class="w-full text-left px-3 py-1.5 text-[13px] text-ink-2 hover:text-ink-0 hover:bg-surface-sunken transition-colors flex items-center gap-2"

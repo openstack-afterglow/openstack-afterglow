@@ -13,17 +13,15 @@
 			{/each}
 		</select>
 	</div>
-	{#if s.databaseBackupsEnabled}
-		<div>
-			<label class={s.labelCls} for="field-dbcreatestep5advanced-18">백업에서 복원 (초기 상태 원본)</label>
-			<select id="field-dbcreatestep5advanced-18" bind:value={s.restoreBackupId} class={s.inputCls}>
-				<option value="">새 인스턴스</option>
-				{#each s.backups as b}
-					<option value={b.id}>{b.name}</option>
-				{/each}
-			</select>
-		</div>
-	{/if}
+	<div>
+		<label class={s.labelCls} for="field-dbcreatestep5advanced-18">백업에서 복원 (초기 상태 원본)</label>
+		<select id="field-dbcreatestep5advanced-18" bind:value={s.restoreBackupId} class={s.inputCls}>
+			<option value="">새 인스턴스</option>
+			{#each s.backups as b}
+				<option value={b.id}>{b.name}</option>
+			{/each}
+		</select>
+	</div>
 	<div>
 		<label class={s.labelCls} for="field-dbcreatestep5advanced-28">복제 원본 인스턴스</label>
 		<select id="field-dbcreatestep5advanced-28" bind:value={s.replicaOf} class={s.inputCls}>

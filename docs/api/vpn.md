@@ -84,6 +84,8 @@ Content-Type: application/json
 
 새 클라이언트가 DNS·PersistentKeepalive 값과 상속 플래그를 모두 생략하면 현재 서버 기본값을 상속합니다. 응답은 계산된 `dns`·`persistent_keepalive`와 `inherit_dns`·`inherit_persistent_keepalive` 플래그를 함께 반환합니다. 기존 클라이언트는 schema migration 004에서 두 플래그가 `false`가 되므로 기존에 저장된 명시 설정을 유지합니다. `dns`는 쉼표로 구분한 최대 두 주소/호스트 이름이고, `mtu`는 클라이언트 전용 `576–9000` 정수 또는 `null`(WireGuard 자동값)입니다. 이 설정은 클라이언트 측 `.conf`에만 반영되므로 저장 후 `.conf`를 다시 받거나 QR을 다시 스캔해야 합니다.
 
+Afterglow의 발급 UI는 상속 선택 시 `inherit_dns`·`inherit_persistent_keepalive` 플래그를 POST에 넣지 않고 대응 값 자체를 생략합니다. DNS 행 생략과 keepalive `0`을 명시 override로 선택하면 해당 값만 전송합니다. 이는 상속 플래그를 거부하는 기존 배포 API에서 발급 시 `422`가 나는 것을 피하지만, 기존 배포 버전의 동적 기본값 상속 지원 여부를 검증한 것은 아닙니다. PATCH의 상속 플래그는 기존 계약대로 유지하므로 이전 버전에서의 PATCH 호환은 별도로 확인해야 합니다.
+
 ```http
 PATCH /api/v1/waygate/servers/{server_id}/clients/{client_id}
 Content-Type: application/json
@@ -96,6 +98,8 @@ Content-Type: application/json
 새 클라이언트는 전용 32바이트 난수 사전 공유 키(PSK)를 자동 생성해 암호화 저장하고, 같은 키를 발급/다운로드 `.conf`와 에이전트 desired-state에 포함합니다. 목록·상세·PATCH 응답은 키 자체가 아니라 `psk_enabled` boolean만 반환합니다. 기존 클라이언트는 연결이 끊기지 않도록 PSK를 자동으로 추가하거나 교체하지 않으며, import는 번들의 키를 보존합니다.
 
 클라이언트 응답의 `rx_bytes`/`tx_bytes`는 게이트웨이 WireGuard peer 관점의 누적 카운터이고 `last_reported_at`은 그 값을 담은 에이전트 상태 보고를 Waygate가 받은 시각입니다. Afterglow UI는 클라이언트 관점으로 표시하므로 `클라이언트 수신 RX = tx_bytes`, `클라이언트 송신 TX = rx_bytes`입니다. 브라우저는 열린 프로젝트·서버의 클라이언트별 보고를 최대 60개만 보관하고, 서로 다른 두 보고의 서버 시각 차이로 bytes/s를 계산합니다. 같은/이전 시각 보고, 카운터 감소(재시작·재활성화), 시간 간격 누락, 보고·peer 누락은 속도 공백으로 남깁니다. 비활성 클라이언트와 서버/프로젝트 전환은 이력을 비웁니다. UI의 피어 자동 새로고침은 끔/1/2/5/10/15/30/60초로 서버·네트워크 메타데이터 새로고침과 독립입니다. 지연 보고는 `max(5초, 3 × max(선택한 피어 간격, 에이전트 report_interval_seconds))`를 초과한 보고 시각 또는 브라우저 수신 시각으로 판정하며, 속도를 이어 계산할 때도 같은 간격을 사용합니다. 구형 에이전트가 간격 메타데이터를 보내지 않으면 기존 15초 reconcile 간격을 대신 사용합니다.
+
+서버·클라이언트·첨부 네트워크·프로젝트 네트워크 목록은 최초 조회에만 로딩 화면을 표시합니다. 이후 자동·수동 갱신에서는 기존 행(빈 목록 포함)을 유지하고 ID와 값이 바뀐 행만 갱신합니다. 실패한 갱신은 기존 목록과 함께 오류를 표시하고 다시 조회하며, 프로젝트/서버가 바뀌면 이전 결과와 트래픽 이력을 폐기합니다. 보고가 멈추면 목록은 유지해도 지연 상태는 실제 시간에 따라 전환됩니다.
 
 서버가 `ACTIVE`이고 서버 공개키가 등록된 경우에만 발급합니다. Waygate가 X25519 키쌍과 다음 터널 IP를 생성하고 private key를 AES-256-GCM으로 암호화해 저장합니다. 생성 응답에는 `tunnel_conf`가 포함됩니다. 설정 다운로드는 저장된 키를 복호화해 최신 활성 네트워크 CIDR까지 `AllowedIPs`에 병합하여 다시 렌더합니다.
 

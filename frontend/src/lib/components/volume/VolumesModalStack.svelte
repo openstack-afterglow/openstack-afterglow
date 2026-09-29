@@ -4,6 +4,7 @@
 	import VolumeExtendModal from '$lib/components/volume/VolumeExtendModal.svelte';
 	import VolumeBackupModal from '$lib/components/volume/VolumeBackupModal.svelte';
 	import VolumeSnapshotModal from '$lib/components/volume/VolumeSnapshotModal.svelte';
+	import VolumeRenameModal from '$lib/components/volume/VolumeRenameModal.svelte';
 
 	let {
 		transferVolumeId,
@@ -12,7 +13,7 @@
 		extendTarget,
 		backupTarget,
 		snapshotTarget,
-		volumeBackupsEnabled = true,
+		renameTarget,
 		volumeSnapshotsEnabled = true,
 		onCloseTransfer,
 		onTransferred,
@@ -21,6 +22,8 @@
 		onCloseBackup,
 		onCloseSnapshot,
 		onSnapshotSuccess,
+		onCloseRename,
+		onRenamed,
 	}: {
 		transferVolumeId: string;
 		transferVolumeName: string;
@@ -28,7 +31,7 @@
 		extendTarget: Volume | null;
 		backupTarget: Volume | null;
 		snapshotTarget: Volume | null;
-		volumeBackupsEnabled?: boolean;
+		renameTarget: Volume | null;
 		volumeSnapshotsEnabled?: boolean;
 		onCloseTransfer: () => void;
 		onTransferred: () => void;
@@ -37,6 +40,8 @@
 		onCloseBackup: () => void;
 		onCloseSnapshot: () => void;
 		onSnapshotSuccess: () => void;
+		onCloseRename: () => void;
+		onRenamed: (updated: Volume) => void;
 	} = $props();
 </script>
 
@@ -49,19 +54,23 @@
 	/>
 {/if}
 
+<VolumeRenameModal
+	volume={renameTarget}
+	onclose={onCloseRename}
+	onrenamed={onRenamed}
+/>
+
 <VolumeExtendModal
 	volume={extendTarget}
 	onclose={onCloseExtend}
 	onsuccess={onExtendSuccess}
 />
 
-{#if volumeBackupsEnabled}
-	<VolumeBackupModal
-		volume={backupTarget}
-		onclose={onCloseBackup}
-		onsuccess={onCloseBackup}
-	/>
-{/if}
+<VolumeBackupModal
+	volume={backupTarget}
+	onclose={onCloseBackup}
+	onsuccess={onCloseBackup}
+/>
 
 {#if volumeSnapshotsEnabled}
 	<VolumeSnapshotModal

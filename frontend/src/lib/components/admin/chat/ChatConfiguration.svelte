@@ -903,7 +903,13 @@
 
 	function mediaProviderSupported(providerId: number | ''): boolean {
 		const provider = providers.find((candidate) => candidate.id === providerId);
-		return !!provider && providerAuthMode(provider) === 'api_key' && !provider.api_base && ['openai', 'gemini'].includes(provider.provider_type);
+		if (!provider || providerAuthMode(provider) !== 'api_key') return false;
+		const officialBases: Record<string, string[]> = {
+			openai: ['https://api.openai.com', 'https://api.openai.com/v1'],
+			gemini: ['https://generativelanguage.googleapis.com', 'https://generativelanguage.googleapis.com/v1beta']
+		};
+		const allowed = officialBases[provider.provider_type];
+		return !!allowed && (provider.api_base === null || allowed.includes(provider.api_base.replace(/\/+$/, '')));
 	}
 
 	function clearProviderSecrets() {

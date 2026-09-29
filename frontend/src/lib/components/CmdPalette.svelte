@@ -24,12 +24,10 @@
     libraryConsume: true,
     haDeploy: true,
     keyManager: true,
-    volumeBackups: true,
     volumeSnapshots: true,
     fileStorageSnapshots: true,
     fileStorageShareNetworks: true,
     fileStorageSecurityServices: true,
-    databaseBackups: true,
   };
 
   let query = $state('');

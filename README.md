@@ -30,6 +30,7 @@ Afterglow는 현재 [DMS Cloud 연구 클라우드 제공 콘솔](https://cloud.
 - **k3s 클러스터 프로비저닝** — Magnum 없이 VM에 k3s 직접 배포 (OCCM · Cinder/Manila CSI · Keystone Auth · Barbican KMS 플러그인)
 - **squashfs/NFS 라이브러리 레이어 (Palimpsest)** — content-addressable 불변 레이어 체인을 Manila share에 저장하고 소비 VM에서 OverlayFS로 조합
 - **모니터링 통합** — Grafana JWT 임베드, Prometheus HTTP SD, Monitoring 보안 그룹 자동화
+- **AI 이미지·음성 작업 공간** — Lumen의 프로젝트 소유 이미지 생성/편집, TTS/STT와 60초 one-use ticket 기반 실시간 음성 WebSocket. 제공자 키와 실행·비용 원장은 Lumen 소유이며 브라우저는 현재 프로젝트 모델·가격 readiness를 확인한 뒤 명시적으로 마이크 권한을 요청합니다. [채팅 BFF API](docs/api/chat.md#실시간-음성-browser-session) / [Lumen media API](https://github.com/openstack-afterglow/lumen/blob/dev/docs/api-reference.md#이미지유한-오디오실시간-음성).
 - **Defense-in-depth 보안** — IDOR 가드, HKDF 키 분리 암호화, kubeconfig audit log, production 부팅 가드
 
 ## 빠른 시작

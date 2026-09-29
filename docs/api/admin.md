@@ -81,6 +81,10 @@ nav_order: 20
 | `GET` | `/api/v1/admin/hypervisors` | 컴퓨트 하이퍼바이저 상세 목록(호스트별 vCPU/RAM/디스크/VM 수) |
 | `GET` | `/api/v1/admin/hypervisors/{hypervisor_id}` | 특정 하이퍼바이저 상세 |
 | `GET` | `/api/v1/admin/compute-hosts` | 마이그레이션 대상 선택용 컴퓨트 호스트 목록 |
+| `PUT` | `/api/v1/admin/hypervisors/{hypervisor_id}/service` | 연결 상태와 별개로 해당 호스트의 `nova-compute` 스케줄링 변경. 본문 `{ "status": "enabled" }` 또는 `{ "status": "disabled", "reason": "점검 사유" }`; 비활성화 사유 필수 |
+| `POST` | `/api/v1/admin/hypervisors/{hypervisor_id}/relocate` | `up/disabled`일 때 `{ "mode": "migrate" }`로 전체 인스턴스 이동 요청, `down`일 때 원본 전원 차단·펜싱 확인 후 `{ "mode": "evacuate", "fenced": true }`로 대피 요청. 서버가 호스트 상태·소속을 재확인하고 모든 페이지를 읽으며 인스턴스별 `requested`/`failed`/`skipped` 결과를 반환 |
+
+`state`(`up/down`)는 호스트 생존 상태, `status`(`enabled/disabled`)는 새 인스턴스 스케줄링 허용 여부로 독립입니다. 비활성화는 기존 인스턴스를 자동으로 이동시키지 않습니다. 전체 이동은 `ACTIVE`의 live migration과 `SHUTOFF`의 cold migration을 별도로 요청하고, 다른 상태는 이유와 함께 건너뜁니다. `down`만으로 호스트가 펜싱되었다고 판단할 수 없으므로, 대피 전 운영자가 원본의 전원 차단·격리를 반드시 확인해야 합니다. API의 `requested`는 Nova가 비동기 작업을 접수했다는 뜻이며 **이동 완료·복구 성공이 아닙니다**. 개별 VM의 상태와 목적지, cold migration의 `VERIFY_RESIZE` 확정 여부를 후속 확인하세요.
 
 ![하이퍼바이저 목록](../../assets/admin-hv-list.png)
 *호스트별 VM 수, vCPU 사용률, RAM 사용량, 로컬 디스크 현황을 테이블로 일괄 조회*

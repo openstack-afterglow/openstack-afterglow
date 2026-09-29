@@ -7,6 +7,17 @@
 
 ## [Unreleased]
 
+### Added
+- **Lumen image/audio/realtime Studio** — 관리자 media kind·정확 단가 편집, 프로젝트 소유 이미지 생성·편집과 canonical asset, TTS/STT 생성·전사·채팅 재생을 연결했다. 실시간 음성은 명시적 microphone 승인 뒤 Keystone-scoped admission, one-use Redis browser ticket, Origin-checked internal Lumen WS relay, PCM16 capture/재생·barge interruption·화면 자막을 사용한다. Provider key와 Lumen connect token은 browser에 노출하지 않고 scope 전환/로그아웃에서 microphone/socket/audio buffer를 정리한다. Synthetic WS, MariaDB/Redis, BFF/UI tests는 수행했지만 live provider inference와 브라우저 visual acceptance는 미검증이다.
+- **관리자 하이퍼바이저 호스트 운영** — 호스트의 생존 상태와 Nova `nova-compute` 스케줄링 상태를 분리 표시하고 사유를 입력한 enable/disable을 제공한다. `up/disabled` 호스트의 전체 인스턴스 live/cold migration과 `down` 호스트의 펜싱 확인 후 evacuation은 각각 별도 확인 작업으로 제공한다. 모든 프로젝트의 VM을 페이지 끝까지 조회하고 요청·실패·건너뜀을 VM별로 표시하며, 비동기 요청을 완료로 표시하거나 `forced_down`을 자동 설정하지 않는다. 실제 운영 호스트 상태 변경·이주 성공은 아직 검증하지 않았다.
+
+### Changed
+- **볼륨·DB 백업 사용자 동선 상시 노출** — 기존 Cinder 볼륨 백업과 Trove DB 백업의 목록·생성·복원·자동 백업을 브라우저별 베타 설정에서 분리했다. 예전 `false` 값이 남아도 탐색 메뉴와 직접 경로에서 사용할 수 있으며 볼륨 백업 목록은 프로젝트 전환 시 늦은 응답을 폐기한다. File Storage는 별개다. 운영 Manila의 실험적 share-backup API는 확인했으나 독립 백업 저장소·데이터 노드 mount 설정이 없어 실제 복원이 가능한 백업 기능은 아직 제공하지 않는다. 스냅샷은 백업으로 표시하지 않는다.
+
+### Fixed
+- **볼륨 상세 일관성 및 이름 변경** — 볼륨 목록 작업 메뉴와 상세 화면에서 소유 볼륨의 이름을 변경한다(`in-use` 포함). 목록 패널과 전체화면 상세가 동일한 컴포넌트·데이터·작업을 사용하고, 연결된 인스턴스의 프로젝트별 실제 이름과 UUID를 표시한다. 이름 조회 실패는 명시적 UUID 대체로 남기고 폴링 오류에는 이미 표시한 볼륨 정보를 유지한다. 실제 운영 Cinder 이름 변경은 수행하지 않았다.
+- **Waygate 목록 폴링 및 클라이언트 발급** — 서버·클라이언트·연결/프로젝트 네트워크 조회가 반복될 때 이미 표시한 목록을 지우지 않고 ID별 실제 변경분만 반영한다. 빈 목록·오류 후 재시도·수동 갱신에서도 초기 skeleton으로 되돌아가지 않으며 트래픽의 보고 지연 판정과 프로젝트/서버 격리는 유지한다. 클라이언트 발급 POST에서 상속 플래그를 생략해 이를 거부하는 기존 배포 API의 `422`를 방지하고, DNS·keepalive 명시 override는 보존한다. 기존 서비스의 동적 상속 및 PATCH 호환은 배포 버전 확인이 필요하다.
+
 ## [1.29.0] - 2026-09-28
 
 ### Added

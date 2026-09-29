@@ -30,7 +30,7 @@
 			open: false,
 			items: [
 				{ label: '볼륨 목록', href: '/dashboard/volumes', service: null },
-				{ label: '볼륨 백업', href: '/dashboard/volumes/backups', service: null, beta: 'volumeBackups' as BetaFeatureKey },
+				{ label: '볼륨 백업', href: '/dashboard/volumes/backups', service: null },
 				{ label: '볼륨 스냅샷', href: '/dashboard/volumes/snapshots', service: null, beta: 'volumeSnapshots' as BetaFeatureKey },
 			],
 		},
@@ -64,7 +64,7 @@
 			service: 'trove' as const,
 			items: [
 				{ label: 'DB 인스턴스', href: '/dashboard/database/instances', service: null },
-				{ label: 'DB 백업', href: '/dashboard/database/backups', service: null, beta: 'databaseBackups' as BetaFeatureKey },
+				{ label: 'DB 백업', href: '/dashboard/database/backups', service: null },
 			],
 		},
 		{

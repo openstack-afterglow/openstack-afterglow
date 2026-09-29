@@ -15,6 +15,8 @@ Manila 공유 파일 시스템(CephFS/NFS)을 관리합니다.
 > Manila는 선택 서비스이므로, 비활성화 상태에서는 이 라우터 자체가 마운트되지 않아
 > 모든 `/api/v1/file-storage*` 경로가 `404`를 반환합니다.
 
+> **공유 백업 미지원:** 이 경로는 공유 생성·조회·접근 관리를 제공하며 share-backup 생성·복원 API는 제공하지 않습니다. 운영 Manila의 실험적 share-backup API(2.80+, experimental header)는 확인됐으나 `manila-data`의 독립 NFS 백업 저장소와 데이터 노드 access IP가 설정되지 않았습니다. 현재 기본 NFS backup driver는 native CEPHFS 공유를 mount할 수도 없습니다. 저장소·드라이버 준비와 실제 생성·복원 검증 전에는 File Storage 공유 스냅샷을 백업으로 간주하지 마세요.
+
 ---
 
 ## 인증 헤더
