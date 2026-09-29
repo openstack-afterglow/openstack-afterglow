@@ -1,19 +1,55 @@
 <script lang="ts">
+  import { auth } from '$lib/stores/auth';
+  import { betaFeatures } from '$lib/stores/betaFeatures';
   import { useVolumeDetailController } from '$lib/stores/volumeDetailController.svelte';
+  import { bootFromVolume } from '$lib/stores/volumesController.svelte';
+  import ActionMenu from '$lib/components/ui/ActionMenu.svelte';
   import Button from '$lib/components/ui/Button.svelte';
+  import VolumeOperationItems from '$lib/components/volume/VolumeOperationItems.svelte';
+  import type { Volume } from '$lib/types/volume';
+
+  let { onExtend, onBackup, onSnapshot, onTransfer }: {
+    onExtend: (volume: Volume) => void;
+    onBackup: (volume: Volume) => void;
+    onSnapshot: (volume: Volume) => void;
+    onTransfer: (volume: Volume) => void;
+  } = $props();
 
   const s = useVolumeDetailController();
+  let menuOpen = $state(false);
+  let menuScope = '';
+  $effect(() => {
+    const scope = `${$auth.projectId ?? ''}\u0000${s.volume?.id ?? ''}`;
+    if (scope === menuScope) return;
+    menuScope = scope;
+    menuOpen = false;
+  });
 </script>
 
-<div class="flex gap-2 flex-wrap">
+<div class="flex items-center gap-2 flex-wrap" aria-label="볼륨 작업">
   <Button onclick={() => s.openRenameModal()} size="sm" variant="secondary">이름 변경</Button>
   {#if s.volume!.status === 'available'}
     <Button onclick={() => s.openAttachModal()} size="sm">인스턴스에 연결</Button>
   {/if}
-  <button
-    onclick={() => s.deleteVolume()}
-    disabled={!s.canDelete}
-    class="px-3 py-1.5 text-xs bg-red-900/40 hover:bg-red-900/60 disabled:opacity-40 text-red-400 border border-red-900 rounded-lg transition-colors"
-    title={s.volume!.attachments.length > 0 ? '연결된 볼륨은 삭제할 수 없습니다' : ''}
-  >{s.deleting ? '삭제 중...' : '볼륨 삭제'}</button>
+  <Button onclick={() => s.deleteVolume()} disabled={!s.canDelete} size="sm" variant="danger-outline" title={s.volume!.attachments.length > 0 ? '연결된 볼륨은 삭제할 수 없습니다' : undefined}>
+    {s.deleting ? '삭제 중...' : '볼륨 삭제'}
+  </Button>
+  <span class="text-sm text-ink-2">볼륨 작업</span>
+  <ActionMenu open={menuOpen} onopen={() => menuOpen = true} onclose={() => menuOpen = false} ariaLabel={`${s.volume!.name || s.volume!.id} 볼륨 작업`}>
+    <VolumeOperationItems
+      volume={s.volume!}
+      onclose={() => menuOpen = false}
+      onRename={() => s.openRenameModal()}
+      onBoot={bootFromVolume}
+      {onExtend}
+      {onBackup}
+      {onSnapshot}
+      {onTransfer}
+      onForceDelete={() => s.forceDeleteVolume()}
+      onDelete={() => s.deleteVolume()}
+      volumeSnapshotsEnabled={$betaFeatures.volumeSnapshots}
+      isSystemAdmin={!!$auth.isSystemAdmin}
+      deleting={s.deleting}
+    />
+  </ActionMenu>
 </div>

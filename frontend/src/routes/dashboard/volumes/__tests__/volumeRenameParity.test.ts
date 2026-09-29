@@ -89,6 +89,12 @@ describe('volume detail parity and list rename', () => {
 		expect(within(attachments).getByText('server-a')).toBeTruthy();
 		expect(screen.getByText('ssd')).toBeTruthy();
 		expect(screen.getByRole('button', { name: '이름 변경' })).toBeTruthy();
+		expect((screen.getByRole('button', { name: '볼륨 삭제' }) as HTMLButtonElement).disabled).toBe(true);
+		await fireEvent.click(screen.getByRole('button', { name: 'data-disk 볼륨 작업' }));
+		const actions = screen.getByRole('group', { name: 'data-disk 볼륨 작업 옵션' });
+		expect(within(actions).getByRole('button', { name: '이름 변경' })).toBeTruthy();
+		expect(within(actions).getByRole('button', { name: '용량 확장' })).toBeTruthy();
+		expect(within(actions).getByRole('button', { name: '백업 생성' })).toBeTruthy();
 	});
 
 	it('renames from the list action menu and updates both the row and the open detail panel', async () => {
@@ -98,8 +104,14 @@ describe('volume detail parity and list rename', () => {
 		const heading = await screen.findByRole('heading', { name: 'data-disk' });
 		expect(heading).toBeTruthy();
 		expect(await screen.findByRole('link', { name: 'web-01' })).toBeTruthy();
+		const detail = await screen.findByRole('dialog', { name: '볼륨 상세' });
+		await fireEvent.click(within(detail).getByRole('button', { name: 'data-disk 볼륨 작업' }));
+		const detailMenu = await screen.findByRole('group', { name: 'data-disk 볼륨 작업 옵션' });
+		expect(within(detailMenu).getByRole('button', { name: '용량 확장' })).toBeTruthy();
+		expect(within(detailMenu).getByRole('button', { name: '백업 생성' })).toBeTruthy();
+		await fireEvent.click(within(detail).getByRole('button', { name: 'data-disk 볼륨 작업' }));
 
-		await fireEvent.click(screen.getByRole('button', { name: 'data-disk 볼륨 작업' }));
+		await fireEvent.click(within(document.getElementById('volume-resource-panel')!).getByRole('button', { name: 'data-disk 볼륨 작업' }));
 		const menu = await screen.findByRole('group', { name: 'data-disk 볼륨 작업 옵션' });
 		await fireEvent.click(within(menu).getByRole('button', { name: '이름 변경' }));
 
@@ -110,7 +122,7 @@ describe('volume detail parity and list rename', () => {
 
 		expect(mocks.patch).toHaveBeenCalledWith('/api/v1/volumes/vol-1', { name: 'renamed-disk' }, 'token', 'project-a');
 		await waitFor(() => expect(screen.queryByRole('dialog', { name: '볼륨 이름 변경' })).toBeNull());
-		expect(await screen.findByRole('button', { name: 'renamed-disk 볼륨 작업' })).toBeTruthy();
+		expect(await screen.findAllByRole('button', { name: 'renamed-disk 볼륨 작업' })).toHaveLength(2);
 		expect(await screen.findByRole('heading', { name: 'renamed-disk' })).toBeTruthy();
 		expect(screen.queryByText('data-disk')).toBeNull();
 	});

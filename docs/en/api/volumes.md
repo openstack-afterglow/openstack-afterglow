@@ -65,7 +65,9 @@ Manages Cinder block storage volumes, backups, and snapshots.
 
 Returns the project's Cinder volume list. The response is cached for about 15 seconds (`ttl_fast`). You can bypass the cache with `?refresh=true`.
 
-The list action menu, list detail panel, and full-screen detail route use the same volume detail view. Attached instance names are resolved in the current project and shown alongside UUIDs. When name lookup fails, the view labels the UUID as an unavailable name rather than guessing an instance from another project.
+The list menu and both the list SlidePanel and `/dashboard/volumes/{id}` detail share operation availability: rename; boot a VM from an available bootable volume; extend or back up an available or in-use volume; create a snapshot when enabled; transfer an available volume; and delete. Normal delete is disabled for attached volumes. Force-delete appears only for system administrators on volumes in error, error_deleting, or deleting state. Detail uses the existing dialogs and VM wizard, and refreshes the open volume/list after successful mutations. The list's Connect item opens detail; detail's Attach to instance action selects a VM when available.
+
+Attached instance names are resolved in the current project and shown alongside UUIDs. When name lookup fails, the view labels the UUID as an unavailable name rather than guessing an instance from another project.
 
 **Response (200 OK)** — array of `VolumeInfo[]`
 

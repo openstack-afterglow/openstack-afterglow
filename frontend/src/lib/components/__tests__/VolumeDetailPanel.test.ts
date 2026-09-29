@@ -4,7 +4,7 @@ import { tick } from 'svelte';
 import { writable, type Writable } from 'svelte/store';
 import type { Volume } from '$lib/types/volume';
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), patch: vi.fn(), post: vi.fn(), delete: vi.fn() }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), patch: vi.fn(), post: vi.fn(), delete: vi.fn(), wizardUpdate: vi.fn(), openWizard: vi.fn(), confirm: vi.fn() }));
 
 vi.mock('$lib/api/client', () => {
 	class ApiError extends Error {
@@ -16,6 +16,8 @@ vi.mock('$lib/api/client', () => {
 	}
 	return { ApiError, api: mocks };
 });
+vi.mock('$lib/stores/wizard', () => ({ wizard: { update: mocks.wizardUpdate }, openWizard: mocks.openWizard }));
+vi.mock('$lib/stores/confirm.svelte', () => ({ confirmDialog: mocks.confirm }));
 vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token', projectId: 'project-a' }) }));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 	createAutoRefresh: () => ({ active: false, intervalSeconds: 15, intervalOptions: [10, 15, 30, 60] }),
@@ -23,9 +25,10 @@ vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 
 import { ApiError } from '$lib/api/client';
 import { auth } from '$lib/stores/auth';
+import { betaFeatures, DEFAULT_BETA_FEATURES } from '$lib/stores/betaFeatures';
 import VolumeDetailPanel from '../VolumeDetailPanel.svelte';
 
-const projectAuth = auth as unknown as Writable<{ token: string; projectId: string | null }>;
+const projectAuth = auth as unknown as Writable<{ token: string; projectId: string | null; isSystemAdmin?: boolean }>;
 
 const attachedVolume = (overrides: Partial<Volume> = {}): Volume => ({
 	id: 'vol-1',
@@ -57,11 +60,15 @@ function routeGets(volume: Volume, instanceNames: Record<string, string>) {
 function instanceGetCount(serverId: string): number {
 	return mocks.get.mock.calls.filter(([path]) => path === `/api/v1/instances/${serverId}`).length;
 }
+async function openVolumeMenu(name = 'data-disk') {
+	await fireEvent.click(await screen.findByRole('button', { name: `${name} 볼륨 작업` }));
+}
 
 describe('VolumeDetailPanel', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		projectAuth.set({ token: 'token', projectId: 'project-a' });
+		projectAuth.set({ token: 'token', projectId: 'project-a', isSystemAdmin: false });
+		betaFeatures.set({ ...DEFAULT_BETA_FEATURES });
 	});
 
 	it('shows the attached instance name with its UUID and labels unreadable instances instead of guessing', async () => {
@@ -160,7 +167,8 @@ describe('VolumeDetailPanel', () => {
 		const onRenamed = vi.fn();
 		render(VolumeDetailPanel, { props: { volumeId: 'vol-1', onRenamed } });
 
-		await fireEvent.click(await screen.findByRole('button', { name: '이름 변경' }));
+		await openVolumeMenu();
+		await fireEvent.click(within(screen.getByRole('group', { name: 'data-disk 볼륨 작업 옵션' })).getByRole('button', { name: '이름 변경' }));
 		const input = screen.getByRole('textbox');
 		expect((input as HTMLInputElement).value).toBe('data-disk');
 		await fireEvent.input(input, { target: { value: '   ' } });
@@ -184,7 +192,8 @@ describe('VolumeDetailPanel', () => {
 		const onRenamed = vi.fn();
 		render(VolumeDetailPanel, { props: { volumeId: 'vol-1', onRenamed } });
 
-		await fireEvent.click(await screen.findByRole('button', { name: '이름 변경' }));
+		await openVolumeMenu();
+		await fireEvent.click(within(screen.getByRole('group', { name: 'data-disk 볼륨 작업 옵션' })).getByRole('button', { name: '이름 변경' }));
 		await fireEvent.input(screen.getByRole('textbox'), { target: { value: 'next-name' } });
 		await fireEvent.click(screen.getByRole('button', { name: '저장' }));
 
@@ -193,4 +202,87 @@ describe('VolumeDetailPanel', () => {
 		expect(screen.getByRole('heading', { name: 'data-disk' })).toBeTruthy();
 		expect(onRenamed).not.toHaveBeenCalled();
 	});
+	it.each([['list panel', true], ['direct route', false]])('offers boot, resize, backup and transfer from the %s', async (_surface, embedded) => {
+		const volume = attachedVolume({ status: 'available', bootable: true, attachments: [] });
+		routeGets(volume, {});
+		render(VolumeDetailPanel, { props: { volumeId: 'vol-1', ...(embedded ? { onClose: vi.fn() } : {}) } });
+
+		await openVolumeMenu();
+		expect(screen.getByRole('button', { name: '이 볼륨으로 VM 부팅' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: '용량 확장' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: '백업 생성' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: '이전' })).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: '이 볼륨으로 VM 부팅' }));
+		const bootIntent = mocks.wizardUpdate.mock.calls[0][0]({ bootSource: 'image', imageId: 'stale' });
+		expect(bootIntent).toMatchObject({ bootSource: 'volume', bootVolumeId: 'vol-1', bootVolumeName: 'data-disk', imageId: null });
+		expect(mocks.openWizard).toHaveBeenCalledOnce();
+
+		await openVolumeMenu();
+		await fireEvent.click(screen.getByRole('button', { name: '용량 확장' }));
+		expect((await screen.findByRole('dialog')).textContent).toContain('볼륨 용량 확장');
+		await fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '취소' }));
+		await openVolumeMenu();
+		await fireEvent.click(screen.getByRole('button', { name: '백업 생성' }));
+		expect((await screen.findByRole('dialog')).textContent).toContain('볼륨 백업 생성');
+		await fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '취소' }));
+		await openVolumeMenu();
+		await fireEvent.click(screen.getByRole('button', { name: '이전' }));
+		expect((await screen.findByRole('dialog')).textContent).toContain('볼륨 이전');
+	});
+
+	it('keeps attached-volume deletion disabled and submits resize with the selected project', async () => {
+		const volume = attachedVolume({ attachments: [{ server_id: 'server-a' }] });
+		routeGets(volume, { 'server-a': 'web-01' });
+		mocks.post.mockResolvedValue({});
+		const onChanged = vi.fn();
+		render(VolumeDetailPanel, { props: { volumeId: 'vol-1', onChanged } });
+		await openVolumeMenu();
+		expect(screen.queryByRole('button', { name: '이 볼륨으로 VM 부팅' })).toBeNull();
+		expect(screen.queryByRole('button', { name: '이전' })).toBeNull();
+		expect((screen.getByRole('button', { name: '삭제' }) as HTMLButtonElement).disabled).toBe(true);
+		expect(screen.queryByRole('button', { name: '강제 삭제' })).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: '용량 확장' }));
+		await fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: '확장' }));
+		await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/v1/volumes/vol-1/extend', { new_size: 30 }, 'token', 'project-a'));
+		await waitFor(() => expect(onChanged).toHaveBeenCalledOnce());
+	});
+
+	it('gates snapshots and administrator force deletion exactly as the list menu does', async () => {
+		const volume = attachedVolume({ status: 'error', attachments: [] });
+		routeGets(volume, {});
+		const onDeleted = vi.fn();
+		const view = render(VolumeDetailPanel, { props: { volumeId: 'vol-1', onDeleted } });
+		await openVolumeMenu();
+		expect(screen.queryByRole('button', { name: '스냅샷 생성' })).toBeNull();
+		expect(screen.queryByRole('button', { name: '강제 삭제' })).toBeNull();
+		betaFeatures.set({ ...DEFAULT_BETA_FEATURES, volumeSnapshots: true });
+		projectAuth.set({ token: 'token', projectId: 'project-a', isSystemAdmin: true });
+		expect(await screen.findByRole('button', { name: '강제 삭제' })).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: '스냅샷 생성' }));
+		expect((await screen.findByRole('dialog')).textContent).toContain('볼륨 스냅샷 생성');
+		await fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '취소' }));
+		await openVolumeMenu();
+		mocks.confirm.mockResolvedValue(true);
+		mocks.post.mockResolvedValue({});
+		await fireEvent.click(screen.getByRole('button', { name: '강제 삭제' }));
+		await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/v1/volumes/vol-1/force-delete', {}, 'token', 'project-a'));
+		expect(onDeleted).toHaveBeenCalledOnce();
+		view.unmount();
+	});
+
+	it('never submits normal deletion for a connected volume after the status refreshes', async () => {
+		const volume = attachedVolume({ status: 'available', attachments: [] });
+		routeGets(volume, {});
+		const view = render(VolumeDetailPanel, { props: { volumeId: 'vol-1', refreshKey: 0 } });
+		await openVolumeMenu();
+		const deleteButton = screen.getByRole('button', { name: '삭제' });
+		// A refreshed resource may become attached while the old menu remains open.
+		routeGets(attachedVolume({ status: 'in-use', attachments: [{ server_id: 'server-a' }] }), { 'server-a': 'web-01' });
+		await view.rerender({ volumeId: 'vol-1', refreshKey: 1 });
+		await screen.findByRole('link', { name: 'web-01' });
+		await fireEvent.click(deleteButton);
+		expect(mocks.confirm).not.toHaveBeenCalled();
+		expect(mocks.delete).not.toHaveBeenCalled();
+	});
+
 });

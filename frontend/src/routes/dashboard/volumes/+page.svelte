@@ -231,6 +231,7 @@
       onClose={ctrl.closeVolumePanel}
       onDeleted={() => { ctrl.fetchVolumes(); ctrl.closeVolumePanel(); }}
       onRenamed={(updated) => ctrl.applyRenamedVolume(updated, 'detail')}
+      onChanged={() => { void ctrl.fetchVolumes(); void ctrl.fetchSnapshots(); }}
     />
   </SlidePanel>
 {/if}
@@ -246,10 +247,10 @@
   onCloseTransfer={() => ctrl.showTransferModal = false}
   onTransferred={() => { ctrl.fetchVolumes(); ctrl.showTransferModal = false; }}
   onCloseExtend={() => ctrl.extendTargetVol = null}
-  onExtendSuccess={() => { ctrl.extendTargetVol = null; ctrl.fetchVolumes(true); }}
+  onExtendSuccess={() => { ctrl.extendTargetVol = null; ctrl.fetchVolumes(true); ctrl.refreshSelectedDetail(); }}
   onCloseBackup={() => ctrl.backupTargetVol = null}
   onCloseSnapshot={() => ctrl.snapshotTargetVol = null}
-  onSnapshotSuccess={() => { ctrl.snapshotTargetVol = null; ctrl.fetchSnapshots(); }}
+  onSnapshotSuccess={() => { ctrl.snapshotTargetVol = null; ctrl.fetchSnapshots(); ctrl.refreshSelectedDetail(); }}
   onCloseRename={() => ctrl.renameTargetVol = null}
   onRenamed={(updated) => ctrl.applyRenamedVolume(updated, 'list')}
   volumeSnapshotsEnabled={$betaFeatures.volumeSnapshots}

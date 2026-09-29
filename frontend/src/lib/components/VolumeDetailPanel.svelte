@@ -10,7 +10,7 @@
 	import VolumeSnapshotsSection from '$lib/components/volume/VolumeSnapshotsSection.svelte';
 	import VolumeActions from '$lib/components/volume/VolumeActions.svelte';
 	import VolumeAttachModal from '$lib/components/volume/VolumeAttachModal.svelte';
-	import VolumeRenameModal from '$lib/components/volume/VolumeRenameModal.svelte';
+	import VolumesModalStack from '$lib/components/volume/VolumesModalStack.svelte';
 	import { betaFeatures } from '$lib/stores/betaFeatures';
 
 	interface Props {
@@ -18,11 +18,26 @@
 		onClose?: () => void;
 		onDeleted?: () => void;
 		onRenamed?: (volume: Volume) => void;
+		onChanged?: () => void;
 		/** Bump to reload after the volume was mutated outside this panel (e.g. list rename). */
 		refreshKey?: number;
 	}
 
-	let { volumeId, onClose, onDeleted, onRenamed, refreshKey = 0 }: Props = $props();
+	let { volumeId, onClose, onDeleted, onRenamed, onChanged, refreshKey = 0 }: Props = $props();
+	let extendTarget = $state<Volume | null>(null);
+	let backupTarget = $state<Volume | null>(null);
+	let snapshotTarget = $state<Volume | null>(null);
+	let transferTarget = $state<Volume | null>(null);
+
+	function refreshAfterAction() {
+		void s.loadAll();
+		onChanged?.();
+	}
+
+	function finishTransfer() {
+		transferTarget = null;
+		refreshAfterAction();
+	}
 
 	const s = createVolumeDetailController({
 		volumeId: () => volumeId,
@@ -31,6 +46,8 @@
 		onDeleted: () => onDeleted?.(),
 		onClose: () => onClose?.(),
 		onRenamed: (volume) => onRenamed?.(volume),
+		onChanged: () => onChanged?.(),
+		isSystemAdmin: () => !!$auth.isSystemAdmin,
 		volumeSnapshotsEnabled: () => $betaFeatures.volumeSnapshots,
 	});
 	provideVolumeDetailController(s);
@@ -54,6 +71,10 @@
 		if (scope === loadedScope) return;
 		loadedScope = scope;
 		untrack(() => {
+			extendTarget = null;
+			backupTarget = null;
+			snapshotTarget = null;
+			transferTarget = null;
 			s.reset();
 			void s.loadAll();
 		});
@@ -89,7 +110,12 @@
 			<VolumeInfoCard />
 			<VolumeAttachmentsList />
 			{#if $betaFeatures.volumeSnapshots}<VolumeSnapshotsSection />{/if}
-			<VolumeActions />
+			<VolumeActions
+				onExtend={(vol) => extendTarget = vol}
+				onBackup={(vol) => backupTarget = vol}
+				onSnapshot={(vol) => snapshotTarget = vol}
+				onTransfer={(vol) => transferTarget = vol}
+			/>
 		{/if}
 	{/if}
 </div>
@@ -98,10 +124,23 @@
 	<VolumeAttachModal />
 {/if}
 
-{#if s.showRenameModal}
-	<VolumeRenameModal
-		volume={s.volume}
-		onclose={() => s.closeRenameModal()}
-		onrenamed={(updated) => s.applyRenamedVolume(updated)}
-	/>
-{/if}
+<VolumesModalStack
+	transferVolumeId={transferTarget?.id ?? ''}
+	transferVolumeName={transferTarget?.name ?? ''}
+	showTransfer={!!transferTarget}
+	{extendTarget}
+	{backupTarget}
+	{snapshotTarget}
+	renameTarget={s.showRenameModal ? s.volume : null}
+	volumeSnapshotsEnabled={$betaFeatures.volumeSnapshots}
+	onCloseTransfer={() => transferTarget = null}
+	onTransferred={finishTransfer}
+	onCloseExtend={() => extendTarget = null}
+	onExtendSuccess={() => { extendTarget = null; refreshAfterAction(); }}
+	onCloseBackup={() => backupTarget = null}
+	onBackupSuccess={() => { backupTarget = null; refreshAfterAction(); }}
+	onCloseSnapshot={() => snapshotTarget = null}
+	onSnapshotSuccess={() => { snapshotTarget = null; refreshAfterAction(); }}
+	onCloseRename={() => s.closeRenameModal()}
+	onRenamed={(updated) => s.applyRenamedVolume(updated)}
+/>

@@ -31,6 +31,8 @@ export interface VolumeDetailOpts {
   onDeleted?: () => void;
   onClose?: () => void;
   onRenamed?: (volume: Volume) => void;
+  onChanged?: () => void;
+  isSystemAdmin?: () => boolean;
   volumeSnapshotsEnabled?: () => boolean;
 }
 
@@ -191,6 +193,7 @@ export function createVolumeDetailController(opts: VolumeDetailOpts) {
       showAttachModal = false;
       attachInstanceId = '';
       await loadAll();
+      opts.onChanged?.();
     } catch (e) {
       attachError = e instanceof ApiError ? e.message : '연결 실패';
     } finally {
@@ -201,15 +204,38 @@ export function createVolumeDetailController(opts: VolumeDetailOpts) {
   async function deleteVolume() {
     const v = volume;
     const id = opts.volumeId();
-    if (!v) return;
+    const proj = opts.projectId();
+    if (!v || v.attachments.length > 0) return;
     if (!(await confirmDialog(`볼륨 "${v.name || id.slice(0, 8)}"을 삭제하시겠습니까?`))) return;
+    if (opts.volumeId() !== id || opts.projectId() !== proj) return;
     deleting = true;
     try {
-      await api.delete(`/api/v1/volumes/${id}`, opts.token(), opts.projectId());
-      opts.onDeleted?.();
-      opts.onClose?.();
+      await api.delete(`/api/v1/volumes/${id}`, opts.token(), proj);
+      if (opts.volumeId() !== id || opts.projectId() !== proj) return;
+      if (opts.onDeleted) opts.onDeleted();
+      else opts.onClose?.();
     } catch (e) {
       toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+    } finally {
+      deleting = false;
+    }
+  }
+
+  async function forceDeleteVolume() {
+    const v = volume;
+    const id = opts.volumeId();
+    const proj = opts.projectId();
+    if (!v || !opts.isSystemAdmin?.() || !['error', 'error_deleting', 'deleting'].includes(v.status)) return;
+    if (!(await confirmDialog(`볼륨 "${v.name || id.slice(0, 8)}"을 강제 삭제하시겠습니까?\n이 작업은 오류 상태 볼륨을 강제로 제거합니다.`))) return;
+    if (opts.volumeId() !== id || opts.projectId() !== proj) return;
+    deleting = true;
+    try {
+      await api.post(`/api/v1/volumes/${id}/force-delete`, {}, opts.token(), proj);
+      if (opts.volumeId() !== id || opts.projectId() !== proj) return;
+      if (opts.onDeleted) opts.onDeleted();
+      else opts.onClose?.();
+    } catch (e) {
+      toast.error('강제 삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
     } finally {
       deleting = false;
     }
@@ -297,6 +323,7 @@ export function createVolumeDetailController(opts: VolumeDetailOpts) {
     openAttachModal,
     closeAttachModal,
     attachVolume,
+    forceDeleteVolume,
     deleteVolume,
     startSnapshot,
     cancelSnapshot,

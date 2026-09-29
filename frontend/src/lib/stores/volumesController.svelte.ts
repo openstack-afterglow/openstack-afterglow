@@ -14,6 +14,19 @@ export interface VolumesControllerOpts {
   volumeSnapshotsEnabled?: () => boolean;
 }
 
+/** Preselect this volume in the existing VM wizard without launching a VM. */
+export function bootFromVolume(vol: Volume) {
+  wizard.update(s => ({
+    ...s,
+    bootSource: 'volume',
+    bootVolumeId: vol.id,
+    bootVolumeName: vol.name,
+    imageId: null,
+    imageName: null,
+  }));
+  openWizard();
+}
+
 export function createVolumesController(opts: VolumesControllerOpts) {
   const { swrGet, swrSet } = createSwr(opts.projectId);
   let volumes = $state<Volume[]>([]);
@@ -107,6 +120,10 @@ export function createVolumesController(opts: VolumesControllerOpts) {
     history.pushState({}, '', '/dashboard/volumes');
   }
 
+  function refreshSelectedDetail() {
+    if (selectedVolumeId) detailRefreshKey += 1;
+  }
+
   async function deleteVolume(id: string, name: string) {
     if (!(await confirmDialog(`볼륨 "${name || id.slice(0, 8)}"을 삭제하시겠습니까?`))) return;
     deleting = id;
@@ -176,18 +193,6 @@ export function createVolumesController(opts: VolumesControllerOpts) {
     if (selectedVolumeId) closeVolumePanel();
   }
 
-  function bootFromVolume(vol: Volume) {
-    wizard.update(s => ({
-      ...s,
-      bootSource: 'volume',
-      bootVolumeId: vol.id,
-      bootVolumeName: vol.name,
-      imageId: null,
-      imageName: null,
-    }));
-    openWizard();
-  }
-
   async function toggleAutoBackup(volumeId: string) {
     autoBackupToggling = volumeId;
     const enabling = !autoBackupConfigs.has(volumeId);
@@ -246,6 +251,7 @@ export function createVolumesController(opts: VolumesControllerOpts) {
     fetchAll,
     openVolumePanel,
     closeVolumePanel,
+    refreshSelectedDetail,
     deleteVolume,
     deleteSnapshot,
     openTransferModal,

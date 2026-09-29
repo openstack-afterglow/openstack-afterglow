@@ -20,6 +20,7 @@
 		onCloseExtend,
 		onExtendSuccess,
 		onCloseBackup,
+		onBackupSuccess,
 		onCloseSnapshot,
 		onSnapshotSuccess,
 		onCloseRename,
@@ -37,6 +38,7 @@
 		onTransferred: () => void;
 		onCloseExtend: () => void;
 		onExtendSuccess: () => void;
+		onBackupSuccess?: () => void;
 		onCloseBackup: () => void;
 		onCloseSnapshot: () => void;
 		onSnapshotSuccess: () => void;
@@ -69,7 +71,7 @@
 <VolumeBackupModal
 	volume={backupTarget}
 	onclose={onCloseBackup}
-	onsuccess={onCloseBackup}
+	onsuccess={onBackupSuccess ?? onCloseBackup}
 />
 
 {#if volumeSnapshotsEnabled}
