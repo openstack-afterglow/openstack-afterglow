@@ -80,6 +80,12 @@ Afterglow 백엔드는 대부분의 `/api/v1/chat/{path}` 요청을 내부 Lumen
 | `POST /api/v1/chat/claude-gateway/authorize` | `/v1/claude-gateway/authorize` | authenticated current user/project가 8자리 Claude Code device user code를 approve/deny |
 | `GET /api/v1/chat/mcp-oauth/callback` | `/v1/mcp-oauth/callback` | MCP OAuth 브라우저 콜백 전달 |
 
+### 대시보드 채팅 오류 진단
+
+대시보드의 영속 채팅은 `POST /api/v1/chat/conversations/{id}/completions`(임시 채팅은 `/temp-completions`)로 `202` run을 만든 뒤 `GET /api/v1/chat/runs/{id}/events`를 구독합니다. 아래의 API-key 전용 `/v1/responses`를 호출하는 Codex와 달리 대시보드의 native 경로는 사용자의 Keystone 토큰·프로젝트와 Lumen worker의 모델 실행을 사용합니다. 어느 한 경로의 성공은 다른 경로의 credential, provider 지원 여부나 실행 성공의 증거가 아닙니다.
+
+모델 목록 실패는 HTTP 상태를 표시합니다. 채팅 `202` 이전의 비-2xx 응답은 BFF가 보존한 HTTP 상태와 응답의 제한된 `detail`(유효성 오류라면 제한된 필드·메시지)을 표시합니다. 대화 생성 등 다른 요청의 원문 오류를 신뢰할 수 없는 경우에는 상태만 표시합니다. 상위 서비스가 응답하지 않거나 detail이 없으면 상태에 기반한 오류를 표시하며 HTML·원본 오류 본문을 노출하지 않습니다. `202` 이후에는 새 HTTP 상태가 없으므로 `run.failed`의 `safe_message`, `error_code`, run ID를 표시하고 취소를 실패와 구분합니다. 추가 조사에는 실패 단계, 모델 ID, HTTP 상태/detail 또는 run ID·안전한 오류 코드를 사용합니다. 키, 토큰, 프롬프트, provider 예외 원문은 수집하거나 화면에 표시하지 않습니다.
+
 ### 실시간 음성 browser session
 
 `GET /api/v1/chat/models?model_kind=realtime`와 `GET /api/v1/chat/capabilities?model_id=<id>&model_kind=realtime`의 양방향 오디오 gate, 정확한 USD 가격, voice·sample-rate readiness를 먼저 확인합니다. 사용자가 **음성 세션 시작**을 누를 때에만 `getUserMedia` permission을 요청하고, `POST /api/v1/chat/realtime/sessions`에 `{model_id:"<id>",voice:"alloy",max_duration_seconds:300}` 및 UUID `Idempotency-Key`를 보냅니다. BFF는 Lumen의 provider key나 `connect_token`을 반환하지 않고 `{session_id,status,model_name,provider_type,expires_in_seconds,expires_at,ticket,websocket_path:"/api/v1/chat/realtime/ws"}`만 반환합니다. `ticket`은 Redis 60초, project-scoped, 단일 소비이며 일반 auth token을 WebSocket URL에 넣지 않습니다.

@@ -206,6 +206,8 @@ Afterglow가 catalog service type 또는 `SERVICE_*_INTERNAL_URL`을 통해 endp
 
 Lumen 브라우저 BFF는 기존 `/v1/{path}` 기본 전달을 유지하되 `/api/v1/chat/audio/speech`와 `/api/v1/chat/audio/transcriptions`를 각각 `/v1/chat/audio/speech`와 `/v1/chat/audio/transcriptions`로 명시적으로 매핑한다. `service_proxy.py`의 caller/project-scoped 헤더와 요청 본문·Content-Type, 원본 응답 바이트·Content-Type 스트리밍은 그대로 적용되며 오디오 생성·전사는 Lumen이 소유한다.
 
+대시보드 텍스트 채팅은 API-key 기반 OpenAI 호환 `/v1/responses`(Codex 경로)가 아니라 Keystone 사용자/프로젝트가 소유한 `/v1/conversations/{id}/completions`·`/v1/temp-completions`에서 `202` durable run을 만들고 `/v1/runs/{id}/events`를 구독한다. 따라서 호환 API의 성공만으로 native provider worker의 인증·모델 라우팅을 검증하지 않는다. 접수 전 오류는 BFF가 보존한 HTTP 상태와 안전한 detail을 표시하고, 접수 뒤 `run.failed`는 Lumen의 `error_code`·`safe_message`를 별도로 표시한다. Provider 응답 원문·비밀값은 브라우저로 전달하지 않는다.
+
 실시간 음성은 generic proxy가 아니라 `realtime.py`가 Keystone caller/project로 Lumen session을 만들고 Lumen `connect_token`을 응답에서 제거한다. `ws_ticket`의 one-use Redis ticket만 브라우저에 전달한다. `WS /api/v1/chat/realtime/ws`는 허용 Origin·ticket을 확인하고 internal Lumen session WS에 header token을 붙여 bounded text frame을 양방향 relay한다. Model gate와 PCM16/자막은 브라우저의 `RealtimeVoice`에서 처리하며 오디오는 Lumen과 upstream provider로 전송한다. Lumen이 run/lease/pricing/unknown usage의 정본이고 Afterglow는 DB/S3에 realtime audio/transcript를 저장하지 않는다. Close/logout/project switch에서는 microphone·AudioContext·playback·socket·화면 자막을 정리한다. Provider 보존 정책은 별개이며 실제 provider credential 및 브라우저 visual smoke는 아직 검증하지 못했다.
 
 Realtime browser intent key는 user/project/model/voice fingerprint가 같고 admission/WS 준비 실패의 결과가 불확실할 때 재사용한다. 명백한 4xx 또는 scope 변경에는 폐기한다. OpenAI 수동 `response.cancel`은 연결을 유지하고, Gemini Live는 별도의 response cancel wire가 없어 수동 중단 시 세션을 닫는다(자동 barge-in은 Gemini VAD).
@@ -620,9 +622,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "aceb02b11a8bc8e053d8d8cef044b66322e4afd5f0b78a1038e3994c3f279b19",
-  "reviewed_at": "2026-09-30T00:17:33Z",
-  "summary": "Reviewed Afterglow Lumen discovery-based Codex and Claude Code API-key guides, remote CLI text/tool evidence, live browser guide toggle, 1673 frontend tests, typecheck, production build, and predeployment boundary"
+  "source_sha256": "8d4a6811c91892b1bca4ce30b85140aaaece8749904d258a432d456c72b2a7d0",
+  "reviewed_at": "2026-09-30T03:38:13Z",
+  "summary": "Reviewed native Lumen chat HTTP/error-code/run-ID diagnostics and Codex Responses boundary."
 }
 ```
 <!-- architecture-review:end -->
