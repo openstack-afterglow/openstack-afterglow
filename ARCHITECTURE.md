@@ -247,7 +247,7 @@ Waygate 목록 조회는 최초 로딩에만 skeleton을 쓰고 이후 서버·�
 
 Saved conversation selection requests `anchor=latest&limit=40`; explicit 처음/이전/다음/최신 actions pass Lumen's opaque cursor without parsing it. `ChatPanel` holds at most three pages/120 messages and drops the opposite page on the fourth load. `ChatWindow` records the first visible message top before prepend and restores it after `tick()`. One navigation action owns one request; selection generation, local mutation epoch, conversation, token and project fences reject late pages. Lumen revision 409 shows an Alert and triggers exactly one latest requery. Run completion away from the live edge sets a new-response action instead of moving the reader, and send resolves latest before clearing the draft. Version arrows use projected sibling IDs and PATCH `descend=true`; the browser never reconstructs the parent graph.
 
-Claude Code 2.1.278의 검증된 연결은 Lumen discovery의 Anthropic origin을 `ANTHROPIC_BASE_URL`로, ordinary Lumen API key를 `ANTHROPIC_AUTH_TOKEN`으로 사용하는 direct Messages path다. Settings는 public model ID를 Claude tier 변수에 pin하고 optional `X-Lumen-Provider`만 안내하며 browser token/key를 snippet에 넣지 않는다. `/oauth/claude/authorize`는 Lumen legacy custom device protocol의 no-store approval shell로 유지되지만 current Claude Apps Gateway가 요구하는 administrator-managed settings, official `/protocol`, OIDC/refresh contract가 없어 Claude Code `/login` 경로로 advertise하지 않는다. Afterglow는 어떤 CLI credential도 저장하지 않는다.
+Claude Code 2.1.278의 이전 isolated CLI 검증은 Lumen discovery의 Anthropic origin을 `ANTHROPIC_BASE_URL`로, ordinary Lumen API key를 `ANTHROPIC_AUTH_TOKEN`으로 사용하는 direct Messages path다. Settings는 **발급 시 한 번만 표시되는 전체 API key**, Anthropic Messages 호환 활성 공개 모델 ID, optional `X-Lumen-Provider`를 요구한다. 키를 표시 없이 읽는 blocking shell 명령을 복사 가능한 CLI 실행 블록과 분리하므로 뒤따르는 명령이 키로 입력되지 않고, browser token/key를 snippet에 넣거나 Afterglow에 저장하지 않는다. Codex는 사용자 `~/.codex/config.toml`의 기본 model/provider를 덮어쓰지 않고 Responses provider block만 추가하게 하며 한 번의 CLI 실행에서만 provider/model을 선택한다. `/oauth/claude/authorize`는 Lumen legacy custom device protocol의 no-store approval shell로 유지되지만 current Claude Apps Gateway가 요구하는 administrator-managed settings, official `/protocol`, OIDC/refresh contract가 없어 Claude Code `/login` 경로로 advertise하지 않는다. Afterglow는 어떤 CLI credential도 저장하지 않는다.
 
 The composer uses Lumen's native Search capability/pricing gate and sends explicit `features.web_search.mode="native"` only for the selected supported model; managed search retains its separate provider-selected contract. Safe canonical citations precede each answer with title/domain and bounded snippets. `ChatSourcesPanel` uses the shared `SlidePanel` for loaded-conversation source URLs/full snippets or an explicit empty state; `ChatBubble` keeps source/code overflow inside the bubble. Pending title reconciliation respects server status indefinitely, backs off after 30 seconds and avoids concurrent polling of one conversation. Context preview invalidates stale results on scope/input changes or HTTP/network failure; keyboard/touch disclosure distinguishes remaining tokens, tokenizer/estimate provenance and precise unavailable reasons.
 
@@ -620,9 +620,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "3528aa2516a557fff170ee5b94b723f88003e5e74eeb294396ff193dbf4a1b71",
-  "reviewed_at": "2026-09-29T18:01:37Z",
-  "summary": "Reviewed final volume detail action parity with preserved direct rename/attach/delete controls, shared menu eligibility and existing dialog/wizard dispatch"
+  "source_sha256": "aceb02b11a8bc8e053d8d8cef044b66322e4afd5f0b78a1038e3994c3f279b19",
+  "reviewed_at": "2026-09-30T00:17:33Z",
+  "summary": "Reviewed Afterglow Lumen discovery-based Codex and Claude Code API-key guides, remote CLI text/tool evidence, live browser guide toggle, 1673 frontend tests, typecheck, production build, and predeployment boundary"
 }
 ```
 <!-- architecture-review:end -->

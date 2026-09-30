@@ -73,21 +73,34 @@ describe('ChatApiKeysManager connection guide', () => {
 		expect(codexTab.getAttribute('aria-selected')).toBe('true');
 		expect(codexTab.getAttribute('aria-controls')).toBe(codexPanel.id);
 		expect(screen.getAllByRole('tabpanel')).toHaveLength(1);
-		expect(container.querySelectorAll('pre code')).toHaveLength(1);
-		expect(examples(container)).toContain('model_provider = "lumen"');
-		expect(examples(container)).toContain('base_url = "https://inference.example/tenant/v1"');
-		expect(examples(container)).toContain('wire_api = "responses"');
-		expect(examples(container)).toContain('env_key = "LUMEN_API_KEY"');
-		expect(examples(container)).toContain('requires_openai_auth = false');
+		expect(container.querySelectorAll('pre code')).toHaveLength(3);
+		const codexConfig = screen.getByRole('region', { name: 'Codex CLI 연결 설정' }).textContent ?? '';
+		const keyPrompt = screen.getByRole('region', { name: 'Lumen API 키 입력 명령' }).textContent ?? '';
+		const codexLaunch = screen.getByRole('region', { name: 'Codex CLI 실행 명령' }).textContent ?? '';
+		expect(codexConfig).toContain('base_url = "https://inference.example/tenant/v1"');
+		expect(codexConfig).toContain('wire_api = "responses"');
+		expect(codexConfig).toContain('env_key = "LUMEN_API_KEY"');
+		expect(codexConfig).not.toMatch(/^model(_provider)?\s*=/m);
+		expect(keyPrompt).toContain('read -rs LUMEN_API_KEY');
+		expect(codexLaunch).not.toContain('read -rs');
+		expect(codexLaunch).toContain('codex --strict-config -c model_provider=lumen -m "replace-with-active-Responses-model-ID"');
+		expect(codexLaunch).not.toContain('browser-token');
 		const discoveryRequests = mocks.get.mock.calls.filter(([path]) => String(path).endsWith('/compat')).length;
 
 		await fireEvent.click(claudeCodeTab);
 		expect(screen.getByRole('tabpanel', { name: 'Claude Code' })).toBeTruthy();
-		expect(examples(container)).toContain('export ANTHROPIC_BASE_URL="https://inference.example/tenant"');
-		expect(examples(container)).toContain('export ANTHROPIC_AUTH_TOKEN="$LUMEN_API_KEY"');
-		expect(examples(container)).toContain('export ANTHROPIC_MODEL="$LUMEN_MODEL"');
-		expect(examples(container)).toContain('export ANTHROPIC_CUSTOM_HEADERS="X-Lumen-Provider: $LUMEN_PROVIDER"');
-		expect(examples(container)).not.toContain('/claude-gateway');
+		expect(screen.getByRole('region', { name: 'Lumen API 키 입력 명령' }).textContent).toContain('read -rs LUMEN_API_KEY');
+		const claudeSetup = screen.getByRole('region', { name: 'Claude Code 연결 명령' }).textContent ?? '';
+		expect(claudeSetup).not.toContain('read -rs');
+		expect(claudeSetup).toContain('export LUMEN_MODEL="replace-with-active-Anthropic-model-ID"');
+		expect(claudeSetup).toContain('export ANTHROPIC_BASE_URL="https://inference.example/tenant"');
+		expect(claudeSetup).toContain('export ANTHROPIC_AUTH_TOKEN="$LUMEN_API_KEY"');
+		for (const tier of ['ANTHROPIC_MODEL', 'ANTHROPIC_DEFAULT_SONNET_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL', 'ANTHROPIC_DEFAULT_HAIKU_MODEL']) {
+			expect(claudeSetup).toContain(`export ${tier}="$LUMEN_MODEL"`);
+		}
+		expect(claudeSetup).toContain('# export ANTHROPIC_CUSTOM_HEADERS="X-Lumen-Provider: $LUMEN_PROVIDER"');
+		expect(claudeSetup).not.toContain('browser-token');
+		expect(claudeSetup).not.toContain('/claude-gateway');
 
 		await fireEvent.click(openaiTab);
 		expect(screen.getByRole('tabpanel', { name: 'OpenAI' })).toBeTruthy();
@@ -105,36 +118,22 @@ describe('ChatApiKeysManager connection guide', () => {
 		expect(mocks.get.mock.calls.filter(([path]) => String(path).endsWith('/compat'))).toHaveLength(discoveryRequests);
 	});
 
-	it('copies the complete template from each selected guide', async () => {
+	it('copies only Claude launch commands after the separate key-entry step', async () => {
 		const writeText = vi.fn().mockResolvedValue(undefined);
-		Object.defineProperty(navigator, 'clipboard', {
-			configurable: true,
-			value: { writeText }
-		});
-		render(ChatApiKeysManager);
-
-		await fireEvent.click(await screen.findByRole('button', { name: '설정 복사' }));
-		const codexConfig = writeText.mock.calls.at(-1)?.[0] as string;
-		expect(codexConfig).toContain('model_provider = "lumen"');
-		expect(codexConfig).toContain('wire_api = "responses"');
-		expect(codexConfig).toContain('base_url = "https://inference.example/tenant/v1"');
-		expect(codexConfig).not.toContain('browser-token');
-
-		await fireEvent.click(screen.getByRole('tab', { name: 'Claude Code' }));
-		await fireEvent.click(screen.getByRole('button', { name: '명령 복사' }));
-		const claudeSetup = writeText.mock.calls.at(-1)?.[0] as string;
-		expect(claudeSetup).toContain('ANTHROPIC_BASE_URL="https://inference.example/tenant"');
-		expect(claudeSetup).toContain('ANTHROPIC_AUTH_TOKEN="$LUMEN_API_KEY"');
-		expect(claudeSetup).not.toContain('browser-token');
-		expect(claudeSetup).not.toContain('/claude-gateway');
-
-		await fireEvent.click(screen.getByRole('tab', { name: 'OpenAI' }));
-		await fireEvent.click(screen.getByRole('button', { name: '예제 복사' }));
-		expect(writeText.mock.calls.at(-1)?.[0]).toContain('client.chat.completions.create');
-
-		await fireEvent.click(screen.getByRole('tab', { name: 'Claude' }));
-		await fireEvent.click(screen.getByRole('button', { name: '예제 복사' }));
-		expect(writeText.mock.calls.at(-1)?.[0]).toContain('client.messages.create');
+		const clipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+		Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+		try {
+			render(ChatApiKeysManager);
+			await fireEvent.click(await screen.findByRole('tab', { name: 'Claude Code' }));
+			await fireEvent.click(screen.getByRole('button', { name: '명령 복사' }));
+			const copied = writeText.mock.calls.at(-1)?.[0] as string;
+			expect(copied).not.toContain('read -rs');
+			expect(copied).not.toContain('browser-token');
+			expect(copied).toContain('ANTHROPIC_BASE_URL="https://inference.example/tenant"');
+		} finally {
+			if (clipboard) Object.defineProperty(navigator, 'clipboard', clipboard);
+			else Reflect.deleteProperty(navigator, 'clipboard');
+		}
 	});
 
 	it('keeps key management available but hides examples until discovery retry succeeds', async () => {
