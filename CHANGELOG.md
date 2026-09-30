@@ -7,6 +7,11 @@
 
 ## [Unreleased]
 
+## [1.29.1] - 2026-09-30
+
+### Changed
+- **Lumen 외부 CLI 연결 안내** — API 키 설정에서 Lumen compat discovery의 공개 주소로 Codex Responses와 Claude Code Anthropic API 설정을 생성한다. 일반 Lumen API 키 전체 값은 셸의 숨김 입력으로 받고 복사되는 설정·명령에 포함하지 않으며, 활성 공개 모델 ID와 중복 ID의 provider 선택만 별도로 안내한다. 원격 Claude Code의 실제 text/Bash tool 연속 실행은 확인했지만 이 UI의 운영 배포·사용자 브라우저 연결 성공으로 대체하지 않는다.
+
 ## [1.29.0] - 2026-09-28
 
 ### Added

@@ -158,12 +158,9 @@ Lumen은 외부 프로그램을 위한 OpenAI/Anthropic 호환 API를 제공한�
 
 ### Codex CLI (Responses)
 
-채팅 설정 **API 키 → 연결 방법**에서 복사한 내용을 `~/.codex/config.toml`에 저장한다. `base_url`은 예시를 고정하지 않고 현재 Lumen discovery의 `clients.codex.base_url`을 그대로 표시한다.
+설정 **API 키 → 연결 방법**의 Codex 프로바이더 블록은 Lumen discovery의 `clients.codex.base_url`을 그대로 표시한다. 아래 블록만 `~/.codex/config.toml`에 추가한다. 기존 기본 provider/model을 바꾸지 않으므로 Codex 데스크톱 앱이나 다른 CLI 설정을 덮어쓰지 않는다.
 
 ```toml
-model_provider = "lumen"
-model = "replace-with-Lumen-model-ID"
-
 [model_providers.lumen]
 name = "Lumen Responses"
 base_url = "https://lumen.example/v1"
@@ -176,15 +173,32 @@ supports_websockets = false
 # http_headers = { "X-Lumen-Provider" = "provider-id" }
 ```
 
-`model`에는 모델 선택창의 **ID 복사** 값인 provider model ID를 넣고, 발급한 일반 API 키는 `LUMEN_API_KEY` 환경 변수로 전달한다. 설정 파일에 키를 쓰지 않는다. 같은 공개 model ID가 여러 provider에 등록된 경우에만 `X-Lumen-Provider`를 지정한다. 저장 후 `codex --strict-config`로 실행한다. Codex는 요청마다 대화 input 전체를 다시 보낼 수 있고 Lumen Responses endpoint는 이 full-input tool continuation을 처리한다.
+발급 직후 한 번만 표시되는 **전체 키**를 사용한다. 목록에 남은 `sk-afgl-…` prefix만으로는 인증할 수 없으며 키를 분실했다면 새로 발급해야 한다. 모델 선택창의 **ID 복사** 값에서 active Responses 호환 공개 model ID를 선택한다(표시명·내부 ID가 아님). 키는 TOML에 쓰지 않는다. 먼저 아래 한 줄만 실행하고 표시되지 않는 프롬프트에 전체 키를 입력해 Enter를 누른다. 다음 명령과 함께 붙여 넣으면 다음 명령이 키로 입력될 수 있다.
+
+```bash
+printf 'Lumen API key: '; read -rs LUMEN_API_KEY; printf '\n'; export LUMEN_API_KEY
+```
+
+그다음 실제 모델 ID로 placeholder를 바꿔 **같은 셸**에서 실행한다. CLI override를 쓰면 사용자 기본 provider가 Lumen이 아니어도 이 실행만 Lumen으로 연결한다.
+
+```bash
+codex --strict-config -c model_provider=lumen -m "replace-with-active-Responses-model-ID"
+```
+
+Codex는 full-input Responses tool continuation을 Lumen에 보낸다. 이 macOS 사용자의 Codex 0.159.0은 유효한 공개 인증서 체인에도 기본 TLS trust 경로로 실패해 `CODEX_CA_CERTIFICATE=/private/etc/ssl/cert.pem`을 셸에 export하면 통과했다. 인증서 오류가 없는 장치에 이 경로를 강요하지 말고, 필요하면 **자기 장치의 검증 가능한 PEM CA 번들**을 사용한다. TLS 검증을 끄지 않는다. 매번 CLI 옵션을 입력하지 않으려면 사용자 설정을 보존한 채 별도 [Codex CLI 프로필](https://learn.chatgpt.com/docs/config-file/config-advanced#profiles)을 만들고 자신의 대화형 셸에서 `codex` 함수로 선택할 수 있다. 이 셸 설정이 데스크톱 앱에 적용된다고 주장하지 않는다.
 
 ### Claude Code CLI (Anthropic Messages)
 
-현재 Claude Code는 Lumen의 ordinary Anthropic Messages endpoint에 일반 API 키로 직접 연결한다. API 키나 모델 ID를 설정 파일에 저장하지 않고 환경 변수로 주입한다.
+현재 Claude Code는 Lumen의 ordinary Anthropic Messages endpoint에 일반 API 키로 직접 연결한다. 키를 분실했다면 목록 prefix 대신 새 키를 발급한다. 모델 선택창에서 **활성 Anthropic Messages 호환 모델**의 공개 API ID를 복사한다. 먼저 아래 한 줄만 실행하고 표시되지 않는 프롬프트에 전체 키를 입력해 Enter를 누른다. 다음 명령과 함께 붙여 넣으면 다음 명령이 키로 입력될 수 있다.
 
 ```bash
-export LUMEN_API_KEY="발급 직후 한 번 표시된 API 키"
-export LUMEN_MODEL="모델 선택창에서 복사한 API ID"
+printf 'Lumen API key: '; read -rs LUMEN_API_KEY; printf '\n'; export LUMEN_API_KEY
+```
+
+그다음 placeholder를 선택한 모델 ID로 바꾸고 같은 셸에서 실행한다.
+
+```bash
+export LUMEN_MODEL="replace-with-active-Anthropic-model-ID"
 export ANTHROPIC_BASE_URL="https://lumen.example"
 export ANTHROPIC_AUTH_TOKEN="$LUMEN_API_KEY"
 export ANTHROPIC_MODEL="$LUMEN_MODEL"
@@ -193,7 +207,7 @@ export ANTHROPIC_DEFAULT_OPUS_MODEL="$LUMEN_MODEL"
 export ANTHROPIC_DEFAULT_HAIKU_MODEL="$LUMEN_MODEL"
 
 # 같은 공개 모델 ID가 여러 provider에 있을 때만 설정한다.
-# export LUMEN_PROVIDER="provider-id"
+# export LUMEN_PROVIDER="replace-with-provider-id"
 # export ANTHROPIC_CUSTOM_HEADERS="X-Lumen-Provider: $LUMEN_PROVIDER"
 
 claude
