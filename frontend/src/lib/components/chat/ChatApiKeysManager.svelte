@@ -132,10 +132,7 @@ with Anthropic(
         if block.type == "text":
             print(block.text)` : '');
 
-	const codexConfigExample = $derived(sdkBases ? `model_provider = "lumen"
-model = "replace-with-Lumen-model-ID"
-
-[model_providers.lumen]
+	const codexConfigExample = $derived(sdkBases ? `[model_providers.lumen]
 name = "Lumen Responses"
 base_url = ${JSON.stringify(sdkBases.codex)}
 env_key = "LUMEN_API_KEY"
@@ -145,14 +142,18 @@ supports_websockets = false
 
 # 같은 모델 ID가 여러 프로바이더에 있을 때만 아래 값을 설정하세요.
 # http_headers = { "X-Lumen-Provider" = "provider-id" }` : '');
-	const claudeCodeExample = $derived(sdkBases ? `export ANTHROPIC_BASE_URL=${JSON.stringify(sdkBases.anthropic)}
+	const keyPromptExample = `printf 'Lumen API key: '; read -rs LUMEN_API_KEY; printf '\\n'; export LUMEN_API_KEY`;
+	const codexShellExample = `codex --strict-config -c model_provider=lumen -m "replace-with-active-Responses-model-ID"`;
+	const claudeCodeExample = $derived(sdkBases ? `export LUMEN_MODEL="replace-with-active-Anthropic-model-ID"
+export ANTHROPIC_BASE_URL=${JSON.stringify(sdkBases.anthropic)}
 export ANTHROPIC_AUTH_TOKEN="$LUMEN_API_KEY"
 export ANTHROPIC_MODEL="$LUMEN_MODEL"
 export ANTHROPIC_DEFAULT_SONNET_MODEL="$LUMEN_MODEL"
 export ANTHROPIC_DEFAULT_OPUS_MODEL="$LUMEN_MODEL"
 export ANTHROPIC_DEFAULT_HAIKU_MODEL="$LUMEN_MODEL"
 
-# 같은 모델 ID가 여러 프로바이더에 있을 때만 아래 값을 설정하세요.
+# 같은 모델 ID가 여러 프로바이더에 있을 때만 아래 두 줄의 주석을 해제하세요.
+# export LUMEN_PROVIDER="replace-with-provider-id"
 # export ANTHROPIC_CUSTOM_HEADERS="X-Lumen-Provider: $LUMEN_PROVIDER"
 claude` : '');
 
@@ -452,8 +453,11 @@ claude` : '');
 			</Button>
 		{:else if sdkBases}
 			<p class="mb-4 text-sm leading-6 text-ink-2">
-				Lumen이 제공한 공개 API 주소를 사용합니다. 대시보드 주소와 다를 수 있으므로 선택한 클라이언트 문서의
-				주소와 설정을 그대로 사용하세요. 예제 요청은 실제 API 사용량을 차감합니다.
+				발급 시 한 번만 보이는 일반 API 키의 전체 값을 안전하게 저장하세요. 목록의 일부 접두사만으로는 인증할 수 없으며,
+				전체 키를 잃어버렸다면 새 키를 발급해야 합니다. 모델 선택창에서 활성 모델의 공개 API ID를 확인하고
+				해당 모델의 프로바이더 인증정보가 서비스에 설정되어 있어야 합니다. 아래 주소는 Lumen에서 조회한 공개 API 주소이며
+				대시보드 주소와 다를 수 있습니다. 주소 조회만으로 외부 연결이나 CLI 요청 성공이 확인된 것은 아닙니다.
+				예제 요청은 실제 API 사용량을 차감합니다.
 			</p>
 			<Tabs
 				id="api-key-client-guides"
@@ -475,32 +479,56 @@ claude` : '');
 						<div>
 							<p class="text-sm font-medium text-ink-1">Codex CLI (Responses)</p>
 							<p class="mt-1 text-sm leading-6 text-ink-2">
-								발급한 키를 <code>LUMEN_API_KEY</code>로 내보내고 아래 내용을 <code>~/.codex/config.toml</code>에
-								저장하세요. 모델 값은 모델 선택창의 API ID로 바꾸고, 같은 ID가 여러 프로바이더에 있을 때만
-								<code>X-Lumen-Provider</code> 설정을 사용하세요.
+								먼저 발급한 일반 API 키를 안전하게 보관하고, 모델 선택창에서 사용할 공개 API ID를 확인하세요.
+								아래 설정의 공개 API 주소는 이 환경에서 조회한 값입니다. 키 값은 설정 파일이나 이 화면에 붙여 넣지 말고
+								실행할 셸에서 입력하세요. 같은 ID가 여러 프로바이더에 있을 때만 <code>X-Lumen-Provider</code>를 설정하세요.
 							</p>
 						</div>
 						<Button variant="ghost" size="sm" onclick={() => copyText(codexConfigExample, 'Codex 설정을 복사했습니다')}>
 							설정 복사
 						</Button>
 					</div>
+					<p class="mb-2 text-sm leading-6 text-ink-2">
+						아래 프로바이더 블록만 <code>~/.codex/config.toml</code>에 추가하세요. 기존 <code>model</code>·
+						<code>model_provider</code> 기본값을 덮어쓰지 않습니다. 이미 같은 이름의 블록이 있으면 내용을 갱신하세요.
+					</p>
 					<pre class="{codeCls} max-w-full whitespace-pre" role="region" aria-label="Codex CLI 연결 설정"><code>{codexConfigExample}</code></pre>
+					<p class="mt-3 text-sm leading-6 text-ink-2">
+						먼저 아래 한 줄만 셸에서 실행하고, 표시되지 않는 입력 프롬프트에 발급한 키 전체 값을 직접 입력해 Enter를 누르세요.
+						나머지 명령을 한꺼번에 붙여 넣으면 키 대신 다음 명령이 입력될 수 있습니다.
+					</p>
+					<pre class="{codeCls} mt-2 max-w-full whitespace-pre" role="region" aria-label="Lumen API 키 입력 명령"><code>{keyPromptExample}</code></pre>
+					<p class="mt-3 text-sm leading-6 text-ink-2">
+						그다음 아래의 <code>replace-with-active-Responses-model-ID</code>를 모델 선택창의 활성 Responses 호환
+						모델 공개 API ID로 바꾸고 같은 셸에서 실행하세요. CLI 옵션은 이번 실행에서만 기존 기본 프로바이더를 대체합니다.
+					</p>
+					<pre class="{codeCls} mt-2 max-w-full whitespace-pre" role="region" aria-label="Codex CLI 실행 명령"><code>{codexShellExample}</code></pre>
 					<p class="mt-2 text-sm leading-6 text-ink-2">
-						저장 후 <code>codex --strict-config</code>로 실행하세요. Codex는 Lumen Responses API를 직접 사용합니다.
+						Codex CLI만 <code>error sending request</code>로 TLS 연결에 실패하지만 브라우저·curl은 정상일 때,
+						이 장치가 신뢰하는 PEM 번들을 <code>CODEX_CA_CERTIFICATE</code>에 지정해 다시 실행하세요.
+						이 Mac에서 확인된 예는 <code>export CODEX_CA_CERTIFICATE="/private/etc/ssl/cert.pem"</code>이며,
+						다른 환경에는 해당 장치의 신뢰 번들을 사용하세요. TLS 검증을 끄지 마세요.
 					</p>
 				{:else if activeGuide === 'claude-code'}
 					<div class="mb-2 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
 						<div>
 							<p class="text-sm font-medium text-ink-1">Claude Code (Anthropic API)</p>
 							<p class="mt-1 text-sm leading-6 text-ink-2">
-								발급한 키를 <code>LUMEN_API_KEY</code>에, 모델 선택창의 API ID를 <code>LUMEN_MODEL</code>에 설정한 뒤
-								명령을 실행하세요. 같은 ID가 여러 프로바이더에 있을 때만 주석의 custom header를 활성화하세요.
+								발급한 일반 API 키를 준비하고 모델 선택창에서 Anthropic Messages 호환 활성 모델의 공개 API ID를
+								확인하세요. 먼저 아래 한 줄만 셸에서 실행한 뒤, 표시되지 않는 프롬프트에 키 전체 값을 직접 입력해
+								Enter를 누르세요. 다음 명령까지 한꺼번에 붙여 넣으면 키 대신 명령이 입력될 수 있습니다.
+								같은 모델 ID가 여러 프로바이더에 있을 때만 provider ID와 custom header 두 줄을 활성화하세요.
 							</p>
 						</div>
 						<Button variant="ghost" size="sm" onclick={() => copyText(claudeCodeExample, 'Claude Code 설정을 복사했습니다')}>
 							명령 복사
 						</Button>
 					</div>
+					<pre class="{codeCls} max-w-full whitespace-pre" role="region" aria-label="Lumen API 키 입력 명령"><code>{keyPromptExample}</code></pre>
+					<p class="mt-3 text-sm leading-6 text-ink-2">
+						그다음 아래의 <code>replace-with-active-Anthropic-model-ID</code>를 선택한 공개 API ID로 바꿔 같은 셸에서
+						실행하세요. 조회한 Anthropic API origin으로 직접 연결하며 키는 복사되는 명령에 포함되지 않습니다.
+					</p>
 					<pre class="{codeCls} max-w-full whitespace-pre" role="region" aria-label="Claude Code 연결 명령"><code>{claudeCodeExample}</code></pre>
 				{:else if activeGuide === 'openai'}
 					<div class="mb-2 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
