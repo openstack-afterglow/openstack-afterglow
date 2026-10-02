@@ -17,6 +17,9 @@
 	import SelectionToolbar from '$lib/components/ui/SelectionToolbar.svelte';
 	import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
 	import { executeBulkMutations } from '$lib/utils/bulkActions';
+	import { t } from '$lib/i18n/ns/dashboard-home';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import RichText from '$lib/i18n/RichText.svelte';
 
 	type Tab = 'secrets' | 'containers' | 'orders' | 'quota';
 	const selection = createResourceSelection();
@@ -102,7 +105,7 @@
 			error = '';
 		} catch (e) {
 			if ($auth.projectId === requestProject && keyManagerEnabled) {
-				error = e instanceof ApiError ? `조회 실패 (${e.status})` : '서버 오류';
+				error = e instanceof ApiError ? t('secrets.error.loadFailed', { status: e.status }) : t('secrets.error.server');
 			}
 		} finally {
 			if ($auth.projectId === requestProject && keyManagerEnabled) loading = false;
@@ -150,14 +153,14 @@
 				secret_type: newSecretType,
 				payload: newSecretPayload || undefined,
 			}, $auth.token ?? undefined, $auth.projectId ?? undefined);
-			toast.success('비밀이 생성되었습니다');
+			toast.success(t('secrets.toast.secretCreated'));
 			showCreateSecret = false;
 			newSecretName = '';
 			newSecretType = 'passphrase';
 			newSecretPayload = '';
 			await fetchAll();
 		} catch (e) {
-			toast.error('생성 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('secrets.toast.createFailed', { error: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			creating = false;
 		}
@@ -166,13 +169,13 @@
 	async function handleDeleteSecret(s: SecretInfo) {
 		if (!keyManagerEnabled) return;
 		if (s.system_managed) return;
-		if (!await confirmDialog(`비밀 "${s.name ?? s.id}"를 삭제하시겠습니까?`)) return;
+		if (!await confirmDialog(t('secrets.confirm.deleteSecret', { name: s.name ?? s.id }))) return;
 		try {
 			await secretsApi.deleteSecret(s.id, $auth.token ?? undefined, $auth.projectId ?? undefined);
-			toast.success('삭제되었습니다');
+			toast.success(t('secrets.toast.deleted'));
 			await fetchAll();
 		} catch (e) {
-			toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('secrets.toast.deleteFailed', { error: e instanceof ApiError ? e.message : String(e) }));
 		}
 	}
 
@@ -189,7 +192,7 @@
 			const val = await secretsApi.getPayload(s.id, $auth.token ?? undefined, $auth.projectId ?? undefined);
 			payloadVisible = { ...payloadVisible, [s.id]: val };
 		} catch {
-			toast.error('payload 조회 실패');
+			toast.error(t('secrets.toast.payloadFailed'));
 		} finally {
 			payloadLoading = null;
 		}
@@ -199,9 +202,9 @@
 		if (!keyManagerEnabled) return;
 		try {
 			await navigator.clipboard.writeText(val);
-			toast.success('복사됨');
+			toast.success(t('secrets.toast.copied'));
 		} catch {
-			toast.error('복사 실패');
+			toast.error(t('secrets.toast.copyFailed'));
 		}
 	}
 
@@ -214,12 +217,12 @@
 				container_type: newContainerType,
 				secret_refs: [],
 			}, $auth.token ?? undefined, $auth.projectId ?? undefined);
-			toast.success('컨테이너가 생성되었습니다');
+			toast.success(t('secrets.toast.containerCreated'));
 			showCreateContainer = false;
 			newContainerName = '';
 			await fetchAll();
 		} catch (e) {
-			toast.error('생성 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('secrets.toast.createFailed', { error: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			creatingContainer = false;
 		}
@@ -227,21 +230,20 @@
 
 	async function handleDeleteContainer(id: string, name: string | null) {
 		if (!keyManagerEnabled) return;
-		if (!await confirmDialog(`컨테이너 "${name ?? id}"를 삭제하시겠습니까?`)) return;
+		if (!await confirmDialog(t('secrets.confirm.deleteContainer', { name: name ?? id }))) return;
 		try {
 			await secretsApi.deleteContainer(id, $auth.token ?? undefined, $auth.projectId ?? undefined);
-			toast.success('삭제되었습니다');
+			toast.success(t('secrets.toast.deleted'));
 			await fetchAll();
 		} catch (e) {
-			toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('secrets.toast.deleteFailed', { error: e instanceof ApiError ? e.message : String(e) }));
 		}
 	}
 	async function runBulkDelete() {
 		const actionTab = activeTab;
 		const submitted = [...selection.ids];
 		if (submitted.length === 0 || (actionTab !== 'secrets' && actionTab !== 'containers')) return;
-		const label = actionTab === 'secrets' ? '비밀' : '컨테이너';
-		if (!(await confirmDialog(`${submitted.length}개 ${label}를 삭제하시겠습니까?`))) return;
+		if (!(await confirmDialog(t(actionTab === 'secrets' ? 'secrets.confirm.bulkDeleteSecrets' : 'secrets.confirm.bulkDeleteContainers', { count: submitted.length })))) return;
 		selectionBusy = true;
 		const requestToken = $auth.token ?? undefined;
 		const requestProject = $auth.projectId ?? undefined;
@@ -256,8 +258,8 @@
 		}
 		const successCount = results.filter((result) => result.ok).length;
 		const failureCount = results.length - successCount;
-		if (successCount) toast.success(`${successCount}개 ${label} 요청을 완료했습니다.`);
-		if (failureCount) toast.error(`${failureCount}개 ${label}에 실패했습니다.`);
+		if (successCount) toast.success(t(actionTab === 'secrets' ? 'secrets.toast.bulkSecretsSucceeded' : 'secrets.toast.bulkContainersSucceeded', { count: successCount }));
+		if (failureCount) toast.error(t(actionTab === 'secrets' ? 'secrets.toast.bulkSecretsFailed' : 'secrets.toast.bulkContainersFailed', { count: failureCount }));
 		selectionBusy = false;
 	}
 
@@ -273,24 +275,24 @@
 					payload_content_type: 'application/octet-stream',
 				},
 			}, $auth.token ?? undefined, $auth.projectId ?? undefined);
-			toast.success('키 생성 Order가 요청되었습니다');
+			toast.success(t('secrets.toast.orderCreated'));
 			showCreateOrder = false;
 			await fetchAll();
 		} catch (e) {
-			toast.error('Order 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('secrets.toast.orderFailed', { error: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			creatingOrder = false;
 		}
 	}
 
-	const SECRET_TYPE_LABEL: Record<string, string> = {
-		passphrase: '패스프레이즈',
-		certificate: '인증서',
-		symmetric: '대칭키',
-		public: '공개키',
-		private: '개인키',
-		opaque: 'Opaque',
-	};
+	const SECRET_TYPE_LABEL: Record<string, string> = $derived({
+		passphrase: t('secrets.secretType.passphrase'),
+		certificate: t('secrets.secretType.certificate'),
+		symmetric: t('secrets.secretType.symmetric'),
+		public: t('secrets.secretType.public'),
+		private: t('secrets.secretType.private'),
+		opaque: t('secrets.secretType.opaque'),
+	});
 
 	const STATUS_CLASS: Record<string, string> = {
 		ACTIVE: 'bg-green-900/40 text-green-300',
@@ -299,34 +301,39 @@
 	};
 </script>
 
+{#snippet highlightedText(text: string)}<span class="text-ink-1 font-medium">{text}</span>{/snippet}
+{#snippet mutedText(text: string)}<span class="text-ink-2">{text}</span>{/snippet}
+{#snippet valueText(text: string)}<span class="text-ink-0">{text}</span>{/snippet}
+{#snippet tabCountText(text: string)}<span class="ml-1 text-xs text-ink-2">{text}</span>{/snippet}
+
 {#if !keyManagerEnabled}
 	<div class="p-4 md:p-8">
-		<BetaFeatureGate title="Key Manager는 베타 기능입니다" />
+		<BetaFeatureGate title={t('secrets.beta.title')} />
 	</div>
 {:else}
 <!-- 비밀 생성 모달 -->
 <FormModal
 	bind:open={showCreateSecret}
-	title="비밀 생성"
-	submitLabel="생성"
+	title={t('secrets.createSecret.title')}
+	submitLabel={t('secrets.actions.create')}
 	submitting={creating}
 	onSubmit={handleCreateSecret}
 	onClose={() => { showCreateSecret = false; }}
 >
 	<div class="space-y-4">
 		<div>
-			<label class="block text-sm text-ink-2 mb-1" for="field-page-318">이름</label>
-			<input id="field-page-318" bind:value={newSecretName} class="w-full bg-surface-selected border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" placeholder="my-secret" />
+			<label class="block text-sm text-ink-2 mb-1" for="field-page-318">{t('secrets.form.name')}</label>
+			<input id="field-page-318" bind:value={newSecretName} class="w-full bg-surface-selected border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" placeholder={t('secrets.form.namePlaceholder')} />
 		</div>
 		<div>
-			<label class="block text-sm text-ink-2 mb-1" for="field-page-322">타입</label>
+			<label class="block text-sm text-ink-2 mb-1" for="field-page-322">{t('secrets.form.type')}</label>
 			<select id="field-page-322" bind:value={newSecretType} class="w-full bg-surface-selected border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0">
-				{#each SECRET_TYPES as t}<option value={t}>{SECRET_TYPE_LABEL[t] ?? t}</option>{/each}
+				{#each SECRET_TYPES as secretType}<option value={secretType}>{SECRET_TYPE_LABEL[secretType] ?? secretType}</option>{/each}
 			</select>
 		</div>
 		<div>
-			<label class="block text-sm text-ink-2 mb-1" for="field-page-328">payload <span class="text-ink-2">(선택 — 나중에 PUT으로도 가능)</span></label>
-			<textarea id="field-page-328" bind:value={newSecretPayload} rows={3} class="w-full bg-surface-selected border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 font-mono" placeholder={newSecretType === 'certificate' ? '-----BEGIN CERTIFICATE-----\n...' : '비밀 값'}></textarea>
+			<label class="block text-sm text-ink-2 mb-1" for="field-page-328"><RichText segments={t.rich('secrets.form.payload')} tags={{ muted: mutedText }} /></label>
+			<textarea id="field-page-328" bind:value={newSecretPayload} rows={3} class="w-full bg-surface-selected border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 font-mono" placeholder={newSecretType === 'certificate' ? '-----BEGIN CERTIFICATE-----\n...' : t('secrets.form.payloadPlaceholder')}></textarea>
 		</div>
 	</div>
 </FormModal>
@@ -334,23 +341,23 @@
 <!-- 컨테이너 생성 모달 -->
 <FormModal
 	bind:open={showCreateContainer}
-	title="컨테이너 생성"
-	submitLabel="생성"
+	title={t('secrets.createContainer.title')}
+	submitLabel={t('secrets.actions.create')}
 	submitting={creatingContainer}
 	onSubmit={handleCreateContainer}
 	onClose={() => { showCreateContainer = false; }}
 >
 	<div class="space-y-4">
 		<div>
-			<label class="block text-sm text-ink-2 mb-1" for="field-page-345">이름</label>
+			<label class="block text-sm text-ink-2 mb-1" for="field-page-345">{t('secrets.form.name')}</label>
 			<input id="field-page-345" bind:value={newContainerName} class="w-full bg-surface-selected border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" />
 		</div>
 		<div>
-			<label class="block text-sm text-ink-2 mb-1" for="field-page-349">타입</label>
+			<label class="block text-sm text-ink-2 mb-1" for="field-page-349">{t('secrets.form.type')}</label>
 			<select id="field-page-349" bind:value={newContainerType} class="w-full bg-surface-selected border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0">
-				<option value="generic">Generic</option>
-				<option value="rsa">RSA (공개키+개인키)</option>
-				<option value="certificate">Certificate (인증서 번들)</option>
+				<option value="generic">{t('secrets.containerType.generic')}</option>
+				<option value="rsa">{t('secrets.containerType.rsa')}</option>
+				<option value="certificate">{t('secrets.containerType.certificate')}</option>
 			</select>
 		</div>
 	</div>
@@ -359,29 +366,29 @@
 <!-- Order 생성 모달 -->
 <FormModal
 	bind:open={showCreateOrder}
-	title="키 비동기 생성 (Order)"
-	submitLabel="요청"
+	title={t('secrets.createOrder.title')}
+	submitLabel={t('secrets.actions.request')}
 	submitting={creatingOrder}
 	onSubmit={handleCreateOrder}
 	onClose={() => { showCreateOrder = false; }}
 >
 	<div class="space-y-4">
 		<div>
-			<label class="block text-sm text-ink-2 mb-1" for="field-page-370">키 타입</label>
+			<label class="block text-sm text-ink-2 mb-1" for="field-page-370">{t('secrets.form.keyType')}</label>
 			<select id="field-page-370" bind:value={orderType} class="w-full bg-surface-selected border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0">
-				<option value="key">대칭키 (AES)</option>
-				<option value="asymmetric">비대칭키 (RSA)</option>
+				<option value="key">{t('secrets.orderType.key')}</option>
+				<option value="asymmetric">{t('secrets.orderType.asymmetric')}</option>
 			</select>
 		</div>
 		<div>
-			<label class="block text-sm text-ink-2 mb-1" for="field-page-377">알고리즘</label>
+			<label class="block text-sm text-ink-2 mb-1" for="field-page-377">{t('secrets.form.algorithm')}</label>
 			<select id="field-page-377" bind:value={orderAlgorithm} class="w-full bg-surface-selected border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0">
 				{#if orderType === 'key'}<option value="aes">AES</option>{/if}
 				{#if orderType === 'asymmetric'}<option value="rsa">RSA</option>{/if}
 			</select>
 		</div>
 		<div>
-			<label class="block text-sm text-ink-2 mb-1" for="field-page-384">비트 길이</label>
+			<label class="block text-sm text-ink-2 mb-1" for="field-page-384">{t('secrets.form.bitLength')}</label>
 			<select id="field-page-384" bind:value={orderBitLength} class="w-full bg-surface-selected border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0">
 				<option value={128}>128</option>
 				<option value={256}>256</option>
@@ -393,7 +400,7 @@
 </FormModal>
 
 <div class="bulk-selection-page p-4 md:p-8">
-	<PageHeader breadcrumb="KEY MANAGER / 비밀 관리" title="Key Manager">
+	<PageHeader breadcrumb={t('secrets.page.breadcrumb')} title={t('secrets.page.title')}>
 		{#snippet actions()}
 			<AutoRefreshControl
 				bind:active={ar.active}
@@ -403,11 +410,11 @@
 				onManualRefresh={forceRefresh}
 			/>
 			{#if activeTab === 'secrets'}
-				<button onclick={() => showCreateSecret = true} class="bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">+ 비밀 생성</button>
+				<button onclick={() => showCreateSecret = true} class="bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">{t('secrets.actions.createSecret')}</button>
 			{:else if activeTab === 'containers'}
-				<button onclick={() => showCreateContainer = true} class="bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">+ 컨테이너 생성</button>
+				<button onclick={() => showCreateContainer = true} class="bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">{t('secrets.actions.createContainer')}</button>
 			{:else if activeTab === 'orders'}
-				<button onclick={() => showCreateOrder = true} class="bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">+ 키 생성 요청</button>
+				<button onclick={() => showCreateOrder = true} class="bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">{t('secrets.actions.createOrder')}</button>
 			{/if}
 		{/snippet}
 	</PageHeader>
@@ -420,8 +427,11 @@
 				disabled={selectionBusy}
 				class="px-4 py-2 text-sm font-medium transition-colors {activeTab === tab ? 'text-ink-0 border-b-2 border-action-warm' : 'text-ink-2 hover:text-ink-1'}"
 			>
-				{tab === 'secrets' ? '비밀' : tab === 'containers' ? '컨테이너' : tab === 'orders' ? 'Key Orders' : '쿼터'}
-				{#if tab === 'secrets' && secrets.length > 0}<span class="ml-1 text-xs text-ink-2">({secrets.length})</span>{/if}
+				{#if tab === 'secrets' && secrets.length > 0}
+					<RichText segments={t.rich('secrets.tabs.secretsWithCount', { count: secrets.length })} tags={{ count: tabCountText }} />
+				{:else}
+					{t(`secrets.tabs.${tab}`)}
+				{/if}
 			</button>
 		{/each}
 	</div>
@@ -431,40 +441,28 @@
 		<div class="my-4 flex items-start gap-3 bg-surface-sunken/40 border border-line-2/60 rounded-lg px-4 py-3 text-sm text-ink-2">
 			<span class="text-lg leading-none mt-0.5">🔑</span>
 			<div>
-				<span class="text-ink-1 font-medium">비밀(Secret)</span>은 비밀번호, API 키, 인증서, 암호화 키 등 민감한 값을 안전하게 저장하는 단위입니다.
-				저장된 값은 암호화되어 보관되며, <span class="text-ink-0">"값 보기"</span> 버튼으로만 복호화할 수 있습니다.
-				타입에 따라 <span class="text-ink-2">passphrase</span>(비밀번호), <span class="text-ink-2">certificate</span>(인증서 PEM),
-				<span class="text-ink-2">symmetric</span>(대칭키), <span class="text-ink-2">public/private</span>(비대칭키쌍) 등을 구분해 저장합니다.
-				🔒 표시된 항목은 시스템이 관리하는 secret으로 삭제할 수 없습니다.
+				<RichText segments={t.rich('secrets.description.secrets')} tags={{ highlight: highlightedText, muted: mutedText, value: valueText }} />
 			</div>
 		</div>
 	{:else if activeTab === 'containers'}
 		<div class="my-4 flex items-start gap-3 bg-surface-sunken/40 border border-line-2/60 rounded-lg px-4 py-3 text-sm text-ink-2">
 			<span class="text-lg leading-none mt-0.5">📦</span>
 			<div>
-				<span class="text-ink-1 font-medium">컨테이너(Container)</span>는 여러 Secret을 하나로 묶는 논리적 그룹입니다.
-				<span class="text-ink-2">generic</span>은 임의의 secret 묶음,
-				<span class="text-ink-2">rsa</span>는 공개키·개인키 쌍,
-				<span class="text-ink-2">certificate</span>는 TLS 인증서·개인키·체인을 한 벌로 관리합니다.
-				Octavia 로드밸런서의 TLS termination이나 서비스 간 인증서 공유에 활용됩니다.
+				<RichText segments={t.rich('secrets.description.containers')} tags={{ highlight: highlightedText, muted: mutedText, value: valueText }} />
 			</div>
 		</div>
 	{:else if activeTab === 'orders'}
 		<div class="my-4 flex items-start gap-3 bg-surface-sunken/40 border border-line-2/60 rounded-lg px-4 py-3 text-sm text-ink-2">
 			<span class="text-lg leading-none mt-0.5">⚙️</span>
 			<div>
-				<span class="text-ink-1 font-medium">Key Orders</span>는 Barbican에 암호화 키 생성을 비동기로 요청하는 작업입니다.
-				<span class="text-ink-2">대칭키(AES)</span> 또는 <span class="text-ink-2">비대칭키(RSA)</span>를 지정한 비트 길이로 생성해달라고 요청하면,
-				Barbican이 백그라운드에서 안전하게 키를 생성하고 Secret으로 저장합니다.
-				직접 키를 입력하지 않고 서버 측에서 생성하므로 키가 네트워크를 거치지 않아 더 안전합니다.
+				<RichText segments={t.rich('secrets.description.orders')} tags={{ highlight: highlightedText, muted: mutedText, value: valueText }} />
 			</div>
 		</div>
 	{:else if activeTab === 'quota'}
 		<div class="my-4 flex items-start gap-3 bg-surface-sunken/40 border border-line-2/60 rounded-lg px-4 py-3 text-sm text-ink-2">
 			<span class="text-lg leading-none mt-0.5">📊</span>
 			<div>
-				<span class="text-ink-1 font-medium">쿼터(Quota)</span>는 이 프로젝트에서 생성할 수 있는 리소스 한도입니다.
-				<span class="text-ink-0">∞</span>는 무제한을 의미합니다. 한도 변경은 관리자에게 문의하세요.
+				<RichText segments={t.rich('secrets.description.quota')} tags={{ highlight: highlightedText, muted: mutedText, value: valueText }} />
 			</div>
 		</div>
 	{/if}
@@ -477,14 +475,14 @@
 		{#if secrets.length === 0}
 			<div class="text-center py-16 text-ink-2">
 				<div class="text-4xl mb-3">🔑</div>
-				<p class="text-sm">저장된 비밀이 없습니다.</p>
-				<button onclick={() => showCreateSecret = true} class="mt-4 text-warm-text hover:text-warm-text-hover text-sm">+ 비밀 생성</button>
+				<p class="text-sm">{t('secrets.empty.secrets')}</p>
+				<button onclick={() => showCreateSecret = true} class="mt-4 text-warm-text hover:text-warm-text-hover text-sm">{t('secrets.actions.createSecret')}</button>
 			</div>
 		{:else}
 			<div class="mb-3">
 				<SelectionToolbar
-					label="비밀"
-					ariaLabel="비밀 전체 선택"
+					label={t('secrets.tabs.secrets')}
+					ariaLabel={t('secrets.selection.allSecrets')}
 					checked={selection.count === selectableIds('secrets').length && selection.count > 0}
 					indeterminate={selection.count > 0 && selection.count < selectableIds('secrets').length}
 					selectedCount={selection.count}
@@ -496,13 +494,13 @@
 				<table class="w-full text-sm">
 					<thead>
 						<tr class="text-left text-ink-2 border-b border-line-2">
-							<th class="pb-3 pr-4 font-medium w-10">선택</th>
-							<th class="pb-3 pr-4 font-medium">이름</th>
-							<th class="pb-3 pr-4 font-medium">타입</th>
-							<th class="pb-3 pr-4 font-medium">상태</th>
-							<th class="pb-3 pr-4 font-medium">생성일</th>
-							<th class="pb-3 pr-4 font-medium">만료</th>
-							<th class="pb-3 font-medium">액션</th>
+							<th class="pb-3 pr-4 font-medium w-10">{t('secrets.table.select')}</th>
+							<th class="pb-3 pr-4 font-medium">{t('secrets.form.name')}</th>
+							<th class="pb-3 pr-4 font-medium">{t('secrets.form.type')}</th>
+							<th class="pb-3 pr-4 font-medium">{t('secrets.table.status')}</th>
+							<th class="pb-3 pr-4 font-medium">{t('secrets.table.created')}</th>
+							<th class="pb-3 pr-4 font-medium">{t('secrets.table.expires')}</th>
+							<th class="pb-3 font-medium">{t('secrets.table.actions')}</th>
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-line">
@@ -513,31 +511,31 @@
 										checked={selection.has(s.id)}
 										disabled={s.system_managed || selectionBusy}
 										unavailable={s.system_managed}
-										title={s.system_managed ? '시스템 관리 Secret은 삭제할 수 없습니다.' : undefined}
-										ariaLabel={`${s.name ?? s.id} 선택`}
+										title={s.system_managed ? t('secrets.selection.systemManaged') : undefined}
+										ariaLabel={t('secrets.selection.item', { name: s.name ?? s.id })}
 										onclick={() => selection.toggle(s.id)}
 									/>
 								</td>
 								<td class="py-3 pr-4 font-mono text-xs">
 									<div class="flex items-center gap-2 max-md:max-w-[66vw]">
 										<span class="max-md:truncate" title={s.name ?? s.id}>{s.name ?? s.id}</span>
-										{#if s.system_managed}<span class="text-xs bg-surface-selected text-ink-2 px-2 py-0.5 rounded-full">시스템</span>{/if}
+										{#if s.system_managed}<span class="text-xs bg-surface-selected text-ink-2 px-2 py-0.5 rounded-full">{t('secrets.secret.system')}</span>{/if}
 									</div>
 									<div class="text-ink-2 text-xs mt-0.5">{s.id}</div>
 								</td>
 								<td class="py-3 pr-4 text-ink-2">{SECRET_TYPE_LABEL[s.secret_type] ?? s.secret_type}</td>
 								<td class="py-3 pr-4"><span class="px-2 py-0.5 rounded text-xs {STATUS_CLASS[s.status ?? ''] ?? 'bg-surface-selected text-ink-2'}">{s.status ?? '-'}</span></td>
-								<td class="py-3 pr-4 text-ink-2 text-xs">{s.created ? new Date(s.created).toLocaleDateString('ko') : '-'}</td>
-								<td class="py-3 pr-4 text-ink-2 text-xs">{s.expires ? new Date(s.expires).toLocaleDateString('ko') : '없음'}</td>
+								<td class="py-3 pr-4 text-ink-2 text-xs">{s.created ? new Date(s.created).toLocaleDateString(intlLocale()) : '-'}</td>
+								<td class="py-3 pr-4 text-ink-2 text-xs">{s.expires ? new Date(s.expires).toLocaleDateString(intlLocale()) : t('secrets.secret.noExpiry')}</td>
 								<td class="py-3">
 									<div class="flex gap-2">
-										<button onclick={() => handleShowPayload(s)} disabled={payloadLoading === s.id} class="text-xs text-warm-text hover:text-warm-text-hover disabled:opacity-50">{payloadLoading === s.id ? '로딩...' : payloadVisible[s.id] ? '숨기기' : '값 보기'}</button>
-										{#if !s.system_managed}<button onclick={() => handleDeleteSecret(s)} class="text-xs text-red-400 hover:text-red-300">삭제</button>{/if}
+										<button onclick={() => handleShowPayload(s)} disabled={payloadLoading === s.id} class="text-xs text-warm-text hover:text-warm-text-hover disabled:opacity-50">{payloadLoading === s.id ? t('secrets.actions.loading') : payloadVisible[s.id] ? t('secrets.actions.hide') : t('secrets.actions.showValue')}</button>
+										{#if !s.system_managed}<button onclick={() => handleDeleteSecret(s)} class="text-xs text-red-400 hover:text-red-300">{t('secrets.actions.delete')}</button>{/if}
 									</div>
 									{#if payloadVisible[s.id]}
 										<div class="mt-2 flex items-center gap-2">
 											<code class="text-xs bg-surface-base border border-line-2 rounded px-2 py-1 font-mono max-w-xs overflow-x-auto block">{payloadVisible[s.id].substring(0, 60)}{payloadVisible[s.id].length > 60 ? '...' : ''}</code>
-											<button onclick={() => copyPayload(payloadVisible[s.id])} class="text-xs text-ink-2 hover:text-ink-1 shrink-0">복사</button>
+											<button onclick={() => copyPayload(payloadVisible[s.id])} class="text-xs text-ink-2 hover:text-ink-1 shrink-0">{t('secrets.actions.copy')}</button>
 										</div>
 									{/if}
 								</td>
@@ -552,14 +550,14 @@
 		{#if containers.length === 0}
 			<div class="text-center py-16 text-ink-2">
 				<div class="text-4xl mb-3">📦</div>
-				<p class="text-sm">저장된 컨테이너가 없습니다.</p>
-				<button onclick={() => showCreateContainer = true} class="mt-4 text-warm-text hover:text-warm-text-hover text-sm">+ 컨테이너 생성</button>
+				<p class="text-sm">{t('secrets.empty.containers')}</p>
+				<button onclick={() => showCreateContainer = true} class="mt-4 text-warm-text hover:text-warm-text-hover text-sm">{t('secrets.actions.createContainer')}</button>
 			</div>
 		{:else}
 			<div class="mb-3">
 				<SelectionToolbar
-					label="컨테이너"
-					ariaLabel="컨테이너 전체 선택"
+					label={t('secrets.tabs.containers')}
+					ariaLabel={t('secrets.selection.allContainers')}
 					checked={selection.count === containers.length && selection.count > 0}
 					indeterminate={selection.count > 0 && selection.count < containers.length}
 					selectedCount={selection.count}
@@ -571,23 +569,23 @@
 				<table class="w-full text-sm">
 					<thead>
 						<tr class="text-left text-ink-2 border-b border-line-2">
-							<th class="pb-3 pr-4 font-medium w-10">선택</th>
-							<th class="pb-3 pr-4 font-medium">이름</th>
-							<th class="pb-3 pr-4 font-medium">타입</th>
-							<th class="pb-3 pr-4 font-medium">상태</th>
-							<th class="pb-3 pr-4 font-medium">Secrets</th>
-							<th class="pb-3 font-medium">액션</th>
+							<th class="pb-3 pr-4 font-medium w-10">{t('secrets.table.select')}</th>
+							<th class="pb-3 pr-4 font-medium">{t('secrets.form.name')}</th>
+							<th class="pb-3 pr-4 font-medium">{t('secrets.form.type')}</th>
+							<th class="pb-3 pr-4 font-medium">{t('secrets.table.status')}</th>
+							<th class="pb-3 pr-4 font-medium">{t('secrets.table.secrets')}</th>
+							<th class="pb-3 font-medium">{t('secrets.table.actions')}</th>
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-line">
 						{#each containers as c (c.id)}
 							<tr class="resource-selection-surface hover:bg-surface-sunken/30" data-selected={selection.has(c.id)}>
-								<td class="py-3 pr-4"><SelectionCheckbox checked={selection.has(c.id)} disabled={selectionBusy} ariaLabel={`${c.name ?? c.id} 선택`} onclick={() => selection.toggle(c.id)} /></td>
+								<td class="py-3 pr-4"><SelectionCheckbox checked={selection.has(c.id)} disabled={selectionBusy} ariaLabel={t('secrets.selection.item', { name: c.name ?? c.id })} onclick={() => selection.toggle(c.id)} /></td>
 								<td class="py-3 pr-4"><div class="max-md:max-w-[66vw] max-md:truncate" title={c.name ?? c.id}>{c.name ?? '-'}</div><div class="text-xs text-ink-2 font-mono max-md:max-w-[66vw] max-md:truncate">{c.id}</div></td>
 								<td class="py-3 pr-4 text-ink-2">{c.type}</td>
 								<td class="py-3 pr-4"><span class="px-2 py-0.5 rounded text-xs {STATUS_CLASS[c.status ?? ''] ?? 'bg-surface-selected text-ink-2'}">{c.status ?? '-'}</span></td>
-								<td class="py-3 pr-4 text-ink-2">{c.secret_refs.length}개</td>
-								<td class="py-3"><button onclick={() => handleDeleteContainer(c.id, c.name)} disabled={selectionBusy} class="text-xs text-red-400 hover:text-red-300">삭제</button></td>
+								<td class="py-3 pr-4 text-ink-2">{t('secrets.container.secretCount', { count: c.secret_refs.length })}</td>
+								<td class="py-3"><button onclick={() => handleDeleteContainer(c.id, c.name)} disabled={selectionBusy} class="text-xs text-red-400 hover:text-red-300">{t('secrets.actions.delete')}</button></td>
 							</tr>
 						{/each}
 					</tbody>
@@ -599,8 +597,8 @@
 		{#if orders.length === 0}
 			<div class="text-center py-16 text-ink-2">
 				<div class="text-4xl mb-3">⚙️</div>
-				<p class="text-sm">진행 중인 Key Order가 없습니다.</p>
-				<button onclick={() => showCreateOrder = true} class="mt-4 text-warm-text hover:text-warm-text-hover text-sm">+ 키 생성 요청</button>
+				<p class="text-sm">{t('secrets.empty.orders')}</p>
+				<button onclick={() => showCreateOrder = true} class="mt-4 text-warm-text hover:text-warm-text-hover text-sm">{t('secrets.actions.createOrder')}</button>
 			</div>
 		{:else}
 			<div class="overflow-x-auto">
@@ -608,10 +606,10 @@
 					<thead>
 						<tr class="text-left text-ink-2 border-b border-line-2">
 							<th class="pb-3 pr-4 font-medium">ID</th>
-							<th class="pb-3 pr-4 font-medium">타입</th>
-							<th class="pb-3 pr-4 font-medium">상태</th>
-							<th class="pb-3 pr-4 font-medium">생성일</th>
-							<th class="pb-3 font-medium">결과</th>
+							<th class="pb-3 pr-4 font-medium">{t('secrets.form.type')}</th>
+							<th class="pb-3 pr-4 font-medium">{t('secrets.table.status')}</th>
+							<th class="pb-3 pr-4 font-medium">{t('secrets.table.created')}</th>
+							<th class="pb-3 font-medium">{t('secrets.table.result')}</th>
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-line">
@@ -622,9 +620,9 @@
 								<td class="py-3 pr-4">
 									<span class="px-2 py-0.5 rounded text-xs {STATUS_CLASS[o.status ?? ''] ?? 'bg-surface-selected text-ink-2'}">{o.status ?? '-'}</span>
 								</td>
-								<td class="py-3 pr-4 text-ink-2 text-xs">{o.created ? new Date(o.created).toLocaleDateString('ko') : '-'}</td>
+								<td class="py-3 pr-4 text-ink-2 text-xs">{o.created ? new Date(o.created).toLocaleDateString(intlLocale()) : '-'}</td>
 								<td class="py-3 text-xs text-ink-2">
-									{#if o.secret_ref}<span class="text-green-400">Secret 생성됨</span>{:else if o.error_reason}<span class="text-red-400">{o.error_reason}</span>{:else}대기 중{/if}
+									{#if o.secret_ref}<span class="text-green-400">{t('secrets.order.secretCreated')}</span>{:else if o.error_reason}<span class="text-red-400">{o.error_reason}</span>{:else}{t('secrets.order.pending')}{/if}
 								</td>
 							</tr>
 						{/each}
@@ -636,23 +634,23 @@
 	{:else if activeTab === 'quota'}
 		{#if quota}
 			<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-				{#each ([['비밀', quota.secrets], ['Orders', quota.orders], ['컨테이너', quota.containers], ['Consumers', quota.consumers], ['CAs', quota.cas]] as [string, number][]) as [label, val]}
+				{#each ([[t('secrets.tabs.secrets'), quota.secrets], [t('secrets.quota.orders'), quota.orders], [t('secrets.tabs.containers'), quota.containers], [t('secrets.quota.consumers'), quota.consumers], [t('secrets.quota.cas'), quota.cas]] as [string, number][]) as [label, val]}
 					<div class="bg-surface-sunken rounded-xl p-4 border border-line-2">
 						<div class="text-xs text-ink-2 mb-1">{label}</div>
 						<div class="text-2xl font-bold text-ink-0">{val === -1 ? '∞' : val}</div>
-						<div class="text-xs text-ink-2 mt-1">{val === -1 ? '무제한' : `한도 ${val}개`}</div>
+						<div class="text-xs text-ink-2 mt-1">{val === -1 ? t('secrets.quota.unlimited') : t('secrets.quota.limit', { count: val })}</div>
 					</div>
 				{/each}
 			</div>
 		{:else}
-			<div class="text-center py-8 text-ink-2 text-sm">쿼터 정보를 불러올 수 없습니다.</div>
+			<div class="text-center py-8 text-ink-2 text-sm">{t('secrets.quota.unavailable')}</div>
 		{/if}
 	{/if}
 	<BulkSelectionOverlay
 		count={activeTab === 'secrets' || activeTab === 'containers' ? selection.count : 0}
-		ariaLabel={activeTab === 'secrets' ? '선택한 비밀 일괄 작업' : '선택한 컨테이너 일괄 작업'}
+		ariaLabel={activeTab === 'secrets' ? t('secrets.selection.bulkSecrets') : t('secrets.selection.bulkContainers')}
 		busy={selectionBusy}
-		actions={[{ key: 'delete', label: '삭제', tone: 'danger', onAction: runBulkDelete }]}
+		actions={[{ key: 'delete', label: t('secrets.actions.delete'), tone: 'danger', onAction: runBulkDelete }]}
 		onClear={() => selection.clear()}
 	/>
 </div>

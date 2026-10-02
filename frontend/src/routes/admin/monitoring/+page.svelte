@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-ops';
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
@@ -15,8 +16,8 @@
 
 	let tab = $state<'summary' | 'instances'>('summary');
 	const monitoringTabs = [
-		{ value: 'summary', label: '클러스터 요약', panelId: 'admin-monitoring-panel-summary', dataTour: 'admin-monitoring-summary-tab' },
-		{ value: 'instances', label: '인스턴스 메트릭', panelId: 'admin-monitoring-panel-instances', dataTour: 'admin-monitoring-instances-tab' },
+		{ value: 'summary', get label() { return t('monitoring.page.summaryTab'); }, panelId: 'admin-monitoring-panel-summary', dataTour: 'admin-monitoring-summary-tab' },
+		{ value: 'instances', get label() { return t('monitoring.page.instancesTab'); }, panelId: 'admin-monitoring-panel-instances', dataTour: 'admin-monitoring-instances-tab' },
 	];
 
 	let summary = $state<MonitoringSummary | null>(null);
@@ -49,7 +50,7 @@
 
 <PageShell class="max-w-7xl">
 	<div data-tour="admin-monitoring-header">
-	<PageHeader breadcrumb="MONITORING" title="통합 모니터링">
+	<PageHeader breadcrumb={t('monitoring.page.breadcrumb')} title={t('monitoring.page.title')}>
 		{#snippet actions()}
 			<TutorialStartButton tour="admin-monitoring" compactOnMobile />
 			{#if tab === 'summary'}
@@ -66,7 +67,7 @@
 					disabled={instancesLoading}
 					class="text-xs px-3 py-1.5 rounded border border-line-2 text-ink-2 hover:text-ink-1 hover:border-line-2 disabled:opacity-40 transition-colors"
 				>
-					{instancesLoading ? '로딩 중...' : '새로고침'}
+					{instancesLoading ? t('monitoring.loading') : t('monitoring.refresh')}
 				</button>
 			{/if}
 		{/snippet}
@@ -77,7 +78,7 @@
 		id="admin-monitoring-tabs"
 		value={tab}
 		items={monitoringTabs}
-		ariaLabel="통합 모니터링"
+		ariaLabel={t('monitoring.page.title')}
 		onchange={(value) => { tab = value as typeof tab; }}
 		class="mb-6"
 	/>

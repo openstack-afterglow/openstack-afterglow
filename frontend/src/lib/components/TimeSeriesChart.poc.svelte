@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Chart, Area, Spline, Axis, Layer, Highlight, Tooltip } from 'layerchart';
+  import { t } from '$lib/i18n/ns/shared';
 
   interface DataPoint {
     ts: number;
@@ -25,7 +26,7 @@
   let { data, title, mainKey = 'total', extraKeys = [], onRangeChange, currentRange = '7d' }: Props = $props();
 
   const RANGES = ['1d', '2d', '7d', '30d'];
-  const RANGE_LABELS: Record<string, string> = { '1d': '1일', '2d': '2일', '7d': '7일', '30d': '30일' };
+  const RANGE_DAYS: Record<string, number> = { '1d': 1, '2d': 2, '7d': 7, '30d': 30 };
 
   const EXTRA_COLORS: Record<string, string> = {
     active:    '#4ade80',
@@ -77,14 +78,14 @@
         <button
           onclick={() => onRangeChange?.(r)}
           class="text-xs px-2 py-0.5 rounded transition-colors {currentRange === r ? 'bg-action-warm text-ink-0' : 'text-ink-2 hover:text-ink-2'}"
-        >{RANGE_LABELS[r]}</button>
+        >{t('timeSeries.rangeDays', { days: RANGE_DAYS[r] })}</button>
       {/each}
     </div>
   </div>
 
   {#if points.length === 0}
     <div class="flex items-center justify-center h-24 text-ink-2 text-sm">
-      수집된 데이터가 없습니다 (서버 시작 후 30초 뒤 첫 스냅샷이 저장됩니다)
+      {t('timeSeries.empty')}
     </div>
   {:else}
     <div class="h-[140px]">

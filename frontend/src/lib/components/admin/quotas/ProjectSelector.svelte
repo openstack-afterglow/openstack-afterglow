@@ -1,5 +1,7 @@
 <script lang="ts">
 	import type { Project } from '$lib/types/quotas';
+	import { t } from '$lib/i18n/ns/admin-identity';
+	import RichText from '$lib/i18n/RichText.svelte';
 
 	let {
 		projects,
@@ -33,7 +35,7 @@
 </script>
 
 <div class="mb-6 relative max-w-md">
-	<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-projectselector-36">프로젝트 선택</label>
+	<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-projectselector-36">{t('quotaSelector.label')}</label>
 	<input id="field-projectselector-36"
 		type="text"
 		bind:value={search}
@@ -47,7 +49,7 @@
 			}
 		}}
 		onblur={() => setTimeout(() => { showDropdown = false; }, 150)}
-		placeholder="프로젝트 이름으로 검색..."
+		placeholder={t('quotaSelector.searchPlaceholder')}
 		class="w-full bg-surface-sunken border border-line-2 text-sm text-ink-2 rounded-lg px-3 py-2 focus:outline-none focus:border-action-warm"
 	/>
 	{#if showDropdown && filtered.length > 0}
@@ -62,6 +64,7 @@
 		</div>
 	{/if}
 	{#if selectedName}
-		<div class="mt-1 text-xs text-ink-2">선택됨: <span class="text-warm-text">{selectedName}</span></div>
+		{#snippet nameSnippet(text: string)}<span class="text-warm-text">{text}</span>{/snippet}
+		<div class="mt-1 text-xs text-ink-2"><RichText segments={t.rich('quotaSelector.selected', { name: selectedName })} tags={{ name: nameSnippet }} /></div>
 	{/if}
 </div>

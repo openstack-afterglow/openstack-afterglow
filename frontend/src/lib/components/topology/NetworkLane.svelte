@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/topology';
 	import { onMount } from 'svelte';
 	import type { TopologyNetwork, TopologyTraffic } from './types.ts';
 
@@ -65,7 +66,7 @@
 	const rxPct = $derived(netTraffic ? bpsToPct(netTraffic.rx_bps) : 0);
 	const txPct = $derived(netTraffic ? bpsToPct(netTraffic.tx_bps) : 0);
 	const cidr = $derived(net.subnet_details[0]?.cidr ?? '');
-	const typeLabel = $derived(net.is_external ? '외부' : net.is_shared ? '공유' : '내부');
+	const typeLabel = $derived(net.is_external ? t('kind.external') : net.is_shared ? t('kind.shared') : t('kind.internal'));
 </script>
 
 {#if mode === 'rail'}

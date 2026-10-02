@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/network-pages';
   import { confirmDialog } from '$lib/stores/confirm.svelte';
   import { untrack } from 'svelte';
   import { auth } from '$lib/stores/auth';
@@ -72,7 +73,7 @@
       if (activeDomain === 'networks') selection.retain(networks.map((network) => network.id));
       error = '';
     } catch (e) {
-      if (!cached) error = e instanceof ApiError ? `조회 실패 (${e.status})` : '서버 오류';
+      if (!cached) error = e instanceof ApiError ? t('networks.loadFailed', { status: e.status }) : t('networks.serverError');
     } finally { loading = false; }
   }
 
@@ -85,7 +86,7 @@
 
   async function setAsDefault(networkId: string) {
     if (!selectableNetworkIds.has(networkId)) {
-      toast.warning('현재 프로젝트가 소유한 네트워크만 기본 네트워크로 설정할 수 있습니다.');
+      toast.warning(t('networks.onlyOwnedDefault'));
       return;
     }
     settingDefault = networkId;
@@ -93,7 +94,7 @@
       await api.put('/api/v1/networks/default', { network_id: networkId }, tok(), pid());
       defaultNetworkId = networkId;
     } catch (e) {
-      toast.error('기본 네트워크 설정 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+      toast.error(t('networks.setDefaultFailed', { error: e instanceof ApiError ? e.message : String(e) }));
     } finally { settingDefault = null; }
   }
 
@@ -103,12 +104,11 @@
       if (activeDomain === 'floating-ips') selection.retain(floatingIps.map((fip) => fip.id));
     } catch { /* 오류 무시 */ }
   }
-  async function runBulkAction(domain: 'networks' | 'floating-ips', actionLabel: string, eligible: ReadonlySet<string>, mutate: (id: string, token: string | undefined, projectId: string | undefined) => Promise<unknown>) {
+  async function runBulkAction(domain: 'networks' | 'floating-ips', eligible: ReadonlySet<string>, mutate: (id: string, token: string | undefined, projectId: string | undefined) => Promise<unknown>) {
     const snapshotIds = [...selection.ids];
     const { eligible: eligibleIds, skipped } = partitionBulkIds(snapshotIds, eligible);
     if (eligibleIds.length === 0) return;
-    const suffix = skipped.length > 0 ? `\n${skipped.length}개는 현재 상태에서 제외됩니다.` : '';
-    if (!await confirmDialog(`${eligibleIds.length}개 ${actionLabel} 요청을 진행하시겠습니까?${suffix}`)) return;
+    if (!await confirmDialog(t(domain === 'networks' ? 'networks.bulk.deleteConfirm' : 'networks.bulk.releaseConfirm', { count: eligibleIds.length, skipped: skipped.length }))) return;
     const tokenSnapshot = tok();
     const projectSnapshot = pid();
     busy = true;
@@ -118,9 +118,9 @@
       const failedCount = results.length - succeeded.length;
       const sameProjectDomain = projectSnapshot === pid() && activeDomain === domain;
       if (sameProjectDomain) selection.remove(succeeded);
-      if (succeeded.length > 0) toast.success(`${succeeded.length}개 ${actionLabel} 요청을 완료했습니다.`);
-      if (failedCount > 0) toast.error(`${failedCount}개 ${actionLabel}에 실패했습니다.`);
-      if (skipped.length > 0) toast.warning(`${skipped.length}개는 현재 상태에서 ${actionLabel}할 수 없어 제외했습니다.`);
+      if (succeeded.length > 0) toast.success(t(domain === 'networks' ? 'networks.bulk.deleteDone' : 'networks.bulk.releaseDone', { count: succeeded.length }));
+      if (failedCount > 0) toast.error(t(domain === 'networks' ? 'networks.bulk.deleteFailed' : 'networks.bulk.releaseFailed', { count: failedCount }));
+      if (skipped.length > 0) toast.warning(t(domain === 'networks' ? 'networks.bulk.deleteSkipped' : 'networks.bulk.releaseSkipped', { count: skipped.length }));
       if (sameProjectDomain) {
         if (domain === 'networks') await fetchNetworks({ refresh: true });
         else await fetchFloatingIps();
@@ -133,19 +133,19 @@
     if (activeDomain === 'networks') {
       return [{
         key: 'delete-network',
-        label: '삭제',
+        label: t('networks.delete'),
         tone: 'danger',
         disabled: partitionBulkIds(selection.ids, selectableNetworkIds).eligible.length === 0,
-        onAction: () => runBulkAction('networks', '네트워크 삭제', selectableNetworkIds, (id, token, projectId) => api.delete(`/api/v1/networks/${id}`, token, projectId)),
+        onAction: () => runBulkAction('networks', selectableNetworkIds, (id, token, projectId) => api.delete(`/api/v1/networks/${id}`, token, projectId)),
       }];
     }
     if (activeDomain === 'floating-ips') {
       return [{
         key: 'release-floating-ip',
-        label: '해제',
+        label: t('networks.release'),
         tone: 'warning',
         disabled: partitionBulkIds(selection.ids, selectableFloatingIpIds).eligible.length === 0,
-        onAction: () => runBulkAction('floating-ips', 'Floating IP 해제', selectableFloatingIpIds, (id, token, projectId) => api.delete(`/api/v1/networks/floating-ips/${id}`, token, projectId)),
+        onAction: () => runBulkAction('floating-ips', selectableFloatingIpIds, (id, token, projectId) => api.delete(`/api/v1/networks/floating-ips/${id}`, token, projectId)),
       }];
     }
     return [];
@@ -160,22 +160,22 @@
   async function createNetwork(body: Record<string, unknown>): Promise<boolean> {
     creating = true; createError = '';
     try {
-      await apiMut('네트워크 생성', () => api.post('/api/v1/networks', body, tok(), pid()));
+      await apiMut(t('networks.create'), () => api.post('/api/v1/networks', body, tok(), pid()));
       await fetchNetworks();
       return true;
     } catch (e) {
-      createError = e instanceof ApiError ? e.message : '생성 실패';
+      createError = e instanceof ApiError ? e.message : t('networks.createFailed');
       return false;
     } finally { creating = false; }
   }
 
   async function deleteNetwork(id: string, name: string, isExternal: boolean) {
-    if (!selectableNetworkIds.has(id)) { toast.warning('현재 프로젝트가 소유한 네트워크만 삭제할 수 있습니다.'); return; }
-    if (isExternal) { toast.warning('외부 네트워크는 삭제할 수 없습니다.'); return; }
-    if (!await confirmDialog(`네트워크 "${name || id.slice(0, 8)}"를 삭제하시겠습니까?`)) return;
+    if (!selectableNetworkIds.has(id)) { toast.warning(t('networks.onlyOwnedDelete')); return; }
+    if (isExternal) { toast.warning(t('networks.externalDelete')); return; }
+    if (!await confirmDialog(t('networks.deleteConfirm', { name: name || id.slice(0, 8) }))) return;
     deleting = id;
     try {
-      await apiMut('네트워크 삭제', () => api.delete(`/api/v1/networks/${id}`, tok(), pid()));
+      await apiMut(t('networks.deleteAction'), () => api.delete(`/api/v1/networks/${id}`, tok(), pid()));
       await fetchNetworks();
     } catch { /* error toast shown by apiMut */ }
     finally { deleting = null; }
@@ -212,12 +212,12 @@
 <NetworkCreateModal bind:open={showModal} {creating} error={createError} onCreate={createNetwork} />
 
 <PageShell class="bulk-selection-page space-y-4">
-  <PageHeader breadcrumb="NETWORK / NETWORKS" title="네트워크">
+  <PageHeader breadcrumb={t('networks.breadcrumb')} title={t('networks.title')}>
     {#snippet actions()}
-      <Button onclick={() => showModal = true} variant="primary">+ 네트워크 생성</Button>
+      <Button onclick={() => showModal = true} variant="primary">{t('networks.createButton')}</Button>
     {/snippet}
   </PageHeader>
-  <ResourceToolbar label="네트워크 목록 도구">
+  <ResourceToolbar label={t('networks.toolbar')}>
     {#snippet actions()}
       <AutoRefreshControl
         bind:active={ar.active}
@@ -234,7 +234,7 @@
   {#if loading}
     <LoadingSkeleton variant="table" rows={5} />
   {:else if networks.length === 0 && floatingIps.length === 0}
-    <EmptyState headline="네트워크가 없습니다" description="프로젝트의 첫 네트워크를 생성하세요." />
+    <EmptyState headline={t('networks.empty')} description={t('networks.emptyDescription')} />
   {:else}
     <div class="flex flex-col gap-4">
       <NetworksTableCard
@@ -262,7 +262,7 @@
 
 <BulkSelectionOverlay
   count={selection.count}
-  ariaLabel="선택한 네트워크 리소스 일괄 작업"
+  ariaLabel={t('networks.bulkAria')}
   actions={bulkActions()}
   {busy}
   onClear={() => { selection.clear(); activeDomain = null; }}
@@ -274,7 +274,7 @@
 />
 
 {#if selectedNetworkId}
-  <SlidePanel onClose={closeNetworkPanel} ariaLabel="네트워크 상세" width="w-full md:w-[60vw] max-w-2xl">
+  <SlidePanel onClose={closeNetworkPanel} ariaLabel={t('networks.detail')} width="w-full md:w-[60vw] max-w-2xl">
     <NetworkDetailPanel
       networkId={selectedNetworkId} apiBase="/api/v1/networks"
       onClose={closeNetworkPanel} token={tok()} projectId={pid()}

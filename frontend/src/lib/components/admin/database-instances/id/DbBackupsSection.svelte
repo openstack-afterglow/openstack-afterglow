@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t as tr } from '$lib/i18n/ns/database';
 	import type { DbBackup } from '$lib/types/database';
 
 	let {
@@ -35,36 +36,36 @@
 
 <div class="bg-surface-base border border-line rounded-xl p-4">
 	<div class="flex items-center justify-between mb-3">
-		<h2 class="text-sm font-semibold text-ink-0">백업</h2>
+		<h2 class="text-sm font-semibold text-ink-0">{tr('labels.backups')}</h2>
 		<button onclick={() => { showForm = !showForm; }}
 			class="text-xs text-ink-2 hover:text-ink-0 border border-line-2 hover:border-line-2 px-2 py-1 rounded transition-colors">
-			{showForm ? '취소' : '+ 백업 생성'}
+			{showForm ? tr('actions.cancel') : tr('actions.createBackup')}
 		</button>
 	</div>
 	{#if showForm}
 		<div class="bg-surface-sunken rounded-lg p-3 mb-3 space-y-2">
 			<input type="text" bind:value={newBackup.name} placeholder="backup-name"
 				class="w-full bg-surface-selected border border-line-2 rounded px-3 py-1.5 text-sm text-ink-0 focus:outline-none focus:border-action-warm" />
-			<input type="text" bind:value={newBackup.description} placeholder="설명 (선택)"
+			<input type="text" bind:value={newBackup.description} placeholder={tr('form.description')}
 				class="w-full bg-surface-selected border border-line-2 rounded px-3 py-1.5 text-sm text-ink-0 focus:outline-none focus:border-action-warm" />
 			{#if addError}<p class="text-red-400 text-xs">{addError}</p>{/if}
 			<button onclick={handleAdd} disabled={creating || !newBackup.name.trim()}
 				class="text-xs bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm px-3 py-1.5 rounded transition-colors">
-				{creating ? '생성 중...' : '백업 생성'}
+				{creating ? tr('state.creating') : tr('actions.backup')}
 			</button>
 		</div>
 	{/if}
 	{#if backups.length === 0}
-		<div class="text-ink-2 text-xs">백업이 없습니다</div>
+		<div class="text-ink-2 text-xs">{tr('backups.empty')}</div>
 	{:else}
 		<table class="w-full text-sm">
 			<thead>
 				<tr class="text-ink-2 text-xs">
-					<th class="text-left py-2 font-medium">이름</th>
-					<th class="text-left py-2 font-medium">상태</th>
-					<th class="text-left py-2 font-medium">크기</th>
-					<th class="text-left py-2 font-medium">생성일</th>
-					<th class="text-right py-2 font-medium">액션</th>
+					<th class="text-left py-2 font-medium">{tr('labels.name')}</th>
+					<th class="text-left py-2 font-medium">{tr('labels.status')}</th>
+					<th class="text-left py-2 font-medium">{tr('labels.size')}</th>
+					<th class="text-left py-2 font-medium">{tr('labels.created')}</th>
+					<th class="text-right py-2 font-medium">{tr('labels.actions')}</th>
 				</tr>
 			</thead>
 			<tbody>
@@ -78,11 +79,11 @@
 							<div class="flex justify-end gap-1">
 								<button onclick={() => onRestore(b.id)} disabled={restoringBackup === b.id}
 									class="text-warm-text hover:text-warm-text-hover disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-action-warm hover:border-action-warm transition-colors">
-									{restoringBackup === b.id ? '...' : '복원'}
+									{restoringBackup === b.id ? '...' : tr('actions.restore')}
 								</button>
 								<button onclick={() => onDelete(b.id)} disabled={deletingBackup === b.id}
 									class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-red-900 hover:border-red-700 transition-colors">
-									{deletingBackup === b.id ? '...' : '삭제'}
+									{deletingBackup === b.id ? '...' : tr('actions.delete')}
 								</button>
 							</div>
 						</td>

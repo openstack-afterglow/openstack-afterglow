@@ -1,11 +1,12 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/file-storage';
 	import { useFileStorageDetailController } from '$lib/stores/fileStorageDetailController.svelte';
 
 	const s = useFileStorageDetailController();
 </script>
 
 <div class="bg-surface-base border border-line rounded-lg p-5">
-	<h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-3">메타데이터</h3>
+	<h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-3">{t('metadata.title')}</h3>
 	<table class="w-full text-sm">
 		<tbody>
 			{#each Object.entries(s.fileStorage!.metadata) as [k, v]}

@@ -4,6 +4,7 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
+	import { t } from '$lib/i18n/ns/chat-studio';
 
 	interface Props {
 		open: boolean;
@@ -42,8 +43,8 @@
 <Modal {open} dismissible={!saving} onClose={close} labelledBy="create-project-dialog-title">
 	<section class="create-dialog">
 		<header class="create-dialog-head">
-			<h2 id="create-project-dialog-title">프로젝트 만들기</h2>
-			<Button variant="ghost" size="icon" type="button" onclick={close} ariaLabel="프로젝트 만들기 닫기">
+			<h2 id="create-project-dialog-title">{t('createProject.title')}</h2>
+			<Button variant="ghost" size="icon" type="button" onclick={close} ariaLabel={t('createProject.close')}>
 				<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="round" /></svg>
 			</Button>
 		</header>
@@ -54,16 +55,16 @@
 				void submit();
 			}}
 		>
-			<Field label="프로젝트 이름" for="project-name" required>
-				<TextInput id="project-name" bind:element={nameInput} bind:value={name} maxlength={100} placeholder="예: OpenStack 운영" required />
+			<Field label={t('createProject.nameLabel')} for="project-name" required>
+				<TextInput id="project-name" bind:element={nameInput} bind:value={name} maxlength={100} placeholder={t('createProject.namePlaceholder')} required />
 			</Field>
 			<p class="create-note">
-				프로젝트는 관련 대화를 모으고 공통 지침을 적용하는 공간입니다. 설명과 지침은 생성 후 설정에서 추가할 수 있습니다.
+				{t('createProject.description')}
 			</p>
 			<div class="form-actions">
-				<Button variant="ghost" type="button" onclick={close}>취소</Button>
+				<Button variant="ghost" type="button" onclick={close}>{t('createProject.cancel')}</Button>
 				<Button variant="accent" type="submit" disabled={!canSubmit}>
-					{saving ? '생성 중…' : '프로젝트 만들기'}
+					{saving ? t('createProject.creating') : t('createProject.title')}
 				</Button>
 			</div>
 		</form>

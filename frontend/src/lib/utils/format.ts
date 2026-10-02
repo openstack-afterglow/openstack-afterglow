@@ -1,23 +1,26 @@
-/** ISO 날짜 문자열을 짧은 날짜 형식으로 포맷 (예: "2024. 03. 15.") */
+import { intlLocale } from '$lib/i18n/runtime.svelte';
+import { t } from '$lib/i18n/ns/common';
+
+/** ISO 날짜 문자열을 현재 언어의 짧은 날짜 형식으로 포맷 (예: ko "2024. 03. 15.", en "03/15/2024") */
 export function formatDate(iso: string): string {
 	if (!iso) return '-';
 	const d = new Date(iso);
 	if (isNaN(d.getTime())) return '-';
-	return d.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' });
+	return d.toLocaleDateString(intlLocale(), { year: 'numeric', month: '2-digit', day: '2-digit' });
 }
 
-/** 천단위 쉼표 포맷 */
+/** 천단위 구분 포맷 */
 export function formatNumber(n: number): string {
-	return n.toLocaleString();
+	return n.toLocaleString(intlLocale());
 }
 
 /** GB 단위를 TB/PB로 자동 변환 (1,000 GB → 1 TB) */
 export function formatStorage(gb: number): string {
 	if (gb >= 1_000_000)
-		return `${(gb / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 1 })} PB`;
+		return `${(gb / 1_000_000).toLocaleString(intlLocale(), { maximumFractionDigits: 1 })} PB`;
 	if (gb >= 1_000)
-		return `${(gb / 1_000).toLocaleString(undefined, { maximumFractionDigits: 1 })} TB`;
-	return `${gb.toLocaleString()} GB`;
+		return `${(gb / 1_000).toLocaleString(intlLocale(), { maximumFractionDigits: 1 })} TB`;
+	return `${gb.toLocaleString(intlLocale())} GB`;
 }
 
 /** 오브젝트 바이트를 GB/MB/KB 로 포맷 (오브젝트 목록·그리드 공용) */
@@ -54,7 +57,6 @@ const MIME_SHORT: Record<string, string> = {
 	'application/vnd.ms-powerpoint': 'PPT',
 	'application/vnd.oasis.opendocument.text': 'ODT',
 	'application/vnd.oasis.opendocument.spreadsheet': 'ODS',
-	'application/directory': '폴더',
 	'image/png': 'PNG',
 	'image/jpeg': 'JPG',
 	'image/gif': 'GIF',
@@ -103,19 +105,20 @@ export function visibilityBadge(v: string | null): string {
 	}
 }
 
-/** 이미지 공개 범위 한글 레이블 */
+/** 이미지 공개 범위 레이블 */
 export function visibilityLabel(v: string | null): string {
 	switch (v) {
-		case 'public':    return '공개';
-		case 'shared':    return '공유';
-		case 'community': return '커뮤니티';
-		case 'private':   return '비공개';
+		case 'public':    return t('visibility.public');
+		case 'shared':    return t('visibility.shared');
+		case 'community': return t('visibility.community');
+		case 'private':   return t('visibility.private');
 		default:          return v ?? '-';
 	}
 }
 
 export function shortContentType(ct: string | null | undefined): string {
 	if (!ct) return '-';
+	if (ct === 'application/directory') return t('mime.folder');
 	const exact = MIME_SHORT[ct];
 	if (exact) return exact;
 	// fallback: subtype 의 마지막 마침표 뒤 토큰을 대문자로 (최대 8자)

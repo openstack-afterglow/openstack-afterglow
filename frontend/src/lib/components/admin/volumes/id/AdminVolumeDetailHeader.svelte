@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-storage';
 	import type { AdminVolumeDetail } from '$lib/types/volume';
 	import { volumeStatusColor } from '$lib/utils/volumeStatusColor';
 	import { formatNumber } from '$lib/utils/format';
@@ -32,17 +33,17 @@
 		<button
 			onclick={onExtend}
 			class="px-3 py-1.5 bg-surface-selected/40 hover:bg-surface-selected/40 border border-action-warm text-warm-text text-sm rounded-lg transition-colors"
-		>확장</button>
+		>{t('volumeDetail.extend')}</button>
 		{#if volume.status === 'error' || volume.status === 'error_deleting'}
 			<button
 				onclick={onResetStatus}
 				class="px-3 py-1.5 bg-yellow-900/40 hover:bg-yellow-800/40 border border-yellow-800 text-yellow-400 text-sm rounded-lg transition-colors"
-			>상태 초기화</button>
+			>{t('volumeDetail.resetStatus')}</button>
 		{/if}
 		<button
 			onclick={onDelete}
 			disabled={deleting || volume.status === 'in-use'}
 			class="px-3 py-1.5 bg-red-900/40 hover:bg-red-900/60 border border-red-800 text-red-400 text-sm rounded-lg transition-colors disabled:opacity-50"
-		>{deleting ? '삭제 중...' : '삭제'}</button>
+		>{deleting ? t('volumeDetail.deleting') : t('volumeDetail.delete')}</button>
 	</div>
 </div>

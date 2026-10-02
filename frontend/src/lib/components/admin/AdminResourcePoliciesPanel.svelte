@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-system';
 	import { onMount } from 'svelte';
 	import { api, ApiError } from '$lib/api/client';
 	import { Alert, Button, Card, SearchSelect, SelectInput } from '$lib/components/ui';
@@ -55,18 +56,18 @@
 	function definePolicy(
 		key: string,
 		resource_kind: string,
-		title: string,
+		titleKey: Parameters<typeof t>[0],
 		group: string,
-		help_text: string,
+		helpKey: Parameters<typeof t>[0],
 		execution_scope: ResourcePolicy['execution_scope'],
 		overrides: Partial<Pick<ResourcePolicy, 'dependency' | 'required_when' | 'external_only' | 'shared_only'>> = {}
 	): ResourcePolicy {
 		return {
 			key,
 			resource_kind,
-			title,
+			get title() { return t(titleKey); },
 			group,
-			help_text,
+			get help_text() { return t(helpKey); },
 			execution_scope,
 			dependency: null,
 			required_when: null,
@@ -80,47 +81,47 @@
 	}
 
 	const policyDefinitions: ResourcePolicy[] = [
-		definePolicy('openstack.service_project', 'project', 'Service project', 'OpenStack', 'Project used for Builder and service-owned Manila resources.', 'admin'),
-		definePolicy('nova.default_network', 'network', 'Default tenant network', 'Nova / Cinder', 'Shared fallback network used only when project auto-networking is disabled.', 'tenant', { shared_only: true }),
-		definePolicy('nova.default_external_network', 'network', 'Default external network', 'Nova / Cinder', 'External network required when project default networking is enabled.', 'tenant', { required_when: 'default_network_enabled', external_only: true }),
-		definePolicy('nova.default_compute_availability_zone', 'compute_availability_zone', 'Default compute availability zone', 'Nova / Cinder', 'Nova scheduling zone when a request does not provide one.', 'admin'),
-		definePolicy('cinder.default_volume_availability_zone', 'volume_availability_zone', 'Default volume availability zone', 'Nova / Cinder', 'Cinder placement zone when a request does not provide one.', 'admin'),
-		definePolicy('manila.share_network', 'share_network', 'Service share network', 'Manila', 'Share network used only by Builder and service-owned NFS/DHSS shares.', 'service', { dependency: 'openstack.service_project' }),
-		definePolicy('manila.cephfs_share_type', 'share_type', 'Public CephFS share type', 'Manila', 'Public share type available in service and tenant projects for CephFS.', 'tenant'),
-		definePolicy('manila.nfs_share_type', 'share_type', 'Public NFS share type', 'Manila', 'Public share type available in service and tenant projects for NFS.', 'tenant'),
-		definePolicy('k3s.server_image', 'image', 'K3s server image', 'K3s', 'Public Ubuntu server image.', 'tenant'),
-		definePolicy('k3s.fcos_image', 'image', 'K3s Fedora CoreOS image', 'K3s', 'Public Fedora CoreOS image.', 'tenant'),
-		definePolicy('k3s.server_flavor', 'flavor', 'K3s server flavor', 'K3s', 'Default server-node flavor.', 'tenant'),
-		definePolicy('k3s.default_agent_flavor', 'flavor', 'K3s default agent flavor', 'K3s', 'Default agent-node flavor.', 'tenant'),
-		definePolicy('k3s.volume_availability_zone', 'volume_availability_zone', 'K3s volume availability zone', 'K3s', 'Cinder placement zone for K3s boot volumes.', 'admin'),
-		definePolicy('k3s.default_network', 'network', 'K3s default network', 'K3s', 'Shared fallback network used when a cluster request omits network_id.', 'tenant', { shared_only: true }),
-		definePolicy('k3s.occm_floating_network', 'network', 'K3s OCCM floating network', 'K3s', 'External network for OCCM floating IP allocation.', 'tenant', { external_only: true }),
-		definePolicy('k3s.occm_public_network', 'network', 'K3s OCCM public network', 'K3s', 'Shared/external network rendered into OCCM as its saved name.', 'tenant', { shared_only: true }),
-		definePolicy('k3s.lb_subnet', 'subnet', 'K3s load-balancer subnet', 'K3s', 'Subnet used for active load-balancer modes.', 'tenant'),
-		definePolicy('k3s.api_lb_vip_network', 'network', 'K3s API load-balancer network', 'K3s', 'Shared network for the API load balancer VIP.', 'tenant', { shared_only: true }),
-		definePolicy('k3s.api_lb_floating_network', 'network', 'K3s API load-balancer floating network', 'K3s', 'External network for the API load balancer.', 'tenant', { external_only: true }),
-		definePolicy('k3s.octavia_ingress_floating_network', 'network', 'K3s Octavia ingress floating network', 'K3s', 'External network for Octavia ingress.', 'tenant', { external_only: true }),
-		definePolicy('builder.flavor', 'flavor', 'Builder flavor', 'Builder', 'Default Builder flavor; individual jobs may override it.', 'service', { dependency: 'openstack.service_project' }),
-		definePolicy('builder.network', 'network', 'Builder network', 'Builder', 'Default Builder network; individual jobs may override it.', 'service', { dependency: 'openstack.service_project' }),
-		definePolicy('builder.floating_network', 'network', 'Builder floating network', 'Builder', 'Optional external network for Builder utility VMs.', 'service', { dependency: 'openstack.service_project', external_only: true }),
-		definePolicy('waygate.provider_network', 'network', 'Waygate provider network', 'Waygate', 'Target-tenant-visible shared provider network.', 'tenant', { shared_only: true }),
-		definePolicy('waygate.image', 'image', 'Waygate image', 'Waygate', 'Target-tenant-visible public image.', 'tenant'),
-		definePolicy('waygate.flavor', 'flavor', 'Waygate flavor', 'Waygate', 'Target-tenant-visible public flavor.', 'tenant'),
-		definePolicy('waygate.floating_network', 'network', 'Waygate floating network', 'Waygate', 'Optional external network for Waygate endpoints.', 'tenant', { external_only: true })
+		definePolicy('openstack.service_project', 'project', 'policies.definition.openstackServiceProject.title', 'OpenStack', 'policies.definition.openstackServiceProject.help', 'admin'),
+		definePolicy('nova.default_network', 'network', 'policies.definition.novaDefaultNetwork.title', 'Nova / Cinder', 'policies.definition.novaDefaultNetwork.help', 'tenant', { shared_only: true }),
+		definePolicy('nova.default_external_network', 'network', 'policies.definition.novaDefaultExternalNetwork.title', 'Nova / Cinder', 'policies.definition.novaDefaultExternalNetwork.help', 'tenant', { required_when: 'default_network_enabled', external_only: true }),
+		definePolicy('nova.default_compute_availability_zone', 'compute_availability_zone', 'policies.definition.novaDefaultComputeAvailabilityZone.title', 'Nova / Cinder', 'policies.definition.novaDefaultComputeAvailabilityZone.help', 'admin'),
+		definePolicy('cinder.default_volume_availability_zone', 'volume_availability_zone', 'policies.definition.cinderDefaultVolumeAvailabilityZone.title', 'Nova / Cinder', 'policies.definition.cinderDefaultVolumeAvailabilityZone.help', 'admin'),
+		definePolicy('manila.share_network', 'share_network', 'policies.definition.manilaShareNetwork.title', 'Manila', 'policies.definition.manilaShareNetwork.help', 'service', { dependency: 'openstack.service_project' }),
+		definePolicy('manila.cephfs_share_type', 'share_type', 'policies.definition.manilaCephfsShareType.title', 'Manila', 'policies.definition.manilaCephfsShareType.help', 'tenant'),
+		definePolicy('manila.nfs_share_type', 'share_type', 'policies.definition.manilaNfsShareType.title', 'Manila', 'policies.definition.manilaNfsShareType.help', 'tenant'),
+		definePolicy('k3s.server_image', 'image', 'policies.definition.k3sServerImage.title', 'K3s', 'policies.definition.k3sServerImage.help', 'tenant'),
+		definePolicy('k3s.fcos_image', 'image', 'policies.definition.k3sFcosImage.title', 'K3s', 'policies.definition.k3sFcosImage.help', 'tenant'),
+		definePolicy('k3s.server_flavor', 'flavor', 'policies.definition.k3sServerFlavor.title', 'K3s', 'policies.definition.k3sServerFlavor.help', 'tenant'),
+		definePolicy('k3s.default_agent_flavor', 'flavor', 'policies.definition.k3sDefaultAgentFlavor.title', 'K3s', 'policies.definition.k3sDefaultAgentFlavor.help', 'tenant'),
+		definePolicy('k3s.volume_availability_zone', 'volume_availability_zone', 'policies.definition.k3sVolumeAvailabilityZone.title', 'K3s', 'policies.definition.k3sVolumeAvailabilityZone.help', 'admin'),
+		definePolicy('k3s.default_network', 'network', 'policies.definition.k3sDefaultNetwork.title', 'K3s', 'policies.definition.k3sDefaultNetwork.help', 'tenant', { shared_only: true }),
+		definePolicy('k3s.occm_floating_network', 'network', 'policies.definition.k3sOccmFloatingNetwork.title', 'K3s', 'policies.definition.k3sOccmFloatingNetwork.help', 'tenant', { external_only: true }),
+		definePolicy('k3s.occm_public_network', 'network', 'policies.definition.k3sOccmPublicNetwork.title', 'K3s', 'policies.definition.k3sOccmPublicNetwork.help', 'tenant', { shared_only: true }),
+		definePolicy('k3s.lb_subnet', 'subnet', 'policies.definition.k3sLbSubnet.title', 'K3s', 'policies.definition.k3sLbSubnet.help', 'tenant'),
+		definePolicy('k3s.api_lb_vip_network', 'network', 'policies.definition.k3sApiLbVipNetwork.title', 'K3s', 'policies.definition.k3sApiLbVipNetwork.help', 'tenant', { shared_only: true }),
+		definePolicy('k3s.api_lb_floating_network', 'network', 'policies.definition.k3sApiLbFloatingNetwork.title', 'K3s', 'policies.definition.k3sApiLbFloatingNetwork.help', 'tenant', { external_only: true }),
+		definePolicy('k3s.octavia_ingress_floating_network', 'network', 'policies.definition.k3sOctaviaIngressFloatingNetwork.title', 'K3s', 'policies.definition.k3sOctaviaIngressFloatingNetwork.help', 'tenant', { external_only: true }),
+		definePolicy('builder.flavor', 'flavor', 'policies.definition.builderFlavor.title', 'Builder', 'policies.definition.builderFlavor.help', 'service', { dependency: 'openstack.service_project' }),
+		definePolicy('builder.network', 'network', 'policies.definition.builderNetwork.title', 'Builder', 'policies.definition.builderNetwork.help', 'service', { dependency: 'openstack.service_project' }),
+		definePolicy('builder.floating_network', 'network', 'policies.definition.builderFloatingNetwork.title', 'Builder', 'policies.definition.builderFloatingNetwork.help', 'service', { dependency: 'openstack.service_project', external_only: true }),
+		definePolicy('waygate.provider_network', 'network', 'policies.definition.waygateProviderNetwork.title', 'Waygate', 'policies.definition.waygateProviderNetwork.help', 'tenant', { shared_only: true }),
+		definePolicy('waygate.image', 'image', 'policies.definition.waygateImage.title', 'Waygate', 'policies.definition.waygateImage.help', 'tenant'),
+		definePolicy('waygate.flavor', 'flavor', 'policies.definition.waygateFlavor.title', 'Waygate', 'policies.definition.waygateFlavor.help', 'tenant'),
+		definePolicy('waygate.floating_network', 'network', 'policies.definition.waygateFloatingNetwork.title', 'Waygate', 'policies.definition.waygateFloatingNetwork.help', 'tenant', { external_only: true })
 	];
 
 	const runtimeDefinitions: RuntimeSetting[] = [
 		{
 			key: 'k3s.version',
-			title: 'K3s version',
-			help_text: 'Version used for new K3s clusters.',
+			get title() { return t('policies.runtime.versionTitle'); },
+			get help_text() { return t('policies.runtime.versionHelp'); },
 			value: '',
 			state: 'missing'
 		},
 		{
 			key: 'notion.sync_enabled',
-			title: 'Notion synchronization',
-			help_text: 'Global switch for all scheduled and manual Notion synchronization.',
+			get title() { return t('policies.runtime.notionTitle'); },
+			get help_text() { return t('policies.runtime.notionHelp'); },
 			value: false,
 			state: 'missing'
 		}
@@ -263,15 +264,15 @@
 			void loadAllCatalogs(policies);
 		} else {
 			error = policyResult.reason instanceof ApiError
-				? `리소스 정책 값을 조회하지 못했습니다: ${policyResult.reason.message}`
-				: '리소스 정책 값을 조회하지 못했습니다';
+				? t('policies.loadFailedDetail', { message: policyResult.reason.message })
+				: t('policies.loadFailed');
 		}
 		if (runtimeResult.status === 'fulfilled') {
 			mergeRuntimeValues(runtimeResult.value);
 		} else if (!error) {
 			error = runtimeResult.reason instanceof ApiError
-				? `Runtime 설정 값을 조회하지 못했습니다: ${runtimeResult.reason.message}`
-				: 'Runtime 설정 값을 조회하지 못했습니다';
+				? t('policies.runtimeLoadFailedDetail', { message: runtimeResult.reason.message })
+				: t('policies.runtimeLoadFailed');
 		}
 		loadingValues = false;
 	}
@@ -288,10 +289,10 @@
 			const current = selections[policy.key] ?? '';
 			if (!current && catalog.options.length === 1) {
 				setPolicySelection(policy.key, catalog.options[0].id);
-				notice = `${policy.title}의 유일한 선택지를 기본값으로 선택했습니다. 저장을 누르면 반영됩니다.`;
+				notice = t('policies.onlyOption', { title: policy.title });
 			}
 		} catch (cause) {
-			error = cause instanceof ApiError ? `OpenStack 목록을 조회하지 못했습니다: ${cause.message}` : 'OpenStack 목록을 조회하지 못했습니다';
+			error = cause instanceof ApiError ? t('policies.catalogFailedDetail', { message: cause.message }) : t('policies.catalogFailed');
 		} finally {
 			const next = { ...catalogLoading };
 			delete next[policy.key];
@@ -306,7 +307,7 @@
 	function policyOptions(policy: ResourcePolicy): SearchSelectOption[] {
 		const catalog = options[policy.key] ?? [];
 		const selectedId = selections[policy.key] ?? '';
-		const entries: SearchSelectOption[] = [{ value: CLEAR_OPTION_ID, label: '선택 안 함' }];
+		const entries: SearchSelectOption[] = [{ value: CLEAR_OPTION_ID, label: t('policies.clear') }];
 		if (selectedId && !catalog.some((option) => option.id === selectedId)) {
 			entries.push({ value: selectedId, label: selectedLabel(policy), description: selectedId });
 		}
@@ -335,9 +336,9 @@
 			);
 			policies = policies.map((item) => (item.key === updated.key ? { ...item, ...updated } : item));
 			clearDraft('policies', policy.key);
-			notice = `${policy.title} 정책을 저장했습니다.`;
+			notice = t('policies.saved', { title: policy.title });
 		} catch (cause) {
-			error = cause instanceof ApiError ? `정책 저장 실패: ${cause.message}` : '정책 저장 실패';
+			error = cause instanceof ApiError ? t('policies.saveFailedDetail', { message: cause.message }) : t('policies.saveFailed');
 		} finally {
 			saving = null;
 		}
@@ -356,9 +357,9 @@
 			);
 			runtimeSettings = runtimeSettings.map((item) => (item.key === updated.key ? updated : item));
 			clearDraft('runtime', setting.key);
-			notice = `${setting.title} 설정을 저장했습니다.`;
+			notice = t('policies.runtimeSaved', { title: setting.title });
 		} catch (cause) {
-			error = cause instanceof ApiError ? `설정 저장 실패: ${cause.message}` : '설정 저장 실패';
+			error = cause instanceof ApiError ? t('policies.runtimeSaveFailedDetail', { message: cause.message }) : t('policies.runtimeSaveFailed');
 		} finally {
 			saving = null;
 		}
@@ -379,20 +380,20 @@
 <Card padding="lg" surface="subtle">
 	<div class="heading">
 		<div>
-			<p class="eyebrow">Infrastructure policies</p>
-			<h2>OpenStack 리소스 정책</h2>
-			<p>정책 목록은 즉시 표시되며, 저장된 값과 선택 목록만 백엔드에서 조회합니다. 변경사항은 저장 전까지 이 브라우저에 임시 보관됩니다.</p>
+			<p class="eyebrow">{t('policies.eyebrow')}</p>
+			<h2>{t('policies.title')}</h2>
+			<p>{t('policies.description')}</p>
 		</div>
 	</div>
 
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
 	{#if notice}<Alert tone="success">{notice}</Alert>{/if}
-	{#if loadingValues}<p class="muted loading-note">저장된 정책 값을 불러오는 중…</p>{/if}
+	{#if loadingValues}<p class="muted loading-note">{t('policies.loading')}</p>{/if}
 
 	<section class="runtime-settings" aria-labelledby="runtime-settings-title">
 		<div class="section-heading">
-			<h3 id="runtime-settings-title">Runtime settings</h3>
-			<p>OpenStack resource가 아닌 환경별 운영 값을 데이터베이스에 저장합니다.</p>
+			<h3 id="runtime-settings-title">{t('policies.runtimeTitle')}</h3>
+			<p>{t('policies.runtimeDescription')}</p>
 		</div>
 		{#each runtimeSettings as setting (setting.key)}
 			<div class="runtime-row">
@@ -404,21 +405,21 @@
 					<SelectInput
 						value={runtimeValues[setting.key] ?? 'false'}
 						onchange={(event) => setRuntimeValue(setting.key, (event.currentTarget as HTMLSelectElement).value)}
-						ariaLabel={`${setting.title} 선택`}
+						ariaLabel={t('policies.selectLabel', { title: setting.title })}
 					>
-						<option value="true">Enabled</option>
-						<option value="false">Disabled</option>
+						<option value="true">{t('policies.enabled')}</option>
+						<option value="false">{t('policies.disabled')}</option>
 					</SelectInput>
 				{:else}
 					<input
 						class="runtime-input"
 						value={runtimeValues[setting.key] ?? ''}
 						oninput={(event) => setRuntimeValue(setting.key, (event.currentTarget as HTMLInputElement).value)}
-						aria-label={`${setting.title} 값`}
+						aria-label={t('policies.valueLabel', { title: setting.title })}
 					/>
 				{/if}
 				<Button variant="primary" size="sm" onclick={() => saveRuntimeSetting(setting)} disabled={saving === setting.key}>
-					{saving === setting.key ? '저장 중…' : '저장'}
+					{saving === setting.key ? t('policies.saving') : t('policies.save')}
 				</Button>
 			</div>
 		{/each}
@@ -439,11 +440,11 @@
 								id={`policy-${policy.key.replace(/\./g, '-')}`}
 								value={selections[policy.key] ?? ''}
 								options={policyOptions(policy)}
-								placeholder="이름 또는 ID로 검색·선택"
-								searchPlaceholder="이름 또는 ID로 검색"
-								emptyText="일치하는 리소스가 없습니다."
+								placeholder={t('policies.placeholder')}
+								searchPlaceholder={t('policies.searchPlaceholder')}
+								emptyText={t('policies.empty')}
 								loading={Boolean(catalogLoading[policy.key])}
-								ariaLabel={`${policy.title} 검색 및 선택`}
+								ariaLabel={t('policies.searchLabel', { title: policy.title })}
 								onopen={() => void loadOptions(policy)}
 								onchange={(value) => setPolicySelection(policy.key, value === CLEAR_OPTION_ID ? '' : value)}
 							/>
@@ -451,7 +452,7 @@
 						</div>
 						<div class="actions">
 							<Button variant="primary" size="sm" onclick={() => save(policy)} disabled={saving === policy.key}>
-								{saving === policy.key ? '저장 중…' : '저장'}
+								{saving === policy.key ? t('policies.saving') : t('policies.save')}
 							</Button>
 						</div>
 					</section>

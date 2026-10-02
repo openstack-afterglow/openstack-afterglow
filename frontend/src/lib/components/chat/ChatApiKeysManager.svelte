@@ -12,6 +12,9 @@
 	import type { ApiKey } from '$lib/api/chatUsage';
 	import type { ChatUsage } from '$lib/api/chatTree';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
+	import { t } from '$lib/i18n/ns/chat-settings';
+	import RichText from '$lib/i18n/RichText.svelte';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 
 	let { usage = null }: { usage?: ChatUsage | null } = $props();
 
@@ -81,7 +84,7 @@
 			};
 		} catch {
 			if (generation !== guideGeneration) return;
-			guideError = 'Lumen 연결 정보를 불러오지 못했습니다. 서비스 연결 및 공개 API 주소 설정을 확인해 주세요.';
+			guideError = t('apiKeys.guide.loadFailed');
 		} finally {
 			if (generation === guideGeneration) guideLoading = false;
 		}
@@ -140,7 +143,7 @@ wire_api = "responses"
 requires_openai_auth = false
 supports_websockets = false
 
-# 같은 모델 ID가 여러 프로바이더에 있을 때만 아래 값을 설정하세요.
+# ${t('apiKeys.codex.providerComment')}
 # http_headers = { "X-Lumen-Provider" = "provider-id" }` : '');
 	const keyPromptExample = `printf 'Lumen API key: '; read -rs LUMEN_API_KEY; printf '\\n'; export LUMEN_API_KEY`;
 	const codexShellExample = `codex --strict-config -c model_provider=lumen -m "replace-with-active-Responses-model-ID"`;
@@ -152,7 +155,7 @@ export ANTHROPIC_DEFAULT_SONNET_MODEL="$LUMEN_MODEL"
 export ANTHROPIC_DEFAULT_OPUS_MODEL="$LUMEN_MODEL"
 export ANTHROPIC_DEFAULT_HAIKU_MODEL="$LUMEN_MODEL"
 
-# 같은 모델 ID가 여러 프로바이더에 있을 때만 아래 두 줄의 주석을 해제하세요.
+# ${t('apiKeys.claude.providerComment')}
 # export LUMEN_PROVIDER="replace-with-provider-id"
 # export ANTHROPIC_CUSTOM_HEADERS="X-Lumen-Provider: $LUMEN_PROVIDER"
 claude` : '');
@@ -163,7 +166,7 @@ claude` : '');
 		try {
 			keys = await api.get<ApiKey[]>('/api/v1/chat/api-keys', token, projectId);
 		} catch {
-			toast.error('API 키 목록을 불러오지 못했습니다');
+			toast.error(t('apiKeys.toast.loadFailed'));
 		} finally {
 			loading = false;
 		}
@@ -182,19 +185,19 @@ claude` : '');
 			name = '';
 			await load();
 		} catch (e) {
-			toast.error(e instanceof ApiError ? e.message : '발급 실패');
+			toast.error(e instanceof ApiError ? e.message : t('apiKeys.toast.createFailed'));
 		} finally {
 			creating = false;
 		}
 	}
 
 	async function revoke(id: number) {
-		if (!(await confirmDialog('이 API 키를 폐기하시겠습니까? 이 키를 쓰는 연동은 즉시 중단됩니다.'))) return;
+		if (!(await confirmDialog(t('apiKeys.revokeConfirm')))) return;
 		try {
 			await api.delete(`/api/v1/chat/api-keys/${id}`, token, projectId);
 			await load();
 		} catch {
-			toast.error('폐기 실패');
+			toast.error(t('apiKeys.toast.revokeFailed'));
 		}
 	}
 
@@ -243,25 +246,25 @@ claude` : '');
 
 	function limitError(value: string, ceiling: Ceiling | null): string {
 		if (!value) return '';
-		if (!isCreditInput(value)) return '0보다 큰 숫자(소수 8자리 이하)를 입력하세요';
+		if (!isCreditInput(value)) return t('apiKeys.validation.positiveCredit');
 		if (ceiling && Number(value) > ceiling.limit) {
-			return `${ceiling.label}(${formatCredit(String(ceiling.limit))})를 초과할 수 없습니다`;
+			return t('apiKeys.validation.exceedsCeiling', { label: ceiling.label, limit: formatCredit(String(ceiling.limit)) });
 		}
 		return '';
 	}
 
 	async function saveName(key: ApiKey) {
 		const nextName = nameDraft.trim();
-		nameError = nextName ? '' : '이름을 입력하세요';
+		nameError = nextName ? '' : t('apiKeys.validation.nameRequired');
 		if (!token || nameError) return;
 		savingEdit = true;
 		try {
 			await api.patch(`/api/v1/chat/api-keys/${key.id}`, { name: nextName }, token, projectId);
-			toast.success('이름을 변경했습니다');
+			toast.success(t('apiKeys.toast.nameSaved'));
 			stopEditing();
 			await load();
 		} catch (error) {
-			toast.error(error instanceof ApiError ? error.message : '이름 변경 실패');
+			toast.error(error instanceof ApiError ? error.message : t('apiKeys.toast.nameFailed'));
 		} finally {
 			savingEdit = false;
 		}
@@ -269,13 +272,13 @@ claude` : '');
 
 	async function saveLimits(key: ApiKey) {
 		const monthlyCeiling = tightestCeiling([
-			[key.system_monthly_credit_limit, '사용자 쿼터'],
-			[key.admin_monthly_credit_limit, '관리자 한도']
+			[key.system_monthly_credit_limit, t('apiKeys.ceiling.userQuota')],
+			[key.admin_monthly_credit_limit, t('apiKeys.ceiling.adminLimit')]
 		]);
 		const weeklyCeiling = tightestCeiling([
-			[key.system_weekly_credit_limit, '사용자 주간 쿼터'],
-			[key.system_monthly_credit_limit, '사용자 쿼터'],
-			[key.admin_monthly_credit_limit, '관리자 한도']
+			[key.system_weekly_credit_limit, t('apiKeys.ceiling.userWeeklyQuota')],
+			[key.system_monthly_credit_limit, t('apiKeys.ceiling.userQuota')],
+			[key.admin_monthly_credit_limit, t('apiKeys.ceiling.adminLimit')]
 		]);
 		monthlyError = limitError(monthlyDraft, monthlyCeiling);
 		weeklyError = limitError(weeklyDraft, weeklyCeiling);
@@ -291,22 +294,22 @@ claude` : '');
 				token,
 				projectId
 			);
-			toast.success('한도를 저장했습니다');
+			toast.success(t('apiKeys.toast.limitsSaved'));
 			stopEditing();
 			await load();
 		} catch (error) {
-			toast.error(error instanceof ApiError ? error.message : '한도 저장 실패');
+			toast.error(error instanceof ApiError ? error.message : t('apiKeys.toast.limitsFailed'));
 		} finally {
 			savingEdit = false;
 		}
 	}
 
-	async function copyText(value: string, successMessage = '복사되었습니다') {
+	async function copyText(value: string, successMessage = t('apiKeys.toast.copied')) {
 		try {
 			await navigator.clipboard.writeText(value);
 			toast.success(successMessage);
 		} catch {
-			toast.error('복사 실패 — 수동으로 선택해 복사하세요');
+			toast.error(t('apiKeys.toast.copyFailed'));
 		}
 	}
 
@@ -330,28 +333,27 @@ claude` : '');
 </script>
 
 <section>
-	<h3 class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">API 키</h3>
+	<h3 class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">{t('apiKeys.title')}</h3>
 	<p class="mb-2 text-xs text-[var(--color-ink-3)]">
-		외부 프로그램(OpenAI/Anthropic SDK)에서 이 채팅에 접속할 때 쓰는 키입니다. 사용량은 내 지갑의 월·주간 쿼터에서
-		차감되며, 웹과 분리된 API 통계로 집계됩니다.
+		{t('apiKeys.description')}
 	</p>
 	{#if usage}
 		<p class="mb-3 text-xs tabular-nums text-[var(--color-ink-2)]">
-			내 쿼터: 월 {formatCredit(String(usage.quota_max))} · 주간 {formatCredit(String(usage.quota_weekly_max))}
+			{t('apiKeys.quota', { monthly: formatCredit(String(usage.quota_max)), weekly: formatCredit(String(usage.quota_weekly_max)) })}
 		</p>
 	{/if}
 
 	<div class="{cardCls} mb-4 p-5">
 		<div class="flex flex-col gap-3 sm:flex-row">
-			<input class={inputCls} placeholder="키 이름 (예: 내 노트북 CLI)" bind:value={name} />
-			<Button onclick={create} disabled={creating}>{creating ? '발급 중…' : '+ 새 API 키 발급'}</Button>
+			<input class={inputCls} placeholder={t('apiKeys.namePlaceholder')} bind:value={name} />
+			<Button onclick={create} disabled={creating}>{creating ? t('apiKeys.creating') : t('apiKeys.create')}</Button>
 		</div>
 	</div>
 
 	{#if loading}
 		<div class="{cardCls} h-16 animate-pulse"></div>
 	{:else if keys.length === 0}
-		<p class="px-1 text-sm text-[var(--color-ink-3)]">발급된 API 키가 없습니다.</p>
+		<p class="px-1 text-sm text-[var(--color-ink-3)]">{t('apiKeys.empty')}</p>
 	{:else}
 		<div class="space-y-2">
 			{#each keys as k (k.id)}
@@ -359,22 +361,21 @@ claude` : '');
 					<div class="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
 						<div class="min-w-0">
 							<div class="flex items-center gap-2">
-								<span class="truncate text-sm font-medium text-[var(--color-ink-1)]">{k.name || '(이름 없음)'}</span>
-								{#if !k.is_active}<span class="rounded bg-[var(--color-line)] px-1.5 py-0.5 text-xs text-[var(--color-ink-3)]">폐기됨</span>{/if}
+								<span class="truncate text-sm font-medium text-[var(--color-ink-1)]">{k.name || t('apiKeys.unnamed')}</span>
+								{#if !k.is_active}<span class="rounded bg-[var(--color-line)] px-1.5 py-0.5 text-xs text-[var(--color-ink-3)]">{t('apiKeys.revoked')}</span>{/if}
 							</div>
 							<div class="mt-0.5 font-mono text-xs text-[var(--color-ink-3)]">
-								{k.key_prefix}…{#if k.last_used_at} · 마지막 사용 {new Date(k.last_used_at).toLocaleString()}{:else} · 미사용{/if}
+								{k.key_prefix}…{#if k.last_used_at} · {t('apiKeys.lastUsed', { date: new Date(k.last_used_at).toLocaleString(intlLocale()) })}{:else} · {t('apiKeys.unused')}{/if}
 							</div>
 							<div class="mt-1 text-xs tabular-nums text-[var(--color-ink-2)]">
-								이번 달 {formatCredit(k.month_credited_cost, '0')} / {formatCredit(k.effective_monthly_credit_limit)}
-								· 이번 주 {formatCredit(k.week_credited_cost, '0')} / {formatCredit(k.effective_weekly_credit_limit)}
+								{t('apiKeys.usage', { monthlyUsed: formatCredit(k.month_credited_cost, '0'), monthlyLimit: formatCredit(k.effective_monthly_credit_limit), weeklyUsed: formatCredit(k.week_credited_cost, '0'), weeklyLimit: formatCredit(k.effective_weekly_credit_limit) })}
 							</div>
 						</div>
 						{#if k.is_active}
 							<div class="flex shrink-0 flex-wrap gap-1">
-								<Button variant="ghost" size="sm" onclick={() => editName(k)}>이름 변경</Button>
-								<Button variant="ghost" size="sm" onclick={() => editLimits(k)}>한도 설정</Button>
-								<Button variant="danger-outline" size="sm" onclick={() => revoke(k.id)}>폐기</Button>
+								<Button variant="ghost" size="sm" onclick={() => editName(k)}>{t('apiKeys.rename')}</Button>
+								<Button variant="ghost" size="sm" onclick={() => editLimits(k)}>{t('apiKeys.setLimits')}</Button>
+								<Button variant="danger-outline" size="sm" onclick={() => revoke(k.id)}>{t('apiKeys.revoke')}</Button>
 							</div>
 						{/if}
 					</div>
@@ -388,10 +389,10 @@ claude` : '');
 							}}
 						>
 							<div class="flex flex-col gap-2 sm:flex-row">
-								<TextInput ariaLabel="API 키 이름" maxlength={100} bind:value={nameDraft} />
+								<TextInput ariaLabel={t('apiKeys.nameLabel')} maxlength={100} bind:value={nameDraft} />
 								<div class="flex justify-end gap-2">
-									<Button variant="accent" size="sm" type="submit" disabled={savingEdit}>저장</Button>
-									<Button variant="ghost" size="sm" type="button" onclick={stopEditing}>취소</Button>
+									<Button variant="accent" size="sm" type="submit" disabled={savingEdit}>{t('apiKeys.save')}</Button>
+									<Button variant="ghost" size="sm" type="button" onclick={stopEditing}>{t('apiKeys.cancel')}</Button>
 								</div>
 							</div>
 							{#if nameError}<p class="mt-1 text-xs text-[var(--color-state-danger)]" role="alert">{nameError}</p>{/if}
@@ -406,9 +407,9 @@ claude` : '');
 						>
 							<div class="grid gap-3 md:grid-cols-2">
 								<Field
-									label="월 한도(크레딧)"
+									label={t('apiKeys.monthlyLimit')}
 									for="api-key-{k.id}-monthly-limit"
-									help="비워두면 해제"
+									help={t('apiKeys.limitHelp')}
 									error={monthlyError || undefined}
 								>
 									<TextInput
@@ -418,9 +419,9 @@ claude` : '');
 									/>
 								</Field>
 								<Field
-									label="주간 한도(크레딧)"
+									label={t('apiKeys.weeklyLimit')}
 									for="api-key-{k.id}-weekly-limit"
-									help="비워두면 해제"
+									help={t('apiKeys.limitHelp')}
 									error={weeklyError || undefined}
 								>
 									<TextInput
@@ -431,8 +432,8 @@ claude` : '');
 								</Field>
 							</div>
 							<div class="mt-3 flex justify-end gap-2">
-								<Button variant="accent" size="sm" type="submit" disabled={savingEdit}>저장</Button>
-								<Button variant="ghost" size="sm" type="button" onclick={stopEditing}>취소</Button>
+								<Button variant="accent" size="sm" type="submit" disabled={savingEdit}>{t('apiKeys.save')}</Button>
+								<Button variant="ghost" size="sm" type="button" onclick={stopEditing}>{t('apiKeys.cancel')}</Button>
 							</div>
 						</form>
 					{/if}
@@ -443,28 +444,24 @@ claude` : '');
 
 	<!-- SDK 사용 예시 -->
 	<div class="{cardCls} mt-5 min-w-0 p-5">
-		<h4 class="mb-2 text-xs font-semibold text-[var(--color-ink-1)]">연결 방법</h4>
+		<h4 class="mb-2 text-xs font-semibold text-[var(--color-ink-1)]">{t('apiKeys.guide.title')}</h4>
 		{#if guideLoading}
-			<p class="text-xs text-ink-2" role="status">Lumen 연결 정보를 불러오는 중입니다.</p>
+			<p class="text-xs text-ink-2" role="status">{t('apiKeys.guide.loading')}</p>
 		{:else if guideError}
 			<Alert>{guideError}</Alert>
 			<Button variant="secondary" size="sm" class="mt-3" onclick={() => loadConnectionGuide()}>
-				연결 정보 다시 불러오기
+				{t('apiKeys.guide.reload')}
 			</Button>
 		{:else if sdkBases}
 			<p class="mb-4 text-sm leading-6 text-ink-2">
-				발급 시 한 번만 보이는 일반 API 키의 전체 값을 안전하게 저장하세요. 목록의 일부 접두사만으로는 인증할 수 없으며,
-				전체 키를 잃어버렸다면 새 키를 발급해야 합니다. 모델 선택창에서 활성 모델의 공개 API ID를 확인하고
-				해당 모델의 프로바이더 인증정보가 서비스에 설정되어 있어야 합니다. 아래 주소는 Lumen에서 조회한 공개 API 주소이며
-				대시보드 주소와 다를 수 있습니다. 주소 조회만으로 외부 연결이나 CLI 요청 성공이 확인된 것은 아닙니다.
-				예제 요청은 실제 API 사용량을 차감합니다.
+				{t('apiKeys.guide.prerequisites')}
 			</p>
 			<Tabs
 				id="api-key-client-guides"
 				value={activeGuide}
 				items={clientGuideTabs}
 				onchange={(value) => { activeGuide = value as ClientGuide; }}
-				ariaLabel="Lumen 연결 클라이언트"
+				ariaLabel={t('apiKeys.guide.clientsLabel')}
 				class="mb-4"
 			/>
 			<div
@@ -477,93 +474,77 @@ claude` : '');
 				{#if activeGuide === 'codex'}
 					<div class="mb-2 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
 						<div>
-							<p class="text-sm font-medium text-ink-1">Codex CLI (Responses)</p>
+							<p class="text-sm font-medium text-ink-1">{t('apiKeys.codex.title')}</p>
 							<p class="mt-1 text-sm leading-6 text-ink-2">
-								먼저 발급한 일반 API 키를 안전하게 보관하고, 모델 선택창에서 사용할 공개 API ID를 확인하세요.
-								아래 설정의 공개 API 주소는 이 환경에서 조회한 값입니다. 키 값은 설정 파일이나 이 화면에 붙여 넣지 말고
-								실행할 셸에서 입력하세요. 같은 ID가 여러 프로바이더에 있을 때만 <code>X-Lumen-Provider</code>를 설정하세요.
+								<RichText segments={t.rich('apiKeys.codex.introduction', { providerHeader: 'X-Lumen-Provider' })} />
 							</p>
 						</div>
-						<Button variant="ghost" size="sm" onclick={() => copyText(codexConfigExample, 'Codex 설정을 복사했습니다')}>
-							설정 복사
+						<Button variant="ghost" size="sm" onclick={() => copyText(codexConfigExample, t('apiKeys.toast.codexConfigCopied'))}>
+							{t('apiKeys.codex.copyConfig')}
 						</Button>
 					</div>
 					<p class="mb-2 text-sm leading-6 text-ink-2">
-						아래 프로바이더 블록만 <code>~/.codex/config.toml</code>에 추가하세요. 기존 <code>model</code>·
-						<code>model_provider</code> 기본값을 덮어쓰지 않습니다. 이미 같은 이름의 블록이 있으면 내용을 갱신하세요.
+						<RichText segments={t.rich('apiKeys.codex.configHelp', { configPath: '~/.codex/config.toml', model: 'model', modelProvider: 'model_provider' })} />
 					</p>
-					<pre class="{codeCls} max-w-full whitespace-pre" role="region" aria-label="Codex CLI 연결 설정"><code>{codexConfigExample}</code></pre>
+					<pre class="{codeCls} max-w-full whitespace-pre" role="region" aria-label={t('apiKeys.codex.configLabel')}><code>{codexConfigExample}</code></pre>
 					<p class="mt-3 text-sm leading-6 text-ink-2">
-						먼저 아래 한 줄만 셸에서 실행하고, 표시되지 않는 입력 프롬프트에 발급한 키 전체 값을 직접 입력해 Enter를 누르세요.
-						나머지 명령을 한꺼번에 붙여 넣으면 키 대신 다음 명령이 입력될 수 있습니다.
+						{t('apiKeys.codex.keyPromptHelp')}
 					</p>
-					<pre class="{codeCls} mt-2 max-w-full whitespace-pre" role="region" aria-label="Lumen API 키 입력 명령"><code>{keyPromptExample}</code></pre>
+					<pre class="{codeCls} mt-2 max-w-full whitespace-pre" role="region" aria-label={t('apiKeys.guide.keyPromptLabel')}><code>{keyPromptExample}</code></pre>
 					<p class="mt-3 text-sm leading-6 text-ink-2">
-						그다음 아래의 <code>replace-with-active-Responses-model-ID</code>를 모델 선택창의 활성 Responses 호환
-						모델 공개 API ID로 바꾸고 같은 셸에서 실행하세요. CLI 옵션은 이번 실행에서만 기존 기본 프로바이더를 대체합니다.
+						<RichText segments={t.rich('apiKeys.codex.runHelp', { modelId: 'replace-with-active-Responses-model-ID' })} />
 					</p>
-					<pre class="{codeCls} mt-2 max-w-full whitespace-pre" role="region" aria-label="Codex CLI 실행 명령"><code>{codexShellExample}</code></pre>
+					<pre class="{codeCls} mt-2 max-w-full whitespace-pre" role="region" aria-label={t('apiKeys.codex.runLabel')}><code>{codexShellExample}</code></pre>
 					<p class="mt-2 text-sm leading-6 text-ink-2">
-						Codex CLI만 <code>error sending request</code>로 TLS 연결에 실패하지만 브라우저·curl은 정상일 때,
-						이 장치가 신뢰하는 PEM 번들을 <code>CODEX_CA_CERTIFICATE</code>에 지정해 다시 실행하세요.
-						이 Mac에서 확인된 예는 <code>export CODEX_CA_CERTIFICATE="/private/etc/ssl/cert.pem"</code>이며,
-						다른 환경에는 해당 장치의 신뢰 번들을 사용하세요. TLS 검증을 끄지 마세요.
+						<RichText segments={t.rich('apiKeys.codex.tlsHelp', { requestError: 'error sending request', certificateVariable: 'CODEX_CA_CERTIFICATE', certificateCommand: 'export CODEX_CA_CERTIFICATE="/private/etc/ssl/cert.pem"' })} />
 					</p>
 				{:else if activeGuide === 'claude-code'}
 					<div class="mb-2 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
 						<div>
-							<p class="text-sm font-medium text-ink-1">Claude Code (Anthropic API)</p>
+							<p class="text-sm font-medium text-ink-1">{t('apiKeys.claudeCode.title')}</p>
 							<p class="mt-1 text-sm leading-6 text-ink-2">
-								발급한 일반 API 키를 준비하고 모델 선택창에서 Anthropic Messages 호환 활성 모델의 공개 API ID를
-								확인하세요. 먼저 아래 한 줄만 셸에서 실행한 뒤, 표시되지 않는 프롬프트에 키 전체 값을 직접 입력해
-								Enter를 누르세요. 다음 명령까지 한꺼번에 붙여 넣으면 키 대신 명령이 입력될 수 있습니다.
-								같은 모델 ID가 여러 프로바이더에 있을 때만 provider ID와 custom header 두 줄을 활성화하세요.
+								{t('apiKeys.claudeCode.introduction')}
 							</p>
 						</div>
-						<Button variant="ghost" size="sm" onclick={() => copyText(claudeCodeExample, 'Claude Code 설정을 복사했습니다')}>
-							명령 복사
+						<Button variant="ghost" size="sm" onclick={() => copyText(claudeCodeExample, t('apiKeys.toast.claudeCodeCopied'))}>
+							{t('apiKeys.claudeCode.copyCommand')}
 						</Button>
 					</div>
-					<pre class="{codeCls} max-w-full whitespace-pre" role="region" aria-label="Lumen API 키 입력 명령"><code>{keyPromptExample}</code></pre>
+					<pre class="{codeCls} max-w-full whitespace-pre" role="region" aria-label={t('apiKeys.guide.keyPromptLabel')}><code>{keyPromptExample}</code></pre>
 					<p class="mt-3 text-sm leading-6 text-ink-2">
-						그다음 아래의 <code>replace-with-active-Anthropic-model-ID</code>를 선택한 공개 API ID로 바꿔 같은 셸에서
-						실행하세요. 조회한 Anthropic API origin으로 직접 연결하며 키는 복사되는 명령에 포함되지 않습니다.
+						<RichText segments={t.rich('apiKeys.claudeCode.runHelp', { modelId: 'replace-with-active-Anthropic-model-ID' })} />
 					</p>
-					<pre class="{codeCls} max-w-full whitespace-pre" role="region" aria-label="Claude Code 연결 명령"><code>{claudeCodeExample}</code></pre>
+					<pre class="{codeCls} max-w-full whitespace-pre" role="region" aria-label={t('apiKeys.claudeCode.commandLabel')}><code>{claudeCodeExample}</code></pre>
 				{:else if activeGuide === 'openai'}
 					<div class="mb-2 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
 						<div>
-							<p class="text-sm font-medium text-ink-1">OpenAI SDK (Python)</p>
+							<p class="text-sm font-medium text-ink-1">{t('apiKeys.openai.title')}</p>
 							<p class="mt-1 text-sm leading-6 text-ink-2">
-								<code>python -m pip install openai</code>로 패키지를 설치하고, <code>LUMEN_API_KEY</code>와
-								<code>LUMEN_MODEL</code>을 설정하세요. 같은 API ID가 여러 프로바이더에 있을 때만
-								<code>LUMEN_PROVIDER</code>를 추가하세요.
+								<RichText segments={t.rich('apiKeys.openai.installHelp', { installCommand: 'python -m pip install openai', apiKey: 'LUMEN_API_KEY', model: 'LUMEN_MODEL', provider: 'LUMEN_PROVIDER' })} />
 							</p>
 						</div>
-						<Button variant="ghost" size="sm" onclick={() => copyText(openaiExample, 'OpenAI 예제를 복사했습니다')}>
-							예제 복사
+						<Button variant="ghost" size="sm" onclick={() => copyText(openaiExample, t('apiKeys.toast.openaiCopied'))}>
+							{t('apiKeys.openai.copyExample')}
 						</Button>
 					</div>
-					<pre class="{codeCls} max-w-full whitespace-pre" role="region" aria-label="OpenAI SDK Python 예제"><code>{openaiExample}</code></pre>
+					<pre class="{codeCls} max-w-full whitespace-pre" role="region" aria-label={t('apiKeys.openai.exampleLabel')}><code>{openaiExample}</code></pre>
 				{:else}
 					<div class="mb-2 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
 						<div>
-							<p class="text-sm font-medium text-ink-1">Claude SDK (Anthropic Python)</p>
+							<p class="text-sm font-medium text-ink-1">{t('apiKeys.claude.title')}</p>
 							<p class="mt-1 text-sm leading-6 text-ink-2">
-								<code>python -m pip install anthropic</code>으로 패키지를 설치하고, <code>LUMEN_API_KEY</code>와
-								<code>LUMEN_MODEL</code>을 설정하세요. 같은 API ID가 여러 프로바이더에 있을 때만
-								<code>LUMEN_PROVIDER</code>를 추가하세요.
+								<RichText segments={t.rich('apiKeys.claude.installHelp', { installCommand: 'python -m pip install anthropic', apiKey: 'LUMEN_API_KEY', model: 'LUMEN_MODEL', provider: 'LUMEN_PROVIDER' })} />
 							</p>
 						</div>
-						<Button variant="ghost" size="sm" onclick={() => copyText(anthropicExample, 'Claude 예제를 복사했습니다')}>
-							예제 복사
+						<Button variant="ghost" size="sm" onclick={() => copyText(anthropicExample, t('apiKeys.toast.claudeCopied'))}>
+							{t('apiKeys.claude.copyExample')}
 						</Button>
 					</div>
-					<pre class="{codeCls} max-w-full whitespace-pre" role="region" aria-label="Claude SDK Python 예제"><code>{anthropicExample}</code></pre>
+					<pre class="{codeCls} max-w-full whitespace-pre" role="region" aria-label={t('apiKeys.claude.exampleLabel')}><code>{anthropicExample}</code></pre>
 				{/if}
 			</div>
 		{:else}
-			<p class="text-xs text-ink-2">로그인 후 Lumen 연결 정보를 확인할 수 있습니다.</p>
+			<p class="text-xs text-ink-2">{t('apiKeys.guide.signIn')}</p>
 		{/if}
 	</div>
 </section>
@@ -579,14 +560,14 @@ claude` : '');
 		tabindex="-1"
 	>
 		<div class="{cardCls} w-full max-w-lg p-6">
-			<h3 id="issued-key-title" class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">API 키가 발급되었습니다</h3>
+			<h3 id="issued-key-title" class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">{t('apiKeys.issued.title')}</h3>
 			<p class="mb-3 text-xs text-[var(--color-state-danger)]">
-				이 키는 지금 한 번만 표시됩니다. 안전한 곳에 저장하세요. 창을 닫으면 다시 볼 수 없습니다.
+				{t('apiKeys.issued.warning')}
 			</p>
 			<code class={codeCls}>{issued.key}</code>
 			<div class="mt-4 flex justify-end gap-2">
-				<Button variant="ghost" onclick={copyKey}>복사</Button>
-				<Button onclick={() => (issued = null)}>완료</Button>
+				<Button variant="ghost" onclick={copyKey}>{t('apiKeys.copy')}</Button>
+				<Button onclick={() => (issued = null)}>{t('apiKeys.done')}</Button>
 			</div>
 		</div>
 	</div>

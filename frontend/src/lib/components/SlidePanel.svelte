@@ -5,6 +5,7 @@
   import { MOTION_DURATION_MS } from '$lib/design/tokens';
   import { dialogFocus } from '$lib/utils/dialogFocus';
   import { motionDuration } from '$lib/utils/motion';
+  import { t } from '$lib/i18n/ns/shared';
 
   interface Props {
     onClose: () => void;
@@ -138,7 +139,7 @@
     class="absolute inset-0 cursor-default bg-surface-scrim-soft"
     transition:fade={{ duration: motionDuration(MOTION_DURATION_MS.base) }}
     onclick={onClose}
-    aria-label="패널 닫기"
+    aria-label={t('slidePanel.closeOverlay')}
     tabindex={isDesktop ? -1 : 0}
   ></button>
   <div
@@ -153,7 +154,7 @@
       data-slide-panel-close
       class="sticky right-3 top-3 z-20 ml-auto mr-3 mt-3 flex size-9 items-center justify-center rounded-md border border-line bg-surface-raised text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
       onclick={onClose}
-      aria-label="패널 닫기 버튼"
+      aria-label={t('slidePanel.closeButton')}
     >×</button>
     {#if resizable && isDesktop}
       <!-- 폭 조정 핸들: 태블릿/데스크톱에서만 노출, 더블클릭으로 기본값 리셋 -->

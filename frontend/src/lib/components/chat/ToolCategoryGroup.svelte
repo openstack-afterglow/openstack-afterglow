@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/chat-studio';
 	import type { ToolActivityItem } from '$lib/api/chatToolActivity';
 	import ToolCallCard from './ToolCallCard.svelte';
 
@@ -23,7 +24,7 @@
 	<summary>
 		<span class:active={running} class="category-dot" aria-hidden="true"></span>
 		<span class="category-title">{category}</span>
-		<span class="category-count">{items.length}개</span>
+		<span class="category-count">{t('toolCategoryGroup.count', { count: items.length })}</span>
 		<svg class="chevron" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
 			<path d="M6 9l6 6 6-6" stroke-linecap="round" stroke-linejoin="round" />
 		</svg>

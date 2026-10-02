@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { siteConfig } from '$lib/config/site';
   import { resolvedTheme } from '$lib/stores/theme';
+  import { t } from '$lib/i18n/ns/public-entry';
 
   let themeReady = $state(false);
 
@@ -26,9 +27,9 @@
   </div>
   <h1 class="text-4xl font-bold text-ink-0 mb-2">{$siteConfig.site_name}</h1>
   <p class="text-ink-2 text-sm">{$siteConfig.site_description}</p>
-  <a class="login-home-link" href="/" aria-label="메인 홈페이지로 돌아가기">
+  <a class="login-home-link" href="/" aria-label={t('loginBrand.home')}>
     <span aria-hidden="true">←</span>
-    <span>메인 홈페이지로 돌아가기</span>
+    <span>{t('loginBrand.home')}</span>
   </a>
 </div>
 

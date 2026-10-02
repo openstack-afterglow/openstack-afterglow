@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/topology';
 	import { onMount } from 'svelte';
 	import type { FloatingIpInfo } from '$lib/types/networks';
 
@@ -147,7 +148,7 @@
 		{/each}
 
 		{#if data.networks.length === 0}
-			<text x={svgW/2} y={svgH/2} text-anchor="middle" fill="#475569" font-size="12" font-family="ui-sans-serif,sans-serif">네트워크 없음</text>
+			<text x={svgW/2} y={svgH/2} text-anchor="middle" fill="#475569" font-size="12" font-family="ui-sans-serif,sans-serif">{t('empty.networks')}</text>
 		{/if}
 	</svg>
 </div>

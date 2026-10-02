@@ -8,6 +8,8 @@
 	import { wizardOpen } from '$lib/stores/wizard';
 	import { loadTutorialStatuses } from '$lib/tutorial/status';
 	import Button from '$lib/components/ui/Button.svelte';
+	import { t } from '$lib/i18n/ns/admin-ops';
+	import { getLocale } from '$lib/i18n/runtime.svelte';
 
 	$effect(() => {
 		if ($auth.token) void loadTutorialStatuses();
@@ -36,15 +38,17 @@
 {:else if !$isAdmin}
 	<div class="flex flex-col items-center justify-center min-h-screen bg-surface-canvas text-ink-2">
 		<div class="text-6xl font-bold text-ink-2 mb-4">404</div>
-		<div class="text-xl font-semibold text-ink-2 mb-2">페이지를 찾을 수 없습니다</div>
-		<div class="text-sm text-ink-2">접근 권한이 없거나 존재하지 않는 페이지입니다.</div>
-		<Button variant="primary" size="sm" class="mt-4" onclick={() => goto('/dashboard')}>대시보드로 이동</Button>
+		<div class="text-xl font-semibold text-ink-2 mb-2">{t('layout.notFound')}</div>
+		<div class="text-sm text-ink-2">{t('layout.noAccess')}</div>
+		<Button variant="primary" size="sm" class="mt-4" onclick={() => goto('/dashboard')}>{t('layout.dashboard')}</Button>
 	</div>
 {:else}
 	<div class="flex h-[100dvh] overflow-hidden">
 		<AdminSidebar />
 		<main id="main-content" tabindex="-1" class="min-w-0 flex-1 overflow-y-auto pt-[var(--app-header-height)] focus:outline-none focus-visible:shadow-[var(--focus-ring)]">
-			{@render children()}
+			{#key getLocale()}
+				{@render children()}
+			{/key}
 		</main>
 	</div>
 {#if $wizardOpen}

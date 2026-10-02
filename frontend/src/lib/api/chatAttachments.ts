@@ -3,6 +3,7 @@
  * and signed URLs never cross the browser boundary.
  */
 import { fetchWithAuth } from './client';
+import { t } from '$lib/i18n/ns/chat-settings';
 
 /** Backend asset metadata plus local upload state. */
 export interface ChatAttachment {
@@ -82,12 +83,12 @@ export async function uploadChatAttachment(
 	if (!res.ok) {
 		let detail = res.statusText;
 		try {
-			const t = await res.text();
-			if (t) detail = t;
+			const responseText = await res.text();
+			if (responseText) detail = responseText;
 		} catch {
 			/* ignore */
 		}
-		throw new Error(detail || `첨부 업로드 실패 (${res.status})`);
+		throw new Error(detail || t('attachments.uploadFailed', { status: res.status }));
 	}
 
 	const payload = (await res.json()) as AttachmentRef;
@@ -106,6 +107,6 @@ export async function downloadChatAsset(
 		token,
 		projectId
 	);
-	if (!res.ok) throw new Error(`파일 다운로드 실패 (${res.status})`);
+	if (!res.ok) throw new Error(t('attachments.downloadFailed', { status: res.status }));
 	return res.blob();
 }

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/drover-pages';
 	import { api, ApiError } from '$lib/api/client';
 	import type { K3sFlavor, K3sNodegroup } from '$lib/types/k3s';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
@@ -56,11 +57,11 @@
 
 	async function save() {
 		if (form.min_size > form.max_size) {
-			error = '최소 노드는 최대 노드보다 클 수 없습니다';
+			error = t('nodegroupEdit.invalidRange');
 			return;
 		}
 		if (form.stampede_enabled && !form.flavor_id) {
-			error = 'Stampede 노드그룹은 명시적 Flavor가 필요합니다';
+			error = t('nodegroupEdit.flavorRequired');
 			return;
 		}
 		saving = true;
@@ -80,7 +81,7 @@
 			);
 			onSaved(ng);
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : '수정 실패';
+			error = e instanceof ApiError ? e.message : t('nodegroupEdit.failed');
 		} finally {
 			saving = false;
 		}
@@ -101,19 +102,19 @@
 		onclick={(e) => e.stopPropagation()}
 		role="none"
 	>
-		<h2 class="text-lg font-semibold text-ink-0 mb-1">노드그룹 수정</h2>
+		<h2 class="text-lg font-semibold text-ink-0 mb-1">{t('nodegroupEdit.title')}</h2>
 		<p class="text-xs text-ink-2 mb-5">{nodegroup.name}</p>
 
 		<div class="space-y-4">
 			<label class="block text-xs text-ink-2 uppercase tracking-wide">
-				Flavor {form.stampede_enabled ? '(필수)' : '(선택)'}
+				{t(form.stampede_enabled ? 'nodegroup.flavorRequired' : 'nodegroup.flavorOptional')}
 				<select
 					bind:value={form.flavor_id}
 					class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5"
 				>
-					<option value="">선택 안 함</option>
+					<option value="">{t('nodegroup.notSelected')}</option>
 					{#each flavors as f}
-						<option value={f.id}>{f.name} ({f.vcpus}vCPU / {Math.round(f.ram / 1024)}GB){flavorGpuCount(f) > 0 ? ` / GPU ${flavorGpuCount(f)}` : ''}</option>
+						<option value={f.id}>{t('nodegroup.flavorOption', { name: f.name, cpus: f.vcpus, ram: Math.round(f.ram / 1024), gpu: flavorGpuCount(f) > 0 ? ` / GPU ${flavorGpuCount(f)}` : '' })}</option>
 					{/each}
 				</select>
 			</label>
@@ -122,14 +123,14 @@
 			<div class="border border-line-2 rounded-lg p-3 bg-surface-sunken/50">
 				<div class="flex items-center justify-between">
 					<div class="flex items-center gap-2">
-						<span class="text-sm font-medium text-ink-1">Stampede 오토스케일</span>
-						<span class="text-xs bg-yellow-900/60 text-yellow-400 border border-yellow-700/50 rounded px-1.5 py-0.5 leading-none">개발 단계</span>
+						<span class="text-sm font-medium text-ink-1">{t('nodegroup.autoscale')}</span>
+						<span class="text-xs bg-yellow-900/60 text-yellow-400 border border-yellow-700/50 rounded px-1.5 py-0.5 leading-none">{t('state.development')}</span>
 					</div>
 					<button
 						type="button"
 						role="switch"
 						aria-checked={form.stampede_enabled}
-						aria-label="Stampede 오토스케일"
+						aria-label={t('nodegroup.autoscale')}
 						onclick={() => form.stampede_enabled = !form.stampede_enabled}
 						class="relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus-visible:shadow-[var(--focus-ring)] {form.stampede_enabled ? 'bg-action-warm' : 'bg-surface-selected'}"
 					>
@@ -138,23 +139,23 @@
 				</div>
 				<div class="mt-3 grid grid-cols-2 gap-3">
 					<label class="block text-xs text-ink-2 uppercase tracking-wide">
-						최소 노드
+						{t('nodegroup.minimum')}
 						<input bind:value={form.min_size} type="number" min="0" max={form.max_size}
 							disabled={!form.stampede_enabled}
 							class="w-full bg-surface-selected border border-line-2 rounded px-2 py-1.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1 disabled:opacity-40" />
 					</label>
 					<label class="block text-xs text-ink-2 uppercase tracking-wide">
-						최대 노드
+						{t('nodegroup.maximum')}
 						<input bind:value={form.max_size} type="number" min={form.min_size} max="20"
 							disabled={!form.stampede_enabled}
 							class="w-full bg-surface-selected border border-line-2 rounded px-2 py-1.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1 disabled:opacity-40" />
 					</label>
 				</div>
 				{#if form.stampede_enabled}
-					<p class="mt-2 text-xs text-ink-2">Pending pod 발생 시 {form.min_size}~{form.max_size}개 범위로 자동 스케일합니다.</p>
+					<p class="mt-2 text-xs text-ink-2">{t('nodegroupEdit.scaleHelp', { min: form.min_size, max: form.max_size })}</p>
 					{#if Number(form.min_size) === 0}
 						<div class="mt-2 text-xs text-warm-text/90 bg-surface-selected/10 border border-action-warm/40 rounded px-2.5 py-1.5">
-							⚠ min=0 (scale-to-zero): 유휴 시 모든 노드가 자동 제거됩니다.
+							{t('nodegroup.zeroWarning')}
 						</div>
 					{/if}
 				{/if}
@@ -166,13 +167,13 @@
 		{/if}
 
 		<div class="flex justify-end gap-3 mt-6">
-			<button onclick={onClose} disabled={saving} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0">취소</button>
+			<button onclick={onClose} disabled={saving} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0">{t('actions.cancel')}</button>
 			<button
 				onclick={save}
 				disabled={saving}
 				class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg"
 			>
-				{saving ? '저장 중...' : '저장'}
+				{saving ? t('state.saving') : t('actions.save')}
 			</button>
 		</div>
 	</div>

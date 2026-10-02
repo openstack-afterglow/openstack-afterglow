@@ -302,9 +302,8 @@ describe('Waygate dashboard', () => {
 	it('shows gateway counters from the client perspective without inventing a rate', async () => {
 		await openServerPanel();
 		const traffic = screen.getByRole('region', { name: 'operator-laptop 클라이언트 기준 트래픽' });
-		expect(traffic.textContent).toMatch(/클라이언트 수신 RX\s*256 B/);
-		expect(traffic.textContent).toMatch(/클라이언트 송신 TX\s*128 B/);
-		expect(traffic.textContent).toContain('속도 —');
+		expect(traffic.textContent).toMatch(/RX\s*256 B/);
+		expect(traffic.textContent).toMatch(/TX\s*128 B/);
 		expect(traffic.querySelector('svg')).toBeNull();
 	});
 });

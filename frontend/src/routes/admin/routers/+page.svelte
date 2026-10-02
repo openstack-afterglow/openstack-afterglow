@@ -10,6 +10,7 @@
 	import AdminRouterCreateModal from '$lib/components/admin/routers/AdminRouterCreateModal.svelte';
 	import AdminRouterEditModal from '$lib/components/admin/routers/AdminRouterEditModal.svelte';
 	import AdminRouterDeleteModal from '$lib/components/admin/routers/AdminRouterDeleteModal.svelte';
+	import { t } from '$lib/i18n/ns/admin-network';
 
 	let routers = $state<AdminRouter[]>([]);
 	let loading = $state(true);
@@ -51,7 +52,7 @@
 			await api.post('/api/v1/admin/routers', { name: form.name, external_network_id: form.external_network_id || null }, token, projectId);
 			await load();
 			return true;
-		} catch (e) { return e instanceof ApiError ? e.message : '생성 실패'; }
+		} catch (e) { return e instanceof ApiError ? e.message : t('routersPage.error.createFailed'); }
 	}
 
 	async function updateRouter(id: string, form: { name: string }): Promise<string | true> {
@@ -59,7 +60,7 @@
 			await api.put(`/api/v1/admin/routers/${id}`, { name: form.name }, token, projectId);
 			await load();
 			return true;
-		} catch (e) { return e instanceof ApiError ? e.message : '수정 실패'; }
+		} catch (e) { return e instanceof ApiError ? e.message : t('routersPage.error.updateFailed'); }
 	}
 
 	async function deleteRouterFn(id: string): Promise<string | true> {
@@ -67,7 +68,7 @@
 			await api.delete(`/api/v1/admin/routers/${id}`, token, projectId);
 			await load();
 			return true;
-		} catch (e) { return e instanceof ApiError ? e.message : '삭제 실패'; }
+		} catch (e) { return e instanceof ApiError ? e.message : t('routersPage.error.deleteFailed'); }
 	}
 
 	const ar = createAutoRefresh(load, {
@@ -86,9 +87,9 @@
 <AdminRouterDeleteModal bind:router={deleteRouter} onConfirm={deleteRouterFn} />
 
 <div class="p-4 md:p-8 max-w-7xl mx-auto">
-	<PageHeader breadcrumb="NETWORK / ROUTERS" title="라우터">
+	<PageHeader breadcrumb={t('routersPage.breadcrumb')} title={t('routersPage.title')}>
 		{#snippet actions()}
-			<button onclick={openCreate} onpointerenter={prefetchExternalNetworks} onfocus={prefetchExternalNetworks} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg">+ 생성</button>
+			<button onclick={openCreate} onpointerenter={prefetchExternalNetworks} onfocus={prefetchExternalNetworks} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg">{t('routersPage.actions.create')}</button>
 			<AutoRefreshControl
 				bind:active={ar.active}
 				bind:intervalSeconds={ar.intervalSeconds}
@@ -100,9 +101,9 @@
 	</PageHeader>
 
 	{#if loading}
-		<div class="text-ink-2 text-sm">로딩 중...</div>
+		<div class="text-ink-2 text-sm">{t('routersPage.loading')}</div>
 	{:else}
 		<AdminRoutersTable {routers} onEdit={(r) => { editRouter = r; }} onDelete={(r) => { deleteRouter = r; }} />
-		<div class="mt-3 text-xs text-ink-2">총 {routers.length}개 라우터</div>
+		<div class="mt-3 text-xs text-ink-2">{t('routersPage.summary.total', { count: routers.length })}</div>
 	{/if}
 </div>

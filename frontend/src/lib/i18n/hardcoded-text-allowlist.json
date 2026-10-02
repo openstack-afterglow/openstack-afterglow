@@ -1,0 +1,46 @@
+{
+	"src/lib/mockup/state.ts": {
+		"reason": "Tutorial backend fixture payloads: resource descriptions, provider diagnostics, announcements and recorded activity remain backend data, not translated UI.",
+		"lines": [
+			"{ id: PROJECT_ID, name: 'sample-project-alpha', description: '튜토리얼 기본 프로젝트', domain_name: 'Sample Research Org', last_accessed_at: '2026-07-08T23:00:00Z' },",
+			"{ id: 'mock-project-2', name: 'sample-project-beta', description: 'GPU 워크로드 데모', domain_name: 'Sample Research Org', last_accessed_at: '2026-07-08T12:30:00Z' },",
+			"{ severity: 'critical', message: 'sample-compute-node-a GPU 온도가 임계치에 접근했습니다.', target: 'sample-compute-node-a', href: '/admin/monitoring' },",
+			"{ severity: 'warning', message: 'sample-project-beta RAM quota 사용률 80% 초과', target: 'mock-project-2', href: '/admin/projects' },",
+			"{ severity: 'info', message: '야간 백업 검증이 완료되었습니다.', target: 'sample-backup', href: '/admin/services' },",
+			"'mock-admin-volume-available': { id: 'mock-admin-volume-available', name: 'sample-dataset-ready', status: 'available', size: 200, volume_type: 'ceph-ssd', project_id: PROJECT_ID, attachments: [], created_at: '2026-07-01T10:00:00Z', description: '튜토리얼용 가용 볼륨', bootable: false, encrypted: false, multiattach: false, metadata: { purpose: 'tutorial' } },",
+			"'mock-admin-volume-error': { id: 'mock-admin-volume-error', name: 'sample-recovery-volume', status: 'error', size: 80, volume_type: 'ceph-ssd', project_id: 'mock-project-3', attachments: [], created_at: '2026-07-06T16:45:00Z', description: '복구 절차 예시', bootable: false, encrypted: false, multiattach: false, metadata: { state: 'sample-error' } },",
+			"{ id: 'mock-message-1', event_id: 'VOLUME_DELETE_ERROR', request_id: 'req-mock-recovery', message_level: 'ERROR', resource_uuid: 'mock-admin-volume-error', resource_type: 'VOLUME', user_message: '튜토리얼 예시: Cinder 삭제가 backend 오류로 중단되었습니다.', created_at: '2026-07-08T23:10:00Z' },",
+			"summary: 'Cinder 레코드와 Ceph RBD 이미지가 일관되며 종속 리소스와 연결이 없습니다.',",
+			"recommended_action: 'force-delete 후 Ceph backend 부재와 quota 반영을 검증하세요.',",
+			"{ id: 1, created_at: '2026-07-08T12:00:00Z', username: 'sample-researcher', action: '사용자 수정', resource_name: 'sample-researcher', status: 'success' },",
+			"{ id: 2, created_at: '2026-07-07T09:30:00Z', username: 'sample-admin', action: '사용자 생성', resource_name: 'sample-disabled', status: 'success' },"
+		]
+	},
+	"src/lib/mockup/transport.ts": {
+		"reason": "Tutorial transport returns simulated backend notifications and deployment/provisioning progress; frontend fallback errors are translated separately.",
+		"lines": [
+			"if (method === 'GET' && pathname === '/api/v1/dashboard/notifications') return { notifications: [{ type: 'quota', severity: 'warning', message: 'GPU quota 사용률이 70%를 넘었습니다.', count: 1 }, { type: 'backup', severity: 'info', message: '오늘 3개의 스냅샷 검증이 완료되었습니다.', count: 3 }] };",
+			"{ step: 'boot_volume_creating', progress: 20, message: '부트 볼륨 생성 완료', instance_id: id },",
+			"{ step: 'server_creating', progress: 60, message: 'Nova 인스턴스 생성 완료', instance_id: id },",
+			"{ step: 'completed', progress: 100, message: '배포 완료', instance_id: id },",
+			"{ step: 'create_vm', progress: 25, message: 'VM 생성 완료', cluster_id: id },",
+			"{ step: 'install_k3s', progress: 70, message: 'k3s 설치 완료', cluster_id: id },",
+			"{ step: 'completed', progress: 100, message: '클러스터 준비 완료', cluster_id: id },",
+			"{ step: 'cordon', progress: 35, message: '노드 cordon 완료', cluster_id: deleteMatch[1] },",
+			"{ step: 'delete', progress: 80, message: '리소스 정리 완료', cluster_id: deleteMatch[1] },",
+			"{ step: 'completed', progress: 100, message: '클러스터 삭제 완료', cluster_id: deleteMatch[1] },"
+		]
+	},
+	"src/lib/i18n/locales.ts": {
+		"reason": "Language picker shows every language in its own script.",
+		"lines": ["ko: '한국어',"]
+	},
+	"src/lib/config/site.ts": {
+		"reason": "Operator-configurable site description default; administrators replace it in site settings.",
+		"lines": ["site_description: 'OpenStack VM + OverlayFS 배포 플랫폼',"]
+	},
+	"src/lib/server/config.ts": {
+		"reason": "Operator-configurable site description default; administrators replace it in site settings.",
+		"lines": ["site_description: 'OpenStack VM + OverlayFS 배포 플랫폼',"]
+	}
+}

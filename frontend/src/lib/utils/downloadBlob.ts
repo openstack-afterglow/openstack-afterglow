@@ -1,4 +1,5 @@
 import { fetchWithAuth, getBaseUrl } from '$lib/api/client';
+import { t } from '$lib/i18n/ns/shared';
 
 export function downloadBlobAs(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
@@ -28,6 +29,6 @@ export async function downloadAuthenticated(
   const res = path
     ? await fetchWithAuth(path, {}, token, projectId)
     : await fetch(url);
-  if (!res.ok) throw new Error(`다운로드 실패 (${res.status})`);
+  if (!res.ok) throw new Error(t('download.failed', { status: res.status }));
   downloadBlobAs(await res.blob(), filename);
 }

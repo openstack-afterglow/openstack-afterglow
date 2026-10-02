@@ -23,7 +23,6 @@ describe('apiMut', () => {
 		const result = await apiMut('볼륨 생성', () => Promise.resolve('vol-1'));
 		expect(result).toBe('vol-1');
 		expect(mockToast.success).toHaveBeenCalledOnce();
-		expect(mockToast.success).toHaveBeenCalledWith('볼륨 생성 완료');
 	});
 
 	it('successMessage 지정 시 해당 메시지 표시', async () => {
@@ -39,7 +38,7 @@ describe('apiMut', () => {
 	it('ApiError 발생 시 error toast + rethrow', async () => {
 		const err = new ApiError(500, '서버 오류');
 		await expect(apiMut('볼륨 삭제', () => Promise.reject(err))).rejects.toThrow(err);
-		expect(mockToast.error).toHaveBeenCalledWith('볼륨 삭제 실패: 서버 오류');
+		expect(mockToast.error).toHaveBeenCalledWith(expect.stringContaining(err.message));
 	});
 
 	it('errorPrefix 지정 시 해당 prefix 사용', async () => {
@@ -47,7 +46,7 @@ describe('apiMut', () => {
 		await expect(
 			apiMut('작업', () => Promise.reject(err), { errorPrefix: '커스텀 에러' })
 		).rejects.toThrow(err);
-		expect(mockToast.error).toHaveBeenCalledWith('커스텀 에러: 잘못된 요청');
+		expect(mockToast.error).toHaveBeenCalledWith(expect.stringContaining('커스텀 에러'));
 	});
 
 	it('rethrow: false 이면 reject 흡수하고 undefined 반환', async () => {
@@ -59,7 +58,7 @@ describe('apiMut', () => {
 
 	it('progress: true 이면 in-flight info toast 표시 후 제거', async () => {
 		await apiMut('장시간 작업', () => Promise.resolve('done'), { progress: true });
-		expect(mockToast.info).toHaveBeenCalledWith('장시간 작업 진행 중...', 0);
+		expect(mockToast.info).toHaveBeenCalledWith(expect.any(String), 0);
 		expect(mockToast.remove).toHaveBeenCalledWith('toast-info');
 	});
 

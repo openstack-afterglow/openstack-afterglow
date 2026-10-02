@@ -5,6 +5,7 @@
 	import type { ImageInfo } from '$lib/types/compute';
 	import ImageVerificationBadge from '$lib/components/image/ImageVerificationBadge.svelte';
 	import { osLabel } from '$lib/utils/imageOs';
+	import { t } from '$lib/i18n/ns/images-keys';
 
 	let {
 		group,
@@ -30,8 +31,8 @@
 	<tr>
 		<td>
 			<div class="tag-name">:{tag}</div>
-			<Pill tone={current ? 'accent' : 'neutral'} size="xs">{current ? '현재' : '이전'}</Pill>
-			{#if tag === 'latest'}<Pill tone="warm" size="xs">기본</Pill>{/if}
+			<Pill tone={current ? 'accent' : 'neutral'} size="xs">{current ? t('repositoryDetail.current') : t('repositoryDetail.previous')}</Pill>
+			{#if tag === 'latest'}<Pill tone="warm" size="xs">{t('repositoryDetail.default')}</Pill>{/if}
 		</td>
 		<td><ImageDigest {image} /></td>
 		<td><StatusChip status={image.status} /></td>
@@ -39,17 +40,17 @@
 		<td>{image.os_distro ? osLabel(image.os_distro) : '-'}</td>
 		<td>{formatSize(image.size)}</td>
 		<td class="date">{uploaded === null ? '-' : new Date(uploaded).toISOString().slice(0, 10)}</td>
-		<td class="action-cell"><Button variant="link" size="xs" onclick={() => onOpenTag(image.id)}>상세 보기</Button></td>
+		<td class="action-cell"><Button variant="link" size="xs" onclick={() => onOpenTag(image.id)}>{t('repositoryDetail.viewDetails')}</Button></td>
 	</tr>
 {/snippet}
 
 <Card surface="raised" padding="none" class="repository-detail">
 	<div class="detail-header">
-		<Button variant="ghost" size="icon" ariaLabel="repository 목록으로 돌아가기" onclick={onBack}>‹</Button>
+		<Button variant="ghost" size="icon" ariaLabel={t('repositoryDetail.back')} onclick={onBack}>‹</Button>
 		<div class="detail-heading">
-			<p class="detail-kicker">REPOSITORY</p>
+			<p class="detail-kicker">{t('repositoryDetail.kicker')}</p>
 			<h2>{group.repository}</h2>
-			<p>{group.tags.length}개 tag · {group.images.length}개 업로드 이미지. 현재 tag와 이전 업로드를 SHA 해시·ID로 구분합니다.</p>
+			<p>{t('repositoryDetail.description', { tagCount: group.tags.length, imageCount: group.images.length })}</p>
 		</div>
 	</div>
 
@@ -57,14 +58,14 @@
 		<table>
 			<thead>
 				<tr>
-					<th>Tag</th>
-					<th>SHA 해시 · ID</th>
-					<th>상태</th>
-					<th>신뢰 상태</th>
-					<th>OS</th>
-					<th>크기</th>
-					<th>업로드</th>
-					<th><span class="sr-only">액션</span></th>
+					<th>{t('repositoryDetail.tag')}</th>
+					<th>{t('repositoryDetail.digest')}</th>
+					<th>{t('repositoryDetail.status')}</th>
+					<th>{t('repositoryDetail.trust')}</th>
+					<th>{t('repositoryDetail.os')}</th>
+					<th>{t('repositoryDetail.size')}</th>
+					<th>{t('repositoryDetail.uploaded')}</th>
+					<th><span class="sr-only">{t('repositoryDetail.actions')}</span></th>
 				</tr>
 			</thead>
 			<tbody>
@@ -72,13 +73,13 @@
 					{@render versionRow(version.latest, version.tag, version.latest.id === version.current.id)}
 					{#if version.images.length > 1}
 						<tr><td colspan="8">
-							<Button variant="ghost" size="xs" ariaLabel={`:${version.tag} 이전 업로드 ${version.images.length - 1}개 ${expandedTags.has(version.tag) ? '접기' : '보기'}`}
+							<Button variant="ghost" size="xs" ariaLabel={expandedTags.has(version.tag) ? t('repositoryDetail.collapsePreviousLabel', { tag: version.tag, count: version.images.length - 1 }) : t('repositoryDetail.showPreviousLabel', { tag: version.tag, count: version.images.length - 1 })}
 								ariaExpanded={expandedTags.has(version.tag)} onclick={() => {
 									const next = new Set(expandedTags);
 									if (next.has(version.tag)) next.delete(version.tag); else next.add(version.tag);
 									expandedTags = next;
 								}}>
-								이전 업로드 {version.images.length - 1}개 {expandedTags.has(version.tag) ? '접기' : '보기'}
+								{expandedTags.has(version.tag) ? t('repositoryDetail.collapsePrevious', { count: version.images.length - 1 }) : t('repositoryDetail.showPrevious', { count: version.images.length - 1 })}
 							</Button>
 						</td></tr>
 						{#if expandedTags.has(version.tag)}

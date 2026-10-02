@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/network-resources';
 	import type { NetworkRouterInfo, RouterListItem } from '$lib/types/networks';
 	import Button from '$lib/components/ui/Button.svelte';
 
@@ -46,14 +47,14 @@
 
 <div class="bg-surface-base border border-line rounded-lg p-6">
 	<div class="flex items-center justify-between mb-4">
-		<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide">연결된 라우터 ({routers.length})</h2>
+		<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide">{t('network.routers.titleCount', { count: routers.length })}</h2>
 		{#if canManage && onConnect && subnets.length > 0 && availableRouters.length > 0}
 			<Button
 				variant="subtle"
 				size="xs"
 				onclick={() => { if (showConnectForm) { showConnectForm = false; } else { openConnect(); } }}
 			>
-				{showConnectForm ? '닫기' : '+ 라우터 연결'}
+				{showConnectForm ? t('network.actions.close') : t('network.routers.connectAdd')}
 			</Button>
 		{/if}
 	</div>
@@ -62,12 +63,12 @@
 		<div class="mb-4 bg-surface-sunken rounded-lg p-4 space-y-3">
 			<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
 				<div>
-					<label class="block text-xs text-ink-2 mb-1">라우터 선택
+					<label class="block text-xs text-ink-2 mb-1">{t('network.routers.select')}
 						<select
 							bind:value={selectedRouterId}
 							class="w-full bg-surface-selected border border-line-2 rounded px-2.5 py-1.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1"
 						>
-							<option value="">라우터 선택</option>
+							<option value="">{t('network.routers.select')}</option>
 							{#each availableRouters as r}
 								<option value={r.id}>{r.name || r.id.slice(0, 12)}</option>
 							{/each}
@@ -75,14 +76,14 @@
 					</label>
 				</div>
 				<div>
-					<label class="block text-xs text-ink-2 mb-1">서브넷 선택
+					<label class="block text-xs text-ink-2 mb-1">{t('network.subnets.select')}
 						<select
 							bind:value={selectedSubnetId}
 							class="w-full bg-surface-selected border border-line-2 rounded px-2.5 py-1.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1"
 						>
-							<option value="">서브넷 선택</option>
+							<option value="">{t('network.subnets.select')}</option>
 							{#each subnets as s}
-								<option value={s.id}>{s.name || s.cidr}{!s.gateway_ip ? ' (게이트웨이 자동 생성)' : ''}</option>
+								<option value={s.id}>{!s.gateway_ip ? t('network.subnets.autoGatewayOption', { name: s.name || s.cidr }) : s.name || s.cidr}</option>
 							{/each}
 						</select>
 					</label>
@@ -93,13 +94,13 @@
 					size="xs"
 					variant="ghost"
 					onclick={() => { showConnectForm = false; }}
-				>취소</Button>
+				>{t('network.actions.cancel')}</Button>
 				<Button
 					size="xs"
 					variant="accent"
 					onclick={handleConnect}
 					disabled={!selectedRouterId || !selectedSubnetId || connecting}
-				>{connecting ? '연결 중...' : '연결'}</Button>
+				>{connecting ? t('network.actions.connecting') : t('network.actions.connect')}</Button>
 			</div>
 		</div>
 	{/if}
@@ -109,11 +110,11 @@
 		<table class="w-full text-sm">
 			<thead>
 				<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
-					<th class="text-left py-2 pr-6">이름</th>
-					<th class="text-left py-2 pr-6">외부 게이트웨이</th>
-					<th class="text-left py-2 pr-6">연결된 서브넷</th>
+					<th class="text-left py-2 pr-6">{t('network.labels.name')}</th>
+					<th class="text-left py-2 pr-6">{t('network.routers.externalGateway')}</th>
+					<th class="text-left py-2 pr-6">{t('network.routers.connectedSubnets')}</th>
 					{#if canManage && onDisconnect}
-						<th class="text-right py-2">액션</th>
+						<th class="text-right py-2">{t('network.labels.actions')}</th>
 					{/if}
 				</tr>
 			</thead>
@@ -153,7 +154,7 @@
 												onclick={() => onDisconnect?.(router.id, sid)}
 												disabled={connecting}
 											>
-												{router.connected_subnet_ids.length > 1 ? `${subnets.find((s) => s.id === sid)?.name || sid.slice(0, 6)} 해제` : '해제'}
+												{router.connected_subnet_ids.length > 1 ? t('network.routers.disconnectNamed', { name: subnets.find((s) => s.id === sid)?.name || sid.slice(0, 6) }) : t('network.actions.disconnect')}
 											</Button>
 										{/each}
 									</div>
@@ -168,6 +169,6 @@
 		</table>
 		</div>
 	{:else}
-		<p class="text-sm text-ink-2">연결된 라우터가 없습니다.</p>
+		<p class="text-sm text-ink-2">{t('network.routers.emptySentence')}</p>
 	{/if}
 </div>

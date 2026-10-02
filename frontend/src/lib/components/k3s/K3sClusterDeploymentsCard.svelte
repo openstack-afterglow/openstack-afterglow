@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/drover';
 	import { untrack } from 'svelte';
 	import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
 	import { SectionHeader } from '$lib/components/ui';
@@ -18,7 +19,7 @@
 		loading = true;
 		loadError = '';
 		untrack(() => s.loadDeployments())
-			.catch(() => { loadError = 'Deployment 로드 실패'; })
+			.catch(() => { loadError = t('deployments.loadFailed'); })
 			.finally(() => { loading = false; });
 	});
 </script>
@@ -34,23 +35,23 @@
 
 <!-- Deployments -->
 <div class="bg-surface-base border border-line rounded-lg p-5 mb-4">
-	<SectionHeader title="Deployment" meta="{s.deployments.length}개" />
+	<SectionHeader title="Deployment" meta={t('deployments.count', { count: s.deployments.length })} />
 
 	{#if loading}
-		<div class="mt-4 text-sm text-ink-2 text-center py-6">로딩 중...</div>
+		<div class="mt-4 text-sm text-ink-2 text-center py-6">{t('deployments.loading')}</div>
 	{:else if loadError}
 		<div class="mt-4 text-sm text-red-400">{loadError}</div>
 	{:else if s.deployments.length === 0}
-		<div class="mt-4 text-sm text-ink-2 text-center py-6">Deployment 없음</div>
+		<div class="mt-4 text-sm text-ink-2 text-center py-6">{t('deployments.empty')}</div>
 	{:else}
 		<div class="mt-4 overflow-x-auto">
 			<table class="w-full text-xs">
 				<thead>
 					<tr class="border-b border-line">
-						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">이름</th>
-						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">레플리카</th>
-						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">전략</th>
-						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">이미지</th>
+						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">{t('deployments.name')}</th>
+						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">{t('deployments.replicas')}</th>
+						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">{t('deployments.strategy')}</th>
+						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">{t('deployments.image')}</th>
 						<th class="pb-2"></th>
 					</tr>
 				</thead>
@@ -62,7 +63,7 @@
 							<td class="py-2.5">
 								<span class="tabular-nums text-ink-0">{dep.ready}/{dep.replicas}</span>
 								{#if dep.available < dep.replicas}
-									<span class="ml-1 text-yellow-400 text-xs">({dep.available} available)</span>
+									<span class="ml-1 text-yellow-400 text-xs">{t('deployments.available', { count: dep.available })}</span>
 								{/if}
 							</td>
 							<td class="py-2.5 text-ink-2">{dep.strategy || '—'}</td>
@@ -73,12 +74,12 @@
 										onclick={() => s.rolloutRestartDeployment(dep.name)}
 										disabled={!!s.workloadActioning}
 										class="px-2 py-1 rounded text-xs bg-surface-selected/40 text-warm-text hover:bg-surface-selected/70 disabled:opacity-40 transition-colors"
-									>{actioning ? '중...' : '재시작'}</button>
+									>{actioning ? t('deployments.actioning') : t('deployments.restart')}</button>
 									<button
 										onclick={() => { scalingDeploy = dep; }}
 										disabled={!!s.workloadActioning}
 										class="px-2 py-1 rounded text-xs bg-surface-sunken text-ink-2 hover:bg-surface-selected disabled:opacity-40 transition-colors"
-									>스케일</button>
+									>{t('deployments.scale')}</button>
 								</div>
 							</td>
 						</tr>
@@ -92,15 +93,15 @@
 <!-- ReplicaSets -->
 {#if s.replicasets.length > 0}
 	<div class="bg-surface-base border border-line rounded-lg p-5 mb-4">
-		<SectionHeader title="ReplicaSet" meta="{s.replicasets.length}개" />
+		<SectionHeader title="ReplicaSet" meta={t('deployments.count', { count: s.replicasets.length })} />
 		<div class="mt-4 overflow-x-auto">
 			<table class="w-full text-xs">
 				<thead>
 					<tr class="border-b border-line">
-						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">이름</th>
-						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">레플리카</th>
-						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">Owner</th>
-						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">이미지</th>
+						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">{t('deployments.name')}</th>
+						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">{t('deployments.replicas')}</th>
+						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">{t('deployments.owner')}</th>
+						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">{t('deployments.image')}</th>
 					</tr>
 				</thead>
 				<tbody>

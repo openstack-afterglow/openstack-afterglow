@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-ops';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
@@ -45,7 +46,7 @@
 	const fields = $derived([
 		...columns.map((column): ServiceListField<Service> => ({
 			key: column.type,
-			label: column.label,
+			label: t(`services.columns.${column.type}`),
 			value: (service) => serviceValue(service, column.type),
 			filter: ['binary', 'host', 'zone', 'status', 'state'].includes(column.type),
 			sortValue: column.type === 'updated' ? (service) => serviceTimestamp(service.updated_at) : undefined,
@@ -54,13 +55,13 @@
 			.filter((type) => !columns.some((column) => column.type === type))
 			.map((type): ServiceListField<Service> => ({
 				key: type,
-				label: type === 'disabledReason' ? 'Disabled Reason' : 'Updated',
+				label: type === 'disabledReason' ? t('services.columns.disabledReason') : t('services.columns.updated'),
 				value: (service) => serviceValue(service, type),
 				sortValue: type === 'updated' ? (service) => serviceTimestamp(service.updated_at) : undefined,
 			})),
 	]);
 	const filters = $derived(buildServiceFilters(services, fields));
-	const sortOptions = $derived(columns.map(({ type, label }) => ({ key: type, label })));
+	const sortOptions = $derived(columns.map(({ type }) => ({ key: type, label: t(`services.columns.${type}`) })));
 	const displayedServices = $derived(filterAndSortRows(services, fields, view));
 </script>
 
@@ -71,7 +72,7 @@
 	total={services.length}
 	count={displayedServices.length}
 	{loading}
-	searchPlaceholder="Binary, Host, Zone, Disabled Reason, Updated 검색"
+	searchPlaceholder={t('services.table.searchPlaceholder')}
 />
 
 {#if services.length === 0}
@@ -81,14 +82,14 @@
 		<EmptyState headline={emptyMessage} />
 	{/if}
 {:else if displayedServices.length === 0}
-	<EmptyState headline="일치하는 서비스가 없습니다" description="필터나 검색어를 조정해 보세요." />
+	<EmptyState headline={t('services.table.noMatches')} description={t('services.list.adjustFilters')} />
 {:else}
 	<TableShell density="compact">
-		<table aria-label="서비스 목록">
+		<table aria-label={t('services.table.listLabel')}>
 			<thead>
 				<tr>
 					{#each columns as column (column.type)}
-						<ServiceSortHeader bind:view column={column.type} label={column.label} />
+						<ServiceSortHeader bind:view column={column.type} label={t(`services.columns.${column.type}`)} />
 					{/each}
 				</tr>
 			</thead>

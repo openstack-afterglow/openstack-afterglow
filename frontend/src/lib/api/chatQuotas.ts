@@ -1,3 +1,5 @@
+import { t } from '$lib/i18n/ns/chat-settings';
+
 export type QuotaLimitSource = 'default' | 'user';
 
 export interface CreditPolicy {
@@ -68,8 +70,8 @@ export interface UserUsageDetail {
 	next_before_id: number | null;
 }
 
-export function formatCredit(value: string | null, unlimitedLabel = '무제한'): string {
-	if (value === null || Number(value) === 0) return unlimitedLabel;
+export function formatCredit(value: string | null, unlimitedLabel?: string): string {
+	if (value === null || Number(value) === 0) return unlimitedLabel ?? t('quotas.unlimited');
 	return Number(value).toLocaleString('en-US', { maximumFractionDigits: 2 });
 }
 

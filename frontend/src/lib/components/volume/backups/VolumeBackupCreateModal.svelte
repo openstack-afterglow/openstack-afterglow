@@ -2,6 +2,7 @@
 	import type { Volume, VolumeBackup } from '$lib/types/volume';
 	import { formatStorage } from '$lib/utils/format';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
+	import { t } from '$lib/i18n/ns/volume';
 
 	let {
 		open = $bindable(),
@@ -54,37 +55,37 @@
 			onclick={(e) => e.stopPropagation()}
 			role="none"
 		>
-			<h2 class="text-lg font-semibold text-ink-0 mb-5">볼륨 백업 생성</h2>
+			<h2 class="text-lg font-semibold text-ink-0 mb-5">{t('backupCreateModal.title')}</h2>
 			<div class="space-y-4">
 				<div>
-					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">볼륨 선택
+					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('backupCreateModal.volumeLabel')}
 						<select bind:value={form.volume_id} class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5">
-							<option value="">볼륨을 선택하세요</option>
+							<option value="">{t('backupCreateModal.volumePlaceholder')}</option>
 							{#each volumes as vol}
-								<option value={vol.id}>{vol.name || vol.id.slice(0, 8)} ({formatStorage(vol.size)})</option>
+								<option value={vol.id}>{t('backupCreateModal.volumeOption', { name: vol.name || vol.id.slice(0, 8), size: formatStorage(vol.size) })}</option>
 							{/each}
 						</select>
 					</label>
 				</div>
 				<div>
-					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">백업 이름
-						<input bind:value={form.name} type="text" placeholder="my-backup" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5" />
+					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('backupCreateModal.nameLabel')}
+						<input bind:value={form.name} type="text" placeholder={t('backupCreateModal.namePlaceholder')} class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5" />
 					</label>
 				</div>
 				<div>
-					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">설명 (선택)
+					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('backupCreateModal.descriptionLabel')}
 						<input bind:value={form.description} type="text" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5" />
 					</label>
 				</div>
 				<div class="flex items-center gap-2">
 					<input type="checkbox" id="incremental" bind:checked={form.incremental} class="rounded border-line-2" />
-					<label for="incremental" class="text-sm text-ink-2">증분 백업</label>
+					<label for="incremental" class="text-sm text-ink-2">{t('backupCreateModal.incrementalLabel')}</label>
 				</div>
 			</div>
 			{#if error}<div class="mt-4 text-red-400 text-xs">{error}</div>{/if}
 			<div class="flex justify-end gap-3 mt-6">
-				<button onclick={() => { open = false; }} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">취소</button>
-				<button onclick={submit} disabled={creating} class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-ink-0 text-sm font-medium rounded-lg transition-colors">{creating ? '생성 중...' : '생성'}</button>
+				<button onclick={() => { open = false; }} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('backupCreateModal.cancel')}</button>
+				<button onclick={submit} disabled={creating} class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-ink-0 text-sm font-medium rounded-lg transition-colors">{creating ? t('backupCreateModal.creating') : t('backupCreateModal.create')}</button>
 			</div>
 		</div>
 	</div>

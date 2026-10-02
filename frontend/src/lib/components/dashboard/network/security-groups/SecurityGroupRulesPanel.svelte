@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { SecurityGroup, SecurityGroupInstance, SecurityGroupRule, SecurityGroupRuleDraft } from '$lib/types/securityGroup';
 	import AddRuleForm from './AddRuleForm.svelte';
+	import { t } from '$lib/i18n/ns/network-pages';
 
 	let {
 		group,
@@ -58,7 +59,7 @@
 <!-- 모바일: 전체화면 오버레이 / 태블릿·데스크톱: 인라인 -->
 <div class="security-group-rules fixed inset-0 bg-surface-canvas overflow-y-auto p-4 md:static md:inset-auto md:bg-surface-base md:border md:border-line md:rounded-lg md:p-5 md:overflow-visible">
 	<div class="flex items-center mb-4 gap-2">
-		<button type="button" aria-label="보안 그룹 목록으로 돌아가기" onclick={onCloseMobile} class="md:hidden text-ink-2 hover:text-ink-0 p-2">
+		<button type="button" aria-label={t('securityGroupRules.backToList')} onclick={onCloseMobile} class="md:hidden text-ink-2 hover:text-ink-0 p-2">
 			<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
 		</button>
 		<div class="min-w-0">
@@ -66,18 +67,18 @@
 			{#if group.description}<div class="text-xs text-ink-2 mt-0.5">{group.description}</div>{/if}
 		</div>
 		{#if group.name !== 'default'}
-			<button type="button" onclick={onDeleteGroup} class="ml-auto text-xs text-state-danger-text border border-state-danger rounded-md px-3 py-1.5 shrink-0">삭제</button>
+			<button type="button" onclick={onDeleteGroup} class="ml-auto text-xs text-state-danger-text border border-state-danger rounded-md px-3 py-1.5 shrink-0">{t('securityGroupRules.delete')}</button>
 		{/if}
 	</div>
 
-	<section class="border border-line rounded-lg p-3 mb-4" aria-label="보안 그룹 사용 인스턴스">
-		<h2 class="text-sm font-medium text-ink-0 mb-2">사용 인스턴스 {instancesError || instancesLoading ? '' : `${instances.length}대`}</h2>
+	<section class="border border-line rounded-lg p-3 mb-4" aria-label={t('securityGroupRules.instancesLabel')}>
+		<h2 class="text-sm font-medium text-ink-0 mb-2">{instancesError || instancesLoading ? t('securityGroupRules.instancesTitle') : t('securityGroupRules.instancesCount', { count: instances.length })}</h2>
 		{#if instancesLoading}
-			<p class="text-xs text-ink-2">사용 현황 확인 중...</p>
+			<p class="text-xs text-ink-2">{t('securityGroupRules.instancesLoading')}</p>
 		{:else if instancesError}
-			<p role="alert" class="text-xs text-state-danger-text">{instancesError} <button type="button" onclick={onRetryInstances} class="underline">다시 조회</button></p>
+			<p role="alert" class="text-xs text-state-danger-text">{instancesError} <button type="button" onclick={onRetryInstances} class="underline">{t('securityGroupRules.retryInstances')}</button></p>
 		{:else if instances.length === 0}
-			<p class="text-xs text-ink-2">연결된 인스턴스가 없습니다.</p>
+			<p class="text-xs text-ink-2">{t('securityGroupRules.noInstances')}</p>
 		{:else}
 			<ul class="flex flex-wrap gap-2">
 				{#each instances as instance (instance.id)}
@@ -87,35 +88,35 @@
 		{/if}
 	</section>
 
-	<section aria-label="보안 그룹 규칙" class="border border-line rounded-lg overflow-hidden bg-surface-base">
+	<section aria-label={t('securityGroupRules.rulesLabel')} class="border border-line rounded-lg overflow-hidden bg-surface-base">
 		<div class="flex items-center justify-between gap-2 px-3 py-2 border-b border-line">
-			<h2 class="text-sm font-medium text-ink-0">규칙 {group.rules.length}개</h2>
-			<button type="button" onclick={onStartAdd} aria-expanded={addRuleOpen} class="text-xs text-warm-text border border-action-warm rounded-md px-2 py-1.5 shrink-0">+ 규칙 추가</button>
+			<h2 class="text-sm font-medium text-ink-0">{t('securityGroupRules.rulesCount', { count: group.rules.length })}</h2>
+			<button type="button" onclick={onStartAdd} aria-expanded={addRuleOpen} class="text-xs text-warm-text border border-action-warm rounded-md px-2 py-1.5 shrink-0">{t('securityGroupRules.add')}</button>
 		</div>
 		<div class="overflow-x-auto">
 			<div class="min-w-[42rem]">
 				<div class="grid grid-cols-[6.5rem_3.5rem_5rem_5rem_minmax(8rem,1fr)_8rem] gap-2 px-3 py-2.5 border-b border-line text-xs text-ink-2 font-medium items-center">
-					<div>방향</div><div>IP 버전</div><div>프로토콜</div><div>포트</div><div>출발지/대상</div><div>작업</div>
+					<div>{t('securityGroupRules.direction')}</div><div>{t('securityGroupRules.ipVersion')}</div><div>{t('securityGroupRules.protocol')}</div><div>{t('securityGroupRules.port')}</div><div>{t('securityGroupRules.sourceTarget')}</div><div>{t('securityGroupRules.actions')}</div>
 				</div>
 				{#if group.rules.length === 0}
-					<div class="text-xs text-ink-2 px-3 py-5">규칙이 없습니다. 위에서 추가할 수 있습니다.</div>
+					<div class="text-xs text-ink-2 px-3 py-5">{t('securityGroupRules.noRules')}</div>
 				{/if}
 				{#each group.rules as rule (rule.id)}
 					<div class="grid grid-cols-[6.5rem_3.5rem_5rem_5rem_minmax(8rem,1fr)_8rem] gap-2 px-3 py-2.5 text-xs items-center border-b border-line">
-						<div><span class="text-state-info-text">{rule.direction === 'ingress' ? '↓ ingress' : '↑ egress'}</span></div>
+						<div><span class="text-state-info-text">{rule.direction === 'ingress' ? t('securityGroupRules.ingress') : t('securityGroupRules.egress')}</span></div>
 						<div class="text-ink-1 font-mono">{rule.ethertype}</div>
-						<div class="text-ink-1 font-mono uppercase">{rule.protocol ?? 'any'}</div>
+						<div class="text-ink-1 font-mono uppercase">{rule.protocol ?? t('securityGroupRules.anyProtocol')}</div>
 						<div class="text-ink-1 font-mono">{rule.port_range_min != null ? rule.port_range_min + (rule.port_range_max !== rule.port_range_min ? '-' + rule.port_range_max : '') : '—'}</div>
 						<div class="min-w-0 text-ink-1 font-mono">
 							{#if rule.remote_group_id}
-								<button type="button" onclick={() => onSelectGroup(rule.remote_group_id!)} title={rule.remote_group_id} class="text-accent hover:underline text-left truncate max-w-full">보안 그룹: {targetName(rule.remote_group_id)}</button>
+								<button type="button" onclick={() => onSelectGroup(rule.remote_group_id!)} title={rule.remote_group_id} class="text-accent hover:underline text-left truncate max-w-full">{t('securityGroupRules.remoteGroup', { name: targetName(rule.remote_group_id) })}</button>
 							{:else}
 								<span title={rule.remote_ip_prefix ?? ''}>{rule.remote_ip_prefix ?? (rule.ethertype === 'IPv6' ? '::/0' : '0.0.0.0/0')}</span>
 							{/if}
 						</div>
 						<div class="flex gap-2 justify-end">
-							<button type="button" onclick={() => onEditRule(rule)} class="text-accent hover:underline">수정</button>
-							<button type="button" onclick={() => onDeleteRule(rule.id)} class="text-state-danger-text hover:underline">제거</button>
+							<button type="button" onclick={() => onEditRule(rule)} class="text-accent hover:underline">{t('securityGroupRules.edit')}</button>
+							<button type="button" onclick={() => onDeleteRule(rule.id)} class="text-state-danger-text hover:underline">{t('securityGroupRules.remove')}</button>
 						</div>
 					</div>
 				{/each}

@@ -1,10 +1,11 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/file-storage';
 	let { metadata }: { metadata: Record<string, string> } = $props();
 </script>
 
 {#if Object.keys(metadata).length > 0}
 	<div class="bg-surface-base border border-line rounded-lg p-6">
-		<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide mb-4">메타데이터</h2>
+		<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide mb-4">{t('metadata.title')}</h2>
 		<table class="w-full text-sm">
 			<tbody>
 				{#each Object.entries(metadata) as [k, v]}

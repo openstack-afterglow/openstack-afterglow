@@ -16,6 +16,7 @@
 
 	import type { Project } from '$lib/types/project';
 	import type { PagedResponse } from '$lib/types/common';
+	import { t } from '$lib/i18n/ns/admin-identity';
 
 	let projects = $state<Project[]>([]);
 	let loading = $state(true);
@@ -105,12 +106,12 @@
 </script>
 
 <div class="p-4 md:p-6 max-w-7xl mx-auto">
-	<PageHeader breadcrumb="IDENTITY / PROJECTS" title="프로젝트">
+	<PageHeader breadcrumb={t('projectPage.breadcrumb')} title={t('projectPage.title')}>
 		{#snippet actions()}
 			<button
 				onclick={() => { showCreate = true; }}
 				class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg"
-			>+ 생성</button>
+			>{t('projectPage.create')}</button>
 			<AutoRefreshControl
 				bind:active={ar.active}
 				bind:intervalSeconds={ar.intervalSeconds}
@@ -119,7 +120,7 @@
 				onManualRefresh={() => load()}
 			/>
 			<div class="flex items-center gap-1 text-xs text-ink-2 max-md:hidden">
-				표시:
+				{t('projectPage.show')}
 				{#each [10, 20, 30] as n}
 					<button
 						onclick={() => { pageSize = n; markerStack = []; nextMarker = null; load(); }}

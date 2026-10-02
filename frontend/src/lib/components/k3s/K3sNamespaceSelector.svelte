@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/drover';
   import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
   import { untrack } from 'svelte';
 
@@ -12,7 +13,7 @@
 </script>
 
 <div class="flex items-center gap-2 mb-3">
-  <span class="text-xs text-ink-2">네임스페이스</span>
+  <span class="text-xs text-ink-2">{t('namespace.label')}</span>
   <select
     bind:value={s.selectedNamespace}
     onchange={() => { s.loadConfigMaps(); s.loadSecrets(); }}

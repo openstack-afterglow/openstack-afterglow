@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-compute';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
@@ -64,7 +65,7 @@
 			);
 			flavors = res.items;
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : 'Flavor 목록 조회 실패';
+			error = e instanceof ApiError ? e.message : t('flavors.loadFailed');
 			flavors = [];
 		} finally {
 			loading = false;
@@ -73,12 +74,12 @@
 	}
 
 	async function deleteFlavor(id: string) {
-		if (!await confirmDialog('이 Flavor를 삭제하시겠습니까?')) return;
+		if (!await confirmDialog(t('flavors.delete.confirm'))) return;
 		try {
 			await api.delete(`/api/v1/admin/flavors/${id}`, token, projectId);
 			await load();
 		} catch (e) {
-			toast.error('Flavor 삭제 실패: ' + (e instanceof ApiError ? e.message : '오류'));
+			toast.error(t('flavors.delete.failed', { error: e instanceof ApiError ? e.message : t('flavors.error') }));
 		}
 	}
 
@@ -97,16 +98,16 @@
 </script>
 
 <div class="p-4 md:p-6 max-w-7xl mx-auto">
-	<PageHeader breadcrumb="COMPUTE / FLAVORS" title="Flavor">
+	<PageHeader breadcrumb={t('flavors.breadcrumb')} title={t('flavors.title')}>
 		{#snippet actions()}
 			<button
 				onclick={() => (showCreate = true)}
 				class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg transition-colors"
-			>+ 생성</button>
+			>{t('flavors.create.toolbarAction')}</button>
 			<button
 				onclick={() => (showGpuCatalog = true)}
 				class="px-4 py-2 bg-surface-sunken hover:bg-surface-selected text-ink-2 text-sm font-medium rounded-lg transition-colors"
-			>GPU 장치 카탈로그</button>
+			>{t('gpuCatalog.title')}</button>
 			<AutoRefreshControl
 				bind:active={ar.active}
 				bind:intervalSeconds={ar.intervalSeconds}
@@ -122,7 +123,7 @@
 				}}
 			/>
 			<div class="flex items-center gap-1 text-xs text-ink-2 max-md:hidden">
-				표시:
+				{t('flavors.display')}
 				{#each [10, 20, 30] as n}
 					<button
 						onclick={() => { pageSize = n; }}

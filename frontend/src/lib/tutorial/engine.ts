@@ -1,7 +1,8 @@
 import { goto } from '$app/navigation';
-import type { Driver } from 'driver.js';
+import type { Driver, PopoverDOM, State } from 'driver.js';
 import { tick } from 'svelte';
 import { getTour, TOUR_STORAGE_KEY, type TourDefinition, type TourId } from './tours';
+import { t } from '$lib/i18n/ns/tutorial';
 
 export interface PersistedTourState {
 	tourId: TourId;
@@ -87,8 +88,9 @@ export async function startTour(tourId: TourId, fromStep = 0): Promise<boolean> 
 		allowClose: false,
 		disableActiveInteraction: false,
 		popoverClass: 'afterglow-tour',
-		nextBtnText: '다음',
-		prevBtnText: '이전',
+		nextBtnText: t('engine.next'),
+		prevBtnText: t('engine.previous'),
+		onPopoverRender: (popover) => updatePopoverMessages(popover),
 		onNextClick: () => void moveTo(currentIndex + 1),
 		onPrevClick: () => void moveTo(currentIndex - 1),
 		onCloseClick: () => stopTour(),
@@ -106,6 +108,29 @@ export async function startTour(tourId: TourId, fromStep = 0): Promise<boolean> 
 export function refreshTourAnchor(): void {
 	if (!driverInstance || !currentTour) return;
 	void showStep(currentIndex);
+}
+
+/** Refresh only text when the root controller observes a locale change; never replay step actions. */
+export function refreshTourMessages(): void {
+	if (!driverInstance || !currentTour) return;
+	const { popover } = driverInstance.getState() as State;
+	if (!popover) return;
+	updatePopoverMessages(popover);
+	driverInstance.refresh();
+}
+
+function updatePopoverMessages(popover: PopoverDOM): void {
+	if (!currentTour) return;
+	const step = currentTour.steps[currentIndex];
+	popover.title.textContent = t('engine.stepTitle', {
+		title: step.title,
+		current: currentIndex + 1,
+		total: currentTour.steps.length,
+	});
+	popover.description.textContent = step.description;
+	popover.nextButton.textContent = t(currentIndex === currentTour.steps.length - 1 ? 'engine.complete' : 'engine.next');
+	popover.previousButton.textContent = t('engine.previous');
+	popover.closeButton.setAttribute('aria-label', t('engine.close'));
 }
 
 async function moveTo(index: number): Promise<void> {
@@ -237,7 +262,7 @@ async function showStep(index: number, direction: 1 | -1 = 1): Promise<void> {
 	d.highlight({
 		element: step.element,
 		popover: {
-			title: `${step.title} (${index + 1}/${tour.steps.length})`,
+			title: t('engine.stepTitle', { title: step.title, current: index + 1, total: tour.steps.length }),
 			description: step.description,
 			showButtons: clickDriven
 				? step.showPrevious && index > 0
@@ -248,7 +273,8 @@ async function showStep(index: number, direction: 1 | -1 = 1): Promise<void> {
 					: index === 0
 						? ['next', 'close']
 						: ['next', 'previous', 'close'],
-			nextBtnText: isLast ? '완료' : '다음',
+			nextBtnText: t(isLast ? 'engine.complete' : 'engine.next'),
+			prevBtnText: t('engine.previous'),
 		},
 	});
 

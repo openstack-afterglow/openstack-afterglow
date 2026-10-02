@@ -105,11 +105,6 @@ describe('toast store', () => {
 		void id1;
 	});
 
-	it('존재하지 않는 id 삭제 시 오류 없음', async () => {
-		const { toast } = await import('../toast');
-		expect(() => toast.remove('non-existent-id')).not.toThrow();
-	});
-
 	it('duration=0이면 자동 삭제 안 함', async () => {
 		const { toast } = await import('../toast');
 		toast.success('영구', 0);

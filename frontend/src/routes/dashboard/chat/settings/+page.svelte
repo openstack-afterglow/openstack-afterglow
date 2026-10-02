@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/chat-settings';
 	import ChatSettings, {
 		type ChatSettingsSection
 	} from '$lib/components/chat/ChatSettings.svelte';
@@ -13,7 +14,7 @@
 
 <div class="settings-workspace">
 	<div class="settings-return">
-		<Button href="/dashboard/chat" variant="ghost" size="sm" class="min-h-11">채팅으로 돌아가기</Button>
+		<Button href="/dashboard/chat" variant="ghost" size="sm" class="min-h-11">{t('settingsPage.backToChat')}</Button>
 	</div>
 	<div class="settings-body">
 		<ChatSettings initialSection={data.section} />

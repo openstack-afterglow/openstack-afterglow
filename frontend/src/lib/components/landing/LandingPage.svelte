@@ -8,6 +8,9 @@
 	import LandingOpsBoard from './LandingOpsBoard.svelte';
 	import PlateGraphic from './PlateGraphic.svelte';
 	import type { PlateName } from './plateGraphics';
+	import LocaleSelect from '$lib/i18n/LocaleSelect.svelte';
+	import RichText from '$lib/i18n/RichText.svelte';
+	import { t } from '$lib/i18n/ns/public-entry';
 
 	interface Props {
 		siteName: string;
@@ -17,20 +20,20 @@
 
 	let { siteName, logoPath, consoleHref }: Props = $props();
 
-	const navLinks = [
-		{ label: '개요', href: '#overview' },
-		{ label: '제공 기능', href: '#capabilities' },
-		{ label: '워크플로우', href: '#workflow' },
-		{ label: '화면', href: '#work' },
-		{ label: '문의', href: '#contact' },
-	];
+	const navLinks = $derived([
+		{ label: t('landing.nav.overview'), href: '#overview' },
+		{ label: t('landing.nav.capabilities'), href: '#capabilities' },
+		{ label: t('landing.nav.workflow'), href: '#workflow' },
+		{ label: t('landing.nav.work'), href: '#work' },
+		{ label: t('landing.nav.contact'), href: '#contact' },
+	]);
 
-	const overviewRows = [
-		{ num: '01', title: '신청', body: '연구원이 필요한 실험 환경을 프로젝트 범위 안에서 요청합니다.' },
-		{ num: '02', title: '배정', body: '관리자는 VM, 스토리지, 네트워크, 클러스터 자원을 정책에 맞게 제공합니다.' },
-		{ num: '03', title: '관측', body: '사용량과 상태를 지표, 로그, 토폴로지로 확인합니다.' },
-		{ num: '04', title: '재사용', body: '라이브러리 레이어와 스냅샷으로 다음 연구자의 환경 준비 시간을 줄입니다.' },
-	];
+	const overviewRows = $derived([
+		{ num: '01', title: t('landing.request.title'), body: t('landing.request.body') },
+		{ num: '02', title: t('landing.allocate.title'), body: t('landing.allocate.body') },
+		{ num: '03', title: t('landing.observe.title'), body: t('landing.observe.body') },
+		{ num: '04', title: t('landing.reuse.title'), body: t('landing.reuse.body') },
+	]);
 
 	const capabilities: Array<{
 		tag: string;
@@ -39,50 +42,50 @@
 		title: string;
 		body: string;
 		proof: string;
-	}> = [
+	}> = $derived([
 		{
-			tag: 'Compute',
+			tag: t('landing.compute.tag'),
 			name: 'compute-allocation',
-			alt: 'VM 서버, GPU 칩, vCPU, 스토리지 자원 배정 콜라주',
-			title: 'VM·GPU·vCPU·스토리지 자원 배정',
-			body: 'GPU 가속 VM에 필요한 GPU, vCPU, 메모리, 스토리지를 프로젝트 쿼터 안에서 배정해 개별 실험 환경을 바로 준비합니다.',
-			proof: '프로젝트 쿼터 안에서',
+			alt: t('landing.compute.alt'),
+			title: t('landing.compute.title'),
+			body: t('landing.compute.body'),
+			proof: t('landing.compute.proof'),
 		},
 		{
-			tag: 'Cluster',
+			tag: t('landing.cluster.tag'),
 			name: 'kubernetes',
-			alt: 'K8s 클러스터 프로비저닝 콜라주',
-			title: 'Kubernetes 실습과 실험 환경',
-			body: 'K8s 클러스터 노드를 구성한 뒤 수업·연구 프로젝트의 Pod와 워크로드를 배포하고 상태를 콘솔에서 추적합니다.',
-			proof: '노드부터 워크로드까지',
+			alt: t('landing.cluster.alt'),
+			title: t('landing.cluster.title'),
+			body: t('landing.cluster.body'),
+			proof: t('landing.cluster.proof'),
 		},
 		{
-			tag: 'Library',
+			tag: t('landing.library.tag'),
 			name: 'layer',
-			alt: 'AI ML 라이브러리 레이어 콜라주',
-			title: 'AI/ML 라이브러리 레이어',
-			body: '반복 설치가 필요한 프레임워크와 데이터 처리 도구를 불변 레이어로 관리해 팀별 환경을 재사용하고 포크합니다.',
-			proof: '설치 대신 재사용',
+			alt: t('landing.library.alt'),
+			title: t('landing.library.title'),
+			body: t('landing.library.body'),
+			proof: t('landing.library.proof'),
 		},
 		{
-			tag: 'Governance',
+			tag: t('landing.governance.tag'),
 			name: 'security',
-			alt: '보안과 거버넌스 콜라주',
-			title: '교수자와 관리자용 운영 제어',
-			body: '프로젝트, 사용자, 역할, 쿼터, 모니터링, 감사 로그를 묶어 연구실 단위 운영 기준을 유지합니다.',
-			proof: '역할과 경계를 한곳에서',
+			alt: t('landing.governance.alt'),
+			title: t('landing.governance.title'),
+			body: t('landing.governance.body'),
+			proof: t('landing.governance.proof'),
 		},
-	];
+	]);
 
 	type WorkflowKind = 'compute' | 'data' | 'ops';
 	type WorkflowFilter = 'all' | WorkflowKind;
 
-	const filters = [
-		{ label: '전체', value: 'all' },
-		{ label: '컴퓨팅', value: 'compute' },
-		{ label: '데이터', value: 'data' },
-		{ label: '운영', value: 'ops' },
-	];
+	const filters = $derived([
+		{ label: t('landing.filter.all'), value: 'all' },
+		{ label: t('landing.filter.compute'), value: 'compute' },
+		{ label: t('landing.filter.data'), value: 'data' },
+		{ label: t('landing.filter.ops'), value: 'ops' },
+	]);
 
 	const workflowCards: Array<{
 		kind: WorkflowKind;
@@ -91,55 +94,55 @@
 		title: string;
 		body: string;
 		meta: string;
-	}> = [
+	}> = $derived([
 		{
 			kind: 'compute',
 			name: 'api',
-			alt: 'API 자동화 콜라주',
-			title: '컴퓨팅 자원 신청',
-			body: '연구원이 필요한 이미지, flavor, 네트워크, 키를 선택해 실험 인스턴스를 준비합니다.',
-			meta: 'VM · GPU · Network',
+			alt: t('landing.workflow.computeAlt'),
+			title: t('landing.workflow.computeTitle'),
+			body: t('landing.workflow.computeBody'),
+			meta: t('landing.workflow.computeMeta'),
 		},
 		{
 			kind: 'data',
 			name: 'shared-data',
-			alt: '공유 데이터 공간과 스냅샷 흐름 콜라주',
-			title: '공유 데이터 공간',
-			body: '파일 스토리지와 스냅샷으로 팀 데이터와 실험 산출물을 안전하게 이어갑니다.',
-			meta: 'Share · Snapshot',
+			alt: t('landing.workflow.dataAlt'),
+			title: t('landing.workflow.dataTitle'),
+			body: t('landing.workflow.dataBody'),
+			meta: t('landing.workflow.dataMeta'),
 		},
 		{
 			kind: 'compute',
 			name: 'kubernetes',
-			alt: 'K8s 클러스터 프로비저닝 콜라주',
-			title: '클러스터 실습',
-			body: '수업이나 프로젝트별 Kubernetes 클러스터를 만들고 노드 구성을 추적합니다.',
-			meta: 'Cluster · Node',
+			alt: t('landing.cluster.alt'),
+			title: t('landing.workflow.clusterTitle'),
+			body: t('landing.workflow.clusterBody'),
+			meta: t('landing.workflow.clusterMeta'),
 		},
 		{
 			kind: 'ops',
 			name: 'monitoring',
-			alt: '모니터링과 관측성 콜라주',
-			title: '관측 가능한 운영',
-			body: '지표 기반 화면을 통해 사용량과 병목을 빠르게 확인합니다.',
-			meta: 'Metric · Log',
+			alt: t('landing.workflow.observeAlt'),
+			title: t('landing.workflow.observeTitle'),
+			body: t('landing.workflow.observeBody'),
+			meta: t('landing.workflow.observeMeta'),
 		},
 		{
 			kind: 'ops',
 			name: 'release',
-			alt: '클라우드 배포 흐름 콜라주',
-			title: '보안과 감사',
-			body: '권한 경계, 키 분리 암호화, 작업 로그로 멀티테넌트 위험을 줄입니다.',
-			meta: 'Role · Audit',
+			alt: t('landing.workflow.securityAlt'),
+			title: t('landing.workflow.securityTitle'),
+			body: t('landing.workflow.securityBody'),
+			meta: t('landing.workflow.securityMeta'),
 		},
-	];
+	]);
 
-	const methodSteps = [
-		{ step: '01', label: 'Project', title: '연구 목적에 맞는 프로젝트를 만든다', detail: '사용자와 역할, 자원 경계를 먼저 정합니다.' },
-		{ step: '02', label: 'Allocate', title: '컴퓨팅과 데이터 자원을 배정한다', detail: '정해진 쿼터 안에서 필요한 환경을 제공합니다.' },
-		{ step: '03', label: 'Observe', title: '실험 환경을 실행하고 관측한다', detail: '상태와 사용량, 연결 관계를 한 흐름에서 봅니다.' },
-		{ step: '04', label: 'Reuse', title: '레이어와 스냅샷으로 다시 쓴다', detail: '검증한 환경과 데이터를 다음 연구에 이어줍니다.' },
-	];
+	const methodSteps = $derived([
+		{ step: '01', label: t('landing.method.projectLabel'), title: t('landing.method.projectTitle'), detail: t('landing.method.projectDetail') },
+		{ step: '02', label: t('landing.method.allocateLabel'), title: t('landing.method.allocateTitle'), detail: t('landing.method.allocateDetail') },
+		{ step: '03', label: t('landing.method.observeLabel'), title: t('landing.method.observeTitle'), detail: t('landing.method.observeDetail') },
+		{ step: '04', label: t('landing.method.reuseLabel'), title: t('landing.method.reuseTitle'), detail: t('landing.method.reuseDetail') },
+	]);
 
 	const email = 'pieroot@konkuk.ac.kr';
 	const sectionIds = ['overview', 'capabilities', 'workflow', 'work', 'contact'];
@@ -230,14 +233,14 @@
 </script>
 
 <div class="landing-page" bind:this={landingRoot}>
-	<a class="skip-link" href="#landing-content" onclick={focusLandingContent}>본문으로 건너뛰기</a>
+	<a class="skip-link" href="#landing-content" onclick={focusLandingContent}>{t('landing.skipLink')}</a>
 
 	<header class="top-strip">
-		<nav class="container nav" aria-label="주요 내비게이션">
+		<nav class="container nav" aria-label={t('landing.nav.ariaLabel')}>
 			<a class="brand" href="/">
 				<img src={logoPath} alt="" />
 				<span>{siteName}</span>
-				<small>Research cloud</small>
+				<small>{t('landing.brand.tagline')}</small>
 			</a>
 			<div class="nav-links" bind:this={navLinksElement}>
 				{#each navLinks as link}
@@ -248,7 +251,8 @@
 					>{link.label}</a>
 				{/each}
 			</div>
-			<Button variant="primary" size="md" class="nav-cta" href={consoleHref}>콘솔 접속</Button>
+			<Button variant="primary" size="md" class="nav-cta" href={consoleHref}>{t('landing.consoleAction')}</Button>
+			<div class="nav-locale"><LocaleSelect id="landing-locale" variant="labelled" /></div>
 		</nav>
 	</header>
 
@@ -256,17 +260,17 @@
 		<section class="hero">
 			<div class="container hero-layout">
 				<div class="hero-copy" data-reveal>
-					<div class="eyebrow"><span aria-hidden="true"></span>Research infrastructure, delivered</div>
-					<h1>연구실 클라우드를<br />더 쉽게 제공하는 <em>운영 콘솔</em></h1>
-					<p class="lead">Afterglow는 교수, 연구원, 실습팀이 필요한 컴퓨팅 자원과 공유 스토리지, Kubernetes 환경, AI/ML 라이브러리 레이어를 한 곳에서 신청하고 운영하도록 설계된 클라우드 포털입니다.</p>
+					<div class="eyebrow"><span aria-hidden="true"></span>{t('landing.hero.eyebrow')}</div>
+					<h1><RichText segments={t.rich('landing.hero.title')} /></h1>
+					<p class="lead">{t('landing.hero.lead')}</p>
 					<div class="hero-actions">
-						<Button variant="primary" size="lg" class="landing-btn" href={consoleHref}>콘솔 접속</Button>
-						<Button variant="outline" size="lg" class="landing-btn" href="#capabilities">기능 보기</Button>
+						<Button variant="primary" size="lg" class="landing-btn" href={consoleHref}>{t('landing.consoleAction')}</Button>
+						<Button variant="outline" size="lg" class="landing-btn" href="#capabilities">{t('landing.hero.capabilitiesAction')}</Button>
 					</div>
-					<ul class="hero-facts" aria-label="Afterglow 핵심 운영 범위">
-						<li><b>Project</b><span>연구팀별 자원 경계</span></li>
-						<li><b>Policy</b><span>역할과 쿼터 제어</span></li>
-						<li><b>Reuse</b><span>환경과 데이터 재사용</span></li>
+					<ul class="hero-facts" aria-label={t('landing.hero.factsAriaLabel')}>
+						<li><b>{t('landing.method.projectLabel')}</b><span>{t('landing.hero.projectFact')}</span></li>
+						<li><b>{t('landing.hero.policyLabel')}</b><span>{t('landing.hero.policyFact')}</span></li>
+						<li><b>{t('landing.method.reuseLabel')}</b><span>{t('landing.hero.reuseFact')}</span></li>
 					</ul>
 				</div>
 				<div class="hero-board" data-reveal><LandingOpsBoard /></div>
@@ -276,10 +280,10 @@
 		<section id="overview" class="section overview-section">
 			<div class="container">
 				<div class="section-head" data-reveal>
-					<div class="section-label"><span>운영의 범위</span><b>From request to reuse</b></div>
+					<div class="section-label"><span>{t('landing.overview.label')}</span><b>{t('landing.overview.kicker')}</b></div>
 					<div>
-						<h2>클라우드를 제공하는 일은<br />자원 생성보다 넓습니다</h2>
-						<p>연구실에서는 사용자 초대, 프로젝트 쿼터, 이미지와 네트워크, 데이터 공유, GPU 사용량, 실습 클러스터, 감사 로그가 한꺼번에 얽힙니다. Afterglow는 이 흐름을 연구 조직이 이해할 수 있는 콘솔로 묶습니다.</p>
+						<h2><RichText segments={t.rich('landing.overview.title')} /></h2>
+						<p>{t('landing.overview.body')}</p>
 					</div>
 				</div>
 				<div class="overview-layout" data-reveal>
@@ -293,8 +297,8 @@
 						{/each}
 					</Card>
 					<div class="overview-proof">
-						<LandingFigure class="overview-screen" name="console" fit="cover" alt="Afterglow 프로젝트 대시보드 화면">프로젝트 대시보드 / 자원과 사용량</LandingFigure>
-						<div class="proof-note"><span>하나의 프로젝트 안에서</span><strong>사람 · 정책 · 인프라</strong><p>운영자는 전체 흐름을 읽고, 연구자는 필요한 환경에 바로 접근합니다.</p></div>
+						<LandingFigure class="overview-screen" name="console" fit="cover" alt={t('landing.overview.screenAlt')}>{t('landing.overview.screenCaption')}</LandingFigure>
+						<div class="proof-note"><span>{t('landing.overview.proofLabel')}</span><strong>{t('landing.overview.proofTitle')}</strong><p>{t('landing.overview.proofBody')}</p></div>
 					</div>
 				</div>
 			</div>
@@ -303,10 +307,10 @@
 		<section id="capabilities" class="section">
 			<div class="container">
 				<div class="section-head" data-reveal>
-					<div class="section-label"><span>제공 기능</span><b>Operational surfaces</b></div>
+					<div class="section-label"><span>{t('landing.nav.capabilities')}</span><b>{t('landing.capabilities.kicker')}</b></div>
 					<div>
-						<h2>연구 클라우드 제공에 필요한<br />표면을 한데 모읍니다</h2>
-						<p>사용자는 실험을 시작하고, 운영자는 경계를 유지하고, 교수자는 팀 단위 자원 흐름을 확인할 수 있어야 합니다.</p>
+						<h2><RichText segments={t.rich('landing.capabilities.title')} /></h2>
+						<p>{t('landing.capabilities.body')}</p>
 					</div>
 				</div>
 				<div data-reveal>
@@ -329,19 +333,19 @@
 		<section id="workflow" class="section workflow-section">
 			<div class="container">
 				<div class="section-head" data-reveal>
-					<div class="section-label"><span>워크플로우</span><b>Choose a context</b></div>
+					<div class="section-label"><span>{t('landing.nav.workflow')}</span><b>{t('landing.workflow.kicker')}</b></div>
 					<div>
-						<h2>연구실마다 다른 사용 흐름을<br />필터처럼 꺼내 봅니다</h2>
-						<p>컴퓨팅, 데이터, 운영 맥락을 전환하며 필요한 자원과 상태를 한 흐름에서 확인합니다.</p>
+						<h2><RichText segments={t.rich('landing.workflow.title')} /></h2>
+						<p>{t('landing.workflow.body')}</p>
 					</div>
 				</div>
 				<div class="workflow-layout" data-reveal>
 					<aside class="filter-panel">
 						<Card surface="subtle" padding="lg" class="filter-panel-surface">
-							<span class="filter-kicker">View by domain</span>
-							<h3>필요한 운영 맥락을<br />선택하세요</h3>
-							<ToggleGroup value={selectedFilter} options={filters} onchange={selectFilter} size="sm" fullWidth class="landing-workflow-filter" ariaLabel="워크플로우 필터" />
-							<p><b>{visibleCount}</b>개의 관련 흐름이 표시됩니다.</p>
+							<span class="filter-kicker">{t('landing.workflow.filterKicker')}</span>
+							<h3><RichText segments={t.rich('landing.workflow.filterTitle')} /></h3>
+							<ToggleGroup value={selectedFilter} options={filters} onchange={selectFilter} size="sm" fullWidth class="landing-workflow-filter" ariaLabel={t('landing.workflow.filterAriaLabel')} />
+							<p><RichText segments={t.rich('landing.workflow.visibleCount', { count: visibleCount })} /></p>
 						</Card>
 					</aside>
 					<Card surface="subtle" padding="none" class="workflow-list">
@@ -354,7 +358,7 @@
 							</article>
 						{/each}
 						{#if visibleCount === 0}
-							<p class="empty-state" role="status" aria-live="polite">선택한 조건에 맞는 워크플로우가 없습니다. 전체를 선택해 다시 확인하세요.</p>
+							<p class="empty-state" role="status" aria-live="polite">{t('landing.workflow.empty')}</p>
 						{/if}
 					</Card>
 				</div>
@@ -364,8 +368,8 @@
 		<section class="section method-section">
 			<div class="container">
 				<div class="section-head compact-head" data-reveal>
-					<div class="section-label"><span>제공 방식</span><b>Four steps</b></div>
-					<div><h2>제공 방식은 네 단계로 정리됩니다</h2></div>
+					<div class="section-label"><span>{t('landing.method.label')}</span><b>{t('landing.method.kicker')}</b></div>
+					<div><h2>{t('landing.method.title')}</h2></div>
 				</div>
 				<div data-reveal>
 					<Card surface="subtle" padding="none" class="method-grid">
@@ -384,19 +388,19 @@
 		<section id="work" class="section work-section">
 			<div class="container">
 				<div class="section-head" data-reveal>
-					<div class="section-label"><span>제품 화면</span><b>Operational proof</b></div>
+					<div class="section-label"><span>{t('landing.work.label')}</span><b>{t('landing.work.kicker')}</b></div>
 					<div>
-						<h2>실제 콘솔은 운영자가<br />빠르게 읽을 수 있어야 합니다</h2>
-						<p>대시보드, 관리자, 클러스터, 네트워크 화면은 자원 상태와 연결 관계를 같은 운영 문법으로 보여줍니다.</p>
+						<h2><RichText segments={t.rich('landing.work.title')} /></h2>
+						<p>{t('landing.work.body')}</p>
 					</div>
 				</div>
 				<div class="product-stage" data-reveal>
-					<div class="stage-bar"><span><i></i><i></i><i></i></span><b>afterglow / project / research-lab</b><em>live console</em></div>
+					<div class="stage-bar"><span><i></i><i></i><i></i></span><b>{t('landing.work.breadcrumb', { product: 'afterglow', project: 'research-lab' })}</b><em>{t('landing.work.live')}</em></div>
 					<div class="work-grid">
-						<LandingFigure class="screen-main" name="kubernetes" fit="cover" alt="Afterglow Kubernetes 클러스터 화면">Kubernetes 클러스터 / 노드와 워크로드</LandingFigure>
+						<LandingFigure class="screen-main" name="kubernetes" fit="cover" alt={t('landing.work.clusterAlt')}>{t('landing.work.clusterCaption')}</LandingFigure>
 						<div class="screen-stack">
-							<LandingFigure name="security" fit="cover" alt="Afterglow 관리자 개요 화면">관리자 개요 / 사용량과 서비스 상태</LandingFigure>
-							<LandingFigure name="network-topology" fit="cover" alt="Afterglow 네트워크 토폴로지 화면">네트워크 토폴로지 / 연결 관계</LandingFigure>
+							<LandingFigure name="security" fit="cover" alt={t('landing.work.adminAlt')}>{t('landing.work.adminCaption')}</LandingFigure>
+							<LandingFigure name="network-topology" fit="cover" alt={t('landing.work.networkAlt')}>{t('landing.work.networkCaption')}</LandingFigure>
 						</div>
 					</div>
 				</div>
@@ -406,15 +410,15 @@
 		<section class="section audience-section">
 			<div class="container audience-layout">
 				<div data-reveal>
-					<div class="section-label"><span>사용자</span><b>Built for the lab</b></div>
-					<blockquote>“실험 환경을 만드는 시간이 줄어들면, 연구자는 다시 질문에 집중할 수 있습니다”</blockquote>
-					<ul class="audience-list" aria-label="대상 사용자와 조직">
-						<li class="glyph">연구실</li><li class="glyph">교수자</li><li class="glyph">연구원</li><li class="glyph">실습팀</li><li class="glyph">연구 조직</li>
+					<div class="section-label"><span>{t('landing.audience.label')}</span><b>{t('landing.audience.kicker')}</b></div>
+					<blockquote>{t('landing.audience.quote')}</blockquote>
+					<ul class="audience-list" aria-label={t('landing.audience.ariaLabel')}>
+						<li class="glyph">{t('landing.audience.lab')}</li><li class="glyph">{t('landing.audience.instructor')}</li><li class="glyph">{t('landing.audience.researcher')}</li><li class="glyph">{t('landing.audience.practiceTeam')}</li><li class="glyph">{t('landing.audience.organization')}</li>
 					</ul>
 				</div>
 				<div class="quote-visual" data-reveal>
-					<LandingFigure class="audience-figure" name="professor" alt="교수자와 연구원이 프로젝트 환경을 함께 운영하는 화면" />
-					<div class="audience-note"><span>Shared context</span><strong>같은 프로젝트를<br />서로 다른 역할로</strong><p>사용자는 환경을 쓰고, 교수자는 흐름을 보고, 운영자는 경계를 지킵니다.</p></div>
+					<LandingFigure class="audience-figure" name="professor" alt={t('landing.audience.figureAlt')} />
+					<div class="audience-note"><span>{t('landing.audience.noteKicker')}</span><strong><RichText segments={t.rich('landing.audience.noteTitle')} /></strong><p>{t('landing.audience.noteBody')}</p></div>
 				</div>
 			</div>
 		</section>
@@ -423,13 +427,13 @@
 			<div class="container">
 				<div class="contact-panel" data-reveal>
 					<div>
-						<div class="eyebrow"><span aria-hidden="true"></span>Console ready</div>
-						<h2>연구실 클라우드 제공 방식을<br />정리할 준비가 되셨나요?</h2>
-						<p>데모, PoC, 학내 연구실 배포 논의를 위해 연락 주세요.</p>
+						<div class="eyebrow"><span aria-hidden="true"></span>{t('landing.contact.kicker')}</div>
+						<h2><RichText segments={t.rich('landing.contact.title')} /></h2>
+						<p>{t('landing.contact.body')}</p>
 					</div>
 					<div class="contact-actions">
-						<Button variant="primary" size="lg" class="contact-console" href={consoleHref}>콘솔 접속</Button>
-						<Button variant="outline" size="lg" class="email-pill" href={`mailto:${email}`} ariaLabel="이메일 문의 보내기">{email}</Button>
+						<Button variant="primary" size="lg" class="contact-console" href={consoleHref}>{t('landing.consoleAction')}</Button>
+						<Button variant="outline" size="lg" class="email-pill" href={`mailto:${email}`} ariaLabel={t('landing.contact.emailAriaLabel')}>{email}</Button>
 					</div>
 				</div>
 			</div>
@@ -438,13 +442,13 @@
 
 	<footer class="footer">
 		<div class="container footer-layout">
-			<div class="footer-brand"><img src={logoPath} alt="" /><strong>{siteName}</strong><span>Research cloud operations</span></div>
+			<div class="footer-brand"><img src={logoPath} alt="" /><strong>{siteName}</strong><span>{t('landing.footer.tagline')}</span></div>
 			<div class="footer-grid">
-				<div><h3>제품</h3><a href="#overview">개요</a><a href="#capabilities">제공 기능</a><a href="#workflow">워크플로우</a></div>
-				<div><h3>연락</h3><a href={`mailto:${email}`}>{email}</a><a href="https://github.com/openstack-afterglow/openstack-afterglow">GitHub 저장소</a></div>
+				<div><h3>{t('landing.footer.product')}</h3><a href="#overview">{t('landing.nav.overview')}</a><a href="#capabilities">{t('landing.nav.capabilities')}</a><a href="#workflow">{t('landing.nav.workflow')}</a></div>
+				<div><h3>{t('landing.footer.contact')}</h3><a href={`mailto:${email}`}>{email}</a><a href="https://github.com/openstack-afterglow/openstack-afterglow">{t('landing.footer.repository')}</a></div>
 			</div>
 		</div>
-		<div class="container footer-bottom"><p>© 2026 {siteName}. 연구 클라우드 운영 콘솔.</p><span>Seoul · Republic of Korea</span></div>
+		<div class="container footer-bottom"><p>{t('landing.footer.copyright', { siteName })}</p><span>{t('landing.footer.location')}</span></div>
 	</footer>
 </div>
 
@@ -453,7 +457,7 @@
 		--landing-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
 		--landing-container: 80rem;
 		--landing-gutter: 1rem;
-		--landing-nav-height: 6.25rem;
+		--landing-nav-height: 10rem;
 		min-height: 100%;
 		padding-top: var(--landing-nav-height);
 		background: var(--color-surface-canvas);
@@ -463,9 +467,11 @@
 		letter-spacing: -0.01em;
 		font-size: 0.9375rem;
 		line-height: 1.65;
+		overflow-wrap: anywhere;
 		-webkit-font-smoothing: antialiased;
 		text-rendering: optimizeLegibility;
 	}
+	.landing-page:lang(ja), .landing-page:lang(zh-CN) { --landing-word-break: normal; }
 	.landing-page :global(img) { display: block; max-width: 100%; }
 	.landing-page :global(a) { color: inherit; }
 	.landing-page h1, .landing-page h2, .landing-page h3, .landing-page p, .landing-page blockquote { margin: 0; }
@@ -476,8 +482,8 @@
 	.skip-link:focus-visible { transform: translateY(0); }
 
 	.top-strip { position: fixed; inset: 0 0 auto; z-index: var(--z-sidebar); border-bottom: 1px solid color-mix(in oklab, var(--color-line) 84%, transparent); background: color-mix(in oklab, var(--color-surface-canvas) 88%, transparent); backdrop-filter: blur(1.125rem); }
-	.nav { display: grid; grid-template-areas: 'brand cta' 'links links'; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.25rem 0.75rem; min-height: var(--landing-nav-height); padding-block: 0.5rem; }
-	.brand { grid-area: brand; display: grid; grid-template-columns: 2rem auto; min-height: 2.75rem; align-items: center; column-gap: 0.625rem; width: fit-content; text-decoration: none; }
+	.nav { display: grid; grid-template-areas: 'brand locale' 'cta cta' 'links links'; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.25rem 0.75rem; min-height: var(--landing-nav-height); padding-block: 0.5rem; }
+	.brand { grid-area: brand; display: grid; grid-template-columns: 2rem minmax(0, 1fr); min-width: 0; max-width: 100%; min-height: 2.75rem; align-items: center; column-gap: 0.625rem; width: fit-content; overflow-wrap: anywhere; text-decoration: none; }
 	.brand img { grid-row: 1 / 3; width: 2rem; height: 2rem; object-fit: contain; }
 	.brand span { align-self: end; font-size: 0.8125rem; font-weight: 700; line-height: 1; }
 	.brand small { align-self: start; color: var(--color-ink-2); font-family: var(--font-mono); font-size: 0.6875rem; line-height: 1; text-transform: uppercase; }
@@ -488,6 +494,7 @@
 	.nav-links a:hover, .nav-links a.is-active { color: var(--color-ink-0); }
 	.nav-links a.is-active::after { transform: scaleX(1); }
 	.landing-page :global(.nav-cta) { grid-area: cta; }
+	.nav-locale { grid-area: locale; min-width: 0; justify-self: end; }
 	.landing-page :global(.nav-cta), .landing-page :global(.landing-btn), .landing-page :global(.contact-console), .landing-page :global(.email-pill) { min-height: 2.75rem; border-radius: 0.625rem; font-weight: 700; }
 
 	.hero { position: relative; overflow: hidden; padding: 4.5rem 0 5rem; }
@@ -497,14 +504,14 @@
 	.eyebrow { display: inline-flex; align-items: center; gap: 0.625rem; color: var(--color-ink-2); font-size: 0.6875rem; letter-spacing: 0.08em; }
 	.eyebrow > span { width: 0.5rem; height: 0.5rem; border-radius: 999px; background: var(--color-warm); box-shadow: 0 0 0 0.25rem var(--warm-soft); }
 	.hero h1, .section h2, .cap-content h3, blockquote, .audience-note strong { font-family: var(--font-display); }
-	.hero h1 { max-width: 48rem; margin-top: 1.5rem; font-size: clamp(2.75rem, 10vw, 4.25rem); font-weight: 500; letter-spacing: -0.04em; line-height: 1.06; text-wrap: balance; word-break: keep-all; }
-	.hero h1 em { display: block; width: fit-content; color: var(--color-warm); font-style: normal; white-space: nowrap; }
-	.lead { max-width: 42rem; margin-top: 1.5rem !important; color: var(--color-ink-1); font-size: clamp(1rem, 2.2vw, 1.125rem); line-height: 1.72; word-break: keep-all; }
+	.hero h1 { max-width: 48rem; margin-top: 1.5rem; font-size: clamp(2.75rem, 10vw, 4.25rem); font-weight: 500; letter-spacing: -0.04em; line-height: 1.06; text-wrap: balance; word-break: var(--landing-word-break, keep-all); }
+	.hero h1 :global(em) { display: block; width: fit-content; max-width: 100%; color: var(--color-warm); font-style: normal; white-space: normal; }
+	.lead { max-width: 42rem; margin-top: 1.5rem !important; color: var(--color-ink-1); font-size: clamp(1rem, 2.2vw, 1.125rem); line-height: 1.72; word-break: var(--landing-word-break, keep-all); }
 	.hero-actions { display: flex; flex-wrap: wrap; gap: 0.625rem; margin-top: 1.75rem; }
 	.hero-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; margin: 2.5rem 0 0; padding: 1rem 0 0; border-top: 1px solid var(--color-line); list-style: none; }
 	.hero-facts li { min-width: 0; }
 	.hero-facts b { display: block; color: var(--color-accent); font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 500; text-transform: uppercase; }
-	.hero-facts span { display: block; margin-top: 0.25rem; color: var(--color-ink-2); font-size: 0.6875rem; word-break: keep-all; }
+	.hero-facts span { display: block; margin-top: 0.25rem; color: var(--color-ink-2); font-size: 0.6875rem; word-break: var(--landing-word-break, keep-all); }
 	.hero-board { min-width: 0; }
 
 	.section { padding: 4.5rem 0; border-top: 1px solid var(--color-line); }
@@ -513,8 +520,8 @@
 	.section-label { display: flex; align-items: center; gap: 0.75rem; color: var(--color-warm-text); font-size: 0.6875rem; letter-spacing: 0.08em; }
 	.section-label span { font-weight: 700; }
 	.section-label b { color: var(--color-ink-2); font-weight: 500; }
-	.section h2 { max-width: 58rem; font-size: clamp(2rem, 7vw, 3.75rem); font-weight: 500; letter-spacing: -0.03em; line-height: 1.12; text-wrap: balance; word-break: keep-all; }
-	.section-head > div:last-child > p { max-width: 46rem; margin-top: 1rem; color: var(--color-ink-1); font-size: 1rem; word-break: keep-all; }
+	.section h2 { max-width: 58rem; font-size: clamp(2rem, 7vw, 3.75rem); font-weight: 500; letter-spacing: -0.03em; line-height: 1.12; text-wrap: balance; word-break: var(--landing-word-break, keep-all); }
+	.section-head > div:last-child > p { max-width: 46rem; margin-top: 1rem; color: var(--color-ink-1); font-size: 1rem; word-break: var(--landing-word-break, keep-all); }
 
 	.overview-section { background: color-mix(in oklab, var(--color-surface-base) 64%, var(--color-surface-canvas)); }
 	.overview-layout { display: grid; gap: 1rem; }
@@ -523,7 +530,7 @@
 	.overview-row:last-child { border-bottom: 0; }
 	.overview-row > b { color: var(--color-warm-text); font-family: var(--font-mono); font-size: 0.6875rem; }
 	.overview-row h3 { font-size: 1rem; }
-	.overview-row p { margin-top: 0.25rem; color: var(--color-ink-2); font-size: 0.8125rem; word-break: keep-all; }
+	.overview-row p { margin-top: 0.25rem; color: var(--color-ink-2); font-size: 0.8125rem; word-break: var(--landing-word-break, keep-all); }
 	.overview-row > span { color: var(--color-ink-2); }
 	.overview-proof { position: relative; min-height: 24rem; overflow: hidden; border: 1px solid var(--color-line); border-radius: 1rem; background: var(--color-surface-editorial-media); }
 	.landing-page :global(.overview-screen) { position: absolute; inset: 0; margin: 0; }
@@ -543,8 +550,8 @@
 	.cap-meta { display: flex; align-items: center; justify-content: space-between; gap: 1rem; font-family: var(--font-mono); font-size: 0.6875rem; }
 	.cap-meta span { color: var(--color-accent); text-transform: uppercase; }
 	.cap-meta b { color: var(--color-ink-2); font-weight: 500; }
-	.cap-content h3 { margin-top: 1.25rem; font-size: clamp(1.25rem, 4vw, 2rem); font-weight: 500; letter-spacing: -0.022em; line-height: 1.17; text-wrap: balance; word-break: keep-all; }
-	.cap-content p { margin-top: 0.875rem; color: var(--color-ink-1); font-size: 0.8125rem; word-break: keep-all; }
+	.cap-content h3 { margin-top: 1.25rem; font-size: clamp(1.25rem, 4vw, 2rem); font-weight: 500; letter-spacing: -0.022em; line-height: 1.17; text-wrap: balance; word-break: var(--landing-word-break, keep-all); }
+	.cap-content p { margin-top: 0.875rem; color: var(--color-ink-1); font-size: 0.8125rem; word-break: var(--landing-word-break, keep-all); }
 
 	.workflow-section { background: color-mix(in oklab, var(--color-surface-base) 64%, var(--color-surface-canvas)); }
 	.workflow-layout { display: grid; gap: 1rem; align-items: start; }
@@ -554,7 +561,7 @@
 	.landing-page :global(.landing-workflow-filter) { margin-top: 1.5rem; }
 	.landing-page :global(.landing-workflow-filter .toggle-option) { min-height: 2.75rem; }
 	.filter-panel p { margin-top: 0.75rem; color: var(--color-ink-2); font-size: 0.75rem; }
-	.filter-panel p b { color: var(--color-warm-text); }
+	.filter-panel p :global(strong) { color: var(--color-warm-text); }
 	.landing-page :global(.workflow-list) { border-color: var(--color-line); background: color-mix(in oklab, var(--color-surface-raised) 62%, transparent); }
 	.lab-card { transition: opacity var(--motion-duration-base) var(--landing-ease), transform var(--motion-duration-base) var(--landing-ease); }
 	.lab-card { display: grid; grid-template-columns: auto minmax(5.5rem, 7rem) minmax(0, 1fr); align-items: center; gap: 0.75rem; padding: 0.75rem; border-bottom: 1px solid var(--color-line); }
@@ -564,7 +571,7 @@
 	.landing-page :global(.lab-card-media) { width: 100%; aspect-ratio: 1 / 1; border-radius: 0.625rem; background: var(--color-surface-editorial-media); }
 	.workflow-copy span { color: var(--color-ink-2); font-family: var(--font-mono); font-size: 0.625rem; text-transform: uppercase; }
 	.workflow-copy h3 { margin-top: 0.25rem; font-size: 1rem; }
-	.workflow-copy p { margin-top: 0.35rem; color: var(--color-ink-2); font-size: 0.75rem; word-break: keep-all; }
+	.workflow-copy p { margin-top: 0.35rem; color: var(--color-ink-2); font-size: 0.75rem; word-break: var(--landing-word-break, keep-all); }
 	.empty-state { padding: 1rem; border: 1px dashed var(--color-line-2); border-radius: 0.75rem; color: var(--color-ink-2); }
 
 	.landing-page :global(.method-grid) { display: grid; border-color: var(--color-line); background: color-mix(in oklab, var(--color-surface-raised) 62%, transparent); }
@@ -574,8 +581,8 @@
 	.method-meta b { color: var(--color-warm-text); }
 	.method-meta span { color: var(--color-ink-2); }
 	.method-mark { display: none; }
-	.method-step h3 { font-size: 1.125rem; line-height: 1.2; word-break: keep-all; }
-	.method-step p { margin-top: 0.625rem; color: var(--color-ink-2); font-size: 0.75rem; word-break: keep-all; }
+	.method-step h3 { font-size: 1.125rem; line-height: 1.2; word-break: var(--landing-word-break, keep-all); }
+	.method-step p { margin-top: 0.625rem; color: var(--color-ink-2); font-size: 0.75rem; word-break: var(--landing-word-break, keep-all); }
 
 	.work-section { overflow: hidden; background: color-mix(in oklab, var(--color-surface-base) 64%, var(--color-surface-canvas)); }
 	.product-stage { overflow: hidden; border: 1px solid var(--color-line-2); border-radius: 1rem; background: var(--color-surface-base); box-shadow: 0 2rem 6rem color-mix(in oklab, var(--color-surface-canvas) 78%, transparent); }
@@ -592,7 +599,7 @@
 	.landing-page :global(figcaption) { padding: 0.625rem 0.75rem; border-top: 1px solid var(--color-line); color: var(--color-ink-2); font-family: var(--font-mono); font-size: 0.625rem; }
 
 	.audience-layout { display: grid; gap: 2.5rem; align-items: center; }
-	blockquote { max-width: 47rem; margin-top: 1.75rem !important; font-size: clamp(2rem, 7vw, 3.75rem); font-weight: 500; letter-spacing: -0.03em; line-height: 1.14; text-wrap: balance; word-break: keep-all; }
+	blockquote { max-width: 47rem; margin-top: 1.75rem !important; font-size: clamp(2rem, 7vw, 3.75rem); font-weight: 500; letter-spacing: -0.03em; line-height: 1.14; text-wrap: balance; word-break: var(--landing-word-break, keep-all); }
 	.audience-list { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 2rem 0 0; padding: 0; list-style: none; }
 	.glyph { padding: 0.5rem 0.75rem; border: 1px solid var(--color-line-2); border-radius: 999px; color: var(--color-ink-1); font-size: 0.75rem; }
 	.quote-visual { display: grid; gap: 0.75rem; overflow: hidden; border: 1px solid var(--color-line); border-radius: 1rem; background: var(--color-surface-base); }
@@ -629,9 +636,9 @@
 	:global(.landing-page.reveal-enabled.reveal-ready) [data-reveal] { transition: opacity 600ms var(--landing-ease), transform 600ms var(--landing-ease); }
 
 	@media (min-width: 768px) {
-		.landing-page { --landing-gutter: 2rem; --landing-nav-height: 4.5rem; }
-		.nav { display: flex; min-height: 4.5rem; padding-block: 0; }
-		.nav-links { flex: 1 1 auto; justify-content: center; }
+		.landing-page { --landing-gutter: 2rem; --landing-nav-height: 7rem; }
+		.nav { grid-template-areas: 'brand cta locale' 'links links links'; grid-template-columns: minmax(0, 1fr) auto auto; }
+		.nav-links { justify-content: center; }
 		.hero { padding: 5.5rem 0 6rem; }
 		.hero-facts span { font-size: 0.75rem; }
 		.section { padding: 5.5rem 0; }
@@ -651,6 +658,8 @@
 	}
 
 	@media (min-width: 1024px) {
+		.landing-page { --landing-nav-height: 4.5rem; }
+		.nav { grid-template-areas: 'brand links cta locale'; grid-template-columns: auto minmax(0, 1fr) auto auto; }
 		.hero h1 { font-size: clamp(3.25rem, 5vw, 4.25rem); }
 		.hero-layout { grid-template-columns: minmax(0, 0.86fr) minmax(32rem, 1.14fr); gap: clamp(2rem, 4vw, 4rem); }
 		.section-head { grid-template-columns: minmax(10rem, 0.3fr) minmax(0, 1fr); gap: 2rem; }

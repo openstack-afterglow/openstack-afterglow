@@ -4,6 +4,8 @@
 	import { useInstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
 	import { get } from 'svelte/store';
 	import { toast } from '$lib/stores/toast';
+	import { t } from '$lib/i18n/ns/instance';
+	import RichText from '$lib/i18n/RichText.svelte';
 
 	const s = useInstanceDetailController();
 
@@ -90,7 +92,7 @@
 		} catch (error) {
 			if (isCurrentAttachment(scope, scopeGeneration, requestId)) {
 				attachments = [];
-				attachmentError = error instanceof ApiError ? error.message : '연결 정보를 불러오지 못했습니다.';
+				attachmentError = error instanceof ApiError ? error.message : t('storageAttachments.loadFailed');
 			}
 		} finally {
 			if (isCurrentAttachment(scope, scopeGeneration, requestId)) loading = false;
@@ -118,7 +120,7 @@
 				if (isCurrentCatalog(projectId, generation)) {
 					fileStorages = [];
 					catalogStatus = 'error';
-					catalogError = error instanceof ApiError ? error.message : '파일 스토리지를 불러오지 못했습니다.';
+					catalogError = error instanceof ApiError ? error.message : t('storageAttachments.catalogLoadFailed');
 				}
 			} finally {
 				if (isCurrentCatalog(projectId, generation)) catalogPromise = null;
@@ -161,7 +163,7 @@
 			await loadAttachments(scope.instanceId, scope.projectId, generation);
 		} catch (error) {
 			if (isCurrentMutation(scope, generation)) {
-				toast.error('연결 실패: ' + (error instanceof ApiError ? error.message : String(error)));
+				toast.error(t('storageAttachments.attachFailed', { error: error instanceof ApiError ? error.message : String(error) }));
 			}
 		} finally {
 			if (isCurrentMutation(scope, generation)) {
@@ -188,7 +190,7 @@
 			}
 		} catch (error) {
 			if (isCurrentMutation(scope, generation)) {
-				toast.error('연결 해제 실패: ' + (error instanceof ApiError ? error.message : String(error)));
+				toast.error(t('storageAttachments.detachFailed', { error: error instanceof ApiError ? error.message : String(error) }));
 			}
 		} finally {
 			if (isCurrentMutation(scope, generation)) detaching = null;
@@ -246,12 +248,12 @@
 
 <div class="bg-surface-base border border-line rounded-lg p-6 mb-4">
 	<div class="flex items-center justify-between mb-4">
-		<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide">파일 스토리지</h2>
+		<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide">{t('storageAttachments.title')}</h2>
 		<button
 			onclick={toggleForm}
 			class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
 		>
-			{showForm ? '닫기' : '+ 연결'}
+			{showForm ? t('storageAttachments.close') : t('storageAttachments.addAttachment')}
 		</button>
 	</div>
 
@@ -259,35 +261,35 @@
 		<div class="mb-4 bg-surface-sunken rounded-lg p-4">
 			<div class="grid grid-cols-1 gap-3 mb-3">
 				<div>
-					<label for="attachment-storage" class="block text-xs text-ink-2 mb-1">파일 스토리지</label>
+					<label for="attachment-storage" class="block text-xs text-ink-2 mb-1">{t('storageAttachments.storageLabel')}</label>
 					<select
 						id="attachment-storage"
 						bind:value={selectedStorageId}
 						disabled={catalogStatus === 'loading'}
 						class="w-full bg-surface-selected border border-line-2 text-ink-0 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-action-warm"
 					>
-						<option value="">선택...</option>
+						<option value="">{t('storageAttachments.selectPlaceholder')}</option>
 						{#each availableStorages as fs}
 							<option value={fs.id}>{fs.name || fs.id.slice(0, 12)} ({fs.share_proto})</option>
 						{/each}
 					</select>
 					{#if catalogStatus === 'loading'}
-						<p class="text-xs text-ink-2 mt-1">파일 스토리지를 불러오는 중...</p>
+						<p class="text-xs text-ink-2 mt-1">{t('storageAttachments.catalogLoading')}</p>
 					{:else if catalogStatus === 'error'}
-						<p class="catalog-message">파일 스토리지를 불러오지 못했습니다. 다시 열어 재시도하세요.</p>
+						<p class="catalog-message">{t('storageAttachments.catalogRetry')}</p>
 					{:else if catalogStatus === 'loaded' && availableStorages.length === 0}
-						<p class="catalog-message">연결 가능한 파일 스토리지가 없습니다.</p>
+						<p class="catalog-message">{t('storageAttachments.noAvailableStorage')}</p>
 					{/if}
 				</div>
 				<div>
-					<label for="attachment-mount-point" class="block text-xs text-ink-2 mb-1">마운트 경로</label>
+					<label for="attachment-mount-point" class="block text-xs text-ink-2 mb-1">{t('storageAttachments.mountPointLabel')}</label>
 					<input
 						id="attachment-mount-point"
 						bind:value={mountPoint}
 						placeholder="/mnt/mydata"
 						class="w-full bg-surface-selected border border-line-2 text-ink-0 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-action-warm"
 					/>
-					<p class="text-[10.5px] text-ink-2 mt-0.5">/mnt, /data, /srv, /home 하위 경로만 허용</p>
+					<p class="text-[10.5px] text-ink-2 mt-0.5">{t('storageAttachments.mountPointHelp', { paths: '/mnt, /data, /srv, /home' })}</p>
 				</div>
 				<label class="flex items-center gap-2 text-sm text-ink-2 cursor-pointer">
 					<input
@@ -295,7 +297,7 @@
 						bind:checked={readOnly}
 						class="w-4 h-4 rounded border-line-2 bg-surface-sunken text-warm-text"
 					/>
-					읽기 전용으로 마운트
+					{t('storageAttachments.readOnly')}
 				</label>
 			</div>
 			<button
@@ -303,18 +305,17 @@
 				disabled={catalogStatus === 'loading' || attaching || !selectedStorageId || !mountPoint.trim()}
 				class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm rounded-lg transition-colors"
 			>
-				{attaching ? '연결 중...' : '연결'}
+				{attaching ? t('storageAttachments.attaching') : t('storageAttachments.attach')}
 			</button>
 		</div>
 	{/if}
 
 	{#if lastMountInfo}
 		<div class="mb-4 bg-green-900/20 border border-green-700/50 rounded-lg p-4">
-			<p class="text-xs text-green-400 font-medium mb-2">연결 완료 — VM 내부에서 아래 명령을 실행하세요</p>
+			<p class="text-xs text-green-400 font-medium mb-2">{t('storageAttachments.attachedInstructions')}</p>
 			{#if lastMountInfo.keyring_file}
 				<p class="text-[10.5px] text-ink-2 mb-1.5">
-					키링 파일이 cloud-init으로 미리 주입된 경우 <code class="text-ink-2">{lastMountInfo.keyring_file}</code>에 존재합니다.
-					런타임 연결 시 키링 파일을 직접 생성해야 할 수 있습니다.
+					<RichText segments={t.rich('storageAttachments.keyringHelp', { keyringFile: lastMountInfo.keyring_file })} classes={{ code: 'text-ink-2' }} />
 				</p>
 			{/if}
 			<div class="flex items-center gap-2">
@@ -323,16 +324,16 @@
 					onclick={() => copyToClipboard(lastMountInfo!.mount_command)}
 					class="shrink-0 px-2 py-1.5 text-xs {copied ? 'text-green-400' : 'text-ink-2 hover:text-ink-1'} transition-colors"
 				>
-					{copied ? '복사됨' : '복사'}
+					{copied ? t('storageAttachments.copied') : t('storageAttachments.copy')}
 				</button>
 			</div>
 		</div>
 	{/if}
 
 	{#if loading}
-		<p class="text-sm text-ink-2">로딩 중...</p>
+		<p class="text-sm text-ink-2">{t('storageAttachments.loading')}</p>
 	{:else if attachments.length === 0}
-		<p class="text-sm text-ink-2">연결된 파일 스토리지가 없습니다.</p>
+		<p class="text-sm text-ink-2">{t('storageAttachments.empty')}</p>
 	{:else}
 		<div class="space-y-2">
 			{#each attachments as att}
@@ -351,7 +352,7 @@
 						disabled={detaching === att.file_storage_id}
 						class="shrink-0 text-xs text-red-400/70 hover:text-red-400 disabled:text-ink-3 transition-colors"
 					>
-						{detaching === att.file_storage_id ? '해제 중...' : '해제'}
+						{detaching === att.file_storage_id ? t('storageAttachments.detaching') : t('storageAttachments.detach')}
 					</button>
 				</div>
 			{/each}

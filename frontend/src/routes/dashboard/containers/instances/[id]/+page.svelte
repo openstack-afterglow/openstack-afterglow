@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/containers-shell';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
@@ -29,7 +30,7 @@
       container = await api.get<ZunContainerDetail>(`/api/v1/containers/${containerId}`, $auth.token ?? undefined, $auth.projectId ?? undefined);
       error = '';
     } catch (e) {
-      error = e instanceof ApiError ? `조회 실패: ${e.message}` : '서버 오류';
+      error = e instanceof ApiError ? t('instances.errors.detailLoadFailed', { message: e.message }) : t('instances.errors.server');
     } finally {
       loading = false;
     }
@@ -41,7 +42,7 @@
       const result = await api.get<{ logs: string }>(`/api/v1/containers/${containerId}/logs`, $auth.token ?? undefined, $auth.projectId ?? undefined);
       logs = result.logs;
     } catch {
-      logs = '로그를 가져올 수 없습니다';
+      logs = t('instances.logs.loadFailed');
     } finally {
       logsLoading = false;
     }
@@ -53,7 +54,7 @@
       await api.post(`/api/v1/containers/${containerId}/${action}`, {}, $auth.token ?? undefined, $auth.projectId ?? undefined);
       await fetchContainer();
     } catch (e) {
-      toast.error(`${action === 'start' ? '시작' : '중지'} 실패: ` + (e instanceof ApiError ? e.message : String(e)));
+      toast.error(t(action === 'start' ? 'instances.errors.startFailed' : 'instances.errors.stopFailed', { message: e instanceof ApiError ? e.message : String(e) }));
     } finally {
       actioning = false;
     }
@@ -61,12 +62,12 @@
 
   async function handleDelete() {
     if (!container) return;
-    if (!await confirmDialog(`컨테이너 "${container.name}"을 삭제하시겠습니까?`)) return;
+    if (!await confirmDialog(t('instances.delete.confirm', { name: container.name }))) return;
     try {
       await api.delete(`/api/v1/containers/${containerId}`, $auth.token ?? undefined, $auth.projectId ?? undefined);
       goto('/dashboard/containers/instances');
     } catch (e) {
-      toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+      toast.error(t('instances.errors.deleteFailed', { message: e instanceof ApiError ? e.message : String(e) }));
     }
   }
 
@@ -84,7 +85,7 @@
 
   {#if loading}
     <div class="flex items-center gap-3 mb-6">
-      <button onclick={() => goto('/dashboard/containers/instances')} class="text-ink-2 hover:text-ink-0 transition-colors">← 컨테이너 목록</button>
+      <button onclick={() => goto('/dashboard/containers/instances')} class="text-ink-2 hover:text-ink-0 transition-colors">{t('instances.detail.back')}</button>
     </div>
     <LoadingSkeleton variant="detail" />
   {:else if container}

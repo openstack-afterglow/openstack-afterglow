@@ -47,6 +47,7 @@ Afterglow는 현재 [DMS Cloud 연구 클라우드 제공 콘솔](https://cloud.
 | [아키텍처 상세](architecture.md) | 문서 사이트의 도메인별 안내 |
 | [국소 기능테스트](testing.md) | 개발 중 빠르게 실행할 테스트 타깃 선택 가이드 |
 | [클래스·workflow 다이어그램](class-diagrams/) | 모듈 관계와 주요 resource 작업 흐름 |
+| [프론트엔드 번역 참여](frontend-localization.md) | 한국어·영어·일본어·중국어 간체 카탈로그와 CSV 검수 |
 
 ---
 

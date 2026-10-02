@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/drover';
+  import { intlLocale } from '$lib/i18n/runtime.svelte';
   import { useK3sClusterDetailController, healthColor } from '$lib/stores/k3sClusterDetailController.svelte';
   import Button from '$lib/components/ui/Button.svelte';
 
@@ -7,16 +9,16 @@
 
 <div class="bg-surface-base border border-line rounded-xl p-4">
   <div class="flex items-center justify-between mb-3">
-    <h3 class="text-xs text-ink-2 uppercase tracking-wide">노드 현황</h3>
+    <h3 class="text-xs text-ink-2 uppercase tracking-wide">{t('nodes.title')}</h3>
     {#if s.health}
       <div class="flex items-center gap-2">
         <span class="px-2 py-0.5 rounded border text-xs font-medium {healthColor[s.health.status] ?? 'text-ink-2 bg-surface-sunken border-line-2'}">
           {s.health.status}
         </span>
-        <span class="text-xs text-ink-2">{new Date(s.health.checked_at).toLocaleTimeString('ko-KR')}</span>
+        <span class="text-xs text-ink-2">{new Date(s.health.checked_at).toLocaleTimeString(intlLocale())}</span>
       </div>
     {:else}
-      <span class="text-xs text-ink-2">미확인</span>
+      <span class="text-xs text-ink-2">{t('nodes.unchecked')}</span>
     {/if}
   </div>
 
@@ -45,7 +47,7 @@
 
     {#if s.cluster!.status === 'ACTIVE'}
       <div class="flex items-center gap-1.5 mt-3 pt-3 border-t border-line">
-        <span class="text-ink-2 text-xs">에이전트:</span>
+        <span class="text-ink-2 text-xs">{t('nodes.agents')}</span>
         <button
           onclick={() => s.decrementScale()}
           class="w-5 h-5 flex items-center justify-center bg-surface-selected hover:bg-surface-selected text-ink-0 rounded text-xs transition-colors">−</button>
@@ -57,7 +59,7 @@
           class="w-5 h-5 flex items-center justify-center bg-surface-selected hover:bg-surface-selected text-ink-0 rounded text-xs transition-colors">+</button>
         {#if s.scalingTarget !== null && s.scalingTarget !== s.cluster!.agent_count}
           <Button onclick={() => s.applyScale()} disabled={s.scaling} size="sm" class="ml-1">
-            {s.scaling ? '...' : '적용'}
+            {s.scaling ? t('nodes.scaling') : t('nodes.apply')}
           </Button>
         {/if}
       </div>
@@ -68,11 +70,11 @@
   {:else}
     <dl class="space-y-1.5 text-sm">
       <div class="flex justify-between">
-        <dt class="text-ink-2 text-xs">서버(control plane)</dt>
+        <dt class="text-ink-2 text-xs">{t('nodes.server')}</dt>
         <dd class="text-ink-2 text-xs">1</dd>
       </div>
       <div class="flex justify-between items-center">
-        <dt class="text-ink-2 text-xs">에이전트(worker)</dt>
+        <dt class="text-ink-2 text-xs">{t('nodes.worker')}</dt>
         <dd class="flex items-center gap-1.5">
           {#if s.cluster!.status === 'ACTIVE'}
             <button
@@ -86,25 +88,25 @@
               class="w-5 h-5 flex items-center justify-center bg-surface-selected hover:bg-surface-selected text-ink-0 rounded text-xs transition-colors">+</button>
             {#if s.scalingTarget !== null && s.scalingTarget !== s.cluster!.agent_count}
               <Button onclick={() => s.applyScale()} disabled={s.scaling} size="sm" class="ml-1">
-                {s.scaling ? '...' : '적용'}
+                {s.scaling ? t('nodes.scaling') : t('nodes.apply')}
               </Button>
             {/if}
           {:else}
-            <span class="text-ink-2 text-xs">{s.cluster!.agent_vm_ids.length} / {s.cluster!.agent_count} 생성됨</span>
+            <span class="text-ink-2 text-xs">{t('nodes.createdAgents', { created: s.cluster!.agent_vm_ids.length, total: s.cluster!.agent_count })}</span>
           {/if}
         </dd>
       </div>
       <div class="flex justify-between">
-        <dt class="text-ink-2 text-xs">생성일</dt>
+        <dt class="text-ink-2 text-xs">{t('nodes.createdAt')}</dt>
         <dd class="text-ink-2 text-xs">{s.cluster!.created_at ? s.cluster!.created_at.split('T')[0] : '-'}</dd>
       </div>
       <div class="flex justify-between">
-        <dt class="text-ink-2 text-xs">마지막 업데이트</dt>
+        <dt class="text-ink-2 text-xs">{t('nodes.updatedAt')}</dt>
         <dd class="text-ink-2 text-xs">{s.cluster!.updated_at ? s.cluster!.updated_at.split('T')[0] : '-'}</dd>
       </div>
     </dl>
     {#if s.health === null && s.cluster!.status === 'ACTIVE'}
-      <p class="text-xs text-ink-2 mt-2">헬스 데이터 로드 중...</p>
+      <p class="text-xs text-ink-2 mt-2">{t('nodes.loadingHealth')}</p>
     {/if}
     {#if s.scaleError}
       <p class="text-red-400 text-xs mt-2">{s.scaleError}</p>

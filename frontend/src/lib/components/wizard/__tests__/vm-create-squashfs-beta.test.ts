@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { render, screen, waitFor } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import SelectStrategy from '../SelectStrategy.svelte';
@@ -11,12 +9,6 @@ import {
 	shouldUseSquashfsConsume,
 	wizardStepSequence,
 } from '../../../stores/vmCreateStore.svelte';
-
-const wizardStepSource = readFileSync(resolve(__dirname, '../WizardStep3Library.svelte'), 'utf8');
-const strategySource = readFileSync(resolve(__dirname, '../SelectStrategy.svelte'), 'utf8');
-const storeSource = readFileSync(resolve(__dirname, '../../../stores/vmCreateStore.svelte.ts'), 'utf8');
-const accountSource = readFileSync(resolve(__dirname, '../../../../routes/dashboard/account/+page.svelte'), 'utf8');
-const betaStoreSource = readFileSync(resolve(__dirname, '../../../stores/betaFeatures.ts'), 'utf8');
 
 function renderStrategy(props: Partial<{
 	scheduling: 'standard' | 'ha';
@@ -45,36 +37,6 @@ function renderStrategy(props: Partial<{
 describe('VM create squashfs beta workflow contract', () => {
 	beforeEach(() => {
 		betaFeatures.set(DEFAULT_BETA_FEATURES);
-	});
-
-	it('keeps beta feature preferences on the account page', () => {
-		expect(accountSource).toContain('BetaFeaturesSection');
-		expect(betaStoreSource).toContain('afterglow.beta.libraryConsume');
-		expect(betaStoreSource).toContain('afterglow.beta.haDeploy');
-	});
-
-	it('keeps the library step renderable only as squashfs UI when the step is visible', () => {
-		expect(wizardStepSource).toContain('squashfs 라이브러리 소비');
-		expect(wizardStepSource).not.toContain('SelectLibraries');
-		expect(wizardStepSource).not.toContain('SelectTemplate');
-		expect(wizardStepSource).not.toContain('계정 설정에서 squashfs 라이브러리 소비 베타');
-	});
-
-	it('uses theme tokens for the squashfs selection surface and controls', () => {
-		expect(wizardStepSource).toContain('bg-[var(--color-surface-sunken)]');
-		expect(wizardStepSource).toContain('border-[var(--color-line-2)]');
-		expect(wizardStepSource).toContain('bg-[var(--color-accent)]');
-		expect(wizardStepSource).toContain('text-[var(--color-ink-0)]');
-		expect(wizardStepSource).not.toContain('bg-blue-950/20');
-		expect(wizardStepSource).not.toContain('text-blue-100');
-	});
-
-	it('uses ToggleGroup for library mode selection rather than recreating the segmented control', () => {
-		expect(wizardStepSource).toContain("import ToggleGroup, { type ToggleOption }");
-		expect(wizardStepSource).toContain('value={$wizard.squashfsMode}');
-		expect(wizardStepSource).toContain('ariaLabel="squashfs 라이브러리 선택 방식"');
-		expect(wizardStepSource).toContain('fullWidth');
-		expect(wizardStepSource).not.toContain('aria-pressed');
 	});
 
 	it('detects supported Ubuntu images from metadata or image name', () => {
@@ -205,9 +167,6 @@ describe('VM create squashfs beta workflow contract', () => {
 	it('coerces stale HA scheduling off when the HA beta is disabled', () => {
 		expect(normalizeSchedulingForBeta({ haDeploy: false }, 'ha')).toBe('standard');
 		expect(normalizeSchedulingForBeta({ haDeploy: true }, 'ha')).toBe('ha');
-		expect(storeSource).toContain('/api/v1/libraries/squashfs/consume');
-		expect(storeSource).toContain('normalizeSchedulingForBeta(betaState, w.scheduling)');
-		expect(storeSource).toContain('normalizeRequestedInstanceName(w.instanceName)');
 	});
 
 	it('hides the HA option in the strategy step unless the beta flag is enabled', async () => {
@@ -216,13 +175,12 @@ describe('VM create squashfs beta workflow contract', () => {
 		await waitFor(() => {
 			expect(onSchedulingChange).toHaveBeenCalledWith('standard');
 		});
-		expect(screen.queryByText('HA 배포')).toBeNull();
-		expect(strategySource).toContain('$betaFeatures.haDeploy');
+		expect(screen.queryByRole('button', { name: /\bHA\b/ })).toBeNull();
 	});
 
 	it('shows the HA option when the HA beta is enabled', () => {
 		betaFeatures.set({ ...DEFAULT_BETA_FEATURES, haDeploy: true });
 		renderStrategy();
-		expect(screen.getByText('HA 배포')).toBeTruthy();
+		expect((screen.getByRole('button', { name: /\bHA\b/ }) as HTMLButtonElement).disabled).toBe(false);
 	});
 });

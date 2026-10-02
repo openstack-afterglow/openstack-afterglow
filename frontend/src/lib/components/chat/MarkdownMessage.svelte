@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/chat-studio';
 	import { renderMarkdown, highlightCodeBlocks } from '$lib/api/chatMarkdown';
 	import { enhanceChatMarkdown } from '$lib/api/chatRichOutput';
 	import 'katex/dist/katex.min.css';
@@ -30,14 +31,14 @@
 				textarea.remove();
 				if (!copied) throw new Error('copy command rejected');
 			}
-			button.textContent = '복사됨';
+			button.textContent = t('markdownMessage.copied');
 			window.setTimeout(() => {
-				if (button.isConnected) button.textContent = '복사';
+				if (button.isConnected) button.textContent = t('markdownMessage.copy');
 			}, 1_400);
 		} catch {
-			button.textContent = '실패';
+			button.textContent = t('markdownMessage.failed');
 			window.setTimeout(() => {
-				if (button.isConnected) button.textContent = '복사';
+				if (button.isConnected) button.textContent = t('markdownMessage.copy');
 			}, 1_400);
 		}
 	}
@@ -50,9 +51,9 @@
 			const button = document.createElement('button');
 			button.type = 'button';
 			button.className = 'chat-code-copy';
-			button.textContent = '복사';
-			button.ariaLabel = '코드 복사';
-			button.title = '코드 복사';
+			button.textContent = t('markdownMessage.copy');
+			button.ariaLabel = t('markdownMessage.copyCode');
+			button.title = t('markdownMessage.copyCode');
 			button.addEventListener('click', () => void copyCode(button, code));
 			pre.append(button);
 		}

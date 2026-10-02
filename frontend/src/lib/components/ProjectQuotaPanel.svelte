@@ -4,6 +4,8 @@
 	import { api, ApiError } from '$lib/api/client';
 	import { MOTION_DURATION_MS } from '$lib/design/tokens';
 	import { motionDuration } from '$lib/utils/motion';
+	import { t } from '$lib/i18n/ns/shared';
+	import { t as tc } from '$lib/i18n/ns/common';
 
 	interface QuotaItem {
 		limit: number;
@@ -61,7 +63,7 @@
 			formVolumes = quota.volume.volumes?.limit ?? -1;
 			formGigabytes = quota.volume.gigabytes?.limit ?? -1;
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : '쿼터 조회 실패';
+			error = e instanceof ApiError ? e.message : t('quotaPanel.loadFailed');
 		} finally {
 			loading = false;
 		}
@@ -84,11 +86,11 @@
 				token,
 				authProjectId
 			);
-			successMsg = '쿼터가 업데이트되었습니다.';
+			successMsg = t('quotaPanel.updated');
 			onUpdated?.();
 			await loadQuota();
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : '쿼터 수정 실패';
+			error = e instanceof ApiError ? e.message : t('quotaPanel.updateFailed');
 		} finally {
 			saving = false;
 		}
@@ -118,7 +120,7 @@
 	transition:fade={{ duration: motionDuration(MOTION_DURATION_MS.base) }}
 	role="button"
 	tabindex="0"
-	aria-label="패널 닫기"
+	aria-label={t('quotaPanel.closeOverlay')}
 	onclick={onClose}
 	onkeydown={(e) => e.key === 'Escape' && onClose?.()}
 ></div>
@@ -135,25 +137,25 @@
 		<button
 			onclick={onClose}
 			class="text-ink-2 hover:text-ink-0 text-xl leading-none ml-3 flex-shrink-0"
-			aria-label="닫기"
+			aria-label={tc('actions.close')}
 		>×</button>
 	</div>
 
 	<div class="flex-1 overflow-y-auto p-5 space-y-5">
 		{#if loading}
-			<div class="text-ink-2 text-sm">로딩 중...</div>
+			<div class="text-ink-2 text-sm">{t('quotaPanel.loading')}</div>
 		{:else if error && !quota}
 			<div class="text-red-400 text-sm">{error}</div>
 		{:else if quota}
 			<!-- 컴퓨트 쿼터 -->
 			<div>
-				<h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-3">컴퓨트</h3>
+				<h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-3">{t('quotaPanel.compute')}</h3>
 				<div class="space-y-4">
 					<!-- 인스턴스 -->
 					<div>
 						<div class="flex items-center justify-between mb-1">
-							<label class="text-sm text-ink-2" for="q-instances">인스턴스</label>
-							<span class="text-xs text-ink-2">사용 중: {quota.compute.instances?.in_use ?? 0} / {limitLabel(quota.compute.instances?.limit ?? -1)}</span>
+							<label class="text-sm text-ink-2" for="q-instances">{t('quotaPanel.instances')}</label>
+							<span class="text-xs text-ink-2">{t('quotaPanel.usage', { used: quota.compute.instances?.in_use ?? 0, limit: limitLabel(quota.compute.instances?.limit ?? -1) })}</span>
 						</div>
 						{#if (quota.compute.instances?.limit ?? -1) > 0}
 							<div class="w-full h-1 bg-surface-sunken rounded-full overflow-hidden mb-2">
@@ -170,14 +172,14 @@
 							min="-1"
 							class="w-full bg-surface-sunken border border-line-2 rounded px-3 py-1.5 text-sm text-ink-0 focus:outline-none focus:border-action-warm"
 						/>
-						<p class="text-xs text-ink-2 mt-1">-1 = 무제한</p>
+						<p class="text-xs text-ink-2 mt-1">{t('quotaPanel.unlimitedHint')}</p>
 					</div>
 
 					<!-- CPU -->
 					<div>
 						<div class="flex items-center justify-between mb-1">
-							<label class="text-sm text-ink-2" for="q-cores">CPU (코어)</label>
-							<span class="text-xs text-ink-2">사용 중: {quota.compute.cores?.in_use ?? 0} / {limitLabel(quota.compute.cores?.limit ?? -1)}</span>
+							<label class="text-sm text-ink-2" for="q-cores">{t('quotaPanel.cores')}</label>
+							<span class="text-xs text-ink-2">{t('quotaPanel.usage', { used: quota.compute.cores?.in_use ?? 0, limit: limitLabel(quota.compute.cores?.limit ?? -1) })}</span>
 						</div>
 						{#if (quota.compute.cores?.limit ?? -1) > 0}
 							<div class="w-full h-1 bg-surface-sunken rounded-full overflow-hidden mb-2">
@@ -200,7 +202,7 @@
 					<div>
 						<div class="flex items-center justify-between mb-1">
 							<label class="text-sm text-ink-2" for="q-ram">RAM (MB)</label>
-							<span class="text-xs text-ink-2">사용 중: {quota.compute.ram?.in_use ?? 0} MB / {limitLabel(quota.compute.ram?.limit ?? -1)}</span>
+							<span class="text-xs text-ink-2">{t('quotaPanel.usageMb', { used: quota.compute.ram?.in_use ?? 0, limit: limitLabel(quota.compute.ram?.limit ?? -1) })}</span>
 						</div>
 						{#if (quota.compute.ram?.limit ?? -1) > 0}
 							<div class="w-full h-1 bg-surface-sunken rounded-full overflow-hidden mb-2">
@@ -223,13 +225,13 @@
 
 			<!-- 볼륨 쿼터 -->
 			<div>
-				<h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-3">볼륨</h3>
+				<h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-3">{t('quotaPanel.volume')}</h3>
 				<div class="space-y-4">
 					<!-- 볼륨 수 -->
 					<div>
 						<div class="flex items-center justify-between mb-1">
-							<label class="text-sm text-ink-2" for="q-volumes">볼륨 수</label>
-							<span class="text-xs text-ink-2">사용 중: {quota.volume.volumes?.in_use ?? 0} / {limitLabel(quota.volume.volumes?.limit ?? -1)}</span>
+							<label class="text-sm text-ink-2" for="q-volumes">{t('quotaPanel.volumeCount')}</label>
+							<span class="text-xs text-ink-2">{t('quotaPanel.usage', { used: quota.volume.volumes?.in_use ?? 0, limit: limitLabel(quota.volume.volumes?.limit ?? -1) })}</span>
 						</div>
 						{#if (quota.volume.volumes?.limit ?? -1) > 0}
 							<div class="w-full h-1 bg-surface-sunken rounded-full overflow-hidden mb-2">
@@ -251,8 +253,8 @@
 					<!-- 용량 -->
 					<div>
 						<div class="flex items-center justify-between mb-1">
-							<label class="text-sm text-ink-2" for="q-gigabytes">용량 (GB)</label>
-							<span class="text-xs text-ink-2">사용 중: {quota.volume.gigabytes?.in_use ?? 0} GB / {limitLabel(quota.volume.gigabytes?.limit ?? -1)}</span>
+							<label class="text-sm text-ink-2" for="q-gigabytes">{t('quotaPanel.gigabytes')}</label>
+							<span class="text-xs text-ink-2">{t('quotaPanel.usageGb', { used: quota.volume.gigabytes?.in_use ?? 0, limit: limitLabel(quota.volume.gigabytes?.limit ?? -1) })}</span>
 						</div>
 						{#if (quota.volume.gigabytes?.limit ?? -1) > 0}
 							<div class="w-full h-1 bg-surface-sunken rounded-full overflow-hidden mb-2">
@@ -290,7 +292,7 @@
 				disabled={saving}
 				class="w-full bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:cursor-not-allowed text-action-on-warm text-sm font-medium py-2 rounded-lg transition-colors"
 			>
-				{saving ? '저장 중...' : '쿼터 저장'}
+				{saving ? t('quotaPanel.saving') : t('quotaPanel.save')}
 			</button>
 		</div>
 	{/if}

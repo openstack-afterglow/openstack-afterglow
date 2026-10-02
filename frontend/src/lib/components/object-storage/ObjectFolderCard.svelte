@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/object-storage';
 	import { useObjectBrowser } from '$lib/stores/objectBrowser.svelte';
 	import { ActionMenu, FileIcon, SelectionCheckbox } from '$lib/components/ui';
 	import type { SwiftObject } from '$lib/types/objectStorage';
@@ -36,7 +37,7 @@
 	data-selected={s.selected.has(obj.name)}
 	role="button"
 	tabindex="0"
-	aria-label={`폴더 ${label}`}
+	aria-label={t('views.folderCard.ariaLabel', { name: label })}
 	onclick={onCardClick}
 	ondblclick={open}
 	onkeydown={onKeydown}
@@ -44,32 +45,32 @@
 	<SelectionCheckbox
 		checked={s.selected.has(obj.name)}
 		disabled={s.bulkDeleting || s.bulkMoving}
-		ariaLabel={`${label} 선택`}
+		ariaLabel={t('views.folderCard.select', { name: label })}
 		onclick={() => s.toggleSelect(obj.name)}
 	/>
 	<FileIcon name={obj.name} isDir />
 	<span class="min-w-0 flex-1 truncate text-sm font-medium text-ink-0" title={label}>{label}</span>
 	<ActionMenu
 		open={menuOpen}
-		ariaLabel={`${label} 폴더 작업`}
+		ariaLabel={t('views.folderCard.actions', { name: label })}
 		onopen={() => { menuOpen = true; }}
 		onclose={() => { menuOpen = false; }}
 	>
 		<button
 			onclick={() => { menuOpen = false; open(); }}
 			class="w-full px-3 py-1.5 text-left text-[13px] text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0"
-		>열기</button>
+		>{t('views.folderCard.open')}</button>
 		<button
 			onclick={() => { menuOpen = false; s.openRename(obj.name); }}
 			class="w-full px-3 py-1.5 text-left text-[13px] text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0"
-		>이름변경</button>
+		>{t('views.folderCard.rename')}</button>
 		<button
 			onclick={() => { menuOpen = false; s.openMove(obj.name); }}
 			class="w-full px-3 py-1.5 text-left text-[13px] text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0"
-		>이동</button>
+		>{t('views.folderCard.move')}</button>
 		<button
 			onclick={() => { menuOpen = false; s.deleteObject(obj.name); }}
 			class="w-full px-3 py-1.5 text-left text-[13px] text-state-danger-text transition-colors hover:bg-surface-sunken"
-		>삭제</button>
+		>{t('views.folderCard.delete')}</button>
 	</ActionMenu>
 </div>

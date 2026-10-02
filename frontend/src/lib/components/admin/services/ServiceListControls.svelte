@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-ops';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
@@ -7,7 +8,7 @@
 
 	let {
 		view = $bindable(), filters, sortOptions, total, count, loading = false,
-		searchPlaceholder = '호스트, 서비스 유형 등 검색', defaultSortKey = '',
+		searchPlaceholder, defaultSortKey = '',
 	}: {
 		view: ServiceListState;
 		filters: ServiceFilter[];
@@ -20,16 +21,17 @@
 	} = $props();
 
 	const id = $props.id();
+	const shownSearchPlaceholder = $derived(searchPlaceholder ?? t('services.list.searchPlaceholder'));
 </script>
 
-<div class="mb-4 space-y-3" role="region" aria-label="서비스 목록 필터 및 정렬">
+<div class="mb-4 space-y-3" role="region" aria-label={t('services.list.controlsLabel')}>
 	<div class="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
-		<Field label="검색" for="{id}-search" class="min-w-0 lg:col-span-2">
-			<TextInput id="{id}-search" type="search" bind:value={view.search} placeholder={searchPlaceholder} class="min-h-11 md:min-h-0" />
+		<Field label={t('services.list.search')} for="{id}-search" class="min-w-0 lg:col-span-2">
+			<TextInput id="{id}-search" type="search" bind:value={view.search} placeholder={shownSearchPlaceholder} class="min-h-11 md:min-h-0" />
 		</Field>
-		<Field label="정렬 기준" for="{id}-sort" class="min-w-0">
+		<Field label={t('services.list.sortBy')} for="{id}-sort" class="min-w-0">
 			<SelectInput id="{id}-sort" bind:value={view.sortKey} class="min-h-11 md:min-h-0">
-				<option value="">원본 순서</option>
+				<option value="">{t('services.list.originalOrder')}</option>
 				{#each sortOptions as option (option.key)}
 					<option value={option.key}>{option.label}</option>
 				{/each}
@@ -38,9 +40,9 @@
 		{#if view.sortKey}
 		<div class="flex items-end">
 			<Button variant="secondary" size="sm" class="min-h-11 w-full md:min-h-9"
-				ariaLabel={view.sortDirection === 'asc' ? '내림차순으로 전환' : '오름차순으로 전환'}
+				ariaLabel={view.sortDirection === 'asc' ? t('services.list.switchDescending') : t('services.list.switchAscending')}
 				onclick={() => view.sortDirection = view.sortDirection === 'asc' ? 'desc' : 'asc'}>
-				{view.sortDirection === 'asc' ? '오름차순 ↑' : '내림차순 ↓'}
+				{view.sortDirection === 'asc' ? t('services.list.ascending') : t('services.list.descending')}
 			</Button>
 		</div>
 		{/if}
@@ -50,9 +52,9 @@
 			{#each filters as filter (filter.key)}
 				<Field label={filter.label} for="{id}-filter-{filter.key}" class="min-w-0">
 					<SelectInput id="{id}-filter-{filter.key}" bind:value={() => view.filters[filter.key] ?? '', (value) => view.filters[filter.key] = value} class="min-h-11 md:min-h-0">
-						<option value="">전체</option>
+						<option value="">{t('services.list.all')}</option>
 						{#if view.filters[filter.key] && !filter.options.some(option => option.value === view.filters[filter.key])}
-							<option value={view.filters[filter.key]}>{serviceFilterLabel(view.filters[filter.key])} (현재 데이터 없음)</option>
+							<option value={view.filters[filter.key]}>{t('services.list.unavailableFilter', { value: serviceFilterLabel(view.filters[filter.key], filter.key) })}</option>
 						{/if}
 						{#each filter.options as option (option.value)}
 							<option value={option.value}>{option.label}</option>
@@ -64,9 +66,9 @@
 	{/if}
 	<div class="flex flex-wrap items-center justify-between gap-2">
 		<span class="text-xs text-ink-2 tabular-nums" role="status">
-			{#if loading && total === 0}불러오는 중…{:else}표시 {count} / 전체 {total}{#if loading} · 새로고침 중…{/if}{/if}
+			{#if loading && total === 0}{t('services.list.loading')}{:else}{t(loading ? 'services.list.countRefreshing' : 'services.list.count', { count, total })}{/if}
 		</span>
 		<Button variant="ghost" size="sm" class="min-h-11 md:min-h-0"
-			onclick={() => view = createServiceListState(defaultSortKey)}>필터·정렬 초기화</Button>
+			onclick={() => view = createServiceListState(defaultSortKey)}>{t('services.list.reset')}</Button>
 	</div>
 </div>

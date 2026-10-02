@@ -4,6 +4,7 @@
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import ActionMenu from '$lib/components/ui/ActionMenu.svelte';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
+	import { t } from '$lib/i18n/ns/admin-storage';
 
 	interface AdminVolume {
 		id: string;
@@ -74,15 +75,15 @@
 						indeterminate={partiallySelected}
 						disabled={selectionDisabled || selectableIds.size === 0}
 						onclick={onToggleAll}
-						ariaLabel="현재 페이지 전체 볼륨 선택"
+						ariaLabel={t('volumeList.selectPage')}
 					/>
 				</th>
-				<th class="text-left py-2 pr-4">이름</th>
-				<th class="text-left py-2 pr-4">상태</th>
-				<th class="text-left py-2 pr-4">크기</th>
-				<th class="text-left py-2 pr-4">프로젝트</th>
-				<th class="text-left py-2 pr-4">생성일</th>
-				<th class="text-left py-2">액션</th>
+				<th class="text-left py-2 pr-4">{t('volumeList.column.name')}</th>
+				<th class="text-left py-2 pr-4">{t('volumeList.column.status')}</th>
+				<th class="text-left py-2 pr-4">{t('volumeList.column.size')}</th>
+				<th class="text-left py-2 pr-4">{t('volumeList.column.project')}</th>
+				<th class="text-left py-2 pr-4">{t('volumeList.column.createdAt')}</th>
+				<th class="text-left py-2">{t('volumeList.column.actions')}</th>
 			</tr>
 		</thead>
 		<tbody>
@@ -98,7 +99,7 @@
 							disabled={selectionDisabled || !selectableIds.has(v.id)}
 							unavailable={!selectableIds.has(v.id)}
 							onclick={() => onToggleSelect(v.id)}
-							ariaLabel={`${v.name || v.id} 선택`}
+							ariaLabel={t('volumeList.selectVolume', { name: v.name || v.id })}
 						/>
 					</td>
 					<td class="p-0">
@@ -113,7 +114,7 @@
 							title={v.project_id ?? ''}
 						>
 							{#if copiedProjectId === v.project_id}
-								<span class="text-green-400 text-xs">복사됨</span>
+								<span class="text-green-400 text-xs">{t('volumeList.copied')}</span>
 							{:else}
 								<span class="text-xs">{v.project_id ? ($projectNames.get(v.project_id) ?? v.project_id.slice(0, 8)) : '-'}</span>
 							{/if}
@@ -124,48 +125,48 @@
 						<div class="flex justify-end">
 							<ActionMenu
 								open={openActionMenu === v.id}
-								ariaLabel={`${v.name || v.id} 볼륨 작업`}
+								ariaLabel={t('volumeList.volumeActions', { name: v.name || v.id })}
 								onopen={() => onActionMenuOpen(v.id)}
 								onclose={onActionMenuClose}
 							>
 								<button
 									onclick={() => { onActionMenuClose(); onEdit(v); }}
 									class="w-full text-left px-3 py-1.5 text-[13px] text-ink-2 hover:text-ink-0 hover:bg-surface-sunken transition-colors"
-								>수정</button>
+								>{t('volumeList.action.edit')}</button>
 								<button
 									onclick={() => { onActionMenuClose(); onExtend(v); }}
 									class="w-full text-left px-3 py-1.5 text-[13px] text-ink-2 hover:text-ink-0 hover:bg-surface-sunken transition-colors"
-								>확장</button>
+								>{t('volumeList.action.extend')}</button>
 								{#if v.status === 'available' && v.bootable}
 									<button
 										onclick={() => { onActionMenuClose(); onBootFromVolume(v); }}
 										class="w-full text-left px-3 py-1.5 text-[13px] text-ink-2 hover:text-ink-0 hover:bg-surface-sunken transition-colors"
-									>이 볼륨으로 VM 생성</button>
+									>{t('volumeList.action.bootFromVolume')}</button>
 								{/if}
 								{#if v.status === 'available'}
 									<button
 										onclick={() => { onActionMenuClose(); onTransfer(v); }}
 										class="w-full text-left px-3 py-1.5 text-[13px] text-ink-2 hover:text-ink-0 hover:bg-surface-sunken transition-colors"
-									>이전</button>
+									>{t('volumeList.action.transfer')}</button>
 								{/if}
 								<button
 									onclick={() => { onActionMenuClose(); onReset(v); }}
 									class="w-full text-left px-3 py-1.5 text-[13px] text-ink-2 hover:text-ink-0 hover:bg-surface-sunken transition-colors"
-								>상태변경</button>
+								>{t('volumeList.action.resetStatus')}</button>
 								{#if /^(error|deleting)/i.test(v.status ?? '')}
 									<button
 										onclick={() => { onActionMenuClose(); onSelect(v.id); }}
 										class="volume-recovery-action w-full text-left px-3 py-1.5 text-[13px] transition-colors"
-									>복구 진단</button>
+									>{t('volumeList.action.recovery')}</button>
 									<button
 										onclick={() => { onActionMenuClose(); onForceDelete(v); }}
 										class="w-full text-left px-3 py-1.5 text-[13px] text-rose-400 hover:text-rose-300 hover:bg-surface-sunken transition-colors"
-									>강제삭제</button>
+									>{t('volumeList.action.forceDelete')}</button>
 								{/if}
 								<button
 									onclick={() => { onActionMenuClose(); onDelete(v); }}
 									class="w-full text-left px-3 py-1.5 text-[13px] text-red-400 hover:text-red-300 hover:bg-surface-sunken transition-colors"
-								>삭제</button>
+								>{t('volumeList.action.delete')}</button>
 							</ActionMenu>
 						</div>
 					</td>

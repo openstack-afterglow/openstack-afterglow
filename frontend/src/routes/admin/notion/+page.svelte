@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-system';
+	import RichText from '$lib/i18n/RichText.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError, fetchWithAuth } from '$lib/api/client';
@@ -45,7 +47,7 @@
 			targets = loadedTargets;
 			notionSyncEnabled = runtimeSettings.find((setting) => setting.key === 'notion.sync_enabled')?.value ?? false;
 		} catch (e) {
-			error = e instanceof ApiError ? `조회 실패 (${e.status})` : '서버 오류';
+			error = e instanceof ApiError ? t('notion.page.loadFailed', { status: e.status }) : t('notion.page.serverError');
 		} finally {
 			loading = false;
 		}
@@ -62,14 +64,14 @@
 			);
 			notionSyncEnabled = enabled;
 		} catch (cause) {
-			error = cause instanceof ApiError ? `전역 동기화 설정 저장 실패: ${cause.message}` : '전역 동기화 설정 저장 실패';
+			error = cause instanceof ApiError ? t('notion.gate.saveFailedDetail', { message: cause.message }) : t('notion.gate.saveFailed');
 		} finally {
 			savingGlobalGate = false;
 		}
 	}
 
 	async function deleteTarget(id: number) {
-		if (!await confirmDialog('이 연동 대상을 삭제하시겠습니까?')) return;
+		if (!await confirmDialog(t('notion.delete.confirm'))) return;
 		try {
 			await api.delete(
 				`/api/v1/admin/notion/targets/${id}`,
@@ -78,7 +80,7 @@
 			);
 			await fetchTargets();
 		} catch {
-			toast.error('삭제 실패');
+			toast.error(t('notion.delete.failed'));
 		}
 	}
 
@@ -106,8 +108,8 @@
 				[id]: e instanceof ApiError
 					? e.message
 					: (e instanceof Error && e.name === 'TimeoutError')
-						? '동기화 시간 초과 (2분)'
-						: '테스트 실패',
+						? t('notion.sync.timeout')
+						: t('notion.sync.failed'),
 			};
 		} finally {
 			testingId = null;
@@ -119,14 +121,16 @@
 	});
 </script>
 
+{#snippet integrations(text: string)}<a href="https://www.notion.so/profile/integrations" target="_blank" class="text-warm-text hover:text-warm-text-hover">{text}</a>{/snippet}
+
 <div class="p-4 md:p-8 max-w-3xl">
-	<PageHeader breadcrumb="SYSTEM / NOTION" title="Notion 연동" subtitle="OpenStack 리소스를 여러 Notion DB에 동시에 동기화합니다.">
+	<PageHeader breadcrumb={t('notion.page.breadcrumb')} title={t('notion.page.title')} subtitle={t('notion.page.subtitle')}>
 		{#snippet actions()}
 			<button
 				onclick={() => { showAddForm = !showAddForm; }}
 				class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg transition-colors"
 			>
-				{showAddForm ? '취소' : '+ 연결 추가'}
+				{showAddForm ? t('notion.actions.cancel') : t('notion.page.addConnection')}
 			</button>
 		{/snippet}
 	</PageHeader>
@@ -138,9 +142,9 @@
 	<Card padding="md" surface="subtle">
 		<div class="global-gate">
 			<div>
-				<p class="gate-eyebrow">Global synchronization gate</p>
-				<h2>Notion 전체 동기화</h2>
-				<p>비활성화하면 worker와 수동 테스트 모두 외부 Notion·OpenStack 호출 전에 중단합니다. 대상과 자격 증명은 유지됩니다.</p>
+				<p class="gate-eyebrow">{t('notion.gate.eyebrow')}</p>
+				<h2>{t('notion.gate.title')}</h2>
+				<p>{t('notion.gate.description')}</p>
 			</div>
 			<Button
 				variant={notionSyncEnabled ? 'primary' : 'secondary'}
@@ -148,7 +152,7 @@
 				disabled={savingGlobalGate || notionSyncEnabled === null}
 				onclick={() => setGlobalGate(!notionSyncEnabled)}
 			>
-				{savingGlobalGate ? '저장 중…' : notionSyncEnabled ? '동기화 켜짐' : '동기화 꺼짐'}
+				{savingGlobalGate ? t('notion.gate.saving') : notionSyncEnabled ? t('notion.gate.enabled') : t('notion.gate.disabled')}
 			</Button>
 		</div>
 	</Card>
@@ -163,8 +167,8 @@
 		</div>
 	{:else if targets.length === 0}
 		<div class="bg-surface-base border border-line rounded-lg p-8 text-center">
-			<p class="text-ink-2 text-sm">등록된 Notion 연동 대상이 없습니다.</p>
-			<p class="text-ink-2 text-xs mt-1">"연결 추가" 버튼을 눌러 시작하세요.</p>
+			<p class="text-ink-2 text-sm">{t('notion.empty.title')}</p>
+			<p class="text-ink-2 text-xs mt-1">{t('notion.empty.description')}</p>
 		</div>
 	{:else}
 		<div class="space-y-4">
@@ -193,15 +197,15 @@
 	{/if}
 
 	<div class="mt-6 bg-surface-base border border-line rounded-lg p-5">
-		<h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">설정 방법</h3>
+		<h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">{t('notion.setup.title')}</h3>
 		<ol class="text-xs text-ink-2 space-y-1.5 list-decimal list-inside">
 			<li>
-				<a href="https://www.notion.so/profile/integrations" target="_blank" class="text-warm-text hover:text-warm-text-hover">Notion Integrations</a>에서 Internal Integration 생성
+				<RichText segments={t.rich('notion.setup.createIntegration')} tags={{ integrations }} />
 			</li>
-			<li>Notion에서 빈 Database 페이지 생성 후 Integration 연결 추가</li>
-			<li>Database URL에서 32자리 ID 복사</li>
-			<li>"연결 추가" 버튼으로 등록 — 필요한 컬럼이 자동 생성됩니다</li>
-			<li>여러 연동 대상을 등록하면 동일한 데이터를 각 Notion DB에 동시에 동기화합니다</li>
+			<li>{t('notion.setup.createDatabase')}</li>
+			<li>{t('notion.setup.copyId')}</li>
+			<li>{t('notion.setup.register')}</li>
+			<li>{t('notion.setup.multipleTargets')}</li>
 		</ol>
 	</div>
 </div>

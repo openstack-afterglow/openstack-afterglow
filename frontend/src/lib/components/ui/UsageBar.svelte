@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { usageTone } from '$lib/design/tokens';
+	import { t } from '$lib/i18n/ns/common';
 
 	interface Props {
 		value?: number;
@@ -34,7 +35,7 @@
 	const tone = $derived(usageTone(pct, thresholds));
 	const isUnlimited = $derived(max === -1);
 	const valueText = $derived(value == null ? '' : unit ? `${value}${unit}` : `${value}`);
-	const maxText = $derived(max === -1 ? '무제한' : max == null ? '' : unit ? `${max}${unit}` : `${max}`);
+	const maxText = $derived(max === -1 ? t('quota.unlimited') : max == null ? '' : unit ? `${max}${unit}` : `${max}`);
 </script>
 
 <div class="usage-bar usage-size-{size} {className}" data-tone={tone}>
@@ -48,7 +49,7 @@
 					{#if value != null}
 						<span class="usage-current">{valueText}</span>{#if maxText} / {maxText}{/if}
 					{:else if isUnlimited}
-						<span class="usage-current">무제한</span>
+						<span class="usage-current">{t('quota.unlimited')}</span>
 					{/if}
 					{#if !isUnlimited}
 						<span class="usage-percent">{pct}%</span>

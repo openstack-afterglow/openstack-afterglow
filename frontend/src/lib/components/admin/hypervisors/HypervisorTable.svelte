@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { formatNumber } from '$lib/utils/format';
 	import HypervisorUsageBar from './HypervisorUsageBar.svelte';
+	import { t } from '$lib/i18n/ns/admin-compute';
 
 	export interface HypervisorRow {
 		id: string;
@@ -50,19 +51,19 @@
 			<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
 				<th class="text-left py-2 pr-4">
 					<button onclick={() => onSort('name')} class="hover:text-ink-0 transition-colors flex items-center gap-1">
-						호스트명 <span class="text-ink-2">{sortIcon('name')}</span>
+						{t('hypervisors.table.hostname')} <span class="text-ink-2">{sortIcon('name')}</span>
 					</button>
 				</th>
-				<th class="text-left py-2 pr-4">연결 상태</th>
-				<th class="text-left py-2 pr-4">스케줄링</th>
+				<th class="text-left py-2 pr-4">{t('hypervisors.connection.label')}</th>
+				<th class="text-left py-2 pr-4">{t('hypervisors.scheduling.label')}</th>
 				<th class="text-left py-2 pr-4">
 					<button onclick={() => onSort('running_vms')} class="hover:text-ink-0 transition-colors flex items-center gap-1">
-						VM 수 <span class="text-ink-2">{sortIcon('running_vms')}</span>
+						{t('hypervisors.table.vmCount')} <span class="text-ink-2">{sortIcon('running_vms')}</span>
 					</button>
 				</th>
 				<th class="text-left py-2 pr-4 max-lg:hidden">
 					<button onclick={() => onSort('cpu_model')} class="hover:text-ink-0 transition-colors flex items-center gap-1">
-						CPU 모델 <span class="text-ink-2">{sortIcon('cpu_model')}</span>
+						{t('hypervisors.cpuModel')} <span class="text-ink-2">{sortIcon('cpu_model')}</span>
 					</button>
 				</th>
 				<th class="text-left py-2 pr-4">
@@ -72,17 +73,17 @@
 				</th>
 				<th class="text-left py-2 pr-4">
 					<button onclick={() => onSort('memory_used_mb')} class="hover:text-ink-0 transition-colors flex items-center gap-1">
-						RAM (GB) <span class="text-ink-2">{sortIcon('memory_used_mb')}</span>
+						{t('hypervisors.table.ram')} <span class="text-ink-2">{sortIcon('memory_used_mb')}</span>
 					</button>
 				</th>
 				<th class="text-left py-2 pr-4">
 					<button onclick={() => onSort('gpu_model')} class="hover:text-ink-0 transition-colors flex items-center gap-1">
-						GPU 모델 <span class="text-ink-2">{sortIcon('gpu_model')}</span>
+						{t('hypervisors.table.gpuModel')} <span class="text-ink-2">{sortIcon('gpu_model')}</span>
 					</button>
 				</th>
 				<th class="text-left py-2">
 					<button onclick={() => onSort('gpu_used')} class="hover:text-ink-0 transition-colors flex items-center gap-1">
-						GPU 수 <span class="text-ink-2">{sortIcon('gpu_used')}</span>
+						{t('hypervisors.table.gpuCount')} <span class="text-ink-2">{sortIcon('gpu_used')}</span>
 					</button>
 				</th>
 			</tr>
@@ -95,8 +96,8 @@
 					<td class="p-0">
 						<button type="button" onclick={() => onSelect(h.id)} class="block w-full py-2 pr-4 font-mono text-ink-0 hover:text-warm-text-hover transition-colors text-left" title={h.name}>{h.name}</button>
 					</td>
-					<td class="py-2 pr-4"><span class={h.state === 'up' ? 'text-[var(--color-state-success-text)]' : 'text-[var(--color-state-danger-text)]'}>{h.state === 'up' ? '정상 (up)' : '중단 (down)'}</span></td>
-					<td class="py-2 pr-4"><span class={h.status === 'enabled' ? 'text-[var(--color-state-success-text)]' : 'text-[var(--color-state-warning-text)]'}>{h.status === 'enabled' ? '허용 (enabled)' : '차단 (disabled)'}</span></td>
+					<td class="py-2 pr-4"><span class={h.state === 'up' ? 'text-[var(--color-state-success-text)]' : 'text-[var(--color-state-danger-text)]'}>{t(h.state === 'up' ? 'hypervisors.connection.up' : 'hypervisors.connection.down')}</span></td>
+					<td class="py-2 pr-4"><span class={h.status === 'enabled' ? 'text-[var(--color-state-success-text)]' : 'text-[var(--color-state-warning-text)]'}>{t(h.status === 'enabled' ? 'hypervisors.scheduling.enabled' : 'hypervisors.scheduling.disabled')}</span></td>
 					<td class="py-2 pr-4 text-ink-2">{formatNumber(h.running_vms)}</td>
 					<td class="py-2 pr-4 text-ink-2 font-mono text-xs max-lg:hidden">{h.cpu_model ?? '-'}</td>
 					<td class="py-2 pr-4">

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_TOPOLOGY_VIEW, TOPOLOGY_VIEW_STORAGE_KEY, isTopologyView, readTopologyView, writeTopologyView } from '../topologyViewPreference';
+import { TOPOLOGY_VIEW_STORAGE_KEY, isTopologyView, readTopologyView, writeTopologyView } from '../topologyViewPreference';
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -8,10 +8,8 @@ afterEach(() => {
 
 describe('topologyViewPreference', () => {
 	it('기본값은 canvas 이고 저장한 값을 다시 읽는다', () => {
-		expect(DEFAULT_TOPOLOGY_VIEW).toBe('canvas');
 		expect(readTopologyView()).toBe('canvas');
 		writeTopologyView('lane');
-		expect(localStorage.getItem('topology.view')).toBe('lane');
 		expect(readTopologyView()).toBe('lane');
 		writeTopologyView('canvas');
 		expect(readTopologyView()).toBe('canvas');

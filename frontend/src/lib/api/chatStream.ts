@@ -1,3 +1,4 @@
+import { t } from '$lib/i18n/ns/chat-diagnostics';
 import { fetchWithAuth } from './client';
 import { ApiError } from './errors';
 import { parseChatRunEvent, parseContextState, type ChatRunDescriptor, type ChatRunEvent, type ChatRunStatus, type ContextState } from './chatContracts';
@@ -26,7 +27,7 @@ export class ChatHttpError extends ChatProtocolError {
 
 export class ChatRunReloadRequiredError extends ChatProtocolError {
 	constructor() {
-		super('chat run journal is no longer available; reload the conversation');
+		super(t('run.reloadRequired'));
 		this.name = 'ChatRunReloadRequiredError';
 	}
 }
@@ -85,7 +86,7 @@ function headers(): HeadersInit {
 
 function normalizeDescriptorUrl(url: unknown): string {
 	if (typeof url !== 'string' || !url.startsWith('/') || url.startsWith('//')) {
-		throw new ChatProtocolError('invalid chat run descriptor');
+		throw new ChatProtocolError(t('protocol.invalidDescriptor'));
 	}
 	if (url.startsWith('/v1/')) {
 		return `/api/v1/chat${url.slice(3)}`;
@@ -93,15 +94,15 @@ function normalizeDescriptorUrl(url: unknown): string {
 	if (url.startsWith('/api/v1/chat/')) {
 		return url;
 	}
-	throw new ChatProtocolError('invalid chat run descriptor');
+	throw new ChatProtocolError(t('protocol.invalidDescriptor'));
 }
 
 export function parseChatRunDescriptor(value: unknown): ChatRunDescriptor {
-	if (!isRecord(value)) throw new ChatProtocolError('invalid chat run descriptor');
+	if (!isRecord(value)) throw new ChatProtocolError(t('protocol.invalidDescriptor'));
 	const expectedKeys = ['run_id', 'conversation_id', 'temp_thread_id', 'status', 'run_kind', 'events_url', 'cancel_url'].sort();
 	const actualKeys = Object.keys(value).sort();
 	if (actualKeys.length !== expectedKeys.length || actualKeys.some((key, index) => key !== expectedKeys[index])) {
-		throw new ChatProtocolError('invalid chat run descriptor');
+		throw new ChatProtocolError(t('protocol.invalidDescriptor'));
 	}
 	if (
 		typeof value.run_id !== 'string' ||
@@ -111,7 +112,7 @@ export function parseChatRunDescriptor(value: unknown): ChatRunDescriptor {
 		!isRunStatus(value.status) ||
 		(value.run_kind !== 'completion' && value.run_kind !== 'compaction')
 	) {
-		throw new ChatProtocolError('invalid chat run descriptor');
+		throw new ChatProtocolError(t('protocol.invalidDescriptor'));
 	}
 	const eventsUrl = normalizeDescriptorUrl(value.events_url);
 	const cancelUrl = normalizeDescriptorUrl(value.cancel_url);
@@ -126,16 +127,16 @@ export function parseChatRunDescriptor(value: unknown): ChatRunDescriptor {
 	};
 }
 
+/** Localize fallbacks when constructing errors; keep server detail bounds and formatting unchanged. */
 async function errorFrom(response: Response): Promise<ChatHttpError> {
-	const fallback = 'chat request failed';
 	const maxBodyBytes = 4096;
 	let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
 	try {
 		reader = response.body?.getReader();
 	} catch {
-		return new ChatHttpError(fallback, response.status);
+		return new ChatHttpError(t('http.requestFailed'), response.status);
 	}
-	if (!reader) return new ChatHttpError(fallback, response.status);
+	if (!reader) return new ChatHttpError(t('http.requestFailed'), response.status);
 	let size = 0;
 	const chunks: Uint8Array[] = [];
 	try {
@@ -143,7 +144,7 @@ async function errorFrom(response: Response): Promise<ChatHttpError> {
 			const { value, done } = await reader.read();
 			if (done) break;
 			size += value.byteLength;
-			if (size > maxBodyBytes) return new ChatHttpError(fallback, response.status);
+			if (size > maxBodyBytes) return new ChatHttpError(t('http.requestFailed'), response.status);
 			chunks.push(value);
 		}
 		const bytes = new Uint8Array(size);
@@ -179,7 +180,7 @@ async function errorFrom(response: Response): Promise<ChatHttpError> {
 	} finally {
 		void reader.cancel().catch(() => {});
 	}
-	return new ChatHttpError(fallback, response.status);
+	return new ChatHttpError(t('http.requestFailed'), response.status);
 }
 
 /** Creates exactly one durable run. The key remains stable for a caller retry. */
@@ -260,7 +261,7 @@ async function* decodeFrames(body: ReadableStream<Uint8Array>): AsyncGenerator<S
 		buffer += decoder.decode();
 		const parsed = takeFrames(buffer);
 		yield* parsed.frames;
-		if (parsed.rest.trim()) throw new ChatProtocolError('unterminated SSE frame');
+		if (parsed.rest.trim()) throw new ChatProtocolError(t('stream.unterminatedFrame'));
 	} finally {
 		reader.releaseLock();
 	}
@@ -291,7 +292,7 @@ export async function* followChatRun(
 			}, token, projectId);
 		} catch (error) {
 			if (signal?.aborted || error instanceof ApiError) throw error;
-			if (attempts >= waits.length) throw new ChatProtocolError('chat event stream disconnected');
+			if (attempts >= waits.length) throw new ChatProtocolError(t('stream.disconnected'));
 			await delay(waits[attempts++]);
 			continue;
 		}
@@ -303,14 +304,14 @@ export async function* followChatRun(
 				try {
 					raw = JSON.parse(frame.data);
 				} catch {
-					throw new ChatProtocolError('chat event is not valid JSON');
+					throw new ChatProtocolError(t('stream.invalidJson'));
 				}
 				const event = parseChatRunEvent(raw);
-				if (frame.id && frame.id !== event.event_id) throw new ChatProtocolError('SSE event id mismatch');
-				if (frame.event && frame.event !== event.type) throw new ChatProtocolError('SSE event type mismatch');
-				if (event.run_id !== descriptor.run_id) throw new ChatProtocolError('SSE event run mismatch');
+				if (frame.id && frame.id !== event.event_id) throw new ChatProtocolError(t('stream.idMismatch'));
+				if (frame.event && frame.event !== event.type) throw new ChatProtocolError(t('stream.typeMismatch'));
+				if (event.run_id !== descriptor.run_id) throw new ChatProtocolError(t('stream.runMismatch'));
 				if (event.seq <= lastSeq) continue;
-				if (event.seq !== lastSeq + 1) throw new ChatProtocolError('chat event sequence gap');
+				if (event.seq !== lastSeq + 1) throw new ChatProtocolError(t('protocol.sequenceGap'));
 				lastSeq = event.seq;
 				attempts = 0;
 				yield event;
@@ -319,7 +320,7 @@ export async function* followChatRun(
 		} catch (error) {
 			if (signal?.aborted || error instanceof ChatProtocolError) throw error;
 		}
-		if (attempts >= waits.length) throw new ChatProtocolError('chat event stream disconnected');
+		if (attempts >= waits.length) throw new ChatProtocolError(t('stream.disconnected'));
 		await delay(waits[attempts++]);
 	}
 }

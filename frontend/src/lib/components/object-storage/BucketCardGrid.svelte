@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/object-storage';
 	import type { SwiftContainer } from '$lib/types/objectStorage';
 	import { formatStorage } from '$lib/utils/format';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
@@ -29,7 +30,7 @@
 				<SelectionCheckbox
 					checked={selectedIds.has(c.name)}
 					disabled={selectionDisabled}
-					ariaLabel={`${c.name} 선택`}
+					ariaLabel={t('views.bucketCardGrid.select', { name: c.name })}
 					onclick={() => onToggleSelect(c.name)}
 				/>
 				<div class="w-10 h-10 rounded-lg bg-violet-500/15 border border-violet-500/30 text-violet-400 flex items-center justify-center shrink-0">
@@ -39,16 +40,16 @@
 				</div>
 				<div class="flex-1 min-w-0">
 					<div class="text-ink-0 font-semibold text-sm font-mono truncate">{c.name}</div>
-					<div class="text-xs text-ink-2 mt-0.5">오브젝트 {c.count}개</div>
+					<div class="text-xs text-ink-2 mt-0.5">{t('views.bucketCardGrid.objectCount', { count: c.count })}</div>
 				</div>
 			</div>
 			<div class="grid grid-cols-2 gap-2 mb-3">
 				<div>
-					<div class="text-xs uppercase tracking-wider font-medium text-ink-2">오브젝트</div>
+					<div class="text-xs uppercase tracking-wider font-medium text-ink-2">{t('views.bucketCardGrid.objects')}</div>
 					<div class="text-ink-0 font-mono text-sm mt-0.5">{c.count}</div>
 				</div>
 				<div>
-					<div class="text-xs uppercase tracking-wider font-medium text-ink-2">크기</div>
+					<div class="text-xs uppercase tracking-wider font-medium text-ink-2">{t('views.bucketCardGrid.size')}</div>
 					<div class="text-ink-0 font-mono text-sm mt-0.5">{formatStorage(c.bytes / 1_000_000_000)}</div>
 				</div>
 			</div>
@@ -56,12 +57,12 @@
 				<a
 					href="/dashboard/object-storage/buckets/{encodeURIComponent(c.name)}"
 					class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
-				>상세 보기 →</a>
+				>{t('views.bucketCardGrid.details')}</a>
 				<button
 					onclick={() => onDelete(c.name)}
 					disabled={deleting === c.name || selectionDisabled}
 					class="text-xs text-red-400 hover:text-red-300 disabled:text-ink-3 transition-colors"
-				>{deleting === c.name ? '삭제 중...' : '삭제'}</button>
+				>{deleting === c.name ? t('views.bucketCardGrid.deleting') : t('views.bucketCardGrid.delete')}</button>
 			</div>
 		</article>
 	{/each}

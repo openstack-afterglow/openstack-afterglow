@@ -3,6 +3,7 @@ import { api, ApiError } from '$lib/api/client';
 import type { NetworkDetail, NetworkRouterInfo, RouterListItem } from '$lib/types/networks';
 import { confirmDialog } from '$lib/stores/confirm.svelte';
 import { toast } from '$lib/stores/toast';
+import { t } from '$lib/i18n/ns/network-resources';
 
 interface Options {
 	networkId: () => string;
@@ -49,7 +50,7 @@ function createNetworkDetailController(opts: Options) {
 		try {
 			network = await api.get<NetworkDetail>(`${opts.apiBase()}/${opts.networkId()}`, opts.token(), opts.projectId());
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : '네트워크 조회 실패';
+			error = e instanceof ApiError ? e.message : t('network.errors.load');
 		} finally {
 			loading = false;
 		}
@@ -96,7 +97,7 @@ function createNetworkDetailController(opts: Options) {
 			showRouterConnect = false;
 			await fetchNetwork();
 		} catch (e) {
-			toast.error('라우터 연결 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('network.errors.connectRouter', { error: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			connectingRouter = false;
 		}
@@ -127,15 +128,15 @@ function createNetworkDetailController(opts: Options) {
 						opts.token(),
 						opts.projectId(),
 					);
-					toast.success('서브넷을 생성하고 라우터에 연결했습니다.');
+					toast.success(t('network.toast.subnetCreatedConnected'));
 				} catch (e) {
-					toast.error('서브넷은 생성됐지만 라우터 연결에 실패했습니다: ' + (e instanceof ApiError ? e.message : String(e)));
+					toast.error(t('network.errors.subnetCreatedConnectFailed', { error: e instanceof ApiError ? e.message : String(e) }));
 				}
 			}
 			await fetchNetwork();
 			return true;
 		} catch (e) {
-			subnetError = e instanceof ApiError ? e.message : '서브넷 생성 실패';
+			subnetError = e instanceof ApiError ? e.message : t('network.errors.createSubnet');
 			return false;
 		} finally {
 			addingSubnet = false;
@@ -147,15 +148,15 @@ function createNetworkDetailController(opts: Options) {
 		const subnetIds = network?.subnet_details.map(s => s.id) ?? [];
 		const targetSubnet = router.connected_subnet_ids.find(sid => subnetIds.includes(sid));
 		if (!targetSubnet) {
-			toast.warning('연결된 서브넷을 찾을 수 없습니다.');
+			toast.warning(t('network.errors.connectedSubnetMissing'));
 			return;
 		}
-		if (!(await confirmDialog(`라우터 "${router.name || router.id.slice(0, 8)}"과의 연결을 해제하시겠습니까?`, { confirmLabel: '연결 해제' }))) return;
+		if (!(await confirmDialog(t('network.routers.disconnectConfirm', { name: router.name || router.id.slice(0, 8) }), { confirmLabel: t('network.routers.disconnectLabel') }))) return;
 		try {
 			await api.delete(`/api/v1/routers/${router.id}/interfaces/${targetSubnet}`, opts.token(), opts.projectId());
 			await fetchNetwork();
 		} catch (e) {
-			toast.error('라우터 연결 해제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('network.errors.disconnectRouter', { error: e instanceof ApiError ? e.message : String(e) }));
 		}
 	}
 

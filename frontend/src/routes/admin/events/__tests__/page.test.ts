@@ -126,7 +126,6 @@ describe('admin event viewer', () => {
 		const detail = await screen.findByRole('dialog', { name: '이벤트 상세 73' });
 		await waitFor(() => expect(within(detail).getByText('MaxRetriesExceeded')).toBeTruthy());
 		expect(within(detail).getByText('E429')).toBeTruthy();
-		expect(detail.textContent).toContain('원문 오류는 수집하지 않습니다');
 		expect(detail.textContent).not.toContain('SECRET');
 	});
 

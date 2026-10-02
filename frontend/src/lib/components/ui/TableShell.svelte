@@ -20,6 +20,8 @@
 
 <style>
 	.table-shell {
+		/* Contain absolute sr-only labels inside the horizontal scroll viewport. */
+		position: relative;
 		overflow-x: auto;
 		border: 1px solid var(--color-line);
 		border-radius: var(--radius-lg);

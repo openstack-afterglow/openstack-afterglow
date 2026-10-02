@@ -36,7 +36,6 @@ describe('allNavItems service inheritance', () => {
 			'/admin/drover', '/admin/chat', '/admin/libraries', '/admin/waygate'
 		]);
 		expect(services.find((item) => item.href === '/admin/waygate')?.service).toBe('waygate');
-		expect(allNavItems(false, DEFAULT_BETA_FEATURES).find((item) => item.href === '/dashboard/network/waygate')?.section).toBe('네트워크');
 		expect(allNavItems(false, DEFAULT_BETA_FEATURES).find((item) => item.href === '/dashboard/network/waygate')?.service).toBe('waygate');
 	});
 

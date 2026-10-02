@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/file-storage';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { untrack } from 'svelte';
 	import { page } from '$app/stores';
@@ -55,7 +56,7 @@
 				opts
 			);
 		} catch (e) {
-			error = e instanceof ApiError ? `조회 실패 (${e.status}): ${e.message}` : '서버 오류';
+			error = e instanceof ApiError ? t('detail.loadFailedWithMessage', { status: e.status, message: e.message }) : t('errors.server');
 		} finally { loading = false; }
 	}
 
@@ -81,34 +82,34 @@
 				$auth.token ?? undefined, $auth.projectId ?? undefined);
 			await refresh.invalidate();
 			return true;
-		} catch (e) { ruleError = e instanceof ApiError ? e.message : '생성 실패'; return false; }
+		} catch (e) { ruleError = e instanceof ApiError ? e.message : t('errors.create'); return false; }
 		finally { addingRule = false; }
 	}
 
 	async function handleRevokeRule(accessId: string): Promise<void> {
-		if (!fileStorage || !await confirmDialog('이 접근 규칙을 삭제하시겠습니까?')) return;
+		if (!fileStorage || !await confirmDialog(t('detail.revokeConfirm'))) return;
 		revokingId = accessId;
 		try {
 			await api.delete(`/api/v1/file-storage/${fileStorage.id}/access-rules/${accessId}`, $auth.token ?? undefined, $auth.projectId ?? undefined);
 			await refresh.invalidate();
-		} catch (e) { toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e))); }
+		} catch (e) { toast.error(t('errors.deleteWithMessage', { message: e instanceof ApiError ? e.message : String(e) })); }
 		finally { revokingId = null; }
 	}
 
 	async function deleteFileStorage() {
-		if (!fileStorage || !await confirmDialog(`파일 스토리지 "${fileStorage.name || fileStorage.id}"를 삭제하시겠습니까?`)) return;
+		if (!fileStorage || !await confirmDialog(t('detail.deleteConfirm', { name: fileStorage.name || fileStorage.id }))) return;
 		deleting = true;
 		try {
 			await api.delete(`/api/v1/file-storage/${fileStorage.id}`, $auth.token ?? undefined, $auth.projectId ?? undefined);
 			goto('/dashboard');
-		} catch (e) { toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e))); }
+		} catch (e) { toast.error(t('errors.deleteWithMessage', { message: e instanceof ApiError ? e.message : String(e) })); }
 		finally { deleting = false; }
 	}
 </script>
 
 <div class="p-4 md:p-6 max-w-4xl mx-auto">
 	<div class="mb-6">
-		<a href="/dashboard" class="text-ink-2 hover:text-ink-1 text-sm transition-colors">← 대시보드</a>
+		<a href="/dashboard" class="text-ink-2 hover:text-ink-1 text-sm transition-colors">{t('detail.back')}</a>
 	</div>
 
 	{#if error}

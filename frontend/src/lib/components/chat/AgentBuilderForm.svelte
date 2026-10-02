@@ -3,6 +3,8 @@
 	import { isAvatarUrl } from '$lib/api/chatAgents';
 	import type { AvailableModel } from '$lib/api/chatTree';
 	import Button from '$lib/components/ui/Button.svelte';
+	import { t } from '$lib/i18n/ns/chat-settings';
+	import RichText from '$lib/i18n/RichText.svelte';
 
 	interface Props {
 		form: AgentForm;
@@ -37,62 +39,63 @@
 >
 	<div class="row two">
 		<label class="field avatar-field">
-			<span class="lbl">아바타 <span class="hint">이모지 또는 이미지 URL</span></span>
+			{#snippet avatarHint(text: string)}<span class="hint">{text}</span>{/snippet}
+			<span class="lbl"><RichText segments={t.rich('agentBuilder.avatar.label')} tags={{ hint: avatarHint }} /></span>
 			<div class="avatar-row">
 				<span class="avatar-preview">
 					{#if isAvatarUrl(form.avatar)}
-						<img src={form.avatar} alt="아바타" />
+						<img src={form.avatar} alt={t('agentBuilder.avatar.alt')} />
 					{:else if form.avatar.trim()}
 						{form.avatar}
 					{:else}
 						🤖
 					{/if}
 				</span>
-				<input class="inp" bind:value={form.avatar} placeholder="🤖 또는 https://…" />
+				<input class="inp" bind:value={form.avatar} placeholder={t('agentBuilder.avatar.placeholder')} />
 			</div>
 		</label>
 		<label class="field">
-			<span class="lbl">이름 <span class="req">*</span></span>
-			<input class="inp" bind:value={form.name} placeholder="에이전트 이름" required />
+			<span class="lbl">{t('agentBuilder.name.label')} <span class="req">*</span></span>
+			<input class="inp" bind:value={form.name} placeholder={t('agentBuilder.name.placeholder')} required />
 		</label>
 	</div>
 
 	<label class="field">
-		<span class="lbl">설명</span>
-		<input class="inp" bind:value={form.description} placeholder="이 에이전트가 하는 일 (짧게)" />
+		<span class="lbl">{t('agentBuilder.description.label')}</span>
+		<input class="inp" bind:value={form.description} placeholder={t('agentBuilder.description.placeholder')} />
 	</label>
 
 	<label class="field">
-		<span class="lbl">지시문 (system prompt)</span>
-		<textarea class="inp ta" bind:value={form.instructions} rows="5" placeholder="너는 …. 항상 …."></textarea>
+		<span class="lbl">{t('agentBuilder.instructions.label')}</span>
+		<textarea class="inp ta" bind:value={form.instructions} rows="5" placeholder={t('agentBuilder.instructions.placeholder')}></textarea>
 	</label>
 
 	<div class="row three">
 		<label class="field">
-			<span class="lbl">모델</span>
+			<span class="lbl">{t('agentBuilder.model.label')}</span>
 			<select class="inp" bind:value={form.model_name}>
-				<option value="">기본 모델</option>
+				<option value="">{t('agentBuilder.model.default')}</option>
 				{#each models as m (m.model_name)}
 					<option value={m.model_name}>{m.display_name}{m.provider ? ` · ${m.provider}` : ''}</option>
 				{/each}
 			</select>
 		</label>
 		<label class="field">
-			<span class="lbl">temperature</span>
-			<input class="inp" bind:value={form.temperature} inputmode="decimal" placeholder="예: 0.7" />
+			<span class="lbl">{t('agentBuilder.temperature.label')}</span>
+			<input class="inp" bind:value={form.temperature} inputmode="decimal" placeholder={t('agentBuilder.temperature.placeholder')} />
 		</label>
 		<label class="field">
-			<span class="lbl">max_tokens</span>
-			<input class="inp" bind:value={form.max_tokens} inputmode="numeric" placeholder="예: 2048" />
+			<span class="lbl">{t('agentBuilder.maxTokens.label')}</span>
+			<input class="inp" bind:value={form.max_tokens} inputmode="numeric" placeholder={t('agentBuilder.maxTokens.placeholder')} />
 		</label>
 	</div>
 
 	<div class="row two">
 		<div class="field">
-			<span class="lbl">MCP 서버</span>
+			<span class="lbl">{t('agentBuilder.mcp.label')}</span>
 			<div class="checklist">
 				{#if mcps.length === 0}
-					<p class="empty">등록된 MCP 서버 없음</p>
+					<p class="empty">{t('agentBuilder.mcp.empty')}</p>
 				{:else}
 					{#each mcps as s (s.id)}
 						<label class="check">
@@ -104,15 +107,15 @@
 			</div>
 		</div>
 		<div class="field">
-			<span class="lbl">도구 (커스텀 툴)</span>
+			<span class="lbl">{t('agentBuilder.tools.label')}</span>
 			<div class="checklist">
 				{#if tools.length === 0}
-					<p class="empty">등록된 도구 없음</p>
+					<p class="empty">{t('agentBuilder.tools.empty')}</p>
 				{:else}
-					{#each tools as t (t.id)}
+					{#each tools as tool (tool.id)}
 						<label class="check">
-							<input type="checkbox" bind:checked={form.tool_ids[t.id]} />
-							<span class="truncate">{t.name}</span>
+							<input type="checkbox" bind:checked={form.tool_ids[tool.id]} />
+							<span class="truncate">{tool.name}</span>
 						</label>
 					{/each}
 				{/if}
@@ -121,7 +124,7 @@
 	</div>
 
 	<div class="field">
-		<span class="lbl">공개 범위</span>
+		<span class="lbl">{t('agentBuilder.visibility.label')}</span>
 		<div class="visibility">
 			<button
 				type="button"
@@ -130,7 +133,7 @@
 				onclick={() => (form.visibility = 'private')}
 			>
 				<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg>
-				비공개
+				{t('agentBuilder.visibility.private')}
 			</button>
 			<button
 				type="button"
@@ -139,15 +142,15 @@
 				onclick={() => (form.visibility = 'public')}
 			>
 				<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z" /></svg>
-				공개 (허브)
+				{t('agentBuilder.visibility.public')}
 			</button>
 		</div>
 	</div>
 
 	<div class="actions">
-		<Button variant="ghost" type="button" onclick={onCancel}>취소</Button>
+		<Button variant="ghost" type="button" onclick={onCancel}>{t('agentBuilder.actions.cancel')}</Button>
 		<Button variant="accent" type="submit" disabled={!canSubmit}>
-			{saving ? '저장 중…' : editing ? '변경 저장' : '에이전트 생성'}
+			{saving ? t('agentBuilder.actions.saving') : editing ? t('agentBuilder.actions.saveChanges') : t('agentBuilder.actions.create')}
 		</Button>
 	</div>
 </form>

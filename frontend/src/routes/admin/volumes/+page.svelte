@@ -29,6 +29,7 @@
 	import { toast } from '$lib/stores/toast';
 	import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
 	import BulkSelectionOverlay, { type BulkSelectionAction } from '$lib/components/ui/BulkSelectionOverlay.svelte';
+	import { t } from '$lib/i18n/ns/admin-storage';
 
 	let allVolumes = $state<AdminVolume[]>([]);
 	let loading = $state(true);
@@ -213,7 +214,7 @@
 		const requestUserId = $auth.userId;
 		bulkDeleting = true;
 		try {
-			if (!await confirmDialog(`선택한 볼륨 ${ids.length}개를 삭제하시겠습니까?\n삭제된 데이터는 복구할 수 없습니다.`)) return;
+			if (!await confirmDialog(t('volumeList.bulkDelete.confirm', { count: ids.length }))) return;
 			if (boundary !== resultBoundary || requestProjectId !== ($auth.projectId ?? undefined)
 				|| requestUserId !== $auth.userId || ids.some(id => !selection.ids.has(id))) return;
 			const requestToken = $auth.token ?? undefined;
@@ -225,8 +226,8 @@
 			);
 			const successfulIds = response.results.filter((result) => result.ok).map((result) => result.id);
 			const failed = response.results.length - successfulIds.length;
-			if (successfulIds.length > 0) toast.success(`${successfulIds.length}개 볼륨 삭제 요청을 완료했습니다.`);
-			if (failed > 0) toast.error(`${failed}개 볼륨 삭제에 실패했습니다. 실패한 볼륨은 선택 상태로 유지됩니다.`);
+			if (successfulIds.length > 0) toast.success(t('volumeList.bulkDelete.success', { count: successfulIds.length }));
+			if (failed > 0) toast.error(t('volumeList.bulkDelete.partialFailure', { count: failed }));
 			if (($auth.projectId ?? undefined) !== requestProjectId) return;
 			selection.remove(successfulIds);
 			const statusReset = await loadStatusSummary({ background: true, reloadOnReset: false });
@@ -235,14 +236,14 @@
 				loadTimeseries(tsRange, { background: true }),
 			]);
 		} catch {
-			toast.error('볼륨 일괄 삭제 요청에 실패했습니다.');
+			toast.error(t('volumeList.bulkDelete.failed'));
 		} finally {
 			bulkDeleting = false;
 		}
 	}
 
 	const bulkActions = $derived<BulkSelectionAction[]>([
-		{ key: 'delete', label: '삭제', tone: 'danger', onAction: bulkDeleteSelectedVolumes },
+		{ key: 'delete', label: t('volumeList.action.delete'), tone: 'danger', onAction: bulkDeleteSelectedVolumes },
 	]);
 
 	function refreshCurrentVolumeState() {
@@ -286,7 +287,7 @@
 
 <div class="bulk-selection-page p-4 md:p-6 pb-28 md:pb-32 max-w-7xl mx-auto">
 	<div data-tour="admin-storage-header">
-	<PageHeader breadcrumb="STORAGE / VOLUMES" title="전체 볼륨">
+	<PageHeader breadcrumb={t('volumeList.breadcrumb')} title={t('volumeList.title')}>
 		{#snippet actions()}
 			<TutorialStartButton tour="admin-storage" compactOnMobile />
 			<AutoRefreshControl
@@ -396,7 +397,7 @@
 
 	<BulkSelectionOverlay
 		count={selection.count}
-		ariaLabel="선택한 관리자 볼륨 일괄 작업"
+		ariaLabel={t('volumeList.bulkActions')}
 		actions={bulkActions}
 		busy={bulkDeleting}
 		onClear={() => selection.clear()}

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/file-storage';
   import type { FileStorage } from '$lib/types/fileStorage';
   import StatusChip from '$lib/components/ui/StatusChip.svelte';
 
@@ -32,17 +33,17 @@
       </div>
       <div class="grid grid-cols-2 gap-2 mb-3">
         <div>
-          <div class="text-xs uppercase tracking-wider font-medium text-ink-2">크기</div>
+          <div class="text-xs uppercase tracking-wider font-medium text-ink-2">{t('manageGrid.size')}</div>
           <div class="text-ink-0 font-mono text-sm mt-0.5">{fs.size} GB</div>
         </div>
         <div>
-          <div class="text-xs uppercase tracking-wider font-medium text-ink-2">상태</div>
+          <div class="text-xs uppercase tracking-wider font-medium text-ink-2">{t('manageGrid.status')}</div>
           <div class="mt-0.5"><StatusChip status={fs.status} /></div>
         </div>
       </div>
       {#if fs.built_at}
         <div class="pt-3 border-t border-line">
-          <div class="text-xs text-ink-2">빌드: {fs.built_at.split('T')[0]}</div>
+          <div class="text-xs text-ink-2">{t('manageGrid.builtOn', { date: fs.built_at.split('T')[0] })}</div>
         </div>
       {/if}
     </div>

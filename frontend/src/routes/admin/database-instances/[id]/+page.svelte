@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t as tr } from '$lib/i18n/ns/database';
 	import { page } from '$app/stores';
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
@@ -22,7 +23,7 @@
 
 <div class="p-4 md:p-8 max-w-4xl">
 	<div class="flex items-center gap-2 mb-2">
-		<a href="/admin/database-instances" class="text-ink-2 hover:text-ink-2 text-sm">DB 인스턴스</a>
+		<a href="/admin/database-instances" class="text-ink-2 hover:text-ink-2 text-sm">{tr('instances.title')}</a>
 		<span class="text-ink-2">/</span>
 		<span class="text-ink-0 text-sm font-medium">{ctrl.instance?.name ?? $page.params.id?.slice(0, 8)}</span>
 	</div>
@@ -30,7 +31,7 @@
 	{#if ctrl.loading}
 		<LoadingSkeleton variant="detail" rows={8} />
 	{:else if !ctrl.instance}
-		<div class="text-ink-2 text-sm">인스턴스를 찾을 수 없습니다.</div>
+		<div class="text-ink-2 text-sm">{tr('instance.notFound')}</div>
 	{:else}
 		<DbInstanceHeader instance={ctrl.instance} deleting={ctrl.deleting} onDelete={ctrl.deleteInstance} />
 

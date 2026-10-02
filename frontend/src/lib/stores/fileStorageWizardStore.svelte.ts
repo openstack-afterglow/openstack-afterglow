@@ -4,6 +4,7 @@ import { auth } from '$lib/stores/auth';
 import { api, ApiError } from '$lib/api/client';
 import { apiMut } from '$lib/api/mutations';
 import type { FileStorage } from '$lib/types/fileStorage';
+import { t } from '$lib/i18n/ns/file-storage';
 
 export type WizardStep = 1 | 2 | 3;
 
@@ -47,7 +48,7 @@ export function createFileStorageWizardStore(opts: FsWizardOptions) {
 	let fsForm = $state({ name: '', size_gb: 10, share_type: '', share_proto: 'CEPHFS' as 'CEPHFS' | 'NFS' });
 	let metaEntries = $state<MetaEntry[]>([{ key: '', value: '' }]);
 
-	const currentShareType = $derived(shareTypes.find((t) => t.name === fsForm.share_type));
+	const currentShareType = $derived(shareTypes.find((shareType) => shareType.name === fsForm.share_type));
 	// DHSS=True 인 경우에만 share network 단계가 의미 있다.
 	// extra_specs.driver_handles_share_servers 가 명시적으로 'true'인 경우만 true.
 	// 값이 없거나 조회 전이면 false 로 fallback → 네트워크 단계 숨김 (안전한 방향).
@@ -110,7 +111,7 @@ export function createFileStorageWizardStore(opts: FsWizardOptions) {
 		if (typesResult.status === 'fulfilled') {
 			shareTypes = typesResult.value;
 			if (shareTypes.length > 0) {
-				const def = shareTypes.find((t) => t.is_default) ?? shareTypes[0];
+				const def = shareTypes.find((shareType) => shareType.is_default) ?? shareTypes[0];
 				fsForm.share_type = def.name;
 				const protos = def.supported_protocols?.filter(
 					(p): p is 'CEPHFS' | 'NFS' => p === 'CEPHFS' || p === 'NFS',
@@ -119,7 +120,7 @@ export function createFileStorageWizardStore(opts: FsWizardOptions) {
 			}
 		} else {
 			shareTypes = [];
-			wizardError = 'Share type 목록을 불러오지 못했습니다. 다시 열거나 직접 입력하세요.';
+			wizardError = t('wizard.error.loadShareTypes');
 		}
 		shareNetworks = loadShareNetworks && networksResult.status === 'fulfilled' ? networksResult.value : [];
 	}
@@ -134,11 +135,11 @@ export function createFileStorageWizardStore(opts: FsWizardOptions) {
 
 	function goStep2() {
 		if (!fsForm.name.trim() || fsForm.size_gb < 1) {
-			wizardError = '이름과 크기를 입력하세요.'; return;
+			wizardError = t('wizard.error.nameAndSizeRequired'); return;
 		}
 		wizardError = '';
 		if (!shareNetworksOn() && dhssEnabled && fsForm.share_proto === 'NFS') {
-			wizardError = 'Share Network 기능이 베타로 꺼져 있어 이 Share Type/NFS 조합은 사용할 수 없습니다.';
+			wizardError = t('wizard.error.shareNetworksDisabled');
 			return;
 		}
 		// DHSS=False 이거나 CephFS 이면 네트워크 단계 불필요 → 바로 생성
@@ -185,17 +186,17 @@ export function createFileStorageWizardStore(opts: FsWizardOptions) {
 			showInlineNetCreate = false;
 			inlineNetForm = { name: '', description: '', neutron_net_id: '', neutron_subnet_id: '' };
 		} catch (e) {
-			inlineNetError = e instanceof ApiError ? e.message : '생성 실패';
+			inlineNetError = e instanceof ApiError ? e.message : t('wizard.error.createNetwork');
 		} finally { inlineNetCreating = false; }
 	}
 
 	async function createFileStorage() {
 		// DHSS=True 환경에서 NFS를 선택했고 share network 선택 단계를 통과한 경우만 필수 검증
 		if (!shareNetworksOn() && dhssEnabled && fsForm.share_proto === 'NFS') {
-			wizardError = 'Share Network 기능이 베타로 꺼져 있어 이 Share Type/NFS 조합은 사용할 수 없습니다.'; return;
+			wizardError = t('wizard.error.shareNetworksDisabled'); return;
 		}
 		if (shareNetworksOn() && dhssEnabled && fsForm.share_proto === 'NFS' && !selectedNetworkId) {
-			wizardError = 'NFS 프로토콜은 Share Network가 필수입니다.'; return;
+			wizardError = t('wizard.error.networkRequired'); return;
 		}
 		creating = true; wizardError = '';
 		try {
@@ -211,7 +212,7 @@ export function createFileStorageWizardStore(opts: FsWizardOptions) {
 				validMeta.forEach((m) => { metadata[m.key.trim()] = m.value; });
 				body.metadata = metadata;
 			}
-			const created = await apiMut('파일 스토리지 생성',
+			const created = await apiMut(t('wizard.mutation.createFileStorage'),
 				() => api.post<FileStorage>('/api/v1/file-storage', body, token, projectId),
 			);
 			createdFs = created;
@@ -222,7 +223,7 @@ export function createFileStorageWizardStore(opts: FsWizardOptions) {
 			} catch { accessRules = []; }
 			step = 3;
 		} catch (e) {
-			wizardError = e instanceof ApiError ? e.message : '생성 실패';
+			wizardError = e instanceof ApiError ? e.message : t('wizard.error.createFileStorage');
 		} finally { creating = false; }
 	}
 
@@ -239,7 +240,7 @@ export function createFileStorageWizardStore(opts: FsWizardOptions) {
 			accessRules = [...accessRules, rule];
 			ruleForm = { access_to: '', access_level: 'rw' };
 		} catch (e) {
-			ruleError = e instanceof ApiError ? e.message : '추가 실패';
+			ruleError = e instanceof ApiError ? e.message : t('wizard.error.addRule');
 		} finally { addingRule = false; }
 	}
 

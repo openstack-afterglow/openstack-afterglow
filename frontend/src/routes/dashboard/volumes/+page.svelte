@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/volume';
   import { untrack } from 'svelte';
   import { auth } from '$lib/stores/auth';
   import { api } from '$lib/api/client';
@@ -49,12 +50,10 @@
       : ids.filter((id) => selectableSnapshotIds.has(id));
     const skipped = ids.length - eligible.length;
     if (eligible.length === 0) {
-      toast.warning(`${ids.length}개는 현재 상태에서 삭제할 수 없어 제외했습니다.`);
+      toast.warning(t('page.bulkSkipped', { count: ids.length }));
       return;
     }
-    const label = kind === 'volume' ? '볼륨' : '스냅샷';
-    const warning = skipped > 0 ? `\n${skipped}개는 현재 상태에서 제외됩니다.` : '';
-    if (!await confirmDialog(`선택한 ${label} ${eligible.length}개를 삭제하시겠습니까?${warning}`)) return;
+    if (!await confirmDialog(t('page.bulkDeleteConfirm', { kind, count: eligible.length, skipped }))) return;
     const tokenSnapshot = $auth.token ?? undefined;
     const projectSnapshot = $auth.projectId ?? undefined;
     bulkBusy = true;
@@ -64,9 +63,9 @@
       );
       const successful = results.filter((result) => result.ok).map((result) => result.id);
       const failed = results.length - successful.length;
-      if (successful.length > 0) toast.success(`${successful.length}개 삭제 요청을 완료했습니다.`);
-      if (failed > 0) toast.error(`${failed}개 삭제에 실패했습니다.`);
-      if (skipped > 0) toast.warning(`${skipped}개는 현재 상태에서 삭제할 수 없어 제외했습니다.`);
+      if (successful.length > 0) toast.success(t('page.bulkDeleteSuccess', { count: successful.length }));
+      if (failed > 0) toast.error(t('page.bulkDeleteFailed', { count: failed }));
+      if (skipped > 0) toast.warning(t('page.bulkSkipped', { count: skipped }));
       if ($auth.projectId !== projectSnapshot) return;
       selection.remove(successful);
       if (kind === 'volume') await ctrl.fetchVolumes();
@@ -77,10 +76,10 @@
   }
 
   const volumeBulkActions = $derived<BulkSelectionAction[]>([
-    { key: 'delete', label: '삭제', tone: 'danger', disabled: [...volumeSelection.ids].every((id) => !selectableVolumeIds.has(id)), onAction: () => runBulkDelete('volume') },
+    { key: 'delete', label: t('page.delete'), tone: 'danger', disabled: [...volumeSelection.ids].every((id) => !selectableVolumeIds.has(id)), onAction: () => runBulkDelete('volume') },
   ]);
   const snapshotBulkActions = $derived<BulkSelectionAction[]>([
-    { key: 'delete', label: '삭제', tone: 'danger', disabled: [...snapshotSelection.ids].every((id) => !selectableSnapshotIds.has(id)), onAction: () => runBulkDelete('snapshot') },
+    { key: 'delete', label: t('page.delete'), tone: 'danger', disabled: [...snapshotSelection.ids].every((id) => !selectableSnapshotIds.has(id)), onAction: () => runBulkDelete('snapshot') },
   ]);
 
   const ar = createAutoRefresh(() => ctrl.fetchAll(), {
@@ -131,12 +130,12 @@
 <VolumeCreateModal bind:open={ctrl.showModal} onCreated={() => ctrl.fetchVolumes()} />
 
 <PageShell class="bulk-selection-page space-y-4">
-  <PageHeader breadcrumb="VOLUMES / BLOCK VOLUMES" title="블록 볼륨">
+  <PageHeader breadcrumb={t('page.breadcrumb')} title={t('page.title')}>
     {#snippet actions()}
-      <Button dataTour="volume-create-open" onclick={() => ctrl.showModal = true} variant="primary">+ 볼륨 생성</Button>
+      <Button dataTour="volume-create-open" onclick={() => ctrl.showModal = true} variant="primary">{t('page.create')}</Button>
     {/snippet}
   </PageHeader>
-  <ResourceToolbar label="볼륨 목록 도구">
+  <ResourceToolbar label={t('page.toolbar')}>
     {#snippet actions()}
       <TutorialStartButton tour="volume" />
       <AutoRefreshControl
@@ -190,7 +189,7 @@
       />
       <BulkSelectionOverlay
         count={volumeSelection.count}
-        ariaLabel="선택한 볼륨 일괄 작업"
+        ariaLabel={t('page.volumeBulkLabel')}
         actions={volumeBulkActions}
         busy={bulkBusy}
         onClear={() => volumeSelection.clear()}
@@ -200,7 +199,7 @@
       <div id="snapshot-resource-panel" role="tabpanel" aria-labelledby="volume-resource-tabs-snapshots" tabindex="0">
       <BulkSelectionOverlay
         count={snapshotSelection.count}
-        ariaLabel="선택한 스냅샷 일괄 작업"
+        ariaLabel={t('page.snapshotBulkLabel')}
         actions={snapshotBulkActions}
         busy={bulkBusy}
         onClear={() => snapshotSelection.clear()}
@@ -224,7 +223,7 @@
 </PageShell>
 
 {#if ctrl.selectedVolumeId}
-  <SlidePanel onClose={ctrl.closeVolumePanel} ariaLabel="볼륨 상세" width="w-full md:w-[60vw] max-w-2xl">
+  <SlidePanel onClose={ctrl.closeVolumePanel} ariaLabel={t('page.detailLabel')} width="w-full md:w-[60vw] max-w-2xl">
     <VolumeDetailPanel
       volumeId={ctrl.selectedVolumeId}
       refreshKey={ctrl.detailRefreshKey}

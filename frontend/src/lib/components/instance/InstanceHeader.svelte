@@ -1,6 +1,7 @@
 <script lang="ts">
 	import DetailHeader from '$lib/components/ui/DetailHeader.svelte';
 	import { useInstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
+	import { t } from '$lib/i18n/ns/instance';
 
 	interface Props {
 		adminProjectId: string | null;
@@ -35,25 +36,25 @@
 	{#snippet meta()}
 		{#if s.instance!.status === 'ERROR' && s.instance!.fault?.message && adminProjectId}
 			<div class="p-3 rounded-lg bg-red-900/30 border border-red-800/40 text-red-300 text-sm max-w-xl">
-				<div class="font-medium mb-1 text-xs text-red-400">오류 상세 (관리자)</div>
+				<div class="font-medium mb-1 text-xs text-red-400">{t('header.errorDetails')}</div>
 				<div class="text-xs opacity-90 break-words">{s.instance!.fault!.message}</div>
 			</div>
 		{/if}
 		{#if adminProjectId && s.instance!.status === 'MIGRATING' && s.migrationStatus?.migration}
 			{@const mig = s.migrationStatus.migration}
 			<div class="p-3 rounded-lg bg-cyan-900/20 border border-cyan-800/40 text-cyan-300 text-sm max-w-xl">
-				<div class="font-medium mb-1 text-xs text-cyan-400">마이그레이션 진행 중</div>
+				<div class="font-medium mb-1 text-xs text-cyan-400">{t('header.migrationInProgress')}</div>
 				<div class="text-xs opacity-90">
 					{mig.source ?? '?'} → {mig.dest ?? '?'}
 					{#if mig.memory_percent !== null && mig.memory_percent !== undefined}
-						· 메모리 {mig.memory_percent}%
+						{t('header.migrationMemory', { percent: mig.memory_percent })}
 					{/if}
 				</div>
 			</div>
 		{/if}
 		{#if adminProjectId && s.migrationStatus?.error && s.instance!.status !== 'ACTIVE'}
 			<div class="p-3 rounded-lg bg-red-900/30 border border-red-800/40 text-red-300 text-sm max-w-xl">
-				<div class="font-medium mb-1 text-xs text-red-400">마이그레이션 실패 (관리자)</div>
+				<div class="font-medium mb-1 text-xs text-red-400">{t('header.migrationFailed')}</div>
 				<div class="text-xs opacity-90 break-words">{s.migrationStatus.error}</div>
 			</div>
 		{/if}
@@ -73,10 +74,10 @@
 						{#if s.consoleOpening}
 							<span class="inline-flex items-center gap-1.5">
 								<span class="w-3 h-3 rounded-full border border-line-2 border-t-gray-200 animate-spin" aria-hidden="true"></span>
-								콘솔 준비 중...
+								{t('header.consolePreparing')}
 							</span>
 						{:else}
-							콘솔 열기
+							{t('header.openConsole')}
 						{/if}
 					</button>
 					{#if canMutate}
@@ -84,12 +85,12 @@
 							onclick={() => s.performAction('stop')}
 							disabled={!!s.actioning}
 							class="{btn.base} {btn.yellow}"
-						>{s.actioning === 'stop' ? '정지 중...' : '정지'}</button>
+						>{s.actioning === 'stop' ? t('header.stopping') : t('header.stop')}</button>
 						<button
 							onclick={() => s.performAction('reboot')}
 							disabled={!!s.actioning}
 							class="{btn.base} {btn.blue}"
-						>{s.actioning === 'reboot' ? '재부팅 중...' : '재부팅'}</button>
+						>{s.actioning === 'reboot' ? t('header.rebooting') : t('header.reboot')}</button>
 					{/if}
 				{/if}
 				{#if canMutate && s.instance!.status === 'SHUTOFF'}
@@ -97,40 +98,40 @@
 						onclick={() => s.performAction('start')}
 						disabled={!!s.actioning}
 						class="{btn.base} {btn.green}"
-					>{s.actioning === 'start' ? '시작 중...' : '시작'}</button>
+					>{s.actioning === 'start' ? t('header.starting') : t('header.start')}</button>
 				{/if}
 				{#if canMutate && (s.instance!.status === 'ACTIVE' || s.instance!.status === 'SHUTOFF')}
 					<button
 						onclick={() => s.performAction('shelve')}
 						disabled={!!s.actioning}
 						class="{btn.base} {btn.purple}"
-					>{s.actioning === 'shelve' ? '보관 중...' : '보관'}</button>
+					>{s.actioning === 'shelve' ? t('header.shelving') : t('header.shelve')}</button>
 				{/if}
 				{#if canMutate && (s.instance!.status === 'SHELVED_OFFLOADED' || s.instance!.status === 'SHELVED')}
 					<button
 						onclick={() => s.performAction('unshelve')}
 						disabled={!!s.actioning}
 						class="{btn.base} {btn.green}"
-					>{s.actioning === 'unshelve' ? '보관 해제 중...' : '보관 해제'}</button>
+					>{s.actioning === 'unshelve' ? t('header.unshelving') : t('header.unshelve')}</button>
 				{/if}
 				{#if canMutate && s.instance!.status === 'VERIFY_RESIZE'}
 					<button
 						onclick={s.confirmResize}
 						disabled={!!s.actioning}
 						class="{btn.base} {btn.orange}"
-					>{s.actioning === 'confirm-resize' ? '확인 중...' : '리사이즈 확인'}</button>
+					>{s.actioning === 'confirm-resize' ? t('header.confirming') : t('header.confirmResize')}</button>
 					<button
 						onclick={s.revertResize}
 						disabled={!!s.actioning}
 						class="{btn.base} {btn.yellow}"
-					>{s.actioning === 'revert-resize' ? '취소 중...' : '되돌리기'}</button>
+					>{s.actioning === 'revert-resize' ? t('header.canceling') : t('header.revert')}</button>
 				{/if}
 				{#if canMutate && !adminProjectId}
 					<button
 						onclick={s.deleteInstance}
 						disabled={s.deleting}
 						class="{btn.base} {btn.red}"
-					>{s.deleting ? '삭제 중...' : '삭제'}</button>
+					>{s.deleting ? t('header.deleting') : t('header.delete')}</button>
 				{/if}
 			</div>
 			{#if s.consoleOpening || s.consoleOpenError}
@@ -151,25 +152,25 @@
 						<button
 							onclick={s.forceCompleteMigration}
 							class="{btn.base} {btn.cyan}"
-						>강제 완료</button>
+						>{t('header.forceComplete')}</button>
 						<button
 							onclick={s.abortMigration}
 							class="{btn.base} {btn.yellow}"
-						>마이그레이션 중단</button>
+						>{t('header.abortMigration')}</button>
 					{:else}
 						{#if s.instance!.status === 'ACTIVE'}
 							<button
 								onclick={() => onOpenMigrateModal('live')}
 								disabled={!!s.actioning}
 								class="{btn.base} {btn.cyan}"
-							>라이브 마이그레이션</button>
+							>{t('header.liveMigration')}</button>
 						{/if}
 						{#if s.instance!.status === 'ACTIVE' || s.instance!.status === 'SHUTOFF'}
 							<button
 								onclick={() => onOpenMigrateModal('cold')}
 								disabled={!!s.actioning}
 								class="{btn.base} {btn.teal}"
-							>콜드 마이그레이션</button>
+							>{t('header.coldMigration')}</button>
 						{/if}
 					{/if}
 				</div>
@@ -180,23 +181,23 @@
 						onclick={onOpenEvacuateModal}
 						disabled={!!s.actioning}
 						class="{btn.base} {btn.orange}"
-					>강제 이주</button>
+					>{t('header.evacuate')}</button>
 					<button
 						onclick={onOpenPasswordModal}
 						disabled={s.passwordPrecheckLoading || !s.passwordPrecheck?.supported}
-						title={s.passwordPrecheck?.reason ?? (s.passwordPrecheckLoading ? '점검 중...' : '')}
+						title={s.passwordPrecheck?.reason ?? (s.passwordPrecheckLoading ? t('header.checking') : '')}
 						class="{btn.base} {btn.amber}"
-					>{s.passwordPrecheckLoading ? '점검 중...' : '비밀번호 변경'}</button>
+					>{s.passwordPrecheckLoading ? t('header.checking') : t('header.changePassword')}</button>
 					<button
 						onclick={s.deleteInstance}
 						disabled={s.deleting}
 						class="{btn.base} {btn.red}"
-					>{s.deleting ? '삭제 중...' : '삭제'}</button>
+					>{s.deleting ? t('header.deleting') : t('header.delete')}</button>
 				</div>
 			{/if}
 			{#if canMutate && (s.instance!.status === 'ACTIVE' || s.instance!.status === 'SHUTOFF')}
 				<div class="flex items-center gap-2 flex-wrap justify-end">
-					<button onclick={() => onOpenResizeModal()} disabled={!!s.actioning} class="{btn.base} {btn.violet}">리사이즈</button>
+					<button onclick={() => onOpenResizeModal()} disabled={!!s.actioning} class="{btn.base} {btn.violet}">{t('header.resize')}</button>
 				</div>
 			{/if}
 		</div>

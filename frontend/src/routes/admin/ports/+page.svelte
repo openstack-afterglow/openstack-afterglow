@@ -14,6 +14,7 @@
 	import PortsFilterBar from '$lib/components/admin/ports/PortsFilterBar.svelte';
 	import type { PortInfo, NetworkInfo } from '$lib/types/networks';
 	import type { PagedResponse, ProjectName } from '$lib/types/adminPort';
+	import { t } from '$lib/i18n/ns/admin-network';
 
 	let ports = $state<PortInfo[]>([]);
 	let loading = $state(true);
@@ -110,7 +111,7 @@
 			editPort = null;
 			await load(markerStack[markerStack.length - 1]);
 			return true;
-		} catch (e) { editError = e instanceof ApiError ? e.message : '수정 실패'; return false; } finally { updating = false; }
+		} catch (e) { editError = e instanceof ApiError ? e.message : t('portsPage.error.updateFailed'); return false; } finally { updating = false; }
 	}
 
 	async function doDelete(id: string): Promise<string | true> {
@@ -118,7 +119,7 @@
 			await api.delete(`/api/v1/admin/ports/${id}`, token, projectId);
 			await load(markerStack[markerStack.length - 1]);
 			return true;
-		} catch (e) { return e instanceof ApiError ? e.message : '삭제 실패'; }
+		} catch (e) { return e instanceof ApiError ? e.message : t('portsPage.error.deleteFailed'); }
 	}
 
 	async function createPort(form: { network_id: string; name: string; project_id: string; fixed_ip: string }): Promise<boolean> {
@@ -134,7 +135,7 @@
 			markerStack = []; nextMarker = null;
 			await load();
 			return true;
-		} catch (e) { createError = e instanceof ApiError ? e.message : '포트 생성 실패'; return false; } finally { creating = false; }
+		} catch (e) { createError = e instanceof ApiError ? e.message : t('portsPage.error.createFailed'); return false; } finally { creating = false; }
 	}
 
 	const ar = createAutoRefresh(
@@ -169,9 +170,9 @@
 <PortDeleteModal bind:port={deletePort} onConfirm={doDelete} />
 
 <div class="p-4 md:p-8 max-w-7xl mx-auto">
-	<PageHeader breadcrumb="NETWORK / PORTS" title="포트">
+	<PageHeader breadcrumb={t('portsPage.breadcrumb')} title={t('portsPage.title')}>
 		{#snippet actions()}
-			<button onclick={() => { showCreate = true; createError = ''; }} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg">+ 생성</button>
+			<button onclick={() => { showCreate = true; createError = ''; }} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg">{t('portsPage.actions.create')}</button>
 			<AutoRefreshControl
 				bind:active={ar.active}
 				bind:intervalSeconds={ar.intervalSeconds}
@@ -180,7 +181,7 @@
 				onManualRefresh={() => { markerStack = []; nextMarker = null; load(); }}
 			/>
 			<div class="flex items-center gap-1 text-xs text-ink-2 max-md:hidden">
-				표시:
+				{t('portsPage.pageSize')}
 				{#each [10, 20, 30] as n}
 					<button
 						onclick={() => { pageSize = n; markerStack = []; nextMarker = null; load(); }}
@@ -199,7 +200,7 @@
 	/>
 
 	{#if loading}
-		<div class="text-ink-2 text-sm">로딩 중...</div>
+		<div class="text-ink-2 text-sm">{t('portsPage.loading')}</div>
 	{:else}
 		<PortsTable
 			ports={filtered}

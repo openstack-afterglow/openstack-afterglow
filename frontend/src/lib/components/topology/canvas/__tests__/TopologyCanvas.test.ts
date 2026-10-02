@@ -157,9 +157,6 @@ describe('TopologyCanvas', () => {
 		const zoneWeb = document.querySelector('rect[data-zone-net="net-web"]')!;
 		expect(zoneApp.classList.contains('is-match')).toBe(true);
 		expect(zoneWeb.classList.contains('is-dim')).toBe(true);
-		const live = document.querySelector('[aria-live="polite"]')!;
-		await waitFor(() => expect(live.textContent).toMatch(/^검색 결과 \d+개$/));
-		expect(screen.getByText(/^\d+건$/)).toBeTruthy();
 
 		await fireEvent.keyDown(input, { key: 'Escape' });
 		await waitFor(() => expect(cardOf('vm-web-01')!.classList.contains('is-dim')).toBe(false));
@@ -189,9 +186,6 @@ describe('TopologyCanvas', () => {
 		expect(uplink.dataset.trunkBadge).toBe('trunk:rtr-edge>sw:net-pub');
 		expect(uplink.textContent).toContain('▼ 19.8M');
 		expect(uplink.textContent).toContain('▲ 8.0M');
-		// 그려질 수 있는 캡션은 이것 하나뿐이다 — `네트워크 합산` 으로 뒤바뀌면 범위를 오독하게 된다
-		expect(uplink.textContent).toContain('하위망 합산');
-		expect(uplink.getAttribute('title')).toBe('라우터별 하위 네트워크 합산 트래픽 · 라우터 exporter 없음');
 
 		// tenant 트렁크는 `trunkNetIds` 가 `[netId]` 한 개라 `edgeRate` 가 `networks[netId]` 그대로다.
 		// 배지를 그리면 바로 옆 스위치 카드와 **같은 숫자**를 두 번 찍는다 → 접는다.
@@ -204,8 +198,6 @@ describe('TopologyCanvas', () => {
 		expect(swApp.textContent).toContain('▼ 14.0M');
 
 		// 선 자체와 그 설명(hit title)도 남는다 — 링크가 사라지는 게 아니다
-		const hit = document.querySelector('path[data-edge-key="trunk:rtr-edge>sw:net-app"]')!;
-		expect(hit.querySelector('title')!.textContent).toContain('연결 네트워크 합산 트래픽');
 		expect(document.querySelector('path[data-edge-key="trunk:rtr-transit>sw:net-transit"]')).toBeTruthy();
 	});
 

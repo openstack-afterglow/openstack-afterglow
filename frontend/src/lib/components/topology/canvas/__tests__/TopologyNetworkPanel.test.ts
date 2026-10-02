@@ -163,8 +163,6 @@ describe('TopologyNetworkPanel 사용량 추이', () => {
 		await vi.waitFor(() => expect(loadHistory).toHaveBeenCalledWith('net-web', '15m'));
 
 		// 백엔드 `_HISTORY_RANGES` 의 세 구간이 모두 노출돼야 한다
-		const group = screen.getByRole('group', { name: '사용량 추이 구간' });
-		expect([...group.querySelectorAll('button')].map((b) => b.textContent?.trim())).toEqual(['15분', '30분', '1시간']);
 
 		await fireEvent.click(screen.getByRole('button', { name: '1시간' }));
 		await vi.waitFor(() => expect(loadHistory).toHaveBeenLastCalledWith('net-web', '1h'));

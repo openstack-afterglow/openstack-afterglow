@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t as tr } from '$lib/i18n/ns/database';
 	import { createDbCreateStore, provideDbCreate, DB_TABS } from '$lib/stores/dbCreateStore.svelte';
 	import DbCreateStep1Details from './wizard/DbCreateStep1Details.svelte';
 	import DbCreateStep2Networking from './wizard/DbCreateStep2Networking.svelte';
@@ -39,14 +40,14 @@
 		tabindex="-1"
 		role="dialog"
 		aria-modal="true"
-		aria-label="DB 인스턴스 생성"
+		aria-label={tr('wizard.title')}
 	>
 		<div
 			class="bg-surface-base border border-line-2 rounded-xl w-full max-w-2xl mx-4 shadow-[var(--shadow-restraint)] flex flex-col max-h-[90vh]"
 		>
 			<!-- 헤더 -->
 			<div class="flex items-center justify-between px-6 py-4 border-b border-line">
-				<h2 class="text-base font-semibold text-ink-0">DB 인스턴스 생성</h2>
+				<h2 class="text-base font-semibold text-ink-0">{tr('wizard.title')}</h2>
 				<button
 					onclick={() => (open = false)}
 					class="text-ink-2 hover:text-ink-0 text-xl leading-none">&times;</button
@@ -74,7 +75,7 @@
 			<!-- 탭 콘텐츠 -->
 			<div class="flex-1 overflow-y-auto px-6 py-5">
 				{#if s.loading}
-					<p class="text-ink-2 text-sm">메타데이터 불러오는 중...</p>
+					<p class="text-ink-2 text-sm">{tr('wizard.loading')}</p>
 				{:else if s.error}
 					<div class="bg-red-900/20 border border-red-800 rounded-lg px-3 py-2 text-red-400 text-xs">
 						{s.error}
@@ -108,7 +109,7 @@
 								onclick={() => (s.activeTab -= 1)}
 								class="text-xs text-ink-2 hover:text-ink-0 px-3 py-1.5 border border-line-2 rounded-lg"
 							>
-								← 이전
+								{tr('actions.previous')}
 							</button>
 						{/if}
 						{#if s.activeTab < DB_TABS.length - 1}
@@ -116,7 +117,7 @@
 								onclick={() => (s.activeTab += 1)}
 								class="text-xs text-warm-text hover:text-warm-text-hover px-3 py-1.5 border border-action-warm rounded-lg"
 							>
-								다음 →
+								{tr('actions.next')}
 							</button>
 						{/if}
 					</div>
@@ -125,7 +126,7 @@
 							onclick={() => (open = false)}
 							class="text-xs text-ink-2 hover:text-ink-0 px-4 py-1.5 border border-line-2 rounded-lg"
 						>
-							취소
+							{tr('actions.cancel')}
 						</button>
 						<button
 							onclick={s.createInstance}
@@ -133,7 +134,7 @@
 							title={s.step1Error || ''}
 							class="text-xs text-action-on-warm bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 px-4 py-1.5 rounded-lg transition-colors"
 						>
-							{s.creating ? '생성 중...' : '생성'}
+							{s.creating ? tr('state.creating') : tr('actions.create')}
 						</button>
 					</div>
 				</div>

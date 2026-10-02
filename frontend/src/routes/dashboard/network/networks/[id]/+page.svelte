@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/network-pages';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { untrack } from 'svelte';
 	import { page } from '$app/stores';
@@ -71,7 +72,7 @@
 				$auth.projectId ?? undefined
 			);
 		} catch (e) {
-			error = e instanceof ApiError ? `조회 실패 (${e.status}): ${e.message}` : '서버 오류';
+			error = e instanceof ApiError ? t('networkDetail.loadFailed', { status: e.status, error: e.message }) : t('networkDetail.serverError');
 		} finally {
 			loading = false;
 		}
@@ -80,20 +81,20 @@
 	async function deleteNetwork() {
 		if (!network) return;
 		if (!canManageNetwork) {
-			toast.warning('현재 프로젝트가 소유한 네트워크만 삭제할 수 있습니다.');
+			toast.warning(t('networkDetail.onlyOwnedDelete'));
 			return;
 		}
 		if (network.is_external) {
-			toast.warning('외부 네트워크는 삭제할 수 없습니다.');
+			toast.warning(t('networkDetail.externalDelete'));
 			return;
 		}
-		if (!await confirmDialog(`네트워크 "${network.name || network.id}"를 삭제하시겠습니까?`)) return;
+		if (!await confirmDialog(t('networkDetail.deleteConfirm', { name: network.name || network.id }))) return;
 		deleting = true;
 		try {
 			await api.delete(`/api/v1/networks/${network.id}`, $auth.token ?? undefined, $auth.projectId ?? undefined);
 			goto('/dashboard/network/networks');
 		} catch (e) {
-			toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('networkDetail.deleteFailed', { error: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			deleting = false;
 		}
@@ -124,13 +125,13 @@
 						$auth.projectId ?? undefined
 					);
 				} catch (re) {
-					toast.warning('서브넷은 생성되었으나 라우터 연결에 실패했습니다: ' + (re instanceof ApiError ? re.message : String(re)));
+					toast.warning(t('networkDetail.subnetRouterFailed', { error: re instanceof ApiError ? re.message : String(re) }));
 				}
 			}
 			await fetchNetwork(network.id);
 			return true;
 		} catch (e) {
-			subnetError = e instanceof ApiError ? e.message : '서브넷 생성 실패';
+			subnetError = e instanceof ApiError ? e.message : t('networkDetail.subnetCreateFailed');
 			return false;
 		} finally {
 			addingSubnet = false;
@@ -149,11 +150,11 @@
 				$auth.token ?? undefined,
 				$auth.projectId ?? undefined
 			);
-			toast.success('라우터가 연결되었습니다.');
+			toast.success(t('networkDetail.routerConnected'));
 			if (network) await fetchNetwork(network.id);
 			return true;
 		} catch (e) {
-			toast.error('라우터 연결 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('networkDetail.routerConnectFailed', { error: e instanceof ApiError ? e.message : String(e) }));
 			return false;
 		} finally {
 			connectingRouter = false;
@@ -165,10 +166,10 @@
 		const targetRouter = network?.routers.find((r) => r.id === routerId);
 		if (!targetRouter) return false;
 		if (!($auth.isSystemAdmin || (targetRouter.project_id && targetRouter.project_id === $auth.projectId))) {
-			toast.warning('현재 프로젝트가 소유한 라우터만 연결 해제할 수 있습니다.');
+			toast.warning(t('networkDetail.onlyOwnedDisconnect'));
 			return false;
 		}
-		if (!await confirmDialog('라우터 연결을 해제하시겠습니까?')) return false;
+		if (!await confirmDialog(t('networkDetail.disconnectConfirm'))) return false;
 		connectingRouter = true;
 		try {
 			await api.delete(
@@ -176,11 +177,11 @@
 				$auth.token ?? undefined,
 				$auth.projectId ?? undefined
 			);
-			toast.success('라우터 연결이 해제되었습니다.');
+			toast.success(t('networkDetail.routerDisconnected'));
 			if (network) await fetchNetwork(network.id);
 			return true;
 		} catch (e) {
-			toast.error('라우터 연결 해제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('networkDetail.routerDisconnectFailed', { error: e instanceof ApiError ? e.message : String(e) }));
 			return false;
 		} finally {
 			connectingRouter = false;
@@ -204,7 +205,7 @@
 			await fetchNetwork(network!.id);
 			return true;
 		} catch (e) {
-			editSubnetError = e instanceof ApiError ? e.message : '서브넷 업데이트 실패';
+			editSubnetError = e instanceof ApiError ? e.message : t('networkDetail.subnetUpdateFailed');
 			return false;
 		} finally {
 			savingSubnet = false;
@@ -213,7 +214,7 @@
 
 	async function deleteSubnet(subnetId: string, subnetName: string) {
 		if (!canManageNetwork) return;
-		if (!await confirmDialog(`서브넷 "${subnetName || subnetId.slice(0, 8)}"를 삭제하시겠습니까?`)) return;
+		if (!await confirmDialog(t('networkDetail.subnetDeleteConfirm', { name: subnetName || subnetId.slice(0, 8) }))) return;
 		try {
 			await api.delete(
 				`/api/v1/networks/subnets/${subnetId}`,
@@ -222,7 +223,7 @@
 			);
 			await fetchNetwork(network!.id);
 		} catch (e) {
-			toast.error('서브넷 삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('networkDetail.subnetDeleteFailed', { error: e instanceof ApiError ? e.message : String(e) }));
 		}
 	}
 </script>
@@ -230,7 +231,7 @@
 <div class="p-4 md:p-6 max-w-5xl mx-auto">
 	<div class="mb-6">
 		<a href="/dashboard/network/networks" class="text-ink-2 hover:text-ink-1 text-sm transition-colors">
-			← 네트워크 목록
+			{t('networkDetail.back')}
 		</a>
 	</div>
 
@@ -254,7 +255,7 @@
 
 		<!-- 네트워크 토폴로지 -->
 		<div class="bg-surface-base border border-line rounded-lg p-6 mb-4">
-			<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide mb-4">네트워크 토폴로지</h2>
+			<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide mb-4">{t('networkDetail.topology')}</h2>
 			<NetworkTopology {network} />
 		</div>
 

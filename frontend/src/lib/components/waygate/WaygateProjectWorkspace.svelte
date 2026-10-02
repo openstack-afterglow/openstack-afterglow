@@ -1,5 +1,8 @@
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
+	import { t } from '$lib/i18n/ns/waygate';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import RichText from '$lib/i18n/RichText.svelte';
 	import type { WaygateProjectScope } from '$lib/utils/waygateProjectScope';
 	import { siteConfig } from '$lib/config/site';
 	import { api, ApiError } from '$lib/api/client';
@@ -68,20 +71,20 @@
 		if (!isCurrent() || busy) return;
 		const ids = [...selection.ids].filter((id) => selectableIds.has(id));
 		if (ids.length === 0) return;
-		if (!await confirmDialog(`${ids.length}개 Waygate 서버를 삭제하시겠습니까?`) || !isCurrent()) return;
+		if (!await confirmDialog(t('project.confirm.bulkDelete', { count: ids.length })) || !isCurrent()) return;
 		busy = true;
 		try {
 			const results = await executeBulkMutations(ids, (id) => {
-				if (!isCurrent()) return Promise.reject(new Error('Waygate project changed'));
+				if (!isCurrent()) return Promise.reject(new Error(t('project.error.projectChanged')));
 				return waygateApi.deleteServer(id, token, projectId);
 			});
 			if (!isCurrent()) return;
 			const succeeded = results.filter((result) => result.ok).map((result) => result.id);
 			selection.remove(succeeded);
 			if (selectedServerId && succeeded.includes(selectedServerId)) closePanel();
-			if (succeeded.length > 0) toast.success(`${succeeded.length}개 Waygate 서버 삭제가 시작되었습니다`);
+			if (succeeded.length > 0) toast.success(t('project.toast.bulkDeleteStarted', { count: succeeded.length }));
 			const failedCount = results.length - succeeded.length;
-			if (failedCount > 0) toast.error(`${failedCount}개 Waygate 서버 삭제에 실패했습니다.`);
+			if (failedCount > 0) toast.error(t('project.toast.bulkDeleteFailed', { count: failedCount }));
 			await fetchServers(true);
 		} finally {
 			if (isCurrent()) busy = false;
@@ -130,10 +133,10 @@
 			serverDetailRequest += 1;
 			if (!sameJsonValue(selectedServer, updated)) servers = servers.map((server) => server.id === detail.id ? updated : server);
 			showDefaultsModal = false;
-			toast.success('서버 기본값을 저장했습니다. 상속 중인 클라이언트에 적용됩니다.');
+			toast.success(t('project.toast.defaultsSaved'));
 			await fetchClients(detail.id, true);
 		} catch (e) {
-			if (detail.current()) defaultsError = e instanceof ApiError ? e.message : '서버 기본값 저장 실패';
+			if (detail.current()) defaultsError = e instanceof ApiError ? e.message : t('project.error.defaultsSave');
 		} finally {
 			if (detail.current()) defaultsSaving = false;
 		}
@@ -165,7 +168,7 @@
 			error = '';
 		} catch (e) {
 			if (!isCurrent() || request !== serverRequest) return;
-			error = e instanceof ApiError ? `조회 실패 (${e.status})` : '서버 오류';
+			error = e instanceof ApiError ? t('project.error.fetchStatus', { status: e.status }) : t('project.error.server');
 		} finally {
 			if (serverInFlight === pending) serverInFlight = null;
 			if (isCurrent() && request === serverRequest) loading = false;
@@ -211,11 +214,11 @@
 			if (!isCurrent()) return;
 			showCreateModal = false;
 			newServerDraft = waygateServerDraft();
-			toast.success('Waygate 서버 생성이 시작되었습니다');
+			toast.success(t('project.toast.serverCreateStarted'));
 			await fetchServers(true);
 		} catch (e) {
 			if (!isCurrent()) return;
-			createError = e instanceof ApiError ? e.message : '생성 실패';
+			createError = e instanceof ApiError ? e.message : t('project.error.create');
 		} finally {
 			if (isCurrent()) creating = false;
 		}
@@ -223,16 +226,16 @@
 
 	async function deleteServer(server: WaygateServer) {
 		if (!isCurrent()) return;
-		if (!(await confirmDialog(`Waygate 서버 "${server.name}"을 삭제하시겠습니까?`)) || !isCurrent()) return;
+		if (!(await confirmDialog(t('project.confirm.serverDelete', { name: server.name }))) || !isCurrent()) return;
 		try {
 			await waygateApi.deleteServer(server.id, token, projectId);
 			if (!isCurrent()) return;
-			toast.success('Waygate 서버 삭제가 시작되었습니다');
+			toast.success(t('project.toast.serverDeleteStarted'));
 			if (selectedServerId === server.id) closePanel();
 			await fetchServers(true);
 		} catch (e) {
 			if (!isCurrent()) return;
-			toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('project.error.delete', { error: e instanceof ApiError ? e.message : String(e) }));
 		}
 	}
 
@@ -268,7 +271,7 @@
 				closePanel();
 				await fetchServers(true);
 			} else {
-				toast.error('서버 상태 조회 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+				toast.error(t('project.error.serverStatus', { error: e instanceof ApiError ? e.message : String(e) }));
 			}
 		} finally {
 			if (serverDetailInFlight.get(serverId) === pending) serverDetailInFlight.delete(serverId);
@@ -390,7 +393,7 @@
 			clientsError = '';
 		} catch (e) {
 			if (!detail.current() || request !== clientRequest) return;
-			clientsError = e instanceof ApiError ? e.message : '클라이언트 조회 실패';
+			clientsError = e instanceof ApiError ? e.message : t('project.error.clientsLoad');
 		} finally {
 			if (clientInFlight.get(serverId) === pending) clientInFlight.delete(serverId);
 			if (detail.current() && request === clientRequest) {
@@ -503,14 +506,14 @@
 			const result = await waygateApi.createClient(serverId, parsed.body, token, projectId);
 			if (!detail.current()) return;
 			showClientModal = false;
-			toast.success('Waygate 클라이언트가 발급되었습니다');
+			toast.success(t('project.toast.clientIssued'));
 			// 발급 직후 응답에 평문 .conf가 포함되어 있으므로 바로 다운로드 제공
 			const blob = new Blob([result.tunnel_conf], { type: 'text/plain' });
 			downloadBlobAs(blob, `${result.name}.conf`);
 			await fetchClients(serverId, true);
 		} catch (e) {
 			if (!detail.current()) return;
-			clientCreateError = e instanceof ApiError ? e.message : '클라이언트 발급 실패';
+			clientCreateError = e instanceof ApiError ? e.message : t('project.error.clientIssue');
 		} finally {
 			if (detail.current()) clientCreating = false;
 		}
@@ -550,11 +553,11 @@
 			await waygateApi.updateClient(serverId, client.id, parsed.body, token, projectId);
 			if (!detail.current()) return;
 			editingClient = null;
-			toast.success('설정을 저장했습니다. 기기에서 .conf 또는 QR을 다시 가져오세요.');
+			toast.success(t('project.toast.clientSaved'));
 			await fetchClients(serverId, true);
 		} catch (e) {
 			if (!detail.current()) return;
-			clientSaveError = e instanceof ApiError ? e.message : '클라이언트 설정 저장 실패';
+			clientSaveError = e instanceof ApiError ? e.message : t('project.error.clientSave');
 		} finally {
 			if (detail.current()) clientSaving = false;
 		}
@@ -571,7 +574,7 @@
 			if (detail.current()) await fetchClients(detail.id, true);
 		} catch (e) {
 			if (!detail.current()) return;
-			toast.error('상태 변경 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('project.error.clientToggle', { error: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			if (detail.current()) mutatingClientIds = mutatingClientIds.filter((id) => id !== client.id);
 		}
@@ -582,14 +585,14 @@
 		if (!detail || mutatingClientIds.includes(client.id)) return;
 		mutatingClientIds = [...mutatingClientIds, client.id];
 		try {
-			if (!(await confirmDialog(`클라이언트 "${client.name}"을 삭제하시겠습니까?`)) || !detail.current()) return;
+			if (!(await confirmDialog(t('project.confirm.clientDelete', { name: client.name }))) || !detail.current()) return;
 			await waygateApi.deleteClient(detail.id, client.id, token, projectId);
 			if (!detail.current()) return;
-			toast.success('클라이언트가 삭제되었습니다');
+			toast.success(t('project.toast.clientDeleted'));
 			await fetchClients(detail.id, true);
 		} catch (e) {
 			if (!detail.current()) return;
-			toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('project.error.delete', { error: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			if (detail.current()) mutatingClientIds = mutatingClientIds.filter((id) => id !== client.id);
 		}
@@ -612,7 +615,7 @@
 			downloadBlobAs(blob, filename);
 		} catch (e) {
 			if (!detail.current()) return;
-			toast.error('다운로드 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('project.error.download', { error: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			if (detail.current()) downloadingClientId = null;
 		}
@@ -645,7 +648,7 @@
 			qrDataUrl = dataUrl;
 		} catch (e) {
 			if (!current()) return;
-			qrError = e instanceof ApiError ? e.message : 'QR 생성 실패';
+			qrError = e instanceof ApiError ? e.message : t('project.error.qr');
 		} finally {
 			if (current()) qrLoading = false;
 		}
@@ -671,8 +674,8 @@
 	const availableNetworks = $derived(visibleNetworks.filter((network) => !network.is_external));
 	const networkNames = $derived(new Map(visibleNetworks.map((network) => [network.id, network.name?.trim()])));
 	function attachmentNetworkName(networkId: string): string {
-		if (!networkNames.has(networkId)) return '네트워크 이름 확인 불가';
-		return networkNames.get(networkId) || '이름 없는 네트워크';
+		if (!networkNames.has(networkId)) return t('project.network.nameUnavailable');
+		return networkNames.get(networkId) || t('project.network.unnamed');
 	}
 	let networksError = $state('');
 	let networksInFlight: Promise<Network[]> | null = null;
@@ -720,7 +723,7 @@
 			attachmentsError = '';
 		} catch (e) {
 			if (!detail.current() || request !== attachmentRequest) return;
-			attachmentsError = e instanceof ApiError ? e.message : '네트워크 연결 조회 실패';
+			attachmentsError = e instanceof ApiError ? e.message : t('project.error.attachmentsLoad');
 		} finally {
 			if (attachmentInFlight.get(serverId) === pending) attachmentInFlight.delete(serverId);
 			if (detail.current() && request === attachmentRequest) {
@@ -750,7 +753,7 @@
 			networksError = '';
 		} catch (e) {
 			if (!current()) return;
-			networksError = e instanceof ApiError ? e.message : '네트워크 목록 조회 실패';
+			networksError = e instanceof ApiError ? e.message : t('project.error.networksLoad');
 		} finally {
 			if (networksInFlight === pending) networksInFlight = null;
 			if (current()) networksLoading = false;
@@ -794,7 +797,7 @@
 			if (availableSubnets.length === 1) attachSubnetId = availableSubnets[0].id;
 		} catch (e) {
 			if (!detail.current() || requestId !== attachSubnetRequest || networkId !== attachNetworkId) return;
-			attachError = e instanceof ApiError ? e.message : '서브넷 목록 조회 실패';
+			attachError = e instanceof ApiError ? e.message : t('project.error.subnetsLoad');
 		} finally {
 			if (detail.current() && requestId === attachSubnetRequest) subnetsLoading = false;
 		}
@@ -814,12 +817,12 @@
 			);
 			if (!detail.current()) return;
 			closeAttachModal();
-			toast.success('네트워크 연결이 시작되었습니다');
+			toast.success(t('project.toast.networkAttachStarted'));
 			await fetchAttachments(detail.id, true);
 			if (detail.current()) await fetchNetworks();
 		} catch (e) {
 			if (!detail.current()) return;
-			attachError = e instanceof ApiError ? e.message : '네트워크 연결 실패';
+			attachError = e instanceof ApiError ? e.message : t('project.error.attach');
 		} finally {
 			if (detail.current()) attaching = false;
 		}
@@ -829,16 +832,16 @@
 		const detail = captureDetail();
 		if (!detail) return;
 		const name = attachmentNetworkName(att.network_id);
-		if (!(await confirmDialog(`네트워크 연결(${name} · ${att.network_id})을 해제하시겠습니까?`)) || !detail.current()) return;
+		if (!(await confirmDialog(t('project.confirm.networkDetach', { name, id: att.network_id }))) || !detail.current()) return;
 		try {
 			await waygateApi.detachNetwork(detail.id, att.id, token, projectId);
 			if (!detail.current()) return;
-			toast.success('네트워크 연결이 해제되었습니다');
+			toast.success(t('project.toast.networkDetached'));
 			await fetchAttachments(detail.id, true);
 			if (detail.current()) await fetchNetworks();
 		} catch (e) {
 			if (!detail.current()) return;
-			toast.error('해제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('project.error.detach', { error: e instanceof ApiError ? e.message : String(e) }));
 		}
 	}
 
@@ -867,10 +870,10 @@
 			downloadBlobAs(blob, `${name}-waygate-export.json`);
 			showExportModal = false;
 			exportPassphrase = '';
-			toast.success('설정을 내보냈습니다');
+			toast.success(t('project.toast.exported'));
 		} catch (e) {
 			if (!detail.current()) return;
-			exportError = e instanceof ApiError ? e.message : '내보내기 실패';
+			exportError = e instanceof ApiError ? e.message : t('project.error.export');
 		} finally {
 			if (detail.current()) exporting = false;
 		}
@@ -897,31 +900,32 @@
 			showImportModal = false;
 			importPassphrase = '';
 			importFile = null;
-			const skippedMsg = result.skipped.length ? ` (${result.skipped.length}개 건너뜀)` : '';
-			toast.success(`${result.imported}개 클라이언트를 가져왔습니다${skippedMsg}`);
+			toast.success(result.skipped.length
+				? t('project.toast.importedSkipped', { count: result.imported, skipped: result.skipped.length })
+				: t('project.toast.imported', { count: result.imported }));
 			await fetchClients(detail.id, true);
 		} catch (e) {
 			if (!detail.current()) return;
-			if (e instanceof SyntaxError) importError = '번들 JSON 파싱에 실패했습니다';
-			else importError = e instanceof ApiError ? e.message : '가져오기 실패';
+			if (e instanceof SyntaxError) importError = t('project.error.bundleParse');
+			else importError = e instanceof ApiError ? e.message : t('project.error.import');
 		} finally {
 			if (detail.current()) importing = false;
 		}
 	}
 
 	function clientStatusLabel(client: WaygateClient): string {
-		if (!client.enabled) return 'disabled';
-		if (!client.last_reported_at || client.online === null) return '알 수 없음';
+		if (!client.enabled) return t('project.status.disabled');
+		if (!client.last_reported_at || client.online === null) return t('project.status.unknown');
 		const reportedAt = Date.parse(client.last_reported_at);
 		const freshness = waygateTrafficFreshnessMs(client.report_interval_seconds, peerAr.intervalSeconds);
-		if (!Number.isFinite(reportedAt) || trafficNow - reportedAt > freshness) return '보고 지연';
-		return client.online ? 'ONLINE' : 'OFFLINE';
+		if (!Number.isFinite(reportedAt) || trafficNow - reportedAt > freshness) return t('project.status.delayed');
+		return client.online ? t('project.status.online') : t('project.status.offline');
 	}
 
 	function formatDate(iso: string | null): string {
 		if (!iso) return '-';
 		try {
-			return new Date(iso).toLocaleString('ko');
+			return new Date(iso).toLocaleString(intlLocale());
 		} catch {
 			return iso;
 		}
@@ -930,8 +934,8 @@
 
 <FormModal
 	bind:open={showCreateModal}
-	title="Waygate 서버 생성"
-	submitLabel="생성"
+	title={t('project.server.createTitle')}
+	submitLabel={t('project.actions.create')}
 	submitting={creating}
 	onSubmit={createServer}
 	onClose={() => { showCreateModal = false; createError = ''; }}
@@ -946,7 +950,7 @@
 
 <div class="bulk-selection-page p-4 md:p-8">
 	<div data-tour="waygate-header">
-	<PageHeader breadcrumb={admin ? 'ADMIN / WAYGATE' : 'NETWORK / WAYGATE'} title={admin ? 'Waygate 관리' : 'Waygate'}>
+	<PageHeader breadcrumb={admin ? t('project.header.adminBreadcrumb') : t('project.header.networkBreadcrumb')} title={admin ? t('project.header.adminTitle') : 'Waygate'}>
 		{#snippet actions()}
 			<TutorialStartButton tour={admin ? 'admin-waygate' : 'waygate'} compactOnMobile />
 			<AutoRefreshControl
@@ -958,7 +962,7 @@
 			/>
 			{#if waygateConfigured}
 				<Button onclick={() => { newServerDraft = waygateServerDraft(); newServerErrors = {}; showCreateModal = true; createError = ''; }} variant="accent" size="sm">
-					+ Waygate 서버 생성
+					{t('project.actions.createServer')}
 				</Button>
 			{/if}
 		{/snippet}
@@ -967,7 +971,7 @@
 
 	{#if !waygateConfigured}
 		<Alert tone="warning" class="mb-4">
-			관리자가 아직 Waygate 기능을 설정하지 않았습니다. (afterglow.conf [waygate] provider_network_id / image_id 필요)
+			{t('project.configuration.required')}
 		</Alert>
 	{/if}
 
@@ -981,9 +985,9 @@
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if servers.length === 0}
 		<div class="text-center py-20 text-[var(--color-ink-3)]">
-			<div class="text-5xl mb-4">🔐</div>
-			<div class="text-lg">Waygate 서버가 없습니다</div>
-			<p class="text-sm text-[var(--color-ink-3)] mt-2">테넌트 네트워크로부터 안전한 Waygate 연결을 생성하세요.</p>
+			<div class="text-5xl mb-4">{t('project.empty.icon')}</div>
+			<div class="text-lg">{t('project.empty.servers')}</div>
+			<p class="text-sm text-[var(--color-ink-3)] mt-2">{t('project.empty.serversHelp')}</p>
 		</div>
 	{:else}
 		<TableShell>
@@ -992,8 +996,8 @@
 					<tr>
 						<th>
 							<SelectionToolbar
-								label="Waygate 서버"
-								ariaLabel="Waygate 서버 전체 선택"
+								label={t('project.server.label')}
+								ariaLabel={t('project.selection.all')}
 								checked={allSelected}
 								indeterminate={indeterminate}
 								selectedCount={selectedCount}
@@ -1001,11 +1005,11 @@
 								onToggle={() => { if (isCurrent()) selection.toggleAll(selectableIds); }}
 							/>
 						</th>
-						<th>상태</th>
-						<th>엔드포인트</th>
-						<th>터널 CIDR</th>
-						<th>피어 수</th>
-						<th>생성일</th>
+						<th>{t('project.table.status')}</th>
+						<th>{t('project.server.endpoint')}</th>
+						<th>{t('project.server.tunnelCidr')}</th>
+						<th>{t('project.server.peerCount')}</th>
+						<th>{t('project.details.createdAt')}</th>
 						<th></th>
 					</tr>
 				</thead>
@@ -1016,7 +1020,7 @@
 								<SelectionCheckbox
 									checked={selection.has(server.id)}
 									disabled={busy}
-									ariaLabel={`${server.name} 선택`}
+									ariaLabel={t('project.selection.server', { name: server.name })}
 									onclick={() => { if (isCurrent()) selection.toggle(server.id); }}
 								/>
 								<span class="ml-2">{server.name}</span>
@@ -1030,7 +1034,7 @@
 								<button
 									onclick={(e) => { e.stopPropagation(); deleteServer(server); }}
 									class="text-xs text-[var(--color-state-danger)] hover:opacity-80"
-								>삭제</button>
+								>{t('project.actions.delete')}</button>
 							</td>
 						</tr>
 					{/each}
@@ -1043,16 +1047,16 @@
 </div>
 <BulkSelectionOverlay
 	count={selection.count}
-	ariaLabel="선택한 Waygate 서버 일괄 작업"
-	actions={[{ key: 'delete', label: '삭제', tone: 'danger', onAction: bulkDeleteServers }]}
+	ariaLabel={t('project.selection.bulkActions')}
+	actions={[{ key: 'delete', label: t('project.actions.delete'), tone: 'danger', onAction: bulkDeleteServers }]}
 	{busy}
 	onClear={() => selection.clear()}
 />
 
 {#if selectedServer}
-	<SlidePanel onClose={closePanel} ariaLabel="Waygate 서버 상세" dataTour="waygate-detail" width="w-full md:w-[70vw] max-w-3xl" storageKey="slidePanel.waygate-detail.width">
+	<SlidePanel onClose={closePanel} ariaLabel={t('project.server.details')} dataTour="waygate-detail" width="w-full md:w-[70vw] max-w-3xl" storageKey="slidePanel.waygate-detail.width">
 		<div class="p-6">
-			<div class="mb-5 flex flex-wrap items-center justify-between gap-3" role="group" aria-label="서버 및 네트워크 자동 새로고침">
+			<div class="mb-5 flex flex-wrap items-center justify-between gap-3" role="group" aria-label={t('project.refresh.serverNetworks')}>
 				<!-- 닫기 버튼은 SlidePanel 이 제공한다(`[data-slide-panel-close]`) -->
 				<AutoRefreshControl
 					bind:active={panelAr.active}
@@ -1069,8 +1073,8 @@
 					<div class="mt-1"><StatusChip status={selectedServer.status} /></div>
 				</div>
 				<div class="flex flex-wrap gap-2">
-					<Button onclick={openDefaultsModal} variant="secondary" size="sm">서버 기본값 설정</Button>
-					<Button onclick={() => deleteServer(selectedServer)} variant="danger-outline" size="sm">서버 삭제</Button>
+					<Button onclick={openDefaultsModal} variant="secondary" size="sm">{t('project.server.defaults')}</Button>
+					<Button onclick={() => deleteServer(selectedServer)} variant="danger-outline" size="sm">{t('project.actions.deleteServer')}</Button>
 				</div>
 			</div>
 
@@ -1080,48 +1084,48 @@
 
 			<dl class="grid grid-cols-1 gap-3 text-sm mb-8 bg-[var(--color-surface-raised)] border border-[var(--color-line)] rounded-xl p-4 xl:grid-cols-2 xl:gap-x-6">
 				<div>
-					<dt class="text-xs text-[var(--color-ink-3)] uppercase tracking-wide">엔드포인트</dt>
+					<dt class="text-xs text-[var(--color-ink-3)] uppercase tracking-wide">{t('project.server.endpoint')}</dt>
 					<dd class="text-[var(--color-ink-1)] font-mono">{selectedServer.endpoint_ip ?? '-'}:{selectedServer.listen_port}</dd>
 				</div>
 				<div>
-					<dt class="text-xs text-[var(--color-ink-3)] uppercase tracking-wide">터널 CIDR</dt>
+					<dt class="text-xs text-[var(--color-ink-3)] uppercase tracking-wide">{t('project.server.tunnelCidr')}</dt>
 					<dd class="text-[var(--color-ink-1)] font-mono">{selectedServer.tunnel_cidr}</dd>
 				</div>
 				<div>
-					<dt class="text-xs text-ink-2">기본 DNS</dt>
+					<dt class="text-xs text-ink-2">{t('project.server.defaultDns')}</dt>
 					<dd class="text-[var(--color-ink-1)]">{selectedServer.dns ?? '-'}</dd>
 				</div>
 				<div>
-					<dt class="text-xs text-ink-2">기본 Keepalive</dt>
-					<dd class="text-ink-1">{(selectedServer.persistent_keepalive ?? WAYGATE_KEEPALIVE_DEFAULT) === 0 ? '비활성화' : `${selectedServer.persistent_keepalive ?? WAYGATE_KEEPALIVE_DEFAULT}초`}</dd>
+					<dt class="text-xs text-ink-2">{t('project.server.defaultKeepalive')}</dt>
+					<dd class="text-ink-1">{(selectedServer.persistent_keepalive ?? WAYGATE_KEEPALIVE_DEFAULT) === 0 ? t('project.state.disabled') : t('project.duration.seconds', { seconds: selectedServer.persistent_keepalive ?? WAYGATE_KEEPALIVE_DEFAULT })}</dd>
 				</div>
 				<div>
-					<dt class="text-xs text-[var(--color-ink-3)] uppercase tracking-wide">서버 공개키</dt>
-					<dd class="text-[var(--color-ink-1)] font-mono text-xs break-all">{selectedServer.server_public_key ?? '(에이전트 등록 대기 중)'}</dd>
+					<dt class="text-xs text-[var(--color-ink-3)] uppercase tracking-wide">{t('project.server.publicKey')}</dt>
+					<dd class="text-[var(--color-ink-1)] font-mono text-xs break-all">{selectedServer.server_public_key ?? t('project.server.waitingAgent')}</dd>
 				</div>
 				<div>
-					<dt class="text-xs text-[var(--color-ink-3)] uppercase tracking-wide">마지막 상태 보고</dt>
+					<dt class="text-xs text-[var(--color-ink-3)] uppercase tracking-wide">{t('project.server.lastReport')}</dt>
 					<dd class="text-[var(--color-ink-1)]">{formatDate(selectedServer.last_status_reported_at)}</dd>
 				</div>
 				<div>
-					<dt class="text-xs text-[var(--color-ink-3)] uppercase tracking-wide">피어 수</dt>
+					<dt class="text-xs text-[var(--color-ink-3)] uppercase tracking-wide">{t('project.server.peerCount')}</dt>
 					<dd class="text-[var(--color-ink-1)]">{selectedServer.peer_count ?? '-'}</dd>
 				</div>
 			</dl>
 
 			<div class="flex items-center justify-between mb-3">
-				<h3 class="text-sm font-medium text-[var(--color-ink-1)]">클라이언트</h3>
+				<h3 class="text-sm font-medium text-[var(--color-ink-1)]">{t('project.client.heading')}</h3>
 				<Button
 					onclick={openClientModal}
 					variant="accent"
 					size="sm"
 					disabled={selectedServer.status !== 'ACTIVE'}
-					title={selectedServer.status !== 'ACTIVE' ? 'Waygate 서버가 ACTIVE 상태여야 클라이언트를 발급할 수 있습니다' : undefined}
-				>+ 클라이언트 발급</Button>
+					title={selectedServer.status !== 'ACTIVE' ? t('project.client.requiresActive') : undefined}
+				>{t('project.actions.issueClient')}</Button>
 			</div>
 
-			<div class="mb-4 flex min-w-0 flex-wrap items-center gap-2 [&_.auto-refresh-control]:min-w-0 [&_.auto-refresh-control]:max-w-full [&_.auto-refresh-control]:flex-wrap [&_.toggle-group]:max-w-full [&_.toggle-group]:flex-wrap" role="group" aria-label="클라이언트 자동 새로고침">
-				<span class="text-xs text-ink-2">클라이언트 상태</span>
+			<div class="mb-4 flex min-w-0 flex-wrap items-center gap-2 [&_.auto-refresh-control]:min-w-0 [&_.auto-refresh-control]:max-w-full [&_.auto-refresh-control]:flex-wrap [&_.toggle-group]:max-w-full [&_.toggle-group]:flex-wrap" role="group" aria-label={t('project.refresh.clients')}>
+				<span class="text-xs text-ink-2">{t('project.client.status')}</span>
 				<AutoRefreshControl
 					bind:active={peerAr.active}
 					bind:intervalSeconds={peerAr.intervalSeconds}
@@ -1139,7 +1143,7 @@
 				<LoadingSkeleton variant="table" rows={3} />
 			{:else if clients.length === 0}
 				<div class="text-center py-10 text-[var(--color-ink-3)] bg-[var(--color-surface-raised)] border border-[var(--color-line)] rounded-xl">
-					<div class="text-sm">발급된 클라이언트가 없습니다</div>
+					<div class="text-sm">{t('project.empty.clients')}</div>
 				</div>
 			{:else}
 				<div class="space-y-3">
@@ -1153,44 +1157,44 @@
 									</div>
 									<dl class="mt-3 grid grid-cols-1 gap-2 text-xs lg:grid-cols-3">
 										<div>
-											<dt class="text-[var(--color-ink-3)]">터널 IP</dt>
+											<dt class="text-[var(--color-ink-3)]">{t('project.client.tunnelIp')}</dt>
 											<dd class="mt-0.5 font-mono text-[var(--color-ink-1)] break-all">{client.tunnel_ip}</dd>
 										</div>
 										<div>
-											<dt class="break-keep text-[var(--color-ink-3)]">마지막 핸드셰이크</dt>
+											<dt class="break-keep text-[var(--color-ink-3)]">{t('project.client.lastHandshake')}</dt>
 											<dd class="mt-0.5 break-keep text-[var(--color-ink-1)]">{formatDate(client.last_handshake_at)}</dd>
 										</div>
 										<div>
-											<dt class="break-keep text-[var(--color-ink-3)]">생성일</dt>
+											<dt class="break-keep text-[var(--color-ink-3)]">{t('project.details.createdAt')}</dt>
 											<dd class="mt-0.5 break-keep text-[var(--color-ink-1)]">{formatDate(client.created_at)}</dd>
 										</div>
 										<div>
-											<dt class="text-ink-2">DNS</dt>
-											<dd class="mt-0.5 font-mono text-[var(--color-ink-1)] break-all">{client.dns ?? '없음'}{client.inherit_dns ? ' · 서버 기본값' : ''}</dd>
+											<dt class="text-ink-2">{t('project.client.dnsLabel')}</dt>
+											<dd class="mt-0.5 font-mono text-[var(--color-ink-1)] break-all">{t('project.client.dnsValue', { dns: client.dns ?? t('project.state.none'), inherit: client.inherit_dns })}</dd>
 										</div>
 										<div>
-											<dt class="text-ink-2">MTU · Keepalive</dt>
-											<dd class="mt-0.5 text-[var(--color-ink-1)]">{client.mtu ?? '자동'} · {client.persistent_keepalive === 0 ? '비활성화' : `${client.persistent_keepalive}초`}{client.inherit_persistent_keepalive ? ' · 서버 기본값' : ''}</dd>
+											<dt class="text-ink-2">{t('project.client.mtuKeepaliveLabel')}</dt>
+											<dd class="mt-0.5 text-[var(--color-ink-1)]">{t('project.client.mtuKeepaliveValue', { mtu: client.mtu ?? t('project.state.auto'), keepalive: client.persistent_keepalive === 0 ? t('project.state.disabled') : t('project.duration.seconds', { seconds: client.persistent_keepalive }), inherit: client.inherit_persistent_keepalive })}</dd>
 										</div>
 										<div>
-											<dt class="text-ink-2">PSK</dt>
-											<dd class="mt-0.5 text-[var(--color-ink-1)]">{client.psk_enabled ? '사용 중' : '없음'}</dd>
+											<dt class="text-ink-2">{t('project.client.pskLabel')}</dt>
+											<dd class="mt-0.5 text-[var(--color-ink-1)]">{client.psk_enabled ? t('project.state.inUse') : t('project.state.none')}</dd>
 										</div>
 									</dl>
 								</div>
-								<div class="flex shrink-0 flex-wrap items-center gap-1" role="group" aria-label={`${client.name} 작업`}>
-									<Button onclick={() => downloadConfig(client)} disabled={downloadingClientId === client.id} variant="ghost" size="icon" class="!size-11 md:!size-8" ariaLabel={`${client.name} .conf 다운로드`} title={downloadingClientId === client.id ? '다운로드 중...' : `${client.name} .conf 다운로드`}>
+								<div class="flex shrink-0 flex-wrap items-center gap-1" role="group" aria-label={t('project.client.actions', { name: client.name })}>
+									<Button onclick={() => downloadConfig(client)} disabled={downloadingClientId === client.id} variant="ghost" size="icon" class="!size-11 md:!size-8" ariaLabel={t('project.client.downloadConfig', { name: client.name })} title={downloadingClientId === client.id ? t('project.client.downloading') : t('project.client.downloadConfig', { name: client.name })}>
 										<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M5 16v5h14v-5" /></svg>
 									</Button>
-									<Button onclick={() => openQr(client)} variant="ghost" size="icon" class="!size-11 md:!size-8" ariaLabel={`${client.name} QR`} title={`${client.name} QR`}>
+									<Button onclick={() => openQr(client)} variant="ghost" size="icon" class="!size-11 md:!size-8" ariaLabel={t('project.client.qr', { name: client.name })} title={t('project.client.qr', { name: client.name })}>
 										<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3h6v6H3zm12 0h6v6h-6zM3 15h6v6H3zm12 0h2v2h-2zm6 0v6h-6m-3-9h3m6 0h-3M12 3v3m0 12v3" /></svg>
 									</Button>
-									<Button onclick={() => openEditClient(client)} variant="ghost" size="icon" class="!size-11 md:!size-8" ariaLabel={`${client.name} 설정`} title={`${client.name} 설정`}>
+									<Button onclick={() => openEditClient(client)} variant="ghost" size="icon" class="!size-11 md:!size-8" ariaLabel={t('project.client.namedSettings', { name: client.name })} title={t('project.client.namedSettings', { name: client.name })}>
 										<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6m8 4v6" /></svg>
 									</Button>
 									<span class="mx-1 h-5 border-l border-line" aria-hidden="true"></span>
-									<Button onclick={() => toggleClient(client)} disabled={mutatingClientIds.includes(client.id)} variant="ghost" size="xs" class="min-h-11 md:min-h-8" ariaLabel={`${client.name} ${client.enabled ? '비활성화' : '활성화'}`} title={`${client.name} ${client.enabled ? '비활성화' : '활성화'}`} ariaPressed={client.enabled}>{client.enabled ? '비활성화' : '활성화'}</Button>
-									<Button onclick={() => deleteClient(client)} disabled={mutatingClientIds.includes(client.id)} variant="danger-outline" size="xs" class="min-h-11 md:min-h-8" ariaLabel={`${client.name} 삭제`} title={`${client.name} 삭제`}>삭제</Button>
+									<Button onclick={() => toggleClient(client)} disabled={mutatingClientIds.includes(client.id)} variant="ghost" size="xs" class="min-h-11 md:min-h-8" ariaLabel={client.enabled ? t('project.client.disable', { name: client.name }) : t('project.client.enable', { name: client.name })} title={client.enabled ? t('project.client.disable', { name: client.name }) : t('project.client.enable', { name: client.name })} ariaPressed={client.enabled}>{client.enabled ? t('project.actions.disable') : t('project.actions.enable')}</Button>
+									<Button onclick={() => deleteClient(client)} disabled={mutatingClientIds.includes(client.id)} variant="danger-outline" size="xs" class="min-h-11 md:min-h-8" ariaLabel={t('project.client.delete', { name: client.name })} title={t('project.client.delete', { name: client.name })}>{t('project.actions.delete')}</Button>
 								</div>
 							</div>
 							<ClientTraffic {client} history={trafficHistories[client.id]} now={trafficNow} pollIntervalSeconds={peerAr.intervalSeconds} />
@@ -1200,18 +1204,18 @@
 			{/if}
 
 			<p class="mt-4 break-keep text-xs text-[var(--color-ink-3)]">
-				<code>.conf</code> 파일을 다운로드하거나, <strong>QR</strong> 버튼으로 모바일 WireGuard 앱에서 바로 스캔해 등록할 수 있습니다.
+				<RichText segments={t.rich('project.client.configHelp')} />
 			</p>
 
 			<div class="flex items-center justify-between mb-3 mt-8">
-				<h3 class="text-sm font-medium text-[var(--color-ink-1)]">연결된 네트워크</h3>
+				<h3 class="text-sm font-medium text-[var(--color-ink-1)]">{t('project.network.attachedHeading')}</h3>
 				<Button
 					onclick={openAttachModal}
 					variant="secondary"
 					size="sm"
 					disabled={selectedServer.status !== 'ACTIVE'}
-					title={selectedServer.status !== 'ACTIVE' ? 'Waygate 서버가 ACTIVE 상태여야 네트워크를 연결할 수 있습니다' : undefined}
-				>+ 네트워크 연결</Button>
+					title={selectedServer.status !== 'ACTIVE' ? t('project.network.requiresActive') : undefined}
+				>{t('project.actions.attachNetwork')}</Button>
 			</div>
 
 			{#if attachmentsError}
@@ -1222,7 +1226,7 @@
 				<LoadingSkeleton variant="table" rows={2} />
 			{:else if attachments.length === 0}
 				<div class="text-center py-8 text-[var(--color-ink-3)] bg-[var(--color-surface-raised)] border border-[var(--color-line)] rounded-xl text-sm">
-					연결된 테넌트 네트워크가 없습니다. 연결하면 VPN 클라이언트가 그 네트워크 내부로 접근할 수 있습니다.
+					{t('project.empty.networks')}
 				</div>
 			{:else}
 				<div class="space-y-3">
@@ -1231,22 +1235,22 @@
 							<div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
 								<dl class="grid min-w-0 flex-1 grid-cols-1 gap-2 text-xs lg:grid-cols-3">
 									<div>
-										<dt class="text-[var(--color-ink-3)]">네트워크</dt>
+										<dt class="text-[var(--color-ink-3)]">{t('project.network.label')}</dt>
 										<dd class="mt-0.5 text-[var(--color-ink-1)] break-words">{attachmentNetworkName(att.network_id)}</dd>
 										<dd class="mt-0.5 font-mono text-[var(--color-ink-3)] break-all" title={att.network_id}>{att.network_id}</dd>
 									</div>
 									<div>
-										<dt class="text-[var(--color-ink-3)]">CIDR</dt>
+										<dt class="text-[var(--color-ink-3)]">{t('project.network.cidrLabel')}</dt>
 										<dd class="mt-0.5 font-mono text-[var(--color-ink-1)] break-all">{att.cidr ?? '-'}</dd>
 									</div>
 									<div>
-										<dt class="text-[var(--color-ink-3)]">NAT</dt>
+										<dt class="text-[var(--color-ink-3)]">{t('project.network.natLabel')}</dt>
 										<dd class="mt-0.5 text-[var(--color-ink-1)]">{att.nat_mode}</dd>
 									</div>
 								</dl>
 								<div class="flex shrink-0 items-center gap-3">
 									<StatusChip status={att.status} />
-									<button onclick={() => detachNetwork(att)} class="text-xs text-[var(--color-state-danger)] hover:opacity-80">해제</button>
+									<button onclick={() => detachNetwork(att)} class="text-xs text-[var(--color-state-danger)] hover:opacity-80">{t('project.actions.detach')}</button>
 								</div>
 							</div>
 						</div>
@@ -1255,21 +1259,20 @@
 			{/if}
 
 			<div class="flex items-center justify-between mb-3 mt-8">
-				<h3 class="text-sm font-medium text-[var(--color-ink-1)]">백업 / 마이그레이션</h3>
+				<h3 class="text-sm font-medium text-[var(--color-ink-1)]">{t('project.backup.heading')}</h3>
 			</div>
 			<div class="flex gap-2">
-				<Button onclick={() => { showExportModal = true; exportError = ''; }} variant="secondary" size="sm">설정 내보내기</Button>
+				<Button onclick={() => { showExportModal = true; exportError = ''; }} variant="secondary" size="sm">{t('project.backup.exportSettings')}</Button>
 				<Button
 					onclick={() => { showImportModal = true; importError = ''; }}
 					variant="secondary"
 					size="sm"
 					disabled={selectedServer.status !== 'ACTIVE'}
-					title={selectedServer.status !== 'ACTIVE' ? 'Waygate 서버가 ACTIVE 상태여야 가져올 수 있습니다' : undefined}
-				>가져오기</Button>
+					title={selectedServer.status !== 'ACTIVE' ? t('project.backup.requiresActive') : undefined}
+				>{t('project.actions.import')}</Button>
 			</div>
 			<p class="mt-2 break-keep text-xs text-[var(--color-ink-3)]">
-				클라이언트 키는 입력한 패스프레이즈로 암호화되어 번들에 저장됩니다. 다른 Waygate 서버로 이전할 때 같은 패스프레이즈로 가져오세요.
-				(서버 키는 이전되지 않으므로 가져온 뒤 클라이언트는 <code>.conf</code> 를 다시 내려받아야 합니다.)
+				<RichText segments={t.rich('project.backup.help')} />
 			</p>
 		</div>
 	</SlidePanel>
@@ -1277,8 +1280,8 @@
 
 <FormModal
 	bind:open={showDefaultsModal}
-	title="서버 기본값 설정"
-	submitLabel="저장"
+	title={t('project.server.defaults')}
+	submitLabel={t('project.actions.save')}
 	submitting={defaultsSaving}
 	onSubmit={saveServerDefaults}
 	onClose={() => { showDefaultsModal = false; defaultsError = ''; }}
@@ -1289,8 +1292,8 @@
 
 <FormModal
 	bind:open={showClientModal}
-	title="Waygate 클라이언트 발급"
-	submitLabel="발급"
+	title={t('project.client.issueTitle')}
+	submitLabel={t('project.actions.issue')}
 	submitting={clientCreating}
 	onSubmit={createClient}
 	onClose={() => { showClientModal = false; clientCreateError = ''; }}
@@ -1303,8 +1306,8 @@
 
 <FormModal
 	open={editingClient !== null}
-	title={editingClient ? `${editingClient.name} 설정` : '클라이언트 설정'}
-	submitLabel="저장"
+	title={editingClient ? t('project.client.namedSettings', { name: editingClient.name }) : t('project.client.settings')}
+	submitLabel={t('project.actions.save')}
 	submitting={clientSaving}
 	onSubmit={saveClientSettings}
 	onClose={() => { editingClient = null; clientSaveError = ''; }}
@@ -1324,23 +1327,23 @@
 	{/if}
 </FormModal>
 
-<Modal open={qrClient !== null} onClose={closeQr} ariaLabel="Waygate 클라이언트 QR 코드">
+<Modal open={qrClient !== null} onClose={closeQr} ariaLabel={t('project.qr.dialog')}>
 	<Card surface="modal" padding="lg" class="w-[min(100%-2rem,22rem)] mx-4">
 		<div class="flex items-center justify-between mb-4">
 			<h2 class="text-sm font-medium text-[var(--color-ink-0)]">
-				{qrClient?.name} — QR 코드
+				{t('project.qr.title', { name: qrClient?.name })}
 			</h2>
-			<button onclick={closeQr} class="text-[var(--color-ink-2)] hover:text-[var(--color-ink-0)] text-sm">✕</button>
+			<button onclick={closeQr} class="text-[var(--color-ink-2)] hover:text-[var(--color-ink-0)] text-sm">{t('project.actions.closeSymbol')}</button>
 		</div>
 		{#if qrLoading}
-			<div class="py-16 text-center text-sm text-[var(--color-ink-3)]">QR 생성 중...</div>
+			<div class="py-16 text-center text-sm text-[var(--color-ink-3)]">{t('project.qr.loading')}</div>
 		{:else if qrError}
 			<Alert tone="danger">{qrError}</Alert>
 		{:else if qrDataUrl}
 			<div class="flex flex-col items-center gap-3">
-				<img src={qrDataUrl} alt="WireGuard 설정 QR 코드" width="288" height="288" class="rounded-lg bg-surface-base p-2" />
+				<img src={qrDataUrl} alt={t('project.qr.alt')} width="288" height="288" class="rounded-lg bg-surface-base p-2" />
 				<p class="break-keep text-center text-xs text-[var(--color-ink-3)]">
-					모바일 WireGuard 앱에서 "QR 코드로 추가"를 선택해 스캔하세요.
+					{t('project.qr.help')}
 				</p>
 			</div>
 		{/if}
@@ -1349,47 +1352,46 @@
 
 <FormModal
 	bind:open={showAttachModal}
-	title="네트워크 연결"
+	title={t('project.network.attachTitle')}
 	submitting={attaching}
 	onClose={closeAttachModal}
 >
 	<div class="space-y-4">
-		<Field label="테넌트 네트워크" required>
+		<Field label={t('project.network.tenant')} required>
 			<SearchSelect
 				id="waygate-attach-network"
 				value={attachNetworkId}
 				options={networkOptions}
-				placeholder="네트워크 선택"
-				searchPlaceholder="이름 또는 ID로 네트워크 검색"
-				emptyText="연결 가능한 네트워크가 없습니다"
+				placeholder={t('project.network.select')}
+				searchPlaceholder={t('project.network.search')}
+				emptyText={t('project.network.noneAvailable')}
 				loading={networksLoading}
-				ariaLabel="연결할 네트워크 선택"
+				ariaLabel={t('project.network.selectAttach')}
 				onchange={selectAttachNetwork}
 			/>
 		</Field>
 		{#if !networksLoading && availableNetworks.length === 0 && !attachError && !networksError}
-			<Alert tone="warning">프로젝트에서 사용할 수 있는 내부 네트워크가 없습니다.</Alert>
+			<Alert tone="warning">{t('project.network.noInternal')}</Alert>
 		{/if}
-		<Field label="서브넷" required>
+		<Field label={t('project.subnet.label')} required>
 			<SearchSelect
 				id="waygate-attach-subnet"
 				value={attachSubnetId}
 				options={subnetOptions}
-				placeholder={attachNetworkId ? '서브넷 선택' : '먼저 네트워크를 선택하세요'}
-				searchPlaceholder="이름 또는 CIDR로 서브넷 검색"
-				emptyText="연결 가능한 서브넷이 없습니다"
+				placeholder={attachNetworkId ? t('project.subnet.select') : t('project.subnet.selectNetworkFirst')}
+				searchPlaceholder={t('project.subnet.search')}
+				emptyText={t('project.subnet.noneAvailable')}
 				loading={subnetsLoading}
 				disabled={!attachNetworkId || availableSubnets.length === 0}
-				ariaLabel="연결할 서브넷 선택"
+				ariaLabel={t('project.subnet.selectAttach')}
 				onchange={(value) => (attachSubnetId = value)}
 			/>
 		</Field>
 		{#if attachNetworkId && !subnetsLoading && availableSubnets.length === 0 && !attachError}
-			<Alert tone="warning">선택한 네트워크에 연결 가능한 서브넷이 없습니다.</Alert>
+			<Alert tone="warning">{t('project.subnet.noAttachable')}</Alert>
 		{/if}
 		<p class="break-keep text-xs text-[var(--color-ink-3)]">
-			연결하면 VPN 클라이언트의 <code>.conf</code> AllowedIPs 에 선택한 서브넷 CIDR 이 추가됩니다.
-			기존에 발급된 클라이언트는 <code>.conf</code> 를 다시 내려받아야 반영됩니다.
+			<RichText segments={t.rich('project.network.attachHelp')} />
 		</p>
 		{#if networksError}<Alert tone="danger">{networksError}</Alert>{/if}
 		{#if attachError}
@@ -1397,26 +1399,26 @@
 		{/if}
 	</div>
 	{#snippet actions()}
-		<Button onclick={closeAttachModal} variant="secondary" disabled={attaching}>취소</Button>
+		<Button onclick={closeAttachModal} variant="secondary" disabled={attaching}>{t('project.actions.cancel')}</Button>
 		<Button
 			onclick={submitAttach}
 			variant="primary"
 			disabled={attaching || networksLoading || subnetsLoading || !attachNetworkId || !attachSubnetId}
-		>{attaching ? '처리 중...' : '연결'}</Button>
+		>{attaching ? t('project.actions.processing') : t('project.actions.attach')}</Button>
 	{/snippet}
 </FormModal>
 
 <FormModal
 	bind:open={showExportModal}
-	title="설정 내보내기"
-	submitLabel="내보내기"
+	title={t('project.backup.exportSettings')}
+	submitLabel={t('project.actions.export')}
 	submitting={exporting}
 	onSubmit={submitExport}
 	onClose={() => { showExportModal = false; exportError = ''; }}
 >
 	<div class="space-y-4">
-		<Field label="패스프레이즈" help="클라이언트 키를 암호화합니다 (8자 이상). 가져올 때 동일하게 입력해야 합니다." required>
-			<TextInput bind:value={exportPassphrase} type="password" placeholder="8자 이상" />
+		<Field label={t('project.backup.passphrase')} help={t('project.backup.exportHelp')} required>
+			<TextInput bind:value={exportPassphrase} type="password" placeholder={t('project.backup.passphrasePlaceholder')} />
 		</Field>
 		{#if exportError}
 			<p class="text-sm text-[var(--color-state-danger)]">{exportError}</p>
@@ -1426,14 +1428,14 @@
 
 <FormModal
 	bind:open={showImportModal}
-	title="설정 가져오기"
-	submitLabel="가져오기"
+	title={t('project.backup.importSettings')}
+	submitLabel={t('project.actions.import')}
 	submitting={importing}
 	onSubmit={submitImport}
 	onClose={() => { showImportModal = false; importError = ''; importFile = null; }}
 >
 	<div class="space-y-4">
-		<Field label="번들 파일 (.json)" required>
+		<Field label={t('project.backup.bundleFile')} required>
 			<input
 				type="file"
 				accept="application/json,.json"
@@ -1441,7 +1443,7 @@
 				onchange={(e) => { importFile = (e.currentTarget as HTMLInputElement).files?.[0] ?? null; }}
 			/>
 		</Field>
-		<Field label="패스프레이즈" help="내보낼 때 사용한 패스프레이즈" required>
+		<Field label={t('project.backup.passphrase')} help={t('project.backup.importHelp')} required>
 			<TextInput bind:value={importPassphrase} type="password" />
 		</Field>
 		{#if importError}

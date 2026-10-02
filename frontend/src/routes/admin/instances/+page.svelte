@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-compute';
 	import { onDestroy, onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
@@ -188,13 +189,12 @@
 		const requestToken = $auth.token ?? undefined;
 		const requestProjectId = $auth.projectId ?? undefined;
 		if (ids.length === 0) return;
-		const labels: Record<'start' | 'stop' | 'delete', string> = { start: '시작', stop: '종료', delete: '삭제' };
 		if (
 			(action === 'stop' || action === 'delete')
 			&& !await confirmDialog(
 				action === 'delete'
-					? `선택한 인스턴스 ${ids.length}개를 삭제하시겠습니까?\nManila share와 볼륨도 함께 삭제됩니다.`
-					: `선택한 인스턴스 ${ids.length}개를 종료하시겠습니까?`,
+					? t('instances.bulk.deleteConfirm', { count: ids.length })
+					: t('instances.bulk.stopConfirm', { count: ids.length }),
 			)
 		) return;
 
@@ -208,15 +208,15 @@
 			);
 			const successfulIds = res.results.filter((result) => result.ok).map((result) => result.id);
 			const failed = ids.length - successfulIds.length;
-			if (successfulIds.length > 0) toast.success(`${successfulIds.length}개 ${labels[action]} 요청 완료`);
-			if (failed > 0) toast.error(`${failed}개 처리 실패`);
+			if (successfulIds.length > 0) toast.success(t('instances.bulk.success', { count: successfulIds.length, action }));
+			if (failed > 0) toast.error(t('instances.bulk.failedCount', { count: failed }));
 			if (($auth.projectId ?? undefined) === requestProjectId) {
 				selection.remove(successfulIds);
 				ar.setBoost(4);
 				void load(markerStack[markerStack.length - 1]);
 			}
 		} catch {
-			toast.error(`일괄 ${labels[action]} 요청 실패`);
+			toast.error(t('instances.bulk.failed', { action }));
 		} finally {
 			bulkActioning = false;
 		}
@@ -237,14 +237,14 @@
 
 <div class="bulk-selection-page p-4 md:p-8 pb-28 md:pb-32 max-w-7xl mx-auto">
 	<div data-tour="admin-compute-header">
-	<PageHeader breadcrumb="COMPUTE / INSTANCES" title="전체 인스턴스">
+	<PageHeader breadcrumb={t('instances.page.breadcrumb')} title={t('instances.page.title')}>
 		{#snippet actions()}
 			<TutorialStartButton tour="admin-compute" compactOnMobile />
 			<Button onclick={() => openWizard()} variant="accent" size="sm">
 				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
 				</svg>
-				VM 생성
+				{t('instances.page.createVm')}
 			</Button>
 			<AutoRefreshControl
 				bind:active={ar.active}
@@ -254,7 +254,7 @@
 				onManualRefresh={() => { markerStack = []; nextMarker = null; hostFilter = ''; projectFilter = ''; projectSearchText = ''; statusFilter = ''; nameSearch = ''; void load(undefined, { clearSelection: true }); void loadHosts(); }}
 			/>
 			<div class="flex items-center gap-1 text-xs text-ink-2 max-md:hidden">
-				표시:
+				{t('instances.page.display')}
 				<ToggleGroup
 					value={String(pageSize)}
 					options={[10, 20, 30].map((n) => ({ value: String(n), label: String(n) }))}
@@ -268,11 +268,11 @@
 
 	{#if health}
 		<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 mb-4">
-			<StatTile label="전체 VM" value={health.total} unit="instances" accent="blue" />
-			<StatTile label="ACTIVE" value={health.active} unit="/ {health.total}" accent="emerald" />
-			<StatTile label="ERROR" value={health.error} unit="instances" accent="rose" />
-			<StatTile label="알림 있음" value={health.with_alerts} unit="instances" accent="amber" class="max-md:hidden" />
-			<StatTile label="GPU VM" value={health.gpu_count} unit="가속" accent="violet" class="max-md:hidden" />
+			<StatTile label={t('instances.page.totalVm')} value={health.total} unit={t('instances.page.instanceUnit')} accent="blue" />
+			<StatTile label={t('instances.page.active')} value={health.active} unit="/ {health.total}" accent="emerald" />
+			<StatTile label={t('instances.page.error')} value={health.error} unit={t('instances.page.instanceUnit')} accent="rose" />
+			<StatTile label={t('instances.page.withAlerts')} value={health.with_alerts} unit={t('instances.page.instanceUnit')} accent="amber" class="max-md:hidden" />
+			<StatTile label={t('instances.page.gpuVm')} value={health.gpu_count} unit={t('instances.page.accelerated')} accent="violet" class="max-md:hidden" />
 		</div>
 	{/if}
 
@@ -291,12 +291,12 @@
 	<div class="mb-6" data-tour="admin-compute-timeseries">
 		{#if tsLoading}
 			<div class="bg-surface-base border border-line rounded-xl p-5 h-48 flex items-center justify-center">
-				<div class="text-ink-2 text-sm">차트 로딩 중...</div>
+				<div class="text-ink-2 text-sm">{t('instances.page.chartLoading')}</div>
 			</div>
 		{:else}
 			<TimeSeriesChart
 				data={tsData}
-				title="인스턴스 수 추이"
+				title={t('instances.page.chartTitle')}
 				mainKey="total"
 				extraKeys={['active', 'shutoff', 'error', 'shelved']}
 				currentRange={tsRange}
@@ -333,11 +333,11 @@
 
 	<BulkSelectionOverlay
 		count={selection.count}
-		ariaLabel="관리자 선택 인스턴스 일괄 작업"
+		ariaLabel={t('instances.bulk.label')}
 		actions={[
-			{ key: 'start', label: '시작', tone: 'success', onAction: () => bulkAction('start') },
-			{ key: 'stop', label: '종료', tone: 'warning', onAction: () => bulkAction('stop') },
-			{ key: 'delete', label: '삭제', tone: 'danger', onAction: () => bulkAction('delete') },
+			{ key: 'start', label: t('instances.bulk.start'), tone: 'success', onAction: () => bulkAction('start') },
+			{ key: 'stop', label: t('instances.bulk.stop'), tone: 'warning', onAction: () => bulkAction('stop') },
+			{ key: 'delete', label: t('instances.bulk.delete'), tone: 'danger', onAction: () => bulkAction('delete') },
 		]}
 		busy={bulkActioning}
 		onClear={() => selection.clear()}
@@ -345,7 +345,7 @@
 </div>
 
 {#if selectedInstanceId}
-	<SlidePanel onClose={closeDetail} ariaLabel="관리자 인스턴스 상세" dataTour="admin-compute-detail">
+	<SlidePanel onClose={closeDetail} ariaLabel={t('instances.page.detailLabel')} dataTour="admin-compute-detail">
 		<InstanceDetailPanel instanceId={selectedInstanceId} adminProjectId={selectedProjectId} onClose={closeDetail} showHost={true} />
 	</SlidePanel>
 {/if}

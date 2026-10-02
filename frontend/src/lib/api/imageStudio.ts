@@ -1,3 +1,4 @@
+import { t } from '$lib/i18n/ns/chat-studio';
 import { api, ApiError, fetchWithAuth } from './client';
 import { downloadChatAsset, uploadChatAttachment } from './chatAttachments';
 import type { AvailableModel } from './chatTree';
@@ -43,11 +44,11 @@ export interface ImageApiScope {
 }
 
 export function imageModelReadiness(model: ImageModel | undefined): string | null {
-	if (!model) return '이미지 모델을 선택하세요.';
-	if (!model.provider_api_key_configured) return '제공자 API 키가 구성되지 않았습니다.';
+	if (!model) return t('imageStudioApi.selectModel');
+	if (!model.provider_api_key_configured) return t('imageStudioApi.providerKeyMissing');
 	const gate = model.capabilities?.feature_gates?.image_output;
-	if (!gate || !gate.available || gate.mode === 'none' || gate.reason_code === 'route_unavailable') return `이미지 생성 경로를 사용할 수 없습니다${gate?.reason_code ? ` (${gate.reason_code})` : ''}.`;
-	if (!gate.pricing_available) return '이미지 생성 가격이 설정되지 않았습니다.';
+	if (!gate || !gate.available || gate.mode === 'none' || gate.reason_code === 'route_unavailable') return gate?.reason_code ? t('imageStudioApi.routeUnavailableReason', { reason: gate.reason_code }) : t('imageStudioApi.routeUnavailable');
+	if (!gate.pricing_available) return t('imageStudioApi.pricingMissing');
 	return null;
 }
 
@@ -65,7 +66,7 @@ export const imageStudioApi = {
 		if (!response.ok) {
 			const body = await response.json().catch(() => null);
 			const detail = body?.detail;
-			throw new ApiError(response.status, typeof detail === 'string' ? detail : `이미지 요청 실패 (${response.status})`);
+			throw new ApiError(response.status, typeof detail === 'string' ? detail : t('imageStudioApi.requestFailed', { status: response.status }));
 		}
 		return response.json();
 	},

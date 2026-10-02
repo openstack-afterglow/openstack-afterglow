@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/file-storage';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import { useFileStorageDetailController } from '$lib/stores/fileStorageDetailController.svelte';
 	import { formatIsoDateTime } from '$lib/utils/format';
@@ -18,7 +19,7 @@
 </script>
 
 <div class="bg-surface-base border border-line rounded-lg p-5 mb-4">
-	<h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-3">기본 정보</h3>
+	<h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-3">{t('info.title')}</h3>
 	<dl class="grid grid-cols-1 @3xl/panel:grid-cols-2 gap-x-6 gap-y-2.5">
 
 		<!-- ID -->
@@ -29,26 +30,26 @@
 
 		<!-- 상태 + access_rules_status -->
 		<div>
-			<dt class="text-xs text-ink-2 mb-0.5">상태</dt>
+			<dt class="text-xs text-ink-2 mb-0.5">{t('info.status')}</dt>
 			<dd class="flex items-center gap-1.5 flex-wrap">
 				<StatusChip status={fs.status} />
 				{#if fs.access_rules_status}
 					<StatusChip status={fs.access_rules_status} class="text-xs" />
-					<span class="text-xs text-ink-2">접근 규칙</span>
+					<span class="text-xs text-ink-2">{t('info.accessRules')}</span>
 				{/if}
 			</dd>
 		</div>
 
 		<!-- 크기 -->
 		<div>
-			<dt class="text-xs text-ink-2 mb-0.5">크기</dt>
+			<dt class="text-xs text-ink-2 mb-0.5">{t('info.size')}</dt>
 			<dd class="text-sm text-ink-2">{fs.size} GB</dd>
 		</div>
 
 		<!-- progress (creating 중이거나 100% 미만인 경우 진행바 포함) -->
 		{#if fs.progress}
 			<div class="col-span-full">
-				<dt class="text-xs text-ink-2 mb-0.5">진행도</dt>
+				<dt class="text-xs text-ink-2 mb-0.5">{t('info.progress')}</dt>
 				<dd class="flex items-center gap-2">
 					<span class="text-sm text-ink-2">{fs.progress}</span>
 					{#if progressPct() !== null && progressPct()! < 100}
@@ -65,7 +66,7 @@
 
 		<!-- 프로토콜 -->
 		<div>
-			<dt class="text-xs text-ink-2 mb-0.5">프로토콜</dt>
+			<dt class="text-xs text-ink-2 mb-0.5">{t('info.protocol')}</dt>
 			<dd>
 				<span class="text-xs px-1.5 py-0.5 rounded bg-purple-900/40 text-purple-300">{fs.share_proto}</span>
 			</dd>
@@ -74,21 +75,21 @@
 		<!-- 생성 일시 -->
 		{#if fs.created_at}
 			<div>
-				<dt class="text-xs text-ink-2 mb-0.5">생성 일시</dt>
+				<dt class="text-xs text-ink-2 mb-0.5">{t('info.createdAt')}</dt>
 				<dd class="text-sm text-ink-2">{formatIsoDateTime(fs.created_at)}</dd>
 			</div>
 		{/if}
 
 		<!-- 생성자 -->
 		<div>
-			<dt class="text-xs text-ink-2 mb-0.5">생성자</dt>
+			<dt class="text-xs text-ink-2 mb-0.5">{t('info.creator')}</dt>
 			<dd class="text-sm text-ink-2 font-mono truncate" title={fs.user_id ?? undefined}>{creatorLabel}</dd>
 		</div>
 
 		<!-- Share Type -->
 		{#if fs.share_type_name}
 			<div>
-				<dt class="text-xs text-ink-2 mb-0.5">Share 타입</dt>
+				<dt class="text-xs text-ink-2 mb-0.5">{t('info.shareType')}</dt>
 				<dd class="text-sm text-ink-2 font-mono">{fs.share_type_name}</dd>
 			</div>
 		{/if}
@@ -96,7 +97,7 @@
 		<!-- Share Network -->
 		{#if fs.share_network_id}
 			<div>
-				<dt class="text-xs text-ink-2 mb-0.5">Share 네트워크</dt>
+				<dt class="text-xs text-ink-2 mb-0.5">{t('info.shareNetwork')}</dt>
 				<dd class="text-sm text-ink-2 font-mono truncate">{fs.share_network_id}</dd>
 			</div>
 		{/if}
@@ -104,16 +105,16 @@
 		<!-- 라이브러리 정보 -->
 		{#if fs.library_name}
 			<div>
-				<dt class="text-xs text-ink-2 mb-0.5">라이브러리</dt>
+				<dt class="text-xs text-ink-2 mb-0.5">{t('info.library')}</dt>
 				<dd class="text-sm text-ink-2">{fs.library_name}</dd>
 			</div>
 			<div>
-				<dt class="text-xs text-ink-2 mb-0.5">버전</dt>
+				<dt class="text-xs text-ink-2 mb-0.5">{t('info.version')}</dt>
 				<dd class="text-sm text-ink-2">{fs.library_version ?? '-'}</dd>
 			</div>
 			{#if fs.built_at}
 				<div class="col-span-full">
-					<dt class="text-xs text-ink-2 mb-0.5">빌드 일시</dt>
+					<dt class="text-xs text-ink-2 mb-0.5">{t('info.builtAt')}</dt>
 					<dd class="text-sm text-ink-2">{fs.built_at}</dd>
 				</div>
 			{/if}

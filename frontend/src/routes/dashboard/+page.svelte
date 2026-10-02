@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/dashboard-home';
 	import { onDestroy, untrack } from 'svelte';
 	import { auth, authReady } from '$lib/stores/auth';
 	import { siteConfig } from '$lib/config/site';
@@ -111,7 +112,7 @@
 			result.push({
 				type: 'instance_error',
 				severity: 'danger',
-				message: `오류 상태 인스턴스 ${errors}개`,
+				message: t('overview.errorInstances', { count: errors }),
 				count: errors,
 			});
 		}
@@ -225,11 +226,11 @@
 
 	function errorFor(domain: Domain): string {
 		return {
-			summary: '인스턴스 현황을 불러오지 못했습니다',
-			quotas: '쿼터를 불러오지 못했습니다',
-			k3s: 'Drover 클러스터 현황을 불러오지 못했습니다',
-			trend: '메트릭을 불러오지 못했습니다',
-			announcements: '공지를 불러오지 못했습니다',
+			summary: t('overview.summaryFailed'),
+			quotas: t('overview.quotasFailed'),
+			k3s: t('overview.droverFailed'),
+			trend: t('overview.metricsFailed'),
+			announcements: t('overview.announcementsFailed'),
 		}[domain];
 	}
 
@@ -429,14 +430,14 @@
 	/>
 
 	<div class="flex items-center justify-between mb-1">
-		<p class="text-xs tracking-tight text-[var(--color-ink-2)]">사용 추세</p>
+		<p class="text-xs tracking-tight text-[var(--color-ink-2)]">{t('overview.trend')}</p>
 		<RangeToggle value={range} onchange={handleRangeChange} />
 	</div>
 	<div class="grid grid-cols-1 md:grid-cols-3 gap-3.5">
 		{#each [
-			{ label: `vCPU 사용률 (${range})`, color: 'var(--color-accent)', key: 'vcpu' as const, unit: '%' },
-			{ label: `메모리 (${range})`, color: 'var(--color-accent-2)', key: 'memory' as const, unit: '%' },
-			{ label: `디스크 사용률 (${range})`, color: 'var(--color-warm)', key: 'storage' as const, unit: '%' },
+			{ label: t('overview.vcpu', { range }), color: 'var(--color-accent)', key: 'vcpu' as const, unit: '%' },
+			{ label: t('overview.memory', { range }), color: 'var(--color-accent-2)', key: 'memory' as const, unit: '%' },
+			{ label: t('overview.disk', { range }), color: 'var(--color-warm)', key: 'storage' as const, unit: '%' },
 		] as card}
 			{@const currentTrend = trendState.data?.range === range ? trendState.data : null}
 			{@const series = currentTrend?.[card.key]}
@@ -459,17 +460,17 @@
 					{:else if hasData}
 						<Spark data={series!.data} color={card.color} height={72} class="w-full" />
 					{:else if trendState.error}
-						<p class="text-xs italic text-[var(--color-state-danger)]">메트릭을 불러오지 못했습니다</p>
+						<p class="text-xs italic text-[var(--color-state-danger)]">{t('overview.metricsFailed')}</p>
 					{:else if !currentTrend || !currentTrend.prometheus_available}
-						<p class="text-xs italic text-[var(--color-ink-2)]">메트릭 수집 미설정</p>
+						<p class="text-xs italic text-[var(--color-ink-2)]">{t('overview.metricsNotConfigured')}</p>
 					{:else}
-						<p class="text-xs text-[var(--color-ink-2)]">해당 메트릭 수집 대기 중</p>
+						<p class="text-xs text-[var(--color-ink-2)]">{t('overview.metricsWaiting')}</p>
 					{/if}
 				</div>
 				{#if hasData}
 					<p class="text-xs tabular-nums text-[var(--color-ink-2)]">
-						min {min!.toFixed(1)}{card.unit} · max {max!.toFixed(1)}{card.unit}
-						{#if trendState.error} · 갱신 실패{/if}
+						{t('overview.minMax', { min: min!.toFixed(1), max: max!.toFixed(1), unit: card.unit })}
+						{#if trendState.error} · {t('overview.refreshFailed')}{/if}
 					</p>
 				{/if}
 			</div>
@@ -487,9 +488,9 @@
 
 		<div class="flex flex-col gap-3.5">
 			<div class="bg-surface-base border border-line rounded-lg p-5">
-				<SectionHeader title="시스템 알림">
+				<SectionHeader title={t('overview.systemAlerts')}>
 					{#snippet right()}
-						<a href="/dashboard/notifications" class="text-[13px] text-[var(--color-ink-3)] hover:text-[var(--color-ink-1)] transition-colors">모두 보기 →</a>
+						<a href="/dashboard/notifications" class="text-[13px] text-[var(--color-ink-3)] hover:text-[var(--color-ink-1)] transition-colors">{t('overview.viewAll')}</a>
 					{/snippet}
 				</SectionHeader>
 				{#if alertsPending && alerts.length === 0 && announcements.length === 0}
@@ -498,7 +499,7 @@
 						<li class="h-4 bg-surface-sunken/60 rounded w-3/4"></li>
 					</ul>
 				{:else if alertsCompleteEmpty}
-					<p class="text-sm text-[var(--color-ink-3)] mt-4">알림 없음</p>
+					<p class="text-sm text-[var(--color-ink-3)] mt-4">{t('overview.noAlerts')}</p>
 				{:else}
 					<ul class="system-alert-list mt-3 flex flex-col gap-2">
 						{#each alerts as alert}
@@ -525,13 +526,13 @@
 								>
 									{announcement.title}
 									{#if !announcement.is_read}
-										<span class="ml-1 text-xs uppercase tracking-wide text-[var(--color-accent)]">new</span>
+										<span class="ml-1 text-xs uppercase tracking-wide text-[var(--color-accent)]">{t('overview.new')}</span>
 									{/if}
 								</a>
 							</li>
 						{/each}
 						{#if alertsFailed}
-							<li><Alert tone="danger">일부 알림을 불러오지 못했습니다</Alert></li>
+							<li><Alert tone="danger">{t('overview.alertsPartial')}</Alert></li>
 						{/if}
 					</ul>
 				{/if}

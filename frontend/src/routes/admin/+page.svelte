@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-ops';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
@@ -51,7 +53,7 @@
 
 	function selectProjectUsage(project: ProjectUsage) {
 		if (mockupAdminActive) {
-			toast.info('mockup mode에서는 관리자 개요만 지원합니다.');
+			toast.info(t('overview.page.mockupOnly'));
 			return;
 		}
 		selectedProject = project;
@@ -74,7 +76,7 @@
 			.then(r => { overview = r; })
 			.catch((e) => {
 				if (e instanceof ApiError && e.status === 403) { goto('/dashboard'); return; }
-				error = e instanceof ApiError ? `조회 실패: ${e.message}` : '서버 오류';
+				error = e instanceof ApiError ? t('overview.page.queryFailed', { message: e.message }) : t('overview.page.serverError');
 			})
 			.finally(() => { overviewLoading = false; });
 
@@ -97,9 +99,9 @@
 {#key $auth.projectId}
 <PageShell class="flex flex-col gap-5">
 	<PageHeader
-		breadcrumb="ADMIN / OVERVIEW"
-		title="관리자 개요"
-		subtitle="클러스터 전반 · 자원 현황 · 실시간 알림"
+		breadcrumb={t('overview.page.breadcrumb')}
+		title={t('overview.page.title')}
+		subtitle={t('overview.page.subtitle')}
 	/>
 
 	{#if notifications.length > 0}
@@ -108,13 +110,13 @@
 		<Alert tone={critCount > 0 ? 'danger' : 'warning'} class="notification-alert">
 			<span class="text-sm" style="color: var(--color-ink-1);">
 				{#if critCount > 0}
-					<span class="font-semibold" style="color: var(--color-state-danger);">{critCount} critical</span> ·
+					<span class="font-semibold" style="color: var(--color-state-danger);">{t('overview.notifications.critical', { count: critCount.toLocaleString(intlLocale(), { useGrouping: false }) })}</span> ·
 				{/if}
 				{#if warnCount > 0}
-					<span class="font-semibold" style="color: var(--color-state-warning);">{warnCount} warning</span> ·
+					<span class="font-semibold" style="color: var(--color-state-warning);">{t('overview.notifications.warning', { count: warnCount.toLocaleString(intlLocale(), { useGrouping: false }) })}</span> ·
 				{/if}
-				{notifications.length - critCount - warnCount} info —
-				<a href="/admin/monitoring" class="underline" style="color: var(--admin-tone);">모니터링 상세 →</a>
+				{t('overview.notifications.info', { count: (notifications.length - critCount - warnCount).toLocaleString(intlLocale(), { useGrouping: false }) })}
+				<a href="/admin/monitoring" class="underline" style="color: var(--admin-tone);">{t('overview.notifications.monitoringDetails')}</a>
 			</span>
 		</Alert>
 	{/if}
@@ -138,7 +140,7 @@
 		{#if identitySummary}
 			<div class="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-4">
 				<a href="/admin/users" class="block">
-					<StatTile label="사용자" value={identitySummary.user_count} unit="명" accent="amber" flat class="h-full">
+					<StatTile label={t('overview.identity.users')} value={identitySummary.user_count} unit={t('overview.identity.peopleUnit', { count: identitySummary.user_count })} accent="amber" flat class="h-full">
 						{#snippet icon()}
 							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
 								<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/>
@@ -148,14 +150,14 @@
 							{#snippet footer()}
 								<span class="flex items-center gap-1 text-xs text-state-success-text">
 									<span class="w-1.5 h-1.5 rounded-full bg-state-success shrink-0 animate-pulse"></span>
-									최근 추가 {identitySummary?.recent_users?.length ?? 0}명
+									{t('overview.identity.recentUsers', { count: identitySummary?.recent_users?.length ?? 0 })}
 								</span>
 							{/snippet}
 						{/if}
 					</StatTile>
 				</a>
 				<a href="/admin/projects" class="block">
-					<StatTile label="프로젝트" value={identitySummary.project_count} unit="활성" accent="blue" flat class="h-full">
+					<StatTile label={t('overview.identity.projects')} value={identitySummary.project_count} unit={t('overview.identity.active')} accent="blue" flat class="h-full">
 						{#snippet icon()}
 							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
 								<path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
@@ -165,14 +167,14 @@
 							{#snippet footer()}
 								<span class="flex items-center gap-1 text-xs text-state-success-text">
 									<span class="w-1.5 h-1.5 rounded-full bg-state-success shrink-0 animate-pulse"></span>
-									최근 추가 {identitySummary?.recent_projects?.length ?? 0}개
+									{t('overview.identity.recentProjects', { count: identitySummary?.recent_projects?.length ?? 0 })}
 								</span>
 							{/snippet}
 						{/if}
 					</StatTile>
 				</a>
 				<a href="/admin/roles" class="block">
-					<StatTile label="역할" value={identitySummary.role_count} unit="정의됨" accent="violet" flat class="h-full">
+					<StatTile label={t('overview.identity.roles')} value={identitySummary.role_count} unit={t('overview.identity.defined')} accent="violet" flat class="h-full">
 						{#snippet icon()}
 							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
 								<path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
@@ -181,7 +183,7 @@
 					</StatTile>
 				</a>
 				<a href="/admin/groups" class="block">
-					<StatTile label="그룹" value={identitySummary.group_count} unit="그룹" accent="cyan" flat class="h-full">
+					<StatTile label={t('overview.identity.groups')} value={identitySummary.group_count} unit={t('overview.identity.groupsUnit', { count: identitySummary.group_count })} accent="cyan" flat class="h-full">
 						{#snippet icon()}
 							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
 								<path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
@@ -200,7 +202,7 @@
 						<path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
 						<line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
 					</svg>
-					<span>일부 정보 미완 — {identitySummary.partial_reasons.map(r => r.includes('insufficient_privileges') ? r.split(':')[0] + ' 권한 부족 (system-scope 필요)' : r).join(', ')}</span>
+					<span>{t('overview.identity.partial', { reasons: identitySummary.partial_reasons.map(r => r.includes('insufficient_privileges') ? t('overview.identity.insufficientPrivileges', { target: r.split(':')[0] }) : r).join(', ') })}</span>
 				</div>
 			{/if}
 		{/if}
@@ -218,19 +220,19 @@
 
 		<!-- 퀵 링크 -->
 		<div class="flex gap-3 flex-wrap text-sm">
-			<a href="/admin/hypervisors" class="text-ink-2 hover:text-ink-0 transition-colors">하이퍼바이저 →</a>
-			<a href="/admin/instances" class="text-ink-2 hover:text-ink-0 transition-colors">전체 인스턴스 →</a>
-			<a href="/admin/containers" class="text-ink-2 hover:text-ink-0 transition-colors">전체 컨테이너 →</a>
-			<a href="/admin/file-storage" class="text-ink-2 hover:text-ink-0 transition-colors">파일 스토리지 →</a>
-			<a href="/admin/database-instances" class="text-ink-2 hover:text-ink-0 transition-colors">Database →</a>
-			<a href="/admin/object-storage" class="text-ink-2 hover:text-ink-0 transition-colors">Object Storage →</a>
-			<a href="/admin/topology" class="text-ink-2 hover:text-ink-0 transition-colors">전체 토폴로지 →</a>
-			<a href="/admin/networks" class="text-ink-2 hover:text-ink-0 transition-colors">네트워크 →</a>
+			<a href="/admin/hypervisors" class="text-ink-2 hover:text-ink-0 transition-colors">{t('overview.links.hypervisors')}</a>
+			<a href="/admin/instances" class="text-ink-2 hover:text-ink-0 transition-colors">{t('overview.links.instances')}</a>
+			<a href="/admin/containers" class="text-ink-2 hover:text-ink-0 transition-colors">{t('overview.links.containers')}</a>
+			<a href="/admin/file-storage" class="text-ink-2 hover:text-ink-0 transition-colors">{t('overview.links.fileStorage')}</a>
+			<a href="/admin/database-instances" class="text-ink-2 hover:text-ink-0 transition-colors">{t('overview.links.database')}</a>
+			<a href="/admin/object-storage" class="text-ink-2 hover:text-ink-0 transition-colors">{t('overview.links.objectStorage')}</a>
+			<a href="/admin/topology" class="text-ink-2 hover:text-ink-0 transition-colors">{t('overview.links.topology')}</a>
+			<a href="/admin/networks" class="text-ink-2 hover:text-ink-0 transition-colors">{t('overview.links.networks')}</a>
 		</div>
 
 		<VersionInfoPanel {versionInfo} bind:open={versionOpen} />
 	{:else}
-		<div class="text-ink-2 text-sm">개요를 불러올 수 없습니다</div>
+		<div class="text-ink-2 text-sm">{t('overview.page.unavailable')}</div>
 	{/if}
 </PageShell>
 

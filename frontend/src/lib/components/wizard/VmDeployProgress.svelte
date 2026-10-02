@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/vm-wizard';
 	import { useVmCreate } from '$lib/stores/vmCreateStore.svelte';
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
 
@@ -6,12 +7,12 @@
 </script>
 
 <div class="mb-6">
-	<h1 class="text-xl font-bold text-ink-0">VM 생성</h1>
-	<p class="text-sm text-ink-2 mt-1">배포 진행 중</p>
+	<h1 class="text-xl font-bold text-ink-0">{t('progress.title')}</h1>
+	<p class="text-sm text-ink-2 mt-1">{t('progress.subtitle')}</p>
 </div>
 
 <div class="bg-surface-base rounded-xl border border-line-2 p-6 mb-6">
-	<h2 class="text-lg font-semibold text-ink-0 mb-4">VM 배포 진행 중</h2>
+	<h2 class="text-lg font-semibold text-ink-0 mb-4">{t('progress.heading')}</h2>
 	<ProgressBar
 		steps={s.progressSteps}
 		currentStep={s.currentStep}
@@ -21,7 +22,7 @@
 	<div class="flex items-center justify-between mt-4">
 		<p class="text-ink-2 text-sm">{s.progressMessage}</p>
 		{#if s.elapsedSeconds !== null}
-			<p class="text-ink-2 text-xs font-mono">{s.elapsedSeconds.toFixed(0)}s 경과</p>
+			<p class="text-ink-2 text-xs font-mono">{t('progress.elapsed', { seconds: s.elapsedSeconds.toFixed(0) })}</p>
 		{/if}
 	</div>
 </div>

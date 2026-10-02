@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/drover-pages';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import type { K3sClusterTemplate } from '$lib/types/k3s';
@@ -65,7 +66,7 @@
 			}
 			onSaved();
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : '저장 실패';
+			error = e instanceof ApiError ? e.message : t('templateModal.saveFailed');
 		} finally {
 			saving = false;
 		}
@@ -84,11 +85,11 @@
 	<div
 		class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-lg mx-4 shadow-[var(--shadow-restraint)]"
 	>
-		<h2 class="text-lg font-semibold text-ink-0 mb-5">{isEdit ? '템플릿 수정' : '템플릿 생성'}</h2>
+		<h2 class="text-lg font-semibold text-ink-0 mb-5">{isEdit ? t('templateModal.editTitle') : t('templateModal.createTitle')}</h2>
 
 		<div class="space-y-4">
 			<label class="block text-xs text-ink-2 uppercase tracking-wide">
-				이름
+				{t('form.name')}
 				<input
 					bind:value={form.name}
 					disabled={isEdit}
@@ -99,17 +100,17 @@
 			</label>
 
 			<label class="block text-xs text-ink-2 uppercase tracking-wide">
-				설명 (선택)
+				{t('templateModal.description')}
 				<input
 					bind:value={form.description}
 					type="text"
-					placeholder="GPU dev 노드 3대 + Cinder CSI"
+					placeholder={t('templateModal.descriptionPlaceholder')}
 					class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5"
 				/>
 			</label>
 
 			<label class="block text-xs text-ink-2 uppercase tracking-wide">
-				k3s 버전 (선택, 미지정 시 설정값)
+				{t('templateModal.version')}
 				<input
 					bind:value={form.k3s_version}
 					type="text"
@@ -119,7 +120,7 @@
 			</label>
 
 			<label class="block text-xs text-ink-2 uppercase tracking-wide">
-				기본 에이전트 수
+				{t('templateModal.agents')}
 				<input
 					bind:value={form.default_node_count}
 					type="number"
@@ -130,7 +131,7 @@
 			</label>
 
 			<label class="block text-xs text-ink-2 uppercase tracking-wide">
-				기본 에이전트 Flavor ID (선택)
+				{t('templateModal.flavor')}
 				<input
 					bind:value={form.default_agent_flavor_id}
 					type="text"
@@ -140,7 +141,7 @@
 			</label>
 
 			<div>
-				<span class="block text-xs text-ink-2 uppercase tracking-wide mb-1.5">OS 타입</span>
+				<span class="block text-xs text-ink-2 uppercase tracking-wide mb-1.5">{t('form.osType')}</span>
 				<div class="flex gap-2">
 					<button
 						type="button"
@@ -157,7 +158,7 @@
 
 			<label class="flex items-center gap-2 cursor-pointer text-sm text-ink-2">
 				<input type="checkbox" bind:checked={form.public_visible} class="accent-blue-500" />
-				사용자에게 공개
+				{t('templateModal.public')}
 			</label>
 		</div>
 
@@ -166,13 +167,13 @@
 		{/if}
 
 		<div class="flex justify-end gap-3 mt-6">
-			<button onclick={onClose} disabled={saving} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0">취소</button>
+			<button onclick={onClose} disabled={saving} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0">{t('actions.cancel')}</button>
 			<button
 				onclick={save}
 				disabled={saving || !form.name}
 				class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg"
 			>
-				{saving ? '저장 중...' : isEdit ? '수정' : '생성'}
+				{saving ? t('state.saving') : isEdit ? t('actions.edit') : t('actions.create')}
 			</button>
 		</div>
 	</div>

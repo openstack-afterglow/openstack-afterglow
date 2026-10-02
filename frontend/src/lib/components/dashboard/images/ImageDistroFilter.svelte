@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { KNOWN_DISTROS, osLabel } from '$lib/utils/imageOs';
+	import { t } from '$lib/i18n/ns/images-keys';
 
 	let {
 		distroFilter = $bindable('all'),
@@ -11,7 +12,7 @@
 </script>
 
 <div class="flex flex-wrap gap-2 mb-5">
-	{#each [['all', '전체'], ...KNOWN_DISTROS.map(d => [d, osLabel(d)]), ['other', '기타']] as [key, label]}
+	{#each [['all', t('distroFilter.all')], ...KNOWN_DISTROS.map(d => [d, osLabel(d)]), ['other', t('distroFilter.other')]] as [key, label]}
 		{@const count = counts[key] ?? 0}
 		{#if count > 0 || key === 'all'}
 			<button

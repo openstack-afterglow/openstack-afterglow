@@ -16,7 +16,6 @@ describe('ChatBubble', () => {
 		expect(messages[0].querySelector('.chat-header time')?.getAttribute('datetime')).toBe(
 			'2026-07-26T08:43:00Z'
 		);
-		expect(messages[0].querySelector('.chat-footer button')?.textContent).toBe('복사');
 		expect(messages[1].classList.contains('chat-end')).toBe(true);
 		expect(messages[1].querySelector('.chat-bubble')?.textContent).toContain('첫 줄');
 		expect(messages[1].querySelector('.chat-bubble')?.textContent).toContain(

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/volume';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
@@ -39,7 +40,7 @@
 			backups = next;
 			error = '';
 		} catch (e) {
-			if ($auth.projectId === projectId) error = e instanceof ApiError ? `조회 실패 (${e.status})` : '서버 오류';
+			if ($auth.projectId === projectId) error = e instanceof ApiError ? t('backupsPage.fetchFailed', { status: e.status }) : t('backupsPage.serverError');
 		} finally {
 			if ($auth.projectId === projectId) loading = false;
 		}
@@ -68,38 +69,38 @@
 
 	async function createBackup(form: { volume_id: string; name: string; description: string; incremental: boolean }): Promise<string | true> {
 		try { await api.post('/api/v1/volumes/backups', form, $auth.token ?? undefined, $auth.projectId ?? undefined); await fetchBackups(); return true; }
-		catch (e) { return e instanceof ApiError ? e.message : '생성 실패'; }
+		catch (e) { return e instanceof ApiError ? e.message : t('backupsPage.createFailed'); }
 	}
 
 	async function restoreBackup(backupId: string): Promise<{ volume_id: string; volume_name: string } | string> {
 		try { return await api.post<{ volume_id: string; volume_name: string }>(`/api/v1/volumes/backups/${backupId}/restore`, {}, $auth.token ?? undefined, $auth.projectId ?? undefined); }
-		catch (e) { return e instanceof ApiError ? e.message : '복원 실패'; }
+		catch (e) { return e instanceof ApiError ? e.message : t('backupsPage.restoreFailed'); }
 	}
 
 	async function deleteBackup(id: string, name: string) {
-		if (!await confirmDialog(`백업 "${name || id.slice(0, 8)}"을 삭제하시겠습니까?`)) return;
+		if (!await confirmDialog(t('backupsPage.deleteConfirm', { name: name || id.slice(0, 8) }))) return;
 		deleting = id;
 		try { await api.delete(`/api/v1/volumes/backups/${id}`, $auth.token ?? undefined, $auth.projectId ?? undefined); selection.remove([id]); await fetchBackups(); }
-		catch (e) { toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e))); }
+		catch (e) { toast.error(t('backupsPage.deleteFailed', { error: e instanceof ApiError ? e.message : String(e) })); }
 		finally { deleting = null; }
 	}
 
 	async function runBulkDelete() {
 		const ids = [...selection.ids];
-		if (!ids.length || !await confirmDialog(`선택한 백업 ${ids.length}개를 삭제하시겠습니까?`)) return;
+		if (!ids.length || !await confirmDialog(t('backupsPage.bulkDeleteConfirm', { count: ids.length }))) return;
 		const token = $auth.token ?? undefined; const projectId = $auth.projectId ?? undefined;
 		bulkBusy = true;
 		try {
 			const results = await executeBulkMutations(ids, (id) => api.delete(`/api/v1/volumes/backups/${id}`, token, projectId));
 			const successful = results.filter((result) => result.ok).map((result) => result.id);
 			const failed = results.length - successful.length;
-			if (successful.length) toast.success(`${successful.length}개 삭제 요청을 완료했습니다.`);
-			if (failed) toast.error(`${failed}개 삭제에 실패했습니다.`);
+			if (successful.length) toast.success(t('backupsPage.bulkDeleteSuccess', { count: successful.length }));
+			if (failed) toast.error(t('backupsPage.bulkDeleteFailed', { count: failed }));
 			if ($auth.projectId === projectId) { selection.remove(successful); await fetchBackups(); }
 		} finally { bulkBusy = false; }
 	}
 
-	const bulkActions: BulkSelectionAction[] = [{ key: 'delete', label: '삭제', tone: 'danger', onAction: runBulkDelete }];
+	const bulkActions = $derived<BulkSelectionAction[]>([{ key: 'delete', label: t('backupsPage.delete'), tone: 'danger', onAction: runBulkDelete }]);
 	async function forceRefresh() { refreshing = true; try { await fetchBackups(); } finally { refreshing = false; } }
 	const ar = createAutoRefresh(() => fetchBackups(), { storageKey: 'dashboard-volume-backups', defaultActive: true, defaultInterval: 15, intervalOptions: [10, 15, 30, 60], invokeOnMount: false });
 
@@ -123,21 +124,21 @@
 <VolumeBackupCreateModal bind:open={showModal} {volumes} onCreate={createBackup} />
 <VolumeBackupRestoreModal bind:open={showRestoreModal} backup={selectedBackup} onRestore={restoreBackup} />
 <PageShell class="bulk-selection-page space-y-4">
-	<PageHeader breadcrumb="VOLUMES / BACKUPS" title="볼륨 백업">
+	<PageHeader breadcrumb={t('backupsPage.breadcrumb')} title={t('backupsPage.title')}>
 		{#snippet actions()}
-			<Button onclick={openCreate} onintent={prefetchVolumes} variant="primary">+ 백업 생성</Button>
+			<Button onclick={openCreate} onintent={prefetchVolumes} variant="primary">{t('backupsPage.create')}</Button>
 		{/snippet}
 	</PageHeader>
-	<ResourceToolbar label="볼륨 백업 목록 도구">
+	<ResourceToolbar label={t('backupsPage.toolbar')}>
 		{#snippet actions()}<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} refreshing={refreshing} onManualRefresh={forceRefresh} />{/snippet}
 	</ResourceToolbar>
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={4} />
 	{:else if backups.length === 0}
-		<EmptyState headline="볼륨 백업이 없습니다" description="필요한 볼륨의 복구 지점을 생성하세요." />
+		<EmptyState headline={t('backupsPage.emptyTitle')} description={t('backupsPage.emptyDescription')} />
 	{:else}
 		<VolumeBackupListTable {backups} deletingId={deleting} selectedIds={selection.ids} selectableIds={selectableIds} selectionDisabled={bulkBusy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} onRestore={(b) => { selectedBackup = b; showRestoreModal = true; }} onDelete={deleteBackup} />
-		<BulkSelectionOverlay count={selection.count} ariaLabel="선택한 볼륨 백업 일괄 작업" actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
+		<BulkSelectionOverlay count={selection.count} ariaLabel={t('backupsPage.bulkLabel')} actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
 	{/if}
 </PageShell>

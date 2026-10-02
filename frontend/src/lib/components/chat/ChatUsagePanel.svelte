@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/chat-settings';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
 	import {
@@ -22,9 +24,9 @@
 
 	const _RANGE_FOR: Record<string, string> = { hour: '30d', day: '30d', month: '1y' };
 	const BUCKETS: { key: 'hour' | 'day' | 'month'; label: string }[] = [
-		{ key: 'hour', label: '시간' },
-		{ key: 'day', label: '일' },
-		{ key: 'month', label: '월' }
+		{ key: 'hour', get label() { return t('usage.buckets.hour'); } },
+		{ key: 'day', get label() { return t('usage.buckets.day'); } },
+		{ key: 'month', get label() { return t('usage.buckets.month'); } }
 	];
 
 	const points = $derived(pivotTimeseries(series, 'total_tokens'));
@@ -33,7 +35,7 @@
 	const apiUse = $derived(sourceRow(bySource, 'api'));
 
 	function fmt(n: number): string {
-		return new Intl.NumberFormat().format(Math.round(n));
+		return new Intl.NumberFormat(intlLocale()).format(Math.round(n));
 	}
 	function bucketLabel(b: string): string {
 		return bucket === 'month' ? b : bucket === 'hour' ? b.slice(5, 16) : b.slice(5);
@@ -88,17 +90,17 @@
 <div class="space-y-4">
 	<!-- 접근경로 분해 -->
 	<div>
-		<h4 class="mb-2 text-xs font-semibold text-[var(--color-ink-2)]">접근 경로 (누적)</h4>
+		<h4 class="mb-2 text-xs font-semibold text-[var(--color-ink-2)]">{t('usage.sourcesTitle')}</h4>
 		<div class="grid grid-cols-2 gap-2">
 			<div class="{cardCls} px-3 py-2">
-				<div class="text-xs text-[var(--color-ink-3)]">웹</div>
-				<div class="text-sm font-semibold text-[var(--color-ink-1)]">{fmt(web.tokens)} 토큰</div>
-				<div class="text-xs text-[var(--color-ink-3)]">{fmt(web.request_count)} 요청</div>
+				<div class="text-xs text-[var(--color-ink-3)]">{t('usage.web')}</div>
+				<div class="text-sm font-semibold text-[var(--color-ink-1)]">{t('usage.tokens', { count: Math.round(web.tokens) })}</div>
+				<div class="text-xs text-[var(--color-ink-3)]">{t('usage.requests', { count: Math.round(web.request_count) })}</div>
 			</div>
 			<div class="{cardCls} px-3 py-2">
 				<div class="text-xs text-[var(--color-ink-3)]">API</div>
-				<div class="text-sm font-semibold text-[var(--color-ink-1)]">{fmt(apiUse.tokens)} 토큰</div>
-				<div class="text-xs text-[var(--color-ink-3)]">{fmt(apiUse.request_count)} 요청</div>
+				<div class="text-sm font-semibold text-[var(--color-ink-1)]">{t('usage.tokens', { count: Math.round(apiUse.tokens) })}</div>
+				<div class="text-xs text-[var(--color-ink-3)]">{t('usage.requests', { count: Math.round(apiUse.request_count) })}</div>
 			</div>
 		</div>
 	</div>
@@ -106,7 +108,7 @@
 	<!-- 시계열 (web/api 스택) -->
 	<div>
 		<div class="mb-2 flex items-center justify-between">
-			<h4 class="text-xs font-semibold text-[var(--color-ink-2)]">사용량 추이</h4>
+			<h4 class="text-xs font-semibold text-[var(--color-ink-2)]">{t('usage.trendTitle')}</h4>
 			<div class="flex gap-1">
 				{#each BUCKETS as b (b.key)}
 					<button
@@ -121,21 +123,21 @@
 		{#if loading}
 			<div class="{cardCls} h-24 animate-pulse"></div>
 		{:else if points.length === 0}
-			<p class="px-1 text-xs text-[var(--color-ink-3)]">사용 기록이 없습니다.</p>
+			<p class="px-1 text-xs text-[var(--color-ink-3)]">{t('usage.empty')}</p>
 		{:else}
 			<div class="{cardCls} space-y-1 p-3">
 				{#each points as p (p.bucket)}
 					<div class="flex items-center gap-2">
 						<span class="w-24 shrink-0 truncate font-mono text-xs text-[var(--color-ink-3)]">{bucketLabel(String(p.bucket))}</span>
 						<div class="flex h-3 flex-1 overflow-hidden rounded bg-[var(--color-surface-sunken)]">
-							<div class="h-full bg-[var(--color-accent)]" style="width: {((Number(p.web) || 0) / maxTotal) * 100}%" title="웹 {fmt(Number(p.web) || 0)}"></div>
-							<div class="h-full bg-[var(--color-state-success)]" style="width: {((Number(p.api) || 0) / maxTotal) * 100}%" title="API {fmt(Number(p.api) || 0)}"></div>
+							<div class="h-full bg-[var(--color-accent)]" style="width: {((Number(p.web) || 0) / maxTotal) * 100}%" title={t('usage.webTooltip', { count: fmt(Number(p.web) || 0) })}></div>
+							<div class="h-full bg-[var(--color-state-success)]" style="width: {((Number(p.api) || 0) / maxTotal) * 100}%" title={t('usage.apiTooltip', { count: fmt(Number(p.api) || 0) })}></div>
 						</div>
 						<span class="w-16 shrink-0 text-right text-xs text-[var(--color-ink-3)]">{fmt(Number(p.total) || 0)}</span>
 					</div>
 				{/each}
 				<div class="mt-1 flex gap-3 text-xs text-[var(--color-ink-3)]">
-					<span><span class="inline-block h-2 w-2 rounded-sm bg-[var(--color-accent)]"></span> 웹</span>
+					<span><span class="inline-block h-2 w-2 rounded-sm bg-[var(--color-accent)]"></span> {t('usage.web')}</span>
 					<span><span class="inline-block h-2 w-2 rounded-sm bg-[var(--color-state-success)]"></span> API</span>
 				</div>
 			</div>
@@ -145,12 +147,12 @@
 	<!-- API 키별 -->
 	{#if keys.length}
 		<div>
-			<h4 class="mb-2 text-xs font-semibold text-[var(--color-ink-2)]">API 키별 사용량</h4>
+			<h4 class="mb-2 text-xs font-semibold text-[var(--color-ink-2)]">{t('usage.keysTitle')}</h4>
 			<div class="{cardCls} divide-y divide-[var(--color-line)]">
 				{#each keys as k (k.api_key_id)}
 					<div class="flex items-center justify-between px-3 py-2">
-						<span class="truncate text-xs text-[var(--color-ink-1)]">{k.name || k.key_prefix || `키 #${k.api_key_id}`}</span>
-						<span class="shrink-0 text-xs text-[var(--color-ink-3)]">{fmt(k.total_tokens)} 토큰 · {fmt(k.request_count)} 요청</span>
+						<span class="truncate text-xs text-[var(--color-ink-1)]">{k.name || k.key_prefix || t('usage.keyFallback', { id: k.api_key_id })}</span>
+						<span class="shrink-0 text-xs text-[var(--color-ink-3)]">{t('usage.keySummary', { tokens: Math.round(k.total_tokens), requests: Math.round(k.request_count) })}</span>
 					</div>
 				{/each}
 			</div>

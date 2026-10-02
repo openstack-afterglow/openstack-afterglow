@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/network-resources';
 	import { goto } from '$app/navigation';
 	import type { LoadBalancerDetail } from '$lib/types/loadbalancer';
 	import { isDroverLoadBalancer } from '$lib/utils/droverLoadBalancer';
@@ -17,7 +18,7 @@
 </script>
 
 <button onclick={() => goto('/dashboard')} class="text-sm text-ink-2 hover:text-ink-1 mb-6 inline-flex items-center gap-1">
-	← 대시보드
+	{t('lb.actions.backToDashboard')}
 </button>
 
 <div class="flex items-start justify-between mb-8">
@@ -34,5 +35,5 @@
 			{/if}
 		</div>
 	</div>
-	<button onclick={onDelete} disabled={deleting} class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-sm px-3 py-1.5 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors">{isProtected ? '강제 삭제' : '삭제'}</button>
+	<button onclick={onDelete} disabled={deleting} class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-sm px-3 py-1.5 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors">{isProtected ? t('lb.actions.forceDelete') : t('lb.actions.delete')}</button>
 </div>

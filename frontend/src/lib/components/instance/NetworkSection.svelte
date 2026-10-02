@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { useInstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
 	import type { PortInfo } from '$lib/types/networks';
+	import { t } from '$lib/i18n/ns/instance';
 
 	const s = useInstanceDetailController();
 
@@ -44,24 +45,24 @@
 
 <div class="bg-surface-base border border-line rounded-lg p-6 mb-4">
 	<div class="flex items-center justify-between mb-4">
-		<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide">인터페이스</h2>
+		<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide">{t('network.title')}</h2>
 		<button
 			onclick={() => { showAddInterface = !showAddInterface; selectedNetId = ''; }}
 			class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
 		>
-			{showAddInterface ? '닫기' : '+ 인터페이스 추가'}
+			{showAddInterface ? t('network.close') : t('network.addInterface')}
 		</button>
 	</div>
 
 	{#if showAddInterface}
 		<div class="mb-4 bg-surface-sunken rounded-lg p-4">
-			<p class="text-xs text-ink-2 mb-2">연결할 네트워크 선택</p>
+			<p class="text-xs text-ink-2 mb-2">{t('network.selectNetworkLabel')}</p>
 			<div class="flex gap-2">
 				<select
 					bind:value={selectedNetId}
 					class="flex-1 bg-surface-selected border border-line-2 text-ink-1 text-sm rounded px-2 py-1.5 focus:outline-none focus:border-action-warm"
 				>
-					<option value="">네트워크 선택...</option>
+					<option value="">{t('network.selectNetworkPlaceholder')}</option>
 					{#each s.availableNetworks as net}
 						<option value={net.id}>{net.name || net.id.slice(0, 12)}</option>
 					{/each}
@@ -71,14 +72,14 @@
 					disabled={!selectedNetId || s.actioning === 'attach-iface'}
 					class="text-xs text-warm-text hover:text-warm-text-hover px-3 py-1.5 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3 disabled:border-line-2"
 				>
-					{s.actioning === 'attach-iface' ? '추가 중...' : '추가'}
+					{s.actioning === 'attach-iface' ? t('network.adding') : t('network.add')}
 				</button>
 			</div>
 		</div>
 	{/if}
 
 	{#if s.interfaces.length === 0}
-		<p class="text-sm text-ink-2">인터페이스 정보 없음</p>
+		<p class="text-sm text-ink-2">{t('network.empty')}</p>
 	{:else}
 		<div class="space-y-4">
 			{#each s.interfaces as iface}
@@ -87,23 +88,23 @@
 					<div class="flex items-start justify-between mb-3">
 						<div class="grid grid-cols-1 @3xl/panel:grid-cols-2 gap-x-6 gap-y-2 flex-1">
 							<div>
-								<dt class="text-xs text-ink-2 mb-0.5">포트 ID</dt>
+								<dt class="text-xs text-ink-2 mb-0.5">{t('network.portId')}</dt>
 								<dd class="text-xs text-ink-2 font-mono">{iface.id}</dd>
 							</div>
 							<div>
-								<dt class="text-xs text-ink-2 mb-0.5">MAC 주소</dt>
+								<dt class="text-xs text-ink-2 mb-0.5">{t('network.macAddress')}</dt>
 								<dd class="text-xs text-ink-2 font-mono">{iface.mac_address}</dd>
 							</div>
 							<div>
-								<dt class="text-xs text-ink-2 mb-0.5">네트워크</dt>
+								<dt class="text-xs text-ink-2 mb-0.5">{t('network.network')}</dt>
 								<dd class="text-xs text-ink-2">{iface.network_id ? s.networkNameById(iface.network_id) : '-'}</dd>
 							</div>
 							<div>
-								<dt class="text-xs text-ink-2 mb-0.5">상태</dt>
+								<dt class="text-xs text-ink-2 mb-0.5">{t('network.status')}</dt>
 								<dd class="text-xs {iface.status === 'ACTIVE' ? 'text-green-400' : 'text-ink-2'}">{iface.status}</dd>
 							</div>
 							<div class="col-span-2">
-								<dt class="text-xs text-ink-2 mb-1">IP 주소</dt>
+								<dt class="text-xs text-ink-2 mb-1">{t('network.ipAddress')}</dt>
 								<dd class="flex flex-wrap gap-1.5 items-center">
 									{#each iface.fixed_ips as fip}
 										<span class="text-xs font-mono text-ink-2 bg-surface-selected px-1.5 py-0.5 rounded">{fip.ip_address}</span>
@@ -121,7 +122,7 @@
 									disabled={!!s.actioning}
 									class="text-xs text-orange-400 hover:text-orange-300 px-2 py-1 border border-orange-900 hover:border-orange-700 rounded transition-colors disabled:text-ink-3"
 								>
-									{s.actioning === 'fip-release-' + ifaceFip.id ? '해제 중...' : 'FIP 해제'}
+									{s.actioning === 'fip-release-' + ifaceFip.id ? t('network.releasing') : t('network.releaseFloatingIp')}
 								</button>
 							{:else}
 								<button
@@ -129,7 +130,7 @@
 									disabled={!!s.actioning}
 									class="text-xs text-warm-text hover:text-warm-text-hover px-2 py-1 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3"
 								>
-									{s.actioning === 'fip-assign-' + iface.id ? '할당 중...' : '+ FIP'}
+									{s.actioning === 'fip-assign-' + iface.id ? t('network.assigning') : t('network.addFloatingIp')}
 								</button>
 							{/if}
 							<button
@@ -137,24 +138,24 @@
 								disabled={!!s.actioning}
 								class="text-xs text-orange-400 hover:text-orange-300 px-2 py-1 border border-orange-900 hover:border-orange-700 rounded transition-colors disabled:text-ink-3"
 							>
-								{s.actioning === 'detach-iface-' + iface.id ? '제거 중...' : '제거'}
+								{s.actioning === 'detach-iface-' + iface.id ? t('network.removing') : t('network.remove')}
 							</button>
 						</div>
 					</div>
 					<!-- 보안 그룹 -->
 					<div>
 						<div class="flex items-center justify-between mb-1.5">
-							<dt class="text-xs text-ink-2">보안 그룹</dt>
+							<dt class="text-xs text-ink-2">{t('network.securityGroups')}</dt>
 							<button
 								onclick={() => openSgEdit(iface)}
 								class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
 							>
-								편집
+								{t('network.edit')}
 							</button>
 						</div>
 						{#if sgEditPortId === iface.id}
 							<div class="bg-surface-selected rounded p-3 mt-2">
-								<p class="text-xs text-ink-2 mb-2">이 프로젝트의 보안 그룹</p>
+								<p class="text-xs text-ink-2 mb-2">{t('network.projectSecurityGroups')}</p>
 								<div class="space-y-1.5 mb-3 max-h-56 overflow-y-auto">
 									{#each s.allSecurityGroups as sg}
 										<div>
@@ -174,7 +175,7 @@
 													onclick={() => toggleSgRules(sg.id)}
 													class="text-xs text-ink-2 hover:text-ink-2 ml-auto shrink-0 transition-colors"
 												>
-													{expandedSgRules.has(sg.id) ? '▾' : '▸'} {sg.rules.length}개 규칙
+													{t('network.ruleCount', { indicator: expandedSgRules.has(sg.id) ? '▾' : '▸', count: sg.rules.length })}
 												</button>
 											</label>
 											{#if expandedSgRules.has(sg.id)}
@@ -183,7 +184,7 @@
 														<div class="text-xs text-ink-2 font-mono">{s.formatRule(rule)}</div>
 													{/each}
 													{#if sg.rules.length === 0}
-														<div class="text-xs text-ink-2 italic">규칙 없음</div>
+														<div class="text-xs text-ink-2 italic">{t('network.noRules')}</div>
 													{/if}
 												</div>
 											{/if}
@@ -196,20 +197,20 @@
 										disabled={s.actioning === 'sg-' + iface.id}
 										class="text-xs text-warm-text hover:text-warm-text-hover px-2 py-1 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3"
 									>
-										{s.actioning === 'sg-' + iface.id ? '저장 중...' : '저장'}
+										{s.actioning === 'sg-' + iface.id ? t('network.saving') : t('network.save')}
 									</button>
 									<button
 										onclick={() => { sgEditPortId = null; }}
 										class="text-xs text-ink-2 hover:text-ink-1 px-2 py-1 border border-line-2 hover:border-line-2 rounded transition-colors"
 									>
-										취소
+										{t('network.cancel')}
 									</button>
 								</div>
 							</div>
 						{:else}
 							<dd class="flex flex-wrap gap-1.5">
 								{#if !(iface.security_group_ids?.length)}
-									<span class="text-xs text-ink-2">없음</span>
+									<span class="text-xs text-ink-2">{t('network.none')}</span>
 								{:else}
 									{#each (iface.security_group_ids ?? []) as sgId}
 										<span class="text-xs text-purple-300 bg-purple-900/30 px-1.5 py-0.5 rounded">{s.sgNameById(sgId)}</span>

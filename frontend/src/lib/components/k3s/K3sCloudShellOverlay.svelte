@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/drover';
+  import RichText from '$lib/i18n/RichText.svelte';
   import { onDestroy, onMount, tick } from 'svelte';
   import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
   import { createShellTicket } from '$lib/api/k3sResources';
@@ -7,6 +9,8 @@
   import '@xterm/xterm/css/xterm.css';
   import { resolvedTheme } from '$lib/stores/theme';
   import { getTerminalTheme } from '$lib/utils/terminalTheme';
+  import { getLocale } from '$lib/i18n/runtime.svelte';
+  import { localizeTerminal } from '$lib/utils/terminalLocale';
 
   const s = useK3sClusterDetailController();
 
@@ -52,6 +56,11 @@
     terminal.options.theme = getTerminalTheme();
   });
 
+  $effect(() => {
+    getLocale();
+    if (terminal) localizeTerminal(terminal);
+  });
+
   async function initTerminal() {
     if (!terminalEl) return;
     const { Terminal } = await import('@xterm/xterm');
@@ -64,6 +73,7 @@
       cursorBlink: true,
       convertEol: true,
     });
+    localizeTerminal(terminal);
     fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.open(terminalEl);
@@ -105,9 +115,9 @@
       );
       ticket = res.ticket;
     } catch {
-      errorMsg = 'Shell 티켓 발급 실패 — 클러스터 연결을 확인하세요';
+      errorMsg = t('cloudShell.ticketFailed');
       connecting = false;
-      terminal?.write('\r\n\x1b[31m티켓 발급 실패\x1b[0m\r\n');
+      terminal?.write(`\r\n\x1b[31m${t('cloudShell.terminalTicketFailed')}\x1b[0m\r\n`);
       return;
     }
 
@@ -120,7 +130,7 @@
     socket.binaryType = 'arraybuffer';
     ws = socket;
 
-    terminal.write('\r\n\x1b[33mCloud Shell 연결 중...\x1b[0m\r\n');
+    terminal.write(`\r\n\x1b[33m${t('cloudShell.terminalConnecting')}\x1b[0m\r\n`);
 
     socket.onopen = () => {
       connecting = false;
@@ -144,7 +154,7 @@
     };
 
     socket.onerror = () => {
-      errorMsg = '연결 오류가 발생했습니다';
+      errorMsg = t('cloudShell.connectionError');
       connecting = false;
       connected = false;
     };
@@ -155,9 +165,9 @@
       ws = null;
       if (event.code === 4408) {
         idleTimedOut = true;
-        terminal?.write('\r\n\x1b[33m[15분 idle timeout — 세션 종료됨]\x1b[0m\r\n');
+        terminal?.write(`\r\n\x1b[33m${t('cloudShell.terminalIdleTimeout')}\x1b[0m\r\n`);
       } else if (event.code !== 1000 && event.code !== 1001) {
-        terminal?.write(`\r\n\x1b[33m연결 종료 (${event.code})\x1b[0m\r\n`);
+        terminal?.write(`\r\n\x1b[33m${t('cloudShell.terminalClosed', { code: event.code })}\x1b[0m\r\n`);
       }
     };
   }
@@ -187,22 +197,24 @@
   }
 </script>
 
+{#snippet clusterName(text: string)}<span class="text-warm-text">{text}</span>{/snippet}
+
 <div class="fixed inset-0 z-50 bg-surface-canvas flex flex-col">
   <!-- 헤더 -->
   <div class="flex items-center justify-between px-4 py-2 border-b border-line shrink-0">
     <div class="flex items-center gap-3">
       <span class="text-sm font-medium text-ink-1">
-        Cloud Shell — <span class="text-warm-text">{s.cluster?.name}</span>
+        <RichText segments={t.rich('cloudShell.title', { name: s.cluster?.name ?? '' })} tags={{ name: clusterName }} />
       </span>
       {#if connected}
         <span class="text-xs text-green-400 flex items-center gap-1">
           <span class="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse inline-block"></span>
-          연결됨
+          {t('cloudShell.connected')}
         </span>
       {:else if connecting}
-        <span class="text-xs text-yellow-400">연결 중...</span>
+        <span class="text-xs text-yellow-400">{t('cloudShell.connecting')}</span>
       {:else}
-        <span class="text-xs text-ink-2">연결 끊김</span>
+        <span class="text-xs text-ink-2">{t('cloudShell.disconnected')}</span>
       {/if}
     </div>
     <div class="flex items-center gap-2">
@@ -210,12 +222,12 @@
         <button
           onclick={reconnect}
           class="text-xs text-warm-text hover:text-warm-text-hover px-3 py-1 border border-action-warm hover:border-action-warm rounded transition-colors"
-        >재연결</button>
+        >{t('cloudShell.reconnect')}</button>
       {/if}
       <button
         onclick={handleClose}
         class="text-ink-2 hover:text-ink-0 text-xl leading-none px-2 transition-colors"
-        aria-label="닫기"
+        aria-label={t('cloudShell.close')}
       >&times;</button>
     </div>
   </div>
@@ -234,8 +246,8 @@
   <!-- idle timeout 안내 -->
   {#if idleTimedOut}
     <div class="shrink-0 px-4 py-2 bg-yellow-900/30 border-t border-yellow-800 text-xs text-yellow-400 flex items-center justify-between">
-      <span>15분 동안 활동이 없어 세션이 종료되었습니다.</span>
-      <button onclick={reconnect} class="text-warm-text hover:text-warm-text-hover underline">재연결</button>
+      <span>{t('cloudShell.idleTimeout')}</span>
+      <button onclick={reconnect} class="text-warm-text hover:text-warm-text-hover underline">{t('cloudShell.reconnect')}</button>
     </div>
   {/if}
 </div>

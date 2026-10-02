@@ -3,6 +3,7 @@
 	import ImageVerificationBadge from '$lib/components/image/ImageVerificationBadge.svelte';
 	import { imageReferenceParts, imageUploadTime, imageVerificationStatus, type ImageRepositoryGroup } from '$lib/stores/imageCatalog.svelte';
 	import { OS_EMOJI, OS_LOGOS, osLabel } from '$lib/utils/imageOs';
+	import { t } from '$lib/i18n/ns/images-keys';
 
 	let {
 		group,
@@ -16,7 +17,7 @@
 
 	const previewTags = $derived(group.tags.slice(0, 5));
 	const latest = $derived(group.latest);
-	const distro = $derived(latest.os_distro ? osLabel(latest.os_distro) : '운영체제 정보 없음');
+	const distro = $derived(latest.os_distro ? osLabel(latest.os_distro) : t('repositoryCard.noOsInfo'));
 	const uploadTime = $derived(imageUploadTime(latest));
 	const trustCounts = $derived.by(() => {
 		const counts = { verified: 0, unverified: 0, unavailable: 0 };
@@ -43,13 +44,13 @@
 	</div>
 
 	<div class="repository-meta">
-		<Pill tone="accent" dot>{group.tags.length} tags · {group.images.length} 이미지</Pill>
+		<Pill tone="accent" dot>{t('repositoryCard.imageCount', { tagCount: group.tags.length, imageCount: group.images.length })}</Pill>
 		<span class="trust-counts">
-			<Pill tone="success" size="xs">검증됨 {trustCounts.verified}</Pill>
-			<Pill tone="warning" size="xs">미검증 {trustCounts.unverified}</Pill>
-			<Pill tone="neutral" size="xs">검증 불가 {trustCounts.unavailable}</Pill>
+			<Pill tone="success" size="xs">{t('repositoryCard.verifiedCount', { count: trustCounts.verified })}</Pill>
+			<Pill tone="warning" size="xs">{t('repositoryCard.unverifiedCount', { count: trustCounts.unverified })}</Pill>
+			<Pill tone="neutral" size="xs">{t('repositoryCard.unavailableCount', { count: trustCounts.unavailable })}</Pill>
 		</span>
-		<span>최근 업로드</span>
+		<span>{t('repositoryCard.recentUpload')}</span>
 		<code>:{imageReferenceParts(latest).tag}</code>
 		{#if uploadTime !== null}
 			<time datetime={latest.created_at ?? ''}>{new Date(uploadTime).toISOString().slice(0, 10)}</time>
@@ -57,16 +58,16 @@
 	</div>
 
 	<div class="tag-section">
-		<div class="section-label">버전 선택</div>
+		<div class="section-label">{t('repositoryCard.selectVersion')}</div>
 		<div class="tag-list">
 			{#each previewTags as version (version.tag)}
 				{@const image = version.latest}
 				<button type="button" class="tag-chip" onclick={() => onOpenTag(image.id)}>
 					<span>:{version.tag}</span>
-					<Pill tone={image.id === version.current.id ? 'accent' : 'neutral'} size="xs">{image.id === version.current.id ? '현재' : '이전'}</Pill>
-					{#if version.tag === 'latest'}<Pill tone="warm" size="xs">기본</Pill>{/if}
+					<Pill tone={image.id === version.current.id ? 'accent' : 'neutral'} size="xs">{image.id === version.current.id ? t('repositoryCard.current') : t('repositoryCard.previous')}</Pill>
+					{#if version.tag === 'latest'}<Pill tone="warm" size="xs">{t('repositoryCard.default')}</Pill>{/if}
 					<ImageVerificationBadge status={imageVerificationStatus(image)} />
-					{#if version.images.length > 1}<span>{version.images.length}개 업로드</span>{/if}
+					{#if version.images.length > 1}<span>{t('repositoryCard.uploadCount', { count: version.images.length })}</span>{/if}
 				</button>
 			{/each}
 			{#if group.tags.length > previewTags.length}
@@ -75,7 +76,7 @@
 		</div>
 	</div>
 
-	<Button variant="ghost" size="sm" class="browse-button" onclick={onOpen}>모든 tag 조회</Button>
+	<Button variant="ghost" size="sm" class="browse-button" onclick={onOpen}>{t('repositoryCard.browseTags')}</Button>
 </Card>
 
 <style>

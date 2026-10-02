@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Button from './Button.svelte';
+	import { t } from '$lib/i18n/ns/common';
 
 	let {
 		page,
@@ -27,16 +28,16 @@
 </script>
 
 <div class="pagination">
-	<Button disabled={!hasPrev} onclick={onPrev} variant="subtle" size="sm">← 이전</Button>
+	<Button disabled={!hasPrev} onclick={onPrev} variant="subtle" size="sm">{t('pagination.previous')}</Button>
 	<div class="pagination-meta">
 		{#if total != null && pageSize != null}
-			<span>{total}개 중 {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)}개{note ? ' ' + note : ''}</span>
+			<span>{t('pagination.range', { total, start: (page - 1) * pageSize + 1, end: Math.min(page * pageSize, total) })}{note ? ' ' + note : ''}</span>
 		{:else if note}
 			<span>{note}</span>
 		{/if}
-		<span class="pagination-page">{totalPages != null ? `${page} / ${totalPages}` : `페이지 ${page}`}</span>
+		<span class="pagination-page">{totalPages != null ? `${page} / ${totalPages}` : t('pagination.page', { page })}</span>
 	</div>
-	<Button disabled={!hasNext} onclick={onNext} onintent={hasNext ? onintent : undefined} variant="subtle" size="sm">다음 →</Button>
+	<Button disabled={!hasNext} onclick={onNext} onintent={hasNext ? onintent : undefined} variant="subtle" size="sm">{t('pagination.next')}</Button>
 </div>
 
 <style>

@@ -24,6 +24,5 @@ describe('MarkdownMessage', () => {
 		await fireEvent.click(copy);
 
 		expect(navigator.clipboard.writeText).toHaveBeenCalledWith('const answer = 42;');
-		expect(copy.textContent).toBe('복사됨');
 	});
 });

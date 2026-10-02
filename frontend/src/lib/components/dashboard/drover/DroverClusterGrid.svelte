@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/drover-pages';
 	import K3sClusterCard from '$lib/components/dashboard/drover/K3sClusterCard.svelte';
 	import type { K3sCluster } from '$lib/types/k3s';
 
@@ -32,9 +33,9 @@
 {:else if clusters.length === 0}
 	<div class="text-center py-20 text-ink-2">
 		<div class="text-5xl mb-4">☸</div>
-		<p class="text-lg">Drover 클러스터가 없습니다</p>
+		<p class="text-lg">{t('cluster.empty')}</p>
 		<button onclick={onOpenCreate} onpointerenter={onOpenCreateIntent} onfocus={onOpenCreateIntent} class="text-warm-text hover:text-warm-text-hover text-sm mt-2 inline-block">
-			첫 클러스터를 생성하세요 →
+			{t('cluster.createFirst')}
 		</button>
 	</div>
 {:else}

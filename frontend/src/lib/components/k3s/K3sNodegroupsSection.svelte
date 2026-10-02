@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/drover';
+	import RichText from '$lib/i18n/RichText.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
@@ -51,7 +53,7 @@
 			deleteTarget = null;
 			await load();
 		} catch (e) {
-			deleteError = e instanceof ApiError ? e.message : '삭제 실패';
+			deleteError = e instanceof ApiError ? e.message : t('overview.nodegroups.deleteFailed');
 		} finally {
 			deleting = false;
 		}
@@ -60,17 +62,17 @@
 
 <div class="bg-surface-base border border-line rounded-xl p-4">
 	<div class="flex items-center justify-between mb-3">
-		<h3 class="text-xs text-ink-2 uppercase tracking-wide">노드그룹</h3>
+		<h3 class="text-xs text-ink-2 uppercase tracking-wide">{t('overview.nodegroups.title')}</h3>
 		<button
 			onclick={() => { showCreate = true; }}
 			class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
-		>+ 추가</button>
+		>{t('overview.nodegroups.add')}</button>
 	</div>
 
 	{#if loading}
-		<div class="text-xs text-ink-2 py-2">불러오는 중...</div>
+		<div class="text-xs text-ink-2 py-2">{t('overview.nodegroups.loading')}</div>
 	{:else if nodegroups.length === 0}
-		<div class="text-xs text-ink-2 py-2">노드그룹 정보가 없습니다.</div>
+		<div class="text-xs text-ink-2 py-2">{t('overview.nodegroups.empty')}</div>
 	{:else}
 		<div class="space-y-2">
 			{#each nodegroups as ng (ng.id)}
@@ -118,20 +120,20 @@
 		<div
 			class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-sm mx-4 shadow-[var(--shadow-restraint)]"
 		>
-			<h2 class="text-lg font-semibold text-ink-0 mb-3">노드그룹 삭제</h2>
+			<h2 class="text-lg font-semibold text-ink-0 mb-3">{t('overview.nodegroups.deleteTitle')}</h2>
 			<p class="text-sm text-ink-2 mb-5">
-				<strong class="text-ink-0">{deleteTarget.name}</strong> 노드그룹을 삭제합니다.
+				<RichText segments={t.rich('overview.nodegroups.deleteBody', { name: deleteTarget.name })} classes={{ strong: 'text-ink-0' }} />
 			</p>
 			{#if deleteError}
 				<div class="mb-3 text-red-400 text-xs bg-red-900/20 border border-red-800 rounded px-3 py-2">{deleteError}</div>
 			{/if}
 			<div class="flex justify-end gap-3">
-				<button onclick={() => (deleteTarget = null)} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0">취소</button>
+				<button onclick={() => (deleteTarget = null)} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0">{t('overview.nodegroups.cancel')}</button>
 				<button
 					onclick={confirmDelete}
 					disabled={deleting}
 					class="px-4 py-2 bg-red-700 hover:bg-red-600 disabled:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg"
-				>{deleting ? '삭제 중...' : '삭제'}</button>
+				>{deleting ? t('overview.nodegroups.deleting') : t('overview.nodegroups.delete')}</button>
 			</div>
 		</div>
 	</div>

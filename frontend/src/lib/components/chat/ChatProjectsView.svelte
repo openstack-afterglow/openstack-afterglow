@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/chat-settings';
+	import RichText from '$lib/i18n/RichText.svelte';
 	import { untrack } from 'svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import CreateProjectDialog from './CreateProjectDialog.svelte';
@@ -139,28 +141,28 @@
 <div class="projects">
 	{#if mode === 'grid'}
 		<header class="head">
-			<h1 class="title">프로젝트</h1>
+			<h1 class="title">{t('projects.title')}</h1>
 			<div class="head-actions">
 				<div class="search">
 					<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" stroke-linecap="round" /></svg>
-					<input type="text" placeholder="프로젝트 검색" bind:value={query} />
+					<input type="text" placeholder={t('projects.search')} bind:value={query} />
 				</div>
-				<Button variant="accent" size="sm" onclick={openCreate}>+ 새 프로젝트</Button>
+				<Button variant="accent" size="sm" onclick={openCreate}>{t('projects.newProject')}</Button>
 			</div>
 		</header>
 
 		{#if workspaces.length === 0}
 			<EmptyState
 				icon="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"
-				headline="아직 프로젝트가 없어요"
-				description="관련된 대화를 프로젝트로 묶고, 프로젝트 공통 지침으로 톤과 규칙을 한 번에 지정하세요."
+				headline={t('projects.empty.title')}
+				description={t('projects.empty.description')}
 			>
 				{#snippet cta()}
-					<Button variant="accent" size="sm" onclick={openCreate}>+ 새 프로젝트 만들기</Button>
+					<Button variant="accent" size="sm" onclick={openCreate}>{t('projects.empty.create')}</Button>
 				{/snippet}
 			</EmptyState>
 		{:else if filtered.length === 0}
-			<p class="muted pad">검색 결과가 없습니다.</p>
+			<p class="muted pad">{t('projects.noResults')}</p>
 		{:else}
 			<div class="grid">
 				{#each filtered as w (w.id)}
@@ -173,9 +175,9 @@
 							<span class="card-desc">{w.description}</span>
 						{/if}
 						<span class="card-meta">
-							<span class="badge">{countConversationsInWorkspace(conversations, w.id)}개 대화</span>
+							<span class="badge">{t('projects.conversationCount', { count: countConversationsInWorkspace(conversations, w.id) })}</span>
 							{#if (w.instructions ?? '').trim()}
-								<span class="badge badge-soft">지침</span>
+								<span class="badge badge-soft">{t('projects.instructionsBadge')}</span>
 							{/if}
 						</span>
 					</button>
@@ -184,20 +186,20 @@
 		{/if}
 	{:else if selected}
 		<header class="head">
-			<button type="button" class="back" onclick={backToGrid} aria-label="목록으로">
+			<button type="button" class="back" onclick={backToGrid} aria-label={t('projects.backToList')}>
 				<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round" /></svg>
 			</button>
 			<h1 class="title truncate">{selected.name}</h1>
 			<div class="head-actions">
 				<Button variant="accent" size="sm" onclick={() => onNewInProject(selected.id)}>
-					+ 이 프로젝트에서 새 채팅
+					{t('projects.newChat')}
 				</Button>
 			</div>
 		</header>
 
 		<div class="detail-body">
 			<section class="block">
-				<h2 class="block-title">프로젝트 설정</h2>
+				<h2 class="block-title">{t('projects.settings')}</h2>
 				<form
 					class="form"
 					onsubmit={(e) => {
@@ -208,29 +210,29 @@
 					{@render fields()}
 					<div class="form-actions">
 						<Button variant="accent" type="submit" disabled={!canSubmit}>
-							{saving ? '저장 중…' : '변경 저장'}
+							{saving ? t('projects.saving') : t('projects.saveChanges')}
 						</Button>
 					</div>
 				</form>
 			</section>
 
 			<section class="block">
-				<h2 class="block-title">소속 대화 <span class="count">{projectConvs.length}</span></h2>
+				<h2 class="block-title"><RichText segments={t.rich('projects.assignedConversations', { count: projectConvs.length })} tags={{ count: conversationCount }} /></h2>
 				{#if projectConvs.length === 0}
-					<p class="muted">아직 이 프로젝트에 배정된 대화가 없습니다.</p>
+					<p class="muted">{t('projects.noConversations')}</p>
 				{:else}
 					<div class="conv-list">
 						{#each projectConvs as conv (conv.id)}
 							<div class="conv-row">
 								<button type="button" class="conv-open" onclick={() => onOpenConversation(conv)}>
-									<span class="truncate">{conv.title || '새 대화'}</span>
+									<span class="truncate">{conv.title || t('projects.newConversation')}</span>
 								</button>
 								<button
 									type="button"
 									class="conv-unassign"
 									onclick={() => onAssign(conv, null)}
-									title="프로젝트에서 해제"
-									aria-label="프로젝트에서 해제"
+									title={t('projects.unassign')}
+									aria-label={t('projects.unassign')}
 								>
 									<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="round" /></svg>
 								</button>
@@ -241,7 +243,7 @@
 
 				{#if assignable.length > 0}
 					<label class="assign">
-						<span class="assign-lbl">대화 배정</span>
+						<span class="assign-lbl">{t('projects.assign')}</span>
 						<select
 							value=""
 							onchange={(e) => {
@@ -252,9 +254,9 @@
 								e.currentTarget.value = '';
 							}}
 						>
-							<option value="">대화 선택…</option>
+							<option value="">{t('projects.selectConversation')}</option>
 							{#each assignable as conv (conv.id)}
-								<option value={conv.id}>{conv.title || '새 대화'}</option>
+								<option value={conv.id}>{conv.title || t('projects.newConversation')}</option>
 							{/each}
 						</select>
 					</label>
@@ -262,18 +264,18 @@
 			</section>
 
 			<section class="block">
-				<Button variant="danger-outline" size="sm" onclick={removeSelected}>프로젝트 삭제</Button>
-				<p class="muted danger-hint">삭제해도 대화는 유지되며 미분류로 이동합니다.</p>
+				<Button variant="danger-outline" size="sm" onclick={removeSelected}>{t('projects.delete')}</Button>
+				<p class="muted danger-hint">{t('projects.deleteHint')}</p>
 			</section>
 		</div>
 	{:else}
 		<EmptyState
 			icon="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"
-			headline="프로젝트를 찾을 수 없습니다"
-			description="삭제되었거나 접근할 수 없는 프로젝트입니다."
+			headline={t('projects.notFound')}
+			description={t('projects.notFoundDescription')}
 		>
 			{#snippet cta()}
-				<Button variant="secondary" size="sm" onclick={backToGrid}>프로젝트 목록</Button>
+				<Button variant="secondary" size="sm" onclick={backToGrid}>{t('projects.list')}</Button>
 			{/snippet}
 		</EmptyState>
 	{/if}
@@ -281,18 +283,22 @@
 
 <CreateProjectDialog open={createDialogOpen} onClose={closeCreate} onCreate={createProject} />
 
+{#snippet conversationCount(text: string)}<span class="count">{text}</span>{/snippet}
+{#snippet requiredMarker(text: string)}<span class="req">{text}</span>{/snippet}
+{#snippet instructionsHint(text: string)}<span class="hint">{text}</span>{/snippet}
+
 {#snippet fields()}
 	<label class="field">
-		<span class="lbl">이름 <span class="req">*</span></span>
-		<input class="inp" bind:value={form.name} maxlength="100" placeholder="프로젝트 이름" required />
+		<span class="lbl"><RichText segments={t.rich('projects.form.nameLabel', { required: '*' })} tags={{ required: requiredMarker }} /></span>
+		<input class="inp" bind:value={form.name} maxlength="100" placeholder={t('projects.form.namePlaceholder')} required />
 	</label>
 	<label class="field">
-		<span class="lbl">설명</span>
-		<input class="inp" bind:value={form.description} maxlength="500" placeholder="이 프로젝트에 대한 짧은 설명" />
+		<span class="lbl">{t('projects.form.descriptionLabel')}</span>
+		<input class="inp" bind:value={form.description} maxlength="500" placeholder={t('projects.form.descriptionPlaceholder')} />
 	</label>
 	<label class="field">
-		<span class="lbl">공통 지침 <span class="hint">이 프로젝트의 모든 대화에 적용</span></span>
-		<textarea class="inp ta" bind:value={form.instructions} rows="6" maxlength="20000" placeholder="예: 답변은 항상 한국어로, 코드에는 주석을 달아라."></textarea>
+		<span class="lbl"><RichText segments={t.rich('projects.form.instructionsLabel')} tags={{ hint: instructionsHint }} /></span>
+		<textarea class="inp ta" bind:value={form.instructions} rows="6" maxlength="20000" placeholder={t('projects.form.instructionsPlaceholder')}></textarea>
 	</label>
 {/snippet}
 

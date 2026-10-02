@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t as tr } from '$lib/i18n/ns/database';
   import type { DbBackup, DbInstance } from '$lib/types/database';
   import StatusChip from '$lib/components/ui/StatusChip.svelte';
   import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
@@ -62,14 +63,14 @@
   <table class="w-full text-sm">
     <thead>
       <tr class="db-backups-table__head text-xs">
-        <th class="text-left px-3 py-3"><div class="inline-flex items-center gap-2"><SelectionCheckbox checked={allSelected} indeterminate={indeterminate} disabled={selectionDisabled} ariaLabel="전체 백업 선택" onclick={onToggleAll} /><span>전체 선택</span><span class="db-backups-table__selection-count normal-case" aria-live="polite">{selectedSelectableCount}개 선택됨</span></div></th>
-        <th class="text-left px-4 py-3 font-medium">이름</th>
-        <th class="text-left px-4 py-3 font-medium">상태</th>
-        <th class="text-left px-4 py-3 font-medium">원본 DB</th>
-        <th class="text-left px-4 py-3 font-medium">Datastore</th>
-        <th class="text-left px-4 py-3 font-medium">크기</th>
-        <th class="text-left px-4 py-3 font-medium">생성일</th>
-        <th class="text-right px-4 py-3 font-medium">액션</th>
+        <th class="text-left px-3 py-3"><div class="inline-flex items-center gap-2"><SelectionCheckbox checked={allSelected} indeterminate={indeterminate} disabled={selectionDisabled} ariaLabel={tr('selection.allBackups')} onclick={onToggleAll} /><span>{tr('selection.all')}</span><span class="db-backups-table__selection-count normal-case" aria-live="polite">{tr('selection.count', { count: selectedSelectableCount })}</span></div></th>
+        <th class="text-left px-4 py-3 font-medium">{tr('labels.name')}</th>
+        <th class="text-left px-4 py-3 font-medium">{tr('labels.status')}</th>
+        <th class="text-left px-4 py-3 font-medium">{tr('backups.source')}</th>
+        <th class="text-left px-4 py-3 font-medium">{tr('labels.datastoreEnglish')}</th>
+        <th class="text-left px-4 py-3 font-medium">{tr('labels.size')}</th>
+        <th class="text-left px-4 py-3 font-medium">{tr('labels.created')}</th>
+        <th class="text-right px-4 py-3 font-medium">{tr('labels.actions')}</th>
       </tr>
     </thead>
     <tbody>
@@ -77,19 +78,19 @@
         {@const instance = findInstance(backup)}
         {@const stuck = isStuck(backup)}
         <tr class="resource-selection-surface db-backups-table__row transition-colors" data-selected={selectedIds.has(backup.id)}>
-          <td class="px-3 py-3"><SelectionCheckbox checked={selectedIds.has(backup.id)} disabled={selectionDisabled || !selectableIds.has(backup.id)} ariaLabel={`${backup.name || backup.id.slice(0, 8)} 선택`} onclick={() => onToggleSelect(backup.id)} /></td>
+          <td class="px-3 py-3"><SelectionCheckbox checked={selectedIds.has(backup.id)} disabled={selectionDisabled || !selectableIds.has(backup.id)} ariaLabel={tr('selection.item', { name: backup.name || backup.id.slice(0, 8) })} onclick={() => onToggleSelect(backup.id)} /></td>
           <td class="db-backups-table__name px-4 py-3 font-medium">{backup.name || backup.id.slice(0, 8)}</td>
           <td class="px-4 py-3">
             <div class="flex items-center gap-1">
               <StatusChip status={backup.status} />
-              {#if stuck}<span class="db-backups-table__stuck text-xs ml-1" title="Trove guest agent가 백업 업로드를 완료하지 못했습니다. 삭제 후 재시도하세요.">멈춤</span>{/if}
+              {#if stuck}<span class="db-backups-table__stuck text-xs ml-1" title={tr('backups.stuckHelp')}>{tr('backups.stuck')}</span>{/if}
             </div>
           </td>
           <td class="px-4 py-3">
             {#if instance}
               <a href="/dashboard/database/instances/{instance.id}" class="db-backups-table__link transition-colors">{instance.name}</a>
             {:else if backup.instance_id}
-              <span class="db-backups-table__muted text-xs">원본 삭제됨</span>
+              <span class="db-backups-table__muted text-xs">{tr('backups.sourceDeleted')}</span>
               {#if backup.datastore?.type}<span class="db-backups-table__muted text-xs ml-1">({backup.datastore.type})</span>{/if}
             {:else}<span class="db-backups-table__muted">—</span>{/if}
           </td>
@@ -98,8 +99,8 @@
           <td class="db-backups-table__selection-count px-4 py-3 text-xs">{formatDate(backup.created_at)}</td>
           <td class="px-4 py-3">
             <div class="flex justify-end gap-1">
-              <button onclick={() => onRestore(backup)} onpointerenter={onRestoreIntent} onfocus={onRestoreIntent} disabled={selectionDisabled} class="db-backups-table__action db-backups-table__restore text-xs px-2 py-0.5 rounded transition-colors">복원</button>
-              <button onclick={() => onDelete(backup.id, backup.name, stuck)} disabled={deleting === backup.id || selectionDisabled} class="db-backups-table__action db-backups-table__delete text-xs px-2 py-0.5 rounded transition-colors">{deleting === backup.id ? '...' : '삭제'}</button>
+              <button onclick={() => onRestore(backup)} onpointerenter={onRestoreIntent} onfocus={onRestoreIntent} disabled={selectionDisabled} class="db-backups-table__action db-backups-table__restore text-xs px-2 py-0.5 rounded transition-colors">{tr('actions.restore')}</button>
+              <button onclick={() => onDelete(backup.id, backup.name, stuck)} disabled={deleting === backup.id || selectionDisabled} class="db-backups-table__action db-backups-table__delete text-xs px-2 py-0.5 rounded transition-colors">{deleting === backup.id ? '...' : tr('actions.delete')}</button>
             </div>
           </td>
         </tr>

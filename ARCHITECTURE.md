@@ -75,10 +75,11 @@ graph LR
 | [`backend/app/api/identity/`](backend/app/api/identity/) | login, refresh, logout, admin/project 권한과 세션 경계 | identity API → Keystone/Redis |
 | [`backend/app/models/activity.py`](backend/app/models/activity.py), [`backend/app/services/activity.py`](backend/app/services/activity.py), [`backend/app/api/identity/admin_activity.py`](backend/app/api/identity/admin_activity.py), [`backend/app/services/openstack_notifications.py`](backend/app/services/openstack_notifications.py), [`frontend/src/routes/admin/events/`](frontend/src/routes/admin/events/) | 기존 activity 행과 Afterglow HTTP mutation/Keystone login 및 opt-in oslo.messaging 알림을 출처별로 보존하고 관리자 전역 목록·상세·집계로 조회 | browser/authenticated BFF와 configured AMQP broker → Afterglow MariaDB; admin UI → `/api/v1/admin/events` |
 | [`backend/app/api/cloud_shell.py`](backend/app/api/cloud_shell.py), [`backend/app/services/cloud_shell.py`](backend/app/services/cloud_shell.py), [`backend/app/services/ws_ticket.py`](backend/app/services/ws_ticket.py) | 승인 뒤 single-use ticket, 사용자 전역 singleton lease, 전용 service-project Zun/Cinder lifecycle, binary terminal relay, expiry/cleanup/reconciliation | browser JWT/project scope → caller Keystone token; service credential → dedicated resource lifecycle; Redis → atomic coordination |
-| [`frontend/src/lib/stores/cloudShell.svelte.ts`](frontend/src/lib/stores/cloudShell.svelte.ts), [`frontend/src/lib/components/cloud-shell/`](frontend/src/lib/components/cloud-shell/), [`frontend/src/lib/utils/terminalTheme.ts`](frontend/src/lib/utils/terminalTheme.ts) | route 전체에 유지되는 consent/session state, project/logout cleanup, mobile sheet와 tablet/desktop bottom dock, token-based xterm theme | root auth shell → `/api/v1/cloud-shell` HTTP/WS; existing Zun/k3s terminals share theme mapping only |
+| [`frontend/src/lib/stores/cloudShell.svelte.ts`](frontend/src/lib/stores/cloudShell.svelte.ts), [`frontend/src/lib/components/cloud-shell/`](frontend/src/lib/components/cloud-shell/), [`frontend/src/lib/utils/terminalTheme.ts`](frontend/src/lib/utils/terminalTheme.ts), [`frontend/src/lib/utils/terminalLocale.ts`](frontend/src/lib/utils/terminalLocale.ts) | route 전체에 유지되는 consent/session state, project/logout cleanup, mobile sheet와 tablet/desktop bottom dock, token-based xterm theme·locale 접근성 알림 | root auth shell → `/api/v1/cloud-shell` HTTP/WS; existing Zun/k3s terminals share theme/locale mapping only; binary protocol 불변 |
 | [`frontend/src/lib/api/client.ts`](frontend/src/lib/api/client.ts) `api`, `fetchWithAuth`, `tryRefresh`, `request` | API base, Authorization, 요청 전 refresh 직렬화와 fetch/XHR 401 복구, 403 처리, prefetch/invalidation | UI → FastAPI |
 | [`frontend/src/lib/stores/auth.ts`](frontend/src/lib/stores/auth.ts) `auth`, `setAuth`, `setProject`, `clearAuth` | 브라우저 auth state와 project scope 영속화 | UI state → API client |
 | [`frontend/src/hooks.server.ts`](frontend/src/hooks.server.ts) `handle` | public path, backend prefix, SPA fallback, CSP/보안 헤더 | SvelteKit request shell |
+| [`frontend/src/lib/i18n/`](frontend/src/lib/i18n/), [`frontend/scripts/i18n.mjs`](frontend/scripts/i18n.mjs) | 한국어 기준 ko/en/ja/zh-CN namespace 카탈로그, ICU subset·안전한 rich text, 반응형 locale·쿠키·SSR lang, CSV 번역 교환·원문 hash 검수·하드코딩 guard | SvelteKit hooks → layout render → namespace translator; UI 표시만 변경, backend 데이터·API 계약 불변 |
 | [`backend/app/api/compute/instances.py`](backend/app/api/compute/instances.py) `create_instance`, `create_instance_async`, `delete_instance`, `resize_owned_instance`, `confirm_owned_resize`, `revert_owned_resize` | Nova/Cinder/Manila/Neutron VM 생성·SSE·역순 rollback·FIP cleanup; 소유권/프로젝트 쓰기 권한이 적용된 cold resize와 VERIFY_RESIZE 확정/복귀 | compute API → OpenStack adapters/`flavor_eligibility` |
 | [`backend/app/api/network/security_groups.py`](backend/app/api/network/security_groups.py), [`backend/app/services/neutron.py`](backend/app/services/neutron.py), [`frontend/src/routes/dashboard/network/security-groups/+page.svelte`](frontend/src/routes/dashboard/network/security-groups/+page.svelte) | 현재 프로젝트의 Neutron 그룹·규칙 상세 쿼터, 선택 그룹을 사용하는 compute 포트/Nova 인스턴스, CIDR 또는 프로젝트 소유 그룹 대상 규칙을 사용자에게 노출한다. 불변 규칙은 표 안에서 값을 복사해 제거·재생성하며 쿼터 조회 실패를 정상 0 사용량으로 처리하지 않는다. | user UI → project-scoped security-groups API → Neutron quota/ports·Nova server; mutation owner check |
 | [`backend/app/api/identity/admin_identity.py`](backend/app/api/identity/admin_identity.py), [`frontend/src/lib/stores/adminQuotasController.svelte.ts`](frontend/src/lib/stores/adminQuotasController.svelte.ts), [`frontend/src/lib/components/admin/quotas/ProjectQuotaForm.svelte`](frontend/src/lib/components/admin/quotas/ProjectQuotaForm.svelte) | 관리자 프로젝트 Nova·Cinder·Neutron·선택적 Manila 한도/사용량 조회와 서비스별 부분 필드 수정. 실패한 서비스는 null+오류로 구분하고 각 섹션의 변경 필드만 저장한다. GPU 정책은 기존 별도 API를 유지한다. | admin UI → admin-only `/api/v1/admin/quotas/{project_id}` → target-project OpenStack quota endpoints |
@@ -104,6 +105,15 @@ graph LR
 의존 방향은 화면이 OpenStack SDK를 직접 부르지 않고 `frontend → FastAPI → service adapter/OpenStack`로 흐르는 것을 기준으로 한다. Lumen의 model/tool/provider 실행과 공개 ID의 내부 route 해석, Drover의 job/operation worker, Waygate의 gateway state, Palimpsest Hub의 SQL/blob은 이 저장소의 code map에 들어오지 않는다.
 
 ## Runtime flows
+
+### 프론트엔드 언어 선택·번역
+
+`hooks.server.ts`가 `afterglow_locale` 쿠키를 `ko/en/ja/zh-CN`으로 검증하고 locals/layout data 및 HTML `lang`에 반영한다. 없거나 잘못된 값은 한국어이며 Accept-Language 자동 감지는 없다. 루트 layout의 동기 render 시작에서 공유 reactive locale을 초기화하므로 번역은 render/getter/event 호출 시점에만 수행하고 모듈 최상위나 비동기 load에서 수행하지 않는다. 이 계약은 동기 Svelte SSR에 의존한다.
+
+언어 선택은 1년·path `/`·SameSite=Lax 쿠키(HTTPS에서는 Secure)와 document lang을 갱신한다. dashboard/admin layout의 main 내부 페이지 children만 locale key로 remount하므로 저장 전 페이지 폼은 초기화될 수 있다. 헤더·사이드바 펼침 상태·VM 생성 패널·전역 Cloud Shell·업로드 state는 유지한다. 공개 화면의 remount 경계는 루트 layout에 있다. namespace를 import한 코드에 네 언어 카탈로그가 동기 포함되며 fallback은 `ja/zh-CN → en → ko`, `en → ko`다. rich 변수는 텍스트로 보호하고 임의 HTML을 주입하지 않는다.
+
+번역자 워크플로우·검수 상태·ICU 범위·UI 외 데이터 경계는 [프론트엔드 번역 참여](docs/frontend-localization.md)([English](docs/en/frontend-localization.md))가 상세 정본이다. 초기 번역은 초안이며 검수 manifest는 한국어 원문 hash만 기록한다. 문구의 자연스러움과 번역 자체 변경의 재검수는 사람의 책임이다.
+
 
 ### 로그인·refresh·rescope
 
@@ -622,9 +632,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "8d4a6811c91892b1bca4ce30b85140aaaece8749904d258a432d456c72b2a7d0",
-  "reviewed_at": "2026-09-30T03:38:13Z",
-  "summary": "Reviewed native Lumen chat HTTP/error-code/run-ID diagnostics and Codex Responses boundary."
+  "source_sha256": "09b9239b3a80ede149d184fa1fbbb5d5636f4e8dc077827b368c5d44c983a445",
+  "reviewed_at": "2026-10-02T00:20:44Z",
+  "summary": "Frontend-only four-locale i18n cutover: ko source plus en/ja/zh-CN typed feature catalogs, synchronous SSR cookie locale, preserved console chrome/global state and keyed page contents, safe rich interpolation, CJK typography/responsive wrapping, terminal accessibility without buffer reset, atomic catalog CSV/review validation and native contribution guides. API routes/auth/authorization/backend payloads/operator data and secrets unchanged. Actual synthetic Chromium public/user/admin locale persistence, rich provider links, terminal and responsive surfaces exercised; frontend catalog/type/unit/build checks recorded in dashboard-i18n tasks. Translations remain unreviewed drafts; page forms may reset on locale change."
 }
 ```
 <!-- architecture-review:end -->

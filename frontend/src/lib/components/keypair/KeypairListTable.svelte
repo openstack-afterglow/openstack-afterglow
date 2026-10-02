@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Keypair } from '$lib/types/keypair';
+	import { t } from '$lib/i18n/ns/images-keys';
 
 	let {
 		keypairs,
@@ -18,10 +19,10 @@
 
 <div class="bg-[#0B1220] border border-line rounded-lg overflow-hidden">
 	<div class="grid grid-cols-[1fr_auto] md:grid-cols-[1.2fr_140px_2fr_120px] px-4 py-2.5 border-b border-line text-xs uppercase tracking-wider text-ink-2 font-medium">
-		<div>이름</div>
-		<div class="hidden md:block">유형</div>
-		<div class="hidden md:block">지문</div>
-		<div class="text-right">액션</div>
+		<div>{t('keypairTable.columns.name')}</div>
+		<div class="hidden md:block">{t('keypairTable.columns.type')}</div>
+		<div class="hidden md:block">{t('keypairTable.columns.fingerprint')}</div>
+		<div class="text-right">{t('keypairTable.columns.actions')}</div>
 	</div>
 	{#each keypairs as kp, i (kp.name)}
 		<div class="grid grid-cols-[1fr_auto] md:grid-cols-[1.2fr_140px_2fr_120px] px-4 py-3 text-[13px] items-center {i < keypairs.length - 1 ? 'border-b border-line' : ''} hover:bg-surface-sunken/30 transition-colors">
@@ -39,12 +40,12 @@
 				<button
 					onclick={() => onCopy(kp.fingerprint)}
 					class="text-xs px-2 py-1 rounded-md bg-surface-sunken hover:bg-surface-selected text-ink-1 border border-line-2 transition-colors"
-				>{copiedFingerprint === kp.fingerprint ? '복사됨' : '복사'}</button>
+				>{copiedFingerprint === kp.fingerprint ? t('keypairTable.actions.copied') : t('keypairTable.actions.copy')}</button>
 				<button
 					onclick={() => onDelete(kp.name)}
 					disabled={deleting === kp.name}
 					class="text-xs px-2 py-1 rounded-md bg-transparent hover:bg-red-950/40 text-red-400 border border-red-900 disabled:text-ink-3 disabled:border-line-2 transition-colors"
-				>{deleting === kp.name ? '삭제 중...' : '삭제'}</button>
+				>{deleting === kp.name ? t('keypairTable.actions.deleting') : t('keypairTable.actions.delete')}</button>
 			</div>
 		</div>
 	{/each}

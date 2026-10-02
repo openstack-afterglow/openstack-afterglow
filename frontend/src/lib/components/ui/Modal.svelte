@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
+	import { t } from '$lib/i18n/ns/common';
 
 	interface Props {
 		open: boolean;
@@ -41,7 +42,7 @@
 			type="button"
 			class="material-scrim absolute inset-0 cursor-default bg-surface-scrim"
 			onclick={close}
-			aria-label="대화상자 닫기"
+			aria-label={t('dialog.close')}
 			tabindex={dismissible ? 0 : -1}
 			disabled={!dismissible}
 			aria-hidden={!dismissible}

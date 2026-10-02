@@ -1,10 +1,12 @@
 <script lang="ts">
+	import { t as tr } from '$lib/i18n/ns/admin-compute';
 	import { onMount, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import {
 		FLAVOR_SPEC_TEMPLATES,
 		FLAVOR_SPEC_CATEGORIES,
+		flavorSpecCategoryLabel,
 		type FlavorSpecTemplate,
 	} from '$lib/constants/flavorSpecTemplates';
 	import type { GpuCatalogDevice } from '$lib/types/gpu';
@@ -119,7 +121,7 @@
 			selectedTemplateKey = '';
 			onChanged();
 		} catch (e: unknown) {
-			specError = e instanceof ApiError ? e.message : 'extra_spec 추가 실패';
+			specError = e instanceof ApiError ? e.message : tr('flavors.specs.addFailed');
 		} finally {
 			specSaving = false;
 		}
@@ -156,7 +158,7 @@
 			editingSpecValue = '';
 			onChanged();
 		} catch (e) {
-			specError = e instanceof ApiError ? e.message : 'extra_spec 수정 실패';
+			specError = e instanceof ApiError ? e.message : tr('flavors.specs.editFailed');
 		} finally {
 			specSaving = false;
 		}
@@ -175,7 +177,7 @@
 			flavor = { ...flavor, extra_specs: specs };
 			onChanged();
 		} catch (e) {
-			specError = e instanceof ApiError ? e.message : 'extra_spec 삭제 실패';
+			specError = e instanceof ApiError ? e.message : tr('flavors.specs.deleteFailed');
 		}
 	}
 </script>
@@ -185,7 +187,7 @@
 {/if}
 
 {#if Object.keys(flavor.extra_specs).length === 0}
-	<div class="text-ink-2 text-sm mb-4">등록된 속성이 없습니다</div>
+	<div class="text-ink-2 text-sm mb-4">{tr('flavors.specs.empty')}</div>
 {:else}
 	<div class="space-y-1 mb-4">
 		{#each Object.entries(flavor.extra_specs) as [k, v]}
@@ -203,8 +205,8 @@
 								if (e.key === 'Escape') cancelEditSpec();
 							}}
 						/>
-						<button onclick={saveEditSpec} disabled={specSaving} class="text-green-400 hover:text-green-300 text-xs shrink-0">저장</button>
-						<button onclick={cancelEditSpec} class="text-ink-2 hover:text-ink-2 text-xs shrink-0">취소</button>
+						<button onclick={saveEditSpec} disabled={specSaving} class="text-green-400 hover:text-green-300 text-xs shrink-0">{tr('flavors.specs.save')}</button>
+						<button onclick={cancelEditSpec} class="text-ink-2 hover:text-ink-2 text-xs shrink-0">{tr('flavors.cancel')}</button>
 					</div>
 				{:else}
 					<div class="flex items-center justify-between">
@@ -216,7 +218,7 @@
 							<span class="text-ink-2 mx-2">=</span>
 							<span class="text-xs text-ink-2 font-mono break-all">{v}</span>
 						</button>
-						<button onclick={() => deleteExtraSpec(k)} class="ml-2 text-red-400 hover:text-red-300 text-xs shrink-0">삭제</button>
+						<button onclick={() => deleteExtraSpec(k)} class="ml-2 text-red-400 hover:text-red-300 text-xs shrink-0">{tr('flavors.delete.action')}</button>
 					</div>
 				{/if}
 			</div>
@@ -224,16 +226,16 @@
 	</div>
 {/if}
 
-<div class="text-sm text-ink-2 mb-2">속성 추가/수정</div>
+<div class="text-sm text-ink-2 mb-2">{tr('flavors.specs.addEditTitle')}</div>
 <div class="space-y-2">
 	<select
 		value={selectedTemplateKey}
 		onchange={(e) => selectTemplate(e.currentTarget.value)}
 		class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm"
 	>
-		<option value="">직접 입력</option>
+		<option value="">{tr('flavors.specs.customInput')}</option>
 		{#each FLAVOR_SPEC_CATEGORIES as category}
-			<optgroup label={category}>
+			<optgroup label={flavorSpecCategoryLabel(category)}>
 				{#each FLAVOR_SPEC_TEMPLATES.filter((t) => t.category === category) as t}
 					<option value={t.key}>{t.label} ({t.key})</option>
 				{/each}
@@ -245,11 +247,11 @@
 		<div class="text-xs text-ink-2">{currentTemplate.description}</div>
 		{#if currentTemplate.valueType === 'gpu_alias'}
 			{#if gpuAliasOptions.length === 0}
-				<div class="text-xs text-yellow-400">GPU alias 카탈로그를 불러올 수 없습니다 — 값을 직접 입력하세요</div>
+				<div class="text-xs text-yellow-400">{tr('flavors.specs.aliasUnavailable')}</div>
 				<input
 					bind:value={newSpecValue}
 					type="text"
-					placeholder="예: RTX3090:1"
+					placeholder={tr('flavors.specs.aliasPlaceholder')}
 					class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-ink-0 text-sm font-mono focus:outline-none focus:border-action-warm"
 				/>
 			{:else}
@@ -266,11 +268,11 @@
 						bind:value={gpuCount}
 						type="number"
 						min="1"
-						title="GPU 개수"
+						title={tr('flavors.specs.gpuCount')}
 						class="w-20 bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm"
 					/>
 				</div>
-				<div class="text-xs text-ink-2 font-mono">값: {gpuAlias ? `${gpuAlias}:${gpuCount}` : '-'}</div>
+				<div class="text-xs text-ink-2 font-mono">{tr('flavors.specs.valuePreview', { value: gpuAlias ? `${gpuAlias}:${gpuCount}` : '-' })}</div>
 			{/if}
 		{:else if currentTemplate.valueType === 'enum'}
 			<select
@@ -285,7 +287,7 @@
 			<input
 				bind:value={newSpecValue}
 				type={currentTemplate.valueType === 'number' ? 'number' : 'text'}
-				placeholder={currentTemplate.placeholder ?? '값'}
+				placeholder={currentTemplate.placeholder ?? tr('flavors.specs.value')}
 				class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-ink-0 text-sm font-mono focus:outline-none focus:border-action-warm"
 			/>
 		{/if}
@@ -293,13 +295,13 @@
 		<input
 			bind:value={newSpecKey}
 			type="text"
-			placeholder="키 (예: hw:numa_nodes)"
+			placeholder={tr('flavors.specs.keyPlaceholder')}
 			class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-ink-0 text-sm font-mono focus:outline-none focus:border-action-warm"
 		/>
 		<input
 			bind:value={newSpecValue}
 			type="text"
-			placeholder="값"
+			placeholder={tr('flavors.specs.value')}
 			class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-ink-0 text-sm font-mono focus:outline-none focus:border-action-warm"
 		/>
 	{/if}
@@ -308,6 +310,6 @@
 		disabled={specSaving || !newSpecKey.trim() || (currentTemplate?.valueType === 'gpu_alias' && gpuAliasOptions.length > 0 && !gpuAlias)}
 		class="w-full px-3 py-1.5 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm rounded-lg disabled:opacity-30"
 	>
-		{specSaving ? '저장 중...' : '추가/수정'}
+		{specSaving ? tr('flavors.specs.saving') : tr('flavors.specs.addEdit')}
 	</button>
 </div>

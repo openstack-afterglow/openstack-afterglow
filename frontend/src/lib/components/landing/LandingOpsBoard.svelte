@@ -1,5 +1,6 @@
 <script lang="ts">
 	import ToggleGroup from '$lib/components/ui/ToggleGroup.svelte';
+	import { t } from '$lib/i18n/ns/public-entry';
 
 	type ScenarioKey = 'gpu' | 'cluster' | 'data';
 
@@ -15,67 +16,67 @@
 		output: string;
 	};
 
-	const scenarios: Scenario[] = [
+	const scenarios: Scenario[] = $derived([
 		{
 			key: 'gpu',
-			label: 'GPU 연구',
-			request: '멀티모달 학습 환경',
-			project: 'lab-vision · 연구원 2명',
+			label: t('opsBoard.gpu.label'),
+			request: t('opsBoard.gpu.request'),
+			project: t('opsBoard.gpu.project', { project: 'lab-vision', count: 2 }),
 			requestedAt: '09:41',
 			policy: [
-				{ label: '프로젝트 쿼터', value: '범위 내' },
-				{ label: 'GPU 정책', value: '승인' },
-				{ label: '네트워크', value: '격리됨' },
+				{ label: t('opsBoard.policy.projectQuota'), value: t('opsBoard.policy.withinQuota') },
+				{ label: t('opsBoard.policy.gpu'), value: t('opsBoard.policy.approved') },
+				{ label: t('opsBoard.policy.network'), value: t('opsBoard.policy.isolated') },
 			],
 			resource: [
-				{ label: 'GPU VM', value: '1' },
+				{ label: t('opsBoard.resource.gpuVm'), value: '1' },
 				{ label: 'vCPU', value: '16' },
-				{ label: '메모리', value: '64 GB' },
+				{ label: t('opsBoard.resource.memory'), value: '64 GB' },
 			],
-			outputLabel: '재사용 레이어',
+			outputLabel: t('opsBoard.gpu.outputLabel'),
 			output: 'pytorch-vision-lab',
 		},
 		{
 			key: 'cluster',
-			label: '클러스터 실습',
-			request: '분산 학습 실습 환경',
-			project: 'course-dl · 실습팀 24명',
+			label: t('opsBoard.cluster.label'),
+			request: t('opsBoard.cluster.request'),
+			project: t('opsBoard.cluster.project', { project: 'course-dl', count: 24 }),
 			requestedAt: '10:12',
 			policy: [
-				{ label: '노드 쿼터', value: '범위 내' },
-				{ label: '수업 기간', value: '14일' },
-				{ label: '접근 역할', value: '분리됨' },
+				{ label: t('opsBoard.policy.nodeQuota'), value: t('opsBoard.policy.withinQuota') },
+				{ label: t('opsBoard.policy.courseDuration'), value: t('opsBoard.policy.days', { count: 14 }) },
+				{ label: t('opsBoard.policy.accessRoles'), value: t('opsBoard.policy.separated') },
 			],
 			resource: [
-				{ label: 'K8s 노드', value: '3' },
+				{ label: t('opsBoard.resource.nodes'), value: '3' },
 				{ label: 'vCPU', value: '24' },
-				{ label: '메모리', value: '96 GB' },
+				{ label: t('opsBoard.resource.memory'), value: '96 GB' },
 			],
-			outputLabel: '다음 수업 템플릿',
+			outputLabel: t('opsBoard.cluster.outputLabel'),
 			output: 'distributed-training',
 		},
 		{
 			key: 'data',
-			label: '공유 데이터',
-			request: '팀 데이터셋 분석 공간',
-			project: 'lab-genomics · 연구원 7명',
+			label: t('opsBoard.data.label'),
+			request: t('opsBoard.data.request'),
+			project: t('opsBoard.data.project', { project: 'lab-genomics', count: 7 }),
 			requestedAt: '11:08',
 			policy: [
-				{ label: '공유 범위', value: '프로젝트' },
-				{ label: '접근 규칙', value: '승인' },
-				{ label: '보존 정책', value: '30일' },
+				{ label: t('opsBoard.policy.shareScope'), value: t('opsBoard.policy.project') },
+				{ label: t('opsBoard.policy.accessRules'), value: t('opsBoard.policy.approved') },
+				{ label: t('opsBoard.policy.retention'), value: t('opsBoard.policy.days', { count: 30 }) },
 			],
 			resource: [
-				{ label: '파일 공간', value: '2 TB' },
-				{ label: '접근 규칙', value: '3' },
-				{ label: '스냅샷', value: '매일' },
+				{ label: t('opsBoard.resource.fileSpace'), value: '2 TB' },
+				{ label: t('opsBoard.policy.accessRules'), value: '3' },
+				{ label: t('opsBoard.resource.snapshot'), value: t('opsBoard.resource.daily') },
 			],
-			outputLabel: '공유 스냅샷',
+			outputLabel: t('opsBoard.data.outputLabel'),
 			output: 'genomics-baseline',
 		},
-	];
+	]);
 
-	const scenarioOptions = scenarios.map(({ key, label }) => ({ value: key, label }));
+	const scenarioOptions = $derived(scenarios.map(({ key, label }) => ({ value: key, label })));
 	let selectedScenario = $state<ScenarioKey>('gpu');
 	let activeScenario = $derived(
 		scenarios.find((scenario) => scenario.key === selectedScenario) ?? scenarios[0]!,
@@ -89,10 +90,10 @@
 <section class="ops-board" data-scenario={selectedScenario} aria-labelledby="ops-board-title">
 	<header class="board-header">
 		<div>
-			<span class="board-kicker">Delivery map</span>
-			<h2 id="ops-board-title">연구 환경 제공 현황</h2>
+			<span class="board-kicker">{t('opsBoard.kicker')}</span>
+			<h2 id="ops-board-title">{t('opsBoard.title')}</h2>
 		</div>
-		<div class="board-health"><span aria-hidden="true"></span>모든 제어면 정상</div>
+		<div class="board-health"><span aria-hidden="true"></span>{t('opsBoard.health')}</div>
 	</header>
 
 	<ToggleGroup
@@ -102,24 +103,24 @@
 		size="sm"
 		fullWidth
 		class="scenario-switcher"
-		ariaLabel="연구 운영 시나리오"
+		ariaLabel={t('opsBoard.scenarioAriaLabel')}
 	/>
 
 	<div class="board-flow" aria-live="polite">
 		<article class="flow-card request-card">
-			<div class="flow-meta"><span>Request</span><time>{activeScenario.requestedAt}</time></div>
+			<div class="flow-meta"><span>{t('opsBoard.request.kicker')}</span><time>{activeScenario.requestedAt}</time></div>
 			<h3>{activeScenario.request}</h3>
 			<p>{activeScenario.project}</p>
-			<div class="request-state"><span aria-hidden="true"></span>배정 준비됨</div>
+			<div class="request-state"><span aria-hidden="true"></span>{t('opsBoard.request.ready')}</div>
 		</article>
 
 		<div class="flow-rail" aria-hidden="true">
 			<span></span>
-			<b>정책 확인</b>
+			<b>{t('opsBoard.policy.check')}</b>
 		</div>
 
 		<article class="flow-card policy-card">
-			<div class="flow-meta"><span>Policy gate</span><span>3 / 3</span></div>
+			<div class="flow-meta"><span>{t('opsBoard.policy.kicker')}</span><span>3 / 3</span></div>
 			<ul>
 				{#each activeScenario.policy as check}
 					<li><span>{check.label}</span><strong><i aria-hidden="true">✓</i>{check.value}</strong></li>
@@ -129,12 +130,12 @@
 
 		<div class="flow-rail" aria-hidden="true">
 			<span></span>
-			<b>즉시 제공</b>
+			<b>{t('opsBoard.allocate.immediate')}</b>
 		</div>
 
 		<div class="delivery-stack">
 			<article class="flow-card resource-card">
-				<div class="flow-meta"><span>Allocated</span><span class="live-label">Live</span></div>
+				<div class="flow-meta"><span>{t('opsBoard.allocate.kicker')}</span><span class="live-label">{t('opsBoard.allocate.live')}</span></div>
 				<div class="resource-grid">
 					{#each activeScenario.resource as resource}
 						<div><span>{resource.label}</span><strong>{resource.value}</strong></div>
@@ -144,13 +145,13 @@
 			<article class="output-card">
 				<div class="output-icon" aria-hidden="true"><span></span><span></span><span></span></div>
 				<div><span>{activeScenario.outputLabel}</span><strong>{activeScenario.output}</strong></div>
-				<b>ready</b>
+				<b>{t('opsBoard.output.ready')}</b>
 			</article>
 		</div>
 	</div>
 
 	<footer class="board-footer">
-		<span>신청</span><i aria-hidden="true"></i><span>배정</span><i aria-hidden="true"></i><span>관측</span><i aria-hidden="true"></i><strong>재사용</strong>
+		<span>{t('opsBoard.footer.request')}</span><i aria-hidden="true"></i><span>{t('opsBoard.footer.allocate')}</span><i aria-hidden="true"></i><span>{t('opsBoard.footer.observe')}</span><i aria-hidden="true"></i><strong>{t('opsBoard.footer.reuse')}</strong>
 	</footer>
 </section>
 

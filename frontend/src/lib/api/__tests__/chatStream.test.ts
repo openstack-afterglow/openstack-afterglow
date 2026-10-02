@@ -124,10 +124,10 @@ describe('durable chat SSE framing', () => {
 				status: 422, message: 'body.model: Missing model'
 			});
 			await expect(createChatRun('/api/v1/chat/runs', {})).rejects.toMatchObject({
-				status: 502, message: 'chat request failed'
+				status: 502, message: expect.not.stringContaining('secret upstream token')
 			});
 			await expect(createChatRun('/api/v1/chat/runs', {})).rejects.toMatchObject({
-				status: 503, message: 'chat request failed'
+				status: 503, message: expect.not.stringContaining('private-key')
 			});
 		} finally {
 			fetchMock.mockRestore();

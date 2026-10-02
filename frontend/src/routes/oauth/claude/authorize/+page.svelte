@@ -16,6 +16,7 @@
 	import Field from '$lib/components/ui/Field.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
+	import { t } from '$lib/i18n/ns/public-entry';
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
@@ -27,13 +28,13 @@
 	let outcome = $state<'approved' | 'denied' | null>(null);
 
 	function errorMessage(value: unknown): string {
-		return value instanceof ApiError ? value.message : 'Claude Code 연결 요청을 처리하지 못했습니다.';
+		return value instanceof ApiError ? value.message : t('claudeConsent.error.requestFailed');
 	}
 
 	async function decide(action: 'approve' | 'deny') {
 		if (!token || !projectId || deciding) return;
 		if (!storeClaudeGatewayUserCode(code)) {
-			error = 'Claude Code에 표시된 8자리 연결 코드를 확인하세요.';
+			error = t('claudeConsent.error.checkCode');
 			return;
 		}
 
@@ -66,7 +67,7 @@
 		beginClaudeGatewayAuthorization();
 		const queryCode = $page.url.searchParams.get('user_code');
 		if (queryCode && !storeClaudeGatewayUserCode(queryCode)) {
-			error = '연결 URL의 Claude Code 인증 코드가 유효하지 않습니다. 코드를 직접 입력할 수 있습니다.';
+			error = t('claudeConsent.error.invalidUrlCode');
 		}
 		if (queryCode) {
 			try {
@@ -90,38 +91,38 @@
 </script>
 
 <svelte:head>
-	<title>Claude Code 연결 승인 | Afterglow</title>
+	<title>{t('claudeConsent.pageTitle')}</title>
 	<meta name="referrer" content="no-referrer" />
 </svelte:head>
 
 <main class="authorization-page">
 	<Card surface="raised" padding="lg" class="authorization-card">
 		<header>
-			<p class="eyebrow">Lumen Claude Gateway</p>
-			<h1>Claude Code 연결 승인</h1>
-			<p>Claude Code에 표시된 코드를 확인한 뒤 현재 Afterglow 프로젝트에 연결하세요.</p>
+			<p class="eyebrow">{t('claudeConsent.eyebrow')}</p>
+			<h1>{t('claudeConsent.title')}</h1>
+			<p>{t('claudeConsent.description')}</p>
 		</header>
 
 		{#if outcome === 'approved'}
-			<Alert tone="success" title="Claude Code 연결을 승인했습니다.">
-				{#snippet children()}Claude Code로 돌아가세요. 24시간 후에는 다시 연결해야 합니다.{/snippet}
+			<Alert tone="success" title={t('claudeConsent.approved.title')}>
+				{#snippet children()}{t('claudeConsent.approved.body')}{/snippet}
 			</Alert>
-			<div class="actions"><Button onclick={leave}>채팅 설정으로 이동</Button></div>
+			<div class="actions"><Button onclick={leave}>{t('claudeConsent.actions.chatSettings')}</Button></div>
 		{:else if outcome === 'denied'}
-			<Alert tone="info" title="Claude Code 연결을 거절했습니다.">
-				{#snippet children()}이 인증 요청으로는 Lumen API 키가 발급되지 않습니다.{/snippet}
+			<Alert tone="info" title={t('claudeConsent.denied.title')}>
+				{#snippet children()}{t('claudeConsent.denied.body')}{/snippet}
 			</Alert>
-			<div class="actions"><Button variant="secondary" onclick={leave}>채팅 설정으로 이동</Button></div>
+			<div class="actions"><Button variant="secondary" onclick={leave}>{t('claudeConsent.actions.chatSettings')}</Button></div>
 		{:else}
-			{#if error}<Alert tone="danger" title="연결 요청을 처리할 수 없습니다.">{#snippet children()}{error}{/snippet}</Alert>{/if}
+			{#if error}<Alert tone="danger" title={t('claudeConsent.error.title')}>{#snippet children()}{error}{/snippet}</Alert>{/if}
 
 			<section class="details" aria-labelledby="gateway-code-heading">
 				<div class="scope-summary">
 					<div>
-						<span>권한 범위</span>
-						<strong id="gateway-code-heading">모델 조회 및 Claude Code 추론</strong>
+						<span>{t('claudeConsent.details.scope')}</span>
+						<strong id="gateway-code-heading">{t('claudeConsent.details.scopeDescription')}</strong>
 					</div>
-					<div class="scopes" aria-label="발급 권한">
+					<div class="scopes" aria-label={t('claudeConsent.details.permissions')}>
 						<StatusChip status="models:read" />
 						<StatusChip status="compat:completions:write" />
 					</div>
@@ -132,24 +133,24 @@
 						void decide('approve');
 					}}
 				>
-					<Field label="Claude Code 연결 코드" for="gateway-code" help="예: ABCD-2345">
+					<Field label={t('claudeConsent.code.label')} for="gateway-code" help={t('claudeConsent.code.help', { example: 'ABCD-2345' })}>
 						<TextInput
 							id="gateway-code"
-							ariaLabel="Claude Code 연결 코드"
+							ariaLabel={t('claudeConsent.code.label')}
 							maxlength={9}
 							placeholder="ABCD-2345"
 							bind:value={code}
 						/>
 					</Field>
 					<div class="actions">
-						<Button variant="danger-outline" type="button" onclick={() => decide('deny')} disabled={deciding || !code.trim()}>거절</Button>
-						<Button type="submit" disabled={deciding || !code.trim()}>{deciding ? '처리 중…' : '연결 승인'}</Button>
+						<Button variant="danger-outline" type="button" onclick={() => decide('deny')} disabled={deciding || !code.trim()}>{t('claudeConsent.actions.deny')}</Button>
+						<Button type="submit" disabled={deciding || !code.trim()}>{deciding ? t('claudeConsent.actions.processing') : t('claudeConsent.actions.approve')}</Button>
 					</div>
 				</form>
 			</section>
 
-			<Alert tone="warning" title="본인이 시작한 요청만 승인하세요.">
-				{#snippet children()}승인하면 현재 사용자와 프로젝트에 묶인 24시간짜리 Lumen 자격 증명이 한 번만 발급됩니다. 비밀번호나 기존 API 키는 Claude Code에 전달되지 않습니다.{/snippet}
+			<Alert tone="warning" title={t('claudeConsent.warning.title')}>
+				{#snippet children()}{t('claudeConsent.warning.body')}{/snippet}
 			</Alert>
 		{/if}
 	</Card>

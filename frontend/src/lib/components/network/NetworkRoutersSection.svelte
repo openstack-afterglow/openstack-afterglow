@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/network-resources';
 	import { useNetworkDetailController } from '$lib/stores/networkDetailController.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 
@@ -7,28 +8,28 @@
 
 <div class="bg-surface-base border border-line rounded-xl p-4">
 	<div class="flex items-center justify-between mb-3">
-		<h3 class="text-xs text-ink-2 uppercase tracking-wide">연결된 라우터 ({s.network!.routers.length})</h3>
+		<h3 class="text-xs text-ink-2 uppercase tracking-wide">{t('network.routers.titleCount', { count: s.network!.routers.length })}</h3>
 		{#if s.canManageNetwork}
 			<button
 				onclick={() => s.openRouterConnect()}
 				class="text-warm-text hover:text-warm-text-hover text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm transition-colors"
-			>+ 연결</button>
+			>{t('network.actions.connectAdd')}</button>
 		{/if}
 	</div>
 
 	{#if s.showRouterConnect && s.canManageNetwork}
 		<div class="mb-3 p-3 bg-surface-sunken/60 border border-line-2 rounded-lg space-y-2">
 			<select bind:value={s.selectedRouterId} class="w-full bg-surface-sunken border border-line-2 rounded px-2 py-1.5 text-xs text-ink-1">
-				<option value="">라우터 선택</option>
+				<option value="">{t('network.routers.select')}</option>
 				{#each s.managedRouters as r}
 					<option value={r.id}>{r.name || r.id.slice(0, 12)}</option>
 				{/each}
 			</select>
 			<select bind:value={s.selectedSubnetId} class="w-full bg-surface-sunken border border-line-2 rounded px-2 py-1.5 text-xs text-ink-1">
-				<option value="">서브넷 선택</option>
+				<option value="">{t('network.subnets.select')}</option>
 				{#each s.network!.subnet_details as subnet}
 					<option value={subnet.id}>
-						{subnet.name || subnet.cidr}{!subnet.gateway_ip ? ' (게이트웨이 자동 생성)' : ''}
+						{!subnet.gateway_ip ? t('network.subnets.autoGatewayOption', { name: subnet.name || subnet.cidr }) : subnet.name || subnet.cidr}
 					</option>
 				{/each}
 			</select>
@@ -37,8 +38,8 @@
 					onclick={() => s.connectRouter()}
 					disabled={!s.selectedRouterId || !s.selectedSubnetId || s.connectingRouter}
 					class="bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-action-on-warm text-xs px-3 py-1.5 rounded transition-colors"
-				>{s.connectingRouter ? '연결 중...' : '연결'}</button>
-				<button onclick={() => s.showRouterConnect = false} class="text-ink-2 hover:text-ink-1 text-xs px-2">취소</button>
+				>{s.connectingRouter ? t('network.actions.connecting') : t('network.actions.connect')}</button>
+				<button onclick={() => s.showRouterConnect = false} class="text-ink-2 hover:text-ink-1 text-xs px-2">{t('network.actions.cancel')}</button>
 			</div>
 		</div>
 	{/if}
@@ -57,13 +58,13 @@
 							<button
 								onclick={() => s.disconnectRouter(router)}
 								class="text-red-400 hover:text-red-300 text-xs px-1.5 py-0.5 rounded border border-red-900 hover:border-red-700 transition-colors"
-							>해제</button>
+							>{t('network.actions.disconnect')}</button>
 						{/if}
 					</div>
 				</div>
 			{/each}
 		</div>
 	{:else if !s.showRouterConnect}
-		<p class="text-xs text-ink-2">연결된 라우터가 없습니다</p>
+		<p class="text-xs text-ink-2">{t('network.routers.empty')}</p>
 	{/if}
 </div>

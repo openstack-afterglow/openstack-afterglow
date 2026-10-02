@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/network-pages';
+	import RichText from '$lib/i18n/RichText.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
@@ -57,7 +59,7 @@
 	const isCreateSubnetMode = $derived(request.kind === 'router-net' && !createdSubnet && subnets.length === 0);
 	const cidrError = $derived(
 		isCreateSubnetMode && newSubnetCidr && !cidrRegex.test(newSubnetCidr)
-			? '유효한 IPv4 CIDR 형식이 아닙니다 (예: 10.0.0.0/24)'
+			? t('topologyLink.invalidCidr')
 			: ''
 	);
 
@@ -74,8 +76,8 @@
 	});
 
 	const sourceKindLabel = $derived.by(() => {
-		if (request.kind === 'vm-net') return '인스턴스';
-		return '라우터';
+		if (request.kind === 'vm-net') return t('topologyLink.instance');
+		return t('topologyLink.router');
 	});
 
 	const sourceName = $derived.by(() => {
@@ -120,11 +122,11 @@
 
 <FormModal
 	bind:open
-	title="컴포넌트 연결 확인"
+	title={t('topologyLink.title')}
 	{submitting}
 	onSubmit={handleSubmit}
-	submitLabel={createdSubnet ? '라우터 연결 재시도' : '연결하기'}
-	cancelLabel="취소"
+	submitLabel={createdSubnet ? t('topologyLink.retryRouter') : t('topologyLink.connect')}
+	cancelLabel={t('topologyLink.cancel')}
 	{onClose}
 >
 	<div class="confirm-content">
@@ -133,7 +135,7 @@
 		{/if}
 
 		<!-- 연결 컴포넌트 프리뷰 (Source ↔ Target) -->
-		<div class="connection-preview" role="region" aria-label="연결 대상 컴포넌트">
+		<div class="connection-preview" role="region" aria-label={t('topologyLink.componentsLabel')}>
 			<div class="component-card">
 				<div class="card-badge">
 					<Pill tone="accent" size="xs">{sourceKindLabel}</Pill>
@@ -143,13 +145,13 @@
 
 			<div class="connection-cable" aria-hidden="true">
 				<span class="cable-line"></span>
-				<span class="cable-badge">케이블 연결</span>
+				<span class="cable-badge">{t('topologyLink.cable')}</span>
 			</div>
 
 			<div class="component-card">
 				<div class="card-badge">
 					<Pill tone={network.is_external ? 'warm' : 'neutral'} size="xs">
-						{network.is_external ? '외부 네트워크' : '내부 네트워크'}
+						{network.is_external ? t('topologyLink.externalNetwork') : t('topologyLink.internalNetwork')}
 					</Pill>
 				</div>
 				<div class="card-name" title={network.name}>{network.name}</div>
@@ -158,55 +160,52 @@
 
 		<!-- 연결 방식 및 세부 정보 -->
 		<div class="connection-details">
-			<div class="details-heading">연결 방식</div>
+			<div class="details-heading">{t('topologyLink.method')}</div>
 
 			{#if request.kind === 'vm-net'}
 				<div class="details-desc">
 					<p class="desc-main">
-						<strong>{request.instanceName}</strong> 인스턴스에 새 가상 네트워크 인터페이스(NIC)를 생성하여
-						<strong>{network.name}</strong> 네트워크에 연결합니다.
+						<RichText segments={t.rich('topologyLink.instanceDescription', { instance: request.instanceName, network: network.name })} />
 					</p>
-					<p class="desc-sub">IP 주소는 서브넷의 DHCP 정책에 따라 자동으로 할당됩니다.</p>
+					<p class="desc-sub">{t('topologyLink.instanceHelp')}</p>
 				</div>
 			{:else if request.kind === 'router-gateway'}
 				<div class="details-desc">
 					<p class="desc-main">
-						<strong>{request.routerName}</strong> 라우터의 외부 게이트웨이(Default Route)를
-						<strong>{network.name}</strong> 외부 네트워크로 지정합니다.
+						<RichText segments={t.rich('topologyLink.gatewayDescription', { router: request.routerName, network: network.name })} />
 					</p>
-					<p class="desc-sub">인터넷 통신 및 아웃바운드 SNAT 라우팅이 이 게이트웨이를 통해 활성화됩니다.</p>
+					<p class="desc-sub">{t('topologyLink.gatewayHelp')}</p>
 				</div>
 			{:else if request.kind === 'router-net'}
 				<div class="details-desc">
 					<p class="desc-main">
-						<strong>{request.routerName}</strong> 라우터를
-						<strong>{network.name}</strong> 네트워크의 서브넷 게이트웨이 인터페이스로 연결합니다.
+						<RichText segments={t.rich('topologyLink.routerDescription', { router: request.routerName, network: network.name })} />
 					</p>
 				</div>
 
 				{#if createdSubnet}
 					<div class="single-subnet-box">
-						<div class="box-label">생성 완료된 서브넷</div>
+						<div class="box-label">{t('topologyLink.createdSubnet')}</div>
 						<div class="subnet-info">
-							<span class="subnet-name">{createdSubnet.name || '새 서브넷'}</span>
+							<span class="subnet-name">{createdSubnet.name || t('topologyLink.newSubnet')}</span>
 							<span class="subnet-cidr font-mono">{createdSubnet.cidr}</span>
 							{#if createdSubnet.gateway_ip}
-								<span class="subnet-gw">GW: {createdSubnet.gateway_ip}</span>
+								<span class="subnet-gw">{t('topologyLink.gatewayAddress', { address: createdSubnet.gateway_ip })}</span>
 							{:else}
-								<span class="subnet-gw">게이트웨이 자동 지정</span>
+								<span class="subnet-gw">{t('topologyLink.autoGateway')}</span>
 							{/if}
 						</div>
 						<div class="create-notice">
-							서브넷 생성이 완료되었습니다. 라우터 게이트웨이 인터페이스 연결만 재시도합니다.
+							{t('topologyLink.createdNotice')}
 						</div>
 					</div>
 				{:else if subnets.length === 0}
 					<div class="subnet-create-box">
 						<div class="create-notice">
-							이 네트워크에는 활성 서브넷이 없습니다. 새 서브넷을 생성한 후 라우터 인터페이스에 연결합니다.
+							{t('topologyLink.createNotice')}
 						</div>
 
-						<Field label="서브넷 이름 (선택)">
+						<Field label={t('topologyLink.subnetName')}>
 							<TextInput
 								bind:value={newSubnetName}
 								placeholder="{network.name}-subnet"
@@ -214,7 +213,7 @@
 							/>
 						</Field>
 
-						<Field label="CIDR" required help="예: 10.0.0.0/24 · 게이트웨이는 첫 주소로 자동 지정됩니다" error={cidrError}>
+						<Field label="CIDR" required help={t('topologyLink.cidrHelp')} error={cidrError}>
 							<TextInput
 								bind:value={newSubnetCidr}
 								placeholder="10.0.0.0/24"
@@ -225,29 +224,29 @@
 
 						<label class="dhcp-check">
 							<input type="checkbox" bind:checked={newSubnetDhcp} disabled={submitting} />
-							<span>DHCP 활성화</span>
+							<span>{t('topologyLink.enableDhcp')}</span>
 						</label>
 					</div>
 				{:else if subnets.length === 1}
 					<div class="single-subnet-box">
-						<div class="box-label">연결할 서브넷</div>
+						<div class="box-label">{t('topologyLink.subnetToConnect')}</div>
 						<div class="subnet-info">
-							<span class="subnet-name">{subnets[0].name || '기본 서브넷'}</span>
+							<span class="subnet-name">{subnets[0].name || t('topologyLink.defaultSubnet')}</span>
 							<span class="subnet-cidr font-mono">{subnets[0].cidr}</span>
 							{#if subnets[0].gateway_ip}
-								<span class="subnet-gw">GW: {subnets[0].gateway_ip}</span>
+								<span class="subnet-gw">{t('topologyLink.gatewayAddress', { address: subnets[0].gateway_ip })}</span>
 							{:else}
-								<span class="subnet-gw">게이트웨이 자동 지정</span>
+								<span class="subnet-gw">{t('topologyLink.autoGateway')}</span>
 							{/if}
 						</div>
 					</div>
 				{:else}
 					<div class="multi-subnet-box">
-						<Field label="연결할 서브넷" required help="라우터 인터페이스를 연결할 서브넷을 선택하세요">
+						<Field label={t('topologyLink.subnetToConnect')} required help={t('topologyLink.subnetHelp')}>
 							<SelectInput bind:value={selectedSubnetId} disabled={submitting}>
 								{#each subnets as s (s.id)}
 									<option value={s.id}>
-										{s.name || s.id.slice(0, 8)} ({s.cidr}){s.gateway_ip ? ` · GW ${s.gateway_ip}` : ''}
+										{s.gateway_ip ? t('topologyLink.subnetOptionWithGateway', { name: s.name || s.id.slice(0, 8), cidr: s.cidr, gateway: s.gateway_ip }) : t('topologyLink.subnetOption', { name: s.name || s.id.slice(0, 8), cidr: s.cidr })}
 									</option>
 								{/each}
 							</SelectInput>

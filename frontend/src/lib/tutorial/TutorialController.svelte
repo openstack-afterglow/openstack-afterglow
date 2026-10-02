@@ -2,11 +2,17 @@
 	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/stores';
 	import 'driver.js/dist/driver.css';
-	import { isTourActive, readPersistedTour, refreshTourAnchor, startTour } from './engine';
+	import { isTourActive, readPersistedTour, refreshTourAnchor, refreshTourMessages, startTour } from './engine';
 	import { isTourId, TOUR_QUERY_KEY } from './tours';
+	import { getLocale } from '$lib/i18n/runtime.svelte';
 
 	let lastParam: string | null = null;
 	let resumeChecked = false;
+
+	$effect(() => {
+		getLocale();
+		refreshTourMessages();
+	});
 
 	// ?tour=<id> 딥링크 시작 + 새로고침 재개 담당 (UI 없음 — 시작 버튼은 각 페이지에 있다)
 	$effect(() => {

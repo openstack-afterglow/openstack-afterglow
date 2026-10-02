@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { isAvatarUrl, type Agent } from '$lib/api/chatAgents';
+	import { t } from '$lib/i18n/ns/chat-studio';
 
 	interface Props {
 		agents: Agent[];
@@ -36,7 +37,7 @@
 <div class="agent-picker" bind:this={root}>
 	{#if activeAgent}
 		<div class="badge" class:disabled>
-			<button type="button" class="badge-main" {disabled} onclick={toggle} title="에이전트 변경">
+			<button type="button" class="badge-main" {disabled} onclick={toggle} title={t('agentPicker.change')}>
 				<span class="avatar">
 					{#if isAvatarUrl(activeAgent.avatar)}
 						<img src={activeAgent.avatar} alt="" />
@@ -46,14 +47,14 @@
 				</span>
 				<span class="badge-name">{activeAgent.name}</span>
 			</button>
-			<button type="button" class="unbind" onclick={onUnbind} title="에이전트 해제" aria-label="에이전트 해제">
+			<button type="button" class="unbind" onclick={onUnbind} title={t('agentPicker.unbind')} aria-label={t('agentPicker.unbind')}>
 				<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="round" /></svg>
 			</button>
 		</div>
 	{:else}
-		<button type="button" class="trigger" {disabled} aria-haspopup="menu" aria-expanded={open} onclick={toggle} title="에이전트 선택">
+		<button type="button" class="trigger" {disabled} aria-haspopup="menu" aria-expanded={open} onclick={toggle} title={t('agentPicker.select')}>
 			<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="7" width="16" height="12" rx="2" /><path d="M9 7V4h6v3M9 13h.01M15 13h.01" stroke-linecap="round" /></svg>
-			<span class="agent-label">에이전트</span>
+			<span class="agent-label">{t('agentPicker.label')}</span>
 			<svg class="chev" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6" stroke-linecap="round" stroke-linejoin="round" /></svg>
 		</button>
 	{/if}
@@ -62,7 +63,7 @@
 		<div class="menu" role="menu">
 			<div class="menu-scroll">
 				{#if agents.length === 0}
-					<p class="menu-empty">저장된 에이전트가 없습니다</p>
+					<p class="menu-empty">{t('agentPicker.empty')}</p>
 				{:else}
 					{#each agents as a (a.id)}
 						<button type="button" role="menuitem" class="menu-item" class:active={activeAgent?.id === a.id} onclick={() => pick(a)}>
@@ -79,10 +80,10 @@
 			</div>
 			<div class="menu-foot">
 				{#if activeAgent}
-					<button type="button" class="foot-item" onclick={() => { open = false; onUnbind(); }}>바인딩 해제</button>
+					<button type="button" class="foot-item" onclick={() => { open = false; onUnbind(); }}>{t('agentPicker.unbindAction')}</button>
 				{/if}
-				<button type="button" class="foot-item" onclick={() => { open = false; onManage(); }}>에이전트 관리</button>
-				<button type="button" class="foot-item accent" onclick={() => { open = false; onHub(); }}>허브 탐색</button>
+				<button type="button" class="foot-item" onclick={() => { open = false; onManage(); }}>{t('agentPicker.manage')}</button>
+				<button type="button" class="foot-item accent" onclick={() => { open = false; onHub(); }}>{t('agentPicker.browseHub')}</button>
 			</div>
 		</div>
 	{/if}

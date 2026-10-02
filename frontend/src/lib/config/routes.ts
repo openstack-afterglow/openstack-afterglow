@@ -1,82 +1,94 @@
 // Afterglow route label map
-// URL path segment → Korean/English display label
-// Used to auto-derive breadcrumbs in TopBar from $page.url.pathname
+// URL path segment → localized display label (nav catalog) or a product name
+// Used to auto-derive the header breadcrumb from $page.url.pathname
 
-export const ROUTE_LABELS: Record<string, string> = {
+import { t } from '$lib/i18n/ns/nav';
+
+type NavMessage = Parameters<typeof t>[0];
+
+/** Translated segments; resolved at call time so the breadcrumb follows the active language. */
+const ROUTE_LABEL_KEYS: Record<string, NavMessage> = {
   // Top level
-  dashboard: '대시보드',
-  admin: 'ADMIN',
+  dashboard: 'routes.dashboard',
+  admin: 'routes.admin',
 
   // Overview
-  'my-resources': '내 리소스',
-  notifications: '알림함',
+  'my-resources': 'routes.myResources',
+  notifications: 'routes.notifications',
 
   // Compute
-  compute: 'COMPUTE',
-  instances: '인스턴스',
-  keypairs: '키페어',
-  images: '이미지',
-  flavors: 'Flavor',
-  hypervisors: '하이퍼바이저',
-  gpu: 'GPU',
+  compute: 'routes.compute',
+  instances: 'routes.instances',
+  keypairs: 'routes.keypairs',
+  images: 'routes.images',
+  flavors: 'routes.flavors',
+  hypervisors: 'routes.hypervisors',
 
   // Volumes
-  volumes: '볼륨',
-  backups: '볼륨 백업',
-  snapshots: '볼륨 스냅샷',
+  volumes: 'routes.volumes',
+  backups: 'routes.backups',
+  snapshots: 'routes.snapshots',
 
   // File Storage
-  'file-storage': 'FILE STORAGE',
-  manage: '사전 빌드 파일 스토리지',
-  networks: '네트워크',
-  'security-services': 'Security Service',
+  'file-storage': 'routes.fileStorage',
+  manage: 'routes.manage',
+  networks: 'routes.networks',
+  'security-services': 'routes.securityServices',
 
   // Containers
-  containers: '컨테이너',
-  clusters: '클러스터',
-  k3s: 'Drover',
+  containers: 'routes.containers',
+  clusters: 'routes.clusters',
 
   // Database
-  database: 'DATABASE',
+  database: 'routes.database',
 
   // Object Storage
-  'object-storage': 'OBJECT STORAGE',
-  buckets: '버킷',
-
-  // Chat
-  chat: 'Lumen',
+  'object-storage': 'routes.objectStorage',
+  buckets: 'routes.buckets',
 
   // Network
-  network: '네트워크',
-  routers: '라우터',
-  'security-groups': '보안 그룹',
-  loadbalancers: '로드밸런서',
-  topology: '토폴로지',
-  'floating-ips': 'Floating IP',
-  ports: '포트',
-  waygate: 'Waygate',
+  network: 'routes.network',
+  routers: 'routes.routers',
+  'security-groups': 'routes.securityGroups',
+  loadbalancers: 'routes.loadbalancers',
+  topology: 'routes.topology',
+  'floating-ips': 'routes.floatingIps',
+  ports: 'routes.ports',
 
   // Library (Union Mount)
-  library: '라이브러리',
-  libraries: '라이브러리 관리',
-  templates: '템플릿',
+  library: 'routes.library',
+  libraries: 'routes.libraries',
+  templates: 'routes.templates',
 
   // Project settings
-  'project-settings': '프로젝트 설정',
-  invitations: '초대',
+  'project-settings': 'routes.projectSettings',
+  invitations: 'routes.invitations',
 
   // Admin
-  monitoring: '통합 모니터링',
-  services: '서비스 상태',
-  notion: 'Notion 연동',
-  settings: '기본 설정',
-  users: '사용자',
-  projects: '프로젝트',
-  quotas: '쿼터',
-  groups: '그룹',
-  roles: '역할',
-  announcements: '공지 관리',
+  monitoring: 'routes.monitoring',
+  services: 'routes.services',
+  notion: 'routes.notion',
+  settings: 'routes.settings',
+  users: 'routes.users',
+  projects: 'routes.projects',
+  quotas: 'routes.quotas',
+  groups: 'routes.groups',
+  roles: 'routes.roles',
+  announcements: 'routes.announcements',
 };
+
+/** Product and protocol names are never translated. */
+const ROUTE_PRODUCT_LABELS: Record<string, string> = {
+  gpu: 'GPU',
+  k3s: 'Drover',
+  chat: 'Lumen',
+  waygate: 'Waygate',
+};
+
+function routeLabel(segment: string): string | undefined {
+  const key = ROUTE_LABEL_KEYS[segment];
+  return key ? t(key) : ROUTE_PRODUCT_LABELS[segment];
+}
 
 interface BreadcrumbResult {
   /** Short parent path, e.g. "COMPUTE / INSTANCES" */
@@ -87,7 +99,7 @@ interface BreadcrumbResult {
 
 /**
  * Derives breadcrumb display strings from a URL pathname.
- * /dashboard/compute/instances → { breadcrumb: 'COMPUTE / INSTANCES', title: '인스턴스' }
+ * /dashboard/compute/instances → { breadcrumb: 'COMPUTE', title: '인스턴스' }
  */
 export function deriveBreadcrumb(pathname: string): BreadcrumbResult {
   // Strip leading slash and split
@@ -99,19 +111,14 @@ export function deriveBreadcrumb(pathname: string): BreadcrumbResult {
   if (relevant.length === 0) {
     // /dashboard 또는 /admin 루트인 경우 첫 세그먼트로 타이틀 결정
     const root = parts[0];
-    const rootTitle = ROUTE_LABELS[root] ?? root;
-    return { breadcrumb: '', title: rootTitle };
+    return { breadcrumb: '', title: routeLabel(root) ?? root };
   }
 
-  const labels = relevant.map(p => {
-    const label = ROUTE_LABELS[p];
-    if (!label) return p.toUpperCase();
-    return label.toUpperCase();
-  });
+  const labels = relevant.map(p => (routeLabel(p) ?? p).toUpperCase());
 
   return {
     breadcrumb: labels.slice(0, -1).join(' / '),
-    title: ROUTE_LABELS[relevant[relevant.length - 1]] ?? relevant[relevant.length - 1],
+    title: routeLabel(relevant[relevant.length - 1]) ?? relevant[relevant.length - 1],
   };
 }
 

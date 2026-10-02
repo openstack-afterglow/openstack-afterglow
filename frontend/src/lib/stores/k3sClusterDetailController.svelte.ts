@@ -1,3 +1,4 @@
+import { t } from '$lib/i18n/ns/drover';
 import { getContext, setContext } from 'svelte';
 import { api, ApiError, fetchWithAuth } from '$lib/api/client';
 import { downloadBlobAs } from '$lib/utils/downloadBlob';
@@ -105,7 +106,7 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
       if (scalingTarget === null && cluster) scalingTarget = cluster.agent_count;
       error = '';
     } catch (e) {
-      error = e instanceof ApiError ? `조회 실패 (${e.status})` : '서버 오류';
+      error = e instanceof ApiError ? t('detail.lookupFailed', { status: e.status }) : t('detail.serverError');
     } finally {
       loading = false;
     }
@@ -160,17 +161,17 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
       const { blob } = await api.downloadBlob(`${apiBase}/${id}/kubeconfig`, opts.token(), opts.projectId());
       downloadBlobAs(blob, `kubeconfig-${cluster.name}.yaml`);
     } catch (e) {
-      if (e instanceof ApiError && e.status === 404) toast.warning('kubeconfig가 아직 준비되지 않았습니다.');
-      else toast.error(`다운로드 실패: ${e instanceof ApiError ? e.message : String(e)}`);
+      if (e instanceof ApiError && e.status === 404) toast.warning(t('detail.kubeconfigPending'));
+      else toast.error(t('detail.downloadFailed', { error: e instanceof ApiError ? e.message : String(e) }));
     }
   }
 
   async function deleteCluster() {
     const c = cluster;
     const id = opts.clusterId();
-    if (!c || !(await confirmDialog(`Drover 클러스터 "${c.name}"을 삭제하시겠습니까?`))) return;
+    if (!c || !(await confirmDialog(t('detail.confirmDelete', { name: c.name })))) return;
     deleting = true;
-    deleteProgress = { step: '', pct: 0, msg: '삭제 준비 중...', error: '' };
+    deleteProgress = { step: '', pct: 0, msg: t('detail.preparingDelete'), error: '' };
     try {
       for await (const msg of streamK3sProgress(
         `${apiBase}/${id}/delete-async`,
@@ -182,13 +183,13 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
           return;
         }
         if (msg.step === 'failed') {
-          deleteProgress = { ...deleteProgress, error: msg.error ?? '알 수 없는 오류' };
+          deleteProgress = { ...deleteProgress, error: msg.error ?? t('detail.unknownError') };
           deleting = false;
           return;
         }
       }
     } catch (e) {
-      deleteProgress = { step: 'failed', pct: 0, msg: '삭제 실패', error: String(e) };
+      deleteProgress = { step: 'failed', pct: 0, msg: t('detail.deleteFailed'), error: String(e) };
       deleting = false;
     }
   }
@@ -198,7 +199,7 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
     const id = opts.clusterId();
     if (scalingTarget === null || !c) return;
     if (scalingTarget === c.agent_vm_ids.length && scalingTarget === c.agent_count) return;
-    if (!(await confirmDialog(`에이전트 수를 ${c.agent_vm_ids.length}개에서 ${scalingTarget}개로 변경하시겠습니까?`))) return;
+    if (!(await confirmDialog(t('detail.confirmScale', { current: c.agent_vm_ids.length, target: scalingTarget })))) return;
     scaling = true;
     scaleError = '';
     try {
@@ -417,14 +418,14 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
   async function removePod(name: string) {
     const id = opts.clusterId();
     if (!id || workloadActioning) return;
-    const confirmed = await confirmDialog(`Pod "${name}"를 삭제하시겠습니까?`);
+    const confirmed = await confirmDialog(t('detail.confirmDeletePod', { name }));
     if (!confirmed) return;
     workloadActioning = `${selectedNamespace}:pod:${name}`;
     try {
       await deletePod(id, selectedNamespace, name, opts.token(), opts.projectId());
       pods = pods.filter((p) => p.name !== name);
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : 'Pod 삭제 실패');
+      toast.error(e instanceof ApiError ? e.message : t('detail.deletePodFailed'));
     } finally {
       workloadActioning = null;
     }
@@ -433,14 +434,14 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
   async function removeSvc(name: string) {
     const id = opts.clusterId();
     if (!id || workloadActioning) return;
-    const confirmed = await confirmDialog(`Service "${name}"를 삭제하시겠습니까?`);
+    const confirmed = await confirmDialog(t('detail.confirmDeleteService', { name }));
     if (!confirmed) return;
     workloadActioning = `${selectedNamespace}:svc:${name}`;
     try {
       await deleteService(id, selectedNamespace, name, opts.token(), opts.projectId());
       services = services.filter((s) => s.name !== name);
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : 'Service 삭제 실패');
+      toast.error(e instanceof ApiError ? e.message : t('detail.deleteServiceFailed'));
     } finally {
       workloadActioning = null;
     }
@@ -453,9 +454,9 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
     try {
       const updated = await apiRestartDeployment(id, selectedNamespace, name, opts.token(), opts.projectId());
       deployments = deployments.map((d) => (d.name === name ? updated : d));
-      toast.success(`Deployment "${name}" 재시작 요청`);
+      toast.success(t('detail.restartRequested', { name }));
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : 'Deployment 재시작 실패');
+      toast.error(e instanceof ApiError ? e.message : t('detail.restartFailed'));
     } finally {
       workloadActioning = null;
     }
@@ -469,7 +470,7 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
       const updated = await apiScaleDeployment(id, selectedNamespace, name, replicas, opts.token(), opts.projectId());
       deployments = deployments.map((d) => (d.name === name ? updated : d));
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : 'Deployment 스케일 실패');
+      toast.error(e instanceof ApiError ? e.message : t('detail.scaleFailed'));
     } finally {
       workloadActioning = null;
     }
@@ -481,7 +482,7 @@ export function createK3sClusterDetailController(opts: K3sClusterDetailControlle
     try {
       return await getPodLog(id, selectedNamespace, name, opts2, opts.token(), opts.projectId());
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : 'Pod 로그 조회 실패');
+      toast.error(e instanceof ApiError ? e.message : t('detail.podLogFailed'));
       return null;
     }
   }

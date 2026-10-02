@@ -10,6 +10,7 @@
 	import LbErrorStatusTree from '$lib/components/dashboard/loadbalancers/LbErrorStatusTree.svelte';
 	import ListenerSection from '$lib/components/dashboard/loadbalancers/ListenerSection.svelte';
 	import PoolSection from '$lib/components/dashboard/loadbalancers/PoolSection.svelte';
+	import { t } from '$lib/i18n/ns/network-pages';
 
 	const ctrl = createNetworkLoadbalancerDetailController({
 		lbId: () => $page.params.id!,
@@ -32,7 +33,7 @@
 <div class="max-w-4xl mx-auto px-4 py-8 text-ink-1">
 	<div class="flex items-center justify-between mb-6">
 		<button onclick={() => goto('/dashboard/network/loadbalancers')} class="text-sm text-ink-2 hover:text-ink-1 inline-flex items-center gap-1">
-			← 로드밸런서 목록
+			{t('loadBalancerDetail.backToList')}
 		</button>
 		<AutoRefreshControl
 			bind:active={ar.active}
@@ -44,7 +45,7 @@
 	</div>
 
 	{#if ctrl.loading}
-		<div class="text-ink-2">불러오는 중...</div>
+		<div class="text-ink-2">{t('loadBalancerDetail.loading')}</div>
 	{:else if ctrl.error}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{ctrl.error}</div>
 	{:else if ctrl.lb}

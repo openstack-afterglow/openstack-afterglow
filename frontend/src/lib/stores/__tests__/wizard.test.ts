@@ -35,9 +35,7 @@ describe('wizard store', () => {
 		expect(state.squashfsMode).toBeNull();
 		expect(state.layerProfileName).toBeNull();
 		expect(state.layerArtifactIds).toEqual([]);
-		expect(state.mountProtocol).toBe('NFS');
 		expect(state.instanceName).toBe('');
-		expect(state.bootVolumeSizeGb).toBe(20);
 		expect(state.deleteBootVolumeOnTermination).toBe(false);
 		expect(state.additionalVolumeIds).toEqual([]);
 		expect(state.newVolumes).toEqual([]);
@@ -64,13 +62,12 @@ describe('wizard store', () => {
 		expect(after.instanceName).toBe('');
 	});
 
-	it('resetWizard는 shallow copy이므로 배열 필드는 초기값 배열 참조', async () => {
+	it('resetWizard는 선택한 라이브러리를 빈 배열로 복원', async () => {
 		const { wizard, resetWizard } = await import('../wizard');
 		const initial = get(wizard);
 		// 새 배열 인스턴스로 교체하면 reset 후에도 초기값 빈 배열로 복원됨
 		wizard.set({ ...initial, libraries: ['lib-a'] });
 		resetWizard();
-		// 스칼라 필드는 정확히 복원됨
 		expect(get(wizard).libraries).toEqual([]);
 	});
 

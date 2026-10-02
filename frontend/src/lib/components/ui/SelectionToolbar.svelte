@@ -1,5 +1,6 @@
 <script lang="ts">
 	import SelectionCheckbox from './SelectionCheckbox.svelte';
+	import { t } from '$lib/i18n/ns/common';
 
 	interface Props {
 		label: string;
@@ -27,14 +28,14 @@
 		checked={checked}
 		indeterminate={indeterminate}
 		disabled={disabled}
-		ariaLabel={`전체 ${label} 선택`}
+		ariaLabel={t('selection.selectAllOf', { label })}
 		onclick={(event) => {
 			event.stopPropagation();
 			onToggle();
 		}}
 	/>
-	<span class="selection-toolbar-label">전체 선택</span>
-	<span class="selection-toolbar-count" aria-live="polite">{selectedCount}개 선택됨</span>
+	<span class="selection-toolbar-label">{t('selection.selectAll')}</span>
+	<span class="selection-toolbar-count" aria-live="polite">{t('selection.count', { count: selectedCount })}</span>
 </div>
 
 <style>

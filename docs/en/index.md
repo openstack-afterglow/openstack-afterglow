@@ -46,6 +46,7 @@ The browser's SvelteKit application calls the configured FastAPI `/api/v1` API b
 | [API reference](../api-reference.md) _(Korean)_ | Complete REST API specification |
 | [kolla-ansible deployment](../deployment.md#kolla-ansible-배포) | Single-playbook deployment inside OpenStack |
 | [Targeted testing](../testing.md) _(Korean)_ | Guide to choosing fast local feature-test targets |
+| [Frontend localization](frontend-localization.md) | Korean-source catalogs, spreadsheet exchange and native-speaker review |
 
 ---
 

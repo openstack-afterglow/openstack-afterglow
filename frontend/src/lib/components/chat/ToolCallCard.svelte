@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/chat-panel';
 	import { downloadChatAsset } from '$lib/api/chatAttachments';
 	import { formatToolArgs, type ToolActivityItem } from '$lib/api/chatToolActivity';
 	import { taskLabelForTool } from '$lib/api/chatTaskLabels';
@@ -14,7 +15,7 @@
 	const argsText = $derived(formatToolArgs(item.args));
 	const hasDetail = $derived(Boolean(argsText) || Boolean(item.result) || Boolean(item.errorCode) || Boolean(item.files?.length));
 	const taskName = $derived(taskLabelForTool(item.name));
-	const statusLabel = $derived(item.running ? '실행 중…' : item.status === 'failed' ? '실패' : '완료');
+	const statusLabel = $derived(item.running ? t('toolCall.running') : item.status === 'failed' ? t('toolCall.failed') : t('toolCall.completed'));
 	const durationLabel = $derived(
 		item.durationMs == null
 			? null
@@ -46,7 +47,7 @@
 			link.click();
 			URL.revokeObjectURL(url);
 		} catch {
-			toast.error('파일을 다운로드하지 못했습니다');
+			toast.error(t('toolCall.downloadFailed'));
 		} finally {
 			downloadingAssetId = null;
 		}
@@ -71,7 +72,7 @@
 		<span class="tool-name">{taskName}</span>
 		<span class="tool-status">{statusLabel}</span>
 		{#if durationLabel}
-			<time class="tool-duration" aria-label={`실행 시간 ${durationLabel}`}>{durationLabel}</time>
+			<time class="tool-duration" aria-label={t('toolCall.duration', { duration: durationLabel })}>{durationLabel}</time>
 		{/if}
 		{#if hasDetail}
 			<svg class="chevron" class:open viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -84,19 +85,19 @@
 		<div class="tool-detail">
 			{#if argsText}
 				<div class="detail-block">
-					<div class="detail-label">입력</div>
+					<div class="detail-label">{t('toolCall.input')}</div>
 					<pre class="detail-pre">{argsText}</pre>
 				</div>
 			{/if}
 			{#if item.result}
 				<div class="detail-block">
-					<div class="detail-label">결과</div>
+					<div class="detail-label">{t('toolCall.result')}</div>
 					<pre class="detail-pre">{item.result}</pre>
 				</div>
 			{/if}
 			{#if item.files?.length}
 				<div class="detail-block">
-					<div class="detail-label">생성 파일</div>
+					<div class="detail-label">{t('toolCall.generatedFiles')}</div>
 					<div class="file-list">
 						{#each item.files as file (file.assetId)}
 							<button
@@ -104,7 +105,7 @@
 								class="file-row"
 								disabled={downloadingAssetId !== null}
 								onclick={() => downloadFile(file)}
-								aria-label={`${file.name} 다운로드`}
+								aria-label={t('toolCall.downloadFile', { name: file.name })}
 							>
 								<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
 									<path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" stroke-linecap="round" stroke-linejoin="round" />
@@ -118,7 +119,7 @@
 			{/if}
 			{#if item.errorCode}
 				<div class="detail-block">
-					<div class="detail-label">실패 코드</div>
+					<div class="detail-label">{t('toolCall.errorCode')}</div>
 					<code class="error-code">{item.errorCode}</code>
 				</div>
 			{/if}

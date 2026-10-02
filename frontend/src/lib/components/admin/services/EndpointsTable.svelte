@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-ops';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
@@ -13,23 +14,23 @@
 		type ServiceListState,
 	} from './serviceList';
 
-	const endpointFields: ServiceListField<EndpointGroup>[] = [
-		{ key: 'name', label: '이름', value: (endpoint) => endpoint.name, filter: true },
-		{ key: 'service', label: '서비스 유형', value: (endpoint) => endpoint.service, filter: true },
-		{ key: 'region', label: '리전', value: (endpoint) => endpoint.region, filter: true },
+	const endpointFields: ServiceListField<EndpointGroup>[] = $derived([
+		{ key: 'name', label: t('services.endpoints.name'), value: (endpoint) => endpoint.name, filter: true },
+		{ key: 'service', label: t('services.endpoints.serviceType'), value: (endpoint) => endpoint.service, filter: true },
+		{ key: 'region', label: t('services.endpoints.region'), value: (endpoint) => endpoint.region, filter: true },
 		{
 			key: 'endpoints',
-			label: '엔드포인트 URL',
+			label: t('services.endpoints.url'),
 			value: (endpoint) => Object.values(endpoint.endpoints).join(' '),
 			search: true,
 		},
-	];
+	]);
 
-	const sortOptions = [
-		{ key: 'name', label: '이름' },
-		{ key: 'service', label: '서비스 유형' },
-		{ key: 'region', label: '리전' },
-	];
+	const sortOptions = $derived([
+		{ key: 'name', label: t('services.endpoints.name') },
+		{ key: 'service', label: t('services.endpoints.serviceType') },
+		{ key: 'region', label: t('services.endpoints.region') },
+	]);
 
 	let {
 		endpoints,
@@ -55,7 +56,7 @@
 		total={endpoints.length}
 		count={visibleEndpoints.length}
 		{loading}
-		searchPlaceholder="이름, 서비스 유형, 리전, 엔드포인트 URL 검색"
+		searchPlaceholder={t('services.endpoints.searchPlaceholder')}
 		defaultSortKey="name"
 	/>
 
@@ -64,16 +65,16 @@
 	{:else if endpoints.length === 0}
 		<EmptyState headline={emptyMessage} />
 	{:else if visibleEndpoints.length === 0}
-		<EmptyState headline="일치하는 엔드포인트가 없습니다" description="필터나 검색어를 조정해 보세요." />
+		<EmptyState headline={t('services.endpoints.noMatches')} description={t('services.list.adjustFilters')} />
 	{:else}
 		<TableShell density="compact">
-			<table aria-label="엔드포인트 목록">
+			<table aria-label={t('services.endpoints.listLabel')}>
 				<thead>
 					<tr>
-						<ServiceSortHeader bind:view column="name" label="이름" />
-						<ServiceSortHeader bind:view column="service" label="서비스 유형" />
-						<ServiceSortHeader bind:view column="region" label="리전" />
-						<th scope="col">엔드포인트</th>
+						<ServiceSortHeader bind:view column="name" label={t('services.endpoints.name')} />
+						<ServiceSortHeader bind:view column="service" label={t('services.endpoints.serviceType')} />
+						<ServiceSortHeader bind:view column="region" label={t('services.endpoints.region')} />
+						<th scope="col">{t('services.endpoints.endpoints')}</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -86,7 +87,7 @@
 								<div class="space-y-1">
 									{#each Object.entries(endpoint.endpoints).sort(([left], [right]) => left.localeCompare(right)) as [interfaceName, url]}
 										<div class="flex items-start gap-2">
-											<span class="text-ink-2 w-14 shrink-0 font-medium">{interfaceName}:</span>
+											<span class="text-ink-2 w-14 shrink-0 font-medium">{t('services.endpoints.interfaceLabel', { interfaceName })}</span>
 											<span class="text-ink-2 font-mono break-all">{url}</span>
 										</div>
 									{/each}

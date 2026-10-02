@@ -1,6 +1,7 @@
 <script lang="ts">
 	import OrphanSection from './OrphanSection.svelte';
 	import type { OrphanFipInfo } from '$lib/types/orphan';
+	import { t } from '$lib/i18n/ns/admin-storage';
 
 	let {
 		items,
@@ -14,18 +15,18 @@
 </script>
 
 <OrphanSection
-	title="분리된 Floating IPs"
+	title={t('orphanFip.title')}
 	{items}
 	bind:selected
-	emptyMessage="분리된 Floating IP 없음."
+	emptyMessage={t('orphanFip.empty')}
 	{onCleanup}
 >
 	{#snippet headers()}
-		<th class="text-left py-2 pr-4">주소</th>
-		<th class="text-left py-2 pr-4">프로젝트</th>
-		<th class="text-left py-2 pr-4">생성일</th>
-		<th class="text-left py-2 pr-4">연령(일)</th>
-		<th class="text-left py-2 pr-4">ID</th>
+		<th class="text-left py-2 pr-4">{t('orphanFip.column.address')}</th>
+		<th class="text-left py-2 pr-4">{t('orphanFip.column.project')}</th>
+		<th class="text-left py-2 pr-4">{t('orphanFip.column.createdAt')}</th>
+		<th class="text-left py-2 pr-4">{t('orphanFip.column.ageDays')}</th>
+		<th class="text-left py-2 pr-4">{t('orphanFip.column.id')}</th>
 	{/snippet}
 	{#snippet row(f)}
 		<td class="py-2 pr-4 font-mono text-green-400">{f.address}</td>

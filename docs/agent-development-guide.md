@@ -90,6 +90,8 @@ milestone.md          OpenSpec redirect stub; append 대상이 아님
 - 새 frontend 파일에는 raw hex 또는 raw Tailwind palette 색상 클래스를 추가하지 않는다. Legacy 색상은 `legacyVisualDebt.ts` guardrail baseline에만 남긴다.
 - status는 `StatusChip`/`Pill`, action은 `Button`, alert는 `Alert`, form은 `Field`/input primitives, table은 `TableShell`을 우선 사용한다.
 - `DESIGN.md`의 scrim, layer, motion, reduced-motion 규칙을 따른다. 새 route/component은 token/primitive 확장 → primitive test → feature composition → visual-debt 검사 순으로 만든다.
+- UI 문구는 한국어 source와 en/ja/zh-CN 동일 키 카탈로그를 사용한다. `t()`는 markup/derived/getter/event 시점에만 호출하고 모듈 최상위·load에서 호출하지 않는다. 날짜·숫자에는 format 시점의 `intlLocale()`을 사용하고 API 데이터·식별자는 바꾸지 않는다.
+- 번역 변경은 [`frontend-localization.md`](frontend-localization.md)의 CSV·검수 계약을 따른다. `npm --prefix frontend run i18n:check`와 `i18n:scan`을 실행하고 네 언어에서 실제 responsive UI를 확인한다. allowlist에는 UI 누락이 아닌 정확한 데이터 줄과 이유만 추가한다.
 
 ## 개발, 테스트, OpenSpec
 

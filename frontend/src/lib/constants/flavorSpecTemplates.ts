@@ -6,6 +6,8 @@
 //  - text: 자유 입력
 //  - gpu_alias: GPU alias 드롭다운 + 개수 → "ALIAS:N" 값 생성 (pci_passthrough:alias 전용)
 
+import { t } from '$lib/i18n/ns/admin-compute';
+
 export interface FlavorSpecTemplate {
 	key: string;
 	category: string;
@@ -22,15 +24,15 @@ export const FLAVOR_SPEC_TEMPLATES: FlavorSpecTemplate[] = [
 	{
 		key: 'pci_passthrough:alias',
 		category: 'GPU',
-		label: 'GPU Passthrough',
-		description: 'PCI alias 기반 GPU 할당. 값 형식: alias:개수 (예: RTX3090:1)',
+		get label() { return t('flavorTemplates.gpuPassthrough.label'); },
+		get description() { return t('flavorTemplates.gpuPassthrough.description'); },
 		valueType: 'gpu_alias',
 	},
 	{
 		key: 'hw:hide_hypervisor_id',
 		category: 'GPU',
-		label: '하이퍼바이저 ID 숨김',
-		description: 'NVIDIA 드라이버의 VM 감지 우회 (GPU passthrough 시 권장)',
+		get label() { return t('flavorTemplates.hideHypervisor.label'); },
+		get description() { return t('flavorTemplates.hideHypervisor.description'); },
 		valueType: 'enum',
 		options: ['true'],
 		defaultValue: 'true',
@@ -39,57 +41,57 @@ export const FLAVOR_SPEC_TEMPLATES: FlavorSpecTemplate[] = [
 	{
 		key: 'hw:numa_nodes',
 		category: 'CPU',
-		label: 'NUMA 노드 수',
-		description: '게스트에 노출할 NUMA 노드 수',
+		get label() { return t('flavorTemplates.numaNodes.label'); },
+		get description() { return t('flavorTemplates.numaNodes.description'); },
 		valueType: 'number',
-		placeholder: '예: 2',
+		get placeholder() { return t('flavorTemplates.exampleTwo'); },
 	},
 	{
 		key: 'hw:cpu_policy',
 		category: 'CPU',
-		label: 'CPU 정책',
-		description: 'dedicated: 물리 CPU 고정(pinning), shared: 공유',
+		get label() { return t('flavorTemplates.cpuPolicy.label'); },
+		get description() { return t('flavorTemplates.cpuPolicy.description'); },
 		valueType: 'enum',
 		options: ['shared', 'dedicated'],
 	},
 	{
 		key: 'hw:cpu_thread_policy',
 		category: 'CPU',
-		label: 'CPU 스레드 정책',
-		description: 'hw:cpu_policy=dedicated일 때 SMT 스레드 배치 정책',
+		get label() { return t('flavorTemplates.cpuThreadPolicy.label'); },
+		get description() { return t('flavorTemplates.cpuThreadPolicy.description'); },
 		valueType: 'enum',
 		options: ['prefer', 'isolate', 'require'],
 	},
 	{
 		key: 'hw:cpu_sockets',
 		category: 'CPU',
-		label: 'CPU 소켓 수',
-		description: '게스트 가상 CPU 토폴로지의 소켓 수',
+		get label() { return t('flavorTemplates.cpuSockets.label'); },
+		get description() { return t('flavorTemplates.cpuSockets.description'); },
 		valueType: 'number',
-		placeholder: '예: 1',
+		get placeholder() { return t('flavorTemplates.exampleOne'); },
 	},
 	{
 		key: 'hw:cpu_cores',
 		category: 'CPU',
-		label: 'CPU 코어 수',
-		description: '게스트 가상 CPU 토폴로지의 소켓당 코어 수',
+		get label() { return t('flavorTemplates.cpuCores.label'); },
+		get description() { return t('flavorTemplates.cpuCores.description'); },
 		valueType: 'number',
-		placeholder: '예: 8',
+		get placeholder() { return t('flavorTemplates.exampleEight'); },
 	},
 	{
 		key: 'hw:cpu_threads',
 		category: 'CPU',
-		label: 'CPU 스레드 수',
-		description: '게스트 가상 CPU 토폴로지의 코어당 스레드 수',
+		get label() { return t('flavorTemplates.cpuThreads.label'); },
+		get description() { return t('flavorTemplates.cpuThreads.description'); },
 		valueType: 'number',
-		placeholder: '예: 2',
+		get placeholder() { return t('flavorTemplates.exampleTwo'); },
 	},
 	// === 메모리 ===
 	{
 		key: 'hw:mem_page_size',
-		category: '메모리',
-		label: '메모리 페이지 크기',
-		description: 'hugepage 사용 설정 (NUMA/SR-IOV 워크로드에 권장)',
+		category: 'memory',
+		get label() { return t('flavorTemplates.memoryPageSize.label'); },
+		get description() { return t('flavorTemplates.memoryPageSize.description'); },
 		valueType: 'enum',
 		options: ['small', 'large', '2MB', '1GB'],
 	},
@@ -97,27 +99,37 @@ export const FLAVOR_SPEC_TEMPLATES: FlavorSpecTemplate[] = [
 	{
 		key: 'quota:cpu_shares',
 		category: 'QoS',
-		label: 'CPU 가중치',
-		description: '호스트 CPU 경합 시 상대적 가중치 (기본 1024)',
+		get label() { return t('flavorTemplates.cpuShares.label'); },
+		get description() { return t('flavorTemplates.cpuShares.description'); },
 		valueType: 'number',
-		placeholder: '예: 2048',
+		get placeholder() { return t('flavorTemplates.exampleShares'); },
 	},
 	{
 		key: 'quota:disk_read_bytes_sec',
 		category: 'QoS',
-		label: '디스크 읽기 제한 (B/s)',
-		description: '초당 디스크 읽기 바이트 제한',
+		get label() { return t('flavorTemplates.diskRead.label'); },
+		get description() { return t('flavorTemplates.diskRead.description'); },
 		valueType: 'number',
-		placeholder: '예: 104857600 (100MB/s)',
+		get placeholder() { return t('flavorTemplates.exampleDiskRate'); },
 	},
 	{
 		key: 'quota:disk_write_bytes_sec',
 		category: 'QoS',
-		label: '디스크 쓰기 제한 (B/s)',
-		description: '초당 디스크 쓰기 바이트 제한',
+		get label() { return t('flavorTemplates.diskWrite.label'); },
+		get description() { return t('flavorTemplates.diskWrite.description'); },
 		valueType: 'number',
-		placeholder: '예: 104857600 (100MB/s)',
+		get placeholder() { return t('flavorTemplates.exampleDiskRate'); },
 	},
 ];
 
 export const FLAVOR_SPEC_CATEGORIES = [...new Set(FLAVOR_SPEC_TEMPLATES.map((t) => t.category))];
+
+export function flavorSpecCategoryLabel(category: string): string {
+	switch (category) {
+		case 'GPU': return t('flavorTemplates.categories.gpu');
+		case 'CPU': return t('flavorTemplates.categories.cpu');
+		case 'memory': return t('flavorTemplates.categories.memory');
+		case 'QoS': return t('flavorTemplates.categories.qos');
+		default: return category;
+	}
+}

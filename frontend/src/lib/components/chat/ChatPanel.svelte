@@ -6,6 +6,9 @@
 	import { api, ApiError } from '$lib/api/client';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
+	import { t } from '$lib/i18n/ns/chat-panel';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import koreanChatMessages from '$lib/i18n/messages/ko/chat-panel.json';
 	import {
 		cancelChatRun,
 		createChatRun,
@@ -183,26 +186,27 @@
 	let resolvingToolApprovalId = $state<string | null>(null);
 	let toolActivity = $state<string | null>(null);
 	let agentActivity = $state<AgentActivity | null>(null);
+	// Always use the Korean source catalog for Lumen input data, regardless of UI locale.
 	const lumenStarterPrompts = [
 		{
-			label: '프로젝트 현황',
-			prompt: '현재 프로젝트의 컴퓨팅, 스토리지, 네트워크 리소스를 읽기 전용으로 요약해 주세요.'
+			get label() { return t('panel.starters.projectStatus'); },
+			prompt: koreanChatMessages['data.starters.projectStatus']
 		},
 		{
-			label: 'VM 생성 계획',
-			prompt: '새 VM을 만들기 전에 현재 이미지, flavor, 네트워크를 확인하고 안전한 생성 계획을 제안해 주세요.'
+			get label() { return t('panel.starters.vmPlan'); },
+			prompt: koreanChatMessages['data.starters.vmPlan']
 		},
 		{
-			label: '스토리지·네트워크 진단',
-			prompt: '현재 프로젝트의 스토리지와 네트워크 구성을 점검하고 가능한 문제를 진단해 주세요.'
+			get label() { return t('panel.starters.storageNetwork'); },
+			prompt: koreanChatMessages['data.starters.storageNetwork']
 		},
 		{
-			label: '데이터베이스 준비',
-			prompt: '현재 데이터베이스 인스턴스를 확인한 뒤 새 데이터베이스를 준비하는 절차를 제안해 주세요.'
+			get label() { return t('panel.starters.database'); },
+			prompt: koreanChatMessages['data.starters.database']
 		},
 		{
-			label: '컨테이너 준비',
-			prompt: '현재 컨테이너 상태를 확인한 뒤 새 컨테이너 작업을 위한 안전한 절차를 제안해 주세요.'
+			get label() { return t('panel.starters.container'); },
+			prompt: koreanChatMessages['data.starters.container']
 		}
 	] as const;
 
@@ -474,87 +478,88 @@
 
 	const compactCommandReason = $derived.by(() => {
 		if (manualCompacting) return null;
-		if (contextPhase === 'compacting') return '자동 압축이 끝날 때까지 기다리세요';
-		if (streaming) return '응답이 끝난 뒤 압축할 수 있습니다';
-		if (!hasContextScope) return '이전 대화를 시작한 뒤 압축할 수 있습니다';
-		if (contextLoading || contextState === null) return '컨텍스트 사용량을 확인하는 중입니다';
+		if (contextPhase === 'compacting') return t('panel.compact.waitAutomatic');
+		if (streaming) return t('panel.compact.waitResponse');
+		if (!hasContextScope) return t('panel.compact.startConversation');
+		if (contextLoading || contextState === null) return t('panel.compact.checkingUsage');
 		if (contextState.measurement === 'unknown' || contextState.input_budget === null) {
-			return '컨텍스트 한도를 확인할 수 없습니다';
+			return t('panel.compact.unknownLimit');
 		}
-		if (!contextState.can_compact) return '아직 압축할 이전 대화가 없습니다';
+		if (!contextState.can_compact) return t('panel.compact.noHistory');
 		return null;
 	});
 	const composerCommands = $derived.by((): ComposerCommand[] => {
 		const conversationActionReason = manualCompacting
-			? '컨텍스트 압축이 끝날 때까지 기다리세요'
+			? t('panel.commands.waitCompaction')
 			: streaming
-				? '응답이 끝난 뒤 사용할 수 있습니다'
+				? t('panel.commands.waitResponse')
 				: null;
 		return [
 			manualCompacting
 				? {
 						id: 'stop-compaction',
-						name: '압축 중단',
-						description: '진행 중인 수동 컨텍스트 압축을 중단합니다',
+						name: t('panel.commands.stopCompaction'),
+						description: t('panel.commands.stopCompactionDescription'),
 						onSelect: stop
 					}
 				: {
 						id: 'compact',
-						name: '압축',
-						description: '이전 대화를 요약해 컨텍스트를 확보합니다',
+						name: t('panel.commands.compact'),
+						description: t('panel.commands.compactDescription'),
 						disabled: compactCommandReason !== null,
 						disabledReason: compactCommandReason ?? undefined,
 						onSelect: startManualCompaction
 					},
 			{
 				id: 'new-conversation',
-				name: '새 채팅',
-				description: '새 빈 대화를 시작합니다',
+				name: t('panel.commands.newChat'),
+				description: t('panel.commands.newChatDescription'),
 				disabled: conversationActionReason !== null,
 				disabledReason: conversationActionReason ?? undefined,
 				onSelect: newConversation
 			},
 			{
 				id: 'new-project',
-				name: '새 프로젝트',
-				description: '대화를 정리할 새 프로젝트를 만듭니다',
+				name: t('panel.commands.newProject'),
+				description: t('panel.commands.newProjectDescription'),
 				disabled: conversationActionReason !== null,
 				disabledReason: conversationActionReason ?? undefined,
 				onSelect: createProject
 			},
 			{
 				id: 'select-model',
-				name: '모델 선택',
-				description: '이 대화에 사용할 모델을 선택합니다',
+				name: t('panel.commands.selectModel'),
+				description: t('panel.commands.selectModelDescription'),
 				disabled: modelLocked || conversationActionReason !== null,
 				disabledReason: modelLocked
-					? '에이전트가 모델을 관리하고 있습니다'
+					? t('panel.commands.agentManagesModel')
 					: (conversationActionReason ?? undefined),
 				onSelect: () => (modelPickerOpen = true)
 			},
 			{
 				id: 'temporary-chat',
-				name: tempMode ? '임시 채팅 종료' : '임시 채팅',
-				description: tempMode ? '임시 채팅을 종료합니다' : '저장되지 않는 임시 채팅을 시작합니다',
+				name: tempMode ? t('panel.commands.endTemporary') : t('panel.commands.temporary'),
+				description: tempMode ? t('panel.commands.endTemporaryDescription') : t('panel.commands.temporaryDescription'),
 				disabled: tempToggleLocked,
 				disabledReason: tempToggleLocked
-					? '시작된 채팅에서는 임시 모드를 변경할 수 없습니다'
+					? t('panel.temporary.locked')
 					: undefined,
 				onSelect: toggleTempChat
 			},
 			{
 				id: 'usage',
-				name: '사용량',
-				description: '토큰과 비용 사용량을 확인합니다',
+				name: t('panel.commands.usage'),
+				description: t('panel.commands.usageDescription'),
 				onSelect: () => openSettings('usage')
 			}
 		];
 	});
 	const manualCompactionActivity = $derived(
-		manualCompacting && contextPhase === 'compacting' ? '컨텍스트 압축 중' : null
+		manualCompacting && contextPhase === 'compacting' ? t('panel.compact.activity') : null
 	);
 	// 대화 전체 출처(중복 제거) — 헤더 "출처" 버튼 + 패널 공유
 	const allCitations = $derived(aggregateCitations(displayPath));
+	const countFormatter = $derived(new Intl.NumberFormat(intlLocale(), { useGrouping: false }));
 
 	function tempId(): string {
 		return `tmp-${tmpSeq++}`;
@@ -847,7 +852,7 @@
 			if (conversation) void selectConversation(conversation);
 			else if (savedId) clearActiveConversationId(projectId);
 		} catch (e) {
-			error = e instanceof Error ? e.message : '대화를 불러오지 못했습니다';
+			error = e instanceof Error ? e.message : t('panel.errors.loadConversations');
 		}
 	}
 
@@ -884,8 +889,8 @@
 			if (!destroyed && generation === modelRequestGeneration && token === requestToken && projectId === requestProject) {
 				// ApiError.message may be an unparsed proxy body; never display it here.
 				modelsError = caught instanceof ApiError
-					? `모델 목록을 갱신하지 못했습니다 (HTTP ${caught.status}). 목록 새로고침으로 다시 시도하세요.`
-					: '모델 목록을 갱신하지 못했습니다. 목록 새로고침으로 다시 시도하세요.';
+					? t('panel.errors.refreshModelsHttp', { status: caught.status })
+					: t('panel.errors.refreshModels');
 			}
 		} finally {
 			if (!destroyed && generation === modelRequestGeneration && token === requestToken && projectId === requestProject) modelsRefreshing = false;
@@ -955,7 +960,7 @@
 			return true;
 		} catch (cause) {
 			if (historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId)) {
-				error = cause instanceof Error ? cause.message : '대화 기록을 불러오지 못했습니다.';
+				error = cause instanceof Error ? cause.message : t('panel.errors.loadHistory');
 			}
 			return false;
 		} finally {
@@ -995,7 +1000,7 @@
 		} catch (cause) {
 			if (!historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId)) return;
 			if (cause instanceof ApiError && cause.status === 409) {
-				error = '대화 기록이 변경되어 최신 위치를 다시 불러왔습니다.';
+				error = t('panel.errors.historyChanged');
 				try {
 					const latest = await requestMessagePage(
 						convId,
@@ -1008,12 +1013,12 @@
 					}
 				} catch (recoveryCause) {
 					if (historyRequestIsCurrent(convId, selection, mutationEpoch, requestToken, requestProjectId)) {
-						error = recoveryCause instanceof Error ? recoveryCause.message : '최신 대화 기록을 불러오지 못했습니다.';
+						error = recoveryCause instanceof Error ? recoveryCause.message : t('panel.errors.loadLatestHistory');
 					}
 				}
 				return;
 			}
-			error = cause instanceof Error ? cause.message : '대화 기록을 불러오지 못했습니다.';
+			error = cause instanceof Error ? cause.message : t('panel.errors.loadHistory');
 		} finally {
 			if (!destroyed && activeConvId === convId && selectionGeneration === selection) historyLoading = false;
 		}
@@ -1107,10 +1112,10 @@
 		try {
 			await api.post('/api/v1/chat/workspaces', payload, token, projectId);
 			await loadWorkspaces();
-			toast.success('프로젝트를 생성했습니다');
+			toast.success(t('panel.toast.projectCreated'));
 			return true;
 		} catch (e) {
-			toast.error(e instanceof ApiError ? e.message : '저장에 실패했습니다');
+			toast.error(e instanceof ApiError ? e.message : t('panel.errors.saveProject'));
 			return false;
 		}
 	}
@@ -1119,25 +1124,25 @@
 		try {
 			await api.patch(`/api/v1/chat/workspaces/${id}`, payload, token, projectId);
 			await loadWorkspaces();
-			toast.success('프로젝트를 수정했습니다');
+			toast.success(t('panel.toast.projectUpdated'));
 			return true;
 		} catch (e) {
-			toast.error(e instanceof ApiError ? e.message : '저장에 실패했습니다');
+			toast.error(e instanceof ApiError ? e.message : t('panel.errors.saveProject'));
 			return false;
 		}
 	}
 	async function deleteWorkspace(w: Workspace): Promise<boolean> {
 		if (!token || !projectId) return false;
-		if (!(await confirmDialog(`'${w.name}' 프로젝트를 삭제하시겠습니까? 대화는 미분류로 이동합니다.`)))
+		if (!(await confirmDialog(t('panel.dialog.deleteProject', { name: w.name }))))
 			return false;
 		try {
 			await api.delete(`/api/v1/chat/workspaces/${w.id}`, token, projectId);
 			await loadWorkspaces();
 			await loadConversations();
-			toast.success('삭제했습니다');
+			toast.success(t('panel.toast.projectDeleted'));
 			return true;
 		} catch (e) {
-			toast.error(e instanceof ApiError ? e.message : '삭제에 실패했습니다');
+			toast.error(e instanceof ApiError ? e.message : t('panel.errors.deleteProject'));
 			return false;
 		}
 	}
@@ -1168,7 +1173,7 @@
 			conversations = conversations.map((c) =>
 				c.id === conv.id ? { ...c, workspace_id: prev } : c
 			);
-			error = e instanceof Error ? e.message : '프로젝트 배정에 실패했습니다';
+			error = e instanceof Error ? e.message : t('panel.errors.assignProject');
 		}
 	}
 
@@ -1211,7 +1216,7 @@
 			if (await loadMessages(conv.id, selection)) void resumeActiveRun(conv.id);
 		} catch (e) {
 			if (selection === selectionGeneration && activeConvId === conv.id) {
-				error = e instanceof Error ? e.message : '메시지를 불러오지 못했습니다';
+				error = e instanceof Error ? e.message : t('panel.errors.loadMessages');
 			}
 		}
 	}
@@ -1409,19 +1414,19 @@
 			contextState = null;
 			const status = caught instanceof ChatHttpError || caught instanceof ApiError ? caught.status : null;
 			if (status === 409) {
-				contextError = '대화 상태가 변경되었습니다. 최신 대화를 확인해 주세요.';
+				contextError = t('panel.context.changed');
 			} else if (status === 422) {
-				contextError = '선택한 모델 또는 요청 설정으로 컨텍스트를 계산할 수 없습니다.';
+				contextError = t('panel.context.invalidSettings');
 			} else if (status === 401 || status === 403) {
-				contextError = '대화 접근 권한과 로그인 상태를 확인해 주세요.';
+				contextError = t('panel.context.access');
 			} else if (status === 404) {
-				contextError = '대화를 찾을 수 없어 컨텍스트를 계산하지 못했습니다.';
+				contextError = t('panel.context.notFound');
 			} else if (status === 429) {
-				contextError = '요청이 많아 컨텍스트를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.';
+				contextError = t('panel.context.rateLimited');
 			} else if (status !== null && status >= 500) {
-				contextError = '컨텍스트 계산 서비스를 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.';
+				contextError = t('panel.context.unavailable');
 			} else {
-				contextError = '컨텍스트 요청을 완료하지 못했습니다. 연결 상태를 확인해 주세요.';
+				contextError = t('panel.context.connection');
 			}
 			return null;
 		} finally {
@@ -1461,7 +1466,7 @@
 		const previewState = await executeContextPreview({ emptyDraft: true });
 		if (!previewState) return;
 		if (!previewState.can_compact) {
-			contextError = '아직 압축할 이전 대화가 없습니다';
+			contextError = t('panel.compact.noHistory');
 			return;
 		}
 
@@ -1504,11 +1509,11 @@
 			contextPhase = 'failed';
 			contextCause = null;
 			if (caught instanceof ChatHttpError && caught.status === 409) {
-				contextError = '대화 상태가 변경되었습니다. 최신 대화를 확인해 주세요.';
+				contextError = t('panel.context.changed');
 				scheduleMetadataRefresh();
 				void executeContextPreview();
 			} else {
-				contextError = chatFailureMessage(caught, '컨텍스트 압축에 실패했습니다');
+				contextError = chatFailureMessage(caught, t('panel.errors.compactionFailed'));
 			}
 		}
 	}
@@ -1533,7 +1538,7 @@
 					if (evt.payload.phase === 'compacted') {
 						scheduleMetadataRefresh();
 					} else if (evt.payload.phase === 'failed') {
-						contextError = evt.payload.state.reason_code ?? '컨텍스트 압축에 실패했습니다';
+						contextError = evt.payload.state.reason_code ?? t('panel.errors.compactionFailed');
 					}
 				} else if (evt.type === 'run.completed') {
 					manualCompacting = false;
@@ -1563,7 +1568,7 @@
 			// descriptor and cancel affordance until a snapshot says otherwise.
 			contextPhase = 'failed';
 			contextCause = null;
-			contextError = chatFailureMessage(caught, '컨텍스트 압축 중 오류가 발생했습니다');
+			contextError = chatFailureMessage(caught, t('panel.errors.compactionInterrupted'));
 		} finally {
 			streamAttachment.release(controller);
 			if (compactionFollowRunId === descriptor.run_id) compactionFollowRunId = null;
@@ -1741,7 +1746,7 @@
 					if (evt.payload.phase === 'compacted') {
 						scheduleMetadataRefresh();
 					} else if (evt.payload.phase === 'failed') {
-						contextError = evt.payload.state.reason_code ?? '컨텍스트 압축에 실패했습니다';
+						contextError = evt.payload.state.reason_code ?? t('panel.errors.compactionFailed');
 					}
 				}
 				if (evt.type === 'part.delta' || evt.type === 'part.completed') {
@@ -1841,7 +1846,7 @@
 			drainReveal();
 			contextCause = null;
 			if (contextPhase === 'compacting') contextPhase = 'ready';
-			error = chatFailureMessage(caught, '채팅 실행 중 오류가 발생했습니다');
+			error = chatFailureMessage(caught, t('panel.errors.runFailed'));
 			endStream();
 		} finally {
 			document.removeEventListener('visibilitychange', onVisibilityChange);
@@ -1851,17 +1856,18 @@
 	}
 
 	function chatFailureMessage(caught: unknown, fallback: string): string {
-		if (caught instanceof ChatHttpError) return `HTTP ${caught.status}: ${caught.message}`;
-		if (caught instanceof ApiError) return `HTTP ${caught.status}: ${fallback}`;
+		if (caught instanceof ChatHttpError) return t('panel.errors.httpFailure', { status: caught.status, detail: caught.message });
+		if (caught instanceof ApiError) return t('panel.errors.httpFailure', { status: caught.status, detail: fallback });
 		return caught instanceof Error ? caught.message : fallback;
 	}
 
 	function runFailureMessage(payload: { error_code: string; safe_message: string }, runId: string): string {
 		const code = /^[\w.-]{1,80}$/.test(payload.error_code) ? payload.error_code : 'run_failed';
 		const detail = payload.safe_message.trim();
-		const safeDetail = detail.length <= 300 && !/[\x00-\x1f\x7f]/.test(detail) ? detail : '채팅 실행 중 오류가 발생했습니다';
-		const reference = /^[\w-]{1,64}$/.test(runId) ? ` (run: ${runId})` : '';
-		return `${code}: ${safeDetail}${reference}`;
+		const safeDetail = detail.length <= 300 && !/[\x00-\x1f\x7f]/.test(detail) ? detail : t('panel.errors.runFailed');
+		return /^[\w-]{1,64}$/.test(runId)
+			? t('panel.errors.runFailureReference', { code, detail: safeDetail, runId })
+			: t('panel.errors.runFailure', { code, detail: safeDetail });
 	}
 
 	async function runStream(
@@ -1882,7 +1888,7 @@
 			return true;
 		} catch (caught) {
 			if (destroyed || generation !== streamGeneration) return false;
-			error = chatFailureMessage(caught, '채팅 실행 중 오류가 발생했습니다');
+			error = chatFailureMessage(caught, t('panel.errors.runFailed'));
 			endStream();
 			return false;
 		}
@@ -1967,7 +1973,7 @@
 				projectId
 			);
 		} catch (cause) {
-			toast.error(cause instanceof Error ? cause.message : '도구 승인 결정을 저장하지 못했습니다.');
+			toast.error(cause instanceof Error ? cause.message : t('panel.errors.saveApproval'));
 		} finally {
 			resolvingToolApprovalId = null;
 		}
@@ -1986,12 +1992,12 @@
 		const text = input.trim();
 		if (!text || streaming || !token || !projectId) return;
 		if (!selectedModel) {
-			error = '사용 가능한 모델이 없습니다. 관리자에게 문의하세요.';
+			error = t('panel.errors.noModels');
 			return;
 		}
 		error = null;
 		if (attachments.some((attachment) => attachment.status === 'uploading')) {
-			error = '첨부 업로드가 완료된 뒤 전송할 수 있습니다.';
+			error = t('panel.errors.uploadPending');
 			return;
 		}
 		if (!tempMode && activeConvId && historyHasAfter) {
@@ -2011,7 +2017,7 @@
 		try {
 			convId = await ensureConversation();
 		} catch (e) {
-			error = chatFailureMessage(e, '대화를 생성하지 못했습니다');
+			error = chatFailureMessage(e, t('panel.errors.createConversation'));
 			endStream();
 			const failedUserMsg: DisplayMessage = {
 				id: tempId(),
@@ -2189,7 +2195,7 @@
 				try {
 					convId = await ensureConversation();
 				} catch (e) {
-					error = chatFailureMessage(e, '대화를 생성하지 못했습니다');
+					error = chatFailureMessage(e, t('panel.errors.createConversation'));
 					endStream();
 					return;
 				}
@@ -2284,7 +2290,7 @@
 			await loadMessages(conversationId);
 			void executeContextPreview();
 		} catch (cause) {
-			error = cause instanceof Error ? cause.message : '버전 전환에 실패했습니다';
+			error = cause instanceof Error ? cause.message : t('panel.errors.switchVersion');
 		} finally {
 			treeLoading = false;
 		}
@@ -2305,7 +2311,7 @@
 			conversations = [conv, ...conversations];
 			await selectConversation(conv);
 		} catch (e) {
-			error = e instanceof Error ? e.message : '분기에 실패했습니다';
+			error = e instanceof Error ? e.message : t('panel.errors.fork');
 		} finally {
 			treeLoading = false;
 		}
@@ -2315,7 +2321,7 @@
 	async function deleteConversation(conv: Conversation) {
 		if (streaming || !token || !projectId) return;
 		const label = conv.title?.trim();
-		const message = label ? `'${label}' 대화를 삭제하시겠습니까?` : '대화를 삭제하시겠습니까?';
+		const message = label ? t('panel.dialog.deleteNamedConversation', { name: label }) : t('panel.dialog.deleteConversation');
 		if (!(await confirmDialog(message))) return;
 		try {
 			await api.delete(`/api/v1/chat/conversations/${conv.id}`, token, projectId);
@@ -2323,9 +2329,9 @@
 			pendingTitleTrackers.delete(conv.id);
 			conversations = conversations.filter((c) => c.id !== conv.id);
 			if (activeConvId === conv.id) newConversation();
-			toast.success('대화를 삭제했습니다');
+			toast.success(t('panel.toast.conversationDeleted'));
 		} catch (e) {
-			error = e instanceof Error ? e.message : '삭제에 실패했습니다';
+			error = e instanceof Error ? e.message : t('panel.errors.deleteConversation');
 		}
 	}
 
@@ -2334,7 +2340,7 @@
 		try {
 			await cancelChatRun(currentRun, { token, projectId });
 		} catch (caught) {
-			error = caught instanceof Error ? caught.message : '실행 중지 요청에 실패했습니다';
+			error = caught instanceof Error ? caught.message : t('panel.errors.stopRun');
 		}
 	}
 	function copy(text: string) {
@@ -2403,11 +2409,11 @@
 						onclick={toggleSidebar}
 						aria-controls="chat-history-drawer"
 						aria-expanded={sidebarOpen}
-						aria-label={sidebarOpen ? '대화 기록 닫기' : '대화 기록과 설정 열기'}
-						title={sidebarOpen ? '대화 기록 닫기' : '대화 기록과 설정 열기'}
+						aria-label={sidebarOpen ? t('panel.history.close') : t('panel.history.openSettings')}
+						title={sidebarOpen ? t('panel.history.close') : t('panel.history.openSettings')}
 					>
 						<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="2.5" /><path d="M10 4v16" /></svg>
-						<span>기록</span>
+						<span>{t('panel.history.label')}</span>
 					</button>
 {/snippet}
 
@@ -2436,18 +2442,19 @@
 		onSettings={() => openSettings('usage')}
 	/>
 
-	<nav class="sidebar-rail" aria-label="채팅 탐색">
+	<nav class="sidebar-rail" aria-label={t('panel.navigation.label')}>
 		<button
 			type="button"
 			class="rail-action rail-open"
 			onclick={toggleSidebar}
-			title="사이드바 열기"
-			aria-label="사이드바 열기"
+			title={t('panel.navigation.openSidebar')}
+			aria-label={t('panel.navigation.openSidebar')}
+			data-tooltip={t('panel.navigation.openSidebar')}
 		>
 			<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="2.5" /><path d="M10 4v16" /></svg>
 		</button>
 		<span class="rail-divider" aria-hidden="true"></span>
-		<button type="button" class="rail-action" onclick={newConversation} title="새 채팅" aria-label="새 채팅">
+		<button type="button" class="rail-action" onclick={newConversation} title={t('panel.navigation.newChat')} aria-label={t('panel.navigation.newChat')}>
 			<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" stroke-linecap="round" stroke-linejoin="round" /></svg>
 		</button>
 	</nav>
@@ -2457,7 +2464,7 @@
 		type="button"
 		class="sidebar-backdrop"
 		class:show={sidebarOpen}
-		aria-label="대화 기록 바깥쪽 닫기"
+		aria-label={t('panel.history.closeOutside')}
 		onclick={() => closeSidebar(true)}
 	></button>
 
@@ -2486,9 +2493,9 @@
 						class="model-btn"
 						disabled={streaming || modelLocked}
 						onclick={() => (modelPickerOpen = true)}
-						title="모델 선택"
+						title={t('panel.model.select')}
 					>
-						<span class="model-btn-name">{selectedModelObj?.display_name || activeModelName || '모델 선택'}</span>
+						<span class="model-btn-name">{selectedModelObj?.display_name || activeModelName || t('panel.model.select')}</span>
 						<span class="model-btn-caps"><ModelCapabilityBadges caps={selectedModelObj?.capabilities} size="xs" iconsOnly /></span>
 						<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke-linecap="round" stroke-linejoin="round" /></svg>
 					</button>
@@ -2503,17 +2510,17 @@
 					/>
 				</div>
 				{#if modelLocked}
-					<span class="model-lock-hint">모델은 에이전트가 제어합니다</span>
+					<span class="model-lock-hint">{t('panel.model.agentControls')}</span>
 				{/if}
 			</div>
 			<div class="head-right">
 					{@render historyToggle()}
-					<button type="button" class="sources-btn" onclick={() => goto('/dashboard/chat/images')} title="이미지 Studio 열기">이미지 Studio</button>
-					<button type="button" class="sources-btn" onclick={() => goto('/dashboard/chat/audio')} title="오디오 Studio 열기">오디오 Studio</button>
-					<button type="button" class="sources-btn" onclick={() => goto('/dashboard/chat/realtime')} title="실시간 음성 열기">실시간 음성</button>
-					<button type="button" class="sources-btn" onclick={() => (sourcesOpen = !sourcesOpen)} aria-haspopup="dialog" aria-expanded={sourcesOpen} aria-controls="chat-sources-panel" title="이 대화의 출처 보기">
+					<button type="button" class="sources-btn" onclick={() => goto('/dashboard/chat/images')} title={t('panel.studio.openImages')}>{t('panel.studio.images')}</button>
+					<button type="button" class="sources-btn" onclick={() => goto('/dashboard/chat/audio')} title={t('panel.studio.openAudio')}>{t('panel.studio.audio')}</button>
+					<button type="button" class="sources-btn" onclick={() => goto('/dashboard/chat/realtime')} title={t('panel.studio.openRealtime')}>{t('panel.studio.realtime')}</button>
+					<button type="button" class="sources-btn" onclick={() => (sourcesOpen = !sourcesOpen)} aria-haspopup="dialog" aria-expanded={sourcesOpen} aria-controls="chat-sources-panel" title={t('panel.sources.show')}>
 						<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" stroke-linecap="round" stroke-linejoin="round" /></svg>
-						출처 {allCitations.length}
+						{t('panel.sources.count', { count: countFormatter.format(allCitations.length) })}
 					</button>
 				{#if tempMode || !tempToggleLocked}
 					<button
@@ -2522,7 +2529,7 @@
 						class:active={tempMode}
 						disabled={tempToggleLocked}
 						onclick={toggleTempChat}
-						title={tempToggleLocked ? '시작된 채팅에서는 임시 모드를 변경할 수 없습니다' : '저장되지 않는 임시 채팅'}
+						title={tempToggleLocked ? t('panel.temporary.locked') : t('panel.temporary.unsaved')}
 						aria-pressed={tempMode}
 					>
 						<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-dasharray="2.5 1.5" aria-hidden="true"><path d="M20 11.5a7.5 7.5 0 0 1-8 7.48 7.4 7.4 0 0 1-3.16-0.9L4 20l1.42-4.1A7.5 7.5 0 1 1 20 11.5z" stroke-linecap="round" stroke-linejoin="round" /></svg>
@@ -2532,7 +2539,7 @@
 			{#if tempMode}
 				<p class="temp-notice" role="status">
 					<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 8v4l2.5 2.5M12 3a9 9 0 1 0 9 9" stroke-linecap="round" stroke-linejoin="round" /></svg>
-					이 대화는 저장되지 않으며 30일 후 삭제됩니다.
+					{t('panel.temporary.notice')}
 				</p>
 			{/if}
 		</header>
@@ -2712,7 +2719,7 @@
 	}
 	.rail-open:hover::after,
 	.rail-open:focus-visible::after {
-		content: '사이드바 열기';
+		content: attr(data-tooltip);
 		position: absolute;
 		z-index: 20;
 		top: 50%;

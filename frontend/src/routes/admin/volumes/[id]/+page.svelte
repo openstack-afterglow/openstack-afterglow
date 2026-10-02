@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-storage';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { page } from '$app/stores';
 	import { auth } from '$lib/stores/auth';
@@ -34,20 +35,20 @@
 			volume = await api.get<AdminVolumeDetail>(`/api/v1/admin/volumes/${volumeId}`, token, projectId);
 			error = '';
 		} catch (e) {
-			error = e instanceof ApiError ? `조회 실패 (${e.status})` : '서버 오류';
+			error = e instanceof ApiError ? t('volumeDetail.lookupFailed', { status: e.status }) : t('volumeDetail.serverError');
 		} finally {
 			loading = false;
 		}
 	}
 
 	async function deleteVolume() {
-		if (!volume || !await confirmDialog(`볼륨 "${volume.name || volume.id}"을 삭제하시겠습니까?`)) return;
+		if (!volume || !await confirmDialog(t('volumeDetail.deleteConfirm', { name: volume.name || volume.id }))) return;
 		deleting = true;
 		try {
 			await api.delete(`/api/v1/admin/volumes/${volumeId}`, token, projectId);
 			goto('/admin/volumes');
 		} catch (e) {
-			toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('volumeDetail.deleteFailed', { error: e instanceof ApiError ? e.message : String(e) }));
 			deleting = false;
 		}
 	}
@@ -60,7 +61,7 @@
 			await fetchVolume();
 			return true;
 		} catch (e) {
-			toast.error('상태 초기화 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('volumeDetail.resetFailed', { error: e instanceof ApiError ? e.message : String(e) }));
 			return false;
 		} finally {
 			resetting = false;
@@ -69,7 +70,7 @@
 
 	async function extendVolume(newSize: number): Promise<boolean> {
 		if (!volume || newSize <= volume.size) {
-			toast.warning('새 크기는 현재 크기보다 커야 합니다.');
+			toast.warning(t('volumeDetail.sizeValidation'));
 			return false;
 		}
 		extending = true;
@@ -79,7 +80,7 @@
 			await fetchVolume();
 			return true;
 		} catch (e) {
-			toast.error('확장 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('volumeDetail.extendFailed', { error: e instanceof ApiError ? e.message : String(e) }));
 			return false;
 		} finally {
 			extending = false;
@@ -95,7 +96,7 @@
 
 <div class="p-4 md:p-8 max-w-4xl">
 	<div class="flex items-center gap-3 mb-6">
-		<a href="/admin/volumes" class="text-ink-2 hover:text-ink-0 text-sm transition-colors">← 전체 볼륨</a>
+		<a href="/admin/volumes" class="text-ink-2 hover:text-ink-0 text-sm transition-colors">{t('volumeDetail.back')}</a>
 	</div>
 	{#if loading}
 		<div class="animate-pulse space-y-4">

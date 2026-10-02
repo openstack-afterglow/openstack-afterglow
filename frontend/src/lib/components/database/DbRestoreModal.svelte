@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t as tr } from '$lib/i18n/ns/database';
+	import RichText from '$lib/i18n/RichText.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import type { DbFlavor, DbBackup } from '$lib/types/database';
@@ -42,14 +44,14 @@
 	});
 
 	async function handleSubmit() {
-		if (!backup || !name.trim() || !flavorId) { error = '모든 항목을 입력하세요.'; return; }
-		if (volumeSize < minVolume) { error = `볼륨 크기는 ${minVolume}GB 이상이어야 합니다.`; return; }
+		if (!backup || !name.trim() || !flavorId) { error = tr('validation.allFields'); return; }
+		if (volumeSize < minVolume) { error = tr('validation.minVolume', { size: minVolume }); return; }
 		submitting = true; error = '';
 		try {
 			await onRestore(backup.id, name.trim(), flavorId, volumeSize);
 			open = false;
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : '복원 실패';
+			error = e instanceof ApiError ? e.message : tr('restore.failed');
 		} finally {
 			submitting = false;
 		}
@@ -60,6 +62,8 @@
 		onClose();
 	}
 </script>
+
+{#snippet backupName(text: string)}<span class="text-ink-2 font-medium">{text}</span>{/snippet}
 
 {#if open && backup}
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -77,28 +81,28 @@
 			onclick={(e) => e.stopPropagation()}
 			role="none"
 		>
-			<h2 class="text-lg font-semibold text-ink-0 mb-1">백업에서 복원</h2>
-			<p class="text-xs text-ink-2 mb-4">백업 <span class="text-ink-2 font-medium">"{backup.name || backup.id.slice(0, 8)}"</span> 에서 새 DB 인스턴스를 생성합니다.</p>
+			<h2 class="text-lg font-semibold text-ink-0 mb-1">{tr('restore.title')}</h2>
+			<p class="text-xs text-ink-2 mb-4"><RichText segments={tr.rich('restore.description', { name: backup.name || backup.id.slice(0, 8) })} tags={{ name: backupName }} /></p>
 
 			<div class="space-y-3">
 				<label class="flex flex-col gap-1">
-					<span class="text-xs text-ink-2">새 인스턴스 이름 <span class="text-red-400">*</span></span>
+					<span class="text-xs text-ink-2">{tr('restore.instanceName')} <span class="text-red-400">*</span></span>
 					<input
 						type="text"
 						bind:value={name}
-						placeholder="복원 인스턴스 이름"
+						placeholder={tr('restore.namePlaceholder')}
 						class="bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
 					/>
 				</label>
 
 				<label class="flex flex-col gap-1">
-					<span class="text-xs text-ink-2">Flavor <span class="text-red-400">*</span></span>
+					<span class="text-xs text-ink-2">{tr('labels.flavorEnglish')} <span class="text-red-400">*</span></span>
 					<select
 						bind:value={flavorId}
 						class="bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 focus:outline-none focus:border-action-warm"
 					>
 						{#if flavors.length === 0}
-							<option value="">로드 중...</option>
+							<option value="">{tr('state.loading')}</option>
 						{:else}
 							{#each flavors as f}
 								<option value={String(f.id)}>{f.name} ({f.vcpus}vCPU / {f.ram}MB)</option>
@@ -108,7 +112,7 @@
 				</label>
 
 				<label class="flex flex-col gap-1">
-					<span class="text-xs text-ink-2">볼륨 크기 (GB) <span class="text-xs text-ink-2">최소 {minVolume}GB</span></span>
+					<span class="text-xs text-ink-2">{tr('labels.volumeSizeGb')} <span class="text-xs text-ink-2">{tr('restore.minimum', { size: minVolume })}</span></span>
 					<input
 						type="number"
 						bind:value={volumeSize}
@@ -128,14 +132,14 @@
 					onclick={handleClose}
 					class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors"
 				>
-					취소
+					{tr('actions.cancel')}
 				</button>
 				<button
 					onclick={handleSubmit}
 					disabled={submitting}
 					class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors"
 				>
-					{submitting ? '복원 중...' : '복원 시작'}
+					{submitting ? tr('state.restoring') : tr('actions.startRestore')}
 				</button>
 			</div>
 		</div>

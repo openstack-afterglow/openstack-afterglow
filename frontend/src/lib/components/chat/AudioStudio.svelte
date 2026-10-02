@@ -6,6 +6,7 @@
 	import { offerAudioTranscript } from '$lib/api/audioChatHandoff';
 	import { ApiError } from '$lib/api/client';
 	import { Alert, Button, Card, Field, PageShell, SelectInput, TextareaInput, TextInput } from '$lib/components/ui';
+	import { t } from '$lib/i18n/ns/chat-studio';
 
 	const AUDIO_MIMES = new Set(['audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/ogg', 'audio/webm']);
 	const FORMATS: AudioFormat[] = ['mp3', 'wav'];
@@ -58,12 +59,12 @@
 
 	function message(cause: unknown): string {
 		if (cause instanceof ApiError) {
-			if (cause.status === 401 || cause.status === 403) return '현재 프로젝트에 접근할 수 없습니다.';
-			if (cause.status === 402) return '사용 가능한 크레딧 또는 할당량이 부족합니다.';
+			if (cause.status === 401 || cause.status === 403) return t('audioStudio.projectDenied');
+			if (cause.status === 402) return t('audioStudio.quotaInsufficient');
 			if ([400, 409, 422].includes(cause.status)) return cause.message.slice(0, 250);
-			return `오디오 서비스 요청 실패 (${cause.status}).`;
+			return t('audioStudio.requestFailed', { status: cause.status });
 		}
-		return cause instanceof Error ? cause.message : '오디오 서비스에 연결하지 못했습니다.';
+		return cause instanceof Error ? cause.message : t('audioStudio.connectionFailed');
 	}
 	function controller(): AbortController {
 		const item = new AbortController();
@@ -194,7 +195,7 @@
 	}
 	async function upload(file: File) {
 		if (!scope || busyStt) return;
-		if (!AUDIO_MIMES.has(file.type)) { errors = { ...errors, stt: 'MP3, WAV, M4A, OGG 또는 WebM 음성 파일을 선택하세요.' }; return; }
+		if (!AUDIO_MIMES.has(file.type)) { errors = { ...errors, stt: t('audioStudio.invalidFile') }; return; }
 		const epoch = generation;
 		const requestScope = scope;
 		const request = controller();
@@ -208,14 +209,14 @@
 			assetId = asset.id;
 			assetName = asset.name;
 		} catch (cause) {
-			if (epoch === generation && !request.signal.aborted) errors = { ...errors, stt: `업로드 실패: ${message(cause)}` };
+			if (epoch === generation && !request.signal.aborted) errors = { ...errors, stt: t('audioStudio.uploadFailed', { message: message(cause) }) };
 		} finally {
 			if (epoch === generation) busyStt = false;
 		}
 	}
 	async function startRecording() {
 		if (recording || permissionPending || busyStt) return;
-		if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') { errors = { ...errors, stt: '이 브라우저는 마이크 녹음을 지원하지 않습니다. 파일을 선택하세요.' }; return; }
+		if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') { errors = { ...errors, stt: t('audioStudio.recordingUnsupported') }; return; }
 		permissionPending = true;
 		const epoch = generation;
 		try {
@@ -227,12 +228,12 @@
 			const chunks: BlobPart[] = [];
 			let recordingFailed = false;
 			active.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
-			active.onerror = () => { recordingFailed = true; if (epoch === generation) errors = { ...errors, stt: '녹음에 실패했습니다. 다시 시도하거나 파일을 선택하세요.' }; stopMic(); };
+			active.onerror = () => { recordingFailed = true; if (epoch === generation) errors = { ...errors, stt: t('audioStudio.recordingFailed') }; stopMic(); };
 			active.onstop = () => {
 				acquired.getTracks().forEach((track) => track.stop());
 				if (epoch !== generation || recordingFailed || !chunks.length) return;
 				const type = active.mimeType.split(';')[0];
-				if (!AUDIO_MIMES.has(type)) { errors = { ...errors, stt: '녹음 형식이 지원되지 않습니다. 파일을 선택하세요.' }; return; }
+				if (!AUDIO_MIMES.has(type)) { errors = { ...errors, stt: t('audioStudio.recordingFormatUnsupported') }; return; }
 				const extension = type === 'audio/mp4' ? 'm4a' : type.split('/')[1];
 				void upload(new File(chunks, `recording.${extension}`, { type }));
 			};
@@ -243,7 +244,7 @@
 		} catch (cause) {
 			stream?.getTracks().forEach((track) => track.stop());
 			stream = null;
-			if (epoch === generation) errors = { ...errors, stt: cause instanceof DOMException && cause.name === 'NotAllowedError' ? '마이크 권한이 거부되었습니다. 브라우저 권한을 확인하거나 파일을 선택하세요.' : `마이크를 시작하지 못했습니다: ${message(cause)}` };
+			if (epoch === generation) errors = { ...errors, stt: cause instanceof DOMException && cause.name === 'NotAllowedError' ? t('audioStudio.microphoneDenied') : t('audioStudio.microphoneFailed', { message: message(cause) }) };
 		} finally {
 			if (epoch === generation) permissionPending = false;
 		}
@@ -282,27 +283,27 @@
 
 <PageShell max="7xl">
 	<div class="studio">
-		<header class="header"><div><p class="muted">AI 채팅 / 오디오</p><h1>오디오 Studio</h1><p class="muted">텍스트에서 음성을 만들거나 음성 파일을 텍스트로 변환합니다. 오디오는 브라우저에 저장하지 않습니다.</p></div><Button href="/dashboard/chat" variant="secondary">텍스트 채팅으로</Button></header>
+		<header class="header"><div><p class="muted">{t('audioStudio.breadcrumb')}</p><h1>{t('audioStudio.title')}</h1><p class="muted">{t('audioStudio.description')}</p></div><Button href="/dashboard/chat" variant="secondary">{t('audioStudio.textChat')}</Button></header>
 		<div class="columns">
 			<Card><form class="form" onsubmit={(event) => { event.preventDefault(); void speech(); }}>
-				<h2>텍스트 → 음성</h2>
-				<Field label="음성 모델" for="audio-tts-model"><SelectInput id="audio-tts-model" value={selected.tts} onchange={(event) => { selected = { ...selected, tts: (event.currentTarget as HTMLSelectElement).value }; }} disabled={loading.tts || busyTts}><option value="">모델 선택</option>{#each models.tts as model (model.id)}<option value={String(model.id)}>{model.display_name}</option>{/each}</SelectInput></Field>
-				{#if loading.tts || capabilityLoading.tts}<p role="status" class="muted">음성 모델과 가격을 확인하는 중…</p>{:else if errors.tts}<Alert tone="danger">{errors.tts} <Button variant="subtle" onclick={() => scope && loadModels('tts', scope, generation)}>모델 다시 조회</Button></Alert>{:else if !models.tts.length}<Alert tone="warning">사용 가능한 음성 모델이 없습니다.</Alert>{:else if ttsReadiness}<Alert tone="warning">{ttsReadiness}</Alert>{:else}<Alert tone="success">음성 생성 경로와 가격이 준비되었습니다.</Alert>{/if}
-				<Field label="읽을 텍스트" for="audio-text" required><TextareaInput id="audio-text" bind:value={draft} rows={5} disabled={busyTts} placeholder="음성으로 읽을 텍스트" /></Field>
-				<div class="options"><Field label="목소리" for="audio-voice"><SelectInput id="audio-voice" bind:value={voice} disabled={busyTts}>{#each voices as option}<option value={option}>{option}</option>{/each}</SelectInput></Field><Field label="형식" for="audio-format"><SelectInput id="audio-format" bind:value={format} disabled={busyTts}>{#each formats as option}<option value={option}>{option.toUpperCase()}</option>{/each}</SelectInput></Field></div>
-				<Button type="submit" disabled={!scope || loading.tts || capabilityLoading.tts || Boolean(ttsReadiness) || !draft.trim() || !voices.includes(voice) || !formats.includes(format) || busyTts}>{busyTts ? '음성 생성 중…' : '음성 생성'}</Button>
-				{#if audioUrl}<div class="output"><audio bind:this={media} src={audioUrl} controls aria-label="생성된 음성"></audio><a href={audioUrl} download={`speech.${outputFormat}`} class="download">음성 다운로드</a></div>{/if}
+				<h2>{t('audioStudio.textToSpeech')}</h2>
+				<Field label={t('audioStudio.speechModel')} for="audio-tts-model"><SelectInput id="audio-tts-model" value={selected.tts} onchange={(event) => { selected = { ...selected, tts: (event.currentTarget as HTMLSelectElement).value }; }} disabled={loading.tts || busyTts}><option value="">{t('audioStudio.selectModel')}</option>{#each models.tts as model (model.id)}<option value={String(model.id)}>{model.display_name}</option>{/each}</SelectInput></Field>
+				{#if loading.tts || capabilityLoading.tts}<p role="status" class="muted">{t('audioStudio.speechChecking')}</p>{:else if errors.tts}<Alert tone="danger">{errors.tts} <Button variant="subtle" onclick={() => scope && loadModels('tts', scope, generation)}>{t('audioStudio.reloadModels')}</Button></Alert>{:else if !models.tts.length}<Alert tone="warning">{t('audioStudio.noSpeechModels')}</Alert>{:else if ttsReadiness}<Alert tone="warning">{ttsReadiness}</Alert>{:else}<Alert tone="success">{t('audioStudio.speechReady')}</Alert>{/if}
+				<Field label={t('audioStudio.textLabel')} for="audio-text" required><TextareaInput id="audio-text" bind:value={draft} rows={5} disabled={busyTts} placeholder={t('audioStudio.textPlaceholder')} /></Field>
+				<div class="options"><Field label={t('audioStudio.voice')} for="audio-voice"><SelectInput id="audio-voice" bind:value={voice} disabled={busyTts}>{#each voices as option}<option value={option}>{option}</option>{/each}</SelectInput></Field><Field label={t('audioStudio.format')} for="audio-format"><SelectInput id="audio-format" bind:value={format} disabled={busyTts}>{#each formats as option}<option value={option}>{option.toUpperCase()}</option>{/each}</SelectInput></Field></div>
+				<Button type="submit" disabled={!scope || loading.tts || capabilityLoading.tts || Boolean(ttsReadiness) || !draft.trim() || !voices.includes(voice) || !formats.includes(format) || busyTts}>{busyTts ? t('audioStudio.speechGenerating') : t('audioStudio.generateSpeech')}</Button>
+				{#if audioUrl}<div class="output"><audio bind:this={media} src={audioUrl} controls aria-label={t('audioStudio.generatedSpeech')}></audio><a href={audioUrl} download={`speech.${outputFormat}`} class="download">{t('audioStudio.downloadSpeech')}</a></div>{/if}
 			</form></Card>
 			<Card><div class="form">
-				<h2>음성 → 텍스트</h2>
-				<Field label="인식 모델" for="audio-stt-model"><SelectInput id="audio-stt-model" value={selected.stt} onchange={(event) => { selected = { ...selected, stt: (event.currentTarget as HTMLSelectElement).value }; }} disabled={loading.stt || busyStt}><option value="">모델 선택</option>{#each models.stt as model (model.id)}<option value={String(model.id)}>{model.display_name}</option>{/each}</SelectInput></Field>
-				{#if loading.stt || capabilityLoading.stt}<p role="status" class="muted">인식 모델과 가격을 확인하는 중…</p>{:else if errors.stt}<Alert tone="danger">{errors.stt} <Button variant="subtle" onclick={() => scope && loadModels('stt', scope, generation)}>모델 다시 조회</Button></Alert>{:else if !models.stt.length}<Alert tone="warning">사용 가능한 인식 모델이 없습니다.</Alert>{:else if sttReadiness}<Alert tone="warning">{sttReadiness}</Alert>{:else}<Alert tone="success">음성 인식 경로와 가격이 준비되었습니다.</Alert>{/if}
-				<Field label="음성 파일" for="audio-file" help="MP3, WAV, M4A, OGG, WebM · 소유권과 검사를 거쳐 인식합니다."><input id="audio-file" type="file" accept="audio/mpeg,audio/wav,audio/x-wav,audio/mp4,audio/ogg,audio/webm" disabled={busyStt || recording} onchange={(event) => { const file = event.currentTarget.files?.[0]; if (file) void upload(file); }} /></Field>
-				<div class="actions"><Button variant="secondary" disabled={busyStt || permissionPending} onclick={() => recording ? stopMic() : void startRecording()}>{permissionPending ? '마이크 권한 확인 중…' : recording ? '녹음 종료' : '마이크 녹음'}</Button>{#if recording}<span role="status">녹음 중 · 종료하면 업로드합니다.</span>{/if}</div>
-				{#if assetId}<p class="muted" role="status">검사된 입력: {assetName}</p>{/if}
-				<Field label="언어 코드 (선택)" for="audio-language"><TextInput id="audio-language" bind:value={language} placeholder="예: ko" disabled={busyStt} /></Field>
-				<Button disabled={!scope || !assetId || Boolean(sttReadiness) || loading.stt || capabilityLoading.stt || busyStt || recording} onclick={() => void transcribe()}>{busyStt ? '음성 처리 중…' : '텍스트로 변환'}</Button>
-				{#if transcript}<div class="output"><h3>인식 결과</h3><p class="transcript">{transcript}</p><div class="actions"><Button variant="secondary" onclick={insertIntoChat}>채팅 입력에 넣기</Button><Button variant="subtle" onclick={() => { void navigator.clipboard.writeText(transcript).catch((cause) => { errors = { ...errors, stt: `복사 실패: ${message(cause)}` }; }); }}>텍스트 복사</Button></div></div>{/if}
+				<h2>{t('audioStudio.speechToText')}</h2>
+				<Field label={t('audioStudio.transcriptionModel')} for="audio-stt-model"><SelectInput id="audio-stt-model" value={selected.stt} onchange={(event) => { selected = { ...selected, stt: (event.currentTarget as HTMLSelectElement).value }; }} disabled={loading.stt || busyStt}><option value="">{t('audioStudio.selectModel')}</option>{#each models.stt as model (model.id)}<option value={String(model.id)}>{model.display_name}</option>{/each}</SelectInput></Field>
+				{#if loading.stt || capabilityLoading.stt}<p role="status" class="muted">{t('audioStudio.transcriptionChecking')}</p>{:else if errors.stt}<Alert tone="danger">{errors.stt} <Button variant="subtle" onclick={() => scope && loadModels('stt', scope, generation)}>{t('audioStudio.reloadModels')}</Button></Alert>{:else if !models.stt.length}<Alert tone="warning">{t('audioStudio.noTranscriptionModels')}</Alert>{:else if sttReadiness}<Alert tone="warning">{sttReadiness}</Alert>{:else}<Alert tone="success">{t('audioStudio.transcriptionReady')}</Alert>{/if}
+				<Field label={t('audioStudio.audioFile')} for="audio-file" help={t('audioStudio.audioFileHelp')}><input id="audio-file" type="file" accept="audio/mpeg,audio/wav,audio/x-wav,audio/mp4,audio/ogg,audio/webm" disabled={busyStt || recording} onchange={(event) => { const file = event.currentTarget.files?.[0]; if (file) void upload(file); }} /></Field>
+				<div class="actions"><Button variant="secondary" disabled={busyStt || permissionPending} onclick={() => recording ? stopMic() : void startRecording()}>{permissionPending ? t('audioStudio.microphonePermissionChecking') : recording ? t('audioStudio.stopRecording') : t('audioStudio.recordMicrophone')}</Button>{#if recording}<span role="status">{t('audioStudio.recordingStatus')}</span>{/if}</div>
+				{#if assetId}<p class="muted" role="status">{t('audioStudio.scannedInput', { name: assetName })}</p>{/if}
+				<Field label={t('audioStudio.languageCode')} for="audio-language"><TextInput id="audio-language" bind:value={language} placeholder={t('audioStudio.languagePlaceholder')} disabled={busyStt} /></Field>
+				<Button disabled={!scope || !assetId || Boolean(sttReadiness) || loading.stt || capabilityLoading.stt || busyStt || recording} onclick={() => void transcribe()}>{busyStt ? t('audioStudio.processingAudio') : t('audioStudio.convertToText')}</Button>
+				{#if transcript}<div class="output"><h3>{t('audioStudio.transcriptionResult')}</h3><p class="transcript">{transcript}</p><div class="actions"><Button variant="secondary" onclick={insertIntoChat}>{t('audioStudio.insertIntoChat')}</Button><Button variant="subtle" onclick={() => { void navigator.clipboard.writeText(transcript).catch((cause) => { errors = { ...errors, stt: t('audioStudio.copyFailed', { message: message(cause) }) }; }); }}>{t('audioStudio.copyText')}</Button></div></div>{/if}
 			</div></Card>
 		</div>
 	</div>

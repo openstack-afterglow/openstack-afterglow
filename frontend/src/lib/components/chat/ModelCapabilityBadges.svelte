@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/chat-studio';
 	import type { ModelCapabilities } from '$lib/api/chatContracts';
 
 	interface Props {
@@ -20,12 +21,12 @@
 	const badges = $derived.by((): Badge[] => {
 		if (!caps) return [];
 		const out: Badge[] = [];
-		if (caps.vision) out.push({ key: 'vision', label: 'Vision', title: '이미지 입력 지원' });
-		if (caps.reasoning) out.push({ key: 'think', label: 'Think', title: '추론(thinking) 지원' });
-		if (caps.tool_call) out.push({ key: 'tools', label: 'Tools', title: '도구 호출 지원' });
-		if (caps.web_search && !hideSearch) out.push({ key: 'search', label: 'Search', title: '웹 검색 지원' });
+		if (caps.vision) out.push({ key: 'vision', label: t('modelCapabilityBadges.vision'), title: t('modelCapabilityBadges.visionHelp') });
+		if (caps.reasoning) out.push({ key: 'think', label: t('modelCapabilityBadges.think'), title: t('modelCapabilityBadges.thinkHelp') });
+		if (caps.tool_call) out.push({ key: 'tools', label: t('modelCapabilityBadges.tools'), title: t('modelCapabilityBadges.toolsHelp') });
+		if (caps.web_search && !hideSearch) out.push({ key: 'search', label: t('modelCapabilityBadges.search'), title: t('modelCapabilityBadges.searchHelp') });
 		if (caps.attachment && !caps.vision)
-			out.push({ key: 'files', label: 'Files', title: '파일 첨부 지원' });
+			out.push({ key: 'files', label: t('modelCapabilityBadges.files'), title: t('modelCapabilityBadges.filesHelp') });
 		return out;
 	});
 </script>

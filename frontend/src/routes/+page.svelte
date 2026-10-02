@@ -6,6 +6,7 @@
 	import { resolvedTheme } from '$lib/stores/theme';
 	import LandingPage from '$lib/components/landing/LandingPage.svelte';
 	import { auth, isLoggedIn } from '$lib/stores/auth';
+	import { t } from '$lib/i18n/ns/public-entry';
 
 	let themeReady = $state(false);
 	onMount(() => {
@@ -16,10 +17,10 @@
 </script>
 
 <svelte:head>
-	<title>{$siteConfig.site_name} | 연구실 클라우드 제공 콘솔</title>
+	<title>{t('landingMeta.title', { siteName: $siteConfig.site_name })}</title>
 	<meta
 		name="description"
-		content={`${$siteConfig.site_name}는 연구실과 교육 조직이 컴퓨팅 자원, Kubernetes, 공유 스토리지, AI/ML 라이브러리 레이어를 한 화면에서 제공하고 운영하도록 돕는 클라우드 포털입니다.`}
+		content={t('landingMeta.description', { siteName: $siteConfig.site_name })}
 	/>
 </svelte:head>
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t as tr } from '$lib/i18n/ns/database';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { untrack } from 'svelte';
 	import { pushState } from '$app/navigation';
@@ -89,26 +90,26 @@
 	}
 
 	async function deleteInstance(id: string, name: string) {
-		if (!await confirmDialog(`DB 인스턴스 "${name || id.slice(0, 8)}"를 삭제하시겠습니까?`)) return;
+		if (!await confirmDialog(tr('instances.deleteConfirm', { name: name || id.slice(0, 8) }))) return;
 		deleting = id;
 		try {
 			await api.delete(`/api/v1/database-instances/${id}`, token, projectId);
 			await load();
 		} catch (e) {
-			toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(tr('errors.delete', { error: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			deleting = null;
 		}
 	}
 
 	async function restartInstance(id: string, name: string) {
-		if (!await confirmDialog(`DB 인스턴스 "${name || id.slice(0, 8)}"를 재시작하시겠습니까?`, { confirmLabel: '재시작', confirmVariant: 'accent' })) return;
+		if (!await confirmDialog(tr('instances.restartConfirm', { name: name || id.slice(0, 8) }), { confirmLabel: tr('actions.restart'), confirmVariant: 'accent' })) return;
 		restarting = id;
 		try {
 			await api.post(`/api/v1/database-instances/${id}/restart`, {}, token, projectId);
 			await load();
 		} catch (e) {
-			toast.error('재시작 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(tr('errors.restart', { error: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			restarting = null;
 		}
@@ -116,8 +117,7 @@
 	async function runBulk(action: 'restart' | 'delete') {
 		const snapshot = [...selection.ids];
 		if (snapshot.length === 0) return;
-		const label = action === 'restart' ? '재시작' : '삭제';
-		if (!await confirmDialog(`선택한 DB 인스턴스 ${snapshot.length}개를 ${label}하시겠습니까?`)) return;
+		if (!await confirmDialog(action === 'restart' ? tr('bulk.restartConfirm', { count: snapshot.length }) : tr('bulk.deleteConfirm', { count: snapshot.length }))) return;
 		const tokenSnapshot = $auth.token ?? undefined;
 		const projectSnapshot = $auth.projectId ?? undefined;
 		bulkBusy = true;
@@ -127,8 +127,8 @@
 				: api.delete(`/api/v1/database-instances/${id}`, tokenSnapshot, projectSnapshot));
 			const successful = results.filter((result) => result.ok).map((result) => result.id);
 			const failed = results.length - successful.length;
-			if (successful.length > 0) toast.success(`${successful.length}개 ${label} 요청을 완료했습니다.`);
-			if (failed > 0) toast.error(`${failed}개 ${label}에 실패했습니다.`);
+			if (successful.length > 0) toast.success(action === 'restart' ? tr('bulk.restartSuccess', { count: successful.length }) : tr('bulk.deleteSuccess', { count: successful.length }));
+			if (failed > 0) toast.error(action === 'restart' ? tr('bulk.restartFailed', { count: failed }) : tr('bulk.deleteFailed', { count: failed }));
 			if ($auth.projectId === projectSnapshot) {
 				selection.remove(successful);
 				await load();
@@ -139,8 +139,8 @@
 	}
 
 	const bulkActions: BulkSelectionAction[] = [
-		{ key: 'restart', label: '재시작', tone: 'warning', onAction: () => runBulk('restart') },
-		{ key: 'delete', label: '삭제', tone: 'danger', onAction: () => runBulk('delete') },
+		{ key: 'restart', label: tr('actions.restart'), tone: 'warning', onAction: () => runBulk('restart') },
+		{ key: 'delete', label: tr('actions.delete'), tone: 'danger', onAction: () => runBulk('delete') },
 	];
 
 	const ar = createAutoRefresh(() => load(), {
@@ -163,7 +163,7 @@
 <DbCreatePanel bind:open={showCreatePanel} onCreated={load} />
 
 {#if selectedInstanceId}
-	<SlidePanel onClose={closePanel} ariaLabel="데이터베이스 인스턴스 상세" width="w-full md:w-[70vw] max-w-4xl">
+	<SlidePanel onClose={closePanel} ariaLabel={tr('instances.detail')} width="w-full md:w-[70vw] max-w-4xl">
 		<DbInstanceDetailPanel
 			instanceId={selectedInstanceId}
 			token={$auth.token ?? undefined}
@@ -175,12 +175,12 @@
 {/if}
 
 <PageShell class="bulk-selection-page space-y-4">
-	<PageHeader breadcrumb="DATABASE / INSTANCES" title="DB 인스턴스">
+	<PageHeader breadcrumb={tr('breadcrumbs.instances')} title={tr('instances.title')}>
 		{#snippet actions()}
-			<Button onclick={() => (showCreatePanel = true)} onintent={prefetchCreateMetadata} variant="primary">+ 인스턴스 생성</Button>
+			<Button onclick={() => (showCreatePanel = true)} onintent={prefetchCreateMetadata} variant="primary">{tr('actions.createInstance')}</Button>
 		{/snippet}
 	</PageHeader>
-	<ResourceToolbar label="데이터베이스 인스턴스 목록 도구">
+	<ResourceToolbar label={tr('instances.toolbar')}>
 		{#snippet actions()}
 			<AutoRefreshControl
 				bind:active={ar.active}
@@ -195,7 +195,7 @@
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if instances.length === 0}
-		<EmptyState headline="DB 인스턴스가 없습니다" description="관리형 데이터베이스 인스턴스를 생성하세요." />
+		<EmptyState headline={tr('instances.empty')} description={tr('instances.emptyHelp')} />
 	{:else}
 		<DbInstancesTable
 			{instances}
@@ -211,6 +211,6 @@
 			onRestart={restartInstance}
 			onDelete={deleteInstance}
 		/>
-		<BulkSelectionOverlay count={selection.count} ariaLabel="선택한 DB 인스턴스 일괄 작업" actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
+		<BulkSelectionOverlay count={selection.count} ariaLabel={tr('instances.bulkLabel')} actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
 	{/if}
 </PageShell>

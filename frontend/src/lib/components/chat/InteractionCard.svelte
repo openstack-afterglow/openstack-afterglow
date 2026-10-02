@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/chat-studio';
 	import Button from '$lib/components/ui/Button.svelte';
 
 	interface Option { id: string; label: string; }
@@ -22,7 +23,7 @@
 	}
 </script>
 
-<section class="interaction" aria-label="사용자 입력 필요">
+<section class="interaction" aria-label={t('interactionCard.inputRequired')}>
 	<p>{question}</p>
 	{#if options.length}
 		<div class="options" role={allowMultiple ? 'group' : 'radiogroup'}>
@@ -31,8 +32,8 @@
 			{/each}
 		</div>
 	{/if}
-	{#if allowText}<textarea bind:value={answer} maxlength="4000" disabled={pending} aria-label="추가 응답"></textarea>{/if}
-	<Button variant="secondary" size="sm" disabled={pending || (!selected.length && !answer.trim())} onclick={submit}>응답 보내기</Button>
+	{#if allowText}<textarea bind:value={answer} maxlength="4000" disabled={pending} aria-label={t('interactionCard.additionalResponse')}></textarea>{/if}
+	<Button variant="secondary" size="sm" disabled={pending || (!selected.length && !answer.trim())} onclick={submit}>{t('interactionCard.sendResponse')}</Button>
 </section>
 
 <style>

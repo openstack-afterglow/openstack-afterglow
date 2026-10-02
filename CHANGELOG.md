@@ -8,6 +8,7 @@
 ## [Unreleased]
 
 ### Added
+- **프론트엔드 4개 언어·번역 참여** — 한국어를 기본·원문으로 영어, 일본어, 중국어 간체를 동일 키의 기능별 JSON 카탈로그에 대응한다. 공개·로그인·콘솔 언어 선택은 쿠키·SSR HTML lang에 반영하며 날짜·숫자와 CJK 글꼴도 선택 언어를 따른다. 원어민은 UI 코드 변경 없이 CSV/JSON으로 번역·검수할 수 있고 키·변수·태그 중첩·한글 잔존 검사 및 한국어 원문 해시의 검수 상태를 제공한다. 잘못된 CSV나 읽을 수 없는 카탈로그·검수 JSON은 쓰기 전에 거부한다. 좁은 화면의 번역문·표 스크롤과 xterm 접근성 이름·알림을 처리하며 전역 터미널 버퍼는 유지한다. 초기 번역은 초안이며 backend 오류·사용자 데이터·운영자 작성 문구는 번역하지 않는다. 언어 전환은 페이지를 다시 mount하므로 저장하지 않은 폼은 초기화될 수 있다.
 - **Lumen image/audio/realtime Studio** — 관리자 media kind·정확 단가 편집, 프로젝트 소유 이미지 생성·편집과 canonical asset, TTS/STT 생성·전사·채팅 재생을 연결했다. 실시간 음성은 명시적 microphone 승인 뒤 Keystone-scoped admission, one-use Redis browser ticket, Origin-checked internal Lumen WS relay, PCM16 capture/재생·barge interruption·화면 자막을 사용한다. Provider key와 Lumen connect token은 browser에 노출하지 않고 scope 전환/로그아웃에서 microphone/socket/audio buffer를 정리한다. Synthetic WS, MariaDB/Redis, BFF/UI tests는 수행했지만 live provider inference와 브라우저 visual acceptance는 미검증이다.
 - **관리자 하이퍼바이저 호스트 운영** — 호스트의 생존 상태와 Nova `nova-compute` 스케줄링 상태를 분리 표시하고 사유를 입력한 enable/disable을 제공한다. `up/disabled` 호스트의 전체 인스턴스 live/cold migration과 `down` 호스트의 펜싱 확인 후 evacuation은 각각 별도 확인 작업으로 제공한다. 모든 프로젝트의 VM을 페이지 끝까지 조회하고 요청·실패·건너뜀을 VM별로 표시하며, 비동기 요청을 완료로 표시하거나 `forced_down`을 자동 설정하지 않는다. 실제 운영 호스트 상태 변경·이주 성공은 아직 검증하지 않았다.
 

@@ -1,3 +1,4 @@
+import { t } from '$lib/i18n/ns/topology';
 // 캔버스 토폴로지 공용 헬퍼. 레인 뷰의 topologyHelpers 를 재사용하고 캔버스 전용 포맷터만 추가한다.
 import type { TrafficRate } from '$lib/types/topology';
 import { _ipv4InCidr, edgeIntensity, flowDotCount, flowRate, formatBps, NO_TELEMETRY_STYLE } from '../topologyHelpers';
@@ -44,16 +45,16 @@ export const fmtRateShort = (r: TrafficRate | null | undefined): string =>
 	r ? `↓${formatBps(r.rx_bps)} ↑${formatBps(r.tx_bps)}` : '—';
 
 export const KIND_LABEL: Record<CanvasNodeKind, string> = {
-	vm: '인스턴스',
-	router: '라우터',
-	switch: '네트워크 스위치',
-	lb: '로드밸런서',
+	get vm() { return t('resource.instance'); },
+	get router() { return t('resource.router'); },
+	get switch() { return t('resource.networkSwitch'); },
+	get lb() { return t('resource.loadBalancer'); },
 };
 
 export const NET_KIND_LABEL: Record<CanvasNetKind, string> = {
-	external: '외부',
-	shared: '공유',
-	internal: '내부',
+	get external() { return t('kind.external'); },
+	get shared() { return t('kind.shared'); },
+	get internal() { return t('kind.internal'); },
 };
 
 /**
@@ -62,8 +63,8 @@ export const NET_KIND_LABEL: Record<CanvasNetKind, string> = {
  * 하위 스위치 쪽 트렁크 값은 배지가 아니라 그 스위치 노드 카드가 직접 보여준다.
  * 라우터가 직접 무는 하위 네트워크들만 합산한다 — provider 네트워크 전체 합이 아니다.
  */
-export const UPLINK_CAPTION = '하위망 합산';
-export const UPLINK_TITLE = '라우터별 하위 네트워크 합산 트래픽 · 라우터 exporter 없음';
+export const UPLINK_CAPTION = () => t('hud.uplinkCaption');
+export const UPLINK_TITLE = () => t('hud.uplinkTitle');
 
 /* 휠 제스처 처리는 `TopologyCanvas.svelte` 의 `onWheel` 에 있다(장치 추정 없음). */
 

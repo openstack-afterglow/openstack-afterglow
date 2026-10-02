@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/network-resources';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
@@ -39,7 +40,7 @@
 				$auth.projectId ?? undefined
 			);
 		} catch (e) {
-			error = e instanceof ApiError ? `조회 실패 (${e.status}): ${e.message}` : '서버 오류';
+			error = e instanceof ApiError ? t('network.page.loadFailed', { status: e.status, error: e.message }) : t('network.page.serverError');
 		} finally {
 			loading = false;
 		}
@@ -48,20 +49,20 @@
 	async function deleteNetwork() {
 		if (!network) return;
 		if (!canManageNetwork) {
-			toast.warning('현재 프로젝트가 소유한 네트워크만 삭제할 수 있습니다.');
+			toast.warning(t('network.page.deleteOwnOnly'));
 			return;
 		}
 		if (network.is_external) {
-			toast.warning('외부 네트워크는 삭제할 수 없습니다.');
+			toast.warning(t('network.page.deleteExternalForbidden'));
 			return;
 		}
-		if (!await confirmDialog(`네트워크 "${network.name || network.id}"를 삭제하시겠습니까?`)) return;
+		if (!await confirmDialog(t('network.page.deleteConfirm', { name: network.name || network.id }))) return;
 		deleting = true;
 		try {
 			await api.delete(`/api/v1/networks/${network.id}`, $auth.token ?? undefined, $auth.projectId ?? undefined);
 			goto('/dashboard');
 		} catch (e) {
-			toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('network.page.deleteFailed', { error: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			deleting = false;
 		}
@@ -86,7 +87,7 @@
 			await fetchNetwork(network.id);
 			return true;
 		} catch (e) {
-			subnetError = e instanceof ApiError ? e.message : '서브넷 생성 실패';
+			subnetError = e instanceof ApiError ? e.message : t('network.errors.createSubnet');
 			return false;
 		} finally {
 			addingSubnet = false;
@@ -97,7 +98,7 @@
 <div class="p-4 md:p-6 max-w-5xl mx-auto">
 	<div class="mb-6">
 		<a href="/dashboard" class="text-ink-2 hover:text-ink-1 text-sm transition-colors">
-			← 대시보드
+			{t('network.page.backDashboard')}
 		</a>
 	</div>
 
@@ -111,7 +112,7 @@
 		<DashboardNetworkHeader {network} {deleting} canManage={canManageNetwork} onDelete={deleteNetwork} />
 		<DashboardNetworkInfoCard {network} />
 		<div class="bg-surface-base border border-line rounded-lg p-6 mb-4">
-			<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide mb-4">네트워크 토폴로지</h2>
+			<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide mb-4">{t('network.page.topology')}</h2>
 			<NetworkTopology {network} />
 		</div>
 		<DashboardSubnetSection

@@ -10,6 +10,7 @@
 	import GroupCreateModal from '$lib/components/admin/groups/GroupCreateModal.svelte';
 	import GroupEditModal from '$lib/components/admin/groups/GroupEditModal.svelte';
 	import GroupDeleteConfirmModal from '$lib/components/admin/groups/GroupDeleteConfirmModal.svelte';
+	import { t } from '$lib/i18n/ns/admin-identity';
 
 	const ctrl = createAdminGroupsController({
 		token: () => $auth.token ?? undefined,
@@ -28,9 +29,9 @@
 </script>
 
 <div class="p-4 md:p-6 max-w-7xl mx-auto">
-	<PageHeader breadcrumb="IDENTITY / GROUPS" title="그룹">
+	<PageHeader breadcrumb={t('groupPage.breadcrumb')} title={t('groupPage.title')}>
 		{#snippet actions()}
-			<button onclick={() => { ctrl.showCreate = true; ctrl.createError = ''; }} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg">+ 생성</button>
+			<button onclick={() => { ctrl.showCreate = true; ctrl.createError = ''; }} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg">{t('groupPage.create')}</button>
 			<AutoRefreshControl
 				bind:active={ar.active}
 				bind:intervalSeconds={ar.intervalSeconds}
@@ -48,7 +49,7 @@
 	{#if ctrl.loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if ctrl.groups.length === 0}
-		<div class="text-center text-ink-2 text-sm py-8">그룹이 없습니다</div>
+		<div class="text-center text-ink-2 text-sm py-8">{t('groupPage.empty')}</div>
 	{:else}
 		<div class="bg-surface-base border border-line rounded-lg p-5">
 			<div class="space-y-2">

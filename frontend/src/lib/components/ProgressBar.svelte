@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import type { HTMLAttributes } from 'svelte/elements';
+	import { t } from '$lib/i18n/ns/shared';
 
 	interface Step {
 		id: string;
@@ -93,7 +94,7 @@
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
 				</svg>
 				<div>
-					<p class="text-red-300 font-medium">배포 실패</p>
+					<p class="text-red-300 font-medium">{t('progressBar.failed')}</p>
 					<p class="text-red-400/80 text-sm mt-1">{error}</p>
 				</div>
 			</div>

@@ -3,6 +3,7 @@ import { get } from 'svelte/store';
 import { siteConfig } from '$lib/config/site';
 import { auth, authRecovery, logoutInProgress } from '$lib/stores/auth';
 import { ApiError } from '$lib/api/errors';
+import { t } from '$lib/i18n/ns/shared';
 import {
 	getActiveMockupProfile,
 	maybeMockBlob,
@@ -398,7 +399,7 @@ async function withAuthRecovery<T extends { status: number }>(
 			opts.signal?.throwIfAborted();
 			if (!freshToken) {
 				if (!opts.suppressAuthRedirect) void handleUnauthorized();
-				throw new ApiError(401, '세션이 만료되었습니다');
+				throw new ApiError(401, t('client.sessionExpired'));
 			}
 			requestToken = freshToken;
 		}
@@ -740,7 +741,7 @@ function getOrdinary<T>(
 	suppressAuthRedirect: boolean,
 ): Promise<T> {
 	if (signal?.aborted) {
-		return Promise.reject(new DOMException('The operation was aborted', 'AbortError'));
+		return Promise.reject(new DOMException(t('client.operationAborted'), 'AbortError'));
 	}
 
 	if (browser) {
@@ -912,8 +913,8 @@ function uploadWithAuthProgress<T>(
 				if (event.lengthComputable) onProgress({ loaded: event.loaded, total: event.total });
 			};
 			xhr.onload = () => resolve(xhr);
-			xhr.onerror = () => reject(new Error('네트워크 오류가 발생했습니다'));
-			xhr.onabort = () => reject(new ApiError(0, '업로드가 취소되었습니다'));
+			xhr.onerror = () => reject(new Error(t('client.networkError')));
+			xhr.onabort = () => reject(new ApiError(0, t('client.uploadCanceled')));
 			xhr.send(body);
 		}),
 		token,
@@ -931,7 +932,7 @@ function uploadWithAuthProgress<T>(
 	return {
 		promise,
 		abort: () => {
-			controller.abort(new ApiError(0, '업로드가 취소되었습니다'));
+			controller.abort(new ApiError(0, t('client.uploadCanceled')));
 			activeXhr?.abort();
 		},
 	};
@@ -963,7 +964,7 @@ export const api = {
 		opts?: { refresh?: boolean; signal?: AbortSignal; suppressAuthRedirect?: boolean }
 	): Promise<T> => {
 		if (opts?.signal?.aborted) {
-			return Promise.reject(new DOMException('The operation was aborted', 'AbortError'));
+			return Promise.reject(new DOMException(t('client.operationAborted'), 'AbortError'));
 		}
 		const scope = captureRequestScope(token, projectId);
 		const normalized = normalizeGetPath(path, scope, opts?.refresh);
@@ -1090,7 +1091,7 @@ export const api = {
 				} else {
 					const body = xhr.responseText?.slice(0, 400) || '';
 					console.error('[S3 PUT] HTTP error', { status: xhr.status, body });
-					reject(new ApiError(xhr.status, `PUT failed: ${xhr.status}`));
+					reject(new ApiError(xhr.status, t('client.putFailed', { status: xhr.status })));
 				}
 			};
 			xhr.onerror = () => {
@@ -1099,9 +1100,9 @@ export const api = {
 					readyState: xhr.readyState,
 					url: url.split('?')[0],
 				});
-				reject(new ApiError(0, '네트워크 오류가 발생했습니다'));
+				reject(new ApiError(0, t('client.networkError')));
 			};
-			xhr.onabort = () => reject(new ApiError(0, '업로드가 취소되었습니다'));
+			xhr.onabort = () => reject(new ApiError(0, t('client.uploadCanceled')));
 			signal?.addEventListener('abort', () => xhr.abort());
 			xhr.send(body);
 		}).finally(() => invalidateExactScope(scope));
@@ -1172,7 +1173,7 @@ export const api = {
 			}
 
 			const reader = response.body?.getReader();
-			if (!reader) throw new Error('No response body');
+			if (!reader) throw new Error(t('client.noResponseBody'));
 
 			const decoder = new TextDecoder();
 			let buffer = '';

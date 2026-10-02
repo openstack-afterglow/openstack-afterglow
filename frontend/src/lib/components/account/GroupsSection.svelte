@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/account';
   import { auth } from '$lib/stores/auth';
   import { api, ApiError } from '$lib/api/client';
 
@@ -24,7 +25,7 @@
       groups = await api.get<Group[]>('/api/v1/auth/groups', token);
       if (groups.length === 0) noPermission = true;
     } catch (e) {
-      error = e instanceof ApiError ? e.message : '조회 실패';
+      error = e instanceof ApiError ? e.message : t('groups.loadFailed');
     } finally {
       loading = false;
     }
@@ -36,7 +37,7 @@
 </script>
 
 <div class="bg-surface-base border border-line rounded-xl p-5">
-  <h3 class="text-sm font-semibold text-ink-0 mb-4">소속 그룹</h3>
+  <h3 class="text-sm font-semibold text-ink-0 mb-4">{t('groups.title')}</h3>
 
   {#if error}
     <div class="text-red-400 text-xs">{error}</div>
@@ -47,7 +48,7 @@
       {/each}
     </div>
   {:else if noPermission}
-    <div class="text-ink-2 text-xs text-center py-4">그룹 조회 권한이 없거나 소속 그룹이 없습니다</div>
+    <div class="text-ink-2 text-xs text-center py-4">{t('groups.empty')}</div>
   {:else}
     <div class="space-y-2">
       {#each groups as grp (grp.id)}

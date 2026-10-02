@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/dashboard-home';
 	interface Props {
 		count: number;
 		open: boolean;
@@ -13,8 +14,8 @@
 	bind:this={element}
 	{onclick}
 	class="relative flex size-11 items-center justify-center rounded-md text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] lg:size-8"
-	title="알림"
-	aria-label={count > 0 ? `알림, 읽지 않은 공지 ${count}개` : '알림'}
+	title={t('bell.title')}
+	aria-label={count > 0 ? t('bell.unread', { count }) : t('bell.title')}
 	aria-haspopup="true"
 	aria-expanded={open}
 >

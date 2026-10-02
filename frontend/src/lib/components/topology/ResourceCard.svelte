@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/topology';
 	import { onMount } from 'svelte';
 	import type { ItemRow, LBItem } from './types.ts';
 
@@ -128,7 +129,7 @@
 								<span class="text-xs font-mono text-orange-400">✦{fip}</span>
 							{/each}
 							{#if iface.ips.length === 0 && iface.fips.length === 0}
-								<span class="text-xs italic" style="color: {isLight ? '#9ca3af' : '#4b5563'}">인터페이스</span>
+								<span class="text-xs italic" style="color: {isLight ? '#9ca3af' : '#4b5563'}">{t('resource.interface')}</span>
 							{/if}
 						</div>
 						<div class="flex gap-2 mt-0.5">

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/object-storage';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
@@ -58,18 +59,18 @@
 			await load();
 			return true;
 		} catch (e) {
-			return e instanceof ApiError ? e.message : '버킷 생성 실패';
+			return e instanceof ApiError ? e.message : t('buckets.adminPage.createFailed');
 		}
 	}
 
 	async function deleteContainer(name: string) {
-		if (!await confirmDialog(`버킷 "${name}"을 휴지통으로 이동합니다. 보관 기간 내에 복구할 수 있습니다. 계속하시겠습니까?`)) return;
+		if (!await confirmDialog(t('buckets.adminPage.deleteConfirm', { name }))) return;
 		deleting = name;
 		try {
 			await api.delete(`/api/v1/object-storage/${encodeURIComponent(name)}`, token, projectId);
 			await load();
 		} catch (e) {
-			toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('buckets.adminPage.deleteFailed', { error: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			deleting = null;
 		}
@@ -89,12 +90,12 @@
 <BucketCreateModal bind:open={showModal} onCreate={createContainer} />
 
 <div class="p-4 md:p-8 max-w-7xl mx-auto">
-	<PageHeader breadcrumb="STORAGE / OBJECT STORAGE" title="오브젝트 스토리지">
+	<PageHeader breadcrumb={t('buckets.adminPage.breadcrumb')} title={t('buckets.adminPage.title')}>
 		{#snippet actions()}
 			<button
 				onclick={() => { showModal = true; }}
 				class="text-xs text-ink-0 bg-indigo-600 hover:bg-indigo-500 transition-colors px-3 py-1.5 rounded border border-indigo-500"
-			>+ 버킷 생성</button>
+			>{t('buckets.adminPage.create')}</button>
 			<AutoRefreshControl
 				bind:active={ar.active}
 				bind:intervalSeconds={ar.intervalSeconds}
@@ -108,15 +109,15 @@
 	{#if account}
 		<div class="grid grid-cols-3 gap-4 mb-6">
 			<div class="bg-surface-base border border-line rounded-xl p-4">
-				<div class="text-xs text-ink-2 uppercase tracking-wide mb-1">버킷</div>
+				<div class="text-xs text-ink-2 uppercase tracking-wide mb-1">{t('buckets.adminPage.bucketCount')}</div>
 				<div class="text-2xl font-bold text-ink-0">{account.container_count}</div>
 			</div>
 			<div class="bg-surface-base border border-line rounded-xl p-4">
-				<div class="text-xs text-ink-2 uppercase tracking-wide mb-1">오브젝트</div>
+				<div class="text-xs text-ink-2 uppercase tracking-wide mb-1">{t('buckets.adminPage.objectCount')}</div>
 				<div class="text-2xl font-bold text-ink-0">{account.object_count}</div>
 			</div>
 			<div class="bg-surface-base border border-line rounded-xl p-4">
-				<div class="text-xs text-ink-2 uppercase tracking-wide mb-1">사용 용량</div>
+				<div class="text-xs text-ink-2 uppercase tracking-wide mb-1">{t('buckets.adminPage.usage')}</div>
 				<div class="text-2xl font-bold text-ink-0">{formatStorage(account.bytes_used / 1_000_000_000)}</div>
 			</div>
 		</div>
@@ -125,7 +126,7 @@
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if containers.length === 0}
-		<div class="text-ink-2 text-sm">버킷가 없습니다</div>
+		<div class="text-ink-2 text-sm">{t('buckets.adminPage.empty')}</div>
 	{:else}
 		<BucketTable {containers} deletingId={deleting} {refreshing} onDelete={deleteContainer} />
 		{#if containers.some((c) => c.is_quarantine)}

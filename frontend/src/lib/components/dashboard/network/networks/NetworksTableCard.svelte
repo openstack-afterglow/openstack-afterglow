@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/network-pages';
   import StatusChip from '$lib/components/ui/StatusChip.svelte';
   import ActionMenu from '$lib/components/ui/ActionMenu.svelte';
   import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
@@ -47,14 +48,14 @@
 
 
 <div class="bg-surface-base border border-line rounded-lg p-5">
-  <div class="text-ink-0 text-[15px] font-semibold mb-3.5">네트워크</div>
+  <div class="text-ink-0 text-[15px] font-semibold mb-3.5">{t('networksTable.title')}</div>
   <div class="bg-[#0B1220] border border-line rounded-lg overflow-hidden">
     <!-- Header -->
     <div class="grid grid-cols-[1fr_0px_auto_0px_0px_0px_0px] sm:grid-cols-[1.4fr_1fr_100px_80px_80px_100px_56px] px-4 py-2.5 border-b border-line text-xs uppercase tracking-wider text-ink-2 font-medium">
       <div class="flex items-center">
         <SelectionToolbar
-          label="네트워크"
-          ariaLabel="네트워크 전체 선택"
+          label={t('networksTable.title')}
+          ariaLabel={t('networksTable.selectAll')}
           checked={allSelected}
           indeterminate={indeterminate}
           selectedCount={selectedCount}
@@ -63,10 +64,10 @@
         />
       </div>
       <div class="hidden sm:block">CIDR</div>
-      <div>유형</div>
-      <div class="hidden sm:block">서브넷</div>
+      <div>{t('networksTable.type')}</div>
+      <div class="hidden sm:block">{t('networksTable.subnets')}</div>
       <div class="hidden sm:block">MTU</div>
-      <div class="hidden sm:block">상태</div>
+      <div class="hidden sm:block">{t('networksTable.status')}</div>
       <div class="hidden sm:block"></div>
     </div>
     <!-- Rows -->
@@ -81,8 +82,8 @@
             checked={selectedIds.has(net.id)}
             disabled={selectionDisabled || !selectableIds.has(net.id)}
             unavailable={!selectableIds.has(net.id)}
-            title={!selectableIds.has(net.id) ? '현재 프로젝트가 소유한 네트워크만 선택할 수 있습니다' : undefined}
-            ariaLabel={`${net.name || net.id.slice(0, 12)} 선택`}
+            title={!selectableIds.has(net.id) ? t('networksTable.onlyOwned') : undefined}
+            ariaLabel={t('networksTable.select', { name: net.name || net.id.slice(0, 12) })}
             onclick={() => onToggleSelect(net.id)}
           />
           <button
@@ -99,7 +100,7 @@
               <div class="flex items-center gap-1.5">
                 <span class="font-medium truncate">{net.name || net.id.slice(0, 12)}</span>
                 {#if net.id === defaultNetworkId}
-                  <span class="text-xs px-1.5 py-0.5 rounded bg-surface-selected/40 border border-action-warm/60 text-warm-text shrink-0">기본</span>
+                  <span class="text-xs px-1.5 py-0.5 rounded bg-surface-selected/40 border border-action-warm/60 text-warm-text shrink-0">{t('networksTable.default')}</span>
                 {/if}
               </div>
               <div class="text-xs text-ink-2 font-mono truncate">{net.id.slice(0, 8)}…</div>
@@ -116,15 +117,15 @@
         <!-- 유형 badge -->
         <div>
           {#if net.is_external}
-            <span class="text-xs px-2 py-0.5 rounded-md bg-surface-selected/25 border border-action-warm text-warm-text">외부</span>
+            <span class="text-xs px-2 py-0.5 rounded-md bg-surface-selected/25 border border-action-warm text-warm-text">{t('networksTable.external')}</span>
           {:else if net.is_shared}
-            <span class="text-xs px-2 py-0.5 rounded-md bg-teal-500/15 border border-teal-500/30 text-teal-400">공유</span>
+            <span class="text-xs px-2 py-0.5 rounded-md bg-teal-500/15 border border-teal-500/30 text-teal-400">{t('networksTable.shared')}</span>
           {:else}
-            <span class="text-xs px-2 py-0.5 rounded-md bg-surface-sunken border border-line-2 text-ink-2">내부</span>
+            <span class="text-xs px-2 py-0.5 rounded-md bg-surface-sunken border border-line-2 text-ink-2">{t('networksTable.internal')}</span>
           {/if}
         </div>
         <!-- 서브넷 -->
-        <div class="hidden sm:block text-ink-2 text-xs">{net.subnets.length}개</div>
+        <div class="hidden sm:block text-ink-2 text-xs">{t('networksTable.subnetCount', { count: net.subnets.length })}</div>
         <!-- MTU -->
         <div class="hidden sm:block text-ink-2 font-mono text-xs">—</div>
         <!-- 상태 -->
@@ -134,7 +135,7 @@
           {#if selectableIds.has(net.id)}
             <ActionMenu
               open={openNetMenu === net.id}
-              ariaLabel={`${net.name || net.id} 네트워크 작업`}
+              ariaLabel={t('networksTable.actions', { name: net.name || net.id })}
               onopen={() => { openNetMenu = net.id; }}
               onclose={() => { openNetMenu = null; }}
             >
@@ -143,14 +144,14 @@
                   onclick={() => { openNetMenu = null; onSetDefault(net.id); }}
                   disabled={settingDefault === net.id}
                   class="w-full text-left px-3 py-1.5 text-xs text-warm-text hover:bg-surface-sunken hover:text-warm-text-hover disabled:text-ink-3"
-                >{settingDefault === net.id ? '설정 중...' : '기본 네트워크로 설정'}</button>
+                >{settingDefault === net.id ? t('networksTable.setting') : t('networksTable.setDefault')}</button>
               {/if}
               <div class="border-t border-line my-1"></div>
               <button
                 onclick={() => { openNetMenu = null; onDelete(net.id, net.name, net.is_external); }}
                 disabled={deleting === net.id}
                 class="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-surface-sunken hover:text-red-300 disabled:text-ink-3"
-              >{deleting === net.id ? '삭제 중...' : '삭제'}</button>
+              >{deleting === net.id ? t('networksTable.deleting') : t('networksTable.delete')}</button>
             </ActionMenu>
           {/if}
         </div>

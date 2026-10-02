@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/object-storage';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
@@ -70,7 +72,7 @@
 			.catch((loadError) => {
 				if (!owns()) return;
 				containers = [];
-				activeError = loadError instanceof Error ? loadError.message : '버킷 조회 실패';
+				activeError = loadError instanceof Error ? loadError.message : t('buckets.dashboardPage.loadFailed');
 			})
 			.finally(() => {
 				if (owns()) loading = false;
@@ -84,7 +86,7 @@
 			.catch((loadError) => {
 				if (!owns()) return;
 				deletedContainers = [];
-				trashError = loadError instanceof Error ? loadError.message : '휴지통 버킷 조회 실패';
+				trashError = loadError instanceof Error ? loadError.message : t('buckets.dashboardPage.trashLoadFailed');
 			})
 			.finally(() => {
 				if (owns()) trashLoading = false;
@@ -96,7 +98,7 @@
 			.catch((loadError) => {
 				if (!owns()) return;
 				account = null;
-				accountError = loadError instanceof Error ? loadError.message : '계정 통계 조회 실패';
+				accountError = loadError instanceof Error ? loadError.message : t('buckets.dashboardPage.accountLoadFailed');
 			})
 			.finally(() => {
 				if (owns()) accountLoading = false;
@@ -122,18 +124,18 @@
 			await load(true);
 			return true;
 		} catch (e) {
-			return e instanceof ApiError ? e.message : '버킷 생성 실패';
+			return e instanceof ApiError ? e.message : t('buckets.dashboardPage.createFailed');
 		}
 	}
 
 	async function deleteContainer(name: string) {
-		if (!await confirmDialog(`버킷 "${name}"을 휴지통으로 이동합니다. 보관 기간(기본 30일) 내에 복구할 수 있습니다. 계속하시겠습니까?`)) return;
+		if (!await confirmDialog(t('buckets.dashboardPage.deleteConfirm', { name }))) return;
 		deleting = name;
 		try {
 			await api.delete(`/api/v1/object-storage/${encodeURIComponent(name)}`, token, projectId);
 			await load(true);
 		} catch (e) {
-			toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('buckets.dashboardPage.deleteFailed', { error: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			deleting = null;
 		}
@@ -144,22 +146,22 @@
 		try {
 			await api.post(`/api/v1/object-storage/trash/containers/${encodeURIComponent(name)}/restore`, {}, token, projectId);
 			await load(true);
-			toast.success(`버킷 "${name}" 복구 완료`);
+			toast.success(t('buckets.dashboardPage.restoreSuccess', { name }));
 		} catch (e) {
-			toast.error('복구 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('buckets.dashboardPage.restoreFailed', { error: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			restoring = null;
 		}
 	}
 
 	async function purgeContainer(name: string) {
-		if (!await confirmDialog(`버킷 "${name}"을 영구 삭제합니다. 이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?`)) return;
+		if (!await confirmDialog(t('buckets.dashboardPage.purgeConfirm', { name }))) return;
 		deleting = name;
 		try {
 			await api.delete(`/api/v1/object-storage/trash/containers/${encodeURIComponent(name)}`, token, projectId);
 			await load(true);
 		} catch (e) {
-			toast.error('영구 삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('buckets.dashboardPage.purgeFailed', { error: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			deleting = null;
 		}
@@ -168,8 +170,8 @@
 	async function runBulk(action: 'delete' | 'restore' | 'purge') {
 		const ids = [...selection.ids];
 		if (ids.length === 0) return;
-		if (action === 'delete' && !await confirmDialog(`${ids.length}개 버킷을 휴지통으로 이동합니다. 보관 기간 내에 복구할 수 있습니다. 계속하시겠습니까?`)) return;
-		if (action === 'purge' && !await confirmDialog(`${ids.length}개 버킷을 영구 삭제합니다. 이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?`)) return;
+		if (action === 'delete' && !await confirmDialog(t('buckets.dashboardPage.bulkDeleteConfirm', { count: ids.length }))) return;
+		if (action === 'purge' && !await confirmDialog(t('buckets.dashboardPage.bulkPurgeConfirm', { count: ids.length }))) return;
 		busy = true;
 		const requestToken = token;
 		const requestProject = projectId;
@@ -189,9 +191,8 @@
 		}
 		const successCount = results.filter((r) => r.ok).length;
 		const failureCount = results.length - successCount;
-		const label = action === 'delete' ? '휴지통 이동' : action === 'restore' ? '복구' : '영구 삭제';
-		if (successCount) toast.success(`${successCount}개 ${label} 요청을 완료했습니다.`);
-		if (failureCount) toast.error(`${failureCount}개 ${label}에 실패했습니다.`);
+		if (successCount) toast.success(t('buckets.dashboardPage.bulkSuccess', { count: successCount, action }));
+		if (failureCount) toast.error(t('buckets.dashboardPage.bulkFailed', { count: failureCount, action }));
 		busy = false;
 	}
 
@@ -220,12 +221,12 @@
 <BucketCreateDialog bind:open={showModal} onCreate={createContainer} />
 
 <PageShell class="bulk-selection-page space-y-4">
-	<PageHeader breadcrumb="OBJECT STORAGE / BUCKETS" title="버킷">
+	<PageHeader breadcrumb={t('buckets.dashboardPage.breadcrumb')} title={t('buckets.dashboardPage.title')}>
 		{#snippet actions()}
-			<Button onclick={() => (showModal = true)} variant="primary">+ 버킷 생성</Button>
+			<Button onclick={() => (showModal = true)} variant="primary">{t('buckets.dashboardPage.create')}</Button>
 		{/snippet}
 	</PageHeader>
-	<ResourceToolbar label="버킷 목록 도구">
+	<ResourceToolbar label={t('buckets.dashboardPage.toolbar')}>
 		{#snippet actions()}
 			<AutoRefreshControl
 				bind:active={ar.active}
@@ -236,37 +237,37 @@
 			/>
 		{/snippet}
 	</ResourceToolbar>
-	<section aria-label="오브젝트 스토리지 계정 통계" class="mb-6">
+	<section aria-label={t('buckets.dashboardPage.accountStats')} class="mb-6">
 		{#if accountLoading}
-			<Alert tone="neutral">계정 통계를 불러오는 중...</Alert>
+			<Alert tone="neutral">{t('buckets.dashboardPage.accountLoading')}</Alert>
 		{:else if accountError}
-			<Alert tone="danger" title="계정 통계 조회 실패">{accountError}</Alert>
+			<Alert tone="danger" title={t('buckets.dashboardPage.accountLoadFailed')}>{accountError}</Alert>
 		{:else if account}
 			<div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-				<StatTile label="버킷" value={account.container_count} accent="indigo" />
-				<StatTile label="오브젝트" value={account.object_count} accent="cyan" />
-				<StatTile label="사용량" value={formatAccountBytes(account.bytes_used)} accent="violet" />
+				<StatTile label={t('buckets.dashboardPage.title')} value={account.container_count} accent="indigo" />
+				<StatTile label={t('buckets.dashboardPage.objectCount')} value={account.object_count} accent="cyan" />
+				<StatTile label={t('buckets.dashboardPage.usage')} value={formatAccountBytes(account.bytes_used)} accent="violet" />
 			</div>
 		{:else}
-			<Alert tone="neutral">계정 통계가 없습니다.</Alert>
+			<Alert tone="neutral">{t('buckets.dashboardPage.accountEmpty')}</Alert>
 		{/if}
 	</section>
 
 	{#if activeError}
-		<Alert tone="danger" class="mb-4" title="버킷 조회 실패">{activeError}</Alert>
+		<Alert tone="danger" class="mb-4" title={t('buckets.dashboardPage.loadFailed')}>{activeError}</Alert>
 	{/if}
 
 
 	{#if loading}
 		<BucketCardSkeleton />
 	{:else if containers.length === 0 && !activeError}
-		<EmptyState headline="버킷이 없습니다" description="오브젝트를 저장할 첫 버킷을 생성하세요." />
+		<EmptyState headline={t('buckets.dashboardPage.emptyTitle')} description={t('buckets.dashboardPage.emptyDescription')} />
 	{:else}
 		{#if containers.length > 0}
 			<div class="mb-3">
 				<SelectionToolbar
-					label="버킷"
-					ariaLabel="버킷 전체 선택"
+					label={t('buckets.dashboardPage.title')}
+					ariaLabel={t('buckets.dashboardPage.selectAll')}
 					checked={selectionDomain === 'active' && selection.count === containers.length}
 					indeterminate={selectionDomain === 'active' && selection.count > 0 && selection.count < containers.length}
 					selectedCount={selectionDomain === 'active' ? selection.count : 0}
@@ -287,19 +288,19 @@
 	{/if}
 
 		{#if trashLoading}
-			<Alert tone="neutral" class="mt-8">휴지통 버킷을 불러오는 중...</Alert>
+			<Alert tone="neutral" class="mt-8">{t('buckets.dashboardPage.trashLoading')}</Alert>
 		{:else if trashError}
-			<Alert tone="danger" class="mt-8" title="휴지통 버킷 조회 실패">{trashError}</Alert>
+			<Alert tone="danger" class="mt-8" title={t('buckets.dashboardPage.trashLoadFailed')}>{trashError}</Alert>
 		{/if}
 
 		{#if deletedContainers.length > 0}
 			<div class="mt-8">
 				<h2 class="text-sm font-medium text-ink-2 mb-3 flex items-center gap-2">
-					<span class="text-red-400">🗑</span> 삭제 대기 중 — 복구 가능
+					<span class="text-red-400">🗑</span> {t('buckets.dashboardPage.trashTitle')}
 				</h2>
 				<SelectionToolbar
-					label="휴지통 버킷"
-					ariaLabel="휴지통 버킷 전체 선택"
+					label={t('buckets.dashboardPage.trashBuckets')}
+					ariaLabel={t('buckets.dashboardPage.selectAllTrash')}
 					checked={selectionDomain === 'trash' && selection.count === deletedContainers.length}
 					indeterminate={selectionDomain === 'trash' && selection.count > 0 && selection.count < deletedContainers.length}
 					selectedCount={selectionDomain === 'trash' ? selection.count : 0}
@@ -314,38 +315,38 @@
 								<SelectionCheckbox
 									checked={selectionDomain === 'trash' && selection.has(c.name)}
 									disabled={busy}
-									ariaLabel={`${c.name} 선택`}
+									ariaLabel={t('buckets.dashboardPage.selectBucket', { name: c.name })}
 									onclick={() => { setSelectionDomain('trash'); selection.toggle(c.name); }}
 								/>
 								<div>
 									<span class="text-sm font-medium text-red-300">{c.name}</span>
 									{#if deletedAt}
 										<span class="ml-2 text-xs text-ink-2">
-											{new Date(deletedAt * 1000).toLocaleDateString('ko-KR')} 삭제
+											{t('buckets.dashboardPage.deletedDate', { date: new Date(deletedAt * 1000).toLocaleDateString(intlLocale()) })}
 										</span>
 									{/if}
 								</div>
 							</div>
 							<div class="flex gap-2">
-								<button onclick={() => restoreContainer(c.name)} disabled={restoring === c.name || busy} class="text-xs text-emerald-400 hover:text-emerald-300 disabled:text-ink-3 px-2 py-1 rounded border border-emerald-900 hover:border-emerald-700 disabled:border-line-2 transition-colors">{restoring === c.name ? '복구 중...' : '복구'}</button>
-								<button onclick={() => purgeContainer(c.name)} disabled={deleting === c.name || busy} class="text-xs text-red-400 hover:text-red-300 disabled:text-ink-3 px-2 py-1 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors">{deleting === c.name ? '삭제 중...' : '영구 삭제'}</button>
+								<button onclick={() => restoreContainer(c.name)} disabled={restoring === c.name || busy} class="text-xs text-emerald-400 hover:text-emerald-300 disabled:text-ink-3 px-2 py-1 rounded border border-emerald-900 hover:border-emerald-700 disabled:border-line-2 transition-colors">{restoring === c.name ? t('buckets.dashboardPage.restoring') : t('buckets.dashboardPage.restore')}</button>
+								<button onclick={() => purgeContainer(c.name)} disabled={deleting === c.name || busy} class="text-xs text-red-400 hover:text-red-300 disabled:text-ink-3 px-2 py-1 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors">{deleting === c.name ? t('buckets.dashboardPage.deleting') : t('buckets.dashboardPage.purge')}</button>
 							</div>
 						</div>
 					{/each}
 				</div>
-				<p class="mt-2 text-xs text-ink-2">삭제된 버킷은 보관 기간이 지나면 자동으로 영구 삭제됩니다. 보관 기간 동안 스토리지 용량을 차지합니다.</p>
+				<p class="mt-2 text-xs text-ink-2">{t('buckets.dashboardPage.trashDescription')}</p>
 			</div>
 		{/if}
 
 	<BulkSelectionOverlay
 		count={selection.count}
-		ariaLabel={selectionDomain === 'active' ? '선택한 버킷 일괄 작업' : '선택한 휴지통 버킷 일괄 작업'}
+		ariaLabel={selectionDomain === 'active' ? t('buckets.dashboardPage.bulkLabel') : t('buckets.dashboardPage.bulkTrashLabel')}
 		busy={busy}
 		actions={selectionDomain === 'active'
-			? [{ key: 'delete', label: '휴지통으로 이동', tone: 'danger', onAction: () => runBulk('delete') }]
+			? [{ key: 'delete', label: t('buckets.dashboardPage.moveToTrash'), tone: 'danger', onAction: () => runBulk('delete') }]
 			: [
-				{ key: 'restore', label: '복구', tone: 'success', onAction: () => runBulk('restore') },
-				{ key: 'purge', label: '영구 삭제', tone: 'danger', onAction: () => runBulk('purge') },
+				{ key: 'restore', label: t('buckets.dashboardPage.restore'), tone: 'success', onAction: () => runBulk('restore') },
+				{ key: 'purge', label: t('buckets.dashboardPage.purge'), tone: 'danger', onAction: () => runBulk('purge') },
 			]}
 		onClear={() => selection.clear()}
 	/>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t as tr } from '$lib/i18n/ns/database';
 	import type { DbInstance } from '$lib/types/database';
 
 	const statusColor: Record<string, string> = {
@@ -26,6 +27,6 @@
 	</div>
 	<button onclick={onDelete} disabled={deleting}
 		class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-sm px-3 py-1.5 rounded border border-red-900 hover:border-red-700 transition-colors">
-		{deleting ? '삭제 중...' : '인스턴스 삭제'}
+		{deleting ? tr('state.deleting') : tr('actions.deleteInstance')}
 	</button>
 </div>

@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/palimpsest-admin';
+  import { intlLocale } from '$lib/i18n/runtime.svelte';
+  import RichText from '$lib/i18n/RichText.svelte';
   import { untrack } from 'svelte';
   import { auth } from '$lib/stores/auth';
   import { api, ApiError } from '$lib/api/client';
@@ -212,8 +215,8 @@
   const pinnedCommitValid = $derived(/^[a-f0-9]{40}$/i.test(importForm.ref.trim()));
   type DockerfileExecutionTarget = 'build' | 'instance';
   const dockerfileTargetOptions = [
-    { value: 'build', label: '레이어만 빌드' },
-    { value: 'instance', label: '인스턴스까지 생성' },
+    { value: 'build', get label() { return t('execution.layersOnly'); } },
+    { value: 'instance', get label() { return t('execution.createInstance'); } },
   ];
   let dockerfileTarget = $state<DockerfileExecutionTarget>('build');
   let dockerfileConsumer = $state({ server_name: '', flavor_id: '', network_id: '', key_name: '', ssh_public_key: '', ssh_username: '' });
@@ -256,11 +259,11 @@
       if (historyConsumer.ssh_public_key.trim()) body.ssh_public_key = historyConsumer.ssh_public_key.trim();
       if (historyConsumer.ssh_username.trim()) body.ssh_username = historyConsumer.ssh_username.trim();
       const result = await api.post<{ consume_id: number; server_id: string }>('/api/v1/admin/libraries/consume', body, token, projectId);
-      message = `작업 #${job.id}의 artifact로 VM ${result.server_id} 생성 완료`;
+      message = t('toast.consumeCreated', { jobId: job.id, serverId: result.server_id });
       historyConsumeTargetId = null;
       await loadConsumes(true);
     } catch (e) {
-      historyConsumeError = e instanceof ApiError ? e.message : 'VM 생성에 실패했습니다';
+      historyConsumeError = e instanceof ApiError ? e.message : t('error.createVm');
     } finally {
       historyConsumeSubmitting = false;
     }
@@ -271,10 +274,10 @@
   // ---------------------------------------------------------------------------
   type DockerfileInputMode = 'editor' | 'url' | 'upload' | 'github';
   const dockerfileModeOptions = [
-    { value: 'editor', label: '직접 작성' },
-    { value: 'url', label: 'URL 가져오기' },
-    { value: 'upload', label: '파일 업로드' },
-    { value: 'github', label: 'GitHub 커밋' },
+    { value: 'editor', get label() { return t('mode.editor'); } },
+    { value: 'url', get label() { return t('mode.url'); } },
+    { value: 'upload', get label() { return t('mode.upload'); } },
+    { value: 'github', get label() { return t('mode.github'); } },
   ];
   let dockerfileMode = $state<DockerfileInputMode>('editor');
   let dockerfileAuthoringRevision = 0;
@@ -300,7 +303,7 @@
     } catch (e) {
       if (seq === lintSeq) {
         dockerfileLint = null;
-        lintError = e instanceof ApiError ? e.message : '네트워크 오류';
+        lintError = e instanceof ApiError ? e.message : t('error.network');
       }
     } finally {
       if (seq === lintSeq) lintLoading = false;
@@ -427,7 +430,7 @@
       importJobs = await api.get<LayerImportJob[]>('/api/v1/admin/libraries/imports', token, projectId, { refresh });
       importLoadError = '';
     } catch {
-      importLoadError = '작업 기록을 갱신하지 못했습니다. 새로고침으로 다시 시도하세요.';
+      importLoadError = t('error.historyRefresh');
     }
   }
 
@@ -476,7 +479,7 @@
 
   async function deleteProfile(profile: LayerProfile) {
     if (profileDeletingName) return;
-    if (!window.confirm(`프로필 '${profile.name}'을 삭제할까요?`)) return;
+    if (!window.confirm(t('profiles.confirmDelete', { name: profile.name }))) return;
 
     profileDeletingName = profile.name;
     profileDeleteError = '';
@@ -487,7 +490,7 @@
         token,
         projectId,
       );
-      profileMessage = `프로필 '${profile.name}' 삭제 완료`;
+      profileMessage = t('toast.profileDeleted', { name: profile.name });
       await Promise.allSettled([loadProfiles(true), loadConsumes(true), loadArtifacts(true)]);
     } catch (e) {
       if (e instanceof ApiError) {
@@ -500,9 +503,9 @@
             // JSON payload이 아니면 ApiError.message 그대로 표시한다.
           }
         }
-        profileDeleteError = `프로필 삭제 실패: ${detailMessage}`;
+        profileDeleteError = t('error.profileDelete', { detail: detailMessage });
       } else {
-        profileDeleteError = '네트워크 오류';
+        profileDeleteError = t('error.network');
       }
     } finally {
       profileDeletingName = '';
@@ -522,10 +525,10 @@
         token,
         projectId,
       );
-      profileMessage = `프로필 '${profile.name}' ${is_published ? '공개' : '비공개'} 전환 완료`;
+      profileMessage = t('toast.profilePublication', { name: profile.name, published: is_published ? 'public' : 'private' });
       await loadProfiles(true);
     } catch (e) {
-      profileDeleteError = e instanceof ApiError ? `공개 상태 변경 실패: ${e.message}` : '네트워크 오류';
+      profileDeleteError = e instanceof ApiError ? t('error.publication', { detail: e.message }) : t('error.network');
     } finally {
       publicationUpdating = '';
     }
@@ -544,10 +547,10 @@
         token,
         projectId,
       );
-      message = `artifact #${artifact.id} ${is_published ? '공개' : '비공개'} 전환 완료`;
+      message = t('toast.artifactPublication', { id: artifact.id, published: is_published ? 'public' : 'private' });
       await loadArtifacts(true);
     } catch (e) {
-      error = e instanceof ApiError ? `공개 상태 변경 실패: ${e.message}` : '네트워크 오류';
+      error = e instanceof ApiError ? t('error.publication', { detail: e.message }) : t('error.network');
     } finally {
       publicationUpdating = '';
     }
@@ -572,10 +575,10 @@
       const result = await api.post<LayerImportJob>('/api/v1/admin/libraries/imports/dockerfile', body, token, projectId);
       importJobs = [result, ...importJobs.filter(job => job.id !== result.id)];
       selectedImportId = result.id;
-      message = `Dockerfile import 시작 (ID: ${result.id}, profile: ${result.profile_name})`;
+      message = t('toast.importStarted', { id: result.id, profile: result.profile_name });
       await Promise.allSettled([loadImportJobs(true), loadBuilds(true), loadConsumes(true), loadArtifacts(true), loadProfiles(true)]);
     } catch (e) {
-      error = e instanceof ApiError ? `Dockerfile import 실패: ${e.message}` : '네트워크 오류';
+      error = e instanceof ApiError ? t('error.import', { detail: e.message }) : t('error.network');
     } finally {
       importSubmitting = false;
     }
@@ -605,10 +608,10 @@
         const cleanName = res.filename.replace(/^Dockerfile\.?/i, '').replace(/[^a-z0-9]/gi, '').toLowerCase();
         importForm.layer_prefix = cleanName ? `${cleanName}-layer` : 'custom-layer';
       }
-      message = `URL에서 Dockerfile을 성공적으로 불러왔습니다 (${res.filename}, ${res.size_bytes} bytes).`;
+      message = t('toast.urlLoaded', { filename: res.filename, size: res.size_bytes });
     } catch (e) {
       if (revision === dockerfileAuthoringRevision && dockerfileMode === 'url') {
-        dockerfileFetchError = e instanceof ApiError ? e.message : 'URL에서 Dockerfile을 가져오지 못했습니다';
+        dockerfileFetchError = e instanceof ApiError ? e.message : t('error.fetchUrl');
       }
     } finally {
       if (revision === dockerfileAuthoringRevision) dockerfileFetching = false;
@@ -635,12 +638,12 @@
           const cleanName = file.name.replace(/^Dockerfile\.?/i, '').replace(/[^a-z0-9]/gi, '').toLowerCase();
           importForm.layer_prefix = cleanName ? `${cleanName}-layer` : 'custom-layer';
         }
-        message = `로컬 파일 '${file.name}'을(를) 불러왔습니다.`;
+        message = t('toast.fileLoaded', { filename: file.name });
       }
     };
     reader.onerror = () => {
       if (revision === dockerfileAuthoringRevision && dockerfileMode === 'upload') {
-        dockerfileFetchError = '파일을 읽는 중 오류가 발생했습니다.';
+        dockerfileFetchError = t('error.readFile');
       }
     };
     reader.readAsText(file);
@@ -667,7 +670,7 @@
       );
       if (seq === planSeq) dockerfilePlan = res;
     } catch (e) {
-      if (seq === planSeq) planError = e instanceof ApiError ? e.message : '빌드 계획을 생성하지 못했습니다';
+      if (seq === planSeq) planError = e instanceof ApiError ? e.message : t('error.plan');
     } finally {
       if (seq === planSeq) planLoading = false;
     }
@@ -676,11 +679,11 @@
   async function submitInlineDockerfileBuild() {
     if (importSubmitting || lintLoading || dockerfileLint?.valid === false || !dockerfileConsumerReady) return;
     if (!dockerfileText.trim()) {
-      error = 'Dockerfile 본문이 비어 있습니다';
+      error = t('validation.emptyDockerfile');
       return;
     }
     if (!importForm.layer_prefix.trim()) {
-      error = 'Layer prefix를 입력하세요';
+      error = t('validation.prefix');
       return;
     }
     importSubmitting = true;
@@ -703,11 +706,11 @@
       );
       importJobs = [result, ...importJobs.filter(job => job.id !== result.id)];
       selectedImportId = result.id;
-      message = `Palimpsest Dockerfile 빌드 시작 (ID: ${result.id}, profile: ${result.profile_name})`;
+      message = t('toast.buildStarted', { id: result.id, profile: result.profile_name });
       dockerfilePlan = null;
       await Promise.allSettled([loadImportJobs(true), loadBuilds(true), loadConsumes(true), loadArtifacts(true), loadProfiles(true)]);
     } catch (e) {
-      error = e instanceof ApiError ? `Dockerfile 빌드 시작 실패: ${e.message}` : '네트워크 오류';
+      error = e instanceof ApiError ? t('error.buildStart', { detail: e.message }) : t('error.network');
     } finally {
       importSubmitting = false;
     }
@@ -748,7 +751,7 @@
       await api.post(`/api/v1/admin/libraries/builds/${selectedBuildId}/cancel`, {}, token, projectId);
       await Promise.allSettled([loadBuildDetail(), loadBuilds(true)]);
     } catch (e) {
-      detailCancelError = e instanceof ApiError ? e.message : '취소 실패';
+      detailCancelError = e instanceof ApiError ? e.message : t('error.cancel');
     } finally {
       detailCancelling = false;
     }
@@ -820,7 +823,7 @@
         { refresh: true },
       );
     } catch (e) {
-      deleteError = e instanceof ApiError ? e.message : '삭제 미리보기 조회 실패';
+      deleteError = e instanceof ApiError ? e.message : t('error.deletePreview');
     } finally {
       deleteLoading = false;
     }
@@ -832,12 +835,12 @@
     deleteError = '';
     try {
       await api.delete(`/api/v1/admin/libraries/artifacts/${deletePreview.artifact.id}`, token, projectId);
-      message = `artifact #${deletePreview.artifact.id} (${deletePreview.artifact.name}) 삭제 완료`;
+      message = t('toast.artifactDeleted', { id: deletePreview.artifact.id, name: deletePreview.artifact.name });
       deleteModalOpen = false;
       deletePreview = null;
       await Promise.allSettled([loadArtifacts(true), loadProfiles(true)]);
     } catch (e) {
-      deleteError = e instanceof ApiError ? e.message : '삭제 실패';
+      deleteError = e instanceof ApiError ? e.message : t('error.delete');
     } finally {
       deleteSubmitting = false;
     }
@@ -852,12 +855,12 @@
     const utcIso = iso.endsWith('Z') || iso.includes('+') ? iso : iso + 'Z';
     const ms = Date.now() - new Date(utcIso).getTime();
     const s = Math.floor(ms / 1000);
-    if (s < 60) return `${s}초 전`;
+    if (s < 60) return t('time.secondsAgo', { count: s });
     const m = Math.floor(s / 60);
-    if (m < 60) return `${m}분 전`;
+    if (m < 60) return t('time.minutesAgo', { count: m });
     const h = Math.floor(m / 60);
-    if (h < 24) return `${h}시간 전`;
-    return `${Math.floor(h / 24)}일 전`;
+    if (h < 24) return t('time.hoursAgo', { count: h });
+    return t('time.daysAgo', { count: Math.floor(h / 24) });
   }
 
   // timezone 없는 ISO 문자열을 UTC로 강제 해석 (서버가 naive datetime을 반환할 경우 대비)
@@ -873,17 +876,17 @@
 
   function fmtDate(iso: string | null | undefined): string {
     if (!iso) return '—';
-    return parseISO(iso).toLocaleString('ko-KR');
+    return parseISO(iso).toLocaleString(intlLocale());
   }
 
   function elapsed(started: string | null | undefined): string {
     if (!started) return '—';
     const ms = Date.now() - parseISO(started).getTime();
     const s = Math.floor(ms / 1000);
-    if (s < 60) return `${s}초`;
+    if (s < 60) return t('time.seconds', { count: s });
     const m = Math.floor(s / 60);
-    if (m < 60) return `${m}분 ${s % 60}초`;
-    return `${Math.floor(m / 60)}시간 ${m % 60}분`;
+    if (m < 60) return t('time.minutesSeconds', { minutes: m, seconds: s % 60 });
+    return t('time.hoursMinutes', { hours: Math.floor(m / 60), minutes: m % 60 });
   }
 
 
@@ -912,13 +915,13 @@
   }
 
   function baseImageLabel(image: LayerBaseImage): string {
-    return `${image.name} · ${ubuntuBaseText(image.ubuntu_base)} · ${shortId(image.id)} · min ${image.min_disk || 0}GB · ${image.visibility}`;
+    return t('image.metadata', { name: image.name, base: ubuntuBaseText(image.ubuntu_base), id: shortId(image.id), disk: image.min_disk || 0, visibility: image.visibility });
   }
 
   function artifactBaseImageLabel(item: { ubuntu_base?: string | null; base_image_id?: string | null; base_image_name?: string | null; base_image_min_disk?: number | null; base_image_visibility?: string | null }): string {
     const image = baseImageForId(item.base_image_id ?? null);
     if (image) return baseImageLabel(image);
-    if (item.base_image_id) return `${item.base_image_name || shortId(item.base_image_id)} · ${ubuntuBaseText(item.ubuntu_base)} · ${shortId(item.base_image_id)}${item.base_image_min_disk ? ` · min ${item.base_image_min_disk}GB` : ''}${item.base_image_visibility ? ` · ${item.base_image_visibility}` : ''}`;
+    if (item.base_image_id) return t('image.artifactMetadata', { name: item.base_image_name || shortId(item.base_image_id), base: ubuntuBaseText(item.ubuntu_base), id: shortId(item.base_image_id), hasDisk: item.base_image_min_disk ? 'yes' : 'no', disk: item.base_image_min_disk ?? 0, hasVisibility: item.base_image_visibility ? 'yes' : 'no', visibility: item.base_image_visibility ?? '' });
     return ubuntuBaseText(item.ubuntu_base);
   }
 
@@ -939,7 +942,7 @@
       return build.apt_packages?.length ? `apt: ${build.apt_packages.join(', ')}` : '—';
     }
     if (build.kind === 'nvidia') {
-      return build.apt_packages?.length ? `nvidia: ${build.apt_packages.join(', ')}` : 'nvidia driver hook';
+      return build.apt_packages?.length ? `nvidia: ${build.apt_packages.join(', ')}` : t('labels.nvidiaHook');
     }
     return build.pip_packages?.length ? `pip: ${build.pip_packages.join(', ')}` : '—';
   }
@@ -948,31 +951,31 @@
 
 <div class="flex flex-col h-full overflow-auto bg-surface-base text-ink-1 p-6">
   <div data-tour="admin-library-header">
-    <PageHeader title="Palimpsest 레이어 관리" breadcrumb="Palimpsest" subtitle="Dockerfile로 루트 레이어를 빌드하고 선택적으로 SSH VM을 생성합니다. 기존 기록도 이곳에서 조회합니다.">
+    <PageHeader title={t('page.title')} breadcrumb="Palimpsest" subtitle={t('page.subtitle')}>
       {#snippet actions()}
         <TutorialStartButton tour="admin-library" compactOnMobile />
         <button
           onclick={() => loadAll(true)}
           class="text-xs text-ink-2 hover:text-ink-0 transition-colors px-3 py-1.5 rounded border border-line-2 hover:border-line-2"
-        >새로고침</button>
+        >{t('actions.refresh')}</button>
       {/snippet}
     </PageHeader>
   </div>
-  <div class="mb-5 grid grid-cols-2 md:grid-cols-4 border-y border-line py-3" aria-label="Palimpsest 현황">
+  <div class="mb-5 grid grid-cols-2 md:grid-cols-4 border-y border-line py-3" aria-label={t('summary.label')}>
     <div class="px-3 first:pl-0 md:border-r md:border-line">
-      <p class="text-xs text-ink-2">봉인된 레이어</p>
+      <p class="text-xs text-ink-2">{t('summary.sealed')}</p>
       <p class="mt-1 text-lg font-semibold tabular-nums text-ink-0">{sealedArtifacts.length}</p>
     </div>
     <div class="px-3 md:border-r md:border-line">
-      <p class="text-xs text-ink-2">저장된 프로필</p>
+      <p class="text-xs text-ink-2">{t('summary.profiles')}</p>
       <p class="mt-1 text-lg font-semibold tabular-nums text-ink-0">{profiles.length}</p>
     </div>
     <div class="px-3 border-t border-line pt-3 md:border-t-0 md:border-r md:pt-0">
-      <p class="text-xs text-ink-2">진행 중인 빌드</p>
+      <p class="text-xs text-ink-2">{t('summary.builds')}</p>
       <p class="mt-1 text-lg font-semibold tabular-nums text-warm-text">{activeBuilds.length + activeImportJobs.length}</p>
     </div>
     <div class="px-3 border-t border-line pt-3 md:border-t-0 md:pt-0">
-      <p class="text-xs text-ink-2">실행 중인 VM</p>
+      <p class="text-xs text-ink-2">{t('summary.vms')}</p>
       <p class="mt-1 text-lg font-semibold tabular-nums text-state-success">{consumes.filter((consume) => CONSUME_BLOCKING_STATUSES.has((consume.status || '').toLowerCase())).length}</p>
     </div>
   </div>
@@ -990,11 +993,11 @@
     <div class="mb-8" data-tour="admin-library-ready">
       <section class="min-w-0 bg-surface-raised border border-line rounded-lg p-5" data-tour="admin-library-import">
         <div class="flex items-center justify-between mb-1">
-          <h2 class="text-sm font-semibold text-ink-0">Palimpsest Dockerfile 빌드</h2>
-          <span class="text-xs px-2 py-0.5 rounded bg-surface-base border border-line-2 text-ink-2 font-mono">관리자 전용</span>
+          <h2 class="text-sm font-semibold text-ink-0">{t('studio.title')}</h2>
+          <span class="text-xs px-2 py-0.5 rounded bg-surface-base border border-line-2 text-ink-2 font-mono">{t('studio.adminOnly')}</span>
         </div>
         <p class="text-xs text-ink-2 mb-3">
-          URL, 파일 업로드, 직접 작성으로 Dockerfile을 가져와 squashfs 레이어로 빌드하고 즉시 소비 인스턴스로 실행합니다.
+          {t('studio.description')}
         </p>
 
         <!-- 모드 선택 탭 -->
@@ -1008,19 +1011,19 @@
           }}
           size="sm"
           fullWidth
-          ariaLabel="Dockerfile 입력 방식"
+          ariaLabel={t('studio.inputMode')}
           class="mb-4"
         />
 
         <div class="space-y-3">
           {#if dockerfileMode === 'url'}
             <div>
-              <label class="block text-xs text-ink-2 mb-1" for="dockerfile-fetch-url">Dockerfile URL *</label>
+              <label class="block text-xs text-ink-2 mb-1" for="dockerfile-fetch-url">{t('url.label')}</label>
               <div class="flex gap-2">
                 <input
                   id="dockerfile-fetch-url"
                   type="url"
-                  placeholder="https://.../Dockerfile 또는 GitHub blob URL"
+                  placeholder={t('url.placeholder')}
                   bind:value={dockerfileUrl}
                   oninput={() => { ++dockerfileAuthoringRevision; dockerfileFetching = false; }}
                   class="flex-1 bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
@@ -1031,20 +1034,20 @@
                   disabled={dockerfileFetching || !dockerfileUrl.trim()}
                   class="px-3 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 disabled:cursor-not-allowed text-action-on-warm text-xs font-medium rounded-lg transition-colors whitespace-nowrap"
                 >
-                  {dockerfileFetching ? '가져오는 중...' : '가져오기'}
+                  {dockerfileFetching ? t('url.fetching') : t('url.fetch')}
                 </button>
               </div>
               {#if dockerfileFetchError}
                 <Alert tone="danger" class="mt-2">{dockerfileFetchError}</Alert>
               {:else}
-                <p class="mt-1 text-xs text-ink-2">GitHub blob, GitLab raw, 일반 HTTP/HTTPS URL을 지원합니다 (SSRF 보호 적용).</p>
+                <p class="mt-1 text-xs text-ink-2">{t('url.help')}</p>
               {/if}
             </div>
           {/if}
 
           {#if dockerfileMode === 'upload'}
             <div>
-              <label class="block text-xs text-ink-2 mb-1" for="dockerfile-file-upload">로컬 Dockerfile 선택 *</label>
+              <label class="block text-xs text-ink-2 mb-1" for="dockerfile-file-upload">{t('upload.label')}</label>
               <div class="border-2 border-dashed border-line-2 hover:border-action-warm rounded-lg p-4 text-center bg-surface-base transition-colors">
                 <input
                   id="dockerfile-file-upload"
@@ -1054,9 +1057,9 @@
                   class="block w-full text-xs text-ink-2 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-surface-selected file:text-ink-0 hover:file:bg-surface-selected/80 cursor-pointer"
                 />
                 {#if uploadedFileName}
-                  <p class="mt-2 text-xs text-warm-text font-mono">선택된 파일: {uploadedFileName}</p>
+                  <p class="mt-2 text-xs text-warm-text font-mono">{t('upload.selected', { filename: uploadedFileName })}</p>
                 {:else}
-                  <p class="mt-2 text-xs text-ink-2">로컬 PC의 Dockerfile 파일을 선택하세요.</p>
+                  <p class="mt-2 text-xs text-ink-2">{t('upload.help')}</p>
                 {/if}
               </div>
             </div>
@@ -1066,7 +1069,7 @@
             <div>
               <div class="flex items-center justify-between mb-1">
                 <label class="block text-xs text-ink-2" for="dockerfile-editor-text">
-                  Dockerfile 본문 {uploadedFileName ? `(${uploadedFileName})` : ''} *
+                  {t('studio.body', { filename: uploadedFileName ? `(${uploadedFileName})` : '' })}
                 </label>
               </div>
               <textarea
@@ -1077,14 +1080,14 @@
                 placeholder="FROM ubuntu:24.04&#10;RUN apt-get update && apt-get install -y curl&#10;ENV APP_ENV=production&#10;WORKDIR /app"
                 class="w-full bg-surface-base border border-line-2 rounded-lg p-2.5 text-xs text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm font-mono resize-y"
               ></textarea>
-              <p class="mt-0.5 text-xs text-ink-2">지원 문법: FROM, RUN, ENV, WORKDIR (COPY/ADD는 빌드 컨텍스트가 없으므로 GitHub 커밋 모드 사용). FROM은 ubuntu:18.04|20.04|22.04|24.04, Glance 이미지 이름/UUID, palimpsest/&lt;name&gt;@sha256:…를 지원하며 Glance에서 자동 해석됩니다.</p>
+              <p class="mt-0.5 text-xs text-ink-2">{t('studio.syntaxHelp', { ubuntuTags: 'ubuntu:18.04|20.04|22.04|24.04', layerRef: 'palimpsest/<name>@sha256:…' })}</p>
             </div>
           {/if}
           {#if dockerfileMode === 'upload' && dockerfileFetchError}<Alert tone="danger">{dockerfileFetchError}</Alert>{/if}
 
           {#if dockerfileMode === 'github'}
             <div>
-              <label class="block text-xs text-ink-2 mb-1" for="dockerfile-github-url">GitHub URL *</label>
+              <label class="block text-xs text-ink-2 mb-1" for="dockerfile-github-url">{t('github.url')}</label>
               <input
                 id="dockerfile-github-url"
                 type="url"
@@ -1095,17 +1098,17 @@
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
-                <label class="block text-xs text-ink-2 mb-1" for="dockerfile-ref">Commit SHA *</label>
+                <label class="block text-xs text-ink-2 mb-1" for="dockerfile-ref">{t('github.commit')}</label>
                 <input
                   id="dockerfile-ref"
                   type="text"
-                  placeholder="40자 commit SHA 필수"
+                  placeholder={t('github.commitPlaceholder')}
                   bind:value={importForm.ref}
                   class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
                 />
               </div>
               <div>
-                <label class="block text-xs text-ink-2 mb-1" for="dockerfile-path">Dockerfile path</label>
+                <label class="block text-xs text-ink-2 mb-1" for="dockerfile-path">{t('github.path')}</label>
                 <input
                   id="dockerfile-path"
                   type="text"
@@ -1114,45 +1117,45 @@
                 />
               </div>
             </div>
-            <p class="text-xs text-ink-2">명시적인 FROM이 있는 Dockerfile을 고정 커밋에서 가져옵니다. 서버가 FROM과 빌드 컨텍스트를 검증한 뒤 같은 작업 기록에 추가합니다.</p>
+            <p class="text-xs text-ink-2">{t('github.help')}</p>
             {#if importForm.ref && !pinnedCommitValid}
-              <p class="text-xs text-red-300">브랜치나 태그 대신 40자리 commit SHA를 입력하세요.</p>
+              <p class="text-xs text-red-300">{t('github.invalidCommit')}</p>
             {/if}
           {/if}
 
           <!-- 공통 레이어 빌드 옵션 -->
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <label class="block text-xs text-ink-2 mb-1" for="dockerfile-layer-prefix">Layer prefix *</label>
+              <label class="block text-xs text-ink-2 mb-1" for="dockerfile-layer-prefix">{t('form.prefix')}</label>
               <input
                 id="dockerfile-layer-prefix"
                 type="text"
-                placeholder="예: demo"
+                placeholder={t('form.prefixPlaceholder')}
                 bind:value={importForm.layer_prefix}
                 class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
               />
             </div>
             <div>
-              <label class="block text-xs text-ink-2 mb-1" for="dockerfile-profile-name">Profile name (선택)</label>
+              <label class="block text-xs text-ink-2 mb-1" for="dockerfile-profile-name">{t('form.profile')}</label>
               <input
                 id="dockerfile-profile-name"
                 type="text"
-                placeholder="비우면 prefix 사용"
+                placeholder={t('form.profilePlaceholder')}
                 bind:value={importForm.profile_name}
                 class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
               />
             </div>
           </div>
-          <ToggleGroup value={dockerfileTarget} options={dockerfileTargetOptions} onchange={(value) => dockerfileTarget = value as DockerfileExecutionTarget} size="sm" fullWidth ariaLabel="Dockerfile 실행 목표" />
+          <ToggleGroup value={dockerfileTarget} options={dockerfileTargetOptions} onchange={(value) => dockerfileTarget = value as DockerfileExecutionTarget} size="sm" fullWidth ariaLabel={t('execution.label')} />
           {#if dockerfileTarget === 'instance'}
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-surface-base border border-line-2 rounded-lg" aria-label="Dockerfile 소비 VM 설정">
-              <p class="md:col-span-2 text-xs text-ink-2">베이스 이미지와 프로필은 Dockerfile의 FROM과 설정된 이름에서 자동으로 이어받습니다.</p>
-              <div><label class="block text-xs text-ink-2 mb-1" for="dockerfile-consumer-flavor">소비 VM Flavor ID *</label><input id="dockerfile-consumer-flavor" type="text" bind:value={dockerfileConsumer.flavor_id} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
-              <div><label class="block text-xs text-ink-2 mb-1" for="dockerfile-consumer-server">소비 VM 서버 이름 (선택)</label><input id="dockerfile-consumer-server" type="text" bind:value={dockerfileConsumer.server_name} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
-              <div><label class="block text-xs text-ink-2 mb-1" for="dockerfile-consumer-network">소비 VM Network ID (선택)</label><input id="dockerfile-consumer-network" type="text" bind:value={dockerfileConsumer.network_id} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
-              <div><label class="block text-xs text-ink-2 mb-1" for="dockerfile-consumer-keypair">소비 VM 접속 키페어 (SSH 공개키가 없을 때 필수)</label><select id="dockerfile-consumer-keypair" bind:value={dockerfileConsumer.key_name} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0"><option value="">선택 안 함</option>{#each keypairs as kp}<option value={kp.name}>{kp.name}</option>{/each}</select></div>
-              <div><label class="block text-xs text-ink-2 mb-1" for="dockerfile-consumer-user">소비 VM SSH 사용자 (선택)</label><input id="dockerfile-consumer-user" type="text" bind:value={dockerfileConsumer.ssh_username} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
-              <div><label class="block text-xs text-ink-2 mb-1" for="dockerfile-consumer-pubkey">소비 VM SSH 공개키 (키페어가 없을 때 필수)</label><textarea id="dockerfile-consumer-pubkey" rows="2" bind:value={dockerfileConsumer.ssh_public_key} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 font-mono"></textarea></div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-surface-base border border-line-2 rounded-lg" aria-label={t('consumer.settings')}>
+              <p class="md:col-span-2 text-xs text-ink-2">{t('consumer.help')}</p>
+              <div><label class="block text-xs text-ink-2 mb-1" for="dockerfile-consumer-flavor">{t('consumer.flavor')}</label><input id="dockerfile-consumer-flavor" type="text" bind:value={dockerfileConsumer.flavor_id} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
+              <div><label class="block text-xs text-ink-2 mb-1" for="dockerfile-consumer-server">{t('consumer.server')}</label><input id="dockerfile-consumer-server" type="text" bind:value={dockerfileConsumer.server_name} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
+              <div><label class="block text-xs text-ink-2 mb-1" for="dockerfile-consumer-network">{t('consumer.network')}</label><input id="dockerfile-consumer-network" type="text" bind:value={dockerfileConsumer.network_id} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
+              <div><label class="block text-xs text-ink-2 mb-1" for="dockerfile-consumer-keypair">{t('consumer.keypair')}</label><select id="dockerfile-consumer-keypair" bind:value={dockerfileConsumer.key_name} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0"><option value="">{t('form.noSelection')}</option>{#each keypairs as kp}<option value={kp.name}>{kp.name}</option>{/each}</select></div>
+              <div><label class="block text-xs text-ink-2 mb-1" for="dockerfile-consumer-user">{t('consumer.user')}</label><input id="dockerfile-consumer-user" type="text" bind:value={dockerfileConsumer.ssh_username} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
+              <div><label class="block text-xs text-ink-2 mb-1" for="dockerfile-consumer-pubkey">{t('consumer.publicKey')}</label><textarea id="dockerfile-consumer-pubkey" rows="2" bind:value={dockerfileConsumer.ssh_public_key} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 font-mono"></textarea></div>
             </div>
           {/if}
           {#if dockerfileMode !== 'github'}
@@ -1162,20 +1165,20 @@
           <!-- 빌드 계획 미리보기 결과 표시 -->
           {#if planError}
             <Alert tone="danger">
-              <span class="font-semibold">계획 오류:</span> {planError}
+              <RichText segments={t.rich('plan.error', { detail: planError })} classes={{ strong: 'font-semibold' }} />
             </Alert>
           {/if}
 
           {#if dockerfilePlan}
             <div class="p-3 bg-surface-base border border-line-2 rounded-lg space-y-2 text-xs">
               <div class="flex items-center justify-between">
-                <span class="font-semibold text-ink-0">빌드 계획 (미리보기)</span>
+                <span class="font-semibold text-ink-0">{t('plan.title')}</span>
                 <span class="text-ink-2 font-mono">{dockerfilePlan.ubuntu_base}</span>
               </div>
               <div class="text-ink-2 font-mono truncate" title={dockerfilePlan.dockerfile_digest}>
-                Digest: {dockerfilePlan.dockerfile_digest.slice(0, 20)}…
+                {t('plan.digest', { digest: dockerfilePlan.dockerfile_digest.slice(0, 20) })}
               </div>
-              <p class="text-state-success">캐시 재사용 artifact: {dockerfilePlan.cached_artifact_ids.map(id => `#${id}`).join(', ') || '없음'}</p>
+              <p class="text-state-success">{t('plan.cached', { artifacts: dockerfilePlan.cached_artifact_ids.map(id => `#${id}`).join(', ') || t('labels.none') })}</p>
               <div class="space-y-1 max-h-36 overflow-y-auto">
                 {#each dockerfilePlan.steps as step, idx}
                   <div class="flex items-center justify-between gap-2 p-1.5 rounded bg-surface-sunken border border-line-2">
@@ -1184,7 +1187,7 @@
                       <span class="px-1.5 py-0.5 rounded font-mono text-xs bg-surface-selected text-ink-0">{step.instruction}</span>
                       <span class="font-mono text-ink-2 truncate max-w-xs">{step.args}</span>
                     </div>
-                      <span class="text-xs text-warm-text font-mono whitespace-nowrap">신규 빌드</span>
+                      <span class="text-xs text-warm-text font-mono whitespace-nowrap">{t('plan.newBuild')}</span>
                   </div>
                 {/each}
               </div>
@@ -1201,7 +1204,7 @@
                 disabled={planLoading || lintLoading || dockerfileFetching || !dockerfileText.trim() || !importForm.layer_prefix.trim() || (dockerfileLint !== null && !dockerfileLint.valid)}
                 class="w-full"
               >
-                {planLoading ? '계획 계산 중...' : '빌드 계획 미리보기'}
+                {planLoading ? t('plan.calculating') : t('plan.preview')}
               </Button>
               <Button
                 variant="primary"
@@ -1210,7 +1213,7 @@
                 disabled={importSubmitting || lintLoading || dockerfileFetching || !dockerfileConsumerReady || !dockerfileText.trim() || !importForm.layer_prefix.trim() || (dockerfileLint !== null && !dockerfileLint.valid)}
                 class="w-full"
               >
-                {importSubmitting ? '빌드 시작 중...' : 'Dockerfile 빌드 시작'}
+                {importSubmitting ? t('build.starting') : t('build.start')}
               </Button>
             {:else}
               <Button
@@ -1220,51 +1223,51 @@
                 disabled={importSubmitting || !dockerfileConsumerReady || !pinnedCommitValid || !importForm.github_url.trim() || !importForm.layer_prefix.trim()}
                 class="w-full sm:col-span-2"
               >
-                {importSubmitting ? 'Import 시작 중...' : 'GitHub Dockerfile import 시작'}
+                {importSubmitting ? t('import.starting') : t('import.start')}
               </Button>
             {/if}
           </div>
 
           <!-- importJobs 테이블 -->
-          <h3 class="text-sm font-semibold text-ink-0">Dockerfile 작업 기록</h3>
+          <h3 class="text-sm font-semibold text-ink-0">{t('history.title')}</h3>
           {#if importLoadError}<Alert tone="danger">{importLoadError}</Alert>{/if}
           {#if selectedImport}
-            <section aria-label="선택한 Dockerfile 작업" class="p-3 border border-line-2 rounded-lg space-y-2 text-xs">
+            <section aria-label={t('history.selected')} class="p-3 border border-line-2 rounded-lg space-y-2 text-xs">
               <p class="font-mono">#{selectedImport.id} · {selectedImport.profile_name} · {selectedImport.source_type || 'github'}</p>
               <StatusChip status={selectedImport.status} />
               <p>{selectedImport.progress_step || selectedImport.status} · {selectedImport.progress_pct}%</p>
-              <progress class="w-full" aria-label="Dockerfile 작업 진행률" max="100" value={selectedImport.progress_pct}></progress>
+              <progress class="w-full" aria-label={t('history.progress')} max="100" value={selectedImport.progress_pct}></progress>
               {#if selectedImport.error_message}<Alert tone="danger">{selectedImport.error_message}</Alert>{/if}
-              <p>Base: {selectedImport.base_image_name || selectedImport.base_image_id || selectedImport.ubuntu_base}</p>
+              <p>{t('history.base', { image: selectedImport.base_image_name || selectedImport.base_image_id || selectedImport.ubuntu_base })}</p>
               {#if selectedImport.github_url}<p class="break-all">{selectedImport.github_url} · {selectedImport.commit_sha} · {selectedImport.dockerfile_path}</p>{/if}
-              {#if selectedImport.dockerfile_digest}<p class="break-all">Digest: {selectedImport.dockerfile_digest}</p>{/if}
-              <p>Artifact: {selectedImport.artifact_ids?.map(id => `#${id}`).join(', ') || '—'}</p>
-              <p>Build: {selectedImport.build_ids?.map(id => `#${id}`).join(', ') || '—'}</p>
+              {#if selectedImport.dockerfile_digest}<p class="break-all">{t('history.digest', { digest: selectedImport.dockerfile_digest })}</p>{/if}
+              <p>{t('history.artifactIds', { ids: selectedImport.artifact_ids?.map(id => `#${id}`).join(', ') || '—' })}</p>
+              <p>{t('history.buildIds', { ids: selectedImport.build_ids?.map(id => `#${id}`).join(', ') || '—' })}</p>
               {#if selectedImport.consume_id || selectedImport.consumer_status || selectedImport.consumer_spec}
-                <p>소비 VM: {selectedImport.consume_id ? `#${selectedImport.consume_id}` : '예약됨'} · {selectedImport.consumer_status || '대기'} {#if selectedImport.consumer_spec}({selectedImport.consumer_spec.server_name || '자동 이름'} · {selectedImport.consumer_spec.flavor_id}){/if}</p>
+                <p>{t(selectedImport.consumer_spec ? 'history.consumeWithSpec' : 'history.consumeSummary', { id: selectedImport.consume_id ? `#${selectedImport.consume_id}` : t('history.reserved'), status: selectedImport.consumer_status || t('history.waiting'), name: selectedImport.consumer_spec?.server_name || t('history.autoName'), flavor: selectedImport.consumer_spec?.flavor_id ?? '' })}</p>
                 {#if selectedImport.consume_id}
-                  <button type="button" class="underline" onclick={() => { selectedConsumeId = selectedImport.consume_id!; consumeDetailOpen = true; }}>소비 VM #{selectedImport.consume_id} 상세</button>
+                  <button type="button" class="underline" onclick={() => { selectedConsumeId = selectedImport.consume_id!; consumeDetailOpen = true; }}>{t('history.consumeDetails', { id: selectedImport.consume_id })}</button>
                 {/if}
               {/if}
               {#if selectedImport.status === 'complete' && selectedImport.dockerfile_digest && selectedImport.artifact_ids?.length}
                 <Button variant="secondary" size="sm" onclick={() => { historyConsumeTargetId = historyConsumeTargetId === selectedImport.id ? null : selectedImport.id; historyConsumeError = ''; }} disabled={historyConsumeSubmitting}>
-                  {historyConsumeTargetId === selectedImport.id ? 'VM 생성 설정 닫기' : '이 작업의 artifact로 VM 생성'}
+                  {historyConsumeTargetId === selectedImport.id ? t('history.closeSettings') : t('history.createVm')}
                 </Button>
                 {#if historyConsumeTargetId === selectedImport.id}
-                  <div class="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-surface-base border border-line-2 rounded-lg" aria-label="작업 artifact 소비 VM 설정">
-                    <p class="md:col-span-2 text-ink-2">작업 #{selectedImport.id}의 봉인된 artifact #{selectedImport.artifact_ids.join(', #')}을 사용합니다. 현재 프로필 이름으로 재조회하지 않습니다.</p>
-                    <div><label class="block text-ink-2 mb-1" for="history-consumer-flavor">Flavor ID *</label><input id="history-consumer-flavor" type="text" bind:value={historyConsumer.flavor_id} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
-                    <div><label class="block text-ink-2 mb-1" for="history-consumer-server">서버 이름 (선택)</label><input id="history-consumer-server" type="text" bind:value={historyConsumer.server_name} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
-                    <div><label class="block text-ink-2 mb-1" for="history-consumer-network">Network ID (선택)</label><input id="history-consumer-network" type="text" bind:value={historyConsumer.network_id} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
-                    <div><label class="block text-ink-2 mb-1" for="history-consumer-keypair">접속 키페어 (SSH 공개키가 없을 때 필수)</label><select id="history-consumer-keypair" bind:value={historyConsumer.key_name} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0"><option value="">선택 안 함</option>{#each keypairs as kp}<option value={kp.name}>{kp.name}</option>{/each}</select></div>
-                    <div><label class="block text-ink-2 mb-1" for="history-consumer-user">SSH 사용자 (선택)</label><input id="history-consumer-user" type="text" bind:value={historyConsumer.ssh_username} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
-                    <div><label class="block text-ink-2 mb-1" for="history-consumer-pubkey">SSH 공개키 (키페어가 없을 때 필수)</label><textarea id="history-consumer-pubkey" rows="2" bind:value={historyConsumer.ssh_public_key} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 font-mono"></textarea></div>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-surface-base border border-line-2 rounded-lg" aria-label={t('history.settings')}>
+                    <p class="md:col-span-2 text-ink-2">{t('history.artifactsHelp', { id: selectedImport.id, artifacts: selectedImport.artifact_ids.join(', #') })}</p>
+                    <div><label class="block text-ink-2 mb-1" for="history-consumer-flavor">{t('history.flavor')}</label><input id="history-consumer-flavor" type="text" bind:value={historyConsumer.flavor_id} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
+                    <div><label class="block text-ink-2 mb-1" for="history-consumer-server">{t('history.server')}</label><input id="history-consumer-server" type="text" bind:value={historyConsumer.server_name} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
+                    <div><label class="block text-ink-2 mb-1" for="history-consumer-network">{t('history.network')}</label><input id="history-consumer-network" type="text" bind:value={historyConsumer.network_id} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
+                    <div><label class="block text-ink-2 mb-1" for="history-consumer-keypair">{t('history.keypair')}</label><select id="history-consumer-keypair" bind:value={historyConsumer.key_name} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0"><option value="">{t('form.noSelection')}</option>{#each keypairs as kp}<option value={kp.name}>{kp.name}</option>{/each}</select></div>
+                    <div><label class="block text-ink-2 mb-1" for="history-consumer-user">{t('history.user')}</label><input id="history-consumer-user" type="text" bind:value={historyConsumer.ssh_username} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0" /></div>
+                    <div><label class="block text-ink-2 mb-1" for="history-consumer-pubkey">{t('history.publicKey')}</label><textarea id="history-consumer-pubkey" rows="2" bind:value={historyConsumer.ssh_public_key} class="w-full bg-surface-base border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 font-mono"></textarea></div>
                     {#if historyConsumeError}<div class="md:col-span-2"><Alert tone="danger">{historyConsumeError}</Alert></div>{/if}
-                    <div class="md:col-span-2"><Button variant="primary" size="sm" onclick={() => consumeCompletedImport(selectedImport)} disabled={!historyConsumerReady || historyConsumeSubmitting}>{historyConsumeSubmitting ? 'VM 생성 중...' : '선택한 작업으로 VM 생성'}</Button></div>
+                    <div class="md:col-span-2"><Button variant="primary" size="sm" onclick={() => consumeCompletedImport(selectedImport)} disabled={!historyConsumerReady || historyConsumeSubmitting}>{historyConsumeSubmitting ? t('history.creating') : t('history.createSelected')}</Button></div>
                   </div>
                 {/if}
               {/if}
-              <p>생성: {fmtDate(selectedImport.created_at)} · 완료: {fmtDate(selectedImport.completed_at)}</p>
+              <p>{t('history.timestamps', { created: fmtDate(selectedImport.created_at), completed: fmtDate(selectedImport.completed_at) })}</p>
               {#each selectedImport.planned_layers ?? [] as step}
                 <p class="font-mono">L{step.line} · {step.name} · {step.instruction}</p>
               {/each}
@@ -1276,15 +1279,15 @@
                 <thead class="bg-surface-base text-ink-2">
                   <tr>
                     <th class="px-3 py-2 text-left">ID</th>
-                    <th class="px-3 py-2 text-left">Profile</th>
-                    <th class="px-3 py-2 text-left">Base image</th>
-                    <th class="px-3 py-2 text-left">Status</th>
+                    <th class="px-3 py-2 text-left">{t('columns.profileEnglish')}</th>
+                    <th class="px-3 py-2 text-left">{t('columns.baseImage')}</th>
+                    <th class="px-3 py-2 text-left">{t('columns.statusEnglish')}</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-line">
                   {#each importJobs as job}
                     <tr>
-                      <td class="px-3 py-2 text-ink-2"><button type="button" class="underline" aria-label={`작업 #${job.id} 상세`} onclick={() => selectedImportId = job.id}>#{job.id}</button></td>
+                      <td class="px-3 py-2 text-ink-2"><button type="button" class="underline" aria-label={t('history.jobDetails', { id: job.id })} onclick={() => selectedImportId = job.id}>#{job.id}</button></td>
                       <td class="px-3 py-2 font-mono">{job.profile_name}</td>
                       <td class="px-3 py-2 text-ink-2">{job.base_image_name || shortId(job.base_image_id)}</td>
                       <td class="px-3 py-2"><StatusChip status={job.status} /><p class="mt-1">{job.progress_step || job.status} · {job.progress_pct}%</p>{#if job.consumer_status || job.consume_id}<p>VM {job.consume_id ? `#${job.consume_id}` : ''} {job.consumer_status || ''}</p>{/if}{#if job.error_message}<p class="text-red-300">{job.error_message}</p>{/if}</td>
@@ -1304,9 +1307,9 @@
     <!-- ---------------------------------------------------------------------- -->
     <div class="mb-8">
       <section class="bg-surface-sunken border border-line-2 rounded-xl p-5" data-tour="admin-library-profile">
-        <h2 class="text-sm font-semibold text-ink-0 mb-1">프로필 기록</h2>
+        <h2 class="text-sm font-semibold text-ink-0 mb-1">{t('profiles.title')}</h2>
         <p class="text-xs text-ink-2 mb-4">
-          Dockerfile 빌드로 생성된 프로필과 기존 프로필의 계보·공개 상태를 조회하고 관리합니다. 새 VM은 상단 Dockerfile 빌드에서 생성합니다.
+          {t('profiles.help')}
         </p>
         {#if profileDeleteError}
           <div class="mb-3 p-2 bg-red-900/40 border border-red-700 rounded text-red-300 text-xs">{profileDeleteError}</div>
@@ -1315,23 +1318,23 @@
           <div class="mb-3 p-2 bg-green-900/40 border border-green-700 rounded text-green-300 text-xs">{profileMessage}</div>
         {/if}
         {#if selectedHistoricalProfile}
-          <div class="mb-3 p-3 border border-line-2 rounded text-xs" aria-label="선택한 프로필">
+          <div class="mb-3 p-3 border border-line-2 rounded text-xs" aria-label={t('profiles.selected')}>
             <p class="font-mono">#{selectedHistoricalProfile.id} {selectedHistoricalProfile.name}</p>
             <p>{selectedHistoricalProfile.layers.join(' → ')}</p>
-            <p>생성: {fmtDate(selectedHistoricalProfile.created_at)} · 수정: {fmtDate(selectedHistoricalProfile.updated_at)}</p>
+            <p>{t('profiles.timestamps', { created: fmtDate(selectedHistoricalProfile.created_at), updated: fmtDate(selectedHistoricalProfile.updated_at) })}</p>
           </div>
         {/if}
             {#if profiles.length > 0}
               <div class="pt-3 border-t border-line-2">
-                <p class="text-xs text-ink-2 mb-2">저장된 프로필</p>
+                <p class="text-xs text-ink-2 mb-2">{t('summary.profiles')}</p>
                 <div class="overflow-x-auto border border-line-2 rounded-lg">
                   <table class="w-full text-xs">
                     <thead>
                       <tr class="text-ink-2 bg-surface-base/80">
-                        <th class="text-left px-3 py-2">이름</th>
-                        <th class="text-left px-3 py-2">레이어 체인</th>
-                        <th class="text-left px-3 py-2">활성 consume</th>
-                        <th class="text-left px-3 py-2">공개</th>
+                        <th class="text-left px-3 py-2">{t('columns.name')}</th>
+                        <th class="text-left px-3 py-2">{t('columns.layerChain')}</th>
+                        <th class="text-left px-3 py-2">{t('columns.activeConsumes')}</th>
+                        <th class="text-left px-3 py-2">{t('publication.public')}</th>
                         <th class="px-3 py-2"></th>
                       </tr>
                     </thead>
@@ -1343,7 +1346,7 @@
                           <td class="px-3 py-2 text-ink-2">{profile.layers.join(' → ')}</td>
                           <td class="px-3 py-2 text-ink-2">{blockers.length}</td>
                           <td class="px-3 py-2">
-                            <span class="{profile.is_published ? 'text-warm-text' : 'text-ink-2'}">{profile.is_published ? '공개' : '비공개'}</span>
+                            <span class="{profile.is_published ? 'text-warm-text' : 'text-ink-2'}">{profile.is_published ? t('publication.public') : t('publication.private')}</span>
                           </td>
                           <td class="px-3 py-2">
                             <div class="flex justify-end gap-2">
@@ -1351,7 +1354,7 @@
                                 onclick={() => selectedProfileId = profile.id}
                                 class="px-2 py-1 rounded border border-line-2 text-ink-2 hover:border-gray-400 transition-colors"
                               >
-                                상세
+                                {t('actions.details')}
                               </button>
                               <button
                                 type="button"
@@ -1359,16 +1362,16 @@
                                 disabled={publicationUpdating === `profile:${profile.name}`}
                                 class="px-2 py-1 rounded border border-action-warm text-warm-text hover:border-action-warm disabled:border-line-2 disabled:text-ink-3 disabled:cursor-not-allowed transition-colors"
                               >
-                                {publicationUpdating === `profile:${profile.name}` ? '변경 중...' : (profile.is_published ? '비공개' : '공개')}
+                                {publicationUpdating === `profile:${profile.name}` ? t('publication.changing') : (profile.is_published ? t('publication.private') : t('publication.public'))}
                               </button>
                               <button
                                 type="button"
                                 onclick={() => deleteProfile(profile)}
                                 disabled={blockers.length > 0 || profileDeletingName === profile.name}
-                                title={blockers.length > 0 ? '사용 중인 소비 VM을 삭제하거나 deleted 상태로 동기화한 뒤 삭제할 수 있습니다' : '프로필 삭제'}
+                                title={blockers.length > 0 ? t('profiles.deleteBlocked') : t('profiles.delete')}
                                 class="px-2 py-1 rounded border border-red-800 text-red-300 hover:border-red-500 disabled:border-line-2 disabled:text-ink-3 disabled:cursor-not-allowed transition-colors"
                               >
-                                {profileDeletingName === profile.name ? '삭제 중...' : '삭제'}
+                                {profileDeletingName === profile.name ? t('actions.deleting') : t('actions.delete')}
                               </button>
                             </div>
                           </td>
@@ -1386,10 +1389,10 @@
     <!-- 아티팩트 현황 / 삭제                                                    -->
     <!-- ---------------------------------------------------------------------- -->
     <div class="mb-6" data-tour="admin-library-artifacts">
-      <h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">아티팩트 현황</h3>
+      <h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">{t('artifacts.title')}</h3>
       {#if artifacts.length === 0}
         <div class="bg-surface-sunken border border-line-2 rounded-xl p-6 text-center text-ink-2 text-sm">
-          생성된 artifact가 없습니다
+          {t('artifacts.empty')}
         </div>
       {:else}
         <div class="bg-surface-sunken border border-line-2 rounded-xl overflow-hidden">
@@ -1397,10 +1400,10 @@
             <table class="w-full text-sm">
               <thead>
                 <tr class="text-xs text-ink-2 uppercase tracking-wide sticky top-0 z-10 bg-surface-sunken [box-shadow:inset_0_-1px_0_#374151]">
-                  <th class="text-left px-4 py-2.5">Artifact</th>
-                  <th class="text-left px-4 py-2.5 hidden md:table-cell">상속 체인</th>
-                  <th class="text-left px-4 py-2.5 hidden lg:table-cell">요청 패키지</th>
-                  <th class="text-left px-4 py-2.5 hidden xl:table-cell">삭제 상태</th>
+                  <th class="text-left px-4 py-2.5">{t('columns.artifact')}</th>
+                  <th class="text-left px-4 py-2.5 hidden md:table-cell">{t('columns.lineage')}</th>
+                  <th class="text-left px-4 py-2.5 hidden lg:table-cell">{t('columns.packages')}</th>
+                  <th class="text-left px-4 py-2.5 hidden xl:table-cell">{t('columns.deletion')}</th>
                   <th class="px-4 py-2.5"></th>
                 </tr>
               </thead>
@@ -1412,9 +1415,9 @@
                       <div class="mt-1 flex items-center gap-1.5 text-xs text-ink-2">
                         <span class="px-1.5 py-0.5 rounded {a.kind === 'uv' ? 'bg-surface-selected/60 text-warm-text' : 'bg-indigo-900/60 text-indigo-300'}">{a.kind}</span>
                         {#if a.python_version}<span>py{a.python_version}</span>{/if}
-                        <span>{a.is_sealed ? 'sealed' : 'unsealed'}</span>
+                        <span>{a.is_sealed ? t('artifacts.sealed') : t('artifacts.unsealed')}</span>
                       </div>
-                      <div class="mt-0.5 text-xs text-ink-2 truncate" title={ubuntuBaseLabel(a)}>Ubuntu: {ubuntuBaseLabel(a)}</div>
+                      <div class="mt-0.5 text-xs text-ink-2 truncate" title={ubuntuBaseLabel(a)}>{t('labels.ubuntu', { base: ubuntuBaseLabel(a) })}</div>
                     </td>
                     <td class="px-4 py-2.5 text-ink-2 text-xs font-mono hidden md:table-cell max-w-md truncate" title={artifactChainLabel(a)}>
                       {artifactChainLabel(a)}
@@ -1424,9 +1427,9 @@
                     </td>
                     <td class="px-4 py-2.5 text-xs hidden xl:table-cell">
                       {#if a.can_delete}
-                        <span class="text-green-400">삭제 가능</span>
+                        <span class="text-green-400">{t('artifacts.deletable')}</span>
                       {:else}
-                        <span class="text-yellow-400">차단 {a.delete_blockers.length}건</span>
+                        <span class="text-yellow-400">{t('artifacts.blocked', { count: a.delete_blockers.length })}</span>
                       {/if}
                     </td>
                     <td class="px-4 py-2.5 text-right">
@@ -1435,13 +1438,13 @@
                         onclick={() => setArtifactPublication(a, !a.is_published)}
                         disabled={!a.is_sealed || publicationUpdating === `artifact:${a.id}`}
                         class="mr-3 text-xs {a.is_published ? 'text-warm-text hover:text-warm-text-hover' : 'text-ink-2 hover:text-ink-0'} disabled:text-ink-3 disabled:cursor-not-allowed transition-colors"
-                        title={!a.is_sealed ? '봉인된 artifact만 공개할 수 있습니다' : (a.is_published ? '사용자 VM 마법사에서 숨기기' : '사용자 VM 마법사에 공개')}
-                      >{publicationUpdating === `artifact:${a.id}` ? '변경 중...' : (a.is_published ? '공개 중' : '비공개')}</button>
+                        title={!a.is_sealed ? t('publication.sealedOnly') : (a.is_published ? t('publication.hide') : t('publication.show'))}
+                      >{publicationUpdating === `artifact:${a.id}` ? t('publication.changing') : (a.is_published ? t('publication.published') : t('publication.private'))}</button>
                       <button
                         type="button"
                         onclick={() => openDeletePreview(a)}
                         class="text-xs {a.can_delete ? 'text-red-400 hover:text-red-300' : 'text-yellow-400 hover:text-yellow-300'} transition-colors"
-                      >삭제 검토</button>
+                      >{t('artifacts.reviewDeletion')}</button>
                     </td>
                   </tr>
                 {/each}
@@ -1457,14 +1460,14 @@
     <!-- ---------------------------------------------------------------------- -->
     <div class="mb-6" data-tour="admin-library-builds">
       <h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">
-        빌드 현황
+        {t('builds.title')}
         {#if activeBuilds.length > 0}
-          <span class="ml-2 text-warm-text normal-case">(10초마다 자동 갱신)</span>
+          <span class="ml-2 text-warm-text normal-case">{t('builds.autoRefresh')}</span>
         {/if}
       </h3>
       {#if builds.length === 0}
         <div class="bg-surface-sunken border border-line-2 rounded-xl p-6 text-center text-ink-2 text-sm">
-          빌드 기록이 없습니다
+          {t('builds.empty')}
         </div>
       {:else}
         <div class="bg-surface-sunken border border-line-2 rounded-xl overflow-hidden">
@@ -1472,13 +1475,13 @@
             <table class="w-full text-sm">
               <thead>
                 <tr class="text-xs text-ink-2 uppercase tracking-wide sticky top-0 z-10 bg-surface-sunken [box-shadow:inset_0_-1px_0_#374151]">
-                  <th class="text-left px-4 py-2.5">레이어 이름</th>
-                  <th class="text-left px-4 py-2.5 hidden sm:table-cell">Kind / Python</th>
-                  <th class="text-left px-4 py-2.5">상태</th>
-                  <th class="text-left px-4 py-2.5 hidden md:table-cell">단계</th>
-                  <th class="text-left px-4 py-2.5 w-36 hidden lg:table-cell">진행률</th>
-                  <th class="text-left px-4 py-2.5 hidden xl:table-cell">VM</th>
-                  <th class="text-left px-4 py-2.5 hidden lg:table-cell">시작</th>
+                  <th class="text-left px-4 py-2.5">{t('columns.layerName')}</th>
+                  <th class="text-left px-4 py-2.5 hidden sm:table-cell">{t('columns.kindPython')}</th>
+                  <th class="text-left px-4 py-2.5">{t('columns.status')}</th>
+                  <th class="text-left px-4 py-2.5 hidden md:table-cell">{t('columns.step')}</th>
+                  <th class="text-left px-4 py-2.5 w-36 hidden lg:table-cell">{t('columns.progress')}</th>
+                  <th class="text-left px-4 py-2.5 hidden xl:table-cell">{t('labels.vm')}</th>
+                  <th class="text-left px-4 py-2.5 hidden lg:table-cell">{t('columns.started')}</th>
                   <th class="px-4 py-2.5"></th>
                 </tr>
               </thead>
@@ -1498,7 +1501,7 @@
                     <td class="px-4 py-2.5 text-ink-2 text-xs font-mono hidden sm:table-cell">
                       <span class="text-xs px-1.5 py-0.5 rounded mr-1 {build.kind === 'uv' ? 'bg-surface-selected/60 text-warm-text' : 'bg-indigo-900/60 text-indigo-300'}">{build.kind ?? 'python'}</span>
                       {build.python_version ?? ''}
-                      <div class="mt-0.5 text-xs text-ink-2 truncate" title={ubuntuBaseLabel(build)}>Ubuntu: {ubuntuBaseLabel(build)}</div>
+                      <div class="mt-0.5 text-xs text-ink-2 truncate" title={ubuntuBaseLabel(build)}>{t('labels.ubuntu', { base: ubuntuBaseLabel(build) })}</div>
                     </td>
                     <td class="px-4 py-2.5">
                       <StatusChip status={build.status} />
@@ -1527,7 +1530,7 @@
                       <button
                         onclick={(e) => { e.stopPropagation(); openBuildDetail(build); }}
                         class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
-                      >상세</button>
+                      >{t('actions.details')}</button>
                     </td>
                   </tr>
                 {/each}
@@ -1542,10 +1545,10 @@
     <!-- 소비 인스턴스 테이블                                                    -->
     <!-- ---------------------------------------------------------------------- -->
     <div data-tour="admin-library-consumes">
-      <h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">소비 인스턴스</h3>
+      <h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-2">{t('consumes.title')}</h3>
       {#if consumes.length === 0}
         <div class="bg-surface-sunken border border-line-2 rounded-xl p-6 text-center text-ink-2 text-sm">
-          생성된 소비 인스턴스가 없습니다
+          {t('consumes.empty')}
         </div>
       {:else}
         <div class="bg-surface-sunken border border-line-2 rounded-xl overflow-hidden">
@@ -1553,11 +1556,11 @@
             <table class="w-full text-sm">
               <thead>
                 <tr class="text-xs text-ink-2 uppercase tracking-wide sticky top-0 z-10 bg-surface-sunken [box-shadow:inset_0_-1px_0_#374151]">
-                  <th class="text-left px-4 py-2.5">서버 이름</th>
-                  <th class="text-left px-4 py-2.5 hidden sm:table-cell">프로필</th>
-                  <th class="text-left px-4 py-2.5">상태</th>
-                  <th class="text-left px-4 py-2.5 hidden xl:table-cell">서버 ID</th>
-                  <th class="text-left px-4 py-2.5 hidden lg:table-cell">생성</th>
+                  <th class="text-left px-4 py-2.5">{t('columns.serverName')}</th>
+                  <th class="text-left px-4 py-2.5 hidden sm:table-cell">{t('columns.profile')}</th>
+                  <th class="text-left px-4 py-2.5">{t('columns.status')}</th>
+                  <th class="text-left px-4 py-2.5 hidden xl:table-cell">{t('columns.serverId')}</th>
+                  <th class="text-left px-4 py-2.5 hidden lg:table-cell">{t('columns.created')}</th>
                   <th class="px-4 py-2.5"></th>
                 </tr>
               </thead>
@@ -1582,7 +1585,7 @@
                       <button
                         onclick={(e) => { e.stopPropagation(); openConsumeDetail(c); }}
                         class="text-xs text-purple-400 hover:text-purple-300 transition-colors"
-                      >상세</button>
+                      >{t('actions.details')}</button>
                     </td>
                   </tr>
                 {/each}
@@ -1598,17 +1601,17 @@
 <!-- -------------------------------------------------------------------------- -->
 <!-- 빌드 상세 모달                                                              -->
 <!-- -------------------------------------------------------------------------- -->
-<Modal bind:open={detailOpen} ariaLabel="레이어 빌드 상세">
+<Modal bind:open={detailOpen} ariaLabel={t('buildDetail.title')}>
   {#if detailOpen}
     <div class="bg-surface-base rounded-xl border border-line-2 w-full max-w-2xl mx-auto p-6 space-y-5">
       <div class="flex items-start justify-between gap-3">
         <div>
-          <p class="text-xs text-ink-2 mb-1">레이어 빌드 상세</p>
+          <p class="text-xs text-ink-2 mb-1">{t('buildDetail.title')}</p>
           <h2 class="text-base font-semibold text-ink-0">{buildDetail?.layer_name ?? '—'}</h2>
           {#if buildDetail}
-            <p class="text-xs text-ink-2 mt-0.5">Ubuntu: {ubuntuBaseLabel(buildDetail)}</p>
+            <p class="text-xs text-ink-2 mt-0.5">{t('labels.ubuntu', { base: ubuntuBaseLabel(buildDetail) })}</p>
           {/if}
-          <p class="text-xs text-ink-2 mt-0.5">Kind: {buildDetail?.kind ?? '—'}{buildDetail?.python_version ? ` · Python ${buildDetail.python_version}` : ''}</p>
+          <p class="text-xs text-ink-2 mt-0.5">{t('buildDetail.kind', { kind: buildDetail?.kind ?? '—', hasPython: buildDetail?.python_version ? 'yes' : 'no', python: buildDetail?.python_version ?? '' })}</p>
         </div>
         <div class="flex items-center gap-2 shrink-0">
           {#if buildDetail?.status}
@@ -1617,7 +1620,7 @@
           <button
             onclick={() => (detailOpen = false)}
             class="text-ink-2 hover:text-ink-0 transition-colors ml-2"
-            aria-label="닫기"
+            aria-label={t('actions.close')}
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -1636,7 +1639,7 @@
         <!-- 진행률 바 -->
         <div>
           <div class="flex justify-between text-xs text-ink-2 mb-1">
-            <span>{buildDetail.progress_step || '대기 중'}</span>
+            <span>{buildDetail.progress_step || t('buildDetail.waiting')}</span>
             <span>{buildDetail.progress_pct}%</span>
           </div>
           <div class="h-1.5 bg-surface-selected rounded-full overflow-hidden">
@@ -1650,11 +1653,11 @@
         <!-- 정보 그리드 -->
         <div class="grid grid-cols-2 gap-3 text-xs">
           <div class="bg-surface-sunken/60 rounded-lg px-3 py-2.5">
-            <p class="text-ink-2 mb-0.5">VM 인스턴스</p>
+            <p class="text-ink-2 mb-0.5">{t('buildDetail.vm')}</p>
             <p class="text-ink-0 font-mono truncate">{buildDetail.server_id ? buildDetail.server_id.slice(0, 18) + '…' : '—'}</p>
           </div>
           <div class="bg-surface-sunken/60 rounded-lg px-3 py-2.5">
-            <p class="text-ink-2 mb-0.5">VM 상태</p>
+            <p class="text-ink-2 mb-0.5">{t('buildDetail.vmStatus')}</p>
             {#if buildDetail.vm_status}
               <StatusChip status={buildDetail.vm_status.toLowerCase()} />
             {:else}
@@ -1662,24 +1665,24 @@
             {/if}
           </div>
           <div class="bg-surface-sunken/60 rounded-lg px-3 py-2.5">
-            <p class="text-ink-2 mb-0.5">VM IP</p>
+            <p class="text-ink-2 mb-0.5">{t('labels.vmIp')}</p>
             <p class="text-ink-0 font-mono">{buildDetail.vm_ip ?? '—'}</p>
           </div>
           <div class="bg-surface-sunken/60 rounded-lg px-3 py-2.5">
-            <p class="text-ink-2 mb-0.5">경과 시간</p>
+            <p class="text-ink-2 mb-0.5">{t('buildDetail.elapsed')}</p>
             <p class="text-ink-0">{elapsed(buildDetail.started_at)}</p>
           </div>
           <div class="bg-surface-sunken/60 rounded-lg px-3 py-2.5">
-            <p class="text-ink-2 mb-0.5">시작 시각</p>
+            <p class="text-ink-2 mb-0.5">{t('buildDetail.startedAt')}</p>
             <p class="text-ink-0">{fmtDate(buildDetail.started_at)}</p>
           </div>
           <div class="bg-surface-sunken/60 rounded-lg px-3 py-2.5">
-            <p class="text-ink-2 mb-0.5">완료 시각</p>
+            <p class="text-ink-2 mb-0.5">{t('buildDetail.completedAt')}</p>
             <p class="text-ink-0">{fmtDate(buildDetail.completed_at)}</p>
           </div>
           {#if buildDetail.share_id}
             <div class="col-span-2 bg-surface-sunken/60 rounded-lg px-3 py-2.5">
-              <p class="text-ink-2 mb-0.5">NFS Share ID</p>
+              <p class="text-ink-2 mb-0.5">{t('buildDetail.shareId')}</p>
               <p class="text-ink-0 font-mono text-xs truncate">{buildDetail.share_id}</p>
             </div>
           {/if}
@@ -1687,7 +1690,7 @@
 
         {#if buildDetail.error_message}
           <div class="bg-red-900/30 border border-red-700/50 rounded-lg px-3 py-2.5">
-            <p class="text-xs text-red-400 font-medium mb-1">오류</p>
+            <p class="text-xs text-red-400 font-medium mb-1">{t('labels.error')}</p>
             <p class="text-xs text-red-300 font-mono whitespace-pre-wrap break-all">{buildDetail.error_message}</p>
           </div>
         {/if}
@@ -1697,25 +1700,25 @@
           <div class="flex items-center justify-between mb-1.5">
             <p class="text-xs text-ink-2">
               {#if buildDetail.live_console}
-                콘솔 로그 {detailIsActive ? '(10초마다 자동 갱신)' : ''}
+                {t('buildDetail.liveLog', { active: detailIsActive ? 'yes' : 'no' })}
               {:else if buildDetail.console_log_excerpt}
-                마지막 저장 로그
+                {t('buildDetail.savedLog')}
               {:else}
-                콘솔 로그
+                {t('buildDetail.consoleLog')}
               {/if}
             </p>
             {#if detailIsActive}
               <button
                 onclick={loadBuildDetail}
                 class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
-              >새로고침</button>
+              >{t('actions.refresh')}</button>
             {/if}
           </div>
           {#if buildDetail.live_console || buildDetail.console_log_excerpt}
             <pre class="bg-surface-canvas text-xs text-ink-2 font-mono whitespace-pre-wrap break-all overflow-auto max-h-56 rounded-lg p-3 border border-line">{buildDetail.live_console || buildDetail.console_log_excerpt}</pre>
           {:else}
             <div class="bg-surface-canvas rounded-lg p-3 border border-line text-xs text-ink-2 font-mono">
-              로그 없음
+              {t('buildDetail.noLogs')}
             </div>
           {/if}
         </div>
@@ -1734,13 +1737,13 @@
                 disabled={detailCancelling}
                 class="px-3 py-1.5 text-xs text-red-400 border border-red-700/50 hover:bg-red-900/30 disabled:opacity-50 rounded-lg transition-colors"
               >
-                {detailCancelling ? '취소 중...' : '빌드 취소'}
+                {detailCancelling ? t('buildDetail.cancelling') : t('buildDetail.cancel')}
               </button>
             {/if}
             <button
               onclick={() => (detailOpen = false)}
               class="px-3 py-1.5 text-xs text-ink-2 border border-line-2 hover:bg-surface-sunken rounded-lg transition-colors"
-            >닫기</button>
+            >{t('actions.close')}</button>
           </div>
         </div>
       {/if}
@@ -1751,14 +1754,14 @@
 <!-- -------------------------------------------------------------------------- -->
 <!-- 소비 상세 모달                                                              -->
 <!-- -------------------------------------------------------------------------- -->
-<Modal bind:open={consumeDetailOpen} ariaLabel="레이어 소비 상세">
+<Modal bind:open={consumeDetailOpen} ariaLabel={t('consumeDetail.label')}>
   {#if consumeDetailOpen}
     <div class="bg-surface-base rounded-xl border border-line-2 w-full max-w-xl mx-auto p-6 space-y-4">
       <div class="flex items-start justify-between gap-3">
         <div>
-          <p class="text-xs text-ink-2 mb-1">소비 인스턴스 상세</p>
+          <p class="text-xs text-ink-2 mb-1">{t('consumeDetail.title')}</p>
           <h2 class="text-base font-semibold text-ink-0">{consumeDetail?.server_name ?? '—'}</h2>
-          <p class="text-xs text-ink-2 mt-0.5">프로필: {consumeDetail?.profile_name ?? '—'}</p>
+          <p class="text-xs text-ink-2 mt-0.5">{t('consumeDetail.profile', { name: consumeDetail?.profile_name ?? '—' })}</p>
         </div>
         <div class="flex items-center gap-2 shrink-0">
           {#if consumeDetail?.status}
@@ -1767,7 +1770,7 @@
           <button
             onclick={() => (consumeDetailOpen = false)}
             class="text-ink-2 hover:text-ink-0 transition-colors ml-2"
-            aria-label="닫기"
+            aria-label={t('actions.close')}
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -1785,11 +1788,11 @@
       {:else if consumeDetail}
         <div class="grid grid-cols-2 gap-3 text-xs">
           <div class="bg-surface-sunken/60 rounded-lg px-3 py-2.5">
-            <p class="text-ink-2 mb-0.5">서버 ID</p>
+            <p class="text-ink-2 mb-0.5">{t('columns.serverId')}</p>
             <p class="text-ink-0 font-mono truncate">{consumeDetail.server_id ? consumeDetail.server_id.slice(0, 18) + '…' : '—'}</p>
           </div>
           <div class="bg-surface-sunken/60 rounded-lg px-3 py-2.5">
-            <p class="text-ink-2 mb-0.5">VM 상태</p>
+            <p class="text-ink-2 mb-0.5">{t('buildDetail.vmStatus')}</p>
             {#if consumeDetail.vm_status}
               <StatusChip status={consumeDetail.vm_status.toLowerCase()} />
             {:else}
@@ -1797,16 +1800,16 @@
             {/if}
           </div>
           <div class="bg-surface-sunken/60 rounded-lg px-3 py-2.5">
-            <p class="text-ink-2 mb-0.5">VM IP</p>
+            <p class="text-ink-2 mb-0.5">{t('labels.vmIp')}</p>
             <p class="text-ink-0 font-mono">{consumeDetail.vm_ip ?? '—'}</p>
           </div>
           <div class="bg-surface-sunken/60 rounded-lg px-3 py-2.5">
-            <p class="text-ink-2 mb-0.5">생성 시각</p>
+            <p class="text-ink-2 mb-0.5">{t('consumeDetail.createdAt')}</p>
             <p class="text-ink-0">{fmtDate(consumeDetail.created_at)}</p>
           </div>
           {#if consumeDetail.share_id}
             <div class="col-span-2 bg-surface-sunken/60 rounded-lg px-3 py-2.5">
-              <p class="text-ink-2 mb-0.5">NFS Share ID (RO)</p>
+              <p class="text-ink-2 mb-0.5">{t('consumeDetail.shareId')}</p>
               <p class="text-ink-0 font-mono text-xs truncate">{consumeDetail.share_id}</p>
             </div>
           {/if}
@@ -1814,7 +1817,7 @@
 
         {#if consumeDetail.error_message}
           <div class="bg-red-900/30 border border-red-700/50 rounded-lg px-3 py-2.5">
-            <p class="text-xs text-red-400 font-medium mb-1">오류</p>
+            <p class="text-xs text-red-400 font-medium mb-1">{t('labels.error')}</p>
             <p class="text-xs text-red-300 font-mono whitespace-pre-wrap break-all">{consumeDetail.error_message}</p>
           </div>
         {/if}
@@ -1823,7 +1826,7 @@
           <button
             onclick={() => (consumeDetailOpen = false)}
             class="px-3 py-1.5 text-xs text-ink-2 border border-line-2 hover:bg-surface-sunken rounded-lg transition-colors"
-          >닫기</button>
+          >{t('actions.close')}</button>
         </div>
       {/if}
     </div>
@@ -1833,21 +1836,21 @@
 <!-- -------------------------------------------------------------------------- -->
 <!-- 아티팩트 삭제 미리보기 모달                                                  -->
 <!-- -------------------------------------------------------------------------- -->
-<Modal bind:open={deleteModalOpen} ariaLabel="레이어 삭제">
+<Modal bind:open={deleteModalOpen} ariaLabel={t('delete.label')}>
   {#if deleteModalOpen}
     <div class="bg-surface-base rounded-xl border border-line-2 w-full max-w-2xl mx-auto p-6 space-y-5">
       <div class="flex items-start justify-between gap-3">
         <div>
-          <p class="text-xs text-ink-2 mb-1">Artifact 삭제 미리보기</p>
+          <p class="text-xs text-ink-2 mb-1">{t('delete.title')}</p>
           <h2 class="text-base font-semibold text-ink-0">
-            {deletePreview ? `#${deletePreview.artifact.id} ${deletePreview.artifact.name}` : '조회 중'}
+            {deletePreview ? `#${deletePreview.artifact.id} ${deletePreview.artifact.name}` : t('delete.loading')}
           </h2>
-          <p class="text-xs text-ink-2 mt-0.5">삭제는 leaf artifact만 허용됩니다. 이름 기반 프로필 참조는 보수적으로 차단합니다.</p>
+          <p class="text-xs text-ink-2 mt-0.5">{t('delete.help')}</p>
         </div>
         <button
           onclick={() => (deleteModalOpen = false)}
           class="text-ink-2 hover:text-ink-0 transition-colors"
-          aria-label="닫기"
+          aria-label={t('actions.close')}
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -1864,25 +1867,25 @@
       {:else if deletePreview}
         <div class="space-y-3 text-xs">
           <div class="bg-surface-sunken/60 rounded-lg px-3 py-2.5">
-            <p class="text-ink-2 mb-1">상속 체인</p>
+            <p class="text-ink-2 mb-1">{t('columns.lineage')}</p>
             <p class="text-ink-0 font-mono break-all">{deletePreview.lineage.map(a => `${a.name}#${a.id}`).join(' → ')}</p>
           </div>
           <div class="bg-surface-sunken/60 rounded-lg px-3 py-2.5">
-            <p class="text-ink-2 mb-1">Ubuntu base</p>
+            <p class="text-ink-2 mb-1">{t('delete.ubuntuBase')}</p>
             <p class="text-ink-0 break-all">{ubuntuBaseLabel(deletePreview.artifact)}</p>
           </div>
           <div class="bg-surface-sunken/60 rounded-lg px-3 py-2.5">
-            <p class="text-ink-2 mb-1">요청 패키지</p>
+            <p class="text-ink-2 mb-1">{t('columns.packages')}</p>
             <p class="text-ink-0 break-all">{packageLabel(deletePreview.artifact)}</p>
           </div>
 
           {#if deletePreview.can_delete}
             <div class="bg-green-900/20 border border-green-700/40 rounded-lg px-3 py-2.5 text-green-300">
-              차단 사유 없음. Manila share access rule 회수 후 share와 DB row를 삭제합니다.
+              {t('delete.allowed')}
             </div>
           {:else}
             <div class="bg-yellow-900/20 border border-yellow-700/40 rounded-lg px-3 py-2.5">
-              <p class="text-yellow-300 font-medium mb-2">삭제 차단 사유</p>
+              <p class="text-yellow-300 font-medium mb-2">{t('delete.blockers')}</p>
               <div class="space-y-2">
                 {#each deletePreview.delete_blockers as blocker}
                   <div class="rounded border border-yellow-700/30 bg-surface-canvas/40 p-2">
@@ -1895,7 +1898,7 @@
           {/if}
 
           <div class="bg-surface-canvas/60 border border-line rounded-lg px-3 py-2.5 text-ink-2">
-            현재 프로필은 artifact ID가 아니라 layer name 목록을 저장합니다. 같은 이름을 포함한 프로필이나 그 프로필을 쓰는 활성 consume이 있으면 삭제할 수 없습니다.
+            {t('delete.profileReferences')}
           </div>
         </div>
       {/if}
@@ -1908,13 +1911,13 @@
         <button
           onclick={() => (deleteModalOpen = false)}
           class="px-3 py-1.5 text-xs text-ink-2 border border-line-2 hover:bg-surface-sunken rounded-lg transition-colors"
-        >닫기</button>
+        >{t('actions.close')}</button>
         <button
           onclick={executeDeleteArtifact}
           disabled={!deletePreview?.can_delete || deleteSubmitting}
           class="px-3 py-1.5 text-xs text-red-300 border border-red-700/60 hover:bg-red-900/30 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-colors"
         >
-          {deleteSubmitting ? '삭제 중...' : '삭제 실행'}
+          {deleteSubmitting ? t('actions.deleting') : t('delete.execute')}
         </button>
       </div>
     </div>

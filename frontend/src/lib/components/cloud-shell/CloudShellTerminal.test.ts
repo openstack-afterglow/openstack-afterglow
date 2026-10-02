@@ -5,6 +5,7 @@ const terminalInstances: FakeTerminal[] = [];
 let activeSocket: FakeSocket | null = null;
 
 class FakeTerminal {
+	static strings = { promptLabel: 'Terminal input', tooMuchOutput: 'Too much output to announce, navigate to rows manually to read' };
 	options: Record<string, unknown>;
 	writes: Uint8Array[] = [];
 	disposed = false;

@@ -2,6 +2,7 @@
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
+	import { t } from '$lib/i18n/ns/admin-storage';
 
 	interface AdminVolume {
 		id: string;
@@ -46,7 +47,7 @@
 			onSuccess();
 			onClose();
 		} catch (e) {
-			extendError = e instanceof ApiError ? e.message : '확장 실패';
+			extendError = e instanceof ApiError ? e.message : t('volumeExtend.failed');
 		} finally {
 			extending = false;
 		}
@@ -67,18 +68,18 @@
 			onclick={(e) => e.stopPropagation()}
 			role="none"
 		>
-			<h2 class="text-lg font-semibold text-ink-0 mb-3">용량 확장</h2>
-			<p class="text-xs text-ink-2 mb-4">현재: {volume.size} GB</p>
+			<h2 class="text-lg font-semibold text-ink-0 mb-3">{t('volumeExtend.title')}</h2>
+			<p class="text-xs text-ink-2 mb-4">{t('volumeExtend.currentSize', { size: volume.size })}</p>
 			{#if extendError}
 				<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{extendError}</div>
 			{/if}
 			<div>
-				<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminvolumeextendmodal-76">새 크기 (GB)</label>
+				<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminvolumeextendmodal-76">{t('volumeExtend.newSize')}</label>
 				<input id="field-adminvolumeextendmodal-76" bind:value={newSize} type="number" min={volume.size + 1} class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" />
 			</div>
 			<div class="flex justify-end gap-3 mt-5">
-				<button onclick={onClose} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">취소</button>
-				<button onclick={confirmExtend} disabled={extending || newSize <= volume.size} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{extending ? '확장 중...' : '확장'}</button>
+				<button onclick={onClose} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('volumeExtend.cancel')}</button>
+				<button onclick={confirmExtend} disabled={extending || newSize <= volume.size} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{extending ? t('volumeExtend.extending') : t('volumeExtend.extend')}</button>
 			</div>
 		</div>
 	</div>

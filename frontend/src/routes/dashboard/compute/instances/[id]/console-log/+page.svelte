@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/instance';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { page } from '$app/stores';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -37,36 +39,36 @@
 
 	function formatTime(d: Date | null) {
 		if (!d) return '';
-		return d.toLocaleTimeString('ko-KR', { hour12: false });
+		return d.toLocaleTimeString(intlLocale(), { hour12: false });
 	}
 </script>
 
 <svelte:head>
-	<title>콘솔 로그 — {instanceId.slice(0, 8)}</title>
+	<title>{t('consoleLog.pageTitle', { id: instanceId.slice(0, 8) })}</title>
 </svelte:head>
 
 <div class="min-h-screen bg-surface-canvas text-ink-1 font-mono text-xs">
 	<div class="sticky top-0 bg-surface-base border-b border-line px-4 py-2 flex items-center gap-3 z-10">
-		<span class="text-warm-text font-semibold">콘솔 로그</span>
+		<span class="text-warm-text font-semibold">{t('consoleLog.title')}</span>
 		<span class="text-ink-2 truncate max-w-md" title={instanceId}>{instanceId}</span>
 		<div class="ml-auto flex items-center gap-2">
 			{#if lastLoaded}
-				<span class="text-ink-2 text-xs">마지막 로드: {formatTime(lastLoaded)}</span>
+				<span class="text-ink-2 text-xs">{t('consoleLog.lastLoaded', { time: formatTime(lastLoaded) })}</span>
 			{/if}
 			{#if loading}
-				<span class="text-ink-2 text-xs">로딩...</span>
+				<span class="text-ink-2 text-xs">{t('consoleLog.loading')}</span>
 			{/if}
 			<button
 				onclick={load}
 				disabled={loading}
 				class="text-xs text-ink-2 hover:text-ink-0 border border-line-2 hover:border-line-2 disabled:text-ink-3 disabled:border-line px-3 py-1 rounded transition-colors"
 			>
-				새로고침
+				{t('consoleLog.refresh')}
 			</button>
 			<button
 				onclick={() => window.close()}
 				class="text-xs text-ink-2 hover:text-ink-0 px-2 py-1"
-				title="창 닫기"
+				title={t('consoleLog.closeWindow')}
 			>
 				×
 			</button>
@@ -74,11 +76,11 @@
 	</div>
 
 	{#if error}
-		<div class="p-4 text-red-400">로그 조회 실패: {error}</div>
+		<div class="p-4 text-red-400">{t('consoleLog.queryFailed', { error })}</div>
 	{:else if loading && !log}
-		<div class="p-4 text-ink-2">로딩 중...</div>
+		<div class="p-4 text-ink-2">{t('consoleLog.loadingLog')}</div>
 	{:else if !log}
-		<div class="p-4 text-ink-2">(로그 없음)</div>
+		<div class="p-4 text-ink-2">{t('consoleLog.empty')}</div>
 	{:else}
 		<pre class="p-4 whitespace-pre-wrap break-all leading-relaxed">{log}</pre>
 	{/if}

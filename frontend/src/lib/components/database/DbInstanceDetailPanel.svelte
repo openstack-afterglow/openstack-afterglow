@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t as tr } from '$lib/i18n/ns/database';
 	import { createDbInstanceDetailController, provideDbInstanceDetailController } from '$lib/stores/dbInstanceDetailController.svelte';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import DbInstanceHeader from '$lib/components/database/DbInstanceHeader.svelte';
@@ -40,7 +41,7 @@
 	{#if s.loading && !s.instance}
 		<LoadingSkeleton variant="detail" rows={8} />
 	{:else if !s.instance}
-		<div class="text-ink-2 text-sm">인스턴스를 찾을 수 없습니다.</div>
+		<div class="text-ink-2 text-sm">{tr('instance.notFound')}</div>
 	{:else}
 		<DbInfoSection />
 		<DbConnectionSection />

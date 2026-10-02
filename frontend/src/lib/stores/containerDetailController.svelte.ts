@@ -2,6 +2,7 @@ import { getContext, setContext } from 'svelte';
 import { api, ApiError } from '$lib/api/client';
 import type { ZunContainerDetail } from '$lib/types/zunContainer';
 import { confirmDialog } from '$lib/stores/confirm.svelte';
+import { t } from '$lib/i18n/ns/containers-shell';
 
 interface Options {
 	containerId: () => string;
@@ -30,7 +31,7 @@ function createContainerDetailController(opts: Options) {
 		try {
 			container = await api.get<ZunContainerDetail>(`${apiBase}/${opts.containerId()}`, opts.token(), opts.projectId());
 		} catch (e) {
-			error = e instanceof ApiError ? `조회 실패: ${e.message}` : '서버 오류';
+			error = e instanceof ApiError ? t('container.fetchFailedDetail', { message: e.message }) : t('container.serverError');
 		} finally {
 			loading = false;
 		}
@@ -42,7 +43,7 @@ function createContainerDetailController(opts: Options) {
 			const res = await api.get<{ logs: string }>(`${apiBase}/${opts.containerId()}/logs`, opts.token(), opts.projectId());
 			logs = res.logs;
 		} catch {
-			logs = '로그를 가져올 수 없습니다';
+			logs = t('container.logsFailed');
 		} finally {
 			logsLoading = false;
 		}
@@ -56,7 +57,7 @@ function createContainerDetailController(opts: Options) {
 			await fetchContainer();
 			opts.onRefresh?.();
 		} catch (e) {
-			actionError = e instanceof ApiError ? e.message : `${action === 'start' ? '시작' : '중지'} 실패`;
+			actionError = e instanceof ApiError ? e.message : t(action === 'start' ? 'container.startFailed' : 'container.stopFailed');
 		} finally {
 			actioning = false;
 		}
@@ -64,7 +65,7 @@ function createContainerDetailController(opts: Options) {
 
 	async function handleDelete() {
 		if (!container) return;
-		if (!(await confirmDialog(`컨테이너 "${container.name}"을 삭제하시겠습니까?`))) return;
+		if (!(await confirmDialog(t('container.deleteConfirm', { name: container.name })))) return;
 		actioning = true;
 		actionError = '';
 		try {
@@ -72,7 +73,7 @@ function createContainerDetailController(opts: Options) {
 			opts.onRefresh?.();
 			opts.onClose?.();
 		} catch (e) {
-			actionError = e instanceof ApiError ? e.message : '삭제 실패';
+			actionError = e instanceof ApiError ? e.message : t('container.deleteFailed');
 			actioning = false;
 		}
 	}

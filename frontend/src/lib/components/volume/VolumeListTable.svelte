@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/volume';
 	import type { Volume } from '$lib/types/volume';
 	import { formatStorage } from '$lib/utils/format';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
@@ -65,14 +66,14 @@
 
 <div class="bg-[#0B1220] border border-line rounded-lg overflow-hidden">
 	<div class="{volumeGridClass} px-4 py-2.5 border-b border-line text-xs uppercase tracking-wider text-ink-2 font-medium">
-		<div><SelectionCheckbox checked={selectableIds.size > 0 && selectedSelectableCount === selectableIds.size} indeterminate={selectedSelectableCount > 0 && selectedSelectableCount < selectableIds.size} disabled={selectionDisabled || selectableIds.size === 0} onclick={onToggleAll} ariaLabel="전체 선택" /></div>
-		<div>이름</div>
-		<div>크기</div>
-		<div class="hidden sm:block">유형</div>
-		<div class="whitespace-nowrap">상태</div>
-		<div class="hidden lg:block">연결</div>
-		<div class="hidden lg:block">부트</div>
-		<div class="hidden lg:block text-center whitespace-nowrap">자동 백업</div>
+		<div><SelectionCheckbox checked={selectableIds.size > 0 && selectedSelectableCount === selectableIds.size} indeterminate={selectedSelectableCount > 0 && selectedSelectableCount < selectableIds.size} disabled={selectionDisabled || selectableIds.size === 0} onclick={onToggleAll} ariaLabel={t('listTable.selectAll')} /></div>
+		<div>{t('listTable.name')}</div>
+		<div>{t('listTable.size')}</div>
+		<div class="hidden sm:block">{t('listTable.type')}</div>
+		<div class="whitespace-nowrap">{t('listTable.status')}</div>
+		<div class="hidden lg:block">{t('listTable.attachments')}</div>
+		<div class="hidden lg:block">{t('listTable.boot')}</div>
+		<div class="hidden lg:block text-center whitespace-nowrap">{t('listTable.autoBackup')}</div>
 		<div class="hidden lg:block"></div>
 	</div>
 	{#each volumes as vol (vol.id)}
@@ -84,8 +85,8 @@
 				checked={selectedIds.has(vol.id)}
 				disabled={selectionDisabled || !selectableIds.has(vol.id)}
 				unavailable={!selectableIds.has(vol.id)}
-				ariaLabel={`${vol.name || vol.id.slice(0, 8)} 선택`}
-				title={vol.attachments.length > 0 ? '연결된 볼륨은 삭제할 수 없습니다' : undefined}
+				ariaLabel={t('listTable.selectVolume', { name: vol.name || vol.id.slice(0, 8) })}
+				title={vol.attachments.length > 0 ? t('listTable.attachedDeleteUnavailable') : undefined}
 				onclick={() => onToggleSelect(vol.id)}
 			/>
 			<!-- 이름 -->
@@ -113,7 +114,7 @@
 			<!-- 유형 -->
 			<div class="hidden sm:block">
 				<span class="text-xs px-2 py-0.5 rounded-md bg-surface-sunken border border-line-2 text-ink-2 font-mono">
-					{vol.volume_type ?? '기본'}
+					{vol.volume_type ?? t('listTable.defaultType')}
 				</span>
 			</div>
 			<!-- 상태 -->
@@ -121,15 +122,15 @@
 			<!-- 연결 -->
 			<div class="hidden lg:block text-xs">
 				{#if vol.attachments.length > 0}
-					<span class="text-warm-text">{vol.attachments.length}개 연결</span>
+					<span class="text-warm-text">{t('listTable.attachmentCount', { count: vol.attachments.length })}</span>
 				{:else}
-					<span class="text-ink-2">미연결</span>
+					<span class="text-ink-2">{t('listTable.unattached')}</span>
 				{/if}
 			</div>
 			<!-- 부트 -->
 			<div class="hidden lg:flex flex-col gap-0.5">
 				{#if vol.bootable}
-					<span class="text-xs px-2 py-0.5 rounded-md bg-surface-selected/30 border border-action-warm text-warm-text w-fit">부트</span>
+					<span class="text-xs px-2 py-0.5 rounded-md bg-surface-selected/30 border border-action-warm text-warm-text w-fit">{t('listTable.boot')}</span>
 					{#if vol.volume_image_metadata?.os_distro}
 						<span class="text-xs text-ink-2 font-mono">{vol.volume_image_metadata.os_distro}{vol.volume_image_metadata.os_version ? ' ' + vol.volume_image_metadata.os_version : ''}</span>
 					{/if}
@@ -140,7 +141,7 @@
 				<button
 					onclick={(e) => { e.stopPropagation(); onToggleAutoBackup(vol.id); }}
 					disabled={autoBackupToggling === vol.id}
-					title={autoBackupConfigs.has(vol.id) ? '자동 백업 비활성화' : '자동 백업 활성화'}
+					title={autoBackupConfigs.has(vol.id) ? t('listTable.disableAutoBackup') : t('listTable.enableAutoBackup')}
 					class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out disabled:opacity-50 {autoBackupConfigs.has(vol.id) ? 'bg-action-warm' : 'bg-surface-selected'}"
 				>
 					<span class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-surface-base shadow ring-0 transition duration-200 ease-in-out {autoBackupConfigs.has(vol.id) ? 'translate-x-4' : 'translate-x-0'}"></span>
@@ -150,7 +151,7 @@
 			<div class="flex justify-end" role="none">
 				<ActionMenu
 					open={openActionMenu === vol.id}
-					ariaLabel={`${vol.name || vol.id} 볼륨 작업`}
+					ariaLabel={t('listTable.volumeActions', { name: vol.name || vol.id })}
 					onopen={() => onActionMenuOpen(vol.id)}
 					onclose={onActionMenuClose}
 				>
@@ -159,7 +160,7 @@
 						class="w-full text-left px-3 py-1.5 text-[13px] text-ink-2 hover:text-ink-0 hover:bg-surface-sunken transition-colors flex items-center gap-2"
 					>
 						<svg class="w-3.5 h-3.5 text-warm-text" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-						연결
+						{t('listTable.attach')}
 					</button>
 					<VolumeOperationItems
 						volume={vol}

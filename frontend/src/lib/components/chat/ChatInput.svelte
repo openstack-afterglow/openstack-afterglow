@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { tick, type Snippet } from 'svelte';
+	import { t } from '$lib/i18n/ns/chat-panel';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import type { ContextState, ModelCapabilities } from '$lib/api/chatContracts';
 	import { effortLabel, effortOptionsFor } from '$lib/api/chatEffort';
 	import {
@@ -79,7 +81,7 @@
 		contextBeforeTokens = null,
 		contextAfterTokens = null,
 		contextError = null,
-		placeholder = '메시지를 입력하세요  (Enter 전송 · Shift+Enter 줄바꿈)',
+		placeholder,
 		modelCaps = null,
 		reasoningNoneSupported = false,
 		searchEnabled = $bindable(false),
@@ -100,6 +102,7 @@
 		onStop,
 		children
 	}: Props = $props();
+	const shownPlaceholder = $derived(placeholder ?? t('input.placeholder'));
 
 	let ta = $state<HTMLTextAreaElement | null>(null);
 	let fileInput = $state<HTMLInputElement | null>(null);
@@ -112,8 +115,8 @@
 	const searchRequired = $derived(Boolean(modelCaps?.web_search_required));
 	const searchAvailable = $derived(searchGate?.available === true && searchGate?.pricing_available === true);
 	const searchTitle = $derived(!searchAvailable
-		? '웹 검색 요금 또는 제공 경로가 준비되지 않았습니다. 관리자에게 문의하세요.'
-		: searchRequired ? '이 모델은 웹 검색을 기본으로 사용합니다' : '웹 검색을 사용해 답변하고 출처를 표시합니다');
+		? t('input.searchUnavailable')
+		: searchRequired ? t('input.searchRequired') : t('input.searchDescription'));
 
 	// The backend disables these gates when the scanned S3/ClamAV pipeline is unavailable.
 	const canAttachImage = $derived(
@@ -150,24 +153,24 @@
 	let dismissedShortcutValue = $state<string | null>(null);
 
 	const attachmentUnavailableReason = $derived.by(() => {
-		if (!modelCaps) return '모델 기능을 확인하는 중입니다';
+		if (!modelCaps) return t('input.modelChecking');
 		const imageGate = modelCaps.feature_gates?.image_input;
 		const documentGate = modelCaps.feature_gates?.document_input;
 		if (
 			imageGate?.reason_code === 'asset_pipeline_unavailable' ||
 			documentGate?.reason_code === 'asset_pipeline_unavailable'
 		) {
-			return '첨부 저장소와 보안 검사기가 설정되지 않았습니다. 관리자에게 문의하세요.';
+			return t('input.attachmentPipelineUnavailable');
 		}
-		return '선택한 모델은 이미지 또는 PDF 입력을 지원하지 않습니다';
+		return t('input.attachmentUnsupported');
 	});
-	const plusTitle = $derived(hasPlus ? '첨부·도구' : attachmentUnavailableReason);
+	const plusTitle = $derived(hasPlus ? t('input.attachmentsAndTools') : attachmentUnavailableReason);
 	const quickActions = $derived.by((): ComposerQuickAction[] => [
 		{
 			kind: 'quick-action',
 			id: 'attach-file',
-			name: '파일 첨부',
-			description: canAttach ? '개인 프로젝트 기본 버킷에 이미지 또는 PDF를 자동 저장합니다' : attachmentUnavailableReason,
+			name: t('input.attachFile'),
+			description: canAttach ? t('input.attachFileDescription') : attachmentUnavailableReason,
 			disabled: !canAttach,
 			disabledReason: canAttach ? undefined : attachmentUnavailableReason,
 			onSelect: () => fileInput?.click()
@@ -175,10 +178,10 @@
 		{
 			kind: 'quick-action',
 			id: 'features',
-			name: '도구 및 스킬',
-			description: '사용할 도구와 스킬을 선택합니다',
+			name: t('input.toolsAndSkills'),
+			description: t('input.toolsAndSkillsDescription'),
 			disabled: !canUseTools && !canUseSkills,
-			disabledReason: !canUseTools && !canUseSkills ? '현재 사용할 수 있는 도구나 스킬이 없습니다' : undefined,
+			disabledReason: !canUseTools && !canUseSkills ? t('input.toolsAndSkillsUnavailable') : undefined,
 			onSelect: () => (plusOpen = true)
 		}
 	]);
@@ -211,7 +214,7 @@
 		return [...commandShortcuts, ...skillShortcuts];
 	});
 	const shortcutMenuLabel = $derived(
-		shortcutTrigger?.[1] === '@' ? '채팅 추가 제안' : '채팅 명령 제안'
+		shortcutTrigger?.[1] === '@' ? t('input.addSuggestions') : t('input.commandSuggestions')
 	);
 	const shortcutSignature = $derived(
 		composerShortcuts.map((shortcut) => `${shortcut.kind}:${shortcut.id}`).join('|')
@@ -295,7 +298,7 @@
 		return selected === null ? true : selected.includes(id);
 	}
 	function toggleTool(id: number) {
-		const cur = selectedToolIds ?? availableTools.map((t) => t.id);
+		const cur = selectedToolIds ?? availableTools.map((tool) => tool.id);
 		selectedToolIds = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
 	}
 	function toggleMcp(id: number) {
@@ -315,7 +318,7 @@
 			const image = isChatImageMime(file.type);
 			const document = isChatDocumentMime(file.type);
 			if ((!image && !document) || (image && !canAttachImage) || (document && !canAttachDocument)) {
-				toast.error('선택한 모델에서 지원하지 않는 첨부입니다');
+				toast.error(t('input.unsupportedAttachment'));
 				continue;
 			}
 			const item: ChatAttachment = {
@@ -329,7 +332,7 @@
 			try {
 				const ref = await uploadChatAttachment(file, { token, projectId });
 				if (!isChatImageMime(ref.mime_type) && !isChatDocumentMime(ref.mime_type)) {
-					throw new Error('업로드한 파일이 지원되는 이미지 또는 PDF로 확인되지 않았습니다');
+					throw new Error(t('input.uploadTypeUnconfirmed'));
 				}
 				attachments = attachments.map((attachment) =>
 					attachment === pending ? completeChatAttachment(attachment, ref) : attachment
@@ -338,7 +341,7 @@
 				pending.status = 'error';
 				attachments = attachments.filter((attachment) => attachment !== pending);
 				if (pending.previewUrl) URL.revokeObjectURL(pending.previewUrl);
-				toast.error(e instanceof Error ? e.message : '첨부 업로드 실패');
+				toast.error(e instanceof Error ? e.message : t('input.uploadFailed'));
 			}
 		}
 	}
@@ -409,7 +412,7 @@
 
 	const canSend = $derived(!disabled && !sendDisabled && !streaming && value.trim().length > 0);
 
-	const format = new Intl.NumberFormat('ko-KR');
+	const format = $derived(new Intl.NumberFormat(intlLocale()));
 	const knownContext = $derived(
 		hasContextScope &&
 			!contextError &&
@@ -429,39 +432,46 @@
 	);
 	const contextMeasurementLabel = $derived(
 		contextState?.reason_code === 'token_counter_failed'
-			? '추정치 (토큰 계수 실패)'
+			? t('input.contextEstimateCounterFailed')
 			: contextState?.measurement === 'estimated'
-				? '추정치'
-				: '토큰 계수'
+				? t('input.contextEstimate')
+				: t('input.contextTokenCount')
 	);
+	const contextValues = $derived({
+		measurement: contextMeasurementLabel,
+		used: format.format(contextState?.input_tokens ?? 0),
+		budget: format.format(contextState?.input_budget ?? 0),
+		remaining: format.format(contextRemaining ?? 0),
+		percent: Math.round((contextState?.utilization ?? 0) * 100)
+	});
 	const contextValueText = $derived(
 		knownContext
-			? `${contextMeasurementLabel} ${format.format(contextState!.input_tokens!)} / ${format.format(contextState!.input_budget!)} 토큰 · ${format.format(contextRemaining!)} 남음 · ${Math.round((contextState!.utilization ?? 0) * 100)}%`
-			: '컨텍스트 한도를 확인할 수 없습니다'
+			? t('input.contextValue', contextValues)
+			: t('input.contextLimitUnavailable')
 	);
 	const contextDetail = $derived.by(() => {
 		if (knownContext) {
 			if (contextState?.reason_code === 'token_counter_failed') {
-				return `${contextValueText}. LiteLLM 토큰 계수에 실패해 텍스트 길이 기반 추정치를 표시합니다.`;
+				return t('input.contextCounterFailedDetail', contextValues);
 			}
 			if (contextState?.measurement === 'estimated') {
-				return `${contextValueText}. 제공되는 토크나이저 식별 정보가 없어 추정치를 표시합니다.`;
+				return t('input.contextEstimatedDetail', contextValues);
 			}
-			return `${contextValueText}. 모델 토크나이저로 계산한 입력 예산 사용량입니다.`;
+			return t('input.contextMeasuredDetail', contextValues);
 		}
 		if (contextError) return contextError;
-		if (contextState?.breakdown?.complete === false) return '일부 입력이 아직 계수되지 않았습니다. 포함된 항목과 미계수 항목을 확인하세요.';
+		if (contextState?.breakdown?.complete === false) return t('input.contextIncompleteDetail');
 		switch (contextState?.reason_code) {
 			case 'context_window_unknown':
-				return '선택한 모델의 입력 한도가 확인되지 않아 남은 컨텍스트 용량을 계산할 수 없습니다.';
+				return t('input.contextWindowUnknownDetail');
 			case 'token_count_unavailable':
-				return '현재 메시지 또는 첨부의 토큰 수를 안전하게 셀 수 없어 컨텍스트 사용량을 표시하지 않습니다.';
+				return t('input.contextCountUnavailableDetail');
 			case 'invalid_budget':
-				return '모델 한도에서 응답 및 안전 여유분을 제외한 입력 예산이 0 이하입니다. 모델 또는 출력 설정을 확인하세요.';
+				return t('input.contextInvalidBudgetDetail');
 			case 'context_request_invalid':
-				return '컨텍스트 요청 설정이 올바르지 않아 사용량을 계산할 수 없습니다.';
+				return t('input.contextInvalidRequestDetail');
 			default:
-				return '컨텍스트 사용량 정보를 아직 사용할 수 없습니다.';
+				return t('input.contextUnavailableDetail');
 		}
 	});
 	function toggleContextDetails(event: MouseEvent) {
@@ -473,16 +483,16 @@
 	});
 	const contextStatus = $derived.by(() => {
 		if (contextPhase === 'compacting') {
-			return contextCause === 'automatic' ? '컨텍스트 자동 압축 중' : '컨텍스트 압축 중';
+			return contextCause === 'automatic' ? t('input.contextAutoCompacting') : t('input.contextCompacting');
 		}
 		if (contextPhase === 'compacted' && contextBeforeTokens !== null && contextAfterTokens !== null) {
-			return `압축 ${format.format(contextBeforeTokens)} → ${format.format(contextAfterTokens)}`;
+			return t('input.contextCompacted', { before: format.format(contextBeforeTokens), after: format.format(contextAfterTokens) });
 		}
-		if (contextError) return '컨텍스트 조회 실패';
-		if (contextState?.breakdown?.complete === false) return '컨텍스트 일부 미계수';
-		if (knownContext) return `컨텍스트 ${contextPercent}%`;
-		if (contextLoading) return '컨텍스트 확인 중';
-		return '컨텍스트 확인 불가';
+		if (contextError) return t('input.contextLoadFailed');
+		if (contextState?.breakdown?.complete === false) return t('input.contextIncomplete');
+		if (knownContext) return t('input.contextPercent', { percent: contextPercent });
+		if (contextLoading) return t('input.contextChecking');
+		return t('input.contextUnavailable');
 	});
 </script>
 
@@ -527,9 +537,9 @@
 					</span>
 					<span class="shortcut-kind">
 						{#if shortcut.kind === 'command' || shortcut.kind === 'quick-action'}
-							{shortcut.disabled ? (shortcut.disabledReason ?? '사용 불가') : shortcut.kind === 'command' ? '명령' : '추가'}
+							{shortcut.disabled ? (shortcut.disabledReason ?? t('input.unavailable')) : shortcut.kind === 'command' ? t('input.command') : t('input.add')}
 						{:else}
-							{shortcut.kind === 'agent' ? '에이전트' : '스킬'}
+							{shortcut.kind === 'agent' ? t('input.agent') : t('input.skill')}
 						{/if}
 					</span>
 				</button>
@@ -562,7 +572,7 @@
 						{#if a.status === 'uploading'}
 							<span class="chip-spin"></span>
 						{/if}
-						<button type="button" class="chip-x" title="제거" aria-label="첨부 제거" onclick={() => removeAttachment(a)}>
+						<button type="button" class="chip-x" title={t('input.remove')} aria-label={t('input.removeAttachment')} onclick={() => removeAttachment(a)}>
 							<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6L6 18M6 6l12 12" stroke-linecap="round" /></svg>
 						</button>
 					</div>
@@ -573,7 +583,7 @@
 		<textarea
 			bind:this={ta}
 			bind:value
-			{placeholder}
+			placeholder={shownPlaceholder}
 			rows="1"
 			disabled={disabled && !streaming}
 			aria-controls={shortcutsVisible ? 'chat-composer-shortcuts' : undefined}
@@ -593,7 +603,7 @@
 						class="tool-shell"
 						disabled={!hasPlus || streaming}
 						title={plusTitle}
-						aria-label="추가"
+						aria-label={t('input.add')}
 						aria-haspopup="menu"
 						aria-expanded={plusOpen}
 						onclick={() => (plusOpen = !plusOpen)}
@@ -601,26 +611,26 @@
 						<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke-linecap="round" /></svg>
 					</button>
 					{#if plusOpen}
-						<div class="scrim" role="button" tabindex="-1" aria-label="닫기" onclick={() => (plusOpen = false)} onkeydown={(e) => e.key === 'Escape' && (plusOpen = false)}></div>
+						<div class="scrim" role="button" tabindex="-1" aria-label={t('input.close')} onclick={() => (plusOpen = false)} onkeydown={(e) => e.key === 'Escape' && (plusOpen = false)}></div>
 						<div class="plus-menu" role="menu">
 							{#if canAttach}
 								<button type="button" class="plus-opt" role="menuitem" onclick={() => fileInput?.click()}>
 									<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="2.6" /></svg>
 									<span class="plus-opt-copy">
-										<span class="plus-opt-name">파일 첨부</span>
-										<span class="plus-opt-description">개인 프로젝트 기본 버킷에 자동 저장</span>
+										<span class="plus-opt-name">{t('input.attachFile')}</span>
+										<span class="plus-opt-description">{t('input.attachFileStorage')}</span>
 									</span>
 								</button>
 							{/if}
 							{#if canUseTools}
 								{#if canAttach}<div class="plus-sep"></div>{/if}
-								<div class="plus-head">도구</div>
-								{#each availableTools as t (t.id)}
-									<button type="button" class="plus-opt toggle" role="menuitemcheckbox" aria-checked={isOn(t.id, selectedToolIds)} onclick={() => toggleTool(t.id)}>
-										<span class="check" class:on={isOn(t.id, selectedToolIds)}>
-											{#if isOn(t.id, selectedToolIds)}<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round" /></svg>{/if}
+								<div class="plus-head">{t('input.tools')}</div>
+								{#each availableTools as tool (tool.id)}
+									<button type="button" class="plus-opt toggle" role="menuitemcheckbox" aria-checked={isOn(tool.id, selectedToolIds)} onclick={() => toggleTool(tool.id)}>
+										<span class="check" class:on={isOn(tool.id, selectedToolIds)}>
+											{#if isOn(tool.id, selectedToolIds)}<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round" /></svg>{/if}
 										</span>
-										<span class="tool-name truncate">{t.name}</span>
+										<span class="tool-name truncate">{tool.name}</span>
 									</button>
 								{/each}
 								{#if availableMcp.length}<div class="plus-head">MCP</div>{/if}
@@ -635,7 +645,7 @@
 							{/if}
 							{#if canUseSkills}
 								{#if canAttach || canUseTools}<div class="plus-sep"></div>{/if}
-								<div class="plus-head">스킬</div>
+								<div class="plus-head">{t('input.skills')}</div>
 								{#each availableSkills as s (s.id)}
 									<button type="button" class="plus-opt toggle" role="menuitemcheckbox" aria-checked={selectedSkillIds.includes(s.id)} onclick={() => toggleSkill(s.id)}>
 										<span class="check" class:on={selectedSkillIds.includes(s.id)}>
@@ -653,14 +663,14 @@
 						variant={searchEnabled || searchRequired ? 'secondary' : 'ghost'}
 						size="sm"
 						class="composer-search min-h-11 md:min-h-8"
-						ariaLabel="Search 웹 검색"
+						ariaLabel={t('input.searchAria')}
 						ariaPressed={searchEnabled || searchRequired}
 						disabled={disabled || streaming || searchRequired || !searchAvailable}
 						title={searchTitle}
 						onclick={() => (searchEnabled = !searchEnabled)}
 					>
 						<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" stroke-linecap="round" /></svg>
-						Search{searchRequired ? ' · 기본' : ''}
+						{searchRequired ? t('input.searchDefault') : t('input.search')}
 					</Button>
 				{/if}
 				<ModelCapabilityBadges caps={modelCaps} size="sm" hideSearch={hasNativeSearch} />
@@ -681,7 +691,7 @@
 							<button
 								type="button"
 								class="context-meter"
-								aria-label="컨텍스트 용량 세부 정보"
+								aria-label={t('input.contextDetails')}
 								aria-controls="chat-context-detail"
 								aria-expanded={contextInfoOpen}
 								aria-haspopup="dialog"
@@ -690,7 +700,7 @@
 								<UsageRing
 									percent={contextRingPercent}
 									thresholds={{ warning: 70, danger: 80 }}
-									label="컨텍스트 입력 예산 사용률"
+									label={t('input.contextUsage')}
 									valueText={contextValueText}
 								/>
 							</button>
@@ -698,7 +708,7 @@
 							<button
 								type="button"
 								class="context-unavailable"
-								aria-label="컨텍스트를 표시할 수 없는 이유"
+								aria-label={t('input.contextUnavailableReason')}
 								aria-controls="chat-context-detail"
 								aria-expanded={contextInfoOpen}
 								aria-haspopup="dialog"
@@ -718,15 +728,15 @@
 							onclick={() => (effortOpen = !effortOpen)}
 							aria-haspopup="listbox"
 							aria-expanded={effortOpen}
-							title="추론 강도"
+							title={t('input.reasoningEffort')}
 						>
 							<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M9.5 21h5M12 3a6 6 0 0 1 4 10.5c-.6.6-1 1.4-1 2.2V17H9v-1.3c0-.8-.4-1.6-1-2.2A6 6 0 0 1 12 3z" stroke-linecap="round" stroke-linejoin="round" /></svg>
 							<span>{effortLabel(effort ?? 'auto')}</span>
 						</button>
 						{#if effortOpen}
-							<div class="scrim" role="button" tabindex="-1" aria-label="닫기" onclick={() => (effortOpen = false)} onkeydown={(e) => e.key === 'Escape' && (effortOpen = false)}></div>
+							<div class="scrim" role="button" tabindex="-1" aria-label={t('input.close')} onclick={() => (effortOpen = false)} onkeydown={(e) => e.key === 'Escape' && (effortOpen = false)}></div>
 							<div class="effort-menu" role="listbox">
-								<div class="effort-head">추론 강도</div>
+								<div class="effort-head">{t('input.reasoningEffort')}</div>
 								{#each effortOptions as v (v)}
 									<button type="button" class="effort-opt" class:sel={effort === v} role="option" aria-selected={effort === v} onclick={() => chooseEffort(v)}>{effortLabel(v)}</button>
 								{/each}
@@ -736,11 +746,11 @@
 				{/if}
 
 				{#if streaming}
-					<button type="button" class="send stop" onclick={onStop} title="생성 중단" aria-label="생성 중단">
+					<button type="button" class="send stop" onclick={onStop} title={t('input.stopGeneration')} aria-label={t('input.stopGeneration')}>
 						<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><rect x="7" y="7" width="10" height="10" rx="1.5" /></svg>
 					</button>
 				{:else}
-					<button type="button" class="send" disabled={!canSend} onclick={onSend} title="전송" aria-label="전송">
+					<button type="button" class="send" disabled={!canSend} onclick={onSend} title={t('input.send')} aria-label={t('input.send')}>
 						<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7" stroke-linecap="round" stroke-linejoin="round" /></svg>
 					</button>
 				{/if}
@@ -750,7 +760,7 @@
 	{#if children}
 		<div class="composer-footer">{@render children()}</div>
 	{/if}
-	<p class="hint">AI 응답은 부정확할 수 있습니다. 중요한 내용은 확인하세요.</p>
+	<p class="hint">{t('input.disclaimer')}</p>
 </div>
 
 {#if contextInfoOpen}

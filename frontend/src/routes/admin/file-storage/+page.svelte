@@ -15,6 +15,7 @@
 	import Pagination from '$lib/components/ui/Pagination.svelte';
 	import SlidePanel from '$lib/components/SlidePanel.svelte';
 	import AdminFileStorageDetailPanel from '$lib/components/admin/file-storage/AdminFileStorageDetailPanel.svelte';
+	import { t } from '$lib/i18n/ns/admin-storage';
 
 	let fileStorages = $state<AdminFileStorage[]>([]);
 	let loading = $state(true);
@@ -97,7 +98,7 @@
 </script>
 
 <div class="p-4 md:p-6 max-w-7xl mx-auto">
-	<PageHeader breadcrumb="STORAGE / FILE STORAGE" title="파일 스토리지">
+	<PageHeader breadcrumb={t('filePage.breadcrumb')} title={t('filePage.title')}>
 		{#snippet actions()}
 			<select
 				bind:value={pageSize}
@@ -105,7 +106,7 @@
 				class="text-xs bg-surface-sunken border border-line-2 text-ink-2 rounded px-2 py-1.5"
 			>
 				{#each [10, 20, 30, 50] as s}
-					<option value={s}>{s}개</option>
+					<option value={s}>{t('filePage.pageSize', { count: s })}</option>
 				{/each}
 			</select>
 			<AutoRefreshControl
@@ -130,7 +131,7 @@
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if fileStorages.length === 0}
-		<div class="text-ink-2 text-sm">파일 스토리지가 없습니다</div>
+		<div class="text-ink-2 text-sm">{t('filePage.empty')}</div>
 	{:else}
 			<AdminFileStorageTable storages={displayedStorages} selectedId={selectedFileStorageId} onOpen={openDetail} />
 			{#if totalPages > 1}
@@ -149,7 +150,7 @@
 </div>
 
 {#if selectedFileStorageId}
-	<SlidePanel onClose={closeDetail} ariaLabel="관리자 파일 스토리지 상세" width="w-full md:w-[60vw] max-w-4xl" storageKey="admin.fileStorage.detail.width">
+	<SlidePanel onClose={closeDetail} ariaLabel={t('filePage.detailAriaLabel')} width="w-full md:w-[60vw] max-w-4xl" storageKey="admin.fileStorage.detail.width">
 		<AdminFileStorageDetailPanel fileStorageId={selectedFileStorageId} onClose={closeDetail} onDeleted={handleDeleted} />
 	</SlidePanel>
 {/if}

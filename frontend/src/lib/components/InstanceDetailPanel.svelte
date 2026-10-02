@@ -17,6 +17,8 @@
 	import PasswordModal from '$lib/components/instance/PasswordModal.svelte';
 	import ResizeModal from '$lib/components/instance/ResizeModal.svelte';
 	import EvacuateModal from '$lib/components/admin/instances/EvacuateModal.svelte';
+	import { t } from '$lib/i18n/ns/instance';
+	import RichText from '$lib/i18n/RichText.svelte';
 
 	interface Props {
 		instanceId: string;
@@ -115,7 +117,7 @@
 		     여기서 또 그리면 헤더에 닫기 컨트롤이 두 개 보인다. 단독 라우트에서만 목록 백링크를 둔다. -->
 		{#if !onClose}
 			<a href="/dashboard/compute/instances" class="text-ink-2 hover:text-ink-1 text-sm transition-colors">
-				← 인스턴스
+				{t('panel.backToInstances')}
 			</a>
 		{/if}
 		<AutoRefreshControl
@@ -146,25 +148,25 @@
 		{#if $canWrite && (s.instance.status === 'ACTIVE' || s.instance.status === 'SHUTOFF') && recommendation?.underutilized}
 			<div class="bg-surface-selected/40 border border-action-warm text-warm-text rounded-lg px-4 py-3 text-sm mb-4 flex items-center justify-between gap-4">
 				<span>
-					최근 7일 평균 CPU {summaryCpuAvg != null ? summaryCpuAvg.toFixed(1) : '—'}% · RAM {summaryMemAvg != null ? summaryMemAvg.toFixed(1) : '—'}% — 사용량이 낮습니다.
+					{t('panel.lowUsage', { cpu: summaryCpuAvg != null ? summaryCpuAvg.toFixed(1) : '—', memory: summaryMemAvg != null ? summaryMemAvg.toFixed(1) : '—' })}
 					{#if recommendation.suggested_flavor}
-						<strong class="text-warm-text">{recommendation.suggested_flavor.name}</strong>으로 리사이즈를 권장합니다.
+						<RichText segments={t.rich('panel.suggestedResize', { flavor: recommendation.suggested_flavor.name })} classes={{ strong: 'text-warm-text' }} />
 					{:else}
-						더 작은 플레이버로의 리사이즈를 권장합니다.
+						{t('panel.smallerResize')}
 					{/if}
 				</span>
 				<button
 					onclick={() => openResizeModal(recommendation?.suggested_flavor?.id)}
 					class="shrink-0 px-3 py-1.5 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-xs font-medium rounded-lg transition-colors"
 				>
-					리사이즈
+					{t('panel.resize')}
 				</button>
 			</div>
 		{/if}
 
 		<InfoSection {showHost} />
 		<div class="bg-surface-base border border-line rounded-lg p-6 mb-4">
-			<div class="text-ink-0 text-[15px] font-semibold mb-4">성능 모니터링</div>
+			<div class="text-ink-0 text-[15px] font-semibold mb-4">{t('panel.monitoring')}</div>
 			<MetricsPanel
 				instanceId={s.instance.id}
 				isGpu={(s.instance.flavor_name ?? '').toLowerCase().startsWith('gpu.')}

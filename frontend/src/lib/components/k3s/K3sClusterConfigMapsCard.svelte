@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/drover';
   import { untrack } from 'svelte';
   import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
   import K3sResourceEditor from './K3sResourceEditor.svelte';
@@ -19,11 +20,11 @@
     const ns = s.selectedNamespace;
     if (!ns) return;
     loadError = '';
-    untrack(() => s.loadConfigMaps()).catch(() => { loadError = 'ConfigMap 로드 실패'; });
+    untrack(() => s.loadConfigMaps()).catch(() => { loadError = t('configMaps.loadFailed'); });
   });
 
   async function handleCreate(data: Record<string, string>) {
-    if (!newName.trim()) { createError = '이름을 입력하세요'; return; }
+    if (!newName.trim()) { createError = t('configMaps.nameRequired'); return; }
     saving = true;
     createError = '';
     try {
@@ -31,7 +32,7 @@
       showCreate = false;
       newName = '';
     } catch (e) {
-      createError = e instanceof Error ? e.message : '생성 실패';
+      createError = e instanceof Error ? e.message : t('configMaps.createFailed');
     } finally {
       saving = false;
     }
@@ -49,7 +50,7 @@
   }
 
   async function handleDelete(name: string) {
-    if (!(await confirmDialog(`ConfigMap "${name}"을 삭제하시겠습니까?`))) return;
+    if (!(await confirmDialog(t('configMaps.confirmDelete', { name })))) return;
     await s.deleteCm(name);
   }
 </script>
@@ -60,21 +61,21 @@
     <button
       onclick={() => { showCreate = !showCreate; newName = ''; createError = ''; }}
       class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
-    >{showCreate ? '닫기' : '+ 생성'}</button>
+    >{showCreate ? t('configMaps.close') : t('configMaps.create')}</button>
   </div>
 
   {#if showCreate}
     <div class="mb-3 bg-surface-sunken rounded-lg p-3">
       <input
         bind:value={newName}
-        placeholder="ConfigMap 이름"
+        placeholder={t('configMaps.namePlaceholder')}
         class="w-full bg-surface-selected border border-line-2 text-ink-1 text-xs rounded px-2 py-1.5 font-mono mb-2 focus:outline-none focus:border-action-warm"
       />
       {#if createError}
         <p class="text-xs text-red-400 mb-1">{createError}</p>
       {/if}
       <K3sResourceEditor
-        title="ConfigMap 생성"
+        title={t('configMaps.createTitle')}
         mode="configmap"
         resourceName={newName}
         namespace={s.selectedNamespace ?? ''}
@@ -88,7 +89,7 @@
   {#if loadError}
     <p class="text-xs text-red-400">{loadError}</p>
   {:else if s.configMaps.length === 0}
-    <p class="text-xs text-ink-2">ConfigMap 없음</p>
+    <p class="text-xs text-ink-2">{t('configMaps.empty')}</p>
   {:else}
     <div class="space-y-2">
       {#each s.configMaps as cm}
@@ -100,12 +101,12 @@
               <button
                 onclick={() => { editingCm = { name: cm.name, data: { ...cm.data } }; }}
                 class="text-xs text-ink-2 hover:text-ink-1 px-2 py-1 border border-line-2 hover:border-line-2 rounded transition-colors"
-              >편집</button>
+              >{t('configMaps.edit')}</button>
               <button
                 onclick={() => handleDelete(cm.name)}
                 disabled={s.cmActioning === actionKey}
                 class="text-xs text-orange-400 hover:text-orange-300 px-2 py-1 border border-orange-900 hover:border-orange-700 rounded transition-colors disabled:text-ink-3 disabled:border-line-2 disabled:cursor-not-allowed"
-              >{s.cmActioning === actionKey ? '삭제 중...' : '삭제'}</button>
+              >{s.cmActioning === actionKey ? t('configMaps.deleting') : t('configMaps.delete')}</button>
             </div>
           </div>
           <K3sYamlView
@@ -119,7 +120,7 @@
 
 {#if editingCm}
   <K3sResourceEditor
-    title={`ConfigMap 편집 — ${editingCm.name}`}
+    title={t('configMaps.editTitle', { name: editingCm.name })}
     mode="configmap"
     resourceName={editingCm.name}
     namespace={s.selectedNamespace ?? ''}

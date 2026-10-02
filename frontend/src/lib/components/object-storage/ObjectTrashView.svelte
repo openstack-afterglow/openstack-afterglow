@@ -8,6 +8,8 @@
 	import BulkSelectionOverlay from '$lib/components/ui/BulkSelectionOverlay.svelte';
 	import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
 	import { executeBulkMutations } from '$lib/utils/bulkActions';
+	import { t } from '$lib/i18n/ns/object-storage';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 
 	interface TrashObject {
 		trash_key: string;
@@ -64,16 +66,16 @@
 			);
 			selection.remove([trashKey]);
 			await load();
-			toast.success(`"${res.restored_name}" 복구 완료`);
+			toast.success(t('dialogs.trash.restoreSuccess', { name: res.restored_name }));
 		} catch (e) {
-			toast.error('복구 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('dialogs.trash.restoreFailed', { error: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			restoring = null;
 		}
 	}
 
 	async function purge(trashKey: string, origName: string) {
-		if (!(await confirmDialog(`"${origName}"을(를) 영구 삭제합니다. 이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?`))) return;
+		if (!(await confirmDialog(t('dialogs.trash.purgeConfirm', { name: origName })))) return;
 		purging = trashKey;
 		try {
 			await api.delete(
@@ -84,7 +86,7 @@
 			selection.remove([trashKey]);
 			await load();
 		} catch (e) {
-			toast.error('영구 삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('dialogs.trash.purgeFailed', { error: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			purging = null;
 		}
@@ -96,7 +98,7 @@
 		const requestToken = token;
 		const requestProject = projectId;
 		if (submitted.length === 0) return;
-		if (action === 'purge' && !(await confirmDialog(`${submitted.length}개 항목을 영구 삭제합니다. 이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?`))) return;
+		if (action === 'purge' && !(await confirmDialog(t('dialogs.trash.bulkPurgeConfirm', { count: submitted.length })))) return;
 		busy = true;
 		const results = await executeBulkMutations(submitted, (trashKey) =>
 			action === 'restore'
@@ -109,9 +111,8 @@
 		}
 		const successCount = results.filter((result) => result.ok).length;
 		const failureCount = results.length - successCount;
-		const label = action === 'restore' ? '복구' : '영구 삭제';
-		if (successCount) toast.success(`${successCount}개 ${label} 요청을 완료했습니다.`);
-		if (failureCount) toast.error(`${failureCount}개 ${label}에 실패했습니다.`);
+		if (successCount) toast.success(t(action === 'restore' ? 'dialogs.trash.bulkRestoreSuccess' : 'dialogs.trash.bulkPurgeSuccess', { count: successCount }));
+		if (failureCount) toast.error(t(action === 'restore' ? 'dialogs.trash.bulkRestoreFailed' : 'dialogs.trash.bulkPurgeFailed', { count: failureCount }));
 		busy = false;
 	}
 	$effect(() => {
@@ -132,16 +133,16 @@
 
 <div class="mt-2">
 	{#if loading}
-		<div class="text-ink-2 text-xs py-8 text-center">휴지통 목록 로딩 중...</div>
+		<div class="text-ink-2 text-xs py-8 text-center">{t('dialogs.trash.loading')}</div>
 	{:else if items.length === 0}
-		<div class="text-ink-2 text-xs py-12 text-center">휴지통이 비어 있습니다</div>
+		<div class="text-ink-2 text-xs py-12 text-center">{t('dialogs.trash.empty')}</div>
 	{:else}
-		<div class="text-xs text-ink-2 mb-2">총 {items.length}개 항목 — 보관 기간 내 복구 가능</div>
+		<div class="text-xs text-ink-2 mb-2">{t('dialogs.trash.summary', { count: items.length })}</div>
 		{#if selectionEnabled}
 			<div class="mb-2">
 				<SelectionToolbar
-					label="휴지통 오브젝트"
-					ariaLabel="휴지통 오브젝트 전체 선택"
+					label={t('dialogs.trash.selectionLabel')}
+					ariaLabel={t('dialogs.trash.selectAll')}
 					checked={selection.count === items.length}
 					indeterminate={selection.count > 0 && selection.count < items.length}
 					selectedCount={selection.count}
@@ -153,11 +154,11 @@
 		<table class="w-full text-xs">
 			<thead>
 				<tr class="border-b border-line text-ink-2">
-					{#if selectionEnabled}<th class="py-2 px-3 text-left font-medium w-10">선택</th>{/if}
-					<th class="py-2 px-3 text-left font-medium">원본 파일명</th>
-					<th class="py-2 px-3 text-left font-medium">삭제일</th>
-					<th class="py-2 px-3 text-right font-medium">크기</th>
-					<th class="py-2 px-3 text-right font-medium">액션</th>
+					{#if selectionEnabled}<th class="py-2 px-3 text-left font-medium w-10">{t('dialogs.trash.columns.select')}</th>{/if}
+					<th class="py-2 px-3 text-left font-medium">{t('dialogs.trash.columns.originalName')}</th>
+					<th class="py-2 px-3 text-left font-medium">{t('dialogs.trash.columns.deletedAt')}</th>
+					<th class="py-2 px-3 text-right font-medium">{t('dialogs.trash.columns.size')}</th>
+					<th class="py-2 px-3 text-right font-medium">{t('dialogs.trash.columns.actions')}</th>
 				</tr>
 			</thead>
 			<tbody>
@@ -168,7 +169,7 @@
 								<SelectionCheckbox
 									checked={selection.has(item.trash_key)}
 									disabled={busy}
-									ariaLabel={`${item.original_name} 선택`}
+									ariaLabel={t('dialogs.trash.selectObject', { name: item.original_name })}
 									onclick={() => selection.toggle(item.trash_key)}
 								/>
 							</td>
@@ -176,7 +177,7 @@
 						<td class="py-2 px-3 text-ink-2 font-mono truncate max-w-xs" title={item.original_name}>{item.original_name}</td>
 						<td class="py-2 px-3 text-ink-2">
 							{item.deleted_at
-								? new Date(item.deleted_at * 1000).toLocaleDateString('ko-KR', {
+								? new Date(item.deleted_at * 1000).toLocaleDateString(intlLocale(), {
 										year: 'numeric',
 										month: '2-digit',
 										day: '2-digit',
@@ -186,23 +187,23 @@
 						<td class="py-2 px-3 text-ink-2 text-right">{item.bytes ? formatStorage(item.bytes / 1_073_741_824) : '—'}</td>
 						<td class="py-2 px-3 text-right">
 							<div class="flex gap-1.5 justify-end">
-								<button onclick={() => restore(item.trash_key, item.original_name)} disabled={restoring === item.trash_key || busy} class="text-emerald-400 hover:text-emerald-300 disabled:text-ink-3 px-2 py-0.5 rounded border border-emerald-900 hover:border-emerald-700 disabled:border-line-2 transition-colors">{restoring === item.trash_key ? '복구 중...' : '복구'}</button>
-								<button onclick={() => purge(item.trash_key, item.original_name)} disabled={purging === item.trash_key || busy} class="text-red-400 hover:text-red-300 disabled:text-ink-3 px-2 py-0.5 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors">{purging === item.trash_key ? '삭제 중...' : '영구 삭제'}</button>
+								<button onclick={() => restore(item.trash_key, item.original_name)} disabled={restoring === item.trash_key || busy} class="text-emerald-400 hover:text-emerald-300 disabled:text-ink-3 px-2 py-0.5 rounded border border-emerald-900 hover:border-emerald-700 disabled:border-line-2 transition-colors">{t(restoring === item.trash_key ? 'dialogs.trash.restoring' : 'dialogs.trash.restore')}</button>
+								<button onclick={() => purge(item.trash_key, item.original_name)} disabled={purging === item.trash_key || busy} class="text-red-400 hover:text-red-300 disabled:text-ink-3 px-2 py-0.5 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors">{t(purging === item.trash_key ? 'dialogs.trash.purging' : 'dialogs.trash.purge')}</button>
 							</div>
 						</td>
 					</tr>
 				{/each}
 			</tbody>
 		</table>
-		<p class="mt-2 text-xs text-ink-2">휴지통 항목도 스토리지 용량을 차지합니다. 필요 없는 항목은 영구 삭제하세요.</p>
+		<p class="mt-2 text-xs text-ink-2">{t('dialogs.trash.capacityNotice')}</p>
 		{#if selectionEnabled}
 			<BulkSelectionOverlay
 				count={selection.count}
-				ariaLabel="선택한 휴지통 오브젝트 일괄 작업"
+				ariaLabel={t('dialogs.trash.bulkActions')}
 				busy={busy}
 				actions={[
-					{ key: 'restore', label: '복구', tone: 'success', onAction: () => runBulk('restore') },
-					{ key: 'purge', label: '영구 삭제', tone: 'danger', onAction: () => runBulk('purge') },
+					{ key: 'restore', label: t('dialogs.trash.restore'), tone: 'success', onAction: () => runBulk('restore') },
+					{ key: 'purge', label: t('dialogs.trash.purge'), tone: 'danger', onAction: () => runBulk('purge') },
 				]}
 				onClear={() => selection.clear()}
 			/>

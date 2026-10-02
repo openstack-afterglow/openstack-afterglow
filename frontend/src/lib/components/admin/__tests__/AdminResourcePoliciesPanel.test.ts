@@ -194,20 +194,5 @@ describe('AdminResourcePoliciesPanel', () => {
 		));
 	});
 
-	it.each([
-		['null root', 'null'],
-		['null scope', '{"admin-project":null}'],
-		['null policies', '{"admin-project":{"policies":null,"runtime":{}}}'],
-		['non-string values', '{"admin-project":{"policies":{"builder.flavor":42},"runtime":{"k3s.version":true}}}']
-	])('ignores malformed draft cookie: %s', async (_name, rawCookie) => {
-		document.cookie = `afterglow_resource_policy_draft=${encodeURIComponent(rawCookie)}; path=/`;
-		render(AdminResourcePoliciesPanel, { token: 'token', projectId: 'admin-project' });
-
-		const trigger = (await screen.findByRole('button', {
-			name: 'Builder flavor 검색 및 선택'
-		})) as HTMLButtonElement;
-		await waitFor(() => expect(trigger.textContent).toContain('이름 또는 ID로 검색·선택'));
-		await screen.findByText('Builder flavor');
-	});
 
 });

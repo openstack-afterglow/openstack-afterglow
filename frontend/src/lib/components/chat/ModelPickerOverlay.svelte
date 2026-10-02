@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/chat-studio';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import RichText from '$lib/i18n/RichText.svelte';
 	import type { AvailableModel } from '$lib/api/chatTree';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
@@ -21,6 +24,10 @@
 	let query = $state('');
 	let activeProvider = $state<string | null>(null);
 
+	const UNKNOWN_PROVIDER = '\u0000';
+	function providerLabel(provider: string): string {
+		return provider === UNKNOWN_PROVIDER ? t('modelPicker.otherProvider') : provider;
+	}
 	interface Group {
 		provider: string;
 		models: AvailableModel[];
@@ -28,13 +35,13 @@
 	const providerCounts = $derived.by(() => {
 		const counts = new Map<string, number>();
 		for (const model of models) {
-			const provider = model.provider ?? '기타';
+			const provider = model.provider ?? UNKNOWN_PROVIDER;
 			counts.set(provider, (counts.get(provider) ?? 0) + 1);
 		}
 		return counts;
 	});
 	const providers = $derived(
-		[...providerCounts.keys()].sort((left, right) => left.localeCompare(right, 'ko'))
+		[...providerCounts.keys()].sort((left, right) => providerLabel(left).localeCompare(providerLabel(right), intlLocale()))
 	);
 	const showProviderNav = $derived(providers.length > 1);
 	$effect(() => {
@@ -56,11 +63,11 @@
 				apiModelName(m).toLowerCase().includes(q) ||
 				apiProvider(m).toLowerCase().includes(q) ||
 				(m.provider ?? '').toLowerCase().includes(q)) &&
-			(activeProvider === null || (m.provider ?? '기타') === activeProvider);
+			(activeProvider === null || (m.provider ?? UNKNOWN_PROVIDER) === activeProvider);
 		const byProvider = new Map<string, AvailableModel[]>();
 		for (const m of models) {
 			if (!match(m)) continue;
-			const key = m.provider ?? '기타';
+			const key = m.provider ?? UNKNOWN_PROVIDER;
 			const arr = byProvider.get(key);
 			if (arr) arr.push(m);
 			else byProvider.set(key, [m]);
@@ -80,9 +87,9 @@
 	async function copyModelName(modelName: string) {
 		try {
 			await navigator.clipboard.writeText(modelName);
-			toast.success('API 모델 ID가 복사되었습니다');
+			toast.success(t('modelPicker.idCopied'));
 		} catch {
-			toast.error('모델 ID를 복사하지 못했습니다. 클립보드 권한을 확인해 주세요.');
+			toast.error(t('modelPicker.copyFailed'));
 		}
 	}
 </script>
@@ -93,26 +100,26 @@
 		type="button"
 		class="overlay"
 		tabindex="-1"
-		aria-label="닫기"
+		aria-label={t('modelPicker.close')}
 		onclick={onClose}
 	></button>
 	<div
 		use:dialogFocus={{ enabled: true, onEscape: onClose }}
 		class="panel"
 		role="dialog"
-		aria-label="모델 선택"
+		aria-label={t('modelPicker.select')}
 		aria-describedby="model-picker-help"
 		aria-modal="true"
 		tabindex="-1"
 	>
 		<header class="head">
-			<h2>모델 선택</h2>
+			<h2>{t('modelPicker.select')}</h2>
 			{#if onRefresh}
 				<Button variant="secondary" size="sm" onclick={onRefresh} disabled={refreshing}>
-					{refreshing ? '갱신 중…' : '목록 새로고침'}
+					{refreshing ? t('modelPicker.refreshing') : t('modelPicker.refresh')}
 				</Button>
 			{/if}
-			<button type="button" class="close" onclick={onClose} aria-label="닫기">
+			<button type="button" class="close" onclick={onClose} aria-label={t('modelPicker.close')}>
 				<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 6L6 18M6 6l12 12" stroke-linecap="round" /></svg>
 			</button>
 		</header>
@@ -123,20 +130,20 @@
 		<div class="search">
 			<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" stroke-linecap="round" /></svg>
 			<!-- svelte-ignore a11y_autofocus -->
-			<input type="text" placeholder="모델 검색 (이름·API ID·프로바이더)" bind:value={query} autofocus />
+			<input type="text" placeholder={t('modelPicker.search')} bind:value={query} autofocus />
 		</div>
-		<p id="model-picker-help" class="help">API ID를 <code>model</code>에 사용하세요. 같은 ID가 여러 경로에 있으면 provider도 함께 지정하세요.</p>
+		<p id="model-picker-help" class="help"><RichText segments={t.rich('modelPicker.help')} /></p>
 
 		<div class="picker-body" class:with-providers={showProviderNav}>
 			{#if showProviderNav}
-				<nav class="provider-nav" aria-label="모델 프로바이더">
+				<nav class="provider-nav" aria-label={t('modelPicker.providers')}>
 					<button
 						type="button"
 						class:active={activeProvider === null}
 						aria-pressed={activeProvider === null}
 						onclick={() => (activeProvider = null)}
 					>
-						<span>전체 모델</span>
+						<span>{t('modelPicker.all')}</span>
 						<span class="provider-count">{models.length}</span>
 					</button>
 					{#each providers as provider (provider)}
@@ -146,7 +153,7 @@
 							aria-pressed={activeProvider === provider}
 							onclick={() => (activeProvider = provider)}
 						>
-							<span>{provider}</span>
+							<span>{providerLabel(provider)}</span>
 							<span class="provider-count">{providerCount(provider)}</span>
 						</button>
 					{/each}
@@ -154,23 +161,23 @@
 			{/if}
 			<div class="list">
 				{#if total === 0}
-					<p class="empty">검색 결과가 없습니다</p>
+					<p class="empty">{t('modelPicker.noResults')}</p>
 				{:else}
 					{#each grouped as g (g.provider)}
-						<div class="group-label">{g.provider}</div>
+						<div class="group-label">{providerLabel(g.provider)}</div>
 						{#each g.models as m (m.model_name)}
 							<div class="model-row" class:active={m.model_name === value}>
 								<button
 									type="button"
 									class="model-select"
-									aria-label={`${m.display_name} 모델 선택`}
+									aria-label={t('modelPicker.selectModel', { name: m.display_name })}
 									aria-pressed={m.model_name === value}
 									onclick={() => pick(m)}
 								>
 									<span class="model-main">
 										<span class="model-name" title={m.display_name}>{m.display_name}</span>
-										<span class="model-id">API ID: <code>{apiModelName(m)}</code></span>
-										<span class="model-provider">provider: <code>{apiProvider(m)}</code></span>
+										<span class="model-id"><RichText segments={t.rich('modelPicker.apiId', { id: apiModelName(m) })} /></span>
+										<span class="model-provider"><RichText segments={t.rich('modelPicker.apiProvider', { provider: apiProvider(m) })} /></span>
 									</span>
 									<span class="model-caps"><ModelCapabilityBadges caps={m.capabilities} size="xs" /></span>
 									{#if m.model_name === value}
@@ -181,11 +188,11 @@
 									variant="ghost"
 									size="sm"
 									class="min-h-11 shrink-0"
-									ariaLabel={`${apiModelName(m)} API 모델 ID 복사`}
-									title={`API model: ${apiModelName(m)}`}
+									ariaLabel={t('modelPicker.copyModelId', { id: apiModelName(m) })}
+									title={t('modelPicker.apiModel', { id: apiModelName(m) })}
 									onclick={() => copyModelName(apiModelName(m))}
 								>
-									ID 복사
+									{t('modelPicker.copyId')}
 								</Button>
 							</div>
 						{/each}
@@ -420,7 +427,7 @@
 		color: var(--color-ink-2);
 		overflow-wrap: anywhere;
 	}
-	.model-id code {
+	.model-id :global(code) {
 		font-family: var(--font-mono);
 	}
 	.model-provider {
@@ -428,7 +435,7 @@
 		color: var(--color-ink-2);
 		overflow-wrap: anywhere;
 	}
-	.model-provider code {
+	.model-provider :global(code) {
 		font-family: var(--font-mono);
 	}
 	.check {

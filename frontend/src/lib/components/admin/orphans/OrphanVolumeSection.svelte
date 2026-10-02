@@ -1,6 +1,7 @@
 <script lang="ts">
 	import OrphanSection from './OrphanSection.svelte';
 	import type { OrphanVolumeInfo } from '$lib/types/orphan';
+	import { t } from '$lib/i18n/ns/admin-storage';
 
 	let {
 		items,
@@ -14,24 +15,24 @@
 		onCleanup: () => void;
 	} = $props();
 
-	const emptyMessage = $derived(`임계치(${minAgeDays}일) 이상의 장기 미사용 volume 없음.`);
+	const emptyMessage = $derived(t('orphanVolume.empty', { days: minAgeDays }));
 </script>
 
 <OrphanSection
-	title="장기 미사용 Volumes"
+	title={t('orphanVolume.title')}
 	{items}
 	bind:selected
 	{emptyMessage}
 	{onCleanup}
 >
 	{#snippet headers()}
-		<th class="text-left py-2 pr-4">이름</th>
-		<th class="text-left py-2 pr-4">크기(GB)</th>
-		<th class="text-left py-2 pr-4">상태</th>
-		<th class="text-left py-2 pr-4">프로젝트</th>
-		<th class="text-left py-2 pr-4">생성일</th>
-		<th class="text-left py-2 pr-4">연령(일)</th>
-		<th class="text-left py-2 pr-4">ID</th>
+		<th class="text-left py-2 pr-4">{t('orphanVolume.column.name')}</th>
+		<th class="text-left py-2 pr-4">{t('orphanVolume.column.sizeGb')}</th>
+		<th class="text-left py-2 pr-4">{t('orphanVolume.column.status')}</th>
+		<th class="text-left py-2 pr-4">{t('orphanVolume.column.project')}</th>
+		<th class="text-left py-2 pr-4">{t('orphanVolume.column.createdAt')}</th>
+		<th class="text-left py-2 pr-4">{t('orphanVolume.column.ageDays')}</th>
+		<th class="text-left py-2 pr-4">{t('orphanVolume.column.id')}</th>
 	{/snippet}
 	{#snippet row(v)}
 		<td class="py-2 pr-4 text-ink-1">{v.name ?? '-'}</td>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/account';
   import PageHeader from '$lib/components/ui/PageHeader.svelte';
   import ProfileSection from '$lib/components/account/ProfileSection.svelte';
   import PasswordSection from '$lib/components/account/PasswordSection.svelte';
@@ -16,19 +17,19 @@
       class="inline-flex items-center gap-1.5 text-xs text-ink-2 hover:text-ink-0 transition-colors px-2.5 py-1.5 rounded-md hover:bg-surface-sunken"
     >
       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
-      대시보드로 돌아가기
+      {t('page.back')}
     </a>
     <span class="text-ink-2">·</span>
     <a
       href="/dashboard/my-resources"
       class="inline-flex items-center gap-1.5 text-xs text-warm-text hover:text-warm-text-hover transition-colors px-2.5 py-1.5 rounded-md hover:bg-action-warm-hover/10"
     >
-      내 리소스
+      {t('page.resources')}
       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
     </a>
   </div>
 
-  <PageHeader breadcrumb="" title="계정 설정" />
+  <PageHeader breadcrumb="" title={t('page.title')} />
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
     <ProfileSection />
     <PasswordSection />

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-ops';
 	import Button from '$lib/components/ui/Button.svelte';
 	import type { ServiceListState } from './serviceList';
 
@@ -19,8 +20,8 @@
 </script>
 
 <th scope="col" aria-sort={active ? (view.sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'}>
-	<Button variant="ghost" size="sm" class="min-h-11 md:min-h-0" ariaLabel="{label} 정렬"
-		title={active && view.sortDirection === 'asc' ? '내림차순 정렬' : '오름차순 정렬'} onclick={toggleSort}>
+	<Button variant="ghost" size="sm" class="min-h-11 md:min-h-0" ariaLabel={t('services.sort.label', { label })}
+		title={active && view.sortDirection === 'asc' ? t('services.sort.descending') : t('services.sort.ascending')} onclick={toggleSort}>
 		{label}<span aria-hidden="true">{active ? (view.sortDirection === 'asc' ? '↑' : '↓') : '↕'}</span>
 	</Button>
 </th>

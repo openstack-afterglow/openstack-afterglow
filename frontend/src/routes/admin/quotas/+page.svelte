@@ -8,6 +8,7 @@
 	import ProjectSelector from '$lib/components/admin/quotas/ProjectSelector.svelte';
 	import ProjectQuotaForm from '$lib/components/admin/quotas/ProjectQuotaForm.svelte';
 	import GpuQuotaTable from '$lib/components/admin/quotas/GpuQuotaTable.svelte';
+	import { t } from '$lib/i18n/ns/admin-identity';
 
 	const ctrl = createAdminQuotasController({
 		token: () => $auth.token ?? undefined,
@@ -18,7 +19,7 @@
 </script>
 
 <div class="p-4 md:p-6 max-w-7xl mx-auto">
-	<PageHeader breadcrumb="IDENTITY / QUOTAS" title="쿼터" />
+	<PageHeader breadcrumb={t('quotaPage.breadcrumb')} title={t('quotaPage.title')} />
 
 	{#if ctrl.loading}
 		<LoadingSkeleton variant="table" rows={3} />
@@ -54,7 +55,7 @@
 						onSaveSection={ctrl.saveSectionQuotas}
 					/>
 				{:else}
-					<div class="text-ink-2 text-sm">쿼터를 불러올 수 없습니다</div>
+					<div class="text-ink-2 text-sm">{t('quotaPage.unavailable')}</div>
 				{/if}
 				<GpuQuotaTable
 					rows={ctrl.gpuQuotaRows}

@@ -19,6 +19,7 @@ export interface FlavorReconcileResponse {
 
 import { api, ApiError } from '$lib/api/client';
 import type { Project, Quotas, QuotaUpdateResponse, GpuQuota, GpuDefaultQuota } from '$lib/types/quotas';
+import { t } from '$lib/i18n/ns/admin-identity';
 
 export interface AdminQuotasControllerOpts {
   token: () => string | undefined;
@@ -143,7 +144,7 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts): Ad
     try {
       gpuDefaults = await api.get<GpuDefaultQuota[]>('/api/v1/admin/gpu-quotas/defaults', tok(), pid());
     } catch (e) {
-      gpuDefaultError = e instanceof ApiError ? e.message : '기본 GPU quota 조회 실패';
+      gpuDefaultError = e instanceof ApiError ? e.message : t('quotaController.defaultsLoadFailed');
       gpuDefaults = [];
     } finally { if (!opts?.background) gpuDefaultLoading = false; }
   }
@@ -152,11 +153,11 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts): Ad
     gpuDefaultError = ''; gpuDefaultSuccess = '';
     try {
       await api.put('/api/v1/admin/gpu-quotas/defaults', { gpu_type: gpuType, limit }, tok(), pid());
-      gpuDefaultSuccess = '기본 GPU quota 저장됨';
+      gpuDefaultSuccess = t('quotaController.defaultsSaved');
       await loadGpuDefaults({ background: true });
       if (selectedProjectId) await loadGpuQuotas({ background: true });
     } catch (e) {
-      gpuDefaultError = e instanceof ApiError ? e.message : '기본 GPU quota 설정 실패';
+      gpuDefaultError = e instanceof ApiError ? e.message : t('quotaController.defaultsSetFailed');
     }
   }
 
@@ -210,7 +211,7 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts): Ad
       if (owns()) gpuQuotas = loaded;
     } catch (e) {
       if (!owns()) return;
-      gpuQuotaError = e instanceof ApiError ? e.message : 'GPU quota 조회 실패';
+      gpuQuotaError = e instanceof ApiError ? e.message : t('quotaController.gpuLoadFailed');
       gpuQuotas = [];
     } finally {
       if (owns()) gpuQuotaLoading = false;
@@ -225,7 +226,7 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts): Ad
       await api.put(`/api/v1/admin/gpu-quotas/${selectedProjectId}`, { gpu_type: gpuType, limit }, tok(), pid());
       await loadGpuQuotas({ background: true });
     } catch (e) {
-      gpuQuotaError = e instanceof ApiError ? e.message : 'GPU quota 설정 실패';
+      gpuQuotaError = e instanceof ApiError ? e.message : t('quotaController.gpuSetFailed');
     }
   }
 
@@ -235,7 +236,7 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts): Ad
       await api.delete(`/api/v1/admin/gpu-quotas/${selectedProjectId}/${encodeURIComponent(gpuType)}`, tok(), pid());
       await loadGpuQuotas({ background: true });
     } catch (e) {
-      gpuQuotaError = e instanceof ApiError ? e.message : 'GPU quota 삭제 실패';
+      gpuQuotaError = e instanceof ApiError ? e.message : t('quotaController.gpuDeleteFailed');
     }
   }
 
@@ -314,22 +315,22 @@ export function createAdminQuotasController(opts: AdminQuotasControllerOpts): Ad
         const refreshed = await loadQuotas({ preserveStatus: true, background: true });
         if (!validContext()) return { ...res, success: false };
         if (refreshed) {
-          sectionSuccesses = { ...sectionSuccesses, [section]: '저장되었습니다' };
-          saveSuccess = '저장되었습니다';
+          sectionSuccesses = { ...sectionSuccesses, [section]: t('quotaController.saved') };
+          saveSuccess = t('quotaController.saved');
           return { ...res, success: true, refreshed: true };
         }
-        const refreshError = '쿼터를 다시 불러올 수 없습니다. 다시 시도해주세요.';
+        const refreshError = t('quotaController.refreshFailed');
         sectionErrors = { ...sectionErrors, [section]: refreshError };
         saveError = refreshError;
         return { ...res, success: true, refreshed: false, refreshError };
       }
-      const errMsg = sectionErr || Object.values(res.errors ?? {}).join(', ') || '일부 쿼터 저장 실패';
+      const errMsg = sectionErr || Object.values(res.errors ?? {}).join(', ') || t('quotaController.partialSaveFailed');
       sectionErrors = { ...sectionErrors, [section]: errMsg };
       saveError = errMsg;
       return { ...res, success: false };
     } catch (e) {
       if (validContext()) {
-        const errMsg = e instanceof ApiError ? e.message : '저장 실패';
+        const errMsg = e instanceof ApiError ? e.message : t('quotaController.saveFailed');
         sectionErrors = { ...sectionErrors, [section]: errMsg };
         saveError = errMsg;
       }

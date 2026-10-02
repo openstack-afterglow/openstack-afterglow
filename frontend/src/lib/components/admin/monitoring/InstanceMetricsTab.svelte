@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-ops';
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api/client';
 	import MetricsPanel from '$lib/components/instance/MetricsPanel.svelte';
@@ -78,7 +79,7 @@
 		<div class="p-3 border-b border-line">
 			<input
 				type="text"
-				placeholder="이름 또는 프로젝트 ID 검색"
+				placeholder={t('monitoring.instances.search')}
 				bind:value={search}
 				class="w-full bg-surface-sunken rounded-lg px-3 py-1.5 text-sm text-ink-2 placeholder-ink-3 outline-none focus:ring-1 focus:ring-line-2"
 			/>
@@ -86,10 +87,10 @@
 
 		<div class="overflow-y-auto flex-1">
 			{#if loadingInstances && instanceList.length === 0}
-				<div class="p-4 text-ink-2 text-sm text-center">인스턴스 목록 로딩 중...</div>
+				<div class="p-4 text-ink-2 text-sm text-center">{t('monitoring.instances.loadingList')}</div>
 			{:else if filtered.length === 0}
 				<div class="p-4 text-ink-2 text-sm text-center" data-tour="admin-monitoring-list-ready">
-					{search ? '검색 결과 없음' : '인스턴스 없음'}
+					{search ? t('monitoring.instances.noResults') : t('monitoring.instances.empty')}
 				</div>
 			{:else}
 				<div data-tour="admin-monitoring-list-ready"></div>
@@ -121,13 +122,13 @@
 					disabled={loadingInstances}
 					class="w-full py-2.5 text-xs text-warm-text hover:text-warm-text-hover disabled:text-ink-3 transition-colors"
 				>
-					{loadingInstances ? '로딩 중...' : '더 불러오기'}
+					{loadingInstances ? t('monitoring.loading') : t('monitoring.instances.loadMore')}
 				</button>
 			{/if}
 		</div>
 
 		<div class="px-3 py-2 border-t border-line text-xs text-ink-2">
-			{filtered.length}개 표시 / 총 {instanceList.length}개 로드
+			{t('monitoring.instances.counts', { shown: filtered.length, loaded: instanceList.length })}
 		</div>
 	</div>
 
@@ -140,7 +141,7 @@
 					class="md:hidden mb-3 text-sm text-warm-text hover:text-warm-text-hover flex items-center gap-1"
 					data-tour="admin-monitoring-back"
 				>
-					← 목록으로
+					{t('monitoring.instances.back')}
 				</button>
 				<div class="flex items-center gap-3 mb-5">
 					<span class="text-ink-0 font-semibold">{selectedInst.name}</span>
@@ -164,8 +165,8 @@
 		{:else}
 			<div class="flex items-center justify-center h-64 bg-surface-base border border-line rounded-xl">
 				<div class="text-center">
-					<div class="text-ink-2 text-sm mb-1">인스턴스를 선택하세요</div>
-					<div class="text-ink-2 text-xs">왼쪽 목록에서 VM을 클릭하면 메트릭이 표시됩니다</div>
+					<div class="text-ink-2 text-sm mb-1">{t('monitoring.instances.select')}</div>
+					<div class="text-ink-2 text-xs">{t('monitoring.instances.selectHelp')}</div>
 				</div>
 			</div>
 		{/if}

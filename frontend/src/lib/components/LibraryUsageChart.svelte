@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/palimpsest-admin';
   interface TsPoint {
     ts: number;
     [key: string]: number | undefined;
@@ -13,13 +14,15 @@
 
   let {
     data,
-    title = '라이브러리 사용량',
+    title,
     currentRange = '7d',
     onRangeChange
   }: Props = $props();
 
+  const shownTitle = $derived(title ?? t('chart.title'));
+
   const RANGES = ['1d', '2d', '7d', '30d'];
-  const RANGE_LABELS: Record<string, string> = { '1d': '1일', '2d': '2일', '7d': '7일', '30d': '30일' };
+  const RANGE_DAYS: Record<string, number> = { '1d': 1, '2d': 2, '7d': 7, '30d': 30 };
 
   const PALETTE = [
     '#60a5fa', '#4ade80', '#f87171', '#fbbf24', '#c084fc',
@@ -51,10 +54,10 @@
 <div class="bg-surface-base border border-line rounded-xl p-5">
   <div class="flex items-center justify-between mb-4">
     <div class="flex items-center gap-3">
-      <h3 class="text-sm font-semibold text-ink-2">{title}</h3>
+      <h3 class="text-sm font-semibold text-ink-2">{shownTitle}</h3>
       {#if totalUsage > 0}
         <span class="text-xl font-bold text-ink-0">{totalUsage}</span>
-        <span class="text-xs text-ink-2">활성 VM</span>
+        <span class="text-xs text-ink-2">{t('chart.activeVm')}</span>
       {/if}
     </div>
     <div class="flex gap-1">
@@ -62,14 +65,14 @@
         <button
           onclick={() => onRangeChange?.(r)}
           class="text-xs px-2 py-0.5 rounded transition-colors {currentRange === r ? 'bg-action-warm text-ink-0' : 'text-ink-2 hover:text-ink-2'}"
-        >{RANGE_LABELS[r]}</button>
+        >{t('chart.days', { count: RANGE_DAYS[r] })}</button>
       {/each}
     </div>
   </div>
 
   {#if data.length === 0 || topKeys.length === 0}
     <div class="flex items-center justify-center h-24 text-ink-2 text-sm">
-      수집된 데이터가 없습니다 (라이브러리가 적재된 VM이 없거나 아직 스냅샷이 저장되지 않았습니다)
+      {t('chart.empty')}
     </div>
   {:else}
     <!-- 수평 바 차트 (최신 스냅샷 기준) -->

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/instance';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { untrack } from 'svelte';
 	import { page } from '$app/stores';
@@ -36,7 +37,7 @@
 
 	function openCreateEntryPoint() {
 		if (mockupActive) {
-			toast.info('mockup mode에서는 VM 생성 wizard를 제외합니다.');
+			toast.info(t('list.mockupCreateExcluded'));
 			return;
 		}
 		openWizard();
@@ -73,7 +74,7 @@
 				&& ($auth.projectId ?? undefined) === requestProjectId
 				&& !cached
 			) {
-				error = e instanceof ApiError ? `조회 실패 (${e.status}): ${(e as ApiError).message}` : '서버 오류';
+				error = e instanceof ApiError ? t('list.queryFailed', { status: e.status, message: e.message }) : t('list.serverError');
 			}
 		} finally {
 			if (generation === loadGeneration && ($auth.projectId ?? undefined) === requestProjectId) {
@@ -135,16 +136,16 @@
 
 	async function startInstance(id: string) {
 		try {
-			await apiMut('인스턴스 시작', () => api.post(`/api/v1/instances/${id}/start`, {}, $auth.token ?? undefined, $auth.projectId ?? undefined));
+			await apiMut(t('list.startInstance'), () => api.post(`/api/v1/instances/${id}/start`, {}, $auth.token ?? undefined, $auth.projectId ?? undefined));
 			ar.setBoost(4);
 			await fetchInstances();
 		} catch { /* error toast shown by apiMut */ }
 	}
 
 	async function stopInstance(id: string) {
-		if (!await confirmDialog('인스턴스를 종료하시겠습니까?')) return;
+		if (!await confirmDialog(t('list.confirmStop'))) return;
 		try {
-			await apiMut('인스턴스 종료', () => api.post(`/api/v1/instances/${id}/stop`, {}, $auth.token ?? undefined, $auth.projectId ?? undefined));
+			await apiMut(t('list.stopInstance'), () => api.post(`/api/v1/instances/${id}/stop`, {}, $auth.token ?? undefined, $auth.projectId ?? undefined));
 			ar.setBoost(4);
 			await fetchInstances();
 		} catch { /* error toast shown by apiMut */ }
@@ -156,13 +157,11 @@
 		const projectId = $auth.projectId ?? undefined;
 		if (ids.length === 0) return;
 
-		const labels: Record<string, string> = { start: '시작', stop: '종료', delete: '삭제' };
-		const verb = labels[action];
 
 		if (action === 'stop' || action === 'delete') {
 			const msg = action === 'delete'
-				? `선택한 인스턴스 ${ids.length}개를 삭제하시겠습니까?\nManila share와 볼륨도 함께 삭제됩니다.`
-				: `선택한 인스턴스 ${ids.length}개를 종료하시겠습니까?`;
+				? t('list.confirmBulkDelete', { count: ids.length })
+				: t('list.confirmBulkStop', { count: ids.length });
 			if (!await confirmDialog(msg)) return;
 		}
 
@@ -185,8 +184,18 @@
 
 		const successfulIds = results.filter((result) => result.ok).map((result) => result.id);
 		const failureCount = results.length - successfulIds.length;
-		if (successfulIds.length > 0) toast.success(`${successfulIds.length}개 ${verb} 요청을 완료했습니다.`);
-		if (failureCount > 0) toast.error(`${failureCount}개 ${verb}에 실패했습니다.`);
+		const successKeys = {
+			start: 'list.bulkStartSuccess',
+			stop: 'list.bulkStopSuccess',
+			delete: 'list.bulkDeleteSuccess',
+		} as const;
+		const failureKeys = {
+			start: 'list.bulkStartFailed',
+			stop: 'list.bulkStopFailed',
+			delete: 'list.bulkDeleteFailed',
+		} as const;
+		if (successfulIds.length > 0) toast.success(t(successKeys[action], { count: successfulIds.length }));
+		if (failureCount > 0) toast.error(t(failureKeys[action], { count: failureCount }));
 
 		try {
 			if ($auth.projectId === projectId) {
@@ -200,25 +209,25 @@
 	}
 
 	async function shelveInstance(id: string) {
-		if (!await confirmDialog('인스턴스를 보관하시겠습니까? (SHELVED_OFFLOADED 상태로 전환됩니다)')) return;
+		if (!await confirmDialog(t('list.confirmShelve'))) return;
 		try {
-			await apiMut('인스턴스 보관', () => api.post(`/api/v1/instances/${id}/shelve`, {}, $auth.token ?? undefined, $auth.projectId ?? undefined));
+			await apiMut(t('list.shelveInstance'), () => api.post(`/api/v1/instances/${id}/shelve`, {}, $auth.token ?? undefined, $auth.projectId ?? undefined));
 			await fetchInstances();
 		} catch { /* error toast shown by apiMut */ }
 	}
 
 	async function unshelveInstance(id: string) {
-		if (!await confirmDialog('인스턴스 보관을 해제하시겠습니까?')) return;
+		if (!await confirmDialog(t('list.confirmUnshelve'))) return;
 		try {
-			await apiMut('인스턴스 보관 해제', () => api.post(`/api/v1/instances/${id}/unshelve`, {}, $auth.token ?? undefined, $auth.projectId ?? undefined));
+			await apiMut(t('list.unshelveInstance'), () => api.post(`/api/v1/instances/${id}/unshelve`, {}, $auth.token ?? undefined, $auth.projectId ?? undefined));
 			await fetchInstances();
 		} catch { /* error toast shown by apiMut */ }
 	}
 
 	async function deleteInstance(id: string, name: string) {
-		if (!await confirmDialog(`"${name}" 인스턴스를 삭제하시겠습니까?\nManila share와 볼륨도 함께 삭제됩니다.`)) return;
+		if (!await confirmDialog(t('list.confirmDelete', { name }))) return;
 		try {
-			await apiMut('인스턴스 삭제', () => api.delete(`/api/v1/instances/${id}`, $auth.token ?? undefined, $auth.projectId ?? undefined));
+			await apiMut(t('list.deleteInstance'), () => api.delete(`/api/v1/instances/${id}`, $auth.token ?? undefined, $auth.projectId ?? undefined));
 			await fetchInstances();
 		} catch { /* error toast shown by apiMut */ }
 	}
@@ -228,7 +237,7 @@
 			const data = await api.get<{ url: string }>(`/api/v1/instances/${id}/console`, $auth.token ?? undefined, $auth.projectId ?? undefined);
 			window.open(data.url, '_blank', 'noopener,noreferrer');
 		} catch {
-			toast.error('콘솔 URL을 가져올 수 없습니다');
+			toast.error(t('list.consoleUrlFailed'));
 		}
 	}
 
@@ -263,12 +272,12 @@
 </script>
 
 <PageShell class="bulk-selection-page space-y-4 pb-28 md:pb-32">
-	<PageHeader breadcrumb="COMPUTE / INSTANCES" title="인스턴스">
+	<PageHeader breadcrumb={t('list.breadcrumb')} title={t('list.title')}>
 		{#snippet actions()}
-			<Button onclick={openCreateEntryPoint} variant="primary">+ VM 생성</Button>
+			<Button onclick={openCreateEntryPoint} variant="primary">{t('list.createVmAction')}</Button>
 		{/snippet}
 	</PageHeader>
-	<ResourceToolbar label="인스턴스 목록 도구">
+	<ResourceToolbar label={t('list.toolbar')}>
 		{#snippet actions()}
 			<TutorialStartButton tour="vm-create" />
 			<AutoRefreshControl
@@ -288,8 +297,8 @@
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if instances.length === 0}
-		<EmptyState headline="인스턴스가 없습니다" description="첫 가상 머신을 생성해 프로젝트를 시작하세요.">
-			{#snippet cta()}<Button onclick={openCreateEntryPoint} variant="primary">VM 생성</Button>{/snippet}
+		<EmptyState headline={t('list.emptyTitle')} description={t('list.emptyDescription')}>
+			{#snippet cta()}<Button onclick={openCreateEntryPoint} variant="primary">{t('list.createVm')}</Button>{/snippet}
 		</EmptyState>
 	{:else}
 		<InstancesTable
@@ -307,11 +316,11 @@
 
 	<BulkSelectionOverlay
 		count={selection.count}
-		ariaLabel="선택한 인스턴스 일괄 작업"
+		ariaLabel={t('list.bulkActions')}
 		actions={[
-			{ key: 'start', label: '시작', tone: 'success', onAction: () => bulkAction('start') },
-			{ key: 'stop', label: '종료', tone: 'warning', onAction: () => bulkAction('stop') },
-			{ key: 'delete', label: '삭제', tone: 'danger', onAction: () => bulkAction('delete') },
+			{ key: 'start', label: t('list.start'), tone: 'success', onAction: () => bulkAction('start') },
+			{ key: 'stop', label: t('list.stop'), tone: 'warning', onAction: () => bulkAction('stop') },
+			{ key: 'delete', label: t('list.delete'), tone: 'danger', onAction: () => bulkAction('delete') },
 		]}
 		busy={bulkActioning}
 		onClear={() => selection.clear()}
@@ -319,7 +328,7 @@
 </PageShell>
 
 {#if selectedInstanceId}
-	<SlidePanel onClose={closeInstancePanel} ariaLabel="인스턴스 상세">
+	<SlidePanel onClose={closeInstancePanel} ariaLabel={t('list.instanceDetails')}>
 		<InstanceDetailPanel instanceId={selectedInstanceId} onClose={closeInstancePanel} />
 	</SlidePanel>
 {/if}

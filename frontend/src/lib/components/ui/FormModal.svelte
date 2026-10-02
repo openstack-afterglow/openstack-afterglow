@@ -3,6 +3,7 @@
 	import Button from './Button.svelte';
 	import Card from './Card.svelte';
 	import Modal from './Modal.svelte';
+	import { t } from '$lib/i18n/ns/common';
 
 	interface Props {
 		open: boolean;
@@ -21,8 +22,8 @@
 		title,
 		onClose,
 		onSubmit,
-		submitLabel = '확인',
-		cancelLabel = '취소',
+		submitLabel,
+		cancelLabel,
 		submitting = false,
 		children,
 		actions,
@@ -45,9 +46,9 @@
 				{#if actions}
 					{@render actions()}
 				{:else}
-					<Button onclick={close} variant="secondary" disabled={submitting}>{cancelLabel}</Button>
+					<Button onclick={close} variant="secondary" disabled={submitting}>{cancelLabel ?? t('actions.cancel')}</Button>
 					{#if onSubmit}
-						<Button onclick={onSubmit} disabled={submitting} variant="primary">{submitting ? '처리 중...' : submitLabel}</Button>
+						<Button onclick={onSubmit} disabled={submitting} variant="primary">{submitting ? t('state.processing') : submitLabel ?? t('actions.confirm')}</Button>
 					{/if}
 				{/if}
 			</div>

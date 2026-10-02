@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/dashboard-home';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import type { InstanceItem } from '$lib/types/userDashboard';
 
@@ -18,8 +19,8 @@
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2" />
 			</svg>
 		</div>
-		<div class="text-ink-0 font-semibold text-sm">인스턴스</div>
-		<span class="ml-auto text-xs text-ink-2">{instances.length}개</span>
+		<div class="text-ink-0 font-semibold text-sm">{t('preview.instances.title')}</div>
+		<span class="ml-auto text-xs text-ink-2">{t('preview.instances.count', { count: instances.length })}</span>
 	</div>
 	<div class="flex flex-col">
 		{#each instances.slice(0, PREVIEW_LIMIT) as inst (inst.id)}
@@ -32,10 +33,10 @@
 			</div>
 		{/each}
 		{#if instances.length === 0}
-			<div class="text-ink-2 text-xs py-3 text-center">없음</div>
+			<div class="text-ink-2 text-xs py-3 text-center">{t('preview.instances.none')}</div>
 		{:else if instances.length > PREVIEW_LIMIT}
 			<a href="/dashboard/instances" class="block text-center text-xs text-warm-text hover:text-warm-text-hover transition-colors pt-2.5">
-				+{instances.length - PREVIEW_LIMIT}개 더 보기 →
+				{t('preview.instances.more', { count: instances.length - PREVIEW_LIMIT })}
 			</a>
 		{/if}
 	</div>
