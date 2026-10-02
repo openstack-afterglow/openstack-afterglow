@@ -2,9 +2,9 @@
 
 - [x] 1. 다섯 기본 checkout의 현재 source와 version consumer를 검토하고 확인된 release blocker를 수정한다. Waygate framework 호환 갱신과 실제 재현 worker 종료, Afterglow dependency floor와 안전 SVG label 수정은 별도 change/evidence로 추적한다. 운영 blocker는 rollout 단계에 남긴다.
 - [x] 2. 각 저장소의 필수 gate, architecture guard, 실제 실행 smoke와 secret scan을 완료한다. 최신 Afterglow full gate와 Waygate framework/signal gates는 아래 증거를 따른다; live auth/production은 rollout acceptance에 따로 남긴다.
-- [ ] 3. 모든 현재 변경을 사용자 파일 보존 하에 dev에 커밋한다.
-- [ ] 4. 모든 dev 커밋을 정상 push한다. 자동 tag/prerelease/cloud mutation 권한 차이는 차단 사유로 남긴다.
-- [ ] 5. 대상 작업 브랜치를 dev에 정상 통합한다. 이미 dev인 작업은 중복 merge하지 않는다.
+- [x] 3. 모든 검토한 변경을 사용자 파일 보존 하에 dev에 커밋했다. 최신 source는 Afterglow bab526fb, Waygate a6e7dfd, Drover8afc434e, Lumen c168b8a5, Palimpsest locald0bda353이며 presentation/pf.md는 제외·보존한다.
+- [ ] 4. 모든 dev 커밋을 정상 push한다. Afterglow/Waygate/Drover/Lumen은 원격 dev에 반영됐으나 Palimpsest 정상 push는 GH013·required checks6개로 차단됐다. 보호 규칙·별도 ref·native approval을 우회하지 않는다.
+- [x] 5. 대상 기본 checkout은 모두 dev다. 검토한 source를 dev에 직접 커밋했으므로 중복 branch merge는 필요하지 않다; owner dev→main 통합과 구분한다.
 
 ## Main and Publication
 
@@ -25,7 +25,7 @@
 - [ ] 14. 전체 문제 처리와 릴리즈 선행 조건 완료 후에만 배포한다.
 - [ ] 15. 배포 전후 VIP·ProxySQL·HAProxy의 실제 동작을 확인하고 발견한 문제를 처리한다.
 - [ ] 16. 배포 전후 나머지 활성 서비스, 특히 Keystone의 인증·catalog·downstream 읽기 동작을 확인하고 발견한 문제를 처리한다.
-- [ ] 17. 사용자가 점검 중인 기존 WireGuard 서버 keepalive 설정과 네트워크를 보존한다.
+- [x] 17. 사용자가 점검 중인 기존 WireGuard 서버 keepalive 설정과 네트워크를 보존했다. 이 세션은 관련 설정·네트워크를 변경하지 않았다.
 
 
 ## Evidence and Boundaries
@@ -49,6 +49,9 @@
 - Afterglow dependency floor: PyJWT2.15.0/AnyIO4.14.2/urllib32.8.0/AsyncSSH2.24.0/pypdf6.19.0, frontend devalue5.9.3/DOMPurify3.4.16/smol-toml1.7.1/Vitest·coverage4.1.11. Backend API의 양 architecture real JWT/TLS/chunked HTTP/SSH/PDF harness를 통과했고 worker 설치 graph/import 뒤 canonical Compose에서 실제 DB/scheduler startup과 runtime-disabled Notion loop를 관측했다. Root OpenStack CLI10.0.0은 격리 Keystone HTTP의 endpoint list를 실제 요청해 통과했다. Operator local frozen sync·Kolla21.2.0 CLI만 확인했으며 operator에는 OpenStack CLI가 없고 운영 sync/배포로 해석하지 않는다. 기존 immutable role pins는 유지했다.
 - Compiled frontend 양 architecture canonical Compose에서 Nodearm64/x64·APIhealth200·Notion DB/scheduler startup을 관측했다. SSR은 scratch TOML의 비기본 site 이름과 Δ/<safe>/& 문자열과 payload의 Unicode script escaping을 보존했다. Synthetic Chromium chat에서 table·KaTeX·code·SVG text label과 script/event/javascript URL rejection을 확인했다. Baseline/첫 patched image의 blank Mermaid label은 roothtmlLabels=false로 해결했다. 두 architecture390/767/768/1023/1024/1440px에서 label 유지·overflow0, settledmobile12px label의 viewport내 표시를 확인했다. 별도 변경을2026-10-02-fix-mermaid-svg-labels로 archive했다.
 - 최신 security+renderer source의 fullgate(2026-10-02): orchestration106/Kolla26/installer27+Windows1skip/backend3523/frontend1896+runner9/contract141/DBfunctional28/Ruff+format530 통과. 처음 gate의 Mermaid initialize-options copy assertion은 새 옵션 때문에 실패했으며 source를 우회하지 않고 obsolete copy/call-count assertion만 제거했다; 실제 SVG sanitization test와 compiled label/XSS smoke는 유지했다. Frontendcheck2130files/0errors/0warnings·productionbuild도 통과. 사용자 PPT/pf.md는 로컬 exclude로 보존하여 최종 source review·제출 대상에서 제외했다.
+- 최신 dev source normal push: Afterglow bab526fbbfecf263b1990452c5c26912cd7478f6와 Waygate a6e7dfd3f5f4745fcf6c9e059a0e4e9b66531e55. Working/staged architecture guards는 각각82a971531bbacd153cd8cd01e110b68c08890839b67d5f210e691b0354aad50f/2164files 및 f4a82dc0df31e3b3912156cc2ac004bca47ddf964ee67cf68ec11cf06c3751bc/114files, staged Gitleaks는76.21KB/56.12KB에서 finding0이었다. 해당 source SHA의 hosted Docker Build & Push CI37012250604/37012473229 모두 success를 관측했다. Afterglow backend/worker/frontend build·manifest job이 통과했고 양 architecture local build/실행 proof는 위 증거와 별개다. Opt-in live OpenStack은 skipped다. 이것은 dev CI/이미지 발행이며 안정 release·운영 배포가 아니다. 원격 default-branch alert58/5개는 dev push로 닫혔다고 주장하지 않는다.
+- Waygate v0.1.4 태그에는 독립 `waygate/agent/waygate_agent.py`가 없다. `waygate/templates/waygate_agent.yaml.j2`의 embedded register/reconcile transport에서 application/json header를 확인했다. Current shared agent·Afterglow JSON client/BFF도 제공/보존하나 운영 prebuilt VM의 실제 agent는 이번 검증에서 읽지 않았다.
+- 검증용 owned Chromium과 isolated security Compose API/worker/frontend/MariaDB/Redis/network를 종료·제거했고 해당 project의 volume0을 확인했다. 공유 afterglow-local-services·타 세션 project·운영 data/indices/credentials/WireGuard/keepalive는 보존했다. Release ecosystem은 보호된 통합·인증·원본 storage 복구·release/migration/rollout acceptance 때문에 archive하지 않는다.
 
 
 
