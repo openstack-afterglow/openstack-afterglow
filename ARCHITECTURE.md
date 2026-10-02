@@ -563,6 +563,11 @@ Afterglow 1.27.0 operator 정본은 Drover `v0.2.25`, Lumen `v0.3.0`, Waygate `v
 
 Afterglow 1.28.0 준비 작업트리의 operator는 Lumen root role만 `v0.3.1` tag/lock으로 갱신하며 Drover `v0.2.25`, Waygate `v0.2.0`과 Palimpsest root `v0.2.3` pin은 유지한다. Palimpsest 0.2.4는 Astra 승인과 KVM runner 격리 결정 전까지 게시·운영 승격하지 않는다. Lumen package·API/worker/controller/sandbox tag workflow의 결과와 이미지 digest는 각각 별도로 확인해야 하며, 이 문단은 Kolla 배포나 외부 Anthropic/OpenAI 유료 추론 수용 증거가 아니다.
 
+2026-10-02 `wireguardserver`의 **현재 운영 버전 재배포 준비**는 새 dev 후보 승격과 별개다. 실제 `/etc/kolla`의 stale root role metadata(Drover0.2.22/Lumen0.2.2/Waygate0.1.3)를 이미 실행 중인 immutable image에 맞는 게시 tag(Droverv0.2.25/Lumenv0.5.0/Waygatev0.2.0/Palimpsest clientv0.2.3)에 고정했고 Kolla는 설치된21.0.1.dev53/662707be를 유지했다. 기존 operator dependency graph에서 root4개만 locked/inexact sync했다. Stock site의 누락된 marked import는 공식 installer의 기존 `AFTERGLOW_OPERATOR_LOCK=/etc/kolla/uv.lock` 지원으로 복원했다. Repo operator의 후보 pin/lock, 서비스 소유권·애플리케이션 구조·운영 image·키·볼륨·inventory는 변경하지 않았다.
+
+실제 표준 CLI의 태그 없는/서비스 태그 `reconfigure --list-tasks`가 커스텀5역할을 포함하고, 네 sibling canonical prechecks는17host changed0/unreachable0/failed0이었다. Current-image READ ONLY ledger는 Drover3/3·Waygate3/3·Lumen20/20 및 checksum drift0이다. All30ecosystem container의 image/start/health/restart와67개 보호 operator 설정은 유지했다. 실제 genconfig/reconfigure·인증된 Keystone acceptance는 수행하지 않았다. 현재 Afterglow Manila/auth, C3 원본 OpenSearch/Ceph/Dashboards 복구는 별도 선행 조건이며 서비스 태그도 native loadbalancer config/check를 통해 ProxySQL·Keepalived·HAProxy 변경 handler를 호출할 수 있다. 실행·복구 절차는 실제 `/etc/kolla/README.md`와 [`deploy/kolla/operator/README.md`](deploy/kolla/operator/README.md)에 구분한다.
+
+
 운영 worker 복구는 검증한 `linux/amd64` manifest의 immutable digest만 `afterglow_worker_image_ref`에 고정하고 backend/frontend ref는 유지한다. Kolla precheck와 service-scoped rollout 뒤 모든 대상 controller의 running image digest, restart state, worker completion log, `notion_targets.last_sync` 전진을 함께 확인하며 container `running`만으로 성공 처리하지 않는다.
 
 
@@ -824,9 +829,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "82a971531bbacd153cd8cd01e110b68c08890839b67d5f210e691b0354aad50f",
-  "reviewed_at": "2026-10-02T12:49:03Z",
-  "summary": "Reviewed patched JWT/AnyIO/urllib3/AsyncSSH/pypdf API and worker subsets; frontend npm+Bun advisory floors, actual SSR escaping and native SVG Mermaid labels with strict sanitizer retained; removed obsolete copied initialization assertions. Real canonical arm64+amd64 API/worker/frontend, loopback SSH/TLS and root OpenStack CLI exercised. Immutable operator pins, auth/TLS/project/lease/CI/production boundaries and excluded user artifacts preserved."
+  "source_sha256": "948ec0d9589738c81fb8d218793ff89c17c271910e997202845a08b15b8de60b",
+  "reviewed_at": "2026-10-02T17:01:00Z",
+  "summary": "Reviewed current-state operator recovery handoff only: stable roles matched existing image digests, Kolla/tool dependency graph preserved, official installer restored canonical stock-site dispatch. Actual sibling prechecks and read-only ledgers recorded; no genconfig/reconfigure or runtime restart. No application-structure, repo release-pin, auth, datastore or network change. Previous security and compiled renderer verification unchanged; concurrent Dockerfile/native VM/proposal work excluded."
 }
 ```
 <!-- architecture-review:end -->

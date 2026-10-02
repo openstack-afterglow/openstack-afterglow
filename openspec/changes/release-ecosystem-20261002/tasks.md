@@ -27,12 +27,17 @@
 - [ ] 16. 배포 전후 나머지 활성 서비스, 특히 Keystone의 인증·catalog·downstream 읽기 동작을 확인하고 발견한 문제를 처리한다.
 - [x] 17. 사용자가 점검 중인 기존 WireGuard 서버 keepalive 설정과 네트워크를 보존했다. 이 세션은 관련 설정·네트워크를 변경하지 않았다.
 
+## Current-state Reconfigure Preparation
+
+- [x] 18. 사용자 후속 선택에 따라 wireguard-server의 현재 운영 image digest·키·볼륨·multinode·사용자 변경을 보존하고 불변 operator pin·역할 설치·stock site import를 준비했다. 실행 이미지와 맞는 Drover0.2.25/Lumen0.5.0/Waygate0.2.0/Palimpsest client0.2.3 역할만 동기화했으며 Kolla21.0.1.dev53·일반 의존성은 유지했다. 실제 service restart와 신규 release promotion은 실행하지 않았다.
+- [x] 19. 실제 태그 없는/다섯 서비스 태그 표준 CLI의 task dispatch, uv pip check 및 네 서비스 canonical read-only prechecks(17host changed0/unreachable0/failed0), 현재 DB ledger checksum을 검증했다. 실행 명령·운영 blocker·복구 지점을 서버 README와 local handoff에 남겼다. Afterglow Manila/operator 인증·실제 genconfig/reconfigure 및 whole-cluster rollout은 별도 blocked acceptance다.
+
 
 ## Evidence and Boundaries
 
 - Main PR 생성/편집과 merge는 pie_root 소유다. 태그·운영 배포를 이 선행 조건 전에 수행하지 않는다.
 - 배포 호스트 inventory를 확인했고 `multimode`가 없으며 사용자가 기존 `multinode`로 실행하도록 선택했다. inventory 파일·대상 그룹을 변경하지 않는다.
-- `/etc/kolla` 설치 조회: Kolla-Ansible 21.0.1.dev53, Drover 0.2.22, Lumen 0.2.2, Waygate 0.1.3, Palimpsest client 0.2.3. 현재 operator source는 서비스 `rev=dev`이며 릴리즈 pin promotion 전 uv sync를 수행하지 않았다.
+- 최초 `/etc/kolla` 설치 조회는 Kolla21.0.1.dev53/Drover0.2.22/Lumen0.2.2/Waygate0.1.3/Palimpsest client0.2.3와 floating dev/stable refs였다. 사용자 후속 current-state 준비에서 현재 운영 이미지에 맞는 게시 tag를 검토한 뒤 four-root 역할만 locked/inexact sync했다: Droverv0.2.25, Lumenv0.5.0, Waygatev0.2.0, Palimpsestv0.2.3; Kolla는 기존662707be commit으로 고정·유지했다. 새 후보의 main/tag/release promotion이나 controller genconfig/reconfigure는 수행하지 않았다.
 - 각 gate/smoke/커밋의 결과는 완료 시 추가한다. 출판 또는 운영 성공은 관측한 경우만 기록한다.
 - Afterglow review의 재현된 blocker 7개(PCI count 할당, aggregate CSV 일치, cache flight freshness, native JWT Hub rescope, key project assertion, 설정 CA TLS, drawer remount rescope)를 수정했다. 같은 identity 재로그인 후 이전 응답 적용도 failing-before regression으로 확인·수정했으며 동일 identity refresh는 허용했다.
 - Focused backend: capacity/cache/identity/package/Hub proxy 274 passed. Frontend navigation: ProjectSelector/Sidebar 34 passed. 실제 390px Chromium synthetic identity에서 보류 rescope→drawer 닫기/다시 열기→동시 전환 잠김(POST 1회)→정확한 scope 적용/잠금 해제와 tutorial native package 링크 0·지원 VM 링크 유지·overflow 0을 관측했다. 실제 Keystone 로그인 증거는 아니다.
@@ -55,3 +60,6 @@
 
 
 
+- 최종 metadata-only dev27f2945ee409139a3e91d3ada8281f852e2f3cd7의 hosted CI37013380707도 success를 관측했다. 사용자 후속 current-state 준비는 `local://release-current-state-reconfigure.md`에 별도로 기록했다. 원본 operator snapshot은 `/etc/kolla/afterglow-release-backups/pre-ecosystem-20261002T154152Z`0700이며 manifest/lock/inventory·설치 package inventory·role/playbook/source·설정0600 archive와 venv 복사본을 보존한다; datastore 백업은 아니다.
+- Before/after 실제 CLI 재현: 기존 stock site import 누락으로 reconfigure --list-tasks가72stock plays만 반환했다. 공식 installer로 marked import를 복원한 뒤 태그 없는/다섯 서비스 태그 CLI가 커스텀5역할·native loadbalancer 경로를 포함했다. 현재 image READ ONLY ledger는 Drover3/3·Waygate3/3·Lumen20/20, pending0·checksum drift0이며 migration 적용은 없다. Kolla/OpenStack CLI version·110installed package compatibility가 통과했고 sibling prechecks는17host changed0/unreachable0/failed0이었다. Protected operator config67파일·inventory와 ecosystem container30개의 image/start/health/restart state는 유지했다. Afterglow Manila/auth와 전체 stock storage gates는 여전히 별도 blocker이며 서비스 태그도 ProxySQL/Keepalived를 포함하는 native loadbalancer config/check를 호출할 수 있음을 runbook에 명시한다.
+- Current-state 준비의 repository 변경은 ARCHITECTURE·CHANGELOG·operator README·이 checklist의 문서4개뿐이다. 별도 임시 index의 HEAD+검토 문서 source digest는 `948ec0d9589738c81fb8d218793ff89c17c271910e997202845a08b15b8de60b`/2164files다. 동시 작업의 Dockerfile·native VM script/test·proposal은 제출·review 범위에서 제외하고 기존 공유 architecture review block도 보존한다. Working guard는 그 미검토 source 때문에 stale이며 전체 작업트리 검증으로 주장하지 않는다.
