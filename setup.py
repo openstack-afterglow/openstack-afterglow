@@ -303,8 +303,8 @@ def collect_app() -> dict:
         "backend_port": backend_port,
         "frontend_port": frontend_port,
         "refresh_interval_ms": refresh_interval_ms,
-        "logo_path": "/logo.png",
-        "favicon_path": "/favicon.ico",
+        "logo_path": "/afterglow-logo.svg",
+        "favicon_path": "/favicon.svg",
     }
 
 

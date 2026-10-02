@@ -4,26 +4,31 @@
 	import { imageStudioApi, imageModelReadiness, type ImageModel, type ImageRun, type ImageApiScope, type ImageCapabilities } from '$lib/api/imageStudio';
 	import { isChatImageMime } from '$lib/api/chatAttachments';
 	import { ApiError } from '$lib/api/client';
-	import { Alert, Button, Card, Field, PageShell, SelectInput, TextareaInput } from '$lib/components/ui';
+	import { Alert, Button, Field, PageShell, SelectInput, TextareaInput } from '$lib/components/ui';
+	import { IMAGE_STUDIO_STYLES, composeImagePrompt, type ImageStudioStyleId } from './imageStudioStyles';
 
 	const scope = $derived($auth.token && $auth.projectId ? { token: $auth.token, projectId: $auth.projectId } : null);
 	const storageKey = $derived(`afterglow:image-studio:${$auth.userId ?? ''}:${$auth.projectId ?? ''}`);
 	let models = $state<ImageModel[]>([]);
 	let modelId = $state('');
 	let modelsLoading = $state(false);
+	let modelsLoaded = $state(false);
 	let modelsError = $state('');
 	let capabilities = $state<ImageCapabilities | null>(null);
 	let capabilitiesLoading = $state(false);
 	let capabilitiesError = $state('');
 	let capabilityRequest = 0;
 	let prompt = $state('');
+	let styleId = $state<ImageStudioStyleId | null>(null);
 	let size = $state('1024x1024');
 	let quality = $state('high');
 	let count = $state('1');
-	let editMode = $state(false);
-	let editAssetId = $state('');
-	let editFileName = $state('');
+	let inputAssetId = $state('');
+	let inputFileName = $state('');
+	let inputPreviewUrl = $state('');
+	let fileInput = $state<HTMLInputElement>();
 	let uploading = $state(false);
+	let inputGeneration = 0;
 	let submitting = $state(false);
 	let error = $state('');
 	let runIds = $state<string[]>([]);
@@ -42,7 +47,11 @@
 	let pendingIntent: { fingerprint: string; key: string } | null = null;
 	const chosenModel = $derived(models.find((model) => String(model.id) === modelId));
 	const readiness = $derived(imageModelReadiness(chosenModel));
-	const busy = $derived(submitting || uploading || Boolean(currentRun && !currentRun.terminal));
+	const runActive = $derived(Boolean(currentRun && !currentRun.terminal));
+	const busy = $derived(submitting || uploading || runActive);
+	const selectedStyle = $derived(IMAGE_STUDIO_STYLES.find((style) => style.id === styleId));
+	const composedPrompt = $derived(composeImagePrompt(prompt, styleId));
+	const hasInput = $derived(Boolean(inputPreviewUrl));
 	const variants = $derived((capabilities?.available_image_variants ?? []).map((variant) => {
 		const [variantSize, variantQuality] = variant.split(':');
 		return { size: variantSize, quality: variantQuality };
@@ -51,7 +60,8 @@
 	const qualities = $derived([...new Set(variants.filter((variant) => variant.size === size).map((variant) => variant.quality))]);
 	const maxCount = $derived(Math.min(capabilities?.max_image_count ?? 1, 10));
 	const variantReady = $derived(Boolean(variants.some((variant) => variant.size === size && variant.quality === quality) && Number(count) >= 1 && Number(count) <= maxCount));
-	const requestFingerprint = $derived(JSON.stringify({ project: storageKey, modelId, prompt: prompt.trim(), size, quality, count, editMode, editAssetId }));
+	const requestFingerprint = $derived(JSON.stringify({ project: storageKey, modelId, prompt: composedPrompt, style: styleId, size, quality, count, inputAssetId }));
+	const canSubmit = $derived(Boolean(scope) && !readiness && !modelsLoading && !capabilitiesLoading && variantReady && !busy && Boolean(composedPrompt) && (!hasInput || Boolean(inputAssetId)));
 	$effect(() => {
 		const fingerprint = requestFingerprint;
 		untrack(() => {
@@ -109,6 +119,17 @@
 		for (const url of Object.values(previewUrls)) URL.revokeObjectURL(url);
 		previewUrls = {};
 	}
+	function clearInput() {
+		inputGeneration += 1;
+		uploadAbort?.abort();
+		uploadAbort = null;
+		uploading = false;
+		if (inputPreviewUrl) URL.revokeObjectURL(inputPreviewUrl);
+		inputPreviewUrl = '';
+		inputAssetId = '';
+		inputFileName = '';
+		if (fileInput) fileInput.value = '';
+	}
 	function saveHistory(key: string, ids: string[]) {
 		try { sessionStorage.setItem(key, JSON.stringify(ids.slice(0, 20))); } catch { /* Storage is optional. */ }
 	}
@@ -139,6 +160,7 @@
 			const loaded = await imageStudioApi.models(requestScope);
 			if (generation !== modelRequest) return;
 			models = loaded;
+			modelsLoaded = true;
 			if (!loaded.some((model) => String(model.id) === modelId)) modelId = loaded[0] ? String(loaded[0].id) : '';
 		} catch (cause) {
 			if (generation === modelRequest) modelsError = message(cause);
@@ -206,19 +228,17 @@
 			capabilitiesError = '';
 			clearTimer();
 			clearPreviews();
-			uploadAbort?.abort();
+			clearInput();
 			submitAbort?.abort();
 			pendingIntent = null;
-			uploading = false;
 			submitting = false;
 			loadingRun = false;
 			models = [];
+			modelsLoaded = false;
 			modelId = '';
 			runIds = [];
 			selectedRunId = null;
 			currentRun = null;
-			editAssetId = '';
-			editFileName = '';
 			error = '';
 			if (!currentScope) return;
 			const generation = modelRequest;
@@ -233,35 +253,45 @@
 		operation += 1;
 		clearTimer();
 		clearPreviews();
-		uploadAbort?.abort();
+		clearInput();
 		submitAbort?.abort();
 	});
 
 	async function selectFile(event: Event) {
 		const file = (event.currentTarget as HTMLInputElement).files?.[0];
 		if (!file || !scope) return;
-		if (!isChatImageMime(file.type)) { error = 'PNG, JPEG, WebP 이미지만 업로드할 수 있습니다.'; return; }
-		uploadAbort?.abort();
+		if (!isChatImageMime(file.type)) {
+			if (fileInput) fileInput.value = '';
+			error = 'PNG, JPEG, WebP 이미지만 업로드할 수 있습니다.';
+			return;
+		}
+		// Replacing an input invalidates only the previous input; run selection and submission never discard it.
+		clearInput();
+		const generation = inputGeneration;
 		const controller = new AbortController();
 		uploadAbort = controller;
-		const generation = operation;
 		const requestScope = scope;
+		inputPreviewUrl = URL.createObjectURL(file);
+		inputFileName = file.name;
 		uploading = true;
-		editAssetId = '';
 		error = '';
 		try {
 			const asset = await imageStudioApi.upload(file, requestScope, controller.signal);
-			if (generation !== operation || controller.signal.aborted) return;
-			editAssetId = asset.id;
-			editFileName = asset.name;
+			if (generation !== inputGeneration) return;
+			inputAssetId = asset.id;
+			inputFileName = asset.name;
 		} catch (cause) {
-			if (generation === operation && !controller.signal.aborted) error = `입력 이미지 업로드 실패: ${message(cause)}`;
+			if (generation !== inputGeneration) return;
+			error = `입력 이미지 업로드 실패: ${message(cause)} 이미지를 교체하거나 제거한 뒤 다시 요청하세요.`;
 		} finally {
-			if (generation === operation) uploading = false;
+			if (uploadAbort === controller) {
+				uploadAbort = null;
+				uploading = false;
+			}
 		}
 	}
 	async function submit() {
-		if (!scope || readiness || modelsLoading || capabilitiesLoading || !variantReady || busy || !prompt.trim() || (editMode && !editAssetId)) return;
+		if (!canSubmit || !scope) return;
 		const requestScope = scope;
 		const generation = ++operation;
 		const controller = new AbortController();
@@ -273,11 +303,11 @@
 		error = '';
 		submitting = true;
 		try {
-			const request = { model_id: modelId, prompt: prompt.trim(), size, quality, n: Number(count) };
+			const request = { model_id: modelId, prompt: composedPrompt, size, quality, n: Number(count) };
 			const fingerprint = requestFingerprint;
 			const idempotencyKey = pendingIntent?.fingerprint === fingerprint ? pendingIntent.key : crypto.randomUUID();
 			pendingIntent = { fingerprint, key: idempotencyKey };
-			const descriptor = await imageStudioApi.submit(editMode ? 'edits' : 'generations', editMode ? { ...request, input_asset_id: editAssetId } : request, requestScope, idempotencyKey, controller.signal);
+			const descriptor = await imageStudioApi.submit(inputAssetId ? 'edits' : 'generations', inputAssetId ? { ...request, input_asset_id: inputAssetId } : request, requestScope, idempotencyKey, controller.signal);
 			if (generation !== operation) return;
 			pendingIntent = null;
 			runIds = [descriptor.run_id, ...runIds.filter((id) => id !== descriptor.run_id)].slice(0, 20);
@@ -315,69 +345,159 @@
 <PageShell max="7xl">
 	<div class="studio">
 		<header class="studio-header">
-			<div><p class="eyebrow">AI 채팅 / 미디어</p><h1>이미지 Studio</h1><p class="muted">프롬프트로 이미지를 생성하거나 내 이미지를 업로드해 수정합니다. 결과는 현재 프로젝트에서만 조회할 수 있습니다.</p></div>
-			<Button href="/dashboard/chat" variant="secondary">텍스트 채팅으로</Button>
+			<svg class="studio-mark" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5" /><circle cx="15.5" cy="9" r="1.75" /><path d="m3.5 17 5-5.5 4 4 2.5-2.5 5.5 5.5" /></svg>
+			<h1>이미지 Studio</h1>
+			<p class="muted">원하는 이미지를 설명하세요. 결과는 현재 프로젝트에서만 조회할 수 있습니다.</p>
+			<Button href="/dashboard/chat" variant="ghost" size="sm">텍스트 채팅으로</Button>
 		</header>
 		{#if modelsError}<Alert tone="danger" title="모델을 불러오지 못했습니다">{modelsError} <Button variant="subtle" onclick={() => scope && loadModels(scope, ++modelRequest)}>다시 시도</Button></Alert>{/if}
 		{#if error}<Alert tone="danger">{error} {#if selectedRunId}<Button variant="subtle" onclick={() => scope && selectedRunId && selectRun(selectedRunId, scope)}>상태 다시 확인</Button>{/if}</Alert>{/if}
-		<div class="studio-grid">
-			<Card>
-				<form class="form" onsubmit={(event) => { event.preventDefault(); void submit(); }}>
-					<div class="mode-row" role="group" aria-label="작업 유형">
-						<Button variant={!editMode ? 'accent' : 'secondary'} ariaPressed={!editMode} onclick={() => (editMode = false)}>새 이미지</Button>
-						<Button variant={editMode ? 'accent' : 'secondary'} ariaPressed={editMode} onclick={() => (editMode = true)}>이미지 수정</Button>
+
+		<form class="composer" aria-label="이미지 요청" onsubmit={(event) => { event.preventDefault(); void submit(); }}>
+			<TextareaInput id="studio-prompt" class="composer-prompt" bind:value={prompt} rows={4} ariaLabel="프롬프트" ariaDescribedBy={selectedStyle ? 'studio-input-note studio-style-note' : 'studio-input-note'} placeholder={hasInput ? '첨부 이미지를 참고해 새로 만들거나 수정할 내용을 설명하세요' : '만들고 싶은 이미지를 설명하세요'} disabled={busy} />
+			<p id="studio-input-note" class="muted attachment-hint">이미지 없이 요청하면 새로 생성합니다. 첨부하면 모델이 프롬프트에 따라 참고해서 새로 만들거나 수정합니다.</p>
+			{#if selectedStyle}
+				<div class="style-note">
+					<p id="studio-style-note"><span class="style-note-label">{selectedStyle.label} 스타일</span> 제출할 때 프롬프트 끝에 “스타일: {selectedStyle.instruction}” 지시가 추가됩니다.</p>
+					<Button variant="ghost" size="sm" onclick={() => (styleId = null)} disabled={busy}>스타일 지우기</Button>
+				</div>
+			{/if}
+			{#if inputPreviewUrl}
+				<div class="attachment">
+					<img src={inputPreviewUrl} alt="입력 이미지 미리보기" />
+					<div class="attachment-meta">
+						<p class="attachment-name">{inputFileName}</p>
+						{#if uploading}<p role="status" class="muted">입력 이미지를 업로드하는 중…</p>{:else if inputAssetId}<p role="status" class="muted">업로드 완료: {inputFileName}</p>{/if}
 					</div>
-					<Field label="이미지 모델" for="studio-model">
-						<SelectInput id="studio-model" value={modelId} onchange={selectModel} disabled={modelsLoading || busy}><option value="">모델 선택</option>{#each models as model (model.id)}<option value={String(model.id)}>{model.display_name}</option>{/each}</SelectInput>
+					<Button variant="ghost" size="sm" ariaLabel="첨부 이미지 제거" onclick={clearInput} disabled={submitting}>제거</Button>
+				</div>
+			{/if}
+			<div class="composer-bar">
+				<div class="composer-options">
+					<Field label="이미지 모델" for="studio-model" class="option-model">
+						<SelectInput id="studio-model" value={modelId} onchange={selectModel} disabled={modelsLoading || busy || models.length === 0}><option value="">모델 선택</option>{#each models as model (model.id)}<option value={String(model.id)}>{model.display_name}</option>{/each}</SelectInput>
 					</Field>
-					{#if modelsLoading || capabilitiesLoading}<p role="status" class="muted">모델과 사용 가능한 이미지 옵션을 확인하는 중…</p>{:else if readiness}<Alert tone="warning" title="실행 준비 필요">{readiness}</Alert>{:else if capabilitiesError}<Alert tone="danger" title="이미지 옵션 조회 실패">{capabilitiesError} <Button variant="subtle" onclick={() => chosenModel && scope && loadCapabilities(chosenModel, scope, ++capabilityRequest)}>다시 시도</Button></Alert>{:else if !variantReady}<Alert tone="warning">선택한 모델의 가격이 설정된 이미지 크기·품질을 사용할 수 없습니다.</Alert>{:else}<Alert tone="success">모델 제공자, 생성 경로, 선택한 크기·품질의 가격이 준비되었습니다.</Alert>{/if}
-					<Field label="프롬프트" for="studio-prompt" required><TextareaInput id="studio-prompt" bind:value={prompt} rows={5} placeholder="만들고 싶은 이미지를 설명하세요" disabled={busy} /></Field>
-					<div class="options">
-						<Field label="크기" for="studio-size"><SelectInput id="studio-size" bind:value={size} disabled={busy || capabilitiesLoading}>{#each sizes as option (option)}<option value={option}>{option === 'auto' ? '자동' : option.replace('x', ' × ')}</option>{/each}</SelectInput></Field>
-						<Field label="품질" for="studio-quality"><SelectInput id="studio-quality" bind:value={quality} disabled={busy || capabilitiesLoading}>{#each qualities as option (option)}<option value={option}>{option}</option>{/each}</SelectInput></Field>
-						<Field label="이미지 수" for="studio-count"><SelectInput id="studio-count" bind:value={count} disabled={busy || capabilitiesLoading}>{#each Array.from({ length: maxCount }, (_, index) => index + 1) as option (option)}<option value={String(option)}>{option}</option>{/each}</SelectInput></Field>
-					</div>
-					{#if editMode}<Field label="수정할 이미지" for="studio-file" help="PNG, JPEG 또는 WebP · 업로드 후 소유권과 검사를 거쳐 사용합니다."><input id="studio-file" type="file" accept="image/png,image/jpeg,image/webp" onchange={selectFile} disabled={busy} class="file-input" /></Field>{#if uploading}<p role="status">입력 이미지를 업로드하는 중…</p>{:else if editAssetId}<p role="status" class="muted">업로드 완료: {editFileName}</p>{/if}{/if}
-					<Button type="submit" disabled={!scope || Boolean(readiness) || modelsLoading || capabilitiesLoading || !variantReady || busy || !prompt.trim() || (editMode && !editAssetId)}>{submitting ? '요청 중…' : editMode ? '이미지 수정 시작' : '이미지 생성 시작'}</Button>
-				</form>
-			</Card>
-			<section class="results" aria-label="이미지 결과">
-				<Card>
-					<h2>이 브라우저의 작업</h2>
-					{#if runIds.length === 0}<p class="muted">아직 시작한 이미지 작업이 없습니다.</p>{:else}<div class="history">{#each runIds as id, index (id)}<Button variant={selectedRunId === id ? 'accent' : 'secondary'} ariaPressed={selectedRunId === id} onclick={() => scope && selectRun(id, scope)}>작업 {runIds.length - index} · {id.slice(0, 8)}</Button>{/each}</div>{/if}
-				</Card>
-				{#if selectedRunId}<Card><div class="result-head"><h2>작업 결과</h2>{#if currentRun}<span role="status">{displayStatus(currentRun.status)}</span>{/if}</div>
-					{#if loadingRun && !currentRun}<p role="status">작업 상태를 확인하는 중…</p>{/if}
-					{#if currentRun && !currentRun.terminal}<p role="status">서버에서 이미지를 처리 중입니다. 이 페이지를 떠나도 작업은 계속됩니다.</p><Button variant="danger-outline" onclick={cancel}>작업 취소</Button>{/if}
+					<Field label="크기" for="studio-size"><SelectInput id="studio-size" bind:value={size} disabled={busy || capabilitiesLoading || sizes.length === 0}>{#each sizes as option (option)}<option value={option}>{option === 'auto' ? '자동' : option.replace('x', ' × ')}</option>{/each}</SelectInput></Field>
+					<Field label="품질" for="studio-quality"><SelectInput id="studio-quality" bind:value={quality} disabled={busy || capabilitiesLoading || qualities.length === 0}>{#each qualities as option (option)}<option value={option}>{option}</option>{/each}</SelectInput></Field>
+					<Field label="이미지 수" for="studio-count"><SelectInput id="studio-count" bind:value={count} disabled={busy || capabilitiesLoading || maxCount < 1}>{#each Array.from({ length: maxCount }, (_, index) => index + 1) as option (option)}<option value={String(option)}>{option}</option>{/each}</SelectInput></Field>
+				</div>
+				<div class="composer-actions">
+					<Button variant="secondary" onclick={() => fileInput?.click()} disabled={busy || !scope}>{inputPreviewUrl ? '이미지 교체' : '이미지 첨부'}</Button>
+					<input bind:this={fileInput} type="file" accept="image/png,image/jpeg,image/webp" class="sr-only" tabindex="-1" aria-label="입력 이미지" onchange={selectFile} disabled={busy || !scope} />
+					<Button type="submit" variant="primary" size="lg" class="composer-submit" disabled={!canSubmit}>{submitting ? '요청 중…' : '이미지 만들기'}</Button>
+				</div>
+			</div>
+			<div class="composer-status">
+				{#if !scope}<p role="status" class="muted">로그인하고 프로젝트를 선택하면 이미지 모델을 불러옵니다.</p>
+				{:else if modelsLoading || capabilitiesLoading || (!modelsLoaded && !modelsError)}<p role="status" class="muted">모델과 사용 가능한 이미지 옵션을 확인하는 중…</p>
+				{:else if modelsError}<p class="muted">모델 목록을 불러온 뒤 이미지를 요청할 수 있습니다.</p>
+				{:else if models.length === 0}<Alert tone="warning" title="사용 가능한 이미지 모델 없음">현재 프로젝트에서 사용할 수 있는 이미지 모델이 없습니다. 관리자에게 이미지 모델 등록을 요청하세요.</Alert>
+				{:else if readiness}<Alert tone="warning" title="실행 준비 필요">{readiness}</Alert>
+				{:else if capabilitiesError}<Alert tone="danger" title="이미지 옵션 조회 실패">{capabilitiesError} <Button variant="subtle" onclick={() => chosenModel && scope && loadCapabilities(chosenModel, scope, ++capabilityRequest)}>다시 시도</Button></Alert>
+				{:else if !variantReady}<Alert tone="warning">선택한 모델의 가격이 설정된 이미지 크기·품질을 사용할 수 없습니다.</Alert>
+				{:else}<p role="status" class="muted">모델 제공자, 생성 경로, 선택한 크기·품질의 가격이 준비되었습니다.</p>{/if}
+			</div>
+		</form>
+
+		<section class="styles" aria-labelledby="studio-styles-title">
+			<div class="section-head">
+				<h2 id="studio-styles-title">스타일</h2>
+				<p class="muted">선택한 스타일은 별도 모델 옵션이 아니라 프롬프트 끝에 붙는 지시문으로 전송됩니다. 다시 누르면 해제됩니다.</p>
+			</div>
+			<div class="style-grid">
+				{#each IMAGE_STUDIO_STYLES as style (style.id)}
+					<button type="button" class="style-card" class:style-selected={styleId === style.id} aria-pressed={styleId === style.id} disabled={busy} onclick={() => (styleId = styleId === style.id ? null : style.id)}>
+						<img src={style.image} alt="" loading="lazy" decoding="async" />
+						<span>{style.label}</span>
+					</button>
+				{/each}
+			</div>
+		</section>
+
+		{#if selectedRunId || runIds.length}
+			<section class="results" aria-labelledby="studio-results-title">
+				<div class="result-head">
+					<h2 id="studio-results-title">작업 결과</h2>
+					{#if currentRun}<span role="status" class="run-status">{displayStatus(currentRun.status)}</span>{/if}
+				</div>
+				{#if selectedRunId}
+					{#if loadingRun && !currentRun}<p role="status" class="muted">작업 상태를 확인하는 중…</p>{/if}
+					{#if currentRun && !currentRun.terminal}<div class="run-progress"><p role="status" class="muted">서버에서 이미지를 처리 중입니다. 이 페이지를 떠나도 작업은 계속됩니다.</p><Button variant="danger-outline" onclick={cancel}>작업 취소</Button></div>{/if}
 					{#if currentRun?.status === 'failed'}<Alert tone="danger" title="이미지 작업 실패">실행이 실패했습니다. 다시 시도하거나 모델 설정을 확인하세요.</Alert>{/if}
 					{#if currentRun?.status === 'canceled'}<Alert tone="neutral">작업이 취소되었습니다.</Alert>{/if}
 					{#if currentRun?.status === 'completed'}{#if currentRun.output_assets?.length}<div class="gallery">{#each currentRun.output_assets as asset (asset.asset_id)}<figure><div class="image-frame">{#if previewUrls[asset.asset_id]}<img src={previewUrls[asset.asset_id]} alt="생성된 이미지" />{:else}<span>이미지 불러오는 중…</span>{/if}</div><figcaption><span>이미지 · {asset.mime_type}</span><Button variant="secondary" onclick={() => download(asset.asset_id, `image-${asset.asset_id}.${asset.mime_type.split('/')[1] ?? 'png'}`)}>다운로드</Button></figcaption></figure>{/each}</div>{:else}<Alert tone="warning">작업은 완료됐지만 출력 이미지가 없습니다.</Alert>{/if}{/if}
-				</Card>{/if}
+				{/if}
+				{#if runIds.length}
+					<div class="history-block">
+						<h3>이 브라우저의 작업</h3>
+						<div class="history">{#each runIds as id, index (id)}<Button size="sm" variant={selectedRunId === id ? 'accent' : 'secondary'} ariaPressed={selectedRunId === id} onclick={() => scope && selectRun(id, scope)}>작업 {runIds.length - index} · {id.slice(0, 8)}</Button>{/each}</div>
+					</div>
+				{/if}
 			</section>
-		</div>
+		{/if}
 	</div>
 </PageShell>
 
 <style>
-	.studio { display: grid; gap: 1.25rem; }
-	.studio-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
-	.studio-header h1 { font-size: 1.25rem; font-weight: 600; line-height: 1.75rem; }
-	.eyebrow { font-size: 0.75rem; color: var(--color-ink-2); }
-	.muted { color: var(--color-ink-2); font-size: 0.8125rem; line-height: 1.5; }
-	.studio-grid { display: grid; gap: 1rem; align-items: start; }
-	.form, .results { display: grid; gap: 1rem; min-width: 0; }
-	.mode-row, .history, .result-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
-	.options { display: grid; gap: 0.75rem; }
-	.file-input { width: 100%; border: 1px solid var(--color-line-2); border-radius: var(--radius-md); padding: 0.5rem; background: var(--color-surface-sunken); color: var(--color-ink-1); font-size: 0.8125rem; }
-	.file-input:focus-visible { outline: none; box-shadow: var(--focus-ring); }
-	.results h2 { font-size: 0.875rem; font-weight: 600; margin-bottom: 0.75rem; }
-	.result-head { justify-content: space-between; }
-	.result-head h2 { margin-bottom: 0; }
-	.gallery { display: grid; gap: 0.75rem; margin-top: 0.75rem; }
-	.gallery figure { min-width: 0; border: 1px solid var(--color-line); border-radius: var(--radius-lg); overflow: hidden; background: var(--color-surface-sunken); }
-	.image-frame { min-height: 10rem; display: grid; place-items: center; color: var(--color-ink-2); }
-	.image-frame img { display: block; width: 100%; height: auto; max-height: 36rem; object-fit: contain; }
-	figcaption { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; padding: 0.75rem; font-size: 0.8125rem; }
-	@media (min-width: 768px) { .options { grid-template-columns: repeat(2, minmax(0, 1fr)); } .gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-	@media (min-width: 1024px) { .studio-grid { grid-template-columns: minmax(19rem, 0.9fr) minmax(0, 1.1fr); } }
+	.studio { display: grid; gap: 2rem; width: 100%; max-width: 68rem; margin-inline: auto; padding-block: 1rem 3rem; }
+	.studio-header { display: grid; justify-items: center; gap: 0.5rem; text-align: center; padding-top: 1.5rem; }
+	.studio-mark { width: 2.5rem; height: 2.5rem; color: var(--color-ink-1); }
+	.studio-header h1 { font-size: 1.25rem; font-weight: 600; line-height: 1.75rem; color: var(--color-ink-0); }
+	.studio-header .muted { max-width: 36rem; }
+	.muted { margin: 0; color: var(--color-ink-2); font-size: 0.8125rem; line-height: 1.5; }
+
+	.composer { display: grid; gap: 1rem; padding: 1rem; border: 1px solid var(--color-line); border-radius: var(--radius-xl); background: var(--color-surface-raised); box-shadow: var(--shadow-popover); min-width: 0; }
+	.composer :global(.composer-prompt) { min-height: 7.5rem; font-size: 0.875rem; line-height: 1.6; padding: 0.875rem 1rem; resize: vertical; }
+	.style-note, .attachment { display: flex; align-items: center; gap: 0.75rem; padding: 0.625rem 0.75rem; border: 1px solid var(--color-line); border-radius: var(--radius-lg); background: var(--color-surface-base); }
+	.style-note p { flex: 1; margin: 0; font-size: 0.8125rem; line-height: 1.5; color: var(--color-ink-1); min-width: 0; }
+	.style-note-label { font-weight: 600; color: var(--color-warm-text); margin-right: 0.375rem; }
+	.attachment img { width: 4.5rem; height: 4.5rem; flex: none; object-fit: cover; border-radius: var(--radius-md); background: var(--color-surface-sunken); }
+	.attachment-meta { display: grid; gap: 0.125rem; flex: 1; min-width: 0; }
+	.attachment-name { margin: 0; font-size: 0.8125rem; font-weight: 500; color: var(--color-ink-0); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.attachment-hint { padding-inline: 0.25rem; }
+	.composer-bar { display: grid; gap: 0.875rem; padding-top: 1rem; border-top: 1px solid var(--color-line); }
+	/* Selects keep a readable minimum ("1024 × 1024") and at most three per row; the model name gets its own row until four columns fit. */
+	.composer-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, max(9rem, calc((100% - 1.5rem) / 3))), 1fr)); gap: 0.75rem; min-width: 0; }
+	.composer-options :global(.option-model) { grid-column: 1 / -1; }
+	.composer-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+	.composer :global(.composer-submit) { width: 100%; }
+
+	.styles, .results { display: grid; gap: 1rem; min-width: 0; }
+	.section-head { display: grid; gap: 0.25rem; }
+	.styles h2, .results h2 { margin: 0; font-size: 1rem; font-weight: 600; color: var(--color-ink-0); }
+	.style-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; }
+	.style-card { display: grid; gap: 0.5rem; padding: 0; border: 0; background: transparent; color: var(--color-ink-1); font: inherit; font-size: 0.8125rem; font-weight: 500; text-align: left; cursor: pointer; min-width: 0; }
+	.style-card img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border: 1px solid var(--color-line); border-radius: var(--radius-lg); background: var(--color-surface-sunken); transition: border-color var(--motion-duration-fast) var(--motion-ease-standard), box-shadow var(--motion-duration-fast) var(--motion-ease-standard); }
+	.style-card:hover:not(:disabled) { color: var(--color-ink-0); }
+	.style-card:hover:not(:disabled) img { border-color: var(--color-line-2); }
+	.style-card:focus-visible { outline: none; }
+	.style-card:focus-visible img { box-shadow: var(--focus-ring); }
+	.style-selected { color: var(--color-ink-0); font-weight: 600; }
+	.style-selected img { border-color: var(--color-action-warm); box-shadow: 0 0 0 3px var(--warm-ring); }
+	.style-card:disabled { opacity: 0.55; cursor: not-allowed; }
+
+	.result-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; }
+	.run-status { font-size: 0.75rem; font-weight: 500; color: var(--color-ink-1); }
+	.run-progress { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; }
+	.gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: 1rem; }
+	.gallery figure { margin: 0; min-width: 0; border: 1px solid var(--color-line); border-radius: var(--radius-xl); overflow: hidden; background: var(--color-surface-raised); }
+	.image-frame { min-height: 16rem; display: grid; place-items: center; color: var(--color-ink-2); background: var(--color-surface-sunken); font-size: 0.8125rem; }
+	.image-frame img { display: block; width: 100%; height: auto; max-height: 44rem; object-fit: contain; }
+	figcaption { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; padding: 0.75rem 1rem; font-size: 0.8125rem; color: var(--color-ink-1); }
+	.history-block { display: grid; gap: 0.5rem; padding-top: 1rem; border-top: 1px solid var(--color-line); }
+	.history-block h3 { margin: 0; font-size: 0.8125rem; font-weight: 600; color: var(--color-ink-1); }
+	.history { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+	@media (min-width: 768px) {
+		.studio { gap: 2.5rem; }
+		.composer { padding: 1.25rem; }
+		.composer :global(.composer-submit) { width: auto; margin-left: auto; }
+		.style-grid { gap: 1rem; }
+	}
+	@media (min-width: 1024px) {
+		.studio-header { padding-top: 2.5rem; }
+		.composer-options { grid-template-columns: minmax(12rem, 2fr) repeat(3, minmax(9rem, 1fr)); }
+		.composer-options :global(.option-model) { grid-column: auto; }
+		.style-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+	}
 </style>

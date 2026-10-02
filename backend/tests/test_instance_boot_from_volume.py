@@ -10,6 +10,8 @@ from app.models.compute import InstanceInfo
 from app.models.storage import VolumeInfo
 from app.services.cinder import _vol_to_info
 
+pytestmark = pytest.mark.usefixtures("available_flavor_capacity")
+
 
 def _make_flavor():
     return SimpleNamespace(id="flavor-1", name="m1.small", extra_specs={})

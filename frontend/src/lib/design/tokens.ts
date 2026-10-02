@@ -39,6 +39,7 @@ export const FONT_CSS_VAR = {
 export const LAYOUT_CSS_VAR = {
 	headerHeight: 'var(--app-header-height)',
 	sidebarWidth: 'var(--app-sidebar-width)',
+	sidebarOffset: 'var(--app-sidebar-offset)',
 } as const;
 
 export const LAYER_CSS_VAR = {

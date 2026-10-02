@@ -336,7 +336,7 @@ Set `afterglow_public_endpoint_url` to the browser-facing HTTP(S) origin without
 
 ### Global Cloud Shell
 
-Cloud Shell is a Zun workload in an operator-owned dedicated project; it is not a long-running Kolla container. Before enabling it, create exactly one project, a routed network, and an egress-only security group with no ingress rules. The role never creates or deletes those resources. Set dedicated Cinder and Zun quotas on that project rather than changing tenant quotas.
+Cloud Shell is a Zun workload in an operator-owned dedicated project; it is not a long-running Kolla container. Before enabling it, create exactly one project. `afterglow_cloud_shell_network_id` is optional: leave it empty to use the dedicated project's default network (database default, then the existing automatic default-network policy, or the validated shared policy when automatic provisioning is disabled); the selected network needs a subnet and external network/router gateway connectivity, and explicit IDs must belong to the dedicated project. The security group defaults to that project's `default` group, resolved to one exact project-owned ID with its existing rules unchanged, so it is not egress-only; set an explicit project-owned group when stricter isolation is required. The role never creates or deletes the project, network, router, or security group. Set dedicated Cinder and Zun quotas on that project rather than changing tenant quotas.
 
 Required plugin globals:
 
@@ -346,16 +346,16 @@ afterglow_service_cloud_shell_enabled: true
 afterglow_cloud_shell_project_name: "afterglow-cloud-shell"
 afterglow_cloud_shell_project_id: "<dedicated-project-uuid>"
 afterglow_cloud_shell_image: "ghcr.io/openstack-afterglow/afterglow-cloud-shell@sha256:<64-hex-digest>"
-afterglow_cloud_shell_network_id: "<dedicated-network-uuid>"
-afterglow_cloud_shell_security_group: "afterglow-cloud-shell-egress"
+afterglow_cloud_shell_network_id: ""  # optional: empty uses the dedicated project's default network
+afterglow_cloud_shell_security_group: "default"
 afterglow_cloud_shell_auth_url: "https://keystone.example.com:5000/v3"
 afterglow_cloud_shell_zun_websocket_origin: "wss://zun.example.com"
 afterglow_cloud_shell_volume_type: "ceph"
 ```
 
-Stock Kolla must also enable `enable_zun`, `enable_kuryr`, `enable_etcd`, `docker_configure_for_zun`, `containerd_configure_for_zun`, and `zun_configure_for_cinder_ceph`, with at least one host in `zun-compute`. The Cloud Shell image must be an immutable multi-architecture manifest digest accessible from every Zun compute host.
+Stock Kolla must also enable `enable_zun`, `enable_kuryr`, `enable_etcd`, `docker_configure_for_zun`, `containerd_configure_for_zun`, and `zun_configure_for_cinder_ceph`, with at least one host in `zun-compute`. The Cloud Shell image must be an immutable multi-architecture manifest digest accessible from every Zun compute host. The Zun API must support container microversion 1.36, and zun-compute must be able to attach Cinder (Ceph RBD) volumes and format them as ext4 on first mount.
 
-`kolla-ansible prechecks -i multinode --tags afterglow` verifies that the dedicated project differs from the general Afterglow service project, network and security group ownership match, ingress rules are empty, scoped Zun/Cinder calls succeed, and every Zun compute can inspect the image. Keystone setup grants the existing Afterglow service user `admin` in the pre-created project; it does not provision the project or networking.
+`kolla-ansible prechecks -i multinode --tags afterglow` verifies that the dedicated project differs from the general Afterglow service project, that an explicit network belongs to it, that the security group resolves uniquely inside it by ID then name and belongs to it, that scoped Zun/Cinder calls succeed, and that every Zun compute can inspect the image. Keystone setup grants the existing Afterglow service user `admin` in the pre-created project; it does not provision the project or networking.
 
 Disable `afterglow_service_cloud_shell_enabled` before rollback. Wait through the maximum session/reconciliation window and verify no managed Zun containers remain. Persistent home volumes are deliberately retained until the operator applies an explicit backup/deletion policy; remove the role assignment and dedicated project only after that decision. See [`docs/deployment.md`](../../docs/deployment.md#전역-cloud-shell-선택-배포) for runtime settings, verification, and rollback order.
 

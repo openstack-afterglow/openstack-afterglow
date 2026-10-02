@@ -1,3 +1,4 @@
+import { tick } from 'svelte';
 import { get } from 'svelte/store';
 import { betaFeatures } from '$lib/stores/betaFeatures';
 import { sidebarOpen } from '$lib/stores/sidebar';
@@ -122,12 +123,9 @@ function vmCreateSteps(): TourStep[] {
 			element: '[data-tour="vm-create-open"]',
 			route: '/dashboard',
 			prepare: async () => {
-				// 모바일(md 미만)에서 사이드바는 닫힌 off-canvas 드로어라 VM 생성 버튼이 화면 밖에 있다.
-				// 드로어를 열고 슬라이드 인 트랜지션(duration-200)이 끝난 뒤 하이라이트하도록 대기한다.
-				if (typeof window !== 'undefined' && window.innerWidth < 768) {
-					sidebarOpen.open();
-					await new Promise((resolve) => setTimeout(resolve, 250));
-				}
+				if (typeof window === 'undefined') return;
+				sidebarOpen.open();
+				await tick();
 			},
 			title: 'VM 생성 시작',
 			description: 'VM 생성 버튼을 눌러 인스턴스 생성 위저드를 열어보세요.',

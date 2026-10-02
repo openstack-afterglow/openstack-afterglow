@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.config import Settings, get_settings
-from app.services import activity, keystone, zun
+from app.services import activity, instance_orchestration, keystone, neutron, zun
 from app.services.cache import _get_redis
 from app.services.ws_ticket import (
     WebSocketTicketError,
@@ -571,6 +571,47 @@ def _wait_workspace_available_sync(conn: Any, volume_id: str) -> None:
     raise CloudShellUnavailable("workspace_detach_timeout", "Cloud Shell home detach is unverified")
 
 
+def _resolve_networking_sync(conn: Any, network_id: str, settings: Settings, *, allow_shared: bool) -> tuple[str, str]:
+    network = conn.network.get_network(network_id)
+    if network is None:
+        raise CloudShellUnavailable("network_unavailable", "Cloud Shell network is unavailable")
+    project_id = settings.cloud_shell_service_project_id
+    if network.project_id != project_id and not (allow_shared and (network.is_shared or network.is_router_external)):
+        raise CloudShellUnavailable("network_unavailable", "Cloud Shell network is outside its service project")
+    if network.is_admin_state_up is False or not network.subnet_ids:
+        raise CloudShellUnavailable("network_unavailable", "Cloud Shell network has no usable subnet")
+    if not network.is_router_external and not neutron.find_external_network_for_subnets(conn, set(network.subnet_ids)):
+        raise CloudShellUnavailable("network_unavailable", "Cloud Shell network needs external connectivity")
+
+    selector = settings.cloud_shell_security_group.strip() or "default"
+    groups = [group for group in conn.network.security_groups(project_id=project_id) if group.project_id == project_id]
+    matches = [group for group in groups if group.id == selector]
+    if not matches:
+        matches = [group for group in groups if group.name == selector]
+    if len(matches) != 1:
+        raise CloudShellUnavailable(
+            "security_group_unavailable", "Cloud Shell security group is unavailable or ambiguous"
+        )
+    return network.id, matches[0].id
+
+
+async def _resolve_networking(conn: Any, settings: Settings) -> tuple[str, str]:
+    if getattr(conn, "_afterglow_project_id", None) != settings.cloud_shell_service_project_id:
+        raise CloudShellUnavailable("service_scope_unavailable", "Cloud Shell service project is unavailable")
+    network_id = settings.cloud_shell_network_id.strip()
+    use_default = not network_id
+    try:
+        if use_default:
+            network_id = await instance_orchestration.resolve_default_network(conn, settings)
+        if not network_id:
+            raise CloudShellUnavailable("network_unavailable", "Cloud Shell default network is unavailable")
+        return await asyncio.to_thread(_resolve_networking_sync, conn, network_id, settings, allow_shared=use_default)
+    except CloudShellError:
+        raise
+    except Exception:
+        raise CloudShellUnavailable("network_unavailable", "Cloud Shell networking is unavailable") from None
+
+
 async def provision_session(lease: CloudShellLease, status: StatusCallback) -> CloudShellRuntime:
     """Create one ephemeral container and validated bootstrap exec in the service project."""
     settings = get_settings()
@@ -589,6 +630,7 @@ async def provision_session(lease: CloudShellLease, status: StatusCallback) -> C
     labels = _container_labels(lease, expires_at, settings)
     workspace: WorkspaceRecord | None = None
     try:
+        network_id, security_group_id = await _resolve_networking(conn, settings)
         workspace = await _ensure_workspace(conn, lease, status)
         await status("container")
         created = await asyncio.to_thread(
@@ -598,8 +640,8 @@ async def provision_session(lease: CloudShellLease, status: StatusCallback) -> C
             image=settings.cloud_shell_image,
             cpu=settings.cloud_shell_cpu,
             memory_mib=settings.cloud_shell_memory_mib,
-            network_id=settings.cloud_shell_network_id,
-            security_group=settings.cloud_shell_security_group,
+            network_id=network_id,
+            security_group=security_group_id,
             volume_id=workspace.volume_id,
             labels=labels,
         )

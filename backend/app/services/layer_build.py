@@ -1304,6 +1304,22 @@ async def run_layer_build(
     rw_access_id: str | None = None  # 빌드 VM RW rule (성공 시 회수 = 봉인)
     ancestor_ro_access_ids: list[tuple[str, str]] = []  # [(share_id, access_id)] 조상 RO
     build_succeeded = False
+    # Lifecycle fields are fixed labels, IDs and counts only; recipes can contain tokens.
+    log_kind = kind if kind in {"uv", "system", "nvidia", "python", "pip"} else "other"
+    _logger.info("execution", extra={"operation": "layer_build", "state": "started", "build_id": build_db_id})
+    if _logger.isEnabledFor(logging.DEBUG):
+        _logger.debug(
+            "execution metadata",
+            extra={
+                "operation": "layer_build",
+                "state": "validating",
+                "query": "recipe_contract",
+                "kind": log_kind,
+                "pip_package_count": len(pip_packages or ()),
+                "apt_package_count": len(apt_packages or ()),
+                "has_parent": parent_artifact_id is not None,
+            },
+        )
 
     pip_packages = list(pip_packages or [])
     apt_packages = list(apt_packages or [])
@@ -1583,9 +1599,10 @@ async def run_layer_build(
                 error_message="console_output에서 sentinel을 찾을 수 없습니다",
                 completed=True,
             )
+            build_succeeded = False
 
     except Exception as exc:
-        _logger.error("[layer_build] 빌드 실패: layer=%s", layer_name, exc_info=True)
+        _logger.error("[layer_build] 빌드 실패", extra={"error_type": type(exc).__name__})
         await _update_build_db(
             build_db_id,
             status="error",
@@ -1633,6 +1650,25 @@ async def run_layer_build(
                 await asyncio.to_thread(conn.close)
             except Exception:
                 _logger.warning("[layer_build] service connection close failed", exc_info=True)
+        _logger.info(
+            "execution",
+            extra={
+                "operation": "layer_build",
+                "state": "completed",
+                "build_id": build_db_id,
+                "result": "success" if build_succeeded else "failed",
+            },
+        )
+        if _logger.isEnabledFor(logging.DEBUG):
+            _logger.debug(
+                "execution metadata",
+                extra={
+                    "operation": "layer_build",
+                    "state": "completed",
+                    "query": "recipe_contract",
+                    "result": "success" if build_succeeded else "failed",
+                },
+            )
 
 
 # ---------------------------------------------------------------------------

@@ -489,7 +489,9 @@ async def create_instance(
     if flavor is None:
         raise HTTPException(status_code=400, detail="Invalid flavor ID")
     try:
-        admission = await admit_flavor(conn, conn._afterglow_project_id, flavor)
+        admission = await admit_flavor(
+            conn, conn._afterglow_project_id, flavor, availability_zone=compute_availability_zone
+        )
     except (FlavorEligibilityDenied, GpuQuotaDenied) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except (FlavorEligibilityUnavailable, GpuQuotaUnavailable) as exc:
@@ -793,7 +795,9 @@ async def create_instance_async(
     if sse_flavor is None:
         raise HTTPException(status_code=400, detail="Invalid flavor ID")
     try:
-        admission = await admit_flavor(conn, conn._afterglow_project_id, sse_flavor)
+        admission = await admit_flavor(
+            conn, conn._afterglow_project_id, sse_flavor, availability_zone=compute_availability_zone
+        )
     except (FlavorEligibilityDenied, GpuQuotaDenied) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except (FlavorEligibilityUnavailable, GpuQuotaUnavailable) as exc:

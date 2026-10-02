@@ -11,6 +11,8 @@ from app.models.compute import InstanceInfo
 from app.services import cloudinit
 from app.services.resource_policies import ResourcePolicyValidationError
 
+pytestmark = pytest.mark.usefixtures("available_flavor_capacity")
+
 
 @pytest.fixture(autouse=True)
 def _resolve_default_placement_policies(monkeypatch):

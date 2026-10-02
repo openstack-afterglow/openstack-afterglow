@@ -1,7 +1,7 @@
 import { writable } from 'svelte/store';
 
-function createSidebarStore() {
-	const { subscribe, set, update } = writable(false);
+function createSidebarStore(initialOpen = false) {
+	const { subscribe, set, update } = writable(initialOpen);
 	return {
 		subscribe,
 		open()  { set(true); },
@@ -11,3 +11,4 @@ function createSidebarStore() {
 }
 
 export const sidebarOpen = createSidebarStore();
+export const sidebarExpanded = createSidebarStore(true);

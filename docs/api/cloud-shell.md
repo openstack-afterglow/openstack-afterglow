@@ -4,6 +4,25 @@ Afterglow 사용자 셸에서 현재 프로젝트 권한으로 OpenStack CLI를 
 
 > **활성화 조건:** `[services] cloud_shell = true`와 `[services] zun = true`. 비활성화 시 `/api/v1/cloud-shell` 라우터는 마운트되지 않아 `404`를 반환합니다.
 
+## 브라우저 진입
+
+로그인한 콘솔의 데스크톱 화면(`≥1024px`)에서는 상단 오른쪽 컨트롤 영역의 첫 번째 **Cloud Shell** 버튼으로 승인 대화상자를 연다. 기존 우측 프로젝트 선택 위치이며 모드 전환 버튼이 있으면 그 왼쪽에 표시한다. 프로젝트 선택은 전체 폭 header의 좌상단 브랜드 바로 오른쪽, 리소스 검색은 서비스 sidebar 표시 상태와 무관한 전체 화면 중앙에 배치한다. 터미널 아이콘과 레이블을 함께 표시하며, 서비스 capability가 비활성화되면 버튼도 표시하지 않는다.
+
+태블릿·모바일(`1024px` 미만)에서는 실행 버튼을 숨기고 사용자·관리자 사이드바로 옮기지 않는다. 이미 연 dock은 화면 크기를 줄여도 유지되며 기존 반응형 배치를 따른다. 버튼 클릭·취소는 API 호출이나 자원 생성을 하지 않고 명시적 승인 후에만 기존 티켓 발급 흐름을 시작한다.
+
+Tablet/desktop dock의 왼쪽 경계는 현재 `--app-sidebar-offset`을 따른다. 개요 화면이나 숨긴 서비스 sidebar에서는 전체 workspace 폭을 사용하고, sidebar를 다시 표시하면 기존 폭만큼 물러난다. 이 기하 변경은 열린 terminal·session을 종료하거나 다시 승인하지 않는다.
+
+## 네트워크 기본값
+
+`[cloud_shell].interface`의 기본값은 `public`이다. 컨테이너·영구 홈·네트워크 선택은 전용 Cloud Shell 프로젝트에 묶이고, CLI의 권한은 여전히 현재 사용자의 선택 프로젝트 token이다.
+
+- `network_id`가 비어 있으면 전용 프로젝트의 DB default 네트워크를 먼저 사용한다. 없으면 기존 default-network 자동 생성 정책의 관리자 지정 external network로 routed network를 준비하며, 자동 생성이 꺼져 있으면 검증된 shared default-network 정책을 사용한다. 오래되거나 사용할 수 없는 선택을 다른 네트워크로 바꾸지 않는다.
+- 선택한 네트워크에는 사용 가능한 subnet과 external network 또는 router external gateway 연결이 있어야 한다. 명시적 `network_id`는 전용 프로젝트 소유여야 하며, 다른 프로젝트의 private network를 사용하지 않는다. 기본 정책으로 선택된 접근 가능한 shared/external network는 기존 정책 계약을 따른다.
+- `security_group`의 기본값은 `default`이며 빈 값도 같은 의미다. 전용 프로젝트 안에서 ID를 먼저, 이름을 다음으로 정확히 대조해 하나의 그룹 ID를 확정한다. 다른 프로젝트의 같은 이름이나 모호한 그룹을 채택하지 않는다.
+- 그룹의 기존 규칙을 수정하지 않는다. `default`는 egress-only를 보장하지 않으며 같은 그룹의 컨테이너 사이 ingress가 허용될 수 있다. 더 엄격한 정책이 필요하면 전용 프로젝트 소유 그룹을 명시한다.
+
+네트워크·그룹 선택 실패는 홈 볼륨/컨테이너 생성 전에 안전한 오류로 종료한다. 프로젝트·그룹을 임의로 만들거나 floating IP를 생성하지 않는다. Default-network 자동 생성은 기존 정책과 명시적 세션 승인 흐름을 따른다.
+
 ## 공통 인증과 범위
 
 HTTP 요청은 다음 헤더를 사용합니다.

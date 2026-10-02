@@ -2,7 +2,9 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { auth } from '$lib/stores/auth';
 import type * as ImageStudioModule from '$lib/api/imageStudio';
+import { ApiError } from '$lib/api/client';
 import ImageStudio from '../ImageStudio.svelte';
+import { IMAGE_STUDIO_STYLES } from '../imageStudioStyles';
 
 const api = vi.hoisted(() => ({
 	models: vi.fn(), capabilities: vi.fn(), submit: vi.fn(), run: vi.fn(), cancel: vi.fn(), upload: vi.fn(), download: vi.fn()
@@ -51,7 +53,7 @@ describe('Image Studio', () => {
 		render(ImageStudio);
 		await screen.findByText(/route_unavailable/);
 		await fireEvent.input(screen.getByRole('textbox', { name: /프롬프트/ }), { target: { value: 'orange dusk' } });
-		expect((screen.getByRole('button', { name: '이미지 생성 시작' }) as HTMLButtonElement).disabled).toBe(true);
+		expect((screen.getByRole('button', { name: '이미지 만들기' }) as HTMLButtonElement).disabled).toBe(true);
 		expect(api.submit).not.toHaveBeenCalled();
 	});
 
@@ -60,15 +62,24 @@ describe('Image Studio', () => {
 		render(ImageStudio);
 		await screen.findByText('선택한 모델의 가격이 설정된 이미지 크기·품질을 사용할 수 없습니다.');
 		await fireEvent.input(screen.getByRole('textbox', { name: /프롬프트/ }), { target: { value: 'orange dusk' } });
-		expect((screen.getByRole('button', { name: '이미지 생성 시작' }) as HTMLButtonElement).disabled).toBe(true);
+		expect((screen.getByRole('button', { name: '이미지 만들기' }) as HTMLButtonElement).disabled).toBe(true);
 		expect(api.submit).not.toHaveBeenCalled();
+	});
+
+	it('explains an empty image model catalog and keeps submission disabled', async () => {
+		api.models.mockResolvedValue([]);
+		render(ImageStudio);
+		await screen.findByText('사용 가능한 이미지 모델 없음');
+		await fireEvent.input(screen.getByRole('textbox', { name: /프롬프트/ }), { target: { value: 'orange dusk' } });
+		expect((screen.getByRole('button', { name: '이미지 만들기' }) as HTMLButtonElement).disabled).toBe(true);
+		expect(api.capabilities).not.toHaveBeenCalled();
 	});
 
 	it('submits a ready generation, displays owned output and restores it from local history', async () => {
 		const mounted = render(ImageStudio);
 		await screen.findByRole('option', { name: 'Image Model' });
 		await fireEvent.input(screen.getByRole('textbox', { name: /프롬프트/ }), { target: { value: 'orange dusk' } });
-		await fireEvent.click(screen.getByRole('button', { name: '이미지 생성 시작' }));
+		await fireEvent.click(screen.getByRole('button', { name: '이미지 만들기' }));
 		await waitFor(() => expect(api.submit).toHaveBeenCalledWith('generations', expect.objectContaining({ model_id: '1', prompt: 'orange dusk', size: '1024x1024', quality: 'high', n: 1 }), { token: 'token', projectId: 'project-1' }, expect.any(String), expect.any(AbortSignal)));
 		await screen.findByRole('img', { name: '생성된 이미지' });
 		expect(api.download).toHaveBeenCalledWith('asset-1', { token: 'token', projectId: 'project-1' }, expect.anything());
@@ -78,20 +89,97 @@ describe('Image Studio', () => {
 		expect(api.run).toHaveBeenCalledWith('run-1', { token: 'token', projectId: 'project-1' });
 	});
 
-	it('uploads an edit input before submission and isolates project history', async () => {
+	it('uploads input without a mode choice and isolates input and history across projects', async () => {
 		render(ImageStudio);
-		await screen.findByRole('option', { name: 'Image Model' });
-		await fireEvent.click(screen.getByRole('button', { name: '이미지 수정' }));
+		await screen.findByRole('option', { name: 'high' });
 		await fireEvent.input(screen.getByRole('textbox', { name: /프롬프트/ }), { target: { value: 'make it warmer' } });
-		expect((screen.getByRole('button', { name: '이미지 수정 시작' }) as HTMLButtonElement).disabled).toBe(true);
-		await fireEvent.change(screen.getByLabelText('수정할 이미지'), { target: { files: [new File(['pixels'], 'source.png', { type: 'image/png' })] } });
+		await fireEvent.change(screen.getByLabelText('입력 이미지'), { target: { files: [new File(['pixels'], 'source.png', { type: 'image/png' })] } });
 		await screen.findByText('업로드 완료: source.png');
-		await fireEvent.click(screen.getByRole('button', { name: '이미지 수정 시작' }));
+		await fireEvent.click(screen.getByRole('button', { name: '이미지 만들기' }));
 		await waitFor(() => expect(api.submit).toHaveBeenCalledWith('edits', expect.objectContaining({ model_id: '1', input_asset_id: 'input-1' }), { token: 'token', projectId: 'project-1' }, expect.any(String), expect.any(AbortSignal)));
 		await screen.findByRole('img', { name: '생성된 이미지' });
 		auth.set({ ...owner, projectId: 'project-2' });
 		await waitFor(() => expect(screen.queryByRole('img', { name: '생성된 이미지' })).toBeNull());
 		expect(screen.queryByRole('button', { name: /run-1/ })).toBeNull();
+		expect(screen.queryByRole('img', { name: '입력 이미지 미리보기' })).toBeNull();
+		await waitFor(() => expect((screen.getByRole('button', { name: '이미지 만들기' }) as HTMLButtonElement).disabled).toBe(false));
+		await fireEvent.click(screen.getByRole('button', { name: '이미지 만들기' }));
+		await waitFor(() => expect(api.submit).toHaveBeenLastCalledWith('generations', expect.not.objectContaining({ input_asset_id: expect.anything() }), { token: 'token', projectId: 'project-2' }, expect.any(String), expect.any(AbortSignal)));
+	});
+
+	it('appends the visible style instruction to the submitted prompt and starts a new intent when the style changes or clears', async () => {
+		const cinematic = IMAGE_STUDIO_STYLES.find((style) => style.id === 'cinematic')!;
+		const pixel = IMAGE_STUDIO_STYLES.find((style) => style.id === 'pixel-art')!;
+		api.submit.mockRejectedValueOnce(new Error('lost')).mockRejectedValueOnce(new Error('lost')).mockRejectedValueOnce(new Error('lost'));
+		render(ImageStudio);
+		await screen.findByRole('option', { name: 'high' });
+		const promptBox = screen.getByRole('textbox', { name: /프롬프트/ }) as HTMLTextAreaElement;
+		await fireEvent.input(promptBox, { target: { value: 'orange dusk' } });
+		await fireEvent.click(screen.getByRole('button', { name: cinematic.label }));
+		expect(screen.getByRole('button', { name: cinematic.label }).getAttribute('aria-pressed')).toBe('true');
+		expect(promptBox.value).toBe('orange dusk');
+		expect(screen.getByText(new RegExp(cinematic.instruction))).toBeTruthy();
+		const submitButton = () => screen.getByRole('button', { name: '이미지 만들기' }) as HTMLButtonElement;
+		await fireEvent.click(submitButton());
+		await waitFor(() => expect(api.submit).toHaveBeenCalledTimes(1));
+		expect(api.submit.mock.calls[0][1]).toEqual(expect.objectContaining({ prompt: `orange dusk\n\n스타일: ${cinematic.instruction}` }));
+		expect(api.submit.mock.calls[0][1]).not.toHaveProperty('style');
+		await waitFor(() => expect(submitButton().disabled).toBe(false));
+		await fireEvent.click(screen.getByRole('button', { name: pixel.label }));
+		expect(screen.getByRole('button', { name: cinematic.label }).getAttribute('aria-pressed')).toBe('false');
+		await fireEvent.click(submitButton());
+		await waitFor(() => expect(api.submit).toHaveBeenCalledTimes(2));
+		expect(api.submit.mock.calls[1][1].prompt).toBe(`orange dusk\n\n스타일: ${pixel.instruction}`);
+		expect(api.submit.mock.calls[1][3]).not.toBe(api.submit.mock.calls[0][3]);
+		await waitFor(() => expect(submitButton().disabled).toBe(false));
+		await fireEvent.click(screen.getByRole('button', { name: '스타일 지우기' }));
+		expect(promptBox.value).toBe('orange dusk');
+		await fireEvent.click(submitButton());
+		await waitFor(() => expect(api.submit).toHaveBeenCalledTimes(3));
+		expect(api.submit.mock.calls[2][1].prompt).toBe('orange dusk');
+		expect(new Set(api.submit.mock.calls.map((call) => call[3])).size).toBe(3);
+	});
+
+	it('previews the attached input and revokes it on replace, removal and unmount', async () => {
+		let created = 0;
+		vi.mocked(URL.createObjectURL).mockImplementation(() => `blob:input-${++created}`);
+		api.upload.mockImplementation(async (file: File) => ({ id: `asset-${file.name}`, name: file.name, mime_type: 'image/png' }));
+		const mounted = render(ImageStudio);
+		await screen.findByRole('option', { name: 'Image Model' });
+		const fileInput = screen.getByLabelText('입력 이미지');
+		await fireEvent.change(fileInput, { target: { files: [new File(['a'], 'first.png', { type: 'image/png' })] } });
+		expect((await screen.findByRole('img', { name: '입력 이미지 미리보기' })).getAttribute('src')).toBe('blob:input-1');
+		await screen.findByText('업로드 완료: first.png');
+		await fireEvent.change(fileInput, { target: { files: [new File(['b'], 'second.png', { type: 'image/png' })] } });
+		await screen.findByText('업로드 완료: second.png');
+		expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:input-1');
+		expect(screen.getByRole('img', { name: '입력 이미지 미리보기' }).getAttribute('src')).toBe('blob:input-2');
+		await fireEvent.click(screen.getByRole('button', { name: '첨부 이미지 제거' }));
+		expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:input-2');
+		expect(screen.queryByRole('img', { name: '입력 이미지 미리보기' })).toBeNull();
+		await fireEvent.input(screen.getByRole('textbox', { name: /프롬프트/ }), { target: { value: 'warmer' } });
+		expect((screen.getByRole('button', { name: '이미지 만들기' }) as HTMLButtonElement).disabled).toBe(false);
+		await fireEvent.change(fileInput, { target: { files: [new File(['c'], 'third.png', { type: 'image/png' })] } });
+		await screen.findByText('업로드 완료: third.png');
+		mounted.unmount();
+		expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:input-3');
+	});
+
+	it('keeps an in-flight canonical input when a history run is selected during upload', async () => {
+		sessionStorage.setItem('afterglow:image-studio:user-1:project-1', JSON.stringify(['run-1', 'run-2']));
+		const upload = Promise.withResolvers<{ id: string; name: string; mime_type: string }>();
+		api.upload.mockReturnValueOnce(upload.promise);
+		render(ImageStudio);
+		await screen.findByRole('option', { name: 'high' });
+		await fireEvent.change(screen.getByLabelText('입력 이미지'), { target: { files: [new File(['pixels'], 'source.png', { type: 'image/png' })] } });
+		await screen.findByText('입력 이미지를 업로드하는 중…');
+		await fireEvent.click(screen.getByRole('button', { name: /run-2/ }));
+		await waitFor(() => expect(api.run).toHaveBeenCalledWith('run-2', { token: 'token', projectId: 'project-1' }));
+		upload.resolve({ id: 'input-1', name: 'source.png', mime_type: 'image/png' });
+		await screen.findByText('업로드 완료: source.png');
+		await fireEvent.input(screen.getByRole('textbox', { name: /프롬프트/ }), { target: { value: 'make it warmer' } });
+		await fireEvent.click(screen.getByRole('button', { name: '이미지 만들기' }));
+		await waitFor(() => expect(api.submit).toHaveBeenCalledWith('edits', expect.objectContaining({ input_asset_id: 'input-1', prompt: 'make it warmer' }), { token: 'token', projectId: 'project-1' }, expect.any(String), expect.any(AbortSignal)));
 	});
 
 	it('limits Gemini to one image and resets quantity when switching models', async () => {
@@ -110,16 +198,80 @@ describe('Image Studio', () => {
 		render(ImageStudio);
 		await screen.findByRole('option', { name: 'high' });
 		await fireEvent.input(screen.getByRole('textbox', { name: /프롬프트/ }), { target: { value: 'sunrise' } });
-		await fireEvent.click(screen.getByRole('button', { name: '이미지 생성 시작' }));
+		await fireEvent.click(screen.getByRole('button', { name: '이미지 만들기' }));
 		await waitFor(() => expect(api.submit).toHaveBeenCalledTimes(1));
-		await waitFor(() => expect((screen.getByRole('button', { name: '이미지 생성 시작' }) as HTMLButtonElement).disabled).toBe(false));
-		await fireEvent.click(screen.getByRole('button', { name: '이미지 생성 시작' }));
+		await waitFor(() => expect((screen.getByRole('button', { name: '이미지 만들기' }) as HTMLButtonElement).disabled).toBe(false));
+		await fireEvent.click(screen.getByRole('button', { name: '이미지 만들기' }));
 		await waitFor(() => expect(api.submit).toHaveBeenCalledTimes(2));
 		expect(api.submit.mock.calls[1][3]).toBe(api.submit.mock.calls[0][3]);
 		await fireEvent.input(screen.getByRole('textbox', { name: /프롬프트/ }), { target: { value: 'sunset' } });
-		await fireEvent.click(screen.getByRole('button', { name: '이미지 생성 시작' }));
+		await fireEvent.click(screen.getByRole('button', { name: '이미지 만들기' }));
 		await waitFor(() => expect(api.submit).toHaveBeenCalledTimes(3));
 		expect(api.submit.mock.calls[2][3]).not.toBe(api.submit.mock.calls[0][3]);
+	});
+
+	it('keeps a reference-generation input after a provider rejection and changes intent when the image is removed', async () => {
+		api.submit.mockRejectedValueOnce(new ApiError(422, 'image input token price is unavailable'));
+		render(ImageStudio);
+		await screen.findByRole('option', { name: 'high' });
+		await fireEvent.change(screen.getByLabelText('입력 이미지'), { target: { files: [new File(['pixels'], 'reference.png', { type: 'image/png' })] } });
+		await screen.findByText('업로드 완료: source.png');
+		await fireEvent.input(screen.getByRole('textbox', { name: /프롬프트/ }), { target: { value: '이 캐릭터를 참고해서 새로운 우주 배경의 포스터를 그려줘.' } });
+		await fireEvent.click(screen.getByRole('button', { name: '이미지 만들기' }));
+		await screen.findByText('image input token price is unavailable');
+		expect(api.submit).toHaveBeenCalledTimes(1);
+		expect(api.submit.mock.calls[0][0]).toBe('edits');
+		expect(api.submit.mock.calls[0][1].input_asset_id).toBe('input-1');
+		expect(screen.getByRole('img', { name: '입력 이미지 미리보기' })).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: '첨부 이미지 제거' }));
+		await fireEvent.click(screen.getByRole('button', { name: '이미지 만들기' }));
+		await screen.findByRole('img', { name: '생성된 이미지' });
+		expect(api.submit).toHaveBeenCalledTimes(2);
+		expect(api.submit.mock.calls[1][0]).toBe('generations');
+		expect(api.submit.mock.calls[1][1]).not.toHaveProperty('input_asset_id');
+		expect(api.submit.mock.calls[1][3]).not.toBe(api.submit.mock.calls[0][3]);
+	});
+
+	it('blocks submission during upload and ignores its late success after input removal', async () => {
+		const upload = Promise.withResolvers<{ id: string; name: string; mime_type: string }>();
+		api.upload.mockReturnValueOnce(upload.promise);
+		render(ImageStudio);
+		await screen.findByRole('option', { name: 'high' });
+		await fireEvent.input(screen.getByRole('textbox', { name: /프롬프트/ }), { target: { value: '새로운 풍경을 그려줘.' } });
+		await fireEvent.change(screen.getByLabelText('입력 이미지'), { target: { files: [new File(['pixels'], 'source.png', { type: 'image/png' })] } });
+		await screen.findByText('입력 이미지를 업로드하는 중…');
+		expect((screen.getByRole('button', { name: '이미지 만들기' }) as HTMLButtonElement).disabled).toBe(true);
+		await fireEvent.submit(screen.getByRole('form', { name: '이미지 요청' }));
+		expect(api.submit).not.toHaveBeenCalled();
+		await fireEvent.click(screen.getByRole('button', { name: '첨부 이미지 제거' }));
+		expect(api.upload.mock.calls[0][2].aborted).toBe(true);
+		upload.resolve({ id: 'obsolete-input', name: 'source.png', mime_type: 'image/png' });
+		await upload.promise;
+		expect(screen.queryByRole('img', { name: '입력 이미지 미리보기' })).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: '이미지 만들기' }));
+		await screen.findByRole('img', { name: '생성된 이미지' });
+		expect(api.submit).toHaveBeenCalledTimes(1);
+		expect(api.submit.mock.calls[0][0]).toBe('generations');
+		expect(api.submit.mock.calls[0][1]).not.toHaveProperty('input_asset_id');
+	});
+
+	it('retains a failed upload and requires explicit removal before a text-only request', async () => {
+		api.upload.mockRejectedValueOnce(new Error('upload unavailable'));
+		render(ImageStudio);
+		await screen.findByRole('option', { name: 'high' });
+		await fireEvent.input(screen.getByRole('textbox', { name: /프롬프트/ }), { target: { value: '첨부 이미지의 배경만 바꿔줘.' } });
+		await fireEvent.change(screen.getByLabelText('입력 이미지'), { target: { files: [new File(['pixels'], 'source.png', { type: 'image/png' })] } });
+		await screen.findByText(/입력 이미지 업로드 실패/);
+		expect(screen.getByRole('img', { name: '입력 이미지 미리보기' })).toBeTruthy();
+		expect((screen.getByRole('button', { name: '이미지 만들기' }) as HTMLButtonElement).disabled).toBe(true);
+		await fireEvent.submit(screen.getByRole('form', { name: '이미지 요청' }));
+		expect(api.submit).not.toHaveBeenCalled();
+		await fireEvent.click(screen.getByRole('button', { name: '첨부 이미지 제거' }));
+		await fireEvent.click(screen.getByRole('button', { name: '이미지 만들기' }));
+		await screen.findByRole('img', { name: '생성된 이미지' });
+		expect(api.submit).toHaveBeenCalledTimes(1);
+		expect(api.submit.mock.calls[0][0]).toBe('generations');
+		expect(api.submit.mock.calls[0][1]).not.toHaveProperty('input_asset_id');
 	});
 
 	it('cancels an active run and reports the terminal cancellation', async () => {
@@ -128,7 +280,7 @@ describe('Image Studio', () => {
 		render(ImageStudio);
 		await screen.findByRole('option', { name: 'Image Model' });
 		await fireEvent.input(screen.getByRole('textbox', { name: /프롬프트/ }), { target: { value: 'cloud' } });
-		await fireEvent.click(screen.getByRole('button', { name: '이미지 생성 시작' }));
+		await fireEvent.click(screen.getByRole('button', { name: '이미지 만들기' }));
 		await fireEvent.click(await screen.findByRole('button', { name: '작업 취소' }));
 		await waitFor(() => expect(api.cancel).toHaveBeenCalledWith('run-1', { token: 'token', projectId: 'project-1' }));
 		await screen.findByText('작업이 취소되었습니다.');

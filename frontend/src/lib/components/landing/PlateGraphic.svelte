@@ -32,4 +32,10 @@
 		width: 100%;
 		height: 100%;
 	}
+	.plate-graphic :global(text) {
+		font-family: var(--font-sans);
+	}
+	.plate-graphic :global(text[font-family='monospace']) {
+		font-family: var(--font-mono);
+	}
 </style>

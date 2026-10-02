@@ -294,7 +294,7 @@ Zun 서비스 활성화 시에만 사용 가능합니다.
 
 | 메서드 | 경로 | 설명 | 요청 본문 |
 |--------|------|------|-----------|
-| `GET` | `/api/v1/admin/projects` | 프로젝트 목록 (페이지네이션) | - |
+| `GET` | `/api/v1/admin/projects` | 전체 inventory 검색·필터·최신 생성순 후 marker 페이지네이션 | - |
 | `GET` | `/api/v1/admin/projects/names` | 전체 프로젝트 id/name 목록 (페이지네이션 없음) | - |
 | `POST` | `/api/v1/admin/projects` | 프로젝트 생성 (`201`) | `name`(필수), `description`, `domain_id`, `enabled` |
 | `GET` | `/api/v1/admin/projects/{project_id}` | 프로젝트 상세 | - |
@@ -303,6 +303,14 @@ Zun 서비스 활성화 시에만 사용 가능합니다.
 | `GET` | `/api/v1/admin/projects/{project_id}/members` | 사용자·그룹 역할 할당 목록 | - |
 | `GET` | `/api/v1/admin/projects/{project_id}/activity` | 프로젝트 활동 로그 | - |
 | `POST` | `/api/v1/admin/projects/{project_id}/sync-monitoring-sg` | 모니터링용 보안 그룹 동기화 | - |
+
+`GET /projects` query는 `limit`(기본 20, 1–100), `marker`, `search`(이름·전체 ID·설명의 앞뒤 공백 제거/대소문자 무시 부분 검색), `enabled`(`true`/`false`)와 `domain_id`를 받습니다. 조건은 AND로 결합하며 전체 목록을 필터·정렬한 뒤 페이지를 나눕니다. 기존 `items`/`next_marker`/`count`에 필터 결과 총계 `total`과 검색 조건에 제한되지 않는 도메인 후보 `domain_ids`를 추가합니다. 마지막 페이지에는 `next_marker: null`을 반환합니다. 사라졌거나 현재 결과에 없는 marker는 `400`이며 화면의 새로고침으로 첫 페이지에 돌아갈 수 있습니다.
+
+프로젝트·그룹 `created_at`은 Keystone의 유효한 시각을 우선하고, 없으면 해당 resource ID의 성공한 `project.create`/`project_create`/`identity.project.created` 또는 대응 group 생성 이벤트의 가장 이른 UTC 시각을 사용합니다. 수정·실패·단순 최초 활동 시각은 생성일로 사용하지 않습니다. UTC 마이크로초를 보존해 생성일 내림차순, 동률은 ID 내림차순으로 정렬하며 기록이 없거나 activity DB를 읽을 수 없으면 `null` 항목을 마지막에 둡니다. Afterglow 이전 또는 외부에서 생성된 항목, 수집되지 않았거나 보존기간 밖의 생성 이벤트는 생성 순서를 복원할 수 없습니다.
+
+관리자 생성은 새 resource ID를 포함한 성공 이벤트를 기록합니다. 프로젝트 생성·수정·삭제와 셀프서비스 생성은 프로젝트 inventory 및 이름 cache를 무효화합니다. UI의 검색·상태·도메인 변경은 첫 페이지로 돌아가고, 백그라운드 갱신과 다음 페이지 prefetch는 현재 조건을 유지합니다.
+
+같은 backend 프로세스·event loop에서는 mutation의 cache 무효화가 이전 조회 flight를 분리하고 늦은 snapshot의 cache 재저장을 막습니다. 무효화 이전 호출자는 이전 결과를 받을 수 있으나 이후 목록 조회는 그 작업에 합류하지 않습니다. 정상 cache I/O에 대한 국소 순서 보장이며 다른 worker의 진행 중 조회까지 fence하는 분산 보장은 아닙니다.
 
 `GET /projects/{project_id}/members` 응답에는 사용자 할당과 그룹 할당(`type: "group"`, `group_id` 포함)이 함께 반환됩니다.
 
@@ -348,13 +356,15 @@ Zun 서비스 활성화 시에만 사용 가능합니다.
 
 | 메서드 | 경로 | 설명 | 요청 본문 |
 |--------|------|------|-----------|
-| `GET` | `/api/v1/admin/groups` | 그룹 목록 | - |
+| `GET` | `/api/v1/admin/groups` | 생성일이 포함된 전체 그룹 목록, 최신 생성순 | - |
 | `POST` | `/api/v1/admin/groups` | 그룹 생성 (`201`) | `name`(필수), `description`, `domain_id` |
 | `PATCH` | `/api/v1/admin/groups/{group_id}` | 그룹 수정 | `name`, `description` (선택) |
 | `DELETE` | `/api/v1/admin/groups/{group_id}` | 그룹 삭제 (`204`) | - |
 | `GET` | `/api/v1/admin/groups/{group_id}/users` | 그룹 멤버 목록 | - |
 | `PUT` | `/api/v1/admin/groups/{group_id}/users/{user_id}` | 그룹에 사용자 추가 (`204`) | - |
 | `DELETE` | `/api/v1/admin/groups/{group_id}/users/{user_id}` | 그룹에서 사용자 제거 (`204`) | - |
+
+그룹 응답은 배열 계약을 유지하며 각 항목에 nullable `created_at`을 포함합니다. 전체 그룹에서 이름·전체 ID·설명을 검색하고 `domain_id`로 AND 필터링하는 것은 브라우저에서 수행하며, 검색·필터·초기화는 멤버 관리와 독립적입니다. 조회·갱신 후에도 조건을 유지하고 생성·수정·삭제 후 서버 inventory cache를 무효화합니다. 목록 중간에 Keystone 조회가 실패하면 부분 목록 대신 `500`을 반환합니다.
 
 **주의**: 멤버십 변경 시 Keystone이 관련 토큰을 revoke할 수 있어 관련 세션 캐시가 함께 삭제됩니다.
 

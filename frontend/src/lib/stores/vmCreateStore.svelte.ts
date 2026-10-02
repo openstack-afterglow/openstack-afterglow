@@ -13,7 +13,7 @@ import type { NetworkInfo } from '$lib/types/networks';
 import type { SecurityGroup as SecurityGroupInfo } from '$lib/types/securityGroup';
 import type { Volume } from '$lib/types/volume';
 import type { Keypair } from '$lib/types/keypair';
-import type { FlavorOption } from '$lib/types/flavor';
+import { flavorCreateBlock, type FlavorCreateBlock, type FlavorOption } from '$lib/types/flavor';
 import type { ImageInfo } from '$lib/types/compute';
 import {
 	isGithubSshEligible,
@@ -289,6 +289,14 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	let squashfsProfiles = $state<SquashfsProfile[]>([]);
 	let squashfsArtifacts = $state<SquashfsArtifact[]>([]);
 	let flavorQuota = $state<FlavorQuotaSummary | null>(null);
+	let flavorRefreshing = $state(false);
+	let flavorRefreshError = $state<string | null>(null);
+	// Periodic refresh state is advisory; only locking refreshes gate admission.
+	let flavorBackgroundRefreshing = $state(false);
+	let flavorBackgroundRefreshError = $state<string | null>(null);
+	let flavorRefreshSeq = 0;
+	let flavorRefreshController: AbortController | null = null;
+	let submitChecking = false;
 
 	// UI state
 	let optionStatus = $state<Record<OptionKey, LoadStatus>>(
@@ -306,10 +314,20 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	let destroyed = false;
 
 	let deployController: AbortController | null = null;
+	function resetFlavorRefresh() {
+		flavorRefreshSeq += 1;
+		flavorRefreshController?.abort();
+		flavorRefreshController = null;
+		flavorRefreshing = false;
+		flavorRefreshError = null;
+		flavorBackgroundRefreshing = false;
+		flavorBackgroundRefreshError = null;
+	}
 	function advanceProjectGeneration() {
 		projectLoadController.abort();
 		projectLoadController = new AbortController();
 		loadGeneration += 1;
+		resetFlavorRefresh();
 	}
 	function optionKeysForStep(step: WizardStepId): OptionKey[] {
 		if (step === 1) return ['images', 'volumes'];
@@ -499,15 +517,28 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		});
 	});
 
+	const selectedFlavor = $derived(
+		wizardState.flavorId ? flavors.find(f => f.id === wizardState.flavorId) ?? null : null
+	);
+	// 'missing': the selection is no longer in the current target project's list.
+	const selectedFlavorBlock = $derived.by((): FlavorCreateBlock | 'missing' | null => {
+		if (!wizardState.flavorId) return null;
+		if (!selectedFlavor) return 'missing';
+		return flavorCreateBlock(selectedFlavor);
+	});
+	const flavorAdmissionReady = $derived(
+		Boolean(wizardState.flavorId)
+			&& optionStatus.flavors === 'loaded'
+			&& !flavorRefreshing
+			&& !flavorRefreshError
+			&& selectedFlavorBlock === null
+	);
+
 	const canNext = $derived((() => {
 		const adminMode = opts.adminMode();
 		switch (wizardState.step) {
 			case 1: return wizardState.bootSource === 'volume' ? !!wizardState.bootVolumeId : !!wizardState.imageId;
-			case 2: {
-				if (!wizardState.flavorId) return false;
-				const selected = flavors.find(f => f.id === wizardState.flavorId);
-				return selected?.eligibility ? selected.eligibility.selectable : true;
-			}
+			case 2: return flavorAdmissionReady;
 			case 3: return squashfsSelectionReady;
 			case 4: {
 				if (!wizardState.scheduling) return false;
@@ -523,7 +554,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 					githubProfile: wizardState.githubProfile,
 
 				});
-			case 6: return true;
+			case 6: return flavorAdmissionReady;
 			default: return false;
 		}
 	})());
@@ -667,32 +698,108 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		await Promise.all([imagePromise, volumePromise]);
 	}
 
+	/** Flavor eligibility and host capacity for the current target project's create admission snapshot. */
+	// Never prefetch capacity URLs: client.ts getOrdinary serves warm entries before dispatch, and only prefetchJson publishes them.
+	function flavorRequestScope(): {
+		key: string;
+		request: (signal?: AbortSignal, refresh?: boolean) => Promise<FlavorOption[]>;
+		isCurrent: () => boolean;
+	} | null {
+		const { token, projectId } = authScope();
+		const generation = loadGeneration;
+		if (opts.adminMode()) {
+			const targetProjectId = adminSelectedProjectId;
+			if (!targetProjectId) return null;
+			return {
+				key: targetProjectId,
+				request: (signal, refresh) => api.get<FlavorOption[]>(
+					`/api/v1/admin/instances/flavors-for-project?project_id=${encodeURIComponent(targetProjectId)}&capacity=create`,
+					token,
+					projectId,
+					refresh ? { signal, refresh: true } : { signal },
+				),
+				isCurrent: () => targetIsCurrent(targetProjectId, generation),
+			};
+		}
+		return {
+			key: `public:${projectId ?? ''}`,
+			request: (signal, refresh) => api.get<FlavorOption[]>('/api/v1/flavors?capacity=create', token, projectId,
+				refresh ? { signal, refresh: true } : { signal }),
+			isCurrent: () => authProjectIsCurrent(projectId, generation),
+		};
+	}
+
 	function loadFlavorOptions() {
 		if (destroyed) return Promise.resolve();
-		const { token, projectId } = authScope();
-		if (opts.adminMode() && adminSelectedProjectId) {
-			const targetProjectId = adminSelectedProjectId;
-			const generation = loadGeneration;
-			return loadOption(
-				'flavors',
-				targetProjectId,
-				(signal) => api.get<FlavorOption[]>(`/api/v1/admin/instances/flavors-for-project?project_id=${encodeURIComponent(targetProjectId)}`,
-						token,
-						projectId,
-						{ signal },
-					),
-				value => {
-					flavors = value;
-				},
-				() => targetIsCurrent(targetProjectId, generation),
-			);
-		}
+		const scope = flavorRequestScope();
+		if (!scope) return Promise.resolve();
+		// A refresh started after this request owns the newer snapshot and the load status.
+		const refreshSeq = flavorRefreshSeq;
 		return loadOption(
 			'flavors',
-			`public:${projectId ?? ''}`,
-			(signal) => api.get<FlavorOption[]>('/api/v1/flavors', token, projectId, { signal }),
+			scope.key,
+			scope.request,
 			value => { flavors = value; },
+			() => scope.isCurrent() && refreshSeq === flavorRefreshSeq,
 		);
+	}
+
+	/**
+	 * Re-reads flavor eligibility/capacity without hiding the current list. Resolves true only when a
+	 * fresh snapshot for the unchanged target project was applied. Periodic rounds never overlap a
+	 * pending load or refresh; manual and submit refreshes supersede an older refresh.
+	 */
+	async function refreshFlavorOptions(mode: 'manual' | 'periodic' | 'submit' = 'manual'): Promise<boolean> {
+		if (destroyed) return false;
+		const scope = flavorRequestScope();
+		if (!scope) return false;
+		if (mode === 'periodic' && (
+			flavorRefreshing || flavorBackgroundRefreshing
+			|| (optionStatus.flavors !== 'loaded' && optionStatus.flavors !== 'error')
+			|| optionRequests.has(`flavors:${scope.key}:${loadGeneration}`)
+		)) return false;
+		flavorRefreshController?.abort();
+		const controller = new AbortController();
+		flavorRefreshController = controller;
+		const projectSignal = projectLoadController.signal;
+		const abortWithProject = () => controller.abort();
+		projectSignal.addEventListener('abort', abortWithProject, { once: true });
+		const seq = ++flavorRefreshSeq;
+		const isCurrent = () => !destroyed && seq === flavorRefreshSeq && scope.isCurrent();
+		const background = mode === 'periodic';
+		flavorRefreshing = !background;
+		flavorBackgroundRefreshing = background;
+		flavorBackgroundRefreshError = null;
+		if (!background) flavorRefreshError = null;
+		try {
+			const value = await scope.request(controller.signal, mode === 'manual');
+			if (!isCurrent()) return false;
+			flavors = value;
+			optionStatus.flavors = 'loaded';
+			delete optionErrors.flavors;
+			flavorRefreshError = null;
+			return true;
+		} catch (error) {
+			if (!isCurrent()) return false;
+			if (error instanceof DOMException && error.name === 'AbortError') return false;
+			const message = optionError(error);
+			if (background) {
+				flavorBackgroundRefreshError = message;
+			} else if (optionStatus.flavors === 'loaded') {
+				flavorRefreshError = message;
+			} else {
+				optionErrors.flavors = message;
+				optionStatus.flavors = 'error';
+			}
+			return false;
+		} finally {
+			projectSignal.removeEventListener('abort', abortWithProject);
+			if (seq === flavorRefreshSeq) {
+				flavorRefreshing = false;
+				flavorBackgroundRefreshing = false;
+				flavorRefreshController = null;
+			}
+		}
 	}
 
 	async function loadSquashfsCatalog() {
@@ -1047,10 +1154,9 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		nextStep();
 	}
 	function selectFlavor(id: string, name: string) {
+		if (flavorRefreshing || flavorRefreshError || optionStatus.flavors !== 'loaded') return;
 		const selected = flavors.find(candidate => candidate.id === id);
-		if (selected?.eligibility && !selected.eligibility.selectable) {
-			return;
-		}
+		if (!selected || flavorCreateBlock(selected) !== null) return;
 		wizard.update(w => ({ ...w, flavorId: id, flavorName: name }));
 		nextStep();
 	}
@@ -1146,7 +1252,35 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	}
 
 	async function deploy() {
-		if (destroyed || deploying) return;
+		if (destroyed || deploying || submitChecking) return;
+		// Revalidate the selected flavor against the create-capacity snapshot right before the mutation.
+		const checked = get(wizard);
+		const checkedGeneration = loadGeneration;
+		const checkedTargetProjectId = adminSelectedProjectId;
+		const checkedAuthProjectId = get(auth).projectId;
+		submitChecking = true;
+		let refreshed = false;
+		try {
+			refreshed = await refreshFlavorOptions('submit');
+		} finally {
+			submitChecking = false;
+		}
+		if (
+			destroyed
+			|| deploying
+			|| checkedGeneration !== loadGeneration
+			|| checkedTargetProjectId !== adminSelectedProjectId
+			|| (!opts.adminMode() && checkedAuthProjectId !== get(auth).projectId)
+			|| get(wizard).flavorId !== checked.flavorId
+		) {
+			return;
+		}
+		const admitted = flavors.find(candidate => candidate.id === checked.flavorId);
+		if (!refreshed || !admitted || flavorCreateBlock(admitted) !== null) {
+			// SelectFlavor explains the refresh failure or the newly blocked selection; the user chooses again.
+			goTo(2);
+			return;
+		}
 		deployController?.abort();
 		deployController = new AbortController();
 		deployError = '';
@@ -1370,6 +1504,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		deployController?.abort();
 		deployController = null;
 		loadGeneration += 1;
+		resetFlavorRefresh();
 		adminProjectsRequestId += 1;
 		adminProjectQuotasRequestId += 1;
 		optionRequests.clear();
@@ -1420,6 +1555,12 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		get securityGroups() { return securityGroups; },
 		get defaultNetworkId() { return defaultNetworkId; },
 		get flavorQuota() { return flavorQuota; },
+		get flavorRefreshing() { return flavorRefreshing; },
+		get flavorRefreshError() { return flavorRefreshError; },
+		get flavorBackgroundRefreshing() { return flavorBackgroundRefreshing; },
+		get flavorBackgroundRefreshError() { return flavorBackgroundRefreshError; },
+		get selectedFlavor() { return selectedFlavor; },
+		get selectedFlavorBlock() { return selectedFlavorBlock; },
 		get squashfsProfiles() { return squashfsProfiles; },
 		get squashfsArtifacts() { return squashfsArtifacts; },
 		get optionStatus() { return optionStatus; },
@@ -1474,6 +1615,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		retryCurrentStep,
 		loadBootOptions,
 		loadFlavorOptions,
+		refreshFlavorOptions,
 		loadFlavorQuota,
 		loadAdminProjects,
 		loadSquashfsCatalog,

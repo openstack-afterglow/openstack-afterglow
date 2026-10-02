@@ -217,6 +217,14 @@ class ZunExecSession:
     exec_id: str
 
 
+# Cloud Shell sends fields gated by Zun microversions: list command (1.20),
+# typed mounts (1.23), tty (1.36) and delete-after-stop (1.12). Without this
+# header Zun serves its 1.1 base version and rejects the request. These calls
+# pass raise_exc=False because _strict_json and get_container_raw map statuses;
+# keystoneauth's default would raise on 404/409 before that mapping runs.
+_CLOUD_SHELL_HEADERS = {"OpenStack-API-Version": "container 1.36"}
+
+
 def _response_status(response: Any) -> int:
     status = getattr(response, "status_code", None) or getattr(response, "status", None)
     return int(status) if isinstance(status, int) else 0
@@ -242,7 +250,12 @@ def _strict_json(response: Any, *, action: str, expected: set[int]) -> Any:
 
 def list_containers_raw(conn: openstack.connection.Connection) -> list[dict[str, Any]]:
     endpoint = _get_zun_endpoint(conn)
-    response = conn.session.get(join_version_aware_url(endpoint, "/v1/containers?limit=1000"), timeout=30)
+    response = conn.session.get(
+        join_version_aware_url(endpoint, "/v1/containers?limit=1000"),
+        timeout=30,
+        headers=_CLOUD_SHELL_HEADERS,
+        raise_exc=False,
+    )
     body = _strict_json(response, action="container list", expected={200})
     items = body.get("containers", body) if isinstance(body, dict) else body
     if not isinstance(items, list) or not all(isinstance(item, dict) for item in items):
@@ -252,7 +265,12 @@ def list_containers_raw(conn: openstack.connection.Connection) -> list[dict[str,
 
 def get_container_raw(conn: openstack.connection.Connection, container_id: str) -> dict[str, Any] | None:
     endpoint = _get_zun_endpoint(conn)
-    response = conn.session.get(join_version_aware_url(endpoint, f"/v1/containers/{container_id}"), timeout=30)
+    response = conn.session.get(
+        join_version_aware_url(endpoint, f"/v1/containers/{container_id}"),
+        timeout=30,
+        headers=_CLOUD_SHELL_HEADERS,
+        raise_exc=False,
+    )
     if _response_status(response) == 404:
         return None
     body = _strict_json(response, action="container get", expected={200})
@@ -282,14 +300,20 @@ def create_cloud_shell_container(
         "command": ["/bin/sh", "-lc", "trap : TERM INT; sleep infinity & wait"],
         "interactive": False,
         "tty": False,
-        "privileged": False,
+        # "privileged" is omitted: Zun defaults to unprivileged and its default policy denies any explicit value.
         "auto_remove": False,
         "nets": [{"network": network_id}],
         "security_groups": [security_group],
         "mounts": [{"type": "volume", "source": volume_id, "destination": "/home/cloudshell"}],
         "labels": labels,
     }
-    response = conn.session.post(join_version_aware_url(endpoint, "/v1/containers?run=true"), json=body, timeout=30)
+    response = conn.session.post(
+        join_version_aware_url(endpoint, "/v1/containers?run=true"),
+        json=body,
+        timeout=30,
+        headers=_CLOUD_SHELL_HEADERS,
+        raise_exc=False,
+    )
     result = _strict_json(response, action="container create", expected={200, 201, 202})
     if not isinstance(result, dict) or not isinstance(result.get("uuid"), str):
         raise ZunApiError("Zun container create returned malformed data")
@@ -298,20 +322,34 @@ def create_cloud_shell_container(
 
 def start_container_strict(conn: openstack.connection.Connection, container_id: str) -> None:
     endpoint = _get_zun_endpoint(conn)
-    response = conn.session.post(join_version_aware_url(endpoint, f"/v1/containers/{container_id}/start"), timeout=30)
+    response = conn.session.post(
+        join_version_aware_url(endpoint, f"/v1/containers/{container_id}/start"),
+        timeout=30,
+        headers=_CLOUD_SHELL_HEADERS,
+        raise_exc=False,
+    )
     _strict_json(response, action="container start", expected={200, 202, 204})
 
 
 def stop_container_strict(conn: openstack.connection.Connection, container_id: str) -> None:
     endpoint = _get_zun_endpoint(conn)
-    response = conn.session.post(join_version_aware_url(endpoint, f"/v1/containers/{container_id}/stop"), timeout=30)
+    response = conn.session.post(
+        join_version_aware_url(endpoint, f"/v1/containers/{container_id}/stop"),
+        timeout=30,
+        headers=_CLOUD_SHELL_HEADERS,
+        raise_exc=False,
+    )
     _strict_json(response, action="container stop", expected={200, 202, 204})
 
 
 def delete_container_strict(conn: openstack.connection.Connection, container_id: str) -> None:
     endpoint = _get_zun_endpoint(conn)
+    # Owner-scoped delete; Zun's default policy restricts force delete to admins.
     response = conn.session.delete(
-        join_version_aware_url(endpoint, f"/v1/containers/{container_id}?force=true"), timeout=30
+        join_version_aware_url(endpoint, f"/v1/containers/{container_id}?stop=true"),
+        timeout=30,
+        headers=_CLOUD_SHELL_HEADERS,
+        raise_exc=False,
     )
     _strict_json(response, action="container delete", expected={200, 202, 204})
 
@@ -355,6 +393,8 @@ def create_exec_session(
             "interactive": True,
         },
         timeout=30,
+        headers=_CLOUD_SHELL_HEADERS,
+        raise_exc=False,
     )
     body = _strict_json(response, action="interactive execute", expected={200, 201, 202})
     if not isinstance(body, dict):
@@ -403,5 +443,7 @@ def resize_exec_session(
             f"/v1/containers/{container_id}/execute_resize?exec_id={exec_id}&w={cols}&h={rows}",
         ),
         timeout=15,
+        headers=_CLOUD_SHELL_HEADERS,
+        raise_exc=False,
     )
     _strict_json(response, action="interactive resize", expected={200, 202, 204})

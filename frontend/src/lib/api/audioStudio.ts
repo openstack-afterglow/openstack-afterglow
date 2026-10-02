@@ -1,6 +1,7 @@
 import { api, ApiError, fetchWithAuth } from './client';
 import { uploadChatAttachment } from './chatAttachments';
 import type { AvailableModel } from './chatTree';
+import { parseAudioTranscript, type AudioTranscript } from './audioTranscript';
 
 export type AudioKind = 'tts' | 'stt';
 export type AudioFormat = 'mp3' | 'wav';
@@ -15,6 +16,7 @@ export interface AudioCapabilities {
 	model_capabilities: AudioModel['capabilities'];
 	available_voices?: string[];
 	available_formats?: AudioFormat[];
+	available_timestamp_granularities?: Array<'segment'>;
 }
 export interface SpeechRequest {
 	model_id: string;
@@ -26,6 +28,7 @@ export interface TranscriptionRequest {
 	model_id: string;
 	input_asset_id: string;
 	language?: string;
+	timestamp_granularities?: Array<'segment'>;
 }
 
 export function audioReadiness(model: AudioModel | undefined, capabilities: AudioCapabilities | null, kind: AudioKind): string | null {
@@ -63,13 +66,12 @@ export const audioStudioApi = {
 		return blob;
 	},
 	upload: (file: File, scope: AudioScope, signal?: AbortSignal) => uploadChatAttachment(file, { ...scope, signal }),
-	async transcribe(request: TranscriptionRequest, scope: AudioScope, intentKey: string, signal?: AbortSignal): Promise<string> {
+	async transcribe(request: TranscriptionRequest, scope: AudioScope, intentKey: string, signal?: AbortSignal): Promise<AudioTranscript> {
 		const response = await checked(await fetchWithAuth('/api/v1/chat/audio/transcriptions', {
 			method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': intentKey },
 			body: JSON.stringify(request), signal
 		}, scope.token, scope.projectId), '음성 인식 실패');
 		const result: unknown = await response.json();
-		if (!result || typeof result !== 'object' || !('text' in result) || typeof result.text !== 'string') throw new Error('음성 인식 결과가 유효하지 않습니다.');
-		return result.text;
+		return parseAudioTranscript(result, request.timestamp_granularities?.includes('segment') === true);
 	}
 };

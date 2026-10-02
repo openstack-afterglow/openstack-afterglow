@@ -191,14 +191,19 @@ Grafana 기본 URL과 대시보드 UID 매핑을 반환합니다. 미설정 시 
 {
   "grafana_url": "https://grafana.example.com",
   "dashboards": {
-    "node": "...", "rabbitmq": "...", "mysqld": "...", "memcached": "...",
+    "node": "...", "rabbitmq": "...", "mysqld": "...", "proxysql": "afterglow-proxysql",
+    "memcached": "...",
     "etcd": "...", "haproxy": "...", "libvirt": "...", "openstack": "...",
     "ceph": "...", "instance-cpu": "...", "instance-gpu": "..."
   }
 }
 ```
 
-> 임베드용 JWT 발급 등 상세 흐름은 아키텍처 문서를 참조하세요.
+이 조회는 기존과 같이 인증이 필요하며 관리자 전용 API가 아닙니다. Grafana 자체 인증·접근 정책은 별도로 적용됩니다.
+
+관리자 메뉴 **모니터링 → ProxySQL** (`/admin/monitoring/proxysql`)은 `proxysql` 키로 기존 **ProxySQL — MariaDB 접속 경로** 대시보드를 임베드합니다. MySQL 모니터링은 그대로 유지됩니다.
+
+`afterglow.conf`의 `[monitoring.dashboards].proxysql_uid`로 다른 UID를 지정할 수 있습니다. 우선순위는 `GRAFANA_DASHBOARD_PROXYSQL_UID` 환경 변수 → TOML → 기본값 `afterglow-proxysql`이며, Kubernetes 설정 생성기와 Helm의 `monitoring.dashboards.proxysqlUid`도 같은 설정을 제공합니다. `[monitoring].grafana_base_url`에 지정한 Grafana에 해당 UID의 대시보드가 이미 있어야 합니다. Afterglow는 대시보드나 exporter를 새로 생성하지 않으며 기존 Grafana origin의 CSP 허용과 임베드 정책을 재사용합니다.
 
 ---
 
@@ -227,16 +232,18 @@ Grafana 기본 URL과 대시보드 UID 매핑을 반환합니다. 미설정 시 
 {
   "site_name": "Afterglow",
   "site_description": "...",
-  "logo_path": "...",
-  "logo_dark_path": "...",
-  "logo_light_path": "...",
-  "favicon_path": "...",
+  "logo_path": "/afterglow-logo.svg",
+  "logo_dark_path": "/afterglow-logo.svg",
+  "logo_light_path": "/afterglow-logo.svg",
+  "favicon_path": "/favicon.svg",
   "services": {
     "magnum": false, "manila": true, "zun": false, "k3s": true,
     "trove": false, "swift": true, "barbican": true, "vpn": false, "chat": false
   }
 }
 ```
+
+위 경로는 bundled 기본값입니다. 설정된 커스텀 경로와 DB에 업로드된 로고의 기존 우선순위는 유지하며 초기화는 업로드만 지우고 설정값으로 되돌립니다. 로그인은 같은 SVG wordmark를 앱 테마에 맞춰 표시합니다. 기본·빈 로고를 사용하는 랜딩 header/footer와 사용자·관리자 sidebar는 `/afterglow-symbol.svg`를 사용합니다. 제거된 `/logo.png`, `/logo-white.png`, `/logo-dark.png`, `/favicon.ico`를 명시한 외부 운영 설정은 새 이미지 배포와 함께 새 경로로 이관해야 하며 legacy alias는 제공하지 않습니다.
 
 ### GET /api/v1/site-config/assets/{slot}
 
@@ -249,6 +256,8 @@ Grafana 기본 URL과 대시보드 UID 매핑을 반환합니다. 미설정 시 
 - `DELETE /admin/branding/{slot}` — 슬롯 에셋을 초기화.
 
 모두 `require_admin` 의존성으로 보호되며 `BrandingStatusResponse`를 반환합니다.
+
+Bundled SVG 사용과 관리자 업로드 허용 형식은 별개입니다. 관리자 업로드는 기존 1 MiB 제한과 raster magic-byte 검증을 유지하며 SVG/XML·위장 이미지는 계속 거부합니다.
 
 ---
 

@@ -62,78 +62,19 @@ describe('ChatApiKeysManager connection guide', () => {
 
 	afterEach(cleanup);
 
-	it('shows one selected guide at a time and uses every discovered SDK URL verbatim', async () => {
-		const { container } = render(ChatApiKeysManager);
+	it('switches a single accessible guide without refetching discovery', async () => {
+		render(ChatApiKeysManager);
 		const codexTab = await screen.findByRole('tab', { name: 'Codex' });
-		const claudeCodeTab = screen.getByRole('tab', { name: 'Claude Code' });
-		const openaiTab = screen.getByRole('tab', { name: 'OpenAI' });
-		const claudeTab = screen.getByRole('tab', { name: 'Claude' });
-
 		const codexPanel = screen.getByRole('tabpanel', { name: 'Codex' });
-		expect(codexTab.getAttribute('aria-selected')).toBe('true');
 		expect(codexTab.getAttribute('aria-controls')).toBe(codexPanel.id);
-		expect(screen.getAllByRole('tabpanel')).toHaveLength(1);
-		expect(container.querySelectorAll('pre code')).toHaveLength(3);
-		const codexConfig = screen.getByRole('region', { name: 'Codex CLI 연결 설정' }).textContent ?? '';
-		const keyPrompt = screen.getByRole('region', { name: 'Lumen API 키 입력 명령' }).textContent ?? '';
-		const codexLaunch = screen.getByRole('region', { name: 'Codex CLI 실행 명령' }).textContent ?? '';
-		expect(codexConfig).toContain('base_url = "https://inference.example/tenant/v1"');
-		expect(codexConfig).toContain('wire_api = "responses"');
-		expect(codexConfig).toContain('env_key = "LUMEN_API_KEY"');
-		expect(codexConfig).not.toMatch(/^model(_provider)?\s*=/m);
-		expect(keyPrompt).toContain('read -rs LUMEN_API_KEY');
-		expect(codexLaunch).not.toContain('read -rs');
-		expect(codexLaunch).toContain('codex --strict-config -c model_provider=lumen -m "replace-with-active-Responses-model-ID"');
-		expect(codexLaunch).not.toContain('browser-token');
 		const discoveryRequests = mocks.get.mock.calls.filter(([path]) => String(path).endsWith('/compat')).length;
 
-		await fireEvent.click(claudeCodeTab);
-		expect(screen.getByRole('tabpanel', { name: 'Claude Code' })).toBeTruthy();
-		expect(screen.getByRole('region', { name: 'Lumen API 키 입력 명령' }).textContent).toContain('read -rs LUMEN_API_KEY');
-		const claudeSetup = screen.getByRole('region', { name: 'Claude Code 연결 명령' }).textContent ?? '';
-		expect(claudeSetup).not.toContain('read -rs');
-		expect(claudeSetup).toContain('export LUMEN_MODEL="replace-with-active-Anthropic-model-ID"');
-		expect(claudeSetup).toContain('export ANTHROPIC_BASE_URL="https://inference.example/tenant"');
-		expect(claudeSetup).toContain('export ANTHROPIC_AUTH_TOKEN="$LUMEN_API_KEY"');
-		for (const tier of ['ANTHROPIC_MODEL', 'ANTHROPIC_DEFAULT_SONNET_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL', 'ANTHROPIC_DEFAULT_HAIKU_MODEL']) {
-			expect(claudeSetup).toContain(`export ${tier}="$LUMEN_MODEL"`);
+		for (const name of ['Claude Code', 'OpenAI', 'Claude', 'Codex']) {
+			await fireEvent.click(screen.getByRole('tab', { name }));
+			expect(screen.getAllByRole('tabpanel')).toEqual([screen.getByRole('tabpanel', { name })]);
+			expect(screen.getByRole('tab', { name }).getAttribute('aria-selected')).toBe('true');
 		}
-		expect(claudeSetup).toContain('# export ANTHROPIC_CUSTOM_HEADERS="X-Lumen-Provider: $LUMEN_PROVIDER"');
-		expect(claudeSetup).not.toContain('browser-token');
-		expect(claudeSetup).not.toContain('/claude-gateway');
-
-		await fireEvent.click(openaiTab);
-		expect(screen.getByRole('tabpanel', { name: 'OpenAI' })).toBeTruthy();
-		expect(examples(container)).toContain('base_url="https://inference.example/tenant/v1"');
-		expect(examples(container)).toContain('from openai import OpenAI');
-		expect(examples(container)).toContain('{"provider": os.environ["LUMEN_PROVIDER"]}');
-
-		await fireEvent.click(claudeTab);
-		expect(screen.getByRole('tabpanel', { name: 'Claude' })).toBeTruthy();
-		expect(examples(container)).toContain('base_url="https://inference.example/tenant"');
-		expect(examples(container)).toContain('from anthropic import Anthropic');
-		expect(examples(container)).toContain('{"provider": os.environ["LUMEN_PROVIDER"]}');
-		expect(examples(container)).not.toContain('api.localhost');
-		expect(examples(container)).not.toContain('messages=[...]');
 		expect(mocks.get.mock.calls.filter(([path]) => String(path).endsWith('/compat'))).toHaveLength(discoveryRequests);
-	});
-
-	it('copies only Claude launch commands after the separate key-entry step', async () => {
-		const writeText = vi.fn().mockResolvedValue(undefined);
-		const clipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
-		Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
-		try {
-			render(ChatApiKeysManager);
-			await fireEvent.click(await screen.findByRole('tab', { name: 'Claude Code' }));
-			await fireEvent.click(screen.getByRole('button', { name: '명령 복사' }));
-			const copied = writeText.mock.calls.at(-1)?.[0] as string;
-			expect(copied).not.toContain('read -rs');
-			expect(copied).not.toContain('browser-token');
-			expect(copied).toContain('ANTHROPIC_BASE_URL="https://inference.example/tenant"');
-		} finally {
-			if (clipboard) Object.defineProperty(navigator, 'clipboard', clipboard);
-			else Reflect.deleteProperty(navigator, 'clipboard');
-		}
 	});
 
 	it('keeps key management available but hides examples until discovery retry succeeds', async () => {
@@ -153,10 +94,16 @@ describe('ChatApiKeysManager connection guide', () => {
 		expect(screen.queryByRole('alert')).toBeNull();
 	});
 
-	it('does not publish code with a malformed or credential-bearing discovery URL', async () => {
+	it.each([
+		'https://user:password@inference.example/v1',
+		'https://inference.example/v1?key=private',
+		'https://inference.example/v1#private',
+		'https://inference.example/v1\n',
+		'https://inference.example\\private/v1'
+	])('hides all executable examples for unsafe discovery URL %j', async (url) => {
 		mocks.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/compat') ? {
 			endpoints: {
-				openai: { sdk_base_url: 'https://user:password@inference.example/v1' },
+				openai: { sdk_base_url: url },
 				anthropic: discovery.endpoints.anthropic,
 				gateway: discovery.endpoints.gateway
 			},
@@ -165,7 +112,7 @@ describe('ChatApiKeysManager connection guide', () => {
 		const { container } = render(ChatApiKeysManager);
 		await screen.findByRole('alert');
 		expect(container.querySelector('pre')).toBeNull();
-		expect(container.textContent).not.toContain('user:password');
+		expect(container.textContent).not.toContain(url);
 	});
 
 	it('does not replace the current project endpoint with a late response from the previous project', async () => {

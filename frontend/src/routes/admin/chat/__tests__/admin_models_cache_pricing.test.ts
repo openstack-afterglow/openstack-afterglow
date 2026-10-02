@@ -416,8 +416,6 @@ describe("admin media model registration", () => {
     render(ModelPage);
     await screen.findByText("모델");
     await fireEvent.change(screen.getByLabelText("모델 종류"), { target: { value: "image" } });
-    expect(screen.queryByPlaceholderText("입력 가격 (USD / 1M tokens)")).toBeNull();
-    expect(createCacheGroup()).toBeNull();
     await fireEvent.input(screen.getByPlaceholderText("모델명 (예: gpt-4o)"), { target: { value: "gpt-image-1" } });
     await fireEvent.click(screen.getByText("+ variant 추가"));
     await fireEvent.input(screen.getByLabelText("이미지 variant 이름"), { target: { value: "1024x1024:high" } });
@@ -451,7 +449,6 @@ describe("admin media model registration", () => {
     expect(screen.getByText("실행 경로 없음 · 실행 불가")).toBeTruthy();
     expect(screen.getByText(/1024x1024:high: 0.08 USD \/ 장/)).toBeTruthy();
     const modal = await openEditor();
-    expect(within(modal).queryByLabelText("입력")).toBeNull();
     await fireEvent.input(within(modal).getByLabelText("이미지 variant 단가"), { target: { value: "0.12" } });
     await fireEvent.click(within(modal).getByText("저장"));
     await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));

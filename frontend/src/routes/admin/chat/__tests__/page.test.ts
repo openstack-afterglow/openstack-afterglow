@@ -74,6 +74,8 @@ const provider = {
   name: "OpenAI",
   provider_type: "openai",
   api_base: null,
+  api_provider: "openai",
+  sort_order: 0,
   has_api_key: true,
   has_billing_admin_key: false,
   billing_capability: "openai_admin_usage" as const,
@@ -635,7 +637,7 @@ describe("admin chat model pricing", () => {
     expect(screen.getByText("models.dev 추천 가격")).toBeTruthy();
   });
 
-  it("clears hidden API credentials and creates a ChatGPT subscription with an explicit auth mode", async () => {
+  it("clears hidden API credentials and opens shared ChatGPT authentication after creation", async () => {
     post.mockResolvedValueOnce(chatgptProvider);
     render(ProviderPage);
     await screen.findByRole("option", { name: "ChatGPT 구독 (실험)" });
@@ -665,24 +667,15 @@ describe("admin chat model pricing", () => {
     await fireEvent.input(screen.getByPlaceholderText("예: openai-prod"), {
       target: { value: "shared-chatgpt" },
     });
+    await fireEvent.input(screen.getByRole("textbox", { name: "API provider" }), {
+      target: { value: "chatgpt" },
+    });
     await fireEvent.click(
       screen.getByRole("button", { name: "+ 프로바이더 추가" }),
     );
 
-    await waitFor(() =>
-      expect(post).toHaveBeenCalledWith(
-        "/api/v1/chat/admin/providers",
-        {
-          name: "shared-chatgpt",
-          provider_type: "chatgpt",
-          auth_mode: "chatgpt_device",
-        },
-        "token",
-        "project",
-      ),
-    );
-    expect(await screen.findByText("ChatGPT 구독 연결")).toBeTruthy();
-    expect(post).toHaveBeenCalledTimes(1);
+    const dialog = await screen.findByRole("dialog", { name: "구독 인증" });
+    expect(within(dialog).getByText("ChatGPT 구독 연결")).toBeTruthy();
   });
 
   it("keeps a created Claude provider available when token registration fails safely", async () => {
@@ -705,6 +698,9 @@ describe("admin chat model pricing", () => {
     });
     await fireEvent.input(screen.getByPlaceholderText("예: openai-prod"), {
       target: { value: "shared-claude" },
+    });
+    await fireEvent.input(screen.getByRole("textbox", { name: "API provider" }), {
+      target: { value: "anthropic" },
     });
     await fireEvent.click(
       screen.getByRole("button", { name: "+ 프로바이더 추가" }),
@@ -833,14 +829,14 @@ describe("admin chat model pricing", () => {
     await fireEvent.click(screen.getByRole("checkbox", { name: opaqueModel }));
     await fireEvent.click(screen.getByRole("button", { name: "선택 모델 검토" }));
     expect(post).not.toHaveBeenCalled();
-    expect(within(screen.getByTestId("model-registration-review")).getByText(/캐시 단가와 기능은 별도 확인/)).toBeTruthy();
     expect((screen.getByRole("button", { name: "가격 확인 후 등록·활성화" }) as HTMLButtonElement).disabled).toBe(true);
+    await fireEvent.change(screen.getByRole("combobox", { name: `모델 종류 · ${opaqueModel}` }), { target: { value: "text" } });
     await fireEvent.click(screen.getByRole("button", { name: "비활성으로 저장" }));
 
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith(
         "/api/v1/chat/admin/models",
-        { provider_id: 7, model_name: opaqueModel, is_active: false },
+        { provider_id: 7, model_name: opaqueModel, model_kind: "text", is_active: false },
         "token",
         "project",
       ),
@@ -874,7 +870,7 @@ describe("admin chat model pricing", () => {
     await fireEvent.click(screen.getByRole("button", { name: "가격 확인 후 등록·활성화" }));
     await waitFor(() => expect(post).toHaveBeenCalledWith(
       "/api/v1/chat/admin/models",
-      { provider_id: 1, model_name: "opaque/id-v1", display_name: "Reviewed Name", input_price_per_million: "1.25", output_price_per_million: "5", is_active: true },
+      { provider_id: 1, model_name: "opaque/id-v1", model_kind: "text", display_name: "Reviewed Name", input_price_per_million: "1.25", output_price_per_million: "5", is_active: true },
       "token", "project",
     ));
     expect(post.mock.calls[0][1]).not.toHaveProperty("capabilities");
@@ -979,18 +975,19 @@ describe("admin chat model pricing", () => {
     await fireEvent.change(screen.getByRole("combobox", { name: "조회 프로바이더" }), { target: { value: "1" } });
     await fireEvent.click(screen.getByRole("button", { name: "모델 불러오기" }));
     await screen.findByRole("checkbox", { name: "chat-A" });
-    expect((screen.getByRole("checkbox", { name: "embed-C" }) as HTMLInputElement).disabled).toBe(true);
-    await fireEvent.click(screen.getByRole("button", { name: "전체 선택" }));
+    await fireEvent.click(screen.getByRole("checkbox", { name: "chat-A" }));
+    await fireEvent.click(screen.getByRole("checkbox", { name: "chat-B" }));
     await fireEvent.click(screen.getByRole("button", { name: "선택 모델 검토" }));
     expect(post).not.toHaveBeenCalled();
     expect(within(screen.getByTestId("model-registration-review")).queryByText("embed-C")).toBeNull();
+    await fireEvent.change(screen.getByRole("combobox", { name: "모델 종류 · chat-B" }), { target: { value: "text" } });
     await fireEvent.click(screen.getByRole("button", { name: "비활성으로 저장" }));
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
     first.resolve({});
     await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
     expect(post.mock.calls.map(([, body]) => body)).toEqual([
-      { provider_id: 1, model_name: "chat-A", is_active: false },
-      { provider_id: 1, model_name: "chat-B", is_active: false },
+      { provider_id: 1, model_name: "chat-A", model_kind: "text", is_active: false },
+      { provider_id: 1, model_name: "chat-B", model_kind: "text", is_active: false },
     ]);
     await waitFor(() => expect(within(screen.getByTestId("model-registration-review")).getByText("등록 실패 · 이 모델만 재시도")).toBeTruthy());
     expect(within(screen.getByTestId("model-registration-review")).getByText("등록됨 · 재요청하지 않음")).toBeTruthy();
@@ -1050,7 +1047,7 @@ describe("admin chat model pricing", () => {
     pending.resolve({});
     await Promise.resolve();
     expect(post).toHaveBeenCalledTimes(1);
-    expect(post).toHaveBeenCalledWith("/api/v1/chat/admin/models", { provider_id: 1, model_name: "first", is_active: false }, "token", "project");
+    expect(post).toHaveBeenCalledWith("/api/v1/chat/admin/models", { provider_id: 1, model_name: "first", model_kind: "text", is_active: false }, "token", "project");
     expect(screen.queryByTestId("model-discovery")).toBeNull();
   });
 

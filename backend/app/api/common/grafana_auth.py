@@ -24,6 +24,7 @@ async def get_grafana_dashboards(
             "node": settings.grafana_dashboard_node_uid,
             "rabbitmq": settings.grafana_dashboard_rabbitmq_uid,
             "mysqld": settings.grafana_dashboard_mysqld_uid,
+            "proxysql": settings.grafana_dashboard_proxysql_uid,
             "memcached": settings.grafana_dashboard_memcached_uid,
             "etcd": settings.grafana_dashboard_etcd_uid,
             "haproxy": settings.grafana_dashboard_haproxy_uid,

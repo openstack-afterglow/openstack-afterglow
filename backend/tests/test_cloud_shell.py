@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import json
 import time
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import parse_qsl, urlsplit
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from requests import Response
+from requests.adapters import BaseAdapter
 from starlette.websockets import WebSocketDisconnect
 
 from app.api.cloud_shell import router as cloud_shell_router
@@ -252,35 +256,115 @@ def response(body: dict, status: int = 200):
     return result
 
 
-def test_zun_container_payload_has_fixed_isolation_and_no_credentials():
-    conn = MagicMock()
-    conn.config.get_interface.return_value = "internal"
-    conn.session.get_endpoint.return_value = "https://zun.example.test"
-    conn.session.post.return_value = response({"uuid": "container-a"}, 201)
+class _StockZunMemberApi(BaseAdapter):
+    """Upstream Zun microversion gates and default policy, as seen by a project member."""
 
-    result = zun.create_cloud_shell_container(
+    FIELD_VERSIONS = {
+        "auto_remove": (1, 3),
+        "runtime": (1, 5),
+        "hostname": (1, 9),
+        "mounts": (1, 11),
+        "privileged": (1, 21),
+        "healthcheck": (1, 22),
+        "exposed_ports": (1, 24),
+        "tty": (1, 36),
+    }
+
+    def __init__(self):
+        super().__init__()
+        self.created: list[dict] = []
+        self.containers: dict[str, dict] = {}
+
+    def send(self, request, **kwargs):
+        service, _, number = request.headers.get("OpenStack-API-Version", "container 1.1").partition(" ")
+        assert service == "container"
+        version = tuple(int(part) for part in number.split("."))
+        url = urlsplit(request.url)
+        query = dict(parse_qsl(url.query))
+        if request.method == "POST" and url.path == "/v1/containers":
+            body = json.loads(request.body)
+            if any(body.get(field) is not None and version < needed for field, needed in self.FIELD_VERSIONS.items()):
+                return self._reply(request, 406)
+            if body.get("privileged") is not None:  # container:create:privileged is RULE_DENY_EVERYBODY
+                return self._reply(request, 403)
+            command_needs = (1, 20) if isinstance(body.get("command"), list) else (1, 1)
+            mounts_need = (1, 23) if any("type" in mount for mount in body.get("mounts") or []) else (1, 1)
+            if version < max(command_needs, mounts_need):
+                return self._reply(request, 400)
+            self.created.append(body)
+            self.containers["container-a"] = {"uuid": "container-a", "status": "Running", "labels": body["labels"]}
+            return self._reply(request, 202, {"uuid": "container-a", "status": "Creating"})
+        container = self.containers.get(url.path.removeprefix("/v1/containers/").removesuffix("/stop"))
+        if container is None:
+            return self._reply(request, 404, {"errors": [{"title": "Not Found"}]})
+        if request.method == "GET":
+            return self._reply(request, 200, container)
+        if request.method == "POST" and url.path.endswith("/stop"):
+            container["status"] = "Stopped"
+            return self._reply(request, 202)
+        if request.method == "DELETE":
+            if query.get("force") == "true":  # container:delete_force is admin-only from 1.7
+                return self._reply(request, 406 if version < (1, 7) else 403)
+            if query.get("stop") == "true" and version < (1, 12):
+                return self._reply(request, 406)
+            del self.containers[container["uuid"]]
+            return self._reply(request, 204)
+        raise AssertionError(f"unexpected Zun request {request.method} {request.url}")
+
+    def _reply(self, request, status, body=None):
+        result = Response()
+        result.status_code = status
+        result._content = b"" if body is None else json.dumps(body).encode()
+        result.headers["Content-Type"] = "application/json"
+        result.url = request.url
+        result.request = request
+        return result
+
+    def close(self):
+        pass
+
+
+def test_cloud_shell_zun_lifecycle_passes_stock_member_api_gates():
+    import requests
+    from keystoneauth1 import session as ks_session
+    from keystoneauth1.noauth import NoAuth
+
+    api = _StockZunMemberApi()
+    http = requests.Session()
+    http.mount("http://zun.test/", api)
+    session = ks_session.Session(auth=NoAuth(endpoint="http://zun.test"), session=http)
+    conn = SimpleNamespace(config=None, session=session)
+    settings = cloud_settings()
+    lease = cloud_shell.CloudShellLease(
+        session_id="session-a",
+        user_id="user-a",
+        username="alice",
+        project_id=PROJECT_ID,
+        project_name="project-a",
+        token="target-token",
+        token_expires_at=int(time.time()) + 600,
+        user_fingerprint=cloud_shell.user_fingerprint("user-a"),
+        workspace_fingerprint=cloud_shell.workspace_fingerprint("user-a", PROJECT_ID),
+        active_value="active",
+    )
+    labels = cloud_shell._container_labels(lease, int(time.time()) + 600, settings)
+
+    created = zun.create_cloud_shell_container(
         conn,
         name="afterglow-cloud-shell-session",
         image="registry.example.test/cloud-shell@sha256:" + "a" * 64,
         cpu=1.0,
         memory_mib=1024,
         network_id="network-a",
-        security_group="egress-only",
+        security_group="security-group-a",
         volume_id="volume-a",
-        labels={"afterglow.purpose": "cloud-shell"},
+        labels=labels,
     )
+    # Exact cleanup stops, deletes, then must treat the 404 that proves deletion as success.
+    cloud_shell._delete_exact_container_sync(conn, created["uuid"], labels, settings)
 
-    assert result["uuid"] == "container-a"
-    request = conn.session.post.call_args
-    assert request.args[0].endswith("/v1/containers?run=true")
-    payload = request.kwargs["json"]
-    assert payload["privileged"] is False
-    assert payload["auto_remove"] is False
-    assert payload["nets"] == [{"network": "network-a"}]
-    assert payload["security_groups"] == ["egress-only"]
-    assert payload["mounts"] == [{"type": "volume", "source": "volume-a", "destination": "/home/cloudshell"}]
-    assert "run" not in payload
-    assert "token" not in json.dumps(payload).lower()
+    assert api.containers == {}
+    assert "target-token" not in json.dumps(api.created)
 
 
 def test_container_cleanup_refuses_tampered_managed_labels():
@@ -421,3 +505,209 @@ async def test_marker_gate_discards_pre_ack_output_and_bounds_buffer():
         await _wait_for_marker(Upstream([cloud_shell.BOOTSTRAP_ERROR_MARKER]), cloud_shell.BOOTSTRAP_OK_MARKER)
     with pytest.raises(cloud_shell.CloudShellUnavailable, match="exceeded"):
         await _wait_for_marker(Upstream([b"x" * (65 * 1024)]), b"never")
+
+
+class _CloudNetworkAdapter(BaseAdapter):
+    def __init__(self, *, owner=SERVICE_PROJECT_ID, shared=False, gateway=True, groups=None):
+        self.network = {
+            "id": "network-id",
+            "project_id": owner,
+            "name": "Default",
+            "subnets": ["subnet-a"],
+            "admin_state_up": True,
+            "shared": shared,
+            "router:external": False,
+        }
+        self.groups = (
+            groups
+            if groups is not None
+            else [
+                {
+                    "id": "service-default",
+                    "project_id": SERVICE_PROJECT_ID,
+                    "name": "default",
+                    "security_group_rules": [{"direction": "ingress", "remote_group_id": "service-default"}],
+                }
+            ]
+        )
+        self.gateway = gateway
+
+    def send(self, request, **kwargs):
+        url = urlsplit(request.url)
+        query = dict(parse_qsl(url.query))
+        assert request.method == "GET", "network defaults must not rewrite security-group rules"
+        if url.path.rstrip("/") == "/v2.0":
+            body = {
+                "version": {
+                    "id": "v2.0",
+                    "status": "CURRENT",
+                    "links": [{"rel": "self", "href": "http://neutron.test/v2.0/"}],
+                }
+            }
+        elif url.path == "/v2.0/networks/network-id":
+            body = {"network": self.network}
+        elif url.path == "/v2.0/security-groups":
+            # Deliberately return broader results as an administrative endpoint can.
+            body = {"security_groups": self.groups}
+        elif url.path == "/v2.0/ports":
+            body = {
+                "ports": [
+                    {
+                        "id": "port-a",
+                        "device_id": "router-a",
+                        "device_owner": "network:router_interface",
+                        "fixed_ips": [{"subnet_id": "subnet-a"}],
+                    }
+                ]
+                if query.get("device_owner") == "network:router_interface"
+                else []
+            }
+        elif url.path == "/v2.0/routers":
+            body = {
+                "routers": [
+                    {
+                        "id": "router-a",
+                        "project_id": SERVICE_PROJECT_ID,
+                        "external_gateway_info": {"network_id": "external-a"} if self.gateway else {},
+                    }
+                ]
+            }
+        else:
+            raise AssertionError(request.url)
+        result = Response()
+        result.status_code = 200
+        result._content = json.dumps(body).encode()
+        result.headers["Content-Type"] = "application/json"
+        result.url = request.url
+        result.request = request
+        return result
+
+    def close(self):
+        pass
+
+
+def _network_connection(**kwargs):
+    import openstack.connection
+    import requests
+    from keystoneauth1 import session as ks_session
+    from keystoneauth1.noauth import NoAuth
+
+    adapter = _CloudNetworkAdapter(**kwargs)
+    http = requests.Session()
+    http.mount("http://neutron.test/", adapter)
+    endpoint = "http://neutron.test/v2.0"
+    conn = openstack.connection.Connection(
+        session=ks_session.Session(auth=NoAuth(endpoint=endpoint), session=http),
+        network_endpoint_override=endpoint,
+        network_api_version="2",
+    )
+    conn._afterglow_project_id = SERVICE_PROJECT_ID
+    return conn, adapter
+
+
+@pytest.mark.asyncio
+async def test_cloud_network_defaults_use_service_scope_and_own_default_group_rules():
+    foreign_default = {"id": "caller-default", "project_id": PROJECT_ID, "name": "default"}
+    conn, adapter = _network_connection()
+    adapter.groups.insert(0, foreign_default)
+    settings = cloud_settings(cloud_shell_network_id="", cloud_shell_security_group="")
+
+    async def project_default(project_id):
+        return {SERVICE_PROJECT_ID: "network-id", PROJECT_ID: "caller-network"}[project_id]
+
+    with patch("app.services.default_network.get_default_network_id", new=project_default):
+        assert await cloud_shell._resolve_networking(conn, settings) == ("network-id", "service-default")
+    conn.close()
+
+
+@pytest.mark.asyncio
+async def test_cloud_security_group_id_wins_over_same_named_group():
+    conn, _ = _network_connection(
+        groups=[
+            {"id": "sg-id", "project_id": SERVICE_PROJECT_ID, "name": "custom"},
+            {"id": "other-id", "project_id": SERVICE_PROJECT_ID, "name": "sg-id"},
+        ]
+    )
+    settings = cloud_settings(cloud_shell_security_group="sg-id")
+    assert await cloud_shell._resolve_networking(conn, settings) == ("network-id", "sg-id")
+    conn.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "groups",
+    [
+        [{"id": "foreign", "project_id": PROJECT_ID, "name": "default"}],
+        [
+            {"id": "a", "project_id": SERVICE_PROJECT_ID, "name": "default"},
+            {"id": "b", "project_id": SERVICE_PROJECT_ID, "name": "default"},
+        ],
+    ],
+)
+async def test_cloud_security_group_rejects_foreign_or_ambiguous_default(groups):
+    conn, _ = _network_connection(groups=groups)
+    with pytest.raises(cloud_shell.CloudShellUnavailable) as error:
+        await cloud_shell._resolve_networking(conn, cloud_settings(cloud_shell_security_group="default"))
+    assert error.value.code == "security_group_unavailable"
+    conn.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("owner,gateway", [(PROJECT_ID, True), (SERVICE_PROJECT_ID, False)])
+async def test_cloud_network_failure_precedes_home_creation(owner, gateway):
+    conn, _ = _network_connection(owner=owner, gateway=gateway)
+    settings = cloud_settings(cloud_shell_security_group="default")
+    lease = cloud_shell.CloudShellLease(
+        session_id="session-a",
+        user_id="user-a",
+        username="alice",
+        project_id=PROJECT_ID,
+        project_name="project-a",
+        token="caller-token",
+        token_expires_at=int(time.time()) + 600,
+        user_fingerprint="user-fingerprint",
+        workspace_fingerprint="workspace-fingerprint",
+        active_value="active",
+    )
+    with (
+        patch("app.services.cloud_shell.get_settings", return_value=settings),
+        patch("app.services.cloud_shell.keystone.get_cloud_shell_project_connection", return_value=conn),
+        patch("app.services.cloud_shell._ensure_workspace", new=AsyncMock()) as workspace,
+    ):
+        with pytest.raises(cloud_shell.CloudShellUnavailable) as error:
+            await cloud_shell.provision_session(lease, AsyncMock())
+    assert error.value.code == "network_unavailable"
+    workspace.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cloud_default_network_failure_does_not_fall_back_to_another_network():
+    conn, _ = _network_connection()
+    settings = cloud_settings(cloud_shell_network_id="", cloud_shell_security_group="default")
+    with patch(
+        "app.services.default_network.get_default_network_id", new=AsyncMock(side_effect=RuntimeError("DB down"))
+    ):
+        with pytest.raises(cloud_shell.CloudShellUnavailable) as error:
+            await cloud_shell._resolve_networking(conn, settings)
+    assert error.value.code == "network_unavailable"
+    conn.close()
+
+
+@pytest.mark.asyncio
+async def test_cloud_shared_policy_network_is_only_available_through_default_selection():
+    conn, _ = _network_connection(owner=PROJECT_ID, shared=True)
+    settings = cloud_settings(
+        cloud_shell_network_id="", cloud_shell_security_group="default", default_network_enabled=False
+    )
+    with (
+        patch("app.services.default_network.get_default_network_id", new=AsyncMock(return_value=None)),
+        patch(
+            "app.services.resource_policy_store.resolve_policies",
+            new=AsyncMock(return_value={"nova.default_network": "network-id"}),
+        ),
+    ):
+        assert await cloud_shell._resolve_networking(conn, settings) == ("network-id", "service-default")
+    with pytest.raises(cloud_shell.CloudShellUnavailable) as error:
+        await cloud_shell._resolve_networking(conn, cloud_settings(cloud_shell_security_group="default"))
+    assert error.value.code == "network_unavailable"
+    conn.close()

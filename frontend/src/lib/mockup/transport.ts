@@ -941,7 +941,24 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	const adminK3sClusterId = pathname.match(/^\/api\/v1\/admin\/k3s-clusters\/([^/]+)$/)?.[1];
 	if (method === 'GET' && adminK3sClusterId) return state.k3sClusters.find((cluster) => cluster.id === adminK3sClusterId) ?? mockUnsupported();
 	if (method === 'GET' && pathname === '/api/v1/k3s/cluster-templates') return [{ id: 'mock-template-1', name: 'GPU training baseline', description: '1 master + 2 workers', default_node_count: 2, default_agent_flavor_id: 'mock-flavor-cpu4', os_type: 'ubuntu' }];
-	if (method === 'GET' && pathname === '/api/v1/flavors') return [{ id: 'mock-flavor-cpu4', name: 'cpu.4c_8g', vcpus: 4, ram: 8192, disk: 80 }, { id: 'mock-flavor-gpu', name: 'gpu.8c_64g_a10', vcpus: 8, ram: 65536, disk: 160, gpu_count: 1 }];
+	if (method === 'GET' && (pathname === '/api/v1/flavors' || pathname === '/api/v1/admin/instances/flavors-for-project')) {
+		return [
+			{ id: 'mock-flavor-cpu4', name: 'cpu.4c_8g', vcpus: 4, ram: 8192, disk: 80, is_public: true, extra_specs: {} },
+			{ id: 'mock-flavor-gpu', name: 'gpu.8c_64g_a10', vcpus: 8, ram: 65536, disk: 160, is_public: true, extra_specs: { 'pci_passthrough:alias': 'A10:1' } },
+		].map(flavor => ({
+			...flavor,
+			eligibility: {
+				selectable: true,
+				requirements: { instances: 1, cores: flavor.vcpus, ram_mb: flavor.ram, gpus: flavor.id === 'mock-flavor-gpu' ? { A10: 1 } : {} },
+				remaining: { instances: 8, cores: 56, ram_mb: 196608, gpus: { A10: 1 } },
+				blockers: [],
+				capacity: {
+					status: 'available', checked_at: NOW_ISO, candidate_hosts: 1,
+					cpu_resource_class: 'VCPU', remaining_vcpus: 32, remaining_ram_mb: 98304,
+				},
+			},
+		}));
+	}
 	if (method === 'GET' && pathname === '/api/v1/keypairs') return [{ name: 'demo-keypair' }];
 	const healthClusterId = pathname.match(/^\/api\/v1\/k3s\/clusters\/([^/]+)\/health(?:\/check)?$/)?.[1];
 	if ((method === 'GET' || (method === 'POST' && pathname.endsWith('/health/check'))) && healthClusterId) {

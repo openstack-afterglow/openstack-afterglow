@@ -29,16 +29,6 @@ describe('allNavItems service inheritance', () => {
 		expect(fileStorage?.service).toBe('manila');
 	});
 
-	it('groups administrator service workspaces without moving tenant Waygate', () => {
-		const admin = allNavItems(true, DEFAULT_BETA_FEATURES);
-		const services = admin.filter((item) => item.section === '서비스' && item.topLevel);
-		expect(services.map((item) => item.href)).toEqual([
-			'/admin/drover', '/admin/chat', '/admin/libraries', '/admin/waygate'
-		]);
-		expect(services.find((item) => item.href === '/admin/waygate')?.service).toBe('waygate');
-		expect(allNavItems(false, DEFAULT_BETA_FEATURES).find((item) => item.href === '/dashboard/network/waygate')?.section).toBe('네트워크');
-		expect(allNavItems(false, DEFAULT_BETA_FEATURES).find((item) => item.href === '/dashboard/network/waygate')?.service).toBe('waygate');
-	});
 
 	it('keeps service gates on both primary and secondary service links', () => {
 		const byHref = new Map(allNavItems(true, DEFAULT_BETA_FEATURES).map((item) => [item.href, item]));
@@ -52,16 +42,18 @@ describe('allNavItems service inheritance', () => {
 		expect(byHref.get('/admin/waygate')?.service).toBe('waygate');
 	});
 
-	it('activates sections only for exact routes and slash descendants', () => {
-		const services = adminNavSections.find((section) => section.label === '서비스')!;
-		const monitoring = adminNavSections.find((section) => section.label === '모니터링')!;
-		for (const href of ['/admin/drover', '/admin/drover/templates', '/admin/chat/stats', '/admin/chat/stats/daily', '/admin/libraries/123', '/admin/waygate']) {
-			expect(isNavSectionActive(services, href)).toBe(true);
-		}
-		for (const href of ['/admin/droverish', '/admin/chatty', '/admin/libraries-old', '/admin/waygate-extra', '/admin/containers']) {
-			expect(isNavSectionActive(services, href)).toBe(false);
-		}
-		expect(isNavSectionActive(monitoring, '/admin/monitoring/node')).toBe(true);
-		expect(isNavSectionActive(monitoring, '/admin/monitoring-other')).toBe(false);
-	});
+  it.each([
+    ['/admin/drover', '컨테이너'],
+    ['/admin/drover/templates', '컨테이너'],
+    ['/admin/drover/cluster-1', '컨테이너'],
+    ['/admin/chat/stats/daily', 'Lumen'],
+    ['/admin/libraries/123', 'Palimpsest'],
+    ['/admin/waygate', '네트워크'],
+  ])('activates only the owning section for %s', (path, owner) => {
+    expect(adminNavSections.filter(section => isNavSectionActive(section, path)).map(section => section.label)).toEqual([owner]);
+  });
+
+  it.each(['/admin/droverish', '/admin/chatty', '/admin/libraries-old', '/admin/waygate-extra'])('does not activate a section for a lookalike route %s', path => {
+    expect(adminNavSections.some(section => isNavSectionActive(section, path))).toBe(false);
+  });
 });

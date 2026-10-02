@@ -163,7 +163,7 @@
 		<b class="block text-sm text-ink-0 font-semibold mb-0.5">배포 준비 완료</b>
 		<small class="text-[11.5px] text-ink-2 leading-relaxed">
 			VM 생성 클릭 시 OpenStack에 요청을 보냅니다. cloud-init은 첫 부팅 시 자동 실행됩니다.
-			{#if reviewGpu} · GPU 가용성이 스케줄러에서 자동 확인됩니다.{/if}
+			생성 직전 프로젝트 쿼터와 같은 호스트의 여유(GPU 플레이버는 GPU 포함)를 다시 확인합니다. 조회는 예약이 아니며 Nova가 최종 배치합니다.
 		</small>
 	</div>
 </div>

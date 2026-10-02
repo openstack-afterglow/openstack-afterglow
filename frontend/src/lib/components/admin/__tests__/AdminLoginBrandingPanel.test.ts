@@ -35,10 +35,10 @@ import AdminLoginBrandingPanel from '../AdminLoginBrandingPanel.svelte';
 const baseSiteConfig: PublicSiteConfig = {
 	site_name: 'Afterglow',
 	site_description: 'OpenStack VM + OverlayFS 배포 플랫폼',
-	logo_path: '/logo.png',
-	logo_dark_path: '/logo-white.png',
-	logo_light_path: '/logo-dark.png',
-	favicon_path: '/favicon.ico',
+	logo_path: '/afterglow-logo.svg',
+	logo_dark_path: '/afterglow-logo.svg',
+	logo_light_path: '/afterglow-logo.svg',
+	favicon_path: '/favicon.svg',
 	refresh_interval_ms: 5000,
 	services: { magnum: false, manila: false, zun: false, cloud_shell: false, k3s: false, trove: false, swift: false, barbican: false, waygate: false, chat: false, mcp: false },
 	runtime: {
@@ -73,7 +73,7 @@ type BrandingStatus = {
 function buildStatus(overrides: Partial<BrandingStatus> = {}): BrandingStatus {
 	return {
 		effective: {
-			logo_path: '/logo.png',
+			logo_path: baseSiteConfig.logo_path,
 			logo_light_path: 'https://api.example.com/api/v1/site-config/assets/logo_light',
 			logo_dark_path: 'https://api.example.com/api/v1/site-config/assets/logo_dark',
 			...(overrides.effective ?? {}),
@@ -119,7 +119,7 @@ describe('AdminLoginBrandingPanel', () => {
 		mocks.apiUpload.mockResolvedValueOnce(
 			buildStatus({
 				effective: {
-					logo_path: '/logo.png',
+					logo_path: baseSiteConfig.logo_path,
 					logo_light_path: 'https://api.example.com/api/v1/site-config/assets/logo_light?v=2',
 					logo_dark_path: 'https://api.example.com/api/v1/site-config/assets/logo_dark',
 				},
@@ -172,8 +172,8 @@ describe('AdminLoginBrandingPanel', () => {
 		mocks.apiDelete.mockResolvedValueOnce(
 			buildStatus({
 				effective: {
-					logo_path: '/logo.png',
-					logo_light_path: '/logo-dark.png',
+					logo_path: baseSiteConfig.logo_path,
+					logo_light_path: baseSiteConfig.logo_light_path,
 					logo_dark_path: 'https://api.example.com/api/v1/site-config/assets/logo_dark',
 				},
 				assets: {
@@ -200,7 +200,7 @@ describe('AdminLoginBrandingPanel', () => {
 		});
 
 		await waitFor(() => {
-			expect(get(siteConfig).logo_light_path).toBe('/logo-dark.png');
+			expect(get(siteConfig).logo_light_path).toBe(baseSiteConfig.logo_light_path);
 		});
 	});
 });

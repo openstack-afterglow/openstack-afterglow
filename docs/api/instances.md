@@ -155,6 +155,14 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
 
 > `data_mounts[].mount_point`는 `/mnt`, `/data`, `/srv`, `/home` 하위 절대 경로만 허용되며 `..`/`.` 세그먼트 및 `/opt`·`/etc`·`/usr`·`/var` 등 시스템 경로는 거부됩니다. NFS share 마운트에는 `network_id`(subnet CIDR 해석용)가 필요합니다.
 
+**플레이버 쿼터·호스트 용량 사전 검증**
+
+사용자 sync/SSE와 관리자 `POST /api/v1/admin/instances/async`는 resolved compute AZ와 대상 프로젝트로 단일 VM 생성용 flavor eligibility를 목록 snapshot과 무관하게 새로 평가합니다. 프로젝트 instances/vCPU/RAM/GPU 쿼터가 남아도 요청한 CPU·RAM·GPU가 하나의 eligible compute 호스트에 함께 들어가지 않으면 생성하지 않습니다. VM 하나는 호스트의 Placement `max_unit`을 넘을 수 없습니다. 고정 flavor 규격은 변경하지 않으며 VCPU/PCPU, reserved, allocation ratio를 Placement로 검사합니다.
+
+검사는 GPU 단기 예약·Cinder/Nova mutation 전에 수행됩니다. 확인된 부족은 flavor 종류와 무관하게 409입니다. 운영자 권한·조회·시간 초과·매핑·경계를 정할 수 없는 flavor 제약 또는 기본 compute AZ 정책 때문에 용량을 확인할 수 없으면 flavor 종류와 무관하게 503입니다. 확인되지 않은 용량으로 Nova에 생성을 요청하지 않으므로 이런 장애 동안 Afterglow 생성 경로는 모두 거부됩니다. 단일 NUMA 셀 요청은 호스트 합계로 평가합니다. 합계 부족은 409이고, 합계가 충분하면 `numa_unverified`로 허용해 Nova NUMA filter가 셀과 GPU NUMA 근접성을 최종 판단합니다. 자세한 snapshot 필드는 [플레이버 API](flavors.md#eligibilitycapacity)를 참조하세요.
+
+목록의 `available`은 예약이나 생성 보장이 아닙니다. 목록 이후 다른 VM이 용량을 사용하면 제출 시 결과가 달라지며 최종 allocation은 Nova scheduler가 결정합니다. VM wizard도 제출 직전에 목록을 다시 읽고 부족/미확인으로 막히면 기존 선택을 보존한 채 플레이버 단계로 돌아갑니다. resize 증분 쿼터와 별도 Palimpsest/SquashFS consume API(`/api/v1/libraries/squashfs/consume`)는 이 세 생성 endpoint의 flavor·capacity admission을 사용하지 않으며 이번 변경 범위가 아닙니다.
+
 **cloud-init 및 metadata 경계**
 
 - `libraries`가 실제로 resolve된 경우에만 OverlayFS script/unit, `/etc/profile.d/union-env.sh`, layer health report/token, `union_libraries`·`union_strategy`·`union_share_ids`·`union_upper_volume_id`·`union_health_id` Nova metadata를 생성합니다.
@@ -175,15 +183,15 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
 
 **오류**
 - `400 Bad Request` — boot source 검증 실패(`image_id`/`boot_volume_id` 동시 지정 또는 둘 다 누락), 볼륨 상태 불량, 이름 정규화 실패
-- `409 Conflict` — GPU 쿼터 초과
+- `409 Conflict` — 프로젝트 인스턴스/vCPU/RAM/GPU 쿼터 초과 또는 확인된 같은 호스트 CPU·RAM·GPU 용량 부족
 - `422 Unprocessable Entity` — `github_username` 형식 오류, GitHub 사용자/조직 부적합, 공개 SSH 키 없음
 - `429 Too Many Requests` — GitHub API 요청 한도 도달(`Retry-After` 헤더 포함)
-- `503 Service Unavailable` — GitHub 조회 실패로 검증 불가(생성 전에 차단)
+- `503 Service Unavailable` — GPU flavor의 호스트 capacity·쿼터·AZ 정책 또는 GitHub 정보를 검증할 수 없어 생성 전에 차단
 - `500 Internal Server Error` — 생성 실패(리소스는 역순 롤백됨). 비관리자에게는 상세 원인이 숨겨집니다
 
 ### POST /api/v1/instances/async
 
-인스턴스를 비동기적으로 생성하며 SSE(Server-Sent Events) 스트림으로 실시간 진행률을 전달합니다.
+인스턴스를 비동기적으로 생성하며 SSE(Server-Sent Events) 스트림으로 실시간 진행률을 전달합니다. 쿼터·호스트 capacity 검증은 SSE 응답을 열기 전에 끝나며 부족은 409, 미확인은 flavor 종류와 무관하게 503 응답입니다. 관리자 SSE도 동일하게 대상 프로젝트를 재검증합니다.
 
 **요청 본문**: `POST /api/v1/instances`와 동일
 
@@ -415,13 +423,50 @@ Nova 인스턴스(가상 머신)의 생성, 조회, 제어, 삭제와 볼륨·�
 
 ### GET /api/v1/instances/{instance_id}/security-groups
 
-인스턴스의 포트 목록과 프로젝트 전체 보안 그룹 목록을 함께 반환합니다.
+인스턴스의 포트 목록과 프로젝트 전체 보안 그룹 및 각 그룹의 `rules`를 함께 반환합니다. 각 포트의 `security_group_ids`가 해당 인터페이스에 적용된 그룹 ID입니다.
 
 **응답 (200 OK)**
 
 ```json
-{ "ports": [ ... ], "security_groups": [ { "id": "uuid", "name": "default" } ] }
+{
+  "ports": [{
+    "id": "ee674058-6b65-4d08-bb80-ed082bb4d2d7",
+    "network_id": "32c1bcea-f823-4577-88c1-603c76443a34",
+    "mac_address": "fa:16:3e:06:b2:7a",
+    "fixed_ips": [{"ip_address": "192.168.0.68"}],
+    "security_group_ids": ["abc422ef-a804-4eb5-9908-95b5fd65be72"],
+    "status": "ACTIVE"
+  }],
+  "security_groups": [{
+    "id": "abc422ef-a804-4eb5-9908-95b5fd65be72",
+    "name": "default",
+    "description": "SSH access",
+    "rules": [{
+      "id": "ae033408-5d69-414c-b546-1c7d7f0c7a78",
+      "direction": "ingress",
+      "protocol": "tcp",
+      "port_range_min": 22,
+      "port_range_max": 22,
+      "remote_ip_prefix": "203.0.113.0/24",
+      "ethertype": "IPv4",
+      "remote_group_id": null
+    }]
+  }]
+}
 ```
+
+상세 화면은 각 인터페이스의 보안 그룹 아래에 **적용된 허용 규칙**을 표시합니다. 목록 상세 패널과 직접 상세는 같은 컴포넌트를 사용합니다.
+
+- 해당 포트에 적용된 그룹만 합칩니다. 프로젝트의 다른 그룹은 원격 그룹 이름 조회에만 사용하며 그 규칙을 추가하지 않습니다.
+- 인바운드/아웃바운드를 나눠 IP 버전, 프로토콜, 포트 또는 ICMP 유형·코드와 출발지/대상을 표시합니다. 전체 프로토콜·전체 포트·IPv4/IPv6 전체 대역과 원격 그룹의 이름/전체 ID를 구분합니다.
+- 인바운드와 아웃바운드 표는 기본적으로 접혀 있습니다. 각 방향의 펼치기/접기는 인터페이스별로 독립적이며, 인터페이스 순서가 바뀌어도 해당 포트의 펼침 상태를 유지합니다. 버튼은 확장 상태를 알리고 마우스와 Enter/Space 키로 조작할 수 있습니다.
+- 방향·IP 버전·프로토콜·원격 대상이 같은 중복을 제거하고 TCP/UDP/SCTP의 겹치거나 연속된 포트 범위를 합칩니다. 서로 다른 CIDR은 포함 관계라도 별도로 보존하며 ICMP 유형·코드는 포트 범위로 합치지 않습니다.
+- 별도 인터페이스 목록 cache보다 이 응답의 포트별 적용 ID를 우선합니다. 편집 중 미저장 선택은 표시를 바꾸지 않습니다. 저장 후 기존 refresh dispatch로 보안 그룹을 독립 조회하여 브라우저의 저장 전 ordinary GET에 합류하지 않게 합니다.
+- 최초 조회·상세 전환·저장 후 재조회 중에는 정책을 로딩 상태로 두고, 일반 silent polling은 직전 정책을 유지합니다. 조회 실패·적용 그룹 누락·그룹 미적용·허용 규칙 없음은 서로 다른 상태입니다. 실패하거나 그룹이 누락되면 이전/부분 규칙을 완전한 합집합으로 표시하지 않으며, silent 재시도 중 오류는 성공한 응답이 올 때까지 유지합니다.
+- 조회 중·실패·그룹 누락·미적용 안내는 접기/펼치기와 관계없이 표시합니다. 조회 결과의 갱신은 방향별 펼침 상태를 초기화하지 않습니다.
+- 작은 화면에서는 표 안에서만 가로 스크롤합니다. 이 결과는 보안 그룹의 허용 정책이며 게스트 서비스 실행, OS 방화벽과 라우팅을 포함한 실제 연결 가능성은 별도 확인해야 합니다.
+
+현재 서버 GET은 `refresh=true`를 읽지 않고 기존 SG cache를 사용합니다. 공통 cache 무효화는 같은 프로세스·event loop의 저장 전 flight를 분리하고 늦은 재저장을 막지만 이미 시작한 호출자에게는 이전 snapshot이 반환될 수 있으며 다른 worker의 flight는 차단하지 않습니다. 별도 규칙 CRUD도 이 인스턴스별 cache를 무효화하지 않습니다. 따라서 브라우저의 독립 요청만으로 실제 Neutron의 즉시 최신성을 보장하지 않으며, 실제 Neutron 저장·조회 경로는 별도 검증해야 합니다.
 
 ### POST /api/v1/instances/{instance_id}/ports/{port_id}/security-groups
 

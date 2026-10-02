@@ -950,6 +950,7 @@
   <div data-tour="admin-library-header">
     <PageHeader title="Palimpsest 레이어 관리" breadcrumb="Palimpsest" subtitle="Dockerfile로 루트 레이어를 빌드하고 선택적으로 SSH VM을 생성합니다. 기존 기록도 이곳에서 조회합니다.">
       {#snippet actions()}
+        <Button variant="secondary" href="/palimpsest/packages">프로젝트 패키지 / 접근 키</Button>
         <TutorialStartButton tour="admin-library" compactOnMobile />
         <button
           onclick={() => loadAll(true)}

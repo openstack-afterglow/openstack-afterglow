@@ -225,6 +225,277 @@ async def test_cached_call_refresh(backend: RedisBackend) -> None:
     assert calls["n"] == 2
 
 
+@pytest.mark.parametrize("pattern", ["afterglow:test:mutation", "afterglow:test:*", "afterglow:test:mutatio?"])
+async def test_invalidation_detaches_old_origin_without_poisoning_cache(backend, pattern):
+    key = "afterglow:test:mutation"
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def old_origin():
+        started.set()
+        await release.wait()
+        return {"rows": ["deleted", "old-name"]}
+
+    async def current_origin():
+        return {"rows": ["created", "new-name"]}
+
+    old = asyncio.create_task(cached_call(key, 60, old_origin))
+    try:
+        await asyncio.wait_for(started.wait(), 1)
+        # No stored key exists yet: glob invalidation must also fence origin-only keys.
+        await asyncio.wait_for(invalidate(pattern), 1)
+        assert await asyncio.wait_for(cached_call(key, 60, current_origin), 1) == {"rows": ["created", "new-name"]}
+        release.set()
+        assert await old == {"rows": ["deleted", "old-name"]}
+        assert await cached_call(key, 60, old_origin) == {"rows": ["created", "new-name"]}
+    finally:
+        release.set()
+        await asyncio.gather(old, return_exceptions=True)
+
+
+@pytest.mark.parametrize("operation", ["set", "delete"])
+async def test_overlapping_invalidations_drain_already_dispatched_cache_io(backend, monkeypatch, operation):
+    key = "afterglow:test:pending-io"
+    dispatched = asyncio.Event()
+    release = asyncio.Event()
+    original = getattr(backend, operation)
+
+    async def delayed_io(*args, **kwargs):
+        dispatched.set()
+        await release.wait()
+        return await original(*args, **kwargs)
+
+    monkeypatch.setattr(backend, operation, delayed_io)
+
+    async def origin():
+        return {"value": "old"}
+
+    old = asyncio.create_task(cached_call(key, 60, origin, refresh=operation == "delete"))
+    requests = [old]
+    try:
+        await asyncio.wait_for(dispatched.wait(), 1)
+        first = asyncio.create_task(invalidate(key))
+        requests.append(first)
+        await asyncio.sleep(0)  # Enter invalidation while old cache I/O is suspended.
+        second = asyncio.create_task(invalidate(key))
+        requests.append(second)
+        await asyncio.sleep(0)
+        assert not first.done()
+        assert not second.done()
+        release.set()
+        assert await old == {"value": "old"}
+        await asyncio.wait_for(asyncio.gather(first, second), 1)
+        assert await backend.get(key) is None
+        assert await cached_call(key, 60, lambda: {"value": "current"}) == {"value": "current"}
+    finally:
+        release.set()
+        await asyncio.gather(*requests, return_exceptions=True)
+
+
+@pytest.mark.parametrize("pattern", ["afterglow:test:p1:rows", "afterglow:test:p1:*"])
+async def test_invalidation_does_not_fence_nonmatching_active_origin(backend, pattern):
+    started = [asyncio.Event(), asyncio.Event()]
+    release = asyncio.Event()
+
+    async def origin(index):
+        started[index].set()
+        await release.wait()
+        return {"project": index + 1}
+
+    async def first_origin():
+        return await origin(0)
+
+    async def second_origin():
+        return await origin(1)
+
+    first = asyncio.create_task(cached_call("afterglow:test:p1:rows", 60, first_origin))
+    second = asyncio.create_task(cached_call("afterglow:test:p2:rows", 60, second_origin))
+    try:
+        await asyncio.wait_for(asyncio.gather(*(event.wait() for event in started)), 1)
+        await invalidate(pattern)
+        release.set()
+        assert await asyncio.gather(first, second) == [{"project": 1}, {"project": 2}]
+        assert await backend.get("afterglow:test:p1:rows") is None
+        assert json.loads(await backend.get("afterglow:test:p2:rows")) == {"project": 2}
+    finally:
+        release.set()
+        await asyncio.gather(first, second, return_exceptions=True)
+
+
+async def test_cancelled_waiter_does_not_unfence_invalidated_shared_origin(backend, monkeypatch):
+    from app.services.cache import metrics
+
+    key = "afterglow:test:cancelled-mutation"
+    started = asyncio.Event()
+    joined = asyncio.Event()
+    release = asyncio.Event()
+    original_increment = metrics.increment
+
+    def increment(name, *args, **kwargs):
+        original_increment(name, *args, **kwargs)
+        if name == "cache.coalesced":
+            joined.set()
+
+    monkeypatch.setattr(metrics, "increment", increment)
+
+    async def old_origin():
+        started.set()
+        await release.wait()
+        return {"value": "old"}
+
+    cancelled = asyncio.create_task(cached_call(key, 60, old_origin))
+    requests = [cancelled]
+    try:
+        await asyncio.wait_for(started.wait(), 1)
+        surviving = asyncio.create_task(cached_call(key, 60, old_origin))
+        requests.append(surviving)
+        await asyncio.wait_for(joined.wait(), 1)
+        cancelled.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await cancelled
+        await invalidate(key)
+        assert await asyncio.wait_for(cached_call(key, 60, lambda: {"value": "current"}), 1) == {"value": "current"}
+        release.set()
+        assert await surviving == {"value": "old"}
+        assert json.loads(await backend.get(key)) == {"value": "current"}
+    finally:
+        release.set()
+        await asyncio.gather(*requests, return_exceptions=True)
+
+
+async def test_invalidation_fences_queued_refresh_and_old_completion_keeps_new_flight(backend):
+    key = "afterglow:test:queued-refresh"
+    old_started = asyncio.Event()
+    release_old = asyncio.Event()
+    fresh_started = asyncio.Event()
+    release_fresh = asyncio.Event()
+    calls = []
+
+    async def old_origin():
+        old_started.set()
+        await release_old.wait()
+        return {"value": "old"}
+
+    async def queued_origin():
+        return {"value": "pre-mutation-refresh"}
+
+    async def fresh_origin():
+        calls.append("fresh")
+        fresh_started.set()
+        await release_fresh.wait()
+        return {"value": "current"}
+
+    old = asyncio.create_task(cached_call(key, 60, old_origin))
+    requests = [old]
+    try:
+        await asyncio.wait_for(old_started.wait(), 1)
+        refresh = asyncio.create_task(cached_call(key, 60, queued_origin, refresh=True))
+        requests.append(refresh)
+        await asyncio.sleep(0)
+        await asyncio.wait_for(invalidate(key), 1)
+        fresh = asyncio.create_task(cached_call(key, 60, fresh_origin))
+        requests.append(fresh)
+        await asyncio.wait_for(fresh_started.wait(), 1)
+        release_old.set()
+        assert await old == {"value": "old"}
+        assert await refresh == {"value": "pre-mutation-refresh"}
+        # Detached chain completion must neither delete the new flight nor cache its result.
+        assert await backend.get(key) is None
+        joining = asyncio.create_task(cached_call(key, 60, fresh_origin))
+        requests.append(joining)
+        await asyncio.sleep(0)
+        release_fresh.set()
+        assert await asyncio.gather(fresh, joining) == [{"value": "current"}] * 2
+        assert calls == ["fresh"]
+        assert json.loads(await backend.get(key)) == {"value": "current"}
+    finally:
+        release_old.set()
+        release_fresh.set()
+        await asyncio.gather(*requests, return_exceptions=True)
+
+
+async def test_invalidated_refresh_cannot_delete_a_new_cached_snapshot(backend):
+    key = "afterglow:test:refresh-delete"
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def old_origin():
+        started.set()
+        await release.wait()
+        return {"value": "old"}
+
+    old = asyncio.create_task(cached_call(key, 60, old_origin))
+    requests = [old]
+    try:
+        await asyncio.wait_for(started.wait(), 1)
+        refresh = asyncio.create_task(cached_call(key, 60, old_origin, refresh=True))
+        requests.append(refresh)
+        await asyncio.sleep(0)
+        await invalidate(key)
+        assert await asyncio.wait_for(cached_call(key, 60, lambda: {"value": "current"}), 1) == {"value": "current"}
+        release.set()
+        assert await asyncio.gather(old, refresh) == [{"value": "old"}] * 2
+        assert json.loads(await backend.get(key)) == {"value": "current"}
+    finally:
+        release.set()
+        await asyncio.gather(*requests, return_exceptions=True)
+
+
+@pytest.mark.parametrize("reuse_backend", [False, True])
+async def test_backend_reset_fences_old_origin_without_cancelling_waiter(backend, reuse_backend):
+    key = "afterglow:test:reset"
+    started = asyncio.Event()
+    release = asyncio.Event()
+    replacement = backend if reuse_backend else RedisBackend(client=fakeredis.FakeRedis(decode_responses=True))
+
+    async def old_origin():
+        started.set()
+        await release.wait()
+        return {"value": "old"}
+
+    old = asyncio.create_task(cached_call(key, 60, old_origin))
+    try:
+        await asyncio.wait_for(started.wait(), 1)
+        set_backend(replacement)
+        assert await cached_call(key, 60, lambda: {"value": "current"}) == {"value": "current"}
+        release.set()
+        assert await old == {"value": "old"}
+        assert json.loads(await replacement.get(key)) == {"value": "current"}
+        if not reuse_backend:
+            assert await backend.get(key) is None
+    finally:
+        release.set()
+        await asyncio.gather(old, return_exceptions=True)
+        set_backend(backend)
+        if not reuse_backend:
+            await replacement.close()
+
+
+async def test_disabled_refresh_does_not_join_or_write_an_active_flight(backend):
+    key = "afterglow:test:disabled-race"
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def old_origin():
+        started.set()
+        await release.wait()
+        return {"value": "old"}
+
+    old = asyncio.create_task(cached_call(key, 60, old_origin))
+    try:
+        await asyncio.wait_for(started.wait(), 1)
+        assert await asyncio.wait_for(
+            cached_call(key, 60, lambda: {"value": "uncached"}, enabled=False, refresh=True), 1
+        ) == {"value": "uncached"}
+        assert await backend.get(key) is None
+        release.set()
+        assert await old == {"value": "old"}
+        assert json.loads(await backend.get(key)) == {"value": "old"}
+    finally:
+        release.set()
+        await asyncio.gather(old, return_exceptions=True)
+
+
 async def test_cached_call_serializes_pydantic_like() -> None:
     """model_dump() 가 호출되어 JSON 직렬화 가능 형태로 변환되어야 한다."""
     client = fakeredis.FakeRedis(decode_responses=True)

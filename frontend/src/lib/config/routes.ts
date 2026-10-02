@@ -1,6 +1,6 @@
 // Afterglow route label map
 // URL path segment → Korean/English display label
-// Used to auto-derive breadcrumbs in TopBar from $page.url.pathname
+// Fallback page titles for contextual navigation on undeclared routes.
 
 export const ROUTE_LABELS: Record<string, string> = {
   // Top level
@@ -45,6 +45,7 @@ export const ROUTE_LABELS: Record<string, string> = {
 
   // Chat
   chat: 'Lumen',
+  audio: '오디오',
 
   // Network
   network: '네트워크',
@@ -60,6 +61,8 @@ export const ROUTE_LABELS: Record<string, string> = {
   library: '라이브러리',
   libraries: '라이브러리 관리',
   templates: '템플릿',
+  palimpsest: 'Palimpsest',
+  packages: '프로젝트 패키지',
 
   // Project settings
   'project-settings': '프로젝트 설정',
@@ -78,41 +81,16 @@ export const ROUTE_LABELS: Record<string, string> = {
   announcements: '공지 관리',
 };
 
-interface BreadcrumbResult {
-  /** Short parent path, e.g. "COMPUTE / INSTANCES" */
-  breadcrumb: string;
-  /** Page title, e.g. "인스턴스" */
-  title: string;
-}
-
-/**
- * Derives breadcrumb display strings from a URL pathname.
- * /dashboard/compute/instances → { breadcrumb: 'COMPUTE / INSTANCES', title: '인스턴스' }
- */
-export function deriveBreadcrumb(pathname: string): BreadcrumbResult {
+/** Derives the page title while excluding resource UUIDs and creation routes. */
+export function derivePageTitle(pathname: string): string {
   // Strip leading slash and split
   const parts = pathname.replace(/^\//, '').split('/').filter(Boolean);
 
   // Strip the root mode segment (dashboard / admin)
   const relevant = parts.slice(1).filter(p => !isUuid(p) && p !== 'new');
 
-  if (relevant.length === 0) {
-    // /dashboard 또는 /admin 루트인 경우 첫 세그먼트로 타이틀 결정
-    const root = parts[0];
-    const rootTitle = ROUTE_LABELS[root] ?? root;
-    return { breadcrumb: '', title: rootTitle };
-  }
-
-  const labels = relevant.map(p => {
-    const label = ROUTE_LABELS[p];
-    if (!label) return p.toUpperCase();
-    return label.toUpperCase();
-  });
-
-  return {
-    breadcrumb: labels.slice(0, -1).join(' / '),
-    title: ROUTE_LABELS[relevant[relevant.length - 1]] ?? relevant[relevant.length - 1],
-  };
+  const last = relevant.at(-1) ?? parts[0] ?? '';
+  return ROUTE_LABELS[last] ?? last;
 }
 
 function isUuid(s: string): boolean {

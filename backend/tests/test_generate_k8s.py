@@ -119,13 +119,6 @@ def test_render_toml_includes_login_branding_paths():
     assert 'logo_light_path = "/brand-light.png"' in result
 
 
-def test_render_toml_uses_swapped_login_branding_defaults_when_paths_are_omitted():
-    result = _render_toml_for_k8s({"app": {}})
-
-    assert 'logo_dark_path = "/logo-white.png"' in result
-    assert 'logo_light_path = "/logo-dark.png"' in result
-
-
 def test_render_toml_includes_worker_runtime_defaults():
     result = _render_toml_for_k8s({})
 

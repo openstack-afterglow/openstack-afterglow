@@ -36,8 +36,8 @@ data:
     site_description = "DMSLAB의 OpenStack 기반 클라우드 플랫폼"
 
     # 로고 및 파비콘 경로 (frontend/static/ 기준)
-    logo_path = "/logo.png"
-    favicon_path = "/favicon.ico"
+    logo_path = "/afterglow-logo.svg"
+    favicon_path = "/favicon.svg"
 
     # 프론트엔드 대시보드 자동 새로고침 간격 (밀리초)
     refresh_interval_ms = 5000
@@ -342,10 +342,12 @@ data:
     [cloud_shell]
     service_project_id = ""
     image = ""
+    # Empty network_id uses the dedicated project's external-connected default network.
+    # "default" resolves the dedicated project's default group with its existing rules.
     network_id = ""
-    security_group = ""
+    security_group = "default"
     auth_url = ""
-    interface = "internal"
+    interface = "public"
     volume_type = ""
     home_size_gib = 5
     cpu = 1.0

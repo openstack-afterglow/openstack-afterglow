@@ -333,7 +333,7 @@ class T_frontend_src_lib_stores_grafana_ts_GrafanaContextStore_d5824ceb8a2b["Gra
 %% source-type: frontend/src/lib/stores/grafana.ts::GrafanaDashboardKey
 class T_frontend_src_lib_stores_grafana_ts_GrafanaDashboardKey_ab257e82431d["GrafanaDashboardKey (frontend/src/lib/stores/grafana.ts)"] {
   <<type alias>>
-  +value: 'node' | 'rabbitmq' | 'mysqld' | 'memcached' | 'etcd' | 'haproxy' | 'libvirt' | 'openstack' | 'ceph' | 'instance-cpu' | 'instance-gpu'
+  +value: 'node' | 'rabbitmq' | 'mysqld' | 'proxysql' | 'memcached' | 'etcd' | 'haproxy' | 'libvirt' | 'openstack' | 'ceph' | 'instance-cpu' | 'instance-gpu'
 }
 %% source-type: frontend/src/lib/stores/imageDetailController.svelte.ts::ImageDetailController
 class T_frontend_src_lib_stores_imageDetailController_svelte_ts_ImageDetailController_a0bfbb4a633a["ImageDetailController (frontend/src/lib/stores/imageDetailController.svelte.ts)"] {

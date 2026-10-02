@@ -20,7 +20,6 @@ export { default as Pagination } from './Pagination.svelte';
 export { default as Pill } from './Pill.svelte';
 export { default as QuotaBar } from './QuotaBar.svelte';
 export { default as ResourceToolbar } from './ResourceToolbar.svelte';
-export { default as RingMark } from './RingMark.svelte';
 export { default as SectionHeader } from './SectionHeader.svelte';
 export { default as SelectionCheckbox } from './SelectionCheckbox.svelte';
 export { default as SelectionToolbar } from './SelectionToolbar.svelte';

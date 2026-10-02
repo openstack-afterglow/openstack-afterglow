@@ -64,11 +64,25 @@ class FlavorRemainingInfo(BaseModel):
     gpus: dict[str, int] = {}
 
 
+class FlavorCapacityInfo(BaseModel):
+    status: Literal["available", "insufficient", "unavailable"]
+    checked_at: str
+    candidate_hosts: int = 0
+    cpu_resource_class: Literal["VCPU", "PCPU"] | None = None
+    # Largest single-VM allocation on the one reported host: min(capacity - used, max_unit) per resource.
+    remaining_vcpus: int | None = None
+    remaining_ram_mb: int | None = None
+    # True when the flavor asks for one NUMA cell (hw:numa_nodes=1, hw:mem_page_size=small|any or
+    # dedicated CPUs): "available" then proves host totals only and Nova's NUMA filter decides.
+    numa_unverified: bool = False
+
+
 class FlavorEligibility(BaseModel):
     selectable: bool
     requirements: FlavorDemandInfo
     remaining: FlavorRemainingInfo
     blockers: list[FlavorQuotaBlocker] = []
+    capacity: FlavorCapacityInfo | None = None
 
 
 class FlavorInfo(BaseModel):

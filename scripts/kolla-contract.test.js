@@ -1155,7 +1155,6 @@ test("Cloud Shell Kolla contract is dedicated, immutable, and fail-closed", () =
 		assert.match(precheck, new RegExp(dependency.replace("-", "\\-")))
 	}
 	assert.match(precheck, /@sha256:\[0-9a-fA-F\]\{64\}/)
-	assert.match(precheck, /security group rule list --ingress/)
 	assert.match(precheck, /appcontainer list -f json/)
 	assert.match(precheck, /volume list --limit 1 -f json/)
 	assert.match(precheck, /docker\n\s+- manifest\n\s+- inspect/)

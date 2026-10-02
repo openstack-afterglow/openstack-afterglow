@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -55,15 +56,30 @@
 	let guideLoading = $state(false);
 	let guideError = $state('');
 	let guideGeneration = 0;
+	let installOrigin = $state('');
 
 	function sdkBaseUrl(value: unknown): string {
-		if (typeof value !== 'string' || !value.trim()) throw new Error('Missing SDK URL');
+		if (typeof value !== 'string' || !value || /[\s\\?#]/u.test(value)) throw new Error('Missing or invalid SDK URL');
 		const url = new URL(value);
 		if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
 			throw new Error('Invalid SDK URL');
 		}
 		return value;
 	}
+	function shellQuote(value: string): string {
+		return `'${value.replaceAll("'", "'\\''")}'`;
+	}
+
+	function powershellQuote(value: string): string {
+		return `'${value.replaceAll("'", "''")}'`;
+	}
+
+	onMount(() => {
+		const { protocol, hostname, origin } = window.location;
+		if (protocol === 'https:' || (protocol === 'http:' && ['localhost', '127.0.0.1'].includes(hostname))) {
+			installOrigin = origin;
+		}
+	});
 
 	async function loadConnectionGuide(requestToken = token, requestProjectId = projectId) {
 		const generation = ++guideGeneration;
@@ -144,6 +160,9 @@ supports_websockets = false
 # http_headers = { "X-Lumen-Provider" = "provider-id" }` : '');
 	const keyPromptExample = `printf 'Lumen API key: '; read -rs LUMEN_API_KEY; printf '\\n'; export LUMEN_API_KEY`;
 	const codexShellExample = `codex --strict-config -c model_provider=lumen -m "replace-with-active-Responses-model-ID"`;
+	const codexShortCommand = 'codex --strict-config -c model_provider=lumen';
+	const macCertificateCommand = 'export CODEX_CA_CERTIFICATE="/private/etc/ssl/cert.pem"';
+	const linuxCertificateCommand = 'export CODEX_CA_CERTIFICATE="/etc/ssl/certs/ca-certificates.crt"';
 	const claudeCodeExample = $derived(sdkBases ? `export LUMEN_MODEL="replace-with-active-Anthropic-model-ID"
 export ANTHROPIC_BASE_URL=${JSON.stringify(sdkBases.anthropic)}
 export ANTHROPIC_AUTH_TOKEN="$LUMEN_API_KEY"
@@ -156,6 +175,11 @@ export ANTHROPIC_DEFAULT_HAIKU_MODEL="$LUMEN_MODEL"
 # export LUMEN_PROVIDER="replace-with-provider-id"
 # export ANTHROPIC_CUSTOM_HEADERS="X-Lumen-Provider: $LUMEN_PROVIDER"
 claude` : '');
+	const installerReady = $derived(Boolean(sdkBases && installOrigin && sdkBases.codex.startsWith('https://') && sdkBases.anthropic.startsWith('https://')));
+	const posixInstallerCommand = $derived(installerReady && sdkBases ?
+		`curl -fsSL ${shellQuote(`${installOrigin}/install/lumen.sh`)} | sh -s -- ${shellQuote(sdkBases.codex)} ${shellQuote(sdkBases.anthropic)}` : '');
+	const windowsInstallerCommand = $derived(installerReady && sdkBases ?
+		`$env:LUMEN_CODEX_BASE_URL=${powershellQuote(sdkBases.codex)}; $env:LUMEN_ANTHROPIC_BASE_URL=${powershellQuote(sdkBases.anthropic)}; irm ${powershellQuote(`${installOrigin}/install/lumen.ps1`)} | iex` : '');
 
 	async function load() {
 		if (!token) return;
@@ -326,6 +350,7 @@ claude` : '');
 	const inputCls =
 		'w-full rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-base)] px-3 py-2 text-sm text-[var(--color-ink-1)] focus:outline-none focus:border-[var(--color-accent)]';
 	const cardCls = 'rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-raised)]';
+	const inlineCodeCls = 'rounded bg-[var(--color-surface-sunken)] px-1.5 py-0.5 font-mono text-xs text-[var(--color-ink-1)]';
 	const codeCls = 'block overflow-x-auto rounded-lg bg-[var(--color-surface-sunken)] p-3 font-mono text-xs text-[var(--color-ink-2)]';
 </script>
 
@@ -452,13 +477,47 @@ claude` : '');
 				연결 정보 다시 불러오기
 			</Button>
 		{:else if sdkBases}
-			<p class="mb-4 text-sm leading-6 text-ink-2">
-				발급 시 한 번만 보이는 일반 API 키의 전체 값을 안전하게 저장하세요. 목록의 일부 접두사만으로는 인증할 수 없으며,
-				전체 키를 잃어버렸다면 새 키를 발급해야 합니다. 모델 선택창에서 활성 모델의 공개 API ID를 확인하고
-				해당 모델의 프로바이더 인증정보가 서비스에 설정되어 있어야 합니다. 아래 주소는 Lumen에서 조회한 공개 API 주소이며
-				대시보드 주소와 다를 수 있습니다. 주소 조회만으로 외부 연결이나 CLI 요청 성공이 확인된 것은 아닙니다.
-				예제 요청은 실제 API 사용량을 차감합니다.
-			</p>
+			<div class="mb-5 border-b border-[var(--color-line)] pb-4 text-sm leading-6 text-ink-2">
+				<p class="font-semibold text-[var(--color-ink-1)]">연결 전 확인</p>
+				<ol class="mt-2 list-inside list-decimal space-y-1">
+					<li>발급 직후 한 번만 표시되는 <strong class="text-[var(--color-ink-1)]">전체 API 키</strong>를 준비하세요. 목록의 접두사로는 인증할 수 없습니다.</li>
+					<li>모델 선택창에서 활성 모델의 <strong class="text-[var(--color-ink-1)]">공개 API ID</strong>를 확인하세요. 해당 provider의 인증정보도 Lumen에 설정되어 있어야 합니다.</li>
+					<li>아래 주소는 Lumen discovery가 반환한 공개 API 주소입니다. 대시보드 주소와 다를 수 있으며 주소 조회만으로 CLI 성공이 확인되지는 않습니다.</li>
+				</ol>
+				<p class="mt-2">예제 요청은 실제 API 사용량을 차감합니다. 키는 이 화면이나 복사 명령에 넣지 마세요.</p>
+			</div>
+			<section class="mb-5 border-b border-[var(--color-line)] pb-5" aria-labelledby="lumen-installer-heading">
+				<h5 id="lumen-installer-heading" class="text-sm font-semibold text-[var(--color-ink-1)]">Codex + Claude Code 자동 설정</h5>
+				<p class="mt-1 text-sm leading-6 text-ink-2">
+					Codex CLI·Claude Code를 먼저 설치하세요. 아래 스크립트는 클라이언트를 설치하거나 API를 호출하지 않고
+					<code class={inlineCodeCls}>~/.codex/config.toml</code>(또는 <code class={inlineCodeCls}>CODEX_HOME</code>)의 Lumen provider와 셸 프로필만 설정합니다.
+					키는 로컬 터미널의 숨겨진 프롬프트에서 입력합니다. 실행 전 다운로드 주소와 스크립트 내용을 확인하세요.
+				</p>
+				{#if installerReady}
+					<div class="mt-3 flex flex-wrap items-center justify-between gap-2">
+						<p class="text-sm font-medium text-ink-1">macOS / Linux · 터미널</p>
+						<Button variant="ghost" size="sm" onclick={() => copyText(posixInstallerCommand, 'macOS/Linux 설치 명령을 복사했습니다')}>macOS/Linux 설치 명령 복사</Button>
+					</div>
+					<p class="mt-1 text-sm leading-6 text-ink-2">Python 3.11+와 대화형 터미널이 필요합니다. 키는 사용자 전용 파일(0600)에, 프로필에는 그 파일을 읽는 설정만 저장합니다.</p>
+					<pre class="{codeCls} mt-2 max-w-full whitespace-pre" role="region" aria-label="macOS Linux Lumen 설치 명령"><code>{posixInstallerCommand}</code></pre>
+					<Button href={`${installOrigin}/install/lumen.sh`} target="_blank" variant="link" size="sm">macOS/Linux 스크립트 보기</Button>
+					<div class="mt-4 flex flex-wrap items-center justify-between gap-2">
+						<p class="text-sm font-medium text-ink-1">Windows · PowerShell</p>
+						<Button variant="ghost" size="sm" onclick={() => copyText(windowsInstallerCommand, 'Windows 설치 명령을 복사했습니다')}>Windows 설치 명령 복사</Button>
+					</div>
+					<p class="mt-1 text-sm leading-6 text-ink-2">Windows에서 실행하세요. 키는 현재 사용자 DPAPI로 암호화하고 사용자 전용 ACL로 보호합니다. PowerShell 5.1·7은 사용하는 edition마다 설정하세요.</p>
+					<pre class="{codeCls} mt-2 max-w-full whitespace-pre" role="region" aria-label="Windows Lumen 설치 명령"><code>{windowsInstallerCommand}</code></pre>
+					<Button href={`${installOrigin}/install/lumen.ps1`} target="_blank" variant="link" size="sm">Windows 스크립트 보기</Button>
+					<p class="mt-2 text-sm leading-6 text-ink-2">
+						설치기는 Codex·Claude Code 모델 공개 API ID를 묻고 변경되는 설정을 백업합니다. 기존 Codex 기본 모델과 provider는 유지됩니다.
+						기본 모델을 Lumen 모델로 변경하기로 명시적으로 선택한 경우에만 <code class={inlineCodeCls}>codex --strict-config -c model_provider=lumen</code>으로 실행하세요.
+						그 외에는 아래의 <code class={inlineCodeCls}>-m</code> 명령으로 모델을 지정하세요. 새 터미널을 열면 프로필 설정이 적용됩니다.
+						프로필·프로젝트 설정이 모델을 덮어쓰는 경우에도 <code class={inlineCodeCls}>-m</code>으로 사용할 모델을 명시하세요.
+					</p>
+				{:else}
+					<p class="mt-2 text-sm leading-6 text-ink-2">자동 설정에는 HTTPS Lumen 주소와 HTTPS 대시보드가 필요합니다. 로컬 loopback HTTP 미리보기만 예외이며, 그 외 환경에서는 아래 수동 설정을 사용하세요.</p>
+				{/if}
+			</section>
 			<Tabs
 				id="api-key-client-guides"
 				value={activeGuide}
@@ -481,7 +540,7 @@ claude` : '');
 							<p class="mt-1 text-sm leading-6 text-ink-2">
 								먼저 발급한 일반 API 키를 안전하게 보관하고, 모델 선택창에서 사용할 공개 API ID를 확인하세요.
 								아래 설정의 공개 API 주소는 이 환경에서 조회한 값입니다. 키 값은 설정 파일이나 이 화면에 붙여 넣지 말고
-								실행할 셸에서 입력하세요. 같은 ID가 여러 프로바이더에 있을 때만 <code>X-Lumen-Provider</code>를 설정하세요.
+								실행할 셸에서 입력하세요. 같은 ID가 여러 프로바이더에 있을 때만 <code class={inlineCodeCls}>X-Lumen-Provider</code>를 설정하세요.
 							</p>
 						</div>
 						<Button variant="ghost" size="sm" onclick={() => copyText(codexConfigExample, 'Codex 설정을 복사했습니다')}>
@@ -489,8 +548,8 @@ claude` : '');
 						</Button>
 					</div>
 					<p class="mb-2 text-sm leading-6 text-ink-2">
-						아래 프로바이더 블록만 <code>~/.codex/config.toml</code>에 추가하세요. 기존 <code>model</code>·
-						<code>model_provider</code> 기본값을 덮어쓰지 않습니다. 이미 같은 이름의 블록이 있으면 내용을 갱신하세요.
+						아래 프로바이더 블록만 <code class={inlineCodeCls}>~/.codex/config.toml</code>에 추가하세요. 기존 <code class={inlineCodeCls}>model</code>·
+						<code class={inlineCodeCls}>model_provider</code> 기본값을 덮어쓰지 않습니다. 이미 같은 이름의 블록이 있으면 내용을 갱신하세요.
 					</p>
 					<pre class="{codeCls} max-w-full whitespace-pre" role="region" aria-label="Codex CLI 연결 설정"><code>{codexConfigExample}</code></pre>
 					<p class="mt-3 text-sm leading-6 text-ink-2">
@@ -499,16 +558,39 @@ claude` : '');
 					</p>
 					<pre class="{codeCls} mt-2 max-w-full whitespace-pre" role="region" aria-label="Lumen API 키 입력 명령"><code>{keyPromptExample}</code></pre>
 					<p class="mt-3 text-sm leading-6 text-ink-2">
-						그다음 아래의 <code>replace-with-active-Responses-model-ID</code>를 모델 선택창의 활성 Responses 호환
+						그다음 아래의 <code class={inlineCodeCls}>replace-with-active-Responses-model-ID</code>를 모델 선택창의 활성 Responses 호환
 						모델 공개 API ID로 바꾸고 같은 셸에서 실행하세요. CLI 옵션은 이번 실행에서만 기존 기본 프로바이더를 대체합니다.
 					</p>
+					<div class="mb-2 mt-3 flex flex-wrap justify-end gap-2">
+						<Button variant="ghost" size="sm" onclick={() => copyText(codexShellExample, 'Codex 실행 명령을 복사했습니다')}>실행 명령 복사</Button>
+					</div>
 					<pre class="{codeCls} mt-2 max-w-full whitespace-pre" role="region" aria-label="Codex CLI 실행 명령"><code>{codexShellExample}</code></pre>
-					<p class="mt-2 text-sm leading-6 text-ink-2">
-						Codex CLI만 <code>error sending request</code>로 TLS 연결에 실패하지만 브라우저·curl은 정상일 때,
-						이 장치가 신뢰하는 PEM 번들을 <code>CODEX_CA_CERTIFICATE</code>에 지정해 다시 실행하세요.
-						이 Mac에서 확인된 예는 <code>export CODEX_CA_CERTIFICATE="/private/etc/ssl/cert.pem"</code>이며,
-						다른 환경에는 해당 장치의 신뢰 번들을 사용하세요. TLS 검증을 끄지 마세요.
+					<p class="mt-3 text-sm leading-6 text-ink-2">
+						설치 중 기본 모델 변경을 선택했거나 사용자 설정의 최상위 <code class={inlineCodeCls}>model</code>이 사용할 Lumen 모델의 공개 API ID이고, 프로필·프로젝트 설정이 이를 덮어쓰지 않는다면 아래처럼 실행할 수 있습니다.
+						<code class={inlineCodeCls}>model_provider=lumen</code>만으로 모델이 선택되지는 않으므로, 다른 기본 모델이나 모델 override가 있을 때는 위의 <code class={inlineCodeCls}>-m</code>을 사용하세요.
 					</p>
+					<div class="mt-3 flex flex-wrap justify-end gap-2">
+						<Button variant="ghost" size="sm" onclick={() => copyText(codexShortCommand, 'Codex 기본 모델 실행 명령을 복사했습니다')}>기본 모델 실행 복사</Button>
+					</div>
+					<pre class="{codeCls} mt-2 max-w-full whitespace-pre-wrap break-all" role="region" aria-label="Codex CLI 기본 모델 실행"><code>{codexShortCommand}</code></pre>
+					<div class="mt-5 border-t border-[var(--color-line)] pt-4">
+						<p class="text-sm font-semibold text-ink-1">Codex TLS 인증서 확인</p>
+						<p class="mt-1 text-sm leading-6 text-ink-2">
+							브라우저·curl은 정상인데 Codex가 <code class={inlineCodeCls}>error sending request</code>로 TLS 연결에 실패할 때,
+							이 장치가 신뢰하는 PEM 번들을 <code class={inlineCodeCls}>CODEX_CA_CERTIFICATE</code>에 지정하고 같은 셸에서 다시 실행하세요.
+							아래 파일이 없거나 배포판이 다르면 해당 장치의 신뢰 번들을 사용하세요. TLS 검증을 끄지 마세요.
+						</p>
+						<div class="mt-3 flex flex-wrap items-center justify-between gap-2">
+							<p class="text-sm font-medium text-ink-1">macOS</p>
+							<Button variant="ghost" size="sm" onclick={() => copyText(macCertificateCommand, 'macOS CA 설정을 복사했습니다')}>macOS CA 복사</Button>
+						</div>
+						<pre class="{codeCls} mt-2 max-w-full whitespace-pre-wrap break-all" role="region" aria-label="macOS Codex CA 설정"><code>{macCertificateCommand}</code></pre>
+						<div class="mt-3 flex flex-wrap items-center justify-between gap-2">
+							<p class="text-sm font-medium text-ink-1">Linux · Debian / Ubuntu 계열</p>
+							<Button variant="ghost" size="sm" onclick={() => copyText(linuxCertificateCommand, 'Linux CA 설정을 복사했습니다')}>Linux CA 복사</Button>
+						</div>
+						<pre class="{codeCls} mt-2 max-w-full whitespace-pre-wrap break-all" role="region" aria-label="Linux Codex CA 설정"><code>{linuxCertificateCommand}</code></pre>
+					</div>
 				{:else if activeGuide === 'claude-code'}
 					<div class="mb-2 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
 						<div>
@@ -526,7 +608,7 @@ claude` : '');
 					</div>
 					<pre class="{codeCls} max-w-full whitespace-pre" role="region" aria-label="Lumen API 키 입력 명령"><code>{keyPromptExample}</code></pre>
 					<p class="mt-3 text-sm leading-6 text-ink-2">
-						그다음 아래의 <code>replace-with-active-Anthropic-model-ID</code>를 선택한 공개 API ID로 바꿔 같은 셸에서
+						그다음 아래의 <code class={inlineCodeCls}>replace-with-active-Anthropic-model-ID</code>를 선택한 공개 API ID로 바꿔 같은 셸에서
 						실행하세요. 조회한 Anthropic API origin으로 직접 연결하며 키는 복사되는 명령에 포함되지 않습니다.
 					</p>
 					<pre class="{codeCls} max-w-full whitespace-pre" role="region" aria-label="Claude Code 연결 명령"><code>{claudeCodeExample}</code></pre>

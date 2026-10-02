@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import ssl
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit, urlunsplit
 
@@ -350,3 +351,146 @@ async def proxy_unauthenticated(service_type: str, request: Request, upstream_pa
 
     headers["X-Forwarded-For"] = _get_real_ip(request)
     return await _forward(service_type, request, upstream_path, endpoint=endpoint, headers=headers)
+
+
+def _package_endpoint(endpoint: str | None) -> str:
+    if not endpoint:
+        raise HTTPException(status_code=503, detail="Palimpsest Hub route is not configured")
+    parsed = urlsplit(endpoint)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise HTTPException(status_code=503, detail="Palimpsest Hub route is invalid")
+    return endpoint
+
+
+async def package_member_request(
+    request: Request,
+    upstream_path: str,
+    *,
+    method: str = "GET",
+    query: dict[str, str] | None = None,
+    stream: bool = False,
+    forward_body: bool = False,
+) -> Response:
+    """Original-subject package control/read transport, with no JWT upstream."""
+    info = getattr(request.state, "token_info", None) or {}
+    if not info.get("token") or not info.get("project_id"):
+        raise HTTPException(status_code=401, detail="Authentication required")
+    if info.get("connection_project_id", info["project_id"]) != info["project_id"]:
+        raise HTTPException(status_code=403, detail="Original subject and target project disagree")
+    # Same trusted configured Hub as the key gateway; never catalog discovery,
+    # which would re-authenticate (exchange) the original subject token.
+    endpoint = _package_endpoint(_configured_internal_endpoint("palimpsest"))
+    headers = {"x-auth-token": info["token"], "x-project-id": info["project_id"], "accept": "application/json"}
+    if forward_body and request.headers.get("content-type"):
+        headers["content-type"] = request.headers["content-type"]
+    if stream and request.headers.get("range"):
+        headers["range"] = request.headers["range"]
+    return await _package_request(
+        request,
+        upstream_path,
+        endpoint=endpoint,
+        headers=headers,
+        method=method,
+        query=query,
+        stream=stream,
+        forward_body=forward_body,
+    )
+
+
+async def package_key_proxy(request: Request, upstream_path: str) -> Response:
+    """Preserve the key and optional project assertion for Hub validation; never exchange credentials."""
+    project_ids = request.headers.getlist("x-project-id")
+    if len(project_ids) > 1:
+        raise HTTPException(status_code=401, detail="Ambiguous project identity")
+    endpoint = _package_endpoint(_configured_internal_endpoint("palimpsest"))
+    headers = _forwarded_headers(request)
+    headers["authorization"] = request.headers["authorization"]
+    if project_ids:
+        headers["x-project-id"] = project_ids[0]
+    return await _package_request(
+        request,
+        upstream_path,
+        endpoint=endpoint,
+        headers=headers,
+        method=request.method,
+        query=list(request.query_params.multi_items()),
+        stream=True,
+        forward_body=True,
+    )
+
+
+async def _package_request(
+    request: Request,
+    upstream_path: str,
+    *,
+    endpoint: str,
+    headers: dict[str, str],
+    method: str,
+    query: dict[str, str] | list[tuple[str, str]] | None,
+    stream: bool,
+    forward_body: bool,
+) -> Response:
+    try:
+        url = join_version_aware_url(endpoint, upstream_path)
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail="Palimpsest Hub route is invalid") from exc
+    client = None
+    upstream = None
+    handed_off = False
+    try:
+        # Native package TLS verification is mandatory, even when OpenStack is insecure.
+        context = ssl.create_default_context(cafile=get_settings().os_cacert or None)
+        client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=5.0), verify=context, follow_redirects=False)
+        outgoing = client.build_request(
+            method,
+            url,
+            headers=headers,
+            params=query,
+            content=request.stream() if forward_body and method in {"POST", "PUT", "PATCH", "DELETE"} else None,
+        )
+        upstream = await client.send(outgoing, stream=True)
+        if 300 <= upstream.status_code < 400:
+            raise HTTPException(status_code=503, detail="Palimpsest Hub redirects are forbidden")
+        response_headers = {
+            name: value
+            for name, value in upstream.headers.items()
+            if name.lower() not in EXCLUDED_RESPONSE_HEADERS | {"set-cookie", "location", "content-encoding"}
+        }
+        response_headers["cache-control"] = "private, no-store"
+        if stream:
+
+            async def chunks():
+                try:
+                    async for chunk in upstream.aiter_bytes():
+                        yield chunk
+                finally:
+                    await upstream.aclose()
+                    await client.aclose()
+
+            response = StreamingResponse(chunks(), status_code=upstream.status_code, headers=response_headers)
+            handed_off = True
+            return response
+        body = bytearray()
+        async for chunk in upstream.aiter_bytes():
+            body.extend(chunk)
+            if len(body) > 8 * 1024 * 1024:
+                raise HTTPException(status_code=503, detail="Palimpsest Hub response exceeds control bounds")
+        return Response(bytes(body), status_code=upstream.status_code, headers=response_headers)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        # Never log the URL, body or exception: an upstream error can carry credentials.
+        raise HTTPException(status_code=503, detail="Palimpsest Hub is unavailable") from exc
+    finally:
+        if not handed_off:
+            if upstream is not None:
+                await upstream.aclose()
+            if client is not None:
+                await client.aclose()

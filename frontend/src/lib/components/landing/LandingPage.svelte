@@ -3,9 +3,12 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import ToggleGroup from '$lib/components/ui/ToggleGroup.svelte';
+	import { REDUCED_MOTION_QUERY } from '$lib/design/tokens';
 	import { prefersReducedMotion } from '$lib/utils/motion';
+	import LandingConsolePreview, { type ConsolePreviewView } from './LandingConsolePreview.svelte';
 	import LandingFigure from './LandingFigure.svelte';
 	import LandingOpsBoard from './LandingOpsBoard.svelte';
+	import LandingJourney from './LandingJourney.svelte';
 	import PlateGraphic from './PlateGraphic.svelte';
 	import type { PlateName } from './plateGraphics';
 
@@ -25,12 +28,6 @@
 		{ label: '문의', href: '#contact' },
 	];
 
-	const overviewRows = [
-		{ num: '01', title: '신청', body: '연구원이 필요한 실험 환경을 프로젝트 범위 안에서 요청합니다.' },
-		{ num: '02', title: '배정', body: '관리자는 VM, 스토리지, 네트워크, 클러스터 자원을 정책에 맞게 제공합니다.' },
-		{ num: '03', title: '관측', body: '사용량과 상태를 지표, 로그, 토폴로지로 확인합니다.' },
-		{ num: '04', title: '재사용', body: '라이브러리 레이어와 스냅샷으로 다음 연구자의 환경 준비 시간을 줄입니다.' },
-	];
 
 	const capabilities: Array<{
 		tag: string;
@@ -39,6 +36,7 @@
 		title: string;
 		body: string;
 		proof: string;
+		workflow: WorkflowKind;
 	}> = [
 		{
 			tag: 'Compute',
@@ -47,6 +45,7 @@
 			title: 'VM·GPU·vCPU·스토리지 자원 배정',
 			body: 'GPU 가속 VM에 필요한 GPU, vCPU, 메모리, 스토리지를 프로젝트 쿼터 안에서 배정해 개별 실험 환경을 바로 준비합니다.',
 			proof: '프로젝트 쿼터 안에서',
+			workflow: 'compute',
 		},
 		{
 			tag: 'Cluster',
@@ -55,6 +54,7 @@
 			title: 'Kubernetes 실습과 실험 환경',
 			body: 'K8s 클러스터 노드를 구성한 뒤 수업·연구 프로젝트의 Pod와 워크로드를 배포하고 상태를 콘솔에서 추적합니다.',
 			proof: '노드부터 워크로드까지',
+			workflow: 'compute',
 		},
 		{
 			tag: 'Library',
@@ -63,6 +63,7 @@
 			title: 'AI/ML 라이브러리 레이어',
 			body: '반복 설치가 필요한 프레임워크와 데이터 처리 도구를 불변 레이어로 관리해 팀별 환경을 재사용하고 포크합니다.',
 			proof: '설치 대신 재사용',
+			workflow: 'data',
 		},
 		{
 			tag: 'Governance',
@@ -71,6 +72,7 @@
 			title: '교수자와 관리자용 운영 제어',
 			body: '프로젝트, 사용자, 역할, 쿼터, 모니터링, 감사 로그를 묶어 연구실 단위 운영 기준을 유지합니다.',
 			proof: '역할과 경계를 한곳에서',
+			workflow: 'ops',
 		},
 	];
 
@@ -134,12 +136,14 @@
 		},
 	];
 
-	const methodSteps = [
-		{ step: '01', label: 'Project', title: '연구 목적에 맞는 프로젝트를 만든다', detail: '사용자와 역할, 자원 경계를 먼저 정합니다.' },
-		{ step: '02', label: 'Allocate', title: '컴퓨팅과 데이터 자원을 배정한다', detail: '정해진 쿼터 안에서 필요한 환경을 제공합니다.' },
-		{ step: '03', label: 'Observe', title: '실험 환경을 실행하고 관측한다', detail: '상태와 사용량, 연결 관계를 한 흐름에서 봅니다.' },
-		{ step: '04', label: 'Reuse', title: '레이어와 스냅샷으로 다시 쓴다', detail: '검증한 환경과 데이터를 다음 연구에 이어줍니다.' },
+	const productViews: Array<{ value: ConsolePreviewView; label: string; title: string; body: string; route: string }> = [
+		{ value: 'project', label: '프로젝트', title: '프로젝트의 자원을 한눈에', body: '컴퓨팅과 스토리지 사용량, 프로젝트 쿼터를 같은 화면에서 확인합니다.', route: 'project / overview' },
+		{ value: 'cluster', label: '클러스터', title: '노드부터 워크로드까지', body: '연구와 실습에 사용하는 Kubernetes 클러스터의 구성과 상태를 살펴봅니다.', route: 'containers / clusters' },
+		{ value: 'network', label: '네트워크', title: '연결 관계를 읽는 화면', body: '네트워크와 라우터, 인스턴스가 어떻게 연결되는지 토폴로지로 확인합니다.', route: 'network / topology' },
 	];
+	const productOptions = productViews.map(({ value, label }) => ({ value, label }));
+	let selectedProduct: ConsolePreviewView = $state('project');
+	let activeProduct = $derived(productViews.find((view) => view.value === selectedProduct) ?? productViews[0]!);
 
 	const email = 'pieroot@konkuk.ac.kr';
 	const sectionIds = ['overview', 'capabilities', 'workflow', 'work', 'contact'];
@@ -174,6 +178,11 @@
 		if (isWorkflowFilter(value)) selectedFilter = value;
 	}
 
+	function selectProduct(value: string) {
+		const match = productViews.find((view) => view.value === value);
+		if (match) selectedProduct = match.value;
+	}
+
 	function focusLandingContent() {
 		document.getElementById('landing-content')?.focus();
 	}
@@ -192,15 +201,22 @@
 	onMount(() => {
 		const html = document.documentElement;
 		const previousScrollBehavior = html.style.scrollBehavior;
-		const reducedMotion = prefersReducedMotion();
-		html.style.scrollBehavior = reducedMotion ? 'auto' : 'smooth';
-
-		const handleScroll = () => updateActiveSection();
-		updateActiveSection();
-		window.addEventListener('scroll', handleScroll, { passive: true });
-
+		const motionQuery = typeof window.matchMedia === 'function' ? window.matchMedia(REDUCED_MOTION_QUERY) : undefined;
 		const revealItems = Array.from(landingRoot.querySelectorAll<HTMLElement>('[data-reveal]'));
-		if (!reducedMotion && typeof window.IntersectionObserver === 'function') {
+
+		const configureMotion = () => {
+			revealObserver?.disconnect();
+			revealObserver = undefined;
+			if (revealReadyFrame !== undefined) window.cancelAnimationFrame(revealReadyFrame);
+			revealReadyFrame = undefined;
+			landingRoot.classList.remove('reveal-enabled', 'reveal-ready');
+			const reducedMotion = prefersReducedMotion();
+			html.style.scrollBehavior = reducedMotion ? 'auto' : 'smooth';
+			if (reducedMotion) {
+				revealItems.forEach((item) => item.classList.add('is-visible'));
+				return;
+			}
+			if (typeof window.IntersectionObserver !== 'function') return;
 			landingRoot.classList.add('reveal-enabled');
 			revealObserver = new window.IntersectionObserver(
 				(entries) => {
@@ -211,14 +227,22 @@
 						}
 					}
 				},
-				{ threshold: 0.18, rootMargin: '0px 0px -8% 0px' },
+				{ threshold: 0, rootMargin: '0px 0px -8% 0px' },
 			);
-			revealItems.forEach((item) => revealObserver?.observe(item));
+			revealItems.filter((item) => !item.classList.contains('is-visible')).forEach((item) => revealObserver?.observe(item));
 			revealReadyFrame = window.requestAnimationFrame(() => landingRoot.classList.add('reveal-ready'));
-		}
+		};
+		configureMotion();
+		motionQuery?.addEventListener('change', configureMotion);
+		const handleScroll = () => updateActiveSection();
+		updateActiveSection();
+		window.addEventListener('scroll', handleScroll, { passive: true });
+		window.addEventListener('resize', handleScroll);
 
 		return () => {
 			window.removeEventListener('scroll', handleScroll);
+			window.removeEventListener('resize', handleScroll);
+			motionQuery?.removeEventListener('change', configureMotion);
 			revealObserver?.disconnect();
 			revealObserver = undefined;
 			if (revealReadyFrame !== undefined) window.cancelAnimationFrame(revealReadyFrame);
@@ -256,47 +280,30 @@
 		<section class="hero">
 			<div class="container hero-layout">
 				<div class="hero-copy" data-reveal>
-					<div class="eyebrow"><span aria-hidden="true"></span>Research infrastructure, delivered</div>
-					<h1>연구실 클라우드를<br />더 쉽게 제공하는 <em>운영 콘솔</em></h1>
-					<p class="lead">Afterglow는 교수, 연구원, 실습팀이 필요한 컴퓨팅 자원과 공유 스토리지, Kubernetes 환경, AI/ML 라이브러리 레이어를 한 곳에서 신청하고 운영하도록 설계된 클라우드 포털입니다.</p>
+					<div class="eyebrow"><span aria-hidden="true"></span>Research, without the setup</div>
+					<h1><span>연구에 집중하세요.</span><em>환경은 더 가볍게.</em></h1>
+					<p class="lead">GPU 연구부터 클러스터 실습, 팀 데이터 공유까지.<br />Afterglow에서 필요한 환경을 준비하고,<br class="desktop-break" /> 다음 연구에 그대로 이어가세요.</p>
 					<div class="hero-actions">
 						<Button variant="primary" size="lg" class="landing-btn" href={consoleHref}>콘솔 접속</Button>
-						<Button variant="outline" size="lg" class="landing-btn" href="#capabilities">기능 보기</Button>
+						<Button variant="outline" size="lg" class="landing-btn" href="#capabilities">기능 살펴보기</Button>
 					</div>
-					<ul class="hero-facts" aria-label="Afterglow 핵심 운영 범위">
-						<li><b>Project</b><span>연구팀별 자원 경계</span></li>
-						<li><b>Policy</b><span>역할과 쿼터 제어</span></li>
-						<li><b>Reuse</b><span>환경과 데이터 재사용</span></li>
-					</ul>
+					<div class="hero-context"><span>환경을 준비하는 일도, 연구의 흐름처럼.</span><p>신청 <i aria-hidden="true">→</i> 배정 <i aria-hidden="true">→</i> 관측 <i aria-hidden="true">→</i> 재사용</p></div>
 				</div>
-				<div class="hero-board" data-reveal><LandingOpsBoard /></div>
+				<div id="environment-preview" class="hero-board" data-reveal><LandingOpsBoard /></div>
 			</div>
+			<div class="container hero-bottom"><span>연구팀마다 다른 환경을, 하나의 프로젝트에서.</span><a href="#overview"><span class="cue-fine">스크롤해서 흐름 살펴보기</span><span class="cue-touch">화면을 밀어 올려 흐름 살펴보기</span><span aria-hidden="true">↓</span></a></div>
 		</section>
 
 		<section id="overview" class="section overview-section">
 			<div class="container">
 				<div class="section-head" data-reveal>
-					<div class="section-label"><span>운영의 범위</span><b>From request to reuse</b></div>
+					<div class="section-label"><span>연구가 이어지는 방식</span><b>From request to reuse</b></div>
 					<div>
-						<h2>클라우드를 제공하는 일은<br />자원 생성보다 넓습니다</h2>
-						<p>연구실에서는 사용자 초대, 프로젝트 쿼터, 이미지와 네트워크, 데이터 공유, GPU 사용량, 실습 클러스터, 감사 로그가 한꺼번에 얽힙니다. Afterglow는 이 흐름을 연구 조직이 이해할 수 있는 콘솔로 묶습니다.</p>
+						<h2>한 번의 실험이,<br />다음 연구의 출발점이 되도록.</h2>
+						<p>환경을 신청하고, 정책 안에서 배정하고, 실행을 관측하고, 검증한 구성을 다시 씁니다. 스크롤하거나 단계를 선택해 연구 환경이 이어지는 과정을 살펴보세요.</p>
 					</div>
 				</div>
-				<div class="overview-layout" data-reveal>
-					<Card surface="subtle" padding="none" class="overview-ledger">
-						{#each overviewRows as row}
-							<article class="overview-row">
-								<b>{row.num}</b>
-								<div><h3>{row.title}</h3><p>{row.body}</p></div>
-								<span aria-hidden="true">↗</span>
-							</article>
-						{/each}
-					</Card>
-					<div class="overview-proof">
-						<LandingFigure class="overview-screen" name="console" fit="cover" alt="Afterglow 프로젝트 대시보드 화면">프로젝트 대시보드 / 자원과 사용량</LandingFigure>
-						<div class="proof-note"><span>하나의 프로젝트 안에서</span><strong>사람 · 정책 · 인프라</strong><p>운영자는 전체 흐름을 읽고, 연구자는 필요한 환경에 바로 접근합니다.</p></div>
-					</div>
-				</div>
+				<LandingJourney />
 			</div>
 		</section>
 
@@ -305,8 +312,8 @@
 				<div class="section-head" data-reveal>
 					<div class="section-label"><span>제공 기능</span><b>Operational surfaces</b></div>
 					<div>
-						<h2>연구 클라우드 제공에 필요한<br />표면을 한데 모읍니다</h2>
-						<p>사용자는 실험을 시작하고, 운영자는 경계를 유지하고, 교수자는 팀 단위 자원 흐름을 확인할 수 있어야 합니다.</p>
+						<h2>연구를 시작하는 데<br />필요한 것들을 한곳에.</h2>
+						<p>개별 실험부터 팀 단위 운영까지. 필요한 기능을 골라 실제 사용 흐름을 살펴보세요.</p>
 					</div>
 				</div>
 				<div data-reveal>
@@ -318,6 +325,7 @@
 									<div class="cap-meta"><span>{capability.tag}</span><b>{capability.proof}</b></div>
 									<h3>{capability.title}</h3>
 									<p>{capability.body}</p>
+									<Button variant="link" class="cap-explore" href="#workflow" onclick={() => selectFilter(capability.workflow)} ariaLabel={`${capability.title} 워크플로우 살펴보기`}>워크플로우 살펴보기 <span aria-hidden="true">↗</span></Button>
 								</div>
 							</article>
 						{/each}
@@ -331,8 +339,8 @@
 				<div class="section-head" data-reveal>
 					<div class="section-label"><span>워크플로우</span><b>Choose a context</b></div>
 					<div>
-						<h2>연구실마다 다른 사용 흐름을<br />필터처럼 꺼내 봅니다</h2>
-						<p>컴퓨팅, 데이터, 운영 맥락을 전환하며 필요한 자원과 상태를 한 흐름에서 확인합니다.</p>
+						<h2>필요한 환경부터<br />골라 살펴보세요.</h2>
+						<p>컴퓨팅, 데이터, 운영. 지금 필요한 맥락을 선택하면 관련 흐름이 강조됩니다.</p>
 					</div>
 				</div>
 				<div class="workflow-layout" data-reveal>
@@ -353,51 +361,33 @@
 								<div class="workflow-copy"><span>{card.meta}</span><h3>{card.title}</h3><p>{card.body}</p></div>
 							</article>
 						{/each}
-						{#if visibleCount === 0}
-							<p class="empty-state" role="status" aria-live="polite">선택한 조건에 맞는 워크플로우가 없습니다. 전체를 선택해 다시 확인하세요.</p>
-						{/if}
 					</Card>
 				</div>
 			</div>
 		</section>
 
-		<section class="section method-section">
-			<div class="container">
-				<div class="section-head compact-head" data-reveal>
-					<div class="section-label"><span>제공 방식</span><b>Four steps</b></div>
-					<div><h2>제공 방식은 네 단계로 정리됩니다</h2></div>
-				</div>
-				<div data-reveal>
-					<Card surface="subtle" padding="none" class="method-grid">
-						{#each methodSteps as step}
-							<article class="method-step">
-								<div class="method-meta"><b>{step.step}</b><span>{step.label}</span></div>
-								<div class="method-mark" aria-hidden="true"><span></span></div>
-								<div><h3>{step.title}</h3><p>{step.detail}</p></div>
-							</article>
-						{/each}
-					</Card>
-				</div>
-			</div>
-		</section>
 
 		<section id="work" class="section work-section">
 			<div class="container">
 				<div class="section-head" data-reveal>
-					<div class="section-label"><span>제품 화면</span><b>Operational proof</b></div>
+					<div class="section-label"><span>제품 화면</span><b>Inside the console</b></div>
 					<div>
-						<h2>실제 콘솔은 운영자가<br />빠르게 읽을 수 있어야 합니다</h2>
-						<p>대시보드, 관리자, 클러스터, 네트워크 화면은 자원 상태와 연결 관계를 같은 운영 문법으로 보여줍니다.</p>
+						<h2>콘솔 안에서는<br />이렇게 이어집니다.</h2>
+						<p>프로젝트 개요부터 클러스터, 네트워크까지. 화면을 바꾸며 운영 콘솔의 구성을 미리 살펴보세요.</p>
 					</div>
 				</div>
-				<div class="product-stage" data-reveal>
-					<div class="stage-bar"><span><i></i><i></i><i></i></span><b>afterglow / project / research-lab</b><em>live console</em></div>
-					<div class="work-grid">
-						<LandingFigure class="screen-main" name="kubernetes" fit="cover" alt="Afterglow Kubernetes 클러스터 화면">Kubernetes 클러스터 / 노드와 워크로드</LandingFigure>
-						<div class="screen-stack">
-							<LandingFigure name="security" fit="cover" alt="Afterglow 관리자 개요 화면">관리자 개요 / 사용량과 서비스 상태</LandingFigure>
-							<LandingFigure name="network-topology" fit="cover" alt="Afterglow 네트워크 토폴로지 화면">네트워크 토폴로지 / 연결 관계</LandingFigure>
-						</div>
+				<div class="product-tour" data-reveal>
+					<div class="product-stage">
+						<div class="stage-bar" aria-hidden="true"><b>afterglow / {activeProduct.route}</b><em>예시 화면</em></div>
+						{#key selectedProduct}
+							<LandingConsolePreview class="screen-main" view={activeProduct.value} />
+						{/key}
+					</div>
+					<div class="product-controls">
+						<span class="filter-kicker">Explore the console</span>
+						<ToggleGroup value={selectedProduct} options={productOptions} onchange={selectProduct} fullWidth class="product-switcher" ariaLabel="제품 화면 미리보기" />
+						<div class="product-description" aria-live="polite"><h3>{activeProduct.title}</h3><p>{activeProduct.body}</p></div>
+						<Button variant="outline" size="lg" class="product-console" href={consoleHref}>콘솔에서 확인 <span aria-hidden="true">↗</span></Button>
 					</div>
 				</div>
 			</div>
@@ -455,6 +445,7 @@
 		--landing-gutter: 1rem;
 		--landing-nav-height: 6.25rem;
 		min-height: 100%;
+		overflow-x: clip;
 		padding-top: var(--landing-nav-height);
 		background: var(--color-surface-canvas);
 		color: var(--color-ink-0);
@@ -490,61 +481,59 @@
 	.landing-page :global(.nav-cta) { grid-area: cta; }
 	.landing-page :global(.nav-cta), .landing-page :global(.landing-btn), .landing-page :global(.contact-console), .landing-page :global(.email-pill) { min-height: 2.75rem; border-radius: 0.625rem; font-weight: 700; }
 
-	.hero { position: relative; overflow: hidden; padding: 4.5rem 0 5rem; }
+	.hero { position: relative; overflow: clip; padding: 3.5rem 0 2rem; }
 	.hero::before { content: ''; position: absolute; top: -18rem; left: -10rem; width: 36rem; height: 36rem; border-radius: 999px; background: color-mix(in oklab, var(--color-warm) 12%, transparent); filter: blur(6rem); pointer-events: none; }
-	.hero-layout { position: relative; display: grid; gap: 3rem; align-items: center; }
+	.hero-layout { position: relative; display: grid; gap: 2.5rem; align-items: center; }
 	.eyebrow, .section-label, .filter-kicker { font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-transform: uppercase; }
 	.eyebrow { display: inline-flex; align-items: center; gap: 0.625rem; color: var(--color-ink-2); font-size: 0.6875rem; letter-spacing: 0.08em; }
 	.eyebrow > span { width: 0.5rem; height: 0.5rem; border-radius: 999px; background: var(--color-warm); box-shadow: 0 0 0 0.25rem var(--warm-soft); }
 	.hero h1, .section h2, .cap-content h3, blockquote, .audience-note strong { font-family: var(--font-display); }
-	.hero h1 { max-width: 48rem; margin-top: 1.5rem; font-size: clamp(2.75rem, 10vw, 4.25rem); font-weight: 500; letter-spacing: -0.04em; line-height: 1.06; text-wrap: balance; word-break: keep-all; }
-	.hero h1 em { display: block; width: fit-content; color: var(--color-warm); font-style: normal; white-space: nowrap; }
+	.hero h1 { max-width: 48rem; margin-top: 1.5rem; font-size: clamp(1.875rem, 8vw, 4.25rem); font-weight: 500; letter-spacing: -0.045em; line-height: 1.2; word-break: keep-all; }
+	.hero h1 > span, .hero h1 em { display: block; width: fit-content; }
+	.hero h1 em { color: var(--color-warm-text); font-style: normal; }
 	.lead { max-width: 42rem; margin-top: 1.5rem !important; color: var(--color-ink-1); font-size: clamp(1rem, 2.2vw, 1.125rem); line-height: 1.72; word-break: keep-all; }
 	.hero-actions { display: flex; flex-wrap: wrap; gap: 0.625rem; margin-top: 1.75rem; }
-	.hero-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; margin: 2.5rem 0 0; padding: 1rem 0 0; border-top: 1px solid var(--color-line); list-style: none; }
-	.hero-facts li { min-width: 0; }
-	.hero-facts b { display: block; color: var(--color-accent); font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 500; text-transform: uppercase; }
-	.hero-facts span { display: block; margin-top: 0.25rem; color: var(--color-ink-2); font-size: 0.6875rem; word-break: keep-all; }
+	.hero-context { margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid var(--color-line); }
+	.hero-context > span { color: var(--color-ink-2); font-size: 0.8125rem; }
+	.hero-context p { margin-top: 0.5rem; font-size: 0.875rem; }
+	.hero-context i { margin-inline: 0.5rem; color: var(--color-warm-text); font-style: normal; }
+	.hero-bottom { position: relative; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.25rem 1rem; margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--color-line); color: var(--color-ink-2); font-size: 0.75rem; }
+	.hero-bottom a { display: inline-flex; align-items: center; gap: 0.75rem; min-height: 2.75rem; text-decoration: none; }
+	.cue-touch { display: none; }
+	@media (pointer: coarse) {
+		.cue-fine { display: none; }
+		.cue-touch { display: inline; }
+	}
+	.hero-bottom a:hover { color: var(--color-ink-0); }
+	.desktop-break { display: none; }
 	.hero-board { min-width: 0; }
 
-	.section { padding: 4.5rem 0; border-top: 1px solid var(--color-line); }
-	#landing-content, .section[id] { scroll-margin-top: calc(var(--landing-nav-height) + 1rem); }
+	.section { padding: 5rem 0; border-top: 1px solid var(--color-line); }
+	#landing-content, .section[id], #environment-preview { scroll-margin-top: calc(var(--landing-nav-height) + 1rem); }
 	.section-head { display: grid; gap: 1.75rem; margin-bottom: 2.5rem; }
-	.section-label { display: flex; align-items: center; gap: 0.75rem; color: var(--color-warm-text); font-size: 0.6875rem; letter-spacing: 0.08em; }
+	.section-label { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; color: var(--color-warm-text); font-size: 0.6875rem; letter-spacing: 0.08em; }
 	.section-label span { font-weight: 700; }
 	.section-label b { color: var(--color-ink-2); font-weight: 500; }
-	.section h2 { max-width: 58rem; font-size: clamp(2rem, 7vw, 3.75rem); font-weight: 500; letter-spacing: -0.03em; line-height: 1.12; text-wrap: balance; word-break: keep-all; }
+	.section h2 { max-width: 58rem; font-size: clamp(2rem, 7vw, 3.75rem); font-weight: 500; letter-spacing: -0.03em; line-height: 1.12; text-wrap: pretty; word-break: keep-all; }
 	.section-head > div:last-child > p { max-width: 46rem; margin-top: 1rem; color: var(--color-ink-1); font-size: 1rem; word-break: keep-all; }
 
 	.overview-section { background: color-mix(in oklab, var(--color-surface-base) 64%, var(--color-surface-canvas)); }
-	.overview-layout { display: grid; gap: 1rem; }
-	.landing-page :global(.overview-ledger) { border-color: var(--color-line); background: color-mix(in oklab, var(--color-surface-raised) 62%, transparent); }
-	.overview-row { display: grid; grid-template-columns: 2rem minmax(0, 1fr) auto; gap: 0.75rem; align-items: start; padding: 1.25rem; border-bottom: 1px solid var(--color-line); }
-	.overview-row:last-child { border-bottom: 0; }
-	.overview-row > b { color: var(--color-warm-text); font-family: var(--font-mono); font-size: 0.6875rem; }
-	.overview-row h3 { font-size: 1rem; }
-	.overview-row p { margin-top: 0.25rem; color: var(--color-ink-2); font-size: 0.8125rem; word-break: keep-all; }
-	.overview-row > span { color: var(--color-ink-2); }
-	.overview-proof { position: relative; min-height: 24rem; overflow: hidden; border: 1px solid var(--color-line); border-radius: 1rem; background: var(--color-surface-editorial-media); }
-	.landing-page :global(.overview-screen) { position: absolute; inset: 0; margin: 0; }
-	.landing-page :global(.overview-screen .plate-graphic) { width: 100%; height: 100%; opacity: 0.74; }
-	.landing-page :global(.overview-screen figcaption) { display: none; }
-	.proof-note { position: absolute; inset: auto 1rem 1rem; max-width: 22rem; padding: 1rem; border: 1px solid var(--color-line-2); border-radius: 0.75rem; background: color-mix(in oklab, var(--color-surface-canvas) 86%, transparent); backdrop-filter: blur(0.75rem); }
-	.proof-note span { color: var(--color-warm-text); font-family: var(--font-mono); font-size: 0.6875rem; text-transform: uppercase; }
-	.proof-note strong { display: block; margin-top: 0.35rem; font-size: 1.25rem; }
-	.proof-note p { margin-top: 0.5rem; color: var(--color-ink-2); font-size: 0.75rem; }
 
-	.landing-page :global(.capability-grid) { display: grid; border-color: var(--color-line); background: color-mix(in oklab, var(--color-surface-raised) 62%, transparent); }
+	.landing-page :global(.capability-grid) { display: grid; grid-auto-flow: dense; border-color: var(--color-line); background: var(--color-surface-base); }
 	.cap-card { display: grid; grid-template-rows: 12rem minmax(0, 1fr); min-width: 0; border-bottom: 1px solid var(--color-line); }
 	.cap-card:last-child { border-bottom: 0; }
 	.cap-media { overflow: hidden; border-bottom: 1px solid var(--color-line); background: var(--color-surface-editorial-media); }
-	.cap-media :global(.plate-graphic) { width: 100%; height: 100%; padding: 0.5rem; }
+	.cap-media :global(.plate-graphic) { width: 100%; height: 100%; padding: 0.5rem; transition: transform var(--motion-duration-data) var(--motion-ease-out); }
 	.cap-content { display: flex; min-width: 0; flex-direction: column; padding: 1.25rem; }
-	.cap-meta { display: flex; align-items: center; justify-content: space-between; gap: 1rem; font-family: var(--font-mono); font-size: 0.6875rem; }
+	.cap-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.25rem 1rem; font-family: var(--font-mono); font-size: 0.6875rem; }
 	.cap-meta span { color: var(--color-accent); text-transform: uppercase; }
 	.cap-meta b { color: var(--color-ink-2); font-weight: 500; }
 	.cap-content h3 { margin-top: 1.25rem; font-size: clamp(1.25rem, 4vw, 2rem); font-weight: 500; letter-spacing: -0.022em; line-height: 1.17; text-wrap: balance; word-break: keep-all; }
 	.cap-content p { margin-top: 0.875rem; color: var(--color-ink-1); font-size: 0.8125rem; word-break: keep-all; }
+	.landing-page :global(.cap-explore) { justify-content: flex-start; min-height: 2.75rem; width: fit-content; margin-top: auto; padding: 1.25rem 0 0; color: var(--color-warm-text); font-size: 0.8125rem; }
+	@media (hover: hover) and (pointer: fine) {
+		.cap-card:has(:global(a:hover)) .cap-media :global(.plate-graphic), .cap-card:focus-within .cap-media :global(.plate-graphic) { transform: scale(1.03); }
+	}
 
 	.workflow-section { background: color-mix(in oklab, var(--color-surface-base) 64%, var(--color-surface-canvas)); }
 	.workflow-layout { display: grid; gap: 1rem; align-items: start; }
@@ -557,39 +546,31 @@
 	.filter-panel p b { color: var(--color-warm-text); }
 	.landing-page :global(.workflow-list) { border-color: var(--color-line); background: color-mix(in oklab, var(--color-surface-raised) 62%, transparent); }
 	.lab-card { transition: opacity var(--motion-duration-base) var(--landing-ease), transform var(--motion-duration-base) var(--landing-ease); }
-	.lab-card { display: grid; grid-template-columns: auto minmax(5.5rem, 7rem) minmax(0, 1fr); align-items: center; gap: 0.75rem; padding: 0.75rem; border-bottom: 1px solid var(--color-line); }
+	.lab-card { display: grid; grid-template-columns: auto minmax(3.5rem, 5rem) minmax(0, 1fr); align-items: center; gap: 0.75rem; padding: 1rem; border-bottom: 1px solid var(--color-line); }
 	.lab-card:last-of-type { border-bottom: 0; }
 	.lab-card.is-muted { opacity: 0.62; transform: scale(0.99); }
 	.workflow-index { align-self: start; color: var(--color-warm-text); font-family: var(--font-mono); font-size: 0.6875rem; }
 	.landing-page :global(.lab-card-media) { width: 100%; aspect-ratio: 1 / 1; border-radius: 0.625rem; background: var(--color-surface-editorial-media); }
-	.workflow-copy span { color: var(--color-ink-2); font-family: var(--font-mono); font-size: 0.625rem; text-transform: uppercase; }
+	.workflow-copy span { color: var(--color-ink-2); font-family: var(--font-mono); font-size: 0.6875rem; text-transform: uppercase; }
 	.workflow-copy h3 { margin-top: 0.25rem; font-size: 1rem; }
 	.workflow-copy p { margin-top: 0.35rem; color: var(--color-ink-2); font-size: 0.75rem; word-break: keep-all; }
-	.empty-state { padding: 1rem; border: 1px dashed var(--color-line-2); border-radius: 0.75rem; color: var(--color-ink-2); }
 
-	.landing-page :global(.method-grid) { display: grid; border-color: var(--color-line); background: color-mix(in oklab, var(--color-surface-raised) 62%, transparent); }
-	.method-step { display: grid; grid-template-columns: auto 1fr; gap: 1rem; padding: 1.5rem; border-bottom: 1px solid var(--color-line); }
-	.method-step:last-child { border-bottom: 0; }
-	.method-meta { display: flex; flex-direction: column; align-items: flex-start; gap: 0.25rem; font-family: var(--font-mono); font-size: 0.6875rem; text-transform: uppercase; }
-	.method-meta b { color: var(--color-warm-text); }
-	.method-meta span { color: var(--color-ink-2); }
-	.method-mark { display: none; }
-	.method-step h3 { font-size: 1.125rem; line-height: 1.2; word-break: keep-all; }
-	.method-step p { margin-top: 0.625rem; color: var(--color-ink-2); font-size: 0.75rem; word-break: keep-all; }
 
 	.work-section { overflow: hidden; background: color-mix(in oklab, var(--color-surface-base) 64%, var(--color-surface-canvas)); }
-	.product-stage { overflow: hidden; border: 1px solid var(--color-line-2); border-radius: 1rem; background: var(--color-surface-base); box-shadow: 0 2rem 6rem color-mix(in oklab, var(--color-surface-canvas) 78%, transparent); }
-	.stage-bar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; border-bottom: 1px solid var(--color-line); color: var(--color-ink-2); font-family: var(--font-mono); font-size: 0.625rem; }
-	.stage-bar > span { display: flex; gap: 0.25rem; }
-	.stage-bar i { width: 0.4375rem; height: 0.4375rem; border-radius: 999px; background: var(--color-line-2); }
-	.stage-bar b { overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
-	.stage-bar em { color: var(--color-state-success-text); font-style: normal; text-transform: uppercase; }
-	.work-grid { display: grid; gap: 0.75rem; padding: 0.75rem; }
-	.landing-page :global(.screen-main), .landing-page :global(.screen-stack figure) { margin: 0; overflow: hidden; border: 1px solid var(--color-line); border-radius: 0.75rem; background: var(--color-surface-editorial-media); }
-	.landing-page :global(.screen-main .plate-graphic) { width: 100%; aspect-ratio: 16 / 10; }
-	.screen-stack { display: grid; gap: 0.75rem; }
-	.landing-page :global(.screen-stack .plate-graphic) { width: 100%; aspect-ratio: 16 / 10; }
-	.landing-page :global(figcaption) { padding: 0.625rem 0.75rem; border-top: 1px solid var(--color-line); color: var(--color-ink-2); font-family: var(--font-mono); font-size: 0.625rem; }
+	.product-tour { display: grid; gap: 1.5rem; align-items: center; }
+	.product-stage { min-width: 0; overflow: hidden; container-type: inline-size; border: 1px solid var(--color-line-2); border-radius: var(--radius-lg); background: var(--color-surface-canvas); }
+	.stage-bar { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--color-line); color: var(--color-ink-2); font-size: 0.75rem; line-height: 1.4; }
+	.stage-bar b { min-width: 0; overflow: hidden; font-family: var(--font-mono); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+	.stage-bar em { flex: 0 0 auto; font-family: var(--font-sans); font-style: normal; }
+	.landing-page :global(.screen-main) { animation: screen-enter var(--motion-duration-data) var(--motion-ease-out) both; }
+	.product-controls { min-width: 0; }
+	.landing-page :global(.product-switcher) { margin-top: 1rem; }
+	.landing-page :global(.product-switcher .toggle-option) { min-height: 2.75rem; padding-inline: 0.25rem; }
+	.product-description { margin-block: 1.5rem; min-height: 6.5rem; }
+	.product-description h3 { font-family: var(--font-display); font-size: 1.5rem; font-weight: 500; line-height: 1.3; }
+	.product-description p { margin-top: 0.75rem; color: var(--color-ink-1); font-size: 0.9375rem; word-break: keep-all; }
+	.landing-page :global(.product-console) { min-height: 2.75rem; }
+	@keyframes screen-enter { from { opacity: 0; transform: translateY(0.5rem); } to { opacity: 1; transform: translateY(0); } }
 
 	.audience-layout { display: grid; gap: 2.5rem; align-items: center; }
 	blockquote { max-width: 47rem; margin-top: 1.75rem !important; font-size: clamp(2rem, 7vw, 3.75rem); font-weight: 500; letter-spacing: -0.03em; line-height: 1.14; text-wrap: balance; word-break: keep-all; }
@@ -632,36 +613,29 @@
 		.landing-page { --landing-gutter: 2rem; --landing-nav-height: 4.5rem; }
 		.nav { display: flex; min-height: 4.5rem; padding-block: 0; }
 		.nav-links { flex: 1 1 auto; justify-content: center; }
-		.hero { padding: 5.5rem 0 6rem; }
-		.hero-facts span { font-size: 0.75rem; }
-		.section { padding: 5.5rem 0; }
-		.overview-layout { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); }
+		.hero { padding: 5rem 0 2rem; }
+		.hero-bottom { margin-top: 4rem; }
+		.section { padding: 7rem 0; }
 		.landing-page :global(.capability-grid) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 		.cap-card:nth-child(odd) { border-right: 1px solid var(--color-line); }
 		.cap-card:nth-last-child(-n + 2) { border-bottom: 0; }
-		.workflow-layout { grid-template-columns: minmax(14rem, 0.36fr) minmax(0, 0.64fr); }
+		.workflow-layout { grid-template-columns: minmax(15rem, 0.38fr) minmax(0, 0.62fr); }
 		.filter-panel { position: sticky; top: 5.5rem; }
-		.landing-page :global(.method-grid) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-		.method-step:nth-child(odd) { border-right: 1px solid var(--color-line); }
-		.method-step:nth-last-child(-n + 2) { border-bottom: 0; }
-		.work-grid { grid-template-columns: minmax(0, 1.25fr) minmax(15rem, 0.75fr); }
-		.audience-layout { grid-template-columns: minmax(0, 1.05fr) minmax(20rem, 0.95fr); }
-		.contact-panel { grid-template-columns: minmax(0, 1fr) auto; align-items: end; }
 		.footer-layout { grid-template-columns: minmax(0, 1fr) minmax(22rem, 0.7fr); }
 	}
 
 	@media (min-width: 1024px) {
-		.hero h1 { font-size: clamp(3.25rem, 5vw, 4.25rem); }
-		.hero-layout { grid-template-columns: minmax(0, 0.86fr) minmax(32rem, 1.14fr); gap: clamp(2rem, 4vw, 4rem); }
+		.hero h1 { font-size: clamp(2.25rem, 3.4vw, 3.75rem); }
+		.hero-layout { grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr); gap: clamp(2rem, 4vw, 4rem); }
+		.hero { padding-top: 6rem; }
+		.desktop-break { display: initial; }
+		.section { padding: 8rem 0; }
+		.product-tour { grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr); gap: 3rem; }
+		.audience-layout { grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); }
+		.contact-panel { grid-template-columns: minmax(0, 1fr) auto; align-items: end; }
 		.section-head { grid-template-columns: minmax(10rem, 0.3fr) minmax(0, 1fr); gap: 2rem; }
-		.cap-card { grid-template: minmax(20rem, 1fr) / minmax(14rem, 0.82fr) minmax(0, 1.18fr); }
+		.cap-card { grid-template: minmax(22rem, 1fr) / minmax(0, 0.82fr) minmax(0, 1.18fr); }
 		.cap-media { border-right: 1px solid var(--color-line); border-bottom: 0; }
-		.landing-page :global(.method-grid) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-		.method-step { grid-template-columns: 1fr; min-height: 23rem; border-right: 1px solid var(--color-line); border-bottom: 0 !important; }
-		.method-step:last-child { border-right: 0; }
-		.method-mark { display: grid; grid-template-columns: 1fr auto 1fr; place-items: center; align-self: center; width: 100%; }
-		.method-mark::before, .method-mark::after { content: ''; width: 100%; border-top: 1px dashed var(--color-line-2); }
-		.method-mark span { width: 0.75rem; height: 0.75rem; border: 2px solid var(--color-warm); border-radius: 999px; box-shadow: 0 0 0 0.35rem var(--warm-soft); }
 	}
 
 	@media (prefers-reduced-motion: reduce) {
