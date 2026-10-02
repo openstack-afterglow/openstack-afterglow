@@ -140,6 +140,10 @@ DeepSeek의 공식 `/user/balance`는 통화별 총 account balance, 구매 충�
 
 신규 저장 대화는 `title: null`로 즉시 history에 나타납니다. 첫 정상 user/assistant 교환 뒤 durable worker가 의미 기반 제목을 한 번 생성하고, 이후 일반 turn에서는 재생성하지 않습니다. 브라우저는 서버 `title_status`를 정본으로 사용하며 30초 뒤에도 pending을 실패로 바꾸지 않고 15초 간격으로 계속 확인합니다. worker는 아직 예약되지 않은 active `auto/idle/revision=0` 대화의 완료된 첫 교환을 보수적으로 복구하며 빈 대화, 기존 job, legacy/수동/실패/삭제된 대화는 재실행하지 않습니다. 수동 제목 수정은 revision을 올려 뒤늦은 첫 요약이 덮어쓰지 못하게 합니다. 성공한 conversation compaction은 전체 누적 active path를 반영해 제목을 다시 정하며 실패·취소 시 기존 제목을 유지합니다.
 
+### 안전한 응답 렌더링
+
+`MarkdownMessage`는 DOMPurify로 정제한 Markdown만 삽입하고, 완료된 응답에서 KaTeX(`trust: false`)와 fenced Mermaid를 렌더합니다. Mermaid는 `securityLevel: strict`, root `htmlLabels: false`로 native SVG text label을 사용합니다. SVG-only sanitizer의 `foreignObject`·event-handler 차단은 유지합니다. HTML label을 허용하는 대신 renderer와 sanitizer 형식을 일치시켜 도형의 label 누락을 막습니다. 실패한 diagram source는 읽을 수 있는 code block으로 남습니다. 이것은 브라우저 표시 계약이며 모델/provider 실행 성공이나 실제 Keystone 인증 증거가 아닙니다.
+
 ### Native Search와 출처
 
 모델 선택창은 Lumen의 `capabilities.web_search`가 참인 모델에 **Search** 배지를 표시합니다. 작성창에서는 `feature_gates.web_search`의 `mode="native"`, `available`, `pricing_available`을 함께 확인하고 선택 가능한 **Search** 버튼을 제공합니다. 구독 인증 등 지원하지 않는 경로를 모델 이름만 보고 활성화하지 않습니다.

@@ -6,6 +6,25 @@
 
 ---
 
+## Dependency 보안 floor
+
+1.30.0 후보의 dependency 보안 갱신은 application policy와 별도다. Vulnerable range를 벗어난 최소 compatible package만 갱신하며 lock을 무시한 설치나 unrelated `--upgrade` 전체 갱신을 하지 않는다.
+
+| Consumer | Patched floor / lock | 경계 |
+| --- | --- | --- |
+| Backend JWT | PyJWT `>=2.15.0` | access/refresh의 단일 `HS256`, 서버 secret과 서명 우선 검증 유지 |
+| Backend TLS concurrency | AnyIO `>=4.14.2` | IDNA hostname 검증, TLS verify·configured CA 유지 |
+| Backend/OpenStack CLI/Kolla operator HTTP | urllib3 `>=2.8.0` | response decoding/chunk line·HTTPS proxy TLS upstream patch; 운영 `uv sync`나 role promotion과 별도 |
+| Backend SSH | AsyncSSH `>=2.24.0` | 기존 SSH credential·host-key policy를 변경하지 않음 |
+| Backend PDF package | pypdf `==6.19.0` | PDF thumbnails와 upload 검사 정본은 기존 pypdfium2; installed pypdf의 parser advisory도 vulnerable range 밖으로 유지 |
+| Frontend SSR serializer | devalue `>=5.9.3`, 5.x override | SvelteKit payload serialization과 script escaping 유지 |
+| Frontend HTML/SVG sanitizer | DOMPurify `>=3.4.16`, 3.x | `renderMarkdown`·Mermaid sanitizer options를 변경하지 않음 |
+| Frontend trusted config parser | smol-toml `>=1.7.1`, 1.x | SSR 설정 파일 계약 유지 |
+| Frontend development test UI | Vitest·coverage family `>=4.1.11`, 4.x | test UI/network boundary upstream patch; CI selector와 suites 유지 |
+
+Backend `uv.lock`, frontend Bun·npm lock, root CLI `uv.lock`, operator `uv.lock`은 각각 실제 설치 그래프다. Security floor 업데이트로 서비스 tag/Kolla source pin·release version·사용자의 운영 config/volumes를 변경하지 않는다. Default-branch Dependabot 경고 수는 현재 dev의 수정 여부나 운영 exploitability를 대신하지 않는다. [PyJWT PEM](https://github.com/jpadilla/pyjwt/security/advisories/GHSA-ffc3-869f-jxw9), [PyJWT payload](https://github.com/jpadilla/pyjwt/security/advisories/GHSA-42vr-xj54-vc7v), [AnyIO IDNA](https://github.com/agronholm/anyio/security/advisories/GHSA-82r6-8w77-94w6) 같은 library regression은 실제 실행으로 확인하되 production 인증 우회가 재현됐다고 확대하지 않는다.
+
+
 ## 인증·인가 모델
 
 ```

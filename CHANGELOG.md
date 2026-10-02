@@ -67,6 +67,8 @@
   - 검증: 실제 DMSLab cloud_shell 프로젝트에서 `Default` 네트워크·라우터 자동 생성과 default SG 확정을 확인했다. 로컬 Compose backend/frontend/notion-worker 재생성 뒤 실제 public capability와 desktop trigger·승인·취소·1023px 숨김을 Chromium으로 확인했다(인증 API만 합성). amd64 빌드를 확인했고 운영 배포는 하지 않았다.
 
 ### Fixed
+- **Mermaid SVG label 보존** — Mermaid의 root `htmlLabels: false`로 native SVG text를 사용해 기존 SVG-only sanitizer가 HTML label을 제거하던 결함을 수정한다. `securityLevel: strict`, `foreignObject`·event-handler 차단을 완화하지 않는다. Baseline와 dependency-patched compiled frontend의 Chromium에서 빈 label을 재현했으며 provider/API 계약은 바꾸지 않는다.
+- **Inherited dependency 보안 갱신** — Backend에 PyJWT2.15.0·AnyIO4.14.2·urllib32.8.0·AsyncSSH2.24.0·pypdf6.19.0의 patched floor/lock을 요구한다. Frontend는 devalue5.9.3·DOMPurify3.4.16·smol-toml1.7.1·Vitest/coverage4.1.11부터 사용하며 Bun·npm graph와 root version을 일치시킨다. OpenStack CLI와 Kolla operator urllib3도2.8.0 floor를 적용하되 기존 service/Kolla source pin·운영 환경을 바꾸지 않는다. 단일HS256·TLS verify/CA·project/endpoint·markdown sanitizer 경계는 유지하고 unrelated dependency를 일괄 upgrade하지 않는다.
 - **Palimpsest native 인증 경계** — 일반 JWT Hub catch-all의 native project/key/cache 진입을 token exchange·rescope 전에 차단하고 기존 legacy family·export ticket은 유지한다. Package key의 단일 project assertion을 Hub로 그대로 전달하고 중복은 거부한다. Native TLS는 설정된 CA로 검증하며 OpenStack insecure 설정으로 끄지 않고 초기화·transport 오류를 안전한 503으로 처리한다.
 - **Mutation 이후 cache freshness** — 같은 프로세스·event loop의 invalidate는 이전 single-flight chain의 합류·재저장·삭제 권한을 fence하여 관리자 project CRUD 뒤 이전 inventory가 다시 cache되는 경합을 막는다. 기존 origin 호출자는 취소하지 않으며 분산 worker/direct writer의 일관성까지 보장하지 않는다.
 - **프로젝트 전환 수명** — 공유 전환 상태로 drawer remount 후 동시 rescope를 막고, 로그아웃·identity 전환을 거친 이전 응답이 새 로그인에 적용되지 않게 한다. 동일 identity JWT refresh는 허용한다. 사용자 tutorial에는 fixture가 없는 native Palimpsest 메뉴를 노출하지 않는다.

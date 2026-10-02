@@ -23,14 +23,14 @@
 		"@tailwindcss/vite": "^4.1.18",
 		"@testing-library/svelte": "^5.0.0",
 		"@types/node": "^25.6.0",
-		"@vitest/coverage-v8": "^4",
+		"@vitest/coverage-v8": "^4.1.11",
 		"jsdom": "^25.0.0",
 		"svelte": "5.55.9",
 		"svelte-check": "^4.4.2",
 		"tailwindcss": "^4.1.18",
 		"typescript": "^5.9.3",
 		"vite": "^8.2.0",
-		"vitest": "^4"
+		"vitest": "^4.1.11"
 	},
 	"dependencies": {
 		"@types/qrcode": "^1.5.6",
@@ -39,7 +39,7 @@
 		"@xterm/xterm": "^6.0.0",
 		"d3-array": "^3.2.4",
 		"d3-scale": "^4.0.2",
-		"dompurify": "^3.4.13",
+		"dompurify": "^3.4.16",
 		"driver.js": "^1.6.0",
 		"katex": "^0.16.22",
 		"layerchart": "^2.0.0-next.64",
@@ -47,10 +47,12 @@
 		"mermaid": "^11.16.1",
 		"qrcode": "^1.5.4",
 		"shiki": "^3.23.0",
-		"smol-toml": "^1.6.1"
+		"smol-toml": "^1.7.1"
 	},
 	"overrides": {
 		"cookie": "^0.7.0",
+		"devalue": "^5.9.3",
+		"dompurify": "^3.4.16",
 		"esbuild": "^0.28.1",
 		"postcss": "^8.5.25",
 		"vite": "^8.2.0"

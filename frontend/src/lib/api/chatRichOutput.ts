@@ -75,7 +75,7 @@ export async function renderMath(container: HTMLElement): Promise<void> {
 }
 function initializeMermaid(): void {
 	if (mermaidInitialized) return;
-	mermaid.initialize({ startOnLoad: false, securityLevel: 'strict' });
+	mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', htmlLabels: false });
 	mermaidInitialized = true;
 }
 

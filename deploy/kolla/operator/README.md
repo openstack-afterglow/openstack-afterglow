@@ -87,6 +87,16 @@ uv add --no-sync --tag vX.Y.Z "palimpsest-client @ git+https://github.com/openst
 uv lock --refresh
 ```
 
+### Security floor updates
+
+Updating dependency security floors (such as setting an explicit floor like
+`urllib3>=2.8.0` in `pyproject.toml` and locking only that package with
+`uv lock --upgrade-package <pkg>`) is distinct from root service role promotion
+and production environment sync. A security floor update preserves every service
+Git ref, release tag, and commit pin unchanged, without triggering role tag
+promotion workflows or synchronizing directly into a live `/etc/kolla` runtime.
+Production synchronization remains a separate, explicitly reviewed operator step.
+
 After the reviewed manifest and lock are present, install them into the actual
 Kolla environment:
 
