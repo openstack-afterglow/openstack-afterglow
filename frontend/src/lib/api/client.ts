@@ -329,7 +329,16 @@ export function endSessionRevocation(): void {
 	_sessionRevocationInProgress = false;
 }
 
-function _buildHeaders(token?: string, projectId?: string, extra?: HeadersInit): Record<string, string> {
+function auditPage(): string | undefined {
+	if (!browser) return undefined;
+	const path = window.location.pathname;
+	if (!/^\/(?:dashboard|admin|account)(?:\/|$)/.test(path)) return undefined;
+	return path.split('/').map((segment) =>
+		segment.length > 32 || /^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(segment) ? ':id' : segment
+	).join('/').slice(0, 255);
+}
+
+function _buildHeaders(token?: string, projectId?: string, extra?: HeadersInit, method?: string): Record<string, string> {
 	const headers: Record<string, string> = extra instanceof Headers
 		? Object.fromEntries(extra.entries())
 		: Array.isArray(extra) ? Object.fromEntries(extra) : { ...extra };
@@ -343,6 +352,10 @@ function _buildHeaders(token?: string, projectId?: string, extra?: HeadersInit):
 	}
 	if (projectId) {
 		headers['X-Project-Id'] = projectId;
+	}
+	if (token && method && !['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase())) {
+		const page = auditPage();
+		if (page) headers['X-Afterglow-Page'] = page;
 	}
 	return headers;
 }
@@ -420,7 +433,7 @@ export function fetchWithAuth(
 	return withAuthRecovery(
 		(currentToken) => fetch(`${baseUrl}${path}`, {
 			...options,
-			headers: _buildHeaders(currentToken, projectId, options.headers),
+			headers: _buildHeaders(currentToken, projectId, options.headers, options.method),
 		}),
 		token,
 		{
@@ -891,6 +904,8 @@ function uploadWithAuthProgress<T>(
 			xhr.open(method, `${scope.baseUrl}${path}`);
 			if (currentToken) xhr.setRequestHeader('Authorization', `Bearer ${currentToken}`);
 			if (projectId) xhr.setRequestHeader('X-Project-Id', projectId);
+			const page = auditPage();
+			if (page && currentToken) xhr.setRequestHeader('X-Afterglow-Page', page);
 			if (contentType) xhr.setRequestHeader('Content-Type', contentType);
 			xhr.timeout = 0;
 			xhr.upload.onprogress = (event) => {

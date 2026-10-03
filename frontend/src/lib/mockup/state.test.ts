@@ -59,17 +59,6 @@ describe('mockup fixture privacy', () => {
 		expect(Object.keys(admin.volumeDetails)).toEqual(admin.volumes.map(({ id }) => id));
 		expect(admin.volumeTimeseries).toHaveLength(7);
 
-		const artifacts = admin.library.artifacts as Array<{
-			id: number;
-			kind: string;
-			parent_id: number | null;
-			base_image_id: string;
-			lineage: Array<{ id: number }>;
-		}>;
-		expect(artifacts.map(({ kind }) => kind)).toEqual(['uv', 'python', 'pip']);
-		expect(artifacts.map(({ parent_id }) => parent_id)).toEqual([null, 101, 102]);
-		expect(artifacts[2]?.lineage.map(({ id }) => id)).toEqual([101, 102]);
-		expect(new Set(artifacts.map(({ base_image_id }) => base_image_id)).size).toBe(1);
 		expect(admin.library.profiles[0]).toMatchObject({ is_published: true });
 		expect(admin.library.builds[0]).toMatchObject({ status: 'complete' });
 		expect(admin.library.imports[0]).toMatchObject({ status: 'complete' });

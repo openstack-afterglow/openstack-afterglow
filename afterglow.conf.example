@@ -34,6 +34,45 @@ manila_cephx_key_timeout_seconds = 300  # CephX key 발급 폴링 최대 대기(
 # Ceph 모니터 (cloud-init CephFS 마운트용, 콤마 구분)
 ceph_monitors = ""
 
+# Native oslo.messaging notifications (RabbitMQ AMQP 0-9-1 only).
+# AMQP client ships with backend dependencies; consumption is disabled unless enabled.
+# Set AMQP URL ONLY in protected config or OPENSTACK_NOTIFICATIONS_AMQP_URL environment.
+# Use amqps:// with a trusted CA in production; credentials must be URL-encoded.
+# Services must publish oslo_messaging_notifications driver=messaging or messagingv2.
+# These are EXAMPLES: use the actual control_exchange and <notification-topic>.<priority>.
+# Do not use RPC method names or event_type strings as routing keys. Exchanges must exist;
+# collector checks them passively, never changes their type/durability. Concrete routing
+# keys work with direct/topic exchanges; wildcards require a topic exchange.
+# Nova versioned notifications often use versioned_notifications.info/error instead
+# of notifications.info/error. Enable both sets explicitly if the deployment emits both.
+[openstack_notifications]
+enabled = false
+amqp_url = ""
+queue_prefix = "afterglow.notifications"
+retry_seconds = 5
+max_message_bytes = 1048576
+
+# Dedicated durable queue per service/exchange/routing-key; no TTL, auto-delete or purge.
+# Disable a binding/service to stop consumption; its existing queue/backlog is retained.
+# Changing/removing keys leaves old queues for explicit operator cleanup/drain.
+# Durable queues only survive broker restart with persistent publisher messages.
+[openstack_notifications.bindings.nova]
+enabled = true
+exchange = "nova"
+routing_keys = ["versioned_notifications.info", "versioned_notifications.error"]
+[openstack_notifications.bindings.cinder]
+enabled = true
+exchange = "cinder"
+routing_keys = ["notifications.info", "notifications.error"]
+[openstack_notifications.bindings.neutron]
+enabled = true
+exchange = "neutron"
+routing_keys = ["notifications.info", "notifications.error"]
+[openstack_notifications.bindings.keystone]
+enabled = true
+exchange = "keystone"
+routing_keys = ["notifications.info", "notifications.error"]
+
 # Ceph RBD backend 검사/복원 (관리자 볼륨 삭제 복구 전용, 선택). 두 경로가 모두 비어 있으면 비활성.
 [ceph]
 rbd_conf_path = ""                 # 예: /etc/ceph/ceph.conf
@@ -58,10 +97,10 @@ site_name = "Afterglow"
 site_description = "OpenStack VM + OverlayFS 배포 플랫폼"
 
 # 로고 및 파비콘 경로 (frontend/static/ 기준, SvelteKit이 /로 서빙)
-logo_path = "/logo.png"
-logo_dark_path = "/logo-white.png"   # light theme/login background용 어두운 로고
-logo_light_path = "/logo-dark.png" # dark theme/login background용 밝은 로고
-favicon_path = "/favicon.ico"
+logo_path = "/afterglow-logo.svg"
+logo_dark_path = "/afterglow-logo.svg"   # light theme/login background용 어두운 로고
+logo_light_path = "/afterglow-logo.svg" # dark theme/login background용 밝은 로고
+favicon_path = "/favicon.svg"
 
 # 프론트엔드 대시보드 자동 새로고침 간격 (밀리초)
 # 권장 범위: 3000 ~ 30000
@@ -153,36 +192,48 @@ default_network_cidr = "192.168.0.0/24"       # 자동 생성 네트워크의 �
 magnum = false      # K8s 클러스터 (Heat 포함)
 manila = false      # 공유 파일 시스템
 zun = false         # 컨테이너
-cloud_shell = false # 전역 Cloud Shell (Zun + 전용 서비스 프로젝트/네트워크/보안 그룹 필요)
+cloud_shell = false # 전역 Cloud Shell (Zun + 전용 서비스 프로젝트 필요)
 k3s = false         # k3s 자체 관리 Kubernetes 클러스터
 swift = false       # 오브젝트 스토리지
 trove = false       # DBaaS (Database as a Service)
 barbican = false    # Key Manager (시크릿/인증서 관리)
 waygate = false     # Waygate (활성화 시 [waygate] 섹션 설정 필수)
-palimpsest = false   # Palimpsest Hub (활성화 시 [services] palimpsest_internal_url 또는 Keystone 카탈로그 필요)
+palimpsest = false   # Palimpsest Hub (legacy JWT: URL 또는 카탈로그; 패키지: 신뢰된 palimpsest_internal_url 필수)
 chat = false        # 빌트인 AI 채팅 (활성화 시 [chat] 섹션 + 관리자 페이지에서 프로바이더/모델 등록)
 mcp = false         # Consumer MCP control plane (Stage 2 publish gate 전까지 false 유지)
-# Explicit owned-service endpoint; otherwise use authenticated Keystone catalog.
-# Environment SERVICE_<SERVICE>_INTERNAL_URL wins, including empty = catalog.
+# Generic owned-service routes: explicit endpoint, otherwise authenticated Keystone catalog.
+# Environment SERVICE_<SERVICE>_INTERNAL_URL wins; empty = catalog only for generic routes.
 # Host backend examples: http://127.0.0.1:8010 (Waygate), :8011 (Drover),
 # :8012 (Lumen), :8020 (Palimpsest). Inside Compose use service DNS, not localhost.
 # Dev runner uses nonempty values in .local-services/afterglow.conf, otherwise
 # defaults to its local service DNS. Base/prod have no local default; prod requires HTTPS.
+# Native package keys and browser package BFF require a trusted nonempty
+# SERVICE_PALIMPSEST_INTERNAL_URL or [services] palimpsest_internal_url; absent/empty
+# means 503, never catalog/admin discovery or token exchange. Legacy JWT Hub routes
+# retain catalog behavior. Package redirects are forbidden; downloads stream, private no-store.
+# Readable namespaces require Hub operator bindings to exact Keystone project UUID/IDs;
+# IDs are opaque (no case/hyphen normalization or project-name inference).
+# package_authority comes from Hub's PALIMPSEST_HUB_PACKAGE_PUBLIC_ORIGIN (trusted HTTPS),
+# not this internal service URL or the browser origin.
 waygate_internal_url = ""
 drover_internal_url = ""
 lumen_internal_url = ""
 palimpsest_internal_url = ""
 
 [cloud_shell]
-# 모든 컨테이너와 영구 홈 볼륨은 사용자 프로젝트가 아니라 이 전용 프로젝트에 생성됩니다.
-# 운영자는 프로젝트/네트워크/라우터/egress-only 보안 그룹/쿼터를 명시적으로 준비해야 합니다.
+# 모든 컨테이너와 영구 홈 볼륨은 사용자 프로젝트가 아니라 이 전용 프로젝트에 생성됩니다
+# (os_service_project_id와 다른 프로젝트여야 합니다). 운영자는 전용 프로젝트와 쿼터를 준비합니다.
+# network_id를 비우면 전용 프로젝트의 기본 네트워크를 사용합니다. 외부 연결이 필요하며,
+# 직접 지정하는 네트워크도 전용 프로젝트 소유여야 합니다.
+# security_group을 비우거나 "default"로 두면 전용 프로젝트의 default 그룹과 기존 규칙을 사용합니다.
+# egress-only를 보장하지 않으며, 직접 지정하는 보안 그룹도 전용 프로젝트 소유여야 합니다.
 service_project_id = ""
 image = "ghcr.io/openstack-afterglow/afterglow-cloud-shell@sha256:replace-with-published-digest"
 network_id = ""
-security_group = ""
+security_group = "default"
 # Cloud Shell 내부 OpenStack CLI가 사용할 Keystone v3 URL. 운영은 HTTPS만 허용합니다.
 auth_url = "https://keystone.example.com/v3"
-interface = "internal"
+interface = "public"
 volume_type = ""
 home_size_gib = 5
 cpu = 1.0
@@ -399,10 +450,11 @@ grafana_base_url = ""           # Grafana 외부 URL (예: https://grafana.examp
 #         refresh_interval: 30s
 
 [monitoring.dashboards]
-# Grafana 대시보드 UID. monitoring/grafana/provisioning/dashboards/ 에 JSON이 프로비저닝되어야 함.
+# Grafana 대시보드 UID. 지정한 Grafana에 해당 UID의 대시보드가 있어야 함.
 node_uid = "afterglow-node"
 rabbitmq_uid = "afterglow-rabbitmq"
 mysqld_uid = "afterglow-mysqld"
+proxysql_uid = "afterglow-proxysql"  # 기존 ProxySQL — MariaDB 접속 경로 대시보드
 memcached_uid = "afterglow-memcached"
 etcd_uid = "afterglow-etcd"
 haproxy_uid = "afterglow-haproxy"

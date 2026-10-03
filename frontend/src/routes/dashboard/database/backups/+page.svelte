@@ -14,8 +14,6 @@
 	import DbBackupsTable from '$lib/components/database/DbBackupsTable.svelte';
 	import BulkSelectionOverlay, { type BulkSelectionAction } from '$lib/components/ui/BulkSelectionOverlay.svelte';
 	import DbRestoreModal from '$lib/components/database/DbRestoreModal.svelte';
-	import { betaFeatures } from '$lib/stores/betaFeatures';
-	import BetaFeatureGate from '$lib/components/ui/BetaFeatureGate.svelte';
 	let backups = $state<DbBackup[]>([]);
 	let instances = $state<DbInstance[]>([]);
 	let flavors = $state<DbFlavor[]>([]);
@@ -26,7 +24,6 @@
 
 	let showRestoreModal = $state(false);
 	let selectedBackup = $state<DbBackup | null>(null);
-	const databaseBackupsEnabled = $derived($betaFeatures.databaseBackups);
 	const selection = createResourceSelection();
 	let bulkBusy = $state(false);
 	const selectableIds = $derived(new Set(backups.map((backup) => backup.id)));
@@ -48,16 +45,11 @@
 
 
 	async function fetchBackups() {
-		if (!databaseBackupsEnabled) {
-			clearBackupsState();
-			loading = false;
-			return;
-		}
 		const tokenSnapshot = $auth.token ?? undefined;
 		const projectSnapshot = $auth.projectId ?? undefined;
 		try {
 			const nextBackups = await api.get<DbBackup[]>('/api/v1/database-instances/backups', tokenSnapshot, projectSnapshot);
-			if (!databaseBackupsEnabled || $auth.projectId !== projectSnapshot) return;
+			if ($auth.projectId !== projectSnapshot) return;
 			backups = nextBackups;
 			selection.retain(nextBackups.map((backup) => backup.id));
 			error = '';
@@ -69,10 +61,6 @@
 	}
 
 	async function fetchInstances() {
-		if (!databaseBackupsEnabled) {
-			instances = [];
-			return;
-		}
 		const tokenSnapshot = $auth.token ?? undefined;
 		const projectSnapshot = $auth.projectId ?? undefined;
 		try {
@@ -81,26 +69,11 @@
 		} catch { /* ignore */ }
 	}
 
-	async function fetchFlavors() {
-		if (!databaseBackupsEnabled) {
-			flavors = [];
-			return;
-		}
-		const tokenSnapshot = $auth.token ?? undefined;
-		const projectSnapshot = $auth.projectId ?? undefined;
-		try {
-			const nextFlavors = await api.get<DbFlavor[]>('/api/v1/database-instances/flavors', tokenSnapshot, projectSnapshot);
-			if ($auth.projectId === projectSnapshot) flavors = nextFlavors;
-		} catch { /* ignore */ }
-	}
-
 	function prefetchFlavors() {
-		if (!databaseBackupsEnabled) return;
 		void api.prefetch('/api/v1/database-instances/flavors', $auth.token ?? undefined, $auth.projectId ?? undefined);
 	}
 
 	async function restoreBackup(backupId: string, name: string, flavorId: string, volumeSize: number) {
-		if (!databaseBackupsEnabled) return;
 		await api.post('/api/v1/database-instances/restore', {
 			backup_id: backupId, name, flavor_id: flavorId, volume_size: volumeSize,
 		}, $auth.token ?? undefined, $auth.projectId ?? undefined);
@@ -109,7 +82,6 @@
 	}
 
 	async function deleteBackup(id: string, name: string, stuck: boolean) {
-		if (!databaseBackupsEnabled) return;
 		const baseMsg = `백업 "${name || id.slice(0, 8)}"을 삭제하시겠습니까?`;
 		const stuckNote = stuck
 			? '\n\nTrove 백업 레코드만 제거됩니다. Swift에 저장된 데이터는 이미 없을 수 있습니다.'
@@ -126,7 +98,6 @@
 		}
 	}
 	async function runBulkDelete() {
-		if (!databaseBackupsEnabled) return;
 		const snapshot = [...selection.ids];
 		if (snapshot.length === 0) return;
 		const stuckCount = backups.filter((backup) => snapshot.includes(backup.id) && isStuck(backup)).length;
@@ -173,27 +144,17 @@
 
 	$effect(() => {
 		const pid = $auth.projectId;
-		if (!databaseBackupsEnabled) {
-			clearBackupsState();
-			loading = false;
-			return;
-		}
-		if (!pid) return;
 		clearBackupsState();
-		loading = true;
+		loading = Boolean(pid);
+		if (!pid) return;
 		untrack(() => {
-			fetchBackups();
-			fetchInstances();
+			void fetchBackups();
+			void fetchInstances();
 			// Restore-only flavors remain lazy until restore intent.
 		});
 	});
 </script>
 
-{#if !databaseBackupsEnabled}
-	<PageShell>
-		<BetaFeatureGate title="DB 백업은 베타 기능입니다" />
-	</PageShell>
-{:else}
 <DbRestoreModal
 	bind:open={showRestoreModal}
 	backup={selectedBackup}
@@ -241,4 +202,3 @@
 		<BulkSelectionOverlay count={selection.count} ariaLabel="선택한 DB 백업 일괄 작업" actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
 	{/if}
 </PageShell>
-{/if}

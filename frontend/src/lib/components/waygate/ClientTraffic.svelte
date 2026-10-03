@@ -5,13 +5,21 @@
 		clientTrafficTotals,
 		currentClientTraffic,
 		formatTrafficBytes,
+		waygateTrafficFreshnessMs,
+		WAYGATE_TRAFFIC_STALE_MS,
 		type ClientTrafficHistory,
 	} from '$lib/utils/waygateTraffic';
 
-	interface Props { client: WaygateClient; history?: ClientTrafficHistory; now: number; }
-	let { client, history, now }: Props = $props();
-	const current = $derived(currentClientTraffic(history, now));
+	interface Props { client: WaygateClient; history?: ClientTrafficHistory; now: number; pollIntervalSeconds?: number; }
+	let { client, history, now, pollIntervalSeconds }: Props = $props();
+	const freshnessMs = $derived(pollIntervalSeconds === undefined ? WAYGATE_TRAFFIC_STALE_MS : waygateTrafficFreshnessMs(client.report_interval_seconds, pollIntervalSeconds));
+	const current = $derived(currentClientTraffic(history, now, freshnessMs));
 	const totals = $derived(clientTrafficTotals(client));
+	const reportAge = $derived.by(() => {
+		if (!client.last_reported_at) return null;
+		const reportedAt = Date.parse(client.last_reported_at);
+		return Number.isFinite(reportedAt) ? Math.max(0, Math.floor((now - reportedAt) / 1000)) : null;
+	});
 	const reportState = $derived.by(() => {
 		if (!client.enabled) return '비활성화됨 · 트래픽 기록 중지';
 		if (!history?.samples.length) return '상태 보고 대기';
@@ -30,6 +38,13 @@
 		<span class="font-medium text-ink-1">클라이언트 기준 트래픽</span>
 		<span role="status">{reportState}</span>
 	</div>
+	{#if pollIntervalSeconds !== undefined}
+		<p class="mb-3 text-xs text-ink-2">
+			{reportAge === null ? '마지막 보고 없음' : `마지막 보고 ${reportAge}초 전`}
+			· {client.report_interval_seconds == null ? '에이전트 보고 주기 미확인' : `에이전트 보고 주기 ${client.report_interval_seconds}초`}
+			· 최근 120초 핸드셰이크만 온라인으로 분류하며 연결을 보증하지 않습니다.
+		</p>
+	{/if}
 	{#snippet metrics()}
 	<dl class="mb-3 grid grid-cols-1 gap-3 text-sm tabular-nums md:grid-cols-2">
 		{#each rows as row (row.key)}

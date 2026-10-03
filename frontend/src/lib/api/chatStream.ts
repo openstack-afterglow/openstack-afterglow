@@ -126,17 +126,60 @@ export function parseChatRunDescriptor(value: unknown): ChatRunDescriptor {
 	};
 }
 
-async function errorFrom(response: Response): Promise<Error> {
-	let detail = `chat request failed (${response.status})`;
+async function errorFrom(response: Response): Promise<ChatHttpError> {
+	const fallback = 'chat request failed';
+	const maxBodyBytes = 4096;
+	let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
 	try {
-		const body: unknown = await response.json();
-		if (isRecord(body) && typeof body.detail === 'string') {
-			detail = body.detail;
+		reader = response.body?.getReader();
+	} catch {
+		return new ChatHttpError(fallback, response.status);
+	}
+	if (!reader) return new ChatHttpError(fallback, response.status);
+	let size = 0;
+	const chunks: Uint8Array[] = [];
+	try {
+		while (true) {
+			const { value, done } = await reader.read();
+			if (done) break;
+			size += value.byteLength;
+			if (size > maxBodyBytes) return new ChatHttpError(fallback, response.status);
+			chunks.push(value);
+		}
+		const bytes = new Uint8Array(size);
+		let offset = 0;
+		for (const chunk of chunks) {
+			bytes.set(chunk, offset);
+			offset += chunk.byteLength;
+		}
+		const body: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+		if (isRecord(body)) {
+			let detail: string | undefined;
+			if (typeof body.detail === 'string') {
+				detail = body.detail.trim();
+			} else if (Array.isArray(body.detail) && body.detail.length > 0 && body.detail.length <= 3) {
+				const messages: string[] = [];
+				for (const item of body.detail) {
+					if (!isRecord(item) || typeof item.msg !== 'string' || item.msg.length > 150) break;
+					const location = Array.isArray(item.loc) && item.loc.length <= 4 &&
+						item.loc.every((part: unknown) =>
+							(typeof part === 'string' && /^[\w-]{1,40}$/.test(part)) ||
+							(Number.isInteger(part) && (part as number) >= 0))
+						? `${item.loc.join('.')}: ` : '';
+					messages.push(`${location}${item.msg}`);
+				}
+				if (messages.length === body.detail.length) detail = messages.join('; ').trim();
+			}
+			if (detail && detail.length <= 300 && !/[\x00-\x1f\x7f]/.test(detail)) {
+				return new ChatHttpError(detail, response.status);
+			}
 		}
 	} catch {
-		// Keep the status-derived message when a proxy returned non-JSON.
+		// Malformed, non-JSON, and unreadable responses reveal only the HTTP status.
+	} finally {
+		void reader.cancel().catch(() => {});
 	}
-	return new ChatHttpError(detail, response.status);
+	return new ChatHttpError(fallback, response.status);
 }
 
 /** Creates exactly one durable run. The key remains stable for a caller retry. */

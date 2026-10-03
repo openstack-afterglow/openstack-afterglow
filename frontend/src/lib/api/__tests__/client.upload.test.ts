@@ -482,8 +482,8 @@ describe('getBaseUrl', () => {
 		initSiteConfig({
 			site_name: 'Afterglow',
 			site_description: '',
-			logo_path: '/logo.png',
-			favicon_path: '/favicon.ico',
+			logo_path: '/afterglow-logo.svg',
+			favicon_path: '/favicon.svg',
 			refresh_interval_ms: 5000,
 			services: { magnum: false, manila: false, zun: false, k3s: false, trove: false, swift: false, barbican: false },
 			runtime: { api_base: 'http://api.example.com', s3_base: '', grafana_base: '', librechat_base: '', gitlab_base: '' },

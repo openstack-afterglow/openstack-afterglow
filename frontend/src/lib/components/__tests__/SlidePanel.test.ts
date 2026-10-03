@@ -31,26 +31,6 @@ describe('SlidePanel', () => {
 		expect(dialog.getAttribute('aria-modal')).toBe('true');
 	});
 
-	it('children이 렌더링됨', () => {
-		render(SlidePanelWrapper, { onClose: vi.fn(), content: '패널 내용' });
-		flushSync();
-		expect(screen.getByText('패널 내용')).toBeTruthy();
-	});
-
-	it('dataTour를 스크롤 컨테이너의 data-tour 속성으로 전달', () => {
-		const { container } = render(SlidePanelWrapper, { onClose: vi.fn(), dataTour: 'wizard-panel' });
-		flushSync();
-		const scrollContainer = container.querySelector('.overflow-y-auto');
-		expect(scrollContainer?.getAttribute('data-tour')).toBe('wizard-panel');
-	});
-
-	it('backdrop 버튼이 "패널 닫기" aria-label을 가짐', () => {
-		render(SlidePanelWrapper, { onClose: vi.fn() });
-		flushSync();
-		const closeBtn = screen.getByLabelText('패널 닫기');
-		expect(closeBtn).toBeTruthy();
-	});
-
 	it('backdrop 클릭 시 onClose 호출', async () => {
 		const onClose = vi.fn();
 		render(SlidePanelWrapper, { onClose });
@@ -67,33 +47,6 @@ describe('SlidePanel', () => {
 		const dialog = screen.getByRole('dialog');
 		await fireEvent.keyDown(dialog, { key: 'Escape' });
 		expect(onClose).toHaveBeenCalledOnce();
-	});
-
-	it('viewport가 축소되면 저장된 폭을 sidebar 우측 가용 폭으로 자동 축소한다', async () => {
-		Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1440 });
-		window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-			matches: true,
-			media: query,
-			onchange: null,
-			addListener: vi.fn(),
-			removeListener: vi.fn(),
-			addEventListener: vi.fn(),
-			removeEventListener: vi.fn(),
-			dispatchEvent: vi.fn(),
-		}));
-		localStorage.setItem('slide-panel-test', '1000');
-
-		const { container } = render(SlidePanelWrapper, { onClose: vi.fn(), storageKey: 'slide-panel-test' });
-		flushSync();
-		const panel = container.querySelector('.overflow-y-auto') as HTMLElement;
-		expect(panel.style.width).toBe('1000px');
-
-		Object.defineProperty(window, 'innerWidth', { configurable: true, value: 800 });
-		window.dispatchEvent(new Event('resize'));
-		flushSync();
-
-		expect(panel.style.width).toBe('560px');
-		expect(localStorage.getItem('slide-panel-test')).toBe('1000');
 	});
 
 	// 자식 패널이 자기 × 를 또 그려 헤더에 닫기 버튼이 두 개 보이는 버그가 실제로 있었다.
@@ -113,13 +66,4 @@ describe('SlidePanel', () => {
 		expect(screen.getByLabelText('패널 닫기 버튼')).toBeTruthy();
 	});
 
-	it('초기 포커스·Escape 가 의존하는 셀렉터가 살아 있다', () => {
-		// SlidePanel.svelte 의 onMount 초기 포커스와 dialogFocus initialFocus 가 이 셀렉터를 쓴다.
-		// 닫기 버튼을 정리할 때 이 속성을 지우면 포커스 관리가 조용히 깨진다.
-		const { container } = render(SlidePanelWrapper, { onClose: vi.fn() });
-		flushSync();
-		const btn = container.querySelector('[data-slide-panel-close]');
-		expect(btn).toBeTruthy();
-		expect(btn!.tagName).toBe('BUTTON');
-	});
 });

@@ -8,10 +8,11 @@ if TYPE_CHECKING:
     import openstack
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from openstack.exceptions import HttpException
+from pydantic import BaseModel, Field, field_validator
 
 from app.api.common.activity_recorder import rec
-from app.api.common.owner_check import assert_resource_owner
+from app.api.common.owner_check import assert_project_resource_owner, assert_resource_owner
 from app.api.deps import (
     CacheMode,
     cache_mode,
@@ -34,12 +35,15 @@ async def _assert_volume_owner(
     conn: openstack.connection.Connection,
     volume_id: str,
     token_info: dict,
+    *,
+    strict: bool = False,
 ):
     try:
         v = await asyncio.to_thread(conn.block_storage.get_volume, volume_id)
     except Exception:
         raise HTTPException(status_code=404, detail="볼륨을 찾을 수 없습니다")
-    assert_resource_owner(v, conn, token_info, not_found_detail="볼륨을 찾을 수 없습니다")
+    check_owner = assert_project_resource_owner if strict else assert_resource_owner
+    check_owner(v, conn, token_info, not_found_detail="볼륨을 찾을 수 없습니다")
 
 
 @router.get("", response_model=list[VolumeInfo])
@@ -70,6 +74,63 @@ async def get_volume(
         return await asyncio.to_thread(cinder.get_volume, conn, volume_id)
     except Exception:
         raise HTTPException(status_code=404, detail="볼륨을 찾을 수 없습니다")
+
+
+class RenameVolumeRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+
+    @field_validator("name")
+    @classmethod
+    def nonblank_name(cls, name: str) -> str:
+        name = name.strip()
+        if not name:
+            raise ValueError("볼륨 이름을 입력해 주세요")
+        return name
+
+
+@router.patch("/{volume_id}", response_model=VolumeInfo)
+async def rename_volume(
+    volume_id: str,
+    req: RenameVolumeRequest,
+    conn: openstack.connection.Connection = Depends(get_os_conn_write),
+    token_info: dict = Depends(require_project_write),
+):
+    await _assert_volume_owner(conn, volume_id, token_info, strict=True)
+    try:
+        await asyncio.to_thread(cinder.rename_volume, conn, volume_id, req.name)
+        await invalidate(f"afterglow:cinder:{conn._afterglow_project_id}:volumes:v2")
+        result = await asyncio.to_thread(cinder.get_volume, conn, volume_id)
+    except Exception as exc:
+        await rec(
+            token_info,
+            conn,
+            resource_type="volume",
+            action="volume.rename",
+            status="failed",
+            resource_id=volume_id,
+            resource_name=req.name,
+            error_message=str(exc)[:500],
+        )
+        if isinstance(exc, HttpException):
+            status = exc.status_code
+            if status == 404:
+                raise HTTPException(status_code=404, detail="볼륨을 찾을 수 없습니다") from exc
+            if status in (400, 403, 409):
+                raise HTTPException(status_code=status, detail="볼륨 이름 변경이 거부되었습니다") from exc
+            raise HTTPException(status_code=502, detail="볼륨 서비스 오류") from exc
+        logger.warning("볼륨 이름 변경 실패 (volume=%s)", volume_id, exc_info=True)
+        raise HTTPException(status_code=500, detail="볼륨 이름 변경 실패") from exc
+
+    await rec(
+        token_info,
+        conn,
+        resource_type="volume",
+        action="volume.rename",
+        status="success",
+        resource_id=volume_id,
+        resource_name=req.name,
+    )
+    return result
 
 
 @router.post("", response_model=VolumeInfo, status_code=201)

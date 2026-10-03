@@ -46,24 +46,26 @@
 				{:else if ctrl.quotas}
 					<ProjectQuotaForm
 						quotas={ctrl.quotas}
+						projectId={ctrl.selectedProjectId}
 						saving={ctrl.saving}
-						saveError={ctrl.saveError}
-						saveSuccess={ctrl.saveSuccess}
-						onSave={ctrl.saveQuotas}
-					/>
-					<GpuQuotaTable
-						rows={ctrl.gpuQuotaRows}
-						defaults={ctrl.gpuDefaultMap}
-						loading={ctrl.gpuQuotaLoading}
-						error={ctrl.gpuQuotaError}
-						hasAnyAlias={ctrl.allGpuTypes.length > 0}
-						onSetLimit={ctrl.setGpuQuota}
-						onClear={ctrl.deleteGpuQuota}
-						reconcilePreview={ctrl.reconcilePreview}
+						savingSection={ctrl.savingSection}
+						sectionErrors={ctrl.sectionErrors}
+						sectionSuccesses={ctrl.sectionSuccesses}
+						onSaveSection={ctrl.saveSectionQuotas}
 					/>
 				{:else}
 					<div class="text-ink-2 text-sm">쿼터를 불러올 수 없습니다</div>
 				{/if}
+				<GpuQuotaTable
+					rows={ctrl.gpuQuotaRows}
+					defaults={ctrl.gpuDefaultMap}
+					loading={ctrl.gpuQuotaLoading}
+					error={ctrl.gpuQuotaError}
+					hasAnyAlias={ctrl.allGpuTypes.length > 0}
+					onSetLimit={ctrl.setGpuQuota}
+					onClear={ctrl.deleteGpuQuota}
+					reconcilePreview={ctrl.reconcilePreview}
+				/>
 			{/if}
 	{/if}
 </div>

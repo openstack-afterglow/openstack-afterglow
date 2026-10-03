@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import base64
+import json
+import subprocess
 from contextlib import contextmanager
-from unittest.mock import AsyncMock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import yaml
 
+from app.models.db import LayerArtifact, LayerImportJob
+from app.services import dockerfile_import
 from app.services.dockerfile_import import (
     DockerfileImportError,
     DockerfilePlan,
@@ -169,18 +176,22 @@ def test_prepare_dockerfile_import_resolves_unique_tag_and_rejects_missing_relea
         _prepare_github(conn)
 
 
-@pytest.mark.parametrize(
-    "dockerfile",
-    [
-        "FROM cuda:12.4-runtime\nRUN true",
-        "FROM palimpsest/py@sha256:" + "a" * 64 + "\nRUN true",
-    ],
-)
-def test_prepare_dockerfile_import_rejects_unusable_from(dockerfile):
+def test_prepare_dockerfile_import_rejects_unusable_glance_from():
     conn = glance_conn(glance_image("img-22", "ubuntu:22.04", release="22.04"))
 
-    with _pinned_github(dockerfile), pytest.raises(ValueError):
+    with _pinned_github("FROM cuda:12.4-runtime\nRUN true"), pytest.raises(ValueError):
         _prepare_github(conn)
+
+
+def test_prepare_github_palimpsest_from_defers_base_to_verified_parent():
+    digest = "sha256:" + "a" * 64
+    with _pinned_github(f"FROM palimpsest/py@{digest}\nRUN true"):
+        plan = _prepare_github(glance_conn())
+
+    assert plan.parent_digest == digest
+    assert plan.parent_name == "py"
+    assert plan.base_image_snapshot == {}
+    assert [step["instruction"] for step in plan.planned_layers] == ["RUN"]
 
 
 @pytest.mark.asyncio
@@ -190,11 +201,10 @@ def test_prepare_dockerfile_import_rejects_unusable_from(dockerfile):
         "FROM cuda:12.4-runtime\nRUN true",
         "FROM jammy-staging\nRUN true",
         "FROM ubuntu:20.04\nRUN true",
+        "FROM palimpsest/py@sha256:" + "a" * 64 + "\nRUN true",
     ],
 )
-async def test_dockerfile_import_route_rejects_unusable_glance_base_as_400_without_job(
-    admin_client, mock_conn, dockerfile
-):
+async def test_dockerfile_import_route_rejects_unusable_from_as_400_without_job(admin_client, mock_conn, dockerfile):
     mock_conn.image = FakeGlance(
         glance_image("img-22", "ubuntu:22.04", release="22.04"),
         glance_image("img-staging", "jammy-staging", release="22.04", status="queued"),
@@ -207,9 +217,185 @@ async def test_dockerfile_import_route_rejects_unusable_glance_base_as_400_witho
 
     with (
         _pinned_github(dockerfile),
+        patch(
+            "app.services.dockerfile_import.resolve_parent_layer",
+            AsyncMock(side_effect=DockerfileImportError("missing sealed parent")),
+        ),
         patch("app.services.dockerfile_import.create_import_job", new_callable=AsyncMock) as mock_create,
     ):
         resp = await admin_client.post("/api/v1/admin/libraries/imports/dockerfile", json=body)
 
     assert resp.status_code == 400
     mock_create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_sealed_root_and_delta_import_launches_consumer_with_child_first_overlay():
+    artifacts = [
+        LayerArtifact(
+            id=1,
+            name="root",
+            kind="dockerfile-root",
+            parent_id=None,
+            is_sealed=True,
+            share_id="share-root",
+            sqsh_filename="root.sqsh",
+            ubuntu_base="ubuntu-24.04",
+            base_image_id="image-a",
+            blob_digest="sha256:" + "a" * 64,
+        ),
+        LayerArtifact(
+            id=2,
+            name="step",
+            kind="dockerfile",
+            parent_id=1,
+            is_sealed=True,
+            share_id="share-step",
+            sqsh_filename="step.sqsh",
+            ubuntu_base="ubuntu-24.04",
+            base_image_id="image-a",
+            blob_digest="sha256:" + "b" * 64,
+        ),
+    ]
+    snapshot = {
+        "network": {"id": "network-a"},
+        "flavor": {"id": "flavor-a"},
+        "openstack.service_project": {"id": "project-a"},
+    }
+    job = SimpleNamespace(
+        consumer_spec={
+            "server_name": "vm",
+            "flavor_id": "flavor-a",
+            "ssh_public_key": "ssh-ed25519 key",
+            "ssh_username": "ubuntu",
+            "resource_snapshot": snapshot,
+        },
+        artifact_ids=[1, 2],
+        profile_name="profile",
+        base_image_id="image-a",
+        consume_id=None,
+    )
+    consumes = []
+
+    class Session:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            pass
+
+        async def get(self, model, _id):
+            return job if model is LayerImportJob else None
+
+        async def execute(self, _statement):
+            return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: artifacts))
+
+        def add(self, row):
+            row.id = 7
+            consumes.append(row)
+
+        async def flush(self):
+            pass
+
+        async def commit(self):
+            pass
+
+    conn = MagicMock()
+    conn.image.get_image.return_value = SimpleNamespace(id="image-a", name="ubuntu-24.04", status="active")
+    conn.compute.create_server.return_value = SimpleNamespace(id="server-a")
+    updates = []
+
+    async def update(_id, **values):
+        updates.append(values)
+
+    with (
+        patch("app.services.dockerfile_import.get_session_factory", return_value=Session),
+        patch("app.database.get_session_factory", return_value=Session),
+        patch("app.services.keystone.get_admin_connection_for_project", return_value=conn),
+        patch("app.services.layer_build._update_consume_db", side_effect=update),
+        patch("app.services.layer_build.neutron.create_port", return_value={"id": "port-a", "fixed_ip": "10.0.0.5"}),
+        patch("app.services.layer_build.manila.list_access_rules", return_value=[]),
+        patch("app.services.layer_build.manila.ensure_nfs_access_rule", return_value={"access_id": "rule-a"}),
+        patch(
+            "app.services.layer_build.manila.get_export_locations", side_effect=[["10.0.0.1:/root"], ["10.0.0.2:/step"]]
+        ),
+        patch(
+            "app.services.layer_build.cinder.create_empty_volume",
+            return_value=SimpleNamespace(id="11111111-2222-3333-4444-555555555555"),
+        ),
+        patch("app.services.layer_build._wait_for_consume_health", new_callable=AsyncMock),
+        patch("app.services.layer_build.layer_consume_ssh.remove_health_key", new_callable=AsyncMock),
+        patch.object(dockerfile_import, "_update_job", new_callable=AsyncMock),
+    ):
+        await dockerfile_import._launch_import_consumer(9)
+
+    assert consumes[0].artifact_ids == [1, 2]
+    assert updates[-1]["status"] == "active"
+    user_data = yaml.safe_load(base64.b64decode(conn.compute.create_server.call_args.kwargs["user_data"]))
+    layer_manifest = next(
+        item for item in user_data["write_files"] if item["path"] == "/etc/afterglow/layers/profile.conf"
+    )
+    assert base64.b64decode(layer_manifest["content"]).decode() == (
+        "/mnt/nfs-layers/0|step.sqsh|sha256:" + "b" * 64 + "\n/mnt/nfs-layers/1|root.sqsh|sha256:" + "a" * 64 + "\n"
+    )
+
+
+@pytest.mark.parametrize("reachable", [True, False])
+def test_builder_output_mount_tries_alternates_and_fails_closed(tmp_path, capsys, reachable):
+    job = SimpleNamespace(source_type=dockerfile_import.SOURCE_INLINE, planned_layers=[])
+    script = dockerfile_import._dockerfile_cloud_init_script(
+        job, [["10.0.0.1:/missing", "10.0.0.2:/reachable"]], [], None, None, "a" * 32
+    )
+    snippet = script.split("python3 - <<'PY'\n", 1)[1].split("\nPY\n", 1)[0]
+    config = tmp_path / "exports.json"
+    config.write_text(json.dumps([["10.0.0.1:/missing", "10.0.0.2:/reachable"]]))
+    snippet = snippet.replace("/etc/afterglow/dockerfile-exports.json", str(config))
+    snippet = snippet.replace("/mnt/afterglow-import/out", str(tmp_path / "out"))
+    attempts = []
+
+    def mount(argv, **kwargs):
+        attempts.append(argv[5])
+        assert argv[4] == "rw,hard"
+        assert kwargs["timeout"] > 0
+        assert kwargs["stdout"] is subprocess.DEVNULL
+        assert kwargs["stderr"] is subprocess.DEVNULL
+        return SimpleNamespace(returncode=0 if reachable and argv[5].endswith("/reachable") else 32)
+
+    with patch.object(subprocess, "run", side_effect=mount), patch("time.sleep", return_value=None):
+        if reachable:
+            exec(compile(snippet, "<builder output mount>", "exec"), {})
+        else:
+            with pytest.raises(RuntimeError, match="output share mount failed"):
+                exec(compile(snippet, "<builder output mount>", "exec"), {})
+    assert attempts[:2] == ["10.0.0.1:/missing", "10.0.0.2:/reachable"]
+    assert len(attempts) == (2 if reachable else 24)
+    assert (tmp_path / "out/0/images").is_dir() is reachable
+    assert capsys.readouterr().err == ""
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status, early_failure, expected",
+    [
+        ("SHUTOFF", True, "status=SHUTOFF, early_failure=True"),
+        ("ERROR", False, "status=ERROR, early_failure=False"),
+        ("ERROR 10.0.0.1", False, "status=UNKNOWN, early_failure=False"),
+    ],
+)
+async def test_report_failure_identifies_observed_state_without_token(status, early_failure, expected):
+    conn = SimpleNamespace(compute=SimpleNamespace(get_server=lambda _: SimpleNamespace(status=status)))
+    with patch.object(dockerfile_import.nova, "get_console_output", return_value=""):
+        with pytest.raises(DockerfileImportError) as failure:
+            await dockerfile_import._read_dockerfile_reports(
+                conn,
+                "builder",
+                "a" * 32,
+                [{"name": "root-proof"}],
+                [["host:/out"]],
+                ["share"],
+                {},
+                False,
+                early_failure,
+            )
+    assert expected in str(failure.value)
+    assert "a" * 32 not in str(failure.value)

@@ -8,16 +8,16 @@ import hashlib
 import io
 import json
 import logging
+import posixpath
 import re
 import shlex
 import tarfile
-import textwrap
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import PurePosixPath
 from typing import Any
@@ -33,9 +33,9 @@ from app.services.layer_base_images import (
     resolve_glance_base_snapshot,
 )
 from app.services.layer_build import LAYER_BUILD_IMAGE_PACKAGES, _wait_for_shutoff
-from app.services.palimpsest_digest import parse_digest_sentinels
 from app.services.palimpsest_kvm import MAX_LAYER_DISKS
 from app.services.palimpsest_layers import load_lineage, resolve_digest_fields
+from app.services.recipe_blocks import _NFS_EXPORT_RE
 
 _logger = logging.getLogger(__name__)
 
@@ -88,6 +88,7 @@ class ParsedDockerfile:
     parent_digest: str | None
     from_line: int | None
     planned_layers: list[dict]
+    parent_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -106,6 +107,8 @@ class DockerfilePlan:
     dockerfile_text: str | None = None
     dockerfile_digest: str | None = None
     parent_digest: str | None = None
+    parent_name: str | None = None
+
     # 빌드 캐시로 재사용하는 접두부 artifact id (루트→리프 순).
     # 이 단계들은 `planned_layers` 에서 빠져 있어 빌더 VM 이 다시 만들지 않는다.
     cached_artifact_ids: list[int] = field(default_factory=list)
@@ -214,14 +217,23 @@ def fetch_pinned_dockerfile(repo: GitHubRepo, commit_sha: str, dockerfile_path: 
 def validate_archive_bytes(blob: bytes) -> None:
     if len(blob) > _MAX_ARCHIVE_BYTES:
         raise DockerfileImportError("GitHub archive 크기는 50MiB 이하여야 합니다")
-    with tarfile.open(fileobj=io.BytesIO(blob), mode="r:gz") as archive:
-        members = archive.getmembers()
-        if len(members) > _MAX_ARCHIVE_FILES:
-            raise DockerfileImportError("GitHub archive 파일 수는 5000개 이하여야 합니다")
-        for member in members:
-            parts = PurePosixPath(member.name).parts
-            if ".." in parts or member.name.startswith("/"):
-                raise DockerfileImportError("archive에 안전하지 않은 경로가 있습니다")
+    try:
+        with tarfile.open(fileobj=io.BytesIO(blob), mode="r|gz") as archive:
+            unpacked_bytes = 0
+            for index, member in enumerate(archive, start=1):
+                if index > _MAX_ARCHIVE_FILES:
+                    raise DockerfileImportError("GitHub archive 파일 수는 5000개 이하여야 합니다")
+                parts = PurePosixPath(member.name).parts
+                if ".." in parts or member.name.startswith("/"):
+                    raise DockerfileImportError("archive에 안전하지 않은 경로가 있습니다")
+                if not (member.isfile() or member.isdir()):
+                    raise DockerfileImportError("archive에는 일반 파일과 디렉터리만 허용됩니다")
+                if member.isfile():
+                    unpacked_bytes += member.size
+                    if unpacked_bytes > 512 * 1024 * 1024:
+                        raise DockerfileImportError("압축 해제된 GitHub archive는 512MiB 이하여야 합니다")
+    except (tarfile.TarError, EOFError, OSError) as exc:
+        raise DockerfileImportError("GitHub archive 형식이 손상되었거나 유효하지 않습니다") from exc
 
 
 def fetch_pinned_archive(repo: GitHubRepo, commit_sha: str) -> bytes:
@@ -276,7 +288,7 @@ def _validate_container_path(path: str, line: int, *, dest: bool = False) -> str
     return value
 
 
-def _parse_copy_add(instruction: str, args: str, line: int) -> dict:
+def _parse_copy_add(instruction: str, args: str, line: int, workdir: str = "/") -> dict:
     try:
         parts = shlex.split(args)
     except ValueError as exc:
@@ -286,14 +298,17 @@ def _parse_copy_add(instruction: str, args: str, line: int) -> dict:
     if any(part.startswith("--") for part in parts):
         raise _line_error(line, f"{instruction} flags는 지원하지 않습니다")
     sources = parts[:-1]
-    dest = _validate_container_path(parts[-1], line, dest=True)
+    raw_dest = _validate_container_path(parts[-1], line, dest=True)
+    dest = posixpath.normpath(posixpath.join(workdir, raw_dest))
+    if raw_dest.endswith("/") or raw_dest in {".", "./"}:
+        dest += "/"
     for src in sources:
         if src.startswith(("http://", "https://")):
             raise _line_error(line, f"{instruction} remote URL은 지원하지 않습니다")
         if instruction == "ADD" and src.lower().endswith(_ARCHIVE_EXTENSIONS):
             raise _line_error(line, "ADD archive 자동 추출은 지원하지 않습니다")
         _validate_container_path(src, line)
-    return {"sources": sources, "dest": dest}
+    return {"sources": sources, "dest": dest, "raw_dest": raw_dest}
 
 
 def _parse_env(args: str, line: int) -> dict:
@@ -338,18 +353,21 @@ def _parse_dockerfile_with_diagnostics(
     commit_sha: str | None,
     dockerfile_path: str | None,
     allow_build_context: bool,
+    initial_env: dict[str, str] | None = None,
+    initial_workdir: str = "/",
 ) -> tuple[ParsedDockerfile | None, list[DockerfileImportError]]:
     """Parse once for lint and build; recover after independent instruction errors."""
     prefix = validate_layer_name(layer_prefix, field="layer_prefix")
     validate_layer_name(profile_name or layer_prefix, field="profile_name")
     from_ref: str | None = None
     parent_digest: str | None = None
+    parent_name: str | None = None
     from_line: int | None = None
     seen_from = False
     planned: list[dict] = []
     diagnostics: list[DockerfileImportError] = []
-    env: dict[str, str] = {}
-    workdir = "/"
+    env: dict[str, str] = dict(initial_env or {})
+    workdir = posixpath.normpath(initial_workdir) if initial_workdir and initial_workdir.startswith("/") else "/"
     try:
         lines = _logical_lines(text)
     except DockerfileImportError as exc:
@@ -375,6 +393,7 @@ def _parse_dockerfile_with_diagnostics(
                 palimpsest_match = _PALIMPSEST_FROM_RE.match(args)
                 if palimpsest_match:
                     parent_digest = palimpsest_match.group(2)
+                    parent_name = palimpsest_match.group(1)
                 elif args.startswith("palimpsest/"):
                     raise _line_error(line, "FROM palimpsest 레이어 참조 형식이 유효하지 않습니다")
                 elif FROM_REF_RE.fullmatch(args):
@@ -384,6 +403,7 @@ def _parse_dockerfile_with_diagnostics(
                         line,
                         "FROM은 Ubuntu tag, Glance 이미지 이름/UUID 또는 palimpsest/<name>@sha256:<64hex>여야 합니다",
                     )
+
                 continue
             if not seen_from:
                 raise _line_error(line, "첫 instruction은 FROM이어야 합니다")
@@ -404,14 +424,15 @@ def _parse_dockerfile_with_diagnostics(
                         line,
                         f"{instruction}은 업로드한 Dockerfile에서 지원하지 않습니다 — 빌드 컨텍스트가 없습니다. GitHub 소스를 사용하세요",
                     )
-                payload = _parse_copy_add(instruction, args, line)
+                payload = _parse_copy_add(instruction, args, line, workdir)
             elif instruction == "ENV":
                 updates = _parse_env(args, line)
                 env.update(updates)
-                payload = {"env": updates, "full_env": dict(env)}
+                payload = {"env": updates, "full_env": dict(env), "workdir": workdir}
             elif instruction == "WORKDIR":
-                workdir = _validate_container_path(args, line, dest=True)
-                payload = {"workdir": workdir}
+                raw_workdir = _validate_container_path(args, line, dest=True)
+                workdir = posixpath.normpath(posixpath.join(workdir, raw_workdir))
+                payload = {"workdir": workdir, "raw_workdir": raw_workdir, "full_env": dict(env)}
             elif instruction in _UNSUPPORTED:
                 raise _line_error(line, f"{instruction}은 v1 Dockerfile import에서 지원하지 않습니다")
             else:
@@ -431,6 +452,9 @@ def _parse_dockerfile_with_diagnostics(
                     "source_metadata": {
                         "dockerfile_line": line,
                         "dockerfile_instruction": instruction,
+                        "dockerfile_args": args,
+                        "dockerfile_env": dict(env),
+                        "dockerfile_workdir": workdir,
                         "commit_sha": commit_sha,
                         "dockerfile_path": dockerfile_path,
                     },
@@ -449,7 +473,11 @@ def _parse_dockerfile_with_diagnostics(
             DockerfileImportError("Dockerfile에는 layer로 변환할 RUN/COPY/ADD/ENV/WORKDIR instruction이 필요합니다")
         )
     parsed = ParsedDockerfile(
-        from_ref=from_ref, parent_digest=parent_digest, from_line=from_line, planned_layers=planned
+        from_ref=from_ref,
+        parent_digest=parent_digest,
+        from_line=from_line,
+        planned_layers=planned,
+        parent_name=parent_name,
     )
     return parsed, diagnostics
 
@@ -463,6 +491,8 @@ def parse_dockerfile_source(
     dockerfile_path: str | None,
     allow_build_context: bool = True,
     diagnostics: list[dict] | None = None,
+    initial_env: dict[str, str] | None = None,
+    initial_workdir: str = "/",
 ) -> ParsedDockerfile:
     """Parse a build using the same syntax diagnostics as the editor lint."""
     parsed, errors = _parse_dockerfile_with_diagnostics(
@@ -472,6 +502,8 @@ def parse_dockerfile_source(
         commit_sha=commit_sha,
         dockerfile_path=dockerfile_path,
         allow_build_context=allow_build_context,
+        initial_env=initial_env,
+        initial_workdir=initial_workdir,
     )
     if diagnostics is not None:
         diagnostics.extend({"line": exc.line, "message": exc.detail} for exc in errors)
@@ -496,16 +528,13 @@ def resolve_dockerfile_base_image(conn: Any, parsed: ParsedDockerfile) -> dict:
 
 
 def compute_step_digest(parent_ref: str, instruction: str, args: str) -> str:
-    """빌드 캐시 키 — 같은 부모 위의 같은 명령이면 같은 값.
+    """Bind a normalized instruction to its actual parent chain and executor format.
 
-    `parent_ref` 는 부모 레이어의 `chain_id` 또는 루트 Glance image ID다.
-    Docker 의 레이어 캐시와 같은 개념이고, Palimpsest 의 chain_id 가 "여기까지의 스택"을
-    한 값으로 대표해 주기 때문에 성립한다.
-
-    instruction/args 는 공백만 정규화한다 — 셸 명령의 의미를 바꾸지 않기 위해 그 이상은 손대지 않는다.
+    The executor format changes when emitted guest bytes change: older sealed
+    artifacts remain valid but cannot be mistaken for new cache results.
     """
     normalized = f"{instruction.upper()} {' '.join(args.split())}"
-    payload = f"{parent_ref}\n{normalized}".encode()
+    payload = f"dockerfile-full-root-v2\n{parent_ref}\n{normalized}".encode()
     return "sha256:" + hashlib.sha256(payload).hexdigest()
 
 
@@ -558,7 +587,7 @@ async def lint_dockerfile(conn: Any, *, dockerfile_text: str, layer_prefix: str 
     if parsed.parent_digest:
         from_info["kind"] = "palimpsest"
         try:
-            parent = await resolve_parent_layer(parsed.parent_digest)
+            parent = await resolve_parent_layer(parsed.parent_digest, name=parsed.parent_name)
             _snapshot_from_artifact(parent)
             inherited = await parent_chain_depth(parent)
             from_info["parent"] = {
@@ -635,9 +664,7 @@ def prepare_dockerfile_import(
         commit_sha=sha,
         dockerfile_path=path,
     )
-    if parsed.parent_digest:
-        raise _line_error(parsed.from_line, "GitHub import에서는 Palimpsest 부모 FROM을 지원하지 않습니다")
-    base_snapshot = resolve_dockerfile_base_image(conn, parsed)
+    base_snapshot = {} if parsed.parent_digest else resolve_dockerfile_base_image(conn, parsed)
     return DockerfilePlan(
         github_url=repo.canonical_url,
         repo_owner=repo.owner,
@@ -648,7 +675,114 @@ def prepare_dockerfile_import(
         profile_name=profile,
         base_image_snapshot=base_snapshot,
         planned_layers=parsed.planned_layers,
+        parent_digest=parsed.parent_digest,
+        parent_name=parsed.parent_name,
+        dockerfile_digest="sha256:" + hashlib.sha256(dockerfile.encode("utf-8")).hexdigest(),
     )
+
+
+async def _recover_lineage_state(root: Any) -> tuple[dict[str, str], str, list[int]]:
+    """Recover cumulative ENV and WORKDIR across a sealed parent lineage (root-first)."""
+    if root is None:
+        return {}, "/", []
+    lineage = [root]
+    if isinstance(getattr(root, "parent_id", None), int) and (factory := get_session_factory()) is not None:
+        async with factory() as session:
+            lineage = await load_lineage(session, root)
+    env: dict[str, str] = {}
+    workdir = "/"
+    lineage_ids: list[int] = []
+    for row in reversed(lineage):
+        row_id = getattr(row, "id", None)
+        if isinstance(row_id, int):
+            lineage_ids.append(row_id)
+        meta = getattr(row, "source_metadata", None)
+        if not isinstance(meta, dict):
+            meta = {}
+        if isinstance(meta.get("dockerfile_env"), dict):
+            env.update({str(k): str(v) for k, v in meta["dockerfile_env"].items()})
+        elif isinstance(meta.get("full_env"), dict):
+            env.update({str(k): str(v) for k, v in meta["full_env"].items()})
+        elif isinstance(meta.get("env"), dict):
+            env.update({str(k): str(v) for k, v in meta["env"].items()})
+        elif meta.get("dockerfile_instruction") == "ENV" and isinstance(meta.get("dockerfile_args"), str):
+            env.update(_parse_env(meta["dockerfile_args"], int(meta.get("dockerfile_line") or 1)))
+        if isinstance(meta.get("dockerfile_workdir"), str) and meta["dockerfile_workdir"].strip():
+            workdir = posixpath.normpath(meta["dockerfile_workdir"].strip())
+        elif isinstance(meta.get("workdir"), str) and meta["workdir"].strip():
+            workdir = posixpath.normpath(meta["workdir"].strip())
+        elif meta.get("dockerfile_instruction") == "WORKDIR" and isinstance(meta.get("dockerfile_args"), str):
+            workdir = posixpath.normpath(posixpath.join(workdir, meta["dockerfile_args"].strip()))
+    if not lineage_ids and getattr(root, "id", None) is not None:
+        lineage_ids = [root.id]
+    return env, workdir, lineage_ids
+
+
+def _apply_inherited_state(
+    planned_layers: list[dict], *, initial_env: dict[str, str], initial_workdir: str
+) -> list[dict]:
+    env = dict(initial_env)
+    workdir = posixpath.normpath(initial_workdir) if initial_workdir and initial_workdir.startswith("/") else "/"
+    resolved: list[dict] = []
+    for raw_step in planned_layers:
+        step = dict(raw_step)
+        instr = step["instruction"]
+        payload = dict(step.get("payload") or {})
+        if instr == "ENV":
+            updates = dict(payload.get("env") or _parse_env(step["args"], int(step.get("line") or 1)))
+            env.update(updates)
+            payload = {"env": updates, "full_env": dict(env), "workdir": workdir}
+        elif instr == "WORKDIR":
+            raw_wd = payload.get("raw_workdir") or step["args"].strip()
+            workdir = posixpath.normpath(posixpath.join(workdir, raw_wd))
+            payload = {"workdir": workdir, "raw_workdir": raw_wd, "full_env": dict(env)}
+        elif instr == "RUN":
+            payload = {"command": payload.get("command", step["args"]), "env": dict(env), "workdir": workdir}
+        elif instr in {"COPY", "ADD"}:
+            raw_dest = payload.get("raw_dest")
+            if raw_dest:
+                dest = posixpath.normpath(posixpath.join(workdir, raw_dest))
+                if raw_dest.endswith("/") or raw_dest in {".", "./"}:
+                    dest += "/"
+                payload["dest"] = dest
+            payload["workdir"] = workdir
+            payload["full_env"] = dict(env)
+        step["payload"] = payload
+        step["source_metadata"] = {
+            **(step.get("source_metadata") or {}),
+            "dockerfile_args": step["args"],
+            "dockerfile_env": dict(env),
+            "dockerfile_workdir": workdir,
+        }
+        resolved.append(step)
+    return resolved
+
+
+async def finalize_dockerfile_plan(plan: DockerfilePlan, *, parent: LayerArtifact | None = None) -> DockerfilePlan:
+    """Both source types share the same sealed-root lineage and cache lookup."""
+    if parent is None and plan.parent_digest:
+        parent = await resolve_parent_layer(plan.parent_digest, name=plan.parent_name)
+    root = parent or await find_cached_root(plan.base_image_snapshot)
+    inherited_env, inherited_workdir, root_lineage_ids = await _recover_lineage_state(root)
+    resolved_layers = _apply_inherited_state(
+        plan.planned_layers, initial_env=inherited_env, initial_workdir=inherited_workdir
+    )
+    resolved_by_name = {step["name"]: step for step in resolved_layers}
+    annotated = await apply_build_cache(resolved_layers, root_ref=root.chain_id if root else None)
+    cached_ids, planned = split_cached_prefix(annotated)
+    if root_lineage_ids:
+        cached_ids = root_lineage_ids + cached_ids
+    for step in planned:
+        fallback = resolved_by_name.get(step.get("name"), {})
+        if not step.get("payload") and fallback.get("payload"):
+            step["payload"] = dict(fallback["payload"])
+        step["source_metadata"] = {
+            **(fallback.get("source_metadata") or {}),
+            **(step.get("source_metadata") or {}),
+            "dockerfile_digest": plan.dockerfile_digest,
+            "source_type": plan.source_type,
+        }
+    return replace(plan, planned_layers=planned, cached_artifact_ids=cached_ids)
 
 
 async def prepare_inline_dockerfile_import(
@@ -682,47 +816,29 @@ async def prepare_inline_dockerfile_import(
 
     parent = None
     if parsed.parent_digest:
-        parent = await resolve_parent_layer(parsed.parent_digest)
+        parent = await resolve_parent_layer(parsed.parent_digest, name=parsed.parent_name)
         base_snapshot = _snapshot_from_artifact(parent)
-        root_ref = parent.chain_id or parsed.parent_digest
     else:
         base_snapshot = await asyncio.to_thread(resolve_dockerfile_base_image, conn, parsed)
-        root_ref = f"glance:{base_snapshot['base_image_id']}"
-
-    annotated = await apply_build_cache(parsed.planned_layers, root_ref=root_ref)
-    cached_ids, planned = split_cached_prefix(annotated)
-
-    # `FROM palimpsest/…` 의 부모도 재사용 접두부의 일부다 — 빌드 루프가 여기서 이어 쌓는다.
-    if parent:
-        cached_ids = [parent.id, *cached_ids]
-    if not planned:
-        raise DockerfileImportError(
-            "모든 단계가 이미 빌드되어 있습니다 — 새로 만들 레이어가 없습니다. 기존 프로파일을 그대로 사용하세요"
-        )
-
     digest = "sha256:" + hashlib.sha256(raw).hexdigest()
-    for step in planned:
-        step["source_metadata"] = {
-            **(step.get("source_metadata") or {}),
-            "dockerfile_digest": digest,
-            "source_type": SOURCE_INLINE,
-        }
-
-    return DockerfilePlan(
-        github_url=None,
-        repo_owner=None,
-        repo_name=None,
-        commit_sha=None,
-        dockerfile_path=None,
-        layer_prefix=prefix,
-        profile_name=profile,
-        base_image_snapshot=base_snapshot,
-        planned_layers=planned,
-        source_type=SOURCE_INLINE,
-        dockerfile_text=dockerfile_text,
-        dockerfile_digest=digest,
-        parent_digest=parsed.parent_digest,
-        cached_artifact_ids=cached_ids,
+    return await finalize_dockerfile_plan(
+        DockerfilePlan(
+            github_url=None,
+            repo_owner=None,
+            repo_name=None,
+            commit_sha=None,
+            dockerfile_path=None,
+            layer_prefix=prefix,
+            profile_name=profile,
+            base_image_snapshot=base_snapshot,
+            planned_layers=parsed.planned_layers,
+            dockerfile_text=dockerfile_text,
+            dockerfile_digest=digest,
+            parent_digest=parsed.parent_digest,
+            parent_name=parsed.parent_name,
+            source_type=SOURCE_INLINE,
+        ),
+        parent=parent,
     )
 
 
@@ -760,40 +876,76 @@ def _snapshot_from_artifact(artifact) -> dict:
     }
 
 
-async def resolve_parent_layer(parent_digest: str) -> Any:
-    """`FROM palimpsest/<name>@sha256:…` 이 가리키는 sealed artifact 를 찾는다."""
-    from sqlalchemy import select
+async def _rooted_lineage(session, artifact: LayerArtifact, base_image_id: str | None = None) -> list[LayerArtifact]:
+    """Only sealed and digested full-root chains are safe Dockerfile cache inputs."""
+    lineage = await load_lineage(session, artifact)
+    if not lineage or lineage[-1].kind != "dockerfile-root" or lineage[-1].parent_id is not None:
+        return []
+    image_id = base_image_id or artifact.base_image_id
+    if not image_id or any(
+        row.base_image_id != image_id
+        or not row.is_sealed
+        or row.digest_state != "ready"
+        or not row.blob_digest
+        or not row.chain_id
+        or not row.share_id
+        or not row.sqsh_filename
+        for row in lineage
+    ):
+        return []
+    if any(row.kind != "dockerfile" for row in lineage[:-1]):
+        return []
+    return lineage
 
-    from app.models.db import LayerArtifact
+
+async def find_cached_root(base_snapshot: dict) -> LayerArtifact | None:
+    from sqlalchemy import select
 
     factory = get_session_factory()
     if factory is None:
         raise DockerfileImportError("DB가 초기화되지 않았습니다")
     async with factory() as session:
-        row = (
+        candidates = (
             await session.execute(
                 select(LayerArtifact)
-                .where(LayerArtifact.blob_digest == parent_digest)
+                .where(LayerArtifact.kind == "dockerfile-root")
+                .where(LayerArtifact.base_image_id == base_snapshot["base_image_id"])
                 .where(LayerArtifact.is_sealed.is_(True))
                 .order_by(LayerArtifact.id.desc())
-                .limit(1)
+                .limit(10)
             )
-        ).scalar_one_or_none()
-    if row is None:
-        raise DockerfileImportError(
-            f"FROM 이 가리키는 레이어를 찾을 수 없습니다: {parent_digest} "
-            "(digest 백필이 끝나지 않았거나 봉인되지 않은 레이어일 수 있습니다)"
-        )
-    return row
+        ).scalars()
+        for row in candidates:
+            if (
+                row.base_image_checksum == base_snapshot.get("base_image_checksum")
+                and row.base_image_os_hash_algo == base_snapshot.get("base_image_os_hash_algo")
+                and row.base_image_os_hash_value == base_snapshot.get("base_image_os_hash_value")
+                and await _rooted_lineage(session, row, base_snapshot["base_image_id"])
+            ):
+                return row
+    return None
 
 
-async def apply_build_cache(planned: list[dict], *, root_ref: str) -> list[dict]:
-    """각 단계에 `step_digest` 를 붙이고, 이미 있는 sealed artifact 는 재사용으로 표시한다.
+async def resolve_parent_layer(parent_digest: str, *, name: str | None = None) -> LayerArtifact:
+    """Resolve an exact named, sealed parent with a complete full-root lineage."""
+    from sqlalchemy import select
 
-    `root_ref` 는 체인의 시작점 — ubuntu base 키(루트 빌드) 또는 부모 레이어의 chain_id 다.
-    한 단계가 캐시에 맞으면 그 artifact 의 chain_id 가 다음 단계의 부모 참조가 된다.
-    **캐시가 끊기면 그 뒤는 전부 새로 빌드한다** — 중간을 건너뛰면 스택이 달라지기 때문이다.
-    """
+    factory = get_session_factory()
+    if factory is None:
+        raise DockerfileImportError("DB가 초기화되지 않았습니다")
+    async with factory() as session:
+        query = select(LayerArtifact).where(LayerArtifact.blob_digest == parent_digest)
+        if name is not None:
+            query = query.where(LayerArtifact.name == name)
+        candidates = (await session.execute(query.order_by(LayerArtifact.id.desc()))).scalars()
+        for row in candidates:
+            if await _rooted_lineage(session, row):
+                return row
+    raise DockerfileImportError(f"FROM 레이어 {name or ''}@{parent_digest}의 봉인된 전체 루트 계보를 찾을 수 없습니다")
+
+
+async def apply_build_cache(planned: list[dict], *, root_ref: str | None) -> list[dict]:
+    """Reuse only a contiguous prefix in a verified full-root chain."""
     from sqlalchemy import select
 
     from app.models.db import LayerArtifact
@@ -807,9 +959,12 @@ async def apply_build_cache(planned: list[dict], *, root_ref: str) -> list[dict]
     cache_live = True
     async with factory() as session:
         for step in planned:
-            step_digest = compute_step_digest(parent_ref, step["instruction"], step["args"])
+            args_for_key = step["args"]
+            if step["instruction"] in {"COPY", "ADD"}:
+                args_for_key += "\ncommit:" + (step.get("source_metadata") or {}).get("commit_sha", "")
+            step_digest = compute_step_digest(parent_ref, step["instruction"], args_for_key) if parent_ref else None
             entry = dict(step, step_digest=step_digest, cached=False, reuse_artifact_id=None)
-            if cache_live:
+            if cache_live and step_digest:
                 hit = (
                     await session.execute(
                         select(LayerArtifact)
@@ -819,16 +974,16 @@ async def apply_build_cache(planned: list[dict], *, root_ref: str) -> list[dict]
                         .limit(1)
                     )
                 ).scalar_one_or_none()
-                if hit is not None and hit.chain_id:
+                expected_base_id = None
+                if hit is not None and await _rooted_lineage(session, hit, expected_base_id):
                     entry["cached"] = True
                     entry["reuse_artifact_id"] = hit.id
                     parent_ref = hit.chain_id
                     annotated.append(entry)
                     continue
                 cache_live = False
-            # 캐시 미스 이후로는 부모 참조를 알 수 없다(아직 빌드 전) — step_digest 만 기록해 두고
-            # 실제 값은 빌드 후 artifact 에 저장된다.
-            parent_ref = step_digest
+            # Until the new parent's content digest exists the next cache key is unknown.
+            parent_ref = None
             annotated.append(entry)
     return annotated
 
@@ -845,10 +1000,11 @@ def _base_fields(snapshot: dict) -> dict:
     }
 
 
-def _job_to_dict(job: LayerImportJob) -> dict:
+def _job_to_dict(job: LayerImportJob, consumer_status: str | None = None) -> dict:
     return {
         "id": job.id,
         "source_type": job.source_type,
+        "dockerfile_digest": job.dockerfile_digest,
         "status": job.status,
         "progress_step": job.progress_step,
         "progress_pct": job.progress_pct,
@@ -870,13 +1026,44 @@ def _job_to_dict(job: LayerImportJob) -> dict:
         "resource_snapshot": job.resource_snapshot,
         "artifact_ids": job.artifact_ids or [],
         "build_ids": job.build_ids or [],
+        "consumer_requested": job.consumer_spec is not None,
+        "consumer_spec": (
+            {
+                "server_name": job.consumer_spec["server_name"],
+                "flavor_id": job.consumer_spec["flavor_id"],
+                "network_id": job.consumer_spec["resource_snapshot"]["network"]["id"],
+                "ssh_username": job.consumer_spec["ssh_username"],
+            }
+            if job.consumer_spec
+            else None
+        ),
+        "consume_id": job.consume_id,
+        "consumer_status": consumer_status
+        or (
+            "active"
+            if job.consumer_spec and job.status == "complete"
+            else "error"
+            if job.consumer_spec and job.status == "error"
+            else "creating"
+            if job.consumer_spec and job.consume_id
+            else "queued"
+            if job.consumer_spec
+            else None
+        ),
         "created_at": job.created_at.isoformat() if job.created_at else None,
         "updated_at": job.updated_at.isoformat() if job.updated_at else None,
         "completed_at": job.completed_at.isoformat() if job.completed_at else None,
     }
 
 
-async def create_import_job(plan: DockerfilePlan) -> dict:
+async def create_import_job(plan: DockerfilePlan, *, consumer_spec: dict | None = None) -> dict:
+    if plan.source_type == SOURCE_GITHUB:
+        if plan.parent_digest:
+            parent = await resolve_parent_layer(plan.parent_digest, name=plan.parent_name)
+            plan = replace(plan, base_image_snapshot=_snapshot_from_artifact(parent))
+            plan = await finalize_dockerfile_plan(plan, parent=parent)
+        else:
+            plan = await finalize_dockerfile_plan(plan)
     factory = get_session_factory()
     if factory is None:
         raise DockerfileImportError("DB가 초기화되지 않았습니다")
@@ -886,31 +1073,34 @@ async def create_import_job(plan: DockerfilePlan) -> dict:
         resolve_policy_snapshot,
     )
 
-    service_conn = await get_service_project_connection()
-    try:
-        policies = await resolve_policy_snapshot(
-            conn=service_conn,
-            keys=("builder.flavor", "builder.network", "manila.share_network", "manila.nfs_share_type"),
-        )
-        service_project = (await get_policy_snapshot(("openstack.service_project",)))["openstack.service_project"]
-        if service_project is None:
-            raise DockerfileImportError("service project policy is not configured")
-    finally:
-        await asyncio.to_thread(service_conn.close)
-    resource_snapshot = {
-        "openstack.service_project": service_project,
-        "base_image": {
-            "id": plan.base_image_snapshot["base_image_id"],
-            "name": plan.base_image_snapshot["base_image_name"],
-        },
-        **policies,
-        "manila": {
-            "share_network_id": policies["manila.share_network"]["id"],
-            "share_type": policies["manila.nfs_share_type"]["name"],
-            "share_proto": "NFS",
-            "share_size_gb": get_settings().builder_layer_share_size_gb,
-        },
-    }
+    if not plan.planned_layers and plan.cached_artifact_ids:
+        resource_snapshot = {"base_image": {"id": plan.base_image_snapshot["base_image_id"]}}
+    else:
+        service_conn = await get_service_project_connection()
+        try:
+            policies = await resolve_policy_snapshot(
+                conn=service_conn,
+                keys=("builder.flavor", "builder.network", "manila.share_network", "manila.nfs_share_type"),
+            )
+            service_project = (await get_policy_snapshot(("openstack.service_project",)))["openstack.service_project"]
+            if service_project is None:
+                raise DockerfileImportError("service project policy is not configured")
+        finally:
+            await asyncio.to_thread(service_conn.close)
+        resource_snapshot = {
+            "openstack.service_project": service_project,
+            "base_image": {
+                "id": plan.base_image_snapshot["base_image_id"],
+                "name": plan.base_image_snapshot["base_image_name"],
+            },
+            **policies,
+            "manila": {
+                "share_network_id": policies["manila.share_network"]["id"],
+                "share_type": policies["manila.nfs_share_type"]["name"],
+                "share_proto": "NFS",
+                "share_size_gb": get_settings().builder_layer_share_size_gb,
+            },
+        }
     async with factory() as session:
         job = LayerImportJob(
             source_type=plan.source_type,
@@ -926,12 +1116,14 @@ async def create_import_job(plan: DockerfilePlan) -> dict:
             dockerfile_digest=plan.dockerfile_digest,
             parent_digest=plan.parent_digest,
             layer_prefix=plan.layer_prefix,
+            **_base_fields(plan.base_image_snapshot),
             profile_name=plan.profile_name,
             planned_layers=plan.planned_layers,
             # 캐시 재사용분을 미리 채워 둔다 — 빌드 루프가 여기서 이어 쌓는다.
             artifact_ids=list(plan.cached_artifact_ids),
             build_ids=[],
             resource_snapshot=resource_snapshot,
+            consumer_spec=consumer_spec,
         )
         session.add(job)
         await session.commit()
@@ -943,6 +1135,8 @@ async def create_import_job(plan: DockerfilePlan) -> dict:
 
 async def list_import_jobs(limit: int = 50) -> list[dict]:
     from sqlalchemy import desc, select
+
+    from app.models.db import LayerConsume
 
     factory = get_session_factory()
     if factory is None:
@@ -957,16 +1151,26 @@ async def list_import_jobs(limit: int = 50) -> list[dict]:
             .scalars()
             .all()
         )
-        return [_job_to_dict(row) for row in rows]
+        consume_ids = [row.consume_id for row in rows if row.consume_id]
+        statuses = {}
+        if consume_ids:
+            consumes = (await session.execute(select(LayerConsume).where(LayerConsume.id.in_(consume_ids)))).scalars()
+            statuses = {row.id: row.status for row in consumes}
+        return [_job_to_dict(row, statuses.get(row.consume_id)) for row in rows]
 
 
 async def get_import_job(import_id: int) -> dict | None:
+    from app.models.db import LayerConsume
+
     factory = get_session_factory()
     if factory is None:
         raise DockerfileImportError("DB가 초기화되지 않았습니다")
     async with factory() as session:
         row = await session.get(LayerImportJob, import_id)
-        return _job_to_dict(row) if row else None
+        if row is None:
+            return None
+        consumer = await session.get(LayerConsume, row.consume_id) if row.consume_id else None
+        return _job_to_dict(row, consumer.status if consumer else None)
 
 
 async def _update_job(job_id: int, **fields) -> None:
@@ -985,163 +1189,103 @@ async def _update_job(job_id: int, **fields) -> None:
         await session.commit()
 
 
-def _shell_export_env(env: dict[str, str]) -> str:
-    return " ".join(f"{key}={shlex.quote(str(value))}" for key, value in sorted(env.items()))
-
-
-def _dockerfile_cloud_init_script(job: LayerImportJob, exports: list[str], token: str) -> str:
-    """Render the one-VM sequential OverlayFS Dockerfile executor.
-
-    The builder downloads the pinned GitHub archive, extracts the context, mounts
-    every per-step output share, executes each supported instruction against an
-    overlay workspace, squashes only the upper delta to that step's share, then
-    mounts the new squashfs as the top lowerdir for subsequent steps.
-    """
-    archive_url = f"https://codeload.github.com/{job.repo_owner}/{job.repo_name}/tar.gz/{job.commit_sha}"
+def _dockerfile_cloud_init_script(
+    job: LayerImportJob,
+    exports: list[list[str]],
+    ancestors: list[dict],
+    root_name: str | None,
+    base_volume_id: str | None,
+    token: str,
+) -> str:
+    """Execute identical plans from inline text or a commit-pinned GitHub context."""
     plan_json = shlex.quote(json.dumps(job.planned_layers or [], ensure_ascii=False))
+    config_json = shlex.quote(
+        json.dumps(
+            {
+                "ancestors": ancestors,
+                "root_name": root_name,
+                "base_volume_id": base_volume_id,
+                "context": "/tmp/afterglow-context" if job.source_type == SOURCE_GITHUB else None,
+            },
+            ensure_ascii=False,
+        )
+    )
     exports_json = shlex.quote(json.dumps(exports, ensure_ascii=False))
-    archive_url_q = shlex.quote(archive_url)
-    dockerfile_path_q = shlex.quote(job.dockerfile_path)
-    return textwrap.dedent(
-        f"""
-        set -euo pipefail
-        export AFTERGLOW_BUILD_TOKEN={shlex.quote(token)}
-        install -d /etc/afterglow /etc/profile.d /mnt/afterglow-import /run/afterglow-dockerfile
-        printf '%s' {plan_json} > /etc/afterglow/dockerfile-plan.json
-        printf '%s' {exports_json} > /etc/afterglow/dockerfile-exports.json
-        curl -fsSL --proto '=https' --tlsv1.2 {archive_url_q} -o /tmp/afterglow-repo.tar.gz
-        mkdir -p /tmp/afterglow-context
-        tar -xzf /tmp/afterglow-repo.tar.gz -C /tmp/afterglow-context --strip-components=1
-        test -f /tmp/afterglow-context/{dockerfile_path_q}
-        python3 - <<'PY'
-        import json, os
-        exports = json.load(open('/etc/afterglow/dockerfile-exports.json'))
-        for idx, export in enumerate(exports):
-            mount = f'/mnt/afterglow-import/out/{{idx}}'
-            os.makedirs(mount, exist_ok=True)
-            with open('/etc/fstab', 'a') as fh:
-                fh.write(f'{{export}} {{mount}} nfs4 rw,nofail,_netdev,x-systemd.automount 0 0\\n')
-        PY
-        python3 - <<'PY'
-        import json, subprocess
-        exports = json.load(open('/etc/afterglow/dockerfile-exports.json'))
-        for idx, _ in enumerate(exports):
-            mount = f'/mnt/afterglow-import/out/{{idx}}'
-            subprocess.check_call(['mount', mount])
-            subprocess.check_call(['mkdir', '-p', f'{{mount}}/images'])
-        PY
-        cat > /usr/local/bin/afterglow-dockerfile-step.py <<'PY'
-        import json, os, shlex, shutil, subprocess, sys
-        from pathlib import Path
+    acquire = ""
+    if job.source_type == SOURCE_GITHUB:
+        if not all((job.repo_owner, job.repo_name, job.commit_sha, job.dockerfile_path)):
+            raise DockerfileImportError("GitHub import source snapshot is incomplete")
+        repo = parse_github_url(job.github_url)
+        if repo.owner != job.repo_owner or repo.repo != job.repo_name or not _SHA_RE.fullmatch(job.commit_sha):
+            raise DockerfileImportError("GitHub import source snapshot is inconsistent")
+        archive = shlex.quote(f"https://codeload.github.com/{repo.owner}/{repo.repo}/tar.gz/{job.commit_sha}")
+        path = shlex.quote(validate_dockerfile_path(job.dockerfile_path))
+        acquire = (
+            f"curl -fsSL --proto '=https' --tlsv1.2 {archive} -o /tmp/afterglow-repo.tar.gz\n"
+            "mkdir -p /tmp/afterglow-context\n"
+            "tar -xzf /tmp/afterglow-repo.tar.gz --no-same-owner -C /tmp/afterglow-context --strip-components=1\n"
+            f"test -f /tmp/afterglow-context/{path}\n"
+        )
+    elif job.source_type != SOURCE_INLINE:
+        raise DockerfileImportError("unsupported Dockerfile source")
 
-        plan = json.load(open('/etc/afterglow/dockerfile-plan.json'))
-        env = {{}}
-        workdir = '/'
-        lowers = ['/']
-        context = Path('/tmp/afterglow-context').resolve()
-
-        def safe_context(src):
-            p = (context / src).resolve()
-            if not str(p).startswith(str(context) + os.sep) and p != context:
-                raise SystemExit(f'unsafe COPY/ADD source: {{src}}')
-            if not p.exists():
-                raise SystemExit(f'missing COPY/ADD source: {{src}}')
-            return p
-
-        def mount_overlay(upper, work, merged):
-            os.makedirs(upper, exist_ok=True)
-            os.makedirs(work, exist_ok=True)
-            os.makedirs(merged, exist_ok=True)
-            lowerdir = ':'.join(lowers)
-            subprocess.check_call(['mount', '-t', 'overlay', 'overlay', '-o', f'lowerdir={{lowerdir}},upperdir={{upper}},workdir={{work}}', merged])
-
-        def unmount(path):
-            subprocess.call(['umount', path])
-
-        def copy_into(src, dest_root):
-            if src.is_dir():
-                target = dest_root
-                target.mkdir(parents=True, exist_ok=True)
-                for child in src.iterdir():
-                    dst = target / child.name
-                    if child.is_dir():
-                        shutil.copytree(child, dst, symlinks=True, dirs_exist_ok=True)
-                    else:
-                        if child.is_symlink():
-                            if dst.exists() or dst.is_symlink():
-                                dst.unlink()
-                            os.symlink(os.readlink(child), dst)
-                        else:
-                            shutil.copy2(child, dst)
-            else:
-                dest_root.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src, dest_root)
-
-        for idx, step in enumerate(plan):
-            name = step['name']
-            payload = step.get('payload') or {{}}
-            upper = f'/run/afterglow-dockerfile/upper-{{idx}}'
-            work = f'/run/afterglow-dockerfile/work-{{idx}}'
-            merged = f'/run/afterglow-dockerfile/merged-{{idx}}'
-            instr = step['instruction']
-            if instr == 'ENV':
-                env.update(payload.get('env') or {{}})
-                os.makedirs(os.path.join(upper, 'etc/afterglow'), exist_ok=True)
-                os.makedirs(os.path.join(upper, 'etc/profile.d'), exist_ok=True)
-                Path(os.path.join(upper, 'etc/afterglow/dockerfile-env.json')).write_text(json.dumps(env, ensure_ascii=False, sort_keys=True))
-                with open(os.path.join(upper, 'etc/profile.d/afterglow-docker-env.sh'), 'w') as fh:
-                    for key, value in sorted(env.items()):
-                        fh.write(f'export {{key}}={{shlex.quote(str(value))}}\\n')
-            elif instr == 'WORKDIR':
-                workdir = payload['workdir']
-                target = os.path.join(upper, workdir.lstrip('/'))
-                os.makedirs(target, exist_ok=True)
-                os.makedirs(os.path.join(upper, 'etc/afterglow'), exist_ok=True)
-                Path(os.path.join(upper, 'etc/afterglow/dockerfile-workdir')).write_text(workdir + '\\n')
-            elif instr == 'RUN':
-                mount_overlay(upper, work, merged)
-                try:
-                    wd = os.path.join(merged, workdir.lstrip('/'))
-                    os.makedirs(wd, exist_ok=True)
-                    cmd = payload['command']
-                    env_prefix = ' '.join(f"{{k}}={{shlex.quote(str(v))}}" for k, v in sorted(env.items()))
-                    subprocess.check_call(['chroot', merged, '/bin/bash', '-lc', f'cd {{shlex.quote(workdir)}} && {{env_prefix}} {{cmd}}'])
-                finally:
-                    unmount(merged)
-            elif instr in ('COPY', 'ADD'):
-                mount_overlay(upper, work, merged)
-                try:
-                    dest = payload['dest']
-                    sources = payload['sources']
-                    dest_path = Path(merged) / dest.lstrip('/')
-                    multi = len(sources) > 1 or str(dest).endswith('/')
-                    for src in sources:
-                        src_path = safe_context(src)
-                        target = dest_path / src_path.name if multi else dest_path
-                        copy_into(src_path, target)
-                finally:
-                    unmount(merged)
-            else:
-                raise SystemExit(f'unsupported instruction reached executor: {{instr}}')
-            out_dir = f'/mnt/afterglow-import/out/{{idx}}/images'
-            os.makedirs(out_dir, exist_ok=True)
-            subprocess.check_call(['mksquashfs', upper, f'{{out_dir}}/{{name}}-latest.sqsh', '-noappend'])
-            sqsh_mount = f'/run/afterglow-dockerfile/lower-{{idx}}'
-            os.makedirs(sqsh_mount, exist_ok=True)
-            subprocess.check_call(['mount', '-o', 'loop,ro', f'{{out_dir}}/{{name}}-latest.sqsh', sqsh_mount])
-            lowers.insert(0, sqsh_mount)
-        PY
-        python3 /usr/local/bin/afterglow-dockerfile-step.py
-        echo "::AFTERGLOW::SUCCESS::${{AFTERGLOW_BUILD_TOKEN}}"
-        shutdown -h now
-        """
-    ).strip()
+    return (
+        "set -euo pipefail\n"
+        'trap \'rc=$?; echo "::AFTERGLOW::FAILURE::${AFTERGLOW_BUILD_TOKEN}::rc=$rc"; { echo "::AFTERGLOW::FAILURE::${AFTERGLOW_BUILD_TOKEN}::rc=$rc" > /dev/console; } 2>/dev/null || :; umount -l /mnt/afterglow-import/out/* /mnt/afterglow-import/in/* 2>/dev/null || :; shutdown -h now\' ERR\n'
+        f"export AFTERGLOW_BUILD_TOKEN={shlex.quote(token)}\n"
+        "install -d /etc/afterglow /mnt/afterglow-import/out /var/lib/afterglow-dockerfile\n"
+        f"printf '%s' {plan_json} > /etc/afterglow/dockerfile-plan.json\n"
+        f"printf '%s' {config_json} > /etc/afterglow/dockerfile-config.json\n"
+        f"printf '%s' {exports_json} > /etc/afterglow/dockerfile-exports.json\n"
+        "python3 - <<'PY'\n"
+        "import json, pathlib, subprocess, time\n"
+        "exports = json.loads(pathlib.Path('/etc/afterglow/dockerfile-exports.json').read_text())\n"
+        "for idx, candidates in enumerate(exports):\n"
+        "    mount = pathlib.Path('/mnt/afterglow-import/out') / str(idx)\n"
+        "    mount.mkdir(parents=True, exist_ok=True)\n"
+        "    deadline = time.monotonic() + 180\n"
+        "    mounted = False\n"
+        "    for attempt in range(12):\n"
+        "        for export in candidates:\n"
+        "            remaining = deadline - time.monotonic()\n"
+        "            if remaining <= 0:\n"
+        "                break\n"
+        "            try:\n"
+        "                result = subprocess.run(['mount', '-t', 'nfs4', '-o', 'rw,hard', export, str(mount)], timeout=min(15, remaining), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)\n"
+        "            except (OSError, subprocess.TimeoutExpired):\n"
+        "                continue\n"
+        "            if result.returncode == 0:\n"
+        "                mounted = True\n"
+        "                break\n"
+        "        if mounted or time.monotonic() >= deadline:\n"
+        "            break\n"
+        "        if attempt < 11:\n"
+        "            time.sleep(min(5, max(0, deadline - time.monotonic())))\n"
+        "    if not mounted:\n"
+        "        raise RuntimeError('output share mount failed')\n"
+        "    (mount / 'images').mkdir(parents=True, exist_ok=True)\n"
+        "PY\n"
+        + acquire
+        + "python3 /usr/local/bin/afterglow-dockerfile-step.py\n"
+        + 'echo "::AFTERGLOW::SUCCESS::${AFTERGLOW_BUILD_TOKEN}"; { echo "::AFTERGLOW::SUCCESS::${AFTERGLOW_BUILD_TOKEN}" > /dev/console; } 2>/dev/null || :\n'
+        + "shutdown -h now\n"
+    )
 
 
-def _dockerfile_cloud_config(job: LayerImportJob, exports: list[str], token: str) -> str:
-    script = _dockerfile_cloud_init_script(job, exports, token)
+def _dockerfile_cloud_config(
+    job: LayerImportJob,
+    exports: list[list[str]],
+    ancestors: list[dict],
+    root_name: str | None,
+    base_volume_id: str | None,
+    token: str,
+) -> str:
+    from pathlib import Path
+
+    script = _dockerfile_cloud_init_script(job, exports, ancestors, root_name, base_volume_id, token)
     packages = "\n".join(f"  - {pkg}" for pkg in LAYER_BUILD_IMAGE_PACKAGES)
     encoded = base64.b64encode(script.encode()).decode()
+    guest_executor = base64.b64encode(Path(__file__).with_name("dockerfile_guest.py").read_bytes()).decode()
     return f"""#cloud-config
 package_update: true
 packages:
@@ -1151,124 +1295,400 @@ write_files:
     permissions: '0755'
     encoding: b64
     content: {encoded}
+  - path: /usr/local/bin/afterglow-dockerfile-step.py
+    permissions: '0755'
+    encoding: b64
+    content: {guest_executor}
 runcmd:
   - [ bash, /usr/local/bin/afterglow-dockerfile-import.sh ]
 """
 
 
+def _parse_dockerfile_manifest(console: str, token: str, names: list[str]) -> dict[str, Any]:
+    """A truncated or ambiguous Nova console must never seal partial output."""
+    import hmac
+
+    from app.services.palimpsest_digest import DigestReport
+
+    matches = re.findall(r"::AFTERGLOW::MANIFEST::([0-9a-f]{32})::([A-Za-z0-9+/=]+)", console)
+    if len(matches) != 1 or not hmac.compare_digest(matches[0][0], token):
+        raise DockerfileImportError("builder did not report exactly one authenticated digest manifest")
+    try:
+        payload = base64.b64decode(matches[0][1], validate=True)
+        if len(payload) > 1024 * 1024:
+            raise ValueError("manifest exceeds 1MiB")
+        records = json.loads(payload)
+    except (ValueError, UnicodeError) as exc:
+        raise DockerfileImportError("builder digest manifest is malformed") from exc
+    if (
+        not isinstance(records, list)
+        or [row.get("name") if isinstance(row, dict) else None for row in records] != names
+    ):
+        raise DockerfileImportError("builder digest manifest does not match the complete build plan")
+    reports = {}
+    for row in records:
+        sha256, md5, size = row.get("sha256"), row.get("md5"), row.get("size")
+        if (
+            not isinstance(sha256, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", sha256)
+            or not isinstance(md5, str)
+            or not re.fullmatch(r"[0-9a-f]{32}", md5)
+            or type(size) is not int
+            or size <= 0
+        ):
+            raise DockerfileImportError("builder reported an invalid artifact digest or size")
+        reports[row["name"]] = DigestReport(
+            layer_name=row["name"], blob_digest="sha256:" + sha256, blob_md5=md5, size_bytes=size
+        )
+    return reports
+
+
+async def _read_dockerfile_reports(
+    conn,
+    server_id: str,
+    token: str,
+    outputs: list[dict],
+    exports: list[list[str]],
+    share_ids: list[str],
+    snapshot: dict,
+    _early_success: bool,
+    early_failure: bool,
+) -> dict[str, Any]:
+    try:
+        console = await asyncio.to_thread(nova.get_console_output, conn, server_id, None)
+    except Exception:
+        _logger.warning("[dockerfile_import] Nova console unavailable; verifying output shares")
+        console = ""
+    status = await asyncio.to_thread(conn.compute.get_server, server_id)
+    observed_status = getattr(status, "status", "")
+    safe_status = observed_status.upper() if isinstance(observed_status, str) else "UNKNOWN"
+    if safe_status not in {"ACTIVE", "BUILD", "ERROR", "HARD_REBOOT", "REBOOT", "SHUTOFF", "SUSPENDED"}:
+        safe_status = "UNKNOWN"
+    console_failure = f"::AFTERGLOW::FAILURE::{token}" in console
+    if safe_status != "SHUTOFF" or early_failure or console_failure:
+        raise DockerfileImportError(
+            "Dockerfile builder did not shut down successfully "
+            f"(status={safe_status}, early_failure={early_failure}, console_failure={console_failure})"
+        )
+    # A console digest alone cannot prove that the persisted share still holds those bytes.
+
+    from app.services.dockerfile_verify import verify_builder_outputs
+
+    return await verify_builder_outputs(
+        conn, token=token, outputs=outputs, exports=exports, share_ids=share_ids, snapshot=snapshot
+    )
+
+
+async def _save_import_profile(session, job: LayerImportJob, artifact_ids: list[int]) -> None:
+    from sqlalchemy import select
+
+    if not artifact_ids:
+        raise DockerfileImportError("a Dockerfile import needs a sealed full-root artifact")
+    final = await session.get(LayerArtifact, artifact_ids[-1])
+    lineage = await _rooted_lineage(session, final, job.base_image_id)
+    if not lineage:
+        raise DockerfileImportError("Dockerfile import produced an incomplete full-root lineage")
+    names = [artifact.name for artifact in lineage]
+    profile = (
+        await session.execute(select(LayerProfile).where(LayerProfile.name == job.profile_name))
+    ).scalar_one_or_none()
+    if profile is None:
+        session.add(LayerProfile(name=job.profile_name, layers=names))
+    else:
+        profile.layers = names
+    job.artifact_ids = [artifact.id for artifact in reversed(lineage)]
+
+
+async def prepare_import_consumer(conn, request, *, profile_name: str) -> dict:
+    """Freeze public SSH key and placement while the authenticated admin request is alive."""
+    from app.api.union.layer_ops import LayerConsumeRequest
+    from app.services.layer_build import resolve_layer_consume_resource_snapshot
+
+    validated = LayerConsumeRequest(profile_name=profile_name, **request.model_dump(exclude_none=True))
+    ssh_public_key = validated.ssh_public_key
+    if validated.key_name and not ssh_public_key:
+        try:
+            keypair = await asyncio.to_thread(conn.compute.get_keypair, validated.key_name)
+        except Exception as exc:
+            raise DockerfileImportError("selected SSH keypair could not be resolved") from exc
+        ssh_public_key = getattr(keypair, "public_key", None)
+    if not ssh_public_key:
+        raise DockerfileImportError("SSH public key or existing keypair is required to launch a consumer VM")
+    snapshot = await resolve_layer_consume_resource_snapshot(
+        conn, flavor_ref=validated.flavor_id, network_id=validated.network_id
+    )
+    return {
+        "server_name": validated.server_name,
+        "flavor_id": validated.flavor_id,
+        "ssh_public_key": ssh_public_key,
+        "ssh_username": validated.ssh_username,
+        "resource_snapshot": snapshot,
+    }
+
+
+async def _launch_import_consumer(import_id: int) -> None:
+    from app.models.db import LayerConsume
+    from app.services.layer_build import run_layer_consume
+
+    factory = get_session_factory()
+    async with factory() as session:
+        job = await session.get(LayerImportJob, import_id)
+        spec = job.consumer_spec
+        if not spec:
+            return
+        if not job.artifact_ids:
+            raise DockerfileImportError("cannot create a VM before sealing its full-root artifact")
+        # Persisted artifact IDs are root-first; the consumer validates ancestry
+        # before reversing the mount list for the guest's child-first OverlayFS.
+        row = LayerConsume(
+            profile_name=job.profile_name,
+            server_name=spec["server_name"],
+            artifact_ids=list(job.artifact_ids),
+            resource_snapshot=spec["resource_snapshot"],
+            status="creating",
+            share_id="",
+        )
+        session.add(row)
+        await session.flush()
+        job.consume_id = row.id
+        job.status = "creating_vm"
+        job.progress_step = "전체 루트 SSH VM 활성화 중"
+        job.progress_pct = 92
+        await session.commit()
+        consume_id = row.id
+        profile_name = job.profile_name
+        base_image_id = job.base_image_id
+        artifact_ids = list(job.artifact_ids)
+    await run_layer_consume(
+        consume_db_id=consume_id,
+        profile_name=profile_name,
+        server_name=spec["server_name"],
+        flavor_id=spec["flavor_id"],
+        image_id=base_image_id,
+        ssh_public_key=spec["ssh_public_key"],
+        ssh_username=spec["ssh_username"],
+        resource_snapshot=spec["resource_snapshot"],
+        artifact_ids=artifact_ids,
+    )
+    await _update_job(import_id, status="complete", progress_step="SSH VM 준비 완료", progress_pct=100)
+
+
 async def run_dockerfile_import_job(import_id: int) -> None:
-    """Run a Dockerfile import job with one builder VM and normal layer artifact rows."""
+    """Build a clean Glance root and its deltas, then optionally boot the result."""
+    from app.services import cinder
+
     factory = get_session_factory()
     if factory is None:
         return
     conn = None
     port_id: str | None = None
     server_id: str | None = None
+    base_volume_id: str | None = None
     share_ids: list[str] = []
     rw_access_rules: list[tuple[str, str]] = []
+    ro_access_rules: list[tuple[str, str]] = []
     build_ids: list[int] = []
-    artifact_ids: list[int] = []
+    artifacts_committed = False
     try:
         async with factory() as session:
             job = await session.get(LayerImportJob, import_id)
             if job is None:
                 return
-            resource_snapshot = job.resource_snapshot or {}
-            service_project = resource_snapshot.get("openstack.service_project") or {}
-            builder_flavor = resource_snapshot.get("builder.flavor") or {}
-            builder_network = resource_snapshot.get("builder.network") or {}
-            manila_snapshot = resource_snapshot.get("manila") or {}
-            if not all(
-                (
-                    service_project.get("id"),
-                    builder_flavor.get("id"),
-                    builder_network.get("id"),
-                    manila_snapshot.get("share_network_id"),
-                    manila_snapshot.get("share_type"),
-                    manila_snapshot.get("share_size_gb"),
-                )
-            ):
-                raise DockerfileImportError("import resource snapshot is incomplete")
-            await _update_job(import_id, status="validating", progress_step="빌드 레코드 생성", progress_pct=5)
-            parent_id = None
-            for step in job.planned_layers or []:
-                build = LayerBuild(
-                    layer_name=step["name"],
-                    kind="dockerfile",
-                    python_version=None,
-                    pip_packages=[],
-                    apt_packages=[],
-                    parent_artifact_id=parent_id,
-                    share_id="",
-                    builder_flavor_id=builder_flavor["id"],
-                    builder_network_id=builder_network["id"],
-                    resource_snapshot=resource_snapshot,
-                    status="queued",
-                    cloud_init_status="queued",
-                    progress_step="Dockerfile import 대기",
-                    progress_pct=0,
-                    ubuntu_base=job.ubuntu_base,
-                    base_image_id=job.base_image_id,
-                    base_image_name=job.base_image_name,
-                    base_image_checksum=job.base_image_checksum,
-                    base_image_os_hash_algo=job.base_image_os_hash_algo,
-                    base_image_os_hash_value=job.base_image_os_hash_value,
-                    base_image_min_disk=job.base_image_min_disk,
-                    source_metadata=step.get("source_metadata"),
-                )
-                session.add(build)
-                await session.flush()
-                build_ids.append(build.id)
-                parent_id = None
-            job.build_ids = build_ids
-            await session.commit()
+            cached_ids = list(job.artifact_ids or [])
+            planned = list(job.planned_layers or [])
+            if not planned and cached_ids:
+                await _save_import_profile(session, job, cached_ids)
+                job.status = "built" if job.consumer_spec else "complete"
+                job.progress_step = "캐시 재사용 완료"
+                job.progress_pct = 90 if job.consumer_spec else 100
+                if not job.consumer_spec:
+                    job.completed_at = _now()
+                await session.commit()
+                artifacts_committed = True
+            else:
+                snapshot = job.resource_snapshot or {}
+                service_project = snapshot.get("openstack.service_project") or {}
+                builder_flavor = snapshot.get("builder.flavor") or {}
+                builder_network = snapshot.get("builder.network") or {}
+                manila_snapshot = snapshot.get("manila") or {}
+                if not all(
+                    (
+                        service_project.get("id"),
+                        builder_flavor.get("id"),
+                        builder_network.get("id"),
+                        manila_snapshot.get("share_network_id"),
+                        manila_snapshot.get("share_type"),
+                        manila_snapshot.get("share_size_gb"),
+                    )
+                ):
+                    raise DockerfileImportError("import resource snapshot is incomplete")
+                if cached_ids:
+                    cached_final = await session.get(LayerArtifact, cached_ids[-1])
+                    if cached_final is None or not await _rooted_lineage(session, cached_final, job.base_image_id):
+                        raise DockerfileImportError("cached import lineage is no longer sealed and complete")
+                root_name = None
+                if not cached_ids:
+                    identity = f"{job.base_image_id}:{job.base_image_os_hash_value or job.base_image_checksum or ''}"
+                    root_name = "root-" + hashlib.sha256(identity.encode()).hexdigest()[:20]
+                outputs = (
+                    [
+                        {
+                            "name": root_name,
+                            "instruction": "ROOT",
+                            "args": "",
+                            "source_metadata": {
+                                "source_type": "glance-root",
+                                "base_image_id": job.base_image_id,
+                                "dockerfile_env": {},
+                                "dockerfile_workdir": "/",
+                            },
+                        }
+                    ]
+                    if root_name
+                    else []
+                ) + planned
+                for step in outputs:
+                    build = LayerBuild(
+                        layer_name=step["name"],
+                        kind="dockerfile-root" if step["instruction"] == "ROOT" else "dockerfile",
+                        python_version=None,
+                        pip_packages=[],
+                        apt_packages=[],
+                        parent_artifact_id=cached_ids[-1] if cached_ids and not build_ids else None,
+                        share_id="",
+                        builder_flavor_id=builder_flavor["id"],
+                        builder_network_id=builder_network["id"],
+                        resource_snapshot=snapshot,
+                        status="queued",
+                        cloud_init_status="queued",
+                        progress_step="Dockerfile import 대기",
+                        progress_pct=0,
+                        ubuntu_base=job.ubuntu_base,
+                        base_image_id=job.base_image_id,
+                        base_image_name=job.base_image_name,
+                        base_image_checksum=job.base_image_checksum,
+                        base_image_os_hash_algo=job.base_image_os_hash_algo,
+                        base_image_os_hash_value=job.base_image_os_hash_value,
+                        base_image_min_disk=job.base_image_min_disk,
+                        source_metadata=step.get("source_metadata"),
+                    )
+                    session.add(build)
+                    await session.flush()
+                    build_ids.append(build.id)
+                job.build_ids = build_ids
+                job.status = "validating"
+                job.progress_step = "빌드 레코드 생성"
+                job.progress_pct = 5
+                await session.commit()
+
+        if artifacts_committed:
+            if job.consumer_spec:
+                await _launch_import_consumer(import_id)
+            return
+
         from app.services.keystone import get_admin_connection_for_project
 
         conn = await asyncio.to_thread(get_admin_connection_for_project, service_project["id"])
-        flavor_id = builder_flavor["id"]
-        network_id = builder_network["id"]
         token = uuid.uuid4().hex
-        port = await asyncio.to_thread(neutron.create_port, conn, network_id, f"afterglow-layer-import-{token[:8]}")
+        port = await asyncio.to_thread(
+            neutron.create_port, conn, builder_network["id"], f"afterglow-layer-import-{token[:8]}"
+        )
         port_id = port["id"]
         fixed_ip = port["fixed_ip"]
         await _update_job(import_id, status="creating_vm", progress_step="share/VM 생성", progress_pct=15)
-        async with factory() as session:
-            job = await session.get(LayerImportJob, import_id)
-            if job is None:
-                return
-            for index, step in enumerate(job.planned_layers or []):
-                share_name = f"afterglow-layer-{step['name']}-{token[:8]}"
-                share = await asyncio.to_thread(
-                    manila.create_file_storage,
-                    conn,
-                    share_name,
-                    manila_snapshot["share_size_gb"],
-                    manila_snapshot["share_network_id"],
-                    manila_snapshot["share_type"],
-                    "NFS",
-                    {"afterglow_role": "dockerfile-layer", "afterglow_layer_name": step["name"]},
-                )
-                share_ids.append(share.id)
-                rule = await asyncio.to_thread(
-                    manila.ensure_nfs_access_rule, conn, share.id, fixed_ip, "rw", root_squash=False, sec_flavor="sys"
-                )
-                rw_access_rules.append((share.id, rule["access_id"]))
+        exports: list[list[str]] = []
+        for index, step in enumerate(outputs):
+            share = await asyncio.to_thread(
+                manila.create_file_storage,
+                conn,
+                f"afterglow-layer-{step['name']}-{token[:8]}",
+                manila_snapshot["share_size_gb"],
+                manila_snapshot["share_network_id"],
+                manila_snapshot["share_type"],
+                "NFS",
+                {"afterglow_role": "dockerfile-layer", "afterglow_layer_name": step["name"]},
+            )
+            share_ids.append(share.id)
+            rule = await asyncio.to_thread(
+                manila.ensure_nfs_access_rule, conn, share.id, fixed_ip, "rw", root_squash=False, sec_flavor="sys"
+            )
+            rw_access_rules.append((share.id, rule["access_id"]))
+            locations = await asyncio.to_thread(manila.get_export_locations, conn, share.id)
+            candidates = [
+                path
+                for path in locations
+                if isinstance(path, str) and _NFS_EXPORT_RE.fullmatch(path) and path.rpartition(":/")[0]
+            ]
+            if not candidates:
+                raise DockerfileImportError("import share export location is unavailable")
+            exports.append(candidates)
+            async with factory() as session:
                 build = await session.get(LayerBuild, build_ids[index])
-                if build is not None:
-                    build.share_id = share.id
-                    build.status = "creating_vm"
-                    build.progress_pct = 15
-            await session.commit()
-        export_lists = [await asyncio.to_thread(manila.get_export_locations, conn, share_id) for share_id in share_ids]
-        exports = [items[0] for items in export_lists if items]
-        if len(exports) != len(share_ids):
-            raise DockerfileImportError("import share export location을 찾을 수 없습니다")
-        user_data = _dockerfile_cloud_config(job, exports, token)
+                build.share_id = share.id
+                build.status = "creating_vm"
+                build.progress_pct = 15
+                await session.commit()
+
+        ancestors: list[dict] = []
+        if cached_ids:
+            async with factory() as session:
+                final = await session.get(LayerArtifact, cached_ids[-1])
+                lineage = await _rooted_lineage(session, final, job.base_image_id)
+                if not lineage:
+                    raise DockerfileImportError("cached lineage changed during import")
+                for artifact in lineage:
+                    rule = await asyncio.to_thread(
+                        manila.ensure_nfs_access_rule,
+                        conn,
+                        artifact.share_id,
+                        fixed_ip,
+                        "ro",
+                        root_squash=False,
+                        sec_flavor="sys",
+                    )
+                    ro_access_rules.append((artifact.share_id, rule["access_id"]))
+                    locations = await asyncio.to_thread(manila.get_export_locations, conn, artifact.share_id)
+                    candidates = [
+                        path
+                        for path in locations
+                        if isinstance(path, str) and _NFS_EXPORT_RE.fullmatch(path) and path.rpartition(":/")[0]
+                    ]
+                    if not candidates:
+                        raise DockerfileImportError("cached ancestor export location is unavailable")
+                    ancestors.append(
+                        {
+                            "exports": candidates,
+                            "filename": artifact.sqsh_filename,
+                            "blob_digest": artifact.blob_digest,
+                        }
+                    )
+
+        if root_name:
+            image = await asyncio.to_thread(conn.image.get_image, job.base_image_id)
+            if image is None or getattr(image, "status", None) != "active":
+                raise DockerfileImportError("Glance base image is no longer active")
+            for field, expected in (
+                ("checksum", job.base_image_checksum),
+                ("hash_algo", job.base_image_os_hash_algo),
+                ("hash_value", job.base_image_os_hash_value),
+            ):
+                if expected and getattr(image, field, None) != expected:
+                    raise DockerfileImportError("Glance base image fingerprint changed before snapshot")
+            volume = await asyncio.to_thread(
+                cinder.create_volume_from_image,
+                conn,
+                f"afterglow-root-source-{token[:8]}",
+                job.base_image_id,
+                max(job.base_image_min_disk or 0, get_settings().boot_volume_size_gb, 1),
+            )
+            base_volume_id = volume.id
+
+        user_data = _dockerfile_cloud_config(job, exports, ancestors, root_name, base_volume_id, token)
         server = await asyncio.to_thread(
             conn.compute.create_server,
             name=f"afterglow-layer-import-{job.layer_prefix}-{token[:8]}",
             image_id=job.base_image_id,
-            flavor_id=flavor_id,
+            flavor_id=builder_flavor["id"],
             networks=[{"port": port_id}],
             user_data=base64.b64encode(user_data.encode()).decode(),
             metadata={
@@ -1278,52 +1698,64 @@ async def run_dockerfile_import_job(import_id: int) -> None:
             },
         )
         server_id = server.id
+        if base_volume_id:
+            await asyncio.to_thread(conn.compute.wait_for_server, server, status="ACTIVE", wait=300)
+            await asyncio.to_thread(conn.compute.create_volume_attachment, server_id, volume_id=base_volume_id)
         await _update_job(import_id, status="running", progress_step="Dockerfile import 실행 중", progress_pct=35)
-        for build_id in build_ids:
-            await _set_build_running(build_id, server_id, port_id, token)
-        early_success, early_failure = await _wait_for_shutoff(conn, server_id, None, token)
-        console = await asyncio.to_thread(nova.get_console_output, conn, server_id, 500)
-        if early_failure or f"::AFTERGLOW::FAILURE::{token}" in console:
-            raise DockerfileImportError("Dockerfile import cloud-init 실패")
-        if not (early_success or f"::AFTERGLOW::SUCCESS::{token}" in console):
-            raise DockerfileImportError("Dockerfile import success sentinel을 찾을 수 없습니다")
-        for share_id, access_id in rw_access_rules:
-            await asyncio.to_thread(manila.revoke_access_rule, conn, share_id, access_id)
-        rw_access_rules.clear()
+        for index, build_id in enumerate(build_ids):
+            await _set_build_running(build_id, server_id, port_id, token if index == 0 else None)
+        early_success, early_failure = await _wait_for_shutoff(conn, server_id, build_ids[0], token)
+        reports = await _read_dockerfile_reports(
+            conn, server_id, token, outputs, exports, share_ids, snapshot, early_success, early_failure
+        )
+        for rules in (rw_access_rules, ro_access_rules):
+            while rules:
+                share_id, access_id = rules[-1]
+                await asyncio.to_thread(manila.revoke_access_rule, conn, share_id, access_id)
+                rules.pop()
+
+        # Tear down disposable compute and the never-booted Glance clone before sealing metadata.
+        await asyncio.to_thread(conn.compute.delete_server, server_id)
+        server_id = None
+        if base_volume_id:
+            volume = await asyncio.to_thread(conn.block_storage.get_volume, base_volume_id)
+            await asyncio.to_thread(conn.block_storage.wait_for_status, volume, status="available", wait=180)
+            await asyncio.to_thread(cinder.delete_volume, conn, base_volume_id)
+            base_volume_id = None
+        await asyncio.to_thread(neutron.delete_port, conn, port_id)
+        port_id = None
 
         async with factory() as session:
             job = await session.get(LayerImportJob, import_id)
-            if job is None:
-                return
-            # 캐시로 재사용한 접두부(또는 `FROM palimpsest/…` 의 부모)에서 이어 쌓는다.
-            # 재사용분은 plan 단계에서 planned_layers 에서 제거됐고 job.artifact_ids 에 들어 있다.
-            reused_ids = list(job.artifact_ids or [])
-            parent_artifact_id: int | None = reused_ids[-1] if reused_ids else None
-            layer_names: list[str] = []
-            for reused_id in reused_ids:
-                reused = await session.get(LayerArtifact, reused_id)
-                if reused is not None:
-                    layer_names.append(reused.name)
-            artifact_ids = list(reused_ids)
-            # 한 번의 VM 실행이 여러 레이어를 만든다 — sentinel 은 레이어 이름으로 매핑한다
-            # (콘솔이 잘리면 위치 기반 매핑은 조용히 어긋난다). docs/palimpsest.md §3.
-            digest_reports = parse_digest_sentinels(console)
-            for index, step in enumerate(job.planned_layers or []):
-                digest_report = digest_reports.get(step["name"])
-                digest_fields = await resolve_digest_fields(
+            parent_id = cached_ids[-1] if cached_ids else None
+            completed_ids = list(cached_ids)
+            for index, step in enumerate(outputs):
+                report = reports[step["name"]]
+                root = step["instruction"] == "ROOT"
+                kind = "dockerfile-root" if root else "dockerfile"
+                fields = await resolve_digest_fields(
                     session,
-                    report=digest_report,
-                    parent_artifact_id=parent_artifact_id,
+                    report=report,
+                    parent_artifact_id=parent_id,
                     name=step["name"],
-                    kind="dockerfile",
+                    kind=kind,
                     ubuntu_base=job.ubuntu_base,
                     python_version=None,
                     pip_packages=[],
                     apt_packages=[],
                 )
+                if not fields["chain_id"]:
+                    raise DockerfileImportError("Dockerfile artifact has no verifiable parent digest")
+                step_digest = None
+                if not root:
+                    parent = await session.get(LayerArtifact, parent_id)
+                    args = step["args"]
+                    if step["instruction"] in {"COPY", "ADD"}:
+                        args += "\ncommit:" + (step.get("source_metadata") or {}).get("commit_sha", "")
+                    step_digest = compute_step_digest(parent.chain_id, step["instruction"], args)
                 artifact = LayerArtifact(
                     name=step["name"],
-                    kind="dockerfile",
+                    kind=kind,
                     python_version=None,
                     pip_packages=[],
                     apt_packages=[],
@@ -1331,12 +1763,11 @@ async def run_dockerfile_import_job(import_id: int) -> None:
                     sqsh_filename=f"{step['name']}-latest.sqsh",
                     share_id=share_ids[index],
                     build_id=build_ids[index],
-                    parent_id=parent_artifact_id,
+                    parent_id=parent_id,
                     is_sealed=True,
-                    size_bytes=digest_report.size_bytes if digest_report else None,
-                    # 빌드 캐시 키 — 다음 요청이 같은 부모 위에 같은 명령을 주면 재사용된다
-                    step_digest=step.get("step_digest"),
-                    **digest_fields,
+                    size_bytes=report.size_bytes,
+                    step_digest=step_digest,
+                    **fields,
                     base_image_id=job.base_image_id,
                     base_image_name=job.base_image_name,
                     base_image_checksum=job.base_image_checksum,
@@ -1347,74 +1778,79 @@ async def run_dockerfile_import_job(import_id: int) -> None:
                 )
                 session.add(artifact)
                 await session.flush()
-                artifact_ids.append(artifact.id)
-                parent_artifact_id = artifact.id
-                layer_names.append(step["name"])
+                completed_ids.append(artifact.id)
+                parent_id = artifact.id
                 build = await session.get(LayerBuild, build_ids[index])
-                if build is not None:
-                    build.status = "complete"
-                    build.cloud_init_status = "success"
-                    build.progress_step = "빌드 완료"
-                    build.progress_pct = 100
-                    build.completed_at = _now()
-            profile = (
-                await session.execute(
-                    __import__("sqlalchemy").select(LayerProfile).where(LayerProfile.name == job.profile_name)
-                )
-            ).scalar_one_or_none()
-            if profile is None:
-                profile = LayerProfile(name=job.profile_name, layers=layer_names)
-                session.add(profile)
-            else:
-                profile.layers = layer_names
-            job.status = "complete"
-            job.progress_step = "완료"
-            job.progress_pct = 100
-            job.artifact_ids = artifact_ids
-            job.completed_at = _now()
+                build.status = "complete"
+                build.cloud_init_status = "success"
+                build.progress_step = "빌드 완료"
+                build.progress_pct = 100
+                build.completed_at = _now()
+            await _save_import_profile(session, job, completed_ids)
+            job.status = "built" if job.consumer_spec else "complete"
+            job.progress_step = "레이어 봉인 완료"
+            job.progress_pct = 90 if job.consumer_spec else 100
+            if not job.consumer_spec:
+                job.completed_at = _now()
             await session.commit()
-        # artifact/profile 이 실제로 생긴 지점에서 레이어 캐시를 무효화한다.
-        # 요청 핸들러가 아니라 여기가 맞다 — 핸들러는 잡만 만들고 산출물은 여기서 나온다.
+            artifacts_committed = True
         try:
             from app.services.cache import invalidate
 
             await invalidate("afterglow:union_layer:*")
         except Exception:
-            _logger.warning("[dockerfile_import] 레이어 캐시 무효화 실패 (빌드는 성공)", exc_info=True)
+            _logger.warning("[dockerfile_import] layer cache invalidation failed", exc_info=True)
+        if job.consumer_spec:
+            await _launch_import_consumer(import_id)
+    except asyncio.CancelledError:
+        await _update_job(
+            import_id, status="error", progress_step="취소됨", error_message="Dockerfile import task was cancelled"
+        )
+        for build_id in build_ids:
+            await _set_build_error(build_id, "Dockerfile import task was cancelled")
+        raise
     except Exception as exc:
+        _logger.exception("[dockerfile_import] import %s failed", import_id)
         await _update_job(import_id, status="error", progress_step="실패", error_message=str(exc)[:1000])
         for build_id in build_ids:
             await _set_build_error(build_id, str(exc))
+    finally:
         if conn is not None:
-            for share_id, access_id in rw_access_rules:
+            for share_id, access_id in rw_access_rules + ro_access_rules:
                 try:
                     await asyncio.to_thread(manila.revoke_access_rule, conn, share_id, access_id)
                 except Exception:
-                    pass
-            for share_id in share_ids:
-                try:
-                    await asyncio.to_thread(manila.delete_file_storage, conn, share_id)
-                except Exception:
-                    pass
+                    _logger.warning("[dockerfile_import] access rule cleanup failed: %s", share_id, exc_info=True)
             if server_id:
                 try:
                     await asyncio.to_thread(conn.compute.delete_server, server_id)
                 except Exception:
-                    pass
+                    _logger.warning("[dockerfile_import] builder deletion failed: %s", server_id, exc_info=True)
+            if base_volume_id:
+                try:
+                    volume = await asyncio.to_thread(conn.block_storage.get_volume, base_volume_id)
+                    await asyncio.to_thread(conn.block_storage.wait_for_status, volume, status="available", wait=180)
+                    await asyncio.to_thread(cinder.delete_volume, conn, base_volume_id)
+                except Exception:
+                    _logger.warning("[dockerfile_import] base volume cleanup failed: %s", base_volume_id, exc_info=True)
+            if not artifacts_committed:
+                for share_id in share_ids:
+                    try:
+                        await asyncio.to_thread(manila.delete_file_storage, conn, share_id)
+                    except Exception:
+                        _logger.warning("[dockerfile_import] output share cleanup failed: %s", share_id, exc_info=True)
             if port_id:
                 try:
                     await asyncio.to_thread(neutron.delete_port, conn, port_id)
                 except Exception:
-                    pass
-    finally:
-        if conn is not None:
+                    _logger.warning("[dockerfile_import] port cleanup failed: %s", port_id, exc_info=True)
             try:
                 await asyncio.to_thread(conn.close)
             except Exception:
                 _logger.warning("[dockerfile_import] service connection close failed", exc_info=True)
 
 
-async def _set_build_running(build_id: int, server_id: str, port_id: str, token: str) -> None:
+async def _set_build_running(build_id: int, server_id: str, port_id: str, token: str | None) -> None:
     factory = get_session_factory()
     if factory is None:
         return
@@ -1437,7 +1873,7 @@ async def _set_build_error(build_id: int, message: str) -> None:
         return
     async with factory() as session:
         build = await session.get(LayerBuild, build_id)
-        if build is not None:
+        if build is not None and build.status != "complete":
             build.status = "error"
             build.cloud_init_status = "failure"
             build.progress_step = "Dockerfile import 실패"

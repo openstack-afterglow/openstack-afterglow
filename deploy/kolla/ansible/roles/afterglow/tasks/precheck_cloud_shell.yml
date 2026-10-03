@@ -13,13 +13,18 @@
     fail_msg: "Cloud Shell requires stock Kolla Zun, Kuryr, etcd, Docker/containerd Zun integration, Cinder Ceph mounts, and at least one zun-compute host"
   run_once: true
 
+- name: Cloud Shell precheck | Record effective security group selector
+  ansible.builtin.set_fact:
+    afterglow_cloud_shell_precheck_security_group: "{{ afterglow_cloud_shell_security_group | default('default', true) }}"
+  run_once: true
+
 - name: Cloud Shell precheck | Validate static configuration
   ansible.builtin.assert:
     that:
       - afterglow_cloud_shell_project_name is match('^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$')
       - afterglow_cloud_shell_project_name != afterglow_service_project_name
-      - afterglow_cloud_shell_network_id is match('^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$')
-      - afterglow_cloud_shell_security_group is match('^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$')
+      - afterglow_cloud_shell_network_id | default('', true) | length == 0 or afterglow_cloud_shell_network_id is match('^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$')
+      - afterglow_cloud_shell_precheck_security_group is match('^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$')
       - afterglow_cloud_shell_image is match('^[^\s:@]+(?:/[^\s:@]+)+@sha256:[0-9a-fA-F]{64}$')
       - afterglow_cloud_shell_auth_url is match('^https://[^/?#\s]+(?::[0-9]+)?/v3/?$')
       - afterglow_cloud_shell_zun_websocket_origin is match('^wss://[^/?#\s]+(?::[0-9]+)?$')
@@ -34,7 +39,7 @@
       - afterglow_cloud_shell_ticket_ttl_seconds | int >= 15
       - afterglow_cloud_shell_ticket_ttl_seconds | int <= 120
       - afterglow_cloud_shell_reconcile_interval_seconds | int > 0
-    fail_msg: "Cloud Shell requires an operator-owned project/network/egress-only security group, an immutable image digest, trusted HTTPS/WSS endpoints, and bounded resources"
+    fail_msg: "Cloud Shell requires a dedicated project, an optional project-owned network UUID, a valid security group name or ID, an immutable image digest, trusted HTTPS/WSS endpoints, and bounded resources"
   run_once: true
 
 - name: Cloud Shell precheck | Resolve dedicated project
@@ -99,43 +104,72 @@
   changed_when: false
   run_once: true
   delegate_to: "{{ groups['afterglow'][0] }}"
+  when: afterglow_cloud_shell_network_id | default('', true) | length > 0
 
-- name: Cloud Shell precheck | Inspect configured security group in dedicated scope
+- name: Cloud Shell precheck | List security groups owned by dedicated project
   become: true
   community.docker.docker_container_exec:
     container: kolla_toolbox
     command: >-
       openstack --os-cloud=kolla --os-project-id={{ afterglow_cloud_shell_precheck_project_id }}
-      security group show {{ afterglow_cloud_shell_security_group }} -f json
+      security group list --project {{ afterglow_cloud_shell_precheck_project_id }} -f json
+  register: afterglow_cloud_shell_security_group_list
+  failed_when: false
+  changed_when: false
+  run_once: true
+  delegate_to: "{{ groups['afterglow'][0] }}"
+
+- name: Cloud Shell precheck | Match security group selector within dedicated project
+  ansible.builtin.set_fact:
+    afterglow_cloud_shell_security_group_id_matches: >-
+      {{ ((afterglow_cloud_shell_security_group_list.stdout if afterglow_cloud_shell_security_group_list.rc | default(1) == 0 else '[]') | from_json)
+         | selectattr('ID', 'equalto', afterglow_cloud_shell_precheck_security_group) | map(attribute='ID') | list }}
+    afterglow_cloud_shell_security_group_name_matches: >-
+      {{ ((afterglow_cloud_shell_security_group_list.stdout if afterglow_cloud_shell_security_group_list.rc | default(1) == 0 else '[]') | from_json)
+         | selectattr('Name', 'equalto', afterglow_cloud_shell_precheck_security_group) | map(attribute='ID') | list }}
+  run_once: true
+
+- name: Cloud Shell precheck | Require unique project-owned security group
+  ansible.builtin.assert:
+    that:
+      - afterglow_cloud_shell_security_group_list.rc | default(1) == 0
+      - >-
+        afterglow_cloud_shell_security_group_id_matches | length == 1 or
+        (afterglow_cloud_shell_security_group_id_matches | length == 0 and afterglow_cloud_shell_security_group_name_matches | length == 1)
+    fail_msg: "Cloud Shell security group '{{ afterglow_cloud_shell_precheck_security_group }}' must resolve to exactly one group owned by the dedicated project"
+  run_once: true
+
+- name: Cloud Shell precheck | Record exact security group ID
+  ansible.builtin.set_fact:
+    afterglow_cloud_shell_precheck_security_group_id: >-
+      {{ (afterglow_cloud_shell_security_group_id_matches if afterglow_cloud_shell_security_group_id_matches | length == 1
+          else afterglow_cloud_shell_security_group_name_matches) | first }}
+  run_once: true
+
+- name: Cloud Shell precheck | Inspect resolved security group by ID
+  become: true
+  community.docker.docker_container_exec:
+    container: kolla_toolbox
+    command: >-
+      openstack --os-cloud=kolla --os-project-id={{ afterglow_cloud_shell_precheck_project_id }}
+      security group show {{ afterglow_cloud_shell_precheck_security_group_id }} -f json
   register: afterglow_cloud_shell_security_group_check
   failed_when: false
   changed_when: false
   run_once: true
   delegate_to: "{{ groups['afterglow'][0] }}"
 
-- name: Cloud Shell precheck | List ingress rules for configured security group
-  become: true
-  community.docker.docker_container_exec:
-    container: kolla_toolbox
-    command: >-
-      openstack --os-cloud=kolla --os-project-id={{ afterglow_cloud_shell_precheck_project_id }}
-      security group rule list --ingress {{ afterglow_cloud_shell_security_group }} -f json
-  register: afterglow_cloud_shell_ingress_check
-  failed_when: false
-  changed_when: false
-  run_once: true
-  delegate_to: "{{ groups['afterglow'][0] }}"
-
-- name: Cloud Shell precheck | Require project-owned egress-only network policy
+- name: Cloud Shell precheck | Require project-owned network and security group
   ansible.builtin.assert:
     that:
-      - afterglow_cloud_shell_network_check.rc | default(1) == 0
-      - (afterglow_cloud_shell_network_check.stdout | from_json).project_id == afterglow_cloud_shell_precheck_project_id
+      - >-
+        afterglow_cloud_shell_network_id | default('', true) | length == 0 or
+        (afterglow_cloud_shell_network_check.rc | default(1) == 0 and
+         (afterglow_cloud_shell_network_check.stdout | from_json).project_id == afterglow_cloud_shell_precheck_project_id)
       - afterglow_cloud_shell_security_group_check.rc | default(1) == 0
+      - (afterglow_cloud_shell_security_group_check.stdout | from_json).id == afterglow_cloud_shell_precheck_security_group_id
       - (afterglow_cloud_shell_security_group_check.stdout | from_json).project_id == afterglow_cloud_shell_precheck_project_id
-      - afterglow_cloud_shell_ingress_check.rc | default(1) == 0
-      - afterglow_cloud_shell_ingress_check.stdout | from_json | length == 0
-    fail_msg: "Cloud Shell network and security group must belong to the dedicated project, and the security group must contain no ingress rules"
+    fail_msg: "A configured Cloud Shell network and the resolved security group must belong to the dedicated project"
   run_once: true
 
 - name: Cloud Shell precheck | Authenticate to Zun in dedicated scope

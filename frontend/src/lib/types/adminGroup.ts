@@ -3,6 +3,7 @@ export interface Group {
 	name: string;
 	description: string;
 	domain_id: string | null;
+	created_at: string | null;
 }
 
 export interface GroupMember {

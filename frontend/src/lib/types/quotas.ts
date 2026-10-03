@@ -1,8 +1,57 @@
 export interface Project { id: string; name: string; }
-export interface QuotaLimit { limit: number; in_use: number; }
+export interface QuotaLimit { limit: number; in_use: number; reserved?: number; }
+export interface ComputeQuotas {
+	instances?: QuotaLimit;
+	cores?: QuotaLimit;
+	ram?: QuotaLimit;
+	metadata_items?: QuotaLimit;
+	key_pairs?: QuotaLimit;
+	server_groups?: QuotaLimit;
+	server_group_members?: QuotaLimit;
+	injected_files?: QuotaLimit;
+	injected_file_content_bytes?: QuotaLimit;
+	injected_file_path_bytes?: QuotaLimit;
+	[key: string]: QuotaLimit | undefined;
+}
+export interface VolumeQuotas {
+	volumes?: QuotaLimit;
+	snapshots?: QuotaLimit;
+	gigabytes?: QuotaLimit;
+	[key: string]: QuotaLimit | undefined;
+}
+export interface NetworkQuotas {
+	network?: QuotaLimit;
+	subnet?: QuotaLimit;
+	port?: QuotaLimit;
+	router?: QuotaLimit;
+	floatingip?: QuotaLimit;
+	security_group?: QuotaLimit;
+	security_group_rule?: QuotaLimit;
+	[key: string]: QuotaLimit | undefined;
+}
+export interface FileStorageQuotas {
+	shares?: QuotaLimit;
+	gigabytes?: QuotaLimit;
+	snapshots?: QuotaLimit;
+	snapshot_gigabytes?: QuotaLimit;
+	share_networks?: QuotaLimit;
+	share_groups?: QuotaLimit;
+	share_group_snapshots?: QuotaLimit;
+	[key: string]: QuotaLimit | undefined;
+}
 export interface Quotas {
-	compute?: { instances?: QuotaLimit; cores?: QuotaLimit; ram?: QuotaLimit };
-	volume?: { volumes?: QuotaLimit; gigabytes?: QuotaLimit };
+	compute: ComputeQuotas | null;
+	volume: VolumeQuotas | null;
+	network: NetworkQuotas | null;
+	file_storage: FileStorageQuotas | null;
+	project_id?: string;
+	availability?: Record<string, boolean>;
+	errors?: Record<string, string>;
+}
+export interface QuotaUpdateResponse {
+	status: 'updated' | 'partial';
+	updated: string[];
+	errors: Record<string, string>;
 }
 export interface GpuQuota { gpu_type: string; limit: number; in_use: number; available: number; }
 export interface GpuDefaultQuota { gpu_type: string; limit: number; }

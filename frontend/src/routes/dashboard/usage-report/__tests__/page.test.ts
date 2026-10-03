@@ -23,7 +23,6 @@ const initialAuth: AuthState = {
 	userId: 'test-user', username: 'tester', projectId: 'project', projectName: 'Project One',
 	availableProjects: [], roles: [], isSystemAdmin: false, federated: false,
 };
-
 const trend = (overrides: Record<string, unknown> = {}) => ({
 	current_pct: 28.1,
 	slope_per_day: 0.57,

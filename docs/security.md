@@ -6,6 +6,25 @@
 
 ---
 
+## Dependency 보안 floor
+
+1.30.0 후보의 dependency 보안 갱신은 application policy와 별도다. Vulnerable range를 벗어난 최소 compatible package만 갱신하며 lock을 무시한 설치나 unrelated `--upgrade` 전체 갱신을 하지 않는다.
+
+| Consumer | Patched floor / lock | 경계 |
+| --- | --- | --- |
+| Backend JWT | PyJWT `>=2.15.0` | access/refresh의 단일 `HS256`, 서버 secret과 서명 우선 검증 유지 |
+| Backend TLS concurrency | AnyIO `>=4.14.2` | IDNA hostname 검증, TLS verify·configured CA 유지 |
+| Backend/OpenStack CLI/Kolla operator HTTP | urllib3 `>=2.8.0` | response decoding/chunk line·HTTPS proxy TLS upstream patch; 운영 `uv sync`나 role promotion과 별도 |
+| Backend SSH | AsyncSSH `>=2.24.0` | 기존 SSH credential·host-key policy를 변경하지 않음 |
+| Backend PDF package | pypdf `==6.19.0` | PDF thumbnails와 upload 검사 정본은 기존 pypdfium2; installed pypdf의 parser advisory도 vulnerable range 밖으로 유지 |
+| Frontend SSR serializer | devalue `>=5.9.3`, 5.x override | SvelteKit payload serialization과 script escaping 유지 |
+| Frontend HTML/SVG sanitizer | DOMPurify `>=3.4.16`, 3.x | `renderMarkdown`·Mermaid sanitizer options를 변경하지 않음 |
+| Frontend trusted config parser | smol-toml `>=1.7.1`, 1.x | SSR 설정 파일 계약 유지 |
+| Frontend development test UI | Vitest·coverage family `>=4.1.11`, 4.x | test UI/network boundary upstream patch; CI selector와 suites 유지 |
+
+Backend `uv.lock`, frontend Bun·npm lock, root CLI `uv.lock`, operator `uv.lock`은 각각 실제 설치 그래프다. Security floor 업데이트로 서비스 tag/Kolla source pin·release version·사용자의 운영 config/volumes를 변경하지 않는다. Default-branch Dependabot 경고 수는 현재 dev의 수정 여부나 운영 exploitability를 대신하지 않는다. [PyJWT PEM](https://github.com/jpadilla/pyjwt/security/advisories/GHSA-ffc3-869f-jxw9), [PyJWT payload](https://github.com/jpadilla/pyjwt/security/advisories/GHSA-42vr-xj54-vc7v), [AnyIO IDNA](https://github.com/agronholm/anyio/security/advisories/GHSA-82r6-8w77-94w6) 같은 library regression은 실제 실행으로 확인하되 production 인증 우회가 재현됐다고 확대하지 않는다.
+
+
 ## 인증·인가 모델
 
 ```
@@ -53,7 +72,7 @@
 - Redis ticket에는 scoped Keystone token이 짧은 `ticket_ttl_seconds` 동안 포함됩니다. 티켓은 high-entropy opaque 값이고 목적(`cloud-shell`)이 묶이며 원자적으로 한 번만 소비됩니다. Consume 뒤 ticket key는 삭제되고 active ownership key에는 token 대신 서명된 fingerprint/session metadata만 남습니다. Redis가 불가하면 ticket/lock/heartbeat 경로는 503/4500으로 fail-closed합니다.
 - 브라우저는 Keystone token, 서비스 프로젝트 자격, Zun exec URL을 받지 않습니다. Backend가 Zun binary WebSocket에 직접 연결하고 browser에는 configured public Afterglow API relay만 노출합니다. Frontend CSP `connect-src`는 설정된 API HTTP(S) origin과 정확히 대응하는 WS(S) origin만 추가합니다. Handshake 뒤 `Origin`을 frontend/CORS allowlist와 정확히 비교하며 누락·userinfo·path/query가 있는 origin도 거부합니다.
 - Bootstrap은 PTY echo를 먼저 끈 뒤 bounded payload를 받고, token을 `/dev/shm/afterglow/secure.yaml`의 UID/GID 1000·mode 0600 파일에만 씁니다. `/dev/shm`은 컨테이너 tmpfs이고 영구 Cinder mount `/home/cloudshell`과 분리됩니다. 그 뒤 UID/GID 1000, 빈 supplementary group, `no-new-privs`, 비어 있는 inheritable/ambient/bounding capability로 `bash --login`을 exec합니다. Image layer와 persistent home에는 credential을 쓰지 않습니다.
-- Zun 컨테이너는 privileged=false, 고정 CPU/RAM, 운영자 지정 network/security group, 한 개의 managed home volume만 사용합니다. Security group은 전용 service project 소유이며 ingress rule이 없어야 합니다. Dedicated project service credential은 Zun/Cinder lifecycle에만 사용하고 shell 안에는 caller-scoped token만 들어갑니다.
+- Zun 컨테이너는 비특권(요청에 `privileged`를 보내지 않아 Zun 기본값을 쓰며, Zun 기본 policy는 명시적 privileged 생성을 모두 거부), 고정 CPU/RAM, 전용 프로젝트의 default 네트워크(또는 명시적 소유 네트워크), 한 개의 managed home volume을 사용합니다. 네트워크의 subnet과 external 연결을 홈 생성 전에 확인하며 다른 프로젝트의 private network는 거부합니다. 기본 `default` security group은 전용 프로젝트 안에서 exact ID로 확정하고 기존 규칙을 유지합니다. Egress-only를 보장하지 않으므로 같은 그룹의 세션 사이 ingress도 운영 정책으로 관리해야 합니다. 세션 정리는 owner 권한의 `stop=true` 삭제를 사용하므로 service user에 force delete용 admin 권한이 필요하지 않습니다. Dedicated project service credential은 lifecycle에만 사용하고 shell 안에는 caller-scoped token만 들어갑니다.
 - 영구 홈과 컨테이너는 이름만으로 채택/삭제하지 않습니다. HMAC signature, service-project resource metadata, user/workspace/session fingerprint, expiry가 모두 맞아야 합니다. 중복·collision·metadata 불일치·조회 실패는 자동 정리 대신 fail-closed 상태로 남깁니다.
 - 사용자당 전역 singleton reservation/active key가 다른 탭과 프로젝트의 동시 세션을 막습니다. Project switch/logout은 먼저 relay를 닫고 container cleanup을 요청합니다. Idle/max expiry, browser disconnect, backend restart 뒤에는 exact managed container cleanup과 startup/interval reconciler가 보조하지만 persistent home은 명시적 reset 전까지 유지합니다.
 - Audit은 `cloud_shell.start`, `cloud_shell.end`, `cloud_shell.reset`의 project/user/status와 safe error code만 기록합니다. Ticket, Keystone token, bootstrap payload, exec URL, terminal bytes는 audit/application log에 기록하지 않습니다. Terminal 내용 자체는 Afterglow DB에 저장하지 않습니다.
@@ -66,7 +85,7 @@
 | Cross-site WebSocket hijacking | exact Origin allowlist, opaque ticket | 공개 ingress의 HTTPS/WSS 및 WebSocket upgrade |
 | Token의 영구 홈 유출 | PTY echo off, tmpfs 0600 config, ephemeral container, token은 home에 미기록 | Zun compute/root와 memory dump 접근 통제 |
 | 서비스 프로젝트 resource 탈취/오삭제 | dedicated project, signed exact metadata, duplicate/collision fail-closed | project/network/security-group/quotas와 `SECRET_KEY` lifecycle |
-| 컨테이너 escape·outbound 남용 | non-privileged, no capabilities, no-new-privs, fixed resources, ingress-free SG | Zun runtime hardening, registry provenance, egress allowlist/monitoring |
+| 컨테이너 escape·네트워크 남용 | non-privileged, no capabilities, no-new-privs, fixed resources, project-owned SG | Zun runtime hardening, registry provenance, SG ingress/egress 정책과 같은 그룹 세션 간 접근 통제 |
 | 중단 뒤 orphan | lease heartbeat, exact cleanup, startup/interval reconciliation | cleanup alerting, staging expiry 검증, 수동 보존 정책 |
 
 ### 리버스 프록시 IP 추출
@@ -204,6 +223,7 @@ master key (k3s_kubeconfig_encryption_key, 64 hex)
 
 - **백엔드 CORS**: `cors_origin_list` allowlist (wildcard 금지)
 - **RGW 버킷 CORS**: `s3.py:_put_bucket_cors` 가 `cors_origin_list` 와 동기화. allowlist 가 비어있으면 CORS rule 자체 삭제 (cross-origin 차단)
+- **프런트엔드 CSP 미디어**: `media-src 'self' blob:`만 허용합니다. Audio Studio는 `fetchWithAuth`로 받은 생성 음성 응답이나 사용자가 고른 로컬 파일로 만든 object URL만 재생하며, 원격 미디어 origin과 API origin의 직접 재생은 허용하지 않습니다.
 
 ---
 

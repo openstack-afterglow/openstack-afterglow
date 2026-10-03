@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     import openstack
@@ -51,6 +51,8 @@ def _make_admin_conn(project_id: str, user_id: str) -> openstack.connection.Conn
 async def list_project_flavors_for_admin(
     project_id: str = Query(..., description="대상 프로젝트 ID"),
     count: int = Query(1, ge=1, le=100, description="동일 flavor 생성 수량"),
+    availability_zone: str | None = None,
+    capacity: Literal["create"] | None = Query(None, description="create: 단일 VM 생성용 같은 호스트 용량 포함"),
     token_info: dict = Depends(get_token_info),
 ):
     """Return target-project-visible flavors with target quota eligibility."""
@@ -60,7 +62,15 @@ async def list_project_flavors_for_admin(
         conn = await asyncio.to_thread(_make_admin_conn, project_id, token_info.get("user_id", ""))
         try:
             flavors = await asyncio.to_thread(nova.list_flavors, conn)
-            return await evaluate_project_flavors(conn, project_id, flavors, count=count)
+            return await evaluate_project_flavors(
+                conn,
+                project_id,
+                flavors,
+                count=count,
+                check_capacity=capacity == "create",
+                availability_zone=availability_zone,
+                fresh_capacity=False,
+            )
         finally:
             await asyncio.to_thread(conn.close)
     except HTTPException:
@@ -178,7 +188,7 @@ async def admin_create_instance_async(
         sse_flavor = next((flavor for flavor in sse_flavors if flavor.id == req.flavor_id), None)
         if sse_flavor is None:
             raise HTTPException(status_code=400, detail="Invalid flavor ID")
-        admission = await admit_flavor(conn, req.project_id, sse_flavor)
+        admission = await admit_flavor(conn, req.project_id, sse_flavor, availability_zone=compute_availability_zone)
     except (FlavorEligibilityDenied, GpuQuotaDenied) as exc:
         await asyncio.to_thread(conn.close)
         raise HTTPException(status_code=409, detail=str(exc)) from exc

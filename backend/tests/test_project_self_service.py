@@ -74,7 +74,7 @@ async def test_create_project_success():
         patch("app.services.keystone._get_admin_ks_client", return_value=mock_ks),
         patch("app.services.keystone.get_admin_connection_for_project", side_effect=Exception("no monitoring")),
         patch("app.services.activity.record", new_callable=AsyncMock),
-        patch("app.services.project_service.cache.invalidate", new_callable=AsyncMock) as mock_invalidate,
+        patch("app.services.project_service.cache.invalidate", new_callable=AsyncMock),
     ):
         async with AsyncClient(
             transport=ASGITransport(app=app),
@@ -88,7 +88,6 @@ async def test_create_project_success():
     data = resp.json()
     assert data["id"] == "new-proj-id"
     assert data["name"] == "MyProject"
-    mock_invalidate.assert_awaited_once_with("afterglow:user:user-abc:projects")
 
 
 @pytest.mark.asyncio

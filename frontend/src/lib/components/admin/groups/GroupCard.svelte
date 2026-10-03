@@ -48,6 +48,7 @@
 			<div>
 				<div class="text-sm font-medium text-ink-0">{group.name}</div>
 				<div class="text-xs text-ink-2">{group.description || '-'}</div>
+				<div class="text-xs text-ink-2 tabular-nums mt-1">생성일 {group.created_at?.slice(0, 10) ?? '미확인'}</div>
 			</div>
 			<div class="text-xs text-ink-2 font-mono hidden sm:block">{group.id.slice(0, 8)}</div>
 		</div>

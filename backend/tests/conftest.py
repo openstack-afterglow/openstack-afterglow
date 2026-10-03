@@ -229,6 +229,36 @@ def patch_usage_report_deps(*, usage=None, quota=None, volume_quota=None, flavor
 
 
 @pytest.fixture
+def available_flavor_capacity(monkeypatch):
+    """Isolate existing VM mutation tests from the read-only cloud capacity authority."""
+    from app.models.compute import FlavorCapacityInfo
+    from app.services.resource_policy_store import resolve_policies
+
+    async def capacity(flavors, **_kwargs):
+        return {
+            flavor.id: FlavorCapacityInfo(
+                status="available",
+                checked_at="2026-10-01T00:00:00+00:00",
+                candidate_hosts=1,
+                cpu_resource_class="VCPU",
+                remaining_vcpus=128,
+                remaining_ram_mb=524288,
+            )
+            for flavor in flavors
+        }
+
+    async def policies(*, conn, keys, **kwargs):
+        if tuple(keys) == ("nova.default_compute_availability_zone",):
+            return {"nova.default_compute_availability_zone": "nova"}
+        return await resolve_policies(conn=conn, keys=keys, **kwargs)
+
+    authority = AsyncMock(side_effect=capacity)
+    monkeypatch.setattr("app.services.flavor_capacity.evaluate_flavor_capacities", authority)
+    monkeypatch.setattr("app.services.resource_policy_store.resolve_policies", policies)
+    return authority
+
+
+@pytest.fixture
 async def client(mock_conn):
     """인증 의존성을 모의 객체로 오버라이드한 AsyncClient (일반 사용자)."""
 

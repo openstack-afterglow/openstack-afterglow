@@ -101,9 +101,9 @@ function legacyModel(id: number, overrides: Record<string, unknown> = {}) {
   );
 }
 
-function serve(models: unknown[]) {
+function serve(models: unknown[], providerRows: unknown[] = [provider]) {
   get.mockImplementation((path: string) => {
-    if (path === "/api/v1/chat/admin/providers") return Promise.resolve([provider]);
+    if (path === "/api/v1/chat/admin/providers") return Promise.resolve(providerRows);
     if (path === "/api/v1/chat/admin/models") return Promise.resolve(models);
     return Promise.resolve([]);
   });
@@ -399,5 +399,59 @@ describe("admin chat model prompt-cache pricing", () => {
     modal = await openEditor();
     expect(within(modal).queryByText(CACHE_PRICE_ERROR)).toBeNull();
     expect((within(modal).getByLabelText("캐시 읽기") as HTMLInputElement).value).toBe("");
+  });
+});
+
+describe("admin media model registration", () => {
+  const openai = { ...provider, id: 2, name: "OpenAI", provider_type: "openai", auth_mode: "api_key", api_base: null };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    post.mockResolvedValue({});
+    patch.mockResolvedValue({});
+  });
+
+  it("registers an image variant as a unit price without leaking token/cache fields", async () => {
+    serve([], [openai]);
+    render(ModelPage);
+    await screen.findByText("모델");
+    await fireEvent.change(screen.getByLabelText("모델 종류"), { target: { value: "image" } });
+    await fireEvent.input(screen.getByPlaceholderText("모델명 (예: gpt-4o)"), { target: { value: "gpt-image-1" } });
+    await fireEvent.click(screen.getByText("+ variant 추가"));
+    await fireEvent.input(screen.getByLabelText("이미지 variant 이름"), { target: { value: "1024x1024:high" } });
+    await fireEvent.input(screen.getByLabelText("이미지 variant 단가"), { target: { value: "0.08" } });
+    await fireEvent.click(screen.getByText("+ 모델 추가"));
+
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(JSON.stringify(post.mock.calls[0][1]))).toStrictEqual({
+      provider_id: 2,
+      model_name: "gpt-image-1",
+      display_name: null,
+      model_kind: "image",
+      media_pricing: { image_variants: { "1024x1024:high": "0.08" } },
+    });
+  });
+
+  it("shows unexecutable readiness and updates only changed media prices", async () => {
+    serve([model(1, {
+      provider_id: 2,
+      model_name: "gpt-image-1",
+      api_model_name: "gpt-image-1",
+      display_name: "Image Maker",
+      model_kind: "image",
+      input_price_per_million: null,
+      output_price_per_million: null,
+      media_pricing: { image_variants: { "1024x1024:high": "0.08" } },
+      effective_capabilities: { feature_gates: { image_output: { available: false, mode: "none", reason_code: "route_unavailable", pricing_available: true } } },
+    })], [openai]);
+    render(ModelPage);
+    await screen.findByText("Image Maker");
+    expect(screen.getByText("실행 경로 없음 · 실행 불가")).toBeTruthy();
+    expect(screen.getByText(/1024x1024:high: 0.08 USD \/ 장/)).toBeTruthy();
+    const modal = await openEditor();
+    await fireEvent.input(within(modal).getByLabelText("이미지 variant 단가"), { target: { value: "0.12" } });
+    await fireEvent.click(within(modal).getByText("저장"));
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(JSON.stringify(patch.mock.calls[0][1]))).toStrictEqual({ media_pricing: { image_variants: { "1024x1024:high": "0.12" } } });
   });
 });

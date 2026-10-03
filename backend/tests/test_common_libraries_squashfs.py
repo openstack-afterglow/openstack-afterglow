@@ -272,6 +272,10 @@ async def test_public_consume_persists_project_and_uses_split_connections(monkey
 
     caller_conn = MagicMock()
     caller_conn._afterglow_project_id = "project-a"
+    caller_conn._afterglow_authenticated_project_id = "project-a"
+    caller_conn.image.get_image.return_value = SimpleNamespace(
+        id="img-24", name="ubuntu-24.04", status="active", checksum="sum", os_hash_algo="sha512", os_hash_value="hash"
+    )
     service_conn = MagicMock()
     run_mock = AsyncMock(return_value="server-1")
     invalidate_mock = AsyncMock()
@@ -304,7 +308,7 @@ async def test_public_consume_persists_project_and_uses_split_connections(monkey
         token_info={"project_id": "project-a"},
     )
 
-    assert result == {"consume_id": 41, "server_id": "server-1", "status": "active"}
+    assert result == {"consume_id": 41, "server_id": "server-1", "status": "active", "ready": True}
     assert added and getattr(added[0], "project_id") == "project-a"
     assert getattr(added[0], "artifact_ids") == [1, 2]
     run_kwargs = run_mock.await_args.kwargs
@@ -328,7 +332,7 @@ async def test_public_consume_rejects_unpublished_or_unsealed_before_row(monkeyp
     with pytest.raises(HTTPException) as exc:
         await layer_public.consume_public_squashfs(
             layer_public.PublicLayerConsumeRequest(artifact_ids=[99], server_name="vm", flavor_id="m1.small"),
-            conn=MagicMock(),
+            conn=SimpleNamespace(_afterglow_authenticated_project_id="project-a"),
             token_info={"project_id": "project-a"},
         )
 
@@ -353,9 +357,91 @@ async def test_public_profile_rejects_duplicate_name_drift_before_consume(monkey
     with pytest.raises(HTTPException) as exc:
         await layer_public.consume_public_squashfs(
             layer_public.PublicLayerConsumeRequest(profile_name="prof", server_name="vm", flavor_id="m1.small"),
-            conn=MagicMock(),
+            conn=SimpleNamespace(_afterglow_authenticated_project_id="project-a"),
             token_info={"project_id": "project-a"},
         )
 
     assert exc.value.status_code == 409
     assert added == []
+
+
+@pytest.mark.asyncio
+async def test_public_profile_expands_complete_published_root_lineage(monkeypatch) -> None:
+    profile = _profile(name="root-profile", layers=["step"], is_published=True)
+    ancestor = _artifact(id=1, name="docker-root", kind="dockerfile-root")
+    root = _artifact(id=2, name="step", kind="dockerfile", parent_id=1)
+    session = _FakeSession(
+        [
+            _FakeScalarResult(scalar=profile),
+            _FakeScalarResult(rows=[ancestor, root]),
+            _FakeScalarResult(rows=[root]),
+            _FakeScalarResult(rows=[ancestor, root]),
+        ],
+        [],
+    )
+    rows = await layer_public._resolve_profile_artifact_ids(session, "root-profile")
+    assert [row.id for row in rows] == [1, 2]
+
+
+@pytest.mark.asyncio
+async def test_public_root_rejects_unpublished_ancestor(monkeypatch) -> None:
+    root = _artifact(id=2, name="step", kind="dockerfile", parent_id=1)
+    ancestor = _artifact(id=1, name="docker-root", kind="dockerfile-root", is_published=False)
+    session = _FakeSession([_FakeScalarResult(rows=[root]), _FakeScalarResult(rows=[ancestor, root])], [])
+    with pytest.raises(HTTPException, match="ancestor artifact가 공개/봉인"):
+        await layer_public._resolve_direct_artifacts(session, [2])
+
+
+@pytest.mark.asyncio
+async def test_public_consume_rejects_cross_project_connection_before_db(monkeypatch) -> None:
+    added: list[object] = []
+    monkeypatch.setattr(layer_public, "get_session_factory", lambda: lambda: _FakeSession([], added))
+    conn = MagicMock()
+    conn._afterglow_authenticated_project_id = "project-b"
+    with pytest.raises(HTTPException) as exc:
+        await layer_public.consume_public_squashfs(
+            layer_public.PublicLayerConsumeRequest(artifact_ids=[2], flavor_id="m1.small"),
+            conn=conn,
+            token_info={"project_id": "project-a"},
+        )
+    assert exc.value.status_code == 401
+    assert not added
+
+
+@pytest.mark.asyncio
+async def test_public_consume_rejects_glance_drift_before_db_and_share_access(monkeypatch) -> None:
+    root = _artifact(id=1)
+    added: list[object] = []
+    results = [_FakeScalarResult(rows=[root]), _FakeScalarResult(rows=[root])]
+    monkeypatch.setattr(layer_public, "get_session_factory", lambda: lambda: _FakeSession(results, added))
+    share_conn = AsyncMock()
+    monkeypatch.setattr(layer_public, "get_service_project_connection", share_conn)
+    monkeypatch.setattr(
+        "app.services.layer_build.resolve_layer_consume_resource_snapshot",
+        AsyncMock(
+            return_value={
+                "network": {"id": "net-1"},
+                "flavor": {"id": "flavor-1"},
+                "openstack.service_project": {"id": "service"},
+            }
+        ),
+    )
+    conn = MagicMock()
+    conn._afterglow_authenticated_project_id = "project-a"
+    conn.image.get_image.return_value = SimpleNamespace(
+        id="img-24",
+        name="ubuntu-24.04",
+        status="active",
+        checksum="drifted",
+        os_hash_algo="sha512",
+        os_hash_value="hash",
+    )
+    with pytest.raises(HTTPException, match="identity mismatch") as exc:
+        await layer_public.consume_public_squashfs(
+            layer_public.PublicLayerConsumeRequest(artifact_ids=[1], flavor_id="m1.small"),
+            conn=conn,
+            token_info={"project_id": "project-a"},
+        )
+    assert exc.value.status_code == 400
+    assert not added
+    share_conn.assert_not_awaited()

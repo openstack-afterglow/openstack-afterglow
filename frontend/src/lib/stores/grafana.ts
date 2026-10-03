@@ -4,7 +4,7 @@ import { getActiveMockupProfile } from '$lib/mockup/transport';
 import { getMockupRevision, onMockupRevisionChange } from '$lib/mockup/state';
 import type { MockupProfileId } from '$lib/mockup/contracts';
 
-export type GrafanaDashboardKey = 'node' | 'rabbitmq' | 'mysqld' | 'memcached' | 'etcd' | 'haproxy' | 'libvirt' | 'openstack' | 'ceph' | 'instance-cpu' | 'instance-gpu';
+export type GrafanaDashboardKey = 'node' | 'rabbitmq' | 'mysqld' | 'proxysql' | 'memcached' | 'etcd' | 'haproxy' | 'libvirt' | 'openstack' | 'ceph' | 'instance-cpu' | 'instance-gpu';
 
 export interface GrafanaContext {
 	grafanaUrl: string;

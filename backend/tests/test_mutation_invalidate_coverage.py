@@ -89,6 +89,10 @@ EXEMPT_ROUTERS: set[str] = {
     # backfill DOES invalidate `afterglow:union_layer:*` because it mutates
     # layer_artifacts rows that the layer listing cache serves.
     "palimpsest/hub.py",
+    # Namespace/key mutations also belong solely to Hub; Afterglow caches none
+    # of their state or native package responses.
+    "palimpsest/packages.py",
+    "palimpsest/package_keys.py",
     # Admin resource policy routes own application data read directly from
     # their stores; no OpenStack cache key is affected.
     "identity/admin_resource_policies.py",
@@ -177,6 +181,9 @@ EXEMPT_HANDLERS: set[str] = {
     "snapshot",
     "preview",
     "execute",
+    # Realtime session state belongs to Lumen. The BFF creates only an expiring
+    # browser WebSocket ticket; neither mutation changes an Afterglow resource cache.
+    "create_session",
     # Internal K3s admission is read-only despite POST. Intent creation mutates
     # DB-backed orchestration state read directly, not an OpenStack cache.
     "k3s_gpu_admission",

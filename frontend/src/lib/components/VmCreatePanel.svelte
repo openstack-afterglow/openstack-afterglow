@@ -69,7 +69,19 @@
 						<WizardStep1Boot />
 					{:else if $wizard.step === 2}
 						<h2 class="mb-1 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-lg font-semibold text-[var(--color-ink-0)]"><span>플레이버 선택</span><span class="text-sm font-normal text-[var(--color-ink-2)]">VM의 vCPU / 메모리 / 디스크 스펙</span></h2>
-						<SelectFlavor flavors={s.flavors} selectedId={$wizard.flavorId} onSelect={s.selectFlavor} quota={s.flavorQuota} />
+						<SelectFlavor
+							{adminMode}
+							flavors={s.flavors}
+							selectedId={$wizard.flavorId}
+							selectedName={$wizard.flavorName}
+							onSelect={s.selectFlavor}
+							quota={s.flavorQuota}
+							refreshing={s.flavorRefreshing}
+							refreshError={s.flavorRefreshError}
+							backgroundRefreshing={s.flavorBackgroundRefreshing}
+							backgroundRefreshError={s.flavorBackgroundRefreshError}
+							onRefresh={s.refreshFlavorOptions}
+						/>
 					{:else if $wizard.step === 3}
 						<WizardStep3Library />
 					{:else if $wizard.step === 4}
@@ -88,6 +100,9 @@
 						<WizardStep5Config />
 					{:else if $wizard.step === 6}
 						<WizardStep6Review />
+						{#if s.flavorRefreshing}
+							<p class="mt-2 text-sm text-[var(--color-ink-2)]" role="status" aria-live="polite">생성 전에 선택한 플레이버의 쿼터와 호스트 용량을 다시 확인하는 중입니다…</p>
+						{/if}
 					{/if}
 				</div>
 			{/if}

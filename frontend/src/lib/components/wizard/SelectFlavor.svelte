@@ -1,16 +1,13 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { api } from '$lib/api/client';
-	import { auth } from '$lib/stores/auth';
-	import type { FlavorOption as FlavorInfo } from '$lib/types/flavor';
-
-	interface GpuTypeAvailability {
-		device_name: string;
-		vendor: string;
-		total: number;
-		used: number;
-		available: number;
-	}
+	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
+	import { Alert, Button, Card, Pill } from '$lib/components/ui';
+	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
+	import {
+		flavorCreateBlock,
+		type FlavorCreateBlock,
+		type FlavorOption as FlavorInfo,
+		type FlavorQuotaBlocker,
+	} from '$lib/types/flavor';
 
 	interface QuotaPair { limit: number; in_use: number; }
 	interface FlavorQuotaSummary {
@@ -20,30 +17,43 @@
 		gigabytes?: QuotaPair; // GB
 	}
 
-	let { flavors, selectedId, onSelect, quota }: {
+	let {
+		adminMode = false,
+		flavors,
+		selectedId,
+		selectedName = null,
+		onSelect,
+		quota,
+		refreshing = false,
+		refreshError = null,
+		backgroundRefreshing = false,
+		backgroundRefreshError = null,
+		onRefresh,
+	}: {
+		/** Operator details belong to the administrator surface, not an admin identity in consumer mode. */
+		adminMode?: boolean;
 		flavors: FlavorInfo[];
 		selectedId: string | null;
+		selectedName?: string | null;
 		onSelect: (id: string, name: string) => void;
 		quota?: FlavorQuotaSummary | null;
+		/** A locking initial, manual, or submit capacity refresh is in flight. */
+		refreshing?: boolean;
+		refreshError?: string | null;
+		backgroundRefreshing?: boolean;
+		backgroundRefreshError?: string | null;
+		onRefresh: (mode: 'manual' | 'periodic') => Promise<unknown>;
 	} = $props();
 
-	let gpuAvailability = $state<GpuTypeAvailability[]>([]);
-
-	const token = $derived($auth.token ?? undefined);
-	const projectId = $derived($auth.projectId ?? undefined);
-
-	onMount(async () => {
-		try {
-			const data = await api.get<{ gpu_types: GpuTypeAvailability[] }>(
-				'/api/v1/dashboard/gpu-available', token, projectId
-			);
-			gpuAvailability = data.gpu_types ?? [];
-		} catch (e) {
-			if (e instanceof Error && !e.message.includes('404')) {
-				console.warn('[SelectFlavor] GPU 가용량 조회 실패:', e.message);
-			}
-		}
+	// Mounted only while the flavor step is visible, so the timer stops with the step or panel.
+	const ar = createAutoRefresh(async () => { await onRefresh('periodic'); }, {
+		storageKey: 'vm-create-flavor-capacity',
+		defaultActive: true,
+		defaultInterval: 15,
+		invokeOnMount: false,
 	});
+
+	const selectionLocked = $derived(refreshing || Boolean(refreshError));
 
 	function parseGpuRequest(f: FlavorInfo): { model: string; count: number }[] {
 		const alias = f.extra_specs?.['pci_passthrough:alias'] ?? '';
@@ -57,24 +67,19 @@
 			});
 	}
 
-	const selectedGpuRequest = $derived((() => {
-		const map = new Map<string, number>();
-		if (!selectedId || !gpuAvailability.length) return map;
-		const f = flavors.find(fl => fl.id === selectedId);
-		if (!f) return map;
-		const norm = (s: string) => s.replace(/[\s\-_.]+/g, '').toLowerCase();
-		for (const r of parseGpuRequest(f)) {
-			const reqNorm = norm(r.model);
-			// 정규화 후 정확히 일치하는 device를 찾는다.
-			// includes() 비교는 "rtx3060lhr".includes("rtx3060") = true 가 되어
-			// RTX 3060 alias가 RTX 3060 LHR device와 잘못 매칭되는 버그가 있었다.
-			const matched = gpuAvailability.find(g => norm(g.device_name) === reqNorm);
-			if (matched) {
-				map.set(matched.device_name, (map.get(matched.device_name) ?? 0) + r.count);
-			}
+	// Project GPU quota per alias comes from the target-project eligibility in the fenced flavor list.
+	// Host GPU fit is decided per flavor by the same-host capacity snapshot, never by a global aggregate.
+	const projectGpuQuota = $derived.by(() => {
+		const remaining = new Map<string, number>();
+		for (const f of flavors) {
+			for (const [alias, value] of Object.entries(f.eligibility?.remaining.gpus ?? {})) remaining.set(alias, value);
 		}
-		return map;
-	})());
+		return [...remaining].map(([alias, value]) => ({
+			alias,
+			remaining: value,
+			requested: selectedFlavor?.eligibility?.requirements.gpus[alias] ?? 0,
+		}));
+	});
 
 	type AvailabilityView = 'selectable' | 'blocked';
 	let availabilityView = $state<AvailabilityView>('selectable');
@@ -98,7 +103,7 @@
 	}
 
 	function isSelectable(f: FlavorInfo): boolean {
-		return f.eligibility ? f.eligibility.selectable : true;
+		return flavorCreateBlock(f) === null;
 	}
 
 	const selectableCount = $derived(flavors.filter(f => isSelectable(f)).length);
@@ -147,11 +152,59 @@
 	});
 
 	function handleFlavorClick(f: FlavorInfo) {
-		if (!isSelectable(f)) return;
+		if (selectionLocked || !isSelectable(f)) return;
 		onSelect(f.id, f.name);
 	}
 
-	function blockerLabel(blocker: { code: string; resource?: string | null; required?: number | null; remaining?: number | null }): string {
+	const BLOCK_LABEL: Record<Exclude<FlavorCreateBlock, 'capacity_insufficient'> | 'missing', string> = {
+		quota: '프로젝트 쿼터 부족',
+		unchecked: '쿼터 또는 호스트 용량 확인 불가',
+		missing: '현재 프로젝트 플레이버 목록에 없음',
+	};
+	/** Same-host capacity was not verified; such a flavor never admits creation. */
+	const HOST_CAPACITY_UNCHECKED = '호스트 용량 확인 불가';
+
+	/** The host check covers GPUs only when the flavor requests GPU aliases (quota requirements) or vGPU/pGPU resources. */
+	function requestsHostGpu(f: FlavorInfo | undefined): boolean {
+		if (Object.keys(f?.eligibility?.requirements.gpus ?? {}).length > 0) return true;
+		return Object.keys(f?.extra_specs ?? {}).some(key => /^resources[^:]*:[VP]GPU$/.test(key));
+	}
+
+	function hostShortageLabel(f: FlavorInfo | undefined): string {
+		return requestsHostGpu(f) ? '한 호스트에 CPU·RAM·GPU 여유 없음' : '한 호스트에 CPU·RAM 여유 없음';
+	}
+
+	function blockLabel(block: FlavorCreateBlock | 'missing', f: FlavorInfo | undefined): string {
+		return block === 'capacity_insufficient' ? hostShortageLabel(f) : BLOCK_LABEL[block];
+	}
+
+	function flavorBlockerLabels(f: FlavorInfo): string[] {
+		const labels = (f.eligibility?.blockers ?? []).map(blocker => blockerLabel(blocker, f));
+		const block = flavorCreateBlock(f);
+		// Missing eligibility or non-selectable eligibility may carry no blocker code.
+		if (block && labels.length === 0) labels.push(blockLabel(block, f));
+		return labels;
+	}
+
+	function hostCapacityText(f: FlavorInfo): string {
+		const capacity = f.eligibility?.capacity;
+		if (capacity?.status !== 'available' || capacity.remaining_vcpus == null || capacity.remaining_ram_mb == null) return '';
+		return `한 호스트 기준 VM당 최대 ${capacity.cpu_resource_class ?? 'CPU'} ${capacity.remaining_vcpus} · RAM ${ramLabel(capacity.remaining_ram_mb)}`;
+	}
+
+	const NUMA_UNVERIFIED_NOTE = '호스트 합계 기준 · NUMA 셀·GPU 근접성 미확인 · Nova 최종 확인';
+
+	/** Host totals fit, but the requested single NUMA cell is invisible to Placement and left to Nova. */
+	function numaUnverified(f: FlavorInfo): boolean {
+		const capacity = f.eligibility?.capacity;
+		return capacity?.status === 'available' && capacity.numa_unverified === true;
+	}
+
+	function limitText(remaining: number, suffix = ''): string {
+		return remaining < 0 ? '무제한' : `${remaining}${suffix}`;
+	}
+
+	function blockerLabel(blocker: FlavorQuotaBlocker, f: FlavorInfo): string {
 		switch (blocker.code) {
 			case 'instances_insufficient':
 				return 'VM 쿼터 부족';
@@ -172,6 +225,10 @@
 				return 'Compute 쿼터 확인 불가';
 			case 'gpu_quota_unavailable':
 				return 'GPU 쿼터 확인 불가';
+			case 'host_capacity_insufficient':
+				return hostShortageLabel(f);
+			case 'host_capacity_unavailable':
+				return HOST_CAPACITY_UNCHECKED;
 			default:
 				return blocker.code;
 		}
@@ -194,33 +251,19 @@
 		return reqs.map(r => `${r.model} × ${r.count}`).join(', ');
 	}
 
-	function quotaRemaining(p?: QuotaPair): number {
-		if (!p) return -1;
-		if (p.limit < 0) return -1;
-		return Math.max(0, p.limit - p.in_use);
-	}
-
-	function quotaText(p?: QuotaPair, suffix = ''): string {
-		if (!p) return '-';
-		if (p.limit < 0) return '∞';
-		return `${Math.max(0, p.limit - p.in_use)}${suffix}`;
-	}
-
-	function quotaTitle(p?: QuotaPair, label = ''): string {
-		if (!p) return label;
-		const limit = p.limit < 0 ? '∞' : p.limit;
-		return `${label} 사용 ${p.in_use} / ${limit}`;
-	}
-
 	const selectedFlavor = $derived(flavors.find(f => f.id === selectedId));
-
-	const flavorChipClass = (remaining: number, requested: number) => {
-		if (remaining < 0) return 'bg-surface-sunken/60 text-ink-2 border border-line-2';
-		if (requested > 0 && remaining - requested < 0) return 'bg-red-900/40 text-red-300 border border-red-800/50';
-		if (remaining === 0) return 'bg-red-900/40 text-red-300 border border-red-800/50';
-		if (requested > 0) return 'bg-yellow-900/30 text-yellow-300 border border-yellow-800/40';
-		return 'bg-green-900/30 text-green-300 border border-green-800/40';
-	};
+	const selectedBlock = $derived<FlavorCreateBlock | 'missing' | null>(
+		selectedId ? (selectedFlavor ? flavorCreateBlock(selectedFlavor) : 'missing') : null
+	);
+	const selectedCapacity = $derived(selectedFlavor?.eligibility?.capacity ?? null);
+	const capacityCheckedAt = $derived.by(() => {
+		const latest = flavors.reduce((acc, f) => {
+			const at = f.eligibility?.capacity?.checked_at ?? '';
+			return at > acc ? at : acc;
+		}, '');
+		const date = latest ? new Date(latest) : null;
+		return date && !Number.isNaN(date.getTime()) ? date.toLocaleTimeString('ko-KR') : '';
+	});
 
 	function networkBandwidth(f: FlavorInfo): string {
 		const bw = f.extra_specs?.['quota:vif_outbound_peak'] ?? f.extra_specs?.['hw:bandwidth'] ?? '';
@@ -235,6 +278,56 @@
 </script>
 
 <div class="flex flex-col">
+<!-- 용량 확인 상태: 기존 목록과 선택을 유지한 채 새로고침/오류를 표시한다. -->
+<div class="order-1 mb-3 flex flex-wrap items-center justify-between gap-2">
+	<p class="text-xs text-[var(--color-ink-2)]" role="status" aria-live="polite">
+		{#if refreshing}
+			{adminMode
+				? '현재 프로젝트 쿼터와 호스트 용량을 다시 확인하는 중입니다. 확인이 끝날 때까지 선택과 진행을 보류합니다.'
+				: '생성 가능 여부를 다시 확인하는 중입니다. 확인이 끝날 때까지 선택과 진행을 보류합니다.'}
+		{:else if backgroundRefreshing}
+			{adminMode
+				? '현재 프로젝트 쿼터와 호스트 용량을 자동으로 확인하는 중입니다. 기존 스냅샷으로 선택과 진행을 계속할 수 있습니다.'
+				: '생성 가능 여부를 자동으로 확인하는 중입니다. 선택과 진행을 계속할 수 있습니다.'}
+		{:else if capacityCheckedAt}
+			{capacityCheckedAt} {adminMode
+				? '확인 기준 스냅샷입니다. 예약이 아니며 Nova가 생성 시 다시 확인합니다.'
+				: '확인 기준입니다. 생성 전에 다시 확인합니다.'}
+		{:else}
+			{adminMode
+				? '호스트 용량을 확인한 시각이 없습니다. 용량을 확인하지 못한 플레이버는 생성할 수 없습니다.'
+				: '생성 가능 여부를 확인하지 못했습니다. 확인되지 않은 플레이버는 생성할 수 없습니다.'}
+		{/if}
+	</p>
+	<AutoRefreshControl
+		bind:active={ar.active}
+		bind:intervalSeconds={ar.intervalSeconds}
+		intervalOptions={ar.intervalOptions}
+		refreshing={refreshing || backgroundRefreshing}
+		onManualRefresh={() => { void onRefresh('manual'); }}
+	/>
+</div>
+
+{#if backgroundRefreshError}
+	<p class="order-1 mb-3 text-xs text-[var(--color-state-warning-text)]" role="status" aria-live="polite">최근 자동 확인 실패 · 생성 직전에 다시 확인합니다</p>
+{/if}
+
+{#if refreshError}
+	<Alert tone="danger" title="플레이버 용량을 다시 확인하지 못했습니다" class="order-1 mb-3">
+		{refreshError}. 확인에 성공할 때까지 플레이버를 선택하거나 다음 단계로 진행할 수 없습니다.
+		{#snippet actions()}
+			<Button variant="danger-outline" size="sm" disabled={refreshing} onclick={() => { void onRefresh('manual'); }}>다시 확인</Button>
+		{/snippet}
+	</Alert>
+{/if}
+
+{#if selectedBlock}
+	<Alert tone="warning" title="선택한 플레이버로 지금 생성할 수 없습니다" class="order-1 mb-3">
+		{selectedFlavor?.name ?? selectedName ?? '선택한 플레이버'}: {blockLabel(selectedBlock, selectedFlavor)}.
+		다른 플레이버를 직접 선택하세요. 선택은 자동으로 바뀌지 않습니다.
+	</Alert>
+{/if}
+
 <div class="order-2 mb-3 flex flex-wrap items-center justify-between gap-2">
 	<div class="flex items-center gap-1.5">
 		<button
@@ -253,11 +346,19 @@
 				? 'bg-[var(--color-surface-sunken)] text-[var(--color-state-danger-text)] border border-[var(--color-state-danger)]/50'
 				: 'bg-[var(--color-surface-sunken)] text-[var(--color-ink-2)] hover:bg-[var(--color-surface-raised)]'}"
 		>
-			쿼터 제한됨 ({blockedCount})
+			생성 불가 ({blockedCount})
 		</button>
 	</div>
 	<p class="text-xs text-[var(--color-ink-2)]">
-		{availabilityView === 'selectable' ? '현재 잔여 쿼터 내 즉시 생성 가능한 플레이버입니다.' : '현재 프로젝트 쿼터 잔여량이 부족한 플레이버입니다.'}
+		{#if adminMode}
+			{availabilityView === 'selectable'
+				? '프로젝트 쿼터와 한 컴퓨트 호스트의 여유(GPU 플레이버는 GPU 포함)를 확인해 지금 선택할 수 있는 플레이버입니다.'
+				: '프로젝트 쿼터 부족, 한 호스트의 여유 부족, 또는 확인 불가로 지금 생성할 수 없는 플레이버입니다.'}
+		{:else}
+			{availabilityView === 'selectable'
+				? '프로젝트 쿼터와 현재 자원 여유를 확인해 지금 선택할 수 있는 플레이버입니다.'
+				: '프로젝트 쿼터 부족, 자원 여유 부족, 또는 확인 불가로 지금 생성할 수 없는 플레이버입니다.'}
+		{/if}
 	</p>
 </div>
 
@@ -416,30 +517,57 @@
 	</div>
 {/if}
 
-<!-- GPU 가용량 배너 -->
-{#if gpuAvailability.length > 0 && (activeCategory === 'all' || activeCategory === 'gpu')}
-	<div class="order-5 mb-4 rounded-lg border border-line-2 bg-surface-sunken/60 p-3">
-		<div class="text-xs text-ink-2 mb-2">GPU 가용량{#if selectedGpuRequest.size > 0} <span class="text-warm-text">(선택 flavor 반영)</span>{/if}</div>
+<!-- 선택 플레이버의 프로젝트 쿼터와 관리자 전용 호스트 용량 스냅샷 -->
+{#if selectedFlavor?.eligibility}
+	{@const eligibility = selectedFlavor.eligibility}
+	<Card surface="base" padding="sm" class="order-1 mb-4">
+		<p class="mb-2 text-xs font-medium text-[var(--color-ink-2)]">선택한 플레이버 <span class="font-mono text-[var(--color-ink-0)]">{selectedFlavor.name}</span> 생성 조건</p>
+		<dl class="grid grid-cols-1 gap-3 text-xs {adminMode ? '@md/panel:grid-cols-2' : ''}">
+			<div>
+				<dt class="mb-1 text-[var(--color-ink-2)]">현재 대상 프로젝트 잔여 쿼터</dt>
+				<dd class="font-mono text-[var(--color-ink-1)]">
+					VM {limitText(eligibility.remaining.instances)} · vCPU {limitText(eligibility.remaining.cores)} · RAM {eligibility.remaining.ram_mb < 0 ? '무제한' : ramLabel(eligibility.remaining.ram_mb)}
+					{#each Object.entries(eligibility.requirements.gpus) as [alias, required]}
+						<span class="block">GPU {alias}: 필요 {required} / 잔여 {limitText(eligibility.remaining.gpus[alias] ?? 0)}</span>
+					{/each}
+				</dd>
+			</div>
+			{#if adminMode}
+				<div>
+					<dt class="mb-1 text-[var(--color-ink-2)]">한 호스트 기준 VM당 최대 (스냅샷)</dt>
+					<dd class="font-mono text-[var(--color-ink-1)]">
+						{#if selectedCapacity?.status === 'available' && selectedCapacity.remaining_vcpus != null && selectedCapacity.remaining_ram_mb != null}
+							{selectedCapacity.cpu_resource_class ?? 'CPU'} {selectedCapacity.remaining_vcpus} · RAM {ramLabel(selectedCapacity.remaining_ram_mb)}
+							<span class="block text-[var(--color-ink-2)]">조건을 만족하는 호스트 {selectedCapacity.candidate_hosts}대 중 한 호스트에서 함께 확인한 값</span>
+						{:else if selectedCapacity?.status === 'available'}
+							여유 있음
+						{:else if selectedCapacity?.status === 'insufficient'}
+							{hostShortageLabel(selectedFlavor)}
+						{:else}
+							{HOST_CAPACITY_UNCHECKED}
+						{/if}
+						{#if selectedCapacity?.status === 'available' && selectedCapacity.numa_unverified}
+							<span class="block text-[var(--color-state-warning-text)]">호스트 합계 기준이며 단일 NUMA 셀 여유와 GPU의 NUMA 근접성은 확인하지 않았습니다. Nova가 생성 시 최종 확인하며 No valid host로 거부될 수 있습니다.</span>
+						{/if}
+					</dd>
+				</div>
+			{/if}
+		</dl>
+		{#if adminMode}
+			<p class="mt-2 text-xs text-[var(--color-ink-2)]">용량은 예약이 아닌 확인 시점 값이며, Nova가 생성 요청 시 다시 확인하므로 생성이 보장되지는 않습니다.</p>
+		{/if}
+	</Card>
+{/if}
+
+<!-- 프로젝트 GPU 쿼터: 호스트 GPU 여유가 아니라 현재 대상 프로젝트의 GPU 쿼터 잔여량이다. -->
+{#if projectGpuQuota.length > 0 && (activeCategory === 'all' || activeCategory === 'gpu')}
+	<div class="order-5 mb-4">
+		<p class="mb-2 text-xs text-[var(--color-ink-2)]">{adminMode ? '프로젝트 GPU 쿼터 잔여 · 호스트 GPU 여유는 플레이버별 용량 확인으로 판단합니다' : '프로젝트 GPU 쿼터 잔여'}</p>
 		<div class="flex flex-wrap gap-2">
-			{#each gpuAvailability as g}
-				{@const requested = selectedGpuRequest.get(g.device_name) ?? 0}
-				{@const nextUsed = g.used + requested}
-				{@const avail = g.total - nextUsed}
-				<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-mono text-[11.5px]
-					{avail > 0 && requested === 0
-						? 'bg-green-900/30 text-green-300 border border-green-800/40'
-						: avail >= 0 && requested > 0
-							? 'bg-surface-selected/30 text-warm-text border border-action-warm/40'
-							: 'bg-red-900/30 text-red-300 border border-red-800/40'}">
-					<b class="font-semibold">{g.device_name}</b>
-					{#if requested > 0}
-						<span class="opacity-70">{g.used}/{g.total}</span>
-						<span class="text-xs opacity-50">→</span>
-						<span class="font-bold text-warm-text">{nextUsed}/{g.total}</span>
-					{:else}
-						<span class="opacity-70">{g.used}/{g.total}</span>
-					{/if}
-				</span>
+			{#each projectGpuQuota as gpuQuota}
+				<Pill tone={gpuQuota.remaining >= 0 && gpuQuota.requested > gpuQuota.remaining ? 'danger' : gpuQuota.remaining === 0 ? 'warning' : 'neutral'}>
+					<span class="font-mono">{gpuQuota.alias} {limitText(gpuQuota.remaining)}{#if gpuQuota.requested > 0} · 선택 {gpuQuota.requested}{/if}</span>
+				</Pill>
 			{/each}
 		</div>
 	</div>
@@ -451,11 +579,13 @@
 		{@const badge = categoryBadge(flavor)}
 		{@const gpu = gpuSummary(flavor)}
 		{@const selectable = isSelectable(flavor)}
-		{@const blockers = flavor.eligibility?.blockers ?? []}
+		{@const blockers = flavorBlockerLabels(flavor)}
+		{@const hostCapacity = adminMode ? hostCapacityText(flavor) : ''}
+		{@const cellUnverified = adminMode && numaUnverified(flavor)}
 		<button
 			onclick={() => handleFlavorClick(flavor)}
 			aria-label={`${flavor.name} 플레이버 선택`}
-			disabled={!selectable}
+			disabled={!selectable || selectionLocked}
 			class="w-full rounded-xl border p-3 text-left transition-colors {selectedId === flavor.id
 				? 'border-[var(--color-accent)] bg-[var(--color-accent)]/10 ring-1 ring-[var(--color-accent)]/30'
 				: selectable
@@ -498,11 +628,17 @@
 			{#if gpu}
 				<div class="mt-2 text-xs text-[var(--color-accent-2)]">{gpu}</div>
 			{/if}
+			{#if hostCapacity}
+				<div class="mt-1 text-xs text-[var(--color-ink-2)]">{hostCapacity}</div>
+			{/if}
+			{#if cellUnverified}
+				<div class="mt-0.5 text-xs text-[var(--color-state-warning-text)]">{NUMA_UNVERIFIED_NOTE}</div>
+			{/if}
 			{#if blockers.length > 0}
 				<div class="mt-2 flex flex-wrap gap-1">
-					{#each blockers as b}
+					{#each blockers as label}
 						<span class="rounded border border-[var(--color-state-danger)]/40 bg-[var(--color-surface-sunken)] px-1.5 py-0.5 text-xs text-[var(--color-state-danger-text)] font-medium">
-							{blockerLabel(b)}
+							{label}
 						</span>
 					{/each}
 				</div>
@@ -528,10 +664,12 @@
 		{@const badge = categoryBadge(flavor)}
 		{@const gpu = gpuSummary(flavor)}
 		{@const selectable = isSelectable(flavor)}
-		{@const blockers = flavor.eligibility?.blockers ?? []}
+		{@const blockers = flavorBlockerLabels(flavor)}
+		{@const hostCapacity = adminMode ? hostCapacityText(flavor) : ''}
+		{@const cellUnverified = adminMode && numaUnverified(flavor)}
 		<button
 			onclick={() => handleFlavorClick(flavor)}
-			disabled={!selectable}
+			disabled={!selectable || selectionLocked}
 			class="grid w-full grid-cols-[2fr_80px_90px_100px_100px] border-b border-line/60 px-4 py-3 text-sm transition-all
 				{selectedId === flavor.id ? 'border-l-2 border-l-blue-500 bg-surface-selected/20' : ''}
 				{selectable ? 'hover:bg-surface-sunken/40' : 'opacity-60 cursor-not-allowed bg-[var(--color-surface-sunken)]/30'}"
@@ -555,16 +693,22 @@
 					{#if gpu}
 						<div class="mt-0.5 text-xs text-purple-400">{gpu}</div>
 					{/if}
-				</div>
+					{#if hostCapacity}
+						<div class="mt-0.5 text-xs text-ink-2">{hostCapacity}</div>
+					{/if}
+					{#if cellUnverified}
+						<div class="mt-0.5 text-xs text-[var(--color-state-warning-text)]">{NUMA_UNVERIFIED_NOTE}</div>
+					{/if}
 					{#if blockers.length > 0}
 						<div class="mt-1 flex flex-wrap gap-1">
-							{#each blockers as b}
+							{#each blockers as label}
 								<span class="rounded border border-[var(--color-state-danger)]/40 bg-[var(--color-surface-sunken)] px-1.5 py-0.5 text-xs text-[var(--color-state-danger-text)] font-medium">
-									{blockerLabel(b)}
+									{label}
 								</span>
 							{/each}
 						</div>
 					{/if}
+				</div>
 			</div>
 			<div class="self-center text-center text-ink-2">{flavor.vcpus}</div>
 			<div class="self-center text-center text-ink-2">{ramLabel(flavor.ram)}</div>

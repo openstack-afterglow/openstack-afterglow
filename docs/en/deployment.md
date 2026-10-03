@@ -31,7 +31,7 @@ Afterglow supports three deployment modes: Docker Compose (development / small s
 
 ## Docker Compose Deployment
 
-Select one standalone manifest explicitly with `-f`: `docker-compose.yml` runs only the published Afterglow frontend/backend with external dependencies; `docker-compose.dev.yml` builds the full local source stack; `docker-compose.prod.yml` pulls GHCR images and uses TLS HAProxy ingress plus Keystone catalog service discovery. Do not merge dev and prod or reuse their data volumes across modes.
+Select one standalone manifest explicitly with `-f`: `docker-compose.yml` runs only the published Afterglow frontend/backend with external dependencies; `docker-compose.dev.yml` builds the full local source stack; `docker-compose.prod.yml` pulls GHCR images and uses TLS HAProxy ingress plus Keystone catalog discovery for generic routes. Palimpsest package routes require a trusted configured URL instead. Do not merge dev and prod or reuse their data volumes across modes.
 
 Functional tests also use the `test` profile in `docker-compose.dev.yml`; there is no separate test manifest. `npm run test:functional` starts only `mariadb`, `postgres`, and `test-redis` under the separate `afterglow-test` project on loopback 3307/5434/6380. No cloud credentials or sibling checkouts are required for test-only startup. Scoped teardown discards tmpfs test data, not development applications, named volumes or keys. Use `--no-start` to reuse externally managed services and `--keep` to leave test containers running for debugging (stopping them loses their tmpfs data).
 
@@ -91,7 +91,7 @@ The remote Keystone/Nova/Neutron/etc configuration is unchanged. Select only own
 destinations with `SERVICE_WAYGATE_INTERNAL_URL`, `SERVICE_DROVER_INTERNAL_URL`,
 `SERVICE_LUMEN_INTERNAL_URL`, `SERVICE_PALIMPSEST_INTERNAL_URL`, or `[services]`
 `*_internal_url` values. Both BFF requests and Drover/Waygate SDK consumers use this choice.
-The dev runner resolves shell/`.env` first (including explicit empty = catalog), then
+The dev runner resolves shell/`.env` first (explicit empty = catalog for generic routes), then
 nonempty values from `.local-services/afterglow.conf`, then local Compose DNS. It preserves
 the resolved choice in private `compose.env`. An existing private snapshot is not overwritten
 when the original config changes. Run `services:config/up` after changing inputs; restart
@@ -100,9 +100,26 @@ other directly launched consumers after changing their config.
 For example, `SERVICE_LUMEN_INTERNAL_URL=http://lumen-api:8012` selects the local container;
 `SERVICE_LUMEN_INTERNAL_URL=` selects the catalog, even when TOML specifies another URL.
 Use `http://127.0.0.1:8012` only when the backend itself runs on the host. The equivalent
-TOML field is `[services] lumen_internal_url`. Base/production default to catalog rather
-than dev DNS and accept explicit trusted HTTPS endpoints in production.
+TOML field is `[services] lumen_internal_url`. Generic routes in base/production default
+to catalog rather than dev DNS; configured production endpoints must use trusted HTTPS.
 See [endpoint examples and precedence](../openstack-service-catalog.md#로컬-direct-서비스-엔드포인트-오버라이드-direct-service-endpoint-overrides).
+
+**Palimpsest package exception:** allowlisted native package-key routes and the browser
+package BFF require a trusted nonempty `SERVICE_PALIMPSEST_INTERNAL_URL` or
+`[services] palimpsest_internal_url`. Environment values take precedence over TOML;
+an absent/empty effective URL returns **503** for packages, with no catalog/admin
+discovery or token exchange. Native keys are forwarded verbatim; browser package
+requests forward the original subject's project-scoped Keystone token. Generic legacy
+JWT Hub routes retain their existing catalog behavior. Production URLs must use **HTTPS**;
+package redirects are forbidden, downloads stream, and responses use
+`Cache-Control: private, no-store`.
+
+Readable namespaces require a Hub operator binding in
+`PALIMPSEST_HUB_PACKAGE_NAMESPACE_BINDINGS` to the exact Keystone project UUID/ID before
+registration. IDs are opaque: do not normalize case/hyphens or infer them from project
+display names. Copyable references use trusted `package_authority` supplied by Hub's
+HTTPS `PALIMPSEST_HUB_PACKAGE_PUBLIC_ORIGIN`, not the internal service URL or browser
+origin. An unset public origin yields `null` authority, not a guessed host.
 
 The reverse Lumen → Afterglow connection uses `LUMEN_MCP_CONTROL_PLANE_URL` (dev default
 `http://backend:8000`). Browser `PUBLIC_API_BASE` and the remote-VM Waygate callback are
@@ -155,7 +172,7 @@ docker compose --env-file /path/to/production.env -f docker-compose.prod.yml up 
 
 Registry defaults to `ghcr.io/openstack-afterglow`. Pin a reviewed `IMAGE_TAG` or per-service tag; `AFTERGLOW_BACKEND_IMAGE`, `AFTERGLOW_FRONTEND_IMAGE`, `AFTERGLOW_WORKER_IMAGE` and sibling `*_API_IMAGE`/`*_WORKER_IMAGE` accept full tagged or digest-pinned references. Current Afterglow CI publishes amd64; ARM operators must check image support or explicitly use `DOCKER_DEFAULT_PLATFORM=linux/amd64` emulation. Development builds are native.
 
-Production defaults to authenticated Keystone catalog discovery. Unset `SERVICE_*_INTERNAL_URL` variables leave TOML/default discovery intact; explicit environment values take precedence and explicit empty selects catalog. Configured production overrides require trusted HTTPS endpoints; dev HTTP URLs fail validation instead of silently selecting a different service. Optional `waygate`, `drover`, `lumen`, `palimpsest` profiles install published sibling API/worker images and gate them on migration/bootstrap completion; `notion` enables the Notion worker. Provide each service's external production DB, service credentials, callback URL and encryption key. Drover additionally needs `DROVER_OS_SERVICE_PROJECT_ID`; Lumen needs `LUMEN_CHECKPOINTER_POSTGRES_URL`, `LUMEN_ENCRYPTION_KEY`, shared `LUMEN_MCP_SERVICE_TOKEN`, and `LUMEN_MCP_CONTROL_PLANE_URL` pointing to Afterglow's published catalog endpoint, never backend container DNS. Catalog URLs must use operator DNS/certificates and the relevant TLS listener, such as `https://<service-host>:8012/v1`. Compose never rewrites the cloud catalog. Disabled sibling profiles do not prevent HAProxy startup; their listeners return 503.
+Production defaults to authenticated Keystone catalog discovery for generic routes. Unset `SERVICE_*_INTERNAL_URL` variables leave TOML/default discovery intact; explicit environment values take precedence and explicit empty selects catalog only for generic routes. Palimpsest native package-key and browser package BFF routes instead require the trusted nonempty URL described above; absent/empty returns 503 without discovery or token exchange. Configured production endpoints require trusted HTTPS; dev HTTP URLs fail validation instead of silently selecting a different service. Optional `waygate`, `drover`, `lumen`, `palimpsest` profiles install published sibling API/worker images and gate them on migration/bootstrap completion; `notion` enables the Notion worker. Provide each service's external production DB, service credentials, callback URL and encryption key. Drover additionally needs `DROVER_OS_SERVICE_PROJECT_ID`; Lumen needs `LUMEN_CHECKPOINTER_POSTGRES_URL`, `LUMEN_ENCRYPTION_KEY`, shared `LUMEN_MCP_SERVICE_TOKEN`, and `LUMEN_MCP_CONTROL_PLANE_URL` pointing to Afterglow's published catalog endpoint, never backend container DNS. Catalog URLs must use operator DNS/certificates and the relevant TLS listener, such as `https://<service-host>:8012/v1`. Compose never rewrites the cloud catalog. Disabled sibling profiles do not prevent HAProxy startup; their listeners return 503.
 
 ---
 
@@ -334,9 +351,9 @@ Cloud Shell never runs a user shell in the Afterglow backend. It creates a per-u
 
 ### OpenStack prerequisites
 
-1. Create exactly one dedicated project and pin its UUID. Grant the Afterglow service user `admin` in that project; user tokens never manage Zun or Cinder lifecycle resources.
-2. Create a routed network and an egress-only security group with zero ingress rules in that project. Afterglow and its Kolla role validate these resources but never create or delete the project, router, network, or security group.
-3. Enable Zun, Kuryr, etcd, Docker/containerd Zun integration, Cinder-backed Zun volume mounts, and at least one `zun-compute`. The backend must reach Keystone, Cinder, Zun HTTP, and the Zun exec WebSocket endpoint.
+1. Create exactly one dedicated project and pin its UUID. The Afterglow service user needs a role there that can manage Zun, Cinder, and Neutron resources; under default policies `member` suffices because session cleanup uses an owner-scoped `stop=true` delete. Kolla's Keystone setup still grants project `admin`. User tokens never manage Zun or Cinder lifecycle resources.
+2. Leave `network_id` empty to use the dedicated project's database default, the existing automatic default-network policy, or the validated shared network policy when automatic provisioning is disabled. Require a subnet and an external network/router gateway; explicit overrides must belong to the dedicated project. The default security group is that project's `default`, with existing rules unchanged. Use an explicit project-owned group if egress-only isolation is required. The Kolla role does not create/delete project or networking resources; on explicit session approval the backend may prepare a routed default network through the existing policy.
+3. Enable Zun, Kuryr, etcd, Docker/containerd Zun integration, Cinder-backed Zun volume mounts, and at least one `zun-compute`. The backend must reach Keystone, Cinder, Zun HTTP, and the Zun exec WebSocket endpoint. The Zun API must support container microversion 1.36, and zun-compute must be able to attach Cinder volumes and format them as ext4 on first mount.
 4. Publish the `cloud-shell` image as a `linux/amd64` + `linux/arm64` manifest and configure the exact `@sha256:<manifest-digest>`. Mutable or bare tags are not a production contract.
 5. Apply Cinder volume/gigabyte and Zun container/CPU/RAM quotas to the dedicated project, not to user tenants. There is one concurrent session per user globally, but each user × logical project may retain one home volume.
 
@@ -348,8 +365,8 @@ cloud_shell = true
 [cloud_shell]
 service_project_id = "<dedicated-project-uuid>"
 image = "ghcr.io/openstack-afterglow/afterglow-cloud-shell@sha256:<64-hex-digest>"
-network_id = "<dedicated-routed-network-uuid>"
-security_group = "afterglow-cloud-shell-egress"
+network_id = "" # dedicated project default network
+security_group = "default"
 auth_url = "https://keystone.example.com:5000/v3"
 interface = "public"
 volume_type = "ceph"

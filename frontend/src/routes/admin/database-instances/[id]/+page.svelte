@@ -10,13 +10,11 @@
 	import DbUsersSection from '$lib/components/admin/database-instances/id/DbUsersSection.svelte';
 	import DbBackupsSection from '$lib/components/admin/database-instances/id/DbBackupsSection.svelte';
 	import DbInstanceMetaGrid from '$lib/components/admin/database-instances/id/DbInstanceMetaGrid.svelte';
-	import { betaFeatures } from '$lib/stores/betaFeatures';
 
 	const ctrl = createAdminDatabaseInstanceDetailController({
 		instanceId: () => $page.params.id!,
 		token: () => $auth.token ?? undefined,
 		projectId: () => $auth.projectId ?? undefined,
-		databaseBackupsEnabled: () => $betaFeatures.databaseBackups,
 	});
 
 	onMount(ctrl.loadAll);
@@ -58,17 +56,15 @@
 			onDelete={ctrl.deleteUser}
 		/>
 
-		{#if $betaFeatures.databaseBackups}
-			<DbBackupsSection
-				backups={ctrl.backups}
-				deletingBackup={ctrl.deletingBackup}
-				restoringBackup={ctrl.restoringBackup}
-				addError={ctrl.backupError}
-				creating={ctrl.creatingBackup}
-				onAdd={ctrl.createBackup}
-				onDelete={ctrl.deleteBackup}
-				onRestore={ctrl.restoreBackup}
-			/>
-		{/if}
+		<DbBackupsSection
+			backups={ctrl.backups}
+			deletingBackup={ctrl.deletingBackup}
+			restoringBackup={ctrl.restoringBackup}
+			addError={ctrl.backupError}
+			creating={ctrl.creatingBackup}
+			onAdd={ctrl.createBackup}
+			onDelete={ctrl.deleteBackup}
+			onRestore={ctrl.restoreBackup}
+		/>
 	{/if}
 </div>

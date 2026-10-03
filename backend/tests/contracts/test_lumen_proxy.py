@@ -93,6 +93,18 @@ def test_lumen_feature_gate_routes_inclusion():
         ("delete", "/api/v1/chat/conversations/conv-1", "/v1/conversations/conv-1", None),
         ("get", "/api/v1/chat/workspaces", "/v1/workspaces", None),
         ("get", "/api/v1/chat/models", "/v1/chat/models", None),
+        (
+            "post",
+            "/api/v1/chat/images/generations",
+            "/v1/chat/images/generations",
+            {"model_id": "image-1", "prompt": "sunrise", "size": "1024x1024", "quality": "high", "n": 1},
+        ),
+        (
+            "post",
+            "/api/v1/chat/images/edits",
+            "/v1/chat/images/edits",
+            {"model_id": "image-1", "prompt": "sunrise", "input_asset_id": "f6d18ec7-c8d8-4db8-9bd7-2dceb0f0f68e"},
+        ),
         ("patch", "/api/v1/chat/api-keys/7", "/v1/api-keys/7", {"name": "laptop"}),
         (
             "post",
@@ -145,6 +157,67 @@ async def test_browser_routes_proxy_to_lumen_service(api_client, method, path, u
     assert service_type == "lumen"
     assert upstream == upstream_path
     assert request.state.token_info["token"] == "caller-token"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("path", "request_body", "request_type", "response_body", "response_type"),
+    [
+        (
+            "audio/speech",
+            b'{"model_id":1,"input":"hello"}',
+            "application/json",
+            b"\x00\xffID3\x01\x80",
+            "audio/mpeg",
+        ),
+        (
+            "audio/transcriptions",
+            b'{"model_id":1,"input_asset_id":"f6d18ec7-c8d8-4db8-9bd7-2dceb0f0f68e"}',
+            "application/json",
+            b'{"text":"hello"}',
+            "application/json",
+        ),
+    ],
+)
+async def test_audio_routes_preserve_bytes_types_and_caller_scope(
+    api_client, path, request_body, request_type, response_body, response_type
+):
+    app.dependency_overrides[get_token_info] = _authenticated
+    received = []
+
+    async def handler(request):
+        received.append((request.method, str(request.url), request.headers, await request.aread()))
+        return HttpxResponse(
+            200,
+            headers={"content-type": response_type},
+            stream=httpx.ByteStream(response_body),
+        )
+
+    upstream = AsyncClient(transport=httpx.MockTransport(handler))
+    with (
+        patch("app.services.service_proxy._get_internal_endpoint", return_value="http://isolated.test/v1"),
+        patch("app.services.service_proxy.httpx.AsyncClient", return_value=upstream),
+    ):
+        response = await api_client.post(
+            f"/api/v1/chat/{path}",
+            content=request_body,
+            headers={
+                "content-type": request_type,
+                "authorization": "Bearer browser-jwt",
+                "idempotency-key": "audio-request-1",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.content == response_body
+    assert response.headers["content-type"] == response_type
+    method, url, headers, body = received.pop()
+    assert (method, url, body) == ("POST", f"http://isolated.test/v1/chat/{path}", request_body)
+    assert headers["content-type"] == request_type
+    assert headers["idempotency-key"] == "audio-request-1"
+    assert headers["x-auth-token"] == "caller-token"
+    assert headers["x-project-id"] == "project-1"
+    assert "authorization" not in headers
 
 
 @pytest.mark.asyncio

@@ -389,6 +389,11 @@ class LayerImportJob(Base):
     artifact_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
     build_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
     resource_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Validated admin request captured before the builder runs; no API token/private key.
+    consumer_spec: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    consume_id: Mapped[int | None] = mapped_column(
+        INT, ForeignKey("layer_consumes.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

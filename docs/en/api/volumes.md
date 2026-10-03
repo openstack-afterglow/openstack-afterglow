@@ -52,6 +52,7 @@ Manages Cinder block storage volumes, backups, and snapshots.
 |--------|------|-------------|
 | `GET` | `/api/v1/volumes` | List volumes (15-second cache) |
 | `GET` | `/api/v1/volumes/{volume_id}` | Volume detail |
+| `PATCH` | `/api/v1/volumes/{volume_id}` | Rename an owned volume, including `in-use` volumes |
 | `POST` | `/api/v1/volumes` | Create a volume (10/min) |
 | `POST` | `/api/v1/volumes/{volume_id}/extend` | Extend volume capacity (10/min) |
 | `DELETE` | `/api/v1/volumes/{volume_id}` | Delete a volume |
@@ -63,6 +64,10 @@ Manages Cinder block storage volumes, backups, and snapshots.
 *Cinder volume list — check size, status (available/in-use), attached instance, and volume type*
 
 Returns the project's Cinder volume list. The response is cached for about 15 seconds (`ttl_fast`). You can bypass the cache with `?refresh=true`.
+
+The list menu and both the list SlidePanel and `/dashboard/volumes/{id}` detail share operation availability: rename; boot a VM from an available bootable volume; extend or back up an available or in-use volume; create a snapshot when enabled; transfer an available volume; and delete. Normal delete is disabled for attached volumes. Force-delete appears only for system administrators on volumes in error, error_deleting, or deleting state. Detail uses the existing dialogs and VM wizard, and refreshes the open volume/list after successful mutations. The list's Connect item opens detail; detail's Attach to instance action selects a VM when available.
+
+Attached instance names are resolved in the current project and shown alongside UUIDs. When name lookup fails, the view labels the UUID as an unavailable name rather than guessing an instance from another project.
 
 **Response (200 OK)** — array of `VolumeInfo[]`
 
@@ -118,6 +123,22 @@ Returns the details of a specific volume. Verifies ownership before retrieval.
 | Status | Cause |
 |--------|-------|
 | `404` | Volume does not exist or is not in the owning project |
+
+### PATCH /api/v1/volumes/{volume_id}
+
+Renames a volume in the current project after verifying write permission and ownership. Attached (`in-use`) volumes may be renamed without detaching. The trimmed name must contain 1–255 characters.
+
+**Request body** — `{ "name": "new-volume-name" }`
+
+**Response (200 OK)** — refreshed `VolumeInfo`; the list cache is invalidated, and success or failure is recorded in the activity log.
+
+| Status | Cause |
+|--------|-------|
+| `403` | No project write permission or Cinder rejected the change |
+| `404` | Volume missing or belongs to another project |
+| `409` | Cinder rejected the change in its current state |
+| `422` | Name is blank or exceeds 255 characters |
+| `500`/`502` | Volume retrieval or Cinder service failure |
 
 ### POST /api/v1/volumes
 
@@ -346,7 +367,7 @@ Cancels a transfer request. An already-accepted transfer cannot be canceled.
 > Tags: `volume-backups`  
 > Base path: `/api/v1/volumes/backups`
 
-When no browser preference is stored, the frontend shows the volume-backup navigation and flows by default. A user can still turn the feature off for the current browser in Account Settings, and an explicitly stored `false` preference remains authoritative. UI visibility does not prove that the Cinder backup service is available; production deployments must verify its `enabled`/`up` state separately.
+Volume backup navigation, pages, inline actions, and auto-backup are visible regardless of browser-local beta preferences; a legacy `afterglow.beta.volumeBackups=false` value no longer hides them. Switching projects clears the previous backup list and ignores late responses. UI visibility does not prove that the Cinder backup service is available or that a backup can be restored; verify service `enabled`/`up` and a real backup/restore separately in production.
 
 ### Endpoint List
 

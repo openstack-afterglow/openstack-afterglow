@@ -539,6 +539,7 @@
 	<div
 		class="input-wrap"
 		class:drag-over={dragOver}
+		class:disabled={disabled && !streaming}
 		 role="group"
 		ondragover={(e) => {
 			if (canAttach) {
@@ -651,7 +652,7 @@
 					<Button
 						variant={searchEnabled || searchRequired ? 'secondary' : 'ghost'}
 						size="sm"
-						class="min-h-11 md:min-h-8"
+						class="composer-search min-h-11 md:min-h-8"
 						ariaLabel="Search 웹 검색"
 						ariaPressed={searchEnabled || searchRequired}
 						disabled={disabled || streaming || searchRequired || !searchAvailable}
@@ -783,7 +784,8 @@
 		border-color: var(--color-accent);
 		box-shadow: var(--focus-ring), 0 14px 32px color-mix(in oklab, var(--color-ink-0) 10%, transparent);
 	}
-	textarea {
+	/* Outrank layout.css's :root.light textarea rule without !important. */
+	.composer .input-wrap textarea {
 		resize: none;
 		border: none;
 		outline: none;
@@ -794,8 +796,15 @@
 		max-height: 12rem;
 		padding: 0.15rem 0.2rem;
 	}
-	textarea::placeholder {
-		color: var(--color-ink-3);
+	.composer .input-wrap textarea::placeholder {
+		color: var(--color-ink-2);
+		opacity: 1;
+	}
+	.composer .input-wrap textarea:disabled {
+		color: var(--color-ink-2);
+		-webkit-text-fill-color: currentColor;
+		opacity: 1;
+		cursor: not-allowed;
 	}
 	.shortcut-menu {
 		display: flex;
@@ -971,6 +980,7 @@
 		overflow: hidden;
 		border: 1px solid var(--color-line);
 		background: var(--color-surface-sunken);
+		color: var(--color-ink-1);
 	}
 	.chip img {
 		width: 100%;
@@ -1245,6 +1255,77 @@
 		text-align: center;
 		font-size: 0.6875rem;
 		color: var(--color-ink-2);
+	}
+
+	/* Light controls use the shared input surface. Keep disabled explanations
+	   opaque: draft text, shortcut reasons and required Search are information. */
+	:global(:root.light) .input-wrap {
+		background: var(--color-surface-sunken);
+		border-color: var(--color-line-2);
+		box-shadow: none;
+	}
+	:global(:root.light) .input-wrap.disabled {
+		background: var(--color-surface-base);
+		border-style: dashed;
+	}
+	:global(:root.light) .input-wrap:focus-within,
+	:global(:root.light) .input-wrap.drag-over {
+		border-color: var(--color-accent);
+		box-shadow: var(--focus-ring);
+	}
+	:global(:root.light) .composer button:focus-visible {
+		outline: none;
+		box-shadow: var(--focus-ring);
+	}
+	:global(:root.light) .tool-shell,
+	:global(:root.light) .effort-btn,
+	:global(:root.light) .send.stop {
+		border-color: var(--color-line-2);
+		background: var(--color-surface-base);
+	}
+	:global(:root.light) .tool-shell:hover:not(:disabled),
+	:global(:root.light) .effort-btn:hover,
+	:global(:root.light) .send.stop:hover {
+		background: var(--color-surface-raised);
+	}
+	:global(:root.light) .effort-btn.on {
+		color: var(--color-warm-text);
+		border-color: var(--color-warm-text);
+	}
+	:global(:root.light) .tool-shell:disabled,
+	:global(:root.light) .send:disabled {
+		background: var(--color-surface-sunken);
+		color: var(--color-ink-3);
+		border: 1px dashed var(--color-line-2);
+		opacity: 1;
+	}
+	:global(:root.light) .shortcut-option:disabled,
+	:global(:root.light) .composer :global(.composer-search:disabled) {
+		color: var(--color-ink-2);
+		opacity: 1;
+	}
+	:global(:root.light) .shortcut-option:disabled .shortcut-prefix {
+		color: var(--color-ink-3);
+	}
+	:global(:root.light) .composer :global(.composer-search:disabled) {
+		border: 1px dashed var(--color-line-2);
+	}
+	:global(:root.light) .chip {
+		background: var(--color-surface-raised);
+		border-color: var(--color-line-2);
+	}
+	:global(:root.light) .chip-x {
+		background: var(--color-surface-raised);
+		color: var(--color-ink-0);
+		border: 1px solid var(--color-line-2);
+	}
+	:global(:root.light) .chip-x:hover {
+		background: var(--color-surface-sunken);
+	}
+	:global(:root.light) .chip-x:focus-visible {
+		/* The thumbnail clips outer rings; retain a visible inner focus edge. */
+		outline: 2px solid var(--color-ink-2);
+		outline-offset: -2px;
 	}
 
 	@media (max-width: 47.9375rem) {

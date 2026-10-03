@@ -69,8 +69,8 @@ app:
   frontendPort: 3080
   siteName: "My Cloud Dev"
   siteDescription: "OpenStack 기반 클라우드 플랫폼 (dev)"
-  logoPath: "/logo.png"
-  faviconPath: "/favicon.ico"
+  logoPath: "/afterglow-logo.svg"
+  faviconPath: "/favicon.svg"
   refreshIntervalMs: 5000
   frontendBaseUrl: "https://dev.cloud.example.com"
   publicApiBase: "https://dev.cloud.example.com"
@@ -228,6 +228,7 @@ monitoring:
     nodeUid: "afterglow-node"
     rabbitmqUid: "afterglow-rabbitmq"
     mysqldUid: "afterglow-mysqld"
+    proxysqlUid: "afterglow-proxysql"
     memcachedUid: "afterglow-memcached"
     etcdUid: "afterglow-etcd"
     haproxyUid: "afterglow-haproxy"

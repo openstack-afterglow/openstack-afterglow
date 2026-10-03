@@ -91,7 +91,7 @@ describe('frontend CSP branding origins', () => {
 				logo_path: 'https://uploads.example.com/legacy.png',
 				logo_dark_path: '/api/v1/site-config/assets/logo_dark',
 				logo_light_path: 'https://cdn.example.com/login-light.png',
-				favicon_path: '/favicon.ico',
+				favicon_path: '/favicon.svg',
 				refresh_interval_ms: 5000,
 				services: { magnum: false, manila: false, zun: false, k3s: false, trove: false, swift: false, barbican: false },
 				runtime: {
@@ -144,10 +144,10 @@ describe('frontend CSP branding origins', () => {
 			loadPublicSiteConfig: () => ({
 				site_name: 'Afterglow',
 				site_description: 'OpenStack VM + OverlayFS 배포 플랫폼',
-				logo_path: '/logo.png',
-				logo_dark_path: '/logo-white.png',
-				logo_light_path: '/logo-dark.png',
-				favicon_path: '/favicon.ico',
+				logo_path: '/afterglow-logo.svg',
+				logo_dark_path: '/afterglow-logo.svg',
+				logo_light_path: '/afterglow-logo.svg',
+				favicon_path: '/favicon.svg',
 				refresh_interval_ms: 5000,
 				services: { magnum: false, manila: false, zun: false, k3s: false, trove: false, swift: false, barbican: false },
 				runtime: {

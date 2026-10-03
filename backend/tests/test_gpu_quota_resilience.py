@@ -8,6 +8,8 @@ from fastapi import HTTPException
 from app.models.compute import CreateInstanceRequest, FlavorInfo, InstanceInfo
 from app.services.gpu_inventory import is_gpu_flavor, require_gpu_quota
 
+pytestmark = pytest.mark.usefixtures("available_flavor_capacity")
+
 
 @pytest.fixture(autouse=True)
 def _resolve_default_placement_policies(monkeypatch):

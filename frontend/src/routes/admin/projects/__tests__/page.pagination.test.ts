@@ -21,7 +21,15 @@ vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 
 import Page from '../+page.svelte';
 
-describe('admin project marker prefetch', () => {
+type InventoryPage = {
+	items: Array<{ id: string; name: string; description: string; enabled: boolean }>;
+	next_marker: string | null;
+	count: number;
+	total: number;
+	domain_ids: string[];
+};
+
+describe('admin project inventory', () => {
 	beforeEach(() => {
 		mockGet.mockReset();
 		mockPrefetch.mockReset();
@@ -32,8 +40,8 @@ describe('admin project marker prefetch', () => {
 			removeEventListener: vi.fn(),
 		})));
 		mockGet
-			.mockResolvedValueOnce({ items: [], next_marker: 'marker-2' })
-			.mockResolvedValueOnce({ items: [], next_marker: null });
+			.mockResolvedValueOnce({ items: [], next_marker: 'marker-2', count: 0, total: 0, domain_ids: [] })
+			.mockResolvedValueOnce({ items: [], next_marker: null, count: 0, total: 0, domain_ids: [] });
 		mockPrefetch.mockResolvedValue(undefined);
 	});
 
@@ -42,26 +50,9 @@ describe('admin project marker prefetch', () => {
 		vi.unstubAllGlobals();
 	});
 
-	it('uses the exact next-page path for intent and visible navigation', async () => {
-		render(Page);
-		await vi.advanceTimersByTimeAsync(0);
-		const next = await screen.findByRole('button', { name: '다음 →' });
-
-		await fireEvent.pointerEnter(next);
-		expect(mockPrefetch).toHaveBeenCalledWith(
-			'/api/v1/admin/projects?limit=20&marker=marker-2',
-			'token',
-			'project',
-			expect.objectContaining({ signal: expect.any(AbortSignal) }),
-		);
-
-		await fireEvent.click(next);
-		await vi.waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
-		expect(mockGet.mock.calls[1][0]).toBe('/api/v1/admin/projects?limit=20&marker=marker-2');
-	});
-	it('ignores a late page-size response and does not schedule its marker', async () => {
-		const oldRequest = Promise.withResolvers<{ items: Array<{ id: string; name: string; description: string; enabled: boolean }>; next_marker: string }>();
-		const newRequest = Promise.withResolvers<{ items: Array<{ id: string; name: string; description: string; enabled: boolean }>; next_marker: string }>();
+	it('ignores a late page-size response', async () => {
+		const oldRequest = Promise.withResolvers<InventoryPage>();
+		const newRequest = Promise.withResolvers<InventoryPage>();
 		mockGet.mockReset()
 			.mockReturnValueOnce(oldRequest.promise)
 			.mockReturnValueOnce(newRequest.promise);
@@ -74,18 +65,37 @@ describe('admin project marker prefetch', () => {
 
 		newRequest.resolve({
 			items: [{ id: 'new-project', name: 'Newest project', description: '', enabled: true }],
-			next_marker: 'new-marker',
+			next_marker: 'new-marker', count: 1, total: 2, domain_ids: [],
 		});
 		expect(await screen.findByText('Newest project')).toBeTruthy();
 		oldRequest.resolve({
 			items: [{ id: 'old-project', name: 'Stale project', description: '', enabled: true }],
-			next_marker: 'old-marker',
+			next_marker: 'old-marker', count: 1, total: 2, domain_ids: [],
 		});
 		await vi.advanceTimersByTimeAsync(200);
 
 		expect(screen.queryByText('Stale project')).toBeNull();
-		expect(mockPrefetch).toHaveBeenCalledOnce();
-		expect(mockPrefetch.mock.calls[0][0]).toBe('/api/v1/admin/projects?limit=10&marker=new-marker');
+	});
+
+	it('resets the page on search and discards an older unfiltered page response', async () => {
+		const oldPage = Promise.withResolvers<InventoryPage>();
+		const searchPage = Promise.withResolvers<InventoryPage>();
+		mockGet.mockReset()
+			.mockResolvedValueOnce({ items: [{ id: 'first', name: 'First page', description: '', enabled: true }], next_marker: 'first', count: 1, total: 21, domain_ids: [] })
+			.mockReturnValueOnce(oldPage.promise)
+			.mockReturnValueOnce(searchPage.promise);
+		render(Page);
+		await vi.advanceTimersByTimeAsync(0);
+		await fireEvent.click(screen.getByRole('button', { name: '다음 →' }));
+		await fireEvent.input(screen.getByRole('searchbox', { name: '프로젝트 검색' }), { target: { value: 'match' } });
+		await vi.advanceTimersByTimeAsync(250);
+		searchPage.resolve({ items: [{ id: 'match', name: 'Search match', description: '', enabled: true }], next_marker: null, count: 1, total: 1, domain_ids: [] });
+		expect(await screen.findByText('Search match')).toBeTruthy();
+		oldPage.resolve({ items: [{ id: 'late', name: 'Unfiltered late page', description: '', enabled: true }], next_marker: 'late', count: 1, total: 21, domain_ids: [] });
+		await vi.advanceTimersByTimeAsync(0);
+		expect(screen.queryByText('Unfiltered late page')).toBeNull();
+		expect((screen.getByRole('button', { name: '← 이전' }) as HTMLButtonElement).disabled).toBe(true);
+		expect((screen.getByRole('button', { name: '다음 →' }) as HTMLButtonElement).disabled).toBe(true);
 	});
 
 });

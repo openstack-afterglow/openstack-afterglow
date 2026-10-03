@@ -11,6 +11,8 @@ from app.main import app
 from app.models.compute import FlavorInfo
 from app.services.cache import ttl_static
 
+pytestmark = pytest.mark.usefixtures("available_flavor_capacity")
+
 
 @pytest.mark.asyncio
 async def test_list_flavors_unauthenticated():
@@ -49,7 +51,7 @@ async def test_list_flavors_excludes_afterglow_hidden_flavors_before_eligibility
         disk=5,
         extra_specs={"afterglow:frontend_visible": "false"},
     )
-    evaluator = AsyncMock(side_effect=lambda _conn, _pid, flavors: list(flavors))
+    evaluator = AsyncMock(side_effect=lambda _conn, _pid, flavors, **_kwargs: list(flavors))
     with (
         patch("app.api.compute.flavors.nova.list_flavors", return_value=[visible, hidden]),
         patch("app.services.cache.cached_call", new=mock_cached_call),

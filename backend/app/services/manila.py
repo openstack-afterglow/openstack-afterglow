@@ -433,27 +433,27 @@ def create_file_storage(
         "share_type": share_type,
         "metadata": metadata or {},
     }
-    # share_network_id 포함 여부 결정:
-    # 1) CephFS native 는 share_network_id 를 거부 → 항상 제외
-    # 2) share type의 DHSS=False 이면 share_network_id 불필요 → 전달 시 오류 → 제외
-    # 3) DHSS=True (또는 조회 실패 시 보수적 fallback) → 기존 동작 유지
-    _include_share_network = share_network_id and proto_upper != "CEPHFS"
-    if _include_share_network and share_type:
+    # CephFS native forbids a network; NFS requires the selected type's DHSS
+    # setting. Never guess on a failed lookup: DHSS=False rejects a network.
+    _include_share_network = bool(share_network_id) and proto_upper != "CEPHFS"
+    if _include_share_network:
+        if not share_type:
+            raise RuntimeError("Cannot determine share type DHSS mode without a share type")
         try:
             types = list_share_types(conn)
-            matched = next((t for t in types if t["name"] == share_type), None)
-            if matched:
-                dhss_val = matched.get("extra_specs", {}).get("driver_handles_share_servers", "")
-                if dhss_val.lower() == "false":
-                    logger.warning(
-                        "create_file_storage: share type '%s' 는 DHSS=False 이므로 "
-                        "share_network_id '%s' 를 무시합니다.",
-                        share_type,
-                        share_network_id,
-                    )
-                    _include_share_network = False
-        except Exception:
-            pass  # 조회 실패 시 기존 동작(포함) 유지
+        except Exception as exc:
+            raise RuntimeError(f"Cannot determine share type DHSS mode: {share_type}") from exc
+        matched = next((item for item in types if item["name"] == share_type), None)
+        dhss = str((matched or {}).get("extra_specs", {}).get("driver_handles_share_servers", "")).lower()
+        if dhss not in {"true", "false"}:
+            raise RuntimeError(f"Cannot determine share type DHSS mode: {share_type}")
+        if dhss == "false":
+            logger.warning(
+                "create_file_storage: share type '%s' 는 DHSS=False 이므로 share_network_id '%s' 를 무시합니다.",
+                share_type,
+                share_network_id,
+            )
+            _include_share_network = False
     if _include_share_network:
         share_body["share_network_id"] = share_network_id
     body = {"share": share_body}

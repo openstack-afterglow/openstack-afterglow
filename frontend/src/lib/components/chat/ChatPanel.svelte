@@ -33,6 +33,7 @@
 		saveActiveConversationId
 	} from '$lib/api/chatSession';
 	import { toInputParts, type ChatAttachment } from '$lib/api/chatAttachments';
+	import { takeAudioTranscript } from '$lib/api/audioChatHandoff';
 	import {
 		defaultChatFeatureOptions,
 		type ChatPart,
@@ -352,6 +353,8 @@
 	});
 
 	onMount(() => {
+		const handedOff = $auth.userId && $auth.projectId ? takeAudioTranscript($auth.userId, $auth.projectId) : null;
+		if (handedOff !== null) input = handedOff;
 		const reconcile = () => {
 			void loadModels();
 			void refreshServerRunSnapshot();
@@ -877,9 +880,12 @@
 				selectedModel = last && models.some((model) => model.model_name === last)
 					? last : models[0]?.model_name ?? '';
 			}
-		} catch {
+		} catch (caught) {
 			if (!destroyed && generation === modelRequestGeneration && token === requestToken && projectId === requestProject) {
-				modelsError = '모델 목록을 갱신하지 못했습니다. 목록 새로고침으로 다시 시도하세요.';
+				// ApiError.message may be an unparsed proxy body; never display it here.
+				modelsError = caught instanceof ApiError
+					? `모델 목록을 갱신하지 못했습니다 (HTTP ${caught.status}). 목록 새로고침으로 다시 시도하세요.`
+					: '모델 목록을 갱신하지 못했습니다. 목록 새로고침으로 다시 시도하세요.';
 			}
 		} finally {
 			if (!destroyed && generation === modelRequestGeneration && token === requestToken && projectId === requestProject) modelsRefreshing = false;
@@ -1502,7 +1508,7 @@
 				scheduleMetadataRefresh();
 				void executeContextPreview();
 			} else {
-				contextError = caught instanceof Error ? caught.message : '컨텍스트 압축에 실패했습니다';
+				contextError = chatFailureMessage(caught, '컨텍스트 압축에 실패했습니다');
 			}
 		}
 	}
@@ -1546,7 +1552,7 @@
 					contextPhase = evt.type === 'run.failed' ? 'failed' : 'ready';
 					contextCause = null;
 					if (evt.type === 'run.failed') {
-						contextError = evt.payload.safe_message;
+						contextError = runFailureMessage(evt.payload, descriptor.run_id);
 					}
 					return;
 				}
@@ -1557,7 +1563,7 @@
 			// descriptor and cancel affordance until a snapshot says otherwise.
 			contextPhase = 'failed';
 			contextCause = null;
-			contextError = caught instanceof Error ? caught.message : '컨텍스트 압축 중 오류가 발생했습니다';
+			contextError = chatFailureMessage(caught, '컨텍스트 압축 중 오류가 발생했습니다');
 		} finally {
 			streamAttachment.release(controller);
 			if (compactionFollowRunId === descriptor.run_id) compactionFollowRunId = null;
@@ -1817,7 +1823,7 @@
 					if (contextPhase === 'compacting') contextPhase = 'ready';
 					draft.streaming = false;
 					if (stream?.temp && stream.assistant === draft) tempMessages = [...stream.base, draft];
-					error = evt.payload.safe_message;
+					error = evt.type === 'run.failed' ? runFailureMessage(evt.payload, descriptor.run_id) : evt.payload.safe_message;
 					endStream();
 					scheduleMetadataRefresh();
 					void executeContextPreview();
@@ -1835,13 +1841,27 @@
 			drainReveal();
 			contextCause = null;
 			if (contextPhase === 'compacting') contextPhase = 'ready';
-			error = caught instanceof Error ? caught.message : '채팅 실행 중 오류가 발생했습니다';
+			error = chatFailureMessage(caught, '채팅 실행 중 오류가 발생했습니다');
 			endStream();
 		} finally {
 			document.removeEventListener('visibilitychange', onVisibilityChange);
 			streamAttachment.release(controller);
 			cancelProjectionFrame();
 		}
+	}
+
+	function chatFailureMessage(caught: unknown, fallback: string): string {
+		if (caught instanceof ChatHttpError) return `HTTP ${caught.status}: ${caught.message}`;
+		if (caught instanceof ApiError) return `HTTP ${caught.status}: ${fallback}`;
+		return caught instanceof Error ? caught.message : fallback;
+	}
+
+	function runFailureMessage(payload: { error_code: string; safe_message: string }, runId: string): string {
+		const code = /^[\w.-]{1,80}$/.test(payload.error_code) ? payload.error_code : 'run_failed';
+		const detail = payload.safe_message.trim();
+		const safeDetail = detail.length <= 300 && !/[\x00-\x1f\x7f]/.test(detail) ? detail : '채팅 실행 중 오류가 발생했습니다';
+		const reference = /^[\w-]{1,64}$/.test(runId) ? ` (run: ${runId})` : '';
+		return `${code}: ${safeDetail}${reference}`;
 	}
 
 	async function runStream(
@@ -1862,7 +1882,7 @@
 			return true;
 		} catch (caught) {
 			if (destroyed || generation !== streamGeneration) return false;
-			error = caught instanceof Error ? caught.message : '채팅 실행 중 오류가 발생했습니다';
+			error = chatFailureMessage(caught, '채팅 실행 중 오류가 발생했습니다');
 			endStream();
 			return false;
 		}
@@ -1991,7 +2011,7 @@
 		try {
 			convId = await ensureConversation();
 		} catch (e) {
-			error = e instanceof Error ? e.message : '대화를 생성하지 못했습니다';
+			error = chatFailureMessage(e, '대화를 생성하지 못했습니다');
 			endStream();
 			const failedUserMsg: DisplayMessage = {
 				id: tempId(),
@@ -2169,7 +2189,7 @@
 				try {
 					convId = await ensureConversation();
 				} catch (e) {
-					error = e instanceof Error ? e.message : '대화를 생성하지 못했습니다';
+					error = chatFailureMessage(e, '대화를 생성하지 못했습니다');
 					endStream();
 					return;
 				}
@@ -2488,6 +2508,9 @@
 			</div>
 			<div class="head-right">
 					{@render historyToggle()}
+					<button type="button" class="sources-btn" onclick={() => goto('/dashboard/chat/images')} title="이미지 Studio 열기">이미지 Studio</button>
+					<button type="button" class="sources-btn" onclick={() => goto('/dashboard/chat/audio')} title="오디오 Studio 열기">오디오 Studio</button>
+					<button type="button" class="sources-btn" onclick={() => goto('/dashboard/chat/realtime')} title="실시간 음성 열기">실시간 음성</button>
 					<button type="button" class="sources-btn" onclick={() => (sourcesOpen = !sourcesOpen)} aria-haspopup="dialog" aria-expanded={sourcesOpen} aria-controls="chat-sources-panel" title="이 대화의 출처 보기">
 						<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" stroke-linecap="round" stroke-linejoin="round" /></svg>
 						출처 {allCitations.length}
@@ -2926,6 +2949,7 @@
 		grid-row: 1;
 		display: flex;
 		align-items: center;
+		flex-wrap: wrap;
 		gap: 0.5rem;
 		justify-content: flex-end;
 		min-width: 0;

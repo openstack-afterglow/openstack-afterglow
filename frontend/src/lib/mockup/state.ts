@@ -209,10 +209,12 @@ function seedState(): MockupState {
 	const uvSummary = { id: 101, name: 'sample-uv', kind: 'uv', python_version: null, parent_id: null, is_sealed: true, is_published: true, pip_packages: [], apt_packages: [], ubuntu_base: 'ubuntu-24.04', base_image_id: baseImage.id, base_image_name: baseImage.name, base_image_min_disk: 20, base_image_visibility: 'public', requested_packages: [], created_at: '2026-07-01T08:00:00Z' };
 	const pythonSummary = { ...uvSummary, id: 102, name: 'sample-python', kind: 'python', python_version: '3.11', parent_id: 101, created_at: '2026-07-01T09:00:00Z' };
 	const pipSummary = { ...pythonSummary, id: 103, name: 'sample-numpy', kind: 'pip', parent_id: 102, pip_packages: ['numpy==1.26.4'], requested_packages: ['numpy==1.26.4'], created_at: '2026-07-01T10:00:00Z' };
+	const dockerfileRoot = { ...uvSummary, id: 104, name: 'sample-dockerfile-root', kind: 'dockerfile-root', is_published: false, created_at: '2026-07-02T08:00:00Z' };
 	const libraryArtifacts = [
 		{ ...uvSummary, ...artifactCommon, sqsh_filename: 'sample-uv.sqsh', lineage: [], ancestors: [], direct_children: [pythonSummary], child_count: 1 },
 		{ ...pythonSummary, ...artifactCommon, sqsh_filename: 'sample-python.sqsh', lineage: [uvSummary], ancestors: [uvSummary], direct_children: [pipSummary], child_count: 1 },
 		{ ...pipSummary, ...artifactCommon, sqsh_filename: 'sample-numpy.sqsh', lineage: [uvSummary, pythonSummary], ancestors: [uvSummary, pythonSummary], direct_children: [], child_count: 0 },
+		{ ...dockerfileRoot, ...artifactCommon, is_published: false, profile_references: [{ id: 2, name: 'sample-dockerfile-root', layers: ['sample-dockerfile-root'] }], sqsh_filename: 'sample-dockerfile-root.sqsh', lineage: [], ancestors: [], direct_children: [], child_count: 0 },
 	];
 
 	return {
@@ -405,9 +407,15 @@ function seedState(): MockupState {
 			library: {
 				baseImages: [baseImage],
 				artifacts: libraryArtifacts,
-				profiles: [{ id: 1, name: 'sample-ml-stack', layers: ['sample-uv', 'sample-python', 'sample-numpy'], is_published: true, created_at: '2026-07-01T10:10:00Z', updated_at: '2026-07-01T10:10:00Z' }],
+				profiles: [
+					{ id: 1, name: 'sample-ml-stack', layers: ['sample-uv', 'sample-python', 'sample-numpy'], is_published: true, created_at: '2026-07-01T10:10:00Z', updated_at: '2026-07-01T10:10:00Z' },
+					{ id: 2, name: 'sample-dockerfile-root', layers: ['sample-dockerfile-root'], is_published: false, created_at: '2026-07-02T08:00:00Z', updated_at: '2026-07-02T08:00:00Z' },
+				],
 				builds: [{ id: 501, layer_name: 'sample-numpy', kind: 'pip', python_version: null, share_id: 'mock-share-layer', server_id: null, port_id: null, build_token: null, cloud_init_status: 'done', status: 'complete', progress_step: 'sealed', progress_pct: 100, error_message: null, console_log_excerpt: null, started_at: '2026-07-01T09:30:00Z', completed_at: '2026-07-01T10:00:00Z', created_at: '2026-07-01T09:29:00Z', pip_packages: ['numpy==1.26.4'], apt_packages: [], ubuntu_base: 'ubuntu-24.04', base_image_id: baseImage.id, base_image_name: baseImage.name, base_image_min_disk: 20, base_image_visibility: 'public', parent_artifact_id: 102 }],
-				imports: [{ id: 601, status: 'complete', progress_step: 'profile_saved', progress_pct: 100, error_message: null, github_url: 'https://github.com/example/sample-stack', commit_sha: '0123456789abcdef0123456789abcdef01234567', dockerfile_path: 'Dockerfile', layer_prefix: 'sample-import', profile_name: 'sample-import-profile', ubuntu_base: 'ubuntu-24.04', base_image_id: baseImage.id, base_image_name: baseImage.name, planned_layers: [{ name: 'sample-import-run-1', line: 4, instruction: 'RUN apt-get update' }], artifact_ids: [101], build_ids: [501], created_at: '2026-07-01T07:00:00Z', completed_at: '2026-07-01T08:00:00Z' }],
+				imports: [
+					{ id: 601, status: 'complete', progress_step: 'profile_saved', progress_pct: 100, error_message: null, github_url: 'https://github.com/example/sample-stack', commit_sha: '0123456789abcdef0123456789abcdef01234567', dockerfile_path: 'Dockerfile', layer_prefix: 'sample-import', profile_name: 'sample-import-profile', ubuntu_base: 'ubuntu-24.04', base_image_id: baseImage.id, base_image_name: baseImage.name, planned_layers: [{ name: 'sample-import-run-1', line: 4, instruction: 'RUN apt-get update' }], artifact_ids: [101], build_ids: [501], created_at: '2026-07-01T07:00:00Z', completed_at: '2026-07-01T08:00:00Z' },
+					{ id: 602, source_type: 'inline_dockerfile', dockerfile_digest: `sha256:${'a'.repeat(64)}`, status: 'complete', progress_step: 'sealed', progress_pct: 100, error_message: null, github_url: null, commit_sha: null, dockerfile_path: null, layer_prefix: 'sample-dockerfile', profile_name: 'sample-dockerfile-root', ubuntu_base: 'ubuntu-24.04', base_image_id: baseImage.id, base_image_name: baseImage.name, planned_layers: [], artifact_ids: [104], build_ids: [], created_at: '2026-07-02T07:00:00Z', completed_at: '2026-07-02T08:00:00Z' },
+				],
 				consumes: [{ id: 701, profile_name: 'sample-ml-stack', server_id: null, port_id: null, server_name: 'sample-consume-deleted', share_id: 'mock-share-consume', status: 'deleted', error_message: null, created_at: '2026-07-02T10:00:00Z', completed_at: '2026-07-02T11:00:00Z', vm_status: null, vm_ip: null }],
 			},
 			containers: [

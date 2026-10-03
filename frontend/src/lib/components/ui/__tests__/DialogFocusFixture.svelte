@@ -16,6 +16,7 @@
 		<button type="button" onclick={() => { childOpen = true; }}>자식 열기</button>
 		<button type="button">부모 마지막 작업</button>
 	</div>
+	<div style="display: none"><button type="button">숨겨진 반응형 작업</button></div>
 	<Modal open={childOpen} onClose={() => { childOpen = false; }} ariaLabel="자식 대화상자">
 		<div>
 			<button type="button">자식 첫 작업</button>

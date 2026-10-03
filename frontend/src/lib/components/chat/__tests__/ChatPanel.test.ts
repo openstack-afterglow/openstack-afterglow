@@ -191,6 +191,18 @@ describe('ChatPanel', () => {
 		expect(screen.getByRole('button', { name: 'Fresh model' })).toBeTruthy();
 	});
 
+	it('shows the model request status without exposing a raw proxy response', async () => {
+		const fallback = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation((path: string, ...args: unknown[]) =>
+			path === '/api/v1/chat/models'
+				? Promise.reject(new mocks.ApiError('secret upstream body', 503))
+				: fallback(path, ...args));
+		render(ChatPanel);
+		await fireEvent.click(screen.getByRole('button', { name: /모델/ }));
+		expect(await screen.findByText(/HTTP 503/)).toBeTruthy();
+		expect(screen.queryByText(/secret upstream body/)).toBeNull();
+	});
+
 	it('selects an available replacement on visible refresh and fences old project responses', async () => {
 		const fallback = mocks.get.getMockImplementation()!;
 		let catalog = [{ id: 1, model_name: 'model-1', display_name: 'Model 1' }];
@@ -896,6 +908,42 @@ describe('ChatPanel', () => {
 			'project-1'
 		);
 	});
+	it('keeps a conversation creation failure actionable without revealing proxy body', async () => {
+		mocks.post.mockRejectedValueOnce(new mocks.ApiError('secret upstream body', 503));
+		render(ChatPanel);
+		await screen.findByRole('button', { name: 'Model 1' });
+		await fireEvent.input(screen.getByRole('textbox'), { target: { value: '테스트' } });
+		await fireEvent.click(screen.getByRole('button', { name: '전송' }));
+		expect((await screen.findByRole('alert')).textContent).toContain('HTTP 503: 대화를 생성하지 못했습니다');
+		expect(screen.queryByText(/secret upstream body/)).toBeNull();
+	});
+
+	it('shows the admission HTTP status and structured detail in the chat error bar', async () => {
+		mocks.createRun.mockRejectedValue(new mocks.ChatHttpError('Model quota exceeded', 429));
+		render(ChatPanel);
+		await screen.findByRole('button', { name: 'Model 1' });
+		await fireEvent.click(screen.getByTitle('저장되지 않는 임시 채팅'));
+		await fireEvent.input(screen.getByRole('textbox'), { target: { value: '테스트' } });
+		await fireEvent.click(screen.getByRole('button', { name: '전송' }));
+		expect(await screen.findByText('HTTP 429: Model quota exceeded')).toBeTruthy();
+	});
+
+	it('shows the safe failure code and detail after an accepted run, without an HTTP status', async () => {
+		mocks.followRun.mockImplementation(async function* () {
+			yield event(1, 'run.failed', {
+				status: 'failed', message_id: null,
+				error_code: 'provider_unavailable', safe_message: '모델 제공자가 응답하지 않습니다.'
+			});
+		});
+		render(ChatPanel);
+		await screen.findByRole('button', { name: 'Model 1' });
+		await fireEvent.click(screen.getByTitle('저장되지 않는 임시 채팅'));
+		await fireEvent.input(screen.getByRole('textbox'), { target: { value: '테스트' } });
+		await fireEvent.click(screen.getByRole('button', { name: '전송' }));
+		expect(await screen.findByText('provider_unavailable: 모델 제공자가 응답하지 않습니다. (run: run-1)')).toBeTruthy();
+		expect(screen.queryByText(/HTTP 202/)).toBeNull();
+	});
+
 	it('reveals the terminal footer after a temporary run is canceled', async () => {
 		mocks.followRun.mockImplementation(async function* () {
 			yield event(1, 'run.canceled', {

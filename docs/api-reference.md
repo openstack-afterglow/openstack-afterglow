@@ -65,6 +65,7 @@ Prometheus SD(`/api/v1/sd/...`)와 VM 에이전트용 baked 경로는 별도의 
 | 문서 | 기본 경로 | 설명 |
 |------|-----------|------|
 | [관리자 (Admin)](api/admin.md) | `/api/v1/admin` | 클러스터 개요, 사용자/프로젝트/쿼터/그룹/역할, Flavor·GPU·이미지, 마이그레이션, 고아 리소스, 워커 런타임 등 (전 엔드포인트 `require_admin`) |
+| [관리자 이벤트](api/events.md) | `/api/v1/admin/events` | 프로젝트·사용자·서비스·페이지별 이벤트 조회, 오류 상세와 필터 집계 |
 
 ### 컴퓨트
 

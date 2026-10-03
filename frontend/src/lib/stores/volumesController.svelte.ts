@@ -11,8 +11,20 @@ interface VolumeQuotas { storage: { volumes: QuotaItem; gigabytes: QuotaItem; };
 export interface VolumesControllerOpts {
   token: () => string | undefined;
   projectId: () => string | undefined;
-  volumeBackupsEnabled?: () => boolean;
   volumeSnapshotsEnabled?: () => boolean;
+}
+
+/** Preselect this volume in the existing VM wizard without launching a VM. */
+export function bootFromVolume(vol: Volume) {
+  wizard.update(s => ({
+    ...s,
+    bootSource: 'volume',
+    bootVolumeId: vol.id,
+    bootVolumeName: vol.name,
+    imageId: null,
+    imageName: null,
+  }));
+  openWizard();
 }
 
 export function createVolumesController(opts: VolumesControllerOpts) {
@@ -36,25 +48,35 @@ export function createVolumesController(opts: VolumesControllerOpts) {
   let extendTargetVol = $state<Volume | null>(null);
   let backupTargetVol = $state<Volume | null>(null);
   let snapshotTargetVol = $state<Volume | null>(null);
+  let renameTargetVol = $state<Volume | null>(null);
+  let detailRefreshKey = $state(0);
   let quotas = $state<VolumeQuotas | null>(null);
 
-  const volumeBackupsOn = () => opts.volumeBackupsEnabled?.() ?? true;
   const volumeSnapshotsOn = () => opts.volumeSnapshotsEnabled?.() ?? true;
+  // Only the newest list request may write state, so a slow pre-rename or
+  // previous-project response cannot overwrite fresher data.
+  let volumesRequestSeq = 0;
 
   async function fetchVolumes(manual = false) {
     const path = '/api/v1/volumes';
+    const seq = ++volumesRequestSeq;
     const cached = swrGet<Volume[]>(path);
     if (cached && volumes.length === 0) volumes = cached;
     if (manual) refreshing = true;
     try {
-      volumes = await api.get<Volume[]>(path, opts.token(), opts.projectId(), manual ? { refresh: true } : undefined);
+      const fresh = await api.get<Volume[]>(path, opts.token(), opts.projectId(), manual ? { refresh: true } : undefined);
+      if (seq !== volumesRequestSeq) return;
+      volumes = fresh;
       swrSet(path, volumes);
       error = '';
     } catch (e) {
+      if (seq !== volumesRequestSeq) return;
       if (!cached) error = e instanceof ApiError ? `조회 실패 (${e.status})` : '서버 오류';
     } finally {
-      loading = false;
-      refreshing = false;
+      if (seq === volumesRequestSeq) {
+        loading = false;
+        refreshing = false;
+      }
     }
   }
 
@@ -75,10 +97,6 @@ export function createVolumesController(opts: VolumesControllerOpts) {
   }
 
   async function fetchAutoBackupConfigs() {
-    if (!volumeBackupsOn()) {
-      autoBackupConfigs = new Set();
-      return;
-    }
     try {
       const configs = await api.post<{ volume_id: string }[]>(
         '/api/v1/volumes/backups/auto-backup/configs', {},
@@ -100,6 +118,10 @@ export function createVolumesController(opts: VolumesControllerOpts) {
   function closeVolumePanel() {
     selectedVolumeId = null;
     history.pushState({}, '', '/dashboard/volumes');
+  }
+
+  function refreshSelectedDetail() {
+    if (selectedVolumeId) detailRefreshKey += 1;
   }
 
   async function deleteVolume(id: string, name: string) {
@@ -150,20 +172,28 @@ export function createVolumesController(opts: VolumesControllerOpts) {
     }
   }
 
-  function bootFromVolume(vol: Volume) {
-    wizard.update(s => ({
-      ...s,
-      bootSource: 'volume',
-      bootVolumeId: vol.id,
-      bootVolumeName: vol.name,
-      imageId: null,
-      imageName: null,
-    }));
-    openWizard();
+  /** Apply a successful PATCH response to the list and any open detail panel, then resync. */
+  function applyRenamedVolume(updated: Volume, source: 'list' | 'detail') {
+    renameTargetVol = null;
+    volumes = volumes.map((vol) => (vol.id === updated.id ? { ...vol, ...updated } : vol));
+    swrSet('/api/v1/volumes', volumes);
+    if (source === 'list' && selectedVolumeId === updated.id) detailRefreshKey += 1;
+    void fetchVolumes();
+  }
+
+  /** Drop per-project UI targets so a project switch never acts on the previous tenant's volume. */
+  function resetProjectScope() {
+    renameTargetVol = null;
+    extendTargetVol = null;
+    backupTargetVol = null;
+    snapshotTargetVol = null;
+    showTransferModal = false;
+    openActionMenu = null;
+    openSnapshotActionMenu = null;
+    if (selectedVolumeId) closeVolumePanel();
   }
 
   async function toggleAutoBackup(volumeId: string) {
-    if (!volumeBackupsOn()) return;
     autoBackupToggling = volumeId;
     const enabling = !autoBackupConfigs.has(volumeId);
     try {
@@ -210,6 +240,9 @@ export function createVolumesController(opts: VolumesControllerOpts) {
     set backupTargetVol(v: Volume | null) { backupTargetVol = v; },
     get snapshotTargetVol() { return snapshotTargetVol; },
     set snapshotTargetVol(v: Volume | null) { snapshotTargetVol = v; },
+    get renameTargetVol() { return renameTargetVol; },
+    set renameTargetVol(v: Volume | null) { renameTargetVol = v; },
+    get detailRefreshKey() { return detailRefreshKey; },
     get quotas() { return quotas; },
     fetchVolumes,
     fetchSnapshots,
@@ -218,11 +251,14 @@ export function createVolumesController(opts: VolumesControllerOpts) {
     fetchAll,
     openVolumePanel,
     closeVolumePanel,
+    refreshSelectedDetail,
     deleteVolume,
     deleteSnapshot,
     openTransferModal,
     forceDeleteVolume,
     bootFromVolume,
     toggleAutoBackup,
+    applyRenamedVolume,
+    resetProjectScope,
   };
 }

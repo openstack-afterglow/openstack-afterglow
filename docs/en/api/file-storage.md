@@ -17,6 +17,8 @@ Manages the Manila shared file system (CephFS/NFS).
 > Since Manila is an optional service, when disabled this router itself is not mounted, so
 > all `/api/v1/file-storage*` paths return `404`.
 
+> **Share backups unavailable:** This router has no share-backup create/restore API. Production Manila exposes an experimental share-backup endpoint (microversion 2.80+), but `manila-data` lacks an independent NFS backup repository and data-node access IPs; the default NFS backup driver cannot mount native CephFS shares. A request can be accepted before failing asynchronously. Do not treat File Storage snapshots as backups. Provision and verify the repository, compatible driver, and a real backup/restore before exposing this workflow.
+
 ---
 
 ## Authentication Headers
@@ -118,6 +120,8 @@ Returns the details of a specific file storage. Verifies ownership.
 Creates a new Manila share. **Rate limit: 5/min**
 
 When `share_type`/`share_network_id` are omitted, the config file defaults apply. The default share type differs by protocol — `NFS` uses `os_manila_nfs_share_type`, otherwise `os_manila_share_type`.
+
+For NFS shares, `share_network_id` is sent to Manila only when the selected share type has `DHSS=True`. It is omitted for `DHSS=False`; if the share type's DHSS mode cannot be determined, creation fails before allocating a share.
 
 **Request body** — `CreateFileStorageRequest`
 

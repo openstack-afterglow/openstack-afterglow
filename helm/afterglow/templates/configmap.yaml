@@ -351,6 +351,7 @@ data:
     node_uid = {{ .Values.monitoring.dashboards.nodeUid | quote }}
     rabbitmq_uid = {{ .Values.monitoring.dashboards.rabbitmqUid | quote }}
     mysqld_uid = {{ .Values.monitoring.dashboards.mysqldUid | quote }}
+    proxysql_uid = {{ .Values.monitoring.dashboards.proxysqlUid | quote }}
     memcached_uid = {{ .Values.monitoring.dashboards.memcachedUid | quote }}
     etcd_uid = {{ .Values.monitoring.dashboards.etcdUid | quote }}
     haproxy_uid = {{ .Values.monitoring.dashboards.haproxyUid | quote }}

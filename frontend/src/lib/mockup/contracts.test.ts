@@ -16,10 +16,11 @@ const ADMIN_TOUR_PATHS = [
 ] as const;
 
 describe('administrator mockup route contract', () => {
-	it('allows only the administrator landing page and the nine guided-tour sections', () => {
-		expect(ADMIN_ALLOWED_PATHS).toEqual(['/', '/login', '/admin', ...ADMIN_TOUR_PATHS]);
+	it('allows the administrator landing page, guided-tour sections and quota preview', () => {
+		expect(ADMIN_ALLOWED_PATHS).toEqual(['/', '/login', '/admin', ...ADMIN_TOUR_PATHS, '/admin/quotas']);
 		expect(getMockupHomePath('admin')).toBe('/admin');
 		for (const path of ADMIN_TOUR_PATHS) expect(isMockupPathAllowed('admin', path)).toBe(true);
+		expect(isMockupPathAllowed('admin', '/admin/quotas')).toBe(true);
 	});
 
 	it.each([

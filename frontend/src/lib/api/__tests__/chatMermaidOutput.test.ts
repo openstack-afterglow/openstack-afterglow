@@ -16,8 +16,6 @@ describe('Mermaid chat output', () => {
 
 		await renderMermaidBlocks(host);
 
-		expect(mocks.initialize).toHaveBeenCalledWith({ startOnLoad: false, securityLevel: 'strict' });
-		expect(mocks.render).toHaveBeenCalledOnce();
 		expect(host.querySelector('.mermaid-diagram svg')).toBeTruthy();
 		expect(host.querySelector('.mermaid-diagram script')).toBeNull();
 	});

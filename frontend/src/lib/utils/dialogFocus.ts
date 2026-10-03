@@ -26,6 +26,9 @@ function isUsable(element: HTMLElement): boolean {
 	if (!element.isConnected || element.hidden || element.inert) return false;
 	if (element.getAttribute('aria-hidden') === 'true') return false;
 	const style = getComputedStyle(element);
+	for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+		if (parent.hidden || parent.inert || getComputedStyle(parent).display === 'none') return false;
+	}
 	return style.display !== 'none' && style.visibility !== 'hidden';
 }
 

@@ -10,13 +10,13 @@ commit 을 고정해 받아오는 경로다. 여기는 **본문을 직접 올리
 빌드 컨텍스트가 없으므로 `COPY`/`ADD` 는 거부한다(파서가 `allow_build_context=False`).
 """
 
+import asyncio
+import http.client
 import ipaddress
 import logging
 import re
 import socket
-import urllib.error
 import urllib.parse
-import urllib.request
 from pathlib import PurePosixPath
 from typing import Any
 
@@ -24,6 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.api.deps import get_os_conn, require_admin
+from app.api.union.layer_ops import DockerfileConsumerRequest
 from app.services.dockerfile_import import (
     DockerfileImportError,
     compute_step_digest,
@@ -47,6 +48,7 @@ class InlineDockerfileBuildRequest(BaseModel):
     dockerfile: str = Field(..., min_length=1, max_length=_MAX_DOCKERFILE_CHARS)
     layer_prefix: str
     profile_name: str | None = None
+    consumer: DockerfileConsumerRequest | None = None
 
     @field_validator("dockerfile")
     @classmethod
@@ -89,35 +91,80 @@ def _normalize_dockerfile_url(raw_url: str) -> str:
     return raw_url
 
 
-def _validate_safe_url(url: str) -> urllib.parse.SplitResult:
-    parsed = urllib.parse.urlsplit(url)
+def _validate_safe_url(url: str) -> tuple[urllib.parse.SplitResult, str]:
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        hostname = parsed.hostname
+        port = parsed.port or (443 if parsed.scheme.lower() == "https" else 80)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="유효하지 않은 Dockerfile URL입니다") from exc
     if parsed.scheme.lower() not in {"http", "https"}:
         raise HTTPException(status_code=422, detail="http 또는 https URL만 지원됩니다")
-    hostname = parsed.hostname
-    if not hostname:
+    if not hostname or parsed.username is not None or parsed.password is not None:
         raise HTTPException(status_code=422, detail="유효한 호스트가 포함된 URL이어야 합니다")
+    host = hostname.lower().rstrip(".")
+    if host in {"localhost", "metadata", "metadata.google.internal"} or host.endswith((".local", ".localhost")):
+        raise HTTPException(status_code=422, detail="로컬/사설 네트워크 주소는 접근할 수 없습니다")
 
-    # SSRF 차단: IP 직접 입력 및 DNS 해석 결과 검증
     try:
-        ip = ipaddress.ip_address(hostname)
-        if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_reserved or ip.is_multicast:
-            raise HTTPException(status_code=422, detail="로컬/사설 네트워크 주소는 접근할 수 없습니다")
-    except ValueError:
-        if hostname.lower() in {"localhost", "metadata", "metadata.google.internal"} or hostname.lower().endswith(
-            ".local"
-        ):
-            raise HTTPException(status_code=422, detail="로컬/사설 네트워크 주소는 접근할 수 없습니다")
-        try:
-            addr_info = socket.getaddrinfo(hostname, None)
-            for item in addr_info:
-                sockaddr = item[4]
-                ip = ipaddress.ip_address(sockaddr[0])
-                if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_reserved or ip.is_multicast:
-                    raise HTTPException(status_code=422, detail="로컬/사설 네트워크 주소는 접근할 수 없습니다")
-        except socket.gaierror as exc:
-            raise HTTPException(status_code=422, detail=f"호스트를 확인할 수 없습니다: {hostname}") from exc
+        addresses = socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
+        ips = [str(ipaddress.ip_address(item[4][0])) for item in addresses]
+    except (socket.gaierror, ValueError, IndexError) as exc:
+        raise HTTPException(status_code=422, detail=f"호스트를 확인할 수 없습니다: {hostname}") from exc
+    if not ips or any(not ipaddress.ip_address(ip).is_global for ip in ips):
+        raise HTTPException(status_code=422, detail="로컬/사설 네트워크 주소는 접근할 수 없습니다")
+    return parsed, ips[0]
 
-    return parsed
+
+def _fetch_public_dockerfile(url: str) -> bytes:
+    current = url
+    for _ in range(5):
+        parsed, pinned_ip = _validate_safe_url(current)
+        port = parsed.port or (443 if parsed.scheme.lower() == "https" else 80)
+        connection = (http.client.HTTPSConnection if parsed.scheme.lower() == "https" else http.client.HTTPConnection)(
+            parsed.hostname,
+            port,
+            timeout=10,
+        )
+        # http.client connects through this callback; the numeric vetted address
+        # prevents a second DNS lookup from redirecting the request to a private IP.
+        connection._create_connection = lambda _host, timeout, source_address=None, ip=pinned_ip, endpoint=port: (
+            socket.create_connection(
+                (ip, endpoint),
+                timeout,
+                source_address,
+            )
+        )
+        try:
+            target = urllib.parse.urlunsplit(("", "", parsed.path or "/", parsed.query, ""))
+            connection.request(
+                "GET",
+                target,
+                headers={
+                    "User-Agent": "afterglow-palimpsest-import/1.0",
+                    "Accept": "text/plain, text/x-dockerfile, */*",
+                },
+            )
+            response = connection.getresponse()
+            if 300 <= response.status < 400:
+                location = response.getheader("Location")
+                if not location:
+                    raise HTTPException(status_code=502, detail="원격 URL의 리다이렉트가 유효하지 않습니다")
+                current = urllib.parse.urljoin(current, location)
+                continue
+            if response.status >= 400:
+                raise HTTPException(
+                    status_code=response.status if response.status in {400, 403, 404} else 502,
+                    detail=f"원격 서버 오류: HTTP {response.status}",
+                )
+            return response.read(_MAX_DOCKERFILE_CHARS + 1)
+        except TimeoutError as exc:
+            raise HTTPException(status_code=504, detail="원격 URL 요청 시간이 초과되었습니다") from exc
+        except (OSError, http.client.HTTPException) as exc:
+            raise HTTPException(status_code=502, detail="원격 URL에 연결할 수 없습니다") from exc
+        finally:
+            connection.close()
+    raise HTTPException(status_code=422, detail="Dockerfile URL 리다이렉트가 너무 많습니다")
 
 
 @router.post("/dockerfile", dependencies=[Depends(require_admin)])
@@ -125,11 +172,7 @@ async def build_from_inline_dockerfile(
     req: InlineDockerfileBuildRequest,
     conn=Depends(get_os_conn),
 ) -> dict[str, Any]:
-    """Dockerfile 을 해석해 빌드 잡을 만든다.
-
-    같은 부모 위에 같은 명령이 이미 빌드돼 있으면 그 접두부는 **재사용**하고 나머지만 빌드한다
-    (`step_digest` 기반 캐시). 전부 캐시에 맞으면 만들 게 없다는 뜻이므로 409 를 준다.
-    """
+    """Build or reuse a Dockerfile chain and optionally launch its SSH VM."""
     try:
         plan = await prepare_inline_dockerfile_import(
             conn,
@@ -138,13 +181,20 @@ async def build_from_inline_dockerfile(
             profile_name=req.profile_name,
         )
     except DockerfileImportError as exc:
-        message = str(exc)
-        # "전부 캐시" 는 잘못된 요청이 아니라 상태 충돌이다
-        status = 409 if "모든 단계가 이미 빌드" in message else 422
-        raise HTTPException(status_code=status, detail=message) from exc
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    from app.services.dockerfile_import import prepare_import_consumer
 
     try:
-        job = await create_import_job(plan)
+        consumer_spec = (
+            await prepare_import_consumer(conn, req.consumer, profile_name=plan.profile_name) if req.consumer else None
+        )
+    except (DockerfileImportError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        job = await create_import_job(plan, consumer_spec=consumer_spec)
     except DockerfileImportError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
@@ -204,29 +254,7 @@ async def preview_inline_dockerfile_plan(
 async def fetch_dockerfile_from_url(req: FetchDockerfileUrlRequest) -> dict[str, Any]:
     """원격 URL(GitHub raw, GitLab, 일반 HTTP/S)에서 Dockerfile 텍스트를 가져온다."""
     normalized_url = _normalize_dockerfile_url(req.url)
-    _validate_safe_url(normalized_url)
-
-    request = urllib.request.Request(
-        normalized_url,
-        headers={
-            "User-Agent": "afterglow-palimpsest-import/1.0",
-            "Accept": "text/plain, text/x-dockerfile, text/plain;charset=utf-8, */*",
-        },
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=10) as resp:
-            final_url = resp.geturl()
-            _validate_safe_url(final_url)
-            raw = resp.read(_MAX_DOCKERFILE_CHARS + 1)
-    except urllib.error.HTTPError as exc:
-        raise HTTPException(
-            status_code=exc.code if exc.code in {400, 403, 404} else 502,
-            detail=f"원격 서버 오류: HTTP {exc.code}",
-        ) from exc
-    except urllib.error.URLError as exc:
-        raise HTTPException(status_code=502, detail=f"원격 URL에 연결할 수 없습니다: {exc.reason}") from exc
-    except TimeoutError as exc:
-        raise HTTPException(status_code=504, detail="원격 URL 요청 시간이 초과되었습니다") from exc
+    raw = await asyncio.to_thread(_fetch_public_dockerfile, normalized_url)
 
     if len(raw) > _MAX_DOCKERFILE_CHARS:
         raise HTTPException(status_code=422, detail="Dockerfile 크기는 1MiB 이하여야 합니다")

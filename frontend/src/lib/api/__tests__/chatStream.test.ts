@@ -106,6 +106,33 @@ describe('durable chat SSE framing', () => {
 			fetchMock.mockRestore();
 		}
 	});
+	it('shows only a bounded structured detail on admission failures, with status fallback otherwise', async () => {
+		const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+			new Response(JSON.stringify({ detail: 'Model quota exceeded' }), { status: 429 })
+		).mockResolvedValueOnce(
+			new Response(JSON.stringify({ detail: [{ loc: ['body', 'model'], msg: 'Missing model', input: 'secret' }] }), { status: 422 })
+		).mockResolvedValueOnce(
+			new Response('<html>secret upstream token</html>', { status: 502 })
+		).mockResolvedValueOnce(
+			new Response(JSON.stringify({ detail: 'private-key '.repeat(100) }), { status: 503 })
+		);
+		try {
+			await expect(createChatRun('/api/v1/chat/runs', {})).rejects.toMatchObject({
+				status: 429, message: 'Model quota exceeded'
+			});
+			await expect(createChatRun('/api/v1/chat/runs', {})).rejects.toMatchObject({
+				status: 422, message: 'body.model: Missing model'
+			});
+			await expect(createChatRun('/api/v1/chat/runs', {})).rejects.toMatchObject({
+				status: 502, message: 'chat request failed'
+			});
+			await expect(createChatRun('/api/v1/chat/runs', {})).rejects.toMatchObject({
+				status: 503, message: 'chat request failed'
+			});
+		} finally {
+			fetchMock.mockRestore();
+		}
+	});
 	it('refreshes an initial 401 before consuming the recovered event stream', async () => {
 		auth.set({
 			token: 'old-token',

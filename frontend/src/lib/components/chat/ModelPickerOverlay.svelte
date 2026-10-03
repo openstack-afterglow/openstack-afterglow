@@ -19,26 +19,26 @@
 	let { open, models, value, onSelect, onClose, onRefresh, refreshing = false, refreshError = '' }: Props = $props();
 
 	let query = $state('');
-	let activeProvider = $state<string | null>(null);
+	let activeProvider = $state<number | null>(null);
 
 	interface Group {
+		providerId: number;
 		provider: string;
 		models: AvailableModel[];
 	}
 	const providerCounts = $derived.by(() => {
-		const counts = new Map<string, number>();
+		const counts = new Map<number, { id: number; name: string; count: number }>();
 		for (const model of models) {
-			const provider = model.provider ?? '기타';
-			counts.set(provider, (counts.get(provider) ?? 0) + 1);
+			const provider = counts.get(model.provider_id);
+			if (provider) provider.count++;
+			else counts.set(model.provider_id, { id: model.provider_id, name: model.provider ?? '기타', count: 1 });
 		}
 		return counts;
 	});
-	const providers = $derived(
-		[...providerCounts.keys()].sort((left, right) => left.localeCompare(right, 'ko'))
-	);
+	const providers = $derived([...providerCounts.values()]);
 	const showProviderNav = $derived(providers.length > 1);
 	$effect(() => {
-		if (activeProvider !== null && !providers.includes(activeProvider)) activeProvider = null;
+		if (activeProvider !== null && !providerCounts.has(activeProvider)) activeProvider = null;
 	});
 
 	function apiModelName(model: AvailableModel): string {
@@ -56,20 +56,16 @@
 				apiModelName(m).toLowerCase().includes(q) ||
 				apiProvider(m).toLowerCase().includes(q) ||
 				(m.provider ?? '').toLowerCase().includes(q)) &&
-			(activeProvider === null || (m.provider ?? '기타') === activeProvider);
-		const byProvider = new Map<string, AvailableModel[]>();
+			(activeProvider === null || m.provider_id === activeProvider);
+		const byProvider = new Map<number, Group>();
 		for (const m of models) {
 			if (!match(m)) continue;
-			const key = m.provider ?? '기타';
-			const arr = byProvider.get(key);
-			if (arr) arr.push(m);
-			else byProvider.set(key, [m]);
+			const group = byProvider.get(m.provider_id);
+			if (group) group.models.push(m);
+			else byProvider.set(m.provider_id, { providerId: m.provider_id, provider: m.provider ?? '기타', models: [m] });
 		}
-		return [...byProvider.entries()].map(([provider, models]) => ({ provider, models }));
+		return [...byProvider.values()];
 	});
-	function providerCount(provider: string): number {
-		return providerCounts.get(provider) ?? 0;
-	}
 	const total = $derived(grouped.reduce((n, g) => n + g.models.length, 0));
 
 	function pick(m: AvailableModel) {
@@ -139,15 +135,15 @@
 						<span>전체 모델</span>
 						<span class="provider-count">{models.length}</span>
 					</button>
-					{#each providers as provider (provider)}
+					{#each providers as provider (provider.id)}
 						<button
 							type="button"
-							class:active={activeProvider === provider}
-							aria-pressed={activeProvider === provider}
-							onclick={() => (activeProvider = provider)}
+							class:active={activeProvider === provider.id}
+							aria-pressed={activeProvider === provider.id}
+							onclick={() => (activeProvider = provider.id)}
 						>
-							<span>{provider}</span>
-							<span class="provider-count">{providerCount(provider)}</span>
+							<span>{provider.name}</span>
+							<span class="provider-count">{provider.count}</span>
 						</button>
 					{/each}
 				</nav>
@@ -156,9 +152,9 @@
 				{#if total === 0}
 					<p class="empty">검색 결과가 없습니다</p>
 				{:else}
-					{#each grouped as g (g.provider)}
+					{#each grouped as g (g.providerId)}
 						<div class="group-label">{g.provider}</div>
-						{#each g.models as m (m.model_name)}
+						{#each g.models as m (m.id)}
 							<div class="model-row" class:active={m.model_name === value}>
 								<button
 									type="button"

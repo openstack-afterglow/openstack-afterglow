@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import re
 import time
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
@@ -22,6 +23,13 @@ _logger = logging.getLogger(__name__)
 # 토큰 검증 결과 캐시 TTL — Keystone revoke / logout 후 공격자에게 노출되는 window 를
 # 60초로 제한. 이전엔 ttl_static() (300s) 였음.
 _TOKEN_CACHE_TTL = 60
+
+
+def validate_keystone_id(value: object) -> str:
+    """Validate native package identities without rewriting opaque Keystone IDs."""
+    if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", value):
+        raise HTTPException(status_code=403, detail="Keystone identity is invalid")
+    return value
 
 
 async def _run_best_effort(awaitable, operation: str) -> None:
@@ -92,10 +100,13 @@ async def _check_session_timeout(token_hash: str, project_id: str) -> None:
         raise HTTPException(status_code=503, detail="세션 유효성을 확인할 수 없습니다. 잠시 후 다시 시도해 주세요.")
 
 
-async def _resolve_jwt_token_info(request, bearer_token: str, x_project_id: str | None) -> dict:
+async def _resolve_jwt_token_info(
+    request, bearer_token: str, x_project_id: str | None, *, preserve_original: bool = False
+) -> dict:
     """Bearer access JWT 검증 → Redis 세션 조회 → token_info dict 반환.
 
-    x_project_id가 JWT의 project_id와 다르면 Keystone rescope (프로젝트 전환용).
+    Ordinary routes retain Keystone rescope. Native package routes preserve the
+    original session subject and permit X-Project-Id only as an exact assertion.
     """
     from app.services import jwt_service
     from app.services.session_store import get_session
@@ -194,6 +205,31 @@ async def _resolve_jwt_token_info(request, bearer_token: str, x_project_id: str 
         raise HTTPException(
             status_code=503, detail="토큰 바인딩 검사를 완료할 수 없습니다. 잠시 후 다시 시도해 주세요."
         )
+
+    if preserve_original:
+        project_id = validate_keystone_id(payload.get("project_id"))
+        user_id = validate_keystone_id(payload.get("sub"))
+        if (
+            validate_keystone_id(sess.get("project_id")) != project_id
+            or validate_keystone_id(sess.get("user_id")) != user_id
+            or (x_project_id is not None and validate_keystone_id(x_project_id) != project_id)
+        ):
+            raise HTTPException(status_code=403, detail="Package session/project scope does not match the access JWT")
+        original_token = sess.get("keystone_token")
+        if not isinstance(original_token, str) or not original_token:
+            raise HTTPException(status_code=401, detail="Original Keystone subject is unavailable")
+        # Hub validates this original subject and fresh membership; never exchange
+        # it, use admin override, or overwrite the session on this package path.
+        return {
+            "token": original_token,
+            "user_id": user_id,
+            "username": payload.get("username", ""),
+            "project_id": project_id,
+            "connection_project_id": project_id,
+            "project_name": payload.get("project_name", ""),
+            "refresh_jti": refresh_jti,
+            "auth_method": sess.get("auth_method", "password"),
+        }
 
     jwt_project_id = payload.get("project_id", "")
     home_project_id = jwt_project_id or sess.get("project_id", "")

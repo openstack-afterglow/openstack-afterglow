@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from collections.abc import Iterable
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Annotated
 
 if TYPE_CHECKING:
     import openstack
@@ -10,10 +12,11 @@ import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.deps import CacheMode, cache_mode, get_os_conn, get_token_info, require_admin
-from app.services import activity, keystone, session_store
+from app.config import get_settings
+from app.services import activity, keystone, manila, session_store
 from app.services import login_guard as _login_guard
 from app.services.cache import cached_call, invalidate, ttl_slow
 
@@ -294,52 +297,98 @@ async def list_project_names(
         raise HTTPException(status_code=500, detail="프로젝트 이름 목록 조회 실패")
 
 
+def _identity_created_at(value: object) -> str | None:
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if not isinstance(value, datetime):
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(UTC).isoformat(timespec="microseconds")
+
+
+async def _identity_creation_dates(items: list[dict], resource_type: str) -> list[dict]:
+    # Do not mutate the cached Keystone inventory or substitute first activity.
+    result = [{**item, "created_at": _identity_created_at(item.get("created_at"))} for item in items]
+    missing = [item["id"] for item in result if item["created_at"] is None]
+    if missing:
+        try:
+            dates = await activity.get_resource_creation_times(resource_type, missing)
+        except Exception:
+            _logger.warning("Identity 생성 기록 조회 실패 (%s)", resource_type, exc_info=True)
+            dates = {}
+        for item in result:
+            if item["created_at"] is None:
+                item["created_at"] = _identity_created_at(dates.get(item["id"]))
+    result.sort(key=lambda item: (item["created_at"] or "", item["id"]), reverse=True)
+    return result
+
+
 @router.get("/projects", dependencies=[Depends(require_admin)])
 async def list_projects(
     limit: int = Query(default=20, ge=1, le=100),
     marker: str | None = Query(default=None),
+    search: str = Query(default=""),
+    enabled: bool | None = Query(default=None),
+    domain_id: str | None = Query(default=None),
     conn: openstack.connection.Connection = Depends(get_os_conn),
+    cm: CacheMode = Depends(cache_mode),
 ):
-    """프로젝트 목록 (페이지네이션)."""
+    """Filter and sort the complete inventory before slicing a marker page."""
 
     def _list():
-        kwargs: dict = {"limit": limit}
-        if marker:
-            kwargs["marker"] = marker
-        projects = []
-        for p in conn.identity.projects(**kwargs):
-            created_at = getattr(p, "created_at", None)
-            if not created_at:
-                try:
-                    detail = conn.identity.get_project(p.id)
-                    created_at = getattr(detail, "created_at", None)
-                except Exception:
-                    pass
-            projects.append(
-                {
-                    "id": p.id,
-                    "name": p.name or "",
-                    "description": getattr(p, "description", "") or "",
-                    "enabled": p.is_enabled,
-                    "domain_id": getattr(p, "domain_id", None),
-                    "created_at": str(created_at) if created_at else None,
-                }
-            )
-            if len(projects) >= limit:
-                break
-        next_marker = projects[-1]["id"] if len(projects) == limit else None
-        return {"items": projects, "next_marker": next_marker, "count": len(projects)}
+        return [
+            {
+                "id": p.id,
+                "name": p.name or "",
+                "description": getattr(p, "description", "") or "",
+                "enabled": p.is_enabled,
+                "domain_id": getattr(p, "domain_id", None),
+                "created_at": _identity_created_at(getattr(p, "created_at", None)),
+            }
+            for p in conn.identity.projects()
+        ]
 
     try:
-        return await asyncio.to_thread(_list)
+        inventory = await cached_call(
+            "afterglow:admin:projects", ttl_slow(), _list, enabled=cm.enabled, refresh=cm.refresh
+        )
     except Exception:
         raise HTTPException(status_code=500, detail="프로젝트 목록 조회 실패")
+
+    projects = await _identity_creation_dates(inventory, "project")
+    domains = sorted({p["domain_id"] for p in projects if p["domain_id"]})
+    query = search.strip().casefold()
+    projects = [
+        p
+        for p in projects
+        if (enabled is None or p["enabled"] == enabled)
+        and (domain_id is None or p["domain_id"] == domain_id)
+        and (not query or any(query in p[field].casefold() for field in ("name", "id", "description")))
+    ]
+    start = 0
+    if marker:
+        start = next((index + 1 for index, p in enumerate(projects) if p["id"] == marker), None)
+        if start is None:
+            raise HTTPException(status_code=400, detail="페이지 기준 프로젝트가 없습니다. 목록을 새로고침하세요.")
+    items = projects[start : start + limit]
+    return {
+        "items": items,
+        "next_marker": items[-1]["id"] if start + limit < len(projects) else None,
+        "count": len(items),
+        "total": len(projects),
+        "domain_ids": domains,
+    }
 
 
 @router.post("/projects", dependencies=[Depends(require_admin)], status_code=201)
 async def create_project(
     req: CreateProjectRequest,
     conn: openstack.connection.Connection = Depends(get_os_conn),
+    token_info: dict = Depends(get_token_info),
 ):
     """프로젝트 생성."""
 
@@ -367,6 +416,18 @@ async def create_project(
         from app.services import neutron
 
         result = await asyncio.to_thread(_create)
+        await activity.record(
+            project_id=token_info["project_id"],
+            user_id=token_info["user_id"],
+            username=token_info.get("username", ""),
+            resource_type="project",
+            action="project.create",
+            status="success",
+            resource_id=result["id"],
+            resource_name=result["name"],
+        )
+        await invalidate("afterglow:admin:projects")
+        await invalidate("afterglow:admin:project_names")
         _settings = get_settings()
         if _settings.monitoring_auto_sg_enabled and _settings.monitoring_scrape_cidr:
             try:
@@ -418,7 +479,8 @@ async def get_project(
             raise HTTPException(status_code=404, detail="프로젝트 조회 실패")
 
     try:
-        return await asyncio.to_thread(_get)
+        result = await asyncio.to_thread(_get)
+        return (await _identity_creation_dates([result], "project"))[0]
     except HTTPException:
         raise
 
@@ -453,7 +515,10 @@ async def update_project(
             raise HTTPException(status_code=400, detail="프로젝트 수정 실패")
 
     try:
-        return await asyncio.to_thread(_update)
+        result = await asyncio.to_thread(_update)
+        await invalidate("afterglow:admin:projects")
+        await invalidate("afterglow:admin:project_names")
+        return result
     except HTTPException:
         raise
 
@@ -475,6 +540,8 @@ async def delete_project(
 
     try:
         await asyncio.to_thread(_delete)
+        await invalidate("afterglow:admin:projects")
+        await invalidate("afterglow:admin:project_names")
     except HTTPException:
         raise
 
@@ -542,17 +609,134 @@ async def list_project_members(
 # ============================================================================
 
 
-class QuotaUpdateRequest(BaseModel):
-    instances: int | None = None
-    cores: int | None = None
-    ram: int | None = None
-    volumes: int | None = None
-    gigabytes: int | None = None
+QuotaLimit = Annotated[int, Field(strict=True, ge=-1)]
 
 
-class ComputePolicyUpdateRequest(QuotaUpdateRequest):
+class ComputeQuotaRequest(BaseModel):
+    instances: QuotaLimit | None = None
+    cores: QuotaLimit | None = None
+    ram: QuotaLimit | None = None
+
+
+class QuotaUpdateRequest(ComputeQuotaRequest):
+    model_config = ConfigDict(extra="forbid")
+
+    key_pairs: QuotaLimit | None = None
+    server_groups: QuotaLimit | None = None
+    server_group_members: QuotaLimit | None = None
+    injected_files: QuotaLimit | None = None
+    injected_file_content_bytes: QuotaLimit | None = None
+    injected_file_path_bytes: QuotaLimit | None = None
+    metadata_items: QuotaLimit | None = None
+    volumes: QuotaLimit | None = None
+    snapshots: QuotaLimit | None = None
+    gigabytes: QuotaLimit | None = None
+    network: QuotaLimit | None = None
+    subnet: QuotaLimit | None = None
+    port: QuotaLimit | None = None
+    router: QuotaLimit | None = None
+    floatingip: QuotaLimit | None = None
+    security_group: QuotaLimit | None = None
+    security_group_rule: QuotaLimit | None = None
+    shares: QuotaLimit | None = None
+    share_gigabytes: QuotaLimit | None = None
+    share_snapshots: QuotaLimit | None = None
+    share_snapshot_gigabytes: QuotaLimit | None = None
+    share_networks: QuotaLimit | None = None
+    share_groups: QuotaLimit | None = None
+    share_group_snapshots: QuotaLimit | None = None
+
+
+class ComputePolicyUpdateRequest(ComputeQuotaRequest):
     gpu_quotas: dict[str, int | None] = Field(default_factory=dict)
     reconcile_flavor_access: bool = True
+
+
+# Request keys are unique even where two providers use the same quota name.
+_QUOTA_FIELDS = {
+    "compute": {
+        key: key
+        for key in (
+            "instances",
+            "cores",
+            "ram",
+            "key_pairs",
+            "server_groups",
+            "server_group_members",
+            "injected_files",
+            "injected_file_content_bytes",
+            "injected_file_path_bytes",
+            "metadata_items",
+        )
+    },
+    "volume": {key: key for key in ("volumes", "snapshots", "gigabytes")},
+    "network": {
+        key: key
+        for key in ("network", "subnet", "port", "router", "floatingip", "security_group", "security_group_rule")
+    },
+    "file_storage": {
+        "shares": "shares",
+        "share_gigabytes": "gigabytes",
+        "share_snapshots": "snapshots",
+        "share_snapshot_gigabytes": "snapshot_gigabytes",
+        "share_networks": "share_networks",
+        "share_groups": "share_groups",
+        "share_group_snapshots": "share_group_snapshots",
+    },
+}
+
+
+def _quota_entries(raw: object, keys: Iterable[str]) -> dict:
+    """Keep only actual usage-bearing entries; never invent a limit or usage."""
+    if not isinstance(raw, dict):
+        raise ValueError("quota set is malformed")
+    entries = {}
+    for key in keys:
+        item = raw.get(key)
+        if item is None:
+            continue  # Some deployments do not expose every optional quota.
+        if (
+            not isinstance(item, dict)
+            or not all(
+                isinstance(item.get(field), int) and not isinstance(item[field], bool) for field in ("limit", "in_use")
+            )
+            or item["limit"] < -1
+            or item["in_use"] < 0
+        ):
+            raise ValueError("quota usage is malformed")
+        entries[key] = {"limit": item["limit"], "in_use": item["in_use"]}
+    if not entries:
+        raise ValueError("quota set has no usage")
+    return entries
+
+
+def _get_admin_quota_section(conn, project_id: str, section: str) -> dict:
+    if section in ("compute", "volume"):
+        proxy = conn.compute if section == "compute" else conn.block_storage
+        url = f"{proxy.get_endpoint()}/os-quota-sets/{project_id}"
+        if section == "compute":
+            url += "/detail"
+            params = None
+        else:
+            params = {"usage": "true"}
+        response = conn.session.get(url, params=params) if params else conn.session.get(url)
+        response.raise_for_status()
+        payload = response.json()
+        raw = payload.get("quota_set") if isinstance(payload, dict) else None
+    elif section == "network":
+        quota = conn.network.get_quota(project_id, details=True)
+        raw = quota.to_dict(original_names=True) if hasattr(quota, "to_dict") else quota
+    else:
+        payload = manila.get_client(conn).get(f"quota-sets/{project_id}/detail")
+        raw = payload.get("quota_set") if isinstance(payload, dict) else None
+
+    if section == "network" and isinstance(raw, dict):
+        # Neutron calls the measured count 'used' rather than 'in_use'.
+        raw = {
+            key: {**value, "in_use": value.get("used", value.get("in_use"))} if isinstance(value, dict) else value
+            for key, value in raw.items()
+        }
+    return _quota_entries(raw, _QUOTA_FIELDS[section].values())
 
 
 @router.put("/compute-policy/{project_id}", dependencies=[Depends(require_admin)])
@@ -624,37 +808,46 @@ async def get_project_quotas(
     project_id: str,
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
-    """프로젝트 쿼터 조회 (Compute + Volume, 실제 사용량 포함)."""
+    """Read the target project's usage-bearing quota sets independently."""
+    enabled = bool(get_settings().service_manila_enabled)
+    result: dict = {
+        "project_id": project_id,
+        "compute": None,
+        "volume": None,
+        "network": None,
+        "file_storage": None,
+        "availability": {},
+        "errors": {},
+    }
+    sections = [section for section in _QUOTA_FIELDS if section != "file_storage" or enabled]
+    if not enabled:
+        result["availability"]["file_storage"] = False
+        result["errors"]["file_storage"] = "service_disabled"
 
-    def _get():
-        result: dict = {"compute": {}, "volume": {}}
-        compute_endpoint = conn.compute.get_endpoint()
-        bs_endpoint = conn.block_storage.get_endpoint()
-        try:
-            cq = conn.session.get(f"{compute_endpoint}/os-quota-sets/{project_id}/detail")
-            qs = cq.json().get("quota_set", {})
-            for key in ("instances", "cores", "ram"):
-                q = qs.get(key, {})
-                result["compute"][key] = {"limit": q.get("limit", 0), "in_use": q.get("in_use", 0)}
-        except Exception:
-            result["compute"] = {}
-        try:
-            bq = conn.session.get(f"{bs_endpoint}/os-quota-sets/{project_id}", params={"usage": "true"})
-            bqs = bq.json().get("quota_set", {})
-            for key in ("volumes", "gigabytes"):
-                q = bqs.get(key, {})
-                if isinstance(q, dict):
-                    result["volume"][key] = {"limit": q.get("limit", 0), "in_use": q.get("in_use", 0)}
-                else:
-                    result["volume"][key] = {"limit": q, "in_use": 0}
-        except Exception:
-            result["volume"] = {}
-        return result
-
+    # The connection belongs to this request. Settle every worker before it
+    # closes, including when the HTTP request is cancelled mid-flight.
+    calls = asyncio.gather(
+        *(asyncio.to_thread(_get_admin_quota_section, conn, project_id, section) for section in sections),
+        return_exceptions=True,
+    )
     try:
-        return await asyncio.to_thread(_get)
-    except Exception:
-        raise HTTPException(status_code=500, detail="쿼터 조회 실패")
+        values = await asyncio.shield(calls)
+    except BaseException:
+        try:
+            await asyncio.shield(calls)
+        except BaseException:
+            pass
+        raise
+
+    for section, value in zip(sections, values, strict=True):
+        if isinstance(value, BaseException):
+            _logger.warning("Admin %s quota read failed", section, exc_info=value)
+            result["availability"][section] = False
+            result["errors"][section] = "quota_unavailable"
+        else:
+            result[section] = value
+            result["availability"][section] = True
+    return result
 
 
 @router.put("/quotas/{project_id}", dependencies=[Depends(require_admin)])
@@ -663,40 +856,51 @@ async def update_project_quotas(
     req: QuotaUpdateRequest,
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
-    """프로젝트 쿼터 수정."""
+    """Apply only supplied quota sections; one provider's failure cannot hide another's success."""
+    supplied = req.model_dump(exclude_unset=True)
+    if not supplied or any(value is None for value in supplied.values()):
+        raise HTTPException(status_code=422, detail="쿼터 값이 필요합니다")
 
-    def _update():
+    updated: list[str] = []
+    errors: dict[str, str] = {}
+    for section, mapping in _QUOTA_FIELDS.items():
+        kwargs = {provider_key: supplied[key] for key, provider_key in mapping.items() if key in supplied}
+        if not kwargs:
+            continue
+        if section == "file_storage" and not get_settings().service_manila_enabled:
+            errors[section] = "service_disabled"
+            continue
         try:
-            # Compute quotas
-            compute_kwargs: dict = {}
-            if req.instances is not None:
-                compute_kwargs["instances"] = req.instances
-            if req.cores is not None:
-                compute_kwargs["cores"] = req.cores
-            if req.ram is not None:
-                compute_kwargs["ram"] = req.ram
-            if compute_kwargs:
-                conn.compute.update_quota_set(project_id, **compute_kwargs)
+            if section == "compute":
+                await asyncio.to_thread(conn.compute.update_quota_set, project_id, **kwargs)
+            elif section == "volume":
+                await asyncio.to_thread(conn.block_storage.update_quota_set, project_id, **kwargs)
+            elif section == "network":
+                await asyncio.to_thread(conn.network.update_quota, project_id, **kwargs)
+            else:
+                client = await asyncio.to_thread(manila.get_client, conn)
+                await asyncio.to_thread(client.put, f"quota-sets/{project_id}", {"quota_set": kwargs})
+        except Exception:
+            _logger.warning("Admin %s quota update failed", section, exc_info=True)
+            errors[section] = "update_failed"
+            continue
 
-            # Volume quotas
-            volume_kwargs: dict = {}
-            if req.volumes is not None:
-                volume_kwargs["volumes"] = req.volumes
-            if req.gigabytes is not None:
-                volume_kwargs["gigabytes"] = req.gigabytes
-            if volume_kwargs:
-                conn.block_storage.update_quota_set(project_id, **volume_kwargs)
-
-            return {"status": "updated"}
-        except Exception as e:
-            _logger.warning("쿼터 수정 실패: %s", e)
-
-            raise HTTPException(status_code=400, detail="쿼터 수정 실패")
-
-    try:
-        return await asyncio.to_thread(_update)
-    except HTTPException:
-        raise
+        updated.append(section)
+    if updated:
+        # Both dashboard views combine all providers; the usage report also
+        # caches Nova/Cinder quota snapshots independently.
+        await invalidate(f"afterglow:dashboard:{project_id}:quotas")
+        await invalidate(f"afterglow:dashboard:{project_id}:quotas:overview")
+        if "compute" in updated:
+            await invalidate(f"afterglow:nova:{project_id}:quota:strict")
+        if "volume" in updated:
+            await invalidate(f"afterglow:cinder:{project_id}:quota:strict")
+    return {
+        "project_id": project_id,
+        "status": "partial" if errors else "updated",
+        "updated": updated,
+        "errors": errors,
+    }
 
 
 # ============================================================================
@@ -708,26 +912,25 @@ async def update_project_quotas(
 async def list_groups(
     conn: openstack.connection.Connection = Depends(get_os_conn), cm: CacheMode = Depends(cache_mode)
 ):
-    """그룹 목록."""
+    """전체 그룹 목록, 확인된 생성일 내림차순."""
 
     def _list():
-        groups = []
-        try:
-            for g in conn.identity.groups():
-                groups.append(
-                    {
-                        "id": g.id,
-                        "name": g.name or "",
-                        "description": getattr(g, "description", "") or "",
-                        "domain_id": getattr(g, "domain_id", None),
-                    }
-                )
-        except Exception:
-            pass
-        return groups
+        return [
+            {
+                "id": g.id,
+                "name": g.name or "",
+                "description": getattr(g, "description", "") or "",
+                "domain_id": getattr(g, "domain_id", None),
+                "created_at": _identity_created_at(getattr(g, "created_at", None)),
+            }
+            for g in conn.identity.groups()
+        ]
 
     try:
-        return await cached_call("afterglow:admin:groups", ttl_slow(), _list, enabled=cm.enabled, refresh=cm.refresh)
+        inventory = await cached_call(
+            "afterglow:admin:groups", ttl_slow(), _list, enabled=cm.enabled, refresh=cm.refresh
+        )
+        return await _identity_creation_dates(inventory, "group")
     except Exception:
         raise HTTPException(status_code=500, detail="그룹 목록 조회 실패")
 
@@ -747,6 +950,7 @@ class UpdateGroupRequest(BaseModel):
 async def create_group(
     req: CreateGroupRequest,
     conn: openstack.connection.Connection = Depends(get_os_conn),
+    token_info: dict = Depends(get_token_info),
 ):
     """그룹 생성."""
 
@@ -771,6 +975,17 @@ async def create_group(
 
     try:
         result = await asyncio.to_thread(_create)
+        await activity.record(
+            project_id=token_info["project_id"],
+            user_id=token_info["user_id"],
+            username=token_info.get("username", ""),
+            resource_type="group",
+            action="group.create",
+            status="success",
+            resource_id=result["id"],
+            resource_name=result["name"],
+            service="keystone",
+        )
         await invalidate("afterglow:admin:groups")
         return result
     except HTTPException:
@@ -804,7 +1019,9 @@ async def update_group(
             raise HTTPException(status_code=400, detail="그룹 수정 실패")
 
     try:
-        return await asyncio.to_thread(_update)
+        result = await asyncio.to_thread(_update)
+        await invalidate("afterglow:admin:groups")
+        return result
     except HTTPException:
         raise
 

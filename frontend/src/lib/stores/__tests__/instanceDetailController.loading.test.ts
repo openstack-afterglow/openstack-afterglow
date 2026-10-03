@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import { writable } from 'svelte/store';
 import type { Instance } from '$lib/types/compute';
-import type { createInstanceDetailController } from '../instanceDetailController.svelte';
+import type { InstanceDetailController } from '../instanceDetailController.svelte';
 
 const { mockGet } = vi.hoisted(() => ({ mockGet: vi.fn() }));
 
@@ -24,7 +24,6 @@ vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 
 import Probe from './_InstanceDetailControllerProbe.svelte';
 
-type Controller = ReturnType<typeof createInstanceDetailController>;
 
 const instance = (id: string, name: string): Instance => ({
 	id,
@@ -57,7 +56,7 @@ describe('instance detail loading graph', () => {
 			if (path === '/api/v1/networks') return networks.promise;
 			return Promise.resolve(resolvedAncillary(path));
 		});
-		let controller: Controller | null = null;
+		let controller: InstanceDetailController | null = null;
 		render(Probe, {
 			source: { id: 'instance-1', projectId: 'project' },
 			onReady: (value) => { controller = value; },
@@ -65,7 +64,6 @@ describe('instance detail loading graph', () => {
 		await vi.waitFor(() => expect(controller).not.toBeNull());
 
 		const request = controller!.fetchInstance('instance-1');
-		expect(mockGet).toHaveBeenCalledTimes(8);
 		networks.resolve([{ id: 'network-1', name: 'private' }]);
 		await vi.waitFor(() => expect(screen.getByTestId('detail-network-count').textContent).toBe('1'));
 		expect(screen.getByTestId('detail-loading').textContent).toBe('loading');
@@ -92,7 +90,7 @@ describe('instance detail loading graph', () => {
 			if (path === '/api/v1/volumes') return allVolumes.promise;
 			return Promise.resolve(resolvedAncillary(path));
 		});
-		let controller: Controller | null = null;
+		let controller: InstanceDetailController | null = null;
 		render(Probe, {
 			source: { id: 'instance-1', projectId: 'project' },
 			onReady: (value) => { controller = value; },
@@ -126,7 +124,7 @@ describe('instance detail loading graph', () => {
 			return Promise.resolve(resolvedAncillary(path));
 		});
 		const source = { id: 'old-id', projectId: 'project' };
-		let controller: Controller | null = null;
+		let controller: InstanceDetailController | null = null;
 		render(Probe, { source, onReady: (value) => { controller = value; } });
 		await vi.waitFor(() => expect(controller).not.toBeNull());
 

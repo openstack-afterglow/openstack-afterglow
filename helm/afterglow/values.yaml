@@ -145,8 +145,8 @@ app:
   frontendPort: 3080
   siteName: "Afterglow"
   siteDescription: "OpenStack VM + OverlayFS 배포 플랫폼"
-  logoPath: "/logo.png"
-  faviconPath: "/favicon.ico"
+  logoPath: "/afterglow-logo.svg"
+  faviconPath: "/favicon.svg"
   refreshIntervalMs: 5000
   frontendBaseUrl: ""
   publicApiBase: ""
@@ -548,10 +548,14 @@ services:
 cloudShell:
   serviceProjectId: ""
   image: ""
+  # Containers and home volumes live in serviceProjectId, never in user projects.
+  # Empty networkId uses that project's external-connected default network.
   networkId: ""
-  securityGroup: ""
+  # "default" resolves the dedicated project's default group with its existing rules
+  # (no egress-only guarantee). Explicit overrides must be owned by that project.
+  securityGroup: "default"
   authUrl: ""
-  interface: "internal"
+  interface: "public"
   volumeType: ""
   homeSizeGib: 5
   cpu: 1.0
@@ -680,6 +684,7 @@ monitoring:
     nodeUid: "afterglow-node"
     rabbitmqUid: "afterglow-rabbitmq"
     mysqldUid: "afterglow-mysqld"
+    proxysqlUid: "afterglow-proxysql" # Existing ProxySQL dashboard in the configured Grafana
     memcachedUid: "afterglow-memcached"
     etcdUid: "afterglow-etcd"
     haproxyUid: "afterglow-haproxy"

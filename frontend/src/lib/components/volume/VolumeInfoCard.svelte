@@ -6,9 +6,13 @@
 </script>
 
 <div class="bg-surface-base rounded-xl border border-line-2 p-4 mb-4 space-y-2 text-sm">
-  <div class="flex justify-between">
-    <span class="text-ink-2">ID</span>
-    <span class="text-ink-0 font-mono text-xs">{s.volume!.id}</span>
+  <div class="flex justify-between gap-4">
+    <span class="text-ink-2 shrink-0">이름</span>
+    <span class="text-ink-0 text-right break-all">{s.volume!.name || '(이름 없음)'}</span>
+  </div>
+  <div class="flex justify-between gap-4">
+    <span class="text-ink-2 shrink-0">ID</span>
+    <span class="text-ink-0 font-mono text-xs text-right break-all">{s.volume!.id}</span>
   </div>
   <div class="flex justify-between">
     <span class="text-ink-2">크기</span>
@@ -17,6 +21,10 @@
   <div class="flex justify-between">
     <span class="text-ink-2">타입</span>
     <span class="text-ink-0">{s.volume!.volume_type ?? '-'}</span>
+  </div>
+  <div class="flex justify-between">
+    <span class="text-ink-2">부팅 가능</span>
+    <span class="text-ink-0">{s.volume!.bootable ? '예' : '아니오'}</span>
   </div>
   <div class="flex justify-between">
     <span class="text-ink-2">연결</span>

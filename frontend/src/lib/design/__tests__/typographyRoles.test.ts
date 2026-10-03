@@ -8,8 +8,18 @@ const frontendRoot = resolve(repoRoot, 'frontend');
 const layoutSource = readFileSync(resolve(frontendRoot, 'src/routes/layout.css'), 'utf8');
 const tokenSource = readFileSync(resolve(frontendRoot, 'src/lib/design/tokens.ts'), 'utf8');
 const landingSource = readFileSync(resolve(frontendRoot, 'src/lib/components/landing/LandingPage.svelte'), 'utf8');
-const opsBoardSource = readFileSync(resolve(frontendRoot, 'src/lib/components/landing/LandingOpsBoard.svelte'), 'utf8');
 const designSource = readFileSync(resolve(repoRoot, 'DESIGN.md'), 'utf8');
+const landingComponentSources = Object.fromEntries(
+	['LandingPage', 'LandingOpsBoard', 'LandingJourney', 'LandingConsolePreview'].map((name) => [
+		name,
+		readFileSync(resolve(frontendRoot, `src/lib/components/landing/${name}.svelte`), 'utf8'),
+	]),
+);
+
+/** Matches a text `color` declaration (not `background-color`, `border-color`, or custom properties). */
+function textColorDeclaration(token: string): RegExp {
+	return new RegExp(`(^|[^-\\w])color:\\s*var\\(${token}\\)\\s*[;}]`);
+}
 
 const fontFiles = [
 	'pretendard/PretendardVariable.woff2',
@@ -93,22 +103,18 @@ describe('role-based typography system', () => {
 		expect(tokenSource).toContain('export const TEXT_CSS_VAR');
 		expect(tokenSource).toContain("warm: 'var(--color-warm-text)'");
 		expect(tokenSource).toContain("success: 'var(--color-state-success-text)'");
-		expect(landingSource).not.toContain('color: var(--color-ink-3);');
-		expect(landingSource).not.toContain('color: var(--color-state-success);');
-		expect(landingSource.match(/color: var\(--color-warm\);/g)).toHaveLength(1);
-		expect(landingSource).toContain('color: var(--color-warm-text);');
-		expect(landingSource).toContain('color: var(--color-state-success-text);');
-		expect(opsBoardSource).not.toContain('color: var(--color-ink-3);');
-		expect(opsBoardSource).not.toContain('color: var(--color-state-success);');
-		expect(opsBoardSource).not.toContain('color: var(--color-warm);');
-		expect(opsBoardSource).toContain('color: var(--color-warm-text);');
-		expect(opsBoardSource).toContain('color: var(--color-state-success-text);');
 		expect(designSource).toContain('Normal-sized public/editorial labels use `--color-ink-2`, `--color-warm-text`, or `--color-state-success-text`');
 	});
 
-	it('delays the dense one-row operations board until the xl width can preserve values', () => {
-		expect(opsBoardSource).toContain('@media (min-width: 1024px)');
-		expect(opsBoardSource).toContain('@media (min-width: 1280px)');
-		expect(designSource).toContain('The board retains its readable two-row desktop flow until the `xl` density refinement (`≥1280px`)');
+	it('keeps landing text off low-contrast and decoration-only color tokens', () => {
+		const everyLandingFile = ['--color-ink-3', '--color-state-success'];
+		const newSceneFiles = [...everyLandingFile, '--color-warm', '--color-accent'];
+		const violations = Object.entries(landingComponentSources).flatMap(([name, source]) => {
+			const forbidden = (name === 'LandingPage' ? everyLandingFile : newSceneFiles).map(textColorDeclaration);
+			return source
+				.split('\n')
+				.flatMap((line, index) => (forbidden.some((pattern) => pattern.test(line)) ? [`${name}.svelte:${index + 1}: ${line.trim()}`] : []));
+		});
+		expect(violations).toEqual([]);
 	});
 });

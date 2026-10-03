@@ -106,12 +106,15 @@ afterglow_openstack_insecure: "{{ openstack_insecure | default(false) }}"
 afterglow_openstack_cacert: "{{ openstack_cacert | default('') }}"
 
 # ── Cloud Shell ──────────────────────────────────────────────────────────────
-# The project, network, router, and security group are operator-owned. This
-# role resolves and validates them but never creates or deletes them.
+# The dedicated project and its network, router, and security groups are
+# operator-owned. This role resolves and validates them but never creates or
+# deletes them. An empty network ID lets the backend select the dedicated
+# project's default external-connected network; the security group defaults
+# to that project's own "default" group and its existing rules.
 afterglow_cloud_shell_project_name: "afterglow-cloud-shell"
 afterglow_cloud_shell_project_id: ""
 afterglow_cloud_shell_network_id: ""
-afterglow_cloud_shell_security_group: ""
+afterglow_cloud_shell_security_group: "default"
 afterglow_cloud_shell_auth_url: "{{ keystone_public_url | regex_replace('/$', '') }}/v3"
 afterglow_cloud_shell_interface: "public"
 afterglow_cloud_shell_volume_type: ""

@@ -29,6 +29,12 @@ python3 scripts/check_architecture.py --staged
 - API는 Redis의 10분 per-volume lock으로 recovery를 직렬화하고 lock storage 장애 시 503으로 거부합니다. Cinder force-delete가 attached 400을 반환한 경우에만 attach status를 한 번 reset하고 한 번 재시도합니다.
 - `deleted`/`already_deleted`만 terminal success입니다. `delete_submitted`, `backend_residue`, `backend_unverified`는 관리자 상세 화면을 유지하며 backend/quota verification을 별도 필드로 노출합니다. Ceph 설정이 없는 기존 배포는 계속 동작하지만 backend 삭제 완료를 주장하지 않습니다.
 
+## 콘솔 전역·서비스 탐색
+
+Root layout은 전체 폭 header의 브랜드·프로젝트·중앙 검색과 오른쪽 utility를 소유하며, 프로젝트 오른쪽에 별도 서비스 sidebar 복원 버튼을 두지 않습니다. `Sidebar`·`AdminSidebar`는 목적지별 SVG를 포함한 기존 nav 선언·서비스·beta·mockup 조건을 공유 `ConsoleNavigation`에 전달합니다. 모든 폭의 modal 전체 메뉴와 tablet/desktop의 15rem 서비스 sidebar 또는 3.5rem 아이콘 rail을 분리합니다. 가장 긴 visible route 일치가 현재 페이지 제목과 소속 항목을 정합니다. Sidebar 최상단의 같은 버튼으로 접고 펼치며, rail도 각 목적지·tooltip·현재 선택·focus를 유지합니다. Mobile은 panel/rail 폭을 예약하지 않고 drawer에 중복 현재 페이지 row를 만들지 않습니다. 개요와 활동 바로 아래의 독립 topology는 sidebar 공간을 예약하지 않습니다. 프로젝트 설정은 기존 ProjectSelector popup에만 둡니다.
+
+전체 메뉴의 `sidebarOpen`과 서비스 패널/rail의 `sidebarExpanded`는 독립 상태입니다. `ConsoleNavigation`이 route context에 맞는 expanded/collapsed/hidden 상태를 설정하며 `--app-sidebar-offset`의 15rem/3.5rem/0 경계를 고정 panel과 Cloud Shell dock도 사용합니다. SlidePanel은 flex shrink로 현재 workspace에 맞추면서 caller의 폭·최대 폭과 저장된 선호 폭을 보존합니다. `dialogFocus`는 숨겨진 조상·inert 아래 컨트롤을 Tab 순환에서 제외하며, drawer의 프로젝트 popup은 같은 dialog에 portal됩니다. URL·API 권한·project rescope·Cloud Shell lifecycle은 변경하지 않습니다. 실제 UI·breakpoint 계약은 [디자인 시스템](https://github.com/openstack-afterglow/openstack-afterglow/blob/main/DESIGN.md)을 따릅니다.
+
 ## 전역 Cloud Shell 경계
 
 Global Cloud Shell은 기존 프로젝트별 Zun container terminal이나 k3s exec overlay의 별칭이 아닙니다. Root layout에 한 번 mount되는 사용자 shell이며 route 이동에는 유지되고 project 전환·logout 전에 종료됩니다. UI는 `cloudShell.svelte.ts` singleton state machine이 consent → ticketing → provisioning → authorizing → ready → ending/error를 소유하고, terminal bytes는 xterm과 WebSocket 사이에 binary로만 전달합니다.

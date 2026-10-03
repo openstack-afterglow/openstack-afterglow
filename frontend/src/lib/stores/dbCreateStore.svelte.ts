@@ -41,7 +41,6 @@ interface DbCreateOpts {
 	setOpen: (v: boolean) => void;
 	onCreated: () => void;
 	initialNics?: () => string[];
-	databaseBackupsEnabled?: () => boolean;
 }
 
 const DB_CREATE_KEY = Symbol('db-create');
@@ -63,8 +62,6 @@ export function createDbCreateStore(opts: DbCreateOpts) {
 
 	const token = $derived(authState.token ?? undefined);
 	const projectId = $derived(authState.projectId ?? undefined);
-
-	const databaseBackupsOn = () => opts.databaseBackupsEnabled?.() ?? true;
 
 	// 메타데이터
 	let flavors = $state<DbFlavor[]>([]);
@@ -124,10 +121,6 @@ export function createDbCreateStore(opts: DbCreateOpts) {
 	});
 
 	const canCreate = $derived(!step1Error);
-
-	$effect(() => {
-		if (!databaseBackupsOn()) restoreBackupId = '';
-	});
 
 	// 스타일 상수 (서브 컴포넌트에서 공유)
 	const inputCls =
@@ -197,12 +190,10 @@ export function createDbCreateStore(opts: DbCreateOpts) {
 				.get<DbInstance[]>('/api/v1/database-instances', t, p)
 				.then((v) => (instances = v))
 				.catch(() => {}),
-			databaseBackupsOn()
-				? api
-					.get<DbBackup[]>('/api/v1/database-instances/backups', t, p)
-					.then((v) => (backups = v))
-					.catch(() => {})
-				: Promise.resolve().then(() => { backups = []; restoreBackupId = ''; }),
+			api
+				.get<DbBackup[]>('/api/v1/database-instances/backups', t, p)
+				.then((v) => (backups = v))
+				.catch(() => {}),
 		]);
 		loading = false;
 	}
@@ -268,7 +259,7 @@ export function createDbCreateStore(opts: DbCreateOpts) {
 			is_public: isPublic,
 			allowed_cidrs: cidrs,
 			configuration_id: configurationId || null,
-			restore_backup_id: databaseBackupsOn() ? restoreBackupId || null : null,
+			restore_backup_id: restoreBackupId || null,
 			replica_of: replicaOf || null,
 			replica_count: replicaOf && replicaCount > 1 ? replicaCount : null,
 		};
@@ -311,7 +302,6 @@ export function createDbCreateStore(opts: DbCreateOpts) {
 		get selectedDs() { return selectedDs; },
 		get step1Error() { return step1Error; },
 		get canCreate() { return canCreate; },
-		get databaseBackupsEnabled() { return databaseBackupsOn(); },
 
 		// 스타일 상수
 		inputCls,

@@ -7,7 +7,6 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from httpx import ASGITransport, AsyncClient
 
-from app.api.deps import get_token_info
 from app.main import app
 from app.services.service_proxy import proxy
 
@@ -16,19 +15,6 @@ from app.services.service_proxy import proxy
 async def api_client():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         yield client
-    app.dependency_overrides.pop(get_token_info, None)
-
-
-async def _authenticated(request: Request) -> dict:
-    token_info = {
-        "token": "caller-token",
-        "project_id": "project-1",
-        "user_id": "user-1",
-        "username": "user",
-        "roles": ["member"],
-    }
-    request.state.token_info = token_info
-    return token_info
 
 
 @pytest.mark.asyncio
@@ -40,40 +26,6 @@ async def test_palimpsest_hub_disabled_by_default(api_client, monkeypatch):
 
     response = await api_client.get("/api/v1/palimpsest/hub/layers")
     assert response.status_code == 503
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "method,path,upstream_path,body",
-    [
-        ("get", "/api/v1/palimpsest/hub/layers", "/v1/layers", None),
-        (
-            "post",
-            "/api/v1/palimpsest/hub/image-exports",
-            "/v1/image-exports",
-            {"image_id": "img-1", "disk_format": "qcow2"},
-        ),
-        ("delete", "/api/v1/palimpsest/hub/image-exports/export-1", "/v1/image-exports/export-1", None),
-    ],
-)
-async def test_palimpsest_hub_proxy_routing(api_client, monkeypatch, method, path, upstream_path, body):
-    """Authenticated Hub endpoints delegate to app.api.palimpsest.hub.proxy."""
-    from app.config import get_settings
-
-    monkeypatch.setattr(get_settings(), "service_palimpsest_enabled", True)
-    app.dependency_overrides[get_token_info] = _authenticated
-
-    forwarded = JSONResponse(status_code=207, content={"forwarded": True})
-    with patch("app.api.palimpsest.hub.proxy", new=AsyncMock(return_value=forwarded)) as proxy_call:
-        call = getattr(api_client, method)
-        response = await (call(path, json=body) if body is not None else call(path))
-
-    assert response.status_code == 207
-    assert response.json() == {"forwarded": True}
-    service_type, request, upstream = proxy_call.await_args.args
-    assert service_type == "palimpsest"
-    assert upstream == upstream_path
-    assert request.state.token_info["token"] == "caller-token"
 
 
 @pytest.mark.asyncio

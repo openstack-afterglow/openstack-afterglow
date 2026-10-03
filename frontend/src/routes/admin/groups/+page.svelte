@@ -4,6 +4,11 @@
 	import { createAdminGroupsController } from '$lib/stores/adminGroupsController.svelte';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
+	import ResourceToolbar from '$lib/components/ui/ResourceToolbar.svelte';
+	import TextInput from '$lib/components/ui/TextInput.svelte';
+	import SelectInput from '$lib/components/ui/SelectInput.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
+	import Alert from '$lib/components/ui/Alert.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import GroupCard from '$lib/components/admin/groups/GroupCard.svelte';
@@ -14,6 +19,18 @@
 	const ctrl = createAdminGroupsController({
 		token: () => $auth.token ?? undefined,
 		projectId: () => $auth.projectId ?? undefined,
+	});
+
+	let search = $state('');
+	let filterDomain = $state('');
+	const hasFilters = $derived(Boolean(search.trim() || filterDomain));
+	const domainIds = $derived([...new Set(ctrl.groups.map((group) => group.domain_id).filter((id): id is string => Boolean(id)))].sort());
+	const filteredGroups = $derived.by(() => {
+		const query = search.trim().toLocaleLowerCase();
+		return ctrl.groups.filter((group) =>
+			(!filterDomain || group.domain_id === filterDomain)
+			&& (!query || [group.name, group.id, group.description].some((value) => value.toLocaleLowerCase().includes(query)))
+		);
 	});
 
 	const ar = createAutoRefresh(ctrl.load, {
@@ -41,18 +58,35 @@
 		{/snippet}
 	</PageHeader>
 
+	<ResourceToolbar label="그룹 검색 및 필터" class="mb-3">
+		<div class="flex-1 basis-full sm:basis-64 min-w-0">
+			<TextInput type="search" bind:value={search} ariaLabel="그룹 검색" placeholder="이름, ID 또는 설명 검색..." />
+		</div>
+		<div class="w-full sm:w-44">
+			<SelectInput bind:value={filterDomain} ariaLabel="그룹 도메인">
+				<option value="">전체 도메인</option>
+				{#each domainIds as id}<option value={id}>{id}</option>{/each}
+			</SelectInput>
+		</div>
+		<Button variant="ghost" size="sm" disabled={!hasFilters} onclick={() => { search = ''; filterDomain = ''; }}>초기화</Button>
+	</ResourceToolbar>
+	<div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-2 mb-3">
+		<span aria-live="polite">{ctrl.loading ? '불러오는 중...' : ctrl.error ? '검색 결과를 확인할 수 없습니다.' : `검색 결과 ${filteredGroups.length}개 / 전체 ${ctrl.groups.length}개`}</span>
+		<span>최신 생성순 · 생성일 미확인 항목은 마지막에 표시됩니다.</span>
+	</div>
+
 	{#if ctrl.error}
-		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{ctrl.error}</div>
+		<Alert class="mb-4">{ctrl.error}</Alert>
 	{/if}
 
 	{#if ctrl.loading}
 		<LoadingSkeleton variant="table" rows={5} />
-	{:else if ctrl.groups.length === 0}
-		<div class="text-center text-ink-2 text-sm py-8">그룹이 없습니다</div>
-	{:else}
+	{:else if filteredGroups.length === 0 && !ctrl.error}
+		<div class="text-center text-ink-2 text-sm py-8">{hasFilters ? '검색 조건에 맞는 그룹이 없습니다.' : '그룹이 없습니다.'}</div>
+	{:else if filteredGroups.length > 0}
 		<div class="bg-surface-base border border-line rounded-lg p-5">
 			<div class="space-y-2">
-				{#each ctrl.groups as g (g.id)}
+				{#each filteredGroups as g (g.id)}
 					<GroupCard
 						group={g}
 						expanded={ctrl.expandedGroup === g.id}

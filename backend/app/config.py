@@ -1,6 +1,9 @@
 """Afterglow 설정 모듈.
 
 우선순위: 환경변수 > afterglow.conf (프로젝트 루트) > 기본값
+
+기본 브랜딩: 로고는 /afterglow-logo.svg, favicon은 /favicon.svg.
+커스텀 설정과 DB 로고 업로드가 우선하며, 업로드 초기화 시 설정된 로고로 돌아간다.
 """
 
 import json
@@ -13,7 +16,7 @@ from typing import Literal
 from urllib.parse import urlsplit
 from uuid import UUID
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
@@ -111,6 +114,11 @@ def _load_toml() -> dict:
     flat["manila_cephx_key_timeout_seconds"] = ost.get("manila_cephx_key_timeout_seconds", 300)
     flat["ceph_monitors"] = ost.get("ceph_monitors", "")
 
+    notifications = data.get("openstack_notifications", {})
+    for key in ("enabled", "amqp_url", "queue_prefix", "bindings", "max_message_bytes", "retry_seconds"):
+        if key in notifications:
+            flat[f"openstack_notifications_{key}"] = notifications[key]
+
     ceph = data.get("ceph", {})
     flat["ceph_rbd_conf_path"] = ceph.get("rbd_conf_path", "")
     flat["ceph_rbd_keyring_path"] = ceph.get("rbd_keyring_path", "")
@@ -127,10 +135,10 @@ def _load_toml() -> dict:
     flat["refresh_interval_ms"] = app.get("refresh_interval_ms", 5000)
     flat["site_name"] = app.get("site_name", "Afterglow")
     flat["site_description"] = app.get("site_description", "OpenStack VM + OverlayFS 배포 플랫폼")
-    flat["logo_path"] = app.get("logo_path", "/logo.png")
-    flat["logo_dark_path"] = app.get("logo_dark_path", "/logo-white.png")
-    flat["logo_light_path"] = app.get("logo_light_path", "/logo-dark.png")
-    flat["favicon_path"] = app.get("favicon_path", "/favicon.ico")
+    flat["logo_path"] = app.get("logo_path", "/afterglow-logo.svg")
+    flat["logo_dark_path"] = app.get("logo_dark_path", "/afterglow-logo.svg")
+    flat["logo_light_path"] = app.get("logo_light_path", "/afterglow-logo.svg")
+    flat["favicon_path"] = app.get("favicon_path", "/favicon.svg")
     flat["frontend_base_url"] = app.get("frontend_base_url", "")
     flat["public_api_base"] = app.get("public_api_base", "")
 
@@ -176,9 +184,9 @@ def _load_toml() -> dict:
     flat["cloud_shell_service_project_id"] = cloud_shell.get("service_project_id", "")
     flat["cloud_shell_image"] = cloud_shell.get("image", "")
     flat["cloud_shell_network_id"] = cloud_shell.get("network_id", "")
-    flat["cloud_shell_security_group"] = cloud_shell.get("security_group", "")
+    flat["cloud_shell_security_group"] = cloud_shell.get("security_group", "default")
     flat["cloud_shell_auth_url"] = cloud_shell.get("auth_url", "")
-    flat["cloud_shell_interface"] = cloud_shell.get("interface", "internal")
+    flat["cloud_shell_interface"] = cloud_shell.get("interface", "public")
     flat["cloud_shell_volume_type"] = cloud_shell.get("volume_type", "")
     flat["cloud_shell_home_size_gib"] = cloud_shell.get("home_size_gib", 5)
     flat["cloud_shell_cpu"] = cloud_shell.get("cpu", 1.0)
@@ -296,6 +304,7 @@ def _load_toml() -> dict:
     flat["grafana_dashboard_node_uid"] = dashboards.get("node_uid", "afterglow-node")
     flat["grafana_dashboard_rabbitmq_uid"] = dashboards.get("rabbitmq_uid", "afterglow-rabbitmq")
     flat["grafana_dashboard_mysqld_uid"] = dashboards.get("mysqld_uid", "afterglow-mysqld")
+    flat["grafana_dashboard_proxysql_uid"] = dashboards.get("proxysql_uid", "afterglow-proxysql")
     flat["grafana_dashboard_memcached_uid"] = dashboards.get("memcached_uid", "afterglow-memcached")
     flat["grafana_dashboard_etcd_uid"] = dashboards.get("etcd_uid", "afterglow-etcd")
     flat["grafana_dashboard_haproxy_uid"] = dashboards.get("haproxy_uid", "afterglow-haproxy")
@@ -358,6 +367,21 @@ def _load_toml() -> dict:
     return flat
 
 
+class OpenStackNotificationBinding(BaseModel):
+    """One service exchange and its explicitly selected notification routing keys."""
+
+    enabled: bool = True
+    exchange: str = Field(min_length=1, max_length=255)
+    routing_keys: list[str] = Field(min_length=1, max_length=32)
+
+    @field_validator("routing_keys")
+    @classmethod
+    def validate_routing_keys(cls, values: list[str]) -> list[str]:
+        if any(not re.fullmatch(r"[A-Za-z0-9_.*#-]{1,255}", value) for value in values):
+            raise ValueError("notification routing keys must be bounded AMQP topic keys")
+        return list(dict.fromkeys(values))
+
+
 class Settings(BaseSettings):
     # OpenStack 인증
     os_auth_url: str = ""
@@ -370,6 +394,23 @@ class Settings(BaseSettings):
     os_interface: str = "internal"
     os_insecure: bool = False
     os_cacert: str = ""
+
+    # Optional native RabbitMQ/oslo notification consumer; never uses Keystone credentials.
+    openstack_notifications_enabled: bool = False
+    openstack_notifications_amqp_url: SecretStr = SecretStr("")
+    openstack_notifications_queue_prefix: str = Field(
+        default="afterglow.notifications", pattern=r"^[A-Za-z0-9_.-]{1,120}$"
+    )
+    openstack_notifications_bindings: dict[str, OpenStackNotificationBinding] = Field(default_factory=dict)
+    openstack_notifications_max_message_bytes: int = Field(default=1048576, ge=1024, le=16777216)
+    openstack_notifications_retry_seconds: float = Field(default=5, ge=1, le=300)
+
+    @field_validator("openstack_notifications_bindings")
+    @classmethod
+    def validate_notification_services(cls, values: dict) -> dict:
+        if len(values) > 32 or any(not re.fullmatch(r"[a-z][a-z0-9_-]{0,31}", key) for key in values):
+            raise ValueError("notification bindings require at most 32 bounded service names")
+        return values
 
     # Manila 설정
     os_service_project_id: str = (
@@ -419,10 +460,10 @@ class Settings(BaseSettings):
     refresh_interval_ms: int = 5000
     site_name: str = "Afterglow"
     site_description: str = "OpenStack VM + OverlayFS 배포 플랫폼"
-    logo_path: str = "/logo.png"
-    logo_dark_path: str = "/logo-white.png"
-    logo_light_path: str = "/logo-dark.png"
-    favicon_path: str = "/favicon.ico"
+    logo_path: str = "/afterglow-logo.svg"
+    logo_dark_path: str = "/afterglow-logo.svg"
+    logo_light_path: str = "/afterglow-logo.svg"
+    favicon_path: str = "/favicon.svg"
 
     # Redis 캐시
     redis_url: str = "redis://localhost:6379/0"
@@ -498,9 +539,9 @@ class Settings(BaseSettings):
     cloud_shell_service_project_id: str = ""
     cloud_shell_image: str = ""
     cloud_shell_network_id: str = ""
-    cloud_shell_security_group: str = ""
+    cloud_shell_security_group: str = "default"
     cloud_shell_auth_url: str = ""
-    cloud_shell_interface: Literal["public", "internal", "admin"] = "internal"
+    cloud_shell_interface: Literal["public", "internal", "admin"] = "public"
     cloud_shell_volume_type: str = ""
     cloud_shell_home_size_gib: int = 5
     cloud_shell_cpu: float = 1.0
@@ -583,6 +624,7 @@ class Settings(BaseSettings):
     grafana_dashboard_node_uid: str = "afterglow-node"
     grafana_dashboard_rabbitmq_uid: str = "afterglow-rabbitmq"
     grafana_dashboard_mysqld_uid: str = "afterglow-mysqld"
+    grafana_dashboard_proxysql_uid: str = "afterglow-proxysql"
     grafana_dashboard_memcached_uid: str = "afterglow-memcached"
     grafana_dashboard_etcd_uid: str = "afterglow-etcd"
     grafana_dashboard_haproxy_uid: str = "afterglow-haproxy"
@@ -767,8 +809,6 @@ class Settings(BaseSettings):
             required = {
                 "service_project_id": self.cloud_shell_service_project_id,
                 "image": self.cloud_shell_image,
-                "network_id": self.cloud_shell_network_id,
-                "security_group": self.cloud_shell_security_group,
                 "auth_url": self.cloud_shell_auth_url,
                 "zun_websocket_origin": self.cloud_shell_zun_websocket_origin,
             }

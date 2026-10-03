@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -102,22 +103,18 @@ def glance_conn(*images: SimpleNamespace) -> SimpleNamespace:
     return SimpleNamespace(image=FakeGlance(*images))
 
 
-async def _uncached_build_cache(planned: list[dict], *, root_ref: str) -> list[dict]:
-    """DB 없는 캐시 조회 대역: 전부 캐시 미스이고 digest 는 root_ref 에서 이어진다."""
-    annotated = []
-    parent_ref = root_ref
-    for step in planned:
-        digest = compute_step_digest(parent_ref, step["instruction"], step["args"])
-        annotated.append(dict(step, step_digest=digest, cached=False, reuse_artifact_id=None))
-        parent_ref = digest
-    return annotated
+async def _uncached_build_cache(planned: list[dict], *, root_ref: str | None) -> list[dict]:
+    """A new Glance root has no step cache key until its blob digest exists."""
+    return [dict(step, step_digest=None, cached=False, reuse_artifact_id=None) for step in planned]
 
 
+@contextmanager
 def _cache_miss():
-    return patch(
-        "app.services.dockerfile_import.apply_build_cache",
-        AsyncMock(side_effect=_uncached_build_cache),
-    )
+    with (
+        patch("app.services.dockerfile_import.find_cached_root", AsyncMock(return_value=None)),
+        patch("app.services.dockerfile_import.apply_build_cache", AsyncMock(side_effect=_uncached_build_cache)),
+    ):
+        yield
 
 
 async def _prepare_inline(conn, text: str):
@@ -246,6 +243,16 @@ def test_instruction_before_from_is_rejected():
         _parse("RUN true\nFROM ubuntu:24.04\n")
 
 
+def test_relative_paths_follow_workdir():
+    parsed = _parse(
+        "FROM ubuntu:24.04\nWORKDIR /srv/app\nWORKDIR src\nCOPY config.json .\nRUN pwd\n",
+        allow_build_context=True,
+    )
+    assert parsed.planned_layers[1]["payload"]["workdir"] == "/srv/app/src"
+    assert parsed.planned_layers[2]["payload"]["dest"] == "/srv/app/src/"
+    assert parsed.planned_layers[3]["payload"]["workdir"] == "/srv/app/src"
+
+
 # ---------------------------------------------------------------------------
 # 파서 — 여러 줄 입력의 오류 위치
 # ---------------------------------------------------------------------------
@@ -318,6 +325,14 @@ def test_step_digest_normalizes_instruction_case():
     assert compute_step_digest("base", "run", "true") == compute_step_digest("base", "RUN", "true")
 
 
+def test_executor_format_change_invalidates_old_env_layer_cache():
+    import hashlib
+
+    parent = "sha256:" + "a" * 64
+    old_key = "sha256:" + hashlib.sha256(f"{parent}\nENV B=b".encode()).hexdigest()
+    assert compute_step_digest(parent, "ENV", "B=b") != old_key
+
+
 def test_split_cached_prefix_takes_only_leading_run():
     annotated = [
         {"name": "a", "cached": True, "reuse_artifact_id": 1},
@@ -339,6 +354,178 @@ def test_split_cached_prefix_handles_all_cached_and_none_cached():
 
     assert split_cached_prefix(all_cached) == ([1], [])
     assert split_cached_prefix(none_cached)[0] == []
+
+
+@pytest.mark.asyncio
+async def test_cache_never_reuses_a_legacy_delta_without_a_full_root():
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.models.db import LayerArtifact, LayerBuild
+    from app.services.dockerfile_import import apply_build_cache, resolve_parent_layer
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    try:
+        async with engine.begin() as connection:
+            await connection.run_sync(LayerBuild.__table__.create)
+            await connection.run_sync(LayerArtifact.__table__.create)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        root_ref = f"glance:{_IMAGE_UUID}"
+        step_digest = compute_step_digest(root_ref, "RUN", "touch /opt/marker")
+        async with factory() as session:
+            session.add(
+                LayerArtifact(
+                    name="legacy-delta",
+                    kind="dockerfile",
+                    sqsh_filename="legacy-delta.sqsh",
+                    share_id="old-share",
+                    ubuntu_base="ubuntu-24.04",
+                    base_image_id=_IMAGE_UUID,
+                    is_sealed=True,
+                    blob_digest=_DIGEST_A,
+                    chain_id=_DIGEST_A,
+                    digest_state="ready",
+                    step_digest=step_digest,
+                )
+            )
+            await session.commit()
+        with patch("app.services.dockerfile_import.get_session_factory", return_value=factory):
+            result = await apply_build_cache(
+                [{"name": "demo-1", "instruction": "RUN", "args": "touch /opt/marker"}], root_ref=root_ref
+            )
+        assert result[0]["cached"] is False
+        assert result[0]["reuse_artifact_id"] is None
+        with patch("app.services.dockerfile_import.get_session_factory", return_value=factory):
+            with pytest.raises(DockerfileImportError, match="전체 루트 계보"):
+                await resolve_parent_layer(_DIGEST_A, name="legacy-delta")
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_root_cache_requires_exact_glance_fingerprint_and_complete_lineage():
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.models.db import LayerArtifact, LayerBuild
+    from app.services.dockerfile_import import find_cached_root, resolve_parent_layer
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    try:
+        async with engine.begin() as connection:
+            await connection.run_sync(LayerBuild.__table__.create)
+            await connection.run_sync(LayerArtifact.__table__.create)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with factory() as session:
+            older = LayerArtifact(
+                name="root-first",
+                kind="dockerfile-root",
+                sqsh_filename="first.sqsh",
+                share_id="share-1",
+                ubuntu_base="ubuntu-24.04",
+                base_image_id=_IMAGE_UUID,
+                base_image_os_hash_algo="sha512",
+                base_image_os_hash_value="first",
+                is_sealed=True,
+                digest_state="ready",
+                blob_digest=_DIGEST_A,
+                chain_id=_DIGEST_A,
+            )
+            newer = LayerArtifact(
+                name="root-second",
+                kind="dockerfile-root",
+                sqsh_filename="second.sqsh",
+                share_id="share-2",
+                ubuntu_base="ubuntu-24.04",
+                base_image_id=_IMAGE_UUID,
+                base_image_os_hash_algo="sha512",
+                base_image_os_hash_value="second",
+                is_sealed=True,
+                digest_state="ready",
+                blob_digest=_DIGEST_B,
+                chain_id=_DIGEST_B,
+            )
+            session.add_all([older, newer])
+            await session.commit()
+        with patch("app.services.dockerfile_import.get_session_factory", return_value=factory):
+            found = await find_cached_root(
+                {"base_image_id": _IMAGE_UUID, "base_image_os_hash_algo": "sha512", "base_image_os_hash_value": "first"}
+            )
+            assert found.id == older.id
+            assert (
+                await find_cached_root(
+                    {
+                        "base_image_id": _IMAGE_UUID,
+                        "base_image_os_hash_algo": "sha512",
+                        "base_image_os_hash_value": "unknown",
+                    }
+                )
+                is None
+            )
+            assert (await resolve_parent_layer(_DIGEST_A, name="root-first")).id == older.id
+            with pytest.raises(DockerfileImportError, match="전체 루트 계보"):
+                await resolve_parent_layer(_DIGEST_A, name="root-second")
+    finally:
+        await engine.dispose()
+
+
+def test_builder_manifest_requires_every_sealed_artifact_once():
+    import base64
+    import json
+
+    from app.services.dockerfile_import import _parse_dockerfile_manifest
+
+    token = "a" * 32
+    records = [
+        {"name": "root-first", "sha256": "a" * 64, "md5": "b" * 32, "size": 4096},
+        {"name": "demo-01-run", "sha256": "c" * 64, "md5": "d" * 32, "size": 2048},
+    ]
+
+    def output(items):
+        encoded = base64.b64encode(json.dumps(items).encode()).decode()
+        return f"::AFTERGLOW::MANIFEST::{token}::{encoded}\n"
+
+    reports = _parse_dockerfile_manifest(output(records), token, ["root-first", "demo-01-run"])
+    assert reports["root-first"].blob_digest == _DIGEST_A
+    for malformed in (
+        output(records[:1]),
+        output(records) + output(records),
+        output(records).replace(token, "b" * 32),
+        output([records[0], {**records[1], "sha256": "not-a-digest"}]),
+    ):
+        with pytest.raises(DockerfileImportError):
+            _parse_dockerfile_manifest(malformed, token, ["root-first", "demo-01-run"])
+
+
+def test_pinned_github_context_rejects_extraction_escape_and_unbounded_expansion():
+    import gzip
+    import io
+    import tarfile
+
+    from app.services.dockerfile_import import validate_archive_bytes
+
+    def archive_blob(member):
+        data = io.BytesIO()
+        with tarfile.open(fileobj=data, mode="w:gz") as archive:
+            archive.addfile(member, io.BytesIO(b"contents") if member.isfile() else None)
+        return data.getvalue()
+
+    valid = tarfile.TarInfo("repository/hello.txt")
+    valid.size = len(b"contents")
+    validate_archive_bytes(archive_blob(valid))
+
+    traversal = tarfile.TarInfo("repository/../../etc/hostname")
+    traversal.size = len(b"contents")
+    link = tarfile.TarInfo("repository/escape")
+    link.type = tarfile.SYMTYPE
+    link.linkname = "/etc"
+    oversized = tarfile.TarInfo("repository/huge")
+    oversized.size = 512 * 1024 * 1024 + 1
+    for member in (traversal, link):
+        with pytest.raises(DockerfileImportError):
+            validate_archive_bytes(archive_blob(member))
+    # Header-only expanded-size claims are rejected before extracting or allocating 512 MiB.
+    header_only = gzip.compress(oversized.tobuf() + b"\0" * 1024)
+    with pytest.raises(DockerfileImportError):
+        validate_archive_bytes(header_only)
 
 
 def _img(image_id: str, name: str, *, release: str = "24.04", created_at: str | None = None) -> dict:
@@ -561,22 +748,6 @@ async def test_inline_import_rejects_unresolvable_from(from_ref, images):
         await _prepare_inline(glance_conn(*images), f"# base image\nFROM {from_ref}\nRUN true\n")
 
 
-async def test_inline_build_cache_never_crosses_glance_images_of_same_release():
-    conn = glance_conn(
-        glance_image("img-a", "noble-a"),
-        glance_image("img-b", "noble-b"),
-    )
-    body = "RUN apt-get update\n"
-
-    on_a = await _prepare_inline(conn, f"FROM noble-a\n{body}")
-    on_a_again = await _prepare_inline(conn, f"FROM noble-a\n{body}")
-    on_b = await _prepare_inline(conn, f"FROM noble-b\n{body}")
-
-    # 같은 Ubuntu 버전이라도 다른 이미지 위의 레이어를 재사용하면 다른 root filesystem 이 된다
-    assert on_a.planned_layers[0]["step_digest"] == on_a_again.planned_layers[0]["step_digest"]
-    assert on_a.planned_layers[0]["step_digest"] != on_b.planned_layers[0]["step_digest"]
-
-
 async def test_inline_import_records_digest_and_source_type():
     conn = glance_conn(glance_image("img-24", "ubuntu:24.04"))
 
@@ -588,6 +759,12 @@ async def test_inline_import_records_digest_and_source_type():
     # GitHub 전용 필드는 비어 있어야 한다
     assert plan.github_url is None and plan.commit_sha is None
     assert plan.planned_layers[0]["source_metadata"]["source_type"] == SOURCE_INLINE
+
+
+@pytest.mark.parametrize("from_ref", ["ubuntu:24.04", f"palimpsest/py@{_DIGEST_A}"])
+async def test_from_only_import_rejects_empty_layer_plan(from_ref):
+    with pytest.raises(DockerfileImportError, match="instruction이 필요"):
+        await _prepare_inline(glance_conn(glance_image("img-24", "ubuntu:24.04")), f"FROM {from_ref}\n")
 
 
 async def test_inline_import_inherits_base_from_palimpsest_parent():
@@ -623,18 +800,6 @@ async def test_inline_import_inherits_base_from_palimpsest_parent():
     assert plan.cached_artifact_ids == [7]
     # 캐시 조회는 부모의 chain_id 에서 시작한다
     assert cache.await_args.kwargs["root_ref"] == _DIGEST_A
-
-
-async def test_inline_import_rejects_fully_cached_plan():
-    annotated = [{"name": "a", "instruction": "RUN", "args": "true", "cached": True, "reuse_artifact_id": 3}]
-    with patch("app.services.dockerfile_import.apply_build_cache", AsyncMock(return_value=annotated)):
-        with pytest.raises(DockerfileImportError, match="모든 단계가 이미 빌드"):
-            await prepare_inline_dockerfile_import(
-                glance_conn(glance_image("img-24", "ubuntu:24.04")),
-                dockerfile_text="FROM ubuntu:24.04\nRUN true\n",
-                layer_prefix="demo",
-                profile_name=None,
-            )
 
 
 # ---------------------------------------------------------------------------
@@ -681,17 +846,28 @@ async def test_inline_build_surfaces_parse_error_as_422(admin_client):
     assert "COPY" in resp.json()["detail"]
 
 
-async def test_inline_build_reports_fully_cached_plan_as_409(admin_client):
-    with patch(
-        "app.api.palimpsest.builds.prepare_inline_dockerfile_import",
-        AsyncMock(side_effect=DockerfileImportError("모든 단계가 이미 빌드되어 있습니다")),
+async def test_inline_build_rejects_missing_or_unsafe_consumer_ssh_identity_before_queueing(admin_client, mock_conn):
+    mock_conn.image = FakeGlance(glance_image("img-24", "ubuntu:24.04"))
+    body = {"dockerfile": "FROM ubuntu:24.04\nRUN true\n", "layer_prefix": "demo"}
+    with (
+        _cache_miss(),
+        patch("app.services.dockerfile_import.find_cached_root", AsyncMock(return_value=None)),
+        patch("app.api.palimpsest.builds.create_import_job", new_callable=AsyncMock) as create_job,
     ):
-        resp = await admin_client.post(
-            "/api/v1/palimpsest/builds/dockerfile",
-            json={"dockerfile": "FROM ubuntu:24.04\nRUN true\n", "layer_prefix": "demo"},
+        no_key = await admin_client.post(
+            "/api/v1/palimpsest/builds/dockerfile", json={**body, "consumer": {"flavor_id": "m1.small"}}
         )
-
-    assert resp.status_code == 409
+        root_user = await admin_client.post(
+            "/api/v1/palimpsest/builds/dockerfile",
+            json={
+                **body,
+                "consumer": {"flavor_id": "m1.small", "ssh_public_key": "ssh-ed25519 AAAA", "ssh_username": "root"},
+            },
+        )
+    assert no_key.status_code == 422
+    assert "SSH" in no_key.json()["detail"]
+    assert root_user.status_code == 422
+    create_job.assert_not_awaited()
 
 
 async def test_plan_endpoint_resolves_glance_from_without_base_image_id(admin_client, mock_conn):
@@ -793,6 +969,17 @@ async def test_lint_valid_dockerfile_resolves_ubuntu_tag_and_counts_layers(admin
         "limit": 25,
         "by_instruction": {"ENV": 1, "RUN": 1},
     }
+
+
+async def test_lint_from_only_reports_no_buildable_instructions(admin_client, mock_conn):
+    mock_conn.image = FakeGlance(glance_image("img-24", "ubuntu:24.04"))
+
+    data = await _lint(admin_client, "FROM ubuntu:24.04\n")
+
+    assert data["valid"] is False
+    assert any("instruction이 필요" in item["message"] for item in data["diagnostics"])
+    assert data["from"]["image"]["id"] == "img-24"
+    assert data["layers"]["new"] == 0
 
 
 async def test_lint_whitespace_only_editor_returns_diagnostic(admin_client):
@@ -1008,14 +1195,14 @@ async def test_lint_rejects_parent_missing_glance_base_image_id(admin_client):
 
 async def test_fetch_dockerfile_url_happy_path(admin_client):
     sample_dockerfile = b"FROM ubuntu:24.04\nRUN apt-get update\n"
-    mock_resp = MagicMock()
-    mock_resp.geturl.return_value = "https://raw.githubusercontent.com/org/repo/main/Dockerfile"
-    mock_resp.read.return_value = sample_dockerfile
-    mock_resp.__enter__.return_value = mock_resp
+    response = MagicMock(status=200)
+    response.read.return_value = sample_dockerfile
+    connection = MagicMock()
+    connection.getresponse.return_value = response
 
     with (
-        patch("urllib.request.urlopen", return_value=mock_resp),
-        patch("app.api.palimpsest.builds._validate_safe_url"),
+        patch("socket.getaddrinfo", return_value=[(2, 1, 6, "", ("93.184.216.34", 443))]),
+        patch("http.client.HTTPSConnection", return_value=connection),
     ):
         resp = await admin_client.post(
             "/api/v1/palimpsest/builds/dockerfile/fetch-url",
@@ -1031,14 +1218,19 @@ async def test_fetch_dockerfile_url_happy_path(admin_client):
 
 async def test_fetch_dockerfile_url_normalizes_github_blob(admin_client):
     sample_dockerfile = b"FROM ubuntu:24.04\nENV FOO=bar\n"
-    mock_resp = MagicMock()
-    mock_resp.geturl.return_value = "https://raw.githubusercontent.com/myorg/myrepo/v1.0.0/deploy/Dockerfile"
-    mock_resp.read.return_value = sample_dockerfile
-    mock_resp.__enter__.return_value = mock_resp
+    response = MagicMock(status=200)
+    response.read.return_value = sample_dockerfile
+    connection = MagicMock()
+    connection.getresponse.return_value = response
+    connection.request.side_effect = lambda *_args, **_kwargs: connection._create_connection(
+        ("raw.githubusercontent.com", 443),
+        10,
+    )
 
     with (
-        patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen,
-        patch("app.api.palimpsest.builds._validate_safe_url"),
+        patch("socket.getaddrinfo", return_value=[(2, 1, 6, "", ("93.184.216.34", 443))]) as dns,
+        patch("http.client.HTTPSConnection", return_value=connection) as https_conn,
+        patch("socket.create_connection") as create_socket,
     ):
         resp = await admin_client.post(
             "/api/v1/palimpsest/builds/dockerfile/fetch-url",
@@ -1046,9 +1238,10 @@ async def test_fetch_dockerfile_url_normalizes_github_blob(admin_client):
         )
 
     assert resp.status_code == 200
-    # urllib 에 전달된 Request 객체의 full_url 이 raw URL 로 변환되었는지 검증
-    req_arg = mock_urlopen.call_args[0][0]
-    assert req_arg.full_url == "https://raw.githubusercontent.com/myorg/myrepo/v1.0.0/deploy/Dockerfile"
+    assert https_conn.call_args.args[:2] == ("raw.githubusercontent.com", 443)
+    assert connection.request.call_args.args[:2] == ("GET", "/myorg/myrepo/v1.0.0/deploy/Dockerfile")
+    dns.assert_called_once()
+    create_socket.assert_called_once_with(("93.184.216.34", 443), 10, None)
 
 
 @pytest.mark.parametrize(
@@ -1068,3 +1261,254 @@ async def test_fetch_dockerfile_url_rejects_ssrf_and_invalid_schemes(admin_clien
     )
     assert resp.status_code == 422
     assert match_msg in resp.json()["detail"]
+
+
+async def test_fetch_dockerfile_url_rejects_redirect_to_private_host_before_connecting(admin_client):
+    redirect = MagicMock(status=302)
+    redirect.getheader.return_value = "http://private.example/latest/meta-data"
+    connection = MagicMock()
+    connection.getresponse.return_value = redirect
+    with (
+        patch(
+            "socket.getaddrinfo",
+            side_effect=[
+                [(2, 1, 6, "", ("93.184.216.34", 443))],
+                [(2, 1, 6, "", ("169.254.169.254", 80))],
+            ],
+        ),
+        patch("http.client.HTTPSConnection", return_value=connection) as https_conn,
+        patch("http.client.HTTPConnection") as http_conn,
+    ):
+        resp = await admin_client.post(
+            "/api/v1/palimpsest/builds/dockerfile/fetch-url",
+            json={"url": "https://example.com/Dockerfile"},
+        )
+    assert resp.status_code == 422
+    assert "로컬/사설 네트워크" in resp.json()["detail"]
+    https_conn.assert_called_once()
+    http_conn.assert_not_called()
+
+
+async def test_fetch_dockerfile_url_pins_the_validated_ip_through_connection(admin_client):
+    response = MagicMock(status=200)
+    response.read.return_value = b"FROM ubuntu:24.04\n"
+    connection = MagicMock()
+    connection.getresponse.return_value = response
+    connection.request.side_effect = lambda *_args, **_kwargs: connection._create_connection(("example.com", 80), 10)
+    with (
+        patch(
+            "socket.getaddrinfo",
+            side_effect=[
+                [(2, 1, 6, "", ("93.184.216.34", 80))],
+                [(2, 1, 6, "", ("127.0.0.1", 80))],
+            ],
+        ) as dns,
+        patch("http.client.HTTPConnection", return_value=connection),
+        patch("socket.create_connection") as create_socket,
+    ):
+        resp = await admin_client.post(
+            "/api/v1/palimpsest/builds/dockerfile/fetch-url",
+            json={"url": "http://example.com/Dockerfile"},
+        )
+    assert resp.status_code == 200
+    dns.assert_called_once()
+    create_socket.assert_called_once_with(("93.184.216.34", 80), 10, None)
+
+
+async def test_fetch_dockerfile_url_rejects_mixed_dns_answers_before_connect(admin_client):
+    with (
+        patch(
+            "socket.getaddrinfo",
+            return_value=[
+                (2, 1, 6, "", ("93.184.216.34", 443)),
+                (2, 1, 6, "", ("127.0.0.1", 443)),
+            ],
+        ),
+        patch("http.client.HTTPSConnection") as connect,
+    ):
+        resp = await admin_client.post(
+            "/api/v1/palimpsest/builds/dockerfile/fetch-url",
+            json={"url": "https://example.com/Dockerfile"},
+        )
+    assert resp.status_code == 422
+    connect.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_parent_env_and_workdir_inherit_into_child_plan_and_cached_lineage():
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.models.db import LayerArtifact, LayerBuild
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    digest_c = "sha256:" + "c" * 64
+    try:
+        async with engine.begin() as connection:
+            await connection.run_sync(LayerBuild.__table__.create)
+            await connection.run_sync(LayerArtifact.__table__.create)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with factory() as session:
+            root = LayerArtifact(
+                id=1,
+                name="root-1",
+                kind="dockerfile-root",
+                parent_id=None,
+                sqsh_filename="root-1.sqsh",
+                share_id="share-1",
+                ubuntu_base="ubuntu-24.04",
+                base_image_id=_IMAGE_UUID,
+                base_image_name="ubuntu-24.04",
+                is_sealed=True,
+                digest_state="ready",
+                blob_digest=_DIGEST_A,
+                chain_id=_DIGEST_A,
+                source_metadata={"source_type": "glance-root", "dockerfile_env": {}, "dockerfile_workdir": "/"},
+            )
+            env_step = LayerArtifact(
+                id=2,
+                name="parent-01-env-a",
+                kind="dockerfile",
+                parent_id=1,
+                sqsh_filename="parent-01-env-a.sqsh",
+                share_id="share-2",
+                ubuntu_base="ubuntu-24.04",
+                base_image_id=_IMAGE_UUID,
+                base_image_name="ubuntu-24.04",
+                is_sealed=True,
+                digest_state="ready",
+                blob_digest=_DIGEST_B,
+                chain_id=_DIGEST_B,
+                source_metadata={
+                    "dockerfile_instruction": "ENV",
+                    "dockerfile_args": "A=a",
+                    "dockerfile_env": {"A": "a"},
+                    "dockerfile_workdir": "/",
+                },
+            )
+            workdir_step = LayerArtifact(
+                id=3,
+                name="parent-02-workdir-app",
+                kind="dockerfile",
+                parent_id=2,
+                sqsh_filename="parent-02-workdir-app.sqsh",
+                share_id="share-3",
+                ubuntu_base="ubuntu-24.04",
+                base_image_id=_IMAGE_UUID,
+                base_image_name="ubuntu-24.04",
+                is_sealed=True,
+                digest_state="ready",
+                blob_digest=digest_c,
+                chain_id=digest_c,
+                source_metadata={
+                    "dockerfile_instruction": "WORKDIR",
+                    "dockerfile_args": "/app",
+                    "dockerfile_env": {"A": "a"},
+                    "dockerfile_workdir": "/app",
+                },
+            )
+            session.add_all([root, env_step, workdir_step])
+            await session.commit()
+
+        with patch("app.services.dockerfile_import.get_session_factory", return_value=factory):
+            plan = await prepare_inline_dockerfile_import(
+                SimpleNamespace(),
+                dockerfile_text=(
+                    f"FROM palimpsest/parent-02-workdir-app@{digest_c}\n"
+                    "ENV B=b\n"
+                    "WORKDIR sub\n"
+                    'RUN test "$A" = a && test "$B" = b && test "$PWD" = /app/sub\n'
+                ),
+                layer_prefix="child",
+                profile_name="child",
+            )
+        assert plan.cached_artifact_ids == [1, 2, 3]
+        assert [step["instruction"] for step in plan.planned_layers] == ["ENV", "WORKDIR", "RUN"]
+        assert plan.planned_layers[0]["payload"]["full_env"] == {"A": "a", "B": "b"}
+        assert plan.planned_layers[0]["payload"]["workdir"] == "/app"
+        assert plan.planned_layers[1]["payload"]["workdir"] == "/app/sub"
+        assert plan.planned_layers[2]["payload"]["env"] == {"A": "a", "B": "b"}
+        assert plan.planned_layers[2]["payload"]["workdir"] == "/app/sub"
+        assert plan.planned_layers[2]["source_metadata"]["dockerfile_env"] == {"A": "a", "B": "b"}
+        assert plan.planned_layers[2]["source_metadata"]["dockerfile_workdir"] == "/app/sub"
+    finally:
+        await engine.dispose()
+
+
+def test_guest_executor_preserves_inherited_env_and_workdir_across_layers(tmp_path):
+    from app.services import dockerfile_guest
+
+    root_lower = tmp_path / "root"
+    parent_env_lower = tmp_path / "parent-env"
+    parent_wd_lower = tmp_path / "parent-wd"
+    for directory in (root_lower, parent_env_lower, parent_wd_lower):
+        directory.mkdir(parents=True)
+
+    dockerfile_guest.write_env_files(parent_env_lower, {"A": "a"})
+    dockerfile_guest.write_workdir_files(parent_wd_lower, "/app")
+    lowers = [str(parent_wd_lower), str(parent_env_lower), str(root_lower)]
+    inherited_env, inherited_workdir = dockerfile_guest.load_inherited_state(lowers)
+    assert inherited_env == {"A": "a"}
+    assert inherited_workdir == "/app"
+
+    recorded_chroot: list[tuple[list[str], dict[str, str]]] = []
+
+    def fake_call(*args: str) -> None:
+        if args and args[0] == "mksquashfs":
+            from pathlib import Path
+
+            Path(args[2]).parent.mkdir(parents=True, exist_ok=True)
+            Path(args[2]).write_bytes(b"sqsh")
+
+    def fake_run(argv, *, env=None, check=False):
+        recorded_chroot.append((list(argv), dict(env or {})))
+
+    with (
+        patch.object(dockerfile_guest, "STATE", tmp_path / "state"),
+        patch.object(dockerfile_guest, "OUTPUTS", tmp_path / "out"),
+        patch.object(dockerfile_guest, "call", side_effect=fake_call),
+        patch("app.services.dockerfile_guest.subprocess.run", side_effect=fake_run),
+    ):
+        dockerfile_guest.run_step(
+            {
+                "name": "child-01-env-b",
+                "instruction": "ENV",
+                "args": "B=b",
+                "payload": {"env": {"B": "b"}, "full_env": {"B": "b"}},
+            },
+            0,
+            0,
+            lowers,
+            None,
+        )
+        child_env_upper = tmp_path / "state/upper-0"
+        profile_env = (child_env_upper / "etc/profile.d/afterglow-docker-env.sh").read_text(encoding="utf-8")
+        sshd_env = (child_env_upper / "etc/ssh/sshd_config.d/90-afterglow-docker-env.conf").read_text(encoding="utf-8")
+        systemd_env = (child_env_upper / "etc/systemd/system.conf.d/90-afterglow-docker-env.conf").read_text(
+            encoding="utf-8"
+        )
+        assert "export A=a\n" in profile_env and "export B=b\n" in profile_env
+        assert sshd_env == 'SetEnv A="a" B="b"\n'
+        assert 'DefaultEnvironment="A=a" "B=b"\n' in systemd_env
+
+        lowers_with_child_env = [str(child_env_upper), *lowers]
+        dockerfile_guest.run_step(
+            {
+                "name": "child-02-run",
+                "instruction": "RUN",
+                "args": 'test "$A" = a && test "$B" = b && test "$PWD" = /app',
+                "payload": {
+                    "command": 'test "$A" = a && test "$B" = b && test "$PWD" = /app',
+                    "env": {},
+                    "workdir": "/",
+                },
+            },
+            1,
+            1,
+            lowers_with_child_env,
+            None,
+        )
+
+    assert len(recorded_chroot) == 1
+    chroot_argv, chroot_env = recorded_chroot[0]
+    assert chroot_argv[-1].startswith("cd /app && ")
+    assert chroot_env["A"] == "a" and chroot_env["B"] == "b"

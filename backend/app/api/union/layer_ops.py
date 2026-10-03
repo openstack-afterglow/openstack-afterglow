@@ -12,7 +12,7 @@ from datetime import UTC, datetime, timedelta
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import desc, select
 
 from app.api.deps import get_os_conn, require_admin
@@ -285,7 +285,8 @@ class LayerBuildRequest(BaseModel):
 class LayerConsumeRequest(BaseModel):
     """레이어 소비 인스턴스 생성 요청."""
 
-    profile_name: str
+    profile_name: str | None = None
+    import_id: int | None = Field(default=None, gt=0)
     server_name: str | None = None
     flavor_id: str
     image_id: str | None = None
@@ -296,7 +297,9 @@ class LayerConsumeRequest(BaseModel):
 
     @field_validator("profile_name")
     @classmethod
-    def validate_profile(cls, v: str) -> str:
+    def validate_profile(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
         if not _LAYER_NAME_RE.match(v):
             raise ValueError(f"유효하지 않은 프로필 이름: {v!r}")
         return v
@@ -348,6 +351,8 @@ class LayerConsumeRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_ssh_options(self) -> LayerConsumeRequest:
+        if (self.profile_name is None) == (self.import_id is None):
+            raise ValueError("profile_name 또는 import_id 중 정확히 하나를 지정해야 합니다")
         if self.ssh_username and not (self.key_name or self.ssh_public_key):
             raise ValueError("ssh_username은 key_name 또는 ssh_public_key와 함께 사용해야 합니다")
         return self
@@ -377,6 +382,19 @@ class LayerProfileRequest(BaseModel):
         return v
 
 
+class DockerfileConsumerRequest(BaseModel):
+    """Optional one-shot SSH VM; FROM supplies the boot image and profile."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    server_name: str | None = None
+    flavor_id: str
+    network_id: str | None = None
+    key_name: str | None = None
+    ssh_public_key: str | None = None
+    ssh_username: str | None = None
+
+
 class DockerfileImportRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -385,6 +403,7 @@ class DockerfileImportRequest(BaseModel):
     dockerfile_path: str = "Dockerfile"
     layer_prefix: str
     profile_name: str | None = None
+    consumer: DockerfileConsumerRequest | None = None
 
 
 class PublicationRequest(BaseModel):
@@ -548,7 +567,13 @@ async def list_layer_base_images(conn=Depends(get_os_conn)) -> list[dict]:
 
 @router.post("/imports/dockerfile", dependencies=[Depends(require_admin)])
 async def create_dockerfile_import(req: DockerfileImportRequest, conn=Depends(get_os_conn)) -> dict:
-    from app.services.dockerfile_import import DockerfileImportError, create_import_job, prepare_dockerfile_import
+    from app.services.dockerfile_import import (
+        DockerfileImportError,
+        create_import_job,
+        prepare_dockerfile_import,
+        prepare_import_consumer,
+        resolve_parent_layer,
+    )
 
     try:
         plan = await asyncio.to_thread(
@@ -560,9 +585,25 @@ async def create_dockerfile_import(req: DockerfileImportRequest, conn=Depends(ge
             layer_prefix=req.layer_prefix,
             profile_name=req.profile_name,
         )
-        return await create_import_job(plan)
     except (DockerfileImportError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        if plan.parent_digest:
+            await resolve_parent_layer(plan.parent_digest, name=plan.parent_name)
+    except (DockerfileImportError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        consumer_spec = (
+            await prepare_import_consumer(conn, req.consumer, profile_name=plan.profile_name) if req.consumer else None
+        )
+    except (DockerfileImportError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        return await create_import_job(plan, consumer_spec=consumer_spec)
+    except (DockerfileImportError, RuntimeError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("/imports", dependencies=[Depends(require_admin)])
@@ -768,8 +809,9 @@ async def trigger_layer_consume(req: LayerConsumeRequest, conn=Depends(get_os_co
     squashfs + OverlayFS를 활성화하는 VM을 생성해 반환한다.
     """
     _logger.info(
-        "[layer_ops] 소비 인스턴스 요청: profile=%s server_name=%s flavor=%s",
+        "[layer_ops] 소비 인스턴스 요청: profile=%s import=%s server_name=%s flavor=%s",
         req.profile_name,
+        req.import_id,
         req.server_name,
         req.flavor_id,
     )
@@ -777,8 +819,11 @@ async def trigger_layer_consume(req: LayerConsumeRequest, conn=Depends(get_os_co
     from app.database import get_session_factory
     from app.models.db import LayerConsume
     from app.services.layer_build import (
+        resolve_admin_consume_artifacts,
+        resolve_import_consume_artifacts,
         resolve_layer_consume_resource_snapshot,
         run_layer_consume,
+        validate_consume_image_identity,
     )
 
     try:
@@ -801,15 +846,30 @@ async def trigger_layer_consume(req: LayerConsumeRequest, conn=Depends(get_os_co
             network_id=req.network_id,
         )
 
+        from app.services.keystone import get_admin_connection_for_project
+
+        if req.import_id is not None:
+            profile_name, resolved_artifacts = await resolve_import_consume_artifacts(req.import_id)
+        else:
+            profile_name = req.profile_name
+            resolved_artifacts = await resolve_admin_consume_artifacts(profile_name)
+        service_conn = await asyncio.to_thread(
+            get_admin_connection_for_project, resource_snapshot["openstack.service_project"]["id"]
+        )
+        try:
+            await validate_consume_image_identity(service_conn, resolved_artifacts, req.image_id)
+        finally:
+            await asyncio.to_thread(service_conn.close)
+
         # DB 레코드 생성
         consume_db_id: int | None = None
         factory = get_session_factory()
         if factory:
             async with factory() as session:
                 row = LayerConsume(
-                    profile_name=req.profile_name,
+                    profile_name=profile_name,
                     server_name=req.server_name,
-                    artifact_ids=None,
+                    artifact_ids=[item["id"] for item in resolved_artifacts],
                     resource_snapshot=resource_snapshot,
                     status="creating",
                 )
@@ -820,7 +880,7 @@ async def trigger_layer_consume(req: LayerConsumeRequest, conn=Depends(get_os_co
 
         server_id = await run_layer_consume(
             consume_db_id=consume_db_id,
-            profile_name=req.profile_name,
+            profile_name=profile_name,
             server_name=req.server_name,
             flavor_id=req.flavor_id,
             image_id=req.image_id,
@@ -828,8 +888,9 @@ async def trigger_layer_consume(req: LayerConsumeRequest, conn=Depends(get_os_co
             ssh_public_key=ssh_public_key,
             ssh_username=req.ssh_username,
             resource_snapshot=resource_snapshot,
+            resolved_artifacts=resolved_artifacts,
         )
-        return {"consume_id": consume_db_id, "server_id": server_id, "status": "active"}
+        return {"consume_id": consume_db_id, "server_id": server_id, "status": "active", "ready": True}
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
@@ -1218,6 +1279,7 @@ def _consume_row_to_dict(row) -> dict:
         "project_id": getattr(row, "project_id", None),
         "artifact_ids": _json_list(getattr(row, "artifact_ids", None)),
         "status": row.status,
+        "ready": row.status == "active",
         "error_message": row.error_message,
         "created_at": _iso(row.created_at),
         "completed_at": _iso(row.completed_at),
@@ -1393,6 +1455,12 @@ async def _sync_consume_rows_with_nova(session, rows: list[object]) -> None:
             continue
 
         new_status = _consume_status_from_server(server)
+        # Guest readiness is written only by run_layer_consume after mount health.
+        # Nova ACTIVE (including a reboot) is not a readiness observation.
+        if getattr(row, "status", None) == "creating" and new_status in {"active", "stopped"}:
+            continue
+        if new_status == "active" and getattr(row, "status", None) != "active":
+            continue
         if getattr(row, "status", None) != new_status:
             row.status = new_status
             changed = True

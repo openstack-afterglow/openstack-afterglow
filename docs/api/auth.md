@@ -30,6 +30,10 @@ access JWT와 refresh JWT를 발급합니다. 이후 인증이 필요한 모든 
 > Redis 세션에 저장된 Keystone 토큰을 라이브 검증(60초 캐시)합니다. 권한(roles,
 > is_system_admin)은 JWT payload가 아니라 항상 Keystone 검증 결과를 사용합니다.
 
+JWT 검증의 algorithm allow-list는 access/refresh 모두 `HS256` 하나이며 HMAC과 asymmetric algorithm을 섞지 않는다. Backend는 [PEM guard bypass](https://github.com/jpadilla/pyjwt/security/advisories/GHSA-ffc3-869f-jxw9)와 [pre-verification payload recursion](https://github.com/jpadilla/pyjwt/security/advisories/GHSA-42vr-xj54-vc7v)이 수정된 PyJWT `>=2.15.0`을 요구한다. Upstream 취약점의 mixed-algorithm/raw-PEM·unsigned payload 조건이 현재 브라우저 JWT 경로에 없더라도 vulnerable library로 downgrade하지 않는다.
+
+OIDC·서비스 HTTP client의 TLS verify/설정 CA·hostname 검증은 유지한다. Backend는 [IDNA 2003 hostname confusion](https://github.com/agronholm/anyio/security/advisories/GHSA-82r6-8w77-94w6)이 수정된 AnyIO `>=4.14.2`를 요구한다. 이 의존성 갱신은 인증 방식·endpoint·계정 잠금/세션 정책을 변경하거나 인증서 검증을 끄지 않는다.
+
 ### 세션·토큰 수명 모델
 
 - **access JWT** — 단기 토큰. 만료 시각은 응답의 `expires_at`.

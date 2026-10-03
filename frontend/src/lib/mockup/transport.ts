@@ -341,11 +341,36 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 			layers: { new: 3, inherited: 0, total: 3, limit: 25, by_instruction: { RUN: 1, ENV: 1, WORKDIR: 1 } },
 		};
 	}
-	if (profile === 'admin' && method !== 'GET') mockUnsupported();
+	if (method === 'POST' && profile === 'admin' && pathname === '/api/v1/admin/flavors/access-reconcile') {
+		return { project_id: String((body as { project_id?: string } | undefined)?.project_id ?? ''), applied: false, status: 'ok', operations: [], errors: [], enforcement_scope: 'afterglow_admissions_only' };
+	}
+	if (profile === 'admin' && method !== 'GET') {
+		const dockerfileFixture = method === 'POST' && [
+			'/api/v1/palimpsest/builds/dockerfile/fetch-url',
+			'/api/v1/palimpsest/builds/dockerfile/plan',
+			'/api/v1/palimpsest/builds/dockerfile',
+		].includes(pathname);
+		if (!dockerfileFixture) mockUnsupported();
+	}
 
 	if (profile === 'admin' && pathname === '/api/v1/admin/projects/names') {
 		return state.projects.map(({ id, name }) => ({ id, name }));
 	}
+	if (profile === 'admin' && pathname === '/api/v1/admin/gpu-aliases') return { aliases: [] };
+	if (profile === 'admin' && pathname === '/api/v1/admin/gpu-quotas/defaults') return [];
+	const adminQuotaId = pathname.match(/^\/api\/v1\/admin\/quotas\/([^/]+)$/)?.[1];
+	if (profile === 'admin' && adminQuotaId) {
+		if (!state.projects.some((project) => project.id === adminQuotaId)) mockUnsupported();
+		return {
+			project_id: adminQuotaId,
+			compute: { ...state.quotas.compute, metadata_items: { limit: 128, in_use: 20 }, key_pairs: { limit: 50, in_use: 4 }, server_groups: { limit: 10, in_use: 2 }, server_group_members: { limit: 10, in_use: 3 }, injected_files: { limit: 5, in_use: 0 }, injected_file_content_bytes: { limit: 10240, in_use: 0 }, injected_file_path_bytes: { limit: 255, in_use: 0 } },
+			volume: { ...state.quotas.storage, snapshots: { limit: 80, in_use: 6 } },
+			network: { network: { limit: 40, in_use: 3 }, subnet: { limit: 60, in_use: 5 }, port: { limit: 150, in_use: 18 }, router: { limit: 15, in_use: 2 }, ...state.quotas.network, security_group: { limit: 30, in_use: 4 }, security_group_rule: { limit: 150, in_use: 12 } },
+			file_storage: { ...state.quotas.file_storage, snapshots: { limit: 24, in_use: 2 }, snapshot_gigabytes: { limit: 2048, in_use: 150 }, share_networks: { limit: 12, in_use: 3 }, share_groups: { limit: 10, in_use: 1 }, share_group_snapshots: { limit: 10, in_use: 1 } },
+			availability: { compute: true, volume: true, network: true, file_storage: true }, errors: {},
+		};
+	}
+	if (profile === 'admin' && /^\/api\/v1\/admin\/gpu-quotas\/[^/]+$/.test(pathname)) return [];
 	if (profile === 'admin' && pathname === '/api/v1/admin/images') {
 		const marker = params.get('marker');
 		const start = marker ? MOCK_IMAGES.findIndex((image) => image.id === marker) + 1 : 0;
@@ -601,7 +626,18 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 
 	if (method === 'GET' && pathname === '/api/v1/images') return MOCK_IMAGES;
 	if (method === 'GET' && pathname === '/api/v1/libraries') return [];
-	if (method === 'GET' && pathname === '/api/v1/security-groups') return [{ id: 'mock-sg-default', name: 'default', description: 'Mock default SG', rules: [] }];
+	if (method === 'GET' && pathname === '/api/v1/security-groups') return [{
+		id: 'mock-sg-default', name: 'default', description: 'Mock default SG', rules: [
+			{ id: 'mock-rule-ssh', direction: 'ingress', protocol: 'tcp', port_range_min: 22, port_range_max: 22, remote_ip_prefix: '0.0.0.0/0', remote_group_id: null, ethertype: 'IPv4' },
+			{ id: 'mock-rule-v6', direction: 'egress', protocol: null, port_range_min: null, port_range_max: null, remote_ip_prefix: '::/0', remote_group_id: null, ethertype: 'IPv6' },
+		],
+	}];
+	if (method === 'GET' && pathname === '/api/v1/security-groups/quota') {
+		return { security_group: { limit: 10, in_use: 1 }, security_group_rule: { limit: 100, in_use: 2 } };
+	}
+	if (method === 'GET' && /^\/api\/v1\/security-groups\/[^/]+\/instances$/.test(pathname)) {
+		return state.instances.slice(0, 1).map(({ id, name, status }) => ({ id, name, status }));
+	}
 	if (method === 'GET' && pathname === '/api/v1/networks/default') return { network_id: 'mock-net-private' };
 	if (method === 'GET' && pathname === '/api/v1/dashboard/gpu-available') return { gpu_types: [] };
 
@@ -905,7 +941,24 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	const adminK3sClusterId = pathname.match(/^\/api\/v1\/admin\/k3s-clusters\/([^/]+)$/)?.[1];
 	if (method === 'GET' && adminK3sClusterId) return state.k3sClusters.find((cluster) => cluster.id === adminK3sClusterId) ?? mockUnsupported();
 	if (method === 'GET' && pathname === '/api/v1/k3s/cluster-templates') return [{ id: 'mock-template-1', name: 'GPU training baseline', description: '1 master + 2 workers', default_node_count: 2, default_agent_flavor_id: 'mock-flavor-cpu4', os_type: 'ubuntu' }];
-	if (method === 'GET' && pathname === '/api/v1/flavors') return [{ id: 'mock-flavor-cpu4', name: 'cpu.4c_8g', vcpus: 4, ram: 8192, disk: 80 }, { id: 'mock-flavor-gpu', name: 'gpu.8c_64g_a10', vcpus: 8, ram: 65536, disk: 160, gpu_count: 1 }];
+	if (method === 'GET' && (pathname === '/api/v1/flavors' || pathname === '/api/v1/admin/instances/flavors-for-project')) {
+		return [
+			{ id: 'mock-flavor-cpu4', name: 'cpu.4c_8g', vcpus: 4, ram: 8192, disk: 80, is_public: true, extra_specs: {} },
+			{ id: 'mock-flavor-gpu', name: 'gpu.8c_64g_a10', vcpus: 8, ram: 65536, disk: 160, is_public: true, extra_specs: { 'pci_passthrough:alias': 'A10:1' } },
+		].map(flavor => ({
+			...flavor,
+			eligibility: {
+				selectable: true,
+				requirements: { instances: 1, cores: flavor.vcpus, ram_mb: flavor.ram, gpus: flavor.id === 'mock-flavor-gpu' ? { A10: 1 } : {} },
+				remaining: { instances: 8, cores: 56, ram_mb: 196608, gpus: { A10: 1 } },
+				blockers: [],
+				capacity: {
+					status: 'available', checked_at: NOW_ISO, candidate_hosts: 1,
+					cpu_resource_class: 'VCPU', remaining_vcpus: 32, remaining_ram_mb: 98304,
+				},
+			},
+		}));
+	}
 	if (method === 'GET' && pathname === '/api/v1/keypairs') return [{ name: 'demo-keypair' }];
 	const healthClusterId = pathname.match(/^\/api\/v1\/k3s\/clusters\/([^/]+)\/health(?:\/check)?$/)?.[1];
 	if ((method === 'GET' || (method === 'POST' && pathname.endsWith('/health/check'))) && healthClusterId) {

@@ -27,7 +27,6 @@
   const ctrl = createVolumesController({
     token: () => $auth.token ?? undefined,
     projectId: () => $auth.projectId ?? undefined,
-    volumeBackupsEnabled: () => $betaFeatures.volumeBackups,
     volumeSnapshotsEnabled: () => $betaFeatures.volumeSnapshots,
   });
   const volumeSelection = createResourceSelection();
@@ -100,11 +99,14 @@
     });
   });
 
+  let lastProjectId: string | null | undefined;
   $effect(() => {
     const projectId = $auth.projectId;
     untrack(() => {
       volumeSelection.clear();
       snapshotSelection.clear();
+      if (lastProjectId !== undefined && lastProjectId !== projectId) ctrl.resetProjectScope();
+      lastProjectId = projectId;
       if (!projectId) return;
       ctrl.loading = true;
       void ctrl.fetchAll();
@@ -175,6 +177,7 @@
         onOpenDetail={ctrl.openVolumePanel}
         onActionMenuOpen={(id) => (ctrl.openActionMenu = id)}
         onActionMenuClose={() => (ctrl.openActionMenu = null)}
+        onRename={(vol) => (ctrl.renameTargetVol = vol)}
         onBoot={ctrl.bootFromVolume}
         onExtend={(vol) => (ctrl.extendTargetVol = vol)}
         onBackup={(vol) => (ctrl.backupTargetVol = vol)}
@@ -183,7 +186,6 @@
         onForceDelete={ctrl.forceDeleteVolume}
         onDelete={ctrl.deleteVolume}
         onToggleAutoBackup={ctrl.toggleAutoBackup}
-        volumeBackupsEnabled={$betaFeatures.volumeBackups}
         volumeSnapshotsEnabled={$betaFeatures.volumeSnapshots}
       />
       <BulkSelectionOverlay
@@ -225,8 +227,11 @@
   <SlidePanel onClose={ctrl.closeVolumePanel} ariaLabel="볼륨 상세" width="w-full md:w-[60vw] max-w-2xl">
     <VolumeDetailPanel
       volumeId={ctrl.selectedVolumeId}
+      refreshKey={ctrl.detailRefreshKey}
       onClose={ctrl.closeVolumePanel}
       onDeleted={() => { ctrl.fetchVolumes(); ctrl.closeVolumePanel(); }}
+      onRenamed={(updated) => ctrl.applyRenamedVolume(updated, 'detail')}
+      onChanged={() => { void ctrl.fetchVolumes(); void ctrl.fetchSnapshots(); }}
     />
   </SlidePanel>
 {/if}
@@ -238,13 +243,15 @@
   extendTarget={ctrl.extendTargetVol}
   backupTarget={ctrl.backupTargetVol}
   snapshotTarget={ctrl.snapshotTargetVol}
+  renameTarget={ctrl.renameTargetVol}
   onCloseTransfer={() => ctrl.showTransferModal = false}
   onTransferred={() => { ctrl.fetchVolumes(); ctrl.showTransferModal = false; }}
   onCloseExtend={() => ctrl.extendTargetVol = null}
-  onExtendSuccess={() => { ctrl.extendTargetVol = null; ctrl.fetchVolumes(true); }}
+  onExtendSuccess={() => { ctrl.extendTargetVol = null; ctrl.fetchVolumes(true); ctrl.refreshSelectedDetail(); }}
   onCloseBackup={() => ctrl.backupTargetVol = null}
   onCloseSnapshot={() => ctrl.snapshotTargetVol = null}
-  onSnapshotSuccess={() => { ctrl.snapshotTargetVol = null; ctrl.fetchSnapshots(); }}
-  volumeBackupsEnabled={$betaFeatures.volumeBackups}
+  onSnapshotSuccess={() => { ctrl.snapshotTargetVol = null; ctrl.fetchSnapshots(); ctrl.refreshSelectedDetail(); }}
+  onCloseRename={() => ctrl.renameTargetVol = null}
+  onRenamed={(updated) => ctrl.applyRenamedVolume(updated, 'list')}
   volumeSnapshotsEnabled={$betaFeatures.volumeSnapshots}
 />

@@ -124,6 +124,8 @@ stateDiagram-v2
 
 > 이 그룹의 **모든** 엔드포인트는 `Depends(require_admin)` — 관리자 전용입니다.
 
+관리자 UI(`/admin/libraries`)의 **새 빌드/VM 생성은 Dockerfile 작업** 한곳에서 시작한다. URL·파일·직접 작성은 inline 경로를, 커밋 SHA로 고정한 GitHub context는 `/imports/dockerfile`을 사용한다. 기존 `/build`, `/consume`, `/profiles` API는 이미 만들어진 artifact/공개 프로필과 외부 호출자를 위해 남아 있지만 별도 관리자 생성 폼은 없다. 과거 build/artifact/profile/consume 기록은 계속 조회·공개 설정·삭제할 수 있다.
+
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
 | `GET` | `/api/v1/admin/libraries/base-images` | 빌더/소비 VM 부팅용 Ubuntu Glance 이미지 목록 |
@@ -146,6 +148,11 @@ stateDiagram-v2
 | `GET` | `/api/v1/admin/libraries/profiles/{profile_name}` | 프로필 상세 |
 | `PATCH` | `/api/v1/admin/libraries/profiles/{profile_name}/publication` | 프로필 공개/비공개 설정 |
 | `DELETE` | `/api/v1/admin/libraries/profiles/{profile_name}` | 프로필 삭제 (활성 소비 없을 때만) |
+
+별도 Palimpsest 관리자 route(`POST /api/v1/palimpsest/builds/dockerfile`, `/lint`, `/plan`, `/fetch-url`)도 `require_admin`이며, inline Dockerfile은 빌드 컨텍스트가 없어 `COPY`/`ADD`를 거부한다. `FROM`만 있어도 전체 Glance root artifact를 빌드한다. `/fetch-url`은 1 MiB로 응답 크기를 제한하고 모든 DNS 응답이 공인 주소인지 확인한 뒤 검증한 IP에 연결을 고정한다. 자동 리다이렉트를 따르지 않고 각 Location을 다시 검사한다. UI는 가져온 결과를 편집기에 채울 뿐 빌드를 자동 시작하지 않는다.
+
+Dockerfile import 응답·상세의 `artifact_ids`는 `dockerfile-root`에서 마지막 delta까지 root→child 순서다. 선택적 `consumer`로 생성된 consume 레코드도 같은 순서를 유지해 부모 링크·봉인을 검사한다. 소비 VM의 NFS manifest에 기록할 때만 child→root OverlayFS 순서로 뒤집는다.
+작업 응답의 `dockerfile_digest`는 생성 당시 Dockerfile의 SHA-256이며, 이전 임포트 기록에는 `null`이다. 관리자 작업 상세는 digest가 있는 완료 작업에만 artifact 소비 버튼을 제공하고, 이전 기록은 읽기 전용으로 남긴다. 서버는 버튼의 표시 여부에 의존하지 않고 요청 시 실제 첫 artifact의 `dockerfile-root` 종류와 전체 봉인된 계보를 다시 확인한다.
 
 ### 공개 squashfs 카탈로그 (`/api/v1/libraries/squashfs`)
 
@@ -573,7 +580,8 @@ squashfs 레이어 빌드를 시작합니다(백그라운드 태스크). 레이�
 
 | 파라미터 | 위치 | 타입 | 필수 | 기본값 | 설명 |
 |----------|------|------|------|--------|------|
-| `profile_name` | body | string | 예 | — | 소비할 프로필 이름 (레이어 이름 규칙) |
+| `profile_name` | body | string | `import_id`와 택일 | `null` | 현재 프로필 이름 (레이어 이름 규칙) |
+| `import_id` | body | positive integer | `profile_name`과 택일 | `null` | 완료된 Dockerfile 작업의 고정 artifact ID 계보 |
 | `flavor_id` | body | string | 예 | — | Nova 플레이버 (`^[a-zA-Z0-9\-_.]+$`) |
 | `server_name` | body | string \| null | 아니오 | `null` | 정규화된 인스턴스 이름 |
 | `image_id` | body | string \| null | 아니오 | `null` | base 이미지 UUID |
@@ -582,11 +590,11 @@ squashfs 레이어 빌드를 시작합니다(백그라운드 태스크). 레이�
 | `ssh_public_key` | body | string \| null | 아니오 | `null` | SSH 공개키 (형식 검증) |
 | `ssh_username` | body | string \| null | 아니오 | `null` | SSH 사용자명. `root` 금지 |
 
-**파라미터 의존성**: `ssh_username`은 `key_name` 또는 `ssh_public_key`와 함께 지정해야 합니다.
+**파라미터 의존성**: `profile_name`과 `import_id` 중 정확히 하나를 지정합니다. `import_id`는 완료된 작업의 봉인된 root→delta artifact IDs를 그대로 사용하며 이름이 같은 프로필의 최신 artifact를 재조회하지 않습니다. `ssh_username`은 `key_name` 또는 `ssh_public_key`와 함께 지정해야 합니다.
 
-**응답 (200 OK)**: `{ "consume_id": <int>, "server_id": "<uuid>", "status": "active" }`
+**응답 (200 OK)**: `{ "consume_id": <int>, "server_id": "<uuid>", "status": "active", "ready": true }` (guest root와 SSH 준비 확인 후)
 
-**오류 응답**: `400 Bad Request` — 키페어 공개키 조회 실패 등
+**오류 응답**: `422` — 선택자 형식/조합 오류. `400` — 작업 미완료·봉인/계보 불일치 또는 키페어 공개키 조회 실패 등.
 
 ### GET /api/v1/admin/libraries/consumes · GET /api/v1/admin/libraries/consumes/{consume_id}
 
@@ -632,7 +640,7 @@ squashfs 레이어 빌드를 시작합니다(백그라운드 태스크). 레이�
 | 메서드·경로 | 설명 |
 |-------------|------|
 | `GET /base-images` | active Ubuntu Glance 이미지 목록 |
-| `POST /imports/dockerfile` | `{ github_url, ref?, dockerfile_path, layer_prefix, profile_name?, base_image_id }`로 임포트 작업 생성 |
+| `POST /imports/dockerfile` | `{ github_url, ref?, dockerfile_path, layer_prefix, profile_name?, consumer? }`로 FROM에 맞는 full-root·delta 계보 빌드 및 선택적 SSH VM 생성. `base_image_id`는 받지 않음 |
 | `GET /imports` · `GET /imports/{id}` | 임포트 작업 목록/상세 |
 
 ---

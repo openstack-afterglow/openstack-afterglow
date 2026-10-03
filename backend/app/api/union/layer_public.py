@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import select
 
-from app.api.deps import get_os_conn, get_token_info
+from app.api.deps import get_os_conn_write, get_token_info
 from app.config import get_settings
 from app.database import get_session_factory
 from app.models.db import LayerArtifact, LayerConsume, LayerProfile
@@ -187,7 +187,13 @@ def _artifact_public_dict(row: LayerArtifact) -> dict[str, Any]:
 
 def _resolved_artifact_dict(row: LayerArtifact) -> dict[str, Any]:
     data = _artifact_public_dict(row)
-    data.update({"share_id": row.share_id, "sqsh_filename": row.sqsh_filename})
+    data.update(
+        {
+            "share_id": row.share_id,
+            "sqsh_filename": row.sqsh_filename,
+            "blob_digest": getattr(row, "blob_digest", None),
+        }
+    )
     return data
 
 
@@ -265,8 +271,7 @@ async def _resolve_profile_artifact_ids(session, profile_name: str) -> list[Laye
         if len(matches) > 1:
             raise HTTPException(status_code=409, detail=f"프로필 레이어 이름이 중복되어 모호합니다: {name!r}")
         resolved.append(matches[0])
-    _validate_single_base(resolved)
-    return resolved
+    return await _resolve_direct_artifacts(session, [row.id for row in resolved])
 
 
 async def _resolve_direct_artifacts(session, artifact_ids: list[int]) -> list[LayerArtifact]:
@@ -382,15 +387,16 @@ async def list_public_squashfs_profiles(_token_info: dict = Depends(get_token_in
 @router.post("/consume")
 async def consume_public_squashfs(
     req: PublicLayerConsumeRequest,
-    conn=Depends(get_os_conn),
+    conn=Depends(get_os_conn_write),
     token_info: dict = Depends(get_token_info),
 ) -> dict[str, Any]:
     factory = get_session_factory()
     if factory is None:
         raise HTTPException(status_code=503, detail="DB 연결이 초기화되지 않았습니다")
 
-    project_id = token_info.get("project_id") or getattr(conn, "_afterglow_project_id", "")
-    if not project_id:
+    project_id = token_info.get("project_id")
+    authenticated_project = getattr(conn, "_afterglow_authenticated_project_id", project_id)
+    if not project_id or authenticated_project != project_id:
         raise HTTPException(status_code=401, detail="프로젝트 스코프가 필요합니다")
     if req.github_username:
         try:
@@ -414,6 +420,8 @@ async def consume_public_squashfs(
             else await _resolve_direct_artifacts(session, req.artifact_ids or [])
         )
         _validate_single_base(artifacts)
+        if req.image_id and req.image_id != _base_image_id(artifacts[0]):
+            raise HTTPException(status_code=400, detail="요청 image_id가 프로필 base image와 일치하지 않습니다")
         resolved = [_resolved_artifact_dict(row) for row in artifacts]
         consume_profile_name = req.profile_name or f"direct-{uuid.uuid4().hex[:8]}"
 
@@ -433,7 +441,11 @@ async def consume_public_squashfs(
                 status_code=400, detail=f"선택한 키페어의 공개키를 조회할 수 없습니다: {req.key_name!r}"
             )
 
-    from app.services.layer_build import resolve_layer_consume_resource_snapshot, run_layer_consume
+    from app.services.layer_build import (
+        resolve_layer_consume_resource_snapshot,
+        run_layer_consume,
+        validate_consume_image_identity,
+    )
 
     try:
         resource_snapshot = await resolve_layer_consume_resource_snapshot(
@@ -441,6 +453,7 @@ async def consume_public_squashfs(
             flavor_ref=req.flavor_id,
             network_id=req.network_id,
         )
+        await validate_consume_image_identity(conn, resolved, req.image_id)
         share_conn = await get_service_project_connection()
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -484,7 +497,7 @@ async def consume_public_squashfs(
             await vm_cloud_init_library.record_history(user_id=token_info["user_id"], content=req.userdata)
         except Exception:
             _logger.warning("cloud-init 실행 이력 저장 실패", extra={"user_id": token_info.get("user_id")})
-        return {"consume_id": consume_id, "server_id": server_id, "status": "active"}
+        return {"consume_id": consume_id, "server_id": server_id, "status": "active", "ready": True}
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except HTTPException:

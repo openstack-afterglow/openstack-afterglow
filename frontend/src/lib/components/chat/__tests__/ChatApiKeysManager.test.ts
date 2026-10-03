@@ -62,79 +62,19 @@ describe('ChatApiKeysManager connection guide', () => {
 
 	afterEach(cleanup);
 
-	it('shows one selected guide at a time and uses every discovered SDK URL verbatim', async () => {
-		const { container } = render(ChatApiKeysManager);
+	it('switches a single accessible guide without refetching discovery', async () => {
+		render(ChatApiKeysManager);
 		const codexTab = await screen.findByRole('tab', { name: 'Codex' });
-		const claudeCodeTab = screen.getByRole('tab', { name: 'Claude Code' });
-		const openaiTab = screen.getByRole('tab', { name: 'OpenAI' });
-		const claudeTab = screen.getByRole('tab', { name: 'Claude' });
-
 		const codexPanel = screen.getByRole('tabpanel', { name: 'Codex' });
-		expect(codexTab.getAttribute('aria-selected')).toBe('true');
 		expect(codexTab.getAttribute('aria-controls')).toBe(codexPanel.id);
-		expect(screen.getAllByRole('tabpanel')).toHaveLength(1);
-		expect(container.querySelectorAll('pre code')).toHaveLength(1);
-		expect(examples(container)).toContain('model_provider = "lumen"');
-		expect(examples(container)).toContain('base_url = "https://inference.example/tenant/v1"');
-		expect(examples(container)).toContain('wire_api = "responses"');
-		expect(examples(container)).toContain('env_key = "LUMEN_API_KEY"');
-		expect(examples(container)).toContain('requires_openai_auth = false');
 		const discoveryRequests = mocks.get.mock.calls.filter(([path]) => String(path).endsWith('/compat')).length;
 
-		await fireEvent.click(claudeCodeTab);
-		expect(screen.getByRole('tabpanel', { name: 'Claude Code' })).toBeTruthy();
-		expect(examples(container)).toContain('export ANTHROPIC_BASE_URL="https://inference.example/tenant"');
-		expect(examples(container)).toContain('export ANTHROPIC_AUTH_TOKEN="$LUMEN_API_KEY"');
-		expect(examples(container)).toContain('export ANTHROPIC_MODEL="$LUMEN_MODEL"');
-		expect(examples(container)).toContain('export ANTHROPIC_CUSTOM_HEADERS="X-Lumen-Provider: $LUMEN_PROVIDER"');
-		expect(examples(container)).not.toContain('/claude-gateway');
-
-		await fireEvent.click(openaiTab);
-		expect(screen.getByRole('tabpanel', { name: 'OpenAI' })).toBeTruthy();
-		expect(examples(container)).toContain('base_url="https://inference.example/tenant/v1"');
-		expect(examples(container)).toContain('from openai import OpenAI');
-		expect(examples(container)).toContain('{"provider": os.environ["LUMEN_PROVIDER"]}');
-
-		await fireEvent.click(claudeTab);
-		expect(screen.getByRole('tabpanel', { name: 'Claude' })).toBeTruthy();
-		expect(examples(container)).toContain('base_url="https://inference.example/tenant"');
-		expect(examples(container)).toContain('from anthropic import Anthropic');
-		expect(examples(container)).toContain('{"provider": os.environ["LUMEN_PROVIDER"]}');
-		expect(examples(container)).not.toContain('api.localhost');
-		expect(examples(container)).not.toContain('messages=[...]');
+		for (const name of ['Claude Code', 'OpenAI', 'Claude', 'Codex']) {
+			await fireEvent.click(screen.getByRole('tab', { name }));
+			expect(screen.getAllByRole('tabpanel')).toEqual([screen.getByRole('tabpanel', { name })]);
+			expect(screen.getByRole('tab', { name }).getAttribute('aria-selected')).toBe('true');
+		}
 		expect(mocks.get.mock.calls.filter(([path]) => String(path).endsWith('/compat'))).toHaveLength(discoveryRequests);
-	});
-
-	it('copies the complete template from each selected guide', async () => {
-		const writeText = vi.fn().mockResolvedValue(undefined);
-		Object.defineProperty(navigator, 'clipboard', {
-			configurable: true,
-			value: { writeText }
-		});
-		render(ChatApiKeysManager);
-
-		await fireEvent.click(await screen.findByRole('button', { name: '설정 복사' }));
-		const codexConfig = writeText.mock.calls.at(-1)?.[0] as string;
-		expect(codexConfig).toContain('model_provider = "lumen"');
-		expect(codexConfig).toContain('wire_api = "responses"');
-		expect(codexConfig).toContain('base_url = "https://inference.example/tenant/v1"');
-		expect(codexConfig).not.toContain('browser-token');
-
-		await fireEvent.click(screen.getByRole('tab', { name: 'Claude Code' }));
-		await fireEvent.click(screen.getByRole('button', { name: '명령 복사' }));
-		const claudeSetup = writeText.mock.calls.at(-1)?.[0] as string;
-		expect(claudeSetup).toContain('ANTHROPIC_BASE_URL="https://inference.example/tenant"');
-		expect(claudeSetup).toContain('ANTHROPIC_AUTH_TOKEN="$LUMEN_API_KEY"');
-		expect(claudeSetup).not.toContain('browser-token');
-		expect(claudeSetup).not.toContain('/claude-gateway');
-
-		await fireEvent.click(screen.getByRole('tab', { name: 'OpenAI' }));
-		await fireEvent.click(screen.getByRole('button', { name: '예제 복사' }));
-		expect(writeText.mock.calls.at(-1)?.[0]).toContain('client.chat.completions.create');
-
-		await fireEvent.click(screen.getByRole('tab', { name: 'Claude' }));
-		await fireEvent.click(screen.getByRole('button', { name: '예제 복사' }));
-		expect(writeText.mock.calls.at(-1)?.[0]).toContain('client.messages.create');
 	});
 
 	it('keeps key management available but hides examples until discovery retry succeeds', async () => {
@@ -154,10 +94,16 @@ describe('ChatApiKeysManager connection guide', () => {
 		expect(screen.queryByRole('alert')).toBeNull();
 	});
 
-	it('does not publish code with a malformed or credential-bearing discovery URL', async () => {
+	it.each([
+		'https://user:password@inference.example/v1',
+		'https://inference.example/v1?key=private',
+		'https://inference.example/v1#private',
+		'https://inference.example/v1\n',
+		'https://inference.example\\private/v1'
+	])('hides all executable examples for unsafe discovery URL %j', async (url) => {
 		mocks.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/compat') ? {
 			endpoints: {
-				openai: { sdk_base_url: 'https://user:password@inference.example/v1' },
+				openai: { sdk_base_url: url },
 				anthropic: discovery.endpoints.anthropic,
 				gateway: discovery.endpoints.gateway
 			},
@@ -166,7 +112,7 @@ describe('ChatApiKeysManager connection guide', () => {
 		const { container } = render(ChatApiKeysManager);
 		await screen.findByRole('alert');
 		expect(container.querySelector('pre')).toBeNull();
-		expect(container.textContent).not.toContain('user:password');
+		expect(container.textContent).not.toContain(url);
 	});
 
 	it('does not replace the current project endpoint with a late response from the previous project', async () => {

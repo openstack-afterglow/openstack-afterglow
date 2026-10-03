@@ -30,7 +30,7 @@ Compose 파일은 합쳐 쓰는 환경 overlay가 아니라 **각각 독립 실�
 |---|---|---|
 | `docker-compose.yml` | published Afterglow frontend/backend 두 개만 실행 | Redis·DB·OpenStack·형제 서비스는 외부 설정 |
 | `docker-compose.dev.yml` | 현재 Afterglow·Lumen·Waygate·Drover·Palimpsest 소스를 빌드해 로컬 실행 | Compose service DNS, private local DB/cache/checkpointer |
-| `docker-compose.prod.yml` | GHCR 이미지를 pull·동기화해 운영 실행 | HAProxy TLS/LB, 인증된 Keystone catalog endpoint |
+| `docker-compose.prod.yml` | GHCR 이미지를 pull·동기화해 운영 실행 | HAProxy TLS/LB, 일반 경로는 인증된 Keystone catalog endpoint; Palimpsest 패키지는 신뢰된 명시 URL 필수 |
 
 Dev와 prod를 같은 project/volume에 겹쳐 실행하지 않습니다. 기존 로컬 project는 dev 전환 후에도 `afterglow-local-services`이며 데이터나 암호화 키를 다시 만들지 않습니다.
 
@@ -173,6 +173,17 @@ volume/network, mount와 loopback port 경계를 검사하며, 무시된 `docker
 읽지 않습니다. API health와 migration 완료까지 기다린 뒤 `services:up`이 성공하지만,
 이것만으로 대시보드·OpenStack 통신까지 검증됐다는 뜻은 아닙니다.
 
+전체 dashboard가 필요 없는 서비스 개발은 아래와 같이 선택적으로 실행합니다.
+
+```bash
+npm run services:config -- --only lumen,palimpsest
+npm run services:up -- --only lumen,palimpsest
+```
+
+`--only`는 `lumen`, `waygate`, `palimpsest`의 comma-separated 선택을 받으며 선택한 API/worker·migration/bootstrap와 필요한 local datastore만 시작합니다. 기존 canonical project·port·volume·key를 그대로 사용하고 이미 실행 중인 다른 service를 종료하거나 orphan을 삭제하지 않습니다. 선택하지 않은 sibling checkout·Drover service-project·Waygate callback 검사는 하지 않습니다. `--only lumen`은 ordinary Lumen API key로 검증할 수 있어 OpenStack credential을 config 사전 조건으로 요구하지 않습니다. Hub는 genuine Keystone 인증과 system-admin 확인에 실제 service credential이 필요합니다. Waygate를 선택하면 기존 VM-reachable `WAYGATE_PUBLIC_BASE_URL` 요구는 유지됩니다.
+
+`npm run services:verify -- <lumen|waygate|palimpsest>`는 Docker 기동·전체 config와 독립적이며 `<SERVICE>_API_BASE_URL`로 로컬 프로세스나 별도 HTTP(S) 테스트 endpoint를 직접 지정합니다. 기본 모드는 인증된 read-only 연결 확인입니다. `--exercise`만 provider 또는 run-owned client/blob mutation을 수행하며 필수 scope·model·server·artifact 및 정리를 검증합니다. URL/auth/project 입력, 서비스별 시나리오와 미검증 경계는 [Service-real 가이드](testing.md#독립-서비스-실제-로직-검증-service-real)를 따릅니다. 기존 `services:smoke`의 full-stack/read-only dashboard 경로는 그대로 유지합니다.
+
 ```bash
 # 현재 sibling source와 Afterglow source를 build하고, migration/bootstrap 뒤 API+worker를 시작
 npm run services:up
@@ -258,10 +269,25 @@ Keystone·Nova·Neutron 등 실제 OpenStack은 원격 클라우드를 그대로
 동명 `*_internal_url`을 설정합니다. BFF와 Drover/Waygate SDK에 함께 적용됩니다.
 
 Dev runner는 shell/`.env` → nonempty `.local-services/afterglow.conf` → Compose DNS를
-선택합니다. 명시적 빈 환경 변수는 해당 서비스만 카탈로그로 돌립니다. 기존 private snapshot은
-원본 설정 변경으로 덮어쓰지 않습니다. `services:config`는 선택값을 private `compose.env`에
-보존하고 `services:up`은 새 환경을 반영합니다. 기본·운영 실행은 override가 없으면 카탈로그를
-사용합니다. [주소 예시와 우선순위](openstack-service-catalog.md#로컬-direct-서비스-엔드포인트-오버라이드-direct-service-endpoint-overrides)를 따르세요.
+선택합니다. 일반 경로는 명시적 빈 환경 변수로 해당 서비스만 카탈로그로 돌립니다. 기존 private
+snapshot은 원본 설정 변경으로 덮어쓰지 않습니다. `services:config`는 선택값을 private
+`compose.env`에 보존하고 `services:up`은 새 환경을 반영합니다. 기본·운영 실행의 일반 경로는
+override가 없으면 카탈로그를 사용합니다. 아래 패키지 예외와
+[주소 예시와 우선순위](openstack-service-catalog.md#로컬-direct-서비스-엔드포인트-오버라이드-direct-service-endpoint-overrides)를 따르세요.
+
+**Palimpsest 패키지 예외:** 허용된 native package key 경로와 브라우저 package BFF는
+신뢰된 nonempty `SERVICE_PALIMPSEST_INTERNAL_URL` 또는 `[services] palimpsest_internal_url`이
+필수입니다. 환경 변수가 TOML보다 우선하며 최종 URL이 없거나 빈 값이면 패키지 요청은 **503**입니다.
+카탈로그·관리자 자격 증명으로 endpoint를 탐색하거나 토큰을 교환하지 않습니다. Native key는 그대로,
+브라우저 요청은 원래 사용자/프로젝트의 Keystone 토큰으로 Hub에 전달합니다. 일반 legacy JWT Hub
+경로의 기존 카탈로그 동작은 유지합니다. 운영 URL은 **HTTPS**여야 하며 패키지 프록시는 redirect를
+거부하고 다운로드를 스트리밍하며 응답에 `Cache-Control: private, no-store`를 적용합니다.
+
+읽기 쉬운 namespace는 등록 전에 Hub 운영자가 `PALIMPSEST_HUB_PACKAGE_NAMESPACE_BINDINGS`로
+정확한 Keystone project UUID/ID에 바인딩해야 합니다. ID는 opaque 값이므로 대소문자·하이픈을
+정규화하거나 project 표시명에서 추론하지 않습니다. 복사할 참조의 `package_authority`는 Hub의
+신뢰된 HTTPS `PALIMPSEST_HUB_PACKAGE_PUBLIC_ORIGIN`에서 제공하며, 내부 서비스 URL이나 브라우저
+origin에서 추론하지 않습니다. Public origin이 없으면 authority는 `null`이며 대체 host를 만들지 않습니다.
 
 `LUMEN_MCP_CONTROL_PLANE_URL`은 Lumen이 Afterglow를 호출할 주소입니다. 브라우저의
 `PUBLIC_API_BASE`와 Waygate callback origin은 별도입니다. 전체 local stack을 준비하거나
@@ -316,11 +342,12 @@ npm run test:worker:image -- afterglow-worker:test
 ```
 
 
-기본 운영은 이미 설치된 형제 서비스의 **Keystone internal catalog endpoint**로 통신합니다.
-운영 backend/Notion worker는 unset endpoint를 덮어쓰지 않으므로 TOML 또는 카탈로그를
+일반 경로의 기본 운영은 이미 설치된 형제 서비스의 **Keystone internal catalog endpoint**로
+통신합니다. 운영 backend/Notion worker는 unset endpoint를 덮어쓰지 않으므로 TOML 또는 카탈로그를
 사용합니다. 명시적인 `SERVICE_*_INTERNAL_URL`/TOML override는 신뢰된 **HTTPS** URL만
-허용하고 빈 환경 변수는 카탈로그를 선택합니다. 같은 호스트에 형제 서비스를
-이미지로 설치해야 할 때만 `--profile waygate`, `--profile drover`, `--profile lumen`,
+허용하고 일반 경로의 빈 환경 변수는 카탈로그를 선택합니다. 위 Palimpsest 패키지 경로에는
+신뢰된 nonempty URL이 필수이며 없으면 503입니다. 같은 호스트에 형제 서비스를 이미지로
+설치해야 할 때만 `--profile waygate`, `--profile drover`, `--profile lumen`,
 `--profile palimpsest`를 명시합니다. 이 API·worker는 각각 migration/bootstrap 완료 뒤
 시작합니다. `--profile notion`은 선택적 Notion worker입니다.
 
@@ -412,9 +439,9 @@ Cloud Shell은 Afterglow backend Pod/container 안에서 shell을 실행하지 �
 #### OpenStack 선행 조건
 
 1. `afterglow-cloud-shell` 같은 전용 프로젝트를 하나 만들고 UUID를 고정합니다. 이름이 중복되면 활성화하지 않습니다.
-2. Afterglow service user에 이 전용 프로젝트의 `admin` 역할만 추가합니다. 사용자 Keystone token으로 Zun/Cinder lifecycle을 관리하지 않습니다.
-3. 전용 프로젝트에 router가 연결된 routed network와 **ingress rule이 하나도 없는 egress 전용 security group**을 운영자가 만듭니다. Afterglow/Kolla 역할은 project, network, router, security group을 만들거나 삭제하지 않습니다.
-4. Zun, Kuryr, etcd, Docker/containerd Zun integration, Cinder-backed Zun volume mount와 하나 이상의 `zun-compute`를 준비합니다. Backend에서 Keystone/Cinder/Zun API와 Zun exec WebSocket endpoint에 접근할 수 있어야 합니다.
+2. Afterglow service user가 이 전용 프로젝트에서 Zun·Cinder·Neutron 자원을 관리할 역할을 받아야 합니다. 세션 정리는 owner 권한의 `stop=true` 삭제를 사용하므로 기본 policy에서는 `member`로 충분하며, Kolla Keystone setup은 기존대로 전용 프로젝트 `admin`을 부여합니다. 사용자 Keystone token으로 Zun/Cinder lifecycle을 관리하지 않습니다.
+3. `network_id`는 선택 사항입니다. 비우면 전용 프로젝트의 DB default → 기존 자동 생성 정책 → 자동 생성 비활성 시 검증된 shared default-network 정책을 따릅니다. 선택 네트워크는 subnet과 external network/router gateway 연결이 필요하며, 명시적 override는 전용 프로젝트 소유여야 합니다. `security_group`은 전용 프로젝트의 `default`를 기본으로 사용하고 기존 규칙을 유지합니다. Egress-only가 필요하면 별도 그룹을 명시합니다. Kolla 역할은 project/network/router/group을 만들거나 삭제하지 않으며, backend는 세션 승인 시 기존 default-network 정책에 따라 network/router를 자동 준비할 수 있습니다.
+4. Zun, Kuryr, etcd, Docker/containerd Zun integration, Cinder-backed Zun volume mount와 하나 이상의 `zun-compute`를 준비합니다. Backend에서 Keystone/Cinder/Zun API와 Zun exec WebSocket endpoint에 접근할 수 있어야 합니다. Zun API는 container microversion 1.36 이상을 지원해야 하고, zun-compute는 Cinder volume을 attach해 처음 mount할 때 ext4로 format할 수 있어야 합니다.
 5. `cloud-shell` 이미지를 `linux/amd64`와 `linux/arm64` manifest로 게시하고 운영 설정에는 반드시 `@sha256:<manifest-digest>`를 사용합니다. `latest`나 bare tag는 사용하지 않습니다.
 6. Cinder volume count/gigabytes와 Zun container/CPU/RAM quota는 **전용 프로젝트**에 적용합니다. 사용자 tenant quota를 Cloud Shell 용량으로 사용하거나 늘리지 않습니다. 최대 동시 세션은 전역 사용자당 1개지만 영구 홈은 사용자×논리 프로젝트마다 하나이므로 예상 project 수를 volume quota에 반영합니다.
 
@@ -428,8 +455,8 @@ cloud_shell = true
 [cloud_shell]
 service_project_id = "<dedicated-project-uuid>"
 image = "ghcr.io/openstack-afterglow/afterglow-cloud-shell@sha256:<64-hex-digest>"
-network_id = "<dedicated-routed-network-uuid>"
-security_group = "afterglow-cloud-shell-egress"
+network_id = "" # 전용 프로젝트 default 네트워크
+security_group = "default"
 auth_url = "https://keystone.example.com:5000/v3"
 interface = "public"
 volume_type = "ceph"
@@ -447,7 +474,7 @@ zun_websocket_origin = "wss://zun.example.com"
 
 #### Kolla
 
-`/etc/kolla/config/afterglow/globals.yml`에 `afterglow_service_zun_enabled: true`, `afterglow_service_cloud_shell_enabled: true`와 `afterglow_cloud_shell_*` 값을 설정합니다. `afterglow_cloud_shell_image`는 digest-pinned manifest, `project_id`, `network_id`, `security_group`, public auth URL과 Zun WSS origin은 명시 값이어야 합니다. Stock Kolla 변수 `enable_zun`, `enable_kuryr`, `enable_etcd`, `docker_configure_for_zun`, `containerd_configure_for_zun`, `zun_configure_for_cinder_ceph`도 모두 활성화합니다.
+`/etc/kolla/config/afterglow/globals.yml`에 `afterglow_service_zun_enabled: true`, `afterglow_service_cloud_shell_enabled: true`와 `afterglow_cloud_shell_*` 값을 설정합니다. Image는 digest-pinned manifest이며 project ID, public auth URL, Zun WSS origin을 지정합니다. Network ID는 기본 선택 시 비워 두고 security group의 기본값은 `default`입니다. Stock Kolla 변수 `enable_zun`, `enable_kuryr`, `enable_etcd`, `docker_configure_for_zun`, `containerd_configure_for_zun`, `zun_configure_for_cinder_ceph`도 모두 활성화합니다.
 
 ```bash
 cd /etc/kolla
@@ -795,6 +822,12 @@ image와 기존 생성 config를 사용해 backend를 시작하기 **전에** �
 생성됩니다. 기존 테이블에 새 컬럼을 추가하는 변경에는 위 수동 SQL 적용이 여전히
 필수이며, bootstrap 성공이나 `/api/v1/health` 200만으로 인증된 업무 경로를 검증했다고
 보지 않습니다.
+
+### 선택적 OpenStack notification 수집
+
+관리자 이벤트 뷰어의 Afterglow 요청 기록은 기본 동작이지만, **Afterglow 이외의 CLI/Horizon/OpenStack 내부 이벤트는 자동으로 나타나지 않습니다.** 각 Nova/Cinder/Neutron/Keystone 등의 `oslo_messaging_notifications` driver와 `transport_url`·topic/routing key를 실제 운영 설정에서 확인하고, Afterglow가 접근하는 전용 최소 권한 RabbitMQ 계정과 durable queue를 준비하세요. 서비스별 exchange·notification topic은 설치마다 다릅니다. `afterglow.conf.example`의 `[openstack_notifications]`와 `bindings`는 예시이며 해당 서비스가 발행하지 않는 이벤트는 소비할 수 없습니다.
+
+운영 DB에 `083_activity_event_metadata.sql` migration을 **backend 롤아웃 전에** 적용하고, AMQP URL은 공개 ConfigMap 대신 비밀 환경변수 `OPENSTACK_NOTIFICATIONS_AMQP_URL` 또는 보호된 private config로 주입합니다. TLS `amqps://`와 broker 인증서를 사용하고 알림 exchange의 read/bind 및 Afterglow queue 관리만 허용하세요. 처음에는 `enabled=false`로 배포하여 기존 활동 이력과 관리자 권한을 확인한 뒤 수집을 켜고, Nova `instance.create.error`와 정상 종료 이벤트 각각이 별도 source `openstack` 행으로 나타나는지 검증합니다. 서버가 여러 replica여도 같은 durable queue 이름을 사용해 메시지를 경쟁 소비하고 `external_id`의 DB UNIQUE 제약으로 중복을 차단합니다. DB 장애 시 ack하지 않고 재전달하지만, 알림 발행자의 persistent delivery와 broker 내구성 설정 없이는 재시작 후 전달을 보장할 수 없습니다. broker/발행자 장애나 알림 자체 미발행도 누락 가능성이 남습니다. 알림은 원본 응답 본문/credential을 저장하지 않으며 actor가 없는 이벤트에 사용자를 추정하지 않습니다. API 사용법과 조사 범위는 [관리자 이벤트](api/events.md)를 따릅니다.
 
 ### Kubernetes
 

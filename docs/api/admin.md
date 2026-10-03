@@ -30,6 +30,18 @@ nav_order: 20
 
 ---
 
+## 이벤트 조사
+
+| 메서드 | 경로 | 설명 |
+|---|---|---|
+| `GET` | `/api/v1/admin/events` | 모든 프로젝트의 활동·OpenStack 알림을 필터/커서로 조회 |
+| `GET` | `/api/v1/admin/events/stats` | 현재 필터의 서비스·프로젝트·페이지·액션별 성공/실패 집계 |
+| `GET` | `/api/v1/admin/events/{id}` | 실패 원인, actor, 대상과 요청/외부 이벤트 식별자 확인 |
+
+필터, 수집 전제 및 기존 활동 API와의 차이는 [관리자 이벤트](events.md)를 참조하세요.
+
+---
+
 ## 클러스터 개요·모니터링
 
 | 메서드 | 경로 | 설명 |
@@ -69,6 +81,10 @@ nav_order: 20
 | `GET` | `/api/v1/admin/hypervisors` | 컴퓨트 하이퍼바이저 상세 목록(호스트별 vCPU/RAM/디스크/VM 수) |
 | `GET` | `/api/v1/admin/hypervisors/{hypervisor_id}` | 특정 하이퍼바이저 상세 |
 | `GET` | `/api/v1/admin/compute-hosts` | 마이그레이션 대상 선택용 컴퓨트 호스트 목록 |
+| `PUT` | `/api/v1/admin/hypervisors/{hypervisor_id}/service` | 연결 상태와 별개로 해당 호스트의 `nova-compute` 스케줄링 변경. 본문 `{ "status": "enabled" }` 또는 `{ "status": "disabled", "reason": "점검 사유" }`; 비활성화 사유 필수 |
+| `POST` | `/api/v1/admin/hypervisors/{hypervisor_id}/relocate` | `up/disabled`일 때 `{ "mode": "migrate" }`로 전체 인스턴스 이동 요청, `down`일 때 원본 전원 차단·펜싱 확인 후 `{ "mode": "evacuate", "fenced": true }`로 대피 요청. 서버가 호스트 상태·소속을 재확인하고 모든 페이지를 읽으며 인스턴스별 `requested`/`failed`/`skipped` 결과를 반환 |
+
+`state`(`up/down`)는 호스트 생존 상태, `status`(`enabled/disabled`)는 새 인스턴스 스케줄링 허용 여부로 독립입니다. 비활성화는 기존 인스턴스를 자동으로 이동시키지 않습니다. 전체 이동은 `ACTIVE`의 live migration과 `SHUTOFF`의 cold migration을 별도로 요청하고, 다른 상태는 이유와 함께 건너뜁니다. `down`만으로 호스트가 펜싱되었다고 판단할 수 없으므로, 대피 전 운영자가 원본의 전원 차단·격리를 반드시 확인해야 합니다. API의 `requested`는 Nova가 비동기 작업을 접수했다는 뜻이며 **이동 완료·복구 성공이 아닙니다**. 개별 VM의 상태와 목적지, cold migration의 `VERIFY_RESIZE` 확정 여부를 후속 확인하세요.
 
 ![하이퍼바이저 목록](../../assets/admin-hv-list.png)
 *호스트별 VM 수, vCPU 사용률, RAM 사용량, 로컬 디스크 현황을 테이블로 일괄 조회*
@@ -237,7 +253,7 @@ Recovery는 볼륨별 Redis `NX EX=600` lock을 잡습니다. 같은 볼륨의 �
 | `DELETE` | `/api/v1/admin/libraries/artifacts/{id}` | artifact 삭제 |
 | `POST` | `/api/v1/admin/libraries/profiles` | 레이어 프로필 생성/갱신 |
 | `DELETE` | `/api/v1/admin/libraries/profiles/{profile_name}` | 레이어 프로필 삭제 |
-| `POST` | `/api/v1/admin/libraries/consume` | 프로필 소비 인스턴스 생성 |
+| `POST` | `/api/v1/admin/libraries/consume` | 프로필 또는 완료된 Dockerfile 작업의 고정 artifact ID로 소비 인스턴스 생성 |
 | `GET` | `/api/v1/admin/libraries/consumes` | 소비 인스턴스 목록 |
 
 ---
@@ -278,7 +294,7 @@ Zun 서비스 활성화 시에만 사용 가능합니다.
 
 | 메서드 | 경로 | 설명 | 요청 본문 |
 |--------|------|------|-----------|
-| `GET` | `/api/v1/admin/projects` | 프로젝트 목록 (페이지네이션) | - |
+| `GET` | `/api/v1/admin/projects` | 전체 inventory 검색·필터·최신 생성순 후 marker 페이지네이션 | - |
 | `GET` | `/api/v1/admin/projects/names` | 전체 프로젝트 id/name 목록 (페이지네이션 없음) | - |
 | `POST` | `/api/v1/admin/projects` | 프로젝트 생성 (`201`) | `name`(필수), `description`, `domain_id`, `enabled` |
 | `GET` | `/api/v1/admin/projects/{project_id}` | 프로젝트 상세 | - |
@@ -288,22 +304,50 @@ Zun 서비스 활성화 시에만 사용 가능합니다.
 | `GET` | `/api/v1/admin/projects/{project_id}/activity` | 프로젝트 활동 로그 | - |
 | `POST` | `/api/v1/admin/projects/{project_id}/sync-monitoring-sg` | 모니터링용 보안 그룹 동기화 | - |
 
+`GET /projects` query는 `limit`(기본 20, 1–100), `marker`, `search`(이름·전체 ID·설명의 앞뒤 공백 제거/대소문자 무시 부분 검색), `enabled`(`true`/`false`)와 `domain_id`를 받습니다. 조건은 AND로 결합하며 전체 목록을 필터·정렬한 뒤 페이지를 나눕니다. 기존 `items`/`next_marker`/`count`에 필터 결과 총계 `total`과 검색 조건에 제한되지 않는 도메인 후보 `domain_ids`를 추가합니다. 마지막 페이지에는 `next_marker: null`을 반환합니다. 사라졌거나 현재 결과에 없는 marker는 `400`이며 화면의 새로고침으로 첫 페이지에 돌아갈 수 있습니다.
+
+프로젝트·그룹 `created_at`은 Keystone의 유효한 시각을 우선하고, 없으면 해당 resource ID의 성공한 `project.create`/`project_create`/`identity.project.created` 또는 대응 group 생성 이벤트의 가장 이른 UTC 시각을 사용합니다. 수정·실패·단순 최초 활동 시각은 생성일로 사용하지 않습니다. UTC 마이크로초를 보존해 생성일 내림차순, 동률은 ID 내림차순으로 정렬하며 기록이 없거나 activity DB를 읽을 수 없으면 `null` 항목을 마지막에 둡니다. Afterglow 이전 또는 외부에서 생성된 항목, 수집되지 않았거나 보존기간 밖의 생성 이벤트는 생성 순서를 복원할 수 없습니다.
+
+관리자 생성은 새 resource ID를 포함한 성공 이벤트를 기록합니다. 프로젝트 생성·수정·삭제와 셀프서비스 생성은 프로젝트 inventory 및 이름 cache를 무효화합니다. UI의 검색·상태·도메인 변경은 첫 페이지로 돌아가고, 백그라운드 갱신과 다음 페이지 prefetch는 현재 조건을 유지합니다.
+
+같은 backend 프로세스·event loop에서는 mutation의 cache 무효화가 이전 조회 flight를 분리하고 늦은 snapshot의 cache 재저장을 막습니다. 무효화 이전 호출자는 이전 결과를 받을 수 있으나 이후 목록 조회는 그 작업에 합류하지 않습니다. 정상 cache I/O에 대한 국소 순서 보장이며 다른 worker의 진행 중 조회까지 fence하는 분산 보장은 아닙니다.
+
 `GET /projects/{project_id}/members` 응답에는 사용자 할당과 그룹 할당(`type: "group"`, `group_id` 포함)이 함께 반환됩니다.
 
 ---
 
 ## 쿼터 관리
 
-| 메서드 | 경로 | 설명 | 요청 본문 |
-|--------|------|------|-----------|
-| `GET` | `/api/v1/admin/quotas/{project_id}` | 프로젝트 컴퓨트/볼륨 쿼터·사용량 조회 | - |
-| `PUT` | `/api/v1/admin/quotas/{project_id}` | 프로젝트 쿼터 수정 | `instances`, `cores`, `ram`(MB), `volumes`, `gigabytes` (모두 선택) |
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| `GET` | `/api/v1/admin/quotas/{project_id}` | 대상 프로젝트의 Nova·Cinder·Neutron·선택적 Manila 쿼터 한도와 사용량 조회 |
+| `PUT` | `/api/v1/admin/quotas/{project_id}` | 요청 본문에 포함된 쿼터만 대상 프로젝트에 적용 |
+
+`GET` 응답의 `compute`, `volume`, `network`, `file_storage`는 각 서비스의 `{필드명: {limit, in_use}}` 객체입니다. `limit: -1`은 무제한입니다. 상세 사용량을 조회하지 못한 서비스는 **`null`**이며 `availability[서비스] = false`, `errors[서비스] = "quota_unavailable"`입니다. Manila가 비활성화되었으면 `file_storage: null`과 `errors.file_storage = "service_disabled"`입니다. 배포 환경이 노출하지 않는 개별 필드는 0으로 채우지 않고 생략하므로 해당 항목을 조정할 수 없습니다. 다른 서비스 조회 실패가 정상 서비스의 쿼터를 숨기지는 않습니다.
+
+| 서비스 | `GET` 필드 (프로바이더 이름) | `PUT` 필드 (변경할 항목만 전송) |
+|--------|------------------------------|-----------------------------------|
+| `compute` (Nova) | `instances`, `cores`, `ram` (MB), `metadata_items`, `key_pairs`, `server_groups`, `server_group_members`, `injected_files`, `injected_file_content_bytes`, `injected_file_path_bytes` | 동일 |
+| `volume` (Cinder) | `volumes`, `snapshots`, `gigabytes` (볼륨·스냅샷의 총 GiB) | 동일 |
+| `network` (Neutron) | `network`, `subnet`, `port`, `router`, `floatingip`, `security_group`, `security_group_rule` | 동일 |
+| `file_storage` (Manila) | `shares`, `gigabytes`, `snapshots`, `snapshot_gigabytes`, `share_networks`, `share_groups`, `share_group_snapshots` | `shares`, `share_gigabytes`, `share_snapshots`, `share_snapshot_gigabytes`, `share_networks`, `share_groups`, `share_group_snapshots` |
 
 ```json
 {
+  "project_id": "project-uuid",
   "compute": {"instances": {"limit": 20, "in_use": 5}, "cores": {"limit": 40, "in_use": 10}, "ram": {"limit": 81920, "in_use": 20480}},
-  "volume": {"volumes": {"limit": 10, "in_use": 3}, "gigabytes": {"limit": 1000, "in_use": 200}}
+  "volume": {"volumes": {"limit": 10, "in_use": 3}, "snapshots": {"limit": 10, "in_use": 2}, "gigabytes": {"limit": 1000, "in_use": 200}},
+  "network": {"security_group": {"limit": 20, "in_use": 4}, "security_group_rule": {"limit": 100, "in_use": 12}},
+  "file_storage": {"shares": {"limit": 10, "in_use": 2}, "share_groups": {"limit": 5, "in_use": 1}},
+  "availability": {"compute": true, "volume": true, "network": true, "file_storage": true},
+  "errors": {}
 }
+```
+
+`PUT`은 최상위 JSON 정수 필드로 한도 `-1` 이상을 받습니다. 빈 본문·`null`·지원하지 않는 필드는 `422`입니다. 서비스마다 독립적으로 적용되므로 관리자 화면은 수정한 서비스의 필드만 저장합니다. 여러 서비스를 함께 변경하는 API 요청이 부분 성공하면 `status: "partial"`, 성공한 `updated` 서비스 목록, 실패한 `errors` (`update_failed` 또는 `service_disabled`)를 반환합니다. 부분 성공을 원자적 성공으로 간주하지 말고 다시 조회해야 합니다. GPU 한도 및 flavor access는 별도의 관리자 GPU/compute-policy API를 사용합니다.
+
+```json
+{"status":"updated","project_id":"project-uuid","updated":["network"],"errors":{}}
 ```
 
 ---
@@ -312,13 +356,15 @@ Zun 서비스 활성화 시에만 사용 가능합니다.
 
 | 메서드 | 경로 | 설명 | 요청 본문 |
 |--------|------|------|-----------|
-| `GET` | `/api/v1/admin/groups` | 그룹 목록 | - |
+| `GET` | `/api/v1/admin/groups` | 생성일이 포함된 전체 그룹 목록, 최신 생성순 | - |
 | `POST` | `/api/v1/admin/groups` | 그룹 생성 (`201`) | `name`(필수), `description`, `domain_id` |
 | `PATCH` | `/api/v1/admin/groups/{group_id}` | 그룹 수정 | `name`, `description` (선택) |
 | `DELETE` | `/api/v1/admin/groups/{group_id}` | 그룹 삭제 (`204`) | - |
 | `GET` | `/api/v1/admin/groups/{group_id}/users` | 그룹 멤버 목록 | - |
 | `PUT` | `/api/v1/admin/groups/{group_id}/users/{user_id}` | 그룹에 사용자 추가 (`204`) | - |
 | `DELETE` | `/api/v1/admin/groups/{group_id}/users/{user_id}` | 그룹에서 사용자 제거 (`204`) | - |
+
+그룹 응답은 배열 계약을 유지하며 각 항목에 nullable `created_at`을 포함합니다. 전체 그룹에서 이름·전체 ID·설명을 검색하고 `domain_id`로 AND 필터링하는 것은 브라우저에서 수행하며, 검색·필터·초기화는 멤버 관리와 독립적입니다. 조회·갱신 후에도 조건을 유지하고 생성·수정·삭제 후 서버 inventory cache를 무효화합니다. 목록 중간에 Keystone 조회가 실패하면 부분 목록 대신 `500`을 반환합니다.
 
 **주의**: 멤버십 변경 시 Keystone이 관련 토큰을 revoke할 수 있어 관련 세션 캐시가 함께 삭제됩니다.
 

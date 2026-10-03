@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { writable } from 'svelte/store';
 
 const mocks = vi.hoisted(() => ({
@@ -122,6 +122,7 @@ const networks = [
 function installApiResponses() {
 	mocks.get.mockImplementation((path: string) => {
 		if (path === '/api/v1/waygate/servers') return Promise.resolve([server]);
+		if (path === '/api/v1/waygate/servers/server-1') return Promise.resolve(server);
 		if (path === '/api/v1/waygate/servers/server-1/clients') return Promise.resolve([client]);
 		if (path === '/api/v1/waygate/servers/server-1/networks') return Promise.resolve([]);
 		if (path === '/api/v1/networks') return Promise.resolve(networks);
@@ -174,6 +175,10 @@ async function openServerPanel() {
 	expect(await screen.findByText('operator-laptop')).toBeTruthy();
 }
 
+function settingMode(field: 'DNS' | 'PersistentKeepalive') {
+	return within(screen.getByRole('group', { name: accessibleName => accessibleName === `${field} 설정 방식` }));
+}
+
 beforeEach(() => {
 	Element.prototype.animate = vi.fn().mockReturnValue({
 		finished: Promise.resolve(),
@@ -199,7 +204,7 @@ describe('Waygate dashboard', () => {
 		await openServerPanel();
 
 		await fireEvent.click(screen.getByRole('button', { name: '+ 네트워크 연결' }));
-		await vi.waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/api/v1/networks', 'token-1', 'project-1'));
+		await vi.waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/api/v1/networks', 'token-1', 'project-1', { refresh: true }));
 
 		const networkSelect = screen.getByRole('button', { name: '연결할 네트워크 선택' });
 		await fireEvent.click(networkSelect);
@@ -229,10 +234,10 @@ describe('Waygate dashboard', () => {
 	it('downloads client config and renders a QR code from the same config', async () => {
 		await openServerPanel();
 
-		await fireEvent.click(screen.getByRole('button', { name: '.conf 다운로드' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'operator-laptop .conf 다운로드' }));
 		await vi.waitFor(() => expect(mocks.downloadBlobAs).toHaveBeenCalledWith(expect.any(Blob), 'operator-laptop.conf'));
 
-		await fireEvent.click(screen.getByRole('button', { name: 'QR' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'operator-laptop QR' }));
 		const qrImage = await screen.findByRole('img', { name: 'WireGuard 설정 QR 코드' });
 		expect(qrImage.getAttribute('src')).toBe('data:image/png;base64,wireguard');
 		expect(mocks.toDataURL).toHaveBeenCalledWith('[Interface]\nPrivateKey = secret', {
@@ -248,10 +253,12 @@ describe('Waygate dashboard', () => {
 
 		await fireEvent.click(screen.getByRole('button', { name: '+ 클라이언트 발급' }));
 		expect(screen.getByText(/32바이트 난수로 자동 생성/)).toBeTruthy();
+		await fireEvent.click(settingMode('DNS').getByRole('button', { name: '직접 지정' }));
+		await fireEvent.click(settingMode('PersistentKeepalive').getByRole('button', { name: '직접 지정' }));
 		await fireEvent.input(screen.getByLabelText(/이름/), { target: { value: 'phone' } });
 		await fireEvent.input(screen.getByLabelText('DNS'), { target: { value: '9.9.9.9,1.1.1.1' } });
 		await fireEvent.input(screen.getByLabelText('MTU'), { target: { value: '1280' } });
-		await fireEvent.input(screen.getByLabelText(/PersistentKeepalive/), { target: { value: '0' } });
+		await fireEvent.input(screen.getByLabelText(/PersistentKeepalive/, { selector: 'input' }), { target: { value: '0' } });
 		await fireEvent.click(screen.getByRole('button', { name: '발급' }));
 
 		await vi.waitFor(() => expect(mocks.post).toHaveBeenCalledWith(
@@ -277,8 +284,8 @@ describe('Waygate dashboard', () => {
 
 	it('edits retained settings, clears blanks explicitly and requires reimport', async () => {
 		await openServerPanel();
-		await fireEvent.click(screen.getByRole('button', { name: '설정' }));
-		expect((screen.getByLabelText(/PersistentKeepalive/) as HTMLInputElement).value).toBe('0');
+		await fireEvent.click(screen.getByRole('button', { name: 'operator-laptop 설정' }));
+		expect((screen.getByLabelText(/PersistentKeepalive/, { selector: 'input' }) as HTMLInputElement).value).toBe('0');
 		expect(screen.getByText(/다시 가져와야 적용됩니다/)).toBeTruthy();
 		expect(screen.getByText(/자동으로 추가하지 않습니다/)).toBeTruthy();
 		await fireEvent.input(screen.getByLabelText('DNS'), { target: { value: '' } });
@@ -286,7 +293,7 @@ describe('Waygate dashboard', () => {
 
 		await vi.waitFor(() => expect(mocks.patch).toHaveBeenCalledWith(
 			'/api/v1/waygate/servers/server-1/clients/client-1',
-			{ dns: null, mtu: null, persistent_keepalive: 0 },
+			{ inherit_dns: false, inherit_persistent_keepalive: false, dns: null, mtu: null, persistent_keepalive: 0 },
 			'token-1',
 			'project-1'
 		));
