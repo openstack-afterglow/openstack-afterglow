@@ -7,9 +7,9 @@
 - [x] Reconcile media studio/model selection and audio API display messages without changing stable model/provider IDs.
 - [x] Reconcile VM capacity/refresh/admission behavior and localize security-group union without changing policy semantics.
 - [x] Localize new Palimpsest package/ProxySQL surfaces and all remaining current-dev visible text; resolve documentation conflicts and retain workflow rule.
-- [ ] Finish ordinary merge with latest dev ancestry and preserve user changes/published i18n history.
+- [x] Finish ordinary merge with latest dev ancestry and preserve user changes/published i18n history.
 - [x] Pass catalog/scanner/Svelte checks, frontend suite/build, full project gate and actual browser verification of changed four-locale surfaces.
-- [ ] Fetch latest dev again, integrate any advancement, record final dev SHA/architecture evidence, update documentation/changelog and archive this change.
+- [x] Fetch latest dev again, integrate any advancement, record final dev SHA/architecture evidence and update documentation/changelog for archive.
 
 ## Verification evidence
 
@@ -23,3 +23,5 @@
 - Browser identity/API and tutorial data were synthetic, not real authentication, paid provider inference, scheduler/Placement or Hub execution. No VM/package-key creation, deployment or production changes performed. Foreign-language translations remain drafts, not native-reviewed.
 - SG utility/component SSR smoke also passed all4 through the same Vite SSR runtime: semantics invariant, translated call-time labels and loading/error precedence preserved.
 - Optional GBrain sync unavailable: `gbrain` is not on PATH. No false capability guidance or tool installation added.
+- Final fetch still selected `ff007edb6e4bf75f0c0a05107ca6340b593675ff`; merge commit `630b3d01dcee466c27c3c549f36fbbae901629ef` includes it and `git merge-base --is-ancestor origin/dev HEAD` passed. Staged architecture digest matched the reviewed working digest before commit. No push or deployment performed.
+- Isolated Vite server and both managed QA browsers stopped; only their session-owned profiles and temporary review index removed. Shared development services, worktree and user data preserved.
