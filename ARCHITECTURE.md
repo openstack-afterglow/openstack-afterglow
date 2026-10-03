@@ -551,9 +551,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "74326cfb21e7ec33c6f42db8035b5bfe11a2c25f7fb244ba06bf194034e1ad60",
-  "reviewed_at": "2026-09-27T07:51:24Z",
-  "summary": "Reviewed operator Lumen v0.3.1 immutable source/lock, verified isolated installed role and kept Palimpsest v0.2.3 pending Astra and KVM runner isolation; no production rollout or paid provider acceptance"
+  "source_sha256": "9d6e357982548d1edb8e83842cf8b59bc19d70a36b0c8423463b33257e9243f8",
+  "reviewed_at": "2026-10-03T13:26:58Z",
+  "summary": "operator: promote package-owned Kolla roles to immutable sibling release tags"
 }
 ```
 <!-- architecture-review:end -->

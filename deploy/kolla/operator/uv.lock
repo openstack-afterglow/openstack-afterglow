@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.11"
 
 [[package]]
@@ -18,7 +18,7 @@ dependencies = [
 requires-dist = [
     { name = "drover", git = "https://github.com/openstack-afterglow/drover.git?tag=v0.2.25" },
     { name = "kolla-ansible", git = "https://opendev.org/openstack/kolla-ansible.git?rev=34daacfbf2d5987f543787f57535b2bebe7dee19" },
-    { name = "lumen", git = "https://github.com/openstack-afterglow/lumen.git?tag=v0.3.1" },
+    { name = "lumen", git = "https://github.com/openstack-afterglow/lumen.git?tag=v0.6.0" },
     { name = "palimpsest-client", git = "https://github.com/openstack-afterglow/palimpsest.git?tag=v0.2.3" },
     { name = "waygate", git = "https://github.com/openstack-afterglow/waygate.git?tag=v0.2.0" },
 ]
@@ -518,8 +518,8 @@ dependencies = [
 
 [[package]]
 name = "lumen"
-version = "0.3.1"
-source = { git = "https://github.com/openstack-afterglow/lumen.git?tag=v0.3.1#9eed5d170bc3fad3dae658e6119cb80e5831052e" }
+version = "0.6.0"
+source = { git = "https://github.com/openstack-afterglow/lumen.git?tag=v0.6.0#7734d530959b058d9effdfd03831c37ab6648126" }
 
 [[package]]
 name = "markdown-it-py"
