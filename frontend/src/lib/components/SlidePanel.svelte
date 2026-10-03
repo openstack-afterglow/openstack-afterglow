@@ -37,9 +37,10 @@
   let viewportWidth = $state(typeof window === 'undefined' ? 0 : window.innerWidth);
   function sidebarWidthPixels(): number {
     const root = getComputedStyle(document.documentElement);
-    const value = root.getPropertyValue('--app-sidebar-width').trim();
+    const value = root.getPropertyValue('--app-sidebar-offset').trim();
     if (value.endsWith('rem')) return parseFloat(value) * parseFloat(root.fontSize);
-    return parseFloat(value) || 240;
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : 240;
   }
 
   function maxPanelWidth(): number {
@@ -124,7 +125,7 @@
 <!-- Mobile covers the viewport; tablet/desktop preserve shared header/sidebar offsets. -->
 <div
   use:dialogFocus={{ enabled: !isDesktop, onEscape: onClose, initialFocus: '[data-slide-panel-close]' }}
-  class="app-panel-frame fixed z-[var(--z-modal)] md:z-[var(--z-panel)]"
+  class="app-panel-frame fixed z-[var(--z-modal)] flex justify-end md:z-[var(--z-panel)]"
   role="dialog"
   aria-modal={isDesktop ? undefined : 'true'}
   aria-label={labelledBy ? undefined : ariaLabel}
@@ -145,8 +146,8 @@
   <div
     bind:this={panelEl}
     data-tour={dataTour}
-    class="@container/panel absolute inset-y-0 right-0 w-full overflow-y-auto border-l border-line bg-surface-raised shadow-[var(--shadow-restraint)] {width}"
-    style={isDesktop && widthPx !== null ? `width: ${clampPanelWidth(widthPx)}px; max-width: 100%` : ''}
+    class="@container/panel relative h-full min-w-0 overflow-y-auto border-l border-line bg-surface-raised shadow-[var(--shadow-restraint)] {width}"
+    style={isDesktop && widthPx !== null ? `width: ${widthPx}px; max-width: 100%` : ''}
     transition:fly={{ x: 400, duration: motionDuration(MOTION_DURATION_MS.panel), opacity: 1 }}
   >
     <button

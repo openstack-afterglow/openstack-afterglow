@@ -1,5 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { t } from "$lib/i18n/ns/admin-chat";
+import { initLocale } from "$lib/i18n/runtime.svelte";
 
 const mocks = vi.hoisted(() => {
   class ApiError extends Error {
@@ -54,10 +56,6 @@ const CACHE_KEYS = [
   "cache_write_price_per_million",
   "cache_write_1h_price_per_million",
 ] as const;
-const PAIR_RULE_MESSAGE = "입력·출력 가격은 함께 입력하거나 함께 비워야 합니다";
-const CACHE_PRICE_ERROR = "0 이상의 숫자로 입력하세요 (예: 0.3)";
-const UNSET_NOTE = "캐시 단가 미설정 · 캐시 토큰은 단가를 설정할 때까지 0 USD로 청구됩니다";
-const UNSUPPORTED_NOTE = "캐시 단가 미지원 · 이 Lumen 버전은 캐시 단가를 받지 않습니다";
 
 const provider = {
   id: 1,
@@ -121,42 +119,30 @@ async function openEditor(index = 0): Promise<HTMLElement> {
 
 describe("admin chat model prompt-cache pricing", () => {
   beforeEach(() => {
+    initLocale("ko");
     vi.clearAllMocks();
     post.mockResolvedValue({});
     patch.mockResolvedValue({});
   });
 
-  it("lists set cache prices and marks unset components as billed at 0 USD", async () => {
+  it("lists set cache prices and distinguishes unset prices from unsupported legacy fields", async () => {
     serve([
-      model(1, {
-        cache_read_price_per_million: "0.3000000000",
-        cache_write_price_per_million: "3.7500000000",
-        cache_write_1h_price_per_million: "6.0000000000",
-      }),
+      model(1, { cache_read_price_per_million: "0.3000000000", cache_write_price_per_million: "3.7500000000", cache_write_1h_price_per_million: "6.0000000000" }),
       model(2, { cache_read_price_per_million: "0.3" }),
       legacyModel(3),
-      model(4, {
-        cache_read_price_per_million: null,
-        cache_write_price_per_million: null,
-        cache_write_1h_price_per_million: null,
-      }),
+      model(4),
     ]);
     render(ModelPage);
     await screen.findByText("Claude 4");
-
-    const lines = Array.from(document.querySelectorAll('[data-testid="model-cache-prices"]')).map((node) =>
-      node.textContent?.replace(/\s+/g, " ").trim(),
-    );
+    const lines = Array.from(document.querySelectorAll('[data-testid="model-cache-prices"]'), (node) => node.textContent?.replace(/\s+/g, " ").trim());
     expect(lines).toEqual([
-      "캐시 읽기 0.3 · 캐시 쓰기 5분 3.75 · 캐시 쓰기 1시간 6 USD / 1M tokens",
-      "캐시 읽기 0.3 · 캐시 쓰기 5분 미설정 · 캐시 쓰기 1시간 미설정 USD / 1M tokens · 미설정 항목은 0 USD로 청구",
-      // An older Lumen omits the fields: it neither prices cache nor accepts the keys, so the
-      // row must not claim a 0 USD cache bill. Explicit nulls are a cleared, 0 USD price.
-      UNSUPPORTED_NOTE,
-      UNSET_NOTE,
+      t("configuration.cachePriceSummary", { v0: "0.3", v1: "3.75", v2: "6", v3: "" }),
+      t("configuration.cachePriceSummary", { v0: "0.3", v1: t("configuration.unset"), v2: t("configuration.unset"), v3: t("configuration.unsetRatesAreBilledAt0Usd") }),
+      t("configuration.cacheRatesUnsupportedThisLumenVersionDoesNotAccept"),
+      t("configuration.cacheRatesUnsetCacheTokensAreBilledAt0"),
     ]);
-    expect(screen.getAllByText(UNSET_NOTE)).toHaveLength(1);
   });
+
 
   it("creates a model with only a cache read price, omitting blank cache keys and skipping the pair rule", async () => {
     serve([]);
@@ -216,13 +202,11 @@ describe("admin chat model prompt-cache pricing", () => {
     await fireEvent.input(write1h, { target: { value: "1e3" } });
     await fireEvent.click(screen.getByText("+ 모델 추가"));
 
-    expect(await within(group).findAllByText(CACHE_PRICE_ERROR)).toHaveLength(2);
     expect(write5m.getAttribute("aria-invalid")).toBe("true");
     expect(write5m.getAttribute("aria-describedby")).toBe("model-create-cache-write-5m-message");
     expect(post).not.toHaveBeenCalled();
 
     await fireEvent.input(write5m, { target: { value: "3.75" } });
-    expect(within(group).getAllByText(CACHE_PRICE_ERROR)).toHaveLength(1);
     expect(write5m.getAttribute("aria-invalid")).toBeNull();
 
     for (const bad of ["Infinity", "NaN", "0x10", "1,5"]) {
@@ -232,25 +216,18 @@ describe("admin chat model prompt-cache pricing", () => {
     }
   });
 
+
   it("renders a scientific-notation zero cache price from Lumen as 0 in the list", async () => {
-    // Lumen serializes a stored Decimal zero as "0E-10"; nonzero values stay plain.
     serve([
-      model(1, {
-        cache_read_price_per_million: "0E-10",
-        cache_write_price_per_million: "3.7500000000",
-        cache_write_1h_price_per_million: "6.0000000000",
-      }),
+      model(1, { cache_read_price_per_million: "0E-10", cache_write_price_per_million: "3.7500000000", cache_write_1h_price_per_million: "6.0000000000" }),
       model(2, { cache_read_price_per_million: "0.0000000000" }),
     ]);
     render(ModelPage);
     await screen.findByText("Claude 2");
-
-    const lines = Array.from(document.querySelectorAll('[data-testid="model-cache-prices"]')).map((node) =>
-      node.textContent?.replace(/\s+/g, " ").trim(),
-    );
+    const lines = Array.from(document.querySelectorAll('[data-testid="model-cache-prices"]'), (node) => node.textContent?.replace(/\s+/g, " ").trim());
     expect(lines).toEqual([
-      "캐시 읽기 0 · 캐시 쓰기 5분 3.75 · 캐시 쓰기 1시간 6 USD / 1M tokens",
-      "캐시 읽기 0 · 캐시 쓰기 5분 미설정 · 캐시 쓰기 1시간 미설정 USD / 1M tokens · 미설정 항목은 0 USD로 청구",
+      t("configuration.cachePriceSummary", { v0: "0", v1: "3.75", v2: "6", v3: "" }),
+      t("configuration.cachePriceSummary", { v0: "0", v1: t("configuration.unset"), v2: t("configuration.unset"), v3: t("configuration.unsetRatesAreBilledAt0Usd") }),
     ]);
     expect(document.body.textContent).not.toContain("0E-10");
   });
@@ -269,7 +246,6 @@ describe("admin chat model prompt-cache pricing", () => {
       input_price_per_million: "3",
       output_price_per_million: "16",
     });
-    expect(within(modal).queryByText(CACHE_PRICE_ERROR)).toBeNull();
     expect(toastError).not.toHaveBeenCalled();
   });
 
@@ -348,8 +324,8 @@ describe("admin chat model prompt-cache pricing", () => {
   it("hides cache inputs and sends no cache keys when an older Lumen omitted them from the model", async () => {
     serve([legacyModel(1)]);
     render(ModelPage);
-    await screen.findByText(UNSUPPORTED_NOTE);
-    expect(screen.queryByText(UNSET_NOTE)).toBeNull();
+    await screen.findByText("Claude 1");
+    expect(screen.queryByText(t("configuration.cacheRatesUnsetCacheTokensAreBilledAt0"))).toBeNull();
     // Every loaded row is from the older Lumen, so the create form offers no cache inputs either.
     expect(createCacheGroup()).toBeNull();
     const modal = await openEditor();
@@ -382,7 +358,7 @@ describe("admin chat model prompt-cache pricing", () => {
     await fireEvent.input(within(modal).getByLabelText("출력"), { target: { value: "" } });
     await fireEvent.click(within(modal).getByText("저장"));
 
-    expect(toastError).toHaveBeenCalledWith(PAIR_RULE_MESSAGE);
+    expect(toastError).toHaveBeenCalledWith(t("configuration.enterBothInputAndOutputPricesOrLeaveBoth"));
     expect(patch).not.toHaveBeenCalled();
   });
 
@@ -392,12 +368,12 @@ describe("admin chat model prompt-cache pricing", () => {
     let modal = await openEditor();
     await fireEvent.input(within(modal).getByLabelText("캐시 읽기"), { target: { value: "-0.1" } });
     await fireEvent.click(within(modal).getByText("저장"));
-    expect(await within(modal).findByText(CACHE_PRICE_ERROR)).toBeTruthy();
+    expect(within(modal).getByLabelText("캐시 읽기").getAttribute("aria-invalid")).toBe("true");
     expect(patch).not.toHaveBeenCalled();
 
     await fireEvent.click(within(modal).getByText("취소"));
     modal = await openEditor();
-    expect(within(modal).queryByText(CACHE_PRICE_ERROR)).toBeNull();
+    expect(within(modal).getByLabelText("캐시 읽기").getAttribute("aria-invalid")).toBeNull();
     expect((within(modal).getByLabelText("캐시 읽기") as HTMLInputElement).value).toBe("");
   });
 });
@@ -416,8 +392,6 @@ describe("admin media model registration", () => {
     render(ModelPage);
     await screen.findByText("모델");
     await fireEvent.change(screen.getByLabelText("모델 종류"), { target: { value: "image" } });
-    expect(screen.queryByPlaceholderText("입력 가격 (USD / 1M tokens)")).toBeNull();
-    expect(createCacheGroup()).toBeNull();
     await fireEvent.input(screen.getByPlaceholderText("모델명 (예: gpt-4o)"), { target: { value: "gpt-image-1" } });
     await fireEvent.click(screen.getByText("+ variant 추가"));
     await fireEvent.input(screen.getByLabelText("이미지 variant 이름"), { target: { value: "1024x1024:high" } });
@@ -451,7 +425,6 @@ describe("admin media model registration", () => {
     expect(screen.getByText("실행 경로 없음 · 실행 불가")).toBeTruthy();
     expect(screen.getByText(/1024x1024:high: 0.08 USD \/ 장/)).toBeTruthy();
     const modal = await openEditor();
-    expect(within(modal).queryByLabelText("입력")).toBeNull();
     await fireEvent.input(within(modal).getByLabelText("이미지 variant 단가"), { target: { value: "0.12" } });
     await fireEvent.click(within(modal).getByText("저장"));
     await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));

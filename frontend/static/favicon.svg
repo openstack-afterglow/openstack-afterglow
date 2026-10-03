@@ -1,0 +1,84 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 64 64"
+  role="img"
+  aria-label="Afterglow"
+>
+  <defs>
+    <linearGradient
+      id="bg"
+      x1="8"
+      y1="6"
+      x2="56"
+      y2="58"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop offset="0" stop-color="#FF9A32"/>
+      <stop offset="0.48" stop-color="#F4512C"/>
+      <stop offset="1" stop-color="#29204F"/>
+    </linearGradient>
+
+    <linearGradient
+      id="sun"
+      x1="32"
+      y1="13"
+      x2="32"
+      y2="33"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop offset="0" stop-color="#FFF27A"/>
+      <stop offset="0.52" stop-color="#FFC443"/>
+      <stop offset="1" stop-color="#FF7733"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect
+    x="2"
+    y="2"
+    width="60"
+    height="60"
+    rx="14"
+    fill="url(#bg)"
+  />
+
+  <!-- Sun -->
+  <path
+    d="
+      M15 32
+      C15 22.6 22.6 15 32 15
+      C41.4 15 49 22.6 49 32
+      H15Z
+    "
+    fill="url(#sun)"
+  />
+
+  <!-- Horizon -->
+  <rect
+    x="12"
+    y="35"
+    width="40"
+    height="4"
+    rx="2"
+    fill="#FFD45A"
+  />
+
+  <!-- Reflections -->
+  <rect
+    x="19"
+    y="43"
+    width="26"
+    height="3.5"
+    rx="1.75"
+    fill="#FFC14D"
+  />
+
+  <rect
+    x="26"
+    y="49"
+    width="12"
+    height="3"
+    rx="1.5"
+    fill="#FFA63C"
+  />
+</svg>

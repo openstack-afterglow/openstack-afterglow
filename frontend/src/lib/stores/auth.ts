@@ -5,6 +5,8 @@ import type { MockupProfileId } from '$lib/mockup/contracts';
 // /api/auth/me 검증이 성공하면 true. 로그아웃/clearAuth 시 false.
 export const authReady = writable(false);
 export const logoutInProgress = writable(false);
+// Clears project-private views before rescope starts, not after its response arrives.
+export const projectSwitching = writable(false);
 
 // Transient verification failure for this token only; never persisted as credentials.
 export const authRecovery = writable<{ token: string; retryAt: number } | null>(null);

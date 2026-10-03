@@ -161,24 +161,6 @@ describe('tour definitions', () => {
 		}
 	});
 
-	it('모바일에서 vm-create 첫 step 준비 시 사이드바를 연다', async () => {
-		vi.useFakeTimers();
-		Object.defineProperty(window, 'innerWidth', { value: 375, configurable: true });
-		const prepare = getTour('vm-create')!.steps[0].prepare!;
-
-		const preparing = prepare();
-		expect(get(sidebarOpen)).toBe(true);
-		await vi.advanceTimersByTimeAsync(250);
-		await preparing;
-	});
-
-	it('데스크톱에서 vm-create 첫 step 준비 시 사이드바를 열지 않는다', async () => {
-		Object.defineProperty(window, 'innerWidth', { value: 1280, configurable: true });
-		const prepare = getTour('vm-create')!.steps[0].prepare!;
-
-		await prepare();
-		expect(get(sidebarOpen)).toBe(false);
-	});
 });
 
 

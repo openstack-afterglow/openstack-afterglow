@@ -28,6 +28,16 @@
   사용 금지. 전이 상태 mutation 에는 invalidate() 만 사용한다.
 - 임의 set(): mutation 핸들러에서 직접 backend.set() / backend.get() 후 set() 패턴
   금지 — 위 두 헬퍼를 통해서만 캐시에 쓴다.
+
+Invalidation ordering (same process/event loop, successful backend I/O):
+- invalidate detaches old flights without cancelling their origin callers.
+- Old flight chains may return their snapshots, but lose cache write/delete rights.
+- Invalidation drains already-dispatched cache I/O, not outstanding origin work.
+- Refresh remains ordered within a flight chain; cache-disabled calls bypass it.
+- Flight fences exist only for active work, not in a persistent generation map.
+- Redis SCAN still determines glob deletions. Redis-specific classes/escapes
+  conservatively fence extra local flights to include keys not yet stored.
+- Other workers and direct backend/write-through writers are not fenced.
 """
 
 from __future__ import annotations
@@ -36,6 +46,8 @@ import asyncio
 import json
 import logging
 from collections.abc import Callable
+from dataclasses import dataclass
+from fnmatch import fnmatchcase
 from typing import Any
 
 import redis.asyncio as aioredis
@@ -51,7 +63,23 @@ logger = logging.getLogger(__name__)
 
 
 _backend: Cache | None = None
-_inflight: dict[tuple[int, str], asyncio.Task[Any]] = {}
+
+
+@dataclass(eq=False)
+class _Flight:
+    backend: Cache
+    key: str
+    # Refreshes share a fence with their predecessors. Only cache I/O, never
+    # origin work, must finish before invalidation can delete the stored value.
+    task: asyncio.Task[Any] | None = None
+    io: asyncio.Task[Any] | None = None
+    valid: bool = True
+
+
+_inflight: dict[tuple[int, str], _Flight] = {}
+# Detached chains stay reachable only until their existing callers complete, so
+# overlapping invalidations also drain writes fenced by an earlier invalidation.
+_active_flights: set[_Flight] = set()
 
 
 def _get_backend() -> Cache:
@@ -68,9 +96,15 @@ def get_backend() -> Cache:
 
 
 def set_backend(backend: Cache | None) -> None:
-    """테스트 전용 — 백엔드 주입 / 리셋."""
+    """테스트 전용 — 백엔드 주입 / 리셋; outstanding origin callers are not cancelled.
+
+    Fences future writes, but cannot retract I/O already sent to the old backend.
+    Tests must drain such I/O before reusing that backend.
+    """
     global _backend
     _backend = backend
+    for flight in _active_flights:
+        flight.valid = False
     _inflight.clear()
 
 
@@ -106,6 +140,7 @@ async def _load_and_store(
     key: str,
     ttl: int,
     fn: Callable[[], Any],
+    flight: _Flight,
 ) -> Any:
     metrics.increment("cache.miss")
     if asyncio.iscoroutinefunction(fn):
@@ -113,12 +148,14 @@ async def _load_and_store(
     else:
         result = await asyncio.to_thread(fn)
 
-    try:
-        payload = json.dumps(_make_serializable(result))
-        await backend.set(key, payload, ttl)
-    except Exception as e:
-        metrics.increment("cache.error")
-        logger.warning("캐시 쓰기 실패 (%s): %s", key, e)
+    if flight.valid:
+        try:
+            payload = json.dumps(_make_serializable(result))
+            flight.io = asyncio.create_task(backend.set(key, payload, ttl))
+            await flight.io
+        except Exception as e:
+            metrics.increment("cache.error")
+            logger.warning("캐시 쓰기 실패 (%s): %s", key, e)
 
     return result
 
@@ -129,6 +166,7 @@ async def _refresh_after(
     ttl: int,
     fn: Callable[[], Any],
     previous: asyncio.Task[Any] | None,
+    flight: _Flight,
 ) -> Any:
     if previous is not None:
         try:
@@ -136,19 +174,25 @@ async def _refresh_after(
         except (Exception, asyncio.CancelledError):
             pass
 
-    try:
-        await backend.delete(key)
-    except Exception:
-        pass
-    return await _load_and_store(backend, key, ttl, fn)
+    if flight.valid:
+        try:
+            flight.io = asyncio.create_task(backend.delete(key))
+            await flight.io
+        except Exception:
+            pass
+    return await _load_and_store(backend, key, ttl, fn, flight)
 
 
-def _track_flight(flight_key: tuple[int, str], task: asyncio.Task[Any]) -> None:
-    _inflight[flight_key] = task
+def _track_flight(flight_key: tuple[int, str], flight: _Flight, task: asyncio.Task[Any]) -> None:
+    flight.task = task
+    _inflight[flight_key] = flight
+    _active_flights.add(flight)
 
     def _clear_flight(done: asyncio.Task[Any]) -> None:
-        if _inflight.get(flight_key) is done:
+        if _inflight.get(flight_key) is flight and flight.task is done:
             _inflight.pop(flight_key, None)
+        if flight.task is done:
+            _active_flights.discard(flight)
         try:
             done.exception()
         except asyncio.CancelledError:
@@ -184,9 +228,9 @@ async def cached_call(
     flight_key = (id(loop), key)
 
     if refresh:
-        previous = _inflight.get(flight_key)
-        task = loop.create_task(_refresh_after(backend, key, ttl, fn, previous))
-        _track_flight(flight_key, task)
+        flight = _inflight.get(flight_key) or _Flight(backend, key)
+        task = loop.create_task(_refresh_after(backend, key, ttl, fn, flight.task, flight))
+        _track_flight(flight_key, flight, task)
         return await asyncio.shield(task)
 
     # 1) 캐시 hit 시도
@@ -207,12 +251,14 @@ async def cached_call(
     # 2) 캐시 미스 — 같은 프로세스/이벤트 루프의 동일 키 조회를 single-flight로 합친다.
     # Redis cache가 동시에 만료될 때 Keystone/OpenStack origin 호출이 요청 수만큼
     # 증폭되지 않도록 하되, 한 호출자의 취소가 공유 origin 작업을 취소하지 않게 한다.
-    task = _inflight.get(flight_key)
-    if task is None:
-        task = loop.create_task(_load_and_store(backend, key, ttl, fn))
-        _track_flight(flight_key, task)
+    flight = _inflight.get(flight_key)
+    if flight is None:
+        flight = _Flight(backend, key)
+        task = loop.create_task(_load_and_store(backend, key, ttl, fn, flight))
+        _track_flight(flight_key, flight, task)
     else:
         metrics.increment("cache.coalesced")
+        task = flight.task
 
     return await asyncio.shield(task)
 
@@ -223,11 +269,36 @@ async def invalidate(pattern: str) -> None:
     KEYS 대신 SCAN 을 사용해 Redis 블로킹을 방지. 와일드카드(`*`) 가 없는 경우
     delete() 단일 호출로 최적화한다. backend 가 RedisBackend 가 아닌 경우
     (Memcached v2) 와일드카드 패턴은 무시되고 정확 키만 삭제된다.
+
+    Local flights are detached and fenced before any await. Old callers may
+    finish, but cannot cache their snapshots or delete a newer cache value.
+    Already-dispatched cache I/O is drained before deletion. This is a local
+    event-loop ordering guarantee, not a distributed-worker mutation fence.
     """
     backend = _get_backend()
+    loop = asyncio.get_running_loop()
+    glob = any(char in pattern for char in "*?[")
+    pending_io = []
+    for flight in list(_active_flights):
+        task = flight.task
+        if flight.backend is not backend or task is None or task.get_loop() is not loop:
+            continue
+        key = flight.key
+        # Redis character classes/escapes differ from fnmatch. Conservatively
+        # fence all local flights for those patterns; SCAN below remains exact.
+        matches = key == pattern if not glob else ("[" in pattern or "\\" in pattern or fnmatchcase(key, pattern))
+        if matches:
+            flight.valid = False
+            if flight.io is not None and not flight.io.done():
+                pending_io.append(flight.io)
+    for flight_key, flight in list(_inflight.items()):
+        if not flight.valid:
+            _inflight.pop(flight_key)
     try:
+        if pending_io:
+            await asyncio.gather(*(asyncio.shield(io) for io in pending_io), return_exceptions=True)
         # 와일드카드가 없으면 단일 키 삭제로 처리
-        if "*" not in pattern and "?" not in pattern and "[" not in pattern:
+        if not glob:
             await backend.delete(pattern)
             return
 

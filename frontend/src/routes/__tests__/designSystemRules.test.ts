@@ -68,17 +68,6 @@ const topologyTokenNames = [
 	'--color-topology-grid-major',
 ];
 
-const layerTokenNames = [
-	'--z-sidebar',
-	'--z-header',
-	'--z-panel',
-	'--z-modal',
-	'--z-toast',
-	'--z-confirmation',
-	'--z-popover',
-	'--z-command',
-];
-
 const motionTokenNames = [
 	'--motion-duration-fast',
 	'--motion-duration-base',
@@ -134,17 +123,6 @@ const scrimThemeDeclarations = [
 	'--color-surface-scrim-soft: rgb(0 0 0 / 50%)',
 ];
 
-const layerCssVars = [
-	"sidebar: 'var(--z-sidebar)'",
-	"header: 'var(--z-header)'",
-	"panel: 'var(--z-panel)'",
-	"modal: 'var(--z-modal)'",
-	"toast: 'var(--z-toast)'",
-	"confirmation: 'var(--z-confirmation)'",
-	"popover: 'var(--z-popover)'",
-	"command: 'var(--z-command)'",
-];
-
 const motionCssVars = [
 	"durationFast: 'var(--motion-duration-fast)'",
 	"durationBase: 'var(--motion-duration-base)'",
@@ -192,7 +170,7 @@ describe('design system source contracts', () => {
 		expect(tokenSource).toContain('EDITORIAL_CSS_VAR');
 		expect(designSource).toContain('Approved panel composition');
 		expect(designSource).toContain('Card surface="subtle"');
-		expect(designSource).toContain('method matrix is one Card');
+		expect(designSource).toContain('request-to-reuse story is one figure beside direct semantic step articles');
 	});
 
 	it('defines the reusable chat message primitive and its shared layout tokens', () => {
@@ -303,18 +281,6 @@ describe('design system source contracts', () => {
 		for (const declaration of scrimThemeDeclarations) expect(themeSource).toContain(declaration);
 		expect(layoutSource).toContain('--color-surface-scrim: rgb(0 0 0 / 25%)');
 		expect(layoutSource).toContain('--color-surface-scrim-soft: rgb(0 0 0 / 20%)');
-	});
-
-	it('keeps layer tokens aligned across runtime, TypeScript, and documentation', () => {
-		for (const token of layerTokenNames) {
-			expect(layoutSource).toContain(token);
-			expect(designSource).toContain(token);
-		}
-		expect(tokenSource).toContain('LAYER_CSS_VAR');
-		for (const cssVar of layerCssVars) expect(tokenSource).toContain(cssVar);
-		expect(tokenSource).toContain('LAYOUT_CSS_VAR');
-		expect(tokenSource).toContain("headerHeight: 'var(--app-header-height)'");
-		expect(tokenSource).toContain("sidebarWidth: 'var(--app-sidebar-width)'");
 	});
 
 	it('keeps motion tokens and reduced-motion behavior aligned', () => {

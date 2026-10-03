@@ -5,9 +5,9 @@
 </script>
 
 <Button
-	variant="ghost"
-	size="icon"
-	class="!size-11 lg:!size-8"
+	variant="secondary"
+	size="sm"
+	class="h-8"
 	onclick={() => cloudShell.openConsent()}
 	ariaLabel={t('shell.open')}
 	title={t('shell.open')}
@@ -16,4 +16,5 @@
 	<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
 		<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M5 7l4.5 5L5 17M12 17h7" />
 	</svg>
+	Cloud Shell
 </Button>

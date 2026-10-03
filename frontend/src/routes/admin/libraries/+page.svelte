@@ -953,6 +953,7 @@
   <div data-tour="admin-library-header">
     <PageHeader title={t('page.title')} breadcrumb="Palimpsest" subtitle={t('page.subtitle')}>
       {#snippet actions()}
+        <Button variant="secondary" href="/palimpsest/packages">{t('actions.projectPackages')}</Button>
         <TutorialStartButton tour="admin-library" compactOnMobile />
         <button
           onclick={() => loadAll(true)}

@@ -108,6 +108,8 @@ async def create_project_for_user(
     )
 
     await cache.invalidate(keys.user_key(user_id, "projects"))
+    await cache.invalidate("afterglow:admin:projects")
+    await cache.invalidate("afterglow:admin:project_names")
     return project
 
 

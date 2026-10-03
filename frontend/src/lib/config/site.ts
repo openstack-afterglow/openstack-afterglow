@@ -11,10 +11,10 @@ export type SiteConfigPatch = Omit<Partial<PublicSiteConfig>, 'services' | 'runt
 const DEFAULTS: SiteConfig = {
 	site_name: 'Afterglow',
 	site_description: 'OpenStack VM + OverlayFS 배포 플랫폼',
-	logo_path: '/logo.png',
-	logo_dark_path: '/logo-white.png',
-	logo_light_path: '/logo-dark.png',
-	favicon_path: '/favicon.ico',
+	logo_path: '/afterglow-logo.svg',
+	logo_dark_path: '/afterglow-logo.svg',
+	logo_light_path: '/afterglow-logo.svg',
+	favicon_path: '/favicon.svg',
 	refresh_interval_ms: 5000,
 	services: { magnum: false, manila: false, zun: false, cloud_shell: false, k3s: false, trove: false, swift: false, barbican: false, waygate: false, chat: false, mcp: false },
 	runtime: {

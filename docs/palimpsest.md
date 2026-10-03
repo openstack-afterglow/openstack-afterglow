@@ -204,8 +204,11 @@ GitHub context는 커밋 SHA를 고정하고 archive path traversal·link·speci
 
 ## 4.5. 허브 (레이어 레지스트리)
 
-레이어를 digest 로 저장·검색·배포한다. `[palimpsest] hub_local_path` 를 설정해야 활성화되며,
-미설정 배포에서는 허브 엔드포인트가 503 을 준다.
+레이어를 digest로 저장·검색·배포하는 기존 Hub와 4.6의 프로젝트 package registry는 다른 모델이다.
+현행 Afterglow는 독립 Hub의 BFF이며 `service_palimpsest_enabled`로 기능을 제한한다.
+일반 legacy JWT Hub 경로는 설정 URL 또는 caller catalog를 사용하지만, browser package BFF와 native key gateway는
+신뢰된 `SERVICE_PALIMPSEST_INTERNAL_URL` / `[services] palimpsest_internal_url`이 필수이고 없거나 비면 503이다.
+이전 Afterglow 로컬 설정 `[palimpsest] hub_local_path`는 현행 Hub 활성화 조건이 아니다.
 
 ### 저장 배치
 
@@ -213,14 +216,18 @@ blob store 는 **OCI image-layout 그대로**다. 덕분에 번들이 곧 디렉
 펼치면 바로 레이어 경로가 된다.
 
 ```
-<hub_local_path>/blobs/sha256/<hex>     # 레이어 blob · config · manifest (전부 콘텐츠 주소)
-<hub_local_path>/uploads/<session_id>   # 진행 중인 업로드 (완료 시 blobs/ 로 승격)
+<Hub blob store>/blobs/sha256/<hex>     # 레이어 blob · config · manifest (전부 콘텐츠 주소)
+<Hub blob store>/uploads/<session_id>   # 진행 중인 업로드 (완료 시 blobs/ 로 승격)
 ```
 
-소비 VM 이 마운트하는 Manila share 와는 **다른 저장소**다. 허브는 백엔드가 바이트를 직접
-스트리밍 read/write 해야 성립하고, share 는 VM 이 마운트하는 용도이기 때문이다.
+소비 VM이 마운트하는 Manila share와는 **다른 저장소**다. 독립 Hub가 blob 저장·read/write를 소유하고,
+Afterglow는 인증된 BFF로 바이트를 스트리밍한다. Afterglow 백엔드가 Hub filesystem을 소유하거나 직접 마운트하지 않는다.
 
 ### 엔드포인트
+
+아래 `/hub/...`는 Afterglow `/api/v1/palimpsest` 아래의 legacy JWT Hub 경로다.
+프로젝트 패키지의 browser API와 native key allowlist는 별도이며 이 레이어 API 전체를 key에 개방하지 않는다.
+
 
 | 메서드·경로 | 하는 일 |
 |---|---|
@@ -275,6 +282,60 @@ mediaType 은 프로젝트 고유값을 쓴다 — 표준 도구가 squashfs 를
   백엔드가 마운트하지 않으므로, digest 백필과 같은 임시 Builder VM 경유 전송이 필요하다. 별도 작업.
   (로컬에서 빌드해 올리는 경로는 `scripts/palimpsest.py` 로 이미 가능하다.)
 - Swift/S3 드라이버, 레이어 서명(cosign 등), `/v2/` OCI Distribution 호환 레지스트리.
+
+## 4.6. 프로젝트 패키지와 내 접근 키 (`/palimpsest/packages`)
+
+사용자 Palimpsest 메뉴의 **프로젝트 패키지**는 선택한 프로젝트의 **비공개 Hub inventory**다.
+OCI 이미지와 런타임 번들을 조회하며, CLI로 게시한 패키지는 별도 승인 없이 나타난다.
+관리자 `/admin/libraries`의 Dockerfile 빌드·artifact/profile·VM 소비 파이프라인이나 기존 VM 위저드의
+library 카탈로그를 대체하지 않는다. 관리자 화면의 **프로젝트 패키지 / 접근 키** 링크도 이 페이지로 연결된다.
+
+- **목록**: `xl` 이상은 **패키지 / 유형**, **태그 / digest**, **플랫폼**,
+  **검증된 크기 / 최근 게시**, **작업**의 다섯 열 표이고, 그 아래는 카드다.
+  표의 태그·최근 digest는 앞 19자(`sha256:` + 앞 12자리 hex) 뒤에 `…`를 붙여 줄인다.
+  title·카드·상세·복사 값은 전체 digest를 유지한다. 크기는 최신 버전의 검증된 descriptor graph 크기다.
+- **상세 / 이력**: 버전 이력과 태그 해석, 전체 root digest·플랫폼·게시자/시각·미디어 유형,
+  graph/다운로드 크기, 클라이언트 출처 정보와 검증된 descriptor graph를 보여 준다.
+  이 root digest는 패키지 버전 식별자이며 위의 단일 `.sqsh` blob digest와 구별한다.
+  다운로드는 브라우저 access JWT와 선택 프로젝트로 `/api/v1/palimpsest/packages`의 버전 다운로드를
+  요청하는 인증된 tar 다운로드다. BFF는 현재 namespace와 버전 metadata의 project/package/digest를 먼저 대조한다.
+- **불변 참조 복사**: `<package_authority>/<namespace>/<package>@sha256:<64hex>` 형식이며,
+  Hub context가 반환한 신뢰된 `package_authority`만 사용한다. 근거는 Hub 운영자가 설정한 HTTPS
+  `palimpsest_hub_package_public_origin`의 authority(host[:port])다. 브라우저 origin·요청 Host·Afterglow/Hub
+  internal URL로 추측하거나 대체하지 않는다. authority가 `null`이면 복사만 비활성이고 조회·인증된 다운로드는 유지된다.
+- **namespace 등록**: 자동 등록하지 않는다. 미등록 상태에서 `capabilities.packages_write`가 있을 때만
+  사용자가 명시적으로 등록한다(`PUT /api/v1/palimpsest/packages/namespace`). 읽기 쉬운 namespace는 Hub 운영자의
+  `palimpsest_hub_package_namespace_bindings`에 namespace → 정확한 프로젝트 UUID/ID 바인딩이 필요하며,
+  프로젝트 표시 이름에서 유도하지 않는다. 기본 namespace도 프로젝트 ID에서 생성한다. project/user ID는
+  UUID로만 한정하지 않는 opaque 식별자이며 정규화·소문자 변환·하이픈 제거 없이 정확히 비교한다.
+- **내 접근 키**: `/api/v1/palimpsest/package-keys`로 현재 프로젝트에서 **인증된 본인이 소유한 키만**
+  발급·목록·폐기한다(프로젝트 소유자/관리자라는 이유로 다른 사용자의 키를 관리하지 않는다).
+  발급은 `keys_issue`로 제한하며 정확한 패키지 이름 또는 명시적 전체 프로젝트 범위, 패키지/캐시별 읽기·쓰기,
+  1–90일 만료를 선택한다. 쓰기 위임에는 `packages_write`가 필요하다. secret은 발급 응답에서 한 번만 표시하고
+  브라우저 메모리에만 보관하며, 명시적 닫기·탭/페이지 이동·pagehide·프로젝트 전환·로그아웃에서 화면 상태를 폐기한다.
+  이는 키 자체의 폐기(revoke)와 별개이며, 사용자가 복사한 클립보드/외부 저장소 값까지 지우는 것은 아니다.
+- **늦은 응답 차단**: `ProjectSelector.svelte`는 rescope 요청 전에 `auth.ts`의 `projectSwitching`을 설정한다.
+  패키지 controller는 이전 목록·상세·키·secret을 즉시 비우고 요청을 abort한다. project/user identity,
+  generation과 요청 lane 소유권을 대조하며, 별도 secret generation으로 닫힌 화면에 늦은 발급 응답이 secret을
+  다시 표시하지 못하게 한다. 같은 project/user의 JWT 갱신 자체는 identity 전환으로 취급하지 않는다.
+  공유 전환 상태는 selector의 unmount/remount에도 유지하여 동시 rescope를 막습니다. 전환 중 로그아웃·identity 변경이 있었다면 같은 사용자·프로젝트로 재로그인해도 이전 전환 응답을 적용하지 않고, 동일 identity의 JWT refresh는 허용합니다.
+
+브라우저 package 경로는 단일 Bearer access JWT만 받고 `ppk_v1_` 키와 `X-Auth-Token` 입력은 거부한다.
+BFF는 JWT·세션·선택 프로젝트의 정확한 project/user ID를 대조하고 원본 세션 Keystone subject token을 Hub에
+전달한다. 이 경로는 token exchange·admin override·project rescope·세션 token/scope 재작성을 하지 않는다.
+일반 ProjectSelector의 프로젝트 전환은 별도 인증 동작이며, 패키지 요청이 scope를 바꾸는 것과 구별한다.
+namespace 등록·키 소유권/위임 권한의 최종 인가는 Hub가 수행하고, Afterglow는 성공 응답의 소유권을 대조한다.
+
+일반 JWT의 `/api/v1/palimpsest/hub/...` catch-all은 기존 root/health·layers·images·image-exports·uploads·bundles·builds만 허용합니다. Native projects·keys·cache control과 `/auth/me`는 token exchange·rescope·upstream 호출 전에 403으로 거부합니다. Native browser 작업은 위 dedicated BFF를 사용하고, 기존 unauthenticated export-ticket 다운로드는 유지합니다.
+
+Native CLI key gateway는 단일 `Bearer ppk_v1_…`와 method/path allowlist를 사용합니다. 단일 `X-Project-Id`는 Hub로 그대로 전달해 key의 실제 scope와 대조하며, 같은 값의 중복 헤더도 401로 거부합니다. Browser JWT·Keystone 자격을 이 경로와 혼용하지 않습니다. 두 package transport는 명시적으로 설정된 trusted internal Hub URL만 사용하고 redirect 없이 `private, no-store`로 응답합니다. HTTPS는 `os_cacert` 또는 시스템 CA로 항상 검증하며 `os_insecure`로 비활성화하지 않습니다. CA/client 초기화나 transport 오류는 자격·내부 예외를 노출하지 않고 503으로 반환합니다.
+
+사용자 tutorial에는 native package fixture가 없으므로 해당 메뉴를 노출하지 않습니다. 일반 로그인 사용자의 프로젝트 패키지 탐색은 유지합니다.
+
+구현 근거: `frontend/src/routes/palimpsest/packages/+page.svelte`,
+`frontend/src/lib/stores/palimpsestPackagesController.svelte.ts`, `frontend/src/lib/api/palimpsestPackages.ts`,
+`backend/app/api/palimpsest/{packages,package_keys}.py`와 독립 Hub의 package registry/config.
+이 절은 현재 소스 계약을 설명하며 운영 환경의 실시간 검증 결과를 주장하지 않는다.
 
 ## 5. OverlayFS 제약 (변하지 않는 규칙)
 

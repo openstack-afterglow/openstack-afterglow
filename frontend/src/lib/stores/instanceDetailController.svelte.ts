@@ -2,7 +2,7 @@ import { get } from 'svelte/store';
 import { getContext, setContext } from 'svelte';
 import { auth, canWrite } from '$lib/stores/auth';
 import { api, ApiError } from '$lib/api/client';
-import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
+import { createAutoRefresh, type AutoRefreshController } from '$lib/utils/autoRefresh.svelte';
 import { isTransitional } from '$lib/utils/instanceStatus';
 import { confirmDialog } from '$lib/stores/confirm.svelte';
 import { toast } from '$lib/stores/toast';
@@ -13,7 +13,6 @@ import type { FloatingIpDetail, PortInfo, NetworkInfo } from '$lib/types/network
 import type { SecurityGroup } from '$lib/types/securityGroup';
 import type { Volume as VolumeInfo } from '$lib/types/volume';
 import type { FlavorOption } from '$lib/types/flavor';
-import type { SecurityGroupRule } from '$lib/types/securityGroup';
 
 interface VolumeAttachment {
 	volume_id: string;
@@ -38,13 +37,31 @@ export interface InstanceDetailControllerOpts {
 	onDelete: () => void;
 }
 
-export function createInstanceDetailController(opts: InstanceDetailControllerOpts) {
+interface MigrationInfo {
+	id: string | null;
+	source: string | null;
+	dest: string | null;
+	status: string | null;
+	type: string | null;
+	memory_percent: number | null;
+}
+
+interface MigrationStatus {
+	host: string | null;
+	migration: MigrationInfo | null;
+	error: string | null;
+}
+
+export function createInstanceDetailController(opts: InstanceDetailControllerOpts): InstanceDetailController {
 	// Domain state
 	let instance = $state<Instance | null>(null);
 	let floatingIps = $state<FloatingIpDetail[]>([]);
 	let interfaces = $state<PortInfo[]>([]);
 	let volumes = $state<VolumeAttachment[]>([]);
 	let allSecurityGroups = $state<SecurityGroup[]>([]);
+	let securityGroupPorts = $state<PortInfo[]>([]);
+	let securityGroupsLoading = $state(true);
+	let securityGroupsError = $state('');
 	let availableVolumes = $state<VolumeInfo[]>([]);
 	let availableNetworks = $state<NetworkInfo[]>([]);
 	let ownerDisplay = $state('');
@@ -74,19 +91,6 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 	let migrateError = $state('');
 
 	// 마이그레이션 추적 상태
-	interface MigrationInfo {
-		id: string | null;
-		source: string | null;
-		dest: string | null;
-		status: string | null;
-		type: string | null;
-		memory_percent: number | null;
-	}
-	interface MigrationStatus {
-		host: string | null;
-		migration: MigrationInfo | null;
-		error: string | null;
-	}
 	let migrationStatus = $state<MigrationStatus | null>(null);
 	let migrationStatusLoading = $state(false);
 
@@ -130,6 +134,11 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		return allSecurityGroups.find(sg => sg.id === id)?.name ?? id.slice(0, 8) + '...';
 	}
 
+	function securityGroupIdsForPort(port: PortInfo): string[] {
+		return securityGroupPorts.find(item => item.id === port.id)?.security_group_ids
+			?? port.security_group_ids ?? [];
+	}
+
 	function networkNameById(id: string): string {
 		return availableNetworks.find(n => n.id === id)?.name ?? id.slice(0, 12) + '...';
 	}
@@ -139,26 +148,19 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		return new Date(dt).toLocaleString(intlLocale());
 	}
 
-	function formatRule(r: SecurityGroupRule): string {
-		if (!r.protocol) return t(r.direction === 'ingress' ? 'controller.rule.ingressAll' : 'controller.rule.egressAll');
-		const proto = r.protocol.toUpperCase();
-		let port = '';
-		if (r.port_range_min != null && r.port_range_max != null) {
-			port = r.port_range_min === r.port_range_max
-				? ` ${r.port_range_min}` : ` ${r.port_range_min}-${r.port_range_max}`;
-		}
-		const remote = r.remote_ip_prefix ? ` ← ${r.remote_ip_prefix}` : '';
-		return t(r.direction === 'ingress' ? 'controller.rule.ingress' : 'controller.rule.egress', { protocol: proto, port, remote });
-	}
-
 	// Core fetch
-	async function fetchInstance(id: string, fetchOpts?: { silent?: boolean }) {
+	async function fetchInstance(id: string, fetchOpts?: { silent?: boolean; refreshSecurityGroups?: boolean }) {
 		if (fetchOpts?.silent) {
 			refreshing = true;
 		} else {
 			loading = true;
 			error = '';
+			allSecurityGroups = [];
+			securityGroupPorts = [];
+			securityGroupsLoading = true;
+			securityGroupsError = '';
 		}
+		if (fetchOpts?.refreshSecurityGroups) securityGroupsLoading = true;
 		const requestToken = tok();
 		const requestProjectId = opts.effectiveProjectId();
 		const generation = ++fetchGeneration;
@@ -177,14 +179,24 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			`/api/v1/instances/${id}/security-groups`,
 			requestToken,
 			requestProjectId,
-		).catch(() => ({ ports: [], security_groups: [] }));
+			fetchOpts?.refreshSecurityGroups ? { refresh: true } : undefined,
+		);
 		const allVolumesPromise = api.get<VolumeInfo[]>('/api/v1/volumes', requestToken, requestProjectId).catch(() => []);
 		const networksPromise = api.get<NetworkInfo[]>('/api/v1/networks', requestToken, requestProjectId).catch(() => []);
 		const ownerPromise = api.get<{ display: string }>(`/api/v1/instances/${id}/owner`, requestToken, requestProjectId).catch(() => ({ display: '' }));
 
 		void interfacesPromise.then((value) => { if (ownsRequest()) interfaces = value; });
 		void volumesPromise.then((value) => { if (ownsRequest()) volumes = value; });
-		void securityGroupsPromise.then((value) => { if (ownsRequest()) allSecurityGroups = value.security_groups; });
+		void securityGroupsPromise.then((value) => {
+			if (!ownsRequest()) return;
+			allSecurityGroups = value.security_groups;
+			securityGroupPorts = value.ports;
+			securityGroupsError = '';
+		}).catch((e) => {
+			if (ownsRequest()) securityGroupsError = e instanceof ApiError ? e.message : t('controller.securityGroup.fetchFailed');
+		}).finally(() => {
+			if (ownsRequest()) securityGroupsLoading = false;
+		});
 		void networksPromise.then((value) => { if (ownsRequest()) availableNetworks = value; });
 		void ownerPromise.then((value) => { if (ownsRequest()) ownerDisplay = value.display || ''; });
 		void Promise.all([instancePromise, fipsPromise]).then(([loadedInstance, fips]) => {
@@ -432,7 +444,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 				tok(),
 				ownPid()
 			);
-			await fetchInstance(instance.id, { silent: true });
+			await fetchInstance(instance.id, { silent: true, refreshSecurityGroups: true });
 		} catch (e) {
 			toast.error(t('controller.securityGroup.updateFailed', { message: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
@@ -630,6 +642,8 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		get interfaces() { return interfaces; },
 		get volumes() { return volumes; },
 		get allSecurityGroups() { return allSecurityGroups; },
+		get securityGroupsLoading() { return securityGroupsLoading; },
+		get securityGroupsError() { return securityGroupsError; },
 		get availableVolumes() { return availableVolumes; },
 		get availableNetworks() { return availableNetworks; },
 		get ownerDisplay() { return ownerDisplay; },
@@ -695,13 +709,86 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		abortMigration,
 		forceCompleteMigration,
 		sgNameById,
+		securityGroupIdsForPort,
 		networkNameById,
 		formatDate,
-		formatRule,
 	};
 }
 
-export type InstanceDetailController = ReturnType<typeof createInstanceDetailController>;
+export interface InstanceDetailController {
+	readonly instance: Instance | null;
+	readonly floatingIps: FloatingIpDetail[];
+	readonly interfaces: PortInfo[];
+	readonly volumes: VolumeAttachment[];
+	readonly allSecurityGroups: SecurityGroup[];
+	readonly securityGroupsLoading: boolean;
+	readonly securityGroupsError: string;
+	readonly availableVolumes: VolumeInfo[];
+	readonly availableNetworks: NetworkInfo[];
+	readonly ownerDisplay: string;
+	readonly loading: boolean;
+	readonly refreshing: boolean;
+	readonly error: string;
+	readonly deleting: boolean;
+	readonly actioning: string | null;
+	readonly consoleLog: string;
+	readonly logLoading: boolean;
+	logFull: boolean;
+	readonly consoleOpening: boolean;
+	readonly consoleOpenMessage: string;
+	readonly consoleOpenError: string;
+	readonly instanceId: string;
+	readonly effectiveProjectId: string | undefined;
+	readonly fixedIpsList: Instance['ip_addresses'];
+	readonly floatingIpsList: Instance['ip_addresses'];
+	readonly assignedPortIds: Set<string>;
+	readonly availableInterfaces: PortInfo[];
+	readonly passwordPrecheck: PasswordPrecheck | null;
+	readonly passwordPrecheckLoading: boolean;
+	readonly resizeFlavors: FlavorOption[];
+	readonly resizeFlavorsLoading: boolean;
+	readonly resizeLoading: boolean;
+	resizeError: string;
+	readonly migrateHosts: { name: string; state: string; status: string; cpu_model: string | null }[];
+	readonly migrateLoading: boolean;
+	migrateError: string;
+	readonly migrationStatus: MigrationStatus | null;
+	readonly migrationStatusLoading: boolean;
+	readonly detailPollAr: AutoRefreshController;
+	readonly consolePollAr: AutoRefreshController;
+	fetchInstance(id: string, options?: { silent?: boolean; refreshSecurityGroups?: boolean }): Promise<void>;
+	manualRefresh(): void;
+	loadConsoleLog(full?: boolean): Promise<void>;
+	toggleFullLog(): Promise<void>;
+	openConsole(): Promise<void>;
+	performAction(action: 'start' | 'stop' | 'reboot' | 'shelve' | 'unshelve'): Promise<void>;
+	deleteInstance(): Promise<void>;
+	assignFloatingIp(portId: string): Promise<void>;
+	releaseFloatingIp(fipId: string): Promise<void>;
+	attachVolume(volumeId: string): Promise<void>;
+	createAndAttachVolume(name: string, sizeGb: number): Promise<void>;
+	detachVolume(volumeId: string): Promise<void>;
+	setDeleteOnTermination(volumeId: string, next: boolean): Promise<void>;
+	attachInterface(netId: string): Promise<void>;
+	detachInterface(portId: string): Promise<void>;
+	saveSgEdit(portId: string, sgIds: string[]): Promise<void>;
+	loadResizeFlavors(): Promise<void>;
+	selectableResizeFlavor(flavorId: string): boolean;
+	doResize(flavorId: string): Promise<boolean>;
+	revertResize(): Promise<void>;
+	confirmResize(): Promise<void>;
+	fetchPasswordPrecheck(serverId: string): Promise<void>;
+	doSetPassword(password: string): Promise<string | null>;
+	loadMigrateHosts(type?: 'live' | 'cold'): Promise<void>;
+	doMigrate(type: 'live' | 'cold', host: string): Promise<boolean>;
+	loadMigrationStatus(serverId?: string): Promise<void>;
+	abortMigration(): Promise<void>;
+	forceCompleteMigration(): Promise<void>;
+	sgNameById(id: string): string;
+	securityGroupIdsForPort(port: PortInfo): string[];
+	networkNameById(id: string): string;
+	formatDate(date: string | null): string;
+}
 
 const INSTANCE_DETAIL_KEY = Symbol('instance-detail');
 

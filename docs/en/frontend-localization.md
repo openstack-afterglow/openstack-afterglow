@@ -88,6 +88,22 @@ location.reload();
 
 Key mode activates after hydration. Switching language remounts page content and can reset unsaved page forms. The header, expanded sidebar sections, VM creation panel and root-mounted Cloud Shell/upload state stay mounted. Existing toasts and stored error messages may keep the language captured when the event occurred. Review line wrapping, clipped buttons and accessible labels at narrow widths as well as desktop.
 
+Dashboard, administrator and Palimpsest layouts remount only page children inside `main`. Palimpsest package drafts and one-time issued secrets are discarded, so store a needed secret securely before changing language. Security-group unions retain policy semantics and ordering while calculating display labels in the active locale. The Korean suffix in image-style guidance is the actual provider prompt, not a missing translation.
+
+## Starting or resuming developer work
+
+Perform localization code changes only in the user-approved, dedicated `i18n` worktree. Every session must fetch the latest GitHub `dev`, merge it and resolve conflicts before translating newly added or changed surfaces. Preserve existing work; do not switch the shared checkout or rebase/force-push the published `i18n` branch.
+
+```bash
+git fetch origin dev
+git merge origin/dev
+git merge-base --is-ancestor origin/dev HEAD
+npm --prefix frontend run i18n:check
+npm --prefix frontend run i18n:scan
+```
+
+The initial post-merge checks identify new omissions and define the work scope. After updating translations, repeat the checks, relevant tests and actual four-locale UI verification. Fetch again before completion/push; if dev advanced, integrate and reverify. Record the incorporated dev SHA in OpenSpec and the completion report. Follow the detailed [agent development guide](../agent-development-guide.md). Spreadsheet contributors receive fresh CSV exports from maintainers working against this synchronized source.
+
 ## Developer contract
 
 `ns/<namespace>.ts` types keys from Korean JSON and eager-imports all four catalogs. Catalogs travel with code importing the namespace. Call `t()` from markup, `$derived`, getters or event-time functions, never module scope or SvelteKit `load`. The server locale initializes at the beginning of synchronous root layout rendering; translation outside that render can mix request languages.

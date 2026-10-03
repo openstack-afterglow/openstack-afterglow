@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from app.config import get_settings
 from app.main import app
 from app.services import site_branding
 
@@ -82,17 +83,25 @@ def _session_factory(store: dict[str, object]):
 
 
 @pytest.mark.asyncio
-async def test_public_site_config_returns_login_logo_defaults_when_db_is_unavailable(monkeypatch):
-    """Public site config must keep static login logo defaults when branding storage is offline."""
+async def test_public_site_config_preserves_operator_branding_when_db_is_unavailable(monkeypatch):
+    """Offline branding storage must not replace explicit operator configuration."""
+    configured_branding = {
+        "logo_path": "/operator-logo.png",
+        "logo_dark_path": "/operator-dark.png",
+        "logo_light_path": "/operator-light.png",
+        "favicon_path": "/operator-favicon.ico",
+    }
+    settings = get_settings()
+    for field, path in configured_branding.items():
+        monkeypatch.setattr(settings, field, path)
     monkeypatch.setattr(site_branding, "is_db_available", lambda: False)
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         resp = await ac.get("/api/v1/site-config")
 
     assert resp.status_code == 200
-    assert resp.json()["logo_path"] == "/logo.png"
-    assert resp.json()["logo_dark_path"] == "/logo-white.png"
-    assert resp.json()["logo_light_path"] == "/logo-dark.png"
+    payload = resp.json()
+    assert {field: payload[field] for field in configured_branding} == configured_branding
 
 
 @pytest.mark.asyncio
@@ -153,9 +162,12 @@ async def test_uploaded_branding_asset_uses_detected_content_type_and_public_ass
 
 
 @pytest.mark.asyncio
-async def test_admin_branding_reset_removes_asset_and_restores_public_default(admin_client, monkeypatch):
-    """A successful reset must remove the DB asset and make public config use the static fallback."""
+async def test_admin_branding_reset_removes_asset_and_restores_configured_fallback(admin_client, monkeypatch):
+    """Reset must remove the DB asset and restore the configured operator logo."""
     store: dict[str, object] = {}
+    settings = get_settings()
+    monkeypatch.setattr(settings, "logo_light_path", "/operator-light.png")
+    configured_fallback = settings.logo_light_path
     monkeypatch.setattr(site_branding, "is_db_available", lambda: True)
     monkeypatch.setattr(site_branding, "get_session_factory", lambda: _session_factory(store))
 
@@ -174,14 +186,14 @@ async def test_admin_branding_reset_removes_asset_and_restores_public_default(ad
     assert reset.status_code == 200
     assert "logo_light" not in store
     assert reset.json()["assets"]["logo_light"] is None
-    assert reset.json()["effective"]["logo_light_path"] == "/logo-dark.png"
+    assert reset.json()["effective"]["logo_light_path"] == configured_fallback
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         public_config = await ac.get("/api/v1/site-config")
         old_asset = await ac.get(expected_url)
 
     assert public_config.status_code == 200
-    assert public_config.json()["logo_light_path"] == "/logo-dark.png"
+    assert public_config.json()["logo_light_path"] == configured_fallback
     assert old_asset.status_code == 404
 
 

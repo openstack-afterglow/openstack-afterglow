@@ -35,28 +35,28 @@ const SERVICES = [
 	'palimpsest-worker'
 ];
 const ONE_OFF_SERVICES = ['waygate-migrate', 'drover-migrate', 'lumen-migrate', 'palimpsest-bootstrap'];
-const RUNNING_SERVICES = [
-	'backend',
-	'frontend',
-	'redis',
-	'service-mariadb',
-	'afterglow-mariadb',
-	'lumen-postgres',
-	'waygate-api',
-	'waygate-worker',
-	'drover-api',
-	'drover-worker',
-	'lumen-api',
-	'lumen-worker',
-	'palimpsest-api',
-	'palimpsest-worker'
-];
+let selectedServices = SERVICES;
+let selectedOneOffServices = ONE_OFF_SERVICES;
 const SIBLING_BUILDS = [
 	['Lumen', '../lumen/docker/Dockerfile'],
 	['Drover', '../drover/docker/Dockerfile'],
 	['Waygate', '../waygate/docker/Dockerfile'],
 	['Palimpsest Hub', '../palimpsest/docker/hub/Dockerfile']
 ];
+
+function selectLocalServices(command, options) {
+	if (!options.length) return;
+	if (!['up', 'config'].includes(command) || options.length !== 2 || options[0] !== '--only') {
+		fail('Only up/config accept --only lumen,waygate,palimpsest. No other options are supported.');
+	}
+	const names = options[1].split(',').map((name) => name.trim());
+	if (names.some((name) => !['lumen', 'waygate', 'palimpsest'].includes(name))) {
+		fail('--only requires a comma-separated selection of lumen,waygate,palimpsest.');
+	}
+	const selected = (service) => names.some((name) => service.startsWith(`${name}-`));
+	selectedServices = SERVICES.filter((service) => selected(service) || ['redis', 'service-mariadb'].includes(service));
+	selectedOneOffServices = ONE_OFF_SERVICES.filter(selected);
+}
 
 function fail(message) {
 	console.error(`\nlocal-services: ${message}`);
@@ -115,7 +115,7 @@ function assertLocalPrerequisites() {
 }
 
 function assertSiblingSources() {
-	const missing = SIBLING_BUILDS.filter(([, path]) => !existsSync(path));
+	const missing = SIBLING_BUILDS.filter(([name, path]) => selectedServices.includes(`${name.split(' ')[0].toLowerCase()}-api`) && !existsSync(path));
 	if (missing.length === 0) return;
 	const names = missing.map(([name, path]) => `${name} (${path})`).join(', ');
 	fail(`current sibling source is unavailable: ${names}. Nothing was started. Restore the source checkouts; published-image deployment belongs to docker-compose.prod.yml.`);
@@ -152,7 +152,7 @@ private_endpoints = {
 }
 print(json.dumps({'AFTERGLOW_LOCAL_OS_' + key: str(openstack.get(field, default)) for key, (field, default) in fields.items()} | private_endpoints, allow_nan=False))
 `], { capture: true }));
-	if (['AUTH_URL', 'USERNAME', 'PASSWORD'].some((key) => !credentials[`AFTERGLOW_LOCAL_OS_${key}`])) fail('The local afterglow.conf needs OpenStack auth_url, username and password.');
+	if (selectedServices.some((name) => ['backend', 'waygate-api', 'drover-api', 'palimpsest-api'].includes(name)) && ['AUTH_URL', 'USERNAME', 'PASSWORD'].some((key) => !credentials[`AFTERGLOW_LOCAL_OS_${key}`])) fail('The selected local services need OpenStack auth_url, username and password in the private afterglow.conf.');
 	composeInputs = { ...credentials, ...secrets, AFTERGLOW_LOCAL_CONFIG_GID: String(statSync(configPath).gid) };
 	const cephConfPath = `${process.cwd()}/${LOCAL_DIR}/ceph/ceph.conf`;
 	const cephKeyringPath = `${process.cwd()}/${LOCAL_DIR}/ceph/ceph.client.afterglow-rbd.keyring`;
@@ -170,7 +170,7 @@ function assertIsolatedConfiguration() {
 	if (config.name !== PROJECT) fail('Compose project isolation was lost.');
 	const configSnapshotSource = `${process.cwd()}/${LOCAL_DIR}/afterglow.conf`;
 	const snapshotReaderGid = composeInputs.AFTERGLOW_LOCAL_CONFIG_GID;
-	for (const name of [...RUNNING_SERVICES, ...ONE_OFF_SERVICES]) {
+	for (const name of [...selectedServices, ...selectedOneOffServices]) {
 		const service = config.services[name];
 		if (!service || service.container_name) fail(`${name} must use project-scoped containers.`);
 		const environment = service.environment ?? {};
@@ -200,22 +200,23 @@ function assertIsolatedConfiguration() {
 		}
 	}
 	for (const [name, service] of Object.entries(config.services)) {
+		if (![...selectedServices, ...selectedOneOffServices].includes(name)) continue;
 		const readsSnapshot = (service.volumes ?? []).some((mount) => mount.type === 'bind' && mount.source === configSnapshotSource);
 		const groupAdds = (service.group_add ?? []).map(String);
 		if (readsSnapshot && !groupAdds.includes(snapshotReaderGid)) fail(`${name} must receive the local configuration snapshot reader group.`);
 		if (!readsSnapshot && groupAdds.includes(snapshotReaderGid)) fail(`${name} must not receive the local configuration snapshot reader group.`);
 	}
-	if (String(config.services.backend.environment.SENTINEL_ENABLED) !== 'false') fail('The backend must not discover a remote Sentinel master.');
-	if (!config.services['drover-api'].environment.OS_SERVICE_PROJECT_ID) fail('Drover readiness requires [openstack] service_project_id in .local-services/afterglow.conf or OS_SERVICE_PROJECT_ID in .env. Select the dedicated service project; no admin-project fallback is allowed.');
-	for (const name of ['drover-api', 'drover-worker', 'drover-migrate']) {
+	if (selectedServices.includes('backend') && String(config.services.backend.environment.SENTINEL_ENABLED) !== 'false') fail('The backend must not discover a remote Sentinel master.');
+	if (selectedServices.includes('drover-api') && !config.services['drover-api'].environment.OS_SERVICE_PROJECT_ID) fail('Drover readiness requires [openstack] service_project_id in .local-services/afterglow.conf or OS_SERVICE_PROJECT_ID in .env. Select the dedicated service project; no admin-project fallback is allowed.');
+	for (const name of ['drover-api', 'drover-worker', 'drover-migrate'].filter((name) => [...selectedServices, ...selectedOneOffServices].includes(name))) {
 		const environment = config.services[name].environment ?? {};
 		if (String(environment.SENTINEL_ENABLED) !== 'false' || String(environment.SENTINEL_HOSTS) !== '') fail(`${name} must not discover a remote Sentinel master.`);
 	}
-	for (const name of ['lumen-api', 'lumen-worker', 'lumen-migrate']) {
+	for (const name of ['lumen-api', 'lumen-worker', 'lumen-migrate'].filter((name) => [...selectedServices, ...selectedOneOffServices].includes(name))) {
 		if (new URL(config.services[name].environment.CHAT_CHECKPOINTER_POSTGRES_URL).hostname !== 'lumen-postgres') fail(`${name} would reuse a non-local checkpointer.`);
 	}
 	const waygateCallbackBaseUrl = String(config.services['waygate-api'].environment.WAYGATE_CALLBACK_BASE_URL ?? '').trim();
-	if (!waygateCallbackBaseUrl) fail('WAYGATE_PUBLIC_BASE_URL is required for the full local stack. Set it to an HTTP(S) URL reachable from gateway VMs; use a targeted --no-deps Compose command only when Waygate is already running.');
+	if (selectedServices.includes('waygate-api') && !waygateCallbackBaseUrl) fail('WAYGATE_PUBLIC_BASE_URL is required when Waygate is selected. Its VM provisioning/agent path still needs a reachable callback; --only lumen,palimpsest does not.');
 	console.log(`Isolation checked: ${PROJECT}; local databases, cache, volumes, network and loopback ports.`);
 	composeInputs.AFTERGLOW_LOCAL_OS_SERVICE_PROJECT_ID = config.services['drover-api'].environment.OS_SERVICE_PROJECT_ID;
 	composeInputs.WAYGATE_PUBLIC_BASE_URL = waygateCallbackBaseUrl;
@@ -274,7 +275,7 @@ function assertStackState() {
 			fail(`${service} did not complete successfully (state=${state || 'unknown'}, exit=${Number.isNaN(exitCode) ? 'unknown' : exitCode}).`);
 		}
 	}
-	for (const service of RUNNING_SERVICES) {
+	for (const service of SERVICES) {
 		const row = serviceRow(rows, service);
 		const state = String(row.State ?? row.state ?? '').toLowerCase();
 		if (state !== 'running') fail(`${service} is not running (state=${state || 'unknown'}).`);
@@ -427,6 +428,12 @@ function printHelp() {
 	console.log(`Usage:
   npm run services:config      Prepare private inputs for docker-compose.dev.yml
   npm run services:up          Build current source and start docker-compose.dev.yml
+  npm run services:up -- --only lumen,palimpsest
+                              Start selected API/workers and their local datastores only
+  npm run services:config -- --only lumen,palimpsest
+                              Prepare private inputs without unrelated callback preflight
+  npm run services:verify -- lumen --exercise
+                              Exercise real service logic using manual URL/credentials
   npm run services:smoke       Check migrations, API contracts, BFFs and live dashboard data
   npm run services:down        Stop only ${PROJECT}; preserve volumes and every other project
 
@@ -435,19 +442,22 @@ Local ports: frontend 3080, backend 8000, Waygate 8010, Drover 8011, Lumen 8012,
 }
 
 async function main() {
-	const [command, option] = process.argv.slice(2);
+	const [command, ...options] = process.argv.slice(2);
 	if (!command || command === 'help' || command === '--help') {
 		printHelp();
 		return;
 	}
+	selectLocalServices(command, options);
 	if (command === 'up') {
-		if (option) fail(`unknown option ${option}; dev mode always builds current source.`);
+		// Scoped mode retains the canonical project, manifest, datastores and keys.
 		assertLocalPrerequisites();
 		assertSiblingSources();
 		assertIsolatedConfiguration();
-		assertNoLegacyStack();
-		compose(['up', '--build', '--wait', '--wait-timeout', '240', ...SERVICES]);
-		console.log(`\nContainers ready: ${PROJECT} at http://localhost:3080. Application verification still requires npm run services:smoke.`);
+		if (selectedServices === SERVICES) assertNoLegacyStack();
+		compose(['up', '--build', '--wait', '--wait-timeout', '240', ...selectedServices]);
+		console.log(selectedServices === SERVICES
+			? `\nContainers ready: ${PROJECT} at http://localhost:3080. Application verification still requires npm run services:smoke.`
+			: `\nSelected containers ready: ${selectedServices.join(', ')}. Run services:verify with explicit credentials; readiness is not logic verification.`);
 		return;
 	}
 	if (command === 'config') {

@@ -17,6 +17,12 @@ export type ChatRole = 'user' | 'assistant' | 'tool';
 /** 채팅에서 선택 가능한 모델. 백엔드 GET /chat/models 응답 형태. */
 export interface AvailableModel {
 	id: number;
+	provider_id: number;
+	/** Connection protocol, distinct from the public API provider qualifier. */
+	provider_type: string;
+	/** Lumen orders the catalog by provider rank/ID, then model rank/ID. */
+	provider_sort_order: number;
+	sort_order: number;
 	model_name: string;
 	/** External compatibility API model ID. Falls back to model_name during rolling upgrades. */
 	api_model_name?: string;

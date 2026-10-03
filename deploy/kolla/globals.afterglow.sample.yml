@@ -41,7 +41,7 @@ enable_lumen_source_build: false
 enable_waygate_source_build: false
 enable_palimpsest_source_build: false
 
-afterglow_image_tag: "v1.29.0"
+afterglow_image_tag: "v1.30.0"
 afterglow_backend_image_ref: "{{ afterglow_backend_image }}:{{ afterglow_image_tag }}"
 afterglow_frontend_image_ref: "{{ afterglow_frontend_image }}:{{ afterglow_image_tag }}"
 afterglow_worker_image_ref: "{{ afterglow_worker_image }}:{{ afterglow_image_tag }}"
@@ -217,13 +217,16 @@ afterglow_service_zun_enabled: false
 afterglow_service_cloud_shell_enabled: false
 
 # Cloud Shell production prerequisites. The operator creates the dedicated
-# project, routed network, router, and ingress-free egress security group.
+# project with an external-connected default network. Leave network_id empty
+# to use that project default, or set a project-owned network ID. The security
+# group defaults to the project's own "default" group and its existing rules;
+# an override must also belong to the dedicated project.
 # Stock Kolla must also set enable_zun, enable_kuryr, enable_etcd,
 # docker_configure_for_zun, containerd_configure_for_zun, and
 # zun_configure_for_cinder_ceph to "yes" and populate the zun-compute group.
 # afterglow_cloud_shell_project_id: "00000000-0000-0000-0000-000000000000"
-# afterglow_cloud_shell_network_id: "00000000-0000-0000-0000-000000000000"
-# afterglow_cloud_shell_security_group: "afterglow-cloud-shell-egress"
+# afterglow_cloud_shell_network_id: ""
+# afterglow_cloud_shell_security_group: "default"
 # afterglow_cloud_shell_auth_url: "https://openstack.example.com:5000/v3"
 # afterglow_cloud_shell_interface: "public"
 # afterglow_cloud_shell_volume_type: "ceph"

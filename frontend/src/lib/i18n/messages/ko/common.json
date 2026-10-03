@@ -32,6 +32,6 @@
 	"visibility.community": "커뮤니티",
 	"visibility.private": "비공개",
 	"mime.folder": "폴더",
-	"terminal.inputAria": "Terminal input",
-	"terminal.tooMuchOutput": "Too much output to announce, navigate to rows manually to read"
+	"terminal.inputAria": "터미널 입력",
+	"terminal.tooMuchOutput": "알림으로 읽기에는 출력이 너무 많습니다. 행으로 직접 이동하여 읽으세요"
 }

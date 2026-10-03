@@ -3,9 +3,12 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import ToggleGroup from '$lib/components/ui/ToggleGroup.svelte';
+	import { REDUCED_MOTION_QUERY } from '$lib/design/tokens';
 	import { prefersReducedMotion } from '$lib/utils/motion';
+	import LandingConsolePreview, { type ConsolePreviewView } from './LandingConsolePreview.svelte';
 	import LandingFigure from './LandingFigure.svelte';
 	import LandingOpsBoard from './LandingOpsBoard.svelte';
+	import LandingJourney from './LandingJourney.svelte';
 	import PlateGraphic from './PlateGraphic.svelte';
 	import type { PlateName } from './plateGraphics';
 	import LocaleSelect from '$lib/i18n/LocaleSelect.svelte';
@@ -28,12 +31,6 @@
 		{ label: t('landing.nav.contact'), href: '#contact' },
 	]);
 
-	const overviewRows = $derived([
-		{ num: '01', title: t('landing.request.title'), body: t('landing.request.body') },
-		{ num: '02', title: t('landing.allocate.title'), body: t('landing.allocate.body') },
-		{ num: '03', title: t('landing.observe.title'), body: t('landing.observe.body') },
-		{ num: '04', title: t('landing.reuse.title'), body: t('landing.reuse.body') },
-	]);
 
 	const capabilities: Array<{
 		tag: string;
@@ -42,6 +39,7 @@
 		title: string;
 		body: string;
 		proof: string;
+		workflow: WorkflowKind;
 	}> = $derived([
 		{
 			tag: t('landing.compute.tag'),
@@ -50,6 +48,7 @@
 			title: t('landing.compute.title'),
 			body: t('landing.compute.body'),
 			proof: t('landing.compute.proof'),
+			workflow: 'compute',
 		},
 		{
 			tag: t('landing.cluster.tag'),
@@ -58,6 +57,7 @@
 			title: t('landing.cluster.title'),
 			body: t('landing.cluster.body'),
 			proof: t('landing.cluster.proof'),
+			workflow: 'compute',
 		},
 		{
 			tag: t('landing.library.tag'),
@@ -66,6 +66,7 @@
 			title: t('landing.library.title'),
 			body: t('landing.library.body'),
 			proof: t('landing.library.proof'),
+			workflow: 'data',
 		},
 		{
 			tag: t('landing.governance.tag'),
@@ -74,6 +75,7 @@
 			title: t('landing.governance.title'),
 			body: t('landing.governance.body'),
 			proof: t('landing.governance.proof'),
+			workflow: 'ops',
 		},
 	]);
 
@@ -137,12 +139,14 @@
 		},
 	]);
 
-	const methodSteps = $derived([
-		{ step: '01', label: t('landing.method.projectLabel'), title: t('landing.method.projectTitle'), detail: t('landing.method.projectDetail') },
-		{ step: '02', label: t('landing.method.allocateLabel'), title: t('landing.method.allocateTitle'), detail: t('landing.method.allocateDetail') },
-		{ step: '03', label: t('landing.method.observeLabel'), title: t('landing.method.observeTitle'), detail: t('landing.method.observeDetail') },
-		{ step: '04', label: t('landing.method.reuseLabel'), title: t('landing.method.reuseTitle'), detail: t('landing.method.reuseDetail') },
+	const productViews: Array<{ value: ConsolePreviewView; label: string; title: string; body: string; route: string }> = $derived([
+		{ value: 'project', label: t('landing.product.projectLabel'), title: t('landing.product.projectTitle'), body: t('landing.product.projectBody'), route: 'project / overview' },
+		{ value: 'cluster', label: t('landing.product.clusterLabel'), title: t('landing.product.clusterTitle'), body: t('landing.product.clusterBody'), route: 'containers / clusters' },
+		{ value: 'network', label: t('landing.product.networkLabel'), title: t('landing.product.networkTitle'), body: t('landing.product.networkBody'), route: 'network / topology' },
 	]);
+	const productOptions = $derived(productViews.map(({ value, label }) => ({ value, label })));
+	let selectedProduct: ConsolePreviewView = $state('project');
+	let activeProduct = $derived(productViews.find((view) => view.value === selectedProduct) ?? productViews[0]!);
 
 	const email = 'pieroot@konkuk.ac.kr';
 	const sectionIds = ['overview', 'capabilities', 'workflow', 'work', 'contact'];
@@ -177,6 +181,11 @@
 		if (isWorkflowFilter(value)) selectedFilter = value;
 	}
 
+	function selectProduct(value: string) {
+		const match = productViews.find((view) => view.value === value);
+		if (match) selectedProduct = match.value;
+	}
+
 	function focusLandingContent() {
 		document.getElementById('landing-content')?.focus();
 	}
@@ -195,15 +204,22 @@
 	onMount(() => {
 		const html = document.documentElement;
 		const previousScrollBehavior = html.style.scrollBehavior;
-		const reducedMotion = prefersReducedMotion();
-		html.style.scrollBehavior = reducedMotion ? 'auto' : 'smooth';
-
-		const handleScroll = () => updateActiveSection();
-		updateActiveSection();
-		window.addEventListener('scroll', handleScroll, { passive: true });
-
+		const motionQuery = typeof window.matchMedia === 'function' ? window.matchMedia(REDUCED_MOTION_QUERY) : undefined;
 		const revealItems = Array.from(landingRoot.querySelectorAll<HTMLElement>('[data-reveal]'));
-		if (!reducedMotion && typeof window.IntersectionObserver === 'function') {
+
+		const configureMotion = () => {
+			revealObserver?.disconnect();
+			revealObserver = undefined;
+			if (revealReadyFrame !== undefined) window.cancelAnimationFrame(revealReadyFrame);
+			revealReadyFrame = undefined;
+			landingRoot.classList.remove('reveal-enabled', 'reveal-ready');
+			const reducedMotion = prefersReducedMotion();
+			html.style.scrollBehavior = reducedMotion ? 'auto' : 'smooth';
+			if (reducedMotion) {
+				revealItems.forEach((item) => item.classList.add('is-visible'));
+				return;
+			}
+			if (typeof window.IntersectionObserver !== 'function') return;
 			landingRoot.classList.add('reveal-enabled');
 			revealObserver = new window.IntersectionObserver(
 				(entries) => {
@@ -214,14 +230,22 @@
 						}
 					}
 				},
-				{ threshold: 0.18, rootMargin: '0px 0px -8% 0px' },
+				{ threshold: 0, rootMargin: '0px 0px -8% 0px' },
 			);
-			revealItems.forEach((item) => revealObserver?.observe(item));
+			revealItems.filter((item) => !item.classList.contains('is-visible')).forEach((item) => revealObserver?.observe(item));
 			revealReadyFrame = window.requestAnimationFrame(() => landingRoot.classList.add('reveal-ready'));
-		}
+		};
+		configureMotion();
+		motionQuery?.addEventListener('change', configureMotion);
+		const handleScroll = () => updateActiveSection();
+		updateActiveSection();
+		window.addEventListener('scroll', handleScroll, { passive: true });
+		window.addEventListener('resize', handleScroll);
 
 		return () => {
 			window.removeEventListener('scroll', handleScroll);
+			window.removeEventListener('resize', handleScroll);
+			motionQuery?.removeEventListener('change', configureMotion);
 			revealObserver?.disconnect();
 			revealObserver = undefined;
 			if (revealReadyFrame !== undefined) window.cancelAnimationFrame(revealReadyFrame);
@@ -231,6 +255,8 @@
 		};
 	});
 </script>
+
+{#snippet desktopBreak(_text: string)}<br class="desktop-break" />{/snippet}
 
 <div class="landing-page" bind:this={landingRoot}>
 	<a class="skip-link" href="#landing-content" onclick={focusLandingContent}>{t('landing.skipLink')}</a>
@@ -262,19 +288,16 @@
 				<div class="hero-copy" data-reveal>
 					<div class="eyebrow"><span aria-hidden="true"></span>{t('landing.hero.eyebrow')}</div>
 					<h1><RichText segments={t.rich('landing.hero.title')} /></h1>
-					<p class="lead">{t('landing.hero.lead')}</p>
+					<p class="lead"><RichText segments={t.rich('landing.hero.lead')} tags={{ desktopBreak }} /></p>
 					<div class="hero-actions">
 						<Button variant="primary" size="lg" class="landing-btn" href={consoleHref}>{t('landing.consoleAction')}</Button>
 						<Button variant="outline" size="lg" class="landing-btn" href="#capabilities">{t('landing.hero.capabilitiesAction')}</Button>
 					</div>
-					<ul class="hero-facts" aria-label={t('landing.hero.factsAriaLabel')}>
-						<li><b>{t('landing.method.projectLabel')}</b><span>{t('landing.hero.projectFact')}</span></li>
-						<li><b>{t('landing.hero.policyLabel')}</b><span>{t('landing.hero.policyFact')}</span></li>
-						<li><b>{t('landing.method.reuseLabel')}</b><span>{t('landing.hero.reuseFact')}</span></li>
-					</ul>
+					<div class="hero-context"><span>{t('landing.hero.context')}</span><p>{t('landing.request.title')} <i aria-hidden="true">→</i> {t('landing.allocate.title')} <i aria-hidden="true">→</i> {t('landing.observe.title')} <i aria-hidden="true">→</i> {t('landing.reuse.title')}</p></div>
 				</div>
-				<div class="hero-board" data-reveal><LandingOpsBoard /></div>
+				<div id="environment-preview" class="hero-board" data-reveal><LandingOpsBoard /></div>
 			</div>
+			<div class="container hero-bottom"><span>{t('landing.hero.teamEnvironment')}</span><a href="#overview"><span class="cue-fine">{t('landing.hero.scrollCue')}</span><span class="cue-touch">{t('landing.hero.touchCue')}</span><span aria-hidden="true">↓</span></a></div>
 		</section>
 
 		<section id="overview" class="section overview-section">
@@ -286,21 +309,7 @@
 						<p>{t('landing.overview.body')}</p>
 					</div>
 				</div>
-				<div class="overview-layout" data-reveal>
-					<Card surface="subtle" padding="none" class="overview-ledger">
-						{#each overviewRows as row}
-							<article class="overview-row">
-								<b>{row.num}</b>
-								<div><h3>{row.title}</h3><p>{row.body}</p></div>
-								<span aria-hidden="true">↗</span>
-							</article>
-						{/each}
-					</Card>
-					<div class="overview-proof">
-						<LandingFigure class="overview-screen" name="console" fit="cover" alt={t('landing.overview.screenAlt')}>{t('landing.overview.screenCaption')}</LandingFigure>
-						<div class="proof-note"><span>{t('landing.overview.proofLabel')}</span><strong>{t('landing.overview.proofTitle')}</strong><p>{t('landing.overview.proofBody')}</p></div>
-					</div>
-				</div>
+				<LandingJourney />
 			</div>
 		</section>
 
@@ -322,6 +331,7 @@
 									<div class="cap-meta"><span>{capability.tag}</span><b>{capability.proof}</b></div>
 									<h3>{capability.title}</h3>
 									<p>{capability.body}</p>
+									<Button variant="link" class="cap-explore" href="#workflow" onclick={() => selectFilter(capability.workflow)} ariaLabel={t('landing.capabilities.exploreAriaLabel', { title: capability.title })}>{t('landing.capabilities.exploreAction')} <span aria-hidden="true">↗</span></Button>
 								</div>
 							</article>
 						{/each}
@@ -357,33 +367,11 @@
 								<div class="workflow-copy"><span>{card.meta}</span><h3>{card.title}</h3><p>{card.body}</p></div>
 							</article>
 						{/each}
-						{#if visibleCount === 0}
-							<p class="empty-state" role="status" aria-live="polite">{t('landing.workflow.empty')}</p>
-						{/if}
 					</Card>
 				</div>
 			</div>
 		</section>
 
-		<section class="section method-section">
-			<div class="container">
-				<div class="section-head compact-head" data-reveal>
-					<div class="section-label"><span>{t('landing.method.label')}</span><b>{t('landing.method.kicker')}</b></div>
-					<div><h2>{t('landing.method.title')}</h2></div>
-				</div>
-				<div data-reveal>
-					<Card surface="subtle" padding="none" class="method-grid">
-						{#each methodSteps as step}
-							<article class="method-step">
-								<div class="method-meta"><b>{step.step}</b><span>{step.label}</span></div>
-								<div class="method-mark" aria-hidden="true"><span></span></div>
-								<div><h3>{step.title}</h3><p>{step.detail}</p></div>
-							</article>
-						{/each}
-					</Card>
-				</div>
-			</div>
-		</section>
 
 		<section id="work" class="section work-section">
 			<div class="container">
@@ -394,14 +382,18 @@
 						<p>{t('landing.work.body')}</p>
 					</div>
 				</div>
-				<div class="product-stage" data-reveal>
-					<div class="stage-bar"><span><i></i><i></i><i></i></span><b>{t('landing.work.breadcrumb', { product: 'afterglow', project: 'research-lab' })}</b><em>{t('landing.work.live')}</em></div>
-					<div class="work-grid">
-						<LandingFigure class="screen-main" name="kubernetes" fit="cover" alt={t('landing.work.clusterAlt')}>{t('landing.work.clusterCaption')}</LandingFigure>
-						<div class="screen-stack">
-							<LandingFigure name="security" fit="cover" alt={t('landing.work.adminAlt')}>{t('landing.work.adminCaption')}</LandingFigure>
-							<LandingFigure name="network-topology" fit="cover" alt={t('landing.work.networkAlt')}>{t('landing.work.networkCaption')}</LandingFigure>
-						</div>
+				<div class="product-tour" data-reveal>
+					<div class="product-stage">
+						<div class="stage-bar" aria-hidden="true"><b>afterglow / {activeProduct.route}</b><em>{t('landing.product.exampleScreen')}</em></div>
+						{#key selectedProduct}
+							<LandingConsolePreview class="screen-main" view={activeProduct.value} />
+						{/key}
+					</div>
+					<div class="product-controls">
+						<span class="filter-kicker">{t('landing.product.kicker')}</span>
+						<ToggleGroup value={selectedProduct} options={productOptions} onchange={selectProduct} fullWidth class="product-switcher" ariaLabel={t('landing.product.ariaLabel')} />
+						<div class="product-description" aria-live="polite"><h3>{activeProduct.title}</h3><p>{activeProduct.body}</p></div>
+						<Button variant="outline" size="lg" class="product-console" href={consoleHref}>{t('landing.product.consoleAction')} <span aria-hidden="true">↗</span></Button>
 					</div>
 				</div>
 			</div>
@@ -459,6 +451,7 @@
 		--landing-gutter: 1rem;
 		--landing-nav-height: 10rem;
 		min-height: 100%;
+		overflow-x: clip;
 		padding-top: var(--landing-nav-height);
 		background: var(--color-surface-canvas);
 		color: var(--color-ink-0);
@@ -482,7 +475,7 @@
 	.skip-link:focus-visible { transform: translateY(0); }
 
 	.top-strip { position: fixed; inset: 0 0 auto; z-index: var(--z-sidebar); border-bottom: 1px solid color-mix(in oklab, var(--color-line) 84%, transparent); background: color-mix(in oklab, var(--color-surface-canvas) 88%, transparent); backdrop-filter: blur(1.125rem); }
-	.nav { display: grid; grid-template-areas: 'brand locale' 'cta cta' 'links links'; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.25rem 0.75rem; min-height: var(--landing-nav-height); padding-block: 0.5rem; }
+	.nav { display: grid; grid-template-areas: 'brand cta' 'locale locale' 'links links'; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.25rem 0.75rem; min-height: var(--landing-nav-height); padding-block: 0.5rem; }
 	.brand { grid-area: brand; display: grid; grid-template-columns: 2rem minmax(0, 1fr); min-width: 0; max-width: 100%; min-height: 2.75rem; align-items: center; column-gap: 0.625rem; width: fit-content; overflow-wrap: anywhere; text-decoration: none; }
 	.brand img { grid-row: 1 / 3; width: 2rem; height: 2rem; object-fit: contain; }
 	.brand span { align-self: end; font-size: 0.8125rem; font-weight: 700; line-height: 1; }
@@ -497,61 +490,58 @@
 	.nav-locale { grid-area: locale; min-width: 0; justify-self: end; }
 	.landing-page :global(.nav-cta), .landing-page :global(.landing-btn), .landing-page :global(.contact-console), .landing-page :global(.email-pill) { min-height: 2.75rem; border-radius: 0.625rem; font-weight: 700; }
 
-	.hero { position: relative; overflow: hidden; padding: 4.5rem 0 5rem; }
+	.hero { position: relative; overflow: clip; padding: 3.5rem 0 2rem; }
 	.hero::before { content: ''; position: absolute; top: -18rem; left: -10rem; width: 36rem; height: 36rem; border-radius: 999px; background: color-mix(in oklab, var(--color-warm) 12%, transparent); filter: blur(6rem); pointer-events: none; }
-	.hero-layout { position: relative; display: grid; gap: 3rem; align-items: center; }
+	.hero-layout { position: relative; display: grid; gap: 2.5rem; align-items: center; }
 	.eyebrow, .section-label, .filter-kicker { font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-transform: uppercase; }
 	.eyebrow { display: inline-flex; align-items: center; gap: 0.625rem; color: var(--color-ink-2); font-size: 0.6875rem; letter-spacing: 0.08em; }
 	.eyebrow > span { width: 0.5rem; height: 0.5rem; border-radius: 999px; background: var(--color-warm); box-shadow: 0 0 0 0.25rem var(--warm-soft); }
 	.hero h1, .section h2, .cap-content h3, blockquote, .audience-note strong { font-family: var(--font-display); }
-	.hero h1 { max-width: 48rem; margin-top: 1.5rem; font-size: clamp(2.75rem, 10vw, 4.25rem); font-weight: 500; letter-spacing: -0.04em; line-height: 1.06; text-wrap: balance; word-break: var(--landing-word-break, keep-all); }
-	.hero h1 :global(em) { display: block; width: fit-content; max-width: 100%; color: var(--color-warm); font-style: normal; white-space: normal; }
+	.hero h1 { max-width: 48rem; margin-top: 1.5rem; font-size: clamp(1.875rem, 8vw, 4.25rem); font-weight: 500; letter-spacing: -0.045em; line-height: 1.2; word-break: var(--landing-word-break, keep-all); }
+	.hero h1 :global(em) { display: block; width: fit-content; max-width: 100%; white-space: normal; color: var(--color-warm-text); font-style: normal; }
 	.lead { max-width: 42rem; margin-top: 1.5rem !important; color: var(--color-ink-1); font-size: clamp(1rem, 2.2vw, 1.125rem); line-height: 1.72; word-break: var(--landing-word-break, keep-all); }
 	.hero-actions { display: flex; flex-wrap: wrap; gap: 0.625rem; margin-top: 1.75rem; }
-	.hero-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; margin: 2.5rem 0 0; padding: 1rem 0 0; border-top: 1px solid var(--color-line); list-style: none; }
-	.hero-facts li { min-width: 0; }
-	.hero-facts b { display: block; color: var(--color-accent); font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 500; text-transform: uppercase; }
-	.hero-facts span { display: block; margin-top: 0.25rem; color: var(--color-ink-2); font-size: 0.6875rem; word-break: var(--landing-word-break, keep-all); }
+	.hero-context { margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid var(--color-line); }
+	.hero-context > span { color: var(--color-ink-2); font-size: 0.8125rem; }
+	.hero-context p { margin-top: 0.5rem; font-size: 0.875rem; }
+	.hero-context i { margin-inline: 0.5rem; color: var(--color-warm-text); font-style: normal; }
+	.hero-bottom { position: relative; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.25rem 1rem; margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--color-line); color: var(--color-ink-2); font-size: 0.75rem; }
+	.hero-bottom a { display: inline-flex; align-items: center; gap: 0.75rem; min-height: 2.75rem; text-decoration: none; }
+	.cue-touch { display: none; }
+	@media (pointer: coarse) {
+		.cue-fine { display: none; }
+		.cue-touch { display: inline; }
+	}
+	.hero-bottom a:hover { color: var(--color-ink-0); }
+	.lead :global(.desktop-break) { display: none; }
 	.hero-board { min-width: 0; }
 
-	.section { padding: 4.5rem 0; border-top: 1px solid var(--color-line); }
-	#landing-content, .section[id] { scroll-margin-top: calc(var(--landing-nav-height) + 1rem); }
+	.section { padding: 5rem 0; border-top: 1px solid var(--color-line); }
+	#landing-content, .section[id], #environment-preview { scroll-margin-top: calc(var(--landing-nav-height) + 1rem); }
 	.section-head { display: grid; gap: 1.75rem; margin-bottom: 2.5rem; }
-	.section-label { display: flex; align-items: center; gap: 0.75rem; color: var(--color-warm-text); font-size: 0.6875rem; letter-spacing: 0.08em; }
+	.section-label { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; color: var(--color-warm-text); font-size: 0.6875rem; letter-spacing: 0.08em; }
 	.section-label span { font-weight: 700; }
 	.section-label b { color: var(--color-ink-2); font-weight: 500; }
-	.section h2 { max-width: 58rem; font-size: clamp(2rem, 7vw, 3.75rem); font-weight: 500; letter-spacing: -0.03em; line-height: 1.12; text-wrap: balance; word-break: var(--landing-word-break, keep-all); }
+	.section h2 { max-width: 58rem; font-size: clamp(2rem, 7vw, 3.75rem); font-weight: 500; letter-spacing: -0.03em; line-height: 1.12; text-wrap: pretty; word-break: var(--landing-word-break, keep-all); }
 	.section-head > div:last-child > p { max-width: 46rem; margin-top: 1rem; color: var(--color-ink-1); font-size: 1rem; word-break: var(--landing-word-break, keep-all); }
 
 	.overview-section { background: color-mix(in oklab, var(--color-surface-base) 64%, var(--color-surface-canvas)); }
-	.overview-layout { display: grid; gap: 1rem; }
-	.landing-page :global(.overview-ledger) { border-color: var(--color-line); background: color-mix(in oklab, var(--color-surface-raised) 62%, transparent); }
-	.overview-row { display: grid; grid-template-columns: 2rem minmax(0, 1fr) auto; gap: 0.75rem; align-items: start; padding: 1.25rem; border-bottom: 1px solid var(--color-line); }
-	.overview-row:last-child { border-bottom: 0; }
-	.overview-row > b { color: var(--color-warm-text); font-family: var(--font-mono); font-size: 0.6875rem; }
-	.overview-row h3 { font-size: 1rem; }
-	.overview-row p { margin-top: 0.25rem; color: var(--color-ink-2); font-size: 0.8125rem; word-break: var(--landing-word-break, keep-all); }
-	.overview-row > span { color: var(--color-ink-2); }
-	.overview-proof { position: relative; min-height: 24rem; overflow: hidden; border: 1px solid var(--color-line); border-radius: 1rem; background: var(--color-surface-editorial-media); }
-	.landing-page :global(.overview-screen) { position: absolute; inset: 0; margin: 0; }
-	.landing-page :global(.overview-screen .plate-graphic) { width: 100%; height: 100%; opacity: 0.74; }
-	.landing-page :global(.overview-screen figcaption) { display: none; }
-	.proof-note { position: absolute; inset: auto 1rem 1rem; max-width: 22rem; padding: 1rem; border: 1px solid var(--color-line-2); border-radius: 0.75rem; background: color-mix(in oklab, var(--color-surface-canvas) 86%, transparent); backdrop-filter: blur(0.75rem); }
-	.proof-note span { color: var(--color-warm-text); font-family: var(--font-mono); font-size: 0.6875rem; text-transform: uppercase; }
-	.proof-note strong { display: block; margin-top: 0.35rem; font-size: 1.25rem; }
-	.proof-note p { margin-top: 0.5rem; color: var(--color-ink-2); font-size: 0.75rem; }
 
-	.landing-page :global(.capability-grid) { display: grid; border-color: var(--color-line); background: color-mix(in oklab, var(--color-surface-raised) 62%, transparent); }
+	.landing-page :global(.capability-grid) { display: grid; grid-auto-flow: dense; border-color: var(--color-line); background: var(--color-surface-base); }
 	.cap-card { display: grid; grid-template-rows: 12rem minmax(0, 1fr); min-width: 0; border-bottom: 1px solid var(--color-line); }
 	.cap-card:last-child { border-bottom: 0; }
 	.cap-media { overflow: hidden; border-bottom: 1px solid var(--color-line); background: var(--color-surface-editorial-media); }
-	.cap-media :global(.plate-graphic) { width: 100%; height: 100%; padding: 0.5rem; }
+	.cap-media :global(.plate-graphic) { width: 100%; height: 100%; padding: 0.5rem; transition: transform var(--motion-duration-data) var(--motion-ease-out); }
 	.cap-content { display: flex; min-width: 0; flex-direction: column; padding: 1.25rem; }
-	.cap-meta { display: flex; align-items: center; justify-content: space-between; gap: 1rem; font-family: var(--font-mono); font-size: 0.6875rem; }
+	.cap-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.25rem 1rem; font-family: var(--font-mono); font-size: 0.6875rem; }
 	.cap-meta span { color: var(--color-accent); text-transform: uppercase; }
 	.cap-meta b { color: var(--color-ink-2); font-weight: 500; }
 	.cap-content h3 { margin-top: 1.25rem; font-size: clamp(1.25rem, 4vw, 2rem); font-weight: 500; letter-spacing: -0.022em; line-height: 1.17; text-wrap: balance; word-break: var(--landing-word-break, keep-all); }
 	.cap-content p { margin-top: 0.875rem; color: var(--color-ink-1); font-size: 0.8125rem; word-break: var(--landing-word-break, keep-all); }
+	.landing-page :global(.cap-explore) { justify-content: flex-start; min-height: 2.75rem; width: fit-content; max-width: 100%; white-space: normal; margin-top: auto; padding: 1.25rem 0 0; color: var(--color-warm-text); font-size: 0.8125rem; }
+	@media (hover: hover) and (pointer: fine) {
+		.cap-card:has(:global(a:hover)) .cap-media :global(.plate-graphic), .cap-card:focus-within .cap-media :global(.plate-graphic) { transform: scale(1.03); }
+	}
 
 	.workflow-section { background: color-mix(in oklab, var(--color-surface-base) 64%, var(--color-surface-canvas)); }
 	.workflow-layout { display: grid; gap: 1rem; align-items: start; }
@@ -564,39 +554,30 @@
 	.filter-panel p :global(strong) { color: var(--color-warm-text); }
 	.landing-page :global(.workflow-list) { border-color: var(--color-line); background: color-mix(in oklab, var(--color-surface-raised) 62%, transparent); }
 	.lab-card { transition: opacity var(--motion-duration-base) var(--landing-ease), transform var(--motion-duration-base) var(--landing-ease); }
-	.lab-card { display: grid; grid-template-columns: auto minmax(5.5rem, 7rem) minmax(0, 1fr); align-items: center; gap: 0.75rem; padding: 0.75rem; border-bottom: 1px solid var(--color-line); }
+	.lab-card { display: grid; grid-template-columns: auto minmax(3.5rem, 5rem) minmax(0, 1fr); align-items: center; gap: 0.75rem; padding: 1rem; border-bottom: 1px solid var(--color-line); }
 	.lab-card:last-of-type { border-bottom: 0; }
 	.lab-card.is-muted { opacity: 0.62; transform: scale(0.99); }
 	.workflow-index { align-self: start; color: var(--color-warm-text); font-family: var(--font-mono); font-size: 0.6875rem; }
 	.landing-page :global(.lab-card-media) { width: 100%; aspect-ratio: 1 / 1; border-radius: 0.625rem; background: var(--color-surface-editorial-media); }
-	.workflow-copy span { color: var(--color-ink-2); font-family: var(--font-mono); font-size: 0.625rem; text-transform: uppercase; }
+	.workflow-copy span { color: var(--color-ink-2); font-family: var(--font-mono); font-size: 0.6875rem; text-transform: uppercase; }
 	.workflow-copy h3 { margin-top: 0.25rem; font-size: 1rem; }
 	.workflow-copy p { margin-top: 0.35rem; color: var(--color-ink-2); font-size: 0.75rem; word-break: var(--landing-word-break, keep-all); }
-	.empty-state { padding: 1rem; border: 1px dashed var(--color-line-2); border-radius: 0.75rem; color: var(--color-ink-2); }
-
-	.landing-page :global(.method-grid) { display: grid; border-color: var(--color-line); background: color-mix(in oklab, var(--color-surface-raised) 62%, transparent); }
-	.method-step { display: grid; grid-template-columns: auto 1fr; gap: 1rem; padding: 1.5rem; border-bottom: 1px solid var(--color-line); }
-	.method-step:last-child { border-bottom: 0; }
-	.method-meta { display: flex; flex-direction: column; align-items: flex-start; gap: 0.25rem; font-family: var(--font-mono); font-size: 0.6875rem; text-transform: uppercase; }
-	.method-meta b { color: var(--color-warm-text); }
-	.method-meta span { color: var(--color-ink-2); }
-	.method-mark { display: none; }
-	.method-step h3 { font-size: 1.125rem; line-height: 1.2; word-break: var(--landing-word-break, keep-all); }
-	.method-step p { margin-top: 0.625rem; color: var(--color-ink-2); font-size: 0.75rem; word-break: var(--landing-word-break, keep-all); }
 
 	.work-section { overflow: hidden; background: color-mix(in oklab, var(--color-surface-base) 64%, var(--color-surface-canvas)); }
-	.product-stage { overflow: hidden; border: 1px solid var(--color-line-2); border-radius: 1rem; background: var(--color-surface-base); box-shadow: 0 2rem 6rem color-mix(in oklab, var(--color-surface-canvas) 78%, transparent); }
-	.stage-bar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; border-bottom: 1px solid var(--color-line); color: var(--color-ink-2); font-family: var(--font-mono); font-size: 0.625rem; }
-	.stage-bar > span { display: flex; gap: 0.25rem; }
-	.stage-bar i { width: 0.4375rem; height: 0.4375rem; border-radius: 999px; background: var(--color-line-2); }
-	.stage-bar b { overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
-	.stage-bar em { color: var(--color-state-success-text); font-style: normal; text-transform: uppercase; }
-	.work-grid { display: grid; gap: 0.75rem; padding: 0.75rem; }
-	.landing-page :global(.screen-main), .landing-page :global(.screen-stack figure) { margin: 0; overflow: hidden; border: 1px solid var(--color-line); border-radius: 0.75rem; background: var(--color-surface-editorial-media); }
-	.landing-page :global(.screen-main .plate-graphic) { width: 100%; aspect-ratio: 16 / 10; }
-	.screen-stack { display: grid; gap: 0.75rem; }
-	.landing-page :global(.screen-stack .plate-graphic) { width: 100%; aspect-ratio: 16 / 10; }
-	.landing-page :global(figcaption) { padding: 0.625rem 0.75rem; border-top: 1px solid var(--color-line); color: var(--color-ink-2); font-family: var(--font-mono); font-size: 0.625rem; }
+	.product-tour { display: grid; gap: 1.5rem; align-items: center; }
+	.product-stage { min-width: 0; overflow: hidden; container-type: inline-size; border: 1px solid var(--color-line-2); border-radius: var(--radius-lg); background: var(--color-surface-canvas); }
+	.stage-bar { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--color-line); color: var(--color-ink-2); font-size: 0.75rem; line-height: 1.4; }
+	.stage-bar b { min-width: 0; overflow: hidden; font-family: var(--font-mono); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+	.stage-bar em { flex: 0 0 auto; font-family: var(--font-sans); font-style: normal; }
+	.landing-page :global(.screen-main) { animation: screen-enter var(--motion-duration-data) var(--motion-ease-out) both; }
+	.product-controls { min-width: 0; }
+	.landing-page :global(.product-switcher) { margin-top: 1rem; }
+	.landing-page :global(.product-switcher .toggle-option) { min-width: 0; min-height: 2.75rem; padding-inline: 0.25rem; white-space: normal; overflow-wrap: anywhere; }
+	.product-description { margin-block: 1.5rem; min-height: 6.5rem; }
+	.product-description h3 { font-family: var(--font-display); font-size: 1.5rem; font-weight: 500; line-height: 1.3; }
+	.product-description p { margin-top: 0.75rem; color: var(--color-ink-1); font-size: 0.9375rem; word-break: var(--landing-word-break, keep-all); }
+	.landing-page :global(.product-console) { min-height: 2.75rem; }
+	@keyframes screen-enter { from { opacity: 0; transform: translateY(0.5rem); } to { opacity: 1; transform: translateY(0); } }
 
 	.audience-layout { display: grid; gap: 2.5rem; align-items: center; }
 	blockquote { max-width: 47rem; margin-top: 1.75rem !important; font-size: clamp(2rem, 7vw, 3.75rem); font-weight: 500; letter-spacing: -0.03em; line-height: 1.14; text-wrap: balance; word-break: var(--landing-word-break, keep-all); }
@@ -639,38 +620,31 @@
 		.landing-page { --landing-gutter: 2rem; --landing-nav-height: 7rem; }
 		.nav { grid-template-areas: 'brand cta locale' 'links links links'; grid-template-columns: minmax(0, 1fr) auto auto; }
 		.nav-links { justify-content: center; }
-		.hero { padding: 5.5rem 0 6rem; }
-		.hero-facts span { font-size: 0.75rem; }
-		.section { padding: 5.5rem 0; }
-		.overview-layout { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); }
+		.hero { padding: 5rem 0 2rem; }
+		.hero-bottom { margin-top: 4rem; }
+		.section { padding: 7rem 0; }
 		.landing-page :global(.capability-grid) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 		.cap-card:nth-child(odd) { border-right: 1px solid var(--color-line); }
 		.cap-card:nth-last-child(-n + 2) { border-bottom: 0; }
-		.workflow-layout { grid-template-columns: minmax(14rem, 0.36fr) minmax(0, 0.64fr); }
+		.workflow-layout { grid-template-columns: minmax(15rem, 0.38fr) minmax(0, 0.62fr); }
 		.filter-panel { position: sticky; top: 5.5rem; }
-		.landing-page :global(.method-grid) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-		.method-step:nth-child(odd) { border-right: 1px solid var(--color-line); }
-		.method-step:nth-last-child(-n + 2) { border-bottom: 0; }
-		.work-grid { grid-template-columns: minmax(0, 1.25fr) minmax(15rem, 0.75fr); }
-		.audience-layout { grid-template-columns: minmax(0, 1.05fr) minmax(20rem, 0.95fr); }
-		.contact-panel { grid-template-columns: minmax(0, 1fr) auto; align-items: end; }
 		.footer-layout { grid-template-columns: minmax(0, 1fr) minmax(22rem, 0.7fr); }
 	}
 
 	@media (min-width: 1024px) {
 		.landing-page { --landing-nav-height: 4.5rem; }
 		.nav { grid-template-areas: 'brand links cta locale'; grid-template-columns: auto minmax(0, 1fr) auto auto; }
-		.hero h1 { font-size: clamp(3.25rem, 5vw, 4.25rem); }
-		.hero-layout { grid-template-columns: minmax(0, 0.86fr) minmax(32rem, 1.14fr); gap: clamp(2rem, 4vw, 4rem); }
+		.hero h1 { font-size: clamp(2.25rem, 3.4vw, 3.75rem); }
+		.lead :global(.desktop-break) { display: initial; }
+		.hero-layout { grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr); gap: clamp(2rem, 4vw, 4rem); }
+		.hero { padding-top: 6rem; }
+		.section { padding: 8rem 0; }
+		.product-tour { grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr); gap: 3rem; }
+		.audience-layout { grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); }
+		.contact-panel { grid-template-columns: minmax(0, 1fr) auto; align-items: end; }
 		.section-head { grid-template-columns: minmax(10rem, 0.3fr) minmax(0, 1fr); gap: 2rem; }
-		.cap-card { grid-template: minmax(20rem, 1fr) / minmax(14rem, 0.82fr) minmax(0, 1.18fr); }
+		.cap-card { grid-template: minmax(22rem, 1fr) / minmax(0, 0.82fr) minmax(0, 1.18fr); }
 		.cap-media { border-right: 1px solid var(--color-line); border-bottom: 0; }
-		.landing-page :global(.method-grid) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-		.method-step { grid-template-columns: 1fr; min-height: 23rem; border-right: 1px solid var(--color-line); border-bottom: 0 !important; }
-		.method-step:last-child { border-right: 0; }
-		.method-mark { display: grid; grid-template-columns: 1fr auto 1fr; place-items: center; align-self: center; width: 100%; }
-		.method-mark::before, .method-mark::after { content: ''; width: 100%; border-top: 1px dashed var(--color-line-2); }
-		.method-mark span { width: 0.75rem; height: 0.75rem; border: 2px solid var(--color-warm); border-radius: 999px; box-shadow: 0 0 0 0.35rem var(--warm-soft); }
 	}
 
 	@media (prefers-reduced-motion: reduce) {

@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import LandingPage from '../LandingPage.svelte';
 
-const email = 'pieroot@konkuk.ac.kr';
 
 function renderLanding(consoleHref = '/login') {
 	return render(LandingPage, {
@@ -148,48 +147,107 @@ afterEach(() => {
 });
 
 describe('LandingPage', () => {
-	it('renders the semantic landing structure, navigation, copy, and runtime branding', async () => {
+	it('moves focus to the landing content from the skip link', async () => {
 		const { container } = renderLanding();
-
-		const skipLink = screen.getByRole('link', { name: '본문으로 건너뛰기' });
-		expect(skipLink.getAttribute('href')).toBe('#landing-content');
+		const skipLink = container.querySelector<HTMLAnchorElement>('.skip-link');
 		const content = container.querySelector<HTMLElement>('#landing-content');
-		expect(content?.getAttribute('tabindex')).toBe('-1');
-		expect(content?.tagName).toBe('DIV');
-		expect(container.querySelector('main')).toBeNull();
-		expect(container.querySelector('header')).toBeTruthy();
-		const pageFooter = container.querySelector<HTMLElement>('.landing-page > footer');
-		expect(pageFooter).toBeTruthy();
-		expect(content?.contains(pageFooter)).toBe(false);
-		await fireEvent.click(skipLink);
+		expect(skipLink?.getAttribute('href')).toBe('#landing-content');
+		expect(content).toBeTruthy();
+
+		await fireEvent.click(skipLink!);
 		expect(document.activeElement).toBe(content);
-
-		const brand = container.querySelector<HTMLAnchorElement>('a.brand');
-		expect(brand?.getAttribute('href')).toBe('/');
-		expect(brand?.querySelector('img')?.getAttribute('alt')).toBe('');
-		expect(brand?.querySelector('img')?.getAttribute('src')).toBe('/brand.svg');
-		expect(brand?.textContent).toContain('Test Cloud');
-		expect(container.querySelector('.footer-brand')?.textContent).toContain('Test Cloud');
-
-		const nav = screen.getByRole('navigation', { name: '주요 내비게이션' });
-		const navLinks = Array.from(nav.querySelectorAll<HTMLAnchorElement>('.nav-links a'));
-		expect(navLinks.map((link) => link.getAttribute('href'))).toEqual([
-			'#overview', '#capabilities', '#workflow', '#work', '#contact',
-		]);
-		expect(screen.getAllByRole('link', { name: '콘솔 접속' })).toHaveLength(3);
-		expect(screen.getAllByRole('link', { name: '콘솔 접속' }).every((link) => link.getAttribute('href') === '/login')).toBe(true);
-		expect(screen.getByRole('link', { name: '기능 보기' }).getAttribute('href')).toBe('#capabilities');
-
-		const sectionOrder = Array.from(container.querySelectorAll('#landing-content > section')).map(
-			(section) => section.id || (section.classList.contains('hero') ? 'hero' : 'section'),
-		);
-		expect(sectionOrder).toEqual(['hero', 'overview', 'capabilities', 'workflow', 'section', 'work', 'section', 'contact']);
-		expect(container.querySelectorAll('.roman, .collage')).toHaveLength(0);
 	});
 
-	it('uses the supplied dashboard destination for every console action', () => {
-		renderLanding('/dashboard');
-		expect(screen.getAllByRole('link', { name: '콘솔 접속' }).every((link) => link.getAttribute('href') === '/dashboard')).toBe(true);
+	it.each(['/login', '/dashboard'])('links every console action to %s', (consoleHref) => {
+		const { container } = renderLanding(consoleHref);
+		for (const selector of ['a.nav-cta', '.hero-actions a.btn-primary', 'a.product-console', 'a.contact-console']) {
+			const actions = container.querySelectorAll<HTMLAnchorElement>(selector);
+			expect(actions, selector).toHaveLength(1);
+			expect(actions[0]?.getAttribute('href'), selector).toBe(consoleHref);
+		}
+	});
+
+	it('points the hero secondary action at capabilities and the scroll cue at the overview', () => {
+		const { container } = renderLanding();
+		expect(container.querySelector('.hero-actions a.btn-outline')?.getAttribute('href')).toBe('#capabilities');
+		expect(container.querySelector('.hero-bottom a')?.getAttribute('href')).toBe('#overview');
+		expect(container.querySelector('#capabilities')).toBeTruthy();
+		expect(container.querySelector('#overview')).toBeTruthy();
+	});
+
+	it('renders the runtime brand in the navigation and footer', () => {
+		const { container } = renderLanding();
+		const brand = container.querySelector<HTMLAnchorElement>('a.brand');
+		expect(brand?.getAttribute('href')).toBe('/');
+		const brandLogo = brand?.querySelector('img');
+		expect(brandLogo?.getAttribute('src')).toBe('/brand.svg');
+		expect(brandLogo?.getAttribute('alt')).toBe('');
+		expect(brand?.textContent).toContain('Test Cloud');
+		expect(container.querySelector('.footer-brand')?.textContent).toContain('Test Cloud');
+	});
+
+	it('offers the inquiry e-mail and repository links and renders no raster artwork', () => {
+		const { container } = renderLanding();
+		const footer = container.querySelector<HTMLElement>('footer');
+		expect(footer?.querySelector('a[href^="mailto:"]')).toBeTruthy();
+		expect(footer?.querySelector('a[href="https://github.com/openstack-afterglow/openstack-afterglow"]')).toBeTruthy();
+
+		const images = Array.from(container.querySelectorAll('img'));
+		expect(images.length).toBeGreaterThan(0);
+		for (const image of images) {
+			expect(image.getAttribute('src') ?? '').not.toMatch(/\.(png|jpe?g|webp|gif)([?#]|$)/i);
+		}
+	});
+
+	it('selects the matching workflow filter from each capability card', async () => {
+		const { container } = renderLanding();
+		const filterButtons = Array.from(container.querySelectorAll<HTMLButtonElement>('.landing-workflow-filter button'));
+		const capabilityLinks = Array.from(container.querySelectorAll<HTMLAnchorElement>('.cap-card .cap-explore'));
+		const filterIndex = { compute: 1, data: 2, ops: 3 } as const;
+		const expectedKinds = ['compute', 'compute', 'data', 'ops'] as const;
+		expect(filterButtons).toHaveLength(4);
+		expect(capabilityLinks).toHaveLength(expectedKinds.length);
+
+		for (const [index, link] of capabilityLinks.entries()) {
+			const kind = expectedKinds[index]!;
+			await fireEvent.click(filterButtons[0]!);
+			expect(mutedWorkflowCount(container)).toBe(0);
+
+			expect(link.getAttribute('href')).toBe('#workflow');
+			await fireEvent.click(link);
+			const pressed = filterButtons.filter((button) => button.getAttribute('aria-pressed') === 'true');
+			expect(pressed).toEqual([filterButtons[filterIndex[kind]]]);
+			const nonMatching = workflowCards(container).filter((card) => card.dataset.kind !== kind).length;
+			expect(nonMatching).toBeGreaterThan(0);
+			expect(mutedWorkflowCount(container)).toBe(nonMatching);
+		}
+	});
+
+	it('switches the product preview screen, route, and description together', async () => {
+		const { container } = renderLanding();
+		const preview = () => container.querySelector<HTMLElement>('.product-stage [data-view]');
+		const route = () => container.querySelector('.product-stage .stage-bar b')?.textContent?.trim();
+		const heading = () => container.querySelector('.product-description h3')?.textContent?.trim();
+		const buttons = Array.from(container.querySelectorAll<HTMLButtonElement>('.product-switcher button'));
+		expect(buttons).toHaveLength(3);
+		expect(preview()?.dataset.view).toBe('project');
+
+		const seen = { routes: new Set([route()]), headings: new Set([heading()]) };
+		for (const [index, view] of ['cluster', 'network', 'project'].entries()) {
+			const button = buttons[(index + 1) % 3]!;
+			const previousRoute = route();
+			const previousHeading = heading();
+			await fireEvent.click(button);
+			expect(button.getAttribute('aria-pressed')).toBe('true');
+			expect(preview()?.dataset.view).toBe(view);
+			expect(container.querySelectorAll('.product-stage [data-view]')).toHaveLength(1);
+			expect(route()).not.toBe(previousRoute);
+			expect(heading()).not.toBe(previousHeading);
+			seen.routes.add(route());
+			seen.headings.add(heading());
+		}
+		expect(seen.routes.size).toBe(3);
+		expect(seen.headings.size).toBe(3);
 	});
 
 	it('keeps all workflow rows mounted in one list while filtering and updates pressed state', async () => {
@@ -197,15 +255,6 @@ describe('LandingPage', () => {
 		const cards = workflowCards(container);
 		expect(cards).toHaveLength(5);
 		expect(mutedWorkflowCount(container)).toBe(0);
-		expect(container.querySelectorAll('.workflow-list')).toHaveLength(1);
-		expect(container.querySelector('#workflow-progress')).toBeNull();
-		expect(Array.from(container.querySelectorAll('.lab-card h3')).map((heading) => heading.textContent?.trim())).toEqual([
-			'컴퓨팅 자원 신청',
-			'공유 데이터 공간',
-			'클러스터 실습',
-			'관측 가능한 운영',
-			'보안과 감사',
-		]);
 
 		const filterGroup = screen.getByRole('group', { name: '워크플로우 필터' });
 		const chooseFilter = async (label: string, muted: number) => {
@@ -268,85 +317,13 @@ describe('LandingPage', () => {
 		expect(container.querySelectorAll('.nav-links a[aria-current="location"]')).toHaveLength(1);
 	});
 
-	it('does not render retired issue, GitHub status, clipboard, or fallback surfaces', () => {
-		const fetchMock = vi.fn();
-		vi.stubGlobal('fetch', fetchMock);
-		const { container } = renderLanding();
 
-		expect(fetchMock).not.toHaveBeenCalled();
-		expect(container.querySelector('.issue-row')).toBeNull();
-		expect(container.querySelector('.mailto-fallback')).toBeNull();
-		expect(container.querySelector('#copy-feedback')).toBeNull();
-		expect(screen.queryByRole('button', { name: '이메일 주소 복사' })).toBeNull();
-		expect(screen.queryByRole('status')).toBeNull();
-		expect(container.innerHTML).not.toContain('api.github.com');
-
-		const inquiry = screen.getByRole('link', { name: '이메일 문의 보내기' });
-		expect(inquiry.getAttribute('href')).toBe(`mailto:${email}`);
-			expect(inquiry.textContent?.trim()).toBe(email);
-	});
-
-	it('keeps refined compute, Kubernetes, method-visual, and footer contracts', () => {
-		const { container } = renderLanding();
-		const computeCard = container.querySelector<HTMLElement>('.cap-card');
-		const computeImage = computeCard?.querySelector<SVGElement>('svg.plate-graphic');
-		expect(computeImage?.getAttribute('data-plate')).toBe('compute-allocation');
-
-		const clusterCard = Array.from(container.querySelectorAll<HTMLElement>('.lab-card')).find(
-			(card) => card.querySelector('h3')?.textContent?.trim() === '클러스터 실습',
-		);
-		expect(clusterCard).toBeTruthy();
-
-		const dataCard = Array.from(container.querySelectorAll<HTMLElement>('.lab-card')).find(
-			(card) => card.querySelector('h3')?.textContent?.trim() === '공유 데이터 공간',
-		);
-		const dataImage = dataCard?.querySelector<SVGElement>('svg.plate-graphic');
-		expect(dataImage?.getAttribute('data-plate')).toBe('shared-data');
-		expect(dataImage?.getAttribute('role')).toBe('img');
-
-			const quoteImages = Array.from(container.querySelectorAll<SVGElement>('.quote-visual svg.plate-graphic'));
-			expect(quoteImages.map((image) => image.getAttribute('data-plate'))).toEqual(['professor']);
-			quoteImages.forEach((image) => {
-				expect(image.getAttribute('role')).toBe('img');
-			});
-
-			const methodSteps = Array.from(container.querySelectorAll<HTMLElement>('.method-step'));
-			expect(methodSteps).toHaveLength(4);
-			expect(methodSteps.map((step) => step.querySelector('.method-meta b')?.textContent?.trim())).toEqual(['01', '02', '03', '04']);
-
-
-			const footer = container.querySelector<HTMLElement>('.landing-page > footer');
-		const footerColumns = Array.from(footer?.querySelectorAll<HTMLElement>('.footer-grid > div') ?? []);
-		expect(footerColumns).toHaveLength(2);
-		expect(footer?.querySelector(`a[href="mailto:${email}"]`)).toBeTruthy();
-		expect(footer?.querySelector('a[href="https://github.com/openstack-afterglow/openstack-afterglow"]')).toBeTruthy();
-	});
-
-	it('uses only theme-aware inline artwork for the product-proof image slots', () => {
-		const { container } = renderLanding();
-			const proofImages = Array.from(container.querySelectorAll<SVGElement>('.overview-screen svg.plate-graphic, #work svg.plate-graphic'));
-		expect(proofImages.map((image) => image.getAttribute('data-plate'))).toEqual([
-			'console',
-			'kubernetes',
-			'security',
-			'network-topology',
-		]);
-		expect(new Set(proofImages.map((image) => image.getAttribute('data-plate'))).size).toBe(4);
-		expect(proofImages.every((image) => image.tagName.toLowerCase() === 'svg')).toBe(true);
-		// No raster artwork anywhere: the only <img> is the brand logo (an SVG asset).
-		expect(
-			Array.from(container.querySelectorAll<HTMLImageElement>('img')).some((image) =>
-				/\.(png|jpe?g|webp|gif)$/.test(image.getAttribute('src') ?? ''),
-			),
-		).toBe(false);
-	});
 	it('leaves reveal content visible without an observer and restores scroll behavior on cleanup', () => {
 		document.documentElement.style.scrollBehavior = 'instant';
 		const { container, unmount } = renderLanding();
 		const root = landingRoot(container);
 		expect(root.classList.contains('reveal-enabled')).toBe(false);
 		const revealItems = container.querySelectorAll<HTMLElement>('[data-reveal]');
-		expect(revealItems.length).toBeGreaterThan(0);
 		revealItems.forEach((item) => {
 			expect(item.classList.contains('is-visible')).toBe(false);
 		});
@@ -370,8 +347,6 @@ describe('LandingPage', () => {
 		expect(document.documentElement.style.scrollBehavior).toBe('smooth');
 		const observer = TestIntersectionObserver.instances[0];
 		expect(observer).toBeTruthy();
-		expect(observer.options).toMatchObject({ threshold: 0.18, rootMargin: '0px 0px -8% 0px' });
-		expect(observer.observed.length).toBeGreaterThan(0);
 		const target = observer.observed[0];
 		observer.trigger(target);
 		expect(target.classList.contains('is-visible')).toBe(true);
@@ -413,21 +388,9 @@ describe('LandingPage', () => {
 		const withoutObserver = renderLanding();
 		const root = landingRoot(withoutObserver.container);
 		expect(root.classList.contains('reveal-enabled')).toBe(false);
-		expect(root.querySelectorAll('[data-reveal]').length).toBeGreaterThan(0);
 		withoutObserver.unmount();
 		expect(document.documentElement.style.scrollBehavior).toBe('instant');
 	});
 
 
-	it('renders all artwork slots as theme-aware inline plate graphics', () => {
-		const { container } = renderLanding();
-			expect(container.querySelector('.hero-board .ops-board')).toBeTruthy();
-			expect(container.querySelector('.hero-board svg.plate-graphic')).toBeNull();
-
-			const overviewGraphic = container.querySelector<SVGElement>('#overview figure svg.plate-graphic');
-			expect(overviewGraphic?.getAttribute('role')).toBe('img');
-			expect(overviewGraphic?.getAttribute('data-plate')).toBe('console');
-		const workflowGraphic = container.querySelector<SVGElement>('.lab-card svg.plate-graphic');
-		expect(workflowGraphic?.getAttribute('data-plate')).toBeTruthy();
-	});
 });

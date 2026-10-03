@@ -15,7 +15,6 @@
 	import { formatIsoDateTime } from '$lib/utils/format';
 	import { startSessionRefreshLifecycle } from '$lib/utils/sessionRefreshLifecycle';
 	import { sidebarOpen } from '$lib/stores/sidebar';
-	import { deriveBreadcrumb } from '$lib/config/routes';
 	import Toast from '$lib/components/ui/Toast.svelte';
 	import UploadDock from '$lib/components/UploadDock.svelte';
 	import CmdPalette from '$lib/components/CmdPalette.svelte';
@@ -36,6 +35,7 @@
 	import CloudShellDock from '$lib/components/cloud-shell/CloudShellDock.svelte';
 	import { cloudShell } from '$lib/stores/cloudShell.svelte';
 	import { t } from '$lib/i18n/ns/shell';
+	import { t as tn } from '$lib/i18n/ns/nav';
 	import { getLocale, initLocale, restoreKeyDebugMode } from '$lib/i18n/runtime.svelte';
 	import LocaleSelect from '$lib/i18n/LocaleSelect.svelte';
 	import './layout.css';
@@ -54,15 +54,13 @@
 	let previousMockupActive = initialMockup.active;
 	let explicitMockupOff = false;
 	let brandRefreshSerial = 0;
-	const effectiveBrandTheme = $derived(themeReady ? $resolvedTheme : 'dark');
-	const themedFaviconPath = $derived(resolveFaviconPath($siteConfig, effectiveBrandTheme));
+	const faviconPath = $derived(resolveFaviconPath($siteConfig));
 	const mockup = $derived(data.mockup);
 	const mockupAdminActive = $derived(mockup.active && mockup.profile === 'admin');
 	const publicRoutes = ['/', '/login', '/auth/gitlab/callback', '/oauth/claude/authorize'];
 	let lastVerifiedToken: string | null = null;
 	let authVerifyNonce = $state(0);
 	let unreadFetchSerial = 0;
-	let sidebarTrigger = $state<HTMLButtonElement | null>(null);
 	let recoveryBusy = $state(false);
 	let recoveryClock = $state(Date.now());
 	const authenticationUnavailable = $derived(
@@ -250,9 +248,6 @@
 	});
 
 
-	// breadcrumb + title from URL
-	const crumb = $derived(deriveBreadcrumb($page.url.pathname));
-
 	// User initials for avatar
 	const initials = $derived(
 		($auth.username ?? 'U').slice(0, 2).toUpperCase()
@@ -278,15 +273,8 @@
 		});
 	});
 	$effect(() => {
-		if (!$sidebarOpen || typeof document === 'undefined') return;
-		const onKeyDown = (event: KeyboardEvent) => {
-			if (event.key !== 'Escape' || event.defaultPrevented) return;
-			event.preventDefault();
-			sidebarOpen.close();
-			sidebarTrigger?.focus();
-		};
-		document.addEventListener('keydown', onKeyDown);
-		return () => document.removeEventListener('keydown', onKeyDown);
+		$page.url.pathname;
+		sidebarOpen.close();
 	});
 
 	$effect(() => {
@@ -451,39 +439,37 @@
 	}
 </script>
 
-<svelte:head><link rel="icon" href={themedFaviconPath} /></svelte:head>
+<svelte:head><link rel="icon" href={faviconPath} /></svelte:head>
 
 {#if showAppChrome}
 	<a
 		href="#main-content"
 		class="fixed left-3 top-3 z-[calc(var(--z-command)+2)] -translate-y-20 rounded-md bg-surface-raised px-3 py-2 text-sm font-medium text-ink-0 shadow-lg transition-transform focus:translate-y-0"
 	>{t('skipToContent')}</a>
-	<header class="fixed top-0 left-0 md:left-[var(--app-sidebar-width)] right-0 z-[var(--z-header)] h-[var(--app-header-height)] flex items-center gap-3 border-b border-line px-3 md:px-6">
+	<header class="console-header fixed top-0 left-0 right-0 z-[var(--z-header)] h-[var(--app-header-height)] flex items-center gap-3 border-b border-line px-3 md:px-6">
 		<div class="material-chrome pointer-events-none absolute inset-0 -z-10" aria-hidden="true"></div>
-		<!-- 모바일 햄버거 -->
-		<button
-			bind:this={sidebarTrigger}
-			id="app-sidebar-trigger"
-			onclick={() => sidebarOpen.toggle()}
-			class="md:hidden -ml-2 flex size-11 shrink-0 items-center justify-center rounded-md text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
-			aria-label={t('menu.open')}
-			aria-expanded={$sidebarOpen}
-			aria-controls="app-sidebar"
-		>
-			<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
-			</svg>
-		</button>
-
-		<!-- 한 줄 컨텍스트 브레드크럼 -->
-		<p class="hidden min-w-0 truncate text-xs text-ink-2 md:block">
-			{crumb.breadcrumb ? `${crumb.breadcrumb} / ${crumb.title}` : crumb.title || $siteConfig.site_name}
-		</p>
+		<div class="header-context flex min-w-0 items-center gap-2 sm:gap-3">
+			<button
+				id="app-sidebar-trigger"
+				onclick={() => sidebarOpen.toggle()}
+				class="-ml-2 flex size-11 shrink-0 items-center justify-center rounded-md text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] lg:size-8"
+				aria-label={tn('accessibility.openAllMenu')}
+				aria-expanded={$sidebarOpen}
+				aria-controls="app-navigation-menu"
+			>
+				<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+			</button>
+			<a href={$page.url.pathname.startsWith('/admin') ? '/admin' : '/dashboard'} class="flex min-w-0 items-center gap-2.5 text-[15px] font-semibold tracking-tight text-ink-0 transition-colors hover:text-ink-1" title={$siteConfig.site_name}>
+				<img src="/afterglow-symbol.svg" alt="" width="24" height="24" class="shrink-0" />
+				<span class="hidden max-w-36 truncate sm:block">{$siteConfig.site_name}</span>
+			</a>
+			<div class="hidden w-32 shrink-0 md:block xl:w-40"><ProjectSelector direction="down" /></div>
+		</div>
 
 		<!-- 검색 입력 (⌘K 트리거) -->
 		<button
 			onclick={() => palette.open()}
-			class="mx-4 hidden min-w-0 max-w-sm flex-1 cursor-text items-center gap-2 rounded-md border border-line-2 bg-surface-sunken py-1.5 pl-3 pr-2 text-[13px] text-ink-2 transition-colors hover:bg-surface-selected lg:flex"
+			class="header-search hidden min-w-0 cursor-text items-center gap-2 rounded-md border border-line-2 bg-surface-sunken py-1.5 pl-3 pr-2 text-[13px] text-ink-2 transition-colors hover:bg-surface-selected lg:flex"
 			aria-label={t('search.label')}
 		>
 			<svg class="size-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z"/></svg>
@@ -492,8 +478,15 @@
 		</button>
 
 		<!-- 우측 컨트롤 -->
-		<div class="ml-auto flex items-center gap-1 md:gap-2">
-			<div class="hidden lg:block"><ProjectSelector direction="down" /></div>
+		<div class="ml-auto flex shrink-0 items-center gap-1 md:gap-2">
+			<button onclick={() => palette.open()} aria-label={t('search.label')} class="hidden size-11 shrink-0 items-center justify-center rounded-md text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] md:flex lg:hidden">
+				<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m21 21-4.35-4.35M17 11a6 6 0 1 1-12 0 6 6 0 0 1 12 0" /></svg>
+			</button>
+			{#if $siteConfig.services.cloud_shell && !mockup.active}
+				<div class="hidden shrink-0 lg:block">
+					<CloudShellTrigger />
+				</div>
+			{/if}
 
 			{#if $isAdmin && !mockupAdminActive}
 				{#if $page.url.pathname.startsWith('/admin')}
@@ -515,9 +508,6 @@
 				{/if}
 			{/if}
 
-			{#if $siteConfig.services.cloud_shell && !mockup.active}
-				<CloudShellTrigger />
-			{/if}
 			<LocaleSelect id="app-header-locale" />
 
 			<!-- 테마 토글 -->
@@ -633,7 +623,7 @@
 
 <!-- Console layouts own the page remount boundary so their sidebars and VM wizard stay mounted. -->
 <div class="min-h-[100dvh] bg-surface-canvas text-ink-1 {mockup.active ? 'mockup-active' : ''}">
-	{#if $page.url.pathname === '/dashboard' || $page.url.pathname.startsWith('/dashboard/') || $page.url.pathname === '/admin' || $page.url.pathname.startsWith('/admin/')}
+	{#if $page.url.pathname === '/dashboard' || $page.url.pathname.startsWith('/dashboard/') || $page.url.pathname === '/admin' || $page.url.pathname.startsWith('/admin/') || $page.url.pathname.startsWith('/palimpsest/')}
 		{@render children()}
 	{:else}
 		{#key getLocale()}
@@ -663,3 +653,23 @@
 </Modal>
 </div>
 {/if}
+
+<style>
+	@media (min-width: 64rem) {
+		.console-header {
+			--header-search-width: clamp(10rem, calc(100vw - 54rem), 24rem);
+		}
+
+		.header-context {
+			max-width: calc(50vw - 2.25rem - var(--header-search-width) / 2);
+		}
+
+		.header-search {
+			position: absolute;
+			left: 50%;
+			top: 50%;
+			width: var(--header-search-width);
+			transform: translate(-50%, -50%);
+		}
+	}
+</style>

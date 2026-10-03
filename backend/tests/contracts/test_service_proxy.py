@@ -135,6 +135,70 @@ async def test_service_discovery_returns_json_without_internal_redirect(path, mo
     assert response.json() == {"version": "1.0.0"}
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure_stage", ["missing-ca", "invalid-ca", "context", "client"])
+@pytest.mark.parametrize("credential", ["member", "key"])
+async def test_package_transport_initialization_failure_is_safe_503(
+    monkeypatch, tmp_path, caplog, failure_stage, credential
+):
+    from app.config import get_settings
+    from app.services import service_proxy
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "os_insecure", True)
+    monkeypatch.setattr(settings, "os_cacert", "")
+    monkeypatch.setattr(settings, "service_palimpsest_internal_url", "https://hub.invalid/v1")
+    secret = "ppk_v1_private-credential"
+    sensitive_error = f"https://hub.invalid/collect?credential={secret}"
+    ca_path = tmp_path / "private-ca.pem"
+    if failure_stage in {"missing-ca", "invalid-ca"}:
+        monkeypatch.setattr(settings, "os_cacert", str(ca_path))
+        if failure_stage == "invalid-ca":
+            ca_path.write_text(sensitive_error)
+
+    def fail_initialization(*args, **kwargs):
+        raise RuntimeError(sensitive_error)
+
+    upstream_requests = []
+
+    def upstream(request):
+        upstream_requests.append(request)
+        return httpx.Response(200, content=b"private-package-data")
+
+    client_type = httpx.AsyncClient
+    monkeypatch.setattr(
+        service_proxy.httpx,
+        "AsyncClient",
+        fail_initialization
+        if failure_stage == "client"
+        else lambda **kwargs: client_type(transport=httpx.MockTransport(upstream), **kwargs),
+    )
+    if failure_stage == "context":
+        monkeypatch.setattr(service_proxy.ssl, "create_default_context", fail_initialization)
+
+    consumer = FastAPI()
+
+    @consumer.get("/package")
+    async def fetch_package(request: Request):
+        if credential == "key":
+            return await service_proxy.package_key_proxy(request, "/v1/auth/me")
+        request.state.token_info = {"token": secret, "project_id": "caller-project"}
+        return await service_proxy.package_member_request(request, "/v1/projects/current")
+
+    async with client_type(
+        transport=httpx.ASGITransport(app=consumer), base_url="http://bff", trust_env=False
+    ) as client:
+        response = await client.get("/package", headers={"authorization": "Bearer " + secret})
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Palimpsest Hub is unavailable"}
+    assert upstream_requests == []
+    assert not any(record.name == "app.services.service_proxy" for record in caplog.records)
+    for private_value in (secret, "hub.invalid", str(ca_path), "private-package-data"):
+        assert private_value not in response.text
+        assert private_value not in caplog.text
+
+
 def test_get_internal_endpoint_success():
     mock_conn = MagicMock()
     mock_conn.session.get_endpoint.return_value = "http://10.0.0.1:8010/v1/"

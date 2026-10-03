@@ -85,6 +85,7 @@ const targets = {
 			selectors: [
 				"tests/test_admin_write.py",
 				"tests/test_admin_identity.py",
+				"tests/test_admin_identity_inventory.py",
 				"tests/test_project_self_service.py",
 				"tests/test_database_owner_check.py",
 				"tests/test_file_storage_owner_check.py",
@@ -165,6 +166,11 @@ const targets = {
 		backend: {
 			selectors: [
 				"tests/test_instances.py",
+				"tests/test_flavors.py",
+				"tests/test_flavor_eligibility.py",
+				"tests/test_flavor_capacity.py",
+				"tests/test_flavor_capacity_admission.py",
+				"tests/test_gpu_quota_resilience.py",
 				"tests/test_instance_names.py",
 				"tests/test_instance_health.py",
 				"tests/test_instance_metrics.py",
@@ -186,6 +192,10 @@ const targets = {
 		frontend: {
 			selectors: [
 				"src/lib/components/instance/__tests__",
+				"src/lib/components/wizard/__tests__/SelectFlavor.test.ts",
+				"src/lib/stores/__tests__/vmCreateStore.test.ts",
+				"src/lib/stores/__tests__/vmCreateStoreLoad.test.ts",
+				"src/lib/stores/__tests__/vmCreateStoreRealClient.test.ts",
 				"src/lib/components/admin/__tests__/AdminInstanceTable.test.ts",
 				"src/lib/stores/__tests__/instanceDetailController.resize.test.ts"
 			]
@@ -316,6 +326,7 @@ const targets = {
 				"src/lib/components/chat/__tests__/ChatInput.test.ts",
 				"src/lib/components/chat/__tests__/ModelPickerOverlay.test.ts",
 				"src/lib/components/chat/__tests__/ChatWindow.test.ts",
+				"src/lib/components/chat/__tests__/ChatApiKeysManager.test.ts",
 				"src/lib/components/chat/__tests__/ChatSidebar.test.ts",
 				"src/lib/api/__tests__/chatStream.test.ts",
 				"src/lib/api/__tests__/chatContracts.test.ts",

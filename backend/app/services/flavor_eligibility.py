@@ -1,4 +1,4 @@
-"""Project-scoped flavor quota eligibility shared by discovery and admission."""
+"""Project quota eligibility and create-only host capacity admission."""
 
 from __future__ import annotations
 
@@ -6,9 +6,11 @@ import asyncio
 import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 from app.models.compute import (
+    FlavorCapacityInfo,
     FlavorDemandInfo,
     FlavorEligibility,
     FlavorInfo,
@@ -35,7 +37,7 @@ def is_flavor_frontend_visible(flavor: Any) -> bool:
 
 
 class FlavorEligibilityDenied(Exception):
-    """A known project quota prevents the requested flavor demand."""
+    """Known quota or host capacity prevents the requested flavor demand."""
 
     def __init__(self, eligibility: FlavorEligibility):
         self.eligibility = eligibility
@@ -43,7 +45,7 @@ class FlavorEligibilityDenied(Exception):
 
 
 class FlavorEligibilityUnavailable(Exception):
-    """A quota authority needed for the requested flavor is unavailable."""
+    """A quota or create-capacity authority is unavailable."""
 
     def __init__(self, eligibility: FlavorEligibility):
         self.eligibility = eligibility
@@ -216,9 +218,21 @@ async def evaluate_project_flavors(
     *,
     count: int = 1,
     current_flavor: Any | None = None,
+    check_capacity: bool = False,
+    availability_zone: str | None = None,
+    fresh_capacity: bool = True,
 ) -> list[FlavorInfo]:
-    """Attach eligibility to project-visible flavors using one snapshot per authority."""
+    """Attach eligibility to project-visible flavors using one snapshot per authority.
+
+    Host capacity is evaluated only for a single-VM create (``check_capacity``, no current
+    flavor, ``count == 1``). A confirmed shortage and an unverified capacity both block every
+    flavor: an unresolved default zone, an operator or Placement failure, or an unrepresentable
+    flavor constraint never admits a VM to Nova.
+    Discovery lists pass ``fresh_capacity=False`` to share a short-lived snapshot.
+    """
     flavor_list = list(flavors)
+    if not flavor_list:
+        return []
     compute_quota: dict[str, Any] | None = None
     gpu_status: dict[str, dict[str, int]] | None = None
     compute_error = False
@@ -239,21 +253,46 @@ async def evaluate_project_flavors(
     else:
         gpu_status = {}
 
-    return [
-        _with_eligibility(
+    capacities: dict[str, FlavorCapacityInfo] = {}
+    needs_capacity = check_capacity and current_flavor is None and count == 1
+    capacity_checked_at = datetime.now(UTC).isoformat()
+    if needs_capacity:
+        try:
+            from app.services.flavor_capacity import evaluate_flavor_capacities
+            from app.services.resource_policy_store import resolve_policies
+
+            if not availability_zone:
+                policies = await resolve_policies(conn=conn, keys=("nova.default_compute_availability_zone",))
+                availability_zone = policies["nova.default_compute_availability_zone"]
+            capacities = await evaluate_flavor_capacities(
+                flavor_list, project_id=project_id, availability_zone=availability_zone, fresh=fresh_capacity
+            )
+        except Exception:
+            _logger.warning("flavor host capacity lookup failed", exc_info=True)
+
+    evaluated: list[FlavorInfo] = []
+    for flavor in flavor_list:
+        eligibility = evaluate_flavor(
             flavor,
-            evaluate_flavor(
-                flavor,
-                compute_quota=compute_quota,
-                gpu_status=gpu_status,
-                count=count,
-                current_flavor=current_flavor,
-                compute_error=compute_error,
-                gpu_error=gpu_error,
-            ),
+            compute_quota=compute_quota,
+            gpu_status=gpu_status,
+            count=count,
+            current_flavor=current_flavor,
+            compute_error=compute_error,
+            gpu_error=gpu_error,
         )
-        for flavor in flavor_list
-    ]
+        if needs_capacity:
+            capacity = capacities.get(flavor.id) or FlavorCapacityInfo(
+                status="unavailable", checked_at=capacity_checked_at
+            )
+            blockers = list(eligibility.blockers)
+            if capacity.status in ("insufficient", "unavailable"):
+                blockers.append(FlavorQuotaBlocker(code=f"host_capacity_{capacity.status}"))
+            eligibility = eligibility.model_copy(
+                update={"capacity": capacity, "blockers": blockers, "selectable": not blockers}
+            )
+        evaluated.append(_with_eligibility(flavor, eligibility))
+    return evaluated
 
 
 async def require_flavor_eligible(
@@ -264,6 +303,8 @@ async def require_flavor_eligible(
     count: int = 1,
     current_flavor: Any | None = None,
     allow_gpu_authority_fallback: bool = False,
+    check_capacity: bool = False,
+    availability_zone: str | None = None,
 ) -> FlavorEligibility:
     evaluated = await evaluate_project_flavors(
         conn,
@@ -271,6 +312,8 @@ async def require_flavor_eligible(
         [flavor],
         count=count,
         current_flavor=current_flavor,
+        check_capacity=check_capacity,
+        availability_zone=availability_zone,
     )
     eligibility = evaluated[0].eligibility
     assert eligibility is not None
@@ -292,6 +335,7 @@ async def admit_flavor(
     *,
     count: int = 1,
     current_flavor: Any | None = None,
+    availability_zone: str | None = None,
 ) -> FlavorAdmission:
     """Require eligibility and reserve custom GPU headroom before mutation."""
     from app.services.gpu_inventory import require_gpu_quota
@@ -304,6 +348,8 @@ async def admit_flavor(
         count=count,
         current_flavor=current_flavor,
         allow_gpu_authority_fallback=True,
+        check_capacity=current_flavor is None and count == 1,
+        availability_zone=availability_zone,
     )
     requested = eligibility.requirements.gpus if gpu_available else {}
     reservation_id = await gpu_quota.reserve_gpu_quota(conn, project_id, requested) if requested else None
@@ -321,4 +367,4 @@ async def release_admission(admission: FlavorAdmission | None) -> None:
 
 def format_blockers(blockers: Iterable[FlavorQuotaBlocker]) -> str:
     codes = ", ".join(blocker.code for blocker in blockers)
-    return f"Flavor quota eligibility denied: {codes or 'unknown'}"
+    return f"Flavor eligibility denied: {codes or 'unknown'}"

@@ -222,5 +222,5 @@
 	"clusters.tabs.events": "스택 이벤트",
 	"clusters.tabs.noEvents": "스택 이벤트 (없음)",
 	"clusters.tabs.ariaLabel": "클러스터 상세 정보",
-	"shell.terminalAria": "Cloud Shell terminal"
+	"shell.terminalAria": "Cloud Shell 터미널"
 }

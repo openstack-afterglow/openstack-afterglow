@@ -22,7 +22,7 @@ def test_renderer_merges_layers_and_emits_only_public_fields(tmp_path: Path) -> 
 
     base.write_text(
         '[app]\nbackend_port = 8020\nsite_name = "Afterglow"\n'
-        'site_description = "Cloud"\nlogo_path = "/logo.png"\n'
+        'site_description = "Cloud"\nlogo_path = "/afterglow-logo.svg"\n'
         'public_api_base = "http://internal:8020"\nsecret_key = "base-secret"\n'
         "\n[services]\nk3s = false\nchat = false\nmcp = false\n"
     )
@@ -67,7 +67,7 @@ def test_renderer_merges_layers_and_emits_only_public_fields(tmp_path: Path) -> 
             "backend_port": 8020,
             "site_name": "Frontend Cloud",
             "site_description": "Cloud",
-            "logo_path": "/logo.png",
+            "logo_path": "/afterglow-logo.svg",
             "logo_dark_path": "/operator-dark.png",
             "logo_light_path": "/frontend-light.png",
             "frontend_base_url": "https://cloud.example.com",

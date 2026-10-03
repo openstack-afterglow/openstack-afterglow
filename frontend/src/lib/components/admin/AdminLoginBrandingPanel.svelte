@@ -286,11 +286,15 @@
 		object-fit: contain;
 	}
 	.preview-dark {
+		color-scheme: dark;
 		background: radial-gradient(circle at 30% 20%, color-mix(in oklab, var(--color-warm) 15%, transparent), transparent 35%), var(--color-surface-base);
 	}
 	.preview-light {
+		color-scheme: light;
 		background: linear-gradient(135deg, var(--color-ink-0), var(--color-ink-1));
 	}
+	:global(html.light) .preview-dark { color-scheme: light; }
+	:global(html.light) .preview-light { color-scheme: dark; }
 	.asset-meta {
 		display: grid;
 		gap: 0.5rem;

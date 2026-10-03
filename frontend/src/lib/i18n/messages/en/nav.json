@@ -113,5 +113,20 @@
 	"routes.quotas": "Quotas",
 	"routes.groups": "Groups",
 	"routes.roles": "Roles",
-	"routes.announcements": "Announcements"
+	"routes.announcements": "Announcements",
+	"items.projectPackages": "Project packages",
+	"routes.projectPackages": "Project packages",
+	"routes.audio": "Audio",
+	"accessibility.pageMenu": "Page menu",
+	"accessibility.collapseServiceMenu": "Collapse service menu",
+	"accessibility.expandServiceMenu": "Expand service menu",
+	"accessibility.currentService": "Current service",
+	"accessibility.allMenu": "All menus",
+	"accessibility.openAllMenu": "Open all menus",
+	"accessibility.closeAllMenu": "Close all menus",
+	"accessibility.adminNavigation": "Administrator navigation",
+	"accessibility.userNavigation": "User navigation",
+	"accessibility.search": "Search (⌘K)",
+	"accessibility.allServices": "All services",
+	"actions.searchResources": "Search resources"
 }

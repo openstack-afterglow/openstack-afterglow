@@ -246,7 +246,7 @@ describe('ChatWindow', () => {
 					created_at: '2026-07-23T00:01:00Z'
 				}
 			],
-			models: [{ id: 1, model_name: 'afterglow-chat', display_name: 'Afterglow Chat' }],
+			models: [{ id: 1, provider_id: 1, provider_type: 'openai', provider_sort_order: 0, sort_order: 0, model_name: 'afterglow-chat', display_name: 'Afterglow Chat' }],
 			...callbacks
 		});
 

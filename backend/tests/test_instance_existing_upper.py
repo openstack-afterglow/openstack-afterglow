@@ -7,6 +7,8 @@ import pytest
 
 from app.models.compute import InstanceInfo
 
+pytestmark = pytest.mark.usefixtures("available_flavor_capacity")
+
 
 def _make_flavor():
     return SimpleNamespace(id="flavor-1", name="m1.small", extra_specs={})

@@ -113,5 +113,20 @@
 	"routes.quotas": "クォータ",
 	"routes.groups": "グループ",
 	"routes.roles": "ロール",
-	"routes.announcements": "お知らせ管理"
+	"routes.announcements": "お知らせ管理",
+	"items.projectPackages": "プロジェクトパッケージ",
+	"routes.projectPackages": "プロジェクトパッケージ",
+	"routes.audio": "オーディオ",
+	"accessibility.pageMenu": "ページメニュー",
+	"accessibility.collapseServiceMenu": "サービスメニューを折りたたむ",
+	"accessibility.expandServiceMenu": "サービスメニューを展開",
+	"accessibility.currentService": "現在のサービス",
+	"accessibility.allMenu": "全メニュー",
+	"accessibility.openAllMenu": "全メニューを開く",
+	"accessibility.closeAllMenu": "全メニューを閉じる",
+	"accessibility.adminNavigation": "管理者ナビゲーション",
+	"accessibility.userNavigation": "ユーザーナビゲーション",
+	"accessibility.search": "検索 (⌘K)",
+	"accessibility.allServices": "すべてのサービス",
+	"actions.searchResources": "リソースを検索"
 }

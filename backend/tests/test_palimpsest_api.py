@@ -39,11 +39,12 @@ async def test_audit_prefix_map_covers_palimpsest_surfaces():
 async def test_palimpsest_routes_are_mounted_under_v1_only():
     from app.main import app
 
-    # 허브·빌드 경로는 각자의 테스트 파일이 고정한다 — 여기서는 레이어/관리자 표면만.
+    # 허브·빌드·패키지 경로는 각자의 테스트 파일이 고정한다 — 여기서는 레이어/관리자 표면만.
+    excluded = ("/palimpsest/hub", "/palimpsest/builds", "/palimpsest/packages", "/palimpsest/package-keys")
     paths = {
         route.path
         for route in app.routes
-        if "palimpsest" in route.path and "/palimpsest/hub" not in route.path and "/palimpsest/builds" not in route.path
+        if "palimpsest" in route.path and not any(part in route.path for part in excluded)
     }
 
     assert paths == {
@@ -54,7 +55,7 @@ async def test_palimpsest_routes_are_mounted_under_v1_only():
         "/api/v1/admin/palimpsest/digest-status",
     }
     # 레거시 /api 는 baked cloud-init 3종만 허용된다 — 신규 추가 금지
-    assert not any(p.startswith("/api/palimpsest") for p in paths)
+    assert not any(route.path.startswith("/api/palimpsest") for route in app.routes)
 
 
 async def test_second_generation_union_surface_stays_removed():

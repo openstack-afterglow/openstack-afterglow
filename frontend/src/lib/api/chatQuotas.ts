@@ -1,4 +1,5 @@
 import { t } from '$lib/i18n/ns/chat-settings';
+import { intlLocale } from '$lib/i18n/runtime.svelte';
 
 export type QuotaLimitSource = 'default' | 'user';
 
@@ -72,7 +73,7 @@ export interface UserUsageDetail {
 
 export function formatCredit(value: string | null, unlimitedLabel?: string): string {
 	if (value === null || Number(value) === 0) return unlimitedLabel ?? t('quotas.unlimited');
-	return Number(value).toLocaleString('en-US', { maximumFractionDigits: 2 });
+	return Number(value).toLocaleString(intlLocale(), { maximumFractionDigits: 2 });
 }
 
 export function isCreditInput(value: string): boolean {

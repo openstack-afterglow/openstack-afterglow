@@ -87,6 +87,22 @@ location.reload();
 
 키 표시 모드는 hydration 뒤 켜집니다. 언어 변경 시 페이지 내용은 다시 mount되므로 저장하지 않은 페이지 폼은 초기화될 수 있습니다. 헤더·사이드바 펼침 상태·VM 생성 패널·루트의 Cloud Shell·업로드 등 전역 상태는 유지합니다. 이미 발생한 토스트·저장된 오류 문구는 발생 당시 언어를 유지할 수 있습니다. 검수할 때 좁은 화면에서 줄바꿈·버튼 잘림·접근성 이름도 확인하세요.
 
+Dashboard·관리자·Palimpsest는 `main` 안의 페이지 children만 다시 mount합니다. Palimpsest 패키지의 저장 전 초안과 일회성 발급 secret도 폐기되므로 언어를 바꾸기 전에 필요한 secret을 안전하게 보관하세요. 보안 그룹 합집합은 규칙·정렬 등 정책 의미를 그대로 두고 현재 언어의 표시 label만 계산합니다. 이미지 스타일 안내의 한국어 suffix는 번역 누락이 아니라 실제 provider 요청에 사용하는 원문입니다.
+
+## 개발자 작업 시작·재개
+
+현지화 코드 작업은 사용자 승인된 별도 `i18n` worktree에서만 진행합니다. 매번 최신 GitHub `dev`를 먼저 가져와 병합하고 충돌을 해결한 뒤, 추가·수정된 화면을 기준으로 번역합니다. 기존 변경을 보존하며 공유 checkout의 브랜치를 전환하거나 게시된 `i18n`을 rebase·force push하지 않습니다.
+
+```bash
+git fetch origin dev
+git merge origin/dev
+git merge-base --is-ancestor origin/dev HEAD
+npm --prefix frontend run i18n:check
+npm --prefix frontend run i18n:scan
+```
+
+병합 직후 검사는 신규 누락과 작업 범위를 확인하는 기준입니다. 누락을 갱신한 뒤 검사·관련 테스트·실제 네 언어 화면 검증을 다시 완료합니다. 완료·push 직전에 다시 fetch하여 dev가 진행했으면 병합·번역·검증을 반복하고, OpenSpec과 보고에 실제 반영한 dev SHA를 기록합니다. 상세 절차는 [에이전트 개발 규정](agent-development-guide.md)의 최신 dev 기준을 따릅니다. 스프레드시트 기여자에게는 이 기준으로 유지보수자가 export한 최신 CSV를 제공합니다.
+
 ## 개발자 계약
 
 `ns/<namespace>.ts`는 한국어 JSON 키를 타입으로 쓰고 네 언어 JSON을 eager glob으로 가져옵니다. 해당 namespace를 가져온 코드의 번들에 카탈로그가 포함됩니다. `t()`는 markup, `$derived`, getter 또는 이벤트 호출 시점에 사용합니다. 모듈 최상위나 SvelteKit `load`에서는 호출하지 않습니다. 서버 locale은 루트 layout의 동기 render 시작에서 초기화하므로 render 밖에서 번역하면 요청 간 언어가 섞일 수 있습니다.

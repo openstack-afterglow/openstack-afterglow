@@ -113,5 +113,20 @@
 	"routes.quotas": "配额",
 	"routes.groups": "组",
 	"routes.roles": "角色",
-	"routes.announcements": "公告管理"
+	"routes.announcements": "公告管理",
+	"items.projectPackages": "项目软件包",
+	"routes.projectPackages": "项目软件包",
+	"routes.audio": "音频",
+	"accessibility.pageMenu": "页面菜单",
+	"accessibility.collapseServiceMenu": "折叠服务菜单",
+	"accessibility.expandServiceMenu": "展开服务菜单",
+	"accessibility.currentService": "当前服务",
+	"accessibility.allMenu": "全部菜单",
+	"accessibility.openAllMenu": "打开全部菜单",
+	"accessibility.closeAllMenu": "关闭全部菜单",
+	"accessibility.adminNavigation": "管理员导航",
+	"accessibility.userNavigation": "用户导航",
+	"accessibility.search": "搜索 (⌘K)",
+	"accessibility.allServices": "所有服务",
+	"actions.searchResources": "搜索资源"
 }

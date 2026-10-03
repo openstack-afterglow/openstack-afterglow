@@ -2,6 +2,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/sv
 import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { auth } from '$lib/stores/auth';
+import { t } from '$lib/i18n/ns/chat-settings';
+import { initLocale } from '$lib/i18n/runtime.svelte';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), patch: vi.fn() }));
 vi.mock('$lib/api/client', () => ({
@@ -49,6 +51,7 @@ function examples(container: HTMLElement): string {
 describe('ChatApiKeysManager connection guide', () => {
 	beforeEach(() => {
 		vi.resetAllMocks();
+		initLocale('ko');
 		auth.set({
 			token: 'browser-token', refreshToken: null, accessExpiresAt: null,
 			userId: 'user-1', username: 'tester', projectId: 'project-1', projectName: 'Project',
@@ -60,80 +63,25 @@ describe('ChatApiKeysManager connection guide', () => {
 		));
 	});
 
-	afterEach(cleanup);
-
-	it('shows one selected guide at a time and uses every discovered SDK URL verbatim', async () => {
-		const { container } = render(ChatApiKeysManager);
-		const codexTab = await screen.findByRole('tab', { name: 'Codex' });
-		const claudeCodeTab = screen.getByRole('tab', { name: 'Claude Code' });
-		const openaiTab = screen.getByRole('tab', { name: 'OpenAI' });
-		const claudeTab = screen.getByRole('tab', { name: 'Claude' });
-
-		const codexPanel = screen.getByRole('tabpanel', { name: 'Codex' });
-		expect(codexTab.getAttribute('aria-selected')).toBe('true');
-		expect(codexTab.getAttribute('aria-controls')).toBe(codexPanel.id);
-		expect(screen.getAllByRole('tabpanel')).toHaveLength(1);
-		expect(container.querySelectorAll('pre code')).toHaveLength(3);
-		const codexConfig = screen.getByRole('region', { name: 'Codex CLI 연결 설정' }).textContent ?? '';
-		const keyPrompt = screen.getByRole('region', { name: 'Lumen API 키 입력 명령' }).textContent ?? '';
-		const codexLaunch = screen.getByRole('region', { name: 'Codex CLI 실행 명령' }).textContent ?? '';
-		expect(codexConfig).toContain('base_url = "https://inference.example/tenant/v1"');
-		expect(codexConfig).toContain('wire_api = "responses"');
-		expect(codexConfig).toContain('env_key = "LUMEN_API_KEY"');
-		expect(codexConfig).not.toMatch(/^model(_provider)?\s*=/m);
-		expect(keyPrompt).toContain('read -rs LUMEN_API_KEY');
-		expect(codexLaunch).not.toContain('read -rs');
-		expect(codexLaunch).toContain('codex --strict-config -c model_provider=lumen -m "replace-with-active-Responses-model-ID"');
-		expect(codexLaunch).not.toContain('browser-token');
-		const discoveryRequests = mocks.get.mock.calls.filter(([path]) => String(path).endsWith('/compat')).length;
-
-		await fireEvent.click(claudeCodeTab);
-		expect(screen.getByRole('tabpanel', { name: 'Claude Code' })).toBeTruthy();
-		expect(screen.getByRole('region', { name: 'Lumen API 키 입력 명령' }).textContent).toContain('read -rs LUMEN_API_KEY');
-		const claudeSetup = screen.getByRole('region', { name: 'Claude Code 연결 명령' }).textContent ?? '';
-		expect(claudeSetup).not.toContain('read -rs');
-		expect(claudeSetup).toContain('export LUMEN_MODEL="replace-with-active-Anthropic-model-ID"');
-		expect(claudeSetup).toContain('export ANTHROPIC_BASE_URL="https://inference.example/tenant"');
-		expect(claudeSetup).toContain('export ANTHROPIC_AUTH_TOKEN="$LUMEN_API_KEY"');
-		for (const tier of ['ANTHROPIC_MODEL', 'ANTHROPIC_DEFAULT_SONNET_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL', 'ANTHROPIC_DEFAULT_HAIKU_MODEL']) {
-			expect(claudeSetup).toContain(`export ${tier}="$LUMEN_MODEL"`);
-		}
-		expect(claudeSetup).toContain('# export ANTHROPIC_CUSTOM_HEADERS="X-Lumen-Provider: $LUMEN_PROVIDER"');
-		expect(claudeSetup).not.toContain('browser-token');
-		expect(claudeSetup).not.toContain('/claude-gateway');
-
-		await fireEvent.click(openaiTab);
-		expect(screen.getByRole('tabpanel', { name: 'OpenAI' })).toBeTruthy();
-		expect(examples(container)).toContain('base_url="https://inference.example/tenant/v1"');
-		expect(examples(container)).toContain('from openai import OpenAI');
-		expect(examples(container)).toContain('{"provider": os.environ["LUMEN_PROVIDER"]}');
-
-		await fireEvent.click(claudeTab);
-		expect(screen.getByRole('tabpanel', { name: 'Claude' })).toBeTruthy();
-		expect(examples(container)).toContain('base_url="https://inference.example/tenant"');
-		expect(examples(container)).toContain('from anthropic import Anthropic');
-		expect(examples(container)).toContain('{"provider": os.environ["LUMEN_PROVIDER"]}');
-		expect(examples(container)).not.toContain('api.localhost');
-		expect(examples(container)).not.toContain('messages=[...]');
-		expect(mocks.get.mock.calls.filter(([path]) => String(path).endsWith('/compat'))).toHaveLength(discoveryRequests);
+	afterEach(() => {
+		cleanup();
+		initLocale('ko');
 	});
 
-	it('copies only Claude launch commands after the separate key-entry step', async () => {
-		const writeText = vi.fn().mockResolvedValue(undefined);
-		const clipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
-		Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
-		try {
-			render(ChatApiKeysManager);
-			await fireEvent.click(await screen.findByRole('tab', { name: 'Claude Code' }));
-			await fireEvent.click(screen.getByRole('button', { name: '명령 복사' }));
-			const copied = writeText.mock.calls.at(-1)?.[0] as string;
-			expect(copied).not.toContain('read -rs');
-			expect(copied).not.toContain('browser-token');
-			expect(copied).toContain('ANTHROPIC_BASE_URL="https://inference.example/tenant"');
-		} finally {
-			if (clipboard) Object.defineProperty(navigator, 'clipboard', clipboard);
-			else Reflect.deleteProperty(navigator, 'clipboard');
+	it('switches a single accessible guide without refetching discovery', async () => {
+		render(ChatApiKeysManager);
+		const codexTab = await screen.findByRole('tab', { name: t('apiKeys.guide.codexTab') });
+		const codexPanel = screen.getByRole('tabpanel', { name: t('apiKeys.guide.codexTab') });
+		expect(codexTab.getAttribute('aria-controls')).toBe(codexPanel.id);
+		const discoveryRequests = mocks.get.mock.calls.filter(([path]) => String(path).endsWith('/compat')).length;
+
+		for (const key of ['apiKeys.guide.claudeCodeTab', 'apiKeys.guide.openaiTab', 'apiKeys.guide.claudeTab', 'apiKeys.guide.codexTab'] as const) {
+			const name = t(key);
+			await fireEvent.click(screen.getByRole('tab', { name }));
+			expect(screen.getAllByRole('tabpanel')).toEqual([screen.getByRole('tabpanel', { name })]);
+			expect(screen.getByRole('tab', { name }).getAttribute('aria-selected')).toBe('true');
 		}
+		expect(mocks.get.mock.calls.filter(([path]) => String(path).endsWith('/compat'))).toHaveLength(discoveryRequests);
 	});
 
 	it('keeps key management available but hides examples until discovery retry succeeds', async () => {
@@ -145,18 +93,24 @@ describe('ChatApiKeysManager connection guide', () => {
 		const { container } = render(ChatApiKeysManager);
 		await screen.findByRole('alert');
 		expect(container.querySelector('pre')).toBeNull();
-		expect(screen.getByRole('button', { name: '+ 새 API 키 발급' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: t('apiKeys.create') })).toBeTruthy();
 		unavailable = false;
-		await fireEvent.click(screen.getByRole('button', { name: '연결 정보 다시 불러오기' }));
+		await fireEvent.click(screen.getByRole('button', { name: t('apiKeys.guide.reload') }));
 		await waitFor(() => expect(examples(container)).toContain(discovery.clients.codex.base_url));
-		expect(screen.getByRole('tab', { name: 'Codex' }).getAttribute('aria-selected')).toBe('true');
+		expect(screen.getByRole('tab', { name: t('apiKeys.guide.codexTab') }).getAttribute('aria-selected')).toBe('true');
 		expect(screen.queryByRole('alert')).toBeNull();
 	});
 
-	it('does not publish code with a malformed or credential-bearing discovery URL', async () => {
+	it.each([
+		'https://user:password@inference.example/v1',
+		'https://inference.example/v1?key=private',
+		'https://inference.example/v1#private',
+		'https://inference.example/v1\n',
+		'https://inference.example\\private/v1'
+	])('hides all executable examples for unsafe discovery URL %j', async (url) => {
 		mocks.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/compat') ? {
 			endpoints: {
-				openai: { sdk_base_url: 'https://user:password@inference.example/v1' },
+				openai: { sdk_base_url: url },
 				anthropic: discovery.endpoints.anthropic,
 				gateway: discovery.endpoints.gateway
 			},
@@ -165,7 +119,7 @@ describe('ChatApiKeysManager connection guide', () => {
 		const { container } = render(ChatApiKeysManager);
 		await screen.findByRole('alert');
 		expect(container.querySelector('pre')).toBeNull();
-		expect(container.textContent).not.toContain('user:password');
+		expect(container.textContent).not.toContain(url);
 	});
 
 	it('does not replace the current project endpoint with a late response from the previous project', async () => {
@@ -196,10 +150,10 @@ describe('ChatApiKeysManager connection guide', () => {
 	it('renames an active API key in place', async () => {
 		render(ChatApiKeysManager);
 
-		await fireEvent.click(await screen.findByRole('button', { name: '이름 변경' }));
-		const input = screen.getByRole('textbox', { name: 'API 키 이름' });
+		await fireEvent.click(await screen.findByRole('button', { name: t('apiKeys.rename') }));
+		const input = screen.getByRole('textbox', { name: t('apiKeys.nameLabel') });
 		await fireEvent.input(input, { target: { value: '새 이름' } });
-		await fireEvent.click(screen.getByRole('button', { name: '저장' }));
+		await fireEvent.click(screen.getByRole('button', { name: t('apiKeys.save') }));
 
 		await waitFor(() => {
 			expect(mocks.patch).toHaveBeenCalledWith(
@@ -214,18 +168,18 @@ describe('ChatApiKeysManager connection guide', () => {
 	it('rejects limits above the user quota and saves valid nullable limits', async () => {
 		render(ChatApiKeysManager);
 
-		await fireEvent.click(await screen.findByRole('button', { name: '한도 설정' }));
-		const monthly = screen.getByLabelText('월 한도(크레딧)');
-		const weekly = screen.getByLabelText('주간 한도(크레딧)');
+		await fireEvent.click(await screen.findByRole('button', { name: t('apiKeys.setLimits') }));
+		const monthly = screen.getByLabelText(t('apiKeys.monthlyLimit'));
+		const weekly = screen.getByLabelText(t('apiKeys.weeklyLimit'));
 		await fireEvent.input(monthly, { target: { value: '2000' } });
-		await fireEvent.click(screen.getByRole('button', { name: '저장' }));
+		await fireEvent.click(screen.getByRole('button', { name: t('apiKeys.save') }));
 
-		expect(screen.getByText('사용자 쿼터(1,000)를 초과할 수 없습니다')).toBeTruthy();
+		expect(screen.getByRole('alert').id).toBe(`${monthly.id}-message`);
 		expect(mocks.patch).not.toHaveBeenCalled();
 
 		await fireEvent.input(monthly, { target: { value: '500' } });
 		await fireEvent.input(weekly, { target: { value: '' } });
-		await fireEvent.click(screen.getByRole('button', { name: '저장' }));
+		await fireEvent.click(screen.getByRole('button', { name: t('apiKeys.save') }));
 
 		await waitFor(() => {
 			expect(mocks.patch).toHaveBeenCalledWith(
@@ -247,11 +201,12 @@ describe('ChatApiKeysManager connection guide', () => {
 		));
 		render(ChatApiKeysManager);
 
-		await fireEvent.click(await screen.findByRole('button', { name: '한도 설정' }));
-		await fireEvent.input(screen.getByLabelText('월 한도(크레딧)'), { target: { value: '800' } });
-		await fireEvent.click(screen.getByRole('button', { name: '저장' }));
+		await fireEvent.click(await screen.findByRole('button', { name: t('apiKeys.setLimits') }));
+		const monthly = screen.getByLabelText(t('apiKeys.monthlyLimit'));
+		await fireEvent.input(monthly, { target: { value: '800' } });
+		await fireEvent.click(screen.getByRole('button', { name: t('apiKeys.save') }));
 
-		expect(screen.getByText('관리자 한도(500)를 초과할 수 없습니다')).toBeTruthy();
+		expect(screen.getByRole('alert').id).toBe(`${monthly.id}-message`);
 		expect(mocks.patch).not.toHaveBeenCalled();
 	});
 });

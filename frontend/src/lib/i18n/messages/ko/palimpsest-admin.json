@@ -19,6 +19,7 @@
 	"page.title": "Palimpsest 레이어 관리",
 	"page.subtitle": "Dockerfile로 루트 레이어를 빌드하고 선택적으로 SSH VM을 생성합니다. 기존 기록도 이곳에서 조회합니다.",
 	"actions.refresh": "새로고침",
+	"actions.projectPackages": "프로젝트 패키지 / 접근 키",
 	"summary.label": "Palimpsest 현황",
 	"summary.sealed": "봉인된 레이어",
 	"summary.profiles": "저장된 프로필",

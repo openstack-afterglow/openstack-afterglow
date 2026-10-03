@@ -43,6 +43,7 @@ git merge-base --is-ancestor origin/dev HEAD
 - `docker-compose.dev.yml`은 현재 소스를 직접 빌드하는 개발 환경의 정본이다. Afterglow와 Lumen·Waygate·Drover(기존 Palimpsest 포함)를 로컬에서 실행하고 기본적으로 Compose service DNS로 통신한다. `SERVICE_*_INTERNAL_URL` 또는 private `[services]`로 목적지를 선택할 수 있고 명시적 빈 환경 변수는 카탈로그를 선택한다. 로컬 DB/cache/checkpointer·설정·키는 운영과 분리한다.
 - `docker-compose.prod.yml`은 GitHub/GHCR에서 빌드한 이미지를 pull·동기화하여 실행하는 운영 환경의 정본이다. `build:` 및 소스 빌드 fallback을 금지한다. HAProxy가 앞단에서 운영 인증서로 TLS 종료와 LB를 담당한다. 형제 서비스는 기본적으로 인증된 OpenStack service catalog endpoint를 사용하며 명시적 환경 변수/TOML override는 신뢰된 HTTPS endpoint만 허용한다. 개발 HTTP URL, 자동 self-signed 인증서 및 insecure secret 우회를 금지한다.
 - 세 파일은 각각 명시적인 `-f`로 선택한다. 개발은 `npm run services:up` 또는 준비된 private env와 `docker-compose.dev.yml`로 실행하며, implicit override나 별도의 installed-image 개발 경로를 두지 않는다.
+- 개별 서비스 개발은 `services:config/up -- --only lumen,waygate,palimpsest`에서 필요한 서비스만 선택한다. 선택하지 않은 Drover/Waygate의 callback·service project·checkout을 요구하지 않는다. Waygate를 선택하면 VM provisioning/agent callback 설정은 여전히 필수다.
 - 기능테스트 datastore도 `docker-compose.dev.yml`의 `test` profile이 정본이며 별도 test manifest를 두지 않는다. 실행기는 기본 `afterglow-test` project에서 `mariadb/postgres/test-redis`만 명시적으로 기동·종료한다. 전용 loopback 3307/5434/6380과 tmpfs를 사용하고 개발 DB/cache·named volume·orphan을 삭제하지 않는다. 테스트만 실행할 때 cloud credential을 요구하거나 앱을 함께 시작하지 않는다.
 - 모드 전환 시 기존 project·volume·암호화 키를 보존하고 다른 프로젝트를 중지/삭제하지 않는다. `down --volumes`와 광역 prune을 사용하지 않는다. Container health와 실제 authenticated dashboard/OpenStack 통신을 별도로 검증하고 upstream 오류를 성공으로 숨기지 않는다.
 
@@ -120,6 +121,8 @@ milestone.md          OpenSpec redirect stub; append 대상이 아님
   2. **소비자 계약 테스트 (Contract)**: `npm run test:contract` (`backend/tests/contracts/`의 BFF/SDK/catalog/ingress 경계)
   3. **국소 기능 테스트 (Functional)**: `npm run test:functional` (`docker-compose.dev.yml`의 실제 MariaDB/PostgreSQL/Redis test profile). 기본 전용 project 자동 기동·종료이며 데이터는 tmpfs다. 재사용은 `--no-start`, 실행 중 유지/디버깅은 `--keep`이고 중지 시 데이터는 사라진다.
   4. **실제 환경 테스트 (Live OpenStack)**: `npm run test:live` (`live:{auth,admin,compute,network,storage,layers}`). 자격 증명/도달성 미비는 검증 공백으로 보고하지만, 사전조건 충족 뒤의 테스트 실패는 결함으로 처리한다.
+- **독립 서비스 실제 로직 검증 (Service-real)**은 위 계층과 별도다. `test:lumen/waygate/palimpsest`의 BFF mocks, `test:functional`의 실제 DB 또는 synthetic browser fixture 성공을 서비스 실행 성공으로 표기하지 않는다. Lumen·Waygate·Palimpsest 로직 변경은 현재 source API/worker를 로컬 또는 Docker로 실행하고 `npm run services:verify -- <service> --exercise`나 서비스 소유 system runner에서 바뀐 경로를 실제 HTTP로 검증한다. URL·API key/Keystone token·project/model/server/blob는 수동 지정하며 실제 인증/인가를 우회하지 않는다.
+- 보고에는 실제인 API·DB·worker·blob/WireGuard kernel과 모의인 identity/provider/cloud 경계를 구분한다. `services:verify` 기본 모드는 인증 조회만 하며 acceptance가 아니다. Lumen provider 호출은 비용 opt-in, Waygate client control과 VM callback/data plane은 별개, Palimpsest Hub와 KVM/OpenStack build/consume도 별개다. 사전조건 누락은 검증 공백이며, 준비된 환경의 assertion/cleanup 실패를 skip·fallback으로 숨기지 않는다.
 - 검증 진행 순서: exact selector → named target → cross-cutting target (`npm run test:all`).
 - `npm run test:list`로 target을 확인한다.
 - named target: `npm run test:target -- <target>`

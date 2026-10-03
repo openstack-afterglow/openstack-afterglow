@@ -237,33 +237,21 @@ install_mcp_route(app)
 
 @app.exception_handler(HTTPException)
 async def sanitized_http_exception_handler(request: Request, exc: HTTPException):
-    """5xx 에러의 내부 상세 정보를 클라이언트에 노출하지 않고 로그에만 기록.
-
-    400/4xx 에 chained __cause__ 가 있으면 진짜 원인을 함께 로깅 — FastAPI 가
-    request body parsing 예외(MultiPartException 등)를 generic 400 으로 wrap 해
-    detail 만으로 진단 어려움 대응.
-    """
+    """Return safe 5xx details; log only status and route metadata, never exception text."""
     # Only client-visible failure detail is eligible for the audit record.
     if (exc.status_code < 500 or getattr(exc, "_afterglow_safe_public_detail", False)) and isinstance(exc.detail, str):
         request.state.audit_error = exc.detail
     if exc.status_code >= 500:
         _logger.error(
-            "HTTP %d: %s %s — %s",
-            exc.status_code,
-            request.method,
-            request.url.path,
-            exc.detail,
+            "HTTP error",
+            extra={"status": exc.status_code, "method": _safe_method(request.method), "path": _route_template(request)},
         )
         detail = exc.detail if getattr(exc, "_afterglow_safe_public_detail", False) else "내부 서버 오류"
         return JSONResponse(status_code=exc.status_code, content={"detail": detail})
     if exc.status_code == 400:
-        cause = getattr(exc, "__cause__", None)
         _logger.warning(
-            "HTTP 400: %s %s — detail=%r cause=%s",
-            request.method,
-            request.url.path,
-            exc.detail,
-            f"{type(cause).__name__}: {cause}" if cause else "<none>",
+            "HTTP error",
+            extra={"status": 400, "method": _safe_method(request.method), "path": _route_template(request)},
         )
     return await _default_http_handler(request, exc)
 
@@ -284,7 +272,9 @@ if _ClientDisconnect is not None:
         남지 않으므로 여기서 명시적으로 기록한다. 클라는 이미 disconnect 라
         응답은 도달하지 않지만 access log 분류용으로 499 반환.
         """
-        _logger.info("client disconnect: %s %s", request.method, request.url.path)
+        _logger.info(
+            "client disconnect", extra={"method": _safe_method(request.method), "path": _route_template(request)}
+        )
         return JSONResponse(status_code=499, content={"detail": "클라이언트 연결 종료"})
 
 
@@ -295,7 +285,14 @@ from app.services.activity import record as _record_activity
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
     """처리되지 않은 예외를 로그에 기록하고 500을 반환."""
-    _logger.exception("Unhandled exception: %s %s", request.method, request.url.path)
+    _logger.error(
+        "Unhandled exception",
+        extra={
+            "method": _safe_method(request.method),
+            "path": _route_template(request),
+            "error_type": type(exc).__name__,
+        },
+    )
     return JSONResponse(status_code=500, content={"detail": "내부 서버 오류"})
 
 
@@ -341,6 +338,8 @@ _AUDIT_PREFIX_MAP: list[tuple[str, str]] = [
     ("/api/v1/admin/libraries", "union_layer"),
     ("/api/v1/libraries/squashfs", "union_layer"),
     ("/api/v1/admin/palimpsest", "palimpsest_layer"),
+    ("/api/v1/palimpsest/package-keys", "palimpsest_package_key"),
+    ("/api/v1/palimpsest/packages", "palimpsest_package"),
     ("/api/v1/palimpsest", "palimpsest_layer"),
     ("/api/v1/admin/images", "image"),
     ("/api/v1/admin/instances", "instance"),
@@ -405,23 +404,37 @@ async def security_headers_middleware(request: Request, call_next):
 
 # CORS: credentials 사용 시 allow_origins=["*"] 는 브라우저가 거부하므로
 # 요청 Origin을 동적으로 허용 (개발 환경)
-@app.middleware("http")
+_LOGGED_METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "TRACE", "CONNECT"})
+
+
+def _safe_method(method: str) -> str:
+    return method if method in _LOGGED_METHODS else "OTHER"
+
+
+def _route_template(request: Request) -> str:
+    # Router matches set scope["route"] even when validation or the handler fails.
+    # Never fall back to the URL: an unmatched path may itself contain a credential.
+    route = request.scope.get("route")
+    path = getattr(route, "path", None)
+    return path if isinstance(path, str) else "<unmatched>"
+
+
 async def request_logging_middleware(request: Request, call_next):
     start = time.perf_counter()
-    response = await call_next(request)
-    duration_ms = (time.perf_counter() - start) * 1000
-    _record_request(request.method, request.url.path, response.status_code, duration_ms)
-    if not request.url.path.startswith(("/api/v1/health", "/api/health")):
+    status = 500
+    try:
+        response = await call_next(request)
+        status = response.status_code
+        return response
+    finally:
+        duration_ms = (time.perf_counter() - start) * 1000
+        method = _safe_method(request.method)
+        path = _route_template(request)
+        _record_request(method, path, status, duration_ms)
         _logger.info(
             "request",
-            extra={
-                "method": request.method,
-                "path": request.url.path,
-                "status": response.status_code,
-                "duration_ms": round(duration_ms, 2),
-            },
+            extra={"method": method, "path": path, "status": status, "duration_ms": round(duration_ms, 2)},
         )
-    return response
 
 
 _CORS_ALLOW_HEADERS = "Content-Type, X-Project-Id, X-Afterglow-Page, Authorization, Idempotency-Key, Last-Event-ID"
@@ -545,6 +558,9 @@ async def activity_audit_middleware(request: Request, call_next):
     return response
 
 
+app.middleware("http")(request_logging_middleware)
+
+
 # Identity
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(mcp_access_router, prefix="/api/v1/auth", tags=["mcp-access"])
@@ -640,12 +656,18 @@ from app.api.palimpsest import (  # noqa: E402
     palimpsest_builds_router,
     palimpsest_hub_router,
     palimpsest_layers_router,
+    palimpsest_package_keys_router,
+    palimpsest_packages_router,
 )
 
 app.include_router(palimpsest_layers_router, prefix="/api/v1/palimpsest", tags=["palimpsest"])
 app.include_router(palimpsest_hub_router, prefix="/api/v1/palimpsest/hub", tags=["palimpsest-hub"])
 app.include_router(palimpsest_builds_router, prefix="/api/v1/palimpsest/builds", tags=["palimpsest-builds"])
 app.include_router(palimpsest_admin_router, prefix="/api/v1/admin/palimpsest", tags=["palimpsest-admin"])
+app.include_router(palimpsest_packages_router, prefix="/api/v1/palimpsest/packages", tags=["palimpsest-packages"])
+app.include_router(
+    palimpsest_package_keys_router, prefix="/api/v1/palimpsest/package-keys", tags=["palimpsest-package-keys"]
+)
 if _svc_cfg.service_trove_enabled:
     from app.api.database.instances import router as trove_router
 

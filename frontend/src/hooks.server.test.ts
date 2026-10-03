@@ -7,10 +7,10 @@ import type { PublicSiteConfig } from '$lib/types/siteConfig';
 const baseConfig: PublicSiteConfig = {
 	site_name: 'Afterglow',
 	site_description: 'OpenStack VM + OverlayFS 배포 플랫폼',
-	logo_path: '/logo.png',
-	logo_dark_path: '/logo-white.png',
-	logo_light_path: '/logo-dark.png',
-	favicon_path: '/favicon.ico',
+	logo_path: '/afterglow-logo.svg',
+	logo_dark_path: '/afterglow-logo.svg',
+	logo_light_path: '/afterglow-logo.svg',
+	favicon_path: '/favicon.svg',
 	refresh_interval_ms: 5000,
 	services: {
 		magnum: false,
@@ -92,6 +92,16 @@ describe('frontend health', () => {
 		expect(response.headers.get('Content-Security-Policy')).toContain(
 			"connect-src 'self' https://api.example.com wss://api.example.com",
 		);
+	});
+
+	it('lets audio players load browser-created object URLs without remote media origins', async () => {
+		const { handle } = await loadHandle();
+		const request = createRequest('http://frontend.example.com/login');
+
+		const response = await handle({ event: request.event, resolve: request.resolve });
+
+		const directives = (response.headers.get('Content-Security-Policy') ?? '').split(';').map((part) => part.trim());
+		expect(directives).toContain("media-src 'self' blob:");
 	});
 });
 

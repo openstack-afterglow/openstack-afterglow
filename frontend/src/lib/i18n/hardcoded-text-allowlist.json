@@ -39,6 +39,26 @@
 		"reason": "Operator-configurable site description default; administrators replace it in site settings.",
 		"lines": ["site_description: 'OpenStack VM + OverlayFS 배포 플랫폼',"]
 	},
+	"src/lib/components/landing/LandingConsolePreview.svelte": {
+		"reason": "Landing fixture external-network resource name is data, not UI; generic network kind chrome is localized separately.",
+		"lines": ["{ kind: 'external', kindLabel: t('landing.consolePreview.network.external'), name: '외부망', mono: false, icon: 'external' },"]
+	},
+	"src/lib/components/chat/imageStudioStyles.ts": {
+		"reason": "Native provider-facing Korean style instructions and prompt prefix stay byte-for-byte identical across UI locales. Style labels and note framing are translated; the note shows the actual submitted suffix, not a translated substitute.",
+		"lines": [
+			"{ id: 'photo', labelKey: 'imageStudio.style.photo', image: '/studio/styles/photo.webp', instruction: '사실적인 사진 스타일, 자연스러운 조명과 선명한 디테일' },",
+			"{ id: 'cinematic', labelKey: 'imageStudio.style.cinematic', image: '/studio/styles/cinematic.webp', instruction: '영화 장면 같은 시네마틱 스타일, 극적인 조명과 깊이감 있는 구도' },",
+			"{ id: 'watercolor', labelKey: 'imageStudio.style.watercolor', image: '/studio/styles/watercolor.webp', instruction: '부드러운 번짐과 종이 질감이 보이는 수채화 스타일' },",
+			"{ id: 'illustration', labelKey: 'imageStudio.style.illustration', image: '/studio/styles/illustration.webp', instruction: '깔끔한 선과 단순한 색면의 일러스트 스타일' },",
+			"{ id: 'three-dimensional', labelKey: 'imageStudio.style.threeDimensional', image: '/studio/styles/three-dimensional.webp', instruction: '부드러운 재질과 입체적인 음영의 3D 렌더링 스타일' },",
+			"{ id: 'pixel-art', labelKey: 'imageStudio.style.pixelArt', image: '/studio/styles/pixel-art.webp', instruction: '제한된 색상 팔레트의 레트로 픽셀 아트 스타일' }",
+			"return `${text}\\n\\n스타일: ${style.instruction}`;"
+		]
+	},
+	"src/lib/components/chat/ImageStudio.svelte": {
+		"reason": "The translated style note displays the actual unchanged native Korean suffix sent to the provider so its preview never misrepresents the request.",
+		"lines": ["<p id=\"studio-style-note\"><span class=\"style-note-label\">{t('imageStudio.styleLabel', { style: t(selectedStyle.labelKey) })}</span> {t('imageStudio.styleNote', { suffix: `스타일: ${selectedStyle.instruction}` })}</p>"]
+	},
 	"src/lib/server/config.ts": {
 		"reason": "Operator-configurable site description default; administrators replace it in site settings.",
 		"lines": ["site_description: 'OpenStack VM + OverlayFS 배포 플랫폼',"]

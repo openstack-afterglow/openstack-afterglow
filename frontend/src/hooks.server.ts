@@ -133,6 +133,8 @@ function buildSecurityHeaders(siteConfig: PublicSiteConfig): Record<string, stri
 			`script-src 'self' 'unsafe-inline'; ` +
 			`style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; ` +
 			`img-src ${buildImgSrc(siteConfig)}; ` +
+			// Audio Studio plays only browser-created object URLs (authenticated downloads, local files); no remote media.
+			`media-src 'self' blob:; ` +
 			`connect-src ${buildConnectSrc(siteConfig)}; ` +
 			`font-src 'self' https://fonts.gstatic.com; ` +
 			`frame-src ${buildFrameSrc(siteConfig)}; ` +

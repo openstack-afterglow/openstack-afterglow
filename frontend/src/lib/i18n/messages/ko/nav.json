@@ -113,5 +113,20 @@
 	"routes.quotas": "쿼터",
 	"routes.groups": "그룹",
 	"routes.roles": "역할",
-	"routes.announcements": "공지 관리"
+	"routes.announcements": "공지 관리",
+	"items.projectPackages": "프로젝트 패키지",
+	"routes.projectPackages": "프로젝트 패키지",
+	"routes.audio": "오디오",
+	"accessibility.pageMenu": "페이지 메뉴",
+	"accessibility.collapseServiceMenu": "서비스 메뉴 접기",
+	"accessibility.expandServiceMenu": "서비스 메뉴 펼치기",
+	"accessibility.currentService": "현재 서비스",
+	"accessibility.allMenu": "전체 메뉴",
+	"accessibility.openAllMenu": "전체 메뉴 열기",
+	"accessibility.closeAllMenu": "전체 메뉴 닫기",
+	"accessibility.adminNavigation": "관리자 탐색",
+	"accessibility.userNavigation": "사용자 탐색",
+	"accessibility.search": "검색 (⌘K)",
+	"accessibility.allServices": "모든 서비스",
+	"actions.searchResources": "리소스 검색"
 }

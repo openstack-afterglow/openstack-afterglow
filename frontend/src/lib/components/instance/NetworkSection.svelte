@@ -2,6 +2,8 @@
 	import { useInstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
 	import type { PortInfo } from '$lib/types/networks';
 	import { t } from '$lib/i18n/ns/instance';
+	import SecurityGroupUnion from './SecurityGroupUnion.svelte';
+	import { buildSecurityGroupUnion } from '$lib/utils/securityGroupUnion';
 
 	const s = useInstanceDetailController();
 
@@ -27,7 +29,7 @@
 
 	function openSgEdit(port: PortInfo) {
 		sgEditPortId = port.id;
-		sgEditSelected = [...(port.security_group_ids ?? [])];
+		sgEditSelected = [...s.securityGroupIdsForPort(port)];
 	}
 
 	async function handleSaveSgEdit() {
@@ -82,14 +84,15 @@
 		<p class="text-sm text-ink-2">{t('network.empty')}</p>
 	{:else}
 		<div class="space-y-4">
-			{#each s.interfaces as iface}
+			{#each s.interfaces as iface (iface.id)}
 				{@const ifaceFip = s.floatingIps.find(f => f.port_id === iface.id)}
-				<div class="bg-surface-sunken/50 rounded-lg p-4">
+				{@const appliedGroupIds = s.securityGroupIdsForPort(iface)}
+				<div class="min-w-0 bg-surface-sunken/50 rounded-lg p-4">
 					<div class="flex items-start justify-between mb-3">
-						<div class="grid grid-cols-1 @3xl/panel:grid-cols-2 gap-x-6 gap-y-2 flex-1">
+						<div class="grid grid-cols-1 @3xl/panel:grid-cols-2 gap-x-6 gap-y-2 flex-1 min-w-0">
 							<div>
 								<dt class="text-xs text-ink-2 mb-0.5">{t('network.portId')}</dt>
-								<dd class="text-xs text-ink-2 font-mono">{iface.id}</dd>
+								<dd class="text-xs text-ink-2 font-mono break-all">{iface.id}</dd>
 							</div>
 							<div>
 								<dt class="text-xs text-ink-2 mb-0.5">{t('network.macAddress')}</dt>
@@ -103,7 +106,7 @@
 								<dt class="text-xs text-ink-2 mb-0.5">{t('network.status')}</dt>
 								<dd class="text-xs {iface.status === 'ACTIVE' ? 'text-green-400' : 'text-ink-2'}">{iface.status}</dd>
 							</div>
-							<div class="col-span-2">
+							<div class="@3xl/panel:col-span-2">
 								<dt class="text-xs text-ink-2 mb-1">{t('network.ipAddress')}</dt>
 								<dd class="flex flex-wrap gap-1.5 items-center">
 									{#each iface.fixed_ips as fip}
@@ -148,7 +151,8 @@
 							<dt class="text-xs text-ink-2">{t('network.securityGroups')}</dt>
 							<button
 								onclick={() => openSgEdit(iface)}
-								class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
+								disabled={s.securityGroupsLoading || !!s.securityGroupsError}
+								class="text-xs text-warm-text hover:text-warm-text-hover transition-colors disabled:text-ink-3"
 							>
 								{t('network.edit')}
 							</button>
@@ -179,9 +183,10 @@
 												</button>
 											</label>
 											{#if expandedSgRules.has(sg.id)}
+												{@const groupUnion = buildSecurityGroupUnion(s.allSecurityGroups, [sg.id])}
 												<div class="ml-5 mt-1 mb-1 space-y-0.5 pl-2 border-l border-line-2">
-													{#each sg.rules as rule}
-														<div class="text-xs text-ink-2 font-mono">{s.formatRule(rule)}</div>
+													{#each groupUnion.rows as rule (rule.key)}
+														<div class="text-xs text-ink-2 break-words">{t(rule.direction === 'ingress' ? 'securityGroupUnion.direction.ingress' : 'securityGroupUnion.direction.egress')} · {rule.ethertype} · {rule.protocolLabel} {rule.portLabel} · {rule.remoteLabel}</div>
 													{/each}
 													{#if sg.rules.length === 0}
 														<div class="text-xs text-ink-2 italic">{t('network.noRules')}</div>
@@ -194,7 +199,7 @@
 								<div class="flex gap-2">
 									<button
 										onclick={handleSaveSgEdit}
-										disabled={s.actioning === 'sg-' + iface.id}
+										disabled={s.actioning === 'sg-' + iface.id || s.securityGroupsLoading || !!s.securityGroupsError}
 										class="text-xs text-warm-text hover:text-warm-text-hover px-2 py-1 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3"
 									>
 										{s.actioning === 'sg-' + iface.id ? t('network.saving') : t('network.save')}
@@ -209,16 +214,22 @@
 							</div>
 						{:else}
 							<dd class="flex flex-wrap gap-1.5">
-								{#if !(iface.security_group_ids?.length)}
+								{#if appliedGroupIds.length === 0}
 									<span class="text-xs text-ink-2">{t('network.none')}</span>
 								{:else}
-									{#each (iface.security_group_ids ?? []) as sgId}
+									{#each appliedGroupIds as sgId}
 										<span class="text-xs text-purple-300 bg-purple-900/30 px-1.5 py-0.5 rounded">{s.sgNameById(sgId)}</span>
 									{/each}
 								{/if}
 							</dd>
 						{/if}
 					</div>
+					<SecurityGroupUnion
+						groupIds={appliedGroupIds}
+						groups={s.allSecurityGroups}
+						loading={s.securityGroupsLoading}
+						error={s.securityGroupsError}
+					/>
 				</div>
 			{/each}
 		</div>

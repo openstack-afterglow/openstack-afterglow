@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Annotated
 
 if TYPE_CHECKING:
@@ -296,52 +297,98 @@ async def list_project_names(
         raise HTTPException(status_code=500, detail="프로젝트 이름 목록 조회 실패")
 
 
+def _identity_created_at(value: object) -> str | None:
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if not isinstance(value, datetime):
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(UTC).isoformat(timespec="microseconds")
+
+
+async def _identity_creation_dates(items: list[dict], resource_type: str) -> list[dict]:
+    # Do not mutate the cached Keystone inventory or substitute first activity.
+    result = [{**item, "created_at": _identity_created_at(item.get("created_at"))} for item in items]
+    missing = [item["id"] for item in result if item["created_at"] is None]
+    if missing:
+        try:
+            dates = await activity.get_resource_creation_times(resource_type, missing)
+        except Exception:
+            _logger.warning("Identity 생성 기록 조회 실패 (%s)", resource_type, exc_info=True)
+            dates = {}
+        for item in result:
+            if item["created_at"] is None:
+                item["created_at"] = _identity_created_at(dates.get(item["id"]))
+    result.sort(key=lambda item: (item["created_at"] or "", item["id"]), reverse=True)
+    return result
+
+
 @router.get("/projects", dependencies=[Depends(require_admin)])
 async def list_projects(
     limit: int = Query(default=20, ge=1, le=100),
     marker: str | None = Query(default=None),
+    search: str = Query(default=""),
+    enabled: bool | None = Query(default=None),
+    domain_id: str | None = Query(default=None),
     conn: openstack.connection.Connection = Depends(get_os_conn),
+    cm: CacheMode = Depends(cache_mode),
 ):
-    """프로젝트 목록 (페이지네이션)."""
+    """Filter and sort the complete inventory before slicing a marker page."""
 
     def _list():
-        kwargs: dict = {"limit": limit}
-        if marker:
-            kwargs["marker"] = marker
-        projects = []
-        for p in conn.identity.projects(**kwargs):
-            created_at = getattr(p, "created_at", None)
-            if not created_at:
-                try:
-                    detail = conn.identity.get_project(p.id)
-                    created_at = getattr(detail, "created_at", None)
-                except Exception:
-                    pass
-            projects.append(
-                {
-                    "id": p.id,
-                    "name": p.name or "",
-                    "description": getattr(p, "description", "") or "",
-                    "enabled": p.is_enabled,
-                    "domain_id": getattr(p, "domain_id", None),
-                    "created_at": str(created_at) if created_at else None,
-                }
-            )
-            if len(projects) >= limit:
-                break
-        next_marker = projects[-1]["id"] if len(projects) == limit else None
-        return {"items": projects, "next_marker": next_marker, "count": len(projects)}
+        return [
+            {
+                "id": p.id,
+                "name": p.name or "",
+                "description": getattr(p, "description", "") or "",
+                "enabled": p.is_enabled,
+                "domain_id": getattr(p, "domain_id", None),
+                "created_at": _identity_created_at(getattr(p, "created_at", None)),
+            }
+            for p in conn.identity.projects()
+        ]
 
     try:
-        return await asyncio.to_thread(_list)
+        inventory = await cached_call(
+            "afterglow:admin:projects", ttl_slow(), _list, enabled=cm.enabled, refresh=cm.refresh
+        )
     except Exception:
         raise HTTPException(status_code=500, detail="프로젝트 목록 조회 실패")
+
+    projects = await _identity_creation_dates(inventory, "project")
+    domains = sorted({p["domain_id"] for p in projects if p["domain_id"]})
+    query = search.strip().casefold()
+    projects = [
+        p
+        for p in projects
+        if (enabled is None or p["enabled"] == enabled)
+        and (domain_id is None or p["domain_id"] == domain_id)
+        and (not query or any(query in p[field].casefold() for field in ("name", "id", "description")))
+    ]
+    start = 0
+    if marker:
+        start = next((index + 1 for index, p in enumerate(projects) if p["id"] == marker), None)
+        if start is None:
+            raise HTTPException(status_code=400, detail="페이지 기준 프로젝트가 없습니다. 목록을 새로고침하세요.")
+    items = projects[start : start + limit]
+    return {
+        "items": items,
+        "next_marker": items[-1]["id"] if start + limit < len(projects) else None,
+        "count": len(items),
+        "total": len(projects),
+        "domain_ids": domains,
+    }
 
 
 @router.post("/projects", dependencies=[Depends(require_admin)], status_code=201)
 async def create_project(
     req: CreateProjectRequest,
     conn: openstack.connection.Connection = Depends(get_os_conn),
+    token_info: dict = Depends(get_token_info),
 ):
     """프로젝트 생성."""
 
@@ -369,6 +416,18 @@ async def create_project(
         from app.services import neutron
 
         result = await asyncio.to_thread(_create)
+        await activity.record(
+            project_id=token_info["project_id"],
+            user_id=token_info["user_id"],
+            username=token_info.get("username", ""),
+            resource_type="project",
+            action="project.create",
+            status="success",
+            resource_id=result["id"],
+            resource_name=result["name"],
+        )
+        await invalidate("afterglow:admin:projects")
+        await invalidate("afterglow:admin:project_names")
         _settings = get_settings()
         if _settings.monitoring_auto_sg_enabled and _settings.monitoring_scrape_cidr:
             try:
@@ -420,7 +479,8 @@ async def get_project(
             raise HTTPException(status_code=404, detail="프로젝트 조회 실패")
 
     try:
-        return await asyncio.to_thread(_get)
+        result = await asyncio.to_thread(_get)
+        return (await _identity_creation_dates([result], "project"))[0]
     except HTTPException:
         raise
 
@@ -455,7 +515,10 @@ async def update_project(
             raise HTTPException(status_code=400, detail="프로젝트 수정 실패")
 
     try:
-        return await asyncio.to_thread(_update)
+        result = await asyncio.to_thread(_update)
+        await invalidate("afterglow:admin:projects")
+        await invalidate("afterglow:admin:project_names")
+        return result
     except HTTPException:
         raise
 
@@ -477,6 +540,8 @@ async def delete_project(
 
     try:
         await asyncio.to_thread(_delete)
+        await invalidate("afterglow:admin:projects")
+        await invalidate("afterglow:admin:project_names")
     except HTTPException:
         raise
 
@@ -847,26 +912,25 @@ async def update_project_quotas(
 async def list_groups(
     conn: openstack.connection.Connection = Depends(get_os_conn), cm: CacheMode = Depends(cache_mode)
 ):
-    """그룹 목록."""
+    """전체 그룹 목록, 확인된 생성일 내림차순."""
 
     def _list():
-        groups = []
-        try:
-            for g in conn.identity.groups():
-                groups.append(
-                    {
-                        "id": g.id,
-                        "name": g.name or "",
-                        "description": getattr(g, "description", "") or "",
-                        "domain_id": getattr(g, "domain_id", None),
-                    }
-                )
-        except Exception:
-            pass
-        return groups
+        return [
+            {
+                "id": g.id,
+                "name": g.name or "",
+                "description": getattr(g, "description", "") or "",
+                "domain_id": getattr(g, "domain_id", None),
+                "created_at": _identity_created_at(getattr(g, "created_at", None)),
+            }
+            for g in conn.identity.groups()
+        ]
 
     try:
-        return await cached_call("afterglow:admin:groups", ttl_slow(), _list, enabled=cm.enabled, refresh=cm.refresh)
+        inventory = await cached_call(
+            "afterglow:admin:groups", ttl_slow(), _list, enabled=cm.enabled, refresh=cm.refresh
+        )
+        return await _identity_creation_dates(inventory, "group")
     except Exception:
         raise HTTPException(status_code=500, detail="그룹 목록 조회 실패")
 
@@ -886,6 +950,7 @@ class UpdateGroupRequest(BaseModel):
 async def create_group(
     req: CreateGroupRequest,
     conn: openstack.connection.Connection = Depends(get_os_conn),
+    token_info: dict = Depends(get_token_info),
 ):
     """그룹 생성."""
 
@@ -910,6 +975,17 @@ async def create_group(
 
     try:
         result = await asyncio.to_thread(_create)
+        await activity.record(
+            project_id=token_info["project_id"],
+            user_id=token_info["user_id"],
+            username=token_info.get("username", ""),
+            resource_type="group",
+            action="group.create",
+            status="success",
+            resource_id=result["id"],
+            resource_name=result["name"],
+            service="keystone",
+        )
         await invalidate("afterglow:admin:groups")
         return result
     except HTTPException:
@@ -943,7 +1019,9 @@ async def update_group(
             raise HTTPException(status_code=400, detail="그룹 수정 실패")
 
     try:
-        return await asyncio.to_thread(_update)
+        result = await asyncio.to_thread(_update)
+        await invalidate("afterglow:admin:groups")
+        return result
     except HTTPException:
         raise
 

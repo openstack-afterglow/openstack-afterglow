@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -47,26 +48,41 @@
 		};
 	}
 	type ClientGuide = 'codex' | 'claude-code' | 'openai' | 'claude';
-	const clientGuideTabs: Array<{ value: ClientGuide; label: string; panelId: string }> = [
-		{ value: 'codex', label: 'Codex', panelId: 'api-key-guide-codex-panel' },
-		{ value: 'claude-code', label: 'Claude Code', panelId: 'api-key-guide-claude-code-panel' },
-		{ value: 'openai', label: 'OpenAI', panelId: 'api-key-guide-openai-panel' },
-		{ value: 'claude', label: 'Claude', panelId: 'api-key-guide-claude-panel' }
-	];
+	const clientGuideTabs = $derived<Array<{ value: ClientGuide; label: string; panelId: string }>>([
+		{ value: 'codex', label: t('apiKeys.guide.codexTab'), panelId: 'api-key-guide-codex-panel' },
+		{ value: 'claude-code', label: t('apiKeys.guide.claudeCodeTab'), panelId: 'api-key-guide-claude-code-panel' },
+		{ value: 'openai', label: t('apiKeys.guide.openaiTab'), panelId: 'api-key-guide-openai-panel' },
+		{ value: 'claude', label: t('apiKeys.guide.claudeTab'), panelId: 'api-key-guide-claude-panel' }
+	]);
 	let activeGuide = $state<ClientGuide>('codex');
 	let sdkBases = $state<{ openai: string; anthropic: string; codex: string } | null>(null);
 	let guideLoading = $state(false);
 	let guideError = $state('');
 	let guideGeneration = 0;
+	let installOrigin = $state('');
 
 	function sdkBaseUrl(value: unknown): string {
-		if (typeof value !== 'string' || !value.trim()) throw new Error('Missing SDK URL');
+		if (typeof value !== 'string' || !value || /[\s\\?#]/u.test(value)) throw new Error('Missing or invalid SDK URL');
 		const url = new URL(value);
 		if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
 			throw new Error('Invalid SDK URL');
 		}
 		return value;
 	}
+	function shellQuote(value: string): string {
+		return `'${value.replaceAll("'", "'\\''")}'`;
+	}
+
+	function powershellQuote(value: string): string {
+		return `'${value.replaceAll("'", "''")}'`;
+	}
+
+	onMount(() => {
+		const { protocol, hostname, origin } = window.location;
+		if (protocol === 'https:' || (protocol === 'http:' && ['localhost', '127.0.0.1'].includes(hostname))) {
+			installOrigin = origin;
+		}
+	});
 
 	async function loadConnectionGuide(requestToken = token, requestProjectId = projectId) {
 		const generation = ++guideGeneration;
@@ -147,6 +163,9 @@ supports_websockets = false
 # http_headers = { "X-Lumen-Provider" = "provider-id" }` : '');
 	const keyPromptExample = `printf 'Lumen API key: '; read -rs LUMEN_API_KEY; printf '\\n'; export LUMEN_API_KEY`;
 	const codexShellExample = `codex --strict-config -c model_provider=lumen -m "replace-with-active-Responses-model-ID"`;
+	const codexShortCommand = 'codex --strict-config -c model_provider=lumen';
+	const macCertificateCommand = 'export CODEX_CA_CERTIFICATE="/private/etc/ssl/cert.pem"';
+	const linuxCertificateCommand = 'export CODEX_CA_CERTIFICATE="/etc/ssl/certs/ca-certificates.crt"';
 	const claudeCodeExample = $derived(sdkBases ? `export LUMEN_MODEL="replace-with-active-Anthropic-model-ID"
 export ANTHROPIC_BASE_URL=${JSON.stringify(sdkBases.anthropic)}
 export ANTHROPIC_AUTH_TOKEN="$LUMEN_API_KEY"
@@ -159,6 +178,11 @@ export ANTHROPIC_DEFAULT_HAIKU_MODEL="$LUMEN_MODEL"
 # export LUMEN_PROVIDER="replace-with-provider-id"
 # export ANTHROPIC_CUSTOM_HEADERS="X-Lumen-Provider: $LUMEN_PROVIDER"
 claude` : '');
+	const installerReady = $derived(Boolean(sdkBases && installOrigin && sdkBases.codex.startsWith('https://') && sdkBases.anthropic.startsWith('https://')));
+	const posixInstallerCommand = $derived(installerReady && sdkBases ?
+		`curl -fsSL ${shellQuote(`${installOrigin}/install/lumen.sh`)} | sh -s -- ${shellQuote(sdkBases.codex)} ${shellQuote(sdkBases.anthropic)}` : '');
+	const windowsInstallerCommand = $derived(installerReady && sdkBases ?
+		`$env:LUMEN_CODEX_BASE_URL=${powershellQuote(sdkBases.codex)}; $env:LUMEN_ANTHROPIC_BASE_URL=${powershellQuote(sdkBases.anthropic)}; irm ${powershellQuote(`${installOrigin}/install/lumen.ps1`)} | iex` : '');
 
 	async function load() {
 		if (!token) return;
@@ -329,6 +353,7 @@ claude` : '');
 	const inputCls =
 		'w-full rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-base)] px-3 py-2 text-sm text-[var(--color-ink-1)] focus:outline-none focus:border-[var(--color-accent)]';
 	const cardCls = 'rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-raised)]';
+	const inlineCodeCls = 'rounded bg-[var(--color-surface-sunken)] px-1.5 py-0.5 font-mono text-xs text-[var(--color-ink-1)]';
 	const codeCls = 'block overflow-x-auto rounded-lg bg-[var(--color-surface-sunken)] p-3 font-mono text-xs text-[var(--color-ink-2)]';
 </script>
 
@@ -453,9 +478,42 @@ claude` : '');
 				{t('apiKeys.guide.reload')}
 			</Button>
 		{:else if sdkBases}
-			<p class="mb-4 text-sm leading-6 text-ink-2">
-				{t('apiKeys.guide.prerequisites')}
-			</p>
+			<div class="mb-5 border-b border-[var(--color-line)] pb-4 text-sm leading-6 text-ink-2">
+				<p class="font-semibold text-[var(--color-ink-1)]">{t('apiKeys.guide.checkTitle')}</p>
+				<ol class="mt-2 list-inside list-decimal space-y-1">
+					<li><RichText segments={t.rich('apiKeys.guide.fullKey')} classes={{ strong: 'text-[var(--color-ink-1)]' }} /></li>
+					<li><RichText segments={t.rich('apiKeys.guide.activeModel')} classes={{ strong: 'text-[var(--color-ink-1)]' }} /></li>
+					<li>{t('apiKeys.guide.discoveryHelp')}</li>
+				</ol>
+				<p class="mt-2">{t('apiKeys.guide.usageWarning')}</p>
+			</div>
+			<section class="mb-5 border-b border-[var(--color-line)] pb-5" aria-labelledby="lumen-installer-heading">
+				<h5 id="lumen-installer-heading" class="text-sm font-semibold text-[var(--color-ink-1)]">{t('apiKeys.installer.title')}</h5>
+				<p class="mt-1 text-sm leading-6 text-ink-2">
+					<RichText segments={t.rich('apiKeys.installer.introduction', { configPath: '~/.codex/config.toml', codexHome: 'CODEX_HOME' })} classes={{ code: inlineCodeCls }} />
+				</p>
+				{#if installerReady}
+					<div class="mt-3 flex flex-wrap items-center justify-between gap-2">
+						<p class="text-sm font-medium text-ink-1">{t('apiKeys.installer.posixTitle')}</p>
+						<Button variant="ghost" size="sm" onclick={() => copyText(posixInstallerCommand, t('apiKeys.toast.posixInstallerCopied'))}>{t('apiKeys.installer.copyPosix')}</Button>
+					</div>
+					<p class="mt-1 text-sm leading-6 text-ink-2">{t('apiKeys.installer.posixHelp')}</p>
+					<pre class="{codeCls} mt-2 max-w-full whitespace-pre" role="region" aria-label={t('apiKeys.installer.posixLabel')}><code>{posixInstallerCommand}</code></pre>
+					<Button href={`${installOrigin}/install/lumen.sh`} target="_blank" variant="link" size="sm">{t('apiKeys.installer.viewPosix')}</Button>
+					<div class="mt-4 flex flex-wrap items-center justify-between gap-2">
+						<p class="text-sm font-medium text-ink-1">{t('apiKeys.installer.windowsTitle')}</p>
+						<Button variant="ghost" size="sm" onclick={() => copyText(windowsInstallerCommand, t('apiKeys.toast.windowsInstallerCopied'))}>{t('apiKeys.installer.copyWindows')}</Button>
+					</div>
+					<p class="mt-1 text-sm leading-6 text-ink-2">{t('apiKeys.installer.windowsHelp')}</p>
+					<pre class="{codeCls} mt-2 max-w-full whitespace-pre" role="region" aria-label={t('apiKeys.installer.windowsLabel')}><code>{windowsInstallerCommand}</code></pre>
+					<Button href={`${installOrigin}/install/lumen.ps1`} target="_blank" variant="link" size="sm">{t('apiKeys.installer.viewWindows')}</Button>
+					<p class="mt-2 text-sm leading-6 text-ink-2">
+						<RichText segments={t.rich('apiKeys.installer.modelHelp', { command: codexShortCommand, modelOption: '-m' })} classes={{ code: inlineCodeCls }} />
+					</p>
+				{:else}
+					<p class="mt-2 text-sm leading-6 text-ink-2">{t('apiKeys.installer.unavailable')}</p>
+				{/if}
+			</section>
 			<Tabs
 				id="api-key-client-guides"
 				value={activeGuide}
@@ -476,7 +534,7 @@ claude` : '');
 						<div>
 							<p class="text-sm font-medium text-ink-1">{t('apiKeys.codex.title')}</p>
 							<p class="mt-1 text-sm leading-6 text-ink-2">
-								<RichText segments={t.rich('apiKeys.codex.introduction', { providerHeader: 'X-Lumen-Provider' })} />
+								<RichText segments={t.rich('apiKeys.codex.introduction', { providerHeader: 'X-Lumen-Provider' })} classes={{ code: inlineCodeCls }} />
 							</p>
 						</div>
 						<Button variant="ghost" size="sm" onclick={() => copyText(codexConfigExample, t('apiKeys.toast.codexConfigCopied'))}>
@@ -484,7 +542,7 @@ claude` : '');
 						</Button>
 					</div>
 					<p class="mb-2 text-sm leading-6 text-ink-2">
-						<RichText segments={t.rich('apiKeys.codex.configHelp', { configPath: '~/.codex/config.toml', model: 'model', modelProvider: 'model_provider' })} />
+						<RichText segments={t.rich('apiKeys.codex.configHelp', { configPath: '~/.codex/config.toml', model: 'model', modelProvider: 'model_provider' })} classes={{ code: inlineCodeCls }} />
 					</p>
 					<pre class="{codeCls} max-w-full whitespace-pre" role="region" aria-label={t('apiKeys.codex.configLabel')}><code>{codexConfigExample}</code></pre>
 					<p class="mt-3 text-sm leading-6 text-ink-2">
@@ -492,12 +550,35 @@ claude` : '');
 					</p>
 					<pre class="{codeCls} mt-2 max-w-full whitespace-pre" role="region" aria-label={t('apiKeys.guide.keyPromptLabel')}><code>{keyPromptExample}</code></pre>
 					<p class="mt-3 text-sm leading-6 text-ink-2">
-						<RichText segments={t.rich('apiKeys.codex.runHelp', { modelId: 'replace-with-active-Responses-model-ID' })} />
+						<RichText segments={t.rich('apiKeys.codex.runHelp', { modelId: 'replace-with-active-Responses-model-ID' })} classes={{ code: inlineCodeCls }} />
 					</p>
+					<div class="mb-2 mt-3 flex flex-wrap justify-end gap-2">
+						<Button variant="ghost" size="sm" onclick={() => copyText(codexShellExample, t('apiKeys.toast.codexRunCopied'))}>{t('apiKeys.codex.copyRun')}</Button>
+					</div>
 					<pre class="{codeCls} mt-2 max-w-full whitespace-pre" role="region" aria-label={t('apiKeys.codex.runLabel')}><code>{codexShellExample}</code></pre>
-					<p class="mt-2 text-sm leading-6 text-ink-2">
-						<RichText segments={t.rich('apiKeys.codex.tlsHelp', { requestError: 'error sending request', certificateVariable: 'CODEX_CA_CERTIFICATE', certificateCommand: 'export CODEX_CA_CERTIFICATE="/private/etc/ssl/cert.pem"' })} />
+					<p class="mt-3 text-sm leading-6 text-ink-2">
+						<RichText segments={t.rich('apiKeys.codex.defaultModelHelp', { model: 'model', modelProvider: 'model_provider=lumen', modelOption: '-m' })} classes={{ code: inlineCodeCls }} />
 					</p>
+					<div class="mt-3 flex flex-wrap justify-end gap-2">
+						<Button variant="ghost" size="sm" onclick={() => copyText(codexShortCommand, t('apiKeys.toast.codexDefaultRunCopied'))}>{t('apiKeys.codex.copyDefaultRun')}</Button>
+					</div>
+					<pre class="{codeCls} mt-2 max-w-full whitespace-pre-wrap break-all" role="region" aria-label={t('apiKeys.codex.defaultRunLabel')}><code>{codexShortCommand}</code></pre>
+					<div class="mt-5 border-t border-[var(--color-line)] pt-4">
+						<p class="text-sm font-semibold text-ink-1">{t('apiKeys.codex.tlsTitle')}</p>
+						<p class="mt-1 text-sm leading-6 text-ink-2">
+							<RichText segments={t.rich('apiKeys.codex.tlsHelp', { requestError: 'error sending request', certificateVariable: 'CODEX_CA_CERTIFICATE' })} classes={{ code: inlineCodeCls }} />
+						</p>
+						<div class="mt-3 flex flex-wrap items-center justify-between gap-2">
+							<p class="text-sm font-medium text-ink-1">{t('apiKeys.codex.macTitle')}</p>
+							<Button variant="ghost" size="sm" onclick={() => copyText(macCertificateCommand, t('apiKeys.toast.macCertificateCopied'))}>{t('apiKeys.codex.copyMacCertificate')}</Button>
+						</div>
+						<pre class="{codeCls} mt-2 max-w-full whitespace-pre-wrap break-all" role="region" aria-label={t('apiKeys.codex.macCertificateLabel')}><code>{macCertificateCommand}</code></pre>
+						<div class="mt-3 flex flex-wrap items-center justify-between gap-2">
+							<p class="text-sm font-medium text-ink-1">{t('apiKeys.codex.linuxTitle')}</p>
+							<Button variant="ghost" size="sm" onclick={() => copyText(linuxCertificateCommand, t('apiKeys.toast.linuxCertificateCopied'))}>{t('apiKeys.codex.copyLinuxCertificate')}</Button>
+						</div>
+						<pre class="{codeCls} mt-2 max-w-full whitespace-pre-wrap break-all" role="region" aria-label={t('apiKeys.codex.linuxCertificateLabel')}><code>{linuxCertificateCommand}</code></pre>
+					</div>
 				{:else if activeGuide === 'claude-code'}
 					<div class="mb-2 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
 						<div>
@@ -512,7 +593,7 @@ claude` : '');
 					</div>
 					<pre class="{codeCls} max-w-full whitespace-pre" role="region" aria-label={t('apiKeys.guide.keyPromptLabel')}><code>{keyPromptExample}</code></pre>
 					<p class="mt-3 text-sm leading-6 text-ink-2">
-						<RichText segments={t.rich('apiKeys.claudeCode.runHelp', { modelId: 'replace-with-active-Anthropic-model-ID' })} />
+						<RichText segments={t.rich('apiKeys.claudeCode.runHelp', { modelId: 'replace-with-active-Anthropic-model-ID' })} classes={{ code: inlineCodeCls }} />
 					</p>
 					<pre class="{codeCls} max-w-full whitespace-pre" role="region" aria-label={t('apiKeys.claudeCode.commandLabel')}><code>{claudeCodeExample}</code></pre>
 				{:else if activeGuide === 'openai'}

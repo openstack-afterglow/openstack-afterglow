@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { LOCALES, LOCALE_NATIVE_NAMES, LOCALE_SHORT_NAMES, isLocale } from './locales';
 	import { getLocale, setLocale } from './runtime.svelte';
 	import { t } from './ns/shell';
@@ -16,7 +16,7 @@
 	let select = $state<HTMLSelectElement | null>(null);
 	const REFOCUS_KEY = 'afterglow.i18n.refocus';
 
-	function change(event: Event) {
+	async function change(event: Event) {
 		const value = (event.currentTarget as HTMLSelectElement).value;
 		if (!isLocale(value) || value === getLocale()) return;
 		try {
@@ -25,6 +25,14 @@
 			// Focus restoration is best effort; the language change itself must not fail.
 		}
 		setLocale(value);
+		await tick();
+		if (select?.isConnected) {
+			try {
+				if (sessionStorage.getItem(REFOCUS_KEY) === id) sessionStorage.removeItem(REFOCUS_KEY);
+			} catch {
+				// The retained header select already keeps focus without a restoration flag.
+			}
+		}
 	}
 
 	onMount(() => {

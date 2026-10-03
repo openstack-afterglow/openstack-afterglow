@@ -19,6 +19,7 @@
 	"page.title": "Palimpsest 层管理",
 	"page.subtitle": "通过 Dockerfile 构建根层，并可选择创建 SSH 虚拟机。也可在此查看现有记录。",
 	"actions.refresh": "刷新",
+	"actions.projectPackages": "项目软件包 / 访问密钥",
 	"summary.label": "Palimpsest 概况",
 	"summary.sealed": "已封存层",
 	"summary.profiles": "已保存配置文件",

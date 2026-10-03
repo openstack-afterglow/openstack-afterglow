@@ -1,12 +1,12 @@
 <script lang="ts">
-	import { createInstanceDetailController } from '../instanceDetailController.svelte';
+	import { createInstanceDetailController, type InstanceDetailController } from '../instanceDetailController.svelte';
 
 	let {
 		source,
 		onReady,
 	}: {
 		source: { id: string; projectId: string; adminMode?: boolean };
-		onReady: (controller: ReturnType<typeof createInstanceDetailController>) => void;
+		onReady: (controller: InstanceDetailController) => void;
 	} = $props();
 
 	const controller = createInstanceDetailController({

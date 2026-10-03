@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { onMount } from 'svelte';
-	import { auth, logoutInProgress, setAuth } from '$lib/stores/auth';
+	import { get } from 'svelte/store';
+	import { auth, logoutInProgress, projectSwitching, setAuth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { projectList, type Project } from '$lib/stores/projectList';
 	import LoadingSpinner from './LoadingSpinner.svelte';
@@ -11,8 +12,7 @@
 
 	let { direction = 'up' }: { direction?: 'up' | 'down' } = $props();
 
-	let switching = $state(false);
-	// 전환 실패 상태: detail 은 서버 메시지(있으면), 표시 문구는 렌더 시 번역
+	// Keep server details untouched; translate the surrounding failure at render time.
 	let switchError = $state<{ detail: string | null } | null>(null);
 	const error = $derived(
 		switchError
@@ -28,7 +28,7 @@
 	let menuStyle = $state('');
 
 	function portal(node: HTMLElement) {
-		document.body.appendChild(node);
+		(triggerRef?.closest('[role="dialog"]') ?? document.body).appendChild(node);
 		queueMicrotask(positionMenu);
 		return { destroy: () => node.remove() };
 	}
@@ -55,13 +55,18 @@
 	);
 
 	async function selectProject(project: Project) {
-		const token = $auth.token;
-		if (!token || switching) return;
+		const { token, userId, projectId } = $auth;
+		if (!token || $projectSwitching) return;
 		if (project.id === $auth.projectId) { isOpen = false; return; }
 
-		switching = true;
-		await cloudShell.close('project-switch', { keepDock: false });
+		let abandoned = false;
+		const unsubscribe = auth.subscribe((state) => {
+			if (!state.token || state.userId !== userId || state.projectId !== projectId) abandoned = true;
+		});
+		projectSwitching.set(true);
 		try {
+			await cloudShell.close('project-switch', { keepDock: false });
+			if (abandoned || get(logoutInProgress)) return;
 			const resp = await api.post<{
 				token: string;
 				refresh_token: string;
@@ -74,7 +79,9 @@
 				is_system_admin: boolean;
 			}>('/api/v1/auth/token/project', { project_id: project.id }, token);
 
-			if ($logoutInProgress || !$auth.token) return;
+			// The drawer can unmount this selector while the request is pending.
+			const current = get(auth);
+			if (abandoned || get(logoutInProgress) || !current.token || current.userId !== userId || current.projectId !== projectId) return;
 
 			setAuth({
 				token: resp.token,
@@ -95,7 +102,8 @@
 		} catch (e) {
 			switchError = { detail: e instanceof ApiError ? e.message : null };
 		} finally {
-			switching = false;
+			unsubscribe();
+			projectSwitching.set(false);
 		}
 	}
 
@@ -133,26 +141,26 @@
 		bind:this={triggerRef}
 		type="button"
 		onclick={() => {
-			if (switching) return;
+			if ($projectSwitching) return;
 			isOpen = !isOpen;
 			if (isOpen && $auth.token && $auth.userId) {
 				void projectList.revalidate($auth.token, $auth.userId);
 			}
 		}}
-		disabled={switching}
+		disabled={$projectSwitching}
 		aria-haspopup="menu"
 		aria-expanded={isOpen}
-		class="flex items-center gap-2 px-3 py-1.5 bg-surface-sunken hover:bg-surface-selected disabled:bg-surface-sunken/50 rounded-lg text-sm transition-colors"
+		class="flex w-full min-w-0 items-center gap-2 px-3 py-1.5 bg-surface-sunken hover:bg-surface-selected disabled:bg-surface-sunken/50 rounded-lg text-sm transition-colors"
 	>
-		{#if showInitialLoading || switching}
+		{#if showInitialLoading || $projectSwitching}
 			<LoadingSpinner size="sm" color="gray" />
 		{:else}
-			<svg class="w-4 h-4 text-ink-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+			<svg class="w-4 h-4 shrink-0 text-ink-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-4 0H7m0 0H5m2 0v-2a2 2 0 012-2h2m4 0h2a2 2 0 012 2v2m-6-6a2 2 0 100-4 2 2 0 000 4z"></path>
 			</svg>
 		{/if}
-		<span class="text-ink-2">{$auth.projectName || t('projectSelector.placeholder')}</span>
-		<svg class="w-4 h-4 text-ink-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+		<span class="min-w-0 truncate text-ink-2">{$auth.projectName || t('projectSelector.placeholder')}</span>
+		<svg class="w-4 h-4 shrink-0 text-ink-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
 		</svg>
 	</button>
@@ -168,7 +176,7 @@
 					{#each $projectList.projects as project}
 						<button
 							onclick={() => selectProject(project)}
-							disabled={switching}
+							disabled={$projectSwitching}
 							class="w-full text-left px-3 py-2 hover:bg-surface-sunken transition-colors disabled:opacity-50 disabled:cursor-not-allowed
 								{project.id === $auth.projectId ? 'bg-surface-selected/30 border-l-2 border-action-warm' : ''}"
 						>

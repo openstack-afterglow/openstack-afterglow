@@ -2,10 +2,22 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { TEXT_CSS_VAR } from '../tokens';
 
 const repoRoot = resolve(__dirname, '../../../../..');
 const frontendRoot = resolve(repoRoot, 'frontend');
 const layoutSource = readFileSync(resolve(frontendRoot, 'src/routes/layout.css'), 'utf8');
+const landingComponentSources = Object.fromEntries(
+	['LandingPage', 'LandingOpsBoard', 'LandingJourney', 'LandingConsolePreview'].map((name) => [
+		name,
+		readFileSync(resolve(frontendRoot, `src/lib/components/landing/${name}.svelte`), 'utf8'),
+	]),
+);
+
+/** Matches text color, excluding background, border and custom-property declarations. */
+function textColorDeclaration(token: string): RegExp {
+	return new RegExp(`(^|[^-\\w])color:\\s*var\\(${token}\\)\\s*[;}]`);
+}
 
 const fontFiles = [
 	'pretendard/PretendardVariable.woff2',
@@ -59,12 +71,23 @@ describe('role-based typography system', () => {
 		for (const token of [
 			'--color-ink-1',
 			'--color-ink-2',
-			'--color-warm-text',
-			'--color-state-success-text',
+			TEXT_CSS_VAR.warm.slice(4, -1),
+			TEXT_CSS_VAR.success.slice(4, -1),
 		]) {
 			expect(contrastRatio(lightThemeHex(token), lightSurface), token).toBeGreaterThanOrEqual(4.5);
 		}
 
 	});
 
+	it('keeps landing text off low-contrast and decoration-only color tokens', () => {
+		const everyLandingFile = ['--color-ink-3', '--color-state-success'];
+		const newSceneFiles = [...everyLandingFile, '--color-warm', '--color-accent'];
+		const violations = Object.entries(landingComponentSources).flatMap(([name, source]) => {
+			const forbidden = (name === 'LandingPage' ? everyLandingFile : newSceneFiles).map(textColorDeclaration);
+			return source
+				.split('\n')
+				.flatMap((line, index) => (forbidden.some((pattern) => pattern.test(line)) ? [`${name}.svelte:${index + 1}: ${line.trim()}`] : []));
+		});
+		expect(violations).toEqual([]);
+	});
 });

@@ -19,6 +19,7 @@
 	"page.title": "Palimpsestレイヤー管理",
 	"page.subtitle": "Dockerfileからルートレイヤーをビルドし、必要に応じてSSH VMを作成します。既存の履歴もここで確認できます。",
 	"actions.refresh": "更新",
+	"actions.projectPackages": "プロジェクトパッケージ / アクセスキー",
 	"summary.label": "Palimpsestの概要",
 	"summary.sealed": "封印済みレイヤー",
 	"summary.profiles": "保存済みプロファイル",

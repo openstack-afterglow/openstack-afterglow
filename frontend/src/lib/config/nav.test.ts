@@ -1,7 +1,11 @@
 // @vitest-environment node
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DEFAULT_BETA_FEATURES } from '$lib/stores/betaFeatures';
 import { adminNavSections, allNavItems, isNavSectionActive } from './nav';
+import { initLocale } from '$lib/i18n/runtime.svelte';
+
+beforeEach(() => initLocale('ko'));
+afterEach(() => initLocale('ko'));
 
 describe('allNavItems service inheritance', () => {
 	it('preserves section service gates for flattened user routes', () => {
@@ -29,15 +33,6 @@ describe('allNavItems service inheritance', () => {
 		expect(fileStorage?.service).toBe('manila');
 	});
 
-	it('groups administrator service workspaces without moving tenant Waygate', () => {
-		const admin = allNavItems(true, DEFAULT_BETA_FEATURES);
-		const services = admin.filter((item) => item.section === '서비스' && item.topLevel);
-		expect(services.map((item) => item.href)).toEqual([
-			'/admin/drover', '/admin/chat', '/admin/libraries', '/admin/waygate'
-		]);
-		expect(services.find((item) => item.href === '/admin/waygate')?.service).toBe('waygate');
-		expect(allNavItems(false, DEFAULT_BETA_FEATURES).find((item) => item.href === '/dashboard/network/waygate')?.service).toBe('waygate');
-	});
 
 	it('keeps service gates on both primary and secondary service links', () => {
 		const byHref = new Map(allNavItems(true, DEFAULT_BETA_FEATURES).map((item) => [item.href, item]));
@@ -51,16 +46,32 @@ describe('allNavItems service inheritance', () => {
 		expect(byHref.get('/admin/waygate')?.service).toBe('waygate');
 	});
 
-	it('activates sections only for exact routes and slash descendants', () => {
-		const services = adminNavSections.find((section) => section.label === '서비스')!;
-		const monitoring = adminNavSections.find((section) => section.label === '모니터링')!;
-		for (const href of ['/admin/drover', '/admin/drover/templates', '/admin/chat/stats', '/admin/chat/stats/daily', '/admin/libraries/123', '/admin/waygate']) {
-			expect(isNavSectionActive(services, href)).toBe(true);
+  it.each([
+    ['/admin/drover', '/admin/containers'],
+    ['/admin/drover/templates', '/admin/containers'],
+    ['/admin/drover/cluster-1', '/admin/containers'],
+    ['/admin/chat/stats/daily', '/admin/chat'],
+    ['/admin/libraries/123', '/admin/libraries'],
+    ['/admin/waygate', '/admin/topology'],
+  ])('activates only the owning section for %s', (path, owner) => {
+    expect(adminNavSections.filter(section => isNavSectionActive(section, path)).map(section => section.prefix)).toEqual([owner]);
+  });
+
+  it.each(['/admin/droverish', '/admin/chatty', '/admin/libraries-old', '/admin/waygate-extra'])('does not activate a section for a lookalike route %s', path => {
+    expect(adminNavSections.some(section => isNavSectionActive(section, path))).toBe(false);
+  });
+
+	it('retains catalog keys and stable routes while flattened labels follow each locale', () => {
+		for (const [locale, instances, compute, packages] of [
+			['ko', '인스턴스', 'Compute', '프로젝트 패키지'],
+			['en', 'Instances', 'Compute', 'Project packages'],
+			['ja', 'インスタンス', 'コンピュート', 'プロジェクトパッケージ'],
+			['zh-CN', '实例', '计算', '项目软件包'],
+		] as const) {
+			initLocale(locale);
+			const byHref = new Map(allNavItems(false, DEFAULT_BETA_FEATURES).map(item => [item.href, item]));
+			expect(byHref.get('/dashboard/compute/instances')).toMatchObject({ label: instances, labelKey: 'items.instances', section: compute, sectionKey: 'sections.compute' });
+			expect(byHref.get('/palimpsest/packages')).toMatchObject({ label: packages, labelKey: 'items.projectPackages', section: 'Palimpsest', service: null });
 		}
-		for (const href of ['/admin/droverish', '/admin/chatty', '/admin/libraries-old', '/admin/waygate-extra', '/admin/containers']) {
-			expect(isNavSectionActive(services, href)).toBe(false);
-		}
-		expect(isNavSectionActive(monitoring, '/admin/monitoring/node')).toBe(true);
-		expect(isNavSectionActive(monitoring, '/admin/monitoring-other')).toBe(false);
 	});
 });

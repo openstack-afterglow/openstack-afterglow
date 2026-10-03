@@ -70,7 +70,19 @@
 						<WizardStep1Boot />
 					{:else if $wizard.step === 2}
 						<h2 class="mb-1 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-lg font-semibold text-[var(--color-ink-0)]"><span>{t('panel.flavorTitle')}</span><span class="text-sm font-normal text-[var(--color-ink-2)]">{t('panel.flavorSubtitle')}</span></h2>
-						<SelectFlavor flavors={s.flavors} selectedId={$wizard.flavorId} onSelect={s.selectFlavor} quota={s.flavorQuota} />
+						<SelectFlavor
+							{adminMode}
+							flavors={s.flavors}
+							selectedId={$wizard.flavorId}
+							selectedName={$wizard.flavorName}
+							onSelect={s.selectFlavor}
+							quota={s.flavorQuota}
+							refreshing={s.flavorRefreshing}
+							refreshError={s.flavorRefreshError}
+							backgroundRefreshing={s.flavorBackgroundRefreshing}
+							backgroundRefreshError={s.flavorBackgroundRefreshError}
+							onRefresh={s.refreshFlavorOptions}
+						/>
 					{:else if $wizard.step === 3}
 						<WizardStep3Library />
 					{:else if $wizard.step === 4}
@@ -89,6 +101,9 @@
 						<WizardStep5Config />
 					{:else if $wizard.step === 6}
 						<WizardStep6Review />
+						{#if s.flavorRefreshing}
+							<p class="mt-2 text-sm text-[var(--color-ink-2)]" role="status" aria-live="polite">{t('panel.reviewRefreshing')}</p>
+						{/if}
 					{/if}
 				</div>
 			{/if}

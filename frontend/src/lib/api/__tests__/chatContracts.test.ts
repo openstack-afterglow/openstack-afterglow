@@ -48,6 +48,32 @@ describe('chatContracts', () => {
 		expect(() => parseChatRunEvent(event([component('future_cache_tokens')]))).toThrow(ChatContractError);
 	});
 
+	it.each([
+		['image_input_tokens', 'token'], ['image_cache_read_input_tokens', 'token'],
+		['image_output_tokens', 'token'], ['audio_input_tokens', 'token'],
+		['audio_cache_read_input_tokens', 'token'], ['audio_output_tokens', 'token'],
+		['audio_input_characters', 'character'], ['realtime_session_seconds', 'second']
+	])('consumes auditable %s ledger events without losing decimal rates', (kind, unit) => {
+		const component = {
+			segment_id: 'media:1', kind, quantity: '10', unit,
+			unit_price_usd: '0.000000000123456789', cost_usd: '0.0000000012',
+			source: 'media', model_name: 'configured-model', metadata: {}
+		};
+		const event = (row = component) => ({
+			event_id: 'run-media:1', run_id: 'run-media', seq: 1, type: 'usage.updated',
+			created_at: '2026-10-01T00:00:00Z', payload: {
+				components: [row], prompt_tokens: 10, completion_tokens: 0,
+				raw_cost: '0.0000000012', credited_cost: '0.00000012'
+			}
+		});
+		const parsed = parseChatRunEvent(event());
+		if (parsed.type !== 'usage.updated') throw new Error('usage event required');
+		expect(parsed.payload.components[0]).toMatchObject({ kind, unit,
+			unit_price_usd: '0.000000000123456789', cost_usd: '0.0000000012' });
+		expect(() => parseChatRunEvent(event({ ...component, unit: 'hour' }))).toThrow(ChatContractError);
+		expect(() => parseChatRunEvent(event({ ...component, cost_usd: '-0.0000000012' }))).toThrow(ChatContractError);
+	});
+
 	it('validates a canonical part-completed event and rejects cursor mismatch', () => {
 		const event = {
 			event_id: 'run-1:1',

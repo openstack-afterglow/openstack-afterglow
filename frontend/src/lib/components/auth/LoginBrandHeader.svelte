@@ -22,7 +22,7 @@
 <div class="text-center mb-8">
   <div class="h-24 sm:h-32 md:h-40 lg:h-48 mb-4 flex items-center justify-center">
     {#if loginLogoSrc}
-      <img src={loginLogoSrc} alt={$siteConfig.site_name} class="h-full w-auto mx-auto" />
+      <img src={loginLogoSrc} alt={$siteConfig.site_name} class="max-h-full max-w-full h-auto w-auto mx-auto" style:color-scheme={$resolvedTheme} />
     {/if}
   </div>
   <h1 class="text-4xl font-bold text-ink-0 mb-2">{$siteConfig.site_name}</h1>

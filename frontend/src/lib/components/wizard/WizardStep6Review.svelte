@@ -162,7 +162,7 @@
 	<div class="flex-1">
 		<b class="block text-sm text-ink-0 font-semibold mb-0.5">{t('review.ready')}</b>
 		<small class="text-[11.5px] text-ink-2 leading-relaxed">
-			{t('review.deployHelp', { hasGpu: !!reviewGpu })}
+			{t('review.deployHelp')}
 		</small>
 	</div>
 </div>

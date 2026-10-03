@@ -1,12 +1,12 @@
 // Afterglow route label map
-// URL path segment → localized display label (nav catalog) or a product name
-// Used to auto-derive the header breadcrumb from $page.url.pathname
+// URL path segment → localized display label or product name.
+// Fallback page titles for contextual navigation on undeclared routes.
 
 import { t } from '$lib/i18n/ns/nav';
 
 type NavMessage = Parameters<typeof t>[0];
 
-/** Translated segments; resolved at call time so the breadcrumb follows the active language. */
+/** Resolve translated segments at call time to follow the active language. */
 const ROUTE_LABEL_KEYS: Record<string, NavMessage> = {
   // Top level
   dashboard: 'routes.dashboard',
@@ -45,6 +45,7 @@ const ROUTE_LABEL_KEYS: Record<string, NavMessage> = {
   // Object Storage
   'object-storage': 'routes.objectStorage',
   buckets: 'routes.buckets',
+  audio: 'routes.audio',
 
   // Network
   network: 'routes.network',
@@ -59,6 +60,7 @@ const ROUTE_LABEL_KEYS: Record<string, NavMessage> = {
   library: 'routes.library',
   libraries: 'routes.libraries',
   templates: 'routes.templates',
+  packages: 'routes.projectPackages',
 
   // Project settings
   'project-settings': 'routes.projectSettings',
@@ -83,6 +85,7 @@ const ROUTE_PRODUCT_LABELS: Record<string, string> = {
   k3s: 'Drover',
   chat: 'Lumen',
   waygate: 'Waygate',
+  palimpsest: 'Palimpsest',
 };
 
 function routeLabel(segment: string): string | undefined {
@@ -90,36 +93,16 @@ function routeLabel(segment: string): string | undefined {
   return key ? t(key) : ROUTE_PRODUCT_LABELS[segment];
 }
 
-interface BreadcrumbResult {
-  /** Short parent path, e.g. "COMPUTE / INSTANCES" */
-  breadcrumb: string;
-  /** Page title, e.g. "인스턴스" */
-  title: string;
-}
-
-/**
- * Derives breadcrumb display strings from a URL pathname.
- * /dashboard/compute/instances → { breadcrumb: 'COMPUTE', title: '인스턴스' }
- */
-export function deriveBreadcrumb(pathname: string): BreadcrumbResult {
+/** Derives the page title while excluding resource UUIDs and creation routes. */
+export function derivePageTitle(pathname: string): string {
   // Strip leading slash and split
   const parts = pathname.replace(/^\//, '').split('/').filter(Boolean);
 
   // Strip the root mode segment (dashboard / admin)
   const relevant = parts.slice(1).filter(p => !isUuid(p) && p !== 'new');
 
-  if (relevant.length === 0) {
-    // /dashboard 또는 /admin 루트인 경우 첫 세그먼트로 타이틀 결정
-    const root = parts[0];
-    return { breadcrumb: '', title: routeLabel(root) ?? root };
-  }
-
-  const labels = relevant.map(p => (routeLabel(p) ?? p).toUpperCase());
-
-  return {
-    breadcrumb: labels.slice(0, -1).join(' / '),
-    title: routeLabel(relevant[relevant.length - 1]) ?? relevant[relevant.length - 1],
-  };
+  const last = relevant.at(-1) ?? parts[0] ?? '';
+  return routeLabel(last) ?? last;
 }
 
 function isUuid(s: string): boolean {

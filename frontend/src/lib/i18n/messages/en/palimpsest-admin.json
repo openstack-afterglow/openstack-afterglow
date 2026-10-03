@@ -19,6 +19,7 @@
 	"page.title": "Palimpsest layer management",
 	"page.subtitle": "Build root layers from a Dockerfile and optionally create an SSH VM. View existing history here too.",
 	"actions.refresh": "Refresh",
+	"actions.projectPackages": "Project packages / access keys",
 	"summary.label": "Palimpsest overview",
 	"summary.sealed": "Sealed layers",
 	"summary.profiles": "Saved profiles",

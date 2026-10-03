@@ -24,6 +24,17 @@ describe('dialogFocus', () => {
 		expect(document.activeElement).toBe(controls[0]);
 	});
 
+	it('skips controls inside hidden responsive ancestors when wrapping focus in either direction', async () => {
+		render(DialogFocusFixture);
+		const { parent } = await openParent();
+		const close = within(parent).getByRole('button', { name: '대화상자 닫기' });
+		const last = within(parent).getByRole('button', { name: '부모 마지막 작업' });
+		await fireEvent.keyDown(close, { key: 'Tab', shiftKey: true });
+		expect(document.activeElement).toBe(last);
+		await fireEvent.keyDown(last, { key: 'Tab' });
+		expect(document.activeElement).toBe(close);
+	});
+
 	it('closes only the top dialog and restores focus layer by layer', async () => {
 		render(DialogFocusFixture);
 		const { opener } = await openParent();

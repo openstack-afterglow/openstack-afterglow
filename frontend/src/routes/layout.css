@@ -150,7 +150,6 @@
   --admin-tone: var(--color-state-warning);
   --admin-tone-soft: color-mix(in oklab, var(--color-state-warning) 14%, transparent);
   --admin-tone-ring: color-mix(in oklab, var(--color-state-warning) 30%, transparent);
-  --warm-grad: conic-gradient(from 220deg, var(--color-warm), var(--color-accent-2), var(--color-accent), var(--color-warm));
   --warm-soft: color-mix(in oklab, var(--color-warm) 14%, transparent);
   --warm-ring: color-mix(in oklab, var(--color-warm) 30%, transparent);
   --accent-soft: color-mix(in oklab, var(--color-accent) 14%, transparent);
@@ -219,6 +218,8 @@
   /* Application geometry */
   --app-header-height: 3rem;
   --app-sidebar-width: 15rem;
+  --app-sidebar-collapsed-width: 3.5rem;
+  --app-sidebar-offset: var(--app-sidebar-width);
   --z-sidebar: 30;
   --z-header: 35;
   --z-panel: 40;
@@ -236,6 +237,14 @@
   --motion-ease-standard: ease;
   --motion-ease-out: ease-out;
   --motion-ease-in-out: ease-in-out;
+}
+
+:root[data-console-sidebar="hidden"] {
+  --app-sidebar-offset: 0rem;
+}
+
+:root[data-console-sidebar="collapsed"] {
+  --app-sidebar-offset: var(--app-sidebar-collapsed-width);
 }
 
 /* Material — translucency belongs to the floating functional layer, never to content.
@@ -344,7 +353,7 @@ body {
     top: var(--app-header-height);
     right: 0;
     bottom: 0;
-    left: var(--app-sidebar-width);
+    left: var(--app-sidebar-offset);
   }
 }
 
@@ -404,7 +413,7 @@ body {
 
 @media (min-width: 768px) {
   .cloud-shell-dock {
-    left: var(--app-sidebar-width);
+    left: var(--app-sidebar-offset);
     min-height: 15rem;
     height: clamp(15rem, var(--cloud-shell-user-height, 45dvh), 70dvh);
     max-height: 70dvh;

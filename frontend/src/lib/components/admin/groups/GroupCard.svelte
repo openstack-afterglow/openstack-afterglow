@@ -2,6 +2,7 @@
 	import type { Group, GroupMember, User } from '$lib/types/adminGroup';
 	import Button from '$lib/components/ui/Button.svelte';
 	import { t } from '$lib/i18n/ns/admin-identity';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 
 	interface Props {
 		group: Group;
@@ -49,6 +50,7 @@
 			<div>
 				<div class="text-sm font-medium text-ink-0">{group.name}</div>
 				<div class="text-xs text-ink-2">{group.description || '-'}</div>
+				<div class="text-xs text-ink-2 tabular-nums mt-1">{t('groupCard.createdAt', { date: group.created_at ? new Date(group.created_at).toLocaleDateString(intlLocale(), { timeZone: 'UTC' }) : t('groupCard.unknownDate') })}</div>
 			</div>
 			<div class="text-xs text-ink-2 font-mono hidden sm:block">{group.id.slice(0, 8)}</div>
 		</div>
@@ -88,6 +90,7 @@
 					<div class="relative">
 						<input
 							type="text"
+							aria-label={t('groupCard.userSearch')}
 							placeholder={t('groupCard.searchPlaceholder')}
 							bind:value={addMemberSearchText}
 							class="w-full bg-surface-sunken border border-line-2 text-ink-0 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-action-warm"

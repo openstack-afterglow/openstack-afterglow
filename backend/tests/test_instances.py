@@ -6,6 +6,8 @@ import pytest
 
 from app.models.compute import InstanceInfo
 
+pytestmark = pytest.mark.usefixtures("available_flavor_capacity")
+
 
 @pytest.fixture(autouse=True)
 def _resolve_default_placement_policies(monkeypatch):

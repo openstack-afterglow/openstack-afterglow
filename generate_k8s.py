@@ -479,10 +479,10 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     lines.append(f"site_description = {_toml_str(app.get('site_description', ''))}")
     lines.append("")
     lines.append("# 로고 및 파비콘 경로 (frontend/static/ 기준)")
-    lines.append(f"logo_path = {_toml_str(app.get('logo_path', '/logo.png'))}")
-    lines.append(f"logo_dark_path = {_toml_str(app.get('logo_dark_path', '/logo-white.png'))}")
-    lines.append(f"logo_light_path = {_toml_str(app.get('logo_light_path', '/logo-dark.png'))}")
-    lines.append(f"favicon_path = {_toml_str(app.get('favicon_path', '/favicon.ico'))}")
+    lines.append(f"logo_path = {_toml_str(app.get('logo_path', '/afterglow-logo.svg'))}")
+    lines.append(f"logo_dark_path = {_toml_str(app.get('logo_dark_path', '/afterglow-logo.svg'))}")
+    lines.append(f"logo_light_path = {_toml_str(app.get('logo_light_path', '/afterglow-logo.svg'))}")
+    lines.append(f"favicon_path = {_toml_str(app.get('favicon_path', '/favicon.svg'))}")
     lines.append("")
     lines.append("# 프론트엔드 대시보드 자동 새로고침 간격 (밀리초)")
     lines.append(f"refresh_interval_ms = {app.get('refresh_interval_ms', 5000)}")
@@ -603,9 +603,9 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
         ("service_project_id", ""),
         ("image", ""),
         ("network_id", ""),
-        ("security_group", ""),
+        ("security_group", "default"),
         ("auth_url", ""),
-        ("interface", "internal"),
+        ("interface", "public"),
         ("volume_type", ""),
         ("home_size_gib", 5),
         ("cpu", 1.0),
@@ -772,6 +772,7 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     lines.append(f"node_uid = {_toml_str(dashboards.get('node_uid', 'afterglow-node'))}")
     lines.append(f"rabbitmq_uid = {_toml_str(dashboards.get('rabbitmq_uid', 'afterglow-rabbitmq'))}")
     lines.append(f"mysqld_uid = {_toml_str(dashboards.get('mysqld_uid', 'afterglow-mysqld'))}")
+    lines.append(f"proxysql_uid = {_toml_str(dashboards.get('proxysql_uid', 'afterglow-proxysql'))}")
     lines.append(f"memcached_uid = {_toml_str(dashboards.get('memcached_uid', 'afterglow-memcached'))}")
     lines.append(f"etcd_uid = {_toml_str(dashboards.get('etcd_uid', 'afterglow-etcd'))}")
     lines.append(f"haproxy_uid = {_toml_str(dashboards.get('haproxy_uid', 'afterglow-haproxy'))}")

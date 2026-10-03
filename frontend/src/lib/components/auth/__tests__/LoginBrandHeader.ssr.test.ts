@@ -11,7 +11,7 @@ const baseConfig: PublicSiteConfig = {
 	logo_path: '/brand/fallback.png',
 	logo_dark_path: '/brand/dark-slot.png',
 	logo_light_path: '/brand/light-slot.png',
-	favicon_path: '/favicon.ico',
+	favicon_path: '/favicon.svg',
 	refresh_interval_ms: 5000,
 	services: { magnum: false, manila: false, zun: false, cloud_shell: false, k3s: false, trove: false, swift: false, barbican: false, waygate: false, chat: false, mcp: false },
 	runtime: {

@@ -46,6 +46,8 @@ def service_for_resource(resource_type: str) -> str:
         return "octavia"
     if resource_type in {"user", "project", "auth"}:
         return "keystone"
+    if resource_type in {"palimpsest_package", "palimpsest_package_key"}:
+        return "palimpsest"
     return "afterglow"
 
 
@@ -241,6 +243,38 @@ async def get_user_activity_bounds(user_ids: list[str]) -> dict[str, dict]:
                 "first_seen": row.first_seen.isoformat() if row.first_seen else None,
                 "last_seen": row.last_seen.isoformat() if row.last_seen else None,
             }
+            for row in rows
+        }
+
+
+async def get_resource_creation_times(resource_type: str, resource_ids: list[str]) -> dict[str, str]:
+    """Project/group creation events only; first activity is not a creation date."""
+    if not resource_ids or not is_db_available():
+        return {}
+    factory = get_session_factory()
+    if factory is None:
+        return {}
+    actions = (
+        f"{resource_type}.create",
+        f"{resource_type}_create",
+        f"identity.{resource_type}.created",
+    )
+    async with factory() as session:
+        stmt = (
+            select(ActivityLog.resource_id, func.min(ActivityLog.created_at).label("created_at"))
+            .where(
+                ActivityLog.resource_type == resource_type,
+                ActivityLog.resource_id.in_(resource_ids),
+                ActivityLog.action.in_(actions),
+                ActivityLog.status == "success",
+            )
+            .group_by(ActivityLog.resource_id)
+        )
+        rows = (await session.execute(stmt)).all()
+        return {
+            row.resource_id: row.created_at.replace(tzinfo=UTC).isoformat()
+            if row.created_at.tzinfo is None
+            else row.created_at.astimezone(UTC).isoformat()
             for row in rows
         }
 
