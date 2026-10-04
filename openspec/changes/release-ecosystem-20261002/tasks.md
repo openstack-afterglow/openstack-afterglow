@@ -3,13 +3,13 @@
 - [x] 1. 다섯 기본 checkout의 현재 source와 version consumer를 검토하고 확인된 release blocker를 수정한다. Waygate framework 호환 갱신과 실제 재현 worker 종료, Afterglow dependency floor와 안전 SVG label 수정은 별도 change/evidence로 추적한다. 운영 blocker는 rollout 단계에 남긴다.
 - [x] 2. 각 저장소의 필수 gate, architecture guard, 실제 실행 smoke와 secret scan을 완료한다. 최신 Afterglow full gate와 Waygate framework/signal gates는 아래 증거를 따른다; live auth/production은 rollout acceptance에 따로 남긴다.
 - [x] 3. 모든 검토한 변경을 사용자 파일 보존 하에 dev에 커밋했다. 최신 source는 Afterglow bab526fb, Waygate a6e7dfd, Drover8afc434e, Lumen c168b8a5, Palimpsest locald0bda353이며 presentation/pf.md는 제외·보존한다.
-- [ ] 4. 모든 dev 커밋을 정상 push한다. Afterglow/Waygate/Drover/Lumen은 원격 dev에 반영됐으나 Palimpsest 정상 push는 GH013·required checks6개로 차단됐다. 보호 규칙·별도 ref·native approval을 우회하지 않는다.
+- [x] 4. 모든 dev 후보를 정상 push했다. Afterglow·Drover·Lumen·Waygate는 기존 dev 경로를 사용했고 Palimpsest는 사용자가 승인한 protected PR #10·#12와 required checks를 거쳐 dev에 통합했다. Lumen0.6.1 준비는 dev `24e6ae4`다. 보호 규칙·native approval과 main 소유권은 우회하지 않았다.
 - [x] 5. 대상 기본 checkout은 모두 dev다. 검토한 source를 dev에 직접 커밋했으므로 중복 branch merge는 필요하지 않다; owner dev→main 통합과 구분한다.
 
 ## Main and Publication
 
-- [ ] 6. pie_root가 모든 대상 dev→main PR 생성 및 merge를 수행한다. 이 세션은 로컬 제안 본문만 준비한다.
-- [ ] 7. main 통합된 프로젝트별 불변 버전 tag를 생성·push한다.
+- [ ] 6. pie_root가 모든 대상 dev→main PR 생성 및 merge를 수행한다. 현재 Afterglow main `0abd1148`·Palimpsest main `6f21ef56`을 확인했다. Drover `8afc434e`·Lumen `24e6ae4`·Waygate `a6e7dfd3`의 최신 dev 수정은 아직 main에 없으며 이 세션이 main PR·merge를 대신 수행하지 않는다.
+- [ ] 7. main 통합된 프로젝트별 불변 버전 tag를 생성·push한다. 후보 Afterglowv1.30.0·Droverv0.3.0·Lumenv0.6.1·Waygatev0.3.0·Palimpsestv0.3.0은 아직 없으며 기존 정식 tag를 이동·덮어쓰지 않는다.
 - [ ] 8. 프로젝트별 release/wheel/image 게시 결과와 불변 ref를 검증한다. 기존 Lumen 0.5.0은 재게시하지 않는다.
 
 ## Kolla Rollout
@@ -36,8 +36,8 @@
 
 - [x] 20. 모든 프로젝트의 최신 branch/release SHA와 실제 실패 job·step·root cause를 대조했다. Afterglow promotion은 PR 생성 권한, Palimpsest drift는 Hub 추출 전 ownership contract가 원인이다. Drover·Waygate 현재 dev CI와 Lumen0.6.0 release 발행은 성공이며 Afterglow HEAD의 publication skip과 과거 실패를 현재 build 성공/실패로 혼동하지 않는다. Lumen은 별도로 pinned Redis5의 `aclose()` 종료 오류를 source 수정 중이며, 운영 C2 DB readiness503·aiomysql/uvloop closed-transport 오류의 인과관계와 복구는 미해결 rollout blocker다.
 - [x] 21. 최신 source의 로컬 필수 gate·wheel·선언 image build·runtime smoke를 완료했다. 수치·skip·한계는 아래 2026-10-04 증거에 기록하며 live Keystone/OpenStack·native KVM·운영 증거로 승격하지 않는다.
-- [ ] 22. 필요한 최소 수정을 dev에 정상 반영하고 해당 SHA의 GitHub Actions 테스트·이미지·package 발행 성공을 확인한다. owner main 통합·native gate·보호 규칙을 우회하지 않는다. Afterglow·Lumen·Drover·Waygate dev와 Palimpsest dev의 hosted test·image·package 발행은 성공했다. Palimpsest native KVM job은 `palimpsest-native-kvm` reviewer 승인 대기이고, Afterglow promotion PR은 사용자가 직접 생성하기로 했다.
-- [ ] 23. 모든 프로젝트 검증·발행이 성공한 뒤, operator uv 프로젝트 직접 편집 없이 `uv sync`로 Kolla `stable/2025.2` 최신 입력을 반영하고 installer dispatch·auth·backup·prechecks를 검증한 다음 표준 genconfig/reconfigure를 수행한다.
+- [ ] 22. 필요한 최소 수정을 dev에 정상 반영하고 해당 SHA의 GitHub Actions 테스트·이미지·package 발행 성공을 확인한다. Afterglow main `0abd1148`의 게시를 복구했고 Lumen dev `24e6ae4`의 모든 hosted test·4 image 게시와 각 arm64/amd64·revision 일치를 확인했다. Drover·Waygate dev와 Palimpsest main의 hosted test·image·SHA package 게시도 성공했다. Palimpsest 현재 main native KVM run `37185453150`은 `palimpsest-native-kvm` reviewer 승인 대기다. 남은 세 main 통합·새 정식 tag/게시·native gate와 보호 규칙을 우회하지 않는다.
+- [ ] 23. 모든 프로젝트 검증·정식 발행이 성공한 뒤, 사용자가 추가 승인한 네 sibling source tag만 live/repo operator manifest에서 갱신한다. Kolla `stable/2025.2`와 나머지 설정은 보존하고 lock은 직접 편집하지 않고 `uv sync`로만 갱신한다. Installer dispatch·auth·backup·prechecks를 검증한 다음 표준 genconfig/reconfigure를 수행한다.
 - [ ] 24. 배포 대상 전체의 실제 image/config digest·readiness·authenticated service 동작과 공유 인프라를 검증한다. 미완료 또는 차단된 항목을 성공/완료로 표시하지 않는다.
 
 - 2026-10-04 Afterglow dev `ff007edb` clean export: `docs:check` `948ec0d9…`/2164files, backend3523·frontend1896(276files)·contract141·DB functional28·Ruff/format530, svelte-check2130files/0errors/0warnings와 production build가 통과했다. Wheel은 afterglow-api1.30.0·afterglow-crypto0.1.1·cloud-shell1.30.0이다. Canonical image 양 architecture에서 API import(기본 insecure `SECRET_KEY`는 의도대로 거부, synthetic 강한 key로 1.30.0), worker crypto0.1.1, frontend Node20/UID1001 robots·login200, Cloud Shell 실제 setuid PTY bootstrap·UID1000·OpenStack CLI·persistent home을 확인했다. Hosted Docker Build & Push `37132009122`는 성공했고 live OpenStack job은 skip이다.
@@ -78,3 +78,15 @@
 - 최종 metadata-only dev27f2945ee409139a3e91d3ada8281f852e2f3cd7의 hosted CI37013380707도 success를 관측했다. 사용자 후속 current-state 준비는 `local://release-current-state-reconfigure.md`에 별도로 기록했다. 원본 operator snapshot은 `/etc/kolla/afterglow-release-backups/pre-ecosystem-20261002T154152Z`0700이며 manifest/lock/inventory·설치 package inventory·role/playbook/source·설정0600 archive와 venv 복사본을 보존한다; datastore 백업은 아니다.
 - Before/after 실제 CLI 재현: 기존 stock site import 누락으로 reconfigure --list-tasks가72stock plays만 반환했다. 공식 installer로 marked import를 복원한 뒤 태그 없는/다섯 서비스 태그 CLI가 커스텀5역할·native loadbalancer 경로를 포함했다. 현재 image READ ONLY ledger는 Drover3/3·Waygate3/3·Lumen20/20, pending0·checksum drift0이며 migration 적용은 없다. Kolla/OpenStack CLI version·110installed package compatibility가 통과했고 sibling prechecks는17host changed0/unreachable0/failed0이었다. Protected operator config67파일·inventory와 ecosystem container30개의 image/start/health/restart state는 유지했다. Afterglow Manila/auth와 전체 stock storage gates는 여전히 별도 blocker이며 서비스 태그도 ProxySQL/Keepalived를 포함하는 native loadbalancer config/check를 호출할 수 있음을 runbook에 명시한다.
 - Current-state 준비의 repository 변경은 ARCHITECTURE·CHANGELOG·operator README·이 checklist의 문서4개뿐이다. 별도 임시 index의 HEAD+검토 문서 source digest는 `948ec0d9589738c81fb8d218793ff89c17c271910e997202845a08b15b8de60b`/2164files다. 동시 작업의 Dockerfile·native VM script/test·proposal은 제출·review 범위에서 제외하고 기존 공유 architecture review block도 보존한다. Working guard는 그 미검토 source 때문에 stale이며 전체 작업트리 검증으로 주장하지 않는다.
+
+## Owner-merge Deployment Preflight (2026-10-04)
+
+- Afterglow main `0abd1148`의 Docker Build & Push `37141698177` 실패는 Debian mirror의 cpp-14 package 크기 불일치(exit100)였다. 실패 job만 재실행한 뒤 build/manifest 모두 success를 확인했다. API/frontend/worker `nightly`의 revision은 모두 이 main SHA이며 index digest는 각각 `sha256:aca0212e931fb35648fc383443d5b476ca63655c757b5c6e19ceb535102d8989`, `sha256:120ccf712018ba8103eb3ee1c49ef15eaa0d716db6b0ea4bb19ce69a06a63551`, `sha256:a3d5a4027eb07d6307fb550c81de8dce7499b6e4b7449ef82b4e7418678207ee`다. Cloud Shell 양 architecture build도 success다. Native/live OpenStack과 정식 v1.30.0 게시 증거는 아니다.
+- Lumen dev `24e6ae4`는 Redis5 teardown/database plugin0.1.1 복구를 새 root0.6.1·runtime·lock·Kolla image default로 준비했다. `uv lock --offline`은 root version만 갱신했다. Fresh frozen contract service1676·SDK125·Ruff, real MariaDB/Redis integration107, canonical process-system9, API/worker/controller arm64·amd64 build와 실제 version/plugin/architecture/UID1000 import, 양 API migration CLI와 isolated root wheel/role0.6.1 설치가 통과했다. SDK·다른 plugin·sandbox·schema·auth·storage·source-build pin은 유지했다. Hosted run `37190133167`은 모든 test와 4 image build/push success다. 아래 GHCR `dev` index 모두 arm64/amd64와 revision `24e6ae46e7673772b7ef4b2f176b1802258c4235`를 검증했다. 이것은 새 정식 v0.6.1 tag/wheel 게시나 main·운영 rollout 증거가 아니다.
+  - API `sha256:e126eb00778a2e9e304de372cee9f29d28b5c43d667fe133a0e057e632d73e77`
+  - Worker `sha256:3d9906206be484bd3fd152652060f6c03bc8c6ac7b744816c5c5b712a8d48887`
+  - Controller `sha256:1def3ba492e71de5a2913dc2e12f2ffc44cc8bd9e840c33173d469d7cc03e9c8`
+  - Sandbox `sha256:e4f0ab399fde4e01e5ca351407d48a20e66c9a3eb37fa76ee0741a525db66f3f`
+- Palimpsest 현재 main `6f21ef56`은 hosted test·Hub image와 SHA package 게시가 성공했다. 오래된 dev `d76d77d`의 승인 대기 run `37138481776`만 취소해 cancelled를 확인했고, 현재 main Test `37185453150`이 `palimpsest-native-kvm` reviewer `jung-geun` 승인 대기에 도달했다. 승인/VM 실행·native proof를 대신하거나 우회하지 않았다.
+- wireguard-dmslab의 실제 operator는 Kolla21.3.1.dev4(`stable/2025.2`→`b8ed3622ba0afa4c9dc92db0fcbe8c3ddd178c63`), Drover0.2.25/Lumen0.5.0/Waygate0.2.0/Palimpsest client0.2.3이다. `uv sync --upgrade-package kolla-ansible --inexact --no-install-project --dry-run`은 exit0·환경 package 변경 계획0이며 operator manifest/lock SHA-256은 전후 동일했다. 네 root의 구 tag 고정은 sync만으로 새 tag로 바뀌지 않는다. 사용자는 정식 발행 후 네 서비스 source tag만 live/repo manifest에서 갱신하는 예외를 승인했다. Kolla stable branch와 나머지 설정은 보존하며 lock은 sync로만 생성한다. 남은 main 통합·모든 정식 게시·native gate 때문에 실제 pin 편집/sync/installer/genconfig/reconfigure·migration·restart·drain을 실행하지 않았다. 운영 auth·backup·storage/shared-infra 수용은 새 gate 통과 후 별도로 검증하며 과거 관측을 현재 health 증거로 쓰지 않는다.
+

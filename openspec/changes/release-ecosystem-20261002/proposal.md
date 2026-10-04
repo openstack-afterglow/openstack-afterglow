@@ -14,6 +14,7 @@
 - 배포 전후 VIP·ProxySQL·HAProxy뿐 아니라 Keystone과 나머지 활성 서비스의 실제 health·인증·읽기 경로를 확인한다. 비정상 상태는 원인·영향·복구 지점을 확인하고 최소 범위로 처리하며, container running이나 unauthenticated 200만으로 정상 판정하지 않는다.
 - 2026-10-02 사용자 후속 선택은 즉시 신규 후보 rollout 대신 wireguard-server의 현재 운영 상태에서 표준 `kolla-ansible reconfigure -i multinode`가 커스텀 서비스를 재배포할 수 있게 준비하는 것이다. 현재 image digest·키·볼륨·inventory·사용자 변경은 유지하고, 이미 게시된 운영 버전의 operator role pin·설치 연결과 실행 선행 조건만 정리한다. 실제 서비스 restart와 신규 main/tag/release는 이 준비 acceptance와 분리한다.
 - 2026-10-03 사용자 지시는 Kolla `stable/2025.2`의 최신 branch 상태를 유지하는 것이다. `/etc/kolla/pyproject.toml`과 operator uv 프로젝트를 직접 편집하거나 commit pin으로 되돌리지 않는다. 새 dependency 정보는 `uv sync`로만 취득하며 branch ref 갱신 옵션과 실제 설치 revision을 확인한다. 최신 branch/release의 실패한 build/test/package를 모두 파악·수정하고 로컬 검증과 GitHub Actions 발행 성공이 전부 확인된 뒤에만 Kolla rollout한다. 이 조건부 배포 승인은 main PR·merge 소유권, native KVM publication gate, 운영 backup·auth·datastore 보호를 우회하지 않는다.
+- 2026-10-04 사용자는 “네 source tag만 제한적 수정 허용”을 선택했다. 모든 정식 발행을 확인한 뒤 live/repo operator `[tool.uv.sources]`의 Droverv0.3.0·Lumenv0.6.1·Waygatev0.3.0·Palimpsestv0.3.0 tag만 갱신할 수 있다. Kolla `stable/2025.2`와 나머지 설정은 보존하고 lock은 직접 편집하지 않고 `uv sync`로만 생성한다. Owner main 통합·native reviewer·backup/auth/storage gate와 배포 선행 조건은 그대로 유지한다.
 
 ## Capabilities
 
