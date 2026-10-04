@@ -8,7 +8,7 @@
 
 ## Main and Publication
 
-- [ ] 6. pie_root가 모든 대상 dev→main PR 생성 및 merge를 수행한다. 현재 Afterglow main `0abd1148`·Palimpsest main `6f21ef56`을 확인했다. Drover `8afc434e`·Lumen `24e6ae4`·Waygate `a6e7dfd3`의 최신 dev 수정은 아직 main에 없으며 이 세션이 main PR·merge를 대신 수행하지 않는다.
+- [ ] 6. pie_root가 모든 대상 dev→main merge를 수행한다. 사용자 후속 승인으로 이 세션이 필요한 PR을 생성했다: Drover `8afc434e` [#29](https://github.com/openstack-afterglow/drover/pull/29), Lumen `24e6ae4` [#21](https://github.com/openstack-afterglow/lumen/pull/21), Waygate `a6e7dfd3` [#5](https://github.com/openstack-afterglow/waygate/pull/5). 현재 Afterglow main `0abd1148`·Palimpsest main `6f21ef56`은 통합됐으며 Afterglow 후속 dev `158caf19`는 release preflight 문서뿐이다. 필수 PR checks와 owner merge를 요청했고 자동 merge·보호 규칙 우회는 하지 않는다.
 - [ ] 7. main 통합된 프로젝트별 불변 버전 tag를 생성·push한다. 후보 Afterglowv1.30.0·Droverv0.3.0·Lumenv0.6.1·Waygatev0.3.0·Palimpsestv0.3.0은 아직 없으며 기존 정식 tag를 이동·덮어쓰지 않는다.
 - [ ] 8. 프로젝트별 release/wheel/image 게시 결과와 불변 ref를 검증한다. 기존 Lumen 0.5.0은 재게시하지 않는다.
 
@@ -50,7 +50,7 @@
 
 ## Evidence and Boundaries
 
-- Main PR 생성/편집과 merge는 pie_root 소유다. 태그·운영 배포를 이 선행 조건 전에 수행하지 않는다.
+- Main merge는 pie_root 소유다. 2026-10-04 사용자 후속 승인에 따라 필요한 main PR 생성·편집은 이 세션이 수행하고 exact 링크와 미완료 gate를 사용자에게 요청한다. 태그·운영 배포는 main 통합·필수 발행/native/auth/backup/storage 선행 조건 전에 수행하지 않는다.
 - 배포 호스트 inventory를 확인했고 `multimode`가 없으며 사용자가 기존 `multinode`로 실행하도록 선택했다. inventory 파일·대상 그룹을 변경하지 않는다.
 - 최초 `/etc/kolla` 설치 조회는 Kolla21.0.1.dev53/Drover0.2.22/Lumen0.2.2/Waygate0.1.3/Palimpsest client0.2.3와 floating dev/stable refs였다. 사용자 후속 current-state 준비에서 현재 운영 이미지에 맞는 게시 tag를 검토한 뒤 four-root 역할만 locked/inexact sync했다: Droverv0.2.25, Lumenv0.5.0, Waygatev0.2.0, Palimpsestv0.2.3; Kolla는 기존662707be commit으로 고정·유지했다. 새 후보의 main/tag/release promotion이나 controller genconfig/reconfigure는 수행하지 않았다.
 - 각 gate/smoke/커밋의 결과는 완료 시 추가한다. 출판 또는 운영 성공은 관측한 경우만 기록한다.
@@ -89,4 +89,6 @@
   - Sandbox `sha256:e4f0ab399fde4e01e5ca351407d48a20e66c9a3eb37fa76ee0741a525db66f3f`
 - Palimpsest 현재 main `6f21ef56`은 hosted test·Hub image와 SHA package 게시가 성공했다. 오래된 dev `d76d77d`의 승인 대기 run `37138481776`만 취소해 cancelled를 확인했고, 현재 main Test `37185453150`이 `palimpsest-native-kvm` reviewer `jung-geun` 승인 대기에 도달했다. 승인/VM 실행·native proof를 대신하거나 우회하지 않았다.
 - wireguard-dmslab의 실제 operator는 Kolla21.3.1.dev4(`stable/2025.2`→`b8ed3622ba0afa4c9dc92db0fcbe8c3ddd178c63`), Drover0.2.25/Lumen0.5.0/Waygate0.2.0/Palimpsest client0.2.3이다. `uv sync --upgrade-package kolla-ansible --inexact --no-install-project --dry-run`은 exit0·환경 package 변경 계획0이며 operator manifest/lock SHA-256은 전후 동일했다. 네 root의 구 tag 고정은 sync만으로 새 tag로 바뀌지 않는다. 사용자는 정식 발행 후 네 서비스 source tag만 live/repo manifest에서 갱신하는 예외를 승인했다. Kolla stable branch와 나머지 설정은 보존하며 lock은 sync로만 생성한다. 남은 main 통합·모든 정식 게시·native gate 때문에 실제 pin 편집/sync/installer/genconfig/reconfigure·migration·restart·drain을 실행하지 않았다. 운영 auth·backup·storage/shared-infra 수용은 새 gate 통과 후 별도로 검증하며 과거 관측을 현재 health 증거로 쓰지 않는다.
+- 2026-10-04 12:53 UTC 사용자 재요청에 따라 GitHub main/dev/compare/tag·exact-dev CI와 기존 open PR을 다시 대조했다. Drover는 후속1commit, Lumen은 Redis/MariaDB/0.6.1 준비3commits, Waygate는 0.3.0/worker/framework2commits가 main에 없었다. 세 dev CI 모두 success이며 중복 PR 없이 위 #29/#21/#5를 생성하고 `jung-geun`에 assign했다. Palimpsest native main run `37185453150`은 같은 reviewer 승인 대기이며 별도 중복 main PR을 생성하지 않았다. 전체 새 정식 tag는 없고 운영 live globals의 기존 explicit image digest11개는 유지했다. 현재 auth/shared-infra/datastore backup은 읽기 전용으로 재확인하며, 오래된 2026-10-02 관측을 현재 정상 증거로 사용하지 않는다.
+- 생성한 세 main PR은 모두 `mergeable=true`, `mergeable_state=clean`이며 owner에 assign됐다. Drover PR run `37203678451`의 실제 service/SDK lint·tests·wheel/role·MariaDB migration/readiness·image scan jobs는 success다. Lumen PR run `37203683385`는 duplicate-tree check success 뒤 test/image가 skipped이며, 이를 새 테스트 실행으로 주장하지 않는다; exact-dev `37190133167`의 이미 통과한 동일 후보 gate와 게시 증거를 사용한다. Waygate PR runs `37203687163` service/SDK checks와 `37203687368` build job은 success(test는 skipped)다. 운영 tag·package sync·genconfig·reconfigure는 여전히 미실행이다.
 
