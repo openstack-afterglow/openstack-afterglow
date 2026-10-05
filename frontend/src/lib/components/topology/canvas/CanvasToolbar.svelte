@@ -3,6 +3,8 @@
 </script>
 
 <script lang="ts">
+	import RichText from '$lib/i18n/RichText.svelte';
+	import { t } from '$lib/i18n/ns/topology';
 	// 캔버스 상단 툴바: 검색, 패킷 흐름(기본 on 시뮬레이션), 화면 맞춤, 배치 초기화.
 	import Button from '$lib/components/ui/Button.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
@@ -50,50 +52,52 @@
 	const flowHintId = 'topology-canvas-flow-hint';
 </script>
 
+{#snippet flowHint(text: string)}<span class="hint">{text}</span>{/snippet}
+
 <div class="toolbar">
 	<div class="search">
 		<TextInput
 			bind:value={query}
 			bind:element={searchElement}
 			type="search"
-			ariaLabel="토폴로지 검색"
-			placeholder="이름 · IP · CIDR · MAC 검색…"
+			ariaLabel={t('toolbar.searchLabel')}
+			placeholder={t('toolbar.search')}
 			class="search-input"
 			onkeydown={onsearchkeydown}
 		/>
 		{#if matchCount != null}
-			<span class="search-count" aria-hidden="true">{matchCount}건</span>
+			<span class="search-count" aria-hidden="true">{t('toolbar.matchCount', { count: matchCount })}</span>
 		{/if}
 	</div>
 	<label class="check" class:is-disabled={reducedMotion}>
 		<input type="checkbox" bind:checked={flowOn} disabled={reducedMotion} aria-describedby={reducedMotion ? flowHintId : undefined} />
-		패킷 흐름 <span class="hint">(시뮬레이션)</span>
+		<RichText segments={t.rich('toolbar.packetFlow')} tags={{ hint: flowHint }} />
 	</label>
 	{#if reducedMotion}
-		<span class="hint" id={flowHintId}>시스템 '동작 줄이기' 설정으로 패킷 애니메이션이 비활성화됩니다</span>
+		<span class="hint" id={flowHintId}>{t('toolbar.reducedMotion')}</span>
 	{/if}
 	<div class="actions">
 		{#if oncreate}
-			<div class="create" role="group" aria-label="리소스 생성">
-				<span class="hint">생성</span>
-				<Button variant="accent" size="sm" onclick={() => oncreate?.('network')}>+ 네트워크</Button>
-				<Button variant="secondary" size="sm" onclick={() => oncreate?.('router')}>+ 라우터</Button>
-				<Button variant="secondary" size="sm" onclick={() => oncreate?.('instance')}>+ 인스턴스</Button>
-				<Button variant="secondary" size="sm" onclick={() => oncreate?.('loadbalancer')}>+ 로드밸런서</Button>
-				<Button variant="secondary" size="sm" onclick={() => oncreate?.('database')}>+ DB</Button>
+			<div class="create" role="group" aria-label={t('toolbar.createLabel')}>
+				<span class="hint">{t('toolbar.create')}</span>
+				<Button variant="accent" size="sm" onclick={() => oncreate?.('network')}>{t('toolbar.network')}</Button>
+				<Button variant="secondary" size="sm" onclick={() => oncreate?.('router')}>{t('toolbar.router')}</Button>
+				<Button variant="secondary" size="sm" onclick={() => oncreate?.('instance')}>{t('toolbar.instance')}</Button>
+				<Button variant="secondary" size="sm" onclick={() => oncreate?.('loadbalancer')}>{t('toolbar.loadBalancer')}</Button>
+				<Button variant="secondary" size="sm" onclick={() => oncreate?.('database')}>{t('toolbar.database')}</Button>
 				{#if createContextName}
-					<span class="hint">선택한 네트워크 <b>{createContextName}</b> 에 연결</span>
+					<span class="hint"><RichText segments={t.rich('toolbar.createContext', { name: createContextName })} /></span>
 				{/if}
 			</div>
 		{:else if editable}
-			<Button variant="accent" size="sm" onclick={oncreatenetwork}>+ 네트워크</Button>
-			<Button variant="secondary" size="sm" onclick={oncreaterouter}>+ 라우터</Button>
-			<Button variant="secondary" size="sm" onclick={oncreateinstance}>+ 인스턴스</Button>
-			<Button variant="secondary" size="sm" onclick={oncreateloadbalancer}>+ 로드밸런서</Button>
-			<Button variant="secondary" size="sm" onclick={oncreatedatabase}>+ DB</Button>
+			<Button variant="accent" size="sm" onclick={oncreatenetwork}>{t('toolbar.network')}</Button>
+			<Button variant="secondary" size="sm" onclick={oncreaterouter}>{t('toolbar.router')}</Button>
+			<Button variant="secondary" size="sm" onclick={oncreateinstance}>{t('toolbar.instance')}</Button>
+			<Button variant="secondary" size="sm" onclick={oncreateloadbalancer}>{t('toolbar.loadBalancer')}</Button>
+			<Button variant="secondary" size="sm" onclick={oncreatedatabase}>{t('toolbar.database')}</Button>
 		{/if}
-		<Button variant="secondary" size="sm" onclick={onfit}>화면 맞춤</Button>
-		<Button variant="secondary" size="sm" onclick={onreset}>배치 초기화</Button>
+		<Button variant="secondary" size="sm" onclick={onfit}>{t('toolbar.fit')}</Button>
+		<Button variant="secondary" size="sm" onclick={onreset}>{t('toolbar.reset')}</Button>
 	</div>
 </div>
 

@@ -1,0 +1,13 @@
+{
+	"run.reloadRequired": "チャット実行のジャーナルは利用できなくなりました。会話を再読み込みしてください",
+	"protocol.invalidDescriptor": "チャット実行の記述子が無効です",
+	"http.requestFailed": "チャットのリクエストに失敗しました",
+	"stream.unterminatedFrame": "SSEフレームが終端されていません",
+	"stream.disconnected": "チャットのイベントストリームが切断されました",
+	"stream.invalidJson": "チャットイベントが有効なJSONではありません",
+	"stream.idMismatch": "SSEイベントのIDが一致しません",
+	"stream.typeMismatch": "SSEイベントの種類が一致しません",
+	"stream.runMismatch": "SSEイベントの実行が一致しません",
+	"protocol.sequenceGap": "チャットイベントのシーケンスに欠落があります",
+	"reducer.runMismatch": "チャットイベントの実行が一致しません"
+}

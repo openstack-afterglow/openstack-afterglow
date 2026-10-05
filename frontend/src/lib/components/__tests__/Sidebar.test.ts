@@ -19,6 +19,7 @@ import { sidebarExpanded, sidebarOpen } from '$lib/stores/sidebar';
 import { wizardOpen } from '$lib/stores/wizard';
 import Sidebar from '../Sidebar.svelte';
 import { getTour } from '$lib/tutorial/tours';
+import { initLocale } from '$lib/i18n/runtime.svelte';
 
 // The SvelteKit readable is replaced with a writable store by the mock above.
 const mockPage = page as unknown as Writable<{ url: URL; data: Record<string, unknown> }>;
@@ -48,6 +49,7 @@ async function openGlobalNavigation() {
 }
 
 beforeEach(async () => {
+	initLocale('ko');
 	sidebarOpen.close();
 	sidebarExpanded.open();
 	wizardOpen.set(false);
@@ -62,6 +64,7 @@ beforeEach(async () => {
 
 afterEach(() => {
 	cleanup();
+	initLocale('ko');
 	sidebarOpen.close();
 	sidebarExpanded.open();
 	wizardOpen.set(false);
@@ -218,6 +221,39 @@ describe('Sidebar navigation ownership', () => {
 		expect(screen.queryByRole('dialog')).toBeNull();
 		expect(get(auth)).toEqual(authBefore);
 		expect(get(page).url.pathname).toBe('/dashboard/compute/instances/instance-1');
+	});
+
+	it('translates four locales without replacing chrome or resetting manual navigation state', async () => {
+		await navigate('/dashboard/volumes');
+		render(Sidebar);
+		await tick();
+		const panel = document.getElementById('app-service-sidebar')!;
+		const toggle = panel.querySelector<HTMLButtonElement>('#app-service-sidebar-toggle')!;
+		const volumeLink = panel.querySelector<HTMLAnchorElement>('a[href="/dashboard/volumes"]')!;
+		await fireEvent.click(toggle);
+		await openGlobalNavigation();
+		const drawer = document.getElementById('app-navigation-menu')!;
+		const volumeGroup = within(drawer).getByRole('button', { name: '볼륨' });
+		await fireEvent.click(volumeGroup);
+		for (const [locale, volume, group, packages] of [
+			['ko', '볼륨 목록', '볼륨', '프로젝트 패키지'],
+			['en', 'Volumes', 'Volumes', 'Project packages'],
+			['ja', 'ボリューム一覧', 'ボリューム', 'プロジェクトパッケージ'],
+			['zh-CN', '卷列表', '卷', '项目软件包'],
+		] as const) {
+			initLocale(locale);
+			await tick();
+			expect(document.getElementById('app-service-sidebar')).toBe(panel);
+			expect(document.getElementById('app-navigation-menu')).toBe(drawer);
+			expect(panel.querySelector('a[href="/dashboard/volumes"]')).toBe(volumeLink);
+			expect(volumeLink.textContent?.trim()).toBe(volume);
+			expect(volumeLink.getAttribute('aria-current')).toBe('page');
+			expect(toggle.getAttribute('aria-expanded')).toBe('false');
+			expect(within(drawer).getByRole('button', { name: group })).toBe(volumeGroup);
+			expect(volumeGroup.getAttribute('aria-expanded')).toBe('false');
+			expect(within(drawer).getByRole('link', { name: packages }).getAttribute('href')).toBe('/palimpsest/packages');
+			expect(get(page).url.pathname).toBe('/dashboard/volumes');
+		}
 	});
 
 	it('keeps project settings outside global and service menus', async () => {

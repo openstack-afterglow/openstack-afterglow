@@ -1,18 +1,19 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-network';
 	import type { RouterInfo } from '$lib/types/networks';
 
 	let { routers }: { routers: RouterInfo[] } = $props();
 </script>
 
 <div class="bg-surface-base border border-line rounded-lg p-6">
-	<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide mb-4">연결된 라우터</h2>
+	<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide mb-4">{t('routerTable.title')}</h2>
 	<div class="overflow-x-auto">
 	<table class="w-full text-sm">
 		<thead>
 			<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
-				<th class="text-left py-2 pr-6">이름</th>
-				<th class="text-left py-2 pr-6">외부 게이트웨이</th>
-				<th class="text-left py-2">연결된 서브넷</th>
+				<th class="text-left py-2 pr-6">{t('routerTable.name')}</th>
+				<th class="text-left py-2 pr-6">{t('routerTable.externalGateway')}</th>
+				<th class="text-left py-2">{t('routerTable.connectedSubnets')}</th>
 			</tr>
 		</thead>
 		<tbody>
@@ -27,7 +28,7 @@
 						{/if}
 					</td>
 					<td class="py-2 text-ink-2 text-xs">
-						{router.connected_subnet_ids.length}개
+						{t('routerTable.subnetCount', { count: router.connected_subnet_ids.length })}
 					</td>
 				</tr>
 			{/each}

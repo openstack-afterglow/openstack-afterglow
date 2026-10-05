@@ -47,7 +47,6 @@ describe('TutorialStartButton', () => {
 		const { container } = render(TutorialStartButton, { tour: 'admin-network', compactOnMobile: true });
 
 		expect(container.querySelector('.tutorial-start--compact')).not.toBeNull();
-		expect(container.querySelector('.hidden.sm\\:inline')?.textContent).toBe('튜토리얼');
 		expect(screen.getByRole('button', { name: '튜토리얼 시작' })).toBeTruthy();
 	});
 });

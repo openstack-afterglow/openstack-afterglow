@@ -65,6 +65,7 @@ Kubernetes · ArgoCD · kolla-ansible 배포와 상세 설정은 아래 문서�
 | [보안 모델](docs/security.md) | 인증·인가, IDOR 가드, HKDF 암호화, audit log |
 | [국소 기능테스트](docs/testing.md) | 개발 중 빠른 국소 기능 검증 가이드 |
 | [아키텍처 상세](docs/architecture.md) | 루트 정본에서 연결하는 historical/domain detail |
+| [프론트엔드 번역 참여](docs/frontend-localization.md) | 한국어 기준 4개 언어 키·CSV 번역·원어민 검수 |
 
 릴리스 변경사항은 [CHANGELOG](CHANGELOG.md), 작업 기록·로드맵은 [`openspec/`](openspec/)(`openspec list`, 구 [milestone.md](milestone.md)에서 이관)를 참고하세요.
 

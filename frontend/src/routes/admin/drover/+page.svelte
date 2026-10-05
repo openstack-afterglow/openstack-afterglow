@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/drover-pages';
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
@@ -90,13 +91,13 @@
 
 <!-- 슬라이드 패널 -->
 {#if selectedClusterId}
-	<SlidePanel onClose={closeClusterPanel} ariaLabel="Drover 클러스터 상세">
+	<SlidePanel onClose={closeClusterPanel} ariaLabel={t('cluster.detailLabel')}>
 		<K3sClusterDetailPanel clusterId={selectedClusterId} onClose={closeClusterPanel} adminMode={true} />
 	</SlidePanel>
 {/if}
 
 <div class="p-4 md:p-8 max-w-7xl mx-auto">
-	<PageHeader breadcrumb="DROVER" title="Drover 클러스터">
+	<PageHeader breadcrumb="DROVER" title={t('cluster.title')}>
 		{#snippet actions()}
 			<AutoRefreshControl
 				bind:active={ar.active}
@@ -108,20 +109,20 @@
 		{/snippet}
 	</PageHeader>
 	<div class="mb-4 flex min-w-0 items-center gap-2">
-		<span class="shrink-0 text-xs text-ink-2">상태 필터:</span>
+		<span class="shrink-0 text-xs text-ink-2">{t('admin.statusFilter')}</span>
 		<div class="min-w-0 overflow-x-auto pb-1">
 			<ToggleGroup
 				value={statusFilter}
 				options={[
-					{ value: 'all', label: '전체' },
-					{ value: 'active', label: '정상 (ACTIVE)' },
-					{ value: 'pending', label: '진행 중 (PENDING)' },
-					{ value: 'error', label: '오류 (ERROR/FAILED)' },
-					{ value: 'deleted', label: '삭제됨 (DELETED)' }
+					{ value: 'all', label: t('admin.all') },
+					{ value: 'active', label: t('admin.active') },
+					{ value: 'pending', label: t('admin.pending') },
+					{ value: 'error', label: t('admin.error') },
+					{ value: 'deleted', label: t('admin.deleted') }
 				]}
 				onchange={(value) => setStatusFilter(value as typeof statusFilter)}
 				size="xs"
-				ariaLabel="클러스터 상태 필터"
+				ariaLabel={t('admin.statusFilterLabel')}
 			/>
 		</div>
 	</div>
@@ -129,19 +130,19 @@
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if clusters.length === 0}
-		<EmptyState headline="Drover 클러스터가 없습니다" />
+		<EmptyState headline={t('cluster.empty')} />
 	{:else}
 		<TableShell density="compact">
 			<table class="min-w-[58rem] text-sm">
 				<thead>
 					<tr class="text-xs uppercase tracking-wide">
-						<th>이름</th>
-						<th>상태</th>
-						<th>프로젝트</th>
-						<th>서버 IP</th>
-						<th>노드</th>
-						<th>버전</th>
-						<th>생성일</th>
+						<th>{t('form.name')}</th>
+						<th>{t('admin.status')}</th>
+						<th>{t('admin.project')}</th>
+						<th>{t('admin.serverIp')}</th>
+						<th>{t('admin.nodes')}</th>
+						<th>{t('admin.version')}</th>
+						<th>{t('admin.created')}</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -167,7 +168,7 @@
 								{c.project_id ? ($projectNames.get(c.project_id) ?? c.project_id.slice(0, 8)) : '-'}
 							</td>
 							<td class="font-mono text-ink-2">{c.server_ip || '-'}</td>
-							<td class="text-ink-2">1 서버 + {c.agent_vm_ids?.length ?? 0} / {c.agent_count} 에이전트</td>
+							<td class="text-ink-2">{t('admin.nodeCount', { current: c.agent_vm_ids?.length ?? 0, total: c.agent_count })}</td>
 							<td class="text-ink-2">{c.k3s_version || '-'}</td>
 							<td class="text-ink-2">{c.created_at ? c.created_at.slice(0, 10) : '-'}</td>
 						</tr>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/object-storage';
 	import type { SwiftContainer } from '$lib/types/common';
 	import BucketRow from './BucketRow.svelte';
 
@@ -19,11 +20,11 @@
 	<table class="w-full text-sm">
 		<thead>
 			<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
-				<th class="text-left py-3 px-4 font-medium">버킷 이름</th>
-				<th class="text-left py-3 px-4 font-medium">프로젝트</th>
-				<th class="text-left py-3 px-4 font-medium">오브젝트 수</th>
-				<th class="text-left py-3 px-4 font-medium">용량</th>
-				<th class="text-right py-3 px-4 font-medium">액션</th>
+				<th class="text-left py-3 px-4 font-medium">{t('buckets.table.name')}</th>
+				<th class="text-left py-3 px-4 font-medium">{t('buckets.table.project')}</th>
+				<th class="text-left py-3 px-4 font-medium">{t('buckets.table.objectCount')}</th>
+				<th class="text-left py-3 px-4 font-medium">{t('buckets.table.capacity')}</th>
+				<th class="text-right py-3 px-4 font-medium">{t('buckets.table.actions')}</th>
 			</tr>
 		</thead>
 		<tbody>

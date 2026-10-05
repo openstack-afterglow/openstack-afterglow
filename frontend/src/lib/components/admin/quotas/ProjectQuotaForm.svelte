@@ -1,8 +1,17 @@
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
-	import { formatRam } from '$lib/utils/quotaFormat';
+	import { t } from '$lib/i18n/ns/admin-identity';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import type { Quotas } from '$lib/types/quotas';
 	import Alert from '$lib/components/ui/Alert.svelte';
+
+	function formatRam(mb: number): string {
+		if (mb >= 1024) {
+			const digits = mb % 1024 === 0 ? 0 : 1;
+			return `${(mb / 1024).toLocaleString(intlLocale(), { useGrouping: false, minimumFractionDigits: digits, maximumFractionDigits: digits })} GB`;
+		}
+		return `${mb.toLocaleString(intlLocale(), { useGrouping: false })} MB`;
+	}
 
 	type SectionId = 'compute' | 'volume' | 'network' | 'file_storage';
 
@@ -25,57 +34,57 @@
 	const SECTIONS: SectionDef[] = [
 		{
 			id: 'compute',
-			label: 'Compute 쿼터',
-			description: '가상 머신 인스턴스, vCPU, 메모리 및 관련 리소스 한도',
+			get label() { return t('quotaForm.compute.label'); },
+			get description() { return t('quotaForm.compute.description'); },
 			fields: [
-				{ key: 'instances', label: '인스턴스', help: '최대 가상 머신 인스턴스 수' },
-				{ key: 'cores', label: 'CPU 코어', help: '최대 vCPU 개수' },
-				{ key: 'ram', label: 'RAM (MB)', help: '최대 메모리 용량 (MB)', formatUsage: formatRam },
-				{ key: 'metadata_items', label: '메타데이터 항목', help: '인스턴스당 메타데이터 항목 최대 개수' },
-				{ key: 'key_pairs', label: '키 페어', help: '사용자당 SSH 키 페어 최대 개수' },
-				{ key: 'server_groups', label: '서버 그룹', help: '생성 가능한 서버 그룹 최대 개수' },
-				{ key: 'server_group_members', label: '서버 그룹 멤버', help: '서버 그룹당 최대 인스턴스 수' },
-				{ key: 'injected_files', label: '주입 파일', help: '주입 가능한 파일 최대 개수' },
-				{ key: 'injected_file_content_bytes', label: '주입 파일 내용 (바이트)', help: '주입 파일당 최대 내용 크기' },
-				{ key: 'injected_file_path_bytes', label: '주입 파일 경로 (바이트)', help: '주입 파일 경로의 최대 바이트 길이' },
+				{ key: 'instances', get label() { return t('quotaForm.compute.instances.label'); }, get help() { return t('quotaForm.compute.instances.help'); } },
+				{ key: 'cores', get label() { return t('quotaForm.compute.cores.label'); }, get help() { return t('quotaForm.compute.cores.help'); } },
+				{ key: 'ram', get label() { return t('quotaForm.compute.ram.label'); }, get help() { return t('quotaForm.compute.ram.help'); }, formatUsage: formatRam },
+				{ key: 'metadata_items', get label() { return t('quotaForm.compute.metadataItems.label'); }, get help() { return t('quotaForm.compute.metadataItems.help'); } },
+				{ key: 'key_pairs', get label() { return t('quotaForm.compute.keyPairs.label'); }, get help() { return t('quotaForm.compute.keyPairs.help'); } },
+				{ key: 'server_groups', get label() { return t('quotaForm.compute.serverGroups.label'); }, get help() { return t('quotaForm.compute.serverGroups.help'); } },
+				{ key: 'server_group_members', get label() { return t('quotaForm.compute.serverGroupMembers.label'); }, get help() { return t('quotaForm.compute.serverGroupMembers.help'); } },
+				{ key: 'injected_files', get label() { return t('quotaForm.compute.injectedFiles.label'); }, get help() { return t('quotaForm.compute.injectedFiles.help'); } },
+				{ key: 'injected_file_content_bytes', get label() { return t('quotaForm.compute.injectedFileContentBytes.label'); }, get help() { return t('quotaForm.compute.injectedFileContentBytes.help'); } },
+				{ key: 'injected_file_path_bytes', get label() { return t('quotaForm.compute.injectedFilePathBytes.label'); }, get help() { return t('quotaForm.compute.injectedFilePathBytes.help'); } },
 			],
 		},
 		{
 			id: 'volume',
-			label: 'Volume 쿼터',
-			description: '블록 스토리지 볼륨, 스냅샷 및 총 용량 한도',
+			get label() { return t('quotaForm.volume.label'); },
+			get description() { return t('quotaForm.volume.description'); },
 			fields: [
-				{ key: 'volumes', label: '볼륨', help: '생성 가능한 볼륨 수' },
-				{ key: 'snapshots', label: '스냅샷', help: '생성 가능한 볼륨 스냅샷 수' },
-				{ key: 'gigabytes', label: '총 용량 (GB)', help: '할당 가능한 볼륨 총 용량 (GB)', unit: 'GB' },
+				{ key: 'volumes', get label() { return t('quotaForm.volume.volumes.label'); }, get help() { return t('quotaForm.volume.volumes.help'); } },
+				{ key: 'snapshots', get label() { return t('quotaForm.volume.snapshots.label'); }, get help() { return t('quotaForm.volume.snapshots.help'); } },
+				{ key: 'gigabytes', get label() { return t('quotaForm.volume.gigabytes.label'); }, get help() { return t('quotaForm.volume.gigabytes.help'); }, unit: 'GB' },
 			],
 		},
 		{
 			id: 'network',
-			label: 'Network 쿼터',
-			description: '가상 네트워크, 서브넷, 포트, 라우터, 플로팅 IP 및 보안 그룹 한도',
+			get label() { return t('quotaForm.network.label'); },
+			get description() { return t('quotaForm.network.description'); },
 			fields: [
-				{ key: 'network', label: '네트워크', help: '생성 가능한 가상 네트워크 수' },
-				{ key: 'subnet', label: '서브넷', help: '생성 가능한 서브넷 수' },
-				{ key: 'port', label: '포트', help: '생성 가능한 가상 네트워크 포트 수' },
-				{ key: 'router', label: '라우터', help: '생성 가능한 가상 라우터 수' },
-				{ key: 'floatingip', label: '플로팅 IP', help: '할당 가능한 공인 IP(플로팅 IP) 수' },
-				{ key: 'security_group', label: '보안 그룹', help: '생성 가능한 보안 그룹 수' },
-				{ key: 'security_group_rule', label: '보안 그룹 규칙', help: '프로젝트에서 생성 가능한 보안 그룹 규칙 수' },
+				{ key: 'network', get label() { return t('quotaForm.network.network.label'); }, get help() { return t('quotaForm.network.network.help'); } },
+				{ key: 'subnet', get label() { return t('quotaForm.network.subnet.label'); }, get help() { return t('quotaForm.network.subnet.help'); } },
+				{ key: 'port', get label() { return t('quotaForm.network.port.label'); }, get help() { return t('quotaForm.network.port.help'); } },
+				{ key: 'router', get label() { return t('quotaForm.network.router.label'); }, get help() { return t('quotaForm.network.router.help'); } },
+				{ key: 'floatingip', get label() { return t('quotaForm.network.floatingip.label'); }, get help() { return t('quotaForm.network.floatingip.help'); } },
+				{ key: 'security_group', get label() { return t('quotaForm.network.securityGroup.label'); }, get help() { return t('quotaForm.network.securityGroup.help'); } },
+				{ key: 'security_group_rule', get label() { return t('quotaForm.network.securityGroupRule.label'); }, get help() { return t('quotaForm.network.securityGroupRule.help'); } },
 			],
 		},
 		{
 			id: 'file_storage',
-			label: 'File Storage (Manila) 쿼터',
-			description: '공유 파일시스템, 스토리지 용량, 스냅샷 및 공유 네트워크 한도',
+			get label() { return t('quotaForm.fileStorage.label'); },
+			get description() { return t('quotaForm.fileStorage.description'); },
 			fields: [
-				{ key: 'shares', label: '공유 (Shares)', help: '생성 가능한 공유 파일시스템 수', putKey: 'shares' },
-				{ key: 'gigabytes', label: '공유 총 용량 (GB)', help: '할당 가능한 공유 총 용량 (GB)', unit: 'GB', putKey: 'share_gigabytes' },
-				{ key: 'snapshots', label: '공유 스냅샷', help: '생성 가능한 공유 스냅샷 수', putKey: 'share_snapshots' },
-				{ key: 'snapshot_gigabytes', label: '스냅샷 총 용량 (GB)', help: '할당 가능한 스냅샷 총 용량 (GB)', unit: 'GB', putKey: 'share_snapshot_gigabytes' },
-				{ key: 'share_networks', label: '공유 네트워크', help: '생성 가능한 공유 네트워크 수', putKey: 'share_networks' },
-				{ key: 'share_groups', label: '공유 그룹', help: '생성 가능한 공유 그룹 수', putKey: 'share_groups' },
-				{ key: 'share_group_snapshots', label: '공유 그룹 스냅샷', help: '생성 가능한 공유 그룹 스냅샷 수', putKey: 'share_group_snapshots' },
+				{ key: 'shares', get label() { return t('quotaForm.fileStorage.shares.label'); }, get help() { return t('quotaForm.fileStorage.shares.help'); }, putKey: 'shares' },
+				{ key: 'gigabytes', get label() { return t('quotaForm.fileStorage.gigabytes.label'); }, get help() { return t('quotaForm.fileStorage.gigabytes.help'); }, unit: 'GB', putKey: 'share_gigabytes' },
+				{ key: 'snapshots', get label() { return t('quotaForm.fileStorage.snapshots.label'); }, get help() { return t('quotaForm.fileStorage.snapshots.help'); }, putKey: 'share_snapshots' },
+				{ key: 'snapshot_gigabytes', get label() { return t('quotaForm.fileStorage.snapshotGigabytes.label'); }, get help() { return t('quotaForm.fileStorage.snapshotGigabytes.help'); }, unit: 'GB', putKey: 'share_snapshot_gigabytes' },
+				{ key: 'share_networks', get label() { return t('quotaForm.fileStorage.shareNetworks.label'); }, get help() { return t('quotaForm.fileStorage.shareNetworks.help'); }, putKey: 'share_networks' },
+				{ key: 'share_groups', get label() { return t('quotaForm.fileStorage.shareGroups.label'); }, get help() { return t('quotaForm.fileStorage.shareGroups.help'); }, putKey: 'share_groups' },
+				{ key: 'share_group_snapshots', get label() { return t('quotaForm.fileStorage.shareGroupSnapshots.label'); }, get help() { return t('quotaForm.fileStorage.shareGroupSnapshots.help'); }, putKey: 'share_group_snapshots' },
 			],
 		},
 	];
@@ -167,7 +176,7 @@
 			const b = baselines[secId]?.[field.key];
 			if (d !== b) {
 				if (d === undefined || d === null || !Number.isInteger(d) || d < -1) {
-					throw new Error(`${field.label}: -1(무제한) 또는 0 이상의 정수를 입력해주세요.`);
+					throw new Error(t('quotaForm.invalidLimit', { label: field.label }));
 				}
 				payload[field.putKey ?? field.key] = d;
 			}
@@ -182,7 +191,7 @@
 		try {
 			payload = getSectionPayload(secId);
 		} catch (err: unknown) {
-			localErrors[secId] = err instanceof Error ? err.message : '입력값이 올바르지 않습니다.';
+			localErrors[secId] = err instanceof Error ? err.message : t('quotaForm.invalidInput');
 			return;
 		}
 
@@ -196,7 +205,7 @@
 			const res = await onSaveSection(secId, payload);
 			if (projectId !== targetProjectId) return;
 			if (res.success && res.refreshed === false) {
-				localErrors[secId] = res.refreshError || '쿼터를 다시 불러올 수 없습니다. 다시 시도해주세요.';
+				localErrors[secId] = res.refreshError || t('quotaForm.refreshFailed');
 			} else if (res.success) {
 				await tick();
 				if (projectId !== targetProjectId) return;
@@ -208,13 +217,13 @@
 						drafts[secId][field.key] = refreshed.limit;
 					}
 				}
-				localSuccesses[secId] = '저장되었습니다.';
+				localSuccesses[secId] = t('quotaForm.saved');
 				localErrors[secId] = '';
 			} else {
-				localErrors[secId] = res.errors?.[secId] || Object.values(res.errors ?? {}).join(', ') || '저장에 실패했습니다.';
+				localErrors[secId] = res.errors?.[secId] || Object.values(res.errors ?? {}).join(', ') || t('quotaForm.saveFailed');
 			}
 		} catch (err: unknown) {
-			if (projectId === targetProjectId) localErrors[secId] = err instanceof Error ? err.message : '저장 중 오류가 발생했습니다.';
+			if (projectId === targetProjectId) localErrors[secId] = err instanceof Error ? err.message : t('quotaForm.saveError');
 		} finally {
 			localSavingSection = null;
 		}
@@ -247,22 +256,22 @@
 				{/if}
 			</div>
 			{#if isAvailable && hasChanges(sec.id)}
-				<span class="text-xs bg-action-warm/15 text-action-warm px-2 py-0.5 rounded-full font-medium">수정됨</span>
+				<span class="text-xs bg-action-warm/15 text-action-warm px-2 py-0.5 rounded-full font-medium">{t('quotaForm.modified')}</span>
 			{/if}
 		</div>
 
 		{#if !isAvailable}
 			{#if sec.id === 'file_storage' && (!secError || secError === 'service_disabled')}
 				<div class="bg-surface-sunken/60 border border-line-2 rounded-lg p-4 text-sm text-ink-2">
-					파일 스토리지(Manila) 서비스가 활성화되어 있지 않습니다.
+					{t('quotaForm.fileStorageDisabled')}
 				</div>
 			{:else if secError}
-				<Alert tone="danger" title={`${sec.label} 서비스를 사용할 수 없습니다:`} class="text-sm">
+				<Alert tone="danger" title={t('quotaForm.serviceUnavailableTitle', { label: sec.label })} class="text-sm">
 					{secError}
 				</Alert>
 			{:else}
 				<div class="bg-surface-sunken/60 border border-line-2 rounded-lg p-4 text-sm text-ink-2">
-					{sec.label} 서비스를 사용할 수 없거나 정보를 불러올 수 없습니다.
+					{t('quotaForm.serviceUnavailable', { label: sec.label })}
 				</div>
 			{/if}
 		{:else}
@@ -276,9 +285,9 @@
 								{field.label}
 							</label>
 							{#if !isSupported}
-								<span class="text-[10px] text-ink-3 bg-surface-sunken px-1.5 py-0.5 rounded border border-line/40">미지원</span>
+								<span class="text-[10px] text-ink-3 bg-surface-sunken px-1.5 py-0.5 rounded border border-line/40">{t('quotaForm.unsupported')}</span>
 							{:else if drafts[sec.id]?.[field.key] === -1}
-								<span class="text-[10px] text-accent font-medium bg-accent/10 px-1.5 py-0.5 rounded">무제한</span>
+								<span class="text-[10px] text-accent font-medium bg-accent/10 px-1.5 py-0.5 rounded">{t('quotaForm.unlimited')}</span>
 							{/if}
 						</div>
 
@@ -286,10 +295,10 @@
 							{@const inUse = quotaItem.in_use}
 							<div class="text-sm text-ink-2 mb-1 flex items-center justify-between">
 								<span>
-									사용: {inUse === undefined || inUse === null ? '-' : (field.formatUsage ? field.formatUsage(inUse) : (field.unit ? `${inUse} ${field.unit}` : inUse))}
+									{t('quotaForm.usage', { usage: inUse === undefined || inUse === null ? '-' : (field.formatUsage ? field.formatUsage(inUse) : (field.unit ? `${inUse} ${field.unit}` : inUse)) })}
 								</span>
 								{#if drafts[sec.id]?.[field.key] !== baselines[sec.id]?.[field.key]}
-									<span class="text-xs text-action-warm">수정 중</span>
+									<span class="text-xs text-action-warm">{t('quotaForm.editing')}</span>
 								{/if}
 							</div>
 							<input
@@ -301,13 +310,13 @@
 								class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm"
 							/>
 						{:else}
-							<div class="text-sm text-ink-3 mb-1">사용: -</div>
+							<div class="text-sm text-ink-3 mb-1">{t('quotaForm.usage', { usage: '-' })}</div>
 							<input
 								id={`field-${sec.id}-${field.key}`}
 								data-testid={`quota-${sec.id}-${field.key}-disabled`}
 								disabled
 								value=""
-								placeholder="지원되지 않음"
+								placeholder={t('quotaForm.unsupportedPlaceholder')}
 								class="w-full bg-surface-sunken/40 border border-line/40 rounded-lg px-3 py-2 text-ink-3 text-sm cursor-not-allowed italic"
 							/>
 						{/if}
@@ -335,7 +344,7 @@
 						disabled={isSaving}
 						class="px-3 py-1.5 bg-surface-sunken hover:bg-surface-selected text-ink-2 hover:text-ink-0 text-sm rounded-lg transition-colors disabled:opacity-40"
 					>
-						취소
+						{t('quotaForm.cancel')}
 					</button>
 				{/if}
 				<button
@@ -345,7 +354,7 @@
 					disabled={!onSaveSection || !hasChanges(sec.id) || saving || isSaving}
 					class="px-4 py-1.5 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
 				>
-					{isSaving ? '저장 중...' : `${sec.label} 저장`}
+					{isSaving ? t('quotaForm.saving') : t('quotaForm.saveSection', { label: sec.label })}
 				</button>
 			</div>
 		{/if}

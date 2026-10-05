@@ -2,6 +2,7 @@
 	import type { SecurityGroup } from '$lib/types/securityGroup';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
 	import SelectionToolbar from '$lib/components/ui/SelectionToolbar.svelte';
+	import { t } from '$lib/i18n/ns/network-pages';
 
 	let {
 		groups,
@@ -27,8 +28,8 @@
 
 <div class="flex items-center justify-end mb-2">
 	<SelectionToolbar
-		label="보안 그룹"
-		ariaLabel="보안 그룹 전체 선택"
+		label={t('securityGroupList.label')}
+		ariaLabel={t('securityGroupList.selectAll')}
 		checked={allSelected}
 		indeterminate={indeterminate}
 		selectedCount={selectedCount}
@@ -47,8 +48,8 @@
 					checked={selectedIds.has(sg.id)}
 					disabled={selectionDisabled || sg.name === 'default'}
 					unavailable={sg.name === 'default'}
-					title={sg.name === 'default' ? '기본 보안 그룹은 삭제할 수 없습니다' : undefined}
-					ariaLabel={`${sg.name} 선택`}
+					title={sg.name === 'default' ? t('securityGroupList.defaultDeleteUnavailable') : undefined}
+					ariaLabel={t('securityGroupList.select', { name: sg.name })}
 					onclick={() => onToggleSelect(sg.id)}
 				/>
 				<button

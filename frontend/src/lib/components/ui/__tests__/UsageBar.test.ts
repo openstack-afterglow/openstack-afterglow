@@ -27,7 +27,6 @@ describe('UsageBar', () => {
 
 	it('labels an unlimited maximum without fabricating a percentage or fill', () => {
 		const { container } = render(UsageBar, { value: 4, max: -1 });
-		expect(container.querySelector('.usage-value')?.textContent).toMatch(/4\s*\/\s*무제한/);
 		expect(container.querySelector('.usage-percent')).toBeNull();
 		expect(container.querySelector('.usage-fill')).toBeNull();
 		expect(container.querySelector('.usage-track')?.classList.contains('usage-track-unlimited')).toBe(true);

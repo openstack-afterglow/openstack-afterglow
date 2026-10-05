@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/account';
   import { auth } from '$lib/stores/auth';
   import { api, ApiError } from '$lib/api/client';
 
@@ -32,7 +33,7 @@
       editEmail = res.email;
       editDescription = res.description;
     } catch (e) {
-      error = e instanceof ApiError ? e.message : '프로필을 불러올 수 없습니다';
+      error = e instanceof ApiError ? e.message : t('profile.loadFailed');
     } finally {
       loading = false;
     }
@@ -48,14 +49,14 @@
       if (editEmail !== profile.email) body.email = editEmail;
       if (editDescription !== profile.description) body.description = editDescription;
       if (Object.keys(body).length === 0) {
-        error = '변경된 내용이 없습니다';
+        error = t('profile.unchanged');
         return;
       }
       const res = await api.patch<Profile>('/api/v1/profile', body, token, projectId);
       profile = res;
-      success = '프로필이 저장되었습니다';
+      success = t('profile.saved');
     } catch (e) {
-      error = e instanceof ApiError ? e.message : '저장 실패';
+      error = e instanceof ApiError ? e.message : t('profile.saveFailed');
     } finally {
       saving = false;
     }
@@ -67,7 +68,7 @@
 </script>
 
 <div class="bg-surface-base border border-line rounded-xl p-5">
-  <h3 class="text-sm font-semibold text-ink-0 mb-4">프로필 정보</h3>
+  <h3 class="text-sm font-semibold text-ink-0 mb-4">{t('profile.title')}</h3>
 
   {#if error}
     <div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-3 py-2 text-xs mb-3">{error}</div>
@@ -85,34 +86,34 @@
   {:else}
     <div class="space-y-3">
       <div>
-        <div class="block text-xs text-ink-2 mb-1">사용자 ID</div>
+        <div class="block text-xs text-ink-2 mb-1">{t('profile.userId')}</div>
         <div class="text-sm text-ink-2 font-mono bg-surface-sunken/50 rounded px-3 py-2">{profile.id}</div>
       </div>
       <div>
-        <label class="block text-xs text-ink-2 mb-1" for="field-profilesection-92">이름 (닉네임)</label>
+        <label class="block text-xs text-ink-2 mb-1" for="field-profilesection-92">{t('profile.name')}</label>
         <input id="field-profilesection-92"
           type="text"
           bind:value={editName}
           class="w-full bg-surface-sunken border border-line-2 focus:border-action-warm text-ink-0 text-sm rounded-lg px-3 py-2 outline-none transition-colors"
-          placeholder="이름 입력"
+          placeholder={t('profile.namePlaceholder')}
         />
       </div>
       <div>
-        <label class="block text-xs text-ink-2 mb-1" for="field-profilesection-101">이메일</label>
+        <label class="block text-xs text-ink-2 mb-1" for="field-profilesection-101">{t('profile.email')}</label>
         <input id="field-profilesection-101"
           type="email"
           bind:value={editEmail}
           class="w-full bg-surface-sunken border border-line-2 focus:border-action-warm text-ink-0 text-sm rounded-lg px-3 py-2 outline-none transition-colors"
-          placeholder="이메일 입력"
+          placeholder={t('profile.emailPlaceholder')}
         />
       </div>
       <div>
-        <label class="block text-xs text-ink-2 mb-1" for="field-profilesection-110">설명</label>
+        <label class="block text-xs text-ink-2 mb-1" for="field-profilesection-110">{t('profile.description')}</label>
         <textarea id="field-profilesection-110"
           bind:value={editDescription}
           rows="2"
           class="w-full bg-surface-sunken border border-line-2 focus:border-action-warm text-ink-0 text-sm rounded-lg px-3 py-2 outline-none transition-colors resize-none"
-          placeholder="설명 입력 (선택)"
+          placeholder={t('profile.descriptionPlaceholder')}
         ></textarea>
       </div>
     </div>
@@ -121,7 +122,7 @@
         onclick={save}
         disabled={saving}
         class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover disabled:opacity-50 text-action-on-warm text-sm rounded-lg transition-colors"
-      >{saving ? '저장 중...' : '저장'}</button>
+      >{saving ? t('profile.saving') : t('profile.save')}</button>
     </div>
   {/if}
 </div>

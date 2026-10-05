@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-storage';
 		import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	let {
@@ -31,15 +32,15 @@
 		tabindex="-1"
 	>
 		<div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-sm mx-4 shadow-[var(--shadow-restraint)]">
-			<h2 class="text-lg font-semibold text-ink-0 mb-4">상태 초기화</h2>
-			<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminvolumeresetstatusmodal-31">변경할 상태</label>
+			<h2 class="text-lg font-semibold text-ink-0 mb-4">{t('volumeDetail.resetStatus')}</h2>
+			<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminvolumeresetstatusmodal-31">{t('volumeDetail.targetStatus')}</label>
 			<select id="field-adminvolumeresetstatusmodal-31" bind:value={resetStatus} class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mb-4">
-				<option value="available">available</option>
-				<option value="error">error</option>
-				<option value="in-use">in-use</option>
+				<option value="available">{t('volumeDetail.statusAvailable')}</option>
+				<option value="error">{t('volumeDetail.statusError')}</option>
+				<option value="in-use">{t('volumeDetail.statusInUse')}</option>
 			</select>
 			<div class="flex gap-3 justify-end">
-				<button onclick={() => { open = false; }} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0">취소</button>
+				<button onclick={() => { open = false; }} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0">{t('volumeDetail.cancel')}</button>
 				<button
 					onclick={async () => {
 						const ok = await onReset(resetStatus);
@@ -48,7 +49,7 @@
 					disabled={resetting}
 					class="px-4 py-2 bg-yellow-600 hover:bg-yellow-500 text-ink-0 text-sm rounded-lg disabled:opacity-30"
 				>
-					{resetting ? '처리 중...' : '초기화'}
+					{resetting ? t('volumeDetail.processing') : t('volumeDetail.reset')}
 				</button>
 			</div>
 		</div>

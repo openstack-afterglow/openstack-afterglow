@@ -1,3 +1,4 @@
+import { t } from '$lib/i18n/ns/admin-storage';
 import { getContext, setContext, untrack } from 'svelte';
 import { api, ApiError } from '$lib/api/client';
 import type { AdminVolumeDetail, VolumeDeleteDiagnostic, VolumeDeleteRecoveryResult } from '$lib/types/volume';
@@ -59,7 +60,7 @@ function createAdminVolumeDetailController(opts: Options) {
 				recoveryResult = null;
 			}
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : '볼륨 조회 실패';
+			error = e instanceof ApiError ? e.message : t('volumeDetail.loadFailed');
 		} finally {
 			loading = false;
 		}
@@ -78,7 +79,7 @@ function createAdminVolumeDetailController(opts: Options) {
 				requestOpts
 			);
 		} catch (e) {
-			diagnosticError = e instanceof ApiError ? e.message : '볼륨 삭제 진단 실패';
+			diagnosticError = e instanceof ApiError ? e.message : t('diagnostic.loadFailed');
 		} finally {
 			diagnosticLoading = false;
 		}
@@ -110,7 +111,7 @@ function createAdminVolumeDetailController(opts: Options) {
 			}
 			return result;
 		} catch (e) {
-			diagnosticError = e instanceof ApiError ? e.message : '볼륨 삭제 복구 실패';
+			diagnosticError = e instanceof ApiError ? e.message : t('diagnostic.recoveryFailed');
 			return null;
 		} finally {
 			recovering = false;

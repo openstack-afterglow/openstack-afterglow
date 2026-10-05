@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { TsPoint } from '$lib/types/common';
 	import TimeSeriesChart from '$lib/components/TimeSeriesChart.svelte';
+	import { t } from '$lib/i18n/ns/admin-storage';
 
 	let {
 		data,
@@ -18,12 +19,12 @@
 <div class="mb-6">
 	{#if loading}
 		<div class="bg-surface-base border border-line rounded-xl p-5 h-48 flex items-center justify-center">
-			<div class="text-ink-2 text-sm">차트 로딩 중...</div>
+			<div class="text-ink-2 text-sm">{t('volumeList.chartLoading')}</div>
 		</div>
 	{:else}
 		<TimeSeriesChart
 			{data}
-			title="볼륨 수 추이"
+			title={t('volumeList.chartTitle')}
 			mainKey="total"
 			extraKeys={['in_use', 'available']}
 			currentRange={range}

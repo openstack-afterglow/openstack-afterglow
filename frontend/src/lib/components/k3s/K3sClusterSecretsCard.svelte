@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/drover';
   import { untrack } from 'svelte';
   import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
   import K3sResourceEditor from './K3sResourceEditor.svelte';
@@ -20,11 +21,11 @@
     const ns = s.selectedNamespace;
     if (!ns) return;
     loadError = '';
-    untrack(() => s.loadSecrets()).catch(() => { loadError = 'Secret 로드 실패'; });
+    untrack(() => s.loadSecrets()).catch(() => { loadError = t('secrets.loadFailed'); });
   });
 
   async function handleCreate(data: Record<string, string>) {
-    if (!newName.trim()) { createError = '이름을 입력하세요'; return; }
+    if (!newName.trim()) { createError = t('secrets.nameRequired'); return; }
     saving = true;
     createError = '';
     try {
@@ -33,7 +34,7 @@
       newName = '';
       newType = 'Opaque';
     } catch (e) {
-      createError = e instanceof Error ? e.message : '생성 실패';
+      createError = e instanceof Error ? e.message : t('secrets.createFailed');
     } finally {
       saving = false;
     }
@@ -51,7 +52,7 @@
   }
 
   async function handleDelete(name: string) {
-    if (!(await confirmDialog(`Secret "${name}"을 삭제하시겠습니까?`))) return;
+    if (!(await confirmDialog(t('secrets.confirmDelete', { name })))) return;
     await s.deleteSecretItem(name);
   }
 </script>
@@ -62,7 +63,7 @@
     <button
       onclick={() => { showCreate = !showCreate; newName = ''; createError = ''; newType = 'Opaque'; }}
       class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
-    >{showCreate ? '닫기' : '+ 생성'}</button>
+    >{showCreate ? t('secrets.close') : t('secrets.create')}</button>
   </div>
 
   {#if showCreate}
@@ -70,7 +71,7 @@
       <div class="flex gap-2 mb-2">
         <input
           bind:value={newName}
-          placeholder="Secret 이름"
+          placeholder={t('secrets.namePlaceholder')}
           class="flex-1 bg-surface-selected border border-line-2 text-ink-1 text-xs rounded px-2 py-1.5 font-mono focus:outline-none focus:border-action-warm"
         />
         <select
@@ -86,7 +87,7 @@
         <p class="text-xs text-red-400 mb-1">{createError}</p>
       {/if}
       <K3sResourceEditor
-        title="Secret 생성"
+        title={t('secrets.createTitle')}
         mode="secret"
         resourceName={newName}
         namespace={s.selectedNamespace ?? ''}
@@ -101,7 +102,7 @@
   {#if loadError}
     <p class="text-xs text-red-400">{loadError}</p>
   {:else if s.secrets.length === 0}
-    <p class="text-xs text-ink-2">Secret 없음</p>
+    <p class="text-xs text-ink-2">{t('secrets.empty')}</p>
   {:else}
     <div class="space-y-2">
       {#each s.secrets as secret}
@@ -122,12 +123,12 @@
               <button
                 onclick={() => { editingSecret = { name: secret.name, type: secret.type, data: {} }; }}
                 class="text-xs text-ink-2 hover:text-ink-1 px-2 py-1 border border-line-2 hover:border-line-2 rounded transition-colors"
-              >편집</button>
+              >{t('secrets.edit')}</button>
               <button
                 onclick={() => handleDelete(secret.name)}
                 disabled={s.cmActioning === actionKey}
                 class="text-xs text-orange-400 hover:text-orange-300 px-2 py-1 border border-orange-900 hover:border-orange-700 rounded transition-colors disabled:text-ink-3 disabled:border-line-2 disabled:cursor-not-allowed"
-              >{s.cmActioning === actionKey ? '삭제 중...' : '삭제'}</button>
+              >{s.cmActioning === actionKey ? t('secrets.deleting') : t('secrets.delete')}</button>
             </div>
           </div>
           <K3sYamlView {text} {maskedKeys} />
@@ -139,7 +140,7 @@
 
 {#if editingSecret}
   <K3sResourceEditor
-    title={`Secret 편집 — ${editingSecret.name}`}
+    title={t('secrets.editTitle', { name: editingSecret.name })}
     mode="secret"
     resourceName={editingSecret.name}
     namespace={s.selectedNamespace ?? ''}

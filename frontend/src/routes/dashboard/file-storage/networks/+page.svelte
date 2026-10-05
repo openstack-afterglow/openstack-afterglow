@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/file-storage';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
@@ -48,7 +49,7 @@
 			networks = await api.get<ShareNetwork[]>('/api/v1/share-networks', token, projectId, opts);
 			error = '';
 		} catch (e) {
-			error = e instanceof ApiError ? `조회 실패 (${e.status})` : '서버 오류';
+			error = e instanceof ApiError ? t('errors.loadWithStatus', { status: e.status }) : t('errors.server');
 		} finally {
 			loading = false;
 		}
@@ -67,14 +68,14 @@
 	}
 
 	async function deleteNetwork(id: string, name: string) {
-		if (!enabled || !await confirmDialog(`Share 네트워크 "${name || id.slice(0, 8)}"을 삭제하시겠습니까?\n이 네트워크를 사용 중인 파일 스토리지가 있으면 삭제할 수 없습니다.`)) return;
+		if (!enabled || !await confirmDialog(t('networks.deleteConfirm', { name: name || id.slice(0, 8) }))) return;
 		deleting = id;
 		try {
 			await api.delete(`/api/v1/share-networks/${id}`, token, projectId);
 			selection.remove([id]);
 			await refresh.invalidate();
 		} catch (e) {
-			toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('errors.deleteWithMessage', { message: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			deleting = null;
 		}
@@ -82,7 +83,7 @@
 
 	async function runBulkDelete() {
 		const ids = [...selection.ids];
-		if (!ids.length || !await confirmDialog(`선택한 Share 네트워크 ${ids.length}개를 삭제하시겠습니까?\n사용 중인 파일 스토리지가 있으면 삭제할 수 없습니다.`)) return;
+		if (!ids.length || !await confirmDialog(t('networks.bulkDeleteConfirm', { count: ids.length }))) return;
 		const tokenSnapshot = token;
 		const projectSnapshot = projectId;
 		bulkBusy = true;
@@ -90,8 +91,8 @@
 			const results = await executeBulkMutations(ids, (id) => api.delete(`/api/v1/share-networks/${id}`, tokenSnapshot, projectSnapshot));
 			const successful = results.filter((result) => result.ok).map((result) => result.id);
 			const failed = results.length - successful.length;
-			if (successful.length) toast.success(`${successful.length}개 삭제 요청을 완료했습니다.`);
-			if (failed) toast.error(`${failed}개 삭제에 실패했습니다.`);
+			if (successful.length) toast.success(t('bulk.deleteSuccess', { count: successful.length }));
+			if (failed) toast.error(t('bulk.deleteFailed', { count: failed }));
 			if ($auth.projectId === projectSnapshot) {
 				selection.remove(successful);
 				await refresh.invalidate();
@@ -101,7 +102,7 @@
 		}
 	}
 
-	const bulkActions: BulkSelectionAction[] = [{ key: 'delete', label: '삭제', tone: 'danger', onAction: runBulkDelete }];
+	const bulkActions = $derived<BulkSelectionAction[]>([{ key: 'delete', label: t('actions.delete'), tone: 'danger', onAction: runBulkDelete }]);
 	const refresh = createCoalescedRefresh((force) => fetchNetworks(force ? { refresh: true } : undefined));
 	async function forceRefresh() {
 		refreshing = true;
@@ -138,25 +139,25 @@
 </script>
 
 {#if !enabled}
-	<div class="p-4 md:p-8"><BetaFeatureGate title="Share 네트워크는 베타 기능입니다" /></div>
+	<div class="p-4 md:p-8"><BetaFeatureGate title={t('networks.beta')} /></div>
 {:else}
 	<ShareNetworkCreateModal bind:open={showModal} {creating} {token} {projectId} onCreate={createNetwork} />
 	<div class="bulk-selection-page p-4 md:p-8">
-		<PageHeader breadcrumb="FILE STORAGE / NETWORKS" title="Share 네트워크">
+		<PageHeader breadcrumb={t('networks.breadcrumb')} title={t('networks.title')}>
 			{#snippet actions()}
 				<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} refreshing={refreshing || loading} onManualRefresh={forceRefresh} />
-				<button onclick={() => showModal = true} class="bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">+ Share 네트워크 생성</button>
+				<button onclick={() => showModal = true} class="bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">{t('networks.create')}</button>
 			{/snippet}
 		</PageHeader>
-		<p class="text-sm text-ink-2 mb-6">파일 스토리지를 Neutron 네트워크에 연결하는 Share Network를 관리합니다.</p>
+		<p class="text-sm text-ink-2 mb-6">{t('networks.description')}</p>
 		{#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
 		{#if loading}
 			<LoadingSkeleton variant="table" rows={4} />
 		{:else if networks.length === 0}
-			<div class="text-center py-20 text-ink-2"><p class="text-lg">Share 네트워크가 없습니다</p></div>
+			<div class="text-center py-20 text-ink-2"><p class="text-lg">{t('networks.empty')}</p></div>
 		{:else}
 			<ShareNetworkTable {networks} {deleting} selectedIds={selection.ids} selectableIds={selectableIds} selectionDisabled={bulkBusy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} onDelete={deleteNetwork} />
-			<BulkSelectionOverlay count={selection.count} ariaLabel="선택한 Share 네트워크 일괄 작업" actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
+			<BulkSelectionOverlay count={selection.count} ariaLabel={t('networks.bulkActions')} actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
 		{/if}
 	</div>
 {/if}

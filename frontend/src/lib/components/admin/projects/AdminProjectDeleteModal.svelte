@@ -3,6 +3,9 @@
 	import { api, ApiError } from '$lib/api/client';
 	import { projectNames } from '$lib/stores/projectNames';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
+	import RichText from '$lib/i18n/RichText.svelte';
+	import { t } from '$lib/i18n/ns/admin-identity';
+	import { t as tc } from '$lib/i18n/ns/common';
 
 	interface Project {
 		id: string;
@@ -45,12 +48,14 @@
 			onSuccess();
 			onClose();
 		} catch (e) {
-			deleteError = e instanceof ApiError ? e.message : '삭제 실패';
+			deleteError = e instanceof ApiError ? e.message : t('projectDelete.failed');
 		} finally {
 			deleting = false;
 		}
 	}
 </script>
+
+{#snippet nameTag(text: string)}<span class="text-ink-0 font-medium">{text}</span>{/snippet}
 
 {#if project}
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -66,15 +71,15 @@
 			onclick={(e) => e.stopPropagation()}
 			role="none"
 		>
-			<h2 class="text-lg font-semibold text-ink-0 mb-3">프로젝트 삭제</h2>
-			<p class="text-sm text-ink-2 mb-2"><span class="text-ink-0 font-medium">{project.name}</span> 프로젝트를 삭제하시겠습니까?</p>
-			<p class="text-xs text-red-400 mb-4">이 작업은 되돌릴 수 없습니다.</p>
+			<h2 class="text-lg font-semibold text-ink-0 mb-3">{t('projectDelete.title')}</h2>
+			<p class="text-sm text-ink-2 mb-2"><RichText segments={t.rich('projectDelete.body', { name: project.name })} tags={{ name: nameTag }} /></p>
+			<p class="text-xs text-red-400 mb-4">{t('projectDelete.irreversible')}</p>
 			{#if deleteError}
 				<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{deleteError}</div>
 			{/if}
 			<div class="flex justify-end gap-3">
-				<button onclick={onClose} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">취소</button>
-				<button onclick={confirmDelete} disabled={deleting} class="px-4 py-2 bg-red-600 hover:bg-red-500 text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{deleting ? '삭제 중...' : '삭제'}</button>
+				<button onclick={onClose} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{tc('actions.cancel')}</button>
+				<button onclick={confirmDelete} disabled={deleting} class="px-4 py-2 bg-red-600 hover:bg-red-500 text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{deleting ? t('state.deleting') : t('actions.delete')}</button>
 			</div>
 		</div>
 	</div>

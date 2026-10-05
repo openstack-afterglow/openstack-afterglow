@@ -1,3 +1,6 @@
+import { t } from '$lib/i18n/ns/drover-pages';
+import source from '$lib/i18n/messages/ko/drover-pages.json';
+
 /**
  * Minimal K8s YAML serializer/parser — no external deps.
  * Handles the fixed ConfigMap/Secret object shape only.
@@ -62,7 +65,7 @@ export function toConfigMapYaml(
     `apiVersion: v1\n`,
     `kind: ConfigMap\n`,
     `metadata:\n`,
-    `  name: ${name || '(새 ConfigMap)'}\n`,
+    `  name: ${name || source['yaml.newConfigMap']}\n`,
     namespace ? `  namespace: ${namespace}\n` : '',
     serializeData(data, 'data'),
   ].join('');
@@ -100,7 +103,7 @@ export function toSecretEditYaml(name: string, type: string, namespace?: string)
     `kind: Secret\n`,
     `type: ${serializeScalar(type, '  ')}\n`,
     `metadata:\n`,
-    `  name: ${name || '(새 Secret)'}\n`,
+    `  name: ${name || source['yaml.newSecret']}\n`,
     namespace ? `  namespace: ${namespace}\n` : '',
     `stringData: {}\n`,
   ].join('');
@@ -201,9 +204,9 @@ export function fromConfigMapEditYaml(text: string): Record<string, string> {
   try {
     parsed = parseYamlSubset(text);
   } catch (e) {
-    throw new Error(`YAML 파싱 오류: ${e instanceof Error ? e.message : e}`);
+    throw new Error(t('yaml.parseError', { error: e instanceof Error ? e.message : String(e) }));
   }
-  if (parsed.kind && parsed.kind !== 'ConfigMap') throw new Error('kind가 ConfigMap이어야 합니다');
+  if (parsed.kind && parsed.kind !== 'ConfigMap') throw new Error(t('yaml.configMapKind'));
   return parsed.data ?? {};
 }
 
@@ -212,10 +215,10 @@ export function fromSecretEditYaml(text: string): Record<string, string> {
   try {
     parsed = parseYamlSubset(text);
   } catch (e) {
-    throw new Error(`YAML 파싱 오류: ${e instanceof Error ? e.message : e}`);
+    throw new Error(t('yaml.parseError', { error: e instanceof Error ? e.message : String(e) }));
   }
-  if (parsed.kind && parsed.kind !== 'Secret') throw new Error('kind가 Secret이어야 합니다');
+  if (parsed.kind && parsed.kind !== 'Secret') throw new Error(t('yaml.secretKind'));
   if (parsed.data && Object.keys(parsed.data).length > 0)
-    throw new Error('Secret 편집은 data 대신 stringData를 사용하세요 (plain text 입력)');
+    throw new Error(t('yaml.stringDataRequired'));
   return parsed.stringData ?? {};
 }

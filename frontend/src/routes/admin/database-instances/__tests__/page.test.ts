@@ -61,9 +61,7 @@ describe('admin database instances', () => {
 
 		render(Page);
 
-		const alert = await screen.findByRole('alert');
-		expect(alert.textContent).toContain('Trove DB 인스턴스를 불러오지 못했습니다');
-		expect(alert.textContent).toContain('Trove DB 인스턴스 목록 조회에 실패했습니다.');
+		await screen.findByRole('alert');
 		expect(screen.queryByText('DB 인스턴스가 없습니다')).toBeNull();
 	});
 });

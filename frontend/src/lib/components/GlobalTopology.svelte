@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/topology';
 	import { onMount, untrack, tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import NetworkLane from './topology/NetworkLane.svelte';
@@ -220,7 +221,7 @@
 				{#if ctrl.orderedNetworks.length === 0}
 					<div class="flex items-center justify-center h-40 text-sm"
 					     style="color: {isLight ? '#9ca3af' : '#4b5563'}">
-						네트워크 없음
+						{t('empty.networks')}
 					</div>
 				{:else}
 					<div class="flex" style="gap: {LANE_GAP}px; padding: 0 {LANE_PAD}px">

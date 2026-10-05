@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/network-pages';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { page } from '$app/stores';
 	import { auth } from '$lib/stores/auth';
@@ -31,7 +32,7 @@
 			router = await api.get<RouterDetail>(`/api/v1/routers/${id}`, token, projectId);
 			error = '';
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : '라우터 조회 실패';
+			error = e instanceof ApiError ? e.message : t('routerDetail.loadFailed');
 		} finally {
 			loading = false;
 		}
@@ -70,7 +71,7 @@
 			await fetchRouter();
 			return true;
 		} catch (e) {
-			toast.error('인터페이스 추가 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('routerDetail.addInterfaceFailed', { error: e instanceof ApiError ? e.message : String(e) }));
 			return false;
 		} finally {
 			saving = false;
@@ -79,13 +80,13 @@
 
 	async function removeInterface(subnetId: string): Promise<void> {
 		if (!canManageRouter) return;
-		if (!await confirmDialog('인터페이스를 제거하시겠습니까?')) return;
+		if (!await confirmDialog(t('routerDetail.removeInterfaceConfirm'))) return;
 		saving = true;
 		try {
 			await api.delete(`/api/v1/routers/${id}/interfaces/${subnetId}`, token, projectId);
 			await fetchRouter();
 		} catch (e) {
-			toast.error('인터페이스 제거 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('routerDetail.removeInterfaceFailed', { error: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			saving = false;
 		}
@@ -99,7 +100,7 @@
 			await fetchRouter();
 			return true;
 		} catch (e) {
-			toast.error('게이트웨이 설정 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('routerDetail.setGatewayFailed', { error: e instanceof ApiError ? e.message : String(e) }));
 			return false;
 		} finally {
 			saving = false;
@@ -108,13 +109,13 @@
 
 	async function removeGateway(): Promise<void> {
 		if (!canManageRouter) return;
-		if (!await confirmDialog('외부 게이트웨이를 제거하시겠습니까?')) return;
+		if (!await confirmDialog(t('routerDetail.removeGatewayConfirm'))) return;
 		saving = true;
 		try {
 			await api.delete(`/api/v1/routers/${id}/gateway`, token, projectId);
 			await fetchRouter();
 		} catch (e) {
-			toast.error('게이트웨이 제거 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('routerDetail.removeGatewayFailed', { error: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			saving = false;
 		}
@@ -122,13 +123,13 @@
 
 	async function deleteRouter(): Promise<void> {
 		if (!canManageRouter) return;
-		if (!await confirmDialog(`라우터 "${router?.name || id}"을 삭제하시겠습니까?`)) return;
+		if (!await confirmDialog(t('routerDetail.deleteConfirm', { name: router?.name || id }))) return;
 		saving = true;
 		try {
 			await api.delete(`/api/v1/routers/${id}`, token, projectId);
 			goto('/dashboard/network/routers');
 		} catch (e) {
-			toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('routerDetail.deleteFailed', { error: e instanceof ApiError ? e.message : String(e) }));
 			saving = false;
 		}
 	}
@@ -136,7 +137,7 @@
 
 <div class="max-w-4xl mx-auto px-4 py-8 text-ink-1">
 	{#if loading}
-		<div class="text-ink-2">불러오는 중...</div>
+		<div class="text-ink-2">{t('routerDetail.loading')}</div>
 	{:else if error}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{error}</div>
 	{:else if router}

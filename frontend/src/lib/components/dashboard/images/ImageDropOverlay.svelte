@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/images-keys';
+
 	let {
 		onFile,
 	}: {
@@ -49,7 +51,7 @@
 {#if active}
 	<div class="fixed inset-0 z-40 bg-surface-selected/20 border-2 border-dashed border-action-warm pointer-events-none flex items-center justify-center">
 		<div class="bg-surface-base border border-action-warm rounded-xl px-8 py-5 text-warm-text text-base font-medium shadow-[var(--shadow-overlay-compact)]">
-			이미지 파일을 놓으면 업로드 모달이 열립니다
+			{t('dropOverlay.prompt')}
 		</div>
 	</div>
 {/if}

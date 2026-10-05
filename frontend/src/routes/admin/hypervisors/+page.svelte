@@ -17,6 +17,8 @@
 	import type { HostRelocationResult } from '$lib/components/admin/hypervisors/HypervisorDetailPanel.svelte';
 	import HypervisorMigrateModal from '$lib/components/admin/hypervisors/HypervisorMigrateModal.svelte';
 	import type { AggregatedHost, GpuType, GpuResponse } from '$lib/types/gpu';
+	import { t } from '$lib/i18n/ns/admin-compute';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 
 	let hypervisors = $state<HypervisorRow[]>([]);
 	let gpuHostMap = $state<Map<string, AggregatedHost>>(new Map());
@@ -106,7 +108,7 @@
 
 	async function refreshHost(hvId: string) {
 		const [listOk, detailOk] = await Promise.all([load(), loadDetail(hvId, false)]);
-		if (!listOk || !detailOk) actionError = '요청은 접수되었지만 목록 또는 상세 새로고침에 실패했습니다. 다시 확인하세요.';
+		if (!listOk || !detailOk) actionError = t('hypervisors.page.refreshFailed');
 	}
 
 	async function scheduleHost(enabled: boolean, reason?: string): Promise<boolean> {
@@ -120,7 +122,7 @@
 			await refreshHost(hvId);
 			return true;
 		} catch (e) {
-			actionError = e instanceof Error ? e.message : '스케줄링 변경 요청에 실패했습니다.';
+			actionError = e instanceof Error ? e.message : t('hypervisors.page.scheduleFailed');
 			return false;
 		} finally {
 			actionPending = false;
@@ -140,7 +142,7 @@
 			await refreshHost(hvId);
 			return true;
 		} catch (e) {
-			actionError = e instanceof Error ? e.message : '호스트 이동 요청에 실패했습니다.';
+			actionError = e instanceof Error ? e.message : t('hypervisors.page.relocateFailed');
 			return false;
 		} finally {
 			actionPending = false;
@@ -170,7 +172,7 @@
 				va = (a as unknown as Record<string, number>)[sortColumn] ?? 0;
 				vb = (b as unknown as Record<string, number>)[sortColumn] ?? 0;
 			}
-			const cmp = typeof va === 'string' ? va.localeCompare(vb as string) : (va as number) - (vb as number);
+			const cmp = typeof va === 'string' ? va.localeCompare(vb as string, intlLocale()) : (va as number) - (vb as number);
 			return sortAsc ? cmp : -cmp;
 		})
 	);
@@ -184,8 +186,8 @@
 	let showMigrateModal = $state(false);
 	let migrateContext = $state({ serverId: '', serverName: '', type: 'live' as 'live' | 'cold' });
 
-	function openMigrate(id: string, name: string, t: 'live' | 'cold') {
-		migrateContext = { serverId: id, serverName: name, type: t };
+	function openMigrate(id: string, name: string, type: 'live' | 'cold') {
+		migrateContext = { serverId: id, serverName: name, type };
 		showMigrateModal = true;
 	}
 
@@ -205,7 +207,7 @@
 
 <div class="flex h-full">
 <div class="flex-1 p-4 md:p-8 max-w-7xl mx-auto overflow-auto">
-	<PageHeader breadcrumb="COMPUTE / HYPERVISORS" title="하이퍼바이저">
+	<PageHeader breadcrumb={t('hypervisors.page.breadcrumb')} title={t('hypervisors.page.title')}>
 		{#snippet actions()}
 			<AutoRefreshControl
 				bind:active={ar.active}
@@ -220,11 +222,11 @@
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if hypervisors.length === 0}
-		<div class="text-ink-2 text-sm">하이퍼바이저가 없습니다</div>
+		<div class="text-ink-2 text-sm">{t('hypervisors.page.empty')}</div>
 	{:else}
 		{#if gpuTypes.length > 0}
 			<div class="flex items-center gap-2 mb-3 flex-wrap">
-				<span class="text-xs text-ink-2">GPU 필터:</span>
+				<span class="text-xs text-ink-2">{t('hypervisors.page.gpuFilter')}</span>
 				{#each gpuTypes as gt (gt.device_name)}
 					<button
 						onclick={() => toggleGpuType(gt.device_name)}
@@ -232,7 +234,7 @@
 					>{gt.device_name} <span class="text-ink-2">{gt.used}/{gt.total}</span></button>
 				{/each}
 				{#if selectedGpuTypes.size > 0}
-					<button onclick={() => (selectedGpuTypes = new Set())} class="text-xs text-ink-2 hover:text-ink-0 transition-colors">✕ 초기화</button>
+					<button onclick={() => (selectedGpuTypes = new Set())} class="text-xs text-ink-2 hover:text-ink-0 transition-colors">{t('hypervisors.page.resetFilter')}</button>
 				{/if}
 			</div>
 		{/if}
@@ -268,7 +270,7 @@
 </div>
 
 {#if selectedInstanceId}
-	<SlidePanel onClose={closeInstanceDetail} ariaLabel="하이퍼바이저 인스턴스 상세">
+	<SlidePanel onClose={closeInstanceDetail} ariaLabel={t('hypervisors.page.instanceDetailLabel')}>
 		<InstanceDetailPanel instanceId={selectedInstanceId} adminProjectId={selectedProjectId} onClose={closeInstanceDetail} showHost={true} />
 	</SlidePanel>
 {/if}

@@ -1,3 +1,24 @@
+<script lang="ts" module>
+	import { t } from '$lib/i18n/ns/admin-storage';
+
+	const statusKeys: Record<string, Parameters<typeof t>[0]> = {
+		available: 'volumeList.status.available',
+		'in-use': 'volumeList.status.inUse',
+		error: 'volumeList.status.error',
+		error_deleting: 'volumeList.status.errorDeleting',
+		creating: 'volumeList.status.creating',
+		deleting: 'volumeList.status.deleting',
+		attaching: 'volumeList.status.attaching',
+		detaching: 'volumeList.status.detaching',
+		reserved: 'volumeList.status.reserved',
+	};
+
+	export function volumeStatusLabel(status: string): string {
+		const key = Object.hasOwn(statusKeys, status) ? statusKeys[status] : undefined;
+		return key ? t(key) : status;
+	}
+</script>
+
 <script lang="ts">
 	import type { AdminVolumeStatusSummary as Summary } from '$lib/types/volume';
 	import { getStatusStyle } from '$lib/config/statusColors';
@@ -27,7 +48,7 @@
 	}
 </script>
 
-<section class="volume-status-summary" aria-label="볼륨 상태별 개수">
+<section class="volume-status-summary" aria-label={t('volumeList.statusCounts')}>
 	<button
 		type="button"
 		class="status-card status-card-total"
@@ -35,7 +56,7 @@
 		aria-pressed={activeStatus === ''}
 		onclick={() => onSelect('')}
 	>
-		<span class="status-card-label">전체</span>
+		<span class="status-card-label">{t('volumeList.all')}</span>
 		<span class="status-card-count">{loading ? '…' : (summary?.total ?? 0)}</span>
 	</button>
 
@@ -49,7 +70,7 @@
 			data-tour={row.status === 'available' ? 'admin-storage-status-available' : undefined}
 			onclick={() => onSelect(row.status)}
 		>
-			<span class="status-card-label">{row.status}</span>
+			<span class="status-card-label">{volumeStatusLabel(row.status)}</span>
 			<span class="status-card-count">{loading ? '…' : row.count}</span>
 		</button>
 	{/each}

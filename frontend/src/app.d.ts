@@ -1,3 +1,4 @@
+import type { Locale } from '$lib/i18n/locales';
 import type { MockupSession } from '$lib/mockup/contracts';
 import type { PublicSiteConfig } from '$lib/types/siteConfig';
 
@@ -7,6 +8,7 @@ declare global {
 	namespace App {
 		// interface Error {}
 		interface Locals {
+			locale: Locale;
 			mockup: MockupSession;
 			siteConfig: PublicSiteConfig;
 		}

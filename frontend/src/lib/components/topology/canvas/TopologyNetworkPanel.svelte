@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/topology';
 	// 토폴로지 네트워크(스위치) 읽기 전용 상세. 페이지가 SlidePanel 안에 렌더링한다.
 	// 조작 컨트롤은 두지 않으며, provider 세그먼트·MTU 등 관리자 행은 showProvider 일 때만 렌더링한다.
 	import Button from '$lib/components/ui/Button.svelte';
@@ -14,7 +15,7 @@
 		TopologyTraffic,
 		TopologyTrafficHistory,
 	} from '$lib/types/topology';
-	import { fmtRate, NET_KIND_LABEL } from './canvasHelpers';
+	import { fmtRate } from './canvasHelpers';
 	import TrafficSparkline from './TrafficSparkline.svelte';
 	import { untrack } from 'svelte';
 
@@ -69,24 +70,29 @@
 	const dhcpText = $derived.by(() => {
 		const subs = net?.subnet_details ?? [];
 		if (!subs.length) return '—';
-		if (subs.every((s) => s.dhcp_enabled)) return '사용';
-		if (subs.some((s) => s.dhcp_enabled)) return '일부';
-		return '미사용';
+		if (subs.every((s) => s.dhcp_enabled)) return t('panel.enabled');
+		if (subs.some((s) => s.dhcp_enabled)) return t('panel.partial');
+		return t('panel.disabled');
 	});
 	const segmentLabel = $derived.by(() => {
 		if (!net || net.provider_segmentation_id == null) return null;
-		return net.provider_network_type === 'vlan' ? 'VLAN 태그' : 'VXLAN VNI';
+		return net.provider_network_type === 'vlan' ? t('panel.vlanTag') : 'VXLAN VNI';
 	});
 	const rateText = $derived(fmtRate(net ? traffic?.networks?.[net.id] : null));
 
 	// 백엔드 `_HISTORY_RANGES` 와 같은 키를 쓴다. 여기 없는 구간은 사용자가 고를 수 없다 —
 	// API 만 지원하고 UI 에 노출하지 않으면 "구현했지만 쓸 수 없는" 상태가 된다.
-	const RANGE_OPTIONS = [
-		{ value: '15m', label: '15분' },
-		{ value: '30m', label: '30분' },
-		{ value: '1h', label: '1시간' },
-	];
-	const RANGE_LABEL: Record<string, string> = { '15m': '최근 15분', '30m': '최근 30분', '1h': '최근 1시간' };
+	const RANGE_OPTIONS = $derived([
+		{ value: '15m', label: t('panel.range15') },
+		{ value: '30m', label: t('panel.range30') },
+		{ value: '1h', label: t('panel.rangeHour') },
+	]);
+	const RANGE_LABEL: Record<string, string> = $derived({ '15m': t('panel.recent15'), '30m': t('panel.recent30'), '1h': t('panel.recentHour') });
+	const networkTypeKeys = {
+		external: ['panel.typeExternal', 'panel.typeExternalIsolated'],
+		shared: ['panel.typeShared', 'panel.typeSharedIsolated'],
+		internal: ['panel.typeInternal', 'panel.typeInternalIsolated'],
+	} as const;
 	let historyRange = $state('15m');
 
 	/** 마지막 표본의 시각. `합산 트래픽`(15초 폴링)과 달리 이 섹션은 패널 열 때 1회라 기준 시각을 밝힌다. */
@@ -94,7 +100,7 @@
 		const last = history?.series.at(-1);
 		if (!last) return '';
 		const d = new Date(last.ts * 1000);
-		return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} 기준`;
+		return t('panel.sampledAt', { time: `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` });
 	});
 
 	let history = $state<TopologyTrafficHistory | null>(null);
@@ -134,7 +140,7 @@
 			} catch {
 				if (stale) return;
 				history = null;
-				historyError = '사용량 추이를 불러오지 못했습니다.';
+				historyError = t('panel.historyFailed');
 			} finally {
 				if (!stale) historyLoading = false;
 			}
@@ -151,93 +157,92 @@
 		상태(StatusChip)도 아래 "상태" 행에만 둔다 — 헤더에 같이 두면 같은 값이 한 화면에 두 번 나온다.
 	-->
 	<div class="min-w-0">
-		<p class="text-xs text-ink-2">네트워크</p>
+		<p class="text-xs text-ink-2">{t('resource.network')}</p>
 		<h2 class="text-lg font-semibold text-ink-0 break-words">{net?.name ?? networkId}</h2>
 		<p class="text-xs text-ink-2 mt-0.5 font-mono break-all">{networkId}</p>
 		<div class="mt-2 flex flex-wrap items-center gap-1.5">
-			<Pill tone="neutral" size="sm">읽기 전용</Pill>
-			{#if isolated}<Pill tone="neutral" size="sm">격리</Pill>{/if}
+			<Pill tone="neutral" size="sm">{t('panel.readOnly')}</Pill>
+			{#if isolated}<Pill tone="neutral" size="sm">{t('hud.isolated')}</Pill>{/if}
 		</div>
 	</div>
 
 	{#if !net}
-		<p class="text-sm text-ink-2">현재 토폴로지 응답에 없는 네트워크입니다.</p>
+		<p class="text-sm text-ink-2">{t('panel.missingNetwork')}</p>
 	{:else}
 		<dl class="kv">
-			<dt>유형</dt>
-			<dd>{NET_KIND_LABEL[kind]} 네트워크{isolated ? ' · 격리 (라우터 없음)' : ''}</dd>
-			<dt>상태</dt>
+			<dt>{t('panel.type')}</dt>
+			<dd>{t(networkTypeKeys[kind][isolated ? 1 : 0])}</dd>
+			<dt>{t('panel.status')}</dt>
 			<dd><StatusChip status={net.status} /></dd>
-			<dt>프로젝트</dt>
-			<dd class:mono={Boolean(net.project_id)}>{net.project_id ?? '공용'}</dd>
+			<dt>{t('panel.project')}</dt>
+			<dd class:mono={Boolean(net.project_id)}>{net.project_id ?? t('panel.public')}</dd>
 			<dt>CIDR</dt>
 			<dd class="mono">{cidrs.length ? cidrs.join(', ') : '—'}</dd>
 			<dt>DHCP</dt>
 			<dd>{dhcpText}</dd>
-			<dt>게이트웨이</dt>
+			<dt>{t('panel.gateway')}</dt>
 			<dd class="mono">{gateways.length ? gateways.join(', ') : '—'}</dd>
 			<dt>MTU</dt>
 			<dd class="mono">{net.mtu ?? '—'}</dd>
-			<dt>합산 트래픽</dt>
+			<dt>{t('panel.totalTraffic')}</dt>
 			<dd class="mono">{rateText}</dd>
 			{#if showProvider}
-				<dt>네트워크 타입</dt>
-				<dd><span class="mono">{net.provider_network_type ?? '—'}</span> <Pill tone="admin-tone" size="xs">관리자</Pill></dd>
-				<dt>{segmentLabel ?? '세그먼트'}</dt>
-				<dd><span class="mono">{net.provider_segmentation_id ?? '—'}</span> <Pill tone="admin-tone" size="xs">관리자</Pill></dd>
-				<dt>물리 네트워크</dt>
-				<dd><span class="mono">{net.provider_physical_network ?? '—'}</span> <Pill tone="admin-tone" size="xs">관리자</Pill></dd>
+				<dt>{t('panel.networkType')}</dt>
+				<dd><span class="mono">{net.provider_network_type ?? '—'}</span> <Pill tone="admin-tone" size="xs">{t('panel.admin')}</Pill></dd>
+				<dt>{segmentLabel ?? t('panel.segment')}</dt>
+				<dd><span class="mono">{net.provider_segmentation_id ?? '—'}</span> <Pill tone="admin-tone" size="xs">{t('panel.admin')}</Pill></dd>
+				<dt>{t('panel.physicalNetwork')}</dt>
+				<dd><span class="mono">{net.provider_physical_network ?? '—'}</span> <Pill tone="admin-tone" size="xs">{t('panel.admin')}</Pill></dd>
 			{/if}
 		</dl>
 		{#if isolated}
-			<p class="note">이 네트워크에는 라우터가 연결되어 있지 않아 다른 네트워크와 통신할 수 없습니다.</p>
+			<p class="note">{t('panel.isolatedNote')}</p>
 		{/if}
 
 		{#if loadHistory}
 			<section class="space-y-2">
-				<SectionHeader title="사용량 추이" meta={history ? (RANGE_LABEL[history.range] ?? history.range) : ''} />
+				<SectionHeader title={t('panel.history')} meta={history ? (RANGE_LABEL[history.range] ?? history.range) : ''} />
 				<ToggleGroup
 					value={historyRange}
 					options={RANGE_OPTIONS}
 					size="xs"
-					ariaLabel="사용량 추이 구간"
+					ariaLabel={t('panel.historyRange')}
 					onchange={(v) => (historyRange = v)}
 				/>
 				{#if historyLoading}
-					<p class="text-sm text-ink-2">불러오는 중…</p>
+					<p class="text-sm text-ink-2">{t('panel.loading')}</p>
 				{:else if historyError}
 					<p class="text-sm text-ink-2">{historyError}</p>
 				{:else if history?.series.length}
-					<TrafficSparkline series={history.series} rangeLabel="{history.step_s}초 간격{sampledAt ? ` · ${sampledAt}` : ''}" />
+					<TrafficSparkline series={history.series} rangeLabel={sampledAt ? t('panel.sampleIntervalAt', { seconds: history.step_s, sampledAt }) : t('panel.sampleInterval', { seconds: history.step_s })} />
 					<!--
 						위 `합산 트래픽` 행과 **같은 방향별 표기**(fmtRate)를 쓴다. 합계 하나로 두면
 						`▼ 5.8M ▲ 2.0M` 옆에 `7.8M` 이 붙어 사용자가 두 행을 대조할 수 없다.
 					-->
 					<dl class="kv">
-						<dt>평균</dt>
+						<dt>{t('panel.average')}</dt>
 						<dd class="mono">{fmtRate(history.stats.avg)}</dd>
-						<dt>최대</dt>
+						<dt>{t('panel.maximum')}</dt>
 						<dd class="mono">{fmtRate(history.stats.max)}</dd>
-						<dt>최근</dt>
+						<dt>{t('panel.latest')}</dt>
 						<dd class="mono">{fmtRate(history.stats.latest)}</dd>
 					</dl>
 					<p class="note">
-						{history.window} 윈도우 · 네트워크 합산 — 이 네트워크에 붙은 NIC 의 합이며 라우터↔스위치 트래픽이 아니다(라우터 exporter 없음).
-						최대는 방향별 최고값이라 수신·송신이 서로 다른 시점일 수 있다.
+						{t('panel.historyNote', { window: history.window })}
 					</p>
 				{:else}
-					<p class="text-sm text-ink-2">표시할 사용량 표본이 없습니다.</p>
+					<p class="text-sm text-ink-2">{t('panel.noSamples')}</p>
 				{/if}
 			</section>
 		{/if}
 
 		<section class="space-y-2">
-			<SectionHeader title="서브넷" meta="{net.subnet_details.length}개" />
+			<SectionHeader title={t('resource.subnet')} meta={t('panel.count', { count: net.subnet_details.length })} />
 			{#if net.subnet_details.length}
 				<TableShell density="compact">
 					<table>
 						<thead>
-							<tr><th>이름</th><th>CIDR</th><th>게이트웨이</th><th>DHCP</th></tr>
+							<tr><th>{t('panel.name')}</th><th>CIDR</th><th>{t('panel.gateway')}</th><th>DHCP</th></tr>
 						</thead>
 						<tbody>
 							{#each net.subnet_details as sub (sub.id)}
@@ -245,19 +250,19 @@
 									<td>{sub.name || sub.id}</td>
 									<td class="mono">{sub.cidr}</td>
 									<td class="mono">{sub.gateway_ip ?? '—'}</td>
-									<td>{sub.dhcp_enabled ? '사용' : '미사용'}</td>
+									<td>{sub.dhcp_enabled ? t('panel.enabled') : t('panel.disabled')}</td>
 								</tr>
 							{/each}
 						</tbody>
 					</table>
 				</TableShell>
 			{:else}
-				<p class="text-sm text-ink-2">서브넷 없음</p>
+				<p class="text-sm text-ink-2">{t('empty.subnets')}</p>
 			{/if}
 		</section>
 
 		<section class="space-y-2">
-			<SectionHeader title="인스턴스" meta="{instances.length}개" />
+			<SectionHeader title={t('resource.instance')} meta={t('panel.count', { count: instances.length })} />
 			{#if instances.length}
 				<div class="flex flex-wrap gap-1.5">
 					{#each instances as { inst, ips } (inst.id)}
@@ -267,26 +272,26 @@
 					{/each}
 				</div>
 			{:else}
-				<p class="text-sm text-ink-2">연결된 인스턴스 없음</p>
+				<p class="text-sm text-ink-2">{t('panel.noInstances')}</p>
 			{/if}
 		</section>
 
 		<section class="space-y-2">
-			<SectionHeader title="라우터" meta="{routers.length}개" />
+			<SectionHeader title={t('resource.router')} meta={t('panel.count', { count: routers.length })} />
 			{#if routers.length}
 				<div class="flex flex-wrap gap-1.5">
 					{#each routers as r (r.id)}
 						<Button variant="outline" size="xs" onclick={() => onSelectRouter?.(r.id)}>
-							{r.name}{#if r.external_gateway_network_id === net.id}<span class="text-ink-2">게이트웨이</span>{/if}
+							{r.name}{#if r.external_gateway_network_id === net.id}<span class="text-ink-2">{t('panel.gateway')}</span>{/if}
 						</Button>
 					{/each}
 				</div>
 			{:else}
-				<p class="text-sm text-ink-2">연결된 라우터 없음</p>
+				<p class="text-sm text-ink-2">{t('panel.noRouters')}</p>
 			{/if}
 		</section>
 
-		<p class="text-xs text-ink-2">조작은 네트워크 상세 페이지에서 · 토폴로지 상세는 읽기 전용</p>
+		<p class="text-xs text-ink-2">{t('panel.actionsNote')}</p>
 	{/if}
 </div>
 

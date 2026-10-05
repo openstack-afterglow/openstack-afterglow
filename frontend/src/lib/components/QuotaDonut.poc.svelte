@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Chart, Arc, Layer } from 'layerchart';
+  import { t } from '$lib/i18n/ns/shared';
 
   interface Props {
     label: string;
@@ -78,7 +79,7 @@
       {#if limit > 0}
         {fmt(used)} / {fmt(limit)}
       {:else if limit === -1}
-        {fmt(used)} / 무제한
+        {t('quotaDonut.usedOfUnlimited', { used: fmt(used) })}
       {:else}
         {fmt(used)}
       {/if}

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import OrphanSection from './OrphanSection.svelte';
 	import type { OrphanShareInfo } from '$lib/types/orphan';
+	import { t } from '$lib/i18n/ns/admin-storage';
 
 	let {
 		items,
@@ -14,20 +15,20 @@
 </script>
 
 <OrphanSection
-	title="고아 Manila Share"
+	title={t('orphanShare.title')}
 	{items}
 	bind:selected
-	emptyMessage="Keystone 프로젝트가 사라진 share 없음."
+	emptyMessage={t('orphanShare.empty')}
 	{onCleanup}
 >
 	{#snippet headers()}
-		<th class="text-left py-2 pr-4">이름</th>
-		<th class="text-left py-2 pr-4">크기(GB)</th>
-		<th class="text-left py-2 pr-4">상태</th>
-		<th class="text-left py-2 pr-4">사라진 프로젝트</th>
-		<th class="text-left py-2 pr-4">생성일</th>
-		<th class="text-left py-2 pr-4">연령(일)</th>
-		<th class="text-left py-2 pr-4">ID</th>
+		<th class="text-left py-2 pr-4">{t('orphanShare.column.name')}</th>
+		<th class="text-left py-2 pr-4">{t('orphanShare.column.sizeGb')}</th>
+		<th class="text-left py-2 pr-4">{t('orphanShare.column.status')}</th>
+		<th class="text-left py-2 pr-4">{t('orphanShare.column.missingProject')}</th>
+		<th class="text-left py-2 pr-4">{t('orphanShare.column.createdAt')}</th>
+		<th class="text-left py-2 pr-4">{t('orphanShare.column.ageDays')}</th>
+		<th class="text-left py-2 pr-4">{t('orphanShare.column.id')}</th>
 	{/snippet}
 	{#snippet row(s)}
 		<td class="py-2 pr-4 text-ink-1">{s.name ?? '-'}</td>

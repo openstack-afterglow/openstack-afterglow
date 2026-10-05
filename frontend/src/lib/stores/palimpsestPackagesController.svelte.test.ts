@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createPalimpsestPackagesController } from './palimpsestPackagesController.svelte';
 import { packageApi } from '$lib/api/palimpsestPackages';
 import type { IssuedPackageKey, PackageIdentity, PackageKey, PackageSummary, PackageVersion, ProjectContext, ScopedPage, VersionPage } from '$lib/api/palimpsestPackages';
+import { getLocale, initLocale } from '$lib/i18n/runtime.svelte';
 
 const A = '11111111111141118111111111111111';
 const B = '22222222222242228222222222222222';
@@ -247,5 +248,44 @@ describe('project-private package transitions', () => {
     expect(controller.inventory?.map((item) => item.project_id)).toEqual([B]);
     expect(controller.latestVersions[`${A}-test`]).toBeUndefined();
     controller.dispose();
+  });
+  it('retranslates retained local errors without changing server errors or the one-time secret', async () => {
+    const previousLocale = getLocale();
+    const { controller, api } = setup();
+    try {
+      initLocale('ko');
+      controller.bindIdentity();
+      await vi.waitFor(() => expect(controller.latestVersions[`${A}-test`]?.version?.project_id).toBe(A));
+      await controller.issueKey(issueRequest);
+      const issued = controller.issued;
+      expect(issued?.secret).toBe('one-time-private-value');
+      await controller.openPackage('test', undefined, 'foreign-namespace');
+      vi.mocked(api.versions).mockRejectedValueOnce(null);
+      await controller.loadInventory();
+      const detailError = controller.errors.detail;
+      const metadataError = controller.latestVersions[`${A}-test`].error;
+      expect(controller.detail).toBeNull();
+      expect(controller.latestVersions[`${A}-test`].version).toBeNull();
+      const serverError = 'opaque upstream error: packages:read / p-project';
+      vi.mocked(api.keys).mockRejectedValueOnce(new Error(serverError));
+      await controller.loadKeys();
+      for (const locale of ['en', 'ja', 'zh-CN'] as const) {
+        initLocale(locale);
+        expect(controller.errors.detail).not.toBe(detailError);
+        expect(controller.latestVersions[`${A}-test`].error).not.toBe(metadataError);
+        expect(controller.errors.keys).toBe(serverError);
+        expect(controller.issued).toBe(issued);
+        expect(controller.inventory?.[0].project_id).toBe(A);
+      }
+      initLocale('ko');
+      expect(controller.errors.detail).toBe(detailError);
+      expect(controller.latestVersions[`${A}-test`].error).toBe(metadataError);
+      controller.discardSecret();
+      initLocale('en');
+      expect(controller.issued).toBeNull();
+    } finally {
+      controller.dispose();
+      initLocale(previousLocale);
+    }
   });
 });

@@ -4,67 +4,68 @@
 	import UsageBar from '$lib/components/ui/UsageBar.svelte';
 	import { MOTION_DURATION_MS, REDUCED_MOTION_QUERY } from '$lib/design/tokens';
 	import { prefersReducedMotion } from '$lib/utils/motion';
+	import { t } from '$lib/i18n/ns/public-entry';
 
-	const steps = [
+	const steps = $derived([
 		{
-			key: 'request', label: '신청', title: '필요한 환경을, 팀의 언어로.',
-			body: '프로젝트를 선택하고 함께 작업할 구성원의 역할을 정합니다. 필요한 이미지, 컴퓨팅 크기, 네트워크와 데이터 접근 범위를 요청에 담아 연구 환경의 출발점을 만듭니다.',
-			items: ['프로젝트가 자원과 권한의 경계를 정합니다.', '구성원의 역할에 따라 조회와 변경 권한이 나뉩니다.', '요청에는 실행 환경과 연결할 데이터의 조건을 함께 남깁니다.'],
-			caption: '프로젝트와 역할을 정하고, 필요한 환경을 하나의 요청으로 모읍니다.',
-			artifact: '프로젝트 · 역할 · 환경 요청'
+			key: 'request', label: t('landing.journey.request.label'), title: t('landing.journey.request.title'),
+			body: t('landing.journey.request.body'),
+			items: [t('landing.journey.request.item1'), t('landing.journey.request.item2'), t('landing.journey.request.item3')],
+			caption: t('landing.journey.request.caption'),
+			artifact: t('landing.journey.request.artifact')
 		},
 		{
-			key: 'allocate', label: '배정', title: '정책 안에서, 자원이 연결됩니다.',
-			body: '프로젝트 쿼터와 자원별 사용 정책을 확인한 뒤 VM을 생성합니다. 네트워크와 보안 규칙을 적용하고 공유 데이터의 접근 범위를 연결해, 팀이 사용할 환경을 구성합니다.',
-			items: ['쿼터와 정책 확인은 생성 성공이나 용량 예약을 뜻하지 않습니다.', 'VM 생성과 네트워크 연결의 진행 상태를 확인합니다.', '공유 데이터는 허용된 프로젝트와 구성원에게 연결합니다.'],
-			caption: '정책과 쿼터 확인을 거쳐 VM, 네트워크, 공유 데이터가 연결됩니다.',
-			artifact: '정책 · 쿼터 · 연결된 자원'
+			key: 'allocate', label: t('landing.journey.allocate.label'), title: t('landing.journey.allocate.title'),
+			body: t('landing.journey.allocate.body'),
+			items: [t('landing.journey.allocate.item1'), t('landing.journey.allocate.item2'), t('landing.journey.allocate.item3')],
+			caption: t('landing.journey.allocate.caption'),
+			artifact: t('landing.journey.allocate.artifact')
 		},
 		{
-			key: 'observe', label: '관측', title: '목록 너머, 관계와 변화를 봅니다.',
-			body: '토폴로지에서 VM과 네트워크의 연결 관계를 읽고, 제공되는 자원 지표로 사용 상태를 살핍니다. 활동 기록을 함께 확인해 누가 어떤 작업을 요청했는지 변화의 맥락을 따라갑니다.',
-			items: ['토폴로지는 자원이 어디에 연결되어 있는지 보여줍니다.', '지표의 조회 시점과 자원 상태를 함께 해석합니다.', '활동 기록과 작업 결과를 구분해 변경 이력을 확인합니다.'],
-			caption: '연결 구조, 자원 지표, 활동 기록을 나란히 읽어 환경의 변화를 이해합니다.',
-			artifact: '토폴로지 · 지표 · 활동 기록'
+			key: 'observe', label: t('landing.journey.observe.label'), title: t('landing.journey.observe.title'),
+			body: t('landing.journey.observe.body'),
+			items: [t('landing.journey.observe.item1'), t('landing.journey.observe.item2'), t('landing.journey.observe.item3')],
+			caption: t('landing.journey.observe.caption'),
+			artifact: t('landing.journey.observe.artifact')
 		},
 		{
-			key: 'reuse', label: '재사용', title: '한 번 만든 환경이, 다음의 시작으로.',
-			body: '정리된 실행 환경을 불변 레이어로 보존하거나 필요한 자원의 스냅샷을 남깁니다. 다음 환경은 보존된 버전을 기준으로 시작하고 새 변경은 별도로 쌓아, 반복 설정을 줄이면서 원본을 유지합니다.',
-			items: ['불변 레이어는 확정된 실행 환경의 버전을 보존합니다.', '스냅샷은 대상 자원의 시점 상태이며 백업과는 다릅니다.', '재사용한 환경의 새 변경은 원본 레이어와 분리합니다.'],
-			caption: '불변 레이어나 스냅샷을 출발점으로 재사용하고, 새 변경은 분리해 쌓습니다.',
-			artifact: '불변 레이어 · 스냅샷 · 새 환경'
+			key: 'reuse', label: t('landing.journey.reuse.label'), title: t('landing.journey.reuse.title'),
+			body: t('landing.journey.reuse.body'),
+			items: [t('landing.journey.reuse.item1'), t('landing.journey.reuse.item2'), t('landing.journey.reuse.item3')],
+			caption: t('landing.journey.reuse.caption'),
+			artifact: t('landing.journey.reuse.artifact')
 		}
-	];
+	]);
 
-	const members = [
-		{ initial: '교', name: '교수자', role: '관리' },
-		{ initial: '연', name: '연구원', role: '사용' },
-		{ initial: '학', name: '학생', role: '조회' }
-	];
-	const links = [
-		{ icon: 'network', name: 'lab-net', kind: '네트워크' },
-		{ icon: 'share', name: 'shared-dataset', kind: '공유 데이터 · 읽기' }
-	] as const;
-	const requestRows = [
-		{ label: '이미지', value: 'PyTorch 2.4' },
-		{ label: '크기', value: 'GPU 1 · vCPU 16' },
-		{ label: '네트워크', value: 'lab-net', ident: true },
-		{ label: '데이터', value: '공유 읽기' }
-	];
-	const vmRows = requestRows.slice(0, 2);
-	const requestItems = ['이미지', '컴퓨팅 크기', '네트워크', '데이터 접근'];
+	const members = $derived([
+		{ initial: t('landing.journey.member.instructorInitial'), name: t('landing.journey.member.instructor'), role: t('landing.journey.member.manage') },
+		{ initial: t('landing.journey.member.researcherInitial'), name: t('landing.journey.member.researcher'), role: t('landing.journey.member.use') },
+		{ initial: t('landing.journey.member.studentInitial'), name: t('landing.journey.member.student'), role: t('landing.journey.member.view') }
+	]);
+	const links = $derived([
+		{ icon: 'network', name: 'lab-net', kind: t('landing.journey.scene.network') },
+		{ icon: 'share', name: 'shared-dataset', kind: t('landing.journey.scene.sharedDataRead') }
+	] as const);
+	const requestRows = $derived([
+		{ label: t('landing.journey.scene.image'), value: 'PyTorch 2.4' },
+		{ label: t('landing.journey.scene.size'), value: 'GPU 1 · vCPU 16' },
+		{ label: t('landing.journey.scene.network'), value: 'lab-net', ident: true },
+		{ label: t('landing.journey.scene.data'), value: t('landing.journey.scene.sharedRead') }
+	]);
+	const vmRows = $derived(requestRows.slice(0, 2));
+	const requestItems = $derived([t('landing.journey.scene.image'), t('landing.journey.scene.computeSize'), t('landing.journey.scene.network'), t('landing.journey.scene.dataAccess')]);
 	// The request (GPU 1 · vCPU 16 · 64 GB) is added to what the project already uses.
-	const quotas = [
+	const quotas = $derived([
 		{ label: 'GPU', used: 0, request: 1, max: 2, unit: '' },
 		{ label: 'vCPU', used: 8, request: 16, max: 64, unit: '' },
-		{ label: '메모리', used: 32, request: 64, max: 256, unit: ' GB' }
-	];
-	const activity = [
-		{ time: '09:41', text: '연구원 · VM 생성 요청' },
-		{ time: '09:42', text: '시스템 · 네트워크 연결' },
-		{ time: '10:05', text: '교수자 · 쿼터 조정' }
-	];
-	const environments = ['새 환경 A', '새 환경 B'];
+		{ label: t('landing.journey.scene.memory'), used: 32, request: 64, max: 256, unit: ' GB' }
+	]);
+	const activity = $derived([
+		{ time: '09:41', text: t('landing.journey.scene.activityVmRequest') },
+		{ time: '09:42', text: t('landing.journey.scene.activityNetwork') },
+		{ time: '10:05', text: t('landing.journey.scene.activityQuota') }
+	]);
+	const environments = $derived([t('landing.journey.scene.newEnvironment', { name: 'A' }), t('landing.journey.scene.newEnvironment', { name: 'B' })]);
 
 	const uid = $props.id();
 	let root: HTMLElement;
@@ -210,8 +211,8 @@
 	<div class="journey-layout">
 		<div class="visual-rail">
 			<figure class="scene-frame">
-				<div class="scene-header"><span>연구 환경의 흐름</span><span class="example-label">설명용 예시</span></div>
-				<div class="stage-choices" role="group" aria-label="연구 환경 단계 선택">
+				<div class="scene-header"><span>{t('landing.journey.heading')}</span><span class="example-label">{t('landing.journey.example')}</span></div>
+				<div class="stage-choices" role="group" aria-label={t('landing.journey.stageSelection')}>
 					{#each steps as step, index}
 						<Button variant="outline" ariaPressed={active === index} onclick={() => selectStage(index)} class="stage-choice">
 							{step.label}
@@ -220,10 +221,10 @@
 				</div>
 
 				<div class="scene-window" aria-hidden="true">
-					<div class="scene-bar"><span class="scene-route">afterglow / projects / lab-vision</span><span>예시 화면</span></div>
+					<div class="scene-bar"><span class="scene-route">afterglow / projects / lab-vision</span><span>{t('landing.journey.scene.exampleScreen')}</span></div>
 					<div class="scene-body">
 						<div class="boundary">
-							<p class="boundary-label">PROJECT · lab-vision</p>
+							<p class="boundary-label">{t('landing.journey.scene.project', { name: 'lab-vision' })}</p>
 							<div class="scene-grid">
 								<div class="panel members">
 									<ul class="member-list">
@@ -236,8 +237,8 @@
 								<div class="panel core" data-state="done">
 									<span class="conn conn-member drawn"></span>
 									<div class="core-variant" class:on={active === 0}>
-										<div class="card-head">{@render icon('server')}<span class="panel-title">환경 요청</span></div>
-										<span class="status" data-tone="done"><span class="dot"></span>제출됨</span>
+										<div class="card-head">{@render icon('server')}<span class="panel-title">{t('landing.journey.scene.environmentRequest')}</span></div>
+										<span class="status" data-tone="done"><span class="dot"></span>{t('landing.journey.scene.submitted')}</span>
 										<dl class="rows">
 											{#each requestRows as row}
 												<div><dt>{row.label}</dt><dd class:ident={row.ident}>{row.value}</dd></div>
@@ -247,15 +248,15 @@
 									{#each [1, 2, 3] as stage}
 										<div class="core-variant" class:on={active === stage}>
 											<div class="card-head">{@render icon('server')}<span class="ident panel-ident">vision-train-01</span><span class="kind">VM</span></div>
-											<span class="status" data-tone="done"><span class="dot"></span>{stage === 3 ? '레이어 저장됨' : '실행 중'}</span>
+											<span class="status" data-tone="done"><span class="dot"></span>{stage === 3 ? t('landing.journey.scene.layerSaved') : t('landing.journey.scene.running')}</span>
 											<dl class="rows">
 												{#each vmRows as row}
 													<div><dt>{row.label}</dt><dd>{row.value}</dd></div>
 												{/each}
 												{#if stage === 2}
-													<div><dt>지표</dt><dd>GPU 71% · 메모리 48%</dd></div>
+													<div><dt>{t('landing.journey.scene.metrics')}</dt><dd>{t('landing.journey.scene.metricValues')}</dd></div>
 												{:else if stage === 3}
-													<div><dt>레이어</dt><dd>v1 · 불변</dd></div>
+													<div><dt>{t('landing.journey.scene.layer')}</dt><dd>{t('landing.journey.scene.layerVersion', { version: 'v1' })}</dd></div>
 												{/if}
 											</dl>
 										</div>
@@ -270,7 +271,7 @@
 												<span class="conn conn-link" class:drawn={connected}></span>
 												<span class="ident">{link.name}</span>
 												<span class="link-kind">{@render icon(link.icon)}<span>{link.kind}</span></span>
-												<span class="status" data-tone={connected ? 'done' : 'waiting'}><span class="dot"></span>{connected ? '연결됨' : '연결 전'}</span>
+												<span class="status" data-tone={connected ? 'done' : 'waiting'}><span class="dot"></span>{connected ? t('landing.journey.scene.connected') : t('landing.journey.scene.notConnected')}</span>
 											</li>
 										{/each}
 									</ul>
@@ -278,7 +279,7 @@
 
 								<div class="details">
 									<div class="panel detail" class:on={active === 0}>
-										<p class="panel-title enter" style="--i: 0">요청에 담는 항목</p>
+										<p class="panel-title enter" style="--i: 0">{t('landing.journey.scene.requestItems')}</p>
 										<ul class="chips">
 											{#each requestItems as item, index}
 												<li class="chip enter" style="--i: {index + 1}">{@render icon('check')}{item}</li>
@@ -287,7 +288,7 @@
 									</div>
 
 									<div class="panel detail allocate" class:on={active === 1}>
-										<p class="panel-title enter" style="--i: 0">쿼터·정책 확인 후 생성</p>
+										<p class="panel-title enter" style="--i: 0">{t('landing.journey.scene.createAfterPolicy')}</p>
 										<div class="quota-list">
 											{#each quotas as quota, index}
 												<div class="enter" style="--i: {index + 1}">
@@ -295,13 +296,13 @@
 												</div>
 											{/each}
 										</div>
-										<p class="detail-note enter" style="--i: 4">확인은 생성 성공이나 용량 예약을 뜻하지 않습니다</p>
+										<p class="detail-note enter" style="--i: 4">{t('landing.journey.scene.policyNote')}</p>
 									</div>
 
 									<div class="panel detail" class:on={active === 2}>
 										<div class="observe">
 											<div class="observe-column">
-												<p class="panel-title enter" style="--i: 0">사용 지표 · 예시</p>
+												<p class="panel-title enter" style="--i: 0">{t('landing.journey.scene.usageExample')}</p>
 												<div class="spark enter" style="--i: 1">
 													<svg viewBox="0 0 120 40" preserveAspectRatio="none" focusable="false">
 														<polyline points="0,32 12,28 24,30 36,22 48,24 60,15 72,18 84,11 96,14 108,9 120,12" vector-effect="non-scaling-stroke" />
@@ -310,7 +311,7 @@
 												</div>
 											</div>
 											<div class="observe-column">
-												<p class="panel-title enter" style="--i: 0">활동 기록 · 예시</p>
+												<p class="panel-title enter" style="--i: 0">{t('landing.journey.scene.activityExample')}</p>
 												<ul class="activity">
 													{#each activity as entry, index}
 														<li class="enter" style="--i: {index + 1}"><span class="ident">{entry.time}</span><span>{entry.text}</span></li>
@@ -324,13 +325,13 @@
 										<div class="branch">
 											<div class="panel layer-card enter" style="--i: 0">
 												<span class="layer-icons">{@render icon('lock')}{@render icon('layer')}</span>
-												<span class="panel-title">불변 레이어 v1</span>
+												<span class="panel-title">{t('landing.journey.scene.immutableLayer', { version: 'v1' })}</span>
 											</div>
 											{#each environments as environment, index}
 												<div class="panel environment enter" style="--i: {index + 1}">
 													<span class="conn conn-branch"></span>
 													<span class="environment-name">{environment}</span>
-													<span class="chip">+ 변경 분리</span>
+													<span class="chip">{t('landing.journey.scene.separateChanges')}</span>
 												</div>
 											{/each}
 										</div>
@@ -344,7 +345,7 @@
 				<figcaption>
 					<p class="caption-stage">{steps[active].label}<span class="caption-separator" aria-hidden="true">/</span>{steps[active].artifact}</p>
 					<p class="caption-copy">{steps[active].caption}</p>
-					<p class="illustration-note">도식의 단계, 자원 구성과 지표는 이해를 위한 예시입니다. 실제 배정 결과나 서비스 상태를 나타내지 않습니다.</p>
+					<p class="illustration-note">{t('landing.journey.illustrationNote')}</p>
 				</figcaption>
 			</figure>
 		</div>
@@ -363,27 +364,28 @@
 </div>
 
 <style>
-	.journey { min-width: 0; color: var(--color-ink-0); }
-	h3 { font-family: var(--font-display); font-weight: 500; letter-spacing: -0.035em; word-break: keep-all; overflow-wrap: anywhere; }
+	.journey { min-width: 0; color: var(--color-ink-0); overflow-wrap: anywhere; word-break: var(--landing-word-break, keep-all); }
+	.journey:lang(ja), .journey:lang(zh-CN) { --landing-word-break: normal; }
+	h3 { font-family: var(--font-display); font-weight: 500; letter-spacing: -0.035em; word-break: var(--landing-word-break, keep-all); overflow-wrap: anywhere; }
 	.journey-layout { display: grid; gap: 2rem; min-width: 0; }
 	.visual-rail, .step-articles { min-width: 0; }
 
 	.scene-frame { display: grid; gap: 0.5rem; min-width: 0; margin: 0; }
-	.scene-header { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; color: var(--color-ink-1); font-size: 0.75rem; font-weight: 500; line-height: 1.4; }
-	.example-label { color: var(--color-ink-2); white-space: nowrap; }
+	.scene-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.5rem; color: var(--color-ink-1); font-size: 0.75rem; font-weight: 500; line-height: 1.4; }
+	.example-label { color: var(--color-ink-2); }
 	.stage-choices { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.25rem; }
-	.stage-choices :global(.stage-choice) { width: 100%; min-width: 44px; min-height: 44px; padding-inline: 0.25rem; border-color: var(--color-line-2); }
+	.stage-choices :global(.stage-choice) { width: 100%; min-width: 44px; min-height: 44px; height: auto; padding-inline: 0.25rem; white-space: normal; overflow-wrap: anywhere; border-color: var(--color-line-2); }
 	.stage-choices :global(.stage-choice[aria-pressed='true']) { background: var(--color-surface-selected); color: var(--color-ink-0); border-color: var(--color-ink-1); font-weight: 600; box-shadow: inset 0 -3px 0 var(--color-accent); }
 
 	/* Scene window (D1). Text is HTML at 0.75rem or larger; SVG carries only icons and lines. */
-	.scene-window { min-width: 0; word-break: keep-all; border: 1px solid var(--color-line-2); border-radius: var(--radius-lg); background: var(--color-surface-canvas); overflow: hidden; container-type: inline-size; }
-	.scene-bar { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--color-line); color: var(--color-ink-2); font-size: 0.75rem; line-height: 1.4; }
-	.scene-bar > span:last-child { flex: none; }
+	.scene-window { min-width: 0; word-break: var(--landing-word-break, keep-all); border: 1px solid var(--color-line-2); border-radius: var(--radius-lg); background: var(--color-surface-canvas); overflow: hidden; container-type: inline-size; }
+	.scene-bar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--color-line); color: var(--color-ink-2); font-size: 0.75rem; line-height: 1.4; }
+	.scene-bar > span:last-child { min-width: 0; }
 	.scene-route { min-width: 0; font-family: var(--font-mono); overflow-wrap: anywhere; }
 	.scene-body { padding: 0.75rem; }
 	/* The label sits on the dashed boundary line, like a fieldset legend, so it costs no row. */
 	.boundary { position: relative; min-width: 0; padding: 1rem 0.75rem 0.75rem; border: 1px dashed var(--color-line-2); border-radius: var(--radius-md); }
-	.boundary-label { position: absolute; top: 0; left: 0.5rem; margin: 0; padding-inline: 0.375rem; background: var(--color-surface-canvas); color: var(--color-ink-2); font-family: var(--font-mono); font-size: 0.75rem; line-height: 1.4; transform: translateY(-50%); }
+	.boundary-label { position: absolute; top: 0; left: 0.5rem; max-width: calc(100% - 1rem); margin: 0; padding-inline: 0.375rem; background: var(--color-surface-canvas); color: var(--color-ink-2); font-family: var(--font-mono); font-size: 0.75rem; line-height: 1.4; transform: translateY(-50%); }
 	.scene-grid { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: 'members' 'core' 'links' 'detail'; row-gap: 1rem; min-width: 0; }
 	ul, dl { margin: 0; padding: 0; list-style: none; }
 
@@ -420,7 +422,7 @@
 	.kind { color: var(--color-ink-2); font-size: 0.75rem; }
 	.rows { display: grid; gap: 0.25rem; margin-top: 0.125rem; }
 	.rows > div { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; min-width: 0; }
-	.rows dt { flex: none; color: var(--color-ink-2); font-size: 0.75rem; line-height: 1.4; }
+	.rows dt { min-width: 0; color: var(--color-ink-2); font-size: 0.75rem; line-height: 1.4; }
 	.rows dd { min-width: 0; margin: 0; color: var(--color-ink-0); font-size: 0.75rem; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.4; text-align: right; overflow-wrap: anywhere; }
 	.rows dd.ident { color: var(--color-ink-1); font-weight: 400; }
 
@@ -438,6 +440,9 @@
 	.chips { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 	.chip { display: inline-flex; align-items: center; gap: 0.375rem; min-width: 0; padding: 0.25rem 0.5rem; border: 1px solid var(--color-line); border-radius: var(--radius-sm); background: var(--color-surface-base); color: var(--color-ink-1); font-size: 0.75rem; font-weight: 500; line-height: 1.4; }
 	.quota-list { display: grid; gap: 0.5rem; }
+	.quota-list :global(.usage-meta) { flex-wrap: wrap; }
+	.quota-list :global(.usage-label) { white-space: normal; overflow: visible; text-overflow: clip; }
+	.quota-list :global(.usage-value) { min-width: 0; flex-shrink: 1; }
 	.detail-note { margin: 0; color: var(--color-ink-2); font-size: 0.75rem; line-height: 1.5; }
 
 	.observe { display: grid; gap: 1rem; }
@@ -480,7 +485,7 @@
 		.observe { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 1.5rem; }
 	}
 
-	figcaption { display: grid; gap: 0.375rem; word-break: keep-all; overflow-wrap: anywhere; }
+	figcaption { display: grid; gap: 0.375rem; word-break: var(--landing-word-break, keep-all); overflow-wrap: anywhere; }
 	.caption-stage { margin: 0; color: var(--color-warm-text); font-size: 0.75rem; font-weight: 500; line-height: 1.5; }
 	.caption-separator { margin-inline: 0.375rem; color: var(--color-ink-2); }
 	.caption-copy { margin: 0; color: var(--color-ink-1); font-size: 0.875rem; line-height: 1.6; }
@@ -488,10 +493,10 @@
 
 	.step-articles article { padding-block: 2rem; border-top: 1px solid var(--color-line); scroll-margin-top: calc(var(--landing-nav-height, 0px) + 1.5rem); }
 	.step-label { display: flex; align-items: center; gap: 0.75rem; color: var(--color-ink-1); font-size: 0.8125rem; font-weight: 500; }
-	.step-mark { width: 0.75rem; height: 0.75rem; border: 1px solid var(--color-line-2); transform: rotate(45deg); }
+	.step-mark { flex: none; width: 0.75rem; height: 0.75rem; border: 1px solid var(--color-line-2); transform: rotate(45deg); }
 	article[data-active='true'] .step-mark { background: var(--color-accent); border-color: var(--color-accent); }
 	h3 { font-size: clamp(1.25rem, 2.3vw, 2rem); line-height: 1.45; margin: 1rem 0; }
-	article > p { color: var(--color-ink-1); line-height: 1.8; font-size: 0.9375rem; margin: 0; word-break: keep-all; overflow-wrap: anywhere; }
+	article > p { color: var(--color-ink-1); line-height: 1.8; font-size: 0.9375rem; margin: 0; word-break: var(--landing-word-break, keep-all); overflow-wrap: anywhere; }
 	article ul { padding-left: 1.25rem; margin: 1.25rem 0 0; color: var(--color-ink-2); font-size: 0.8125rem; line-height: 1.8; list-style: disc; }
 	article li + li { margin-top: 0.5rem; }
 	@media (min-width: 768px) {

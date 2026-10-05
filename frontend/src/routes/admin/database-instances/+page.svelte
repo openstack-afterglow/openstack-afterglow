@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t as tr } from '$lib/i18n/ns/database';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
@@ -33,7 +34,7 @@
 		try {
 			instances = await api.get<DbInstance[]>('/api/v1/database-instances?all_projects=true', token, projectId);
 		} catch (error) {
-			loadError = error instanceof ApiError ? error.message : 'Trove DB 인스턴스 목록 조회에 실패했습니다.';
+			loadError = error instanceof ApiError ? error.message : tr('instances.listFailed');
 		} finally {
 			loading = false;
 			refreshing = false;
@@ -41,26 +42,26 @@
 	}
 
 	async function deleteInstance(id: string, name: string) {
-		if (!await confirmDialog(`DB 인스턴스 "${name || id.slice(0, 8)}"를 삭제하시겠습니까?`)) return;
+		if (!await confirmDialog(tr('instances.deleteConfirm', { name: name || id.slice(0, 8) }))) return;
 		deleting = id;
 		try {
 			await api.delete(`/api/v1/database-instances/${id}`, token, projectId);
 			await load();
 		} catch (e) {
-			toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(tr('errors.delete', { error: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			deleting = null;
 		}
 	}
 
 	async function restartInstance(id: string, name: string) {
-		if (!await confirmDialog(`DB 인스턴스 "${name || id.slice(0, 8)}"를 재시작하시겠습니까?`)) return;
+		if (!await confirmDialog(tr('instances.restartConfirm', { name: name || id.slice(0, 8) }))) return;
 		restarting = id;
 		try {
 			await api.post(`/api/v1/database-instances/${id}/restart`, {}, token, projectId);
 			await load();
 		} catch (e) {
-			toast.error('재시작 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(tr('errors.restart', { error: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			restarting = null;
 		}
@@ -80,10 +81,10 @@
 <DbCreatePanel bind:open={showCreatePanel} onCreated={load} />
 
 <div class="p-4 md:p-8 max-w-7xl mx-auto">
-	<PageHeader breadcrumb="STORAGE / DATABASE INSTANCES" title="DB 인스턴스">
+	<PageHeader breadcrumb={tr('breadcrumbs.admin')} title={tr('instances.title')}>
 		{#snippet actions()}
 			<button onclick={() => (showCreatePanel = true)}
-				class="text-xs text-action-on-warm bg-action-warm hover:bg-action-warm-hover transition-colors px-3 py-1.5 rounded border border-action-warm">+ 인스턴스 생성</button>
+				class="text-xs text-action-on-warm bg-action-warm hover:bg-action-warm-hover transition-colors px-3 py-1.5 rounded border border-action-warm">{tr('actions.createInstance')}</button>
 			<AutoRefreshControl
 				bind:active={ar.active}
 				bind:intervalSeconds={ar.intervalSeconds}
@@ -94,7 +95,7 @@
 		{/snippet}
 	</PageHeader>
 	{#if loadError}
-		<Alert tone="danger" title="Trove DB 인스턴스를 불러오지 못했습니다">
+		<Alert tone="danger" title={tr('instances.loadFailed')}>
 			{loadError}
 		</Alert>
 	{/if}
@@ -102,20 +103,20 @@
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if instances.length === 0 && !loadError}
-		<div class="text-ink-2 text-sm">DB 인스턴스가 없습니다</div>
+		<div class="text-ink-2 text-sm">{tr('instances.empty')}</div>
 	{:else if instances.length > 0}
 		<div class="overflow-x-auto">
 			<table class="w-full text-sm">
 				<thead>
 					<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
-						<th class="text-left py-3 px-4 font-medium">이름</th>
-						<th class="text-left py-3 px-4 font-medium">상태</th>
-						<th class="text-left py-3 px-4 font-medium">Datastore</th>
-						<th class="text-left py-3 px-4 font-medium">프로젝트</th>
-						<th class="text-left py-3 px-4 font-medium">크기 (GB)</th>
+						<th class="text-left py-3 px-4 font-medium">{tr('labels.name')}</th>
+						<th class="text-left py-3 px-4 font-medium">{tr('labels.status')}</th>
+						<th class="text-left py-3 px-4 font-medium">{tr('labels.datastoreEnglish')}</th>
+						<th class="text-left py-3 px-4 font-medium">{tr('labels.project')}</th>
+						<th class="text-left py-3 px-4 font-medium">{tr('labels.sizeGb')}</th>
 						<th class="text-left py-3 px-4 font-medium">ID</th>
-						<th class="text-left py-3 px-4 font-medium">생성일</th>
-						<th class="text-right py-3 px-4 font-medium">액션</th>
+						<th class="text-left py-3 px-4 font-medium">{tr('labels.created')}</th>
+						<th class="text-right py-3 px-4 font-medium">{tr('labels.actions')}</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -134,11 +135,11 @@
 								<div class="flex justify-end gap-1">
 									<button onclick={() => restartInstance(inst.id, inst.name)} disabled={restarting === inst.id}
 										class="text-warm-text hover:text-warm-text-hover disabled:text-ink-3 text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm disabled:border-line-2 transition-colors">
-										{restarting === inst.id ? '...' : '재시작'}
+										{restarting === inst.id ? '...' : tr('actions.restart')}
 									</button>
 									<button onclick={(e) => { e.stopPropagation(); deleteInstance(inst.id, inst.name); }} disabled={deleting === inst.id}
 										class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors">
-										{deleting === inst.id ? '...' : '삭제'}
+										{deleting === inst.id ? '...' : tr('actions.delete')}
 									</button>
 								</div>
 							</td>

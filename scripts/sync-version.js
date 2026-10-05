@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 루트 package.json version → frontend, backend, Helm, Kolla operator sample
+// 루트 package.json version → frontend, backend, Helm, 명시적 Kolla release pin
 const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
@@ -50,17 +50,19 @@ if (fs.existsSync(chartPath)) {
 	fs.writeFileSync(chartPath, chart);
 }
 
-// 5) deploy/kolla/globals.afterglow.sample.yml — published Afterglow image tag
+// 5) Keep the automatic Kolla image channel; update only an explicit release pin.
 const kollaSamplePath = path.join(root, "deploy/kolla/globals.afterglow.sample.yml");
 let kollaSample = fs.readFileSync(kollaSamplePath, "utf-8");
-if (!/^afterglow_image_tag:\s*"v[^"]+"/m.test(kollaSample)) {
+if (!/^afterglow_image_tag:\s*"(?:latest|stable|v[^"]+)"/m.test(kollaSample)) {
 	console.error("deploy/kolla/globals.afterglow.sample.yml: afterglow_image_tag line not found");
 	process.exit(1);
 }
-kollaSample = kollaSample.replace(
-	/^afterglow_image_tag:\s*"v[^"]+"/m,
-	`afterglow_image_tag: "v${version}"`
-);
-fs.writeFileSync(kollaSamplePath, kollaSample);
+if (/^afterglow_image_tag:\s*"v[^"]+"/m.test(kollaSample)) {
+	kollaSample = kollaSample.replace(
+		/^afterglow_image_tag:\s*"v[^"]+"/m,
+		`afterglow_image_tag: "v${version}"`
+	);
+	fs.writeFileSync(kollaSamplePath, kollaSample);
+}
 
 console.log(`✓ version synced to ${version}`);

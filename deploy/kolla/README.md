@@ -28,6 +28,8 @@ not grant sudo or change global Ansible settings.
    - It links Kolla's default `all-in-one` inventory path to `/etc/kolla/multinode`
      and also links `group_vars` and `host_vars`, preserving normal Kolla
      inventory variable discovery.
+   - `kolla-ansible reconfigure -i multinode --tag afterglow,lumen,drover,palimpsest,waygat` selects all five enabled services without a wrapper. `waygat` is an explicit Waygate selection tag, including its application image preparation and HAProxy tasks; `waygate` remains the canonical role/inventory name and also works as a tag.
+   - A Kolla package reinstall can remove the installed stock-site import while leaving all role links valid. Rerun the official installer, then inspect this command with `--list-tasks`; successful stock-only output is a silent integration failure, not a custom-service rollout.
 2. **Plugin-owned Variables**:
    - Settings and secrets remain in `/etc/kolla/config/afterglow/globals.yml`
      (mode `0640`) and `/etc/kolla/config/afterglow/secrets.yml` (mode `0600`).
@@ -48,9 +50,13 @@ not grant sudo or change global Ansible settings.
      Kolla recreates HAProxy only if their resulting configuration hash changes.
    - The plugin does not create external-VIP routes, DNS records, or TLS certificates. Existing Drover and Waygate public catalog URLs remain operator-owned ingress contracts.
 4. **Published GHCR Images**:
-   - Services pull published `ghcr.io/openstack-afterglow/*` images using explicit release version tags (Afterglow `:v1.28.0`, Drover `:v0.2.25`, Waygate `:0.2.0`, Lumen `:0.3.0`, Palimpsest Hub `:0.2.0`) or exact linux/amd64 manifest digests (`@sha256:...`).
-   - Mutable tags such as `latest` or bare unpinned references are prohibited by role precheck validators to prevent multi-controller divergence.
-   - Source-build mode remains an optional development path; it is not used for production deployment.
+   - Application images follow the existing published `ghcr.io/openstack-afterglow/*:latest` channels through `afterglow_image_tag`, `drover_image_tag`, `waygate_image_tag`, `lumen_image_tag`, and `palimpsest_image_tag`. `stable` is also supported where that channel is published; this policy does not create new channels.
+   - Each invocation resolves moving tags to exact registry manifest/index digests on the first targeted controller for each service, before role prechecks. All targeted controllers share that selection, including across serial batches; the next invocation resolves afresh.
+   - Component enablement may differ by controller, including three Palimpsest APIs with one worker. Selection covers only components enabled on enabled published-mode service consumers; disabled and source-mode hosts do not contribute. Each controller receives only its locally enabled components from the same frozen selection.
+   - Selection readiness is bound to its service. An earlier service's references cannot authorize an unprepared later published-image target when its first target is disabled or in source mode; split these target sets with `--limit`.
+   - Explicit version or `@sha256:...` component `*_image_ref` pins remain available for controlled releases and rollback and skip registry lookup. Moving channels belong in `*_image_tag`, not mutable or bare `*_image_ref` overrides.
+   - Effective component image/ref and service namespace/tag inputs are collected from their published consumers, preserving a pin on a later-only worker. Contradictory effective inputs for the same component fail before registry or credential access; reconcile them or split targets with `--limit`.
+   - Source-build mode remains an optional development path; it is not used for production deployment. Stock Kolla images, datastore pins, Cloud Shell's multi-architecture digest requirement, and unmanaged Lumen sandbox images are unchanged.
 5. **Datastores & Credential Reuse**:
    - **MariaDB**: Creates plugin-owned `_kolla` schemas (`afterglow_kolla`, `drover_kolla`, `lumen_kolla`, `waygate_kolla`, `palimpsest_kolla`).
    - **Valkey (Redis)**: Current Kolla deploys Valkey server+Sentinel. Afterglow gives its Redis client every Kolla Sentinel address and the Kolla monitor name, so cache/session writes follow a promoted master without rewriting configuration; the generated `redis_url` still carries the existing master password and service DB index. The plugin creates no Redis container, so a full or Valkey-tagged Kolla deployment (`enable_valkey: "yes"`) must establish Valkey before plugin-only tagged operations. Other plugin services retain the connection behavior defined by their own roles. Explicit service indexes remain (5: Afterglow, 6: Waygate, 7: Drover, 8: Lumen, 9: Palimpsest).
@@ -423,18 +429,32 @@ The installer fails rather than replacing conflicting links or unexpected `site.
 From `/etc/kolla`, once `install.sh` has integrated the plugin import into `site.yml`, standard bare `kolla-ansible` lifecycle commands run custom service operations against `/etc/kolla/multinode`:
 
 ```bash
-# Pull plugin and stock service images (force-refreshes mutable tags)
+# Download plugin and stock service images without replacing running containers
 kolla-ansible pull -i multinode
 
 # Deployment of enabled stock and plugin services, including stock Valkey
 kolla-ansible deploy -i multinode
 
-# Reconfigure running services after config/globals changes (force-refreshes mutable tags)
+# Reconfigure running services and apply this invocation's selected images
 kolla-ansible reconfigure -i multinode
 
-# Upgrade services to new images and run policy seeding (force-refreshes mutable tags)
+# Upgrade services to this invocation's selected images and run policy seeding
 kolla-ansible upgrade -i multinode
 ```
+
+For enabled, published-image plugin services, `prechecks`, `pull`, `deploy`,
+`reconfigure`, and `upgrade` prepare exact image references before the
+service-owned immutable-reference validators run. Registry selection reads
+manifest metadata without downloading layers and fails closed on lookup errors;
+it does not reuse a stale or locally cached channel selection. `pull` downloads
+the selected images only. `deploy`, `reconfigure`, and `upgrade` replace running
+containers when the selected image changes. A later command resolves channels
+again, so a preceding `pull` does not pin its selection for a later deployment.
+
+An explicit component `*_image_ref` version tag or digest is retained verbatim
+and skips channel lookup for that component. Pin every enabled component when
+an entire service must remain on a reviewed release or rollback. Disabled
+services/components and source-build services do not perform channel lookup.
 
 Tag-filtered operations also remain supported:
 
@@ -445,6 +465,22 @@ kolla-ansible reconfigure -i multinode --tags afterglow
 # Reconfigure all five plugin services
 kolla-ansible reconfigure -i multinode --tags afterglow,waygate,drover,lumen,palimpsest
 ```
+
+Service tags select the corresponding image preparation and lifecycle tasks;
+unselected services do not perform channel lookup. With `--limit`, selection
+runs on the first controller actually targeted for that service, not an
+excluded inventory controller. That selection is shared by every targeted
+serial batch, even with `kolla_serial=1`.
+
+Kolla's native globals loader and `-e` extra-vars outrank `set_fact`. The
+integration refuses to dispatch when an effective `*_image_ref` overrides its
+selected digest. Before migrating an existing installation, remove old mutable
+(`:latest`/`:stable`) or bare `*_image_ref` entries from globals and extra-vars
+files/arguments, and use the matching service `*_image_tag` instead. For example,
+use `-e afterglow_image_tag=latest`, not
+`-e afterglow_backend_image_ref=ghcr.io/openstack-afterglow/afterglow-api:latest`.
+Keep `*_image_ref` overrides only for explicit immutable version or digest pins;
+those continue to work through native `-e`.
 
 Afterglow `deploy` and `reconfigure` run the one-shot schema bootstrap after
 rendering configuration, before policy seeding and backend start. `upgrade`
@@ -487,7 +523,8 @@ secrets implicitly. Do not replace live credentials with sample files.
 For repository verification, `npm run test:kolla:contract` runs the offline
 structure/installer contracts. After installing the operator environment,
 `npm run test:kolla:runtime` exercises the native CLI and real Ansible with
-isolated role fixtures, including privilege inheritance and negative controls.
+isolated role fixtures, including privilege inheritance, negative controls and
+published-consumer cases loading the actual `roles/afterglow/defaults/main.yml`.
 It does not contact or mutate a cloud.
 
 `node scripts/kolla-contract.test.js` checks the in-tree Afterglow role,

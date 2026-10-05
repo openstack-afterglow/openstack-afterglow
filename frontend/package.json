@@ -1,7 +1,7 @@
 {
 	"name": "frontend",
 	"private": true,
-	"version": "1.30.0",
+	"version": "1.30.1",
 	"type": "module",
 	"scripts": {
 		"dev": "node scripts/run-with-file-log.mjs vite dev",
@@ -14,7 +14,14 @@
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"test": "vitest run && node --test scripts/run-with-file-log.test.mjs",
 		"test:watch": "vitest",
-		"test:coverage": "vitest run --coverage"
+		"test:coverage": "vitest run --coverage",
+		"i18n:check": "node scripts/i18n.mjs check",
+		"i18n:scan": "node scripts/i18n.mjs scan",
+		"i18n:report": "node scripts/i18n.mjs report",
+		"i18n:export": "node scripts/i18n.mjs export",
+		"i18n:import": "node scripts/i18n.mjs import",
+		"i18n:review": "node scripts/i18n.mjs review",
+		"i18n:format": "node scripts/i18n.mjs format"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-node": "^5.5.2",

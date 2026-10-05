@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { projectNames } from '$lib/stores/projectNames';
+	import { t } from '$lib/i18n/ns/admin-storage';
+	import { volumeStatusLabel } from './AdminVolumeStatusSummary.svelte';
 
 	let {
 		projectFilter = $bindable(''),
@@ -51,14 +53,14 @@
 		onchange={() => { onChange(); }}
 		class="bg-surface-sunken border border-line-2 text-sm text-ink-2 rounded-lg px-2 py-1.5 focus:outline-none focus:border-action-warm"
 	>
-		<option value="">모든 상태</option>
+		<option value="">{t('volumeList.allStatuses')}</option>
 		{#each statusOptions as status}
-			<option value={status}>{status}</option>
+			<option value={status}>{volumeStatusLabel(status)}</option>
 		{/each}
 	</select>
 	<input
 		type="text"
-		placeholder="이름 검색..."
+		placeholder={t('volumeList.searchName')}
 		bind:value={nameSearch}
 		oninput={() => {
 			if (nameDebounceTimer) clearTimeout(nameDebounceTimer);
@@ -70,7 +72,7 @@
 		<div class="flex items-center bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 w-52 focus-within:border-action-warm">
 			<input
 				type="text"
-				placeholder="프로젝트 검색..."
+				placeholder={t('volumeList.searchProject')}
 				bind:value={projectSearchText}
 				onfocus={() => (projectDropdownOpen = true)}
 				oninput={() => {

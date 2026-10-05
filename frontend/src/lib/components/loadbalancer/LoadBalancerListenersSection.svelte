@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/network-resources';
   import { useLoadbalancerDetailController } from '$lib/stores/loadbalancerDetailController.svelte';
   import ListenerAddForm from './ListenerAddForm.svelte';
 
@@ -7,17 +8,17 @@
 
 <section class="bg-surface-base border border-line rounded-lg p-5 mb-4">
   <div class="flex items-center justify-between mb-4">
-    <h3 class="font-semibold text-ink-0 text-sm">리스너 ({s.listeners.length})</h3>
+    <h3 class="font-semibold text-ink-0 text-sm">{t('lb.listeners.title', { count: s.listeners.length })}</h3>
     <button
       onclick={() => s.toggleAddListener()}
       class="text-warm-text hover:text-warm-text-hover text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm transition-colors"
-    >+ 추가</button>
+    >{t('lb.actions.addWithPlus')}</button>
   </div>
 
   <ListenerAddForm />
 
   {#if s.listeners.length === 0}
-    <p class="text-sm text-ink-2">리스너가 없습니다.</p>
+    <p class="text-sm text-ink-2">{t('lb.listeners.empty')}</p>
   {:else}
     <div class="space-y-2">
       {#each s.listeners as l}
@@ -31,7 +32,7 @@
             onclick={() => s.deleteListener(l.id)}
             disabled={s.saving}
             class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 transition-colors"
-          >삭제</button>
+          >{t('lb.actions.delete')}</button>
         </div>
       {/each}
     </div>

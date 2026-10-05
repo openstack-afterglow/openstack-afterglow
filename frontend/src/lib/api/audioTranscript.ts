@@ -1,3 +1,5 @@
+import { t } from '$lib/i18n/ns/chat-studio';
+
 export interface AudioTranscriptSegment {
 	start: number;
 	end: number;
@@ -16,11 +18,11 @@ const MAX_SECONDS = 30 * 60;
 /** Keep only provider time ranges; never estimate alignment from the transcript. */
 export function parseAudioTranscript(value: unknown, requireTimestamps = false): AudioTranscript {
 	if (!value || typeof value !== 'object' || Array.isArray(value) || !('text' in value) || typeof value.text !== 'string' || value.text.length > MAX_TRANSCRIPT_LENGTH) {
-		throw new Error('음성 인식 결과가 유효하지 않습니다.');
+		throw new Error(t('audioStudioApi.invalidTranscription'));
 	}
 	const raw = 'segments' in value ? value.segments : undefined;
 	if (raw !== undefined && (!Array.isArray(raw) || raw.length > MAX_SEGMENTS)) {
-		throw new Error('음성 인식 타임스탬프가 유효하지 않습니다.');
+		throw new Error(t('audioStudioApi.invalidTimestamps'));
 	}
 	const segments: AudioTranscriptSegment[] = [];
 	let previousEnd = 0;
@@ -30,21 +32,21 @@ export function parseAudioTranscript(value: unknown, requireTimestamps = false):
 			typeof item.start !== 'number' || !Number.isFinite(item.start) || item.start < previousEnd ||
 			typeof item.end !== 'number' || !Number.isFinite(item.end) || item.end < item.start || item.end > MAX_SECONDS ||
 			typeof item.text !== 'string') {
-			throw new Error('음성 인식 타임스탬프가 유효하지 않습니다.');
+			throw new Error(t('audioStudioApi.invalidTimestamps'));
 		}
 		textLength += item.text.length;
-		if (textLength > MAX_TRANSCRIPT_LENGTH) throw new Error('음성 인식 결과가 너무 깁니다.');
+		if (textLength > MAX_TRANSCRIPT_LENGTH) throw new Error(t('audioStudioApi.transcriptTooLong'));
 		segments.push({ start: item.start, end: item.end, text: item.text });
 		previousEnd = item.end;
 	}
 	if (requireTimestamps && value.text.trim() && !segments.length) {
-		throw new Error('음성 인식 응답에 요청한 타임스탬프가 없습니다.');
+		throw new Error(t('audioStudioApi.missingTimestamps'));
 	}
 	return { text: value.text, segments };
 }
 
 export function formatTranscriptTime(seconds: number): string {
-	if (!Number.isFinite(seconds) || seconds < 0 || seconds > MAX_SECONDS) throw new Error('유효하지 않은 전사 시각입니다.');
+	if (!Number.isFinite(seconds) || seconds < 0 || seconds > MAX_SECONDS) throw new Error(t('audioStudioApi.invalidTime'));
 	const total = Math.round(seconds * 1000);
 	const hours = Math.floor(total / 3_600_000);
 	const minutes = Math.floor(total / 60_000) % 60;
@@ -58,6 +60,6 @@ export function transcriptText(result: AudioTranscript): string {
 }
 
 export function transcriptSrt(result: AudioTranscript): string {
-	if (!result.segments.length) throw new Error('이 전사 결과에는 자막 시각이 없습니다.');
+	if (!result.segments.length) throw new Error(t('audioStudioApi.noSubtitleTiming'));
 	return result.segments.map((segment, index) => `${index + 1}\n${formatTranscriptTime(segment.start).replace('.', ',')} --> ${formatTranscriptTime(segment.end).replace('.', ',')}\n${segment.text.trim().replace(/\r\n?/g, '\n').replace(/\n{2,}/g, '\n')}`).join('\n\n') + '\n';
 }

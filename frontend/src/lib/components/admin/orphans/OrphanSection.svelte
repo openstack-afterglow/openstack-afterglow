@@ -1,6 +1,7 @@
 <script lang="ts" generics="T extends { id: string }">
 	import type { Snippet } from 'svelte';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
+	import { t } from '$lib/i18n/ns/admin-storage';
 
 	let {
 		title,
@@ -41,13 +42,13 @@
 
 <section class="mb-8">
 	<div class="flex items-center justify-between mb-3">
-		<h2 class="text-base font-semibold text-ink-0">{title} ({items.length})</h2>
+		<h2 class="text-base font-semibold text-ink-0">{t('orphanSection.title', { title, count: items.length })}</h2>
 		<button
 			onclick={onCleanup}
 			disabled={selected.size === 0}
 			class="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-ink-0 text-xs font-medium rounded-lg disabled:opacity-30"
 		>
-			선택 {selected.size}개 정리
+			{t('orphanSection.cleanSelected', { count: selected.size })}
 		</button>
 	</div>
 
@@ -68,7 +69,7 @@
 									checked={allSelected}
 									indeterminate={partiallySelected}
 									onclick={toggleAll}
-									ariaLabel={`${title} 전체 선택`}
+									ariaLabel={t('orphanSection.selectAll', { title })}
 								/>
 							</div>
 						</th>
@@ -83,7 +84,7 @@
 									<SelectionCheckbox
 										checked={selected.has(item.id)}
 										onclick={() => toggle(item.id)}
-										ariaLabel={`${item.id} 선택`}
+										ariaLabel={t('orphanSection.selectItem', { id: item.id })}
 									/>
 								</div>
 							</td>

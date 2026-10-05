@@ -1,17 +1,18 @@
 <script lang="ts">
+	import { t as tr } from '$lib/i18n/ns/database';
 	import { useDbCreate } from '$lib/stores/dbCreateStore.svelte';
 	const s = useDbCreate();
 </script>
 
 <div class="space-y-4">
 	<div>
-		<label class={s.labelCls} for="field-dbcreatestep1details-8">인스턴스 이름 <span class="text-red-400">*</span></label>
+		<label class={s.labelCls} for="field-dbcreatestep1details-8">{tr('wizard.instanceName')} <span class="text-red-400">*</span></label>
 		<input id="field-dbcreatestep1details-8" type="text" bind:value={s.name} placeholder="my-database" class={s.inputCls} />
 	</div>
 
 	<div class="grid grid-cols-2 gap-3">
 		<div>
-			<label class={s.labelCls} for="field-dbcreatestep1details-14">데이터스토어 <span class="text-red-400">*</span></label>
+			<label class={s.labelCls} for="field-dbcreatestep1details-14">{tr('labels.datastore')} <span class="text-red-400">*</span></label>
 			{#if s.datastores.length}
 				<select id="field-dbcreatestep1details-14"
 					value={s.datastoreType}
@@ -27,7 +28,7 @@
 			{/if}
 		</div>
 		<div>
-			<label class={s.labelCls} for="field-dbcreatestep1details-30">버전 <span class="text-red-400">*</span></label>
+			<label class={s.labelCls} for="field-dbcreatestep1details-30">{tr('labels.version')} <span class="text-red-400">*</span></label>
 			{#if s.selectedDs?.versions.length}
 				<select id="field-dbcreatestep1details-30" bind:value={s.datastoreVersion} class={s.inputCls}>
 					{#each s.selectedDs.versions as v}
@@ -41,7 +42,7 @@
 	</div>
 
 	<div>
-		<label class={s.labelCls} for="field-dbcreatestep1details-44">플레이버 <span class="text-red-400">*</span></label>
+		<label class={s.labelCls} for="field-dbcreatestep1details-44">{tr('labels.flavor')} <span class="text-red-400">*</span></label>
 		{#if s.flavors.length}
 			<select id="field-dbcreatestep1details-44" bind:value={s.flavorId} class={s.inputCls}>
 				{#each s.flavors as f}
@@ -49,31 +50,31 @@
 				{/each}
 			</select>
 		{:else}
-			<input type="text" bind:value={s.flavorId} placeholder="flavor ID" class={s.inputCls} />
+			<input type="text" bind:value={s.flavorId} placeholder={tr('wizard.flavorIdPlaceholder')} class={s.inputCls} />
 		{/if}
 	</div>
 
 	<div class="grid grid-cols-2 gap-3">
 		<div>
-			<label class={s.labelCls} for="field-dbcreatestep1details-58">볼륨 크기 (GB) <span class="text-red-400">*</span></label>
+			<label class={s.labelCls} for="field-dbcreatestep1details-58">{tr('labels.volumeSizeGb')} <span class="text-red-400">*</span></label>
 			<input id="field-dbcreatestep1details-58" type="number" bind:value={s.volumeSize} min="1" max="1024" class={s.inputCls} />
 		</div>
 		<div>
-			<label class={s.labelCls} for="field-dbcreatestep1details-62">볼륨 타입</label>
+			<label class={s.labelCls} for="field-dbcreatestep1details-62">{tr('labels.volumeType')}</label>
 			<select id="field-dbcreatestep1details-62" bind:value={s.volumeType} class={s.inputCls}>
-				<option value="">기본값</option>
+				<option value="">{tr('options.default')}</option>
 				{#each s.volumeTypes as vt}
 					<option value={vt.name}>{vt.name}</option>
 				{/each}
 			</select>
-			<p class="text-xs text-ink-2 mt-1">기본값을 권장합니다. 모든 Cinder 타입이 Trove 와 호환되지 않습니다.</p>
+			<p class="text-xs text-ink-2 mt-1">{tr('wizard.volumeTypeHelp')}</p>
 		</div>
 	</div>
 
 	<div>
-		<label class={s.labelCls} for="field-dbcreatestep1details-74">가용 구역</label>
+		<label class={s.labelCls} for="field-dbcreatestep1details-74">{tr('labels.availabilityZone')}</label>
 		<select id="field-dbcreatestep1details-74" bind:value={s.availabilityZone} class={s.inputCls}>
-			<option value="">자동 선택</option>
+			<option value="">{tr('options.auto')}</option>
 			{#each s.availabilityZones as az}
 				<option value={az.name}>{az.name}</option>
 			{/each}

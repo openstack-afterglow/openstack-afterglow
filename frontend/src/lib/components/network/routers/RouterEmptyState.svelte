@@ -1,5 +1,6 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/network-resources';
   import EmptyState from '$lib/components/ui/EmptyState.svelte';
 </script>
 
-<EmptyState headline="라우터가 없습니다" description="프로젝트의 첫 라우터를 생성하세요." />
+<EmptyState headline={t('router.empty.title')} description={t('router.empty.description')} />

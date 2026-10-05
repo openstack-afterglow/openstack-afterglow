@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-network';
 	import { page } from '$app/stores';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -34,8 +35,8 @@
 	let portPage = $state(1);
 
 	const resourceTabOptions = $derived([
-		{ value: 'allocations', label: `할당 IP · ${subnet?.allocations.length ?? 0}` },
-		{ value: 'ports', label: `포트 · ${subnet?.ports.length ?? 0}` },
+		{ value: 'allocations', label: t('subnetDetailPage.tabs.allocations', { count: subnet?.allocations.length ?? 0 }) },
+		{ value: 'ports', label: t('subnetDetailPage.tabs.ports', { count: subnet?.ports.length ?? 0 }) },
 	]);
 	const allocationTotalPages = $derived(
 		Math.max(1, Math.ceil((subnet?.allocations.length ?? 0) / RESOURCE_PAGE_SIZE)),
@@ -74,9 +75,9 @@
 			portPage = 1;
 		} catch (err) {
 			if (err instanceof ApiError) {
-				error = err.message || `서브넷 정보를 불러오지 못했습니다 (${err.status})`;
+				error = err.message || t('subnetDetailPage.loadFailedStatus', { status: err.status });
 			} else {
-				error = (err as Error).message || '서브넷 정보를 불러오지 못했습니다';
+				error = (err as Error).message || t('subnetDetailPage.loadFailed');
 			}
 		} finally {
 			loading = false;
@@ -91,9 +92,9 @@
 
 <PageShell max="7xl">
 	<PageHeader
-		breadcrumb="NETWORK / SUBNET DETAIL"
-		title={subnet?.name ? `서브넷: ${subnet.name}` : '서브넷 상세'}
-		subtitle="서브넷 풀 경계, 할당된 IP, 바인딩 포트, 실제 바인딩 노드 및 DHCP 에이전트 배치 현황을 확인합니다."
+		breadcrumb={t('subnetDetailPage.breadcrumb')}
+		title={subnet?.name ? t('subnetDetailPage.namedTitle', { name: subnet.name }) : t('subnetDetailPage.title')}
+		subtitle={t('subnetDetailPage.subtitle')}
 	>
 		{#snippet actions()}
 			<Button
@@ -101,10 +102,10 @@
 				variant="outline"
 				size="sm"
 			>
-				← 네트워크 상세
+				{t('subnetDetailPage.networkDetail')}
 			</Button>
 			<Button onclick={() => loadSubnet(true)} variant="subtle" size="sm" disabled={loading}>
-				새로고침
+				{t('subnetDetailPage.refresh')}
 			</Button>
 		{/snippet}
 	</PageHeader>
@@ -112,29 +113,29 @@
 	{#if loading}
 		<Card padding="lg">
 			<div class="py-12 text-center text-sm text-ink-2">
-				서브넷 정보를 불러오는 중...
+				{t('subnetDetailPage.loading')}
 			</div>
 		</Card>
 	{:else if error}
-		<Alert tone="danger" title="서브넷 조회 실패">
+		<Alert tone="danger" title={t('subnetDetailPage.loadFailedTitle')}>
 			{error}
 		</Alert>
 	{:else if subnet}
 		<div class="space-y-6">
 			<!-- Overview Metadata Card -->
 			<Card padding="lg">
-				<SectionHeader title="서브넷 요약 정보" class="mb-4" />
+				<SectionHeader title={t('subnetDetailPage.overview')} class="mb-4" />
 				<dl class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4 text-sm">
 					<div>
-						<dt class="text-xs text-ink-2 mb-1">서브넷 ID</dt>
+						<dt class="text-xs text-ink-2 mb-1">{t('subnetDetailPage.subnetId')}</dt>
 						<dd class="font-mono text-ink-0 break-all">{subnet.id}</dd>
 					</div>
 					<div>
-						<dt class="text-xs text-ink-2 mb-1">서브넷 이름</dt>
-						<dd class="font-medium text-ink-0">{subnet.name || '(이름 없음)'}</dd>
+						<dt class="text-xs text-ink-2 mb-1">{t('subnetDetailPage.subnetName')}</dt>
+						<dd class="font-medium text-ink-0">{subnet.name || t('subnetDetailPage.unnamed')}</dd>
 					</div>
 					<div>
-						<dt class="text-xs text-ink-2 mb-1">소속 네트워크</dt>
+						<dt class="text-xs text-ink-2 mb-1">{t('subnetDetailPage.network')}</dt>
 						<dd class="text-ink-0">
 							{#if subnet.network_id}
 								<a
@@ -149,7 +150,7 @@
 						</dd>
 					</div>
 					<div>
-						<dt class="text-xs text-ink-2 mb-1">프로젝트 ID</dt>
+						<dt class="text-xs text-ink-2 mb-1">{t('subnetDetailPage.projectId')}</dt>
 						<dd class="font-mono text-ink-0 break-all">{subnet.project_id || '-'}</dd>
 					</div>
 					<div>
@@ -157,18 +158,18 @@
 						<dd class="font-mono text-ink-0">{subnet.cidr}</dd>
 					</div>
 					<div>
-						<dt class="text-xs text-ink-2 mb-1">게이트웨이 IP</dt>
+						<dt class="text-xs text-ink-2 mb-1">{t('subnetDetailPage.gatewayIp')}</dt>
 						<dd class="font-mono text-ink-0">{subnet.gateway_ip || '-'}</dd>
 					</div>
 					<div>
-						<dt class="text-xs text-ink-2 mb-1">IP 버전</dt>
+						<dt class="text-xs text-ink-2 mb-1">{t('subnetDetailPage.ipVersion')}</dt>
 						<dd class="text-ink-0 font-medium">IPv{subnet.ip_version}</dd>
 					</div>
 					<div>
-						<dt class="text-xs text-ink-2 mb-1">DHCP 활성화</dt>
+						<dt class="text-xs text-ink-2 mb-1">{t('subnetDetailPage.dhcpEnabled')}</dt>
 						<dd>
 							<Pill tone={subnet.dhcp_enabled ? 'success' : 'neutral'}>
-								{subnet.dhcp_enabled ? '활성' : '비활성'}
+								{subnet.dhcp_enabled ? t('subnetDetailPage.enabled') : t('subnetDetailPage.disabled')}
 							</Pill>
 						</dd>
 					</div>
@@ -178,27 +179,27 @@
 			<!-- Summary StatTiles -->
 			<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
 				<StatTile
-					label="CIDR / IP 버전"
+					label={t('subnetDetailPage.cidrVersion')}
 					value={subnet.cidr}
 					suffix={`IPv${subnet.ip_version}`}
 					accent="blue"
 				/>
 				<StatTile
-					label="할당 풀 수"
+					label={t('subnetDetailPage.poolCount')}
 					value={subnet.allocation_pools.length}
-					unit="개"
+					unit={subnet.allocation_pools.length === 1 ? t('subnetDetailPage.singleCountUnit') : t('subnetDetailPage.countUnit')}
 					accent="cyan"
 				/>
 				<StatTile
-					label="할당된 IP 수"
+					label={t('subnetDetailPage.allocatedIpCount')}
 					value={subnet.allocations.length}
-					unit="개"
+					unit={subnet.allocations.length === 1 ? t('subnetDetailPage.singleCountUnit') : t('subnetDetailPage.countUnit')}
 					accent="violet"
 				/>
 				<StatTile
-					label="사용 중인 포트 수"
+					label={t('subnetDetailPage.usedPortCount')}
 					value={subnet.ports.length}
-					unit="개"
+					unit={subnet.ports.length === 1 ? t('subnetDetailPage.singleCountUnit') : t('subnetDetailPage.countUnit')}
 					accent="emerald"
 				/>
 			</div>
@@ -206,19 +207,19 @@
 			<!-- Allocation Pools Section -->
 			<Card padding="md">
 				<SectionHeader
-					title="할당 풀 (Allocation Pools)"
-					meta={`총 ${subnet.allocation_pools.length}개`}
+					title={t('subnetDetailPage.pools')}
+					meta={t('subnetDetailPage.totalCount', { count: subnet.allocation_pools.length })}
 					class="mb-3"
 				/>
 				{#if subnet.allocation_pools.length === 0}
-					<EmptyState headline="등록된 할당 풀이 없습니다" description="이 서브넷에 정의된 IP 할당 범위가 없습니다." />
+					<EmptyState headline={t('subnetDetailPage.poolsEmpty')} description={t('subnetDetailPage.poolsEmptyDescription')} />
 				{:else}
 					<TableShell density="compact">
 						<table>
 							<thead>
 								<tr class="text-xs uppercase tracking-wide">
-									<th>시작 IP (Start IP)</th>
-									<th>종료 IP (End IP)</th>
+									<th>{t('subnetDetailPage.startIp')}</th>
+									<th>{t('subnetDetailPage.endIp')}</th>
 								</tr>
 							</thead>
 							<tbody>
@@ -237,30 +238,30 @@
 			<!-- DHCP Placement & Agent Section -->
 			<Card padding="md">
 				<SectionHeader
-					title="DHCP 배치 및 에이전트"
-					meta={`총 ${subnet.dhcp_bindings.length}개`}
+					title={t('subnetDetailPage.dhcpPlacement')}
+					meta={t('subnetDetailPage.totalCount', { count: subnet.dhcp_bindings.length })}
 					class="mb-3"
 				/>
 				{#if !subnet.dhcp_agent_data_available}
-					<Alert tone="warning" class="mb-3" title="DHCP 에이전트 스케줄러 정보 미제공">
-						DHCP 에이전트 스케줄러 데이터를 불러올 수 없습니다. 포트 기반 DHCP 배치 데이터만 표시됩니다.
+					<Alert tone="warning" class="mb-3" title={t('subnetDetailPage.schedulerUnavailable')}>
+						{t('subnetDetailPage.schedulerUnavailableDescription')}
 					</Alert>
 				{/if}
 				{#if subnet.dhcp_bindings.length === 0}
-					<EmptyState headline="DHCP 배치 정보가 없습니다" description="이 서브넷에 등록된 DHCP 에이전트 또는 배치 포트가 없습니다." />
+					<EmptyState headline={t('subnetDetailPage.dhcpEmpty')} description={t('subnetDetailPage.dhcpEmptyDescription')} />
 				{:else}
 					<TableShell density="compact">
 						<table class="subnet-table subnet-table-dhcp">
 							<thead>
 								<tr class="text-xs uppercase tracking-wide">
-									<th>IP 주소</th>
-									<th>출처</th>
-									<th>호스트 (Host)</th>
-									<th>바이너리</th>
-									<th>가용구역 (AZ)</th>
-									<th>에이전트 ID</th>
-									<th>상태</th>
-									<th>연관 포트</th>
+									<th>{t('subnetDetailPage.ipAddress')}</th>
+									<th>{t('subnetDetailPage.source')}</th>
+									<th>{t('subnetDetailPage.host')}</th>
+									<th>{t('subnetDetailPage.binary')}</th>
+									<th>{t('subnetDetailPage.availabilityZone')}</th>
+									<th>{t('subnetDetailPage.agentId')}</th>
+									<th>{t('subnetDetailPage.status')}</th>
+									<th>{t('subnetDetailPage.relatedPorts')}</th>
 								</tr>
 							</thead>
 							<tbody>
@@ -271,7 +272,7 @@
 										</td>
 										<td>
 											<Pill tone={binding.source === 'agent' ? 'info' : 'neutral'}>
-												{binding.source === 'agent' ? '에이전트' : '포트'}
+												{binding.source === 'agent' ? t('subnetDetailPage.agent') : t('subnetDetailPage.port')}
 											</Pill>
 										</td>
 										<td class="font-mono text-sm">{binding.host || '-'}</td>
@@ -283,12 +284,12 @@
 												<div class="flex items-center gap-1.5">
 													{#if binding.alive !== null}
 														<Pill tone={binding.alive ? 'success' : 'danger'}>
-															{binding.alive ? '정상' : '중단'}
+															{binding.alive ? t('subnetDetailPage.healthy') : t('subnetDetailPage.stopped')}
 														</Pill>
 													{/if}
 													{#if binding.admin_state_up !== null}
 														<Pill tone={binding.admin_state_up ? 'info' : 'neutral'}>
-															{binding.admin_state_up ? 'UP' : 'DOWN'}
+															{binding.admin_state_up ? t('subnetDetailPage.up') : t('subnetDetailPage.down')}
 														</Pill>
 													{/if}
 												</div>
@@ -310,39 +311,39 @@
 			<Card padding="md">
 				<div class="mb-4 space-y-3">
 					<SectionHeader
-						title="서브넷 하위 리소스"
-						meta="한 번에 하나의 목록만 표시합니다"
+						title={t('subnetDetailPage.resources')}
+						meta={t('subnetDetailPage.resourcesMeta')}
 					/>
 					<ToggleGroup
 						value={activeResourceTab}
 						options={resourceTabOptions}
 						onchange={selectResourceTab}
-						ariaLabel="서브넷 하위 리소스 탭"
+						ariaLabel={t('subnetDetailPage.resourcesTabs')}
 						fullWidth
 					/>
 				</div>
 
 				{#if activeResourceTab === 'allocations'}
 					<SectionHeader
-						title="할당된 IP (Allocated IPs)"
-						meta={`총 ${subnet.allocations.length}개`}
+						title={t('subnetDetailPage.allocations')}
+						meta={t('subnetDetailPage.totalCount', { count: subnet.allocations.length })}
 						class="mb-3"
 					/>
 					{#if subnet.allocations.length === 0}
-						<EmptyState headline="할당된 IP가 없습니다" description="이 서브넷에서 현재 고정 IP를 할당받은 포트나 디바이스가 없습니다." />
+						<EmptyState headline={t('subnetDetailPage.allocationsEmpty')} description={t('subnetDetailPage.allocationsEmptyDescription')} />
 					{:else}
 						<TableShell density="compact">
 							<table class="subnet-table subnet-table-allocations">
 								<thead>
 									<tr class="text-xs uppercase tracking-wide">
-										<th>IP 주소</th>
-										<th>포트 ID</th>
-										<th>디바이스 소유자</th>
-										<th>디바이스 ID</th>
-										<th>프로젝트 ID</th>
+										<th>{t('subnetDetailPage.ipAddress')}</th>
+										<th>{t('subnetDetailPage.portId')}</th>
+										<th>{t('subnetDetailPage.deviceOwner')}</th>
+										<th>{t('subnetDetailPage.deviceId')}</th>
+										<th>{t('subnetDetailPage.projectId')}</th>
 										<th>
-											실제 노드
-											<span class="block text-xs normal-case text-ink-2 font-normal">Neutron binding host</span>
+											{t('subnetDetailPage.actualNode')}
+											<span class="block text-xs normal-case text-ink-2 font-normal">{t('subnetDetailPage.bindingHost')}</span>
 										</th>
 									</tr>
 								</thead>
@@ -373,27 +374,27 @@
 					{/if}
 				{:else}
 					<SectionHeader
-						title="사용 중인 포트 (Ports)"
-						meta={`총 ${subnet.ports.length}개`}
+						title={t('subnetDetailPage.ports')}
+						meta={t('subnetDetailPage.totalCount', { count: subnet.ports.length })}
 						class="mb-3"
 					/>
 					{#if subnet.ports.length === 0}
-						<EmptyState headline="사용 중인 포트가 없습니다" description="이 서브넷에 바인딩된 포트가 없습니다." />
+						<EmptyState headline={t('subnetDetailPage.portsEmpty')} description={t('subnetDetailPage.portsEmptyDescription')} />
 					{:else}
 						<TableShell density="compact">
 							<table class="subnet-table subnet-table-ports">
 								<thead>
 									<tr class="text-xs uppercase tracking-wide">
-										<th>포트 ID</th>
-										<th>포트 이름</th>
-										<th>상태</th>
-										<th>MAC 주소</th>
-										<th>서브넷 IP</th>
-										<th>디바이스 소유자</th>
-										<th>디바이스 ID</th>
+										<th>{t('subnetDetailPage.portId')}</th>
+										<th>{t('subnetDetailPage.portName')}</th>
+										<th>{t('subnetDetailPage.status')}</th>
+										<th>{t('subnetDetailPage.macAddress')}</th>
+										<th>{t('subnetDetailPage.subnetIp')}</th>
+										<th>{t('subnetDetailPage.deviceOwner')}</th>
+										<th>{t('subnetDetailPage.deviceId')}</th>
 										<th>
-											실제 노드
-											<span class="block text-xs normal-case text-ink-2 font-normal">Neutron binding host</span>
+											{t('subnetDetailPage.actualNode')}
+											<span class="block text-xs normal-case text-ink-2 font-normal">{t('subnetDetailPage.bindingHost')}</span>
 										</th>
 									</tr>
 								</thead>

@@ -14,8 +14,6 @@ export interface MockupSession {
 	profile: MockupProfileId | null;
 	homePath: '/' | '/dashboard' | '/admin';
 	allowedPaths: string[];
-	bannerLabel: string;
-	bannerMessage: string;
 }
 
 // 튜토리얼은 실제 콘솔과 동일한 화면 구조를 보여주기 위해 /dashboard 전체를 허용한다
@@ -54,16 +52,6 @@ const PROFILE_HOME_PATH: Record<MockupProfileId, MockupSession['homePath']> = {
 	admin: '/admin',
 };
 
-const PROFILE_BANNER_LABEL: Record<MockupProfileId, string> = {
-	on: '튜토리얼',
-	admin: '관리자 미리보기',
-};
-
-const PROFILE_BANNER_MESSAGE: Record<MockupProfileId, string> = {
-	on: '체험 모드입니다. 실제 리소스는 생성되지 않습니다.',
-	admin: '실제 API 호출 없이 가상 데이터로 렌더링 중입니다.',
-};
-
 export const MOCKUP_SERVICE_OVERRIDES = {
 	magnum: true,
 	manila: true,
@@ -88,8 +76,6 @@ export function inactiveMockupSession(): MockupSession {
 		profile: null,
 		homePath: '/',
 		allowedPaths: [],
-		bannerLabel: '',
-		bannerMessage: '',
 	};
 }
 
@@ -99,8 +85,6 @@ export function buildMockupSession(profile: MockupProfileId): MockupSession {
 		profile,
 		homePath: PROFILE_HOME_PATH[profile],
 		allowedPaths: [...PROFILE_ALLOWED_PATHS[profile]],
-		bannerLabel: PROFILE_BANNER_LABEL[profile],
-		bannerMessage: PROFILE_BANNER_MESSAGE[profile],
 	};
 }
 

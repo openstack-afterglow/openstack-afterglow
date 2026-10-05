@@ -1,0 +1,13 @@
+{
+	"run.reloadRequired": "chat run journal is no longer available; reload the conversation",
+	"protocol.invalidDescriptor": "invalid chat run descriptor",
+	"http.requestFailed": "chat request failed",
+	"stream.unterminatedFrame": "unterminated SSE frame",
+	"stream.disconnected": "chat event stream disconnected",
+	"stream.invalidJson": "chat event is not valid JSON",
+	"stream.idMismatch": "SSE event id mismatch",
+	"stream.typeMismatch": "SSE event type mismatch",
+	"stream.runMismatch": "SSE event run mismatch",
+	"protocol.sequenceGap": "chat event sequence gap",
+	"reducer.runMismatch": "chat event run mismatch"
+}

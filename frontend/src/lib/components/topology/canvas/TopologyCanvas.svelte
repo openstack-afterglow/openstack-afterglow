@@ -1,4 +1,6 @@
 <script lang="ts">
+	import RichText from '$lib/i18n/RichText.svelte';
+	import { t } from '$lib/i18n/ns/topology';
 	// 캔버스형 토폴로지 뷰. 순수 모듈(topologyGraph/topologyLayout)에 파생을 맡기고 이 컴포넌트는
 	// 상호작용(팬/줌/드래그/검색/선택)과 DOM 배선만 담당한다. 콜백 계약은 GlobalTopology 와 동일하며 onSelectNetwork 만 추가된다.
 	import { onMount, untrack } from 'svelte';
@@ -273,7 +275,7 @@
 		if (!node) return;
 		// 같은 노드를 다시 누르면 선택 해제다 — 부모 핸들러도 토글이므로 두 모드에서 aria-pressed 와 패널 상태가 일치한다
 		if (selectedId === id) { clearSelection(); return; }
-		announce(`${KIND_LABEL[node.kind]} ${node.name} 선택됨`);
+		announce(t('canvas.selected', { kind: KIND_LABEL[node.kind], name: node.name }));
 		internalSel = id;
 		if (node.kind === 'vm') onSelectInstance?.(node.id);
 		else if (node.kind === 'router') onSelectRouter?.(node.id);
@@ -367,7 +369,7 @@
 				dash: base.dash,
 				forced: e.kind === 'fip' && incident,
 				hitTitle: e.kind === 'trunk'
-					? `트렁크 · ${net?.name ?? ''} · ${isUplinkTrunk(e, graph) ? '라우터별 하위 네트워크 합산' : '연결 네트워크 합산'} 트래픽 (라우터 exporter 없음)`
+					? t(isUplinkTrunk(e, graph) ? 'canvas.trunkUplink' : 'canvas.trunkConnected', { name: net?.name ?? '' })
 					: null,
 				port: toNode?.kind === 'switch' && (e.kind === 'cable' || e.kind === 'lbvip') ? g.b : null,
 			});
@@ -395,7 +397,7 @@
 	function segmentLabel(n: CanvasNet): string | null {
 		const r = n.raw;
 		if (r.provider_segmentation_id == null) return null;
-		return `${r.provider_network_type === 'vlan' ? 'VLAN 태그' : 'VXLAN VNI'} ${r.provider_segmentation_id}`;
+		return t(r.provider_network_type === 'vlan' ? 'canvas.segmentVlan' : 'canvas.segmentVxlan', { id: r.provider_segmentation_id });
 	}
 
 	const hudLabels = $derived.by((): HudLabelItem[] => {
@@ -424,7 +426,7 @@
 				out.push({
 					netId: nid,
 					name: n.name,
-					cidrText: n.cidrs.length > 1 ? `${n.cidrs[0]} 외 ${n.cidrs.length - 1}` : (n.cidrs[0] ?? ''),
+					cidrText: n.cidrs.length > 1 ? t('canvas.moreCidrs', { cidr: n.cidrs[0], count: n.cidrs.length - 1 }) : (n.cidrs[0] ?? ''),
 					kindLabel: NET_KIND_LABEL[n.kind],
 					isInternet: n.kind === 'external',
 					isolated: n.isolated,
@@ -558,7 +560,7 @@
 		const moved = resolveManualOverlap(pos, [id]);
 		if (moved[id]) {
 			pos.set(id, { ...pos.get(id)!, ...moved[id] });
-			announce(`${graph.nodes.get(id)?.name ?? '노드'} 를 겹치지 않는 가까운 자리로 옮겼습니다`);
+			announce(t('canvas.moved', { name: graph.nodes.get(id)?.name ?? t('canvas.node') }));
 		}
 		const auto = autoPos.get(id);
 		if (auto && auto.x === r.x && auto.y === r.y) {
@@ -582,7 +584,7 @@
 		pendingDrag = null;
 		for (const [id, r] of fresh.pos) pos.set(id, { ...r });
 		fitAll();
-		announce('배치를 초기화했습니다');
+		announce(t('canvas.resetDone'));
 	}
 
 	function nudge(id: string, dx: number, dy: number) {
@@ -614,7 +616,7 @@
 		const n = matchList.length;
 		untrack(() => {
 			matchIdx = -1;
-			if (m) announce(n ? `검색 결과 ${n}개` : '검색 결과 없음');
+			if (m) announce(n ? t('canvas.results', { count: n }) : t('canvas.noResults'));
 		});
 	});
 
@@ -677,7 +679,7 @@
 					pointers.delete(e.pointerId);
 					link = { sourceId, pt: toWorld(e), targets: linkTargets(graph, sourceId, projectId), hoverId: null };
 					gesture = null; draggingId = null; armedId = null; pendingDrag = null; stopFlow();
-					announce(`${graph.nodes.get(sourceId)?.name ?? ''} 에서 연결 시작 — 스위치·라우터·인스턴스 위에 놓으세요, Esc 취소`);
+					announce(t('canvas.linkStart', { name: graph.nodes.get(sourceId)?.name ?? '' }));
 					e.preventDefault();
 					return;
 				}
@@ -793,10 +795,10 @@
 							const legacyReq = linkRequest(graph, l.sourceId, targetId, projectId);
 							if (legacyReq) onCreateCable(legacyReq);
 						}
-						announce('연결 요청을 보냈습니다');
+						announce(t('canvas.linkSent'));
 					}
 				} else {
-					announce('연결 만들기를 취소했습니다');
+					announce(t('canvas.linkCanceled'));
 				}
 				return;
 			}
@@ -902,9 +904,9 @@
 		};
 
 		const onKey = (e: KeyboardEvent) => {
-			const t = e.target as HTMLElement | null;
-			if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
-			const nodeEl = closest(t, '[data-node-id]');
+			const target = e.target as HTMLElement | null;
+			if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+			const nodeEl = closest(target, '[data-node-id]');
 			const nodeId = nodeEl?.getAttribute('data-node-id') ?? null;
 			const arrow = ({ ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] } as Record<string, [number, number] | undefined>)[e.key];
 			let handled = true;
@@ -922,7 +924,7 @@
 				if (link) {
 					link = null;
 					resumeFlow();
-					announce('연결 만들기를 취소했습니다');
+					announce(t('canvas.linkCanceled'));
 					handled = true;
 				}
 				else if (selectedId) clearSelection();
@@ -1102,6 +1104,8 @@
 	const helpId = 'topology-canvas-help';
 </script>
 
+{#snippet keyboardKey(text: string)}<span class="mono">{text}</span>{/snippet}
+
 <div class="canvas-root">
 	<CanvasToolbar
 		bind:query
@@ -1132,7 +1136,7 @@
 			class:is-linking={Boolean(link)}
 			role="application"
 			tabindex="0"
-			aria-label="네트워크 토폴로지 캔버스"
+			aria-label={t('canvas.label')}
 			aria-describedby={helpId}
 			data-badges={badgesHidden ? 'hidden' : 'shown'}
 			data-linking={link ? 'true' : undefined}
@@ -1179,24 +1183,24 @@
 			<CanvasHud labels={hudLabels} badges={hudBadges} {badgesHidden} {selectedNetId} onselectnet={selectNetwork} />
 
 			<div class="corner" data-hud-control>
-				<Button variant="secondary" size="icon" ariaLabel="확대" title="확대 (+)" onclick={() => zoomBy(1.2)}>+</Button>
-				<Button variant="secondary" size="icon" ariaLabel="축소" title="축소 (−)" onclick={() => zoomBy(1 / 1.2)}>−</Button>
-				<Button variant="secondary" size="icon" ariaLabel="화면 맞춤" title="화면 맞춤 (0)" onclick={fitAll}>⤢</Button>
+				<Button variant="secondary" size="icon" ariaLabel={t('canvas.zoomIn')} title={t('canvas.zoomInHint')} onclick={() => zoomBy(1.2)}>+</Button>
+				<Button variant="secondary" size="icon" ariaLabel={t('canvas.zoomOut')} title={t('canvas.zoomOutHint')} onclick={() => zoomBy(1 / 1.2)}>−</Button>
+				<Button variant="secondary" size="icon" ariaLabel={t('toolbar.fit')} title={t('canvas.fitHint')} onclick={fitAll}>⤢</Button>
 			</div>
 
 			{#if offscreen}
 				<div class="offscreen-hint" data-hud-control>
-					<Button variant="secondary" size="sm" onclick={fitAll}>콘텐츠로 돌아가기</Button>
+					<Button variant="secondary" size="sm" onclick={fitAll}>{t('canvas.returnContent')}</Button>
 				</div>
 			{/if}
 			{#if manualCount > 0}
 				<div class="manual-chip" data-hud-control>
-					<Button variant="subtle" size="xs" onclick={resetLayout}>수동 배치 {manualCount}개 · 초기화</Button>
+					<Button variant="subtle" size="xs" onclick={resetLayout}>{t('canvas.manualLayout', { count: manualCount })}</Button>
 				</div>
 			{/if}
 		</div>
 		<p class="stage-help" id={helpId}>
-			휠·트랙패드 두 손가락 스크롤·핀치로 확대·축소, 휠 버튼(가운데)이나 배경을 끌어서 화면 이동. 캔버스에 포커스한 뒤 화살표로 화면 이동(<span class="mono">Shift</span>와 함께 누르면 크게), <span class="mono">+</span>/<span class="mono">-</span> 확대·축소, <span class="mono">0</span>·<span class="mono">f</span> 화면 맞춤, <span class="mono">r</span> 배치 초기화, <span class="mono">/</span> 검색, <span class="mono">Esc</span> 선택 해제. 노드에 포커스한 뒤 <span class="mono">Enter</span>로 상세, <span class="mono">Shift+화살표</span>로 노드 이동. 카드 오른쪽 점을 끌어 다른 카드에 놓으면 연결(인스턴스↔스위치는 새 인터페이스, 라우터↔스위치는 게이트웨이), <span class="mono">Esc</span> 취소. 키보드는 카드 상세 패널의 연결 기능을 사용합니다.
+			<RichText segments={t.rich('canvas.help')} tags={{ key: keyboardKey }} />
 		</p>
 	</div>
 

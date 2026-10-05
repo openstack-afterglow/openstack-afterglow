@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-compute';
+	import RichText from '$lib/i18n/RichText.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
@@ -36,7 +38,7 @@
 			phase = 'done';
 			onEvacuated?.();
 		} catch (e: unknown) {
-			errorMsg = e instanceof Error ? e.message : '강제 이주 중 오류가 발생했습니다';
+			errorMsg = e instanceof Error ? e.message : t('instances.evacuate.failed');
 			phase = 'error';
 		}
 	}
@@ -47,30 +49,31 @@
 	class="material-scrim fixed inset-0 z-50 flex items-center justify-center bg-surface-scrim/60 p-4"
 	role="dialog"
 	aria-modal="true"
-	aria-label="인스턴스 강제 이주"
+	aria-label={t('instances.evacuate.label')}
 	tabindex="-1"
 >
 	<div class="bg-surface-base border border-line-2 rounded-xl w-full max-w-lg shadow-[var(--shadow-restraint)]">
 		<!-- 헤더 -->
 		<div class="flex items-center justify-between px-6 py-4 border-b border-line">
 			<div>
-				<h2 class="text-ink-0 font-semibold text-base">인스턴스 강제 이주 (Evacuate)</h2>
+				<h2 class="text-ink-0 font-semibold text-base">{t('instances.evacuate.title')}</h2>
 				<p class="text-ink-2 text-xs mt-0.5 font-mono">{serverName} · {serverId.slice(0, 8)}</p>
 			</div>
-			<button onclick={onClose} aria-label="대화상자 닫기" class="text-ink-2 hover:text-ink-1 transition-colors text-lg leading-none">✕</button>
+			<button onclick={onClose} aria-label={t('instances.closeDialog')} class="text-ink-2 hover:text-ink-1 transition-colors text-lg leading-none">✕</button>
 		</div>
 
 		<div class="px-6 py-5 space-y-4">
 
 			<!-- 설명 -->
 			<div class="bg-surface-selected/20 border border-action-warm/40 text-warm-text rounded-lg px-4 py-3 text-xs leading-relaxed">
-				<span class="font-medium">주의:</span> Evacuate는 호스트 장애 시 인스턴스를 다른 호스트로 강제 이주합니다.
-				인스턴스가 정상 호스트에 있으면 데이터 불일치가 발생할 수 있습니다.
+				{#snippet cautionLabel(text: string)}<span class="font-medium">{text}</span>{/snippet}
+				<RichText segments={t.rich('instances.evacuate.warning')} tags={{ warning: cautionLabel }} />
 			</div>
 
 			{#if currentHost}
 				<div class="text-xs text-ink-2">
-					현재 호스트: <span class="text-ink-1 font-mono">{currentHost}</span>
+					{#snippet hostName(text: string)}<span class="text-ink-1 font-mono">{text}</span>{/snippet}
+					<RichText segments={t.rich('instances.evacuate.currentHost', { host: currentHost })} tags={{ host: hostName }} />
 				</div>
 			{/if}
 
@@ -84,20 +87,21 @@
 			<!-- 완료 -->
 			{#if phase === 'done'}
 				<div class="bg-green-900/30 border border-green-700/50 text-green-300 rounded-lg px-4 py-3 text-sm">
-					강제 이주 요청이 전송되었습니다. 인스턴스 상태가 REBUILD로 전이됩니다.
+					{t('instances.evacuate.requested')}
 				</div>
 			{:else if phase !== 'executing'}
 				<!-- 폼 -->
 				<div class="space-y-3">
 					<div>
 						<label for="evacuate-host" class="block text-xs text-ink-2 mb-1 font-medium">
-							대상 호스트 <span class="text-ink-2">(비워두면 스케줄러 자동 선택)</span>
+							{#snippet automaticHint(text: string)}<span class="text-ink-2">{text}</span>{/snippet}
+							<RichText segments={t.rich('instances.evacuate.targetHost')} tags={{ hint: automaticHint }} />
 						</label>
 						<input
 							id="evacuate-host"
 							type="text"
 							bind:value={host}
-							placeholder="예: compute01.example.com"
+							placeholder={t('instances.evacuate.hostPlaceholder')}
 							class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
 						/>
 					</div>
@@ -109,9 +113,9 @@
 							class="mt-0.5 rounded border-line-2 bg-surface-sunken text-warm-text focus:ring-line-2 focus:ring-1"
 						/>
 						<div>
-							<div class="text-sm text-ink-2">공유 스토리지 사용 (onSharedStorage)</div>
+							<div class="text-sm text-ink-2">{t('instances.evacuate.sharedStorage')}</div>
 							<div class="text-xs text-ink-2 mt-0.5">
-								인스턴스 디스크가 공유 스토리지(Ceph RBD 등)에 있으면 활성화. 그 외에는 비활성.
+								{t('instances.evacuate.sharedStorageHelp')}
 							</div>
 						</div>
 					</label>
@@ -125,7 +129,7 @@
 						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
 						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
 					</svg>
-					강제 이주 요청 중…
+					{t('instances.evacuate.requesting')}
 				</div>
 			{/if}
 		</div>
@@ -139,14 +143,14 @@
 						bind:checked={confirmed}
 						class="rounded border-line-2 bg-surface-sunken text-warm-text focus:ring-line-2 focus:ring-1"
 					/>
-					<span>호스트 장애 상황임을 확인했습니다.</span>
+					<span>{t('instances.evacuate.confirm')}</span>
 				</label>
 				<button
 					onclick={execute}
 					disabled={!confirmed}
 					class="shrink-0 px-4 py-2 bg-action-warm hover:bg-action-warm-hover disabled:opacity-40 disabled:cursor-not-allowed text-action-on-warm text-sm font-medium rounded-lg transition-colors"
 				>
-					강제 이주 실행
+					{t('instances.evacuate.execute')}
 				</button>
 			{:else}
 				<div></div>
@@ -154,7 +158,7 @@
 					onclick={onClose}
 					class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg transition-colors"
 				>
-					닫기
+					{t('instances.close')}
 				</button>
 			{/if}
 		</div>

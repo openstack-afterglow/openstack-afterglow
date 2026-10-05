@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/volume';
 	import type { Snapshot, Volume } from '$lib/types/volume';
 
 	interface QuotaItem { limit: number; in_use: number; }
@@ -29,20 +30,20 @@
 <div class={`grid ${showSnapshots ? 'grid-cols-3' : 'grid-cols-2'} gap-3.5 mb-5`}>
 	<!-- 총 할당 용량 -->
 	<div class="bg-surface-base border border-line rounded-lg p-5">
-		<div class="text-xs uppercase tracking-wider text-ink-2 font-medium mb-2">총 할당 용량</div>
+		<div class="text-xs uppercase tracking-wider text-ink-2 font-medium mb-2">{t('summaryCards.allocatedStorage')}</div>
 		<div class="text-[26px] font-bold text-ink-0 leading-none mb-1">
 			{totalGb}
 			{#if quotas?.storage.gigabytes.limit && quotas.storage.gigabytes.limit > 0}
 				<span class="text-sm font-normal text-ink-2">/ {quotas.storage.gigabytes.limit} GB</span>
 			{:else if quotas?.storage.gigabytes.limit === -1}
-				<span class="text-sm font-normal text-ink-2">/ 무제한 GB</span>
+				<span class="text-sm font-normal text-ink-2">{t('summaryCards.unlimitedStorage')}</span>
 			{:else}
 				<span class="text-sm font-normal text-ink-2">GB</span>
 			{/if}
 		</div>
 		<div class="text-xs text-ink-2 mb-3">
 			{#if quotas?.storage.gigabytes.limit && quotas.storage.gigabytes.limit > 0}
-				사용률 {Math.round(totalGb / quotas.storage.gigabytes.limit * 100)}%
+				{t('summaryCards.storageUsage', { percent: Math.round(totalGb / quotas.storage.gigabytes.limit * 100) })}
 			{:else}
 				&nbsp;
 			{/if}
@@ -56,18 +57,18 @@
 	</div>
 	<!-- 볼륨 개수 -->
 	<div class="bg-surface-base border border-line rounded-lg p-5">
-		<div class="text-xs uppercase tracking-wider text-ink-2 font-medium mb-2">볼륨</div>
+		<div class="text-xs uppercase tracking-wider text-ink-2 font-medium mb-2">{t('summaryCards.volumes')}</div>
 		<div class="text-[26px] font-bold text-ink-0 leading-none mb-1">
 			{volumes.length}
 			{#if quotas?.storage.volumes.limit && quotas.storage.volumes.limit > 0}
 				<span class="text-sm font-normal text-ink-2">/ {quotas.storage.volumes.limit}</span>
 			{:else if quotas?.storage.volumes.limit === -1}
-				<span class="text-sm font-normal text-ink-2">/ 무제한</span>
+				<span class="text-sm font-normal text-ink-2">{t('summaryCards.unlimitedVolumes')}</span>
 			{/if}
 		</div>
 		<div class="text-xs text-ink-2 mb-3">
 			{#if quotas?.storage.volumes.limit && quotas.storage.volumes.limit > 0}
-				사용률 {Math.round(volumes.length / quotas.storage.volumes.limit * 100)}%
+				{t('summaryCards.volumeUsage', { percent: Math.round(volumes.length / quotas.storage.volumes.limit * 100) })}
 			{:else}
 				&nbsp;
 			{/if}
@@ -78,14 +79,14 @@
 				<div class="h-full rounded-full transition-all" style="width: {Math.min(100, Math.round(cpct))}%; background: {cpct >= 95 ? 'var(--gradient-usage-danger)' : cpct >= 80 ? 'var(--gradient-usage-warning)' : 'var(--gradient-usage)'}"></div>
 			{/if}
 		</div>
-		<div class="text-xs text-ink-2 mt-2">연결됨 {attachedCount}개</div>
+		<div class="text-xs text-ink-2 mt-2">{t('summaryCards.attachedCount', { count: attachedCount })}</div>
 	</div>
 	{#if showSnapshots}
 		<!-- 스냅샷 -->
 		<div class="bg-surface-base border border-line rounded-lg p-5">
-			<div class="text-xs uppercase tracking-wider text-ink-2 font-medium mb-2">스냅샷</div>
+			<div class="text-xs uppercase tracking-wider text-ink-2 font-medium mb-2">{t('summaryCards.snapshots')}</div>
 			<div class="text-[26px] font-bold text-ink-0 leading-none mb-1">{snapshots.length}</div>
-			<div class="text-xs text-ink-2">최근 24시간 {recentSnapshots.length}개</div>
+			<div class="text-xs text-ink-2">{t('summaryCards.recentSnapshots', { count: recentSnapshots.length })}</div>
 		</div>
 	{/if}
 </div>

@@ -1,11 +1,23 @@
+import { t } from '$lib/i18n/ns/palimpsest-packages';
 import { packageApi, samePackageIdentity } from '$lib/api/palimpsestPackages';
 import type { PackageIdentity, ProjectContext, PackageSummary, PackageVersion, PackageKey, CreatePackageKey, IssuedPackageKey } from '$lib/api/palimpsestPackages';
+
+type MessageKey = Parameters<typeof t>[0];
+// Store local message keys separately from opaque server errors; translate only when rendered.
+class LocalizedError extends Error {
+  constructor(readonly key: MessageKey) { super(); }
+}
+type StoredError = string | LocalizedError;
+function errorText(error: StoredError) { return typeof error === 'string' ? error : t(error.key); }
+function requestError(error: unknown, fallback: MessageKey): StoredError {
+  return error instanceof LocalizedError ? error : error instanceof Error ? error.message : new LocalizedError(fallback);
+}
 
 type Lane = 'context' | 'inventory' | 'metadata' | 'detail' | 'version' | 'keys' | 'register' | 'issue' | 'revoke' | 'download';
 export function createPalimpsestPackagesController(identity: () => PackageIdentity | null, api = packageApi) {
   let context = $state<ProjectContext | null>(null);
   let inventory = $state<PackageSummary[] | null>(null);
-  let latestVersions = $state<Record<string, { version: PackageVersion | null; error: string }>>({});
+  let latestVersions = $state<Record<string, { version: PackageVersion | null; error: StoredError }>>({});
   let nextCursor = $state<string | null>(null);
   let detail = $state<PackageSummary | null>(null);
   let versions = $state<PackageVersion[] | null>(null);
@@ -13,7 +25,13 @@ export function createPalimpsestPackagesController(identity: () => PackageIdenti
   let version = $state<PackageVersion | null>(null);
   let keys = $state<PackageKey[] | null>(null);
   let issued = $state<IssuedPackageKey | null>(null);
-  let errors = $state<Partial<Record<Lane, string>>>({});
+  let errors = $state<Partial<Record<Lane, StoredError>>>({});
+  const translatedErrors = $derived.by(() => Object.fromEntries(
+    Object.entries(errors).map(([lane, error]) => [lane, errorText(error)]),
+  ) as Partial<Record<Lane, string>>);
+  const translatedLatestVersions = $derived.by(() => Object.fromEntries(
+    Object.entries(latestVersions).map(([id, latest]) => [id, { version: latest.version, error: errorText(latest.error) }]),
+  ));
   let busy = $state<Partial<Record<Lane, boolean>>>({});
   let bound: PackageIdentity | null = null;
   let generation = 0;
@@ -50,19 +68,19 @@ export function createPalimpsestPackagesController(identity: () => PackageIdenti
       const value = await work(actor, request.signal);
       if (owns()) apply(value);
     } catch (error) {
-      if (owns()) errors[lane] = error instanceof Error ? error.message : '요청을 완료하지 못했습니다.';
+      if (owns()) errors[lane] = requestError(error, 'error.request');
     } finally {
       if (owns()) { busy[lane] = false; requests.delete(lane); }
     }
   }
   function assertOwner(value: { project_id: string; namespace?: string | null }, namespaceRequired = true) {
     if (!bound || value.project_id !== bound.projectId || (namespaceRequired && value.namespace !== context?.namespace)) {
-      throw new Error('응답의 프로젝트 또는 네임스페이스가 현재 선택과 다릅니다. 다시 조회해 주세요.');
+      throw new LocalizedError('error.owner');
     }
   }
   function assertKey(key: PackageKey) {
     assertOwner(key);
-    if (!bound || key.owner_user_id !== bound.userId) throw new Error('다른 사용자의 키 응답을 표시할 수 없습니다.');
+    if (!bound || key.owner_user_id !== bound.userId) throw new LocalizedError('error.keyOwner');
   }
   async function hydrateLatest() {
     const actor = identity();
@@ -82,12 +100,12 @@ export function createPalimpsestPackagesController(identity: () => PackageIdenti
           const history = await api.versions(actor!, request.signal, item.name, undefined, 1);
           if (!owns()) return;
           assertOwner(history);
-          if (history.package !== item.name) throw new Error('버전의 패키지가 다릅니다.');
+          if (history.package !== item.name) throw new LocalizedError('error.versionPackage');
           const value = history.items[0] ?? null;
-          if (value) { assertOwner(value); if (value.package !== item.name) throw new Error('버전의 패키지가 다릅니다.'); }
-          latestVersions[item.package_id] = { version: value, error: value ? '' : '최근 버전 기록 없음' };
+          if (value) { assertOwner(value); if (value.package !== item.name) throw new LocalizedError('error.versionPackage'); }
+          latestVersions[item.package_id] = { version: value, error: value ? '' : new LocalizedError('error.noLatest') };
         } catch (error) {
-          if (owns()) latestVersions[item.package_id] = { version: null, error: error instanceof Error ? error.message : '최근 버전 조회 실패' };
+          if (owns()) latestVersions[item.package_id] = { version: null, error: requestError(error, 'error.latest') };
         }
       }
     }
@@ -138,15 +156,15 @@ export function createPalimpsestPackagesController(identity: () => PackageIdenti
   }
   async function openPackage(name: string, digest?: string, namespace?: string) {
     closeDetail();
-    if (namespace && namespace !== context?.namespace) { errors.detail = '링크의 네임스페이스가 선택한 프로젝트와 다릅니다.'; return; }
+    if (namespace && namespace !== context?.namespace) { errors.detail = new LocalizedError('error.linkNamespace'); return; }
     await run('detail', async (actor, signal) => {
       const [summary, history] = await Promise.all([api.detail(actor, signal, name), api.versions(actor, signal, name)]);
       return { summary, history };
     }, ({ summary, history }) => {
       assertOwner(summary); assertOwner(history);
-      if (summary.name !== name) throw new Error('패키지 응답이 요청한 이름과 다릅니다.');
-      if (history.package !== name) throw new Error('버전 이력의 패키지가 요청과 다릅니다.');
-      history.items.forEach((item) => { assertOwner(item); if (item.package !== name) throw new Error('버전의 패키지가 다릅니다.'); });
+      if (summary.name !== name) throw new LocalizedError('error.packageName');
+      if (history.package !== name) throw new LocalizedError('error.historyPackage');
+      history.items.forEach((item) => { assertOwner(item); if (item.package !== name) throw new LocalizedError('error.versionPackage'); });
       detail = summary; versions = history.items; versionsCursor = history.next_cursor;
       if (digest) void selectVersion(digest);
     });
@@ -156,8 +174,8 @@ export function createPalimpsestPackagesController(identity: () => PackageIdenti
     if (!name || !versionsCursor) return;
     await run('detail', (actor, signal) => api.versions(actor, signal, name, versionsCursor ?? undefined), (page) => {
       assertOwner(page);
-      if (page.package !== name) throw new Error('버전 이력의 패키지가 요청과 다릅니다.');
-      page.items.forEach((item) => { assertOwner(item); if (item.package !== name) throw new Error('버전의 패키지가 다릅니다.'); });
+      if (page.package !== name) throw new LocalizedError('error.historyPackage');
+      page.items.forEach((item) => { assertOwner(item); if (item.package !== name) throw new LocalizedError('error.versionPackage'); });
       versions = [...versions ?? [], ...page.items]; versionsCursor = page.next_cursor;
     });
   }
@@ -167,7 +185,7 @@ export function createPalimpsestPackagesController(identity: () => PackageIdenti
     version = null;
     await run('version', (actor, signal) => api.version(actor, signal, name, digest), (value) => {
       assertOwner(value);
-      if (value.package !== name || value.root_digest !== digest) throw new Error('버전 응답이 요청과 다릅니다.');
+      if (value.package !== name || value.root_digest !== digest) throw new LocalizedError('error.version');
       version = value;
     });
   }
@@ -177,7 +195,7 @@ export function createPalimpsestPackagesController(identity: () => PackageIdenti
     version = null;
     await run('version', (actor, signal) => api.resolve(actor, signal, name, tag), (value) => {
       assertOwner(value);
-      if (value.package !== name || value.tag !== tag) throw new Error('태그 응답이 요청과 다릅니다.');
+      if (value.package !== name || value.tag !== tag) throw new LocalizedError('error.tag');
       void selectVersion(value.digest);
     });
   }
@@ -219,10 +237,10 @@ export function createPalimpsestPackagesController(identity: () => PackageIdenti
   function dispose() { reset(); bound = null; disposed = true; }
   return {
     get context() { return context; }, get inventory() { return inventory; }, get nextCursor() { return nextCursor; },
-    get latestVersions() { return latestVersions; },
+    get latestVersions() { return translatedLatestVersions; },
     get detail() { return detail; }, get versions() { return versions; }, get versionsCursor() { return versionsCursor; },
     get version() { return version; }, get keys() { return keys; }, get issued() { return issued; },
-    get busy() { return busy; }, get errors() { return errors; },
+    get busy() { return busy; }, get errors() { return translatedErrors; },
     bindIdentity, loadContext, loadInventory, register, openPackage, closeDetail, moreVersions, selectVersion, resolveTag,
     loadKeys, issueKey, revokeKey, download, discardSecret, dispose,
   };

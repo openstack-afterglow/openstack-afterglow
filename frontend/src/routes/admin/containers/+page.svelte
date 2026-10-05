@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-system';
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
@@ -57,7 +58,7 @@
 
 <div class="p-4 md:p-6 max-w-7xl mx-auto">
 	<div data-tour="admin-containers-header">
-	<PageHeader breadcrumb="CONTAINERS" title="전체 컨테이너">
+	<PageHeader breadcrumb={t('containers.breadcrumb')} title={t('containers.title')}>
 		{#snippet actions()}
 			<TutorialStartButton tour="admin-containers" compactOnMobile />
 			<AutoRefreshControl
@@ -75,19 +76,19 @@
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if containers.length === 0}
-		<div class="text-ink-2 text-sm" data-tour="admin-containers-ready">컨테이너가 없습니다</div>
+		<div class="text-ink-2 text-sm" data-tour="admin-containers-ready">{t('containers.empty')}</div>
 	{:else}
 		<div class="overflow-x-auto" data-tour="admin-containers-ready">
 			<table class="w-full text-sm">
 				<thead>
 					<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
-						<th class="text-left py-2 pr-4">이름</th>
-						<th class="text-left py-2 pr-4">상태</th>
-						<th class="text-left py-2 pr-4">이미지</th>
-						<th class="text-left py-2 pr-4">CPU</th>
-						<th class="text-left py-2 pr-4">메모리</th>
-						<th class="text-left py-2 pr-4">호스트</th>
-						<th class="text-left py-2">생성일</th>
+						<th class="text-left py-2 pr-4">{t('containers.name')}</th>
+						<th class="text-left py-2 pr-4">{t('containers.status')}</th>
+						<th class="text-left py-2 pr-4">{t('containers.image')}</th>
+						<th class="text-left py-2 pr-4">{t('containers.cpu')}</th>
+						<th class="text-left py-2 pr-4">{t('containers.memory')}</th>
+						<th class="text-left py-2 pr-4">{t('containers.host')}</th>
+						<th class="text-left py-2">{t('containers.created')}</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -117,7 +118,7 @@
 </div>
 
 {#if selectedContainerId}
-	<SlidePanel onClose={() => (selectedContainerId = null)} ariaLabel="컨테이너 상세" width="w-full md:w-[480px]" dataTour="admin-containers-detail">
+	<SlidePanel onClose={() => (selectedContainerId = null)} ariaLabel={t('containers.details')} width="w-full md:w-[480px]" dataTour="admin-containers-detail">
 		<ContainerDetailPanel
 			containerId={selectedContainerId}
 			onClose={() => (selectedContainerId = null)}

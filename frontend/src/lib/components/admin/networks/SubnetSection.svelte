@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-network';
 	import type { SubnetDetail } from '$lib/types/networks';
 
 	let {
@@ -54,12 +55,12 @@
 
 <div class="bg-surface-base border border-line rounded-lg p-6 mb-4">
 	<div class="flex items-center justify-between mb-4">
-		<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide">서브넷</h2>
+		<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide">{t('subnetSection.title')}</h2>
 		<button
 			onclick={() => { showSubnetForm = !showSubnetForm; }}
 			class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
 		>
-			{showSubnetForm ? '닫기' : '+ 서브넷 추가'}
+			{showSubnetForm ? t('subnetSection.close') : t('subnetSection.showAdd')}
 		</button>
 	</div>
 
@@ -67,7 +68,7 @@
 		<div class="mb-4 bg-surface-sunken rounded-lg p-4 space-y-3">
 			<div class="grid grid-cols-2 gap-3">
 				<div>
-					<label class="block text-xs text-ink-2 mb-1">이름 (선택)
+					<label class="block text-xs text-ink-2 mb-1">{t('subnetSection.optionalName')}
 						<input
 							bind:value={subnetForm.name}
 							type="text"
@@ -87,7 +88,7 @@
 					</label>
 				</div>
 				<div>
-					<label class="block text-xs text-ink-2 mb-1">게이트웨이 (선택)
+					<label class="block text-xs text-ink-2 mb-1">{t('subnetSection.optionalGateway')}
 						<input
 							bind:value={subnetForm.gateway}
 							type="text"
@@ -99,7 +100,7 @@
 				<div class="flex items-end pb-1.5">
 					<label class="flex items-center gap-2 text-sm text-ink-2">
 						<input type="checkbox" bind:checked={subnetForm.dhcp} class="rounded border-line-2" />
-						DHCP 활성화
+						{t('subnetSection.enableDhcp')}
 					</label>
 				</div>
 			</div>
@@ -112,7 +113,7 @@
 					disabled={addingSubnet}
 					class="text-sm px-4 py-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-action-on-warm rounded transition-colors"
 				>
-					{addingSubnet ? '추가 중...' : '서브넷 추가'}
+					{addingSubnet ? t('subnetSection.adding') : t('subnetSection.add')}
 				</button>
 			</div>
 		</div>
@@ -125,7 +126,7 @@
 					<div class="bg-surface-sunken rounded-lg p-4 space-y-3">
 						<div class="grid grid-cols-2 gap-3">
 							<div>
-								<label class="block text-xs text-ink-2 mb-1">이름
+								<label class="block text-xs text-ink-2 mb-1">{t('subnetSection.name')}
 									<input
 										bind:value={editSubnetForm.name}
 										type="text"
@@ -134,11 +135,11 @@
 								</label>
 							</div>
 							<div>
-								<label class="block text-xs text-ink-2 mb-1">게이트웨이
+								<label class="block text-xs text-ink-2 mb-1">{t('subnetSection.gateway')}
 									<input
 										bind:value={editSubnetForm.gateway}
 										type="text"
-										placeholder={subnet.gateway_ip ?? '없음'}
+										placeholder={subnet.gateway_ip ?? t('subnetSection.noGateway')}
 										class="w-full bg-surface-selected border border-line-2 rounded px-2.5 py-1.5 text-ink-0 text-sm font-mono focus:outline-none focus:border-action-warm mt-1"
 									/>
 								</label>
@@ -146,7 +147,7 @@
 							<div class="flex items-center">
 								<label class="flex items-center gap-2 text-sm text-ink-2">
 									<input type="checkbox" bind:checked={editSubnetForm.dhcp} class="rounded border-line-2" />
-									DHCP 활성화
+									{t('subnetSection.enableDhcp')}
 								</label>
 							</div>
 						</div>
@@ -157,12 +158,12 @@
 							<button
 								onclick={() => { editingSubnetId = null; }}
 								class="text-xs text-ink-2 hover:text-ink-1 px-3 py-1.5 transition-colors"
-							>취소</button>
+							>{t('subnetSection.cancel')}</button>
 							<button
 								onclick={handleSave}
 								disabled={savingSubnet}
 								class="text-xs px-4 py-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-action-on-warm rounded transition-colors"
-							>{savingSubnet ? '저장 중...' : '저장'}</button>
+							>{savingSubnet ? t('subnetSection.saving') : t('subnetSection.save')}</button>
 						</div>
 					</div>
 				{:else}
@@ -174,7 +175,7 @@
 										href="/admin/subnets/{subnet.id}"
 										class="hover:text-accent hover:underline transition-colors"
 									>
-										{subnet.name || '(이름 없음)'}
+										{subnet.name || t('subnetSection.unnamed')}
 									</a>
 								</h3>
 								<span class="text-xs text-ink-2 font-mono">{subnet.id}</span>
@@ -183,12 +184,12 @@
 								<button
 									onclick={() => startEditSubnet(subnet)}
 									class="text-xs text-warm-text hover:text-warm-text-hover px-2 py-1 border border-action-warm hover:border-action-warm rounded transition-colors"
-								>편집</button>
+								>{t('subnetSection.edit')}</button>
 								<button
 									onclick={() => onDelete(subnet.id, subnet.name)}
 									disabled={deletingSubnetId === subnet.id}
 									class="text-xs text-red-400 hover:text-red-300 disabled:text-ink-3 px-2 py-1 border border-red-900 hover:border-red-700 disabled:border-line-2 rounded transition-colors"
-								>{deletingSubnetId === subnet.id ? '삭제 중...' : '삭제'}</button>
+								>{deletingSubnetId === subnet.id ? t('subnetSection.deleting') : t('subnetSection.delete')}</button>
 							</div>
 						</div>
 						<dl class="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
@@ -197,21 +198,21 @@
 								<dd class="text-sm text-ink-2 font-mono">{subnet.cidr}</dd>
 							</div>
 							<div>
-								<dt class="text-xs text-ink-2 mb-0.5">게이트웨이</dt>
+								<dt class="text-xs text-ink-2 mb-0.5">{t('subnetSection.gateway')}</dt>
 								<dd class="text-sm text-ink-2 font-mono">{subnet.gateway_ip ?? '-'}</dd>
 							</div>
 							<div>
 								<dt class="text-xs text-ink-2 mb-0.5">DHCP</dt>
 								<dd>
 									{#if subnet.dhcp_enabled}
-										<span class="px-1.5 py-0.5 bg-green-900/30 text-green-400 rounded text-xs">활성</span>
+										<span class="px-1.5 py-0.5 bg-green-900/30 text-green-400 rounded text-xs">{t('subnetSection.active')}</span>
 									{:else}
-										<span class="px-1.5 py-0.5 bg-surface-sunken text-ink-2 rounded text-xs">비활성</span>
+										<span class="px-1.5 py-0.5 bg-surface-sunken text-ink-2 rounded text-xs">{t('subnetSection.inactive')}</span>
 									{/if}
 								</dd>
 							</div>
 							<div>
-								<dt class="text-xs text-ink-2 mb-0.5">IP 버전</dt>
+								<dt class="text-xs text-ink-2 mb-0.5">{t('subnetSection.ipVersion')}</dt>
 								<dd class="text-sm text-ink-2">IPv4</dd>
 							</div>
 						</dl>
@@ -220,6 +221,6 @@
 			{/each}
 		</div>
 	{:else}
-		<p class="text-sm text-ink-2">서브넷 없음</p>
+		<p class="text-sm text-ink-2">{t('subnetSection.empty')}</p>
 	{/if}
 </div>

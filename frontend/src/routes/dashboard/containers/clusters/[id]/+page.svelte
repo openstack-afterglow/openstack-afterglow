@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/containers-shell';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
   import { untrack } from 'svelte';
   import { page } from '$app/stores';
@@ -23,9 +24,9 @@
   let resources = $state<StackResource[]>([]);
   let events = $state<StackEvent[]>([]);
   const clusterTabs = $derived([
-    { value: 'detail', label: '상세', panelId: 'cluster-panel-detail' },
-    { value: 'resources', label: cluster?.stack_id ? '스택 리소스' : '스택 리소스 (없음)', panelId: 'cluster-panel-resources', disabled: !cluster?.stack_id },
-    { value: 'events', label: cluster?.stack_id ? '스택 이벤트' : '스택 이벤트 (없음)', panelId: 'cluster-panel-events', disabled: !cluster?.stack_id },
+    { value: 'detail', label: t('clusters.tabs.detail'), panelId: 'cluster-panel-detail' },
+    { value: 'resources', label: cluster?.stack_id ? t('clusters.tabs.resources') : t('clusters.tabs.noResources'), panelId: 'cluster-panel-resources', disabled: !cluster?.stack_id },
+    { value: 'events', label: cluster?.stack_id ? t('clusters.tabs.events') : t('clusters.tabs.noEvents'), panelId: 'cluster-panel-events', disabled: !cluster?.stack_id },
   ]);
   let loading = $state(true);
   let resourcesLoading = $state(false);
@@ -56,7 +57,7 @@
       error = '';
     } catch (e) {
       if (generation === clusterGeneration && clusterId === requestId && projectId === requestProjectId) {
-        error = e instanceof ApiError ? `조회 실패: ${e.message}` : '서버 오류';
+        error = e instanceof ApiError ? t('clusters.detail.loadFailed', { message: e.message }) : t('clusters.error.server');
       }
     } finally {
       if (generation === clusterGeneration && clusterId === requestId && projectId === requestProjectId) loading = false;
@@ -132,12 +133,12 @@
 
   async function handleDelete() {
     if (!cluster) return;
-    if (!await confirmDialog(`클러스터 "${cluster.name}"을 삭제하시겠습니까?`)) return;
+    if (!await confirmDialog(t('clusters.deleteDialog.body', { name: cluster.name }))) return;
     try {
       await api.delete(`/api/v1/clusters/${clusterId}`, token, projectId);
       goto('/dashboard/containers/clusters');
     } catch (e) {
-      toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+      toast.error(t('clusters.error.deleteFailed', { message: e instanceof ApiError ? e.message : String(e) }));
     }
   }
 
@@ -160,7 +161,7 @@
 
   {#if loading}
     <div class="flex items-center gap-3 mb-6">
-      <button onclick={() => goto('/dashboard/containers/clusters')} class="text-ink-2 hover:text-ink-0 transition-colors text-sm">← 클러스터 목록</button>
+      <button onclick={() => goto('/dashboard/containers/clusters')} class="text-ink-2 hover:text-ink-0 transition-colors text-sm">{t('clusters.header.backToList')}</button>
     </div>
     <LoadingSkeleton variant="detail" />
   {:else if cluster}
@@ -178,7 +179,7 @@
       id="cluster-detail-tabs"
       value={activeTab}
       items={clusterTabs}
-      ariaLabel="클러스터 상세 정보"
+      ariaLabel={t('clusters.tabs.ariaLabel')}
       onchange={(value) => { void switchTab(value as Tab); }}
       class="mb-6"
     />

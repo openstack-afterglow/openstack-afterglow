@@ -10,6 +10,10 @@ import { confirmDialog } from '$lib/stores/confirm.svelte';
 import { pruneSelectionByIds } from '$lib/utils/selectionSet';
 import { executeBulkMutations } from '$lib/utils/bulkActions';
 import { toast } from '$lib/stores/toast';
+import { t } from '$lib/i18n/ns/object-storage';
+import source from '$lib/i18n/messages/ko/object-storage.json';
+
+const moveRoot = source['dialogs.controller.move.rootToken'];
 
 export type TreeRow = {
 	obj: SwiftObject;
@@ -502,8 +506,9 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 			const obj = findObject(n);
 			return obj && isDirectory(obj);
 		});
-		let msg = `${submitted.length}개 항목을 휴지통으로 이동합니다. 보관 기간 내에 복구할 수 있습니다.`;
-		if (dirs.length > 0) msg += `\n\n⚠️ ${dirs.length}개 디렉토리 포함 — 하위 파일이 모두 휴지통으로 이동됩니다.`;
+		const msg = dirs.length > 0
+			? t('dialogs.controller.delete.bulkConfirmWithDirectories', { count: submitted.length, directoryCount: dirs.length })
+			: t('dialogs.controller.delete.bulkConfirm', { count: submitted.length });
 		if (!(await confirmDialog(msg))) return;
 		bulkDeleting = true;
 		try {
@@ -514,15 +519,15 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 			);
 			const deleted = result.deleted ?? [];
 			const failedCount = result.failed?.length ?? Math.max(0, submitted.length - deleted.length);
-			if (deleted.length) toast.success(`${deleted.length}개 휴지통 이동 요청을 완료했습니다.`);
-			if (failedCount) toast.error(`${failedCount}개 휴지통 이동에 실패했습니다.`);
+			if (deleted.length) toast.success(t('dialogs.controller.delete.bulkSuccess', { count: deleted.length }));
+			if (failedCount) toast.error(t('dialogs.controller.delete.bulkFailed', { count: failedCount }));
 			if (opts.projectId() === requestProject && opts.containerName() === requestContainer) {
 				selected = pruneSelectionByIds(selected, submitted.filter((name) => !deleted.includes(name)));
 				await doRefresh();
 				loadContainerMeta();
 			}
 		} catch {
-			toast.error('삭제 요청에 실패했습니다.');
+			toast.error(t('dialogs.controller.delete.requestFailed'));
 		} finally { bulkDeleting = false; }
 	}
 
@@ -546,12 +551,12 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 				downloadBlobAs(blob, filename);
 			}
 		} catch (e) {
-			toast.error('다운로드 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('dialogs.controller.download.failed', { error: e instanceof ApiError ? e.message : String(e) }));
 		} finally { downloading = null; }
 	}
 
 	async function deleteObject(name: string) {
-		if (!(await confirmDialog(`"${displayName(name)}"을(를) 휴지통으로 이동합니다. 보관 기간 내에 복구할 수 있습니다.`))) return;
+		if (!(await confirmDialog(t('dialogs.controller.delete.confirm', { name: displayName(name) })))) return;
 		deleting = name;
 		try {
 			await api.delete(
@@ -560,7 +565,7 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 			);
 			await doRefresh();
 		} catch (e) {
-			toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('dialogs.controller.delete.failed', { error: e instanceof ApiError ? e.message : String(e) }));
 		} finally { deleting = null; }
 	}
 
@@ -588,7 +593,7 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 			} else {
 				previewText = await res.text();
 			}
-		} catch { previewText = '미리보기를 불러오지 못했습니다.'; }
+		} catch { previewText = t('dialogs.controller.preview.failed'); }
 		finally { loadingPreview = false; }
 	}
 
@@ -598,7 +603,7 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 	}
 
 	async function createDirectory() {
-		if (!newDirName.trim()) { dirError = '폴더 이름을 입력하세요.'; return; }
+		if (!newDirName.trim()) { dirError = t('dialogs.controller.newDir.nameRequired'); return; }
 		creatingDir = true; dirError = '';
 		try {
 			await api.post(
@@ -609,7 +614,7 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 			showNewDir = false; newDirName = '';
 			await doRefresh();
 		} catch (e) {
-			dirError = e instanceof ApiError ? e.message : '폴더 생성 실패';
+			dirError = e instanceof ApiError ? e.message : t('dialogs.controller.newDir.failed');
 		} finally { creatingDir = false; }
 	}
 
@@ -621,7 +626,7 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 	}
 
 	async function doRename() {
-		if (!renameNew.trim()) { renameError = '새 이름을 입력하세요.'; return; }
+		if (!renameNew.trim()) { renameError = t('dialogs.controller.rename.nameRequired'); return; }
 		renaming = true; renameError = '';
 		try {
 			let newFullName = prefix + renameNew.trim();
@@ -633,7 +638,7 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 			showRename = false;
 			await doRefresh();
 		} catch (e) {
-			renameError = e instanceof ApiError ? e.message : '이름 변경 실패';
+			renameError = e instanceof ApiError ? e.message : t('dialogs.controller.rename.failed');
 		} finally { renaming = false; }
 	}
 
@@ -650,10 +655,10 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 				`/api/v1/object-storage/${encodeURIComponent(targetContainer)}/objects?delimiter=/`,
 				opts.token(), opts.projectId()
 			);
-			moveDirectories = ['/ (루트)', ...all
+			moveDirectories = [moveRoot, ...all
 				.filter(o => o.is_dir === true || o.content_type === 'application/directory' || o.name.endsWith('/'))
 				.map(o => o.name)];
-		} catch { moveDirectories = ['/ (루트)']; }
+		} catch { moveDirectories = [moveRoot]; }
 		finally { moveLoadingDirs = false; }
 	}
 
@@ -668,13 +673,13 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 		const stripped = moveTarget.replace(/\/$/, '');
 		const bname = stripped.split('/').pop() || stripped;
 		const filename = moveTarget.endsWith('/') ? bname + '/' : bname;
-		if (dir === '/ (루트)') { moveSelectedDir = ''; moveDest = filename; }
+		if (dir === moveRoot) { moveSelectedDir = ''; moveDest = filename; }
 		else { moveSelectedDir = dir; moveDest = dir + filename; }
 		moveDestinationChosen = true;
 	}
 
 	function selectBulkMoveDir(dir: string) {
-		moveSelectedDir = dir === '/ (루트)' ? '' : dir;
+		moveSelectedDir = dir === moveRoot ? '' : dir;
 		moveDest = moveSelectedDir;
 		moveDestinationChosen = true;
 	}
@@ -686,7 +691,7 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 	}
 
 	async function doMove() {
-		if (!moveDestinationChosen) { moveError = '대상 경로를 선택하세요.'; return; }
+		if (!moveDestinationChosen) { moveError = t('dialogs.controller.move.destinationRequired'); return; }
 		moving = true; moveError = '';
 		try {
 			await api.post(
@@ -697,7 +702,7 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 			showMove = false;
 			await doRefresh();
 		} catch (e) {
-			moveError = e instanceof ApiError ? e.message : '이동 실패';
+			moveError = e instanceof ApiError ? e.message : t('dialogs.controller.move.failed');
 		} finally { moving = false; }
 	}
 
@@ -709,7 +714,7 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 	}
 
 	async function doBulkMove() {
-		if (!moveDestinationChosen) { moveError = '대상 경로를 선택하세요.'; return; }
+		if (!moveDestinationChosen) { moveError = t('dialogs.controller.move.destinationRequired'); return; }
 		const requestDest = moveDest.trim();
 		const submitted = [...selected];
 		const requestContainer = opts.containerName();
@@ -734,8 +739,8 @@ export function createObjectBrowserStore(opts: ObjectBrowserOpts) {
 			});
 			const moved = results.filter((result) => result.ok).map((result) => result.id);
 			const failedCount = results.length - moved.length;
-			if (moved.length) toast.success(`${moved.length}개 이동 요청을 완료했습니다.`);
-			if (failedCount) toast.error(`${failedCount}개 이동에 실패했습니다.`);
+			if (moved.length) toast.success(t('dialogs.controller.move.bulkSuccess', { count: moved.length }));
+			if (failedCount) toast.error(t('dialogs.controller.move.bulkFailed', { count: failedCount }));
 			if (opts.projectId() === requestProject && opts.containerName() === requestContainer) {
 				showBulkMove = false;
 				selected = pruneSelectionByIds(selected, submitted.filter((name) => !moved.includes(name)));

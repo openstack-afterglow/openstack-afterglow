@@ -64,6 +64,7 @@ See the documentation below for Kubernetes / ArgoCD / kolla-ansible deployment a
 | [Security model](docs/security.md) _(Korean)_ | Authn/authz, IDOR guards, HKDF crypto, audit log |
 | [Targeted testing](docs/testing.md) _(Korean)_ | Fast local feature-test target guide |
 | [Architecture detail](docs/en/architecture.md) | Historical/domain detail linked from the root source of truth |
+| [Frontend localization](docs/en/frontend-localization.md) | Four-language catalogs, spreadsheet exchange and native-speaker review |
 
 Release changes: [CHANGELOG](CHANGELOG.md) · work log: [`openspec/`](openspec/) (`openspec list`, migrated from milestone.md).
 

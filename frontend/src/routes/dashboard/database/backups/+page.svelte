@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t as tr } from '$lib/i18n/ns/database';
 	import { untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -54,7 +55,7 @@
 			selection.retain(nextBackups.map((backup) => backup.id));
 			error = '';
 		} catch (e) {
-			if ($auth.projectId === projectSnapshot) error = e instanceof ApiError ? `조회 실패 (${e.status})` : '서버 오류';
+			if ($auth.projectId === projectSnapshot) error = e instanceof ApiError ? tr('errors.lookupStatus', { status: e.status }) : tr('errors.server');
 		} finally {
 			if ($auth.projectId === projectSnapshot) loading = false;
 		}
@@ -77,22 +78,18 @@
 		await api.post('/api/v1/database-instances/restore', {
 			backup_id: backupId, name, flavor_id: flavorId, volume_size: volumeSize,
 		}, $auth.token ?? undefined, $auth.projectId ?? undefined);
-		toast.success('복원 인스턴스 생성이 시작되었습니다.');
+		toast.success(tr('restore.started'));
 		await fetchBackups();
 	}
 
 	async function deleteBackup(id: string, name: string, stuck: boolean) {
-		const baseMsg = `백업 "${name || id.slice(0, 8)}"을 삭제하시겠습니까?`;
-		const stuckNote = stuck
-			? '\n\nTrove 백업 레코드만 제거됩니다. Swift에 저장된 데이터는 이미 없을 수 있습니다.'
-			: '';
-		if (!await confirmDialog(baseMsg + stuckNote)) return;
+		if (!await confirmDialog(stuck ? tr('backups.deleteNamedStuck', { name: name || id.slice(0, 8) }) : tr('backups.deleteNamed', { name: name || id.slice(0, 8) }))) return;
 		deleting = id;
 		try {
 			await api.delete(`/api/v1/database-instances/backups/${id}`, $auth.token ?? undefined, $auth.projectId ?? undefined);
 			await fetchBackups();
 		} catch (e) {
-			toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(tr('errors.delete', { error: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			deleting = null;
 		}
@@ -101,8 +98,7 @@
 		const snapshot = [...selection.ids];
 		if (snapshot.length === 0) return;
 		const stuckCount = backups.filter((backup) => snapshot.includes(backup.id) && isStuck(backup)).length;
-		const stuckNote = stuckCount > 0 ? `\n\n${stuckCount}개 멈춤 백업은 Trove 레코드만 제거되며 Swift 데이터는 이미 없을 수 있습니다.` : '';
-		if (!await confirmDialog(`선택한 백업 ${snapshot.length}개를 삭제하시겠습니까?${stuckNote}`)) return;
+		if (!await confirmDialog(stuckCount > 0 ? tr('backups.bulkConfirmStuck', { count: snapshot.length, stuckCount }) : tr('backups.bulkConfirm', { count: snapshot.length }))) return;
 		const tokenSnapshot = $auth.token ?? undefined;
 		const projectSnapshot = $auth.projectId ?? undefined;
 		bulkBusy = true;
@@ -110,8 +106,8 @@
 			const results = await executeBulkMutations(snapshot, (id) => api.delete(`/api/v1/database-instances/backups/${id}`, tokenSnapshot, projectSnapshot));
 			const successful = results.filter((result) => result.ok).map((result) => result.id);
 			const failed = results.length - successful.length;
-			if (successful.length > 0) toast.success(`${successful.length}개 삭제 요청을 완료했습니다.`);
-			if (failed > 0) toast.error(`${failed}개 삭제에 실패했습니다.`);
+			if (successful.length > 0) toast.success(tr('backups.bulkSuccess', { count: successful.length }));
+			if (failed > 0) toast.error(tr('backups.bulkFailed', { count: failed }));
 			if ($auth.projectId === projectSnapshot) {
 				selection.remove(successful);
 				await fetchBackups();
@@ -122,7 +118,7 @@
 	}
 
 	const bulkActions: BulkSelectionAction[] = [
-		{ key: 'delete', label: '삭제', tone: 'danger', onAction: runBulkDelete },
+		{ key: 'delete', label: tr('actions.delete'), tone: 'danger', onAction: runBulkDelete },
 	];
 
 	async function forceRefresh() {
@@ -164,8 +160,8 @@
 />
 
 <PageShell class="bulk-selection-page space-y-4">
-	<PageHeader breadcrumb="DATABASE / BACKUPS" title="DB 백업" />
-	<ResourceToolbar label="데이터베이스 백업 목록 도구">
+	<PageHeader breadcrumb={tr('breadcrumbs.backups')} title={tr('backups.title')} />
+	<ResourceToolbar label={tr('backups.toolbar')}>
 		{#snippet actions()}
 			<AutoRefreshControl
 				bind:active={ar.active}
@@ -184,7 +180,7 @@
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={4} />
 	{:else if backups.length === 0}
-		<EmptyState headline="DB 백업이 없습니다" description="데이터베이스 인스턴스에서 백업을 생성하면 여기에 표시됩니다." />
+		<EmptyState headline={tr('backups.listEmpty')} description={tr('backups.emptyHelp')} />
 	{:else}
 		<DbBackupsTable
 			{backups}
@@ -199,6 +195,6 @@
 			onRestoreIntent={prefetchFlavors}
 			onDelete={deleteBackup}
 		/>
-		<BulkSelectionOverlay count={selection.count} ariaLabel="선택한 DB 백업 일괄 작업" actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
+		<BulkSelectionOverlay count={selection.count} ariaLabel={tr('backups.bulkLabel')} actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
 	{/if}
 </PageShell>

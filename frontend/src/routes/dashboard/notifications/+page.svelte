@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/dashboard-home';
 	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { auth } from '$lib/stores/auth';
@@ -98,7 +99,7 @@
 			}
 		} catch (e) {
 			if (generation === loadGeneration && ($auth.projectId ?? undefined) === projectId) {
-				error = e instanceof ApiError ? e.message : '알림을 불러오지 못했습니다';
+				error = e instanceof ApiError ? e.message : t('notifications.loadFailed');
 			}
 		} finally {
 			if (generation === loadGeneration && ($auth.projectId ?? undefined) === projectId) loading = false;
@@ -115,11 +116,11 @@
 			class="inline-flex items-center gap-1.5 text-xs text-[var(--color-ink-2)] hover:text-[var(--color-ink-0)] transition-colors px-2.5 py-1.5 rounded-md hover:bg-[var(--color-surface-sunken)]"
 		>
 			<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
-			대시보드로 돌아가기
+			{t('notifications.back')}
 		</a>
 	</div>
 
-	<PageHeader breadcrumb="" title="알림함" subtitle="쿼터 경고와 관리자 공지를 확인합니다" />
+	<PageHeader breadcrumb="" title={t('notifications.title')} subtitle={t('notifications.subtitle')} />
 
 	{#if error}
 		<Alert tone="danger" class="mb-4">{error}</Alert>
@@ -127,11 +128,11 @@
 
 	{#if quotaLoading}
 		<Card padding="lg" class="mb-4">
-			<p class="text-xs text-[var(--color-ink-3)]">쿼터 경고를 불러오는 중...</p>
+			<p class="text-xs text-[var(--color-ink-3)]">{t('notifications.loadingQuota')}</p>
 		</Card>
 	{:else if quotaAlerts.length > 0}
 		<Card padding="lg" class="mb-4">
-			<p class="text-xs uppercase tracking-wide text-[var(--color-ink-3)] mb-3">현재 쿼터 경고</p>
+			<p class="text-xs uppercase tracking-wide text-[var(--color-ink-3)] mb-3">{t('notifications.quotaWarnings')}</p>
 			<ul class="flex flex-col gap-2">
 				{#each quotaAlerts as alert}
 					<li class="flex items-start gap-2.5 text-sm">
@@ -151,9 +152,9 @@
 	{:else}
 
 		<Card padding="lg">
-			<p class="text-xs uppercase tracking-wide text-[var(--color-ink-3)] mb-3">공지 히스토리</p>
+			<p class="text-xs uppercase tracking-wide text-[var(--color-ink-3)] mb-3">{t('notifications.history')}</p>
 			{#if announcements.length === 0}
-				<EmptyState headline="받은 공지가 없습니다" description="새 공지와 쿼터 알림이 여기에 표시됩니다." />
+				<EmptyState headline={t('notifications.empty')} description={t('notifications.emptyHelp')} />
 			{:else}
 				<ul class="flex flex-col divide-y divide-[var(--color-line)]">
 					{#each announcements as a (a.id)}
@@ -168,10 +169,10 @@
 									<span class="flex items-center gap-2">
 										<span class="text-sm font-medium text-[var(--color-ink-0)] group-hover:text-[var(--color-accent)] transition-colors">{a.title}</span>
 										{#if !a.is_read}
-											<span class="text-xs uppercase tracking-wide text-[var(--color-accent)] border border-[var(--color-accent)]/40 rounded px-1 py-0.5">new</span>
+											<span class="text-xs uppercase tracking-wide text-[var(--color-accent)] border border-[var(--color-accent)]/40 rounded px-1 py-0.5">{t('notifications.new')}</span>
 										{/if}
 									</span>
-									<span class="block text-xs text-[var(--color-ink-3)] mt-1 tabular-nums">{formatIsoDateTime(a.created_at)} · {a.created_by_username} (관리자)</span>
+									<span class="block text-xs text-[var(--color-ink-3)] mt-1 tabular-nums">{formatIsoDateTime(a.created_at)} · {t('notifications.senderName', { name: a.created_by_username })}</span>
 								</span>
 								<svg
 									class="w-3.5 h-3.5 mt-1 flex-shrink-0 text-[var(--color-ink-3)] transition-transform {expandedId === a.id ? 'rotate-180' : ''}"
@@ -182,16 +183,16 @@
 								<div class="ml-5 mb-3.5 rounded-lg px-4 py-3" style="background: var(--color-surface-sunken);">
 									<p class="text-xs text-[var(--color-ink-1)] whitespace-pre-wrap leading-relaxed">{a.body}</p>
 									<dl class="mt-3 pt-3 border-t border-[var(--color-line)] grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs">
-										<dt class="text-[var(--color-ink-3)]">발송자</dt>
-										<dd class="text-[var(--color-ink-1)]">{a.created_by_username} (관리자)</dd>
-										<dt class="text-[var(--color-ink-3)]">발송 시각</dt>
+										<dt class="text-[var(--color-ink-3)]">{t('notifications.sender')}</dt>
+										<dd class="text-[var(--color-ink-1)]">{t('notifications.senderName', { name: a.created_by_username })}</dd>
+										<dt class="text-[var(--color-ink-3)]">{t('notifications.sentAt')}</dt>
 										<dd class="text-[var(--color-ink-1)] tabular-nums">{formatIsoDateTime(a.created_at)}</dd>
 										{#if a.starts_at}
-											<dt class="text-[var(--color-ink-3)]">게시 시작</dt>
+											<dt class="text-[var(--color-ink-3)]">{t('notifications.startsAt')}</dt>
 											<dd class="text-[var(--color-ink-1)] tabular-nums">{formatIsoDateTime(a.starts_at)}</dd>
 										{/if}
-										<dt class="text-[var(--color-ink-3)]">만료 시각</dt>
-										<dd class="text-[var(--color-ink-1)] tabular-nums">{a.ends_at ? formatIsoDateTime(a.ends_at) : '만료 없음'}</dd>
+										<dt class="text-[var(--color-ink-3)]">{t('notifications.endsAt')}</dt>
+										<dd class="text-[var(--color-ink-1)] tabular-nums">{a.ends_at ? formatIsoDateTime(a.ends_at) : t('notifications.noExpiry')}</dd>
 									</dl>
 								</div>
 							{/if}

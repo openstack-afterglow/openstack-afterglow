@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/dashboard-home';
 	import { untrack } from 'svelte';
 	import { auth, authReady } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
@@ -102,7 +103,7 @@
 			}
 		} catch (loadError) {
 			if (generation === loadGeneration && projectId === requestProjectId && period === requestPeriod) {
-				error = loadError instanceof Error ? loadError.message : '데이터 로딩 실패';
+				error = loadError instanceof Error ? loadError.message : t('usage.loadFailed');
 			}
 		} finally {
 			if (generation === loadGeneration && projectId === requestProjectId && period === requestPeriod) {
@@ -141,8 +142,8 @@
 </script>
 
 <PageShell class="space-y-6">
-	<PageHeader breadcrumb="USAGE" title="사용량" subtitle={$auth.projectName ?? '—'} />
-	<ResourceToolbar label="사용량 조회 설정">
+	<PageHeader breadcrumb={t('usage.breadcrumb')} title={t('usage.title')} subtitle={$auth.projectName ?? '—'} />
+	<ResourceToolbar label={t('usage.toolbar')}>
 		{#snippet filters()}
 			<ToggleGroup
 				value={period}
@@ -152,7 +153,7 @@
 					{ value: '30d', label: '30d' },
 				]}
 				onchange={(next) => { period = next as typeof period; }}
-				ariaLabel="사용량 조회 기간"
+				ariaLabel={t('usage.period')}
 			/>
 		{/snippet}
 		{#snippet actions()}
@@ -161,7 +162,7 @@
 				onclick={() => { ar.active = !ar.active; }}
 				class="min-h-8 rounded-md border border-line-2 px-3 text-xs font-medium text-ink-2 transition-colors hover:bg-surface-selected hover:text-ink-0"
 				aria-pressed={ar.active}
-			>자동 새로고침 {ar.active ? '켜짐' : '꺼짐'}</button>
+			>{t(ar.active ? 'usage.autoRefreshOn' : 'usage.autoRefreshOff')}</button>
 		{/snippet}
 	</ResourceToolbar>
 
@@ -173,14 +174,14 @@
 		<!-- Spark trend cards — 24h 추세 (3-row: 현재값 + 그래프 + min/max) -->
 		<div class="grid grid-cols-1 sm:grid-cols-4 gap-3.5">
 		{#if trendLoading}
-			<div class="text-[var(--color-ink-3)] text-xs">추세 메트릭을 불러오는 중...</div>
+			<div class="text-[var(--color-ink-3)] text-xs">{t('usage.loadingTrend')}</div>
 		{/if}
 			{#each [
-				{ label: `vCPU ${trendRange} 추세`,    unit: '%',     color: 'var(--color-accent)',      key: 'vcpu'    as const },
-				{ label: `RAM ${trendRange} 추세`,      unit: '%',     color: 'var(--color-accent-2)',    key: 'memory'  as const },
-				{ label: `디스크 ${trendRange} 추세`,   unit: '%',     color: 'var(--color-warm)',        key: 'storage' as const,
-				  fallback: '게스트 OS 내부 메트릭 미수집' },
-				{ label: `네트워크 ${trendRange} 추세`, unit: trendData?.network?.unit ?? 'KiB/s', color: 'var(--color-state-info)', key: 'network' as const },
+				{ label: t('usage.vcpuTrend', { range: trendRange }),    unit: '%',     color: 'var(--color-accent)',      key: 'vcpu'    as const },
+				{ label: t('usage.ramTrend', { range: trendRange }),      unit: '%',     color: 'var(--color-accent-2)',    key: 'memory'  as const },
+				{ label: t('usage.diskTrend', { range: trendRange }),   unit: '%',     color: 'var(--color-warm)',        key: 'storage' as const,
+				  fallback: t('usage.guestUnavailable') },
+				{ label: t('usage.networkTrend', { range: trendRange }), unit: trendData?.network?.unit ?? 'KiB/s', color: 'var(--color-state-info)', key: 'network' as const },
 			] as card}
 				{@const rawSeries  = trendData?.[card.key]}
 				{@const netScaled  = card.key === 'network' && rawSeries?.data?.length ? scaleNetwork(rawSeries.data) : null}
@@ -203,16 +204,16 @@
 						{#if hasData}
 							<Spark data={seriesData} color={card.color} height={72} class="w-full" />
 						{:else if !trendData || !trendData.prometheus_available}
-							<p class="text-xs italic text-[var(--color-ink-3)]">메트릭 수집 미설정</p>
+							<p class="text-xs italic text-[var(--color-ink-3)]">{t('usage.notConfigured')}</p>
 						{:else if 'fallback' in card}
 							<p class="text-xs italic text-[var(--color-ink-3)]">{card.fallback}</p>
 						{:else}
-							<p class="text-xs text-[var(--color-ink-3)]">수집 대기 중</p>
+							<p class="text-xs text-[var(--color-ink-3)]">{t('usage.waiting')}</p>
 						{/if}
 					</div>
 					{#if hasData}
 						<p class="text-xs tabular-nums text-[var(--color-ink-3)]">
-							min {min!.toFixed(1)}{displayUnit} · max {max!.toFixed(1)}{displayUnit}
+							{t('usage.minMax', { min: min!.toFixed(1), max: max!.toFixed(1), unit: displayUnit })}
 						</p>
 					{/if}
 				</div>
@@ -221,20 +222,20 @@
 
 		<!-- Top consumers table -->
 		<div class="bg-surface-base border border-line rounded-lg p-5">
-			<SectionHeader title="상위 인스턴스" meta="{data.top_instances.length}개" />
+			<SectionHeader title={t('usage.topInstances')} meta={t('usage.count', { count: data.top_instances.length })} />
 			{#if data.top_instances.length === 0}
-				<div class="mt-6 text-center text-sm text-ink-2 py-6">인스턴스 없음</div>
+				<div class="mt-6 text-center text-sm text-ink-2 py-6">{t('usage.empty')}</div>
 			{:else}
 				<div class="mt-4 overflow-x-auto">
 					<table class="w-full text-xs">
 						<thead>
 							<tr class="border-b border-line">
 								<th class="text-left pb-2 text-xs uppercase tracking-wide text-[var(--color-ink-3)] font-medium w-8">#</th>
-								<th class="text-left pb-2 text-xs uppercase tracking-wide text-[var(--color-ink-3)] font-medium">인스턴스</th>
-								<th class="text-left pb-2 text-xs uppercase tracking-wide text-[var(--color-ink-3)] font-medium">플레이버</th>
+								<th class="text-left pb-2 text-xs uppercase tracking-wide text-[var(--color-ink-3)] font-medium">{t('usage.instance')}</th>
+								<th class="text-left pb-2 text-xs uppercase tracking-wide text-[var(--color-ink-3)] font-medium">{t('usage.flavor')}</th>
 								<th class="text-left pb-2 text-xs uppercase tracking-wide text-[var(--color-ink-3)] font-medium w-44">vCPU</th>
 								<th class="text-left pb-2 text-xs uppercase tracking-wide text-[var(--color-ink-3)] font-medium w-44">RAM</th>
-								<th class="text-left pb-2 text-xs uppercase tracking-wide text-[var(--color-ink-3)] font-medium">상태</th>
+								<th class="text-left pb-2 text-xs uppercase tracking-wide text-[var(--color-ink-3)] font-medium">{t('usage.status')}</th>
 							</tr>
 						</thead>
 						<tbody>
@@ -283,6 +284,6 @@
 			{/if}
 		</div>
 	{:else}
-		<EmptyState headline="사용량 데이터가 없습니다" description="프로젝트 리소스가 생성되면 사용량이 표시됩니다." />
+		<EmptyState headline={t('usage.noData')} description={t('usage.noDataHelp')} />
 	{/if}
 </PageShell>

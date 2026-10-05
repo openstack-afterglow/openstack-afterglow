@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-compute';
+	import RichText from '$lib/i18n/RichText.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -36,7 +38,7 @@
 			const res = await api.get<{ devices: GpuCatalogDevice[] }>('/api/v1/admin/gpu-devices', token, projectId);
 			devices = res.devices;
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : 'GPU 카탈로그 조회 실패';
+			error = e instanceof ApiError ? e.message : t('gpuCatalog.loadFailed');
 			devices = [];
 		} finally {
 			loading = false;
@@ -67,25 +69,25 @@
 				token,
 				projectId,
 			);
-			notice = `장치 추가됨: ${form.name}`;
+			notice = t('gpuCatalog.added', { name: form.name });
 			form = { vendor_id: '10DE', device_id: '', name: '', is_audio: false, aliases: '' };
 			await load();
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : '장치 추가 실패';
+			error = e instanceof ApiError ? e.message : t('gpuCatalog.addFailed');
 		} finally {
 			saving = false;
 		}
 	}
 
 	async function deleteDevice(d: GpuCatalogDevice) {
-		if (!await confirmDialog(`'${d.name}' (${d.vendor_id}:${d.device_id}) 항목을 삭제하시겠습니까?`)) return;
+		if (!await confirmDialog(t('gpuCatalog.deleteConfirm', { name: d.name, vendorId: d.vendor_id, deviceId: d.device_id }))) return;
 		error = '';
 		notice = '';
 		try {
 			await api.delete(`/api/v1/admin/gpu-devices/${d.vendor_id}/${d.device_id}`, token, projectId);
 			await load();
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : '장치 삭제 실패';
+			error = e instanceof ApiError ? e.message : t('gpuCatalog.deleteFailed');
 		}
 	}
 
@@ -106,9 +108,9 @@
 			URL.revokeObjectURL(url);
 		} catch (e) {
 			if (format === 'xlsx' && e instanceof ApiError && e.status >= 500) {
-				error = '엑셀 템플릿 생성을 백엔드가 지원하지 않는 상태입니다 (재시작/재배포 필요). 우선 CSV 템플릿을 이용하세요.';
+				error = t('gpuCatalog.excelUnsupported');
 			} else {
-				error = e instanceof ApiError ? e.message : '템플릿 다운로드 실패';
+				error = e instanceof ApiError ? e.message : t('gpuCatalog.downloadFailed');
 			}
 		} finally {
 			downloading = false;
@@ -117,7 +119,7 @@
 
 	async function importCsv() {
 		if (!csvFile) return;
-		if (csvMode === 'replace' && !await confirmDialog('전체 교체 모드입니다. 관리자가 추가한 기존 DB 항목이 모두 CSV 내용으로 대체됩니다. 계속하시겠습니까?')) return;
+		if (csvMode === 'replace' && !await confirmDialog(t('gpuCatalog.replaceConfirm'))) return;
 		importing = true;
 		error = '';
 		notice = '';
@@ -130,11 +132,11 @@
 				token,
 				projectId,
 			);
-			notice = `일괄 갱신 완료: ${res.imported}개 항목 (${res.mode === 'replace' ? '전체 교체' : '병합'})`;
+			notice = t('gpuCatalog.imported', { count: res.imported, mode: res.mode === 'replace' ? 'replace' : 'upsert' });
 			csvFile = null;
 			await load();
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : 'CSV import 실패';
+			error = e instanceof ApiError ? e.message : t('gpuCatalog.importFailed');
 		} finally {
 			importing = false;
 		}
@@ -146,13 +148,15 @@
 		notice = '';
 	}
 
-	const sourceLabel: Record<string, string> = { builtin: '내장', config: 'config', db: 'DB' };
+	const sourceLabel = $derived<Record<string, string>>({ builtin: t('gpuCatalog.source.builtin'), config: 'config', db: 'DB' });
 	const sourceClass: Record<string, string> = {
 		builtin: 'bg-surface-sunken text-ink-2',
 		config: 'bg-yellow-900/30 text-yellow-400',
 		db: 'bg-surface-selected/30 text-warm-text',
 	};
 </script>
+
+{#snippet columns(text: string)}<span class="font-mono">{text}</span>{/snippet}
 
 {#if open}
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -169,7 +173,7 @@
 			role="none"
 		>
 			<div class="flex items-center justify-between mb-4">
-				<h2 class="text-lg font-semibold text-ink-0">GPU 장치 카탈로그</h2>
+				<h2 class="text-lg font-semibold text-ink-0">{t('gpuCatalog.title')}</h2>
 				<button onclick={close} class="text-ink-2 hover:text-ink-0 text-lg leading-none">×</button>
 			</div>
 
@@ -183,18 +187,18 @@
 			<div class="flex-1 overflow-y-auto min-h-0 space-y-5">
 				<!-- 카탈로그 목록 -->
 				<div>
-					<div class="text-xs text-ink-2 uppercase tracking-wide mb-2">등록된 장치 ({devices.length})</div>
+					<div class="text-xs text-ink-2 uppercase tracking-wide mb-2">{t('gpuCatalog.devices', { count: devices.length })}</div>
 					{#if loading}
-						<div class="text-ink-2 text-sm py-4">로딩 중...</div>
+						<div class="text-ink-2 text-sm py-4">{t('flavors.loading')}</div>
 					{:else}
 						<div class="border border-line rounded-lg overflow-hidden">
 							<table class="w-full text-xs">
 								<thead>
 									<tr class="bg-surface-canvas text-ink-2 uppercase tracking-wide">
-										<th class="text-left px-3 py-2">Vendor:Device</th>
-										<th class="text-left px-3 py-2">이름</th>
-										<th class="text-left px-3 py-2">Aliases</th>
-										<th class="text-left px-3 py-2">소스</th>
+										<th class="text-left px-3 py-2">{t('gpuCatalog.fields.vendorDevice')}</th>
+										<th class="text-left px-3 py-2">{t('flavors.fields.name')}</th>
+										<th class="text-left px-3 py-2">{t('gpuCatalog.fields.aliases')}</th>
+										<th class="text-left px-3 py-2">{t('gpuCatalog.fields.source')}</th>
 										<th class="px-3 py-2"></th>
 									</tr>
 								</thead>
@@ -209,7 +213,7 @@
 											</td>
 											<td class="px-3 py-1.5 text-right">
 												{#if d.source === 'db'}
-													<button onclick={() => deleteDevice(d)} class="text-red-400 hover:text-red-300">삭제</button>
+													<button onclick={() => deleteDevice(d)} class="text-red-400 hover:text-red-300">{t('flavors.delete.action')}</button>
 												{/if}
 											</td>
 										</tr>
@@ -222,48 +226,47 @@
 
 				<!-- 단건 추가 -->
 				<div>
-					<div class="text-xs text-ink-2 uppercase tracking-wide mb-2">장치 추가</div>
+					<div class="text-xs text-ink-2 uppercase tracking-wide mb-2">{t('gpuCatalog.addDevice')}</div>
 					<div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-						<input bind:value={form.vendor_id} type="text" placeholder="Vendor (10DE)" maxlength="4"
+						<input bind:value={form.vendor_id} type="text" placeholder={t('gpuCatalog.vendorPlaceholder')} maxlength="4"
 							class="bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-ink-0 text-sm font-mono focus:outline-none focus:border-action-warm" />
-						<input bind:value={form.device_id} type="text" placeholder="Device (2204)" maxlength="4"
+						<input bind:value={form.device_id} type="text" placeholder={t('gpuCatalog.devicePlaceholder')} maxlength="4"
 							class="bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-ink-0 text-sm font-mono focus:outline-none focus:border-action-warm" />
-						<input bind:value={form.name} type="text" placeholder="이름 (RTX 3090)"
+						<input bind:value={form.name} type="text" placeholder={t('gpuCatalog.namePlaceholder')}
 							class="bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm" />
-						<input bind:value={form.aliases} type="text" placeholder="alias (RTX3090;3090)"
+						<input bind:value={form.aliases} type="text" placeholder={t('gpuCatalog.aliasPlaceholder')}
 							class="bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-ink-0 text-sm font-mono focus:outline-none focus:border-action-warm" />
 					</div>
 					<div class="flex items-center justify-between mt-2">
 						<label class="flex items-center gap-1.5 text-xs text-ink-2">
 							<input bind:checked={form.is_audio} type="checkbox" class="accent-blue-600" />
-							오디오 장치 (GPU 집계에서 제외)
+							{t('gpuCatalog.audioDevice')}
 						</label>
 						<button
 							onclick={addDevice}
 							disabled={saving || !form.vendor_id.trim() || !form.device_id.trim() || !form.name.trim()}
 							class="px-4 py-1.5 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm rounded-lg disabled:opacity-30"
-						>{saving ? '저장 중...' : '추가/수정'}</button>
+						>{saving ? t('flavors.specs.saving') : t('flavors.specs.addEdit')}</button>
 					</div>
 				</div>
 
 				<!-- 일괄 갱신 (템플릿 다운로드 → 값 입력 → 업로드) -->
 				<div>
-					<div class="text-xs text-ink-2 uppercase tracking-wide mb-2">일괄 갱신</div>
+					<div class="text-xs text-ink-2 uppercase tracking-wide mb-2">{t('gpuCatalog.bulkUpdate')}</div>
 					<div class="text-xs text-ink-2 mb-2">
-						1) 현재 카탈로그가 채워진 템플릿을 다운로드 → 2) 엑셀 등에서 값 입력 → 3) 업로드.
-						컬럼: <span class="font-mono">vendor_id, device_id, name, is_audio, aliases</span> (aliases는 ; 구분, source 컬럼은 무시됨)
+						<RichText segments={t.rich('gpuCatalog.bulkHelp')} tags={{ columns }} />
 					</div>
 					<div class="flex flex-wrap items-center gap-2 mb-3">
 						<button
 							onclick={() => downloadTemplate('xlsx')}
 							disabled={downloading}
 							class="px-3 py-1.5 bg-surface-sunken hover:bg-surface-selected text-ink-2 text-xs rounded-lg disabled:opacity-30"
-						>⬇ 엑셀 템플릿 (.xlsx)</button>
+						>{t('gpuCatalog.excelTemplate')}</button>
 						<button
 							onclick={() => downloadTemplate('csv')}
 							disabled={downloading}
 							class="px-3 py-1.5 bg-surface-sunken hover:bg-surface-selected text-ink-2 text-xs rounded-lg disabled:opacity-30"
-						>⬇ CSV 템플릿</button>
+						>{t('gpuCatalog.csvTemplate')}</button>
 					</div>
 					<div class="flex flex-wrap items-center gap-3">
 						<input
@@ -274,17 +277,17 @@
 						/>
 						<label class="flex items-center gap-1.5 text-xs text-ink-2">
 							<input type="radio" bind:group={csvMode} value="replace" class="accent-blue-600" />
-							전체 교체
+							{t('gpuCatalog.replace')}
 						</label>
 						<label class="flex items-center gap-1.5 text-xs text-ink-2">
 							<input type="radio" bind:group={csvMode} value="upsert" class="accent-blue-600" />
-							병합 (upsert)
+							{t('gpuCatalog.upsert')}
 						</label>
 						<button
 							onclick={importCsv}
 							disabled={importing || !csvFile}
 							class="px-4 py-1.5 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm rounded-lg disabled:opacity-30"
-						>{importing ? '업로드 중...' : '업로드'}</button>
+						>{importing ? t('gpuCatalog.uploading') : t('gpuCatalog.upload')}</button>
 					</div>
 				</div>
 			</div>

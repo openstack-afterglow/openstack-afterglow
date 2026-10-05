@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/drover';
 		import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	interface Props {
@@ -41,7 +42,7 @@
 	aria-modal="true"
 >
 	<div class="bg-surface-base border border-line-2 rounded-lg p-6 w-80 shadow-[var(--shadow-overlay-compact)]" role="none">
-		<h3 class="text-sm font-semibold text-ink-0 mb-1">Deployment 스케일</h3>
+		<h3 class="text-sm font-semibold text-ink-0 mb-1">{t('scale.title')}</h3>
 		<p class="text-xs text-ink-2 mb-4 font-mono">{deploymentName}</p>
 
 		<div class="flex items-center justify-center gap-4 mb-6">
@@ -62,12 +63,12 @@
 			<button
 				onclick={onClose}
 				class="flex-1 py-2 rounded-lg text-xs text-ink-2 bg-surface-sunken hover:bg-surface-selected transition-colors"
-			>취소</button>
+			>{t('scale.cancel')}</button>
 			<button
 				onclick={handleApply}
 				disabled={applying || replicas === currentReplicas}
 				class="flex-1 py-2 rounded-lg text-xs text-action-on-warm bg-action-warm hover:bg-action-warm-hover disabled:opacity-40 transition-colors"
-			>{applying ? '적용 중...' : '적용'}</button>
+			>{applying ? t('scale.applying') : t('scale.apply')}</button>
 		</div>
 	</div>
 </div>

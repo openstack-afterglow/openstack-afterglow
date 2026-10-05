@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/dashboard-home';
 	import type { DashboardOverviewQuotas } from '$lib/types/quotas';
 	import Card from '$lib/components/ui/Card.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
@@ -16,11 +17,11 @@
 </script>
 
 <Card padding="lg">
-	<div class="text-[var(--color-ink-0)] text-[15px] font-semibold mb-3.5">쿼터 사용률</div>
+	<div class="text-[var(--color-ink-0)] text-[15px] font-semibold mb-3.5">{t('quota.title')}</div>
 
 	{#if error && quotas}
 		<Alert tone="danger" class="mb-3">
-			<span>쿼터를 불러오지 못했습니다</span>
+			<span>{t('quota.loadFailed')}</span>
 		</Alert>
 	{/if}
 
@@ -32,7 +33,7 @@
 		</div>
 	{:else if error && !quotas}
 		<Alert tone="danger">
-			<span>쿼터를 불러오지 못했습니다</span>
+			<span>{t('quota.loadFailed')}</span>
 		</Alert>
 	{:else if quotas}
 		<div class="flex flex-col gap-3.5">
@@ -42,23 +43,23 @@
 				limit={quotas.compute.cores.limit}
 			/>
 			<QuotaBar
-				label="Memory (GB)"
+				label={t('quota.memory')}
 				used={quotas.compute.ram.in_use / 1024}
 				limit={quotas.compute.ram.limit === -1 ? -1 : quotas.compute.ram.limit / 1024}
 			/>
 			<QuotaBar
-				label="Storage (GB)"
+				label={t('quota.storage')}
 				used={quotas.storage.gigabytes.in_use}
 				limit={quotas.storage.gigabytes.limit}
 			/>
 			<QuotaBar
-				label="Floating IP"
+				label={t('quota.floatingIp')}
 				used={quotas.network.floatingip.in_use}
 				limit={quotas.network.floatingip.limit}
 			/>
 			{#if quotas.file_storage}
 				<QuotaBar
-					label="Manila Shares"
+					label={t('quota.shares')}
 					used={quotas.file_storage.shares.in_use}
 					limit={quotas.file_storage.shares.limit}
 				/>

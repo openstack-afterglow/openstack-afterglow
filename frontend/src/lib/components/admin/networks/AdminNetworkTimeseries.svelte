@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-network';
 	import type { TsPoint } from '$lib/types/common';
 	import TimeSeriesChart from '$lib/components/TimeSeriesChart.svelte';
 
@@ -18,12 +19,12 @@
 <div class="mb-6">
 	{#if loading}
 		<div class="bg-surface-base border border-line rounded-xl p-5 h-48 flex items-center justify-center">
-			<div class="text-ink-2 text-sm">차트 로딩 중...</div>
+			<div class="text-ink-2 text-sm">{t('adminNetworkTimeseries.loading')}</div>
 		</div>
 	{:else}
 		<TimeSeriesChart
 			{data}
-			title="네트워크 수 추이"
+			title={t('adminNetworkTimeseries.title')}
 			mainKey="total"
 			extraKeys={['routers', 'floating_ips_used']}
 			currentRange={range}

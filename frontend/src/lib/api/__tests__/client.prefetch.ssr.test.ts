@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest';
+import { api } from '../client';
 
 const { mockFetch } = vi.hoisted(() => ({ mockFetch: vi.fn() }));
 
@@ -25,8 +26,6 @@ vi.stubGlobal('fetch', mockFetch);
 
 describe('SSR prefetch', () => {
 	it('is a no-op and allocates no browser request work', async () => {
-		const { api } = await import('../client');
-
 		await expect(api.prefetch('/api/v1/items')).resolves.toBeUndefined();
 
 		expect(mockFetch).not.toHaveBeenCalled();

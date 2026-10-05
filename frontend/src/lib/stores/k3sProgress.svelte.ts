@@ -1,3 +1,4 @@
+import { t } from '$lib/i18n/ns/drover';
 import type { K3sSseProgressMessage } from '$lib/api/k3sSseStream';
 
 export type K3sProgressMode = 'create' | 'delete';
@@ -61,7 +62,7 @@ export function createK3sProgress() {
 				lastStepSeen = step;
 			}
 			if (message.cluster_id) createdClusterId = message.cluster_id;
-			if (step === 'failed') error = message.error || '알 수 없는 오류';
+			if (step === 'failed') error = message.error || t('progress.unknownError');
 		},
 
 		failWith(err: string) {

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Button, Card, Pill, SelectInput, TextInput } from '$lib/components/ui';
 	import type { CatalogOption, CatalogSortMode, VerificationFilter } from '$lib/stores/imageCatalog.svelte';
+	import { t } from '$lib/i18n/ns/images-keys';
 
 	export type CatalogViewMode = 'repositories' | 'tags';
 
@@ -40,21 +41,21 @@
 <Card surface="subtle" padding="lg" class="catalog-toolbar">
 	<div class="toolbar-heading">
 		<div>
-			<p class="toolbar-kicker">IMAGE CATALOG</p>
-			<h2>Repository와 tag로 이미지 찾기</h2>
-			<p class="toolbar-copy">Docker Hub처럼 이름을 검색하고, 같은 repository의 버전을 tag로 고르세요.</p>
+			<p class="toolbar-kicker">{t('catalogToolbar.kicker')}</p>
+			<h2>{t('catalogToolbar.title')}</h2>
+			<p class="toolbar-copy">{t('catalogToolbar.description')}</p>
 		</div>
 		<div class="heading-actions">
-			<div class="view-toggle" role="group" aria-label="이미지 보기 방식">
-				<Button variant={viewMode === 'repositories' ? 'accent' : 'ghost'} size="xs" onclick={() => onViewModeChange?.('repositories')}>Repository</Button>
-				<Button variant={viewMode === 'tags' ? 'accent' : 'ghost'} size="xs" onclick={() => onViewModeChange?.('tags')}>Tags</Button>
+			<div class="view-toggle" role="group" aria-label={t('catalogToolbar.viewMode')}>
+				<Button variant={viewMode === 'repositories' ? 'accent' : 'ghost'} size="xs" onclick={() => onViewModeChange?.('repositories')}>{t('catalogToolbar.repositoryView')}</Button>
+				<Button variant={viewMode === 'tags' ? 'accent' : 'ghost'} size="xs" onclick={() => onViewModeChange?.('tags')}>{t('catalogToolbar.tagsView')}</Button>
 			</div>
-			<Pill tone="info" dot>{repositoryCount} repositories</Pill>
+			<Pill tone="info" dot>{t('catalogToolbar.repositoryCount', { count: repositoryCount })}</Pill>
 		</div>
 	</div>
 
 	<div class="search-row">
-		<label for="image-catalog-search" class="sr-only">이미지 repository 또는 tag 검색</label>
+		<label for="image-catalog-search" class="sr-only">{t('catalogToolbar.searchLabel')}</label>
 		<div class="search-field">
 			<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor">
 				<circle cx="11" cy="11" r="7" stroke-width="1.8" />
@@ -64,60 +65,60 @@
 				id="image-catalog-search"
 				type="search"
 				bind:value={searchQuery}
-				placeholder="repository:tag, SHA 해시 또는 이미지 UUID"
+				placeholder={t('catalogToolbar.searchPlaceholder')}
 				class="search-input"
 			/>
 			{#if searchQuery}
-				<button type="button" class="clear-search" onclick={() => searchQuery = ''} aria-label="검색어 지우기">×</button>
+				<button type="button" class="clear-search" onclick={() => searchQuery = ''} aria-label={t('catalogToolbar.clearSearch')}>×</button>
 			{/if}
 		</div>
 		{#if hasFilters}
-			<Button variant="ghost" size="sm" onclick={onClear}>필터 초기화</Button>
+			<Button variant="ghost" size="sm" onclick={onClear}>{t('catalogToolbar.clearFilters')}</Button>
 		{/if}
 	</div>
 
 	<div class="filter-row">
 		<div class="filter-control">
-			<label for="image-repository-filter">Repository</label>
+			<label for="image-repository-filter">{t('catalogToolbar.repositoryLabel')}</label>
 			<SelectInput id="image-repository-filter" bind:value={repositoryFilter}>
-				<option value="all">모든 repository</option>
+				<option value="all">{t('catalogToolbar.allRepositories')}</option>
 				{#each repositoryOptions as option}
 					<option value={option.value}>{option.label}{option.count ? ` (${option.count})` : ''}</option>
 				{/each}
 			</SelectInput>
 		</div>
 		<div class="filter-control">
-			<label for="image-tag-filter">Tag</label>
+			<label for="image-tag-filter">{t('catalogToolbar.tagLabel')}</label>
 			<SelectInput id="image-tag-filter" bind:value={tagFilter}>
-				<option value="all">모든 tag</option>
+				<option value="all">{t('catalogToolbar.allTags')}</option>
 				{#each tagOptions as option}
 					<option value={option.value}>{option.label}{option.count ? ` (${option.count})` : ''}</option>
 				{/each}
 			</SelectInput>
 		</div>
 		<div class="filter-control">
-			<label for="image-verification-filter">신뢰 상태</label>
+			<label for="image-verification-filter">{t('catalogToolbar.trustLabel')}</label>
 			<SelectInput id="image-verification-filter" bind:value={verificationFilter}>
-				<option value="all">모든 신뢰 상태</option>
-				<option value="verified">검증됨</option>
-				<option value="unverified">미검증</option>
-				<option value="unavailable">검증 불가</option>
+				<option value="all">{t('catalogToolbar.allTrust')}</option>
+				<option value="verified">{t('catalogToolbar.verified')}</option>
+				<option value="unverified">{t('catalogToolbar.unverified')}</option>
+				<option value="unavailable">{t('catalogToolbar.unavailable')}</option>
 			</SelectInput>
 		</div>
 		<div class="filter-control sort-control">
-			<label for="image-sort-mode">정렬</label>
+			<label for="image-sort-mode">{t('catalogToolbar.sortLabel')}</label>
 			<SelectInput id="image-sort-mode" bind:value={sortMode}>
-				<option value="relevance">관련도순</option>
-				<option value="newest">최신순</option>
-				<option value="oldest">오래된순</option>
-				<option value="name">이름순</option>
+				<option value="relevance">{t('catalogToolbar.relevance')}</option>
+				<option value="newest">{t('catalogToolbar.newest')}</option>
+				<option value="oldest">{t('catalogToolbar.oldest')}</option>
+				<option value="name">{t('catalogToolbar.name')}</option>
 			</SelectInput>
 		</div>
 	</div>
 
 	<div class="toolbar-footer">
-		<span>{resultCount}개 이미지 · {repositoryCount}개 repository</span>
-		{#if totalCount !== resultCount}<span class="footer-muted">전체 {totalCount}개에서 필터링됨</span>{/if}
+		<span>{t('catalogToolbar.resultSummary', { imageCount: resultCount, repositoryCount })}</span>
+		{#if totalCount !== resultCount}<span class="footer-muted">{t('catalogToolbar.filteredSummary', { count: totalCount })}</span>{/if}
 	</div>
 </Card>
 

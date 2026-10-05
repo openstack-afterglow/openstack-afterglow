@@ -6,6 +6,8 @@ import { createAutoRefresh, type AutoRefreshController } from '$lib/utils/autoRe
 import { isTransitional } from '$lib/utils/instanceStatus';
 import { confirmDialog } from '$lib/stores/confirm.svelte';
 import { toast } from '$lib/stores/toast';
+import { t } from '$lib/i18n/ns/instance';
+import { intlLocale } from '$lib/i18n/runtime.svelte';
 import type { Instance } from '$lib/types/compute';
 import type { FloatingIpDetail, PortInfo, NetworkInfo } from '$lib/types/networks';
 import type { SecurityGroup } from '$lib/types/securityGroup';
@@ -143,7 +145,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 
 	function formatDate(dt: string | null): string {
 		if (!dt) return '-';
-		return new Date(dt).toLocaleString('ko-KR');
+		return new Date(dt).toLocaleString(intlLocale());
 	}
 
 	// Core fetch
@@ -191,7 +193,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			securityGroupPorts = value.ports;
 			securityGroupsError = '';
 		}).catch((e) => {
-			if (ownsRequest()) securityGroupsError = e instanceof ApiError ? e.message : '보안 그룹 조회 실패';
+			if (ownsRequest()) securityGroupsError = e instanceof ApiError ? e.message : t('controller.securityGroup.fetchFailed');
 		}).finally(() => {
 			if (ownsRequest()) securityGroupsLoading = false;
 		});
@@ -225,7 +227,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			}
 		} catch (e) {
 			if (ownsRequest()) {
-				error = e instanceof ApiError ? `조회 실패 (${e.status}): ${e.message}` : '서버 오류';
+				error = e instanceof ApiError ? t('controller.error.fetchFailed', { status: e.status, message: e.message }) : t('controller.error.server');
 			}
 		} finally {
 			if (ownsRequest()) {
@@ -250,9 +252,9 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 				tok(),
 				ownPid()
 			);
-			consoleLog = data.output || '(로그 없음)';
+			consoleLog = data.output || t('controller.console.noLog');
 		} catch {
-			consoleLog = '로그를 가져올 수 없습니다';
+			consoleLog = t('controller.console.logFailed');
 		} finally {
 			logLoading = false;
 		}
@@ -268,19 +270,19 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		const instanceId = instance.id;
 		consoleOpening = true;
 		consoleOpenError = '';
-		consoleOpenMessage = 'Nova에서 noVNC 콘솔 URL을 요청하는 중입니다...';
+		consoleOpenMessage = t('controller.console.requestingUrl');
 		try {
 			const data = await api.get<{ url: string }>(`/api/v1/instances/${instanceId}/console`, tok(), ownPid());
 			const url = data.url?.trim();
 			if (!url) {
-				consoleOpenError = '콘솔 URL이 비어 있습니다. 관리자에게 문의하세요.';
+				consoleOpenError = t('controller.console.emptyUrl');
 				toast.error(consoleOpenError);
 				return;
 			}
-			consoleOpenMessage = '콘솔 창을 여는 중입니다...';
+			consoleOpenMessage = t('controller.console.opening');
 			window.open(url, '_blank', 'noopener,noreferrer');
 		} catch {
-			consoleOpenError = '콘솔 URL을 가져올 수 없습니다. 잠시 후 다시 시도하세요.';
+			consoleOpenError = t('controller.console.urlFailed');
 			toast.error(consoleOpenError);
 		} finally {
 			consoleOpening = false;
@@ -290,14 +292,13 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 
 	async function performAction(action: 'start' | 'stop' | 'reboot' | 'shelve' | 'unshelve') {
 		if (!instance) return;
-		const labels: Record<string, string> = { start: '시작', stop: '정지', reboot: '재부팅', shelve: '보관', unshelve: '보관 해제' };
-		if (!(await confirmDialog(`인스턴스를 ${labels[action]}하시겠습니까?`))) return;
+		if (!(await confirmDialog(t('controller.action.confirm', { action })))) return;
 		actioning = action;
 		try {
 			await api.post(`/api/v1/instances/${instance.id}/${action}`, {}, tok(), ownPid());
 			await fetchInstance(instance.id, { silent: true });
 		} catch (e) {
-			toast.error(`${labels[action]} 실패: ` + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('controller.action.failed', { action, message: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			actioning = null;
 		}
@@ -307,17 +308,17 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		if (!instance) return;
 		const autoDeleteVols = volumes.filter(v => v.delete_on_termination);
 		const keepVols = volumes.filter(v => !v.delete_on_termination);
-		const lines = [`"${instance.name}" 인스턴스를 삭제하시겠습니까?`];
-		if (autoDeleteVols.length) lines.push(`자동 삭제 볼륨: ${autoDeleteVols.map(v => v.name || v.device).join(', ')}`);
-		if (keepVols.length) lines.push(`유지(분리만): ${keepVols.map(v => v.name || v.device).join(', ')}`);
-		if (instance.union_upper_volume_id) lines.push('Upper 볼륨과 파일 스토리지(dynamic)도 삭제됩니다.');
+		const lines = [t('controller.delete.confirm', { name: instance.name })];
+		if (autoDeleteVols.length) lines.push(t('controller.delete.autoDeleteVolumes', { volumes: autoDeleteVols.map(v => v.name || v.device).join(', ') }));
+		if (keepVols.length) lines.push(t('controller.delete.keepVolumes', { volumes: keepVols.map(v => v.name || v.device).join(', ') }));
+		if (instance.union_upper_volume_id) lines.push(t('controller.delete.upperVolumeNotice'));
 		if (!(await confirmDialog(lines.join('\n')))) return;
 		deleting = true;
 		try {
 			await api.delete(`/api/v1/instances/${instance.id}`, tok(), ownPid());
 			opts.onDelete();
 		} catch (e) {
-			toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('controller.delete.failed', { message: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			deleting = false;
 		}
@@ -330,7 +331,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			await api.post(`/api/v1/instances/${instance.id}/floating-ip?port_id=${portId}`, {}, tok(), ownPid());
 			await fetchInstance(instance.id, { silent: true });
 		} catch (e) {
-			toast.error('Floating IP 할당 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('controller.floatingIp.assignFailed', { message: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			actioning = null;
 		}
@@ -338,14 +339,14 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 
 	async function releaseFloatingIp(fipId: string) {
 		if (!instance) return;
-		if (!(await confirmDialog('Floating IP를 해제하고 삭제하시겠습니까?'))) return;
+		if (!(await confirmDialog(t('controller.floatingIp.releaseConfirm')))) return;
 		actioning = 'fip-release-' + fipId;
 		try {
 			await api.post(`/api/v1/networks/floating-ips/${fipId}/disassociate`, {}, tok(), ownPid());
 			await api.delete(`/api/v1/networks/floating-ips/${fipId}`, tok(), ownPid());
 			await fetchInstance(instance.id, { silent: true });
 		} catch (e) {
-			toast.error('Floating IP 해제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('controller.floatingIp.releaseFailed', { message: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			actioning = null;
 		}
@@ -358,7 +359,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			await api.post(`/api/v1/instances/${instance.id}/volumes`, { volume_id: volumeId }, tok(), ownPid());
 			await fetchInstance(instance.id, { silent: true });
 		} catch (e) {
-			toast.error('볼륨 연결 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('controller.volume.attachFailed', { message: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			actioning = null;
 		}
@@ -372,7 +373,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			await api.post(`/api/v1/instances/${instance.id}/volumes`, { volume_id: vol.id }, tok(), ownPid());
 			await fetchInstance(instance.id, { silent: true });
 		} catch (e) {
-			toast.error('볼륨 생성/연결 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('controller.volume.createAttachFailed', { message: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			actioning = null;
 		}
@@ -380,13 +381,13 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 
 	async function detachVolume(volumeId: string) {
 		if (!instance) return;
-		if (!(await confirmDialog('볼륨을 분리하시겠습니까?'))) return;
+		if (!(await confirmDialog(t('controller.volume.detachConfirm')))) return;
 		actioning = 'detach-' + volumeId;
 		try {
 			await api.delete(`/api/v1/instances/${instance.id}/volumes/${volumeId}`, tok(), ownPid());
 			await fetchInstance(instance.id, { silent: true });
 		} catch (e) {
-			toast.error('볼륨 분리 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('controller.volume.detachFailed', { message: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			actioning = null;
 		}
@@ -394,14 +395,13 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 
 	async function setDeleteOnTermination(volumeId: string, next: boolean) {
 		if (!instance) return;
-		const verb = next ? '활성화' : '비활성화';
-		if (!(await confirmDialog(`이 볼륨의 "인스턴스 삭제 시 자동 삭제" 옵션을 ${verb}하시겠습니까?`))) return;
+		if (!(await confirmDialog(t('controller.volume.autoDeleteConfirm', { state: next ? 'enabled' : 'disabled' })))) return;
 		actioning = 'dot-' + volumeId;
 		try {
 			await api.patch(`/api/v1/instances/${instance.id}/volumes/${volumeId}`, { delete_on_termination: next }, tok(), ownPid());
 			await fetchInstance(instance.id, { silent: true });
 		} catch (e) {
-			toast.error('변경 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('controller.volume.changeFailed', { message: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			actioning = null;
 		}
@@ -414,7 +414,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			await api.post(`/api/v1/instances/${instance.id}/interfaces`, { net_id: netId }, tok(), ownPid());
 			await fetchInstance(instance.id, { silent: true });
 		} catch (e) {
-			toast.error('인터페이스 추가 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('controller.interface.attachFailed', { message: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			actioning = null;
 		}
@@ -422,13 +422,13 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 
 	async function detachInterface(portId: string) {
 		if (!instance) return;
-		if (!(await confirmDialog('인터페이스를 제거하시겠습니까?'))) return;
+		if (!(await confirmDialog(t('controller.interface.detachConfirm')))) return;
 		actioning = 'detach-iface-' + portId;
 		try {
 			await api.delete(`/api/v1/instances/${instance.id}/interfaces/${portId}`, tok(), ownPid());
 			await fetchInstance(instance.id, { silent: true });
 		} catch (e) {
-			toast.error('인터페이스 제거 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('controller.interface.detachFailed', { message: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			actioning = null;
 		}
@@ -446,7 +446,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			);
 			await fetchInstance(instance.id, { silent: true, refreshSecurityGroups: true });
 		} catch (e) {
-			toast.error('보안 그룹 업데이트 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('controller.securityGroup.updateFailed', { message: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			actioning = null;
 		}
@@ -476,7 +476,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			);
 			if (instance?.id === id) resizeFlavors = flavors;
 		} catch (e) {
-			if (instance?.id === id) resizeError = e instanceof ApiError ? e.message : '플레이버 목록을 가져올 수 없습니다';
+			if (instance?.id === id) resizeError = e instanceof ApiError ? e.message : t('controller.resize.flavorsFailed');
 		} finally {
 			resizeFlavorsLoading = false;
 		}
@@ -491,7 +491,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			await fetchInstance(instance.id, { silent: true });
 			return true;
 		} catch (e) {
-			resizeError = e instanceof ApiError ? e.message : '리사이즈 실패';
+			resizeError = e instanceof ApiError ? e.message : t('controller.resize.failed');
 			return false;
 		} finally {
 			resizeLoading = false;
@@ -500,14 +500,14 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 
 	async function revertResize() {
 		if (!instance || !canResize() || instance.status !== 'VERIFY_RESIZE') return;
-		if (!(await confirmDialog('리사이즈를 취소하고 이전 플레이버로 복귀하시겠습니까?'))) return;
+		if (!(await confirmDialog(t('controller.resize.revertConfirm')))) return;
 		if (!canResize() || instance.status !== 'VERIFY_RESIZE' || actioning) return;
 		actioning = 'revert-resize';
 		try {
 			await api.post(resizePath('revert-resize'), {}, tok(), resizeProjectId());
 			await fetchInstance(instance.id, { silent: true });
 		} catch (e) {
-			toast.error('리사이즈 취소 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('controller.resize.revertFailed', { message: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			actioning = null;
 		}
@@ -515,14 +515,14 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 
 	async function confirmResize() {
 		if (!instance || !canResize() || instance.status !== 'VERIFY_RESIZE') return;
-		if (!(await confirmDialog('리사이즈를 확인하시겠습니까?'))) return;
+		if (!(await confirmDialog(t('controller.resize.confirm')))) return;
 		if (!canResize() || instance.status !== 'VERIFY_RESIZE' || actioning) return;
 		actioning = 'confirm-resize';
 		try {
 			await api.post(resizePath('confirm-resize'), {}, tok(), resizeProjectId());
 			await fetchInstance(instance.id, { silent: true });
 		} catch (e) {
-			toast.error('리사이즈 확인 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('controller.resize.confirmFailed', { message: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			actioning = null;
 		}
@@ -546,12 +546,12 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 
 	// Returns error string on failure, null on success
 	async function doSetPassword(password: string): Promise<string | null> {
-		if (!instance) return '인스턴스 없음';
+		if (!instance) return t('controller.password.noInstance');
 		try {
 			await api.post(`/api/v1/instances/${instance.id}/admin-password`, { new_password: password }, tok(), ownPid());
 			return null;
 		} catch (e) {
-			return e instanceof ApiError ? e.message : '패스워드 변경 실패';
+			return e instanceof ApiError ? e.message : t('controller.password.failed');
 		}
 	}
 
@@ -589,7 +589,7 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 			await fetchInstance(instance.id, { silent: true });
 			return true;
 		} catch (e) {
-			migrateError = e instanceof ApiError ? e.message : '마이그레이션 실패';
+			migrateError = e instanceof ApiError ? e.message : t('controller.migration.failed');
 			return false;
 		} finally {
 			migrateLoading = false;
@@ -618,10 +618,10 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		if (!instance) return;
 		try {
 			await api.post(`/api/v1/admin/instances/${instance.id}/live-migrate/abort`, {}, tok(), ownPid());
-			toast.success('마이그레이션 중단 요청을 전송했습니다.');
+			toast.success(t('controller.migration.abortRequested'));
 			await fetchInstance(instance.id, { silent: true });
 		} catch (e) {
-			toast.error(e instanceof ApiError ? e.message : '마이그레이션 중단 실패');
+			toast.error(e instanceof ApiError ? e.message : t('controller.migration.abortFailed'));
 		}
 	}
 
@@ -629,10 +629,10 @@ export function createInstanceDetailController(opts: InstanceDetailControllerOpt
 		if (!instance) return;
 		try {
 			await api.post(`/api/v1/admin/instances/${instance.id}/live-migrate/force-complete`, {}, tok(), ownPid());
-			toast.success('마이그레이션 강제 완료 요청을 전송했습니다.');
+			toast.success(t('controller.migration.forceCompleteRequested'));
 			await fetchInstance(instance.id, { silent: true });
 		} catch (e) {
-			toast.error(e instanceof ApiError ? e.message : '마이그레이션 강제 완료 실패');
+			toast.error(e instanceof ApiError ? e.message : t('controller.migration.forceCompleteFailed'));
 		}
 	}
 
@@ -798,6 +798,6 @@ export function provideInstanceDetailController(store: InstanceDetailController)
 
 export function useInstanceDetailController(): InstanceDetailController {
 	const store = getContext<InstanceDetailController | undefined>(INSTANCE_DETAIL_KEY);
-	if (!store) throw new Error('useInstanceDetailController must be called within InstanceDetailPanel');
+	if (!store) throw new Error(t('controller.contextRequired'));
 	return store;
 }

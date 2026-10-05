@@ -17,6 +17,7 @@
 	import RenameModal from '$lib/components/object-storage/RenameModal.svelte';
 	import MoveModal from '$lib/components/object-storage/MoveModal.svelte';
 	import { PageShell, Tabs } from '$lib/components/ui';
+	import { t } from '$lib/i18n/ns/object-storage';
 
 	interface Props {
 		mode: 'user' | 'admin';
@@ -105,14 +106,14 @@
 		id="object-browser-tabs"
 		value={showTrash ? 'trash' : 'files'}
 		items={[
-			{ value: 'files', label: '파일', panelId: 'object-files-panel' },
-			{ value: 'trash', label: '휴지통', panelId: 'object-trash-panel' },
+			{ value: 'files', label: t('browser.files'), panelId: 'object-files-panel' },
+			{ value: 'trash', label: t('browser.trash'), panelId: 'object-trash-panel' },
 		]}
 		onchange={(next) => {
 			showTrash = next === 'trash';
 			s.selected = new Set();
 		}}
-		ariaLabel="오브젝트 브라우저 보기"
+		ariaLabel={t('browser.viewLabel')}
 	/>
 
 	{#if showTrash}

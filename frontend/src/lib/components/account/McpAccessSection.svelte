@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/account';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { untrack } from 'svelte';
 	import { api, ApiError, getBaseUrl } from '$lib/api/client';
 	import { siteConfig } from '$lib/config/site';
@@ -72,7 +74,7 @@
 			oauthGrants = grants;
 			loadError = '';
 		} catch (error) {
-			loadError = errorMessage(error, 'MCP 접근 권한을 불러오지 못했습니다.');
+			loadError = errorMessage(error, t('mcp.loadFailed'));
 		} finally {
 			loading = false;
 		}
@@ -99,7 +101,7 @@
 			expiresAt = '';
 			await loadAccess();
 		} catch (error) {
-			actionError = errorMessage(error, 'MCP 토큰을 만들지 못했습니다.');
+			actionError = errorMessage(error, t('mcp.createFailed'));
 		} finally {
 			creating = false;
 		}
@@ -117,7 +119,7 @@
 			await navigator.clipboard.writeText(issuedToken);
 			copied = true;
 		} catch {
-			actionError = '클립보드에 복사하지 못했습니다. 직접 복사하세요.';
+			actionError = t('mcp.copyFailed');
 		}
 	}
 
@@ -129,7 +131,7 @@
 			await api.put(`/api/v1/auth/mcp-tokens/${encodeURIComponent(record.id)}/lumen-default`, {}, token, projectId);
 			await loadAccess();
 		} catch (error) {
-			actionError = errorMessage(error, 'Lumen 기본 토큰을 변경하지 못했습니다.');
+			actionError = errorMessage(error, t('mcp.selectFailed'));
 		} finally {
 			mutatingId = null;
 		}
@@ -143,7 +145,7 @@
 			await api.delete('/api/v1/auth/mcp-tokens/lumen-default', token, projectId);
 			await loadAccess();
 		} catch (error) {
-			actionError = errorMessage(error, 'Lumen 기본 토큰을 해제하지 못했습니다.');
+			actionError = errorMessage(error, t('mcp.clearFailed'));
 		} finally {
 			mutatingId = null;
 		}
@@ -151,14 +153,14 @@
 
 	async function revokeToken(record: McpAccessRecord) {
 		if (!token || !projectId) return;
-		if (!(await confirmDialog(`MCP 토큰 “${record.name}”을 폐기하시겠습니까? 연결된 Lumen 접근도 즉시 해제됩니다.`))) return;
+		if (!(await confirmDialog(t('mcp.revokeConfirm', { name: record.name })))) return;
 		mutatingId = record.id;
 		actionError = '';
 		try {
 			await api.delete(`/api/v1/auth/mcp-tokens/${encodeURIComponent(record.id)}`, token, projectId);
 			await loadAccess();
 		} catch (error) {
-			actionError = errorMessage(error, 'MCP 토큰을 폐기하지 못했습니다.');
+			actionError = errorMessage(error, t('mcp.revokeFailed'));
 		} finally {
 			mutatingId = null;
 		}
@@ -166,14 +168,14 @@
 
 	async function revokeOAuthGrant(record: McpAccessRecord) {
 		if (!token || !projectId) return;
-		if (!(await confirmDialog(`“${record.name}”의 OAuth 권한을 철회하시겠습니까?`))) return;
+		if (!(await confirmDialog(t('mcp.revokeOAuthConfirm', { name: record.name })))) return;
 		mutatingId = record.id;
 		actionError = '';
 		try {
 			await api.delete(`/api/v1/auth/mcp-oauth/grants/${encodeURIComponent(record.grant_id)}`, token, projectId);
 			await loadAccess();
 		} catch (error) {
-			actionError = errorMessage(error, 'OAuth 권한을 철회하지 못했습니다.');
+			actionError = errorMessage(error, t('mcp.revokeOAuthFailed'));
 		} finally {
 			mutatingId = null;
 		}
@@ -181,7 +183,7 @@
 
 	function formatDate(value: string | null) {
 		if (!value) return '—';
-		return new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+		return new Intl.DateTimeFormat(intlLocale(), { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
 	}
 
 	$effect(() => {
@@ -197,78 +199,78 @@
 	<Card class="mcp-access" surface="raised" padding="lg">
 		<div class="section-heading">
 			<div>
-				<h2>외부 AI 접근</h2>
-				<p>개인 토큰과 OAuth 연결은 현재 프로젝트에만 권한을 갖습니다.</p>
+				<h2>{t('mcp.title')}</h2>
+				<p>{t('mcp.scopeHelp')}</p>
 			</div>
 			<Button variant="ghost" size="sm" onclick={loadAccess} disabled={loading}>
-				{loading ? '불러오는 중…' : '새로고침'}
+				{loading ? t('mcp.loading') : t('mcp.refresh')}
 			</Button>
 		</div>
 
-		<p class="endpoint"><span>MCP URL</span><code>{mcpUrl}</code></p>
+		<p class="endpoint"><span>{t('mcp.endpoint')}</span><code>{mcpUrl}</code></p>
 
-		<Alert tone="warning" title="토큰은 한 번만 표시됩니다.">
-			{#snippet children()}토큰을 만든 직후 안전한 비밀 저장소에 복사하세요. 이후에는 접두사와 상태만 확인할 수 있습니다.{/snippet}
+		<Alert tone="warning" title={t('mcp.onceTitle')}>
+			{#snippet children()}{t('mcp.onceHelp')}{/snippet}
 		</Alert>
 
 		{#if loadError}
-			<Alert tone="danger" title="조회 실패">
+			<Alert tone="danger" title={t('mcp.loadErrorTitle')}>
 				{#snippet children()}{loadError}{/snippet}
 			</Alert>
 		{/if}
 		{#if actionError}
-			<Alert tone="danger" title="작업 실패">
+			<Alert tone="danger" title={t('mcp.actionErrorTitle')}>
 				{#snippet children()}{actionError}{/snippet}
 			</Alert>
 		{/if}
 
 		<form class="token-form" onsubmit={(event) => { event.preventDefault(); void createToken(); }}>
-			<Field label="이름" for="mcp-token-name" required>
+			<Field label={t('mcp.name')} for="mcp-token-name" required>
 				{#snippet children()}
 					<input id="mcp-token-name" class="control" bind:value={tokenName} maxlength="100" autocomplete="off" />
 				{/snippet}
 			</Field>
-			<Field label="권한" for="mcp-token-access" help="읽기는 조회 전용입니다. 관리는 변경 작업 승인에 사용합니다.">
+			<Field label={t('mcp.permission')} for="mcp-token-access" help={t('mcp.permissionHelp')}>
 				{#snippet children()}
 					<select id="mcp-token-access" class="control" bind:value={accessLevel}>
-						<option value="read">읽기</option>
-						<option value="manage">관리</option>
+						<option value="read">{t('mcp.read')}</option>
+						<option value="manage">{t('mcp.manage')}</option>
 					</select>
 				{/snippet}
 			</Field>
-			<Field label="만료 시각" for="mcp-token-expiry" help="비워두면 서버 정책의 기본 만료 시각을 사용합니다.">
+			<Field label={t('mcp.expiry')} for="mcp-token-expiry" help={t('mcp.expiryHelp')}>
 				{#snippet children()}
 					<input id="mcp-token-expiry" class="control" type="datetime-local" bind:value={expiresAt} />
 				{/snippet}
 			</Field>
-			<div class="token-submit"><Button type="submit" disabled={creating || !tokenName.trim()}>{creating ? '만드는 중…' : '토큰 만들기'}</Button></div>
+			<div class="token-submit"><Button type="submit" disabled={creating || !tokenName.trim()}>{creating ? t('mcp.creating') : t('mcp.create')}</Button></div>
 		</form>
 
 		<section aria-labelledby="mcp-personal-tokens-heading">
 			<div class="subheading">
-				<h3 id="mcp-personal-tokens-heading">개인 토큰</h3>
-				<span>{tokens.length}개</span>
+				<h3 id="mcp-personal-tokens-heading">{t('mcp.personal')}</h3>
+				<span>{t('mcp.count', { count: tokens.length })}</span>
 			</div>
 			{#if loading}
-				<p class="empty">접근 권한을 불러오는 중입니다.</p>
+				<p class="empty">{t('mcp.loadingAccess')}</p>
 			{:else if tokens.length === 0}
-				<p class="empty">발급된 개인 토큰이 없습니다.</p>
+				<p class="empty">{t('mcp.emptyTokens')}</p>
 			{:else}
 				<div class="records">
 					{#each tokens as record (record.id)}
 						<div class="record">
 							<div class="record-main">
 								<div class="record-title"><strong>{record.name}</strong><StatusChip status={record.status} /></div>
-								<p>{record.visible_prefix ?? '접두사 없음'} · {record.access_level === 'manage' ? '관리' : '읽기'} · 마지막 사용 {formatDate(record.last_used_at)} · 만료 {formatDate(record.expires_at)}</p>
-								{#if record.is_lumen_default}<p class="default-note">Lumen 기본 토큰</p>{/if}
+								<p>{t('mcp.recordDetails', { prefix: record.visible_prefix ?? t('mcp.noPrefix'), access: record.access_level === 'manage' ? t('mcp.manage') : t('mcp.read'), lastUsed: formatDate(record.last_used_at), expires: formatDate(record.expires_at) })}</p>
+								{#if record.is_lumen_default}<p class="default-note">{t('mcp.lumenDefault')}</p>{/if}
 							</div>
 							<div class="record-actions">
 								{#if record.is_lumen_default}
-									<Button variant="subtle" size="xs" onclick={clearLumenDefault} disabled={mutatingId !== null}>Lumen 해제</Button>
+									<Button variant="subtle" size="xs" onclick={clearLumenDefault} disabled={mutatingId !== null}>{t('mcp.clearLumen')}</Button>
 								{:else}
-									<Button variant="outline" size="xs" onclick={() => selectLumenDefault(record)} disabled={mutatingId !== null || record.status !== 'active'}>Lumen 기본</Button>
+									<Button variant="outline" size="xs" onclick={() => selectLumenDefault(record)} disabled={mutatingId !== null || record.status !== 'active'}>{t('mcp.setLumen')}</Button>
 								{/if}
-								<Button variant="danger-outline" size="xs" onclick={() => revokeToken(record)} disabled={mutatingId !== null}>폐기</Button>
+								<Button variant="danger-outline" size="xs" onclick={() => revokeToken(record)} disabled={mutatingId !== null}>{t('mcp.revoke')}</Button>
 							</div>
 						</div>
 					{/each}
@@ -277,15 +279,15 @@
 		</section>
 
 		<section aria-labelledby="mcp-oauth-grants-heading">
-			<div class="subheading"><h3 id="mcp-oauth-grants-heading">OAuth 연결</h3><span>{oauthGrants.length}개</span></div>
+			<div class="subheading"><h3 id="mcp-oauth-grants-heading">{t('mcp.oauth')}</h3><span>{t('mcp.count', { count: oauthGrants.length })}</span></div>
 			{#if !loading && oauthGrants.length === 0}
-				<p class="empty">승인된 외부 MCP 클라이언트가 없습니다.</p>
+				<p class="empty">{t('mcp.emptyOAuth')}</p>
 			{:else if oauthGrants.length > 0}
 				<div class="records">
 					{#each oauthGrants as record (record.id)}
 						<div class="record">
-							<div class="record-main"><div class="record-title"><strong>{record.name}</strong><StatusChip status={record.status} /></div><p>{record.access_level === 'manage' ? '관리' : '읽기'} · 만료 {formatDate(record.expires_at)}</p></div>
-							<Button variant="danger-outline" size="xs" onclick={() => revokeOAuthGrant(record)} disabled={mutatingId !== null}>권한 철회</Button>
+							<div class="record-main"><div class="record-title"><strong>{record.name}</strong><StatusChip status={record.status} /></div><p>{t('mcp.oauthDetails', { access: record.access_level === 'manage' ? t('mcp.manage') : t('mcp.read'), expires: formatDate(record.expires_at) })}</p></div>
+							<Button variant="danger-outline" size="xs" onclick={() => revokeOAuthGrant(record)} disabled={mutatingId !== null}>{t('mcp.revokeAccess')}</Button>
 						</div>
 					{/each}
 				</div>
@@ -293,12 +295,12 @@
 		</section>
 	</Card>
 
-	<Modal bind:open={showIssuedToken} onClose={dismissIssuedToken} ariaLabel="새 MCP 토큰">
+	<Modal bind:open={showIssuedToken} onClose={dismissIssuedToken} ariaLabel={t('mcp.newToken')}>
 		<Card surface="modal" padding="lg" class="issued-token-dialog">
-			<h2>새 MCP 토큰</h2>
-			<p>이 값은 지금만 표시됩니다. 복사 후 이 창을 닫으면 메모리에서도 제거됩니다.</p>
+			<h2>{t('mcp.newToken')}</h2>
+			<p>{t('mcp.newTokenHelp')}</p>
 			{#if issuedToken}<pre>{issuedToken}</pre>{/if}
-			<div class="dialog-actions"><Button variant="outline" onclick={copyIssuedToken}>{copied ? '복사됨' : '복사'}</Button><Button onclick={dismissIssuedToken}>완료</Button></div>
+			<div class="dialog-actions"><Button variant="outline" onclick={copyIssuedToken}>{copied ? t('mcp.copied') : t('mcp.copy')}</Button><Button onclick={dismissIssuedToken}>{t('mcp.done')}</Button></div>
 		</Card>
 	</Modal>
 {/if}

@@ -1,3 +1,4 @@
+import { t } from '$lib/i18n/ns/instance';
 import type { SecurityGroup, SecurityGroupRule } from '$lib/types/securityGroup';
 
 export type SecurityGroupUnionGroup = Pick<SecurityGroup, 'id' | 'name'> & {
@@ -108,7 +109,7 @@ function mergeTransport(rules: UnionRule[]): UnionRule[] {
 }
 
 function protocolLabel(protocol: string | null): string {
-	if (protocol === null) return '전체';
+	if (protocol === null) return t('securityGroupUnion.any');
 	if (isTransport(protocol)) return protocol.toUpperCase();
 	if (protocol === 'ipv6-icmp') return 'ICMPv6';
 	if (protocol === 'icmp') return 'ICMP';
@@ -116,21 +117,25 @@ function protocolLabel(protocol: string | null): string {
 }
 
 function portLabel(rule: UnionRule): string {
-	if (rule.protocol === null) return '전체';
+	if (rule.protocol === null) return t('securityGroupUnion.any');
 	if (rule.protocol === 'icmp' || rule.protocol === 'ipv6-icmp') {
-		return `유형 ${rule.portRangeMin ?? '전체'} · 코드 ${rule.portRangeMax ?? '전체'}`;
+		const any = t('securityGroupUnion.any');
+		return t('securityGroupUnion.icmpTypeCode', {
+			type: rule.portRangeMin === null ? any : String(rule.portRangeMin),
+			code: rule.portRangeMax === null ? any : String(rule.portRangeMax),
+		});
 	}
-	if (!isTransport(rule.protocol)) return '해당 없음';
-	if (rule.portRangeMin === null) return '전체';
+	if (!isTransport(rule.protocol)) return t('securityGroupUnion.notApplicable');
+	if (rule.portRangeMin === null) return t('securityGroupUnion.any');
 	return rule.portRangeMin === rule.portRangeMax
 		? String(rule.portRangeMin)
 		: `${rule.portRangeMin}–${rule.portRangeMax}`;
 }
 
 function remoteLabel(remote: SecurityGroupRemote, groups: ReadonlyMap<string, SecurityGroupUnionGroup>): string {
-	if (remote.kind === 'group') return `보안 그룹: ${groups.get(remote.value)?.name || remote.value}`;
+	if (remote.kind === 'group') return t('securityGroupUnion.remoteGroup', { name: groups.get(remote.value)?.name || remote.value });
 	return remote.value === '0.0.0.0/0' || remote.value === '::/0'
-		? `전체 (${remote.value})`
+		? t('securityGroupUnion.anyCidr', { cidr: remote.value })
 		: remote.value;
 }
 
@@ -150,7 +155,8 @@ function compareText(left: string | null, right: string | null): number {
  *
  * Returned applied IDs are the resolved subset; missing IDs are reported once.
  * Full 1–65535 transport coverage is canonicalized to null bounds (any ports).
- * Rows carry Korean display labels alongside normalized semantic fields.
+ * Rows carry display labels in the active locale (translated at call time)
+ * alongside normalized semantic fields; keys and ordering never use labels.
  */
 export function buildSecurityGroupUnion(
 	groups: readonly SecurityGroupUnionGroup[],

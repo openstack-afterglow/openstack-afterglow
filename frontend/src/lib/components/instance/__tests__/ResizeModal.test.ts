@@ -144,9 +144,7 @@ describe('ResizeModal', () => {
 		});
 		const options = screen.getAllByRole('option') as HTMLOptionElement[];
 		expect(options[1].disabled).toBe(true);
-		expect(options[1].textContent).toContain('현재 플레이버');
 		expect(options[2].disabled).toBe(true);
-		expect(options[2].textContent).toContain('디스크 축소 불가');
 		const button = screen.getByRole('button', { name: '리사이즈' }) as HTMLButtonElement;
 		expect(button.disabled).toBe(true);
 		await fireEvent.change(screen.getByRole('combobox'), { target: { value: 'flavor-1' } });

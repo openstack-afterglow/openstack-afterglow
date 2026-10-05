@@ -6,12 +6,44 @@
 | --- | --- | --- |
 | `main` | 프로덕션·배포 기준 | pie_root (수동 PR/머지) |
 | `dev` | 개발·AI 작업 대상 | Katherine (AI 에이전트) |
+| `i18n` | 사용자 승인 현지화 작업·최신 `origin/dev` 통합 | Katherine (AI 에이전트) |
 
-반드시 현재 repo root에서 `git switch dev` 후 작업한다. `main`에 직접 커밋하지 않으며 PR과 `dev → main` 머지는 pie_root가 수행한다.
+일반 개발은 `dev`에서 진행한다. 사용자 승인 현지화 작업은 별도 `i18n` worktree에서 진행하며 아래 최신 dev 기준을 따른다. 다른 세션이 사용하는 공유 checkout의 브랜치를 전환하지 않는다. `main`에 직접 커밋하지 않으며 PR과 `dev → main` 머지는 pie_root가 수행한다.
+
+### 현지화 작업의 최신 dev 기준
+
+- 현지화 작업을 시작하거나 재개할 때마다 GitHub `origin`에서 최신 `dev`를 fetch하고, 그 내용을 `i18n`에 병합한 뒤 다음 구현·번역 작업을 시작한다. 최초 분기 커밋이나 오래된 로컬 `dev`를 계속 기준으로 사용하지 않는다.
+- 명령은 현재 브랜치가 `i18n`인 전용 worktree에서만 실행한다. 기존 미커밋 변경을 덮어쓰거나 임의로 stash/reset하지 않으며, 자신의 변경을 보존한 후 통합한다. 보존을 위한 커밋에도 프로젝트의 검증 규칙을 적용한다.
+
+```bash
+git fetch origin dev
+git merge origin/dev
+git merge-base --is-ancestor origin/dev HEAD
+```
+
+- fetch 실패, 미해결 병합 충돌 또는 ancestry 확인 실패 상태에서는 신규 현지화 작업을 진행하지 않는다. 최신 dev의 기능·API 계약·화면 구조를 보존하면서 충돌을 해결하고, 추가·수정된 표시 문구를 함께 현지화한다.
+- 이미 게시한 `i18n` 이력은 일반 merge로 갱신한다. rebase·force push로 이력을 다시 쓰지 않으며, 최신 dev 동기화를 이유로 `dev`나 `main`에 직접 현지화 변경을 반영하지 않는다.
+- 완료 보고·push 직전에도 `origin/dev`를 다시 fetch한다. 새 dev 커밋이 있으면 병합·현지화·검증을 다시 수행한다. OpenSpec checklist와 완료 보고에는 실제 반영한 dev SHA를 기록하고, 그 SHA 기준으로 번역 누락·변수 검사, 관련 테스트, 실제 화면 및 프로젝트 게이트를 검증한다. 오래된 기준의 통과 결과를 최신 dev 검증으로 보고하지 않는다.
+
 
 ## 개발 워크플로우
 
 인터랙티브 작업은 plan 모드에서 목표·범위·설계·완료 기준·제약을 먼저 확정한다. 하네스 작업은 승인된 태스크 명세를 입력으로 구현한다. 결과는 변경 파일, 검증 증거, 미완료 또는 위험을 정확히 보고한다. 새로운 기능이나 수정은 OpenSpec change를 먼저 만들고, 작업 중 checklist를 갱신하며, 완료 후 archive한다.
+
+### 사용자 요청 “배포”의 완료 계약
+
+별도 지시가 없으면 “배포”는 아래 전 과정을 뜻한다. 단계 경계·push·container running만으로 완료를 보고하지 않는다.
+
+1. 관련 저장소의 완료된 로컬 결과 전체를 필수 gate와 실제 실행 smoke로 검증한다. 공유 checkout의 사용자·다른 작업 변경은 보존하고, 필요하면 최신 `origin/dev` 기반 격리 clone의 local `dev`에서 통합한다.
+2. 실제 실패·오류만 최소 수정한다. 기능 변경·개선은 먼저 사용자 동의를 받는다. 최종 관련 worktree/branch를 local `dev`에 정상 merge하고 통합 결과를 검증한 뒤 `origin/dev`로 정상 push한다. 미완료·무관한 작업은 몰래 포함하지 않는다.
+3. push한 정확한 SHA의 GitHub CI/CD를 모니터링하고 실패 원인을 해결한다. 보호 규칙·필수 check·human reviewer 승인을 우회하지 않는다. `dev → main` PR·merge 소유권은 위 브랜치 정책을 따른다.
+4. CI를 통과한 그 commit에 불변 tag를 붙인다. 기본은 patch(`1.21.0 → 1.21.1`), 명시적 version-up 요청은 minor, major는 명시적 major 요청일 때만 올린다. 필요한 metadata는 CI 전에 동기화하지만 tag는 CI 성공 뒤에 생성하며 기존 tag를 이동하지 않는다.
+5. tag-triggered workflow의 version image/package 발행과 `latest` 또는 게시된 `stable` alias가 해당 release의 revision/digest를 가리키는지 검증한다. 실제 발행 실패를 해결하며 `dev`/`nightly` 또는 untagged main 이미지를 정식 release 증거로 대체하지 않는다.
+6. 앞 단계와 복구 지점·auth/storage 선행 조건이 모두 충족된 뒤 실제 wireguard-server Kolla host에 SSH하여 다섯 서비스를 배포한다. 비밀·기존 datastore/volume·inventory·공유 인프라는 보존한다.
+7. 요청한 inventory의 표준 `kolla-ansible genconfig -i multimode` → `kolla-ansible pull -i multimode` → `kolla-ansible reconfigure -i multimode`를 실제 실행한다. inventory 이름이 없으면 기존 inventory를 덮어쓰거나 다른 이름을 쓴 성공으로 대체하지 않고, 동일 대상의 검증된 연결을 먼저 준비한다. 태그 없는 명령의 stock 서비스 영향도 범위·복구 지점에 포함한다.
+8. 필요한 Afterglow·Lumen·Waygate·Drover·Palimpsest operator package만 정확한 release로 갱신한다. 기존 Kolla와 일반 Python 의존성은 보존하고, 기존 uv 정책·승인 범위 안에서 lock을 도구로 생성한다.
+9. `https://cloud.dmslab.re.kr`에서 현재 최신 release의 실제 실행 버전·readiness·인증 경계와 사용자 화면을 확인한다. 로컬/synthetic proof와 운영 proof를 분리하고 미검증·차단 조건은 명시한다.
+
 
 ## Architecture maintenance
 
@@ -91,6 +123,8 @@ milestone.md          OpenSpec redirect stub; append 대상이 아님
 - 새 frontend 파일에는 raw hex 또는 raw Tailwind palette 색상 클래스를 추가하지 않는다. Legacy 색상은 `legacyVisualDebt.ts` guardrail baseline에만 남긴다.
 - status는 `StatusChip`/`Pill`, action은 `Button`, alert는 `Alert`, form은 `Field`/input primitives, table은 `TableShell`을 우선 사용한다.
 - `DESIGN.md`의 scrim, layer, motion, reduced-motion 규칙을 따른다. 새 route/component은 token/primitive 확장 → primitive test → feature composition → visual-debt 검사 순으로 만든다.
+- UI 문구는 한국어 source와 en/ja/zh-CN 동일 키 카탈로그를 사용한다. `t()`는 markup/derived/getter/event 시점에만 호출하고 모듈 최상위·load에서 호출하지 않는다. 날짜·숫자에는 format 시점의 `intlLocale()`을 사용하고 API 데이터·식별자는 바꾸지 않는다.
+- 번역 변경은 [`frontend-localization.md`](frontend-localization.md)의 CSV·검수 계약을 따른다. `npm --prefix frontend run i18n:check`와 `i18n:scan`을 실행하고 네 언어에서 실제 responsive UI를 확인한다. allowlist에는 UI 누락이 아닌 정확한 데이터 줄과 이유만 추가한다.
 
 ## 개발, 테스트, OpenSpec
 
@@ -119,7 +153,7 @@ milestone.md          OpenSpec redirect stub; append 대상이 아님
 npm run test:gate
 ```
 
-`test:gate` (`npm run test:all` + `npm run lint:backend`)가 성공한 경우에만 `git add <변경 파일>`, `git commit -m "type: 요약"`, `git push origin dev`를 진행한다. 실패하면 커밋하지 않고 원인을 수정한 뒤 다시 실행한다.
+`test:gate` (`npm run test:all` + `npm run lint:backend`)가 성공한 경우에만 `git add <변경 파일>`, `git commit -m "type: 요약"`, `git push origin <작업 브랜치>`를 진행한다. 작업 브랜치는 기본 `dev`이며 사용자 승인 현지화 작업은 `i18n`이다. 실패하면 커밋하지 않고 원인을 수정한 뒤 다시 실행한다.
 ### OpenSpec
 
 - 신규 작업: `openspec new change <slug> --schema rapid`, then `proposal.md`와 `tasks.md`를 채운다.
@@ -257,7 +291,7 @@ Afterglow는 cloud-init/SSH root 실행과 OpenStack 멀티테넌트 리소스�
 
 ## 커밋과 금지 사항
 
-- 브랜치: `dev`
+- 브랜치: 기본 `dev`; 사용자 승인 현지화 작업은 최신 `origin/dev`를 반영한 별도 `i18n` worktree
 - 메시지: `feat`, `fix`, `refactor`, `docs`, `test`, `chore` 중 하나로 시작
 - 커밋 전 `git status`로 불필요한 파일을 확인
 - `main` 직접 커밋, `git push --force`, `.env`/시크릿 커밋, 플래닝 없는 대규모 refactor, 테스트 없는 backend endpoint 커밋 금지

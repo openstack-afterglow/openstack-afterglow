@@ -1,6 +1,6 @@
 {
     "name": "afterglow_backend",
-    "image": "{{ afterglow_backend_image }}:{{ afterglow_image_tag }}",
+    "image": "{{ afterglow_backend_image_ref }}",
     "restart_policy": "unless-stopped",
     "volumes": [
         "/etc/kolla/config/afterglow/generated/afterglow.generated.conf:/app/afterglow.conf:ro",

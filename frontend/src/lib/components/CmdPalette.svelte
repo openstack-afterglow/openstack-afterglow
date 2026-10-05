@@ -10,6 +10,7 @@
   import { siteConfig } from '$lib/config/site';
   import { isMockupPathAllowed } from '$lib/mockup/contracts';
   import { dialogFocus } from '$lib/utils/dialogFocus';
+  import { t } from '$lib/i18n/ns/shell';
 
   interface PaletteItem {
     id: string;
@@ -86,27 +87,27 @@
 
       if (instances.status === 'fulfilled') {
         for (const r of instances.value ?? []) {
-          items.push({ id: r.id, label: r.name || r.id.slice(0, 12), sublabel: '인스턴스', type: 'instance', href: `/dashboard/compute/instances/${r.id}`, icon: ICONS.instance });
+          items.push({ id: r.id, label: r.name || r.id.slice(0, 12), sublabel: t('palette.kind.instance'), type: 'instance', href: `/dashboard/compute/instances/${r.id}`, icon: ICONS.instance });
         }
       }
       if (volumes.status === 'fulfilled') {
         for (const r of (volumes.value as Array<{ id: string; name?: string }> | null) ?? []) {
-          items.push({ id: r.id, label: r.name || r.id.slice(0, 12), sublabel: '볼륨', type: 'volume', href: `/dashboard/volumes/${r.id}`, icon: ICONS.volume });
+          items.push({ id: r.id, label: r.name || r.id.slice(0, 12), sublabel: t('palette.kind.volume'), type: 'volume', href: `/dashboard/volumes/${r.id}`, icon: ICONS.volume });
         }
       }
       if (images.status === 'fulfilled') {
         for (const r of (images.value as Array<{ id: string; name?: string }> | null) ?? []) {
-          items.push({ id: r.id, label: r.name || r.id.slice(0, 12), sublabel: '이미지', type: 'image', href: `/dashboard/compute/images`, icon: ICONS.image });
+          items.push({ id: r.id, label: r.name || r.id.slice(0, 12), sublabel: t('palette.kind.image'), type: 'image', href: `/dashboard/compute/images`, icon: ICONS.image });
         }
       }
       if (networks.status === 'fulfilled') {
         for (const r of (networks.value as Array<{ id: string; name?: string }> | null) ?? []) {
-          items.push({ id: r.id, label: r.name || r.id.slice(0, 12), sublabel: '네트워크', type: 'network', href: `/dashboard/network/networks`, icon: ICONS.network });
+          items.push({ id: r.id, label: r.name || r.id.slice(0, 12), sublabel: t('palette.kind.network'), type: 'network', href: `/dashboard/network/networks`, icon: ICONS.network });
         }
       }
       if (routers.status === 'fulfilled') {
         for (const r of (routers.value as Array<{ id: string; name?: string }> | null) ?? []) {
-          items.push({ id: r.id, label: r.name || r.id.slice(0, 12), sublabel: '라우터', type: 'router', href: `/dashboard/network/routers`, icon: ICONS.router });
+          items.push({ id: r.id, label: r.name || r.id.slice(0, 12), sublabel: t('palette.kind.router'), type: 'router', href: `/dashboard/network/routers`, icon: ICONS.router });
         }
       }
       resourceItems = items;
@@ -176,14 +177,14 @@
     class="fixed inset-0 z-[var(--z-command)]"
     role="dialog"
     aria-modal="true"
-    aria-label="커맨드 팔레트"
+    aria-label={t('palette.label')}
     tabindex="-1"
   >
     <button
       type="button"
       class="material-scrim absolute inset-0 cursor-default bg-surface-scrim"
       onclick={() => palette.close()}
-      aria-label="커맨드 팔레트 닫기"
+      aria-label={t('palette.close')}
     ></button>
     <div class="fixed left-1/2 top-[20vh] z-[calc(var(--z-command)+1)] w-full max-w-xl -translate-x-1/2 px-4">
       <div class="palette-panel overflow-hidden rounded-xl border border-line-2 shadow-[var(--shadow-restraint)]">
@@ -198,21 +199,21 @@
             onkeydown={onKeydown}
             type="text"
             role="combobox"
-            aria-label="메뉴 또는 리소스 검색"
+            aria-label={t('palette.searchLabel')}
             aria-autocomplete="list"
             aria-controls={listboxId}
             aria-expanded="true"
             aria-activedescendant={results[selectedIdx] ? resultId(results[selectedIdx]) : undefined}
-            placeholder="메뉴 또는 리소스 검색..."
+            placeholder={t('palette.searchPlaceholder')}
             autocomplete="off"
             class="flex-1 bg-transparent text-[14px] text-ink-0 placeholder-ink-3 outline-none"
           />
           <kbd class="rounded border border-line px-1.5 py-0.5 font-mono text-[10px] text-ink-2">ESC</kbd>
         </div>
 
-        <p class="sr-only" aria-live="polite">{results.length > 0 ? `${results.length}개 결과` : '검색 결과 없음'}</p>
+        <p class="sr-only" aria-live="polite">{results.length > 0 ? t('palette.resultCount', { count: results.length }) : t('palette.noResultsLive')}</p>
         {#if results.length > 0}
-          <ul id={listboxId} role="listbox" aria-label="검색 결과" class="max-h-80 overflow-y-auto py-1">
+          <ul id={listboxId} role="listbox" aria-label={t('palette.results')} class="max-h-80 overflow-y-auto py-1">
             {#each results as item, i}
               <li role="presentation">
                 <button
@@ -241,7 +242,7 @@
             {/each}
           </ul>
         {:else}
-          <div id={listboxId} role="listbox" aria-label="검색 결과" class="px-4 py-6 text-center text-sm text-ink-2">결과 없음</div>
+          <div id={listboxId} role="listbox" aria-label={t('palette.results')} class="px-4 py-6 text-center text-sm text-ink-2">{t('palette.noResults')}</div>
         {/if}
       </div>
     </div>

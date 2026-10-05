@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/network-resources';
 	import type { Pool, Member } from '$lib/types/loadbalancer';
 	import LbPoolMembersPanel from './LbPoolMembersPanel.svelte';
 
@@ -46,13 +47,13 @@
 
 <section class="bg-surface-base border border-line rounded-lg p-5 mb-4">
 	<div class="flex items-center justify-between mb-4">
-		<h2 class="font-semibold text-ink-0">풀 ({pools.length})</h2>
-		<button onclick={() => showAddPool = !showAddPool} class="text-warm-text hover:text-warm-text-hover text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm transition-colors">+ 추가</button>
+		<h2 class="font-semibold text-ink-0">{t('lb.pools.title', { count: pools.length })}</h2>
+		<button onclick={() => showAddPool = !showAddPool} class="text-warm-text hover:text-warm-text-hover text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm transition-colors">{t('lb.actions.addWithPlus')}</button>
 	</div>
 
 	{#if showAddPool}
 		<div class="mb-4 p-4 bg-surface-sunken/60 border border-line-2 rounded-lg grid grid-cols-1 sm:grid-cols-3 gap-2">
-			<input bind:value={poolForm.name} placeholder="이름 (선택)" class="bg-surface-sunken border border-line-2 rounded px-3 py-2 text-sm text-ink-1" />
+			<input bind:value={poolForm.name} placeholder={t('lb.form.optionalName')} class="bg-surface-sunken border border-line-2 rounded px-3 py-2 text-sm text-ink-1" />
 			<select bind:value={poolForm.protocol} class="bg-surface-sunken border border-line-2 rounded px-3 py-2 text-sm text-ink-1">
 				{#each ['HTTP', 'HTTPS', 'TCP', 'UDP'] as p}
 					<option value={p}>{p}</option>
@@ -60,16 +61,16 @@
 			</select>
 			<select bind:value={poolForm.lb_algorithm} class="bg-surface-sunken border border-line-2 rounded px-3 py-2 text-sm text-ink-1">
 				{#each ['ROUND_ROBIN', 'LEAST_CONNECTIONS', 'SOURCE_IP'] as a}
-					<option value={a}>{a}</option>
+					<option value={a}>{t('lb.algorithm.label', { algorithm: a })}</option>
 				{/each}
 			</select>
-			<button onclick={handleAddPool} disabled={saving} class="col-span-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-ink-0 text-sm px-3 py-2 rounded">생성</button>
-			<button onclick={() => showAddPool = false} class="text-ink-2 hover:text-ink-1 text-sm px-2 text-center">취소</button>
+			<button onclick={handleAddPool} disabled={saving} class="col-span-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-ink-0 text-sm px-3 py-2 rounded">{t('lb.actions.create')}</button>
+			<button onclick={() => showAddPool = false} class="text-ink-2 hover:text-ink-1 text-sm px-2 text-center">{t('lb.actions.cancel')}</button>
 		</div>
 	{/if}
 
 	{#if pools.length === 0}
-		<p class="text-sm text-ink-2">풀이 없습니다.</p>
+		<p class="text-sm text-ink-2">{t('lb.pools.empty')}</p>
 	{:else}
 		<div class="space-y-2">
 			{#each pools as pool}
@@ -84,12 +85,12 @@
 						<div class="text-sm">
 							<span class="text-ink-0 font-medium">{pool.name || pool.id.slice(0, 10)}</span>
 							<span class="ml-2 text-xs text-purple-300 bg-purple-900/30 px-1.5 py-0.5 rounded">{pool.protocol}</span>
-							<span class="ml-2 text-xs text-ink-2">{pool.lb_algorithm}</span>
+							<span class="ml-2 text-xs text-ink-2">{t('lb.algorithm.label', { algorithm: pool.lb_algorithm })}</span>
 							<span class="ml-2 text-xs {pool.status === 'ACTIVE' ? 'text-green-400' : 'text-yellow-400'}">{pool.status}</span>
 						</div>
 						<div class="flex gap-2">
-							<span class="text-xs text-ink-2">{selectedPoolId === pool.id ? '▲ 멤버 접기' : '▼ 멤버 보기'}</span>
-							<button onclick={(e) => { e.stopPropagation(); onDeletePool(pool.id); }} disabled={saving} class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 transition-colors">삭제</button>
+							<span class="text-xs text-ink-2">{selectedPoolId === pool.id ? t('lb.pools.collapseMembers') : t('lb.pools.showMembers')}</span>
+							<button onclick={(e) => { e.stopPropagation(); onDeletePool(pool.id); }} disabled={saving} class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 transition-colors">{t('lb.actions.delete')}</button>
 						</div>
 					</div>
 

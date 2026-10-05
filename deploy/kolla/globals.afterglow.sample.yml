@@ -31,36 +31,36 @@ enable_lumen_api: "yes"
 enable_lumen_worker: "yes"
 
 # ── 2. Published Image Selection ─────────────────────────────────────────────
-# Afterglow follows the requested release tag. Use a version tag for a
-# deterministic release or `latest` to resolve the registry digest on every
-# pull/deploy/reconfigure. The computed refs also override legacy bare image
-# refs in stock globals without duplicating the selected tag.
+# Follow the existing published `latest` channel. Each Kolla invocation resolves
+# moving tags once to registry digests shared by all targeted controllers.
+# Explicit version tags/digests remain available for controlled rollback.
+# `pull` downloads images; deploy/reconfigure/upgrade applies them afterwards.
 enable_afterglow_source_build: false
 enable_drover_source_build: false
 enable_lumen_source_build: false
 enable_waygate_source_build: false
 enable_palimpsest_source_build: false
 
-afterglow_image_tag: "v1.30.0"
-afterglow_backend_image_ref: "{{ afterglow_backend_image }}:{{ afterglow_image_tag }}"
-afterglow_frontend_image_ref: "{{ afterglow_frontend_image }}:{{ afterglow_image_tag }}"
-afterglow_worker_image_ref: "{{ afterglow_worker_image }}:{{ afterglow_image_tag }}"
+afterglow_image_tag: "latest"
+drover_image_tag: "latest"
+waygate_image_tag: "latest"
+lumen_image_tag: "latest"
+palimpsest_image_tag: "latest"
 # Cloud Shell is a Zun workload, not a Kolla-managed long-running service.
 # Enable it only with a published multi-architecture manifest digest.
 # afterglow_cloud_shell_image: "ghcr.io/openstack-afterglow/afterglow-cloud-shell@sha256:<64-hex-digest>"
 
-# Independently released extracted services support explicit release version
-# tags (e.g. :v0.2.25) as well as immutable linux/amd64 manifest digests (@sha256:...).
-# Bare references and mutable `:latest` tags are prohibited by precheck validators.
-
-drover_api_image_ref: "ghcr.io/openstack-afterglow/drover-api:v0.2.25"
-drover_worker_image_ref: "ghcr.io/openstack-afterglow/drover-worker:v0.2.25"
-waygate_api_image_ref: "ghcr.io/openstack-afterglow/waygate-api:0.2.0"
-waygate_worker_image_ref: "ghcr.io/openstack-afterglow/waygate-worker:0.2.0"
-lumen_api_image_ref: "ghcr.io/openstack-afterglow/lumen-api:0.3.1"
-lumen_worker_image_ref: "ghcr.io/openstack-afterglow/lumen-worker:0.3.1"
-palimpsest_api_image_ref: "ghcr.io/openstack-afterglow/palimpsest-hub-api:0.2.0"
-palimpsest_worker_image_ref: "ghcr.io/openstack-afterglow/palimpsest-hub-worker:0.2.0"
+# The integration resolves moving channel tags (`latest` or `stable`) before
+# service-owned immutable-reference prechecks and shares exact digests across
+# all targeted controllers. Configure moving channels via `*_image_tag`.
+# To pin a release or roll back to an explicit version or digest, set the exact
+# immutable `*_image_ref` variable:
+# afterglow_backend_image_ref: "ghcr.io/openstack-afterglow/afterglow-api@sha256:<64-hex-digest>"
+# drover_api_image_ref: "ghcr.io/openstack-afterglow/drover-api@sha256:<64-hex-digest>"
+# waygate_api_image_ref: "ghcr.io/openstack-afterglow/waygate-api@sha256:<64-hex-digest>"
+# lumen_api_image_ref: "ghcr.io/openstack-afterglow/lumen-api@sha256:<64-hex-digest>"
+# palimpsest_api_image_ref: "ghcr.io/openstack-afterglow/palimpsest-hub-api@sha256:<64-hex-digest>"
+# Stock Kolla 2025.2 images and datastore version/digest pins are unchanged.
 # ── 3. HAProxy VIP Listeners and Controller Upstreams ────────────────────────
 # Kolla HAProxy owns the VIP ports. App containers bind only the controller API
 # addresses on private upstream ports; Heat retains VIP port 8000.

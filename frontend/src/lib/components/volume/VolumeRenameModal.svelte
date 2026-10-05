@@ -5,6 +5,7 @@
 	import { toast } from '$lib/stores/toast';
 	import type { Volume } from '$lib/types/volume';
 	import { Field, FormModal, TextInput } from '$lib/components/ui';
+	import { t } from '$lib/i18n/ns/volume';
 
 	const MAX_NAME_LENGTH = 255;
 
@@ -39,11 +40,11 @@
 		if (!target || saving) return;
 		const trimmed = name.trim();
 		if (!trimmed) {
-			error = '볼륨 이름을 입력하세요.';
+			error = t('renameModal.nameRequired');
 			return;
 		}
 		if (trimmed.length > MAX_NAME_LENGTH) {
-			error = `볼륨 이름은 ${MAX_NAME_LENGTH}자 이하여야 합니다.`;
+			error = t('renameModal.nameTooLong', { maxLength: MAX_NAME_LENGTH });
 			return;
 		}
 		if (trimmed === target.name) {
@@ -67,11 +68,11 @@
 				onclose();
 				return;
 			}
-			toast.success('볼륨 이름을 변경했습니다.');
+			toast.success(t('renameModal.renamed'));
 			onrenamed({ ...target, ...updated, name: updated?.name ?? trimmed });
 		} catch (e) {
 			saving = false;
-			error = e instanceof ApiError ? e.message : '볼륨 이름 변경에 실패했습니다.';
+			error = e instanceof ApiError ? e.message : t('renameModal.renameFailed');
 		}
 	}
 </script>
@@ -79,14 +80,14 @@
 {#if volume}
 	<FormModal
 		open={true}
-		title="볼륨 이름 변경"
-		submitLabel="저장"
+		title={t('renameModal.title')}
+		submitLabel={t('renameModal.save')}
 		submitting={saving}
 		onClose={close}
 		onSubmit={submit}
 	>
 		<form onsubmit={(event) => { event.preventDefault(); void submit(); }}>
-			<Field label="볼륨 이름" for={inputId} error={error} required help={volume.attachments.length > 0 ? '연결된 볼륨도 이름을 변경할 수 있습니다.' : undefined}>
+			<Field label={t('renameModal.nameLabel')} for={inputId} error={error} required help={volume.attachments.length > 0 ? t('renameModal.attachedHelp') : undefined}>
 				<TextInput
 					id={inputId}
 					bind:value={name}

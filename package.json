@@ -1,7 +1,7 @@
 {
   "name": "afterglow-monorepo",
   "private": true,
-  "version": "1.30.0",
+  "version": "1.30.1",
   "scripts": {
     "test": "npm run test:unit",
     "test:unit": "npm run test:target:js && npm run test:unit:backend && npm run test:unit:frontend",
@@ -20,7 +20,7 @@
     "test:target": "node scripts/test-target.js",
     "test:orchestration": "node --test scripts/service-verify.test.mjs scripts/test-target.test.js scripts/test-db.test.js scripts/github-actions-contract.test.js scripts/ci/detect-build-targets.test.js scripts/ci/helm-publish-decision.test.js scripts/ci/image-revision.test.js scripts/ci/pr-dedup.test.js scripts/ci/verify-vitest-shard.test.js && node scripts/test-target.js --validate",
     "test:cli:install": "node --test scripts/lumen-sh.test.js scripts/lumen-ps1.test.js",
-    "test:kolla:contract": "node --test scripts/kolla-contract.test.js",
+    "test:kolla:contract": "node --test scripts/kolla-contract.test.js && python3 scripts/test_resolve_image_refs.py",
     "test:kolla:runtime": "node --test scripts/kolla-runtime-contract.test.js",
     "test:target:js": "npm run test:orchestration && npm run test:kolla:contract && npm run test:cli:install",
     "test:auth": "node scripts/test-target.js auth",

@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-chat';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import RichText from '$lib/i18n/RichText.svelte';
 	import { onDestroy } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -18,7 +21,7 @@
 	import ModelCapabilityBadges from '$lib/components/chat/ModelCapabilityBadges.svelte';
 	import type { ModelCapabilities } from '$lib/api/chatContracts';
 	import ModelMediaPricingEditor from './ModelMediaPricingEditor.svelte';
-	import { MODEL_LABELS as MEDIA_LABELS, hasMediaPrices, pricingDraft, pricingError, pricingPayload, pricingEquals, type ModelKind, type MediaPricing } from './modelPricing';
+	import { MODEL_LABELS as MEDIA_LABELS, TOKEN_FIELDS, hasMediaPrices, pricingDraft, pricingError, pricingPayload, pricingEquals, type ModelKind, type MediaPricing } from './modelPricing';
 
 	let { section = 'providers' }: { section?: 'providers' | 'models' | 'tools' } = $props();
 
@@ -115,16 +118,16 @@
 	}
 
 	// Form selection values are UI-only. Provider type and authentication mode are sent explicitly.
-	const PROVIDER_TYPES: ProviderChoice[] = [
-		{ value: 'openai', label: 'OpenAI API (및 OpenAI 호환 API)', providerType: 'openai', authMode: 'api_key' },
+	let PROVIDER_TYPES: ProviderChoice[] = $derived([
+		{ value: 'openai', label: t('configuration.openaiApiAndOpenaiCompatibleApis'), providerType: 'openai', authMode: 'api_key' },
 		{ value: 'anthropic', label: 'Claude API', providerType: 'anthropic', authMode: 'api_key' },
-		{ value: 'chatgpt-subscription', label: 'ChatGPT 구독 (실험)', providerType: 'chatgpt', authMode: 'chatgpt_device' },
-		{ value: 'claude-subscription', label: 'Claude 구독 (실험)', providerType: 'anthropic', authMode: 'anthropic_subscription' },
+		{ value: 'chatgpt-subscription', label: t('configuration.chatgptSubscriptionExperimental'), providerType: 'chatgpt', authMode: 'chatgpt_device' },
+		{ value: 'claude-subscription', label: t('configuration.claudeSubscriptionExperimental'), providerType: 'anthropic', authMode: 'anthropic_subscription' },
 		{ value: 'gemini', label: 'Google Gemini (AI Studio)', providerType: 'gemini', authMode: 'api_key' },
 		{ value: 'vertex_ai', label: 'Google Vertex AI (GCP)', providerType: 'vertex_ai', authMode: 'api_key' },
 		{ value: 'azure', label: 'Azure OpenAI', providerType: 'azure', authMode: 'api_key' },
 		{ value: 'bedrock', label: 'AWS Bedrock', providerType: 'bedrock', authMode: 'api_key' },
-		{ value: 'ollama', label: 'Ollama (로컬)', providerType: 'ollama', authMode: 'api_key' },
+		{ value: 'ollama', label: t('configuration.ollamaLocal'), providerType: 'ollama', authMode: 'api_key' },
 		{ value: 'mistral', label: 'Mistral', providerType: 'mistral', authMode: 'api_key' },
 		{ value: 'cohere', label: 'Cohere', providerType: 'cohere', authMode: 'api_key' },
 		{ value: 'groq', label: 'Groq', providerType: 'groq', authMode: 'api_key' },
@@ -133,28 +136,28 @@
 		{ value: 'openrouter', label: 'OpenRouter', providerType: 'openrouter', authMode: 'api_key' },
 		{ value: 'perplexity', label: 'Perplexity (Agent API · Router · Sonar)', providerType: 'perplexity', authMode: 'api_key' },
 		{ value: 'xai', label: 'xAI (Grok)', providerType: 'xai', authMode: 'api_key' }
-	];
+	]);
 	function mediaPriceSummary(model: Model): string {
 		const pricing = model.media_pricing;
 		const rates = Object.entries(pricing ?? {}).filter(([key, value]) => key !== 'token_rates' && key !== 'image_variants' && typeof value === 'string')
-			.map(([key, value]) => `${key}: ${value}`);
-		const variants = Object.entries(pricing?.image_variants ?? {}).map(([name, price]) => `${name}: ${price} USD / 장`);
-		const tokens = Object.entries(pricing?.token_rates ?? {}).flatMap(([modality, values]) => Object.entries(values).map(([key, value]) => `${modality} ${key}: ${value} USD / 1M tokens`));
-		return [...rates, ...variants, ...tokens, ...(!hasMediaPrices(pricing) ? ['단가 미설정'] : [])].join(' · ');
+			.map(([key, value]) => `${key}: ${displayPrice(String(value))}`);
+		const variants = Object.entries(pricing?.image_variants ?? {}).map(([name, price]) => t('configuration.usdImageAlternate', { v0: name, v1: displayPrice(price) }));
+		const tokens = Object.entries(pricing?.token_rates ?? {}).flatMap(([modality, values]) => Object.entries(values).map(([key, value]) => `${modality === 'image' ? t('configuration.image') : modality === 'audio' ? t('pricing.audio') : modality} ${TOKEN_FIELDS.find((field) => field.key === key)?.label ?? key}: ${displayPrice(String(value))} ${t('configuration.usd1mTokens')}`));
+		return [...rates, ...variants, ...tokens, ...(!hasMediaPrices(pricing) ? [t('configuration.rateUnset')] : [])].join(' · ');
 	}
 	function mediaReadiness(model: Model): string {
 		const feature = model.model_kind === 'image' ? 'image_output' : model.model_kind === 'stt' ? 'audio_input' : 'audio_output';
 		const gate = model.effective_capabilities?.feature_gates?.[feature];
 		return gate?.reason_code === 'route_unavailable'
-			? '실행 경로 없음 · 실행 불가'
-			: `실행 미검증 · 경로 확인 필요${gate?.reason_code ? ` (${gate.reason_code})` : ''}`;
+			? t('configuration.noExecutionPathCannotRun')
+			: t('configuration.executionUnverifiedCheckExecutionPath', { v0: gate?.reason_code ? ` (${gate.reason_code})` : '' });
 	}
 	function mediaCapability(model: Model): string {
 		const kind = model.model_kind ?? 'text';
 		const features = kind === 'image' ? ['image_output'] : kind === 'stt' ? ['audio_input'] : kind === 'realtime' ? ['audio_input', 'audio_output'] : ['audio_output'];
-		const names: Record<string, string> = { image_output: '이미지 출력', audio_input: '오디오 입력', audio_output: '오디오 출력' };
+		const names: Record<string, string> = { image_output: t('configuration.imageOutput'), audio_input: t('configuration.audioInput'), audio_output: t('configuration.audioOutput') };
 		const priced = features.every((feature) => model.effective_capabilities?.feature_gates?.[feature]?.pricing_available === true);
-		return `${features.map((feature) => names[feature]).join('·')} · ${priced ? '해당 기능 단가 표시됨' : '해당 기능 단가 미확인'}`;
+		return `${features.map((feature) => names[feature]).join('·')} · ${priced ? t('configuration.rateShownForThisCapability') : t('configuration.rateUnverifiedForThisCapability')}`;
 	}
 
 
@@ -200,14 +203,14 @@
 	type CachePriceValues = Record<CachePriceKey, string | null>;
 
 	// Cache prices are optional and independent of each other and of the input/output pair rule.
-	const CACHE_PRICE_FIELDS: { key: CachePriceKey; label: string; slug: string }[] = [
-		{ key: 'cache_read_price_per_million', label: '캐시 읽기', slug: 'read' },
-		{ key: 'cache_write_price_per_million', label: '캐시 쓰기 5분', slug: 'write-5m' },
-		{ key: 'cache_write_1h_price_per_million', label: '캐시 쓰기 1시간', slug: 'write-1h' }
-	];
+	let CACHE_PRICE_FIELDS: { key: CachePriceKey; label: string; slug: string }[] = $derived([
+		{ key: 'cache_read_price_per_million', label: t('configuration.cacheRead'), slug: 'read' },
+		{ key: 'cache_write_price_per_million', label: t('configuration.cacheWriteFiveMinutes'), slug: 'write-5m' },
+		{ key: 'cache_write_1h_price_per_million', label: t('configuration.cacheWriteOneHour'), slug: 'write-1h' }
+	]);
 	// Plain non-negative decimal; rejects exponent, hex, sign, Infinity/NaN. Lumen owns precision.
 	const CACHE_PRICE_PATTERN = /^\d+(?:\.\d+)?$/;
-	const CACHE_PRICE_ERROR = '0 이상의 숫자로 입력하세요 (예: 0.3)';
+	let CACHE_PRICE_ERROR = $derived(t('configuration.enterANumberGreaterThanOrEqualTo0'));
 
 	function emptyCachePriceInputs(): CachePriceInputs {
 		return {
@@ -291,8 +294,8 @@
 	}
 
 	function formatCachePrice(price: string | null | undefined): string {
-		if (price === null || price === undefined || price === '') return '미설정';
-		return normalizeDecimalString(price);
+		if (price === null || price === undefined || price === '') return t('configuration.unset');
+		return displayPrice(price);
 	}
 
 	function cachePriceState(model: Model): 'none' | 'partial' | 'all' {
@@ -341,18 +344,18 @@
 	let providerEditAttempted = $state(false);
 	let providerSaving = $state(false);
 	let providerEditError = $state('');
-	const ORDER_HELP = '0~2147483647 정수. 작은 값이 먼저 표시되며 같은 값은 ID 순입니다.';
-	const QUALIFIER_HELP = 'API 요청의 provider 값입니다. 영문 소문자로 시작하며 소문자·숫자·_·-만 사용합니다 (최대 40자).';
+	const ORDER_HELP = $derived(t('pricing.orderHelp'));
+	const QUALIFIER_HELP = $derived(t('pricing.qualifierHelp'));
 	function orderError(value: string): string | undefined {
 		return /^\d+$/.test(value.trim()) && Number(value.trim()) <= 2147483647
-			? undefined : '0~2147483647 범위의 정수를 입력하세요.';
+			? undefined : t('pricing.orderError');
 	}
 	function qualifierError(value: string): string | undefined {
 		return /^[a-z][a-z0-9_-]{0,39}$/.test(value.trim())
-			? undefined : '소문자로 시작하는 1~40자의 API provider를 입력하세요.';
+			? undefined : t('pricing.qualifierError');
 	}
 	function metadataSaveError(e: unknown): string {
-		return e instanceof ApiError ? `저장 실패 (${e.status}). 입력 내용을 유지했습니다.` : '저장하지 못했습니다. 입력 내용을 유지했습니다.';
+		return e instanceof ApiError ? t('pricing.saveStatusError', { status: e.status }) : t('pricing.saveError');
 	}
 	const selectedProviderChoice = $derived(PROVIDER_TYPES.find((choice) => choice.value === pType) ?? PROVIDER_TYPES[0]!);
 	const isSubscriptionChoice = $derived(selectedProviderChoice.authMode !== 'api_key');
@@ -588,12 +591,12 @@
 	});
 
 	function reviewPriceError(entry: RegistrationEntry): string | undefined {
-		if (!entry.kind) return '등록할 모델 종류를 명시적으로 선택하세요.';
-		if (entry.kind !== 'text' && !mediaProviderSupported(registrationReview?.providerId ?? '')) return '미디어 등록에는 직접 연결된 OpenAI·Gemini API-key 프로바이더가 필요합니다.';
+		if (!entry.kind) return t('pricing.kindRequired');
+		if (entry.kind !== 'text' && !mediaProviderSupported(registrationReview?.providerId ?? '')) return t('pricing.directProviderRequired');
 		const input = entry.inputPrice.trim();
 		const output = entry.outputPrice.trim();
 		if (!input && !output) return undefined;
-		if ((entry.kind === 'text' && (!input || !output)) || [input, output].some((value) => value && !CACHE_PRICE_PATTERN.test(value))) return '해당 입력·출력 단가를 0 이상의 숫자로 입력하세요 (텍스트 모델은 둘 다 필요).';
+		if ((entry.kind === 'text' && (!input || !output)) || [input, output].some((value) => value && !CACHE_PRICE_PATTERN.test(value))) return t('pricing.reviewRateError');
 		return undefined;
 	}
 
@@ -604,35 +607,35 @@
 
 	function formatBillingAmount(value: string | null): string {
 		if (value === null) return '—';
-		return Number(value).toLocaleString('en-US', { maximumFractionDigits: 6 });
+		return Number(value).toLocaleString(intlLocale(), { maximumFractionDigits: 6 });
 	}
 
 	function billingFailureLabel(reason: string | null): string {
-		if (reason === 'credential_not_configured') return 'API 키가 설정되지 않았습니다.';
-		if (reason === 'credential_unavailable') return '저장된 API 키를 복호화할 수 없습니다.';
-		if (reason === 'admin_credential_not_configured') return '조직 사용량 조회용 관리자 키를 설정하세요.';
-		if (reason === 'admin_credential_unavailable') return '저장된 관리자 키를 복호화할 수 없습니다. 키를 다시 설정하세요.';
-		if (reason === 'admin_credential_rejected') return '프로바이더가 관리자 키를 거부했습니다. 키의 조직 권한을 확인하세요.';
-		if (reason === 'provider_authorization_failed') return '프로바이더가 이 API 키의 결제 조회를 거부했습니다.';
-		if (reason === 'provider_request_failed') return '프로바이더 사용량 API 요청이 실패했습니다.';
-		return '프로바이더 사용량 API에 연결할 수 없습니다.';
+		if (reason === 'credential_not_configured') return t('configuration.noApiKeyConfigured');
+		if (reason === 'credential_unavailable') return t('configuration.couldNotDecryptTheSavedApiKey');
+		if (reason === 'admin_credential_not_configured') return t('configuration.setAnAdminKeyForOrganizationUsageLookup');
+		if (reason === 'admin_credential_unavailable') return t('configuration.couldNotDecryptTheSavedAdminKeySetThe');
+		if (reason === 'admin_credential_rejected') return t('configuration.theProviderRejectedTheAdminKeyCheckItsOrganization');
+		if (reason === 'provider_authorization_failed') return t('configuration.theProviderDeniedBillingLookupForThisApiKey');
+		if (reason === 'provider_request_failed') return t('configuration.theProviderUsageApiRequestFailed');
+		return t('configuration.couldNotConnectToTheProviderUsageApi');
 	}
 
 	function unsupportedCreditLabel(providerType: string): string {
 		const normalized = providerType.toLowerCase();
 		if (normalized === 'openai') {
-			return 'OpenAI 공식 API는 조직 비용과 사용량만 제공하며, 현재 선불 잔액과 충전액은 결제 콘솔에서 확인해야 합니다.';
+			return t('configuration.theOfficialOpenaiApiProvidesOnlyOrganizationCostsAnd');
 		}
 		if (normalized === 'anthropic') {
-			return 'Anthropic 공식 API는 조직 비용과 사용량만 제공하며, 현재 크레딧 잔액과 충전액은 결제 콘솔에서 확인해야 합니다.';
+			return t('configuration.theOfficialAnthropicApiProvidesOnlyOrganizationCostsAnd');
 		}
 		if (normalized === 'gemini') {
-			return 'Gemini 선불 잔액과 거래 내역은 공식 Google AI Studio 결제 화면에서만 확인할 수 있습니다.';
+			return t('configuration.geminiPrepaidBalancesAndTransactionsAreAvailableOnlyIn');
 		}
 		if (normalized === 'perplexity') {
-			return 'Perplexity Enterprise Computer Analytics API는 Computer 제품 분석용이며 Sonar/API Platform 크레딧 조회 API가 아닙니다.';
+			return t('configuration.thePerplexityEnterpriseComputerAnalyticsApiProvidesComputerProduct');
 		}
-		return '이 프로바이더는 저장된 API 키로 현재 계정 잔액이나 충전액을 조회하는 공식 endpoint를 제공하지 않습니다.';
+		return t('configuration.thisProviderHasNoOfficialEndpointForLookingUp');
 	}
 
 	function providerCreditState(billing: ProviderBilling): ProviderCreditState {
@@ -657,10 +660,10 @@
 	}
 
 	function availableBillingLabel(capability: ProviderBilling['capability']): string {
-		if (capability === 'openai_admin_usage' || capability === 'anthropic_admin_usage') return '조직 사용량 연동';
-		if (capability === 'deepseek_balance') return '계정 잔액 연동';
-		if (capability === 'openrouter_key') return 'API 키 한도 연동';
-		return '공급자 조회 연동';
+		if (capability === 'openai_admin_usage' || capability === 'anthropic_admin_usage') return t('configuration.organizationUsageIntegration');
+		if (capability === 'deepseek_balance') return t('configuration.accountBalanceIntegration');
+		if (capability === 'openrouter_key') return t('configuration.apiKeyLimitIntegration');
+		return t('configuration.providerLookupIntegration');
 	}
 
 	function safeExternalUrl(value: string | null): string | undefined {
@@ -706,8 +709,8 @@
 			if (generation !== billingRequestGeneration || requestToken !== token || requestProjectId !== projectId) return;
 			billingByProvider = {};
 			billingError = caught instanceof ApiError
-				? `결제 상태 조회 실패 (${caught.status})`
-				: '결제 상태를 조회할 수 없습니다.';
+				? t('configuration.billingStatusLookupFailed', { v0: caught.status })
+				: t('configuration.couldNotRetrieveBillingStatus');
 		} finally {
 			if (generation === billingRequestGeneration && requestToken === token && requestProjectId === projectId) {
 				billingLoading = false;
@@ -742,7 +745,7 @@
 			error = '';
 		} catch (e) {
 			if (generation !== loadGeneration || requestToken !== token || requestProjectId !== projectId || destroyed) return;
-			error = e instanceof ApiError ? `조회 실패 (${e.status})` : '서버 오류';
+			error = e instanceof ApiError ? t('configuration.lookupFailedAlternate', { v0: e.status }) : t('configuration.serverError');
 		} finally {
 			if (generation === loadGeneration && requestToken === token && requestProjectId === projectId && !destroyed) loading = false;
 		}
@@ -783,7 +786,7 @@
 			pSortOrder = '0';
 			providerCreateAttempted = false;
 			await load();
-			toast.success('프로바이더가 추가되었습니다');
+			toast.success(t('configuration.providerAdded'));
 			if (choice.authMode !== 'api_key') openSubscriptionAuth(created);
 		} catch (e) {
 			if (requestToken === token && requestProjectId === projectId && !destroyed) providerCreateError = metadataSaveError(e);
@@ -815,7 +818,7 @@
 			invalidateChatModels();
 			editingProvider = null;
 			await load();
-			toast.success('프로바이더 표시 설정을 저장했습니다');
+			toast.success(t('pricing.providerSaved'));
 		} catch (e) {
 			if (requestToken === token && requestProjectId === projectId && !destroyed) providerEditError = metadataSaveError(e);
 		} finally {
@@ -842,7 +845,7 @@
 			invalidateChatModels();
 			editingModelOrder = null;
 			await load();
-			toast.success('모델 표시 순서를 저장했습니다');
+			toast.success(t('pricing.modelOrderSaved'));
 		} catch (e) {
 			if (requestToken === token && requestProjectId === projectId && !destroyed) modelOrderSaveError = metadataSaveError(e);
 		} finally {
@@ -851,13 +854,13 @@
 	}
 
 	async function deleteProvider(id: number) {
-		if (!(await confirmDialog('프로바이더를 삭제하시겠습니까? 연결된 모델도 함께 삭제됩니다.'))) return;
+		if (!(await confirmDialog(t('configuration.deleteThisProviderItsAssociatedModelsWillAlsoBe')))) return;
 		try {
 			await api.delete(`/api/v1/chat/admin/providers/${id}`, token, projectId);
 			invalidateChatModels();
 			await load();
 		} catch {
-			toast.error('삭제 실패');
+			toast.error(t('configuration.deleteFailed'));
 		}
 	}
 
@@ -866,19 +869,19 @@
 			await api.patch(`/api/v1/chat/admin/providers/${p.id}`, { is_active: !p.is_active }, token, projectId);
 			await load();
 		} catch {
-			toast.error('변경 실패');
+			toast.error(t('configuration.changeFailed'));
 		}
 	}
 
 	async function updateKey(p: Provider) {
-		const key = prompt(`${p.name} 의 새 API 키를 입력하세요 (비우면 제거)`);
+		const key = prompt(t('configuration.enterANewApiKeyForLeaveBlankTo', { v0: p.name }));
 		if (key === null) return;
 		try {
 			await api.patch(`/api/v1/chat/admin/providers/${p.id}`, { api_key: key.trim() || null }, token, projectId);
 			await load({ freshBilling: true });
-			toast.success('API 키가 갱신되었습니다');
+			toast.success(t('configuration.apiKeyUpdated'));
 		} catch {
-			toast.error('갱신 실패');
+			toast.error(t('configuration.updateFailed'));
 		}
 	}
 
@@ -907,18 +910,18 @@
 			);
 			closeBillingKeyModal();
 			await load({ freshBilling: true });
-			toast.success('조직 사용량 관리자 키가 갱신되었습니다');
+			toast.success(t('configuration.organizationUsageAdminKeyUpdated'));
 		} catch (caught) {
-			toast.error(caught instanceof ApiError ? caught.message : '관리자 키 갱신 실패');
+			toast.error(caught instanceof ApiError ? caught.message : t('configuration.adminKeyUpdateFailed'));
 		} finally {
 			billingKeyBusy = false;
 		}
 	}
 
 	function subscriptionStatusLabel(provider: Provider): string {
-		if (provider.auth_status === 'configured' && provider.has_credentials) return '인증 설정됨';
-		if (provider.auth_status === 'reauth_required') return '재연결 필요';
-		return '인증 미연결';
+		if (provider.auth_status === 'configured' && provider.has_credentials) return t('configuration.authenticationConfigured');
+		if (provider.auth_status === 'reauth_required') return t('configuration.reconnectRequired');
+		return t('configuration.authenticationNotConnected');
 	}
 
 	function subscriptionStatusTone(provider: Provider): 'success' | 'warning' | 'neutral' {
@@ -958,17 +961,17 @@
 	}
 
 	function subscriptionErrorMessage(error: unknown): string {
-		if (!(error instanceof ApiError)) return '구독 인증 요청에 실패했습니다. 다시 시도하세요.';
-		if (error.status === 409) return '진행 중인 채팅 실행 또는 다른 관리자의 인증을 완료하거나 취소한 뒤 다시 시도하세요.';
-		if (error.status === 429) return '인증 요청이 제한되었습니다. 잠시 후 수동으로 다시 확인하세요.';
-		if (error.status === 503) return '구독 인증 공급자 또는 저장소에 연결할 수 없습니다. 상태를 확인한 뒤 다시 시도하세요.';
+		if (!(error instanceof ApiError)) return t('configuration.subscriptionAuthenticationRequestFailedTryAgain');
+		if (error.status === 409) return t('configuration.completeOrCancelTheCurrentChatExecutionOrAnother');
+		if (error.status === 429) return t('configuration.authenticationRequestsAreRateLimitedCheckAgainManuallyIn');
+		if (error.status === 503) return t('configuration.couldNotConnectToTheSubscriptionAuthenticationProviderOr');
 		try {
 			const detail = JSON.parse(error.message) as { message?: unknown };
 			if (typeof detail.message === 'string') return detail.message;
 		} catch {
 			// The shared API client can also provide an already-safe plain message.
 		}
-		return error.message || '구독 인증 요청에 실패했습니다.';
+		return error.message || t('configuration.subscriptionAuthenticationRequestFailed');
 	}
 
 	function stopAuthPolling() {
@@ -1063,7 +1066,7 @@
 				scheduleDevicePoll(deviceAttempt, generation);
 			} else if (status.status === 'connected') {
 				await load();
-				toast.success('ChatGPT 구독이 연결되었습니다');
+				toast.success(t('configuration.chatgptSubscriptionConnected'));
 			}
 		} catch (e) {
 			if (generation === authSessionGeneration) {
@@ -1096,7 +1099,7 @@
 				deviceAttempt = { ...deviceAttempt, status: 'cancelled' };
 			}
 		} catch (e) {
-			authError = `${subscriptionErrorMessage(e)} 서버의 인증 요청은 만료될 때까지 유지될 수 있습니다.`;
+			authError = t('configuration.theAuthenticationRequestOnTheServerMayRemainActive', { v0: subscriptionErrorMessage(e) });
 		} finally {
 			authBusy = false;
 		}
@@ -1119,14 +1122,14 @@
 					token,
 					projectId
 				)
-				.catch(() => toast.error('인증 취소를 확인하지 못했습니다. 서버 만료 상태를 확인하세요.'));
+				.catch(() => toast.error(t('configuration.couldNotConfirmAuthenticationCancellationCheckTheServersExpiration')));
 		}
 	}
 
 	async function saveClaudeSubscription() {
 		if (!authProvider || providerAuthMode(authProvider) !== 'anthropic_subscription' || authBusy) return;
 		if (!claudeToken.trim()) {
-			authError = 'Claude setup-token을 입력하세요.';
+			authError = t('configuration.enterAClaudeSetupToken');
 			return;
 		}
 		const generation = authSessionGeneration;
@@ -1147,7 +1150,7 @@
 			authProvider = updated;
 			claudeToken = '';
 			await load();
-			toast.success('Claude 구독 토큰이 등록되었습니다');
+			toast.success(t('configuration.claudeSubscriptionTokenRegistered'));
 		} catch (e) {
 			if (generation === authSessionGeneration) authError = subscriptionErrorMessage(e);
 		} finally {
@@ -1156,11 +1159,11 @@
 	}
 
 	async function disconnectSubscription(provider: Provider) {
-		if (!(await confirmDialog(`“${provider.name}”의 구독 연결을 해제하시겠습니까? 등록된 모델은 유지됩니다.`))) return;
+		if (!(await confirmDialog(t('configuration.disconnectTheSubscriptionForRegisteredModelsWillBeKept', { v0: provider.name })))) return;
 		try {
 			await api.delete(`/api/v1/chat/admin/providers/${provider.id}/auth`, token, projectId);
 			await load();
-			toast.success('구독 연결이 해제되었습니다');
+			toast.success(t('configuration.subscriptionDisconnected'));
 		} catch (e) {
 			toast.error(subscriptionErrorMessage(e));
 		}
@@ -1180,15 +1183,15 @@
 		if (!deviceAttempt?.user_code) return;
 		try {
 			await navigator.clipboard.writeText(deviceAttempt.user_code);
-			toast.success('인증 코드를 복사했습니다');
+			toast.success(t('configuration.authenticationCodeCopied'));
 		} catch {
-			toast.error('인증 코드를 복사하지 못했습니다');
+			toast.error(t('configuration.couldNotCopyAuthenticationCode'));
 		}
 	}
 
 	async function addModel() {
-		if (addingModel || !mProviderId || !mName.trim()) { toast.error('프로바이더와 모델명을 입력하세요'); return; }
-		if (mKind !== 'text' && !mediaProviderSupported(mProviderId)) { toast.error('미디어 모델은 직접 연결된 OpenAI·Gemini API-key 프로바이더만 등록할 수 있습니다.'); return; }
+		if (addingModel || !mProviderId || !mName.trim()) { toast.error(t('configuration.enterAProviderAndModelName')); return; }
+		if (mKind !== 'text' && !mediaProviderSupported(mProviderId)) { toast.error(t('pricing.mediaProviderRequired')); return; }
 		if (!cachePricingAvailable) { mCachePrices = emptyCachePriceInputs(); mCacheErrors = {}; }
 		const cache = parseCachePrices(mCachePrices);
 		mCacheErrors = cache.errors;
@@ -1212,24 +1215,44 @@
 			mName = ''; mDisplay = ''; mInputPrice = ''; mOutputPrice = '';
 			mCachePrices = emptyCachePriceInputs(); mCacheErrors = {}; mPricing = pricingDraft();
 			await load();
-			if (!destroyed && token === requestToken && projectId === requestProjectId) toast.success('모델이 추가되었습니다');
+			if (!destroyed && token === requestToken && projectId === requestProjectId) toast.success(t('configuration.modelAdded'));
 		} catch (e) {
-			if (!destroyed && token === requestToken && projectId === requestProjectId && mProviderId === providerId) toast.error(e instanceof ApiError ? e.message : '추가 실패');
+			if (!destroyed && token === requestToken && projectId === requestProjectId && mProviderId === providerId) toast.error(e instanceof ApiError ? e.message : t('configuration.addFailed'));
 		} finally {
 			addingModel = false;
 		}
 	}
 
 	function formatPricePerMillion(price: string | number | null | undefined): string {
-		if (price === null || price === undefined) return '가격 미확인';
+		if (price === null || price === undefined) return t('configuration.pricingUnverified');
 		return String(price).replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '');
+	}
+
+	function formatNumber(value: number): string {
+		return value.toLocaleString(intlLocale());
+	}
+
+	/** Display-only formatting: never use localized rates in request drafts or payloads. */
+	function displayPrice(price: string | number | null | undefined): string {
+		if (price === null || price === undefined) return t('configuration.pricingUnverified');
+		const raw = normalizeDecimalString(String(price));
+		const locale = intlLocale();
+		if (/^(?:\d+(?:\.\d+)?|\.\d+)[eE][+-]?\d+$/.test(raw)) {
+			const value = Number(raw);
+			return Number.isFinite(value) && value !== 0 ? value.toLocaleString(locale, { maximumSignificantDigits: 21 }) : raw;
+		}
+		if (!/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(raw)) return raw;
+		const [integer, fraction] = raw.split('.');
+		const grouped = BigInt(integer || '0').toLocaleString(locale);
+		const decimal = new Intl.NumberFormat(locale).formatToParts(1.1).find((part) => part.type === 'decimal')?.value ?? '.';
+		return fraction ? `${grouped}${decimal}${fraction}` : grouped;
 	}
 
 	function pricePayload(input: string, output: string, kind: ModelKind): { input_price_per_million: string | null; output_price_per_million: string | null } | undefined {
 		const normalizedInput = input.trim() || null;
 		const normalizedOutput = output.trim() || null;
 		if (kind === 'text' && (normalizedInput === null) !== (normalizedOutput === null)) {
-			toast.error('입력·출력 가격은 함께 입력하거나 함께 비워야 합니다');
+			toast.error(t('configuration.enterBothInputAndOutputPricesOrLeaveBoth'));
 			return undefined;
 		}
 		return { input_price_per_million: normalizedInput, output_price_per_million: normalizedOutput };
@@ -1270,21 +1293,28 @@
 			if (destroyed || editingPrice !== model || token !== requestToken || projectId !== requestProjectId) return;
 			editingPrice = null;
 			await load();
-			if (!destroyed && token === requestToken && projectId === requestProjectId) toast.success('모델 가격을 저장했습니다');
+			if (!destroyed && token === requestToken && projectId === requestProjectId) toast.success(t('configuration.modelPricingSaved'));
 		} catch (e) {
-			if (!destroyed && editingPrice === model && token === requestToken && projectId === requestProjectId) toast.error(e instanceof ApiError ? e.message : '가격 저장 실패');
+			if (!destroyed && editingPrice === model && token === requestToken && projectId === requestProjectId) toast.error(e instanceof ApiError ? e.message : t('configuration.couldNotSavePricing'));
 		} finally {
 			priceSaving = false;
 		}
 	}
 
-	function capabilityStatus(model: Model): string {
-		if (model.capability_source === 'override') return '관리자 기능 설정 · 실행 미검증';
+	function capabilityState(model: Model): 'override' | 'metadata' | 'unknown' {
+		if (model.capability_source === 'override') return 'override';
 		const caps = model.effective_capabilities ?? model.capabilities;
 		if ((model.effective_capability_source || model.capability_source) && (caps?.vision || caps?.reasoning || caps?.tool_call || caps?.attachment || caps?.context_limit)) {
-			return '기능 메타데이터 · 실행 미검증';
+			return 'metadata';
 		}
-		return '고급 기능 미확인';
+		return 'unknown';
+	}
+
+	function capabilityStatus(model: Model): string {
+		const state = capabilityState(model);
+		if (state === 'override') return t('configuration.adminCapabilitySettingsExecutionUnverified');
+		if (state === 'metadata') return t('configuration.capabilityMetadataExecutionUnverified');
+		return t('configuration.advancedCapabilitiesUnverified');
 	}
 
 	function openCapabilityEditor(model: Model) {
@@ -1310,7 +1340,7 @@
 		if (!value) return undefined;
 		const parsed = Number(value);
 		return /^\d+$/.test(value) && Number.isSafeInteger(parsed) && parsed > 0
-			? undefined : '컨텍스트 한도는 1 이상의 정수로 입력하세요.';
+			? undefined : t('configuration.enterAContextLimitAsAnIntegerGreaterThan');
 	}
 
 	async function saveCapabilities() {
@@ -1336,9 +1366,9 @@
 			invalidateChatModels();
 			editingCapabilities = null;
 			await load();
-			toast.success('모델 기능 설정을 저장했습니다. 실행 지원은 별도로 확인하세요.');
+			toast.success(t('configuration.modelCapabilitiesSavedVerifyExecutionSupportSeparately'));
 		} catch (e) {
-			capError = e instanceof ApiError ? e.message : '기능 저장에 실패했습니다. 다시 시도하세요.';
+			capError = e instanceof ApiError ? e.message : t('configuration.couldNotSaveCapabilitiesTryAgain');
 		} finally {
 			capSaving = false;
 		}
@@ -1373,7 +1403,7 @@
 			await fetchModelsDevProviders(provider);
 			await loadModelsDevProvider();
 		} catch (e) {
-			modelsDevError = e instanceof ApiError ? e.message : 'models.dev 가격표를 불러오지 못했습니다';
+			modelsDevError = e instanceof ApiError ? e.message : t('configuration.couldNotLoadTheModelsDevPriceList');
 		} finally {
 			modelsDevLoading = false;
 		}
@@ -1421,7 +1451,7 @@
 			);
 		} catch (e) {
 			if (providerId === selectedModelsDevProviderId) {
-				modelsDevError = e instanceof ApiError ? e.message : 'models.dev 모델 목록을 불러오지 못했습니다';
+				modelsDevError = e instanceof ApiError ? e.message : t('configuration.couldNotLoadTheModelsDevModelList');
 			}
 		} finally {
 			if (providerId === selectedModelsDevProviderId) modelsDevLoading = false;
@@ -1434,7 +1464,7 @@
 			.filter(([localModelId, externalId]) => externalId && models.some((model) => model.id === Number(localModelId) && (model.model_kind ?? 'text') === 'text'))
 			.map(([localModelId, modelsDevModelId]) => ({ local_model_id: Number(localModelId), models_dev_model_id: modelsDevModelId }));
 		if (selections.length === 0) {
-			toast.error('가격을 적용할 모델을 선택하세요');
+			toast.error(t('configuration.selectModelsToApplyPricesTo'));
 			return;
 		}
 		modelsDevImporting = true;
@@ -1447,9 +1477,9 @@
 			invalidateChatModels();
 			modelsDevOpen = false;
 			await load();
-			toast.success('models.dev 추천 가격을 적용했습니다');
+			toast.success(t('configuration.modelsDevSuggestedPricesApplied'));
 		} catch (e) {
-			modelsDevError = e instanceof ApiError ? e.message : '가격 import 실패';
+			modelsDevError = e instanceof ApiError ? e.message : t('configuration.priceImportFailed');
 		} finally {
 			modelsDevImporting = false;
 		}
@@ -1485,7 +1515,7 @@
 			);
 			if (!discoveryIsCurrent(generation, providerId, requestToken, requestProjectId)) return;
 			if (result.provider_id !== undefined && result.provider_id !== providerId) {
-				discoveryError = '다른 프로바이더의 조회 결과를 받았습니다. 다시 조회하세요.';
+				discoveryError = t('configuration.receivedDiscoveryResultsForADifferentProviderFetchAgain');
 				return;
 			}
 			discovery = result.live_status === 'error'
@@ -1493,7 +1523,7 @@
 				: result;
 		} catch {
 			if (discoveryIsCurrent(generation, providerId, requestToken, requestProjectId)) {
-				discoveryError = '모델 조회에 실패했습니다. 연결과 API 키를 확인한 뒤 다시 조회하세요.';
+				discoveryError = t('configuration.modelLookupFailedCheckTheConnectionAndApiKey');
 			}
 		} finally {
 			if (discoveryIsCurrent(generation, providerId, requestToken, requestProjectId)) discovering = false;
@@ -1506,7 +1536,7 @@
 		const candidates = discovery.candidates
 			.filter((candidate) => selectedAvail[candidate.id] && !registered.has(candidate.id) && registrationOutcomes[candidate.id] !== 'success');
 		if (candidates.length === 0) {
-			toast.error('등록할 후보 모델을 선택하세요');
+			toast.error(t('pricing.registrationRequired'));
 			return;
 		}
 		registrationOutcomes = {};
@@ -1537,7 +1567,7 @@
 		};
 		const pending = review.entries.filter((entry) => registrationOutcomes[entry.name] !== 'success');
 		if (pending.some((entry) => reviewPriceError(entry)) || (activate && !reviewCanActivate(review))) {
-			toast.error('활성화하려면 각 모델의 정확한 입력·출력 단가를 함께 입력하세요');
+			toast.error(t('configuration.toActivateEnterBothExactInputAndOutputRates'));
 			return;
 		}
 		const generation = ++registrationGeneration;
@@ -1577,8 +1607,8 @@
 			if (!registrationIsCurrent(generation, review)) return;
 			if (ok > 0) await load();
 			if (!registrationIsCurrent(generation, review)) return;
-			if (ok > 0) toast.success(`${ok}개 모델을 ${activate ? '등록·활성화' : '비활성 상태로 저장'}했습니다`);
-			if (failed.length > 0) toast.error(`${failed.length}개 등록 실패. 실패한 후보만 재시도할 수 있습니다.`);
+			if (ok > 0) toast.success(t('configuration.modelsAlternate', { v0: formatNumber(ok), v1: activate ? t('configuration.registeredAndActivated') : t('configuration.savedAsInactive') }));
+			if (failed.length > 0) toast.error(t('configuration.modelsFailedToRegisterYouCanRetryOnlyThe', { v0: formatNumber(failed.length) }));
 			selectedAvail = Object.fromEntries(failed.map((name) => [name, true]));
 			if (failed.length === 0) registrationReview = null;
 		} finally {
@@ -1595,13 +1625,13 @@
 	}
 
 	async function deleteModel(id: number) {
-		if (!(await confirmDialog('모델을 삭제하시겠습니까?'))) return;
+		if (!(await confirmDialog(t('configuration.deleteThisModel')))) return;
 		try {
 			await api.delete(`/api/v1/chat/admin/models/${id}`, token, projectId);
 			invalidateChatModels();
 			await load();
 		} catch {
-			toast.error('삭제 실패');
+			toast.error(t('configuration.deleteFailed'));
 		}
 	}
 
@@ -1615,7 +1645,7 @@
 		const ids = [...selectedVisibleIds];
 		const requestToken = token, requestProjectId = projectId;
 		if (ids.length === 0) return;
-		if (!(await confirmDialog(`선택한 ${ids.length}개 모델을 삭제하시겠습니까?`))) return;
+		if (!(await confirmDialog(t('configuration.deleteTheSelectedModels', { v0: formatNumber(ids.length) })))) return;
 		if (requestToken !== token || requestProjectId !== projectId || destroyed) return;
 		const visibleIds = new Set(selectedVisibleIds);
 		const confirmedIds = ids.filter((id) => visibleIds.has(id));
@@ -1637,8 +1667,8 @@
 			if (requestToken !== token || requestProjectId !== projectId || destroyed) return;
 			selectedModelIds = {};
 			await load();
-			if (ok > 0) toast.success(`${ok}개 모델을 삭제했습니다`);
-			if (failed.length > 0) toast.error(`${failed.length}개 삭제 실패`);
+			if (ok > 0) toast.success(t('configuration.modelsDeleted', { v0: formatNumber(ok) }));
+			if (failed.length > 0) toast.error(t('configuration.modelsFailedToDelete', { v0: formatNumber(failed.length) }));
 		} finally {
 			deletingBulk = false;
 		}
@@ -1646,7 +1676,7 @@
 
 	async function toggleModel(m: Model) {
 		if ((m.model_kind ?? 'text') === 'text' && !m.is_active && (m.effective_input_price_per_million == null || m.effective_output_price_per_million == null)) {
-			toast.error('입력·출력 단가가 미확인입니다. 가격 수정 또는 models.dev 가격 적용 후 활성화하세요.');
+			toast.error(t('configuration.inputAndOutputRatesAreUnverifiedEditPricingOr'));
 			return;
 		}
 		try {
@@ -1654,7 +1684,7 @@
 			invalidateChatModels();
 			await load();
 		} catch {
-			toast.error('변경 실패');
+			toast.error(t('configuration.changeFailed'));
 		}
 	}
 
@@ -1673,9 +1703,9 @@
 			await api.put('/api/v1/chat/admin/title-model', { model_id: target }, token, projectId);
 			invalidateChatModels();
 			models = models.map((x) => ({ ...x, is_title_model: x.id === target }));
-			toast.success(target ? '제목 요약 모델로 지정했습니다' : '제목 요약 모델을 해제했습니다');
+			toast.success(target ? t('configuration.titleGenerationModelAssigned') : t('configuration.titleGenerationModelUnassigned'));
 		} catch (e) {
-			toast.error(e instanceof ApiError ? e.message : '제목 요약 모델 설정 실패');
+			toast.error(e instanceof ApiError ? e.message : t('configuration.couldNotSetTheTitleGenerationModel'));
 		}
 	}
 
@@ -1728,13 +1758,13 @@
 
 <div class="max-w-4xl p-4 md:p-8">
 	<PageHeader
-		breadcrumb={section === 'models' ? 'AI 채팅 / 모델 설정' : section === 'tools' ? 'AI 채팅 / 도구 설정' : 'AI 채팅 / 설정'}
-		title={section === 'models' ? '모델 설정' : section === 'tools' ? '도구 설정' : '채팅 설정'}
+		breadcrumb={section === 'models' ? t('configuration.aiChatModelSettings') : section === 'tools' ? t('configuration.aiChatToolSettings') : t('configuration.aiChatSettings')}
+		title={section === 'models' ? t('configuration.modelSettings') : section === 'tools' ? t('configuration.toolSettings') : t('configuration.chatSettings')}
 		subtitle={section === 'models'
-			? '프로바이더 모델, 가격, 제목 요약 모델을 관리합니다.'
+			? t('configuration.manageProviderModelsPricingAndTheConversationTitleModel')
 			: section === 'tools'
-				? 'MCP 서버, 스킬, 커스텀 HTTP 도구를 관리합니다.'
-				: 'LLM 프로바이더와 연결 정보를 관리합니다. API 키는 암호화되어 저장됩니다.'}
+				? t('configuration.manageMcpServersSkillsAndCustomHttpTools')
+				: t('configuration.manageLlmProvidersAndConnectionsApiKeysAreStored')}
 	/>
 
 	{#if error}
@@ -1748,53 +1778,54 @@
 	{#if section === 'providers'}
 	<!-- 프로바이더 -->
 	<section class="mb-8">
-		<h3 class="mb-3 text-sm font-semibold text-[var(--color-ink-1)]">LLM 프로바이더</h3>
+		<h3 class="mb-3 text-sm font-semibold text-[var(--color-ink-1)]">{t('configuration.llmProviders')}</h3>
 		<div class="{cardCls} mb-4 p-5">
 			<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-				<Field label="이름" for="provider-name" required error={providerCreateAttempted && !pName.trim() ? '이름을 입력하세요.' : undefined}>
-					<TextInput id="provider-name" placeholder="예: openai-prod" bind:value={pName} required ariaInvalid={providerCreateAttempted && !pName.trim()} />
+				<Field label={t('configuration.name')} for="provider-name" required error={providerCreateAttempted && !pName.trim() ? t('pricing.nameRequired') : undefined}>
+					<TextInput id="provider-name" placeholder={t('configuration.eGOpenaiProd')} bind:value={pName} required ariaInvalid={providerCreateAttempted && !pName.trim()} />
 				</Field>
-				<Field label="연결 방식" for="provider-type" required>
+				<Field label={t('configuration.connectionMethod')} for="provider-type" required>
 					<SelectInput id="provider-type" bind:value={pType} onchange={handleProviderChoiceChange}>
 						{#each PROVIDER_TYPES as pt (pt.value)}
 							<option value={pt.value}>{pt.label}</option>
 						{/each}
 					</SelectInput>
 				</Field>
-				<Field label="API provider" for="provider-api-provider" required help={QUALIFIER_HELP} error={pApiProvider || providerCreateAttempted ? qualifierError(pApiProvider) : undefined}>
+				<Field label={t('pricing.apiProviderLabel')} for="provider-api-provider" required help={QUALIFIER_HELP} error={pApiProvider || providerCreateAttempted ? qualifierError(pApiProvider) : undefined}>
 					<TextInput id="provider-api-provider" bind:value={pApiProvider} required maxlength={40} ariaInvalid={Boolean(qualifierError(pApiProvider))} />
 				</Field>
-				<Field label="프로바이더 표시 순서" for="provider-sort-order" required help={ORDER_HELP} error={pSortOrder || providerCreateAttempted ? orderError(pSortOrder) : undefined}>
+				<Field label={t('pricing.providerOrder')} for="provider-sort-order" required help={ORDER_HELP} error={pSortOrder || providerCreateAttempted ? orderError(pSortOrder) : undefined}>
 					<TextInput id="provider-sort-order" inputmode="numeric" bind:value={pSortOrder} required ariaInvalid={Boolean(orderError(pSortOrder))} />
 				</Field>
 				{#if !isSubscriptionChoice}
-					<Field label="API Base" for="provider-api-base" help="OpenAI 호환 또는 커스텀 엔드포인트에서만 입력합니다.">
+					<Field label={t('configuration.apiBaseUrl')} for="provider-api-base" help={t('configuration.enterOnlyForOpenaiCompatibleOrCustomEndpoints')}>
 						<TextInput id="provider-api-base" type="url" placeholder="https://api.example.com/v1" bind:value={pApiBase} />
 					</Field>
-					<Field label="API 키" for="provider-api-key">
-						<TextInput id="provider-api-key" type="password" placeholder="API 키" bind:value={pApiKey} />
+					<Field label={t('configuration.apiKey')} for="provider-api-key">
+						<TextInput id="provider-api-key" type="password" placeholder={t('configuration.apiKey')} bind:value={pApiKey} />
 					</Field>
 				{/if}
 			</div>
 			{#if isSubscriptionChoice}
-				<Alert tone="warning" title="실험 기능 · 전체 사용자 공용" class="mt-4">
-					이 개인 구독 연결은 이 Afterglow의 모든 사용자 요청에 공용으로 사용됩니다. 공급자 이용 약관과 조직 정책을 확인하고 전용 계정을 사용하세요.
-					<a class="underline" href={selectedProviderChoice.authMode === 'chatgpt_device' ? 'https://help.openai.com/en/articles/11369540-codex-in-chatgpt' : 'https://support.anthropic.com/en/articles/11145838-using-claude-code-with-your-pro-or-max-plan'} target="_blank" rel="noreferrer">공식 안내</a>
+				{#snippet rich2markup1(text: string)}<a class="underline" href={selectedProviderChoice.authMode === 'chatgpt_device' ? 'https://help.openai.com/en/articles/11369540-codex-in-chatgpt' : 'https://support.anthropic.com/en/articles/11145838-using-claude-code-with-your-pro-or-max-plan'} target="_blank" rel="noreferrer">{text}</a>{/snippet}
+				<Alert tone="warning" title={t('configuration.experimentalSharedByAllUsers')} class="mt-4">
+					<RichText segments={t.rich('configuration.sharedSubscriptionPolicy')} tags={{ markup1: rich2markup1 }} />
 				</Alert>
 			{:else if selectedProviderChoice.providerType === 'perplexity'}
-				<Alert tone="info" title="Perplexity API Base" class="mt-4">
-					Agent API는 <code>https://api.perplexity.ai/v1</code>, Router는
-					<code>https://api.perplexity.ai/router</code>를 입력하세요. 비워 두면 기존 Sonar API 호환 경로를 사용합니다.
+				{#snippet rich4markup1(text: string)}<code>{text}</code>{/snippet}
+				{#snippet rich4markup2(text: string)}<code>{text}</code>{/snippet}
+				<Alert tone="info" title={t('configuration.perplexityApiBaseUrl')} class="mt-4">
+					<RichText segments={t.rich('configuration.perplexityApiBaseGuidance')} tags={{ markup1: rich4markup1, markup2: rich4markup2 }} />
 				</Alert>
 			{:else}
 				<p class="mt-2 text-xs text-[var(--color-ink-3)]">
-					타입은 내부 LiteLLM 중계 형식입니다. OpenAI 호환 엔드포인트(vLLM·LM Studio 등)는 OpenAI API + API Base로 연결하세요.
+					{t('configuration.theTypeIsTheInternalLitellmRelayFormatConnect')}
 				</p>
 			{/if}
 			{#if providerCreateError}<Alert tone="danger" class="mt-3">{providerCreateError}</Alert>{/if}
 			<div class="mt-3 flex justify-end">
 				<Button onclick={addProvider} disabled={addingProvider}>
-					{addingProvider ? '추가 중…' : '+ 프로바이더 추가'}
+					{addingProvider ? t('configuration.adding') : t('configuration.addProvider')}
 				</Button>
 			</div>
 		</div>
@@ -1802,19 +1833,19 @@
 		{#if loading}
 			<div class="{cardCls} h-20 animate-pulse"></div>
 		{:else if providers.length === 0}
-			<p class="px-1 text-sm text-[var(--color-ink-3)]">등록된 프로바이더가 없습니다.</p>
+			<p class="px-1 text-sm text-[var(--color-ink-3)]">{t('configuration.noProvidersRegistered')}</p>
 		{:else}
 			<div class="mb-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
 				<div>
-					<h4 class="text-sm font-semibold text-[var(--color-ink-1)]">사용량과 크레딧 상태</h4>
-					<p class="mt-1 text-xs text-[var(--color-ink-2)]">Lumen 원장과 프로바이더 공식 조직 사용량·잔액을 분리해 표시합니다.</p>
+					<h4 class="text-sm font-semibold text-[var(--color-ink-1)]">{t('configuration.usageAndCreditStatus')}</h4>
+					<p class="mt-1 text-xs text-[var(--color-ink-2)]">{t('configuration.theLumenLedgerIsShownSeparatelyFromOfficialProvider')}</p>
 				</div>
 				<Button variant="outline" size="sm" disabled={billingLoading} onclick={() => void loadProviderBilling({ fresh: true })}>
-					{billingLoading ? '조회 중…' : '전체 새로고침'}
+					{billingLoading ? t('configuration.fetching') : t('configuration.refreshAll')}
 				</Button>
 			</div>
 			{#if billingError}
-				<Alert tone="warning" title="결제 상태를 불러오지 못했습니다" class="mb-3">{billingError} 프로바이더 설정과 키 관리 기능은 계속 사용할 수 있습니다.</Alert>
+				<Alert tone="warning" title={t('configuration.couldNotLoadBillingStatus')} class="mb-3">{t('configuration.billingFailureSettingsAvailable', { v0: billingError })}</Alert>
 			{/if}
 			<div class="space-y-2">
 				{#each providers as p (p.id)}
@@ -1824,64 +1855,64 @@
 							<div class="min-w-0">
 								<div class="flex flex-wrap items-center gap-2">
 									<span class="truncate text-sm font-medium text-[var(--color-ink-1)]">{p.name}</span>
-									<Pill tone={p.is_active ? 'success' : 'neutral'} size="xs">{p.is_active ? '활성' : '비활성'}</Pill>
+									<Pill tone={p.is_active ? 'success' : 'neutral'} size="xs">{p.is_active ? t('configuration.active') : t('configuration.inactive')}</Pill>
 									{#if providerAuthMode(p) === 'api_key'}
-										<Pill tone={p.has_api_key ? 'accent' : 'warning'} size="xs">{p.has_api_key ? '키 설정됨' : '키 없음'}</Pill>
+										<Pill tone={p.has_api_key ? 'accent' : 'warning'} size="xs">{p.has_api_key ? t('configuration.keyConfigured') : t('configuration.noKey')}</Pill>
 									{#if supportsBillingAdminKey(p)}
-										<Pill tone={p.has_billing_admin_key ? 'info' : 'neutral'} size="xs">{p.has_billing_admin_key ? '사용량 키 설정됨' : '사용량 키 없음'}</Pill>
+										<Pill tone={p.has_billing_admin_key ? 'info' : 'neutral'} size="xs">{p.has_billing_admin_key ? t('configuration.usageKeyConfigured') : t('configuration.noUsageKey')}</Pill>
 									{/if}
 									{:else}
-										<Pill tone="warning" size="xs">실험</Pill>
-										<Pill tone="info" size="xs">전체 공용</Pill>
+										<Pill tone="warning" size="xs">{t('configuration.experimental')}</Pill>
+										<Pill tone="info" size="xs">{t('configuration.sharedByAllUsers')}</Pill>
 										<Pill tone={subscriptionStatusTone(p)} size="xs">{subscriptionStatusLabel(p)}</Pill>
 									{/if}
-									<Pill tone="neutral" size="xs">연결: {p.provider_type}</Pill>
+									<Pill tone="neutral" size="xs">{t('pricing.connection', { type: p.provider_type })}</Pill>
 								</div>
-								<p class="mt-1 break-all text-xs text-[var(--color-ink-2)]">API provider: <code class="font-mono">{p.api_provider}</code> · 표시 순서 {p.sort_order ?? 0}</p>
+								<p class="mt-1 break-all text-xs text-[var(--color-ink-2)]"><RichText segments={t.rich('pricing.providerMetadata', { provider: p.api_provider, order: formatNumber(p.sort_order ?? 0) })} /></p>
 								{#if p.api_base}
 									<div class="mt-1 truncate text-xs text-[var(--color-ink-3)]">{p.api_base}</div>
 								{:else if providerAuthMode(p) !== 'api_key' && p.auth_expires_at}
-									<div class="mt-1 text-xs text-[var(--color-ink-3)]">만료 {new Date(p.auth_expires_at).toLocaleString()}</div>
+									<div class="mt-1 text-xs text-[var(--color-ink-3)]">{t('configuration.credentialExpiry', { v0: new Date(p.auth_expires_at).toLocaleString(intlLocale()) })}</div>
 								{/if}
 							</div>
 							<div class="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs sm:justify-end">
-								<Button variant="outline" size="sm" onclick={() => openProviderEditor(p)}>표시 설정 수정</Button>
+								<Button variant="outline" size="sm" onclick={() => openProviderEditor(p)}>{t('pricing.editDisplay')}</Button>
 								{#if providerAuthMode(p) === 'api_key'}
-									<button class={rowActionCls} onclick={() => updateKey(p)}>키 변경</button>
+									<button class={rowActionCls} onclick={() => updateKey(p)}>{t('configuration.changeKey')}</button>
 									{#if supportsBillingAdminKey(p)}
-										<button class={rowActionCls} onclick={() => openBillingKeyModal(p)}>{p.has_billing_admin_key ? '사용량 키 변경' : '사용량 키 설정'}</button>
+										<button class={rowActionCls} onclick={() => openBillingKeyModal(p)}>{p.has_billing_admin_key ? t('configuration.changeUsageKey') : t('configuration.setUsageKey')}</button>
 									{/if}
 								{:else}
 									<button class={rowActionCls} onclick={() => openSubscriptionAuth(p)}>
 										{providerAuthMode(p) === 'chatgpt_device'
-											? p.has_credentials ? '재연결' : '연결'
-											: p.has_credentials ? '토큰 교체' : '토큰 등록'}
+											? p.has_credentials ? t('configuration.reconnectAlternate') : t('configuration.connect')
+											: p.has_credentials ? t('configuration.replaceToken') : t('configuration.registerToken')}
 									</button>
 									{#if p.auth_status !== 'disconnected'}
-										<button class={rowActionCls} onclick={() => disconnectSubscription(p)}>연결 해제</button>
+										<button class={rowActionCls} onclick={() => disconnectSubscription(p)}>{t('configuration.disconnect')}</button>
 									{/if}
 								{/if}
-								<button class={rowActionCls} onclick={() => toggleProvider(p)}>{p.is_active ? '비활성화' : '활성화'}</button>
-								<button class="text-[var(--color-state-danger)] transition-opacity hover:opacity-80" onclick={() => deleteProvider(p.id)}>삭제</button>
+								<button class={rowActionCls} onclick={() => toggleProvider(p)}>{p.is_active ? t('configuration.deactivate') : t('configuration.activate')}</button>
+								<button class="text-[var(--color-state-danger)] transition-opacity hover:opacity-80" onclick={() => deleteProvider(p.id)}>{t('configuration.delete')}</button>
 							</div>
 						</div>
 
 						<div class="mt-3 border-t border-[var(--color-line)] pt-3">
 							<div class="flex flex-wrap items-center gap-2">
-								<span class="text-xs font-semibold text-[var(--color-ink-1)]">사용량 · 결제 상태</span>
+								<span class="text-xs font-semibold text-[var(--color-ink-1)]">{t('configuration.usageBillingStatus')}</span>
 								{#if billing?.status === 'available'}
 									<Pill tone="success" size="xs">{availableBillingLabel(billing.capability)}</Pill>
 								{:else if billing?.status === 'unavailable'}
-									<Pill tone="warning" size="xs">공급자 조회 실패</Pill>
+									<Pill tone="warning" size="xs">{t('configuration.providerLookupFailed')}</Pill>
 								{:else if billing?.status === 'unsupported'}
-									<Pill tone="neutral" size="xs">공식 콘솔 확인</Pill>
+									<Pill tone="neutral" size="xs">{t('configuration.checkOfficialConsole')}</Pill>
 								{/if}
 							</div>
 
 							{#if billingLoading && !billing}
-								<p class="mt-2 text-xs text-[var(--color-ink-2)]">사용량과 결제 상태를 조회하는 중…</p>
+								<p class="mt-2 text-xs text-[var(--color-ink-2)]">{t('configuration.fetchingUsageAndBillingStatus')}</p>
 							{:else if !billing}
-								<p class="mt-2 text-xs text-[var(--color-ink-2)]">표시할 결제 상태가 없습니다. 전체 새로고침으로 다시 조회할 수 있습니다.</p>
+								<p class="mt-2 text-xs text-[var(--color-ink-2)]">{t('configuration.noBillingStatusToDisplayUseRefreshAllTo')}</p>
 							{:else}
 								{@const billingUrl = safeExternalUrl(billing.billing_url)}
 								{@const usageUrl = safeExternalUrl(billing.usage_url)}
@@ -1890,106 +1921,106 @@
 									<div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
 										<div class="min-w-0">
 											<div class="flex flex-wrap items-center gap-2">
-												<span class="text-xs font-semibold text-[var(--color-ink-1)]">계정 크레딧</span>
+												<span class="text-xs font-semibold text-[var(--color-ink-1)]">{t('configuration.accountCredits')}</span>
 												{#if credit.kind === 'account_balance'}
-													<Pill tone={credit.isAvailable ? 'success' : 'warning'} size="xs">공식 계정 잔액</Pill>
+													<Pill tone={credit.isAvailable ? 'success' : 'warning'} size="xs">{t('configuration.officialAccountBalance')}</Pill>
 												{:else if credit.kind === 'api_key_limit'}
-													<Pill tone="info" size="xs">API 키 한도</Pill>
+													<Pill tone="info" size="xs">{t('configuration.apiKeyLimit')}</Pill>
 												{:else if credit.kind === 'unavailable'}
-													<Pill tone="warning" size="xs">조회 실패</Pill>
+													<Pill tone="warning" size="xs">{t('configuration.lookupFailed')}</Pill>
 												{:else}
-													<Pill tone="neutral" size="xs">공식 API 조회 미지원</Pill>
+													<Pill tone="neutral" size="xs">{t('configuration.officialApiLookupUnsupported')}</Pill>
 												{/if}
 											</div>
 											{#if credit.kind === 'unavailable' || credit.kind === 'unsupported'}
-												<p class="mt-2 text-xs leading-relaxed text-[var(--color-ink-2)]">{credit.message} 잔액은 사용량에서 추정하지 않습니다.</p>
+												<p class="mt-2 text-xs leading-relaxed text-[var(--color-ink-2)]">{t('configuration.balanceNotEstimated', { v0: credit.message })}</p>
 											{:else if credit.kind === 'api_key_limit'}
-												<p class="mt-2 text-xs leading-relaxed text-[var(--color-ink-2)]">OpenRouter가 현재 API 키에 보고한 지출 한도입니다. 계정 전체 선불 잔액이 아닙니다.</p>
+												<p class="mt-2 text-xs leading-relaxed text-[var(--color-ink-2)]">{t('configuration.theSpendingLimitOpenrouterReportsForTheCurrentApi')}</p>
 											{/if}
 										</div>
 										{#if billingUrl}
-											<Button variant="outline" size="sm" href={billingUrl} target="_blank">크레딧 충전·결제 ↗</Button>
+											<Button variant="outline" size="sm" href={billingUrl} target="_blank">{t('configuration.addCreditsBilling')}</Button>
 										{/if}
 									</div>
 
 									{#if credit.kind === 'account_balance'}
 										{#if credit.balances.length === 0}
-											<p class="mt-3 text-xs text-[var(--color-ink-2)]">프로바이더가 반환한 잔액 항목이 없습니다.</p>
+											<p class="mt-3 text-xs text-[var(--color-ink-2)]">{t('configuration.theProviderReturnedNoBalanceEntries')}</p>
 										{:else}
 											{#each credit.balances as balance (balance.currency)}
 												<div class="mt-3">
 													<div class="mb-2 flex items-center justify-between gap-2">
 														<span class="text-xs font-medium text-[var(--color-ink-2)]">DeepSeek {balance.currency}</span>
-														<Pill tone={credit.isAvailable ? 'success' : 'warning'} size="xs">{credit.isAvailable ? '사용 가능' : '잔액 부족'}</Pill>
+														<Pill tone={credit.isAvailable ? 'success' : 'warning'} size="xs">{credit.isAvailable ? t('configuration.available') : t('configuration.insufficientBalance')}</Pill>
 													</div>
 													<div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
-														<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-2)]">현재 계정 잔액</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">{formatBillingAmount(balance.total)} {balance.currency}</div></div>
-														<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-2)]">구매 충전액</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">{formatBillingAmount(balance.purchased)} {balance.currency}</div></div>
-														<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-2)]">지급 크레딧</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">{formatBillingAmount(balance.granted)} {balance.currency}</div></div>
+														<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-2)]">{t('configuration.currentAccountBalance')}</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">{formatBillingAmount(balance.total)} {balance.currency}</div></div>
+														<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-2)]">{t('configuration.purchasedCredits')}</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">{formatBillingAmount(balance.purchased)} {balance.currency}</div></div>
+														<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-2)]">{t('configuration.grantedCredits')}</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">{formatBillingAmount(balance.granted)} {balance.currency}</div></div>
 													</div>
 												</div>
 											{/each}
 										{/if}
 									{:else if credit.kind === 'api_key_limit'}
 										<div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-											<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-2)]">API 키 남은 한도</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">{credit.remaining === null ? '제한 없음' : `$${formatBillingAmount(credit.remaining)}`}</div></div>
-											<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-2)]">API 키 지출 한도</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">{credit.limit === null ? '제한 없음' : `$${formatBillingAmount(credit.limit)}`}</div></div>
+											<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-2)]">{t('configuration.remainingApiKeyAllowance')}</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">{credit.remaining === null ? t('configuration.unlimited') : `$${formatBillingAmount(credit.remaining)}`}</div></div>
+											<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-2)]">{t('configuration.apiKeySpendingLimit')}</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">{credit.limit === null ? t('configuration.unlimited') : `$${formatBillingAmount(credit.limit)}`}</div></div>
 										</div>
-										<p class="mt-2 text-xs text-[var(--color-ink-2)]">{credit.isFreeTier ? '무료 티어 키' : '유료 크레딧 키'}</p>
+										<p class="mt-2 text-xs text-[var(--color-ink-2)]">{credit.isFreeTier ? t('configuration.freeTierKey') : t('configuration.paidCreditKey')}</p>
 									{/if}
 								</div>
 
 								<div class="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
 									<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3">
-										<div class="text-xs text-[var(--color-ink-2)]">이번 달 Lumen 사용</div>
+										<div class="text-xs text-[var(--color-ink-2)]">{t('configuration.lumenSpendThisMonth')}</div>
 										<div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">${formatBillingAmount(billing.local_usage.raw_cost.monthly)}</div>
 									</div>
 									<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3">
-										<div class="text-xs text-[var(--color-ink-2)]">누적 Lumen 사용</div>
+										<div class="text-xs text-[var(--color-ink-2)]">{t('configuration.totalLumenSpend')}</div>
 										<div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">${formatBillingAmount(billing.local_usage.raw_cost.total)}</div>
 									</div>
 									<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3">
-										<div class="text-xs text-[var(--color-ink-2)]">이번 달 요청</div>
-										<div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">{formatBillingAmount(billing.local_usage.requests.monthly)}회</div>
+										<div class="text-xs text-[var(--color-ink-2)]">{t('configuration.requestsThisMonth')}</div>
+										<div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">{t('configuration.requestCount', { v0: Number(billing.local_usage.requests.monthly) })}</div>
 									</div>
 									<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3">
-										<div class="text-xs text-[var(--color-ink-2)]">이번 달 토큰</div>
+										<div class="text-xs text-[var(--color-ink-2)]">{t('configuration.tokensThisMonth')}</div>
 										<div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">{formatBillingAmount(billing.local_usage.tokens.monthly)}</div>
 									</div>
 								</div>
-								<p class="mt-2 text-xs tabular-nums text-[var(--color-ink-2)]">Lumen 원장 기준 · 오늘 ${formatBillingAmount(billing.local_usage.raw_cost.daily)} · 이번 주 ${formatBillingAmount(billing.local_usage.raw_cost.weekly)}</p>
+								<p class="mt-2 text-xs tabular-nums text-[var(--color-ink-2)]">{t('configuration.lumenLedgerDailyWeekly', { v0: formatBillingAmount(billing.local_usage.raw_cost.daily), v1: formatBillingAmount(billing.local_usage.raw_cost.weekly) })}</p>
 
 								{#if billing.status === 'unavailable' && credit.kind !== 'unavailable'}
-									<Alert tone="warning" title="프로바이더 사용량 조회 실패" class="mt-3">{billingFailureLabel(billing.reason)}</Alert>
+									<Alert tone="warning" title={t('configuration.providerUsageLookupFailed')} class="mt-3">{billingFailureLabel(billing.reason)}</Alert>
 								{:else if (billing.capability === 'openai_admin_usage' || billing.capability === 'anthropic_admin_usage') && billing.provider_usage}
 									{@const providerUsage = billing.provider_usage}
 									<div class="mt-3">
-										<div class="mb-2 text-xs font-semibold text-[var(--color-ink-2)]">{billing.capability === 'openai_admin_usage' ? 'OpenAI' : 'Anthropic'} 조직 사용량</div>
+										<div class="mb-2 text-xs font-semibold text-[var(--color-ink-2)]">{t('configuration.organizationUsage', { v0: billing.capability === 'openai_admin_usage' ? 'OpenAI' : 'Anthropic' })}</div>
 										<div class="grid grid-cols-2 gap-2 lg:grid-cols-4">
-											<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-2)]">이번 달 공식 비용</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">${formatBillingAmount(providerUsage.cost?.monthly ?? null)}</div></div>
-											<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-2)]">이번 주 공식 비용</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">${formatBillingAmount(providerUsage.cost?.weekly ?? null)}</div></div>
-											<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-2)]">이번 달 공식 요청</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">{formatBillingAmount(providerUsage.requests?.monthly ?? null)}{providerUsage.requests ? '회' : ''}</div></div>
-											<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-2)]">이번 달 공식 토큰</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">{formatBillingAmount(providerUsage.tokens?.monthly ?? null)}</div></div>
+											<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-2)]">{t('configuration.officialCostThisMonth')}</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">${formatBillingAmount(providerUsage.cost?.monthly ?? null)}</div></div>
+											<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-2)]">{t('configuration.officialCostThisWeek')}</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">${formatBillingAmount(providerUsage.cost?.weekly ?? null)}</div></div>
+											<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-2)]">{t('configuration.officialRequestsThisMonth')}</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">{providerUsage.requests ? t('configuration.officialRequestCount', { value: formatBillingAmount(providerUsage.requests.monthly), count: Number(providerUsage.requests.monthly) }) : formatBillingAmount(null)}</div></div>
+											<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-2)]">{t('configuration.officialTokensThisMonth')}</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">{formatBillingAmount(providerUsage.tokens?.monthly ?? null)}</div></div>
 										</div>
-										<p class="mt-2 text-xs tabular-nums text-[var(--color-ink-2)]">공식 조직 보고서 기준 · 오늘 비용 ${formatBillingAmount(providerUsage.cost?.daily ?? null)} · 오늘 토큰 {formatBillingAmount(providerUsage.tokens?.daily ?? null)}</p>
+										<p class="mt-2 text-xs tabular-nums text-[var(--color-ink-2)]">{t('configuration.officialOrganizationDaily', { v0: formatBillingAmount(providerUsage.cost?.daily ?? null), v1: formatBillingAmount(providerUsage.tokens?.daily ?? null) })}</p>
 										{#if billing.reason === 'partial_provider_data'}
-											<Alert tone="warning" title="일부 공식 보고서만 표시" class="mt-3">비용 또는 사용량 보고서 하나를 가져오지 못했습니다. 표시된 값만 최신 공식 응답입니다.</Alert>
+											<Alert tone="warning" title={t('configuration.onlySomeOfficialReportsAvailable')} class="mt-3">{t('configuration.oneCostOrUsageReportCouldNotBeRetrieved')}</Alert>
 										{/if}
 									</div>
 								{:else if billing.capability === 'openrouter_key' && billing.status === 'available'}
 									<div class="mt-3">
-										<div class="mb-2 text-xs font-semibold text-[var(--color-ink-2)]">OpenRouter 공급자 사용량</div>
+										<div class="mb-2 text-xs font-semibold text-[var(--color-ink-2)]">{t('configuration.openrouterProviderUsage')}</div>
 										<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-											<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-2)]">이번 달 공급자 사용</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">${formatBillingAmount(billing.usage_monthly)}</div></div>
-											<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-2)]">누적 공급자 사용</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">${formatBillingAmount(billing.usage_total)}</div></div>
+											<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-2)]">{t('configuration.providerSpendThisMonth')}</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">${formatBillingAmount(billing.usage_monthly)}</div></div>
+											<div class="rounded-lg bg-[var(--color-surface-sunken)] p-3"><div class="text-xs text-[var(--color-ink-2)]">{t('configuration.totalProviderSpend')}</div><div class="mt-1 font-medium tabular-nums text-[var(--color-ink-1)]">${formatBillingAmount(billing.usage_total)}</div></div>
 										</div>
-										<p class="mt-2 text-xs text-[var(--color-ink-2)]">오늘 ${formatBillingAmount(billing.usage_daily)} · 이번 주 ${formatBillingAmount(billing.usage_weekly)}</p>
+										<p class="mt-2 text-xs text-[var(--color-ink-2)]">{t('configuration.providerDailyWeekly', { v0: formatBillingAmount(billing.usage_daily), v1: formatBillingAmount(billing.usage_weekly) })}</p>
 									</div>
 								{/if}
 
 								{#if usageUrl && usageUrl !== billingUrl}
 									<div class="mt-3 flex flex-wrap gap-2">
-										<Button variant="ghost" size="sm" href={usageUrl} target="_blank">프로바이더 사용량 ↗</Button>
+										<Button variant="ghost" size="sm" href={usageUrl} target="_blank">{t('configuration.providerUsage')}</Button>
 									</div>
 								{/if}
 							{/if}
@@ -2002,18 +2033,18 @@
 	{/if}
 
 	{#if section === 'providers'}
-		<FormModal open={editingProvider !== null} title="프로바이더 표시 설정" onClose={() => { if (!providerSaving) editingProvider = null; }} onSubmit={saveProviderMetadata} submitLabel="저장" submitting={providerSaving}>
+		<FormModal open={editingProvider !== null} title={t('pricing.providerDisplay')} onClose={() => { if (!providerSaving) editingProvider = null; }} onSubmit={saveProviderMetadata} submitLabel={t('configuration.save')} submitting={providerSaving}>
 			<div class="space-y-4">
-				<p class="text-sm text-[var(--color-ink-2)]">연결 방식: <Pill tone="neutral">{editingProvider?.provider_type}</Pill></p>
-				<p class="text-xs text-[var(--color-ink-2)]">이 설정은 API Base, 인증 방식, 저장된 인증 정보를 변경하지 않습니다.</p>
-				<Alert tone="warning" title="API provider 변경 주의">API provider를 변경하면 이전 provider 파라미터는 더 이상 이 프로바이더와 일치하지 않습니다. 외부 클라이언트의 요청도 새 값으로 변경하세요.</Alert>
-				<Field label="표시 이름" for="provider-edit-name" required error={providerEditAttempted && !editProviderName.trim() ? '이름을 입력하세요.' : undefined}>
+				<p class="text-sm text-[var(--color-ink-2)]">{t('pricing.connectionMethod')}<Pill tone="neutral">{editingProvider?.provider_type}</Pill></p>
+				<p class="text-xs text-[var(--color-ink-2)]">{t('pricing.metadataScope')}</p>
+				<Alert tone="warning" title={t('pricing.qualifierWarningTitle')}>{t('pricing.qualifierWarning')}</Alert>
+				<Field label={t('pricing.displayName')} for="provider-edit-name" required error={providerEditAttempted && !editProviderName.trim() ? t('pricing.nameRequired') : undefined}>
 					<TextInput id="provider-edit-name" bind:value={editProviderName} required disabled={providerSaving} ariaInvalid={providerEditAttempted && !editProviderName.trim()} />
 				</Field>
-				<Field label="API provider" for="provider-edit-api-provider" required help={QUALIFIER_HELP} error={editApiProvider || providerEditAttempted ? qualifierError(editApiProvider) : undefined}>
+				<Field label={t('pricing.apiProviderLabel')} for="provider-edit-api-provider" required help={QUALIFIER_HELP} error={editApiProvider || providerEditAttempted ? qualifierError(editApiProvider) : undefined}>
 					<TextInput id="provider-edit-api-provider" bind:value={editApiProvider} required maxlength={40} disabled={providerSaving} ariaInvalid={Boolean(qualifierError(editApiProvider))} />
 				</Field>
-				<Field label="프로바이더 표시 순서" for="provider-edit-sort-order" required help={ORDER_HELP} error={editProviderOrder || providerEditAttempted ? orderError(editProviderOrder) : undefined}>
+				<Field label={t('pricing.providerOrder')} for="provider-edit-sort-order" required help={ORDER_HELP} error={editProviderOrder || providerEditAttempted ? orderError(editProviderOrder) : undefined}>
 					<TextInput id="provider-edit-sort-order" inputmode="numeric" bind:value={editProviderOrder} required disabled={providerSaving} ariaInvalid={Boolean(orderError(editProviderOrder))} />
 				</Field>
 				{#if providerEditError}<Alert tone="danger">{providerEditError}</Alert>{/if}
@@ -2022,57 +2053,57 @@
 
 		<FormModal
 			bind:open={billingKeyModalOpen}
-			title="조직 사용량 관리자 키"
+			title={t('configuration.organizationUsageAdminKey')}
 			onClose={closeBillingKeyModal}
 			onSubmit={saveBillingAdminKey}
-			submitLabel={billingKeyProvider?.has_billing_admin_key ? '키 변경' : '키 설정'}
+			submitLabel={billingKeyProvider?.has_billing_admin_key ? t('configuration.changeKey') : t('configuration.setKey')}
 			submitting={billingKeyBusy}
 		>
 			<div class="space-y-4">
 				<p class="text-sm text-[var(--color-ink-2)]">
-					{billingKeyProvider?.name}의 {billingKeyProvider?.provider_type === 'anthropic' ? 'Anthropic Admin API' : 'OpenAI Admin API'} 조직 보고서를 조회합니다.
+					{t('configuration.billingAdminOrganizationReport', { v0: billingKeyProvider?.name ?? '', v1: billingKeyProvider?.provider_type === 'anthropic' ? 'Anthropic Admin API' : 'OpenAI Admin API' })}
 				</p>
-				<Alert tone="info" title="Inference 키와 별도 보관">
-					이 키는 모델 호출에 사용하지 않으며 조직 사용량·비용 보고서 조회에만 사용합니다. 저장된 키 값은 다시 표시되지 않습니다.
+				<Alert tone="info" title={t('configuration.storedSeparatelyFromTheInferenceKey')}>
+					{t('configuration.thisKeyIsUsedOnlyToRetrieveOrganizationUsage')}
 				</Alert>
 				<Field
-					label={billingKeyProvider?.provider_type === 'anthropic' ? 'Anthropic Admin API 키' : 'OpenAI Admin API 키'}
+					label={billingKeyProvider?.provider_type === 'anthropic' ? t('configuration.anthropicAdminApiKey') : t('configuration.openaiAdminApiKey')}
 					for="provider-billing-admin-key"
-					help={billingKeyProvider?.has_billing_admin_key ? '새 키를 입력하면 교체됩니다. 비워 저장하면 기존 키를 제거합니다.' : '조직 관리자 권한이 있는 별도 키를 입력하세요.'}
+					help={billingKeyProvider?.has_billing_admin_key ? t('configuration.enterANewKeyToReplaceTheExistingOne') : t('configuration.enterASeparateKeyWithOrganizationAdminPermissions')}
 				>
-					<TextInput id="provider-billing-admin-key" type="password" placeholder={billingKeyProvider?.has_billing_admin_key ? '새 키 또는 제거하려면 비움' : '관리자 API 키'} bind:value={billingAdminKey} />
+					<TextInput id="provider-billing-admin-key" type="password" placeholder={billingKeyProvider?.has_billing_admin_key ? t('configuration.newKeyOrLeaveBlankToRemove') : t('configuration.adminApiKey')} bind:value={billingAdminKey} />
 				</Field>
 			</div>
 		</FormModal>
 
-		<Modal bind:open={authModalOpen} onClose={closeSubscriptionAuth} ariaLabel="구독 인증">
+		<Modal bind:open={authModalOpen} onClose={closeSubscriptionAuth} ariaLabel={t('configuration.subscriptionAuthentication')}>
 			<div class="max-h-[calc(100vh-2rem)] w-[min(36rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-4 shadow-[var(--shadow-restraint)] sm:p-5">
 				<div class="flex items-start justify-between gap-3">
 					<div>
 						<h3 class="text-base font-semibold text-[var(--color-ink-1)]">
-							{authProvider && providerAuthMode(authProvider) === 'chatgpt_device' ? 'ChatGPT 구독 연결' : 'Claude 구독 토큰 등록'}
+							{authProvider && providerAuthMode(authProvider) === 'chatgpt_device' ? t('configuration.connectChatgptSubscription') : t('configuration.registerClaudeSubscriptionToken')}
 						</h3>
 						<p class="mt-1 text-sm text-[var(--color-ink-3)]">{authProvider?.name}</p>
 					</div>
-					<Button variant="ghost" size="sm" onclick={closeSubscriptionAuth}>닫기</Button>
+					<Button variant="ghost" size="sm" onclick={closeSubscriptionAuth}>{t('configuration.close')}</Button>
 				</div>
 
-				<Alert tone="warning" title="실험 기능 · 전체 사용자 공용" class="mt-4">
-					이 연결은 Afterglow의 모든 사용자에게 공유됩니다. 개인 정보가 없는 전용 구독 계정과 공급자 정책을 확인하세요.
+				<Alert tone="warning" title={t('configuration.experimentalSharedByAllUsers')} class="mt-4">
+					{t('configuration.thisConnectionIsSharedByAllAfterglowUsersUse')}
 				</Alert>
 
 				{#if authError}
-					<Alert tone="danger" title="인증을 계속할 수 없습니다" class="mt-3">{authError}</Alert>
+					<Alert tone="danger" title={t('configuration.cannotContinueAuthentication')} class="mt-3">{authError}</Alert>
 				{/if}
 
 				{#if authProvider && providerAuthMode(authProvider) === 'chatgpt_device'}
 					<div class="mt-5 space-y-4">
 						{#if !deviceAttempt}
 							<p class="text-sm leading-6 text-[var(--color-ink-2)]">
-								연결을 시작하면 OpenAI 인증 페이지와 일회용 코드가 표시됩니다. 관리자 브라우저에서 코드를 승인하세요.
+								{t('configuration.startingTheConnectionDisplaysAnOpenaiAuthenticationPageAnd')}
 							</p>
 							<div class="flex flex-wrap justify-end gap-2">
-								<Button onclick={startDeviceAuth} disabled={authBusy}>{authBusy ? '시작 중…' : 'ChatGPT 연결'}</Button>
+								<Button onclick={startDeviceAuth} disabled={authBusy}>{authBusy ? t('configuration.starting') : t('configuration.connectChatgpt')}</Button>
 							</div>
 						{:else}
 							<div class="rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-sunken)] p-4">
@@ -2086,40 +2117,40 @@
 										dot
 									>
 										{deviceAttempt.status === 'pending'
-											? '인증 대기 중'
+											? t('configuration.awaitingAuthentication')
 											: deviceAttempt.status === 'connected'
-												? '연결 완료'
+												? t('configuration.connected')
 												: deviceAttempt.status === 'expired'
-													? '인증 만료'
+													? t('configuration.authenticationExpired')
 													: deviceAttempt.status === 'cancelled'
-														? '인증 취소됨'
-														: '인증 오류'}
+														? t('configuration.authenticationCanceled')
+														: t('configuration.authenticationError')}
 									</Pill>
-									<span class="text-xs text-[var(--color-ink-3)]">만료 {new Date(deviceAttempt.expires_at).toLocaleString()}</span>
+									<span class="text-xs text-[var(--color-ink-3)]">{t('configuration.deviceCredentialExpiry', { v0: new Date(deviceAttempt.expires_at).toLocaleString(intlLocale()) })}</span>
 								</div>
 								{#if deviceAttempt.user_code}
 									<div class="mt-4">
-										<p class="text-xs text-[var(--color-ink-3)]">일회용 인증 코드</p>
+										<p class="text-xs text-[var(--color-ink-3)]">{t('configuration.oneTimeAuthenticationCode')}</p>
 										<div class="mt-1 flex flex-wrap items-center gap-2">
 											<code class="rounded bg-[var(--color-surface-base)] px-3 py-2 font-mono text-lg tracking-widest text-[var(--color-ink-0)]">{deviceAttempt.user_code}</code>
-											<Button variant="secondary" size="sm" onclick={copyDeviceCode}>코드 복사</Button>
+											<Button variant="secondary" size="sm" onclick={copyDeviceCode}>{t('configuration.copyCode')}</Button>
 										</div>
 									</div>
 								{/if}
 								{#if deviceAttempt.verification_uri && isAllowedVerificationUri(deviceAttempt.verification_uri)}
-									<Button class="mt-4" href={deviceAttempt.verification_uri}>OpenAI 인증 페이지 열기</Button>
+									<Button class="mt-4" href={deviceAttempt.verification_uri}>{t('configuration.openOpenaiAuthenticationPage')}</Button>
 								{:else if deviceAttempt.verification_uri}
-									<Alert tone="danger" class="mt-4">OpenAI 공식 도메인이 아닌 인증 주소는 열지 않았습니다.</Alert>
+									<Alert tone="danger" class="mt-4">{t('configuration.theAuthenticationUrlWasNotOpenedBecauseItIs')}</Alert>
 								{/if}
 							</div>
 							<div class="flex flex-wrap justify-end gap-2">
 								{#if deviceAttempt.status === 'pending'}
 									<Button variant="secondary" onclick={pollCurrentDeviceAuth} disabled={authBusy}>
-										{authBusy ? '확인 중…' : '지금 확인'}
+										{authBusy ? t('configuration.checking') : t('configuration.checkNow')}
 									</Button>
-									<Button variant="danger-outline" onclick={cancelDeviceAuth} disabled={authBusy}>인증 취소</Button>
+									<Button variant="danger-outline" onclick={cancelDeviceAuth} disabled={authBusy}>{t('configuration.cancelAuthentication')}</Button>
 								{:else if deviceAttempt.status !== 'connected'}
-									<Button onclick={startDeviceAuth} disabled={authBusy}>다시 연결</Button>
+									<Button onclick={startDeviceAuth} disabled={authBusy}>{t('configuration.reconnect')}</Button>
 								{/if}
 							</div>
 						{/if}
@@ -2127,9 +2158,9 @@
 				{:else if authProvider}
 					<div class="mt-5 space-y-4">
 						<p class="text-sm leading-6 text-[var(--color-ink-2)]">
-							Claude에서 <code class="font-mono">claude setup-token</code>을 실행해 발급한 setup-token을 등록하세요. 토큰은 저장 후 다시 표시되지 않습니다.
+							{#snippet rich65markup1(text: string)}<code class="font-mono">{text}</code>{/snippet}<RichText segments={t.rich('configuration.claudeSetupTokenGuidance')} tags={{ markup1: rich65markup1 }} />
 						</p>
-						<Field label="Claude setup-token" for="claude-subscription-token" required>
+						<Field label={t('configuration.claudeSetupToken')} for="claude-subscription-token" required>
 							<TextInput
 								id="claude-subscription-token"
 								type="password"
@@ -2138,13 +2169,13 @@
 								required
 							/>
 						</Field>
-						<Field label="만료 시각" for="claude-subscription-expiry" help="공급자가 만료 시각을 안내한 경우에만 입력합니다.">
+						<Field label={t('configuration.expirationTime')} for="claude-subscription-expiry" help={t('configuration.enterOnlyIfTheProviderSpecifiedAnExpirationTime')}>
 							<input id="claude-subscription-expiry" class={inputCls} type="datetime-local" bind:value={claudeExpiry} />
 						</Field>
 						<div class="flex flex-wrap justify-end gap-2">
-							<Button variant="secondary" href="https://support.anthropic.com/en/articles/11145838-using-claude-code-with-your-pro-or-max-plan">공식 안내</Button>
+							<Button variant="secondary" href="https://support.anthropic.com/en/articles/11145838-using-claude-code-with-your-pro-or-max-plan">{t('configuration.officialGuidance')}</Button>
 							<Button onclick={saveClaudeSubscription} disabled={authBusy || !claudeToken.trim()}>
-								{authBusy ? '저장 중…' : authProvider.has_credentials ? '토큰 교체' : '구독 토큰 등록'}
+								{authBusy ? t('configuration.saving') : authProvider.has_credentials ? t('configuration.replaceToken') : t('configuration.registerSubscriptionToken')}
 							</Button>
 						</div>
 					</div>
@@ -2156,15 +2187,14 @@
 	{#if section === 'models'}
 	<!-- 모델 -->
 	<section>
-		<h3 class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">모델</h3>
+		<h3 class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">{t('configuration.models')}</h3>
 		<p class="mb-3 text-xs text-[var(--color-ink-3)]">
-			API 모델 ID는 외부 OpenAI·Anthropic 호환 요청에 사용합니다. 내부 라우팅 ID는 Lumen 전송 전용이며 다를 수 있습니다.
-			'제목요약 지정'한 모델은 새 대화 제목을 자동 생성합니다. 이 호출 비용은 사용자 크레딧이 아닌 시스템에서 부담합니다.
+			{t('configuration.apiModelIdsAreUsedForExternalOpenaiAnd')}
 		</p>
 		<div class="{cardCls} mb-4 p-5">
 			<div class="flex flex-col gap-3 sm:flex-row sm:items-center">
-				<select class={inputCls} aria-label="조회 프로바이더" bind:value={mProviderId} onchange={resetDiscovery}>
-					<option value="">프로바이더 선택</option>
+				<select class={inputCls} aria-label={t('configuration.discoveryProvider')} bind:value={mProviderId} onchange={resetDiscovery}>
+					<option value="">{t('configuration.selectProvider')}</option>
 					{#each providers as p (p.id)}
 						<option value={p.id}>{p.name}</option>
 					{/each}
@@ -2173,12 +2203,12 @@
 					<Button
 						variant="secondary"
 						onclick={() => {
-							if (!mProviderId) return toast.error('프로바이더를 선택하세요');
+							if (!mProviderId) return toast.error(t('configuration.selectAProvider'));
 							void discover(mProviderId);
 						}}
 						disabled={!mProviderId}
 					>
-						모델 불러오기
+						{t('configuration.loadModels')}
 					</Button>
 					<Button
 						variant="secondary"
@@ -2188,63 +2218,61 @@
 						}}
 						disabled={!mProviderId}
 					>
-						models.dev 가격
+						{t('configuration.modelsDevPricing')}
 					</Button>
 				</div>
 			</div>
-			<p class="mt-2 text-xs text-[var(--color-ink-2)]">조회 후보의 종류를 검토해 등록하세요. models.dev 가격 가져오기는 기존 텍스트 모델 전용이며 미디어 단가는 직접 지정합니다.</p>
+			<p class="mt-2 text-xs text-[var(--color-ink-2)]">{t('pricing.discoveryGuidance')}</p>
 			{#if discoverId === mProviderId && discoverId !== null}
 				<div class="mt-4 border-t border-[var(--color-line)] pt-4" data-testid="model-discovery">
 					<div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-						<p class="text-sm font-semibold text-[var(--color-ink-1)]">조회 후보 · {providerName(discoverId)}</p>
+						<p class="text-sm font-semibold text-[var(--color-ink-1)]">{t('configuration.discoveredCandidates', { v0: providerName(discoverId) })}</p>
 						<div class="flex gap-2">
-							<Button variant="secondary" size="sm" onclick={retryDiscovery} disabled={discovering || registeringBulk}>다시 조회</Button>
-							<Button variant="ghost" size="sm" onclick={resetDiscovery}>조회 닫기</Button>
+							<Button variant="secondary" size="sm" onclick={retryDiscovery} disabled={discovering || registeringBulk}>{t('configuration.fetchAgain')}</Button>
+							<Button variant="ghost" size="sm" onclick={resetDiscovery}>{t('configuration.closeDiscovery')}</Button>
 						</div>
 					</div>
 					{#if discovering}
-						<p class="text-sm text-[var(--color-ink-2)]">모델 목록을 불러오는 중…</p>
+						<p class="text-sm text-[var(--color-ink-2)]">{t('configuration.loadingModelList')}</p>
 					{:else if discoveryError}
 						<Alert tone="warning">{discoveryError}</Alert>
 					{:else if discovery}
 						<p class="mb-3 text-xs text-[var(--color-ink-2)]" data-testid="discovery-provenance">
-							출처: {discovery.source === 'api' ? '프로바이더 API' : discovery.source === 'litellm' ? 'LiteLLM 정적 목록' : '제공된 목록 없음'}
-							· 실시간 조회: {discovery.live_status === 'success' ? '응답' : discovery.live_status === 'empty' ? '정상 빈 결과' : discovery.live_status === 'unsupported' ? '미지원' : discovery.live_status === 'error' ? '실패' : '상태 미확인'}
-							· 완전성: {discovery.complete === true ? '전체' : discovery.complete === false ? '불완전' : '미확인'}
-							{#if discovery.fetched_at} · 조회 시각: {discovery.fetched_at}{/if}
-							· 전체 {discovery.models.length}개 · 미등록 {filteredAvailable.length}개
+							{t('configuration.discoveryProvenance', { v0: discovery.source === 'api' ? t('configuration.providerApi') : discovery.source === 'litellm' ? t('configuration.litellmStaticList') : t('configuration.noListProvided'), v1: discovery.live_status === 'success' ? t('configuration.responseReceived') : discovery.live_status === 'empty' ? t('configuration.successfulEmptyResult') : discovery.live_status === 'unsupported' ? t('configuration.unsupported') : discovery.live_status === 'error' ? t('configuration.failed') : t('configuration.statusUnknown'), v2: discovery.complete === true ? t('configuration.complete') : discovery.complete === false ? t('configuration.incomplete') : t('configuration.unknown') })}
+							{#if discovery.fetched_at} {t('configuration.discoveryFetchedAt', { v0: new Date(discovery.fetched_at).toLocaleString(intlLocale()) })}{/if}
+							{t('configuration.discoveryModelCounts', { v0: formatNumber(discovery.models.length), v1: formatNumber(filteredAvailable.length) })}
 						</p>
 						{#if discovery.error}
-							<Alert tone="warning" class="mb-3">{discovery.error.message} {discovery.error.retryable ? '다시 조회할 수 있습니다.' : '연결 설정을 확인하세요.'}</Alert>
+							<Alert tone="warning" class="mb-3">{discovery.error.message} {discovery.error.retryable ? t('configuration.youCanFetchAgain') : t('configuration.checkTheConnectionSettings')}</Alert>
 						{/if}
 						{#if discovery.live_status === 'error' && !discovery.error}
-							<Alert tone="warning" class="mb-3">실시간 모델 조회에 실패했습니다. 연결을 확인하고 다시 조회하세요.</Alert>
+							<Alert tone="warning" class="mb-3">{t('configuration.liveModelLookupFailedCheckTheConnectionAndFetch')}</Alert>
 						{/if}
 						{#if discovery.live_status === 'empty' && discovery.models.length === 0}
-							<Alert tone="info">정상적으로 조회했지만 반환된 모델이 없습니다. 필요하면 직접 추가하세요.</Alert>
+							<Alert tone="info">{t('configuration.theLookupSucceededButReturnedNoModelsAddThem')}</Alert>
 						{:else if discovery.live_status === 'unsupported' && discovery.models.length === 0}
-							<Alert tone="info">이 프로바이더는 모델 조회를 지원하지 않습니다. 직접 추가할 수 있습니다.</Alert>
+							<Alert tone="info">{t('configuration.thisProviderDoesNotSupportModelLookupYouCan')}</Alert>
 						{:else if discovery.models.length === 0 && !discovery.error && discovery.live_status !== 'error'}
-							<Alert tone="info">제공된 후보가 없습니다. 조회 상태를 확인하거나 직접 추가하세요.</Alert>
+							<Alert tone="info">{t('configuration.noCandidatesProvidedCheckTheLookupStatusOrAdd')}</Alert>
 						{/if}
 						{#if discovery.models.length > 0 && discovery.live_status !== 'error'}
-							<Alert tone="info" class="mb-3">조회 후보는 가격이나 실행 가능성의 증거가 아닙니다. 정확한 입력·출력 및 캐시 단가와 기능을 확인한 뒤 활성화하세요.</Alert>
+							<Alert tone="info" class="mb-3">{t('configuration.discoveryCandidatesDoNotVerifyPricingOrExecutionSupport')}</Alert>
 							{#if isSubscriptionProviderId(mProviderId)}
-								<Alert tone="info" class="mb-3">구독 카탈로그 후보입니다. 현재 구독 등급에서 실제 사용할 수 있는 모델인지는 보장되지 않습니다.</Alert>
+								<Alert tone="info" class="mb-3">{t('configuration.theseAreSubscriptionCatalogCandidatesAvailabilityUnderYourCurrent')}</Alert>
 							{/if}
 							<div class="mb-3 flex flex-wrap gap-3 text-xs">
-								<Button variant="ghost" size="xs" onclick={() => toggleAllFiltered(true)}>전체 선택</Button>
-								<Button variant="ghost" size="xs" onclick={() => toggleAllFiltered(false)}>선택 해제</Button>
+								<Button variant="ghost" size="xs" onclick={() => toggleAllFiltered(true)}>{t('configuration.selectAll')}</Button>
+								<Button variant="ghost" size="xs" onclick={() => toggleAllFiltered(false)}>{t('configuration.clearSelection')}</Button>
 							</div>
 							<div class="mb-3">
-								<Field label="후보 모델 필터" for="discovery-candidate-filter">
-									<TextInput id="discovery-candidate-filter" type="search" placeholder="모델 ID 또는 표시 이름 검색" bind:value={availFilter} oninput={() => (selectedAvail = {})} disabled={registeringBulk} />
+								<Field label={t('configuration.filterCandidateModels')} for="discovery-candidate-filter">
+									<TextInput id="discovery-candidate-filter" type="search" placeholder={t('configuration.searchModelIdOrDisplayName')} bind:value={availFilter} oninput={() => (selectedAvail = {})} disabled={registeringBulk} />
 								</Field>
-								<Field label="후보 종류 필터" for="discovery-kind-filter">
+								<Field label={t('pricing.candidateKindFilter')} for="discovery-kind-filter">
 									<SelectInput id="discovery-kind-filter" value={availKind} disabled={registeringBulk} onchange={(event) => { availKind = (event.target as HTMLSelectElement).value as typeof availKind; selectedAvail = {}; }}>
-										<option value="">모든 종류</option>
+										<option value="">{t('pricing.allKinds')}</option>
 										{#each Object.entries(MEDIA_LABELS) as [kind, label]}<option value={kind}>{label}</option>{/each}
-										<option value="unknown">종류 미확인 · 수동 검토</option>
+										<option value="unknown">{t('pricing.unknownKind')}</option>
 									</SelectInput>
 								</Field>
 							</div>
@@ -2254,15 +2282,15 @@
 										<input class="mt-1" type="checkbox" aria-label={candidate.id} disabled={registeringBulk} bind:checked={selectedAvail[candidate.id]} />
 										<span class="min-w-0 break-all"><span class="block font-mono">{candidate.id}</span>
 											{#if candidate.display_name}<span class="block text-xs text-[var(--color-ink-2)]">{candidate.display_name}</span>{/if}
-											<span class="block text-xs text-[var(--color-ink-2)]">{candidate.model_kind ? MEDIA_LABELS[candidate.model_kind] : candidate.purpose === 'chat' ? '텍스트 후보' : '종류 미확인 · 수동 검토'} · 실행 미검증</span>
+											<span class="block text-xs text-[var(--color-ink-2)]">{t('pricing.candidateReadiness', { kind: candidate.model_kind ? MEDIA_LABELS[candidate.model_kind] : candidate.purpose === 'chat' ? t('pricing.textCandidate') : t('pricing.unknownKind') })}</span>
 										</span>
 									</label>
 								{:else}
-									<p class="px-2 py-1 text-sm text-[var(--color-ink-2)]">필터에 맞는 미등록 모델이 없습니다.</p>
+									<p class="px-2 py-1 text-sm text-[var(--color-ink-2)]">{t('configuration.noUnregisteredModelsMatchTheFilters')}</p>
 								{/each}
 							</div>
 							<div class="mt-3 flex justify-end">
-								<Button onclick={reviewSelected} disabled={registeringBulk}>선택 모델 검토</Button>
+								<Button onclick={reviewSelected} disabled={registeringBulk}>{t('configuration.reviewSelectedModels')}</Button>
 							</div>
 						{/if}
 					{/if}
@@ -2271,42 +2299,42 @@
 		</div>
 		<div class="{cardCls} mb-4 p-5">
 			<div class="grid grid-cols-1 gap-3 md:grid-cols-3">
-				<select class={inputCls} aria-label="수동 등록 프로바이더" bind:value={mProviderId} onchange={resetDiscovery}>
-					<option value="">프로바이더 선택</option>
+				<select class={inputCls} aria-label={t('configuration.providerForManualRegistration')} bind:value={mProviderId} onchange={resetDiscovery}>
+					<option value="">{t('configuration.selectProvider')}</option>
 					{#each providers as p (p.id)}
 						<option value={p.id}>{p.name}</option>
 					{/each}
 				</select>
-				<select class={inputCls} aria-label="모델 종류" value={mKind} onchange={(event) => (mKind = event.currentTarget.value as ModelKind)}>
+				<select class={inputCls} aria-label={t('configuration.modelType')} value={mKind} onchange={(event) => (mKind = event.currentTarget.value as ModelKind)}>
 					{#each Object.entries(MEDIA_LABELS) as [kind, label]}
 						<option value={kind}>{label}</option>
 					{/each}
 				</select>
-				<input class={inputCls} placeholder="모델명 (예: gpt-4o)" bind:value={mName} />
-				<input class={inputCls} placeholder="표시 이름 (선택)" bind:value={mDisplay} />
+				<input class={inputCls} placeholder={t('configuration.modelNameEGGpt4o')} bind:value={mName} />
+				<input class={inputCls} placeholder={t('configuration.displayNameOptional')} bind:value={mDisplay} />
 			</div>
-			<p class="mt-3 text-sm font-semibold text-[var(--color-ink-1)]">텍스트 토큰 단가</p>
+			<p class="mt-3 text-sm font-semibold text-[var(--color-ink-1)]">{t('pricing.textTokenRates')}</p>
 			<div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-				<input class={inputCls} inputmode="decimal" placeholder="입력 가격 (USD / 1M tokens)" bind:value={mInputPrice} />
-				<input class={inputCls} inputmode="decimal" placeholder="출력 가격 (USD / 1M tokens)" bind:value={mOutputPrice} />
+				<input class={inputCls} inputmode="decimal" placeholder={t('configuration.inputPriceUsd1mTokens')} bind:value={mInputPrice} />
+				<input class={inputCls} inputmode="decimal" placeholder={t('configuration.outputPriceUsd1mTokens')} bind:value={mOutputPrice} />
 			</div>
 			{#if mKind !== 'text' && mProviderId && !mediaProviderSupported(mProviderId)}
-				<Alert tone="warning" class="mt-3">미디어 모델은 직접 연결된 OpenAI·Gemini API-key 프로바이더만 등록할 수 있습니다. 구독 또는 호환 API에서는 사용할 수 없습니다.</Alert>
+				<Alert tone="warning" class="mt-3">{t('configuration.mediaModelsCanOnlyBeRegisteredWithDirectlyConnected')}</Alert>
 			{/if}
 			<ModelMediaPricingEditor kind={mKind} bind:draft={mPricing} prefix="model-create" disabled={addingModel} />
 			{#if cachePricingAvailable}
 			<div class="mt-4 border-t border-[var(--color-line)] pt-4" role="group" aria-labelledby="model-create-cache-heading" data-testid="model-create-cache-prices">
-				<p id="model-create-cache-heading" class="text-xs font-semibold text-[var(--color-ink-1)]">프롬프트 캐시 단가 (선택)</p>
+				<p id="model-create-cache-heading" class="text-xs font-semibold text-[var(--color-ink-1)]">{t('configuration.promptCacheRatesOptional')}</p>
 				<p class="mt-1 text-xs leading-relaxed text-[var(--color-ink-2)]">
-					{mKind === 'text' ? '입력·출력 가격과 별도로 항목마다 저장합니다. 비워 둔 항목의 캐시 토큰은 단가를 설정할 때까지 0 USD로 청구하며 LiteLLM·models.dev 기본 단가로 대체하지 않습니다.' : '텍스트 캐시 단가는 토큰 과금에서만 사용합니다. 캐시 사용량이 발생하면 해당 단가가 필요하며, 미설정 단가를 0이나 다른 가격으로 대체하지 않습니다.'}
+					{mKind === 'text' ? t('configuration.eachRateIsSavedSeparatelyFromInputAndOutput') : t('pricing.mediaCacheCreateHelp')}
 				</p>
 				<div class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
 					{#each CACHE_PRICE_FIELDS as field (field.key)}
-						<Field label={field.label} for="model-create-cache-{field.slug}" help="USD / 1M tokens" error={mCacheErrors[field.key]}>
+						<Field label={field.label} for="model-create-cache-{field.slug}" help={t('configuration.usd1mTokens')} error={mCacheErrors[field.key]}>
 							<TextInput
 								id="model-create-cache-{field.slug}"
 								inputmode="decimal"
-								placeholder="예: 0.3"
+								placeholder={t('configuration.eG03')}
 								bind:value={mCachePrices[field.key]}
 								ariaInvalid={Boolean(mCacheErrors[field.key])}
 								oninput={(event) => (mCacheErrors = recheckCachePrice(mCacheErrors, field.key, (event.currentTarget as HTMLInputElement).value))}
@@ -2318,30 +2346,30 @@
 			{/if}
 			<div class="mt-3 flex justify-end">
 				<Button onclick={addModel} disabled={addingModel || providers.length === 0 || (mKind !== 'text' && !!mProviderId && !mediaProviderSupported(mProviderId))}>
-					{addingModel ? '추가 중…' : '+ 모델 추가'}
+					{addingModel ? t('configuration.adding') : t('configuration.addModel')}
 				</Button>
 			</div>
 		</div>
 
 		<div class="mb-3">
-			<Field label="등록 모델 프로바이더 필터" for="registered-model-provider" help="조회 후보 및 수동 등록 프로바이더 선택과 별개입니다.">
+			<Field label={t('pricing.registeredProviderFilter')} for="registered-model-provider" help={t('pricing.registeredProviderHelp')}>
 				<SelectInput id="registered-model-provider" bind:value={registeredProviderId} onchange={changeRegisteredProvider} disabled={deletingBulk}>
-					<option value="">모든 프로바이더</option>
+					<option value="">{t('pricing.allProviders')}</option>
 					{#each providers as provider (provider.id)}<option value={String(provider.id)}>{provider.name}</option>{/each}
 				</SelectInput>
 			</Field>
-			<Field label="등록 모델 종류 필터" for="registered-model-kind">
+			<Field label={t('pricing.registeredKindFilter')} for="registered-model-kind">
 				<SelectInput id="registered-model-kind" value={registeredKind} disabled={deletingBulk} onchange={(event) => { registeredKind = (event.target as HTMLSelectElement).value as typeof registeredKind; selectedModelIds = {}; }}>
-					<option value="">모든 종류</option>
+					<option value="">{t('pricing.allKinds')}</option>
 					{#each Object.entries(MEDIA_LABELS) as [kind, label]}<option value={kind}>{label}</option>{/each}
 				</SelectInput>
 			</Field>
-			<p class="mt-2 text-xs text-[var(--color-ink-2)]">등록 모델 {visibleModels.length}개 표시 / 전체 {models.length}개 · 프로바이더 순서·ID, 모델 순서·ID 순으로 표시합니다.</p>
+			<p class="mt-2 text-xs text-[var(--color-ink-2)]">{t('pricing.registeredCount', { visible: formatNumber(visibleModels.length), total: formatNumber(models.length) })}</p>
 		</div>
 		{#if loading}
 			<div class="{cardCls} h-20 animate-pulse"></div>
 		{:else if visibleModels.length === 0}
-			<p class="px-1 text-sm text-[var(--color-ink-2)]">{registeredProviderId ? '선택한 프로바이더에 등록된 모델이 없습니다.' : '등록된 모델이 없습니다.'}</p>
+			<p class="px-1 text-sm text-[var(--color-ink-2)]">{registeredProviderId ? t('pricing.providerEmpty') : t('configuration.noModelsRegistered')}</p>
 		{:else}
 			<div class="mb-2 flex items-center justify-between gap-3 px-1">
 				<label class="flex cursor-pointer items-center gap-2 text-xs text-[var(--color-ink-2)]">
@@ -2351,11 +2379,11 @@
 						disabled={deletingBulk}
 						onchange={(e) => toggleAllModels(e.currentTarget.checked)}
 					/>
-					전체 선택{selectedCount > 0 ? ` (${selectedCount})` : ''}
+					{t('configuration.selectAllWithCount', { v0: selectedCount > 0 ? ` (${formatNumber(selectedCount)})` : '' })}
 				</label>
 				{#if selectedCount > 0}
 					<Button variant="danger-outline" size="sm" onclick={deleteSelectedModels} disabled={deletingBulk}>
-						{deletingBulk ? '삭제 중…' : `선택 삭제 (${selectedCount})`}
+						{deletingBulk ? t('configuration.deleting') : t('configuration.deleteSelected', { v0: formatNumber(selectedCount) })}
 					</Button>
 				{/if}
 			</div>
@@ -2363,72 +2391,72 @@
 				{#each visibleModels as m (m.id)}
 					<div class="{cardCls} flex flex-col items-stretch gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between" data-model-id={m.id}>
 						<div class="flex min-w-0 items-start gap-3">
-							<input class="mt-0.5 shrink-0" type="checkbox" disabled={deletingBulk} bind:checked={selectedModelIds[m.id]} aria-label="{m.display_name || publicModelName(m)} 선택" />
+							<input class="mt-0.5 shrink-0" type="checkbox" disabled={deletingBulk} bind:checked={selectedModelIds[m.id]} aria-label={t('configuration.selectModel', { v0: m.display_name || publicModelName(m) })} />
 							<div class="min-w-0 flex-1">
 							<div class="flex flex-wrap items-center gap-2">
 								<span class="truncate text-sm font-medium text-[var(--color-ink-1)]">{displayModelTitle(m)}</span>
-							<Pill tone={m.is_active ? 'success' : 'neutral'} size="xs">{(m.model_kind ?? 'text') === 'text' ? (m.is_active ? '활성 · 저장됨' : '비활성 · 저장됨') : (m.is_active ? '관리 활성 · 실행 별도' : '관리 비활성 · 저장됨')}</Pill>
+							<Pill tone={m.is_active ? 'success' : 'neutral'} size="xs">{(m.model_kind ?? 'text') === 'text' ? (m.is_active ? t('configuration.activeSaved') : t('configuration.inactiveSaved')) : (m.is_active ? t('configuration.adminEnabledExecutionSeparate') : t('configuration.adminDisabledSaved'))}</Pill>
 							<Pill tone="neutral" size="xs">{MEDIA_LABELS[m.model_kind ?? 'text']}</Pill>
 								{#if m.is_title_model}
 									<span class="rounded bg-[var(--color-accent)]/15 px-1.5 py-0.5 text-xs text-[var(--color-accent)]">
-										제목 요약
+										{t('configuration.titleGeneration')}
 									</span>
 								{/if}
 							{#if (m.model_kind ?? 'text') === 'text'}
 								<Pill tone={m.price_source === 'manual' ? 'success' : m.price_source === 'models.dev' ? 'accent' : 'neutral'} size="xs">
-									{m.price_source === 'manual' ? '수동' : m.price_source === 'models.dev' ? 'models.dev' : m.effective_price_source?.startsWith('perplexity_agent_api_') ? 'Perplexity 공식 가격' : m.effective_price_source === 'litellm' ? 'LiteLLM 기본값' : '가격 출처 미확인'}
+									{m.price_source === 'manual' ? t('configuration.manual') : m.price_source === 'models.dev' ? 'models.dev' : m.effective_price_source?.startsWith('perplexity_agent_api_') ? t('configuration.officialPerplexityPricing') : m.effective_price_source === 'litellm' ? t('configuration.litellmDefaults') : t('configuration.pricingSourceUnknown')}
 								</Pill>
 								<Pill tone={m.effective_input_price_per_million != null && m.effective_output_price_per_million != null ? 'accent' : 'warning'} size="xs">
-									{m.effective_input_price_per_million != null && m.effective_output_price_per_million != null ? '기본 텍스트 단가 표시됨' : '가격 미확인'}
+									{m.effective_input_price_per_million != null && m.effective_output_price_per_million != null ? t('configuration.defaultTextRatesShown') : t('configuration.pricingUnverified')}
 								</Pill>
-								<Pill tone={capabilityStatus(m) === '고급 기능 미확인' ? 'neutral' : 'accent'} size="xs">{capabilityStatus(m)}</Pill>
+								<Pill tone={capabilityState(m) === 'unknown' ? 'neutral' : 'accent'} size="xs">{capabilityStatus(m)}</Pill>
 								<ModelCapabilityBadges caps={m.capabilities || m.effective_capabilities} size="xs" />
 							{:else}
-								<Pill tone={hasMediaPrices(m.media_pricing) ? 'accent' : 'warning'} size="xs">{hasMediaPrices(m.media_pricing) ? '미디어 단가 설정됨' : '미디어 단가 미설정'}</Pill>
+								<Pill tone={hasMediaPrices(m.media_pricing) ? 'accent' : 'warning'} size="xs">{hasMediaPrices(m.media_pricing) ? t('configuration.mediaRatesConfigured') : t('configuration.mediaRatesUnset')}</Pill>
 								<Pill tone="warning" size="xs">{mediaReadiness(m)}</Pill>
 							{/if}
 							</div>
 							<div class="mt-0.5 text-xs text-[var(--color-ink-3)]">
-								<div class="break-all">API ID: <code class="font-mono">{publicModelName(m)}</code> · provider: <code class="font-mono">{m.api_provider}</code></div>
+								<div class="break-all"><RichText segments={t.rich('pricing.apiIdentity', { id: publicModelName(m), provider: m.api_provider })} /></div>
 								{#if m.model_name !== publicModelName(m)}
-									<div class="mt-0.5 break-all">내부 라우팅 ID: <code class="font-mono">{m.model_name}</code></div>
+									<div class="mt-0.5 break-all">{#snippet rich103markup1(text: string)}<code class="font-mono">{text}</code>{/snippet}<RichText segments={t.rich('configuration.internalRoutingIdentifier', { v0: m.model_name })} tags={{ markup1: rich103markup1 }} /></div>
 								{/if}
 								<div class="mt-0.5">{providerName(m.provider_id)}</div>
-								<div class="mt-0.5">표시 순서 {m.sort_order ?? 0}</div>
+								<div class="mt-0.5">{t('pricing.displayOrder', { order: formatNumber(m.sort_order ?? 0) })}</div>
 							</div>
 							<div class="mt-1 text-xs text-[var(--color-ink-2)]">
-								{(m.model_kind ?? 'text') !== 'text' ? '텍스트 ' : ''}입력 {formatPricePerMillion((m.model_kind ?? 'text') === 'text' ? m.effective_input_price_per_million : m.effective_input_price_per_million ?? m.input_price_per_million)} · 출력 {formatPricePerMillion((m.model_kind ?? 'text') === 'text' ? m.effective_output_price_per_million : m.effective_output_price_per_million ?? m.output_price_per_million)} USD / 1M tokens
+								{t((m.model_kind ?? 'text') === 'text' ? 'configuration.inputOutputPriceSummary' : 'pricing.mediaTextSummary', (m.model_kind ?? 'text') === 'text' ? { v0: displayPrice(m.effective_input_price_per_million), v1: displayPrice(m.effective_output_price_per_million) } : { input: displayPrice(m.effective_input_price_per_million ?? m.input_price_per_million), output: displayPrice(m.effective_output_price_per_million ?? m.output_price_per_million) })}
 							</div>
 							{#if !cachePricingSupported(m)}
 								<div class="mt-0.5 text-xs text-[var(--color-ink-2)]" data-testid="model-cache-prices">
-									캐시 단가 미지원 · 이 Lumen 버전은 캐시 단가를 받지 않습니다
+									{t('configuration.cacheRatesUnsupportedThisLumenVersionDoesNotAccept')}
 								</div>
 							{:else if cachePriceState(m) === 'none'}
 								<div class="mt-0.5 text-xs text-[var(--color-ink-2)]" data-testid="model-cache-prices">
-									{(m.model_kind ?? 'text') === 'text' ? '캐시 단가 미설정 · 캐시 토큰은 단가를 설정할 때까지 0 USD로 청구됩니다' : '텍스트 캐시 단가 미설정 · 토큰 과금 시 캐시 사용량은 단가 확인 필요'}
+									{(m.model_kind ?? 'text') === 'text' ? t('configuration.cacheRatesUnsetCacheTokensAreBilledAt0') : t('pricing.mediaCacheUnset')}
 								</div>
 							{:else}
 								<div class="mt-0.5 text-xs tabular-nums text-[var(--color-ink-2)]" data-testid="model-cache-prices">
-									캐시 읽기 {formatCachePrice(m.cache_read_price_per_million)} · 캐시 쓰기 5분 {formatCachePrice(m.cache_write_price_per_million)} · 캐시 쓰기 1시간 {formatCachePrice(m.cache_write_1h_price_per_million)} USD / 1M tokens{cachePriceState(m) === 'partial' ? (m.model_kind ?? 'text') === 'text' ? ' · 미설정 항목은 0 USD로 청구' : ' · 토큰 과금 시 미설정 항목은 단가 확인 필요' : ''}
+									{t('configuration.cachePriceSummary', { v0: formatCachePrice(m.cache_read_price_per_million), v1: formatCachePrice(m.cache_write_price_per_million), v2: formatCachePrice(m.cache_write_1h_price_per_million), v3: cachePriceState(m) === 'partial' ? (m.model_kind ?? 'text') === 'text' ? t('configuration.unsetRatesAreBilledAt0Usd') : t('pricing.mediaCachePartial') : '' })}
 								</div>
 							{/if}
 							{#if (m.model_kind ?? 'text') !== 'text' || m.media_pricing?.token_rates}
 								<div class="mt-1 break-words text-xs text-[var(--color-ink-2)]" data-testid="model-media-prices">{mediaPriceSummary(m)}</div>
-								{#if (m.model_kind ?? 'text') !== 'text'}<div class="mt-0.5 text-xs text-[var(--color-ink-2)]">기능: {mediaCapability(m)} · 단가는 실행 가능 여부를 보장하지 않습니다.</div>{/if}
+								{#if (m.model_kind ?? 'text') !== 'text'}<div class="mt-0.5 text-xs text-[var(--color-ink-2)]">{t('configuration.mediaCapabilityExecutionWarning', { v0: mediaCapability(m) })}</div>{/if}
 							{/if}
 						</div>
 						</div>
 						<div class="flex flex-wrap items-center justify-end gap-x-3 gap-y-2 border-t border-[var(--color-line)] pt-3 text-xs sm:shrink-0 sm:border-t-0 sm:pt-0">
 							{#if (m.model_kind ?? 'text') === 'text'}
 								<button class={rowActionCls} onclick={() => setTitleModel(m)}>
-									{m.is_title_model ? '제목요약 해제' : '제목요약 지정'}
+									{m.is_title_model ? t('configuration.unassignTitleModel') : t('configuration.assignTitleModel')}
 								</button>
 							{/if}
-							<Button variant="outline" size="sm" onclick={() => openModelOrderEditor(m)}>순서 수정</Button>
-							<button class={rowActionCls} onclick={() => openPriceEditor(m)}>가격 수정</button>
-							{#if (m.model_kind ?? 'text') === 'text'}<Button variant="ghost" size="xs" onclick={() => openCapabilityEditor(m)}>기능 수정</Button>{/if}
-							<button class={rowActionCls} onclick={() => toggleModel(m)}>{m.is_active ? '비활성화' : '활성화'}</button>
-							<button class="text-[var(--color-state-danger)] transition-opacity hover:opacity-80" onclick={() => deleteModel(m.id)}>삭제</button>
+							<Button variant="outline" size="sm" onclick={() => openModelOrderEditor(m)}>{t('pricing.editOrder')}</Button>
+							<button class={rowActionCls} onclick={() => openPriceEditor(m)}>{t('configuration.editPricing')}</button>
+							{#if (m.model_kind ?? 'text') === 'text'}<Button variant="ghost" size="xs" onclick={() => openCapabilityEditor(m)}>{t('configuration.editCapabilities')}</Button>{/if}
+							<button class={rowActionCls} onclick={() => toggleModel(m)}>{m.is_active ? t('configuration.deactivate') : t('configuration.activate')}</button>
+							<button class="text-[var(--color-state-danger)] transition-opacity hover:opacity-80" onclick={() => deleteModel(m.id)}>{t('configuration.delete')}</button>
 						</div>
 					</div>
 				{/each}
@@ -2438,52 +2466,51 @@
 	{/if}
 
 	{#if section === 'models'}
-	<FormModal open={editingModelOrder !== null} title="모델 표시 순서" onClose={() => { if (!modelOrderSaving) editingModelOrder = null; }} onSubmit={saveModelOrder} submitLabel="저장" submitting={modelOrderSaving}>
+	<FormModal open={editingModelOrder !== null} title={t('pricing.modelOrder')} onClose={() => { if (!modelOrderSaving) editingModelOrder = null; }} onSubmit={saveModelOrder} submitLabel={t('configuration.save')} submitting={modelOrderSaving}>
 		<div class="space-y-4">
 			{#if editingModelOrder}<p class="break-all text-sm text-[var(--color-ink-1)]">{providerName(editingModelOrder.provider_id)} · {displayModelTitle(editingModelOrder)}</p>{/if}
-			<Field label="모델 표시 순서" for="model-edit-sort-order" required help={ORDER_HELP} error={editModelOrder || modelOrderAttempted ? orderError(editModelOrder) : undefined}>
+			<Field label={t('pricing.modelOrder')} for="model-edit-sort-order" required help={ORDER_HELP} error={editModelOrder || modelOrderAttempted ? orderError(editModelOrder) : undefined}>
 				<TextInput id="model-edit-sort-order" inputmode="numeric" bind:value={editModelOrder} required disabled={modelOrderSaving} ariaInvalid={Boolean(orderError(editModelOrder))} />
 			</Field>
-			<p class="text-xs text-[var(--color-ink-2)]">해당 프로바이더 안에서의 표시 순서만 변경합니다. 가격, 기능, 활성 및 제목 요약 설정은 유지됩니다.</p>
+			<p class="text-xs text-[var(--color-ink-2)]">{t('pricing.modelOrderScope')}</p>
 			{#if modelOrderSaveError}<Alert tone="danger">{modelOrderSaveError}</Alert>{/if}
 		</div>
 	</FormModal>
 
-	<Modal open={registrationReview !== null} onClose={() => { if (!registeringBulk) registrationReview = null; }} dismissible={!registeringBulk} ariaLabel="선택 모델 등록 검토">
+	<Modal open={registrationReview !== null} onClose={() => { if (!registeringBulk) registrationReview = null; }} dismissible={!registeringBulk} ariaLabel={t('configuration.reviewModelRegistration')}>
 		<div class="max-h-[calc(100vh-2rem)] w-[min(32rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-5 shadow-[var(--shadow-restraint)]" data-testid="model-registration-review">
-			<h3 class="text-base font-semibold text-[var(--color-ink-1)]">선택 모델 등록 검토</h3>
+			<h3 class="text-base font-semibold text-[var(--color-ink-1)]">{t('configuration.reviewModelRegistration')}</h3>
 			{#if registrationReview}
-				<p class="mt-2 text-sm text-[var(--color-ink-2)]">프로바이더: {registrationReview.providerName} · {registrationReview.entries.length}개 후보</p>
-				<Alert tone="warning" class="mt-3">조회는 가격·기능·실행을 검증하지 않습니다. 종류를 명시적으로 검토하세요. 미디어 및 종류 미확인 후보는 비활성 저장 후 전용 가격 수정에서 설정·활성화합니다. models.dev 가져오기는 텍스트 모델만 지원합니다.</Alert>
+				<p class="mt-2 text-sm text-[var(--color-ink-2)]">{t('configuration.registrationReviewProviderCount', { v0: registrationReview.providerName, v1: formatNumber(registrationReview.entries.length) })}</p>
+				<Alert tone="warning" class="mt-3">{t('pricing.registrationGuidance')}</Alert>
 				<div class="mt-4 max-h-[min(50vh,28rem)] space-y-3 overflow-y-auto">
 					{#each registrationReview.entries as entry, index (entry.name)}
 						<div class="rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-base)] p-3" data-testid="registration-entry">
 							<p class="break-all font-mono text-sm text-[var(--color-ink-1)]">{entry.name}</p>
 							<p class="mt-1 text-xs text-[var(--color-ink-2)]">
-								{entry.purpose === 'unknown' ? '용도 미확인' : entry.purpose === 'non_chat' ? '채팅 외 용도' : '채팅 후보'} · 실행 미검증
-								· 제공된 입력 한도 {entry.inputTokenLimit ?? '미확인'} · 출력 한도 {entry.outputTokenLimit ?? '미확인'} tokens (참고용, 기능 설정에 반영하지 않음)
+								{t('configuration.registrationReportedLimits', { v0: entry.purpose === 'unknown' ? t('pricing.candidateReadiness', { kind: t('pricing.unknownPurpose') }) : entry.purpose === 'non_chat' ? t('pricing.candidateReadiness', { kind: t('pricing.nonChatPurpose') }) : t('configuration.reviewChatCandidate'), v1: entry.inputTokenLimit == null ? t('configuration.unknown') : formatNumber(entry.inputTokenLimit), v2: entry.outputTokenLimit == null ? t('configuration.unknown') : formatNumber(entry.outputTokenLimit) })}
 							</p>
 							{#if registrationOutcomes[entry.name] === 'success'}
-								<Pill tone="success" size="sm">등록됨 · 재요청하지 않음</Pill>
+								<Pill tone="success" size="sm">{t('configuration.registeredNoRepeatRequest')}</Pill>
 							{:else}
-								{#if registrationOutcomes[entry.name] === 'failed'}<Pill tone="warning" size="sm">등록 실패 · 이 모델만 재시도</Pill>{/if}
+								{#if registrationOutcomes[entry.name] === 'failed'}<Pill tone="warning" size="sm">{t('configuration.registrationFailedRetryThisModelOnly')}</Pill>{/if}
 								<div class="mt-3 grid gap-3 sm:grid-cols-2">
 									<div class="sm:col-span-2">
-										<Field label="표시 이름 · {entry.name}" for="review-display-{index}">
-											<TextInput id="review-display-{index}" placeholder="선택 사항" bind:value={entry.displayName} disabled={registeringBulk} />
+										<Field label={t('configuration.reviewDisplayName', { v0: entry.name })} for="review-display-{index}">
+											<TextInput id="review-display-{index}" placeholder={t('configuration.optional')} bind:value={entry.displayName} disabled={registeringBulk} />
 										</Field>
 									</div>
-									<Field label="모델 종류 · {entry.name}" for="review-kind-{index}" error={reviewPriceError(entry)}>
+									<Field label={t('pricing.reviewKind', { name: entry.name })} for="review-kind-{index}" error={reviewPriceError(entry)}>
 										<SelectInput id="review-kind-{index}" bind:value={entry.kind} disabled={registeringBulk}>
-											<option value="">종류 선택 필요</option>
+											<option value="">{t('pricing.selectKind')}</option>
 											{#each Object.entries(MEDIA_LABELS) as [kind, label]}<option value={kind}>{label}</option>{/each}
 										</SelectInput>
 									</Field>
-									<Field label="입력 단가 · {entry.name}" for="review-input-{index}" help="USD / 1M tokens" error={reviewPriceError(entry)}>
-										<TextInput id="review-input-{index}" inputmode="decimal" placeholder="예: 2" bind:value={entry.inputPrice} disabled={registeringBulk} ariaInvalid={Boolean(reviewPriceError(entry))} />
+									<Field label={t('configuration.reviewInputPrice', { v0: entry.name })} for="review-input-{index}" help={t('configuration.usd1mTokens')} error={reviewPriceError(entry)}>
+										<TextInput id="review-input-{index}" inputmode="decimal" placeholder={t('configuration.eG2')} bind:value={entry.inputPrice} disabled={registeringBulk} ariaInvalid={Boolean(reviewPriceError(entry))} />
 									</Field>
-									<Field label="출력 단가 · {entry.name}" for="review-output-{index}" help="USD / 1M tokens" error={reviewPriceError(entry)}>
-										<TextInput id="review-output-{index}" inputmode="decimal" placeholder="예: 8" bind:value={entry.outputPrice} disabled={registeringBulk} ariaInvalid={Boolean(reviewPriceError(entry))} />
+									<Field label={t('configuration.reviewOutputPrice', { v0: entry.name })} for="review-output-{index}" help={t('configuration.usd1mTokens')} error={reviewPriceError(entry)}>
+										<TextInput id="review-output-{index}" inputmode="decimal" placeholder={t('configuration.eG8')} bind:value={entry.outputPrice} disabled={registeringBulk} ariaInvalid={Boolean(reviewPriceError(entry))} />
 									</Field>
 								</div>
 							{/if}
@@ -2491,42 +2518,42 @@
 					{/each}
 				</div>
 				<div class="mt-5 flex flex-wrap justify-end gap-2">
-					<Button variant="secondary" onclick={() => (registrationReview = null)} disabled={registeringBulk}>취소</Button>
-					<Button onclick={() => registerSelected(false)} disabled={registeringBulk || registrationMode === 'active' || registrationReview.entries.some((entry) => registrationOutcomes[entry.name] !== 'success' && Boolean(reviewPriceError(entry)))}>{registeringBulk ? '등록 중…' : '비활성으로 저장'}</Button>
-					<Button variant="accent" onclick={() => registerSelected(true)} disabled={registeringBulk || registrationMode === 'inactive' || !reviewCanActivate(registrationReview)}>가격 확인 후 등록·활성화</Button>
+					<Button variant="secondary" onclick={() => (registrationReview = null)} disabled={registeringBulk}>{t('configuration.cancel')}</Button>
+					<Button onclick={() => registerSelected(false)} disabled={registeringBulk || registrationMode === 'active' || registrationReview.entries.some((entry) => registrationOutcomes[entry.name] !== 'success' && Boolean(reviewPriceError(entry)))}>{registeringBulk ? t('configuration.registering') : t('configuration.saveAsInactive')}</Button>
+					<Button variant="accent" onclick={() => registerSelected(true)} disabled={registeringBulk || registrationMode === 'inactive' || !reviewCanActivate(registrationReview)}>{t('configuration.confirmPricingRegisterAndActivate')}</Button>
 				</div>
 			{/if}
 		</div>
 	</Modal>
 
-	<Modal open={editingPrice !== null} onClose={() => { if (!priceSaving) editingPrice = null; }} dismissible={!priceSaving} ariaLabel="모델 가격 수정">
+	<Modal open={editingPrice !== null} onClose={() => { if (!priceSaving) editingPrice = null; }} dismissible={!priceSaving} ariaLabel={t('configuration.editModelPricing')}>
 		<div class="max-h-[calc(100vh-2rem)] w-[min(32rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-5 shadow-[var(--shadow-restraint)]">
-			<h3 class="text-base font-semibold text-[var(--color-ink-1)]">모델 가격 수정</h3>
+			<h3 class="text-base font-semibold text-[var(--color-ink-1)]">{t('configuration.editModelPricing')}</h3>
 			<p class="mt-1 text-sm text-[var(--color-ink-2)]">{MEDIA_LABELS[editingPrice?.model_kind ?? 'text']} · {editingPrice ? displayModelTitle(editingPrice) : ''}</p>
 			{#if editingPrice}
-			<p class="mt-3 text-sm font-semibold text-[var(--color-ink-1)]">텍스트 토큰 단가</p>
-				<p class="mt-1 text-sm text-[var(--color-ink-2)]">{(editingPrice.model_kind ?? 'text') === 'text' ? '입력·출력 가격은 함께 저장하거나 모두 비우면 수동 단가가 해제됩니다.' : '미디어 모델은 사용하는 텍스트 입력·출력 단가만 각각 설정합니다. 빈 값은 미설정이며 0과 다릅니다.'} 대체 단가가 없으면 가격 미확인으로 표시됩니다.</p>
+			<p class="mt-3 text-sm font-semibold text-[var(--color-ink-1)]">{t('pricing.textTokenRates')}</p>
+				<p class="mt-1 text-sm text-[var(--color-ink-2)]">{(editingPrice.model_kind ?? 'text') === 'text' ? t('configuration.manualPricesClearTogether') : t('pricing.mediaTextEditHelp')}</p>
 			<div class="mt-4 grid gap-3 sm:grid-cols-2">
-				<Field label="입력" for="model-edit-input-price">
-					<TextInput id="model-edit-input-price" inputmode="decimal" placeholder="USD / 1M tokens" bind:value={editInputPrice} disabled={priceSaving} />
+				<Field label={t('configuration.input')} for="model-edit-input-price">
+					<TextInput id="model-edit-input-price" inputmode="decimal" placeholder={t('configuration.usd1mTokens')} bind:value={editInputPrice} disabled={priceSaving} />
 				</Field>
-				<Field label="출력" for="model-edit-output-price">
-					<TextInput id="model-edit-output-price" inputmode="decimal" placeholder="USD / 1M tokens" bind:value={editOutputPrice} disabled={priceSaving} />
+				<Field label={t('configuration.output')} for="model-edit-output-price">
+					<TextInput id="model-edit-output-price" inputmode="decimal" placeholder={t('configuration.usd1mTokens')} bind:value={editOutputPrice} disabled={priceSaving} />
 				</Field>
 			</div>
 			{#if editingPrice && cachePricingSupported(editingPrice)}
 			<div class="mt-4 border-t border-[var(--color-line)] pt-4" role="group" aria-labelledby="model-edit-cache-heading">
-				<p id="model-edit-cache-heading" class="text-sm font-semibold text-[var(--color-ink-1)]">프롬프트 캐시 단가 (선택)</p>
+				<p id="model-edit-cache-heading" class="text-sm font-semibold text-[var(--color-ink-1)]">{t('configuration.promptCacheRatesOptional')}</p>
 				<p class="mt-1 text-xs leading-relaxed text-[var(--color-ink-2)]">
-					{(editingPrice.model_kind ?? 'text') === 'text' ? '항목마다 따로 저장하며 입력·출력 가격과 함께 입력할 필요가 없습니다. 비우고 저장하면 해당 단가를 지우고, 그 캐시 토큰은 다시 설정할 때까지 0 USD로 청구됩니다. LiteLLM·models.dev 기본 단가로 대체하지 않습니다.' : '사용하는 텍스트 캐시 단가만 각각 설정합니다. 비우면 미설정 상태가 되며, 토큰 과금에서 해당 캐시 사용량이 발생하면 정산이 미확정으로 남을 수 있습니다. 명시적 0과 다릅니다.'}
+					{(editingPrice.model_kind ?? 'text') === 'text' ? t('configuration.eachRateIsSavedIndependentlyInputAndOutputPrices') : t('pricing.mediaCacheEditHelp')}
 				</p>
 				<div class="mt-3 grid gap-3 sm:grid-cols-3">
 					{#each CACHE_PRICE_FIELDS as field (field.key)}
-						<Field label={field.label} for="model-edit-cache-{field.slug}" help="USD / 1M tokens" error={editCacheErrors[field.key]}>
+						<Field label={field.label} for="model-edit-cache-{field.slug}" help={t('configuration.usd1mTokens')} error={editCacheErrors[field.key]}>
 							<TextInput
 								id="model-edit-cache-{field.slug}"
 								inputmode="decimal"
-								placeholder="예: 0.3"
+								placeholder={t('configuration.eG03')}
 								bind:value={editCachePrices[field.key]}
 								disabled={priceSaving}
 								ariaInvalid={Boolean(editCacheErrors[field.key])}
@@ -2540,77 +2567,76 @@
 			<ModelMediaPricingEditor kind={editingPrice.model_kind ?? 'text'} bind:draft={editPricing} prefix="model-edit" disabled={priceSaving} />
 			{/if}
 			<div class="mt-5 flex justify-end gap-2">
-				<Button variant="secondary" disabled={priceSaving} onclick={() => (editingPrice = null)}>취소</Button>
-				<Button onclick={savePrice} disabled={priceSaving}>{priceSaving ? '저장 중…' : '저장'}</Button>
+				<Button variant="secondary" disabled={priceSaving} onclick={() => (editingPrice = null)}>{t('configuration.cancel')}</Button>
+				<Button onclick={savePrice} disabled={priceSaving}>{priceSaving ? t('configuration.saving') : t('configuration.save')}</Button>
 			</div>
 		</div>
 	</Modal>
 
-	<Modal open={editingCapabilities !== null} onClose={() => { if (!capSaving) editingCapabilities = null; }} dismissible={!capSaving} ariaLabel="모델 기능 수정">
+	<Modal open={editingCapabilities !== null} onClose={() => { if (!capSaving) editingCapabilities = null; }} dismissible={!capSaving} ariaLabel={t('configuration.editModelCapabilities')}>
 		<div class="max-h-[calc(100vh-2rem)] w-[min(32rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-5 shadow-[var(--shadow-restraint)]">
-			<h3 class="text-base font-semibold text-[var(--color-ink-1)]">모델 기능 수정</h3>
+			<h3 class="text-base font-semibold text-[var(--color-ink-1)]">{t('configuration.editModelCapabilities')}</h3>
 			{#if editingCapabilities}
 				<p class="mt-2 break-all font-mono text-sm text-[var(--color-ink-1)]">{editingCapabilities.model_name}</p>
-				<Alert tone="warning" class="mt-3">현재 기능 출처: {editingCapabilities.effective_capability_source ?? '미확인'}. 표시된 카탈로그 정보는 실행 검증이 아닙니다. 저장하면 선택한 기능을 관리자 수동 설정으로 지정합니다. 웹 검색·컴팩션은 이 설정으로 켤 수 없습니다.</Alert>
+				<Alert tone="warning" class="mt-3">{t('configuration.capabilitySourceGuidance', { v0: editingCapabilities.effective_capability_source ?? t('configuration.unknown') })}</Alert>
 				{#if capSuggestedInputLimit !== null}
-					<p class="mt-3 text-sm text-[var(--color-ink-2)]">조회 후보의 입력 한도 {capSuggestedInputLimit} tokens를 컨텍스트 한도 초안으로 채웠습니다. 입력 한도와 전체 컨텍스트 한도는 다를 수 있으므로 확인 후 저장하세요.</p>
+					<p class="mt-3 text-sm text-[var(--color-ink-2)]">{t('configuration.candidateContextLimitGuidance', { v0: formatNumber(capSuggestedInputLimit) })}</p>
 				{/if}
 				<div class="mt-4 grid gap-3 sm:grid-cols-2">
-					<label class="flex items-center gap-2 text-sm text-[var(--color-ink-1)]"><input type="checkbox" bind:checked={capVision} disabled={capSaving} />이미지 입력 (Vision)</label>
-					<label class="flex items-center gap-2 text-sm text-[var(--color-ink-1)]"><input type="checkbox" bind:checked={capReasoning} disabled={capSaving} />추론 (Reasoning)</label>
-					<label class="flex items-center gap-2 text-sm text-[var(--color-ink-1)]"><input type="checkbox" bind:checked={capToolCall} disabled={capSaving} />도구 호출 (Tools)</label>
-					<label class="flex items-center gap-2 text-sm text-[var(--color-ink-1)]"><input type="checkbox" bind:checked={capAttachment} disabled={capSaving} />파일 첨부 (Files)</label>
+					<label class="flex items-center gap-2 text-sm text-[var(--color-ink-1)]"><input type="checkbox" bind:checked={capVision} disabled={capSaving} />{t('configuration.imageInputVision')}</label>
+					<label class="flex items-center gap-2 text-sm text-[var(--color-ink-1)]"><input type="checkbox" bind:checked={capReasoning} disabled={capSaving} />{t('configuration.reasoning')}</label>
+					<label class="flex items-center gap-2 text-sm text-[var(--color-ink-1)]"><input type="checkbox" bind:checked={capToolCall} disabled={capSaving} />{t('configuration.toolCalls')}</label>
+					<label class="flex items-center gap-2 text-sm text-[var(--color-ink-1)]"><input type="checkbox" bind:checked={capAttachment} disabled={capSaving} />{t('configuration.fileAttachments')}</label>
 				</div>
 				<div class="mt-4">
-					<Field label="컨텍스트 한도" for="model-capability-context" help="전체 컨텍스트 tokens · 미확인이면 비워두세요" error={contextLimitError(capContextLimit)}>
-						<TextInput id="model-capability-context" inputmode="numeric" placeholder="예: 128000" bind:value={capContextLimit} disabled={capSaving} ariaInvalid={Boolean(contextLimitError(capContextLimit))} />
+					<Field label={t('configuration.contextLimit')} for="model-capability-context" help={t('configuration.totalContextTokensLeaveBlankIfUnknown')} error={contextLimitError(capContextLimit)}>
+						<TextInput id="model-capability-context" inputmode="numeric" placeholder={t('configuration.eG128000')} bind:value={capContextLimit} disabled={capSaving} ariaInvalid={Boolean(contextLimitError(capContextLimit))} />
 					</Field>
 				</div>
 				{#if capError}<Alert tone="warning" class="mt-3">{capError}</Alert>{/if}
 				<div class="mt-5 flex justify-end gap-2">
-					<Button variant="secondary" onclick={() => (editingCapabilities = null)} disabled={capSaving}>취소</Button>
-					<Button onclick={saveCapabilities} disabled={capSaving || Boolean(contextLimitError(capContextLimit))}>{capSaving ? '저장 중…' : '기능 설정 저장'}</Button>
+					<Button variant="secondary" onclick={() => (editingCapabilities = null)} disabled={capSaving}>{t('configuration.cancel')}</Button>
+					<Button onclick={saveCapabilities} disabled={capSaving || Boolean(contextLimitError(capContextLimit))}>{capSaving ? t('configuration.saving') : t('configuration.saveCapabilities')}</Button>
 				</div>
 			{/if}
 		</div>
 	</Modal>
 
-	<Modal bind:open={modelsDevOpen} ariaLabel="models.dev 추천 가격">
+	<Modal bind:open={modelsDevOpen} ariaLabel={t('configuration.modelsDevSuggestedPricing')}>
 		<div class="max-h-[calc(100vh-2rem)] w-[min(48rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-5 shadow-[var(--shadow-restraint)]">
-			<h3 class="text-base font-semibold text-[var(--color-ink-1)]">models.dev 추천 가격</h3>
+			<h3 class="text-base font-semibold text-[var(--color-ink-1)]">{t('configuration.modelsDevSuggestedPricing')}</h3>
 			<p class="mt-1 text-sm text-[var(--color-ink-2)]">
-				<a class="underline" href="https://models.dev" target="_blank" rel="noreferrer">models.dev</a>의 기본 input/output 단가만 적용합니다. 수동 확정 가격은 덮어쓰지 않습니다.
-				캐시 단가는 가져오지 않으므로 각 모델의 <strong class="font-medium text-[var(--color-ink-1)]">가격 수정</strong>에서 직접 설정하세요.
+				{#snippet rich140markup1(text: string)}<a class="underline" href="https://models.dev" target="_blank" rel="noreferrer">{text}</a>{/snippet}{#snippet rich140markup2(text: string)}<strong class="font-medium text-[var(--color-ink-1)]">{text}</strong>{/snippet}<RichText segments={t.rich('configuration.modelsDevPriceImportGuidance')} tags={{ markup1: rich140markup1, markup2: rich140markup2 }} />
 			</p>
 			{#if modelsDevError}<Alert tone="warning" class="mt-3">{modelsDevError}</Alert>{/if}
 			<div class="mt-4 space-y-3">
 				<div>
-					<label class="mb-1 block text-sm text-[var(--color-ink-2)]" for="models-dev-provider-search">가격표 프로바이더 검색</label>
+					<label class="mb-1 block text-sm text-[var(--color-ink-2)]" for="models-dev-provider-search">{t('configuration.searchPricingProviders')}</label>
 					<TextInput
 						id="models-dev-provider-search"
 						type="search"
-						placeholder="이름 또는 ID로 검색"
+						placeholder={t('configuration.searchByNameOrId')}
 						value={modelsDevProviderSearch}
 						oninput={updateModelsDevProviderSearch}
 					/>
 				</div>
 				<div aria-live="polite">
-					<label class="mb-1 block text-sm text-[var(--color-ink-2)]" for="models-dev-provider">가격표 프로바이더</label>
+					<label class="mb-1 block text-sm text-[var(--color-ink-2)]" for="models-dev-provider">{t('configuration.pricingProvider')}</label>
 					{#if filteredModelsDevProviders.length > 0}
 						<select id="models-dev-provider" class={inputCls} bind:value={selectedModelsDevProviderId} onchange={loadModelsDevProvider}>
-							<option value="" disabled>가격표 프로바이더 선택</option>
-							{#each filteredModelsDevProviders as provider (provider.id)}<option value={provider.id}>{provider.name} ({provider.model_count})</option>{/each}
+							<option value="" disabled>{t('configuration.selectPricingProvider')}</option>
+							{#each filteredModelsDevProviders as provider (provider.id)}<option value={provider.id}>{provider.name} ({formatNumber(provider.model_count)})</option>{/each}
 						</select>
 					{:else if modelsDevProviders.length > 0}
-						<p class="rounded-lg border border-[var(--color-line)] px-3 py-2 text-sm text-[var(--color-ink-3)]">검색 조건에 맞는 가격표 프로바이더가 없습니다.</p>
+						<p class="rounded-lg border border-[var(--color-line)] px-3 py-2 text-sm text-[var(--color-ink-3)]">{t('configuration.noPricingProvidersMatchYourSearch')}</p>
 					{:else}
-						<p class="rounded-lg border border-[var(--color-line)] px-3 py-2 text-sm text-[var(--color-ink-3)]">등록된 프로바이더와 일치하는 models.dev 가격표가 없습니다.</p>
+						<p class="rounded-lg border border-[var(--color-line)] px-3 py-2 text-sm text-[var(--color-ink-3)]">{t('configuration.noModelsDevPriceListMatchesARegisteredProvider')}</p>
 					{/if}
 				</div>
-				<p class="text-xs text-[var(--color-ink-3)]">등록된 프로바이더와 일치하는 가격표만 표시합니다.</p>
+				<p class="text-xs text-[var(--color-ink-3)]">{t('configuration.onlyPriceListsMatchingRegisteredProvidersAreShown')}</p>
 			</div>
 			{#if modelsDevLoading}
-				<p class="mt-4 text-sm text-[var(--color-ink-3)]">가격표를 불러오는 중…</p>
+				<p class="mt-4 text-sm text-[var(--color-ink-3)]">{t('configuration.loadingPriceList')}</p>
 			{:else}
 				<div class="mt-4 space-y-2">
 					{#each models.filter((model) => model.provider_id === modelsDevProvider?.id && (model.model_kind ?? 'text') === 'text') as model (model.id)}
@@ -2630,19 +2656,19 @@
 									}}
 								/>
 								<span class="min-w-0 flex-1 truncate text-sm text-[var(--color-ink-1)]">
-									{model.model_name}{model.price_source === 'manual' ? ' · 수동 가격 보존' : ''}
+									{model.model_name}{model.price_source === 'manual' ? t('configuration.manualPricesPreserved') : ''}
 								</span>
 								<select class={inputCls} disabled={model.price_source === 'manual'} bind:value={modelsDevSelections[model.id]}>
-									<option value="">가격표 모델 선택</option>
+									<option value="">{t('configuration.selectModelsFromPriceList')}</option>
 									{#each modelsDevModels.filter((external) => external.price_available) as external (external.id)}
-										<option value={external.id}>{external.id} · ${formatPricePerMillion(external.input_price_per_million)}/${formatPricePerMillion(external.output_price_per_million)} / 1M</option>
+										<option value={external.id}>{external.id} · ${displayPrice(external.input_price_per_million)}/${displayPrice(external.output_price_per_million)} / 1M</option>
 									{/each}
 								</select>
 							</div>
 							{#if modelsDevSelections[model.id]}
 								{@const selected = modelsDevModels.find((external) => external.id === modelsDevSelections[model.id])}
 								{#if selected && selected.unsupported_price_fields.length > 0}
-									<Alert tone="warning" class="mt-2">tier/cache/reasoning/audio 단가는 적용하지 않습니다: {selected.unsupported_price_fields.join(', ')}. 캐시 단가는 적용 후 가격 수정에서 설정할 수 있습니다.</Alert>
+									<Alert tone="warning" class="mt-2">{t('configuration.modelsDevExcludedPrices', { v0: selected.unsupported_price_fields.join(', ') })}</Alert>
 								{/if}
 							{/if}
 						</div>
@@ -2650,9 +2676,9 @@
 				</div>
 			{/if}
 			<div class="mt-5 flex justify-end gap-2">
-				<Button variant="secondary" onclick={() => (modelsDevOpen = false)}>취소</Button>
+				<Button variant="secondary" onclick={() => (modelsDevOpen = false)}>{t('configuration.cancel')}</Button>
 				<Button onclick={importModelsDevPrices} disabled={modelsDevImporting || modelsDevLoading || !selectedModelsDevProviderId}>
-					{modelsDevImporting ? '적용 중…' : '선택 가격 적용'}
+					{modelsDevImporting ? t('configuration.applying') : t('configuration.applySelectedPrices')}
 				</Button>
 			</div>
 		</div>

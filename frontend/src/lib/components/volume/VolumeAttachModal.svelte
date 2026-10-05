@@ -2,6 +2,7 @@
   import { useVolumeDetailController } from '$lib/stores/volumeDetailController.svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import { dialogFocus } from '$lib/utils/dialogFocus';
+  import { t } from '$lib/i18n/ns/volume';
 
   const s = useVolumeDetailController();
 </script>
@@ -21,23 +22,23 @@
     onclick={(e) => e.stopPropagation()}
     role="none"
   >
-    <h3 class="text-base font-semibold text-ink-0 mb-4">인스턴스에 볼륨 연결</h3>
-    <label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">인스턴스 선택
+    <h3 class="text-base font-semibold text-ink-0 mb-4">{t('attachModal.title')}</h3>
+    <label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('attachModal.instanceLabel')}
       <select
         bind:value={s.attachInstanceId}
         class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5"
       >
-        <option value="">-- 선택 --</option>
+        <option value="">{t('attachModal.instancePlaceholder')}</option>
         {#each s.instances as inst}
-          <option value={inst.id}>{inst.name || inst.id.slice(0, 8)} ({inst.status})</option>
+          <option value={inst.id}>{t('attachModal.instanceSummary', { name: inst.name || inst.id.slice(0, 8), status: inst.status })}</option>
         {/each}
       </select>
     </label>
     {#if s.attachError}<p class="text-xs text-red-400 mt-2">{s.attachError}</p>{/if}
     <div class="flex justify-end gap-3 mt-5">
-      <button onclick={() => s.closeAttachModal()} class="text-sm text-ink-2 hover:text-ink-0 transition-colors">취소</button>
+      <button onclick={() => s.closeAttachModal()} class="text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('attachModal.cancel')}</button>
       <Button onclick={() => s.attachVolume()} disabled={s.attaching || !s.attachInstanceId}>
-        {s.attaching ? '연결 중...' : '연결'}
+        {s.attaching ? t('attachModal.attaching') : t('attachModal.attach')}
       </Button>
     </div>
   </div>

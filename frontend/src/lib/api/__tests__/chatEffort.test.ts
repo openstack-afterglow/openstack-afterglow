@@ -40,12 +40,6 @@ describe('effortOptionsFor', () => {
 });
 
 describe('effortLabel', () => {
-	it('한국어 라벨 매핑', () => {
-		expect(effortLabel('auto')).toBe('자동');
-		expect(effortLabel('none')).toBe('없음');
-		expect(effortLabel('max')).toBe('최대');
-		expect(effortLabel('ultra')).toBe('울트라');
-	});
 	it('매핑 없으면 원문', () => {
 		expect(effortLabel('weird')).toBe('weird');
 	});

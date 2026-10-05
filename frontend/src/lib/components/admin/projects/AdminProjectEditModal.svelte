@@ -3,6 +3,8 @@
 	import { api, ApiError } from '$lib/api/client';
 	import { projectNames } from '$lib/stores/projectNames';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
+	import { t } from '$lib/i18n/ns/admin-identity';
+	import { t as tc } from '$lib/i18n/ns/common';
 
 	interface Project {
 		id: string;
@@ -58,7 +60,7 @@
 			onSuccess();
 			onClose();
 		} catch (e) {
-			editError = e instanceof ApiError ? e.message : '수정 실패';
+			editError = e instanceof ApiError ? e.message : t('projectEdit.failed');
 		} finally {
 			updating = false;
 		}
@@ -79,35 +81,35 @@
 			onclick={(e) => e.stopPropagation()}
 			role="none"
 		>
-			<h2 class="text-lg font-semibold text-ink-0 mb-5">프로젝트 수정</h2>
+			<h2 class="text-lg font-semibold text-ink-0 mb-5">{t('projectEdit.title')}</h2>
 			{#if editError}
 				<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{editError}</div>
 			{/if}
 			<div class="space-y-4">
 				<div>
-					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminprojecteditmodal-88">이름</label>
+					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminprojecteditmodal-88">{t('form.name')}</label>
 					<input id="field-adminprojecteditmodal-88" bind:value={editName} type="text" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" />
 				</div>
 				<div>
-					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminprojecteditmodal-92">설명</label>
+					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminprojecteditmodal-92">{t('form.description')}</label>
 					<input id="field-adminprojecteditmodal-92" bind:value={editDesc} type="text" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" />
 				</div>
 				<div class="flex items-center gap-3">
 					<button
 						type="button"
 						role="switch"
-						aria-label="프로젝트 활성 상태"
+						aria-label={t('projectEdit.enabledLabel')}
 						aria-checked={editEnabled}
 						onclick={() => (editEnabled = !editEnabled)}
 						class="relative w-11 h-6 rounded-full transition-colors {editEnabled ? 'bg-action-warm' : 'bg-surface-selected'}"
 					><span class="absolute top-0.5 left-0.5 w-5 h-5 bg-surface-base rounded-full transition-transform {editEnabled ? 'translate-x-5' : ''}"></span></button>
-					<span class="text-sm text-ink-2">{editEnabled ? '활성' : '비활성'}</span>
+					<span class="text-sm text-ink-2">{editEnabled ? t('state.enabled') : t('state.disabled')}</span>
 				</div>
 				<div class="text-xs text-ink-2">ID: {project.id}</div>
 			</div>
 			<div class="flex justify-end gap-3 mt-6">
-				<button onclick={onClose} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">취소</button>
-				<button onclick={updateProject} disabled={updating} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{updating ? '수정 중...' : '수정'}</button>
+				<button onclick={onClose} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{tc('actions.cancel')}</button>
+				<button onclick={updateProject} disabled={updating} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{updating ? t('state.updating') : t('projectEdit.submit')}</button>
 			</div>
 		</div>
 	</div>

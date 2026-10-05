@@ -4,5 +4,25 @@
   hosts: palimpsest
   become: true
   serial: "{{ kolla_serial | default('0') }}"
-  roles:
-    - { role: palimpsest, tags: palimpsest, when: enable_palimpsest | default(false) | bool }
+  tasks:
+    - name: Prepare Palimpsest application image references
+      ansible.builtin.include_role:
+        name: afterglow
+        tasks_from: resolve_image_refs
+        public: false
+        apply:
+          tags: palimpsest
+      vars:
+        afterglow_image_ref_service: palimpsest
+      tags: palimpsest
+      when:
+        - enable_palimpsest | default(false) | bool
+        - kolla_action | default('deploy') in ['precheck', 'pull', 'deploy', 'reconfigure', 'upgrade']
+
+    - name: Apply role palimpsest
+      ansible.builtin.include_role:
+        name: palimpsest
+        apply:
+          tags: palimpsest
+      tags: palimpsest
+      when: enable_palimpsest | default(false) | bool

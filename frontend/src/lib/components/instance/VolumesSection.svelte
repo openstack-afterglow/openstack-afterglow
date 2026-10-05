@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { useInstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
+	import { t } from '$lib/i18n/ns/instance';
 
 	const s = useInstanceDetailController();
 
@@ -25,12 +26,12 @@
 
 <div class="bg-surface-base border border-line rounded-lg p-6 mb-4">
 	<div class="flex items-center justify-between mb-4">
-		<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide">볼륨</h2>
+		<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide">{t('volumes.title')}</h2>
 		<button
 			onclick={() => { showAttachVolume = !showAttachVolume; selectedVolumeId = ''; newVolName = ''; newVolSize = 20; }}
 			class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
 		>
-			{showAttachVolume ? '닫기' : '+ 볼륨 연결'}
+			{showAttachVolume ? t('volumes.close') : t('volumes.addAttachment')}
 		</button>
 	</div>
 
@@ -41,26 +42,26 @@
 					onclick={() => { attachMode = 'existing'; }}
 					class="text-xs px-2 py-1 rounded border transition-colors {attachMode === 'existing' ? 'text-warm-text border-action-warm bg-surface-selected/20' : 'text-ink-2 border-line-2 hover:text-ink-1'}"
 				>
-					기존 볼륨
+					{t('volumes.existingVolume')}
 				</button>
 				<button
 					onclick={() => { attachMode = 'new'; }}
 					class="text-xs px-2 py-1 rounded border transition-colors {attachMode === 'new' ? 'text-warm-text border-action-warm bg-surface-selected/20' : 'text-ink-2 border-line-2 hover:text-ink-1'}"
 				>
-					새 볼륨 생성
+					{t('volumes.createVolume')}
 				</button>
 			</div>
 
 			{#if attachMode === 'existing'}
 				{#if s.availableVolumes.length === 0}
-					<p class="text-sm text-ink-2">연결 가능한 볼륨이 없습니다. "새 볼륨 생성"을 이용하세요.</p>
+					<p class="text-sm text-ink-2">{t('volumes.noAvailableVolumes')}</p>
 				{:else}
 					<div class="flex gap-2">
 						<select
 							bind:value={selectedVolumeId}
 							class="flex-1 bg-surface-selected border border-line-2 text-ink-1 text-sm rounded px-2 py-1.5 focus:outline-none focus:border-action-warm"
 						>
-							<option value="">볼륨 선택...</option>
+							<option value="">{t('volumes.selectPlaceholder')}</option>
 							{#each s.availableVolumes as vol}
 								<option value={vol.id}>{vol.name || vol.id.slice(0, 8)} ({vol.size}GB)</option>
 							{/each}
@@ -70,7 +71,7 @@
 							disabled={!selectedVolumeId || s.actioning === 'attach-vol'}
 							class="text-xs text-warm-text hover:text-warm-text-hover px-3 py-1.5 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3 disabled:border-line-2"
 						>
-							{s.actioning === 'attach-vol' ? '연결 중...' : '연결'}
+							{s.actioning === 'attach-vol' ? t('volumes.attaching') : t('volumes.attach')}
 						</button>
 					</div>
 				{/if}
@@ -80,14 +81,14 @@
 						<input
 							bind:value={newVolName}
 							type="text"
-							placeholder="볼륨 이름"
+							placeholder={t('volumes.namePlaceholder')}
 							class="flex-1 bg-surface-selected border border-line-2 text-ink-1 text-sm rounded px-2 py-1.5 focus:outline-none focus:border-action-warm"
 						/>
 						<input
 							bind:value={newVolSize}
 							type="number"
 							min="1"
-							placeholder="크기(GB)"
+							placeholder={t('volumes.sizePlaceholder')}
 							class="w-24 bg-surface-selected border border-line-2 text-ink-1 text-sm rounded px-2 py-1.5 focus:outline-none focus:border-action-warm"
 						/>
 						<button
@@ -95,7 +96,7 @@
 							disabled={!newVolName.trim() || newVolSize < 1 || s.actioning === 'create-vol'}
 							class="text-xs text-green-400 hover:text-green-300 px-3 py-1.5 border border-green-900 hover:border-green-700 rounded transition-colors disabled:text-ink-3 disabled:border-line-2 whitespace-nowrap"
 						>
-							{s.actioning === 'create-vol' ? '생성 중...' : '생성 및 연결'}
+							{s.actioning === 'create-vol' ? t('volumes.creating') : t('volumes.createAndAttach')}
 						</button>
 					</div>
 				</div>
@@ -104,7 +105,7 @@
 	{/if}
 
 	{#if s.volumes.length === 0}
-		<p class="text-sm text-ink-2">연결된 볼륨 없음</p>
+		<p class="text-sm text-ink-2">{t('volumes.empty')}</p>
 	{:else}
 		<div class="space-y-2">
 			{#each s.volumes as vol}
@@ -124,17 +125,17 @@
 							type="button"
 							onclick={() => s.setDeleteOnTermination(vol.volume_id, !vol.delete_on_termination)}
 							disabled={s.actioning === 'dot-' + vol.volume_id}
-							title="클릭해서 토글"
+							title={t('volumes.toggleTitle')}
 							class="text-xs px-1.5 py-0.5 rounded transition-colors disabled:opacity-50 cursor-pointer
 								{vol.delete_on_termination
 									? 'text-red-300 bg-red-900/30 hover:bg-red-900/50 border border-red-800/50'
 									: 'text-ink-2 bg-surface-sunken hover:bg-surface-selected border border-line-2'}"
 						>
 							{s.actioning === 'dot-' + vol.volume_id
-								? '변경 중...'
+								? t('volumes.updating')
 								: vol.delete_on_termination
-									? '인스턴스 삭제 시 자동 삭제'
-									: '유지'}
+									? t('volumes.deleteOnTermination')
+									: t('volumes.keep')}
 						</button>
 					</div>
 					<button
@@ -142,7 +143,7 @@
 						disabled={s.actioning === 'detach-' + vol.volume_id}
 						class="text-xs text-orange-400 hover:text-orange-300 px-2 py-1 border border-orange-900 hover:border-orange-700 rounded transition-colors disabled:text-ink-3"
 					>
-						{s.actioning === 'detach-' + vol.volume_id ? '분리 중...' : '분리'}
+						{s.actioning === 'detach-' + vol.volume_id ? t('volumes.detaching') : t('volumes.detach')}
 					</button>
 				</div>
 			{/each}

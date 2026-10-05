@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/dashboard-home';
   import { auth } from '$lib/stores/auth';
   import { api } from '$lib/api/client';
   import TopologyMini from '$lib/components/TopologyMini.svelte';
@@ -67,20 +68,20 @@
     loading = true;
     api.get<TopologyData>('/api/v1/networks/topology', token, projectId)
       .then(v => { data = v; })
-      .catch(() => { error = '토폴로지 불러오기 실패'; })
+      .catch(() => { error = t('topology.loadFailed'); })
       .finally(() => { loading = false; });
   });
 </script>
 
 <div class="bg-surface-base border border-line rounded-lg p-5">
   <div class="flex items-center justify-between mb-3.5">
-    <div class="text-ink-0 text-[15px] font-semibold">네트워크 토폴로지</div>
-    <a href="/dashboard/network/topology" class="text-[13px] text-ink-2 hover:text-ink-1 transition-colors">전체 보기 →</a>
+    <div class="text-ink-0 text-[15px] font-semibold">{t('topology.title')}</div>
+    <a href="/dashboard/network/topology" class="text-[13px] text-ink-2 hover:text-ink-1 transition-colors">{t('topology.viewAll')}</a>
   </div>
 
   {#if loading}
     <div class="topology-clip flex items-center justify-center">
-      <div class="text-ink-2 text-sm">불러오는 중...</div>
+      <div class="text-ink-2 text-sm">{t('topology.loading')}</div>
     </div>
   {:else if error}
     <div class="topology-clip flex items-center justify-center">
@@ -92,7 +93,7 @@
     </div>
   {:else}
     <div class="topology-clip flex items-center justify-center">
-      <div class="text-ink-2 text-sm">네트워크 리소스가 없습니다</div>
+      <div class="text-ink-2 text-sm">{t('topology.empty')}</div>
     </div>
   {/if}
 </div>

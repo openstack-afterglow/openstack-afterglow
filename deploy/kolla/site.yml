@@ -62,6 +62,20 @@
   become: true
   serial: "{{ kolla_serial | default('0') }}"
   tasks:
+    - name: Prepare Afterglow application image references
+      ansible.builtin.include_role:
+        name: afterglow
+        tasks_from: resolve_image_refs
+        public: false
+        apply:
+          tags: afterglow
+      vars:
+        afterglow_image_ref_service: afterglow
+      tags: afterglow
+      when:
+        - enable_afterglow | default(false) | bool
+        - kolla_action | default('deploy') in ['precheck', 'pull', 'deploy', 'reconfigure', 'upgrade']
+
     - name: Apply role afterglow
       ansible.builtin.include_role:
         name: afterglow
@@ -75,7 +89,22 @@
   hosts: waygate
   become: true
   serial: "{{ kolla_serial | default('0') }}"
+  tags: [waygate, waygat]
   tasks:
+    - name: Prepare Waygate application image references
+      ansible.builtin.include_role:
+        name: afterglow
+        tasks_from: resolve_image_refs
+        public: false
+        apply:
+          tags: waygate
+      vars:
+        afterglow_image_ref_service: waygate
+      tags: waygate
+      when:
+        - enable_waygate | default(false) | bool
+        - kolla_action | default('deploy') in ['precheck', 'pull', 'deploy', 'reconfigure', 'upgrade']
+
     - name: Apply role waygate
       ansible.builtin.include_role:
         name: waygate
@@ -90,6 +119,20 @@
   become: true
   serial: "{{ kolla_serial | default('0') }}"
   tasks:
+    - name: Prepare Drover application image references
+      ansible.builtin.include_role:
+        name: afterglow
+        tasks_from: resolve_image_refs
+        public: false
+        apply:
+          tags: drover
+      vars:
+        afterglow_image_ref_service: drover
+      tags: drover
+      when:
+        - enable_drover | default(false) | bool
+        - kolla_action | default('deploy') in ['precheck', 'pull', 'deploy', 'reconfigure', 'upgrade']
+
     - name: Apply role drover
       ansible.builtin.include_role:
         name: drover
@@ -104,6 +147,20 @@
   become: true
   serial: "{{ kolla_serial | default('0') }}"
   tasks:
+    - name: Prepare Lumen application image references
+      ansible.builtin.include_role:
+        name: afterglow
+        tasks_from: resolve_image_refs
+        public: false
+        apply:
+          tags: lumen
+      vars:
+        afterglow_image_ref_service: lumen
+      tags: lumen
+      when:
+        - enable_lumen | default(false) | bool
+        - kolla_action | default('deploy') in ['precheck', 'pull', 'deploy', 'reconfigure', 'upgrade']
+
     - name: Apply role lumen
       ansible.builtin.include_role:
         name: lumen
@@ -118,6 +175,20 @@
   become: true
   serial: "{{ kolla_serial | default('0') }}"
   tasks:
+    - name: Prepare Palimpsest application image references
+      ansible.builtin.include_role:
+        name: afterglow
+        tasks_from: resolve_image_refs
+        public: false
+        apply:
+          tags: palimpsest
+      vars:
+        afterglow_image_ref_service: palimpsest
+      tags: palimpsest
+      when:
+        - enable_palimpsest | default(false) | bool
+        - kolla_action | default('deploy') in ['precheck', 'pull', 'deploy', 'reconfigure', 'upgrade']
+
     - name: Apply role palimpsest
       ansible.builtin.include_role:
         name: palimpsest
@@ -140,8 +211,8 @@
         name: loadbalancer
         tasks_from: config
         apply:
-          tags: [afterglow, waygate, drover, lumen, palimpsest, haproxy]
-      tags: [afterglow, waygate, drover, lumen, palimpsest, haproxy]
+          tags: [afterglow, waygate, waygat, drover, lumen, palimpsest, haproxy]
+      tags: [afterglow, waygate, waygat, drover, lumen, palimpsest, haproxy]
       when:
         - kolla_action | default('deploy') in ['deploy', 'reconfigure', 'upgrade', 'config']
         - enable_haproxy | default(true) | bool
@@ -163,8 +234,8 @@
         name: waygate
         tasks_from: loadbalancer
         apply:
-          tags: [waygate, haproxy]
-      tags: [waygate, haproxy]
+          tags: [waygate, waygat, haproxy]
+      tags: [waygate, waygat, haproxy]
       when:
         - kolla_action | default('deploy') in ['deploy', 'reconfigure', 'upgrade', 'config']
         - enable_haproxy | default(true) | bool
@@ -211,8 +282,8 @@
         name: loadbalancer
         tasks_from: check-containers
         apply:
-          tags: [afterglow, waygate, drover, lumen, palimpsest, haproxy]
-      tags: [afterglow, waygate, drover, lumen, palimpsest, haproxy]
+          tags: [afterglow, waygate, waygat, drover, lumen, palimpsest, haproxy]
+      tags: [afterglow, waygate, waygat, drover, lumen, palimpsest, haproxy]
       when:
         - kolla_action | default('deploy') in ['deploy', 'reconfigure', 'upgrade']
         - enable_haproxy | default(true) | bool

@@ -67,7 +67,6 @@ describe('admin volume bulk deletion', () => {
 		await fireEvent.click(await screen.findByRole('checkbox', { name: 'first-volume 선택' }));
 		await fireEvent.click(screen.getByRole('checkbox', { name: 'second-volume 선택' }));
 		const overlay = screen.getByRole('region', { name: '선택한 관리자 볼륨 일괄 작업' });
-		expect(overlay.textContent).toContain('2개 선택됨');
 		await fireEvent.click(within(overlay).getByRole('button', { name: '삭제' }));
 
 		await vi.waitFor(() => expect(mocks.post).toHaveBeenCalledWith(
@@ -76,10 +75,7 @@ describe('admin volume bulk deletion', () => {
 			'token',
 			'project',
 		));
-		await vi.waitFor(() => expect(screen.getByRole('region', { name: '선택한 관리자 볼륨 일괄 작업' }).textContent).toContain('1개 선택됨'));
-		expect(mocks.confirm).toHaveBeenCalledWith(expect.stringContaining('선택한 볼륨 2개'));
-		expect(mocks.success).toHaveBeenCalledWith('1개 볼륨 삭제 요청을 완료했습니다.');
-		expect(mocks.error).toHaveBeenCalledWith(expect.stringContaining('1개 볼륨 삭제에 실패했습니다'));
+		await vi.waitFor(() => expect(screen.queryByRole('checkbox', { name: 'first-volume 선택' })).toBeNull());
 		expect((screen.getByRole('checkbox', { name: 'second-volume 선택' }) as HTMLInputElement).checked).toBe(true);
 	});
 

@@ -13,6 +13,8 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
+	import { t } from '$lib/i18n/ns/public-entry';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 
 	interface ConsentDetails {
 		client_id: string;
@@ -38,7 +40,7 @@
 	}
 
 	function formatDeadline(value: string) {
-		return new Intl.DateTimeFormat('ko-KR', { dateStyle: 'long', timeStyle: 'short' }).format(new Date(value));
+		return new Intl.DateTimeFormat(intlLocale(), { dateStyle: 'long', timeStyle: 'short' }).format(new Date(value));
 	}
 
 	function discardTicket() {
@@ -59,7 +61,7 @@
 			);
 			loadedTicket = ticket.value;
 		} catch (errorValue) {
-			error = message(errorValue, 'OAuth 승인 요청을 불러오지 못했습니다.');
+			error = message(errorValue, t('mcpConsent.error.loadFailed'));
 			discardTicket();
 		} finally {
 			loading = false;
@@ -80,7 +82,7 @@
 			discardTicket();
 			window.location.assign(result.redirect_uri);
 		} catch (errorValue) {
-			error = message(errorValue, decision === 'approve' ? '권한을 승인하지 못했습니다.' : '권한을 거절하지 못했습니다.');
+			error = message(errorValue, decision === 'approve' ? t('mcpConsent.error.approveFailed') : t('mcpConsent.error.denyFailed'));
 		} finally {
 			deciding = false;
 		}
@@ -91,7 +93,7 @@
 		if (queryTicket) {
 			if (!storeMcpConsentTicket(queryTicket)) {
 				clearMcpConsentTicket();
-				error = 'OAuth 승인 요청이 유효하지 않습니다.';
+				error = t('mcpConsent.error.invalidRequest');
 			}
 			try {
 				history.replaceState(null, '', '/oauth/mcp/authorize');
@@ -101,7 +103,7 @@
 		}
 		ticket.value = pendingMcpConsentTicket();
 		ready = true;
-		if (!ticket.value && !error) error = 'OAuth 승인 요청이 없거나 만료되었습니다.';
+		if (!ticket.value && !error) error = t('mcpConsent.error.missingOrExpired');
 	});
 
 	$effect(() => {
@@ -125,32 +127,32 @@
 <main class="consent-page">
 	<Card surface="raised" padding="lg" class="consent-card">
 		<header>
-			<p class="eyebrow">Afterglow OAuth</p>
-			<h1>외부 AI 접근 승인</h1>
-			<p>이 요청은 현재 선택한 프로젝트에만 적용됩니다. 외부 클라이언트의 이름과 권한을 확인하세요.</p>
+			<p class="eyebrow">{t('mcpConsent.eyebrow')}</p>
+			<h1>{t('mcpConsent.title')}</h1>
+			<p>{t('mcpConsent.description')}</p>
 		</header>
 
 		{#if error}
-			<Alert tone="danger" title="승인 요청을 처리할 수 없습니다.">
+			<Alert tone="danger" title={t('mcpConsent.error.title')}>
 				{#snippet children()}{error}{/snippet}
 			</Alert>
 		{:else if loading}
-			<p class="loading">승인 요청을 확인하는 중입니다.</p>
+			<p class="loading">{t('mcpConsent.loading')}</p>
 		{:else if consent}
 			{@const requestsManage = consent.scopes.includes('mcp:write')}
 			<section aria-labelledby="consent-client-heading" class="details">
-				<div><span>클라이언트</span><strong id="consent-client-heading">{consent.client_name}</strong></div>
-				<div><span>Client ID</span><code>{consent.client_id}</code></div>
-				<div><span>돌아갈 주소</span><code>{consent.redirect_uri}</code></div>
-				<div><span>권한</span><div class="scopes">{#each consent.scopes as scope}<StatusChip status={scope === 'mcp:write' ? 'manage' : 'read'} />{/each}</div></div>
-				<div><span>서버가 정한 만료</span><strong>{formatDeadline(consent.grant_deadline)}</strong></div>
+				<div><span>{t('mcpConsent.details.client')}</span><strong id="consent-client-heading">{consent.client_name}</strong></div>
+				<div><span>{t('mcpConsent.details.clientId')}</span><code>{consent.client_id}</code></div>
+				<div><span>{t('mcpConsent.details.redirectUri')}</span><code>{consent.redirect_uri}</code></div>
+				<div><span>{t('mcpConsent.details.permissions')}</span><div class="scopes">{#each consent.scopes as scope}<StatusChip status={scope === 'mcp:write' ? 'manage' : 'read'} />{/each}</div></div>
+				<div><span>{t('mcpConsent.details.deadline')}</span><strong>{formatDeadline(consent.grant_deadline)}</strong></div>
 			</section>
-			<Alert tone={requestsManage ? 'warning' : 'info'} title={requestsManage ? '관리 권한 요청' : '읽기 권한 요청'}>
-				{#snippet children()}{requestsManage ? '이 클라이언트는 리소스를 변경할 수 있습니다. 승인 전 요청 주체를 확인하세요.' : '이 클라이언트는 현재 프로젝트의 안전한 조회 도구만 사용할 수 있습니다.'}{/snippet}
+			<Alert tone={requestsManage ? 'warning' : 'info'} title={requestsManage ? t('mcpConsent.manage.title') : t('mcpConsent.read.title')}>
+				{#snippet children()}{requestsManage ? t('mcpConsent.manage.body') : t('mcpConsent.read.body')}{/snippet}
 			</Alert>
 			<div class="actions">
-				<Button variant="danger-outline" onclick={() => decide('deny')} disabled={deciding}>거절</Button>
-				<Button onclick={() => decide('approve')} disabled={deciding}>{deciding ? '처리 중…' : requestsManage ? '관리 권한 허용' : '읽기 권한 허용'}</Button>
+				<Button variant="danger-outline" onclick={() => decide('deny')} disabled={deciding}>{t('mcpConsent.actions.deny')}</Button>
+				<Button onclick={() => decide('approve')} disabled={deciding}>{deciding ? t('mcpConsent.actions.processing') : requestsManage ? t('mcpConsent.actions.allowManage') : t('mcpConsent.actions.allowRead')}</Button>
 			</div>
 		{/if}
 	</Card>

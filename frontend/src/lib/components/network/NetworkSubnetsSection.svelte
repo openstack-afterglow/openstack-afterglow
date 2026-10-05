@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/network-resources';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
@@ -10,7 +11,7 @@
 	let form = $state({ name: '', cidr: '', gateway: '', dhcp: true, routerId: '' });
 	let submitted = $state(false);
 	const cidrError = $derived.by(() => {
-		if (!form.cidr) return 'CIDR을 입력하세요.';
+		if (!form.cidr) return t('network.subnets.cidrRequired');
 		const [address, prefix] = form.cidr.split('/');
 		const octets = address?.split('.').map(Number);
 		if (
@@ -20,7 +21,7 @@
 			!/^[0-9]+$/.test(prefix ?? '') ||
 			Number(prefix) > 32
 		) {
-			return 'IPv4 CIDR 형식(예: 10.0.0.0/24)으로 입력하세요.';
+			return t('network.subnets.cidrInvalid');
 		}
 		return '';
 	});
@@ -37,36 +38,36 @@
 
 <div class="bg-surface-base border border-line rounded-xl p-4">
 	<div class="flex items-center justify-between gap-3 mb-3">
-		<h3 class="text-xs text-ink-2 uppercase tracking-wide">서브넷 ({s.network!.subnet_details.length})</h3>
+		<h3 class="text-xs text-ink-2 uppercase tracking-wide">{t('network.subnets.titleCount', { count: s.network!.subnet_details.length })}</h3>
 		{#if s.canManageNetwork}
 			<Button variant="subtle" size="xs" onclick={() => { void s.toggleSubnetForm(); }}>
-				{s.showSubnetForm ? '닫기' : '+ 서브넷 추가'}
+				{s.showSubnetForm ? t('network.actions.close') : t('network.subnets.addToggle')}
 			</Button>
 		{/if}
 	</div>
 
 	{#if s.showSubnetForm && s.canManageNetwork}
 		<form class="mb-4 grid gap-3 border border-line-2 rounded-lg p-3" onsubmit={(event) => { event.preventDefault(); void submit(); }}>
-			<Field label="서브넷 이름" for="network-subnet-name" help="비우면 네트워크 이름을 사용합니다.">
+			<Field label={t('network.subnets.name')} for="network-subnet-name" help={t('network.subnets.nameHelp')}>
 				<TextInput id="network-subnet-name" bind:value={form.name} maxlength={255} placeholder={`${s.network!.name}-subnet`} />
 			</Field>
 			<Field label="CIDR" for="network-subnet-cidr" error={submitted ? cidrError : ''} required>
 				<TextInput id="network-subnet-cidr" bind:value={form.cidr} required inputmode="text" placeholder="10.0.0.0/24" ariaInvalid={submitted && Boolean(cidrError)} />
 			</Field>
-			<Field label="게이트웨이" for="network-subnet-gateway" help="비우면 Neutron이 게이트웨이를 선택합니다.">
+			<Field label={t('network.labels.gateway')} for="network-subnet-gateway" help={t('network.subnets.gatewayHelp')}>
 				<TextInput id="network-subnet-gateway" bind:value={form.gateway} inputmode="decimal" placeholder="10.0.0.1" />
 			</Field>
-			<Field label="라우터 연결" for="network-subnet-router" help="서브넷 생성 후 선택한 라우터 인터페이스를 자동으로 추가합니다.">
+			<Field label={t('network.subnets.router')} for="network-subnet-router" help={t('network.subnets.routerHelp')}>
 				<SelectInput id="network-subnet-router" bind:value={form.routerId}>
-					<option value="">연결하지 않음</option>
+					<option value="">{t('network.subnets.noRouter')}</option>
 					{#each s.managedRouters as router}
 						<option value={router.id}>{router.name || router.id.slice(0, 12)}</option>
 					{/each}
 				</SelectInput>
 			</Field>
-			<label class="flex items-center gap-2 text-xs text-ink-1"><input type="checkbox" bind:checked={form.dhcp} /> DHCP 활성화</label>
-			{#if s.subnetError}<Alert tone="danger" title="서브넷 생성 실패">{s.subnetError}</Alert>{/if}
-			<div class="flex justify-end"><Button type="submit" variant="primary" size="sm" disabled={s.addingSubnet}>{s.addingSubnet ? '생성 중...' : '서브넷 생성'}</Button></div>
+			<label class="flex items-center gap-2 text-xs text-ink-1"><input type="checkbox" bind:checked={form.dhcp} /> {t('network.subnets.enableDhcp')}</label>
+			{#if s.subnetError}<Alert tone="danger" title={t('network.errors.createSubnet')}>{s.subnetError}</Alert>{/if}
+			<div class="flex justify-end"><Button type="submit" variant="primary" size="sm" disabled={s.addingSubnet}>{s.addingSubnet ? t('network.subnets.creating') : t('network.subnets.create')}</Button></div>
 		</form>
 	{/if}
 
@@ -77,13 +78,13 @@
 					<div class="text-xs text-ink-0 font-medium">{subnet.name || subnet.id.slice(0, 8)}</div>
 					<dl class="mt-1 space-y-1 text-xs">
 						<div class="flex justify-between gap-3"><dt class="text-ink-2">CIDR</dt><dd class="text-ink-2 font-mono">{subnet.cidr}</dd></div>
-						<div class="flex justify-between gap-3"><dt class="text-ink-2">게이트웨이</dt><dd class="text-ink-2 font-mono">{subnet.gateway_ip || '-'}</dd></div>
-						<div class="flex justify-between gap-3"><dt class="text-ink-2">DHCP</dt><dd class="text-ink-1">{subnet.dhcp_enabled ? '활성' : '비활성'}</dd></div>
+						<div class="flex justify-between gap-3"><dt class="text-ink-2">{t('network.labels.gateway')}</dt><dd class="text-ink-2 font-mono">{subnet.gateway_ip || '-'}</dd></div>
+						<div class="flex justify-between gap-3"><dt class="text-ink-2">DHCP</dt><dd class="text-ink-1">{subnet.dhcp_enabled ? t('network.state.enabled') : t('network.state.disabled')}</dd></div>
 					</dl>
 				</div>
 			{/each}
 		</div>
 	{:else}
-		<p class="text-xs text-ink-2">서브넷이 없습니다</p>
+		<p class="text-xs text-ink-2">{t('network.subnets.empty')}</p>
 	{/if}
 </div>

@@ -1,6 +1,6 @@
 {
     "name": "afterglow_notion_worker",
-    "image": "{{ afterglow_worker_image }}:{{ afterglow_image_tag }}",
+    "image": "{{ afterglow_worker_image_ref }}",
     "command": ["python", "-m", "app.notion_worker"],
     "restart_policy": "unless-stopped",
     "volumes": [

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-compute';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { toast } from '$lib/stores/toast';
@@ -97,10 +98,10 @@
 				projectId,
 			);
 			projectSearch = '';
-			toast.success('접근 권한이 추가되었습니다');
+			toast.success(t('flavors.access.added'));
 			await loadAccess();
 		} catch (e) {
-			const msg = e instanceof ApiError ? e.message : '접근 권한 추가 실패';
+			const msg = e instanceof ApiError ? e.message : t('flavors.access.addFailed');
 			accessError = msg;
 			toast.error(msg);
 		} finally {
@@ -117,7 +118,7 @@
 			);
 			await loadAccess();
 		} catch {
-			accessError = '접근 권한 제거 실패';
+			accessError = t('flavors.access.removeFailed');
 		}
 	}
 
@@ -128,9 +129,9 @@
 			await api.put(`/api/v1/admin/flavors/${flavor.id}/access-mode`, { mode: nextMode }, token, projectId);
 			accessMode = nextMode;
 			flavor.extra_specs = { ...flavor.extra_specs, 'afterglow:access_mode': nextMode };
-			toast.success('접근 관리 모드가 변경되었습니다');
+			toast.success(t('flavors.access.modeChanged'));
 		} catch (e) {
-			toast.error(e instanceof ApiError ? e.message : '모드 변경 실패');
+			toast.error(e instanceof ApiError ? e.message : t('flavors.access.modeFailed'));
 		} finally {
 			modeSaving = false;
 		}
@@ -152,9 +153,9 @@
 				...flavor.extra_specs,
 				'afterglow:frontend_visible': visible ? 'true' : 'false',
 			};
-			toast.success(visible ? '사용자 Flavor 목록에 노출됩니다' : '사용자 Flavor 목록에서 숨겨집니다');
+			toast.success(visible ? t('flavors.access.visibleNotice') : t('flavors.access.hiddenNotice'));
 		} catch (e) {
-			toast.error(e instanceof ApiError ? e.message : 'Afterglow 노출 설정 실패');
+			toast.error(e instanceof ApiError ? e.message : t('flavors.access.visibilityFailed'));
 		} finally {
 			visibilitySaving = false;
 		}
@@ -165,22 +166,22 @@
 	<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 		<div class="min-w-0">
 			<div class="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-1)]">
-				Afterglow 사용자 노출
+				{t('flavors.access.visibilityTitle')}
 			</div>
 			<p class="mt-1 text-xs leading-normal text-[var(--color-ink-2)]">
-				숨기면 일반 사용자 VM·Resize·K3s Flavor 목록에서 제외됩니다. Nova Public/Private 및 Flavor Access는 변경되지 않습니다.
+				{t('flavors.access.visibilityHelp')}
 			</p>
 		</div>
 		<div class="w-full shrink-0 sm:w-auto">
 			<ToggleGroup
 				value={frontendVisible ? 'visible' : 'hidden'}
 				options={[
-					{ value: 'visible', label: '사용자에게 노출', disabled: visibilitySaving },
-					{ value: 'hidden', label: '사용자에게 숨김', disabled: visibilitySaving },
+					{ value: 'visible', label: t('flavors.access.showUsers'), disabled: visibilitySaving },
+					{ value: 'hidden', label: t('flavors.access.hideUsers'), disabled: visibilitySaving },
 				]}
 				onchange={(value) => setFrontendVisibility(value === 'visible')}
 				size="sm"
-				ariaLabel="Afterglow 사용자 Flavor 노출"
+				ariaLabel={t('flavors.access.visibilityLabel')}
 				fullWidth
 			/>
 		</div>
@@ -189,7 +190,7 @@
 
 {#if flavor.is_public}
 	<div class="bg-surface-sunken/50 border border-line-2 text-ink-2 rounded-lg px-4 py-6 text-sm text-center">
-		Public Flavor는 모든 프로젝트에서 사용 가능하므로 접근 권한 설정이 필요하지 않습니다.
+		{t('flavors.access.publicHelp')}
 	</div>
 {:else}
 	{#if accessError}
@@ -198,7 +199,7 @@
 
 	{#if flavor.is_gpu}
 		<div class="mb-4 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-sunken)] p-3">
-			<div class="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-1)] mb-1.5">접근 권한 관리 정책</div>
+			<div class="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-1)] mb-1.5">{t('flavors.access.policy')}</div>
 			<div class="flex gap-2">
 				<button
 					type="button"
@@ -208,7 +209,7 @@
 						? 'bg-[var(--color-accent)] text-[var(--color-surface-canvas)]'
 						: 'bg-[var(--color-surface-base)] text-[var(--color-ink-2)] hover:text-[var(--color-ink-0)]'}"
 				>
-					수동 관리 (manual)
+					{t('flavors.access.manualMode')}
 				</button>
 				<button
 					type="button"
@@ -218,22 +219,22 @@
 						? 'bg-[var(--color-accent)] text-[var(--color-surface-canvas)]'
 						: 'bg-[var(--color-surface-base)] text-[var(--color-ink-2)] hover:text-[var(--color-ink-0)]'}"
 				>
-					GPU Quota 연동 (gpu_quota)
+					{t('flavors.access.quotaMode')}
 				</button>
 			</div>
 			<p class="mt-2 text-xs text-[var(--color-ink-2)] leading-normal">
 				{accessMode === 'gpu_quota'
-					? '이 Flavor는 프로젝트의 GPU quota limit에 따라 접근 권한이 자동 조정됩니다. 아래 수동 추가는 예외 프로젝트에만 사용하세요.'
-					: '관리자가 프로젝트를 개별적으로 추가하거나 제거합니다.'}
+					? t('flavors.access.quotaHelp')
+					: t('flavors.access.manualHelp')}
 			</p>
 		</div>
 	{/if}
 	<div class="mb-4">
-		<div class="text-sm text-ink-2 mb-2">프로젝트 접근 추가</div>
+		<div class="text-sm text-ink-2 mb-2">{t('flavors.access.addProject')}</div>
 		<div class="relative">
 			<input
 				type="text"
-				placeholder="프로젝트 이름 또는 ID 검색..."
+				placeholder={t('flavors.access.projectSearch')}
 				bind:value={projectSearch}
 				class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm"
 			/>
@@ -255,9 +256,9 @@
 										<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
 										<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
 									</svg>
-									추가 중…
+									{t('flavors.access.adding')}
 								{:else}
-									추가
+									{t('flavors.access.add')}
 								{/if}
 							</button>
 						</div>
@@ -265,17 +266,17 @@
 				</div>
 			{:else if projectSearch.trim().length > 0}
 				<div class="absolute z-10 left-0 right-0 mt-1 bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-xs text-ink-2">
-					일치하는 프로젝트가 없습니다
+					{t('flavors.access.noMatchingProjects')}
 				</div>
 			{/if}
 		</div>
 	</div>
 
-	<div class="text-sm text-ink-2 mb-2">접근 권한이 있는 프로젝트</div>
+	<div class="text-sm text-ink-2 mb-2">{t('flavors.access.projects')}</div>
 	{#if accessLoading}
-		<div class="text-ink-2 text-sm">로딩 중...</div>
+		<div class="text-ink-2 text-sm">{t('flavors.loading')}</div>
 	{:else if accessList.length === 0}
-		<div class="text-ink-2 text-sm">접근 권한이 없습니다</div>
+		<div class="text-ink-2 text-sm">{t('flavors.access.empty')}</div>
 	{:else}
 		<div class="space-y-2">
 			{#each accessList as a (a.project_id)}
@@ -286,7 +287,7 @@
 							<div class="text-xs text-ink-2 font-mono">{a.project_id.slice(0, 12)}</div>
 						{/if}
 					</div>
-					<button onclick={() => removeAccess(a.project_id)} class="text-red-400 hover:text-red-300 text-xs">제거</button>
+					<button onclick={() => removeAccess(a.project_id)} class="text-red-400 hover:text-red-300 text-xs">{t('flavors.access.remove')}</button>
 				</div>
 			{/each}
 		</div>

@@ -2,6 +2,8 @@
 	import { onDestroy } from 'svelte';
 
 	import Button from '$lib/components/ui/Button.svelte';
+	import RichText from '$lib/i18n/RichText.svelte';
+	import { t } from '$lib/i18n/ns/tutorial';
 	import { startTour } from './engine';
 	import { recordTutorialStatus, tutorialStatuses, tutorialStatusesLoaded } from './status';
 	import type { TourId } from './tours';
@@ -41,9 +43,9 @@
 </script>
 
 <span class:tutorial-start--compact={compactOnMobile} class="tutorial-start">
-	<Button variant="outline" size="sm" onclick={startNow} ariaLabel="튜토리얼 시작">
+	<Button variant="outline" size="sm" onclick={startNow} ariaLabel={t('start.action')}>
 		<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-		<span class={compactOnMobile ? 'hidden sm:inline' : ''}>튜토리얼</span>
+		<span class={compactOnMobile ? 'hidden sm:inline' : ''}>{t('start.label')}</span>
 	</Button>
 
 	{#if inviteOpen}
@@ -54,11 +56,11 @@
 			aria-labelledby={`ts-invite-title-${tour}`}
 		>
 			<span class="ts-invite__arrow" aria-hidden="true"></span>
-			<p id={`ts-invite-title-${tour}`} class="ts-invite__title">튜토리얼을 시작하시겠습니까?</p>
-			<p class="ts-invite__desc">이 페이지의 사용 방법을 단계별로 안내해 드려요.</p>
+			<p id={`ts-invite-title-${tour}`} class="ts-invite__title">{t('start.inviteTitle')}</p>
+			<p class="ts-invite__desc">{t('start.inviteDescription')}</p>
 			<div class="ts-invite__actions">
-				<Button variant="primary" size="sm" onclick={startNow}>튜토리얼 시작</Button>
-				<button type="button" class="ts-invite__later" onclick={later}>나중에</button>
+				<Button variant="primary" size="sm" onclick={startNow}>{t('start.action')}</Button>
+				<button type="button" class="ts-invite__later" onclick={later}>{t('start.later')}</button>
 			</div>
 		</div>
 	{/if}
@@ -66,7 +68,7 @@
 	{#if laterHint}
 		<div class="ts-hint" role="status" style={`--ts-hint-ms: ${HINT_MS}ms`}>
 			<span class="ts-hint__arrow" aria-hidden="true"></span>
-			언제든 이 <strong>튜토리얼</strong> 버튼으로 다시 시작할 수 있어요.
+			<RichText segments={t.rich('start.hint')} />
 			<span class="ts-hint__progress" aria-hidden="true"></span>
 		</div>
 	{/if}
@@ -191,7 +193,7 @@
 		}
 	}
 
-	.ts-hint strong {
+	.ts-hint :global(strong) {
 		font-weight: 600;
 		color: var(--color-ink-0);
 	}

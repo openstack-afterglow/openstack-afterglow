@@ -6,6 +6,7 @@
 	import { ApiError } from '$lib/api/client';
 	import { Alert, Button, Field, PageShell, SelectInput, TextareaInput } from '$lib/components/ui';
 	import { IMAGE_STUDIO_STYLES, composeImagePrompt, type ImageStudioStyleId } from './imageStudioStyles';
+	import { t } from '$lib/i18n/ns/chat-studio';
 
 	const scope = $derived($auth.token && $auth.projectId ? { token: $auth.token, projectId: $auth.projectId } : null);
 	const storageKey = $derived(`afterglow:image-studio:${$auth.userId ?? ''}:${$auth.projectId ?? ''}`);
@@ -141,16 +142,27 @@
 	}
 	function message(cause: unknown): string {
 		if (cause instanceof ApiError) {
-			if (cause.status === 401 || cause.status === 403) return '현재 프로젝트에 접근할 수 없습니다. 로그인과 프로젝트 선택을 확인하세요.';
-			if (cause.status === 402) return '사용 가능한 이미지 생성 크레딧 또는 할당량이 부족합니다.';
-			if (cause.status === 429) return '요청이 많습니다. 잠시 후 다시 시도하세요.';
+			if (cause.status === 401 || cause.status === 403) return t('imageStudio.projectDenied');
+			if (cause.status === 402) return t('imageStudio.quotaInsufficient');
+			if (cause.status === 429) return t('imageStudio.rateLimited');
 			if (cause.status === 400 || cause.status === 422 || cause.status === 409) return cause.message.slice(0, 250);
-			return `서비스 요청에 실패했습니다 (${cause.status}). 잠시 후 다시 시도하세요.`;
+			return t('imageStudio.requestFailed', { status: cause.status });
 		}
-		return '서비스에 연결하지 못했습니다. 네트워크 상태를 확인하고 다시 시도하세요.';
+		return t('imageStudio.connectionFailed');
 	}
 	function displayStatus(status: string): string {
-		return ({ queued: '대기 중', running: '생성 중', waiting_resource: '리소스 대기 중', finalizing: '결과 저장 중', completed: '완료', failed: '실패', canceled: '취소됨' } as Record<string, string>)[status] ?? status;
+		return ({ queued: t('imageStudio.status.queued'), running: t('imageStudio.status.running'), waiting_resource: t('imageStudio.status.waitingResource'), finalizing: t('imageStudio.status.finalizing'), completed: t('imageStudio.status.completed'), failed: t('imageStudio.status.failed'), canceled: t('imageStudio.status.canceled') } as Record<string, string>)[status] ?? status;
+	}
+	function displayQuality(value: string): string {
+		switch (value) {
+			case 'auto': return t('imageStudio.quality.auto');
+			case 'high': return t('imageStudio.quality.high');
+			case 'medium': return t('imageStudio.quality.medium');
+			case 'low': return t('imageStudio.quality.low');
+			case 'standard': return t('imageStudio.quality.standard');
+			case 'hd': return t('imageStudio.quality.hd');
+			default: return value;
+		}
 	}
 
 	async function loadModels(requestScope: ImageApiScope, generation: number) {
@@ -184,7 +196,7 @@
 		} catch (cause) {
 			if (generation === operation) {
 				loadingRun = false;
-				error = `실행 상태를 읽지 못했습니다: ${message(cause)}`;
+				error = t('imageStudio.runLoadFailed', { message: message(cause) });
 			}
 		}
 	}
@@ -198,7 +210,7 @@
 				if (generation !== operation || controller.signal.aborted) return;
 				if (asset.mime_type.startsWith('image/')) previewUrls = { ...previewUrls, [asset.asset_id]: URL.createObjectURL(blob) };
 			} catch (cause) {
-				if (generation === operation && !controller.signal.aborted) error = `이미지 미리보기를 불러오지 못했습니다: ${message(cause)}`;
+				if (generation === operation && !controller.signal.aborted) error = t('imageStudio.previewLoadFailed', { message: message(cause) });
 			}
 		}
 	}
@@ -262,7 +274,7 @@
 		if (!file || !scope) return;
 		if (!isChatImageMime(file.type)) {
 			if (fileInput) fileInput.value = '';
-			error = 'PNG, JPEG, WebP 이미지만 업로드할 수 있습니다.';
+			error = t('imageStudio.invalidFile');
 			return;
 		}
 		// Replacing an input invalidates only the previous input; run selection and submission never discard it.
@@ -282,7 +294,7 @@
 			inputFileName = asset.name;
 		} catch (cause) {
 			if (generation !== inputGeneration) return;
-			error = `입력 이미지 업로드 실패: ${message(cause)} 이미지를 교체하거나 제거한 뒤 다시 요청하세요.`;
+			error = t('imageStudio.uploadFailed', { message: message(cause) });
 		} finally {
 			if (uploadAbort === controller) {
 				uploadAbort = null;
@@ -326,7 +338,7 @@
 		try {
 			await imageStudioApi.cancel(selectedRunId, scope);
 			if (selectedRunId && scope) void loadRun(selectedRunId, scope, operation);
-		} catch (cause) { error = `취소 요청 실패: ${message(cause)}`; }
+		} catch (cause) { error = t('imageStudio.cancelFailed', { message: message(cause) }); }
 	}
 	async function download(id: string, name: string) {
 		if (!scope) return;
@@ -338,7 +350,7 @@
 			anchor.download = name || `image-${id}.png`;
 			anchor.click();
 			setTimeout(() => URL.revokeObjectURL(url), 1000);
-		} catch (cause) { error = `이미지 다운로드 실패: ${message(cause)}`; }
+		} catch (cause) { error = t('imageStudio.downloadFailed', { message: message(cause) }); }
 	}
 </script>
 
@@ -346,69 +358,69 @@
 	<div class="studio">
 		<header class="studio-header">
 			<svg class="studio-mark" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5" /><circle cx="15.5" cy="9" r="1.75" /><path d="m3.5 17 5-5.5 4 4 2.5-2.5 5.5 5.5" /></svg>
-			<h1>이미지 Studio</h1>
-			<p class="muted">원하는 이미지를 설명하세요. 결과는 현재 프로젝트에서만 조회할 수 있습니다.</p>
-			<Button href="/dashboard/chat" variant="ghost" size="sm">텍스트 채팅으로</Button>
+			<h1>{t('imageStudio.title')}</h1>
+			<p class="muted">{t('imageStudio.description')}</p>
+			<Button href="/dashboard/chat" variant="ghost" size="sm">{t('imageStudio.textChat')}</Button>
 		</header>
-		{#if modelsError}<Alert tone="danger" title="모델을 불러오지 못했습니다">{modelsError} <Button variant="subtle" onclick={() => scope && loadModels(scope, ++modelRequest)}>다시 시도</Button></Alert>{/if}
-		{#if error}<Alert tone="danger">{error} {#if selectedRunId}<Button variant="subtle" onclick={() => scope && selectedRunId && selectRun(selectedRunId, scope)}>상태 다시 확인</Button>{/if}</Alert>{/if}
+		{#if modelsError}<Alert tone="danger" title={t('imageStudio.modelsLoadFailed')}>{modelsError} <Button variant="subtle" onclick={() => scope && loadModels(scope, ++modelRequest)}>{t('imageStudio.retry')}</Button></Alert>{/if}
+		{#if error}<Alert tone="danger">{error} {#if selectedRunId}<Button variant="subtle" onclick={() => scope && selectedRunId && selectRun(selectedRunId, scope)}>{t('imageStudio.recheckStatus')}</Button>{/if}</Alert>{/if}
 
-		<form class="composer" aria-label="이미지 요청" onsubmit={(event) => { event.preventDefault(); void submit(); }}>
-			<TextareaInput id="studio-prompt" class="composer-prompt" bind:value={prompt} rows={4} ariaLabel="프롬프트" ariaDescribedBy={selectedStyle ? 'studio-input-note studio-style-note' : 'studio-input-note'} placeholder={hasInput ? '첨부 이미지를 참고해 새로 만들거나 수정할 내용을 설명하세요' : '만들고 싶은 이미지를 설명하세요'} disabled={busy} />
-			<p id="studio-input-note" class="muted attachment-hint">이미지 없이 요청하면 새로 생성합니다. 첨부하면 모델이 프롬프트에 따라 참고해서 새로 만들거나 수정합니다.</p>
+		<form class="composer" aria-label={t('imageStudio.request')} onsubmit={(event) => { event.preventDefault(); void submit(); }}>
+			<TextareaInput id="studio-prompt" class="composer-prompt" bind:value={prompt} rows={4} ariaLabel={t('imageStudio.prompt')} ariaDescribedBy={selectedStyle ? 'studio-input-note studio-style-note' : 'studio-input-note'} placeholder={hasInput ? t('imageStudio.referencePlaceholder') : t('imageStudio.promptPlaceholder')} disabled={busy} />
+			<p id="studio-input-note" class="muted attachment-hint">{t('imageStudio.attachmentHelp')}</p>
 			{#if selectedStyle}
 				<div class="style-note">
-					<p id="studio-style-note"><span class="style-note-label">{selectedStyle.label} 스타일</span> 제출할 때 프롬프트 끝에 “스타일: {selectedStyle.instruction}” 지시가 추가됩니다.</p>
-					<Button variant="ghost" size="sm" onclick={() => (styleId = null)} disabled={busy}>스타일 지우기</Button>
+					<p id="studio-style-note"><span class="style-note-label">{t('imageStudio.styleLabel', { style: t(selectedStyle.labelKey) })}</span> {t('imageStudio.styleNote', { suffix: `스타일: ${selectedStyle.instruction}` })}</p>
+					<Button variant="ghost" size="sm" onclick={() => (styleId = null)} disabled={busy}>{t('imageStudio.clearStyle')}</Button>
 				</div>
 			{/if}
 			{#if inputPreviewUrl}
 				<div class="attachment">
-					<img src={inputPreviewUrl} alt="입력 이미지 미리보기" />
+					<img src={inputPreviewUrl} alt={t('imageStudio.inputPreview')} />
 					<div class="attachment-meta">
 						<p class="attachment-name">{inputFileName}</p>
-						{#if uploading}<p role="status" class="muted">입력 이미지를 업로드하는 중…</p>{:else if inputAssetId}<p role="status" class="muted">업로드 완료: {inputFileName}</p>{/if}
+						{#if uploading}<p role="status" class="muted">{t('imageStudio.uploading')}</p>{:else if inputAssetId}<p role="status" class="muted">{t('imageStudio.uploadComplete', { name: inputFileName })}</p>{/if}
 					</div>
-					<Button variant="ghost" size="sm" ariaLabel="첨부 이미지 제거" onclick={clearInput} disabled={submitting}>제거</Button>
+					<Button variant="ghost" size="sm" ariaLabel={t('imageStudio.removeAttachment')} onclick={clearInput} disabled={submitting}>{t('imageStudio.remove')}</Button>
 				</div>
 			{/if}
 			<div class="composer-bar">
 				<div class="composer-options">
-					<Field label="이미지 모델" for="studio-model" class="option-model">
-						<SelectInput id="studio-model" value={modelId} onchange={selectModel} disabled={modelsLoading || busy || models.length === 0}><option value="">모델 선택</option>{#each models as model (model.id)}<option value={String(model.id)}>{model.display_name}</option>{/each}</SelectInput>
+					<Field label={t('imageStudio.model')} for="studio-model" class="option-model">
+						<SelectInput id="studio-model" value={modelId} onchange={selectModel} disabled={modelsLoading || busy || models.length === 0}><option value="">{t('imageStudio.selectModel')}</option>{#each models as model (model.id)}<option value={String(model.id)}>{model.display_name}</option>{/each}</SelectInput>
 					</Field>
-					<Field label="크기" for="studio-size"><SelectInput id="studio-size" bind:value={size} disabled={busy || capabilitiesLoading || sizes.length === 0}>{#each sizes as option (option)}<option value={option}>{option === 'auto' ? '자동' : option.replace('x', ' × ')}</option>{/each}</SelectInput></Field>
-					<Field label="품질" for="studio-quality"><SelectInput id="studio-quality" bind:value={quality} disabled={busy || capabilitiesLoading || qualities.length === 0}>{#each qualities as option (option)}<option value={option}>{option}</option>{/each}</SelectInput></Field>
-					<Field label="이미지 수" for="studio-count"><SelectInput id="studio-count" bind:value={count} disabled={busy || capabilitiesLoading || maxCount < 1}>{#each Array.from({ length: maxCount }, (_, index) => index + 1) as option (option)}<option value={String(option)}>{option}</option>{/each}</SelectInput></Field>
+					<Field label={t('imageStudio.size')} for="studio-size"><SelectInput id="studio-size" bind:value={size} disabled={busy || capabilitiesLoading || sizes.length === 0}>{#each sizes as option (option)}<option value={option}>{option === 'auto' ? t('imageStudio.autoSize') : option.replace('x', ' × ')}</option>{/each}</SelectInput></Field>
+					<Field label={t('imageStudio.qualityLabel')} for="studio-quality"><SelectInput id="studio-quality" bind:value={quality} disabled={busy || capabilitiesLoading || qualities.length === 0}>{#each qualities as option (option)}<option value={option}>{displayQuality(option)}</option>{/each}</SelectInput></Field>
+					<Field label={t('imageStudio.imageCount')} for="studio-count"><SelectInput id="studio-count" bind:value={count} disabled={busy || capabilitiesLoading || maxCount < 1}>{#each Array.from({ length: maxCount }, (_, index) => index + 1) as option (option)}<option value={String(option)}>{option}</option>{/each}</SelectInput></Field>
 				</div>
 				<div class="composer-actions">
-					<Button variant="secondary" onclick={() => fileInput?.click()} disabled={busy || !scope}>{inputPreviewUrl ? '이미지 교체' : '이미지 첨부'}</Button>
-					<input bind:this={fileInput} type="file" accept="image/png,image/jpeg,image/webp" class="sr-only" tabindex="-1" aria-label="입력 이미지" onchange={selectFile} disabled={busy || !scope} />
-					<Button type="submit" variant="primary" size="lg" class="composer-submit" disabled={!canSubmit}>{submitting ? '요청 중…' : '이미지 만들기'}</Button>
+					<Button variant="secondary" onclick={() => fileInput?.click()} disabled={busy || !scope}>{inputPreviewUrl ? t('imageStudio.replaceImage') : t('imageStudio.attachImage')}</Button>
+					<input bind:this={fileInput} type="file" accept="image/png,image/jpeg,image/webp" class="sr-only" tabindex="-1" aria-label={t('imageStudio.inputImage')} onchange={selectFile} disabled={busy || !scope} />
+					<Button type="submit" variant="primary" size="lg" class="composer-submit" disabled={!canSubmit}>{submitting ? t('imageStudio.submitting') : t('imageStudio.createImage')}</Button>
 				</div>
 			</div>
 			<div class="composer-status">
-				{#if !scope}<p role="status" class="muted">로그인하고 프로젝트를 선택하면 이미지 모델을 불러옵니다.</p>
-				{:else if modelsLoading || capabilitiesLoading || (!modelsLoaded && !modelsError)}<p role="status" class="muted">모델과 사용 가능한 이미지 옵션을 확인하는 중…</p>
-				{:else if modelsError}<p class="muted">모델 목록을 불러온 뒤 이미지를 요청할 수 있습니다.</p>
-				{:else if models.length === 0}<Alert tone="warning" title="사용 가능한 이미지 모델 없음">현재 프로젝트에서 사용할 수 있는 이미지 모델이 없습니다. 관리자에게 이미지 모델 등록을 요청하세요.</Alert>
-				{:else if readiness}<Alert tone="warning" title="실행 준비 필요">{readiness}</Alert>
-				{:else if capabilitiesError}<Alert tone="danger" title="이미지 옵션 조회 실패">{capabilitiesError} <Button variant="subtle" onclick={() => chosenModel && scope && loadCapabilities(chosenModel, scope, ++capabilityRequest)}>다시 시도</Button></Alert>
-				{:else if !variantReady}<Alert tone="warning">선택한 모델의 가격이 설정된 이미지 크기·품질을 사용할 수 없습니다.</Alert>
-				{:else}<p role="status" class="muted">모델 제공자, 생성 경로, 선택한 크기·품질의 가격이 준비되었습니다.</p>{/if}
+				{#if !scope}<p role="status" class="muted">{t('imageStudio.signInHelp')}</p>
+				{:else if modelsLoading || capabilitiesLoading || (!modelsLoaded && !modelsError)}<p role="status" class="muted">{t('imageStudio.checkingOptions')}</p>
+				{:else if modelsError}<p class="muted">{t('imageStudio.modelsRequired')}</p>
+				{:else if models.length === 0}<Alert tone="warning" title={t('imageStudio.noModelsTitle')}>{t('imageStudio.noModels')}</Alert>
+				{:else if readiness}<Alert tone="warning" title={t('imageStudio.notReady')}>{readiness}</Alert>
+				{:else if capabilitiesError}<Alert tone="danger" title={t('imageStudio.optionsLoadFailed')}>{capabilitiesError} <Button variant="subtle" onclick={() => chosenModel && scope && loadCapabilities(chosenModel, scope, ++capabilityRequest)}>{t('imageStudio.retry')}</Button></Alert>
+				{:else if !variantReady}<Alert tone="warning">{t('imageStudio.variantUnavailable')}</Alert>
+				{:else}<p role="status" class="muted">{t('imageStudio.ready')}</p>{/if}
 			</div>
 		</form>
 
 		<section class="styles" aria-labelledby="studio-styles-title">
 			<div class="section-head">
-				<h2 id="studio-styles-title">스타일</h2>
-				<p class="muted">선택한 스타일은 별도 모델 옵션이 아니라 프롬프트 끝에 붙는 지시문으로 전송됩니다. 다시 누르면 해제됩니다.</p>
+				<h2 id="studio-styles-title">{t('imageStudio.styles')}</h2>
+				<p class="muted">{t('imageStudio.stylesHelp')}</p>
 			</div>
 			<div class="style-grid">
 				{#each IMAGE_STUDIO_STYLES as style (style.id)}
 					<button type="button" class="style-card" class:style-selected={styleId === style.id} aria-pressed={styleId === style.id} disabled={busy} onclick={() => (styleId = styleId === style.id ? null : style.id)}>
 						<img src={style.image} alt="" loading="lazy" decoding="async" />
-						<span>{style.label}</span>
+						<span>{t(style.labelKey)}</span>
 					</button>
 				{/each}
 			</div>
@@ -417,20 +429,20 @@
 		{#if selectedRunId || runIds.length}
 			<section class="results" aria-labelledby="studio-results-title">
 				<div class="result-head">
-					<h2 id="studio-results-title">작업 결과</h2>
+					<h2 id="studio-results-title">{t('imageStudio.jobResults')}</h2>
 					{#if currentRun}<span role="status" class="run-status">{displayStatus(currentRun.status)}</span>{/if}
 				</div>
 				{#if selectedRunId}
-					{#if loadingRun && !currentRun}<p role="status" class="muted">작업 상태를 확인하는 중…</p>{/if}
-					{#if currentRun && !currentRun.terminal}<div class="run-progress"><p role="status" class="muted">서버에서 이미지를 처리 중입니다. 이 페이지를 떠나도 작업은 계속됩니다.</p><Button variant="danger-outline" onclick={cancel}>작업 취소</Button></div>{/if}
-					{#if currentRun?.status === 'failed'}<Alert tone="danger" title="이미지 작업 실패">실행이 실패했습니다. 다시 시도하거나 모델 설정을 확인하세요.</Alert>{/if}
-					{#if currentRun?.status === 'canceled'}<Alert tone="neutral">작업이 취소되었습니다.</Alert>{/if}
-					{#if currentRun?.status === 'completed'}{#if currentRun.output_assets?.length}<div class="gallery">{#each currentRun.output_assets as asset (asset.asset_id)}<figure><div class="image-frame">{#if previewUrls[asset.asset_id]}<img src={previewUrls[asset.asset_id]} alt="생성된 이미지" />{:else}<span>이미지 불러오는 중…</span>{/if}</div><figcaption><span>이미지 · {asset.mime_type}</span><Button variant="secondary" onclick={() => download(asset.asset_id, `image-${asset.asset_id}.${asset.mime_type.split('/')[1] ?? 'png'}`)}>다운로드</Button></figcaption></figure>{/each}</div>{:else}<Alert tone="warning">작업은 완료됐지만 출력 이미지가 없습니다.</Alert>{/if}{/if}
+					{#if loadingRun && !currentRun}<p role="status" class="muted">{t('imageStudio.checkingJob')}</p>{/if}
+					{#if currentRun && !currentRun.terminal}<div class="run-progress"><p role="status" class="muted">{t('imageStudio.processing')}</p><Button variant="danger-outline" onclick={cancel}>{t('imageStudio.cancelJob')}</Button></div>{/if}
+					{#if currentRun?.status === 'failed'}<Alert tone="danger" title={t('imageStudio.jobFailedTitle')}>{t('imageStudio.jobFailed')}</Alert>{/if}
+					{#if currentRun?.status === 'canceled'}<Alert tone="neutral">{t('imageStudio.jobCanceled')}</Alert>{/if}
+					{#if currentRun?.status === 'completed'}{#if currentRun.output_assets?.length}<div class="gallery">{#each currentRun.output_assets as asset (asset.asset_id)}<figure><div class="image-frame">{#if previewUrls[asset.asset_id]}<img src={previewUrls[asset.asset_id]} alt={t('imageStudio.generatedImage')} />{:else}<span>{t('imageStudio.loadingImage')}</span>{/if}</div><figcaption><span>{t('imageStudio.imageMime', { mime: asset.mime_type })}</span><Button variant="secondary" onclick={() => download(asset.asset_id, `image-${asset.asset_id}.${asset.mime_type.split('/')[1] ?? 'png'}`)}>{t('imageStudio.download')}</Button></figcaption></figure>{/each}</div>{:else}<Alert tone="warning">{t('imageStudio.noOutputImages')}</Alert>{/if}{/if}
 				{/if}
 				{#if runIds.length}
 					<div class="history-block">
-						<h3>이 브라우저의 작업</h3>
-						<div class="history">{#each runIds as id, index (id)}<Button size="sm" variant={selectedRunId === id ? 'accent' : 'secondary'} ariaPressed={selectedRunId === id} onclick={() => scope && selectRun(id, scope)}>작업 {runIds.length - index} · {id.slice(0, 8)}</Button>{/each}</div>
+						<h3>{t('imageStudio.browserJobs')}</h3>
+						<div class="history">{#each runIds as id, index (id)}<Button size="sm" variant={selectedRunId === id ? 'accent' : 'secondary'} ariaPressed={selectedRunId === id} onclick={() => scope && selectRun(id, scope)}>{t('imageStudio.jobLabel', { number: runIds.length - index, id: id.slice(0, 8) })}</Button>{/each}</div>
 					</div>
 				{/if}
 			</section>

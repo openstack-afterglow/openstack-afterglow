@@ -7,6 +7,7 @@
 	import ImageDigest from '$lib/components/image/ImageDigest.svelte';
 	import { imageReferenceParts, imageVerificationStatus } from '$lib/stores/imageCatalog.svelte';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
+	import { t } from '$lib/i18n/ns/images-keys';
 
 	let {
 		img,
@@ -56,9 +57,9 @@
 			checked={selected}
 			disabled={!selectable || selectionDisabled}
 			unavailable={!selectable}
-			title={!selectable ? '현재 프로젝트 소유 이미지만 선택할 수 있습니다.' : undefined}
+			title={!selectable ? t('imageCard.ownerSelectionOnly') : undefined}
 			onclick={onToggleSelect}
-			ariaLabel={`${img.name} 선택`}
+			ariaLabel={t('imageCard.selectImage', { name: img.name })}
 		/>
 		<div class="w-10 h-10 rounded-lg bg-[var(--color-surface-sunken)] border border-[var(--color-line)] flex items-center justify-center overflow-hidden shrink-0">
 			{#if img.os_distro && OS_LOGOS[img.os_distro]}
@@ -76,7 +77,7 @@
 		>
 			<div class="text-[var(--color-ink-0)] text-[13px] font-medium font-mono break-all">{reference.repository}</div>
 			<div class="flex items-start gap-1.5 mt-1 min-w-0">
-				<span class="text-xs text-[var(--color-ink-2)] font-mono shrink-0">tag</span>
+				<span class="text-xs text-[var(--color-ink-2)] font-mono shrink-0">{t('imageCard.tag')}</span>
 				<Pill tone={reference.tag === 'latest' ? 'warm' : 'accent'} size="xs" class="image-tag">{reference.tag}</Pill>
 			</div>
 		</button>
@@ -84,17 +85,17 @@
 
 	<!-- Footer: status + visibility + size -->
 	<div class="flex flex-wrap items-center gap-2 text-xs">
-		<Pill tone={current ? 'accent' : 'neutral'} size="xs">{current ? '현재' : '이전'}</Pill>
+		<Pill tone={current ? 'accent' : 'neutral'} size="xs">{current ? t('imageCard.current') : t('imageCard.previous')}</Pill>
 		<StatusChip status={img.status} />
 		<ImageVerificationBadge status={imageVerificationStatus(img)} />
 		{#if img.visibility === 'public'}
-			<Pill tone="info" size="xs">공개</Pill>
+			<Pill tone="info" size="xs">{t('imageCard.public')}</Pill>
 		{:else if img.visibility === 'shared'}
-			<Pill tone="accent" size="xs">공유</Pill>
+			<Pill tone="accent" size="xs">{t('imageCard.shared')}</Pill>
 		{:else if img.visibility === 'community'}
-			<Pill tone="warm" size="xs">커뮤니티</Pill>
+			<Pill tone="warm" size="xs">{t('imageCard.community')}</Pill>
 		{:else}
-			<Pill tone="neutral" size="xs">비공개</Pill>
+			<Pill tone="neutral" size="xs">{t('imageCard.private')}</Pill>
 		{/if}
 		<span class="ml-auto text-[var(--color-ink-2)]">{formatSize(img.size ?? null)}</span>
 	</div>
@@ -108,17 +109,17 @@
 					onclick={() => onToggleActivation(img)}
 					disabled={toggling}
 					class="text-xs {img.status === 'active' ? 'text-[var(--color-state-warning)] hover:text-[var(--color-warm-2)]' : 'text-[var(--color-state-success)] hover:text-[var(--color-state-success)]'} disabled:text-[var(--color-ink-3)] transition-colors px-2 py-1 rounded hover:bg-[var(--color-surface-sunken)]"
-				>{toggling ? '...' : img.status === 'active' ? '비활성화' : '활성화'}</button>
+				>{toggling ? t('imageCard.toggling') : img.status === 'active' ? t('imageCard.deactivate') : t('imageCard.activate')}</button>
 			{/if}
 			<button
 				onclick={() => onEdit(img)}
 				class="text-xs text-[var(--color-accent)] hover:text-[var(--color-ink-0)] transition-colors px-2 py-1 rounded hover:bg-[var(--color-accent)]/15"
-			>편집</button>
+			>{t('imageCard.edit')}</button>
 			<button
 				onclick={() => onDelete(img.id, img.name)}
 				disabled={deleting}
 				class="text-xs text-[var(--color-state-danger)] hover:text-[var(--color-state-danger)] disabled:text-[var(--color-ink-3)] transition-colors px-2 py-1 rounded hover:bg-[var(--color-state-danger)]/15"
-			>{deleting ? '삭제 중...' : '삭제'}</button>
+			>{deleting ? t('imageCard.deleting') : t('imageCard.delete')}</button>
 		</div>
 	{/if}
 </article>

@@ -12,6 +12,7 @@
   import KeypairListTable from '$lib/components/keypair/KeypairListTable.svelte';
   import KeypairEmptyState from '$lib/components/keypair/KeypairEmptyState.svelte';
   import { toast } from '$lib/stores/toast';
+  import { t } from '$lib/i18n/ns/images-keys';
 
   let keypairs = $state<Keypair[]>([]);
   let loading = $state(true);
@@ -26,7 +27,7 @@
       keypairs = await api.get<Keypair[]>('/api/v1/keypairs', $auth.token ?? undefined, $auth.projectId ?? undefined, opts);
       error = '';
     } catch (e) {
-      error = e instanceof ApiError ? `조회 실패 (${e.status})` : '서버 오류';
+      error = e instanceof ApiError ? t('keypairPage.error.fetchFailed', { status: e.status }) : t('keypairPage.error.server');
     } finally {
       loading = false;
     }
@@ -58,18 +59,18 @@
       await fetchKeypairs();
       return { private_key: result.private_key };
     } catch (e) {
-      return e instanceof ApiError ? e.message : '생성 실패';
+      return e instanceof ApiError ? e.message : t('keypairPage.error.createFailed');
     }
   }
 
   async function deleteKeypair(name: string) {
-    if (!await confirmDialog(`키페어 "${name}"을 삭제하시겠습니까?`)) return;
+    if (!await confirmDialog(t('keypairPage.deleteDialog.body', { name }))) return;
     deleting = name;
     try {
       await api.delete(`/api/v1/keypairs/${name}`, $auth.token ?? undefined, $auth.projectId ?? undefined);
       await fetchKeypairs();
     } catch (e) {
-      toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+      toast.error(t('keypairPage.toast.deleteFailed', { error: e instanceof ApiError ? e.message : String(e) }));
     } finally {
       deleting = null;
     }
@@ -95,12 +96,12 @@
 <KeypairCreateModal bind:open={showModal} onCreate={createKeypair} />
 
 <PageShell class="space-y-4">
-  <PageHeader breadcrumb="COMPUTE / KEYPAIRS" title="키페어">
+  <PageHeader breadcrumb={t('keypairPage.breadcrumb')} title={t('keypairPage.title')}>
     {#snippet actions()}
-      <Button onclick={() => showModal = true} variant="primary">+ 키페어 생성</Button>
+      <Button onclick={() => showModal = true} variant="primary">{t('keypairPage.actions.create')}</Button>
     {/snippet}
   </PageHeader>
-  <ResourceToolbar label="키페어 목록 도구">
+  <ResourceToolbar label={t('keypairPage.toolbar.label')}>
     {#snippet actions()}
       <AutoRefreshControl
         bind:active={ar.active}

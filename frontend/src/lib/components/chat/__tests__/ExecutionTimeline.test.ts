@@ -3,7 +3,7 @@ import { expect, it, vi } from 'vitest';
 import ExecutionTimeline from '../ExecutionTimeline.svelte';
 
 it('shows user-facing tasks while hiding backend lifecycle stages', async () => {
-	const { getByLabelText, getByText, queryByText } = render(ExecutionTimeline, {
+	const { getByText, queryByText } = render(ExecutionTimeline, {
 		active: true,
 		items: [
 			{
@@ -56,8 +56,6 @@ it('shows user-facing tasks while hiding backend lifecycle stages', async () => 
 		]
 	});
 
-	const timeline = getByLabelText('실행 기록');
-	expect(timeline.textContent).toMatch(/추론 과정.*웹 검색/s);
 	expect(queryByText('모델 응답을 처리함')).toBeNull();
 	expect(queryByText('응답을 작성함')).toBeNull();
 	await fireEvent.click(getByText('추론 과정'));

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/dashboard-home';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import ProjectsSection from '$lib/components/account/ProjectsSection.svelte';
 	import ProjectSettingsSection from '$lib/components/account/ProjectSettingsSection.svelte';
@@ -11,11 +12,11 @@
 			class="inline-flex items-center gap-1.5 text-xs text-ink-2 hover:text-ink-0 transition-colors px-2.5 py-1.5 rounded-md hover:bg-surface-sunken"
 		>
 			<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
-			대시보드로 돌아가기
+			{t('projectSettings.back')}
 		</a>
 	</div>
 
-	<PageHeader breadcrumb="" title="프로젝트 설정" />
+	<PageHeader breadcrumb="" title={t('projectSettings.title')} />
 	<div class="grid grid-cols-1 gap-4">
 		<ProjectsSection />
 		<ProjectSettingsSection />

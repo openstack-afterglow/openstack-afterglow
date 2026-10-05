@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/containers-shell';
 	import { useContainerDetailController } from '$lib/stores/containerDetailController.svelte';
 
 	const s = useContainerDetailController();
@@ -6,7 +7,7 @@
 
 {#if s.container?.addresses && Object.keys(s.container.addresses).length > 0}
 	<div class="bg-surface-base border border-line rounded-xl p-4">
-		<h3 class="text-xs text-ink-2 uppercase tracking-wide mb-3">네트워크</h3>
+		<h3 class="text-xs text-ink-2 uppercase tracking-wide mb-3">{t('container.network')}</h3>
 		<div class="space-y-1.5 text-xs">
 			{#each Object.entries(s.container.addresses) as [netName, addrs]}
 				{#each addrs as a}

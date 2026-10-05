@@ -837,14 +837,6 @@ test("Kolla plugin lifecycle integrates inventory preflight, pull semantics, and
 	assert.doesNotMatch(afterglowPrecheck, /WARN|WARNING/)
 
 	const afterglowDefaults = readRepoFile("deploy/kolla/ansible/roles/afterglow/defaults/main.yml")
-	const sampleGlobals = readRepoFile("deploy/kolla/globals.afterglow.sample.yml")
-	const releaseVersion = JSON.parse(readRepoFile("package.json")).version
-	const escapedReleaseVersion = releaseVersion.replaceAll(".", "\\.")
-	assert.match(sampleGlobals, new RegExp(`^afterglow_image_tag:\\s*"v${escapedReleaseVersion}"$`, "m"))
-	assert.match(sampleGlobals, /^afterglow_backend_image_ref: "\{\{ afterglow_backend_image \}\}:\{\{ afterglow_image_tag \}\}"$/m)
-	assert.match(sampleGlobals, /^afterglow_frontend_image_ref: "\{\{ afterglow_frontend_image \}\}:\{\{ afterglow_image_tag \}\}"$/m)
-	assert.match(sampleGlobals, /^afterglow_worker_image_ref: "\{\{ afterglow_worker_image \}\}:\{\{ afterglow_image_tag \}\}"$/m)
-	assert.match(sampleGlobals, /^drover_api_image_ref:.*(?:@sha256:|:(?:v)?\d)/m)
 	const afterglowStart = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/start.yml")
 	const serviceMapStart = afterglowDefaults.indexOf("afterglow_services:")
 	const environmentMapStart = afterglowDefaults.indexOf("afterglow_service_environments:")

@@ -6,6 +6,7 @@
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
+	import { t } from '$lib/i18n/ns/admin-identity';
 
 	interface Role {
 		id: string;
@@ -40,7 +41,7 @@
 </script>
 
 <div class="p-4 md:p-6 max-w-7xl mx-auto">
-	<PageHeader breadcrumb="IDENTITY / ROLES" title="역할">
+	<PageHeader breadcrumb={t('rolePage.breadcrumb')} title={t('rolePage.title')}>
 		{#snippet actions()}
 			<AutoRefreshControl
 				bind:active={ar.active}
@@ -55,13 +56,13 @@
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if roles.length === 0}
-		<div class="text-ink-2 text-sm">역할이 없습니다</div>
+		<div class="text-ink-2 text-sm">{t('rolePage.empty')}</div>
 	{:else}
 		<div class="bg-surface-base border border-line rounded-lg p-5 overflow-x-auto">
 			<table class="w-full text-sm">
 				<thead>
 					<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
-						<th class="text-left py-2 pr-4">이름</th>
+						<th class="text-left py-2 pr-4">{t('form.name')}</th>
 						<th class="text-left py-2">ID</th>
 					</tr>
 				</thead>

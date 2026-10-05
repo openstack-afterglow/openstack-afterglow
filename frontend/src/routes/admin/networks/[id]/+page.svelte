@@ -11,6 +11,7 @@
 	import RouterTable from '$lib/components/admin/networks/RouterTable.svelte';
 	import type { AdminNetworkDetail } from '$lib/types/networks';
 	import { toast } from '$lib/stores/toast';
+	import { t } from '$lib/i18n/ns/admin-network';
 
 	let network = $state<AdminNetworkDetail | null>(null);
 	let loading = $state(true);
@@ -37,7 +38,7 @@
 		try {
 			network = await api.get<AdminNetworkDetail>(`/api/v1/admin/networks/${id}`, token, projectId);
 		} catch (e) {
-			error = e instanceof ApiError ? `조회 실패 (${e.status}): ${e.message}` : '서버 오류';
+			error = e instanceof ApiError ? t('networkDetailPage.error.fetchFailed', { status: e.status, message: e.message }) : t('networkDetailPage.error.server');
 		} finally {
 			loading = false;
 		}
@@ -45,13 +46,13 @@
 
 	async function deleteNetwork() {
 		if (!network) return;
-		if (!await confirmDialog(`네트워크 "${network.name || network.id}"를 삭제하시겠습니까?`)) return;
+		if (!await confirmDialog(t('networkDetailPage.deleteDialog.body', { name: network.name || network.id }))) return;
 		deleting = true;
 		try {
 			await api.delete(`/api/v1/admin/networks/${network.id}`, token, projectId);
 			goto('/admin/networks');
 		} catch (e) {
-			toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('networkDetailPage.error.deleteFailed', { message: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			deleting = false;
 		}
@@ -75,7 +76,7 @@
 			await fetchNetwork(network.id);
 			return true;
 		} catch (e) {
-			subnetError = e instanceof ApiError ? e.message : '서브넷 생성 실패';
+			subnetError = e instanceof ApiError ? e.message : t('networkDetailPage.error.subnetCreateFailed');
 			return false;
 		} finally {
 			addingSubnet = false;
@@ -98,7 +99,7 @@
 			await fetchNetwork(network!.id);
 			return true;
 		} catch (e) {
-			editSubnetError = e instanceof ApiError ? e.message : '서브넷 업데이트 실패';
+			editSubnetError = e instanceof ApiError ? e.message : t('networkDetailPage.error.subnetUpdateFailed');
 			return false;
 		} finally {
 			savingSubnet = false;
@@ -106,13 +107,13 @@
 	}
 
 	async function deleteSubnet(subnetId: string, subnetName: string) {
-		if (!await confirmDialog(`서브넷 "${subnetName || subnetId.slice(0, 8)}"를 삭제하시겠습니까?`)) return;
+		if (!await confirmDialog(t('networkDetailPage.subnetDeleteDialog.body', { name: subnetName || subnetId.slice(0, 8) }))) return;
 		deletingSubnetId = subnetId;
 		try {
 			await api.delete(`/api/v1/networks/subnets/${subnetId}`, token, projectId);
 			await fetchNetwork(network!.id);
 		} catch (e) {
-			toast.error('서브넷 삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('networkDetailPage.error.subnetDeleteFailed', { message: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			deletingSubnetId = null;
 		}
@@ -122,7 +123,7 @@
 <div class="p-4 md:p-6 max-w-5xl mx-auto">
 	<div class="mb-6">
 		<a href="/admin/networks" class="text-ink-2 hover:text-ink-1 text-sm transition-colors">
-			← 네트워크 목록
+			{t('networkDetailPage.backToList')}
 		</a>
 	</div>
 

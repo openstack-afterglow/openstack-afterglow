@@ -1,4 +1,5 @@
 import { api, ApiError } from '$lib/api/client';
+import { t } from '$lib/i18n/ns/admin-system';
 import type {
 	AnnouncementAdmin,
 	AnnouncementCreatePayload,
@@ -53,7 +54,7 @@ export function createAdminAnnouncementsController(opts: AdminAnnouncementsContr
 		try {
 			announcements = await api.get<AnnouncementAdmin[]>('/api/v1/admin/announcements', tok(), pid());
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : '공지 목록 조회 실패';
+			error = e instanceof ApiError ? e.message : t('announcements.error.loadFailed');
 		} finally {
 			loading = false;
 			refreshing = false;
@@ -77,7 +78,7 @@ export function createAdminAnnouncementsController(opts: AdminAnnouncementsContr
 			const res = await api.get<{ items: PickerUser[] }>('/api/v1/admin/users?limit=100', tok(), pid());
 			allUsers = res.items;
 		} catch {
-			usersError = '유저 목록을 불러오지 못했습니다';
+			usersError = t('announcements.error.usersLoadFailed');
 		} finally {
 			usersLoading = false;
 		}
@@ -90,7 +91,7 @@ export function createAdminAnnouncementsController(opts: AdminAnnouncementsContr
 		try {
 			allProjects = await api.get<PickerProject[]>('/api/v1/admin/projects/names', tok(), pid());
 		} catch {
-			projectsError = '프로젝트 목록을 불러오지 못했습니다';
+			projectsError = t('announcements.error.projectsLoadFailed');
 		} finally {
 			projectsLoading = false;
 		}
@@ -104,7 +105,7 @@ export function createAdminAnnouncementsController(opts: AdminAnnouncementsContr
 			await load();
 			return true;
 		} catch (e) {
-			createError = e instanceof ApiError ? e.message : '공지 생성 실패';
+			createError = e instanceof ApiError ? e.message : t('announcements.error.createFailed');
 			return false;
 		} finally {
 			creating = false;
@@ -118,7 +119,7 @@ export function createAdminAnnouncementsController(opts: AdminAnnouncementsContr
 			await api.patch(`/api/v1/admin/announcements/${target.id}`, { is_active: !target.is_active }, tok(), pid());
 			await load();
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : '공지 상태 변경 실패';
+			error = e instanceof ApiError ? e.message : t('announcements.error.toggleFailed');
 		} finally {
 			togglingId = null;
 		}
@@ -133,7 +134,7 @@ export function createAdminAnnouncementsController(opts: AdminAnnouncementsContr
 			deleteTarget = null;
 			await load();
 		} catch (e) {
-			deleteError = e instanceof ApiError ? e.message : '공지 삭제 실패';
+			deleteError = e instanceof ApiError ? e.message : t('announcements.error.deleteFailed');
 		} finally {
 			deleting = false;
 		}

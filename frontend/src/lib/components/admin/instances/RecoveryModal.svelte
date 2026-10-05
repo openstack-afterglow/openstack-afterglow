@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-compute';
+	import RichText from '$lib/i18n/RichText.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
 	import type { RecoveryAnalysis, RecoveryResult } from '$lib/types/adminInstance';
@@ -23,12 +25,12 @@
 	let errorMsg = $state('');
 	let confirmed = $state(false);
 
-	const scenarioLabels: Record<string, string> = {
-		migration_failed_volume_stuck: '마이그레이션 실패 + 볼륨 고착',
-		volume_stuck: '볼륨 고착',
-		generic_error: '일반 ERROR',
-		manual_review: '수동 점검 필요',
-	};
+	const scenarioLabels = $derived<Record<string, string>>({
+		migration_failed_volume_stuck: t('instances.recovery.scenario.migrationVolume'),
+		volume_stuck: t('instances.recovery.scenario.volume'),
+		generic_error: t('instances.recovery.scenario.error'),
+		manual_review: t('instances.recovery.scenario.manual'),
+	});
 
 	async function load() {
 		phase = 'loading';
@@ -40,7 +42,7 @@
 			);
 			phase = 'analyzed';
 		} catch (e: unknown) {
-			errorMsg = e instanceof Error ? e.message : '복구 분석 중 오류가 발생했습니다';
+			errorMsg = e instanceof Error ? e.message : t('instances.recovery.analysisFailed');
 			phase = 'error';
 		}
 	}
@@ -58,7 +60,7 @@
 			phase = 'done';
 			if (result?.executed && onRecovered) onRecovered();
 		} catch (e: unknown) {
-			errorMsg = e instanceof Error ? e.message : '복구 실행 중 오류가 발생했습니다';
+			errorMsg = e instanceof Error ? e.message : t('instances.recovery.executeFailed');
 			phase = 'error';
 		}
 	}
@@ -72,17 +74,17 @@
 	class="material-scrim fixed inset-0 z-50 flex items-center justify-center bg-surface-scrim/60 p-4"
 	role="dialog"
 	aria-modal="true"
-	aria-label="인스턴스 복구"
+	aria-label={t('instances.recovery.label')}
 	tabindex="-1"
 >
 	<div class="bg-surface-base border border-line-2 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-[var(--shadow-restraint)]">
 		<!-- 헤더 -->
 		<div class="flex items-center justify-between px-6 py-4 border-b border-line">
 			<div>
-				<h2 class="text-ink-0 font-semibold text-base">인스턴스 복구 분석</h2>
+				<h2 class="text-ink-0 font-semibold text-base">{t('instances.recovery.title')}</h2>
 				<p class="text-ink-2 text-xs mt-0.5 font-mono">{serverName} · {serverId.slice(0, 8)}</p>
 			</div>
-			<button onclick={onClose} aria-label="대화상자 닫기" class="text-ink-2 hover:text-ink-1 transition-colors text-lg leading-none">✕</button>
+			<button onclick={onClose} aria-label={t('instances.closeDialog')} class="text-ink-2 hover:text-ink-1 transition-colors text-lg leading-none">✕</button>
 		</div>
 
 		<div class="px-6 py-5 space-y-5">
@@ -94,7 +96,7 @@
 						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
 						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
 					</svg>
-					복구 가능 여부 분석 중…
+					{t('instances.recovery.analyzing')}
 				</div>
 
 			<!-- 오류 -->
@@ -109,14 +111,14 @@
 				<!-- fault 메시지 -->
 				{#if analysis.server.fault?.message}
 					<div class="bg-surface-sunken border border-line-2 rounded-lg px-4 py-3">
-						<div class="text-xs text-ink-2 mb-1 font-medium">FAULT 메시지</div>
+						<div class="text-xs text-ink-2 mb-1 font-medium">{t('instances.recovery.faultMessage')}</div>
 						<div class="text-red-300 text-xs font-mono break-all leading-relaxed">{analysis.server.fault.message}</div>
 					</div>
 				{/if}
 
 				<!-- 안전 검사 체크리스트 -->
 				<div>
-					<div class="text-xs font-medium text-ink-2 uppercase tracking-wide mb-2">안전 검사</div>
+					<div class="text-xs font-medium text-ink-2 uppercase tracking-wide mb-2">{t('instances.recovery.safetyChecks')}</div>
 					<div class="space-y-1.5">
 						{#each analysis.checks as check (check.key)}
 							<div class="flex items-start gap-2.5 text-sm">
@@ -139,7 +141,7 @@
 				<!-- 시나리오 -->
 				<div class="bg-surface-sunken border border-line-2 rounded-lg px-4 py-3">
 					<div class="flex items-center gap-2 mb-1">
-						<span class="text-xs text-ink-2 uppercase tracking-wide font-medium">시나리오</span>
+						<span class="text-xs text-ink-2 uppercase tracking-wide font-medium">{t('instances.recovery.scenarioLabel')}</span>
 						<span class="text-xs px-1.5 py-0.5 rounded bg-surface-selected text-ink-2 font-mono">{scenarioLabels[analysis.scenario] ?? analysis.scenario}</span>
 					</div>
 					<p class="text-ink-2 text-sm leading-relaxed">{analysis.scenario_description}</p>
@@ -148,7 +150,7 @@
 				<!-- 권장 단계 (실행 전) -->
 				{#if phase === 'analyzed' || phase === 'executing'}
 					<div>
-						<div class="text-xs font-medium text-ink-2 uppercase tracking-wide mb-2">권장 복구 단계</div>
+						<div class="text-xs font-medium text-ink-2 uppercase tracking-wide mb-2">{t('instances.recovery.recommendedSteps')}</div>
 						<div class="space-y-1.5">
 							{#each analysis.steps as step, i (i)}
 								{#if step.action !== 'manual'}
@@ -167,7 +169,7 @@
 				<!-- 실행 결과 -->
 				{#if phase === 'done' && result}
 					<div>
-						<div class="text-xs font-medium text-ink-2 uppercase tracking-wide mb-2">실행 결과</div>
+						<div class="text-xs font-medium text-ink-2 uppercase tracking-wide mb-2">{t('instances.recovery.results')}</div>
 						<div class="space-y-1.5">
 							{#each result.steps as step, i (i)}
 								<div class="flex items-start gap-2.5 text-sm">
@@ -191,11 +193,11 @@
 						</div>
 						{#if result.executed}
 							<div class="mt-3 bg-green-900/30 border border-green-700/50 text-green-300 rounded-lg px-4 py-2.5 text-sm">
-								복구가 완료되었습니다. 인스턴스 상태를 확인하세요.
+								{t('instances.recovery.complete')}
 							</div>
 						{:else}
 							<div class="mt-3 bg-red-900/30 border border-red-700/50 text-red-300 rounded-lg px-4 py-2.5 text-sm">
-								복구 중 오류가 발생했습니다. 위 결과를 확인하세요.
+								{t('instances.recovery.failed')}
 							</div>
 						{/if}
 					</div>
@@ -204,17 +206,17 @@
 				<!-- placement 안내 -->
 				{#if analysis.placement_note}
 					<div class="bg-surface-selected/20 border border-action-warm/40 text-warm-text rounded-lg px-4 py-3 text-xs leading-relaxed">
-						<span class="font-medium">Placement 주의:</span> {analysis.placement_note}
+						{#snippet placementWarning(text: string)}<span class="font-medium">{text}</span>{/snippet}
+						<RichText segments={t.rich('instances.recovery.placementNote', { note: analysis.placement_note })} tags={{ warning: placementWarning }} />
 					</div>
 				{/if}
 
 				<!-- 수동 점검 안내 -->
 				{#if !analysis.auto_executable && phase === 'analyzed'}
 					<div class="bg-surface-sunken border border-action-warm/40 text-warm-text rounded-lg px-4 py-3 text-sm">
-						<div class="font-medium mb-1">수동 점검이 필요합니다</div>
+						<div class="font-medium mb-1">{t('instances.recovery.manualTitle')}</div>
 						<div class="text-xs text-warm-text/70">
-							위 안전 검사를 통과하지 못해 자동 복구를 실행할 수 없습니다.
-							실패한 항목을 확인하고 직접 복구하세요.
+							{t('instances.recovery.manualHelp')}
 						</div>
 					</div>
 				{/if}
@@ -227,14 +229,14 @@
 			{#if phase === 'analyzed' && analysis?.auto_executable}
 				<label class="flex items-center gap-2 text-sm text-ink-2 cursor-pointer select-none">
 					<input type="checkbox" bind:checked={confirmed} class="rounded border-line-2 bg-surface-sunken text-red-500 focus:ring-red-500 focus:ring-1" />
-					<span>프로덕션 인스턴스 상태를 강제 변경합니다. 이 작업은 되돌리기 어렵습니다.</span>
+					<span>{t('instances.recovery.confirm')}</span>
 				</label>
 				<button
 					onclick={execute}
 					disabled={!confirmed}
 					class="shrink-0 px-4 py-2 bg-red-700 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-ink-0 text-sm font-medium rounded-lg transition-colors"
 				>
-					복구 실행
+					{t('instances.recovery.execute')}
 				</button>
 			{:else if phase === 'executing'}
 				<div class="flex items-center gap-2 text-ink-2 text-sm">
@@ -242,13 +244,13 @@
 						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
 						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
 					</svg>
-					복구 실행 중…
+					{t('instances.recovery.executing')}
 				</div>
 				<div></div>
 			{:else}
 				<div></div>
 				<button onclick={onClose} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg transition-colors">
-					닫기
+					{t('instances.close')}
 				</button>
 			{/if}
 		</div>

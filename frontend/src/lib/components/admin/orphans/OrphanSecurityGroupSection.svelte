@@ -1,6 +1,8 @@
 <script lang="ts">
 	import OrphanSection from './OrphanSection.svelte';
 	import type { OrphanSecurityGroupInfo } from '$lib/types/orphan';
+	import { t } from '$lib/i18n/ns/admin-storage';
+	import RichText from '$lib/i18n/RichText.svelte';
 
 	let {
 		items,
@@ -14,24 +16,24 @@
 </script>
 
 <OrphanSection
-	title="고아 Security Group"
+	title={t('orphanSecurityGroup.title')}
 	{items}
 	bind:selected
-	emptyMessage="afterglow-managed marker가 있는 미부착 SG 없음."
+	emptyMessage={t('orphanSecurityGroup.empty')}
 	{onCleanup}
 >
 	{#snippet headerNote()}
 		<div class="text-xs text-ink-2 mb-2">
-			※ description에 <code class="text-ink-2">[afterglow-managed]</code> 마커가 있고 어떤 port에도 attach되지 않은 SG만 후보.
+			<RichText segments={t.rich('orphanSecurityGroup.note')} classes={{ code: 'text-ink-2' }} />
 		</div>
 	{/snippet}
 	{#snippet headers()}
-		<th class="text-left py-2 pr-4">이름</th>
-		<th class="text-left py-2 pr-4">설명</th>
-		<th class="text-left py-2 pr-4">프로젝트</th>
-		<th class="text-left py-2 pr-4">생성일</th>
-		<th class="text-left py-2 pr-4">연령(일)</th>
-		<th class="text-left py-2 pr-4">ID</th>
+		<th class="text-left py-2 pr-4">{t('orphanSecurityGroup.column.name')}</th>
+		<th class="text-left py-2 pr-4">{t('orphanSecurityGroup.column.description')}</th>
+		<th class="text-left py-2 pr-4">{t('orphanSecurityGroup.column.project')}</th>
+		<th class="text-left py-2 pr-4">{t('orphanSecurityGroup.column.createdAt')}</th>
+		<th class="text-left py-2 pr-4">{t('orphanSecurityGroup.column.ageDays')}</th>
+		<th class="text-left py-2 pr-4">{t('orphanSecurityGroup.column.id')}</th>
 	{/snippet}
 	{#snippet row(g)}
 		<td class="py-2 pr-4 text-ink-1">{g.name}</td>

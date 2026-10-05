@@ -1,3 +1,4 @@
+import { t as tr } from '$lib/i18n/ns/database';
 import { getContext, setContext } from 'svelte';
 import { api, ApiError } from '$lib/api/client';
 import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
@@ -116,9 +117,9 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 				tok, proj
 			);
 			autoBackupConfig = cfg;
-			toast.success('자동 백업 설정이 저장되었습니다.');
+			toast.success(tr('auto.saved'));
 		} catch (e) {
-			toast.error('자동 백업 설정 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(tr('errors.autoSave', { error: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			savingAutoBackup = false;
 		}
@@ -132,9 +133,9 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 		try {
 			await api.delete(`/api/v1/database-instances/${id}/auto-backup`, tok, proj);
 			autoBackupConfig = null;
-			toast.success('자동 백업이 비활성화되었습니다.');
+			toast.success(tr('auto.disabled'));
 		} catch (e) {
-			toast.error('자동 백업 비활성화 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(tr('errors.autoDisable', { error: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			savingAutoBackup = false;
 		}
@@ -200,7 +201,7 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 		try {
 			await api.post(`/api/v1/database-instances/${id}/floating-ip`, {}, tok, proj);
 			floatingIps = await api.get<FloatingIp[]>('/api/v1/networks/floating-ips', tok, proj);
-		} catch (e) { fipError = e instanceof ApiError ? e.message : '실패'; }
+		} catch (e) { fipError = e instanceof ApiError ? e.message : tr('errors.failed'); }
 		finally { attachingFip = false; }
 	}
 
@@ -208,8 +209,7 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 		const id = opts.instanceId();
 		const tok = opts.token();
 		const proj = opts.projectId();
-		const verb = deleteFip ? '삭제' : '해제';
-		if (!(await confirmDialog(`이 인스턴스의 floating IP를 ${verb}하시겠습니까?`))) return;
+		if (!(await confirmDialog(deleteFip ? tr('connection.deleteConfirm') : tr('connection.detachConfirm')))) return;
 		detachingFip = true; fipError = '';
 		try {
 			await api.delete(
@@ -217,7 +217,7 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 				tok, proj
 			);
 			floatingIps = await api.get<FloatingIp[]>('/api/v1/networks/floating-ips', tok, proj);
-		} catch (e) { fipError = e instanceof ApiError ? e.message : '실패'; }
+		} catch (e) { fipError = e instanceof ApiError ? e.message : tr('errors.failed'); }
 		finally { detachingFip = false; }
 	}
 
@@ -225,13 +225,13 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 		const id = opts.instanceId();
 		const tok = opts.token();
 		const proj = opts.projectId();
-		if (!(await confirmDialog(`DB 인스턴스 "${instance?.name}"를 삭제하시겠습니까?`))) return;
+		if (!(await confirmDialog(tr('instances.deleteConfirm', { name: String(instance?.name) })))) return;
 		deleting = true;
 		try {
 			await api.delete(`/api/v1/database-instances/${id}`, tok, proj);
 			opts.onDeleted?.();
 		} catch (e) {
-			toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(tr('errors.delete', { error: e instanceof ApiError ? e.message : String(e) }));
 			deleting = false;
 		}
 	}
@@ -246,7 +246,7 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 				`/api/v1/database-instances/${id}/root`, {}, tok, proj
 			);
 		} catch (e) {
-			toast.error('root 활성화 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(tr('errors.root', { error: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			enablingRoot = false;
 		}
@@ -265,7 +265,7 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 			await api.post(`/api/v1/database-instances/${id}/databases`, payload, tok, proj);
 			databases = await api.get<DbDatabase[]>(`/api/v1/database-instances/${id}/databases`, tok, proj);
 			return true;
-		} catch (e) { dbError = e instanceof ApiError ? e.message : '실패'; return false; }
+		} catch (e) { dbError = e instanceof ApiError ? e.message : tr('errors.failed'); return false; }
 		finally { creatingDb = false; }
 	}
 
@@ -273,12 +273,12 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 		const id = opts.instanceId();
 		const tok = opts.token();
 		const proj = opts.projectId();
-		if (!(await confirmDialog(`데이터베이스 "${name}"를 삭제하시겠습니까?`))) return;
+		if (!(await confirmDialog(tr('databases.deleteConfirm', { name: name })))) return;
 		deletingDb = name;
 		try {
 			await api.delete(`/api/v1/database-instances/${id}/databases/${encodeURIComponent(name)}`, tok, proj);
 			databases = databases.filter(d => d.name !== name);
-		} catch (e) { toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e))); }
+		} catch (e) { toast.error(tr('errors.delete', { error: e instanceof ApiError ? e.message : String(e) })); }
 		finally { deletingDb = null; }
 	}
 
@@ -296,7 +296,7 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 			}, tok, proj);
 			users = await api.get<DbUser[]>(`/api/v1/database-instances/${id}/users`, tok, proj);
 			return true;
-		} catch (e) { userError = e instanceof ApiError ? e.message : '실패'; return false; }
+		} catch (e) { userError = e instanceof ApiError ? e.message : tr('errors.failed'); return false; }
 		finally { creatingUser = false; }
 	}
 
@@ -306,14 +306,14 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 		const proj = opts.projectId();
 		const host = u.host || '%';
 		const label = host !== '%' ? `${u.name}@${host}` : u.name;
-		if (!(await confirmDialog(`유저 "${label}"를 삭제하시겠습니까?`))) return;
+		if (!(await confirmDialog(tr('users.deleteConfirm', { name: label })))) return;
 		deletingUser = label;
 		try {
 			const url = `/api/v1/database-instances/${id}/users/${encodeURIComponent(u.name)}`
 				+ `?host=${encodeURIComponent(host)}`;
 			await api.delete(url, tok, proj);
 			users = users.filter(x => !(x.name === u.name && x.host === u.host));
-		} catch (e) { toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e))); }
+		} catch (e) { toast.error(tr('errors.delete', { error: e instanceof ApiError ? e.message : String(e) })); }
 		finally { deletingUser = null; }
 	}
 
@@ -339,7 +339,7 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 			} catch { /* 목록 재조회 실패 시 아래 에러 표시로 진행 */ }
 			backupError = e instanceof ApiError
 				? e.message
-				: '요청 시간이 초과됐습니다. 백업이 생성됐을 수 있으니 목록을 확인하세요.';
+				: tr('backups.timeout');
 			return false;
 		} finally { creatingBackup = false; }
 	}
@@ -347,8 +347,8 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 	async function deleteBackup(backupId: string) {
 		const isLast = backups.length === 1;
 		const msg = isLast
-			? '마지막 백업입니다. 삭제하면 복구 수단이 없습니다. 정말 삭제하시겠습니까?'
-			: '백업을 삭제하시겠습니까?';
+			? tr('backups.deleteLast')
+			: tr('backups.deleteConfirm');
 		if (!(await confirmDialog(msg))) return;
 		const tok = opts.token();
 		const proj = opts.projectId();
@@ -356,7 +356,7 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 		try {
 			await api.delete(`/api/v1/database-instances/backups/${backupId}`, tok, proj);
 			backups = backups.filter(b => b.id !== backupId);
-		} catch (e) { toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e))); }
+		} catch (e) { toast.error(tr('errors.delete', { error: e instanceof ApiError ? e.message : String(e) })); }
 		finally { deletingBackup = null; }
 	}
 
@@ -370,9 +370,9 @@ export function createDbInstanceDetailController(opts: DbInstanceDetailControlle
 				flavor_id: flavorId,
 				volume_size: volumeSize,
 			}, tok, proj);
-			toast.success('복원 인스턴스 생성이 시작되었습니다.');
+			toast.success(tr('restore.started'));
 			opts.onDeleted?.();
-		} catch (e) { toast.error('복원 실패: ' + (e instanceof ApiError ? e.message : String(e))); }
+		} catch (e) { toast.error(tr('errors.restore', { error: e instanceof ApiError ? e.message : String(e) })); }
 		finally { restoringBackup = null; }
 	}
 

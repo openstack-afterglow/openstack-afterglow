@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/object-storage';
 	import { validateBucketName } from '$lib/utils/bucketName';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 
@@ -58,14 +59,14 @@
 			onclick={(e) => e.stopPropagation()}
 			role="none"
 		>
-			<h2 class="text-lg font-semibold text-ink-0 mb-4">버킷 생성</h2>
+			<h2 class="text-lg font-semibold text-ink-0 mb-4">{t('buckets.createDialog.title')}</h2>
 			<div class="space-y-3">
 				<div>
-					<label class="block text-xs text-ink-2 mb-1" for="field-bucketcreatedialog-62">이름</label>
+					<label class="block text-xs text-ink-2 mb-1" for="field-bucketcreatedialog-62">{t('buckets.createDialog.name')}</label>
 					<input id="field-bucketcreatedialog-62"
 						type="text"
 						bind:value={name}
-						placeholder="my-container"
+						placeholder={t('buckets.createDialog.placeholder')}
 						class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 focus:outline-none focus:border-indigo-500"
 						onkeydown={(e) => e.key === 'Enter' && submit()}
 					/>
@@ -78,12 +79,12 @@
 				<button
 					onclick={() => (open = false)}
 					class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 border border-line-2 rounded-lg transition-colors"
-				>취소</button>
+				>{t('buckets.createDialog.cancel')}</button>
 				<button
 					onclick={submit}
 					disabled={creating || !name.trim()}
 					class="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:bg-surface-selected disabled:text-ink-3 text-ink-0 rounded-lg transition-colors"
-				>{creating ? '생성 중...' : '생성'}</button>
+				>{creating ? t('buckets.createDialog.creating') : t('buckets.createDialog.create')}</button>
 			</div>
 		</div>
 	</div>

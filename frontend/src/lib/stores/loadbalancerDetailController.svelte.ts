@@ -1,3 +1,4 @@
+import { t as tr } from '$lib/i18n/ns/network-resources';
 import { getContext, setContext, untrack } from 'svelte';
 import { api, ApiError } from '$lib/api/client';
 import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -80,7 +81,7 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
           .catch(() => {});
       }
     } catch (e) {
-      error = e instanceof ApiError ? e.message : '조회 실패';
+      error = e instanceof ApiError ? e.message : tr('lb.errors.loadFailed');
     } finally {
       loading = false;
     }
@@ -101,7 +102,7 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
       await fetchAll();
       return true;
     } catch (e) {
-      toast.error('리스너 생성 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+      toast.error(tr('lb.errors.createListenerFailed', { error: e instanceof ApiError ? e.message : String(e) }));
       return false;
     } finally {
       saving = false;
@@ -109,7 +110,7 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
   }
 
   async function deleteListener(listenerId: string) {
-    if (!(await confirmDialog('리스너를 삭제하시겠습니까?'))) return;
+    if (!(await confirmDialog(tr('lb.confirm.deleteListener')))) return;
     saving = true;
     try {
       await api.delete(
@@ -119,7 +120,7 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
       );
       await fetchAll();
     } catch (e) {
-      toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+      toast.error(tr('lb.errors.deleteFailed', { error: e instanceof ApiError ? e.message : String(e) }));
     } finally {
       saving = false;
     }
@@ -144,7 +145,7 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
       await fetchAll();
       return true;
     } catch (e) {
-      toast.error('풀 생성 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+      toast.error(tr('lb.errors.createPoolFailed', { error: e instanceof ApiError ? e.message : String(e) }));
       return false;
     } finally {
       saving = false;
@@ -152,7 +153,7 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
   }
 
   async function deletePool(poolId: string) {
-    if (!(await confirmDialog('풀을 삭제하시겠습니까?'))) return;
+    if (!(await confirmDialog(tr('lb.confirm.deletePool')))) return;
     saving = true;
     try {
       await api.delete(
@@ -163,7 +164,7 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
       if (selectedPoolId === poolId) selectedPoolId = null;
       await fetchAll();
     } catch (e) {
-      toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+      toast.error(tr('lb.errors.deleteFailed', { error: e instanceof ApiError ? e.message : String(e) }));
     } finally {
       saving = false;
     }
@@ -197,7 +198,7 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
       );
       return true;
     } catch (e) {
-      toast.error('멤버 추가 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+      toast.error(tr('lb.errors.addMemberFailed', { error: e instanceof ApiError ? e.message : String(e) }));
       return false;
     } finally {
       saving = false;
@@ -205,7 +206,7 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
   }
 
   async function removeMember(memberId: string) {
-    if (!selectedPoolId || !(await confirmDialog('멤버를 제거하시겠습니까?'))) return;
+    if (!selectedPoolId || !(await confirmDialog(tr('lb.confirm.removeMember')))) return;
     saving = true;
     try {
       await api.delete(
@@ -215,7 +216,7 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
       );
       selectedPoolMembers = selectedPoolMembers.filter((m) => m.id !== memberId);
     } catch (e) {
-      toast.error('제거 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+      toast.error(tr('lb.errors.removeFailed', { error: e instanceof ApiError ? e.message : String(e) }));
     } finally {
       saving = false;
     }
@@ -235,7 +236,7 @@ export function createLoadbalancerDetailController(opts: LoadbalancerDetailContr
       await api.delete(`/api/v1/loadbalancers/${id}`, opts.token(), opts.projectId());
       opts.onDeleted?.();
     } catch (e) {
-      toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+      toast.error(tr('lb.errors.deleteFailed', { error: e instanceof ApiError ? e.message : String(e) }));
       saving = false;
     }
   }
@@ -289,6 +290,6 @@ export function provideLoadbalancerDetailController(store: LoadbalancerDetailCon
 
 export function useLoadbalancerDetailController(): LoadbalancerDetailController {
   const store = getContext<LoadbalancerDetailController | undefined>(LB_DETAIL_KEY);
-  if (!store) throw new Error('useLoadbalancerDetailController must be called within LoadBalancerDetailPanel');
+  if (!store) throw new Error(tr('lb.errors.missingController'));
   return store;
 }

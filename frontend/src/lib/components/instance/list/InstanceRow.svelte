@@ -1,11 +1,15 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/instance';
 	import type { Instance } from '$lib/types/compute';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import InstanceIpCell from './InstanceIpCell.svelte';
 	import InstanceRowActions from './InstanceRowActions.svelte';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
 
-	const strategyLabel: Record<string, string> = { prebuilt: '사전 빌드', dynamic: '동적 생성' };
+	const strategyKeys: Record<string, 'row.strategy.prebuilt' | 'row.strategy.dynamic'> = {
+		prebuilt: 'row.strategy.prebuilt',
+		dynamic: 'row.strategy.dynamic',
+	};
 
 	let {
 		instance,
@@ -34,9 +38,9 @@
 			checked={selected}
 			disabled={!selectable || selectionDisabled}
 			unavailable={!selectable}
-			title={!selectable ? '현재 상태에서는 선택할 수 없습니다.' : undefined}
+			title={!selectable ? t('row.selectionUnavailable') : undefined}
 			onclick={onToggleSelect}
-			ariaLabel={`${instance.name || instance.id} 선택`}
+			ariaLabel={t('row.select', { name: instance.name || instance.id })}
 		/>
 	</td>
 	<td>
@@ -55,12 +59,12 @@
 	</td>
 	<td><StatusChip status={instance.status} class="max-w-full truncate" /></td>
 	<td class="text-xs">
-		<div class="truncate text-ink-2">{instance.image_name ?? '볼륨에서 부팅'}</div>
+		<div class="truncate text-ink-2">{instance.image_name ?? t('row.bootFromVolume')}</div>
 		{#if instance.flavor_name}
 			<div class="mt-0.5 flex items-center gap-1.5 text-ink-2">
 				<span class="truncate">{instance.flavor_name}</span>
 				{#if isUnderutilized}
-					<span class="shrink-0 rounded border border-action-warm/60 bg-surface-selected px-1.5 py-0.5 text-xs font-medium text-warm-text">리사이즈 권장</span>
+					<span class="shrink-0 rounded border border-action-warm/60 bg-surface-selected px-1.5 py-0.5 text-xs font-medium text-warm-text">{t('row.resizeRecommended')}</span>
 				{/if}
 			</div>
 		{/if}
@@ -73,7 +77,7 @@
 			{/each}
 		</div>
 	</td>
-	<td class="text-xs text-ink-2">{instance.union_strategy ? strategyLabel[instance.union_strategy] ?? instance.union_strategy : '—'}</td>
+	<td class="text-xs text-ink-2">{instance.union_strategy ? (strategyKeys[instance.union_strategy] ? t(strategyKeys[instance.union_strategy]) : instance.union_strategy) : '—'}</td>
 	<InstanceRowActions {instance} {onAction} />
 </tr>
 

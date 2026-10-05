@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/volume';
 	import Tabs from '$lib/components/ui/Tabs.svelte';
 	let {
 		tab = $bindable<'volumes' | 'snapshots'>(),
@@ -17,11 +18,11 @@
 	id="volume-resource-tabs"
 	value={tab}
 	items={[
-		{ value: 'volumes', label: `볼륨 ${volumeCount}`, panelId: 'volume-resource-panel' },
+		{ value: 'volumes', label: t('tabs.volumes', { count: volumeCount }), panelId: 'volume-resource-panel' },
 		...(showSnapshots
-			? [{ value: 'snapshots', label: `스냅샷 ${snapshotCount}`, panelId: 'snapshot-resource-panel' }]
+			? [{ value: 'snapshots', label: t('tabs.snapshots', { count: snapshotCount }), panelId: 'snapshot-resource-panel' }]
 			: []),
 	]}
 	onchange={(next) => { tab = next as typeof tab; }}
-	ariaLabel="볼륨 리소스"
+	ariaLabel={t('tabs.resources')}
 />

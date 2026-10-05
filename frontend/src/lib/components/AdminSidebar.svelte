@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/shell';
+	import { t as tn } from '$lib/i18n/ns/nav';
 	import { page } from '$app/stores';
 	import { auth } from '$lib/stores/auth';
 	import ProjectSelector from '$lib/components/ProjectSelector.svelte';
@@ -37,19 +39,19 @@
 	<div class="lg:hidden">
 		<div class="px-4 py-3 text-[13px] font-medium text-ink-1 truncate">{$auth.username}</div>
 		<div class="p-3 pt-0 md:hidden">
-			<div class="text-[10px] text-ink-2 uppercase tracking-wide px-1 mb-1.5">프로젝트</div>
+			<div class="text-[10px] text-ink-2 uppercase tracking-wide px-1 mb-1.5">{t('sidebar.project')}</div>
 			<ProjectSelector />
 		</div>
 		{#if !mockupAdminActive}
 			<div class="p-3 pt-0">
 				<a
 					href="/dashboard"
-					aria-label="현재 관리자 모드, 사용자 모드로 전환"
-					title="사용자 모드로 전환"
+					aria-label={t('mode.adminCurrent')}
+					title={t('mode.switchToUser')}
 					class="nav-item nav-active flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors"
 				>
 					<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6l8-4z"></path></svg>
-					관리자 모드
+					{t('mode.admin')}
 				</a>
 			</div>
 		{/if}
@@ -58,8 +60,8 @@
 
 <ConsoleNavigation
 	rootHref="/admin"
-	rootLabel="개요"
-	overviewItems={[{ label: '개요', href: '/admin', icon: navIcons.overview, service: null }]}
+	rootLabel={tn('sections.overview')}
+	overviewItems={[{ label: tn('items.overview'), labelKey: 'items.overview', href: '/admin', icon: navIcons.overview, service: null }]}
 	sections={adminNavSections}
 	{isItemVisible}
 	{isSectionVisible}

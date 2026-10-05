@@ -1,14 +1,15 @@
 <script lang="ts">
+	import { t as tr } from '$lib/i18n/ns/database';
 	import { useDbCreate } from '$lib/stores/dbCreateStore.svelte';
 	const s = useDbCreate();
 </script>
 
 <div class="space-y-3">
 	<p class="text-xs text-ink-2">
-		사용할 네트워크를 선택하세요. 선택하지 않으면 Trove가 기본 네트워크를 사용합니다.
+		{tr('wizard.networkHelp')}
 	</p>
 	{#if s.networks.length === 0}
-		<p class="text-ink-2 text-sm">사용 가능한 네트워크가 없습니다.</p>
+		<p class="text-ink-2 text-sm">{tr('wizard.noNetworks')}</p>
 	{:else}
 		<div class="space-y-2">
 			{#each s.networks as net}

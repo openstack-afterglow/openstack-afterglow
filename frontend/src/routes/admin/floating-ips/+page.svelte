@@ -7,6 +7,8 @@
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import type { FloatingIpInfo, NetworkInfo } from '$lib/types/networks';
 	import Modal from '$lib/components/ui/Modal.svelte';
+	import { t } from '$lib/i18n/ns/admin-network';
+	import RichText from '$lib/i18n/RichText.svelte';
 
 	let fips = $state<FloatingIpInfo[]>([]);
 	let loading = $state(true);
@@ -58,7 +60,7 @@
 		try {
 			await api.post('/api/v1/admin/floating-ips', { floating_network_id: selectedNetId }, token, projectId);
 			showCreate = false; await load();
-		} catch (e) { createError = e instanceof ApiError ? e.message : '생성 실패'; } finally { creating = false; }
+		} catch (e) { createError = e instanceof ApiError ? e.message : t('floatingIpsPage.error.createFailed'); } finally { creating = false; }
 	}
 
 	async function confirmDelete() {
@@ -67,7 +69,7 @@
 		try {
 			await api.delete(`/api/v1/admin/floating-ips/${deleteFip.id}`, token, projectId);
 			deleteFip = null; await load();
-		} catch (e) { deleteError = e instanceof ApiError ? e.message : '삭제 실패'; } finally { deleting = false; }
+		} catch (e) { deleteError = e instanceof ApiError ? e.message : t('floatingIpsPage.error.deleteFailed'); } finally { deleting = false; }
 	}
 
 	const ar = createAutoRefresh(load, {
@@ -82,9 +84,9 @@
 </script>
 
 <div class="p-4 md:p-6 max-w-7xl mx-auto">
-	<PageHeader breadcrumb="NETWORK / FLOATING IPs" title="Floating IP">
+	<PageHeader breadcrumb={t('floatingIpsPage.breadcrumb')} title={t('floatingIpsPage.title')}>
 		{#snippet actions()}
-			<button onclick={openCreate} onpointerenter={prefetchExternalNetworks} onfocus={prefetchExternalNetworks} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg">+ 생성</button>
+			<button onclick={openCreate} onpointerenter={prefetchExternalNetworks} onfocus={prefetchExternalNetworks} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg">{t('floatingIpsPage.actions.create')}</button>
 			<AutoRefreshControl
 				bind:active={ar.active}
 				bind:intervalSeconds={ar.intervalSeconds}
@@ -96,17 +98,17 @@
 	</PageHeader>
 
 	{#if loading}
-		<div class="text-ink-2 text-sm">로딩 중...</div>
+		<div class="text-ink-2 text-sm">{t('floatingIpsPage.loading')}</div>
 	{:else}
 		<div class="overflow-x-auto">
 			<table class="w-full text-sm">
 				<thead>
 					<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
-						<th class="text-left py-2 pr-4">Floating IP</th>
-						<th class="text-left py-2 pr-4">Fixed IP</th>
-						<th class="text-left py-2 pr-4">상태</th>
-						<th class="text-left py-2 pr-4">프로젝트</th>
-						<th class="text-left py-2">액션</th>
+						<th class="text-left py-2 pr-4">{t('floatingIpsPage.table.floatingIp')}</th>
+						<th class="text-left py-2 pr-4">{t('floatingIpsPage.table.fixedIp')}</th>
+						<th class="text-left py-2 pr-4">{t('floatingIpsPage.table.status')}</th>
+						<th class="text-left py-2 pr-4">{t('floatingIpsPage.table.project')}</th>
+						<th class="text-left py-2">{t('floatingIpsPage.table.actions')}</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -115,13 +117,13 @@
 							<td class="py-2 pr-4 font-mono text-green-400">{f.floating_ip_address}</td>
 							<td class="py-2 pr-4 font-mono text-ink-2">{f.fixed_ip_address ?? '-'}</td>
 							<td class="py-2 pr-4 {f.port_id ? 'text-green-400' : 'text-ink-2'}">
-								{f.port_id ? '할당됨' : '미할당'}
+								{f.port_id ? t('floatingIpsPage.status.assigned') : t('floatingIpsPage.status.unassigned')}
 							</td>
 							<td class="py-2 pr-4 text-ink-2 font-mono">{f.project_id?.slice(0, 8) ?? '-'}</td>
 							<td class="py-2">
 								{#if !f.port_id}
 									<button onclick={() => { deleteFip = f; deleteError = ''; }}
-										class="px-2 py-0.5 text-xs bg-red-900/30 hover:bg-red-900/50 text-red-400 rounded">삭제</button>
+										class="px-2 py-0.5 text-xs bg-red-900/30 hover:bg-red-900/50 text-red-400 rounded">{t('floatingIpsPage.actions.delete')}</button>
 								{/if}
 							</td>
 						</tr>
@@ -130,22 +132,22 @@
 			</table>
 		</div>
 		<div class="mt-3 flex gap-4 text-xs text-ink-2">
-			<span>총 {fips.length}개</span>
-			<span class="text-green-400">할당됨: {fips.filter(f => f.port_id).length}개</span>
-			<span>미할당: {fips.filter(f => !f.port_id).length}개</span>
+			<span>{t('floatingIpsPage.summary.total', { count: fips.length })}</span>
+			<span class="text-green-400">{t('floatingIpsPage.summary.assigned', { count: fips.filter(f => f.port_id).length })}</span>
+			<span>{t('floatingIpsPage.summary.unassigned', { count: fips.filter(f => !f.port_id).length })}</span>
 		</div>
 	{/if}
 </div>
 
 <!-- 생성 모달 -->
-<Modal bind:open={showCreate} ariaLabel="Floating IP 생성">
+<Modal bind:open={showCreate} ariaLabel={t('floatingIpsPage.createDialog.title')}>
 	<div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]">
-		<h2 class="text-lg font-semibold text-ink-0 mb-5">Floating IP 생성</h2>
+		<h2 class="text-lg font-semibold text-ink-0 mb-5">{t('floatingIpsPage.createDialog.title')}</h2>
 		{#if createError}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{createError}</div>{/if}
 		<div>
-			<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-page-146">외부 네트워크</label>
+			<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-page-146">{t('floatingIpsPage.createDialog.externalNetwork')}</label>
 			{#if externalNets.length === 0}
-				<div class="text-xs text-red-400">외부 네트워크가 없습니다</div>
+				<div class="text-xs text-red-400">{t('floatingIpsPage.createDialog.noExternalNetworks')}</div>
 			{:else}
 				<select id="field-page-146" bind:value={selectedNetId} class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus-visible:shadow-[var(--focus-ring)]">
 					{#each externalNets as n}
@@ -155,22 +157,23 @@
 			{/if}
 		</div>
 		<div class="flex justify-end gap-3 mt-6">
-			<button onclick={() => { showCreate = false; }} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">취소</button>
-			<button onclick={createFip} disabled={creating || !selectedNetId} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{creating ? '생성 중...' : '생성'}</button>
+			<button onclick={() => { showCreate = false; }} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('floatingIpsPage.actions.cancel')}</button>
+			<button onclick={createFip} disabled={creating || !selectedNetId} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{creating ? t('floatingIpsPage.actions.creating') : t('floatingIpsPage.createDialog.submit')}</button>
 		</div>
 	</div>
 </Modal>
 
 <!-- 삭제 확인 모달 -->
 {#if deleteFip}
-	<Modal open={true} onClose={() => { deleteFip = null; }} ariaLabel="Floating IP 삭제">
+	<Modal open={true} onClose={() => { deleteFip = null; }} ariaLabel={t('floatingIpsPage.deleteDialog.title')}>
 		<div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-sm mx-4 shadow-[var(--shadow-restraint)]">
-			<h2 class="text-lg font-semibold text-ink-0 mb-3">Floating IP 삭제</h2>
-			<p class="text-sm text-ink-2 mb-4"><span class="text-ink-0 font-mono">{deleteFip.floating_ip_address}</span>을 삭제하시겠습니까?</p>
+			<h2 class="text-lg font-semibold text-ink-0 mb-3">{t('floatingIpsPage.deleteDialog.title')}</h2>
+			{#snippet addressSnippet(text: string)}<span class="text-ink-0 font-mono">{text}</span>{/snippet}
+			<p class="text-sm text-ink-2 mb-4"><RichText segments={t.rich('floatingIpsPage.deleteDialog.body', { address: deleteFip.floating_ip_address })} tags={{ address: addressSnippet }} /></p>
 			{#if deleteError}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{deleteError}</div>{/if}
 			<div class="flex justify-end gap-3">
-				<button onclick={() => { deleteFip = null; }} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">취소</button>
-				<button onclick={confirmDelete} disabled={deleting} class="px-4 py-2 bg-red-600 hover:bg-red-500 text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{deleting ? '삭제 중...' : '삭제'}</button>
+				<button onclick={() => { deleteFip = null; }} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('floatingIpsPage.actions.cancel')}</button>
+				<button onclick={confirmDelete} disabled={deleting} class="px-4 py-2 bg-red-600 hover:bg-red-500 text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{deleting ? t('floatingIpsPage.actions.deleting') : t('floatingIpsPage.actions.delete')}</button>
 			</div>
 		</div>
 	</Modal>

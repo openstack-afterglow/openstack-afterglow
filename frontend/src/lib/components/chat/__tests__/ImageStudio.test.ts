@@ -5,6 +5,8 @@ import type * as ImageStudioModule from '$lib/api/imageStudio';
 import { ApiError } from '$lib/api/client';
 import ImageStudio from '../ImageStudio.svelte';
 import { IMAGE_STUDIO_STYLES } from '../imageStudioStyles';
+import { t } from '$lib/i18n/ns/chat-studio';
+import { initLocale } from '$lib/i18n/runtime.svelte';
 
 const api = vi.hoisted(() => ({
 	models: vi.fn(), capabilities: vi.fn(), submit: vi.fn(), run: vi.fn(), cancel: vi.fn(), upload: vi.fn(), download: vi.fn()
@@ -45,9 +47,32 @@ beforeEach(() => {
 		createObjectURL: vi.fn(() => 'blob:preview'), revokeObjectURL: vi.fn()
 	}));
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { initLocale('ko'); vi.unstubAllGlobals(); });
 
 describe('Image Studio', () => {
+	it.each(['en', 'ja', 'zh-CN'] as const)('translates style controls in %s without changing the provider prompt or retry intent', async (locale) => {
+		api.submit.mockRejectedValue(new Error('lost response'));
+		const style = IMAGE_STUDIO_STYLES.find((candidate) => candidate.id === 'cinematic')!;
+		render(ImageStudio);
+		await screen.findByRole('option', { name: 'Image Model' });
+		await fireEvent.input(screen.getByRole('textbox', { name: t('imageStudio.prompt') }), { target: { value: 'My unchanged draft' } });
+		await fireEvent.click(screen.getByRole('button', { name: t(style.labelKey) }));
+		await fireEvent.click(screen.getByRole('button', { name: t('imageStudio.createImage') }));
+		await waitFor(() => expect(api.submit).toHaveBeenCalledTimes(1));
+		await waitFor(() => expect((screen.getByRole('button', { name: t('imageStudio.createImage') }) as HTMLButtonElement).disabled).toBe(false));
+		const first = api.submit.mock.calls[0];
+		initLocale(locale);
+		const translatedStyle = await screen.findByRole('button', { name: t(style.labelKey) });
+		expect(translatedStyle.getAttribute('aria-pressed')).toBe('true');
+		expect(document.getElementById('studio-style-note')?.textContent).toContain(first[1].prompt.slice('My unchanged draft\n\n'.length));
+		expect((screen.getByRole('textbox', { name: t('imageStudio.prompt') }) as HTMLTextAreaElement).value).toBe('My unchanged draft');
+		expect((screen.getByRole('combobox', { name: t('imageStudio.qualityLabel') }) as HTMLSelectElement).value).toBe('high');
+		await fireEvent.click(screen.getByRole('button', { name: t('imageStudio.createImage') }));
+		await waitFor(() => expect(api.submit).toHaveBeenCalledTimes(2));
+		expect(api.submit.mock.calls[1][1]).toEqual({ model_id: '1', prompt: `My unchanged draft\n\n스타일: ${style.instruction}`, size: '1024x1024', quality: 'high', n: 1 });
+		expect(api.submit.mock.calls[1][3]).toBe(first[3]);
+	});
+
 	it('blocks submission when image route or pricing is unavailable even if a model is listed', async () => {
 		api.models.mockResolvedValue([{ ...ready, capabilities: { feature_gates: { image_output: { available: false, mode: 'none', pricing_available: false, reason_code: 'route_unavailable' } } } }]);
 		render(ImageStudio);
@@ -115,8 +140,8 @@ describe('Image Studio', () => {
 		await screen.findByRole('option', { name: 'high' });
 		const promptBox = screen.getByRole('textbox', { name: /프롬프트/ }) as HTMLTextAreaElement;
 		await fireEvent.input(promptBox, { target: { value: 'orange dusk' } });
-		await fireEvent.click(screen.getByRole('button', { name: cinematic.label }));
-		expect(screen.getByRole('button', { name: cinematic.label }).getAttribute('aria-pressed')).toBe('true');
+		await fireEvent.click(screen.getByRole('button', { name: t(cinematic.labelKey) }));
+		expect(screen.getByRole('button', { name: t(cinematic.labelKey) }).getAttribute('aria-pressed')).toBe('true');
 		expect(promptBox.value).toBe('orange dusk');
 		expect(screen.getByText(new RegExp(cinematic.instruction))).toBeTruthy();
 		const submitButton = () => screen.getByRole('button', { name: '이미지 만들기' }) as HTMLButtonElement;
@@ -125,8 +150,8 @@ describe('Image Studio', () => {
 		expect(api.submit.mock.calls[0][1]).toEqual(expect.objectContaining({ prompt: `orange dusk\n\n스타일: ${cinematic.instruction}` }));
 		expect(api.submit.mock.calls[0][1]).not.toHaveProperty('style');
 		await waitFor(() => expect(submitButton().disabled).toBe(false));
-		await fireEvent.click(screen.getByRole('button', { name: pixel.label }));
-		expect(screen.getByRole('button', { name: cinematic.label }).getAttribute('aria-pressed')).toBe('false');
+		await fireEvent.click(screen.getByRole('button', { name: t(pixel.labelKey) }));
+		expect(screen.getByRole('button', { name: t(cinematic.labelKey) }).getAttribute('aria-pressed')).toBe('false');
 		await fireEvent.click(submitButton());
 		await waitFor(() => expect(api.submit).toHaveBeenCalledTimes(2));
 		expect(api.submit.mock.calls[1][1].prompt).toBe(`orange dusk\n\n스타일: ${pixel.instruction}`);

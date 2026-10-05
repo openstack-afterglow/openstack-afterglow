@@ -340,6 +340,11 @@ docker buildx build --platform linux/amd64 --target worker --load \
   -t afterglow-worker:test .
 npm run test:worker:image -- afterglow-worker:test
 ```
+Notion worker는 SIGTERM/SIGINT에서 대기·동기화 task를 취소하고 스케줄러와 DB 연결을
+정리합니다. 배포 전에는 최종 이미지의 기본 `python -m app.notion_worker` 명령을 격리해서
+실행하고, 초기 대기 또는 동기화 확인 사이클 뒤 정상 `docker stop`이 timeout 내 exit 0으로
+끝나는지도 확인하세요. Crypto smoke 성공과 실제 Notion 동기화 성공은 별도 증거입니다.
+
 
 
 일반 경로의 기본 운영은 이미 설치된 형제 서비스의 **Keystone internal catalog endpoint**로

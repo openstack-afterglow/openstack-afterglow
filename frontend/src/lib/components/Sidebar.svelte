@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/shell';
+	import { t as tn } from '$lib/i18n/ns/nav';
 	import { page } from '$app/stores';
 	import { auth, isAdmin } from '$lib/stores/auth';
 	import ConsoleNavigation from '$lib/components/ConsoleNavigation.svelte';
@@ -15,13 +17,13 @@
 	const mockupProfile = $derived($page.data.mockup?.active ? $page.data.mockup.profile : null);
 
 	type BetaFeatureKey = keyof BetaFeatures;
-	const overviewItems: NavItem[] = [
-		{ label: '개요', href: '/dashboard', icon: navIcons.overview, service: null },
-		{ label: '사용량', href: '/dashboard/usage', icon: navIcons.chart, service: null },
-		{ label: '사용량 리포트', href: '/dashboard/usage-report', icon: navIcons.document, service: null },
-		{ label: '활동', href: '/dashboard/activity', icon: navIcons.activity, service: null },
-		{ label: '토폴로지', href: '/dashboard/network/topology', icon: navIcons.network, service: null, topLevel: true },
-	];
+	const overviewItems: NavItem[] = $derived([
+		{ label: tn('items.overview'), labelKey: 'items.overview', href: '/dashboard', icon: navIcons.overview, service: null },
+		{ label: tn('items.usage'), labelKey: 'items.usage', href: '/dashboard/usage', icon: navIcons.chart, service: null },
+		{ label: tn('items.usageReport'), labelKey: 'items.usageReport', href: '/dashboard/usage-report', icon: navIcons.document, service: null },
+		{ label: tn('items.activity'), labelKey: 'items.activity', href: '/dashboard/activity', icon: navIcons.activity, service: null },
+		{ label: tn('items.topology'), labelKey: 'items.topology', href: '/dashboard/network/topology', icon: navIcons.network, service: null, topLevel: true },
+	]);
 
 	function isBetaVisible(beta?: BetaFeatureKey): boolean {
 		return !beta || Boolean($betaFeatures[beta]);
@@ -59,7 +61,7 @@
 
 <ConsoleNavigation
 	rootHref="/dashboard"
-	rootLabel="대시보드"
+	rootLabel={tn('sections.dashboard')}
 	{overviewItems}
 	sections={userNavSections}
 	{isSectionVisible}
@@ -69,19 +71,19 @@
 		<div data-tour="vm-create-open">
 			<Button variant="secondary" onclick={() => openWizard()} class="w-full">
 				<svg class="size-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v14M5 12h14"/></svg>
-				VM 생성
+				{t('sidebar.createVm')}
 			</Button>
 		</div>
 	{/snippet}
 
 	{#snippet footer()}
 		<div class="p-3 md:hidden">
-			<div class="text-[10px] text-ink-2 uppercase tracking-wide px-1 mb-1.5">프로젝트</div>
+			<div class="text-[10px] text-ink-2 uppercase tracking-wide px-1 mb-1.5">{t('sidebar.project')}</div>
 			<ProjectSelector />
 		</div>
 
 		<div class="hidden lg:block px-4 py-3">
-			<div class="text-[10px] text-ink-2 uppercase tracking-widest font-medium">프로젝트</div>
+			<div class="text-[10px] text-ink-2 uppercase tracking-widest font-medium">{t('sidebar.project')}</div>
 			<div class="text-[13px] text-ink-1 font-medium mt-0.5 truncate">{$auth.projectName ?? '—'}</div>
 		</div>
 
@@ -89,12 +91,12 @@
 			<div class="px-3 pb-3 lg:hidden">
 				<a
 					href="/admin"
-					aria-label="현재 사용자 모드, 관리자 모드로 전환"
-					title="관리자 모드로 전환"
+					aria-label={t('mode.userCurrent')}
+					title={t('mode.switchToAdmin')}
 					class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors text-ink-2 hover:text-ink-0 hover:bg-surface-sunken"
 				>
 					<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
-					사용자 모드
+					{t('mode.user')}
 				</a>
 			</div>
 		{/if}

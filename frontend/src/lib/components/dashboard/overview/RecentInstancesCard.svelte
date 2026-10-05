@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/dashboard-home';
 	import type { DashboardRecentInstance } from '$lib/types/compute';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
@@ -21,13 +22,13 @@
 
 <Card padding="lg">
 	<div class="flex items-center mb-3.5">
-		<div class="text-[var(--color-ink-0)] text-[15px] font-semibold">최근 인스턴스</div>
-		<a href="/dashboard/compute/instances" class="ml-auto text-[13px] text-[var(--color-ink-2)] hover:text-[var(--color-ink-0)] transition-colors">모두 보기 →</a>
+		<div class="text-[var(--color-ink-0)] text-[15px] font-semibold">{t('recentInstances.title')}</div>
+		<a href="/dashboard/compute/instances" class="ml-auto text-[13px] text-[var(--color-ink-2)] hover:text-[var(--color-ink-0)] transition-colors">{t('recentInstances.viewAll')}</a>
 	</div>
 
 	{#if error && instances.length > 0}
 		<Alert tone="danger" class="mb-3">
-			<span>최근 인스턴스를 불러오지 못했습니다</span>
+			<span>{t('recentInstances.loadFailed')}</span>
 		</Alert>
 	{/if}
 
@@ -39,18 +40,18 @@
 		</div>
 	{:else if error && instances.length === 0}
 		<Alert tone="danger">
-			<span>최근 인스턴스를 불러오지 못했습니다</span>
+			<span>{t('recentInstances.loadFailed')}</span>
 		</Alert>
 	{:else if instances.length === 0}
-		<div class="text-[var(--color-ink-2)] text-sm py-6 text-center">인스턴스가 없습니다</div>
+		<div class="text-[var(--color-ink-2)] text-sm py-6 text-center">{t('recentInstances.empty')}</div>
 	{:else}
 		<div class="overflow-x-auto">
 			<div class="min-w-[620px]">
 				<div class="grid grid-cols-[minmax(180px,1.7fr)_160px_130px_120px] rounded-t-lg border border-b-0 border-[var(--color-line)] bg-[var(--color-surface-sunken)] px-3.5 py-2 text-xs font-medium tracking-tight text-[var(--color-ink-2)]">
-					<div>NAME</div>
-					<div>STATUS</div>
+					<div>{t('recentInstances.name')}</div>
+					<div>{t('recentInstances.status')}</div>
 					<div>IP</div>
-					<div>FLAVOR</div>
+					<div>{t('recentInstances.flavor')}</div>
 				</div>
 				<div class="recent-instance-list overflow-hidden rounded-b-lg border border-[var(--color-line)]">
 					{#each instances as instance, i}

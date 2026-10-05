@@ -15,6 +15,8 @@
 	import GroupCreateModal from '$lib/components/admin/groups/GroupCreateModal.svelte';
 	import GroupEditModal from '$lib/components/admin/groups/GroupEditModal.svelte';
 	import GroupDeleteConfirmModal from '$lib/components/admin/groups/GroupDeleteConfirmModal.svelte';
+	import { t } from '$lib/i18n/ns/admin-identity';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 
 	const ctrl = createAdminGroupsController({
 		token: () => $auth.token ?? undefined,
@@ -45,9 +47,9 @@
 </script>
 
 <div class="p-4 md:p-6 max-w-7xl mx-auto">
-	<PageHeader breadcrumb="IDENTITY / GROUPS" title="그룹">
+	<PageHeader breadcrumb={t('groupPage.breadcrumb')} title={t('groupPage.title')}>
 		{#snippet actions()}
-			<button onclick={() => { ctrl.showCreate = true; ctrl.createError = ''; }} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg">+ 생성</button>
+			<button onclick={() => { ctrl.showCreate = true; ctrl.createError = ''; }} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg">{t('groupPage.create')}</button>
 			<AutoRefreshControl
 				bind:active={ar.active}
 				bind:intervalSeconds={ar.intervalSeconds}
@@ -58,21 +60,21 @@
 		{/snippet}
 	</PageHeader>
 
-	<ResourceToolbar label="그룹 검색 및 필터" class="mb-3">
+	<ResourceToolbar label={t('groupPage.filters')} class="mb-3">
 		<div class="flex-1 basis-full sm:basis-64 min-w-0">
-			<TextInput type="search" bind:value={search} ariaLabel="그룹 검색" placeholder="이름, ID 또는 설명 검색..." />
+			<TextInput type="search" bind:value={search} ariaLabel={t('groupPage.search')} placeholder={t('groupPage.searchPlaceholder')} />
 		</div>
 		<div class="w-full sm:w-44">
-			<SelectInput bind:value={filterDomain} ariaLabel="그룹 도메인">
-				<option value="">전체 도메인</option>
+			<SelectInput bind:value={filterDomain} ariaLabel={t('groupPage.domain')}>
+				<option value="">{t('groupPage.allDomains')}</option>
 				{#each domainIds as id}<option value={id}>{id}</option>{/each}
 			</SelectInput>
 		</div>
-		<Button variant="ghost" size="sm" disabled={!hasFilters} onclick={() => { search = ''; filterDomain = ''; }}>초기화</Button>
+		<Button variant="ghost" size="sm" disabled={!hasFilters} onclick={() => { search = ''; filterDomain = ''; }}>{t('groupPage.reset')}</Button>
 	</ResourceToolbar>
 	<div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-2 mb-3">
-		<span aria-live="polite">{ctrl.loading ? '불러오는 중...' : ctrl.error ? '검색 결과를 확인할 수 없습니다.' : `검색 결과 ${filteredGroups.length}개 / 전체 ${ctrl.groups.length}개`}</span>
-		<span>최신 생성순 · 생성일 미확인 항목은 마지막에 표시됩니다.</span>
+		<span aria-live="polite">{ctrl.loading ? t('groupPage.loading') : ctrl.error ? t('groupPage.resultsUnavailable') : t('groupPage.results', { shown: filteredGroups.length.toLocaleString(intlLocale()), total: ctrl.groups.length.toLocaleString(intlLocale()) })}</span>
+		<span>{t('groupPage.sortNotice')}</span>
 	</div>
 
 	{#if ctrl.error}
@@ -82,7 +84,7 @@
 	{#if ctrl.loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if filteredGroups.length === 0 && !ctrl.error}
-		<div class="text-center text-ink-2 text-sm py-8">{hasFilters ? '검색 조건에 맞는 그룹이 없습니다.' : '그룹이 없습니다.'}</div>
+		<div class="text-center text-ink-2 text-sm py-8">{hasFilters ? t('groupPage.noMatches') : t('groupPage.empty')}</div>
 	{:else if filteredGroups.length > 0}
 		<div class="bg-surface-base border border-line rounded-lg p-5">
 			<div class="space-y-2">

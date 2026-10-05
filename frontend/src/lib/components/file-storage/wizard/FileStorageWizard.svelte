@@ -5,6 +5,7 @@
 	import FileStorageWizardStep3 from './FileStorageWizardStep3.svelte';
 	import { betaFeatures } from '$lib/stores/betaFeatures';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
+	import { t } from '$lib/i18n/ns/file-storage';
 
 	let {
 		open = $bindable(false),
@@ -40,8 +41,8 @@
 			<!-- 스텝 인디케이터: DHSS=False이거나 Share Network 베타가 꺼져 있으면 네트워크 단계를 숨겨 2단계로 표시 -->
 			<div class="flex items-center gap-0 px-6 pt-6 pb-4 border-b border-line">
 				{#each (s.dhssEnabled && s.shareNetworksEnabled
-					? [{ step: 1, label: '기본 정보' }, { step: 2, label: '네트워크' }, { step: 3, label: '접근 설정' }]
-					: [{ step: 1, label: '기본 정보' }, { step: 3, label: '접근 설정' }]
+					? [{ step: 1, label: t('wizard.steps.basic') }, { step: 2, label: t('wizard.steps.network') }, { step: 3, label: t('wizard.steps.access') }]
+					: [{ step: 1, label: t('wizard.steps.basic') }, { step: 3, label: t('wizard.steps.access') }]
 				) as item, idx (item.step)}
 					{@const isLast = idx === (s.dhssEnabled && s.shareNetworksEnabled ? 2 : 1)}
 					<div class="flex items-center {!isLast ? 'flex-1' : ''}">

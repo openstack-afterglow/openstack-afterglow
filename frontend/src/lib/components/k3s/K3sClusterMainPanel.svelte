@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/drover';
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
 	import K3sClusterHeader from './K3sClusterHeader.svelte';
@@ -53,26 +54,26 @@
 {#if isStampede}
 	<div class="mb-3 flex items-center justify-between bg-surface-selected/20 border border-action-warm/40 rounded-lg px-3 py-2.5">
 		<div class="flex items-center gap-2">
-			<span class="text-warm-text text-sm font-medium">⚡ Stampede 모드</span>
-			<span class="text-xs text-warm-text/70">노드그룹의 Stampede 설정에 따라 자동 스케일링이 동작합니다</span>
+			<span class="text-warm-text text-sm font-medium">{t('overview.main.stampedeMode')}</span>
+			<span class="text-xs text-warm-text/70">{t('overview.main.stampedeDescription')}</span>
 		</div>
 		<button
 			onclick={disableStampede}
 			disabled={disabling}
 			class="text-xs text-warm-text/70 hover:text-red-400 disabled:opacity-50 transition-colors px-2 py-1 rounded"
-		>{disabling ? '...' : '비활성화'}</button>
+		>{disabling ? t('overview.pending') : t('overview.main.disable')}</button>
 	</div>
 {:else if canEnableStampede}
 	<div class="mb-3 flex items-center justify-between bg-surface-sunken/50 border border-line-2 rounded-lg px-3 py-2.5">
 		<div class="flex items-center gap-2">
-			<span class="text-ink-2 text-sm">Stampede 오토스케일</span>
-			<span class="text-xs text-ink-2">노드그룹별 min/max 설정 후 활성화하세요</span>
+			<span class="text-ink-2 text-sm">{t('overview.main.stampedeAutoscale')}</span>
+			<span class="text-xs text-ink-2">{t('overview.main.enableHint')}</span>
 		</div>
 		<button
 			onclick={enableStampede}
 			disabled={enabling}
 			class="text-xs text-ink-2 hover:text-warm-text-hover disabled:opacity-50 transition-colors px-2 py-1 rounded border border-line-2 hover:border-action-warm"
-		>{enabling ? '...' : '활성화'}</button>
+		>{enabling ? t('overview.pending') : t('overview.main.enable')}</button>
 	</div>
 {/if}
 

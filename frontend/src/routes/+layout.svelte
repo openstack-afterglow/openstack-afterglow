@@ -34,9 +34,15 @@
 	import CloudShellAuthorizeDialog from '$lib/components/cloud-shell/CloudShellAuthorizeDialog.svelte';
 	import CloudShellDock from '$lib/components/cloud-shell/CloudShellDock.svelte';
 	import { cloudShell } from '$lib/stores/cloudShell.svelte';
+	import { t } from '$lib/i18n/ns/shell';
+	import { t as tn } from '$lib/i18n/ns/nav';
+	import { getLocale, initLocale, restoreKeyDebugMode } from '$lib/i18n/runtime.svelte';
+	import LocaleSelect from '$lib/i18n/LocaleSelect.svelte';
 	import './layout.css';
 
 	let { children, data } = $props();
+	// Must run before any child renders: SSR and hydration both translate with the request locale.
+	initLocale(untrack(() => data.locale));
 	const initialSiteConfig = untrack(() => data.siteConfig);
 	const initialMockup = untrack(() => data.mockup);
 	let themeReady = $state(false);
@@ -324,6 +330,7 @@
 
 	onMount(() => {
 		themeReady = true;
+		restoreKeyDebugMode();
 		const requested = $page.url.searchParams.get(MOCKUP_QUERY_KEY);
 		let bootstrapUrl: string | null = null;
 		if (isMockupProfileId(requested)) {
@@ -390,7 +397,7 @@
 		if (!confirmed) {
 			logoutConfirming = true;
 			try {
-				confirmed = await confirmDialog('로그아웃하시겠습니까?');
+				confirmed = await confirmDialog(t('logout.confirm'));
 			} finally {
 				logoutConfirming = false;
 			}
@@ -423,8 +430,8 @@
 			}
 			clearAuth();
 			await goto(mockLogout ? '/login?tutorial=off' : '/login', { replaceState: true });
-			if (revocationFailed) toast.warning('이 기기에서 로그아웃했습니다. 서버 세션 폐기는 확인하지 못했습니다.');
-			else toast.success('정상적으로 로그아웃 되었습니다.');
+			if (revocationFailed) toast.warning(t('logout.partial'));
+			else toast.success(t('logout.done'));
 		} finally {
 			endSessionRevocation();
 			logoutInProgress.set(false);
@@ -438,7 +445,7 @@
 	<a
 		href="#main-content"
 		class="fixed left-3 top-3 z-[calc(var(--z-command)+2)] -translate-y-20 rounded-md bg-surface-raised px-3 py-2 text-sm font-medium text-ink-0 shadow-lg transition-transform focus:translate-y-0"
-	>본문으로 건너뛰기</a>
+	>{t('skipToContent')}</a>
 	<header class="console-header fixed top-0 left-0 right-0 z-[var(--z-header)] h-[var(--app-header-height)] flex items-center gap-3 border-b border-line px-3 md:px-6">
 		<div class="material-chrome pointer-events-none absolute inset-0 -z-10" aria-hidden="true"></div>
 		<div class="header-context flex min-w-0 items-center gap-2 sm:gap-3">
@@ -446,7 +453,7 @@
 				id="app-sidebar-trigger"
 				onclick={() => sidebarOpen.toggle()}
 				class="-ml-2 flex size-11 shrink-0 items-center justify-center rounded-md text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] lg:size-8"
-				aria-label="전체 메뉴 열기"
+				aria-label={tn('accessibility.openAllMenu')}
 				aria-expanded={$sidebarOpen}
 				aria-controls="app-navigation-menu"
 			>
@@ -463,16 +470,16 @@
 		<button
 			onclick={() => palette.open()}
 			class="header-search hidden min-w-0 cursor-text items-center gap-2 rounded-md border border-line-2 bg-surface-sunken py-1.5 pl-3 pr-2 text-[13px] text-ink-2 transition-colors hover:bg-surface-selected lg:flex"
-			aria-label="검색 (⌘K)"
+			aria-label={t('search.label')}
 		>
 			<svg class="size-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z"/></svg>
-			<span class="min-w-0 flex-1 truncate text-left">리소스 검색...</span>
+			<span class="min-w-0 flex-1 truncate text-left">{t('search.placeholder')}</span>
 			<kbd class="shrink-0 rounded border border-line px-1.5 py-0.5 font-mono text-xs text-ink-2">⌘K</kbd>
 		</button>
 
 		<!-- 우측 컨트롤 -->
 		<div class="ml-auto flex shrink-0 items-center gap-1 md:gap-2">
-			<button onclick={() => palette.open()} aria-label="검색 (⌘K)" class="hidden size-11 shrink-0 items-center justify-center rounded-md text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] md:flex lg:hidden">
+			<button onclick={() => palette.open()} aria-label={t('search.label')} class="hidden size-11 shrink-0 items-center justify-center rounded-md text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] md:flex lg:hidden">
 				<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m21 21-4.35-4.35M17 11a6 6 0 1 1-12 0 6 6 0 0 1 12 0" /></svg>
 			</button>
 			{#if $siteConfig.services.cloud_shell && !mockup.active}
@@ -484,29 +491,31 @@
 			{#if $isAdmin && !mockupAdminActive}
 				{#if $page.url.pathname.startsWith('/admin')}
 					<a href="/dashboard"
-						aria-label="현재 관리자 모드, 사용자 모드로 전환"
-						title="사용자 모드로 전환"
+						aria-label={t('mode.adminCurrent')}
+						title={t('mode.switchToUser')}
 						class="hidden lg:flex items-center gap-1.5 px-3 h-8 rounded-lg border text-xs font-semibold transition-colors bg-action-warm/15 border-action-warm/50 text-warm-text hover:bg-action-warm-hover/25">
 						<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6l8-4z"/></svg>
-						관리자 모드
+						{t('mode.admin')}
 					</a>
 				{:else}
 					<a href="/admin"
-						aria-label="현재 사용자 모드, 관리자 모드로 전환"
-						title="관리자 모드로 전환"
+						aria-label={t('mode.userCurrent')}
+						title={t('mode.switchToAdmin')}
 						class="hidden lg:flex items-center gap-1.5 px-3 h-8 rounded-lg border text-xs font-semibold transition-colors bg-surface-base border-line-2 text-ink-1 hover:border-line-2 hover:text-ink-0">
 						<svg class="w-3.5 h-3.5 text-ink-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
-						사용자 모드
+						{t('mode.user')}
 					</a>
 				{/if}
 			{/if}
+
+			<LocaleSelect id="app-header-locale" />
 
 			<!-- 테마 토글 -->
 			<button
 				onclick={() => theme.toggle()}
 				class="flex size-11 items-center justify-center rounded-md text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] lg:size-8"
-				title="{$theme === 'system' ? '시스템 테마' : $theme === 'dark' ? '다크 모드' : '라이트 모드'}"
-				aria-label="{$theme === 'system' ? '시스템 테마' : $theme === 'dark' ? '다크 모드' : '라이트 모드'}"
+				title={$theme === 'system' ? t('theme.system') : $theme === 'dark' ? t('theme.dark') : t('theme.light')}
+				aria-label={$theme === 'system' ? t('theme.system') : $theme === 'dark' ? t('theme.dark') : t('theme.light')}
 			>
 				{#if $theme === 'system'}
 					<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
@@ -531,13 +540,13 @@
 						class="fixed left-0 bottom-0 w-full rounded-t-xl sm:absolute sm:left-auto sm:right-0 sm:bottom-auto sm:top-full sm:mt-2 sm:w-80 sm:rounded-xl border shadow-[var(--shadow-restraint)] sm:shadow-[var(--shadow-popover)] z-50 overflow-hidden"
 						style="background: var(--color-surface-raised); border-color: var(--color-line);"
 					>
-						<p class="px-4 pt-3 pb-2 text-xs uppercase tracking-wide text-[var(--color-ink-3)]">알림</p>
+						<p class="px-4 pt-3 pb-2 text-xs uppercase tracking-wide text-[var(--color-ink-3)]">{t('bell.title')}</p>
 						{#if bellItems === null}
-							<p class="px-4 pb-3 text-xs text-[var(--color-ink-3)]">불러오는 중…</p>
+							<p class="px-4 pb-3 text-xs text-[var(--color-ink-3)]">{t('bell.loading')}</p>
 						{:else if bellError}
-							<p class="px-4 pb-3 text-xs text-[var(--color-state-danger)]">알림을 불러오지 못했습니다</p>
+							<p class="px-4 pb-3 text-xs text-[var(--color-state-danger)]">{t('bell.failed')}</p>
 						{:else if bellItems.length === 0}
-							<p class="px-4 pb-3 text-xs text-[var(--color-ink-3)]">받은 공지가 없습니다</p>
+							<p class="px-4 pb-3 text-xs text-[var(--color-ink-3)]">{t('bell.empty')}</p>
 						{:else}
 							<ul class="max-h-80 overflow-y-auto">
 								{#each bellItems as item (item.id)}
@@ -552,7 +561,7 @@
 												<span class="block text-xs text-[var(--color-ink-3)] mt-0.5 tabular-nums">{formatIsoDateTime(item.created_at)}</span>
 											</span>
 											{#if !item.is_read}
-												<span class="mt-1 text-xs uppercase tracking-wide text-[var(--color-accent)] flex-shrink-0">new</span>
+												<span class="mt-1 text-xs uppercase tracking-wide text-[var(--color-accent)] flex-shrink-0">{t('bell.unread')}</span>
 											{/if}
 										</button>
 									</li>
@@ -563,7 +572,7 @@
 							<button
 								onclick={() => closeBellAndGo()}
 								class="w-full px-4 py-2.5 text-xs text-center text-[var(--color-accent)] hover:bg-[var(--color-surface-sunken)] transition-colors"
-							>전체 알림 보기</button>
+							>{t('bell.viewAll')}</button>
 						</div>
 					</div>
 				{/if}
@@ -580,9 +589,9 @@
 			<button
 				onclick={() => logout()}
 				disabled={$logoutInProgress}
-				aria-label="로그아웃"
+				aria-label={t('logout.action')}
 				class="flex size-11 items-center justify-center rounded-md text-ink-2 transition-colors hover:bg-surface-sunken hover:text-state-danger focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] lg:size-8"
-				title="로그아웃"
+				title={t('logout.action')}
 			>
 				<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
 			</button>
@@ -605,16 +614,22 @@
 	<ConfirmDialog />
 {/if}
 {#if mockup.active}
-	<MockupBanner label={mockup.bannerLabel} message={mockup.bannerMessage} />
+	<MockupBanner profile={mockup.profile} />
 {/if}
 {#if $isLoggedIn}
 	<TutorialController />
 {/if}
 <Toast />
 
-<!-- children은 단일 렌더 포인트에서 항상 렌더 — 분기 전환 시 컴포넌트 재마운트 방지 -->
+<!-- Console layouts own the page remount boundary so their sidebars and VM wizard stay mounted. -->
 <div class="min-h-[100dvh] bg-surface-canvas text-ink-1 {mockup.active ? 'mockup-active' : ''}">
-	{@render children()}
+	{#if $page.url.pathname === '/dashboard' || $page.url.pathname.startsWith('/dashboard/') || $page.url.pathname === '/admin' || $page.url.pathname.startsWith('/admin/') || $page.url.pathname.startsWith('/palimpsest/')}
+		{@render children()}
+	{:else}
+		{#key getLocale()}
+			{@render children()}
+		{/key}
+	{/if}
 </div>
 
 {#if authenticationUnavailable}
@@ -623,13 +638,13 @@
 	<div class="w-[min(28rem,calc(100vw-2rem))]">
 		<Card surface="modal" padding="lg">
 			<div class="space-y-4">
-				<h2 id="auth-recovery-title" class="text-lg font-semibold text-ink-0">인증 서비스에 연결할 수 없습니다</h2>
-				<p role="alert" class="text-sm leading-relaxed text-ink-1">로그인 상태를 확인할 수 없어 작업을 잠시 중단했습니다. 연결이 복구되면 계속할 수 있으며, 현재 화면의 작성 내용은 유지됩니다.</p>
-				<p class="text-xs text-ink-2">다시 시도하거나 이 기기에서 로그아웃할 수 있습니다.</p>
+				<h2 id="auth-recovery-title" class="text-lg font-semibold text-ink-0">{t('authRecovery.title')}</h2>
+				<p role="alert" class="text-sm leading-relaxed text-ink-1">{t('authRecovery.body')}</p>
+				<p class="text-xs text-ink-2">{t('authRecovery.hint')}</p>
 				<div class="flex flex-wrap justify-end gap-3">
-					<Button variant="secondary" disabled={$logoutInProgress} onclick={() => logout(true)}>로그아웃</Button>
+					<Button variant="secondary" disabled={$logoutInProgress} onclick={() => logout(true)}>{t('logout.action')}</Button>
 					<Button disabled={recoveryBusy || $logoutInProgress || recoveryWait > 0} onclick={retryAuthentication}>
-						{recoveryBusy ? '확인 중…' : recoveryWait > 0 ? `${recoveryWait}초 후 다시 시도` : '다시 시도'}
+						{recoveryBusy ? t('authRecovery.checking') : recoveryWait > 0 ? t('authRecovery.retryIn', { seconds: recoveryWait }) : t('authRecovery.retry')}
 					</Button>
 				</div>
 			</div>

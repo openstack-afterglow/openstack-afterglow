@@ -1,4 +1,5 @@
 import { api, fetchWithAuth } from './client';
+import { t } from '$lib/i18n/ns/dashboard-home';
 
 export interface SecretInfo {
 	id: string;
@@ -54,7 +55,7 @@ export const secretsApi = {
 
 	getPayload: async (id: string, token?: string, projectId?: string): Promise<string> => {
 		const res = await fetchWithAuth(`/api/v1/secrets/${id}/payload`, {}, token, projectId);
-		if (!res.ok) throw new Error('payload 조회 실패');
+		if (!res.ok) throw new Error(t('secrets.toast.payloadFailed'));
 		const buf = await res.arrayBuffer();
 		return new TextDecoder().decode(buf);
 	},

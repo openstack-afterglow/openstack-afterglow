@@ -1,19 +1,21 @@
+import { t } from '$lib/i18n/ns/drover';
+
 export const K3S_CREATE_STEPS = [
-  { id: 'security_group',   label: '보안 그룹' },
-  { id: 'server_volume',    label: '서버 볼륨' },
-  { id: 'server_creating',  label: '서버 VM' },
-  { id: 'waiting_callback', label: 'k3s 초기화' },
-  { id: 'completed',        label: '완료' },
+  { id: 'security_group',   get label() { return t('steps.securityGroup'); } },
+  { id: 'server_volume',    get label() { return t('steps.serverVolume'); } },
+  { id: 'server_creating',  get label() { return t('steps.serverVm'); } },
+  { id: 'waiting_callback', get label() { return t('steps.initialize'); } },
+  { id: 'completed',        get label() { return t('steps.completed'); } },
 ];
 
 export const K3S_DELETE_STEPS = [
-  { id: 'delete_init',           label: '준비' },
-  { id: 'delete_lb_cleanup',     label: 'LB 정리' },
-  { id: 'delete_app_credential', label: 'App Credential' },
-  { id: 'delete_k8s_nodes',      label: 'K8s 노드' },
-  { id: 'delete_agent_vms',      label: '에이전트 VM' },
-  { id: 'delete_server_vm',      label: '서버 VM' },
-  { id: 'delete_security_group', label: '보안 그룹' },
-  { id: 'delete_record',         label: '이력 기록' },
-  { id: 'completed',             label: '완료' },
+  { id: 'delete_init',           get label() { return t('steps.prepare'); } },
+  { id: 'delete_lb_cleanup',     get label() { return t('steps.cleanupLb'); } },
+  { id: 'delete_app_credential', get label() { return t('steps.appCredential'); } },
+  { id: 'delete_k8s_nodes',      get label() { return t('steps.k8sNodes'); } },
+  { id: 'delete_agent_vms',      get label() { return t('steps.agentVm'); } },
+  { id: 'delete_server_vm',      get label() { return t('steps.serverVm'); } },
+  { id: 'delete_security_group', get label() { return t('steps.securityGroup'); } },
+  { id: 'delete_record',         get label() { return t('steps.recordHistory'); } },
+  { id: 'completed',             get label() { return t('steps.completed'); } },
 ];

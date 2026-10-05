@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/drover';
 	import { untrack } from 'svelte';
 	import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
 	import { SectionHeader } from '$lib/components/ui';
@@ -25,7 +26,7 @@
 		loading = true;
 		loadError = '';
 		untrack(() => s.loadPods())
-			.catch(() => { loadError = 'Pod 로드 실패'; })
+			.catch(() => { loadError = t('pods.loadFailed'); })
 			.finally(() => { loading = false; });
 	});
 </script>
@@ -35,24 +36,24 @@
 {/if}
 
 <div class="bg-surface-base border border-line rounded-lg p-5 mb-4">
-	<SectionHeader title="Pod" meta="{s.pods.length}개" />
+	<SectionHeader title="Pod" meta={t('pods.count', { count: s.pods.length })} />
 
 	{#if loading}
-		<div class="mt-4 text-sm text-ink-2 text-center py-6">로딩 중...</div>
+		<div class="mt-4 text-sm text-ink-2 text-center py-6">{t('pods.loading')}</div>
 	{:else if loadError}
 		<div class="mt-4 text-sm text-red-400">{loadError}</div>
 	{:else if s.pods.length === 0}
-		<div class="mt-4 text-sm text-ink-2 text-center py-6">Pod 없음</div>
+		<div class="mt-4 text-sm text-ink-2 text-center py-6">{t('pods.empty')}</div>
 	{:else}
 		<div class="mt-4 overflow-x-auto">
 			<table class="w-full text-xs">
 				<thead>
 					<tr class="border-b border-line">
-						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">이름</th>
-						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">상태</th>
-						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">Ready</th>
-						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">재시작</th>
-						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">노드</th>
+						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">{t('pods.name')}</th>
+						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">{t('pods.status')}</th>
+						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">{t('pods.ready')}</th>
+						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">{t('pods.restarts')}</th>
+						<th class="text-left pb-2 text-xs uppercase tracking-wide text-ink-2 font-medium">{t('pods.node')}</th>
 						<th class="pb-2"></th>
 					</tr>
 				</thead>
@@ -73,12 +74,12 @@
 									<button
 										onclick={() => { viewingLogPod = pod; }}
 										class="px-2 py-1 rounded text-xs bg-surface-sunken text-ink-2 hover:bg-surface-selected transition-colors"
-									>로그</button>
+									>{t('pods.logs')}</button>
 									<button
 										onclick={() => s.removePod(pod.name)}
 										disabled={!!s.workloadActioning}
 										class="px-2 py-1 rounded text-xs bg-red-900/40 text-red-300 hover:bg-red-900/70 disabled:opacity-40 transition-colors"
-									>{actioning ? '삭제 중...' : '삭제'}</button>
+									>{actioning ? t('pods.deleting') : t('pods.delete')}</button>
 								</div>
 							</td>
 						</tr>

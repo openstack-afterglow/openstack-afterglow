@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/account';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import type { ProjectManagerMember, ProjectInvitation } from '$lib/types/project';
@@ -24,7 +26,7 @@
 			);
 			members = data.items;
 		} catch (e) {
-			membersError = e instanceof ApiError ? e.message : '멤버 목록 조회 실패';
+			membersError = e instanceof ApiError ? e.message : t('projectSettings.membersFailed');
 		} finally {
 			membersLoading = false;
 		}
@@ -35,7 +37,7 @@
 			await api.post(`/api/v1/projects/${projectId}/managers/${userId}`, {}, $auth.token ?? undefined);
 			await loadMembers();
 		} catch (e) {
-			membersError = e instanceof ApiError ? e.message : '승격 실패';
+			membersError = e instanceof ApiError ? e.message : t('projectSettings.promoteFailed');
 		}
 	}
 
@@ -44,7 +46,7 @@
 			await api.delete(`/api/v1/projects/${projectId}/managers/${userId}`, $auth.token ?? undefined);
 			await loadMembers();
 		} catch (e) {
-			membersError = e instanceof ApiError ? e.message : '해제 실패';
+			membersError = e instanceof ApiError ? e.message : t('projectSettings.demoteFailed');
 		}
 	}
 
@@ -68,7 +70,7 @@
 			);
 			invitations = data.items;
 		} catch (e) {
-			invitationsError = e instanceof ApiError ? e.message : '초대 목록 조회 실패';
+			invitationsError = e instanceof ApiError ? e.message : t('projectSettings.invitationsFailed');
 		} finally {
 			invitationsLoading = false;
 		}
@@ -86,10 +88,10 @@
 				$auth.token ?? undefined
 			);
 			inviteEmail = '';
-			inviteSuccess = '초대가 발송되었습니다.';
+			inviteSuccess = t('projectSettings.sent');
 			await loadInvitations();
 		} catch (e) {
-			invitationsError = e instanceof ApiError ? e.message : '초대 발송 실패';
+			invitationsError = e instanceof ApiError ? e.message : t('projectSettings.sendFailed');
 		} finally {
 			inviting = false;
 		}
@@ -103,7 +105,7 @@
 			);
 			await loadInvitations();
 		} catch (e) {
-			invitationsError = e instanceof ApiError ? e.message : '초대 취소 실패';
+			invitationsError = e instanceof ApiError ? e.message : t('projectSettings.revokeFailed');
 		}
 	}
 
@@ -115,12 +117,12 @@
 
 	function statusLabel(status: string): string {
 		const map: Record<string, string> = {
-			pending: '대기 중',
-			accepted: '수락됨',
-			declined: '거절됨',
-			expired: '만료됨',
-			revoked: '취소됨',
-			no_user: '미가입',
+			pending: t('projectSettings.pending'),
+			accepted: t('projectSettings.accepted'),
+			declined: t('projectSettings.declined'),
+			expired: t('projectSettings.expired'),
+			revoked: t('projectSettings.revoked'),
+			no_user: t('projectSettings.noUser'),
 		};
 		return map[status] ?? status;
 	}
@@ -133,20 +135,20 @@
 	}
 
 	function fmtDate(iso: string): string {
-		return new Date(iso).toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' });
+		return new Date(iso).toLocaleDateString(intlLocale(), { year: 'numeric', month: 'short', day: 'numeric' });
 	}
 </script>
 
 <div class="bg-surface-base border border-line rounded-xl p-5">
 	<div class="mb-4">
-		<h3 class="text-sm font-semibold text-ink-0">프로젝트 멤버 & 초대</h3>
+		<h3 class="text-sm font-semibold text-ink-0">{t('projectSettings.title')}</h3>
 		{#if projectId}
 			<p class="text-xs text-ink-2 mt-0.5">{projectId}</p>
 		{/if}
 	</div>
 
 	{#if !projectId}
-		<div class="text-ink-2 text-xs text-center py-6">활성 프로젝트가 없습니다.</div>
+		<div class="text-ink-2 text-xs text-center py-6">{t('projectSettings.noProject')}</div>
 	{:else}
 		<!-- 탭 -->
 		<div class="flex gap-1 mb-5 border-b border-line">
@@ -154,13 +156,13 @@
 				onclick={() => (activeTab = 'members')}
 				class="px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px {activeTab === 'members' ? 'border-action-warm text-warm-text' : 'border-transparent text-ink-2 hover:text-ink-0'}"
 			>
-				멤버
+				{t('projectSettings.members')}
 			</button>
 			<button
 				onclick={() => (activeTab = 'invitations')}
 				class="px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px {activeTab === 'invitations' ? 'border-action-warm text-warm-text' : 'border-transparent text-ink-2 hover:text-ink-0'}"
 			>
-				초대
+				{t('projectSettings.invitations')}
 			</button>
 		</div>
 
@@ -177,16 +179,16 @@
 					{/each}
 				</div>
 			{:else if members.length === 0}
-				<div class="text-ink-2 text-sm text-center py-12">멤버가 없습니다.</div>
+				<div class="text-ink-2 text-sm text-center py-12">{t('projectSettings.noMembers')}</div>
 			{:else}
 				<div class="bg-surface-sunken/50 border border-line-2 rounded-xl overflow-hidden">
 					<table class="w-full text-sm">
 						<thead>
 							<tr class="border-b border-line-2 text-xs text-ink-2 uppercase tracking-wide">
-								<th class="text-left px-4 py-3">사용자</th>
-								<th class="text-left px-4 py-3">이메일</th>
-								<th class="text-left px-4 py-3">역할</th>
-								<th class="text-left px-4 py-3">소속</th>
+								<th class="text-left px-4 py-3">{t('projectSettings.user')}</th>
+								<th class="text-left px-4 py-3">{t('projectSettings.email')}</th>
+								<th class="text-left px-4 py-3">{t('projectSettings.role')}</th>
+								<th class="text-left px-4 py-3">{t('projectSettings.affiliation')}</th>
 								<th class="px-4 py-3"></th>
 							</tr>
 						</thead>
@@ -197,9 +199,9 @@
 									<td class="px-4 py-3 text-ink-2">{m.email || '—'}</td>
 									<td class="px-4 py-3">
 										{#if m.is_manager}
-											<span class="text-xs px-2 py-0.5 rounded bg-action-warm/15 text-warm-text border border-action-warm/30 font-medium">관리자</span>
+											<span class="text-xs px-2 py-0.5 rounded bg-action-warm/15 text-warm-text border border-action-warm/30 font-medium">{t('projectSettings.administrator')}</span>
 										{:else}
-											<span class="text-ink-2 text-xs">멤버</span>
+											<span class="text-ink-2 text-xs">{t('projectSettings.member')}</span>
 										{/if}
 									</td>
 									<td class="px-4 py-3">
@@ -214,14 +216,14 @@
 													onclick={() => demoteManager(m.user_id)}
 													class="text-xs text-ink-2 hover:text-red-400 transition-colors"
 												>
-													관리자 해제
+													{t('projectSettings.removeAdministrator')}
 												</button>
 											{:else}
 												<button
 													onclick={() => promoteManager(m.user_id)}
 													class="text-xs text-ink-2 hover:text-warm-text-hover transition-colors"
 												>
-													관리자 지정
+													{t('projectSettings.assignAdministrator')}
 												</button>
 											{/if}
 										{/if}
@@ -238,7 +240,7 @@
 		{#if activeTab === 'invitations'}
 			<!-- 초대 발송 폼 -->
 			<div class="bg-surface-sunken/50 border border-line-2 rounded-xl p-4 mb-5">
-				<h4 class="text-sm font-medium text-ink-0 mb-3">새 초대 발송</h4>
+				<h4 class="text-sm font-medium text-ink-0 mb-3">{t('projectSettings.newInvitation')}</h4>
 				<div class="flex gap-2">
 					<input
 						bind:value={inviteEmail}
@@ -251,15 +253,15 @@
 						bind:value={inviteRole}
 						class="bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0 focus:outline-none focus:border-action-warm transition-colors"
 					>
-						<option value="member">member</option>
-						<option value="reader">reader</option>
+						<option value="member">{t('projectSettings.memberRole')}</option>
+						<option value="reader">{t('projectSettings.readerRole')}</option>
 					</select>
 					<button
 						onclick={sendInvitation}
 						disabled={!inviteEmail.trim() || inviting}
 						class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-action-warm/40 disabled:cursor-not-allowed text-action-on-warm text-sm font-medium rounded-lg transition-colors whitespace-nowrap"
 					>
-						{inviting ? '발송 중...' : '초대 발송'}
+						{inviting ? t('projectSettings.sending') : t('projectSettings.send')}
 					</button>
 				</div>
 				{#if inviteSuccess}
@@ -278,16 +280,16 @@
 					{/each}
 				</div>
 			{:else if invitations.length === 0}
-				<div class="text-ink-2 text-sm text-center py-8">초대 내역이 없습니다.</div>
+				<div class="text-ink-2 text-sm text-center py-8">{t('projectSettings.noInvitations')}</div>
 			{:else}
 				<div class="bg-surface-sunken/50 border border-line-2 rounded-xl overflow-hidden">
 					<table class="w-full text-sm">
 						<thead>
 							<tr class="border-b border-line-2 text-xs text-ink-2 uppercase tracking-wide">
-								<th class="text-left px-4 py-3">이메일</th>
-								<th class="text-left px-4 py-3">역할</th>
-								<th class="text-left px-4 py-3">상태</th>
-								<th class="text-left px-4 py-3">만료일</th>
+								<th class="text-left px-4 py-3">{t('projectSettings.email')}</th>
+								<th class="text-left px-4 py-3">{t('projectSettings.role')}</th>
+								<th class="text-left px-4 py-3">{t('projectSettings.status')}</th>
+								<th class="text-left px-4 py-3">{t('projectSettings.expires')}</th>
 								<th class="px-4 py-3"></th>
 							</tr>
 						</thead>
@@ -308,7 +310,7 @@
 												onclick={() => revokeInvitation(inv.id)}
 												class="text-xs text-ink-2 hover:text-red-400 transition-colors"
 											>
-												취소
+												{t('projectSettings.cancel')}
 											</button>
 										{/if}
 									</td>

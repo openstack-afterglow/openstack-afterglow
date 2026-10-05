@@ -1,14 +1,12 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { MOCKUP_COOKIE, MOCKUP_QUERY_KEY } from '$lib/mockup/contracts';
+	import { MOCKUP_COOKIE, MOCKUP_QUERY_KEY, type MockupProfileId } from '$lib/mockup/contracts';
+	import { t } from '$lib/i18n/ns/shell';
 
 	import Button from '$lib/components/ui/Button.svelte';
 	import Pill from '$lib/components/ui/Pill.svelte';
 
-	let {
-		label = '튜토리얼',
-		message = '체험 모드입니다. 실제 리소스는 생성되지 않습니다.',
-	}: { label?: string; message?: string } = $props();
+	let { profile = 'on' }: { profile?: MockupProfileId | null } = $props();
 
 	async function exitTutorialMode() {
 		const secure = location.protocol === 'https:' ? '; Secure' : '';
@@ -19,11 +17,11 @@
 
 <div class="mockup-banner" role="status" aria-live="polite">
 	<div class="mockup-copy">
-		<Pill tone="warning" dot>{label || '튜토리얼'}</Pill>
-		<span class="mockup-message">{message}</span>
+		<Pill tone="warning" dot>{profile === 'admin' ? t('mockup.adminPreview') : t('mockup.tutorial')}</Pill>
+		<span class="mockup-message">{profile === 'admin' ? t('mockup.adminMessage') : t('mockup.tutorialMessage')}</span>
 	</div>
 	<div class="mockup-actions">
-		<Button variant="outline" size="xs" onclick={exitTutorialMode}>종료</Button>
+		<Button variant="outline" size="xs" onclick={exitTutorialMode}>{t('mockup.exit')}</Button>
 	</div>
 </div>
 

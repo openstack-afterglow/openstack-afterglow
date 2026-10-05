@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { OrphanKind, CleanupResult } from '$lib/types/orphan';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
+	import { t } from '$lib/i18n/ns/admin-storage';
 	type Kind = OrphanKind;
 
 	let {
@@ -21,12 +22,12 @@
 		onClose: () => void;
 	} = $props();
 
-	const KIND_LABELS: Record<Kind, string> = {
-		floating_ip: 'Floating IP',
-		volume: 'Volume',
-		manila_share: 'Manila Share',
-		security_group: 'Security Group',
-	};
+	const KIND_LABELS: Record<Kind, string> = $derived({
+		floating_ip: t('orphanCleanup.kind.floatingIp'),
+		volume: t('orphanCleanup.kind.volume'),
+		manila_share: t('orphanCleanup.kind.manilaShare'),
+		security_group: t('orphanCleanup.kind.securityGroup'),
+	});
 </script>
 
 {#if kind}
@@ -44,12 +45,12 @@
 			role="document"
 		>
 			<h2 class="text-lg font-semibold text-ink-0 mb-3">
-				{KIND_LABELS[kind]} 정리 ({ids.length}개)
+				{t('orphanCleanup.title', { kind: KIND_LABELS[kind], count: ids.length })}
 			</h2>
 
 			{#if !cleanupResult}
 				<p class="text-sm text-ink-2 mb-4">
-					아래 ID 목록을 OpenStack에서 삭제합니다. 이 작업은 되돌릴 수 없습니다.
+					{t('orphanCleanup.warning')}
 				</p>
 				<div class="bg-surface-canvas border border-line rounded-lg p-3 mb-4 max-h-48 overflow-y-auto">
 					<ul class="text-xs font-mono text-ink-2 space-y-0.5">
@@ -60,15 +61,15 @@
 				</div>
 				{#if kind === 'volume'}
 					<p class="text-xs text-warm-text mb-3">
-						※ 삭제 직전 재조회로 attachments / status를 한 번 더 검증합니다(race 방지).
+						{t('orphanCleanup.volumeNote')}
 					</p>
 				{:else if kind === 'manila_share'}
 					<p class="text-xs text-warm-text mb-3">
-						※ 삭제 직전 재조회로 (1) project 복구 여부 (2) snapshot 부재 (3) status를 검증합니다.
+						{t('orphanCleanup.shareNote')}
 					</p>
 				{:else if kind === 'security_group'}
 					<p class="text-xs text-warm-text mb-3">
-						※ 삭제 직전 모든 port를 재조회해 attach가 발생하지 않았는지, marker가 유지되는지 검증합니다.
+						{t('orphanCleanup.securityGroupNote')}
 					</p>
 				{/if}
 				{#if cleanupError}
@@ -81,24 +82,24 @@
 						onclick={onClose}
 						class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg"
 					>
-						취소
+						{t('orphanCleanup.cancel')}
 					</button>
 					<button
 						onclick={onConfirm}
 						disabled={cleaning}
 						class="px-4 py-2 bg-red-600 hover:bg-red-500 text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30"
 					>
-						{cleaning ? '정리 중...' : '정리'}
+						{cleaning ? t('orphanCleanup.cleaning') : t('orphanCleanup.clean')}
 					</button>
 				</div>
 			{:else}
 				<div class="space-y-3 mb-4">
 					<div class="text-sm text-green-400">
-						성공: {cleanupResult.deleted.length}개
+						{t('orphanCleanup.successCount', { count: cleanupResult.deleted.length })}
 					</div>
 					{#if cleanupResult.deleted.length > 0}
 						<details class="bg-surface-canvas border border-line rounded-lg p-3">
-							<summary class="text-xs text-ink-2 cursor-pointer">삭제된 ID 보기</summary>
+							<summary class="text-xs text-ink-2 cursor-pointer">{t('orphanCleanup.showDeletedIds')}</summary>
 							<ul class="text-xs font-mono text-ink-2 mt-2 space-y-0.5 max-h-32 overflow-y-auto">
 								{#each cleanupResult.deleted as id}
 									<li>{id}</li>
@@ -107,7 +108,7 @@
 						</details>
 					{/if}
 					<div class="text-sm {cleanupResult.failed.length > 0 ? 'text-red-400' : 'text-ink-2'}">
-						실패: {cleanupResult.failed.length}개
+						{t('orphanCleanup.failedCount', { count: cleanupResult.failed.length })}
 					</div>
 					{#if cleanupResult.failed.length > 0}
 						<div class="bg-red-900/20 border border-red-800 rounded-lg p-3 max-h-48 overflow-y-auto">
@@ -127,7 +128,7 @@
 						onclick={onClose}
 						class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg"
 					>
-						닫기
+						{t('orphanCleanup.close')}
 					</button>
 				</div>
 			{/if}

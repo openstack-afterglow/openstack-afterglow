@@ -5,6 +5,8 @@
  * 메시지 상단 출처 리스트와 "대화 전체 출처" 패널이 이 유틸을 공유한다.
  */
 
+import { t } from '$lib/i18n/ns/chat-panel';
+
 export interface Citation {
 	source_kind: 'web' | 'document';
 	url?: string;
@@ -15,7 +17,7 @@ export interface Citation {
 
 /** URL 에서 표시용 도메인(호스트, www 제거) 추출. */
 export function citationDomain(url: string | undefined): string {
-	if (!url) return '입력 문서';
+	if (!url) return t('citations.inputDocument');
 	try {
 		const host = new URL(url).hostname;
 		return host.replace(/^www\./, '');
@@ -28,7 +30,7 @@ export function citationDomain(url: string | undefined): string {
 export function citationLabel(c: Citation): string {
 	const title = c.title?.trim();
 	if (title) return title;
-	if (c.source_kind === 'document') return `문서 ${(c.document_index ?? 0) + 1}`;
+	if (c.source_kind === 'document') return t('citations.document', { index: (c.document_index ?? 0) + 1 });
 	return citationDomain(c.url);
 }
 

@@ -5,6 +5,9 @@
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import GrafanaEmbed from '$lib/components/monitoring/GrafanaEmbed.svelte';
+	import { t } from '$lib/i18n/ns/instance';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import RichText from '$lib/i18n/RichText.svelte';
 
 	interface Props {
 		instanceId: string;
@@ -30,7 +33,7 @@
 	let range: RangeKey = $state('1h');
 
 	const RANGES: RangeKey[] = ['15m', '1h', '6h', '24h', '7d'];
-	const RANGE_LABELS: Record<RangeKey, string> = { '15m': '15분', '1h': '1시간', '6h': '6시간', '24h': '24시간', '7d': '7일' };
+	const RANGE_LABELS: Record<RangeKey, string> = $derived({ '15m': t('metrics.range15m'), '1h': t('metrics.range1h'), '6h': t('metrics.range6h'), '24h': t('metrics.range24h'), '7d': t('metrics.range7d') });
 
 	type MetricState = { data: Series[] | null; error: string | null };
 
@@ -144,7 +147,7 @@
 			const d = new Date(pts[i].ts * 1000);
 			result.push({
 				ts: pts[i].ts,
-				label: `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`,
+				label: d.toLocaleTimeString(intlLocale(), { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }),
 			});
 		}
 		return result;
@@ -162,15 +165,15 @@
 	}
 
 	const CHARTS: ChartSpec[] = [
-		{ key: 'cpu', title: 'CPU 사용률', color: '#3b82f6', unit: '%', yMax: 100 },
-		{ key: 'memory', title: '메모리 사용률', color: '#4ade80', unit: '%', yMax: 100 },
-		{ key: 'network_rx', title: '네트워크 I/O', color: '#60a5fa', unit: '', extraKey: 'network_tx', extraColor: '#f87171', formatY: formatBytes },
-		{ key: 'disk_read', title: '디스크 I/O', color: '#a78bfa', unit: '', extraKey: 'disk_write', extraColor: '#fbbf24', formatY: formatBytes },
+		{ key: 'cpu', get title() { return t('metrics.cpuUsage'); }, color: '#3b82f6', unit: '%', yMax: 100 },
+		{ key: 'memory', get title() { return t('metrics.memoryUsage'); }, color: '#4ade80', unit: '%', yMax: 100 },
+		{ key: 'network_rx', get title() { return t('metrics.networkIo'); }, color: '#60a5fa', unit: '', extraKey: 'network_tx', extraColor: '#f87171', formatY: formatBytes },
+		{ key: 'disk_read', get title() { return t('metrics.diskIo'); }, color: '#a78bfa', unit: '', extraKey: 'disk_write', extraColor: '#fbbf24', formatY: formatBytes },
 	];
 
 	const GPU_CHARTS: ChartSpec[] = [
-		{ key: 'gpu_util', title: 'GPU 사용률', color: '#c084fc', unit: '%', yMax: 100 },
-		{ key: 'gpu_mem', title: 'GPU 메모리', color: '#fbbf24', unit: '%', yMax: 100 },
+		{ key: 'gpu_util', get title() { return t('metrics.gpuUsage'); }, color: '#c084fc', unit: '%', yMax: 100 },
+		{ key: 'gpu_mem', get title() { return t('metrics.gpuMemory'); }, color: '#fbbf24', unit: '%', yMax: 100 },
 	];
 
 	const activeCharts = $derived(isGpu ? [...CHARTS, ...GPU_CHARTS] : CHARTS);
@@ -183,7 +186,7 @@
 			<button
 				onclick={() => { activeTab = 'chart'; }}
 				class="text-xs px-3 py-1 rounded transition-colors {activeTab === 'chart' ? 'bg-action-warm text-ink-0' : 'text-ink-2 hover:text-ink-2 border border-line-2'}"
-			>차트</button>
+			>{t('metrics.chart')}</button>
 			<button
 				onclick={() => { activeTab = 'grafana'; }}
 				class="text-xs px-3 py-1 rounded transition-colors {activeTab === 'grafana' ? 'bg-action-warm text-ink-0' : 'text-ink-2 hover:text-ink-2 border border-line-2'}"
@@ -234,11 +237,11 @@
 				</div>
 
 				{#if m.data === null}
-					<div class="flex items-center justify-center h-20 text-ink-2 text-xs">로딩 중…</div>
+					<div class="flex items-center justify-center h-20 text-ink-2 text-xs">{t('metrics.loading')}</div>
 				{:else if m.error}
 					<div class="flex items-center justify-center h-20 text-red-500 text-xs">{m.error}</div>
 				{:else if m.data.length === 0}
-					<div class="flex items-center justify-center h-20 text-ink-2 text-xs">메트릭 없음 (인스턴스 미가동 또는 exporter 미연동)</div>
+					<div class="flex items-center justify-center h-20 text-ink-2 text-xs">{t('metrics.empty')}</div>
 				{:else}
 					{@const pts = m.data}
 					{@const exPts = ex?.data ?? []}
@@ -302,11 +305,11 @@
 						<div class="flex gap-3 mt-1">
 							<div class="flex items-center gap-1">
 								<div class="w-4 h-0.5" style="background:{chart.color}"></div>
-								<span class="text-xs text-ink-2">rx / read</span>
+								<span class="text-xs text-ink-2">{t('metrics.readLegend')}</span>
 							</div>
 							<div class="flex items-center gap-1">
 								<div class="w-4 h-0.5 border-t border-dashed" style="border-color:{chart.extraColor}"></div>
-								<span class="text-xs text-ink-2">tx / write</span>
+								<span class="text-xs text-ink-2">{t('metrics.writeLegend')}</span>
 							</div>
 						</div>
 					{/if}
@@ -316,9 +319,9 @@
 				{#if summaryStats[chart.key]}
 					{@const s = summaryStats[chart.key]}
 					<div class="flex gap-4 mt-2 pt-2 border-t border-line-2/60 text-xs text-ink-2">
-						<span>최소 <span class="text-ink-2 font-medium">{s.min != null ? (chart.formatY ? chart.formatY(s.min) : `${s.min.toFixed(1)}${chart.unit}`) : '—'}</span></span>
-						<span>평균 <span class="text-ink-2 font-medium">{s.avg != null ? (chart.formatY ? chart.formatY(s.avg) : `${s.avg.toFixed(1)}${chart.unit}`) : '—'}</span></span>
-						<span>최대 <span class="text-ink-2 font-medium">{s.max != null ? (chart.formatY ? chart.formatY(s.max) : `${s.max.toFixed(1)}${chart.unit}`) : '—'}</span></span>
+						<span><RichText segments={t.rich('metrics.minimum', { value: s.min != null ? (chart.formatY ? chart.formatY(s.min) : `${s.min.toFixed(1)}${chart.unit}`) : '—' })} classes={{ strong: 'text-ink-2 font-medium' }} /></span>
+						<span><RichText segments={t.rich('metrics.average', { value: s.avg != null ? (chart.formatY ? chart.formatY(s.avg) : `${s.avg.toFixed(1)}${chart.unit}`) : '—' })} classes={{ strong: 'text-ink-2 font-medium' }} /></span>
+						<span><RichText segments={t.rich('metrics.maximum', { value: s.max != null ? (chart.formatY ? chart.formatY(s.max) : `${s.max.toFixed(1)}${chart.unit}`) : '—' })} classes={{ strong: 'text-ink-2 font-medium' }} /></span>
 					</div>
 				{/if}
 			</div>

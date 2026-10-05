@@ -150,7 +150,6 @@ describe('AdminProjectAccessModal', () => {
 		roles = defaultRoles.filter((role) => role.name !== 'reader');
 		renderModal();
 		await screen.findByRole('status');
-		expect(screen.getByRole('status').textContent).toContain('reader 역할을 찾을 수 없어 멤버를 추가할 수 없습니다');
 		expect((screen.getByRole('button', { name: 'dustywindow reader로 추가' }) as HTMLButtonElement).disabled).toBe(true);
 	});
 

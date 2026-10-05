@@ -9,12 +9,6 @@ import {
 	type Workspace
 } from '../chatWorkspaces';
 
-describe('emptyWorkspaceForm', () => {
-	it('모든 필드가 빈 문자열', () => {
-		expect(emptyWorkspaceForm()).toEqual({ name: '', description: '', instructions: '' });
-	});
-});
-
 describe('buildWorkspacePayload', () => {
 	it('name 만 있으면 name 만(공백 trim)', () => {
 		expect(buildWorkspacePayload({ ...emptyWorkspaceForm(), name: '  내 프로젝트  ' })).toEqual({

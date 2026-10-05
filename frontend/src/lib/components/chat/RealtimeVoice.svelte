@@ -4,6 +4,7 @@
 	import { realtimeVoiceApi, realtimeReadiness, pcm16Base64, decodePcm16, type RealtimeModel, type RealtimeCapabilities, type RealtimeScope } from '$lib/api/realtimeVoice';
 	import { ApiError } from '$lib/api/client';
 	import { Alert, Button, Card, Field, PageShell, SelectInput } from '$lib/components/ui';
+	import { t } from '$lib/i18n/ns/chat-studio';
 
 	const scope = $derived($auth.token && $auth.projectId && $auth.userId ? { token: $auth.token, projectId: $auth.projectId } : null);
 	const ownerKey = $derived(`${$auth.userId ?? ''}:${$auth.projectId ?? ''}`);
@@ -79,7 +80,7 @@
 			models = list.filter((item) => item.model_kind === 'realtime' && Number.isSafeInteger(item.id) && item.id > 0);
 			selected = models[0] ? String(models[0].id) : '';
 		} catch {
-			if (epoch === generation) error = '실시간 음성 모델을 불러오지 못했습니다.';
+			if (epoch === generation) error = t('realtimeVoice.modelsLoadFailed');
 		} finally {
 			if (epoch === generation) loading = false;
 		}
@@ -92,7 +93,7 @@
 			capabilities = response;
 			voice = response.available_voices?.includes(voice) ? voice : (response.default_voice ?? '');
 		} catch {
-			if (epoch === generation && selected === String(current.id)) error = '실시간 음성 경로를 확인하지 못했습니다.';
+			if (epoch === generation && selected === String(current.id)) error = t('realtimeVoice.routeUnverified');
 		} finally {
 			if (epoch === generation && selected === String(current.id)) capabilityLoading = false;
 		}
@@ -159,25 +160,25 @@
 			switch (packet.type) {
 				case 'session.ready':
 					if (media && [16000, 24000].includes(packet.input_sample_rate_hz) && packet.output_sample_rate_hz === 24000) {
-						void captureAudio(media, packet.input_sample_rate_hz, epoch).catch(() => { error = '마이크 스트림을 시작하지 못했습니다.'; stop(false); });
-					} else { error = '음성 세션 형식이 맞지 않습니다.'; stop(false); }
+						void captureAudio(media, packet.input_sample_rate_hz, epoch).catch(() => { error = t('realtimeVoice.microphoneStreamFailed'); stop(false); });
+					} else { error = t('realtimeVoice.sessionFormatMismatch'); stop(false); }
 					break;
 				case 'audio.output.delta': play(packet.delta, packet.sample_rate_hz); break;
 				case 'transcript.input.delta': if (typeof packet.delta === 'string') inputTranscript = (inputTranscript + packet.delta).slice(-4096); break;
 				case 'transcript.output.delta': if (typeof packet.delta === 'string') outputTranscript = (outputTranscript + packet.delta).slice(-4096); break;
 				case 'session.interrupted': flushPlayback(); break;
 				case 'session.closed': stop(); break;
-				case 'error': error = '실시간 음성 제공자가 요청을 처리하지 못했습니다.'; stop(false); break;
+				case 'error': error = t('realtimeVoice.providerFailed'); stop(false); break;
 			}
 		} catch {
-			error = '잘못된 실시간 음성 응답입니다.';
+			error = t('realtimeVoice.invalidResponse');
 			stop(false);
 		}
 	}
 	async function start() {
 		if (!scope || !model || !capabilities || readiness || connecting || connected || !capabilities.available_voices.includes(voice)) return;
 		if (!navigator.mediaDevices?.getUserMedia || typeof AudioWorkletNode === 'undefined') {
-			error = '이 브라우저는 실시간 마이크 스트림을 지원하지 않습니다.';
+			error = t('realtimeVoice.streamingUnsupported');
 			return;
 		}
 		connecting = true;
@@ -197,13 +198,13 @@
 			activeProvider = session.provider_type;
 			socket = realtimeVoiceApi.connect(session);
 			socket.onmessage = (event) => onFrame(event, epoch);
-			socket.onclose = () => { if (epoch === generation) { error = connected ? '음성 연결이 종료되었습니다.' : '음성 연결에 실패했습니다.'; stop(false, !connected); } };
-			socket.onerror = () => { if (epoch === generation) { error = '음성 연결을 사용할 수 없습니다.'; stop(false, !connected); } };
+			socket.onclose = () => { if (epoch === generation) { error = connected ? t('realtimeVoice.connectionClosed') : t('realtimeVoice.connectionFailed'); stop(false, !connected); } };
+			socket.onerror = () => { if (epoch === generation) { error = t('realtimeVoice.connectionUnavailable'); stop(false, !connected); } };
 		} catch (cause) {
 			if (epoch !== generation) return;
-			if (cause instanceof DOMException && cause.name === 'NotAllowedError') error = '마이크 권한이 거부되었습니다.';
-			else if (cause instanceof ApiError && cause.status === 402) error = '실시간 음성 할당량이 부족합니다.';
-			else error = '실시간 음성 세션을 시작하지 못했습니다.';
+			if (cause instanceof DOMException && cause.name === 'NotAllowedError') error = t('realtimeVoice.microphoneDenied');
+			else if (cause instanceof ApiError && cause.status === 402) error = t('realtimeVoice.quotaInsufficient');
+			else error = t('realtimeVoice.sessionFailed');
 			stop(false, !(cause instanceof ApiError && cause.status >= 400 && cause.status < 500));
 		} finally {
 			if (epoch === generation) connecting = false;
@@ -222,15 +223,15 @@
 
 <PageShell max="7xl">
 	<div class="studio">
-		<header class="header"><div><p class="muted">AI 채팅 / 실시간 음성</p><h1>실시간 음성</h1><p class="muted">마이크 오디오는 Afterglow와 Lumen을 거쳐 선택한 제공자로 실시간 전송됩니다. Afterglow와 Lumen은 원본 오디오·자막을 저장하지 않으며 화면의 자막은 세션 종료 시 지워집니다. 제공자의 데이터 처리 정책은 별도로 확인하세요.</p></div><Button href="/dashboard/chat" variant="secondary">텍스트 채팅으로</Button></header>
+		<header class="header"><div><p class="muted">{t('realtimeVoice.breadcrumb')}</p><h1>{t('realtimeVoice.title')}</h1><p class="muted">{t('realtimeVoice.description')}</p></div><Button href="/dashboard/chat" variant="secondary">{t('realtimeVoice.textChat')}</Button></header>
 		<Card><div class="controls">
-			<Field label="실시간 음성 모델" for="realtime-model"><SelectInput id="realtime-model" bind:value={selected} disabled={connecting || connected || loading}><option value="">모델 선택</option>{#each models as item (item.id)}<option value={String(item.id)}>{item.display_name}</option>{/each}</SelectInput></Field>
-			<Field label="목소리" for="realtime-voice"><SelectInput id="realtime-voice" bind:value={voice} disabled={connecting || connected || capabilityLoading}>{#each capabilities?.available_voices ?? [] as option (option)}<option value={option}>{option}</option>{/each}</SelectInput></Field>
-			{#if error}<Alert tone="danger">{error}</Alert>{:else if loading || capabilityLoading}<p role="status" class="muted">실시간 모델과 가격을 확인하는 중…</p>{:else if readiness}<Alert tone="warning">{readiness}</Alert>{:else}<Alert tone="success">음성 입력·출력 경로와 가격이 준비되었습니다.</Alert>{/if}
-			<div class="actions"><Button disabled={Boolean(readiness) || loading || capabilityLoading || connecting || connected || !scope} onclick={() => void start()}>{connecting ? '연결 중…' : '음성 세션 시작'}</Button><Button variant="secondary" disabled={!connected} onclick={() => muted = !muted}>{muted ? '마이크 켜기' : '마이크 끄기'}</Button><Button variant="secondary" disabled={!connected} onclick={interrupt}>{activeProvider === 'gemini' ? '응답 끊기 · 세션 종료' : '응답 끊기'}</Button><Button variant="danger-outline" disabled={!connected && !connecting} onclick={() => stop()}>세션 종료</Button></div>
-			{#if connected}<p role="status" class="muted">실시간 연결 중 {muted ? '· 마이크 음소거' : '· 마이크 켜짐'}</p>{/if}
+			<Field label={t('realtimeVoice.model')} for="realtime-model"><SelectInput id="realtime-model" bind:value={selected} disabled={connecting || connected || loading}><option value="">{t('realtimeVoice.selectModel')}</option>{#each models as item (item.id)}<option value={String(item.id)}>{item.display_name}</option>{/each}</SelectInput></Field>
+			<Field label={t('realtimeVoice.voice')} for="realtime-voice"><SelectInput id="realtime-voice" bind:value={voice} disabled={connecting || connected || capabilityLoading}>{#each capabilities?.available_voices ?? [] as option (option)}<option value={option}>{option}</option>{/each}</SelectInput></Field>
+			{#if error}<Alert tone="danger">{error}</Alert>{:else if loading || capabilityLoading}<p role="status" class="muted">{t('realtimeVoice.checking')}</p>{:else if readiness}<Alert tone="warning">{readiness}</Alert>{:else}<Alert tone="success">{t('realtimeVoice.ready')}</Alert>{/if}
+			<div class="actions"><Button disabled={Boolean(readiness) || loading || capabilityLoading || connecting || connected || !scope} onclick={() => void start()}>{connecting ? t('realtimeVoice.connecting') : t('realtimeVoice.startSession')}</Button><Button variant="secondary" disabled={!connected} onclick={() => muted = !muted}>{muted ? t('realtimeVoice.microphoneOn') : t('realtimeVoice.microphoneOff')}</Button><Button variant="secondary" disabled={!connected} onclick={interrupt}>{activeProvider === 'gemini' ? t('realtimeVoice.interruptAndEnd') : t('realtimeVoice.interrupt')}</Button><Button variant="danger-outline" disabled={!connected && !connecting} onclick={() => stop()}>{t('realtimeVoice.endSession')}</Button></div>
+			{#if connected}<p role="status" class="muted">{muted ? t('realtimeVoice.connectedMuted') : t('realtimeVoice.connectedMicrophoneOn')}</p>{/if}
 		</div></Card>
-		{#if connected}<div class="transcripts"><Card><h2>내 말</h2><p class="transcript">{inputTranscript || '입력 자막을 기다리는 중…'}</p></Card><Card><h2>응답</h2><p class="transcript">{outputTranscript || '응답 자막을 기다리는 중…'}</p></Card></div>{/if}
+		{#if connected}<div class="transcripts"><Card><h2>{t('realtimeVoice.mySpeech')}</h2><p class="transcript">{inputTranscript || t('realtimeVoice.waitingInputTranscript')}</p></Card><Card><h2>{t('realtimeVoice.response')}</h2><p class="transcript">{outputTranscript || t('realtimeVoice.waitingOutputTranscript')}</p></Card></div>{/if}
 	</div>
 </PageShell>
 

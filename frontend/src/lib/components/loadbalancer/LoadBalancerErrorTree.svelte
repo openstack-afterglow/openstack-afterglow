@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/network-resources';
   import {
     useLoadbalancerDetailController,
     provisioningColor,
@@ -15,9 +16,9 @@
   const s = useLoadbalancerDetailController();
 
   const labelByDepth: Record<number, string> = {
-    1: '└ 리스너',
-    2: '└ 풀',
-    3: '└ 멤버',
+    get 1() { return t('lb.errorTree.listener'); },
+    get 2() { return t('lb.errorTree.pool'); },
+    get 3() { return t('lb.errorTree.member'); },
   };
   const indentByDepth: Record<number, string> = {
     1: 'ml-4',
@@ -33,11 +34,11 @@
 
 {#if depth === 0}
   <div class="bg-red-900/20 border border-red-800 rounded-lg p-5 mb-4">
-    <h3 class="text-sm font-semibold text-red-400 mb-3">오류 상세 정보</h3>
+    <h3 class="text-sm font-semibold text-red-400 mb-3">{t('lb.errorTree.title')}</h3>
     {#if node && s.lb}
       <div class="space-y-2 text-xs font-mono">
         <div class="flex items-center gap-3">
-          <span class="text-ink-2 w-28 shrink-0">LB 상태</span>
+          <span class="text-ink-2 w-28 shrink-0">{t('lb.errorTree.lbStatus')}</span>
           <span class="text-red-400">{node.provisioning_status ?? s.lb.status}</span>
           <span class="text-ink-2">{node.operating_status ?? s.lb.operating_status}</span>
         </div>
@@ -68,7 +69,7 @@
         {/if}
       </div>
     {:else}
-      <p class="text-xs text-red-300">상태 트리를 불러오는 중이거나 조회할 수 없습니다.</p>
+      <p class="text-xs text-red-300">{t('lb.errorTree.unavailable')}</p>
     {/if}
   </div>
 {:else if node}

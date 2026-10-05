@@ -1,4 +1,5 @@
 import type { Flavor } from '$lib/types/flavor';
+import { t } from '$lib/i18n/ns/admin-compute';
 
 export type GpuFilterValue = string;
 
@@ -12,9 +13,9 @@ export const GPU_FILTER_HAS_GPU = '__gpu__';
 export const GPU_FILTER_NO_GPU = '__non_gpu__';
 
 const BASE_GPU_OPTIONS: GpuFilterOption[] = [
-	{ value: GPU_FILTER_ALL, label: 'GPU 전체' },
-	{ value: GPU_FILTER_HAS_GPU, label: 'GPU 있음' },
-	{ value: GPU_FILTER_NO_GPU, label: 'GPU 없음' },
+	{ value: GPU_FILTER_ALL, get label() { return t('flavors.filters.allGpu'); } },
+	{ value: GPU_FILTER_HAS_GPU, get label() { return t('flavors.filters.hasGpu'); } },
+	{ value: GPU_FILTER_NO_GPU, get label() { return t('flavors.filters.noGpu'); } },
 ];
 
 export function normalizeGpuAlias(value: string): string {

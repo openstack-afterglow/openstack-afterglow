@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/file-storage';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
   import { toast } from '$lib/stores/toast';
   import { auth } from '$lib/stores/auth';
@@ -64,7 +65,7 @@
       swrSet(path, fileStorages);
       error = '';
     } catch (e) {
-      if (!cached) error = e instanceof ApiError ? `조회 실패 (${e.status})` : '서버 오류';
+      if (!cached) error = e instanceof ApiError ? t('errors.loadWithStatus', { status: e.status }) : t('errors.server');
     } finally {
       loading = false;
     }
@@ -82,10 +83,10 @@
   }
 
   async function deleteFileStorage(id: string, name: string) {
-    if (!await confirmDialog(`파일 스토리지 "${name || id.slice(0, 8)}"을 삭제하시겠습니까?`)) return;
+    if (!await confirmDialog(t('list.deleteConfirm', { name: name || id.slice(0, 8) }))) return;
     deleting = id;
     try {
-      await apiMut('파일 스토리지 삭제', () => api.delete(`/api/v1/file-storage/${id}`, token, projectId));
+      await apiMut(t('list.deleteLabel'), () => api.delete(`/api/v1/file-storage/${id}`, token, projectId));
       await refresh.invalidate();
     } catch {
       // error toast shown by apiMut
@@ -96,14 +97,14 @@
     const ids = [...selection.ids];
     const tokenSnapshot = $auth.token ?? undefined;
     const projectSnapshot = $auth.projectId ?? undefined;
-    if (ids.length === 0 || !await confirmDialog(`선택한 파일 스토리지 ${ids.length}개를 삭제하시겠습니까?`)) return;
+    if (ids.length === 0 || !await confirmDialog(t('list.bulkDeleteConfirm', { count: ids.length }))) return;
     bulkBusy = true;
     try {
       const results = await executeBulkMutations(ids, (id) => api.delete(`/api/v1/file-storage/${id}`, tokenSnapshot, projectSnapshot));
       const successful = results.filter((result) => result.ok).map((result) => result.id);
       const failed = results.length - successful.length;
-      if (successful.length) toast.success(`${successful.length}개 삭제 요청을 완료했습니다.`);
-      if (failed) toast.error(`${failed}개 삭제에 실패했습니다.`);
+      if (successful.length) toast.success(t('bulk.deleteSuccess', { count: successful.length }));
+      if (failed) toast.error(t('bulk.deleteFailed', { count: failed }));
       if ($auth.projectId === projectSnapshot) {
         selection.remove(successful);
         await refresh.invalidate();
@@ -149,12 +150,12 @@
 />
 
 <PageShell class="bulk-selection-page space-y-4">
-  <PageHeader breadcrumb="FILE STORAGE" title="파일 스토리지">
+  <PageHeader breadcrumb={t('list.breadcrumb')} title={t('list.title')}>
     {#snippet actions()}
-      <Button onclick={() => (showWizard = true)} onintent={prefetchCreateMetadata} variant="primary">+ 파일 스토리지 생성</Button>
+      <Button onclick={() => (showWizard = true)} onintent={prefetchCreateMetadata} variant="primary">{t('list.createAction')}</Button>
     {/snippet}
   </PageHeader>
-  <ResourceToolbar label="파일 스토리지 목록 도구">
+  <ResourceToolbar label={t('list.toolbar')}>
     {#snippet actions()}
       <AutoRefreshControl
         bind:active={ar.active}
@@ -175,11 +176,11 @@
       {/each}
     </div>
   {:else if fileStorages.length === 0}
-    <EmptyState headline="파일 스토리지가 없습니다" description="공유 파일 시스템을 생성해 여러 인스턴스에서 사용하세요.">
-      {#snippet cta()}<Button onclick={() => (showWizard = true)} variant="primary">파일 스토리지 생성</Button>{/snippet}
+    <EmptyState headline={t('list.empty')} description={t('list.emptyDescription')}>
+      {#snippet cta()}<Button onclick={() => (showWizard = true)} variant="primary">{t('list.createCta')}</Button>{/snippet}
     </EmptyState>
   {:else}
-    <SelectionToolbar label="파일 스토리지" ariaLabel="파일 스토리지 전체 선택" checked={selectableIds.size > 0 && [...selectableIds].every((id) => selection.has(id))} indeterminate={selection.count > 0 && ![...selectableIds].every((id) => selection.has(id))} selectedCount={selection.count} disabled={bulkBusy} onToggle={() => selection.toggleAll(selectableIds)} />
+    <SelectionToolbar label={t('list.title')} ariaLabel={t('list.selectAll')} checked={selectableIds.size > 0 && [...selectableIds].every((id) => selection.has(id))} indeterminate={selection.count > 0 && ![...selectableIds].every((id) => selection.has(id))} selectedCount={selection.count} disabled={bulkBusy} onToggle={() => selection.toggleAll(selectableIds)} />
     <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3.5">
       {#each fileStorages as fs (fs.id)}
         <FileStorageCard
@@ -197,11 +198,11 @@
       {/each}
     </div>
   {/if}
-  <BulkSelectionOverlay count={selection.count} ariaLabel="선택한 파일 스토리지 일괄 작업" actions={[{ key: 'delete', label: '삭제', tone: 'danger', onAction: bulkDelete }]} busy={bulkBusy} onClear={() => selection.clear()} />
+  <BulkSelectionOverlay count={selection.count} ariaLabel={t('list.bulkActions')} actions={[{ key: 'delete', label: t('actions.delete'), tone: 'danger', onAction: bulkDelete }]} busy={bulkBusy} onClear={() => selection.clear()} />
 </PageShell>
 
 {#if selectedId}
-  <SlidePanel onClose={closeDetailPanel} ariaLabel="파일 스토리지 상세" width="w-full md:w-[60vw] max-w-2xl">
+  <SlidePanel onClose={closeDetailPanel} ariaLabel={t('list.detailLabel')} width="w-full md:w-[60vw] max-w-2xl">
     <FileStorageDetailPanel
       fileStorageId={selectedId}
       onClose={closeDetailPanel}

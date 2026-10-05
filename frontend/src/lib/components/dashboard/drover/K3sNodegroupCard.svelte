@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/drover-pages';
+	import RichText from '$lib/i18n/RichText.svelte';
 	import type { K3sNodegroup } from '$lib/types/k3s';
 
 	let {
@@ -11,7 +13,7 @@
 		onDelete?: (ng: K3sNodegroup) => void;
 	} = $props();
 
-	const roleLabel = $derived(nodegroup.role === 'server' ? '서버' : '에이전트');
+	const roleLabel = $derived(nodegroup.role === 'server' ? t('nodegroup.server') : t('nodegroup.agent'));
 	const roleBadgeClass = $derived(
 		nodegroup.role === 'server'
 			? 'bg-purple-900/40 text-purple-400 border-purple-800'
@@ -36,13 +38,15 @@
 	);
 </script>
 
+{#snippet countSnippet(text: string)}<span class="text-ink-0">{text}</span>{/snippet}
+
 <div class="bg-surface-sunken/50 border border-line-2 rounded-lg p-3 space-y-2">
 	<div class="flex items-center justify-between">
 		<div class="flex items-center gap-2 flex-wrap">
 			<span class="text-xs border rounded px-1.5 py-0.5 {roleBadgeClass}">{roleLabel}</span>
 			<span class="text-sm font-medium text-ink-0">{nodegroup.name}</span>
 			{#if nodegroup.is_default}
-				<span class="text-xs text-ink-2">(기본)</span>
+				<span class="text-xs text-ink-2">{t('nodegroup.default')}</span>
 			{/if}
 			{#if nodegroup.stampede_enabled}
 				<span class="text-xs bg-surface-selected/50 text-warm-text border border-action-warm/60 rounded px-1.5 py-0.5 leading-none">Stampede</span>
@@ -51,7 +55,7 @@
 					<span class="text-xs bg-emerald-900/50 text-emerald-300 border border-emerald-700/60 rounded px-1.5 py-0.5 leading-none">GPU {gpuCount}</span>
 				{/if}
 				{#if inFlight > 0}
-					<span class="text-xs text-yellow-400 animate-pulse">▲ +{inFlight} 프로비저닝 중</span>
+					<span class="text-xs text-yellow-400 animate-pulse">{t('nodegroup.provisioning', { count: inFlight })}</span>
 				{/if}
 			{/if}
 		</div>
@@ -60,21 +64,21 @@
 				<button
 					onclick={() => onEdit?.(nodegroup)}
 					class="text-xs text-ink-2 hover:text-warm-text-hover px-2 py-1 rounded transition-colors"
-				>수정</button>
+				>{t('actions.edit')}</button>
 			{/if}
 			{#if onDelete && !nodegroup.is_default}
 				<button
 					onclick={() => onDelete?.(nodegroup)}
 					class="text-xs text-ink-2 hover:text-red-400 px-2 py-1 rounded transition-colors"
-				>삭제</button>
+				>{t('actions.delete')}</button>
 			{/if}
 		</div>
 	</div>
 
 	<div class="flex items-center gap-4 text-xs text-ink-2">
-		<span>노드 수: <span class="text-ink-0">{nodegroup.node_count}</span></span>
+		<span><RichText segments={t.rich('nodegroup.nodeCount', { count: nodegroup.node_count })} tags={{ count: countSnippet }} /></span>
 		{#if nodegroup.vms.length > 0}
-			<span>VM: <span class="text-ink-0">{runningVms}/{nodegroup.vms.length}</span></span>
+			<span><RichText segments={t.rich('nodegroup.vmCount', { running: runningVms, total: nodegroup.vms.length })} tags={{ count: countSnippet }} /></span>
 		{/if}
 		{#if nodegroup.flavor_id}
 			<span class="font-mono truncate max-w-32">{nodegroup.flavor_id.slice(0, 12)}...</span>

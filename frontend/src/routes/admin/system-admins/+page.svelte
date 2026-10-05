@@ -11,6 +11,7 @@
 	import SystemAdminGrantModal from '$lib/components/admin/system-admins/SystemAdminGrantModal.svelte';
 	import SecurityPolicyBanner from '$lib/components/admin/system-admins/SecurityPolicyBanner.svelte';
 	import MigrateModal from '$lib/components/admin/system-admins/MigrateModal.svelte';
+	import { t } from '$lib/i18n/ns/admin-identity';
 
 	interface SystemAdmin {
 		user_id: string;
@@ -57,7 +58,7 @@
 			.catch((loadError) => {
 				if (generation === loadGeneration && token === requestToken && projectId === requestProjectId) {
 					policy = null;
-					policyError = loadError instanceof Error ? loadError.message : '보안 정책 조회 실패';
+					policyError = loadError instanceof Error ? loadError.message : t('systemPage.policyFailed');
 				}
 			})
 			.finally(() => {
@@ -69,7 +70,7 @@
 		} catch (loadError) {
 			if (generation === loadGeneration && token === requestToken && projectId === requestProjectId) {
 				admins = [];
-				adminsError = loadError instanceof Error ? loadError.message : '시스템 관리자 조회 실패';
+				adminsError = loadError instanceof Error ? loadError.message : t('systemPage.adminsFailed');
 			}
 		} finally {
 			if (generation === loadGeneration && token === requestToken && projectId === requestProjectId) {
@@ -92,13 +93,13 @@
 </script>
 
 <div class="p-4 md:p-6 max-w-7xl mx-auto">
-	<PageHeader breadcrumb="IDENTITY / SYSTEM ADMINS" title="시스템 관리자">
+	<PageHeader breadcrumb={t('systemPage.breadcrumb')} title={t('systemPage.title')}>
 		{#snippet actions()}
 			<button
 				onclick={() => (showGrant = true)}
 				class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg"
 			>
-				+ 추가
+				{t('systemPage.add')}
 			</button>
 			<AutoRefreshControl
 				bind:active={ar.active}
@@ -114,19 +115,19 @@
 		<LoadingSkeleton variant="table" rows={3} />
 	{:else}
 			{#if policyLoading}
-				<Alert tone="neutral" class="mb-3">보안 정책을 불러오는 중...</Alert>
+				<Alert tone="neutral" class="mb-3">{t('systemPage.policyLoading')}</Alert>
 			{:else if policyError}
-				<Alert tone="danger" class="mb-3" title="보안 정책 조회 실패">{policyError}</Alert>
+				<Alert tone="danger" class="mb-3" title={t('systemPage.policyFailed')}>{policyError}</Alert>
 			{:else if policy}
 				<SecurityPolicyBanner {policy} onMigrate={() => (showMigrate = true)} />
 			{/if}
 
 			{#if adminsError}
-				<Alert tone="danger" class="mb-3" title="시스템 관리자 조회 실패">{adminsError}</Alert>
+				<Alert tone="danger" class="mb-3" title={t('systemPage.adminsFailed')}>{adminsError}</Alert>
 			{/if}
 			{#if admins.length === 0}
 				<div class="text-ink-2 text-sm py-12 text-center">
-					등록된 system admin이 없습니다.
+					{t('systemPage.empty')}
 				</div>
 			{:else}
 				<SystemAdminTable {admins} onRevoked={load} />

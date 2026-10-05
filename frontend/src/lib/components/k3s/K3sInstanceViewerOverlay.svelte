@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/drover';
   import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
   import InstanceDetailPanel from '$lib/components/InstanceDetailPanel.svelte';
 
@@ -10,7 +11,7 @@
     <button
       onclick={() => s.clearViewingInstance()}
       class="text-ink-2 hover:text-ink-0 text-sm transition-colors mb-2">
-      ← 클러스터 상세
+      {t('instanceViewer.back')}
     </button>
   </div>
   <InstanceDetailPanel instanceId={s.viewingInstanceId!} onClose={() => s.clearViewingInstance()} />

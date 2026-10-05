@@ -1,3 +1,5 @@
+import { t } from '$lib/i18n/ns/shared';
+
 export type BulkMutationResult =
 	| { id: string; ok: true }
 	| { id: string; ok: false; error: string };
@@ -35,7 +37,7 @@ export async function executeBulkMutations(
 				await mutate(id);
 				results[index] = { id, ok: true };
 			} catch {
-				results[index] = { id, ok: false, error: '요청 실패' };
+				results[index] = { id, ok: false, error: t('bulkActions.requestFailed') };
 			}
 		}
 	}

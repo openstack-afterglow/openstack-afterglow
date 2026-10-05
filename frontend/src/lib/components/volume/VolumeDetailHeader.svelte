@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/volume';
   import { useVolumeDetailController } from '$lib/stores/volumeDetailController.svelte';
   import DetailHeader from '$lib/components/ui/DetailHeader.svelte';
   import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
@@ -12,7 +13,7 @@
 </script>
 
 <DetailHeader
-  title={s.volume ? s.volume.name || s.volume.id : '볼륨'}
+  title={s.volume ? s.volume.name || s.volume.id : t('detailHeader.title')}
   subtitle={s.volume?.name ? s.volume.id : undefined}
   status={s.volume?.status ?? null}
 >

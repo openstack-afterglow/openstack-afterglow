@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Button from '$lib/components/ui/Button.svelte';
 	import ToggleGroup, { type ToggleOption } from '$lib/components/ui/ToggleGroup.svelte';
+	import { t } from '$lib/i18n/ns/shared';
 
 	interface Props {
 		active: boolean;
@@ -20,7 +21,7 @@
 
 	const toggleValue = $derived(active ? String(intervalSeconds) : 'off');
 	const options: ToggleOption[] = $derived([
-		{ value: 'off', label: 'Off' },
+		{ value: 'off', label: t('autoRefresh.off') },
 		...intervalOptions.map((opt) => ({ value: String(opt), label: `${opt}s` })),
 	]);
 
@@ -39,7 +40,7 @@
 		type="button"
 		onclick={onManualRefresh}
 		disabled={refreshing}
-		title={refreshing ? '로딩 중…' : '지금 새로고침'}
+		title={refreshing ? t('autoRefresh.loading') : t('autoRefresh.refreshNow')}
 		variant="subtle"
 		size="sm"
 	>
@@ -57,7 +58,7 @@
 				d="M4 4v5h5M20 20v-5h-5M4 9a8 8 0 0114.93-3M20 15a8 8 0 01-14.93 3"
 			/>
 		</svg>
-		<span class="refresh-label">새로고침</span>
+		<span class="refresh-label">{t('autoRefresh.refresh')}</span>
 	</Button>
 	<ToggleGroup value={toggleValue} {options} onchange={handleChange} size="xs" />
 </div>

@@ -2,6 +2,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/sv
 import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { auth } from '$lib/stores/auth';
+import { t } from '$lib/i18n/ns/chat-settings';
+import { initLocale } from '$lib/i18n/runtime.svelte';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), patch: vi.fn() }));
 vi.mock('$lib/api/client', () => ({
@@ -49,6 +51,7 @@ function examples(container: HTMLElement): string {
 describe('ChatApiKeysManager connection guide', () => {
 	beforeEach(() => {
 		vi.resetAllMocks();
+		initLocale('ko');
 		auth.set({
 			token: 'browser-token', refreshToken: null, accessExpiresAt: null,
 			userId: 'user-1', username: 'tester', projectId: 'project-1', projectName: 'Project',
@@ -60,16 +63,20 @@ describe('ChatApiKeysManager connection guide', () => {
 		));
 	});
 
-	afterEach(cleanup);
+	afterEach(() => {
+		cleanup();
+		initLocale('ko');
+	});
 
 	it('switches a single accessible guide without refetching discovery', async () => {
 		render(ChatApiKeysManager);
-		const codexTab = await screen.findByRole('tab', { name: 'Codex' });
-		const codexPanel = screen.getByRole('tabpanel', { name: 'Codex' });
+		const codexTab = await screen.findByRole('tab', { name: t('apiKeys.guide.codexTab') });
+		const codexPanel = screen.getByRole('tabpanel', { name: t('apiKeys.guide.codexTab') });
 		expect(codexTab.getAttribute('aria-controls')).toBe(codexPanel.id);
 		const discoveryRequests = mocks.get.mock.calls.filter(([path]) => String(path).endsWith('/compat')).length;
 
-		for (const name of ['Claude Code', 'OpenAI', 'Claude', 'Codex']) {
+		for (const key of ['apiKeys.guide.claudeCodeTab', 'apiKeys.guide.openaiTab', 'apiKeys.guide.claudeTab', 'apiKeys.guide.codexTab'] as const) {
+			const name = t(key);
 			await fireEvent.click(screen.getByRole('tab', { name }));
 			expect(screen.getAllByRole('tabpanel')).toEqual([screen.getByRole('tabpanel', { name })]);
 			expect(screen.getByRole('tab', { name }).getAttribute('aria-selected')).toBe('true');
@@ -86,11 +93,11 @@ describe('ChatApiKeysManager connection guide', () => {
 		const { container } = render(ChatApiKeysManager);
 		await screen.findByRole('alert');
 		expect(container.querySelector('pre')).toBeNull();
-		expect(screen.getByRole('button', { name: '+ 새 API 키 발급' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: t('apiKeys.create') })).toBeTruthy();
 		unavailable = false;
-		await fireEvent.click(screen.getByRole('button', { name: '연결 정보 다시 불러오기' }));
+		await fireEvent.click(screen.getByRole('button', { name: t('apiKeys.guide.reload') }));
 		await waitFor(() => expect(examples(container)).toContain(discovery.clients.codex.base_url));
-		expect(screen.getByRole('tab', { name: 'Codex' }).getAttribute('aria-selected')).toBe('true');
+		expect(screen.getByRole('tab', { name: t('apiKeys.guide.codexTab') }).getAttribute('aria-selected')).toBe('true');
 		expect(screen.queryByRole('alert')).toBeNull();
 	});
 
@@ -143,10 +150,10 @@ describe('ChatApiKeysManager connection guide', () => {
 	it('renames an active API key in place', async () => {
 		render(ChatApiKeysManager);
 
-		await fireEvent.click(await screen.findByRole('button', { name: '이름 변경' }));
-		const input = screen.getByRole('textbox', { name: 'API 키 이름' });
+		await fireEvent.click(await screen.findByRole('button', { name: t('apiKeys.rename') }));
+		const input = screen.getByRole('textbox', { name: t('apiKeys.nameLabel') });
 		await fireEvent.input(input, { target: { value: '새 이름' } });
-		await fireEvent.click(screen.getByRole('button', { name: '저장' }));
+		await fireEvent.click(screen.getByRole('button', { name: t('apiKeys.save') }));
 
 		await waitFor(() => {
 			expect(mocks.patch).toHaveBeenCalledWith(
@@ -161,18 +168,18 @@ describe('ChatApiKeysManager connection guide', () => {
 	it('rejects limits above the user quota and saves valid nullable limits', async () => {
 		render(ChatApiKeysManager);
 
-		await fireEvent.click(await screen.findByRole('button', { name: '한도 설정' }));
-		const monthly = screen.getByLabelText('월 한도(크레딧)');
-		const weekly = screen.getByLabelText('주간 한도(크레딧)');
+		await fireEvent.click(await screen.findByRole('button', { name: t('apiKeys.setLimits') }));
+		const monthly = screen.getByLabelText(t('apiKeys.monthlyLimit'));
+		const weekly = screen.getByLabelText(t('apiKeys.weeklyLimit'));
 		await fireEvent.input(monthly, { target: { value: '2000' } });
-		await fireEvent.click(screen.getByRole('button', { name: '저장' }));
+		await fireEvent.click(screen.getByRole('button', { name: t('apiKeys.save') }));
 
-		expect(screen.getByText('사용자 쿼터(1,000)를 초과할 수 없습니다')).toBeTruthy();
+		expect(screen.getByRole('alert').id).toBe(`${monthly.id}-message`);
 		expect(mocks.patch).not.toHaveBeenCalled();
 
 		await fireEvent.input(monthly, { target: { value: '500' } });
 		await fireEvent.input(weekly, { target: { value: '' } });
-		await fireEvent.click(screen.getByRole('button', { name: '저장' }));
+		await fireEvent.click(screen.getByRole('button', { name: t('apiKeys.save') }));
 
 		await waitFor(() => {
 			expect(mocks.patch).toHaveBeenCalledWith(
@@ -194,11 +201,12 @@ describe('ChatApiKeysManager connection guide', () => {
 		));
 		render(ChatApiKeysManager);
 
-		await fireEvent.click(await screen.findByRole('button', { name: '한도 설정' }));
-		await fireEvent.input(screen.getByLabelText('월 한도(크레딧)'), { target: { value: '800' } });
-		await fireEvent.click(screen.getByRole('button', { name: '저장' }));
+		await fireEvent.click(await screen.findByRole('button', { name: t('apiKeys.setLimits') }));
+		const monthly = screen.getByLabelText(t('apiKeys.monthlyLimit'));
+		await fireEvent.input(monthly, { target: { value: '800' } });
+		await fireEvent.click(screen.getByRole('button', { name: t('apiKeys.save') }));
 
-		expect(screen.getByText('관리자 한도(500)를 초과할 수 없습니다')).toBeTruthy();
+		expect(screen.getByRole('alert').id).toBe(`${monthly.id}-message`);
 		expect(mocks.patch).not.toHaveBeenCalled();
 	});
 });

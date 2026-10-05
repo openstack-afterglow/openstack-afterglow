@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/topology';
 	import type { NetworkDetail } from '$lib/types/networks';
 
 	let { network }: { network: NetworkDetail } = $props();
@@ -103,7 +104,7 @@
 			font-size="10"
 			font-family="ui-monospace, monospace"
 		>
-			{network.is_external ? '외부 네트워크' : network.is_shared ? '공유 네트워크' : '내부 네트워크'}
+			{network.is_external ? t('network.external') : network.is_shared ? t('network.shared') : t('network.internal')}
 		</text>
 
 		<!-- Subnet nodes and lines from network -->
@@ -207,7 +208,7 @@
 				font-size="9"
 				font-family="ui-sans-serif, system-ui, sans-serif"
 			>
-				{pos.isExternal ? '외부 게이트웨이 연결' : '내부 라우터'}
+				{pos.isExternal ? t('network.externalGateway') : t('network.internalRouter')}
 			</text>
 		{/each}
 
@@ -221,7 +222,7 @@
 				font-size="12"
 				font-family="ui-sans-serif, system-ui, sans-serif"
 			>
-				서브넷 없음
+				{t('empty.subnets')}
 			</text>
 		{/if}
 	</svg>

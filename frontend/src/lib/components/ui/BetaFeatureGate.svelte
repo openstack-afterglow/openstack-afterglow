@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Button from './Button.svelte';
+	import { t } from '$lib/i18n/ns/common';
 
 	interface Props {
 		title: string;
@@ -9,7 +10,7 @@
 
 	let {
 		title,
-		description = '계정 설정에서 이 베타 기능을 켜면 사용할 수 있습니다.',
+		description,
 		accountHref = '/dashboard/account',
 	}: Props = $props();
 </script>
@@ -19,8 +20,8 @@
 		<span class="text-xl font-semibold">β</span>
 	</div>
 	<h1 class="text-xl font-semibold">{title}</h1>
-	<p class="beta-gate-description mx-auto mt-3 max-w-xl text-sm leading-6">{description}</p>
-	<Button href={accountHref} variant="primary" class="mt-6">베타 설정으로 이동</Button>
+	<p class="beta-gate-description mx-auto mt-3 max-w-xl text-sm leading-6">{description ?? t('beta.description')}</p>
+	<Button href={accountHref} variant="primary" class="mt-6">{t('beta.openSettings')}</Button>
 </div>
 
 <style>

@@ -3,6 +3,7 @@ import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MOTION_DURATION_MS } from '$lib/design/tokens';
 import LandingOpsBoard from '../LandingOpsBoard.svelte';
+import { t } from '$lib/i18n/ns/public-entry';
 
 const delay = MOTION_DURATION_MS.statusPulse + MOTION_DURATION_MS.data;
 const panelKeys = ['request', 'policy', 'resource', 'reuse'];
@@ -64,7 +65,7 @@ function stepStates(step: number) {
 }
 
 async function start() {
-	await fireEvent.click(screen.getByRole('button', { name: '환경 구성 체험' }));
+	await fireEvent.click(screen.getByRole('button', { name: t('opsBoard.preview.start') }));
 }
 
 beforeEach(() => {
@@ -89,14 +90,14 @@ describe('LandingOpsBoard local preview', () => {
 		const fetch = vi.fn();
 		vi.stubGlobal('fetch', fetch);
 		render(LandingOpsBoard);
-		expect(screen.getByRole('button', { name: 'GPU 연구' }).getAttribute('aria-pressed')).toBe('true');
+		expect(screen.getByRole('button', { name: t('opsBoard.gpu.label') }).getAttribute('aria-pressed')).toBe('true');
 		await advance(delay * 8);
 		expect(progress()).toBe(0);
 		expect(currentStep()).toBeUndefined();
 		expect(panel('reuse').dataset.state).toBe('waiting');
 
 		await start();
-		for (const [index, name] of ['신청', '정책 확인', '자원 배정', '재사용 결과'].entries()) {
+		for (const [index, name] of [t('opsBoard.preview.requestStage'), t('opsBoard.preview.policyStage'), t('opsBoard.preview.resourceStage'), t('opsBoard.preview.reuseStage')].entries()) {
 			expect(progress()).toBe(index);
 			expect(currentStep()?.textContent).toContain(name);
 			await advance();
@@ -108,10 +109,10 @@ describe('LandingOpsBoard local preview', () => {
 		await advance(delay * 8);
 		expect(progress()).toBe(4);
 		const completedScene = document.querySelector('.scene');
-		await fireEvent.click(screen.getByRole('button', { name: '다시 체험' }));
+		await fireEvent.click(screen.getByRole('button', { name: t('opsBoard.preview.replay') }));
 		expect(document.querySelector('.scene')).not.toBe(completedScene);
 		expect(progress()).toBe(0);
-		expect(currentStep()?.textContent).toContain('신청');
+		expect(currentStep()?.textContent).toContain(t('opsBoard.preview.requestStage'));
 		expect(panel('reuse').dataset.state).toBe('waiting');
 		await advance(delay * 4);
 		expect(progress()).toBe(4);
@@ -123,16 +124,16 @@ describe('LandingOpsBoard local preview', () => {
 		await start();
 		const pausedObserver = observer;
 		await advance();
-		await fireEvent.click(screen.getByRole('button', { name: '일시정지' }));
-		const control = screen.getByRole('button', { name: '계속하기' });
+		await fireEvent.click(screen.getByRole('button', { name: t('opsBoard.preview.pause') }));
+		const control = screen.getByRole('button', { name: t('opsBoard.preview.resume') });
 		await act(async () => {
 			await fireEvent.click(control, { detail: 1 });
 			await fireEvent.click(control, { detail: 2 });
 			await tick();
 		});
-		expect(control.textContent).toContain('계속하기');
+		expect(control.textContent).toContain(t('opsBoard.preview.resume'));
 		expect(progress()).toBe(1);
-		expect(currentStep()?.textContent).toContain('정책 확인');
+		expect(currentStep()?.textContent).toContain(t('opsBoard.preview.policyStage'));
 		expect(vi.getTimerCount()).toBe(0);
 		await act(async () => {
 			pausedObserver.setVisible(false);
@@ -140,10 +141,10 @@ describe('LandingOpsBoard local preview', () => {
 		});
 		await advance(delay * 5);
 		expect(progress()).toBe(1);
-		expect(control.textContent).toContain('계속하기');
+		expect(control.textContent).toContain(t('opsBoard.preview.resume'));
 
 		await fireEvent.click(control);
-		expect(control.textContent).toContain('일시정지');
+		expect(control.textContent).toContain(t('opsBoard.preview.pause'));
 		expect(vi.getTimerCount()).toBe(1);
 		await act(async () => {
 			pausedObserver.setVisible(false);
@@ -178,17 +179,17 @@ describe('LandingOpsBoard local preview', () => {
 		}
 		expect(panelStates()).toEqual(['done', 'done', 'done', 'done']);
 
-		await fireEvent.click(screen.getByRole('button', { name: '다시 체험' }));
+		await fireEvent.click(screen.getByRole('button', { name: t('opsBoard.preview.replay') }));
 		await advance();
 		await advance();
-		await fireEvent.click(screen.getByRole('button', { name: '일시정지' }));
+		await fireEvent.click(screen.getByRole('button', { name: t('opsBoard.preview.pause') }));
 		await advance(delay * 3);
 		expect(panelStates()).toEqual(stepStates(2));
 	});
 
 	it('completes 클러스터 실습 with cluster nodes and its template instead of the GPU instance', async () => {
 		render(LandingOpsBoard);
-		await fireEvent.click(screen.getByRole('button', { name: '클러스터 실습' }));
+		await fireEvent.click(screen.getByRole('button', { name: t('opsBoard.cluster.label') }));
 		await start();
 		await advance(delay * 4);
 		const resource = panel('resource');
@@ -204,28 +205,29 @@ describe('LandingOpsBoard local preview', () => {
 
 	it('keeps keyboard focus on one run control while its action changes', async () => {
 		render(LandingOpsBoard);
-		const control = screen.getByRole('button', { name: '환경 구성 체험' });
+		const control = screen.getByRole('button', { name: t('opsBoard.preview.start') });
 		control.focus();
 		await fireEvent.click(control);
-		expect(document.activeElement).toBe(screen.getByRole('button', { name: '일시정지' }));
+		expect(document.activeElement).toBe(screen.getByRole('button', { name: t('opsBoard.preview.pause') }));
 		await fireEvent.click(control);
-		expect(document.activeElement).toBe(screen.getByRole('button', { name: '계속하기' }));
+		expect(document.activeElement).toBe(screen.getByRole('button', { name: t('opsBoard.preview.resume') }));
 		await fireEvent.click(control);
 		await advance(delay * 4);
-		expect(document.activeElement).toBe(screen.getByRole('button', { name: '다시 체험' }));
+		expect(document.activeElement).toBe(screen.getByRole('button', { name: t('opsBoard.preview.replay') }));
 	});
 
 	it.each([
-		['클러스터 실습', 'cluster', 'distributed-training'],
-		['공유 데이터', 'data', 'genomics-baseline'],
-	])('cancels pending GPU work when switching to %s and publishes only the new scenario', async (label, key, output) => {
+		['cluster', 'distributed-training'],
+		['data', 'genomics-baseline'],
+	])('cancels pending GPU work when switching to %s and publishes only the new scenario', async (key, output) => {
 		render(LandingOpsBoard);
+		const label = t(key === 'cluster' ? 'opsBoard.cluster.label' : 'opsBoard.data.label');
 		await start();
 		const previousObserver = observer;
 		await advance(delay * 3 + delay - 1);
 		await fireEvent.click(screen.getByRole('button', { name: label }));
 		expect(screen.getByRole('button', { name: label }).getAttribute('aria-pressed')).toBe('true');
-		expect(screen.getByRole('button', { name: 'GPU 연구' }).getAttribute('aria-pressed')).toBe('false');
+		expect(screen.getByRole('button', { name: t('opsBoard.gpu.label') }).getAttribute('aria-pressed')).toBe('false');
 		expect(progress()).toBe(0);
 		expect(panelStates()).toEqual(['ready', 'waiting', 'waiting', 'waiting']);
 		expect(panel('resource').querySelector('[data-resource]')?.getAttribute('data-resource')).toBe(key);
@@ -245,12 +247,12 @@ describe('LandingOpsBoard local preview', () => {
 		render(LandingOpsBoard);
 		await start();
 		await advance();
-		await fireEvent.click(screen.getByRole('button', { name: '일시정지' }));
-		await fireEvent.click(screen.getByRole('button', { name: '공유 데이터' }));
+		await fireEvent.click(screen.getByRole('button', { name: t('opsBoard.preview.pause') }));
+		await fireEvent.click(screen.getByRole('button', { name: t('opsBoard.data.label') }));
 		expect(progress()).toBe(0);
 		await start();
 		await advance(delay * 4);
-		await fireEvent.click(screen.getByRole('button', { name: 'GPU 연구' }));
+		await fireEvent.click(screen.getByRole('button', { name: t('opsBoard.gpu.label') }));
 		expect(progress()).toBe(0);
 		expect(panelStates()).toEqual(['ready', 'waiting', 'waiting', 'waiting']);
 		await advance(delay * 5);
@@ -270,7 +272,7 @@ describe('LandingOpsBoard local preview', () => {
 		});
 		await advance(delay * 5);
 		expect(progress()).toBe(1);
-		await fireEvent.click(screen.getByRole('button', { name: '계속하기' }));
+		await fireEvent.click(screen.getByRole('button', { name: t('opsBoard.preview.resume') }));
 		if (reason === 'offscreen') {
 			await act(async () => {
 				observer.setVisible(false);
@@ -287,7 +289,7 @@ describe('LandingOpsBoard local preview', () => {
 		});
 		await advance(delay * 5);
 		expect(progress()).toBe(1);
-		await fireEvent.click(screen.getByRole('button', { name: '계속하기' }));
+		await fireEvent.click(screen.getByRole('button', { name: t('opsBoard.preview.resume') }));
 		await advance(delay * 3);
 		expect(progress()).toBe(4);
 	});
@@ -299,12 +301,12 @@ describe('LandingOpsBoard local preview', () => {
 		await start();
 		expect(progress()).toBe(4);
 		expect(panelStates()).toEqual(['done', 'done', 'done', 'done']);
-		const stageItems = within(screen.getByRole('list', { name: '환경 구성 단계' })).getAllByRole('listitem');
+		const stageItems = within(screen.getByRole('list', { name: t('opsBoard.preview.stagesAriaLabel') })).getAllByRole('listitem');
 		expect(stageItems.every((item) => item.classList.contains('done') && item.querySelector('svg'))).toBe(true);
 		expect(vi.getTimerCount()).toBe(0);
-		await fireEvent.click(screen.getByRole('button', { name: '다시 체험' }));
+		await fireEvent.click(screen.getByRole('button', { name: t('opsBoard.preview.replay') }));
 		expect(progress()).toBe(4);
-		await fireEvent.click(screen.getByRole('button', { name: '공유 데이터' }));
+		await fireEvent.click(screen.getByRole('button', { name: t('opsBoard.data.label') }));
 		expect(progress()).toBe(0);
 		await start();
 		expect(reuseResult()).toBe('genomics-baseline');
@@ -320,7 +322,7 @@ describe('LandingOpsBoard local preview', () => {
 		await motion(false);
 		await advance(delay * 5);
 		expect(progress()).toBe(4);
-		await fireEvent.click(screen.getByRole('button', { name: '다시 체험' }));
+		await fireEvent.click(screen.getByRole('button', { name: t('opsBoard.preview.replay') }));
 		expect(progress()).toBe(0);
 		await advance();
 		expect(progress()).toBe(1);
@@ -330,11 +332,11 @@ describe('LandingOpsBoard local preview', () => {
 		render(LandingOpsBoard);
 		await start();
 		await advance();
-		await fireEvent.click(screen.getByRole('button', { name: '일시정지' }));
+		await fireEvent.click(screen.getByRole('button', { name: t('opsBoard.preview.pause') }));
 		await motion(true);
 		await advance(delay * 5);
 		expect(progress()).toBe(1);
-		await fireEvent.click(screen.getByRole('button', { name: '계속하기' }));
+		await fireEvent.click(screen.getByRole('button', { name: t('opsBoard.preview.resume') }));
 		expect(progress()).toBe(4);
 		expect(vi.getTimerCount()).toBe(0);
 	});

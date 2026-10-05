@@ -1,3 +1,4 @@
+import { t } from '$lib/i18n/ns/images-keys';
 import { getContext, setContext } from 'svelte';
 import { api, ApiError } from '$lib/api/client';
 import type { ImageDetail, ImageMember } from '$lib/types/adminImage';
@@ -14,10 +15,10 @@ const RESERVED_KEYS = new Set([
 export const isReservedKey = (k: string) => RESERVED_KEYS.has(k) || k.startsWith('os_glance_');
 
 export const VISIBILITY_OPTIONS = [
-	{ value: 'public',    label: '공개 (Public)' },
-	{ value: 'private',   label: '비공개 (Private)' },
-	{ value: 'shared',    label: '공유 (Shared)' },
-	{ value: 'community', label: '커뮤니티 (Community)' },
+	{ value: 'public',    get label() { return t('detailController.visibility.public'); } },
+	{ value: 'private',   get label() { return t('detailController.visibility.private'); } },
+	{ value: 'shared',    get label() { return t('detailController.visibility.shared'); } },
+	{ value: 'community', get label() { return t('detailController.visibility.community'); } },
 ];
 
 export interface ImageDetailControllerOpts {
@@ -80,7 +81,7 @@ export function createImageDetailController(opts: ImageDetailControllerOpts) {
 			image = loadedImage;
 			if (loadedImage.visibility === 'shared') loadMembers();
 		} catch (e) {
-			error = e instanceof ApiError ? `조회 실패 (${e.status}): ${e.message}` : '서버 오류';
+			error = e instanceof ApiError ? t('detailController.loadFailed', { status: e.status, message: e.message }) : t('detailController.serverError');
 		} finally {
 			loading = false;
 		}
@@ -129,7 +130,7 @@ export function createImageDetailController(opts: ImageDetailControllerOpts) {
 			setTimeout(() => { visibilitySuccess = false; }, 2000);
 			if (updated.visibility === 'shared') loadMembers();
 		} catch (e) {
-			visibilityError = e instanceof ApiError ? e.message : '저장 실패';
+			visibilityError = e instanceof ApiError ? e.message : t('detailController.visibility.saveFailed');
 		} finally {
 			savingVisibility = false;
 		}
@@ -146,7 +147,7 @@ export function createImageDetailController(opts: ImageDetailControllerOpts) {
 			newMemberId = '';
 			await loadMembers();
 		} catch (e) {
-			memberError = e instanceof ApiError ? e.message : '멤버 추가 실패';
+			memberError = e instanceof ApiError ? e.message : t('detailController.members.addFailed');
 		} finally {
 			addingMember = false;
 		}
@@ -162,7 +163,7 @@ export function createImageDetailController(opts: ImageDetailControllerOpts) {
 			await api.delete(`/api/v1/images/${image.id}/members/${memberId}`, tok, proj);
 			await loadMembers();
 		} catch (e) {
-			memberError = e instanceof ApiError ? e.message : '멤버 삭제 실패';
+			memberError = e instanceof ApiError ? e.message : t('detailController.members.deleteFailed');
 		} finally {
 			removingMember = null;
 		}
@@ -197,11 +198,11 @@ export function createImageDetailController(opts: ImageDetailControllerOpts) {
 		const key = newPropKey.trim();
 		const value = newPropValue.trim();
 		if (!key) {
-			propsError = '키를 입력하세요.';
+			propsError = t('detailController.properties.keyRequired');
 			return;
 		}
 		if (isReservedKey(key)) {
-			propsError = `"${key}" 는 시스템 예약 키라 편집할 수 없습니다.`;
+			propsError = t('detailController.properties.reservedKey', { key });
 			return;
 		}
 		propsDraft[key] = value;
@@ -248,7 +249,7 @@ export function createImageDetailController(opts: ImageDetailControllerOpts) {
 			image = { ...image, properties: updated.properties };
 			editingProps = false;
 		} catch (e) {
-			propsError = e instanceof ApiError ? e.message : '저장 실패';
+			propsError = e instanceof ApiError ? e.message : t('detailController.properties.saveFailed');
 		} finally {
 			savingProps = false;
 		}
@@ -258,14 +259,14 @@ export function createImageDetailController(opts: ImageDetailControllerOpts) {
 		if (!image) return;
 		const tok = opts.token();
 		const proj = opts.projectId();
-		if (!(await confirmDialog(`이미지 "${image.name}"을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`))) return;
+		if (!(await confirmDialog(t('detailController.deleteConfirm', { name: image.name })))) return;
 		deleting = true;
 		try {
 			await api.delete(`/api/v1/images/${image.id}`, tok, proj);
 			opts.onDelete?.(image.id);
 			opts.onClose?.();
 		} catch (e) {
-			toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('detailController.deleteFailed', { message: e instanceof ApiError ? e.message : String(e) }));
 			deleting = false;
 		}
 	}
@@ -327,6 +328,6 @@ export function provideImageDetailController(store: ImageDetailController) {
 
 export function useImageDetailController(): ImageDetailController {
 	const store = getContext<ImageDetailController | undefined>(IMAGE_DETAIL_KEY);
-	if (!store) throw new Error('useImageDetailController must be called within ImageDetailPanel');
+	if (!store) throw new Error(t('detailController.contextRequired'));
 	return store;
 }

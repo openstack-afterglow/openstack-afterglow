@@ -1,0 +1,208 @@
+---
+# Input: afterglow_image_ref_service. Only application images are listed here;
+# datastore, Cloud Shell and unmanaged Lumen pool images remain role/operator-owned.
+# Keep this include private: sibling preparation must not publish Afterglow's
+# defaults (or evaluate its credential-bearing service dictionaries).
+- name: Image references | Prepare enabled application images
+  vars:
+    afterglow_image_ref_components:
+      afterglow:
+        - {prefix: afterglow_backend, repository: afterglow-api, enabled: enable_afterglow_backend, default_enabled: true}
+        - {prefix: afterglow_frontend, repository: afterglow, enabled: enable_afterglow_frontend, default_enabled: true}
+        - {prefix: afterglow_worker, repository: afterglow-worker, enabled: enable_afterglow_notion_worker, default_enabled: false}
+      drover:
+        - {prefix: drover_api, repository: drover-api, enabled: enable_drover_api, default_enabled: true}
+        - {prefix: drover_worker, repository: drover-worker, enabled: enable_drover_worker, default_enabled: true}
+      waygate:
+        - {prefix: waygate_api, repository: waygate-api, enabled: enable_waygate_api, default_enabled: true}
+        - {prefix: waygate_worker, repository: waygate-worker, enabled: enable_waygate_worker, default_enabled: true}
+      palimpsest:
+        - {prefix: palimpsest_api, repository: palimpsest-hub-api, enabled: enable_palimpsest_hub_api, default_enabled: true}
+        - {prefix: palimpsest_worker, repository: palimpsest-hub-worker, enabled: enable_palimpsest_hub_worker, default_enabled: true}
+      lumen:
+        - {prefix: lumen_api, repository: lumen-api, enabled: enable_lumen_api, default_enabled: true}
+        - {prefix: lumen_worker, repository: lumen-worker, enabled: enable_lumen_worker, default_enabled: true}
+        - prefix: lumen_controller
+          repository: lumen-controller
+          enabled: enable_lumen_controller
+          default_enabled: "{{ lumen_runtime_enabled | default(false) | bool }}"
+    afterglow_image_ref_source_mode: >-
+      {{
+        lookup('vars', afterglow_image_ref_service ~ '_source_mode',
+          default=lookup('vars', 'enable_' ~ afterglow_image_ref_service ~ '_source_build',
+            default=(false if afterglow_image_ref_service == 'afterglow' else
+              (enable_source_build | default(lookup('vars', afterglow_image_ref_service ~ '_dev_mode', default=false)))))) | bool
+      }}
+  when:
+    - kolla_action | default('deploy') in ['precheck', 'pull', 'deploy', 'reconfigure', 'upgrade']
+    - lookup('vars', 'enable_' ~ afterglow_image_ref_service, default=false) | bool
+    - not (afterglow_image_ref_source_mode | bool)
+  any_errors_fatal: true
+  block:
+    # run_once is per serial batch. A first-target condition instead performs
+    # selection exactly once per play, including --limit and kolla_serial=1.
+    # Reinitialize unconditionally on that host, never reuse a cached selection
+    # from a previous invocation. All facts below are intentionally noncacheable.
+    - name: Image references | Select on the first targeted controller
+      when: inventory_hostname == ansible_play_hosts_all[0]
+      block:
+        - name: Image references | Initialize this invocation's selected inputs
+          ansible.builtin.set_fact:
+            afterglow_requested_image_refs: {}
+            afterglow_selected_image_refs: {}
+            afterglow_image_ref_candidate_inputs: {}
+            afterglow_image_ref_selection_service: "{{ afterglow_image_ref_service }}"
+            afterglow_image_ref_selection_ready: false
+            cacheable: false
+          delegate_to: "{{ ansible_play_hosts_all[0] }}"
+          delegate_facts: true
+
+        # Role defaults are not present in hostvars. Use the published defaults
+        # below, not lookup('vars') in the coordinator/delegated host's context.
+        - name: Image references | Collect enabled published consumer inputs
+          vars:
+            afterglow_consumer: "{{ hostvars[item.0] }}"
+            afterglow_consumer_source_mode: >-
+              {{ afterglow_consumer[afterglow_image_ref_service ~ '_source_mode'] | default(
+                   afterglow_consumer['enable_' ~ afterglow_image_ref_service ~ '_source_build'] | default(
+                     false if afterglow_image_ref_service == 'afterglow' else
+                     (afterglow_consumer.enable_source_build | default(
+                       afterglow_consumer[afterglow_image_ref_service ~ '_dev_mode'] | default(false))))) | bool }}
+            afterglow_component_image: >-
+              {{ afterglow_consumer[item.1.prefix ~ '_image'] | default(
+                   (afterglow_consumer[afterglow_image_ref_service ~ '_image_namespace'] | default('ghcr.io/openstack-afterglow')) ~ '/' ~ item.1.repository) }}
+            afterglow_component_image_ref: >-
+              {{ afterglow_consumer[item.1.prefix ~ '_image_ref'] | default(
+                   afterglow_component_image ~ ':' ~ (afterglow_consumer[afterglow_image_ref_service ~ '_image_tag'] | default('latest'))) }}
+          ansible.builtin.set_fact:
+            afterglow_image_ref_candidate_inputs: >-
+              {{ afterglow_image_ref_candidate_inputs | combine({(item.1.prefix ~ '_image_ref'):
+                   (afterglow_image_ref_candidate_inputs.get(item.1.prefix ~ '_image_ref', []) + [afterglow_component_image_ref]) | unique | list}) }}
+            cacheable: false
+          loop: "{{ ansible_play_hosts_all | product(afterglow_image_ref_components[afterglow_image_ref_service]) | list }}"
+          loop_control:
+            label: "{{ item.0 }}.{{ item.1.prefix }}"
+          when:
+            - afterglow_consumer['enable_' ~ afterglow_image_ref_service] | default(false) | bool
+            - not (afterglow_consumer_source_mode | bool)
+            - >-
+              afterglow_consumer[item.1.enabled] | default(
+                (afterglow_consumer.lumen_runtime_enabled | default(false))
+                if item.1.prefix == 'lumen_controller' else item.1.default_enabled) | bool
+          delegate_to: "{{ ansible_play_hosts_all[0] }}"
+          delegate_facts: true
+
+        - name: Image references | Reject contradictory published component inputs
+          ansible.builtin.assert:
+            that:
+              - item.value | length == 1
+            fail_msg: >-
+              Contradictory published image inputs for {{ item.key }} on targeted controllers.
+              Configure one effective image reference per enabled published component or split targets with --limit.
+            quiet: true
+          loop: "{{ afterglow_image_ref_candidate_inputs | dict2items }}"
+          loop_control:
+            label: "{{ item.key }}"
+
+        - name: Image references | Collect agreed component inputs
+          ansible.builtin.set_fact:
+            afterglow_requested_image_refs: "{{ afterglow_requested_image_refs | combine({item.key: item.value[0]}) }}"
+            cacheable: false
+          loop: "{{ afterglow_image_ref_candidate_inputs | dict2items }}"
+          loop_control:
+            label: "{{ item.key }}"
+          delegate_to: "{{ ansible_play_hosts_all[0] }}"
+          delegate_facts: true
+
+        # Version/digest pins use the same distribution path but no remote
+        # command, Docker connection, registry access or privilege escalation.
+        - name: Image references | Retain selected pinned inputs
+          ansible.builtin.set_fact:
+            afterglow_selected_image_refs: "{{ afterglow_requested_image_refs }}"
+            afterglow_image_ref_selection_ready: true
+            cacheable: false
+          delegate_to: "{{ ansible_play_hosts_all[0] }}"
+          delegate_facts: true
+          when: >-
+            afterglow_requested_image_refs.values() | select('search', '(^|/)[^/@:]+$|:(latest|stable)$') | list | length == 0
+
+        - name: Image references | Resolve moving tags without pulling layers
+          ansible.builtin.command:
+            argv:
+              - "{{ ansible_python_interpreter | default('/usr/bin/python3') }}"
+              - -c
+              - "{{ lookup('ansible.builtin.file', role_path ~ '/files/resolve_image_refs.py') }}"
+            stdin: >-
+              {{
+                {'refs': afterglow_requested_image_refs} | combine(
+                  {'auth_config': {'username': docker_registry_username, 'password': docker_registry_password | default(''), 'serveraddress': docker_registry | default('quay.io')}}
+                  if (docker_registry_username | default('') | length > 0) else {}
+                ) | to_json
+              }}
+          become: true
+          delegate_to: "{{ ansible_play_hosts_all[0] }}"
+          register: afterglow_image_ref_resolution
+          changed_when: false
+          failed_when: false
+          no_log: true
+          check_mode: false
+          when: >-
+            afterglow_requested_image_refs.values() | select('search', '(^|/)[^/@:]+$|:(latest|stable)$') | list | length > 0
+
+        - name: Image references | Require successful registry selection
+          ansible.builtin.assert:
+            that:
+              - afterglow_image_ref_resolution.rc | default(1) == 0
+            fail_msg: >-
+              Cannot select exact {{ afterglow_image_ref_service }} images from the registry.
+              Check the controller's Docker SDK/Engine connection, registry credentials,
+              published channel tags and valid manifest/index digests. No stale or local
+              fallback is allowed; no image layers have been pulled by this preparation.
+            quiet: true
+          when: not (afterglow_image_ref_resolution.skipped | default(false))
+
+        - name: Image references | Store exact selected registry references
+          ansible.builtin.set_fact:
+            afterglow_selected_image_refs: "{{ afterglow_image_ref_resolution.stdout | from_json }}"
+            afterglow_image_ref_selection_ready: true
+            cacheable: false
+          delegate_to: "{{ ansible_play_hosts_all[0] }}"
+          delegate_facts: true
+          when: not (afterglow_image_ref_resolution.skipped | default(false))
+
+    - name: Image references | Require a completed selection on every controller
+      ansible.builtin.assert:
+        that:
+          - hostvars[ansible_play_hosts_all[0]].afterglow_image_ref_selection_ready | default(false) | bool
+          - hostvars[ansible_play_hosts_all[0]].afterglow_image_ref_selection_service | default('') == afterglow_image_ref_service
+        fail_msg: >-
+          Image reference selection for {{ afterglow_image_ref_service }} did not complete
+          on the first targeted controller. Refusing unresolved, stale or other-service inputs.
+        quiet: true
+
+    - name: Image references | Apply frozen references to locally enabled components
+      ansible.builtin.set_fact:
+        "{{ item.prefix }}_image_ref": "{{ hostvars[ansible_play_hosts_all[0]].afterglow_selected_image_refs[item.prefix ~ '_image_ref'] }}"
+        cacheable: false
+      loop: "{{ afterglow_image_ref_components[afterglow_image_ref_service] }}"
+      loop_control:
+        label: "{{ item.prefix }}"
+      when: lookup('vars', item.enabled, default=item.default_enabled) | bool
+
+    # Native Kolla globals are extra-vars and outrank set_fact. Mutable channels
+    # must therefore be configured through *_image_tag, not an extra-var ref.
+    # Pins still match verbatim; never silently dispatch a mutable losing ref.
+    - name: Image references | Require effective references to match the selection
+      ansible.builtin.assert:
+        that:
+          - lookup('vars', item.prefix ~ '_image_ref') == hostvars[ansible_play_hosts_all[0]].afterglow_selected_image_refs[item.prefix ~ '_image_ref']
+        fail_msg: >-
+          {{ item.prefix }}_image_ref overrides this invocation's selected image reference.
+          Remove mutable {{ item.prefix }}_image_ref from Kolla globals/extra-vars and configure
+          {{ afterglow_image_ref_service }}_image_tag: latest or stable instead.
+          Use {{ item.prefix }}_image_ref only for an explicit version or @sha256 rollback pin.
+        quiet: true
+      loop: "{{ afterglow_image_ref_components[afterglow_image_ref_service] }}"
+      loop_control:
+        label: "{{ item.prefix }}"
+      when: lookup('vars', item.enabled, default=item.default_enabled) | bool

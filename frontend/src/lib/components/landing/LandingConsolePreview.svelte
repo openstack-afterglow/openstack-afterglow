@@ -4,6 +4,7 @@
 
 <script lang="ts">
 	import UsageBar from '$lib/components/ui/UsageBar.svelte';
+	import { t } from '$lib/i18n/ns/public-entry';
 
 	interface Props {
 		view: ConsolePreviewView;
@@ -16,11 +17,11 @@
 
 	const views: ConsolePreviewView[] = ['project', 'cluster', 'network'];
 
-	const screenLabels: Record<ConsolePreviewView, string> = {
-		project: '프로젝트 개요 예시 화면',
-		cluster: '클러스터 예시 화면',
-		network: '네트워크 토폴로지 예시 화면',
-	};
+	const screenLabels = $derived({
+		project: t('landing.consolePreview.screen.project'),
+		cluster: t('landing.consolePreview.screen.cluster'),
+		network: t('landing.consolePreview.screen.network'),
+	});
 
 	const railItems: IconName[] = ['overview', 'server', 'cluster', 'network', 'storage'];
 	const railCurrent: Record<ConsolePreviewView, IconName> = {
@@ -29,37 +30,38 @@
 		network: 'network',
 	};
 
-	const counters = [
-		{ label: '인스턴스', value: 4 },
-		{ label: '볼륨', value: 6 },
-		{ label: '클러스터', value: 1 },
-	];
+	const counters = $derived([
+		{ label: t('landing.consolePreview.resources.instances'), value: 4 },
+		{ label: t('landing.consolePreview.resources.volumes'), value: 6 },
+		{ label: t('landing.consolePreview.resources.clusters'), value: 1 },
+	]);
 
-	const quotas = [
-		{ label: 'vCPU', value: 40, max: 64, unit: '' },
-		{ label: '메모리', value: 160, max: 256, unit: ' GB' },
-		{ label: 'GPU', value: 1, max: 2, unit: '' },
-		{ label: '스토리지', value: 3.2, max: 10, unit: ' TB' },
-	];
+	const quotas = $derived([
+		{ label: t('landing.consolePreview.resources.vcpu'), value: 40, max: 64, unit: '' },
+		{ label: t('landing.consolePreview.resources.memory'), value: 160, max: 256, unit: ' GB' },
+		{ label: t('landing.consolePreview.resources.gpu'), value: 1, max: 2, unit: '' },
+		{ label: t('landing.consolePreview.resources.storage'), value: 3.2, max: 10, unit: ' TB' },
+	]);
 
-	const activity = [
-		{ time: '09:41', text: '연구원 · VM 생성 요청' },
-		{ time: '09:42', text: '시스템 · 네트워크 연결' },
-		{ time: '10:05', text: '교수자 · 쿼터 조정' },
-	];
+	const activity = $derived([
+		{ time: '09:41', text: t('landing.consolePreview.activity.vmRequested') },
+		{ time: '09:42', text: t('landing.consolePreview.activity.networkConnected') },
+		{ time: '10:05', text: t('landing.consolePreview.activity.quotaAdjusted') },
+	]);
 
-	const nodes = [
-		{ name: 'control-plane', role: '제어', cpu: 18, pods: 6 },
-		{ name: 'worker-1', role: '워커', cpu: 62, pods: 8 },
-		{ name: 'worker-2', role: '워커', cpu: 55, pods: 8 },
-		{ name: 'worker-3', role: '워커', cpu: 48, pods: 8 },
-	];
+	const nodes = $derived([
+		{ name: 'control-plane', role: t('landing.consolePreview.cluster.control'), cpu: 18, pods: 6 },
+		{ name: 'worker-1', role: t('landing.consolePreview.cluster.worker'), cpu: 62, pods: 8 },
+		{ name: 'worker-2', role: t('landing.consolePreview.cluster.worker'), cpu: 55, pods: 8 },
+		{ name: 'worker-3', role: t('landing.consolePreview.cluster.worker'), cpu: 48, pods: 8 },
+	]);
 
-	const chain: Array<{ kind: 'external' | 'router' | 'internal'; kindLabel: string; name: string; mono: boolean; icon: IconName }> = [
-		{ kind: 'external', kindLabel: '외부', name: '외부망', mono: false, icon: 'external' },
-		{ kind: 'router', kindLabel: '라우터', name: 'router-lab', mono: true, icon: 'router' },
-		{ kind: 'internal', kindLabel: '내부', name: 'lab-net', mono: true, icon: 'network' },
-	];
+	const chain: Array<{ kind: 'external' | 'router' | 'internal'; kindLabel: string; name: string; mono: boolean; icon: IconName }> = $derived([
+		// '외부망' is a fixture resource name, not network chrome or operator-authored copy.
+		{ kind: 'external', kindLabel: t('landing.consolePreview.network.external'), name: '외부망', mono: false, icon: 'external' },
+		{ kind: 'router', kindLabel: t('landing.consolePreview.network.router'), name: 'router-lab', mono: true, icon: 'router' },
+		{ kind: 'internal', kindLabel: t('landing.consolePreview.network.internal'), name: 'lab-net', mono: true, icon: 'network' },
+	]);
 
 	const instances = [
 		{ name: 'vm-a', address: '10.10.0.11' },
@@ -67,11 +69,11 @@
 		{ name: 'vm-c', address: '10.10.0.13' },
 	];
 
-	const legend = [
-		{ kind: 'external', label: '외부' },
-		{ kind: 'router', label: '라우터' },
-		{ kind: 'internal', label: '내부' },
-	];
+	const legend = $derived([
+		{ kind: 'external', label: t('landing.consolePreview.network.external') },
+		{ kind: 'router', label: t('landing.consolePreview.network.router') },
+		{ kind: 'internal', label: t('landing.consolePreview.network.internal') },
+	]);
 </script>
 
 {#snippet icon(name: IconName)}
@@ -106,23 +108,23 @@
 			{@const inactive = screen !== view}
 			<div class="screen" class:inactive data-screen={screen} aria-hidden={inactive ? 'true' : undefined} inert={inactive}>
 				{#if screen === 'project'}
-					<p class="screen-head enter" style="--i: 0"><span class="ident">lab-vision</span><span class="head-sep" aria-hidden="true">·</span><span class="screen-title">프로젝트 개요</span></p>
+					<p class="screen-head enter" style="--i: 0"><span class="ident">lab-vision</span><span class="head-sep" aria-hidden="true">·</span><span class="screen-title">{t('landing.consolePreview.project.title')}</span></p>
 					<dl class="counters">
 						{#each counters as counter, index}
 							<div class="panel counter enter" style={`--i: ${index}`}><dt>{counter.label}</dt><dd>{counter.value}</dd></div>
 						{/each}
 					</dl>
 					<div class="project-detail">
-						<section class="panel enter" style="--i: 3" aria-label="쿼터 사용량">
-							<p class="panel-title">쿼터 사용량</p>
+						<section class="panel enter" style="--i: 3" aria-label={t('landing.consolePreview.project.quotaUsage')}>
+							<p class="panel-title">{t('landing.consolePreview.project.quotaUsage')}</p>
 							<div class="meters">
 								{#each quotas as quota}
 									<UsageBar size="sm" label={quota.label} value={quota.value} max={quota.max} unit={quota.unit} />
 								{/each}
 							</div>
 						</section>
-						<section class="panel enter" style="--i: 4" aria-label="최근 활동">
-							<p class="panel-title">최근 활동</p>
+						<section class="panel enter" style="--i: 4" aria-label={t('landing.consolePreview.project.recentActivity')}>
+							<p class="panel-title">{t('landing.consolePreview.project.recentActivity')}</p>
 							<ol class="activity">
 								{#each activity as entry}
 									<li><span class="time">{entry.time}</span><span class="row-text">{entry.text}</span></li>
@@ -132,24 +134,24 @@
 					</div>
 				{:else if screen === 'cluster'}
 					<div class="screen-head enter" style="--i: 0">
-						<p class="cluster-title"><span class="ident">course-dl-k8s</span><span class="row-label">Kubernetes 1.30 · 노드 4</span></p>
-						<span class="status" data-status="done"><i class="dot" aria-hidden="true"></i>Ready</span>
+						<p class="cluster-title"><span class="ident">course-dl-k8s</span><span class="row-label">{t('landing.consolePreview.cluster.summary', { version: '1.30', count: 4 })}</span></p>
+						<span class="status" data-status="done"><i class="dot" aria-hidden="true"></i>{t('landing.consolePreview.cluster.ready')}</span>
 					</div>
-					<ul class="nodes" aria-label="노드">
+					<ul class="nodes" aria-label={t('landing.consolePreview.cluster.nodes')}>
 						{#each nodes as node, index}
 							<li class="panel node enter" style={`--i: ${Math.min(index + 1, 4)}`}>
 								<span class="node-name">{@render icon('cluster')}<span class="ident">{node.name}</span></span>
 								<span class="row-label node-role">{node.role}</span>
-								<span class="status node-status" data-status="done"><i class="dot" aria-hidden="true"></i>Ready</span>
-								<span class="node-cpu"><span class="row-label">CPU</span><UsageBar size="xs" showValue={false} value={node.cpu} max={100} /><b class="row-value">{node.cpu}%</b></span>
-								<span class="node-pods"><span class="row-label">Pod</span><b class="row-value">{node.pods}</b></span>
+								<span class="status node-status" data-status="done"><i class="dot" aria-hidden="true"></i>{t('landing.consolePreview.cluster.ready')}</span>
+								<span class="node-cpu"><span class="row-label">{t('landing.consolePreview.cluster.cpu')}</span><UsageBar size="xs" showValue={false} value={node.cpu} max={100} /><b class="row-value">{node.cpu}%</b></span>
+								<span class="node-pods"><span class="row-label">{t('landing.consolePreview.cluster.pods')}</span><b class="row-value">{node.pods}</b></span>
 							</li>
 						{/each}
 					</ul>
-					<p class="cluster-foot enter" style="--i: 4"><span class="row-label">Pod</span> <b class="row-value">30</b><span class="head-sep" aria-hidden="true">·</span><span class="row-label">네임스페이스</span> <b class="row-value">24</b></p>
+					<p class="cluster-foot enter" style="--i: 4"><span class="row-label">{t('landing.consolePreview.cluster.pods')}</span> <b class="row-value">30</b><span class="head-sep" aria-hidden="true">·</span><span class="row-label">{t('landing.consolePreview.cluster.namespaces')}</span> <b class="row-value">24</b></p>
 				{:else}
-					<p class="screen-head enter" style="--i: 0"><span class="ident">lab-vision</span><span class="head-sep" aria-hidden="true">·</span><span class="screen-title">네트워크 토폴로지</span></p>
-					<ol class="topology" aria-label="연결 순서">
+					<p class="screen-head enter" style="--i: 0"><span class="ident">lab-vision</span><span class="head-sep" aria-hidden="true">·</span><span class="screen-title">{t('landing.consolePreview.network.title')}</span></p>
+					<ol class="topology" aria-label={t('landing.consolePreview.network.connectionOrder')}>
 						{#each chain as hop, index}
 							<li class="hop" style={`--i: ${index}`}>
 								<div class="panel topo-node enter" data-kind={hop.kind}>
@@ -160,7 +162,7 @@
 							</li>
 						{/each}
 						<li class="hop hop-instances" style="--i: 3">
-							<ul class="instances" aria-label="lab-net 연결 인스턴스">
+							<ul class="instances" aria-label={t('landing.consolePreview.network.connectedInstances', { network: 'lab-net' })}>
 								{#each instances as instance}
 									<li class="panel topo-node instance enter" data-kind="internal">
 										<span class="stub" aria-hidden="true"></span>
@@ -171,7 +173,7 @@
 							</ul>
 						</li>
 					</ol>
-					<ul class="legend enter" style="--i: 4" aria-label="범례">
+					<ul class="legend enter" style="--i: 4" aria-label={t('landing.consolePreview.network.legend')}>
 						{#each legend as item}
 							<li><i class="swatch" data-kind={item.kind} aria-hidden="true"></i><span class="row-label">{item.label}</span></li>
 						{/each}
@@ -259,6 +261,20 @@
 		border-radius: var(--radius-md);
 		background: var(--color-surface-raised);
 	}
+	.row-label,
+	.row-text,
+	.panel-title,
+	.screen-title,
+	.counter dt,
+	.status,
+	.meters :global(.usage-label) {
+		overflow-wrap: anywhere;
+	}
+	.address,
+	.time,
+	.row-value {
+		white-space: nowrap;
+	}
 	.panel-title,
 	.screen-title {
 		color: var(--color-ink-0);
@@ -294,11 +310,13 @@
 	}
 	.status {
 		display: inline-flex;
+		min-width: 0;
+		max-width: 100%;
 		align-items: center;
 		gap: 0.375rem;
 		font-size: 0.75rem;
 		font-weight: 500;
-		white-space: nowrap;
+		white-space: normal;
 	}
 	.status[data-status='done'] {
 		color: var(--color-state-success-text);
@@ -342,9 +360,7 @@
 		gap: 0.5rem;
 	}
 	.counter dt {
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		white-space: normal;
 	}
 	.counter dd {
 		margin-top: 0.25rem;
@@ -361,6 +377,17 @@
 	.meters {
 		display: grid;
 		gap: 0.75rem;
+	}
+	.meters :global(.usage-meta) {
+		flex-wrap: wrap;
+	}
+	.meters :global(.usage-label) {
+		overflow: visible;
+		white-space: normal;
+	}
+	.meters :global(.usage-value) {
+		min-width: 0;
+		flex-shrink: 1;
 	}
 	.activity {
 		display: grid;
@@ -392,7 +419,7 @@
 	.node {
 		display: grid;
 		grid-template-areas: 'name name status' 'role cpu pods';
-		grid-template-columns: auto minmax(0, 1fr) auto;
+		grid-template-columns: minmax(0, auto) minmax(0, 1fr) minmax(0, auto);
 		align-items: center;
 		gap: 0.5rem 0.75rem;
 		padding-block: 0.625rem;
@@ -405,12 +432,13 @@
 		gap: 0.375rem;
 		color: var(--color-ink-2);
 	}
-	.node-role { grid-area: role; }
+	.node-role { grid-area: role; min-width: 0; }
 	.node-status { grid-area: status; }
 	.node-cpu {
 		grid-area: cpu;
 		display: flex;
 		min-width: 0;
+		flex-wrap: wrap;
 		align-items: center;
 		gap: 0.375rem;
 	}
@@ -425,10 +453,11 @@
 	.node-pods {
 		grid-area: pods;
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		justify-content: flex-end;
 		gap: 0.375rem;
-		min-width: 2.75rem;
+		min-width: 0;
 	}
 	.cluster-foot {
 		display: flex;
@@ -578,12 +607,14 @@
 	}
 	.legend li {
 		display: inline-flex;
+		min-width: 0;
 		align-items: center;
 		gap: 0.375rem;
 	}
 	.swatch {
 		width: 0.1875rem;
 		height: 0.75rem;
+		flex: 0 0 auto;
 		border-radius: 999px;
 		background: var(--kind-color);
 	}
@@ -616,7 +647,7 @@
 
 		.node {
 			grid-template-areas: 'name role status cpu pods';
-			grid-template-columns: minmax(0, 1.2fr) 2.25rem 4.25rem minmax(0, 1.5fr) 3rem;
+			grid-template-columns: minmax(0, 1.2fr) minmax(2.25rem, auto) minmax(4.25rem, auto) minmax(0, 1.5fr) minmax(3rem, auto);
 			padding-block: 0.5rem;
 		}
 

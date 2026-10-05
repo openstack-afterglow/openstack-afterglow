@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-system';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import NotionTargetFormFields from './NotionTargetFormFields.svelte';
@@ -65,7 +66,7 @@
 			onSaved();
 			onClose();
 		} catch (e) {
-			editError = e instanceof ApiError ? e.message : '저장 실패';
+			editError = e instanceof ApiError ? e.message : t('notion.edit.failed');
 		} finally {
 			saving = false;
 		}
@@ -75,8 +76,8 @@
 {#if target}
 	<div class="space-y-3">
 		<div class="flex items-center justify-between mb-2">
-			<h3 class="text-sm font-semibold text-warm-text">수정 중</h3>
-			<button onclick={onClose} class="text-xs text-ink-2 hover:text-ink-2">취소</button>
+			<h3 class="text-sm font-semibold text-warm-text">{t('notion.edit.title')}</h3>
+			<button onclick={onClose} class="text-xs text-ink-2 hover:text-ink-2">{t('notion.actions.cancel')}</button>
 		</div>
 		<NotionTargetFormFields {form} mode="edit" />
 		{#if editError}
@@ -84,7 +85,7 @@
 		{/if}
 		<button onclick={saveEdit} disabled={saving}
 			class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors">
-			{saving ? '저장 중...' : '저장'}
+			{saving ? t('notion.edit.saving') : t('notion.actions.save')}
 		</button>
 	</div>
 {/if}

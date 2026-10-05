@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/topology';
 	// 네트워크 사용량(rx/tx) 스파크라인. 백엔드가 준 rate 윈도우 샘플을 그대로 그린다
 	// (윈도우 값은 응답의 `window` 로 온다 — 프론트에 숫자를 복제하지 않는다).
 	//
@@ -37,8 +38,8 @@
 			<polyline class="rx" points={rxPts} vector-effect="non-scaling-stroke" />
 		</svg>
 		<p class="legend">
-			<span class="key rx-key">▼ 수신</span>
-			<span class="key tx-key">▲ 송신</span>
+			<span class="key rx-key">{t('sparkline.rx')}</span>
+			<span class="key tx-key">{t('sparkline.tx')}</span>
 			{#if rangeLabel}<span class="range">{rangeLabel}</span>{/if}
 		</p>
 	</div>

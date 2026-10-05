@@ -3,6 +3,7 @@
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import { ToggleGroup } from '$lib/components/ui';
 	import type { ObjectView } from '$lib/utils/objectViewPreference';
+	import { t } from '$lib/i18n/ns/object-storage';
 
 	interface ArState { active: boolean; intervalSeconds: number; intervalOptions: number[]; }
 	interface Props { ar: ArState; onManualRefresh: () => void; }
@@ -19,7 +20,7 @@
 		<input
 			type="text"
 			bind:value={s.filterText}
-			placeholder="파일 필터..."
+			placeholder={t('browserToolbar.filter')}
 			class="w-full bg-surface-sunken border border-line-2 rounded-lg pl-9 pr-3 py-1.5 text-sm text-ink-0 focus:outline-none focus:border-indigo-500 placeholder-ink-3"
 		/>
 	</div>
@@ -27,28 +28,28 @@
 	{#if s.mode === 'user' && s.filterText.trim()}
 		<select
 			bind:value={s.searchScope}
-			title="검색 범위"
+			title={t('browserToolbar.searchScope')}
 			class="text-xs text-ink-2 bg-surface-sunken border border-line-2 rounded-lg px-2 py-1.5 focus:outline-none focus:border-indigo-500"
 		>
-			<option value="current">현재 폴더</option>
+			<option value="current">{t('browserToolbar.currentFolder')}</option>
 			{#if s.viewMode === 'list'}
-				<option value="expanded">펼친 트리</option>
+				<option value="expanded">{t('browserToolbar.expandedTree')}</option>
 			{/if}
-			<option value="all">전체 버킷</option>
+			<option value="all">{t('browserToolbar.allBuckets')}</option>
 		</select>
 		{#if s.searchScope === 'all' && s.allObjectsLoading}
-			<span class="text-xs text-ink-2">전체 인덱싱 중...</span>
+			<span class="text-xs text-ink-2">{t('browserToolbar.indexing')}</span>
 		{/if}
 	{/if}
 
 	{#if s.mode === 'user'}
 		<ToggleGroup
 			size="xs"
-			ariaLabel="보기 방식"
+			ariaLabel={t('browserToolbar.viewLabel')}
 			value={s.viewMode}
 			options={[
-				{ value: 'grid', label: '그리드' },
-				{ value: 'list', label: '목록' },
+				{ value: 'grid', label: t('browserToolbar.grid') },
+				{ value: 'list', label: t('browserToolbar.list') },
 			]}
 			onchange={(v) => { s.viewMode = v as ObjectView; }}
 		/>
@@ -57,7 +58,7 @@
 	<button
 		onclick={() => s.toggleSort('name')}
 		class="text-xs text-ink-2 hover:text-ink-0 px-3 py-1.5 rounded border border-line-2 hover:border-line-2 transition-colors"
-	>이름순 {s.sortIcon('name')}</button>
+	>{t('browserToolbar.nameSort', { icon: s.sortIcon('name') })}</button>
 
 	<div class="flex-1"></div>
 
@@ -69,18 +70,18 @@
 				s.navigatePrefix(parts.length ? parts.join('/') + '/' : '');
 			}}
 			class="text-xs text-ink-2 hover:text-ink-0 transition-colors px-3 py-1.5 rounded border border-line-2 hover:border-line-2"
-		>← 상위</button>
+		>{t('browserToolbar.parent')}</button>
 	{/if}
 
 	<button
 		onclick={() => { s.showNewDir = true; s.newDirName = ''; }}
 		class="text-xs text-ink-2 hover:text-ink-0 bg-surface-sunken hover:bg-surface-selected transition-colors px-3 py-1.5 rounded border border-line-2"
-	>새 폴더</button>
+	>{t('browserToolbar.newFolder')}</button>
 
 	<button
 		onclick={() => { s.showUpload = true; }}
 		class="text-xs text-ink-0 bg-indigo-600 hover:bg-indigo-500 transition-colors px-3 py-1.5 rounded border border-indigo-500"
-	>+ 업로드</button>
+	>{t('browserToolbar.upload')}</button>
 
 	<AutoRefreshControl
 		bind:active={ar.active}

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/account';
   import { auth, authReady } from '$lib/stores/auth';
   import { api, ApiError } from '$lib/api/client';
 
@@ -16,26 +17,26 @@
     error = '';
     success = '';
     if (!currentPassword || !newPassword || !confirmPassword) {
-      error = '모든 항목을 입력해 주세요';
+      error = t('password.required');
       return;
     }
     if (newPassword !== confirmPassword) {
-      error = '새 패스워드가 일치하지 않습니다';
+      error = t('password.mismatch');
       return;
     }
     if (newPassword.length < 8) {
-      error = '새 패스워드는 8자 이상이어야 합니다';
+      error = t('password.minimum');
       return;
     }
     saving = true;
     try {
       await api.post('/api/v1/profile/password', { current_password: currentPassword, new_password: newPassword }, token, projectId);
-      success = '패스워드가 변경되었습니다';
+      success = t('password.changed');
       currentPassword = '';
       newPassword = '';
       confirmPassword = '';
     } catch (e) {
-      error = e instanceof ApiError ? e.message : '패스워드 변경 실패';
+      error = e instanceof ApiError ? e.message : t('password.changeFailed');
     } finally {
       saving = false;
     }
@@ -44,7 +45,7 @@
 
 {#if $authReady && !$auth.federated}
 <div class="bg-surface-base border border-line rounded-xl p-5">
-  <h3 class="text-sm font-semibold text-ink-0 mb-4">패스워드 변경</h3>
+  <h3 class="text-sm font-semibold text-ink-0 mb-4">{t('password.title')}</h3>
 
   {#if error}
     <div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-3 py-2 text-xs mb-3">{error}</div>
@@ -55,16 +56,16 @@
 
   <div class="space-y-3">
     <div>
-      <label class="block text-xs text-ink-2 mb-1" for="field-passwordsection-58">현재 패스워드</label>
-      <input id="field-passwordsection-58" type="password" bind:value={currentPassword} class="w-full bg-surface-sunken border border-line-2 focus:border-action-warm text-ink-0 text-sm rounded-lg px-3 py-2 outline-none transition-colors" placeholder="현재 패스워드" />
+      <label class="block text-xs text-ink-2 mb-1" for="field-passwordsection-58">{t('password.current')}</label>
+      <input id="field-passwordsection-58" type="password" bind:value={currentPassword} class="w-full bg-surface-sunken border border-line-2 focus:border-action-warm text-ink-0 text-sm rounded-lg px-3 py-2 outline-none transition-colors" placeholder={t('password.current')} />
     </div>
     <div>
-      <label class="block text-xs text-ink-2 mb-1" for="field-passwordsection-62">새 패스워드</label>
-      <input id="field-passwordsection-62" type="password" bind:value={newPassword} class="w-full bg-surface-sunken border border-line-2 focus:border-action-warm text-ink-0 text-sm rounded-lg px-3 py-2 outline-none transition-colors" placeholder="8자 이상" />
+      <label class="block text-xs text-ink-2 mb-1" for="field-passwordsection-62">{t('password.new')}</label>
+      <input id="field-passwordsection-62" type="password" bind:value={newPassword} class="w-full bg-surface-sunken border border-line-2 focus:border-action-warm text-ink-0 text-sm rounded-lg px-3 py-2 outline-none transition-colors" placeholder={t('password.minimumPlaceholder')} />
     </div>
     <div>
-      <label class="block text-xs text-ink-2 mb-1" for="field-passwordsection-66">새 패스워드 확인</label>
-      <input id="field-passwordsection-66" type="password" bind:value={confirmPassword} class="w-full bg-surface-sunken border border-line-2 focus:border-action-warm text-ink-0 text-sm rounded-lg px-3 py-2 outline-none transition-colors" placeholder="패스워드 재입력" />
+      <label class="block text-xs text-ink-2 mb-1" for="field-passwordsection-66">{t('password.confirm')}</label>
+      <input id="field-passwordsection-66" type="password" bind:value={confirmPassword} class="w-full bg-surface-sunken border border-line-2 focus:border-action-warm text-ink-0 text-sm rounded-lg px-3 py-2 outline-none transition-colors" placeholder={t('password.confirmPlaceholder')} />
     </div>
   </div>
 
@@ -73,7 +74,7 @@
       onclick={changePassword}
       disabled={saving}
       class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover disabled:opacity-50 text-action-on-warm text-sm rounded-lg transition-colors"
-    >{saving ? '변경 중...' : '패스워드 변경'}</button>
+    >{saving ? t('password.changing') : t('password.title')}</button>
   </div>
 </div>
 {/if}

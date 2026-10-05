@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/containers-shell';
   import StatusChip from '$lib/components/ui/StatusChip.svelte';
   import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
   import type { ZunContainer } from '$lib/types/zunContainer';
@@ -38,8 +39,8 @@
 
 {#if containers.length === 0}
   <div class="containers-table__empty text-center py-20">
-    <p class="text-lg mb-2">컨테이너가 없습니다</p>
-    <p class="text-sm">Zun을 통해 새 컨테이너를 생성하세요</p>
+    <p class="text-lg mb-2">{t('instances.empty.title')}</p>
+    <p class="text-sm">{t('instances.empty.description')}</p>
   </div>
 {:else}
   <div class="overflow-x-auto">
@@ -47,14 +48,14 @@
       <thead>
         <tr class="containers-table__head text-xs uppercase tracking-wide">
           <th class="text-left py-3 pr-3">
-            <div class="inline-flex items-center gap-2"><SelectionCheckbox checked={allSelected} indeterminate={indeterminate} disabled={selectionDisabled} ariaLabel="전체 컨테이너 선택" onclick={onToggleAll} /><span>전체 선택</span><span class="containers-table__selection-count normal-case" aria-live="polite">{selectedSelectableCount}개 선택됨</span></div>
+            <div class="inline-flex items-center gap-2"><SelectionCheckbox checked={allSelected} indeterminate={indeterminate} disabled={selectionDisabled} ariaLabel={t('instances.selection.allAria')} onclick={onToggleAll} /><span>{t('instances.selection.all')}</span><span class="containers-table__selection-count normal-case" aria-live="polite">{t('instances.selection.count', { count: selectedSelectableCount })}</span></div>
           </th>
-          <th class="text-left py-3 pr-6">이름</th>
-          <th class="text-left py-3 pr-6">상태</th>
-          <th class="text-left py-3 pr-6">이미지</th>
-          <th class="text-left py-3 pr-6">CPU</th>
-          <th class="text-left py-3 pr-6">메모리</th>
-          <th class="text-left py-3 pr-6">생성일</th>
+          <th class="text-left py-3 pr-6">{t('instances.fields.name')}</th>
+          <th class="text-left py-3 pr-6">{t('instances.fields.status')}</th>
+          <th class="text-left py-3 pr-6">{t('instances.fields.image')}</th>
+          <th class="text-left py-3 pr-6">{t('instances.fields.cpu')}</th>
+          <th class="text-left py-3 pr-6">{t('instances.fields.memory')}</th>
+          <th class="text-left py-3 pr-6">{t('instances.fields.createdAt')}</th>
           <th class="text-left py-3"></th>
         </tr>
       </thead>
@@ -63,7 +64,7 @@
           {@const selectable = selectableIds.has(c.uuid)}
           <tr class="resource-selection-surface containers-table__row transition-colors" data-selected={selectedIds.has(c.uuid)}>
             <td class="py-3 pr-3">
-              <SelectionCheckbox checked={selectedIds.has(c.uuid)} disabled={selectionDisabled || !selectable} unavailable={!selectable} ariaLabel={`${c.name} 선택`} title={!selectable ? '현재 상태에서는 이 작업을 적용할 수 없습니다.' : undefined} onclick={() => onToggleSelect(c.uuid)} />
+              <SelectionCheckbox checked={selectedIds.has(c.uuid)} disabled={selectionDisabled || !selectable} unavailable={!selectable} ariaLabel={t('instances.selection.itemAria', { name: c.name })} title={!selectable ? t('instances.selection.unavailable') : undefined} onclick={() => onToggleSelect(c.uuid)} />
             </td>
             <td class="py-3 pr-6">
               <button onclick={() => onOpen(c.uuid)} class="containers-table__name font-medium transition-colors text-left max-md:block max-md:max-w-[66vw] max-md:truncate" title={c.name}>{c.name}</button>
@@ -76,11 +77,11 @@
             <td class="py-3">
               <div class="flex items-center gap-2">
                 {#if c.status === 'Running'}
-                  <button onclick={() => onStop(c.uuid)} disabled={actionTarget === c.uuid} class="containers-table__action containers-table__stop text-xs disabled:opacity-40 transition-colors">중지</button>
+                  <button onclick={() => onStop(c.uuid)} disabled={actionTarget === c.uuid} class="containers-table__action containers-table__stop text-xs disabled:opacity-40 transition-colors">{t('instances.actions.stop')}</button>
                 {:else if c.status === 'Stopped' || c.status === 'Created'}
-                  <button onclick={() => onStart(c.uuid)} disabled={actionTarget === c.uuid} class="containers-table__action containers-table__start text-xs disabled:opacity-40 transition-colors">시작</button>
+                  <button onclick={() => onStart(c.uuid)} disabled={actionTarget === c.uuid} class="containers-table__action containers-table__start text-xs disabled:opacity-40 transition-colors">{t('instances.actions.start')}</button>
                 {/if}
-                <button onclick={() => onDelete(c.uuid, c.name)} disabled={actionTarget === c.uuid} class="containers-table__action containers-table__delete text-xs disabled:opacity-40 transition-colors">삭제</button>
+                <button onclick={() => onDelete(c.uuid, c.name)} disabled={actionTarget === c.uuid} class="containers-table__action containers-table__delete text-xs disabled:opacity-40 transition-colors">{t('instances.actions.delete')}</button>
               </div>
             </td>
           </tr>

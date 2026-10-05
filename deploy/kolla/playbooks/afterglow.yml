@@ -4,5 +4,25 @@
   hosts: afterglow
   become: true
   serial: "{{ kolla_serial | default('0') }}"
-  roles:
-    - { role: afterglow, tags: afterglow, when: enable_afterglow | default(false) | bool }
+  tasks:
+    - name: Prepare Afterglow application image references
+      ansible.builtin.include_role:
+        name: afterglow
+        tasks_from: resolve_image_refs
+        public: false
+        apply:
+          tags: afterglow
+      vars:
+        afterglow_image_ref_service: afterglow
+      tags: afterglow
+      when:
+        - enable_afterglow | default(false) | bool
+        - kolla_action | default('deploy') in ['precheck', 'pull', 'deploy', 'reconfigure', 'upgrade']
+
+    - name: Apply role afterglow
+      ansible.builtin.include_role:
+        name: afterglow
+        apply:
+          tags: afterglow
+      tags: afterglow
+      when: enable_afterglow | default(false) | bool

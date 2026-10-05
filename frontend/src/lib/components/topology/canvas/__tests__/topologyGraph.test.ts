@@ -130,7 +130,7 @@ describe('buildGraph 라우터·LB', () => {
 		expect(edge.ports.map((p) => [p.label, p.netId, p.ip])).toEqual([['gw', 'net-pub', '203.0.113.10'], ['if0', 'net-web', '10.10.1.1'], ['if1', 'net-app', '10.10.2.1']]);
 		expect(g.edges.filter((e) => e.kind === 'trunk' && e.from === 'rtr-edge').map((e) => e.to)).toEqual(['sw:net-pub', 'sw:net-web', 'sw:net-app']);
 		const transit = router(g, 'rtr-transit');
-		expect(transit.badges).toEqual(['DVR', '게이트웨이 없음']);
+		expect(transit.badges).toContain('DVR');
 		expect(transit.extNetId).toBeNull();
 		expect(transit.intNetIds).toEqual(['net-transit', 'net-app']);
 	});

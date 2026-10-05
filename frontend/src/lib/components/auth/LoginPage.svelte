@@ -9,6 +9,8 @@
 	import type { LoginResponse } from '$lib/types/auth';
 	import { resolvePostLoginProject } from '$lib/utils/authFlow';
 	import { postAuthDestination } from '$lib/utils/mcpConsent';
+	import { t } from '$lib/i18n/ns/public-entry';
+	import LocaleSelect from '$lib/i18n/LocaleSelect.svelte';
 
 	onMount(async () => {
 		try {
@@ -42,13 +44,13 @@
 			// 안전한 프로토콜인지 확인 (오픈 리다이렉트 방지)
 			const redirectUrl = new URL(res.authorize_url);
 			if (!['https:', 'http:'].includes(redirectUrl.protocol)) {
-				error = 'GitLab 인증 URL이 유효하지 않습니다';
+				error = t('login.invalidGitlabUrl');
 				gitlabLoading = false;
 				return;
 			}
 			window.location.href = res.authorize_url;
 		} catch (e) {
-			error = e instanceof ApiError ? `GitLab 인증 오류 (${e.status})` : 'GitLab 인증 URL 조회 실패';
+			error = e instanceof ApiError ? t('login.gitlabAuthError', { status: e.status }) : t('login.gitlabUrlFailed');
 			gitlabLoading = false;
 		}
 	}
@@ -78,7 +80,7 @@
 			});
 			await goto(postAuthDestination(resolution.target));
 		} catch (e) {
-			error = e instanceof ApiError ? `인증 실패 (${e.status})` : '서버 오류가 발생했습니다';
+			error = e instanceof ApiError ? t('login.authFailed', { status: e.status }) : t('login.serverError');
 		} finally {
 			loading = false;
 		}
@@ -86,6 +88,9 @@
 </script>
 
 <div class="login-page">
+	<div class="login-locale">
+		<LocaleSelect id="login-locale" variant="labelled" />
+	</div>
 	<div class="login-shell">
 		<LoginBrandHeader />
 		<LoginForm
@@ -105,16 +110,22 @@
 <style>
 	.login-page {
 		min-height: 100vh;
-		display: flex;
-		align-items: center;
-		justify-content: center;
+		display: grid;
+		grid-template-rows: auto 1fr;
+		justify-items: center;
 		padding: 1rem;
 		background: var(--color-surface-canvas);
 		color: var(--color-ink-0);
 	}
 
+	.login-locale {
+		justify-self: end;
+		margin-bottom: 1rem;
+	}
+
 	.login-shell {
 		width: 100%;
 		max-width: 28rem;
+		align-self: center;
 	}
 </style>

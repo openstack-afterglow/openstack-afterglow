@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/vm-wizard';
 	import { onDestroy, onMount } from 'svelte';
 	import { wizard, closeWizard } from '$lib/stores/wizard';
 	import { createVmCreateStore, provideVmCreate } from '$lib/stores/vmCreateStore.svelte';
@@ -29,14 +30,14 @@
 	onDestroy(() => s.destroy());
 </script>
 
-<SlidePanel onClose={closeWizard} ariaLabel="가상 머신 생성" dataTour="wizard-panel" width="w-full md:w-[75vw] max-w-4xl">
+<SlidePanel onClose={closeWizard} ariaLabel={t('panel.label')} dataTour="wizard-panel" width="w-full md:w-[75vw] max-w-4xl">
 	<div class="h-full min-h-0 flex flex-col bg-surface-canvas">
 		<div class="min-h-0 flex-1 overflow-y-auto p-4 md:p-8">
 			{#if s.needsProjectSelect}
 				<AdminProjectSelector />
 			{:else if s.loading}
 				<div class="flex items-center justify-center py-16">
-					<LoadingSpinner size="lg" color="blue">데이터 로드 중...</LoadingSpinner>
+					<LoadingSpinner size="lg" color="blue">{t('panel.loading')}</LoadingSpinner>
 				</div>
 			{:else if s.deploying}
 				<VmDeployProgress />
@@ -53,14 +54,14 @@
 
 				{#if s.hasCurrentStepError}
 					<Alert tone="danger" class="mb-6">
-						현재 단계의 일부 데이터를 불러오지 못했습니다.
+						{t('panel.stepError')}
 						{#snippet actions()}
-							<Button variant="danger-outline" size="sm" onclick={s.retryCurrentStep}>다시 시도</Button>
+							<Button variant="danger-outline" size="sm" onclick={s.retryCurrentStep}>{t('panel.retry')}</Button>
 						{/snippet}
 					</Alert>
 				{/if}
 
-				<div data-tour="wizard-stepper">
+				<div data-tour="wizard-stepper" data-tour-library-visible={s.visibleStepIds.includes(3) ? 'true' : 'false'}>
 					<WizardStepper cur={s.visibleStepIndex} totalSteps={s.visibleTotalSteps} stepLabels={s.visibleStepLabels} goTo={s.goToVisible} />
 				</div>
 
@@ -68,7 +69,7 @@
 					{#if $wizard.step === 1}
 						<WizardStep1Boot />
 					{:else if $wizard.step === 2}
-						<h2 class="mb-1 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-lg font-semibold text-[var(--color-ink-0)]"><span>플레이버 선택</span><span class="text-sm font-normal text-[var(--color-ink-2)]">VM의 vCPU / 메모리 / 디스크 스펙</span></h2>
+						<h2 class="mb-1 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-lg font-semibold text-[var(--color-ink-0)]"><span>{t('panel.flavorTitle')}</span><span class="text-sm font-normal text-[var(--color-ink-2)]">{t('panel.flavorSubtitle')}</span></h2>
 						<SelectFlavor
 							{adminMode}
 							flavors={s.flavors}
@@ -85,7 +86,7 @@
 					{:else if $wizard.step === 3}
 						<WizardStep3Library />
 					{:else if $wizard.step === 4}
-						<h2 class="text-lg font-semibold text-ink-0 mb-4">배포 전략 <span class="text-ink-2 text-sm font-normal">스케줄링 / 레이어 마운트</span></h2>
+						<h2 class="text-lg font-semibold text-ink-0 mb-4">{t('panel.strategyTitle')} <span class="text-ink-2 text-sm font-normal">{t('panel.strategySubtitle')}</span></h2>
 						<SelectStrategy
 							scheduling={$wizard.scheduling}
 							onSchedulingChange={s.selectScheduling}
@@ -101,7 +102,7 @@
 					{:else if $wizard.step === 6}
 						<WizardStep6Review />
 						{#if s.flavorRefreshing}
-							<p class="mt-2 text-sm text-[var(--color-ink-2)]" role="status" aria-live="polite">생성 전에 선택한 플레이버의 쿼터와 호스트 용량을 다시 확인하는 중입니다…</p>
+							<p class="mt-2 text-sm text-[var(--color-ink-2)]" role="status" aria-live="polite">{t('panel.reviewRefreshing')}</p>
 						{/if}
 					{/if}
 				</div>

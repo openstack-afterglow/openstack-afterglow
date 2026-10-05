@@ -4,6 +4,8 @@ import { auth } from '$lib/stores/auth';
 import { takeAudioTranscript } from '$lib/api/audioChatHandoff';
 import type * as AudioModule from '$lib/api/audioStudio';
 import AudioStudio from '../AudioStudio.svelte';
+import { t } from '$lib/i18n/ns/chat-studio';
+import { initLocale } from '$lib/i18n/runtime.svelte';
 
 const calls = vi.hoisted(() => ({ models: vi.fn(), capabilities: vi.fn(), speech: vi.fn(), upload: vi.fn(), transcribe: vi.fn(), goto: vi.fn() }));
 vi.mock('$app/navigation', () => ({ goto: calls.goto }));
@@ -51,9 +53,27 @@ beforeEach(() => {
 	vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
 });
 // Unmount while media/URL stubs are active: teardown pauses players and revokes object URLs.
-afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); initLocale('ko'); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('Audio Studio', () => {
+	it('translates the active audio flow without changing language, native model IDs or transcript handoff', async () => {
+		render(AudioStudio);
+		await openStt();
+		await chooseAudio(new File(['FAKE-WAV'], 'voice.wav', { type: 'audio/wav' }));
+		await fireEvent.input(screen.getByLabelText(t('audioStudio.languageCode')), { target: { value: 'ja' } });
+		initLocale('en');
+		await screen.findByRole('tab', { name: t('audioStudio.speechToText') });
+		expect((screen.getByLabelText(t('audioStudio.languageCode')) as HTMLInputElement).value).toBe('ja');
+		expect((screen.getByRole('switch', { name: t('audioStudio.timestamps') }) as HTMLInputElement).checked).toBe(true);
+		await fireEvent.click(screen.getByRole('button', { name: t('audioStudio.convertToText') }));
+		await screen.findByText('둘째 문장');
+		expect(calls.transcribe.mock.calls[0][0]).toEqual({ model_id: '19', input_asset_id: 'scanned-asset', language: 'ja', timestamp_granularities: ['segment'] });
+		const srt = screen.getByRole('link', { name: t('audioStudio.downloadSrt') });
+		expect(await readBlob(blobAt(srt.getAttribute('href')))).toContain('00:00:01,200 --> 00:00:03,800\n인식된 문장');
+		await fireEvent.click(screen.getByRole('button', { name: t('audioStudio.insertIntoChat') }));
+		expect(takeAudioTranscript('owner', 'project-1')).toBe(timed.text);
+	});
+
 	it('plays real Blob bytes, keeps them across mode switches, reuses an ambiguous speech intent and revokes playback on owner switch', async () => {
 		calls.speech.mockRejectedValueOnce(new Error('lost response'));
 		const view = render(AudioStudio);

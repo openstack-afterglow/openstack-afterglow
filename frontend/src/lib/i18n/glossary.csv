@@ -1,0 +1,119 @@
+ko,en,ja,zh-CN,note
+Afterglow,Afterglow,Afterglow,Afterglow,Product name. Never translate.
+OpenStack,OpenStack,OpenStack,OpenStack,Never translate. Service names Nova/Neutron/Cinder/Glance/Keystone/Manila/Swift/Trove/Magnum/Zun/Octavia/Barbican stay in Latin script.
+"Lumen, Waygate, Drover, Palimpsest",Lumen / Waygate / Drover / Palimpsest,Lumen / Waygate / Drover / Palimpsest,Lumen / Waygate / Drover / Palimpsest,Sibling service product names. Never translate.
+Cloud Shell,Cloud Shell,Cloud Shell,Cloud Shell,Feature name. Keep in Latin script.
+대시보드,Dashboard,ダッシュボード,仪表盘,
+콘솔,Console,コンソール,控制台,
+프로젝트,Project,プロジェクト,项目,Keystone project (tenant).
+도메인,Domain,ドメイン,域,Keystone domain.
+사용자,User,ユーザー,用户,
+그룹,Group,グループ,组,Keystone group.
+역할,Role,ロール,角色,
+관리자,Administrator / Admin,管理者,管理员,"Use ""Admin"" only in compact labels such as ""Admin mode""."
+시스템 관리자,System administrator,システム管理者,系统管理员,
+쿼터,Quota,クォータ,配额,
+사용량,Usage,使用量,用量,
+인스턴스,Instance,インスタンス,实例,Nova server. Prefer over VM except where the Korean says VM.
+VM,VM,VM,虚拟机,Keep VM in en/ja.
+플레이버 / Flavor,Flavor,フレーバー,实例类型,Nova flavor.
+이미지,Image,イメージ,镜像,Glance image. For generated pictures (Studio) use 画像 / 图像.
+스냅샷,Snapshot,スナップショット,快照,
+키페어,Key pair,キーペア,密钥对,
+하이퍼바이저,Hypervisor,ハイパーバイザー,虚拟机管理器,
+가용 영역,Availability zone,アベイラビリティーゾーン,可用域,
+호스트,Host,ホスト,主机,
+볼륨,Volume,ボリューム,卷,Cinder volume.
+볼륨 타입,Volume type,ボリュームタイプ,卷类型,
+백업,Backup,バックアップ,备份,
+부팅 가능,Bootable,ブート可能,可启动,
+연결 / 분리,Attach / Detach,接続 / 切断,挂载 / 卸载,Volume to instance.
+파일 스토리지,File storage,ファイルストレージ,文件存储,Manila.
+공유 (Share),Share,共有,共享,Manila share.
+Share 네트워크,Share network,共有ネットワーク,共享网络,
+오브젝트 스토리지,Object storage,オブジェクトストレージ,对象存储,Swift.
+버킷,Bucket,バケット,存储桶,Swift container shown as bucket.
+오브젝트,Object,オブジェクト,对象,
+네트워크,Network,ネットワーク,网络,
+서브넷,Subnet,サブネット,子网,
+포트,Port,ポート,端口,
+라우터,Router,ルーター,路由器,
+게이트웨이,Gateway,ゲートウェイ,网关,
+인터페이스,Interface,インターフェース,接口,
+Floating IP,Floating IP,Floating IP,浮动 IP,Keep Latin in ja.
+보안 그룹,Security group,セキュリティーグループ,安全组,
+보안 그룹 규칙,Security group rule,セキュリティーグループルール,安全组规则,
+인바운드 / 아웃바운드,Inbound / Outbound,インバウンド / アウトバウンド,入站 / 出站,
+로드밸런서,Load balancer,ロードバランサー,负载均衡器,
+리스너,Listener,リスナー,监听器,
+풀,Pool,プール,池,
+멤버,Member,メンバー,成员,
+헬스 모니터,Health monitor,ヘルスモニター,健康检查,
+토폴로지,Topology,トポロジー,拓扑,
+트래픽,Traffic,トラフィック,流量,
+컨테이너,Container,コンテナー,容器,
+클러스터,Cluster,クラスター,集群,
+노드,Node,ノード,节点,
+템플릿,Template,テンプレート,模板,
+Kubernetes / K8s / k3s,Kubernetes / K8s / k3s,Kubernetes / K8s / k3s,Kubernetes / K8s / k3s,Never translate.
+kubeconfig,kubeconfig,kubeconfig,kubeconfig,Never translate.
+데이터베이스,Database,データベース,数据库,
+DB 인스턴스,DB instance,DBインスタンス,数据库实例,Trove.
+비밀 / 시크릿,Secret,シークレット,机密,Barbican secret.
+Key Manager,Key Manager,Key Manager,密钥管理,Barbican service label.
+라이브러리,Library,ライブラリ,库,Palimpsest library.
+레이어,Layer,レイヤー,层,Palimpsest layer.
+빌드,Build,ビルド,构建,
+배포,Deployment / Deploy,デプロイ,部署,
+모니터링,Monitoring,モニタリング,监控,
+알림,Notification,通知,通知,
+공지,Announcement,お知らせ,公告,
+이벤트,Event,イベント,事件,
+활동,Activity,アクティビティ,活动,
+고아 리소스,Orphaned resource,孤立リソース,孤立资源,
+리소스,Resource,リソース,资源,
+상태,Status,状態,状态,
+설정,Settings,設定,设置,
+기본 설정,General settings,基本設定,基本设置,
+계정,Account,アカウント,账户,
+로그인 / 로그아웃,Sign in / Sign out,ログイン / ログアウト,登录 / 退出登录,
+세션,Session,セッション,会话,
+토큰,Token,トークン,令牌,
+API 키,API key,APIキー,API 密钥,
+인증,Authentication,認証,认证,
+권한,Permission,権限,权限,
+승인,Approve / Approval,承認,批准,
+초대,Invitation,招待,邀请,
+튜토리얼,Tutorial,チュートリアル,教程,
+베타,Beta,ベータ,测试版,
+채팅 / 대화,Chat / Conversation,チャット / 会話,对话,
+모델,Model,モデル,模型,
+도구,Tool,ツール,工具,
+크레딧,Credit,クレジット,额度,Lumen usage credit.
+생성,Create,作成,创建,Button verb.
+삭제,Delete,削除,删除,
+편집 / 수정,Edit,編集,编辑,
+저장,Save,保存,保存,
+취소,Cancel,キャンセル,取消,
+확인,Confirm / OK,確認 / OK,确认,
+닫기,Close,閉じる,关闭,
+새로고침,Refresh,更新,刷新,
+검색,Search,検索,搜索,
+필터,Filter,フィルター,筛选,
+정렬,Sort,並べ替え,排序,
+다시 시도,Try again,再試行,重试,
+복사,Copy,コピー,复制,
+다운로드 / 업로드,Download / Upload,ダウンロード / アップロード,下载 / 上传,
+시작 / 중지 / 재시작,Start / Stop / Restart,起動 / 停止 / 再起動,启动 / 停止 / 重启,Instance actions.
+실행 중,Running,実行中,运行中,
+대기 중,Waiting / Pending,待機中,等待中,
+오류,Error,エラー,错误,
+실패,Failed,失敗,失败,
+완료,Complete / Completed,完了,已完成,
+무제한,Unlimited,無制限,无限制,
+사용 가능,Available,利用可能,可用,
+사용 불가,Unavailable,利用不可,不可用,
+선택,Select,選択,选择,
+전체,All,すべて,全部,
+없음,None,なし,无,
+GiB / MB / vCPU,GiB / MB / vCPU,GiB / MB / vCPU,GiB / MB / vCPU,Units are never translated.

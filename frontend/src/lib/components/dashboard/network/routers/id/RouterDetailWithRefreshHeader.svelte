@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/network-pages';
 	import type { RouterDetail } from '$lib/types/router';
 	import type { AutoRefreshController } from '$lib/utils/autoRefresh.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
@@ -25,7 +26,7 @@
 </script>
 
 <button onclick={onBack} class="text-sm text-ink-2 hover:text-ink-1 mb-6 inline-flex items-center gap-1">
-	← 라우터 목록
+	{t('routerHeader.back')}
 </button>
 
 <div class="flex items-start justify-between mb-8">
@@ -45,7 +46,7 @@
 			onManualRefresh={onManualRefresh}
 		/>
 		{#if canManage}
-			<Button variant="danger-outline" size="sm" disabled={saving} onclick={onDelete}>삭제</Button>
+			<Button variant="danger-outline" size="sm" disabled={saving} onclick={onDelete}>{t('routerHeader.delete')}</Button>
 		{/if}
 	</div>
 </div>

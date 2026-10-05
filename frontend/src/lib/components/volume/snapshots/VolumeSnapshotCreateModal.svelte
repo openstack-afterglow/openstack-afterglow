@@ -2,6 +2,7 @@
   import type { Volume } from '$lib/types/volume';
   import { formatStorage } from '$lib/utils/format';
   import { dialogFocus } from '$lib/utils/dialogFocus';
+  import { t } from '$lib/i18n/ns/volume';
 
   let {
     open = $bindable(),
@@ -44,37 +45,37 @@
   <div
 		use:dialogFocus={{ enabled: true, onEscape: () => (open = false) }} class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50" onclick={() => { open = false; error = ''; }} role="dialog" aria-modal="true" tabindex="-1">
     <div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]" onclick={(e) => e.stopPropagation()} role="none">
-      <h2 class="text-lg font-semibold text-ink-0 mb-5">볼륨 스냅샷 생성</h2>
+      <h2 class="text-lg font-semibold text-ink-0 mb-5">{t('snapshotCreateModal.title')}</h2>
       <div class="space-y-4">
         <div>
-          <label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">볼륨 선택
+          <label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('snapshotCreateModal.volumeLabel')}
             <select bind:value={form.volume_id} class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5">
-              <option value="">볼륨을 선택하세요</option>
+              <option value="">{t('snapshotCreateModal.volumePlaceholder')}</option>
               {#each volumes as vol}
-                <option value={vol.id}>{vol.name || vol.id.slice(0, 8)} ({formatStorage(vol.size)})</option>
+                <option value={vol.id}>{t('snapshotCreateModal.volumeOption', { name: vol.name || vol.id.slice(0, 8), size: formatStorage(vol.size) })}</option>
               {/each}
             </select>
           </label>
         </div>
         <div>
-          <label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">스냅샷 이름
-            <input bind:value={form.name} type="text" placeholder="my-snapshot" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5" />
+          <label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('snapshotCreateModal.nameLabel')}
+            <input bind:value={form.name} type="text" placeholder={t('snapshotCreateModal.namePlaceholder')} class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5" />
           </label>
         </div>
         <div>
-          <label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">설명 (선택)
+          <label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('snapshotCreateModal.descriptionLabel')}
             <input bind:value={form.description} type="text" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5" />
           </label>
         </div>
         <div class="flex items-center gap-2">
           <input type="checkbox" id="force" bind:checked={form.force} class="rounded border-line-2" />
-          <label for="force" class="text-sm text-ink-2">연결된 볼륨 강제 스냅샷 (force)</label>
+          <label for="force" class="text-sm text-ink-2">{t('snapshotCreateModal.forceLabel')}</label>
         </div>
       </div>
       {#if error}<div class="mt-4 text-red-400 text-xs">{error}</div>{/if}
       <div class="flex justify-end gap-3 mt-6">
-        <button onclick={() => { open = false; error = ''; }} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">취소</button>
-        <button onclick={submit} disabled={creating} class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-ink-0 text-sm font-medium rounded-lg transition-colors">{creating ? '생성 중...' : '생성'}</button>
+        <button onclick={() => { open = false; error = ''; }} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('snapshotCreateModal.cancel')}</button>
+        <button onclick={submit} disabled={creating} class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-ink-0 text-sm font-medium rounded-lg transition-colors">{creating ? t('snapshotCreateModal.creating') : t('snapshotCreateModal.create')}</button>
       </div>
     </div>
   </div>

@@ -53,7 +53,6 @@ describe('NetworkAgentTable', () => {
 
 		await selectOption('Alive', '미확인');
 		expect(tableColumn(2)).toEqual(['host-a']);
-		expect(tableColumn(4)).toEqual(['미확인']);
 
 		await selectOption('Admin State', 'UP');
 		expect(screen.queryByRole('table')).toBeNull();

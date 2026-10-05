@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/dashboard-home';
 	type Range = '24h' | '7d' | '14d';
 
 	interface Props {
@@ -26,7 +27,7 @@
 <div
 	class="inline-flex gap-0.5 bg-surface-sunken rounded-lg p-0.5"
 	role="group"
-	aria-label="기간 선택"
+	aria-label={t('range.select')}
 >
 	{#each options as opt, idx}
 		<button

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/admin-network';
+
   let {
     search = $bindable(),
     projectFilter = $bindable(),
@@ -16,7 +18,7 @@
   <input
     type="text"
     bind:value={search}
-    placeholder="필터 (이름, device_owner, IP)"
+    placeholder={t('portsFilterBar.searchPlaceholder')}
     class="text-xs bg-surface-sunken border border-line-2 rounded px-3 py-1.5 text-ink-2 placeholder-ink-3 w-56"
   />
   <select
@@ -24,7 +26,7 @@
     onchange={onProjectChange}
     class="text-xs bg-surface-sunken border border-line-2 rounded px-3 py-1.5 text-ink-2 focus:outline-none focus:border-action-warm"
   >
-    <option value="">전체 프로젝트</option>
+    <option value="">{t('portsFilterBar.allProjects')}</option>
     {#each projectOptions as p (p.id)}
       <option value={p.id}>{p.name}</option>
     {/each}

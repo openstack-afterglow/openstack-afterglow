@@ -2,6 +2,7 @@
 	import { projectNames } from '$lib/stores/projectNames';
 	import type { PortInfo } from '$lib/types/networks';
 	import Pagination from '$lib/components/ui/Pagination.svelte';
+	import { t } from '$lib/i18n/ns/admin-network';
 
 	let {
 		ports,
@@ -28,12 +29,12 @@
 	<table class="w-full text-sm">
 		<thead>
 			<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
-				<th class="text-left py-2 pr-4">이름/ID</th>
-				<th class="text-left py-2 pr-4">상태</th>
-				<th class="text-left py-2 pr-4">Device Owner</th>
-				<th class="text-left py-2 pr-4">IP 주소</th>
-				<th class="text-left py-2 pr-4">프로젝트</th>
-				<th class="text-left py-2">액션</th>
+				<th class="text-left py-2 pr-4">{t('portsTable.nameId')}</th>
+				<th class="text-left py-2 pr-4">{t('portsTable.status')}</th>
+				<th class="text-left py-2 pr-4">{t('portsTable.deviceOwner')}</th>
+				<th class="text-left py-2 pr-4">{t('portsTable.ipAddress')}</th>
+				<th class="text-left py-2 pr-4">{t('portsTable.project')}</th>
+				<th class="text-left py-2">{t('portsTable.actions')}</th>
 			</tr>
 		</thead>
 		<tbody>
@@ -58,11 +59,11 @@
 								<button
 									onclick={() => onEdit(p)}
 									class="px-2 py-0.5 text-xs bg-surface-selected hover:bg-surface-selected text-ink-2 rounded"
-								>수정</button>
+								>{t('portsTable.edit')}</button>
 								<button
 									onclick={() => onDelete(p)}
 									class="px-2 py-0.5 text-xs bg-red-900/30 hover:bg-red-900/50 text-red-400 rounded"
-								>삭제</button>
+								>{t('portsTable.delete')}</button>
 							</div>
 						{/if}
 					</td>
@@ -75,7 +76,7 @@
 	page={markerStack.length + 1}
 	hasPrev={markerStack.length > 0}
 	hasNext={!!nextMarker}
-	note="{ports.length}개 포트"
+	note={t('portsTable.count', { count: ports.length })}
 	{onPrev}
 	{onNext}
 	{onintent}

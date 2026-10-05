@@ -1,3 +1,4 @@
+import { t } from '$lib/i18n/ns/waygate';
 import type {
 	WaygateClient,
 	WaygateClientCreateRequest,
@@ -67,18 +68,18 @@ function parseDraft(draft: WaygateClientDraft, nameMode: 'required' | 'optional'
 	const errors: WaygateClientDraftErrors = {};
 	const name = draft.name.trim();
 	if (nameMode !== 'none' && (nameMode === 'required' || name !== '') && !NAME_RE.test(name)) {
-		errors.name = '영문/숫자로 시작하고 영문·숫자·하이픈·밑줄만 사용해 최대 63자로 입력하세요.';
+		errors.name = t('validation.name');
 	}
 	const dnsInput = draft.dns.trim();
 	const hosts = dnsInput ? dnsInput.split(',').map((host) => host.trim()) : [];
 	if ((server || !draft.inheritDns) && (hosts.length > 2 || dnsInput.length > 255 || hosts.some((host) => !DNS_HOST_RE.test(host)))) {
-		errors.dns = '쉼표로 구분한 DNS 주소나 호스트 이름을 최대 두 개 입력하세요.';
+		errors.dns = t('validation.dns');
 	}
 	const mtuInput = draft.mtu.trim();
 	const mtu = mtuInput ? integerInRange(mtuInput, WAYGATE_MTU_MIN, WAYGATE_MTU_MAX) : null;
-	if (!server && mtuInput && mtu === null) errors.mtu = `${WAYGATE_MTU_MIN}–${WAYGATE_MTU_MAX} 사이의 정수를 입력하거나 비워 두세요.`;
+	if (!server && mtuInput && mtu === null) errors.mtu = t('validation.mtu', { min: WAYGATE_MTU_MIN, max: WAYGATE_MTU_MAX });
 	const persistentKeepalive = integerInRange(draft.persistentKeepalive.trim(), 0, WAYGATE_KEEPALIVE_MAX);
-	if ((server || !draft.inheritPersistentKeepalive) && persistentKeepalive === null) errors.persistentKeepalive = `0–${WAYGATE_KEEPALIVE_MAX}초 사이의 정수를 입력하세요. 0은 비활성화입니다.`;
+	if ((server || !draft.inheritPersistentKeepalive) && persistentKeepalive === null) errors.persistentKeepalive = t('validation.keepalive', { max: WAYGATE_KEEPALIVE_MAX });
 	return {
 		errors,
 		values: { name, dns: hosts.length ? hosts.join(', ') : null, mtu, persistentKeepalive: persistentKeepalive ?? 0 },

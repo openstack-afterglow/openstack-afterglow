@@ -2,6 +2,7 @@
 	import { onMount, type Snippet } from 'svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import ToggleGroup from '$lib/components/ui/ToggleGroup.svelte';
+	import { t } from '$lib/i18n/ns/public-entry';
 	import UsageBar from '$lib/components/ui/UsageBar.svelte';
 	import { MOTION_DURATION_MS, REDUCED_MOTION_QUERY } from '$lib/design/tokens';
 	import { prefersReducedMotion } from '$lib/utils/motion';
@@ -30,115 +31,115 @@
 		reuse: { icons: IconName[]; name: string; kind: string; note: string; working: string; done: string };
 	};
 
-	const scenarios: Scenario[] = [
+	const scenarios: Scenario[] = $derived([
 		{
 			key: 'gpu',
-			label: 'GPU 연구',
-			request: '멀티모달 학습 환경',
-			project: 'lab-vision · 연구원 2명',
+			label: t('opsBoard.gpu.label'),
+			request: t('opsBoard.gpu.request'),
+			project: t('opsBoard.gpu.project', { project: 'lab-vision', count: 2 }),
 			requestedAt: '09:41',
 			route: 'afterglow / compute / instances / new',
 			requestRows: [
-				{ label: '이미지', value: 'PyTorch 2.4 · CUDA 12' },
-				{ label: '사양', value: 'GPU 1 · vCPU 16 · 64 GB' },
-				{ label: '네트워크', value: 'lab-vision-net', mono: true },
+				{ label: t('opsBoard.preview.image'), value: 'PyTorch 2.4 · CUDA 12' },
+				{ label: t('opsBoard.preview.spec'), value: 'GPU 1 · vCPU 16 · 64 GB' },
+				{ label: t('opsBoard.policy.network'), value: 'lab-vision-net', mono: true },
 			],
 			meters: [
 				{ label: 'GPU', used: 0, request: 1, max: 2 },
 				{ label: 'vCPU', used: 8, request: 16, max: 64 },
 			],
-			checks: [{ label: '정책', value: 'GPU 사용 승인' }],
-			policyDone: '범위 내',
-			resourceWorking: '생성 중',
-			resourceDone: '실행 중',
-			reuse: { icons: ['lock', 'layer'], name: 'pytorch-vision-lab', kind: '불변 레이어', note: '다음 VM이 이 레이어에서 시작합니다', working: '저장 중', done: '저장됨' },
+			checks: [{ label: t('opsBoard.preview.policy'), value: t('opsBoard.preview.gpuApproval') }],
+			policyDone: t('opsBoard.policy.withinQuota'),
+			resourceWorking: t('opsBoard.preview.creating'),
+			resourceDone: t('opsBoard.preview.running'),
+			reuse: { icons: ['lock', 'layer'], name: 'pytorch-vision-lab', kind: t('opsBoard.preview.immutableLayer'), note: t('opsBoard.preview.layerNote'), working: t('opsBoard.preview.saving'), done: t('opsBoard.preview.saved') },
 		},
 		{
 			key: 'cluster',
-			label: '클러스터 실습',
-			request: '분산 학습 실습 환경',
-			project: 'course-dl · 실습팀 24명',
+			label: t('opsBoard.cluster.label'),
+			request: t('opsBoard.cluster.request'),
+			project: t('opsBoard.cluster.project', { project: 'course-dl', count: 24 }),
 			requestedAt: '10:12',
 			route: 'afterglow / containers / clusters / new',
 			requestRows: [
-				{ label: '템플릿', value: 'Kubernetes 1.30' },
-				{ label: '워커', value: '3 × vCPU 8 · 32 GB' },
-				{ label: '실습팀', value: '24명 · 14일' },
+				{ label: t('opsBoard.preview.template'), value: 'Kubernetes 1.30' },
+				{ label: t('opsBoard.preview.workers'), value: '3 × vCPU 8 · 32 GB' },
+				{ label: t('opsBoard.preview.labTeam'), value: t('opsBoard.preview.teamDuration') },
 			],
 			meters: [
-				{ label: '인스턴스', used: 1, request: 4, max: 8 },
+				{ label: t('opsBoard.preview.instances'), used: 1, request: 4, max: 8 },
 				{ label: 'vCPU', used: 8, request: 24, max: 64 },
 			],
-			checks: [{ label: '기간', value: '14일 실습' }],
-			policyDone: '범위 내',
-			resourceWorking: '노드 준비 중',
-			resourceDone: 'Ready 3/3',
-			reuse: { icons: ['layer'], name: 'distributed-training', kind: '클러스터 템플릿', note: '다음 수업을 같은 구성으로 시작합니다', working: '저장 중', done: '템플릿 저장됨' },
+			checks: [{ label: t('opsBoard.preview.period'), value: t('opsBoard.preview.labDuration') }],
+			policyDone: t('opsBoard.policy.withinQuota'),
+			resourceWorking: t('opsBoard.preview.nodesPreparing'),
+			resourceDone: t('opsBoard.preview.nodesReady'),
+			reuse: { icons: ['layer'], name: 'distributed-training', kind: t('opsBoard.preview.clusterTemplate'), note: t('opsBoard.preview.clusterNote'), working: t('opsBoard.preview.saving'), done: t('opsBoard.preview.templateSaved') },
 		},
 		{
 			key: 'data',
-			label: '공유 데이터',
-			request: '팀 데이터셋 분석 공간',
-			project: 'lab-genomics · 연구원 7명',
+			label: t('opsBoard.data.label'),
+			request: t('opsBoard.data.request'),
+			project: t('opsBoard.data.project', { project: 'lab-genomics', count: 7 }),
 			requestedAt: '11:08',
 			route: 'afterglow / file-storage / shares / new',
 			requestRows: [
-				{ label: '공유 공간', value: '2 TB · NFS' },
-				{ label: '구성원', value: 'lab-genomics 7명' },
-				{ label: '접근', value: '연구원 읽기·쓰기' },
+				{ label: t('opsBoard.preview.shareSpace'), value: '2 TB · NFS' },
+				{ label: t('opsBoard.preview.members'), value: t('opsBoard.preview.memberCount', { project: 'lab-genomics', count: 7 }) },
+				{ label: t('opsBoard.preview.access'), value: t('opsBoard.preview.researchAccess') },
 			],
-			meters: [{ label: '스토리지', used: 3, request: 2, max: 10, unit: ' TB' }],
+			meters: [{ label: t('opsBoard.preview.storage'), used: 3, request: 2, max: 10, unit: ' TB' }],
 			checks: [
-				{ label: '접근', value: '규칙 3개 승인' },
-				{ label: '보존', value: '30일' },
+				{ label: t('opsBoard.preview.access'), value: t('opsBoard.preview.rulesApproved') },
+				{ label: t('opsBoard.preview.retention'), value: t('opsBoard.policy.days', { count: 30 }) },
 			],
-			policyDone: '승인',
-			resourceWorking: '연결 중',
-			resourceDone: '연결됨 3',
-			reuse: { icons: ['share'], name: 'genomics-baseline', kind: '스냅샷 · 매일 02:00', note: '새 분석은 이 시점에서 시작합니다', working: '생성 중', done: '스냅샷 생성됨' },
+			policyDone: t('opsBoard.policy.approved'),
+			resourceWorking: t('opsBoard.preview.connecting'),
+			resourceDone: t('opsBoard.preview.connectionsDone'),
+			reuse: { icons: ['share'], name: 'genomics-baseline', kind: t('opsBoard.preview.snapshotSchedule'), note: t('opsBoard.preview.snapshotNote'), working: t('opsBoard.preview.creating'), done: t('opsBoard.preview.snapshotCreated') },
 		},
-	];
+	]);
 
-	const gpuAttachments: Attachment[] = [
-		{ icon: 'network', name: 'lab-vision-net', label: '네트워크' },
-		{ icon: 'share', name: 'dataset-shared', label: '공유 데이터 · 읽기' },
-	];
+	const gpuAttachments: Attachment[] = $derived([
+		{ icon: 'network', name: 'lab-vision-net', label: t('opsBoard.policy.network') },
+		{ icon: 'share', name: 'dataset-shared', label: t('opsBoard.preview.sharedRead') },
+	]);
 	// The control plane shows its role; each worker shows the Pods scheduled onto it.
-	const clusterNodes: Array<{ name: string; role?: string; pods: number }> = [
-		{ name: 'control-plane', role: '제어', pods: 0 },
+	const clusterNodes: Array<{ name: string; role?: string; pods: number }> = $derived([
+		{ name: 'control-plane', role: t('opsBoard.preview.control'), pods: 0 },
 		{ name: 'worker-1', pods: 4 },
 		{ name: 'worker-2', pods: 4 },
 		{ name: 'worker-3', pods: 4 },
-	];
-	const shareMounts: Attachment[] = [
+	]);
+	const shareMounts: Attachment[] = $derived([
 		{ icon: 'server', name: 'vm-seq-01', label: 'VM' },
 		{ icon: 'server', name: 'vm-seq-02', label: 'VM' },
-		{ icon: 'server', name: 'notebook-07', label: '노트북' },
-	];
+		{ icon: 'server', name: 'notebook-07', label: t('opsBoard.preview.notebook') },
+	]);
 
 	// One step holds a full working-dot pulse plus the data transition of its objects.
 	const STEP_MS = MOTION_DURATION_MS.statusPulse + MOTION_DURATION_MS.data;
 
-	const scenarioOptions = scenarios.map(({ key, label }) => ({ value: key, label }));
+	const scenarioOptions = $derived(scenarios.map(({ key, label }) => ({ value: key, label })));
 	let selectedScenario = $state<ScenarioKey>('gpu');
 	let activeScenario = $derived(
 		scenarios.find((scenario) => scenario.key === selectedScenario) ?? scenarios[0]!,
 	);
 
-	const stages = ['신청', '정책 확인', '자원 배정', '재사용 결과'];
+	const stages = $derived([t('opsBoard.preview.requestStage'), t('opsBoard.preview.policyStage'), t('opsBoard.preview.resourceStage'), t('opsBoard.preview.reuseStage')]);
 	const panelKeys: PanelKey[] = ['request', 'policy', 'resource', 'reuse'];
-	const descriptions = [
-		'요청 항목을 하나씩 반영합니다.',
-		'요청량을 프로젝트 쿼터와 정책에 비춰 확인합니다.',
-		'확인된 요청으로 자원을 만들고 연결합니다.',
-		'다음 연구에 사용할 구성을 저장합니다.',
-	];
+	const descriptions = $derived([
+		t('opsBoard.preview.requestDescription'),
+		t('opsBoard.preview.policyDescription'),
+		t('opsBoard.preview.resourceDescription'),
+		t('opsBoard.preview.reuseDescription'),
+	]);
 	// Hint lines shown while a panel waits; its planned objects stay visible beside them.
-	const waitingNotes = {
-		policy: '요청이 제출되면 확인합니다',
-		resource: '정책 확인 후 만듭니다',
-		reuse: '자원 배정 후 저장합니다',
-	};
+	const waitingNotes = $derived({
+		policy: t('opsBoard.preview.policyWaitingNote'),
+		resource: t('opsBoard.preview.resourceWaitingNote'),
+		reuse: t('opsBoard.preview.reuseWaitingNote'),
+	});
 	let board: HTMLElement;
 	let mode = $state<'idle' | 'running' | 'paused' | 'complete'>('idle');
 	let completed = $state(0);
@@ -159,9 +160,9 @@
 
 	function statusText(panel: PanelKey, state: PanelState) {
 		const scenario = activeScenario;
-		if (panel === 'request') return state === 'active' ? '반영 중' : state === 'done' ? '제출됨' : '작성됨';
-		if (state === 'waiting') return panel === 'policy' ? '확인 전' : panel === 'resource' ? '생성 전' : '결과 대기';
-		if (panel === 'policy') return state === 'active' ? '확인 중' : scenario.policyDone;
+		if (panel === 'request') return state === 'active' ? t('opsBoard.preview.applying') : state === 'done' ? t('opsBoard.preview.submitted') : t('opsBoard.preview.drafted');
+		if (state === 'waiting') return panel === 'policy' ? t('opsBoard.preview.unchecked') : panel === 'resource' ? t('opsBoard.preview.uncreated') : t('opsBoard.preview.resultWaiting');
+		if (panel === 'policy') return state === 'active' ? t('opsBoard.preview.checking') : scenario.policyDone;
 		if (panel === 'resource') return state === 'active' ? scenario.resourceWorking : scenario.resourceDone;
 		return state === 'active' ? scenario.reuse.working : scenario.reuse.done;
 	}
@@ -348,7 +349,7 @@
 			<div class="thing object" style="--i: 0">
 				{@render icon('node')}
 				<span class="object-text"><span class="mono">course-dl-k8s</span><span class="object-spec">Kubernetes 1.30</span></span>
-				<span class="object-count">Pod {clusterNodes.reduce((total, node) => total + node.pods, 0)}</span>
+				<span class="object-count">{t('opsBoard.preview.podCount', { count: clusterNodes.reduce((total, node) => total + node.pods, 0) })}</span>
 			</div>
 			<ul class="nodes">
 				{#each clusterNodes as node}
@@ -357,7 +358,7 @@
 						{#if node.role}
 							<span class="node-role">{node.role}</span>
 						{:else}
-							<span class="sr-only">Pod {node.pods}</span>
+							<span class="sr-only">{t('opsBoard.preview.podCount', { count: node.pods })}</span>
 							<span class="pods" aria-hidden="true">
 								{#each Array.from({ length: node.pods }, (_, pod) => pod) as pod}<span class="pod-slot"><span class="pod" style={`--i: ${pod + 1}`} data-pod={live || undefined}></span></span>{/each}
 							</span>
@@ -388,43 +389,43 @@
 
 <section bind:this={board} class="ops-board" class:running={mode === 'running'} class:paused={mode === 'paused'} class:complete={mode === 'complete'} class:reduced={reducedMotion} data-scenario={selectedScenario} data-mode={mode} aria-labelledby="ops-board-title">
 	<header class="board-header">
-		<div><span class="board-kicker">브라우저 체험</span><h2 id="ops-board-title">연구 환경 구성 미리보기</h2></div>
-		<p class="disclaimer">실제 자원을 생성하지 않습니다</p>
+		<div><span class="board-kicker">{t('opsBoard.preview.kicker')}</span><h2 id="ops-board-title">{t('opsBoard.preview.title')}</h2></div>
+		<p class="disclaimer">{t('opsBoard.preview.disclaimer')}</p>
 	</header>
-	<ToggleGroup value={selectedScenario} options={scenarioOptions} onchange={selectScenario} size="sm" fullWidth class="scenario-switcher" ariaLabel="연구 운영 시나리오" />
+	<ToggleGroup value={selectedScenario} options={scenarioOptions} onchange={selectScenario} size="sm" fullWidth class="scenario-switcher" ariaLabel={t('opsBoard.scenarioAriaLabel')} />
 
 	<div class="request-summary">
 		<div>
-			<div class="request-meta"><span>예시 요청 · {activeScenario.requestedAt}</span><span>{activeScenario.project}</span></div>
+			<div class="request-meta"><span>{t('opsBoard.preview.exampleRequest', { time: activeScenario.requestedAt })}</span><span>{activeScenario.project}</span></div>
 			<h3>{activeScenario.request}</h3>
 		</div>
 		<Button variant={mode === 'running' ? 'secondary' : 'accent'} size="md" class="board-action" onclick={toggleRun}>
-			{mode === 'running' ? '일시정지' : mode === 'complete' ? '다시 체험' : mode === 'paused' ? '계속하기' : '환경 구성 체험'}
+			{mode === 'running' ? t('opsBoard.preview.pause') : mode === 'complete' ? t('opsBoard.preview.replay') : mode === 'paused' ? t('opsBoard.preview.resume') : t('opsBoard.preview.start')}
 		</Button>
 	</div>
 
 	{#key `${selectedScenario}:${previewRun}`}
 		<div class="scene">
-			<div class="scene-bar" aria-hidden="true"><span class="scene-route">{activeScenario.route}</span><span class="scene-tag">예시 화면</span></div>
+			<div class="scene-bar" aria-hidden="true"><span class="scene-route">{activeScenario.route}</span><span class="scene-tag">{t('landing.product.exampleScreen')}</span></div>
 			<div class="panels">
 				<section class="panel" data-panel="request" data-state={panelStates[0]} aria-labelledby="ops-panel-request">
-					<header class="panel-head"><h4 id="ops-panel-request">요청</h4>{@render status('request', panelStates[0])}</header>
+					<header class="panel-head"><h4 id="ops-panel-request">{t('opsBoard.preview.requestPanel')}</h4>{@render status('request', panelStates[0])}</header>
 					{@render sized(requestBody)}
 				</section>
 
 				<section class="panel" data-panel="policy" data-state={panelStates[1]} aria-labelledby="ops-panel-policy">
-					<header class="panel-head"><h4 id="ops-panel-policy">정책 확인</h4>{@render status('policy', panelStates[1])}</header>
+					<header class="panel-head"><h4 id="ops-panel-policy">{t('opsBoard.preview.policyStage')}</h4>{@render status('policy', panelStates[1])}</header>
 					{@render sized(policyBody)}
 				</section>
 
 				<section class="panel" data-panel="resource" data-state={panelStates[2]} aria-labelledby="ops-panel-resource">
-					<header class="panel-head"><h4 id="ops-panel-resource">자원 배정</h4>{@render status('resource', panelStates[2])}</header>
+					<header class="panel-head"><h4 id="ops-panel-resource">{t('opsBoard.preview.resourceStage')}</h4>{@render status('resource', panelStates[2])}</header>
 					{@render sized(resourceBody)}
 					<p class="wait-note" class:spent={panelStates[2] !== 'waiting'} aria-hidden={panelStates[2] === 'waiting' ? undefined : 'true'}>{waitingNotes.resource}</p>
 				</section>
 
 				<section class="panel" data-panel="reuse" data-state={panelStates[3]} aria-labelledby="ops-panel-reuse">
-					<header class="panel-head"><h4 id="ops-panel-reuse">재사용 결과</h4>{@render status('reuse', panelStates[3])}</header>
+					<header class="panel-head"><h4 id="ops-panel-reuse">{t('opsBoard.preview.reuseStage')}</h4>{@render status('reuse', panelStates[3])}</header>
 					{@render sized(reuseBody)}
 				</section>
 			</div>
@@ -432,12 +433,12 @@
 	{/key}
 
 	<div class="progress-summary" role="status" aria-live="polite" aria-atomic="true">
-		<strong>{mode === 'idle' ? '시작 전 미리보기' : mode === 'complete' ? '구성 체험 완료' : `${currentStep + 1}. ${stages[currentStep]}${mode === 'paused' ? ' · 일시정지' : ' 중'}`}</strong>
-		<span>{completed} / {stages.length} 완료</span>
-		<p>{mode === 'idle' ? (reducedMotion ? '모션 감소 설정에 따라 실행하면 결과를 바로 표시합니다.' : '시나리오를 고르고 환경이 구성되는 과정을 체험하세요.') : mode === 'complete' ? '예시 구성을 재사용 가능한 결과로 정리했습니다.' : mode === 'paused' ? '계속하기를 누르면 멈춘 단계부터 이어집니다.' : descriptions[currentStep]}</p>
+		<strong>{mode === 'idle' ? t('opsBoard.preview.idleTitle') : mode === 'complete' ? t('opsBoard.preview.completeTitle') : t(mode === 'paused' ? 'opsBoard.preview.pausedTitle' : 'opsBoard.preview.workingTitle', { number: currentStep + 1, stage: stages[currentStep] })}</strong>
+		<span>{t('opsBoard.preview.completedCount', { completed, total: stages.length })}</span>
+		<p>{mode === 'idle' ? (reducedMotion ? t('opsBoard.preview.reducedHint') : t('opsBoard.preview.idleHint')) : mode === 'complete' ? t('opsBoard.preview.completeHint') : mode === 'paused' ? t('opsBoard.preview.pausedHint') : descriptions[currentStep]}</p>
 	</div>
-	<progress aria-label="환경 구성 진행률" max={stages.length} value={completed}></progress>
-	<ol class="stages" aria-label="환경 구성 단계">
+	<progress aria-label={t('opsBoard.preview.progressAriaLabel')} max={stages.length} value={completed}></progress>
+	<ol class="stages" aria-label={t('opsBoard.preview.stagesAriaLabel')}>
 		{#each stages as stage, index}
 			<li class:done={completed > index} aria-current={mode !== 'idle' && mode !== 'complete' && currentStep === index ? 'step' : undefined}>
 				<span class="stage-mark" aria-hidden="true">{#if completed > index}{@render check()}{:else}0{index + 1}{/if}</span>{stage}
@@ -447,7 +448,7 @@
 </section>
 
 <style>
-	.ops-board { min-width: 0; padding-bottom: 0.625rem; border: 1px solid var(--color-line-2); border-radius: var(--radius-xl); background: var(--color-surface-base); color: var(--color-ink-0); }
+	.ops-board { min-width: 0; overflow-wrap: anywhere; padding-bottom: 0.625rem; border: 1px solid var(--color-line-2); border-radius: var(--radius-xl); background: var(--color-surface-base); color: var(--color-ink-0); }
 	.board-header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 0.25rem 1rem; padding: 0.625rem 1rem 0.5rem; }
 	.board-kicker { display: block; font-size: 0.75rem; font-weight: 600; line-height: 1.5; color: var(--color-warm-text); }
 	.board-header h2 { margin: 0; font-size: 1rem; line-height: 1.5; }
@@ -490,7 +491,7 @@
 	.mono { min-width: 0; font-family: var(--font-mono); font-size: 0.75rem; font-weight: 500; line-height: 1.5; color: var(--color-ink-1); overflow-wrap: anywhere; }
 
 	dl { display: grid; gap: 0.375rem; margin: 0; }
-	.row { display: grid; grid-template-columns: 0.875rem auto minmax(0, 1fr); align-items: center; column-gap: 0.375rem; }
+	.row { display: grid; grid-template-columns: 0.875rem minmax(0, auto) minmax(0, 1fr); align-items: center; column-gap: 0.375rem; }
 	.check-slot { display: flex; }
 	dt { font-size: 0.75rem; line-height: 1.5; color: var(--color-ink-2); }
 	dd { min-width: 0; margin: 0; font-size: 0.75rem; font-weight: 600; line-height: 1.5; color: var(--color-ink-0); font-variant-numeric: tabular-nums; text-align: right; overflow-wrap: anywhere; }

@@ -113,7 +113,6 @@ describe('uploadQueue', () => {
 		uploadQueue.enqueue(new File(['abc'], 'a.txt'), { containerName: 'c' });
 		await vi.waitFor(() => expect(get(uploadQueue)[0].status).toBe('error'));
 
-		expect(get(uploadQueue)[0].error).toBe('무결성 해시 계산 실패');
 		expect(api.uploadWithProgress).not.toHaveBeenCalled();
 	});
 

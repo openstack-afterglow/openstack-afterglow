@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-network';
 	import type { AdminNetwork } from '$lib/types/networks';
 
 	let {
@@ -18,11 +19,11 @@
 	<table class="w-full text-sm">
 		<thead>
 			<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
-				<th class="text-left py-2 pr-4">이름</th>
-				<th class="text-left py-2 pr-4">상태</th>
-				<th class="text-left py-2 pr-4">유형</th>
-				<th class="text-left py-2 pr-4">서브넷</th>
-				<th class="text-left py-2">액션</th>
+				<th class="text-left py-2 pr-4">{t('adminNetworkTable.name')}</th>
+				<th class="text-left py-2 pr-4">{t('adminNetworkTable.status')}</th>
+				<th class="text-left py-2 pr-4">{t('adminNetworkTable.type')}</th>
+				<th class="text-left py-2 pr-4">{t('adminNetworkTable.subnets')}</th>
+				<th class="text-left py-2">{t('adminNetworkTable.actions')}</th>
 			</tr>
 		</thead>
 		<tbody>
@@ -35,21 +36,21 @@
 					</td>
 					<td class="py-2 pr-4 {n.status === 'ACTIVE' ? 'text-green-400' : 'text-ink-2'}">{n.status}</td>
 					<td class="py-2 pr-4">
-						{#if n.is_external}<span class="px-1.5 py-0.5 bg-orange-900/30 text-orange-300 rounded text-xs mr-1">외부</span>{/if}
-						{#if n.is_shared}<span class="px-1.5 py-0.5 bg-surface-selected/30 text-warm-text rounded text-xs">공유</span>{/if}
-						{#if !n.is_external && !n.is_shared}<span class="text-ink-2">내부</span>{/if}
+						{#if n.is_external}<span class="px-1.5 py-0.5 bg-orange-900/30 text-orange-300 rounded text-xs mr-1">{t('adminNetworkTable.external')}</span>{/if}
+						{#if n.is_shared}<span class="px-1.5 py-0.5 bg-surface-selected/30 text-warm-text rounded text-xs">{t('adminNetworkTable.shared')}</span>{/if}
+						{#if !n.is_external && !n.is_shared}<span class="text-ink-2">{t('adminNetworkTable.internal')}</span>{/if}
 					</td>
-					<td class="py-2 pr-4 text-ink-2">{n.subnets.length}개</td>
+					<td class="py-2 pr-4 text-ink-2">{t('adminNetworkTable.subnetCount', { count: n.subnets.length })}</td>
 					<td class="py-2" onclick={(e) => e.stopPropagation()}>
 						<div class="flex items-center gap-1">
 							<button
 								onclick={() => onEdit(n)}
 								class="px-2 py-0.5 text-xs bg-surface-selected hover:bg-surface-selected text-ink-2 rounded"
-							>수정</button>
+							>{t('adminNetworkTable.edit')}</button>
 							<button
 								onclick={() => onDelete(n)}
 								class="px-2 py-0.5 text-xs bg-red-900/30 hover:bg-red-900/50 text-red-400 rounded"
-							>삭제</button>
+							>{t('adminNetworkTable.delete')}</button>
 						</div>
 					</td>
 				</tr>
@@ -57,4 +58,4 @@
 		</tbody>
 	</table>
 </div>
-<div class="mt-3 text-xs text-ink-2">총 {networks.length}개 네트워크</div>
+<div class="mt-3 text-xs text-ink-2">{t('adminNetworkTable.total', { count: networks.length })}</div>
