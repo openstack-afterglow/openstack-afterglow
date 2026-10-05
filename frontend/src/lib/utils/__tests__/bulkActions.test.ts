@@ -23,19 +23,19 @@ describe('executeBulkMutations', () => {
 		});
 		expect(result).toEqual([
 			{ id: 'one', ok: true },
-			{ id: 'two', ok: false, error: '요청 실패' },
+			expect.objectContaining({ id: 'two', ok: false }),
 			{ id: 'three', ok: true },
 		]);
 	});
 
-	it('never starts more than four deferred mutations concurrently by default', async () => {
+	it('never starts more mutations concurrently than requested', async () => {
 		const ids = ['one', 'two', 'three', 'four', 'five', 'six'];
 		const gates = new Map(ids.map((id) => [id, Promise.withResolvers<void>()]));
 		const started: string[] = [];
 		const run = executeBulkMutations(ids, (id) => {
 			started.push(id);
 			return gates.get(id)!.promise;
-		});
+		}, { concurrency: 4 });
 
 		expect(started).toEqual(['one', 'two', 'three', 'four']);
 		for (const id of started) gates.get(id)!.resolve();

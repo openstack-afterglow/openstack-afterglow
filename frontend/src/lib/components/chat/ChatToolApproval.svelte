@@ -3,6 +3,8 @@
 	import Card from '$lib/components/ui/Card.svelte';
 	import type { ChatPart } from '$lib/api/chatContracts';
 	import { taskLabelForTool } from '$lib/api/chatTaskLabels';
+	import { t } from '$lib/i18n/ns/chat-panel';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 
 	export type ChatToolApproval = {
 	callId: string;
@@ -31,40 +33,40 @@
 
 	function expiresAt(value: string): string {
 		const parsed = new Date(value);
-		return Number.isNaN(parsed.valueOf()) ? '만료 시간 확인 불가' : parsed.toLocaleString();
+		return Number.isNaN(parsed.valueOf()) ? t('approval.unknownExpiry') : parsed.toLocaleString(intlLocale());
 	}
 </script>
 
 <div class="approval-card">
 	<Card surface="subtle" padding="sm">
-	<section aria-label={`${taskName} 도구 승인 요청`}>
+	<section aria-label={t('approval.ariaLabel', { task: taskName })}>
 		<div class="heading">
 			<div>
-				<p class="eyebrow">도구 승인 필요</p>
+				<p class="eyebrow">{t('approval.required')}</p>
 				<h3>{taskName}</h3>
 				<p class="tool-identifier" title={approval.name}>{approval.name}</p>
 			</div>
-			<span class="effect">{approval.effect === 'external_mutation' ? '외부 변경' : '실행'}</span>
+			<span class="effect">{t(approval.effect === 'external_mutation' ? 'approval.externalMutation' : 'approval.execution')}</span>
 		</div>
 
 		{#if previewText(approval.preview)}
 			<p class="preview">{previewText(approval.preview)}</p>
 		{:else}
-			<p class="preview muted">승인 후 현재 상태를 다시 확인하고 요청을 실행합니다.</p>
+			<p class="preview muted">{t('approval.previewFallback')}</p>
 		{/if}
 
 		{#if approval.argumentKeys.length}
-			<p class="arguments" aria-label="요청 인자">
-				<span>요청 인자</span>
+			<p class="arguments" aria-label={t('approval.arguments')}>
+				<span>{t('approval.arguments')}</span>
 				{approval.argumentKeys.join(', ')}
 			</p>
 		{/if}
 
 		<div class="footer">
-			<p>승인 기한: {expiresAt(approval.expiresAt)}</p>
+			<p>{t('approval.deadline', { expiry: expiresAt(approval.expiresAt) })}</p>
 			<div class="actions">
-				<Button variant="danger-outline" size="sm" disabled={busy} onclick={() => onDecision(approval.callId, 'deny')}>거부</Button>
-				<Button variant="primary" size="sm" disabled={busy} onclick={() => onDecision(approval.callId, 'approve')}>{busy ? '처리 중…' : '승인'}</Button>
+				<Button variant="danger-outline" size="sm" disabled={busy} onclick={() => onDecision(approval.callId, 'deny')}>{t('approval.deny')}</Button>
+				<Button variant="primary" size="sm" disabled={busy} onclick={() => onDecision(approval.callId, 'approve')}>{t(busy ? 'approval.processing' : 'approval.approve')}</Button>
 			</div>
 		</div>
 	</section>

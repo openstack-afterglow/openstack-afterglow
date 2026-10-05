@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/drover';
   import {
     toConfigMapYaml,
     toSecretEditYaml,
@@ -64,7 +65,7 @@
           : fromConfigMapEditYaml(yamlText);
       await onSave(data);
     } catch (e) {
-      parseError = e instanceof Error ? e.message : '저장 실패';
+      parseError = e instanceof Error ? e.message : t('resourceEditor.saveFailed');
     }
   }
 </script>
@@ -103,13 +104,13 @@
     {/if}
 
     <div class="flex justify-end gap-2 px-4 py-3 border-t border-line">
-      <button onclick={onClose} class="text-xs text-ink-2 hover:text-ink-2 px-3 py-1.5">취소</button>
+      <button onclick={onClose} class="text-xs text-ink-2 hover:text-ink-2 px-3 py-1.5">{t('resourceEditor.cancel')}</button>
       <button
         onclick={handleSave}
         disabled={saving || !!liveError}
         class="text-xs text-warm-text hover:text-warm-text-hover px-3 py-1.5 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3 disabled:border-line-2 disabled:cursor-not-allowed"
       >
-        {saving ? '저장 중...' : '저장'}
+        {saving ? t('resourceEditor.saving') : t('resourceEditor.save')}
       </button>
     </div>
   </div>

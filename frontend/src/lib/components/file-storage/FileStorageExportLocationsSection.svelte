@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/file-storage';
 	import { useFileStorageDetailController } from '$lib/stores/fileStorageDetailController.svelte';
 
 	const s = useFileStorageDetailController();
@@ -20,13 +21,13 @@
 </script>
 
 <div class="bg-surface-base border border-line rounded-lg p-5 mb-4">
-	<h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-3">Export Locations</h3>
+	<h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-3">{t('exportLocations.title')}</h3>
 	<div class="space-y-2">
 		{#each locations() as loc (loc.index)}
 			<div class="flex items-start gap-2">
 				<div class="flex-1 flex items-center gap-1.5 bg-surface-sunken px-3 py-2 rounded min-w-0">
 					{#if loc.preferred}
-						<span class="shrink-0 text-xs px-1 py-0.5 rounded bg-teal-900/50 text-teal-400 border border-teal-800 leading-none">preferred</span>
+						<span class="shrink-0 text-xs px-1 py-0.5 rounded bg-teal-900/50 text-teal-400 border border-teal-800 leading-none">{t('exportLocations.preferred')}</span>
 					{/if}
 					{#if extractHost(loc.path)}
 						<span class="shrink-0 font-mono text-xs text-teal-300 font-medium">{extractHost(loc.path)}</span>
@@ -41,7 +42,7 @@
 						? 'border-green-700 text-green-400'
 						: 'border-line-2 text-ink-2 hover:text-ink-1 hover:border-line-2'}"
 				>
-					{s.copiedIndex === loc.index ? '복사됨' : '복사'}
+					{s.copiedIndex === loc.index ? t('exportLocations.copied') : t('exportLocations.copy')}
 				</button>
 			</div>
 		{/each}

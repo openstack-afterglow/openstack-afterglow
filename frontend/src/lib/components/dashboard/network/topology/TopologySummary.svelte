@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/network-pages';
 	let {
 		visibleNetworkCount,
 		projectRouterCount,
@@ -15,9 +16,9 @@
 </script>
 
 <div class="mt-4 flex gap-6 text-xs text-ink-2 px-1">
-	<span>네트워크 {visibleNetworkCount}개</span>
-	<span>라우터 {projectRouterCount}개</span>
-	<span>인스턴스 {instanceCount}개</span>
-	<span>Floating IP {projectFipCount}개</span>
-	<span>로드밸런서 {projectLbCount}개</span>
+	<span>{t('topologySummary.networks', { count: visibleNetworkCount })}</span>
+	<span>{t('topologySummary.routers', { count: projectRouterCount })}</span>
+	<span>{t('topologySummary.instances', { count: instanceCount })}</span>
+	<span>{t('topologySummary.floatingIps', { count: projectFipCount })}</span>
+	<span>{t('topologySummary.loadBalancers', { count: projectLbCount })}</span>
 </div>

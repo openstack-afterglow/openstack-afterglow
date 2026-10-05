@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/topology';
 	import { formatBps } from './topologyHelpers.ts';
 	import type { TopologyTraffic } from './types.ts';
 
@@ -18,7 +19,7 @@
 <div class="flex items-center gap-3 mb-4 flex-wrap">
 	<input
 		type="text"
-		placeholder="이름 또는 IP 검색…"
+		placeholder={t('header.search')}
 		bind:value={searchTerm}
 		class="text-xs px-3 py-1.5 rounded-lg focus:outline-none focus:border-action-warm w-52
 			{isLight
@@ -30,7 +31,7 @@
 		     style="color: {isLight ? '#6b7280' : '#9ca3af'}">
 			{#if traffic?.interfaces}
 				<div class="flex items-center gap-1.5 font-mono">
-					<span style="color: {isLight ? '#9ca3af' : '#6b7280'}">총합</span>
+					<span style="color: {isLight ? '#9ca3af' : '#6b7280'}">{t('header.total')}</span>
 					<span class="text-warm-text">↓{formatBps(totalTraffic.rx)}</span>
 					<span class="text-green-400">↑{formatBps(totalTraffic.tx)}</span>
 				</div>

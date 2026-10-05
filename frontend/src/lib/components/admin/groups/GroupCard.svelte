@@ -1,6 +1,8 @@
 <script lang="ts">
 	import type { Group, GroupMember, User } from '$lib/types/adminGroup';
 	import Button from '$lib/components/ui/Button.svelte';
+	import { t } from '$lib/i18n/ns/admin-identity';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 
 	interface Props {
 		group: Group;
@@ -48,25 +50,25 @@
 			<div>
 				<div class="text-sm font-medium text-ink-0">{group.name}</div>
 				<div class="text-xs text-ink-2">{group.description || '-'}</div>
-				<div class="text-xs text-ink-2 tabular-nums mt-1">생성일 {group.created_at?.slice(0, 10) ?? '미확인'}</div>
+				<div class="text-xs text-ink-2 tabular-nums mt-1">{t('groupCard.createdAt', { date: group.created_at ? new Date(group.created_at).toLocaleDateString(intlLocale(), { timeZone: 'UTC' }) : t('groupCard.unknownDate') })}</div>
 			</div>
 			<div class="text-xs text-ink-2 font-mono hidden sm:block">{group.id.slice(0, 8)}</div>
 		</div>
 		<div class="flex items-center gap-1 ml-4 shrink-0">
-			<Button variant={expanded ? 'primary' : 'ghost'} size="xs" onclick={onToggleMembers}>멤버</Button>
-			<Button variant="subtle" size="xs" onclick={onEdit}>수정</Button>
-			<Button variant="danger-outline" size="xs" onclick={onDelete}>삭제</Button>
+			<Button variant={expanded ? 'primary' : 'ghost'} size="xs" onclick={onToggleMembers}>{t('groupCard.members')}</Button>
+			<Button variant="subtle" size="xs" onclick={onEdit}>{t('actions.edit')}</Button>
+			<Button variant="danger-outline" size="xs" onclick={onDelete}>{t('actions.delete')}</Button>
 		</div>
 	</div>
 
 	{#if expanded}
 		<div class="border-t border-line bg-surface-base/50 px-4 py-4">
 			{#if membersLoading}
-				<div class="text-xs text-ink-2 py-2">로딩 중...</div>
+				<div class="text-xs text-ink-2 py-2">{t('state.loading')}</div>
 			{:else}
-				<div class="text-xs text-ink-2 uppercase tracking-wide mb-2">멤버</div>
+				<div class="text-xs text-ink-2 uppercase tracking-wide mb-2">{t('groupCard.membersHeading')}</div>
 				{#if members.length === 0}
-					<div class="text-xs text-ink-2 mb-3">멤버가 없습니다</div>
+					<div class="text-xs text-ink-2 mb-3">{t('groupCard.noMembers')}</div>
 				{:else}
 					<div class="space-y-1 mb-3">
 						{#each members as m}
@@ -75,7 +77,7 @@
 									<span class="text-sm text-ink-0">{m.name}</span>
 									{#if m.email}<span class="text-xs text-ink-2 ml-2">{m.email}</span>{/if}
 								</div>
-								<Button variant="danger-outline" size="xs" onclick={() => onRemoveMember(m.id)}>제거</Button>
+								<Button variant="danger-outline" size="xs" onclick={() => onRemoveMember(m.id)}>{t('actions.remove')}</Button>
 							</div>
 						{/each}
 					</div>
@@ -84,11 +86,12 @@
 					{#if addError}
 						<div class="text-xs text-[var(--color-state-danger)] mb-2">{addError}</div>
 					{/if}
-					<div class="text-xs text-ink-2 mb-2">사용자 검색</div>
+					<div class="text-xs text-ink-2 mb-2">{t('groupCard.userSearch')}</div>
 					<div class="relative">
 						<input
 							type="text"
-							placeholder="이름으로 검색하여 멤버 추가..."
+							aria-label={t('groupCard.userSearch')}
+							placeholder={t('groupCard.searchPlaceholder')}
 							bind:value={addMemberSearchText}
 							class="w-full bg-surface-sunken border border-line-2 text-ink-0 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-action-warm"
 						/>
@@ -105,13 +108,13 @@
 												onclick={() => handleAddMember(u.id)}
 												disabled={addSaving}
 												class="ml-4 shrink-0"
-											>추가</Button>
+											>{t('actions.add')}</Button>
 										</div>
 									{/each}
 								</div>
 							{:else}
 								<div class="absolute z-10 left-0 right-0 mt-1 bg-surface-raised border border-line-2 rounded-lg px-4 py-3 text-sm text-ink-2">
-									일치하는 사용자가 없습니다
+									{t('groupCard.noMatchingUsers')}
 								</div>
 							{/if}
 						{/if}

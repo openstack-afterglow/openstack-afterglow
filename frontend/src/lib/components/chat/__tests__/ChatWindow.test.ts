@@ -32,21 +32,6 @@ describe('ChatWindow', () => {
 		await view.rerender({ activePath: [{ ...message, streaming: false }] });
 		expect(view.getByRole('link', { name: /Barbican 가이드/ }).compareDocumentPosition(view.getByText(message.content)) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
 	});
-	it('shows a user-facing active task and elapsed time', () => {
-		const { getByRole } = render(ChatWindow, {
-			activePath: [],
-			models: [],
-			agentActivity: {
-				label: '웹 검색 진행 중',
-				startedAt: new Date(Date.now() - 2_000).toISOString()
-			},
-			...callbacks
-		});
-
-		const status = getByRole('status');
-		expect(status.textContent).toContain('웹 검색 진행 중');
-		expect(status.textContent).toContain('초');
-	});
 
 	it('shows manual context compaction as chat-window activity before other run activity', () => {
 		const { getByRole, queryByText } = render(ChatWindow, {
@@ -65,17 +50,6 @@ describe('ChatWindow', () => {
 	});
 
 
-	it('renders the mapped tool task instead of a backend identifier', () => {
-		const { getByRole, queryByText } = render(ChatWindow, {
-			activePath: [],
-			models: [],
-			toolActivity: '웹 검색',
-			...callbacks
-		});
-
-		expect(getByRole('status').textContent).toContain('웹 검색 진행 중');
-		expect(queryByText(/managed_web_search|mcp__/)).toBeNull();
-	});
 
 	it('inserts a Lumen starter prompt through the normal chat input callback', async () => {
 		const onStarterPrompt = vi.fn();

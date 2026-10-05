@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/vm-wizard';
+	import RichText from '$lib/i18n/RichText.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 
 	let { imageDisplay, flavorDisplay, libCount, step, totalSteps, canPrev, canNext,
@@ -23,13 +25,13 @@
 	<!-- selection chips strip -->
 	<div class="hidden md:flex flex-wrap items-center gap-2 text-xs text-ink-2 min-w-0">
 		{#if imageDisplay}
-			<span class="pick">이미지: <b class="text-ink-2 font-mono font-medium">{imageDisplay}</b></span>
+			<span class="pick"><RichText segments={t.rich('footer.image', { name: imageDisplay })} classes={{ strong: 'text-ink-2 font-mono font-medium' }} /></span>
 		{/if}
 		{#if flavorDisplay}
-			<span class="pick">플레이버: <b class="text-ink-2 font-mono font-medium">{flavorDisplay}</b></span>
+			<span class="pick"><RichText segments={t.rich('footer.flavor', { name: flavorDisplay })} classes={{ strong: 'text-ink-2 font-mono font-medium' }} /></span>
 		{/if}
 		{#if libCount && libCount > 0}
-			<span class="pick">라이브러리: <b class="text-ink-2 font-mono font-medium">{libCount}개</b></span>
+			<span class="pick"><RichText segments={t.rich('footer.libraries', { count: libCount })} classes={{ strong: 'text-ink-2 font-mono font-medium' }} /></span>
 		{/if}
 	</div>
 
@@ -39,18 +41,18 @@
 			data-tour="wizard-cancel"
 			onclick={onCancel}
 			class="wizard-cancel order-2 md:order-none px-4 py-2 text-sm text-ink-2 hover:text-red-400 border border-line-2 hover:border-red-900/60 hover:bg-red-950/20 rounded-lg transition-all"
-		>취소</button>
+		>{t('footer.cancel')}</button>
 		{#if canPrev}
 			<button
 				data-tour="wizard-prev"
 				onclick={onPrev}
 				class="wizard-prev order-1 md:order-none px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors flex items-center gap-1"
-			>← 이전</button>
+			>{t('footer.previous')}</button>
 		{/if}
 		{#if !isLast}
-			<span class="order-3 md:order-none" data-tour="wizard-next"><Button onclick={onNext} disabled={!canNext}>다음 →</Button></span>
+			<span class="order-3 md:order-none" data-tour="wizard-next"><Button onclick={onNext} disabled={!canNext}>{t('footer.next')}</Button></span>
 		{:else}
-			<span class="order-3 md:order-none" data-tour="wizard-next"><Button onclick={onDeploy} disabled={!canNext}>VM 생성</Button></span>
+			<span class="order-3 md:order-none" data-tour="wizard-next"><Button onclick={onDeploy} disabled={!canNext}>{t('footer.create')}</Button></span>
 		{/if}
 	</div>
 </div>

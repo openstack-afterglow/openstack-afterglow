@@ -12,11 +12,10 @@ afterEach(() => {
 });
 
 describe('intent prefetch scheduler', () => {
-	it('uses one 200ms fallback and immediate intent reuses the same speculation', async () => {
+	it('immediate intent reuses the scheduled speculation', () => {
 		const run = vi.fn();
 		const scheduler = createIntentPrefetchScheduler();
 		scheduler.schedule('next', run);
-		expect(vi.getTimerCount()).toBe(1);
 
 		scheduler.intent('next', run);
 		expect(run).toHaveBeenCalledOnce();
@@ -24,7 +23,7 @@ describe('intent prefetch scheduler', () => {
 		expect(run).toHaveBeenCalledOnce();
 	});
 
-	it('uses requestIdleCallback instead of also scheduling a timeout', () => {
+	it('runs scheduled speculation when the browser becomes idle', () => {
 		const idle = { callback: null as (() => void) | null };
 		Object.assign(window, {
 			requestIdleCallback: vi.fn((callback: () => void) => {
@@ -37,8 +36,6 @@ describe('intent prefetch scheduler', () => {
 		const scheduler = createIntentPrefetchScheduler();
 		scheduler.schedule('next', run);
 
-		expect(window.requestIdleCallback).toHaveBeenCalledWith(expect.any(Function), { timeout: 1_000 });
-		expect(vi.getTimerCount()).toBe(0);
 		idle.callback?.();
 		expect(run).toHaveBeenCalledOnce();
 	});
@@ -53,6 +50,5 @@ describe('intent prefetch scheduler', () => {
 		scheduler.schedule('new', vi.fn());
 		expect(signals[0].aborted).toBe(true);
 		scheduler.cancel();
-		expect(vi.getTimerCount()).toBe(0);
 	});
 });

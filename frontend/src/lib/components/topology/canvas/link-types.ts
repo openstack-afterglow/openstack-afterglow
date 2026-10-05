@@ -1,3 +1,4 @@
+import { t } from '$lib/i18n/ns/topology';
 import type { CanvasGraph, CanvasNode } from './types';
 
 export type TopologyLinkRequest = {
@@ -51,7 +52,7 @@ export function linkRequest(
 			method: 'POST',
 			url: `/api/v1/instances/${encodeURIComponent(source.id)}/interfaces`,
 			body: { net_id: target.netId },
-			label: `${source.name} 인스턴스를 ${network.name} 네트워크에 연결`,
+			label: t('link.instance', { name: source.name, network: network.name }),
 		};
 	}
 	if (network.kind === 'external') {
@@ -59,7 +60,7 @@ export function linkRequest(
 			method: 'POST',
 			url: `/api/v1/routers/${encodeURIComponent(source.id)}/gateway`,
 			body: { external_network_id: target.netId },
-			label: `${source.name} 라우터의 외부 게이트웨이 설정`,
+			label: t('link.gateway', { name: source.name }),
 		};
 	}
 	const subnet = network.raw.subnet_details[0];
@@ -68,6 +69,6 @@ export function linkRequest(
 		method: 'POST',
 		url: `/api/v1/routers/${encodeURIComponent(source.id)}/interfaces`,
 		body: { subnet_id: subnet.id, auto_gateway: !subnet.gateway_ip },
-		label: `${source.name} 라우터를 ${network.name} 네트워크에 연결`,
+		label: t('link.router', { name: source.name, network: network.name }),
 	};
 }

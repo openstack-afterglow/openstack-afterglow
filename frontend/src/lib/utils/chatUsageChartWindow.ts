@@ -1,3 +1,5 @@
+import { t } from '$lib/i18n/ns/chat-settings';
+
 export type UsageChartBucket = '5m' | '15m' | 'hour' | 'day' | 'month';
 
 export interface UsageChartWindow {
@@ -9,10 +11,10 @@ const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 
 const WINDOWS: Partial<Record<UsageChartBucket, UsageChartWindow>> = {
-	'5m': { milliseconds: 4 * HOUR, label: '최근 4시간' },
-	'15m': { milliseconds: 12 * HOUR, label: '최근 12시간' },
-	hour: { milliseconds: 48 * HOUR, label: '최근 48시간' },
-	day: { milliseconds: 30 * DAY, label: '최근 30일' }
+	'5m': { milliseconds: 4 * HOUR, get label() { return t('chartWindow.lastFourHours'); } },
+	'15m': { milliseconds: 12 * HOUR, get label() { return t('chartWindow.lastTwelveHours'); } },
+	hour: { milliseconds: 48 * HOUR, get label() { return t('chartWindow.lastFortyEightHours'); } },
+	day: { milliseconds: 30 * DAY, get label() { return t('chartWindow.lastThirtyDays'); } }
 };
 
 export function usageChartWindow(bucket: string): UsageChartWindow | null {

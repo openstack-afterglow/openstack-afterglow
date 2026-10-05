@@ -1,3 +1,4 @@
+import { t } from '$lib/i18n/ns/topology';
 import { api, ApiError } from '$lib/api/client';
 import type { TopologyData, TopologyTraffic, TopologyLoadBalancer, TopologyTrafficHistory } from '$lib/types/topology';
 
@@ -34,7 +35,7 @@ export function createAdminTopologyController(opts: AdminTopologyControllerOpts)
         opts.projectId(),
       );
     } catch (e) {
-      error = e instanceof ApiError ? `조회 실패 (${e.status}): ${e.message}` : '서버 오류';
+      error = e instanceof ApiError ? t('topology.loadFailed', { status: e.status, message: e.message }) : t('topology.serverError');
     } finally {
       loading = false;
       refreshing = false;

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/images-keys';
   import { untrack } from 'svelte';
   import { auth } from '$lib/stores/auth';
   import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
@@ -83,29 +84,22 @@
         : { eligible: selectedImageIds, skipped: [] };
     if (candidates.eligible.length === 0) return;
 
-    const labels: Record<'activate' | 'deactivate' | 'delete', string> = {
-      activate: '활성화',
-      deactivate: '비활성화',
-      delete: '삭제',
-    };
-    const label = labels[action];
-    const excludedNotice = candidates.skipped.length > 0
-      ? `\n${candidates.skipped.length}개는 현재 상태에서 제외됩니다.`
-      : '';
     if (action === 'delete' || candidates.skipped.length > 0) {
-      const prompt = action === 'delete'
-        ? `선택한 이미지 ${candidates.eligible.length}개를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.${excludedNotice}`
-        : `선택한 이미지 ${candidates.eligible.length}개를 ${label}하시겠습니까?${excludedNotice}`;
+      const prompt = t(action === 'delete' ? 'imagesPage.bulk.deleteConfirm' : 'imagesPage.bulk.stateConfirm', {
+        count: candidates.eligible.length,
+        skipped: candidates.skipped.length,
+        action,
+      });
       if (!await confirmDialog(prompt)) return;
     }
 
     const results = await ctrl.executeBulkAction(action, [...candidates.eligible]);
     const successCount = results.filter((result) => result.ok).length;
     const failureCount = results.length - successCount;
-    if (successCount > 0) toast.success(`${successCount}개 ${label} 요청을 완료했습니다.`);
-    if (failureCount > 0) toast.error(`${failureCount}개 ${label}에 실패했습니다.`);
+    if (successCount > 0) toast.success(t('imagesPage.bulk.success', { count: successCount, action }));
+    if (failureCount > 0) toast.error(t('imagesPage.bulk.failed', { count: failureCount, action }));
     if (candidates.skipped.length > 0) {
-      toast.warning(`${candidates.skipped.length}개는 현재 상태에서 ${label}할 수 없어 제외했습니다.`);
+      toast.warning(t('imagesPage.bulk.skipped', { count: candidates.skipped.length, action }));
     }
   }
 
@@ -135,14 +129,14 @@
 <ImageDropOverlay onFile={(f) => { ctrl.uploadInitialFile = f; ctrl.showUploadModal = true; }} />
 
 <PageShell class="bulk-selection-page space-y-4">
-  <PageHeader breadcrumb="COMPUTE / IMAGES" title="이미지">
+  <PageHeader breadcrumb={t('imagesPage.breadcrumb')} title={t('imagesPage.title')}>
     {#snippet actions()}
       <Button onclick={() => { ctrl.uploadInitialFile = null; ctrl.showUploadModal = true; }} variant="primary">
-        + 이미지 업로드
+        {t('imagesPage.upload')}
       </Button>
     {/snippet}
   </PageHeader>
-  <ResourceToolbar label="이미지 목록 도구">
+  <ResourceToolbar label={t('imagesPage.toolbar')}>
     {#snippet actions()}
       <AutoRefreshControl
         bind:active={ar.active}
@@ -182,8 +176,8 @@
 
     {#if ctrl.filteredImages.length === 0}
       <EmptyState
-        headline={ctrl.images.length === 0 ? '이미지가 없습니다' : '검색 결과가 없습니다'}
-        description={ctrl.images.length > 0 ? 'repository, tag, OS, 검증 필터를 바꿔보세요.' : '이미지를 업로드하면 카탈로그에 표시됩니다.'}
+        headline={ctrl.images.length === 0 ? t('imagesPage.empty.title') : t('imagesPage.noResults.title')}
+        description={ctrl.images.length > 0 ? t('imagesPage.noResults.description') : t('imagesPage.empty.description')}
       />
     {:else if selectedRepositoryGroup}
       <ImageRepositoryDetail
@@ -204,8 +198,8 @@
     {:else}
       <div class="mb-3">
         <SelectionToolbar
-          label="이미지 tag"
-          ariaLabel="이미지 tag 전체 선택"
+          label={t('imagesPage.tags')}
+          ariaLabel={t('imagesPage.selectAllTags')}
           checked={allOwnedSelected}
           indeterminate={selectedImageIds.length > 0 && !allOwnedSelected}
           selectedCount={ctrl.selection.count}
@@ -237,25 +231,25 @@
   {#if viewMode === 'tags' && !selectedRepositoryGroup}
   <BulkSelectionOverlay
     count={ctrl.selection.count}
-    ariaLabel="선택한 이미지 일괄 작업"
+    ariaLabel={t('imagesPage.bulk.ariaLabel')}
     actions={[
       {
         key: 'activate',
-        label: '활성화',
+        label: t('imagesPage.bulk.activate'),
         tone: 'success',
         disabled: activatable.eligible.length === 0,
         onAction: () => bulkAction('activate'),
       },
       {
         key: 'deactivate',
-        label: '비활성화',
+        label: t('imagesPage.bulk.deactivate'),
         tone: 'warning',
         disabled: deactivatable.eligible.length === 0,
         onAction: () => bulkAction('deactivate'),
       },
       {
         key: 'delete',
-        label: '삭제',
+        label: t('imagesPage.bulk.delete'),
         tone: 'danger',
         disabled: selectedImageIds.length === 0,
         onAction: () => bulkAction('delete'),
@@ -277,7 +271,7 @@
 />
 
 {#if ctrl.selectedImageId}
-  <SlidePanel onClose={ctrl.closeImagePanel} ariaLabel="이미지 상세" width="w-full md:w-[60vw] max-w-2xl">
+  <SlidePanel onClose={ctrl.closeImagePanel} ariaLabel={t('imagesPage.detail')} width="w-full md:w-[60vw] max-w-2xl">
     <ImageDetailPanel
       imageId={ctrl.selectedImageId}
       onClose={ctrl.closeImagePanel}

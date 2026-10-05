@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/chat-studio';
 	import type { RunActivityItem } from '$lib/api/chatRunReducer';
 	import type { ToolActivityItem } from '$lib/api/chatToolActivity';
 	import { taskLabelForContext, taskLabelForStage } from '$lib/api/chatTaskLabels';
@@ -40,7 +41,7 @@
 	);
 
 	function stageLabel(item: Extract<RunActivityItem, { kind: 'stage' }>): string {
-		return taskLabelForStage(item.stage, item.toolName) ?? '작업을 준비하는 중';
+		return taskLabelForStage(item.stage, item.toolName) ?? t('executionTimeline.preparing');
 	}
 
 	function contextLabel(item: Extract<RunActivityItem, { kind: 'context' }>): string {
@@ -105,15 +106,15 @@
 
 {#if entries.length}
 	<details class="execution-timeline" bind:open>
-		<summary aria-label="작업 내역 열기">
+		<summary aria-label={t('executionTimeline.openHistory')}>
 			<span class="summary-mark" aria-hidden="true"></span>
-			<span class="summary-title">실행 기록</span>
-			<span class="summary-count">{taskItems.length}개 단계</span>
+			<span class="summary-title">{t('executionTimeline.history')}</span>
+			<span class="summary-count">{t('executionTimeline.steps', { count: taskItems.length })}</span>
 			<svg class="summary-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
 				<path d="M6 9l6 6 6-6" stroke-linecap="round" stroke-linejoin="round" />
 			</svg>
 		</summary>
-		<ol aria-label="실행 기록">
+		<ol aria-label={t('executionTimeline.history')}>
 			{#each entries as entry (entry.kind === 'tool-group' ? entry.id : entry.item.id)}
 				<li class:live={entry.kind === 'tool-group' ? entry.items.some((item) => isLive(item)) : isLive(entry.item)}>
 					<span class="timeline-dot" aria-hidden="true"></span>

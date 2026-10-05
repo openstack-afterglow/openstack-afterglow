@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/network-resources';
+	import RichText from '$lib/i18n/RichText.svelte';
 	import { api, ApiError } from '$lib/api/client';
 	import type { Network } from '$lib/types/networks';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
@@ -40,7 +42,7 @@
 
 	async function allocate() {
 		if (!selectedNetworkId) {
-			allocError = '외부 네트워크를 선택하세요.';
+			allocError = t('network.floatingIp.selectRequired');
 			return;
 		}
 		allocating = true;
@@ -55,7 +57,7 @@
 			close();
 			onAllocated?.();
 		} catch (e) {
-			allocError = e instanceof ApiError ? e.message : 'Floating IP 할당 실패';
+			allocError = e instanceof ApiError ? e.message : t('network.floatingIp.allocateFailed');
 		} finally {
 			allocating = false;
 		}
@@ -78,24 +80,25 @@
 			onclick={(e) => e.stopPropagation()}
 			role="none"
 		>
-			<h2 class="text-lg font-semibold text-ink-0 mb-5">Floating IP 할당</h2>
+			<h2 class="text-lg font-semibold text-ink-0 mb-5">{t('network.floatingIp.title')}</h2>
 
 			{#if externalNetworks.length === 0}
 				<p class="text-sm text-ink-2 mb-4">
-					사용 가능한 외부 네트워크가 없습니다. 라우터에 외부 게이트웨이가 연결되어 있는지 확인하세요.
+					{t('network.floatingIp.noExternalNetwork')}
 				</p>
 			{:else if externalNetworks.length === 1}
 				<p class="text-sm text-ink-2 mb-4">
-					외부 네트워크 <span class="text-ink-0 font-mono">{externalNetworks[0].name || externalNetworks[0].id.slice(0, 8)}</span>에서 Floating IP를 할당합니다.
+					{#snippet networkName(text: string)}<span class="text-ink-0 font-mono">{text}</span>{/snippet}
+					<RichText segments={t.rich('network.floatingIp.allocateFrom', { name: externalNetworks[0].name || externalNetworks[0].id.slice(0, 8) })} tags={{ networkName }} />
 				</p>
 			{:else}
 				<div class="mb-4">
-					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-floatingipallocatemodal-91">외부 네트워크</label>
+					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-floatingipallocatemodal-91">{t('network.floatingIp.externalNetwork')}</label>
 					<select id="field-floatingipallocatemodal-91"
 						bind:value={selectedNetworkId}
 						class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm"
 					>
-						<option value="">-- 선택 --</option>
+						<option value="">{t('network.floatingIp.select')}</option>
 						{#each externalNetworks as net}
 							<option value={net.id}>{net.name || net.id.slice(0, 8)}</option>
 						{/each}
@@ -111,12 +114,12 @@
 				<button
 					onclick={close}
 					class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors"
-				>취소</button>
+				>{t('network.actions.cancel')}</button>
 				<button
 					onclick={allocate}
 					disabled={allocating || externalNetworks.length === 0}
 					class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors"
-				>{allocating ? '할당 중...' : 'IP 할당'}</button>
+				>{allocating ? t('network.floatingIp.allocating') : t('network.floatingIp.allocate')}</button>
 			</div>
 		</div>
 	</div>

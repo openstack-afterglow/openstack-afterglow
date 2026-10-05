@@ -80,7 +80,6 @@ describe('Admin LoadBalancer Page and Protection', () => {
 
     const droverLbCheckbox = screen.getByRole('checkbox', { name: 'drover-lb 선택' });
     expect((droverLbCheckbox as HTMLInputElement).disabled).toBe(true);
-    expect(droverLbCheckbox.getAttribute('title')).toContain('일괄 삭제 불가');
 
     await fireEvent.click(screen.getByRole('checkbox', { name: '전체 로드밸런서 선택' }).closest('label')!);
     expect((userLbCheckbox as HTMLInputElement).checked).toBe(true);
@@ -112,9 +111,5 @@ describe('Admin LoadBalancer Page and Protection', () => {
       expect(api.delete).toHaveBeenCalledWith('/api/v1/loadbalancers/lb-2', 'admin-token', 'admin-proj');
       expect(onDeleted).toHaveBeenCalledTimes(1);
     });
-    const confirmMessage = vi.mocked(confirmDialog).mock.calls[0][0];
-    expect(confirmMessage).toContain('Drover가 관리하는');
-    expect(confirmMessage).toContain('클러스터가 손상되거나');
-    expect(confirmMessage).toContain('정말로 강제 삭제하시겠습니까?');
   });
 });

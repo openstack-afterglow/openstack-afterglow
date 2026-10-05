@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/containers-shell';
   import { goto } from '$app/navigation';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
   import { untrack } from 'svelte';
@@ -43,7 +44,7 @@
       serviceMessage = resp.message;
       error = '';
     } catch (e) {
-      error = e instanceof ApiError ? `조회 실패 (${e.status}): ${e.message}` : '서버 오류';
+      error = e instanceof ApiError ? t('instances.errors.listLoadFailed', { status: e.status, message: e.message }) : t('instances.errors.server');
     } finally {
       loading = false;
     }
@@ -72,7 +73,7 @@
       await fetchContainers();
       return true;
     } catch (e) {
-      createError = e instanceof ApiError ? e.message : '생성 실패';
+      createError = e instanceof ApiError ? e.message : t('instances.errors.createFailed');
       return false;
     } finally {
       creating = false;
@@ -85,7 +86,7 @@
       await api.post(`/api/v1/containers/${uuid}/start`, {}, $auth.token ?? undefined, $auth.projectId ?? undefined);
       await fetchContainers();
     } catch (e) {
-      toast.error('시작 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+      toast.error(t('instances.errors.startFailed', { message: e instanceof ApiError ? e.message : String(e) }));
     } finally {
       actionTarget = null;
     }
@@ -97,20 +98,20 @@
       await api.post(`/api/v1/containers/${uuid}/stop`, {}, $auth.token ?? undefined, $auth.projectId ?? undefined);
       await fetchContainers();
     } catch (e) {
-      toast.error('중지 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+      toast.error(t('instances.errors.stopFailed', { message: e instanceof ApiError ? e.message : String(e) }));
     } finally {
       actionTarget = null;
     }
   }
 
   async function deleteContainer(uuid: string, name: string) {
-    if (!await confirmDialog(`컨테이너 "${name}"을 삭제하시겠습니까?`)) return;
+    if (!await confirmDialog(t('instances.delete.confirm', { name }))) return;
     actionTarget = uuid;
     try {
       await api.delete(`/api/v1/containers/${uuid}`, $auth.token ?? undefined, $auth.projectId ?? undefined);
       await fetchContainers();
     } catch (e) {
-      toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+      toast.error(t('instances.errors.deleteFailed', { message: e instanceof ApiError ? e.message : String(e) }));
     } finally {
       actionTarget = null;
     }
@@ -120,16 +121,17 @@
     if (snapshot.length === 0) return;
     const eligible = action === 'start' ? startIds : action === 'stop' ? stopIds : selectableIds;
     const { eligible: applicable, skipped } = partitionBulkIds(snapshot, eligible);
-    const label = action === 'start' ? '시작' : action === 'stop' ? '중지' : '삭제';
     if (applicable.length === 0) {
-      if (skipped.length > 0) toast.warning(`${skipped.length}개는 현재 상태에서 ${label}할 수 없어 제외했습니다.`);
+      if (skipped.length > 0) toast.warning(t('instances.bulk.skipped', { count: skipped.length, action }));
       return;
     }
-    const note = skipped.length > 0 ? `\n${skipped.length}개는 현재 상태에서 제외됩니다.` : '';
     if (action === 'delete' || skipped.length > 0) {
-      const prompt = action === 'delete'
-        ? `선택한 컨테이너 ${applicable.length}개를 삭제하시겠습니까?${note}`
-        : `선택한 컨테이너 ${applicable.length}개를 ${label}하시겠습니까?${note}`;
+      const prompt = t('instances.bulk.confirm', {
+        count: applicable.length,
+        action,
+        hasSkipped: skipped.length > 0 ? 'yes' : 'no',
+        skippedCount: skipped.length,
+      });
       if (!await confirmDialog(prompt)) return;
     }
     const tokenSnapshot = $auth.token ?? undefined;
@@ -143,9 +145,9 @@
       });
       const successful = results.filter((result) => result.ok).map((result) => result.id);
       const failedCount = results.length - successful.length;
-      if (skipped.length > 0) toast.warning(`${skipped.length}개는 현재 상태에서 ${label}할 수 없어 제외했습니다.`);
-      if (successful.length > 0) toast.success(`${successful.length}개 ${label} 요청을 완료했습니다.`);
-      if (failedCount > 0) toast.error(`${failedCount}개 ${label}에 실패했습니다.`);
+      if (skipped.length > 0) toast.warning(t('instances.bulk.skipped', { count: skipped.length, action }));
+      if (successful.length > 0) toast.success(t('instances.bulk.success', { count: successful.length, action }));
+      if (failedCount > 0) toast.error(t('instances.bulk.failed', { count: failedCount, action }));
       if ($auth.projectId === projectSnapshot) {
         selection.remove(successful);
         await fetchContainers();
@@ -156,9 +158,9 @@
   }
 
   const bulkActions = $derived<BulkSelectionAction[]>([
-    { key: 'start', label: '시작', tone: 'success', disabled: ![...selection.ids].some((id) => startIds.has(id)), onAction: () => runBulk('start') },
-    { key: 'stop', label: '중지', tone: 'warning', disabled: ![...selection.ids].some((id) => stopIds.has(id)), onAction: () => runBulk('stop') },
-    { key: 'delete', label: '삭제', tone: 'danger', onAction: () => runBulk('delete') },
+    { key: 'start', label: t('instances.actions.start'), tone: 'success', disabled: ![...selection.ids].some((id) => startIds.has(id)), onAction: () => runBulk('start') },
+    { key: 'stop', label: t('instances.actions.stop'), tone: 'warning', disabled: ![...selection.ids].some((id) => stopIds.has(id)), onAction: () => runBulk('stop') },
+    { key: 'delete', label: t('instances.actions.delete'), tone: 'danger', onAction: () => runBulk('delete') },
   ]);
 
   const ar = createAutoRefresh(() => fetchContainers(), {
@@ -192,7 +194,7 @@
 />
 
 <div class="bulk-selection-page p-4 md:p-8">
-  <PageHeader breadcrumb="CONTAINERS / INSTANCES" title="컨테이너">
+  <PageHeader breadcrumb={t('instances.list.breadcrumb')} title={t('instances.list.title')}>
     {#snippet actions()}
       <AutoRefreshControl
         bind:active={ar.active}
@@ -201,7 +203,7 @@
         refreshing={refreshing || loading}
         onManualRefresh={forceRefresh}
       />
-      <button onclick={() => showModal = true} class="bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">+ 컨테이너 생성</button>
+      <button onclick={() => showModal = true} class="bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">{t('instances.list.create')}</button>
     {/snippet}
   </PageHeader>
 
@@ -229,7 +231,7 @@
     />
     <BulkSelectionOverlay
       count={selection.count}
-      ariaLabel="선택한 컨테이너 일괄 작업"
+      ariaLabel={t('instances.bulk.aria')}
       actions={bulkActions}
       busy={bulkBusy}
       onClear={() => selection.clear()}

@@ -1,3 +1,4 @@
+import { t } from '$lib/i18n/ns/chat-diagnostics';
 import type { ChatPart, ChatRunEvent, ChatRunKind, ChatRunStatus, ContextUpdatedPayload, RunStage, UsageComponent } from './chatContracts';
 
 export interface RunToolView {
@@ -117,9 +118,9 @@ function replaceActivity(activity: RunActivityItem[], item: RunActivityItem): Ru
 
 /** Applies a strictly contiguous event; duplicates are harmless and gaps are rejected. */
 export function reduceRunEvent(state: RunViewState, event: ChatRunEvent): RunViewState {
-	if (event.run_id !== state.runId) throw new Error('chat event run mismatch');
+	if (event.run_id !== state.runId) throw new Error(t('reducer.runMismatch'));
 	if (event.seq <= state.lastSeq) return state;
-	if (event.seq !== state.lastSeq + 1) throw new Error('chat event sequence gap');
+	if (event.seq !== state.lastSeq + 1) throw new Error(t('protocol.sequenceGap'));
 	let next: RunViewState = { ...state, lastSeq: event.seq };
 
 	switch (event.type) {

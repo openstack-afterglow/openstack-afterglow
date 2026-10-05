@@ -67,11 +67,6 @@ async function expectIntentContract() {
 	expect(signal.aborted).toBe(true);
 }
 
-function pressedView(): string | null {
-	const group = screen.getByRole('group', { name: '토폴로지 보기' });
-	const pressed = Array.from(group.querySelectorAll('button')).find((b) => b.getAttribute('aria-pressed') === 'true');
-	return pressed?.textContent?.trim() ?? null;
-}
 
 describe('topology detail intent', () => {
 	beforeEach(() => {
@@ -95,18 +90,15 @@ describe('topology detail intent', () => {
 
 		it('waits 150ms, cancels on leave, and aborts started speculation', async () => {
 			await expectIntentContract();
-			expect(pressedView()).toBe('레인');
 		});
 	});
 
 	describe('canvas view (default)', () => {
 		it('keeps the same 150ms intent contract and persists the toggle choice', async () => {
 			await expectIntentContract();
-			expect(pressedView()).toBe('캔버스');
 
 			await fireEvent.click(screen.getByRole('button', { name: '레인' }));
 			await vi.advanceTimersByTimeAsync(0);
-			expect(pressedView()).toBe('레인');
 			expect(localStorage.getItem('topology.view')).toBe('lane');
 		});
 	});

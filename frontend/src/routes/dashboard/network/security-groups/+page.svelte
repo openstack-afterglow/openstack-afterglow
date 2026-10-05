@@ -16,6 +16,7 @@
 	import { toast } from '$lib/stores/toast';
 	import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
 	import { executeBulkMutations, partitionBulkIds } from '$lib/utils/bulkActions';
+	import { t } from '$lib/i18n/ns/network-pages';
 
 	function emptyRule(): SecurityGroupRuleDraft {
 		return { direction: 'ingress', protocol: '', port_range_min: '', port_range_max: '', remote_ip_prefix: '', remote_group_id: '', ethertype: 'IPv4' };
@@ -63,7 +64,7 @@
 			if (selectedSg && !groups.some((group) => group.id === selectedSg)) selectedSg = null;
 			if (!selectedSg && groups.length > 0 && window.matchMedia('(min-width: 768px)').matches) selectedSg = groups[0].id;
 		} catch (e) {
-			if (generation === projectGeneration && request === groupRequest) sgError = e instanceof ApiError ? `조회 실패 (${e.status}): ${e.message}` : '보안 그룹 조회 실패';
+			if (generation === projectGeneration && request === groupRequest) sgError = e instanceof ApiError ? t('securityGroups.loadStatusFailed', { status: e.status, message: e.message }) : t('securityGroups.loadFailed');
 		} finally {
 			if (generation === projectGeneration && request === groupRequest) loading = false;
 		}
@@ -81,7 +82,7 @@
 		} catch (e) {
 			if (generation !== projectGeneration || request !== quotaRequest) return;
 			quota = null;
-			quotaError = e instanceof ApiError ? e.message : '쿼터 조회 실패';
+			quotaError = e instanceof ApiError ? e.message : t('securityGroups.quotaLoadFailed');
 		}
 	}
 
@@ -96,7 +97,7 @@
 			const result = await api.get<SecurityGroupInstance[]>(`/api/v1/security-groups/${sgId}/instances`, $auth.token ?? undefined, project ?? undefined);
 			if (generation === projectGeneration && request === instanceRequest && selectedSg === sgId) instances = result;
 		} catch (e) {
-			if (generation === projectGeneration && request === instanceRequest && selectedSg === sgId) instancesError = e instanceof ApiError ? e.message : '사용 인스턴스 조회 실패';
+			if (generation === projectGeneration && request === instanceRequest && selectedSg === sgId) instancesError = e instanceof ApiError ? e.message : t('securityGroups.instancesLoadFailed');
 		} finally {
 			if (generation === projectGeneration && request === instanceRequest && selectedSg === sgId) instancesLoading = false;
 		}
@@ -126,8 +127,10 @@
 		const snapshotIds = [...selection.ids];
 		const { eligible, skipped } = partitionBulkIds(snapshotIds, selectableIds);
 		if (eligible.length === 0) return;
-		const suffix = skipped.length > 0 ? `\n${skipped.length}개는 현재 상태에서 제외됩니다.` : '';
-		if (!await confirmDialog(`${eligible.length}개 보안 그룹을 삭제하시겠습니까?${suffix}`)) return;
+		const message = skipped.length > 0
+			? t('securityGroups.bulkDeleteConfirmSkipped', { count: eligible.length, skippedCount: skipped.length })
+			: t('securityGroups.bulkDeleteConfirm', { count: eligible.length });
+		if (!await confirmDialog(message)) return;
 		const tokenSnapshot = $auth.token ?? undefined;
 		const projectSnapshot = $auth.projectId ?? undefined;
 		busy = true;
@@ -138,10 +141,10 @@
 				selection.remove(succeeded);
 				if (selectedSg && succeeded.includes(selectedSg)) selectedSg = null;
 			}
-			if (succeeded.length > 0) toast.success(`${succeeded.length}개 보안 그룹 삭제 요청을 완료했습니다.`);
+			if (succeeded.length > 0) toast.success(t('securityGroups.bulkDeleteSuccess', { count: succeeded.length }));
 			const failedCount = results.length - succeeded.length;
-			if (failedCount > 0) toast.error(`${failedCount}개 보안 그룹 삭제에 실패했습니다.`);
-			if (skipped.length > 0) toast.warning(`${skipped.length}개는 현재 상태에서 보안 그룹 삭제할 수 없어 제외했습니다.`);
+			if (failedCount > 0) toast.error(t('securityGroups.bulkDeleteFailed', { count: failedCount }));
+			if (skipped.length > 0) toast.warning(t('securityGroups.bulkDeleteSkipped', { count: skipped.length }));
 			if (projectSnapshot === ($auth.projectId ?? undefined)) await refreshResources();
 		} finally {
 			busy = false;
@@ -158,7 +161,7 @@
 			await refreshResources();
 			return true;
 		} catch (e) {
-			sgCreateError = e instanceof ApiError ? e.message : '생성 실패';
+			sgCreateError = e instanceof ApiError ? e.message : t('securityGroups.createFailed');
 			return false;
 		} finally {
 			sgCreating = false;
@@ -166,13 +169,13 @@
 	}
 
 	async function deleteSecurityGroup(sgId: string, name: string) {
-		if (!await confirmDialog(`"${name}" 보안 그룹을 삭제하시겠습니까?`)) return;
+		if (!await confirmDialog(t('securityGroups.deleteConfirm', { name }))) return;
 		try {
 			await api.delete(`/api/v1/security-groups/${sgId}`, $auth.token ?? undefined, $auth.projectId ?? undefined);
 			if (selectedSg === sgId) selectedSg = null;
 			await refreshResources();
 		} catch (e) {
-			toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('securityGroups.deleteFailed', { message: e instanceof ApiError ? e.message : String(e) }));
 		}
 	}
 
@@ -211,21 +214,21 @@
 	}
 
 	async function addSgRule(sgId: string) {
-		if (!canCreateRule) { sgCreateError = '규칙 쿼터를 먼저 확인하거나 기존 규칙을 제거하세요.'; return; }
+		if (!canCreateRule) { sgCreateError = t('securityGroups.ruleQuotaRequired'); return; }
 		const body: Record<string, unknown> = { direction: ruleForm.direction, ethertype: ruleForm.ethertype };
 		if (ruleForm.protocol) body.protocol = ruleForm.protocol;
 		if (ruleForm.protocol === 'tcp' || ruleForm.protocol === 'udp') {
 			const min = ruleForm.port_range_min.trim();
 			const max = ruleForm.port_range_max.trim();
 			if ((min && !validPort(min)) || (max && (!validPort(max) || !min || Number(max) < Number(min)))) {
-				sgCreateError = '포트는 1–65535 범위여야 하며 끝 포트는 시작 포트 이상이어야 합니다.';
+				sgCreateError = t('securityGroups.invalidPorts');
 				return;
 			}
 			if (min) { body.port_range_min = Number(min); body.port_range_max = max ? Number(max) : Number(min); }
 		}
 		if (targetType === 'group') {
 			if (!ruleForm.remote_group_id || !securityGroups.some((group) => group.id === ruleForm.remote_group_id)) {
-				sgCreateError = '현재 프로젝트의 원격 보안 그룹을 선택하세요.';
+				sgCreateError = t('securityGroups.remoteGroupRequired');
 				return;
 			}
 			body.remote_group_id = ruleForm.remote_group_id;
@@ -239,7 +242,7 @@
 			cancelAddRule();
 			await refreshResources();
 		} catch (e) {
-			sgCreateError = e instanceof ApiError ? e.message : '규칙 추가 실패';
+			sgCreateError = e instanceof ApiError ? e.message : t('securityGroups.addRuleFailed');
 		} finally {
 			sgCreating = false;
 		}
@@ -252,14 +255,14 @@
 			await refreshResources();
 			return true;
 		} catch (e) {
-			toast.error('규칙 삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('securityGroups.deleteRuleFailed', { message: e instanceof ApiError ? e.message : String(e) }));
 			return false;
 		}
 	}
 
 	async function removeOriginalRule(sgId: string) {
 		if (!originalRuleId) return;
-		if (!await confirmDialog('기존 규칙을 제거하시겠습니까? 새 규칙을 추가할 때까지 접근 정책이 달라집니다.')) return;
+		if (!await confirmDialog(t('securityGroups.removeOriginalConfirm'))) return;
 		await deleteSgRule(sgId, originalRuleId);
 	}
 
@@ -296,26 +299,26 @@
 </script>
 
 <div class="bulk-selection-page p-4 md:p-6">
-	<PageHeader breadcrumb="NETWORK / SECURITY GROUPS" title="보안 그룹">
+	<PageHeader breadcrumb={t('securityGroups.breadcrumb')} title={t('securityGroups.title')}>
 		{#snippet actions()}
 			<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} {refreshing} onManualRefresh={forceRefresh} />
-			<button type="button" onclick={() => { showSgModal = true; sgCreateError = ''; }} disabled={!canCreateGroup} title={!canCreateGroup ? '보안 그룹 쿼터가 가득 찼거나 확인되지 않았습니다' : undefined} class="bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm px-4 py-2 rounded-lg transition-colors disabled:opacity-50">+ 보안 그룹 생성</button>
+			<button type="button" onclick={() => { showSgModal = true; sgCreateError = ''; }} disabled={!canCreateGroup} title={!canCreateGroup ? t('securityGroups.quotaUnavailable') : undefined} class="bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm px-4 py-2 rounded-lg transition-colors disabled:opacity-50">{t('securityGroups.create')}</button>
 		{/snippet}
 	</PageHeader>
 
-	<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5" aria-label="프로젝트 보안 그룹 쿼터">
+	<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5" aria-label={t('securityGroups.projectQuota')}>
 		{#if quota}
-			<div class="bg-surface-base border border-line rounded-lg p-3"><QuotaBar label="보안 그룹" used={quota.security_group.in_use} limit={quota.security_group.limit} size="sm" /></div>
-			<div class="bg-surface-base border border-line rounded-lg p-3"><QuotaBar label="보안 그룹 규칙" used={quota.security_group_rule.in_use} limit={quota.security_group_rule.limit} size="sm" /></div>
+			<div class="bg-surface-base border border-line rounded-lg p-3"><QuotaBar label={t('securityGroups.groupQuota')} used={quota.security_group.in_use} limit={quota.security_group.limit} size="sm" /></div>
+			<div class="bg-surface-base border border-line rounded-lg p-3"><QuotaBar label={t('securityGroups.ruleQuota')} used={quota.security_group_rule.in_use} limit={quota.security_group_rule.limit} size="sm" /></div>
 		{:else}
-			<p role={quotaError ? 'alert' : undefined} class="text-sm text-ink-2 sm:col-span-2">{quotaError ? `쿼터 조회 실패: ${quotaError}` : '프로젝트 쿼터 확인 중...'}</p>
+			<p role={quotaError ? 'alert' : undefined} class="text-sm text-ink-2 sm:col-span-2">{quotaError ? t('securityGroups.quotaError', { message: quotaError }) : t('securityGroups.quotaLoading')}</p>
 		{/if}
 	</div>
 	{#if sgError}<p role="alert" class="text-sm text-state-danger-text mb-4">{sgError}</p>{/if}
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={5} />
 	{:else if securityGroups.length === 0}
-		<div class="text-center py-20 text-ink-2"><div class="text-lg">보안 그룹이 없습니다</div></div>
+		<div class="text-center py-20 text-ink-2"><div class="text-lg">{t('securityGroups.empty')}</div></div>
 	{:else}
 		<div class="security-group-workspace">
 			<div class="security-group-list">
@@ -333,13 +336,13 @@
 					onRetryInstances={() => fetchInstances(curSg!.id)} onCloseMobile={() => selectedSg = null}
 				/>
 			{:else}
-				<div class="bg-surface-base border border-line rounded-lg p-5 flex items-center justify-center text-ink-2 text-sm min-h-[200px] max-md:hidden">왼쪽에서 보안 그룹을 선택하세요</div>
+				<div class="bg-surface-base border border-line rounded-lg p-5 flex items-center justify-center text-ink-2 text-sm min-h-[200px] max-md:hidden">{t('securityGroups.selectGroup')}</div>
 			{/if}
 		</div>
 	{/if}
 </div>
 
-<BulkSelectionOverlay count={selection.count} ariaLabel="선택한 보안 그룹 일괄 작업" actions={[{ key: 'delete', label: '삭제', tone: 'danger', disabled: partitionBulkIds(selection.ids, selectableIds).eligible.length === 0, onAction: bulkDeleteGroups }]} {busy} onClear={() => selection.clear()} />
+<BulkSelectionOverlay count={selection.count} ariaLabel={t('securityGroups.bulkActions')} actions={[{ key: 'delete', label: t('securityGroups.delete'), tone: 'danger', disabled: partitionBulkIds(selection.ids, selectableIds).eligible.length === 0, onAction: bulkDeleteGroups }]} {busy} onClear={() => selection.clear()} />
 <SecurityGroupCreateModal bind:open={showSgModal} creating={sgCreating} error={sgCreateError} onCreate={createSecurityGroup} />
 
 <style>

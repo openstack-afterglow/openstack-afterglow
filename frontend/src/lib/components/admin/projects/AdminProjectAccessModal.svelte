@@ -5,6 +5,8 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Pill from '$lib/components/ui/Pill.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
+	import { t } from '$lib/i18n/ns/admin-identity';
+	import { t as tc } from '$lib/i18n/ns/common';
 
 	interface Project {
 		id: string;
@@ -156,7 +158,7 @@
 			await assignRequest(target, readerRole.id);
 			await reloadMembers();
 		} catch (error) {
-			addError = error instanceof ApiError ? error.message : (target.type === 'group' ? '그룹 멤버 추가 실패' : '멤버 추가 실패');
+			addError = error instanceof ApiError ? error.message : (target.type === 'group' ? t('projectAccess.addGroupFailed') : t('projectAccess.addMemberFailed'));
 		} finally {
 			addSaving = false;
 		}
@@ -172,7 +174,7 @@
 			else await revokeRequest(detailPrincipal, role.id);
 			await reloadMembers();
 		} catch (error) {
-			detailError = error instanceof ApiError ? error.message : (checked ? '역할 할당 실패' : '역할 회수 실패');
+			detailError = error instanceof ApiError ? error.message : (checked ? t('projectAccess.assignRoleFailed') : t('projectAccess.revokeRoleFailed'));
 		} finally {
 			roleBusy = null;
 		}
@@ -187,7 +189,7 @@
 				await revokeRequest(principal, role.role_id);
 			}
 		} catch (error) {
-			addError = error instanceof ApiError ? error.message : '멤버 제거 실패';
+			addError = error instanceof ApiError ? error.message : t('projectAccess.removeMemberFailed');
 		} finally {
 			await reloadMembers();
 			removingKey = null;
@@ -213,32 +215,32 @@
 		>
 			<div class="flex items-center justify-between p-5 border-b border-line">
 				<div>
-					<h2 class="text-lg font-semibold text-ink-0">접근 권한 관리</h2>
-					<p class="text-xs text-ink-2 mt-0.5">프로젝트: {project.name}</p>
+					<h2 class="text-lg font-semibold text-ink-0">{t('projectAccess.title')}</h2>
+					<p class="text-xs text-ink-2 mt-0.5">{t('projectAccess.projectLabel', { name: project.name })}</p>
 				</div>
-				<Button variant="ghost" size="icon" ariaLabel="접근 권한 관리 닫기" onclick={onClose}>&times;</Button>
+				<Button variant="ghost" size="icon" ariaLabel={t('projectAccess.closeLabel')} onclick={onClose}>&times;</Button>
 			</div>
 
 			{#if addError}
 				<Alert tone="danger" class="mx-5 mt-3">{addError}</Alert>
 			{/if}
 			{#if !membersLoading && allRoles.length > 0 && !readerRole}
-				<Alert tone="warning" class="mx-5 mt-3">reader 역할을 찾을 수 없어 멤버를 추가할 수 없습니다. Keystone 역할 목록을 확인하세요.</Alert>
+				<Alert tone="warning" class="mx-5 mt-3">{t('projectAccess.readerMissing')}</Alert>
 			{/if}
 
 			{#if membersLoading}
-				<div class="text-xs text-ink-2 py-8 text-center">로딩 중...</div>
+				<div class="text-xs text-ink-2 py-8 text-center">{t('state.loading')}</div>
 			{:else}
 				<div class="flex flex-col md:flex-row flex-1 min-h-0">
 					<div class="md:w-1/2 flex flex-col min-h-0 flex-1 md:flex-none border-b md:border-b-0 md:border-r border-line">
 						<div class="p-4 border-b border-line">
 							<div class="flex gap-1 mb-2">
-								<Button variant={accessTab === 'users' ? 'primary' : 'subtle'} size="xs" onclick={() => { accessTab = 'users'; userSearchFilter = ''; }}>사용자</Button>
-								<Button variant={accessTab === 'groups' ? 'primary' : 'subtle'} size="xs" onclick={() => { accessTab = 'groups'; userSearchFilter = ''; }}>그룹</Button>
+								<Button variant={accessTab === 'users' ? 'primary' : 'subtle'} size="xs" onclick={() => { accessTab = 'users'; userSearchFilter = ''; }}>{t('projectAccess.tabUsers')}</Button>
+								<Button variant={accessTab === 'groups' ? 'primary' : 'subtle'} size="xs" onclick={() => { accessTab = 'groups'; userSearchFilter = ''; }}>{t('projectAccess.tabGroups')}</Button>
 							</div>
 							<input
 								type="text"
-								placeholder={accessTab === 'users' ? '사용자 이름 검색' : '그룹 이름 검색'}
+								placeholder={accessTab === 'users' ? t('projectAccess.searchUsers') : t('projectAccess.searchGroups')}
 								bind:value={userSearchFilter}
 								class="w-full bg-surface-sunken border border-line-2 text-ink-0 text-xs rounded px-2 py-1.5 focus:outline-none focus:border-action-warm"
 							/>
@@ -249,10 +251,10 @@
 									<div class="flex items-center justify-between px-4 py-2 hover:bg-surface-sunken/50 border-b border-line/30">
 										<div class="min-w-0">
 											<span class="text-sm text-ink-1">{user.name}</span>
-											{#if memberUserIds.has(user.id)}<span class="text-xs text-ink-2 ml-1">할당됨</span>{/if}
+											{#if memberUserIds.has(user.id)}<span class="text-xs text-ink-2 ml-1">{t('projectAccess.assigned')}</span>{/if}
 										</div>
 										{#if !memberUserIds.has(user.id)}
-											<Button variant="ghost" size="icon" ariaLabel={`${user.name} reader로 추가`} title="reader 역할로 추가" disabled={!readerRole || addSaving} onclick={() => addAsReader({ id: user.id, type: 'user' })}>+</Button>
+											<Button variant="ghost" size="icon" ariaLabel={t('projectAccess.addAsReaderLabel', { name: user.name })} title={t('projectAccess.addAsReaderTitle')} disabled={!readerRole || addSaving} onclick={() => addAsReader({ id: user.id, type: 'user' })}>+</Button>
 										{/if}
 									</div>
 								{/each}
@@ -261,10 +263,10 @@
 									<div class="flex items-center justify-between px-4 py-2 hover:bg-surface-sunken/50 border-b border-line/30">
 										<div class="min-w-0">
 											<span class="text-sm text-ink-1">{group.name}</span>
-											{#if memberGroupIds.has(group.id)}<span class="text-xs text-ink-2 ml-1">할당됨</span>{/if}
+											{#if memberGroupIds.has(group.id)}<span class="text-xs text-ink-2 ml-1">{t('projectAccess.assigned')}</span>{/if}
 										</div>
 										{#if !memberGroupIds.has(group.id)}
-											<Button variant="ghost" size="icon" ariaLabel={`${group.name} reader로 추가`} title="reader 역할로 추가" disabled={!readerRole || addSaving} onclick={() => addAsReader({ id: group.id, type: 'group' })}>+</Button>
+											<Button variant="ghost" size="icon" ariaLabel={t('projectAccess.addAsReaderLabel', { name: group.name })} title={t('projectAccess.addAsReaderTitle')} disabled={!readerRole || addSaving} onclick={() => addAsReader({ id: group.id, type: 'group' })}>+</Button>
 										{/if}
 									</div>
 								{/each}
@@ -274,11 +276,11 @@
 
 					<div class="md:w-1/2 flex flex-col min-h-0 flex-1 md:flex-none">
 						<div class="p-4 border-b border-line">
-							<div class="text-xs text-ink-2 uppercase tracking-wide">프로젝트 멤버</div>
+							<div class="text-xs text-ink-2 uppercase tracking-wide">{t('projectAccess.membersHeading')}</div>
 						</div>
 						<div class="overflow-y-auto flex-1">
 							{#if principals.length === 0}
-								<div class="text-xs text-ink-2 px-4 py-4">멤버가 없습니다</div>
+								<div class="text-xs text-ink-2 px-4 py-4">{t('projectAccess.noMembers')}</div>
 							{:else}
 								{#each principals as principal (principal.key)}
 									<div class="flex items-start justify-between gap-3 px-4 py-2 border-b border-line/30">
@@ -291,8 +293,8 @@
 											</div>
 										</div>
 										<div class="flex shrink-0 items-center gap-1">
-											<Button variant="subtle" size="xs" ariaLabel={`${principal.name} 권한`} onclick={() => { detailPrincipal = principal; detailError = ''; }}>권한</Button>
-											<Button variant="danger-outline" size="xs" ariaLabel={`${principal.name} 제거`} disabled={removingKey !== null} onclick={() => removePrincipal(principal)}>{removingKey === principal.key ? '제거 중...' : '제거'}</Button>
+											<Button variant="subtle" size="xs" ariaLabel={t('projectAccess.permissionsLabel', { name: principal.name })} onclick={() => { detailPrincipal = principal; detailError = ''; }}>{t('projectAccess.permissions')}</Button>
+											<Button variant="danger-outline" size="xs" ariaLabel={t('projectAccess.removeLabel', { name: principal.name })} disabled={removingKey !== null} onclick={() => removePrincipal(principal)}>{removingKey === principal.key ? t('state.removing') : t('actions.remove')}</Button>
 										</div>
 									</div>
 								{/each}
@@ -303,7 +305,7 @@
 			{/if}
 
 			<div class="flex justify-end p-4 border-t border-line">
-				<Button variant="secondary" size="sm" onclick={onClose}>닫기</Button>
+				<Button variant="secondary" size="sm" onclick={onClose}>{tc('actions.close')}</Button>
 			</div>
 		</div>
 	</div>
@@ -322,10 +324,10 @@
 		aria-labelledby="project-access-detail-title"
 	>
 		<div class="bg-surface-base border border-line-2 rounded-xl p-5 w-full max-w-sm mx-4 max-h-[85vh] flex flex-col shadow-[var(--shadow-restraint)]" onclick={(event) => event.stopPropagation()} role="none">
-			<h3 id="project-access-detail-title" class="text-base font-semibold text-ink-0 mb-1">{detailPrincipal.name} — 세부 권한</h3>
-			<p class="text-xs text-ink-2 mb-3">체크하면 즉시 할당되고, 해제하면 즉시 회수됩니다. reader는 기본 역할이며 멤버 제거로만 해제됩니다.</p>
+			<h3 id="project-access-detail-title" class="text-base font-semibold text-ink-0 mb-1">{t('projectAccess.detailTitle', { name: detailPrincipal.name })}</h3>
+			<p class="text-xs text-ink-2 mb-3">{t('projectAccess.detailHelp')}</p>
 			{#if detailError}<Alert tone="danger" class="mb-3">{detailError}</Alert>{/if}
-			<ul class="overflow-y-auto flex-1 min-h-0 divide-y divide-line/30" aria-label="역할 목록">
+			<ul class="overflow-y-auto flex-1 min-h-0 divide-y divide-line/30" aria-label={t('projectAccess.roleListLabel')}>
 				{#each orderedRoles as role (role.id)}
 					{@const assigned = detailRoleIds.has(role.id)}
 					{@const locked = assigned && role.id === readerRole?.id}
@@ -334,12 +336,12 @@
 							<input type="checkbox" class="rounded border-line-2 bg-surface-sunken" checked={assigned} disabled={locked || roleBusy !== null} onchange={(event) => toggleRole(role, event.currentTarget.checked)} />
 							<span>{role.name}</span>
 						</label>
-						{#if locked}<span class="text-xs text-ink-2">기본 역할</span>{:else if roleBusy === role.id}<span class="text-xs text-ink-2">저장 중...</span>{/if}
+						{#if locked}<span class="text-xs text-ink-2">{t('projectAccess.defaultRole')}</span>{:else if roleBusy === role.id}<span class="text-xs text-ink-2">{t('state.saving')}</span>{/if}
 					</li>
 				{/each}
 			</ul>
 			<div class="flex justify-end mt-4">
-				<Button variant="secondary" size="sm" onclick={() => { detailPrincipal = null; }}>닫기</Button>
+				<Button variant="secondary" size="sm" onclick={() => { detailPrincipal = null; }}>{tc('actions.close')}</Button>
 			</div>
 		</div>
 	</div>

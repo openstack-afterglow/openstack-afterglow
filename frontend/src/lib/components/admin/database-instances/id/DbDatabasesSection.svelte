@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t as tr } from '$lib/i18n/ns/database';
 	import type { DbDatabase } from '$lib/types/database';
 
 	let {
@@ -31,10 +32,10 @@
 
 <div class="bg-surface-base border border-line rounded-xl p-4 mb-4">
 	<div class="flex items-center justify-between mb-3">
-		<h2 class="text-sm font-semibold text-ink-0">데이터베이스</h2>
+		<h2 class="text-sm font-semibold text-ink-0">{tr('labels.databases')}</h2>
 		<button onclick={() => { showForm = !showForm; }}
 			class="text-xs text-ink-2 hover:text-ink-0 border border-line-2 hover:border-line-2 px-2 py-1 rounded transition-colors">
-			{showForm ? '취소' : '+ 추가'}
+			{showForm ? tr('actions.cancel') : tr('actions.add')}
 		</button>
 	</div>
 	{#if showForm}
@@ -44,12 +45,12 @@
 			{#if addError}<p class="text-red-400 text-xs">{addError}</p>{/if}
 			<button onclick={handleAdd} disabled={creating || !newDb.name.trim()}
 				class="text-xs bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm px-3 py-1.5 rounded transition-colors">
-				{creating ? '생성 중...' : '생성'}
+				{creating ? tr('state.creating') : tr('actions.create')}
 			</button>
 		</div>
 	{/if}
 	{#if databases.length === 0}
-		<div class="text-ink-2 text-xs">데이터베이스가 없습니다</div>
+		<div class="text-ink-2 text-xs">{tr('databases.empty')}</div>
 	{:else}
 		<div class="space-y-1">
 			{#each databases as db}
@@ -57,7 +58,7 @@
 					<span class="text-ink-0 text-sm font-medium">{db.name}</span>
 					<button onclick={() => onDelete(db.name)} disabled={deletingDb === db.name}
 						class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-red-900 hover:border-red-700 transition-colors">
-						{deletingDb === db.name ? '...' : '삭제'}
+						{deletingDb === db.name ? '...' : tr('actions.delete')}
 					</button>
 				</div>
 			{/each}

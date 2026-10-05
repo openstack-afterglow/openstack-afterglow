@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/volume';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
   import { untrack } from 'svelte';
   import { auth } from '$lib/stores/auth';
@@ -37,7 +38,7 @@
   async function runBulkDelete() {
     const ids = [...selection.ids];
     if (!ids.length) return;
-    if (!await confirmDialog(`선택한 스냅샷 ${ids.length}개를 삭제하시겠습니까?`)) return;
+    if (!await confirmDialog(t('snapshotsPage.bulkDeleteConfirm', { count: ids.length }))) return;
     const token = $auth.token ?? undefined;
     const projectId = $auth.projectId ?? undefined;
     bulkBusy = true;
@@ -45,8 +46,8 @@
       const results = await executeBulkMutations(ids, (id) => api.delete(`/api/v1/volume-snapshots/${id}`, token, projectId));
       const successful = results.filter((result) => result.ok).map((result) => result.id);
       const failed = results.length - successful.length;
-      if (successful.length) toast.success(`${successful.length}개 삭제 요청을 완료했습니다.`);
-      if (failed) toast.error(`${failed}개 삭제에 실패했습니다.`);
+      if (successful.length) toast.success(t('snapshotsPage.bulkDeleteSuccess', { count: successful.length }));
+      if (failed) toast.error(t('snapshotsPage.bulkDeleteFailed', { count: failed }));
       if ($auth.projectId !== projectId) return;
       selection.remove(successful);
       await fetchSnapshots();
@@ -55,7 +56,7 @@
     }
   }
 
-  const bulkActions: BulkSelectionAction[] = [{ key: 'delete', label: '삭제', tone: 'danger', onAction: runBulkDelete }];
+  const bulkActions = $derived<BulkSelectionAction[]>([{ key: 'delete', label: t('snapshotsPage.delete'), tone: 'danger', onAction: runBulkDelete }]);
 
 
   function clearSnapshotsState() {
@@ -75,7 +76,7 @@
       snapshots = await api.get<VolumeSnapshot[]>('/api/v1/volume-snapshots', $auth.token ?? undefined, $auth.projectId ?? undefined);
       error = '';
     } catch (e) {
-      error = e instanceof ApiError ? `조회 실패 (${e.status})` : '서버 오류';
+      error = e instanceof ApiError ? t('snapshotsPage.fetchFailed', { status: e.status }) : t('snapshotsPage.serverError');
     } finally {
       loading = false;
     }
@@ -102,26 +103,26 @@
   }
 
   async function createSnapshot(form: { volume_id: string; name: string; description: string; force: boolean }): Promise<string | true> {
-    if (!volumeSnapshotsEnabled) return '볼륨 스냅샷 베타 기능이 꺼져 있습니다.';
+    if (!volumeSnapshotsEnabled) return t('snapshotsPage.betaDisabled');
     try {
       await api.post('/api/v1/volume-snapshots', form, $auth.token ?? undefined, $auth.projectId ?? undefined);
       await fetchSnapshots();
       return true;
     } catch (e) {
-      return e instanceof ApiError ? e.message : '생성 실패';
+      return e instanceof ApiError ? e.message : t('snapshotsPage.createFailed');
     }
   }
 
   async function deleteSnapshot(id: string, name: string) {
     if (!volumeSnapshotsEnabled) return;
-    if (!await confirmDialog(`스냅샷 "${name || id.slice(0, 8)}"을 삭제하시겠습니까?`)) return;
+    if (!await confirmDialog(t('snapshotsPage.deleteConfirm', { name: name || id.slice(0, 8) }))) return;
     deleting = id;
     try {
       await api.delete(`/api/v1/volume-snapshots/${id}`, $auth.token ?? undefined, $auth.projectId ?? undefined);
       selection.remove([id]);
       await fetchSnapshots();
     } catch (e) {
-      toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+      toast.error(t('snapshotsPage.deleteFailed', { error: e instanceof ApiError ? e.message : String(e) }));
     } finally {
       deleting = null;
     }
@@ -159,18 +160,18 @@
 
 {#if !volumeSnapshotsEnabled}
   <PageShell>
-    <BetaFeatureGate title="볼륨 스냅샷은 베타 기능입니다" />
+    <BetaFeatureGate title={t('snapshotsPage.betaTitle')} />
   </PageShell>
 {:else}
 <VolumeSnapshotCreateModal bind:open={showModal} {volumes} onCreate={createSnapshot} />
 
 <PageShell class="bulk-selection-page space-y-4">
-  <PageHeader breadcrumb="VOLUMES / SNAPSHOTS" title="볼륨 스냅샷">
+  <PageHeader breadcrumb={t('snapshotsPage.breadcrumb')} title={t('snapshotsPage.title')}>
     {#snippet actions()}
-      <Button onclick={openCreate} onintent={prefetchVolumes} variant="primary">+ 스냅샷 생성</Button>
+      <Button onclick={openCreate} onintent={prefetchVolumes} variant="primary">{t('snapshotsPage.create')}</Button>
     {/snippet}
   </PageHeader>
-  <ResourceToolbar label="볼륨 스냅샷 목록 도구">
+  <ResourceToolbar label={t('snapshotsPage.toolbar')}>
     {#snippet actions()}<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} refreshing={refreshing} onManualRefresh={forceRefresh} />{/snippet}
   </ResourceToolbar>
 
@@ -181,7 +182,7 @@
     <VolumeSnapshotsEmptyState onCreate={openCreate} onintent={prefetchVolumes} />
   {:else}
     <VolumeSnapshotsTable {snapshots} {deleting} selectedIds={selection.ids} selectableIds={selectableIds} selectionDisabled={bulkBusy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} onDelete={deleteSnapshot} />
-    <BulkSelectionOverlay count={selection.count} ariaLabel="선택한 볼륨 스냅샷 일괄 작업" actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
+    <BulkSelectionOverlay count={selection.count} ariaLabel={t('snapshotsPage.bulkLabel')} actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
   {/if}
 </PageShell>
 {/if}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/file-storage';
 	import Button from '$lib/components/ui/Button.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import { useFileStorageDetailController } from '$lib/stores/fileStorageDetailController.svelte';
@@ -10,7 +11,7 @@
 	<div class="flex items-center justify-between mb-3">
 		<div class="flex items-center gap-2">
 			<h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide">
-				접근 규칙 {s.fileStorage!.share_proto === 'NFS' ? '(IP)' : '(CephX)'}
+				{t('accessRules.title', { type: s.fileStorage!.share_proto === 'NFS' ? 'IP' : 'CephX' })}
 			</h3>
 			{#if s.fileStorage!.access_rules_status}
 				<StatusChip status={s.fileStorage!.access_rules_status} class="text-xs" />
@@ -20,7 +21,7 @@
 			onclick={() => { s.showAddRule = !s.showAddRule; }}
 			class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
 		>
-			{s.showAddRule ? '취소' : '+ 추가'}
+			{s.showAddRule ? t('accessRules.cancel') : t('accessRules.addToggle')}
 		</button>
 	</div>
 
@@ -29,29 +30,29 @@
 			<div class="flex gap-3 items-end">
 				<div class="flex-1">
 					<label class="block text-xs text-ink-2 mb-1">
-						{s.fileStorage!.share_proto === 'NFS' ? 'IP / CIDR' : 'CephX ID'}
+						{s.fileStorage!.share_proto === 'NFS' ? t('accessRules.ipCidr') : t('accessRules.cephId')}
 						<input
 							bind:value={s.ruleForm.access_to}
 							type="text"
-							placeholder={s.fileStorage!.share_proto === 'NFS' ? '예: 10.0.0.0/24' : '예: my-instance'}
+							placeholder={s.fileStorage!.share_proto === 'NFS' ? t('accessRules.ipPlaceholder') : t('accessRules.cephPlaceholder')}
 							class="w-full bg-surface-base border border-line-2 rounded px-3 py-1.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm font-mono mt-1"
 						/>
 					</label>
 				</div>
 				<div>
 					<label class="block text-xs text-ink-2 mb-1">
-						권한
+						{t('accessRules.permission')}
 						<select
 							bind:value={s.ruleForm.access_level}
 							class="bg-surface-base border border-line-2 rounded px-3 py-1.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1"
 						>
-							<option value="ro">읽기 전용 (ro)</option>
-							<option value="rw">읽기/쓰기 (rw)</option>
+							<option value="ro">{t('accessRules.readOnly')}</option>
+							<option value="rw">{t('accessRules.readWrite')}</option>
 						</select>
 					</label>
 				</div>
 				<Button onclick={() => s.addAccessRule()} disabled={s.addingRule || !s.ruleForm.access_to.trim()} size="sm">
-					{s.addingRule ? '추가 중...' : '추가'}
+					{s.addingRule ? t('accessRules.adding') : t('accessRules.add')}
 				</Button>
 			</div>
 			{#if s.ruleError}<p class="text-red-400 text-xs mt-2">{s.ruleError}</p>{/if}
@@ -59,22 +60,22 @@
 	{/if}
 
 	{#if s.accessLoading}
-		<p class="text-ink-2 text-sm text-center py-4">로딩 중...</p>
+		<p class="text-ink-2 text-sm text-center py-4">{t('accessRules.loading')}</p>
 	{:else if s.accessError}
 		<div class="flex items-center gap-2 py-3 px-3 bg-red-900/20 border border-red-800/50 rounded-md">
 			<span class="text-red-400 text-xs">{s.accessError}</span>
 		</div>
 	{:else if s.accessRules.length === 0}
-		<p class="text-ink-2 text-sm text-center py-4">접근 규칙이 없습니다</p>
+		<p class="text-ink-2 text-sm text-center py-4">{t('accessRules.empty')}</p>
 	{:else}
 		<div class="overflow-x-auto">
 			<table class="w-full text-sm">
 				<thead>
 					<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
-						<th class="text-left py-2 pr-4">접근 대상</th>
-						<th class="text-left py-2 pr-4">권한</th>
-						<th class="text-left py-2 pr-4">상태</th>
-						<th class="text-left py-2 pr-4">Access Key</th>
+						<th class="text-left py-2 pr-4">{t('accessRules.target')}</th>
+						<th class="text-left py-2 pr-4">{t('accessRules.permission')}</th>
+						<th class="text-left py-2 pr-4">{t('accessRules.status')}</th>
+						<th class="text-left py-2 pr-4">{t('accessRules.accessKey')}</th>
 						<th class="text-right py-2"></th>
 					</tr>
 				</thead>
@@ -96,7 +97,7 @@
 											onclick={() => s.copyKey(rule.access_key!, rule.id)}
 											class="text-xs px-1.5 py-0.5 rounded border transition-colors {s.copiedKey === rule.id ? 'border-green-700 text-green-400' : 'border-line-2 text-ink-2 hover:text-ink-1'}"
 										>
-											{s.copiedKey === rule.id ? '복사됨' : '복사'}
+											{s.copiedKey === rule.id ? t('accessRules.copied') : t('accessRules.copy')}
 										</button>
 									</div>
 								{:else}
@@ -109,7 +110,7 @@
 									disabled={s.revokingId === rule.id}
 									class="text-xs text-red-400 hover:text-red-300 disabled:opacity-40 transition-colors"
 								>
-									{s.revokingId === rule.id ? '삭제 중...' : '삭제'}
+									{s.revokingId === rule.id ? t('accessRules.deleting') : t('accessRules.delete')}
 								</button>
 							</td>
 						</tr>

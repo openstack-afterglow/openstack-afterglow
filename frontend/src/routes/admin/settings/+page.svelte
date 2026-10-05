@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-system';
 	import { auth } from '$lib/stores/auth';
 	import AdminLoginBrandingPanel from '$lib/components/admin/AdminLoginBrandingPanel.svelte';
 	import AdminResourcePoliciesPanel from '$lib/components/admin/AdminResourcePoliciesPanel.svelte';
@@ -10,18 +11,18 @@
 
 <PageShell max="7xl">
 	<PageHeader
-		breadcrumb="SYSTEM / SETTINGS"
-		title="기본 설정"
-		subtitle="로그인 브랜딩처럼 전역 UI 기본값을 한 곳에서 관리합니다."
+		breadcrumb={t('settings.breadcrumb')}
+		title={t('settings.title')}
+		subtitle={t('settings.subtitle')}
 	/>
 
 	<div class="settings-stack">
 		<Card padding="lg" surface="subtle">
 			<div class="settings-intro">
-				<p class="eyebrow">Admin defaults</p>
-				<h2>서비스 기본값</h2>
+				<p class="eyebrow">{t('settings.eyebrow')}</p>
+				<h2>{t('settings.defaults')}</h2>
 				<p>
-					관리자 개요는 운영 상태 확인에 집중하고, 로그인 화면처럼 사이트 전체에 적용되는 설정은 이 페이지에서 정리합니다.
+					{t('settings.description')}
 				</p>
 			</div>
 		</Card>

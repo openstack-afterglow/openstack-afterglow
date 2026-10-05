@@ -2,6 +2,8 @@
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
+	import { t } from '$lib/i18n/ns/admin-storage';
+	import RichText from '$lib/i18n/RichText.svelte';
 
 	interface AdminVolume {
 		id: string;
@@ -70,12 +72,15 @@
 			onSuccess();
 			onClose();
 		} catch (e) {
-			transferError = e instanceof ApiError ? e.message : '이전 실패';
+			transferError = e instanceof ApiError ? e.message : t('volumeTransfer.failed');
 		} finally {
 			transferring = false;
 		}
 	}
 </script>
+
+{#snippet volumeName(text: string)}<span class="text-ink-0">{text}</span>{/snippet}
+{#snippet projectName(text: string)}<span class="text-warm-text">{text}</span>{/snippet}
 
 {#if volume}
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -91,13 +96,13 @@
 			onclick={(e) => e.stopPropagation()}
 			role="none"
 		>
-			<h2 class="text-lg font-semibold text-ink-0 mb-3">볼륨 프로젝트 이전</h2>
-			<p class="text-xs text-ink-2 mb-4">볼륨 <span class="text-ink-0">{volume.name || volume.id.slice(0, 8)}</span>을 다른 프로젝트로 이전합니다.</p>
+			<h2 class="text-lg font-semibold text-ink-0 mb-3">{t('volumeTransfer.title')}</h2>
+			<p class="text-xs text-ink-2 mb-4"><RichText segments={t.rich('volumeTransfer.description', { name: volume.name || volume.id.slice(0, 8) })} tags={{ name: volumeName }} /></p>
 			{#if transferError}
 				<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{transferError}</div>
 			{/if}
 			<div class="relative">
-				<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminvolumetransfermodal-100">대상 프로젝트 *</label>
+				<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-adminvolumetransfermodal-100">{t('volumeTransfer.targetProject')}</label>
 				<input id="field-adminvolumetransfermodal-100"
 					type="text"
 					bind:value={transferSearch}
@@ -107,7 +112,7 @@
 						if (!transferSearch) { transferProjectId = ''; transferProjectName = ''; }
 					}}
 					onblur={() => setTimeout(() => { showTransferDropdown = false; }, 150)}
-					placeholder="프로젝트 검색..."
+					placeholder={t('volumeTransfer.searchProject')}
 					class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm"
 				/>
 				{#if showTransferDropdown && filteredTransferProjects.length > 0}
@@ -122,12 +127,12 @@
 					</div>
 				{/if}
 				{#if transferProjectName}
-					<div class="mt-1 text-xs text-ink-2">선택됨: <span class="text-warm-text">{transferProjectName}</span></div>
+					<div class="mt-1 text-xs text-ink-2"><RichText segments={t.rich('volumeTransfer.selectedProject', { name: transferProjectName })} tags={{ name: projectName }} /></div>
 				{/if}
 			</div>
 			<div class="flex justify-end gap-3 mt-6">
-				<button onclick={onClose} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">취소</button>
-				<button onclick={confirmTransfer} disabled={transferring || !transferProjectId} class="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{transferring ? '이전 중...' : '이전'}</button>
+				<button onclick={onClose} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('volumeTransfer.cancel')}</button>
+				<button onclick={confirmTransfer} disabled={transferring || !transferProjectId} class="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{transferring ? t('volumeTransfer.transferring') : t('volumeTransfer.transfer')}</button>
 			</div>
 		</div>
 	</div>

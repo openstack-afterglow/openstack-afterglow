@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/drover';
 	import type { ActiveTab } from '$lib/stores/k3sClusterDetailController.svelte';
 	import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
 	import Tabs from '$lib/components/ui/Tabs.svelte';
@@ -6,13 +7,13 @@
 	const s = useK3sClusterDetailController();
 
 	const tabs: { value: ActiveTab; label: string; panelId: string }[] = [
-		{ value: 'main', label: '메인', panelId: 'k3s-panel-main' },
-		{ value: 'configmaps', label: 'ConfigMap', panelId: 'k3s-panel-configmaps' },
-		{ value: 'secrets', label: 'Secret', panelId: 'k3s-panel-secrets' },
-		{ value: 'services', label: 'Service', panelId: 'k3s-panel-services' },
-		{ value: 'workloads', label: 'Deployment / RS', panelId: 'k3s-panel-workloads' },
-		{ value: 'pods', label: 'Pod', panelId: 'k3s-panel-pods' },
-		{ value: 'stampede', label: 'Stampede', panelId: 'k3s-panel-stampede' },
+		{ value: 'main', get label() { return t('overview.tabs.main'); }, panelId: 'k3s-panel-main' },
+		{ value: 'configmaps', get label() { return t('overview.tabs.configmaps'); }, panelId: 'k3s-panel-configmaps' },
+		{ value: 'secrets', get label() { return t('overview.tabs.secrets'); }, panelId: 'k3s-panel-secrets' },
+		{ value: 'services', get label() { return t('overview.tabs.services'); }, panelId: 'k3s-panel-services' },
+		{ value: 'workloads', get label() { return t('overview.tabs.workloads'); }, panelId: 'k3s-panel-workloads' },
+		{ value: 'pods', get label() { return t('overview.tabs.pods'); }, panelId: 'k3s-panel-pods' },
+		{ value: 'stampede', get label() { return t('overview.tabs.stampede'); }, panelId: 'k3s-panel-stampede' },
 	];
 </script>
 
@@ -20,7 +21,7 @@
 	id="k3s-cluster-tabs"
 	value={s.activeTab}
 	items={tabs}
-	ariaLabel="Kubernetes 리소스"
+	ariaLabel={t('overview.tabs.resources')}
 	onchange={(value) => { s.activeTab = value as ActiveTab; }}
 	class="mb-5"
 />

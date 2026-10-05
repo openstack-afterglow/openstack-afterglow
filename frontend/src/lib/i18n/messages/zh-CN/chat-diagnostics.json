@@ -1,0 +1,13 @@
+{
+	"run.reloadRequired": "对话运行日志已不可用；请重新加载对话",
+	"protocol.invalidDescriptor": "对话运行描述符无效",
+	"http.requestFailed": "对话请求失败",
+	"stream.unterminatedFrame": "SSE 帧未终止",
+	"stream.disconnected": "对话事件流已断开",
+	"stream.invalidJson": "对话事件不是有效的 JSON",
+	"stream.idMismatch": "SSE 事件 ID 不匹配",
+	"stream.typeMismatch": "SSE 事件类型不匹配",
+	"stream.runMismatch": "SSE 事件的运行不匹配",
+	"protocol.sequenceGap": "对话事件序列存在缺失",
+	"reducer.runMismatch": "对话事件的运行不匹配"
+}

@@ -1,5 +1,7 @@
 """notion_worker 워커 동작 + 기본값 30분 + FastAPI-free 회귀 가드 테스트."""
 
+import select
+import signal
 import subprocess
 import sys
 from datetime import UTC, datetime, timedelta
@@ -295,3 +297,40 @@ async def test_worker_cycle_skips_all_external_work_when_global_gate_is_disabled
 
     get_setting.assert_awaited_once_with("notion.sync_enabled")
     list_targets.assert_not_awaited()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX worker shutdown signals")
+@pytest.mark.parametrize("shutdown_signal", [signal.SIGTERM, signal.SIGINT])
+def test_worker_shutdown_signals_cancel_pending_work_cleanly(shutdown_signal):
+    script = """
+import asyncio
+from app import notion_worker
+
+async def pending_work():
+    print("READY", flush=True)
+    try:
+        await asyncio.Future()
+    finally:
+        print("CLEANED", flush=True)
+
+notion_worker.main = pending_work
+asyncio.run(notion_worker._main_async())
+"""
+    with subprocess.Popen(
+        [sys.executable, "-c", script],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        cwd=_BACKEND_DIR,
+    ) as process:
+        try:
+            assert select.select([process.stdout], [], [], 10)[0], "worker did not become ready"
+            assert process.stdout.readline().strip() == "READY"
+            process.send_signal(shutdown_signal)
+            stdout, stderr = process.communicate(timeout=5)
+            assert process.returncode == 0, stderr
+            assert stdout.strip() == "CLEANED"
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.communicate(timeout=5)

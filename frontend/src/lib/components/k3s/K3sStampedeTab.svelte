@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/drover';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
@@ -39,7 +41,7 @@
 			status = nextStatus;
 			events = nextEvents;
 		} catch {
-			error = '이벤트 이력을 불러올 수 없습니다.';
+			error = t('stampede.loadFailed');
 			events = [];
 		} finally {
 			loading = false;
@@ -69,17 +71,16 @@
 	}
 
 	function actionLabel(action: string, status: string): string {
-		const statusLabel = status === 'started' ? '시작' : status === 'success' ? '완료' : '실패';
-		if (action === 'scale_up') return `노드 추가 ${statusLabel}`;
-		if (action === 'scale_down') return `노드 제거 ${statusLabel}`;
-		if (action === 'blocked') return '스케일 차단';
+		if (action === 'scale_up') return t('stampede.scaleUp', { status });
+		if (action === 'scale_down') return t('stampede.scaleDown', { status });
+		if (action === 'blocked') return t('stampede.scaleBlocked');
 		return action;
 	}
 
 	function formatTime(iso: string | null): string {
 		if (!iso) return '-';
 		const d = new Date(iso);
-		return d.toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+		return d.toLocaleString(intlLocale(), { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
 	}
 
 	function extraSummary(action: string, extra: Record<string, unknown>): string {
@@ -87,19 +88,23 @@
 			const count = extra.add_count as number | undefined;
 			const flavor = extra.flavor_name as string | undefined;
 			const ready = (extra.ready_nodes as string[] | undefined)?.length;
-			if (ready !== undefined) return `${ready}개 노드 Ready (요청 ${count}개, ${flavor ?? ''})`;
-			return `${count ?? ''}개 요청${flavor ? ` — ${flavor}` : ''}`;
+			if (ready !== undefined) return t('stampede.nodesReady', { ready, count: String(count), flavor: flavor ?? '' });
+			return flavor
+				? t('stampede.nodesRequestedFlavor', { count: count ?? '', flavor })
+				: t('stampede.nodesRequested', { count: count ?? '' });
 		}
 		if (action === 'scale_down') {
 			const node = extra.node_name as string | undefined;
 			const removed = extra.removed_count as number | undefined;
-			if (removed !== undefined) return `${removed}개 제거 완료`;
+			if (removed !== undefined) return t('stampede.nodesRemoved', { count: removed });
 			return node ?? '';
 		}
 		if (action === 'blocked') {
 			const reason = extra.reason as string | undefined;
 			const pod = extra.pod as { namespace?: string; name?: string } | undefined;
-			return `${reason ?? 'blocked'}${pod?.name ? ` — ${pod.namespace ?? 'default'}/${pod.name}` : ''}`;
+			return pod?.name
+				? t('stampede.blockedPod', { reason: reason ?? t('stampede.blockedFallback'), namespace: pod.namespace ?? 'default', name: pod.name })
+				: reason ?? t('stampede.blockedFallback');
 		}
 		return '';
 	}
@@ -117,32 +122,32 @@
 								<span class="rounded border border-emerald-700/50 bg-emerald-900/30 px-1.5 py-0.5 text-xs text-emerald-300">GPU</span>
 							{/if}
 							{#if ng.in_flight}
-								<span class="rounded border border-action-warm/50 bg-surface-selected/30 px-1.5 py-0.5 text-xs text-warm-text">in-flight {ng.in_flight}</span>
+								<span class="rounded border border-action-warm/50 bg-surface-selected/30 px-1.5 py-0.5 text-xs text-warm-text">{t('stampede.inFlight', { count: ng.in_flight })}</span>
 							{/if}
 						</div>
 					</div>
 					<div class="mt-2 grid grid-cols-3 gap-2 text-xs">
 						<div class="rounded bg-surface-base p-2">
-							<div class="text-ink-2">CPU free</div>
+							<div class="text-ink-2">{t('stampede.cpuFree')}</div>
 							<div class="text-ink-1">{formatResource((ng.capacity?.free as Record<string, unknown> | undefined)?.cpu_m, 'cpu')}</div>
 						</div>
 						<div class="rounded bg-surface-base p-2">
-							<div class="text-ink-2">MEM free</div>
+							<div class="text-ink-2">{t('stampede.memoryFree')}</div>
 							<div class="text-ink-1">{formatResource((ng.capacity?.free as Record<string, unknown> | undefined)?.memory_bytes, 'memory')}</div>
 						</div>
 						<div class="rounded bg-surface-base p-2">
-							<div class="text-ink-2">GPU free</div>
+							<div class="text-ink-2">{t('stampede.gpuFree')}</div>
 							<div class="text-ink-1">{formatResource((ng.capacity?.free as Record<string, unknown> | undefined)?.gpu, 'gpu')}</div>
 						</div>
 					</div>
 					{#if ng.pending_assignments?.length}
-						<div class="mt-2 text-xs text-warm-text">Pending: {ng.pending_assignments.map(p => `${p.namespace ?? 'default'}/${p.name}`).join(', ')}</div>
+						<div class="mt-2 text-xs text-warm-text">{t('stampede.pending', { pods: ng.pending_assignments.map(p => `${p.namespace ?? 'default'}/${p.name}`).join(', ') })}</div>
 					{/if}
 					{#if ng.blocked_reasons?.length}
-						<div class="mt-2 text-xs text-warm-text">Blocked: {ng.blocked_reasons.map(b => `${b.reason}: ${b.namespace ?? 'default'}/${b.name}`).join(', ')}</div>
+						<div class="mt-2 text-xs text-warm-text">{t('stampede.blocked', { reasons: ng.blocked_reasons.map(b => `${b.reason}: ${b.namespace ?? 'default'}/${b.name}`).join(', ') })}</div>
 					{/if}
 					{#if ng.last_blocked_reason}
-						<div class="mt-2 text-xs text-warm-text">Last blocked: {ng.last_blocked_reason}</div>
+						<div class="mt-2 text-xs text-warm-text">{t('stampede.lastBlocked', { reason: ng.last_blocked_reason })}</div>
 					{/if}
 				</div>
 			{/each}
@@ -150,22 +155,22 @@
 	{/if}
 
 	<div class="flex items-center justify-between mb-4">
-		<h3 class="text-xs text-ink-2 uppercase tracking-wide">Stampede 스케일 이벤트</h3>
+		<h3 class="text-xs text-ink-2 uppercase tracking-wide">{t('stampede.title')}</h3>
 		<button onclick={load} disabled={loading}
 			class="text-xs text-ink-2 hover:text-ink-2 transition-colors disabled:opacity-50">
-			{loading ? '로딩 중...' : '새로고침'}
+			{loading ? t('stampede.loading') : t('stampede.refresh')}
 		</button>
 	</div>
 
 	{#if error}
 		<div class="text-xs text-red-400 py-2">{error}</div>
 	{:else if loading && events.length === 0}
-		<div class="text-xs text-ink-2 py-2">불러오는 중...</div>
+		<div class="text-xs text-ink-2 py-2">{t('stampede.fetching')}</div>
 	{:else if events.length === 0}
 		<div class="text-xs text-ink-2 py-4 text-center">
 			<div class="text-2xl mb-2">⚡</div>
-			<div>아직 Stampede 이벤트가 없습니다.</div>
-			<div class="text-ink-2 mt-1">노드그룹에 Stampede를 활성화하면 스케일 이벤트가 여기에 표시됩니다.</div>
+			<div>{t('stampede.empty')}</div>
+			<div class="text-ink-2 mt-1">{t('stampede.emptyHelp')}</div>
 		</div>
 	{:else}
 		<div class="space-y-0.5">
@@ -183,7 +188,7 @@
 								<span class="text-xs text-ink-2 font-mono truncate max-w-40">{ev.nodegroup_id.slice(0, 8)}…</span>
 							{/if}
 							{#if ev.status === 'failed'}
-								<span class="text-xs bg-red-900/40 text-red-400 border border-red-800/40 rounded px-1.5 py-0.5">실패</span>
+								<span class="text-xs bg-red-900/40 text-red-400 border border-red-800/40 rounded px-1.5 py-0.5">{t('stampede.failed')}</span>
 							{/if}
 						</div>
 						{#if extraSummary(ev.action, ev.extra)}

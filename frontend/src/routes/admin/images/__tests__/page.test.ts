@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
 import { writable } from 'svelte/store';
 import type { AdminImage } from '$lib/types/adminImage';
@@ -21,6 +21,9 @@ function image(id: string, repository: string, tag: string, created_at: string, 
 const ubuntuOld = image('u-old', 'ubuntu', '22.04', '2026-07-01T00:00:00Z');
 const debian = image('d-new', 'debian', '13', '2026-09-01T00:00:00Z', { os_distro: 'debian' });
 const ubuntuNew = image('u-new', 'ubuntu', '24.04', '2026-09-26T00:00:00Z', { verification_status: 'verified', verified_at: '2026-09-26T01:00:00Z' });
+
+// Compile the real lazy panel during setup; cold transforms are not a click deadline.
+beforeAll(async () => { await vi.importActual('$lib/components/ImageDetailPanel.svelte'); });
 
 beforeEach(() => {
 	vi.clearAllMocks();
@@ -75,7 +78,7 @@ describe('administrator image catalog', () => {
 		expect(within(tags.getByLabelText('ubuntu:24.04 (old-uuid) 관리')).queryByRole('button', { name: '삭제' })).toBeNull();
 		expect(within(tags.getByLabelText('ubuntu:24.04 (new-uuid) 관리')).getByRole('button', { name: '삭제' })).toBeTruthy();
 		await fireEvent.click(tags.getByRole('button', { name: 'ubuntu:latest (alias-uu) 상세' }));
-		await vi.waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/api/v1/images/alias-uuid', 'token', 'project'));
+		expect(await screen.findByText(alias.id, { selector: 'dd' })).toBeTruthy();
 		await fireEvent.click(screen.getByRole('button', { name: '패널 닫기 버튼' }));
 		await fireEvent.click(screen.getByRole('button', { name: 'Tags' }));
 		await fireEvent.change(screen.getByLabelText('공개 범위'), { target: { value: 'public' } });
@@ -84,7 +87,7 @@ describe('administrator image catalog', () => {
 		expect(within(previous.parentElement!).getByText('이전')).toBeTruthy();
 		expect(publicTags.queryByRole('button', { name: 'ubuntu:24.04 (new-uuid) 상세' })).toBeNull();
 		await fireEvent.click(previous);
-		await vi.waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/api/v1/images/old-uuid-1234', 'token', 'project'));
+		expect(await screen.findByText(old.id, { selector: 'dd' })).toBeTruthy();
 		await fireEvent.click(screen.getByRole('button', { name: '패널 닫기 버튼' }));
 		const actions = publicTags.getByLabelText('ubuntu:24.04 (old-uuid) 관리');
 		await fireEvent.click(within(actions).getByRole('button', { name: '검증 승인' }));

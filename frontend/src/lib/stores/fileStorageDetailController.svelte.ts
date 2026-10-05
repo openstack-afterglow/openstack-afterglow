@@ -1,3 +1,4 @@
+import { t } from '$lib/i18n/ns/file-storage';
 import { getContext, setContext } from 'svelte';
 import { api, ApiError } from '$lib/api/client';
 import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -49,7 +50,7 @@ function createFileStorageDetailController(opts: Options) {
 				requestOpts
 			);
 		} catch (e) {
-			error = e instanceof ApiError ? `조회 실패 (${e.status}): ${e.message}` : '서버 오류';
+			error = e instanceof ApiError ? t('detail.loadFailedWithMessage', { status: e.status, message: e.message }) : t('errors.server');
 		} finally {
 			loading = false;
 		}
@@ -68,7 +69,7 @@ function createFileStorageDetailController(opts: Options) {
 			);
 		} catch (e) {
 			accessRules = [];
-			accessError = e instanceof ApiError ? `접근 규칙 로드 실패 (${e.status}): ${e.message}` : '접근 규칙을 불러오지 못했습니다';
+			accessError = e instanceof ApiError ? t('detail.accessLoadFailedWithMessage', { status: e.status, message: e.message }) : t('detail.accessLoadFailed');
 		} finally {
 			accessLoading = false;
 		}
@@ -95,7 +96,7 @@ function createFileStorageDetailController(opts: Options) {
 			if (opts.onMutated) await opts.onMutated();
 			else await fetchAccessRules();
 		} catch (e) {
-			ruleError = e instanceof ApiError ? e.message : '생성 실패';
+			ruleError = e instanceof ApiError ? e.message : t('errors.create');
 		} finally {
 			addingRule = false;
 		}
@@ -103,7 +104,7 @@ function createFileStorageDetailController(opts: Options) {
 
 	async function revokeAccessRule(accessId: string) {
 		if (!fileStorage) return;
-		if (!(await confirmDialog('이 접근 규칙을 삭제하시겠습니까?'))) return;
+		if (!(await confirmDialog(t('detail.revokeConfirm')))) return;
 		revokingId = accessId;
 		try {
 			await api.delete(
@@ -114,7 +115,7 @@ function createFileStorageDetailController(opts: Options) {
 			if (opts.onMutated) await opts.onMutated();
 			else await fetchAccessRules();
 		} catch (e) {
-			toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('errors.deleteWithMessage', { message: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			revokingId = null;
 		}
@@ -134,14 +135,14 @@ function createFileStorageDetailController(opts: Options) {
 
 	async function deleteFileStorage() {
 		if (!fileStorage) return;
-		if (!(await confirmDialog(`파일 스토리지 "${fileStorage.name || fileStorage.id}"를 삭제하시겠습니까?`))) return;
+		if (!(await confirmDialog(t('detail.deleteConfirm', { name: fileStorage.name || fileStorage.id })))) return;
 		deleting = true;
 		try {
 			await api.delete(`/api/v1/file-storage/${fileStorage.id}`, opts.token(), opts.projectId());
 			await opts.onDeleted?.();
 			opts.onClose?.();
 		} catch (e) {
-			toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('errors.deleteWithMessage', { message: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			deleting = false;
 		}

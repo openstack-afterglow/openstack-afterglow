@@ -7,6 +7,7 @@
 	import type { LoginResponse } from '$lib/types/auth';
 	import { resolvePostLoginProject } from '$lib/utils/authFlow';
 	import { postAuthDestination } from '$lib/utils/mcpConsent';
+	import { t } from '$lib/i18n/ns/public-entry';
 
 	let error = $state('');
 	let loading = $state(true);
@@ -16,7 +17,7 @@
 		const state = $page.url.searchParams.get('state');
 
 		if (!code || !state) {
-			error = '잘못된 콜백 요청입니다. 다시 로그인해 주세요.';
+			error = t('gitlabCallback.invalidRequest');
 			loading = false;
 			return;
 		}
@@ -55,7 +56,7 @@
 			});
 			await goto(postAuthDestination(resolution.target));
 		} catch (e) {
-			error = e instanceof ApiError ? `인증 실패 (${e.status}): ${e.message}` : 'GitLab 인증에 실패했습니다';
+			error = e instanceof ApiError ? t('gitlabCallback.authError', { status: e.status, message: e.message }) : t('gitlabCallback.authFailed');
 			loading = false;
 		}
 	});
@@ -69,7 +70,7 @@
 					<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
 					<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
 				</svg>
-				<p class="text-ink-2 text-sm">GitLab 인증 처리 중...</p>
+				<p class="text-ink-2 text-sm">{t('gitlabCallback.processing')}</p>
 			</div>
 		{:else if error}
 			<div class="bg-surface-base rounded-xl border border-line-2 p-8 space-y-4">
@@ -77,7 +78,7 @@
 					{error}
 				</div>
 				<a href="/login" class="block w-full text-center bg-surface-sunken hover:bg-surface-selected text-ink-2 font-medium rounded-lg py-2.5 text-sm transition-colors">
-					로그인 페이지로 돌아가기
+					{t('gitlabCallback.backToLogin')}
 				</a>
 			</div>
 		{/if}

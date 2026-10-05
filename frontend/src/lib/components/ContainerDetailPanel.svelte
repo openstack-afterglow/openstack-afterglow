@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/containers-shell';
 	import { auth } from '$lib/stores/auth';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import { createContainerDetailController, provideContainerDetailController } from '$lib/stores/containerDetailController.svelte';
@@ -44,7 +45,7 @@
 
 	<div class="flex-1 overflow-y-auto p-5 space-y-4">
 		{#if s.loading}
-			<div class="text-ink-2 text-sm">로딩 중...</div>
+			<div class="text-ink-2 text-sm">{t('container.loading')}</div>
 		{:else if s.error}
 			<div class="text-red-400 text-sm">{s.error}</div>
 		{:else if s.container}

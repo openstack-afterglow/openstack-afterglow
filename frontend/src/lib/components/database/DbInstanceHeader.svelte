@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t as tr } from '$lib/i18n/ns/database';
 	import { useDbInstanceDetailController } from '$lib/stores/dbInstanceDetailController.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 
@@ -16,7 +17,7 @@
 		ERROR: 'text-red-400',
 		SHUTDOWN: 'text-ink-2',
 	};
-	const statusLabel: Record<string, string> = { SHUTDOWN: '삭제 중' };
+	const statusLabel: Record<string, string> = { SHUTDOWN: tr('state.deletingShort') };
 </script>
 
 <div class="flex items-start justify-between">
@@ -41,7 +42,7 @@
 		{#if s.instance}
 			<button onclick={() => s.deleteInstance()} disabled={s.deleting}
 				class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1.5 rounded border border-red-900 hover:border-red-700 transition-colors">
-				{s.deleting ? '삭제 중...' : '인스턴스 삭제'}
+				{s.deleting ? tr('state.deleting') : tr('actions.deleteInstance')}
 			</button>
 		{/if}
 		<!-- 닫기 버튼은 SlidePanel 이 제공한다(`[data-slide-panel-close]`) -->

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { betaFeatures } from '$lib/stores/betaFeatures';
+	import { t } from '$lib/i18n/ns/vm-wizard';
 	let {
 		scheduling,
 		onSchedulingChange,
@@ -29,7 +30,7 @@
 
 <!-- 섹션 A: 스케줄링 (항상) -->
 <div class="mb-6">
-	<p class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-3">스케줄링 / 내고장성</p>
+	<p class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-3">{t('strategy.schedulingTitle')}</p>
 	<div class="flex flex-col gap-3">
 		<button
 			onclick={() => onSchedulingChange('standard')}
@@ -47,10 +48,10 @@
 			</div>
 			<div class="flex-1 flex flex-col gap-1.5">
 				<div class="flex items-center gap-2.5 flex-wrap">
-					<b class="text-sm font-semibold text-ink-0">일반 배포</b>
-					<span class="ml-auto text-ink-2 font-mono text-[11.5px]">⚡ ~30초 부팅</span>
+					<b class="text-sm font-semibold text-ink-0">{t('strategy.standardDeployment')}</b>
+					<span class="ml-auto text-ink-2 font-mono text-[11.5px]">{t('strategy.standardBootTime')}</span>
 				</div>
-				<p class="text-xs text-ink-2 leading-relaxed">단일 호스트 고정 배치. 호스트 장애 시 수동 복구가 필요합니다.</p>
+				<p class="text-xs text-ink-2 leading-relaxed">{t('strategy.standardDescription')}</p>
 			</div>
 		</button>
 
@@ -71,11 +72,11 @@
 			</div>
 			<div class="flex-1 flex flex-col gap-1.5">
 				<div class="flex items-center gap-2.5 flex-wrap">
-					<b class="text-sm font-semibold text-ink-0">HA 배포</b>
-					<span class="px-1.5 py-0.5 rounded bg-surface-selected/30 border border-action-warm text-warm-text text-xs font-mono">권장</span>
-					<span class="ml-auto text-ink-2 font-mono text-[11.5px]">🛡 고가용성</span>
+					<b class="text-sm font-semibold text-ink-0">{t('strategy.haDeployment')}</b>
+					<span class="px-1.5 py-0.5 rounded bg-surface-selected/30 border border-action-warm text-warm-text text-xs font-mono">{t('strategy.recommended')}</span>
+					<span class="ml-auto text-ink-2 font-mono text-[11.5px]">{t('strategy.highAvailability')}</span>
 				</div>
-				<p class="text-xs text-ink-2 leading-relaxed">호스트 장애 시 자동 evacuate. Masakari 등 HA 솔루션 활성화 시 동작합니다.</p>
+				<p class="text-xs text-ink-2 leading-relaxed">{t('strategy.haDescription')}</p>
 			</div>
 		</button>
 		{/if}
@@ -85,11 +86,11 @@
 <!-- 섹션 B: 레이어 마운트 방식 (라이브러리 선택 시에만) -->
 {#if hasLibraries}
 	<div class="border-t border-line pt-5">
-		<p class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-3">레이어 마운트 방식</p>
+		<p class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-3">{t('strategy.mountTitle')}</p>
 
 		{#if !hasPrebuilt}
 			<div class="mb-3 px-3 py-2 rounded-lg bg-yellow-900/20 border border-yellow-800 text-yellow-400 text-xs">
-				선택된 라이브러리 중 사전 빌드 가능한 항목이 없어 동적 생성만 가능합니다.
+				{t('strategy.noPrebuilt')}
 			</div>
 		{/if}
 
@@ -111,10 +112,10 @@
 				</div>
 				<div class="flex-1 flex flex-col gap-1.5">
 					<div class="flex items-center gap-2.5 flex-wrap">
-						<b class="text-sm font-semibold text-ink-0">사전 빌드 레이어 사용</b>
-						<span class="ml-auto text-ink-2 font-mono text-[11.5px]">⚡ 빠른 부팅</span>
+						<b class="text-sm font-semibold text-ink-0">{t('strategy.prebuiltLayers')}</b>
+						<span class="ml-auto text-ink-2 font-mono text-[11.5px]">{t('strategy.fastBoot')}</span>
 					</div>
-					<p class="text-xs text-ink-2 leading-relaxed">미리 빌드된 OverlayFS 레이어를 읽기 전용 마운트. 부팅이 빠릅니다.</p>
+					<p class="text-xs text-ink-2 leading-relaxed">{t('strategy.prebuiltDescription')}</p>
 				</div>
 			</button>
 
@@ -134,10 +135,10 @@
 				</div>
 				<div class="flex-1 flex flex-col gap-1.5">
 					<div class="flex items-center gap-2.5 flex-wrap">
-						<b class="text-sm font-semibold text-ink-0">cloud-init 동적 생성</b>
-						<span class="ml-auto text-ink-2 font-mono text-[11.5px]">⏱ ~3-5분 부팅</span>
+						<b class="text-sm font-semibold text-ink-0">{t('strategy.dynamicLayers')}</b>
+						<span class="ml-auto text-ink-2 font-mono text-[11.5px]">{t('strategy.dynamicBootTime')}</span>
 					</div>
-					<p class="text-xs text-ink-2 leading-relaxed">첫 부팅 시 cloud-init 스크립트로 레이어를 직접 빌드. 유연하게 조합 가능합니다.</p>
+					<p class="text-xs text-ink-2 leading-relaxed">{t('strategy.dynamicDescription')}</p>
 				</div>
 			</button>
 		</div>
@@ -145,7 +146,7 @@
 		<!-- mountProtocol 토글 (dynamic 선택 시) -->
 		{#if strategy === 'dynamic'}
 			<div class="mt-4 flex items-center gap-3">
-				<span class="text-xs text-ink-2">마운트 프로토콜</span>
+				<span class="text-xs text-ink-2">{t('strategy.mountProtocol')}</span>
 				{#each (['CEPHFS', 'NFS'] as const) as p}
 					<button
 						onclick={() => onProtocolChange(p)}

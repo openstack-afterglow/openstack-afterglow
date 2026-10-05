@@ -6,6 +6,7 @@
 	import { page } from '$app/stores';
 
 	import type { Network, SubnetDetail } from '$lib/types/networks';
+	import { t } from '$lib/i18n/ns/network-pages';
 
 	let networks = $state<Network[]>([]);
 	let subnets = $state<SubnetDetail[]>([]);
@@ -47,7 +48,7 @@
 
 	async function createLb() {
 		if (!form.name.trim() || !form.vip_subnet_id) {
-			error = '이름과 VIP 서브넷을 입력해주세요';
+			error = t('loadBalancerCreate.error.required');
 			return;
 		}
 		creating = true;
@@ -60,7 +61,7 @@
 			);
 			goto(`/dashboard/network/loadbalancers/${lb.id}`);
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : '생성 실패';
+			error = e instanceof ApiError ? e.message : t('loadBalancerCreate.error.createFailed');
 		} finally {
 			creating = false;
 		}
@@ -74,9 +75,9 @@
 <div class="p-4 md:p-8 max-w-lg">
 	<div class="flex items-center gap-4 mb-8">
 		<button onclick={() => goto('/dashboard/network/loadbalancers')} class="text-ink-2 hover:text-ink-0 transition-colors text-sm">
-			← 로드밸런서 목록
+			{t('loadBalancerCreate.backToList')}
 		</button>
-		<h1 class="text-2xl font-bold text-ink-0">로드밸런서 생성</h1>
+		<h1 class="text-2xl font-bold text-ink-0">{t('loadBalancerCreate.title')}</h1>
 	</div>
 
 	<div class="bg-surface-base border border-line-2 rounded-xl p-6 space-y-5">
@@ -85,25 +86,25 @@
 		{/if}
 
 		<div>
-			<label for="lb-name" class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">이름</label>
+			<label for="lb-name" class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('loadBalancerCreate.form.name.label')}</label>
 			<input
 				id="lb-name"
 				bind:value={form.name}
 				type="text"
-				placeholder="my-lb"
+				placeholder={t('loadBalancerCreate.form.name.placeholder')}
 				class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm"
 			/>
 		</div>
 
 		<div>
-			<label for="lb-network" class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">네트워크</label>
+			<label for="lb-network" class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('loadBalancerCreate.form.network.label')}</label>
 			<select
 				id="lb-network"
 				bind:value={form.vip_network_id}
 				onchange={onNetworkChange}
 				class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm"
 			>
-				<option value="">네트워크 선택</option>
+				<option value="">{t('loadBalancerCreate.form.network.placeholder')}</option>
 				{#each networks.filter(n => !n.is_external) as net}
 					<option value={net.id}>{net.name}</option>
 				{/each}
@@ -112,20 +113,20 @@
 
 		{#if form.vip_network_id}
 			<div>
-				<label for="lb-subnet" class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">VIP 서브넷</label>
+				<label for="lb-subnet" class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('loadBalancerCreate.form.subnet.label')}</label>
 				{#if loadingSubnets}
-					<div class="text-ink-2 text-sm">서브넷 로딩 중...</div>
+					<div class="text-ink-2 text-sm">{t('loadBalancerCreate.form.subnet.loading')}</div>
 				{:else if subnets.length === 0}
-					<div class="text-ink-2 text-sm">서브넷이 없습니다</div>
+					<div class="text-ink-2 text-sm">{t('loadBalancerCreate.form.subnet.empty')}</div>
 				{:else}
 					<select
 						id="lb-subnet"
 						bind:value={form.vip_subnet_id}
 						class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm"
 					>
-						<option value="">서브넷 선택</option>
+						<option value="">{t('loadBalancerCreate.form.subnet.placeholder')}</option>
 						{#each subnets as subnet}
-							<option value={subnet.id}>{subnet.name || subnet.id.slice(0, 8)} ({subnet.cidr})</option>
+							<option value={subnet.id}>{t('loadBalancerCreate.form.subnet.option', { name: subnet.name || subnet.id.slice(0, 8), cidr: subnet.cidr })}</option>
 						{/each}
 					</select>
 				{/if}
@@ -133,12 +134,12 @@
 		{/if}
 
 		<div>
-			<label for="lb-desc" class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">설명 (선택)</label>
+			<label for="lb-desc" class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('loadBalancerCreate.form.description.label')}</label>
 			<input
 				id="lb-desc"
 				bind:value={form.description}
 				type="text"
-				placeholder="설명"
+				placeholder={t('loadBalancerCreate.form.description.placeholder')}
 				class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm"
 			/>
 		</div>
@@ -148,14 +149,14 @@
 				onclick={() => goto('/dashboard/network/loadbalancers')}
 				class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors"
 			>
-				취소
+				{t('loadBalancerCreate.actions.cancel')}
 			</button>
 			<button
 				onclick={createLb}
 				disabled={creating}
 				class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors"
 			>
-				{creating ? '생성 중...' : '생성'}
+				{creating ? t('loadBalancerCreate.actions.creating') : t('loadBalancerCreate.actions.create')}
 			</button>
 		</div>
 	</div>

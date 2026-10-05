@@ -283,9 +283,7 @@ describe('responsive sidebar current-mode controls', () => {
 		await openGlobalNavigation();
 
 		const link = screen.getByTitle('관리자 모드로 전환');
-		expect(link.textContent).toContain('사용자 모드');
 		expect(link.getAttribute('href')).toBe('/admin');
-		expect(link.getAttribute('aria-label')).toBe('현재 사용자 모드, 관리자 모드로 전환');
 	});
 
 	it('shows admin mode while linking the admin sidebar to user mode', async () => {
@@ -295,8 +293,6 @@ describe('responsive sidebar current-mode controls', () => {
 		await openGlobalNavigation();
 
 		const link = screen.getByTitle('사용자 모드로 전환');
-		expect(link.textContent).toContain('관리자 모드');
 		expect(link.getAttribute('href')).toBe('/dashboard');
-		expect(link.getAttribute('aria-label')).toBe('현재 관리자 모드, 사용자 모드로 전환');
 	});
 });

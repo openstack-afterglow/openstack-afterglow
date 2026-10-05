@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/instance';
 	import type { Instance } from '$lib/types/compute';
 	import InstanceRow from './InstanceRow.svelte';
 	import { SelectionCheckbox, TableShell } from '$lib/components/ui';
@@ -33,7 +34,7 @@
 </script>
 
 <TableShell density="compact" class={hasSelection ? 'has-selection' : ''}>
-	<table class="min-w-[64rem]" aria-label="인스턴스 목록">
+	<table class="min-w-[64rem]" aria-label={t('table.instanceList')}>
 		<colgroup>
 			<col class="w-10" />
 			<col />
@@ -52,16 +53,16 @@
 						indeterminate={partiallySelected}
 						disabled={selectionDisabled || selectableIds.size === 0}
 						onclick={onToggleAll}
-						ariaLabel="전체 선택"
+						ariaLabel={t('table.selectAll')}
 					/>
 				</th>
-				<th scope="col">이름</th>
-				<th scope="col">상태</th>
-				<th scope="col">이미지 / 플레이버</th>
+				<th scope="col">{t('table.name')}</th>
+				<th scope="col">{t('table.status')}</th>
+				<th scope="col">{t('table.imageFlavor')}</th>
 				<th scope="col">IP</th>
-				<th scope="col">라이브러리</th>
-				<th scope="col">전략</th>
-				<th scope="col"><span class="sr-only">작업</span></th>
+				<th scope="col">{t('table.library')}</th>
+				<th scope="col">{t('table.strategy')}</th>
+				<th scope="col"><span class="sr-only">{t('table.actions')}</span></th>
 			</tr>
 		</thead>
 		<tbody>

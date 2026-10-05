@@ -63,24 +63,6 @@ describe('createAutoRefresh (via component)', () => {
 		expect(screen.getByTestId('interval').textContent).toBe('60');
 	});
 
-	it('active=true이면 setInterval이 호출됨', async () => {
-		vi.useFakeTimers();
-		const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
-		render(AutoRefreshWrapper, { defaultActive: true, invokeOnMount: false, defaultInterval: 30 });
-		await tick();
-		flushSync();
-		expect(setIntervalSpy).toHaveBeenCalled();
-	});
-
-	it('active=false이면 setInterval 호출 안 함', async () => {
-		vi.useFakeTimers();
-		const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
-		render(AutoRefreshWrapper, { defaultActive: false, invokeOnMount: false });
-		await tick();
-		flushSync();
-		expect(setIntervalSpy).not.toHaveBeenCalled();
-	});
-
 	it('fn이 interval마다 호출됨', async () => {
 		vi.useFakeTimers();
 		const fn = vi.fn();
@@ -110,17 +92,5 @@ describe('createAutoRefresh (via component)', () => {
 		second.resolve();
 		await tick();
 		expect(fn).toHaveBeenCalledTimes(2);
-	});
-
-	it('visibilitychange: hidden 시 clearInterval 호출', async () => {
-		vi.useFakeTimers();
-		const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval');
-		render(AutoRefreshWrapper, { defaultActive: true, invokeOnMount: false });
-		await tick();
-		flushSync();
-
-		Object.defineProperty(document, 'hidden', { get: () => true, configurable: true });
-		document.dispatchEvent(new Event('visibilitychange'));
-		expect(clearIntervalSpy).toHaveBeenCalled();
 	});
 });

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick, type Snippet } from 'svelte';
+  import { t } from '$lib/i18n/ns/common';
 
   interface Props {
     open: boolean;
@@ -16,8 +17,9 @@
     onclose,
     children,
     buttonClass = '',
-    ariaLabel = '리소스 작업 메뉴',
+    ariaLabel,
   }: Props = $props();
+  const label = $derived(ariaLabel ?? t('actionMenu.label'));
 
   const id = $props.id();
   const menuId = `${id}-actions`;
@@ -128,7 +130,7 @@
   type="button"
   onclick={handleTriggerClick}
   class="action-trigger {buttonClass}"
-  aria-label={ariaLabel}
+  aria-label={label}
   aria-expanded={open}
   aria-controls={menuId}
 >
@@ -144,7 +146,7 @@
     id={menuId}
     class="action-menu"
     role="group"
-    aria-label={`${ariaLabel} 옵션`}
+    aria-label={t('actionMenu.options', { label })}
     style:left={pos ? `${pos.left}px` : '-9999px'}
     style:top={pos ? `${pos.top}px` : '-9999px'}
     onfocusout={handleMenuFocusOut}

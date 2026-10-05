@@ -1,5 +1,6 @@
 import { api, ApiError } from '$lib/api/client';
 import type { Group, GroupMember, User } from '$lib/types/adminGroup';
+import { t } from '$lib/i18n/ns/admin-identity';
 
 export interface AdminGroupsControllerOpts {
   token: () => string | undefined;
@@ -42,7 +43,7 @@ export function createAdminGroupsController(opts: AdminGroupsControllerOpts) {
       const res = await api.get<Group[]>('/api/v1/admin/groups', tok(), pid());
       groups = res;
     } catch (e) {
-      error = e instanceof ApiError ? e.message : '그룹 목록 조회 실패';
+      error = e instanceof ApiError ? e.message : t('groupController.loadFailed');
     } finally { loading = false; refreshing = false; }
   }
 
@@ -68,7 +69,7 @@ export function createAdminGroupsController(opts: AdminGroupsControllerOpts) {
       await api.post('/api/v1/admin/groups', { name, description: description || null }, tok(), pid());
       await load();
       return true;
-    } catch (e) { createError = e instanceof ApiError ? e.message : '생성 실패'; return false; }
+    } catch (e) { createError = e instanceof ApiError ? e.message : t('groupController.createFailed'); return false; }
     finally { creating = false; }
   }
 
@@ -79,7 +80,7 @@ export function createAdminGroupsController(opts: AdminGroupsControllerOpts) {
       await api.patch(`/api/v1/admin/groups/${editGroup.id}`, { name: form.name, description: form.description || null }, tok(), pid());
       await load();
       return true;
-    } catch (e) { editError = e instanceof ApiError ? e.message : '수정 실패'; return false; }
+    } catch (e) { editError = e instanceof ApiError ? e.message : t('groupController.updateFailed'); return false; }
     finally { updating = false; }
   }
 
@@ -90,7 +91,7 @@ export function createAdminGroupsController(opts: AdminGroupsControllerOpts) {
       await api.delete(`/api/v1/admin/groups/${deleteGroup.id}`, tok(), pid());
       deleteGroup = null;
       await load();
-    } catch (e) { deleteError = e instanceof ApiError ? e.message : '삭제 실패'; }
+    } catch (e) { deleteError = e instanceof ApiError ? e.message : t('groupController.deleteFailed'); }
     finally { deleting = false; }
   }
 
@@ -130,7 +131,7 @@ export function createAdminGroupsController(opts: AdminGroupsControllerOpts) {
       await loadGroupMembers(groupId);
       return true;
     } catch (e) {
-      addMemberError = { ...addMemberError, [groupId]: e instanceof ApiError ? e.message : '추가 실패' };
+      addMemberError = { ...addMemberError, [groupId]: e instanceof ApiError ? e.message : t('groupController.addFailed') };
       return false;
     } finally {
       addMemberSaving = { ...addMemberSaving, [groupId]: false };

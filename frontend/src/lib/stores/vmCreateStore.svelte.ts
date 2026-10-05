@@ -1,3 +1,4 @@
+import { t } from '$lib/i18n/ns/vm-wizard';
 import { get } from 'svelte/store';
 import { goto } from '$app/navigation';
 import { setContext, getContext } from 'svelte';
@@ -223,12 +224,12 @@ const OPTION_KEYS: OptionKey[] = [
 ];
 export const TOTAL_STEPS = 6;
 export const STEP_LABELS: Record<WizardStepId, string> = {
-	1: '이미지',
-	2: '플레이버',
-	3: '라이브러리',
-	4: '전략',
-	5: '설정',
-	6: '배포',
+	get 1() { return t('steps.image'); },
+	get 2() { return t('steps.flavor'); },
+	get 3() { return t('steps.library'); },
+	get 4() { return t('steps.strategy'); },
+	get 5() { return t('steps.config'); },
+	get 6() { return t('steps.deploy'); },
 };
 
 export function wizardStepSequence(options: {
@@ -244,15 +245,15 @@ export function wizardStepSequence(options: {
 }
 
 export const ALL_PROGRESS_STEPS = [
-	{ id: 'manila_preparing', label: 'File Storage', description: '파일 스토리지 준비', needsLibrary: true },
-	{ id: 'boot_volume_creating', label: '부트 볼륨', description: 'OS 이미지 볼륨 생성', needsLibrary: false },
-	{ id: 'upper_volume_creating', label: 'Upper 볼륨', description: 'OverlayFS upperdir 생성', needsLibrary: true },
-	{ id: 'userdata_generating', label: 'cloud-init', description: '초기화 스크립트 생성', needsLibrary: true },
-	{ id: 'server_creating', label: 'VM 생성', description: 'Nova 인스턴스 생성', needsLibrary: false },
-	{ id: 'attaching_volume', label: '볼륨 연결', description: '추가 볼륨 연결', needsLibrary: false },
-	{ id: 'floating_ip_creating', label: 'Floating IP', description: 'Floating IP 할당', needsLibrary: false },
-	{ id: 'completed', label: '완료', description: '배포 완료', needsLibrary: false },
-	{ id: 'failed', label: '실패', description: '배포 실패', needsLibrary: false },
+	{ id: 'manila_preparing', get label() { return t('stages.fileStorage'); }, get description() { return t('stages.fileStorageDescription'); }, needsLibrary: true },
+	{ id: 'boot_volume_creating', get label() { return t('stages.bootVolume'); }, get description() { return t('stages.bootVolumeDescription'); }, needsLibrary: false },
+	{ id: 'upper_volume_creating', get label() { return t('stages.upperVolume'); }, get description() { return t('stages.upperVolumeDescription'); }, needsLibrary: true },
+	{ id: 'userdata_generating', label: 'cloud-init', get description() { return t('stages.userdataDescription'); }, needsLibrary: true },
+	{ id: 'server_creating', get label() { return t('stages.server'); }, get description() { return t('stages.serverDescription'); }, needsLibrary: false },
+	{ id: 'attaching_volume', get label() { return t('stages.attachVolume'); }, get description() { return t('stages.attachVolumeDescription'); }, needsLibrary: false },
+	{ id: 'floating_ip_creating', get label() { return t('stages.floatingIp'); }, get description() { return t('stages.floatingIpDescription'); }, needsLibrary: false },
+	{ id: 'completed', get label() { return t('stages.completed'); }, get description() { return t('stages.completedDescription'); }, needsLibrary: false },
+	{ id: 'failed', get label() { return t('stages.failed'); }, get description() { return t('stages.failedDescription'); }, needsLibrary: false },
 ];
 
 interface VmCreateOpts {
@@ -601,7 +602,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 	}
 
 	function optionError(error: unknown): string {
-		return error instanceof ApiError ? `데이터 로드 실패 (${error.status})` : '서버 오류';
+		return error instanceof ApiError ? t('options.loadFailed', { status: error.status }) : t('options.serverError');
 	}
 
 	function loadOption<T>(
@@ -1287,7 +1288,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		deploying = true;
 		currentStep = 'manila_preparing';
 		progress = 0;
-		progressMessage = '배포 시작...';
+		progressMessage = t('deploy.starting');
 
 		const baseUrl = getBaseUrl();
 		const authState = get(auth);
@@ -1327,7 +1328,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 			try {
 				currentStep = 'server_creating';
 				progress = 60;
-				progressMessage = 'squashfs 라이브러리 소비 VM 생성 중...';
+				progressMessage = t('deploy.squashfs');
 				const response = await fetchWithAuth('/api/v1/libraries/squashfs/consume', {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -1341,8 +1342,8 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 				}
 				currentStep = 'completed';
 				progress = 100;
-				progressMessage = '배포 완료';
-				toast.success('인스턴스 생성 완료');
+				progressMessage = t('deploy.completed');
+				toast.success(t('toast.created'));
 				// 완료 보고는 root layout 의 Toast 가 이어받는다. 타이머로 사용자를 이동시키지 않는다 (WCAG 2.2.1).
 				if (!destroyed) {
 					resetWizard();
@@ -1353,9 +1354,9 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 			} catch (e) {
 				if (destroyed) return;
 				deployError = e instanceof ApiError
-					? `배포 실패: ${e.message}`
-					: `서버 연결 오류: ${e instanceof Error ? e.message : '알 수 없는 오류'}`;
-				toast.error(`인스턴스 생성 실패: ${deployError}`);
+					? t('deploy.failed', { message: e.message })
+					: t('deploy.connectionError', { message: e instanceof Error ? e.message : t('deploy.unknownError') });
+				toast.error(t('toast.createFailed', { error: deployError }));
 				deploying = false;
 				return;
 			}
@@ -1400,7 +1401,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 				progress = data.progress;
 				progressMessage = data.message;
 			}
-			toast.success('인스턴스 생성 완료');
+			toast.success(t('toast.created'));
 			// 완료 보고는 root layout 의 Toast 가 이어받는다. 타이머로 사용자를 이동시키지 않는다 (WCAG 2.2.1).
 			if (!destroyed) {
 				resetWizard();
@@ -1425,7 +1426,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 				throw new ApiError(response.status, text || response.statusText);
 			}
 			const reader = response.body?.getReader();
-			if (!reader) throw new Error('No response body');
+			if (!reader) throw new Error(t('deploy.noResponseBody'));
 			const decoder = new TextDecoder();
 			let buffer = '';
 			while (true) {
@@ -1449,7 +1450,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 								elapsedSeconds = data.elapsed_seconds;
 							}
 							if (data.step === 'completed') {
-								toast.success(`인스턴스 생성 완료`);
+								toast.success(t('toast.created'));
 								// 완료 보고는 root layout 의 Toast 가 이어받는다. 타이머로 사용자를 이동시키지 않는다 (WCAG 2.2.1).
 								if (!destroyed) {
 									resetWizard();
@@ -1462,7 +1463,7 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 							}
 							if (data.step === 'failed') {
 								deployError = data.error || data.message;
-								toast.error(`인스턴스 생성 실패: ${deployError}`);
+								toast.error(t('toast.createFailed', { error: deployError }));
 								deploying = false;
 								return;
 							}
@@ -1473,8 +1474,8 @@ export function createVmCreateStore(opts: VmCreateOpts) {
 		} catch (e) {
 			if (destroyed) return;
 			deployError = e instanceof ApiError
-				? `배포 실패: ${e.message}`
-				: `서버 연결 오류: ${e instanceof Error ? e.message : '알 수 없는 오류'}`;
+				? t('deploy.failed', { message: e.message })
+				: t('deploy.connectionError', { message: e instanceof Error ? e.message : t('deploy.unknownError') });
 			deploying = false;
 		}
 	}

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Workspace } from '$lib/api/chatWorkspaces';
+	import { t } from '$lib/i18n/ns/chat-studio';
 
 	interface Props {
 		workspaces: Workspace[];
@@ -34,7 +35,7 @@
 		{disabled}
 		onclick={() => (open = !open)}
 	>
-		<span class="label">{current?.name ?? '프로젝트 선택'}</span>
+		<span class="label">{current?.name ?? t('workspacePicker.select')}</span>
 		<svg class="chev" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="m7 10 5 5 5-5" stroke-linecap="round" stroke-linejoin="round" /></svg>
 	</button>
 
@@ -49,11 +50,11 @@
 				<div class="sep"></div>
 			{/if}
 			<button type="button" class="opt" onclick={() => { open = false; onCreateProject(); }}>
-				+ 새 프로젝트
+				{t('workspacePicker.create')}
 			</button>
 			{#if currentWorkspaceId !== null}
 				<button type="button" class="opt" onclick={() => choose(null)}>
-					프로젝트 없이 작업
+					{t('workspacePicker.workWithoutProject')}
 				</button>
 			{/if}
 		</div>

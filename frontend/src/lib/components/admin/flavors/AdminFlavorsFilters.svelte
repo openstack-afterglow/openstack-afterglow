@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-compute';
 	import type { GpuFilterOption } from './flavorGpuFilters';
 	let {
 		nameFilter = $bindable(),
@@ -20,25 +21,25 @@
 <div class="flex flex-wrap gap-3 mb-4">
 	<input
 		type="text"
-		placeholder="이름 검색"
+		placeholder={t('flavors.filters.nameSearch')}
 		bind:value={nameFilter}
 		class="bg-surface-sunken border border-line-2 text-sm text-ink-2 rounded-lg px-3 py-1.5 w-40 focus:outline-none focus:border-action-warm"
 	/>
 	<input
 		type="number"
-		placeholder="VCPU"
+		placeholder={t('flavors.fields.vcpu')}
 		bind:value={vcpuFilter}
 		class="bg-surface-sunken border border-line-2 text-sm text-ink-2 rounded-lg px-3 py-1.5 w-24 focus:outline-none focus:border-action-warm"
 	/>
 	<input
 		type="number"
-		placeholder="RAM (MB)"
+		placeholder={t('flavors.fields.ramMb')}
 		bind:value={ramFilter}
 		class="bg-surface-sunken border border-line-2 text-sm text-ink-2 rounded-lg px-3 py-1.5 w-28 focus:outline-none focus:border-action-warm"
 	/>
 	<input
 		type="number"
-		placeholder="Disk (GB)"
+		placeholder={t('flavors.fields.diskGb')}
 		bind:value={diskFilter}
 		class="bg-surface-sunken border border-line-2 text-sm text-ink-2 rounded-lg px-3 py-1.5 w-28 focus:outline-none focus:border-action-warm"
 	/>

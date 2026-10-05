@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/file-storage';
 	let { paths }: { paths: string[] } = $props();
 
 	let copiedIndex = $state<number | null>(null);
@@ -13,7 +14,7 @@
 {#if paths.length > 0}
 	<div class="bg-surface-base border border-line rounded-lg p-6 mb-4">
 		<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide mb-4">
-			Export Locations
+			{t('exportLocations.title')}
 		</h2>
 		<div class="space-y-2">
 			{#each paths as path, i}
@@ -29,7 +30,7 @@
 							? 'border-green-700 text-green-400'
 							: 'border-line-2 text-ink-2 hover:text-ink-1 hover:border-line-2'}"
 					>
-						{copiedIndex === i ? '복사됨' : '복사'}
+						{copiedIndex === i ? t('exportLocations.copied') : t('exportLocations.copy')}
 					</button>
 				</div>
 			{/each}

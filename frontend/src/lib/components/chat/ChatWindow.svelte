@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { tick } from 'svelte';
+	import { t } from '$lib/i18n/ns/chat-panel';
 	import ChatMessage from './ChatMessage.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import { type AvailableModel, type ChatMessage as ChatMsg } from '$lib/api/chatTree';
@@ -102,7 +103,7 @@
 		const elapsedSeconds = Math.max(0, Math.floor((activityNow - Date.parse(startedAt)) / 1_000));
 		const minutes = Math.floor(elapsedSeconds / 60);
 		const seconds = elapsedSeconds % 60;
-		return minutes ? `${minutes}분 ${seconds}초` : `${seconds}초`;
+		return minutes ? t('window.elapsedMinutesSeconds', { minutes, seconds }) : t('window.elapsedSeconds', { seconds });
 	}
 
 	function restoredToolItems(message: DisplayMessage): ToolActivityItem[] {
@@ -113,14 +114,14 @@
 				: toolActivityFromCanonicalParts(message.parts);
 		const skills =
 			message.execution?.skills ??
-			(message.execution?.skill_ids ?? []).map((id) => ({ id, name: `skill #${id}` }));
+			(message.execution?.skill_ids ?? []).map((id) => ({ id, name: t('window.skillFallback', { id }) }));
 		return [
 			...toolItems,
 			...skills.map((skill) => ({
 				id: `skill:${skill.id}`,
 				name: skill.name,
 				args: null,
-				result: 'Applied to this run',
+				result: t('window.skillApplied'),
 				running: false
 			}))
 		];
@@ -225,7 +226,7 @@
 
 <div class="window">
 	{#if loading}
-		<div class="load-bar" role="status" aria-label="불러오는 중"><span></span></div>
+		<div class="load-bar" role="status" aria-label={t('window.loading')}><span></span></div>
 	{/if}
 	<div class="scroll" bind:this={scrollEl} onscroll={onScroll}>
 		{#if empty}
@@ -233,10 +234,10 @@
 				<div class="welcome-mark">
 					<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7A8.5 8.5 0 0 1 12.5 3 8.38 8.38 0 0 1 21 11.5z" stroke-linecap="round" stroke-linejoin="round" /></svg>
 				</div>
-				<h2>무엇을 도와드릴까요?</h2>
-				<p>아래에 메시지를 입력해 대화를 시작하세요.</p>
+				<h2>{t('window.welcomeTitle')}</h2>
+				<p>{t('window.welcomeDescription')}</p>
 				{#if starterPrompts.length}
-					<div class="starter-prompts" aria-label="Lumen 시작 제안">
+					<div class="starter-prompts" aria-label={t('window.starterSuggestions')}>
 						{#each starterPrompts as starter (starter.label)}
 							<Button variant="outline" size="xs" onclick={() => onStarterPrompt?.(starter.prompt)}>
 								{starter.label}
@@ -248,20 +249,20 @@
 		{:else}
 			<div class="stream">
 				{#if onLoadFirst && onLoadLatest}
-					<nav class="history-nav" aria-label="대화 기록 이동">
-						<Button variant="ghost" size="xs" onclick={() => jumpHistory('first')} disabled={!hasBefore || navigatingHistory || loadingHistory}>처음</Button>
-						<Button variant="ghost" size="xs" onclick={() => moveHistory('before')} disabled={!hasBefore || navigatingHistory || loadingHistory}>이전</Button>
-						<Button variant="ghost" size="xs" onclick={() => moveHistory('after')} disabled={!hasAfter || navigatingHistory || loadingHistory}>다음</Button>
-						<Button variant="ghost" size="xs" onclick={() => jumpHistory('latest')} disabled={!hasAfter || navigatingHistory || loadingHistory}>최신</Button>
+					<nav class="history-nav" aria-label={t('window.historyNavigation')}>
+						<Button variant="ghost" size="xs" onclick={() => jumpHistory('first')} disabled={!hasBefore || navigatingHistory || loadingHistory}>{t('window.first')}</Button>
+						<Button variant="ghost" size="xs" onclick={() => moveHistory('before')} disabled={!hasBefore || navigatingHistory || loadingHistory}>{t('window.previous')}</Button>
+						<Button variant="ghost" size="xs" onclick={() => moveHistory('after')} disabled={!hasAfter || navigatingHistory || loadingHistory}>{t('window.next')}</Button>
+						<Button variant="ghost" size="xs" onclick={() => jumpHistory('latest')} disabled={!hasAfter || navigatingHistory || loadingHistory}>{t('window.latest')}</Button>
 					</nav>
 				{/if}
 				{#if loadingHistory}
-					<div class="history-loading" role="status">대화 기록을 불러오는 중…</div>
+					<div class="history-loading" role="status">{t('window.historyLoading')}</div>
 				{/if}
 				{#if newHistoryActivity}
 					<div class="history-activity" role="status">
-						<span>새 응답이 도착했습니다.</span>
-						<Button variant="accent" size="xs" onclick={() => jumpHistory('latest')}>최신 응답 보기</Button>
+						<span>{t('window.newResponse')}</span>
+						<Button variant="accent" size="xs" onclick={() => jumpHistory('latest')}>{t('window.viewLatestResponse')}</Button>
 					</div>
 				{/if}
 				{#each displayedPath as msg (msg.id)}
@@ -301,7 +302,7 @@
 				{:else if toolActivity}
 					<div class="tool-activity" role="status" aria-live="polite">
 						<span class="spinner"></span>
-						{toolActivity} 진행 중
+						{t('window.toolInProgress', { tool: toolActivity })}
 					</div>
 				{/if}
 			</div>
@@ -311,7 +312,7 @@
 	{#if !empty && !followingLatest}
 		<div class="latest-control">
 			<Button variant="accent" size="sm" onclick={() => hasAfter ? jumpHistory('latest') : scrollToLatest()}>
-				{hasAfter ? '최신 기록으로' : busy ? '새 응답 따라가기' : '최신 메시지로'}
+				{hasAfter ? t('window.goToLatestHistory') : busy ? t('window.followResponse') : t('window.goToLatestMessage')}
 			</Button>
 		</div>
 	{/if}

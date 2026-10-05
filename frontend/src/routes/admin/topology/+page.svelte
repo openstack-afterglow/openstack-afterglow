@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/topology';
 	import { onMount, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
@@ -40,10 +41,10 @@
 	// 뷰 선택(레인 | 캔버스)은 localStorage 'topology.view' 에 저장한다. 기본은 캔버스.
 	let view = $state<TopologyView>(DEFAULT_TOPOLOGY_VIEW);
 	onMount(() => { view = readTopologyView(); });
-	const viewOptions = [
-		{ value: 'lane', label: '레인' },
-		{ value: 'canvas', label: '캔버스' },
-	];
+	const viewOptions = $derived([
+		{ value: 'lane', label: t('topology.lane') },
+		{ value: 'canvas', label: t('topology.canvas') },
+	]);
 	function onViewChange(value: string) {
 		if (!isTopologyView(value)) return;
 		view = value;
@@ -108,10 +109,10 @@
 
 <div class="p-4 md:p-6 max-w-screen-2xl mx-auto">
 	<div data-tour="admin-network-header">
-	<PageHeader breadcrumb="NETWORK / TOPOLOGY" title="토폴로지">
+	<PageHeader breadcrumb={t('topology.breadcrumb')} title={t('topology.title')}>
 		{#snippet actions()}
 			<TutorialStartButton tour="admin-network" compactOnMobile />
-			<ToggleGroup value={view} options={viewOptions} onchange={onViewChange} ariaLabel="토폴로지 보기" />
+			<ToggleGroup value={view} options={viewOptions} onchange={onViewChange} ariaLabel={t('topology.viewLabel')} />
 			<AutoRefreshControl
 				bind:active={ar.active}
 				bind:intervalSeconds={ar.intervalSeconds}
@@ -175,36 +176,36 @@
 
 		<!-- 전체 요약 -->
 		<div class="mt-4 flex gap-6 text-xs text-ink-2 px-1">
-			<span>네트워크 {ctrl.data.networks.length}개</span>
-			<span>라우터 {ctrl.data.routers.length}개</span>
-			<span>인스턴스 {ctrl.data.instances.length}개</span>
-			<span>Floating IP {ctrl.data.floating_ips.length}개</span>
-			<span>로드밸런서 {(ctrl.data.load_balancers ?? []).length}개</span>
+			<span>{t('summary.networks', { count: ctrl.data.networks.length })}</span>
+			<span>{t('summary.routers', { count: ctrl.data.routers.length })}</span>
+			<span>{t('summary.instances', { count: ctrl.data.instances.length })}</span>
+			<span>{t('summary.floatingIps', { count: ctrl.data.floating_ips.length })}</span>
+			<span>{t('summary.loadBalancers', { count: (ctrl.data.load_balancers ?? []).length })}</span>
 		</div>
 		</div>
 	{/if}
 </div>
 
 {#if ctrl.selectedInstanceId}
-	<SlidePanel onClose={() => ctrl.selectedInstanceId = null} ariaLabel="토폴로지 인스턴스 상세">
+	<SlidePanel onClose={() => ctrl.selectedInstanceId = null} ariaLabel={t('topology.instanceDetailLabel')}>
 		<InstanceDetailPanel instanceId={ctrl.selectedInstanceId} adminProjectId={ctrl.data?.instances.find((instance) => instance.id === ctrl.selectedInstanceId)?.project_id ?? null} onClose={() => ctrl.selectedInstanceId = null} showHost={true} />
 	</SlidePanel>
 {/if}
 
 {#if ctrl.selectedRouterId}
-	<SlidePanel onClose={() => ctrl.selectedRouterId = null} ariaLabel="토폴로지 라우터 상세" width="w-full md:w-[60vw] max-w-3xl" dataTour="admin-network-detail">
+	<SlidePanel onClose={() => ctrl.selectedRouterId = null} ariaLabel={t('topology.routerDetailLabel')} width="w-full md:w-[60vw] max-w-3xl" dataTour="admin-network-detail">
 		<RouterDetailPanel routerId={ctrl.selectedRouterId} onClose={() => ctrl.selectedRouterId = null} />
 	</SlidePanel>
 {/if}
 
 {#if ctrl.selectedLB}
-	<SlidePanel onClose={() => ctrl.selectedLB = null} ariaLabel="토폴로지 로드밸런서 상세" width="w-full md:w-[60vw] max-w-2xl">
+	<SlidePanel onClose={() => ctrl.selectedLB = null} ariaLabel={t('topology.loadBalancerDetailLabel')} width="w-full md:w-[60vw] max-w-2xl">
 		<TopologyLBPanel lb={ctrl.selectedLB} onClose={() => ctrl.selectedLB = null} />
 	</SlidePanel>
 {/if}
 
 {#if selectedNetworkId && ctrl.data}
-	<SlidePanel onClose={() => selectedNetworkId = null} ariaLabel="토폴로지 네트워크 상세" width="w-full md:w-[60vw] max-w-2xl">
+	<SlidePanel onClose={() => selectedNetworkId = null} ariaLabel={t('topology.networkDetailLabel')} width="w-full md:w-[60vw] max-w-2xl">
 		<TopologyNetworkPanel
 			networkId={selectedNetworkId}
 			data={ctrl.data}

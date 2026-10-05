@@ -4,5 +4,25 @@
   hosts: lumen
   become: true
   serial: "{{ kolla_serial | default('0') }}"
-  roles:
-    - { role: lumen, tags: lumen, when: enable_lumen | default(false) | bool }
+  tasks:
+    - name: Prepare Lumen application image references
+      ansible.builtin.include_role:
+        name: afterglow
+        tasks_from: resolve_image_refs
+        public: false
+        apply:
+          tags: lumen
+      vars:
+        afterglow_image_ref_service: lumen
+      tags: lumen
+      when:
+        - enable_lumen | default(false) | bool
+        - kolla_action | default('deploy') in ['precheck', 'pull', 'deploy', 'reconfigure', 'upgrade']
+
+    - name: Apply role lumen
+      ansible.builtin.include_role:
+        name: lumen
+        apply:
+          tags: lumen
+      tags: lumen
+      when: enable_lumen | default(false) | bool

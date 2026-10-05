@@ -1,3 +1,4 @@
+import { t } from '$lib/i18n/ns/chat-panel';
 import type { ModelCapabilities } from './chatContracts';
 import {
 	mergeToolActivity,
@@ -98,7 +99,7 @@ function activityFromMessage(message: ChatMessage): ToolActivityItem[] {
 		const id = typeof record?.tool_call_id === 'string' ? record.tool_call_id : null;
 		raw.push({
 			id,
-			name: toolNameFromResultMeta(message.tool_calls) ?? '도구',
+			name: toolNameFromResultMeta(message.tool_calls) ?? t('tree.tool'),
 			args: null,
 			result: message.content,
 			running: false

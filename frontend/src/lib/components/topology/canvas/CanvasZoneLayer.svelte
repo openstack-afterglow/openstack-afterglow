@@ -14,6 +14,7 @@
 </script>
 
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/topology';
 	// 존 사각형 레이어. 이벤트 핸들러를 두지 않고, 뷰포트의 pointerup 히트테스트가 data-zone-net 으로 선택을 처리한다.
 	import { r1 } from './canvasHelpers';
 
@@ -43,7 +44,7 @@
 				height={r1(z.rect.h)}
 				style:--net={z.color}
 			>
-				<title>네트워크 {z.name}</title>
+				<title>{t('canvas.networkTitle', { name: z.name })}</title>
 			</rect>
 		{/each}
 	</g>

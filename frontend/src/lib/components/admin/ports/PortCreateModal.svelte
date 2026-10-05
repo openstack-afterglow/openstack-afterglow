@@ -2,6 +2,8 @@
 	import type { NetworkInfo } from '$lib/types/networks';
 	import type { ProjectName } from '$lib/types/adminPort';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
+	import { t } from '$lib/i18n/ns/admin-network';
+	import RichText from '$lib/i18n/RichText.svelte';
 
 	let {
 		open = $bindable(),
@@ -57,6 +59,8 @@
 	}
 </script>
 
+{#snippet optionalText(text: string)}<span class="text-ink-2">{text}</span>{/snippet}
+
 {#if open}
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -68,31 +72,31 @@
 		tabindex="-1"
 	>
 		<div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]">
-			<h2 class="text-lg font-semibold text-ink-0 mb-5">포트 생성</h2>
+			<h2 class="text-lg font-semibold text-ink-0 mb-5">{t('portCreateModal.title')}</h2>
 			{#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
 			<div class="space-y-4">
 				<div>
-					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-portcreatemodal-72">네트워크 *</label>
+					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-portcreatemodal-72">{t('portCreateModal.networkLabel')}</label>
 					<select id="field-portcreatemodal-72" bind:value={form.network_id} class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm">
-						<option value="">네트워크 선택</option>
+						<option value="">{t('portCreateModal.networkPlaceholder')}</option>
 						{#each allNetworks as n (n.id)}
 							<option value={n.id}>{n.name || n.id.slice(0, 12)}</option>
 						{/each}
 					</select>
 				</div>
 				<div>
-					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-portcreatemodal-81">이름</label>
-					<input id="field-portcreatemodal-81" bind:value={form.name} type="text" placeholder="포트 이름 (선택)" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" />
+					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-portcreatemodal-81">{t('portCreateModal.nameLabel')}</label>
+					<input id="field-portcreatemodal-81" bind:value={form.name} type="text" placeholder={t('portCreateModal.namePlaceholder')} class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" />
 				</div>
 				<div class="relative">
-					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-portcreatemodal-85">프로젝트</label>
+					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-portcreatemodal-85">{t('portCreateModal.projectLabel')}</label>
 					<input id="field-portcreatemodal-85"
 						type="text"
 						bind:value={projectSearch}
 						onfocus={() => showProjectDropdown = true}
 						oninput={() => { showProjectDropdown = true; if (!projectSearch) { form.project_id = ''; selectedProjectName = ''; } }}
 						onblur={() => setTimeout(() => { showProjectDropdown = false; }, 150)}
-						placeholder="프로젝트 검색..."
+						placeholder={t('portCreateModal.projectPlaceholder')}
 						class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm"
 					/>
 					{#if showProjectDropdown && filteredProjects.length > 0}
@@ -108,13 +112,13 @@
 					{/if}
 				</div>
 				<div>
-					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-portcreatemodal-108">Fixed IP <span class="text-ink-2">(선택)</span></label>
-					<input id="field-portcreatemodal-108" bind:value={form.fixed_ip} type="text" placeholder="예: 192.168.1.100" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" />
+					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide" for="field-portcreatemodal-108"><RichText segments={t.rich('portCreateModal.fixedIpLabel')} tags={{ optional: optionalText }} /></label>
+					<input id="field-portcreatemodal-108" bind:value={form.fixed_ip} type="text" placeholder={t('portCreateModal.fixedIpPlaceholder')} class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm" />
 				</div>
 			</div>
 			<div class="flex justify-end gap-3 mt-6">
-				<button onclick={() => { open = false; }} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">취소</button>
-				<button onclick={handleCreate} disabled={creating || !form.network_id} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{creating ? '생성 중...' : '생성'}</button>
+				<button onclick={() => { open = false; }} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('portCreateModal.cancel')}</button>
+				<button onclick={handleCreate} disabled={creating || !form.network_id} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{creating ? t('portCreateModal.creating') : t('portCreateModal.create')}</button>
 			</div>
 		</div>
 	</div>

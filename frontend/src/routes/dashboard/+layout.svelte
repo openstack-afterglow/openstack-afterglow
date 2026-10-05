@@ -1,11 +1,21 @@
 <script lang="ts">
+	import { page } from '$app/stores';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import VmCreatePanel from '$lib/components/VmCreatePanel.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { projectList } from '$lib/stores/projectList';
 	import { wizardOpen } from '$lib/stores/wizard';
 	import { loadTutorialStatuses } from '$lib/tutorial/status';
+	import { getLocale } from '$lib/i18n/runtime.svelte';
 	let { children } = $props();
+	// Terminal routes own live sockets and scrollback; language is display state, not their lifetime.
+	const pageLocaleKey = $derived(
+		$page.route.id === '/dashboard/containers/instances/[id]'
+		|| $page.route.id === '/dashboard/drover'
+		|| $page.route.id === '/dashboard/drover/[id]'
+			? $page.route.id
+			: getLocale(),
+	);
 
 	// 로그인 사용자의 튜토리얼 이력을 조회해, 미체험 투어 버튼 강조 판정에 사용한다.
 	// 하드 새로고침 시 auth 토큰 복원은 비동기이므로 onMount 일회성이 아니라 토큰이
@@ -23,7 +33,9 @@
 <div class="flex h-[100dvh] overflow-hidden">
 	<Sidebar />
 	<main id="main-content" tabindex="-1" class="min-w-0 flex-1 overflow-y-auto pt-[var(--app-header-height)] focus:outline-none focus-visible:shadow-[var(--focus-ring)]">
-		{@render children()}
+		{#key pageLocaleKey}
+			{@render children()}
+		{/key}
 	</main>
 </div>
 

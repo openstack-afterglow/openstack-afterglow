@@ -1,7 +1,8 @@
 // @vitest-environment node
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { SecurityGroupRule } from '$lib/types/securityGroup';
-import { buildSecurityGroupUnion, type SecurityGroupUnionGroup } from '../securityGroupUnion';
+import { initLocale } from '$lib/i18n/runtime.svelte';
+import { buildSecurityGroupUnion, type SecurityGroupUnion, type SecurityGroupUnionGroup } from '../securityGroupUnion';
 
 function rule(overrides: Partial<SecurityGroupRule> = {}): SecurityGroupRule {
 	return {
@@ -20,6 +21,8 @@ function rows(rules: SecurityGroupRule[]) {
 	return buildSecurityGroupUnion([group('applied', rules)], ['applied']).rows;
 }
 
+afterEach(() => { initLocale('ko'); });
+
 describe('security group exact union', () => {
 	it('selects only applied groups and collapses semantic duplicates across rule and group IDs', () => {
 		const result = buildSecurityGroupUnion([
@@ -32,7 +35,7 @@ describe('security group exact union', () => {
 		expect(result.rows).toEqual([expect.objectContaining({
 			protocol: 'tcp', portRangeMin: 22, portRangeMax: 22,
 			remote: { kind: 'cidr', value: '0.0.0.0/0' },
-			protocolLabel: 'TCP', portLabel: '22', remoteLabel: '전체 (0.0.0.0/0)',
+			key: JSON.stringify(['ingress', 'IPv4', 'cidr', '0.0.0.0/0', 'tcp', 22, 22]),
 		})]);
 	});
 
@@ -44,8 +47,6 @@ describe('security group exact union', () => {
 		], ['a', 'b']);
 		expect(result.rows.map((row) => [row.portRangeMin, row.portRangeMax]))
 			.toEqual([[1, 2], [80, 105], [107, 109], [65534, 65535]]);
-		expect(result.rows.find((row) => row.portRangeMin === 80)?.portLabel).toBe('80–105');
-		expect(result.rows.map((row) => row.protocolLabel)).toEqual(Array(4).fill(protocol.toUpperCase()));
 	});
 
 	it.each(['tcp', 'udp', 'sctp'])('lets unrestricted %s ports subsume narrower intervals only in their bucket', (protocol) => {
@@ -56,7 +57,7 @@ describe('security group exact union', () => {
 			rule({ protocol, direction: 'egress' }),
 		]);
 		expect(result).toEqual(expect.arrayContaining([
-			expect.objectContaining({ direction: 'ingress', protocol, portRangeMin: null, portRangeMax: null, portLabel: '전체' }),
+			expect.objectContaining({ direction: 'ingress', protocol, portRangeMin: null, portRangeMax: null }),
 			expect.objectContaining({ direction: 'egress', protocol, portRangeMin: 22, portRangeMax: 22 }),
 		]));
 		expect(result).toHaveLength(2);
@@ -84,7 +85,7 @@ describe('security group exact union', () => {
 		expect(result).toHaveLength(5);
 		expect(result.filter((row) => row.protocol === null)).toEqual([expect.objectContaining({
 			direction: 'ingress', ethertype: 'IPv4', remote: { kind: 'cidr', value: '0.0.0.0/0' },
-			protocolLabel: '전체', portLabel: '전체', portRangeMin: null, portRangeMax: null,
+			portRangeMin: null, portRangeMax: null,
 		})]);
 		expect(result.filter((row) => row.protocol === 'tcp').map((row) => [row.direction, row.ethertype, row.remote]))
 			.toEqual(expect.arrayContaining([
@@ -128,37 +129,35 @@ describe('security group exact union', () => {
 			pair(8, 0), pair(8, 1), pair(9, 0), pair(0, -1), pair(8, -1), pair(8, null),
 			pair(-1, -1), pair(null, null),
 		]);
-		expect(result.map((row) => [row.portRangeMin, row.portRangeMax, row.portLabel])).toEqual(expect.arrayContaining([
-			[8, 0, '유형 8 · 코드 0'], [8, 1, '유형 8 · 코드 1'], [9, 0, '유형 9 · 코드 0'],
-			[0, null, '유형 0 · 코드 전체'], [8, null, '유형 8 · 코드 전체'],
-			[null, null, '유형 전체 · 코드 전체'],
+		expect(result.map((row) => [row.portRangeMin, row.portRangeMax])).toEqual(expect.arrayContaining([
+			[8, 0], [8, 1], [9, 0], [0, null], [8, null], [null, null],
 		]));
 		expect(result).toHaveLength(6);
 	});
 
 	it.each([
-		['6', 'tcp', 'TCP', 80, 90, '80–90'],
-		['17', 'udp', 'UDP', 53, 53, '53'],
-		['132', 'sctp', 'SCTP', 22, 22, '22'],
-		['1', 'icmp', 'ICMP', 8, 0, '유형 8 · 코드 0'],
-		['58', 'ipv6-icmp', 'ICMPv6', 128, 0, '유형 128 · 코드 0'],
-		['icmpv6', 'ipv6-icmp', 'ICMPv6', 0, -1, '유형 0 · 코드 전체'],
-	] as const)('deduplicates protocol alias %s with %s', (alias, protocol, protocolLabel, min, max, portLabel) => {
+		['6', 'tcp', 80, 90],
+		['17', 'udp', 53, 53],
+		['132', 'sctp', 22, 22],
+		['1', 'icmp', 8, 0],
+		['58', 'ipv6-icmp', 128, 0],
+		['icmpv6', 'ipv6-icmp', 0, -1],
+	] as const)('deduplicates protocol alias %s with %s', (alias, protocol, min, max) => {
 		const ethertype = protocol === 'ipv6-icmp' ? 'IPv6' : 'IPv4';
 		const result = rows([
 			rule({ protocol: alias, ethertype, port_range_min: min, port_range_max: max }),
 			rule({ protocol, ethertype, port_range_min: min, port_range_max: max }),
 		]);
-		expect(result).toEqual([expect.objectContaining({ protocol, protocolLabel, portLabel })]);
+		expect(result).toEqual([expect.objectContaining({ protocol, portRangeMin: min, portRangeMax: max === -1 ? null : max })]);
 	});
 
 	it('retains unknown numeric and named non-port protocols instead of implying TCP ports', () => {
 		const result = rows(['47', 'gre', '253'].map((protocol) => rule({ protocol, port_range_min: null, port_range_max: null })));
-		expect(result.map((row) => [row.protocol, row.protocolLabel, row.portRangeMin, row.portRangeMax, row.portLabel]))
+		expect(result.map((row) => [row.protocol, row.portRangeMin, row.portRangeMax]))
 			.toEqual(expect.arrayContaining([
-				['47', '47', null, null, '해당 없음'],
-				['gre', 'gre', null, null, '해당 없음'],
-				['253', '253', null, null, '해당 없음'],
+				['47', null, null],
+				['gre', null, null],
+				['253', null, null],
 			]));
 		expect(result).toHaveLength(3);
 	});
@@ -175,13 +174,16 @@ describe('security group exact union', () => {
 			group('named', [rule({ protocol: null, port_range_min: null, port_range_max: null })], 'database'),
 			group('unnamed', [], ''),
 		], ['applied']);
-		expect(result.rows.map((row) => [row.remote, row.remoteLabel])).toEqual(expect.arrayContaining([
-			[{ kind: 'cidr', value: '::/0' }, '전체 (::/0)'],
-			[{ kind: 'cidr', value: '192.0.2.0/24' }, '192.0.2.0/24'],
-			[{ kind: 'group', value: 'named' }, '보안 그룹: database'],
-			[{ kind: 'group', value: 'unnamed' }, '보안 그룹: unnamed'],
-			[{ kind: 'group', value: fullId }, `보안 그룹: ${fullId}`],
+		expect(result.rows.map((row) => row.remote)).toEqual(expect.arrayContaining([
+			{ kind: 'cidr', value: '::/0' },
+			{ kind: 'cidr', value: '192.0.2.0/24' },
+			{ kind: 'group', value: 'named' },
+			{ kind: 'group', value: 'unnamed' },
+			{ kind: 'group', value: fullId },
 		]));
+		for (const [id, name] of [['named', 'database'], ['unnamed', 'unnamed'], [fullId, fullId]]) {
+			expect(result.rows.find((row) => row.remote.kind === 'group' && row.remote.value === id)?.remoteLabel).toContain(name);
+		}
 		expect(result.rows).toHaveLength(5);
 		expect(result.missingGroupIds).toEqual([]);
 	});
@@ -221,6 +223,39 @@ describe('security group exact union', () => {
 		).rows);
 		expect({ groups, groupIds }).toEqual(before);
 		expect(result.rows.filter((row) => row.direction === 'ingress' && row.protocol === 'tcp')
-			.map((row) => row.portLabel)).toEqual(['22', '100', '8080']);
+			.map((row) => row.portRangeMin)).toEqual([22, 100, 8080]);
+	});
+
+	it('translates at call time while keeping union identities, ranges, protocols and ordering invariant across locales', () => {
+		const groups = [
+			group('applied', [
+				rule({ port_range_min: 80, port_range_max: 90 }),
+				rule({ port_range_min: 91, port_range_max: 100 }),
+				rule({ direction: 'egress', protocol: null, port_range_min: null, port_range_max: null }),
+				rule({ protocol: 'icmp', port_range_min: 0, port_range_max: -1 }),
+				rule({ protocol: 'gre', remote_group_id: 'client' }),
+			]),
+			group('client', [], 'client-name'),
+		];
+		const groupIds = ['missing', 'applied', 'applied'];
+		const semantic = (union: SecurityGroupUnion) => ({
+			appliedGroupIds: union.appliedGroupIds,
+			missingGroupIds: union.missingGroupIds,
+			rows: union.rows.map(({ protocolLabel, portLabel, remoteLabel, ...row }) => row),
+		});
+		initLocale('ko');
+		const korean = buildSecurityGroupUnion(groups, groupIds);
+		for (const locale of ['en', 'ja', 'zh-CN'] as const) {
+			initLocale(locale);
+			const translated = buildSecurityGroupUnion(groups, groupIds);
+			expect(semantic(translated)).toEqual(semantic(korean));
+			for (const [index, row] of translated.rows.entries()) {
+				expect(row.remoteLabel).not.toBe(korean.rows[index].remoteLabel);
+				if (row.protocol !== 'tcp') expect(row.portLabel).not.toBe(korean.rows[index].portLabel);
+				if (row.protocol === null) expect(row.protocolLabel).not.toBe(korean.rows[index].protocolLabel);
+			}
+		}
+		initLocale('ko');
+		expect(buildSecurityGroupUnion(groups, groupIds)).toEqual(korean);
 	});
 });

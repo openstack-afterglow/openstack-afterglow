@@ -5,12 +5,12 @@ import { usageChartWindow } from '../chatUsageChartWindow';
 
 describe('usageChartWindow', () => {
 	it.each([
-		['day', 30 * 24 * 60 * 60 * 1000, '최근 30일'],
-		['hour', 48 * 60 * 60 * 1000, '최근 48시간'],
-		['15m', 12 * 60 * 60 * 1000, '최근 12시간'],
-		['5m', 4 * 60 * 60 * 1000, '최근 4시간']
-	])('limits %s charts to the requested window', (bucket, milliseconds, label) => {
-		expect(usageChartWindow(bucket)).toEqual({ milliseconds, label });
+		['day', 30 * 24 * 60 * 60 * 1000],
+		['hour', 48 * 60 * 60 * 1000],
+		['15m', 12 * 60 * 60 * 1000],
+		['5m', 4 * 60 * 60 * 1000]
+	])('limits %s charts to the requested window', (bucket, milliseconds) => {
+		expect(usageChartWindow(bucket)?.milliseconds).toBe(milliseconds);
 	});
 
 	it('keeps month controlled by the date range filter', () => {

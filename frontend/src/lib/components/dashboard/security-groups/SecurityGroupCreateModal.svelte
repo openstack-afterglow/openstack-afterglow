@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/network-resources';
 		import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	let {
@@ -50,22 +51,22 @@
 			onclick={(e) => e.stopPropagation()}
 			role="none"
 		>
-			<h3 class="text-lg font-semibold text-ink-0 mb-4">보안 그룹 생성</h3>
+			<h3 class="text-lg font-semibold text-ink-0 mb-4">{t('securityGroup.create.title')}</h3>
 			<div class="space-y-3 mb-4">
 				<div>
-					<label class="block text-xs text-ink-2 mb-1">이름 *
+					<label class="block text-xs text-ink-2 mb-1">{t('securityGroup.create.name')}
 						<input
 							bind:value={form.name}
-							placeholder="보안 그룹 이름"
+							placeholder={t('securityGroup.create.namePlaceholder')}
 							class="w-full bg-surface-selected border border-line-2 rounded px-3 py-2 text-sm text-ink-1 placeholder-ink-3 focus:border-action-warm focus:outline-none mt-1"
 						/>
 					</label>
 				</div>
 				<div>
-					<label class="block text-xs text-ink-2 mb-1">설명
+					<label class="block text-xs text-ink-2 mb-1">{t('securityGroup.create.description')}
 						<input
 							bind:value={form.description}
-							placeholder="설명 (선택)"
+							placeholder={t('securityGroup.create.descriptionPlaceholder')}
 							class="w-full bg-surface-selected border border-line-2 rounded px-3 py-2 text-sm text-ink-1 placeholder-ink-3 focus:border-action-warm focus:outline-none mt-1"
 						/>
 					</label>
@@ -80,12 +81,12 @@
 					disabled={submitting || !form.name.trim()}
 					class="flex-1 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm py-2 rounded transition-colors"
 				>
-					{submitting ? '생성 중...' : '생성'}
+					{submitting ? t('securityGroup.create.creating') : t('securityGroup.create.submit')}
 				</button>
 				<button
 					onclick={() => { open = false; }}
 					class="flex-1 bg-surface-selected hover:bg-surface-selected text-ink-2 text-sm py-2 rounded transition-colors"
-				>취소</button>
+				>{t('securityGroup.actions.cancel')}</button>
 			</div>
 		</div>
 	</div>

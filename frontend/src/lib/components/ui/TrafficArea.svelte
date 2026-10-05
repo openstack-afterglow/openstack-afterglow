@@ -2,6 +2,7 @@
 	import type { Snippet } from 'svelte';
 	import { trafficAreaGeometry, type TrafficAreaPoint } from './trafficArea';
 	import { formatTrafficBytes } from '$lib/utils/waygateTraffic';
+	import { t } from '$lib/i18n/ns/common';
 
 	interface Props {
 		samples: TrafficAreaPoint[];
@@ -37,13 +38,13 @@
 		<div class="foreground">{@render children()}</div>
 	</div>
 	<div class="legend">
-		<span class="rx-label">▼ {rxLabel} · 실선</span>
-		<span class="tx-label">▲ {txLabel} · 점선</span>
+		<span class="rx-label">{t('traffic.rxLegend', { label: rxLabel })}</span>
+		<span class="tx-label">{t('traffic.txLegend', { label: txLabel })}</span>
 	</div>
 	{#if hasGraph}
-		<p class="scale">0 – {formatTrafficBytes(chart.peak)}/s · 최근 {Math.round((chart.last - chart.first) / 1000)}초 · 보고 간 평균 속도</p>
+		<p class="scale">{t('traffic.scale', { peak: formatTrafficBytes(chart.peak), seconds: Math.round((chart.last - chart.first) / 1000) })}</p>
 	{:else}
-		<p class="empty">연속된 상태 보고가 쌓이면 실제 트래픽 그래프가 표시됩니다.</p>
+		<p class="empty">{t('traffic.empty')}</p>
 	{/if}
 </div>
 

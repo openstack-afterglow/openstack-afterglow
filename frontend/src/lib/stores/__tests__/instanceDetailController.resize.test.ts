@@ -90,8 +90,6 @@ describe('instance detail resize routing', () => {
 		await s.fetchInstance('vm');
 		await s.confirmResize();
 		await s.revertResize();
-		expect(confirmDialog).toHaveBeenCalledWith('리사이즈를 확인하시겠습니까?');
-		expect(confirmDialog).toHaveBeenCalledWith('리사이즈를 취소하고 이전 플레이버로 복귀하시겠습니까?');
 		expect(mockPost).toHaveBeenCalledWith(`${actionBase}/confirm-resize`, {}, 'token', projectId);
 		expect(mockPost).toHaveBeenCalledWith(`${actionBase}/revert-resize`, {}, 'token', projectId);
 	});
@@ -110,25 +108,23 @@ describe('instance detail resize routing', () => {
 		expect(mockPost).not.toHaveBeenCalled();
 	});
 
-	it('surfaces flavor loading and mutation errors and preserves the selection for retry', async () => {
+	it('rejects resize after flavor loading or mutation failures and preserves raw confirm/revert errors', async () => {
 		const s = await setup();
 		mockGet.mockRejectedValueOnce(new Error('unavailable'));
 		await s.loadResizeFlavors();
-		expect(s.resizeError).toBe('플레이버 목록을 가져올 수 없습니다');
 		expect(await s.doResize('next')).toBe(false);
 		await s.loadResizeFlavors();
 		mockPost.mockRejectedValueOnce(new Error('Nova offline'));
 		expect(await s.doResize('next')).toBe(false);
-		expect(s.resizeError).toBe('리사이즈 실패');
 		expect(s.resizeLoading).toBe(false);
 		status = 'VERIFY_RESIZE';
 		await s.fetchInstance('vm');
 		mockPost.mockRejectedValueOnce(new Error('cannot confirm'));
 		await s.confirmResize();
-		expect(toastError).toHaveBeenCalledWith('리사이즈 확인 실패: Error: cannot confirm');
+		expect(toastError).toHaveBeenCalledWith(expect.stringContaining('cannot confirm'));
 		mockPost.mockRejectedValueOnce(new Error('cannot revert'));
 		await s.revertResize();
-		expect(toastError).toHaveBeenCalledWith('리사이즈 취소 실패: Error: cannot revert');
+		expect(toastError).toHaveBeenCalledWith(expect.stringContaining('cannot revert'));
 	});
 
 	it('does not POST when confirmation is declined', async () => {

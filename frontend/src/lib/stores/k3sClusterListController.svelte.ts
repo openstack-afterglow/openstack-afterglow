@@ -1,3 +1,4 @@
+import { t } from '$lib/i18n/ns/drover';
 import { api, ApiError } from '$lib/api/client';
 import { streamK3sProgress } from '$lib/api/k3sSseStream';
 import { toast } from '$lib/stores/toast';
@@ -42,9 +43,9 @@ export function createK3sClusterListController(opts: K3sClusterListOpts) {
     } catch (e) {
       if (ctrl.signal.aborted) return;
       if (e instanceof ApiError && e.status === 503) {
-        error = 'k3s 서비스를 사용할 수 없습니다.';
+        error = t('list.serviceUnavailable');
       } else {
-        error = e instanceof ApiError ? `조회 실패 (${e.status})` : '서버 오류';
+        error = e instanceof ApiError ? t('list.lookupFailed', { status: e.status }) : t('list.serverError');
       }
     } finally {
       if (inflight === ctrl) inflight = null;
@@ -59,7 +60,7 @@ export function createK3sClusterListController(opts: K3sClusterListOpts) {
   }) {
     creating = true;
     createError = '';
-    opts.progress.begin('create', '클러스터 생성 준비 중...');
+    opts.progress.begin('create', t('list.preparingCreate'));
     const clusterName = form.name;
     let prevStep = '';
     try {
@@ -79,13 +80,13 @@ export function createK3sClusterListController(opts: K3sClusterListOpts) {
         opts.progress.apply(msg);
         if (msg.step !== prevStep && !opts.progress.visible && msg.step !== 'completed' && msg.step !== 'failed') {
           const stepLabel = K3S_CREATE_STEPS.find(s => s.id === msg.step)?.label ?? msg.step;
-          toast.info(`${clusterName}: ${stepLabel} 진행 중...`);
+          toast.info(t('list.stepProgress', { name: clusterName, step: stepLabel }));
         }
         prevStep = msg.step;
         if (msg.step === 'completed') {
-          toast.success(`클러스터 "${clusterName || '클러스터'}" 생성 완료 (${opts.progress.elapsedSeconds}초)`);
+          toast.success(t('list.createCompleted', { name: clusterName || t('list.defaultClusterName'), seconds: opts.progress.elapsedSeconds }));
         } else if (msg.step === 'failed') {
-          toast.error(`클러스터 생성 실패: ${msg.error || '알 수 없는 오류'}`);
+          toast.error(t('list.createFailed', { error: msg.error || t('list.unknownError') }));
         }
       }
     } catch (e) {
@@ -98,7 +99,7 @@ export function createK3sClusterListController(opts: K3sClusterListOpts) {
   }
 
   async function deleteCluster(id: string, name: string) {
-    if (!(await confirmDialog(`Drover 클러스터 "${name}"을 삭제하시겠습니까?\n모든 VM과 보안 그룹이 삭제됩니다.`))) return;
+    if (!(await confirmDialog(t('list.confirmDelete', { name })))) return;
     deleting = id;
     opts.progress.begin('delete');
     try {
@@ -106,12 +107,12 @@ export function createK3sClusterListController(opts: K3sClusterListOpts) {
         method: 'POST', token: opts.token(), projectId: opts.projectId(),
       })) {
         opts.progress.apply(msg);
-        if (msg.step === 'completed') toast.success(`클러스터 "${name}" 삭제 완료 (${opts.progress.elapsedSeconds}초)`);
-        else if (msg.step === 'failed') toast.error(`클러스터 삭제 실패: ${msg.error || '알 수 없는 오류'}`);
+        if (msg.step === 'completed') toast.success(t('list.deleteCompleted', { name, seconds: opts.progress.elapsedSeconds }));
+        else if (msg.step === 'failed') toast.error(t('list.deleteFailed', { error: msg.error || t('list.unknownError') }));
       }
     } catch (e) {
       opts.progress.failWith(String(e));
-      toast.error(`클러스터 삭제 실패: ${String(e)}`);
+      toast.error(t('list.deleteFailed', { error: String(e) }));
     } finally {
       opts.progress.end();
       deleting = null;
@@ -129,9 +130,9 @@ export function createK3sClusterListController(opts: K3sClusterListOpts) {
       downloadBlobAs(blob, `kubeconfig-${name}.yaml`);
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) {
-        toast.warning('kubeconfig가 아직 준비되지 않았습니다. 클러스터가 초기화 중입니다.');
+        toast.warning(t('list.kubeconfigPending'));
       } else {
-        toast.error(`다운로드 실패: ${e instanceof ApiError ? e.message : String(e)}`);
+        toast.error(t('list.downloadFailed', { error: e instanceof ApiError ? e.message : String(e) }));
       }
     }
   }

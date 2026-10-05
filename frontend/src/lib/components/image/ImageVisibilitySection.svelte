@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/images-keys';
 	import { useImageDetailController, VISIBILITY_OPTIONS } from '$lib/stores/imageDetailController.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 
@@ -6,7 +7,7 @@
 </script>
 
 <div class="bg-surface-base border border-line rounded-lg p-5">
-	<h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-3">공개 범위 수정</h3>
+	<h3 class="text-xs font-semibold text-ink-2 uppercase tracking-wide mb-3">{t('visibilitySection.title')}</h3>
 	<div class="flex items-center gap-3 flex-wrap">
 		<select
 			bind:value={s.visibilityValue}
@@ -17,10 +18,10 @@
 			{/each}
 		</select>
 		<Button onclick={() => s.saveVisibility()} disabled={s.savingVisibility || s.visibilityValue === s.image!.visibility}>
-			{s.savingVisibility ? '저장 중...' : '저장'}
+			{s.savingVisibility ? t('visibilitySection.saving') : t('visibilitySection.save')}
 		</Button>
 		{#if s.visibilitySuccess}
-			<span class="text-green-400 text-sm">저장됨</span>
+			<span class="text-green-400 text-sm">{t('visibilitySection.saved')}</span>
 		{/if}
 		{#if s.visibilityError}
 			<span class="text-red-400 text-sm">{s.visibilityError}</span>

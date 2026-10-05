@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/network-resources';
   import type { Router } from '$lib/types/networks';
   import StatusChip from '$lib/components/ui/StatusChip.svelte';
   import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
@@ -31,8 +32,8 @@
 
 <div class="flex items-center justify-end mb-3">
   <SelectionToolbar
-    label="라우터"
-    ariaLabel="라우터 전체 선택"
+    label={t('router.cards.label')}
+    ariaLabel={t('router.cards.selectAll')}
     checked={allSelected}
     indeterminate={indeterminate}
     selectedCount={selectedCount}
@@ -51,8 +52,8 @@
           checked={selectedIds.has(router.id)}
           disabled={selectionDisabled || !selectableIds.has(router.id)}
           unavailable={!selectableIds.has(router.id)}
-          title={!selectableIds.has(router.id) ? '현재 프로젝트가 소유한 라우터만 선택할 수 있습니다' : undefined}
-          ariaLabel={`${router.name || router.id.slice(0, 12)} 선택`}
+          title={!selectableIds.has(router.id) ? t('router.cards.unavailable') : undefined}
+          ariaLabel={t('router.cards.select', { name: router.name || router.id.slice(0, 12) })}
           onclick={() => onToggleSelect(router.id)}
         />
         <div class="router-card__icon w-10 h-10 rounded-lg flex items-center justify-center shrink-0">
@@ -64,28 +65,28 @@
         </div>
         <div class="flex-1 min-w-0">
           <div class="router-card__name text-sm font-semibold truncate">{router.name || router.id.slice(0, 12)}</div>
-          <div class="router-card__subtitle text-xs mt-0.5">SNAT {router.external_gateway_network_id ? '활성' : '비활성'}</div>
+          <div class="router-card__subtitle text-xs mt-0.5">{router.external_gateway_network_id ? t('router.cards.snatEnabled') : t('router.cards.snatDisabled')}</div>
         </div>
         <StatusChip status={router.status} />
       </div>
       <div class="flex justify-end">
-        <Button variant="outline" size="xs" onclick={() => onOpen(router.id)}>상세</Button>
+        <Button variant="outline" size="xs" onclick={() => onOpen(router.id)}>{t('router.cards.details')}</Button>
       </div>
 
       <div class="flex flex-col gap-2">
         <div class="router-card__section flex items-center gap-3 p-2.5 rounded-lg">
-          <div class="router-card__label text-xs uppercase tracking-wider font-medium w-16 shrink-0">외부</div>
+          <div class="router-card__label text-xs uppercase tracking-wider font-medium w-16 shrink-0">{t('router.cards.external')}</div>
           {#if router.external_gateway_network_id}
             <div class="router-card__gateway font-mono text-xs truncate">{externalNetworkName(router.external_gateway_network_id)}</div>
           {:else}
-            <div class="router-card__empty text-xs">없음</div>
+            <div class="router-card__empty text-xs">{t('router.cards.none')}</div>
           {/if}
         </div>
         <div class="router-card__section flex items-start gap-3 p-2.5 rounded-lg">
-          <div class="router-card__label text-xs uppercase tracking-wider font-medium w-16 pt-0.5 shrink-0">내부</div>
+          <div class="router-card__label text-xs uppercase tracking-wider font-medium w-16 pt-0.5 shrink-0">{t('router.cards.internal')}</div>
           <div class="flex-1 flex flex-wrap gap-1.5">
             {#if router.connected_subnet_ids.length === 0}
-              <span class="router-card__empty text-xs">인터페이스 없음</span>
+              <span class="router-card__empty text-xs">{t('router.cards.noInterfaces')}</span>
             {:else}
               {#each router.connected_subnet_ids as subnetId}
                 <span class="router-card__subnet px-1.5 py-0.5 rounded text-xs font-mono">{subnetId.slice(0, 8)}…</span>

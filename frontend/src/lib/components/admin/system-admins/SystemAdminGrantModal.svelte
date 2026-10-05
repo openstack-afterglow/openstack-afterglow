@@ -2,6 +2,7 @@
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
+	import { t } from '$lib/i18n/ns/admin-identity';
 
 	let {
 		onClose,
@@ -66,7 +67,7 @@
 			onGranted();
 			onClose();
 		} catch (e) {
-			grantError = e instanceof ApiError ? e.message : '부여 실패';
+			grantError = e instanceof ApiError ? e.message : t('systemGrant.failed');
 		} finally {
 			granting = false;
 		}
@@ -89,7 +90,7 @@
 	<div
 		class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-lg mx-4 shadow-[var(--shadow-restraint)]"
 	>
-		<h2 class="text-lg font-semibold text-ink-0 mb-4">System Admin 추가</h2>
+		<h2 class="text-lg font-semibold text-ink-0 mb-4">{t('systemGrant.title')}</h2>
 
 		{#if grantError}
 			<div class="mb-3 bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{grantError}</div>
@@ -98,15 +99,15 @@
 		<input
 			bind:value={query}
 			type="text"
-			placeholder="이름 또는 이메일로 검색"
+			placeholder={t('systemGrant.searchPlaceholder')}
 			class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mb-3"
 		/>
 
 		<div class="overflow-y-auto max-h-72 rounded-lg border border-line-2">
 			{#if loadingUsers}
-				<div class="text-ink-2 text-sm px-4 py-6 text-center">불러오는 중...</div>
+				<div class="text-ink-2 text-sm px-4 py-6 text-center">{t('systemGrant.loading')}</div>
 			{:else if filtered.length === 0}
-				<div class="text-ink-2 text-sm px-4 py-6 text-center">사용자 없음</div>
+				<div class="text-ink-2 text-sm px-4 py-6 text-center">{t('systemGrant.empty')}</div>
 			{:else}
 				<table class="w-full text-sm">
 					<tbody>
@@ -131,7 +132,7 @@
 				disabled={granting}
 				class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg"
 			>
-				취소
+				{t('systemGrant.cancel')}
 			</button>
 		</div>
 	</div>

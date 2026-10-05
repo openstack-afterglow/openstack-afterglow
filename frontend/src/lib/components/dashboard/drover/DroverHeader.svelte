@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/drover-pages';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
@@ -23,7 +24,7 @@
 	} = $props();
 </script>
 
-<PageHeader breadcrumb="CONTAINERS / K3S" title="Drover 클러스터">
+<PageHeader breadcrumb={t('header.breadcrumb')} title={t('cluster.title')}>
 	{#snippet actions()}
 		<TutorialStartButton tour="drover" />
 		<button
@@ -32,7 +33,7 @@
 				? 'border-line-2 text-ink-2 bg-surface-sunken'
 				: 'border-line-2 text-ink-2 hover:border-line-2 hover:text-ink-2'}"
 		>
-			{showDeleted ? '삭제 이력 숨기기' : '삭제 이력 보기'}
+			{showDeleted ? t('header.hideDeleted') : t('header.showDeleted')}
 		</button>
 		<AutoRefreshControl
 			bind:active={ar.active}
@@ -48,7 +49,7 @@
 			onfocus={onOpenCreateIntent}
 			class="bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors"
 		>
-			+ 클러스터 생성
+			{t('header.create')}
 		</button>
 	{/snippet}
 </PageHeader>

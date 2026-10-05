@@ -4,6 +4,7 @@
 	import Field from '$lib/components/ui/Field.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
 	import GitLabLoginButton from './GitLabLoginButton.svelte';
+	import { t } from '$lib/i18n/ns/public-entry';
 
 	let {
 		domainName = $bindable(),
@@ -36,15 +37,15 @@
 		<Alert tone="danger">{error}</Alert>
 	{/if}
 
-	<Field label="도메인" for="domain">
+	<Field label={t('loginForm.domain')} for="domain">
 		<TextInput id="domain" bind:value={domainName} type="text" />
 	</Field>
 
-	<Field label="사용자명" for="username" required>
+	<Field label={t('loginForm.username')} for="username" required>
 		<TextInput id="username" bind:value={username} type="text" required />
 	</Field>
 
-	<Field label="비밀번호" for="password" required>
+	<Field label={t('loginForm.password')} for="password" required>
 		<TextInput
 			id="password"
 			bind:value={password}
@@ -55,7 +56,7 @@
 	</Field>
 
 	<Button type="submit" disabled={loading} class="login-submit" size="lg">
-		{loading ? '로그인 중...' : '로그인'}
+		{loading ? t('loginForm.signingIn') : t('loginForm.signIn')}
 	</Button>
 
 	<GitLabLoginButton enabled={gitlabEnabled} loading={gitlabLoading} onClick={onGitlab} />

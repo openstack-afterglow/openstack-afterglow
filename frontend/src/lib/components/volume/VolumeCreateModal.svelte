@@ -3,6 +3,7 @@
 	import { api, ApiError } from '$lib/api/client';
 	import { apiMut } from '$lib/api/mutations';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
+	import { t } from '$lib/i18n/ns/volume';
 
 	let {
 		open = $bindable(false),
@@ -24,12 +25,12 @@
 		creating = true;
 		createError = '';
 		try {
-			await apiMut('볼륨 생성', () => api.post('/api/v1/volumes', form, token, projectId));
+			await apiMut(t('createModal.mutationLabel'), () => api.post('/api/v1/volumes', form, token, projectId));
 			open = false;
 			form = { name: '', size_gb: 10 };
 			onCreated();
 		} catch (e) {
-			createError = e instanceof ApiError ? e.message : '생성 실패';
+			createError = e instanceof ApiError ? e.message : t('createModal.createFailed');
 		} finally {
 			creating = false;
 		}
@@ -56,15 +57,15 @@
 			onclick={(e) => e.stopPropagation()}
 			role="none"
 		>
-			<h2 class="text-lg font-semibold text-ink-0 mb-5">볼륨 생성</h2>
+			<h2 class="text-lg font-semibold text-ink-0 mb-5">{t('createModal.title')}</h2>
 			<div class="space-y-4">
 				<div>
-					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">이름
-						<input bind:value={form.name} type="text" placeholder="my-volume" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5" />
+					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('createModal.nameLabel')}
+						<input bind:value={form.name} type="text" placeholder={t('createModal.namePlaceholder')} class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5" />
 					</label>
 				</div>
 				<div>
-					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">크기 (GB)
+					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('createModal.sizeLabel')}
 						<input bind:value={form.size_gb} type="number" min="1" class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5" />
 					</label>
 				</div>
@@ -73,13 +74,13 @@
 				<div class="mt-4 text-red-400 text-xs bg-red-900/20 border border-red-800 rounded px-3 py-2">{createError}</div>
 			{/if}
 			<div class="flex justify-end gap-3 mt-6">
-				<button onclick={close} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">취소</button>
+				<button onclick={close} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('createModal.cancel')}</button>
 				<button
 					data-tour="volume-create-submit"
 					onclick={createVolume}
 					disabled={creating || !form.name.trim() || form.size_gb < 1}
 					class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors"
-				>{creating ? '생성 중...' : '생성'}</button>
+				>{creating ? t('createModal.creating') : t('createModal.create')}</button>
 			</div>
 		</div>
 	</div>

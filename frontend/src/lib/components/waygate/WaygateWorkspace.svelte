@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/waygate';
 	import { auth } from '$lib/stores/auth';
 	import { createWaygateProjectScope } from '$lib/utils/waygateProjectScope';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
@@ -14,8 +15,8 @@
 		<WaygateProjectWorkspace scope={$scope} {admin} />
 	{:else}
 		<div class="p-4 md:p-8">
-			<PageHeader breadcrumb={admin ? 'ADMIN / WAYGATE' : 'NETWORK / WAYGATE'} title={admin ? 'Waygate 관리' : 'Waygate'} />
-			<Alert tone="info">Waygate를 관리할 프로젝트를 선택하세요.</Alert>
+			<PageHeader breadcrumb={admin ? t('workspace.breadcrumb.admin') : t('workspace.breadcrumb.network')} title={admin ? t('workspace.adminTitle') : 'Waygate'} />
+			<Alert tone="info">{t('workspace.selectProject')}</Alert>
 		</div>
 	{/if}
 {/key}

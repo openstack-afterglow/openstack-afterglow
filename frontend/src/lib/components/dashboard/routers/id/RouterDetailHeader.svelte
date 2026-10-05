@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/network-resources';
 	import type { RouterDetail } from '$lib/types/router';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 
@@ -16,7 +17,7 @@
 </script>
 
 <button onclick={onBack} class="text-sm text-ink-2 hover:text-ink-1 mb-6 inline-flex items-center gap-1">
-	← 대시보드
+	{t('router.back')}
 </button>
 
 <div class="flex items-start justify-between mb-8">
@@ -31,5 +32,5 @@
 		onclick={onDelete}
 		disabled={saving}
 		class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-sm px-3 py-1.5 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors"
-	>삭제</button>
+	>{t('router.actions.delete')}</button>
 </div>

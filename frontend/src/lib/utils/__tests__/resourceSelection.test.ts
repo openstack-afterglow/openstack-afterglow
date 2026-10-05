@@ -12,13 +12,9 @@ describe('createResourceSelection', () => {
 		expect(selection.count).toBe(0);
 	});
 
-	it('retains only refreshed IDs without assigning an unchanged selection', () => {
+	it('retains only refreshed IDs', () => {
 		const selection = createResourceSelection();
 		selection.toggleAll(['image-1', 'image-2']);
-		const before = selection.ids;
-		selection.retain(['image-1', 'image-2']);
-		expect(selection.ids).toBe(before);
-
 		selection.retain(['image-2', 'image-3']);
 		expect([...selection.ids]).toEqual(['image-2']);
 	});

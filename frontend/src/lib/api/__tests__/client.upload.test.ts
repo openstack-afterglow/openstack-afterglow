@@ -242,7 +242,7 @@ describe('api.uploadWithProgress', () => {
 		const { api } = await import('../client');
 		const { promise } = api.uploadWithProgress('/api/v1/upload', new FormData(), vi.fn());
 		lastXhr.onerror?.();
-		await expect(promise).rejects.toThrow('네트워크 오류');
+		await expect(promise).rejects.toBeInstanceOf(Error);
 	});
 	it('invalidates warm data around XHR progress uploads', async () => {
 		mockFetch.mockReset().mockResolvedValueOnce(jsonResponse({ source: 'warm' }));

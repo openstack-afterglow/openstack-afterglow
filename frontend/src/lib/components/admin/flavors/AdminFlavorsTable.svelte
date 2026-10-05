@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-compute';
 	import type { Flavor } from '$lib/types/flavor';
 	import Pagination from '$lib/components/ui/Pagination.svelte';
 	import Pill from '$lib/components/ui/Pill.svelte';
@@ -84,25 +85,25 @@
 					<th
 						class="text-left py-2 pr-4 cursor-pointer select-none hover:text-ink-1"
 						onclick={() => toggleSort('name')}
-					>이름 <span class="text-ink-2">{sortIcon('name')}</span></th>
+					>{t('flavors.fields.name')} <span class="text-ink-2">{sortIcon('name')}</span></th>
 					<th
 						class="text-left py-2 pr-4 cursor-pointer select-none hover:text-ink-1"
 						onclick={() => toggleSort('vcpus')}
-					>VCPU <span class="text-ink-2">{sortIcon('vcpus')}</span></th>
+					>{t('flavors.fields.vcpu')} <span class="text-ink-2">{sortIcon('vcpus')}</span></th>
 					<th
 						class="text-left py-2 pr-4 cursor-pointer select-none hover:text-ink-1"
 						onclick={() => toggleSort('ram')}
-					>RAM <span class="text-ink-2">{sortIcon('ram')}</span></th>
+					>{t('flavors.fields.ram')} <span class="text-ink-2">{sortIcon('ram')}</span></th>
 					<th
 						class="text-left py-2 pr-4 cursor-pointer select-none hover:text-ink-1"
 						onclick={() => toggleSort('disk')}
-					>Disk <span class="text-ink-2">{sortIcon('disk')}</span></th>
+					>{t('flavors.fields.disk')} <span class="text-ink-2">{sortIcon('disk')}</span></th>
 					<th
 						class="text-left py-2 pr-4 cursor-pointer select-none hover:text-ink-1"
 						onclick={() => toggleSort('is_public')}
-					>공개 <span class="text-ink-2">{sortIcon('is_public')}</span></th>
-					<th class="text-left py-2 pr-4">GPU</th>
-					<th class="text-right py-2">액션</th>
+					>{t('flavors.fields.public')} <span class="text-ink-2">{sortIcon('is_public')}</span></th>
+					<th class="text-left py-2 pr-4">{t('flavors.fields.gpu')}</th>
+					<th class="text-right py-2">{t('flavors.table.actions')}</th>
 				</tr>
 			</thead>
 			<tbody>
@@ -125,11 +126,11 @@
 									class="px-1.5 py-0.5 rounded text-xs font-medium {f.is_public
 										? 'bg-green-900/30 text-green-400'
 										: 'bg-yellow-900/30 text-yellow-400'}"
-								>{f.is_public ? 'Public' : 'Private'}</span>
+								>{f.is_public ? t('flavors.visibility.public') : t('flavors.visibility.private')}</span>
 								{#if !f.is_public && f.is_gpu}
-									<span title={isQuotaManaged(f) ? '접근 권한 관리 정책: GPU Quota 연동' : '접근 권한 관리 정책: 수동 관리'}>
+									<span title={isQuotaManaged(f) ? t('flavors.access.quotaPolicyTitle') : t('flavors.access.manualPolicyTitle')}>
 										<Pill tone={isQuotaManaged(f) ? 'accent' : 'neutral'} size="xs">
-											{isQuotaManaged(f) ? 'Quota 연동' : '수동'}
+											{isQuotaManaged(f) ? t('flavors.access.quotaLinked') : t('flavors.access.manual')}
 										</Pill>
 									</span>
 								{/if}
@@ -147,11 +148,11 @@
 								<button
 									onclick={() => onManage(f)}
 									class="text-warm-text hover:text-warm-text-hover text-xs"
-								>관리</button>
+								>{t('flavors.manage.action')}</button>
 								<button
 									onclick={() => onDelete(f.id)}
 									class="text-red-400 hover:text-red-300 text-xs"
-								>삭제</button>
+								>{t('flavors.delete.action')}</button>
 							</div>
 						</td>
 					</tr>
@@ -168,5 +169,5 @@
 		hasNext={currentPage < totalPages - 1}
 		onPrev={() => { currentPage -= 1; }}
 		onNext={() => { currentPage += 1; }}
-		note={flavors.length < totalUnfiltered ? `(전체 ${totalUnfiltered}개 필터됨)` : null}
+		note={flavors.length < totalUnfiltered ? t('flavors.table.filteredNote', { count: totalUnfiltered }) : null}
 	/>

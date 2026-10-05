@@ -1,6 +1,7 @@
 import { fireEvent, render } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import ModelPickerOverlay from '../ModelPickerOverlay.svelte';
+import { t } from '$lib/i18n/ns/chat-studio';
 
 const models = [
 	{ id: 1, provider_id: 1, provider_type: 'openai', provider_sort_order: 0, sort_order: 0, model_name: 'gpt-5', api_model_name: 'gpt-5', api_provider: 'openai', display_name: 'GPT 5', provider: 'OpenAI' },
@@ -20,6 +21,21 @@ function renderPicker(availableModels = models) {
 }
 
 describe('ModelPickerOverlay provider navigation', () => {
+	it('keeps identically labelled providers separate and selects the internal route identity', async () => {
+		const onSelect = vi.fn();
+		const sameLabel = [
+			{ ...models[0], provider: 'Shared label' },
+			{ ...models[1], provider: 'Shared label', api_model_name: models[0].api_model_name }
+		];
+		const view = render(ModelPickerOverlay, { open: true, models: sameLabel, value: models[0].model_name, onSelect, onClose: vi.fn() });
+		const providerButtons = view.getAllByRole('button', { name: /Shared label/ });
+		expect(providerButtons).toHaveLength(2);
+		await fireEvent.click(providerButtons[1]);
+		expect(view.queryByRole('button', { name: t('modelPicker.selectModel', { name: models[0].display_name }) })).toBeNull();
+		await fireEvent.click(view.getByRole('button', { name: t('modelPicker.selectModel', { name: models[1].display_name }) }));
+		expect(onSelect).toHaveBeenCalledWith(models[1].model_name);
+	});
+
 	it('shows a provider selector for multiple providers and filters the model list', async () => {
 		const view = renderPicker();
 		const navigation = view.getByRole('navigation', { name: '모델 프로바이더' });

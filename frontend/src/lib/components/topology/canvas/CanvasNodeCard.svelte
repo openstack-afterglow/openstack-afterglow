@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/topology';
 	// 캔버스 노드 카드. 크기·위치는 layout pos 로만 결정하고, 텔레메트리는 문자열 prop 으로 받아 재배치 없이 갱신한다.
 	import Pill from '$lib/components/ui/Pill.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
@@ -75,7 +76,7 @@
 		else if (node.kind === 'router') ips = node.ports.map((p) => p.ip).filter(Boolean).join(', ');
 		else if (node.kind === 'lb') ips = node.vip ?? '';
 		else if (node.kind === 'switch') ips = graph.netById.get(node.netId)?.cidrs.join(', ') ?? '';
-		return `${KIND_LABEL[node.kind]} ${node.name} · ${node.status || '—'}${ips ? ' · ' + ips : ''}`;
+		return t(ips ? 'card.ariaLabelWithIps' : 'card.ariaLabel', { kind: KIND_LABEL[node.kind], name: node.name, status: node.status || '—', ips });
 	});
 
 	const switchNet = $derived(node.kind === 'switch' ? graph.netById.get(node.netId) ?? null : null);
@@ -116,7 +117,7 @@
 	onblur={() => onblurnode?.(node.id)}
 >
 	{#if linkable || (linkEnabled && (node.kind === 'vm' || node.kind === 'router'))}
-		<span class="link-handle" data-link-handle={node.id} data-link-source title="끌어서 연결" aria-hidden="true"></span>
+		<span class="link-handle" data-link-handle={node.id} data-link-source title={t('card.dragConnect')} aria-hidden="true"></span>
 	{/if}
 	<span class="node-head">
 		<span class="node-glyph" aria-hidden="true">
@@ -136,11 +137,11 @@
 		</span>
 		<span class="node-name" class:mono={node.kind === 'switch'}>{node.name}</span>
 		{#if node.kind === 'vm'}
-			{#if node.isDatabase}<Pill tone="accent" size="xs">DB</Pill>{/if}
+			{#if node.isDatabase}<Pill tone="accent" size="xs">{t('card.database')}</Pill>{/if}
 			{#if node.nics.length > 1}<Pill tone="warm" size="xs">{node.nics.length}NIC</Pill>{/if}
 			<StatusChip status={node.status} />
 		{:else if node.kind === 'switch'}
-			{#if node.isolated}<Pill tone="neutral" size="xs">격리</Pill>{/if}
+			{#if node.isolated}<Pill tone="neutral" size="xs">{t('hud.isolated')}</Pill>{/if}
 			{#if switchNet && switchNet.status !== 'ACTIVE'}<StatusChip status={switchNet.status} />{/if}
 		{:else if node.kind === 'router'}
 			<StatusChip status={node.status} />
@@ -153,7 +154,7 @@
 	{#if node.kind === 'vm'}
 		<span class="nic-list">
 			{#if node.nics.length === 0}
-				<span class="parked-note">미연결 · 네트워크 없음</span>
+				<span class="parked-note">{t('card.parked')}</span>
 			{/if}
 			{#each node.nics as nic (nic.key)}
 				<span
@@ -182,14 +183,14 @@
 	{:else if node.kind === 'router'}
 		<span class="node-sub">
 			{#each node.badges as badge (badge)}
-				<Pill tone={badge === '게이트웨이 없음' ? 'neutral' : 'accent'} size="xs">{badge}</Pill>
+				<Pill tone={badge === 'noGateway' ? 'neutral' : 'accent'} size="xs">{badge === 'noGateway' ? t('card.noGateway') : badge}</Pill>
 			{/each}
-			<span class="rate">포트 {node.ports.length}</span>
+			<span class="rate">{t('card.ports', { count: node.ports.length })}</span>
 		</span>
 	{:else}
 		<span class="node-sub">
 			<span class="mono">VIP {node.vip ?? '—'}</span>
-			<span>리스너 {node.listeners.length}</span>
+			<span>{t('card.listeners', { count: node.listeners.length })}</span>
 			<span class="rate mono">{rateText ?? '▼ —  ▲ —'}</span>
 		</span>
 	{/if}

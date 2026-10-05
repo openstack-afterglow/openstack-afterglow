@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-system';
 	import { untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
@@ -136,12 +137,12 @@
 	function relativeTime(iso: string): string {
 		const diff = Date.now() - new Date(iso).getTime();
 		const s = Math.floor(diff / 1000);
-		if (s < 60) return `${s}초 전`;
+		if (s < 60) return t('activity.secondsAgo', { count: s });
 		const m = Math.floor(s / 60);
-		if (m < 60) return `${m}분 전`;
+		if (m < 60) return t('activity.minutesAgo', { count: m });
 		const h = Math.floor(m / 60);
-		if (h < 24) return `${h}시간 전`;
-		return `${Math.floor(h / 24)}일 전`;
+		if (h < 24) return t('activity.hoursAgo', { count: h });
+		return t('activity.daysAgo', { count: Math.floor(h / 24) });
 	}
 
 
@@ -161,7 +162,7 @@
 			bind:value={filterResourceType}
 			class="bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-sm text-ink-0 focus:outline-none focus:border-action-warm"
 		>
-			<option value="">전체 리소스</option>
+			<option value="">{t('activity.allResources')}</option>
 			{#each RESOURCE_TYPES as rt}
 				<option value={rt}>{rt}</option>
 			{/each}
@@ -169,14 +170,14 @@
 		<input
 			bind:value={filterAction}
 			type="text"
-			placeholder="액션 필터 (예: instance.create)"
+			placeholder={t('activity.actionFilter')}
 			class="bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-sm text-ink-0 focus:outline-none focus:border-action-warm w-52"
 		/>
 		{#if showUser}
 			<input
 				bind:value={filterUserId}
 				type="text"
-				placeholder="사용자 ID"
+				placeholder={t('activity.userId')}
 				class="bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-sm text-ink-0 focus:outline-none focus:border-action-warm w-44"
 			/>
 		{/if}
@@ -193,19 +194,19 @@
 
 	<!-- 테이블 -->
 	{#if loading}
-		<div class="text-ink-2 text-sm py-8 text-center">로딩 중...</div>
+		<div class="text-ink-2 text-sm py-8 text-center">{t('activity.loading')}</div>
 	{:else if logs.length === 0}
-		<div class="text-ink-2 text-sm py-8 text-center">활동 없음</div>
+		<div class="text-ink-2 text-sm py-8 text-center">{t('activity.empty')}</div>
 	{:else}
 		<div class="overflow-x-auto rounded-lg border border-line">
 			<table class="w-full text-sm">
 				<thead class="bg-surface-base text-ink-2 text-xs uppercase tracking-wide">
 					<tr>
-						<th class="px-4 py-3 text-left font-medium">시각</th>
-						{#if showUser}<th class="px-4 py-3 text-left font-medium">사용자</th>{/if}
-						<th class="px-4 py-3 text-left font-medium">리소스</th>
-						<th class="px-4 py-3 text-left font-medium">액션</th>
-						<th class="px-4 py-3 text-left font-medium">상태</th>
+						<th class="px-4 py-3 text-left font-medium">{t('activity.time')}</th>
+						{#if showUser}<th class="px-4 py-3 text-left font-medium">{t('activity.user')}</th>{/if}
+						<th class="px-4 py-3 text-left font-medium">{t('activity.resource')}</th>
+						<th class="px-4 py-3 text-left font-medium">{t('activity.action')}</th>
+						<th class="px-4 py-3 text-left font-medium">{t('activity.status')}</th>
 					</tr>
 				</thead>
 				<tbody class="divide-y divide-line">
@@ -234,7 +235,7 @@
 											onclick={() => expandedId = expandedId === log.id ? null : log.id}
 											class="text-ink-2 hover:text-ink-2 text-xs underline"
 										>
-											{expandedId === log.id ? '닫기' : '상세'}
+											{expandedId === log.id ? t('activity.close') : t('activity.details')}
 										</button>
 									{/if}
 								</div>
@@ -257,7 +258,7 @@
 					disabled={loadingMore}
 					class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 border border-line-2 hover:border-line-2 rounded-lg transition-colors disabled:opacity-50"
 				>
-					{loadingMore ? '로딩 중...' : '더 보기'}
+					{loadingMore ? t('activity.loading') : t('activity.more')}
 				</button>
 			</div>
 		{/if}

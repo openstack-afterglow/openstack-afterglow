@@ -3,6 +3,8 @@
 	import { parseImageReference, sanitizeImageFilename } from '$lib/utils/imageReference';
 	import Button from '$lib/components/ui/Button.svelte';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
+	import { t } from '$lib/i18n/ns/images-keys';
+	import RichText from '$lib/i18n/RichText.svelte';
 
 	interface Props {
 		open: boolean;
@@ -90,13 +92,13 @@
 
 	function submit() {
 		formError = '';
-		if (!name.trim()) { formError = '이미지 이름을 입력하세요.'; return; }
-		if (!file) { formError = '업로드할 파일을 선택하세요.'; return; }
+		if (!name.trim()) { formError = t('uploadModal.nameRequired'); return; }
+		if (!file) { formError = t('uploadModal.fileRequired'); return; }
 		let normalizedName: string;
 		try {
 			normalizedName = parseImageReference(name).name;
 		} catch (error) {
-			formError = error instanceof Error ? error.message : '이미지 이름 형식이 올바르지 않습니다.';
+			formError = error instanceof Error ? error.message : t('uploadModal.invalidName');
 			return;
 		}
 
@@ -128,6 +130,8 @@
 	}
 </script>
 
+{#snippet requiredMarker(text: string)}<span class="text-[var(--color-state-danger)]">{text}</span>{/snippet}
+
 {#if open}
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -144,7 +148,7 @@
 			onclick={(e) => e.stopPropagation()}
 			role="none"
 		>
-			<h2 class="text-lg font-semibold text-[var(--color-ink-0)] mb-5">이미지 업로드</h2>
+			<h2 class="text-lg font-semibold text-[var(--color-ink-0)] mb-5">{t('uploadModal.title')}</h2>
 
 			<!-- 드롭존 -->
 			<div
@@ -165,10 +169,10 @@
 					<button
 						class="text-xs text-[var(--color-ink-3)] hover:text-[var(--color-state-danger)] mt-2 transition-colors"
 						onclick={(e) => { e.stopPropagation(); file = null; }}
-					>파일 제거</button>
+					>{t('uploadModal.removeFile')}</button>
 				{:else}
-					<div class="text-[var(--color-ink-3)] text-sm">파일을 드래그하거나 클릭해서 선택</div>
-					<div class="text-[var(--color-ink-3)] text-xs mt-1">raw, qcow2, vmdk, iso 등</div>
+					<div class="text-[var(--color-ink-3)] text-sm">{t('uploadModal.chooseFile')}</div>
+					<div class="text-[var(--color-ink-3)] text-xs mt-1">{t('uploadModal.fileFormats')}</div>
 				{/if}
 			</div>
 			<input id="image-file-input" type="file" class="hidden" onchange={onFileInput} />
@@ -177,22 +181,22 @@
 				<!-- 이름 -->
 				<div>
 					<label for="img-name" class="block text-xs text-[var(--color-ink-2)] mb-1.5 uppercase tracking-wide">
-						이미지 이름 <span class="text-[var(--color-state-danger)]">*</span>
+						<RichText segments={t.rich('uploadModal.nameLabel')} tags={{ required: requiredMarker }} />
 					</label>
 					<input
 						id="img-name"
 						bind:value={name}
 						type="text"
-						placeholder="ubuntu:latest"
+						placeholder={t('uploadModal.namePlaceholder')}
 						class="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-line-2)] rounded-lg px-3 py-2 text-[var(--color-ink-0)] text-sm focus:outline-none focus:border-[var(--color-accent)]"
 					/>
-					<div class="text-xs text-[var(--color-ink-3)] mt-1">repository:tag 형식이며 tag를 생략하면 latest가 사용됩니다. 예: ubuntu:24.04</div>
+					<div class="text-xs text-[var(--color-ink-3)] mt-1">{t('uploadModal.nameHelp')}</div>
 				</div>
 
 				<div class="grid grid-cols-2 gap-3">
 					<!-- Disk Format -->
 					<div>
-						<label for="img-disk-format" class="block text-xs text-[var(--color-ink-2)] mb-1.5 uppercase tracking-wide">Disk Format</label>
+						<label for="img-disk-format" class="block text-xs text-[var(--color-ink-2)] mb-1.5 uppercase tracking-wide">{t('uploadModal.diskFormat')}</label>
 						<select
 							id="img-disk-format"
 							bind:value={diskFormat}
@@ -206,26 +210,26 @@
 
 					<!-- Visibility -->
 					<div>
-						<label for="img-visibility" class="block text-xs text-[var(--color-ink-2)] mb-1.5 uppercase tracking-wide">가시성</label>
+						<label for="img-visibility" class="block text-xs text-[var(--color-ink-2)] mb-1.5 uppercase tracking-wide">{t('uploadModal.visibility')}</label>
 						<select
 							id="img-visibility"
 							bind:value={visibility}
 							class="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-line-2)] rounded-lg px-3 py-2 text-[var(--color-ink-0)] text-sm focus:outline-none focus:border-[var(--color-accent)]"
 						>
-							<option value="private">비공개</option>
-							<option value="shared">공유</option>
+							<option value="private">{t('uploadModal.private')}</option>
+							<option value="shared">{t('uploadModal.shared')}</option>
 						</select>
 					</div>
 				</div>
 
 				<!-- OS Distro -->
 				<div>
-					<label for="img-os-distro" class="block text-xs text-[var(--color-ink-2)] mb-1.5 uppercase tracking-wide">OS Distro (선택)</label>
+					<label for="img-os-distro" class="block text-xs text-[var(--color-ink-2)] mb-1.5 uppercase tracking-wide">{t('uploadModal.osDistro')}</label>
 					<input
 						id="img-os-distro"
 						bind:value={osDistro}
 						type="text"
-						placeholder="ubuntu, centos, windows..."
+						placeholder={t('uploadModal.osDistroPlaceholder')}
 						class="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-line-2)] rounded-lg px-3 py-2 text-[var(--color-ink-0)] text-sm focus:outline-none focus:border-[var(--color-accent)]"
 					/>
 				</div>
@@ -236,8 +240,8 @@
 			{/if}
 
 			<div class="flex justify-end gap-3 mt-6">
-				<Button variant="ghost" size="md" onclick={close}>취소</Button>
-				<Button variant="accent" size="md" onclick={submit}>업로드 시작</Button>
+				<Button variant="ghost" size="md" onclick={close}>{t('uploadModal.cancel')}</Button>
+				<Button variant="accent" size="md" onclick={submit}>{t('uploadModal.startUpload')}</Button>
 			</div>
 		</div>
 	</div>

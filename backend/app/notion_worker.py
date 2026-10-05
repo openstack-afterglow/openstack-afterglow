@@ -10,6 +10,7 @@ Notion 다중 타겟 + 레거시 NotionConfig 동기화를 1분 간격으로 수
 import asyncio
 import logging
 import os
+import signal
 from datetime import UTC, datetime
 
 logging.basicConfig(
@@ -215,7 +216,7 @@ async def _run_sync_cycle() -> None:
 
 async def main() -> None:
     from app.config import get_settings
-    from app.database import init_db, is_db_available
+    from app.database import close_db, init_db, is_db_available
 
     _logger.info("Notion Sync Worker 시작")
 
@@ -286,15 +287,36 @@ async def main() -> None:
     except Exception:
         _logger.warning("DB 자동 백업 스케줄러 등록 실패", exc_info=True)
 
-    await asyncio.sleep(30)  # 초기 대기
+    try:
+        await asyncio.sleep(30)  # 초기 대기
 
-    while True:
-        try:
-            await _run_sync_cycle()
-        except Exception:
-            _logger.exception("Notion 동기화 사이클 오류")
-        await asyncio.sleep(_CHECK_INTERVAL)
+        while True:
+            try:
+                await _run_sync_cycle()
+            except Exception:
+                _logger.exception("Notion 동기화 사이클 오류")
+            await asyncio.sleep(_CHECK_INTERVAL)
+    finally:
+        if scheduler.running:
+            scheduler.shutdown(wait=False)
+            await asyncio.sleep(0)
+        await close_db()
+        _logger.info("Notion Sync Worker 종료")
+
+
+async def _main_async() -> None:
+    loop = asyncio.get_running_loop()
+    task = asyncio.create_task(main())
+    for shutdown_signal in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(shutdown_signal, task.cancel)
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+    finally:
+        for shutdown_signal in (signal.SIGTERM, signal.SIGINT):
+            loop.remove_signal_handler(shutdown_signal)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(_main_async())

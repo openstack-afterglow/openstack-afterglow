@@ -1,3 +1,5 @@
+import { t } from '$lib/i18n/ns/images-keys';
+
 const TAG_PATTERN = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/;
 const REPOSITORY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*(?::[0-9]{1,5})?(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/;
 
@@ -10,7 +12,7 @@ export interface ImageReferenceParts {
 export function parseImageReference(value: string): ImageReferenceParts {
 	const raw = value.trim();
 	if (!raw || /\s|[\u0000-\u001f\u007f]/.test(raw) || raw.includes('@')) {
-		throw new Error('이미지 이름은 Docker-style repository[:tag] 형식이어야 합니다.');
+		throw new Error(t('imageReference.invalidName'));
 	}
 	const slashIndex = raw.lastIndexOf('/');
 	const colonIndex = raw.lastIndexOf(':');
@@ -18,7 +20,7 @@ export function parseImageReference(value: string): ImageReferenceParts {
 	const repository = hasTag ? raw.slice(0, colonIndex) : raw;
 	const tag = hasTag ? raw.slice(colonIndex + 1) : 'latest';
 	if (!REPOSITORY_PATTERN.test(repository) || !TAG_PATTERN.test(tag)) {
-		throw new Error('이미지 이름은 Docker-style repository[:tag] 형식이어야 합니다.');
+		throw new Error(t('imageReference.invalidName'));
 	}
 	return { repository, tag, name: `${repository}:${tag}` };
 }

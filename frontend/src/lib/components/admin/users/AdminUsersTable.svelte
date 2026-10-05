@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { User } from '$lib/types/common';
   import Pagination from '$lib/components/ui/Pagination.svelte';
+  import { t } from '$lib/i18n/ns/admin-identity';
 
   let {
     users,
@@ -27,11 +28,11 @@
     <table class="w-full text-sm">
       <thead>
         <tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
-          <th class="text-left py-2 pr-4">이름</th>
-          <th class="text-left py-2 pr-4">이메일</th>
-          <th class="text-left py-2 pr-4">상태</th>
-          <th class="text-left py-2 pr-4">ID</th>
-          <th class="text-left py-2">최초 활동일</th>
+          <th class="text-left py-2 pr-4">{t('userTable.name')}</th>
+          <th class="text-left py-2 pr-4">{t('userTable.email')}</th>
+          <th class="text-left py-2 pr-4">{t('userTable.status')}</th>
+          <th class="text-left py-2 pr-4">{t('userTable.id')}</th>
+          <th class="text-left py-2">{t('userTable.firstActivity')}</th>
         </tr>
       </thead>
       <tbody>
@@ -44,7 +45,7 @@
             <td class="py-2 pr-4 text-ink-0"><span class="max-md:block max-md:max-w-[66vw] max-md:truncate" title={u.name}>{u.name}</span></td>
             <td class="py-2 pr-4 text-ink-2">{u.email || '-'}</td>
             <td class="py-2 pr-4">
-              <span class="px-1.5 py-0.5 rounded text-xs font-medium {u.enabled ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'}">{u.enabled ? '활성' : '비활성'}</span>
+              <span class="px-1.5 py-0.5 rounded text-xs font-medium {u.enabled ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'}">{u.enabled ? t('userTable.enabled') : t('userTable.disabled')}</span>
             </td>
             <td class="py-2 pr-4 text-ink-2 font-mono text-xs">{u.id.slice(0, 8)}</td>
             <td class="py-2 text-ink-2">{(u.first_seen ?? u.created_at)?.slice(0, 10) ?? '-'}</td>

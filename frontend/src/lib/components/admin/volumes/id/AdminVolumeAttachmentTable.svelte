@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-storage';
 	import type { AdminVolumeDetail } from '$lib/types/volume';
 
 	let { attachments }: { attachments: AdminVolumeDetail['attachments'] } = $props();
@@ -6,12 +7,12 @@
 
 {#if attachments.length > 0}
 	<div class="bg-surface-base border border-line rounded-xl p-4 mb-4">
-		<h3 class="text-xs text-ink-2 uppercase tracking-wide mb-3">연결 정보</h3>
+		<h3 class="text-xs text-ink-2 uppercase tracking-wide mb-3">{t('volumeDetail.attachments')}</h3>
 		<table class="w-full text-sm">
 			<thead>
 				<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
-					<th class="text-left py-1.5 pr-4">인스턴스 ID</th>
-					<th class="text-left py-1.5 pr-4">디바이스</th>
+					<th class="text-left py-1.5 pr-4">{t('volumeDetail.instanceId')}</th>
+					<th class="text-left py-1.5 pr-4">{t('volumeDetail.device')}</th>
 				</tr>
 			</thead>
 			<tbody>

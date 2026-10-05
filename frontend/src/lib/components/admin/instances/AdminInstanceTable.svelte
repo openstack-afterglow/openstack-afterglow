@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-compute';
 	import { projectNames } from '$lib/stores/projectNames';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import Pagination from '$lib/components/ui/Pagination.svelte';
@@ -64,15 +65,15 @@
 						indeterminate={partiallySelected}
 						disabled={selectionDisabled || selectableIds.size === 0}
 						onclick={onToggleAll}
-						ariaLabel="전체 선택"
+						ariaLabel={t('instances.table.selectAll')}
 					/>
 				</th>
-				<th class="text-left py-2 pr-4">이름</th>
-				<th class="text-left py-2 pr-4">상태</th>
-				<th class="text-left py-2 pr-4">Flavor</th>
-				<th class="text-left py-2 pr-4">호스트</th>
-				<th class="text-left py-2 pr-4">프로젝트</th>
-				<th class="text-left py-2">생성일</th>
+				<th class="text-left py-2 pr-4">{t('instances.table.name')}</th>
+				<th class="text-left py-2 pr-4">{t('instances.table.status')}</th>
+				<th class="text-left py-2 pr-4">{t('instances.table.flavor')}</th>
+				<th class="text-left py-2 pr-4">{t('instances.table.host')}</th>
+				<th class="text-left py-2 pr-4">{t('instances.table.project')}</th>
+				<th class="text-left py-2">{t('instances.table.createdAt')}</th>
 			</tr>
 		</thead>
 		<tbody>
@@ -87,9 +88,9 @@
 							checked={selectedIds.has(s.id)}
 							disabled={selectionDisabled || !selectableIds.has(s.id)}
 							unavailable={!selectableIds.has(s.id)}
-							title={!selectableIds.has(s.id) ? '현재 상태에서는 선택할 수 없습니다.' : undefined}
+							title={!selectableIds.has(s.id) ? t('instances.table.unselectable') : undefined}
 							onclick={() => onToggleSelect(s.id)}
-							ariaLabel={`${s.name || s.id} 선택`}
+							ariaLabel={t('instances.table.select', { name: s.name || s.id })}
 						/>
 					</td>
 					<td class="p-0">
@@ -103,14 +104,14 @@
 									onclick={(e) => { e.stopPropagation(); expandedError = expandedError === s.id ? null : s.id; }}
 									class="text-red-500 hover:text-red-300 text-xs underline"
 									title={s.fault}
-								>사유</button>
+								>{t('instances.table.reason')}</button>
 							{/if}
 							{#if s.status === 'ERROR' && onRecover}
 								<button
 									onclick={(e) => { e.stopPropagation(); onRecover(s); }}
 									class="text-warm-text hover:text-warm-text-hover text-xs underline"
-									title="복구 분석 및 실행"
-								>복구</button>
+									title={t('instances.table.recoveryHelp')}
+								>{t('instances.table.recover')}</button>
 							{/if}
 						</div>
 						{#if expandedError === s.id && s.fault}
@@ -128,7 +129,7 @@
 							title={s.project_id ?? ''}
 						>
 							{#if copiedProjectId === s.project_id}
-								<span class="text-green-400 text-xs">복사됨</span>
+								<span class="text-green-400 text-xs">{t('instances.table.copied')}</span>
 							{:else}
 								<span class="text-xs">{s.project_id ? ($projectNames.get(s.project_id) ?? s.project_id.slice(0, 8)) : '-'}</span>
 							{/if}

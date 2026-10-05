@@ -81,9 +81,9 @@ describe('Waygate client settings', () => {
 		const create = waygateServerCreateBody(draft);
 		const update = waygateServerUpdateBody(draft);
 		expect(create.ok).toBe(false);
-		if (!create.ok) expect(Object.keys(create.errors)).toEqual(['name', 'dns', 'persistentKeepalive']);
+		if (!create.ok) expect(Object.keys(create.errors).sort()).toEqual(['dns', 'name', 'persistentKeepalive']);
 		expect(update.ok).toBe(false);
-		if (!update.ok) expect(Object.keys(update.errors)).toEqual(['dns', 'persistentKeepalive']);
+		if (!update.ok) expect(Object.keys(update.errors).sort()).toEqual(['dns', 'persistentKeepalive']);
 	});
 
 	it('edits legacy clients with custom values and explicit MTU clearing', () => {

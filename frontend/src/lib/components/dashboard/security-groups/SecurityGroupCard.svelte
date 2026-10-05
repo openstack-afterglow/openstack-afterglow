@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/network-resources';
 	import SecurityGroupRuleForm from './SecurityGroupRuleForm.svelte';
 	import SecurityGroupRuleTable from './SecurityGroupRuleTable.svelte';
 
@@ -77,17 +78,17 @@
 				<span class="text-xs text-ink-2 truncate">{sg.description}</span>
 			{/if}
 			<span class="text-xs text-ink-2 ml-auto shrink-0"
-				>{sg.rules.length}개 규칙 {expanded ? '▾' : '▸'}</span
+				>{t('securityGroup.card.rules', { count: sg.rules.length })} {expanded ? '▾' : '▸'}</span
 			>
 		</button>
 		<button
 			onclick={() => { showAddRule = !showAddRule; }}
 			class="text-xs text-warm-text hover:text-warm-text-hover px-2 py-1 border border-action-warm hover:border-action-warm rounded transition-colors shrink-0"
-		>+ 규칙</button>
+		>{t('securityGroup.card.addRule')}</button>
 		<button
 			onclick={() => onDelete(sg.id, sg.name)}
 			class="text-xs text-red-400 hover:text-red-300 px-2 py-1 border border-red-900 hover:border-red-700 rounded transition-colors shrink-0"
-		>삭제</button>
+		>{t('securityGroup.actions.delete')}</button>
 	</div>
 
 	<!-- 규칙 추가 폼 -->

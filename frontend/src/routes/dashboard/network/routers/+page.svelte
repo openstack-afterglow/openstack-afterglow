@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/network-pages';
   import { confirmDialog } from '$lib/stores/confirm.svelte';
   import { untrack } from 'svelte';
   import { auth } from '$lib/stores/auth';
@@ -43,7 +44,7 @@
   async function bulkDelete() {
     const ids = [...selection.ids];
     if (ids.length === 0) return;
-    if (!await confirmDialog(`${ids.length}개 라우터를 삭제하시겠습니까?`)) return;
+    if (!await confirmDialog(t('routers.bulkConfirm', { count: ids.length }))) return;
     const tokenSnapshot = $auth.token ?? undefined;
     const projectSnapshot = $auth.projectId ?? undefined;
     busy = true;
@@ -51,9 +52,9 @@
       const results = await executeBulkMutations(ids, (id) => api.delete(`/api/v1/routers/${id}`, tokenSnapshot, projectSnapshot));
       const succeeded = results.filter((result) => result.ok).map((result) => result.id);
       if (projectSnapshot === ($auth.projectId ?? undefined)) selection.remove(succeeded);
-      if (succeeded.length > 0) toast.success(`${succeeded.length}개 라우터 삭제 요청을 완료했습니다.`);
+      if (succeeded.length > 0) toast.success(t('routers.bulkDone', { count: succeeded.length }));
       const failedCount = results.length - succeeded.length;
-      if (failedCount > 0) toast.error(`${failedCount}개 라우터 삭제에 실패했습니다.`);
+      if (failedCount > 0) toast.error(t('routers.bulkFailed', { count: failedCount }));
       if (projectSnapshot === ($auth.projectId ?? undefined)) await fetchRouters({ refresh: true });
     } finally {
       busy = false;
@@ -66,7 +67,7 @@
       if (selection.count > 0) selection.retain(routers.map((router) => router.id));
       error = '';
     } catch (e) {
-      error = e instanceof ApiError ? `조회 실패 (${e.status})` : '서버 오류';
+      error = e instanceof ApiError ? t('routers.loadFailed', { status: e.status }) : t('routers.serverError');
     } finally {
       loading = false;
     }
@@ -101,7 +102,7 @@
       await fetchRouters();
       return true;
     } catch (e) {
-      return e instanceof ApiError ? e.message : '생성 실패';
+      return e instanceof ApiError ? e.message : t('routers.createFailed');
     }
   }
 
@@ -132,7 +133,7 @@
 <RouterCreateModal bind:open={showModal} {externalNetworks} onCreate={createRouter} />
 
 <div class="bulk-selection-page p-4 md:p-8">
-  <PageHeader breadcrumb="NETWORK / ROUTERS" title="라우터">
+  <PageHeader breadcrumb={t('routers.breadcrumb')} title={t('routers.title')}>
     {#snippet actions()}
       <AutoRefreshControl
         bind:active={ar.active}
@@ -141,7 +142,7 @@
         refreshing={refreshing}
         onManualRefresh={forceRefresh}
       />
-      <Button onclick={openCreate} onintent={prefetchNetworks} variant="primary">+ 라우터 생성</Button>
+      <Button onclick={openCreate} onintent={prefetchNetworks} variant="primary">{t('routers.createButton')}</Button>
     {/snippet}
   </PageHeader>
 
@@ -166,14 +167,14 @@
 
 <BulkSelectionOverlay
   count={selection.count}
-  ariaLabel="선택한 라우터 일괄 작업"
-  actions={[{ key: 'delete', label: '삭제', tone: 'danger', onAction: bulkDelete }]}
+  ariaLabel={t('routers.bulkAria')}
+  actions={[{ key: 'delete', label: t('routers.delete'), tone: 'danger', onAction: bulkDelete }]}
   {busy}
   onClear={() => selection.clear()}
 />
 
 {#if selectedRouterId}
-  <SlidePanel onClose={closeRouterPanel} ariaLabel="라우터 상세" width="w-full md:w-[60vw] max-w-2xl">
+  <SlidePanel onClose={closeRouterPanel} ariaLabel={t('routers.detail')} width="w-full md:w-[60vw] max-w-2xl">
     <RouterDetailPanel
       routerId={selectedRouterId}
       onClose={closeRouterPanel}

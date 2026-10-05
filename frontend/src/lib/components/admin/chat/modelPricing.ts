@@ -1,3 +1,4 @@
+import { t } from '$lib/i18n/ns/admin-chat';
 export type ModelKind = 'text' | 'image' | 'tts' | 'stt' | 'realtime';
 export type BillingBasis = 'unit' | 'duration' | 'characters' | 'tokens' | 'session';
 export type TimeUnit = 'second' | 'minute' | 'hour';
@@ -7,11 +8,17 @@ export type MediaPricing = Record<string, unknown> & {
 	image_variants?: Record<string, string>;
 	token_rates?: Record<string, Record<string, unknown>>;
 };
-export const MODEL_LABELS: Record<ModelKind, string> = { text: '텍스트', image: '이미지', tts: '음성 생성 (TTS)', stt: '음성 인식 (STT)', realtime: '실시간 음성' };
+export const MODEL_LABELS: Record<ModelKind, string> = {
+	get text() { return t('configuration.text'); },
+	get image() { return t('configuration.image'); },
+	get tts() { return t('configuration.speechGenerationTts'); },
+	get stt() { return t('configuration.speechRecognitionStt'); },
+	get realtime() { return t('configuration.realtimeAudio'); }
+};
 export const TOKEN_FIELDS = [
-	{ key: 'input_per_million', label: '입력' },
-	{ key: 'cache_read_per_million', label: '캐시 입력' },
-	{ key: 'output_per_million', label: '출력' }
+	{ key: 'input_per_million', get label() { return t('configuration.input'); } },
+	{ key: 'cache_read_per_million', get label() { return t('pricing.cacheInput'); } },
+	{ key: 'output_per_million', get label() { return t('configuration.output'); } }
 ] as const;
 export const RATE_KEYS = [
 	'image_per_unit', 'audio_per_character', 'audio_per_second', 'audio_per_minute',
@@ -49,14 +56,14 @@ export function effectiveBasis(kind: ModelKind, draft: PricingDraft): string {
 }
 export function pricingError(kind: ModelKind, draft: PricingDraft): string | undefined {
 	for (const value of [...Object.values(draft.rates), ...Object.values(draft.tokens.image), ...Object.values(draft.tokens.audio)]) {
-		if (value.trim() && !DECIMAL.test(value.trim())) return '단가는 0 이상의 소수 문자열로 입력하세요.';
+		if (value.trim() && !DECIMAL.test(value.trim())) return t('pricing.decimalError');
 	}
-	if (kind !== 'text' && effectiveBasis(kind, draft) === 'tokens' && (!draft.rates.reservation_usd.trim() || ZERO.test(draft.rates.reservation_usd.trim()))) return '토큰 과금에는 0보다 큰 요청 전체 예약 상한 (USD)이 필요합니다.';
-	if (draft.variants.length > 500) return '이미지 variant 가격은 최대 500개까지 설정할 수 있습니다.';
+	if (kind !== 'text' && effectiveBasis(kind, draft) === 'tokens' && (!draft.rates.reservation_usd.trim() || ZERO.test(draft.rates.reservation_usd.trim()))) return t('pricing.reservationError');
+	if (draft.variants.length > 500) return t('pricing.variantLimit');
 	const names = new Set<string>();
 	for (const row of draft.variants) {
 		const name = row.name.trim(), price = row.price.trim();
-		if (!/^[1-9][0-9]*x[1-9][0-9]*:[A-Za-z][A-Za-z0-9_-]*$/.test(name) || !DECIMAL.test(price) || names.has(name)) return '이미지 variant는 중복 없는 size:quality와 0 이상의 USD / 장 단가가 필요합니다.';
+		if (!/^[1-9][0-9]*x[1-9][0-9]*:[A-Za-z][A-Za-z0-9_-]*$/.test(name) || !DECIMAL.test(price) || names.has(name)) return t('pricing.variantError');
 		names.add(name);
 	}
 }

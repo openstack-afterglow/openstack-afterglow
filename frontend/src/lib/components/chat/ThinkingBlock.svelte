@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/chat-studio';
 	interface Props {
 		text: string;
 		/** 추론이 진행 중(본문 시작 전)이면 자동 펼침 + "추론 중…" 라벨. 본문이 시작되거나 완료되면 false. */
@@ -21,7 +22,7 @@
 		<svg class="ic" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
 			<path d="M9.5 21h5M12 3a6 6 0 0 1 4 10.5c-.6.6-1 1.4-1 2.2V17H9v-1.3c0-.8-.4-1.6-1-2.2A6 6 0 0 1 12 3z" stroke-linecap="round" stroke-linejoin="round" />
 		</svg>
-		<span class="think-label">{active ? '추론 중…' : '추론 과정'}</span>
+		<span class="think-label">{active ? t('thinkingBlock.active') : t('thinkingBlock.process')}</span>
 		{#if active}
 			<span class="dots" aria-hidden="true"><span></span><span></span><span></span></span>
 		{/if}

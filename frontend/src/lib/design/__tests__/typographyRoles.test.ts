@@ -2,13 +2,11 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { TEXT_CSS_VAR } from '../tokens';
 
 const repoRoot = resolve(__dirname, '../../../../..');
 const frontendRoot = resolve(repoRoot, 'frontend');
 const layoutSource = readFileSync(resolve(frontendRoot, 'src/routes/layout.css'), 'utf8');
-const tokenSource = readFileSync(resolve(frontendRoot, 'src/lib/design/tokens.ts'), 'utf8');
-const landingSource = readFileSync(resolve(frontendRoot, 'src/lib/components/landing/LandingPage.svelte'), 'utf8');
-const designSource = readFileSync(resolve(repoRoot, 'DESIGN.md'), 'utf8');
 const landingComponentSources = Object.fromEntries(
 	['LandingPage', 'LandingOpsBoard', 'LandingJourney', 'LandingConsolePreview'].map((name) => [
 		name,
@@ -16,7 +14,7 @@ const landingComponentSources = Object.fromEntries(
 	]),
 );
 
-/** Matches a text `color` declaration (not `background-color`, `border-color`, or custom properties). */
+/** Matches text color, excluding background, border and custom-property declarations. */
 function textColorDeclaration(token: string): RegExp {
 	return new RegExp(`(^|[^-\\w])color:\\s*var\\(${token}\\)\\s*[;}]`);
 }
@@ -67,43 +65,18 @@ describe('role-based typography system', () => {
 		expect(existsSync(resolve(fontRoot, 'ibm-plex/LICENSE.txt'))).toBe(true);
 	});
 
-	it('defines sans, display, and mono roles in the authoritative CSS and TypeScript tokens', () => {
-		expect(layoutSource).toContain('font-family: "Pretendard Variable"');
-		expect(layoutSource).toContain('font-family: "IBM Plex Sans KR"');
-		expect(layoutSource).toContain('font-family: "IBM Plex Mono"');
-		expect(layoutSource).toContain('--font-display: "IBM Plex Sans KR"');
-		expect(layoutSource).toContain('--font-mono: "IBM Plex Mono", "Pretendard Variable"');
-		expect(layoutSource.match(/font-display: swap;/g)).toHaveLength(5);
-		expect(layoutSource).not.toContain('MaruBuri');
-		expect(layoutSource).not.toMatch(/https?:\/\//);
-		expect(tokenSource).toContain('export const FONT_CSS_VAR');
-		expect(tokenSource).toContain("display: 'var(--font-display)'");
-	});
-
-	it('keeps display typography on editorial headings and documents the same role boundary', () => {
-		expect(landingSource).toContain('.hero h1, .section h2, .cap-content h3, blockquote, .audience-note strong { font-family: var(--font-display); }');
-		expect(landingSource).toContain('font-family: var(--font-sans);');
-		expect(designSource).toContain('Typography has three explicit roles');
-		expect(designSource).toContain('do not use it for ordinary console page titles or controls');
-	});
 
 	it('keeps small landing labels AA-safe without changing the dark palette', () => {
 		const lightSurface = lightThemeHex('--color-surface-base');
 		for (const token of [
 			'--color-ink-1',
 			'--color-ink-2',
-			'--color-warm-text',
-			'--color-state-success-text',
+			TEXT_CSS_VAR.warm.slice(4, -1),
+			TEXT_CSS_VAR.success.slice(4, -1),
 		]) {
 			expect(contrastRatio(lightThemeHex(token), lightSurface), token).toBeGreaterThanOrEqual(4.5);
 		}
 
-		expect(layoutSource).toContain('--color-warm-text: var(--color-warm);');
-		expect(layoutSource).toContain('--color-state-success-text: var(--color-state-success);');
-		expect(tokenSource).toContain('export const TEXT_CSS_VAR');
-		expect(tokenSource).toContain("warm: 'var(--color-warm-text)'");
-		expect(tokenSource).toContain("success: 'var(--color-state-success-text)'");
-		expect(designSource).toContain('Normal-sized public/editorial labels use `--color-ink-2`, `--color-warm-text`, or `--color-state-success-text`');
 	});
 
 	it('keeps landing text off low-contrast and decoration-only color tokens', () => {

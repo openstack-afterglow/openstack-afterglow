@@ -40,6 +40,7 @@
 </script>
 
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/topology';
 	// 스크린 공간 HUD: 존 라벨 칩과 트렁크 배지. 버튼에만 pointer-events 를 준다.
 	import Pill from '$lib/components/ui/Pill.svelte';
 	import { UPLINK_CAPTION, UPLINK_TITLE } from './canvasHelpers';
@@ -65,7 +66,7 @@
 			class:is-dim={l.dim}
 			data-hud-control
 			data-zone-label={l.netId}
-			aria-label="네트워크 {l.name} {l.cidrText} 선택"
+			aria-label={t('hud.selectNetwork', { name: l.name, cidr: l.cidrText })}
 			aria-pressed={l.netId === selectedNetId}
 			style:--net={l.color}
 			style:--sx="{l.sx}px"
@@ -81,9 +82,9 @@
 			<span class="zone-name">{l.name}</span>
 			<span class="zone-cidr">{l.cidrText}</span>
 			<span class="zone-pills">
-				{#if l.isInternet}<Pill tone="warm" size="xs">인터넷</Pill>{/if}
+				{#if l.isInternet}<Pill tone="warm" size="xs">{t('hud.internet')}</Pill>{/if}
 				<Pill tone="neutral" size="xs">{l.kindLabel}</Pill>
-				{#if l.isolated}<Pill tone="neutral" size="xs">격리</Pill>{/if}
+				{#if l.isolated}<Pill tone="neutral" size="xs">{t('hud.isolated')}</Pill>{/if}
 				{#if l.statusText}<Pill tone="neutral" size="xs">{l.statusText}</Pill>{/if}
 			</span>
 			{#if l.adminPills.length}
@@ -103,14 +104,14 @@
 				class:is-dim={b.dim}
 				data-hud-control
 				data-trunk-badge={b.key}
-				title={UPLINK_TITLE}
-				aria-label="{b.netName} 트렁크 배지 ({UPLINK_CAPTION}) {b.rateText}"
+				title={UPLINK_TITLE()}
+				aria-label={t('hud.trunkBadge', { name: b.netName, caption: UPLINK_CAPTION(), rate: b.rateText })}
 				style:--sx="{b.sx}px"
 				style:--sy="{b.sy}px"
 				onclick={() => onselectnet(b.netId)}
 			>
 				<span class="badge-rate">{b.rateText}</span>
-				<span class="badge-cap">{UPLINK_CAPTION}</span>
+				<span class="badge-cap">{UPLINK_CAPTION()}</span>
 			</button>
 		{/each}
 	{/if}

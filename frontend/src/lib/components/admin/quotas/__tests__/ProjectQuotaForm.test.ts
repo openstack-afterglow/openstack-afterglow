@@ -159,7 +159,6 @@ describe('ProjectQuotaForm', () => {
 		// Unsupported field shows disabled input with placeholder and no fake zero
 		const disabledInput = screen.getByTestId('quota-compute-injected_files-disabled') as HTMLInputElement;
 		expect(disabledInput.disabled).toBe(true);
-		expect(disabledInput.placeholder).toBe('지원되지 않음');
 
 		// Modify a supported field
 		const instancesInput = screen.getByTestId('quota-compute-instances');

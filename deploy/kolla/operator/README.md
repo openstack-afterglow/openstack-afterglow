@@ -29,9 +29,11 @@ explicit immutable Git `tag = "vX.Y.Z"`; `uv.lock` then records that tag's
 resolved commit. The lock—not a floating Git ref—is what every controller
 installs with `uv sync --locked`.
 
-The operator must never consume a branch, a bare repository URL, or a mutable
-`latest` label. A sibling release is promotable only when all of these are
-true:
+Root-role Git sources must never use a branch, a bare repository URL, or a
+mutable `latest` label. This package/lock policy is distinct from application
+image selection: the five services follow their existing published GHCR
+`latest` channels through `*_image_tag` (`stable` where published). A sibling
+release is promotable only when all of these are true:
 
 1. The sibling has pushed an immutable stable `vX.Y.Z` tag.
 2. The tag and root distribution metadata have exactly the same `X.Y.Z`
@@ -170,6 +172,45 @@ From `/etc/kolla`, use the ordinary Kolla command line:
 kolla-ansible deploy -i multinode
 kolla-ansible reconfigure -i multinode --tags afterglow,waygate,drover,lumen,palimpsest
 ```
+The exact native spelling `--tag afterglow,lumen,drover,palimpsest,waygat`
+also selects all five services; no wrapper or input correction is required.
+The Waygate play explicitly inherits both `waygate` and `waygat` tags through
+image preparation and role execution, and its HAProxy configuration/reconcile
+path accepts either tag. CLI service selection does not change image versions:
+explicit `*_image_ref` digest pins and installed root-package versions remain
+effective until separately authorized release promotion.
+
+
+For enabled published-image services, `prechecks`, `pull`, `deploy`,
+`reconfigure`, and `upgrade` resolve moving image tags on the first targeted
+controller for each service. The registry digest selection is shared across
+all targeted serial batches and is refreshed on the next invocation. `pull`
+downloads images only; `deploy`, `reconfigure`, and `upgrade` replace containers
+when their selected images change. Source-build and disabled components skip
+lookup; service tags and `--limit` determine which services/controllers
+participate. Explicit component `*_image_ref` version/digest pins skip lookup
+and remain the controlled release/rollback path.
+
+Component enablement may differ by controller. Selection covers only components
+enabled on enabled published-mode service consumers before any serial consumer
+starts; disabled and source-mode hosts do not contribute. Each controller receives
+only locally enabled references. Effective host image/ref and service namespace/tag
+inputs preserve later-only worker rollback pins. Contradictory effective inputs for
+one component fail before registry or credential access; reconcile them or split
+targets with `--limit`. Three Palimpsest APIs and one worker share one frozen selection.
+
+Selection readiness must belong to the current service, not an earlier service.
+If its first target is disabled or in source mode, later published-image targets
+cannot reuse earlier facts; use separate homogeneous invocations with `--limit`.
+
+Native Kolla globals and `-e` extra-vars take precedence over selected facts;
+an effective mutable `*_image_ref` override is rejected rather than dispatched.
+Remove old mutable or bare `*_image_ref` entries from globals and extra-vars,
+and use the service `*_image_tag` instead (for example,
+`-e afterglow_image_tag=latest`). Immutable `*_image_ref` pins remain supported.
+This does not change stock images, datastore pins, Cloud Shell's digest
+requirement, unmanaged Lumen sandbox images, root-role Git pins, human package
+promotion, or the deployment guide's reviewed schema migration requirements.
 
 See [the deployment guide](../README.md) for inventory, configuration, legacy
 symlink migration, and uninstall ownership details.

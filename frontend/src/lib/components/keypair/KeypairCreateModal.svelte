@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Alert, Button, Card, Field, Modal, TextareaInput, TextInput } from '$lib/components/ui';
+	import { t } from '$lib/i18n/ns/images-keys';
 	let {
 		open = $bindable(),
 		onCreate,
@@ -27,7 +28,7 @@
 		const file = input.files?.[0];
 		if (!file) return;
 		if (file.size > 65536) {
-			error = '파일이 너무 큽니다 (최대 64KB)';
+			error = t('keypairCreate.error.fileTooLarge');
 			input.value = '';
 			return;
 		}
@@ -35,7 +36,7 @@
 		reader.onload = (e) => {
 			const content = ((e.target?.result as string) ?? '').trim();
 			if (content && !/^(ssh-rsa|ssh-ed25519|ssh-dss|ecdsa-sha2-\S+)\s/.test(content)) {
-				error = '유효한 SSH 공개키 형식이 아닙니다 (ssh-rsa, ssh-ed25519 등)';
+				error = t('keypairCreate.error.invalidPublicKey');
 				return;
 			}
 			form.public_key = content;
@@ -66,27 +67,27 @@
 	<div class="w-[min(28rem,calc(100vw-2rem))] max-h-[calc(100dvh-2rem)] overflow-y-auto">
 		<Card surface="modal" padding="lg">
 			{#if createdPrivateKey}
-				<h2 id="keypair-create-title" class="mb-3 text-lg font-semibold text-ink-0">개인키 다운로드</h2>
-				<Alert tone="warning" class="mb-3">이 키는 다시 표시되지 않습니다. 지금 저장하세요.</Alert>
+				<h2 id="keypair-create-title" class="mb-3 text-lg font-semibold text-ink-0">{t('keypairCreate.privateKey.title')}</h2>
+				<Alert tone="warning" class="mb-3">{t('keypairCreate.privateKey.warning')}</Alert>
 				<pre class="mb-4 max-h-48 overflow-auto rounded-md bg-surface-sunken p-3 text-xs text-green-300">{createdPrivateKey}</pre>
-				<Button onclick={() => (open = false)} variant="primary" class="w-full">확인</Button>
+				<Button onclick={() => (open = false)} variant="primary" class="w-full">{t('keypairCreate.actions.confirm')}</Button>
 			{:else}
-				<h2 id="keypair-create-title" class="mb-5 text-lg font-semibold text-ink-0">키페어 생성</h2>
+				<h2 id="keypair-create-title" class="mb-5 text-lg font-semibold text-ink-0">{t('keypairCreate.title')}</h2>
 				<div class="space-y-4">
-					<Field label="이름" for="keypair-name" required>
-						<TextInput id="keypair-name" bind:value={form.name} placeholder="my-keypair" />
+					<Field label={t('keypairCreate.form.name.label')} for="keypair-name" required>
+						<TextInput id="keypair-name" bind:value={form.name} placeholder={t('keypairCreate.form.name.placeholder')} />
 					</Field>
-					<Field label="공개키" help="비우면 새 키페어를 자동 생성합니다." for="keypair-pubkey">
+					<Field label={t('keypairCreate.form.publicKey.label')} help={t('keypairCreate.form.publicKey.help')} for="keypair-pubkey">
 						<div class="mb-1.5 flex justify-end">
 							<label class="cursor-pointer text-xs text-warm-text transition-colors hover:text-warm-text-hover">
-								파일 선택
+								{t('keypairCreate.form.publicKey.chooseFile')}
 								<input type="file" accept=".pub,.pem,.txt" class="hidden" onchange={handleFileUpload} />
 							</label>
 						</div>
 						<TextareaInput
 							id="keypair-pubkey"
 							bind:value={form.public_key}
-							placeholder="ssh-rsa AAAA..."
+							placeholder={t('keypairCreate.form.publicKey.placeholder')}
 							rows={3}
 							class="font-mono"
 							ariaDescribedBy="keypair-pubkey-message"
@@ -95,8 +96,8 @@
 				</div>
 				{#if error}<Alert tone="danger" class="mt-3">{error}</Alert>{/if}
 				<div class="mt-6 flex justify-end gap-3">
-					<Button onclick={() => (open = false)} variant="secondary" disabled={creating}>취소</Button>
-					<Button onclick={submit} disabled={creating || !form.name.trim()} variant="primary">{creating ? '생성 중...' : '생성'}</Button>
+					<Button onclick={() => (open = false)} variant="secondary" disabled={creating}>{t('keypairCreate.actions.cancel')}</Button>
+					<Button onclick={submit} disabled={creating || !form.name.trim()} variant="primary">{creating ? t('keypairCreate.actions.creating') : t('keypairCreate.actions.create')}</Button>
 				</div>
 			{/if}
 		</Card>

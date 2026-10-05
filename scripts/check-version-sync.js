@@ -20,10 +20,13 @@ const kollaSampleText = fs.readFileSync(
 	path.join(root, "deploy/kolla/globals.afterglow.sample.yml"),
 	"utf-8"
 );
-const kollaSampleMatch = kollaSampleText.match(/^afterglow_image_tag:\s*"v([^"]+)"/m);
-const kollaSampleV = kollaSampleMatch ? kollaSampleMatch[1] : "MISSING";
+const kollaSampleMatch = kollaSampleText.match(/^afterglow_image_tag:\s*"([^"]+)"/m);
+const kollaSampleTag = kollaSampleMatch ? kollaSampleMatch[1] : "MISSING";
+const kollaSampleV = ["latest", "stable"].includes(kollaSampleTag)
+	? null
+	: kollaSampleTag.startsWith("v") ? kollaSampleTag.slice(1) : "MISSING";
 
-const mismatch = new Set([rootV, feV, beV, cloudShellV, chartV, kollaSampleV]).size !== 1;
+const mismatch = new Set([rootV, feV, beV, cloudShellV, chartV, ...(kollaSampleV === null ? [] : [kollaSampleV])]).size !== 1;
 if (mismatch) {
 	console.error("✗ version mismatch:");
 	console.error(`  root package.json                     : ${rootV}`);
@@ -31,7 +34,7 @@ if (mismatch) {
 	console.error(`  backend/pyproject.toml                : ${beV}`);
 	console.error(`  cloud-shell/pyproject.toml            : ${cloudShellV}`);
 	console.error(`  helm/afterglow/Chart.yaml             : ${chartV}`);
-	console.error(`  deploy/kolla/globals.afterglow.sample.yml: ${kollaSampleV}`);
+	console.error(`  deploy/kolla/globals.afterglow.sample.yml: ${kollaSampleTag}`);
 	console.error("\n  fix: npm run version:sync");
 	process.exit(1);
 }

@@ -286,23 +286,23 @@ describe('LandingPage', () => {
 				(link) => link.getAttribute('aria-current') === 'location',
 			);
 
-		expect(activeLinks().map((link) => link.textContent?.trim())).toEqual(['개요']);
+		expect(activeLinks().map((link) => link.getAttribute('href'))).toEqual(['#overview']);
 
 		for (const state of [
 			{
-				label: '제공 기능',
+				href: '#capabilities',
 				tops: { overview: -300, capabilities: 80, workflow: 320, work: 560, contact: 800 },
 			},
 			{
-				label: '워크플로우',
+				href: '#workflow',
 				tops: { overview: -560, capabilities: -320, workflow: 80, work: 320, contact: 560 },
 			},
 			{
-				label: '화면',
+				href: '#work',
 				tops: { overview: -800, capabilities: -560, workflow: -320, work: 80, contact: 320 },
 			},
 			{
-				label: '문의',
+				href: '#contact',
 				tops: { overview: -1040, capabilities: -800, workflow: -560, work: -320, contact: 80 },
 			},
 		]) {
@@ -310,13 +310,12 @@ describe('LandingPage', () => {
 			await fireEvent.scroll(window);
 			const current = activeLinks();
 			expect(current).toHaveLength(1);
-			expect(current[0]?.textContent?.trim()).toBe(state.label);
+			expect(current[0]?.getAttribute('href')).toBe(state.href);
 			expect(current[0]?.getAttribute('aria-current')).toBe('location');
 		}
 
 		expect(container.querySelectorAll('.nav-links a[aria-current="location"]')).toHaveLength(1);
 	});
-
 
 
 	it('leaves reveal content visible without an observer and restores scroll behavior on cleanup', () => {

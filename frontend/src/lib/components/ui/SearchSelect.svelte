@@ -8,6 +8,7 @@
 
 <script lang="ts">
 	import { tick } from 'svelte';
+	import { t } from '$lib/i18n/ns/common';
 
 	interface Props {
 		id: string;
@@ -27,15 +28,18 @@
 		id,
 		value = '',
 		options,
-		placeholder = '선택하세요',
-		searchPlaceholder = '검색...',
-		emptyText = '일치하는 항목이 없습니다',
+		placeholder: placeholderProp,
+		searchPlaceholder: searchPlaceholderProp,
+		emptyText: emptyTextProp,
 		loading = false,
 		disabled = false,
 		ariaLabel,
 		onopen,
 		onchange,
 	}: Props = $props();
+	const placeholder = $derived(placeholderProp ?? t('search.selectPlaceholder'));
+	const searchPlaceholder = $derived(searchPlaceholderProp ?? t('search.placeholder'));
+	const emptyText = $derived(emptyTextProp ?? t('search.noMatch'));
 
 	let open = $state(false);
 	let query = $state('');
@@ -166,7 +170,7 @@
 		aria-controls={open ? listboxId : undefined}
 		onclick={() => (open ? closeMenu() : void openMenu())}
 	>
-		<span class:selected={selected}>{loading ? '불러오는 중...' : selected?.label ?? placeholder}</span>
+		<span class:selected={selected}>{loading ? t('state.loading') : selected?.label ?? placeholder}</span>
 		<span class="chevron" aria-hidden="true"></span>
 	</button>
 

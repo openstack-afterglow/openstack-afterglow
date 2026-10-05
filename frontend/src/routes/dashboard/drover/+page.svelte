@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/drover-pages';
 	import { untrack } from 'svelte';
 	import { auth, authReady } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
@@ -69,7 +70,7 @@
 {/if}
 
 {#if panel.selectedClusterId}
-	<SlidePanel onClose={panel.close} ariaLabel="Drover 클러스터 상세">
+	<SlidePanel onClose={panel.close} ariaLabel={t('cluster.detailLabel')}>
 		<K3sClusterDetailPanel clusterId={panel.selectedClusterId} onClose={panel.close} />
 	</SlidePanel>
 {/if}
@@ -85,7 +86,7 @@
 		onOpenCreateIntent={prefetchCreateDependencies}
 	/>
 
-	<p class="text-sm text-ink-2 mb-6">Nova VM + cloud-init으로 k3s Kubernetes 클러스터를 프로비저닝합니다.</p>
+	<p class="text-sm text-ink-2 mb-6">{t('dashboard.description')}</p>
 
 	{#if ctrl.error}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{ctrl.error}</div>

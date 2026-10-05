@@ -7,6 +7,8 @@
 	import { offerAudioTranscript } from '$lib/api/audioChatHandoff';
 	import { ApiError } from '$lib/api/client';
 	import { Alert, Button, Field, PageShell, SelectInput, Tabs, TextareaInput, TextInput } from '$lib/components/ui';
+	import { t } from '$lib/i18n/ns/chat-studio';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 
 	const AUDIO_MIMES = new Set(['audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/ogg', 'audio/webm']);
 	const MIME_LABELS: Record<string, string> = { 'audio/mpeg': 'MP3', 'audio/wav': 'WAV', 'audio/x-wav': 'WAV', 'audio/mp4': 'M4A', 'audio/ogg': 'OGG', 'audio/webm': 'WebM' };
@@ -14,10 +16,10 @@
 	const SEGMENT_TIMESTAMPS: Array<'segment'> = ['segment'];
 	// Example drafts only fill an empty canvas; they never replace text the user wrote.
 	const EXAMPLES = [
-		{ label: '따뜻한 인사말', text: '안녕하세요. 오늘도 와 주셔서 고맙습니다. 작은 일에도 웃을 수 있는 하루가 되기를 바랍니다.' },
-		{ label: '차분한 안내', text: '잠시 후 회의를 시작하겠습니다. 마이크를 음소거하고 화면 공유 준비가 되었는지 확인해 주세요.' },
-		{ label: '짧은 동화', text: '옛날 어느 작은 마을에 별을 좋아하는 아이가 살았습니다. 아이는 매일 밤 창가에 앉아 가장 밝은 별에게 인사를 건넸습니다.' }
-	];
+		{ labelKey: 'audioStudio.example.greetingLabel', textKey: 'audioStudio.example.greetingText' },
+		{ labelKey: 'audioStudio.example.announcementLabel', textKey: 'audioStudio.example.announcementText' },
+		{ labelKey: 'audioStudio.example.storyLabel', textKey: 'audioStudio.example.storyText' }
+	] as const;
 	interface AudioSource { name: string; size: number; type: string; url: string }
 	// Only the selected model's capability response may advertise a voice or timestamp granularity.
 	const scope = $derived($auth.token && $auth.projectId && $auth.userId ? { token: $auth.token, projectId: $auth.projectId } : null);
@@ -68,8 +70,8 @@
 	// Microphone capture is only visible in the STT panel, so the mode stays there until it is stopped.
 	const micActive = $derived(recording || permissionPending);
 	const modeTabs = $derived([
-		{ value: 'tts', label: '텍스트 → 음성', panelId: 'audio-panel-tts', disabled: micActive && mode === 'stt' },
-		{ value: 'stt', label: '음성 → 텍스트', panelId: 'audio-panel-stt' }
+		{ value: 'tts', label: t('audioStudio.textToSpeech'), panelId: 'audio-panel-tts', disabled: micActive && mode === 'stt' },
+		{ value: 'stt', label: t('audioStudio.speechToText'), panelId: 'audio-panel-stt' }
 	]);
 	function selectMode(value: string) {
 		const next: AudioKind = value === 'stt' ? 'stt' : 'tts';
@@ -89,10 +91,10 @@
 	const timestampSupported = $derived(timestampKnown && Boolean(capabilities.stt?.available_timestamp_granularities?.includes('segment')));
 	const requestTimestamps = $derived(timestampSupported && timestamps);
 	const timestampHelp = $derived(
-		!sttModel ? '인식 모델을 선택하면 타임스탬프 지원 여부를 확인합니다.'
-		: !timestampKnown ? (errors.stt ? '모델 기능을 확인하지 못해 타임스탬프를 요청할 수 없습니다.' : '선택한 모델의 타임스탬프 지원 여부를 확인하는 중입니다.')
-		: timestampSupported ? '제공자가 반환한 구간별 시작·종료 시간을 표시하고 SRT로 내보냅니다.'
-		: '선택한 모델은 구간 타임스탬프를 제공하지 않습니다. 텍스트만 변환하며 TXT는 내려받을 수 있지만 SRT는 만들 수 없습니다.'
+		!sttModel ? t('audioStudio.timestampSelectModel')
+		: !timestampKnown ? (errors.stt ? t('audioStudio.timestampUnavailable') : t('audioStudio.timestampChecking'))
+		: timestampSupported ? t('audioStudio.timestampSupported')
+		: t('audioStudio.timestampUnsupported')
 	);
 	const fingerprint = $derived(JSON.stringify([ownerKey, selected.tts, draft.trim(), voice, format]));
 	const transcriptionFingerprint = $derived(JSON.stringify([ownerKey, selected.stt, assetId, language.trim(), requestTimestamps ? SEGMENT_TIMESTAMPS : []]));
@@ -109,17 +111,17 @@
 
 	function message(cause: unknown): string {
 		if (cause instanceof ApiError) {
-			if (cause.status === 401 || cause.status === 403) return '현재 프로젝트에 접근할 수 없습니다.';
-			if (cause.status === 402) return '사용 가능한 크레딧 또는 할당량이 부족합니다.';
+			if (cause.status === 401 || cause.status === 403) return t('audioStudio.projectDenied');
+			if (cause.status === 402) return t('audioStudio.quotaInsufficient');
 			if ([400, 409, 422].includes(cause.status)) return cause.message.slice(0, 250);
-			return `오디오 서비스 요청 실패 (${cause.status}).`;
+			return t('audioStudio.requestFailed', { status: cause.status });
 		}
-		return cause instanceof Error ? cause.message : '오디오 서비스에 연결하지 못했습니다.';
+		return cause instanceof Error ? cause.message : t('audioStudio.connectionFailed');
 	}
 	function fileSize(bytes: number): string {
-		if (bytes < 1024) return `${bytes} B`;
-		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-		return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+		if (bytes < 1024) return `${bytes.toLocaleString(intlLocale())} B`;
+		if (bytes < 1024 * 1024) return `${(bytes / 1024).toLocaleString(intlLocale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 })} KB`;
+		return `${(bytes / 1024 / 1024).toLocaleString(intlLocale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 })} MB`;
 	}
 	/** Download stem derived from the selected input name, safe on common desktop file systems. */
 	function exportStem(name: string): string {
@@ -285,7 +287,7 @@
 	}
 	async function upload(file: File) {
 		if (!scope || uploading || transcribing) return;
-		if (!AUDIO_MIMES.has(file.type)) { failures = { ...failures, stt: 'MP3, WAV, M4A, OGG 또는 WebM 음성 파일을 선택하세요.' }; return; }
+		if (!AUDIO_MIMES.has(file.type)) { failures = { ...failures, stt: t('audioStudio.invalidFile') }; return; }
 		releaseSource();
 		const version = sourceVersion;
 		const epoch = generation;
@@ -303,7 +305,7 @@
 		} catch (cause) {
 			if (epoch === generation && version === sourceVersion && !request.signal.aborted) {
 				releaseSource();
-				failures = { ...failures, stt: `업로드 실패: ${message(cause)}` };
+				failures = { ...failures, stt: t('audioStudio.uploadFailed', { message: message(cause) }) };
 			}
 		} finally {
 			if (epoch === generation && version === sourceVersion) {
@@ -339,7 +341,7 @@
 	}
 	async function startRecording() {
 		if (recording || permissionPending || busyStt) return;
-		if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') { failures = { ...failures, stt: '이 브라우저는 마이크 녹음을 지원하지 않습니다. 파일을 선택하세요.' }; return; }
+		if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') { failures = { ...failures, stt: t('audioStudio.recordingUnsupported') }; return; }
 		permissionPending = true;
 		const epoch = generation;
 		try {
@@ -351,12 +353,12 @@
 			const chunks: BlobPart[] = [];
 			let recordingFailed = false;
 			active.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
-			active.onerror = () => { recordingFailed = true; if (epoch === generation) failures = { ...failures, stt: '녹음에 실패했습니다. 다시 시도하거나 파일을 선택하세요.' }; stopMic(); };
+			active.onerror = () => { recordingFailed = true; if (epoch === generation) failures = { ...failures, stt: t('audioStudio.recordingFailed') }; stopMic(); };
 			active.onstop = () => {
 				acquired.getTracks().forEach((track) => track.stop());
 				if (epoch !== generation || recordingFailed || !chunks.length) return;
 				const type = active.mimeType.split(';')[0];
-				if (!AUDIO_MIMES.has(type)) { failures = { ...failures, stt: '녹음 형식이 지원되지 않습니다. 파일을 선택하세요.' }; return; }
+				if (!AUDIO_MIMES.has(type)) { failures = { ...failures, stt: t('audioStudio.recordingFormatUnsupported') }; return; }
 				const extension = type === 'audio/mp4' ? 'm4a' : type.split('/')[1];
 				void upload(new File(chunks, `recording.${extension}`, { type }));
 			};
@@ -367,7 +369,7 @@
 		} catch (cause) {
 			stream?.getTracks().forEach((track) => track.stop());
 			stream = null;
-			if (epoch === generation) failures = { ...failures, stt: cause instanceof DOMException && cause.name === 'NotAllowedError' ? '마이크 권한이 거부되었습니다. 브라우저 권한을 확인하거나 파일을 선택하세요.' : `마이크를 시작하지 못했습니다: ${message(cause)}` };
+			if (epoch === generation) failures = { ...failures, stt: cause instanceof DOMException && cause.name === 'NotAllowedError' ? t('audioStudio.microphoneDenied') : t('audioStudio.microphoneFailed', { message: message(cause) }) };
 		} finally {
 			if (epoch === generation) permissionPending = false;
 		}
@@ -422,9 +424,9 @@
 		const text = transcript.text;
 		try {
 			await navigator.clipboard.writeText(text);
-			if (epoch === generation && transcript?.text === text) copyStatus = '텍스트를 복사했습니다.';
+			if (epoch === generation && transcript?.text === text) copyStatus = t('audioStudio.copied');
 		} catch (cause) {
-			if (epoch === generation) failures = { ...failures, stt: `복사 실패: ${message(cause)}` };
+			if (epoch === generation) failures = { ...failures, stt: t('audioStudio.copyFailed', { message: message(cause) }) };
 		}
 	}
 	function insertIntoChat() {
@@ -438,60 +440,60 @@
 	<div class="studio">
 		<header class="header">
 			<div class="title">
-				<p class="muted">AI 채팅 / 오디오</p>
-				<h1>오디오 Studio</h1>
-				<p class="muted">{mode === 'tts' ? '텍스트를 선택한 모델의 목소리로 읽어 음성 파일을 만듭니다.' : '음성 파일을 텍스트로 변환하고, 지원 모델에서는 구간 시간을 함께 받습니다.'} 오디오는 브라우저에 저장하지 않습니다.</p>
+				<p class="muted">{t('audioStudio.breadcrumb')}</p>
+				<h1>{t('audioStudio.title')}</h1>
+				<p class="muted">{mode === 'tts' ? t('audioStudio.ttsDescription') : t('audioStudio.sttDescription')}</p>
 			</div>
-			<Button href="/dashboard/chat" variant="secondary">텍스트 채팅으로</Button>
+			<Button href="/dashboard/chat" variant="secondary">{t('audioStudio.textChat')}</Button>
 		</header>
-		<Tabs id="audio-mode" ariaLabel="오디오 작업" value={mode} items={modeTabs} onchange={selectMode} />
-		{#if micActive}<p class="muted">녹음 중에는 텍스트 → 음성으로 이동할 수 없습니다. 녹음을 종료하면 이동할 수 있습니다.</p>{/if}
+		<Tabs id="audio-mode" ariaLabel={t('audioStudio.mode')} value={mode} items={modeTabs} onchange={selectMode} />
+		{#if micActive}<p class="muted">{t('audioStudio.recordingModeLocked')}</p>{/if}
 
 		<div id="audio-panel-tts" role="tabpanel" aria-labelledby="audio-mode-tts" tabindex="0" class="panel" hidden={mode !== 'tts'}>
 				<form class="workspace" onsubmit={(event) => { event.preventDefault(); void speech(); }}>
 					<div class="canvas">
 						<div class="canvas-head">
-							<label for="audio-text" class="canvas-label">읽을 텍스트 <span class="required" aria-hidden="true">*</span></label>
-							<Button variant="ghost" size="sm" disabled={!draft || busyTts} onclick={() => { draft = ''; }}>지우기</Button>
+							<label for="audio-text" class="canvas-label">{t('audioStudio.textLabel')} <span class="required" aria-hidden="true">*</span></label>
+							<Button variant="ghost" size="sm" disabled={!draft || busyTts} onclick={() => { draft = ''; }}>{t('audioStudio.clear')}</Button>
 						</div>
-						<TextareaInput id="audio-text" bind:value={draft} rows={12} required disabled={busyTts} placeholder="음성으로 읽을 텍스트를 입력하세요" ariaDescribedBy="audio-text-count" class="draft" />
+						<TextareaInput id="audio-text" bind:value={draft} rows={12} required disabled={busyTts} placeholder={t('audioStudio.textPlaceholder')} ariaDescribedBy="audio-text-count" class="draft" />
 						<div class="canvas-foot">
 							{#if !draft}
-								<div class="examples" role="group" aria-label="예시 문장">
-									<span class="muted">이런 문장으로 시작해 보세요.</span>
-									{#each EXAMPLES as example (example.label)}<Button variant="outline" size="sm" disabled={busyTts} onclick={() => { draft = example.text; }}>{example.label}</Button>{/each}
+								<div class="examples" role="group" aria-label={t('audioStudio.examples')}>
+									<span class="muted">{t('audioStudio.examplesHelp')}</span>
+									{#each EXAMPLES as example (example.labelKey)}<Button variant="outline" size="sm" disabled={busyTts} onclick={() => { draft = t(example.textKey); }}>{t(example.labelKey)}</Button>{/each}
 								</div>
 							{/if}
-							<p id="audio-text-count" class="muted count">글자 수 {draft.length.toLocaleString('ko-KR')}</p>
+							<p id="audio-text-count" class="muted count">{t('audioStudio.characterCount', { count: draft.length.toLocaleString(intlLocale()) })}</p>
 						</div>
 					</div>
 					<aside class="settings" aria-labelledby="audio-tts-settings">
-						<h2 id="audio-tts-settings">음성 설정</h2>
-						<Field label="음성 모델" for="audio-tts-model"><SelectInput id="audio-tts-model" value={selected.tts} onchange={(event) => { selected = { ...selected, tts: (event.currentTarget as HTMLSelectElement).value }; }} disabled={loading.tts || busyTts}><option value="">모델 선택</option>{#each models.tts as model (model.id)}<option value={String(model.id)}>{model.display_name}</option>{/each}</SelectInput></Field>
-						{#if loading.tts || capabilityLoading.tts}<p role="status" class="muted">음성 모델과 가격을 확인하는 중…</p>{:else if errors.tts}<Alert tone="danger">{errors.tts} <Button variant="subtle" onclick={() => scope && loadModels('tts', scope, generation)}>모델 다시 조회</Button></Alert>{:else if !models.tts.length}<Alert tone="warning">사용 가능한 음성 모델이 없습니다.</Alert>{:else if ttsReadiness}<Alert tone="warning">{ttsReadiness}</Alert>{:else}<p role="status" class="ready">음성 생성 경로와 가격이 준비되었습니다.</p>{/if}
+						<h2 id="audio-tts-settings">{t('audioStudio.speechSettings')}</h2>
+						<Field label={t('audioStudio.speechModel')} for="audio-tts-model"><SelectInput id="audio-tts-model" value={selected.tts} onchange={(event) => { selected = { ...selected, tts: (event.currentTarget as HTMLSelectElement).value }; }} disabled={loading.tts || busyTts}><option value="">{t('audioStudio.selectModel')}</option>{#each models.tts as model (model.id)}<option value={String(model.id)}>{model.display_name}</option>{/each}</SelectInput></Field>
+						{#if loading.tts || capabilityLoading.tts}<p role="status" class="muted">{t('audioStudio.speechChecking')}</p>{:else if errors.tts}<Alert tone="danger">{errors.tts} <Button variant="subtle" onclick={() => scope && loadModels('tts', scope, generation)}>{t('audioStudio.reloadModels')}</Button></Alert>{:else if !models.tts.length}<Alert tone="warning">{t('audioStudio.noSpeechModels')}</Alert>{:else if ttsReadiness}<Alert tone="warning">{ttsReadiness}</Alert>{:else}<p role="status" class="ready">{t('audioStudio.speechReady')}</p>{/if}
 						<fieldset class="voices" disabled={busyTts || !voices.length}>
-							<legend>목소리</legend>
+							<legend>{t('audioStudio.voice')}</legend>
 							{#if voices.length}
 								<div class="voice-list">{#each voices as option}<label class="voice"><input type="radio" name="audio-voice" value={option} bind:group={voice} /><span>{option}</span></label>{/each}</div>
 							{:else}
-								<p class="muted">선택한 모델이 제공하는 목소리를 확인하면 여기에서 고를 수 있습니다.</p>
+								<p class="muted">{t('audioStudio.voicesHelp')}</p>
 							{/if}
 						</fieldset>
-						<Field label="출력 형식" for="audio-format"><SelectInput id="audio-format" bind:value={format} disabled={busyTts || !formats.length}>{#each formats as option}<option value={option}>{option.toUpperCase()}</option>{/each}</SelectInput></Field>
+						<Field label={t('audioStudio.format')} for="audio-format"><SelectInput id="audio-format" bind:value={format} disabled={busyTts || !formats.length}>{#each formats as option}<option value={option}>{option.toUpperCase()}</option>{/each}</SelectInput></Field>
 					</aside>
 					<div class="playbar">
 						<div class="playbar-output">
 							{#if audioUrl}
-								<audio bind:this={media} src={audioUrl} controls aria-label="생성된 음성"></audio>
-								<p class="muted">{outputVoice} · {outputFormat.toUpperCase()} · 다른 음성을 생성하기 전까지 유지됩니다.</p>
+								<audio bind:this={media} src={audioUrl} controls aria-label={t('audioStudio.generatedSpeech')}></audio>
+								<p class="muted">{t('audioStudio.speechOutputInfo', { voice: outputVoice, format: outputFormat.toUpperCase() })}</p>
 							{:else}
-								<p class="muted">생성한 음성은 여기에서 재생하고 내려받을 수 있습니다.</p>
+								<p class="muted">{t('audioStudio.speechOutputHelp')}</p>
 							{/if}
 							{#if failures.tts}<Alert tone="danger">{failures.tts}</Alert>{/if}
 						</div>
 						<div class="playbar-actions">
-							{#if audioUrl}<a href={audioUrl} download={`speech.${outputFormat}`} class="file-action">음성 다운로드</a>{/if}
-							<Button type="submit" size="lg" disabled={!ttsReady}>{busyTts ? '음성 생성 중…' : '음성 생성'}</Button>
+							{#if audioUrl}<a href={audioUrl} download={`speech.${outputFormat}`} class="file-action">{t('audioStudio.downloadSpeech')}</a>{/if}
+							<Button type="submit" size="lg" disabled={!ttsReady}>{busyTts ? t('audioStudio.speechGenerating') : t('audioStudio.generateSpeech')}</Button>
 						</div>
 					</div>
 				</form>
@@ -499,63 +501,63 @@
 		<div id="audio-panel-stt" role="tabpanel" aria-labelledby="audio-mode-stt" tabindex="0" class="panel" hidden={mode !== 'stt'}>
 				<div class="workspace">
 					<div class="canvas">
-						<h2>오디오 입력</h2>
-						<div class="dropzone" class:dragging role="group" aria-label="음성 파일 놓기 영역" ondragenter={dragOver} ondragover={dragOver} ondragleave={dragLeave} ondrop={dropFile}>
+						<h2>{t('audioStudio.audioInput')}</h2>
+						<div class="dropzone" class:dragging role="group" aria-label={t('audioStudio.dropzone')} ondragenter={dragOver} ondragover={dragOver} ondragleave={dragLeave} ondrop={dropFile}>
 							<svg class="drop-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V5m0 0-4 4m4-4 4 4M5 15v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
-							<p class="drop-title">오디오 파일을 여기에 놓으세요</p>
-							<p class="muted">또는 파일을 선택하거나 마이크로 직접 녹음하세요.</p>
+							<p class="drop-title">{t('audioStudio.dropTitle')}</p>
+							<p class="muted">{t('audioStudio.dropHelp')}</p>
 							<div class="actions">
 								<input id="audio-file" class="file-input" type="file" accept="audio/mpeg,audio/wav,audio/x-wav,audio/mp4,audio/ogg,audio/webm" disabled={sourceLocked} aria-describedby="audio-file-help" onchange={chooseFile} />
-								<label for="audio-file" class="file-action">음성 파일 선택</label>
-								<Button variant="secondary" disabled={busyStt || permissionPending} onclick={() => recording ? stopMic() : void startRecording()}>{permissionPending ? '마이크 권한 확인 중…' : recording ? '녹음 종료' : '마이크 녹음'}</Button>
+								<label for="audio-file" class="file-action">{t('audioStudio.chooseFile')}</label>
+								<Button variant="secondary" disabled={busyStt || permissionPending} onclick={() => recording ? stopMic() : void startRecording()}>{permissionPending ? t('audioStudio.microphonePermissionChecking') : recording ? t('audioStudio.stopRecording') : t('audioStudio.recordMicrophone')}</Button>
 							</div>
-							<p id="audio-file-help" class="muted">MP3, WAV, M4A, OGG, WebM · 소유권과 검사를 거쳐 인식합니다.</p>
+							<p id="audio-file-help" class="muted">{t('audioStudio.audioFileHelp')}</p>
 						</div>
-						{#if recording}<p role="status" class="recording">녹음 중 · 종료하면 업로드합니다.</p>{/if}
+						{#if recording}<p role="status" class="recording">{t('audioStudio.recordingStatus')}</p>{/if}
 						{#if source}
 							<div class="source">
 								<div class="source-info">
 									<p class="source-name">{source.name}</p>
 									<p class="muted">{fileSize(source.size)} · {MIME_LABELS[source.type] ?? source.type}</p>
-									{#if uploading}<p role="status" class="muted">업로드하고 검사하는 중…</p>{:else if assetId}<p role="status" class="muted">검사된 입력: {assetName}</p>{/if}
+									{#if uploading}<p role="status" class="muted">{t('audioStudio.uploading')}</p>{:else if assetId}<p role="status" class="muted">{t('audioStudio.scannedInput', { name: assetName })}</p>{/if}
 								</div>
-								<audio bind:this={sourceMedia} src={source.url} controls aria-label={`선택한 음성 미리 듣기: ${source.name}`}></audio>
-								<Button variant="ghost" size="icon" ariaLabel="선택한 음성 제거" disabled={transcribing} onclick={removeSource}><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg></Button>
+								<audio bind:this={sourceMedia} src={source.url} controls aria-label={t('audioStudio.previewSource', { name: source.name })}></audio>
+								<Button variant="ghost" size="icon" ariaLabel={t('audioStudio.removeSource')} disabled={transcribing} onclick={removeSource}><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg></Button>
 							</div>
 						{/if}
 					</div>
 					<aside class="settings" aria-labelledby="audio-stt-settings">
-						<h2 id="audio-stt-settings">변환 설정</h2>
-						<Field label="인식 모델" for="audio-stt-model"><SelectInput id="audio-stt-model" value={selected.stt} onchange={(event) => { selected = { ...selected, stt: (event.currentTarget as HTMLSelectElement).value }; }} disabled={loading.stt || busyStt}><option value="">모델 선택</option>{#each models.stt as model (model.id)}<option value={String(model.id)}>{model.display_name}</option>{/each}</SelectInput></Field>
-						{#if loading.stt || capabilityLoading.stt}<p role="status" class="muted">인식 모델과 가격을 확인하는 중…</p>{:else if errors.stt}<Alert tone="danger">{errors.stt} <Button variant="subtle" onclick={() => scope && loadModels('stt', scope, generation)}>모델 다시 조회</Button></Alert>{:else if !models.stt.length}<Alert tone="warning">사용 가능한 인식 모델이 없습니다.</Alert>{:else if sttReadiness}<Alert tone="warning">{sttReadiness}</Alert>{:else}<p role="status" class="ready">음성 인식 경로와 가격이 준비되었습니다.</p>{/if}
-						<Field label="언어 코드 (선택)" for="audio-language"><TextInput id="audio-language" bind:value={language} placeholder="예: ko" disabled={busyStt} /></Field>
+						<h2 id="audio-stt-settings">{t('audioStudio.transcriptionSettings')}</h2>
+						<Field label={t('audioStudio.transcriptionModel')} for="audio-stt-model"><SelectInput id="audio-stt-model" value={selected.stt} onchange={(event) => { selected = { ...selected, stt: (event.currentTarget as HTMLSelectElement).value }; }} disabled={loading.stt || busyStt}><option value="">{t('audioStudio.selectModel')}</option>{#each models.stt as model (model.id)}<option value={String(model.id)}>{model.display_name}</option>{/each}</SelectInput></Field>
+						{#if loading.stt || capabilityLoading.stt}<p role="status" class="muted">{t('audioStudio.transcriptionChecking')}</p>{:else if errors.stt}<Alert tone="danger">{errors.stt} <Button variant="subtle" onclick={() => scope && loadModels('stt', scope, generation)}>{t('audioStudio.reloadModels')}</Button></Alert>{:else if !models.stt.length}<Alert tone="warning">{t('audioStudio.noTranscriptionModels')}</Alert>{:else if sttReadiness}<Alert tone="warning">{sttReadiness}</Alert>{:else}<p role="status" class="ready">{t('audioStudio.transcriptionReady')}</p>{/if}
+						<Field label={t('audioStudio.languageCode')} for="audio-language"><TextInput id="audio-language" bind:value={language} placeholder={t('audioStudio.languagePlaceholder')} disabled={busyStt} /></Field>
 						<div class="switch-row">
 							<div class="switch-copy">
-								<label for="audio-timestamps">타임스탬프</label>
+								<label for="audio-timestamps">{t('audioStudio.timestamps')}</label>
 								<p id="audio-timestamps-help" class="muted">{timestampHelp}</p>
 							</div>
 							<input id="audio-timestamps" class="switch" type="checkbox" role="switch" checked={requestTimestamps} disabled={!timestampSupported || busyStt} aria-describedby="audio-timestamps-help" onchange={(event) => { timestamps = event.currentTarget.checked; }} />
 						</div>
-						<Button size="lg" disabled={!sttReady} onclick={() => void transcribe()}>{transcribing ? '음성 처리 중…' : '텍스트로 변환'}</Button>
+						<Button size="lg" disabled={!sttReady} onclick={() => void transcribe()}>{transcribing ? t('audioStudio.processingAudio') : t('audioStudio.convertToText')}</Button>
 						{#if failures.stt}<Alert tone="danger">{failures.stt}</Alert>{/if}
 					</aside>
 				</div>
 				{#if transcript}
 					<section class="results" aria-labelledby="audio-result-title">
 						<div class="results-head">
-							<h2 id="audio-result-title">변환 결과</h2>
+							<h2 id="audio-result-title">{t('audioStudio.transcriptionResult')}</h2>
 							<div class="actions">
-								<Button variant="secondary" onclick={() => void copyTranscript()}>텍스트 복사</Button>
-								{#if exportUrls.txt}<a href={exportUrls.txt} download={`${transcriptName}.txt`} class="file-action">텍스트 다운로드</a>{/if}
-								{#if exportUrls.srt}<a href={exportUrls.srt} download={`${transcriptName}.srt`} class="file-action">SRT 다운로드</a>{/if}
-								<Button variant="secondary" onclick={insertIntoChat}>채팅 입력에 넣기</Button>
+								<Button variant="secondary" onclick={() => void copyTranscript()}>{t('audioStudio.copyText')}</Button>
+								{#if exportUrls.txt}<a href={exportUrls.txt} download={`${transcriptName}.txt`} class="file-action">{t('audioStudio.downloadText')}</a>{/if}
+								{#if exportUrls.srt}<a href={exportUrls.srt} download={`${transcriptName}.srt`} class="file-action">{t('audioStudio.downloadSrt')}</a>{/if}
+								<Button variant="secondary" onclick={insertIntoChat}>{t('audioStudio.insertIntoChat')}</Button>
 							</div>
 						</div>
 						{#if copyStatus}<p role="status" class="muted">{copyStatus}</p>{/if}
 						{#if transcript.segments.length}
 							<div class="table-wrap">
 								<table class="segments">
-									<thead><tr><th scope="col">시간 구간</th><th scope="col">변환된 텍스트</th></tr></thead>
+									<thead><tr><th scope="col">{t('audioStudio.timeRange')}</th><th scope="col">{t('audioStudio.convertedText')}</th></tr></thead>
 									<tbody>
 										{#each transcript.segments as segment, index (index)}
 											<tr><td class="range"><time datetime={`PT${segment.start}S`}>{formatTranscriptTime(segment.start)}</time> – <time datetime={`PT${segment.end}S`}>{formatTranscriptTime(segment.end)}</time></td><td>{segment.text}</td></tr>
@@ -564,7 +566,7 @@
 								</table>
 							</div>
 						{:else}
-							<p class="muted">{transcriptTimed ? '제공자가 인식한 음성 구간이 없습니다.' : '구간 시간 없이 변환했습니다. SRT는 타임스탬프를 지원하는 모델에서 만들 수 있습니다.'}</p>
+							<p class="muted">{transcriptTimed ? t('audioStudio.noSegments') : t('audioStudio.noTiming')}</p>
 							<p class="transcript">{transcript.text}</p>
 						{/if}
 					</section>

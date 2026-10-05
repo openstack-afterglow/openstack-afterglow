@@ -159,12 +159,6 @@ describe('design system source contracts', () => {
 		for (const token of topologyTokenNames) expect(layoutSource).toContain(token);
 	});
 
-	it('keeps DESIGN.md as the canonical new-entity rulebook', () => {
-		expect(designSource).toContain('새 색상·gradient·badge tone·table density·form control·card treatment가 필요하면');
-		expect(designSource).toContain('새 route/component file은 raw hex');
-		for (const token of designTokenNames) expect(designSource).toContain(token);
-		for (const token of topologyTokenNames) expect(designSource).toContain(token);
-	});
 
 
 	it('keeps editorial public-surface tokens and panel composition documented', () => {

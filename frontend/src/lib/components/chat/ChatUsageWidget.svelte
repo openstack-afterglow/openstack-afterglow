@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/chat-panel';
 	import type { ChatUsage } from '$lib/api/chatTree';
 	let { usage }: { usage: ChatUsage } = $props();
 
@@ -14,13 +15,13 @@
 	}
 </script>
 
-<div class="usage" title={hasQuota ? `이번 달 월 쿼터 사용률 ${fmtPercent(quotaPct!)}` : '월 쿼터가 설정되지 않았습니다'}>
+<div class="usage" title={hasQuota ? t('usage.quotaTitle', { percent: fmtPercent(quotaPct!) }) : t('usage.noQuota')}>
 	<div class="usage-line">
-		<span class="usage-label">이번 달 쿼터</span>
-		<span class="usage-val">{hasQuota ? `${fmtPercent(quotaPct!)} 사용` : '미설정'}</span>
+		<span class="usage-label">{t('usage.monthQuota')}</span>
+		<span class="usage-val">{hasQuota ? t('usage.used', { percent: fmtPercent(quotaPct!) }) : t('usage.notSet')}</span>
 	</div>
 	{#if hasQuota}
-		<div class="bar" aria-label="월 쿼터 사용률 {fmtPercent(quotaPct!)}">
+		<div class="bar" aria-label={t('usage.quotaUsage', { percent: fmtPercent(quotaPct!) })}>
 			<div class="bar-fill" data-tone={quotaTone} style="width: {quotaBarPct}%"></div>
 		</div>
 	{/if}

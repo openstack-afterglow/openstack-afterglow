@@ -4,6 +4,8 @@
 	import { currentImagesByReference } from '$lib/stores/imageCatalog.svelte';
 	import { imageReferenceMatchesQuery, parseImageReference } from '$lib/utils/imageReference';
 	import type { ImageReferenceParts } from '$lib/utils/imageReference';
+	import { t } from '$lib/i18n/ns/vm-wizard';
+	import RichText from '$lib/i18n/RichText.svelte';
 	let { images, selectedId, onSelect }: {
 		images: ImageInfo[];
 		selectedId: string | null;
@@ -11,6 +13,7 @@
 	} = $props();
 
 	let activeDistro = $state<string | null>(null);
+	const OTHER_DISTRO = '__other__';
 
 	function referenceParts(image: ImageInfo): ImageReferenceParts {
 		if (image.repository) {
@@ -67,9 +70,9 @@
 		: null);
 	const previousSelectedMissing = $derived(selectedId !== null && !currentIds.has(selectedId) && !previousSelected);
 	const distros = $derived(
-		[...new Set(currentImages.map(i => i.os_distro ?? '기타'))].sort((a, b) => {
-			if (a === '기타') return 1;
-			if (b === '기타') return -1;
+		[...new Set(currentImages.map(i => i.os_distro ?? OTHER_DISTRO))].sort((a, b) => {
+			if (a === OTHER_DISTRO) return 1;
+			if (b === OTHER_DISTRO) return -1;
 			return a.localeCompare(b);
 		})
 	);
@@ -78,7 +81,7 @@
 	const distroFiltered = $derived(
 		activeDistro === null
 			? currentImages
-			: currentImages.filter(i => (i.os_distro ?? '기타') === activeDistro)
+			: currentImages.filter(i => (i.os_distro ?? OTHER_DISTRO) === activeDistro)
 	);
 
 	const filteredImages = $derived(
@@ -86,7 +89,7 @@
 	);
 
 	function distroLabel(d: string): string {
-		return distroLabels[d] ?? d;
+		return d === OTHER_DISTRO ? t('image.distro.other') : distroLabels[d] ?? d;
 	}
 
 	function avatarLetter(name: string): string {
@@ -127,7 +130,7 @@
 		<svg class="h-4 w-4 text-[var(--color-ink-2)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
 			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M3 5h18M6 12h12m-9 7h6"/>
 		</svg>
-		필터
+		{t('image.filters.title')}
 		{#if activeFilterCount > 0}
 			<span class="rounded-full bg-[var(--color-accent)] px-1.5 py-0.5 font-mono text-xs text-[var(--color-action-on-accent)]">{activeFilterCount}</span>
 		{/if}
@@ -143,27 +146,30 @@
 					<path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.3-4.3"/>
 				</svg>
 			</span>
-			<label for="vm-image-search" class="sr-only">이미지 이름, tag, OS 검색</label>
+			<label for="vm-image-search" class="sr-only">{t('image.searchLabel')}</label>
 			<input
 				id="vm-image-search"
 				type="search"
 				bind:value={searchTerm}
-				placeholder="이미지명, repository, tag, OS, 버전으로 검색…"
+				placeholder={t('image.searchPlaceholder')}
 				class="w-full rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-raised)] py-2 pl-9 pr-3 text-sm text-[var(--color-ink-1)] outline-none placeholder:text-[var(--color-ink-3)] focus:border-[var(--color-line-2)]"
 			/>
 		</div>
 
 		<div>
-			<p class="mb-2 text-xs font-medium text-[var(--color-ink-2)]">OS 종류</p>
+			<p class="mb-2 text-xs font-medium text-[var(--color-ink-2)]">{t('image.filters.osType')}</p>
 			<div class="flex flex-wrap gap-2">
 				<button
 					onclick={() => activeDistro = null}
 					class="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition-all {activeDistro === null
 						? 'bg-[var(--color-accent)] text-[var(--color-action-on-accent)]'
 						: 'bg-[var(--color-surface-raised)] text-[var(--color-ink-2)] hover:bg-[var(--color-surface-base)]'}"
-				>전체 <span class="font-mono text-[10.5px] opacity-70">{currentImages.length}</span></button>
+				>
+					{#snippet countBadge(text: string)}<span class="font-mono text-[10.5px] opacity-70">{text}</span>{/snippet}
+					<RichText segments={t.rich('image.filters.all', { count: currentImages.length })} tags={{ count: countBadge }} />
+				</button>
 				{#each distros as d}
-					{@const count = currentImages.filter(i => (i.os_distro ?? '기타') === d).length}
+					{@const count = currentImages.filter(i => (i.os_distro ?? OTHER_DISTRO) === d).length}
 					<button
 						onclick={() => activeDistro = d}
 						class="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition-all {activeDistro === d
@@ -177,16 +183,16 @@
 {/if}
 
 {#if previousSelected || previousSelectedMissing}
-	<section aria-label="이전에 선택한 이미지" class="mb-4 rounded-xl border border-[var(--color-line-2)] bg-[var(--color-surface-sunken)] p-4 text-sm text-[var(--color-ink-1)]">
-		<p class="mb-2 font-semibold">이전에 선택한 이미지 · 현재 tag 이미지와 다릅니다</p>
+	<section aria-label={t('image.previous.label')} class="mb-4 rounded-xl border border-[var(--color-line-2)] bg-[var(--color-surface-sunken)] p-4 text-sm text-[var(--color-ink-1)]">
+		<p class="mb-2 font-semibold">{t('image.previous.title')}</p>
 		{#if previousSelected}
 			<p class="font-mono">{referenceParts(previousSelected).name} · {previousSelected.status}</p>
 			<ImageDigest image={previousSelected} />
 		{:else}
-			<p>선택한 이미지가 목록에 없습니다.</p>
+			<p>{t('image.previous.missing')}</p>
 		{/if}
-		<code class="block break-all text-xs" aria-label={`이전에 선택한 이미지 ID: ${selectedId}`}>ID {selectedId}</code>
-		<p class="mt-2 text-xs text-[var(--color-ink-2)]">현재 이미지를 사용하려면 아래에서 직접 선택하세요.</p>
+		<code class="block break-all text-xs" aria-label={t('image.previous.idLabel', { id: selectedId })}>ID {selectedId}</code>
+		<p class="mt-2 text-xs text-[var(--color-ink-2)]">{t('image.previous.help')}</p>
 	</section>
 {/if}
 
@@ -198,7 +204,7 @@
 			type="button"
 			disabled={img.status !== 'active'}
 			onclick={() => onSelect(img.id, selectionName(img, reference))}
-			aria-label={img.status === 'active' ? `${reference.name} 이미지 선택` : `${reference.name} 이미지 선택 불가 (${img.status})`}
+			aria-label={img.status === 'active' ? t('image.selectLabel', { name: reference.name }) : t('image.unselectableLabel', { name: reference.name, status: img.status })}
 			class="relative text-left p-4 rounded-xl border transition-all enabled:hover:-translate-y-px enabled:hover:shadow-md disabled:cursor-not-allowed {selectedId === img.id
 				? 'border-[var(--color-accent)] bg-[var(--color-accent)]/10 ring-1 ring-[var(--color-accent)]/30'
 				: 'border-[var(--color-line)] bg-[var(--color-surface-raised)] enabled:hover:border-[var(--color-line-2)]'}"
@@ -233,8 +239,8 @@
 
 			<!-- 메타 -->
 			<div class="flex items-center gap-2 text-xs text-[var(--color-ink-3)] font-mono pt-2 mt-2 border-t border-[var(--color-line)]">
-				<span class="px-1.5 py-0.5 bg-[var(--color-surface-sunken)] border border-[var(--color-line)] rounded text-[var(--color-ink-2)] text-xs">tag:{reference.tag}</span>
-				<span>현재 · {img.status}</span>
+				<span class="px-1.5 py-0.5 bg-[var(--color-surface-sunken)] border border-[var(--color-line)] rounded text-[var(--color-ink-2)] text-xs">{t('image.tag', { tag: reference.tag })}</span>
+				<span>{t('image.currentStatus', { status: img.status })}</span>
 				{#if img.disk_format}
 					<span class="px-1.5 py-0.5 bg-[var(--color-surface-sunken)] border border-[var(--color-line)] rounded text-[var(--color-ink-2)] text-xs lowercase">{img.disk_format}</span>
 				{/if}
@@ -251,7 +257,7 @@
 
 	{#if filteredImages.length === 0}
 		<div class="col-span-3 text-center py-10 text-[var(--color-ink-3)] text-sm">
-			조건에 맞는 이미지가 없습니다
+			{t('image.empty')}
 		</div>
 	{/if}
 </div>

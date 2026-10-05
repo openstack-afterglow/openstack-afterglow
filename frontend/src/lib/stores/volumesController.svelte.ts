@@ -1,3 +1,4 @@
+import { t } from '$lib/i18n/ns/volume';
 import { api, ApiError } from '$lib/api/client';
 import { createSwr } from '$lib/utils/swr.svelte';
 import { apiMut } from '$lib/api/mutations';
@@ -71,7 +72,7 @@ export function createVolumesController(opts: VolumesControllerOpts) {
       error = '';
     } catch (e) {
       if (seq !== volumesRequestSeq) return;
-      if (!cached) error = e instanceof ApiError ? `조회 실패 (${e.status})` : '서버 오류';
+      if (!cached) error = e instanceof ApiError ? t('listController.fetchFailed', { status: e.status }) : t('listController.serverError');
     } finally {
       if (seq === volumesRequestSeq) {
         loading = false;
@@ -125,10 +126,10 @@ export function createVolumesController(opts: VolumesControllerOpts) {
   }
 
   async function deleteVolume(id: string, name: string) {
-    if (!(await confirmDialog(`볼륨 "${name || id.slice(0, 8)}"을 삭제하시겠습니까?`))) return;
+    if (!(await confirmDialog(t('listController.deleteConfirm', { name: name || id.slice(0, 8) })))) return;
     deleting = id;
     try {
-      await apiMut('볼륨 삭제', () => api.delete(`/api/v1/volumes/${id}`, opts.token(), opts.projectId()));
+      await apiMut(t('listController.delete'), () => api.delete(`/api/v1/volumes/${id}`, opts.token(), opts.projectId()));
       await fetchVolumes();
     } catch {
       // error toast shown by apiMut
@@ -139,10 +140,10 @@ export function createVolumesController(opts: VolumesControllerOpts) {
 
   async function deleteSnapshot(id: string, name: string) {
     if (!volumeSnapshotsOn()) return;
-    if (!(await confirmDialog(`스냅샷 "${name || id.slice(0, 8)}"을 삭제하시겠습니까?`))) return;
+    if (!(await confirmDialog(t('listController.deleteSnapshotConfirm', { name: name || id.slice(0, 8) })))) return;
     deleting = id;
     try {
-      await apiMut('스냅샷 삭제', () =>
+      await apiMut(t('listController.deleteSnapshot'), () =>
         api.delete(`/api/v1/volume-snapshots/${id}`, opts.token(), opts.projectId()),
       );
       await fetchSnapshots();
@@ -160,10 +161,10 @@ export function createVolumesController(opts: VolumesControllerOpts) {
   }
 
   async function forceDeleteVolume(id: string, name: string) {
-    if (!(await confirmDialog(`볼륨 "${name || id.slice(0, 8)}"을 강제 삭제하시겠습니까?\n이 작업은 오류 상태 볼륨을 강제로 제거합니다.`))) return;
+    if (!(await confirmDialog(t('listController.forceDeleteConfirm', { name: name || id.slice(0, 8) })))) return;
     deleting = id;
     try {
-      await apiMut('볼륨 강제 삭제', () => api.post(`/api/v1/volumes/${id}/force-delete`, {}, opts.token(), opts.projectId()));
+      await apiMut(t('listController.forceDelete'), () => api.post(`/api/v1/volumes/${id}/force-delete`, {}, opts.token(), opts.projectId()));
       await fetchVolumes();
     } catch {
       // error toast shown by apiMut
@@ -198,10 +199,10 @@ export function createVolumesController(opts: VolumesControllerOpts) {
     const enabling = !autoBackupConfigs.has(volumeId);
     try {
       if (!enabling) {
-        await apiMut('자동 백업 비활성화', () => api.delete(`/api/v1/volumes/backups/auto-backup/${volumeId}`, opts.token(), opts.projectId()));
+        await apiMut(t('listController.disableAutoBackup'), () => api.delete(`/api/v1/volumes/backups/auto-backup/${volumeId}`, opts.token(), opts.projectId()));
         autoBackupConfigs = new Set([...autoBackupConfigs].filter(id => id !== volumeId));
       } else {
-        await apiMut('자동 백업 활성화', () => api.post(`/api/v1/volumes/backups/auto-backup/${volumeId}`, {}, opts.token(), opts.projectId()));
+        await apiMut(t('listController.enableAutoBackup'), () => api.post(`/api/v1/volumes/backups/auto-backup/${volumeId}`, {}, opts.token(), opts.projectId()));
         autoBackupConfigs = new Set([...autoBackupConfigs, volumeId]);
       }
     } catch {

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/drover-pages';
+	import RichText from '$lib/i18n/RichText.svelte';
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -43,7 +45,7 @@
 			deleteTarget = null;
 			await load();
 		} catch (e) {
-			deleteError = e instanceof ApiError ? e.message : '삭제 실패';
+			deleteError = e instanceof ApiError ? e.message : t('templates.deleteFailed');
 		}
 	}
 
@@ -59,13 +61,13 @@
 </script>
 
 <div class="p-4 md:p-6 max-w-7xl mx-auto">
-	<PageHeader breadcrumb="DROVER / CLUSTER TEMPLATES" title="클러스터 템플릿">
+	<PageHeader breadcrumb={t('templates.breadcrumb')} title={t('templates.title')}>
 		{#snippet actions()}
 			<button
 				onclick={() => (showCreate = true)}
 				class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg"
 			>
-				+ 생성
+				{t('templates.create')}
 			</button>
 			<AutoRefreshControl
 				bind:active={ar.active}
@@ -81,12 +83,12 @@
 		<LoadingSkeleton variant="table" rows={3} />
 	{:else}
 			{#if templates.length === 0}
-				<div class="text-ink-2 text-sm py-12 text-center">등록된 클러스터 템플릿이 없습니다.</div>
+				<div class="text-ink-2 text-sm py-12 text-center">{t('templates.empty')}</div>
 			{:else}
 				<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-					{#each templates as t (t.id)}
+					{#each templates as template (template.id)}
 						<K3sClusterTemplateCard
-							template={t}
+							template={template}
 							onEdit={(tmpl) => (editTarget = tmpl)}
 							onDelete={(tmpl) => { deleteTarget = tmpl; deleteError = ''; }}
 						/>
@@ -112,18 +114,18 @@
 {/if}
 
 {#if deleteTarget}
-	<Modal open={true} onClose={() => (deleteTarget = null)} ariaLabel="클러스터 템플릿 삭제">
+	<Modal open={true} onClose={() => (deleteTarget = null)} ariaLabel={t('templates.deleteLabel')}>
 		<div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-sm mx-4 shadow-[var(--shadow-restraint)]">
-			<h2 class="text-lg font-semibold text-ink-0 mb-3">템플릿 삭제</h2>
+			<h2 class="text-lg font-semibold text-ink-0 mb-3">{t('templates.deleteTitle')}</h2>
 			<p class="text-sm text-ink-2 mb-5">
-				<strong class="text-ink-0">{deleteTarget.name}</strong> 템플릿을 삭제합니다. 이미 생성된 클러스터에는 영향 없습니다.
+				<RichText segments={t.rich('templates.deleteBody', { name: deleteTarget.name })} classes={{ strong: 'text-ink-0' }} />
 			</p>
 			{#if deleteError}
 				<div class="mb-3 text-red-400 text-xs bg-red-900/20 border border-red-800 rounded px-3 py-2">{deleteError}</div>
 			{/if}
 			<div class="flex justify-end gap-3">
-				<button onclick={() => (deleteTarget = null)} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0">취소</button>
-				<button onclick={confirmDelete} class="px-4 py-2 bg-red-700 hover:bg-red-600 text-ink-0 text-sm font-medium rounded-lg">삭제</button>
+				<button onclick={() => (deleteTarget = null)} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0">{t('actions.cancel')}</button>
+				<button onclick={confirmDelete} class="px-4 py-2 bg-red-700 hover:bg-red-600 text-ink-0 text-sm font-medium rounded-lg">{t('actions.delete')}</button>
 			</div>
 		</div>
 	</Modal>

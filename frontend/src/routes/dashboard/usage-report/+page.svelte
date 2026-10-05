@@ -5,6 +5,9 @@
 	import { siteConfig } from '$lib/config/site';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import { formatDate, formatSize } from '$lib/utils/format';
+	import { t } from '$lib/i18n/ns/dashboard-home';
+	import { getLocale, intlLocale } from '$lib/i18n/runtime.svelte';
+	import RichText from '$lib/i18n/RichText.svelte';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import {
 		Alert,
@@ -118,6 +121,7 @@
 	}
 
 	interface InventoryGroup {
+		id: string;
 		title: string;
 		rows: InventoryRow[];
 	}
@@ -175,7 +179,7 @@
 			const report = await api.get<UsageReport>(`/api/v1/dashboard/usage-report?range=${requestPeriod}`, requestToken, requestProjectId);
 			if (owns()) data = report;
 		} catch (reason) {
-			if (owns()) error = reason instanceof Error ? reason.message : '데이터 로딩 실패';
+			if (owns()) error = reason instanceof Error ? reason.message : t('usageReport.loadFailed');
 		} finally {
 			if (owns()) loading = false;
 		}
@@ -229,8 +233,8 @@
 		const entries: [string, ForecastEntry][] = [
 			['vCPU', forecast.vcpus],
 			['RAM', forecast.ram_mb],
-			['블록 스토리지', forecast.volume_gb],
-			...Object.entries(forecast.gpu).map(([type, entry]): [string, ForecastEntry] => [`GPU ${type}`, entry]),
+			[t('usageReport.resources.blockStorage'), forecast.volume_gb],
+			...Object.entries(forecast.gpu).map(([type, entry]): [string, ForecastEntry] => [t('usageReport.resources.gpuType', { type }), entry]),
 		];
 		return entries
 			.filter(
@@ -262,7 +266,7 @@
 		if (!data) return [];
 		const forecast = data.forecast;
 		return data.quota.gpu.map((row) => ({
-			label: `GPU ${row.gpu_type}`,
+			label: t('usageReport.resources.gpuType', { type: row.gpu_type }),
 			used: row.in_use,
 			total: row.limit,
 			unit: '',
@@ -276,8 +280,8 @@
 		if (!data) return [];
 		const { quota, forecast } = data;
 		return [
-			{ label: '용량', used: quota.volume_gb.in_use, total: quota.volume_gb.limit, unit: 'GB', limit: quota.volume_gb.limit, entry: forecast.volume_gb, scale: 1 },
-			{ label: '볼륨 수', used: quota.volumes.in_use, total: quota.volumes.limit, unit: '', limit: quota.volumes.limit, entry: null, scale: 1 },
+			{ label: t('usageReport.resources.capacity'), used: quota.volume_gb.in_use, total: quota.volume_gb.limit, unit: 'GB', limit: quota.volume_gb.limit, entry: forecast.volume_gb, scale: 1 },
+			{ label: t('usageReport.resources.volumeCount'), used: quota.volumes.in_use, total: quota.volumes.limit, unit: '', limit: quota.volumes.limit, entry: null, scale: 1 },
 		];
 	});
 
@@ -300,43 +304,47 @@
 		const { compute, storage, network, file_storage: files } = inventory;
 		const groups: InventoryGroup[] = [
 			{
-				title: '네트워크',
+				id: 'network',
+				title: t('usageReport.resources.network'),
 				rows: quotaRows([
-					['Floating IP', network?.floatingip],
-					['네트워크', network?.network],
-					['서브넷', network?.subnet],
-					['포트', network?.port],
-					['라우터', network?.router],
-					['보안 그룹', network?.security_group],
-					['보안 그룹 규칙', network?.security_group_rule],
+					[t('usageReport.resources.floatingIp'), network?.floatingip],
+					[t('usageReport.resources.network'), network?.network],
+					[t('usageReport.resources.subnet'), network?.subnet],
+					[t('usageReport.resources.port'), network?.port],
+					[t('usageReport.resources.router'), network?.router],
+					[t('usageReport.resources.securityGroup'), network?.security_group],
+					[t('usageReport.resources.securityGroupRule'), network?.security_group_rule],
 				]),
 			},
 			{
-				title: '블록 스토리지',
+				id: 'storage',
+				title: t('usageReport.resources.blockStorage'),
 				rows: data?.quota.storage_available === false ? [] : quotaRows([
-					['볼륨', storage?.volumes],
-					['스냅샷', storage?.snapshots],
-					['백업', storage?.backups],
-					['백업 용량', storage?.backup_gigabytes, 'GB'],
+					[t('usageReport.resources.volume'), storage?.volumes],
+					[t('usageReport.resources.snapshot'), storage?.snapshots],
+					[t('usageReport.resources.backup'), storage?.backups],
+					[t('usageReport.resources.backupCapacity'), storage?.backup_gigabytes, 'GB'],
 				]),
 			},
 			{
-				title: '컴퓨트 한도',
+				id: 'compute',
+				title: t('usageReport.resources.computeLimit'),
 				rows: data?.quota.compute_available === false ? [] : quotaRows([
-					['인스턴스', compute?.instances],
-					['서버 그룹', compute?.server_groups],
+					[t('usageReport.resources.instance'), compute?.instances],
+					[t('usageReport.resources.serverGroup'), compute?.server_groups],
 				]),
 			},
 		];
 		// Disabled Manila returns a flat sentinel instead of per-resource entries.
 		if ($siteConfig.services.manila && typeof files?.shares === 'object') {
 			groups.push({
-				title: '파일 스토리지',
+				id: 'files',
+				title: t('usageReport.resources.fileStorage'),
 				rows: quotaRows([
-					['공유', files.shares],
-					['용량', files.gigabytes, 'GB'],
-					['공유 네트워크', files.share_networks],
-					['스냅샷 용량', files.snapshot_gigabytes, 'GB'],
+					[t('usageReport.resources.share'), files.shares],
+					[t('usageReport.resources.capacity'), files.gigabytes, 'GB'],
+					[t('usageReport.resources.shareNetwork'), files.share_networks],
+					[t('usageReport.resources.snapshotCapacity'), files.snapshot_gigabytes, 'GB'],
 				]),
 			});
 		}
@@ -347,22 +355,40 @@
 	const database = $derived($siteConfig.services.trove ? (inventory?.database ?? null) : null);
 
 	function formatAmount(value: number, scale = 1): string {
-		return (value / scale).toLocaleString(undefined, { maximumFractionDigits: 2 });
+		return (value / scale).toLocaleString(intlLocale(), { maximumFractionDigits: 2 });
+	}
+
+	function formatValue(value: number, fractionDigits?: number): string {
+		return (fractionDigits == null ? value : Number(value.toFixed(fractionDigits))).toLocaleString(intlLocale(), {
+			useGrouping: false,
+			minimumFractionDigits: fractionDigits ?? 0,
+			maximumFractionDigits: fractionDigits ?? 20,
+		});
+	}
+
+	function formatRangeDate(value: string): string {
+		if (getLocale() === 'ko') return value;
+		return new Date(value).toLocaleDateString(intlLocale(), { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'UTC' });
 	}
 
 	function forecastText(row: ForecastRow, horizon: number): string {
 		const entry = row.entry;
 		if (!entry) return '';
-		if (row.limit === -1) return '무제한';
-		if (!entry.trend_available || entry.slope_per_day == null) return '추세 데이터 없음';
-		const parts: string[] = [];
-		if (entry.projected_pct != null) parts.push(`${horizon}일 후 예상 ${entry.projected_pct}%`);
-		parts.push(`일 ${entry.slope_per_day >= 0 ? '+' : ''}${formatAmount(entry.slope_per_day, row.scale)}${row.unit}`);
-		if (entry.days_to_limit === 0) parts.push('한도 도달');
-		else if (entry.days_to_limit != null) parts.push(`약 ${entry.days_to_limit}일 후 한도 도달`);
-		return parts.join(' · ');
+		if (row.limit === -1) return t('usageReport.forecast.unlimited');
+		if (!entry.trend_available || entry.slope_per_day == null) return t('usageReport.forecast.noTrend');
+		return t('usageReport.forecast.summary', {
+			projection: entry.projected_pct != null ? 'available' : 'none',
+			horizon,
+			percent: entry.projected_pct == null ? '' : formatValue(entry.projected_pct),
+			slope: `${entry.slope_per_day >= 0 ? '+' : ''}${formatAmount(entry.slope_per_day, row.scale)}`,
+			unit: row.unit,
+			limit: entry.days_to_limit === 0 ? 'reached' : entry.days_to_limit != null ? 'upcoming' : 'none',
+			days: entry.days_to_limit ?? 0,
+		});
 	}
 </script>
+
+{#snippet amount(text: string)}<span>{text}</span>{/snippet}
 
 {#snippet forecastRow(row: ForecastRow, horizon: number)}
 	<div class="space-y-1.5">
@@ -373,7 +399,7 @@
 				<div class="space-y-1">
 					<Spark data={row.entry.series} height={24} class="w-full" />
 					<p class="text-xs text-ink-2 tabular-nums">
-						최소 {formatAmount(Math.min(...row.entry.series), row.scale)}{row.unit} · 최대 {formatAmount(Math.max(...row.entry.series), row.scale)}{row.unit}
+						<RichText segments={t.rich('usageReport.forecast.range', { min: formatAmount(Math.min(...row.entry.series), row.scale), max: formatAmount(Math.max(...row.entry.series), row.scale), unit: row.unit })} tags={{ min: amount, max: amount }} />
 					</p>
 				</div>
 			{/if}
@@ -383,21 +409,21 @@
 
 <PageShell class="space-y-6">
 	<PageHeader
-		breadcrumb="USAGE REPORT"
-		title="기간 사용량 & 쿼터 예측"
-		subtitle={data ? `${data.start} ~ ${data.end} · 인스턴스 활성 시간(instance-hours)` : '인스턴스 활성 시간(instance-hours)'}
+		breadcrumb={t('usageReport.breadcrumb')}
+		title={t('usageReport.title')}
+		subtitle={data ? t('usageReport.subtitleRange', { start: formatRangeDate(data.start), end: formatRangeDate(data.end) }) : t('usageReport.subtitle')}
 	/>
-	<ResourceToolbar label="사용량 리포트 조회 설정">
+	<ResourceToolbar label={t('usageReport.toolbarLabel')}>
 		{#snippet filters()}
 			<ToggleGroup
 				value={period}
 				options={[
-					{ value: '7d', label: '7d' },
-					{ value: '30d', label: '30d' },
-					{ value: '90d', label: '90d' },
+					{ value: '7d', label: t('usageReport.period', { days: 7 }) },
+					{ value: '30d', label: t('usageReport.period', { days: 30 }) },
+					{ value: '90d', label: t('usageReport.period', { days: 90 }) },
 				]}
 				onchange={(next) => { period = next as typeof period; }}
-				ariaLabel="리포트 조회 기간"
+				ariaLabel={t('usageReport.periodLabel')}
 			/>
 		{/snippet}
 		{#snippet actions()}
@@ -406,7 +432,7 @@
 				onclick={() => { ar.active = !ar.active; }}
 				class="min-h-8 rounded-md border border-line-2 px-3 text-xs font-medium text-ink-2 transition-colors hover:bg-surface-selected hover:text-ink-0"
 				aria-pressed={ar.active}
-			>자동 새로고침 {ar.active ? '켜짐' : '꺼짐'}</button>
+			>{t('usageReport.autoRefresh', { state: ar.active ? 'on' : 'off' })}</button>
 		{/snippet}
 	</ResourceToolbar>
 
@@ -418,8 +444,8 @@
 		<!-- KPI StatTiles -->
 		<div class="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line md:grid-cols-3">
 			<StatTile
-				label="누계 인스턴스-시간"
-				value={data.stats.instance_hours.toFixed(1)}
+				label={t('usageReport.stats.instanceHours')}
+				value={formatValue(data.stats.instance_hours, 1)}
 				unit="h"
 				accent="blue"
 				flat
@@ -433,9 +459,9 @@
 			</StatTile>
 
 			<StatTile
-				label="일평균 인스턴스-시간"
-				value={dailyAvg}
-				unit="h/일"
+				label={t('usageReport.stats.dailyInstanceHours')}
+				value={formatValue(dailyAvg)}
+				unit={t('usageReport.stats.hoursPerDay')}
 				accent="cyan"
 				flat
 			>
@@ -450,9 +476,9 @@
 			</StatTile>
 
 			<StatTile
-				label="활성 인스턴스"
-				value={data.stats.active_instances}
-				unit="/ {data.stats.total_instances} 기간 내"
+				label={t('usageReport.stats.activeInstances')}
+				value={formatValue(data.stats.active_instances)}
+				unit={t('usageReport.stats.periodTotal', { count: formatValue(data.stats.total_instances) })}
 				accent="emerald"
 				flat
 			>
@@ -466,8 +492,8 @@
 			</StatTile>
 
 			<StatTile
-				label="vCPU 시간"
-				value={data.stats.vcpu_hours.toFixed(1)}
+				label={t('usageReport.stats.vcpuHours')}
+				value={formatValue(data.stats.vcpu_hours, 1)}
 				unit="vCPU·h"
 				accent="violet"
 				flat
@@ -480,8 +506,8 @@
 			</StatTile>
 
 			<StatTile
-				label="RAM 시간"
-				value={data.stats.ram_gb_hours.toFixed(1)}
+				label={t('usageReport.stats.ramHours')}
+				value={formatValue(data.stats.ram_gb_hours, 1)}
 				unit="GB·h"
 				accent="teal"
 				flat
@@ -497,8 +523,8 @@
 			</StatTile>
 
 			<StatTile
-				label="GPU 시간"
-				value={data.stats.gpu_hours.toFixed(1)}
+				label={t('usageReport.stats.gpuHours')}
+				value={formatValue(data.stats.gpu_hours, 1)}
 				unit="GPU·h"
 				accent="amber"
 				flat
@@ -517,27 +543,27 @@
 		</div>
 
 		{#if attention.length > 0}
-			<Alert tone="warning" title="쿼터 임박">
-				{attention.join(', ')} 사용률이 80% 이상이거나 {data.forecast.horizon_days}일 내 한도 도달이 예상됩니다. 사용량이 낮은 인스턴스를 확인하세요.
+			<Alert tone="warning" title={t('usageReport.quotaWarning.title')}>
+				{t('usageReport.quotaWarning.body', { resources: attention.join(', '), days: formatValue(data.forecast.horizon_days) })}
 			</Alert>
 		{/if}
 
 		<div class="grid grid-cols-1 gap-3.5 lg:grid-cols-[2fr_1fr]">
 			<Card padding="lg" class="min-w-0">
-				<SectionHeader title="플레이버별 사용 시간" meta="{sortedFlavors.length}종" />
+				<SectionHeader title={t('usageReport.flavors.title')} meta={t('usageReport.flavors.count', { count: sortedFlavors.length })} />
 				{#if sortedFlavors.length === 0}
-					<div class="mt-6 py-6 text-center text-sm text-ink-2">데이터 없음</div>
+					<div class="mt-6 py-6 text-center text-sm text-ink-2">{t('usageReport.noData')}</div>
 				{:else}
 					<TableShell density="compact" class="mt-4">
 						<table>
 							<thead>
 								<tr>
-									<th scope="col">Flavor</th>
+									<th scope="col">{t('usageReport.columns.flavor')}</th>
 									<th scope="col">vCPU</th>
 									<th scope="col">RAM(GB)</th>
-									<th scope="col">사용 시간(h)</th>
+									<th scope="col">{t('usageReport.columns.usageHours')}</th>
 									<th scope="col">vCPU·h</th>
-									<th scope="col">VM 수</th>
+									<th scope="col">{t('usageReport.columns.vmCount')}</th>
 								</tr>
 							</thead>
 							<tbody>
@@ -547,15 +573,15 @@
 											<div class="flex items-center gap-2">
 												<span class="font-mono text-ink-0">{f.flavor}</span>
 												{#if f.gpu_count > 0}
-													<Pill tone="accent">GPU ×{f.gpu_count}</Pill>
+													<Pill tone="accent">{t('usageReport.flavors.gpuCount', { count: formatValue(f.gpu_count) })}</Pill>
 												{/if}
 											</div>
 										</td>
-										<td class="tabular-nums text-ink-2">{f.vcpus}</td>
-										<td class="tabular-nums text-ink-2">{Math.round(f.ram_mb / 1024)}</td>
-										<td class="font-medium tabular-nums text-ink-0">{f.usage_hours.toFixed(1)}</td>
-										<td class="tabular-nums text-ink-2">{f.vcpu_hours.toFixed(1)}</td>
-										<td class="tabular-nums text-ink-2">{f.instance_count}</td>
+										<td class="tabular-nums text-ink-2">{formatValue(f.vcpus)}</td>
+										<td class="tabular-nums text-ink-2">{formatValue(Math.round(f.ram_mb / 1024))}</td>
+										<td class="font-medium tabular-nums text-ink-0">{formatValue(f.usage_hours, 1)}</td>
+										<td class="tabular-nums text-ink-2">{formatValue(f.vcpu_hours, 1)}</td>
+										<td class="tabular-nums text-ink-2">{formatValue(f.instance_count)}</td>
 									</tr>
 								{/each}
 							</tbody>
@@ -565,12 +591,12 @@
 			</Card>
 
 			<Card padding="lg" class="flex min-w-0 flex-col gap-4">
-				<SectionHeader title="쿼터 예측" meta="{data.forecast.window_days}일 추세" />
+				<SectionHeader title={t('usageReport.forecast.title')} meta={t('usageReport.forecast.window', { days: data.forecast.window_days })} />
 
 				<div class="space-y-3">
-					<SectionLabel>컴퓨트</SectionLabel>
+					<SectionLabel>{t('usageReport.resources.compute')}</SectionLabel>
 					{#if data.quota.compute_available === false}
-						<p class="text-xs text-ink-2">컴퓨트 쿼터를 불러오지 못했습니다</p>
+						<p class="text-xs text-ink-2">{t('usageReport.forecast.computeFailed')}</p>
 					{:else}
 						{#each computeRows as row (row.label)}
 							{@render forecastRow(row, data.forecast.horizon_days)}
@@ -581,9 +607,9 @@
 				<div class="space-y-3">
 					<SectionLabel>GPU</SectionLabel>
 					{#if data.quota.gpu_available === false}
-						<p class="text-xs text-ink-2">GPU 쿼터를 불러오지 못했습니다</p>
+						<p class="text-xs text-ink-2">{t('usageReport.forecast.gpuFailed')}</p>
 					{:else if gpuRows.length === 0}
-						<p class="text-xs text-ink-2">할당된 GPU 쿼터 없음</p>
+						<p class="text-xs text-ink-2">{t('usageReport.forecast.noGpuQuota')}</p>
 					{:else}
 						{#each gpuRows as row (row.label)}
 							{@render forecastRow(row, data.forecast.horizon_days)}
@@ -592,9 +618,9 @@
 				</div>
 
 				<div class="space-y-3">
-					<SectionLabel>블록 스토리지</SectionLabel>
+					<SectionLabel>{t('usageReport.resources.blockStorage')}</SectionLabel>
 					{#if data.quota.storage_available === false}
-						<p class="text-xs text-ink-2">블록 스토리지 쿼터를 불러오지 못했습니다</p>
+						<p class="text-xs text-ink-2">{t('usageReport.forecast.storageFailed')}</p>
 					{:else}
 						{#each storageRows as row (row.label)}
 							{@render forecastRow(row, data.forecast.horizon_days)}
@@ -603,25 +629,25 @@
 				</div>
 
 				<p class="mt-auto text-xs text-ink-2">
-					최근 {data.forecast.window_days}일 일별 할당량의 선형 추세를 {data.forecast.horizon_days}일 뒤로 연장한 값입니다. 블록 스토리지는 사용 이력 API가 없어 현재 사용량만 표시합니다.
+					{t('usageReport.forecast.description', { window: formatValue(data.forecast.window_days), horizon: formatValue(data.forecast.horizon_days) })}
 				</p>
 			</Card>
 		</div>
 
 		<Card padding="lg">
-			<SectionHeader title="인스턴스별 사용 시간" meta="상위 {data.instance_usage.length}" />
+			<SectionHeader title={t('usageReport.instances.title')} meta={t('usageReport.instances.top', { count: formatValue(data.instance_usage.length) })} />
 			{#if data.instance_usage.length === 0}
-				<div class="mt-6 py-6 text-center text-sm text-ink-2">데이터 없음</div>
+				<div class="mt-6 py-6 text-center text-sm text-ink-2">{t('usageReport.noData')}</div>
 			{:else}
 				<TableShell density="compact" class="mt-4">
 					<table>
 						<thead>
 							<tr>
-								<th scope="col">인스턴스</th>
-								<th scope="col">Flavor</th>
-								<th scope="col">상태</th>
-								<th scope="col">시작</th>
-								<th scope="col">사용 시간(h)</th>
+								<th scope="col">{t('usageReport.resources.instance')}</th>
+								<th scope="col">{t('usageReport.columns.flavor')}</th>
+								<th scope="col">{t('usageReport.columns.status')}</th>
+								<th scope="col">{t('usageReport.columns.started')}</th>
+								<th scope="col">{t('usageReport.columns.usageHours')}</th>
 								<th scope="col">vCPU</th>
 								<th scope="col">GPU</th>
 							</tr>
@@ -630,7 +656,7 @@
 							{#each data.instance_usage as row (row.instance_id)}
 								<tr>
 									<td>
-										<div class="text-ink-0">{row.name || '-'}</div>
+										<div class="text-ink-0">{row.name || t('usageReport.missingValue')}</div>
 										<div class="font-mono text-xs text-ink-2">{row.instance_id.slice(0, 8)}</div>
 									</td>
 									<td class="font-mono text-ink-2">{row.flavor}</td>
@@ -638,14 +664,14 @@
 										<div class="flex items-center gap-1.5">
 											<StatusChip status={row.state} />
 											{#if row.ended_at}
-												<Pill tone="neutral">삭제됨</Pill>
+												<Pill tone="neutral">{t('usageReport.instances.deleted')}</Pill>
 											{/if}
 										</div>
 									</td>
-									<td class="tabular-nums text-ink-2">{row.started_at ? formatDate(row.started_at) : '-'}</td>
-									<td class="font-medium tabular-nums text-ink-0">{row.hours.toFixed(1)}</td>
-									<td class="tabular-nums text-ink-2">{row.vcpus}</td>
-									<td class="tabular-nums text-ink-2">{row.gpu_count || '-'}</td>
+									<td class="tabular-nums text-ink-2">{row.started_at ? formatDate(row.started_at) : t('usageReport.missingValue')}</td>
+									<td class="font-medium tabular-nums text-ink-0">{formatValue(row.hours, 1)}</td>
+									<td class="tabular-nums text-ink-2">{formatValue(row.vcpus)}</td>
+									<td class="tabular-nums text-ink-2">{row.gpu_count ? formatValue(row.gpu_count) : t('usageReport.missingValue')}</td>
 								</tr>
 							{/each}
 						</tbody>
@@ -655,40 +681,40 @@
 		</Card>
 
 		<Card padding="lg">
-			<SectionHeader title="프로젝트 리소스 현황" meta="현재 할당/한도" />
+			<SectionHeader title={t('usageReport.inventory.title')} meta={t('usageReport.inventory.meta')} />
 			<div class="mt-4">
 				{#if inventoryState === 'loading'}
 					<LoadingSkeleton variant="table" rows={4} />
 				{:else if inventoryState === 'error'}
-					<Alert tone="warning">프로젝트 리소스 현황을 불러오지 못했습니다. 새로고침으로 다시 시도하세요.</Alert>
+					<Alert tone="warning">{t('usageReport.inventory.loadFailed')}</Alert>
 				{:else}
 					<div class="grid grid-cols-1 gap-3.5 md:grid-cols-2 lg:grid-cols-3">
-						{#each inventoryGroups as group (group.title)}
+						{#each inventoryGroups as group (group.id)}
 							<section class="space-y-2.5" aria-label={group.title}>
 								<SectionLabel>{group.title}</SectionLabel>
 								{#each group.rows as row (row.label)}
 									<CapacityBar label={row.label} used={row.item.in_use} total={row.item.limit} unit={row.unit} size="xs" />
 								{/each}
-								{#if group.title === '컴퓨트 한도' && data.quota.compute_available !== false && isQuotaItem(inventory?.compute.key_pairs)}
-									<StatTile label="키페어 한도 (사용자별)" value={inventory.compute.key_pairs.limit === -1 ? '무제한' : inventory.compute.key_pairs.limit} accent="blue" flat />
+								{#if group.id === 'compute' && data.quota.compute_available !== false && isQuotaItem(inventory?.compute.key_pairs)}
+									<StatTile label={t('usageReport.inventory.keyPairLimit')} value={inventory.compute.key_pairs.limit === -1 ? t('usageReport.forecast.unlimited') : formatValue(inventory.compute.key_pairs.limit)} accent="blue" flat />
 								{/if}
 							</section>
 						{/each}
 						{#if objectStorage}
-							<section class="space-y-2.5" aria-label="오브젝트 스토리지">
-								<SectionLabel>오브젝트 스토리지</SectionLabel>
+							<section class="space-y-2.5" aria-label={t('usageReport.resources.objectStorage')}>
+								<SectionLabel>{t('usageReport.resources.objectStorage')}</SectionLabel>
 								<div class="grid gap-px overflow-hidden rounded-lg border border-line bg-line">
-									<StatTile label="컨테이너" value={objectStorage.container_count.toLocaleString()} accent="blue" flat />
-									<StatTile label="오브젝트" value={objectStorage.object_count.toLocaleString()} accent="cyan" flat />
-									<StatTile label="사용량" value={objectStorage.bytes_used > 0 ? formatSize(objectStorage.bytes_used) : '0 B'} accent="violet" flat />
+									<StatTile label={t('usageReport.resources.container')} value={objectStorage.container_count.toLocaleString(intlLocale())} accent="blue" flat />
+									<StatTile label={t('usageReport.resources.object')} value={objectStorage.object_count.toLocaleString(intlLocale())} accent="cyan" flat />
+									<StatTile label={t('usageReport.resources.usage')} value={objectStorage.bytes_used > 0 ? formatSize(objectStorage.bytes_used) : `${formatValue(0)} B`} accent="violet" flat />
 								</div>
 							</section>
 						{/if}
 						{#if database}
-							<section class="space-y-2.5" aria-label="데이터베이스">
-								<SectionLabel>데이터베이스</SectionLabel>
+							<section class="space-y-2.5" aria-label={t('usageReport.resources.database')}>
+								<SectionLabel>{t('usageReport.resources.database')}</SectionLabel>
 								<div class="overflow-hidden rounded-lg border border-line">
-									<StatTile label="DB 인스턴스" value={database.instances_count} accent="emerald" flat />
+									<StatTile label={t('usageReport.resources.dbInstance')} value={formatValue(database.instances_count)} accent="emerald" flat />
 								</div>
 							</section>
 						{/if}
@@ -700,11 +726,11 @@
 		<!-- LLM 채팅 사용량 (빌트인) -->
 		{#if chatUsage?.found}
 			<Card padding="lg">
-				<SectionHeader title="AI 채팅 사용량" meta="빌트인 채팅" />
+				<SectionHeader title={t('usageReport.chat.title')} meta={t('usageReport.chat.meta')} />
 				<div class="grid grid-cols-2 lg:grid-cols-3 gap-3.5 mt-4">
 					<StatTile
-						label="이번 달 토큰"
-						value={(chatUsage.month_prompt_tokens + chatUsage.month_completion_tokens).toLocaleString()}
+						label={t('usageReport.chat.monthTokens')}
+						value={(chatUsage.month_prompt_tokens + chatUsage.month_completion_tokens).toLocaleString(intlLocale())}
 						accent="blue"
 					>
 						{#snippet icon()}
@@ -713,11 +739,11 @@
 							</svg>
 						{/snippet}
 					</StatTile>
-					<StatTile label="입력 토큰" value={chatUsage.month_prompt_tokens.toLocaleString()} accent="blue" />
-					<StatTile label="출력 토큰" value={chatUsage.month_completion_tokens.toLocaleString()} accent="cyan" />
+					<StatTile label={t('usageReport.chat.inputTokens')} value={chatUsage.month_prompt_tokens.toLocaleString(intlLocale())} accent="blue" />
+					<StatTile label={t('usageReport.chat.outputTokens')} value={chatUsage.month_completion_tokens.toLocaleString(intlLocale())} accent="cyan" />
 					<StatTile
-						label="이번 달 크레딧"
-						value={chatUsage.month_credited_cost.toLocaleString()}
+						label={t('usageReport.chat.monthCredits')}
+						value={chatUsage.month_credited_cost.toLocaleString(intlLocale())}
 						accent="violet"
 					>
 						{#snippet icon()}
@@ -727,8 +753,8 @@
 						{/snippet}
 					</StatTile>
 					<StatTile
-						label="이번 달 요청"
-						value={chatUsage.month_request_count}
+						label={t('usageReport.chat.monthRequests')}
+						value={formatValue(chatUsage.month_request_count)}
 						accent="cyan"
 					>
 						{#snippet icon()}
@@ -737,11 +763,11 @@
 							</svg>
 						{/snippet}
 					</StatTile>
-					<StatTile label="월 quota" value={`${chatUsage.quota_used.toLocaleString()} / ${chatUsage.quota_max.toLocaleString()}`} accent="amber" />
+					<StatTile label={t('usageReport.chat.monthQuota')} value={t('usageReport.chat.quotaValue', { used: chatUsage.quota_used.toLocaleString(intlLocale()), max: chatUsage.quota_max.toLocaleString(intlLocale()) })} accent="amber" />
 				</div>
 			</Card>
 		{/if}
 	{:else}
-		<EmptyState headline="사용량 리포트가 없습니다" description="선택한 기간에 집계된 사용량이 없습니다." />
+		<EmptyState headline={t('usageReport.empty.title')} description={t('usageReport.empty.description')} />
 	{/if}
 </PageShell>

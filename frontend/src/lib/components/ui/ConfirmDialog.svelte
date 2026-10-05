@@ -3,6 +3,7 @@
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 	import Button from './Button.svelte';
 	import Card from './Card.svelte';
+	import { t } from '$lib/i18n/ns/common';
 </script>
 
 {#if dialogState.open}
@@ -18,8 +19,8 @@
 			<Card surface="modal" padding="lg">
 				<p id="confirm-dialog-message" class="confirm-message">{dialogState.message}</p>
 				<div class="confirm-actions">
-					<Button onclick={dialogState.reject} variant="secondary">취소</Button>
-					<Button onclick={dialogState.accept} variant={dialogState.confirmVariant}>{dialogState.confirmLabel}</Button>
+					<Button onclick={dialogState.reject} variant="secondary">{t('actions.cancel')}</Button>
+					<Button onclick={dialogState.accept} variant={dialogState.confirmVariant}>{dialogState.confirmLabel ?? t('actions.confirm')}</Button>
 				</div>
 			</Card>
 		</div>

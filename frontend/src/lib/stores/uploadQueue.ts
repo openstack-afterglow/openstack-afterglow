@@ -1,5 +1,6 @@
 import { get, writable } from 'svelte/store';
 import { ApiError, api } from '$lib/api/client';
+import { t } from '$lib/i18n/ns/object-storage';
 
 export type UploadKind = 'object' | 'image';
 
@@ -38,7 +39,7 @@ function fileBytes(file: File): Promise<ArrayBuffer> {
 	const { promise, resolve, reject } = Promise.withResolvers<ArrayBuffer>();
 	const reader = new FileReader();
 	reader.onload = () => resolve(reader.result as ArrayBuffer);
-	reader.onerror = () => reject(reader.error ?? new Error('파일을 읽지 못했습니다'));
+	reader.onerror = () => reject(reader.error ?? new Error(t('uploadQueue.readFailed')));
 	reader.readAsArrayBuffer(file);
 	return promise;
 }
@@ -109,7 +110,7 @@ function enqueue(
 			try {
 				formData.append('sha256', await sha256Hex(file));
 			} catch {
-				throw new Error('무결성 해시 계산 실패');
+				throw new Error(t('uploadQueue.hashFailed'));
 			}
 		}
 		if (canceledBeforeStart) throw new DOMException('aborted', 'AbortError');
@@ -131,7 +132,7 @@ function enqueue(
 			const name = 'name' in named && typeof named.name === 'string' ? named.name : '';
 			const message = 'message' in named && typeof named.message === 'string' ? named.message : '';
 			const isCancel = (e instanceof ApiError && e.status === 0) || name === 'AbortError';
-			_patch(id, { status: isCancel ? 'canceled' : 'error', error: message || '업로드 실패' }, true);
+			_patch(id, { status: isCancel ? 'canceled' : 'error', error: message || t('uploadQueue.failed') }, true);
 		});
 
 	return id;

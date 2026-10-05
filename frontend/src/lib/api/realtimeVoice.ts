@@ -1,3 +1,4 @@
+import { t } from '$lib/i18n/ns/chat-studio';
 import { api, ApiError, fetchWithAuth, getWebSocketUrl } from './client';
 import type { AvailableModel } from './chatTree';
 
@@ -27,20 +28,20 @@ export interface RealtimeSession {
 }
 
 export function realtimeReadiness(model: RealtimeModel | undefined, current: RealtimeCapabilities | null): string | null {
-	if (!model) return '실시간 음성 모델을 선택하세요.';
-	if (model.model_kind !== 'realtime' || !Number.isSafeInteger(model.id) || model.id <= 0) return '지원하지 않는 모델입니다.';
-	if (!model.provider_api_key_configured) return '제공자 API 키가 구성되지 않았습니다.';
-	if (!current || current.model_kind !== 'realtime' || current.model_id !== model.id) return '현재 모델 상태를 확인할 수 없습니다.';
+	if (!model) return t('realtimeVoiceApi.selectModel');
+	if (model.model_kind !== 'realtime' || !Number.isSafeInteger(model.id) || model.id <= 0) return t('realtimeVoiceApi.unsupportedModel');
+	if (!model.provider_api_key_configured) return t('realtimeVoiceApi.providerKeyMissing');
+	if (!current || current.model_kind !== 'realtime' || current.model_id !== model.id) return t('realtimeVoiceApi.readinessUnverified');
 	for (const gates of [model.capabilities?.feature_gates, current.model_capabilities?.feature_gates]) {
 		for (const name of ['audio_input', 'audio_output'] as const) {
 			const gate = gates?.[name];
-			if (!gate || gate.available !== true || gate.mode !== 'native') return '실시간 오디오 경로를 사용할 수 없습니다.';
-			if (gate.pricing_available !== true) return '실시간 오디오 가격이 설정되지 않았습니다.';
+			if (!gate || gate.available !== true || gate.mode !== 'native') return t('realtimeVoiceApi.routeUnavailable');
+			if (gate.pricing_available !== true) return t('realtimeVoiceApi.pricingMissing');
 		}
 	}
 	if (!current.available_voices?.length || !current.default_voice || !current.available_voices.includes(current.default_voice) ||
 		![16000, 24000].includes(current.input_sample_rate_hz) || current.output_sample_rate_hz !== 24000 || current.max_duration_seconds < 10) {
-		return '이 모델의 음성 스트림 형식을 확인할 수 없습니다.';
+		return t('realtimeVoiceApi.streamFormatUnverified');
 	}
 	return null;
 }
@@ -55,10 +56,10 @@ export const realtimeVoiceApi = {
 		}, scope.token, scope.projectId);
 		if (!response.ok) {
 			const payload = await response.json().catch(() => null);
-			throw new ApiError(response.status, typeof payload?.detail === 'string' ? payload.detail : '음성 세션을 시작하지 못했습니다.');
+			throw new ApiError(response.status, typeof payload?.detail === 'string' ? payload.detail : t('realtimeVoiceApi.sessionFailed'));
 		}
 		const session: RealtimeSession = await response.json();
-		if (session.status !== 'ready' || !session.ticket || session.websocket_path !== '/api/v1/chat/realtime/ws') throw new Error('잘못된 음성 세션 응답입니다.');
+		if (session.status !== 'ready' || !session.ticket || session.websocket_path !== '/api/v1/chat/realtime/ws') throw new Error(t('realtimeVoiceApi.invalidSession'));
 		return session;
 	},
 	connect(session: RealtimeSession): WebSocket {
@@ -77,7 +78,7 @@ export function pcm16Base64(samples: Int16Array): string {
 
 export function decodePcm16(value: string): Float32Array {
 	const binary = atob(value);
-	if (!binary || binary.length % 2 || binary.length > 64 * 1024) throw new Error('유효하지 않은 오디오 프레임입니다.');
+	if (!binary || binary.length % 2 || binary.length > 64 * 1024) throw new Error(t('realtimeVoiceApi.invalidFrame'));
 	const samples = new Float32Array(binary.length / 2);
 	for (let i = 0; i < samples.length; i++) {
 		const low = binary.charCodeAt(i * 2);

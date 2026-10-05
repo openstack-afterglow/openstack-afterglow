@@ -134,7 +134,7 @@ export function buildGraph(data: TopologyData, opts: BuildGraphOpts): CanvasGrap
 			r.raw.is_distributed && 'DVR',
 			r.raw.is_ha && 'HA',
 			r.raw.enable_snat && 'SNAT',
-			!r.extNetId && '게이트웨이 없음',
+			!r.extNetId && 'noGateway',
 		].filter((b): b is string => typeof b === 'string');
 		const node: RouterNode = {
 			id: r.raw.id,

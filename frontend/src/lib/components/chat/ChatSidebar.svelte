@@ -5,6 +5,7 @@
 	import { auth } from '$lib/stores/auth';
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import ChatUserMenu from './ChatUserMenu.svelte';
+	import { t } from '$lib/i18n/ns/chat-panel';
 
 	interface Conversation {
 		id: string;
@@ -99,7 +100,7 @@
 	});
 
 	function conversationLabel(conversation: Conversation): string {
-		return conversation.title || (conversation.title_status === 'pending' ? '제목 요약 중' : '새 대화');
+		return conversation.title || t(conversation.title_status === 'pending' ? 'sidebar.summarizingTitle' : 'sidebar.newConversation');
 	}
 
 	// 제목 드래그앤드롭으로 프로젝트 이동 (Codex식). 드래그 중인 대화 id + drop 대상.
@@ -152,7 +153,7 @@
 		const normalized = searchQuery.trim().toLowerCase();
 		if (!normalized) return conversations.slice(0, 12);
 		return conversations
-			.filter((conversation) => (conversation.title ?? '새 대화').toLowerCase().includes(normalized))
+			.filter((conversation) => (conversation.title ?? t('sidebar.newConversation')).toLowerCase().includes(normalized))
 			.slice(0, 20);
 	});
 	async function openSearch() {
@@ -205,7 +206,7 @@
 	class:closed={!open}
 	aria-hidden={!open}
 	inert={!open}
-	aria-label="대화 기록"
+	aria-label={t('sidebar.history')}
 >
 	<header class="brand">
 		<span class="brand-name">Lumen</span>
@@ -213,8 +214,8 @@
 			type="button"
 			class="brand-toggle"
 			onclick={onToggle}
-			aria-label={open ? '대화 기록 닫기' : '대화 기록 열기'}
-			title={open ? '대화 기록 닫기' : '대화 기록 열기'}
+			aria-label={t(open ? 'sidebar.closeHistory' : 'sidebar.openHistory')}
+			title={t(open ? 'sidebar.closeHistory' : 'sidebar.openHistory')}
 		>
 			<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="2.5" /><path d="M10 4v16" /></svg>
 		</button>
@@ -222,23 +223,23 @@
 	<div class="top">
 		<button type="button" class="new-btn" onclick={onNew}>
 			<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" stroke-linecap="round" stroke-linejoin="round" /></svg>
-			새 채팅
+			{t('sidebar.newChat')}
 		</button>
 		<button type="button" class="project-hub" onclick={onWorkspaces}>
 			<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" stroke-linejoin="round" /></svg>
-			프로젝트
+			{t('sidebar.projects')}
 		</button>
 	</div>
 
-	<button type="button" class="search-trigger" onclick={openSearch} aria-label="대화 검색">
+	<button type="button" class="search-trigger" onclick={openSearch} aria-label={t('sidebar.search')}>
 		<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" stroke-linecap="round" /></svg>
-		<span>대화 검색</span>
-		<kbd>⌘ I</kbd>
+		<span>{t('sidebar.search')}</span>
+		<kbd>{t('sidebar.searchShortcut')}</kbd>
 	</button>
 
 	<div class="list">
 		{#if grouped.total === 0 && !grouped.hasGroups}
-			<p class="empty">대화가 없습니다</p>
+			<p class="empty">{t('sidebar.empty')}</p>
 		{:else if !grouped.hasGroups}
 			{#each grouped.unassigned as conv (conv.id)}
 				{@render convRow(conv)}
@@ -251,7 +252,7 @@
 						{@render convRow(conv, true)}
 					{/each}
 					{#if g.total > g.convs.length}
-						<button type="button" class="group-more" onclick={() => onOpenWorkspace(g.id!)}>더보기</button>
+						<button type="button" class="group-more" onclick={() => onOpenWorkspace(g.id!)}>{t('sidebar.more')}</button>
 					{/if}
 				{/if}
 			{/each}
@@ -267,7 +268,7 @@
 	<div class="entries">
 		<button type="button" class="entry" onclick={onAgents}>
 			<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="7" width="16" height="12" rx="2" /><path d="M9 7V4h6v3M9 13h.01M15 13h.01" stroke-linecap="round" /></svg>
-			에이전트
+			{t('sidebar.agents')}
 		</button>
 	</div>
 
@@ -280,8 +281,8 @@
 			aria-haspopup="menu"
 			aria-expanded={userMenuOpen}
 		>
-			<span class="user-avatar">{($auth.username ?? '?').slice(0, 2).toUpperCase()}</span>
-			<span class="user-name truncate">{$auth.username || '사용자'}</span>
+			<span class="user-avatar">{($auth.username ?? t('sidebar.unknownUserAvatar')).slice(0, 2).toUpperCase()}</span>
+			<span class="user-name truncate">{$auth.username || t('sidebar.user')}</span>
 			<svg class="dots" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="19" cy="12" r="1.6" /></svg>
 		</button>
 		<ChatUserMenu
@@ -294,16 +295,16 @@
 	</div>
 </aside>
 
-<Modal open={searchOpen} onClose={() => (searchOpen = false)} ariaLabel="대화 검색">
-	<section class="chat-search-dialog" aria-label="대화 검색">
+<Modal open={searchOpen} onClose={() => (searchOpen = false)} ariaLabel={t('sidebar.search')}>
+	<section class="chat-search-dialog" aria-label={t('sidebar.search')}>
 		<div class="chat-search-input">
 			<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" stroke-linecap="round" /></svg>
-			<input bind:this={searchInput} value={searchQuery} oninput={updateSearchQuery} type="search" placeholder="대화 검색" autocomplete="off" />
-			<kbd>Esc</kbd>
+			<input bind:this={searchInput} value={searchQuery} oninput={updateSearchQuery} type="search" placeholder={t('sidebar.search')} autocomplete="off" />
+			<kbd>{t('sidebar.escapeShortcut')}</kbd>
 		</div>
-		<div class="chat-search-results" role="listbox" aria-label="검색 결과">
+		<div class="chat-search-results" role="listbox" aria-label={t('sidebar.searchResults')}>
 			{#if searchResults.length === 0}
-				<p class="chat-search-empty">일치하는 대화가 없습니다</p>
+				<p class="chat-search-empty">{t('sidebar.noMatches')}</p>
 			{:else}
 				{#each searchResults as conversation (conversation.id)}
 					<button type="button" role="option" aria-selected={conversation.id === activeConvId} onclick={() => selectSearchResult(conversation)}>
@@ -349,18 +350,18 @@
 			<span class="group-count">{g.total}</span>
 		</button>
 		<div class="group-actions">
-			<button type="button" class="group-action" class:active={workspaceMenuId === g.id} onclick={() => (workspaceMenuId = workspaceMenuId === g.id ? null : g.id)} title="프로젝트 옵션" aria-label="프로젝트 옵션" aria-expanded={workspaceMenuId === g.id} data-workspace-menu-trigger>
+			<button type="button" class="group-action" class:active={workspaceMenuId === g.id} onclick={() => (workspaceMenuId = workspaceMenuId === g.id ? null : g.id)} title={t('sidebar.projectOptions')} aria-label={t('sidebar.projectOptions')} aria-expanded={workspaceMenuId === g.id} data-workspace-menu-trigger>
 				<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="19" cy="12" r="1.5" /></svg>
 			</button>
-			<button type="button" class="group-action" onclick={() => onNewInWorkspace(g.id!)} title="이 프로젝트에서 새 채팅" aria-label="이 프로젝트에서 새 채팅">
+			<button type="button" class="group-action" onclick={() => onNewInWorkspace(g.id!)} title={t('sidebar.newChatInProject')} aria-label={t('sidebar.newChatInProject')}>
 				<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" stroke-linecap="round" stroke-linejoin="round" /></svg>
 			</button>
 		</div>
 		{#if workspaceMenuId === g.id}
 			<div class="workspace-menu" role="menu">
-				<button type="button" role="menuitem" onclick={() => { workspaceMenuId = null; onOpenWorkspace(g.id!); }}>프로젝트 설정</button>
-				<button type="button" role="menuitem" onclick={() => { workspaceMenuId = null; onOpenWorkspace(g.id!); }}>프로젝트 이름 변경</button>
-				<button type="button" role="menuitem" class="danger" onclick={() => deleteWorkspace(g.id!)}>프로젝트 제거</button>
+				<button type="button" role="menuitem" onclick={() => { workspaceMenuId = null; onOpenWorkspace(g.id!); }}>{t('sidebar.projectSettings')}</button>
+				<button type="button" role="menuitem" onclick={() => { workspaceMenuId = null; onOpenWorkspace(g.id!); }}>{t('sidebar.renameProject')}</button>
+				<button type="button" role="menuitem" class="danger" onclick={() => deleteWorkspace(g.id!)}>{t('sidebar.removeProject')}</button>
 			</div>
 		{/if}
 	</div>
@@ -383,10 +384,10 @@
 		<button type="button" class="item" onclick={() => onSelect(conv)}>
 			<span class="item-title">{conversationLabel(conv)}</span>
 			{#if runningConversationIds.has(conv.id)}
-				<span class="run-indicator" title="응답 생성 중" aria-label="응답 생성 중">
+				<span class="run-indicator" title={t('sidebar.generatingResponse')} aria-label={t('sidebar.generatingResponse')}>
 					<span class="run-spinner" aria-hidden="true"></span>
 					{#if conv.id !== activeConvId}
-						<span class="unread-dot" aria-label="확인하지 않은 실행 중 대화"></span>
+						<span class="unread-dot" aria-label={t('sidebar.unreadRunningConversation')}></span>
 					{/if}
 				</span>
 			{/if}
@@ -396,8 +397,8 @@
 			class="del"
 			disabled={busy}
 			onclick={() => onDelete(conv)}
-			title="대화 삭제"
-			aria-label="대화 삭제"
+			title={t('sidebar.deleteConversation')}
+			aria-label={t('sidebar.deleteConversation')}
 		>
 			<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13" stroke-linecap="round" stroke-linejoin="round" /></svg>
 		</button>

@@ -4,5 +4,25 @@
   hosts: drover
   become: true
   serial: "{{ kolla_serial | default('0') }}"
-  roles:
-    - { role: drover, tags: drover, when: enable_drover | default(false) | bool }
+  tasks:
+    - name: Prepare Drover application image references
+      ansible.builtin.include_role:
+        name: afterglow
+        tasks_from: resolve_image_refs
+        public: false
+        apply:
+          tags: drover
+      vars:
+        afterglow_image_ref_service: drover
+      tags: drover
+      when:
+        - enable_drover | default(false) | bool
+        - kolla_action | default('deploy') in ['precheck', 'pull', 'deploy', 'reconfigure', 'upgrade']
+
+    - name: Apply role drover
+      ansible.builtin.include_role:
+        name: drover
+        apply:
+          tags: drover
+      tags: drover
+      when: enable_drover | default(false) | bool

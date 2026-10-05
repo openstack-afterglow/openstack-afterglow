@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-storage';
+
 	let {
 		value,
 		options = [10, 20, 30],
@@ -11,7 +13,7 @@
 </script>
 
 <div class="flex items-center gap-1 text-xs text-ink-2 max-md:hidden">
-	표시:
+	{t('volumeList.pageSize')}
 	{#each options as n}
 		<button
 			onclick={() => onChange(n)}

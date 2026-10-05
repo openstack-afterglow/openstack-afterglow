@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
+	import { t } from '$lib/i18n/ns/vm-wizard';
+	import RichText from '$lib/i18n/RichText.svelte';
 
 	interface LibraryConfig {
 		id: string;
@@ -77,7 +79,7 @@
 </script>
 
 <p class="text-sm text-ink-2 mb-4">
-	선택한 레이어는 첫 부팅 시 cloud-init으로 자동 마운트됩니다.
+	{t('libraries.mountDescription')}
 </p>
 
 {#if warnings.length > 0}
@@ -125,7 +127,7 @@
 				</div>
 				{#if lib.depends_on.length > 0}
 					<div class="flex items-center gap-1.5 flex-wrap mt-1.5">
-						<span class="text-xs text-ink-2">요구사항:</span>
+						<span class="text-xs text-ink-2">{t('libraries.requirements')}</span>
 						{#each lib.depends_on as dep}
 							{@const met = selected.includes(dep)}
 							<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full font-mono text-[10.5px]
@@ -136,13 +138,13 @@
 							</span>
 						{/each}
 						{#if locked}
-							<span class="text-[10.5px] text-orange-400">(의존 중)</span>
+							<span class="text-[10.5px] text-orange-400">{t('libraries.requiredDependency')}</span>
 						{/if}
 					</div>
 				{/if}
 				{#if gpuWarn}
 					<div class="mt-1.5">
-						<span class="inline-flex items-center px-2 py-0.5 rounded-full bg-yellow-900/30 border border-yellow-800 text-yellow-400 font-mono text-[10.5px] font-semibold">GPU 플레이버 필요</span>
+						<span class="inline-flex items-center px-2 py-0.5 rounded-full bg-yellow-900/30 border border-yellow-800 text-yellow-400 font-mono text-[10.5px] font-semibold">{t('libraries.gpuFlavorRequired')}</span>
 					</div>
 				{/if}
 			</div>
@@ -153,17 +155,17 @@
 <!-- 하단 summary strip -->
 {#if libraries.length > 0}
 	<div class="flex items-center gap-3 flex-wrap px-4 py-3 rounded-lg bg-surface-base border border-line text-xs text-ink-2 mt-4">
-		<span>선택 <b class="text-ink-0 font-mono font-semibold">{selectedCount}</b>개 / {libraries.length}개</span>
+		<span><RichText segments={t.rich('libraries.selectionSummary', { count: selectedCount, total: libraries.length })} classes={{ strong: 'text-ink-0 font-mono font-semibold' }} /></span>
 		{#if totalSize}
 			<span class="text-ink-2">·</span>
-			<span>OverlayFS 추가 디스크 <b class="text-ink-0 font-mono">{totalSize}</b></span>
+			<span><RichText segments={t.rich('libraries.additionalDisk', { size: totalSize })} classes={{ strong: 'text-ink-0 font-mono' }} /></span>
 		{/if}
 		{#if selectedCount > 0}
 			<span class="text-ink-2">·</span>
 			{#if allDepsSatisfied}
-				<span>모든 의존성 충족 <span class="text-green-400 font-semibold">✓</span></span>
+				<span><RichText segments={t.rich('libraries.dependenciesSatisfied')} classes={{ strong: 'text-green-400 font-semibold' }} /></span>
 			{:else}
-				<span>의존성 미충족 <span class="text-red-400 font-semibold">!</span></span>
+				<span><RichText segments={t.rich('libraries.dependenciesUnsatisfied')} classes={{ strong: 'text-red-400 font-semibold' }} /></span>
 			{/if}
 		{/if}
 	</div>

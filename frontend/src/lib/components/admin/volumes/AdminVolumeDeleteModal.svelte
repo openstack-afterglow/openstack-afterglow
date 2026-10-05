@@ -2,6 +2,8 @@
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
+	import { t } from '$lib/i18n/ns/admin-storage';
+	import RichText from '$lib/i18n/RichText.svelte';
 
 	interface AdminVolume {
 		id: string;
@@ -42,12 +44,14 @@
 			onSuccess();
 			onClose();
 		} catch (e) {
-			deleteError = e instanceof ApiError ? e.message : '삭제 실패';
+			deleteError = e instanceof ApiError ? e.message : t('volumeDelete.failed');
 		} finally {
 			deleting = false;
 		}
 	}
 </script>
+
+{#snippet volumeName(text: string)}<span class="text-ink-0">{text}</span>{/snippet}
 
 {#if volume}
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -63,15 +67,15 @@
 			onclick={(e) => e.stopPropagation()}
 			role="none"
 		>
-			<h2 class="text-lg font-semibold text-ink-0 mb-3">볼륨 삭제</h2>
-			<p class="text-sm text-ink-2 mb-2"><span class="text-ink-0">{volume.name || volume.id.slice(0, 8)}</span> 볼륨을 삭제하시겠습니까?</p>
-			<p class="text-xs text-red-400 mb-4">이 작업은 되돌릴 수 없습니다.</p>
+			<h2 class="text-lg font-semibold text-ink-0 mb-3">{t('volumeDelete.title')}</h2>
+			<p class="text-sm text-ink-2 mb-2"><RichText segments={t.rich('volumeDelete.confirm', { name: volume.name || volume.id.slice(0, 8) })} tags={{ name: volumeName }} /></p>
+			<p class="text-xs text-red-400 mb-4">{t('volumeDelete.irreversible')}</p>
 			{#if deleteError}
 				<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{deleteError}</div>
 			{/if}
 			<div class="flex justify-end gap-3">
-				<button onclick={onClose} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">취소</button>
-				<button onclick={confirmDelete} disabled={deleting} class="px-4 py-2 bg-red-600 hover:bg-red-500 text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{deleting ? '삭제 중...' : '삭제'}</button>
+				<button onclick={onClose} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('volumeDelete.cancel')}</button>
+				<button onclick={confirmDelete} disabled={deleting} class="px-4 py-2 bg-red-600 hover:bg-red-500 text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{deleting ? t('volumeDelete.deleting') : t('volumeDelete.delete')}</button>
 			</div>
 		</div>
 	</div>

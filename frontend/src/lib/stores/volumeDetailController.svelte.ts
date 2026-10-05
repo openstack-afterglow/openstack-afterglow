@@ -1,3 +1,4 @@
+import { t } from '$lib/i18n/ns/volume';
 import { getContext, setContext } from 'svelte';
 import { api, ApiError } from '$lib/api/client';
 import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -122,7 +123,7 @@ export function createVolumeDetailController(opts: VolumeDetailOpts) {
       resolveAttachmentNames(vol, proj);
     } catch (e) {
       if (gen !== generation || opts.volumeId() !== id || opts.projectId() !== proj) return;
-      error = e instanceof ApiError ? e.message : '볼륨 정보를 불러올 수 없습니다';
+      error = e instanceof ApiError ? e.message : t('detailController.loadFailed');
     } finally {
       if (gen === generation) loading = false;
     }
@@ -195,7 +196,7 @@ export function createVolumeDetailController(opts: VolumeDetailOpts) {
       await loadAll();
       opts.onChanged?.();
     } catch (e) {
-      attachError = e instanceof ApiError ? e.message : '연결 실패';
+      attachError = e instanceof ApiError ? e.message : t('detailController.attachFailed');
     } finally {
       attaching = false;
     }
@@ -206,7 +207,7 @@ export function createVolumeDetailController(opts: VolumeDetailOpts) {
     const id = opts.volumeId();
     const proj = opts.projectId();
     if (!v || v.attachments.length > 0) return;
-    if (!(await confirmDialog(`볼륨 "${v.name || id.slice(0, 8)}"을 삭제하시겠습니까?`))) return;
+    if (!(await confirmDialog(t('detailController.deleteConfirm', { name: v.name || id.slice(0, 8) })))) return;
     if (opts.volumeId() !== id || opts.projectId() !== proj) return;
     deleting = true;
     try {
@@ -215,7 +216,7 @@ export function createVolumeDetailController(opts: VolumeDetailOpts) {
       if (opts.onDeleted) opts.onDeleted();
       else opts.onClose?.();
     } catch (e) {
-      toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+      toast.error(t('detailController.deleteFailed', { error: e instanceof ApiError ? e.message : String(e) }));
     } finally {
       deleting = false;
     }
@@ -226,7 +227,7 @@ export function createVolumeDetailController(opts: VolumeDetailOpts) {
     const id = opts.volumeId();
     const proj = opts.projectId();
     if (!v || !opts.isSystemAdmin?.() || !['error', 'error_deleting', 'deleting'].includes(v.status)) return;
-    if (!(await confirmDialog(`볼륨 "${v.name || id.slice(0, 8)}"을 강제 삭제하시겠습니까?\n이 작업은 오류 상태 볼륨을 강제로 제거합니다.`))) return;
+    if (!(await confirmDialog(t('detailController.forceDeleteConfirm', { name: v.name || id.slice(0, 8) })))) return;
     if (opts.volumeId() !== id || opts.projectId() !== proj) return;
     deleting = true;
     try {
@@ -235,7 +236,7 @@ export function createVolumeDetailController(opts: VolumeDetailOpts) {
       if (opts.onDeleted) opts.onDeleted();
       else opts.onClose?.();
     } catch (e) {
-      toast.error('강제 삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+      toast.error(t('detailController.forceDeleteFailed', { error: e instanceof ApiError ? e.message : String(e) }));
     } finally {
       deleting = false;
     }
@@ -271,7 +272,7 @@ export function createVolumeDetailController(opts: VolumeDetailOpts) {
       showSnapshotForm = false;
       await loadAll();
     } catch (e) {
-      snapshotError = e instanceof ApiError ? e.message : '스냅샷 생성 실패';
+      snapshotError = e instanceof ApiError ? e.message : t('detailController.snapshotFailed');
     } finally {
       creatingSnapshot = false;
     }
@@ -279,13 +280,13 @@ export function createVolumeDetailController(opts: VolumeDetailOpts) {
 
   async function deleteSnapshot(id: string, name: string) {
     if (!volumeSnapshotsOn()) return;
-    if (!(await confirmDialog(`스냅샷 "${name || id.slice(0, 8)}"을 삭제하시겠습니까?`))) return;
+    if (!(await confirmDialog(t('detailController.deleteSnapshotConfirm', { name: name || id.slice(0, 8) })))) return;
     deletingSnapshot = id;
     try {
       await api.delete(`/api/v1/volume-snapshots/${id}`, opts.token(), opts.projectId());
       snapshots = snapshots.filter(s => s.id !== id);
     } catch (e) {
-      toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+      toast.error(t('detailController.deleteSnapshotFailed', { error: e instanceof ApiError ? e.message : String(e) }));
     } finally {
       deletingSnapshot = null;
     }

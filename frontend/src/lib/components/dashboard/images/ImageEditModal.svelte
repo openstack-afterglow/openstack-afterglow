@@ -4,6 +4,7 @@
 	import type { ImageInfo } from '$lib/types/compute';
 	import Button from '$lib/components/ui/Button.svelte';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
+	import { t } from '$lib/i18n/ns/images-keys';
 
 	let {
 		target,
@@ -51,7 +52,7 @@
 			onSaved(updated);
 			onClose();
 		} catch (e) {
-			saveError = e instanceof ApiError ? e.message : '저장 실패';
+			saveError = e instanceof ApiError ? e.message : t('imageEdit.saveFailed');
 		} finally {
 			saving = false;
 		}
@@ -69,27 +70,27 @@
 		<div class="bg-[var(--color-surface-raised)] border border-[var(--color-line)] rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]"
 		     onclick={(e) => e.stopPropagation()}
 		     role="none">
-			<h2 class="text-lg font-semibold text-[var(--color-ink-0)] mb-5">이미지 메타데이터 편집</h2>
+			<h2 class="text-lg font-semibold text-[var(--color-ink-0)] mb-5">{t('imageEdit.title')}</h2>
 			<div class="space-y-4">
 				<div>
-					<label class="block text-xs text-[var(--color-ink-2)] mb-1.5 uppercase tracking-wide">이름
+					<label class="block text-xs text-[var(--color-ink-2)] mb-1.5 uppercase tracking-wide">{t('imageEdit.name')}
 						<input bind:value={form.name} type="text" class="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-line-2)] rounded-lg px-3 py-2 text-[var(--color-ink-0)] text-sm focus:outline-none focus:border-[var(--color-accent)] mt-1.5" />
-						<span class="block text-xs text-[var(--color-ink-3)] mt-1">repository:tag 형식이며 tag를 생략하면 latest가 사용됩니다.</span>
+						<span class="block text-xs text-[var(--color-ink-3)] mt-1">{t('imageEdit.nameHelp')}</span>
 					</label>
 				</div>
 				<div>
-					<label class="block text-xs text-[var(--color-ink-2)] mb-1.5 uppercase tracking-wide">OS Distro
-						<input bind:value={form.os_distro} type="text" placeholder="ubuntu, centos, rocky..." class="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-line-2)] rounded-lg px-3 py-2 text-[var(--color-ink-0)] text-sm focus:outline-none focus:border-[var(--color-accent)] mt-1.5" />
+					<label class="block text-xs text-[var(--color-ink-2)] mb-1.5 uppercase tracking-wide">{t('imageEdit.osDistro')}
+						<input bind:value={form.os_distro} type="text" placeholder={t('imageEdit.osDistroPlaceholder')} class="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-line-2)] rounded-lg px-3 py-2 text-[var(--color-ink-0)] text-sm focus:outline-none focus:border-[var(--color-accent)] mt-1.5" />
 					</label>
 				</div>
 				<div class="grid grid-cols-2 gap-3">
 					<div>
-						<label class="block text-xs text-[var(--color-ink-2)] mb-1.5 uppercase tracking-wide">최소 디스크 (GB)
+						<label class="block text-xs text-[var(--color-ink-2)] mb-1.5 uppercase tracking-wide">{t('imageEdit.minDisk')}
 							<input bind:value={form.min_disk} type="number" min="0" class="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-line-2)] rounded-lg px-3 py-2 text-[var(--color-ink-0)] text-sm focus:outline-none focus:border-[var(--color-accent)] mt-1.5" />
 						</label>
 					</div>
 					<div>
-						<label class="block text-xs text-[var(--color-ink-2)] mb-1.5 uppercase tracking-wide">최소 RAM (MB)
+						<label class="block text-xs text-[var(--color-ink-2)] mb-1.5 uppercase tracking-wide">{t('imageEdit.minRam')}
 							<input bind:value={form.min_ram} type="number" min="0" class="w-full bg-[var(--color-surface-sunken)] border border-[var(--color-line-2)] rounded-lg px-3 py-2 text-[var(--color-ink-0)] text-sm focus:outline-none focus:border-[var(--color-accent)] mt-1.5" />
 						</label>
 					</div>
@@ -97,8 +98,8 @@
 			</div>
 			{#if saveError}<div class="mt-3 text-[var(--color-state-danger)] text-xs">{saveError}</div>{/if}
 			<div class="flex justify-end gap-3 mt-6">
-				<Button variant="ghost" size="md" onclick={onClose}>취소</Button>
-				<Button variant="accent" size="md" onclick={save} disabled={saving}>{saving ? '저장 중...' : '저장'}</Button>
+				<Button variant="ghost" size="md" onclick={onClose}>{t('imageEdit.cancel')}</Button>
+				<Button variant="accent" size="md" onclick={save} disabled={saving}>{saving ? t('imageEdit.saving') : t('imageEdit.save')}</Button>
 			</div>
 		</div>
 	</div>

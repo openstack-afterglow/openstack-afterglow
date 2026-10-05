@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/network-resources';
 	import { api } from '$lib/api/client';
 	import type { RouterDetail, RouterSubnet } from '$lib/types/router';
 	import type { Network } from '$lib/types/networks';
@@ -49,12 +50,12 @@
 
 <section class="bg-surface-base border border-line rounded-lg p-5 mb-4">
 	<div class="flex items-center justify-between mb-4">
-		<h2 class="font-semibold text-ink-0">인터페이스 ({router.interfaces.length})</h2>
+		<h2 class="font-semibold text-ink-0">{t('router.interfaces.title', { count: router.interfaces.length })}</h2>
 		{#if canManage}
 			<button
 				onclick={() => showAddInterface = !showAddInterface}
 				class="text-warm-text hover:text-warm-text-hover text-xs px-2 py-1 rounded border border-action-warm hover:border-action-warm transition-colors"
-			>+ 인터페이스 추가</button>
+			>{t('router.interfaces.addWithLabel')}</button>
 		{/if}
 	</div>
 
@@ -62,13 +63,13 @@
 		<div class="mb-4 p-4 bg-surface-sunken/60 border border-line-2 rounded-lg">
 			<div class="flex gap-2 mb-2">
 				<select bind:value={selectedNetId} class="flex-1 bg-surface-sunken border border-line-2 rounded px-3 py-2 text-sm text-ink-1">
-					<option value="">네트워크 선택</option>
+					<option value="">{t('router.interfaces.selectNetwork')}</option>
 					{#each availableNetworks as net}
 						<option value={net.id}>{net.name || net.id.slice(0, 12)}</option>
 					{/each}
 				</select>
 				<select bind:value={selectedSubnetId} disabled={!allSubnets.length} class="flex-1 bg-surface-sunken border border-line-2 rounded px-3 py-2 text-sm text-ink-1 disabled:opacity-50">
-					<option value="">서브넷 선택</option>
+					<option value="">{t('router.interfaces.selectSubnet')}</option>
 					{#each allSubnets as subnet}
 						<option value={subnet.id}>{subnet.name || subnet.cidr}</option>
 					{/each}
@@ -79,14 +80,14 @@
 					onclick={handleAdd}
 					disabled={!selectedSubnetId || saving}
 					class="bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-action-on-warm text-sm px-3 py-2 rounded transition-colors"
-				>추가</button>
-				<button onclick={() => { showAddInterface = false; selectedNetId = ''; }} class="text-ink-2 hover:text-ink-1 text-sm px-2">취소</button>
+				>{t('router.interfaces.add')}</button>
+				<button onclick={() => { showAddInterface = false; selectedNetId = ''; }} class="text-ink-2 hover:text-ink-1 text-sm px-2">{t('router.actions.cancel')}</button>
 			</div>
 		</div>
 	{/if}
 
 	{#if router.interfaces.length === 0}
-		<p class="text-sm text-ink-2">연결된 인터페이스가 없습니다.</p>
+		<p class="text-sm text-ink-2">{t('router.interfaces.empty')}</p>
 	{:else}
 		<div class="space-y-2">
 			{#each router.interfaces as iface}
@@ -100,7 +101,7 @@
 							onclick={() => onRemove(iface.subnet_id)}
 							disabled={saving}
 							class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors"
-						>제거</button>
+						>{t('router.interfaces.remove')}</button>
 					{/if}
 				</div>
 			{/each}

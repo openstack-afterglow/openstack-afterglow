@@ -1,3 +1,4 @@
+import { t as tr } from '$lib/i18n/ns/database';
 import { setContext, getContext } from 'svelte';
 import { get } from 'svelte/store';
 import { auth } from '$lib/stores/auth';
@@ -34,7 +35,13 @@ export interface UserDraft {
 	host: string;
 }
 
-export const DB_TABS = ['상세 정보', '네트워킹', 'DB 접근', '초기화', '진보된'] as const;
+export const DB_TABS: readonly string[] = Object.defineProperties(new Array<string>(5), {
+	0: { get: () => tr('wizard.tabDetails') },
+	1: { get: () => tr('wizard.tabNetworking') },
+	2: { get: () => tr('wizard.tabAccess') },
+	3: { get: () => tr('wizard.tabInit') },
+	4: { get: () => tr('wizard.tabAdvanced') },
+});
 
 interface DbCreateOpts {
 	open: () => boolean;
@@ -112,11 +119,11 @@ export function createDbCreateStore(opts: DbCreateOpts) {
 	const selectedDs = $derived(datastores.find((d) => d.name === datastoreType));
 
 	const step1Error = $derived.by(() => {
-		if (!name.trim()) return '인스턴스 이름을 입력하세요.';
-		if (!datastoreType) return '데이터스토어를 선택하세요.';
-		if (!datastoreVersion) return '버전을 선택하세요.';
-		if (!flavorId) return '플레이버를 선택하세요.';
-		if (!volumeSize || volumeSize < 1) return '볼륨 크기를 입력하세요.';
+		if (!name.trim()) return tr('validation.name');
+		if (!datastoreType) return tr('validation.datastore');
+		if (!datastoreVersion) return tr('validation.version');
+		if (!flavorId) return tr('validation.flavor');
+		if (!volumeSize || volumeSize < 1) return tr('validation.volumeSize');
 		return '';
 	});
 
@@ -167,7 +174,7 @@ export function createDbCreateStore(opts: DbCreateOpts) {
 				datastoreVersion = datastores[0].versions[0]?.name ?? '';
 			}
 		} catch {
-			error = '필수 메타데이터(플레이버/데이터스토어) 조회 실패';
+			error = tr('wizard.metadataFailed');
 		}
 		await Promise.allSettled([
 			api
@@ -269,11 +276,11 @@ export function createDbCreateStore(opts: DbCreateOpts) {
 			opts.onCreated();
 			if (isPublic) {
 				toast.success(
-					'DB 인스턴스 생성 요청 완료. Floating IP는 백그라운드에서 자동 할당됩니다. (1~10분 소요)'
+					tr('wizard.publicCreated')
 				);
 			}
 		} catch (e) {
-			createError = e instanceof ApiError ? e.message : 'DB 인스턴스 생성 실패';
+			createError = e instanceof ApiError ? e.message : tr('wizard.createFailed');
 		} finally {
 			creating = false;
 		}

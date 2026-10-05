@@ -1,85 +1,97 @@
 // Afterglow route label map
-// URL path segment → Korean/English display label
+// URL path segment → localized display label or product name.
 // Fallback page titles for contextual navigation on undeclared routes.
 
-export const ROUTE_LABELS: Record<string, string> = {
+import { t } from '$lib/i18n/ns/nav';
+
+type NavMessage = Parameters<typeof t>[0];
+
+/** Resolve translated segments at call time to follow the active language. */
+const ROUTE_LABEL_KEYS: Record<string, NavMessage> = {
   // Top level
-  dashboard: '대시보드',
-  admin: 'ADMIN',
+  dashboard: 'routes.dashboard',
+  admin: 'routes.admin',
 
   // Overview
-  'my-resources': '내 리소스',
-  notifications: '알림함',
+  'my-resources': 'routes.myResources',
+  notifications: 'routes.notifications',
 
   // Compute
-  compute: 'COMPUTE',
-  instances: '인스턴스',
-  keypairs: '키페어',
-  images: '이미지',
-  flavors: 'Flavor',
-  hypervisors: '하이퍼바이저',
-  gpu: 'GPU',
+  compute: 'routes.compute',
+  instances: 'routes.instances',
+  keypairs: 'routes.keypairs',
+  images: 'routes.images',
+  flavors: 'routes.flavors',
+  hypervisors: 'routes.hypervisors',
 
   // Volumes
-  volumes: '볼륨',
-  backups: '볼륨 백업',
-  snapshots: '볼륨 스냅샷',
+  volumes: 'routes.volumes',
+  backups: 'routes.backups',
+  snapshots: 'routes.snapshots',
 
   // File Storage
-  'file-storage': 'FILE STORAGE',
-  manage: '사전 빌드 파일 스토리지',
-  networks: '네트워크',
-  'security-services': 'Security Service',
+  'file-storage': 'routes.fileStorage',
+  manage: 'routes.manage',
+  networks: 'routes.networks',
+  'security-services': 'routes.securityServices',
 
   // Containers
-  containers: '컨테이너',
-  clusters: '클러스터',
-  k3s: 'Drover',
+  containers: 'routes.containers',
+  clusters: 'routes.clusters',
 
   // Database
-  database: 'DATABASE',
+  database: 'routes.database',
 
   // Object Storage
-  'object-storage': 'OBJECT STORAGE',
-  buckets: '버킷',
-
-  // Chat
-  chat: 'Lumen',
-  audio: '오디오',
+  'object-storage': 'routes.objectStorage',
+  buckets: 'routes.buckets',
+  audio: 'routes.audio',
 
   // Network
-  network: '네트워크',
-  routers: '라우터',
-  'security-groups': '보안 그룹',
-  loadbalancers: '로드밸런서',
-  topology: '토폴로지',
-  'floating-ips': 'Floating IP',
-  ports: '포트',
-  waygate: 'Waygate',
+  network: 'routes.network',
+  routers: 'routes.routers',
+  'security-groups': 'routes.securityGroups',
+  loadbalancers: 'routes.loadbalancers',
+  topology: 'routes.topology',
+  'floating-ips': 'routes.floatingIps',
+  ports: 'routes.ports',
 
   // Library (Union Mount)
-  library: '라이브러리',
-  libraries: '라이브러리 관리',
-  templates: '템플릿',
-  palimpsest: 'Palimpsest',
-  packages: '프로젝트 패키지',
+  library: 'routes.library',
+  libraries: 'routes.libraries',
+  templates: 'routes.templates',
+  packages: 'routes.projectPackages',
 
   // Project settings
-  'project-settings': '프로젝트 설정',
-  invitations: '초대',
+  'project-settings': 'routes.projectSettings',
+  invitations: 'routes.invitations',
 
   // Admin
-  monitoring: '통합 모니터링',
-  services: '서비스 상태',
-  notion: 'Notion 연동',
-  settings: '기본 설정',
-  users: '사용자',
-  projects: '프로젝트',
-  quotas: '쿼터',
-  groups: '그룹',
-  roles: '역할',
-  announcements: '공지 관리',
+  monitoring: 'routes.monitoring',
+  services: 'routes.services',
+  notion: 'routes.notion',
+  settings: 'routes.settings',
+  users: 'routes.users',
+  projects: 'routes.projects',
+  quotas: 'routes.quotas',
+  groups: 'routes.groups',
+  roles: 'routes.roles',
+  announcements: 'routes.announcements',
 };
+
+/** Product and protocol names are never translated. */
+const ROUTE_PRODUCT_LABELS: Record<string, string> = {
+  gpu: 'GPU',
+  k3s: 'Drover',
+  chat: 'Lumen',
+  waygate: 'Waygate',
+  palimpsest: 'Palimpsest',
+};
+
+function routeLabel(segment: string): string | undefined {
+  const key = ROUTE_LABEL_KEYS[segment];
+  return key ? t(key) : ROUTE_PRODUCT_LABELS[segment];
+}
 
 /** Derives the page title while excluding resource UUIDs and creation routes. */
 export function derivePageTitle(pathname: string): string {
@@ -90,7 +102,7 @@ export function derivePageTitle(pathname: string): string {
   const relevant = parts.slice(1).filter(p => !isUuid(p) && p !== 'new');
 
   const last = relevant.at(-1) ?? parts[0] ?? '';
-  return ROUTE_LABELS[last] ?? last;
+  return routeLabel(last) ?? last;
 }
 
 function isUuid(s: string): boolean {

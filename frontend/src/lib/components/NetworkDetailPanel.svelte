@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/network-resources';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import { createNetworkDetailController, provideNetworkDetailController } from '$lib/stores/networkDetailController.svelte';
 	import NetworkDetailHeader from '$lib/components/network/NetworkDetailHeader.svelte';
@@ -38,7 +39,7 @@
 
 	<div class="flex-1 overflow-y-auto p-5 space-y-4">
 		{#if s.loading}
-			<div class="text-ink-2 text-sm">로딩 중...</div>
+			<div class="text-ink-2 text-sm">{t('network.state.loading')}</div>
 		{:else if s.error}
 			<div class="text-red-400 text-sm">{s.error}</div>
 		{:else if s.network}

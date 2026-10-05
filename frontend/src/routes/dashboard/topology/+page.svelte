@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/topology';
 	import { untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -39,7 +40,7 @@
 				$auth.projectId ?? undefined
 			);
 		} catch (e) {
-			error = e instanceof ApiError ? `조회 실패 (${e.status}): ${e.message}` : '서버 오류';
+			error = e instanceof ApiError ? t('topology.loadFailed', { status: e.status, message: e.message }) : t('topology.serverError');
 		} finally {
 			loading = false;
 			refreshing = false;
@@ -51,9 +52,9 @@
 	<div class="mb-6 flex items-center justify-between">
 		<div>
 			<a href="/dashboard" class="text-ink-2 hover:text-ink-1 text-sm transition-colors">
-				← 대시보드
+				{t('legacy.back')}
 			</a>
-			<h1 class="text-2xl font-bold text-ink-0 mt-2">네트워크 토폴로지</h1>
+			<h1 class="text-2xl font-bold text-ink-0 mt-2">{t('legacy.title')}</h1>
 		</div>
 		<AutoRefreshControl
 			bind:active={ar.active}
@@ -82,44 +83,44 @@
 		<div class="flex flex-wrap gap-5 text-xs text-ink-2 px-1">
 			<span class="flex items-center gap-1.5">
 				<span class="inline-block w-2 h-4 rounded" style="background:#ea580c"></span>
-				외부 네트워크
+				{t('network.external')}
 			</span>
 			<span class="flex items-center gap-1.5">
 				<span class="inline-block w-2 h-4 rounded" style="background:#0d9488"></span>
-				공유 네트워크
+				{t('network.shared')}
 			</span>
 			<span class="flex items-center gap-1.5">
 				<span class="inline-block w-2 h-4 rounded" style="background:#3b82f6"></span>
-				내부 네트워크
+				{t('network.internal')}
 			</span>
 			<span class="flex items-center gap-1.5">
 				<span class="inline-block w-3 h-3 rounded-full" style="background:#1c1400;border:1px solid #f59e0b"></span>
-				라우터 (외부 게이트웨이)
+				{t('legacy.externalRouter')}
 			</span>
 			<span class="flex items-center gap-1.5">
 				<span class="inline-block w-3 h-3 rounded-full" style="background:#0f172a;border:1px solid #64748b"></span>
-				라우터 (내부)
+				{t('legacy.internalRouter')}
 			</span>
 			<span class="flex items-center gap-1.5">
 				<span class="inline-block w-3 h-3 rounded" style="background:#052e16;border:1px solid #22c55e"></span>
-				인스턴스 (ACTIVE)
+				{t('legacy.activeInstance')}
 			</span>
 			<span class="flex items-center gap-1.5">
 				<span class="inline-block w-3 h-3 rounded" style="background:#450a0a;border:1px solid #ef4444"></span>
-				인스턴스 (SHUTOFF/ERROR)
+				{t('legacy.stoppedInstance')}
 			</span>
 			<span class="flex items-center gap-1.5">
 				<span class="inline-block w-3 h-3 rounded" style="background:#1c1917;border:1px solid #78716c"></span>
-				인스턴스 (기타)
+				{t('legacy.otherInstance')}
 			</span>
 		</div>
 
 		<!-- 요약 (현재 프로젝트 기준) -->
 		<div class="mt-4 flex gap-6 text-xs text-ink-2 px-1">
-			<span>네트워크 {_visibleNets.length}개</span>
-			<span>라우터 {_projectRouters.length}개</span>
-			<span>인스턴스 {data.instances.length}개</span>
-			<span>Floating IP {_projectFips.length}개</span>
+			<span>{t('summary.networks', { count: _visibleNets.length })}</span>
+			<span>{t('summary.routers', { count: _projectRouters.length })}</span>
+			<span>{t('summary.instances', { count: data.instances.length })}</span>
+			<span>{t('summary.floatingIps', { count: _projectFips.length })}</span>
 		</div>
 	{/if}
 </div>

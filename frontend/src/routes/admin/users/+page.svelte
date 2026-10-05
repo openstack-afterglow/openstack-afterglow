@@ -11,6 +11,8 @@
 	import AdminUserCreateModal from '$lib/components/admin/users/AdminUserCreateModal.svelte';
 	import AdminUserEditModal from '$lib/components/admin/users/AdminUserEditModal.svelte';
 	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
+	import { t } from '$lib/i18n/ns/admin-identity';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 
 	let allUsers = $state<User[]>([]);
 	let loading = $state(true);
@@ -149,7 +151,7 @@
 			await loadAll();
 			return true;
 		} catch (e) {
-			return e instanceof ApiError ? e.message : '생성 실패';
+			return e instanceof ApiError ? e.message : t('userPage.createFailed');
 		}
 	}
 
@@ -172,13 +174,13 @@
 			await loadAll();
 			return true;
 		} catch (e) {
-			return e instanceof ApiError ? e.message : '수정 실패';
+			return e instanceof ApiError ? e.message : t('userPage.updateFailed');
 		}
 	}
 
 	function formatActivityTime(iso: string): string {
 		if (!iso) return '—';
-		return new Date(iso).toLocaleString('ko-KR', {
+		return new Date(iso).toLocaleString(intlLocale(), {
 			month: 'short',
 			day: 'numeric',
 			hour: '2-digit',
@@ -211,7 +213,7 @@
 
 <div class="p-4 md:p-6 max-w-7xl mx-auto">
 	<div data-tour="admin-identity-header">
-	<PageHeader breadcrumb="IDENTITY / USERS" title="사용자">
+		<PageHeader breadcrumb={t('userPage.breadcrumb')} title={t('userPage.title')}>
 		{#snippet actions()}
 			<TutorialStartButton tour="admin-identity" compactOnMobile />
 			<button
@@ -219,7 +221,7 @@
 					showCreate = true;
 				}}
 				class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg"
-				>+ 생성</button
+				>{t('userPage.create')}</button
 			>
 			<AutoRefreshControl
 				bind:active={ar.active}
@@ -240,33 +242,33 @@
 	{:else}
 		<!-- 통계 카드 + 최근 변경 로그 카드 -->
 		<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5" data-tour="admin-identity-overview">
-			<span class="sr-only" data-tour="admin-identity-overview-ready">사용자 현황 준비됨</span>
+			<span class="sr-only" data-tour="admin-identity-overview-ready">{t('userPage.overviewReady')}</span>
 			<!-- 집계 통계 -->
 			<div class="md:col-span-2 bg-surface-base border border-line rounded-lg p-4">
-				<p class="text-xs font-semibold text-ink-2 mb-3">사용자 현황</p>
+				<p class="text-xs font-semibold text-ink-2 mb-3">{t('userPage.overviewTitle')}</p>
 				<div class="flex gap-8">
 					<div class="text-center">
 						<div class="text-2xl font-bold text-ink-0">{stats.total}</div>
-						<div class="text-xs text-ink-2 mt-0.5">전체</div>
+						<div class="text-xs text-ink-2 mt-0.5">{t('userPage.total')}</div>
 					</div>
 					<div class="text-center">
 						<div class="text-2xl font-bold text-green-400">{stats.enabled}</div>
-						<div class="text-xs text-ink-2 mt-0.5">활성</div>
+						<div class="text-xs text-ink-2 mt-0.5">{t('userPage.enabled')}</div>
 					</div>
 					<div class="text-center">
 						<div class="text-2xl font-bold text-red-400">{stats.disabled}</div>
-						<div class="text-xs text-ink-2 mt-0.5">비활성</div>
+						<div class="text-xs text-ink-2 mt-0.5">{t('userPage.disabled')}</div>
 					</div>
 				</div>
 			</div>
 
 			<!-- 최근 변경 로그 -->
 			<div class="bg-surface-base border border-line rounded-lg p-4">
-				<p class="text-xs font-semibold text-ink-2 mb-2">최근 사용자 변경</p>
+				<p class="text-xs font-semibold text-ink-2 mb-2">{t('userPage.recentChanges')}</p>
 				{#if loadingActivity}
-					<p class="text-xs text-ink-2">로딩...</p>
+					<p class="text-xs text-ink-2">{t('userPage.loading')}</p>
 				{:else if activityLog.length === 0}
-					<p class="text-xs text-ink-2">변경 내역 없음</p>
+					<p class="text-xs text-ink-2">{t('userPage.noChanges')}</p>
 				{:else}
 					<ul class="space-y-1.5">
 						{#each activityLog.slice(0, 5) as ev (ev.id)}
@@ -288,7 +290,7 @@
 			<input
 				bind:value={search}
 				type="text"
-				placeholder="이름 또는 이메일 검색..."
+				placeholder={t('userPage.searchPlaceholder')}
 				class="flex-1 min-w-[180px] bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm"
 			/>
 			<select
@@ -296,28 +298,28 @@
 				class="bg-surface-sunken border border-line-2 rounded-lg px-2 py-1.5 text-sm text-ink-2 focus:outline-none focus-visible:shadow-[var(--focus-ring)]"
 				data-tour="admin-identity-status-filter"
 			>
-				<option value="all">전체 상태</option>
-				<option value="enabled">활성만</option>
-				<option value="disabled">비활성만</option>
+				<option value="all">{t('userPage.allStatuses')}</option>
+				<option value="enabled">{t('userPage.enabledOnly')}</option>
+				<option value="disabled">{t('userPage.disabledOnly')}</option>
 			</select>
 			<select
 				bind:value={sortBy}
 				class="bg-surface-sunken border border-line-2 rounded-lg px-2 py-1.5 text-sm text-ink-2 focus:outline-none focus-visible:shadow-[var(--focus-ring)]"
 			>
-				<option value="name">이름순</option>
-				<option value="first_seen">최초 활동일순</option>
+				<option value="name">{t('userPage.sortName')}</option>
+				<option value="first_seen">{t('userPage.sortFirstActivity')}</option>
 			</select>
 			<button
 				onclick={() => {
 					sortDir = sortDir === 'asc' ? 'desc' : 'asc';
 				}}
 				class="px-3 py-1.5 bg-surface-sunken border border-line-2 rounded-lg text-sm text-ink-2 hover:bg-surface-selected transition-colors"
-			>{sortDir === 'asc' ? '오름차순' : '내림차순'}</button>
+			>{sortDir === 'asc' ? t('userPage.ascending') : t('userPage.descending')}</button>
 		</div>
 
 		<div class="bg-surface-base border border-line rounded-lg p-5" data-tour="admin-identity-list">
 			{#if pagedUsers.length === 0}
-				<p class="text-xs text-ink-2 text-center py-6" data-tour="admin-identity-list-ready">검색 결과가 없습니다.</p>
+				<p class="text-xs text-ink-2 text-center py-6" data-tour="admin-identity-list-ready">{t('userPage.noResults')}</p>
 			{:else}
 				<div data-tour="admin-identity-list-ready">
 				<AdminUsersTable

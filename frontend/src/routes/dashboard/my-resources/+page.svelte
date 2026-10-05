@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/dashboard-home';
+	import RichText from '$lib/i18n/RichText.svelte';
 	import { untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -31,7 +33,7 @@
 		try {
 			data = await api.get<UserDashboardSummary>('/api/v1/user-dashboard/summary', token, projectId, opts);
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : '데이터를 불러올 수 없습니다';
+			error = e instanceof ApiError ? e.message : t('myResources.loadFailed');
 		} finally {
 			initialLoading = false;
 		}
@@ -60,6 +62,8 @@
 	});
 </script>
 
+{#snippet floatingIpLink(text: string)}<a href="/dashboard/network/floating-ips" class="text-emerald-400 hover:text-emerald-300 transition-colors">{text}</a>{/snippet}
+
 <PageShell>
 	<div class="flex items-center gap-3 mb-4">
 		<a
@@ -67,19 +71,19 @@
 			class="inline-flex items-center gap-1.5 text-xs text-ink-2 hover:text-ink-0 transition-colors px-2.5 py-1.5 rounded-md hover:bg-surface-sunken"
 		>
 			<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
-			대시보드로 돌아가기
+			{t('myResources.back')}
 		</a>
 		<span class="text-ink-2">·</span>
 		<a
 			href="/dashboard/account"
 			class="inline-flex items-center gap-1.5 text-xs text-warm-text hover:text-warm-text-hover transition-colors px-2.5 py-1.5 rounded-md hover:bg-action-warm-hover/10"
 		>
-			계정 설정
+			{t('myResources.account')}
 			<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
 		</a>
 	</div>
 
-	<PageHeader breadcrumb="" title="내 리소스">
+	<PageHeader breadcrumb="" title={t('myResources.title')}>
 		{#snippet actions()}
 			<AutoRefreshControl
 			bind:active={ar.active}
@@ -122,20 +126,19 @@
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
 						</svg>
 					</div>
-					<div class="text-ink-0 font-semibold text-sm">Floating IP</div>
-					<span class="ml-auto text-xs text-ink-2">{data.totals.floating_ips}개</span>
+					<div class="text-ink-0 font-semibold text-sm">{t('myResources.floatingIp')}</div>
+					<span class="ml-auto text-xs text-ink-2">{t('myResources.floatingIpCount', { count: data.totals.floating_ips })}</span>
 				</div>
 				<div class="flex flex-col items-center justify-center py-6">
 					<div class="text-xs text-ink-2 text-center leading-relaxed">
-						Floating IP 목록은<br />
-						<a href="/dashboard/network/floating-ips" class="text-emerald-400 hover:text-emerald-300 transition-colors">네트워크 → Floating IP</a>에서 확인하세요
+						<RichText segments={t.rich('myResources.floatingIpHelp')} tags={{ link: floatingIpLink }} />
 					</div>
 				</div>
 			</div>
 		</div>
 
 		{#if data.projects.length === 0}
-			<EmptyState headline="소속 프로젝트가 없습니다" description="프로젝트에 초대되면 리소스가 여기에 표시됩니다." />
+			<EmptyState headline={t('myResources.noProjects')} description={t('myResources.invitationHelp')} />
 		{/if}
 	{/if}
 </PageShell>

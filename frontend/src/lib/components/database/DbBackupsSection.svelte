@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t as tr } from '$lib/i18n/ns/database';
 	import { useDbInstanceDetailController } from '$lib/stores/dbInstanceDetailController.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import DbRestoreModal from '$lib/components/database/DbRestoreModal.svelte';
@@ -22,7 +23,11 @@
 	let autoForm = $state<{ frequency: Frequency; count: number }>({ frequency: 'daily', count: 7 });
 	let showAutoForm = $state(false);
 
-	const FREQ_LABEL: Record<Frequency, string> = { daily: '일별', weekly: '주별', monthly: '월별' };
+	const FREQ_LABEL: Record<Frequency, string> = {
+		get daily() { return tr('auto.daily'); },
+		get weekly() { return tr('auto.weekly'); },
+		get monthly() { return tr('auto.monthly'); },
+	};
 
 	// 자동 백업 활성화 여부
 	const autoEnabled = $derived(s.autoBackupConfig !== null);
@@ -96,25 +101,25 @@
 <div class="bg-surface-base border border-line rounded-xl p-4 mb-3">
 	<div class="flex items-center justify-between">
 		<div>
-			<h2 class="text-sm font-semibold text-ink-0">자동 백업</h2>
+			<h2 class="text-sm font-semibold text-ink-0">{tr('auto.title')}</h2>
 			{#if autoEnabled}
 				{@const f = configToForm()}
-				<p class="text-xs text-ink-2 mt-0.5">{FREQ_LABEL[f.frequency]} · {f.count}회 보존</p>
+				<p class="text-xs text-ink-2 mt-0.5">{tr('auto.summary', { frequency: FREQ_LABEL[f.frequency], count: f.count })}</p>
 			{:else}
-				<p class="text-xs text-ink-2 mt-0.5">비활성화됨</p>
+				<p class="text-xs text-ink-2 mt-0.5">{tr('state.disabled')}</p>
 			{/if}
 		</div>
 		<div class="flex items-center gap-2">
 			{#if autoEnabled}
 				<button onclick={openAutoForm}
 					class="text-xs text-ink-2 hover:text-ink-0 border border-line-2 hover:border-line-2 px-2 py-1 rounded transition-colors">
-					설정 변경
+					{tr('auto.edit')}
 				</button>
 			{/if}
 			<button
 				onclick={handleToggleAutoBackup}
 				disabled={s.savingAutoBackup}
-				title={autoEnabled ? '자동 백업 비활성화' : '자동 백업 활성화'}
+				title={autoEnabled ? tr('auto.disable') : tr('auto.enable')}
 				class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out disabled:opacity-50 {autoEnabled ? 'bg-action-warm' : 'bg-surface-selected'}"
 			>
 				<span class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-surface-base shadow ring-0 transition duration-200 ease-in-out {autoEnabled ? 'translate-x-4' : 'translate-x-0'}"></span>
@@ -126,16 +131,16 @@
 		<div class="mt-3 bg-surface-sunken rounded-lg p-3 space-y-3">
 			<div class="flex gap-3">
 				<label class="flex flex-col gap-1 flex-1">
-					<span class="text-xs text-ink-2">백업 주기</span>
+					<span class="text-xs text-ink-2">{tr('auto.frequency')}</span>
 					<select bind:value={autoForm.frequency}
 						class="bg-surface-selected border border-line-2 rounded px-2 py-1.5 text-sm text-ink-0 focus:outline-none focus:border-action-warm">
-						<option value="daily">일별</option>
-						<option value="weekly">주별</option>
-						<option value="monthly">월별</option>
+						<option value="daily">{tr('auto.daily')}</option>
+						<option value="weekly">{tr('auto.weekly')}</option>
+						<option value="monthly">{tr('auto.monthly')}</option>
 					</select>
 				</label>
 				<label class="flex flex-col gap-1 w-24">
-					<span class="text-xs text-ink-2">보존 개수</span>
+					<span class="text-xs text-ink-2">{tr('auto.retention')}</span>
 					<input type="number" min="1" max="30" bind:value={autoForm.count}
 						class="bg-surface-selected border border-line-2 rounded px-2 py-1.5 text-sm text-ink-0 focus:outline-none focus:border-action-warm text-center" />
 				</label>
@@ -143,11 +148,11 @@
 			<div class="flex gap-2">
 				<button onclick={handleSaveAutoBackup} disabled={s.savingAutoBackup}
 					class="text-xs bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm px-3 py-1.5 rounded transition-colors">
-					{s.savingAutoBackup ? '저장 중...' : '저장'}
+					{s.savingAutoBackup ? tr('state.saving') : tr('actions.save')}
 				</button>
 				<button onclick={() => { showAutoForm = false; }}
 					class="text-xs text-ink-2 hover:text-ink-0 border border-line-2 hover:border-line-2 px-3 py-1.5 rounded transition-colors">
-					취소
+					{tr('actions.cancel')}
 				</button>
 			</div>
 		</div>
@@ -157,36 +162,36 @@
 <!-- 수동 백업 -->
 <div class="bg-surface-base border border-line rounded-xl p-4">
 	<div class="flex items-center justify-between mb-3">
-		<h2 class="text-sm font-semibold text-ink-0">백업</h2>
+		<h2 class="text-sm font-semibold text-ink-0">{tr('labels.backups')}</h2>
 		<button onclick={() => { showBackupForm = !showBackupForm; s.backupError = ''; }}
 			class="text-xs text-ink-2 hover:text-ink-0 border border-line-2 hover:border-line-2 px-2 py-1 rounded transition-colors">
-			{showBackupForm ? '취소' : '+ 백업 생성'}
+			{showBackupForm ? tr('actions.cancel') : tr('actions.createBackup')}
 		</button>
 	</div>
 	{#if showBackupForm}
 		<div class="bg-surface-sunken rounded-lg p-3 mb-3 space-y-2">
-			<input type="text" bind:value={newBackup.name} placeholder="비우면 {s.instance?.name ?? 'db'}-날짜-시간으로 자동 생성"
+			<input type="text" bind:value={newBackup.name} placeholder={tr('backups.namePlaceholder', { name: s.instance?.name ?? 'db' })}
 				class="w-full bg-surface-selected border border-line-2 rounded px-3 py-1.5 text-sm text-ink-0 placeholder-ink-3 focus:outline-none focus:border-action-warm" />
-			<input type="text" bind:value={newBackup.description} placeholder="설명 (선택)"
+			<input type="text" bind:value={newBackup.description} placeholder={tr('form.description')}
 				class="w-full bg-surface-selected border border-line-2 rounded px-3 py-1.5 text-sm text-ink-0 focus:outline-none focus:border-action-warm" />
 			{#if s.backupError}<p class="text-red-400 text-xs">{s.backupError}</p>{/if}
 			<button onclick={handleCreateBackup} disabled={s.creatingBackup}
 				class="text-xs bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm px-3 py-1.5 rounded transition-colors">
-				{s.creatingBackup ? '생성 중...' : '백업 생성'}
+				{s.creatingBackup ? tr('state.creating') : tr('actions.backup')}
 			</button>
 		</div>
 	{/if}
 	{#if s.backups.length === 0}
-		<div class="text-ink-2 text-xs">백업이 없습니다</div>
+		<div class="text-ink-2 text-xs">{tr('backups.empty')}</div>
 	{:else}
 		<table class="w-full text-sm">
 			<thead>
 				<tr class="text-ink-2 text-xs">
-					<th class="text-left py-2 font-medium">이름</th>
-					<th class="text-left py-2 font-medium">상태</th>
-					<th class="text-left py-2 font-medium">크기</th>
-					<th class="text-left py-2 font-medium">생성일</th>
-					<th class="text-right py-2 font-medium">액션</th>
+					<th class="text-left py-2 font-medium">{tr('labels.name')}</th>
+					<th class="text-left py-2 font-medium">{tr('labels.status')}</th>
+					<th class="text-left py-2 font-medium">{tr('labels.size')}</th>
+					<th class="text-left py-2 font-medium">{tr('labels.created')}</th>
+					<th class="text-right py-2 font-medium">{tr('labels.actions')}</th>
 				</tr>
 			</thead>
 			<tbody>
@@ -197,7 +202,7 @@
 							<div class="flex items-center gap-1">
 								<StatusChip status={b.status} />
 								{#if isStuck(b)}
-									<span class="text-xs text-red-400 ml-1" title="Trove guest agent가 백업 업로드를 완료하지 못했습니다. 삭제 후 재시도하세요.">멈춤</span>
+									<span class="text-xs text-red-400 ml-1" title={tr('backups.stuckHelp')}>{tr('backups.stuck')}</span>
 								{/if}
 							</div>
 						</td>
@@ -207,11 +212,11 @@
 							<div class="flex justify-end gap-1">
 								<button onclick={() => { selectedBackup = b; showRestoreModal = true; }} disabled={s.restoringBackup === b.id}
 									class="text-warm-text hover:text-warm-text-hover disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-action-warm hover:border-action-warm transition-colors">
-									{s.restoringBackup === b.id ? '...' : '복원'}
+									{s.restoringBackup === b.id ? '...' : tr('actions.restore')}
 								</button>
 								<button onclick={() => s.deleteBackup(b.id)} disabled={s.deletingBackup === b.id}
 									class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-red-900 hover:border-red-700 transition-colors">
-									{s.deletingBackup === b.id ? '...' : '삭제'}
+									{s.deletingBackup === b.id ? '...' : tr('actions.delete')}
 								</button>
 							</div>
 						</td>

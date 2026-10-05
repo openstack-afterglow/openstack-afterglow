@@ -1,3 +1,4 @@
+import { t } from '$lib/i18n/ns/images-keys';
 import { api, ApiError } from '$lib/api/client';
 import type { ImageInfo } from '$lib/types/compute';
 import { createImageCatalog } from '$lib/stores/imageCatalog.svelte';
@@ -68,21 +69,21 @@ export function createImagesController(opts: ImagesControllerOpts) {
       selection.retain(images.map((image) => image.id));
       error = '';
     } catch (e) {
-      if (owns()) error = e instanceof ApiError ? `조회 실패 (${e.status})` : '서버 오류';
+      if (owns()) error = e instanceof ApiError ? t('imagesController.loadFailed', { status: e.status }) : t('imagesController.serverError');
     } finally {
       if (owns()) loading = false;
     }
   }
 
   async function deleteImage(id: string, name: string) {
-    if (!(await confirmDialog(`이미지 "${name}"을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`))) return;
+    if (!(await confirmDialog(t('imagesController.deleteConfirm', { name })))) return;
     deleting = id;
     try {
       await api.delete(`/api/v1/images/${id}`, opts.token(), opts.projectId());
       images = images.filter(img => img.id !== id);
       selection.remove([id]);
     } catch (e) {
-      toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+      toast.error(t('imagesController.deleteFailed', { message: e instanceof ApiError ? e.message : String(e) }));
     } finally {
       deleting = null;
     }
@@ -95,7 +96,7 @@ export function createImagesController(opts: ImagesControllerOpts) {
       await api.post(`/api/v1/images/${img.id}/${action}`, {}, opts.token(), opts.projectId());
       await fetchImages({ refresh: true });
     } catch (e) {
-      toast.error('상태 변경 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+      toast.error(t('imagesController.statusChangeFailed', { message: e instanceof ApiError ? e.message : String(e) }));
     } finally {
       togglingId = null;
     }

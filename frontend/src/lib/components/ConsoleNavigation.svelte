@@ -9,6 +9,7 @@
 	import { palette } from '$lib/stores/palette';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 	import Button from '$lib/components/ui/Button.svelte';
+	import { t } from '$lib/i18n/ns/nav';
 
 	interface Props {
 		rootHref: string;
@@ -21,7 +22,7 @@
 		footer?: Snippet;
 	}
 
-	type CurrentContext = { item: NavItem; label: string; icon?: string; items: NavItem[] };
+	type CurrentContext = { item: NavItem; key: string; label: string; icon?: string; items: NavItem[] };
 	let { rootHref, rootLabel, overviewItems, sections, isItemVisible, isSectionVisible, topActions, footer }: Props = $props();
 	let expanded = $state<Record<string, boolean>>({});
 	let previousPath = untrack(() => $page.url.pathname);
@@ -32,14 +33,14 @@
 	const current = $derived.by((): CurrentContext | null => {
 		const pathname = $page.url.pathname;
 		let match: CurrentContext | null = null;
-		const consider = (item: NavItem, label: string, items: NavItem[], icon?: string) => {
+		const consider = (item: NavItem, key: string, label: string, items: NavItem[], icon?: string) => {
 			if ((pathname === item.href || (item.href !== rootHref && pathname.startsWith(`${item.href}/`))) && (!match || item.href.length > match.item.href.length)) {
-				match = { item, label, items, icon };
+				match = { item, key, label, items, icon };
 			}
 		};
-		for (const item of visibleOverview) consider(item, rootLabel, visibleOverview);
+		for (const item of visibleOverview) consider(item, rootHref, rootLabel, visibleOverview);
 		for (const section of visibleSections) {
-			for (const item of section.items) consider(item, section.label, section.items, section.icon);
+			for (const item of section.items) consider(item, section.prefix, section.label, section.items, section.icon);
 		}
 		return match;
 	});
@@ -52,11 +53,11 @@
 	const contextItems = $derived(current?.items ?? []);
 
 	$effect(() => {
-		const label = current?.label;
-		const owner = `${$page.url.pathname}:${label ?? ''}`;
+		const key = current?.key;
+		const owner = `${$page.url.pathname}:${key ?? ''}`;
 		if (owner !== previousOwner) {
 			previousOwner = owner;
-			if (label) untrack(() => { expanded[label] = true; });
+			if (key) untrack(() => { expanded[key] = true; });
 		}
 	});
 	$effect(() => {
@@ -79,7 +80,7 @@
 
 {#if hasContext}
 	<div class="hidden w-[var(--app-sidebar-offset)] shrink-0 md:block" aria-hidden="true"></div>
-	<aside id="app-service-sidebar" aria-label="페이지 메뉴" class="fixed bottom-0 left-0 top-[var(--app-header-height)] z-[var(--z-sidebar)] hidden w-[var(--app-sidebar-offset)] flex-col border-r border-line bg-surface-base md:flex">
+	<aside id="app-service-sidebar" aria-label={t('accessibility.pageMenu')} class="fixed bottom-0 left-0 top-[var(--app-header-height)] z-[var(--z-sidebar)] hidden w-[var(--app-sidebar-offset)] flex-col border-r border-line bg-surface-base md:flex">
 		<div class="flex min-h-16 shrink-0 items-center gap-2 py-2" class:px-4={$sidebarExpanded} class:justify-center={!$sidebarExpanded}>
 			{#if $sidebarExpanded}
 				{#if current?.icon}<svg class="size-5 shrink-0 text-ink-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={current.icon} /></svg>{/if}
@@ -88,12 +89,12 @@
 					<h2 class="truncate text-[0.9375rem] font-semibold text-ink-0" title={pageTitle}>{pageTitle}</h2>
 				</div>
 			{/if}
-			<button id="app-service-sidebar-toggle" type="button" onclick={sidebarExpanded.toggle} aria-expanded={$sidebarExpanded} aria-controls="app-service-navigation" aria-label={$sidebarExpanded ? '서비스 메뉴 접기' : '서비스 메뉴 펼치기'} title={$sidebarExpanded ? '서비스 메뉴 접기' : '서비스 메뉴 펼치기'} class="flex size-11 shrink-0 items-center justify-center rounded-md text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]">
+			<button id="app-service-sidebar-toggle" type="button" onclick={sidebarExpanded.toggle} aria-expanded={$sidebarExpanded} aria-controls="app-service-navigation" aria-label={$sidebarExpanded ? t('accessibility.collapseServiceMenu') : t('accessibility.expandServiceMenu')} title={$sidebarExpanded ? t('accessibility.collapseServiceMenu') : t('accessibility.expandServiceMenu')} class="flex size-11 shrink-0 items-center justify-center rounded-md text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]">
 				<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={$sidebarExpanded ? 'M9 4v16M14 8l-4 4 4 4M4 4h16v16H4z' : 'M9 4v16M12 8l4 4-4 4M4 4h16v16H4z'} /></svg>
 			</button>
 		</div>
 		{#if $sidebarExpanded && topActions && !$sidebarOpen}<div class="px-3 pb-3">{@render topActions()}</div>{/if}
-		<nav id="app-service-navigation" aria-label="현재 서비스" class="min-h-0 flex-1 space-y-0.5 overflow-y-auto pb-4 pt-1" class:px-3={$sidebarExpanded} class:overflow-x-hidden={!$sidebarExpanded}>
+		<nav id="app-service-navigation" aria-label={t('accessibility.currentService')} class="min-h-0 flex-1 space-y-0.5 overflow-y-auto pb-4 pt-1" class:px-3={$sidebarExpanded} class:overflow-x-hidden={!$sidebarExpanded}>
 			{#each contextItems as item (item.href)}
 				<a href={item.href} title={item.label} aria-current={current?.item.href === item.href ? 'page' : undefined} class="nav-item service-nav-item gap-3" class:nav-active={current?.item.href === item.href} class:nav-compact={!$sidebarExpanded}>
 					<svg class="size-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={item.icon} /></svg>
@@ -106,11 +107,11 @@
 {/if}
 
 {#if $sidebarOpen}
-	<div use:dialogFocus={{ enabled: true, onEscape: () => sidebarOpen.close(), initialFocus: '#app-navigation-close' }} role="dialog" aria-modal="true" aria-label="전체 메뉴" tabindex="-1" class="fixed inset-0 z-[var(--z-modal)]">
+	<div use:dialogFocus={{ enabled: true, onEscape: () => sidebarOpen.close(), initialFocus: '#app-navigation-close' }} role="dialog" aria-modal="true" aria-label={t('accessibility.allMenu')} tabindex="-1" class="fixed inset-0 z-[var(--z-modal)]">
 		<button type="button" onclick={() => sidebarOpen.close()} tabindex="-1" aria-hidden="true" data-navigation-backdrop class="absolute inset-0 cursor-default bg-surface-scrim-soft"></button>
-		<aside id="app-navigation-menu" aria-label={rootHref === '/admin' ? '관리자 탐색' : '사용자 탐색'} class="relative flex h-[100dvh] w-[min(var(--app-sidebar-width),100vw)] flex-col bg-surface-base shadow-[var(--shadow-restraint)]">
+		<aside id="app-navigation-menu" aria-label={rootHref === '/admin' ? t('accessibility.adminNavigation') : t('accessibility.userNavigation')} class="relative flex h-[100dvh] w-[min(var(--app-sidebar-width),100vw)] flex-col bg-surface-base shadow-[var(--shadow-restraint)]">
 			<div class="flex h-[var(--app-header-height)] shrink-0 items-center gap-2 border-b border-line px-3 sm:gap-3 md:px-6">
-				<button id="app-navigation-close" type="button" onclick={() => sidebarOpen.close()} aria-label="전체 메뉴 닫기" class="-ml-2 flex size-11 shrink-0 items-center justify-center rounded-md text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] lg:size-8">
+				<button id="app-navigation-close" type="button" onclick={() => sidebarOpen.close()} aria-label={t('accessibility.closeAllMenu')} class="-ml-2 flex size-11 shrink-0 items-center justify-center rounded-md text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] lg:size-8">
 					<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m6 6 12 12M6 18 18 6" /></svg>
 				</button>
 				<a href={rootHref} onclick={selectPage} class="flex min-w-0 items-center gap-2.5 text-[15px] font-semibold tracking-tight text-ink-0 transition-colors hover:text-ink-1" title={$siteConfig.site_name}>
@@ -120,17 +121,17 @@
 			</div>
 			<div class="min-h-0 flex-1 overflow-y-auto px-3 py-3">
 				<div class="mb-3 lg:hidden">
-					<Button variant="secondary" onclick={openSearch} class="w-full" ariaLabel="검색 (⌘K)">
+					<Button variant="secondary" onclick={openSearch} class="w-full" ariaLabel={t('accessibility.search')}>
 						<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m21 21-4.35-4.35M17 11a6 6 0 1 1-12 0 6 6 0 0 1 12 0" /></svg>
-						리소스 검색
+						{t('actions.searchResources')}
 					</Button>
 				</div>
 				{#if topActions}<div class="mb-3">{@render topActions()}</div>{/if}
-				<nav aria-label="모든 서비스" class="space-y-0.5">
+				<nav aria-label={t('accessibility.allServices')} class="space-y-0.5">
 					{#each visibleOverview as item (item.href)}
 						<a href={item.href} onclick={selectPage} aria-current={current?.item.href === item.href ? 'page' : undefined} class="nav-item" class:nav-active={current?.item.href === item.href}>{item.label}</a>
 					{/each}
-					{#each visibleSections as section (section.label)}
+					{#each visibleSections as section (section.prefix)}
 						{#if section.items.length === 1 && section.items[0].topLevel}
 							<a href={section.items[0].href} onclick={selectPage} aria-current={current?.item.href === section.items[0].href ? 'page' : undefined} class="nav-item gap-2" class:nav-active={current?.item.href === section.items[0].href}>
 								<svg class="size-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={section.icon} /></svg>
@@ -138,14 +139,14 @@
 							</a>
 						{:else}
 							<div>
-								<button type="button" onclick={() => expanded[section.label] = !expanded[section.label]} aria-expanded={!!expanded[section.label]} class="nav-item w-full justify-between gap-2 text-left">
+								<button type="button" onclick={() => expanded[section.prefix] = !expanded[section.prefix]} aria-expanded={!!expanded[section.prefix]} class="nav-item w-full justify-between gap-2 text-left">
 									<span class="flex min-w-0 items-center gap-2">
 										<svg class="size-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={section.icon} /></svg>
 										<span class="truncate">{section.label}</span>
 									</span>
-									<svg class="size-3.5 shrink-0 transition-transform" class:rotate-90={!!expanded[section.label]} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m9 5 7 7-7 7" /></svg>
+									<svg class="size-3.5 shrink-0 transition-transform" class:rotate-90={!!expanded[section.prefix]} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m9 5 7 7-7 7" /></svg>
 								</button>
-								{#if expanded[section.label]}
+								{#if expanded[section.prefix]}
 									<div class="ml-4 space-y-0.5">
 										{#each section.items as item (item.href)}
 											<a href={item.href} onclick={selectPage} aria-current={current?.item.href === item.href ? 'page' : undefined} class="nav-item" class:nav-active={current?.item.href === item.href}>{item.label}</a>

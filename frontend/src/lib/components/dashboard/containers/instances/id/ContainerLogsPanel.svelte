@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/containers-shell';
   import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
   import type { AutoRefreshController } from '$lib/utils/autoRefresh.svelte';
 
@@ -14,7 +15,7 @@
 
 <div class="bg-surface-base border border-line rounded-xl p-4">
   <div class="flex items-center justify-between mb-3">
-    <div class="text-xs text-ink-2">로그</div>
+    <div class="text-xs text-ink-2">{t('instances.logs.title')}</div>
     <AutoRefreshControl
       bind:active={ar.active}
       bind:intervalSeconds={ar.intervalSeconds}
@@ -26,6 +27,6 @@
   {#if logs}
     <pre class="bg-surface-canvas rounded p-3 text-xs text-ink-2 overflow-auto max-h-64 font-mono whitespace-pre-wrap">{logs}</pre>
   {:else}
-    <div class="text-ink-2 text-xs">로그 새로고침 버튼을 클릭하세요</div>
+    <div class="text-ink-2 text-xs">{t('instances.logs.refreshHint')}</div>
   {/if}
 </div>

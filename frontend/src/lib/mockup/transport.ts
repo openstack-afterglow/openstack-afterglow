@@ -8,9 +8,9 @@ import type { MockupProfileId } from '$lib/mockup/contracts';
 import { cloneMockup, getMockupState } from '$lib/mockup/state';
 import type { K3sSseProgressMessage } from '$lib/api/k3sSseStream';
 import { isTourId } from '$lib/tutorial/tours';
+import { t } from '$lib/i18n/ns/tutorial';
 
 export const symbolNoMatch = Symbol('mockup-no-match');
-const UNSUPPORTED = '튜토리얼 모드에서는 이 작업을 아직 지원하지 않습니다.';
 const MOCK_EXPIRES_AT_ISO = '2026-12-31T23:59:59Z';
 const NOW_ISO = '2026-07-09T00:00:00Z';
 const MOCK_IMAGES = [
@@ -95,8 +95,8 @@ function ok204(): Record<string, never> {
 	return {};
 }
 
-export function mockUnsupported(_message = UNSUPPORTED): never {
-	throw new ApiError(409, UNSUPPORTED);
+export function mockUnsupported(_message?: string): never {
+	throw new ApiError(409, t('mockup.unsupported'));
 }
 
 function updateInstanceStatus(id: string, status: string): void {

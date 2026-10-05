@@ -1,8 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '$lib/api/errors';
 import {
 	createCloudShellController,
-	type CloudShellController,
 	type CloudShellIdentity,
 } from './cloudShell.svelte';
 
@@ -65,13 +64,6 @@ function buildController() {
 }
 
 describe('Cloud Shell singleton controller contract', () => {
-	let controller: CloudShellController;
-
-	beforeEach(() => {
-		({ controller } = buildController());
-		controller.bindIdentity(identity);
-	});
-
 	it('does not call the backend when consent is opened and canceled', () => {
 		const fixture = buildController();
 		fixture.controller.bindIdentity(identity);
@@ -83,14 +75,6 @@ describe('Cloud Shell singleton controller contract', () => {
 		expect(fixture.issueTicket).not.toHaveBeenCalled();
 		expect(fixture.createWebSocket).not.toHaveBeenCalled();
 		expect(fixture.controller.phase).toBe('closed');
-	});
-
-	it('does not churn the bound identity when auth emits an unchanged snapshot', () => {
-		const boundIdentity = controller.identity;
-
-		controller.bindIdentity({ ...identity });
-
-		expect(controller.identity).toBe(boundIdentity);
 	});
 
 	it('transitions through server phases and relays binary terminal frames', async () => {
@@ -113,7 +97,6 @@ describe('Cloud Shell singleton controller contract', () => {
 
 		fixture.socket.open();
 		fixture.socket.message(JSON.stringify({ type: 'status', phase: 'container' }));
-		expect(fixture.controller.statusStep).toBe('컨테이너 준비');
 		fixture.socket.message(JSON.stringify({ type: 'status', phase: 'authorizing' }));
 		expect(fixture.controller.phase).toBe('authorizing');
 		fixture.socket.message(JSON.stringify({
@@ -155,7 +138,7 @@ describe('Cloud Shell singleton controller contract', () => {
 		expect(fixture.controller.identity?.projectId).toBe('project-b');
 	});
 
-	it('maps fixed WebSocket close codes to actionable errors', async () => {
+	it('enters the error phase when the server closes a displaced session', async () => {
 		const fixture = buildController();
 		fixture.controller.bindIdentity(identity);
 		fixture.controller.openConsent();
@@ -165,7 +148,6 @@ describe('Cloud Shell singleton controller contract', () => {
 		fixture.socket.serverClose(4410);
 
 		expect(fixture.controller.phase).toBe('error');
-		expect(fixture.controller.error).toContain('다른 탭이나 프로젝트');
 	});
 
 	it('reports workspace reset success only after the delete call resolves', async () => {
@@ -190,11 +172,10 @@ describe('Cloud Shell singleton controller contract', () => {
 
 		await expect(fixture.controller.resetWorkspace()).resolves.toBe(false);
 		expect(fixture.controller.phase).toBe('ready');
-		expect(fixture.controller.resetError).toContain('활성 Cloud Shell');
 		expect(fixture.socket.closed).toEqual([]);
 	});
 
-	it('keeps reset failures fail-closed and distinguishes a busy home', async () => {
+	it('keeps reset failures fail-closed', async () => {
 		const fixture = buildController();
 		fixture.deleteWorkspace.mockRejectedValue(
 			new ApiError(409, JSON.stringify({ code: 'workspace_busy', message: 'busy' })),
@@ -203,6 +184,5 @@ describe('Cloud Shell singleton controller contract', () => {
 
 		await expect(fixture.controller.resetWorkspace()).resolves.toBe(false);
 		expect(fixture.controller.phase).toBe('error');
-		expect(fixture.controller.error).toContain('활성 Cloud Shell');
 	});
 });

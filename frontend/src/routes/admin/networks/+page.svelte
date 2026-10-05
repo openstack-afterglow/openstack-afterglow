@@ -13,6 +13,7 @@
 	import AdminNetworkCreateModal from '$lib/components/admin/networks/AdminNetworkCreateModal.svelte';
 	import AdminNetworkEditModal from '$lib/components/admin/networks/AdminNetworkEditModal.svelte';
 	import AdminNetworkDeleteModal from '$lib/components/admin/networks/AdminNetworkDeleteModal.svelte';
+	import { t } from '$lib/i18n/ns/admin-network';
 
 	let networks = $state<AdminNetwork[]>([]);
 	let loading = $state(true);
@@ -61,7 +62,7 @@
 			await loadNetworks();
 			return true;
 		} catch (e) {
-			return e instanceof ApiError ? e.message : '생성 실패';
+			return e instanceof ApiError ? e.message : t('networksPage.error.createFailed');
 		}
 	}
 
@@ -71,7 +72,7 @@
 			await loadNetworks();
 			return true;
 		} catch (e) {
-			return e instanceof ApiError ? e.message : '수정 실패';
+			return e instanceof ApiError ? e.message : t('networksPage.error.updateFailed');
 		}
 	}
 
@@ -81,7 +82,7 @@
 			await loadNetworks();
 			return true;
 		} catch (e) {
-			return e instanceof ApiError ? e.message : '삭제 실패';
+			return e instanceof ApiError ? e.message : t('networksPage.error.deleteFailed');
 		}
 	}
 
@@ -94,9 +95,9 @@
 </script>
 
 <div class="p-4 md:p-6 max-w-7xl mx-auto">
-	<PageHeader breadcrumb="NETWORK / NETWORKS" title="네트워크">
+	<PageHeader breadcrumb={t('networksPage.breadcrumb')} title={t('networksPage.title')}>
 		{#snippet actions()}
-			<button onclick={() => { showCreate = true; }} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg">+ 생성</button>
+			<button onclick={() => { showCreate = true; }} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg">{t('networksPage.actions.create')}</button>
 			<AutoRefreshControl
 				bind:active={ar.active}
 				bind:intervalSeconds={ar.intervalSeconds}
@@ -115,7 +116,7 @@
 	/>
 
 	{#if loading}
-		<div class="text-ink-2 text-sm">로딩 중...</div>
+		<div class="text-ink-2 text-sm">{t('networksPage.loading')}</div>
 	{:else}
 		<AdminNetworkTable
 			{networks}

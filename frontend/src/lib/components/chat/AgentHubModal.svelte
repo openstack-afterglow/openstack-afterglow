@@ -5,6 +5,7 @@
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import { isAvatarUrl, type Agent } from '$lib/api/chatAgents';
+	import { t } from '$lib/i18n/ns/chat-studio';
 
 	interface Props {
 		open: boolean;
@@ -30,7 +31,7 @@
 			const path = `/api/v1/chat/agents/hub?limit=50${q ? `&query=${encodeURIComponent(q)}` : ''}`;
 			agents = await api.get<Agent[]>(path, token, projectId);
 		} catch {
-			toast.error('허브를 불러오지 못했습니다');
+			toast.error(t('agentHub.loadFailed'));
 		} finally {
 			loading = false;
 		}
@@ -54,10 +55,10 @@
 		cloningId = a.id;
 		try {
 			await api.post(`/api/v1/chat/agents/${a.id}/clone`, {}, token, projectId);
-			toast.success(`'${a.name}' 을(를) 내 에이전트로 받아왔습니다`);
+			toast.success(t('agentHub.cloned', { name: a.name }));
 			onCloned?.();
 		} catch (e) {
-			toast.error(e instanceof ApiError ? e.message : '복제에 실패했습니다');
+			toast.error(e instanceof ApiError ? e.message : t('agentHub.cloneFailed'));
 		} finally {
 			cloningId = null;
 		}
@@ -70,27 +71,27 @@
 	}
 </script>
 
-<Modal {open} {onClose} ariaLabel="에이전트 허브">
+<Modal {open} {onClose} ariaLabel={t('agentHub.title')}>
 	<div class="panel">
 		<header class="head">
-			<h2>에이전트 허브</h2>
-			<button type="button" class="close" onclick={onClose} aria-label="닫기">
+			<h2>{t('agentHub.title')}</h2>
+			<button type="button" class="close" onclick={onClose} aria-label={t('agentHub.close')}>
 				<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="round" /></svg>
 			</button>
 		</header>
 
 		<div class="search">
 			<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" stroke-linecap="round" /></svg>
-			<input bind:value={query} oninput={onQueryInput} placeholder="공개 에이전트 검색" />
+			<input bind:value={query} oninput={onQueryInput} placeholder={t('agentHub.searchPlaceholder')} />
 		</div>
 
 		<div class="body">
 			{#if loading}
-				<p class="muted">불러오는 중…</p>
+				<p class="muted">{t('agentHub.loading')}</p>
 			{:else if agents.length === 0}
 				<div class="empty-box">
-					<p>공개된 에이전트가 없습니다.</p>
-					<p class="muted">{query.trim() ? '검색어를 바꿔보세요.' : '첫 공개 에이전트를 만들어보세요.'}</p>
+					<p>{t('agentHub.empty')}</p>
+					<p class="muted">{query.trim() ? t('agentHub.searchEmptyHint') : t('agentHub.emptyHint')}</p>
 				</div>
 			{:else}
 				<div class="cards">
@@ -106,7 +107,7 @@
 							<div class="card-main">
 								<div class="card-title">
 									<span class="name truncate">{a.name}</span>
-									<span class="clones" title="복제 수">
+									<span class="clones" title={t('agentHub.cloneCount')}>
 										<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg>
 										{a.clone_count ?? 0}
 									</span>
@@ -116,10 +117,10 @@
 							</div>
 							<div class="card-side">
 								{#if a.is_owner}
-									<span class="mine">내 에이전트</span>
+									<span class="mine">{t('agentHub.myAgent')}</span>
 								{:else}
 									<Button variant="secondary" size="sm" disabled={cloningId === a.id} onclick={() => clone(a)}>
-										{cloningId === a.id ? '받는 중…' : '받아오기'}
+										{cloningId === a.id ? t('agentHub.cloning') : t('agentHub.clone')}
 									</Button>
 								{/if}
 							</div>

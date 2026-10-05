@@ -15,18 +15,26 @@ BE_V=$(grep -E '^version[[:space:]]*=' "${ROOT_DIR}/backend/pyproject.toml" \
     | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
 
 CHART_V=$(grep '^version:' "${ROOT_DIR}/helm/afterglow/Chart.yaml" | awk '{print $2}')
-KOLLA_SAMPLE_V=$(sed -nE \
-    's/^afterglow_image_tag:[[:space:]]*"v([^"]+)"[[:space:]]*$/\1/p' \
+KOLLA_SAMPLE_TAG=$(sed -nE \
+    's/^afterglow_image_tag:[[:space:]]*"([^"]+)"[[:space:]]*$/\1/p' \
     "${ROOT_DIR}/deploy/kolla/globals.afterglow.sample.yml")
+KOLLA_SAMPLE_TAG="${KOLLA_SAMPLE_TAG:-MISSING}"
+case "$KOLLA_SAMPLE_TAG" in
+    latest|stable) KOLLA_SAMPLE_V="" ;;
+    v*) KOLLA_SAMPLE_V="${KOLLA_SAMPLE_TAG#v}" ;;
+    *) KOLLA_SAMPLE_V="MISSING" ;;
+esac
 
 if [ "$ROOT_V" != "$FE_V" ] || [ "$ROOT_V" != "$BE_V" ] \
-    || [ "$ROOT_V" != "$CHART_V" ] || [ "$ROOT_V" != "$KOLLA_SAMPLE_V" ]; then
+    || [ "$ROOT_V" != "$CHART_V" ] \
+    || { [ "$KOLLA_SAMPLE_TAG" != "latest" ] && [ "$KOLLA_SAMPLE_TAG" != "stable" ] \
+        && [ "$ROOT_V" != "$KOLLA_SAMPLE_V" ]; }; then
     echo "✗ version mismatch:" >&2
     echo "  root package.json                     : $ROOT_V" >&2
     echo "  frontend/package.json                 : $FE_V" >&2
     echo "  backend/pyproject.toml                : $BE_V" >&2
     echo "  helm/afterglow/Chart.yaml             : $CHART_V" >&2
-    echo "  deploy/kolla/globals.afterglow.sample.yml: $KOLLA_SAMPLE_V" >&2
+    echo "  deploy/kolla/globals.afterglow.sample.yml: $KOLLA_SAMPLE_TAG" >&2
     echo "" >&2
     echo "  fix: npm run version:sync" >&2
     exit 1

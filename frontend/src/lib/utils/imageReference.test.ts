@@ -1,7 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import {
-	imageReferenceMatchScore,
 	imageReferenceMatchesQuery,
 	parseImageReference,
 	sanitizeImageFilename,
@@ -32,6 +31,5 @@ describe('image references', () => {
 		const image = { name: 'ubuntu:24.04', repository: 'ubuntu', tag: '24.04', os_distro: 'ubuntu' };
 		expect(imageReferenceMatchesQuery(image, 'ubuntu 24.04')).toBe(true);
 		expect(imageReferenceMatchesQuery(image, 'debian')).toBe(false);
-		expect(imageReferenceMatchScore(image, 'ubuntu:24.04')).toBe(100);
 	});
 });

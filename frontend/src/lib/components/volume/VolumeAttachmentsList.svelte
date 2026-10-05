@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/volume';
   import { attachmentServerId, useVolumeDetailController } from '$lib/stores/volumeDetailController.svelte';
 
   const s = useVolumeDetailController();
@@ -6,8 +7,8 @@
 
 {#if s.volume!.attachments.length > 0}
   <div class="mb-4">
-    <h3 class="text-xs text-ink-2 uppercase tracking-wide mb-2">연결된 인스턴스</h3>
-    <ul class="space-y-1" aria-label="연결된 인스턴스">
+    <h3 class="text-xs text-ink-2 uppercase tracking-wide mb-2">{t('attachmentsList.title')}</h3>
+    <ul class="space-y-1" aria-label={t('attachmentsList.title')}>
       {#each s.volume!.attachments as att}
         {@const serverId = attachmentServerId(att)}
         {@const instance = s.attachmentName(serverId)}
@@ -15,16 +16,16 @@
         <li class="bg-surface-base rounded-lg border border-line-2 px-3 py-2 text-xs text-ink-2 flex items-start justify-between gap-3">
           <div class="min-w-0">
             {#if !serverId}
-              <span class="text-ink-2">알 수 없는 인스턴스</span>
+              <span class="text-ink-2">{t('attachmentsList.unknownInstance')}</span>
             {:else if instance.state === 'resolved'}
               <a href="/dashboard/instances/{serverId}" class="block truncate text-sm text-warm-text hover:text-warm-text-hover transition-colors">{instance.name}</a>
               <span class="block font-mono break-all">{serverId}</span>
             {:else if instance.state === 'loading'}
-              <span class="block text-ink-2">이름 확인 중…</span>
+              <span class="block text-ink-2">{t('attachmentsList.resolvingName')}</span>
               <span class="block font-mono break-all">{serverId}</span>
             {:else}
               <span class="block font-mono text-ink-0 break-all">{serverId}</span>
-              <span class="block text-ink-2">인스턴스 이름을 확인할 수 없음</span>
+              <span class="block text-ink-2">{t('attachmentsList.nameUnavailable')}</span>
             {/if}
           </div>
           {#if device}

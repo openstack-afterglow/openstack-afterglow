@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { uploadQueue, type UploadJob } from '$lib/stores/uploadQueue';
 	import { Pill } from '$lib/components/ui';
+	import { t } from '$lib/i18n/ns/object-storage';
 
 	let jobs = $state<UploadJob[]>([]);
 	let collapsed = $state(false);
@@ -37,20 +38,20 @@
 	}
 
 	function formatTime(sec: number): string {
-		if (!isFinite(sec) || sec <= 0) return '--';
+		if (!isFinite(sec) || sec <= 0) return t('uploadDock.unknownTime');
 		const s = Math.ceil(sec);
-		if (s < 60) return `${s}초`;
+		if (s < 60) return t('uploadDock.seconds', { seconds: s });
 		const m = Math.floor(s / 60);
 		const r = s % 60;
-		return r > 0 ? `${m}분 ${r}초` : `${m}분`;
+		return r > 0 ? t('uploadDock.minutesSeconds', { minutes: m, seconds: r }) : t('uploadDock.minutes', { minutes: m });
 	}
 
 	function statusLabel(j: UploadJob): string {
-		if (j.status === 'success') return '완료';
-		if (j.status === 'error') return '오류';
-		if (j.status === 'canceled') return '취소됨';
+		if (j.status === 'success') return t('uploadDock.status.success');
+		if (j.status === 'error') return t('uploadDock.status.error');
+		if (j.status === 'canceled') return t('uploadDock.status.canceled');
 		const pct = j.total > 0 ? Math.round((j.loaded / j.total) * 100) : 0;
-		return `${pct}% · ${formatBytes(speed(j))}/s · ${formatTime(remaining(j))} 남음`;
+		return t('uploadDock.progress', { percent: pct, speed: formatBytes(speed(j)), time: formatTime(remaining(j)) });
 	}
 
 	onMount(() => {
@@ -73,9 +74,9 @@
 		>
 			<span class="text-sm font-medium text-ink-0">
 				{#if activeCount > 0}
-					{activeCount}개 업로드 중 · {formatBytes(totalLoaded)} / {formatBytes(totalBytes)}
+					{t('uploadDock.uploading', { count: activeCount, loaded: formatBytes(totalLoaded), total: formatBytes(totalBytes) })}
 				{:else}
-					업로드 완료
+					{t('uploadDock.complete')}
 				{/if}
 			</span>
 			<svg
@@ -94,7 +95,7 @@
 						<div class="flex items-start justify-between gap-2 mb-1.5">
 							<div class="flex items-center gap-1.5 min-w-0 flex-1">
 								{#if j.kind === 'image'}
-									<span class="shrink-0 text-xs px-1.5 py-0.5 rounded bg-purple-900/40 border border-purple-800 text-purple-300">이미지</span>
+									<span class="shrink-0 text-xs px-1.5 py-0.5 rounded bg-purple-900/40 border border-purple-800 text-purple-300">{t('uploadDock.image')}</span>
 								{/if}
 								<span class="text-xs text-ink-1 truncate" title={j.name}>{j.name}</span>
 							</div>
@@ -102,14 +103,14 @@
 								<button
 									onclick={() => uploadQueue.cancel(j.id)}
 									class="shrink-0 text-ink-2 hover:text-red-400 transition-colors text-xs"
-									title="취소"
-								>✕</button>
+									title={t('uploadDock.cancel')}
+								>{t('uploadDock.closeSymbol')}</button>
 							{:else}
 								<button
 									onclick={() => uploadQueue.remove(j.id)}
 									class="shrink-0 text-ink-2 hover:text-ink-2 transition-colors text-xs"
-									title="닫기"
-								>✕</button>
+									title={t('uploadDock.close')}
+								>{t('uploadDock.closeSymbol')}</button>
 							{/if}
 						</div>
 
@@ -133,13 +134,13 @@
 						<div class="flex items-center gap-2">
 							<div class="text-xs {j.status === 'error' ? 'text-state-danger-text' : j.status === 'success' ? 'text-state-success-text' : 'text-ink-2'}">
 								{#if j.status === 'error'}
-									{j.error ?? '업로드 실패'}
+									{j.error ?? t('uploadDock.failed')}
 								{:else}
 									{statusLabel(j)}
 								{/if}
 							</div>
 							{#if j.status === 'success' && j.sha256}
-								<Pill tone="success" size="xs" dot class="shrink-0">SHA-256 확인</Pill>
+								<Pill tone="success" size="xs" dot class="shrink-0">{t('uploadDock.verified')}</Pill>
 							{/if}
 						</div>
 					</div>

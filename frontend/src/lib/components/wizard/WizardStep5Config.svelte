@@ -7,6 +7,9 @@
 	import { useVmCreate } from '$lib/stores/vmCreateStore.svelte';
 	import { Alert, Button, Field, TextInput, ToggleGroup } from '$lib/components/ui';
 	import { CLOUD_INIT_PRESETS } from '$lib/config/cloudInitPresets';
+	import { t } from '$lib/i18n/ns/vm-wizard';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import RichText from '$lib/i18n/RichText.svelte';
 
 	import {
 		isValidGithubUsername,
@@ -18,7 +21,7 @@
 	const normalizedInstanceName = $derived(normalizeRequestedInstanceName($wizard.instanceName));
 	const githubUsernameError = $derived(
 		$wizard.sshAccessMode === 'github' && !isValidGithubUsername($wizard.githubUsername)
-			? 'GitHub 사용자 ID는 1~39자의 영문자, 숫자, 하이픈만 사용할 수 있습니다.'
+			? t('config.github.usernameInvalid')
 			: undefined,
 	);
 
@@ -37,7 +40,11 @@
 	let cloudInitLibraryLoading = $state(false);
 	let cloudInitPresetSaving = $state(false);
 	let cloudInitFileInput: HTMLInputElement;
-	let cloudInitSelection = $state('');
+	let cloudInitSelection = $state<
+		| { kind: 'preset'; preset: (typeof CLOUD_INIT_PRESETS)[number] }
+		| { kind: 'file'; name: string }
+		| null
+	>(null);
 	let githubLookupStatus = $state<'idle' | 'loading' | 'valid' | 'error'>('idle');
 	let githubLookupError = $state('');
 	let githubHistory = $state<GithubSshHistoryEntry[]>([]);
@@ -87,7 +94,7 @@
 		} catch (error) {
 			if (githubKey(get(wizard).githubUsername) !== githubKey(username)) return;
 			githubLookupStatus = 'error';
-			githubLookupError = error instanceof ApiError ? error.message : 'GitHub 사용자를 확인하지 못했습니다.';
+			githubLookupError = error instanceof ApiError ? error.message : t('config.github.lookupFailed');
 		} finally {
 			if (githubPendingFor === githubKey(username)) githubPendingFor = '';
 		}
@@ -136,7 +143,7 @@
 			cloudInitHistory = library.history;
 			cloudInitPresets = library.presets;
 		} catch (error) {
-			cloudInitLibraryError = error instanceof ApiError ? error.message : 'cloud-init 저장소를 불러오지 못했습니다.';
+			cloudInitLibraryError = error instanceof ApiError ? error.message : t('config.cloudInit.loadFailed');
 		} finally {
 			cloudInitLibraryLoading = false;
 		}
@@ -144,7 +151,7 @@
 
 	async function saveCloudInitPreset() {
 		if (!cloudInitPresetName.trim() || !$wizard.cloudInit.trim()) {
-			cloudInitLibraryError = '저장 이름과 cloud-init 내용을 입력하세요.';
+			cloudInitLibraryError = t('config.cloudInit.nameAndContentRequired');
 			return;
 		}
 		const { token, projectId } = get(auth);
@@ -161,7 +168,7 @@
 			cloudInitPresetName = '';
 			await loadCloudInitLibrary();
 		} catch (error) {
-			cloudInitLibraryError = error instanceof ApiError ? error.message : 'cloud-init 프리셋을 저장하지 못했습니다.';
+			cloudInitLibraryError = error instanceof ApiError ? error.message : t('config.cloudInit.saveFailed');
 		} finally {
 			cloudInitPresetSaving = false;
 		}
@@ -181,7 +188,7 @@
 			await api.delete(`/api/v1/instances/cloud-init/library/${snippetId}`, token, projectId ?? undefined);
 			await loadCloudInitLibrary();
 		} catch (error) {
-			cloudInitLibraryError = error instanceof ApiError ? error.message : 'cloud-init 항목을 삭제하지 못했습니다.';
+			cloudInitLibraryError = error instanceof ApiError ? error.message : t('config.cloudInit.deleteFailed');
 		}
 	}
 
@@ -189,7 +196,7 @@ function applyCloudInitPreset(event: Event) {
 	const preset = CLOUD_INIT_PRESETS.find(item => item.id === (event.target as HTMLSelectElement).value);
 	if (preset) {
 		wizard.update(w => ({ ...w, cloudInit: preset.content }));
-		cloudInitSelection = preset.label;
+		cloudInitSelection = { kind: 'preset', preset };
 	}
 }
 
@@ -198,50 +205,50 @@ function applyCloudInitPreset(event: Event) {
 		(event.target as HTMLInputElement).value = '';
 		if (!file) return;
 		if (file.size > 65_536) {
-			cloudInitLibraryError = 'cloud-init 파일은 64 KiB 이하여야 합니다.';
+			cloudInitLibraryError = t('config.cloudInit.fileTooLarge');
 			return;
 		}
 		try {
 			const content = await file.text();
 			if (!content || content.length > 65_536 || content.includes('\u0000')) throw new Error();
 			wizard.update(w => ({ ...w, cloudInit: content }));
-			cloudInitSelection = `파일: ${file.name}`;
+			cloudInitSelection = { kind: 'file', name: file.name };
 			cloudInitLibraryError = '';
 		} catch {
-			cloudInitLibraryError = '비어 있지 않은 UTF-8 텍스트 cloud-init 파일만 불러올 수 있습니다.';
+			cloudInitLibraryError = t('config.cloudInit.invalidFile');
 		}
 	}
 
 	onMount(loadCloudInitLibrary);
 </script>
 
-<h2 class="text-lg font-semibold text-ink-0 mb-5">인스턴스 설정</h2>
+<h2 class="text-lg font-semibold text-ink-0 mb-5">{t('config.title')}</h2>
 
 <!-- VM 이름 -->
 <div class="mb-4">
 	<label for="vm-name" class="block text-[11.5px] font-semibold text-ink-2 tracking-tight flex items-center gap-1.5 mb-1.5">
-		VM 이름 <span class="text-xs text-ink-2 font-normal px-1.5 py-0.5 rounded-full bg-surface-sunken">선택</span>
+		{t('config.name.label')} <span class="text-xs text-ink-2 font-normal px-1.5 py-0.5 rounded-full bg-surface-sunken">{t('config.optional')}</span>
 	</label>
 	{#if normalizedInstanceName}
 		<p class="text-xs mb-1" aria-live="polite">
-			실제 인스턴스 이름: <code class="font-mono">{normalizedInstanceName}</code>
+			<RichText segments={t.rich('config.name.actual', { name: normalizedInstanceName })} classes={{ code: 'font-mono' }} />
 		</p>
 	{/if}
 	<input
 		id="vm-name"
 		bind:value={$wizard.instanceName}
 		type="text"
-		placeholder="비워두면 자동 생성"
+		placeholder={t('config.name.placeholder')}
 		class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm transition-colors"
 	/>
-	<p class="text-xs text-ink-2 mt-1">입력하지 않으면 같은 프로젝트 안에서 중복되지 않는 안전한 영문 이름이 자동 생성됩니다.</p>
+	<p class="text-xs text-ink-2 mt-1">{t('config.name.help')}</p>
 </div>
 
 <!-- 네트워크 + 보안 그룹 -->
 <div class="grid grid-cols-1 @lg/panel:grid-cols-2 gap-3.5 mb-4">
 	<div>
 		<label for="create-network" class="block text-[11.5px] font-semibold text-ink-2 tracking-tight flex items-center gap-1.5 mb-1.5">
-			네트워크 <span class="text-red-400">*</span>
+			{t('config.network.label')} <span class="text-red-400">*</span>
 		</label>
 		<select
 			id="create-network"
@@ -249,17 +256,17 @@ function applyCloudInitPreset(event: Event) {
 			onchange={e => s.selectNetwork((e.target as HTMLSelectElement).value || null)}
 			class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm transition-colors"
 		>
-			<option value="">기본 네트워크</option>
+			<option value="">{t('config.network.default')}</option>
 			{#each s.networks as net}
 				<option value={net.id}>
-					{net.name}{net.id === s.defaultNetworkId ? ' (기본)' : ''}{net.is_external ? ' (외부)' : ''}{net.is_shared ? ' (공유)' : ''}
+					{t('config.network.option', { name: net.name, isDefault: net.id === s.defaultNetworkId, isExternal: !!net.is_external, isShared: !!net.is_shared })}
 				</option>
 			{/each}
 		</select>
 	</div>
 	<div>
 		<label for="create-sg" class="block text-[11.5px] font-semibold text-ink-2 tracking-tight flex items-center gap-1.5 mb-1.5">
-			보안 그룹 <span class="text-xs text-ink-2 font-normal px-1.5 py-0.5 rounded-full bg-surface-sunken">선택</span>
+			{t('config.securityGroup.label')} <span class="text-xs text-ink-2 font-normal px-1.5 py-0.5 rounded-full bg-surface-sunken">{t('config.optional')}</span>
 		</label>
 		<select
 			id="create-sg"
@@ -270,7 +277,7 @@ function applyCloudInitPreset(event: Event) {
 			}}
 			class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm transition-colors"
 		>
-			<option value="">기본</option>
+			<option value="">{t('config.securityGroup.default')}</option>
 			{#each s.securityGroups as sg}
 				<option value={sg.name}>{sg.name}</option>
 			{/each}
@@ -282,39 +289,39 @@ function applyCloudInitPreset(event: Event) {
 <div class="mb-4">
 	{#if s.adminMode}
 		<p class="block text-[11.5px] font-semibold text-ink-2 tracking-tight flex items-center gap-1.5 mb-1.5">
-			키페어 <span class="text-xs text-ink-2 font-normal px-1.5 py-0.5 rounded-full bg-surface-sunken">선택</span>
+			{t('config.keypair.label')} <span class="text-xs text-ink-2 font-normal px-1.5 py-0.5 rounded-full bg-surface-sunken">{t('config.optional')}</span>
 		</p>
 		<div class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2.5 text-ink-2 text-sm">
-			없음 (관리자 생성 — 콘솔 비밀번호 사용)
+			{t('config.keypair.adminNone')}
 		</div>
-		<p class="text-xs text-warm-text/80 mt-1">admin 모드에서는 대상 프로젝트의 키페어에 접근할 수 없습니다.</p>
+		<p class="text-xs text-warm-text/80 mt-1">{t('config.keypair.adminHelp')}</p>
 	{:else}
 		{#if s.githubSshEligible}
 			<div class="mb-2">
 				<ToggleGroup
 					value={$wizard.sshAccessMode}
 					options={[
-						{ value: 'keypair', label: '등록 키페어' },
-						{ value: 'github', label: 'GitHub 사용자' },
+						{ value: 'keypair', label: t('config.ssh.registeredKeypair') },
+						{ value: 'github', label: t('config.ssh.githubUser') },
 					]}
 					onchange={(value) => s.selectSshAccessMode(value as 'keypair' | 'github')}
-					ariaLabel="SSH 접근 방식"
+					ariaLabel={t('config.ssh.modeLabel')}
 				/>
 			</div>
 		{/if}
 		{#if $wizard.sshAccessMode === 'github' && s.githubSshEligible}
 			<Field
-				label="GitHub 사용자 ID"
+				label={t('config.github.usernameLabel')}
 				for="github-username"
 				required
 				error={githubUsernameError}
-				help="Ubuntu가 첫 부팅 때 GitHub 공개키를 기본 사용자에 1회 가져옵니다. GitHub 연결과 공개키 등록이 필요합니다."
+				help={t('config.github.help')}
 			>
-				<TextInput id="github-username" bind:value={$wizard.githubUsername} placeholder="예: octocat" />
+				<TextInput id="github-username" bind:value={$wizard.githubUsername} placeholder={t('config.github.placeholder')} />
 			</Field>
 			{#if githubHistory.length > 0}
 				<div class="mt-2 flex flex-wrap items-center gap-1.5">
-					<span class="text-xs text-ink-2">최근 확인:</span>
+					<span class="text-xs text-ink-2">{t('config.github.recent')}</span>
 					{#each githubHistory as entry (entry.id)}
 						<Button
 							variant={githubKey($wizard.githubUsername) === githubKey(entry.login) ? 'secondary' : 'subtle'}
@@ -327,22 +334,24 @@ function applyCloudInitPreset(event: Event) {
 				</div>
 			{/if}
 			<div class="mt-2 text-xs" aria-live="polite">
-				{#if githubLookupStatus === 'loading'}<span class="text-ink-2">GitHub 공개 SSH 키를 확인 중…</span>
+				{#if githubLookupStatus === 'loading'}<span class="text-ink-2">{t('config.github.loading')}</span>
 				{:else if githubLookupStatus === 'valid' && $wizard.githubProfile}
 					<span class="text-positive">
-						@{$wizard.githubProfile.login} 공개 SSH 키 확인됨{$wizard.githubProfile.name ? ` · ${$wizard.githubProfile.name}` : ''}
+						{$wizard.githubProfile.name
+							? t('config.github.verifiedWithName', { login: $wizard.githubProfile.login, name: $wizard.githubProfile.name })
+							: t('config.github.verified', { login: $wizard.githubProfile.login })}
 					</span>
 					<a
 						class="ml-1.5 text-accent underline underline-offset-2"
 						href={$wizard.githubProfile.html_url}
 						target="_blank"
 						rel="noopener noreferrer"
-					>GitHub 프로필</a>
+					>{t('config.github.profile')}</a>
 				{:else if githubLookupStatus === 'error'}<span class="text-danger">{githubLookupError}</span>{/if}
 			</div>
 		{:else}
 			<label for="create-keypair" class="block text-[11.5px] font-semibold text-ink-2 tracking-tight flex items-center gap-1.5 mb-1.5">
-				키페어 <span class="text-red-400">*</span>
+				{t('config.keypair.label')} <span class="text-red-400">*</span>
 			</label>
 			<select
 				id="create-keypair"
@@ -350,13 +359,13 @@ function applyCloudInitPreset(event: Event) {
 				onchange={e => wizard.update(w => ({ ...w, keyName: (e.target as HTMLSelectElement).value || null }))}
 				class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2.5 text-ink-0 text-sm focus:outline-none focus:border-action-warm transition-colors"
 			>
-				<option value="">키페어 선택</option>
+				<option value="">{t('config.keypair.select')}</option>
 				{#each s.keypairs as kp}
 					<option value={kp.name}>{kp.name}</option>
 				{/each}
 			</select>
 			{#if s.keypairs.length === 0}
-				<p class="text-xs text-warm-text mt-1">등록된 키페어가 없습니다.</p>
+				<p class="text-xs text-warm-text mt-1">{t('config.keypair.empty')}</p>
 			{/if}
 		{/if}
 	{/if}
@@ -365,13 +374,13 @@ function applyCloudInitPreset(event: Event) {
 <!-- 루트 디스크 -->
 {#if $wizard.squashfsMode}
 <div class="mb-4 p-3 rounded-lg bg-surface-selected/20 border border-action-warm/40 text-warm-text text-xs">
-	squashfs 라이브러리 소비 VM은 선택한 레이어의 Glance base image에서 직접 부팅합니다. 루트 디스크 크기와 삭제 옵션은 이 베타 경로에서 적용되지 않습니다.
+	{t('config.rootDisk.squashfsHelp')}
 </div>
 {:else if $wizard.bootSource === 'image'}
 <div class="grid grid-cols-1 @lg/panel:grid-cols-2 gap-3.5 mb-4">
 	<div>
 		<label for="boot-volume-size" class="block text-[11.5px] font-semibold text-ink-2 tracking-tight flex items-center gap-1.5 mb-1.5">
-			루트 디스크 <span class="text-red-400">*</span>
+			{t('config.rootDisk.label')} <span class="text-red-400">*</span>
 		</label>
 		<div class="flex items-center gap-3">
 			<input
@@ -392,13 +401,13 @@ function applyCloudInitPreset(event: Event) {
 				bind:checked={$wizard.deleteBootVolumeOnTermination}
 				class="w-4 h-4 rounded border-line-2 bg-surface-sunken text-warm-text focus:ring-line-2 flex-shrink-0"
 			/>
-			<span class="text-sm text-ink-2">VM 삭제 시 루트 디스크 함께 삭제</span>
+			<span class="text-sm text-ink-2">{t('config.rootDisk.deleteWithVm')}</span>
 		</label>
 	</div>
 </div>
 {:else}
 <div class="mb-4 p-3 rounded-lg bg-surface-selected/20 border border-action-warm/40 text-warm-text text-xs">
-	기존 부팅 볼륨 사용 시 루트 디스크 크기 설정이 적용되지 않습니다. 볼륨: <span class="font-medium">{$wizard.bootVolumeName ?? $wizard.bootVolumeId}</span>
+	<RichText segments={t.rich('config.rootDisk.existingVolumeHelp', { volume: $wizard.bootVolumeName ?? $wizard.bootVolumeId })} classes={{ strong: 'font-medium' }} />
 </div>
 {/if}
 
@@ -407,16 +416,16 @@ function applyCloudInitPreset(event: Event) {
 <div class="mb-4">
 	<div class="flex items-center justify-between mb-1.5">
 		<p class="block text-[11.5px] font-semibold text-ink-2 tracking-tight">
-			파일 스토리지 마운트 <span class="text-xs text-ink-2 font-normal px-1.5 py-0.5 rounded-full bg-surface-sunken">선택</span>
+			{t('config.mounts.label')} <span class="text-xs text-ink-2 font-normal px-1.5 py-0.5 rounded-full bg-surface-sunken">{t('config.optional')}</span>
 		</p>
 		<button
 			type="button"
 			onclick={() => wizard.update(w => ({ ...w, dataMounts: [...w.dataMounts, { fileStorageId: '', mountPoint: '', readOnly: false }] }))}
 			class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
-		>+ 추가</button>
+		>{t('config.mounts.add')}</button>
 	</div>
 	{#if $wizard.dataMounts.length === 0}
-		<p class="text-xs text-ink-2">마운트할 파일 스토리지가 없습니다. "+ 추가"를 눌러 추가하세요.</p>
+		<p class="text-xs text-ink-2">{t('config.mounts.empty')}</p>
 	{:else}
 		<div class="space-y-2">
 			{#each $wizard.dataMounts as mount, i}
@@ -431,7 +440,7 @@ function applyCloudInitPreset(event: Event) {
 							})}
 							class="bg-surface-selected border border-line-2 text-ink-1 text-xs rounded px-2 py-1.5 focus:outline-none focus:border-action-warm"
 						>
-							<option value="">스토리지 선택...</option>
+							<option value="">{t('config.mounts.selectStorage')}</option>
 							{#each s.fileStorages.filter(fs => fs.status === 'available') as fs}
 								<option value={fs.id}>{fs.name || fs.id.slice(0, 12)} ({fs.share_proto})</option>
 							{/each}
@@ -458,13 +467,13 @@ function applyCloudInitPreset(event: Event) {
 								return { ...w, dataMounts: m };
 							})}
 							class="w-3.5 h-3.5 rounded border-line-2 bg-surface-sunken text-warm-text"
-						/>읽기 전용
+						/>{t('config.mounts.readOnly')}
 					</label>
 					<button
 						type="button"
 						onclick={() => wizard.update(w => ({ ...w, dataMounts: w.dataMounts.filter((_, j) => j !== i) }))}
 						class="text-ink-2 hover:text-red-400 transition-colors mt-0.5 shrink-0"
-						aria-label="삭제"
+						aria-label={t('config.mounts.delete')}
 					>
 						<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
@@ -473,7 +482,7 @@ function applyCloudInitPreset(event: Event) {
 				</div>
 			{/each}
 		</div>
-		<p class="text-[10.5px] text-ink-2 mt-1">/mnt, /data, /srv, /home 하위 경로만 허용됩니다.</p>
+		<p class="text-[10.5px] text-ink-2 mt-1">{t('config.mounts.pathsHelp')}</p>
 	{/if}
 </div>
 {/if}
@@ -481,15 +490,15 @@ function applyCloudInitPreset(event: Event) {
 <!-- cloud-init 다크 에디터 -->
 <div class="mb-4">
 	<label for="cloud-init" class="block text-[11.5px] font-semibold text-ink-2 tracking-tight flex items-center gap-1.5 mb-1.5">
-		CLOUD-INIT <span class="text-xs text-ink-2 font-normal px-1.5 py-0.5 rounded-full bg-surface-sunken">선택</span>
+		CLOUD-INIT <span class="text-xs text-ink-2 font-normal px-1.5 py-0.5 rounded-full bg-surface-sunken">{t('config.optional')}</span>
 	</label>
 	<div class="relative">
 		<div class="absolute top-2 right-2 flex gap-1 z-[2] bg-surface-base border border-line-2 rounded-md p-0.5">
-			<select aria-label="기본 cloud-init 프리셋" onchange={applyCloudInitPreset} class="px-2 py-1 text-[10.5px] font-mono bg-surface-base text-ink-1 rounded">
-				<option value="">기본 예제 ▾</option>
+			<select aria-label={t('config.cloudInit.defaultPresets')} onchange={applyCloudInitPreset} class="px-2 py-1 text-[10.5px] font-mono bg-surface-base text-ink-1 rounded">
+				<option value="">{t('config.cloudInit.examples')}</option>
 				{#each CLOUD_INIT_PRESETS as preset}<option value={preset.id}>{preset.label}</option>{/each}
 			</select>
-			<Button type="button" variant="subtle" size="sm" onclick={() => cloudInitFileInput.click()}>파일 열기</Button>
+			<Button type="button" variant="subtle" size="sm" onclick={() => cloudInitFileInput.click()}>{t('config.cloudInit.openFile')}</Button>
 			<input bind:this={cloudInitFileInput} type="file" accept=".yaml,.yml,.txt,text/plain" class="sr-only" onchange={loadCloudInitFile} />
 		</div>
 		<textarea
@@ -501,16 +510,20 @@ function applyCloudInitPreset(event: Event) {
 		></textarea>
 	</div>
 	{#if cloudInitSelection}
-		<p class="mt-2 text-xs text-positive" aria-live="polite">적용됨: {cloudInitSelection}</p>
+		<p class="mt-2 text-xs text-positive" aria-live="polite">
+			{cloudInitSelection.kind === 'file'
+				? t('config.cloudInit.appliedFile', { name: cloudInitSelection.name })
+				: t('config.cloudInit.appliedPreset', { name: cloudInitSelection.preset.label })}
+		</p>
 	{/if}
 	{#if $wizard.cloudInit.trim()}
 		<div class="mt-3 border border-line-2 rounded-lg p-3 space-y-3">
 			<div class="grid grid-cols-1 @lg/panel:grid-cols-[1fr_auto] gap-2 items-end">
-				<Field label="저장 이름" for="cloud-init-preset-name" help="프리셋은 계정에 암호화되어 저장됩니다.">
-					<TextInput id="cloud-init-preset-name" bind:value={cloudInitPresetName} placeholder="예: 초기 패키지 설치" />
+				<Field label={t('config.cloudInit.nameLabel')} for="cloud-init-preset-name" help={t('config.cloudInit.nameHelp')}>
+					<TextInput id="cloud-init-preset-name" bind:value={cloudInitPresetName} placeholder={t('config.cloudInit.namePlaceholder')} />
 				</Field>
 				<Button type="button" variant="secondary" size="sm" onclick={saveCloudInitPreset} disabled={cloudInitPresetSaving}>
-					{cloudInitPresetSaving ? '저장 중...' : '현재 내용 저장'}
+					{cloudInitPresetSaving ? t('config.cloudInit.saving') : t('config.cloudInit.saveCurrent')}
 				</Button>
 			</div>
 		</div>
@@ -519,25 +532,25 @@ function applyCloudInitPreset(event: Event) {
 	<div class="mt-3 border border-line-2 rounded-lg p-3 space-y-3">
 		<div class="grid grid-cols-1 @lg/panel:grid-cols-2 gap-2">
 			<div>
-				<label for="cloud-init-load" class="block text-[11.5px] font-semibold text-ink-2 mb-1">저장된 항목 불러오기</label>
+				<label for="cloud-init-load" class="block text-[11.5px] font-semibold text-ink-2 mb-1">{t('config.cloudInit.loadSaved')}</label>
 				<select
 					id="cloud-init-load"
 					onchange={applyCloudInitSnippet}
 					disabled={cloudInitLibraryLoading || (cloudInitPresets.length === 0 && cloudInitHistory.length === 0)}
 					class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm disabled:opacity-50"
 				>
-					<option value="">프리셋 또는 최근 실행 선택</option>
+					<option value="">{t('config.cloudInit.selectSaved')}</option>
 					{#if cloudInitPresets.length > 0}
-						<optgroup label="저장한 프리셋">
+						<optgroup label={t('config.cloudInit.savedPresets')}>
 							{#each cloudInitPresets as snippet}
 								<option value={snippet.id}>{snippet.name}</option>
 							{/each}
 						</optgroup>
 					{/if}
 					{#if cloudInitHistory.length > 0}
-						<optgroup label="최근 실행 (최대 20개)">
+						<optgroup label={t('config.cloudInit.recentRuns')}>
 							{#each cloudInitHistory as snippet}
-								<option value={snippet.id}>{snippet.created_at ? new Date(snippet.created_at).toLocaleString() : `실행 #${snippet.id}`}</option>
+								<option value={snippet.id}>{snippet.created_at ? new Date(snippet.created_at).toLocaleString(intlLocale()) : t('config.cloudInit.runNumber', { id: snippet.id })}</option>
 							{/each}
 						</optgroup>
 					{/if}
@@ -545,11 +558,11 @@ function applyCloudInitPreset(event: Event) {
 			</div>
 			{#if cloudInitPresets.length > 0}
 				<div>
-					<p class="block text-[11.5px] font-semibold text-ink-2 mb-1">저장한 프리셋 관리</p>
+					<p class="block text-[11.5px] font-semibold text-ink-2 mb-1">{t('config.cloudInit.managePresets')}</p>
 					<div class="flex flex-wrap gap-1.5">
 						{#each cloudInitPresets as snippet}
 							<Button type="button" variant="subtle" size="sm" onclick={() => deleteCloudInitSnippet(snippet.id)}>
-								{snippet.name} 삭제
+								{t('config.cloudInit.deletePreset', { name: snippet.name })}
 							</Button>
 						{/each}
 					</div>
@@ -559,6 +572,6 @@ function applyCloudInitPreset(event: Event) {
 		{#if cloudInitLibraryError}
 			<Alert tone="danger">{cloudInitLibraryError}</Alert>
 		{/if}
-		<p class="text-xs text-ink-2">실행에 성공한 비어 있지 않은 cloud-init은 최근 실행 이력에 자동 저장됩니다.</p>
+		<p class="text-xs text-ink-2">{t('config.cloudInit.historyHelp')}</p>
 	</div>
 </div>

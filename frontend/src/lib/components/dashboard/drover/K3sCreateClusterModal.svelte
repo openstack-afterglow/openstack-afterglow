@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/drover-pages';
+	import RichText from '$lib/i18n/RichText.svelte';
 	import { api } from '$lib/api/client';
 	import type { K3sFlavor, K3sNetwork, K3sKeypair, K3sClusterTemplate } from '$lib/types/k3s';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
@@ -61,7 +63,7 @@
 
 	function applyTemplate(templateId: string) {
 		form.template_id = templateId;
-		const tmpl = templates.find(t => t.id === templateId);
+		const tmpl = templates.find(template => template.id === templateId);
 		if (!tmpl) return;
 		if (tmpl.default_node_count !== undefined) form.agent_count = tmpl.default_node_count;
 		if (tmpl.default_agent_flavor_id) form.agent_flavor_id = tmpl.default_agent_flavor_id;
@@ -80,32 +82,32 @@
 >
 		<div data-tour="drover-create-form" class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto mx-4 shadow-[var(--shadow-restraint)]"
 			onclick={(e) => e.stopPropagation()} role="none">
-			<h2 class="text-lg font-semibold text-ink-0 mb-5">Drover 클러스터 생성</h2>
+			<h2 class="text-lg font-semibold text-ink-0 mb-5">{t('cluster.createTitle')}</h2>
 			<div class="space-y-4">
 				{#if templates.length > 0}
 				<div>
-					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">템플릿 (선택)
+					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('create.template')}
 						<select
 							value={form.template_id}
 							onchange={(e) => applyTemplate((e.target as HTMLSelectElement).value)}
 							class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5"
 						>
-							<option value="">템플릿 없이 직접 설정</option>
-							{#each templates as t}
-								<option value={t.id}>{t.name}{t.description ? ` — ${t.description}` : ''}</option>
+							<option value="">{t('create.noTemplate')}</option>
+							{#each templates as template}
+								<option value={template.id}>{template.name}{template.description ? ` — ${template.description}` : ''}</option>
 							{/each}
 						</select>
 					</label>
 				</div>
 				{/if}
 				<div data-tour="drover-name">
-					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">클러스터 이름
-						<input bind:value={form.name} type="text" placeholder="미입력 시 자동 생성"
+					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('create.name')}
+						<input bind:value={form.name} type="text" placeholder={t('create.namePlaceholder')}
 							class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5" />
 					</label>
 				</div>
 				<div data-tour="drover-os">
-					<span class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">OS 타입</span>
+					<span class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('form.osType')}</span>
 					<div class="flex gap-2 mt-1.5">
 						<button type="button"
 							onclick={() => form.os_type = 'ubuntu'}
@@ -128,17 +130,17 @@
 					</div>
 					{#if form.os_type === 'fcos'}
 						<div class="mt-2 text-xs text-orange-400/80 bg-orange-900/10 border border-orange-800/40 rounded px-2.5 py-1.5">
-							서버의 <code class="font-mono">k3s.fcos_image_id</code> 설정이 필요합니다.
+							<RichText segments={t.rich('create.fcosHelp')} classes={{ code: 'font-mono' }} />
 						</div>
 					{/if}
 				</div>
 				<div data-tour="drover-masters">
-						<span class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">마스터 수</span>
+						<span class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('create.masters')}</span>
 						<div class="flex gap-2 mt-1.5">
 							<button type="button"
 								onclick={() => form.master_count = 1}
 								class="flex-1 px-3 py-2 rounded-lg border text-sm transition-colors {form.master_count === 1 ? 'border-action-warm bg-surface-selected/30 text-ink-0' : 'border-line-2 bg-surface-sunken text-ink-2 hover:border-line-2'}">
-								1 (단일)
+								{t('create.singleMaster')}
 							</button>
 							<button type="button"
 								onclick={() => form.master_count = 3}
@@ -148,34 +150,34 @@
 						</div>
 						{#if form.master_count === 3}
 							<p class="mt-1.5 text-xs text-purple-400/80">
-								embedded etcd HA — API LB + FIP가 자동 생성됩니다.
+								{t('create.haHelp')}
 							</p>
 						{/if}
 					</div>
 				<div data-tour="drover-agents">
-					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">에이전트 수 (0-10)
+					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('create.agents')}
 						<input bind:value={form.agent_count} type="number" min="0" max="10"
 							class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5" />
 					</label>
 				</div>
 				<div data-tour="drover-flavor">
-					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">에이전트 플레이버 (선택)
+					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('create.flavor')}
 						<select bind:value={form.agent_flavor_id}
 							class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5">
-							<option value="">기본값 사용</option>
+							<option value="">{t('create.defaultFlavor')}</option>
 							{#each flavors as f}
 								<option value={f.id} disabled={f.eligibility ? !f.eligibility.selectable : false}>
-									{f.name} ({f.vcpus}vCPU / {Math.round(f.ram/1024)}GB){f.eligibility && !f.eligibility.selectable ? ' [쿼터 초과]' : ''}
+									{t(f.eligibility && !f.eligibility.selectable ? 'create.flavorExceeded' : 'create.flavorOption', { name: f.name, cpus: f.vcpus, ram: Math.round(f.ram/1024) })}
 								</option>
 							{/each}
 						</select>
 					</label>
 				</div>
 				<div>
-					<Field label="외부 Provider 네트워크 (선택)" for="drover-provider-network"
-						help="클러스터 노드는 외부 Provider 네트워크에 직접 연결됩니다. 내부 네트워크 NIC는 생성 후 노드에 추가로 연결할 수 있습니다.">
+					<Field label={t('create.providerNetwork')} for="drover-provider-network"
+						help={t('create.providerHelp')}>
 						<SelectInput id="drover-provider-network" bind:value={form.network_id}>
-							<option value="">관리자 외부 Provider 기본 네트워크 사용</option>
+							<option value="">{t('create.defaultNetwork')}</option>
 							{#each networks.filter(n => n.is_external) as n}
 								<option value={n.id}>{n.name || n.id.slice(0,12)}</option>
 							{/each}
@@ -183,10 +185,10 @@
 					</Field>
 				</div>
 				<div>
-					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">키페어 (선택)
+					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('create.keypair')}
 						<select bind:value={form.key_name}
 							class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5">
-							<option value="">없음</option>
+							<option value="">{t('state.none')}</option>
 							{#each keypairs as kp}
 								<option value={kp.name}>{kp.name}</option>
 							{/each}
@@ -198,14 +200,14 @@
 				<div class="border border-line-2 rounded-lg p-3 bg-surface-sunken/50">
 					<div class="flex items-center justify-between">
 						<div class="flex items-center gap-2">
-							<span class="text-sm font-medium text-ink-1">Stampede 모드</span>
-							<span class="text-xs bg-yellow-900/60 text-yellow-400 border border-yellow-700/50 rounded px-1.5 py-0.5 leading-none">개발 단계</span>
+							<span class="text-sm font-medium text-ink-1">{t('create.stampedeMode')}</span>
+							<span class="text-xs bg-yellow-900/60 text-yellow-400 border border-yellow-700/50 rounded px-1.5 py-0.5 leading-none">{t('state.development')}</span>
 						</div>
 						<button
 							type="button"
 							role="switch"
 							aria-checked={form.stampede_enabled}
-							aria-label="Stampede 모드"
+							aria-label={t('create.stampedeMode')}
 							onclick={() => form.stampede_enabled = !form.stampede_enabled}
 							class="relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus-visible:shadow-[var(--focus-ring)] {form.stampede_enabled ? 'bg-action-warm' : 'bg-surface-selected'}"
 						>
@@ -215,11 +217,11 @@
 						</button>
 					</div>
 					<p class="mt-1.5 text-xs text-ink-2">
-						pod 배포 시 노드(VM)를 자동으로 확장/축소합니다. 노드그룹에서 min/max를 별도 설정해야 합니다.
+						{t('create.stampedeHelp')}
 					</p>
 					{#if form.stampede_enabled}
 						<div class="mt-2 text-xs text-yellow-400/90 bg-yellow-900/10 border border-yellow-800/40 rounded px-2.5 py-1.5">
-							⚠ 개발 단계 기능입니다. 서버에서 <code class="font-mono">k3s.stampede_enabled = true</code> 설정이 필요합니다.
+							<RichText segments={t.rich('create.stampedeWarning')} classes={{ code: 'font-mono' }} />
 						</div>
 					{/if}
 				</div>
@@ -229,10 +231,10 @@
 			{/if}
 			<div class="flex justify-end gap-3 mt-6">
 				<button onclick={() => open = false}
-					class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">취소</button>
+					class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('actions.cancel')}</button>
 				<button data-tour="drover-create-submit" onclick={() => { open = false; onCreate({...form, template_id: form.template_id || undefined}); }} disabled={creating}
 					class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors">
-					생성
+					{t('actions.create')}
 				</button>
 			</div>
 		</div>

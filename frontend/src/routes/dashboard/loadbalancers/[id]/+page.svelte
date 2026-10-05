@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/network-resources';
 	import { page } from '$app/stores';
 	import { auth } from '$lib/stores/auth';
 	import { createLoadbalancerDetailController } from '$lib/stores/loadbalancerDetailController.svelte';
@@ -17,7 +18,7 @@
 
 <div class="max-w-4xl mx-auto px-4 py-8 text-ink-1">
 	{#if ctrl.loading}
-		<div class="text-ink-2">불러오는 중...</div>
+		<div class="text-ink-2">{t('lb.state.loading')}</div>
 	{:else if ctrl.error}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{ctrl.error}</div>
 	{:else if ctrl.lb}

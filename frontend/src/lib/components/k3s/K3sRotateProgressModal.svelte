@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/drover';
 	import { fetchWithAuth } from '$lib/api/client';
 
 	interface ProgressMsg {
@@ -46,7 +47,7 @@
 					{
 						step: 'failed',
 						progress: 0,
-						message: body.detail ?? `오류 ${resp.status}`,
+						message: body.detail ?? t('rotateProgress.httpError', { status: resp.status }),
 						error: String(resp.status),
 					},
 				];
@@ -92,7 +93,7 @@
 				{
 					step: 'failed',
 					progress: 0,
-					message: e instanceof Error ? e.message : '연결 오류',
+					message: e instanceof Error ? e.message : t('rotateProgress.connectionError'),
 					error: 'network',
 				},
 			];
@@ -103,12 +104,12 @@
 
 	function stepLabel(step: string): string {
 		const map: Record<string, string> = {
-			rotate_discover: '노드 검색',
-			rotate_server: '서버 재시작',
-			rotate_agent: '에이전트 재시작',
-			rotate_verify: '검증',
-			completed: '완료',
-			failed: '실패',
+			rotate_discover: t('rotateProgress.steps.discover'),
+			rotate_server: t('rotateProgress.steps.server'),
+			rotate_agent: t('rotateProgress.steps.agent'),
+			rotate_verify: t('rotateProgress.steps.verify'),
+			completed: t('rotateProgress.steps.completed'),
+			failed: t('rotateProgress.steps.failed'),
 		};
 		return map[step] ?? step;
 	}
@@ -121,11 +122,11 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <div class="fixed inset-0 z-[60] flex items-center justify-center">
-	<button class="absolute inset-0 bg-surface-scrim/70" onclick={() => done && onclose()} aria-label="닫기" tabindex="-1"></button>
+	<button class="absolute inset-0 bg-surface-scrim/70" onclick={() => done && onclose()} aria-label={t('rotateProgress.close')} tabindex="-1"></button>
 
 	<div class="relative bg-surface-canvas border border-line rounded-lg w-full max-w-lg mx-4 shadow-[var(--shadow-restraint)] max-h-[85vh] flex flex-col">
 		<div class="flex items-center justify-between px-5 py-4 border-b border-line shrink-0">
-			<h2 class="text-sm font-semibold text-ink-0">인증서 회전 — {clusterName}</h2>
+			<h2 class="text-sm font-semibold text-ink-0">{t('rotateProgress.title', { name: clusterName })}</h2>
 			{#if done}
 				<button onclick={onclose} class="text-ink-2 hover:text-ink-0 transition-colors text-lg leading-none">&times;</button>
 			{/if}
@@ -165,7 +166,7 @@
 			{#if !done}
 				<div class="flex items-center gap-2 text-xs text-ink-2">
 					<span class="inline-block w-2 h-2 bg-action-warm rounded-full animate-pulse"></span>
-					진행 중...
+					{t('rotateProgress.running')}
 				</div>
 			{/if}
 		</div>
@@ -177,7 +178,7 @@
 				class="text-xs px-3 py-1.5 rounded-lg transition-colors
 					{done ? 'bg-surface-selected hover:bg-surface-selected text-ink-0' : 'bg-surface-sunken text-ink-2 cursor-not-allowed'}"
 			>
-				{done ? '닫기' : '진행 중...'}
+				{done ? t('rotateProgress.close') : t('rotateProgress.running')}
 			</button>
 		</div>
 	</div>

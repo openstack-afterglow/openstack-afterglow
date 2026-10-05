@@ -4,5 +4,25 @@
   hosts: waygate
   become: true
   serial: "{{ kolla_serial | default('0') }}"
-  roles:
-    - { role: waygate, tags: waygate, when: enable_waygate | default(false) | bool }
+  tasks:
+    - name: Prepare Waygate application image references
+      ansible.builtin.include_role:
+        name: afterglow
+        tasks_from: resolve_image_refs
+        public: false
+        apply:
+          tags: waygate
+      vars:
+        afterglow_image_ref_service: waygate
+      tags: waygate
+      when:
+        - enable_waygate | default(false) | bool
+        - kolla_action | default('deploy') in ['precheck', 'pull', 'deploy', 'reconfigure', 'upgrade']
+
+    - name: Apply role waygate
+      ansible.builtin.include_role:
+        name: waygate
+        apply:
+          tags: waygate
+      tags: waygate
+      when: enable_waygate | default(false) | bool

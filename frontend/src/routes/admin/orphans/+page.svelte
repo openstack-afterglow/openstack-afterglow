@@ -11,6 +11,7 @@
 	import OrphanShareSection from '$lib/components/admin/orphans/OrphanShareSection.svelte';
 	import OrphanSecurityGroupSection from '$lib/components/admin/orphans/OrphanSecurityGroupSection.svelte';
 	import { pruneSelection, removeFromSelection } from '$lib/utils/selectionSet';
+	import { t } from '$lib/i18n/ns/admin-storage';
 	import type {
 		OrphanFipInfo,
 		OrphanVolumeInfo,
@@ -76,7 +77,7 @@
 			selectedShares = pruneSelection(selectedShares, shares);
 			selectedSGs = pruneSelection(selectedSGs, secgroups);
 		} catch (e) {
-			scanError = e instanceof ApiError ? e.message : '스캔 실패';
+			scanError = e instanceof ApiError ? e.message : t('orphanPage.scanFailed');
 			fips = [];
 			volumes = [];
 			shares = [];
@@ -112,7 +113,7 @@
 			);
 			await load();
 		} catch (e) {
-			cleanupError = e instanceof ApiError ? e.message : '정리 실패';
+			cleanupError = e instanceof ApiError ? e.message : t('orphanPage.cleanupFailed');
 		} finally {
 			cleaning = false;
 		}
@@ -137,7 +138,7 @@
 </script>
 
 <div class="p-4 md:p-6 max-w-7xl mx-auto">
-	<PageHeader breadcrumb="시스템 / 고아 리소스" title="고아 리소스 정리">
+	<PageHeader breadcrumb={t('orphanPage.breadcrumb')} title={t('orphanPage.title')}>
 		{#snippet actions()}
 			<AutoRefreshControl
 				bind:active={ar.active}
@@ -151,7 +152,7 @@
 
 	<div class="bg-surface-base border border-line rounded-xl p-4 mb-6 flex flex-wrap items-center gap-4 text-sm">
 		<div class="flex items-center gap-2">
-			<label for="min-age" class="text-ink-2 text-xs uppercase tracking-wide">Volume 최소 연령(일)</label>
+			<label for="min-age" class="text-ink-2 text-xs uppercase tracking-wide">{t('orphanPage.minAgeDays')}</label>
 			<input
 				id="min-age"
 				type="number"
@@ -163,7 +164,7 @@
 			/>
 		</div>
 		<div class="text-xs text-ink-2">
-			Floating IP는 분리된 즉시 후보. Volume은 status=available + attachments=[] + 연령 ≥ 임계치.
+			{t('orphanPage.criteria')}
 		</div>
 	</div>
 
@@ -174,7 +175,7 @@
 	{/if}
 
 	{#if loading}
-		<div class="text-ink-2 text-sm">로딩 중...</div>
+		<div class="text-ink-2 text-sm">{t('orphanPage.loading')}</div>
 	{:else}
 		<OrphanFipSection items={fips} bind:selected={selectedFips} onCleanup={() => openConfirm('floating_ip')} />
 		<OrphanVolumeSection items={volumes} bind:selected={selectedVolumes} {minAgeDays} onCleanup={() => openConfirm('volume')} />

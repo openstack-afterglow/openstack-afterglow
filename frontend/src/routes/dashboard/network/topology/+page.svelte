@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/topology';
 	import { goto } from '$app/navigation';
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
@@ -70,10 +71,10 @@
 	// 뷰 선택(레인 | 캔버스)은 localStorage 'topology.view' 에 저장한다. 기본은 캔버스.
 	let view = $state<TopologyView>(DEFAULT_TOPOLOGY_VIEW);
 	onMount(() => { view = readTopologyView(); });
-	const viewOptions = [
-		{ value: 'lane', label: '레인' },
-		{ value: 'canvas', label: '캔버스' },
-	];
+	const viewOptions = $derived([
+		{ value: 'lane', label: t('topology.lane') },
+		{ value: 'canvas', label: t('topology.canvas') },
+	]);
 	function onViewChange(value: string) {
 		if (!isTopologyView(value)) return;
 		view = value;
@@ -112,7 +113,7 @@
 			await fetchTopology({ refresh: true });
 			return true;
 		} catch (e) {
-			createNetworkError = e instanceof ApiError ? e.message : '네트워크 생성 실패';
+			createNetworkError = e instanceof ApiError ? e.message : t('topology.createNetworkFailed');
 			return false;
 		} finally {
 			creatingNetwork = false;
@@ -127,7 +128,7 @@
 			await fetchTopology({ refresh: true });
 			return true;
 		} catch (e) {
-			return e instanceof ApiError ? e.message : '라우터 생성 실패';
+			return e instanceof ApiError ? e.message : t('topology.createRouterFailed');
 		}
 	}
 
@@ -158,7 +159,7 @@
 					$auth.token ?? undefined,
 					$auth.projectId ?? undefined
 				);
-				toast.success(`${req.instanceName} 에 ${net.name} 인터페이스를 추가했습니다.`);
+				toast.success(t('topology.interfaceAdded', { instance: req.instanceName, network: net.name }));
 			} else if (req.kind === 'router-gateway') {
 				await api.post(
 					`/api/v1/routers/${encodeURIComponent(req.routerId)}/gateway`,
@@ -166,7 +167,7 @@
 					$auth.token ?? undefined,
 					$auth.projectId ?? undefined
 				);
-				toast.success(`${req.routerName} 의 외부 게이트웨이를 ${net.name} 로 설정했습니다.`);
+				toast.success(t('topology.gatewaySet', { router: req.routerName, network: net.name }));
 			} else if (req.kind === 'router-net') {
 				let subnetId: string;
 				if (activeLinkModal.createdSubnet) {
@@ -204,10 +205,10 @@
 						$auth.token ?? undefined,
 						$auth.projectId ?? undefined
 					);
-					toast.success(`${req.routerName} 를 ${net.name} 의 게이트웨이로 연결했습니다.`);
+					toast.success(t('topology.routerConnected', { router: req.routerName, network: net.name }));
 				} catch (routerErr) {
-					const msg = routerErr instanceof ApiError ? routerErr.message : '라우터 연결 실패';
-					linkError = `서브넷은 생성되었으나 라우터 인터페이스 연결에 실패했습니다 (${msg}). 라우터 연결만 다시 시도할 수 있습니다.`;
+					const msg = routerErr instanceof ApiError ? routerErr.message : t('topology.routerConnectionFailed');
+					linkError = t('topology.partialConnectionFailed', { message: msg });
 					toast.warning(linkError);
 					return false;
 				}
@@ -217,8 +218,8 @@
 			await fetchTopology({ refresh: true });
 			return true;
 		} catch (e) {
-			linkError = e instanceof ApiError ? e.message : '연결 실패';
-			toast.error(`연결 실패: ${linkError}`);
+			linkError = e instanceof ApiError ? e.message : t('topology.connectionFailed');
+			toast.error(t('topology.connectionError', { message: linkError }));
 			return false;
 		} finally {
 			linkSubmitting = false;
@@ -244,9 +245,9 @@
 		try {
 			await api.post(request.url, request.body, $auth.token ?? undefined, $auth.projectId ?? undefined);
 			await fetchTopology({ refresh: true });
-			toast.success(`${request.label}을 완료했습니다.`);
+			toast.success(t('topology.cableCompleted', { label: request.label }));
 		} catch (e) {
-			toast.error(`${request.label} 실패: ${e instanceof ApiError ? e.message : String(e)}`);
+			toast.error(t('topology.cableFailed', { label: request.label, message: e instanceof ApiError ? e.message : String(e) }));
 		}
 	}
 
@@ -351,7 +352,7 @@
 				instances: [...nextData.instances],
 			};
 		} catch (e) {
-			error = e instanceof ApiError ? `조회 실패 (${e.status}): ${e.message}` : '서버 오류';
+			error = e instanceof ApiError ? t('topology.loadFailed', { status: e.status, message: e.message }) : t('topology.serverError');
 		} finally {
 			loading = false;
 			refreshing = false;
@@ -370,9 +371,9 @@
 </script>
 
 <PageShell class="max-w-screen-2xl">
-	<PageHeader breadcrumb="NETWORK / TOPOLOGY" title="토폴로지">
+	<PageHeader breadcrumb={t('topology.breadcrumb')} title={t('topology.title')}>
 		{#snippet actions()}
-			<ToggleGroup value={view} options={viewOptions} onchange={onViewChange} ariaLabel="토폴로지 보기" />
+			<ToggleGroup value={view} options={viewOptions} onchange={onViewChange} ariaLabel={t('topology.viewLabel')} />
 			<AutoRefreshControl
 			bind:active={ar.active}
 			bind:intervalSeconds={ar.intervalSeconds}
@@ -453,25 +454,25 @@
 </PageShell>
 
 {#if selectedInstanceId}
-	<SlidePanel onClose={() => selectedInstanceId = null} ariaLabel="토폴로지 인스턴스 상세">
+	<SlidePanel onClose={() => selectedInstanceId = null} ariaLabel={t('topology.instanceDetailLabel')}>
 		<InstanceDetailPanel instanceId={selectedInstanceId} onClose={() => selectedInstanceId = null} />
 	</SlidePanel>
 {/if}
 
 {#if selectedRouterId}
-	<SlidePanel onClose={() => selectedRouterId = null} ariaLabel="토폴로지 라우터 상세" width="w-full md:w-[60vw] max-w-3xl">
+	<SlidePanel onClose={() => selectedRouterId = null} ariaLabel={t('topology.routerDetailLabel')} width="w-full md:w-[60vw] max-w-3xl">
 		<RouterDetailPanel routerId={selectedRouterId} onClose={() => selectedRouterId = null} />
 	</SlidePanel>
 {/if}
 
 {#if selectedLB}
-	<SlidePanel onClose={() => selectedLB = null} ariaLabel="토폴로지 로드밸런서 상세" width="w-full md:w-[60vw] max-w-2xl">
+	<SlidePanel onClose={() => selectedLB = null} ariaLabel={t('topology.loadBalancerDetailLabel')} width="w-full md:w-[60vw] max-w-2xl">
 		<LoadBalancerDetailPanel lb={selectedLB} onClose={() => selectedLB = null} />
 	</SlidePanel>
 {/if}
 
 {#if selectedNetworkId && data}
-	<SlidePanel onClose={() => selectedNetworkId = null} ariaLabel="토폴로지 네트워크 상세" width="w-full md:w-[60vw] max-w-2xl">
+	<SlidePanel onClose={() => selectedNetworkId = null} ariaLabel={t('topology.networkDetailLabel')} width="w-full md:w-[60vw] max-w-2xl">
 		<NetworkDetailPanel
 			networkId={selectedNetworkId}
 			apiBase="/api/v1/networks"

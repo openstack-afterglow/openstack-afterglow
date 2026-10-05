@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/containers-shell';
 	import { useContainerDetailController } from '$lib/stores/containerDetailController.svelte';
 
 	const s = useContainerDetailController();
@@ -20,17 +21,17 @@
 		{#if s.container?.status === 'Running'}
 			<button onclick={() => s.handleAction('stop')} disabled={s.actioning}
 				class="px-3 py-1 text-xs text-orange-400 border border-orange-800 hover:bg-orange-900/30 rounded-md transition-colors disabled:opacity-40">
-				중지
+				{t('container.stop')}
 			</button>
 		{:else if s.container?.status === 'Stopped' || s.container?.status === 'Created'}
 			<button onclick={() => s.handleAction('start')} disabled={s.actioning}
 				class="px-3 py-1 text-xs text-green-400 border border-green-800 hover:bg-green-900/30 rounded-md transition-colors disabled:opacity-40">
-				시작
+				{t('container.start')}
 			</button>
 		{/if}
 		<button onclick={s.handleDelete} disabled={s.actioning}
 			class="px-3 py-1 text-xs text-red-400 border border-red-800 hover:bg-red-900/30 rounded-md transition-colors disabled:opacity-40">
-			삭제
+			{t('container.delete')}
 		</button>
 	</div>
 </div>

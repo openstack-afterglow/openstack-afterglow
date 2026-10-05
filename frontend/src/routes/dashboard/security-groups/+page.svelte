@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/network-resources';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -19,30 +20,30 @@
 			securityGroups = await api.get<SecurityGroup[]>('/api/v1/security-groups', $auth.token ?? undefined, $auth.projectId ?? undefined);
 			sgError = '';
 		} catch (e) {
-			sgError = e instanceof ApiError ? `조회 실패 (${e.status}): ${(e as ApiError).message}` : '서버 오류';
+			sgError = e instanceof ApiError ? t('securityGroup.error.load', { status: e.status, error: (e as ApiError).message }) : t('securityGroup.error.server');
 		} finally {
 			loading = false;
 		}
 	}
 
 	async function createSecurityGroup(form: { name: string; description: string }): Promise<string | true> {
-		if (!form.name.trim()) return '이름을 입력하세요';
+		if (!form.name.trim()) return t('securityGroup.error.nameRequired');
 		try {
 			await api.post('/api/v1/security-groups', form, $auth.token ?? undefined, $auth.projectId ?? undefined);
 			await fetchSecurityGroups();
 			return true;
 		} catch (e) {
-			return e instanceof ApiError ? e.message : '생성 실패';
+			return e instanceof ApiError ? e.message : t('securityGroup.error.create');
 		}
 	}
 
 	async function deleteSecurityGroup(sgId: string, name: string) {
-		if (!await confirmDialog(`"${name}" 보안 그룹을 삭제하시겠습니까?`)) return;
+		if (!await confirmDialog(t('securityGroup.confirm.delete', { name }))) return;
 		try {
 			await api.delete(`/api/v1/security-groups/${sgId}`, $auth.token ?? undefined, $auth.projectId ?? undefined);
 			await fetchSecurityGroups();
 		} catch (e) {
-			toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('securityGroup.error.delete', { error: e instanceof ApiError ? e.message : String(e) }));
 		}
 	}
 
@@ -63,7 +64,7 @@
 			await fetchSecurityGroups();
 			return true;
 		} catch (e) {
-			return e instanceof ApiError ? e.message : '규칙 추가 실패';
+			return e instanceof ApiError ? e.message : t('securityGroup.error.addRule');
 		}
 	}
 
@@ -72,7 +73,7 @@
 			await api.delete(`/api/v1/security-groups/${sgId}/rules/${ruleId}`, $auth.token ?? undefined, $auth.projectId ?? undefined);
 			await fetchSecurityGroups();
 		} catch (e) {
-			toast.error('규칙 삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('securityGroup.error.deleteRule', { error: e instanceof ApiError ? e.message : String(e) }));
 		}
 	}
 
@@ -85,16 +86,16 @@
 	<div class="flex items-center justify-between mb-6">
 		<div>
 			<div class="flex items-center gap-2 text-sm text-ink-2 mb-1">
-				<a href="/dashboard" class="hover:text-ink-2 transition-colors">대시보드</a>
+				<a href="/dashboard" class="hover:text-ink-2 transition-colors">{t('securityGroup.page.dashboard')}</a>
 				<span>›</span>
-				<span class="text-ink-2">보안 그룹</span>
+				<span class="text-ink-2">{t('securityGroup.page.title')}</span>
 			</div>
-			<h1 class="text-xl font-semibold text-ink-0">보안 그룹</h1>
+			<h1 class="text-xl font-semibold text-ink-0">{t('securityGroup.page.title')}</h1>
 		</div>
 		<button
 			onclick={() => { showSgModal = true; }}
 			class="bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm px-4 py-2 rounded-lg transition-colors"
-		>+ 보안 그룹 생성</button>
+		>{t('securityGroup.page.create')}</button>
 	</div>
 
 	{#if sgError}
@@ -106,7 +107,7 @@
 	{:else if securityGroups.length === 0}
 		<div class="text-center py-20 text-ink-2">
 			<div class="text-5xl mb-4">🔒</div>
-			<div class="text-lg">보안 그룹이 없습니다</div>
+			<div class="text-lg">{t('securityGroup.page.empty')}</div>
 		</div>
 	{:else}
 		<div class="space-y-3">

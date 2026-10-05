@@ -1,6 +1,6 @@
 {
     "name": "afterglow_frontend",
-    "image": "{{ afterglow_frontend_image }}:{{ afterglow_image_tag }}",
+    "image": "{{ afterglow_frontend_image_ref }}",
     "restart_policy": "unless-stopped",
     "volumes": [
         "kolla_logs:/var/log/kolla/",

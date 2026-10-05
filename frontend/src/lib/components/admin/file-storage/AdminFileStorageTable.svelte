@@ -3,6 +3,7 @@
 	import { projectNames } from '$lib/stores/projectNames';
 	import { formatNumber } from '$lib/utils/format';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
+	import { t } from '$lib/i18n/ns/admin-storage';
 
 	let {
 		storages,
@@ -32,15 +33,15 @@
 	<table class="w-full text-sm">
 		<thead>
 			<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
-				<th class="text-left py-2 pr-4">이름</th>
-				<th class="text-left py-2 pr-4">상태</th>
-				<th class="text-left py-2 pr-4">크기</th>
-				<th class="text-left py-2 pr-4">프로토콜</th>
-				<th class="text-left py-2 pr-4">유형</th>
-				<th class="text-left py-2 pr-4">프로젝트</th>
-				<th class="text-left py-2 pr-4">생성일</th>
-				<th class="text-left py-2 pr-4">Export 경로</th>
-				<th class="text-left py-2">작업</th>
+				<th class="text-left py-2 pr-4">{t('fileTable.column.name')}</th>
+				<th class="text-left py-2 pr-4">{t('fileTable.column.status')}</th>
+				<th class="text-left py-2 pr-4">{t('fileTable.column.size')}</th>
+				<th class="text-left py-2 pr-4">{t('fileTable.column.protocol')}</th>
+				<th class="text-left py-2 pr-4">{t('fileTable.column.type')}</th>
+				<th class="text-left py-2 pr-4">{t('fileTable.column.project')}</th>
+				<th class="text-left py-2 pr-4">{t('fileTable.column.createdAt')}</th>
+				<th class="text-left py-2 pr-4">{t('fileTable.column.exportPath')}</th>
+				<th class="text-left py-2">{t('fileTable.column.actions')}</th>
 			</tr>
 		</thead>
 		<tbody>
@@ -94,7 +95,7 @@
 						{/if}
 					</td>
 					<td class="py-2">
-						<button type="button" onclick={() => onOpen(fs)} class="px-2 py-1 rounded border border-action-warm/40 text-warm-text hover:bg-action-warm-hover/10 hover:text-warm-text-hover transition-colors text-xs font-medium">상세</button>
+						<button type="button" onclick={() => onOpen(fs)} class="px-2 py-1 rounded border border-action-warm/40 text-warm-text hover:bg-action-warm-hover/10 hover:text-warm-text-hover transition-colors text-xs font-medium">{t('fileTable.details')}</button>
 					</td>
 				</tr>
 			{/each}

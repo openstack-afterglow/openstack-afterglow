@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/object-storage';
 	import type { SwiftContainer } from '$lib/types/common';
 	import { formatStorage } from '$lib/utils/format';
 
@@ -23,25 +24,25 @@
 		{#if container.is_quarantine}
 			<span
 				class="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium rounded border border-action-warm bg-amber-950/50 text-warm-text"
-				title="업로드 검증 중인 파일이 임시로 격리되는 시스템 버킷입니다. 검증 통과 시 원본 버킷으로 자동 이동됩니다."
+				title={t('buckets.row.quarantineHelp')}
 			>
-				격리용
+				{t('buckets.row.quarantine')}
 			</span>
 		{/if}
 		{#if container.is_trash}
 			<span
 				class="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium rounded border border-orange-800 bg-orange-950/50 text-orange-400"
-				title="오브젝트 휴지통 버킷입니다. 삭제된 파일이 보관 기간 동안 임시 저장됩니다."
+				title={t('buckets.row.trashHelp')}
 			>
-				휴지통
+				{t('buckets.row.trash')}
 			</span>
 		{/if}
 		{#if container.is_deleted}
 			<span
 				class="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium rounded border border-red-800 bg-red-950/50 text-red-400"
-				title="삭제 대기 중인 버킷입니다. 보관 기간 내에 복구할 수 있습니다."
+				title={t('buckets.row.deletedHelp')}
 			>
-				복구 대기
+				{t('buckets.row.deleted')}
 			</span>
 		{/if}
 	</td>
@@ -55,6 +56,6 @@
 			onclick={(e) => { e.stopPropagation(); onDelete(container.name); }}
 			disabled={deletingId === container.name}
 			class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors"
-		>{deletingId === container.name ? '삭제 중...' : '삭제'}</button>
+		>{deletingId === container.name ? t('buckets.row.deleting') : t('buckets.row.delete')}</button>
 	</td>
 </tr>

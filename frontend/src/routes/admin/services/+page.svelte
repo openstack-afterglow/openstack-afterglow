@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-ops';
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
@@ -39,17 +40,17 @@
 	const projectId = $derived($auth.projectId ?? undefined);
 	const userId = $derived($auth.userId ?? undefined);
 
-	const tabs: { key: TabKey; label: string; count: () => number }[] = [
-		{ key: 'compute', label: 'Compute', count: () => computeServices.length },
-		{ key: 'network', label: 'Network', count: () => networkAgents.length },
-		{ key: 'block_storage', label: 'Block Storage', count: () => blockStorageServices.length },
-		{ key: 'shared_file_system', label: 'File Storage', count: () => sharedFsServices.length },
-		{ key: 'orchestration', label: 'Orchestrator', count: () => orchestrationServices.length },
-		{ key: 'container', label: 'Container', count: () => containerServices.length },
+	const tabs: { key: TabKey; label: string; count: () => number }[] = $derived([
+		{ key: 'compute', label: t('services.tabs.compute'), count: () => computeServices.length },
+		{ key: 'network', label: t('services.tabs.network'), count: () => networkAgents.length },
+		{ key: 'block_storage', label: t('services.tabs.blockStorage'), count: () => blockStorageServices.length },
+		{ key: 'shared_file_system', label: t('services.tabs.fileStorage'), count: () => sharedFsServices.length },
+		{ key: 'orchestration', label: t('services.tabs.orchestrator'), count: () => orchestrationServices.length },
+		{ key: 'container', label: t('services.tabs.container'), count: () => containerServices.length },
 		{ key: 'container_infra', label: 'Magnum', count: () => magnumServices.length },
-		{ key: 'endpoints', label: 'API Endpoints', count: () => endpoints.length },
-		{ key: 'storage_pools', label: 'Storage Pools', count: () => storagePools.length },
-	];
+		{ key: 'endpoints', label: t('services.tabs.apiEndpoints'), count: () => endpoints.length },
+		{ key: 'storage_pools', label: t('services.tabs.storagePools'), count: () => storagePools.length },
+	]);
 
 	let visibleTabs = $derived(
 		tabs.filter(tab => {
@@ -122,7 +123,7 @@
 	}
 
 	$effect(() => {
-		if (visibleTabs.length > 0 && !visibleTabs.find(t => t.key === activeTab)) {
+		if (visibleTabs.length > 0 && !visibleTabs.find(tab => tab.key === activeTab)) {
 			activeTab = visibleTabs[0].key;
 		}
 		const nextScopeKey = JSON.stringify([userId ?? null, projectId ?? null]);
@@ -166,7 +167,7 @@
 
 <div class="p-4 md:p-6 max-w-7xl mx-auto">
 	<div data-tour="admin-system-header">
-	<PageHeader breadcrumb="SYSTEM / SERVICES" title="서비스 상태">
+	<PageHeader breadcrumb={t('services.page.breadcrumb')} title={t('services.page.title')}>
 		{#snippet actions()}
 			<TutorialStartButton tour="admin-system" compactOnMobile />
 			<AutoRefreshControl
@@ -180,7 +181,7 @@
 	</div>
 
 	<ServiceTabs
-		tabs={visibleTabs.map(t => ({ key: t.key, label: t.label, count: t.count() }))}
+		tabs={visibleTabs.map(tab => ({ key: tab.key, label: tab.label, count: tab.count() }))}
 		bind:activeTab
 		{loadingMap}
 		{loadedMap}

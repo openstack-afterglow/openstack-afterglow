@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { uploadQueue } from '$lib/stores/uploadQueue';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
+	import { t } from '$lib/i18n/ns/object-storage';
 
 	interface Props {
 		containerName: string;
@@ -50,7 +51,7 @@
 		role="none"
 		onkeydown={(e) => e.stopPropagation()}
 	>
-		<h2 class="text-lg font-semibold text-ink-0 mb-4">파일 업로드</h2>
+		<h2 class="text-lg font-semibold text-ink-0 mb-4">{t('uploadModal.title')}</h2>
 
 		<div class="space-y-3">
 			<input
@@ -63,7 +64,7 @@
 				class="w-full text-sm text-ink-2 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:bg-surface-selected file:text-ink-0 hover:file:bg-surface-selected"
 			/>
 			<p class="text-xs text-ink-2">
-				업로드한 파일은 형식·구조 검사와 SHA-256 무결성 검증을 거칩니다. 실행 파일과 활성 문서는 거부됩니다.
+				{t('uploadModal.inspection')}
 			</p>
 			{#if error}
 				<p class="text-red-400 text-xs">{error}</p>
@@ -74,12 +75,12 @@
 			<button
 				onclick={onClose}
 				class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 border border-line-2 rounded-lg transition-colors"
-			>취소</button>
+			>{t('uploadModal.cancel')}</button>
 			<button
 				onclick={enqueue}
 				disabled={!files || files.length === 0}
 				class="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:bg-surface-selected disabled:text-ink-3 text-ink-0 rounded-lg transition-colors"
-			>업로드</button>
+			>{t('uploadModal.upload')}</button>
 		</div>
 	</div>
 </div>

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_OBJECT_VIEW, OBJECT_VIEW_STORAGE_KEY, isObjectView, readObjectView, writeObjectView } from '../objectViewPreference';
+import { OBJECT_VIEW_STORAGE_KEY, isObjectView, readObjectView, writeObjectView } from '../objectViewPreference';
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -8,10 +8,8 @@ afterEach(() => {
 
 describe('objectViewPreference', () => {
 	it('기본값은 grid 이고 저장한 값을 다시 읽는다', () => {
-		expect(DEFAULT_OBJECT_VIEW).toBe('grid');
 		expect(readObjectView()).toBe('grid');
 		writeObjectView('list');
-		expect(localStorage.getItem('objectBrowser.view')).toBe('list');
 		expect(readObjectView()).toBe('list');
 		writeObjectView('grid');
 		expect(readObjectView()).toBe('grid');

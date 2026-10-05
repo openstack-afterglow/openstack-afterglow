@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/drover';
+	import RichText from '$lib/i18n/RichText.svelte';
 	import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
 	import type { PodInfo } from '$lib/types/k3s';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
@@ -29,7 +31,7 @@
 		if (result) {
 			log = result.log;
 		} else {
-			error = '로그 조회 실패';
+			error = t('podLog.loadFailed');
 		}
 		loading = false;
 	}
@@ -39,6 +41,9 @@
 		fetchLog();
 	});
 </script>
+
+{#snippet podName(text: string)}<span class="text-sm font-semibold text-ink-0">{text}</span>{/snippet}
+{#snippet logLabel(text: string)}<span class="ml-2 text-xs text-ink-2">{text}</span>{/snippet}
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -59,8 +64,7 @@
 		<!-- Header -->
 		<div class="flex items-center justify-between px-5 py-3 border-b border-line">
 			<div>
-				<span class="text-sm font-semibold text-ink-0">{pod.name}</span>
-				<span class="ml-2 text-xs text-ink-2">로그</span>
+				<RichText segments={t.rich('podLog.title', { name: pod.name })} tags={{ name: podName, label: logLabel }} />
 			</div>
 			<div class="flex items-center gap-3">
 				{#if pod.containers.length > 1}
@@ -77,15 +81,15 @@
 					bind:value={tailLines}
 					class="text-xs bg-surface-sunken border border-line-2 text-ink-1 rounded-md px-2 py-1"
 				>
-					<option value={50}>마지막 50줄</option>
-					<option value={200}>마지막 200줄</option>
-					<option value={1000}>마지막 1000줄</option>
+					<option value={50}>{t('podLog.tailLines', { count: 50 })}</option>
+					<option value={200}>{t('podLog.tailLines', { count: 200 })}</option>
+					<option value={1000}>{t('podLog.tailLines', { count: 1000 })}</option>
 				</select>
 				<button
 					onclick={fetchLog}
 					disabled={loading}
 					class="text-xs px-3 py-1 bg-surface-sunken hover:bg-surface-selected text-ink-2 rounded-md transition-colors disabled:opacity-40"
-				>새로고침</button>
+				>{t('podLog.refresh')}</button>
 				<button
 					onclick={onClose}
 					class="text-ink-2 hover:text-ink-0 transition-colors text-lg leading-none"
@@ -96,11 +100,11 @@
 		<!-- Log body -->
 		<div class="flex-1 overflow-auto p-4">
 			{#if loading}
-				<div class="text-ink-2 text-sm text-center py-8">로딩 중...</div>
+				<div class="text-ink-2 text-sm text-center py-8">{t('podLog.loading')}</div>
 			{:else if error}
 				<div class="text-red-400 text-sm">{error}</div>
 			{:else if !log}
-				<div class="text-ink-2 text-sm text-center py-8">로그 없음</div>
+				<div class="text-ink-2 text-sm text-center py-8">{t('podLog.empty')}</div>
 			{:else}
 				<pre class="text-xs text-ink-1 font-mono whitespace-pre-wrap break-words leading-relaxed">{log}</pre>
 			{/if}

@@ -1,5 +1,7 @@
 /** Canonical chat wire contract and runtime parsers. No transport may bypass these parsers. */
 
+import { t } from '$lib/i18n/ns/chat-panel';
+
 export interface ModelCapabilities {
 	streaming?: boolean;
 	vision?: boolean;
@@ -583,7 +585,7 @@ export function parseChatRunEvent(value: unknown): ChatRunEvent {
 					name: text(payload.name, 'tool name')!,
 					arguments: record(payload.arguments, 'tool arguments'),
 					source,
-					category: payload.category === undefined ? '기본 도구' : text(payload.category, 'tool category')!
+					category: payload.category === undefined ? t('contracts.builtinTools') : text(payload.category, 'tool category')!
 				}
 			};
 		}
@@ -603,7 +605,7 @@ export function parseChatRunEvent(value: unknown): ChatRunEvent {
 					status: enumValue(payload.status, ['completed', 'failed'] as const, 'tool status'),
 					error_code: errorCode,
 					source,
-					category: payload.category === undefined ? '기본 도구' : text(payload.category, 'tool category')!
+					category: payload.category === undefined ? t('contracts.builtinTools') : text(payload.category, 'tool category')!
 				}
 			};
 		}

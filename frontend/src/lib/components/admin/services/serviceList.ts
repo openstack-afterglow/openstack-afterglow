@@ -1,3 +1,6 @@
+import { t } from '$lib/i18n/ns/admin-ops';
+import { intlLocale } from '$lib/i18n/runtime.svelte';
+
 export interface ServiceListState {
 	search: string;
 	filters: Record<string, string>;
@@ -22,7 +25,17 @@ export interface ServiceFilter {
 	options: { value: string; label: string }[];
 }
 
-const collator = new Intl.Collator('ko', { numeric: true, sensitivity: 'base' });
+let collatorLocale = '';
+let collator: Intl.Collator;
+
+function serviceCollator(): Intl.Collator {
+	const locale = intlLocale();
+	if (locale !== collatorLocale) {
+		collator = new Intl.Collator(locale, { numeric: true, sensitivity: 'base' });
+		collatorLocale = locale;
+	}
+	return collator;
+}
 
 export function createServiceListState(defaultSortKey = ''): ServiceListState {
 	return { search: '', filters: {}, sortKey: defaultSortKey, sortDirection: 'asc' };
@@ -37,18 +50,30 @@ function filterValue(value: ListValue): string {
 	return isMissing(value) ? 'missing' : `value:${value}`;
 }
 
-export function serviceFilterLabel(value: string): string {
-	return value === 'missing' ? '미확인' : value.slice('value:'.length);
+export function serviceFilterLabel(value: string, fieldKey?: string): string {
+	if (value === 'missing') return t('services.state.unknown');
+	const code = value.slice('value:'.length);
+	if (fieldKey === 'status' && (code === 'enabled' || code === 'disabled')) {
+		return t(`services.state.${code}`);
+	}
+	if ((fieldKey === 'state' || fieldKey === 'alive') && (code === 'up' || code === 'down' || code === 'alive')) {
+		return t(`services.state.${code}`);
+	}
+	if (fieldKey === 'admin_state' && (code === 'UP' || code === 'DOWN')) {
+		return code === 'UP' ? t('services.state.adminUp') : t('services.state.adminDown');
+	}
+	return code;
 }
 
 export function buildServiceFilters<T>(rows: readonly T[], fields: readonly ServiceListField<T>[]): ServiceFilter[] {
+	const collator = serviceCollator();
 	return fields.filter(field => field.filter).map(field => {
 		const values = new Set(rows.map(row => filterValue(field.value(row))));
-		const options = [...values].map(value => ({ value, label: serviceFilterLabel(value) }));
+		const options = [...values].map(value => ({ value, label: serviceFilterLabel(value, field.key) }));
 		options.sort((a, b) => {
 			if (a.value === 'missing') return b.value === 'missing' ? 0 : 1;
 			if (b.value === 'missing') return -1;
-			return collator.compare(a.label, b.label);
+			return collator.compare(a.value, b.value);
 		});
 		return { key: field.key, label: field.label, options };
 	});
@@ -70,6 +95,7 @@ export function filterAndSortRows<T>(rows: readonly T[], fields: readonly Servic
 	}
 	const sortField = fields.find(field => field.key === view.sortKey);
 	if (!sortField) return result;
+	const collator = serviceCollator();
 	const direction = view.sortDirection === 'asc' ? 1 : -1;
 	const getValue = sortField.sortValue ?? sortField.value;
 	// Compute each sort value once, including timestamp parsing, without mutating API arrays.

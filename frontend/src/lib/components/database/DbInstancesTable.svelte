@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t as tr } from '$lib/i18n/ns/database';
   import type { DbInstance } from '$lib/types/database';
   import StatusChip from '$lib/components/ui/StatusChip.svelte';
   import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
@@ -40,19 +41,19 @@
   <table class="w-full text-sm">
     <thead>
       <tr class="db-instances-table__head text-xs uppercase tracking-wide">
-        <th class="text-left py-3 px-3"><div class="inline-flex items-center gap-2"><SelectionCheckbox checked={allSelected} indeterminate={indeterminate} disabled={selectionDisabled} ariaLabel="전체 DB 인스턴스 선택" onclick={onToggleAll} /><span>전체 선택</span><span class="db-instances-table__selection-count normal-case" aria-live="polite">{selectedSelectableCount}개 선택됨</span></div></th>
-        <th class="text-left py-3 px-4 font-medium">이름</th>
-        <th class="text-left py-3 px-4 font-medium">상태</th>
-        <th class="text-left py-3 px-4 font-medium">Datastore</th>
-        <th class="text-left py-3 px-4 font-medium">크기 (GB)</th>
-        <th class="text-left py-3 px-4 font-medium">생성일</th>
-        <th class="text-right py-3 px-4 font-medium">액션</th>
+        <th class="text-left py-3 px-3"><div class="inline-flex items-center gap-2"><SelectionCheckbox checked={allSelected} indeterminate={indeterminate} disabled={selectionDisabled} ariaLabel={tr('selection.allInstances')} onclick={onToggleAll} /><span>{tr('selection.all')}</span><span class="db-instances-table__selection-count normal-case" aria-live="polite">{tr('selection.count', { count: selectedSelectableCount })}</span></div></th>
+        <th class="text-left py-3 px-4 font-medium">{tr('labels.name')}</th>
+        <th class="text-left py-3 px-4 font-medium">{tr('labels.status')}</th>
+        <th class="text-left py-3 px-4 font-medium">{tr('labels.datastoreEnglish')}</th>
+        <th class="text-left py-3 px-4 font-medium">{tr('labels.sizeGb')}</th>
+        <th class="text-left py-3 px-4 font-medium">{tr('labels.created')}</th>
+        <th class="text-right py-3 px-4 font-medium">{tr('labels.actions')}</th>
       </tr>
     </thead>
     <tbody>
       {#each instances as inst (inst.id)}
         <tr class="resource-selection-surface db-instances-table__row transition-colors" data-selected={selectedIds.has(inst.id)}>
-          <td class="py-3 px-3"><SelectionCheckbox checked={selectedIds.has(inst.id)} disabled={selectionDisabled || !selectableIds.has(inst.id)} ariaLabel={`${inst.name} 선택`} onclick={() => onToggleSelect(inst.id)} /></td>
+          <td class="py-3 px-3"><SelectionCheckbox checked={selectedIds.has(inst.id)} disabled={selectionDisabled || !selectableIds.has(inst.id)} ariaLabel={tr('selection.item', { name: inst.name })} onclick={() => onToggleSelect(inst.id)} /></td>
           <td class="py-3 px-4"><button onclick={() => onOpen(inst.id)} class="db-instances-table__name font-medium text-left max-md:block max-md:max-w-[66vw] max-md:truncate" title={inst.name}>{inst.name}</button></td>
           <td class="py-3 px-4"><StatusChip status={inst.status} /></td>
           <td class="db-instances-table__detail py-3 px-4">{inst.datastore?.type ?? '-'} {inst.datastore?.version ?? ''}</td>
@@ -60,8 +61,8 @@
           <td class="db-instances-table__selection-count py-3 px-4 text-xs">{inst.created_at ? inst.created_at.slice(0, 10) : '-'}</td>
           <td class="py-3 px-4 text-right">
             <div class="flex justify-end gap-1">
-              <button onclick={() => onRestart(inst.id, inst.name)} disabled={restarting === inst.id || selectionDisabled} class="db-instances-table__action db-instances-table__restart text-xs px-2 py-1 rounded">{restarting === inst.id ? '...' : '재시작'}</button>
-              <button onclick={(e) => { e.stopPropagation(); onDelete(inst.id, inst.name); }} disabled={deleting === inst.id || selectionDisabled} class="db-instances-table__action db-instances-table__delete text-xs px-2 py-1 rounded">{deleting === inst.id ? '...' : '삭제'}</button>
+              <button onclick={() => onRestart(inst.id, inst.name)} disabled={restarting === inst.id || selectionDisabled} class="db-instances-table__action db-instances-table__restart text-xs px-2 py-1 rounded">{restarting === inst.id ? '...' : tr('actions.restart')}</button>
+              <button onclick={(e) => { e.stopPropagation(); onDelete(inst.id, inst.name); }} disabled={deleting === inst.id || selectionDisabled} class="db-instances-table__action db-instances-table__delete text-xs px-2 py-1 rounded">{deleting === inst.id ? '...' : tr('actions.delete')}</button>
             </div>
           </td>
         </tr>

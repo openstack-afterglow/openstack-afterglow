@@ -16,6 +16,7 @@
 	import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
 	import { executeBulkMutations } from '$lib/utils/bulkActions';
 	import { isDroverLoadBalancer } from '$lib/utils/droverLoadBalancer';
+	import { t } from '$lib/i18n/ns/admin-network';
 	let loadbalancers = $state<LoadBalancer[]>([]);
 	let loading = $state(true);
 	let error = $state('');
@@ -37,7 +38,7 @@
 			}
 			error = '';
 		} catch (e) {
-			error = e instanceof ApiError ? `조회 실패 (${e.status})` : '서버 오류';
+			error = e instanceof ApiError ? t('loadbalancersPage.error.fetchFailed', { status: e.status }) : t('loadbalancersPage.error.server');
 		} finally {
 			loading = false;
 		}
@@ -46,8 +47,7 @@
 	async function bulkDelete() {
 		const ids = [...selection.ids].filter((id) => selectableIds.has(id));
 		if (ids.length === 0) return;
-		const warning = '리스너·풀·멤버가 함께 삭제될 수 있습니다.';
-		if (!await confirmDialog(`${ids.length}개 로드밸런서를 삭제하시겠습니까?\n${warning}`)) return;
+		if (!await confirmDialog(t('loadbalancersPage.deleteDialog.body', { count: ids.length }))) return;
 		const tokenSnapshot = token;
 		const projectSnapshot = projectId;
 		busy = true;
@@ -55,9 +55,9 @@
 			const results = await executeBulkMutations(ids, (id) => api.delete(`/api/v1/loadbalancers/${id}`, tokenSnapshot, projectSnapshot));
 			const succeeded = results.filter((result) => result.ok).map((result) => result.id);
 			if (projectSnapshot === ($auth.projectId ?? undefined)) selection.remove(succeeded);
-			if (succeeded.length > 0) toast.success(`${succeeded.length}개 로드밸런서 삭제 요청을 완료했습니다.`);
+			if (succeeded.length > 0) toast.success(t('loadbalancersPage.toast.deleteRequested', { count: succeeded.length }));
 			const failedCount = results.length - succeeded.length;
-			if (failedCount > 0) toast.error(`${failedCount}개 로드밸런서 삭제에 실패했습니다.`);
+			if (failedCount > 0) toast.error(t('loadbalancersPage.toast.deleteFailed', { count: failedCount }));
 			if (projectSnapshot === ($auth.projectId ?? undefined)) await fetchLoadbalancers({ refresh: true });
 		} finally {
 			busy = false;
@@ -84,7 +84,7 @@
 </script>
 
 <div class="bulk-selection-page p-4 md:p-8 max-w-7xl mx-auto">
-	<PageHeader breadcrumb="NETWORK / LOADBALANCERS" title="로드밸런서">
+	<PageHeader breadcrumb={t('loadbalancersPage.breadcrumb')} title={t('loadbalancersPage.title')}>
 		{#snippet actions()}
 			<AutoRefreshControl
 				bind:active={ar.active}
@@ -110,14 +110,14 @@
 		</div>
 	{:else if loadbalancers.length === 0}
 		<div class="text-center py-20 text-ink-2 bg-surface-base/20 border border-line/50 rounded-lg">
-			<div class="text-5xl mb-4">⚖️</div>
-			<p class="text-lg">로드밸런서가 없습니다</p>
+			<div class="text-5xl mb-4">{t('loadbalancersPage.emptyIcon')}</div>
+			<p class="text-lg">{t('loadbalancersPage.empty')}</p>
 		</div>
 	{:else}
 		<div class="flex justify-end mb-3">
 			<SelectionToolbar
-				label="로드밸런서"
-				ariaLabel="로드밸런서 전체 선택"
+				label={t('loadbalancersPage.title')}
+				ariaLabel={t('loadbalancersPage.selection.all')}
 				checked={allSelected}
 				indeterminate={indeterminate}
 				selectedCount={selectedCount}
@@ -129,13 +129,13 @@
 			<table class="w-full text-sm">
 				<thead>
 					<tr class="border-b border-line text-ink-2 text-xs uppercase tracking-wide">
-						<th class="py-2 pr-3 w-8 text-left" aria-label="선택"></th>
-						<th class="text-left py-2 pr-4">이름 / ID</th>
-						<th class="text-left py-2 pr-4">프로젝트 ID</th>
-						<th class="text-left py-2 pr-4">VIP 주소</th>
-						<th class="text-left py-2 pr-4">프로비저닝 상태</th>
-						<th class="text-left py-2 pr-4">운영 상태</th>
-						<th class="text-left py-2">액션</th>
+						<th class="py-2 pr-3 w-8 text-left" aria-label={t('loadbalancersPage.selection.label')}></th>
+						<th class="text-left py-2 pr-4">{t('loadbalancersPage.table.nameId')}</th>
+						<th class="text-left py-2 pr-4">{t('loadbalancersPage.table.projectId')}</th>
+						<th class="text-left py-2 pr-4">{t('loadbalancersPage.table.vipAddress')}</th>
+						<th class="text-left py-2 pr-4">{t('loadbalancersPage.table.provisioningStatus')}</th>
+						<th class="text-left py-2 pr-4">{t('loadbalancersPage.table.operatingStatus')}</th>
+						<th class="text-left py-2">{t('loadbalancersPage.table.actions')}</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -147,8 +147,8 @@
 									checked={selection.has(lb.id)}
 									disabled={busy || isProtected}
 									unavailable={isProtected}
-									title={isProtected ? 'Drover가 관리하는 로드밸런서입니다. (일괄 삭제 불가)' : undefined}
-									ariaLabel={`${lb.name || lb.id.slice(0, 12)} 선택`}
+									title={isProtected ? t('loadbalancersPage.selection.protected') : undefined}
+									ariaLabel={t('loadbalancersPage.selection.item', { name: lb.name || lb.id.slice(0, 12) })}
 									onclick={() => selection.toggle(lb.id)}
 								/>
 							</td>
@@ -185,28 +185,28 @@
 									onclick={() => openLbPanel(lb.id)}
 									class="px-2.5 py-1 text-xs bg-surface-sunken hover:bg-surface-selected text-ink-2 border border-line-2 rounded transition-colors"
 								>
-									상세
+									{t('loadbalancersPage.actions.details')}
 								</button>
 							</td>
 						</tr>
 					{/each}
 				</tbody>
 			</table>
-			<div class="mt-4 text-xs text-ink-2">총 {loadbalancers.length}개 로드밸런서</div>
+			<div class="mt-4 text-xs text-ink-2">{t('loadbalancersPage.summary.total', { count: loadbalancers.length })}</div>
 		</div>
 	{/if}
 </div>
 
 <BulkSelectionOverlay
 	count={selectedCount}
-	ariaLabel="선택한 로드밸런서 일괄 작업"
-	actions={[{ key: 'delete', label: '삭제', tone: 'danger', onAction: bulkDelete }]}
+	ariaLabel={t('loadbalancersPage.selection.bulkActions')}
+	actions={[{ key: 'delete', label: t('loadbalancersPage.actions.delete'), tone: 'danger', onAction: bulkDelete }]}
 	{busy}
 	onClear={() => selection.clear()}
 />
 
 {#if selectedLbId}
-	<SlidePanel onClose={closeLbPanel} ariaLabel="관리자 로드밸런서 상세">
+	<SlidePanel onClose={closeLbPanel} ariaLabel={t('loadbalancersPage.detailPanel.title')}>
 		<LoadBalancerDetailPanel
 			lbId={selectedLbId}
 			onClose={closeLbPanel}

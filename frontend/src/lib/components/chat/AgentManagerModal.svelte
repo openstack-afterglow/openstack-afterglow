@@ -16,6 +16,7 @@
 		type AgentForm
 	} from '$lib/api/chatAgents';
 	import type { AvailableModel } from '$lib/api/chatTree';
+	import { t } from '$lib/i18n/ns/chat-studio';
 
 	interface Props {
 		open: boolean;
@@ -50,7 +51,7 @@
 			mcps = ms;
 			tools = ts;
 		} catch {
-			toast.error('에이전트 목록을 불러오지 못했습니다');
+			toast.error(t('agentManager.loadFailed'));
 		} finally {
 			loading = false;
 		}
@@ -83,16 +84,16 @@
 			const payload = buildAgentPayload(form);
 			if (editingId !== null) {
 				await api.patch(`/api/v1/chat/agents/${editingId}`, payload, token, projectId);
-				toast.success('에이전트를 수정했습니다');
+				toast.success(t('agentManager.updated'));
 			} else {
 				await api.post('/api/v1/chat/agents', payload, token, projectId);
-				toast.success('에이전트를 생성했습니다');
+				toast.success(t('agentManager.created'));
 			}
 			mode = 'list';
 			await load();
 			onChanged?.();
 		} catch (e) {
-			toast.error(e instanceof ApiError ? e.message : '저장에 실패했습니다');
+			toast.error(e instanceof ApiError ? e.message : t('agentManager.saveFailed'));
 		} finally {
 			saving = false;
 		}
@@ -100,32 +101,32 @@
 
 	async function remove(a: Agent) {
 		if (!token) return;
-		if (!(await confirmDialog(`'${a.name}' 에이전트를 삭제하시겠습니까?`))) return;
+		if (!(await confirmDialog(t('agentManager.deleteConfirm', { name: a.name })))) return;
 		try {
 			await api.delete(`/api/v1/chat/agents/${a.id}`, token, projectId);
 			await load();
 			onChanged?.();
-			toast.success('삭제했습니다');
+			toast.success(t('agentManager.deleted'));
 		} catch {
-			toast.error('삭제에 실패했습니다');
+			toast.error(t('agentManager.deleteFailed'));
 		}
 	}
 </script>
 
-<Modal {open} {onClose} ariaLabel="에이전트 관리">
+<Modal {open} {onClose} ariaLabel={t('agentManager.title')}>
 	<div class="panel">
 		<header class="head">
 			<div class="head-title">
 				{#if mode === 'form'}
-					<button type="button" class="back" onclick={() => (mode = 'list')} aria-label="목록으로">
+					<button type="button" class="back" onclick={() => (mode = 'list')} aria-label={t('agentManager.backToList')}>
 						<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round" /></svg>
 					</button>
-					<h2>{editingId !== null ? '에이전트 편집' : '새 에이전트'}</h2>
+					<h2>{editingId !== null ? t('agentManager.editTitle') : t('agentManager.createTitle')}</h2>
 				{:else}
-					<h2>내 에이전트</h2>
+					<h2>{t('agentManager.myAgents')}</h2>
 				{/if}
 			</div>
-			<button type="button" class="close" onclick={onClose} aria-label="닫기">
+			<button type="button" class="close" onclick={onClose} aria-label={t('agentManager.close')}>
 				<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="round" /></svg>
 			</button>
 		</header>
@@ -143,16 +144,16 @@
 					onCancel={() => (mode = 'list')}
 				/>
 			{:else if loading}
-				<p class="muted">불러오는 중…</p>
+				<p class="muted">{t('agentManager.loading')}</p>
 			{:else}
 				<div class="list-head">
-					<span class="muted">{agents.length}개</span>
-					<Button variant="accent" size="sm" onclick={startCreate}>+ 새 에이전트</Button>
+					<span class="muted">{t('agentManager.count', { count: agents.length })}</span>
+					<Button variant="accent" size="sm" onclick={startCreate}>{t('agentManager.create')}</Button>
 				</div>
 				{#if agents.length === 0}
 					<div class="empty-box">
-						<p>아직 에이전트가 없습니다.</p>
-						<p class="muted">자주 쓰는 프롬프트·모델·도구를 묶어 에이전트로 저장하세요.</p>
+						<p>{t('agentManager.empty')}</p>
+						<p class="muted">{t('agentManager.emptyHint')}</p>
 					</div>
 				{:else}
 					<div class="cards">
@@ -169,16 +170,16 @@
 									<div class="card-title">
 										<span class="name truncate">{a.name}</span>
 										{#if a.visibility === 'public'}
-											<span class="vis-badge">공개 · {a.clone_count ?? 0}</span>
+											<span class="vis-badge">{t('agentManager.publicCloneCount', { count: a.clone_count ?? 0 })}</span>
 										{/if}
 									</div>
 									{#if a.description}<div class="desc truncate">{a.description}</div>{/if}
 								</div>
 								<div class="card-actions">
-									<button type="button" class="act" onclick={() => startEdit(a)} title="편집" aria-label="편집">
+									<button type="button" class="act" onclick={() => startEdit(a)} title={t('agentManager.edit')} aria-label={t('agentManager.edit')}>
 										<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" stroke-linecap="round" stroke-linejoin="round" /></svg>
 									</button>
-									<button type="button" class="act danger" onclick={() => remove(a)} title="삭제" aria-label="삭제">
+									<button type="button" class="act danger" onclick={() => remove(a)} title={t('agentManager.delete')} aria-label={t('agentManager.delete')}>
 										<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13" stroke-linecap="round" stroke-linejoin="round" /></svg>
 									</button>
 								</div>

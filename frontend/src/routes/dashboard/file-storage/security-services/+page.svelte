@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/file-storage';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
@@ -60,7 +61,7 @@
 			services = await api.get<SecurityService[]>('/api/v1/security-services', token, projectId, opts);
 			error = '';
 		} catch (e) {
-			error = e instanceof ApiError ? `조회 실패 (${e.status})` : '서버 오류';
+			error = e instanceof ApiError ? t('errors.loadWithStatus', { status: e.status }) : t('errors.server');
 		} finally {
 			loading = false;
 		}
@@ -76,7 +77,7 @@
 			await refresh.invalidate();
 			return true;
 		} catch (e) {
-			createError = e instanceof ApiError ? e.message : '생성 실패';
+			createError = e instanceof ApiError ? e.message : t('errors.create');
 			return false;
 		} finally {
 			creating = false;
@@ -102,10 +103,10 @@
 		try {
 			await api.post(`/api/v1/security-services/${selectedServiceId}/attach?share_network_id=${selectedNetworkId}`, {}, token, projectId);
 			await refresh.invalidate();
-			toast.success('Share Network에 Security Service가 연결되었습니다.');
+			toast.success(t('security.attachSuccess'));
 			return true;
 		} catch (e) {
-			attachError = e instanceof ApiError ? e.message : '연결 실패';
+			attachError = e instanceof ApiError ? e.message : t('security.attachFailed');
 			return false;
 		} finally {
 			attaching = false;
@@ -113,14 +114,14 @@
 	}
 
 	async function deleteService(id: string, name: string) {
-		if (!enabled || !await confirmDialog(`Security Service "${name}"을 삭제하시겠습니까?`)) return;
+		if (!enabled || !await confirmDialog(t('security.deleteConfirm', { name }))) return;
 		deleting = id;
 		try {
 			await api.delete(`/api/v1/security-services/${id}`, token, projectId);
 			selection.remove([id]);
 			await refresh.invalidate();
 		} catch (e) {
-			toast.error('삭제 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('errors.deleteWithMessage', { message: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			deleting = null;
 		}
@@ -128,7 +129,7 @@
 
 	async function runBulkDelete() {
 		const ids = [...selection.ids];
-		if (!ids.length || !await confirmDialog(`선택한 Security Service ${ids.length}개를 삭제하시겠습니까?`)) return;
+		if (!ids.length || !await confirmDialog(t('security.bulkDeleteConfirm', { count: ids.length }))) return;
 		const tokenSnapshot = token;
 		const projectSnapshot = projectId;
 		bulkBusy = true;
@@ -136,8 +137,8 @@
 			const results = await executeBulkMutations(ids, (id) => api.delete(`/api/v1/security-services/${id}`, tokenSnapshot, projectSnapshot));
 			const successful = results.filter((result) => result.ok).map((result) => result.id);
 			const failed = results.length - successful.length;
-			if (successful.length) toast.success(`${successful.length}개 삭제 요청을 완료했습니다.`);
-			if (failed) toast.error(`${failed}개 삭제에 실패했습니다.`);
+			if (successful.length) toast.success(t('bulk.deleteSuccess', { count: successful.length }));
+			if (failed) toast.error(t('bulk.deleteFailed', { count: failed }));
 			if ($auth.projectId === projectSnapshot) {
 				selection.remove(successful);
 				await refresh.invalidate();
@@ -147,7 +148,7 @@
 		}
 	}
 
-	const bulkActions: BulkSelectionAction[] = [{ key: 'delete', label: '삭제', tone: 'danger', onAction: runBulkDelete }];
+	const bulkActions = $derived<BulkSelectionAction[]>([{ key: 'delete', label: t('actions.delete'), tone: 'danger', onAction: runBulkDelete }]);
 	const refresh = createCoalescedRefresh((force) => fetchServices(force ? { refresh: true } : undefined));
 
 	async function forceRefresh() {
@@ -186,24 +187,24 @@
 </script>
 
 {#if !enabled}
-	<div class="p-4 md:p-8"><BetaFeatureGate title="Security Service는 베타 기능입니다" /></div>
+	<div class="p-4 md:p-8"><BetaFeatureGate title={t('security.beta')} /></div>
 {:else}
 	<SecurityServiceCreateModal bind:open={showModal} {creating} error={createError} onSubmit={createService} />
 	<SecurityServiceAttachModal bind:open={showAttachModal} {shareNetworks} {attaching} error={attachError} bind:selectedNetworkId onAttach={attachToNetwork} />
 	<div class="bulk-selection-page p-4 md:p-8">
-		<PageHeader breadcrumb="FILE STORAGE / SECURITY SERVICES" title="Security Service">
+		<PageHeader breadcrumb={t('security.breadcrumb')} title={t('security.title')}>
 			{#snippet actions()}
 				<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} refreshing={refreshing || loading} onManualRefresh={forceRefresh} />
-				<button onclick={() => showModal = true} class="bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">+ Security Service 생성</button>
+				<button onclick={() => showModal = true} class="bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">{t('security.create')}</button>
 			{/snippet}
 		</PageHeader>
-		<p class="text-sm text-ink-2 mb-6">LDAP, Kerberos, Active Directory 인증 서비스를 관리합니다.</p>
+		<p class="text-sm text-ink-2 mb-6">{t('security.description')}</p>
 		{#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
 		{#if loading}
 			<LoadingSkeleton variant="table" rows={3} />
 		{:else}
 			<SecurityServiceTable {services} {deleting} selectedIds={selection.ids} selectableIds={selectableIds} selectionDisabled={bulkBusy} onToggleSelect={(id) => selection.toggle(id)} onToggleAll={() => selection.toggleAll(selectableIds)} onAttachClick={openAttachModal} onDelete={deleteService} onCreateClick={() => { showModal = true; }} />
-			<BulkSelectionOverlay count={selection.count} ariaLabel="선택한 Security Service 일괄 작업" actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
+			<BulkSelectionOverlay count={selection.count} ariaLabel={t('security.bulkActions')} actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
 		{/if}
 	</div>
 {/if}

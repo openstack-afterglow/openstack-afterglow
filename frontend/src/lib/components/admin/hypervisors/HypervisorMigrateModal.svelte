@@ -2,6 +2,8 @@
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
+	import { t } from '$lib/i18n/ns/admin-compute';
+	import RichText from '$lib/i18n/RichText.svelte';
 
 	let {
 		open = $bindable(false),
@@ -49,9 +51,9 @@
 	// 라이브 마이그레이션 CPU 호환 힌트
 	const cpuModelHint = $derived(
 		type === 'cold'
-			? '모든 호스트 표시 (CPU 모델 무관)'
+			? t('hypervisors.migrate.allHostsHint')
 			: hosts.length > 0 && hosts[0].cpu_model
-				? `${hosts[0].cpu_model} 호환 호스트만 표시`
+				? t('hypervisors.migrate.compatibleHostsHint', { model: hosts[0].cpu_model })
 				: null
 	);
 
@@ -77,7 +79,7 @@
 			open = false;
 			onMigrated();
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : '마이그레이션 실패';
+			error = e instanceof ApiError ? e.message : t('hypervisors.migrate.failed');
 		} finally {
 			loading = false;
 		}
@@ -94,30 +96,31 @@
 	tabindex="-1"
 >
 	<div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]">
-		<h2 class="text-lg font-semibold text-ink-0 mb-1">{type === 'live' ? '라이브 마이그레이션' : '콜드 마이그레이션'}</h2>
+		<h2 class="text-lg font-semibold text-ink-0 mb-1">{t(type === 'live' ? 'hypervisors.action.liveMigrate' : 'hypervisors.action.coldMigrate')}</h2>
 		<p class="text-xs text-ink-2 mb-1"><span class="text-ink-2">{serverName}</span></p>
-		<p class="text-xs text-ink-2 mb-5">{type === 'live' ? '인스턴스 실행 중에 다른 호스트로 이동합니다.' : '인스턴스를 종료하고 다른 호스트로 이동합니다.'}</p>
+		<p class="text-xs text-ink-2 mb-5">{t(type === 'live' ? 'hypervisors.migrate.liveHelp' : 'hypervisors.migrate.coldHelp')}</p>
 		{#if error}
 			<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>
 		{/if}
 		<div>
 			<div class="flex items-baseline justify-between mb-1.5">
-				<label class="text-xs text-ink-2 uppercase tracking-wide" for="field-hypervisormigratemodal-102">대상 호스트 <span class="text-ink-2">(선택 안 하면 자동)</span></label>
+				{#snippet automaticHint(text: string)}<span class="text-ink-2">{text}</span>{/snippet}
+				<label class="text-xs text-ink-2 uppercase tracking-wide" for="field-hypervisormigratemodal-102"><RichText segments={t.rich('hypervisors.migrate.targetHost')} tags={{ automaticHint }} /></label>
 				{#if cpuModelHint}
 					<span class="text-xs text-ink-2">{cpuModelHint}</span>
 				{/if}
 			</div>
 			<select id="field-hypervisormigratemodal-102" bind:value={selectedHost} class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm">
-				<option value="">자동 선택</option>
+				<option value="">{t('hypervisors.migrate.autoSelect')}</option>
 				{#each hosts as h}
 					<option value={h.name}>{h.name}</option>
 				{/each}
 			</select>
 		</div>
 		<div class="flex justify-end gap-3 mt-6">
-			<button onclick={() => { open = false; }} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">취소</button>
+			<button onclick={() => { open = false; }} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('hypervisors.cancel')}</button>
 			<button onclick={doMigrate} disabled={loading} class="px-4 py-2 bg-cyan-700 hover:bg-cyan-600 text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">
-				{loading ? '마이그레이션 중...' : '마이그레이션'}
+				{t(loading ? 'hypervisors.migrate.pending' : 'hypervisors.migrate.action')}
 			</button>
 		</div>
 	</div>

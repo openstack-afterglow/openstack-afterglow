@@ -3,6 +3,7 @@
 	import { api, ApiError } from '$lib/api/client';
 	import type { Volume } from '$lib/types/volume';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
+	import { t } from '$lib/i18n/ns/volume';
 
 	let { volume, onclose, onsuccess }: {
 		volume: Volume | null;
@@ -24,7 +25,7 @@
 	async function confirmExtend() {
 		if (!volume) return;
 		if (newSize <= volume.size) {
-			error = `새 크기(${newSize}GB)는 현재 크기(${volume.size}GB)보다 커야 합니다`;
+			error = t('extendModal.sizeTooSmall', { newSize, currentSize: volume.size });
 			return;
 		}
 		extending = true;
@@ -38,7 +39,7 @@
 			);
 			onsuccess();
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : '볼륨 확장 실패';
+			error = e instanceof ApiError ? e.message : t('extendModal.extendFailed');
 		} finally {
 			extending = false;
 		}
@@ -61,23 +62,23 @@
 		onclick={(e) => e.stopPropagation()}
 		role="none"
 	>
-		<h2 class="text-lg font-semibold text-ink-0 mb-5">볼륨 용량 확장</h2>
+		<h2 class="text-lg font-semibold text-ink-0 mb-5">{t('extendModal.title')}</h2>
 		<div class="space-y-4">
 			<div>
-				<div class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">볼륨</div>
+				<div class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('extendModal.volumeLabel')}</div>
 				<div class="bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-2 text-sm">
-					{volume.name || volume.id.slice(0, 8)} <span class="text-ink-2">({volume.status})</span>
+					{volume.name || volume.id.slice(0, 8)} <span class="text-ink-2">{t('extendModal.statusSummary', { status: volume.status })}</span>
 				</div>
 			</div>
 			<div>
-				<div class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">현재 크기</div>
+				<div class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('extendModal.currentSizeLabel')}</div>
 				<div class="bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-2 text-sm font-mono">
-					{volume.size} GB
+					{t('extendModal.currentSize', { size: volume.size })}
 				</div>
 			</div>
 			<div>
 				<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">
-					새 크기 (GB) — 최소 {volume.size + 1}GB
+					{t('extendModal.newSizeLabel', { minSize: volume.size + 1 })}
 					<input
 						bind:value={newSize}
 						type="number"
@@ -90,12 +91,12 @@
 		</div>
 		{#if error}<div class="mt-4 text-red-400 text-xs bg-red-900/20 border border-red-800 rounded px-3 py-2">{error}</div>{/if}
 		<div class="flex justify-end gap-3 mt-6">
-			<button onclick={onclose} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">취소</button>
+			<button onclick={onclose} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('extendModal.cancel')}</button>
 			<button
 				onclick={confirmExtend}
 				disabled={extending || newSize <= volume.size}
 				class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors"
-			>{extending ? '확장 중...' : '확장'}</button>
+			>{extending ? t('extendModal.extending') : t('extendModal.extend')}</button>
 		</div>
 	</div>
 </div>

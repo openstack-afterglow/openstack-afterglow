@@ -8,15 +8,15 @@
 
 ## Main and Publication
 
-- [ ] 6. pie_root가 모든 대상 dev→main merge를 수행한다. 사용자 후속 승인으로 이 세션이 필요한 PR을 생성했다: Drover `8afc434e` [#29](https://github.com/openstack-afterglow/drover/pull/29), Lumen `24e6ae4` [#21](https://github.com/openstack-afterglow/lumen/pull/21), Waygate `a6e7dfd3` [#5](https://github.com/openstack-afterglow/waygate/pull/5). 현재 Afterglow main `0abd1148`·Palimpsest main `6f21ef56`은 통합됐으며 Afterglow 후속 dev `158caf19`는 release preflight 문서뿐이다. 필수 PR checks와 owner merge를 요청했고 자동 merge·보호 규칙 우회는 하지 않는다.
-- [ ] 7. main 통합된 프로젝트별 불변 버전 tag를 생성·push한다. 후보 Afterglowv1.30.0·Droverv0.3.0·Lumenv0.6.1·Waygatev0.3.0·Palimpsestv0.3.0은 아직 없으며 기존 정식 tag를 이동·덮어쓰지 않는다.
+- [x] 6. 원래 다섯 후보의 owner dev→main 통합을 현재 refs와 사용자 완료 보고로 확인했다: Afterglow `0abd1148`, Drover `a571fea3`, Lumen `029d39a6`, Waygate `cf72df33`, Palimpsest `6f21ef56`. 새 patch source는 아래 최신 배포 계약에 따라 dev에서 검증하며 main을 자동 변경하지 않는다.
+- [ ] 7. 정확한 dev CI가 성공한 patch commit에 불변 tag를 생성·push한다. 새 후보는 Afterglowv1.30.1·Droverv0.3.1·Lumenv0.6.2·Waygatev0.3.1·Palimpsestv0.3.1이며 기존 tag를 이동·덮어쓰지 않는다.
 - [ ] 8. 프로젝트별 release/wheel/image 게시 결과와 불변 ref를 검증한다. 기존 Lumen 0.5.0은 재게시하지 않는다.
 
 ## Kolla Rollout
 
 - [ ] 9. 실제 operator package pins·inventory·복구 지점을 검증한 뒤 정확한 릴리즈의 `uv sync`를 실행한다.
-- [ ] 10. 사용자 선택인 기존 inventory로 `kolla-ansible genconfig -i multinode`를 실행한다.
-- [ ] 11. 성공한 genconfig 다음 `kolla-ansible reconfigure -i multinode`를 실행한다.
+- [ ] 10. 요청 inventory를 검증한 뒤 `kolla-ansible genconfig -i multimode`를 실행한다.
+- [ ] 11. genconfig 다음 표준 `kolla-ansible pull -i multimode`와 `kolla-ansible reconfigure -i multimode`를 순서대로 실행한다.
 - [ ] 12. 서비스 health와 실제 배포 버전·authenticated boundary를 검증하고 완료된 범위만 archive한다.
 
 ## Operational Monitoring
@@ -94,4 +94,42 @@
 - Afterglow 문서 후속 PR [#93](https://github.com/openstack-afterglow/openstack-afterglow/pull/93)은 dev `c915a666`의 proposal/tasks 두 파일뿐이며 main source를 새로 변경하지 않는다. PR run `37204100855`는 duplicate-input check success 뒤 tests/build가 skipped다. 자동 `Claude Code Review` run `37204100736`은 SDK `subtype=success`이지만 `is_error=true`·cost0·modelUsage{}로 실패했다. 1회 failed-job debug rerun도 같은 실패였고 full execution JSON은 artifact로 게시되지 않아 원인이 token/auth/model인지 단정하지 않는다. Workflow/secret을 변경하거나 실패를 성공으로 표시하지 않았다.
 - 2026-10-04 13:11–13:19 UTC parent가 실제 `wireguard-dmslab`→`wireguardserver` SSH와 controller3개를 직접 읽기 전용 점검했다. VIP253/254는 C2 단일 owner이며 HAProxy parse3개·RabbitMQ3 running/no partition/no alarms·각 controller의 MariaDB read status(Primary/Synced/size3/readyON)가 정상이다. ProxySQL·Valkey Docker health는 healthy지만 별도의 authenticated query/quorum proof로 표시하지 않는다. OpenSearch는 현재 green/3data nodes/unassigned0이며3노드의 원본 `/srv/rbd/opensearch`는 `/dev/rbd0` XFS mount다. 따라서 옛 C3 미마운트/OpenSearchred를 현재 blocker로 반복하지 않는다. Dashboards는3노드 HTTP503/unhealthy다. 기존 Manila service identity의 Ceph read는12/12OSDup/in·MONquorum3이지만 HEALTH_WARN,5OSD slow ops,250841/7039542(3.563%) objects degraded와31degraded/undersizedPG가 남았다. 원본 storage/datastore에 복구·삭제·mount/recreate 명령을 실행하지 않았다.
 - Afterglow·Drover·Lumen·Waygate의 운영 app27개는 기존 explicit image digest를 유지하며 API/frontend Docker health가 healthy다. Palimpsest Hub API/worker는 C1에 있고 C2/C3에는 해당 컨테이너가 없었다. C1 Lumen worker의 현재 cumulative RestartCount143와 start08:41Z, C3 count18을 관측했으나 이 수치를 새 retry/장애 원인·worker 처리 수용으로 해석하지 않는다. Canonical operator auth 파일의 mtime은 admin-openrc2026-05-03/clouds2025-08-11/passwords2026-08-13이며 새 인증 provenance나 인증 성공을 확보하지 못해 과거401 credential을 재시도하지 않았다. `/var/backups/lumen`은 root0700/2026-10-01인 기존 directory이며 현재 restorable SQL/PG/OpenSearch backup manifest를 검증하지 않았다. 정식 tag publication·native·auth/backup·Ceph/Dashboards gate가 미완료이므로 이번 rollout 전체가 NO-GO다.
+
+
+## Explicit Release-first Deployment Contract (2026-10-05)
+
+아래 최신 지시는 과거의 즉시 main/nightly 배포와 기존 inventory 명령 선택을 대체한다. 미완료·무관한 공유 작업은 보존하고 자동 포함하지 않는다.
+
+- [x] 28. 완료된 Afterglow·Lumen·Drover·Waygate·Palimpsest 로컬 결과 전체의 필수 gate·실행 smoke를 검증한다. 최신 Afterglow 통합 source의 최종 gate와 compiled terminal 증거는 아래 기록을 따른다. Native KVM·live cloud·운영은 별개다.
+- [x] 29. 실제 오류만 기능 변경 없이 최소 수정한다. 개선은 사용자 동의를 먼저 받는다.
+  - 실제 양 architecture Notion worker 기본 CMD가 SIGTERM stop timeout 뒤 exit137로 종료됐다. POSIX signal runner와 scheduler/DB finally cleanup만 수정했으며 초기 대기·1분 확인 주기·global gate·외부 오류 정책은 유지한다. Signal consumer regression은 수정 전 실패·수정 후 통과했고 최종 canonical arm64·amd64 기본 CMD는 첫 fail-closed 사이클 뒤 SIGTERM 및 초기 대기 중 SIGTERM/SIGINT가 exit0·0.4초 미만이었다. Image worker source SHA256 `0c8a99df1980e89b1c85ec02790fb7c59d145dc62f47be47382d497d55150260`와 current source가 일치하며 실제 Notion/cloud 동기화는 주장하지 않는다.
+  - Published consumer별 이미지 입력이 첫 controller 값으로 덮여 later-only worker rollback pin을 잃고 disabled/source host까지 union에 참여하던 Kolla 오류를 수정했다. Effective image/ref·namespace/tag는 활성 published consumer에서만 수집하며 상충 입력은 registry·credential command 전에 거부한다. 실제 native CLI의 새 회귀12개가 수정 전 실패했고 최종 contract26·resolver11·runtime41이 통과했다(`artifact://1153`). 운영 명령·layer pull은 수행하지 않았다.
+  - 실제 source Chromium에서 container terminal의 ko→en 전환이 textarea1→0·WebSocket close1005를 일으켰다. 네 terminal-host route만 route key로 유지하는 최소 수정 뒤 real xterm·loopback WS의 ko/en/ja/zh-CN에서 같은 세션·scrollback·input/output·접근성 이름 갱신을 확인했고 수명 회귀6개가 통과했다. 일반 페이지 locale-remount cleanup은 유지하며 real Keystone/Zun/Kubernetes acceptance는 아니다. Source/browser receipt는 `/tmp/afterglow-release-20261005.D5yift/terminal-locale-qa/source-browser-receipt.json`이다.
+  - Drover pinned Redis5 `aclose()` 종료 오류는 기존 async `close()`로 고쳐 service691·SDK111과 양 architecture API/worker·실제 disposable Redis/DB smoke가 통과했다. Waygate installed-agent 테스트의 global `time.sleep` stub이 subprocess wait까지 끊는 오류는 agent-local namespace로만 격리했다; 실제 agent source는 동일하며 serial/4worker 모두471pass·live1skip, SDK44가 통과했다(`artifact://1156`). 기존 auth/VM·migration·dependency/source pins는 유지했다.
+  - 최종 gate의 두 SSR 동적 import 5초 timeout과 lazy image detail 조회 assertion 실패는 테스트 초기화를 static import/hoisted mock 및 setup 경계로 옮겨 처리했다. Image test는 mock 호출 복사 대신 실제 상세 패널의 image UUID를 확인한다. Application source·timeout·worker 수·동작 assertion을 완화하지 않았으며 exact 7개와 최종 전체 gate가 통과했다. 동시 빌드 부하가 원인이었다고 단정하지 않는다.
+- [ ] 30. 관련 완료 worktree/branch 결과를 최신 local dev에 정상 통합한다.
+- [ ] 31. 검증한 각 dev 결과를 commit하고 origin/dev로 정상 push한다.
+- [ ] 32. push한 정확한 SHA의 GitHub CI/CD를 모니터링하고 실제 실패 원인을 해결한다.
+- [ ] 33. CI 통과 commit에 기본 patch tag를 생성·push한다. Minor는 명시적 version-up, major는 명시적 major 요청일 때만 사용한다.
+- [ ] 34. tag-triggered version image/package와 latest 또는 게시된 stable alias의 revision/digest 일치를 확인한다.
+- [ ] 35. 필요한 다섯 operator package만 갱신하며 기존 Kolla·일반 의존성을 보존한다.
+- [ ] 36. 승인된 Palimpsest shared remote blob/cache/upload storage를 준비하고 기존 local volume·inventory를 보존한다.
+- [ ] 37. Palimpsest API만 세 controller에 복제하고 기존 worker는 하나만 유지하며 실제 지속 데이터는 remote backend에 둔다.
+- [ ] 38. 앞 선행 조건과 복구/auth/storage gate가 완료된 뒤 실제 wireguard-server에 SSH하여 다섯 서비스를 배포한다.
+- [ ] 39. 요청 multimode inventory로 최신 release를 해석·적용하는 표준 경로를 검증한다.
+- [ ] 40. 실제 `kolla-ansible genconfig -i multimode`를 성공시킨다.
+- [ ] 41. 실제 `kolla-ansible pull -i multimode`를 성공시킨다.
+- [ ] 42. 실제 `kolla-ansible reconfigure -i multimode`를 성공시킨다.
+- [ ] 43. cloud.dmslab.re.kr의 실제 최신 버전·readiness·인증 경계·사용자 화면을 검증한다.
+
+현재 관측: native Palimpsest main run37185453150은 승인 뒤 step7에서 KERNEL_URL/CONFIG_URL이 모두 비어 실패했다. HTTPS/hash/native guard를 완화하지 않는다. 원래 reader와 Manila 공유/access는 순서 정정 전 생성됐지만 active config·mount·app에는 적용되지 않았으며 추가 운영 쓰기는 중지했다. 실제 rollout 성공 증거가 아니다.
+사용자는 Palimpsest 정식 발행 보류를 선택했다. 승인된 HTTPS kernel/config 입력이 없는 native gate를 약화하거나 fixture를 게시·URL 변수 설정·native 재실행/승인·Palimpsest tag 발행을 하지 않는다. 관련 local dev 통합·정상 보호 CI는 별개이며, 모든 정식 발행을 전제로 한 operator 갱신·5개 서비스 genconfig/pull/reconfigure와 운영 rollout은 보류한다.
+
+## Final Local Patch Acceptance (2026-10-05)
+
+- Afterglow는 최신 `origin/dev` `34ec462f04e4783ea7eeb5fddc6c077fc6690b36`과 완료 i18n `d5bfa2fe16e047a171a70a673dc7c478fc54f259`의 일반 merge를 준비했다. 공유 checkout과 미완료 native-VM·hypervisor·activity·Grafana 작업은 포함하지 않았다. 완료 직전 fetch에서도 dev SHA가 동일했다.
+- 최종 `npm run test:gate`는 source `a695b070404a0824f535c968ee25d6dda41094b2d7cb792c3b80e0f0859f851d`/2374 files에서 성공했다(`artifact://1267`). Orchestration106·Kolla26/resolver11·installer27/Windows1skip·backend3525·frontend1941/282files·log runner9·contract141·DB28/9deselected·Ruff/format530이다. 앞선 `artifact://1223`의 frontend 실패를 보존하며 성공으로 바꾸지 않는다. Svelte check2218files/0errors/0warnings, i18n37namespaces/8922messages·925files scan0도 관측했다.
+- 최종 frontend canonical build는 arm64 `sha256:00ae84c6679277bbdc93a502cc0635b38723e185fc832ffb1e00688b93fa4dd8`와 amd64 `sha256:26782654886ef6bcb4ed29cbac47cef5f7fad4e21316f99e5ed7c3b44d28c56e`다. 양쪽 default CMD·Node20.20.2·version1.30.1·UID1001·Compose health를 확인했다. Compiled arm64 Chromium의 terminal-host4routes×4locales 16cases에서 같은 xterm DOM·textarea·native loopback WebSocket, scrollback·입력·번역된 접근성 이름과 추가 ticket/open/close 없음이 통과했다. Production input hash `77b8b32ac60ba3540960a60a7a72ec59fc0262e9fb5e7240088cc32ef1920bd9`는 test-only3files 수정 이후에도 동일하다. Receipt는 `/tmp/afterglow-compiled-terminal-qa-Iuq91F/handoff.json`이다. amd64는 emulated execution이고 browser matrix는 arm64이며 real Keystone/Zun/Kubernetes를 검증하지 않았다.
+- 좁은390px QA에서 container action 문구 세로 줄바꿈·image 값 clipping, k3s main 내부104px overflow를 관측했다. Terminal overlay는 viewport 안에 있지만 전체 responsive-clean 증거로 쓰지 않는다. Npm runtime install의 moderate1 warning도 dependency 수정이나 보안 감사 성공으로 바꾸지 않는다.
+- Sibling local 후보는 Lumen `0e034c91c41c95205cfdd1cd1fd2a63fab244294`, Drover `b16e2288c304b19409a6b6cd790a61f420895aa2`, Waygate `37a57fa0691a7aa28513c39d93752077699d7679`, Palimpsest `683f1ee1b489cc0375897949f2870713524bf6cf`다. 앞 세 origin/dev와 exact CI `37315953627`·`37317290231`·`37317290830` 성공 뒤 v0.6.2/v0.3.1/v0.3.1 tag를 게시했다. Palimpsest는 정상 protected dev PR [#13](https://github.com/openstack-afterglow/palimpsest/pull/13)의 required hosted checks가 통과했고 native jobs는 skipped다. Tag artifact/latest 검증과 Afterglow commit/push/CI는 별도이며 Palimpsest 정식 발행·native approval·모든 운영 변경은 보류 상태다.
 

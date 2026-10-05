@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-system';
 	import { page } from '$app/stores';
 	import { auth } from '$lib/stores/auth';
 	import { toast } from '$lib/stores/toast';
@@ -57,7 +58,7 @@
 			quotas = (await secretsApi.listProjectQuotas($auth.token ?? undefined, $auth.projectId ?? undefined)) as ProjectQuota[];
 			error = '';
 		} catch (e) {
-			error = e instanceof ApiError ? (e.message || `조회 실패 (${e.status})`) : '서버 오류';
+			error = e instanceof ApiError ? (e.message || t('secrets.loadFailed', { status: e.status })) : t('secrets.serverError');
 		} finally {
 			loading = false;
 		}
@@ -104,11 +105,11 @@
 		if (editContainers !== null) body.containers = editContainers;
 		try {
 			await secretsApi.setProjectQuota(editProjectId, body, $auth.token ?? undefined, $auth.projectId ?? undefined);
-			toast.success('쿼터가 설정되었습니다');
+			toast.success(t('secrets.setSuccess'));
 			showSetQuota = false;
 			await fetchQuotas();
 		} catch (e) {
-			toast.error('설정 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('secrets.setFailed', { message: e instanceof ApiError ? e.message : String(e) }));
 		} finally {
 			submitting = false;
 		}
@@ -118,38 +119,38 @@
 		if (!keyManagerEnabled) return;
 		try {
 			await secretsApi.deleteProjectQuota(projectId, $auth.token ?? undefined, $auth.projectId ?? undefined);
-			toast.success('기본값으로 초기화되었습니다');
+			toast.success(t('secrets.resetSuccess'));
 			await fetchQuotas();
 		} catch (e) {
-			toast.error('초기화 실패: ' + (e instanceof ApiError ? e.message : String(e)));
+			toast.error(t('secrets.resetFailed', { message: e instanceof ApiError ? e.message : String(e) }));
 		}
 	}
 
 	type FieldEntry = [string, number | null, (v: number | null) => void];
 
 	const quotaFields = $derived<FieldEntry[]>([
-		['비밀 (secrets)', editSecrets, (v) => { editSecrets = v; }],
-		['Orders', editOrders, (v) => { editOrders = v; }],
-		['컨테이너', editContainers, (v) => { editContainers = v; }],
+		[t('secrets.secretField'), editSecrets, (v) => { editSecrets = v; }],
+		[t('secrets.orderField'), editOrders, (v) => { editOrders = v; }],
+		[t('secrets.containerField'), editContainers, (v) => { editContainers = v; }],
 	]);
 </script>
 
 {#if !keyManagerEnabled}
 	<div class="p-4 md:p-8">
-		<BetaFeatureGate title="Key Manager는 베타 기능입니다" />
+		<BetaFeatureGate title={t('secrets.betaTitle')} />
 	</div>
 {:else}
 <FormModal
 	bind:open={showSetQuota}
-	title="프로젝트 쿼터 설정"
-	submitLabel="저장"
+	title={t('secrets.dialogTitle')}
+	submitLabel={t('secrets.save')}
 	submitting={submitting}
 	onSubmit={handleSetQuota}
 	onClose={() => { showSetQuota = false; }}
 >
 	<div class="space-y-4">
 		<div class="text-xs text-ink-2 font-mono">{editProjectId}</div>
-		<p class="text-xs text-ink-2">-1 = 무제한, 0 = 비활성</p>
+		<p class="text-xs text-ink-2">{t('secrets.quotaHelp')}</p>
 		{#each quotaFields as [label, val, setter]}
 			<div>
 				<label class="block text-sm text-ink-2 mb-1" for="field-page-155">{label}</label>
@@ -158,7 +159,7 @@
 					value={val ?? ''}
 					oninput={(e) => setter(e.currentTarget.value ? Number(e.currentTarget.value) : null)}
 					class="w-full bg-surface-selected border border-line-2 rounded-lg px-3 py-2 text-sm text-ink-0"
-					placeholder="-1 (무제한)"
+					placeholder={t('secrets.unlimitedPlaceholder')}
 				/>
 			</div>
 		{/each}
@@ -167,7 +168,7 @@
 
 <div class="p-4 md:p-8">
 	<div data-tour="admin-key-manager-header">
-	<PageHeader breadcrumb="ADMIN / KEY MANAGER" title="Key Manager 쿼터">
+	<PageHeader breadcrumb={t('secrets.breadcrumb')} title={t('secrets.title')}>
 		{#snippet actions()}
 			<TutorialStartButton tour="admin-key-manager" compactOnMobile />
 			<AutoRefreshControl
@@ -189,18 +190,18 @@
 	{:else if quotas.length === 0}
 		<div class="text-center py-16 text-ink-2" data-tour="admin-key-manager-ready">
 			<div class="text-4xl mb-3">📊</div>
-			<p class="text-sm">설정된 프로젝트 쿼터가 없습니다. (모두 기본값 사용 중)</p>
+			<p class="text-sm">{t('secrets.empty')}</p>
 		</div>
 	{:else}
 		<div class="overflow-x-auto" data-tour="admin-key-manager-ready">
 			<table class="w-full text-sm">
 				<thead>
 					<tr class="text-left text-ink-2 border-b border-line-2">
-						<th class="pb-3 pr-4 font-medium">프로젝트 ID</th>
-						<th class="pb-3 pr-4 font-medium">Secrets</th>
-						<th class="pb-3 pr-4 font-medium">Orders</th>
-						<th class="pb-3 pr-4 font-medium">Containers</th>
-						<th class="pb-3 font-medium">액션</th>
+						<th class="pb-3 pr-4 font-medium">{t('secrets.projectId')}</th>
+						<th class="pb-3 pr-4 font-medium">{t('secrets.secrets')}</th>
+						<th class="pb-3 pr-4 font-medium">{t('secrets.orders')}</th>
+						<th class="pb-3 pr-4 font-medium">{t('secrets.containers')}</th>
+						<th class="pb-3 font-medium">{t('secrets.action')}</th>
 					</tr>
 				</thead>
 				<tbody class="divide-y divide-line">
@@ -211,8 +212,8 @@
 							<td class="py-3 pr-4 text-ink-2">{q.project_quotas.orders ?? -1}</td>
 							<td class="py-3 pr-4 text-ink-2">{q.project_quotas.containers ?? -1}</td>
 							<td class="py-3 flex gap-3" data-tour={index === 0 ? 'admin-key-manager-actions' : undefined}>
-								<button onclick={() => openEdit(q)} class="text-xs text-warm-text hover:text-warm-text-hover">설정</button>
-								<button onclick={() => handleResetQuota(q.project_id)} class="text-xs text-ink-2 hover:text-ink-1">초기화</button>
+								<button onclick={() => openEdit(q)} class="text-xs text-warm-text hover:text-warm-text-hover">{t('secrets.configure')}</button>
+								<button onclick={() => handleResetQuota(q.project_id)} class="text-xs text-ink-2 hover:text-ink-1">{t('secrets.reset')}</button>
 							</td>
 						</tr>
 					{/each}

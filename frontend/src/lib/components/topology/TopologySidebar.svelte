@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/topology';
 	import ResourceCard from './ResourceCard.svelte';
 	import type { ItemRow, LBItem, TopologyLoadBalancer } from './types.ts';
 
@@ -43,7 +44,7 @@
 		onclick={() => { groupCollapsed.router = !groupCollapsed.router; onScheduleMeasure(); }}
 	>
 		<span style="color: {isLight ? '#9ca3af' : '#4b5563'}">{groupCollapsed.router ? '▸' : '▾'}</span>
-		라우터 ({routerRows.length})
+		{t('sidebar.routers', { count: routerRows.length })}
 	</button>
 	{#if !groupCollapsed.router}
 		{#each routerRows as row, index (row.id)}
@@ -75,7 +76,7 @@
 		onclick={() => { groupCollapsed.lb = !groupCollapsed.lb; onScheduleMeasure(); }}
 	>
 		<span style="color: {isLight ? '#9ca3af' : '#4b5563'}">{groupCollapsed.lb ? '▸' : '▾'}</span>
-		로드밸런서 ({filteredLbItems.length})
+		{t('sidebar.loadBalancers', { count: filteredLbItems.length })}
 	</button>
 	{#if !groupCollapsed.lb}
 		{#each filteredLbItems as { lb, vipNetId } (lb.id)}
@@ -104,7 +105,7 @@
 		onclick={() => { groupCollapsed.instance = !groupCollapsed.instance; onScheduleMeasure(); }}
 	>
 		<span style="color: {isLight ? '#9ca3af' : '#4b5563'}">{groupCollapsed.instance ? '▸' : '▾'}</span>
-		인스턴스 ({instanceRows.length})
+		{t('sidebar.instances', { count: instanceRows.length })}
 	</button>
 	{#if !groupCollapsed.instance}
 		{#each instanceRows as row (row.id)}
@@ -128,5 +129,5 @@
 {/if}
 
 {#if routerRows.length === 0 && filteredLbItems.length === 0 && instanceRows.length === 0}
-	<div class="text-xs px-2 py-4" style="color: {isLight ? '#9ca3af' : '#4b5563'}">리소스 없음</div>
+	<div class="text-xs px-2 py-4" style="color: {isLight ? '#9ca3af' : '#4b5563'}">{t('empty.resources')}</div>
 {/if}

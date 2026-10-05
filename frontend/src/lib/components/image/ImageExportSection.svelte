@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/images-keys';
 	import { useImageDetailController } from '$lib/stores/imageDetailController.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError, getBaseUrl } from '$lib/api/client';
@@ -21,7 +22,7 @@
 	let exportJob = $state<ImageExportJob | null>(null);
 	let exporting = $state(false);
 	let downloading = $state(false);
-	let actionError = $state('');
+	let actionError = $state<string | { key: Parameters<typeof t>[0] }>('');
 
 	const FORMAT_OPTIONS = [
 		{ value: 'qcow2', label: 'QCOW2 (QEMU Image)' },
@@ -32,7 +33,6 @@
 		{ value: 'vhdx',  label: 'VHDX (Hyper-V)' },
 	];
 
-	const VMX_NOTE = 'VMX는 VM 설정 파일입니다. VMware용 디스크 포맷은 VMDK를 선택하세요.';
 	const NONTERMINAL_STATUSES = ['queued', 'downloading', 'converting', 'finalizing'];
 
 	const isNonTerminal = $derived(exportJob ? NONTERMINAL_STATUSES.includes(exportJob.status) : false);
@@ -69,7 +69,7 @@
 			} catch (err: unknown) {
 				if (gen !== generation || imageId !== s.image?.id) return;
 				if (err instanceof Error && err.name === 'AbortError') return;
-				actionError = err instanceof ApiError ? err.message : '내보내기 상태를 확인하지 못했습니다.';
+				actionError = err instanceof ApiError ? err.message : { key: 'exportSection.statusFailed' };
 				schedulePoll(jobId, imageId, token, projectId, gen);
 			}
 		}, 2000);
@@ -150,7 +150,7 @@
 			}
 		} catch (err: unknown) {
 			if (thisGen !== generation || imageId !== s.image?.id) return;
-			actionError = err instanceof ApiError ? err.message : '이미지 내보내기 요청에 실패했습니다.';
+			actionError = err instanceof ApiError ? err.message : { key: 'exportSection.requestFailed' };
 		} finally {
 			if (thisGen === generation) {
 				exporting = false;
@@ -187,7 +187,7 @@
 			a.click();
 			a.remove();
 		} catch (err: unknown) {
-			actionError = err instanceof ApiError ? err.message : '다운로드 토큰 발급에 실패했습니다.';
+			actionError = err instanceof ApiError ? err.message : { key: 'exportSection.downloadTokenFailed' };
 		} finally {
 			if (thisGen === generation) downloading = false;
 		}
@@ -197,14 +197,14 @@
 <Card surface="raised" padding="md">
 	<div class="space-y-4">
 		<div class="flex items-center justify-between">
-			<h3 class="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-2)]">이미지 내보내기</h3>
+			<h3 class="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-2)]">{t('exportSection.title')}</h3>
 			{#if exportJob}
 				<StatusChip status={exportJob.status} />
 			{/if}
 		</div>
 
 		<div class="space-y-3">
-			<Field label="디스크 포맷" for="export-disk-format" help={selectedFormat === 'vmdk' ? VMX_NOTE : undefined}>
+			<Field label={t('exportSection.diskFormat')} for="export-disk-format" help={selectedFormat === 'vmdk' ? t('exportSection.vmxNote') : undefined}>
 				<SelectInput
 					id="export-disk-format"
 					bind:value={selectedFormat}
@@ -218,20 +218,20 @@
 
 			{#if exportJob}
 				<div class="flex items-center justify-between text-xs text-[var(--color-ink-1)]">
-					<span>진행률</span>
+					<span>{t('exportSection.progress')}</span>
 					<span class="font-mono">{exportJob.progress_pct}%</span>
 				</div>
 			{/if}
 
 			{#if exportJob?.status === 'error' || exportJob?.error_message}
-				<Alert tone="danger" title="내보내기 오류">
-					{exportJob.error_message || '이미지 내보내기 중 오류가 발생했습니다.'}
+				<Alert tone="danger" title={t('exportSection.errorTitle')}>
+					{exportJob.error_message || t('exportSection.exportFailed')}
 				</Alert>
 			{/if}
 
 			{#if actionError}
 				<Alert tone="danger">
-					{actionError}
+					{typeof actionError === 'string' ? actionError : t(actionError.key)}
 				</Alert>
 			{/if}
 
@@ -241,7 +241,7 @@
 					onclick={handleExport}
 					disabled={exporting || isNonTerminal}
 				>
-					{exporting ? '내보내기 중...' : isNonTerminal ? '처리 중...' : '내보내기'}
+					{exporting ? t('exportSection.exporting') : isNonTerminal ? t('exportSection.processing') : t('exportSection.export')}
 				</Button>
 
 				{#if exportJob?.status === 'complete'}
@@ -250,7 +250,7 @@
 						onclick={handleDownload}
 						disabled={downloading}
 					>
-						{downloading ? '다운로드 준비 중...' : '다운로드'}
+						{downloading ? t('exportSection.preparingDownload') : t('exportSection.download')}
 					</Button>
 				{/if}
 			</div>

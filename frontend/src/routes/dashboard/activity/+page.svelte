@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/dashboard-home';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { untrack } from 'svelte';
 	import { auth, authReady } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
@@ -49,7 +51,7 @@
 			const res = await api.get<ActivityData>(`/api/v1/dashboard/activity?range=${period}`, token, projectId);
 			data = res;
 		} catch (e) {
-			error = e instanceof Error ? e.message : '데이터 로딩 실패';
+			error = e instanceof Error ? e.message : t('activity.loadFailed');
 		} finally {
 			loading = false;
 		}
@@ -88,7 +90,7 @@
 	function formatHour(created_at: string): string {
 		try {
 			const d = new Date(created_at);
-			return d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+			return d.toLocaleTimeString(intlLocale(), { hour: '2-digit', minute: '2-digit', hour12: false });
 		} catch {
 			return '—';
 		}
@@ -112,8 +114,8 @@
 </script>
 
 <PageShell class="flex flex-col gap-5">
-	<PageHeader breadcrumb="ACTIVITY" title="활동 & 작업" subtitle="내 프로젝트의 최근 작업" />
-	<ResourceToolbar label="활동 기간 및 새로고침">
+	<PageHeader breadcrumb={t('activity.breadcrumb')} title={t('activity.title')} subtitle={t('activity.subtitle')} />
+	<ResourceToolbar label={t('activity.toolbar')}>
 		{#snippet filters()}
 			<ToggleGroup
 				value={period}
@@ -123,7 +125,7 @@
 					{ value: '30d', label: PERIOD_LABELS['30d'] },
 				]}
 				onchange={(next) => { period = next as typeof period; }}
-				ariaLabel="활동 조회 기간"
+				ariaLabel={t('activity.period')}
 			/>
 		{/snippet}
 		{#snippet actions()}
@@ -132,7 +134,7 @@
 				onclick={() => { ar.active = !ar.active; }}
 				class="min-h-8 rounded-md border border-line-2 px-3 text-xs font-medium text-ink-2 transition-colors hover:bg-surface-selected hover:text-ink-0"
 				aria-pressed={ar.active}
-			>자동 새로고침 {ar.active ? '켜짐' : '꺼짐'}</button>
+			>{t(ar.active ? 'activity.autoRefreshOn' : 'activity.autoRefreshOff')}</button>
 		{/snippet}
 	</ResourceToolbar>
 
@@ -142,20 +144,20 @@
 		<Alert tone="danger">{error}</Alert>
 	{:else}
 		{#if data?.db_status === 'unavailable'}
-			<Alert tone="warning">활동 로그 DB 미연결 — 서버 설정을 확인하세요 (database_url)</Alert>
+			<Alert tone="warning">{t('activity.dbUnavailable')}</Alert>
 		{/if}
 		<!-- KPI Tiles -->
 		<div class="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-3 lg:grid-cols-5">
-			<StatTile label="오늘 작업" value={kpi.total} accent="blue" flat />
-			<StatTile label="실패한 작업" value={kpi.failed} unit="/ {kpi.total}" accent="rose" flat />
-			<StatTile label="지난 24시간" value={kpi.last_24h} unit="이벤트" accent="amber" flat />
-			<StatTile label="활성 사용자" value={kpi.unique_users} accent="emerald" flat />
-			<StatTile label="성공률" value={successRate} unit="%" accent="cyan" flat />
+			<StatTile label={t('activity.today')} value={kpi.total} accent="blue" flat />
+			<StatTile label={t('activity.failed')} value={kpi.failed} unit="/ {kpi.total}" accent="rose" flat />
+			<StatTile label={t('activity.last24Hours')} value={kpi.last_24h} unit={t('activity.events', { count: kpi.last_24h })} accent="amber" flat />
+			<StatTile label={t('activity.activeUsers')} value={kpi.unique_users} accent="emerald" flat />
+			<StatTile label={t('activity.successRate')} value={successRate} unit="%" accent="cyan" flat />
 		</div>
 
 		<!-- Hour Distribution Card -->
 		<div class="bg-surface-base border border-line rounded-lg p-5">
-			<SectionHeader title="오늘의 활동 분포" meta="시간대별 작업 수" />
+			<SectionHeader title={t('activity.distribution')} meta={t('activity.hourly')} />
 			<div class="mt-4 flex items-end gap-0.5 h-20" aria-hidden="true">
 				{#each hourDist as val, i}
 					<div class="flex-1 flex flex-col justify-end">
@@ -180,19 +182,19 @@
 
 		<!-- Audit Log Table -->
 		<div class="bg-surface-base border border-line rounded-lg p-5">
-			<SectionHeader title="감사 로그" meta="최근 작업 내역" />
+			<SectionHeader title={t('activity.audit')} meta={t('activity.recent')} />
 			{#if recentActions.length === 0}
-				<div class="mt-6 text-center text-sm text-[var(--color-ink-3)] py-6">로그 없음</div>
+				<div class="mt-6 text-center text-sm text-[var(--color-ink-3)] py-6">{t('activity.empty')}</div>
 			{:else}
 				<div class="mt-4 overflow-x-auto">
 					<table class="w-full text-sm">
 						<thead>
 							<tr class="text-xs uppercase tracking-wide text-[var(--color-ink-3)] border-b border-line">
-								<th class="text-left pb-2 pr-4 font-medium">시각</th>
-								<th class="text-left pb-2 pr-4 font-medium">액션</th>
-								<th class="text-left pb-2 pr-4 font-medium">리소스</th>
-								<th class="text-left pb-2 pr-4 font-medium">대상</th>
-								<th class="text-left pb-2 font-medium">결과</th>
+								<th class="text-left pb-2 pr-4 font-medium">{t('activity.time')}</th>
+								<th class="text-left pb-2 pr-4 font-medium">{t('activity.action')}</th>
+								<th class="text-left pb-2 pr-4 font-medium">{t('activity.resource')}</th>
+								<th class="text-left pb-2 pr-4 font-medium">{t('activity.target')}</th>
+								<th class="text-left pb-2 font-medium">{t('activity.result')}</th>
 							</tr>
 						</thead>
 						<tbody class="divide-y divide-line/60">
@@ -212,9 +214,9 @@
 									<td class="py-2.5 pr-4 text-[var(--color-ink-0)] text-xs">{action.resource_name}</td>
 									<td class="py-2.5">
 										{#if action.status === 'success'}
-											<Pill tone="success">OK</Pill>
+											<Pill tone="success">{t('activity.success')}</Pill>
 										{:else}
-											<Pill tone="danger">FAIL</Pill>
+											<Pill tone="danger">{t('activity.failure')}</Pill>
 										{/if}
 									</td>
 								</tr>

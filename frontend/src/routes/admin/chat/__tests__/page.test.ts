@@ -857,8 +857,6 @@ describe("admin chat model pricing", () => {
     await screen.findByRole("checkbox", { name: "opaque/id-v1" });
     await fireEvent.click(screen.getByRole("checkbox", { name: "opaque/id-v1" }));
     await fireEvent.click(screen.getByRole("button", { name: "선택 모델 검토" }));
-    const review = screen.getByTestId("model-registration-review");
-    expect(within(review).getByText(/입력 한도 128000 · 출력 한도 8192/)).toBeTruthy();
     expect((screen.getByRole("textbox", { name: "표시 이름 · opaque/id-v1" }) as HTMLInputElement).value).toBe("Provider Label");
     expect((screen.getByRole("button", { name: "가격 확인 후 등록·활성화" }) as HTMLButtonElement).disabled).toBe(true);
     await fireEvent.input(screen.getByRole("textbox", { name: "입력 단가 · opaque/id-v1" }), { target: { value: "1.25" } });
@@ -924,7 +922,6 @@ describe("admin chat model pricing", () => {
     expect(screen.queryByText(/secret upstream detail/)).toBeNull();
     b.resolve(discoveryResponse(2, [], { live_status: "empty" }));
     expect(await screen.findByText(/정상적으로 조회했지만 반환된 모델이 없습니다/)).toBeTruthy();
-    expect(screen.getByTestId("discovery-provenance").textContent).toContain("정상 빈 결과");
     expect(mocks.invalidateChatModels).not.toHaveBeenCalled();
   });
 
@@ -953,8 +950,6 @@ describe("admin chat model pricing", () => {
     }));
     expect(await screen.findByText("static-model")).toBeTruthy();
     expect(screen.getByText("Visible Label")).toBeTruthy();
-    expect(screen.getByTestId("discovery-provenance").textContent).toContain("미지원");
-    expect(screen.getByTestId("discovery-provenance").textContent).toContain("불완전");
     await fireEvent.input(screen.getByRole("searchbox", { name: "후보 모델 필터" }), { target: { value: "visible label" } });
     expect(screen.getByRole("checkbox", { name: "static-model" })).toBeTruthy();
   });
@@ -1103,7 +1098,6 @@ describe("admin chat model pricing", () => {
     await fireEvent.click(screen.getByRole("button", { name: "모델 불러오기" }));
     await screen.findByTestId("discovery-provenance");
     await fireEvent.click(screen.getByRole("button", { name: "기능 수정" }));
-    expect(screen.getByText(/입력 한도 8192 tokens를 컨텍스트 한도 초안/)).toBeTruthy();
     expect((screen.getByRole("textbox", { name: "컨텍스트 한도" }) as HTMLInputElement).value).toBe("8192");
     expect(patch).not.toHaveBeenCalled();
   });
@@ -1164,7 +1158,6 @@ describe("admin chat model pricing", () => {
     await screen.findAllByRole("option", { name: "OpenAI" });
     await fireEvent.click(screen.getByRole("button", { name: "모델 불러오기" }));
     expect(await screen.findByText(/연결 시간 초과/)).toBeTruthy();
-    expect(screen.getByTestId("discovery-provenance").textContent).toContain("실패");
     expect(screen.queryByText(/정상적으로 조회했지만 반환된 모델이 없습니다/)).toBeNull();
     expect(screen.queryByRole("checkbox", { name: "unsafe-error-candidate" })).toBeNull();
     expect(screen.queryByRole("button", { name: "선택 모델 검토" })).toBeNull();

@@ -2,6 +2,8 @@
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
+	import { t } from '$lib/i18n/ns/admin-storage';
+	import { volumeStatusLabel } from './AdminVolumeStatusSummary.svelte';
 
 	interface AdminVolume {
 		id: string;
@@ -42,7 +44,7 @@
 			onSuccess();
 			onClose();
 		} catch (e) {
-			forceDeleteError = e instanceof ApiError ? e.message : '강제 삭제 실패';
+			forceDeleteError = e instanceof ApiError ? e.message : t('volumeForceDelete.failed');
 		} finally {
 			forceDeleting = false;
 		}
@@ -63,19 +65,19 @@
 			onclick={(e) => e.stopPropagation()}
 			role="none"
 		>
-			<h2 class="text-lg font-semibold text-state-danger-text mb-3">볼륨 강제 삭제</h2>
+			<h2 class="text-lg font-semibold text-state-danger-text mb-3">{t('volumeForceDelete.title')}</h2>
 			<p class="text-sm text-ink-2 mb-2">
 				<span class="text-ink-0 font-mono">{volume.name || volume.id.slice(0, 8)}</span>
-				({volume.status})
+				({volumeStatusLabel(volume.status)})
 			</p>
-			<p class="text-xs text-state-danger-text mb-1">상태 무관 강제 삭제. Cinder DB row 정리 목적이며 Ceph backend가 NotFound인 경우에만 사용하세요.</p>
-			<p class="text-xs text-ink-2 mb-4">attached 볼륨은 거부됩니다.</p>
+			<p class="text-xs text-state-danger-text mb-1">{t('volumeForceDelete.warning')}</p>
+			<p class="text-xs text-ink-2 mb-4">{t('volumeForceDelete.attachedWarning')}</p>
 			{#if forceDeleteError}
 				<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{forceDeleteError}</div>
 			{/if}
 			<div class="flex justify-end gap-3">
-				<button onclick={onClose} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">취소</button>
-				<button onclick={confirmForceDelete} disabled={forceDeleting} class="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{forceDeleting ? '삭제 중...' : '강제 삭제'}</button>
+				<button onclick={onClose} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('volumeForceDelete.cancel')}</button>
+				<button onclick={confirmForceDelete} disabled={forceDeleting} class="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{forceDeleting ? t('volumeForceDelete.deleting') : t('volumeForceDelete.delete')}</button>
 			</div>
 		</div>
 	</div>

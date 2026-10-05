@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/images-keys';
 	import type { ImageInfo } from '$lib/types/compute';
 
 	let { image }: { image: ImageInfo } = $props();
@@ -17,7 +18,7 @@
 			{digest.algorithm} {digest.value.slice(0, 12)}…{digest.value.slice(-8)}
 		</code>
 	{:else}
-		<span>{image.status === 'saving' || image.status === 'queued' ? '해시 계산 중' : '해시 없음'}</span>
+		<span>{image.status === 'saving' || image.status === 'queued' ? t('digest.calculatingHash') : t('digest.noHash')}</span>
 	{/if}
-	<code title={image.id} aria-label={`이미지 ID: ${image.id}`}>ID {image.id.slice(0, 8)}</code>
+	<code title={image.id} aria-label={t('digest.imageId', { id: image.id })}>ID {image.id.slice(0, 8)}</code>
 </div>

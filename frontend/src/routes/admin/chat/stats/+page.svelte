@@ -5,6 +5,8 @@
 	import StatTile from '$lib/components/ui/StatTile.svelte';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
+	import { t } from '$lib/i18n/ns/chat-studio';
+	import RichText from '$lib/i18n/RichText.svelte';
 
 	import { usageChartWindow } from '$lib/utils/chatUsageChartWindow';
 	import { adminIdentityLabel } from '$lib/utils/adminIdentityLabel';
@@ -81,10 +83,10 @@
 	}
 
 	const RANGES = [
-		{ value: '30d', label: '30일' },
-		{ value: '90d', label: '90일' },
-		{ value: '1y', label: '1년' },
-		{ value: 'all', label: '전체' }
+		{ value: '30d', get label() { return t('adminStats.range30Days'); } },
+		{ value: '90d', get label() { return t('adminStats.range90Days'); } },
+		{ value: '1y', get label() { return t('adminStats.rangeYear'); } },
+		{ value: 'all', get label() { return t('adminStats.rangeAll'); } }
 	];
 
 	const token = $derived($auth.token ?? undefined);
@@ -111,13 +113,13 @@
 	const fmtCredit = (n: number) => (n ?? 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
 	const fmtUsd = (n: number) => `$${(n ?? 0).toFixed(4)}`;
 	const CHART_BUCKETS = [
-		{ value: '5m', label: '5분' },
-		{ value: '15m', label: '15분' },
-		{ value: 'hour', label: '1시간' },
-		{ value: 'day', label: '일별' },
-		{ value: 'month', label: '월별' }
+		{ value: '5m', get label() { return t('adminStats.bucket5Minutes'); } },
+		{ value: '15m', get label() { return t('adminStats.bucket15Minutes'); } },
+		{ value: 'hour', get label() { return t('adminStats.bucketHour'); } },
+		{ value: 'day', get label() { return t('adminStats.bucketDay'); } },
+		{ value: 'month', get label() { return t('adminStats.bucketMonth'); } }
 	];
-	const chartGranularityLabel = $derived(CHART_BUCKETS.find((item) => item.value === chartBucket)?.label ?? '1시간');
+	const chartGranularityLabel = $derived(CHART_BUCKETS.find((item) => item.value === chartBucket)?.label ?? t('adminStats.bucketHour'));
 	const fmtChartBucket = (bucket: string) => {
 		if (chartBucket === 'month') return bucket;
 		if (chartBucket === 'day') return bucket.slice(5);
@@ -138,7 +140,7 @@
 			userOffset = userRows.length;
 			hasMoreUsers = userRows.length >= USER_PAGE;
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : '통계 조회 실패';
+			error = e instanceof ApiError ? e.message : t('adminStats.loadFailed');
 			data = null;
 			userRows = [];
 			hasMoreUsers = false;
@@ -187,7 +189,7 @@
 		} catch (e) {
 			if (generation === timeSeriesGeneration) {
 				timeSeries = [];
-				timeSeriesError = e instanceof ApiError ? e.message : '사용량 시계열 조회 실패';
+				timeSeriesError = e instanceof ApiError ? e.message : t('adminStats.timeSeriesLoadFailed');
 			}
 		} finally {
 			if (generation === timeSeriesGeneration) loadingTimeSeries = false;
@@ -313,9 +315,9 @@
 
 <div class="max-w-6xl p-4 md:p-8">
 	<PageHeader
-		breadcrumb="AI 채팅 / 통계"
-		title="채팅 사용량 통계"
-		subtitle="전체 시스템의 토큰·크레딧·원가를 사용자별·모델별·월별로 집계합니다."
+		breadcrumb={t('adminStats.breadcrumb')}
+		title={t('adminStats.title')}
+		subtitle={t('adminStats.subtitle')}
 	/>
 
 	<!-- 필터 -->
@@ -333,12 +335,12 @@
 			{/each}
 		</div>
 		<select class={selectCls} bind:value={projectFilter}>
-			<option value="">전체 프로젝트</option>
+			<option value="">{t('adminStats.allProjects')}</option>
 			{#each data?.projects ?? [] as project (project.id)}
 				<option value={project.id}>{adminIdentityLabel(project.name, project.id)}</option>
 			{/each}
 		</select>
-		{#if loading}<span class="text-xs text-[var(--color-ink-3)]">불러오는 중…</span>{/if}
+		{#if loading}<span class="text-xs text-[var(--color-ink-3)]">{t('adminStats.loading')}</span>{/if}
 	</div>
 
 	{#if error}
@@ -350,38 +352,37 @@
 	{/if}
 
 	{#if !loading && !hasData}
-		<EmptyState headline="사용량 데이터가 없습니다" description="선택한 기간·프로젝트에 기록된 채팅 사용량이 없습니다." />
+		<EmptyState headline={t('adminStats.emptyTitle')} description={t('adminStats.emptyDescription')} />
 	{:else if overview}
 		<!-- KPI 카드 -->
 		<div class="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
-			<StatTile label="입력 토큰" value={fmtInt(overview.prompt_tokens)} accent="blue" />
-			<StatTile label="출력 토큰" value={fmtInt(overview.completion_tokens)} accent="violet" />
-			<StatTile label="총 요청" value={fmtInt(overview.request_count)} accent="cyan" />
-			<StatTile label="활성 사용자" value={fmtInt(overview.active_users)} accent="emerald" />
-			<StatTile label="차감 크레딧" value={fmtCredit(overview.credited_cost)} accent="amber" />
-			<StatTile label="원가 (USD)" value={fmtUsd(overview.raw_cost)} accent="rose" />
-			<StatTile label="미확정 과금" value={fmtInt(overview.unpriced_requests)} accent="rose" />
+			<StatTile label={t('adminStats.inputTokens')} value={fmtInt(overview.prompt_tokens)} accent="blue" />
+			<StatTile label={t('adminStats.outputTokens')} value={fmtInt(overview.completion_tokens)} accent="violet" />
+			<StatTile label={t('adminStats.totalRequests')} value={fmtInt(overview.request_count)} accent="cyan" />
+			<StatTile label={t('adminStats.activeUsers')} value={fmtInt(overview.active_users)} accent="emerald" />
+			<StatTile label={t('adminStats.deductedCredits')} value={fmtCredit(overview.credited_cost)} accent="amber" />
+			<StatTile label={t('adminStats.costUsd')} value={fmtUsd(overview.raw_cost)} accent="rose" />
+			<StatTile label={t('adminStats.unpricedBilling')} value={fmtInt(overview.unpriced_requests)} accent="rose" />
 		</div>
 
 		<section class="{cardCls} mb-8 p-5">
 			<div class="mb-4 flex flex-wrap items-center justify-between gap-3">
 				<div>
-					<h3 class="text-sm font-semibold text-[var(--color-ink-1)]">{chartGranularityLabel} 토큰 사용량</h3>
+					<h3 class="text-sm font-semibold text-[var(--color-ink-1)]">{t('adminStats.chartTitle', { granularity: chartGranularityLabel })}</h3>
 					<p class="mt-1 text-xs text-[var(--color-ink-3)]">
 						{selectedModel
-							? `${selectedModel} 모델의 ${chartGranularityLabel} 사용량`
-							: `전체 모델의 ${chartGranularityLabel} 사용량`}
-						{#if chartWindowLabel} · {chartWindowLabel}{/if}
+							? t('adminStats.chartModelUsage', { model: selectedModel, granularity: chartGranularityLabel, hasWindow: chartWindowLabel ? 'yes' : 'no', window: chartWindowLabel ?? '' })
+							: t('adminStats.chartAllUsage', { granularity: chartGranularityLabel, hasWindow: chartWindowLabel ? 'yes' : 'no', window: chartWindowLabel ?? '' })}
 					</p>
 				</div>
 				<div class="flex flex-wrap gap-2">
-					<select class={selectCls} bind:value={chartBucket} aria-label="사용량 시간 단위 선택">
+					<select class={selectCls} bind:value={chartBucket} aria-label={t('adminStats.selectBucket')}>
 						{#each CHART_BUCKETS as bucket (bucket.value)}
 							<option value={bucket.value}>{bucket.label}</option>
 						{/each}
 					</select>
-					<select class={selectCls} bind:value={selectedModel} aria-label="사용량 모델 선택">
-						<option value="">전체 모델</option>
+					<select class={selectCls} bind:value={selectedModel} aria-label={t('adminStats.selectModel')}>
+						<option value="">{t('adminStats.allModels')}</option>
 						{#each models as model (model.model_name)}
 							<option value={model.model_name}>{model.model_name}</option>
 						{/each}
@@ -389,11 +390,11 @@
 				</div>
 			</div>
 			{#if loadingTimeSeries}
-				<p class="text-sm text-[var(--color-ink-3)]">{chartGranularityLabel} 사용량을 불러오는 중…</p>
+				<p class="text-sm text-[var(--color-ink-3)]">{t('adminStats.chartLoading', { granularity: chartGranularityLabel })}</p>
 			{:else if timeSeriesError}
 				<p class="text-sm text-[var(--color-state-danger)]">{timeSeriesError}</p>
 			{:else if timeSeries.length === 0}
-				<p class="text-sm text-[var(--color-ink-3)]">표시할 {chartGranularityLabel} 데이터가 없습니다.</p>
+				<p class="text-sm text-[var(--color-ink-3)]">{t('adminStats.chartEmpty', { granularity: chartGranularityLabel })}</p>
 			{:else}
 				<div class="overflow-x-auto pb-1">
 					<div class="flex h-48 min-w-[42rem] items-end gap-px">
@@ -403,7 +404,7 @@
 									<div
 										class="absolute inset-x-0 bottom-0 flex flex-col-reverse overflow-hidden rounded-t"
 										style="height: {point.total_tokens > 0 ? Math.max(0.5, (point.total_tokens / maxHourlyTokens) * 100) : 0}%"
-										title="{point.bucket} · 입력 {fmtInt(point.prompt_tokens)} · 출력 {fmtInt(point.completion_tokens)} · 총 {fmtInt(point.total_tokens)}"
+										title={t('adminStats.chartTooltip', { bucket: point.bucket, input: fmtInt(point.prompt_tokens), output: fmtInt(point.completion_tokens), total: fmtInt(point.total_tokens) })}
 									>
 										<div
 											class="w-full bg-[var(--color-accent)]"
@@ -431,10 +432,10 @@
 				</div>
 				<div class="mt-4 flex items-center gap-4 text-xs text-[var(--color-ink-3)]">
 					<span class="flex items-center gap-1.5">
-						<span class="inline-block h-2 w-2 rounded-full bg-[var(--color-accent)]"></span>입력 토큰
+						<span class="inline-block h-2 w-2 rounded-full bg-[var(--color-accent)]"></span>{t('adminStats.inputTokens')}
 					</span>
 					<span class="flex items-center gap-1.5">
-						<span class="inline-block h-2 w-2 rounded-full bg-[var(--color-accent-2)]"></span>출력 토큰
+						<span class="inline-block h-2 w-2 rounded-full bg-[var(--color-accent-2)]"></span>{t('adminStats.outputTokens')}
 					</span>
 				</div>
 			{/if}
@@ -443,23 +444,23 @@
 
 		<!-- 모델별 -->
 		<section class="mb-8">
-			<h3 class="mb-3 text-sm font-semibold text-[var(--color-ink-1)]">모델별 사용량</h3>
+			<h3 class="mb-3 text-sm font-semibold text-[var(--color-ink-1)]">{t('adminStats.modelUsage')}</h3>
 			{#if models.length === 0}
-				<p class="text-sm text-[var(--color-ink-3)]">데이터가 없습니다.</p>
+				<p class="text-sm text-[var(--color-ink-3)]">{t('adminStats.modelEmpty')}</p>
 			{:else}
 				<TableShell>
 					<table>
 						<thead>
 							<tr class="text-xs uppercase tracking-wide">
-								<th>모델</th>
-								<th class="text-right">비중</th>
-								<th class="text-right">입력</th>
-								<th class="text-right">출력</th>
-								<th class="text-right">총 토큰</th>
-								<th class="text-right">요청</th>
-								<th class="text-right">크레딧</th>
-								<th class="text-right">원가</th>
-								<th class="text-right">미확정</th>
+								<th>{t('adminStats.model')}</th>
+								<th class="text-right">{t('adminStats.share')}</th>
+								<th class="text-right">{t('adminStats.input')}</th>
+								<th class="text-right">{t('adminStats.output')}</th>
+								<th class="text-right">{t('adminStats.totalTokens')}</th>
+								<th class="text-right">{t('adminStats.requests')}</th>
+								<th class="text-right">{t('adminStats.credits')}</th>
+								<th class="text-right">{t('adminStats.cost')}</th>
+								<th class="text-right">{t('adminStats.unpriced')}</th>
 							</tr>
 						</thead>
 						<tbody>
@@ -491,23 +492,24 @@
 
 		<!-- 사용자별 -->
 		<section>
+			{#snippet userUsageNote(text: string)}<span class="text-xs font-normal text-[var(--color-ink-3)]">{text}</span>{/snippet}
 			<h3 class="mb-3 text-sm font-semibold text-[var(--color-ink-1)]">
-				사용자별 사용량 <span class="text-xs font-normal text-[var(--color-ink-3)]">(시스템 부담 제외)</span>
+				<RichText segments={t.rich('adminStats.userUsageTitle')} tags={{ note: userUsageNote }} />
 			</h3>
 			{#if users.length === 0}
-				<p class="text-sm text-[var(--color-ink-3)]">데이터가 없습니다.</p>
+				<p class="text-sm text-[var(--color-ink-3)]">{t('adminStats.userEmpty')}</p>
 			{:else}
 				<TableShell>
 					<table>
 						<thead>
 							<tr class="text-xs uppercase tracking-wide">
-								<th>사용자</th>
-								<th class="text-right">입력</th>
-								<th class="text-right">출력</th>
-								<th class="text-right">총 토큰</th>
-								<th class="text-right">요청</th>
-								<th class="text-right">크레딧</th>
-								<th class="text-right">원가</th>
+								<th>{t('adminStats.user')}</th>
+								<th class="text-right">{t('adminStats.input')}</th>
+								<th class="text-right">{t('adminStats.output')}</th>
+								<th class="text-right">{t('adminStats.totalTokens')}</th>
+								<th class="text-right">{t('adminStats.requests')}</th>
+								<th class="text-right">{t('adminStats.credits')}</th>
+								<th class="text-right">{t('adminStats.cost')}</th>
 							</tr>
 						</thead>
 						<tbody>
@@ -534,7 +536,7 @@
 							disabled={loadingMore}
 							class="rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-raised)] px-4 py-1.5 text-sm text-[var(--color-ink-2)] transition-colors hover:text-[var(--color-ink-0)] disabled:opacity-60"
 						>
-							{loadingMore ? '불러오는 중…' : '더보기'}
+							{loadingMore ? t('adminStats.loading') : t('adminStats.loadMore')}
 						</button>
 					</div>
 				{/if}

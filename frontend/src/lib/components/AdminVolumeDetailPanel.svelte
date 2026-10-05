@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-storage';
 	import { createAdminVolumeDetailController, provideAdminVolumeDetailController } from '$lib/stores/adminVolumeDetailController.svelte';
 	import AdminVolumeDetailHeader from '$lib/components/admin-volume/AdminVolumeDetailHeader.svelte';
 	import AdminVolumeStatusBar from '$lib/components/admin-volume/AdminVolumeStatusBar.svelte';
@@ -33,7 +34,7 @@
 
 	<div class="flex-1 overflow-y-auto p-5 space-y-4">
 		{#if s.loading}
-			<div class="text-ink-2 text-sm">로딩 중...</div>
+			<div class="text-ink-2 text-sm">{t('volumeDetail.loading')}</div>
 		{:else if s.error}
 			<div class="text-red-400 text-sm">{s.error}</div>
 		{:else if s.volume}

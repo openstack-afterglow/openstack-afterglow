@@ -4,6 +4,9 @@
 	import { resolvedTheme } from '$lib/stores/theme';
 	import { cloudShell } from '$lib/stores/cloudShell.svelte';
 	import { getTerminalTheme } from '$lib/utils/terminalTheme';
+	import { t } from '$lib/i18n/ns/containers-shell';
+	import { getLocale } from '$lib/i18n/runtime.svelte';
+	import { localizeTerminal } from '$lib/utils/terminalLocale';
 
 	let terminalElement = $state<HTMLDivElement | null>(null);
 	let terminal = $state.raw<import('@xterm/xterm').Terminal | null>(null);
@@ -31,6 +34,7 @@
 			disableStdin: cloudShell.phase !== 'ready',
 			scrollback: 5000,
 		});
+		localizeTerminal(terminal);
 		fitAddon = new FitAddon();
 		terminal.loadAddon(fitAddon);
 		terminal.loadAddon(new WebLinksAddon());
@@ -62,6 +66,11 @@
 	});
 
 	$effect(() => {
+		getLocale();
+		if (terminal) localizeTerminal(terminal);
+	});
+
+	$effect(() => {
 		const epoch = cloudShell.terminalEpoch;
 		if (!terminal || epoch === lastEpoch) return;
 		lastEpoch = epoch;
@@ -79,7 +88,7 @@
 	});
 </script>
 
-<div class="relative h-full min-h-0 bg-surface-canvas" aria-label="Cloud Shell terminal">
+<div class="relative h-full min-h-0 bg-surface-canvas" aria-label={t('shell.terminalAria')}>
 	<div bind:this={terminalElement} class="h-full w-full p-2"></div>
 	{#if cloudShell.phase !== 'ready'}
 		<div class="pointer-events-none absolute inset-0 flex items-center justify-center bg-surface-canvas/70" aria-hidden="true">

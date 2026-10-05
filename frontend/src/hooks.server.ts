@@ -1,6 +1,7 @@
 import type { Handle } from '@sveltejs/kit';
 import { loadPublicSiteConfig } from '$lib/server/config';
 import type { PublicSiteConfig } from '$lib/types/siteConfig';
+import { LOCALE_COOKIE, resolveLocale } from '$lib/i18n/locales';
 import {
 	MOCKUP_COOKIE,
 	MOCKUP_QUERY_KEY,
@@ -141,10 +142,15 @@ function buildSecurityHeaders(siteConfig: PublicSiteConfig): Record<string, stri
 	};
 }
 
-export const handle: Handle = async ({ event, resolve }) => {
+export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 	const siteConfig = loadPublicSiteConfig();
 	const securityHeaders = buildSecurityHeaders(siteConfig);
 	event.locals.siteConfig = siteConfig;
+	// 언어 선택은 쿠키로만 결정한다(기본 한국어). 첫 SSR HTML과 <html lang>이 같은 언어를 쓴다.
+	const locale = resolveLocale(event.cookies.get(LOCALE_COOKIE));
+	event.locals.locale = locale;
+	const resolve = (target: typeof event) =>
+		resolveEvent(target, { transformPageChunk: ({ html }) => html.replace('%afterglow.lang%', locale) });
 	const path = event.url.pathname;
 
 	const requestedMockup = event.url.searchParams.get(MOCKUP_QUERY_KEY);

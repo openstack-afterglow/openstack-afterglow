@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/admin-system';
 	import { onMount } from 'svelte';
 	import { api, ApiError, getBaseUrl } from '$lib/api/client';
 	import { initSiteConfig, qualifyBackendAssetPaths, siteConfig } from '$lib/config/site';
@@ -34,15 +35,15 @@
 		{
 			key: 'logo_light',
 			field: 'logo_light_path',
-			title: 'Dark login background',
-			description: '밝은 로고. 기본 어두운 로그인 배경에서 사용됩니다.',
+			get title() { return t('branding.darkTitle'); },
+			get description() { return t('branding.darkDescription'); },
 			previewClass: 'preview-dark',
 		},
 		{
 			key: 'logo_dark',
 			field: 'logo_dark_path',
-			title: 'Light login background',
-			description: '어두운 로고. light theme 로그인 배경에서 사용됩니다.',
+			get title() { return t('branding.lightTitle'); },
+			get description() { return t('branding.lightDescription'); },
 			previewClass: 'preview-light',
 		},
 	];
@@ -65,7 +66,7 @@
 		try {
 			applyStatus(await api.get<BrandingStatus>('/api/v1/site-config/admin/branding', token, projectId));
 		} catch (e) {
-			error = e instanceof ApiError ? `브랜딩 설정 조회 실패: ${e.message}` : '브랜딩 설정 조회 실패';
+			error = e instanceof ApiError ? t('branding.loadFailedDetail', { message: e.message }) : t('branding.loadFailed');
 		} finally {
 			loading = false;
 		}
@@ -84,7 +85,7 @@
 		const file = input.files?.[0];
 		if (!file) return;
 		if (file.size > 1_048_576) {
-			error = '로고 파일은 1 MiB 이하여야 합니다';
+			error = t('branding.sizeError');
 			input.value = '';
 			return;
 		}
@@ -95,9 +96,9 @@
 			const formData = new FormData();
 			formData.append('file', file, file.name);
 			applyStatus(await api.upload<BrandingStatus>(`/api/v1/site-config/admin/branding/${slot}`, formData, token, projectId));
-			notice = '로그인 로고를 업데이트했습니다';
+			notice = t('branding.updated');
 		} catch (e) {
-			error = e instanceof ApiError ? `업로드 실패: ${e.message}` : '업로드 실패';
+			error = e instanceof ApiError ? t('branding.uploadFailedDetail', { message: e.message }) : t('branding.uploadFailed');
 		} finally {
 			pendingSlot = null;
 			input.value = '';
@@ -110,9 +111,9 @@
 		notice = '';
 		try {
 			applyStatus(await api.delete<BrandingStatus>(`/api/v1/site-config/admin/branding/${slot}`, token, projectId));
-			notice = '로그인 로고를 기본 설정으로 되돌렸습니다';
+			notice = t('branding.resetSuccess');
 		} catch (e) {
-			error = e instanceof ApiError ? `초기화 실패: ${e.message}` : '초기화 실패';
+			error = e instanceof ApiError ? t('branding.resetFailedDetail', { message: e.message }) : t('branding.resetFailed');
 		} finally {
 			pendingSlot = null;
 		}
@@ -126,11 +127,11 @@
 <Card padding="lg" class="login-branding-panel">
 	<div class="panel-header">
 		<div>
-			<p class="eyebrow">Login branding</p>
-			<h2>로그인 로고</h2>
-			<p class="summary">배경별 로그인 로고를 DB에 저장합니다. 업로드가 없으면 config/static 기본값이 유지됩니다.</p>
+			<p class="eyebrow">{t('branding.eyebrow')}</p>
+			<h2>{t('branding.title')}</h2>
+			<p class="summary">{t('branding.summary')}</p>
 		</div>
-		<Button variant="subtle" size="sm" onclick={loadStatus} disabled={loading || pendingSlot !== null}>새로고침</Button>
+		<Button variant="subtle" size="sm" onclick={loadStatus} disabled={loading || pendingSlot !== null}>{t('branding.refresh')}</Button>
 	</div>
 
 	{#if error}
@@ -141,7 +142,7 @@
 	{/if}
 
 	{#if loading}
-		<div class="loading-card">브랜딩 설정을 불러오는 중...</div>
+		<div class="loading-card">{t('branding.loading')}</div>
 	{:else}
 		<div class="slot-grid">
 			{#each slots as slot}
@@ -153,21 +154,21 @@
 							<h3>{slot.title}</h3>
 							<p>{slot.description}</p>
 						</div>
-						<span class="asset-state" data-uploaded={asset !== null}>{asset ? 'Uploaded' : 'Config default'}</span>
+						<span class="asset-state" data-uploaded={asset !== null}>{asset ? t('branding.uploaded') : t('branding.configDefault')}</span>
 					</div>
 
 					<div class="logo-preview {slot.previewClass}">
-						<img src={path} alt="{slot.title} preview" loading="lazy" />
+						<img src={path} alt={t('branding.previewAlt', { title: slot.title })} loading="lazy" />
 					</div>
 
 					<dl class="asset-meta">
 						<div>
-							<dt>Effective path</dt>
+							<dt>{t('branding.effectivePath')}</dt>
 							<dd title={path}>{path}</dd>
 						</div>
 						{#if asset}
 							<div>
-								<dt>Stored file</dt>
+								<dt>{t('branding.storedFile')}</dt>
 								<dd>{asset.filename} · {asset.content_type} · {formatSize(asset.size_bytes)}</dd>
 							</div>
 						{/if}
@@ -181,9 +182,9 @@
 								disabled={pendingSlot !== null}
 								onchange={(event) => uploadLogo(slot.key, event)}
 							/>
-							<span>{pendingSlot === slot.key ? '업로드 중...' : '업로드'}</span>
+							<span>{pendingSlot === slot.key ? t('branding.uploading') : t('branding.upload')}</span>
 						</label>
-						<Button variant="ghost" size="sm" onclick={() => resetLogo(slot.key)} disabled={pendingSlot !== null || asset === null}>초기화</Button>
+						<Button variant="ghost" size="sm" onclick={() => resetLogo(slot.key)} disabled={pendingSlot !== null || asset === null}>{t('branding.reset')}</Button>
 					</div>
 				</div>
 			{/each}

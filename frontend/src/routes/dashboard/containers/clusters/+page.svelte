@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/containers-shell';
+  import RichText from '$lib/i18n/RichText.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
   import { untrack } from 'svelte';
   import { goto } from '$app/navigation';
@@ -38,7 +40,7 @@
         serviceUnavailable = true;
         error = '';
       } else {
-        error = e instanceof ApiError ? `조회 실패 (${e.status}): ${e.message}` : '서버 오류';
+        error = e instanceof ApiError ? t('clusters.list.loadFailed', { status: e.status, message: e.message }) : t('clusters.error.server');
       }
     } finally {
       loading = false;
@@ -75,15 +77,15 @@
       await fetchClusters();
       return true;
     } catch (e) {
-      return e instanceof ApiError ? e.message : '생성 실패';
+      return e instanceof ApiError ? e.message : t('clusters.error.createFailed');
     }
   }
 
   async function deleteCluster(id: string, name: string) {
-    if (!await confirmDialog(`클러스터 "${name}"을 삭제하시겠습니까?`)) return;
+    if (!await confirmDialog(t('clusters.deleteDialog.body', { name }))) return;
     deleting = id;
     try {
-      await apiMut('K8s 클러스터 삭제', () => api.delete(`/api/v1/clusters/${id}`, $auth.token ?? undefined, $auth.projectId ?? undefined));
+      await apiMut(t('clusters.actions.deleteK8sCluster'), () => api.delete(`/api/v1/clusters/${id}`, $auth.token ?? undefined, $auth.projectId ?? undefined));
       await fetchClusters();
     } catch {
       // error toast shown by apiMut
@@ -94,7 +96,7 @@
   async function runBulkDelete() {
     const snapshot = [...selection.ids];
     if (snapshot.length === 0) return;
-    if (!await confirmDialog(`선택한 클러스터 ${snapshot.length}개를 삭제하시겠습니까?`)) return;
+    if (!await confirmDialog(t('clusters.bulk.deleteDialog', { count: snapshot.length }))) return;
     const tokenSnapshot = $auth.token ?? undefined;
     const projectSnapshot = $auth.projectId ?? undefined;
     bulkBusy = true;
@@ -102,8 +104,8 @@
       const results = await executeBulkMutations(snapshot, (id) => api.delete(`/api/v1/clusters/${id}`, tokenSnapshot, projectSnapshot));
       const successful = results.filter((result) => result.ok).map((result) => result.id);
       const failed = results.length - successful.length;
-      if (successful.length > 0) toast.success(`${successful.length}개 삭제 요청을 완료했습니다.`);
-      if (failed > 0) toast.error(`${failed}개 삭제에 실패했습니다.`);
+      if (successful.length > 0) toast.success(t('clusters.bulk.deleteRequested', { count: successful.length }));
+      if (failed > 0) toast.error(t('clusters.bulk.deleteFailed', { count: failed }));
       if ($auth.projectId === projectSnapshot) {
         selection.remove(successful);
         await fetchClusters();
@@ -113,9 +115,9 @@
     }
   }
 
-  const bulkActions: BulkSelectionAction[] = [
-    { key: 'delete', label: '삭제', tone: 'danger', onAction: runBulkDelete },
-  ];
+  const bulkActions: BulkSelectionAction[] = $derived([
+    { key: 'delete', label: t('clusters.actions.delete'), tone: 'danger', onAction: runBulkDelete },
+  ]);
 
   const ar = createAutoRefresh(() => fetchClusters(), {
     storageKey: 'dashboard-k3s-clusters',
@@ -135,7 +137,7 @@
 <K3sClusterCreateModal bind:open={showModal} {templates} onCreate={createCluster} />
 
 <div class="bulk-selection-page p-4 md:p-8">
-  <PageHeader breadcrumb="CONTAINERS / K8S CLUSTERS" title="K8s 클러스터">
+  <PageHeader breadcrumb={t('clusters.list.breadcrumb')} title={t('clusters.list.title')}>
     {#snippet actions()}
       <AutoRefreshControl
         bind:active={ar.active}
@@ -144,7 +146,7 @@
         refreshing={loading}
         onManualRefresh={() => fetchClusters()}
       />
-      <button onclick={openCreate} onpointerenter={prefetchTemplates} onfocus={prefetchTemplates} class="bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">+ 클러스터 생성</button>
+      <button onclick={openCreate} onpointerenter={prefetchTemplates} onfocus={prefetchTemplates} class="bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">{t('clusters.actions.create')}</button>
     {/snippet}
   </PageHeader>
 
@@ -153,15 +155,15 @@
   {#if serviceUnavailable}
     <div class="text-center py-20 text-ink-2">
       <div class="text-5xl mb-4">⚠️</div>
-      <p class="text-lg mb-2 text-warm-text">Magnum 서비스에 연결할 수 없습니다</p>
-      <p class="text-sm text-ink-2">K8s 클러스터 관리 서비스가 현재 응답하지 않습니다.<br/>잠시 후 다시 시도해주세요.</p>
+      <p class="text-lg mb-2 text-warm-text">{t('clusters.serviceUnavailable.title')}</p>
+      <p class="text-sm text-ink-2"><RichText segments={t.rich('clusters.serviceUnavailable.body')} /></p>
     </div>
   {:else if loading}
     <LoadingSkeleton variant="table" rows={4} />
   {:else if clusters.length === 0}
     <div class="text-center py-20 text-ink-2">
-      <p class="text-lg mb-2">K8s 클러스터가 없습니다</p>
-      <p class="text-sm">Magnum을 통해 새 클러스터를 생성하세요</p>
+      <p class="text-lg mb-2">{t('clusters.empty.title')}</p>
+      <p class="text-sm">{t('clusters.empty.body')}</p>
     </div>
   {:else}
     <K3sClusterListTable
@@ -175,6 +177,6 @@
       onDelete={deleteCluster}
       onNavigate={(id) => goto(`/dashboard/containers/clusters/${id}`)}
     />
-    <BulkSelectionOverlay count={selection.count} ariaLabel="선택한 클러스터 일괄 작업" actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
+    <BulkSelectionOverlay count={selection.count} ariaLabel={t('clusters.bulk.ariaLabel')} actions={bulkActions} busy={bulkBusy} onClear={() => selection.clear()} />
   {/if}
 </div>

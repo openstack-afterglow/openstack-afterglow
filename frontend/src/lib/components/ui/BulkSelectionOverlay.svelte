@@ -12,6 +12,9 @@
 </script>
 
 <script lang="ts">
+	import RichText from '$lib/i18n/RichText.svelte';
+	import { t } from '$lib/i18n/ns/common';
+
 	interface Props {
 		count: number;
 		ariaLabel: string;
@@ -26,7 +29,7 @@
 {#if count > 0}
 	<div class="bulk-overlay-wrap" role="region" aria-label={ariaLabel} aria-busy={busy}>
 		<div class="bulk-overlay-panel material-overlay">
-			<div class="bulk-count" aria-live="polite"><strong>{count}</strong>개 선택됨</div>
+			<div class="bulk-count" aria-live="polite"><RichText segments={t.rich('selection.overlayCount', { count })} /></div>
 			<div class="bulk-actions">
 				{#each actions as action (action.key)}
 					<button
@@ -37,7 +40,7 @@
 						onclick={() => action.onAction()}
 					>{action.label}</button>
 				{/each}
-				<button type="button" class="bulk-btn bulk-clear" disabled={busy} onclick={onClear}>취소</button>
+				<button type="button" class="bulk-btn bulk-clear" disabled={busy} onclick={onClear}>{t('actions.cancel')}</button>
 			</div>
 		</div>
 	</div>
@@ -75,7 +78,7 @@
 		white-space: nowrap;
 	}
 
-	.bulk-count strong {
+	.bulk-count :global(strong) {
 		font-size: 1.2em;
 	}
 

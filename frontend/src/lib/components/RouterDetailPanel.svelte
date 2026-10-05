@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/network-resources';
 	import { auth } from '$lib/stores/auth';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import { createRouterDetailController, provideRouterDetailController } from '$lib/stores/routerDetailController.svelte';
@@ -44,7 +45,7 @@
 	<RouterDetailHeader {ar} {onClose} {routerId} />
 
 	{#if s.loading}
-		<div class="text-ink-2 text-sm">불러오는 중...</div>
+		<div class="text-ink-2 text-sm">{t('router.loading')}</div>
 	{:else if s.error}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{s.error}</div>
 	{:else if s.router}

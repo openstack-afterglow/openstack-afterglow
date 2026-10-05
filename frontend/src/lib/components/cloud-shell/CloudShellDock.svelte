@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/containers-shell';
 	import { onDestroy } from 'svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -69,14 +70,14 @@
 
 	async function resetHome() {
 		overflowOpen = false;
-		const projectName = cloudShell.identity?.projectName || '현재 프로젝트';
+		const projectName = cloudShell.identity?.projectName || t('shell.currentProject');
 		const confirmed = await confirmDialog(
-			`"${projectName}" Cloud Shell 영구 홈의 모든 데이터를 삭제하시겠습니까? 활성 세션이 있으면 먼저 닫아야 하며, 삭제한 데이터는 복구할 수 없습니다.`,
+			t('shell.resetConfirm', { projectName }),
 		);
 
 		if (!confirmed) return;
 		if (await cloudShell.resetWorkspace()) {
-			toast.success('Cloud Shell 영구 홈 삭제를 확인했습니다.');
+			toast.success(t('shell.resetConfirmed'));
 		}
 	}
 
@@ -100,8 +101,8 @@
 		<button
 			type="button"
 			class="cloud-shell-resize-handle"
-			aria-label="Cloud Shell 높이 조절: 위아래 방향키 사용"
-			title="드래그하거나 위아래 방향키로 높이 조절"
+			aria-label={t('shell.resizeAria')}
+			title={t('shell.resizeTitle')}
 			onpointerdown={startDragging}
 			onkeydown={resizeWithKeyboard}
 		></button>
@@ -110,12 +111,12 @@
 			<div class="min-w-0 flex-1">
 				<div class="flex min-w-0 items-center gap-2">
 					<h2 class="shrink-0 font-display text-sm font-semibold text-ink-0">Cloud Shell</h2>
-					<span class="truncate text-xs text-ink-2">{cloudShell.identity?.projectName || '프로젝트 없음'}</span>
+					<span class="truncate text-xs text-ink-2">{cloudShell.identity?.projectName || t('shell.noProject')}</span>
 					<StatusChip status={statusKey} class="hidden sm:inline-flex" />
 				</div>
 				{#if cloudShell.view !== 'minimized'}
 					<p class="mt-0.5 truncate text-xs text-ink-3" aria-live="polite">
-						{cloudShell.statusStep || `${cloudShell.homeSizeGiB} GiB · 영구 홈`}
+						{cloudShell.statusStep || t('shell.homeSummary', { size: cloudShell.homeSizeGiB })}
 					</p>
 				{/if}
 			</div>
@@ -126,8 +127,8 @@
 					size="icon"
 					class="!size-11 md:!size-8"
 					onclick={() => cloudShell.view === 'minimized' ? cloudShell.restore() : cloudShell.minimize()}
-					ariaLabel={cloudShell.view === 'minimized' ? 'Cloud Shell 복원' : 'Cloud Shell 최소화'}
-					title={cloudShell.view === 'minimized' ? '복원' : '최소화'}
+					ariaLabel={cloudShell.view === 'minimized' ? t('shell.restoreAria') : t('shell.minimizeAria')}
+					title={cloudShell.view === 'minimized' ? t('shell.restore') : t('shell.minimize')}
 				>
 					<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
 						{#if cloudShell.view === 'minimized'}
@@ -142,8 +143,8 @@
 					size="icon"
 					class="cloud-shell-maximize-control !size-8"
 					onclick={() => cloudShell.toggleMaximized()}
-					ariaLabel={cloudShell.view === 'maximized' ? 'Cloud Shell 원래 크기' : 'Cloud Shell 최대화'}
-					title={cloudShell.view === 'maximized' ? '원래 크기' : '최대화'}
+					ariaLabel={cloudShell.view === 'maximized' ? t('shell.normalSizeAria') : t('shell.maximizeAria')}
+					title={cloudShell.view === 'maximized' ? t('shell.normalSize') : t('shell.maximize')}
 				>
 					<svg class="size-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M5 5h14v14H5z" />
@@ -155,9 +156,9 @@
 						size="icon"
 						class="!size-11 md:!size-8"
 						onclick={() => (overflowOpen = !overflowOpen)}
-						ariaLabel="Cloud Shell 추가 작업"
+						ariaLabel={t('shell.moreActionsAria')}
 						ariaPressed={overflowOpen}
-						title="추가 작업"
+						title={t('shell.moreActions')}
 					>
 						<svg class="size-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
 							<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>
@@ -171,7 +172,7 @@
 								onclick={() => void resetHome()}
 								class="w-full px-3 py-2.5 text-left text-xs text-state-danger transition-colors hover:bg-surface-sunken disabled:opacity-50"
 							>
-								{cloudShell.resetting ? '홈 초기화 중…' : '홈 초기화'}
+								{cloudShell.resetting ? t('shell.resettingHome') : t('shell.resetHome')}
 							</button>
 						</div>
 					{/if}
@@ -181,8 +182,8 @@
 					size="icon"
 					class="!size-11 md:!size-8"
 					onclick={handleClose}
-					ariaLabel={cloudShell.active ? 'Cloud Shell 닫기' : 'Cloud Shell 패널 닫기'}
-					title={cloudShell.active ? '세션 닫기' : '패널 닫기'}
+					ariaLabel={cloudShell.active ? t('shell.closeAria') : t('shell.closePanelAria')}
+					title={cloudShell.active ? t('shell.closeSession') : t('shell.closePanel')}
 				>
 					<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M6 6l12 12M18 6L6 18" />
@@ -194,17 +195,17 @@
 		<div class:hidden={cloudShell.view === 'minimized'} class="flex min-h-0 flex-1 flex-col overflow-hidden">
 			{#if cloudShell.resetError}
 				<div class="shrink-0 border-b border-line p-3" aria-live="polite">
-					<Alert tone="warning" title="영구 홈을 초기화할 수 없습니다">
+					<Alert tone="warning" title={t('shell.resetUnavailable')}>
 						{cloudShell.resetError}
 					</Alert>
 				</div>
 			{/if}
 			{#if cloudShell.phase === 'error'}
 				<div class="border-b border-line p-3" aria-live="polite">
-					<Alert tone="danger" title="Cloud Shell을 시작할 수 없습니다">
+					<Alert tone="danger" title={t('shell.startUnavailable')}>
 						<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 							<p>{cloudShell.error}</p>
-							<Button variant="danger-outline" size="sm" onclick={() => cloudShell.retry()}>다시 시도</Button>
+							<Button variant="danger-outline" size="sm" onclick={() => cloudShell.retry()}>{t('shell.retry')}</Button>
 						</div>
 					</Alert>
 				</div>

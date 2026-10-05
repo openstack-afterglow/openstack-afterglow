@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/containers-shell';
 	import Button from '$lib/components/ui/Button.svelte';
 	import { cloudShell } from '$lib/stores/cloudShell.svelte';
 </script>
@@ -8,8 +9,8 @@
 	size="sm"
 	class="h-8"
 	onclick={() => cloudShell.openConsent()}
-	ariaLabel="Cloud Shell 열기"
-	title="Cloud Shell 열기"
+	ariaLabel={t('shell.open')}
+	title={t('shell.open')}
 	ariaPressed={cloudShell.visible}
 >
 	<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">

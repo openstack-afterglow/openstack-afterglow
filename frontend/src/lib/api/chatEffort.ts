@@ -7,6 +7,7 @@
  * 규칙을 여기서 복제하지 않고 서버 판정을 그대로 따른다. 값이 없으면(구버전 Lumen) 숨긴다.
  */
 import type { ModelCapabilities } from './chatContracts';
+import { t } from '$lib/i18n/ns/chat-panel';
 
 const _SUPPORTED_NAMED_EFFORTS = new Set([
 	'minimal',
@@ -18,15 +19,15 @@ const _SUPPORTED_NAMED_EFFORTS = new Set([
 	'ultra'
 ]);
 const _LABELS: Record<string, string> = {
-	auto: '자동',
-	none: '없음',
-	minimal: '최소',
-	low: '낮음',
-	medium: '중간',
-	high: '높음',
-	xhigh: '매우 높음',
-	max: '최대',
-	ultra: '울트라'
+	get auto() { return t('effort.auto'); },
+	get none() { return t('effort.none'); },
+	get minimal() { return t('effort.minimal'); },
+	get low() { return t('effort.low'); },
+	get medium() { return t('effort.medium'); },
+	get high() { return t('effort.high'); },
+	get xhigh() { return t('effort.xhigh'); },
+	get max() { return t('effort.max'); },
+	get ultra() { return t('effort.ultra'); }
 };
 
 /** 모델별 선택지. auto 는 provider 기본, none 은 모델이 지원할 때만 명시적인 추론 비활성화다. */

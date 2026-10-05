@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, within } from '@testing-library/svelte
 import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { REDUCED_MOTION_QUERY } from '$lib/design/tokens';
+import { t } from '$lib/i18n/ns/public-entry';
 import LandingJourney from '../LandingJourney.svelte';
 
 type Query = EventTarget & { matches: boolean };
@@ -40,7 +41,7 @@ function setup() {
 	articles.forEach((article, index) => {
 		vi.spyOn(article, 'getBoundingClientRect').mockImplementation(() => ({ top: tops[index] }) as DOMRect);
 	});
-	const buttons = within(within(root).getByRole('group')).getAllByRole('button');
+	const buttons = within(within(root).getByRole('group', { name: t('landing.journey.stageSelection') })).getAllByRole('button');
 	return { root, articles, buttons };
 }
 
@@ -78,7 +79,7 @@ describe('LandingJourney', () => {
 			expect(buttons.map((button) => button.getAttribute('aria-pressed'))).toEqual(buttons.map((_, index) => String(index === stage)));
 			expect(root.dataset.stage).toBe(String(stage));
 			expect(activeArticles(articles)).toEqual([stage]);
-			expect(caption.textContent?.startsWith(buttons[stage].textContent!.trim())).toBe(true);
+			expect(caption.textContent).toContain(buttons[stage].textContent!.trim());
 		}
 	});
 

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/chat-panel';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import MarkdownMessage from './MarkdownMessage.svelte';
 	import ModelSelector from './ModelSelector.svelte';
 	import ToolCallCard from './ToolCallCard.svelte';
@@ -77,7 +79,7 @@
 		isTool
 			? {
 					id: null,
-					name: toolNameFromResultMeta(message.tool_calls) ?? '도구',
+					name: toolNameFromResultMeta(message.tool_calls) ?? t('message.tool'),
 					args: null,
 					result: message.content,
 					running: false
@@ -88,7 +90,7 @@
 		if (!value) return null;
 		const date = new Date(value);
 		if (Number.isNaN(date.getTime())) return null;
-		return new Intl.DateTimeFormat('ko-KR', {
+		return new Intl.DateTimeFormat(intlLocale(), {
 			hour: '2-digit',
 			minute: '2-digit',
 			hour12: false
@@ -117,8 +119,8 @@
 {:else}
 	<ChatBubble
 		align={isUser ? 'end' : 'start'}
-		label={isUser ? '나' : 'Afterglow'}
-		ariaLabel={isUser ? '내 메시지' : 'Afterglow 응답'}
+		label={isUser ? t('message.me') : 'Afterglow'}
+		ariaLabel={isUser ? t('message.myMessage') : t('message.assistantResponse')}
 		metadata={isUser ? null : modelDisplayName}
 		timestamp={message.created_at}
 		timestampLabel={displayTime}
@@ -128,10 +130,10 @@
 			<div class="user-text">{message.content}</div>
 		{:else}
 			{#if citations.length}
-				<section class="sources" aria-label="답변 출처">
+				<section class="sources" aria-label={t('message.sources')}>
 					<div class="sources-label">
 						<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" stroke-linecap="round" stroke-linejoin="round" /></svg>
-						출처 {citations.length}
+						{t('message.sourceCount', { count: citations.length })}
 					</div>
 					<ol class="sources-list">
 						{#each citations as c, i (`${c.source_kind}:${c.url ?? c.document_index}:${i}`)}
@@ -147,7 +149,7 @@
 									<div class="source-document" title={c.snippet ?? undefined}>
 										<span class="src-num">{i + 1}</span>
 										<span class="src-label">{citationLabel(c)}</span>
-										<span class="src-domain">입력 문서</span>
+										<span class="src-domain">{t('message.inputDocument')}</span>
 										{#if c.snippet}<span class="src-snippet">{c.snippet}</span>{/if}
 									</div>
 								{/if}
@@ -164,11 +166,11 @@
 				{/if}
 				{#if toolItems.length || invocationItems.length}
 					<div class="tool-cards">
-						{#each toolItems as t (t.id ?? t.name)}
-							<ToolCallCard item={t} />
+						{#each toolItems as tool (tool.id ?? tool.name)}
+							<ToolCallCard item={tool} />
 						{/each}
-						{#each invocationItems as t (t.id ?? t.name)}
-							<ToolCallCard item={t} />
+						{#each invocationItems as tool (tool.id ?? tool.name)}
+							<ToolCallCard item={tool} />
 						{/each}
 					</div>
 				{/if}
@@ -188,17 +190,17 @@
 			<div class="actions" class:user={isUser} class:retryable>
 				{#if hasPreviousVersion || hasNextVersion}
 					<div class="versions">
-						<button type="button" class="ver-arrow" disabled={!hasPreviousVersion || busy} onclick={onPrevVersion} aria-label="이전 버전" title="이전 버전">
+						<button type="button" class="ver-arrow" disabled={!hasPreviousVersion || busy} onclick={onPrevVersion} aria-label={t('message.previousVersion')} title={t('message.previousVersion')}>
 							<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round" /></svg>
 						</button>
-						<span class="ver-count">버전</span>
-						<button type="button" class="ver-arrow" disabled={!hasNextVersion || busy} onclick={onNextVersion} aria-label="다음 버전" title="다음 버전">
+						<span class="ver-count">{t('message.version')}</span>
+						<button type="button" class="ver-arrow" disabled={!hasNextVersion || busy} onclick={onNextVersion} aria-label={t('message.nextVersion')} title={t('message.nextVersion')}>
 							<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round" /></svg>
 						</button>
 					</div>
 				{/if}
 
-				<button type="button" class="act" onclick={copy} title="복사" aria-label="복사">
+				<button type="button" class="act" onclick={copy} title={t('message.copy')} aria-label={t('message.copy')}>
 					{#if copied}
 						<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round" /></svg>
 					{:else}
@@ -207,25 +209,25 @@
 				</button>
 
 				{#if retryable}
-					<span class="retry-note" role="status">응답 생성에 실패했습니다</span>
-					<button type="button" class="act retry" disabled={busy} onclick={onRetry} title="다시 전송" aria-label="다시 전송">
+					<span class="retry-note" role="status">{t('message.generationFailed')}</span>
+					<button type="button" class="act retry" disabled={busy} onclick={onRetry} title={t('message.resend')} aria-label={t('message.resend')}>
 						<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4v6h6M20 20v-6h-6" stroke-linecap="round" stroke-linejoin="round" /><path d="M20 10a8 8 0 0 0-14.9-3M4 14a8 8 0 0 0 14.9 3" stroke-linecap="round" /></svg>
 					</button>
 				{/if}
 
 				{#if !isUser}
 					{#if modelLocked}
-						<button type="button" class="act" disabled={busy} onclick={() => onRegenerate('')} title="재생성" aria-label="재생성">
+						<button type="button" class="act" disabled={busy} onclick={() => onRegenerate('')} title={t('message.regenerate')} aria-label={t('message.regenerate')}>
 							<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4v6h6M20 20v-6h-6" stroke-linecap="round" stroke-linejoin="round" /><path d="M20 10a8 8 0 0 0-14.9-3M4 14a8 8 0 0 0 14.9 3" stroke-linecap="round" stroke-linejoin="round" /></svg>
 						</button>
 					{:else}
 						<ModelSelector {models} value={message.model_name ?? ''} compact disabled={busy} onSelect={onRegenerate} align="left" />
 					{/if}
-					<button type="button" class="act" disabled={busy} onclick={onFork} title="이 지점에서 분기" aria-label="분기">
+					<button type="button" class="act" disabled={busy} onclick={onFork} title={t('message.forkHere')} aria-label={t('message.fork')}>
 						<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6" cy="6" r="2.5" /><circle cx="6" cy="18" r="2.5" /><circle cx="18" cy="9" r="2.5" /><path d="M6 8.5v3a3 3 0 0 0 3 3h6M18 11.5v.5" stroke-linecap="round" /></svg>
 					</button>
 					{#if metricsText}
-						<span class="metric-tag" title="생성 속도">{metricsText}</span>
+						<span class="metric-tag" title={t('message.generationSpeed')}>{metricsText}</span>
 					{/if}
 				{/if}
 			</div>

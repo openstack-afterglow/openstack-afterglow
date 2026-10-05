@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/dashboard-home';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import type { VolumeItem } from '$lib/types/userDashboard';
 
@@ -18,8 +19,8 @@
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
 			</svg>
 		</div>
-		<div class="text-ink-0 font-semibold text-sm">블록 볼륨</div>
-		<span class="ml-auto text-xs text-ink-2">{volumes.length}개</span>
+		<div class="text-ink-0 font-semibold text-sm">{t('preview.volumes.title')}</div>
+		<span class="ml-auto text-xs text-ink-2">{t('preview.volumes.count', { count: volumes.length })}</span>
 	</div>
 	<div class="flex flex-col">
 		{#each volumes.slice(0, PREVIEW_LIMIT) as vol (vol.id)}
@@ -32,10 +33,10 @@
 			</div>
 		{/each}
 		{#if volumes.length === 0}
-			<div class="text-ink-2 text-xs py-3 text-center">없음</div>
+			<div class="text-ink-2 text-xs py-3 text-center">{t('preview.volumes.none')}</div>
 		{:else if volumes.length > PREVIEW_LIMIT}
 			<a href="/dashboard/volumes" class="block text-center text-xs text-cyan-400 hover:text-cyan-300 transition-colors pt-2.5">
-				+{volumes.length - PREVIEW_LIMIT}개 더 보기 →
+				{t('preview.volumes.more', { count: volumes.length - PREVIEW_LIMIT })}
 			</a>
 		{/if}
 	</div>

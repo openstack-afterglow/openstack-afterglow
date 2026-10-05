@@ -38,14 +38,6 @@ describe('formatMetrics', () => {
 	it('null 이면 빈 문자열', () => {
 		expect(formatMetrics(null)).toBe('');
 	});
-	it('확정치는 rate·tokens·seconds 를 · 로 연결', () => {
-		const s = formatMetrics({ tokens: 340, seconds: 2.0, tokPerSec: 170, approximate: false });
-		expect(s).toBe('170 tok/s · 340 tok · 2.0s');
-	});
-	it('근사치는 ~ 접두 + 소수 1자리', () => {
-		const s = formatMetrics({ tokens: 50, seconds: 2.0, tokPerSec: 25, approximate: true });
-		expect(s).toBe('~25.0 tok/s · 50 tok · 2.0s');
-	});
 	it('0 항목은 생략', () => {
 		expect(formatMetrics({ tokens: 0, seconds: 0, tokPerSec: 0, approximate: false })).toBe('');
 	});

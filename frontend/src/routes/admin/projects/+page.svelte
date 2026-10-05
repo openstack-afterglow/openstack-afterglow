@@ -21,6 +21,8 @@
 
 	import type { Project } from '$lib/types/project';
 	import type { PagedResponse } from '$lib/types/common';
+	import { t } from '$lib/i18n/ns/admin-identity';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 
 	let projects = $state<Project[]>([]);
 	let loading = $state(true);
@@ -122,7 +124,7 @@
 				projects = [];
 				total = 0;
 				nextMarker = null;
-				error = e instanceof ApiError ? e.message : '프로젝트 목록 조회 실패';
+				error = e instanceof ApiError ? e.message : t('projectPage.loadFailed');
 			}
 		} finally {
 			if (owns()) {
@@ -151,12 +153,12 @@
 </script>
 
 <div class="p-4 md:p-6 max-w-7xl mx-auto">
-	<PageHeader breadcrumb="IDENTITY / PROJECTS" title="프로젝트">
+	<PageHeader breadcrumb={t('projectPage.breadcrumb')} title={t('projectPage.title')}>
 		{#snippet actions()}
 			<button
 				onclick={() => { showCreate = true; }}
 				class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg"
-			>+ 생성</button>
+			>{t('projectPage.create')}</button>
 			<AutoRefreshControl
 				bind:active={ar.active}
 				bind:intervalSeconds={ar.intervalSeconds}
@@ -165,42 +167,42 @@
 				onManualRefresh={() => resetList()}
 			/>
 			<div class="flex items-center gap-1 text-xs text-ink-2 max-md:hidden">
-				표시:
+				{t('projectPage.show')}
 				{#each [10, 20, 30] as n}
 					<button
 						onclick={() => { pageSize = n; resetList(); }}
 						class="px-2 py-0.5 rounded {pageSize === n ? 'bg-action-warm text-ink-0' : 'bg-surface-sunken hover:bg-surface-selected text-ink-2'}"
-					>{n}</button>
+					>{n.toLocaleString(intlLocale())}</button>
 				{/each}
 			</div>
 		{/snippet}
 	</PageHeader>
 
-	<ResourceToolbar label="프로젝트 검색 및 필터" class="mb-3">
+	<ResourceToolbar label={t('projectPage.filters')} class="mb-3">
 		<div class="flex-1 basis-full sm:basis-64 min-w-0">
-			<TextInput type="search" value={search} ariaLabel="프로젝트 검색" placeholder="이름, ID 또는 설명 검색..."
+			<TextInput type="search" value={search} ariaLabel={t('projectPage.search')} placeholder={t('projectPage.searchPlaceholder')}
 				oninput={(event) => { search = (event.target as HTMLInputElement).value; resetList(true); }} />
 		</div>
 		<div class="w-full sm:w-36">
-			<SelectInput value={filterStatus} ariaLabel="프로젝트 상태"
+			<SelectInput value={filterStatus} ariaLabel={t('projectPage.status')}
 				onchange={(event) => { filterStatus = (event.target as HTMLSelectElement).value; resetList(); }}>
-				<option value="all">전체 상태</option>
-				<option value="enabled">활성</option>
-				<option value="disabled">비활성</option>
+				<option value="all">{t('projectPage.allStatuses')}</option>
+				<option value="enabled">{t('state.enabled')}</option>
+				<option value="disabled">{t('state.disabled')}</option>
 			</SelectInput>
 		</div>
 		<div class="w-full sm:w-44">
-			<SelectInput value={filterDomain} ariaLabel="프로젝트 도메인"
+			<SelectInput value={filterDomain} ariaLabel={t('projectPage.domain')}
 				onchange={(event) => { filterDomain = (event.target as HTMLSelectElement).value; resetList(); }}>
-				<option value="">전체 도메인</option>
+				<option value="">{t('projectPage.allDomains')}</option>
 				{#each domainIds as id}<option value={id}>{id}</option>{/each}
 			</SelectInput>
 		</div>
-		<Button variant="ghost" size="sm" disabled={!hasFilters} onclick={clearFilters}>초기화</Button>
+		<Button variant="ghost" size="sm" disabled={!hasFilters} onclick={clearFilters}>{t('projectPage.reset')}</Button>
 	</ResourceToolbar>
 	<div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-2 mb-3">
-		<span aria-live="polite">{loading ? '불러오는 중...' : error ? '검색 결과를 확인할 수 없습니다.' : `검색 결과 ${total}개`}</span>
-		<span>최신 생성순 · 생성일 미확인 항목은 마지막에 표시됩니다.</span>
+		<span aria-live="polite">{loading ? t('projectPage.loading') : error ? t('projectPage.resultsUnavailable') : t('projectPage.results', { total: total.toLocaleString(intlLocale()) })}</span>
+		<span>{t('projectPage.sortNotice')}</span>
 	</div>
 	{#if error}<Alert class="mb-3">{error}</Alert>{/if}
 
@@ -209,7 +211,7 @@
 	{:else if !error}
 		<div class="bg-surface-base border border-line rounded-lg p-5">
 			{#if projects.length === 0}
-				<p class="text-center text-ink-2 text-sm py-8">{hasFilters ? '검색 조건에 맞는 프로젝트가 없습니다.' : '프로젝트가 없습니다.'}</p>
+				<p class="text-center text-ink-2 text-sm py-8">{hasFilters ? t('projectPage.noMatches') : t('projectPage.empty')}</p>
 			{:else}
 			<AdminProjectTable
 				{projects}

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/drover';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { api } from '$lib/api/client';
 	import type { CertificateExpiryResponse, CertificateInfo } from '$lib/types/k3s';
 	import K3sRotateProgressModal from './K3sRotateProgressModal.svelte';
@@ -33,7 +35,7 @@
 				projectId,
 			);
 		} catch (e) {
-			error = e instanceof Error ? e.message : '조회 실패';
+			error = e instanceof Error ? e.message : t('certificateExpiry.loadFailed');
 		} finally {
 			loading = false;
 		}
@@ -46,7 +48,7 @@
 	}
 
 	function formatDate(iso: string): string {
-		return new Date(iso).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' });
+		return new Date(iso).toLocaleDateString(intlLocale(), { year: 'numeric', month: '2-digit', day: '2-digit' });
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
@@ -57,17 +59,17 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <div class="fixed inset-0 z-50 flex items-center justify-center">
-	<button class="absolute inset-0 bg-surface-scrim/60" onclick={onclose} aria-label="닫기" tabindex="-1"></button>
+	<button class="absolute inset-0 bg-surface-scrim/60" onclick={onclose} aria-label={t('certificateExpiry.close')} tabindex="-1"></button>
 
 	<div class="relative bg-surface-canvas border border-line rounded-lg w-full max-w-lg mx-4 shadow-[var(--shadow-restraint)] max-h-[85vh] overflow-y-auto">
 		<div class="flex items-center justify-between px-5 py-4 border-b border-line">
-			<h2 class="text-sm font-semibold text-ink-0">인증서 만료 — {clusterName}</h2>
+			<h2 class="text-sm font-semibold text-ink-0">{t('certificateExpiry.title', { name: clusterName })}</h2>
 			<button onclick={onclose} class="text-ink-2 hover:text-ink-0 transition-colors text-lg leading-none">&times;</button>
 		</div>
 
 		<div class="p-5 space-y-4">
 			{#if loading}
-				<p class="text-ink-2 text-sm text-center py-6">조회 중...</p>
+				<p class="text-ink-2 text-sm text-center py-6">{t('certificateExpiry.loading')}</p>
 			{:else if error}
 				<p class="text-red-400 text-sm">{error}</p>
 			{:else if data}
@@ -77,28 +79,28 @@
 							<span class="text-xs text-ink-2 uppercase tracking-wide">{label}</span>
 							{#if cert}
 								<span class="text-xs px-2 py-0.5 rounded-full {expiryColor(cert.days_remaining)}">
-									{cert.days_remaining}일 남음
+									{t('certificateExpiry.daysRemaining', { count: cert.days_remaining })}
 								</span>
 							{:else}
-								<span class="text-xs text-ink-2">없음</span>
+								<span class="text-xs text-ink-2">{t('certificateExpiry.none')}</span>
 							{/if}
 						</div>
 						{#if cert}
 							<dl class="space-y-1 text-xs">
 								<div class="flex justify-between gap-2">
-									<dt class="text-ink-2 shrink-0">만료일</dt>
+									<dt class="text-ink-2 shrink-0">{t('certificateExpiry.expiresAt')}</dt>
 									<dd class="text-ink-2 font-mono">{formatDate(cert.not_after)}</dd>
 								</div>
 								<div class="flex justify-between gap-2">
-									<dt class="text-ink-2 shrink-0">발급일</dt>
+									<dt class="text-ink-2 shrink-0">{t('certificateExpiry.issuedAt')}</dt>
 									<dd class="text-ink-2 font-mono">{formatDate(cert.not_before)}</dd>
 								</div>
 								<div class="flex justify-between gap-2">
-									<dt class="text-ink-2 shrink-0">Subject</dt>
+									<dt class="text-ink-2 shrink-0">{t('certificateExpiry.subject')}</dt>
 									<dd class="text-ink-2 font-mono truncate max-w-[240px]" title={cert.subject}>{cert.subject}</dd>
 								</div>
 								<div class="flex justify-between gap-2">
-									<dt class="text-ink-2 shrink-0">Issuer</dt>
+									<dt class="text-ink-2 shrink-0">{t('certificateExpiry.issuer')}</dt>
 									<dd class="text-ink-2 font-mono truncate max-w-[240px]" title={cert.issuer}>{cert.issuer}</dd>
 								</div>
 							</dl>
@@ -106,17 +108,17 @@
 					</div>
 				{/snippet}
 
-				{@render certRow('CA 인증서', data.ca)}
-				{@render certRow('클라이언트 인증서', data.client)}
+				{@render certRow(t('certificateExpiry.ca'), data.ca)}
+				{@render certRow(t('certificateExpiry.client'), data.client)}
 
 				{#if data.server_via_tls.length > 0}
 					{#each data.server_via_tls as cert, i}
-						{@render certRow(`서버 TLS ${i + 1}`, cert)}
+						{@render certRow(t('certificateExpiry.serverTlsNumber', { number: i + 1 }), cert)}
 					{/each}
 				{:else}
 					<div class="bg-surface-base border border-line rounded-xl p-4">
-						<span class="text-xs text-ink-2 uppercase tracking-wide">서버 TLS</span>
-						<p class="text-xs text-ink-2 mt-1">TLS 프로브 불가 (API 서버 비접근 또는 타임아웃)</p>
+						<span class="text-xs text-ink-2 uppercase tracking-wide">{t('certificateExpiry.serverTls')}</span>
+						<p class="text-xs text-ink-2 mt-1">{t('certificateExpiry.probeUnavailable')}</p>
 					</div>
 				{/if}
 			{/if}
@@ -127,22 +129,22 @@
 				onclick={load}
 				class="text-xs px-3 py-1.5 rounded-lg bg-surface-sunken hover:bg-surface-selected text-ink-1 transition-colors"
 			>
-				새로고침
+				{t('certificateExpiry.refresh')}
 			</button>
 			{#if masterCount >= 3}
 				<button
 					onclick={() => (showRotateModal = true)}
 					class="text-xs px-3 py-1.5 rounded-lg bg-action-warm hover:bg-action-warm-hover text-action-on-warm transition-colors"
-					title="인증서 rolling 회전 (HA 클러스터 전용)"
+					title={t('certificateExpiry.rotateTooltip')}
 				>
-					인증서 회전
+					{t('certificateExpiry.rotate')}
 				</button>
 			{/if}
 			<button
 				onclick={onclose}
 				class="text-xs px-3 py-1.5 rounded-lg bg-surface-selected hover:bg-surface-selected text-ink-0 transition-colors"
 			>
-				닫기
+				{t('certificateExpiry.close')}
 			</button>
 		</div>
 	</div>

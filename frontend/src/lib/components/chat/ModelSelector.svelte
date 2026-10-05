@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/chat-studio';
 	import type { AvailableModel } from '$lib/api/chatTree';
 
 	interface Props {
@@ -19,7 +20,7 @@
 		onSelect,
 		compact = false,
 		disabled = false,
-		placeholder = '모델 선택',
+		placeholder,
 		align = 'left',
 		searchable
 	}: Props = $props();
@@ -36,7 +37,7 @@
 
 	const showSearch = $derived(searchable ?? !compact);
 	const current = $derived(models.find((m) => m.model_name === value) ?? null);
-	const label = $derived(current?.display_name ?? placeholder);
+	const label = $derived(current?.display_name ?? placeholder ?? t('modelSelector.select'));
 	const filtered = $derived.by(() => {
 		const q = filter.trim().toLowerCase();
 		if (!q) return models;
@@ -94,7 +95,7 @@
 		{disabled}
 		aria-haspopup="listbox"
 		aria-expanded={open}
-		title={compact ? '다른 모델로 재생성' : label}
+		title={compact ? t('modelSelector.regenerate') : label}
 		onclick={toggle}
 	>
 		{#if compact}
@@ -111,18 +112,18 @@
 	</button>
 
 	{#if open}
-		<div class="menu" class:right={align === 'right'} class:up={dropUp} role="listbox" aria-label="모델 선택">
+		<div class="menu" class:right={align === 'right'} class:up={dropUp} role="listbox" aria-label={t('modelSelector.select')}>
 			{#if showSearch && models.length > 0}
 				<div class="search">
 					<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" stroke-linecap="round" /></svg>
-					<input bind:this={searchEl} bind:value={filter} type="text" placeholder="모델 검색" />
+					<input bind:this={searchEl} bind:value={filter} type="text" placeholder={t('modelSelector.search')} />
 				</div>
 			{/if}
 			<ul class="items">
 				{#if models.length === 0}
-					<li class="empty">사용 가능한 모델 없음</li>
+					<li class="empty">{t('modelSelector.unavailable')}</li>
 				{:else if filtered.length === 0}
-					<li class="empty">검색 결과 없음</li>
+					<li class="empty">{t('modelSelector.noResults')}</li>
 				{:else}
 					{#each filtered as m (m.model_name)}
 						<li>

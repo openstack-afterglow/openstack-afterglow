@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/account';
   import { auth, logoutInProgress, setAuth } from '$lib/stores/auth';
   import { api, ApiError } from '$lib/api/client';
   import { cloudShell } from '$lib/stores/cloudShell.svelte';
@@ -31,7 +32,7 @@
       projects = projs;
       defaultProjectId = profile?.default_project_id ?? '';
     } catch (e) {
-      error = e instanceof ApiError ? e.message : '조회 실패';
+      error = e instanceof ApiError ? e.message : t('projects.loadFailed');
     } finally {
       loading = false;
     }
@@ -73,7 +74,7 @@
 
       api.post('/api/v1/networks/ensure-default', {}, resp.token, resp.project_id).catch(() => {});
     } catch (e) {
-      error = e instanceof ApiError ? `전환 실패: ${e.message}` : '프로젝트 전환 실패';
+      error = e instanceof ApiError ? t('projects.switchError', { error: e.message }) : t('projects.switchFailed');
     } finally {
       switching = false;
     }
@@ -86,9 +87,9 @@
     try {
       await api.patch('/api/v1/profile', { default_project_id: proj.id }, token);
       defaultProjectId = proj.id;
-      defaultMsg = `'${proj.name}'이(가) 기본 프로젝트로 설정되었습니다.`;
+      defaultMsg = t('projects.defaultSet', { name: proj.name });
     } catch (e) {
-      error = e instanceof ApiError ? e.message : '기본 프로젝트 설정 실패';
+      error = e instanceof ApiError ? e.message : t('projects.defaultFailed');
     } finally {
       settingDefault = false;
     }
@@ -101,9 +102,9 @@
     try {
       await api.patch('/api/v1/profile', { default_project_id: '' }, token);
       defaultProjectId = '';
-      defaultMsg = '기본 프로젝트가 해제되었습니다.';
+      defaultMsg = t('projects.defaultCleared');
     } catch (e) {
-      error = e instanceof ApiError ? e.message : '기본 프로젝트 해제 실패';
+      error = e instanceof ApiError ? e.message : t('projects.clearFailed');
     } finally {
       settingDefault = false;
     }
@@ -115,7 +116,7 @@
 </script>
 
 <div class="bg-surface-base border border-line rounded-xl p-5">
-  <h3 class="text-sm font-semibold text-ink-0 mb-4">소속 프로젝트</h3>
+  <h3 class="text-sm font-semibold text-ink-0 mb-4">{t('projects.title')}</h3>
 
   {#if error}
     <div class="text-red-400 text-xs mb-2">{error}</div>
@@ -131,7 +132,7 @@
       {/each}
     </div>
   {:else if projects.length === 0}
-    <div class="text-ink-2 text-xs text-center py-4">소속 프로젝트가 없습니다</div>
+    <div class="text-ink-2 text-xs text-center py-4">{t('projects.empty')}</div>
   {:else}
     <div class="space-y-2">
       {#each projects as proj (proj.id)}
@@ -154,10 +155,10 @@
 
           <div class="flex items-center gap-1.5 shrink-0">
             {#if isDefault}
-              <span class="text-xs text-warm-text font-medium px-1.5 py-0.5 rounded bg-action-warm/10 border border-action-warm/25">기본</span>
+              <span class="text-xs text-warm-text font-medium px-1.5 py-0.5 rounded bg-action-warm/10 border border-action-warm/25">{t('projects.default')}</span>
             {/if}
             {#if isActive}
-              <span class="text-xs text-warm-text font-medium px-1.5 py-0.5 rounded bg-action-warm/15 border border-action-warm/30">활성</span>
+              <span class="text-xs text-warm-text font-medium px-1.5 py-0.5 rounded bg-action-warm/15 border border-action-warm/30">{t('projects.active')}</span>
             {:else if switching}
               <svg class="w-3.5 h-3.5 text-ink-2 animate-spin" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -169,13 +170,13 @@
                 onclick={() => clearDefault()}
                 disabled={settingDefault}
                 class="text-xs text-ink-2 hover:text-red-400 transition-colors disabled:opacity-40"
-              >해제</button>
+              >{t('projects.clear')}</button>
             {:else}
               <button
                 onclick={() => setDefault(proj)}
                 disabled={settingDefault}
                 class="text-xs text-ink-2 hover:text-warm-text-hover transition-colors disabled:opacity-40"
-              >기본 설정</button>
+              >{t('projects.setDefault')}</button>
             {/if}
           </div>
         </div>

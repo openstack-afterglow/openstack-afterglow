@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/volume';
   import { auth } from '$lib/stores/auth';
   import { betaFeatures } from '$lib/stores/betaFeatures';
   import { useVolumeDetailController } from '$lib/stores/volumeDetailController.svelte';
@@ -26,16 +27,16 @@
   });
 </script>
 
-<div class="flex items-center gap-2 flex-wrap" aria-label="볼륨 작업">
-  <Button onclick={() => s.openRenameModal()} size="sm" variant="secondary">이름 변경</Button>
+<div class="flex items-center gap-2 flex-wrap" aria-label={t('volumeActions.actions')}>
+  <Button onclick={() => s.openRenameModal()} size="sm" variant="secondary">{t('volumeActions.rename')}</Button>
   {#if s.volume!.status === 'available'}
-    <Button onclick={() => s.openAttachModal()} size="sm">인스턴스에 연결</Button>
+    <Button onclick={() => s.openAttachModal()} size="sm">{t('volumeActions.attach')}</Button>
   {/if}
-  <Button onclick={() => s.deleteVolume()} disabled={!s.canDelete} size="sm" variant="danger-outline" title={s.volume!.attachments.length > 0 ? '연결된 볼륨은 삭제할 수 없습니다' : undefined}>
-    {s.deleting ? '삭제 중...' : '볼륨 삭제'}
+  <Button onclick={() => s.deleteVolume()} disabled={!s.canDelete} size="sm" variant="danger-outline" title={s.volume!.attachments.length > 0 ? t('volumeActions.attachedDeleteUnavailable') : undefined}>
+    {s.deleting ? t('volumeActions.deleting') : t('volumeActions.delete')}
   </Button>
-  <span class="text-sm text-ink-2">볼륨 작업</span>
-  <ActionMenu open={menuOpen} onopen={() => menuOpen = true} onclose={() => menuOpen = false} ariaLabel={`${s.volume!.name || s.volume!.id} 볼륨 작업`}>
+  <span class="text-sm text-ink-2">{t('volumeActions.actions')}</span>
+  <ActionMenu open={menuOpen} onopen={() => menuOpen = true} onclose={() => menuOpen = false} ariaLabel={t('volumeActions.namedActions', { name: s.volume!.name || s.volume!.id })}>
     <VolumeOperationItems
       volume={s.volume!}
       onclose={() => menuOpen = false}

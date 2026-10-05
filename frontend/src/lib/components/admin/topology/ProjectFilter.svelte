@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/topology';
 	import { projectNames } from '$lib/stores/projectNames';
 
 	let {
@@ -26,7 +27,7 @@
 	<div class="flex items-center bg-surface-sunken border border-line-2 rounded-lg px-3 py-1.5 w-52 focus-within:border-action-warm">
 		<input
 			type="text"
-			placeholder="프로젝트 검색..."
+			placeholder={t('filter.projects')}
 			bind:value={searchText}
 			onfocus={() => (dropdownOpen = true)}
 			oninput={() => { dropdownOpen = true; if (!searchText) { projectFilter = null; } }}

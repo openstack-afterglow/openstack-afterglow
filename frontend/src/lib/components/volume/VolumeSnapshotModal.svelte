@@ -3,6 +3,7 @@
 	import { api, ApiError } from '$lib/api/client';
 	import type { Volume } from '$lib/types/volume';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
+	import { t } from '$lib/i18n/ns/volume';
 
 	let { volume, onclose, onsuccess }: {
 		volume: Volume | null;
@@ -45,7 +46,7 @@
 			);
 			onsuccess();
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : '스냅샷 생성 실패';
+			error = e instanceof ApiError ? e.message : t('snapshotModal.createFailed');
 		} finally {
 			creating = false;
 		}
@@ -68,26 +69,26 @@
 		onclick={(e) => e.stopPropagation()}
 		role="none"
 	>
-		<h2 class="text-lg font-semibold text-ink-0 mb-5">볼륨 스냅샷 생성</h2>
+		<h2 class="text-lg font-semibold text-ink-0 mb-5">{t('snapshotModal.title')}</h2>
 		<div class="space-y-4">
 			<div>
-				<div class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">볼륨</div>
+				<div class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('snapshotModal.volumeLabel')}</div>
 				<div class="bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-2 text-sm">
-					{volume.name || volume.id.slice(0, 8)} <span class="text-ink-2">({volume.size} GB)</span>
+					{volume.name || volume.id.slice(0, 8)} <span class="text-ink-2">{t('snapshotModal.sizeSummary', { size: volume.size })}</span>
 				</div>
 			</div>
 			<div>
-				<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">스냅샷 이름
+				<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('snapshotModal.nameLabel')}
 					<input
 						bind:value={name}
 						type="text"
-						placeholder="my-snapshot"
+						placeholder={t('snapshotModal.namePlaceholder')}
 						class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1.5"
 					/>
 				</label>
 			</div>
 			<div>
-				<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">설명 (선택)
+				<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('snapshotModal.descriptionLabel')}
 					<input
 						bind:value={description}
 						type="text"
@@ -104,21 +105,21 @@
 					class="rounded border-line-2 disabled:opacity-60"
 				/>
 				<label for="snap-force" class="text-sm text-ink-2">
-					연결된 볼륨 강제 스냅샷 (force)
+					{t('snapshotModal.forceLabel')}
 					{#if volume.status === 'in-use'}
-						<span class="ml-1 text-xs text-warm-text">— 사용 중인 볼륨은 필수</span>
+						<span class="ml-1 text-xs text-warm-text">{t('snapshotModal.forceRequiredHelp')}</span>
 					{/if}
 				</label>
 			</div>
 		</div>
 		{#if error}<div class="mt-4 text-red-400 text-xs bg-red-900/20 border border-red-800 rounded px-3 py-2">{error}</div>{/if}
 		<div class="flex justify-end gap-3 mt-6">
-			<button onclick={onclose} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">취소</button>
+			<button onclick={onclose} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('snapshotModal.cancel')}</button>
 			<button
 				onclick={createSnapshot}
 				disabled={creating || !name.trim()}
 				class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors"
-			>{creating ? '생성 중...' : '스냅샷 생성'}</button>
+			>{creating ? t('snapshotModal.creating') : t('snapshotModal.create')}</button>
 		</div>
 	</div>
 </div>
