@@ -13,6 +13,14 @@
 - 전체 병렬 작업·회귀 검증과 확인된 문제 처리가 끝난 뒤에만 배포한다. 사용자가 확인 중인 기존 WireGuard 서버 keepalive·네트워크 설정은 변경하지 않는다.
 - 배포 전후 VIP·ProxySQL·HAProxy뿐 아니라 Keystone과 나머지 활성 서비스의 실제 health·인증·읽기 경로를 확인한다. 비정상 상태는 원인·영향·복구 지점을 확인하고 최소 범위로 처리하며, container running이나 unauthenticated 200만으로 정상 판정하지 않는다.
 
+### Four-service production exception (2026-10-05)
+
+Owner가 요청된 main PR들을 병합했다고 보고한 뒤, 정확한 main push CI·registry 게시·정식 artifact 보존과 source 관계를 읽기 전용으로 검증했다. 후속 선택 `4개만 운영 배포`는 운영 범위를 Afterglow·Lumen·Drover·Waygate로 제한한다. Palimpsest native 입력 업로드/호스팅·URL 설정·승인·정식 발행과 package/image/storage/controller 변경은 계속 보류한다.
+
+요청 inventory 이름은 그대로 `multimode`다. 네 서비스의 `genconfig`·`pull`·`reconfigure`는 표준 CLI에 `--tags afterglow,lumen,drover,waygate`를 명시하며 태그 없는 stock/Palimpsest 재배포를 하지 않는다. 태그 선택도 native loadbalancer의 HAProxy·ProxySQL·Keepalived 변경 handler를 격리하지 않으므로 현재 shared-infrastructure 수용과 복구 가능한 서비스별 datastore 백업을 먼저 확보한다. 기존 Kolla `stable/2025.2`·일반 의존성·키·데이터·기존 WireGuard/keepalive·Palimpsest 입력을 보존하며, operator root source tag는 Drover `v0.3.1`·Lumen `v0.6.2`·Waygate `v0.3.1` 세 개만 승격한다.
+
+현재 `multinode`에는 compute4를 HTML comment로 감싼 문법 오류가 있어 Ansible INI parser가 실패한다. Compute4 비활성화 의도를 유지하는 INI comment 정정과 검증된 동일 inventory 연결만 준비하며 호스트/그룹의 소유권·대상을 바꾸지 않는다. 원본을 보존하고 요청 inventory parse/dispatch를 실제 확인한 뒤 다음 단계로 진행한다. Scope 선택은 auth·schema·backup·storage·runtime 선행 조건을 면제하지 않는다.
+
 ## Historical Decisions
 
 아래 날짜별 지시는 당시의 선택과 관측을 보존한다. 현재 순서·inventory·버전 정책은 위 2026-10-05 계약과 tasks의 `Explicit Release-first Deployment Contract`가 우선한다. 과거 local/hosted/main 증거는 새 patch publication 또는 현재 운영 health를 증명하지 않는다.
