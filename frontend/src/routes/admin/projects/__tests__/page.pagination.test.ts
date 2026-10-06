@@ -60,6 +60,9 @@ describe('admin project inventory', () => {
 
 		render(Page);
 		await vi.waitFor(() => expect(mockGet).toHaveBeenCalledOnce());
+		const loadingCount = screen.getByText('불러오는 중...');
+		expect(loadingCount.getAttribute('aria-live')).toBe('polite');
+		expect(loadingCount.childElementCount).toBe(0);
 		await fireEvent.click(screen.getByRole('button', { name: '10' }));
 		await vi.waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
 

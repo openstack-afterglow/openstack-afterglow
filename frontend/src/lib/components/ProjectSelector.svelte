@@ -77,6 +77,7 @@
 				username: string;
 				roles: string[];
 				is_system_admin: boolean;
+				can_write: boolean;
 			}>('/api/v1/auth/token/project', { project_id: project.id }, token);
 
 			// The drawer can unmount this selector while the request is pending.
@@ -93,6 +94,7 @@
 				projectName: resp.project_name,
 				roles: resp.roles ?? [],
 				isSystemAdmin: !!resp.is_system_admin,
+				canWrite: resp.can_write,
 			});
 
 			isOpen = false;
@@ -166,7 +168,7 @@
 	</button>
 
 	{#if isOpen && !showInitialLoading}
-		<div use:portal bind:this={menuRef} role="menu" style={menuStyle} class="fixed left-0 bottom-0 w-full sm:bottom-auto sm:w-64 max-h-[50vh] bg-surface-base border border-line-2 rounded-t-lg sm:rounded-lg shadow-[var(--shadow-restraint)] sm:shadow-[var(--shadow-popover)] z-[var(--z-popover)] overflow-hidden">
+		<div use:portal bind:this={menuRef} role="menu" style={menuStyle} class="motion-pop fixed left-0 bottom-0 w-full sm:bottom-auto sm:w-64 max-h-[50vh] bg-surface-base border border-line-2 rounded-t-lg sm:rounded-lg shadow-[var(--shadow-restraint)] sm:shadow-[var(--shadow-popover)] z-[var(--z-popover)] overflow-hidden">
 			{#if error}
 				<div class="p-3 text-sm text-red-400">{error}</div>
 			{:else if $projectList.projects.length === 0}

@@ -7,6 +7,8 @@
 	import ThinkingBlock from './ThinkingBlock.svelte';
 	import ExecutionTimeline from './ExecutionTimeline.svelte';
 	import ChatBubble from '$lib/components/ui/ChatBubble.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import { activityIsRunning, visibleActivityItems } from './chatActivityPresentation';
 	import type { AvailableModel, ChatMessage } from '$lib/api/chatTree';
 	import { formatMetrics, type StreamMetrics } from '$lib/api/chatMetrics';
 	import {
@@ -28,6 +30,9 @@
 		reasoning?: string;
 		/** Durable run journal에서 복원한 순차 실행 과정(draft 전용). */
 		activityItems?: RunActivityItem[];
+		/** A window-level activity already communicates progress for this reply. */
+		progressElsewhere?: boolean;
+		liveMotion?: boolean;
 		/** Server-projected adjacent sibling availability for branch navigation. */
 		hasPreviousVersion?: boolean;
 		hasNextVersion?: boolean;
@@ -50,6 +55,8 @@
 		toolItems = [],
 		reasoning = '',
 		activityItems = [],
+		progressElsewhere = false,
+		liveMotion = false,
 		hasPreviousVersion = false,
 		hasNextVersion = false,
 		busy = false,
@@ -70,6 +77,11 @@
 	const retryable = $derived(isUser && message.execution?.retryable === true);
 	const reasoningActive = $derived(streaming && message.content.length === 0);
 	const metricsText = $derived(formatMetrics(metrics));
+	const visibleActivity = $derived(visibleActivityItems(activityItems, streaming));
+	const hasProgress = $derived(
+		progressElsewhere || visibleActivity.some((item) => activityIsRunning(item, activityItems, streaming)) ||
+		(!visibleActivity.length && (Boolean(reasoning && reasoningActive) || toolItems.some((item) => item.running)))
+	);
 	// 저장된 assistant 호출 스텝(재로딩) → 호출 카드(인자). role=tool → 결과 카드.
 	const invocationItems = $derived(
 		!isUser && !isTool ? parseAssistantToolCalls(message.tool_calls) : []
@@ -158,16 +170,16 @@
 					</ol>
 				</section>
 			{/if}
-			{#if activityItems.length}
-				<ExecutionTimeline items={activityItems} active={streaming} />
+			{#if visibleActivity.length}
+				<ExecutionTimeline items={activityItems} active={streaming} animate={liveMotion} />
 			{:else}
 				{#if reasoning}
-					<ThinkingBlock text={reasoning} active={reasoningActive} />
+					<ThinkingBlock text={reasoning} active={reasoningActive} animate={liveMotion} />
 				{/if}
 				{#if toolItems.length || invocationItems.length}
 					<div class="tool-cards">
 						{#each toolItems as tool (tool.id ?? tool.name)}
-							<ToolCallCard item={tool} />
+							<ToolCallCard item={tool} animate={liveMotion} />
 						{/each}
 						{#each invocationItems as tool (tool.id ?? tool.name)}
 							<ToolCallCard item={tool} />
@@ -176,10 +188,8 @@
 				{/if}
 			{/if}
 			<MarkdownMessage content={message.content} {streaming} />
-			{#if streaming && message.content.length === 0}
-				<div class="thinking">
-					<span></span><span></span><span></span>
-				</div>
+			{#if streaming && message.content.length === 0 && !hasProgress}
+				<ActivityIndicator variant="orbit" label={t('message.preparingResponse')} />
 			{/if}
 			{#if streaming && metricsText}
 				<div class="live-metric" aria-live="off">{metricsText}</div>
@@ -410,23 +420,5 @@
 		flex-direction: column;
 		gap: 0.4rem;
 		margin-bottom: 0.6rem;
-	}
-	.thinking {
-		display: inline-flex;
-		gap: 0.28rem;
-		padding: 0.35rem 0.1rem;
-	}
-	.thinking span {
-		width: 0.42rem;
-		height: 0.42rem;
-		border-radius: 50%;
-		background: var(--color-ink-3);
-		animation: blink 1.2s infinite ease-in-out both;
-	}
-	.thinking span:nth-child(2) { animation-delay: 0.16s; }
-	.thinking span:nth-child(3) { animation-delay: 0.32s; }
-	@keyframes blink {
-		0%, 80%, 100% { opacity: 0.25; }
-		40% { opacity: 1; }
 	}
 </style>

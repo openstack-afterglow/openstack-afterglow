@@ -1,4 +1,6 @@
 {
+	"builds.progressLabel": "{name} 빌드 진행률",
+	"buildDetail.progress": "레이어 빌드 진행률",
 	"execution.layersOnly": "레이어만 빌드",
 	"execution.createInstance": "인스턴스까지 생성",
 	"mode.editor": "직접 작성",

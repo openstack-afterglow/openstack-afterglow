@@ -10,7 +10,7 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import { betaFeatures } from '$lib/stores/betaFeatures';
 	import type { BetaFeatures } from '$lib/stores/betaFeatures';
-	import { navIcons, userNavSections } from '$lib/config/nav';
+	import { documentationNavItem, navIcons, userNavSections } from '$lib/config/nav';
 	import type { NavItem, NavSection } from '$lib/config/nav';
 	import { isMockupPathAllowed } from '$lib/mockup/contracts';
 
@@ -23,6 +23,7 @@
 		{ label: tn('items.usageReport'), labelKey: 'items.usageReport', href: '/dashboard/usage-report', icon: navIcons.document, service: null },
 		{ label: tn('items.activity'), labelKey: 'items.activity', href: '/dashboard/activity', icon: navIcons.activity, service: null },
 		{ label: tn('items.topology'), labelKey: 'items.topology', href: '/dashboard/network/topology', icon: navIcons.network, service: null, topLevel: true },
+		documentationNavItem,
 	]);
 
 	function isBetaVisible(beta?: BetaFeatureKey): boolean {
@@ -93,7 +94,7 @@
 					href="/admin"
 					aria-label={t('mode.userCurrent')}
 					title={t('mode.switchToAdmin')}
-					class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors text-ink-2 hover:text-ink-0 hover:bg-surface-sunken"
+					class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors duration-[var(--motion-duration-fast)] ease-[var(--motion-ease-standard)] text-ink-2 hover:text-ink-0 hover:bg-surface-sunken"
 				>
 					<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
 					{t('mode.user')}

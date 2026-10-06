@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { page } from '$app/stores';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -138,7 +139,7 @@
 		{#if tab === 'members'}
 			<div class="bg-surface-base border border-line rounded-lg overflow-hidden">
 				{#if membersLoading}
-					<div class="text-[var(--color-ink-3)] text-sm py-8 text-center">{t('projectDetail.membersLoading')}</div>
+					<div class="text-ink-2 text-sm py-8 text-center"><ActivityIndicator size="sm" label={t('projectDetail.membersLoading')} /></div>
 				{:else if membersError}
 					<div class="text-[var(--color-state-danger)] text-sm py-8 text-center">{membersError}</div>
 				{:else if members.length === 0}

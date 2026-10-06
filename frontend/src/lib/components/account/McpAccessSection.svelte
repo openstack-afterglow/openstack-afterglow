@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/account';
+	import { t as tc } from '$lib/i18n/ns/common';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
-	import { untrack } from 'svelte';
+	import { onMount, untrack } from 'svelte';
+	import { derived } from 'svelte/store';
 	import { api, ApiError, getBaseUrl } from '$lib/api/client';
 	import { siteConfig } from '$lib/config/site';
 	import { auth } from '$lib/stores/auth';
@@ -12,6 +14,8 @@
 	import Field from '$lib/components/ui/Field.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
 
 	interface McpAccessRecord {
 		id: string;
@@ -32,8 +36,15 @@
 		token: string;
 	}
 
-	const token = $derived($auth.token ?? undefined);
-	const projectId = $derived($auth.projectId ?? undefined);
+	interface AccessScope {
+		token: string | undefined;
+		projectId: string | undefined;
+		enabled: boolean;
+	}
+
+	let scope = $state.raw<AccessScope | null>(null);
+	let collectionScope = $state.raw<AccessScope | null>(null);
+	let loadSequence = 0;
 	const mcpEnabled = $derived($siteConfig.services.mcp);
 	const mcpUrl = $derived($siteConfig.mcp_url || `${getBaseUrl().replace(/\/+$/, '')}/api/v1/mcp`);
 
@@ -55,33 +66,87 @@
 		return error instanceof ApiError ? error.message : fallback;
 	}
 
-	function reset() {
-		tokens = [];
-		oauthGrants = [];
-		loadError = '';
-		actionError = '';
+	function isCurrentScope(owner: AccessScope | null): owner is AccessScope & { token: string; projectId: string } {
+		return owner !== null && owner === scope && owner.enabled && !!owner.token && !!owner.projectId;
 	}
 
+	function ownsToken(owner: AccessScope, record: McpAccessRecord) {
+		return isCurrentScope(owner) && collectionScope === owner && tokens.includes(record);
+	}
+
+	function ownsGrant(owner: AccessScope, record: McpAccessRecord) {
+		return isCurrentScope(owner) && collectionScope === owner && oauthGrants.includes(record);
+	}
+
+	function reset() {
+		collectionScope = null;
+		tokens = [];
+		oauthGrants = [];
+		loading = false;
+		loadError = '';
+		actionError = '';
+		creating = false;
+		mutatingId = null;
+		tokenName = 'Lumen';
+		accessLevel = 'read';
+		expiresAt = '';
+		issuedToken = null;
+		showIssuedToken = false;
+		copied = false;
+	}
+
+	// Subscribe synchronously so even a batched A → B → A gets a new owner.
+	// Unrelated store updates keep the owner, including populated refresh rows.
+	onMount(() => {
+		const unsubscribe = derived([auth, siteConfig], ([authState, config]): AccessScope => ({
+			token: authState.token ?? undefined,
+			projectId: authState.projectId ?? undefined,
+			enabled: config.services.mcp,
+		})).subscribe((next) => {
+			if (scope?.token === next.token && scope?.projectId === next.projectId && scope?.enabled === next.enabled) return;
+			scope = next;
+			reset();
+		});
+		return () => {
+			unsubscribe();
+			scope = null;
+		};
+	});
+
+	// Keep this zero-argument entry point compatible with onclick={loadAccess}.
 	async function loadAccess() {
-		if (!mcpEnabled || !token || !projectId) return;
+		await loadAccessFor(scope);
+	}
+
+	async function loadAccessFor(owner: AccessScope | null) {
+		if (!isCurrentScope(owner)) return;
+		const request = ++loadSequence;
 		loading = true;
 		try {
 			const [personalTokens, grants] = await Promise.all([
-				api.get<McpAccessRecord[]>('/api/v1/auth/mcp-tokens', token, projectId),
-				api.get<McpAccessRecord[]>('/api/v1/auth/mcp-oauth/grants', token, projectId),
+				api.get<McpAccessRecord[]>('/api/v1/auth/mcp-tokens', owner.token, owner.projectId),
+				api.get<McpAccessRecord[]>('/api/v1/auth/mcp-oauth/grants', owner.token, owner.projectId),
 			]);
+			if (!isCurrentScope(owner) || request !== loadSequence) return;
 			tokens = personalTokens;
 			oauthGrants = grants;
+			collectionScope = owner;
 			loadError = '';
 		} catch (error) {
+			if (!isCurrentScope(owner) || request !== loadSequence) return;
 			loadError = errorMessage(error, t('mcp.loadFailed'));
 		} finally {
-			loading = false;
+			if (isCurrentScope(owner) && request === loadSequence) loading = false;
 		}
 	}
 
-	async function createToken() {
-		if (!token || !projectId || !tokenName.trim()) return;
+	function submitToken(owner: AccessScope, event: SubmitEvent) {
+		event.preventDefault();
+		void createToken(owner);
+	}
+
+	async function createToken(owner: AccessScope) {
+		if (!isCurrentScope(owner) || creating || !tokenName.trim()) return;
 		creating = true;
 		actionError = '';
 		try {
@@ -92,92 +157,97 @@
 					access_level: accessLevel,
 					expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
 				},
-				token,
-				projectId,
+				owner.token,
+				owner.projectId,
 			);
+			if (!isCurrentScope(owner)) return;
 			issuedToken = issued.token;
 			showIssuedToken = true;
+			copied = false;
 			tokenName = 'Lumen';
 			expiresAt = '';
-			await loadAccess();
+			await loadAccessFor(owner);
 		} catch (error) {
-			actionError = errorMessage(error, t('mcp.createFailed'));
+			if (isCurrentScope(owner)) actionError = errorMessage(error, t('mcp.createFailed'));
 		} finally {
-			creating = false;
+			if (isCurrentScope(owner)) creating = false;
 		}
 	}
 
-	function dismissIssuedToken() {
+	function dismissIssuedToken(owner: AccessScope, secret: string | null) {
+		if (!isCurrentScope(owner) || issuedToken !== secret) return;
 		issuedToken = null;
 		showIssuedToken = false;
 		copied = false;
 	}
 
-	async function copyIssuedToken() {
-		if (!issuedToken) return;
+	async function copyIssuedToken(owner: AccessScope, secret: string | null) {
+		if (!isCurrentScope(owner) || !secret || issuedToken !== secret) return;
 		try {
-			await navigator.clipboard.writeText(issuedToken);
-			copied = true;
+			await navigator.clipboard.writeText(secret);
+			if (isCurrentScope(owner) && issuedToken === secret) copied = true;
 		} catch {
-			actionError = t('mcp.copyFailed');
+			if (isCurrentScope(owner) && issuedToken === secret) actionError = t('mcp.copyFailed');
 		}
 	}
 
-	async function selectLumenDefault(record: McpAccessRecord) {
-		if (!token || !projectId) return;
+	async function selectLumenDefault(owner: AccessScope, record: McpAccessRecord) {
+		if (!isCurrentScope(owner) || !ownsToken(owner, record) || mutatingId !== null) return;
 		mutatingId = record.id;
 		actionError = '';
 		try {
-			await api.put(`/api/v1/auth/mcp-tokens/${encodeURIComponent(record.id)}/lumen-default`, {}, token, projectId);
-			await loadAccess();
+			await api.put(`/api/v1/auth/mcp-tokens/${encodeURIComponent(record.id)}/lumen-default`, {}, owner.token, owner.projectId);
+			if (isCurrentScope(owner) && collectionScope === owner) await loadAccessFor(owner);
 		} catch (error) {
-			actionError = errorMessage(error, t('mcp.selectFailed'));
+			if (isCurrentScope(owner) && collectionScope === owner) actionError = errorMessage(error, t('mcp.selectFailed'));
 		} finally {
-			mutatingId = null;
+			if (isCurrentScope(owner)) mutatingId = null;
 		}
 	}
 
-	async function clearLumenDefault() {
-		if (!token || !projectId) return;
+	async function clearLumenDefault(owner: AccessScope, record: McpAccessRecord) {
+		if (!isCurrentScope(owner) || !ownsToken(owner, record) || !record.is_lumen_default || mutatingId !== null) return;
 		mutatingId = 'lumen-default';
 		actionError = '';
 		try {
-			await api.delete('/api/v1/auth/mcp-tokens/lumen-default', token, projectId);
-			await loadAccess();
+			await api.delete('/api/v1/auth/mcp-tokens/lumen-default', owner.token, owner.projectId);
+			if (isCurrentScope(owner) && collectionScope === owner) await loadAccessFor(owner);
 		} catch (error) {
-			actionError = errorMessage(error, t('mcp.clearFailed'));
+			if (isCurrentScope(owner) && collectionScope === owner) actionError = errorMessage(error, t('mcp.clearFailed'));
 		} finally {
-			mutatingId = null;
+			if (isCurrentScope(owner)) mutatingId = null;
 		}
 	}
 
-	async function revokeToken(record: McpAccessRecord) {
-		if (!token || !projectId) return;
+	async function revokeToken(owner: AccessScope, record: McpAccessRecord) {
+		if (!isCurrentScope(owner) || !ownsToken(owner, record) || mutatingId !== null) return;
 		if (!(await confirmDialog(t('mcp.revokeConfirm', { name: record.name })))) return;
+		if (!isCurrentScope(owner) || !ownsToken(owner, record) || mutatingId !== null) return;
 		mutatingId = record.id;
 		actionError = '';
 		try {
-			await api.delete(`/api/v1/auth/mcp-tokens/${encodeURIComponent(record.id)}`, token, projectId);
-			await loadAccess();
+			await api.delete(`/api/v1/auth/mcp-tokens/${encodeURIComponent(record.id)}`, owner.token, owner.projectId);
+			if (isCurrentScope(owner) && collectionScope === owner) await loadAccessFor(owner);
 		} catch (error) {
-			actionError = errorMessage(error, t('mcp.revokeFailed'));
+			if (isCurrentScope(owner) && collectionScope === owner) actionError = errorMessage(error, t('mcp.revokeFailed'));
 		} finally {
-			mutatingId = null;
+			if (isCurrentScope(owner)) mutatingId = null;
 		}
 	}
 
-	async function revokeOAuthGrant(record: McpAccessRecord) {
-		if (!token || !projectId) return;
+	async function revokeOAuthGrant(owner: AccessScope, record: McpAccessRecord) {
+		if (!isCurrentScope(owner) || !ownsGrant(owner, record) || mutatingId !== null) return;
 		if (!(await confirmDialog(t('mcp.revokeOAuthConfirm', { name: record.name })))) return;
+		if (!isCurrentScope(owner) || !ownsGrant(owner, record) || mutatingId !== null) return;
 		mutatingId = record.id;
 		actionError = '';
 		try {
-			await api.delete(`/api/v1/auth/mcp-oauth/grants/${encodeURIComponent(record.grant_id)}`, token, projectId);
-			await loadAccess();
+			await api.delete(`/api/v1/auth/mcp-oauth/grants/${encodeURIComponent(record.grant_id)}`, owner.token, owner.projectId);
+			if (isCurrentScope(owner) && collectionScope === owner) await loadAccessFor(owner);
 		} catch (error) {
-			actionError = errorMessage(error, t('mcp.revokeOAuthFailed'));
+			if (isCurrentScope(owner) && collectionScope === owner) actionError = errorMessage(error, t('mcp.revokeOAuthFailed'));
 		} finally {
-			mutatingId = null;
+			if (isCurrentScope(owner)) mutatingId = null;
 		}
 	}
 
@@ -187,23 +257,21 @@
 	}
 
 	$effect(() => {
-		if (!mcpEnabled || !token || !projectId) {
-			reset();
-			return;
-		}
-		untrack(() => void loadAccess());
+		const owner = scope;
+		if (isCurrentScope(owner)) untrack(() => void loadAccessFor(owner));
 	});
 </script>
 
-{#if mcpEnabled}
-	<Card class="mcp-access" surface="raised" padding="lg">
+{#if mcpEnabled && scope}
+	{@const owner = scope}
+	<Card class="mcp-access motion-fade" surface="raised" padding="lg">
 		<div class="section-heading">
 			<div>
 				<h2>{t('mcp.title')}</h2>
 				<p>{t('mcp.scopeHelp')}</p>
 			</div>
 			<Button variant="ghost" size="sm" onclick={loadAccess} disabled={loading}>
-				{loading ? t('mcp.loading') : t('mcp.refresh')}
+				{#if loading}<ActivityIndicator size="xs" label={t('mcp.loading')} />{:else}{t('mcp.refresh')}{/if}
 			</Button>
 		</div>
 
@@ -224,7 +292,8 @@
 			</Alert>
 		{/if}
 
-		<form class="token-form" onsubmit={(event) => { event.preventDefault(); void createToken(); }}>
+		{#if mutatingId}<ActivityIndicator label={tc('state.processing')} />{/if}
+		<form class="token-form" onsubmit={submitToken.bind(null, owner)}>
 			<Field label={t('mcp.name')} for="mcp-token-name" required>
 				{#snippet children()}
 					<input id="mcp-token-name" class="control" bind:value={tokenName} maxlength="100" autocomplete="off" />
@@ -243,16 +312,16 @@
 					<input id="mcp-token-expiry" class="control" type="datetime-local" bind:value={expiresAt} />
 				{/snippet}
 			</Field>
-			<div class="token-submit"><Button type="submit" disabled={creating || !tokenName.trim()}>{creating ? t('mcp.creating') : t('mcp.create')}</Button></div>
+			<div class="token-submit"><Button type="submit" disabled={creating || !tokenName.trim()}>{#if creating}<ActivityIndicator size="xs" label={t('mcp.creating')} />{:else}{t('mcp.create')}{/if}</Button></div>
 		</form>
 
 		<section aria-labelledby="mcp-personal-tokens-heading">
 			<div class="subheading">
 				<h3 id="mcp-personal-tokens-heading">{t('mcp.personal')}</h3>
-				<span>{t('mcp.count', { count: tokens.length })}</span>
+				<span><AnimatedNumber value={tokens.length} format={(n) => t('mcp.count', { count: Math.round(n) })} /></span>
 			</div>
-			{#if loading}
-				<p class="empty">{t('mcp.loadingAccess')}</p>
+			{#if loading && tokens.length === 0}
+				<div class="empty"><ActivityIndicator label={t('mcp.loadingAccess')} /></div>
 			{:else if tokens.length === 0}
 				<p class="empty">{t('mcp.emptyTokens')}</p>
 			{:else}
@@ -266,11 +335,11 @@
 							</div>
 							<div class="record-actions">
 								{#if record.is_lumen_default}
-									<Button variant="subtle" size="xs" onclick={clearLumenDefault} disabled={mutatingId !== null}>{t('mcp.clearLumen')}</Button>
+									<Button variant="subtle" size="xs" onclick={clearLumenDefault.bind(null, owner, record)} disabled={mutatingId !== null}>{t('mcp.clearLumen')}</Button>
 								{:else}
-									<Button variant="outline" size="xs" onclick={() => selectLumenDefault(record)} disabled={mutatingId !== null || record.status !== 'active'}>{t('mcp.setLumen')}</Button>
+									<Button variant="outline" size="xs" onclick={selectLumenDefault.bind(null, owner, record)} disabled={mutatingId !== null || record.status !== 'active'}>{t('mcp.setLumen')}</Button>
 								{/if}
-								<Button variant="danger-outline" size="xs" onclick={() => revokeToken(record)} disabled={mutatingId !== null}>{t('mcp.revoke')}</Button>
+								<Button variant="danger-outline" size="xs" onclick={revokeToken.bind(null, owner, record)} disabled={mutatingId !== null}>{t('mcp.revoke')}</Button>
 							</div>
 						</div>
 					{/each}
@@ -279,7 +348,7 @@
 		</section>
 
 		<section aria-labelledby="mcp-oauth-grants-heading">
-			<div class="subheading"><h3 id="mcp-oauth-grants-heading">{t('mcp.oauth')}</h3><span>{t('mcp.count', { count: oauthGrants.length })}</span></div>
+			<div class="subheading"><h3 id="mcp-oauth-grants-heading">{t('mcp.oauth')}</h3><span><AnimatedNumber value={oauthGrants.length} format={(n) => t('mcp.count', { count: Math.round(n) })} /></span></div>
 			{#if !loading && oauthGrants.length === 0}
 				<p class="empty">{t('mcp.emptyOAuth')}</p>
 			{:else if oauthGrants.length > 0}
@@ -287,7 +356,7 @@
 					{#each oauthGrants as record (record.id)}
 						<div class="record">
 							<div class="record-main"><div class="record-title"><strong>{record.name}</strong><StatusChip status={record.status} /></div><p>{t('mcp.oauthDetails', { access: record.access_level === 'manage' ? t('mcp.manage') : t('mcp.read'), expires: formatDate(record.expires_at) })}</p></div>
-							<Button variant="danger-outline" size="xs" onclick={() => revokeOAuthGrant(record)} disabled={mutatingId !== null}>{t('mcp.revokeAccess')}</Button>
+							<Button variant="danger-outline" size="xs" onclick={revokeOAuthGrant.bind(null, owner, record)} disabled={mutatingId !== null}>{t('mcp.revokeAccess')}</Button>
 						</div>
 					{/each}
 				</div>
@@ -295,12 +364,12 @@
 		</section>
 	</Card>
 
-	<Modal bind:open={showIssuedToken} onClose={dismissIssuedToken} ariaLabel={t('mcp.newToken')}>
+	<Modal open={showIssuedToken} onClose={dismissIssuedToken.bind(null, owner, issuedToken)} ariaLabel={t('mcp.newToken')}>
 		<Card surface="modal" padding="lg" class="issued-token-dialog">
 			<h2>{t('mcp.newToken')}</h2>
 			<p>{t('mcp.newTokenHelp')}</p>
 			{#if issuedToken}<pre>{issuedToken}</pre>{/if}
-			<div class="dialog-actions"><Button variant="outline" onclick={copyIssuedToken}>{copied ? t('mcp.copied') : t('mcp.copy')}</Button><Button onclick={dismissIssuedToken}>{t('mcp.done')}</Button></div>
+			<div class="dialog-actions"><Button variant="outline" onclick={copyIssuedToken.bind(null, owner, issuedToken)}>{copied ? t('mcp.copied') : t('mcp.copy')}</Button><Button onclick={dismissIssuedToken.bind(null, owner, issuedToken)}>{t('mcp.done')}</Button></div>
 		</Card>
 	</Modal>
 {/if}

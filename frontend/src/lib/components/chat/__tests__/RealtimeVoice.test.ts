@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { auth } from '$lib/stores/auth';
 import type * as RealtimeModule from '$lib/api/realtimeVoice';
 import RealtimeVoice from '../RealtimeVoice.svelte';
+import { t } from '$lib/i18n/ns/chat-studio';
 
 const calls = vi.hoisted(() => ({ models: vi.fn(), capabilities: vi.fn(), createSession: vi.fn(), connect: vi.fn() }));
 vi.mock('$lib/api/realtimeVoice', async (original) => ({ ...await original<typeof RealtimeModule>(), realtimeVoiceApi: calls }));
@@ -75,6 +76,23 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('Realtime Voice', () => {
+	it('shows a labeled connecting status and removes it when the attempt is canceled', async () => {
+		const microphone = Promise.withResolvers<MediaStream>();
+		const trackStop = vi.fn();
+		vi.stubGlobal('navigator', { userAgent: navigator.userAgent, mediaDevices: { getUserMedia: vi.fn().mockReturnValue(microphone.promise) } });
+		render(RealtimeVoice);
+		await screen.findByText('음성 입력·출력 경로와 가격이 준비되었습니다.');
+		await fireEvent.click(screen.getByRole('button', { name: '음성 세션 시작' }));
+		const connecting = t('realtimeVoice.connecting');
+		await waitFor(() => expect(screen.queryAllByRole('status').some((item) => item.textContent?.includes(connecting))).toBe(true));
+		expect(screen.getByRole('button', { name: connecting }).hasAttribute('disabled')).toBe(true);
+		await fireEvent.click(screen.getByRole('button', { name: '세션 종료' }));
+		expect(screen.queryAllByRole('status').some((item) => item.textContent?.includes(connecting))).toBe(false);
+		microphone.resolve({ getTracks: () => [{ stop: trackStop }] } as unknown as MediaStream);
+		await waitFor(() => expect(trackStop).toHaveBeenCalled());
+		expect(calls.createSession).not.toHaveBeenCalled();
+	});
+
 	it('does not request microphone permission for unavailable or unpriced routes', async () => {
 		calls.models.mockResolvedValue([model(false)]);
 		calls.capabilities.mockResolvedValue(capability(false));

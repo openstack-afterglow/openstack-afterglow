@@ -4,6 +4,7 @@
 	import { page } from '$app/stores';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
 	const instanceId = $derived($page.params.id ?? '');
 	const token = $derived($auth.token ?? undefined);
@@ -47,7 +48,7 @@
 	<title>{t('consoleLog.pageTitle', { id: instanceId.slice(0, 8) })}</title>
 </svelte:head>
 
-<div class="min-h-screen bg-surface-canvas text-ink-1 font-mono text-xs">
+<div class="motion-fade min-h-screen bg-surface-canvas text-ink-1 font-mono text-xs" aria-busy={loading}>
 	<div class="sticky top-0 bg-surface-base border-b border-line px-4 py-2 flex items-center gap-3 z-10">
 		<span class="text-warm-text font-semibold">{t('consoleLog.title')}</span>
 		<span class="text-ink-2 truncate max-w-md" title={instanceId}>{instanceId}</span>
@@ -56,7 +57,7 @@
 				<span class="text-ink-2 text-xs">{t('consoleLog.lastLoaded', { time: formatTime(lastLoaded) })}</span>
 			{/if}
 			{#if loading}
-				<span class="text-ink-2 text-xs">{t('consoleLog.loading')}</span>
+				<ActivityIndicator size="xs" label={t('consoleLog.loading')} />
 			{/if}
 			<button
 				onclick={load}
@@ -76,9 +77,9 @@
 	</div>
 
 	{#if error}
-		<div class="p-4 text-red-400">{t('consoleLog.queryFailed', { error })}</div>
+		<div role="alert" class="p-4 text-state-danger-text">{t('consoleLog.queryFailed', { error })}</div>
 	{:else if loading && !log}
-		<div class="p-4 text-ink-2">{t('consoleLog.loadingLog')}</div>
+		<div class="p-4"><ActivityIndicator label={t('consoleLog.loadingLog')} /></div>
 	{:else if !log}
 		<div class="p-4 text-ink-2">{t('consoleLog.empty')}</div>
 	{:else}

@@ -252,7 +252,7 @@
 	"secrets.description.containers": "<highlight>コンテナー（Container）</highlight>は、複数のシークレットをまとめる論理グループです。<muted>generic</muted>は任意のシークレットの集合、<muted>rsa</muted>は公開キー・秘密キーのペア、<muted>certificate</muted>はTLS証明書・秘密キー・チェーンを一式として管理します。OctaviaロードバランサーのTLS終端や、サービス間の証明書共有に利用します。",
 	"secrets.description.orders": "<highlight>キーオーダー</highlight>は、Barbicanに暗号化キーの生成を非同期でリクエストする操作です。<muted>対称キー（AES）</muted>または<muted>非対称キー（RSA）</muted>を指定したビット長で生成するようリクエストすると、Barbicanがバックグラウンドで安全にキーを生成し、シークレットとして保存します。キーを直接入力せずサーバー側で生成するため、キーがネットワークを経由せず、より安全です。",
 	"secrets.description.quota": "<highlight>クォータ（Quota）</highlight>は、このプロジェクトで作成できるリソースの上限です。<value>∞</value>は無制限を意味します。上限の変更は管理者にお問い合わせください。",
-	"secrets.tabs.secretsWithCount": "シークレット<count>（{count}）</count>",
+	"secrets.tabs.secretsWithCount": "シークレット（<count>{count}</count>）",
 	"usageReport.loadFailed": "データの読み込みに失敗しました",
 	"usageReport.breadcrumb": "使用量レポート",
 	"usageReport.title": "期間使用量とクォータ予測",

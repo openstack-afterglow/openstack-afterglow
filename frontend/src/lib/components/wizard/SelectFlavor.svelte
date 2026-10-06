@@ -20,6 +20,12 @@
 		gigabytes?: QuotaPair; // GB
 	}
 
+	function quotaPercent(value: number, limit: number): number {
+		if (!Number.isFinite(value) || !Number.isFinite(limit) || limit < 0) return 0;
+		if (limit === 0) return value > 0 ? 100 : 0;
+		return Math.max(0, Math.min(100, (value / limit) * 100));
+	}
+
 	let {
 		adminMode = false,
 		flavors,
@@ -27,6 +33,7 @@
 		selectedName = null,
 		onSelect,
 		quota,
+		bootVolumeSizeGb,
 		refreshing = false,
 		refreshError = null,
 		backgroundRefreshing = false,
@@ -40,6 +47,8 @@
 		selectedName?: string | null;
 		onSelect: (id: string, name: string) => void;
 		quota?: FlavorQuotaSummary | null;
+		/** New root volume size; zero means booting from an existing volume. */
+		bootVolumeSizeGb?: number;
 		/** A locking initial, manual, or submit capacity refresh is in flight. */
 		refreshing?: boolean;
 		refreshError?: string | null;
@@ -392,11 +401,20 @@
 </div>
 
 <!-- 프로젝트 quota delta 미터 -->
+{#snippet quotaDelta(used: number, requested: number, limit: number, critical: boolean)}
+	{@const usedPercent = quotaPercent(used, limit)}
+	{@const deltaPercent = Math.min(100 - usedPercent, quotaPercent(requested, limit))}
+	<div class="quota-track relative mt-auto h-[5px] rounded-full bg-surface-sunken overflow-hidden">
+		<div class="quota-used absolute left-0 top-0 h-full bg-accent" style="width:{usedPercent}%"></div>
+		<div class="quota-delta absolute top-0 h-full {critical ? 'bg-state-danger' : 'bg-action-warm'}" style="left:{usedPercent}%; width:{deltaPercent}%"></div>
+	</div>
+{/snippet}
+
 {#if quota}
 	{@const reqVm = selectedFlavor ? 1 : 0}
 	{@const reqCpu = selectedFlavor?.vcpus ?? 0}
 	{@const reqRamMb = selectedFlavor?.ram ?? 0}
-	{@const reqDiskGb = 0}
+	{@const reqDiskGb = selectedFlavor ? (bootVolumeSizeGb ?? selectedFlavor.disk) : 0}
 	{@const limVm = quota.instances?.limit ?? -1}
 	{@const limCpu = quota.cores?.limit ?? -1}
 	{@const limRamMb = quota.ram?.limit ?? -1}
@@ -410,21 +428,21 @@
 	{@const critRam = limRamMb >= 0 && curRamMb + reqRamMb > limRamMb}
 	{@const critDisk = limDiskGb >= 0 && curDiskGb + reqDiskGb > limDiskGb}
 	<div class="order-1 mb-4 overflow-hidden rounded-xl border border-line bg-surface-base/70 md:mb-5">
-		<div class="flex items-center justify-between px-3 py-2 border-b border-line">
+		<div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3 py-2 border-b border-line">
 			<span class="text-xs text-ink-2 font-medium">
 				{#snippet selectedQuota(text: string)}<span class="text-warm-text ml-1">{text}</span>{/snippet}
 				<RichText segments={t.rich(selectedFlavor ? 'flavor.quota.remainingSelected' : 'flavor.quota.remaining')} tags={{ selected: selectedQuota }} />
 			</span>
-			<div class="hidden items-center gap-3 text-xs text-ink-2 @md/panel:flex">
-				<span class="flex items-center gap-1"><i class="inline-block w-2 h-2 rounded-full bg-surface-selected"></i>{t('flavor.quota.currentUsage')}</span>
-				<span class="flex items-center gap-1"><i class="inline-block w-2 h-2 rounded-full bg-action-warm"></i>{t('flavor.quota.addedVm')}</span>
+			<div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-2">
+				<span class="flex items-center gap-1"><i class="inline-block w-2 h-2 shrink-0 rounded-full bg-accent"></i>{t('flavor.quota.currentUsage')}</span>
+				<span class="flex items-center gap-1"><i class="inline-block w-2 h-2 shrink-0 rounded-full bg-action-warm"></i>{t('flavor.quota.addedVm')}</span>
 			</div>
 		</div>
 		<div class="grid grid-cols-2 gap-px bg-surface-sunken @2xl/panel:grid-cols-4">
 			<!-- VM cell -->
 			<div class="flex flex-col gap-1.5 bg-surface-base px-3 py-2">
 				<span class="text-xs uppercase tracking-wider text-ink-2 font-mono font-semibold">{t('flavor.quota.vm')}</span>
-				<div class="flex items-baseline gap-1 font-mono">
+				<div class="flex min-w-0 flex-wrap items-baseline gap-1 font-mono [overflow-wrap:anywhere]">
 					<span class="text-sm text-ink-2">{curVm}</span>
 					{#if reqVm > 0}
 						<span class="text-ink-2 text-xs">→</span>
@@ -433,18 +451,13 @@
 					{#if limVm >= 0}<span class="text-ink-2 text-xs">/ {limVm}</span>{/if}
 				</div>
 				{#if limVm >= 0}
-					{@const curPct = Math.min(100, (curVm / limVm) * 100)}
-					{@const deltaPct = Math.min(100 - curPct, (reqVm / limVm) * 100)}
-					<div class="relative h-[5px] rounded-full bg-surface-sunken overflow-hidden">
-						<div class="absolute left-0 top-0 h-full bg-surface-selected rounded-full" style="width:{curPct}%"></div>
-						<div class="absolute top-0 h-full rounded-r-full {critVm ? 'bg-red-500' : 'bg-action-warm'}" style="left:{curPct}%; width:{deltaPct}%"></div>
-					</div>
+					{@render quotaDelta(curVm, reqVm, limVm, critVm)}
 				{/if}
 			</div>
 			<!-- vCPU cell -->
 			<div class="flex flex-col gap-1.5 bg-surface-base px-3 py-2">
 				<span class="text-xs uppercase tracking-wider text-ink-2 font-mono font-semibold">vCPU</span>
-				<div class="flex items-baseline gap-1 font-mono">
+				<div class="flex min-w-0 flex-wrap items-baseline gap-1 font-mono [overflow-wrap:anywhere]">
 					<span class="text-sm text-ink-2">{curCpu}</span>
 					{#if reqCpu > 0}
 						<span class="text-ink-2 text-xs">→</span>
@@ -453,18 +466,13 @@
 					{#if limCpu >= 0}<span class="text-ink-2 text-xs">/ {limCpu}</span>{/if}
 				</div>
 				{#if limCpu >= 0}
-					{@const curPct = Math.min(100, (curCpu / limCpu) * 100)}
-					{@const deltaPct = Math.min(100 - curPct, (reqCpu / limCpu) * 100)}
-					<div class="relative h-[5px] rounded-full bg-surface-sunken overflow-hidden">
-						<div class="absolute left-0 top-0 h-full bg-surface-selected rounded-full" style="width:{curPct}%"></div>
-						<div class="absolute top-0 h-full rounded-r-full {critCpu ? 'bg-red-500' : 'bg-action-warm'}" style="left:{curPct}%; width:{deltaPct}%"></div>
-					</div>
+					{@render quotaDelta(curCpu, reqCpu, limCpu, critCpu)}
 				{/if}
 			</div>
 			<!-- RAM cell -->
 			<div class="flex flex-col gap-1.5 bg-surface-base px-3 py-2">
 				<span class="text-xs uppercase tracking-wider text-ink-2 font-mono font-semibold">RAM</span>
-				<div class="flex items-baseline gap-1 font-mono">
+				<div class="flex min-w-0 flex-wrap items-baseline gap-1 font-mono [overflow-wrap:anywhere]">
 					<span class="text-sm text-ink-2">{Math.round(curRamMb / 1024)}GB</span>
 					{#if reqRamMb > 0}
 						<span class="text-ink-2 text-xs">→</span>
@@ -473,27 +481,21 @@
 					{#if limRamMb >= 0}<span class="text-ink-2 text-xs">/ {Math.round(limRamMb / 1024)}GB</span>{/if}
 				</div>
 				{#if limRamMb >= 0}
-					{@const curPct = Math.min(100, (curRamMb / limRamMb) * 100)}
-					{@const deltaPct = Math.min(100 - curPct, (reqRamMb / limRamMb) * 100)}
-					<div class="relative h-[5px] rounded-full bg-surface-sunken overflow-hidden">
-						<div class="absolute left-0 top-0 h-full bg-surface-selected rounded-full" style="width:{curPct}%"></div>
-						<div class="absolute top-0 h-full rounded-r-full {critRam ? 'bg-red-500' : 'bg-action-warm'}" style="left:{curPct}%; width:{deltaPct}%"></div>
-					</div>
+					{@render quotaDelta(curRamMb, reqRamMb, limRamMb, critRam)}
 				{/if}
 			</div>
 			<!-- DISK cell -->
 			<div class="flex flex-col gap-1.5 bg-surface-base px-3 py-2">
 				<span class="text-xs uppercase tracking-wider text-ink-2 font-mono font-semibold">{t('flavor.quota.disk')}</span>
 				{#if limDiskGb < 0}
-					<div class="flex items-baseline gap-1 font-mono">
+					<div class="flex min-w-0 flex-wrap items-baseline gap-1 font-mono [overflow-wrap:anywhere]">
 						<span class="text-sm text-ink-2">{curDiskGb}GB</span>
 						<span class="text-ink-2 text-xs">/ ∞</span>
 					</div>
 					<div class="relative h-[5px] rounded-full bg-surface-sunken overflow-hidden">
-						<div class="absolute left-0 top-0 h-full bg-surface-selected rounded-full" style="width:0%"></div>
 					</div>
 				{:else}
-					<div class="flex items-baseline gap-1 font-mono">
+					<div class="flex min-w-0 flex-wrap items-baseline gap-1 font-mono [overflow-wrap:anywhere]">
 						<span class="text-sm text-ink-2">{curDiskGb}GB</span>
 						{#if reqDiskGb > 0}
 							<span class="text-ink-2 text-xs">→</span>
@@ -501,12 +503,7 @@
 						{/if}
 						<span class="text-ink-2 text-xs">/ {limDiskGb}GB</span>
 					</div>
-					{@const curPct = Math.min(100, (curDiskGb / limDiskGb) * 100)}
-					{@const deltaPct = Math.min(100 - curPct, (reqDiskGb / limDiskGb) * 100)}
-					<div class="relative h-[5px] rounded-full bg-surface-sunken overflow-hidden">
-						<div class="absolute left-0 top-0 h-full bg-surface-selected rounded-full" style="width:{curPct}%"></div>
-						<div class="absolute top-0 h-full rounded-r-full {critDisk ? 'bg-red-500' : 'bg-action-warm'}" style="left:{curPct}%; width:{deltaPct}%"></div>
-					</div>
+					{@render quotaDelta(curDiskGb, reqDiskGb, limDiskGb, critDisk)}
 				{/if}
 			</div>
 		</div>

@@ -2,12 +2,14 @@
 	import { t } from '$lib/i18n/ns/admin-ops';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import { formatNumber } from '$lib/utils/format';
+	import { AnimatedNumber } from '$lib/components/ui';
 	import type { Overview } from '$lib/types/adminOverview';
 
 	let { overview }: { overview: Overview } = $props();
+	const count = (n: number) => formatNumber(Math.round(n));
 </script>
 
-<div class="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-3">
+<div class="motion-enter grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-3">
 	<!-- 하이퍼바이저 -->
 	<a href="/admin/hypervisors" class="flex items-center gap-3 bg-surface-base p-4 transition-colors hover:bg-surface-selected">
 		<div class="flex size-8 shrink-0 items-center justify-center text-warm-text">
@@ -16,7 +18,7 @@
 		<div class="flex-1 min-w-0">
 			<div class="text-xs font-medium tracking-tight text-ink-2">{t('overview.kpi.hypervisors')}</div>
 			<div class="flex items-baseline gap-2 mt-0.5">
-				<div class="text-[28px] font-bold text-ink-0 leading-none">{formatNumber(overview.hypervisor_count)}</div>
+				<div class="text-[28px] font-bold text-ink-0 leading-none"><AnimatedNumber value={overview.hypervisor_count} format={count} /></div>
 				<span class="ml-auto text-xs text-warm-text">{t('overview.kpi.details')}</span>
 			</div>
 		</div>
@@ -30,7 +32,7 @@
 		<div class="flex-1 min-w-0">
 			<div class="text-xs font-medium tracking-tight text-ink-2">{t('overview.kpi.totalVms')}</div>
 			<div class="flex items-baseline gap-2 mt-0.5 flex-wrap">
-				<div class="text-[28px] font-bold text-ink-0 leading-none">{formatNumber(overview.running_vms)}</div>
+				<div class="text-[28px] font-bold text-ink-0 leading-none"><AnimatedNumber value={overview.running_vms} format={count} /></div>
 				{#if overview.instance_stats}
 					<div class="flex gap-2 text-xs ml-auto flex-wrap">
 						<span class="text-emerald-400">● {overview.instance_stats.active.toLocaleString(intlLocale(), { useGrouping: false })}</span>
@@ -50,7 +52,7 @@
 		<div class="flex-1 min-w-0">
 			<div class="text-xs font-medium tracking-tight text-ink-2">GPU VM</div>
 			<div class="flex items-baseline gap-2 mt-0.5">
-				<div class="text-[28px] font-bold {overview.gpu_instances > 0 ? 'text-violet-300' : 'text-ink-0'} leading-none">{formatNumber(overview.gpu_instances)}</div>
+				<div class="text-[28px] font-bold {overview.gpu_instances > 0 ? 'text-violet-300' : 'text-ink-0'} leading-none"><AnimatedNumber value={overview.gpu_instances} format={count} /></div>
 				<div class="text-ink-2 text-xs">{t('overview.kpi.instances')}</div>
 			</div>
 		</div>

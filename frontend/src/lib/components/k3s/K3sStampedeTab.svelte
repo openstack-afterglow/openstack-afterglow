@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/drover';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
@@ -122,7 +123,7 @@
 								<span class="rounded border border-emerald-700/50 bg-emerald-900/30 px-1.5 py-0.5 text-xs text-emerald-300">GPU</span>
 							{/if}
 							{#if ng.in_flight}
-								<span class="rounded border border-action-warm/50 bg-surface-selected/30 px-1.5 py-0.5 text-xs text-warm-text">{t('stampede.inFlight', { count: ng.in_flight })}</span>
+								<ActivityIndicator variant="pulse" size="xs" label={t('stampede.inFlight', { count: ng.in_flight })} class="text-xs" />
 							{/if}
 						</div>
 					</div>
@@ -158,14 +159,14 @@
 		<h3 class="text-xs text-ink-2 uppercase tracking-wide">{t('stampede.title')}</h3>
 		<button onclick={load} disabled={loading}
 			class="text-xs text-ink-2 hover:text-ink-2 transition-colors disabled:opacity-50">
-			{loading ? t('stampede.loading') : t('stampede.refresh')}
+			{#if loading}<ActivityIndicator size="xs" label={t('stampede.loading')} />{:else}{t('stampede.refresh')}{/if}
 		</button>
 	</div>
 
 	{#if error}
 		<div class="text-xs text-red-400 py-2">{error}</div>
 	{:else if loading && events.length === 0}
-		<div class="text-xs text-ink-2 py-2">{t('stampede.fetching')}</div>
+		<ActivityIndicator size="xs" label={t('stampede.fetching')} class="py-2 text-xs" />
 	{:else if events.length === 0}
 		<div class="text-xs text-ink-2 py-4 text-center">
 			<div class="text-2xl mb-2">⚡</div>

@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/network-resources';
+	import { t as tc } from '$lib/i18n/ns/common';
 	import type { Pool, Member } from '$lib/types/loadbalancer';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
 
 	let {
 		pools,
@@ -26,9 +29,12 @@
 	let poolForm = $state({ protocol: 'HTTP', lb_algorithm: 'ROUND_ROBIN', name: '' });
 	let showAddMember = $state(false);
 	let memberForm = $state({ address: '', protocol_port: 80, weight: 1, name: '' });
+	const pending = createPendingAction();
+	const creatingPool = $derived(pending.isActive('create', saving));
+	const addingMember = $derived(pending.isActive('add-member', saving));
 
 	async function handleCreatePool() {
-		const ok = await onCreatePool(poolForm);
+		const ok = await pending.run('create', () => onCreatePool(poolForm));
 		if (ok) {
 			showAddPool = false;
 			poolForm = { protocol: 'HTTP', lb_algorithm: 'ROUND_ROBIN', name: '' };
@@ -36,7 +42,7 @@
 	}
 
 	async function handleAddMember() {
-		const ok = await onAddMember(memberForm);
+		const ok = await pending.run('add-member', () => onAddMember(memberForm));
 		if (ok) {
 			showAddMember = false;
 			memberForm = { address: '', protocol_port: 80, weight: 1, name: '' };
@@ -51,7 +57,7 @@
 	</div>
 
 	{#if showAddPool}
-		<div class="mb-4 p-4 bg-surface-sunken/60 border border-line-2 rounded-lg grid grid-cols-1 sm:grid-cols-3 gap-2">
+		<div class="motion-enter mb-4 p-4 bg-surface-sunken/60 border border-line-2 rounded-lg grid grid-cols-1 sm:grid-cols-3 gap-2">
 			<input bind:value={poolForm.name} placeholder={t('lb.form.optionalName')} class="bg-surface-sunken border border-line-2 rounded px-3 py-2 text-sm text-ink-1" />
 			<select bind:value={poolForm.protocol} class="bg-surface-sunken border border-line-2 rounded px-3 py-2 text-sm text-ink-1">
 				{#each ['HTTP', 'HTTPS', 'TCP', 'UDP'] as p}
@@ -63,7 +69,7 @@
 					<option value={a}>{t('lb.algorithm.label', { algorithm: a })}</option>
 				{/each}
 			</select>
-			<button onclick={handleCreatePool} disabled={saving} class="col-span-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-ink-0 text-sm px-3 py-2 rounded">{t('lb.actions.create')}</button>
+			<button onclick={handleCreatePool} disabled={saving} aria-busy={creatingPool} class="col-span-2 inline-flex items-center justify-center gap-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-ink-0 text-sm px-3 py-2 rounded">{#if creatingPool}<ActivityIndicator size="xs" tone="ink" />{/if}{creatingPool ? tc('state.processing') : t('lb.actions.create')}</button>
 			<button onclick={() => showAddPool = false} class="text-ink-2 hover:text-ink-1 text-sm px-2 text-center">{t('lb.actions.cancel')}</button>
 		</div>
 	{/if}
@@ -73,6 +79,7 @@
 	{:else}
 		<div class="space-y-2">
 			{#each pools as pool}
+				{@const deletingPool = pending.isActive(`delete:${pool.id}`, saving)}
 				<div>
 					<div
 						onclick={() => selectedPoolId = selectedPoolId === pool.id ? null : pool.id}
@@ -89,7 +96,7 @@
 						</div>
 						<div class="flex gap-2">
 							<span class="text-xs text-ink-2">{selectedPoolId === pool.id ? t('lb.pools.collapseMembers') : t('lb.pools.showMembers')}</span>
-							<button onclick={(e) => { e.stopPropagation(); onDeletePool(pool.id); }} disabled={saving} class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 transition-colors">{t('lb.actions.delete')}</button>
+							<button onclick={(e) => { e.stopPropagation(); void pending.run(`delete:${pool.id}`, () => onDeletePool(pool.id)); }} disabled={saving} aria-busy={deletingPool} class="inline-flex items-center gap-1.5 text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 transition-colors">{#if deletingPool}<ActivityIndicator size="xs" tone="danger" />{/if}{deletingPool ? t('network.actions.deleting') : t('lb.actions.delete')}</button>
 						</div>
 					</div>
 
@@ -101,11 +108,11 @@
 							</div>
 
 							{#if showAddMember}
-								<div class="mb-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+								<div class="motion-enter mb-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
 									<input bind:value={memberForm.address} placeholder={t('lb.form.ipAddress')} class="bg-surface-sunken border border-line-2 rounded px-3 py-2 text-sm text-ink-1 col-span-2" />
 									<input bind:value={memberForm.protocol_port} type="number" min="1" max="65535" placeholder={t('lb.form.port')} class="bg-surface-sunken border border-line-2 rounded px-3 py-2 text-sm text-ink-1" />
 									<input bind:value={memberForm.weight} type="number" min="1" max="256" placeholder={t('lb.form.weight')} class="bg-surface-sunken border border-line-2 rounded px-3 py-2 text-sm text-ink-1" />
-									<button onclick={handleAddMember} disabled={saving || !memberForm.address} class="col-span-3 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-ink-0 text-sm px-3 py-2 rounded">{t('lb.actions.add')}</button>
+									<button onclick={handleAddMember} disabled={saving || !memberForm.address} aria-busy={addingMember} class="col-span-3 inline-flex items-center justify-center gap-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-ink-0 text-sm px-3 py-2 rounded">{#if addingMember}<ActivityIndicator size="xs" tone="ink" />{/if}{addingMember ? tc('state.processing') : t('lb.actions.add')}</button>
 									<button onclick={() => showAddMember = false} class="text-ink-2 hover:text-ink-1 text-sm px-2 text-center rounded border border-line-2">{t('lb.actions.cancel')}</button>
 								</div>
 							{/if}
@@ -115,13 +122,14 @@
 							{:else}
 								<div class="space-y-1.5">
 									{#each members as member}
+										{@const removingMember = pending.isActive(`remove:${member.id}`, saving)}
 										<div class="flex items-center justify-between bg-surface-sunken/50 rounded px-3 py-2">
 											<div class="text-xs">
 												<span class="text-ink-0 font-mono">{member.address}:{member.protocol_port}</span>
 												<span class="ml-2 text-ink-2">{t('lb.members.weight', { weight: member.weight })}</span>
 												<span class="ml-2 {member.status === 'ACTIVE' ? 'text-green-400' : 'text-yellow-400'}">{member.status}</span>
 											</div>
-											<button onclick={() => onRemoveMember(member.id)} disabled={saving} class="text-red-400 hover:text-red-300 text-xs">{t('lb.actions.remove')}</button>
+											<button onclick={() => pending.run(`remove:${member.id}`, () => onRemoveMember(member.id))} disabled={saving} aria-busy={removingMember} class="inline-flex items-center gap-1.5 text-red-400 hover:text-red-300 text-xs">{#if removingMember}<ActivityIndicator size="xs" tone="danger" />{/if}{removingMember ? tc('state.processing') : t('lb.actions.remove')}</button>
 										</div>
 									{/each}
 								</div>

@@ -252,7 +252,7 @@
 	"secrets.description.containers": "<highlight>容器（Container）</highlight>是将多个机密组合在一起的逻辑组。<muted>generic</muted>组合任意机密，<muted>rsa</muted>组合公钥和私钥对，<muted>certificate</muted>将 TLS 证书、私钥和证书链作为一套管理。可用于 Octavia 负载均衡器的 TLS 终止或服务间的证书共享。",
 	"secrets.description.orders": "<highlight>密钥订单</highlight>用于向 Barbican 异步请求生成加密密钥。请求按指定的位长度生成<muted>对称密钥（AES）</muted>或<muted>非对称密钥（RSA）</muted>后，Barbican 会在后台安全地生成密钥并存储为机密。无需手动输入密钥，而是在服务器端生成，密钥不会经过网络，因此更安全。",
 	"secrets.description.quota": "<highlight>配额（Quota）</highlight>是此项目可创建的资源上限。<value>∞</value>表示无限制。如需更改上限，请联系管理员。",
-	"secrets.tabs.secretsWithCount": "机密<count>（{count}）</count>",
+	"secrets.tabs.secretsWithCount": "机密（<count>{count}</count>）",
 	"usageReport.loadFailed": "数据加载失败",
 	"usageReport.breadcrumb": "用量报告",
 	"usageReport.title": "期间用量与配额预测",

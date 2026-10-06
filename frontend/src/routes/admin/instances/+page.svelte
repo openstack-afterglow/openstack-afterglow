@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-compute';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { onDestroy, onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
@@ -291,7 +292,7 @@
 	<div class="mb-6" data-tour="admin-compute-timeseries">
 		{#if tsLoading}
 			<div class="bg-surface-base border border-line rounded-xl p-5 h-48 flex items-center justify-center">
-				<div class="text-ink-2 text-sm">{t('instances.page.chartLoading')}</div>
+				<ActivityIndicator size="sm" label={t('instances.page.chartLoading')} />
 			</div>
 		{:else}
 			<TimeSeriesChart

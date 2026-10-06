@@ -206,9 +206,9 @@ async def test_down_fenced_evacuates_eligible_and_records_rejections(admin_clien
 
 @pytest.mark.asyncio
 async def test_pagination_exhausts_pages_before_dispatch(admin_client, mock_conn, monkeypatch):
-    from app.api.identity import admin
+    from app.services import nova_hosts
 
-    monkeypatch.setattr(admin, "_HOST_SERVER_PAGE_SIZE", 3)
+    monkeypatch.setattr(nova_hosts, "HOST_SERVER_PAGE_SIZE", 3)
     pages = [
         [{"id": "a", "name": "a", "status": "SHUTOFF"}, {"id": "b", "name": "b", "status": "SHUTOFF"}],
         [{"id": "c", "name": "c", "status": "SHUTOFF"}],
@@ -258,9 +258,9 @@ async def test_service_change_refreshes_cached_list_and_detail(admin_client, moc
 
 @pytest.mark.asyncio
 async def test_failed_later_page_dispatches_no_actions(admin_client, mock_conn, monkeypatch):
-    from app.api.identity import admin
+    from app.services import nova_hosts
 
-    monkeypatch.setattr(admin, "_HOST_SERVER_PAGE_SIZE", 1)
+    monkeypatch.setattr(nova_hosts, "HOST_SERVER_PAGE_SIZE", 1)
     _, _, calls = _install_nova(mock_conn, pages=[[{"id": "a", "name": "a", "status": "ACTIVE"}]], page_failure=True)
     response = await admin_client.post(BASE + "/relocate", json={"mode": "migrate"})
     assert response.status_code == 502
@@ -284,5 +284,35 @@ async def test_changed_source_during_scan_rejects_whole_batch(admin_client, mock
     mock_conn.session.get.side_effect = mutate_during_scan
     response = await admin_client.post(BASE + "/relocate", json={"mode": "migrate"})
     assert response.status_code == 409
+    mock_conn.compute.live_migrate_server.assert_not_called()
+    mock_conn.session.post.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_lease_loss_during_last_server_read_never_dispatches(admin_client, mock_conn, monkeypatch):
+    from app.services import hypervisor_review
+
+    _install_nova(mock_conn, servers=[{"id": "vm-last", "status": "ACTIVE"}])
+    lease_type = hypervisor_review.HostOperationLease
+    leases = []
+
+    def new_lease(*args):
+        lease = lease_type(*args)
+        leases.append(lease)
+        return lease
+
+    monkeypatch.setattr(hypervisor_review, "HostOperationLease", new_lease)
+    get = mock_conn.session.get.side_effect
+
+    def lose_during_read(url, **kwargs):
+        response = get(url, **kwargs)
+        if url.endswith("/servers/vm-last"):
+            leases[0].lost = True
+        return response
+
+    mock_conn.session.get.side_effect = lose_during_read
+    response = await admin_client.post(BASE + "/relocate", json={"mode": "migrate"})
+    assert response.status_code == 200, response.text
+    assert response.json()["items"][0]["outcome"] == "skipped"
     mock_conn.compute.live_migrate_server.assert_not_called()
     mock_conn.session.post.assert_not_called()

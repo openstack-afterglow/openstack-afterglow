@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/drover-pages';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import type { K3sCluster } from '$lib/types/k3s';
 
@@ -48,7 +50,7 @@
 	<div class="grid grid-cols-2 gap-2 text-xs mb-3.5">
 		<div>
 			<div class="text-xs uppercase tracking-wider font-medium text-ink-2">{t('clusterCard.nodes')}</div>
-			<div class="text-ink-1 mt-0.5">{cluster.agent_count + 1} (1+{cluster.agent_count})</div>
+			<div class="text-ink-1 mt-0.5"><AnimatedNumber value={cluster.agent_count + 1} /> (1+{cluster.agent_count})</div>
 		</div>
 		<div>
 			<div class="text-xs uppercase tracking-wider font-medium text-ink-2">API</div>
@@ -83,7 +85,7 @@
 				onclick={() => onDelete(cluster.id, cluster.name)}
 				disabled={deleting || cluster.status === 'DELETING'}
 				class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1.5 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors"
-			>{deleting ? t('state.deleting') : t('actions.delete')}</button>
+			>{#if deleting}<ActivityIndicator size="xs" label={t('state.deleting')} />{:else}{t('actions.delete')}{/if}</button>
 		{/if}
 	</div>
 </div>

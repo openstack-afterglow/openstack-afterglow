@@ -1,9 +1,14 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/network-resources';
+	import { t as commonT } from '$lib/i18n/ns/common';
 	import Button from '$lib/components/ui/Button.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
 	import { useRouterDetailController } from '$lib/stores/routerDetailController.svelte';
 
 	const s = useRouterDetailController();
+	const pending = createPendingAction();
+	const addingInterface = $derived(pending.isActive('add', s.saving));
 </script>
 
 <div class="mb-4 p-4 bg-surface-sunken/60 border border-line-2 rounded-lg">
@@ -22,7 +27,7 @@
 		</select>
 	</div>
 	<div class="flex gap-2">
-		<Button onclick={() => s.addInterface()} disabled={!s.canAddInterface} size="sm">{t('router.interfaces.add')}</Button>
+		<Button onclick={() => pending.run('add', () => s.addInterface())} disabled={!s.canAddInterface} ariaBusy={addingInterface} size="sm">{#if addingInterface}<ActivityIndicator size="xs" tone="ink" />{/if}{addingInterface ? `${t('router.interfaces.add')}: ${commonT('state.processing')}` : t('router.interfaces.add')}</Button>
 		<button onclick={() => { s.showAddInterface = false; s.selectedNetId = ''; }} class="text-ink-2 hover:text-ink-1 text-sm px-2">{t('router.actions.cancel')}</button>
 	</div>
 </div>

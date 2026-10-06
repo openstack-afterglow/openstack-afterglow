@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import type { TsPoint } from '$lib/types/common';
 	import TimeSeriesChart from '$lib/components/TimeSeriesChart.svelte';
 	import { t } from '$lib/i18n/ns/admin-storage';
@@ -19,7 +20,7 @@
 <div class="mb-6">
 	{#if loading}
 		<div class="bg-surface-base border border-line rounded-xl p-5 h-48 flex items-center justify-center">
-			<div class="text-ink-2 text-sm">{t('volumeList.chartLoading')}</div>
+			<ActivityIndicator size="sm" label={t('volumeList.chartLoading')} />
 		</div>
 	{:else}
 		<TimeSeriesChart

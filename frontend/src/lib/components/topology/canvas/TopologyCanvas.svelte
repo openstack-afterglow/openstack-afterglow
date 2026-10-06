@@ -6,7 +6,7 @@
 	import { onMount, untrack } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
 	import Button from '$lib/components/ui/Button.svelte';
-	import { REDUCED_MOTION_QUERY } from '$lib/design/tokens';
+	import { MOTION_DURATION_MS, REDUCED_MOTION_QUERY } from '$lib/design/tokens';
 	import type { TopologyData, TopologyLoadBalancer, TopologyTraffic } from '$lib/types/topology';
 	import { prefersReducedMotion } from '$lib/utils/motion';
 	import { fmtRate, fmtRateShort, KIND_LABEL, NET_KIND_LABEL, clamp } from './canvasHelpers';
@@ -32,9 +32,10 @@
 		switchId,
 		trunkNetIds,
 	} from './topologyGraph';
-	import { FIT_K_MAX, K_MAX, K_MIN, applyManualPositions, autoLayout, center, computeGeometry, contentBounds, cubic, nodeBounds, resolveManualOverlap, sideFor, zoomAt as zoomAtPure } from './topologyLayout';
+	import { FIT_K_MAX, K_MAX, K_MIN, applyManualPositions, autoLayout, center, computeGeometry, contentBounds, cubic, fitTransform, nodeBounds, resolveManualOverlap, sideFor, zoomAt as zoomAtPure } from './topologyLayout';
 	import type { CanvasEdge, CanvasNet, EdgeStyle, ManualPositions, Pt, Rect, ViewState } from './types';
-	import { createViewport } from './viewport.svelte';
+	import { createViewport, easeEmphasized, interpolateView } from './viewport.svelte';
+	import { createFirstArrival, enterStep } from '../firstArrival.svelte';
 	import { canLink, linkRequest, type TopologyLinkRequest } from './link-types';
 	import { canStartLink, linkTargets, resolveLink, type LinkRequest } from './topologyLink';
 	import type { CreateKind } from './CanvasToolbar.svelte';
@@ -44,6 +45,7 @@
 		traffic?: TopologyTraffic | null;
 		projectId?: string | null;
 		showAll?: boolean;
+		arrivalScope?: string;
 		/** 부모가 전달하면 controlled(GlobalTopology 와 동일). 네트워크 id 를 주면 해당 스위치를 강조한다. */
 		selectedId?: string | null;
 		/** 관리자 화면: 존 라벨에 VLAN/VXLAN·MTU pill 표시 */
@@ -74,6 +76,7 @@
 		traffic = null,
 		projectId = null,
 		showAll = false,
+		arrivalScope = projectId ?? '',
 		selectedId: selectedIdProp = undefined,
 		adminView = false,
 		editable = false,
@@ -106,6 +109,24 @@
 	const graph = $derived(built.graph);
 	const layout = $derived(built.layout);
 	const storageKey = $derived(layoutStorageKey(storageScope, projectId));
+
+	let query = $state('');
+	// ───────── 진입 모션: 스코프(저장 범위·프로젝트·전체 보기)별 첫 그래프 도착에만. 자동 갱신·드래그·검색·카메라 이동은 다시 켜지 않는다.
+	const arrival = createFirstArrival({
+		scope: () => `${storageScope}|${arrivalScope}`,
+		data: () => data,
+		filter: () => `${projectId ?? ''}|${showAll}|${query}`,
+		ready: () => graph.nodes.size > 0,
+	});
+	/** 진입 cascade 단계: 자동 배치의 위→아래 줄 순서(상한 MOTION_STAGGER_LIMIT). 진입 창 밖에서는 만들지 않는다. */
+	const enterBands = $derived.by(() => {
+		if (!arrival.active) return null;
+		const rows = [...new Set([...layout.pos.values()].map((r) => Math.round(r.y)))].sort((a, b) => a - b);
+		const rank = new Map(rows.map((y, i) => [y, enterStep(i)]));
+		const bands = new Map<string, number>();
+		for (const [id, r] of layout.pos) bands.set(id, rank.get(Math.round(r.y)) ?? 0);
+		return bands;
+	});
 
 	/** 현재 노드 위치(수동 배치 반영). 드래그는 항목 단위로 갱신해 해당 카드만 다시 그린다. */
 	const pos = new SvelteMap<string, Rect>();
@@ -194,7 +215,6 @@
 	let hoveredId = $state<string | null>(null);
 	let hoveredNicKey = $state<string | null>(null);
 	let hoveredEdgeKey = $state<string | null>(null);
-	let query = $state('');
 	let matchIdx = -1;
 	let liveText = $state('');
 	let liveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -346,6 +366,7 @@
 		const out: EdgeRenderItem[] = [];
 		const q = match;
 		const active = activeId;
+		const bands = enterBands;
 		for (const e of allEdges) {
 			const g = geometry.geom.get(e.key);
 			const base = baseStyles.get(e.key);
@@ -365,13 +386,16 @@
 				d: g.d,
 				color: colorOfNet(graph, e.netId),
 				opacity: op,
-				width: w,
+				// 실선 draw-in 동안은 non-scaling-stroke 를 끄므로(CanvasEdgeLayer) 월드 굵기로 넘겨 화면 굵기를 유지한다
+				width: bands && !base.dash ? w / vp.k : w,
 				dash: base.dash,
 				forced: e.kind === 'fip' && incident,
 				hitTitle: e.kind === 'trunk'
 					? t(isUplinkTrunk(e, graph) ? 'canvas.trunkUplink' : 'canvas.trunkConnected', { name: net?.name ?? '' })
 					: null,
 				port: toNode?.kind === 'switch' && (e.kind === 'cable' || e.kind === 'lbvip') ? g.b : null,
+				// 위쪽 끝 노드가 들어오는 단계에서 함께 그려진다
+				enter: bands ? Math.min(bands.get(e.from) ?? 0, bands.get(e.to) ?? 0) : null,
 			});
 		}
 		return out;
@@ -391,6 +415,7 @@
 				dim: Boolean(match) && !match!.nets.has(n.id),
 				match: Boolean(match) && match!.nets.has(n.id),
 				down: n.status !== 'ACTIVE',
+				enter: enterBands ? (enterBands.get(switchId(n.id)) ?? 0) : null,
 			})),
 	);
 
@@ -512,39 +537,71 @@
 	function frame() { raf = 0; flushPending(); }
 	function currentView(): ViewState { return pendingView ?? vp.view; }
 
-	// ───────── 뷰 조작
-	function fitAll() {
-		const { w, h } = measure();
+	// ───────── 카메라 전환(맞춤·확대/축소·초기화·검색 이동). emphasized 곡선의 rAF 보간이며,
+	// 사용자가 포인터·휠·키보드로 직접 화면을 움직이면 즉시 멈춘다. reduced-motion 이면 바로 도착한다.
+	let camera = 0;
+	/** 진행 중인 전환의 도착 뷰. 연속 확대는 중간 뷰가 아니라 여기서 이어 계산한다. */
+	let cameraTarget: ViewState | null = null;
+	function cancelCamera() {
+		if (camera) cafFn(camera);
+		camera = 0;
+		cameraTarget = null;
+	}
+	function moveCamera(target: ViewState, duration: number) {
+		cancelCamera();
+		const from = currentView();
 		pendingView = null;
-		vp.fitBounds(contentBounds(geometry.zones, pos), w, h, 40, FIT_K_MAX);
+		if (prefersReducedMotion() || (from.k === target.k && from.panX === target.panX && from.panY === target.panY)) {
+			vp.set(target);
+			return;
+		}
+		const { w, h } = measure();
+		// 진행률은 rAF 타임스탬프끼리만 잰다(첫 프레임이 0). performance.now() 와 섞으면 시계가 어긋날 수 있다.
+		let t0 = -1;
+		cameraTarget = target;
+		const step = (now: number) => {
+			if (t0 < 0) t0 = now;
+			const t = Math.min(1, (now - t0) / duration);
+			vp.set(interpolateView(from, target, easeEmphasized(t), w, h));
+			if (t < 1) camera = rafFn(step);
+			else { camera = 0; cameraTarget = null; }
+		};
+		camera = rafFn(step);
+	}
+
+	// ───────── 뷰 조작
+	function fitAll(animate = true) {
+		const { w, h } = measure();
+		const target = fitTransform(contentBounds(geometry.zones, pos), w, h, 40, K_MIN, FIT_K_MAX);
+		if (animate) moveCamera(target, MOTION_DURATION_MS.data);
+		else { cancelCamera(); pendingView = null; vp.set(target); }
 	}
 	function fitZone(nid: string) {
 		const z = geometry.zones.get(nid);
 		if (!z) return;
 		const { w, h } = measure();
-		pendingView = null;
-		vp.fitBounds(z, w, h, 48, 1.4);
+		moveCamera(fitTransform(z, w, h, 48, K_MIN, 1.4), MOTION_DURATION_MS.data);
 	}
 	function zoomBy(f: number) {
 		const { w, h } = measure();
-		pendingView = zoomAtPure(currentView(), w / 2, h / 2, currentView().k * f);
-		schedule();
+		const base = cameraTarget ?? currentView();
+		moveCamera(zoomAtPure(base, w / 2, h / 2, base.k * f), MOTION_DURATION_MS.panel);
 	}
 	function focusNode(id: string, kMin = K_MIN, kMax = FIT_K_MAX) {
 		const b = nodeBounds(id, { pos, zoneMembers: layout.zoneMembers }, geometry.zones);
 		if (!b) return;
 		const { w, h } = measure();
-		pendingView = null;
-		vp.fitBounds(b, w, h, 48, kMax, kMin);
+		moveCamera(fitTransform(b, w, h, 48, kMin, kMax), MOTION_DURATION_MS.data);
 	}
 	function ensureVisible(id: string) {
 		const p = pos.get(id);
 		if (!p) return;
 		const { w, h } = measure();
 		if (w <= 0 || h <= 0) return;
-		const { panX, panY, k } = currentView();
+		const { panX, panY, k } = cameraTarget ?? currentView();
 		const sx1 = p.x * k + panX, sy1 = p.y * k + panY, sx2 = sx1 + p.w * k, sy2 = sy1 + p.h * k;
 		if (sx1 >= 0 && sy1 >= 0 && sx2 <= w && sy2 <= h) return;
+		cancelCamera();
 		pendingView = { k, panX: w / 2 - (p.x + p.w / 2) * k, panY: h / 2 - (p.y + p.h / 2) * k };
 		schedule();
 	}
@@ -671,6 +728,8 @@
 			if (e.pointerType === 'mouse' && e.button !== 0 && !panOnly) return;
 			if (panOnly) e.preventDefault();
 			if (closest(e.target, '[data-hud-control]')) return;
+			// 직접 조작이 시작되면 진행 중인 카메라 전환은 그 자리에서 멈춘다
+			cancelCamera();
 			const handleEl = panOnly ? null : closest(e.target, '[data-link-handle]') || closest(e.target, '[data-link-source]');
 			if (handleEl && (onConnect || onCreateCable)) {
 				const sourceId = handleEl.getAttribute('data-link-handle') || closest(handleEl, '[data-node-id]')?.getAttribute('data-node-id');
@@ -862,6 +921,7 @@
 		 */
 		const onWheel = (e: WheelEvent) => {
 			e.preventDefault();
+			cancelCamera();
 			// deltaMode: 0 픽셀, 1 줄, 2 페이지
 			const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientHeight || window.innerHeight : 1;
 			const v = currentView();
@@ -912,6 +972,7 @@
 			let handled = true;
 			if (arrow && nodeId && e.shiftKey) nudge(nodeId, arrow[0] * 8, arrow[1] * 8);
 			else if (arrow) {
+				cancelCamera();
 				const step = e.shiftKey ? 200 : 40;
 				const v = currentView();
 				pendingView = { k: v.k, panX: v.panX - arrow[0] * step, panY: v.panY - arrow[1] * step };
@@ -977,7 +1038,8 @@
 			const { w, h } = measure();
 			vw = w;
 			vh = h;
-			if (needsInitialFit && w > 0 && h > 0) { needsInitialFit = false; fitAll(); }
+			// 첫 화면 맞춤은 진입 모션과 겹치지 않도록 카메라 전환 없이 바로 맞춘다
+			if (needsInitialFit && w > 0 && h > 0) { needsInitialFit = false; fitAll(false); }
 		};
 		sync();
 		let ro: ResizeObserver | null = null;
@@ -999,6 +1061,7 @@
 			mq?.removeEventListener?.('change', onMq);
 			stopFlow();
 			if (raf) { cafFn(raf); raf = 0; }
+			cancelCamera();
 			if (liveTimer) clearTimeout(liveTimer);
 		};
 	});
@@ -1122,7 +1185,7 @@
 		{reducedMotion}
 		editable={editable || Boolean(onCreate)}
 		matchCount={match ? matchList.length : null}
-		onfit={fitAll}
+		onfit={() => fitAll()}
 		onreset={resetLayout}
 	/>
 
@@ -1150,7 +1213,7 @@
 					{#if pendingPath}<path class="edge-pending" d={pendingPath} />{/if}
 					{#if linkPath}<path class="edge-link" class:is-snapped={linkPath.snapped} d={linkPath.d} />{/if}
 				</svg>
-				<svg class="layer-flow" aria-hidden="true" width={svgW} height={svgH}><g bind:this={flowGroupEl}></g></svg>
+				<svg class="layer-flow" class:is-entering={arrival.active} aria-hidden="true" width={svgW} height={svgH}><g bind:this={flowGroupEl}></g></svg>
 				<div class="layer-nodes">
 					{#each layout.domOrder as id (id)}
 						{@const node = graph.nodes.get(id)}
@@ -1168,6 +1231,7 @@
 								{nicRates}
 								rateText={node.kind === 'switch' ? fmtRate(traffic?.networks?.[node.netId]) : node.kind === 'lb' ? fmtRate(traffic?.load_balancers?.[id]) : null}
 								dataTour={id === firstRouterId ? 'admin-network-resource' : undefined}
+								enterIndex={enterBands?.get(id) ?? null}
 								setSelected={select}
 								linkable={Boolean(onConnect || onCreateCable) && canStartLink(graph, id, projectId)}
 								linkTarget={link ? (id === link.sourceId ? null : link.targets.has(id) ? 'valid' : 'invalid') : null}
@@ -1180,17 +1244,17 @@
 					{/each}
 				</div>
 			</div>
-			<CanvasHud labels={hudLabels} badges={hudBadges} {badgesHidden} {selectedNetId} onselectnet={selectNetwork} />
+			<CanvasHud labels={hudLabels} badges={hudBadges} {badgesHidden} {selectedNetId} onselectnet={selectNetwork} entering={arrival.active} />
 
 			<div class="corner" data-hud-control>
 				<Button variant="secondary" size="icon" ariaLabel={t('canvas.zoomIn')} title={t('canvas.zoomInHint')} onclick={() => zoomBy(1.2)}>+</Button>
 				<Button variant="secondary" size="icon" ariaLabel={t('canvas.zoomOut')} title={t('canvas.zoomOutHint')} onclick={() => zoomBy(1 / 1.2)}>−</Button>
-				<Button variant="secondary" size="icon" ariaLabel={t('toolbar.fit')} title={t('canvas.fitHint')} onclick={fitAll}>⤢</Button>
+				<Button variant="secondary" size="icon" ariaLabel={t('toolbar.fit')} title={t('canvas.fitHint')} onclick={() => fitAll()}>⤢</Button>
 			</div>
 
 			{#if offscreen}
 				<div class="offscreen-hint" data-hud-control>
-					<Button variant="secondary" size="sm" onclick={fitAll}>{t('canvas.returnContent')}</Button>
+					<Button variant="secondary" size="sm" onclick={() => fitAll()}>{t('canvas.returnContent')}</Button>
 				</div>
 			{/if}
 			{#if manualCount > 0}
@@ -1235,6 +1299,11 @@
 	.world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 	.world.is-gesturing { will-change: transform; }
 	.layer-flow { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+	/* 첫 도착 때 패킷은 경로 draw-in(cascade 상한 + data)이 끝난 뒤에 나타난다 */
+	.layer-flow.is-entering {
+		animation: motion-fade var(--motion-duration-panel) var(--motion-ease-out)
+			calc(var(--motion-duration-stagger) * 8 + var(--motion-duration-data)) backwards;
+	}
 	.layer-flow :global(.flow-dot) { fill: var(--net); stroke: var(--color-surface-base); stroke-width: 1; pointer-events: none; }
 	.viewport.is-linking { cursor: crosshair; }
 	.layer-link { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }

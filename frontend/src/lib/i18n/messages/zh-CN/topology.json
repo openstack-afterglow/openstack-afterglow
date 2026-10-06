@@ -1,4 +1,5 @@
 {
+	"card.noStatus": "无状态",
 	"topology.lane": "泳道",
 	"topology.canvas": "画布",
 	"topology.createNetworkFailed": "创建网络失败",
@@ -50,6 +51,7 @@
 	"kind.internal": "内部",
 	"header.search": "按名称或 IP 搜索…",
 	"header.total": "总计",
+	"header.live": "实时流量",
 	"empty.resources": "无资源",
 	"hud.internet": "互联网",
 	"hud.isolated": "隔离",

@@ -376,7 +376,9 @@
 		</div>
 	</div>
 	{#if loading}
-		<div class="{cardCls} h-16 animate-pulse"></div>
+		<div class="motion-skeleton rounded-lg border border-line h-16" role="status" aria-label={t('extensions.mcp.loading')}>
+			<span class="sr-only">{t('extensions.mcp.loading')}</span>
+		</div>
 	{:else if mcps.length === 0}
 		<p class="px-1 text-sm text-[var(--color-ink-3)]">{t('extensions.mcp.empty')}</p>
 	{:else}
@@ -466,7 +468,9 @@
 		</div>
 	</div>
 	{#if loading}
-		<div class="{cardCls} h-16 animate-pulse"></div>
+		<div class="motion-skeleton rounded-lg border border-line h-16" role="status" aria-label={t('extensions.tools.loading')}>
+			<span class="sr-only">{t('extensions.tools.loading')}</span>
+		</div>
 	{:else if tools.length === 0}
 		<p class="px-1 text-sm text-[var(--color-ink-3)]">{t('extensions.tools.empty')}</p>
 	{:else}
@@ -535,7 +539,9 @@
 		</div>
 	</div>
 	{#if loading}
-		<div class="{cardCls} h-16 animate-pulse"></div>
+		<div class="motion-skeleton rounded-lg border border-line h-16" role="status" aria-label={t('extensions.skills.loading')}>
+			<span class="sr-only">{t('extensions.skills.loading')}</span>
+		</div>
 	{:else if skills.length === 0}
 		<p class="px-1 text-sm text-[var(--color-ink-3)]">{t('extensions.skills.empty')}</p>
 	{:else}

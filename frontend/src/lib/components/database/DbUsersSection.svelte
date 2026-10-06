@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t as tr } from '$lib/i18n/ns/database';
 	import { useDbInstanceDetailController } from '$lib/stores/dbInstanceDetailController.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import type { DbUser } from '$lib/types/database';
 
 	const s = useDbInstanceDetailController();
@@ -57,8 +58,8 @@
 			{/if}
 			{#if s.userError}<p class="text-red-400 text-xs">{s.userError}</p>{/if}
 			<button onclick={handleCreateUser} disabled={s.creatingUser || !newUser.name.trim() || !newUser.password}
-				class="text-xs bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm px-3 py-1.5 rounded transition-colors">
-				{s.creatingUser ? tr('state.creating') : tr('actions.create')}
+				class="inline-flex items-center gap-1.5 text-xs bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm px-3 py-1.5 rounded transition-colors">
+				{#if s.creatingUser}<ActivityIndicator size="xs" tone="ink" />{/if}{s.creatingUser ? tr('state.creating') : tr('actions.create')}
 			</button>
 		</div>
 	{/if}
@@ -77,8 +78,8 @@
 						{/if}
 					</div>
 					<button onclick={() => s.deleteUser(u)} disabled={s.deletingUser === userKey(u)}
-						class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-red-900 hover:border-red-700 transition-colors">
-						{s.deletingUser === userKey(u) ? '...' : tr('actions.delete')}
+						class="inline-flex items-center gap-1 text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-red-900 hover:border-red-700 transition-colors">
+						{#if s.deletingUser === userKey(u)}<ActivityIndicator size="xs" tone="danger" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}
 					</button>
 				</div>
 			{/each}

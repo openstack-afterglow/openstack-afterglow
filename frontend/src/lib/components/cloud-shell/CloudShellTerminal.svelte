@@ -7,6 +7,12 @@
 	import { t } from '$lib/i18n/ns/containers-shell';
 	import { getLocale } from '$lib/i18n/runtime.svelte';
 	import { localizeTerminal } from '$lib/utils/terminalLocale';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+
+	// Phases with a real ticket/socket/provisioning/teardown request in flight; consent, closed and
+	// error are settled states and keep the static status text.
+	const IN_FLIGHT_PHASES = new Set(['ticketing', 'provisioning', 'authorizing', 'ending']);
+	const overlayText = $derived(cloudShell.statusStep || cloudShell.phaseLabel);
 
 	let terminalElement = $state<HTMLDivElement | null>(null);
 	let terminal = $state.raw<import('@xterm/xterm').Terminal | null>(null);
@@ -91,10 +97,15 @@
 <div class="relative h-full min-h-0 bg-surface-canvas" aria-label={t('shell.terminalAria')}>
 	<div bind:this={terminalElement} class="h-full w-full p-2"></div>
 	{#if cloudShell.phase !== 'ready'}
-		<div class="pointer-events-none absolute inset-0 flex items-center justify-center bg-surface-canvas/70" aria-hidden="true">
-			<p class="rounded-md border border-line bg-surface-raised px-3 py-2 text-xs text-ink-2">
-				{cloudShell.statusStep || cloudShell.phaseLabel}
-			</p>
+		<!-- The dock header's polite live region announces the same step; this overlay stays visual. -->
+		<div class="pointer-events-none absolute inset-0 flex items-center justify-center bg-surface-canvas/70 motion-fade" aria-hidden="true">
+			<div class="rounded-md border border-line bg-surface-raised px-3 py-2 text-xs text-ink-2">
+				{#if IN_FLIGHT_PHASES.has(cloudShell.phase)}
+					<ActivityIndicator variant="spinner" size="xs" label={overlayText} />
+				{:else}
+					<p>{overlayText}</p>
+				{/if}
+			</div>
 		</div>
 	{/if}
 </div>

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-storage';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import type { AdminVolumeDetail } from '$lib/types/volume';
 	import { volumeStatusColor } from '$lib/utils/volumeStatusColor';
 	import { formatNumber } from '$lib/utils/format';
@@ -44,6 +45,6 @@
 			onclick={onDelete}
 			disabled={deleting || volume.status === 'in-use'}
 			class="px-3 py-1.5 bg-red-900/40 hover:bg-red-900/60 border border-red-800 text-red-400 text-sm rounded-lg transition-colors disabled:opacity-50"
-		>{deleting ? t('volumeDetail.deleting') : t('volumeDetail.delete')}</button>
+		>{#if deleting}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('volumeDetail.deleting')}</span></span>{:else}{t('volumeDetail.delete')}{/if}</button>
 	</div>
 </div>

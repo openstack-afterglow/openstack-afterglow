@@ -2,6 +2,7 @@
 	import { t } from '$lib/i18n/ns/topology';
 	import { onMount } from 'svelte';
 	import type { FloatingIpInfo } from '$lib/types/networks';
+	import { enterStep } from './topology/firstArrival.svelte.ts';
 
 	interface SubnetDetail { id: string; name: string; cidr: string; gateway_ip: string | null; dhcp_enabled: boolean; }
 	interface TopologyNetwork { id: string; name: string; status: string; is_external: boolean; is_shared: boolean; project_id: string | null; subnet_details: SubnetDetail[]; }
@@ -122,7 +123,8 @@
 
 <div class="w-full">
 	<svg viewBox="0 0 {svgW} {svgH}" width="100%" height="auto" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
-		{#each rows as row, i}
+		<!-- 마운트 시 네트워크 막대가 위에서부터 자라고, 행(링크·노드)이 순서대로 페이드로 들어온다. keyed 라 같은 항목은 다시 재생하지 않는다. -->
+		{#each rows as row, i (row.id)}
 			{@const cy = rowCY(i)}
 			{@const iy = rowY(i)}
 			{@const cx = itemCX(row)}
@@ -130,20 +132,22 @@
 			{@const stroke = row.type === 'router' ? (row.connectedNetIds.some(id => orderedNetworks.find(n=>n.id===id)?.is_external) ? '#f59e0b' : '#64748b') : statusStroke(row.status)}
 			{@const fill = row.type === 'router' ? (isLight ? '#f8fafc' : '#0f172a') : statusFill(row.status)}
 
-			{#each row.connectedNetIds as netId}
-				{@const barX = netCX.get(netId) ?? 0}
-				{@const col = netColors.get(netId) ?? '#3b82f6'}
-				<line x1={barX} y1={cy} x2={ix} y2={cy} stroke={col} stroke-width="1.5" opacity="0.5"/>
-			{/each}
+			<g class="motion-fade" style:--motion-index={enterStep(i + 1)}>
+				{#each row.connectedNetIds as netId}
+					{@const barX = netCX.get(netId) ?? 0}
+					{@const col = netColors.get(netId) ?? '#3b82f6'}
+					<line x1={barX} y1={cy} x2={ix} y2={cy} stroke={col} stroke-width="1.5" opacity="0.5"/>
+				{/each}
 
-			<rect x={ix} y={iy} width={ITEM_W} height={ITEM_H} rx={row.type === 'router' ? '22' : '6'} fill={fill} stroke={stroke} stroke-width="1.2"/>
-			<text x={ix + ITEM_W/2} y={cy + 4} text-anchor="middle" fill={stroke} font-size="9" font-weight="600" font-family="ui-sans-serif,sans-serif" style="pointer-events:none">{trunc(row.name, 14)}</text>
+				<rect x={ix} y={iy} width={ITEM_W} height={ITEM_H} rx={row.type === 'router' ? '22' : '6'} fill={fill} stroke={stroke} stroke-width="1.2"/>
+				<text x={ix + ITEM_W/2} y={cy + 4} text-anchor="middle" fill={stroke} font-size="9" font-weight="600" font-family="ui-sans-serif,sans-serif" style="pointer-events:none">{trunc(row.name, 14)}</text>
+			</g>
 		{/each}
 
-		{#each orderedNetworks as net}
+		{#each orderedNetworks as net, n (net.id)}
 			{@const cx = netCX.get(net.id) ?? 0}
 			{@const col = netColors.get(net.id) ?? '#3b82f6'}
-			<rect x={cx - BAR_W/2} y={TOP_H} width={BAR_W} height={barH} rx="3" fill={col} opacity="0.7"/>
+			<rect class="mini-bar" style:--motion-index={enterStep(n)} x={cx - BAR_W/2} y={TOP_H} width={BAR_W} height={barH} rx="3" fill={col} opacity="0.7"/>
 			<text x={cx} y={TOP_H - 6} text-anchor="middle" fill={col} font-size="8" font-weight="600" font-family="ui-sans-serif,sans-serif">{trunc(net.name || net.id, 14)}</text>
 		{/each}
 
@@ -152,3 +156,13 @@
 		{/if}
 	</svg>
 </div>
+
+<style>
+	/* SVG 막대는 fill-box 의 왼쪽 끝을 기준으로 scaleX 진입한다. */
+	.mini-bar {
+		transform-box: fill-box;
+		transform-origin: left;
+		animation: motion-grow-x var(--motion-duration-data) var(--motion-ease-emphasized) backwards;
+		animation-delay: calc(var(--motion-duration-stagger) * var(--motion-index, 0));
+	}
+</style>

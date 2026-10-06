@@ -2,15 +2,22 @@
 
 import asyncio
 import logging
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_caller_project_permissions, get_token_info, require_project_manager
+from app.api.deps import (
+    get_caller_project_permissions,
+    get_token_info,
+    has_project_write_permission,
+    require_project_manager,
+)
 from app.database import get_session
 from app.models.db import ProjectInvitation, ProjectRole
+from app.services.identity_roles import visible_role_names
 
 router = APIRouter()
 _logger = logging.getLogger(__name__)
@@ -23,7 +30,7 @@ class CreateProjectRequest(BaseModel):
 
 class CreateInvitationRequest(BaseModel):
     email: str
-    keystone_role: str = "member"
+    keystone_role: Literal["member", "reader"] = "member"
 
 
 class ProjectPermissionsResponse(BaseModel):
@@ -92,7 +99,7 @@ async def get_project_permissions(
             scoped = await _cached_validate(token_info["token"], project_id)
             roles = [r.lower() for r in scoped.get("roles", []) if isinstance(r, str)]
             role_set = set(roles)
-            can_write = bool(role_set & {"admin", "member"})
+            can_write = has_project_write_permission(scoped)
             is_reader = not can_write and ("reader" in role_set or len(role_set) == 0)
 
             is_mgr = False
@@ -110,13 +117,15 @@ async def get_project_permissions(
             return {
                 "project_id": project_id,
                 "user_id": token_info.get("user_id", ""),
-                "roles": roles,
+                "roles": await visible_role_names(roles, False),
                 "is_system_admin": False,
                 "is_manager": is_mgr,
                 "is_reader": is_reader,
                 "can_read": True,
                 "can_write": can_write,
             }
+        except HTTPException:
+            raise
         except Exception:
             raise HTTPException(status_code=403, detail="해당 프로젝트에 대한 접근 권한이 없습니다.")
 
@@ -250,6 +259,7 @@ async def create_invitation(
         invited_by=token_info["user_id"],
         invited_by_name=token_info.get("username", ""),
         session=session,
+        keystone_role=req.keystone_role,
     )
 
 
@@ -268,6 +278,9 @@ async def list_invitations(
         .order_by(ProjectInvitation.created_at.desc())
     )
     invitations = result.scalars().all()
+    visible = set(
+        await visible_role_names([inv.keystone_role for inv in invitations], token_info.get("is_system_admin", False))
+    )
     return {
         "items": [
             {
@@ -281,6 +294,7 @@ async def list_invitations(
                 "created_at": inv.created_at.isoformat() + "Z",
             }
             for inv in invitations
+            if inv.keystone_role in visible
         ]
     }
 

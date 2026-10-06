@@ -154,9 +154,13 @@ async def create_invitation(
     invited_by: str,
     invited_by_name: str,
     session: AsyncSession,
+    keystone_role: str = "member",
 ) -> dict:
     """초대 생성 + 이메일 발송 (이메일 열거 방지: 항상 201 반환)."""
     from app.config import get_settings
+
+    if keystone_role not in {"member", "reader"}:
+        raise HTTPException(status_code=403, detail="초대에는 일반 프로젝트 역할만 사용할 수 있습니다")
 
     settings = get_settings()
     expiry_days = settings.smtp_invitation_token_expiry_days
@@ -178,6 +182,7 @@ async def create_invitation(
         invited_by=invited_by,
         invited_by_name=invited_by_name,
         token_hash=token_hash,
+        keystone_role=keystone_role,
         status=status,
         expires_at=expires_at,
         created_at=now,
@@ -254,6 +259,9 @@ async def accept_invitation(
     if inv.invited_email.lower() != accepting_email.lower():
         raise HTTPException(status_code=403, detail="이 초대는 다른 이메일 주소로 발송되었습니다")
 
+    if inv.keystone_role not in {"member", "reader"}:
+        raise HTTPException(status_code=403, detail="이 초대의 역할은 시스템 관리자 검토가 필요합니다")
+
     # Keystone role 할당
     try:
         await asyncio.to_thread(_assign_keystone_role_by_name, inv.project_id, accepting_user_id, inv.keystone_role)
@@ -298,6 +306,9 @@ async def decline_invitation(plaintext_token: str, session: AsyncSession) -> dic
 def _assign_keystone_role_by_name(project_id: str, user_id: str, role_name: str) -> None:
     """role 이름으로 Keystone role 할당 (keystoneclient admin 크리덴셜 사용)."""
     from app.services import keystone
+
+    if role_name not in {"member", "reader"}:
+        raise HTTPException(status_code=403, detail="셀프서비스에서는 일반 프로젝트 역할만 할당할 수 있습니다")
 
     ks = keystone._get_admin_ks_client()
     roles = ks.roles.list(name=role_name)

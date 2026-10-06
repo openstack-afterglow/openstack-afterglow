@@ -8,6 +8,8 @@
   import { onMount } from 'svelte';
   import { toast } from '$lib/stores/toast';
   import { cloudShell } from '$lib/stores/cloudShell.svelte';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+  import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
 
   const token = $derived($auth.token ?? undefined);
   const projectId = $derived($auth.projectId ?? undefined);
@@ -122,17 +124,17 @@
   onMount(loadSessions);
 </script>
 
-{#snippet sessionCount(text: string)}<span class="text-ink-2 font-medium">{text}</span>{/snippet}
+{#snippet sessionCount(_text: string)}<AnimatedNumber value={sessions.length} class="text-ink-2 font-medium" />{/snippet}
 {#snippet recentIp(text: string)}<span class="font-mono">{text}</span>{/snippet}
 
-<div class="bg-surface-base border border-line rounded-xl p-5">
+<div class="motion-fade bg-surface-base border border-line rounded-xl p-5">
   <div class="flex items-center justify-between mb-4">
     <h3 class="text-sm font-semibold text-ink-0">{t('security.title')}</h3>
     <button
       onclick={loadSessions}
       class="text-xs text-ink-2 hover:text-ink-2 transition-colors"
       disabled={loadingSessions}
-    >{loadingSessions ? t('security.loading') : t('security.refresh')}</button>
+    >{#if loadingSessions}<ActivityIndicator size="xs" label={t('security.loading')} />{:else}{t('security.refresh')}{/if}</button>
   </div>
 
   {#if error}
@@ -143,6 +145,7 @@
   {/if}
 
   <!-- 활성 세션 목록 -->
+  {#if removingJti}<ActivityIndicator size="xs" label={t('security.deleting')} />{/if}
   {#if sessions.length > 0}
     <div class="mb-4 space-y-2">
       <p class="text-xs text-ink-2 mb-2"><RichText segments={t.rich('security.count', { count: sessions.length })} tags={{ count: sessionCount }} /></p>
@@ -165,7 +168,7 @@
                     onclick={() => deleteSession(sess.jti)}
                     disabled={removingJti === sess.jti}
                     class="px-2 py-0.5 bg-red-700 hover:bg-red-600 disabled:opacity-50 text-ink-0 text-xs rounded transition-colors"
-                  >{removingJti === sess.jti ? t('security.deleting') : t('security.confirm')}</button>
+                  >{t('security.confirm')}</button>
                   <button
                     onclick={() => { deletingJti = null; }}
                     class="px-2 py-0.5 bg-surface-selected hover:bg-surface-selected text-ink-0 text-xs rounded transition-colors"
@@ -208,7 +211,7 @@
             onclick={logoutAll}
             disabled={revoking}
             class="px-3 py-1.5 bg-red-700 hover:bg-red-600 disabled:opacity-50 text-ink-0 text-xs rounded-lg transition-colors"
-          >{revoking ? t('security.revoking') : t('security.confirm')}</button>
+          >{#if revoking}<ActivityIndicator size="xs" label={t('security.revoking')} />{:else}{t('security.confirm')}{/if}</button>
           <button
             onclick={() => { showConfirm = false; }}
             class="px-3 py-1.5 bg-surface-selected hover:bg-surface-selected text-ink-0 text-xs rounded-lg transition-colors"

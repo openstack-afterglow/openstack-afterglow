@@ -2,6 +2,7 @@
 	import { t as tr } from '$lib/i18n/ns/database';
 	import { useDbInstanceDetailController } from '$lib/stores/dbInstanceDetailController.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import DbRestoreModal from '$lib/components/database/DbRestoreModal.svelte';
 	import type { DbBackup } from '$lib/types/database';
 
@@ -116,6 +117,7 @@
 					{tr('auto.edit')}
 				</button>
 			{/if}
+			{#if s.savingAutoBackup && !showAutoForm}<ActivityIndicator size="xs" tone="ink" label={tr('state.saving')} />{/if}
 			<button
 				onclick={handleToggleAutoBackup}
 				disabled={s.savingAutoBackup}
@@ -147,8 +149,8 @@
 			</div>
 			<div class="flex gap-2">
 				<button onclick={handleSaveAutoBackup} disabled={s.savingAutoBackup}
-					class="text-xs bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm px-3 py-1.5 rounded transition-colors">
-					{s.savingAutoBackup ? tr('state.saving') : tr('actions.save')}
+					class="inline-flex items-center gap-1.5 text-xs bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm px-3 py-1.5 rounded transition-colors">
+					{#if s.savingAutoBackup}<ActivityIndicator size="xs" tone="ink" />{/if}{s.savingAutoBackup ? tr('state.saving') : tr('actions.save')}
 				</button>
 				<button onclick={() => { showAutoForm = false; }}
 					class="text-xs text-ink-2 hover:text-ink-0 border border-line-2 hover:border-line-2 px-3 py-1.5 rounded transition-colors">
@@ -176,8 +178,8 @@
 				class="w-full bg-surface-selected border border-line-2 rounded px-3 py-1.5 text-sm text-ink-0 focus:outline-none focus:border-action-warm" />
 			{#if s.backupError}<p class="text-red-400 text-xs">{s.backupError}</p>{/if}
 			<button onclick={handleCreateBackup} disabled={s.creatingBackup}
-				class="text-xs bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm px-3 py-1.5 rounded transition-colors">
-				{s.creatingBackup ? tr('state.creating') : tr('actions.backup')}
+				class="inline-flex items-center gap-1.5 text-xs bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm px-3 py-1.5 rounded transition-colors">
+				{#if s.creatingBackup}<ActivityIndicator size="xs" tone="ink" />{/if}{s.creatingBackup ? tr('state.creating') : tr('actions.backup')}
 			</button>
 		</div>
 	{/if}
@@ -211,12 +213,12 @@
 						<td class="py-2 text-right">
 							<div class="flex justify-end gap-1">
 								<button onclick={() => { selectedBackup = b; showRestoreModal = true; }} disabled={s.restoringBackup === b.id}
-									class="text-warm-text hover:text-warm-text-hover disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-action-warm hover:border-action-warm transition-colors">
-									{s.restoringBackup === b.id ? '...' : tr('actions.restore')}
+									class="inline-flex items-center gap-1 text-warm-text hover:text-warm-text-hover disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-action-warm hover:border-action-warm transition-colors">
+									{#if s.restoringBackup === b.id}<ActivityIndicator size="xs" tone="ink" />{tr('state.restoring')}{:else}{tr('actions.restore')}{/if}
 								</button>
 								<button onclick={() => s.deleteBackup(b.id)} disabled={s.deletingBackup === b.id}
-									class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-red-900 hover:border-red-700 transition-colors">
-									{s.deletingBackup === b.id ? '...' : tr('actions.delete')}
+									class="inline-flex items-center gap-1 text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-red-900 hover:border-red-700 transition-colors">
+									{#if s.deletingBackup === b.id}<ActivityIndicator size="xs" tone="danger" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}
 								</button>
 							</div>
 						</td>

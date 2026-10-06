@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/svelte';
+import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import { writable } from 'svelte/store';
 
 vi.mock('$env/dynamic/public', () => ({ env: { PUBLIC_API_BASE: 'http://localhost:8000' } }));
@@ -139,5 +139,36 @@ describe('MetricsPanel', () => {
 		expect(mockGet.mock.calls.length).toBeGreaterThan(callsBefore);
 		const urls: string[] = mockGet.mock.calls.map((c: unknown[]) => c[0] as string);
 		expect(urls.some(u => u.includes('range=6h'))).toBe(true);
+	});
+
+	it('preserves plotted series nodes while a new range replaces their measured data', async () => {
+		mockAllMetrics();
+		const { container } = render(MetricsPanel, { props: { instanceId: 'inst-1', isGpu: false } });
+		await waitFor(() => expect(container.querySelectorAll('polyline').length).toBeGreaterThan(0));
+		const plot = container.querySelector('polyline');
+		const originalPoints = plot?.getAttribute('points');
+		mockGet.mockResolvedValue(makeBatchResponse([
+			{ ts: 1700000000, value: 10 }, { ts: 1700000030, value: 80 },
+		]));
+		await fireEvent.click(screen.getByText('6시간'));
+		await waitFor(() => expect(plot?.getAttribute('points')).not.toBe(originalPoints));
+		expect(container.querySelector('polyline')).toBe(plot);
+	});
+
+	it('does not replay draw-in when a measured series returns after an empty refresh', async () => {
+		mockAllMetrics();
+		const { container } = render(MetricsPanel, { props: { instanceId: 'inst-1', isGpu: false } });
+		await waitFor(() => expect(container.querySelector('polyline')?.classList.contains('motion-draw')).toBe(true));
+		const dashed = container.querySelector('polyline[stroke-dasharray]');
+		expect(dashed?.getAttribute('stroke-dasharray')).toBe('4 2');
+		expect(dashed?.classList.contains('motion-draw')).toBe(false);
+		mockGet.mockResolvedValue(makeBatchResponse([]));
+		await fireEvent.click(screen.getByText('6시간'));
+		await waitFor(() => expect(container.querySelector('polyline')).toBeNull());
+		mockAllMetrics();
+		await fireEvent.click(screen.getByText('24시간'));
+		await waitFor(() => expect(container.querySelector('polyline')).not.toBeNull());
+		expect(container.querySelector('polyline')?.classList.contains('motion-draw')).toBe(false);
+		expect(container.querySelector('polyline[stroke-dasharray]')?.getAttribute('stroke-dasharray')).toBe('4 2');
 	});
 });

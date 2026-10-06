@@ -79,6 +79,9 @@ waygate = {{ afterglow_service_waygate_enabled | bool | lower }}
 palimpsest = {{ afterglow_service_palimpsest_enabled | bool | lower }}
 chat = {{ afterglow_service_chat_enabled | bool | lower }}
 mcp = {{ afterglow_service_mcp_enabled | bool | lower }}
+{% if afterglow_service_palimpsest_enabled | bool and afterglow_service_palimpsest_internal_url %}
+palimpsest_internal_url = {{ afterglow_service_palimpsest_internal_url | to_json }}
+{% endif %}
 
 [cloud_shell]
 service_project_id = "{{ afterglow_cloud_shell_project_id }}"

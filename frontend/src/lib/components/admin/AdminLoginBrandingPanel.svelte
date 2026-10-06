@@ -3,7 +3,7 @@
 	import { onMount } from 'svelte';
 	import { api, ApiError, getBaseUrl } from '$lib/api/client';
 	import { initSiteConfig, qualifyBackendAssetPaths, siteConfig } from '$lib/config/site';
-	import { Alert, Button, Card } from '$lib/components/ui';
+	import { ActivityIndicator, Alert, Button, Card } from '$lib/components/ui';
 
 	type BrandingSlot = 'logo_light' | 'logo_dark';
 	type LogoField = 'logo_light_path' | 'logo_dark_path';
@@ -53,6 +53,7 @@
 	let error = $state('');
 	let notice = $state('');
 	let pendingSlot = $state<BrandingSlot | null>(null);
+	let pendingAction = $state<'upload' | 'reset' | null>(null);
 
 	function applyStatus(next: BrandingStatus) {
 		const effective = qualifyBackendAssetPaths(next.effective, getBaseUrl()) as BrandingStatus['effective'];
@@ -90,6 +91,7 @@
 			return;
 		}
 		pendingSlot = slot;
+		pendingAction = 'upload';
 		error = '';
 		notice = '';
 		try {
@@ -101,12 +103,14 @@
 			error = e instanceof ApiError ? t('branding.uploadFailedDetail', { message: e.message }) : t('branding.uploadFailed');
 		} finally {
 			pendingSlot = null;
+			pendingAction = null;
 			input.value = '';
 		}
 	}
 
 	async function resetLogo(slot: BrandingSlot) {
 		pendingSlot = slot;
+		pendingAction = 'reset';
 		error = '';
 		notice = '';
 		try {
@@ -116,6 +120,7 @@
 			error = e instanceof ApiError ? t('branding.resetFailedDetail', { message: e.message }) : t('branding.resetFailed');
 		} finally {
 			pendingSlot = null;
+			pendingAction = null;
 		}
 	}
 
@@ -142,9 +147,9 @@
 	{/if}
 
 	{#if loading}
-		<div class="loading-card">{t('branding.loading')}</div>
+		<div class="loading-card"><ActivityIndicator label={t('branding.loading')} /></div>
 	{:else}
-		<div class="slot-grid">
+		<div class="slot-grid motion-stagger">
 			{#each slots as slot}
 				{@const asset = status?.assets[slot.key] ?? null}
 				{@const path = effectivePath(slot.field)}
@@ -182,9 +187,12 @@
 								disabled={pendingSlot !== null}
 								onchange={(event) => uploadLogo(slot.key, event)}
 							/>
-							<span>{pendingSlot === slot.key ? t('branding.uploading') : t('branding.upload')}</span>
+							{#if pendingSlot === slot.key && pendingAction === 'upload'}<ActivityIndicator variant="upload" size="xs" />{/if}
+							<span>{pendingSlot === slot.key && pendingAction === 'upload' ? t('branding.uploading') : t('branding.upload')}</span>
 						</label>
-						<Button variant="ghost" size="sm" onclick={() => resetLogo(slot.key)} disabled={pendingSlot !== null || asset === null}>{t('branding.reset')}</Button>
+						<Button variant="ghost" size="sm" onclick={() => resetLogo(slot.key)} disabled={pendingSlot !== null || asset === null} ariaBusy={pendingSlot === slot.key && pendingAction === 'reset'}>
+							{#if pendingSlot === slot.key && pendingAction === 'reset'}<ActivityIndicator size="xs" tone="ink" />{t('branding.resetting')}{:else}{t('branding.reset')}{/if}
+						</Button>
 					</div>
 				</div>
 			{/each}
@@ -325,6 +333,7 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
+		gap: 0.375rem;
 		min-height: 2rem;
 		border: 1px solid color-mix(in oklab, var(--admin-tone, var(--color-brand)) 38%, transparent);
 		border-radius: 0.65rem;

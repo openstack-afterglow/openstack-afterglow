@@ -4,6 +4,7 @@
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import ActionMenu from '$lib/components/ui/ActionMenu.svelte';
 	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
 	interface Snapshot {
 		id: string;
@@ -48,7 +49,7 @@
 		<p class="text-sm">{t('snapshotListTable.empty')}</p>
 	</div>
 {:else}
-	<div class="bg-[#0B1220] border border-line rounded-lg overflow-hidden">
+	<div class="motion-stagger bg-[#0B1220] border border-line rounded-lg overflow-hidden">
 		<div class="grid grid-cols-[32px_1.6fr_1.2fr_80px_140px_110px_56px] px-4 py-2.5 border-b border-line text-xs uppercase tracking-wider text-ink-2 font-medium">
 			<div><SelectionCheckbox checked={selectableIds.size > 0 && selectedSelectableCount === selectableIds.size} indeterminate={selectedSelectableCount > 0 && selectedSelectableCount < selectableIds.size} disabled={selectionDisabled || selectableIds.size === 0} onclick={onToggleAll} ariaLabel={t('snapshotListTable.selectAll')} /></div>
 			<div>{t('snapshotListTable.name')}</div>
@@ -70,7 +71,10 @@
 				<div class="text-ink-2 text-xs">
 					{snap.created_at ? new Date(snap.created_at).toLocaleString(intlLocale(), { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}
 				</div>
-				<div><StatusChip status={snap.status} /></div>
+				<div class="flex flex-col items-start gap-1">
+					<StatusChip status={snap.status} />
+					{#if deleting === snap.id}<span class="inline-flex items-center gap-1 text-xs text-state-danger-text"><ActivityIndicator size="xs" tone="danger" />{t('snapshotListTable.deleting')}</span>{/if}
+				</div>
 				<div class="flex justify-end" role="none">
 					<ActionMenu
 						open={openSnapshotActionMenu === snap.id}
@@ -81,11 +85,15 @@
 						<button
 							onclick={() => { onActionMenuClose(); onDelete(snap.id, snap.name); }}
 							disabled={deleting === snap.id}
-							class="w-full text-left px-3 py-1.5 text-[13px] text-red-400 hover:text-red-300 hover:bg-surface-sunken disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+							class="w-full text-left px-3 py-1.5 text-[13px] text-state-danger-text hover:bg-surface-sunken disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
 						>
-							<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-							</svg>
+							{#if deleting === snap.id}
+								<ActivityIndicator size="xs" tone="danger" />
+							{:else}
+								<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+								</svg>
+							{/if}
 							{deleting === snap.id ? t('snapshotListTable.deleting') : t('snapshotListTable.delete')}
 						</button>
 					</ActionMenu>

@@ -72,18 +72,48 @@ describe('admin multimodal pricing consumer', () => {
 			cache_read_price_per_million: '0', media_pricing: { image_per_unit: '0.04', billing_basis: 'tokens', reservation_usd: '1.5000', token_rates: { image: { output_per_million: '40' } } }
 		}, 'token', 'project'));
 	});
-	it('sets applicable media text input without inventing an unused text output rate', async () => {
-		rows = [{ ...model('image'), output_price_per_million: null, effective_output_price_per_million: null }];
+	it.each([
+		{ kind: 'text', label: '입력', key: 'input_price_per_million', value: '5' },
+		{ kind: undefined, label: '입력', key: 'input_price_per_million', value: '5' },
+		{ kind: 'image', label: '입력', key: 'input_price_per_million', value: '5' },
+		{ kind: 'tts', label: '입력', key: 'input_price_per_million', value: '2' },
+		{ kind: 'stt', label: '출력', key: 'output_price_per_million', value: '4' },
+		{ kind: 'realtime', label: '입력', key: 'input_price_per_million', value: '0' }
+	])('saves $kind applicable text $label without inventing the unused direction', async ({ kind, label, key, value }) => {
+		rows = [{ ...model(), model_kind: kind, input_price_per_million: null, output_price_per_million: null, effective_input_price_per_million: null, effective_output_price_per_million: null }];
 		render(ModelPage);
 		const modal = await openEditor();
-		await fireEvent.input(within(modal).getByLabelText('입력'), { target: { value: '5' } });
+		await fireEvent.input(within(modal).getByLabelText(label), { target: { value: ` ${value} ` } });
 		await fireEvent.click(within(modal).getByRole('button', { name: '저장' }));
-		await waitFor(() => expect(mocks.patch).toHaveBeenCalledWith('/api/v1/chat/admin/models/1', { input_price_per_million: '5' }, 'token', 'project'));
 		await waitFor(() => expect(screen.queryByRole('dialog', { name: '모델 가격 수정' })).toBeNull());
 		const reopened = await openEditor();
-		expect((within(reopened).getByLabelText('입력') as HTMLInputElement).value).toBe('5');
-		expect((within(reopened).getByLabelText('출력') as HTMLInputElement).value).toBe('');
+		expect((within(reopened).getByLabelText(label) as HTMLInputElement).value).toBe(value);
+		expect((within(reopened).getByLabelText(label === '입력' ? '출력' : '입력') as HTMLInputElement).value).toBe('');
+		expect(mocks.patch).toHaveBeenCalledWith('/api/v1/chat/admin/models/1', { [key]: value }, 'token', 'project');
+		expect(mocks.error).not.toHaveBeenCalled();
 	});
+	it.each(['입력', '출력'])('stores a discovered text candidate inactive with only its %s price', async (direction) => {
+		candidates = [{ id: 'partial-candidate', display_name: 'Partial candidate', purpose: 'chat', model_kind: 'text' }];
+		mocks.post.mockImplementation(async (_path: string, body: Record<string, unknown>) => {
+			rows = [{ ...model('text'), input_price_per_million: null, output_price_per_million: null, ...body }];
+			return rows[0];
+		});
+		render(ModelPage);
+		await screen.findAllByRole('option', { name: 'OpenAI' });
+		await fireEvent.click(screen.getByRole('button', { name: '모델 불러오기' }));
+		await fireEvent.click(await screen.findByRole('checkbox', { name: 'partial-candidate' }));
+		await fireEvent.click(screen.getByRole('button', { name: '선택 모델 검토' }));
+		await fireEvent.input(screen.getByLabelText(`${direction} 단가 · partial-candidate`), { target: { value: '1.25' } });
+		expect((screen.getByRole('button', { name: '가격 확인 후 등록·활성화' }) as HTMLButtonElement).disabled).toBe(true);
+		await fireEvent.click(screen.getByRole('button', { name: '비활성으로 저장' }));
+		await waitFor(() => expect(screen.queryByTestId('model-registration-review')).toBeNull());
+		await screen.findByText('비활성 · 저장됨');
+		const modal = await openEditor();
+		expect((within(modal).getByLabelText(direction) as HTMLInputElement).value).toBe('1.25');
+		expect((within(modal).getByLabelText(direction === '입력' ? '출력' : '입력') as HTMLInputElement).value).toBe('');
+		expect(mocks.error).not.toHaveBeenCalled();
+	});
+
 	it('filters image-output discovery, registers its explicit kind inactive, and leaves text candidates alone', async () => {
 		candidates = [{ id: 'opaque-image', purpose: 'non_chat', model_kind: 'image' }, { id: 'opaque-text', purpose: 'chat', model_kind: 'text' }];
 		render(ModelPage);

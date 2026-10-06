@@ -78,7 +78,7 @@
 	});
 </script>
 
-<div bind:this={host} class="md-body" class:streaming>
+<div bind:this={host} class="md-body" class:streaming={streaming && content.length > 0}>
 	<!-- renderMarkdown 이 DOMPurify.sanitize 로 살균한 HTML -->
 	{@html html}
 </div>
@@ -100,7 +100,7 @@
 		vertical-align: -0.16em;
 		border-radius: 1px;
 		background: var(--color-accent);
-		animation: stream-cursor-blink 0.9s steps(1, end) infinite;
+		animation: motion-breathe var(--motion-duration-status-pulse) var(--motion-ease-in-out) infinite;
 	}
 	.md-body :global(.math-display) {
 		display: block;
@@ -131,9 +131,6 @@
 	}
 	.md-body :global(pre[data-mermaid-error]) {
 		border-color: var(--color-state-warning);
-	}
-	@keyframes stream-cursor-blink {
-		50% { opacity: 0; }
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.md-body.streaming::after { animation: none; }

@@ -25,6 +25,8 @@
 	"actions.create": "创建",
 	"databases.empty": "没有数据库",
 	"state.deleting": "正在删除...",
+	"state.restarting": "正在重启…",
+	"connection.detaching": "正在断开连接…",
 	"actions.deleteInstance": "删除实例",
 	"labels.datastore": "数据存储",
 	"labels.volumeSize": "卷大小",

@@ -76,7 +76,7 @@
 {:else if !summary}
 	<div class="text-red-400 text-sm">{t('monitoring.summary.loadFailed')}</div>
 {:else}
-	<div class="grid grid-cols-1 lg:grid-cols-2 gap-6" data-tour="admin-monitoring-summary">
+	<div class="motion-stagger grid grid-cols-1 lg:grid-cols-2 gap-6" data-tour="admin-monitoring-summary">
 		<span class="sr-only" data-tour="admin-monitoring-summary-ready">{t('monitoring.summary.ready')}</span>
 		<!-- Compute -->
 		<div class="bg-surface-base border border-line rounded-xl p-5">

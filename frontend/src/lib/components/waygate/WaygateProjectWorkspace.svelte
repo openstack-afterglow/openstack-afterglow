@@ -13,6 +13,7 @@
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import TableShell from '$lib/components/ui/TableShell.svelte';
 	import FormModal from '$lib/components/ui/FormModal.svelte';
@@ -1013,7 +1014,7 @@
 						<th></th>
 					</tr>
 				</thead>
-				<tbody>
+				<tbody class="motion-stagger">
 					{#each servers as server (server.id)}
 						<tr class="resource-selection-surface cursor-pointer" data-selected={selection.has(server.id)} onclick={() => openPanel(server.id)}>
 							<td class="text-[var(--color-ink-0)]">
@@ -1146,7 +1147,7 @@
 					<div class="text-sm">{t('project.empty.clients')}</div>
 				</div>
 			{:else}
-				<div class="space-y-3">
+				<div class="motion-stagger space-y-3">
 					{#each clients as client (client.id)}
 						<div class="rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-4">
 							<div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -1183,8 +1184,12 @@
 									</dl>
 								</div>
 								<div class="flex shrink-0 flex-wrap items-center gap-1" role="group" aria-label={t('project.client.actions', { name: client.name })}>
-									<Button onclick={() => downloadConfig(client)} disabled={downloadingClientId === client.id} variant="ghost" size="icon" class="!size-11 md:!size-8" ariaLabel={t('project.client.downloadConfig', { name: client.name })} title={downloadingClientId === client.id ? t('project.client.downloading') : t('project.client.downloadConfig', { name: client.name })}>
-										<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M5 16v5h14v-5" /></svg>
+									<Button onclick={() => downloadConfig(client)} disabled={downloadingClientId === client.id} ariaBusy={downloadingClientId === client.id} variant="ghost" size="icon" class="!size-11 md:!size-8" ariaLabel={t('project.client.downloadConfig', { name: client.name })} title={downloadingClientId === client.id ? t('project.client.downloading') : t('project.client.downloadConfig', { name: client.name })}>
+										{#if downloadingClientId === client.id}
+											<ActivityIndicator variant="download" size="md" />
+										{:else}
+											<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M5 16v5h14v-5" /></svg>
+										{/if}
 									</Button>
 									<Button onclick={() => openQr(client)} variant="ghost" size="icon" class="!size-11 md:!size-8" ariaLabel={t('project.client.qr', { name: client.name })} title={t('project.client.qr', { name: client.name })}>
 										<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3h6v6H3zm12 0h6v6h-6zM3 15h6v6H3zm12 0h2v2h-2zm6 0v6h-6m-3-9h3m6 0h-3M12 3v3m0 12v3" /></svg>
@@ -1229,7 +1234,7 @@
 					{t('project.empty.networks')}
 				</div>
 			{:else}
-				<div class="space-y-3">
+				<div class="motion-stagger space-y-3">
 					{#each attachments as att (att.id)}
 						<div class="rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-4">
 							<div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -1336,7 +1341,7 @@
 			<button onclick={closeQr} class="text-[var(--color-ink-2)] hover:text-[var(--color-ink-0)] text-sm">{t('project.actions.closeSymbol')}</button>
 		</div>
 		{#if qrLoading}
-			<div class="py-16 text-center text-sm text-[var(--color-ink-3)]">{t('project.qr.loading')}</div>
+			<div class="flex justify-center py-16"><ActivityIndicator label={t('project.qr.loading')} /></div>
 		{:else if qrError}
 			<Alert tone="danger">{qrError}</Alert>
 		{:else if qrDataUrl}
@@ -1404,6 +1409,7 @@
 			onclick={submitAttach}
 			variant="primary"
 			disabled={attaching || networksLoading || subnetsLoading || !attachNetworkId || !attachSubnetId}
+			ariaBusy={attaching}
 		>{attaching ? t('project.actions.processing') : t('project.actions.attach')}</Button>
 	{/snippet}
 </FormModal>

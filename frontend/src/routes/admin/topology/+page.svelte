@@ -5,6 +5,7 @@
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import { createAdminTopologyController } from '$lib/stores/adminTopologyController.svelte';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import Alert from '$lib/components/ui/Alert.svelte';
 	import GlobalTopology from '$lib/components/GlobalTopology.svelte';
 	import InstanceDetailPanel from '$lib/components/InstanceDetailPanel.svelte';
 	import RouterDetailPanel from '$lib/components/RouterDetailPanel.svelte';
@@ -129,11 +130,15 @@
 		<ProjectFilter bind:projectFilter={ctrl.projectFilter} bind:searchText={ctrl.projectSearchText} bind:dropdownOpen={ctrl.projectDropdownOpen} />
 	</div>
 
+	<!-- 갱신 실패는 그려진 토폴로지를 내리지 않는다(다시 마운트되면 자동 갱신이 진입 모션을 재생한다) -->
 	{#if ctrl.error}
-		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">
-			{ctrl.error}
-		</div>
-	{:else if ctrl.loading}
+		{#if ctrl.data}
+			<div role="status" class="mb-4 rounded-lg border border-state-danger/30 bg-state-danger/10 px-4 py-3 text-sm text-state-danger">{ctrl.error}</div>
+		{:else}
+			<Alert tone="danger" class="mb-4">{ctrl.error}</Alert>
+		{/if}
+	{/if}
+	{#if ctrl.loading}
 		<LoadingSkeleton variant="card" rows={8} />
 	{:else if ctrl.data}
 		<div class="bg-surface-base border border-line rounded-lg p-6 mb-4" data-tour="admin-network-canvas">
@@ -144,6 +149,7 @@
 					traffic={ctrl.traffic}
 					projectId={ctrl.projectFilter}
 					showAll={ctrl.projectFilter == null}
+					arrivalScope="admin"
 					selectedId={topologySelectedId}
 					adminView={true}
 					storageScope="admin"
@@ -158,6 +164,7 @@
 					traffic={ctrl.traffic}
 					projectId={ctrl.projectFilter}
 					showAll={ctrl.projectFilter == null}
+					arrivalScope="admin"
 					selectedId={topologySelectedId}
 					{onSelectInstance}
 					{onSelectRouter}

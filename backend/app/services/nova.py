@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 
 from app.models.compute import FlavorInfo, InstanceInfo, IpAddress
 from app.services.image_refs import image_reference_fields
+from app.services.ssh_access import GITHUB_LOGIN_METADATA_KEY, SSH_ACCESS_MODE_METADATA_KEY
 
 _logger = logging.getLogger(__name__)
 
@@ -792,6 +793,8 @@ def _server_to_info(s) -> InstanceInfo:
         ),
         scheduling=meta.get("scheduling"),
         key_name=getattr(s, "key_name", None),
+        ssh_access_mode="github" if meta.get(SSH_ACCESS_MODE_METADATA_KEY) == "github" else None,
+        github_login=meta.get(GITHUB_LOGIN_METADATA_KEY) or None,
         user_id=getattr(s, "user_id", None),
         project_id=getattr(s, "project_id", None) or getattr(s, "tenant_id", None),
         fault=fault,

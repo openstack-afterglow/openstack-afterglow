@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-network';
 	import RichText from '$lib/i18n/RichText.svelte';
+		import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 		import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	let {
@@ -70,8 +71,8 @@
 			</div>
 			<div class="flex justify-end gap-3 mt-6">
 				<button onclick={() => { open = false; }} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('adminNetworkCreateModal.cancel')}</button>
-				<button onclick={submit} disabled={creating || !form.name} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">
-					{creating ? t('adminNetworkCreateModal.creating') : t('adminNetworkCreateModal.create')}
+				<button aria-busy={creating} onclick={submit} disabled={creating || !form.name} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">
+					{#if creating}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" />{t('adminNetworkCreateModal.creating')}</span>{:else}{t('adminNetworkCreateModal.create')}{/if}
 				</button>
 			</div>
 		</div>

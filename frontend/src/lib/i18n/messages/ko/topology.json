@@ -1,4 +1,5 @@
 {
+	"card.noStatus": "상태 없음",
 	"topology.lane": "레인",
 	"topology.canvas": "캔버스",
 	"topology.createNetworkFailed": "네트워크 생성 실패",
@@ -50,6 +51,7 @@
 	"kind.internal": "내부",
 	"header.search": "이름 또는 IP 검색…",
 	"header.total": "총합",
+	"header.live": "실시간 트래픽",
 	"empty.resources": "리소스 없음",
 	"hud.internet": "인터넷",
 	"hud.isolated": "격리",

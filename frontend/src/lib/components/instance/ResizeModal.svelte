@@ -4,6 +4,8 @@
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import { t } from '$lib/i18n/ns/instance';
+	import { t as tc } from '$lib/i18n/ns/common';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
 	interface Props {
 		onClose: () => void;
@@ -91,6 +93,7 @@
 						</option>
 					{/each}
 				</select>
+				{#if s.resizeFlavorsLoading}<ActivityIndicator class="mt-2" label={`${t('resize.newFlavor')} · ${tc('state.loading')}`} />{/if}
 			</div>
 		</div>
 		<div class="flex justify-end gap-3 mt-6">
@@ -100,7 +103,7 @@
 				disabled={s.resizeLoading || s.resizeFlavorsLoading || resizeConfirming || !selectionAllowed}
 				class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm font-medium rounded-lg disabled:opacity-30"
 			>
-				{resizeConfirming ? t('resize.awaitingConfirmation') : s.resizeLoading ? t('resize.resizing') : t('resize.submit')}
+				{#if s.resizeLoading}<ActivityIndicator size="xs" label={t('resize.resizing')} />{:else if resizeConfirming}<ActivityIndicator size="xs" variant="dots" label={t('resize.awaitingConfirmation')} />{:else}{t('resize.submit')}{/if}
 			</button>
 		</div>
 	</div>

@@ -131,10 +131,18 @@ lumen_public_endpoint_url: "https://lumen.dmslab.re.kr"
 lumen_public_haproxy_enabled: true
 lumen_public_haproxy_fqdn: "lumen.dmslab.re.kr"
 
-palimpsest_external_url: "https://palimpsest.dmslab.re.kr"
 palimpsest_public_endpoint_url: "https://palimpsest.dmslab.re.kr"
-palimpsest_public_haproxy_enabled: true
-palimpsest_public_haproxy_fqdn: "palimpsest.dmslab.re.kr"
+# Explicit sample opt-in, limited to the exact validated HTTPS origin on older roles too.
+palimpsest_public_haproxy_enabled: >-
+  {{ palimpsest_public_endpoint_url is match('^https://[A-Za-z0-9][A-Za-z0-9.-]*[A-Za-z0-9]/?\Z')
+     and palimpsest_public_endpoint_url in
+       ['https://' ~ palimpsest_public_haproxy_fqdn, 'https://' ~ palimpsest_public_haproxy_fqdn ~ '/'] }}
+palimpsest_public_haproxy_fqdn: >-
+  {{ palimpsest_public_endpoint_url | regex_replace('^https://([^/]+)/?$', '\1')
+     if palimpsest_public_endpoint_url is match('^https://[A-Za-z0-9][A-Za-z0-9.-]*[A-Za-z0-9]/?\Z')
+     else '' }}
+# HAProxy hostname and Afterglow services.palimpsest_internal_url derive from this URL.
+# Optional separate trusted BFF route: afterglow_service_palimpsest_internal_url.
 
 # ── 4. MariaDB _kolla Schemas & Keystone Contracts ───────────────────────────
 # Use dedicated plugin schemas to leave stock afterglow schema untouched

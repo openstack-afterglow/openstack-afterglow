@@ -1,15 +1,28 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/object-storage';
+	import { untrack } from 'svelte';
 	import { useObjectBrowser } from '$lib/stores/objectBrowser.svelte';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import { EmptyState, SelectionCheckbox } from '$lib/components/ui';
 	import ObjectFileCard from './ObjectFileCard.svelte';
 	import ObjectFolderCard from './ObjectFolderCard.svelte';
+	import { createArrivals } from './arrivals';
 
 	const s = useObjectBrowser();
 	const folders = $derived(s.gridRows.filter((row) => row.isDir));
 	const files = $derived(s.gridRows.filter((row) => !row.isDir));
 	const searching = $derived(s.filterText.trim().length > 0);
+
+	// Keep the route-owned history through tab/view changes and loading skeleton swaps.
+	// Opacity only: cards hold fixed-position action menus.
+	let { arrivals = createArrivals() }: { arrivals?: ReturnType<typeof createArrivals> } = $props();
+	let arrivalContainer = untrack(() => s.containerName);
+	$effect.pre(() => {
+		const name = s.containerName;
+		if (name === arrivalContainer) return;
+		arrivalContainer = name;
+		arrivals.reset();
+	});
 </script>
 
 {#if s.loading}
@@ -40,7 +53,10 @@
 				<h3 class="text-xs font-medium uppercase tracking-wider text-ink-2">{t('views.cardGrid.folders')}</h3>
 				<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
 					{#each folders as row (row.obj.name)}
-						<ObjectFolderCard obj={row.obj} />
+						{@const order = arrivals.next(row.obj.name)}
+						<div class="grid grid-cols-1" class:motion-fade={order !== null} style:--motion-index={order}>
+							<ObjectFolderCard obj={row.obj} />
+						</div>
 					{/each}
 				</div>
 			</section>
@@ -51,7 +67,10 @@
 				<h3 class="text-xs font-medium uppercase tracking-wider text-ink-2">{t('views.cardGrid.files')}</h3>
 				<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
 					{#each files as row (row.obj.name)}
-						<ObjectFileCard obj={row.obj} fullPath={row.fullPath} />
+						{@const order = arrivals.next(row.obj.name)}
+						<div class="grid grid-cols-1" class:motion-fade={order !== null} style:--motion-index={order}>
+							<ObjectFileCard obj={row.obj} fullPath={row.fullPath} />
+						</div>
 					{/each}
 				</div>
 			</section>

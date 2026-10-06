@@ -10,7 +10,7 @@
 	};
 </script>
 
-<div class="bg-surface-base border border-line rounded-lg p-6 mb-4">
+<div class="motion-enter bg-surface-base border border-line rounded-lg p-6 mb-4">
 	<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide mb-4">{t('union.title')}</h2>
 	<dl class="grid grid-cols-1 @3xl/panel:grid-cols-2 gap-x-8 gap-y-3">
 		<div>
@@ -61,7 +61,7 @@
 </div>
 
 {#if Object.keys(s.instance!.metadata ?? {}).length > 0}
-	<div class="bg-surface-base border border-line rounded-lg p-6">
+	<div class="motion-enter bg-surface-base border border-line rounded-lg p-6">
 		<h2 class="text-sm font-semibold text-ink-2 uppercase tracking-wide mb-4">{t('union.metadata')}</h2>
 		<table class="w-full text-sm">
 			<tbody>

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-storage';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 		import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	let {
@@ -49,7 +50,7 @@
 					disabled={resetting}
 					class="px-4 py-2 bg-yellow-600 hover:bg-yellow-500 text-ink-0 text-sm rounded-lg disabled:opacity-30"
 				>
-					{resetting ? t('volumeDetail.processing') : t('volumeDetail.reset')}
+					{#if resetting}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('volumeDetail.processing')}</span></span>{:else}{t('volumeDetail.reset')}{/if}
 				</button>
 			</div>
 		</div>

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/file-storage';
+	import { t as tc } from '$lib/i18n/ns/common';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
   import { toast } from '$lib/stores/toast';
   import { auth } from '$lib/stores/auth';
@@ -170,9 +171,9 @@
   {#if error}<Alert tone="danger">{error}</Alert>{/if}
 
   {#if loading}
-    <div class="grid grid-cols-2 gap-3.5">
+    <div class="grid grid-cols-2 gap-3.5" role="status" aria-busy="true" aria-label={`${t('list.title')} · ${tc('state.loading')}`}>
       {#each [1, 2, 3, 4] as _}
-        <div class="animate-pulse bg-surface-base border border-line rounded-lg h-40"></div>
+        <div class="motion-skeleton border border-line rounded-lg h-40"></div>
       {/each}
     </div>
   {:else if fileStorages.length === 0}
@@ -181,7 +182,7 @@
     </EmptyState>
   {:else}
     <SelectionToolbar label={t('list.title')} ariaLabel={t('list.selectAll')} checked={selectableIds.size > 0 && [...selectableIds].every((id) => selection.has(id))} indeterminate={selection.count > 0 && ![...selectableIds].every((id) => selection.has(id))} selectedCount={selection.count} disabled={bulkBusy} onToggle={() => selection.toggleAll(selectableIds)} />
-    <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+    <div class="motion-stagger mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3.5">
       {#each fileStorages as fs (fs.id)}
         <FileStorageCard
           {fs}

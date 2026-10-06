@@ -1,4 +1,5 @@
 {
+	"volumeDetail.loadingInfo": "正在加载卷信息",
 	"volumeDetail.loading": "正在加载...",
 	"volumeDetail.attachments": "挂载信息",
 	"volumeDetail.basicInfo": "基本信息",
@@ -86,6 +87,7 @@
 	"volumeList.chartLoading": "正在加载图表...",
 	"volumeList.chartTitle": "卷数量趋势",
 	"volumeList.statusCounts": "按状态统计卷数量",
+	"volumeList.statusLoading": "正在加载卷状态…",
 	"volumeList.all": "全部",
 	"volumeList.allStatuses": "全部状态",
 	"volumeList.searchName": "按名称搜索...",

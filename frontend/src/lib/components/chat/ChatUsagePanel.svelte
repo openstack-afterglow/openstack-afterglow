@@ -121,7 +121,9 @@
 			</div>
 		</div>
 		{#if loading}
-			<div class="{cardCls} h-24 animate-pulse"></div>
+			<div class="motion-skeleton rounded-lg border border-line h-24" role="status" aria-label={t('usage.trendLoading')}>
+				<span class="sr-only">{t('usage.trendLoading')}</span>
+			</div>
 		{:else if points.length === 0}
 			<p class="px-1 text-xs text-[var(--color-ink-3)]">{t('usage.empty')}</p>
 		{:else}

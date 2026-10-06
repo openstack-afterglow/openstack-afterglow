@@ -4,8 +4,8 @@
 	import { imageStudioApi, imageModelReadiness, type ImageModel, type ImageRun, type ImageApiScope, type ImageCapabilities } from '$lib/api/imageStudio';
 	import { isChatImageMime } from '$lib/api/chatAttachments';
 	import { ApiError } from '$lib/api/client';
-	import { Alert, Button, Field, PageShell, SelectInput, TextareaInput } from '$lib/components/ui';
-	import { IMAGE_STUDIO_STYLES, composeImagePrompt, type ImageStudioStyleId } from './imageStudioStyles';
+	import { ActivityIndicator, Alert, Button, Field, PageShell, SelectInput, TextareaInput } from '$lib/components/ui';
+	import { IMAGE_STUDIO_STYLES, composeImagePrompt, imageRequestAspectRatio, type ImageStudioStyleId } from './imageStudioStyles';
 	import { t } from '$lib/i18n/ns/chat-studio';
 
 	const scope = $derived($auth.token && $auth.projectId ? { token: $auth.token, projectId: $auth.projectId } : null);
@@ -35,6 +35,12 @@
 	let runIds = $state<string[]>([]);
 	let selectedRunId = $state<string | null>(null);
 	let currentRun = $state<ImageRun | null>(null);
+	interface RunContext { size: string | null; startedAt: number; submitted: boolean }
+	const runContexts = new Map<string, RunContext>();
+	const revealedOutputs = new Set<string>();
+	let runContext = $state<RunContext | null>(null);
+	let liveRunId = $state<string | null>(null);
+	let elapsedSeconds = $state(0);
 	let previewUrls = $state<Record<string, string>>({});
 	let loadingRun = $state(false);
 	let operation = 0;
@@ -63,6 +69,17 @@
 	const variantReady = $derived(Boolean(variants.some((variant) => variant.size === size && variant.quality === quality) && Number(count) >= 1 && Number(count) <= maxCount));
 	const requestFingerprint = $derived(JSON.stringify({ project: storageKey, modelId, prompt: composedPrompt, style: styleId, size, quality, count, inputAssetId }));
 	const canSubmit = $derived(Boolean(scope) && !readiness && !modelsLoading && !capabilitiesLoading && variantReady && !busy && Boolean(composedPrompt) && (!hasInput || Boolean(inputAssetId)));
+	const developingRatio = $derived(imageRequestAspectRatio(runContext?.size) ?? '1 / 1');
+	$effect(() => {
+		const active = runActive;
+		const startedAt = runContext?.startedAt;
+		if (!active || startedAt === undefined) return;
+		// This measures the local wait, not unreported server execution time.
+		const updateElapsed = () => { elapsedSeconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000)); };
+		updateElapsed();
+		const clock = setInterval(updateElapsed, 1000);
+		return () => clearInterval(clock);
+	});
 	$effect(() => {
 		const fingerprint = requestFingerprint;
 		untrack(() => {
@@ -164,6 +181,12 @@
 			default: return value;
 		}
 	}
+	function revealLiveResult(node: HTMLImageElement, assetId: string) {
+		const key = `${currentRun?.run_id}:${assetId}`;
+		// Mark on mount so even an overlapping status poll cannot replay a finished image's entrance.
+		if (liveRunId === currentRun?.run_id && !revealedOutputs.has(key)) node.classList.add('motion-pop');
+		revealedOutputs.add(key);
+	}
 
 	async function loadModels(requestScope: ImageApiScope, generation: number) {
 		modelsLoading = true;
@@ -185,10 +208,11 @@
 		try {
 			const run = await imageStudioApi.run(id, requestScope);
 			if (generation !== operation || selectedRunId !== id) return;
+			const firstCompletion = currentRun?.run_id !== run.run_id || currentRun?.status !== 'completed';
 			currentRun = run;
 			loadingRun = false;
 			if (run.terminal) {
-				if (run.status === 'completed') void loadPreviews(run, requestScope, generation);
+				if (run.status === 'completed' && firstCompletion) void loadPreviews(run, requestScope, generation);
 			} else {
 				clearTimer();
 				timer = setTimeout(() => { void loadRun(id, requestScope, generation); }, 2000);
@@ -221,6 +245,8 @@
 		error = '';
 		currentRun = null;
 		selectedRunId = id;
+		liveRunId = null;
+		runContext = runContexts.get(id) ?? { size: null, startedAt: Date.now(), submitted: false };
 		void loadRun(id, requestScope, operation);
 	}
 
@@ -251,6 +277,10 @@
 			runIds = [];
 			selectedRunId = null;
 			currentRun = null;
+			runContexts.clear();
+			revealedOutputs.clear();
+			runContext = null;
+			liveRunId = null;
 			error = '';
 			if (!currentScope) return;
 			const generation = modelRequest;
@@ -312,6 +342,9 @@
 		clearPreviews();
 		currentRun = null;
 		selectedRunId = null;
+		liveRunId = null;
+		const context: RunContext = { size, startedAt: Date.now(), submitted: true };
+		runContext = context;
 		error = '';
 		submitting = true;
 		try {
@@ -322,6 +355,9 @@
 			const descriptor = await imageStudioApi.submit(inputAssetId ? 'edits' : 'generations', inputAssetId ? { ...request, input_asset_id: inputAssetId } : request, requestScope, idempotencyKey, controller.signal);
 			if (generation !== operation) return;
 			pendingIntent = null;
+			// A completed admission or known history ID is replay, not a new live result.
+			liveRunId = !runIds.includes(descriptor.run_id) && !['completed', 'failed', 'canceled'].includes(descriptor.status) ? descriptor.run_id : null;
+			runContexts.set(descriptor.run_id, context);
 			runIds = [descriptor.run_id, ...runIds.filter((id) => id !== descriptor.run_id)].slice(0, 20);
 			saveHistory(storageKey, runIds);
 			selectedRunId = descriptor.run_id;
@@ -379,7 +415,7 @@
 					<img src={inputPreviewUrl} alt={t('imageStudio.inputPreview')} />
 					<div class="attachment-meta">
 						<p class="attachment-name">{inputFileName}</p>
-						{#if uploading}<p role="status" class="muted">{t('imageStudio.uploading')}</p>{:else if inputAssetId}<p role="status" class="muted">{t('imageStudio.uploadComplete', { name: inputFileName })}</p>{/if}
+						{#if uploading}<ActivityIndicator variant="upload" label={t('imageStudio.uploading')} />{:else if inputAssetId}<p role="status" class="muted">{t('imageStudio.uploadComplete', { name: inputFileName })}</p>{/if}
 					</div>
 					<Button variant="ghost" size="sm" ariaLabel={t('imageStudio.removeAttachment')} onclick={clearInput} disabled={submitting}>{t('imageStudio.remove')}</Button>
 				</div>
@@ -434,10 +470,34 @@
 				</div>
 				{#if selectedRunId}
 					{#if loadingRun && !currentRun}<p role="status" class="muted">{t('imageStudio.checkingJob')}</p>{/if}
-					{#if currentRun && !currentRun.terminal}<div class="run-progress"><p role="status" class="muted">{t('imageStudio.processing')}</p><Button variant="danger-outline" onclick={cancel}>{t('imageStudio.cancelJob')}</Button></div>{/if}
+					{#if currentRun && !currentRun.terminal}
+						<div class="developing motion-skeleton" style:aspect-ratio={developingRatio} aria-busy="true" aria-label={t('imageStudio.developing')}>
+							<div class="developing-status">
+								<ActivityIndicator variant={currentRun.status === 'running' ? 'orbit' : 'dots'} label={displayStatus(currentRun.status)} size="lg" />
+								<p class="muted">{runContext?.submitted ? t('imageStudio.elapsedSinceRequest', { seconds: elapsedSeconds }) : t('imageStudio.elapsedSinceView', { seconds: elapsedSeconds })}</p>
+								<p class="muted">{runContext?.size === 'auto' ? t('imageStudio.requestedAutoSize') : runContext?.size ? t('imageStudio.requestedSize', { size: runContext.size.replace('x', ' × ') }) : t('imageStudio.requestedSizeUnknown')}</p>
+							</div>
+						</div>
+						<div class="run-progress"><p class="muted">{t('imageStudio.processing')}</p><Button variant="danger-outline" onclick={cancel}>{t('imageStudio.cancelJob')}</Button></div>
+					{/if}
 					{#if currentRun?.status === 'failed'}<Alert tone="danger" title={t('imageStudio.jobFailedTitle')}>{t('imageStudio.jobFailed')}</Alert>{/if}
 					{#if currentRun?.status === 'canceled'}<Alert tone="neutral">{t('imageStudio.jobCanceled')}</Alert>{/if}
-					{#if currentRun?.status === 'completed'}{#if currentRun.output_assets?.length}<div class="gallery">{#each currentRun.output_assets as asset (asset.asset_id)}<figure><div class="image-frame">{#if previewUrls[asset.asset_id]}<img src={previewUrls[asset.asset_id]} alt={t('imageStudio.generatedImage')} />{:else}<span>{t('imageStudio.loadingImage')}</span>{/if}</div><figcaption><span>{t('imageStudio.imageMime', { mime: asset.mime_type })}</span><Button variant="secondary" onclick={() => download(asset.asset_id, `image-${asset.asset_id}.${asset.mime_type.split('/')[1] ?? 'png'}`)}>{t('imageStudio.download')}</Button></figcaption></figure>{/each}</div>{:else}<Alert tone="warning">{t('imageStudio.noOutputImages')}</Alert>{/if}{/if}
+					{#if currentRun?.status === 'completed'}
+						{#if currentRun.output_assets?.length}
+							<div class="gallery">
+								{#each currentRun.output_assets as asset (asset.asset_id)}
+									<figure>
+										<div class="image-frame">
+											{#if previewUrls[asset.asset_id]}
+												<img src={previewUrls[asset.asset_id]} alt={t('imageStudio.generatedImage')} use:revealLiveResult={asset.asset_id} />
+											{:else}<span>{t('imageStudio.loadingImage')}</span>{/if}
+										</div>
+										<figcaption><span>{t('imageStudio.imageMime', { mime: asset.mime_type })}</span><Button variant="secondary" onclick={() => download(asset.asset_id, `image-${asset.asset_id}.${asset.mime_type.split('/')[1] ?? 'png'}`)}>{t('imageStudio.download')}</Button></figcaption>
+									</figure>
+								{/each}
+							</div>
+						{:else}<Alert tone="warning">{t('imageStudio.noOutputImages')}</Alert>{/if}
+					{/if}
 				{/if}
 				{#if runIds.length}
 					<div class="history-block">
@@ -491,6 +551,8 @@
 	.result-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; }
 	.run-status { font-size: 0.75rem; font-weight: 500; color: var(--color-ink-1); }
 	.run-progress { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; }
+	.developing { width: 100%; max-width: 36rem; margin-inline: auto; display: grid; place-items: center; border: 1px solid var(--color-line); border-radius: var(--radius-xl); }
+	.developing-status { position: relative; z-index: 1; display: grid; justify-items: center; gap: 0.5rem; padding: 1rem; text-align: center; }
 	.gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: 1rem; }
 	.gallery figure { margin: 0; min-width: 0; border: 1px solid var(--color-line); border-radius: var(--radius-xl); overflow: hidden; background: var(--color-surface-raised); }
 	.image-frame { min-height: 16rem; display: grid; place-items: center; color: var(--color-ink-2); background: var(--color-surface-sunken); font-size: 0.8125rem; }

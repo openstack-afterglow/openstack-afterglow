@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-network';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { getNetworkStatusClass } from '$lib/utils/networkStatus';
 	import type { NetworkDetail } from '$lib/types/networks';
 
@@ -29,11 +30,11 @@
 			{/if}
 		</div>
 	</div>
-	<button
+	<button aria-busy={deleting}
 		onclick={onDelete}
 		disabled={deleting}
-		class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-sm px-3 py-1.5 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors"
+		class="text-[var(--color-state-danger-text)] hover:text-[var(--color-state-danger-text)] disabled:text-ink-3 text-sm px-3 py-1.5 rounded border border-[var(--color-state-danger)]/30 hover:border-[var(--color-state-danger)]/30 disabled:border-line-2 transition-colors"
 	>
-		{deleting ? t('networkHeader.deleting') : t('networkHeader.delete')}
+		{#if deleting}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" />{t('networkHeader.deleting')}</span>{:else}{t('networkHeader.delete')}{/if}
 	</button>
 </div>

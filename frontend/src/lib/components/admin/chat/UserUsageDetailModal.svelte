@@ -5,6 +5,8 @@
 	import type { UserUsageDetail } from '$lib/api/chatQuotas';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import Pill from '$lib/components/ui/Pill.svelte';
 	import SelectInput from '$lib/components/ui/SelectInput.svelte';
@@ -184,7 +186,7 @@
 								<span class="ml-2 tabular-nums text-[var(--color-ink-2)]">{t('sourceSummary', { tokens: formatNumber(item.total_tokens), credits: formatDecimal(item.credited_cost, 2) })}</span>
 							</div>
 						{/each}
-						{#if detail.by_source.length === 0}<span class="text-sm text-[var(--color-ink-3)]">{t('noRecords')}</span>{/if}
+						{#if detail.by_source.length === 0}<EmptyState headline={t('noRecords')} class="py-4 [&_.motion-enter]:animate-none" />{/if}
 					</div>
 				</section>
 
@@ -206,7 +208,7 @@
 											<td class="tabular-nums">{formatNumber(item.request_count)}</td>
 										</tr>
 									{/each}
-									{#if detail.by_model.length === 0}<tr><td colspan="7" class="text-center text-[var(--color-ink-3)]">{t('noRecords')}</td></tr>{/if}
+									{#if detail.by_model.length === 0}<tr><td colspan="7"><EmptyState headline={t('noRecords')} class="py-4 [&_.motion-enter]:animate-none" /></td></tr>{/if}
 								</tbody>
 							</table>
 						</TableShell>
@@ -226,7 +228,7 @@
 								</dl>
 							</article>
 						{/each}
-						{#if detail.by_model.length === 0}<p class="text-sm text-[var(--color-ink-3)]">{t('noRecords')}</p>{/if}
+						{#if detail.by_model.length === 0}<EmptyState headline={t('noRecords')} class="py-4 [&_.motion-enter]:animate-none" />{/if}
 					</div>
 				</section>
 
@@ -249,7 +251,7 @@
 											<td class="tabular-nums">${formatDecimal(record.raw_cost)}</td>
 										</tr>
 									{/each}
-									{#if detail.records.length === 0}<tr><td colspan="8" class="text-center text-[var(--color-ink-3)]">{t('noRecords')}</td></tr>{/if}
+									{#if detail.records.length === 0}<tr><td colspan="8"><EmptyState headline={t('noRecords')} class="py-4 [&_.motion-enter]:animate-none" /></td></tr>{/if}
 								</tbody>
 							</table>
 						</TableShell>
@@ -270,10 +272,10 @@
 								</dl>
 							</article>
 						{/each}
-						{#if detail.records.length === 0}<p class="text-sm text-[var(--color-ink-3)]">{t('noRecords')}</p>{/if}
+						{#if detail.records.length === 0}<EmptyState headline={t('noRecords')} class="py-4 [&_.motion-enter]:animate-none" />{/if}
 					</div>
 					{#if detail.next_before_id}
-						<div class="mt-3 flex justify-center"><Button variant="secondary" size="sm" disabled={loadingMore} onclick={() => void load(false)}>{loadingMore ? t('loadingMore') : t('moreRecords')}</Button></div>
+						<div class="mt-3 flex justify-center"><Button variant="secondary" size="sm" disabled={loadingMore} ariaBusy={loadingMore} onclick={() => void load(false)}>{#if loadingMore}<ActivityIndicator size="xs" tone="ink" />{/if}{loadingMore ? t('loadingMore') : t('moreRecords')}</Button></div>
 					{/if}
 				</section>
 			{/if}

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { useVolumeDetailController } from '$lib/stores/volumeDetailController.svelte';
   import Button from '$lib/components/ui/Button.svelte';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
   import { dialogFocus } from '$lib/utils/dialogFocus';
   import { t } from '$lib/i18n/ns/volume';
 
@@ -38,7 +39,7 @@
     <div class="flex justify-end gap-3 mt-5">
       <button onclick={() => s.closeAttachModal()} class="text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('attachModal.cancel')}</button>
       <Button onclick={() => s.attachVolume()} disabled={s.attaching || !s.attachInstanceId}>
-        {s.attaching ? t('attachModal.attaching') : t('attachModal.attach')}
+        {#if s.attaching}<ActivityIndicator size="xs" tone="ink" />{/if}{s.attaching ? t('attachModal.attaching') : t('attachModal.attach')}
       </Button>
     </div>
   </div>

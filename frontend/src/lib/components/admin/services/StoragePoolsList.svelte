@@ -105,8 +105,8 @@
 					</div>
 					<div class="w-full h-2 bg-surface-sunken rounded-full overflow-hidden">
 						<div
-							class="h-full rounded-full transition-all"
-							style="width: {pct.toFixed(1)}%; background: {pct > 85 ? 'var(--gradient-usage-danger)' : pct > 65 ? 'var(--gradient-usage-warning)' : 'var(--gradient-usage)'}"
+							class="pool-fill"
+							style="transform: scaleX({Math.max(0, pct) / 100}); background: {pct > 85 ? 'var(--gradient-usage-danger)' : pct > 65 ? 'var(--gradient-usage-warning)' : 'var(--gradient-usage)'}"
 						></div>
 					</div>
 					<div class="text-xs text-ink-2 mt-1">{t('services.pools.usedPercent', { percent: pct.toFixed(1) })}</div>
@@ -115,3 +115,12 @@
 		</div>
 	{/if}
 </div>
+
+<style>
+	/* Scales instead of resizing; no mount grow-in because filtering re-creates keyed pool cards. */
+	.pool-fill {
+		height: 100%;
+		transform-origin: left center;
+		transition: transform var(--motion-duration-data) var(--motion-ease-emphasized);
+	}
+</style>

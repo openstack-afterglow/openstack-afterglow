@@ -8,6 +8,7 @@
 	import { t } from '$lib/i18n/ns/instance';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import RichText from '$lib/i18n/RichText.svelte';
+	import { ActivityIndicator, AnimatedNumber } from '$lib/components/ui';
 
 	interface Props {
 		instanceId: string;
@@ -112,8 +113,8 @@
 	// --- SVG chart helpers ---
 	const SVG_W = 480;
 	const SVG_H = 120;
-	const PAD_L = 38;
-	const PAD_R = 12;
+	const PAD_L = 64;
+	const PAD_R = 24;
 	const PAD_T = 10;
 	const PAD_B = 22;
 
@@ -134,9 +135,12 @@
 		return `${b.toFixed(0)}B/s`;
 	}
 
-	function latestValue(d: Series[] | null): string {
-		if (!d || d.length === 0) return '—';
-		return d[d.length - 1].value.toFixed(1);
+	// Remember each series entrance for this panel; polling, range and tab changes do not replay it.
+	const enteredSeries = new Set<string>();
+	function enterSeries(node: SVGElement, series: { key: string; dashed?: boolean }) {
+		if (enteredSeries.has(series.key)) return;
+		enteredSeries.add(series.key);
+		node.classList.add(series.dashed ? 'motion-fade' : 'motion-draw');
 	}
 
 	function xLabels(pts: Series[], minTs: number, tsRange: number): { ts: number; label: string }[] {
@@ -165,15 +169,15 @@
 	}
 
 	const CHARTS: ChartSpec[] = [
-		{ key: 'cpu', get title() { return t('metrics.cpuUsage'); }, color: '#3b82f6', unit: '%', yMax: 100 },
-		{ key: 'memory', get title() { return t('metrics.memoryUsage'); }, color: '#4ade80', unit: '%', yMax: 100 },
-		{ key: 'network_rx', get title() { return t('metrics.networkIo'); }, color: '#60a5fa', unit: '', extraKey: 'network_tx', extraColor: '#f87171', formatY: formatBytes },
-		{ key: 'disk_read', get title() { return t('metrics.diskIo'); }, color: '#a78bfa', unit: '', extraKey: 'disk_write', extraColor: '#fbbf24', formatY: formatBytes },
+		{ key: 'cpu', get title() { return t('metrics.cpuUsage'); }, color: 'var(--color-accent)', unit: '%', yMax: 100 },
+		{ key: 'memory', get title() { return t('metrics.memoryUsage'); }, color: 'var(--color-state-success)', unit: '%', yMax: 100 },
+		{ key: 'network_rx', get title() { return t('metrics.networkIo'); }, color: 'var(--color-accent)', unit: '', extraKey: 'network_tx', extraColor: 'var(--color-state-danger)', formatY: formatBytes },
+		{ key: 'disk_read', get title() { return t('metrics.diskIo'); }, color: 'var(--color-accent-2)', unit: '', extraKey: 'disk_write', extraColor: 'var(--color-state-warning)', formatY: formatBytes },
 	];
 
 	const GPU_CHARTS: ChartSpec[] = [
-		{ key: 'gpu_util', get title() { return t('metrics.gpuUsage'); }, color: '#c084fc', unit: '%', yMax: 100 },
-		{ key: 'gpu_mem', get title() { return t('metrics.gpuMemory'); }, color: '#fbbf24', unit: '%', yMax: 100 },
+		{ key: 'gpu_util', get title() { return t('metrics.gpuUsage'); }, color: 'var(--color-accent-2)', unit: '%', yMax: 100 },
+		{ key: 'gpu_mem', get title() { return t('metrics.gpuMemory'); }, color: 'var(--color-state-warning)', unit: '%', yMax: 100 },
 	];
 
 	const activeCharts = $derived(isGpu ? [...CHARTS, ...GPU_CHARTS] : CHARTS);
@@ -223,7 +227,7 @@
 		/>
 	{:else}
 	<div class="grid grid-cols-1 @3xl/panel:grid-cols-2 gap-4">
-		{#each activeCharts as chart}
+		{#each activeCharts as chart (chart.key)}
 			{@const m = metrics[chart.key]}
 			{@const ex = chart.extraKey ? metrics[chart.extraKey] : null}
 			<div class="bg-surface-sunken border border-line-2 rounded-lg p-4">
@@ -231,13 +235,13 @@
 					<span class="text-xs font-semibold text-ink-2">{chart.title}</span>
 					{#if m.data && m.data.length > 0}
 						<span class="text-sm font-bold text-ink-0">
-							{chart.formatY ? chart.formatY(m.data[m.data.length - 1].value) : `${latestValue(m.data)}${chart.unit}`}
+							<AnimatedNumber value={m.data[m.data.length - 1].value} format={chart.formatY ?? ((value) => `${value.toFixed(1)}${chart.unit}`)} />
 						</span>
 					{/if}
 				</div>
 
 				{#if m.data === null}
-					<div class="flex items-center justify-center h-20 text-ink-2 text-xs">{t('metrics.loading')}</div>
+					<div class="flex items-center justify-center h-20"><ActivityIndicator label={t('metrics.loading')} /></div>
 				{:else if m.error}
 					<div class="flex items-center justify-center h-20 text-red-500 text-xs">{m.error}</div>
 				{:else if m.data.length === 0}
@@ -256,9 +260,9 @@
 							<line
 								x1={PAD_L} y1={chartY(maxVal * frac, maxVal)}
 								x2={SVG_W - PAD_R} y2={chartY(maxVal * frac, maxVal)}
-								stroke="#374151" stroke-width="1"
+								stroke="var(--color-line-2)" stroke-width="1"
 							/>
-							<text x={PAD_L - 4} y={chartY(maxVal * frac, maxVal) + 3} text-anchor="end" font-size="8" fill="#6b7280">
+							<text x={PAD_L - 4} y={chartY(maxVal * frac, maxVal) + 3} text-anchor="end" font-size="0.75rem" fill="var(--color-ink-2)">
 								{chart.formatY ? chart.formatY(maxVal * frac) : Math.round(maxVal * frac)}
 							</text>
 						{/each}
@@ -271,6 +275,8 @@
 								opacity="0.1"
 							/>
 							<polyline
+								pathLength="1"
+								use:enterSeries={{ key: chart.key }}
 								points={buildPolyline(pts, maxVal, minTs, tsRange)}
 								fill="none"
 								stroke={chart.color}
@@ -283,6 +289,7 @@
 						<!-- 추가 라인 (network_tx / disk_write) -->
 						{#if chart.extraKey && exPts.length > 1}
 							<polyline
+								use:enterSeries={{ key: chart.extraKey, dashed: true }}
 								points={buildPolyline(exPts, maxVal, minTs, tsRange)}
 								fill="none"
 								stroke={chart.extraColor}
@@ -294,7 +301,7 @@
 
 						<!-- X축 레이블 -->
 						{#each labels as lbl}
-							<text x={chartX(lbl.ts, minTs, tsRange)} y={SVG_H - 4} text-anchor="middle" font-size="8" fill="#6b7280">
+							<text x={chartX(lbl.ts, minTs, tsRange)} y={SVG_H - 4} text-anchor="middle" font-size="0.75rem" fill="var(--color-ink-2)">
 								{lbl.label}
 							</text>
 						{/each}
@@ -319,9 +326,13 @@
 				{#if summaryStats[chart.key]}
 					{@const s = summaryStats[chart.key]}
 					<div class="flex gap-4 mt-2 pt-2 border-t border-line-2/60 text-xs text-ink-2">
-						<span><RichText segments={t.rich('metrics.minimum', { value: s.min != null ? (chart.formatY ? chart.formatY(s.min) : `${s.min.toFixed(1)}${chart.unit}`) : '—' })} classes={{ strong: 'text-ink-2 font-medium' }} /></span>
-						<span><RichText segments={t.rich('metrics.average', { value: s.avg != null ? (chart.formatY ? chart.formatY(s.avg) : `${s.avg.toFixed(1)}${chart.unit}`) : '—' })} classes={{ strong: 'text-ink-2 font-medium' }} /></span>
-						<span><RichText segments={t.rich('metrics.maximum', { value: s.max != null ? (chart.formatY ? chart.formatY(s.max) : `${s.max.toFixed(1)}${chart.unit}`) : '—' })} classes={{ strong: 'text-ink-2 font-medium' }} /></span>
+						{#snippet statValue(value: number | null)}<strong class="text-ink-2 font-medium">{#if value != null}<AnimatedNumber {value} format={chart.formatY ?? ((v) => `${v.toFixed(1)}${chart.unit}`)} />{:else}—{/if}</strong>{/snippet}
+						{#snippet statMin(_text: string)}{@render statValue(s.min)}{/snippet}
+						{#snippet statAvg(_text: string)}{@render statValue(s.avg)}{/snippet}
+						{#snippet statMax(_text: string)}{@render statValue(s.max)}{/snippet}
+						<span><RichText segments={t.rich('metrics.minimum', { value: '' })} tags={{ strong: statMin }} /></span>
+						<span><RichText segments={t.rich('metrics.average', { value: '' })} tags={{ strong: statAvg }} /></span>
+						<span><RichText segments={t.rich('metrics.maximum', { value: '' })} tags={{ strong: statMax }} /></span>
 					</div>
 				{/if}
 			</div>

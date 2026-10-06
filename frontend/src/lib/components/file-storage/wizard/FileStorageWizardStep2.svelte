@@ -2,6 +2,7 @@
 	import { useFsWizard } from '$lib/stores/fileStorageWizardStore.svelte';
 	import { t } from '$lib/i18n/ns/file-storage';
 	import RichText from '$lib/i18n/RichText.svelte';
+	import { ActivityIndicator, Alert, Button, ProgressTrack } from '$lib/components/ui';
 
 	const s = useFsWizard();
 </script>
@@ -70,7 +71,7 @@
 			<div>
 				<label class="block text-xs text-ink-2 mb-1">{t('wizard.network.subnet')}
 					{#if s.loadingSubnets}
-						<div class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-2 text-sm mt-1">{t('wizard.network.loadingSubnets')}</div>
+						<div class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 mt-1"><ActivityIndicator label={t('wizard.network.loadingSubnets')} /></div>
 					{:else}
 						<select bind:value={s.inlineNetForm.neutron_subnet_id} disabled={s.subnets.length === 0}
 							class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mt-1 disabled:text-ink-3">
@@ -80,26 +81,25 @@
 					{/if}
 				</label>
 			</div>
-			{#if s.inlineNetError}<div class="text-red-400 text-xs bg-red-900/20 border border-red-800 rounded px-3 py-2">{s.inlineNetError}</div>{/if}
+			{#if s.inlineNetError}<Alert tone="danger">{s.inlineNetError}</Alert>{/if}
 			<div class="flex justify-end gap-2">
 				<button onclick={() => { s.showInlineNetCreate = false; s.inlineNetError = ''; }} class="px-3 py-1.5 text-xs text-ink-2 hover:text-ink-0 transition-colors">{t('wizard.actions.cancel')}</button>
-				<button onclick={s.createInlineNetwork} disabled={s.inlineNetCreating || !s.inlineNetForm.name.trim() || !s.inlineNetForm.neutron_net_id || !s.inlineNetForm.neutron_subnet_id}
-					class="px-4 py-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-xs font-medium rounded-lg transition-colors">
-					{s.inlineNetCreating ? t('wizard.actions.creating') : t('wizard.network.create')}
-				</button>
+				<Button variant="accent" size="sm" onclick={s.createInlineNetwork} disabled={s.inlineNetCreating || !s.inlineNetForm.name.trim() || !s.inlineNetForm.neutron_net_id || !s.inlineNetForm.neutron_subnet_id} ariaBusy={s.inlineNetCreating}>
+					{#if s.inlineNetCreating}<ActivityIndicator size="xs" tone="ink" />{t('wizard.actions.creating')}{:else}{t('wizard.network.create')}{/if}
+				</Button>
 			</div>
 		</div>
 	{/if}
 </div>
 
-{#if s.wizardError}<div class="mt-4 text-red-400 text-xs bg-red-900/20 border border-red-800 rounded px-3 py-2">{s.wizardError}</div>{/if}
+{#if s.wizardError}<Alert tone="danger" class="mt-4">{s.wizardError}</Alert>{/if}
+{#if s.creating}<ProgressTrack value={null} active label={t('wizard.mutation.createFileStorage')} class="mt-4" />{/if}
 <div class="flex justify-between gap-3 mt-6">
 	<button onclick={s.backToStep1} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('wizard.actions.previous')}</button>
 	<div class="flex gap-3">
 		<button onclick={s.closeWizard} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('wizard.actions.cancel')}</button>
-		<button onclick={s.createFileStorage} disabled={s.creating}
-			class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors">
-			{s.creating ? t('wizard.actions.creating') : t('wizard.actions.create')}
-		</button>
+		<Button onclick={s.createFileStorage} disabled={s.creating} ariaBusy={s.creating}>
+			{#if s.creating}<ActivityIndicator size="xs" tone="ink" />{t('wizard.actions.creating')}{:else}{t('wizard.actions.create')}{/if}
+		</Button>
 	</div>
 </div>

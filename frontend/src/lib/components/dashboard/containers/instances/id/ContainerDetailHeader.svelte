@@ -1,5 +1,7 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/containers-shell';
+  import { t as tc } from '$lib/i18n/ns/common';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
   import type { ZunContainerDetail } from '$lib/types/zunContainer';
 
   interface Props {
@@ -26,6 +28,7 @@
     <p class="text-ink-2 text-sm mt-1 font-mono">{container.uuid}</p>
   </div>
   <div class="flex gap-2">
+    {#if actioning}<ActivityIndicator size="xs" label={tc('state.processing')} class="text-xs" />{/if}
     {#if container.status === 'Running'}
       <button onclick={onOpenTerminal} disabled={terminalOpen} class="px-4 py-2 text-sm text-warm-text border border-action-warm hover:bg-surface-selected/30 rounded-lg transition-colors disabled:opacity-40">{t('instances.terminal.title')}</button>
       <button onclick={onStop} disabled={actioning} class="px-4 py-2 text-sm text-orange-400 border border-orange-800 hover:bg-orange-900/30 rounded-lg transition-colors disabled:opacity-40">{t('instances.actions.stop')}</button>

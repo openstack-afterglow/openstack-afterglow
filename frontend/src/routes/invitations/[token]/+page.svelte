@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { auth, isLoggedIn } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import type { InvitationInfo } from '$lib/types/project';
 	import { t } from '$lib/i18n/ns/public-entry';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
@@ -83,24 +84,24 @@
 <main id="main-content" tabindex="-1" class="min-h-screen bg-surface-canvas flex items-center justify-center px-4">
 	<div class="w-full max-w-md">
 		<!-- 로고 헤더 -->
-		<div class="text-center mb-8">
+		<div class="text-center mb-8 motion-enter">
 			<div class="text-2xl font-bold text-ink-0 mb-1">{t('invitations.brand')}</div>
 			<div class="text-sm text-ink-2">{t('invitations.title')}</div>
 		</div>
 
 		{#if loading}
-			<div class="bg-surface-base border border-line rounded-xl p-8 text-center">
-				<div class="text-ink-2 text-sm">{t('invitations.loading')}</div>
+			<div class="bg-surface-base border border-line rounded-xl p-8 text-center motion-enter" style="--motion-index: 1">
+				<ActivityIndicator label={t('invitations.loading')} />
 			</div>
 		{:else if loadError}
-			<div class="bg-surface-base border border-red-800/50 rounded-xl p-8 text-center">
-				<div class="text-red-400 text-sm">{loadError}</div>
+			<div class="bg-surface-base border border-state-danger/40 rounded-xl p-8 text-center motion-enter" style="--motion-index: 1">
+				<div class="text-state-danger-text text-sm">{loadError}</div>
 			</div>
 		{:else if actionDone === 'accepted'}
-			<div class="bg-surface-base border border-green-800/50 rounded-xl p-8 text-center">
-				<div class="w-12 h-12 bg-green-500/15 rounded-full flex items-center justify-center mx-auto mb-4">
-					<svg class="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+			<div class="bg-surface-base border border-state-success/40 rounded-xl p-8 text-center motion-enter" style="--motion-index: 1">
+				<div class="w-12 h-12 bg-state-success/15 rounded-full flex items-center justify-center mx-auto mb-4 motion-pop" style="--motion-index: 2">
+					<svg class="w-6 h-6 text-state-success-text" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+						<path class="motion-draw" pathLength="1" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
 					</svg>
 				</div>
 				<div class="text-ink-0 font-medium mb-1">{t('invitations.accepted.title')}</div>
@@ -110,11 +111,11 @@
 				</a>
 			</div>
 		{:else if actionDone === 'declined'}
-			<div class="bg-surface-base border border-line-2 rounded-xl p-8 text-center">
+			<div class="bg-surface-base border border-line-2 rounded-xl p-8 text-center motion-enter" style="--motion-index: 1">
 				<div class="text-ink-2 text-sm">{t('invitations.declined')}</div>
 			</div>
 		{:else if info}
-			<div class="bg-surface-base border border-line rounded-xl p-6">
+			<div class="bg-surface-base border border-line rounded-xl p-6 motion-enter" style="--motion-index: 1">
 				<!-- 초대 정보 -->
 				<div class="mb-6">
 					<div class="text-xs text-ink-2 uppercase tracking-wide mb-1">{t('invitations.details.project')}</div>
@@ -158,7 +159,7 @@
 					<p class="text-center text-xs text-ink-2 mt-2">{t('invitations.signInHelp')}</p>
 				{:else}
 					{#if actionError}
-						<div class="mb-3 text-xs text-red-400">{actionError}</div>
+						<div class="mb-3 text-xs text-state-danger-text motion-fade">{actionError}</div>
 					{/if}
 					<div class="flex gap-2">
 						<button
@@ -173,9 +174,12 @@
 							disabled={acting}
 							class="flex-1 py-2.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-action-warm/40 text-action-on-warm text-sm font-medium rounded-lg transition-colors"
 						>
-							{acting ? t('invitations.actions.processing') : t('invitations.actions.accept')}
+							{t('invitations.actions.accept')}
 						</button>
 					</div>
+					{#if acting}
+						<ActivityIndicator label={t('invitations.actions.processing')} size="xs" class="mt-3" />
+					{/if}
 				{/if}
 			</div>
 		{/if}

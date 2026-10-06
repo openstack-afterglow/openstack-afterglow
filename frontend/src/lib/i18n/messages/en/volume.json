@@ -1,4 +1,5 @@
 {
+	"detailPanel.loading": "Loading volume information",
 	"detailController.loadFailed": "Couldn't load volume information.",
 	"detailController.attachFailed": "Failed to attach",
 	"detailController.deleteConfirm": "Delete volume \"{name}\"?",

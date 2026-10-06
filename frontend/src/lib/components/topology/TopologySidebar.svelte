@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/topology';
+	import { enterStep } from './firstArrival.svelte.ts';
 	import ResourceCard from './ResourceCard.svelte';
 	import type { ItemRow, LBItem, TopologyLoadBalancer } from './types.ts';
 
@@ -18,6 +19,8 @@
 		onScheduleMeasure,
 		onIntentRow,
 		onCancelIntent,
+		entering = false,
+		sidebarOrder,
 	}: {
 		routerRows: ItemRow[];
 		filteredLbItems: LBItem[];
@@ -33,6 +36,10 @@
 		onScheduleMeasure: () => void;
 		onIntentRow?: (row: ItemRow) => void;
 		onCancelIntent?: () => void;
+		/** 스코프 첫 도착의 진입 창. 참이면 카드가 사이드바 순서대로 cascade 로 들어온다. */
+		entering?: boolean;
+		/** 리소스 id → 사이드바 순서 */
+		sidebarOrder: Map<string, number>;
 	} = $props();
 </script>
 
@@ -50,6 +57,8 @@
 		{#each routerRows as row, index (row.id)}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
+				class:motion-enter={entering}
+				style:--motion-index={entering ? enterStep(sidebarOrder.get(row.id) ?? 0) : undefined}
 				onmouseenter={() => { hoveredId = row.id; onIntentRow?.(row); }}
 				onmouseleave={() => { hoveredId = null; onCancelIntent?.(); }}
 				onfocusin={() => onIntentRow?.(row)}
@@ -82,6 +91,8 @@
 		{#each filteredLbItems as { lb, vipNetId } (lb.id)}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
+				class:motion-enter={entering}
+				style:--motion-index={entering ? enterStep(sidebarOrder.get(lb.id) ?? 0) : undefined}
 				onmouseenter={() => { hoveredId = lb.id; }}
 				onmouseleave={() => { hoveredId = null; }}
 			>
@@ -111,6 +122,8 @@
 		{#each instanceRows as row (row.id)}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
+				class:motion-enter={entering}
+				style:--motion-index={entering ? enterStep(sidebarOrder.get(row.id) ?? 0) : undefined}
 				onmouseenter={() => { hoveredId = row.id; onIntentRow?.(row); }}
 				onmouseleave={() => { hoveredId = null; onCancelIntent?.(); }}
 				onfocusin={() => onIntentRow?.(row)}

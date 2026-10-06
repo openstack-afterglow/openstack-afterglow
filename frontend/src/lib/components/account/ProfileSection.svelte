@@ -1,7 +1,9 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/account';
+  import { t as tc } from '$lib/i18n/ns/common';
   import { auth } from '$lib/stores/auth';
   import { api, ApiError } from '$lib/api/client';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
   interface Profile {
     id: string;
@@ -67,7 +69,7 @@
   });
 </script>
 
-<div class="bg-surface-base border border-line rounded-xl p-5">
+<div class="motion-fade bg-surface-base border border-line rounded-xl p-5">
   <h3 class="text-sm font-semibold text-ink-0 mb-4">{t('profile.title')}</h3>
 
   {#if error}
@@ -78,9 +80,10 @@
   {/if}
 
   {#if loading}
-    <div class="space-y-2">
+    <ActivityIndicator label={tc('state.loading')} />
+    <div class="space-y-2 mt-2" aria-hidden="true">
       {#each [1, 2, 3] as _}
-        <div class="h-9 bg-surface-sunken rounded animate-pulse"></div>
+        <div class="h-9 motion-skeleton rounded"></div>
       {/each}
     </div>
   {:else}
@@ -122,7 +125,7 @@
         onclick={save}
         disabled={saving}
         class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover disabled:opacity-50 text-action-on-warm text-sm rounded-lg transition-colors"
-      >{saving ? t('profile.saving') : t('profile.save')}</button>
+      >{#if saving}<ActivityIndicator size="xs" label={t('profile.saving')} />{:else}{t('profile.save')}{/if}</button>
     </div>
   {/if}
 </div>

@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import ObjectCardGrid from '../ObjectCardGrid.svelte';
-	import { createObjectBrowserStore, provideObjectBrowser } from '$lib/stores/objectBrowser.svelte';
+	import { createObjectBrowserStore, provideObjectBrowser, type ObjectBrowserStore } from '$lib/stores/objectBrowser.svelte';
 
-	let { filterText = '' }: { filterText?: string } = $props();
+	let { filterText = '', onstore }: { filterText?: string; onstore?: (store: ObjectBrowserStore) => void } = $props();
 
 	const store = createObjectBrowserStore({
 		mode: () => 'user',
@@ -12,6 +12,7 @@
 		projectId: () => 'project-a',
 	});
 	provideObjectBrowser(store);
+	untrack(() => onstore?.(store));
 
 	onMount(async () => {
 		await store.refreshAll();

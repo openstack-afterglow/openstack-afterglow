@@ -201,6 +201,8 @@ Grafana 기본 URL과 대시보드 UID 매핑을 반환합니다. 미설정 시 
 
 이 조회는 기존과 같이 인증이 필요하며 관리자 전용 API가 아닙니다. Grafana 자체 인증·접근 정책은 별도로 적용됩니다.
 
+공유 `GrafanaEmbed`는 dashboard(`/d/`)와 개별 panel(`/d-solo/`) URL에 `kiosk&hideLogo=1`을 전달한다. Grafana의 공식 kiosk 옵션으로 `Powered by Grafana` footer를 렌더링하지 않아 넓은 iframe에서 sticky footer가 스크롤 중 차트를 가리는 문제를 방지한다. iframe 높이·시간 범위·`var-*` 필터·panel ID·인증·CSP는 유지하며 cross-origin CSS 주입이나 Grafana 서버 설정 변경은 하지 않는다. 지원 값은 [upstream `shouldHideDashboardKioskFooter`](https://github.com/grafana/grafana/blob/ba8852f1f2770cfda48a93fbf7eb647e4f369f45/public/app/features/dashboard-scene/pages/utils.ts)에 따른다.
+
 관리자 메뉴 **모니터링 → ProxySQL** (`/admin/monitoring/proxysql`)은 `proxysql` 키로 기존 **ProxySQL — MariaDB 접속 경로** 대시보드를 임베드합니다. MySQL 모니터링은 그대로 유지됩니다.
 
 `afterglow.conf`의 `[monitoring.dashboards].proxysql_uid`로 다른 UID를 지정할 수 있습니다. 우선순위는 `GRAFANA_DASHBOARD_PROXYSQL_UID` 환경 변수 → TOML → 기본값 `afterglow-proxysql`이며, Kubernetes 설정 생성기와 Helm의 `monitoring.dashboards.proxysqlUid`도 같은 설정을 제공합니다. `[monitoring].grafana_base_url`에 지정한 Grafana에 해당 UID의 대시보드가 이미 있어야 합니다. Afterglow는 대시보드나 exporter를 새로 생성하지 않으며 기존 Grafana origin의 CSP 허용과 임베드 정책을 재사용합니다.

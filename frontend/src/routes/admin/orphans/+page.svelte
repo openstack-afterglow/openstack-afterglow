@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -175,7 +176,7 @@
 	{/if}
 
 	{#if loading}
-		<div class="text-ink-2 text-sm">{t('orphanPage.loading')}</div>
+		<ActivityIndicator size="sm" label={t('orphanPage.loading')} />
 	{:else}
 		<OrphanFipSection items={fips} bind:selected={selectedFips} onCleanup={() => openConfirm('floating_ip')} />
 		<OrphanVolumeSection items={volumes} bind:selected={selectedVolumes} {minAgeDays} onCleanup={() => openConfirm('volume')} />

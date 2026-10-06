@@ -2,6 +2,7 @@
 	import { t } from '$lib/i18n/ns/dashboard-home';
   import { auth } from '$lib/stores/auth';
   import { api } from '$lib/api/client';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
   import TopologyMini from '$lib/components/TopologyMini.svelte';
   import type { FloatingIpInfo } from '$lib/types/networks';
 
@@ -81,7 +82,7 @@
 
   {#if loading}
     <div class="topology-clip flex items-center justify-center">
-      <div class="text-ink-2 text-sm">{t('topology.loading')}</div>
+      <ActivityIndicator label={t('topology.loading')} />
     </div>
   {:else if error}
     <div class="topology-clip flex items-center justify-center">

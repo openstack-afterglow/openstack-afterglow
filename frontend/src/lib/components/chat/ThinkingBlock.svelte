@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/chat-studio';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	interface Props {
 		text: string;
 		/** 추론이 진행 중(본문 시작 전)이면 자동 펼침 + "추론 중…" 라벨. 본문이 시작되거나 완료되면 false. */
 		active?: boolean;
+		animate?: boolean;
 	}
-	let { text, active = false }: Props = $props();
+	let { text, active = false, animate = active }: Props = $props();
 
 	// 추론 진행 중엔 펼쳐 보여주고, 끝나면 자동으로 접되 사용자가 토글하면 그 상태 유지.
 	let userToggled = $state<boolean | null>(null);
@@ -19,12 +21,13 @@
 		onclick={() => (userToggled = !open)}
 		aria-expanded={open}
 	>
-		<svg class="ic" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
-			<path d="M9.5 21h5M12 3a6 6 0 0 1 4 10.5c-.6.6-1 1.4-1 2.2V17H9v-1.3c0-.8-.4-1.6-1-2.2A6 6 0 0 1 12 3z" stroke-linecap="round" stroke-linejoin="round" />
-		</svg>
-		<span class="think-label">{active ? t('thinkingBlock.active') : t('thinkingBlock.process')}</span>
 		{#if active}
-			<span class="dots" aria-hidden="true"><span></span><span></span><span></span></span>
+			<ActivityIndicator variant="orbit" size="xs" label={t('thinkingBlock.active')} />
+		{:else}
+			<svg class="ic" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+				<path d="M9.5 21h5M12 3a6 6 0 0 1 4 10.5c-.6.6-1 1.4-1 2.2V17H9v-1.3c0-.8-.4-1.6-1-2.2A6 6 0 0 1 12 3z" stroke-linecap="round" stroke-linejoin="round" />
+			</svg>
+			<span class="think-label">{t('thinkingBlock.process')}</span>
 		{/if}
 		<svg class="chevron" class:open viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
 			<path d="M6 9l6 6 6-6" stroke-linecap="round" stroke-linejoin="round" />
@@ -32,7 +35,7 @@
 	</button>
 
 	{#if open}
-		<div class="think-body">{text}</div>
+		<div class="think-body" class:motion-enter={animate && active}>{text}</div>
 	{/if}
 </div>
 
@@ -71,7 +74,7 @@
 	.chevron {
 		margin-left: auto;
 		color: var(--color-ink-2);
-		transition: transform 0.15s;
+		transition: transform var(--motion-duration-fast) var(--motion-ease-standard);
 	}
 	.chevron.open {
 		transform: rotate(180deg);
@@ -87,32 +90,5 @@
 		overflow-wrap: anywhere;
 		max-height: 22rem;
 		overflow-y: auto;
-	}
-	.dots {
-		display: inline-flex;
-		gap: 0.2rem;
-	}
-	.dots span {
-		width: 0.32rem;
-		height: 0.32rem;
-		border-radius: 50%;
-		background: var(--color-ink-3);
-		animation: blink 1.2s infinite ease-in-out both;
-	}
-	.dots span:nth-child(2) {
-		animation-delay: 0.16s;
-	}
-	.dots span:nth-child(3) {
-		animation-delay: 0.32s;
-	}
-	@keyframes blink {
-		0%,
-		80%,
-		100% {
-			opacity: 0.25;
-		}
-		40% {
-			opacity: 1;
-		}
 	}
 </style>

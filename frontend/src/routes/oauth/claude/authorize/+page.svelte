@@ -10,6 +10,7 @@
 		pendingClaudeGatewayUserCode,
 		storeClaudeGatewayUserCode,
 	} from '$lib/utils/mcpConsent';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
@@ -96,7 +97,7 @@
 </svelte:head>
 
 <main class="authorization-page">
-	<Card surface="raised" padding="lg" class="authorization-card">
+	<Card surface="raised" padding="lg" class="authorization-card motion-stagger">
 		<header>
 			<p class="eyebrow">{t('claudeConsent.eyebrow')}</p>
 			<h1>{t('claudeConsent.title')}</h1>
@@ -143,8 +144,11 @@
 						/>
 					</Field>
 					<div class="actions">
+						{#if deciding}
+							<ActivityIndicator label={t('claudeConsent.actions.processing')} class="decision-activity motion-fade" />
+						{/if}
 						<Button variant="danger-outline" type="button" onclick={() => decide('deny')} disabled={deciding || !code.trim()}>{t('claudeConsent.actions.deny')}</Button>
-						<Button type="submit" disabled={deciding || !code.trim()}>{deciding ? t('claudeConsent.actions.processing') : t('claudeConsent.actions.approve')}</Button>
+						<Button type="submit" disabled={deciding || !code.trim()}>{t('claudeConsent.actions.approve')}</Button>
 					</div>
 				</form>
 			</section>
@@ -168,8 +172,10 @@
 	.scope-summary strong { color: var(--color-ink-0); font-size: 0.875rem; }
 	.scopes { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 	.actions { display: flex; flex-direction: column-reverse; gap: 0.5rem; margin-top: 1rem; }
+	.actions :global(.decision-activity) { align-self: center; }
 	@media (min-width: 640px) {
 		.scope-summary { align-items: center; grid-template-columns: 1fr auto; }
 		.actions { flex-direction: row; justify-content: flex-end; }
+		.actions :global(.decision-activity) { margin-right: auto; }
 	}
 </style>

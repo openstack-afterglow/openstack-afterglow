@@ -1,5 +1,8 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-system';
+	import { t as tc } from '$lib/i18n/ns/common';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
 	import { page } from '$app/stores';
 	import { auth } from '$lib/stores/auth';
 	import { toast } from '$lib/stores/toast';
@@ -38,6 +41,7 @@
 	let editOrders = $state<number | null>(null);
 	let editContainers = $state<number | null>(null);
 	let submitting = $state(false);
+	let resettingProjects = $state<Record<string, boolean>>({});
 	const keyManagerEnabled = $derived(
 		$betaFeatures.keyManager || ($page.data.mockup?.active === true && $page.data.mockup.profile === 'admin'),
 	);
@@ -117,12 +121,15 @@
 
 	async function handleResetQuota(projectId: string) {
 		if (!keyManagerEnabled) return;
+		resettingProjects[projectId] = true;
 		try {
 			await secretsApi.deleteProjectQuota(projectId, $auth.token ?? undefined, $auth.projectId ?? undefined);
 			toast.success(t('secrets.resetSuccess'));
 			await fetchQuotas();
 		} catch (e) {
 			toast.error(t('secrets.resetFailed', { message: e instanceof ApiError ? e.message : String(e) }));
+		} finally {
+			delete resettingProjects[projectId];
 		}
 	}
 
@@ -148,6 +155,14 @@
 	onSubmit={handleSetQuota}
 	onClose={() => { showSetQuota = false; }}
 >
+	{#snippet actions()}
+		<Button variant="secondary" onclick={() => { showSetQuota = false; }} disabled={submitting}>{tc('actions.cancel')}</Button>
+		<Button variant="primary" onclick={handleSetQuota} disabled={submitting}>
+			{#if submitting}
+				<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('secrets.saving')}</span></span>
+			{:else}{t('secrets.save')}{/if}
+		</Button>
+	{/snippet}
 	<div class="space-y-4">
 		<div class="text-xs text-ink-2 font-mono">{editProjectId}</div>
 		<p class="text-xs text-ink-2">{t('secrets.quotaHelp')}</p>
@@ -213,7 +228,11 @@
 							<td class="py-3 pr-4 text-ink-2">{q.project_quotas.containers ?? -1}</td>
 							<td class="py-3 flex gap-3" data-tour={index === 0 ? 'admin-key-manager-actions' : undefined}>
 								<button onclick={() => openEdit(q)} class="text-xs text-warm-text hover:text-warm-text-hover">{t('secrets.configure')}</button>
-								<button onclick={() => handleResetQuota(q.project_id)} class="text-xs text-ink-2 hover:text-ink-1">{t('secrets.reset')}</button>
+								<button onclick={() => handleResetQuota(q.project_id)} disabled={resettingProjects[q.project_id]} class="text-xs text-ink-2 hover:text-ink-1">
+									{#if resettingProjects[q.project_id]}
+										<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('secrets.resetting')}</span></span>
+									{:else}{t('secrets.reset')}{/if}
+								</button>
 							</td>
 						</tr>
 					{/each}

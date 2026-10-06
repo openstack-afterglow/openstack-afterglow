@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import type { OrphanKind, CleanupResult } from '$lib/types/orphan';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 	import { t } from '$lib/i18n/ns/admin-storage';
@@ -89,7 +90,7 @@
 						disabled={cleaning}
 						class="px-4 py-2 bg-red-600 hover:bg-red-500 text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30"
 					>
-						{cleaning ? t('orphanCleanup.cleaning') : t('orphanCleanup.clean')}
+						{#if cleaning}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('orphanCleanup.cleaning')}</span></span>{:else}{t('orphanCleanup.clean')}{/if}
 					</button>
 				</div>
 			{:else}

@@ -1,4 +1,5 @@
 {
+	"volumeDetail.loadingInfo": "Loading volume information",
 	"volumeDetail.loading": "Loading...",
 	"volumeDetail.attachments": "Attachment information",
 	"volumeDetail.basicInfo": "Basic information",
@@ -86,6 +87,7 @@
 	"volumeList.chartLoading": "Loading chart...",
 	"volumeList.chartTitle": "Volume count over time",
 	"volumeList.statusCounts": "Volume counts by status",
+	"volumeList.statusLoading": "Loading volume statuses…",
 	"volumeList.all": "All",
 	"volumeList.allStatuses": "All statuses",
 	"volumeList.searchName": "Search by name...",

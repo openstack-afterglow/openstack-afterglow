@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t as tr } from '$lib/i18n/ns/database';
 	import { useDbInstanceDetailController } from '$lib/stores/dbInstanceDetailController.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
 	const s = useDbInstanceDetailController();
 </script>
@@ -44,24 +45,22 @@
 					{/each}
 					<button onclick={() => s.detachFip(false)} disabled={s.detachingFip}
 						class="text-ink-2 hover:text-ink-1 disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-line-2 hover:border-line-2 transition-colors">
-						{s.detachingFip ? '...' : tr('actions.detach')}
+						{tr('actions.detach')}
 					</button>
 					<button onclick={() => s.detachFip(true)} disabled={s.detachingFip}
 						class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-red-900 hover:border-red-700 transition-colors">
-						{s.detachingFip ? '...' : tr('actions.delete')}
+						{tr('actions.delete')}
 					</button>
+					{#if s.detachingFip}<ActivityIndicator size="xs" tone="ink" label={tr('connection.detaching')} />{/if}
 				</div>
 			{:else if s.instance!.status === 'BUILD' || s.instance!.status === 'BUILDING'}
-				<div class="flex items-center gap-2 text-sm text-yellow-400">
-					<svg class="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-					<span class="text-xs">{tr('connection.creating')}</span>
-				</div>
+				<ActivityIndicator size="xs" label={tr('connection.creating')} />
 			{:else}
 				<div class="flex items-center gap-2">
 					<span class="text-ink-2 text-sm">{tr('connection.unassigned')}</span>
 					<button onclick={() => s.attachFip()} disabled={s.attachingFip || !s.instance!.ip}
-						class="text-warm-text hover:text-warm-text-hover disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-action-warm hover:border-action-warm transition-colors">
-						{s.attachingFip ? tr('state.assigning') : tr('actions.assignIp')}
+						class="inline-flex items-center gap-1.5 text-warm-text hover:text-warm-text-hover disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-action-warm hover:border-action-warm transition-colors">
+						{#if s.attachingFip}<ActivityIndicator size="xs" tone="ink" />{/if}{s.attachingFip ? tr('state.assigning') : tr('actions.assignIp')}
 					</button>
 				</div>
 			{/if}
@@ -83,8 +82,8 @@
 			</div>
 		{:else}
 			<button onclick={() => s.enableRoot()} disabled={s.enablingRoot}
-				class="text-xs text-warm-text border border-action-warm hover:border-action-warm px-3 py-1.5 rounded transition-colors">
-				{s.enablingRoot ? tr('state.enablingRoot') : tr('actions.enableRoot')}
+				class="inline-flex items-center gap-1.5 text-xs text-warm-text border border-action-warm hover:border-action-warm px-3 py-1.5 rounded transition-colors">
+				{#if s.enablingRoot}<ActivityIndicator size="xs" tone="ink" />{/if}{s.enablingRoot ? tr('state.enablingRoot') : tr('actions.enableRoot')}
 			</button>
 		{/if}
 	</div>

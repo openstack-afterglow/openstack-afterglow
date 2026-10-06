@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-compute';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { Button, Card, Pill, StatusChip, TableShell } from '$lib/components/ui';
 	import ImageDigest from '$lib/components/image/ImageDigest.svelte';
 	import ImageVerificationBadge from '$lib/components/image/ImageVerificationBadge.svelte';
@@ -10,12 +11,14 @@
 
 	let {
 		images, selectedImageId, togglingId, verifyingId, currentImageIds,
+		deletingId = null,
 		onOpenDetail, onEdit, onToggleActivation, onDelete, onToggleVerification,
 	}: {
 		images: AdminImage[];
 		selectedImageId: string | null;
 		togglingId: string | null;
 		verifyingId: string | null;
+		deletingId?: string | null;
 		currentImageIds: ReadonlySet<string>;
 		onOpenDetail: (img: AdminImage) => void;
 		onEdit: (img: AdminImage) => void;
@@ -30,15 +33,21 @@
 		<Button variant="secondary" size="xs" onclick={() => onToggleVerification(img)}
 			disabled={verifyingId === img.id || (img.verification_status !== 'verified' && img.status !== 'active')}
 			title={img.status !== 'active' && img.verification_status !== 'verified' ? t('images.table.verificationHelp') : undefined}>
-			{verifyingId === img.id ? t('images.processing') : img.verification_status === 'verified' ? t('images.table.revokeVerification') : t('images.table.approveVerification')}
+			{#if verifyingId === img.id}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('images.processing')}</span></span>{:else}{img.verification_status === 'verified' ? t('images.table.revokeVerification') : t('images.table.approveVerification')}{/if}
 		</Button>
 		{#if img.status === 'active' || img.status === 'deactivated'}
 			<Button variant="ghost" size="xs" onclick={() => onToggleActivation(img)} disabled={togglingId === img.id}>
-				{togglingId === img.id ? t('images.processing') : img.status === 'active' ? t('images.table.deactivate') : t('images.table.activate')}
+				{#if togglingId === img.id}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('images.processing')}</span></span>{:else}{img.status === 'active' ? t('images.table.deactivate') : t('images.table.activate')}{/if}
 			</Button>
 		{/if}
 		<Button variant="link" size="xs" onclick={() => onEdit(img)}>{t('images.edit.action')}</Button>
-		{#if !img.protected}<Button variant="danger-outline" size="xs" onclick={() => onDelete(img)}>{t('images.delete.action')}</Button>{/if}
+		{#if !img.protected}
+			<Button variant="danger-outline" size="xs" onclick={() => onDelete(img)} disabled={deletingId === img.id}>
+				{#if deletingId === img.id}
+					<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('images.delete.pending')}</span></span>
+				{:else}{t('images.delete.action')}{/if}
+			</Button>
+		{/if}
 	</div>
 {/snippet}
 

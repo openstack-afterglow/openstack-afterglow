@@ -4,6 +4,7 @@
 	import { api, ApiError } from '$lib/api/client';
 	import type { K3sClusterTemplate } from '$lib/types/k3s';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
 	let {
 		template = null,
@@ -173,7 +174,7 @@
 				disabled={saving || !form.name}
 				class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg"
 			>
-				{saving ? t('state.saving') : isEdit ? t('actions.edit') : t('actions.create')}
+				{#if saving}<ActivityIndicator size="xs" tone="ink" class="mr-1.5" />{/if}{saving ? t('state.saving') : isEdit ? t('actions.edit') : t('actions.create')}
 			</button>
 		</div>
 	</div>

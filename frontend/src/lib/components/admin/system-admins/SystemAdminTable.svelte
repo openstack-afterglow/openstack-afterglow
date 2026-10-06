@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -74,12 +75,12 @@
 						{#if admins.length <= 1}
 							<span title={t('systemTable.lastAdminHelp')} class="px-3 py-1 text-xs rounded bg-surface-sunken text-ink-2 cursor-not-allowed">{t('systemTable.revoke')}</span>
 						{:else}
-							<button
+							<button aria-busy={revoking === admin.user_id}
 								onclick={() => revoke(admin)}
 								disabled={revoking === admin.user_id}
-								class="px-3 py-1 text-xs rounded bg-red-900/30 hover:bg-red-900/60 text-red-400 disabled:opacity-30"
+								class="px-3 py-1 text-xs rounded bg-[var(--color-state-danger)]/10 hover:bg-[var(--color-state-danger)]/20 text-[var(--color-state-danger-text)] disabled:opacity-30"
 							>
-								{revoking === admin.user_id ? t('systemTable.revoking') : t('systemTable.revoke')}
+								{#if revoking === admin.user_id}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" />{t('systemTable.revoking')}</span>{:else}{t('systemTable.revoke')}{/if}
 							</button>
 						{/if}
 					</td>

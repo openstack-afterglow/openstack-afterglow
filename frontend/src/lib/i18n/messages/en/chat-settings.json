@@ -1,4 +1,9 @@
 {
+	"apiKeys.loading": "Loading API keys",
+	"extensions.mcp.loading": "Loading MCP servers",
+	"extensions.tools.loading": "Loading custom tools",
+	"extensions.skills.loading": "Loading skills",
+	"usage.trendLoading": "Loading usage trends",
 	"settings.sections.usage": "Usage",
 	"settings.sections.apiKeys": "API keys",
 	"settings.sections.memory": "Memory",

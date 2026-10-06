@@ -3,6 +3,7 @@
   import type { DbBackup, DbInstance } from '$lib/types/database';
   import StatusChip from '$lib/components/ui/StatusChip.svelte';
   import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
   let {
     backups,
@@ -73,7 +74,7 @@
         <th class="text-right px-4 py-3 font-medium">{tr('labels.actions')}</th>
       </tr>
     </thead>
-    <tbody>
+    <tbody class="motion-stagger">
       {#each backups as backup (backup.id)}
         {@const instance = findInstance(backup)}
         {@const stuck = isStuck(backup)}
@@ -100,7 +101,7 @@
           <td class="px-4 py-3">
             <div class="flex justify-end gap-1">
               <button onclick={() => onRestore(backup)} onpointerenter={onRestoreIntent} onfocus={onRestoreIntent} disabled={selectionDisabled} class="db-backups-table__action db-backups-table__restore text-xs px-2 py-0.5 rounded transition-colors">{tr('actions.restore')}</button>
-              <button onclick={() => onDelete(backup.id, backup.name, stuck)} disabled={deleting === backup.id || selectionDisabled} class="db-backups-table__action db-backups-table__delete text-xs px-2 py-0.5 rounded transition-colors">{deleting === backup.id ? '...' : tr('actions.delete')}</button>
+              <button onclick={() => onDelete(backup.id, backup.name, stuck)} disabled={deleting === backup.id || selectionDisabled} class="db-backups-table__action db-backups-table__delete inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded transition-colors">{#if deleting === backup.id}<ActivityIndicator size="xs" tone="danger" />{tr('state.deletingShort')}{:else}{tr('actions.delete')}{/if}</button>
             </div>
           </td>
         </tr>

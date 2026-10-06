@@ -8,6 +8,7 @@
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
 	import QuotaBar from '$lib/components/ui/QuotaBar.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import BulkSelectionOverlay from '$lib/components/ui/BulkSelectionOverlay.svelte';
 	import type { SecurityGroup, SecurityGroupInstance, SecurityGroupQuota, SecurityGroupRule, SecurityGroupRuleDraft } from '$lib/types/securityGroup';
 	import SecurityGroupList from '$lib/components/dashboard/network/security-groups/SecurityGroupList.svelte';
@@ -310,8 +311,10 @@
 		{#if quota}
 			<div class="bg-surface-base border border-line rounded-lg p-3"><QuotaBar label={t('securityGroups.groupQuota')} used={quota.security_group.in_use} limit={quota.security_group.limit} size="sm" /></div>
 			<div class="bg-surface-base border border-line rounded-lg p-3"><QuotaBar label={t('securityGroups.ruleQuota')} used={quota.security_group_rule.in_use} limit={quota.security_group_rule.limit} size="sm" /></div>
+		{:else if quotaError}
+			<p role="alert" class="text-sm text-ink-2 sm:col-span-2">{t('securityGroups.quotaError', { message: quotaError })}</p>
 		{:else}
-			<p role={quotaError ? 'alert' : undefined} class="text-sm text-ink-2 sm:col-span-2">{quotaError ? t('securityGroups.quotaError', { message: quotaError }) : t('securityGroups.quotaLoading')}</p>
+			<div class="sm:col-span-2"><ActivityIndicator label={t('securityGroups.quotaLoading')} /></div>
 		{/if}
 	</div>
 	{#if sgError}<p role="alert" class="text-sm text-state-danger-text mb-4">{sgError}</p>{/if}

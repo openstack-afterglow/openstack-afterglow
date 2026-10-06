@@ -1,0 +1,15 @@
+---
+- name: Validate trusted Palimpsest BFF endpoint
+  ansible.builtin.assert:
+    that:
+      - (afterglow_service_palimpsest_internal_url | urlsplit('scheme')) == 'https'
+      - (afterglow_service_palimpsest_internal_url | urlsplit('hostname') | default('', true)) | length > 0
+      - not (afterglow_service_palimpsest_internal_url | urlsplit('username'))
+      - not (afterglow_service_palimpsest_internal_url | urlsplit('password'))
+      - not (afterglow_service_palimpsest_internal_url | urlsplit('query'))
+      - not (afterglow_service_palimpsest_internal_url | urlsplit('fragment'))
+    fail_msg: "afterglow_service_palimpsest_internal_url must be a trusted HTTPS endpoint without credentials, query, or fragment"
+  when:
+    - enable_afterglow | bool
+    - afterglow_service_palimpsest_enabled | bool
+    - afterglow_service_palimpsest_internal_url | length > 0

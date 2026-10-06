@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/dashboard-home';
+	import { t as tc } from '$lib/i18n/ns/common';
 	import type { DashboardOverviewSummary } from '$lib/types/compute';
 	import type { DashboardK3sStats } from '$lib/types/k3s';
 	import type { DashboardOverviewQuotas, QuotaItem } from '$lib/types/quotas';
@@ -38,7 +39,7 @@
 
 <div class="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line lg:grid-cols-4">
 	{#if summaryPending && !summary}
-		<div class="h-[82px] bg-surface-base animate-pulse"></div>
+		<div class="h-[82px] motion-skeleton" role="status" aria-busy="true"><span class="sr-only">{tc('state.loadingNamed', { name: t('statTiles.instances') })}</span></div>
 	{:else}
 		<StatTile
 			label={t('statTiles.instances')}
@@ -57,7 +58,7 @@
 	{/if}
 
 	{#if quotasPending && !quotas}
-		<div class="h-[82px] bg-surface-base animate-pulse"></div>
+		<div class="h-[82px] motion-skeleton" role="status" aria-busy="true"><span class="sr-only">{tc('state.loadingNamed', { name: t('statTiles.volumes') })}</span></div>
 	{:else}
 		<StatTile
 			label={t('statTiles.volumes')}
@@ -76,7 +77,7 @@
 	{/if}
 
 	{#if quotasPending && !quotas}
-		<div class="h-[82px] bg-surface-base animate-pulse"></div>
+		<div class="h-[82px] motion-skeleton" role="status" aria-busy="true"><span class="sr-only">{tc('state.loadingNamed', { name: t('statTiles.floatingIp') })}</span></div>
 	{:else}
 		<StatTile
 			label={t('statTiles.floatingIp')}
@@ -101,7 +102,7 @@
 			{/snippet}
 		</StatTile>
 	{:else if k3sPending && !k3sStats}
-		<div class="h-[82px] bg-surface-base animate-pulse"></div>
+		<div class="h-[82px] motion-skeleton" role="status" aria-busy="true"><span class="sr-only">{tc('state.loadingNamed', { name: t('statTiles.drover') })}</span></div>
 	{:else}
 		<StatTile
 			label={t('statTiles.drover')}

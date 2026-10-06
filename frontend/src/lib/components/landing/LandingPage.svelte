@@ -29,6 +29,7 @@
 		{ label: t('landing.nav.workflow'), href: '#workflow' },
 		{ label: t('landing.nav.work'), href: '#work' },
 		{ label: t('landing.nav.contact'), href: '#contact' },
+		{ label: t('landing.nav.docs'), href: '/docs' },
 	]);
 
 
@@ -292,6 +293,7 @@
 					<div class="hero-actions">
 						<Button variant="primary" size="lg" class="landing-btn" href={consoleHref}>{t('landing.consoleAction')}</Button>
 						<Button variant="outline" size="lg" class="landing-btn" href="#capabilities">{t('landing.hero.capabilitiesAction')}</Button>
+						<Button variant="link" size="lg" class="landing-btn" href="/docs">{t('landing.hero.guideAction')}</Button>
 					</div>
 					<div class="hero-context"><span>{t('landing.hero.context')}</span><p>{t('landing.request.title')} <i aria-hidden="true">→</i> {t('landing.allocate.title')} <i aria-hidden="true">→</i> {t('landing.observe.title')} <i aria-hidden="true">→</i> {t('landing.reuse.title')}</p></div>
 				</div>
@@ -436,7 +438,7 @@
 		<div class="container footer-layout">
 			<div class="footer-brand"><img src={logoPath} alt="" /><strong>{siteName}</strong><span>{t('landing.footer.tagline')}</span></div>
 			<div class="footer-grid">
-				<div><h3>{t('landing.footer.product')}</h3><a href="#overview">{t('landing.nav.overview')}</a><a href="#capabilities">{t('landing.nav.capabilities')}</a><a href="#workflow">{t('landing.nav.workflow')}</a></div>
+				<div><h3>{t('landing.footer.product')}</h3><a href="#overview">{t('landing.nav.overview')}</a><a href="#capabilities">{t('landing.nav.capabilities')}</a><a href="#workflow">{t('landing.nav.workflow')}</a><a href="/docs">{t('landing.footer.docs')}</a></div>
 				<div><h3>{t('landing.footer.contact')}</h3><a href={`mailto:${email}`}>{email}</a><a href="https://github.com/openstack-afterglow/openstack-afterglow">{t('landing.footer.repository')}</a></div>
 			</div>
 		</div>

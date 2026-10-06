@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/dashboard-home';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
+	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
 	import type { InstanceItem } from '$lib/types/userDashboard';
 
 	interface Props {
@@ -20,9 +21,9 @@
 			</svg>
 		</div>
 		<div class="text-ink-0 font-semibold text-sm">{t('preview.instances.title')}</div>
-		<span class="ml-auto text-xs text-ink-2">{t('preview.instances.count', { count: instances.length })}</span>
+		<span class="ml-auto text-xs text-ink-2"><AnimatedNumber value={instances.length} format={(value) => t('preview.instances.count', { count: Math.round(value) })} /></span>
 	</div>
-	<div class="flex flex-col">
+	<div class="motion-stagger flex flex-col">
 		{#each instances.slice(0, PREVIEW_LIMIT) as inst (inst.id)}
 			<div class="flex items-center gap-3 py-2.5 border-b border-line last:border-b-0">
 				<div class="flex-1 min-w-0">

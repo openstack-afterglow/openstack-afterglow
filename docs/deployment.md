@@ -22,6 +22,31 @@ Afterglow는 Docker Compose(개발/소규모), Kubernetes(프로덕션), ArgoCD(
 
 ---
 
+## Docker 없는 OCI-root VM 후보 (미배포)
+
+별도 `Dockerfile` target `native-vm`은 Afterglow API·Notion worker·빌드된 SvelteKit, Node 22, MariaDB/client, Redis를 미리 설치합니다. BuildKit/Docker는 **빌드 호스트**에서만 사용하며 이미지 entrypoint는 `appuser`로 서비스 프로세스를 직접 실행합니다. 기존 Compose·Kolla 배포나 형제 Drover/Lumen/Waygate/Palimpsest Hub를 대체하지 않습니다.
+
+```bash
+docker buildx build --platform linux/amd64 --target native-vm \
+  --output type=oci,dest=afterglow-native-amd64.oci.tar .
+```
+
+Linux amd64/KVM Palimpsest OCI-root의 검증된 kernel/config/packer, libvirt/KVM 권한과 **별도 승인된** 실행 호스트가 필요합니다. macOS Lima의 conventional cloud-image에 설치한 Docker Compose 앱과 다른 경로입니다. 현재 로컬 image smoke 성공은 실제 VM의 `/`·파일 소유권·retained-root persistence 증명이 아닙니다. OCI-root 부팅·인증된 OpenStack 기능은 아직 검증하지 않았으며, CI 프로젝트 member-only credential과 구체 자원 승인 전에는 신규 VM을 만들거나 관리자 자격으로 우회하지 않습니다.
+
+런타임 계약:
+
+- `/var/lib/afterglow` 전체를 UID 1000 소유로 영속화합니다. `credentials.json`·SQL/Redis 데이터·설정·로그를 함께 보존합니다. 초기화가 중단된 `mariadb.installing`이나 marker 없는 SQL 디렉토리는 보존하고 기동을 거부합니다. 재시도를 위해 기존 데이터를 삭제하지 않습니다.
+- `/app/afterglow.conf`는 private state의 설정을 가리킵니다. 기존 설정·override는 덮어쓰지 않습니다. 처음에는 앱 암호화 키만 생성하므로 실제 Keystone URL·프로젝트·형제 서비스 설정은 운영자가 안전한 private 설정으로 제공해야 합니다. 자격을 이미지에 넣지 않습니다.
+- SQL은 Unix socket만 사용하고 Redis는 암호 인증이 필요한 loopback 6379입니다. 공개할 서비스는 frontend 3080, API 8000뿐입니다. entrypoint의 `--frontend-origin`·`--api-origin`은 브라우저에서 접근하는 실제 origin을 지정합니다. 직접 외부 공개 대신 승인된 TLS ingress 또는 SSH tunnel을 사용합니다.
+- HTTP `/health`·`/api/v1/health`가 모두 준비된 뒤 ready를 알립니다. 인증된 dashboard/OpenStack readiness와는 별도입니다. child 종료는 전체 실패이고 SIGTERM/SIGINT는 앱→datastore 순서로 종료합니다.
+- 2026-10-02 arm64·emulated amd64 로컬 smoke는 UID 1000·cap-drop ALL·no-new-privileges에서 실제 API/frontend HTTP 200, 37개 schema table, SQL/Redis·키 보존, child 실패/복구, graceful 종료를 확인했습니다. amd64 OCI archive는 22 layers입니다. 상세 증거와 미검증 경계는 root `ARCHITECTURE.md`의 Native OCI-root VM candidate 절을 따릅니다.
+
+### 일반 direct-Nova 디스크 (`native-cloud-vm`)
+
+`Dockerfile --target native-cloud-vm`은 `native-vm`을 기반으로 Debian trixie kernel/initramfs, BIOS GRUB 모듈, systemd, cloud-init, sshd와 같은 supervisor를 `appuser`로 실행하는 `afterglow-native.service`를 추가합니다. guest에는 여전히 container engine이 없습니다. `--platform linux/amd64 --output type=tar`로 빌드한 뒤 Linux amd64 builder에서 root로 `scripts/export_native_cloud.py --rootfs ROOTFS.tar[.gz] --output DISK.raw --size-gib 8 --source-sha256 HEX`를 실행해 BIOS 부팅 raw 디스크와 `.sha256`·`.metadata.json` sidecar를 만듭니다. 운영 설정은 cloud-init `write_files`로 `/etc/afterglow/afterglow.conf`(0600)에 전달합니다. root prestart가 이를 한 번만 `appuser`로 `/var/lib/afterglow`에 복사하며 기존 설정은 바꾸지 않습니다. 로그인은 cloud-init `debian` 사용자와 Nova keypair로 하며, host key는 serial console에 출력됩니다.
+
+2026-10-06 SYSTEM 프로젝트 실기: 승인 baseline `ff007ed`와 native overlay(bundle `8f28a712…`)로 만든 디스크(sha256 `c8c33ab1…`)가 Nova(`cpu.2c_8g`, `ceph_hdd`)에서 직접 부팅됐습니다. systemd PID 1, `appuser` supervisor active, engine binary 없음, API/frontend HTTP 200, 37 tables, socket-only SQL·loopback-only Redis를 확인했습니다. 재부팅 뒤에도 MariaDB/Redis·Cinder data volume·CephFS marker가 유지됐고 RGW checksum 왕복도 통과했습니다. member 계정 password 로그인은 SYSTEM·member/reader·system admin 아님으로 확인했고, logout과 SYSTEM network 불변도 확인했습니다. 소유 자원은 모두 삭제하고 부재를 확인했습니다. 이 결과는 OCI root에 선언된 부팅 추가물을 더한 일반 cloud 디스크이며 protected OCI-root stage-1, untouched OCI 실행, 보안 동등성 증명이 아닙니다. 따라서 native OCI-root 변경의 task 6/7은 그대로 열려 있습니다.
+
 ## Docker Compose 배포
 
 Compose 파일은 합쳐 쓰는 환경 overlay가 아니라 **각각 독립 실행하는 세 가지 계약**입니다. 항상 명시적인 `-f`로 선택합니다.
@@ -399,10 +424,25 @@ kolla-ansible prechecks -i multinode --tags afterglow,lumen
 kolla-ansible reconfigure -i multinode --tags afterglow,lumen
 ```
 
-Notion worker만 복구할 때도 mutable tag를 운영 설정에 남기지 않습니다. 검증한
-`linux/amd64` manifest의 digest를 확인한 뒤 `/etc/kolla/config/afterglow/globals.yml`의
+### 애플리케이션 이미지 채널 자동 해석 및 롤백
+
+표준 Kolla 환경에서 Afterglow, Drover, Waygate, Lumen, Palimpsest의 application image는 `*_image_tag: "latest"`(또는 게시된 `stable`) 채널을 기본으로 따릅니다.
+- `kolla-ansible`의 `prechecks`, `pull`, `deploy`, `reconfigure`, `upgrade` 실행마다 서비스별 첫 번째 대상 컨트롤러에서 Docker descriptor API로 manifest/index sha256 다이제스트를 해석합니다. `--limit`과 serial batch를 따르며 다음 명령은 채널을 새로 해석합니다.
+- 태그를 생략한 image ref도 implicit `latest`로 해석합니다. 레지스트리 주소의 포트(`registry:5000/repository`)는 이미지 태그가 아니며, 컨트롤러별로 원래 bare ref를 pull하지 않습니다.
+- 한 실행에 포함한 컨트롤러의 component enable flag는 동일해야 합니다. 차이가 있으면 첫 레지스트리 조회·역할 실행 전에 중단합니다. 서로 다른 배치는 동일한 flag를 가진 대상별로 `--limit`을 지정합니다.
+- Published-image consumer는 첫 대상에 해당 서비스의 완료된 selection이 있어야 합니다. 앞 서비스가 남긴 readiness/ref는 재사용하지 않으며, 첫 대상이 비활성/source mode이고 이후 대상만 published mode인 경우 해당 소비자를 실행하기 전에 차단합니다. 이런 대상은 `--limit`으로 분리합니다.
+- 해석된 불변 다이제스트는 해당 실행의 모든 serial batch에 동일하게 공유되므로, 롤링 배포 중 컨트롤러 간 버전 불일치가 발생하지 않습니다.
+- 해석 단계는 레이어를 pull하지 않습니다. `pull`은 다운로드만 하며 컨테이너 교체는 `deploy`·`reconfigure`·`upgrade`에서 수행합니다. 레지스트리 조회 실패 시 이전 이미지로 넘어가지 않고 해당 rollout을 차단합니다.
+- 특정 릴리즈 고정 또는 롤백이 필요한 경우 `globals.yml`에 명시적인 `*_image_ref`(예: `afterglow_backend_image_ref: "ghcr.io/openstack-afterglow/afterglow-api@sha256:<digest>"`)를 선언하면 레지스트리 동적 해석을 건너뛰고 해당 다이제스트가 유지됩니다.
+- 기존 globals/globals.d/CLI extra-vars에 mutable 또는 bare `*_image_ref`가 있으면 제거하고 `*_image_tag`로 채널을 선택합니다. Native Kolla extra-vars는 `set_fact`보다 우선하므로 해석한 digest를 덮어쓰는 ref는 역할 실행 전에 거부합니다. 고정 ref는 그대로 유지합니다.
+- 비활성 component와 source-build mode는 이 해석을 건너뜁니다. 이미지 채널은 별도로 고정·승격하는 root-role Git 패키지나 DB migration 승인, 미래 버전의 API/schema 호환성을 대신하지 않습니다.
+- stock Kolla 2025.2 기본 서비스와 datastore(MariaDB, Valkey, PostgreSQL)의 버전/다이제스트 고정은 변경되지 않습니다.
+
+Notion worker만 복구할 때는 backend/frontend를 검증한 현재 manifest digest에
+명시적으로 고정합니다. 이 ref가 없으면 `--tags afterglow`도 활성 component의 최신
+채널을 함께 선택합니다. `/etc/kolla/config/afterglow/globals.yml`의
 `afterglow_worker_image_ref`만 `ghcr.io/openstack-afterglow/afterglow-worker@sha256:<digest>`로
-고정하고 backend/frontend image ref는 유지합니다. SSH host identity를 먼저 검증하고,
+바꾸고 backend/frontend의 현재 pin은 유지합니다. SSH host identity를 먼저 검증하고,
 배포 계정으로 `/etc/kolla`에서 다음 표준 경로를 실행합니다.
 
 ```bash

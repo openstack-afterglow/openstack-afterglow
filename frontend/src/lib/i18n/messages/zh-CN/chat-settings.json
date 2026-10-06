@@ -1,4 +1,9 @@
 {
+	"apiKeys.loading": "正在加载 API 密钥",
+	"extensions.mcp.loading": "正在加载 MCP 服务器",
+	"extensions.tools.loading": "正在加载自定义工具",
+	"extensions.skills.loading": "正在加载技能",
+	"usage.trendLoading": "正在加载用量趋势",
 	"settings.sections.usage": "用量",
 	"settings.sections.apiKeys": "API 密钥",
 	"settings.sections.memory": "记忆",

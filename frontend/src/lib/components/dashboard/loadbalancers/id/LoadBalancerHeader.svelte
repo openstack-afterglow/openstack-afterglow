@@ -3,6 +3,8 @@
 	import { goto } from '$app/navigation';
 	import type { LoadBalancerDetail } from '$lib/types/loadbalancer';
 	import { isDroverLoadBalancer } from '$lib/utils/droverLoadBalancer';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
 
 	let {
 		lb,
@@ -11,10 +13,12 @@
 	}: {
 		lb: LoadBalancerDetail;
 		deleting: boolean;
-		onDelete: () => void;
+		onDelete: () => Promise<void>;
 	} = $props();
 
 	const isProtected = $derived(isDroverLoadBalancer(lb));
+	const pending = createPendingAction();
+	const deletingLb = $derived(pending.isActive('delete', deleting));
 </script>
 
 <button onclick={() => goto('/dashboard')} class="text-sm text-ink-2 hover:text-ink-1 mb-6 inline-flex items-center gap-1">
@@ -35,5 +39,5 @@
 			{/if}
 		</div>
 	</div>
-	<button onclick={onDelete} disabled={deleting} class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-sm px-3 py-1.5 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors">{isProtected ? t('lb.actions.forceDelete') : t('lb.actions.delete')}</button>
+	<button onclick={() => pending.run('delete', onDelete)} disabled={deleting} aria-busy={deletingLb} class="inline-flex items-center gap-1.5 text-red-400 hover:text-red-300 disabled:text-ink-3 text-sm px-3 py-1.5 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors">{#if deletingLb}<ActivityIndicator size="xs" tone="danger" />{/if}{deletingLb ? t('network.actions.deleting') : isProtected ? t('lb.actions.forceDelete') : t('lb.actions.delete')}</button>
 </div>

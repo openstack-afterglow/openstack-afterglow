@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/dashboard-home';
+	import { t as tc } from '$lib/i18n/ns/common';
 	import { onDestroy, untrack } from 'svelte';
 	import { auth, authReady } from '$lib/stores/auth';
 	import { siteConfig } from '$lib/config/site';
@@ -11,7 +12,7 @@
 	import type { DashboardK3sStats } from '$lib/types/k3s';
 	import type { AnnouncementUser } from '$lib/types/announcements';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
-	import { Alert, PageShell, Spark, SectionHeader } from '$lib/components/ui';
+	import { Alert, AnimatedNumber, PageShell, Spark, SectionHeader } from '$lib/components/ui';
 	import DashboardGreetingHeader from '$lib/components/dashboard/overview/DashboardGreetingHeader.svelte';
 	import DashboardStatTiles from '$lib/components/dashboard/overview/DashboardStatTiles.svelte';
 	import RecentInstancesCard from '$lib/components/dashboard/overview/RecentInstancesCard.svelte';
@@ -433,12 +434,12 @@
 		<p class="text-xs tracking-tight text-[var(--color-ink-2)]">{t('overview.trend')}</p>
 		<RangeToggle value={range} onchange={handleRangeChange} />
 	</div>
-	<div class="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+	<div class="motion-stagger grid grid-cols-1 md:grid-cols-3 gap-3.5">
 		{#each [
 			{ label: t('overview.vcpu', { range }), color: 'var(--color-accent)', key: 'vcpu' as const, unit: '%' },
 			{ label: t('overview.memory', { range }), color: 'var(--color-accent-2)', key: 'memory' as const, unit: '%' },
 			{ label: t('overview.disk', { range }), color: 'var(--color-warm)', key: 'storage' as const, unit: '%' },
-		] as card}
+		] as card (card.key)}
 			{@const currentTrend = trendState.data?.range === range ? trendState.data : null}
 			{@const series = currentTrend?.[card.key]}
 			{@const hasData = (series?.data.length ?? 0) > 0}
@@ -450,13 +451,13 @@
 					<p class="text-xs tracking-tight text-[var(--color-ink-2)]">{card.label}</p>
 					{#if current !== null}
 						<span class="text-xl font-semibold tabular-nums text-[var(--color-ink-0)]">
-							{current.toFixed(1)}<span class="ml-0.5 text-xs text-[var(--color-ink-2)]">{card.unit}</span>
+						<AnimatedNumber value={current} format={(value) => value.toFixed(1)} /><span class="ml-0.5 text-xs text-[var(--color-ink-2)]">{card.unit}</span>
 						</span>
 					{/if}
 				</div>
 				<div class="min-h-[72px] flex items-center w-full">
 					{#if (authLoading || initialLoadPending || trendState.pending) && !hasData}
-						<div class="h-[72px] w-full bg-surface-sunken/60 rounded animate-pulse"></div>
+						<div class="h-[72px] w-full motion-skeleton rounded" role="status" aria-busy="true"><span class="sr-only">{card.label} · {tc('state.loading')}</span></div>
 					{:else if hasData}
 						<Spark data={series!.data} color={card.color} height={72} class="w-full" />
 					{:else if trendState.error}
@@ -494,10 +495,11 @@
 					{/snippet}
 				</SectionHeader>
 				{#if alertsPending && alerts.length === 0 && announcements.length === 0}
-					<ul class="mt-3 flex flex-col gap-2 animate-pulse">
-						<li class="h-4 bg-surface-sunken/60 rounded"></li>
-						<li class="h-4 bg-surface-sunken/60 rounded w-3/4"></li>
-					</ul>
+					<div class="mt-3 flex flex-col gap-2" role="status" aria-busy="true">
+						<span class="sr-only">{t('overview.systemAlerts')} · {tc('state.loading')}</span>
+						<div class="h-4 motion-skeleton rounded"></div>
+						<div class="h-4 motion-skeleton rounded w-3/4"></div>
+					</div>
 				{:else if alertsCompleteEmpty}
 					<p class="text-sm text-[var(--color-ink-3)] mt-4">{t('overview.noAlerts')}</p>
 				{:else}

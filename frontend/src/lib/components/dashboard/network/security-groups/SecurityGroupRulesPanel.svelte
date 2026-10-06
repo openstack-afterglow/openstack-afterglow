@@ -2,6 +2,8 @@
 	import type { SecurityGroup, SecurityGroupInstance, SecurityGroupRule, SecurityGroupRuleDraft } from '$lib/types/securityGroup';
 	import AddRuleForm from './AddRuleForm.svelte';
 	import { t } from '$lib/i18n/ns/network-pages';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
 
 	let {
 		group,
@@ -56,8 +58,8 @@
 	}
 </script>
 
-<!-- 모바일: 전체화면 오버레이 / 태블릿·데스크톱: 인라인 -->
-<div class="security-group-rules fixed inset-0 bg-surface-canvas overflow-y-auto p-4 md:static md:inset-auto md:bg-surface-base md:border md:border-line md:rounded-lg md:p-5 md:overflow-visible">
+<!-- 모바일: 전체화면 오버레이 / 태블릿·데스크톱: 인라인. 모바일에서 fixed 레이어이므로 opacity 진입만 쓴다. -->
+<div class="security-group-rules motion-fade fixed inset-0 bg-surface-canvas overflow-y-auto p-4 md:static md:inset-auto md:bg-surface-base md:border md:border-line md:rounded-lg md:p-5 md:overflow-visible">
 	<div class="flex items-center mb-4 gap-2">
 		<button type="button" aria-label={t('securityGroupRules.backToList')} onclick={onCloseMobile} class="md:hidden text-ink-2 hover:text-ink-0 p-2">
 			<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
@@ -74,7 +76,7 @@
 	<section class="border border-line rounded-lg p-3 mb-4" aria-label={t('securityGroupRules.instancesLabel')}>
 		<h2 class="text-sm font-medium text-ink-0 mb-2">{instancesError || instancesLoading ? t('securityGroupRules.instancesTitle') : t('securityGroupRules.instancesCount', { count: instances.length })}</h2>
 		{#if instancesLoading}
-			<p class="text-xs text-ink-2">{t('securityGroupRules.instancesLoading')}</p>
+			<ActivityIndicator size="xs" label={t('securityGroupRules.instancesLoading')} />
 		{:else if instancesError}
 			<p role="alert" class="text-xs text-state-danger-text">{instancesError} <button type="button" onclick={onRetryInstances} class="underline">{t('securityGroupRules.retryInstances')}</button></p>
 		{:else if instances.length === 0}
@@ -90,7 +92,7 @@
 
 	<section aria-label={t('securityGroupRules.rulesLabel')} class="border border-line rounded-lg overflow-hidden bg-surface-base">
 		<div class="flex items-center justify-between gap-2 px-3 py-2 border-b border-line">
-			<h2 class="text-sm font-medium text-ink-0">{t('securityGroupRules.rulesCount', { count: group.rules.length })}</h2>
+			<h2 class="text-sm font-medium text-ink-0"><AnimatedNumber value={group.rules.length} format={(value) => t('securityGroupRules.rulesCount', { count: Math.round(value) })} /></h2>
 			<button type="button" onclick={onStartAdd} aria-expanded={addRuleOpen} class="text-xs text-warm-text border border-action-warm rounded-md px-2 py-1.5 shrink-0">{t('securityGroupRules.add')}</button>
 		</div>
 		<div class="overflow-x-auto">
@@ -101,6 +103,7 @@
 				{#if group.rules.length === 0}
 					<div class="text-xs text-ink-2 px-3 py-5">{t('securityGroupRules.noRules')}</div>
 				{/if}
+				<div class="motion-stagger">
 				{#each group.rules as rule (rule.id)}
 					<div class="grid grid-cols-[6.5rem_3.5rem_5rem_5rem_minmax(8rem,1fr)_8rem] gap-2 px-3 py-2.5 text-xs items-center border-b border-line">
 						<div><span class="text-state-info-text">{rule.direction === 'ingress' ? t('securityGroupRules.ingress') : t('securityGroupRules.egress')}</span></div>
@@ -120,6 +123,7 @@
 						</div>
 					</div>
 				{/each}
+				</div>
 			</div>
 		</div>
 		{#if addRuleOpen}

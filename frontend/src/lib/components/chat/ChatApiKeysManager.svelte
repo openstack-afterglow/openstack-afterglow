@@ -376,7 +376,9 @@ claude` : '');
 	</div>
 
 	{#if loading}
-		<div class="{cardCls} h-16 animate-pulse"></div>
+		<div class="motion-skeleton rounded-lg border border-line h-16" role="status" aria-label={t('apiKeys.loading')}>
+			<span class="sr-only">{t('apiKeys.loading')}</span>
+		</div>
 	{:else if keys.length === 0}
 		<p class="px-1 text-sm text-[var(--color-ink-3)]">{t('apiKeys.empty')}</p>
 	{:else}

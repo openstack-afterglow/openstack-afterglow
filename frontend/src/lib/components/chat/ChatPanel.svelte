@@ -56,6 +56,7 @@
 	import type { Workspace, WorkspacePayload } from '$lib/api/chatWorkspaces';
 	import ChatSidebar from './ChatSidebar.svelte';
 	import ChatWindow from './ChatWindow.svelte';
+	import { freshMessageEntrance, type MessageEntrance } from './messageMotion';
 	import ChatInput, { type ComposerCommand } from './ChatInput.svelte';
 	import ModelCapabilityBadges from './ModelCapabilityBadges.svelte';
 	import AgentPicker from './AgentPicker.svelte';
@@ -98,6 +99,7 @@
 		toolItems?: ToolActivityItem[];
 		reasoning?: string | null;
 		activityItems?: RunActivityItem[];
+		sessionEntrance?: MessageEntrance;
 	};
 
 	type AgentActivity = {
@@ -564,7 +566,7 @@
 	function tempId(): string {
 		return `tmp-${tmpSeq++}`;
 	}
-	function newAssistantDraft(model: string | null): DisplayMessage {
+	function newAssistantDraft(model: string | null, fresh = true): DisplayMessage {
 		return {
 			id: tempId(),
 			conversation_id: activeConvId ?? '',
@@ -574,6 +576,7 @@
 			model_name: model,
 			created_at: null,
 			streaming: true,
+			sessionEntrance: fresh ? freshMessageEntrance() : undefined,
 			toolItems: [],
 			reasoning: ''
 		};
@@ -1936,7 +1939,7 @@
 				return;
 			}
 
-			const draft = newAssistantDraft(activeConv?.model_name ?? selectedModel);
+			const draft = newAssistantDraft(activeConv?.model_name ?? selectedModel, false);
 			invalidateContextPreview();
 			streaming = true;
 			currentRun = descriptor;
@@ -2021,6 +2024,7 @@
 			endStream();
 			const failedUserMsg: DisplayMessage = {
 				id: tempId(),
+				sessionEntrance: freshMessageEntrance(),
 				conversation_id: '',
 				role: 'user',
 				parent_id: null,
@@ -2053,6 +2057,7 @@
 
 		const userMsg: DisplayMessage = {
 			id: tempId(),
+			sessionEntrance: freshMessageEntrance(),
 			conversation_id: convId,
 			role: 'user',
 			parent_id: activeLeafId,
@@ -2112,6 +2117,7 @@
 	) {
 		const userMsg: DisplayMessage = {
 			id: tempId(),
+			sessionEntrance: freshMessageEntrance(),
 			conversation_id: '',
 			role: 'user',
 			parent_id: null,

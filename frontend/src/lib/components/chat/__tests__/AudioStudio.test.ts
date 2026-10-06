@@ -74,6 +74,19 @@ describe('Audio Studio', () => {
 		expect(takeAudioTranscript('owner', 'project-1')).toBe(timed.text);
 	});
 
+	it('announces speech generation only while the request is in flight', async () => {
+		const pending = Promise.withResolvers<Blob>();
+		calls.speech.mockReturnValueOnce(pending.promise);
+		render(AudioStudio);
+		await screen.findByText('음성 생성 경로와 가격이 준비되었습니다.');
+		await fireEvent.input(screen.getByRole('textbox', { name: /읽을 텍스트/ }), { target: { value: 'Hello' } });
+		await fireEvent.click(screen.getByRole('button', { name: '음성 생성' }));
+		expect(screen.getAllByRole('status').some((status) => status.textContent?.trim() === t('audioStudio.speechGenerating'))).toBe(true);
+		pending.resolve(new Blob(['audio'], { type: 'audio/mpeg' }));
+		await screen.findByRole('link', { name: '음성 다운로드' });
+		expect(screen.getAllByRole('status').some((status) => status.textContent?.trim() === t('audioStudio.speechGenerating'))).toBe(false);
+	});
+
 	it('plays real Blob bytes, keeps them across mode switches, reuses an ambiguous speech intent and revokes playback on owner switch', async () => {
 		calls.speech.mockRejectedValueOnce(new Error('lost response'));
 		const view = render(AudioStudio);
@@ -301,11 +314,13 @@ describe('Audio Studio', () => {
 		const { promise, resolve } = Promise.withResolvers<{ id: string; name: string }>();
 		calls.upload.mockImplementationOnce(() => promise);
 		await fireEvent.change(screen.getByLabelText('음성 파일 선택'), { target: { files: [new File(['abc'], 'first.wav', { type: 'audio/wav' })] } });
+		expect(screen.getAllByRole('status').some((status) => status.textContent?.trim() === '업로드하고 검사하는 중…')).toBe(true);
 		auth.set(user('project-2'));
 		resolve({ id: 'old-asset', name: 'first.wav' });
 		await waitFor(() => expect(calls.models).toHaveBeenCalledWith('stt', { token: 'token', projectId: 'project-2' }));
 		expect(screen.queryByText('검사된 입력: first.wav')).toBeNull();
 		expect(screen.queryByText('first.wav')).toBeNull();
+		expect(screen.queryByText('업로드하고 검사하는 중…')).toBeNull();
 	});
 
 	it('ignores a transcription that resolves after the project changes', async () => {
@@ -315,6 +330,7 @@ describe('Audio Studio', () => {
 		await openStt();
 		await chooseAudio(new File(['FAKE-WAV'], 'voice.wav', { type: 'audio/wav' }));
 		await fireEvent.click(screen.getByRole('button', { name: '텍스트로 변환' }));
+		expect(screen.getAllByRole('status').some((status) => status.textContent?.trim() === '음성 처리 중…')).toBe(true);
 		const signal: AbortSignal = calls.transcribe.mock.calls[0][3];
 		auth.set(user('project-2'));
 		await waitFor(() => expect(signal.aborted).toBe(true));
@@ -322,5 +338,6 @@ describe('Audio Studio', () => {
 		await waitFor(() => expect(calls.models).toHaveBeenCalledWith('stt', { token: 'token', projectId: 'project-2' }));
 		expect(screen.queryByText('둘째 문장')).toBeNull();
 		expect(screen.queryByRole('link', { name: '텍스트 다운로드' })).toBeNull();
+		expect(screen.getAllByRole('status').some((status) => status.textContent?.trim() === '음성 처리 중…')).toBe(false);
 	});
 });

@@ -252,7 +252,7 @@
 	"secrets.description.containers": "<highlight>컨테이너(Container)</highlight>는 여러 Secret을 하나로 묶는 논리적 그룹입니다. <muted>generic</muted>은 임의의 secret 묶음, <muted>rsa</muted>는 공개키·개인키 쌍, <muted>certificate</muted>는 TLS 인증서·개인키·체인을 한 벌로 관리합니다. Octavia 로드밸런서의 TLS termination이나 서비스 간 인증서 공유에 활용됩니다.",
 	"secrets.description.orders": "<highlight>Key Orders</highlight>는 Barbican에 암호화 키 생성을 비동기로 요청하는 작업입니다. <muted>대칭키(AES)</muted> 또는 <muted>비대칭키(RSA)</muted>를 지정한 비트 길이로 생성해달라고 요청하면, Barbican이 백그라운드에서 안전하게 키를 생성하고 Secret으로 저장합니다. 직접 키를 입력하지 않고 서버 측에서 생성하므로 키가 네트워크를 거치지 않아 더 안전합니다.",
 	"secrets.description.quota": "<highlight>쿼터(Quota)</highlight>는 이 프로젝트에서 생성할 수 있는 리소스 한도입니다. <value>∞</value>는 무제한을 의미합니다. 한도 변경은 관리자에게 문의하세요.",
-	"secrets.tabs.secretsWithCount": "비밀 <count>({count})</count>",
+	"secrets.tabs.secretsWithCount": "비밀 (<count>{count}</count>)",
 	"usageReport.loadFailed": "데이터 로딩 실패",
 	"usageReport.breadcrumb": "USAGE REPORT",
 	"usageReport.title": "기간 사용량 & 쿼터 예측",

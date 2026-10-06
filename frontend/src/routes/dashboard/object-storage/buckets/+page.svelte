@@ -18,6 +18,7 @@
 	import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
 	import { executeBulkMutations } from '$lib/utils/bulkActions';
 	import { toast } from '$lib/stores/toast';
+	import { createArrivals } from '$lib/components/object-storage/arrivals';
 
 	let containers = $state<SwiftContainer[]>([]);
 	let deletedContainers = $state<SwiftContainer[]>([]);
@@ -36,6 +37,9 @@
 	let busy = $state(false);
 	let selectionDomain = $state<'active' | 'trash'>('active');
 	const selection = createResourceSelection();
+	// Trash rows fade in on first arrival only; auto-refresh keeps the keyed list mounted.
+	const trashArrivals = createArrivals();
+	const bucketArrivals = createArrivals();
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
 
@@ -207,6 +211,8 @@
 	$effect(() => {
 		const pid = $auth.projectId;
 		selection.clear();
+		trashArrivals.reset();
+		bucketArrivals.reset();
 		containers = [];
 		deletedContainers = [];
 		account = null;
@@ -279,6 +285,7 @@
 				{containers}
 				{deleting}
 				{refreshing}
+				arrivals={bucketArrivals}
 				selectedIds={selectionDomain === 'active' ? selection.ids : new Set()}
 				selectionDisabled={busy}
 				onToggleSelect={(id) => { setSelectionDomain('active'); selection.toggle(id); }}
@@ -310,7 +317,13 @@
 				<div class="space-y-2 mt-3">
 					{#each deletedContainers as c (c.name)}
 						{@const deletedAt = (c as SwiftContainer & { deleted_at?: number }).deleted_at}
-						<div class="resource-selection-surface flex items-center justify-between px-4 py-3 rounded-lg border border-red-900/40 bg-red-950/10" data-selected={selectionDomain === 'trash' && selection.has(c.name)}>
+						{@const entrance = trashArrivals.next(c.name)}
+						<div
+							class="resource-selection-surface flex items-center justify-between px-4 py-3 rounded-lg border border-state-danger/30 bg-state-danger/5"
+							class:motion-fade={entrance !== null}
+							style:--motion-index={entrance}
+							data-selected={selectionDomain === 'trash' && selection.has(c.name)}
+						>
 							<div class="flex items-center gap-3">
 								<SelectionCheckbox
 									checked={selectionDomain === 'trash' && selection.has(c.name)}

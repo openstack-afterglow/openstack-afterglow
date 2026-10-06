@@ -1,10 +1,13 @@
 {
+	"clusterDetail.loading": "클러스터 조회 중",
+	"deleteProgress.label": "클러스터 삭제 진행률",
 	"steps.securityGroup": "보안 그룹",
 	"steps.serverVolume": "서버 볼륨",
 	"steps.serverVm": "서버 VM",
 	"steps.initialize": "k3s 초기화",
 	"steps.completed": "완료",
 	"steps.prepare": "준비",
+	"rotateProgress.unreported": "진행 스트림이 종료되었습니다. 클러스터 상태를 새로고침해 결과를 확인하세요.",
 	"steps.cleanupLb": "LB 정리",
 	"steps.appCredential": "App Credential",
 	"steps.k8sNodes": "K8s 노드",

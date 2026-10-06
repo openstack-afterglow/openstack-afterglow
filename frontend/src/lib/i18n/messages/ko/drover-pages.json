@@ -60,7 +60,7 @@
 	"nodegroup.default": "(기본)",
 	"nodegroup.provisioning": "▲ +{count} 프로비저닝 중",
 	"nodegroup.nodeCount": "노드 수: <count>{count}</count>",
-	"nodegroup.vmCount": "VM: <count>{running}/{total}</count>",
+	"nodegroup.vmCount": "VM: <running>{running}</running>/{total}",
 	"nodegroup.flavorRequired": "Flavor (필수)",
 	"nodegroup.flavorOptional": "Flavor (선택)",
 	"nodegroup.notSelected": "선택 안 함",

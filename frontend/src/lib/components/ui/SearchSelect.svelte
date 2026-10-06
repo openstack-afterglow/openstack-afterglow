@@ -175,7 +175,7 @@
 	</button>
 
 	{#if open}
-		<div use:portal bind:this={popover} class="search-select-popover" style={popoverStyle}>
+		<div use:portal bind:this={popover} class="search-select-popover motion-pop" style={popoverStyle}>
 			<input
 				bind:this={searchInput}
 				type="search"

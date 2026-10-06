@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/drover';
+	import { t as tc } from '$lib/i18n/ns/common';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
 	import K3sClusterHeader from './K3sClusterHeader.svelte';
@@ -61,7 +63,7 @@
 			onclick={disableStampede}
 			disabled={disabling}
 			class="text-xs text-warm-text/70 hover:text-red-400 disabled:opacity-50 transition-colors px-2 py-1 rounded"
-		>{disabling ? t('overview.pending') : t('overview.main.disable')}</button>
+		>{#if disabling}<ActivityIndicator size="xs" label={tc('state.processing')} />{:else}{t('overview.main.disable')}{/if}</button>
 	</div>
 {:else if canEnableStampede}
 	<div class="mb-3 flex items-center justify-between bg-surface-sunken/50 border border-line-2 rounded-lg px-3 py-2.5">
@@ -73,7 +75,7 @@
 			onclick={enableStampede}
 			disabled={enabling}
 			class="text-xs text-ink-2 hover:text-warm-text-hover disabled:opacity-50 transition-colors px-2 py-1 rounded border border-line-2 hover:border-action-warm"
-		>{enabling ? t('overview.pending') : t('overview.main.enable')}</button>
+		>{#if enabling}<ActivityIndicator size="xs" label={tc('state.processing')} />{:else}{t('overview.main.enable')}{/if}</button>
 	</div>
 {/if}
 

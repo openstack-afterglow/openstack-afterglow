@@ -351,4 +351,57 @@ describe('admin user quota page', () => {
 		expect(await screen.findByText('alice')).toBeTruthy();
 		expect(screen.getByText('페이지 1')).toBeTruthy();
 	});
+
+	it('announces only the quota action that is in flight and clears it on completion', async () => {
+		const defaultSave = Promise.withResolvers<unknown>();
+		const personalSave = Promise.withResolvers<unknown>();
+		const reset = Promise.withResolvers<unknown>();
+		mocks.put.mockImplementation((path: string) => path.endsWith('/defaults') ? defaultSave.promise : personalSave.promise);
+		mocks.delete.mockReturnValue(reset.promise);
+		render(QuotaPage);
+		let alice = (await screen.findByText('alice')).closest('tr')!;
+		let bob = screen.getByText('bob').closest('tr')!;
+
+		await fireEvent.click(screen.getByRole('button', { name: '기본값 저장' }));
+		expect(screen.getByRole('button', { name: '저장 중…' }).getAttribute('aria-busy')).toBe('true');
+		expect(screen.getByRole('button', { name: '저장 중…' }).textContent).toContain('저장 중…');
+		expect(within(alice).getByRole('button', { name: '기본값 복원' }).getAttribute('aria-busy')).toBe('false');
+		defaultSave.resolve({ default_monthly_credit_limit: '100000' });
+		await screen.findByRole('button', { name: '기본값 저장' });
+		alice = (await screen.findByText('alice')).closest('tr')!;
+		bob = screen.getByText('bob').closest('tr')!;
+
+		await fireEvent.click(within(alice).getByRole('button', { name: '기본값 복원' }));
+		const resetting = await within(alice).findByRole('button', { name: '복원 중…' });
+		expect(resetting.getAttribute('aria-busy')).toBe('true');
+		expect(within(bob).getByRole('button', { name: '기본값 복원' }).getAttribute('aria-busy')).toBe('false');
+		reset.resolve({ ...quota, configured_monthly_credit_limit: null, configured_weekly_credit_limit: null, monthly_limit_source: 'default', weekly_limit_source: 'default' });
+		await within(alice).findByRole('button', { name: '기본값 복원' });
+
+		await fireEvent.click(within(bob).getByRole('button', { name: '편집' }));
+		await fireEvent.click(screen.getByRole('button', { name: '저장' }));
+		expect(screen.getByRole('button', { name: '저장 중…' }).getAttribute('aria-busy')).toBe('true');
+		personalSave.resolve({ ...quota, user_id: 'u2' });
+		await waitFor(() => expect(screen.queryByRole('dialog', { name: '사용자 쿼터 편집' })).toBeNull());
+		expect(screen.queryByText('저장 중…')).toBeNull();
+	});
+
+	it('announces history pagination until the next usage page is received', async () => {
+		const nextPage = Promise.withResolvers<unknown>();
+		mocks.get.mockImplementation((path: string) => {
+			if (path.startsWith('/api/v1/admin/users?')) return Promise.resolve(users);
+			if (path === '/api/v1/chat/admin/quotas') return Promise.resolve(quotaList);
+			if (path.includes('before_id=')) return nextPage.promise;
+			return Promise.resolve({ ...usageDetail, next_before_id: 9 });
+		});
+		render(QuotaPage);
+		const alice = (await screen.findByText('alice')).closest('tr')!;
+		await fireEvent.click(within(alice).getByRole('button', { name: '사용량' }));
+		await fireEvent.click(await screen.findByRole('button', { name: '이전 기록 더 보기' }));
+		expect(screen.getByRole('button', { name: '불러오는 중…' }).getAttribute('aria-busy')).toBe('true');
+		expect(screen.getByRole('button', { name: '불러오는 중…' }).textContent).toContain('불러오는 중…');
+		nextPage.resolve({ ...usageDetail, records: [], next_before_id: null });
+		await waitFor(() => expect(screen.queryByRole('button', { name: '불러오는 중…' })).toBeNull());
+		expect(screen.queryByText('불러오는 중…')).toBeNull();
+	});
 });

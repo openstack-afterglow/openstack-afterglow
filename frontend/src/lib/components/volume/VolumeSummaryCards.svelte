@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/volume';
 	import type { Snapshot, Volume } from '$lib/types/volume';
+	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
+	import UsageBar from '$lib/components/ui/UsageBar.svelte';
 
 	interface QuotaItem { limit: number; in_use: number; }
 	interface VolumeQuotas { storage: { volumes: QuotaItem; gigabytes: QuotaItem; }; }
@@ -25,6 +27,7 @@
 			return Date.now() - new Date(s.created_at).getTime() < 86400000;
 		}),
 	);
+
 </script>
 
 <div class={`grid ${showSnapshots ? 'grid-cols-3' : 'grid-cols-2'} gap-3.5 mb-5`}>
@@ -32,7 +35,7 @@
 	<div class="bg-surface-base border border-line rounded-lg p-5">
 		<div class="text-xs uppercase tracking-wider text-ink-2 font-medium mb-2">{t('summaryCards.allocatedStorage')}</div>
 		<div class="text-[26px] font-bold text-ink-0 leading-none mb-1">
-			{totalGb}
+			<AnimatedNumber value={totalGb} />
 			{#if quotas?.storage.gigabytes.limit && quotas.storage.gigabytes.limit > 0}
 				<span class="text-sm font-normal text-ink-2">/ {quotas.storage.gigabytes.limit} GB</span>
 			{:else if quotas?.storage.gigabytes.limit === -1}
@@ -48,18 +51,19 @@
 				&nbsp;
 			{/if}
 		</div>
-		<div class="h-1.5 bg-surface-sunken rounded-full overflow-hidden">
-			{#if quotas?.storage.gigabytes.limit && quotas.storage.gigabytes.limit > 0}
-				{@const vpct = totalGb / quotas.storage.gigabytes.limit * 100}
-				<div class="h-full rounded-full transition-all" style="width: {Math.min(100, Math.round(vpct))}%; background: {vpct >= 95 ? 'var(--gradient-usage-danger)' : vpct >= 80 ? 'var(--gradient-usage-warning)' : 'var(--gradient-usage)'}"></div>
-			{/if}
-		</div>
+		{#if quotas?.storage.gigabytes.limit && quotas.storage.gigabytes.limit > 0}
+			<div role="meter" aria-label={t('summaryCards.allocatedStorage')} aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.max(0, Math.min(100, Math.round(totalGb / quotas.storage.gigabytes.limit * 100)))}>
+				<UsageBar value={totalGb} max={quotas.storage.gigabytes.limit} showValue={false} />
+			</div>
+		{:else}
+			<div class="h-1.5 bg-surface-sunken rounded-full"></div>
+		{/if}
 	</div>
 	<!-- 볼륨 개수 -->
 	<div class="bg-surface-base border border-line rounded-lg p-5">
 		<div class="text-xs uppercase tracking-wider text-ink-2 font-medium mb-2">{t('summaryCards.volumes')}</div>
 		<div class="text-[26px] font-bold text-ink-0 leading-none mb-1">
-			{volumes.length}
+			<AnimatedNumber value={volumes.length} />
 			{#if quotas?.storage.volumes.limit && quotas.storage.volumes.limit > 0}
 				<span class="text-sm font-normal text-ink-2">/ {quotas.storage.volumes.limit}</span>
 			{:else if quotas?.storage.volumes.limit === -1}
@@ -73,20 +77,22 @@
 				&nbsp;
 			{/if}
 		</div>
-		<div class="h-1.5 bg-surface-sunken rounded-full overflow-hidden">
-			{#if quotas?.storage.volumes.limit && quotas.storage.volumes.limit > 0}
-				{@const cpct = volumes.length / quotas.storage.volumes.limit * 100}
-				<div class="h-full rounded-full transition-all" style="width: {Math.min(100, Math.round(cpct))}%; background: {cpct >= 95 ? 'var(--gradient-usage-danger)' : cpct >= 80 ? 'var(--gradient-usage-warning)' : 'var(--gradient-usage)'}"></div>
-			{/if}
-		</div>
+		{#if quotas?.storage.volumes.limit && quotas.storage.volumes.limit > 0}
+			<div role="meter" aria-label={t('summaryCards.volumes')} aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.max(0, Math.min(100, Math.round(volumes.length / quotas.storage.volumes.limit * 100)))}>
+				<UsageBar value={volumes.length} max={quotas.storage.volumes.limit} showValue={false} />
+			</div>
+		{:else}
+			<div class="h-1.5 bg-surface-sunken rounded-full"></div>
+		{/if}
 		<div class="text-xs text-ink-2 mt-2">{t('summaryCards.attachedCount', { count: attachedCount })}</div>
 	</div>
 	{#if showSnapshots}
 		<!-- 스냅샷 -->
 		<div class="bg-surface-base border border-line rounded-lg p-5">
 			<div class="text-xs uppercase tracking-wider text-ink-2 font-medium mb-2">{t('summaryCards.snapshots')}</div>
-			<div class="text-[26px] font-bold text-ink-0 leading-none mb-1">{snapshots.length}</div>
+			<div class="text-[26px] font-bold text-ink-0 leading-none mb-1"><AnimatedNumber value={snapshots.length} /></div>
 			<div class="text-xs text-ink-2">{t('summaryCards.recentSnapshots', { count: recentSnapshots.length })}</div>
 		</div>
 	{/if}
 </div>
+

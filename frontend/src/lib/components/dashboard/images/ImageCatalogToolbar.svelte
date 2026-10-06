@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Button, Card, Pill, SelectInput, TextInput } from '$lib/components/ui';
+	import { AnimatedNumber, Button, Card, Pill, SelectInput, TextInput } from '$lib/components/ui';
 	import type { CatalogOption, CatalogSortMode, VerificationFilter } from '$lib/stores/imageCatalog.svelte';
 	import { t } from '$lib/i18n/ns/images-keys';
 
@@ -50,7 +50,7 @@
 				<Button variant={viewMode === 'repositories' ? 'accent' : 'ghost'} size="xs" onclick={() => onViewModeChange?.('repositories')}>{t('catalogToolbar.repositoryView')}</Button>
 				<Button variant={viewMode === 'tags' ? 'accent' : 'ghost'} size="xs" onclick={() => onViewModeChange?.('tags')}>{t('catalogToolbar.tagsView')}</Button>
 			</div>
-			<Pill tone="info" dot>{t('catalogToolbar.repositoryCount', { count: repositoryCount })}</Pill>
+			<Pill tone="info" dot><AnimatedNumber value={repositoryCount} format={(value) => t('catalogToolbar.repositoryCount', { count: Math.round(value) })} /></Pill>
 		</div>
 	</div>
 
@@ -117,8 +117,8 @@
 	</div>
 
 	<div class="toolbar-footer">
-		<span>{t('catalogToolbar.resultSummary', { imageCount: resultCount, repositoryCount })}</span>
-		{#if totalCount !== resultCount}<span class="footer-muted">{t('catalogToolbar.filteredSummary', { count: totalCount })}</span>{/if}
+		<span><AnimatedNumber value={resultCount} format={(value) => t('catalogToolbar.resultSummary', { imageCount: Math.round(value), repositoryCount })} /></span>
+		{#if totalCount !== resultCount}<span class="footer-muted"><AnimatedNumber value={totalCount} format={(value) => t('catalogToolbar.filteredSummary', { count: Math.round(value) })} /></span>{/if}
 	</div>
 </Card>
 

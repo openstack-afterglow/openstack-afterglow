@@ -4,6 +4,7 @@
 	import { visibilityBadge, visibilityLabel } from '$lib/utils/format';
 	import ImageVerificationBadge from './ImageVerificationBadge.svelte';
 	import { imageVerificationStatus } from '$lib/stores/imageCatalog.svelte';
+	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 
 	interface Props {
 		onClose?: () => void;
@@ -19,9 +20,7 @@
 			<h2 class="text-lg font-bold text-ink-0 break-all">{s.image.name}</h2>
 			<div class="text-xs text-[var(--color-ink-2)] font-mono mt-1 break-all">{t('detailHeader.repositoryTag', { repository: s.image.repository ?? s.image.name, tag: s.image.tag ?? 'latest' })}</div>
 			<div class="flex items-center gap-2 mt-1.5 flex-wrap">
-				<span class="px-2 py-0.5 rounded text-xs font-medium {s.image.status === 'active' ? 'text-[var(--color-state-success)] bg-[var(--color-state-success)]/15' : 'text-[var(--color-ink-2)] bg-[var(--color-surface-sunken)]'}">
-					{s.image.status}
-				</span>
+				<StatusChip status={s.image.status} />
 				<ImageVerificationBadge status={imageVerificationStatus(s.image)} />
 				<span class="px-2 py-0.5 rounded text-xs font-medium {visibilityBadge(s.image.visibility)}">
 					{visibilityLabel(s.image.visibility)}
@@ -31,7 +30,7 @@
 				{/if}
 			</div>
 		{:else if s.loading}
-			<div class="h-6 w-48 bg-[var(--color-surface-sunken)] rounded animate-pulse"></div>
+			<div class="h-6 w-48 rounded motion-skeleton"></div>
 		{/if}
 	</div>
 	<!-- 닫기 버튼은 SlidePanel 이 제공한다(`[data-slide-panel-close]`) -->

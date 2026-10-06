@@ -1,4 +1,5 @@
 {
+	"card.noStatus": "ステータスなし",
 	"topology.lane": "レーン",
 	"topology.canvas": "キャンバス",
 	"topology.createNetworkFailed": "ネットワークの作成に失敗しました",
@@ -50,6 +51,7 @@
 	"kind.internal": "内部",
 	"header.search": "名前またはIPで検索…",
 	"header.total": "合計",
+	"header.live": "リアルタイムトラフィック",
 	"empty.resources": "リソースなし",
 	"hud.internet": "インターネット",
 	"hud.isolated": "隔離",

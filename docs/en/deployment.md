@@ -29,6 +29,29 @@ Afterglow supports three deployment modes: Docker Compose (development / small s
 
 ---
 
+## Docker-free OCI-root VM candidate (not deployed)
+
+The separate `Dockerfile --target native-vm` preinstalls the Afterglow API, Notion worker, compiled SvelteKit frontend, Node 22, MariaDB/client and Redis. BuildKit/Docker runs on the **build host**, not in the guest. The non-root entrypoint starts services directly; existing Compose/Kolla and sibling-service deployments remain unchanged.
+
+```bash
+docker buildx build --platform linux/amd64 --target native-vm \
+  --output type=oci,dest=afterglow-native-amd64.oci.tar .
+```
+
+Actual execution requires an authorized Linux amd64/KVM Palimpsest OCI-root host, qualified kernel/config/packer and libvirt/KVM access. This is not a conventional Lima VM running Docker Compose. Local container image smoke does not prove actual guest `/`, UID/GID fidelity or retained-root persistence. No CI VM will be provisioned without a current member-only project credential and exact resource authorization; admin credentials are not a substitute.
+
+Persist the entire UID-1000-owned `/var/lib/afterglow`, including private credentials, configuration, SQL/Redis data and logs. Interrupted/unmarked SQL initialization is preserved and refused, never erased to force a retry. `/app/afterglow.conf` links to the private state; existing operator config/overrides are preserved. Initial managed config contains application keys only: provide actual Keystone/project and sibling settings privately, never in the image.
+
+SQL uses a Unix socket only; password-authenticated Redis listens on loopback 6379. Publish only frontend 3080 and API 8000 through approved TLS ingress or a private tunnel. Entrypoint `--frontend-origin`/`--api-origin` values must match browser-reachable origins. Both existing HTTP liveness endpoints must be ready; this is not authenticated dashboard/OpenStack readiness. A child exit fails the supervisor; SIGTERM/SIGINT stops consumers before stores.
+
+2026-10-02 arm64 and emulated amd64 image smoke passed as UID 1000 with all capabilities dropped and no-new-privileges: actual API/frontend HTTP 200, 37 tables, SQL/Redis and credential persistence, child failure/recovery and graceful shutdown. The amd64 OCI artifact has 22 layers. See root `ARCHITECTURE.md` for evidence and unverified native acceptance boundaries.
+
+### Conventional direct-Nova disk (`native-cloud-vm`)
+
+`Dockerfile --target native-cloud-vm` derives from `native-vm` and adds Debian trixie's kernel/initramfs, BIOS GRUB modules, systemd, cloud-init, sshd and `afterglow-native.service`, which runs the same supervisor as `appuser`. There is still no container engine in the guest. Build with `--platform linux/amd64 --output type=tar`, then, as root on a Linux amd64 builder, run `scripts/export_native_cloud.py --rootfs ROOTFS.tar[.gz] --output DISK.raw --size-gib 8 --source-sha256 HEX`. This writes a BIOS-bootable raw disk with `.sha256` and `.metadata.json` sidecars. Deliver the operator configuration as cloud-init `write_files` at `/etc/afterglow/afterglow.conf` (0600). The root prestart copies it once into `/var/lib/afterglow` as `appuser` and never replaces an existing config. Log in as the cloud-init `debian` user with the Nova keypair; the host keys are printed to the serial console.
+
+2026-10-06 SYSTEM-project proof: the source was approved baseline `ff007ed` plus the native overlays (bundle `8f28a712…`). The disk (sha256 `c8c33ab1…`) booted directly on Nova (`cpu.2c_8g`, `ceph_hdd`) and ran with systemd as PID 1, the supervisor active as `appuser`, and no engine binaries. API/frontend returned HTTP 200, 37 tables existed, and SQL was socket-only while Redis listened on loopback only. MariaDB/Redis, Cinder data-volume and CephFS markers all survived a reboot. An RGW checksum round trip also passed. A member-account password login returned SYSTEM with member/reader roles and no system admin, logout succeeded, and the SYSTEM network was unchanged. All owned resources were deleted and confirmed absent. This is a conventional cloud disk derived from the OCI root plus declared bootability additions. It is not protected OCI-root stage-1, untouched OCI execution or security parity, so tasks 6/7 of the native OCI-root change remain open.
+
 ## Docker Compose Deployment
 
 Select one standalone manifest explicitly with `-f`: `docker-compose.yml` runs only the published Afterglow frontend/backend with external dependencies; `docker-compose.dev.yml` builds the full local source stack; `docker-compose.prod.yml` pulls GHCR images and uses TLS HAProxy ingress plus Keystone catalog discovery for generic routes. Palimpsest package routes require a trusted configured URL instead. Do not merge dev and prod or reuse their data volumes across modes.
@@ -346,6 +369,24 @@ helm template afterglow helm/afterglow --namespace afterglow \
   --set secrets.k3sKubeconfigEncryptionKey="$(openssl rand -hex 32)" \
   --set secrets.databaseUrl='mysql+asyncmy://afterglow:<db-password>@mariadb/afterglow'
 ```
+
+## kolla-ansible Deployment
+
+For multi-controller OpenStack environments, Afterglow and its sibling services (Drover, Waygate, Lumen, Palimpsest) can be deployed using Kolla-Ansible with the provided roles and playbooks.
+
+### Application Image Channel Resolution and Rollback
+
+In standard Kolla environments, application images for Afterglow, Drover, Waygate, Lumen, and Palimpsest follow `*_image_tag: "latest"` (or a published `stable` alias) by default.
+- Each `kolla-ansible prechecks`, `pull`, `deploy`, `reconfigure`, or `upgrade` invocation resolves moving tags to registry manifest/index sha256 digests on the first targeted controller for that service. It honors `--limit`; the next command selects fresh channel digests.
+- Tagless image references are implicit `latest` and are resolved too. A registry port (`registry:5000/repository`) is not an image tag; controllers never pull the original bare reference independently.
+- Targeted controllers must use the same component enable flags within one invocation. A mismatch stops before the first registry lookup or role dispatch; use `--limit` for groups with matching flags.
+- A published-image consumer requires a completed selection for its own service on the first target. Readiness and references left by an earlier service cannot authorize it. A disabled/source-mode first target cannot authorize a later published-image target; split such targets with `--limit`.
+- The resolved immutable digests are shared across all serial batches within that invocation, preventing controller version drift during rolling deployments.
+- Selection does not pull image layers. `pull` downloads only; `deploy`, `reconfigure`, and `upgrade` replace containers. A registry error blocks rollout instead of using a stale/local fallback.
+- To pin an explicit version or roll back, define immutable `*_image_ref` variables in `globals.yml` (e.g. `afterglow_backend_image_ref: "ghcr.io/openstack-afterglow/afterglow-api@sha256:<digest>"`). Pinned references bypass dynamic resolution.
+- Remove mutable or bare `*_image_ref` overrides from globals/globals.d/CLI extra-vars and select channels through `*_image_tag`. Native extra-vars outrank `set_fact`; a ref overriding the resolved digest is rejected before role dispatch. Immutable overrides remain unchanged.
+- Disabled components and source-build mode skip selection. Image channels do not update immutable root-role Git pins, authorize DB migrations, or guarantee future package/API/schema compatibility. For worker-only recovery, explicitly pin API/frontend to their verified current digests before an Afterglow-scoped reconfigure.
+- Stock Kolla 2025.2 base services and datastore version/digest pins (MariaDB, Valkey, PostgreSQL) remain unchanged.
 
 ## Optional Global Cloud Shell Deployment
 

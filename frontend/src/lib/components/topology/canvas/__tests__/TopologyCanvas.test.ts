@@ -7,6 +7,8 @@ import { buildGraph, edgeStyle } from '../topologyGraph';
 import { edgeIntensity, NO_TELEMETRY_STYLE } from '../canvasHelpers';
 import { layoutStorageKey } from '../layoutStorage';
 import { K_MIN } from '../topologyLayout';
+import { TOPOLOGY_ENTRANCE_MS } from '../../firstArrival.svelte';
+import { MOTION_DURATION_MS, REDUCED_MOTION_QUERY } from '$lib/design/tokens';
 import { P, makeFixture, makeTraffic } from './fixtures';
 
 function renderCanvas(props: Partial<Record<string, unknown>> = {}) {
@@ -757,5 +759,84 @@ describe('TopologyCanvas', () => {
 			networkId: 'net-app',
 			networkName: expect.any(String),
 		});
+	});
+});
+
+describe('TopologyCanvas 모션', () => {
+	/** 월드 안 진입 흔적: 노드·존·포트 페이드, 실선 draw-in(pathLength), HUD 페이드 */
+	const entranceMarks = () =>
+		document.querySelectorAll('.topology-world .motion-fade, .topology-world .motion-draw, .hud.motion-fade').length +
+		[...document.querySelectorAll('path.edge')].filter((p) => p.hasAttribute('pathLength')).length;
+	const reducedMotion = () =>
+		vi.stubGlobal('matchMedia', (query: string) => ({
+			matches: query === REDUCED_MOTION_QUERY,
+			media: query,
+			addEventListener() {},
+			removeEventListener() {},
+		}));
+
+	beforeEach(() => {
+		localStorage.clear();
+	});
+	afterEach(() => {
+		cleanup();
+		vi.useRealTimers();
+		vi.unstubAllGlobals();
+		localStorage.clear();
+	});
+
+	it('첫 그래프 도착에만 노드·존이 페이드하고 실선이 그려지며, 진입 뒤 데이터 갱신은 다시 재생하지 않는다', async () => {
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame', 'cancelAnimationFrame', 'performance'] });
+		const view = renderCanvas();
+		expect(cardOf('vm-web-01')!.classList.contains('motion-fade')).toBe(true);
+		expect(document.querySelector('rect[data-zone-net="net-app"]')!.classList.contains('motion-fade')).toBe(true);
+		const drawn = [...document.querySelectorAll<SVGPathElement>('path.edge.motion-draw')];
+		expect(drawn.length).toBeGreaterThan(0);
+		// draw-in 은 대시가 없는 실선에만: 점선은 페이드로 들어온다
+		expect(drawn.every((p) => p.getAttribute('pathLength') === '1' && !p.style.strokeDasharray)).toBe(true);
+
+		await vi.advanceTimersByTimeAsync(TOPOLOGY_ENTRANCE_MS);
+		await view.rerender({ data: makeFixture(), traffic: makeTraffic(), projectId: P, showAll: false });
+		expect(nodeCards().length).toBeGreaterThan(0);
+		expect(entranceMarks()).toBe(0);
+	});
+
+	it('진입 창 중 데이터 갱신도 draw-in 과 페이드를 종료한다', async () => {
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame', 'cancelAnimationFrame', 'performance'] });
+		const view = renderCanvas();
+		expect(entranceMarks()).toBeGreaterThan(0);
+		await view.rerender({ data: makeFixture(), traffic: makeTraffic(), projectId: P, showAll: false });
+		expect(nodeCards().length).toBeGreaterThan(0);
+		expect(entranceMarks()).toBe(0);
+	});
+
+	it('reduced-motion 이면 진입 모션이 없고 확대 버튼은 카메라 전환 없이 바로 도착한다', async () => {
+		reducedMotion();
+		renderCanvas();
+		expect(entranceMarks()).toBe(0);
+		await fireEvent.click(screen.getByRole('button', { name: '확대' }));
+		expect(viewOf().k).toBeCloseTo(1.2);
+	});
+
+	it('확대 버튼은 프레임에 걸쳐 카메라를 옮기고, 직접 조작(포인터)이 시작되면 그 자리에서 멈춘다', async () => {
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame', 'cancelAnimationFrame', 'performance'] });
+		renderCanvas();
+		const viewport = screen.getByRole('application', { name: '네트워크 토폴로지 캔버스' });
+		const zoomIn = screen.getByRole('button', { name: '확대' });
+
+		await fireEvent.click(zoomIn);
+		expect(viewOf().k).toBe(1);
+		await vi.advanceTimersByTimeAsync(MOTION_DURATION_MS.panel + 50);
+		expect(viewOf().k).toBeCloseTo(1.2);
+
+		await fireEvent.click(zoomIn);
+		await vi.advanceTimersByTimeAsync(50);
+		const mid = viewOf().k;
+		expect(mid).toBeGreaterThan(1.2);
+		expect(mid).toBeLessThan(1.44);
+		await firePointer('pointerdown', viewport, { pointerId: 1, clientX: 10, clientY: 10 });
+		await vi.advanceTimersByTimeAsync(MOTION_DURATION_MS.data);
+		expect(viewOf().k).toBe(mid);
+		await firePointer('pointerup', viewport, { pointerId: 1, clientX: 10, clientY: 10 });
 	});
 });

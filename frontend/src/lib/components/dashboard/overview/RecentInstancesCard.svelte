@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/dashboard-home';
+	import { t as tc } from '$lib/i18n/ns/common';
 	import type { DashboardRecentInstance } from '$lib/types/compute';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
@@ -33,9 +34,10 @@
 	{/if}
 
 	{#if pending && instances.length === 0}
-		<div class="space-y-2">
+		<div class="space-y-2" role="status" aria-busy="true">
+			<span class="sr-only">{tc('state.loadingNamed', { name: t('recentInstances.title') })}</span>
 			{#each Array(4) as _}
-				<div class="h-10 bg-[var(--color-surface-sunken)] rounded animate-pulse"></div>
+				<div class="h-10 motion-skeleton rounded"></div>
 			{/each}
 		</div>
 	{:else if error && instances.length === 0}
@@ -53,8 +55,8 @@
 					<div>IP</div>
 					<div>{t('recentInstances.flavor')}</div>
 				</div>
-				<div class="recent-instance-list overflow-hidden rounded-b-lg border border-[var(--color-line)]">
-					{#each instances as instance, i}
+				<div class="recent-instance-list motion-stagger overflow-hidden rounded-b-lg border border-[var(--color-line)]">
+					{#each instances as instance, i (instance.id)}
 						<a href="/dashboard/compute/instances"
 							class="recent-instance-row grid grid-cols-[minmax(180px,1.7fr)_160px_130px_120px] px-3.5 py-2.5 text-[13px] items-center hover:bg-[var(--color-surface-sunken)] transition-colors {i < instances.length - 1 ? 'border-b border-[var(--color-line)]' : ''}">
 							<div class="text-[var(--color-ink-0)] font-medium truncate">{instance.name}</div>

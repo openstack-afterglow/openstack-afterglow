@@ -860,7 +860,7 @@ describe("admin chat model pricing", () => {
     expect((screen.getByRole("textbox", { name: "표시 이름 · opaque/id-v1" }) as HTMLInputElement).value).toBe("Provider Label");
     expect((screen.getByRole("button", { name: "가격 확인 후 등록·활성화" }) as HTMLButtonElement).disabled).toBe(true);
     await fireEvent.input(screen.getByRole("textbox", { name: "입력 단가 · opaque/id-v1" }), { target: { value: "1.25" } });
-    expect((screen.getByRole("button", { name: "비활성으로 저장" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "가격 확인 후 등록·활성화" }) as HTMLButtonElement).disabled).toBe(true);
     await fireEvent.input(screen.getByRole("textbox", { name: "출력 단가 · opaque/id-v1" }), { target: { value: "5" } });
     await fireEvent.input(screen.getByRole("textbox", { name: "표시 이름 · opaque/id-v1" }), { target: { value: "Reviewed Name" } });
     expect((screen.getByRole("button", { name: "가격 확인 후 등록·활성화" }) as HTMLButtonElement).disabled).toBe(false);
@@ -1227,8 +1227,12 @@ describe("admin chat model pricing", () => {
       (screen.getByRole("button", { name: "조회 중…" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
+    expect(screen.getByRole("button", { name: "조회 중…" }).getAttribute("aria-busy")).toBe("true");
+    expect(screen.getAllByRole("status").some((status) => status.textContent?.includes("사용량과 결제 상태를 조회하는 중…"))).toBe(true);
     resolveBilling([billingSnapshot(1, "OpenAI", "openai")]);
     expect(await screen.findByText("공식 콘솔 확인")).toBeTruthy();
+    expect(screen.queryByText("사용량과 결제 상태를 조회하는 중…")).toBeNull();
+    expect(screen.getByRole("button", { name: "전체 새로고침" }).getAttribute("aria-busy")).toBe("false");
   });
 
   it("does not render non-HTTPS billing actions", async () => {

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/containers-shell';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import { createContainerDetailController, provideContainerDetailController } from '$lib/stores/containerDetailController.svelte';
@@ -44,8 +45,8 @@
 	<ContainerDetailHeader {ar} {onClose} {containerId} />
 
 	<div class="flex-1 overflow-y-auto p-5 space-y-4">
-		{#if s.loading}
-			<div class="text-ink-2 text-sm">{t('container.loading')}</div>
+		{#if s.loading && s.container?.uuid !== containerId}
+			<ActivityIndicator label={t('container.loading')} />
 		{:else if s.error}
 			<div class="text-red-400 text-sm">{s.error}</div>
 		{:else if s.container}

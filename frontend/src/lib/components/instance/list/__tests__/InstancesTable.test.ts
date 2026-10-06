@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import type { Instance } from '$lib/types/compute';
 import InstancesTable from '../InstancesTable.svelte';
@@ -21,6 +21,7 @@ function renderTable(overrides: Partial<{
 	onToggleSelect: (id: string) => void;
 	onToggleAll: () => void;
 	onSelect: (id: string) => void;
+	onAction: (kind: 'console' | 'shelve' | 'unshelve' | 'delete', instance: Instance) => Promise<void>;
 }> = {}) {
 	return render(InstancesTable, {
 		instances,
@@ -65,5 +66,19 @@ describe('InstancesTable selection', () => {
 		await fireEvent.click(screen.getByRole('checkbox', { name: 'first-instance 선택' }).closest('label')!);
 		expect(onToggleSelect).toHaveBeenCalledWith('instance-1');
 		expect(onSelect).not.toHaveBeenCalled();
+	});
+
+	it('shows row-local activity while its closed-menu operation is pending', async () => {
+		let resolve!: () => void;
+		const onAction = vi.fn(() => new Promise<void>((done) => { resolve = done; }));
+		renderTable({ onAction });
+		await fireEvent.click(screen.getByRole('button', { name: 'first-instance 인스턴스 작업' }));
+		await fireEvent.click(screen.getByRole('button', { name: '콘솔' }));
+		expect(screen.getByRole('status').textContent?.trim()).toBe('처리 중...');
+		expect(screen.getByRole('status').closest('tr')?.textContent).toContain('first-instance');
+		expect(screen.queryByRole('button', { name: '콘솔' })).toBeNull();
+		resolve();
+		await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+		expect(onAction).toHaveBeenCalledWith('console', instances[0]);
 	});
 });

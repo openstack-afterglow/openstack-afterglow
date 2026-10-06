@@ -3,7 +3,7 @@
 	import { auth } from '$lib/stores/auth';
 	import { realtimeVoiceApi, realtimeReadiness, pcm16Base64, decodePcm16, type RealtimeModel, type RealtimeCapabilities, type RealtimeScope } from '$lib/api/realtimeVoice';
 	import { ApiError } from '$lib/api/client';
-	import { Alert, Button, Card, Field, PageShell, SelectInput } from '$lib/components/ui';
+	import { ActivityIndicator, Alert, Button, Card, Field, PageShell, SelectInput } from '$lib/components/ui';
 	import { t } from '$lib/i18n/ns/chat-studio';
 
 	const scope = $derived($auth.token && $auth.projectId && $auth.userId ? { token: $auth.token, projectId: $auth.projectId } : null);
@@ -229,6 +229,7 @@
 			<Field label={t('realtimeVoice.voice')} for="realtime-voice"><SelectInput id="realtime-voice" bind:value={voice} disabled={connecting || connected || capabilityLoading}>{#each capabilities?.available_voices ?? [] as option (option)}<option value={option}>{option}</option>{/each}</SelectInput></Field>
 			{#if error}<Alert tone="danger">{error}</Alert>{:else if loading || capabilityLoading}<p role="status" class="muted">{t('realtimeVoice.checking')}</p>{:else if readiness}<Alert tone="warning">{readiness}</Alert>{:else}<Alert tone="success">{t('realtimeVoice.ready')}</Alert>{/if}
 			<div class="actions"><Button disabled={Boolean(readiness) || loading || capabilityLoading || connecting || connected || !scope} onclick={() => void start()}>{connecting ? t('realtimeVoice.connecting') : t('realtimeVoice.startSession')}</Button><Button variant="secondary" disabled={!connected} onclick={() => muted = !muted}>{muted ? t('realtimeVoice.microphoneOn') : t('realtimeVoice.microphoneOff')}</Button><Button variant="secondary" disabled={!connected} onclick={interrupt}>{activeProvider === 'gemini' ? t('realtimeVoice.interruptAndEnd') : t('realtimeVoice.interrupt')}</Button><Button variant="danger-outline" disabled={!connected && !connecting} onclick={() => stop()}>{t('realtimeVoice.endSession')}</Button></div>
+			{#if connecting}<ActivityIndicator variant="pulse" label={t('realtimeVoice.connecting')} />{/if}
 			{#if connected}<p role="status" class="muted">{muted ? t('realtimeVoice.connectedMuted') : t('realtimeVoice.connectedMicrophoneOn')}</p>{/if}
 		</div></Card>
 		{#if connected}<div class="transcripts"><Card><h2>{t('realtimeVoice.mySpeech')}</h2><p class="transcript">{inputTranscript || t('realtimeVoice.waitingInputTranscript')}</p></Card><Card><h2>{t('realtimeVoice.response')}</h2><p class="transcript">{outputTranscript || t('realtimeVoice.waitingOutputTranscript')}</p></Card></div>{/if}

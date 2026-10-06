@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { useInstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
 	import { t } from '$lib/i18n/ns/instance';
+	import { ActivityIndicator, StatusChip } from '$lib/components/ui';
 
 	const s = useInstanceDetailController();
 
@@ -71,7 +72,7 @@
 							disabled={!selectedVolumeId || s.actioning === 'attach-vol'}
 							class="text-xs text-warm-text hover:text-warm-text-hover px-3 py-1.5 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3 disabled:border-line-2"
 						>
-							{s.actioning === 'attach-vol' ? t('volumes.attaching') : t('volumes.attach')}
+							{#if s.actioning === 'attach-vol'}<ActivityIndicator size="xs" label={t('volumes.attaching')} />{:else}{t('volumes.attach')}{/if}
 						</button>
 					</div>
 				{/if}
@@ -96,7 +97,7 @@
 							disabled={!newVolName.trim() || newVolSize < 1 || s.actioning === 'create-vol'}
 							class="text-xs text-green-400 hover:text-green-300 px-3 py-1.5 border border-green-900 hover:border-green-700 rounded transition-colors disabled:text-ink-3 disabled:border-line-2 whitespace-nowrap"
 						>
-							{s.actioning === 'create-vol' ? t('volumes.creating') : t('volumes.createAndAttach')}
+							{#if s.actioning === 'create-vol'}<ActivityIndicator size="xs" label={t('volumes.creating')} />{:else}{t('volumes.createAndAttach')}{/if}
 						</button>
 					</div>
 				</div>
@@ -119,7 +120,7 @@
 						{/if}
 						<span class="text-xs font-mono text-ink-2">{vol.device}</span>
 						{#if vol.status}
-							<span class="text-xs {vol.status === 'in-use' ? 'text-green-400' : 'text-ink-2'}">{vol.status}</span>
+							<StatusChip status={vol.status} />
 						{/if}
 						<button
 							type="button"
@@ -131,11 +132,11 @@
 									? 'text-red-300 bg-red-900/30 hover:bg-red-900/50 border border-red-800/50'
 									: 'text-ink-2 bg-surface-sunken hover:bg-surface-selected border border-line-2'}"
 						>
-							{s.actioning === 'dot-' + vol.volume_id
-								? t('volumes.updating')
-								: vol.delete_on_termination
-									? t('volumes.deleteOnTermination')
-									: t('volumes.keep')}
+							{#if s.actioning === 'dot-' + vol.volume_id}
+								<ActivityIndicator size="xs" label={t('volumes.updating')} />
+							{:else}
+								{vol.delete_on_termination ? t('volumes.deleteOnTermination') : t('volumes.keep')}
+							{/if}
 						</button>
 					</div>
 					<button
@@ -143,7 +144,7 @@
 						disabled={s.actioning === 'detach-' + vol.volume_id}
 						class="text-xs text-orange-400 hover:text-orange-300 px-2 py-1 border border-orange-900 hover:border-orange-700 rounded transition-colors disabled:text-ink-3"
 					>
-						{s.actioning === 'detach-' + vol.volume_id ? t('volumes.detaching') : t('volumes.detach')}
+						{#if s.actioning === 'detach-' + vol.volume_id}<ActivityIndicator size="xs" label={t('volumes.detaching')} />{:else}{t('volumes.detach')}{/if}
 					</button>
 				</div>
 			{/each}

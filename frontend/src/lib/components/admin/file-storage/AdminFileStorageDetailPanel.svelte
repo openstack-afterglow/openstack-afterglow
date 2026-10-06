@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -229,7 +230,7 @@
 					disabled={deleting}
 					class="text-red-300 hover:text-red-200 disabled:text-ink-3 text-sm px-3 py-1.5 rounded border border-red-800 hover:border-red-600 disabled:border-line-2 transition-colors"
 				>
-					{deleting ? t('fileDetail.deleting') : t('fileDetail.delete')}
+					{#if deleting}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('fileDetail.deleting')}</span></span>{:else}{t('fileDetail.delete')}{/if}
 				</button>
 			{/snippet}
 		</DetailHeader>
@@ -249,7 +250,7 @@
 								</span>
 							{/if}
 							{#if diagnosticLoading}
-								<span class="text-xs text-ink-2">{t('fileDetail.diagnosing')}</span>
+								<ActivityIndicator size="sm" label={t('fileDetail.diagnosing')} />
 							{/if}
 						</div>
 						{#if diagnosticError}
@@ -291,7 +292,7 @@
 							disabled={diagnosticLoading}
 							class="text-warm-text hover:text-warm-text-hover disabled:text-ink-3 text-sm px-3 py-1.5 rounded border border-action-warm hover:border-action-warm disabled:border-line-2 transition-colors"
 						>
-							{diagnosticLoading ? t('fileDetail.diagnosing') : t('fileDetail.rerunDiagnostic')}
+							{#if diagnosticLoading}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('fileDetail.diagnosing')}</span></span>{:else}{t('fileDetail.rerunDiagnostic')}{/if}
 						</button>
 						{#if deleteDiagnostic?.force_delete_available}
 							<button
@@ -300,7 +301,7 @@
 								disabled={forceDeleting || deleting}
 								class="text-red-100 bg-red-800/80 hover:bg-red-700 disabled:bg-surface-sunken disabled:text-ink-3 text-sm px-3 py-1.5 rounded border border-red-700 disabled:border-line-2 transition-colors"
 							>
-								{forceDeleting ? t('fileDetail.forceDeleting') : t('fileDetail.forceDelete')}
+								{#if forceDeleting}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('fileDetail.forceDeleting')}</span></span>{:else}{t('fileDetail.forceDelete')}{/if}
 							</button>
 						{/if}
 					</div>
@@ -353,7 +354,7 @@
 		<section class="bg-surface-base border border-line rounded-lg p-5">
 			<div class="flex items-center justify-between gap-3 mb-4">
 				<h3 class="text-sm font-semibold text-ink-0">{t('fileDetail.accessRules')}</h3>
-				{#if accessLoading}<span class="text-xs text-ink-2">{t('fileDetail.loading')}</span>{/if}
+				{#if accessLoading}<ActivityIndicator size="sm" label={t('fileDetail.loading')} />{/if}
 			</div>
 			{#if accessError}
 				<div class="bg-red-900/30 border border-red-800 text-red-300 rounded px-3 py-2 text-sm mb-3">{accessError}</div>

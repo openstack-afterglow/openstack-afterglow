@@ -355,7 +355,7 @@ async def get_token_info(
 
 
 def require_admin(token_info: dict = Depends(get_token_info)):
-    """시스템 관리자(admin 프로젝트의 admin role 보유자)가 아니면 403 반환."""
+    """검증된 system-admin 권한이 없으면 403 반환 (project role 이름은 근거가 아님)."""
     if not token_info.get("is_system_admin", False):
         raise HTTPException(status_code=403, detail="관리자 권한이 필요합니다")
 
@@ -388,6 +388,14 @@ async def require_project_manager(
     return token_info
 
 
+def has_project_write_permission(token_info: dict) -> bool:
+    """Compute effective write permission before public role-name filtering."""
+    if token_info.get("is_system_admin", False):
+        return True
+    roles = {r.lower() for r in token_info.get("roles", []) if isinstance(r, str)}
+    return bool(roles & {"admin", "member"})
+
+
 def require_project_write(token_info: dict = Depends(get_token_info)) -> dict:
     """프로젝트 내 리소스 생성/수정/삭제(mutation) 권한 검증.
 
@@ -395,11 +403,7 @@ def require_project_write(token_info: dict = Depends(get_token_info)) -> dict:
     - role에 'admin' 또는 'member'가 포함된 경우: 허용
     - role에 'reader'만 있거나 쓰기 권한이 없는 경우: 403 Forbidden
     """
-    if token_info.get("is_system_admin", False):
-        return token_info
-
-    roles = {r.lower() for r in token_info.get("roles", []) if isinstance(r, str)}
-    if roles & {"admin", "member"}:
+    if has_project_write_permission(token_info):
         return token_info
 
     raise HTTPException(
@@ -419,7 +423,7 @@ async def get_caller_project_permissions(
     is_sys_admin = bool(token_info.get("is_system_admin", False))
     role_set = set(roles)
 
-    can_write = is_sys_admin or bool(role_set & {"admin", "member"})
+    can_write = has_project_write_permission(token_info)
     is_reader = not can_write and ("reader" in role_set or len(role_set) == 0)
 
     is_mgr = is_sys_admin
@@ -435,10 +439,12 @@ async def get_caller_project_permissions(
             except Exception:
                 _logger.warning("Failed to check project manager status for permissions", exc_info=True)
 
+    from app.services.identity_roles import visible_role_names
+
     return {
         "project_id": effective_project_id,
         "user_id": token_info.get("user_id", ""),
-        "roles": roles,
+        "roles": await visible_role_names(roles, is_sys_admin),
         "is_system_admin": is_sys_admin,
         "is_manager": is_mgr,
         "is_reader": is_reader,

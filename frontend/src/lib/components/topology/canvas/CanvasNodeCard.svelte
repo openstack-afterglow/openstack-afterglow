@@ -23,6 +23,11 @@
 		/** 스위치·LB 카드용 양방향 속도 문자열 */
 		rateText?: string | null;
 		dataTour?: string;
+		/**
+		 * 첫 도착 진입 cascade 단계. null 이면 진입 모션 없음.
+		 * 카드는 transform 으로 배치되므로 opacity 만 움직인다.
+		 */
+		enterIndex?: number | null;
 		/** Canvas-owned controlled selection; used by staged resource cards as well as graph nodes. */
 		setSelected?: (id: string) => void;
 		linkSource?: boolean;
@@ -47,6 +52,7 @@
 		nicRates,
 		rateText = null,
 		dataTour,
+		enterIndex = null,
 		setSelected,
 		linkSource = false,
 		linkable = false,
@@ -102,6 +108,8 @@
 	class:is-error={node.status === 'ERROR'}
 	class:is-link-source={linkSource}
 	class:is-link-target={linkTarget === 'valid' || linkTarget === true}
+	class:motion-fade={enterIndex !== null}
+	style:--motion-index={enterIndex ?? undefined}
 	data-node-id={node.id}
 	data-tour={dataTour}
 	aria-pressed={selected}

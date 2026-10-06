@@ -1,4 +1,5 @@
 {
+	"volumeDetail.loadingInfo": "볼륨 정보 불러오는 중",
 	"volumeDetail.loading": "로딩 중...",
 	"volumeDetail.attachments": "연결 정보",
 	"volumeDetail.basicInfo": "기본 정보",
@@ -86,6 +87,7 @@
 	"volumeList.chartLoading": "차트 로딩 중...",
 	"volumeList.chartTitle": "볼륨 수 추이",
 	"volumeList.statusCounts": "볼륨 상태별 개수",
+	"volumeList.statusLoading": "볼륨 상태 불러오는 중…",
 	"volumeList.all": "전체",
 	"volumeList.allStatuses": "모든 상태",
 	"volumeList.searchName": "이름 검색...",

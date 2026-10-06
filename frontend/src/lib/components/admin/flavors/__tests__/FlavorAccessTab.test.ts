@@ -76,4 +76,31 @@ describe('FlavorAccessTab frontend visibility', () => {
 		expect(current.frontend_visible).toBe(true);
 		expect(current.extra_specs['afterglow:frontend_visible']).toBe('true');
 	});
+
+	it('announces visibility saving only until the actual request settles', async () => {
+		const request = Promise.withResolvers<{ flavor_id: string; frontend_visible: boolean }>();
+		mocks.put.mockReturnValueOnce(request.promise);
+		render(FlavorAccessTab, { flavor: flavor() });
+
+		await fireEvent.click(screen.getByRole('button', { name: '사용자에게 노출' }));
+		expect(screen.getByRole('status').textContent).toContain('노출 설정 저장 중…');
+		expect((screen.getByRole('button', { name: '사용자에게 노출' }) as HTMLButtonElement).disabled).toBe(true);
+
+		request.resolve({ flavor_id: 'fl-service', frontend_visible: true });
+		await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+		expect(screen.getByRole('button', { name: '사용자에게 노출' }).getAttribute('aria-pressed')).toBe('true');
+	});
+
+	it('stops announcing a failed visibility write and preserves the effective setting', async () => {
+		const request = Promise.withResolvers<never>();
+		mocks.put.mockReturnValueOnce(request.promise);
+		render(FlavorAccessTab, { flavor: flavor() });
+
+		await fireEvent.click(screen.getByRole('button', { name: '사용자에게 노출' }));
+		expect(screen.getByRole('status').textContent).toContain('노출 설정 저장 중…');
+		request.reject(new Error('write failed'));
+		await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+		expect(screen.getByRole('button', { name: '사용자에게 숨김' }).getAttribute('aria-pressed')).toBe('true');
+		expect(mocks.error).toHaveBeenCalled();
+	});
 });

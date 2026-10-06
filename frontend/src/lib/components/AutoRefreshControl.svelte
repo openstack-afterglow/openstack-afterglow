@@ -45,7 +45,7 @@
 		size="sm"
 	>
 		<svg
-			class="refresh-icon {refreshing ? 'animate-spin' : ''}"
+			class="refresh-icon {refreshing ? 'motion-spin' : ''}"
 			style={refreshing ? 'animation-direction: reverse' : ''}
 			fill="none"
 			stroke="currentColor"

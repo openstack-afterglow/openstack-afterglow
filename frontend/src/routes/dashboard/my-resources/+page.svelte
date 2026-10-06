@@ -1,12 +1,13 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/dashboard-home';
+	import { t as tc } from '$lib/i18n/ns/common';
 	import RichText from '$lib/i18n/RichText.svelte';
 	import { untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
-	import { Alert, EmptyState, PageHeader, PageShell } from '$lib/components/ui';
+	import { Alert, AnimatedNumber, EmptyState, PageHeader, PageShell } from '$lib/components/ui';
 	import MyResourcesSummary from '$lib/components/dashboard/my-resources/MyResourcesSummary.svelte';
 	import ProjectUsageTable from '$lib/components/dashboard/my-resources/ProjectUsageTable.svelte';
 	import InstancesPreviewCard from '$lib/components/dashboard/my-resources/InstancesPreviewCard.svelte';
@@ -100,21 +101,22 @@
 	{/if}
 
 	{#if initialLoading}
-		<div class="grid grid-cols-2 sm:grid-cols-4 gap-3.5 mb-4">
+		<div class="grid grid-cols-2 sm:grid-cols-4 gap-3.5 mb-4" role="status" aria-busy="true">
+			<span class="sr-only">{t('myResources.title')} · {tc('state.loading')}</span>
 			{#each [1, 2, 3, 4] as _}
-				<div class="animate-pulse bg-surface-base border border-line rounded-lg h-[82px]"></div>
+				<div class="motion-skeleton border border-line rounded-lg h-[82px]"></div>
 			{/each}
 		</div>
-		<div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+		<div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5" aria-hidden="true">
 			{#each [1, 2, 3, 4] as _}
-				<div class="animate-pulse bg-surface-base border border-line rounded-lg h-48"></div>
+				<div class="motion-skeleton border border-line rounded-lg h-48"></div>
 			{/each}
 		</div>
 	{:else if data}
 		<MyResourcesSummary totals={data.totals} />
 		<ProjectUsageTable projects={data.projects} />
 
-		<div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+		<div class="motion-stagger grid grid-cols-1 sm:grid-cols-2 gap-3.5">
 			<InstancesPreviewCard instances={allInstances} />
 			<VolumesPreviewCard volumes={allVolumes} />
 
@@ -127,7 +129,7 @@
 						</svg>
 					</div>
 					<div class="text-ink-0 font-semibold text-sm">{t('myResources.floatingIp')}</div>
-					<span class="ml-auto text-xs text-ink-2">{t('myResources.floatingIpCount', { count: data.totals.floating_ips })}</span>
+					<span class="ml-auto text-xs text-ink-2"><AnimatedNumber value={data.totals.floating_ips} format={(value) => t('myResources.floatingIpCount', { count: Math.round(value) })} /></span>
 				</div>
 				<div class="flex flex-col items-center justify-center py-6">
 					<div class="text-xs text-ink-2 text-center leading-relaxed">

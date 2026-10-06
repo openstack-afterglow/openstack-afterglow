@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -103,9 +104,10 @@
 	{/if}
 
 	{#if loading && loadbalancers.length === 0}
-		<div class="space-y-4 animate-pulse">
+		<div class="space-y-4" role="status" aria-busy={loading}>
+			<span class="inline-flex items-center gap-2 text-sm text-ink-2"><ActivityIndicator size="xs" />{t('loadbalancersPage.loading')}</span>
 			{#each [1, 2, 3] as _}
-				<div class="h-12 bg-surface-sunken/50 rounded-lg"></div>
+				<div class="h-12 motion-skeleton rounded-lg" aria-hidden="true"></div>
 			{/each}
 		</div>
 	{:else if loadbalancers.length === 0}

@@ -3,6 +3,10 @@
 	import { t } from '$lib/i18n/ns/chat-panel';
 	import ChatMessage from './ChatMessage.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import ProgressTrack from '$lib/components/ui/ProgressTrack.svelte';
+	import { messageEntrance, type MessageEntrance } from './messageMotion';
+	import { activityIsRunning, visibleActivityItems } from './chatActivityPresentation';
 	import { type AvailableModel, type ChatMessage as ChatMsg } from '$lib/api/chatTree';
 	import { projectMessagesForDisplay } from '$lib/api/chatTree';
 	import type { StreamMetrics } from '$lib/api/chatMetrics';
@@ -15,6 +19,7 @@
 		toolItems?: ToolActivityItem[];
 		reasoning?: string | null;
 		activityItems?: RunActivityItem[];
+		sessionEntrance?: MessageEntrance;
 	};
 
 	type AgentActivity = {
@@ -134,6 +139,14 @@
 	}
 
 	const displayedPath = $derived<DisplayMessage[]>(projectMessagesForDisplay(activePath) as DisplayMessage[]);
+	const replyHasProgress = $derived(displayedPath.some((message) => {
+		if (!message.streaming) return false;
+		const activity = message.activityItems ?? message.execution?.activity ?? [];
+		const visible = visibleActivityItems(activity, true);
+		return Boolean(message.content.length || visible.some((item) => activityIsRunning(item, activity, true)) ||
+			(!visible.length && (message.reasoning || restoredToolItems(message).some((item) => item.running))));
+	}));
+	const externalProgress = $derived(!replyHasProgress && Boolean(manualCompactionActivity || agentActivity || toolActivity));
 
 	function scrollToLatest() {
 		const el = scrollEl;
@@ -226,7 +239,7 @@
 
 <div class="window">
 	{#if loading}
-		<div class="load-bar" role="status" aria-label={t('window.loading')}><span></span></div>
+		<div class="load-bar" role="status" aria-label={t('window.loading')}><span>{t('window.loading')}</span><ProgressTrack value={null} label={t('window.loading')} size="xs" /></div>
 	{/if}
 	<div class="scroll" bind:this={scrollEl} onscroll={onScroll}>
 		{#if empty}
@@ -257,16 +270,16 @@
 					</nav>
 				{/if}
 				{#if loadingHistory}
-					<div class="history-loading" role="status">{t('window.historyLoading')}</div>
+					<div class="history-loading"><ActivityIndicator label={t('window.historyLoading')} /></div>
 				{/if}
 				{#if newHistoryActivity}
-					<div class="history-activity" role="status">
+					<div class="history-activity motion-enter" role="status">
 						<span>{t('window.newResponse')}</span>
 						<Button variant="accent" size="xs" onclick={() => jumpHistory('latest')}>{t('window.viewLatestResponse')}</Button>
 					</div>
 				{/if}
-				{#each displayedPath as msg (msg.id)}
-					<div data-history-message-id={msg.id}>
+				{#each displayedPath as msg (msg.sessionEntrance ?? msg.id)}
+					<div data-history-message-id={msg.id} use:messageEntrance={{ ticket: msg.sessionEntrance, suppressed: loading || loadingHistory || navigatingHistory }}>
 						<ChatMessage
 							message={msg}
 							{models}
@@ -276,6 +289,8 @@
 							toolItems={restoredToolItems(msg)}
 							reasoning={msg.reasoning ?? ''}
 							activityItems={msg.activityItems ?? msg.execution?.activity ?? []}
+							progressElsewhere={externalProgress}
+							liveMotion={Boolean(msg.sessionEntrance)}
 							hasPreviousVersion={msg.branch?.previous_id !== null && msg.branch?.previous_id !== undefined}
 							hasNextVersion={msg.branch?.next_id !== null && msg.branch?.next_id !== undefined}
 							modelDisplayName={modelDisplay(msg.model_name)}
@@ -288,20 +303,20 @@
 						/>
 					</div>
 				{/each}
-				{#if manualCompactionActivity}
+				{#if externalProgress && manualCompactionActivity}
 					<div class="context-activity" role="status" aria-live="polite" aria-atomic="true">
-						<span class="spinner"></span>
+						<ActivityIndicator variant="orbit" />
 						<span>{manualCompactionActivity}</span>
 					</div>
-				{:else if agentActivity}
+				{:else if externalProgress && agentActivity}
 					<div class="agent-activity" role="status" aria-live="polite" aria-atomic="true">
-						<span class="spinner"></span>
+						<ActivityIndicator variant="orbit" />
 						<span>{agentActivity.label}</span>
 						<span class="activity-elapsed" aria-hidden="true">· {activityElapsed(agentActivity.startedAt)}</span>
 					</div>
-				{:else if toolActivity}
+				{:else if externalProgress && toolActivity}
 					<div class="tool-activity" role="status" aria-live="polite">
-						<span class="spinner"></span>
+						<ActivityIndicator />
 						{t('window.toolInProgress', { tool: toolActivity })}
 					</div>
 				{/if}
@@ -310,7 +325,7 @@
 	</div>
 
 	{#if !empty && !followingLatest}
-		<div class="latest-control">
+		<div class="latest-control motion-enter">
 			<Button variant="accent" size="sm" onclick={() => hasAfter ? jumpHistory('latest') : scrollToLatest()}>
 				{hasAfter ? t('window.goToLatestHistory') : busy ? t('window.followResponse') : t('window.goToLatestMessage')}
 			</Button>
@@ -336,21 +351,11 @@
 		top: 0;
 		left: 0;
 		right: 0;
-		height: 2px;
-		overflow: hidden;
-		background: color-mix(in oklab, var(--color-accent) 20%, transparent);
+		padding: 0.25rem 0.5rem;
+		font-size: 0.75rem;
+		color: var(--color-ink-2);
+		background: var(--color-surface-base);
 		z-index: 5;
-	}
-	.load-bar span {
-		display: block;
-		width: 40%;
-		height: 100%;
-		background: var(--color-accent);
-		animation: indeterminate 1.1s ease-in-out infinite;
-	}
-	@keyframes indeterminate {
-		0% { transform: translateX(-100%); }
-		100% { transform: translateX(300%); }
 	}
 	.scroll {
 		flex: 1;
@@ -464,17 +469,6 @@
 	.activity-elapsed {
 		color: var(--color-ink-2);
 		font-variant-numeric: tabular-nums;
-	}
-	.spinner {
-		width: 0.8rem;
-		height: 0.8rem;
-		border-radius: 50%;
-		border: 2px solid var(--color-line-2);
-		border-top-color: var(--color-accent);
-		animation: spin 0.8s linear infinite;
-	}
-	@keyframes spin {
-		to { transform: rotate(360deg); }
 	}
 	.error-bar {
 		margin: 0 1rem 0.75rem;

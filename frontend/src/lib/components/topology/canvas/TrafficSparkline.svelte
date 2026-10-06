@@ -34,8 +34,12 @@
 	<div class="spark">
 		<svg viewBox="0 0 {W} {H}" preserveAspectRatio="none" aria-hidden="true">
 			<line class="base" x1="0" y1={H} x2={W} y2={H} vector-effect="non-scaling-stroke" />
-			<polyline class="tx" points={txPts} vector-effect="non-scaling-stroke" />
-			<polyline class="rx" points={rxPts} vector-effect="non-scaling-stroke" />
+			<!--
+				조회 결과가 도착할 때마다(패널 열기·구간 변경) 계열이 페이드로 들어온다.
+				non-scaling-stroke(화면 공간 대시)라 pathLength draw-in 은 끝까지 그려지지 않으므로 쓰지 않는다.
+			-->
+			<polyline class="tx motion-fade" points={txPts} vector-effect="non-scaling-stroke" />
+			<polyline class="rx motion-fade" style:--motion-index={1} points={rxPts} vector-effect="non-scaling-stroke" />
 		</svg>
 		<p class="legend">
 			<span class="key rx-key">{t('sparkline.rx')}</span>

@@ -1,4 +1,10 @@
 {
+	"project.permission.denied": "You do not have permission to perform this action in the current project.",
+	"project.client.owner": "Owner user ID",
+	"project.client.ownerHelp": "Enter a project member's user ID. Ordinary connect users cannot download profiles for unassigned clients.",
+	"project.client.ownerSelf": "Me",
+	"project.client.ownerUnassigned": "Unassigned",
+	"project.client.assignSelf": "Assign to me",
 	"workspace.breadcrumb.admin": "ADMIN / WAYGATE",
 	"workspace.breadcrumb.network": "NETWORK / WAYGATE",
 	"workspace.adminTitle": "Waygate management",

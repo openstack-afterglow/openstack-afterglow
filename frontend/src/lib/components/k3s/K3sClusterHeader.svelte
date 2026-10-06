@@ -1,5 +1,6 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/drover';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
   import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
   import DetailHeader from '$lib/components/ui/DetailHeader.svelte';
   import Button from '$lib/components/ui/Button.svelte';
@@ -19,16 +20,13 @@
   {/snippet}
   {#snippet actions()}
     {#if s.cluster!.status === 'CREATING' || s.cluster!.status === 'PROVISIONING'}
-      <div class="flex items-center gap-1.5 text-yellow-400 text-xs">
-        <span class="animate-pulse">●</span>
-        <span>{t('overview.header.initializing')}</span>
-      </div>
+      <ActivityIndicator variant="pulse" size="xs" label={t('overview.header.initializing')} class="text-xs" />
     {:else if s.cluster!.status === 'ACTIVE'}
       <button
         onclick={() => s.triggerHealthCheck()}
         disabled={s.checkingHealth}
         class="px-3 py-1.5 bg-surface-selected hover:bg-surface-selected text-ink-1 text-xs rounded-lg transition-colors disabled:opacity-50">
-        {s.checkingHealth ? t('overview.header.checking') : t('overview.header.healthCheck')}
+        {#if s.checkingHealth}<ActivityIndicator size="xs" label={t('overview.header.checking')} />{:else}{t('overview.header.healthCheck')}{/if}
       </button>
       <K3sCloudShellButton />
       <Button onclick={() => s.downloadKubeconfig()} size="sm">
@@ -37,7 +35,7 @@
     {/if}
     <button onclick={() => s.deleteCluster()} disabled={s.deleting}
       class="px-3 py-1.5 bg-red-900/40 hover:bg-red-900/60 border border-red-800 text-red-400 text-xs rounded-lg transition-colors disabled:opacity-50">
-      {s.deleting ? t('overview.header.deleting') : t('overview.header.deleteCluster')}
+      {#if s.deleting}<ActivityIndicator size="xs" label={t('overview.header.deleting')} />{:else}{t('overview.header.deleteCluster')}{/if}
     </button>
   {/snippet}
 </DetailHeader>

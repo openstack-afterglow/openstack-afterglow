@@ -267,7 +267,9 @@
 							{t('settings.memory.description')}
 						</p>
 						{#if memLoading}
-							<div class="memory-document skeleton" aria-label={t('settings.memory.documentLoading', { filename: 'memory.md' })}></div>
+							<div class="memory-document motion-skeleton" role="status" aria-label={t('settings.memory.documentLoading', { filename: 'memory.md' })}>
+								<span class="sr-only">{t('settings.memory.documentLoading', { filename: 'memory.md' })}</span>
+							</div>
 						{:else if memoryDocument}
 							<div class="memory-document">
 								<div class="memory-document-head">
@@ -508,7 +510,7 @@
 		border-radius: 0.65rem;
 		background: var(--color-surface-base);
 	}
-	.memory-document.skeleton {
+	.memory-document.motion-skeleton {
 		min-height: 10rem;
 		background: var(--color-surface-sunken);
 	}

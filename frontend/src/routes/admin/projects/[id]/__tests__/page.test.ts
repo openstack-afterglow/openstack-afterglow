@@ -30,9 +30,10 @@ describe('project detail loading boundaries', () => {
 		expect((await screen.findAllByText('Project One')).length).toBeGreaterThan(0);
 
 		await fireEvent.click(screen.getByRole('button', { name: '멤버' }));
-		expect(screen.getByText('멤버를 불러오는 중...')).toBeTruthy();
+		expect(screen.getByRole('status').textContent).toContain('멤버를 불러오는 중...');
 		members.reject(new Error('members unavailable'));
 		expect(await screen.findByText('멤버 조회 실패')).toBeTruthy();
+		expect(screen.queryByText('멤버를 불러오는 중...')).toBeNull();
 		expect(screen.getAllByText('Project One').length).toBeGreaterThan(0);
 	});
 });

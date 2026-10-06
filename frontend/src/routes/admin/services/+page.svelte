@@ -174,6 +174,7 @@
 				bind:active={ar.active}
 				bind:intervalSeconds={ar.intervalSeconds}
 				intervalOptions={ar.intervalOptions}
+				refreshing={loadingMap[activeTab]}
 				onManualRefresh={refresh}
 			/>
 		{/snippet}

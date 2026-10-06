@@ -1,5 +1,7 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/containers-shell';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+  import { prefersReducedMotion } from '$lib/utils/motion';
   import { onDestroy } from 'svelte';
   import { api, getWebSocketUrl } from '$lib/api/client';
   import '@xterm/xterm/css/xterm.css';
@@ -56,7 +58,7 @@
       theme: getTerminalTheme(),
       fontFamily: 'var(--font-mono)',
       fontSize: 13,
-      cursorBlink: true,
+      cursorBlink: !prefersReducedMotion(),
     });
     localizeTerminal(terminal);
     fitAddon = new FitAddon();
@@ -138,14 +140,15 @@
   });
 </script>
 
-<div class="bg-surface-base border border-line-2 rounded-xl mb-4 overflow-hidden">
+<div class="motion-fade bg-surface-base border border-line-2 rounded-xl mb-4 overflow-hidden">
   <div class="flex items-center justify-between px-4 py-2 bg-surface-sunken border-b border-line-2">
     <div class="flex items-center gap-2">
       <span class="text-sm text-ink-0 font-medium">{t('instances.terminal.title')}</span>
       {#if wsConnecting}
-        <span class="text-xs text-yellow-400">{t('instances.terminal.connecting')}</span>
+        <ActivityIndicator size="xs" label={t('instances.terminal.connecting')} class="text-xs" />
       {:else if wsConnected}
-        <span class="text-xs text-green-400">{t('instances.terminal.connected')}</span>
+        <!-- The pulse glyph replaces the catalog's leading status dot. -->
+        <ActivityIndicator variant="pulse" tone="success" size="xs" label={t('instances.terminal.connected').replace(/^●\s*/u, '')} class="text-xs" />
       {:else}
         <span class="text-xs text-ink-2">{t('instances.terminal.disconnected')}</span>
       {/if}

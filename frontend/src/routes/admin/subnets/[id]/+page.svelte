@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-network';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { page } from '$app/stores';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -113,7 +114,7 @@
 	{#if loading}
 		<Card padding="lg">
 			<div class="py-12 text-center text-sm text-ink-2">
-				{t('subnetDetailPage.loading')}
+				<ActivityIndicator label={t('subnetDetailPage.loading')} />
 			</div>
 		</Card>
 	{:else if error}

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/drover';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
   import { untrack } from 'svelte';
   import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
   import K3sResourceEditor from './K3sResourceEditor.svelte';
@@ -128,7 +129,7 @@
                 onclick={() => handleDelete(secret.name)}
                 disabled={s.cmActioning === actionKey}
                 class="text-xs text-orange-400 hover:text-orange-300 px-2 py-1 border border-orange-900 hover:border-orange-700 rounded transition-colors disabled:text-ink-3 disabled:border-line-2 disabled:cursor-not-allowed"
-              >{s.cmActioning === actionKey ? t('secrets.deleting') : t('secrets.delete')}</button>
+              >{#if s.cmActioning === actionKey}<ActivityIndicator size="xs" label={t('secrets.deleting')} />{:else}{t('secrets.delete')}{/if}</button>
             </div>
           </div>
           <K3sYamlView {text} {maskedKeys} />

@@ -1,10 +1,13 @@
 {
+	"clusterDetail.loading": "正在查询集群",
+	"deleteProgress.label": "集群删除进度",
 	"steps.securityGroup": "安全组",
 	"steps.serverVolume": "服务器卷",
 	"steps.serverVm": "服务器虚拟机",
 	"steps.initialize": "初始化 k3s",
 	"steps.completed": "完成",
 	"steps.prepare": "准备",
+	"rotateProgress.unreported": "进度流已结束。请刷新集群状态以查看结果。",
 	"steps.cleanupLb": "清理 LB",
 	"steps.appCredential": "应用凭据",
 	"steps.k8sNodes": "K8s 节点",

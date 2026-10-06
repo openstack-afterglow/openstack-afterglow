@@ -14,6 +14,8 @@
 	import UserUsageDetailModal from '$lib/components/admin/chat/UserUsageDetailModal.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import Field from '$lib/components/ui/Field.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import PageHeader from '$lib/components/ui/PageHeader.svelte';
@@ -320,7 +322,7 @@
 				<Field label={t('adminQuotas.defaultMonthlyLabel')} for="default-monthly-quota" error={defaultError || undefined} class="min-w-0 flex-1">
 					<TextInput id="default-monthly-quota" inputmode="decimal" placeholder={t('adminQuotas.unlimitedPlaceholder')} bind:value={defaultDraft} />
 				</Field>
-				<Button type="submit" variant="accent" disabled={savingDefault || loading}>{savingDefault ? t('adminQuotas.saving') : t('adminQuotas.saveDefault')}</Button>
+				<Button type="submit" variant="accent" disabled={savingDefault || loading} ariaBusy={savingDefault}>{#if savingDefault}<ActivityIndicator size="xs" tone="ink" />{/if}{savingDefault ? t('adminQuotas.saving') : t('adminQuotas.saveDefault')}</Button>
 			</form>
 		</div>
 	</section>
@@ -381,13 +383,13 @@
 								<div class="flex flex-wrap gap-2">
 									<Button size="sm" variant="secondary" onclick={() => (usageRow = row)}>{t('adminQuotas.usage')}</Button>
 									<Button size="sm" variant="secondary" onclick={() => openEditor(row)}>{t('adminQuotas.edit')}</Button>
-									<Button size="sm" variant="ghost" disabled={!canReset(row) || resettingUserId === row.user.id} onclick={() => void resetQuota(row)}>{resettingUserId === row.user.id ? t('adminQuotas.resetting') : t('adminQuotas.resetDefault')}</Button>
+									<Button size="sm" variant="ghost" disabled={!canReset(row) || resettingUserId === row.user.id} ariaBusy={resettingUserId === row.user.id} onclick={() => void resetQuota(row)}>{#if resettingUserId === row.user.id}<ActivityIndicator size="xs" tone="ink" />{/if}{resettingUserId === row.user.id ? t('adminQuotas.resetting') : t('adminQuotas.resetDefault')}</Button>
 								</div>
 							</td>
 						</tr>
 					{/each}
 					{#if rows.length === 0}
-						<tr><td colspan="6" class="text-center text-[var(--color-ink-3)]">{t('adminQuotas.empty')}</td></tr>
+						<tr><td colspan="6"><EmptyState headline={t('adminQuotas.empty')} class="py-4 [&_.motion-enter]:animate-none" /></td></tr>
 					{/if}
 				</tbody>
 			</table>
@@ -424,7 +426,7 @@
 			</div>
 			<div class="mt-5 flex justify-end gap-2">
 				<Button type="button" variant="ghost" onclick={closeEditor} disabled={saving}>{t('adminQuotas.cancel')}</Button>
-				<Button type="submit" variant="accent" disabled={saving}>{saving ? t('adminQuotas.saving') : t('adminQuotas.save')}</Button>
+				<Button type="submit" variant="accent" disabled={saving} ariaBusy={saving}>{#if saving}<ActivityIndicator size="xs" tone="ink" />{/if}{saving ? t('adminQuotas.saving') : t('adminQuotas.save')}</Button>
 			</div>
 		</form>
 	{/if}

@@ -2,8 +2,12 @@
   import { t } from '$lib/i18n/ns/network-resources';
   import { useLoadbalancerDetailController } from '$lib/stores/loadbalancerDetailController.svelte';
   import Button from '$lib/components/ui/Button.svelte';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+  import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
 
   const s = useLoadbalancerDetailController();
+  const pending = createPendingAction();
+  const creatingListener = $derived(pending.isActive('create', s.saving));
 </script>
 
 {#if s.showAddListener}
@@ -29,7 +33,7 @@
       placeholder={t('lb.form.port')}
       class="bg-surface-sunken border border-line-2 rounded px-3 py-2 text-sm text-ink-1"
     />
-    <Button onclick={() => s.createListener()} disabled={s.saving} class="col-span-2" size="sm">{t('lb.actions.create')}</Button>
+    <Button onclick={() => pending.run('create', () => s.createListener())} disabled={s.saving} ariaBusy={creatingListener} class="col-span-2" size="sm">{#if creatingListener}<ActivityIndicator size="xs" tone="ink" />{/if}{creatingListener ? t('lb.actions.creating') : t('lb.actions.create')}</Button>
     <button onclick={() => s.toggleAddListener()} class="text-ink-2 hover:text-ink-1 text-sm px-2 text-center">{t('lb.actions.cancel')}</button>
   </div>
 {/if}

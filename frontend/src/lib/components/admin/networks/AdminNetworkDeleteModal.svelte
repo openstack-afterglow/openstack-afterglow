@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-network';
 	import RichText from '$lib/i18n/RichText.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import type { AdminNetwork } from '$lib/types/networks';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 
@@ -52,8 +53,8 @@
 			{#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
 			<div class="flex justify-end gap-3">
 				<button onclick={onClose} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{t('adminNetworkDeleteModal.cancel')}</button>
-				<button onclick={confirm} disabled={deleting} class="px-4 py-2 bg-red-600 hover:bg-red-500 text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">
-					{deleting ? t('adminNetworkDeleteModal.deleting') : t('adminNetworkDeleteModal.delete')}
+				<button aria-busy={deleting} onclick={confirm} disabled={deleting} class="px-4 py-2 bg-[var(--color-state-danger)]/10 hover:bg-[var(--color-state-danger)]/20 text-[var(--color-state-danger-text)] text-sm font-medium rounded-lg disabled:opacity-30">
+					{#if deleting}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" />{t('adminNetworkDeleteModal.deleting')}</span>{:else}{t('adminNetworkDeleteModal.delete')}{/if}
 				</button>
 			</div>
 		</div>

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
@@ -19,6 +19,9 @@
 	import type { AggregatedHost, GpuType, GpuResponse } from '$lib/types/gpu';
 	import { t } from '$lib/i18n/ns/admin-compute';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import Alert from '$lib/components/ui/Alert.svelte';
+	import { hasValidRemovalReview, isVerifiedRemoval } from '$lib/components/admin/hypervisors/removal';
+	import type { RemovalInspection, RemovalApproval, RemovalResult } from '$lib/components/admin/hypervisors/removal';
 
 	let hypervisors = $state<HypervisorRow[]>([]);
 	let gpuHostMap = $state<Map<string, AggregatedHost>>(new Map());
@@ -35,19 +38,103 @@
 	let actionPending = $state(false);
 	let actionError = $state('');
 	let relocationResult = $state<HostRelocationResult | null>(null);
+	let inspection = $state<RemovalInspection | null>(null);
+	let removalResult = $state<RemovalResult | null>(null);
+	let removalNotice = $state('');
+	let approvalRevision = $state(0);
+	let invalidReason = $state('');
+	let detailError = $state('');
+	let listError = $state('');
+	let listRequest = 0;
+	let detailRequest = 0;
+	let actionRequest = 0;
+	let selectionGeneration = 0;
+	let reviewGeneration = 0;
+	let observedScope: string | undefined;
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
+	const scopeKey = $derived(JSON.stringify([$auth.userId ?? null, projectId ?? null, Boolean(token)]));
 
-	async function load(): Promise<boolean> {
+	function invalidateApproval(message: string) {
+		if (inspection) inspection = { ...inspection, review_token: null };
+		invalidReason = message;
+		approvalRevision += 1;
+		reviewGeneration += 1;
+	}
+
+	function clearHost() {
+		selectionGeneration += 1;
+		detailRequest += 1;
+		invalidateApproval('');
+		selectedId = null;
+		selectedDetail = null;
+		detailLoading = false;
+		detailError = '';
+		actionError = '';
+		relocationResult = null;
+		inspection = null;
+		removalResult = null;
+		removalNotice = '';
+	}
+
+	function closeHost() { if (!actionPending) clearHost(); }
+
+	function metadataSignature(detail: HypervisorDetail): string {
+		return JSON.stringify([
+			detail.id, detail.hypervisor_hostname, detail.service_id, detail.service_host,
+			detail.state, detail.status, detail.service_state, detail.service_updated_at,
+			detail.forced_down, detail.disabled_reason, detail.running_vms,
+			detail.servers.map(({ id, name, status, project_id }) => [id, name, status, project_id]).toSorted((a, b) => a[0].localeCompare(b[0])),
+		]);
+	}
+
+	$effect(() => {
+		const currentScope = scopeKey;
+		if (observedScope === undefined) { observedScope = currentScope; return; }
+		if (observedScope === currentScope) return;
+		observedScope = currentScope;
+		untrack(() => {
+			clearHost();
+			actionRequest += 1;
+			actionPending = false;
+			hypervisors = [];
+			gpuHostMap = new Map();
+			gpuTypes = [];
+			selectedInstanceId = null;
+			selectedProjectId = null;
+			showMigrateModal = false;
+			void load();
+			projectNames.load(token, projectId);
+		});
+	});
+
+	$effect(() => {
+		if (!inspection?.review_token) return;
+		const expires = Date.parse(inspection.expires_at ?? '');
+		const revision = reviewGeneration;
+		const expire = () => {
+			if (revision === reviewGeneration) invalidateApproval(t('hypervisors.page.removal.approvalExpired'));
+		};
+		if (!Number.isFinite(expires) || expires <= Date.now()) { untrack(expire); return; }
+		const timer = setTimeout(expire, expires - Date.now());
+		return () => clearTimeout(timer);
+	});
+
+	async function load(fresh = false): Promise<boolean> {
+		const request = ++listRequest;
+		const scope = scopeKey;
 		if (hypervisors.length === 0) loading = true;
 		else refreshing = true;
-		// GPU 정보(gpu-hosts)는 실패해도 하이퍼바이저 목록 표시에는 영향 없음
 		const [hvResult, gpuResult] = await Promise.allSettled([
-			api.get<HypervisorRow[]>('/api/v1/admin/hypervisors', token, projectId),
-			api.get<GpuResponse>('/api/v1/admin/gpu-hosts', token, projectId),
+			api.get<HypervisorRow[]>('/api/v1/admin/hypervisors', token, projectId, { refresh: fresh }),
+			api.get<GpuResponse>('/api/v1/admin/gpu-hosts', token, projectId, { refresh: fresh }),
 		]);
-		if (hvResult.status === 'fulfilled') hypervisors = hvResult.value;
+		if (request !== listRequest || scope !== scopeKey) return false;
+		if (hvResult.status === 'fulfilled') {
+			hypervisors = hvResult.value;
+			listError = '';
+		} else listError = t('hypervisors.page.listRefreshFailed');
 		if (gpuResult.status === 'fulfilled') {
 			gpuHostMap = new Map((gpuResult.value.aggregated_hosts ?? []).map((h) => [h.name, h]));
 			gpuTypes = gpuResult.value.gpu_types ?? [];
@@ -88,44 +175,134 @@
 
 	async function loadDetail(hvId: string, reset = true): Promise<boolean> {
 		if (reset) {
+			clearHost();
 			selectedId = hvId;
-			actionError = '';
-			relocationResult = null;
-			selectedDetail = null;
+			detailLoading = true;
 		}
-		if (reset) detailLoading = true;
+		const scope = scopeKey;
+		const selection = selectionGeneration;
+		const request = ++detailRequest;
+		const current = () => selectedId === hvId && selection === selectionGeneration && request === detailRequest && scope === scopeKey;
 		try {
-			const next = await api.get<HypervisorDetail>(`/api/v1/admin/hypervisors/${hvId}`, token, projectId);
-			if (selectedId === hvId) selectedDetail = next;
+			const next = await api.get<HypervisorDetail>(`/api/v1/admin/hypervisors/${hvId}`, token, projectId, { refresh: true });
+			if (!current()) return false;
+			if (next.id !== hvId) throw new Error(t('hypervisors.page.detailIdMismatch'));
+			if (selectedDetail && metadataSignature(selectedDetail) !== metadataSignature(next)) {
+				invalidateApproval(t('hypervisors.page.removal.metadataChanged'));
+			}
+			selectedDetail = next;
+			detailError = '';
 			return true;
-		} catch {
-			if (selectedId === hvId && reset) selectedDetail = null;
+		} catch (e) {
+			if (!current()) return false;
+			detailError = e instanceof Error ? e.message : t('hypervisors.page.detailFailed');
+			invalidateApproval(t('hypervisors.page.removal.detailUnverified'));
 			return false;
 		} finally {
-			if (reset) detailLoading = false;
+			if (current()) detailLoading = false;
 		}
 	}
 
+	async function refreshViews(manual = false): Promise<boolean> {
+		if (actionPending) return false;
+		if (manual && selectedId) invalidateApproval(t('hypervisors.page.removal.refreshReset'));
+		const hvId = selectedId;
+		const [listOk, detailOk] = await Promise.all([load(manual), hvId ? loadDetail(hvId, false) : Promise.resolve(true)]);
+		return listOk && detailOk;
+	}
+
 	async function refreshHost(hvId: string) {
-		const [listOk, detailOk] = await Promise.all([load(), loadDetail(hvId, false)]);
-		if (!listOk || !detailOk) actionError = t('hypervisors.page.refreshFailed');
+		const scope = scopeKey;
+		const selection = selectionGeneration;
+		const [listOk, detailOk] = await Promise.all([load(true), loadDetail(hvId, false)]);
+		if (scope === scopeKey && selection === selectionGeneration && (!listOk || !detailOk)) actionError = t('hypervisors.page.refreshFailed');
+	}
+
+	function hostContext() {
+		const hvId = selectedDetail!.id;
+		const scope = scopeKey;
+		const generation = selectionGeneration;
+		const action = ++actionRequest;
+		return { hvId, token, projectId, action, current: () => hvId === selectedId && scope === scopeKey && generation === selectionGeneration && action === actionRequest };
+	}
+
+	async function checkRemoval(): Promise<void> {
+		if (actionPending || !selectedDetail) return;
+		const context = hostContext();
+		invalidateApproval(t('hypervisors.page.removal.checkInProgress'));
+		const generation = reviewGeneration;
+		actionPending = true;
+		actionError = '';
+		try {
+			const response = await api.post<RemovalInspection>(`/api/v1/admin/hypervisors/${context.hvId}/removal-check`, {}, context.token, context.projectId);
+			if (!context.current() || generation !== reviewGeneration) return;
+			if (response.report.hypervisor_id !== context.hvId || response.report.hostname !== selectedDetail?.hypervisor_hostname) {
+				throw new Error(t('hypervisors.page.removal.checkHostMismatch'));
+			}
+			inspection = response;
+			invalidReason = '';
+			approvalRevision += 1;
+		} catch (e) {
+			if (!context.current() || generation !== reviewGeneration) return;
+			actionError = e instanceof Error ? e.message : t('hypervisors.page.removal.checkFailed');
+			invalidateApproval(t('hypervisors.page.removal.checkFailedReapprove'));
+		} finally {
+			if (context.action === actionRequest) actionPending = false;
+		}
+	}
+
+	async function removeHost(approval: RemovalApproval): Promise<void> {
+		if (actionPending || !selectedDetail || !inspection) return;
+		if (!hasValidRemovalReview(inspection, Date.now())) {
+			invalidateApproval(t('hypervisors.page.removal.approvalInvalid'));
+			return;
+		}
+		if (invalidReason || approval.review_token !== inspection.review_token ||
+			approval.confirm_hostname !== inspection.report.hostname || !approval.reason.trim() ||
+			approval.reviewed_metadata !== true || approval.compute_stopped !== true) return;
+		const context = hostContext();
+		const report = inspection.report;
+		invalidateApproval(t('hypervisors.page.removal.approvalUsed'));
+		actionPending = true;
+		actionError = '';
+		try {
+			const response = await api.post<RemovalResult>(`/api/v1/admin/hypervisors/${context.hvId}/remove`, { ...approval, reason: approval.reason.trim() }, context.token, context.projectId);
+			if (!context.current()) return;
+			if (response.hypervisor_id !== context.hvId || response.hostname !== report.hostname || response.service_id !== report.service.id) {
+				throw new Error(t('hypervisors.page.removal.resultMismatch'));
+			}
+			removalResult = response;
+			if (isVerifiedRemoval(response)) {
+				clearHost();
+				removalNotice = t('hypervisors.page.removal.verifiedNotice', { host: response.hostname });
+				await load(true);
+			}
+		} catch (e) {
+			if (!context.current()) return;
+			actionError = e instanceof Error ? e.message : t('hypervisors.page.removal.removeFailed');
+			invalidateApproval(t('hypervisors.page.removal.removeFailedReapprove'));
+		} finally {
+			if (context.action === actionRequest) actionPending = false;
+		}
 	}
 
 	async function scheduleHost(enabled: boolean, reason?: string): Promise<boolean> {
 		if (actionPending || !selectedDetail || (!enabled && !reason?.trim())) return false;
-		const hvId = selectedDetail.id;
+		const context = hostContext();
+		invalidateApproval(t('hypervisors.page.removal.scheduleRequested'));
 		actionPending = true;
 		actionError = '';
 		relocationResult = null;
 		try {
-			await api.put(`/api/v1/admin/hypervisors/${hvId}/service`, enabled ? { status: 'enabled' } : { status: 'disabled', reason: reason!.trim() }, token, projectId);
-			await refreshHost(hvId);
+			await api.put(`/api/v1/admin/hypervisors/${context.hvId}/service`, enabled ? { status: 'enabled' } : { status: 'disabled', reason: reason!.trim() }, context.token, context.projectId);
+			if (!context.current()) return false;
+			await refreshHost(context.hvId);
 			return true;
 		} catch (e) {
-			actionError = e instanceof Error ? e.message : t('hypervisors.page.scheduleFailed');
+			if (context.current()) actionError = e instanceof Error ? e.message : t('hypervisors.page.scheduleFailed');
 			return false;
 		} finally {
-			actionPending = false;
+			if (context.action === actionRequest) actionPending = false;
 		}
 	}
 
@@ -133,19 +310,22 @@
 		if (actionPending || !selectedDetail || selectedDetail.servers.length === 0 ||
 			(mode === 'migrate' && (selectedDetail.state !== 'up' || selectedDetail.status !== 'disabled')) ||
 			(mode === 'evacuate' && (selectedDetail.state !== 'down' || !fenced))) return false;
-		const hvId = selectedDetail.id;
+		const context = hostContext();
+		invalidateApproval(t('hypervisors.page.removal.relocateRequested'));
 		actionPending = true;
 		actionError = '';
 		relocationResult = null;
 		try {
-			relocationResult = await api.post<HostRelocationResult>(`/api/v1/admin/hypervisors/${hvId}/relocate`, mode === 'evacuate' ? { mode, fenced: true } : { mode }, token, projectId);
-			await refreshHost(hvId);
+			const response = await api.post<HostRelocationResult>(`/api/v1/admin/hypervisors/${context.hvId}/relocate`, mode === 'evacuate' ? { mode, fenced: true } : { mode }, context.token, context.projectId);
+			if (!context.current()) return false;
+			relocationResult = response;
+			await refreshHost(context.hvId);
 			return true;
 		} catch (e) {
-			actionError = e instanceof Error ? e.message : t('hypervisors.page.relocateFailed');
+			if (context.current()) actionError = e instanceof Error ? e.message : t('hypervisors.page.relocateFailed');
 			return false;
 		} finally {
-			actionPending = false;
+			if (context.action === actionRequest) actionPending = false;
 		}
 	}
 
@@ -187,11 +367,13 @@
 	let migrateContext = $state({ serverId: '', serverName: '', type: 'live' as 'live' | 'cold' });
 
 	function openMigrate(id: string, name: string, type: 'live' | 'cold') {
+		if (actionPending) return;
+		invalidateApproval(t('hypervisors.page.removal.migrateStarted'));
 		migrateContext = { serverId: id, serverName: name, type };
 		showMigrateModal = true;
 	}
 
-	const ar = createAutoRefresh(async () => { await load(); }, {
+	const ar = createAutoRefresh(async () => { await refreshViews(); }, {
 		storageKey: 'admin-hypervisors',
 		invokeOnMount: false,
 		defaultActive: true,
@@ -206,7 +388,7 @@
 </script>
 
 <div class="flex h-full">
-<div class="flex-1 p-4 md:p-8 max-w-7xl mx-auto overflow-auto">
+<div class="flex-1 min-w-0 p-4 md:p-8 max-w-7xl mx-auto overflow-auto">
 	<PageHeader breadcrumb={t('hypervisors.page.breadcrumb')} title={t('hypervisors.page.title')}>
 		{#snippet actions()}
 			<AutoRefreshControl
@@ -214,10 +396,12 @@
 				bind:intervalSeconds={ar.intervalSeconds}
 				intervalOptions={ar.intervalOptions}
 				refreshing={loading || refreshing}
-				onManualRefresh={load}
+				onManualRefresh={() => refreshViews(true)}
 			/>
 		{/snippet}
 	</PageHeader>
+	{#if listError}<Alert tone="danger">{listError}</Alert>{/if}
+	{#if removalNotice}<Alert tone="success" title={t('hypervisors.page.removal.verifiedTitle')}>{removalNotice}</Alert>{/if}
 
 	{#if loading}
 		<LoadingSkeleton variant="table" rows={5} />
@@ -249,9 +433,17 @@
 	{/if}
 </div>
 
-{#if selectedDetail !== null || detailLoading}
+{#if selectedId !== null}
 	{#key selectedId}
+	<SlidePanel onClose={closeHost} width="w-full md:w-[32rem] max-w-full" resizable={false} storageKey="slidePanel.admin-hypervisors.host-detail" ariaLabel={t('hypervisors.page.hostDetailLabel')}>
 	<HypervisorDetailPanel
+		inspection={inspection}
+		removalResult={removalResult}
+		{approvalRevision}
+		{invalidReason}
+		{detailError}
+		onCheckRemoval={checkRemoval}
+		onRemove={removeHost}
 		detail={selectedDetail}
 		loading={detailLoading}
 		projectNameMap={$projectNames}
@@ -261,10 +453,10 @@
 		result={relocationResult}
 		onSchedule={scheduleHost}
 		onRelocate={relocateHost}
-		onClose={() => { if (!actionPending) { selectedDetail = null; selectedId = null; } }}
 		onMigrate={openMigrate}
 		onOpenDetail={openInstanceDetail}
 	/>
+	</SlidePanel>
 	{/key}
 {/if}
 </div>
@@ -281,6 +473,6 @@
 		serverId={migrateContext.serverId}
 		serverName={migrateContext.serverName}
 		type={migrateContext.type}
-		onMigrated={() => selectedDetail && loadDetail(selectedDetail.id)}
+		onMigrated={() => selectedDetail && loadDetail(selectedDetail.id, false)}
 	/>
 {/if}

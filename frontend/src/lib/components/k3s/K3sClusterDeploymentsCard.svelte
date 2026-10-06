@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/drover';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { untrack } from 'svelte';
 	import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
 	import { SectionHeader } from '$lib/components/ui';
@@ -38,7 +39,7 @@
 	<SectionHeader title="Deployment" meta={t('deployments.count', { count: s.deployments.length })} />
 
 	{#if loading}
-		<div class="mt-4 text-sm text-ink-2 text-center py-6">{t('deployments.loading')}</div>
+		<div class="mt-4 text-sm text-ink-2 text-center py-6"><ActivityIndicator label={t('deployments.loading')} /></div>
 	{:else if loadError}
 		<div class="mt-4 text-sm text-red-400">{loadError}</div>
 	{:else if s.deployments.length === 0}
@@ -74,7 +75,7 @@
 										onclick={() => s.rolloutRestartDeployment(dep.name)}
 										disabled={!!s.workloadActioning}
 										class="px-2 py-1 rounded text-xs bg-surface-selected/40 text-warm-text hover:bg-surface-selected/70 disabled:opacity-40 transition-colors"
-									>{actioning ? t('deployments.actioning') : t('deployments.restart')}</button>
+									>{#if actioning}<ActivityIndicator size="xs" label={t('deployments.actioning')} />{:else}{t('deployments.restart')}{/if}</button>
 									<button
 										onclick={() => { scalingDeploy = dep; }}
 										disabled={!!s.workloadActioning}

@@ -1,19 +1,20 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/topology';
+	import StatusDot from '$lib/components/topology/StatusDot.svelte';
 	let { isLight }: { isLight: boolean } = $props();
 </script>
 
 <div class="flex flex-wrap gap-x-5 gap-y-2 text-xs px-1"
      style="color: {isLight ? '#4b5563' : '#9ca3af'}">
-	<!-- 상태 dot -->
+	<!-- 상태 dot: 카드의 StatusDot 과 같은 색 토큰. 범례는 실제 상태가 아니므로 숨쉬지 않는다 -->
 	<span class="flex items-center gap-1.5">
-		<span class="w-2 h-2 rounded-full bg-green-400 flex-shrink-0"></span>{t('laneLegend.active')}
+		<StatusDot status="ACTIVE" live={false} />{t('laneLegend.active')}
 	</span>
 	<span class="flex items-center gap-1.5">
-		<span class="w-2 h-2 rounded-full bg-red-400 flex-shrink-0"></span>{t('laneLegend.errorStopped')}
+		<StatusDot status="ERROR" live={false} />{t('laneLegend.errorStopped')}
 	</span>
 	<span class="flex items-center gap-1.5">
-		<span class="w-2 h-2 rounded-full bg-yellow-400 animate-pulse flex-shrink-0"></span>{t('laneLegend.pendingOther')}
+		<StatusDot status="PENDING" live={false} />{t('laneLegend.pendingOther')}
 	</span>
 	<!-- 자원 타입 아이콘 -->
 	<span class="flex items-center gap-1.5">

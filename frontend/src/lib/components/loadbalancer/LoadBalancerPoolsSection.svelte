@@ -3,8 +3,11 @@
   import { useLoadbalancerDetailController } from '$lib/stores/loadbalancerDetailController.svelte';
   import PoolAddForm from './PoolAddForm.svelte';
   import PoolMembersPanel from './PoolMembersPanel.svelte';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+  import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
 
   const s = useLoadbalancerDetailController();
+  const pending = createPendingAction();
 </script>
 
 <section class="bg-surface-base border border-line rounded-lg p-5 mb-4">
@@ -23,6 +26,7 @@
   {:else}
     <div class="space-y-2">
       {#each s.pools as pool}
+        {@const deletingPool = pending.isActive(`delete:${pool.id}`, s.saving)}
         <div>
           <div
             onclick={() => s.togglePool(pool.id)}
@@ -40,10 +44,11 @@
             <div class="flex gap-2">
               <span class="text-xs text-ink-2">{s.selectedPoolId === pool.id ? t('lb.pools.collapse') : t('lb.pools.members')}</span>
               <button
-                onclick={(e) => { e.stopPropagation(); s.deletePool(pool.id); }}
+                onclick={(e) => { e.stopPropagation(); void pending.run(`delete:${pool.id}`, () => s.deletePool(pool.id)); }}
                 disabled={s.saving}
-                class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 transition-colors"
-              >{t('lb.actions.delete')}</button>
+                aria-busy={deletingPool}
+                class="inline-flex items-center gap-1.5 text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 transition-colors"
+              >{#if deletingPool}<ActivityIndicator size="xs" tone="danger" />{/if}{deletingPool ? t('lb.actions.deleting') : t('lb.actions.delete')}</button>
             </div>
           </div>
           {#if s.selectedPoolId === pool.id}

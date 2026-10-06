@@ -1,4 +1,5 @@
 {
+	"overview.loading": "개요를 불러오는 중",
 	"layout.notFound": "페이지를 찾을 수 없습니다",
 	"layout.noAccess": "접근 권한이 없거나 존재하지 않는 페이지입니다.",
 	"layout.dashboard": "대시보드로 이동",
@@ -166,6 +167,7 @@
 	"overview.projects.project": "프로젝트",
 	"overview.projects.disk": "Disk",
 	"overview.projects.empty": "데이터가 없습니다",
+	"overview.projects.loading": "프로젝트별 리소스를 불러오는 중",
 	"overview.resources.title": "클러스터 리소스 사용률",
 	"overview.resources.cpuCores": "CPU 코어",
 	"overview.resources.memory": "메모리",

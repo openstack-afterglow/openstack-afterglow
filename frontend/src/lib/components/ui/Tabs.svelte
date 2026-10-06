@@ -117,6 +117,7 @@
 		scrollbar-width: thin;
 	}
 	button {
+		position: relative;
 		min-height: 2.5rem;
 		margin-bottom: -1px;
 		padding: 0.5rem 0.75rem;
@@ -127,12 +128,23 @@
 		white-space: nowrap;
 		transition: color var(--motion-duration-fast) var(--motion-ease-standard), background var(--motion-duration-fast) var(--motion-ease-standard), border-color var(--motion-duration-fast) var(--motion-ease-standard);
 	}
+	button::after {
+		content: '';
+		position: absolute;
+		inset-inline: 0;
+		bottom: -2px;
+		height: 2px;
+		background: var(--color-action-warm);
+		transform: scaleX(0);
+		transform-origin: center;
+		transition: transform var(--motion-duration-base) var(--motion-ease-emphasized);
+	}
+	button[aria-selected='true']::after { transform: scaleX(1); }
 	button:hover:not(:disabled) {
 		color: var(--color-ink-0);
 		background: var(--color-surface-selected);
 	}
 	button[aria-selected='true'] {
-		border-color: var(--color-action-warm);
 		color: var(--color-ink-0);
 	}
 	button:focus-visible {

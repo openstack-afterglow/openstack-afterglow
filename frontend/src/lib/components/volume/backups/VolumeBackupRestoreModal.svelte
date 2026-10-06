@@ -3,6 +3,7 @@
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 	import { t } from '$lib/i18n/ns/volume';
 	import RichText from '$lib/i18n/RichText.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
 	let {
 		open = $bindable(),
@@ -79,7 +80,7 @@
 				{#if error}<div class="mt-2 mb-3 text-red-400 text-xs">{error}</div>{/if}
 				<div class="flex justify-end gap-3 mt-2">
 					<button onclick={() => { open = false; }} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('backupRestoreModal.cancel')}</button>
-					<button onclick={restore} disabled={restoring} class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-ink-0 text-sm font-medium rounded-lg transition-colors">{restoring ? t('backupRestoreModal.restoring') : t('backupRestoreModal.restore')}</button>
+					<button onclick={restore} disabled={restoring} class="inline-flex items-center gap-1.5 px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-ink-0 text-sm font-medium rounded-lg transition-colors">{#if restoring}<ActivityIndicator size="xs" tone="ink" />{/if}{restoring ? t('backupRestoreModal.restoring') : t('backupRestoreModal.restore')}</button>
 				</div>
 			{/if}
 		</div>

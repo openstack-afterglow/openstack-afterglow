@@ -4,6 +4,7 @@
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import Alert from '$lib/components/ui/Alert.svelte';
 	import GlobalTopology from '$lib/components/GlobalTopology.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
@@ -32,13 +33,14 @@
 	async function fetchTopology() {
 		if (!data) loading = true;
 		else refreshing = true;
-		error = '';
+		if (!data) error = '';
 		try {
 			data = await api.get<TopologyData>(
 				'/api/v1/networks/topology',
 				$auth.token ?? undefined,
 				$auth.projectId ?? undefined
 			);
+			error = '';
 		} catch (e) {
 			error = e instanceof ApiError ? t('topology.loadFailed', { status: e.status, message: e.message }) : t('topology.serverError');
 		} finally {
@@ -65,11 +67,15 @@
 		/>
 	</div>
 
+	<!-- 갱신 실패는 그려진 토폴로지를 내리지 않는다(다시 마운트되면 자동 갱신이 진입 모션을 재생한다) -->
 	{#if error}
-		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">
-			{error}
-		</div>
-	{:else if loading}
+		{#if data}
+			<div role="status" class="mb-4 rounded-lg border border-state-danger/30 bg-state-danger/10 px-4 py-3 text-sm text-state-danger">{error}</div>
+		{:else}
+			<Alert tone="danger" class="mb-4">{error}</Alert>
+		{/if}
+	{/if}
+	{#if loading}
 		<LoadingSkeleton variant="card" rows={8} />
 	{:else if data}
 		{@const _visibleNets = data.networks.filter(n => n.is_external || n.is_shared || n.project_id === $auth.projectId)}

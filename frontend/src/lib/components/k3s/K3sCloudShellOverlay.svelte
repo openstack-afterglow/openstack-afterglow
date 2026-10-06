@@ -1,6 +1,8 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/drover';
   import RichText from '$lib/i18n/RichText.svelte';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+  import { prefersReducedMotion } from '$lib/utils/motion';
   import { onDestroy, onMount, tick } from 'svelte';
   import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
   import { createShellTicket } from '$lib/api/k3sResources';
@@ -70,7 +72,7 @@
       theme: getTerminalTheme(),
       fontFamily: 'var(--font-mono)',
       fontSize: 13,
-      cursorBlink: true,
+      cursorBlink: !prefersReducedMotion(),
       convertEol: true,
     });
     localizeTerminal(terminal);
@@ -199,7 +201,7 @@
 
 {#snippet clusterName(text: string)}<span class="text-warm-text">{text}</span>{/snippet}
 
-<div class="fixed inset-0 z-50 bg-surface-canvas flex flex-col">
+<div class="motion-fade fixed inset-0 z-50 bg-surface-canvas flex flex-col">
   <!-- 헤더 -->
   <div class="flex items-center justify-between px-4 py-2 border-b border-line shrink-0">
     <div class="flex items-center gap-3">
@@ -207,12 +209,9 @@
         <RichText segments={t.rich('cloudShell.title', { name: s.cluster?.name ?? '' })} tags={{ name: clusterName }} />
       </span>
       {#if connected}
-        <span class="text-xs text-green-400 flex items-center gap-1">
-          <span class="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse inline-block"></span>
-          {t('cloudShell.connected')}
-        </span>
+        <ActivityIndicator variant="pulse" tone="success" size="xs" label={t('cloudShell.connected')} class="text-xs" />
       {:else if connecting}
-        <span class="text-xs text-yellow-400">{t('cloudShell.connecting')}</span>
+        <ActivityIndicator size="xs" label={t('cloudShell.connecting')} class="text-xs" />
       {:else}
         <span class="text-xs text-ink-2">{t('cloudShell.disconnected')}</span>
       {/if}

@@ -84,6 +84,24 @@ describe('auth store', () => {
     expect(get(canWrite)).toBe(true);
   });
 
+  it('역할 이름이 숨겨져도 검증된 쓰기 권한을 유지하고 권한 회수를 반영함', () => {
+    setAuth({ token: 'tok', roles: ['reader'], isSystemAdmin: false, canWrite: true });
+    expect(get(canWrite)).toBe(true);
+    expect(get(isReader)).toBe(false);
+    expect(get(isAdmin)).toBe(false);
+
+    setAuth({ token: 'restricted', roles: ['reader'], isSystemAdmin: false, canWrite: false });
+    expect(get(canWrite)).toBe(false);
+    expect(get(isReader)).toBe(true);
+    expect(get(isAdmin)).toBe(false);
+  });
+
+  it('서버의 명시적 쓰기 거부가 오래된 역할 이름보다 우선함', () => {
+    setAuth({ token: 'tok', roles: ['member'], isSystemAdmin: false, canWrite: false });
+    expect(get(canWrite)).toBe(false);
+    expect(get(isAdmin)).toBe(false);
+  });
+
 
   it('clearAuth 후 초기 상태로 복원', () => {
     setAuth({ token: 'tok', userId: 'u', username: 'u', projectId: 'p', projectName: 'p', accessExpiresAt: null, roles: ['admin'] });

@@ -16,9 +16,10 @@ const quotas = {
 
 describe('QuotaUsageCard', () => {
 	it('preserves the RAM usage ratio when converting MiB to GiB', () => {
-		const { container } = render(QuotaUsageCard, { quotas, pending: false, error: null });
-		const memory = [...container.querySelectorAll('.usage-bar')].find((node) => node.textContent?.includes('Memory (GB)'));
-		expect(memory?.querySelector('.usage-fill')?.getAttribute('style')).toContain('width: 50%');
+		const { getByText } = render(QuotaUsageCard, { quotas, pending: false, error: null });
+		const memory = getByText('Memory (GB)').parentElement;
+		expect(memory?.textContent?.replace(/\s+/g, '')).toContain('0.5/1');
+		expect(memory?.textContent).toContain('50%');
 	});
 
 	it('omits Manila rows when file storage is unavailable', () => {

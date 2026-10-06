@@ -1,10 +1,13 @@
 {
+	"clusterDetail.loading": "クラスターを取得中",
+	"deleteProgress.label": "クラスター削除の進捗",
 	"steps.securityGroup": "セキュリティーグループ",
 	"steps.serverVolume": "サーバーボリューム",
 	"steps.serverVm": "サーバーVM",
 	"steps.initialize": "k3sの初期化",
 	"steps.completed": "完了",
 	"steps.prepare": "準備",
+	"rotateProgress.unreported": "進行状況のストリームが終了しました。クラスターの状態を更新して結果を確認してください。",
 	"steps.cleanupLb": "LBのクリーンアップ",
 	"steps.appCredential": "アプリケーション認証情報",
 	"steps.k8sNodes": "K8sノード",

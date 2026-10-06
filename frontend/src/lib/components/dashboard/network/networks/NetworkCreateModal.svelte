@@ -1,6 +1,7 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/network-pages';
-    import { dialogFocus } from '$lib/utils/dialogFocus';
+  import { dialogFocus } from '$lib/utils/dialogFocus';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
   let {
     open = $bindable(),
@@ -51,14 +52,14 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     use:dialogFocus={{ enabled: true, onEscape: () => close() }}
-    class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
+    class="motion-fade fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
     onclick={close}
     role="dialog"
     aria-modal="true"
     tabindex="-1"
   >
     <div
-      class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]"
+      class="motion-pop bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]"
       onclick={(e) => e.stopPropagation()}
       role="none"
     >
@@ -98,7 +99,7 @@
       {#if error}<div class="mt-4 text-red-400 text-xs bg-red-900/20 border border-red-800 rounded px-3 py-2">{error}</div>{/if}
       <div class="flex justify-end gap-3 mt-6">
         <button onclick={close} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('networkCreate.cancel')}</button>
-        <button onclick={handleCreate} disabled={creating} class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-ink-0 text-sm font-medium rounded-lg transition-colors">{creating ? t('networkCreate.creating') : t('networkCreate.create')}</button>
+        <button onclick={handleCreate} disabled={creating} aria-busy={creating} class="inline-flex items-center gap-1.5 px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-ink-0 text-sm font-medium rounded-lg transition-colors">{#if creating}<ActivityIndicator size="xs" tone="ink" />{/if}{creating ? t('networkCreate.creating') : t('networkCreate.create')}</button>
       </div>
     </div>
   </div>

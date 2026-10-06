@@ -1,4 +1,9 @@
 {
+	"apiKeys.loading": "APIキーを読み込み中",
+	"extensions.mcp.loading": "MCPサーバーを読み込み中",
+	"extensions.tools.loading": "カスタムツールを読み込み中",
+	"extensions.skills.loading": "スキルを読み込み中",
+	"usage.trendLoading": "使用量の推移を読み込み中",
 	"settings.sections.usage": "使用量",
 	"settings.sections.apiKeys": "APIキー",
 	"settings.sections.memory": "メモリー",

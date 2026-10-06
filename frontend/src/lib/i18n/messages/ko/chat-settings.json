@@ -1,4 +1,9 @@
 {
+	"apiKeys.loading": "API 키 불러오는 중",
+	"extensions.mcp.loading": "MCP 서버 불러오는 중",
+	"extensions.tools.loading": "커스텀 툴 불러오는 중",
+	"extensions.skills.loading": "스킬 불러오는 중",
+	"usage.trendLoading": "사용량 추이 불러오는 중",
 	"settings.sections.usage": "사용량",
 	"settings.sections.apiKeys": "API 키",
 	"settings.sections.memory": "메모리",

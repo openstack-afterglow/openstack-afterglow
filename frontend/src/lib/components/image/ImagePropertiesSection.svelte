@@ -2,11 +2,15 @@
 	import { t } from '$lib/i18n/ns/images-keys';
 	import RichText from '$lib/i18n/RichText.svelte';
 	import { useImageDetailController, isReservedKey } from '$lib/stores/imageDetailController.svelte';
+	import { ActivityIndicator, AnimatedNumber } from '$lib/components/ui';
 
 	const s = useImageDetailController();
 </script>
 
-{#snippet countSnippet(text: string)}<span class="normal-case font-normal text-ink-2">{text}</span>{/snippet}
+{#snippet countSnippet(text: string)}
+	{@const count = Object.keys(s.image!.properties).length}
+	<span class="normal-case font-normal text-ink-2"><AnimatedNumber value={count} format={(value) => String(Math.round(value))} /></span>
+{/snippet}
 
 <div class="bg-surface-base border border-line rounded-lg p-5">
 	<div class="flex items-center justify-between mb-3">
@@ -34,7 +38,7 @@
 			</table>
 		{/if}
 	{:else}
-		<table class="w-full text-xs mb-3">
+		<table class="motion-fade w-full text-xs mb-3">
 			<tbody>
 				{#each Object.entries(s.propsDraft) as [k, v]}
 					<tr class="border-b border-line/50">
@@ -78,7 +82,7 @@
 				class="text-xs text-ink-2 hover:text-ink-0 px-3 py-1 border border-line-2 rounded disabled:opacity-50">{t('propertiesSection.cancel')}</button>
 			<button onclick={() => s.saveProperties()} disabled={s.savingProps}
 				class="text-xs text-action-on-warm bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected px-3 py-1 rounded">
-				{s.savingProps ? t('propertiesSection.saving') : t('propertiesSection.save')}
+				{#if s.savingProps}<ActivityIndicator size="xs" label={t('propertiesSection.saving')} />{:else}{t('propertiesSection.save')}{/if}
 			</button>
 		</div>
 	{/if}

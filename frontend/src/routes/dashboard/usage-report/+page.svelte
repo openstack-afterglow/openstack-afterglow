@@ -162,7 +162,8 @@
 		reportProjectId = requestProjectId;
 		loading = !data;
 		error = null;
-		inventoryState = 'loading';
+		// Refreshes keep the current inventory on screen; only a first load (or a project switch) shows the skeleton.
+		if (!inventory) inventoryState = 'loading';
 		void api.get<DashboardQuotas>('/api/v1/dashboard/quotas', requestToken, requestProjectId).then(
 			(quotas) => {
 				if (!owns()) return;
@@ -566,7 +567,7 @@
 									<th scope="col">{t('usageReport.columns.vmCount')}</th>
 								</tr>
 							</thead>
-							<tbody>
+							<tbody class="motion-stagger">
 								{#each sortedFlavors as f (f.flavor)}
 									<tr>
 										<td>
@@ -652,7 +653,7 @@
 								<th scope="col">GPU</th>
 							</tr>
 						</thead>
-						<tbody>
+						<tbody class="motion-stagger">
 							{#each data.instance_usage as row (row.instance_id)}
 								<tr>
 									<td>

@@ -110,7 +110,7 @@
 			<div class="text-lg">{t('securityGroup.page.empty')}</div>
 		</div>
 	{:else}
-		<div class="space-y-3">
+		<div class="motion-stagger space-y-3">
 			{#each securityGroups as sg (sg.id)}
 				<SecurityGroupCard
 					{sg}

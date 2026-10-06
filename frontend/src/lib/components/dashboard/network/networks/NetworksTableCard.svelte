@@ -1,6 +1,7 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/network-pages';
   import StatusChip from '$lib/components/ui/StatusChip.svelte';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
   import ActionMenu from '$lib/components/ui/ActionMenu.svelte';
   import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
   import SelectionToolbar from '$lib/components/ui/SelectionToolbar.svelte';
@@ -70,11 +71,13 @@
       <div class="hidden sm:block">{t('networksTable.status')}</div>
       <div class="hidden sm:block"></div>
     </div>
-    <!-- Rows -->
+    <!-- Rows: keyed rows cascade in on first arrival; refreshes keep their nodes and never replay it. -->
+    <div class="motion-stagger">
     {#each networks as net (net.id)}
       <div
         class="resource-selection-surface grid grid-cols-[1fr_0px_auto_0px_0px_0px_0px] sm:grid-cols-[1.4fr_1fr_100px_80px_80px_100px_56px] px-4 py-3 text-[13px] items-center border-b border-line transition-colors last:border-b-0"
         data-selected={selectedIds.has(net.id)}
+        aria-busy={deleting === net.id || settingDefault === net.id}
       >
         <!-- 이름 -->
         <div class="flex items-center gap-2.5 min-w-0">
@@ -106,6 +109,11 @@
               <div class="text-xs text-ink-2 font-mono truncate">{net.id.slice(0, 8)}…</div>
             </div>
           </button>
+          {#if deleting === net.id}
+            <ActivityIndicator size="xs" tone="danger" label={t('networksTable.deleting')} class="shrink-0" />
+          {:else if settingDefault === net.id}
+            <ActivityIndicator size="xs" label={t('networksTable.setting')} class="shrink-0" />
+          {/if}
         </div>
         <!-- CIDR -->
         <div
@@ -157,5 +165,6 @@
         </div>
       </div>
     {/each}
+    </div>
   </div>
 </div>

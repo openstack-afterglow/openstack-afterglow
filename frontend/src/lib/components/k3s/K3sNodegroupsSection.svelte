@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/drover';
 	import RichText from '$lib/i18n/RichText.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
@@ -69,8 +70,8 @@
 		>{t('overview.nodegroups.add')}</button>
 	</div>
 
-	{#if loading}
-		<div class="text-xs text-ink-2 py-2">{t('overview.nodegroups.loading')}</div>
+	{#if loading && nodegroups.length === 0}
+		<div class="text-xs text-ink-2 py-2"><ActivityIndicator size="xs" label={t('overview.nodegroups.loading')} /></div>
 	{:else if nodegroups.length === 0}
 		<div class="text-xs text-ink-2 py-2">{t('overview.nodegroups.empty')}</div>
 	{:else}
@@ -118,7 +119,7 @@
 		tabindex="-1"
 	>
 		<div
-			class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-sm mx-4 shadow-[var(--shadow-restraint)]"
+			class="motion-enter bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-sm mx-4 shadow-[var(--shadow-restraint)]"
 		>
 			<h2 class="text-lg font-semibold text-ink-0 mb-3">{t('overview.nodegroups.deleteTitle')}</h2>
 			<p class="text-sm text-ink-2 mb-5">
@@ -133,7 +134,7 @@
 					onclick={confirmDelete}
 					disabled={deleting}
 					class="px-4 py-2 bg-red-700 hover:bg-red-600 disabled:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg"
-				>{deleting ? t('overview.nodegroups.deleting') : t('overview.nodegroups.delete')}</button>
+				>{#if deleting}<ActivityIndicator size="xs" label={t('overview.nodegroups.deleting')} />{:else}{t('overview.nodegroups.delete')}{/if}</button>
 			</div>
 		</div>
 	</div>

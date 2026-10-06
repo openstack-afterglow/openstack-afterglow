@@ -1,4 +1,5 @@
 {
+	"detailPanel.loading": "正在加载卷信息",
 	"detailController.loadFailed": "无法加载卷信息",
 	"detailController.attachFailed": "挂载失败",
 	"detailController.deleteConfirm": "确定要删除卷“{name}”吗？",

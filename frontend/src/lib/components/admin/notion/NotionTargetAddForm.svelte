@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-system';
 	import source from '$lib/i18n/messages/ko/admin-system.json';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import NotionTargetFormFields from './NotionTargetFormFields.svelte';
@@ -65,7 +66,7 @@
 </script>
 
 {#if open}
-	<div class="bg-surface-base border border-action-warm rounded-lg p-5 mb-6">
+	<div class="motion-enter bg-surface-base border border-action-warm rounded-lg p-5 mb-6">
 		<h2 class="text-sm font-semibold text-warm-text mb-4">{t('notion.add.title')}</h2>
 		<NotionTargetFormFields {form} mode="add" />
 		{#if addError}
@@ -74,7 +75,7 @@
 		<div class="mt-4">
 			<button onclick={addTarget} disabled={adding}
 				class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors">
-				{adding ? t('notion.add.adding') : t('notion.add.submit')}
+				{#if adding}<ActivityIndicator size="xs" tone="ink" class="mr-1.5" />{/if}{adding ? t('notion.add.adding') : t('notion.add.submit')}
 			</button>
 		</div>
 	</div>

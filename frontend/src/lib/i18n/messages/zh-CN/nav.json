@@ -15,6 +15,8 @@
 	"sections.system": "系统",
 	"sections.identity": "身份管理",
 	"sections.overview": "概览",
+	"sections.documentation": "文档",
+	"items.documentation": "Docs · 使用指南",
 	"items.overview": "概览",
 	"items.usage": "用量",
 	"items.usageReport": "用量报告",

@@ -2,6 +2,8 @@ import type { Handle } from '@sveltejs/kit';
 import { loadPublicSiteConfig } from '$lib/server/config';
 import type { PublicSiteConfig } from '$lib/types/siteConfig';
 import { LOCALE_COOKIE, resolveLocale } from '$lib/i18n/locales';
+import { isDocsPath } from '$lib/docs/paths';
+import { docsLocaleFromUrl } from '$lib/docs/locales';
 import {
 	MOCKUP_COOKIE,
 	MOCKUP_QUERY_KEY,
@@ -146,11 +148,12 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 	const siteConfig = loadPublicSiteConfig();
 	const securityHeaders = buildSecurityHeaders(siteConfig);
 	event.locals.siteConfig = siteConfig;
-	// 언어 선택은 쿠키로만 결정한다(기본 한국어). 첫 SSR HTML과 <html lang>이 같은 언어를 쓴다.
+	// Console locale follows its cookie; public documentation keeps its explicit URL language without changing that preference.
 	const locale = resolveLocale(event.cookies.get(LOCALE_COOKIE));
 	event.locals.locale = locale;
 	const resolve = (target: typeof event) =>
-		resolveEvent(target, { transformPageChunk: ({ html }) => html.replace('%afterglow.lang%', locale) });
+		resolveEvent(target, { transformPageChunk: ({ html }) => html.replace('%afterglow.lang%',
+			isDocsPath(target.url.pathname) ? docsLocaleFromUrl(target.url) : locale) });
 	const path = event.url.pathname;
 
 	const requestedMockup = event.url.searchParams.get(MOCKUP_QUERY_KEY);
@@ -176,6 +179,7 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 	// 공개 경로, 정적 리소스, SvelteKit 내부 경로는 통과
 	if (
 		PUBLIC_PATHS.includes(path) ||
+		isDocsPath(path) ||
 		path.startsWith('/_app/') ||
 		path.startsWith('/favicon') ||
 		path.startsWith('/logo') ||

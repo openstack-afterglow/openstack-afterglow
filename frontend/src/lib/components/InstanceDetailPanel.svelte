@@ -4,6 +4,7 @@
 	import { api } from '$lib/api/client';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
+	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
 	import { createInstanceDetailController, provideInstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
 	import InstanceHeader from '$lib/components/instance/InstanceHeader.svelte';
 	import InfoSection from '$lib/components/instance/InfoSection.svelte';
@@ -111,7 +112,7 @@
 	}
 </script>
 
-<div class="p-8">
+<div class="p-8 motion-fade" aria-busy={s.loading && !s.instance}>
 	<div class="mb-6 flex items-center justify-between">
 		<!-- SlidePanel 안(onClose 전달)에서는 닫기를 SlidePanel 이 그린다(`[data-slide-panel-close]`).
 		     여기서 또 그리면 헤더에 닫기 컨트롤이 두 개 보인다. 단독 라우트에서만 목록 백링크를 둔다. -->
@@ -148,7 +149,13 @@
 		{#if $canWrite && (s.instance.status === 'ACTIVE' || s.instance.status === 'SHUTOFF') && recommendation?.underutilized}
 			<div class="bg-surface-selected/40 border border-action-warm text-warm-text rounded-lg px-4 py-3 text-sm mb-4 flex items-center justify-between gap-4">
 				<span>
-					{t('panel.lowUsage', { cpu: summaryCpuAvg != null ? summaryCpuAvg.toFixed(1) : '—', memory: summaryMemAvg != null ? summaryMemAvg.toFixed(1) : '—' })}
+					{#snippet cpuUsage(text: string)}
+						{#if summaryCpuAvg != null}<AnimatedNumber value={summaryCpuAvg} format={(value) => value.toFixed(1)} />{:else}{text}{/if}
+					{/snippet}
+					{#snippet memoryUsage(text: string)}
+						{#if summaryMemAvg != null}<AnimatedNumber value={summaryMemAvg} format={(value) => value.toFixed(1)} />{:else}{text}{/if}
+					{/snippet}
+					<RichText segments={t.rich('panel.lowUsage', { cpu: summaryCpuAvg ?? '—', memory: summaryMemAvg ?? '—' })} tags={{ cpu: cpuUsage, memory: memoryUsage }} />
 					{#if recommendation.suggested_flavor}
 						<RichText segments={t.rich('panel.suggestedResize', { flavor: recommendation.suggested_flavor.name })} classes={{ strong: 'text-warm-text' }} />
 					{:else}

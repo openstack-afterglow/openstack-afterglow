@@ -1,7 +1,9 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/account';
+  import { t as tc } from '$lib/i18n/ns/common';
   import { auth } from '$lib/stores/auth';
   import { api, ApiError } from '$lib/api/client';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
   interface Group {
     id: string;
@@ -36,15 +38,16 @@
   });
 </script>
 
-<div class="bg-surface-base border border-line rounded-xl p-5">
+<div class="motion-fade bg-surface-base border border-line rounded-xl p-5">
   <h3 class="text-sm font-semibold text-ink-0 mb-4">{t('groups.title')}</h3>
 
   {#if error}
     <div class="text-red-400 text-xs">{error}</div>
   {:else if loading}
-    <div class="space-y-2">
+    <ActivityIndicator label={tc('state.loading')} />
+    <div class="space-y-2 mt-2" aria-hidden="true">
       {#each [1, 2] as _}
-        <div class="h-8 bg-surface-sunken rounded animate-pulse"></div>
+        <div class="h-8 motion-skeleton rounded"></div>
       {/each}
     </div>
   {:else if noPermission}

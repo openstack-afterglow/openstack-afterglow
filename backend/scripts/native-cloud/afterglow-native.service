@@ -1,0 +1,41 @@
+# Afterglow native-cloud-vm: systemd unit for the existing native supervisor.
+# The supervisor (API, worker, frontend, private MariaDB and Redis) runs as
+# appuser with state in /var/lib/afterglow; no container engine is involved.
+# Start ordering: after cloud-init's network and config stages (write_files,
+# mounts, users) and after local/remote filesystems backing the state path.
+# cloud-final.service is deliberately not referenced: it is ordered after
+# multi-user.target, so depending on it from a multi-user unit is a cycle.
+[Unit]
+Description=Afterglow native supervisor
+Documentation=file:///app/scripts/native_vm.py
+Wants=network-online.target
+After=network-online.target local-fs.target remote-fs.target
+After=cloud-init-local.service cloud-init-network.service cloud-init.service cloud-config.service
+RequiresMountsFor=/var/lib/afterglow
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=appuser
+Group=appuser
+WorkingDirectory=/app
+UMask=0077
+Environment=PATH=/app/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=LANG=C.UTF-8 PYTHONUNBUFFERED=1 HOST=0.0.0.0 PORT=3080
+ExecStartPre=+/usr/local/libexec/afterglow-native-prepare
+ExecStart=/app/.venv/bin/python /app/scripts/native_vm.py
+# The supervisor stops its children itself on SIGTERM; anything left over is
+# killed after the timeout.
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=60
+Restart=on-failure
+RestartSec=10
+LimitNOFILE=65536
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

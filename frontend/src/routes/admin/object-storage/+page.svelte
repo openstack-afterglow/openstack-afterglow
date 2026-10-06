@@ -15,6 +15,7 @@
 	import QuarantineNotice from '$lib/components/object-storage/buckets/QuarantineNotice.svelte';
 	import TrashNotice from '$lib/components/object-storage/buckets/TrashNotice.svelte';
 	import { toast } from '$lib/stores/toast';
+	import { createArrivals } from '$lib/components/object-storage/arrivals';
 
 	interface AccountMeta {
 		container_count: number;
@@ -27,6 +28,7 @@
 	let refreshing = $state(false);
 	let deleting = $state<string | null>(null);
 	let showModal = $state(false);
+	const bucketArrivals = createArrivals();
 
 	const account = $derived<AccountMeta>({
 		container_count: containers.length,
@@ -128,7 +130,7 @@
 	{:else if containers.length === 0}
 		<div class="text-ink-2 text-sm">{t('buckets.adminPage.empty')}</div>
 	{:else}
-		<BucketTable {containers} deletingId={deleting} {refreshing} onDelete={deleteContainer} />
+		<BucketTable {containers} arrivals={bucketArrivals} deletingId={deleting} {refreshing} onDelete={deleteContainer} />
 		{#if containers.some((c) => c.is_quarantine)}
 			<QuarantineNotice />
 		{/if}

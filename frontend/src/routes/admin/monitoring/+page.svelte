@@ -9,7 +9,7 @@
 	import InstanceMetricsTab from '$lib/components/admin/monitoring/InstanceMetricsTab.svelte';
 	import type { MonitoringSummary } from '$lib/components/admin/monitoring/MonitoringSummaryTab.svelte';
 	import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
-	import { PageShell, Tabs } from '$lib/components/ui';
+	import { ActivityIndicator, PageShell, Tabs } from '$lib/components/ui';
 
 	const token = $derived($auth.token ?? undefined);
 	const projectId = $derived($auth.projectId ?? undefined);
@@ -65,8 +65,9 @@
 				<button
 					onclick={() => refreshRef?.()}
 					disabled={instancesLoading}
-					class="text-xs px-3 py-1.5 rounded border border-line-2 text-ink-2 hover:text-ink-1 hover:border-line-2 disabled:opacity-40 transition-colors"
+					class="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border border-line-2 text-ink-2 hover:text-ink-1 hover:border-line-2 disabled:opacity-40 transition-colors"
 				>
+					{#if instancesLoading}<ActivityIndicator size="xs" tone="ink" />{/if}
 					{instancesLoading ? t('monitoring.loading') : t('monitoring.refresh')}
 				</button>
 			{/if}

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-compute';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import type { Flavor } from '$lib/types/flavor';
 	import Pagination from '$lib/components/ui/Pagination.svelte';
 	import Pill from '$lib/components/ui/Pill.svelte';
@@ -9,6 +10,7 @@
 		totalUnfiltered,
 		pageSize,
 		refreshing,
+		deletingId = null,
 		onManage,
 		onDelete,
 	}: {
@@ -16,6 +18,7 @@
 		totalUnfiltered: number;
 		pageSize: number;
 		refreshing: boolean;
+		deletingId?: string | null;
 		onManage: (f: Flavor) => void;
 		onDelete: (id: string) => Promise<void>;
 	} = $props();
@@ -151,8 +154,13 @@
 								>{t('flavors.manage.action')}</button>
 								<button
 									onclick={() => onDelete(f.id)}
-									class="text-red-400 hover:text-red-300 text-xs"
-								>{t('flavors.delete.action')}</button>
+									disabled={deletingId === f.id}
+									class="text-state-danger-text hover:text-state-danger-text/90 text-xs"
+								>
+									{#if deletingId === f.id}
+										<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('flavors.delete.pending')}</span></span>
+									{:else}{t('flavors.delete.action')}{/if}
+								</button>
 							</div>
 						</td>
 					</tr>

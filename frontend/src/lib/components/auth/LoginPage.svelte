@@ -77,6 +77,7 @@
 				projectName: resolution.projectId === scopedProjectId ? (data.project_name || null) : null,
 				roles: data.roles ?? [],
 				isSystemAdmin: data.is_system_admin ?? false,
+				canWrite: data.can_write,
 			});
 			await goto(postAuthDestination(resolution.target));
 		} catch (e) {
@@ -91,7 +92,7 @@
 	<div class="login-locale">
 		<LocaleSelect id="login-locale" variant="labelled" />
 	</div>
-	<div class="login-shell">
+	<div class="login-shell motion-stagger">
 		<LoginBrandHeader />
 		<LoginForm
 			bind:domainName

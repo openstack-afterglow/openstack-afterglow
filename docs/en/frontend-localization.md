@@ -126,7 +126,7 @@ Call `intlLocale()` at formatting time for displayed numbers/dates. Do not modif
 npm --prefix frontend run i18n:scan
 ```
 
-Intentional server fixture data, parsing regexes or operator configuration belongs in `hardcoded-text-allowlist.json` with an exact line and justification. Do not allow entire files to hide UI omissions. The scanner detects Hangul, not hard-coded English.
+Intentional server fixture data, parsing regexes or operator configuration belongs in `hardcoded-text-allowlist.json` with an exact line and justification. Do not allow entire files to hide UI omissions. The only exception is `/docs` content: the canonical Korean guides (`src/lib/docs/*Guides.ts`, `gettingStarted.ts`), the `src/lib/docs/translations/<locale>/` dictionaries keyed by Korean source text, and the per-locale docs UI dictionary in `src/lib/docs/locales.ts`. They are data rendered in all four locales through `translateDocGuide`/`docsMessages`, so they use `"lines": "all"`. The scanner detects Hangul, not hard-coded English.
 
 ## Troubleshooting
 

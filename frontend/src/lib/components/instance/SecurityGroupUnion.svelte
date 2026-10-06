@@ -4,6 +4,7 @@
 	import { t } from '$lib/i18n/ns/instance';
 	import { buildSecurityGroupUnion } from '$lib/utils/securityGroupUnion';
 	import type { SecurityGroupUnionGroup, SecurityGroupUnionRow } from '$lib/utils/securityGroupUnion';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
 	interface Props {
 		groupIds: readonly string[];
@@ -39,7 +40,7 @@
 			</Button>
 		</h4>
 		{#if expanded}
-			<TableShell density="compact" class="min-w-0 max-w-full">
+			<TableShell density="compact" class="motion-fade min-w-0 max-w-full">
 				<table aria-label={t('securityGroupUnion.rulesLabel', { direction })}>
 					<thead>
 						<tr>
@@ -74,7 +75,7 @@
 	</p>
 
 	{#if loading}
-		<p role="status" class="text-xs text-ink-2">{t('securityGroupUnion.loading')}</p>
+		<ActivityIndicator label={t('securityGroupUnion.loading')} />
 	{:else if error}
 		<p role="alert" class="text-xs leading-relaxed text-state-danger-text break-words">
 			{t('securityGroupUnion.error', { error })}

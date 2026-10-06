@@ -85,7 +85,7 @@
 			{#if templates.length === 0}
 				<div class="text-ink-2 text-sm py-12 text-center">{t('templates.empty')}</div>
 			{:else}
-				<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+				<div class="motion-stagger grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
 					{#each templates as template (template.id)}
 						<K3sClusterTemplateCard
 							template={template}

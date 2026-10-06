@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/file-storage';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
+	import ProgressTrack from '$lib/components/ui/ProgressTrack.svelte';
 	import { useFileStorageDetailController } from '$lib/stores/fileStorageDetailController.svelte';
 	import { formatIsoDateTime } from '$lib/utils/format';
 
@@ -14,6 +15,7 @@
 		const m = fs.progress.match(/^(\d+(?:\.\d+)?)%$/);
 		return m ? parseFloat(m[1]) : null;
 	});
+	const progressing = $derived(fs.status === 'creating' || fs.status === 'extending');
 
 	const creatorLabel = $derived(fs.user_name ?? fs.user_id ?? '-');
 </script>
@@ -46,19 +48,14 @@
 			<dd class="text-sm text-ink-2">{fs.size} GB</dd>
 		</div>
 
-		<!-- progress (creating 중이거나 100% 미만인 경우 진행바 포함) -->
-		{#if fs.progress}
+		<!-- 생성·확장 작업의 측정값이 없으면 불확정 진행 상태를 표시한다. -->
+		{#if fs.progress || progressing}
 			<div class="col-span-full">
 				<dt class="text-xs text-ink-2 mb-0.5">{t('info.progress')}</dt>
 				<dd class="flex items-center gap-2">
-					<span class="text-sm text-ink-2">{fs.progress}</span>
-					{#if progressPct() !== null && progressPct()! < 100}
-						<div class="flex-1 max-w-[160px] h-1.5 bg-surface-sunken rounded-full overflow-hidden">
-							<div
-								class="h-full rounded-full bg-yellow-500 transition-all"
-								style="width: {progressPct()}%"
-							></div>
-						</div>
+					<span class="text-sm text-ink-2">{fs.progress || (fs.status === 'extending' ? t('storageCard.extending') : t('actions.creating'))}</span>
+					{#if progressing || (progressPct() !== null && progressPct()! < 100)}
+						<ProgressTrack value={progressPct()} label={`${fs.name || fs.id} · ${t('info.progress')}`} valueText={fs.progress ?? (fs.status === 'extending' ? t('storageCard.extending') : t('actions.creating'))} active={progressing} class="flex-1 max-w-[160px]" />
 					{/if}
 				</dd>
 			</div>

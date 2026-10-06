@@ -3,7 +3,7 @@
 	import { useImageDetailController } from '$lib/stores/imageDetailController.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError, getBaseUrl } from '$lib/api/client';
-	import { Card, Field, SelectInput, Button, StatusChip, Alert } from '$lib/components/ui';
+	import { Card, Field, SelectInput, Button, StatusChip, Alert, ActivityIndicator, ProgressTrack } from '$lib/components/ui';
 
 	interface ImageExportJob {
 		id: string;
@@ -36,6 +36,12 @@
 	const NONTERMINAL_STATUSES = ['queued', 'downloading', 'converting', 'finalizing'];
 
 	const isNonTerminal = $derived(exportJob ? NONTERMINAL_STATUSES.includes(exportJob.status) : false);
+	const phaseText = $derived(exportJob ? ({
+		queued: t('exportSection.phase.queued'),
+		downloading: t('exportSection.phase.downloading'),
+		converting: t('exportSection.phase.converting'),
+		finalizing: t('exportSection.phase.finalizing'),
+	} as Record<string, string>)[exportJob.status] ?? exportJob.status : '');
 
 	let currentController: AbortController | null = null;
 	let pollTimer: ReturnType<typeof setTimeout> | null = null;
@@ -221,6 +227,15 @@
 					<span>{t('exportSection.progress')}</span>
 					<span class="font-mono">{exportJob.progress_pct}%</span>
 				</div>
+				<ProgressTrack
+					value={exportJob.progress_pct}
+					label={`${t('exportSection.title')} · ${t('exportSection.progress')}`}
+					active={isNonTerminal && !exportJob.error_message}
+					tone={exportJob.status === 'error' || exportJob.error_message ? 'danger' : exportJob.status === 'complete' ? 'success' : 'accent'}
+				/>
+				{#if isNonTerminal}
+					<ActivityIndicator variant={exportJob.status === 'downloading' ? 'download' : exportJob.status === 'queued' ? 'dots' : 'spinner'} label={phaseText} />
+				{/if}
 			{/if}
 
 			{#if exportJob?.status === 'error' || exportJob?.error_message}
@@ -249,8 +264,13 @@
 						variant="accent"
 						onclick={handleDownload}
 						disabled={downloading}
+						ariaBusy={downloading}
 					>
-						{downloading ? t('exportSection.preparingDownload') : t('exportSection.download')}
+						{#if downloading}
+							<ActivityIndicator variant="download" label={t('exportSection.preparingDownload')} />
+						{:else}
+							{t('exportSection.download')}
+						{/if}
 					</Button>
 				{/if}
 			</div>

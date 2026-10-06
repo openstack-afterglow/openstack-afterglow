@@ -184,6 +184,9 @@ afterglow_service_waygate_enabled: true
 afterglow_service_palimpsest_enabled: false
 afterglow_service_chat_enabled: true
 afterglow_service_mcp_enabled: true
+# Package routes need a trusted URL; use the explicitly configured Hub public endpoint.
+# Empty keeps the detailed operator TOML authoritative; there is no catalog fallback.
+afterglow_service_palimpsest_internal_url: "{{ palimpsest_public_endpoint_url | default('') }}"
 # Shared only with the Lumen workload for the internal delegated-MCP bridge.
 afterglow_lumen_mcp_service_token: ""
 # K3s internal API credentials remain empty until supplied by the operator

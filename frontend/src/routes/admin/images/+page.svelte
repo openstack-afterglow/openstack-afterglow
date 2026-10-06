@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-compute';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { onDestroy, untrack } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
@@ -32,6 +33,7 @@
 	let editForm = $state({ name: '', os_distro: '', visibility: 'private' });
 	let editing = $state(false), editError = $state('');
 	let togglingId = $state<string | null>(null), verifyingId = $state<string | null>(null);
+	let deletingId = $state<string | null>(null);
 	let loadGeneration = 0;
 	let loadedProject: string | undefined;
 
@@ -121,10 +123,12 @@
 	}
 	async function deleteImage(img: AdminImage) {
 		if (!await confirmDialog(t('images.delete.confirm', { name: img.name, id: img.id }))) return;
+		deletingId = img.id;
 		try {
 			await api.delete(`/api/v1/admin/images/${img.id}`, token, projectId);
 			await load(true);
 		} catch (e) { toast.error(t('images.delete.failed', { error: e instanceof Error ? e.message : String(e) })); }
+		finally { deletingId = null; }
 	}
 	async function toggleActivation(img: AdminImage) {
 		togglingId = img.id;
@@ -223,7 +227,7 @@
 						<p class="mt-1 text-xs text-ink-2">{t('images.repositorySummary', { tagCount: selectedGroup.tags.length, uploadCount: selectedGroup.images.length })}</p>
 					</Card>
 				{/if}
-				<AdminImagesTable images={pageImages} {selectedImageId} {togglingId} {verifyingId} {currentImageIds}
+				<AdminImagesTable images={pageImages} {selectedImageId} {togglingId} {verifyingId} {deletingId} {currentImageIds}
 					onOpenDetail={(img) => selectedImageId = img.id} onEdit={openEdit} onToggleActivation={toggleActivation}
 					onDelete={deleteImage} onToggleVerification={toggleVerification} />
 			{/if}
@@ -236,7 +240,9 @@
 
 {#if selectedImageId}
 	<SlidePanel onClose={() => selectedImageId = null} ariaLabel={t('images.detailLabel')} width="w-full md:w-[50vw] max-w-2xl">
-		{#await import('$lib/components/ImageDetailPanel.svelte') then { default: Panel }}
+		{#await import('$lib/components/ImageDetailPanel.svelte')}
+			<div class="p-6"><ActivityIndicator size="sm" label={t('images.detailLoading')} /></div>
+		{:then { default: Panel }}
 			<Panel imageId={selectedImageId} onClose={() => selectedImageId = null} isAdmin={true} onDelete={() => { selectedImageId = null; void load(true); }} />
 		{/await}
 	</SlidePanel>

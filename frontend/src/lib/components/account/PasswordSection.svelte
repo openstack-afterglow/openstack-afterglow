@@ -2,6 +2,7 @@
   import { t } from '$lib/i18n/ns/account';
   import { auth, authReady } from '$lib/stores/auth';
   import { api, ApiError } from '$lib/api/client';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
   const token = $derived($auth.token ?? undefined);
   const projectId = $derived($auth.projectId ?? undefined);
@@ -44,7 +45,7 @@
 </script>
 
 {#if $authReady && !$auth.federated}
-<div class="bg-surface-base border border-line rounded-xl p-5">
+<div class="motion-fade bg-surface-base border border-line rounded-xl p-5">
   <h3 class="text-sm font-semibold text-ink-0 mb-4">{t('password.title')}</h3>
 
   {#if error}
@@ -74,7 +75,7 @@
       onclick={changePassword}
       disabled={saving}
       class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover disabled:opacity-50 text-action-on-warm text-sm rounded-lg transition-colors"
-    >{saving ? t('password.changing') : t('password.title')}</button>
+    >{#if saving}<ActivityIndicator size="xs" label={t('password.changing')} />{:else}{t('password.title')}{/if}</button>
   </div>
 </div>
 {/if}

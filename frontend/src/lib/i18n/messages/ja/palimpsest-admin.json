@@ -1,4 +1,6 @@
 {
+	"builds.progressLabel": "{name}のビルド進捗",
+	"buildDetail.progress": "レイヤービルドの進捗",
 	"execution.layersOnly": "レイヤーのみビルド",
 	"execution.createInstance": "インスタンスも作成",
 	"mode.editor": "直接入力",

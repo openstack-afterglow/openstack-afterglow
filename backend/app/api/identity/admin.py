@@ -8,7 +8,8 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Literal
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from anyio import CancelScope
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field, field_validator
 
 from app.api.common.activity_recorder import rec
@@ -26,11 +27,14 @@ from app.models.storage import (
     VolumeDeleteRecoveryResult,
 )
 from app.services import (
+    hypervisor_removal,
+    hypervisor_review,
     instance_recovery,
     library_builder,
     manila,
     neutron,
     nova,
+    nova_hosts,
     trove,
     volume_delete_recovery,
 )
@@ -672,73 +676,187 @@ async def list_hypervisors(
         raise HTTPException(status_code=500, detail="하이퍼바이저 조회 실패")
 
 
-_NOVA_HOST_HEADERS = {"OpenStack-API-Version": "compute 2.53"}
-_HOST_SERVER_PAGE_SIZE = 200
-
-
-def _nova_hypervisor(conn, hypervisor_id: str) -> dict:
-    endpoint = conn.compute.get_endpoint()
-    response = conn.session.get(f"{endpoint}/os-hypervisors/{hypervisor_id}", headers=_NOVA_HOST_HEADERS)
-    response.raise_for_status()
-    hypervisor = response.json()["hypervisor"]
-    if str(hypervisor.get("id")) != hypervisor_id:
-        raise HTTPException(status_code=409, detail="하이퍼바이저 ID가 일치하지 않습니다")
-    return hypervisor
-
-
-def _nova_compute_service(conn, hypervisor: dict) -> dict:
-    """Resolve the service by both Nova's hypervisor mapping and its exact host/binary."""
-    service = hypervisor.get("service") or {}
-    service_id, host = service.get("id"), service.get("host")
-    if not service_id or not host:
-        raise HTTPException(status_code=409, detail="컴퓨트 서비스를 확인할 수 없습니다")
-    endpoint = conn.compute.get_endpoint()
-    response = conn.session.get(
-        f"{endpoint}/os-services",
-        params={"host": host, "binary": "nova-compute"},
-        headers=_NOVA_HOST_HEADERS,
-    )
-    response.raise_for_status()
-    matches = [
-        item
-        for item in response.json()["services"]
-        if str(item.get("id")) == str(service_id) and item.get("host") == host and item.get("binary") == "nova-compute"
-    ]
-    if len(matches) != 1:
-        raise HTTPException(status_code=409, detail="컴퓨트 서비스 매핑을 확인할 수 없습니다")
-    return matches[0]
-
-
-def _host_servers(conn, host: str):
-    """Read every admin-scoped Nova page, including deployments that cap the requested limit."""
-    endpoint = conn.compute.get_endpoint()
-    marker = None
-    seen: set[str] = set()
-    while True:
-        params = {"all_tenants": "1", "host": host, "limit": str(_HOST_SERVER_PAGE_SIZE)}
-        if marker:
-            params["marker"] = marker
-        response = conn.session.get(f"{endpoint}/servers/detail", params=params, headers=_NOVA_HOST_HEADERS)
-        response.raise_for_status()
-        page = response.json()["servers"]
-        if not isinstance(page, list):
-            raise ValueError("Invalid server page")
-        for server in page:
-            server_id = server.get("id")
-            if not server_id or server_id in seen:
-                raise ValueError("Invalid server pagination")
-            seen.add(server_id)
-            yield server
-        if not page:
-            return
-        marker = page[-1]["id"]
-
-
 async def _invalidate_host_caches():
     await invalidate("afterglow:admin:hypervisors*")
     await invalidate("afterglow:admin:monitoring*")
     await invalidate("afterglow:admin:overview*")
     await invalidate("afterglow:admin:services*")
+
+
+@router.post("/hypervisors/{hypervisor_id}/removal-check", dependencies=[Depends(require_admin)])
+async def check_hypervisor_removal(
+    hypervisor_id: str,
+    response: Response,
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+    token_info: dict = Depends(get_token_info),
+):
+    """Read uncached host evidence; only a safe snapshot gets a one-use approval."""
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        async with hypervisor_review.host_operation_lock(conn, hypervisor_id) as lease:
+            report = await hypervisor_review.host_work(hypervisor_removal.inspect_host, conn, hypervisor_id)
+            await hypervisor_review.enrich_uptime(conn, report)
+            await lease.assert_owned()
+            ticket, expires = None, None
+            if report["eligible"]:
+                ticket, expires = await hypervisor_review.issue_review(
+                    conn, token_info, report, hypervisor_removal.review_fingerprint(report)
+                )
+    except HTTPException:
+        raise
+    except Exception:
+        _logger.warning("하이퍼바이저 제거 점검 실패: %s", hypervisor_id, exc_info=True)
+        raise HTTPException(status_code=502, detail="Nova·Placement 제거 점검을 완료할 수 없습니다") from None
+    await rec(
+        token_info,
+        conn,
+        resource_type="hypervisor",
+        action="hypervisor.removal_check",
+        resource_id=hypervisor_id,
+        resource_name=report["hostname"],
+        extra={"checked_at": report["checked_at"], "eligible": report["eligible"], "checks": report["checks"]},
+    )
+    return {"report": report, "review_token": ticket, "expires_at": expires}
+
+
+class HypervisorRemovalRequest(BaseModel):
+    review_token: str = Field(min_length=32, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
+    confirm_hostname: str = Field(min_length=1, max_length=255)
+    reason: str = Field(min_length=1, max_length=1000)
+    reviewed_metadata: bool = Field(strict=True)
+    compute_stopped: bool = Field(strict=True)
+
+
+@router.post("/hypervisors/{hypervisor_id}/remove", dependencies=[Depends(require_admin)])
+async def remove_hypervisor(
+    hypervisor_id: str,
+    req: HypervisorRemovalRequest,
+    response: Response,
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+    token_info: dict = Depends(get_token_info),
+):
+    """Remove only a reviewed, empty, stopped Nova compute registration."""
+    response.headers["Cache-Control"] = "no-store"
+    if not req.reviewed_metadata or not req.compute_stopped or not req.reason.strip():
+        raise HTTPException(
+            status_code=422, detail="메타데이터 검토·실제 nova-compute 중지 확인과 제거 사유가 필요합니다"
+        )
+    review, report, result = None, None, None
+    failure = None
+    mutation_attempted = False
+    try:
+        async with hypervisor_review.host_operation_lock(conn, hypervisor_id) as lease:
+            review = await hypervisor_review.consume_review(conn, token_info, hypervisor_id, req.review_token)
+            if req.confirm_hostname != review["hostname"]:
+                raise HTTPException(status_code=409, detail="입력한 호스트명이 점검 대상과 일치하지 않습니다")
+            report = await hypervisor_review.host_work(hypervisor_removal.inspect_host, conn, hypervisor_id)
+            if not report["eligible"]:
+                raise HTTPException(
+                    status_code=409, detail="호스트에 제거 차단 조건이 있습니다. 최신 메타데이터를 다시 점검하세요"
+                )
+            if (
+                report["hostname"] != req.confirm_hostname
+                or report["service"]["id"] != review["service_id"]
+                or hypervisor_removal.review_fingerprint(report) != review["fingerprint"]
+            ):
+                raise HTTPException(
+                    status_code=409, detail="점검 이후 호스트 메타데이터가 변경되었습니다. 다시 점검·승인하세요"
+                )
+            await lease.assert_owned()
+            await rec(
+                token_info,
+                conn,
+                resource_type="hypervisor",
+                action="hypervisor.remove",
+                status="started",
+                resource_id=hypervisor_id,
+                resource_name=report["hostname"],
+                extra={
+                    "reason": req.reason.strip(),
+                    "service_id": report["service"]["id"],
+                    "reviewed_at": review["checked_at"],
+                    "reviewed_checks": review["checks"],
+                    "fresh_checked_at": report["checked_at"],
+                    "fresh_checks": report["checks"],
+                    "reviewed_metadata": True,
+                    "compute_stopped": True,
+                },
+            )
+            await lease.assert_owned()
+            hypervisor_review.assert_review_current(review)
+
+            def _delete():
+                deletion = conn.session.delete(
+                    f"{conn.compute.get_endpoint()}/os-services/{report['service']['id']}",
+                    headers=nova_hosts.NOVA_HOST_HEADERS,
+                )
+                deletion.raise_for_status()
+                if deletion.status_code != 204:
+                    raise HTTPException(status_code=502, detail="Nova 제거 응답을 확인할 수 없습니다")
+
+            mutation_attempted = True
+            await hypervisor_review.host_work(_delete)
+            try:
+                result = await hypervisor_review.host_work(hypervisor_removal.verify_removal, conn, report)
+            except Exception:
+                _logger.warning("하이퍼바이저 제거 후 검증 실패: %s", hypervisor_id, exc_info=True)
+                result = {
+                    "status": "removal_unverified",
+                    "verified": False,
+                    "hypervisor_id": hypervisor_id,
+                    "hostname": report["hostname"],
+                    "service_id": report["service"]["id"],
+                    "detail": "Nova 제거는 접수되었지만 잔여 등록 상태를 검증하지 못했습니다. 수동 확인하세요",
+                    "checks": [
+                        {
+                            "code": "verification",
+                            "label": "제거 후 검증",
+                            "state": "unknown",
+                            "detail": "Nova·Placement 잔여 등록 조회 실패",
+                        }
+                    ],
+                }
+            return result
+    except HTTPException as exc:
+        failure = exc.detail
+        raise
+    except Exception as exc:
+        upstream_status = getattr(exc, "status_code", None) or getattr(
+            getattr(exc, "response", None), "status_code", None
+        )
+        failure = (
+            "Nova가 호스트 제거를 거부했습니다. 남은 인스턴스·이주 작업을 다시 확인하세요"
+            if upstream_status == 409
+            else "Nova 호스트 제거 또는 최신 상태 조회 실패. 재요청 전에 등록 상태를 확인하세요"
+        )
+        _logger.warning("하이퍼바이저 제거 실패: %s", hypervisor_id, exc_info=True)
+        raise HTTPException(status_code=409 if upstream_status == 409 else 502, detail=failure) from None
+    finally:
+        with CancelScope(shield=True):
+            if mutation_attempted:
+                try:
+                    await _invalidate_host_caches()
+                    await invalidate("afterglow:admin:gpu*")
+                except Exception:
+                    _logger.warning("하이퍼바이저 제거 후 캐시 무효화 실패: %s", hypervisor_id, exc_info=True)
+            await rec(
+                token_info,
+                conn,
+                resource_type="hypervisor",
+                action="hypervisor.remove",
+                status="success" if result and result["verified"] else "failed",
+                resource_id=hypervisor_id,
+                resource_name=report["hostname"] if report else None,
+                error_message=failure or (result["detail"] if result and not result["verified"] else None),
+                extra={
+                    "reason": req.reason.strip(),
+                    "mutation_attempted": mutation_attempted,
+                    "reviewed_at": review["checked_at"] if review else None,
+                    "reviewed_checks": review["checks"] if review else None,
+                    "fresh_checks": report["checks"] if report else None,
+                    "result": result,
+                },
+            )
 
 
 class HypervisorSchedulingRequest(BaseModel):
@@ -755,13 +873,17 @@ async def set_hypervisor_scheduling(
         raise HTTPException(status_code=422, detail="비활성화 사유가 필요합니다")
 
     def _update():
-        hypervisor = _nova_hypervisor(conn, hypervisor_id)
-        service = _nova_compute_service(conn, hypervisor)
+        hypervisor = nova_hosts.get_hypervisor(conn, hypervisor_id)
+        service = nova_hosts.get_compute_service(conn, hypervisor)
         endpoint = conn.compute.get_endpoint()
         body = {"status": req.status}
         if req.status == "disabled":
             body["disabled_reason"] = req.reason.strip()
-        response = conn.session.put(f"{endpoint}/os-services/{service['id']}", json=body, headers=_NOVA_HOST_HEADERS)
+        if lease.lost:
+            raise HTTPException(status_code=409, detail="호스트 작업 잠금을 잃었습니다")
+        response = conn.session.put(
+            f"{endpoint}/os-services/{service['id']}", json=body, headers=nova_hosts.NOVA_HOST_HEADERS
+        )
         response.raise_for_status()
         updated = response.json()["service"]
         return {
@@ -773,7 +895,9 @@ async def set_hypervisor_scheduling(
         }
 
     try:
-        result = await asyncio.to_thread(_update)
+        async with hypervisor_review.host_operation_lock(conn, hypervisor_id) as lease:
+            await lease.assert_owned()
+            result = await hypervisor_review.host_work(_update)
     except HTTPException:
         raise
     except Exception:
@@ -805,8 +929,8 @@ async def relocate_hypervisor_servers(
     """Submit per-server Nova requests; never represent a request as completed migration."""
 
     def _request():
-        hypervisor = _nova_hypervisor(conn, hypervisor_id)
-        service = _nova_compute_service(conn, hypervisor)
+        hypervisor = nova_hosts.get_hypervisor(conn, hypervisor_id)
+        service = nova_hosts.get_compute_service(conn, hypervisor)
         if not _source_ready(hypervisor, service, req.mode):
             raise HTTPException(status_code=409, detail="소스 호스트 상태 또는 스케줄링 상태가 올바르지 않습니다")
         if req.mode == "evacuate" and not req.fenced:
@@ -816,25 +940,47 @@ async def relocate_hypervisor_servers(
         endpoint = conn.compute.get_endpoint()
         result = {"source_host": host, "mode": req.mode, "items": []}
         # Fully enumerate before dispatch; a failed page must not cause a partial batch.
-        servers = list(_host_servers(conn, host))
+        servers = list(nova_hosts.host_servers(conn, host))
         # A long paginated scan can outlive a scheduling or host-state change.
-        current = _nova_hypervisor(conn, hypervisor_id)
-        current_service = _nova_compute_service(conn, current)
+        current = nova_hosts.get_hypervisor(conn, hypervisor_id)
+        current_service = nova_hosts.get_compute_service(conn, current)
         if (
             not _source_ready(current, current_service, req.mode)
             or current_service.get("host") != host
             or current_service.get("id") != service["id"]
         ):
             raise HTTPException(status_code=409, detail="목록 조회 중 소스 호스트 상태가 변경되었습니다")
+        if lease.lost:
+            raise HTTPException(status_code=409, detail="호스트 작업 잠금을 잃었습니다")
         for item in servers:
             server_id = item["id"]
             entry = {"id": server_id, "name": item.get("name", "")}
             action_name = None
+            if lease.lost:
+                result["items"].append(
+                    {
+                        **entry,
+                        "action": None,
+                        "outcome": "skipped",
+                        "detail": "호스트 작업 잠금을 잃어 요청하지 않았습니다",
+                    }
+                )
+                continue
             try:
                 # The list can be stale; re-read each item immediately before requesting the action.
-                response = conn.session.get(f"{endpoint}/servers/{server_id}", headers=_NOVA_HOST_HEADERS)
+                response = conn.session.get(f"{endpoint}/servers/{server_id}", headers=nova_hosts.NOVA_HOST_HEADERS)
                 response.raise_for_status()
                 server = response.json()["server"]
+                if lease.lost:
+                    result["items"].append(
+                        {
+                            **entry,
+                            "action": None,
+                            "outcome": "skipped",
+                            "detail": "호스트 작업 잠금을 잃어 요청하지 않았습니다",
+                        }
+                    )
+                    continue
                 if server.get("id") != server_id or server.get("OS-EXT-SRV-ATTR:host") != host:
                     result["items"].append(
                         {**entry, "action": None, "outcome": "skipped", "detail": "소스 호스트에서 이동되었습니다"}
@@ -864,7 +1010,7 @@ async def relocate_hypervisor_servers(
                     action = conn.session.post(
                         f"{endpoint}/servers/{server_id}/action",
                         json={"evacuate": {}},
-                        headers=_NOVA_HOST_HEADERS,
+                        headers=nova_hosts.NOVA_HOST_HEADERS,
                     )
                     action.raise_for_status()
                 result["items"].append(
@@ -878,7 +1024,9 @@ async def relocate_hypervisor_servers(
         return result
 
     try:
-        result = await asyncio.to_thread(_request)
+        async with hypervisor_review.host_operation_lock(conn, hypervisor_id) as lease:
+            await lease.assert_owned()
+            result = await hypervisor_review.host_work(_request)
     except HTTPException:
         raise
     except Exception:
@@ -896,8 +1044,8 @@ async def get_hypervisor_detail(hypervisor_id: str, conn: openstack.connection.C
 
         def _get():
             endpoint = conn.compute.get_endpoint()
-            h = _nova_hypervisor(conn, hypervisor_id)
-            svc = _nova_compute_service(conn, h)
+            h = nova_hosts.get_hypervisor(conn, hypervisor_id)
+            svc = nova_hosts.get_compute_service(conn, h)
             hostname = h.get("hypervisor_hostname", "")
             servers = [
                 {
@@ -907,7 +1055,7 @@ async def get_hypervisor_detail(hypervisor_id: str, conn: openstack.connection.C
                     "project_id": s.get("tenant_id", "") or s.get("project_id", ""),
                     "flavor": (s.get("flavor") or {}).get("original_name", ""),
                 }
-                for s in _host_servers(conn, svc["host"])
+                for s in nova_hosts.host_servers(conn, svc["host"])
                 if s.get("OS-EXT-SRV-ATTR:host") == svc["host"]
             ]
             # uptime 조회
@@ -918,6 +1066,7 @@ async def get_hypervisor_detail(hypervisor_id: str, conn: openstack.connection.C
                     f"{endpoint}/os-hypervisors/{hypervisor_id}/uptime",
                     headers={"OpenStack-API-Version": "compute 2.53"},
                 )
+                ut_resp.raise_for_status()
                 ut_data = ut_resp.json().get("hypervisor", {})
                 uptime_str = ut_data.get("uptime", "")
                 host_time_str = ut_data.get("host_time", "")
@@ -948,6 +1097,10 @@ async def get_hypervisor_detail(hypervisor_id: str, conn: openstack.connection.C
                 "host_time": host_time_str,
                 "uptime": uptime_str,
                 "service_host": svc["host"],
+                "service_id": str(svc["id"]),
+                "service_updated_at": svc.get("updated_at"),
+                "service_state": svc.get("state"),
+                "forced_down": svc.get("forced_down"),
                 "vcpus": vcpus_total,
                 "vcpus_used": h.get("vcpus_used", 0) or 0,
                 "vcpus_allowed": int(vcpus_total * vcpu_ratio),
@@ -962,7 +1115,15 @@ async def get_hypervisor_detail(hypervisor_id: str, conn: openstack.connection.C
                 "servers": servers,
             }
 
-        return await asyncio.to_thread(_get)
+        detail = await asyncio.to_thread(_get)
+        detail["uptime_observed_at"] = None
+        if detail["uptime"]:
+            detail["uptime_observed_at"] = await hypervisor_review.remember_uptime(
+                conn, hypervisor_id, detail["service_id"], detail["uptime"], detail["host_time"]
+            )
+        return detail
+    except HTTPException:
+        raise
     except Exception:
         _logger.warning("하이퍼바이저 상세 조회 실패", exc_info=True)
         raise HTTPException(status_code=500, detail="하이퍼바이저 상세 조회 실패")

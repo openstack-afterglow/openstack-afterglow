@@ -1,4 +1,5 @@
 {
+	"overview.loading": "Loading overview",
 	"layout.notFound": "Page not found",
 	"layout.noAccess": "You don’t have access to this page, or it doesn’t exist.",
 	"layout.dashboard": "Go to dashboard",
@@ -166,6 +167,7 @@
 	"overview.projects.project": "Project",
 	"overview.projects.disk": "Disk",
 	"overview.projects.empty": "No data",
+	"overview.projects.loading": "Loading project resources",
 	"overview.resources.title": "Cluster resource utilization",
 	"overview.resources.cpuCores": "CPU cores",
 	"overview.resources.memory": "Memory",

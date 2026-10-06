@@ -1,4 +1,5 @@
 {
+	"loadBalancers.loading": "Loading load balancer list...",
 	"networkCreate.title": "Create network",
 	"networkCreate.name": "Name",
 	"networkCreate.addSubnet": "Create a subnet too",

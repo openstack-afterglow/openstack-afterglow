@@ -1,4 +1,5 @@
 <script lang="ts">
+		import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 		import { dialogFocus } from '$lib/utils/dialogFocus';
 	import { t } from '$lib/i18n/ns/admin-identity';
 	import { t as tc } from '$lib/i18n/ns/common';
@@ -50,7 +51,7 @@
 			</div>
 			<div class="flex justify-end gap-3 mt-6">
 				<button onclick={() => { open = false; }} class="px-4 py-2 bg-surface-selected hover:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg">{tc('actions.cancel')}</button>
-				<button onclick={handleCreate} disabled={creating || !form.name} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{creating ? t('state.creating') : t('actions.create')}</button>
+				<button aria-busy={creating} onclick={handleCreate} disabled={creating || !form.name} class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium rounded-lg disabled:opacity-30">{#if creating}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" />{t('state.creating')}</span>{:else}{t('actions.create')}{/if}</button>
 			</div>
 		</div>
 	</div>

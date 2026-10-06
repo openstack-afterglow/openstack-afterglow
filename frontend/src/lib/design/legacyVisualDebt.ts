@@ -1337,10 +1337,6 @@ export const LEGACY_VISUAL_DEBT: VisualDebtBaseline = {
 		count: 9,
 		tokens: ["bg-indigo-700","bg-orange-800","border-gray-700","text-gray-200","text-gray-400","text-orange-200"],
 	},
-	"frontend/src/lib/components/ProgressBar.svelte": {
-		count: 18,
-		tokens: ["bg-blue-400","bg-blue-500","bg-blue-600","bg-gray-800","bg-green-600","bg-red-900/30","border-red-700","text-gray-500","text-green-400","text-red-300","text-red-400","text-red-400/80"],
-	},
 	"frontend/src/lib/components/ProjectQuotaPanel.svelte": {
 		count: 47,
 		tokens: ["#374151","bg-blue-500","bg-blue-600","bg-blue-800","bg-gray-800","bg-gray-950","border-blue-500","border-gray-700","border-gray-800","text-gray-300","text-gray-400","text-gray-500","text-gray-600","text-green-400","text-red-400"],

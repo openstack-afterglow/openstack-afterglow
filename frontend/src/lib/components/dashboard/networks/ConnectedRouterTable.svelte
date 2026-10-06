@@ -1,7 +1,10 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/network-resources';
+	import { t as tc } from '$lib/i18n/ns/common';
 	import type { NetworkRouterInfo, RouterListItem } from '$lib/types/networks';
 	import Button from '$lib/components/ui/Button.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
 
 	let {
 		routers,
@@ -27,6 +30,8 @@
 	let showConnectForm = $state(false);
 	let selectedRouterId = $state('');
 	let selectedSubnetId = $state('');
+	const pending = createPendingAction();
+	const connectingRouter = $derived(pending.isActive('connect', connecting));
 
 	function openConnect() {
 		selectedRouterId = availableRouters[0]?.id ?? '';
@@ -35,8 +40,9 @@
 	}
 
 	async function handleConnect() {
-		if (!selectedRouterId || !selectedSubnetId || !onConnect) return;
-		const ok = await onConnect(selectedRouterId, selectedSubnetId);
+		const connect = onConnect;
+		if (!selectedRouterId || !selectedSubnetId || !connect) return;
+		const ok = await pending.run('connect', () => connect(selectedRouterId, selectedSubnetId));
 		if (ok) {
 			showConnectForm = false;
 			selectedRouterId = '';
@@ -60,7 +66,7 @@
 	</div>
 
 	{#if showConnectForm && canManage}
-		<div class="mb-4 bg-surface-sunken rounded-lg p-4 space-y-3">
+		<div class="motion-enter mb-4 bg-surface-sunken rounded-lg p-4 space-y-3">
 			<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
 				<div>
 					<label class="block text-xs text-ink-2 mb-1">{t('network.routers.select')}
@@ -100,7 +106,8 @@
 					variant="accent"
 					onclick={handleConnect}
 					disabled={!selectedRouterId || !selectedSubnetId || connecting}
-				>{connecting ? t('network.actions.connecting') : t('network.actions.connect')}</Button>
+					ariaBusy={connectingRouter}
+				>{#if connectingRouter}<ActivityIndicator size="xs" tone="ink" />{/if}{connectingRouter ? t('network.actions.connecting') : t('network.actions.connect')}</Button>
 			</div>
 		</div>
 	{/if}
@@ -148,13 +155,15 @@
 								{#if isSystemAdmin || (router.project_id && router.project_id === projectId)}
 									<div class="flex items-center justify-end gap-1">
 										{#each router.connected_subnet_ids as sid}
+											{@const disconnecting = pending.isActive(`disconnect:${router.id}:${sid}`, connecting)}
 											<Button
 												variant="danger-outline"
 												size="xs"
-												onclick={() => onDisconnect?.(router.id, sid)}
+												onclick={() => pending.run(`disconnect:${router.id}:${sid}`, () => onDisconnect?.(router.id, sid))}
 												disabled={connecting}
+												ariaBusy={disconnecting}
 											>
-												{router.connected_subnet_ids.length > 1 ? t('network.routers.disconnectNamed', { name: subnets.find((s) => s.id === sid)?.name || sid.slice(0, 6) }) : t('network.actions.disconnect')}
+												{#if disconnecting}<ActivityIndicator size="xs" tone="danger" />{/if}{disconnecting ? tc('state.processing') : router.connected_subnet_ids.length > 1 ? t('network.routers.disconnectNamed', { name: subnets.find((s) => s.id === sid)?.name || sid.slice(0, 6) }) : t('network.actions.disconnect')}
 											</Button>
 										{/each}
 									</div>

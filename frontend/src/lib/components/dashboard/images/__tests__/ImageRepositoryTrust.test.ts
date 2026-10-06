@@ -4,6 +4,7 @@ import type { ImageInfo } from '$lib/types/compute';
 import type { ImageRepositoryGroup } from '$lib/stores/imageCatalog.svelte';
 import ImageRepositoryCard from '../ImageRepositoryCard.svelte';
 import ImageRepositoryDetail from '../ImageRepositoryDetail.svelte';
+import { t } from '$lib/i18n/ns/images-keys';
 
 const images: ImageInfo[] = [
 	{ id: 'one', name: 'ubuntu:one', repository: 'ubuntu', tag: 'one', status: 'active', verification_status: 'verified', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z' },
@@ -33,15 +34,19 @@ describe('repository trust', () => {
 	it('counts every tag including unpreviewed images and labels each preview independently', async () => {
 		const onOpen = vi.fn();
 		const onOpenTag = vi.fn();
-		render(ImageRepositoryCard, { group, onOpen, onOpenTag });
-		expect(screen.getByText('검증됨 2')).toBeTruthy();
-		expect(screen.getByText('미검증 2')).toBeTruthy();
-		expect(screen.getByText('검증 불가 2')).toBeTruthy();
+		const { container } = render(ImageRepositoryCard, { group, onOpen, onOpenTag });
+		expect(container.textContent?.replace(/\s/g, '')).toContain(t('repositoryCard.imageCount', { tagCount: 6, imageCount: 6 }).replace(/\s/g, ''));
+		for (const key of ['repositoryCard.verifiedCount', 'repositoryCard.unverifiedCount', 'repositoryCard.unavailableCount'] as const) {
+			expect(container.textContent?.replace(/\s/g, '')).toMatch(new RegExp(`${t(key, { count: 2 }).replace(/\s/g, '')}(?!\\d)`));
+		}
 		expect(within(tagButton('one')).getByText('검증됨')).toBeTruthy();
 		expect(within(tagButton('two')).getByText('검증 불가')).toBeTruthy();
 		expect(within(tagButton('three')).getByText('미검증')).toBeTruthy();
+		expect(within(tagButton('five')).getByText('미검증')).toBeTruthy();
 		expect(within(tagButton('four')).getByText('검증됨')).toBeTruthy();
-		expect(screen.getByText('+1')).toBeTruthy();
+		expect(screen.getAllByRole('button', { name: /^:/ })).toHaveLength(5);
+		expect(screen.queryByRole('button', { name: /^:six\b/ })).toBeNull();
+		expect(container.textContent?.replace(/\s/g, '')).toMatch(/\+1(?!\d)/);
 		await fireEvent.click(tagButton('two'));
 		await fireEvent.click(screen.getByRole('button', { name: '모든 tag 조회' }));
 		expect(onOpenTag).toHaveBeenCalledWith('two');
@@ -54,11 +59,11 @@ describe('repository trust', () => {
 			group,
 			onBack: vi.fn(), onOpenTag,
 		});
-		const row = screen.getByText(':one').closest('tr')!;
+		const row = screen.getByRole('row', { name: /:one\b/ });
 		expect(within(row).getByText('검증됨')).toBeTruthy();
 		expect(within(row).getByText('2026-01-01')).toBeTruthy();
-		expect(within(screen.getByText(':two').closest('tr')!).getByText('검증 불가')).toBeTruthy();
-		expect(within(screen.getByText(':three').closest('tr')!).getByText('미검증')).toBeTruthy();
+		expect(within(screen.getByRole('row', { name: /:two\b/ })).getByText('검증 불가')).toBeTruthy();
+		expect(within(screen.getByRole('row', { name: /:three\b/ })).getByText('미검증')).toBeTruthy();
 		await fireEvent.click(within(row).getByRole('button', { name: '상세 보기' }));
 		expect(onOpenTag).toHaveBeenCalledWith('one');
 	});
@@ -83,7 +88,7 @@ describe('repository trust', () => {
 		const onOpenTag = vi.fn();
 		render(ImageRepositoryDetail, { group: duplicateGroup, onBack: vi.fn(), onOpenTag });
 
-		const currentRow = screen.getByLabelText(`이미지 ID: ${newest.id}`).closest('tr')!;
+		const currentRow = screen.getByRole('row', { name: new RegExp(newest.id) });
 		expect(within(currentRow).getByText('현재')).toBeTruthy();
 		expect(within(currentRow).getByLabelText(`SHA-512: ${newestHash}`).getAttribute('title')).toBe(`SHA-512: ${newestHash}`);
 		expect(screen.getAllByRole('button', { name: '상세 보기' })).toHaveLength(1);
@@ -96,7 +101,7 @@ describe('repository trust', () => {
 		expect(screen.getByRole('button', { name: ':one 이전 업로드 1개 접기' }).getAttribute('aria-expanded')).toBe('true');
 		expect(screen.getAllByRole('button', { name: '상세 보기' })).toHaveLength(2);
 		const olderId = screen.getByLabelText(`이미지 ID: ${older.id}`);
-		const olderRow = olderId.closest('tr')!;
+		const olderRow = screen.getByRole('row', { name: new RegExp(older.id) });
 		expect(olderId.getAttribute('title')).toBe(older.id);
 		expect(within(olderRow).getByText('이전')).toBeTruthy();
 		expect(within(olderRow).getByText('미검증')).toBeTruthy();
@@ -130,9 +135,9 @@ describe('repository trust', () => {
 			],
 		};
 		const onOpenTag = vi.fn();
-		render(ImageRepositoryCard, { group: filteredGroup, onOpen: vi.fn(), onOpenTag });
+		const { container } = render(ImageRepositoryCard, { group: filteredGroup, onOpen: vi.fn(), onOpenTag });
 
-		expect(screen.getByText('최근 업로드').nextElementSibling?.textContent).toBe(':stable');
+		expect(container.textContent).toMatch(new RegExp(`${t('repositoryCard.recentUpload')}\\s*:stable`));
 		expect(screen.getByText('2026-03-01')).toBeTruthy();
 		expect(within(tagButton('stable')).getByText('이전')).toBeTruthy();
 		expect(within(tagButton('stable')).queryByText('기본')).toBeNull();

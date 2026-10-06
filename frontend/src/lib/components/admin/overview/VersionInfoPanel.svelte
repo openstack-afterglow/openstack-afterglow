@@ -23,7 +23,7 @@
 		{t('overview.version.title')}
 	</button>
 	{#if open && versionInfo}
-		<div class="bg-surface-base border border-line rounded-lg p-5 mt-2">
+		<div class="motion-enter bg-surface-base border border-line rounded-lg p-5 mt-2">
 			<div class="grid grid-cols-1 sm:grid-cols-2 gap-x-12 gap-y-1">
 				<div class="col-span-full mb-2">
 					<span class="text-xs font-semibold text-ink-2 uppercase tracking-wider">{t('overview.version.platform')}</span>

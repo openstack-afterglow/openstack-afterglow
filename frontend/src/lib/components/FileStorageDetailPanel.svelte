@@ -10,6 +10,7 @@
 	import FileStorageExportLocationsSection from '$lib/components/file-storage/FileStorageExportLocationsSection.svelte';
 	import FileStorageAccessRulesSection from '$lib/components/file-storage/FileStorageAccessRulesSection.svelte';
 	import FileStorageMetadataSection from '$lib/components/file-storage/FileStorageMetadataSection.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
 	interface Props {
 		fileStorageId: string;
@@ -20,6 +21,7 @@
 	let { fileStorageId, onClose, onDeleted }: Props = $props();
 
 	let refresh!: ReturnType<typeof createCoalescedRefresh>;
+	let refreshing = $state(false);
 	const s = createFileStorageDetailController({
 		fileStorageId: () => fileStorageId,
 		token: () => $auth.token ?? undefined,
@@ -28,7 +30,14 @@
 		onClose: () => onClose?.(),
 		onMutated: () => refresh.invalidate(),
 	});
-	refresh = createCoalescedRefresh((force) => s.fetchAll(force ? { refresh: true } : undefined));
+	refresh = createCoalescedRefresh(async (force) => {
+		refreshing = true;
+		try {
+			await s.fetchAll(force ? { refresh: true } : undefined);
+		} finally {
+			refreshing = false;
+		}
+	});
 	provideFileStorageDetailController(s);
 
 	const ar = createAutoRefresh(() => refresh.run(false), {
@@ -45,33 +54,35 @@
 </script>
 
 <div class="p-6">
-	<FileStorageDetailHeader {onClose} {ar} onManualRefresh={() => refresh.run(true)} />
+	<FileStorageDetailHeader {onClose} {ar} {refreshing} onManualRefresh={() => refresh.run(true)} />
 
 	{#if s.error}
 		<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{s.error}</div>
 	{:else if s.loading}
-		<div class="space-y-4">
-			{#each [1, 2, 3] as _}<div class="h-16 bg-surface-sunken rounded-lg animate-pulse"></div>{/each}
+		<div class="space-y-4" role="status" aria-busy="true" aria-label={t('detail.loading')}>
+			{#each [1, 2, 3] as _}<div class="motion-skeleton h-16 rounded-lg"></div>{/each}
 		</div>
 	{:else if s.fileStorage}
-		<DetailHeader title={s.fileStorage.name || s.fileStorage.id} status={s.fileStorage.status}>
-			{#snippet meta()}
-				<span class="px-1.5 py-0.5 bg-purple-900/40 text-purple-300 rounded text-xs">{s.fileStorage!.share_proto}</span>
-			{/snippet}
-			{#snippet actions()}
-				<button
-					onclick={() => s.deleteFileStorage()}
-					disabled={s.deleting}
-					class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-sm px-3 py-1.5 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors"
-				>
-					{s.deleting ? t('actions.deleting') : t('actions.delete')}
-				</button>
-			{/snippet}
-		</DetailHeader>
+		<div class="motion-stagger">
+			<DetailHeader title={s.fileStorage.name || s.fileStorage.id} status={s.fileStorage.status}>
+				{#snippet meta()}
+					<span class="px-1.5 py-0.5 bg-purple-900/40 text-purple-300 rounded text-xs">{s.fileStorage!.share_proto}</span>
+				{/snippet}
+				{#snippet actions()}
+					<button
+						onclick={() => s.deleteFileStorage()}
+						disabled={s.deleting}
+						class="inline-flex items-center gap-1.5 text-red-400 hover:text-red-300 disabled:text-ink-3 text-sm px-3 py-1.5 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors"
+					>
+						{#if s.deleting}<ActivityIndicator size="xs" tone="danger" />{/if}{s.deleting ? t('actions.deleting') : t('actions.delete')}
+					</button>
+				{/snippet}
+			</DetailHeader>
 
-		<FileStorageInfoSection />
-		{#if (s.fileStorage.export_location_details?.length ?? 0) > 0 || s.fileStorage.export_locations.length > 0}<FileStorageExportLocationsSection />{/if}
-		<FileStorageAccessRulesSection />
-		{#if Object.keys(s.fileStorage.metadata).length > 0}<FileStorageMetadataSection />{/if}
+			<FileStorageInfoSection />
+			{#if (s.fileStorage.export_location_details?.length ?? 0) > 0 || s.fileStorage.export_locations.length > 0}<FileStorageExportLocationsSection />{/if}
+			<FileStorageAccessRulesSection />
+			{#if Object.keys(s.fileStorage.metadata).length > 0}<FileStorageMetadataSection />{/if}
+		</div>
 	{/if}
 </div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import type { Group, GroupMember, User } from '$lib/types/adminGroup';
 	import Button from '$lib/components/ui/Button.svelte';
 	import { t } from '$lib/i18n/ns/admin-identity';
@@ -35,6 +36,17 @@
 	}: Props = $props();
 
 	let addMemberSearchText = $state('');
+	let removingMemberId = $state<string | null>(null);
+
+	async function handleRemoveMember(userId: string) {
+		if (removingMemberId) return;
+		removingMemberId = userId;
+		try {
+			await onRemoveMember(userId);
+		} finally {
+			removingMemberId = null;
+		}
+	}
 
 	async function handleAddMember(userId: string) {
 		const ok = await onAddMember(userId);
@@ -64,7 +76,7 @@
 	{#if expanded}
 		<div class="border-t border-line bg-surface-base/50 px-4 py-4">
 			{#if membersLoading}
-				<div class="text-xs text-ink-2 py-2">{t('state.loading')}</div>
+				<div class="text-xs text-ink-2 py-2"><ActivityIndicator size="xs" label={t('state.loading')} /></div>
 			{:else}
 				<div class="text-xs text-ink-2 uppercase tracking-wide mb-2">{t('groupCard.membersHeading')}</div>
 				{#if members.length === 0}
@@ -77,7 +89,7 @@
 									<span class="text-sm text-ink-0">{m.name}</span>
 									{#if m.email}<span class="text-xs text-ink-2 ml-2">{m.email}</span>{/if}
 								</div>
-								<Button variant="danger-outline" size="xs" onclick={() => onRemoveMember(m.id)}>{t('actions.remove')}</Button>
+								<Button variant="danger-outline" size="xs" ariaBusy={removingMemberId === m.id} disabled={removingMemberId !== null} onclick={() => handleRemoveMember(m.id)}>{#if removingMemberId === m.id}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" />{t('state.removing')}</span>{:else}{t('actions.remove')}{/if}</Button>
 							</div>
 						{/each}
 					</div>
@@ -87,6 +99,7 @@
 						<div class="text-xs text-[var(--color-state-danger)] mb-2">{addError}</div>
 					{/if}
 					<div class="text-xs text-ink-2 mb-2">{t('groupCard.userSearch')}</div>
+					{#if addSaving}<div class="mb-2"><ActivityIndicator size="xs" label={t('groupCard.addingMember')} /></div>{/if}
 					<div class="relative">
 						<input
 							type="text"
@@ -107,6 +120,7 @@
 												size="sm"
 												onclick={() => handleAddMember(u.id)}
 												disabled={addSaving}
+												ariaBusy={addSaving}
 												class="ml-4 shrink-0"
 											>{t('actions.add')}</Button>
 										</div>

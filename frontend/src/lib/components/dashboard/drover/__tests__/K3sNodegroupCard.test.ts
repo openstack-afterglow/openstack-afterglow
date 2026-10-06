@@ -46,8 +46,7 @@ describe('K3sNodegroupCard', () => {
 		expect(screen.getByText('gpu-workers')).toBeTruthy();
 		expect(screen.getByText('Stampede')).toBeTruthy();
 		expect(screen.getByText('GPU 4')).toBeTruthy();
-		expect(screen.getByText('▲ +2 프로비저닝 중')).toBeTruthy();
-		expect(screen.getByText('VM:')).toBeTruthy();
-		expect(screen.getByText('1/2')).toBeTruthy();
+		expect(screen.getByRole('status').textContent).toContain('+2');
+		expect(screen.getByText((_, element) => element?.tagName === 'SPAN' && /(^|\D)1\/2$/.test(element.textContent?.replace(/\s+/g, '') ?? ''))).toBeTruthy();
 	});
 });

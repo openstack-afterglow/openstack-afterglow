@@ -2,7 +2,7 @@
 	import { t } from '$lib/i18n/ns/admin-system';
 	import { onMount } from 'svelte';
 	import { api, ApiError } from '$lib/api/client';
-	import { Alert, Button, Card, SearchSelect, SelectInput } from '$lib/components/ui';
+	import { ActivityIndicator, Alert, Button, Card, SearchSelect, SelectInput } from '$lib/components/ui';
 	import type { SearchSelectOption } from '$lib/components/ui';
 
 	interface ResourceOption {
@@ -388,7 +388,7 @@
 
 	{#if error}<Alert tone="danger">{error}</Alert>{/if}
 	{#if notice}<Alert tone="success">{notice}</Alert>{/if}
-	{#if loadingValues}<p class="muted loading-note">{t('policies.loading')}</p>{/if}
+	{#if loadingValues}<div class="loading-note"><ActivityIndicator label={t('policies.loading')} /></div>{/if}
 
 	<section class="runtime-settings" aria-labelledby="runtime-settings-title">
 		<div class="section-heading">
@@ -418,8 +418,8 @@
 						aria-label={t('policies.valueLabel', { title: setting.title })}
 					/>
 				{/if}
-				<Button variant="primary" size="sm" onclick={() => saveRuntimeSetting(setting)} disabled={saving === setting.key}>
-					{saving === setting.key ? t('policies.saving') : t('policies.save')}
+				<Button variant="primary" size="sm" onclick={() => saveRuntimeSetting(setting)} disabled={saving === setting.key} ariaBusy={saving === setting.key}>
+					{#if saving === setting.key}<ActivityIndicator size="xs" tone="ink" />{/if}{saving === setting.key ? t('policies.saving') : t('policies.save')}
 				</Button>
 			</div>
 		{/each}
@@ -451,8 +451,8 @@
 							{#if selections[policy.key]}<span class="selection-id">{selections[policy.key]}</span>{/if}
 						</div>
 						<div class="actions">
-							<Button variant="primary" size="sm" onclick={() => save(policy)} disabled={saving === policy.key}>
-								{saving === policy.key ? t('policies.saving') : t('policies.save')}
+							<Button variant="primary" size="sm" onclick={() => save(policy)} disabled={saving === policy.key} ariaBusy={saving === policy.key}>
+								{#if saving === policy.key}<ActivityIndicator size="xs" tone="ink" />{/if}{saving === policy.key ? t('policies.saving') : t('policies.save')}
 							</Button>
 						</div>
 					</section>
@@ -469,7 +469,7 @@
 	h2, h3 { margin: 0; color: var(--color-ink-0); }
 	h2 { font-size: 1rem; }
 	h3 { font-size: 0.88rem; }
-	p, .muted, .policy-copy span, .selection-id { margin: 0; color: var(--color-ink-2); font-size: 0.82rem; line-height: 1.5; }
+	p, .policy-copy span, .selection-id { margin: 0; color: var(--color-ink-2); font-size: 0.82rem; line-height: 1.5; }
 	.loading-note { padding: 0.5rem 0; }
 	.runtime-settings, .policy-group { border-top: 1px solid var(--color-line-2); padding: 0.75rem 0; }
 	.runtime-row, .policy-row { display: grid; grid-template-columns: minmax(11rem, 1fr) minmax(13rem, 1.2fr) auto; align-items: center; gap: 0.75rem; border-top: 1px solid var(--color-line-2); padding: 0.75rem 0; }

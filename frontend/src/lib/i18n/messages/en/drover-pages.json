@@ -60,7 +60,7 @@
 	"nodegroup.default": "(default)",
 	"nodegroup.provisioning": "▲ +{count} provisioning",
 	"nodegroup.nodeCount": "Nodes: <count>{count}</count>",
-	"nodegroup.vmCount": "VM: <count>{running}/{total}</count>",
+	"nodegroup.vmCount": "VM: <running>{running}</running>/{total}",
 	"nodegroup.flavorRequired": "Flavor (required)",
 	"nodegroup.flavorOptional": "Flavor (optional)",
 	"nodegroup.notSelected": "Not selected",

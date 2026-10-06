@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/svelte';
-import { writable } from 'svelte/store';
+import { writable, type Writable } from 'svelte/store';
+import { page } from '$app/stores';
 import type { AnnouncementUser } from '$lib/types/announcements';
 
 const { mockGet, mockPost } = vi.hoisted(() => ({ mockGet: vi.fn(), mockPost: vi.fn() }));
@@ -19,6 +20,29 @@ vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token', projectId:
 
 import Page from '../+page.svelte';
 
+const originalScrollIntoView = Element.prototype.scrollIntoView;
+
+function announcement(overrides: Partial<AnnouncementUser> = {}): AnnouncementUser {
+	return {
+		id: 7,
+		created_at: '2026-01-01T00:00:00Z',
+		created_by_username: 'admin',
+		title: 'Maintenance notice',
+		body: 'Scheduled work',
+		severity: 'info',
+		starts_at: null,
+		ends_at: null,
+		is_read: false,
+		...overrides,
+	};
+}
+
+afterEach(() => {
+	vi.unstubAllGlobals();
+	Element.prototype.scrollIntoView = originalScrollIntoView;
+	(page as unknown as Writable<{ url: URL; data: object }>).set({ url: new URL('http://localhost/dashboard/notifications'), data: {} });
+});
+
 describe('notification loading boundaries', () => {
 	it('renders announcements before quota and keeps them visible when background read marking fails', async () => {
 		const announcements = Promise.withResolvers<AnnouncementUser[]>();
@@ -31,17 +55,7 @@ describe('notification loading boundaries', () => {
 
 		render(Page);
 		await vi.waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
-		announcements.resolve([{
-			id: 7,
-			created_at: '2026-01-01T00:00:00Z',
-			created_by_username: 'admin',
-			title: 'Maintenance notice',
-			body: 'Scheduled work',
-			severity: 'info',
-			starts_at: null,
-			ends_at: null,
-			is_read: false,
-		}]);
+		announcements.resolve([announcement()]);
 		expect(await screen.findByText('Maintenance notice')).toBeTruthy();
 		await fireEvent.click(screen.getByRole('button', { name: /Maintenance notice/ }));
 		expect(screen.getByText('admin (관리자)')).toBeTruthy();
@@ -55,5 +69,23 @@ describe('notification loading boundaries', () => {
 
 		quota.resolve({ alerts: [{ severity: 'warning', message: 'Volume quota high', count: 1 }] });
 		expect(await screen.findByText('Volume quota high')).toBeTruthy();
+	});
+
+	it('jumps to a deep-linked announcement without smooth scrolling when reduced motion is requested', async () => {
+		(page as unknown as Writable<{ url: URL; data: object }>).set({ url: new URL('http://localhost/dashboard/notifications?focus=7'), data: {} });
+		vi.stubGlobal('matchMedia', vi.fn((query: string) => ({
+			matches: query.includes('reduce'), media: query, onchange: null,
+			addListener: vi.fn(), removeListener: vi.fn(), addEventListener: vi.fn(),
+			removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
+		})));
+		const scrollIntoView = vi.fn();
+		Element.prototype.scrollIntoView = scrollIntoView;
+		mockGet.mockImplementation((path: string) => Promise.resolve(path.startsWith('/api/v1/announcements') ? [announcement()] : { alerts: [] }));
+		mockPost.mockResolvedValue({});
+
+		render(Page);
+
+		await vi.waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'auto' }));
+		expect(screen.getByRole('button', { name: /Maintenance notice/ }).getAttribute('aria-expanded')).toBe('true');
 	});
 });

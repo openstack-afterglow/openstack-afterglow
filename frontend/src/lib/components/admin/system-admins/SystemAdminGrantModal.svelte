@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
@@ -103,9 +104,10 @@
 			class="w-full bg-surface-sunken border border-line-2 rounded-lg px-3 py-2 text-ink-0 text-sm focus:outline-none focus:border-action-warm mb-3"
 		/>
 
-		<div class="overflow-y-auto max-h-72 rounded-lg border border-line-2">
+		{#if granting}<div class="mb-3"><ActivityIndicator size="xs" label={t('systemGrant.granting')} /></div>{/if}
+		<div aria-busy={granting || loadingUsers} class="overflow-y-auto max-h-72 rounded-lg border border-line-2">
 			{#if loadingUsers}
-				<div class="text-ink-2 text-sm px-4 py-6 text-center">{t('systemGrant.loading')}</div>
+				<div class="text-ink-2 text-sm px-4 py-6 text-center"><ActivityIndicator size="sm" label={t('systemGrant.loading')} /></div>
 			{:else if filtered.length === 0}
 				<div class="text-ink-2 text-sm px-4 py-6 text-center">{t('systemGrant.empty')}</div>
 			{:else}

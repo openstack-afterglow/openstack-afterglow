@@ -16,16 +16,16 @@
   {#if icon}
     <div class="empty-icon-wrap mb-4">
       <svg class="w-10 h-10 empty-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d={icon}/>
+        <path class="motion-draw" pathLength="1" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d={icon}/>
       </svg>
     </div>
   {/if}
-  <div class="text-[15px] font-semibold text-ink-0 mb-1">{headline}</div>
+  <div class="motion-enter text-[15px] font-semibold text-ink-0 mb-1" style="--motion-index: 1">{headline}</div>
   {#if description}
-    <div class="text-[13px] text-ink-2 max-w-xs">{description}</div>
+    <div class="motion-enter text-[13px] text-ink-2 max-w-xs" style="--motion-index: 2">{description}</div>
   {/if}
   {#if cta}
-    <div class="mt-4">{@render cta()}</div>
+    <div class="motion-enter mt-4" style="--motion-index: 3">{@render cta()}</div>
   {/if}
 </div>
 

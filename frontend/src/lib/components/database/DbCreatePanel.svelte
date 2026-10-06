@@ -7,6 +7,7 @@
 	import DbCreateStep4Init from './wizard/DbCreateStep4Init.svelte';
 	import DbCreateStep5Advanced from './wizard/DbCreateStep5Advanced.svelte';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
+	import { ActivityIndicator, Alert, Button, ProgressTrack } from '$lib/components/ui';
 
 	let {
 		open = $bindable(false),
@@ -33,7 +34,7 @@
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		use:dialogFocus={{ enabled: true, onEscape: () => (open = false) }}
-		class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
+		class="motion-fade fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 		onclick={(event) => {
 			if (event.target === event.currentTarget) open = false;
 		}}
@@ -43,7 +44,7 @@
 		aria-label={tr('wizard.title')}
 	>
 		<div
-			class="bg-surface-base border border-line-2 rounded-xl w-full max-w-2xl mx-4 shadow-[var(--shadow-restraint)] flex flex-col max-h-[90vh]"
+			class="motion-pop bg-surface-base border border-line-2 rounded-xl w-full max-w-2xl mx-4 shadow-[var(--shadow-restraint)] flex flex-col max-h-[90vh]"
 		>
 			<!-- 헤더 -->
 			<div class="flex items-center justify-between px-6 py-4 border-b border-line">
@@ -75,11 +76,9 @@
 			<!-- 탭 콘텐츠 -->
 			<div class="flex-1 overflow-y-auto px-6 py-5">
 				{#if s.loading}
-					<p class="text-ink-2 text-sm">{tr('wizard.loading')}</p>
+					<ActivityIndicator label={tr('wizard.loading')} />
 				{:else if s.error}
-					<div class="bg-red-900/20 border border-red-800 rounded-lg px-3 py-2 text-red-400 text-xs">
-						{s.error}
-					</div>
+					<Alert tone="danger">{s.error}</Alert>
 				{:else if s.activeTab === 0}
 					<DbCreateStep1Details />
 				{:else if s.activeTab === 1}
@@ -95,10 +94,9 @@
 
 			<!-- 에러 + 액션 -->
 			<div class="px-6 py-4 border-t border-line space-y-3">
+				{#if s.creating}<ProgressTrack value={null} active label={tr('wizard.title')} />{/if}
 				{#if s.createError}
-					<div class="bg-red-900/20 border border-red-800 rounded-lg px-3 py-2 text-red-400 text-xs whitespace-pre-wrap break-all">
-						{s.createError}
-					</div>
+					<Alert tone="danger" class="whitespace-pre-wrap break-all">{s.createError}</Alert>
 				{:else if s.step1Error && s.activeTab !== 0}
 					<div class="text-warm-text text-xs">{s.step1Error}</div>
 				{/if}
@@ -128,14 +126,15 @@
 						>
 							{tr('actions.cancel')}
 						</button>
-						<button
+						<Button
+							size="sm"
 							onclick={s.createInstance}
 							disabled={s.creating || !s.canCreate}
+							ariaBusy={s.creating}
 							title={s.step1Error || ''}
-							class="text-xs text-action-on-warm bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 px-4 py-1.5 rounded-lg transition-colors"
 						>
-							{s.creating ? tr('state.creating') : tr('actions.create')}
-						</button>
+							{#if s.creating}<ActivityIndicator size="xs" tone="ink" />{tr('state.creating')}{:else}{tr('actions.create')}{/if}
+						</Button>
 					</div>
 				</div>
 			</div>

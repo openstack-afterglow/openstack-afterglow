@@ -57,3 +57,25 @@ describe('레인 뷰 연결선 강도', () => {
 		expect(zero.width).toBe(edgeIntensity(0).width);
 	});
 });
+
+describe('레인 뷰 흐름 표시', () => {
+	it('흐름은 0 이 아닌 실측 트래픽이 있는 연결에만 켜진다 — 계측 없음·측정된 0·라우터는 흐르지 않는다', () => {
+		const t = makeTraffic();
+		t.interfaces!['port-web-03-eth0'] = {
+			instance_id: 'vm-web-03', network_id: 'net-web',
+			mac_address: 'fa:16:3e:a1:00:13', rx_bps: 0, tx_bps: 0,
+		};
+		const c = controller(t);
+		expect(conn(c, 'vm-web-01|net-web')!.flowing).toBe(true);
+		expect(conn(c, 'vm-web-03|net-web')!.flowing).toBe(false);   // 측정된 0
+		expect(conn(c, 'vm-db-01|net-web')!.flowing).toBe(false);    // 그 NIC 표본 없음
+		const routerConns = c.connections.filter((x) => x.key.startsWith('rtr-'));
+		expect(routerConns.length).toBeGreaterThan(0);
+		expect(routerConns.every((x) => !x.flowing)).toBe(true);
+		expect(conn(c, 'lb|lb-web|net-web')!.flowing).toBe(true);
+	});
+
+	it('트래픽 응답이 없으면 어떤 연결도 흐르지 않는다', () => {
+		expect(controller(null).connections.some((x) => x.flowing)).toBe(false);
+	});
+});

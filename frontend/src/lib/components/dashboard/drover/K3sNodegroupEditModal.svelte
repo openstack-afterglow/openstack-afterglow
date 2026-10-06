@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/drover-pages';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { api, ApiError } from '$lib/api/client';
 	import type { K3sFlavor, K3sNodegroup } from '$lib/types/k3s';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
@@ -98,7 +99,7 @@
 	tabindex="-1"
 >
 	<div
-		class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]"
+		class="motion-enter bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]"
 		onclick={(e) => e.stopPropagation()}
 		role="none"
 	>
@@ -132,9 +133,9 @@
 						aria-checked={form.stampede_enabled}
 						aria-label={t('nodegroup.autoscale')}
 						onclick={() => form.stampede_enabled = !form.stampede_enabled}
-						class="relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus-visible:shadow-[var(--focus-ring)] {form.stampede_enabled ? 'bg-action-warm' : 'bg-surface-selected'}"
+						class="relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-[var(--motion-duration-fast)] focus:outline-none focus-visible:shadow-[var(--focus-ring)] {form.stampede_enabled ? 'bg-accent' : 'bg-surface-selected'}"
 					>
-						<span class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-surface-base shadow ring-0 transition duration-200 {form.stampede_enabled ? 'translate-x-4' : 'translate-x-0'}"></span>
+						<span class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-surface-base shadow ring-0 transition-transform duration-[var(--motion-duration-base)] {form.stampede_enabled ? 'translate-x-4' : 'translate-x-0'}"></span>
 					</button>
 				</div>
 				<div class="mt-3 grid grid-cols-2 gap-3">
@@ -173,7 +174,7 @@
 				disabled={saving}
 				class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg"
 			>
-				{saving ? t('state.saving') : t('actions.save')}
+				{#if saving}<ActivityIndicator size="xs" label={t('state.saving')} />{:else}{t('actions.save')}{/if}
 			</button>
 		</div>
 	</div>

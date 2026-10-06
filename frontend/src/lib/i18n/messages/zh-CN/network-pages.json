@@ -1,4 +1,5 @@
 {
+	"loadBalancers.loading": "正在加载负载均衡器列表...",
 	"networkCreate.title": "创建网络",
 	"networkCreate.name": "名称",
 	"networkCreate.addSubnet": "同时创建子网",

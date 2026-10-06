@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import type { GpuQuota } from '$lib/types/quotas';
 	import type { FlavorReconcileResponse } from '$lib/stores/adminQuotasController.svelte';
 	import { t } from '$lib/i18n/ns/admin-identity';
@@ -18,10 +19,22 @@
 		loading: boolean;
 		error: string;
 		hasAnyAlias: boolean;
-		onSetLimit: (alias: string, limit: number) => void;
-		onClear: (alias: string) => void;
+		onSetLimit: (alias: string, limit: number) => void | Promise<void>;
+		onClear: (alias: string) => void | Promise<void>;
 		reconcilePreview?: FlavorReconcileResponse | null;
 	} = $props();
+
+	let savingAliases = $state<Record<string, boolean>>({});
+
+	async function changeLimit(alias: string, limit: number | null) {
+		savingAliases[alias] = true;
+		try {
+			if (limit === null) await onClear(alias);
+			else await onSetLimit(alias, limit);
+		} finally {
+			delete savingAliases[alias];
+		}
+	}
 </script>
 
 <div class="bg-surface-base border border-line rounded-xl p-6 mb-6">
@@ -29,7 +42,7 @@
 	<p class="text-xs text-ink-2 mb-4">{t('gpuQuota.description')}</p>
 	{#if error}<div class="text-red-400 text-xs mb-3">{error}</div>{/if}
 	{#if loading}
-		<div class="text-ink-2 text-sm">{t('gpuQuota.loading')}</div>
+		<ActivityIndicator size="sm" label={t('gpuQuota.loading')} />
 	{:else if rows.length === 0 && !hasAnyAlias}
 		<div class="text-ink-2 text-sm">{t('gpuQuota.noAliases')}</div>
 	{:else}
@@ -60,16 +73,20 @@
 								min="-1"
 								value={q?.limit ?? ''}
 								placeholder={String(defLimit)}
+								disabled={savingAliases[alias]}
 								onchange={(e) => {
 									const v = (e.target as HTMLInputElement).value;
 									if (v === '') {
-										onClear(alias);
+										changeLimit(alias, null);
 									} else {
-										onSetLimit(alias, Number(v));
+										changeLimit(alias, Number(v));
 									}
 								}}
 								class="w-20 bg-surface-selected border border-line-2 rounded px-2 py-1 text-sm text-ink-0 text-right focus:outline-none focus:border-action-warm"
 							/>
+							{#if savingAliases[alias]}
+								<ActivityIndicator size="xs" label={t('gpuQuota.saving')} class="mt-1" />
+							{/if}
 						</td>
 						<td class="py-2 text-right text-ink-2">{inUse}</td>
 						<td class="py-2 text-right {avail > 0 ? 'text-green-400' : avail === -1 ? 'text-ink-2' : 'text-red-400'}">
@@ -78,7 +95,8 @@
 						<td class="py-2 text-right">
 							{#if q?.limit != null}
 								<button
-									onclick={() => onClear(alias)}
+									onclick={() => changeLimit(alias, null)}
+									disabled={savingAliases[alias]}
 									class="text-xs text-ink-2 hover:text-ink-2 transition-colors"
 									title={t('gpuQuota.resetTitle')}
 								>{t('gpuQuota.reset')}</button>

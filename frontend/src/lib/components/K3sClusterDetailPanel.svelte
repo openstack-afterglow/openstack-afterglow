@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/ns/drover';
   import { untrack } from 'svelte';
   import { auth } from '$lib/stores/auth';
   import { goto } from '$app/navigation';
@@ -107,9 +108,9 @@
     </div>
 
     {#if s.loading}
-      <div class="animate-pulse space-y-4">
-        <div class="h-8 bg-surface-sunken rounded w-64"></div>
-        <div class="h-40 bg-surface-sunken rounded"></div>
+      <div class="space-y-4" role="status" aria-label={t('clusterDetail.loading')} aria-busy="true">
+        <div class="motion-skeleton h-8 rounded w-64 max-w-full"></div>
+        <div class="motion-skeleton h-40 rounded"></div>
       </div>
     {:else if s.error}
       <div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">{s.error}</div>

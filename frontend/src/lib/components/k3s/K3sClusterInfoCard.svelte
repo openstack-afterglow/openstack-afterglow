@@ -1,6 +1,8 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/drover';
+  import { t as tc } from '$lib/i18n/ns/common';
   import { intlLocale } from '$lib/i18n/runtime.svelte';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
   import { auth } from '$lib/stores/auth';
   import { api } from '$lib/api/client';
   import { downloadBlobAs } from '$lib/utils/downloadBlob';
@@ -69,7 +71,7 @@
           disabled={downloadingCa}
           class="text-xs px-2 py-0.5 rounded bg-surface-selected hover:bg-surface-selected text-ink-1 disabled:opacity-50 transition-colors"
         >
-          {downloadingCa ? t('overview.pending') : t('overview.info.downloadCa')}
+          {#if downloadingCa}<ActivityIndicator variant="download" size="xs" label={tc('state.processing')} />{:else}{t('overview.info.downloadCa')}{/if}
         </button>
         <button
           onclick={() => (showCertModal = true)}

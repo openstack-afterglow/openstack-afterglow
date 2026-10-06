@@ -6,7 +6,7 @@
 	import { formatTranscriptTime, transcriptSrt, transcriptText, type AudioTranscript } from '$lib/api/audioTranscript';
 	import { offerAudioTranscript } from '$lib/api/audioChatHandoff';
 	import { ApiError } from '$lib/api/client';
-	import { Alert, Button, Field, PageShell, SelectInput, Tabs, TextareaInput, TextInput } from '$lib/components/ui';
+	import { ActivityIndicator, Alert, Button, Field, PageShell, SelectInput, Tabs, TextareaInput, TextInput } from '$lib/components/ui';
 	import { t } from '$lib/i18n/ns/chat-studio';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 
@@ -483,6 +483,7 @@
 					</aside>
 					<div class="playbar">
 						<div class="playbar-output">
+							{#if busyTts}<ActivityIndicator variant="bars" label={t('audioStudio.speechGenerating')} />{/if}
 							{#if audioUrl}
 								<audio bind:this={media} src={audioUrl} controls aria-label={t('audioStudio.generatedSpeech')}></audio>
 								<p class="muted">{t('audioStudio.speechOutputInfo', { voice: outputVoice, format: outputFormat.toUpperCase() })}</p>
@@ -519,7 +520,7 @@
 								<div class="source-info">
 									<p class="source-name">{source.name}</p>
 									<p class="muted">{fileSize(source.size)} · {MIME_LABELS[source.type] ?? source.type}</p>
-									{#if uploading}<p role="status" class="muted">{t('audioStudio.uploading')}</p>{:else if assetId}<p role="status" class="muted">{t('audioStudio.scannedInput', { name: assetName })}</p>{/if}
+									{#if uploading}<ActivityIndicator variant="upload" label={t('audioStudio.uploading')} />{:else if assetId}<p role="status" class="muted">{t('audioStudio.scannedInput', { name: assetName })}</p>{/if}
 								</div>
 								<audio bind:this={sourceMedia} src={source.url} controls aria-label={t('audioStudio.previewSource', { name: source.name })}></audio>
 								<Button variant="ghost" size="icon" ariaLabel={t('audioStudio.removeSource')} disabled={transcribing} onclick={removeSource}><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg></Button>
@@ -539,6 +540,7 @@
 							<input id="audio-timestamps" class="switch" type="checkbox" role="switch" checked={requestTimestamps} disabled={!timestampSupported || busyStt} aria-describedby="audio-timestamps-help" onchange={(event) => { timestamps = event.currentTarget.checked; }} />
 						</div>
 						<Button size="lg" disabled={!sttReady} onclick={() => void transcribe()}>{transcribing ? t('audioStudio.processingAudio') : t('audioStudio.convertToText')}</Button>
+						{#if transcribing}<ActivityIndicator variant="dots" label={t('audioStudio.processingAudio')} />{/if}
 						{#if failures.stt}<Alert tone="danger">{failures.stt}</Alert>{/if}
 					</aside>
 				</div>

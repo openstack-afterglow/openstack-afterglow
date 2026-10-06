@@ -18,8 +18,11 @@
 	import { createResourceSelection } from '$lib/utils/resourceSelection.svelte';
 	import { executeBulkMutations } from '$lib/utils/bulkActions';
 	import { t } from '$lib/i18n/ns/dashboard-home';
+	import { t as tc } from '$lib/i18n/ns/common';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import RichText from '$lib/i18n/RichText.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
 
 	type Tab = 'secrets' | 'containers' | 'orders' | 'quota';
 	const selection = createResourceSelection();
@@ -57,6 +60,8 @@
 	// payload 보기
 	let payloadVisible = $state<Record<string, string>>({});
 	let payloadLoading = $state<string | null>(null);
+	let deletingSecretId = $state<string | null>(null);
+	let deletingContainerId = $state<string | null>(null);
 
 	function selectableIds(tab: Tab = activeTab): string[] {
 		if (tab === 'secrets') return secrets.filter((item) => !item.system_managed).map((item) => item.id);
@@ -167,26 +172,30 @@
 	}
 
 	async function handleDeleteSecret(s: SecretInfo) {
+		if (deletingSecretId !== null) return;
 		if (!keyManagerEnabled) return;
 		if (s.system_managed) return;
 		if (!await confirmDialog(t('secrets.confirm.deleteSecret', { name: s.name ?? s.id }))) return;
+		deletingSecretId = s.id;
 		try {
 			await secretsApi.deleteSecret(s.id, $auth.token ?? undefined, $auth.projectId ?? undefined);
 			toast.success(t('secrets.toast.deleted'));
 			await fetchAll();
 		} catch (e) {
 			toast.error(t('secrets.toast.deleteFailed', { error: e instanceof ApiError ? e.message : String(e) }));
+		} finally {
+			deletingSecretId = null;
 		}
 	}
 
 	async function handleShowPayload(s: SecretInfo) {
-		if (!keyManagerEnabled) return;
-		if (payloadVisible[s.id]) {
+		if (payloadVisible[s.id] !== undefined) {
 			const next = { ...payloadVisible };
 			delete next[s.id];
 			payloadVisible = next;
 			return;
 		}
+		if (payloadLoading !== null || !keyManagerEnabled) return;
 		payloadLoading = s.id;
 		try {
 			const val = await secretsApi.getPayload(s.id, $auth.token ?? undefined, $auth.projectId ?? undefined);
@@ -229,14 +238,18 @@
 	}
 
 	async function handleDeleteContainer(id: string, name: string | null) {
+		if (deletingContainerId !== null) return;
 		if (!keyManagerEnabled) return;
 		if (!await confirmDialog(t('secrets.confirm.deleteContainer', { name: name ?? id }))) return;
+		deletingContainerId = id;
 		try {
 			await secretsApi.deleteContainer(id, $auth.token ?? undefined, $auth.projectId ?? undefined);
 			toast.success(t('secrets.toast.deleted'));
 			await fetchAll();
 		} catch (e) {
 			toast.error(t('secrets.toast.deleteFailed', { error: e instanceof ApiError ? e.message : String(e) }));
+		} finally {
+			deletingContainerId = null;
 		}
 	}
 	async function runBulkDelete() {
@@ -304,7 +317,7 @@
 {#snippet highlightedText(text: string)}<span class="text-ink-1 font-medium">{text}</span>{/snippet}
 {#snippet mutedText(text: string)}<span class="text-ink-2">{text}</span>{/snippet}
 {#snippet valueText(text: string)}<span class="text-ink-0">{text}</span>{/snippet}
-{#snippet tabCountText(text: string)}<span class="ml-1 text-xs text-ink-2">{text}</span>{/snippet}
+{#snippet tabCountText(text: string)}<span class="ml-1 text-xs text-ink-2"><AnimatedNumber value={secrets.length} format={(value) => String(Math.round(value))} /></span>{/snippet}
 
 {#if !keyManagerEnabled}
 	<div class="p-4 md:p-8">
@@ -470,10 +483,11 @@
 	{#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
 
 	{#if loading}
+		<ActivityIndicator label={`${t('secrets.page.title')} · ${tc('state.loading')}`} />
 		<LoadingSkeleton variant="table" rows={4} />
 	{:else if activeTab === 'secrets'}
 		{#if secrets.length === 0}
-			<div class="text-center py-16 text-ink-2">
+			<div class="motion-fade text-center py-16 text-ink-2">
 				<div class="text-4xl mb-3">🔑</div>
 				<p class="text-sm">{t('secrets.empty.secrets')}</p>
 				<button onclick={() => showCreateSecret = true} class="mt-4 text-warm-text hover:text-warm-text-hover text-sm">{t('secrets.actions.createSecret')}</button>
@@ -529,11 +543,11 @@
 								<td class="py-3 pr-4 text-ink-2 text-xs">{s.expires ? new Date(s.expires).toLocaleDateString(intlLocale()) : t('secrets.secret.noExpiry')}</td>
 								<td class="py-3">
 									<div class="flex gap-2">
-										<button onclick={() => handleShowPayload(s)} disabled={payloadLoading === s.id} class="text-xs text-warm-text hover:text-warm-text-hover disabled:opacity-50">{payloadLoading === s.id ? t('secrets.actions.loading') : payloadVisible[s.id] ? t('secrets.actions.hide') : t('secrets.actions.showValue')}</button>
-										{#if !s.system_managed}<button onclick={() => handleDeleteSecret(s)} class="text-xs text-red-400 hover:text-red-300">{t('secrets.actions.delete')}</button>{/if}
+										<button onclick={() => handleShowPayload(s)} disabled={payloadLoading !== null && payloadVisible[s.id] === undefined} aria-busy={payloadLoading === s.id} class="text-xs text-warm-text hover:text-warm-text-hover disabled:opacity-50">{#if payloadLoading === s.id}<ActivityIndicator size="xs" label={t('secrets.actions.loading')} />{:else}{payloadVisible[s.id] !== undefined ? t('secrets.actions.hide') : t('secrets.actions.showValue')}{/if}</button>
+										{#if !s.system_managed}<button onclick={() => handleDeleteSecret(s)} disabled={selectionBusy || deletingSecretId !== null} class="text-xs text-state-danger-text hover:text-ink-0 disabled:opacity-50">{#if deletingSecretId === s.id}<ActivityIndicator size="xs" tone="danger" label={`${t('secrets.actions.delete')} · ${tc('state.processing')}`} />{:else}{t('secrets.actions.delete')}{/if}</button>{/if}
 									</div>
-									{#if payloadVisible[s.id]}
-										<div class="mt-2 flex items-center gap-2">
+									{#if payloadVisible[s.id] !== undefined}
+										<div class="motion-fade mt-2 flex items-center gap-2">
 											<code class="text-xs bg-surface-base border border-line-2 rounded px-2 py-1 font-mono max-w-xs overflow-x-auto block">{payloadVisible[s.id].substring(0, 60)}{payloadVisible[s.id].length > 60 ? '...' : ''}</code>
 											<button onclick={() => copyPayload(payloadVisible[s.id])} class="text-xs text-ink-2 hover:text-ink-1 shrink-0">{t('secrets.actions.copy')}</button>
 										</div>
@@ -548,7 +562,7 @@
 
 	{:else if activeTab === 'containers'}
 		{#if containers.length === 0}
-			<div class="text-center py-16 text-ink-2">
+			<div class="motion-fade text-center py-16 text-ink-2">
 				<div class="text-4xl mb-3">📦</div>
 				<p class="text-sm">{t('secrets.empty.containers')}</p>
 				<button onclick={() => showCreateContainer = true} class="mt-4 text-warm-text hover:text-warm-text-hover text-sm">{t('secrets.actions.createContainer')}</button>
@@ -584,8 +598,8 @@
 								<td class="py-3 pr-4"><div class="max-md:max-w-[66vw] max-md:truncate" title={c.name ?? c.id}>{c.name ?? '-'}</div><div class="text-xs text-ink-2 font-mono max-md:max-w-[66vw] max-md:truncate">{c.id}</div></td>
 								<td class="py-3 pr-4 text-ink-2">{c.type}</td>
 								<td class="py-3 pr-4"><span class="px-2 py-0.5 rounded text-xs {STATUS_CLASS[c.status ?? ''] ?? 'bg-surface-selected text-ink-2'}">{c.status ?? '-'}</span></td>
-								<td class="py-3 pr-4 text-ink-2">{t('secrets.container.secretCount', { count: c.secret_refs.length })}</td>
-								<td class="py-3"><button onclick={() => handleDeleteContainer(c.id, c.name)} disabled={selectionBusy} class="text-xs text-red-400 hover:text-red-300">{t('secrets.actions.delete')}</button></td>
+								<td class="py-3 pr-4 text-ink-2"><AnimatedNumber value={c.secret_refs.length} format={(value) => t('secrets.container.secretCount', { count: Math.round(value) })} /></td>
+								<td class="py-3"><button onclick={() => handleDeleteContainer(c.id, c.name)} disabled={selectionBusy || deletingContainerId !== null} class="text-xs text-state-danger-text hover:text-ink-0 disabled:opacity-50">{#if deletingContainerId === c.id}<ActivityIndicator size="xs" tone="danger" label={`${t('secrets.actions.delete')} · ${tc('state.processing')}`} />{:else}{t('secrets.actions.delete')}{/if}</button></td>
 							</tr>
 						{/each}
 					</tbody>
@@ -595,7 +609,7 @@
 
 	{:else if activeTab === 'orders'}
 		{#if orders.length === 0}
-			<div class="text-center py-16 text-ink-2">
+			<div class="motion-fade text-center py-16 text-ink-2">
 				<div class="text-4xl mb-3">⚙️</div>
 				<p class="text-sm">{t('secrets.empty.orders')}</p>
 				<button onclick={() => showCreateOrder = true} class="mt-4 text-warm-text hover:text-warm-text-hover text-sm">{t('secrets.actions.createOrder')}</button>
@@ -613,12 +627,15 @@
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-line">
-						{#each orders as o}
+						{#each orders as o (o.id)}
 							<tr class="hover:bg-surface-sunken/30">
 								<td class="py-3 pr-4 font-mono text-xs text-ink-2">{o.id}</td>
 								<td class="py-3 pr-4 text-ink-2">{o.type}</td>
 								<td class="py-3 pr-4">
 									<span class="px-2 py-0.5 rounded text-xs {STATUS_CLASS[o.status ?? ''] ?? 'bg-surface-selected text-ink-2'}">{o.status ?? '-'}</span>
+									{#if o.status === 'PENDING' && !o.secret_ref && !o.error_reason}
+										<ActivityIndicator size="xs" label={t('secrets.order.pending')} />
+									{/if}
 								</td>
 								<td class="py-3 pr-4 text-ink-2 text-xs">{o.created ? new Date(o.created).toLocaleDateString(intlLocale()) : '-'}</td>
 								<td class="py-3 text-xs text-ink-2">
@@ -637,7 +654,7 @@
 				{#each ([[t('secrets.tabs.secrets'), quota.secrets], [t('secrets.quota.orders'), quota.orders], [t('secrets.tabs.containers'), quota.containers], [t('secrets.quota.consumers'), quota.consumers], [t('secrets.quota.cas'), quota.cas]] as [string, number][]) as [label, val]}
 					<div class="bg-surface-sunken rounded-xl p-4 border border-line-2">
 						<div class="text-xs text-ink-2 mb-1">{label}</div>
-						<div class="text-2xl font-bold text-ink-0">{val === -1 ? '∞' : val}</div>
+						<div class="text-2xl font-bold text-ink-0">{#if val === -1}∞{:else}<AnimatedNumber value={val} />{/if}</div>
 						<div class="text-xs text-ink-2 mt-1">{val === -1 ? t('secrets.quota.unlimited') : t('secrets.quota.limit', { count: val })}</div>
 					</div>
 				{/each}

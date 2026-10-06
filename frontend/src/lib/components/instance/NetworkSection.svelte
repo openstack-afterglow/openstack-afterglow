@@ -4,6 +4,7 @@
 	import { t } from '$lib/i18n/ns/instance';
 	import SecurityGroupUnion from './SecurityGroupUnion.svelte';
 	import { buildSecurityGroupUnion } from '$lib/utils/securityGroupUnion';
+	import { ActivityIndicator, StatusChip } from '$lib/components/ui';
 
 	const s = useInstanceDetailController();
 
@@ -57,7 +58,7 @@
 	</div>
 
 	{#if showAddInterface}
-		<div class="mb-4 bg-surface-sunken rounded-lg p-4">
+		<div class="motion-enter mb-4 bg-surface-sunken rounded-lg p-4">
 			<p class="text-xs text-ink-2 mb-2">{t('network.selectNetworkLabel')}</p>
 			<div class="flex gap-2">
 				<select
@@ -74,7 +75,7 @@
 					disabled={!selectedNetId || s.actioning === 'attach-iface'}
 					class="text-xs text-warm-text hover:text-warm-text-hover px-3 py-1.5 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3 disabled:border-line-2"
 				>
-					{s.actioning === 'attach-iface' ? t('network.adding') : t('network.add')}
+					{#if s.actioning === 'attach-iface'}<ActivityIndicator size="xs" label={t('network.adding')} />{:else}{t('network.add')}{/if}
 				</button>
 			</div>
 		</div>
@@ -104,7 +105,7 @@
 							</div>
 							<div>
 								<dt class="text-xs text-ink-2 mb-0.5">{t('network.status')}</dt>
-								<dd class="text-xs {iface.status === 'ACTIVE' ? 'text-green-400' : 'text-ink-2'}">{iface.status}</dd>
+								<dd><StatusChip status={iface.status} /></dd>
 							</div>
 							<div class="@3xl/panel:col-span-2">
 								<dt class="text-xs text-ink-2 mb-1">{t('network.ipAddress')}</dt>
@@ -125,7 +126,7 @@
 									disabled={!!s.actioning}
 									class="text-xs text-orange-400 hover:text-orange-300 px-2 py-1 border border-orange-900 hover:border-orange-700 rounded transition-colors disabled:text-ink-3"
 								>
-									{s.actioning === 'fip-release-' + ifaceFip.id ? t('network.releasing') : t('network.releaseFloatingIp')}
+									{#if s.actioning === 'fip-release-' + ifaceFip.id}<ActivityIndicator size="xs" label={t('network.releasing')} />{:else}{t('network.releaseFloatingIp')}{/if}
 								</button>
 							{:else}
 								<button
@@ -133,7 +134,7 @@
 									disabled={!!s.actioning}
 									class="text-xs text-warm-text hover:text-warm-text-hover px-2 py-1 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3"
 								>
-									{s.actioning === 'fip-assign-' + iface.id ? t('network.assigning') : t('network.addFloatingIp')}
+									{#if s.actioning === 'fip-assign-' + iface.id}<ActivityIndicator size="xs" label={t('network.assigning')} />{:else}{t('network.addFloatingIp')}{/if}
 								</button>
 							{/if}
 							<button
@@ -141,7 +142,7 @@
 								disabled={!!s.actioning}
 								class="text-xs text-orange-400 hover:text-orange-300 px-2 py-1 border border-orange-900 hover:border-orange-700 rounded transition-colors disabled:text-ink-3"
 							>
-								{s.actioning === 'detach-iface-' + iface.id ? t('network.removing') : t('network.remove')}
+								{#if s.actioning === 'detach-iface-' + iface.id}<ActivityIndicator size="xs" label={t('network.removing')} />{:else}{t('network.remove')}{/if}
 							</button>
 						</div>
 					</div>
@@ -158,7 +159,7 @@
 							</button>
 						</div>
 						{#if sgEditPortId === iface.id}
-							<div class="bg-surface-selected rounded p-3 mt-2">
+							<div class="motion-enter bg-surface-selected rounded p-3 mt-2">
 								<p class="text-xs text-ink-2 mb-2">{t('network.projectSecurityGroups')}</p>
 								<div class="space-y-1.5 mb-3 max-h-56 overflow-y-auto">
 									{#each s.allSecurityGroups as sg}
@@ -202,7 +203,7 @@
 										disabled={s.actioning === 'sg-' + iface.id || s.securityGroupsLoading || !!s.securityGroupsError}
 										class="text-xs text-warm-text hover:text-warm-text-hover px-2 py-1 border border-action-warm hover:border-action-warm rounded transition-colors disabled:text-ink-3"
 									>
-										{s.actioning === 'sg-' + iface.id ? t('network.saving') : t('network.save')}
+										{#if s.actioning === 'sg-' + iface.id}<ActivityIndicator size="xs" label={t('network.saving')} />{:else}{t('network.save')}{/if}
 									</button>
 									<button
 										onclick={() => { sgEditPortId = null; }}

@@ -60,7 +60,7 @@
 	"nodegroup.default": "（默认）",
 	"nodegroup.provisioning": "▲ +{count} 正在预配",
 	"nodegroup.nodeCount": "节点数：<count>{count}</count>",
-	"nodegroup.vmCount": "虚拟机：<count>{running}/{total}</count>",
+	"nodegroup.vmCount": "虚拟机：<running>{running}</running>/{total}",
 	"nodegroup.flavorRequired": "实例类型（必填）",
 	"nodegroup.flavorOptional": "实例类型（可选）",
 	"nodegroup.notSelected": "未选择",

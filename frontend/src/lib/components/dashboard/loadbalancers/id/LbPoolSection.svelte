@@ -1,7 +1,10 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/network-resources';
+	import { t as tc } from '$lib/i18n/ns/common';
 	import type { Pool, Member } from '$lib/types/loadbalancer';
 	import LbPoolMembersPanel from './LbPoolMembersPanel.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import { createPendingAction } from '$lib/components/network/pendingAction.svelte';
 
 	let {
 		pools,
@@ -35,9 +38,11 @@
 
 	let showAddPool = $state(false);
 	let poolForm = $state({ protocol: 'HTTP', lb_algorithm: 'ROUND_ROBIN', name: '' });
+	const pending = createPendingAction();
+	const creatingPool = $derived(pending.isActive('create', saving));
 
 	async function handleAddPool() {
-		const ok = await onAddPool(poolForm);
+		const ok = await pending.run('create', () => onAddPool(poolForm));
 		if (ok) {
 			showAddPool = false;
 			poolForm = { protocol: 'HTTP', lb_algorithm: 'ROUND_ROBIN', name: '' };
@@ -52,7 +57,7 @@
 	</div>
 
 	{#if showAddPool}
-		<div class="mb-4 p-4 bg-surface-sunken/60 border border-line-2 rounded-lg grid grid-cols-1 sm:grid-cols-3 gap-2">
+		<div class="motion-enter mb-4 p-4 bg-surface-sunken/60 border border-line-2 rounded-lg grid grid-cols-1 sm:grid-cols-3 gap-2">
 			<input bind:value={poolForm.name} placeholder={t('lb.form.optionalName')} class="bg-surface-sunken border border-line-2 rounded px-3 py-2 text-sm text-ink-1" />
 			<select bind:value={poolForm.protocol} class="bg-surface-sunken border border-line-2 rounded px-3 py-2 text-sm text-ink-1">
 				{#each ['HTTP', 'HTTPS', 'TCP', 'UDP'] as p}
@@ -64,7 +69,7 @@
 					<option value={a}>{t('lb.algorithm.label', { algorithm: a })}</option>
 				{/each}
 			</select>
-			<button onclick={handleAddPool} disabled={saving} class="col-span-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-ink-0 text-sm px-3 py-2 rounded">{t('lb.actions.create')}</button>
+			<button onclick={handleAddPool} disabled={saving} aria-busy={creatingPool} class="col-span-2 inline-flex items-center justify-center gap-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-ink-0 text-sm px-3 py-2 rounded">{#if creatingPool}<ActivityIndicator size="xs" tone="ink" />{/if}{creatingPool ? tc('state.processing') : t('lb.actions.create')}</button>
 			<button onclick={() => showAddPool = false} class="text-ink-2 hover:text-ink-1 text-sm px-2 text-center">{t('lb.actions.cancel')}</button>
 		</div>
 	{/if}
@@ -74,6 +79,7 @@
 	{:else}
 		<div class="space-y-2">
 			{#each pools as pool}
+				{@const deletingPool = pending.isActive(`delete:${pool.id}`, saving)}
 				<div>
 					<div
 						onclick={() => onSelectPool(selectedPoolId === pool.id ? null : pool.id)}
@@ -90,7 +96,7 @@
 						</div>
 						<div class="flex gap-2">
 							<span class="text-xs text-ink-2">{selectedPoolId === pool.id ? t('lb.pools.collapseMembers') : t('lb.pools.showMembers')}</span>
-							<button onclick={(e) => { e.stopPropagation(); onDeletePool(pool.id); }} disabled={saving} class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 transition-colors">{t('lb.actions.delete')}</button>
+							<button onclick={(e) => { e.stopPropagation(); void pending.run(`delete:${pool.id}`, () => onDeletePool(pool.id)); }} disabled={saving} aria-busy={deletingPool} class="inline-flex items-center gap-1.5 text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1 rounded border border-red-900 hover:border-red-700 transition-colors">{#if deletingPool}<ActivityIndicator size="xs" tone="danger" />{/if}{deletingPool ? t('network.actions.deleting') : t('lb.actions.delete')}</button>
 						</div>
 					</div>
 

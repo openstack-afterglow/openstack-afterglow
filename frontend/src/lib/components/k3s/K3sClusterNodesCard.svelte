@@ -1,6 +1,8 @@
 <script lang="ts">
   import { t } from '$lib/i18n/ns/drover';
   import { intlLocale } from '$lib/i18n/runtime.svelte';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+  import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
   import { useK3sClusterDetailController, healthColor } from '$lib/stores/k3sClusterDetailController.svelte';
   import Button from '$lib/components/ui/Button.svelte';
 
@@ -52,14 +54,14 @@
           onclick={() => s.decrementScale()}
           class="w-5 h-5 flex items-center justify-center bg-surface-selected hover:bg-surface-selected text-ink-0 rounded text-xs transition-colors">−</button>
         <span class="text-ink-2 text-xs min-w-[2rem] text-center">
-          {s.cluster!.agent_vm_ids.length} / {s.scalingTarget ?? s.cluster!.agent_count}
+          <AnimatedNumber value={s.cluster!.agent_vm_ids.length} /> / {s.scalingTarget ?? s.cluster!.agent_count}
         </span>
         <button
           onclick={() => s.incrementScale()}
           class="w-5 h-5 flex items-center justify-center bg-surface-selected hover:bg-surface-selected text-ink-0 rounded text-xs transition-colors">+</button>
         {#if s.scalingTarget !== null && s.scalingTarget !== s.cluster!.agent_count}
           <Button onclick={() => s.applyScale()} disabled={s.scaling} size="sm" class="ml-1">
-            {s.scaling ? t('nodes.scaling') : t('nodes.apply')}
+            {#if s.scaling}<ActivityIndicator size="xs" label={t('scale.applying')} />{:else}{t('nodes.apply')}{/if}
           </Button>
         {/if}
       </div>
@@ -81,14 +83,14 @@
               onclick={() => s.decrementScale()}
               class="w-5 h-5 flex items-center justify-center bg-surface-selected hover:bg-surface-selected text-ink-0 rounded text-xs transition-colors">−</button>
             <span class="text-ink-2 text-xs min-w-[2rem] text-center">
-              {s.cluster!.agent_vm_ids.length} / {s.scalingTarget ?? s.cluster!.agent_count}
+              <AnimatedNumber value={s.cluster!.agent_vm_ids.length} /> / {s.scalingTarget ?? s.cluster!.agent_count}
             </span>
             <button
               onclick={() => s.incrementScale()}
               class="w-5 h-5 flex items-center justify-center bg-surface-selected hover:bg-surface-selected text-ink-0 rounded text-xs transition-colors">+</button>
             {#if s.scalingTarget !== null && s.scalingTarget !== s.cluster!.agent_count}
               <Button onclick={() => s.applyScale()} disabled={s.scaling} size="sm" class="ml-1">
-                {s.scaling ? t('nodes.scaling') : t('nodes.apply')}
+                {#if s.scaling}<ActivityIndicator size="xs" label={t('scale.applying')} />{:else}{t('nodes.apply')}{/if}
               </Button>
             {/if}
           {:else}

@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/ns/common';
 	import Pill from '$lib/components/ui/Pill.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	type TabKey = 'compute' | 'network' | 'block_storage' | 'shared_file_system' | 'orchestration' | 'container' | 'container_infra' | 'endpoints' | 'storage_pools';
 
 	let {
@@ -30,6 +32,7 @@
 <div class="flex flex-wrap gap-1 mb-6 border-b border-line pb-0" data-tour="admin-system-tabs">
 	{#each tabs as tab}
 		<button
+			aria-busy={loadingMap[tab.key] || undefined}
 			onclick={() => { onIntent(tab.key); activeTab = tab.key; }}
 			onpointerenter={() => onIntent(tab.key)}
 			onfocus={() => onIntent(tab.key)}
@@ -40,7 +43,7 @@
 		>
 			{tab.label}
 			{#if loadingMap[tab.key]}
-				<span class="ml-1.5 inline-block w-3 h-3 border border-line-2 border-t-blue-400 rounded-full animate-spin"></span>
+				<ActivityIndicator size="xs" class="ml-1.5" /><span class="sr-only">{t('state.loading')}</span>
 			{:else if !loadedMap[tab.key]}
 				<Pill class="ml-1.5" tone="neutral" size="xs">—</Pill>
 			{:else}

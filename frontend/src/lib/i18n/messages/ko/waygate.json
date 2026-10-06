@@ -1,4 +1,10 @@
 {
+	"project.permission.denied": "현재 프로젝트에서 이 작업을 수행할 권한이 없습니다.",
+	"project.client.owner": "소유자 사용자 ID",
+	"project.client.ownerHelp": "프로젝트 구성원의 사용자 ID를 입력하세요. 미지정 클라이언트는 일반 연결 사용자가 설정을 다운로드할 수 없습니다.",
+	"project.client.ownerSelf": "나",
+	"project.client.ownerUnassigned": "미지정",
+	"project.client.assignSelf": "나에게 지정",
 	"workspace.breadcrumb.admin": "ADMIN / WAYGATE",
 	"workspace.breadcrumb.network": "NETWORK / WAYGATE",
 	"workspace.adminTitle": "Waygate 관리",

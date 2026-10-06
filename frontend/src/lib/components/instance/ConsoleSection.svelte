@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { useInstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
 	import { t } from '$lib/i18n/ns/instance';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
 	const s = useInstanceDetailController();
 
@@ -46,7 +47,7 @@
 					disabled={s.logLoading}
 					class="text-xs text-ink-2 hover:text-ink-1 px-2 py-1 border border-line-2 hover:border-line-2 rounded transition-colors disabled:text-ink-3"
 				>
-					{s.logLoading ? t('console.loading') : t('console.refresh')}
+					{#if s.logLoading}<ActivityIndicator size="xs" label={t('console.loading')} />{:else}{t('console.refresh')}{/if}
 				</button>
 			{/if}
 			<button
@@ -58,9 +59,11 @@
 		</div>
 	</div>
 	{#if showLog}
+		{#if s.logLoading && !s.consoleLog}<ActivityIndicator label={t('console.loadingContent')} />{/if}
 		<pre
 			bind:this={logPreEl}
-			class="bg-surface-canvas border border-line rounded p-3 text-xs text-ink-2 font-mono overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap"
-		>{s.logLoading && !s.consoleLog ? t('console.loadingContent') : s.consoleLog}</pre>
+			aria-busy={s.logLoading}
+			class="motion-fade bg-surface-canvas border border-line rounded p-3 text-xs text-ink-2 font-mono overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap"
+		>{s.consoleLog}</pre>
 	{/if}
 </div>

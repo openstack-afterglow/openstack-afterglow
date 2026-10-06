@@ -23,6 +23,7 @@
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
 	import MockupBanner from '$lib/components/mockup/MockupBanner.svelte';
@@ -38,6 +39,8 @@
 	import { t as tn } from '$lib/i18n/ns/nav';
 	import { getLocale, initLocale, restoreKeyDebugMode } from '$lib/i18n/runtime.svelte';
 	import LocaleSelect from '$lib/i18n/LocaleSelect.svelte';
+	import { isDocsPath } from '$lib/docs/paths';
+	import { documentationNavItem } from '$lib/config/nav';
 	import './layout.css';
 
 	let { children, data } = $props();
@@ -58,6 +61,7 @@
 	const mockup = $derived(data.mockup);
 	const mockupAdminActive = $derived(mockup.active && mockup.profile === 'admin');
 	const publicRoutes = ['/', '/login', '/auth/gitlab/callback', '/oauth/claude/authorize'];
+	const isDocumentationRoute = $derived(isDocsPath($page.url.pathname));
 	let lastVerifiedToken: string | null = null;
 	let authVerifyNonce = $state(0);
 	let unreadFetchSerial = 0;
@@ -65,7 +69,7 @@
 	let recoveryClock = $state(Date.now());
 	const authenticationUnavailable = $derived(
 		!!$auth.token && $authRecovery?.token === $auth.token
-		&& !mockup.active && !isMockAuthActive() && !publicRoutes.includes($page.url.pathname),
+		&& !mockup.active && !isMockAuthActive() && !isDocumentationRoute && !publicRoutes.includes($page.url.pathname),
 	);
 	const recoveryWait = $derived(Math.max(0, Math.ceil((($authRecovery?.retryAt ?? 0) - recoveryClock) / 1000)));
 	$effect(() => {
@@ -217,11 +221,13 @@
 		) {
 			const path = $page.url.pathname;
 			const nextPath =
-				(path.startsWith('/dashboard') || path.startsWith('/admin')) &&
+				(path.startsWith('/dashboard') || path.startsWith('/admin') || isDocsPath(path)) &&
 				isMockupPathAllowed(clientMockProfile, path)
 					? path
 					: getMockupHomePath(clientMockProfile);
-			void goto(`${nextPath}?${MOCKUP_QUERY_KEY}=${clientMockProfile}`, { replaceState: true });
+			const next = new URL(nextPath === path ? $page.url.href : nextPath, $page.url.origin);
+			next.searchParams.set(MOCKUP_QUERY_KEY, clientMockProfile);
+			void goto(`${next.pathname}${next.search}${next.hash}`, { replaceState: true });
 		}
 		previousMockupActive = active;
 	});
@@ -257,7 +263,7 @@
 
 	const isInvitationRoute = $derived($page.url.pathname.startsWith('/invitations/'));
 	const shelllessRoutes = ['/', '/login', '/auth/gitlab/callback', '/select-project', '/oauth/claude/authorize'];
-	const showAppChrome = $derived($isLoggedIn && !shelllessRoutes.includes($page.url.pathname) && !isInvitationRoute);
+	const showAppChrome = $derived($isLoggedIn && !isDocumentationRoute && !shelllessRoutes.includes($page.url.pathname) && !isInvitationRoute);
 	$effect(() => {
 		const token = $auth.token;
 		const projectId = $auth.projectId;
@@ -279,13 +285,13 @@
 
 	$effect(() => {
 		if (!mockupClientReady) return;
-		if (!$logoutInProgress && !$isLoggedIn && !publicRoutes.includes($page.url.pathname) && !isInvitationRoute) {
+		if (!$logoutInProgress && !$isLoggedIn && !isDocumentationRoute && !publicRoutes.includes($page.url.pathname) && !isInvitationRoute) {
 			goto('/login', { replaceState: true });
 		}
 	});
 
 	$effect(() => {
-		if ($authReady && $isLoggedIn && !$auth.projectId && !projectAgnosticRoutes.includes($page.url.pathname) && !isInvitationRoute) {
+		if ($authReady && $isLoggedIn && !$auth.projectId && !isDocumentationRoute && !projectAgnosticRoutes.includes($page.url.pathname) && !isInvitationRoute) {
 			goto('/select-project');
 		}
 	});
@@ -295,15 +301,15 @@
 		const token = $auth.token;
 		const projectId = $auth.projectId;
 		const _nonce = authVerifyNonce;
-		if (mockup.active || isMockAuthActive() || !token || token === lastVerifiedToken) return;
+		if (isDocumentationRoute || mockup.active || isMockAuthActive() || !token || token === lastVerifiedToken) return;
 		lastVerifiedToken = token;
 		(async () => {
 			try {
-				const me = await api.get<{ user_id: string; username: string; project_id: string; project_name: string; roles: string[]; is_system_admin: boolean; auth_method?: string }>(
+				const me = await api.get<{ user_id: string; username: string; project_id: string; project_name: string; roles: string[]; is_system_admin: boolean; can_write: boolean; auth_method?: string }>(
 					'/api/v1/auth/me', token, projectId ?? undefined,
 				);
 				if (get(auth).token !== token || mockup.active || isMockAuthActive()) return;
-				auth.update((s) => ({ ...s, isSystemAdmin: me.is_system_admin === true, roles: me.roles ?? s.roles, federated: me.auth_method === 'federated' }));
+				auth.update((s) => ({ ...s, isSystemAdmin: me.is_system_admin === true, roles: me.roles ?? s.roles, canWrite: me.can_write, federated: me.auth_method === 'federated' }));
 				authRecovery.set(null);
 				authReady.set(true);
 			} catch (err) {
@@ -347,10 +353,12 @@
 			const stored = sessionStorage.getItem(MOCKUP_SESSION_KEY);
 			if (isMockupProfileId(stored)) {
 				clientMockProfile = stored;
-				const nextPath = (location.pathname.startsWith('/dashboard') || location.pathname.startsWith('/admin')) && isMockupPathAllowed(stored, location.pathname)
+				const nextPath = (location.pathname.startsWith('/dashboard') || location.pathname.startsWith('/admin') || isDocsPath(location.pathname)) && isMockupPathAllowed(stored, location.pathname)
 					? location.pathname
 					: getMockupHomePath(stored);
-				bootstrapUrl = `${nextPath}?${MOCKUP_QUERY_KEY}=${stored}`;
+				const next = new URL(nextPath === location.pathname ? location.href : nextPath, location.origin);
+				next.searchParams.set(MOCKUP_QUERY_KEY, stored);
+				bootstrapUrl = `${next.pathname}${next.search}${next.hash}`;
 			}
 		}
 		if (clientMockProfile && !isMockAuthActive()) {
@@ -364,7 +372,7 @@
 
 		const stopSessionRefresh = startSessionRefreshLifecycle({
 			getSession: () => ({
-				token: $auth.token,
+				token: isDocsPath(location.pathname) ? null : $auth.token,
 				refreshToken: $auth.refreshToken,
 				accessExpiresAt: $auth.accessExpiresAt,
 				isMock: mockup.active || isMockAuthActive(),
@@ -469,7 +477,7 @@
 		<!-- 검색 입력 (⌘K 트리거) -->
 		<button
 			onclick={() => palette.open()}
-			class="header-search hidden min-w-0 cursor-text items-center gap-2 rounded-md border border-line-2 bg-surface-sunken py-1.5 pl-3 pr-2 text-[13px] text-ink-2 transition-colors hover:bg-surface-selected lg:flex"
+			class="header-search hidden min-w-0 cursor-text items-center gap-2 rounded-md border border-line-2 bg-surface-sunken py-1.5 pl-3 pr-2 text-[13px] text-ink-2 transition-colors hover:bg-surface-selected xl:flex"
 			aria-label={t('search.label')}
 		>
 			<svg class="size-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z"/></svg>
@@ -479,7 +487,7 @@
 
 		<!-- 우측 컨트롤 -->
 		<div class="ml-auto flex shrink-0 items-center gap-1 md:gap-2">
-			<button onclick={() => palette.open()} aria-label={t('search.label')} class="hidden size-11 shrink-0 items-center justify-center rounded-md text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] md:flex lg:hidden">
+			<button onclick={() => palette.open()} aria-label={t('search.label')} class="hidden size-11 shrink-0 items-center justify-center rounded-md text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] md:flex xl:hidden">
 				<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m21 21-4.35-4.35M17 11a6 6 0 1 1-12 0 6 6 0 0 1 12 0" /></svg>
 			</button>
 			{#if $siteConfig.services.cloud_shell && !mockup.active}
@@ -509,6 +517,10 @@
 			{/if}
 
 			<LocaleSelect id="app-header-locale" />
+			<a href="/docs" aria-label={tn('items.documentation')} title={tn('items.documentation')} class="flex h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink-0 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] lg:h-8 lg:min-w-8">
+				<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={documentationNavItem.icon} /></svg>
+				<span class="hidden text-xs font-medium sm:inline">Docs</span>
+			</a>
 
 			<!-- 테마 토글 -->
 			<button
@@ -535,14 +547,14 @@
 					onclick={toggleBellDropdown}
 				/>
 				{#if bellOpen}
-					<!-- 모바일: 바텀 시트 / sm 이상: 종 아이콘 기준 드롭다운 (ProjectSelector 패턴 준용) -->
+					<!-- 모바일: 바텀 시트 / sm 이상: 종 아이콘 기준 드롭다운 (ProjectSelector 패턴 준용). 진입: 시트는 아래에서, 드롭다운은 종 아래로. -->
 					<div
-						class="fixed left-0 bottom-0 w-full rounded-t-xl sm:absolute sm:left-auto sm:right-0 sm:bottom-auto sm:top-full sm:mt-2 sm:w-80 sm:rounded-xl border shadow-[var(--shadow-restraint)] sm:shadow-[var(--shadow-popover)] z-50 overflow-hidden"
+						class="motion-enter fixed left-0 bottom-0 w-full rounded-t-xl sm:absolute sm:left-auto sm:right-0 sm:bottom-auto sm:top-full sm:mt-2 sm:w-80 sm:rounded-xl border shadow-[var(--shadow-restraint)] sm:shadow-[var(--shadow-popover)] z-50 overflow-hidden [--motion-enter-offset:1rem] sm:[--motion-enter-offset:-0.375rem]"
 						style="background: var(--color-surface-raised); border-color: var(--color-line);"
 					>
 						<p class="px-4 pt-3 pb-2 text-xs uppercase tracking-wide text-[var(--color-ink-3)]">{t('bell.title')}</p>
 						{#if bellItems === null}
-							<p class="px-4 pb-3 text-xs text-[var(--color-ink-3)]">{t('bell.loading')}</p>
+							<div class="px-4 pb-3"><ActivityIndicator variant="dots" size="xs" label={t('bell.loading')} /></div>
 						{:else if bellError}
 							<p class="px-4 pb-3 text-xs text-[var(--color-state-danger)]">{t('bell.failed')}</p>
 						{:else if bellItems.length === 0}
@@ -613,10 +625,10 @@
 {#if $isLoggedIn}
 	<ConfirmDialog />
 {/if}
-{#if mockup.active}
+{#if mockup.active && !isDocumentationRoute}
 	<MockupBanner profile={mockup.profile} />
 {/if}
-{#if $isLoggedIn}
+{#if $isLoggedIn && !isDocumentationRoute}
 	<TutorialController />
 {/if}
 <Toast />
@@ -657,7 +669,7 @@
 <style>
 	@media (min-width: 64rem) {
 		.console-header {
-			--header-search-width: clamp(10rem, calc(100vw - 54rem), 24rem);
+			--header-search-width: clamp(10rem, calc(100vw - 60rem), 24rem);
 		}
 
 		.header-context {

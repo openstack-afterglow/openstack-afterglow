@@ -43,10 +43,12 @@
 	{:else if !s.instance}
 		<div class="text-ink-2 text-sm">{tr('instance.notFound')}</div>
 	{:else}
-		<DbInfoSection />
-		<DbConnectionSection />
-		<DbDatabasesSection />
-		<DbUsersSection />
-		<DbBackupsSection />
+		<div class="motion-stagger space-y-4">
+			<div><DbInfoSection /></div>
+			<div><DbConnectionSection /></div>
+			<div><DbDatabasesSection /></div>
+			<div><DbUsersSection /></div>
+			<div><DbBackupsSection /></div>
+		</div>
 	{/if}
 </div>

@@ -1,10 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { auth } from '$lib/stores/auth';
 import type * as ImageStudioModule from '$lib/api/imageStudio';
 import { ApiError } from '$lib/api/client';
 import ImageStudio from '../ImageStudio.svelte';
-import { IMAGE_STUDIO_STYLES } from '../imageStudioStyles';
+import { IMAGE_STUDIO_STYLES, imageRequestAspectRatio } from '../imageStudioStyles';
 import { t } from '$lib/i18n/ns/chat-studio';
 import { initLocale } from '$lib/i18n/runtime.svelte';
 
@@ -73,6 +73,37 @@ describe('Image Studio', () => {
 		expect(api.submit.mock.calls[1][3]).toBe(first[3]);
 	});
 
+	it('updates local elapsed time and does not replay completion on a pending status poll', async () => {
+		api.run.mockResolvedValue({ run_id: 'run-1', status: 'waiting_resource', terminal: false, output_assets: [] });
+		const view = render(ImageStudio);
+		try {
+			await screen.findByRole('option', { name: t('imageStudio.quality.high') });
+			await fireEvent.input(screen.getByRole('textbox', { name: t('imageStudio.prompt') }), { target: { value: 'orange dusk' } });
+			vi.useFakeTimers();
+			vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+			await fireEvent.click(screen.getByRole('button', { name: t('imageStudio.createImage') }));
+			await vi.advanceTimersByTimeAsync(0);
+			const developing = screen.getByLabelText(t('imageStudio.developing'));
+			expect(developing.textContent).toContain(t('imageStudio.status.waitingResource'));
+			await vi.advanceTimersByTimeAsync(3000);
+			expect(developing.textContent).toContain(t('imageStudio.elapsedSinceRequest', { seconds: 3 }));
+			expect(screen.getByLabelText(t('imageStudio.developing'))).toBe(developing);
+			// Cancellation can race completion; the resulting status read is still a live completion.
+			api.run.mockResolvedValue({ run_id: 'run-1', status: 'completed', terminal: true, output_assets: [{ asset_id: 'asset-1', mime_type: 'image/png', size_bytes: 5, download_url: '/asset-1' }] });
+			await fireEvent.click(screen.getByRole('button', { name: t('imageStudio.cancelJob') }));
+			await vi.advanceTimersByTimeAsync(0);
+			const image = screen.getByRole('img', { name: t('imageStudio.generatedImage') });
+			expect(image.classList.contains('motion-pop')).toBe(true);
+			await vi.advanceTimersByTimeAsync(1000);
+			expect(api.run).toHaveBeenCalledTimes(4);
+			expect(screen.getByRole('img', { name: t('imageStudio.generatedImage') })).toBe(image);
+			expect(api.download).toHaveBeenCalledTimes(1);
+		} finally {
+			view.unmount();
+			vi.useRealTimers();
+		}
+	});
+
 	it('blocks submission when image route or pricing is unavailable even if a model is listed', async () => {
 		api.models.mockResolvedValue([{ ...ready, capabilities: { feature_gates: { image_output: { available: false, mode: 'none', pricing_available: false, reason_code: 'route_unavailable' } } } }]);
 		render(ImageStudio);
@@ -106,12 +137,35 @@ describe('Image Studio', () => {
 		await fireEvent.input(screen.getByRole('textbox', { name: /프롬프트/ }), { target: { value: 'orange dusk' } });
 		await fireEvent.click(screen.getByRole('button', { name: '이미지 만들기' }));
 		await waitFor(() => expect(api.submit).toHaveBeenCalledWith('generations', expect.objectContaining({ model_id: '1', prompt: 'orange dusk', size: '1024x1024', quality: 'high', n: 1 }), { token: 'token', projectId: 'project-1' }, expect.any(String), expect.any(AbortSignal)));
-		await screen.findByRole('img', { name: '생성된 이미지' });
+		const liveImage = await screen.findByRole('img', { name: '생성된 이미지' });
+		expect(liveImage.classList.contains('motion-pop')).toBe(true);
 		expect(api.download).toHaveBeenCalledWith('asset-1', { token: 'token', projectId: 'project-1' }, expect.anything());
 		mounted.unmount();
 		render(ImageStudio);
-		await screen.findByRole('img', { name: '생성된 이미지' });
+		const historicalImage = await screen.findByRole('img', { name: '생성된 이미지' });
+		expect(historicalImage.classList.contains('motion-pop')).toBe(false);
 		expect(api.run).toHaveBeenCalledWith('run-1', { token: 'token', projectId: 'project-1' });
+	});
+
+	it('does not animate an already completed admission replay', async () => {
+		api.submit.mockResolvedValueOnce({ run_id: 'run-1', status: 'completed' });
+		render(ImageStudio);
+		await screen.findByRole('option', { name: 'high' });
+		await fireEvent.input(screen.getByRole('textbox', { name: /프롬프트/ }), { target: { value: 'orange dusk' } });
+		await fireEvent.click(screen.getByRole('button', { name: '이미지 만들기' }));
+		const replayedImage = await screen.findByRole('img', { name: '생성된 이미지' });
+		expect(replayedImage.classList.contains('motion-pop')).toBe(false);
+	});
+
+	it('does not replay the live entrance when the same result is selected from history', async () => {
+		render(ImageStudio);
+		await screen.findByRole('option', { name: 'high' });
+		await fireEvent.input(screen.getByRole('textbox', { name: /프롬프트/ }), { target: { value: 'orange dusk' } });
+		await fireEvent.click(screen.getByRole('button', { name: '이미지 만들기' }));
+		await screen.findByRole('img', { name: '생성된 이미지' });
+		await fireEvent.click(screen.getByRole('button', { name: /run-1/ }));
+		const selectedImage = await screen.findByRole('img', { name: '생성된 이미지' });
+		expect(selectedImage.classList.contains('motion-pop')).toBe(false);
 	});
 
 	it('uploads input without a mode choice and isolates input and history across projects', async () => {
@@ -198,6 +252,7 @@ describe('Image Studio', () => {
 		await screen.findByRole('option', { name: 'high' });
 		await fireEvent.change(screen.getByLabelText('입력 이미지'), { target: { files: [new File(['pixels'], 'source.png', { type: 'image/png' })] } });
 		await screen.findByText('입력 이미지를 업로드하는 중…');
+		expect(screen.getAllByRole('status').some((status) => status.textContent?.trim() === '입력 이미지를 업로드하는 중…')).toBe(true);
 		await fireEvent.click(screen.getByRole('button', { name: /run-2/ }));
 		await waitFor(() => expect(api.run).toHaveBeenCalledWith('run-2', { token: 'token', projectId: 'project-1' }));
 		upload.resolve({ id: 'input-1', name: 'source.png', mime_type: 'image/png' });
@@ -300,14 +355,30 @@ describe('Image Studio', () => {
 	});
 
 	it('cancels an active run and reports the terminal cancellation', async () => {
+		api.capabilities.mockResolvedValueOnce({ available_image_variants: ['1536x1024:high'], max_image_count: 1 });
 		api.run.mockResolvedValueOnce({ run_id: 'run-1', status: 'running', terminal: false, output_assets: [] })
 			.mockResolvedValueOnce({ run_id: 'run-1', status: 'canceled', terminal: true, output_assets: [] });
 		render(ImageStudio);
-		await screen.findByRole('option', { name: 'Image Model' });
+		await screen.findByRole('option', { name: 'high' });
 		await fireEvent.input(screen.getByRole('textbox', { name: /프롬프트/ }), { target: { value: 'cloud' } });
 		await fireEvent.click(screen.getByRole('button', { name: '이미지 만들기' }));
+		const developing = await screen.findByLabelText(t('imageStudio.developing'));
+		expect(developing.getAttribute('aria-busy')).toBe('true');
+		expect((developing as HTMLElement).style.aspectRatio).toBe('1536 / 1024');
+		expect(within(developing).getByRole('status')).toBeTruthy();
 		await fireEvent.click(await screen.findByRole('button', { name: '작업 취소' }));
 		await waitFor(() => expect(api.cancel).toHaveBeenCalledWith('run-1', { token: 'token', projectId: 'project-1' }));
 		await screen.findByText('작업이 취소되었습니다.');
+		expect(screen.queryByLabelText(t('imageStudio.developing'))).toBeNull();
+	});
+});
+
+describe('image developing aspect ratio', () => {
+	it('uses requested dimensions without pretending an automatic or unknown size is square', () => {
+		expect(imageRequestAspectRatio('1536x1024')).toBe('1536 / 1024');
+		expect(imageRequestAspectRatio('1024x1536')).toBe('1024 / 1536');
+		expect(imageRequestAspectRatio('auto')).toBeNull();
+		expect(imageRequestAspectRatio(null)).toBeNull();
+		expect(imageRequestAspectRatio('0x1024')).toBeNull();
 	});
 });

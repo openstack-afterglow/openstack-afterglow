@@ -182,12 +182,12 @@
   >
     <button
       type="button"
-      class="material-scrim absolute inset-0 cursor-default bg-surface-scrim"
+      class="motion-fade material-scrim absolute inset-0 cursor-default bg-surface-scrim"
       onclick={() => palette.close()}
       aria-label={t('palette.close')}
     ></button>
     <div class="fixed left-1/2 top-[20vh] z-[calc(var(--z-command)+1)] w-full max-w-xl -translate-x-1/2 px-4">
-      <div class="palette-panel overflow-hidden rounded-xl border border-line-2 shadow-[var(--shadow-restraint)]">
+      <div class="motion-pop palette-panel overflow-hidden rounded-xl border border-line-2 shadow-[var(--shadow-restraint)]">
         <div class="flex items-center gap-3 border-b border-line px-4 py-3">
           <svg class="size-4 shrink-0 text-ink-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z"/>

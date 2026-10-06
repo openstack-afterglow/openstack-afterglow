@@ -40,14 +40,14 @@
 	>
 		<button
 			type="button"
-			class="material-scrim absolute inset-0 cursor-default bg-surface-scrim"
+			class="material-scrim motion-fade absolute inset-0 cursor-default bg-surface-scrim"
 			onclick={close}
 			aria-label={t('dialog.close')}
 			tabindex={dismissible ? 0 : -1}
 			disabled={!dismissible}
 			aria-hidden={!dismissible}
 		></button>
-		<div class="relative z-[1] max-h-full max-w-full overflow-y-auto">
+		<div class="motion-pop relative z-[1] max-h-full max-w-full overflow-y-auto">
 			{@render children()}
 		</div>
 	</div>

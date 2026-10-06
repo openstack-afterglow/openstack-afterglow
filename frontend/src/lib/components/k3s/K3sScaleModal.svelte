@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/drover';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 		import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	interface Props {
@@ -41,7 +42,7 @@
 	role="dialog"
 	aria-modal="true"
 >
-	<div class="bg-surface-base border border-line-2 rounded-lg p-6 w-80 shadow-[var(--shadow-overlay-compact)]" role="none">
+	<div class="motion-enter bg-surface-base border border-line-2 rounded-lg p-6 w-80 shadow-[var(--shadow-overlay-compact)]" role="none">
 		<h3 class="text-sm font-semibold text-ink-0 mb-1">{t('scale.title')}</h3>
 		<p class="text-xs text-ink-2 mb-4 font-mono">{deploymentName}</p>
 
@@ -68,7 +69,7 @@
 				onclick={handleApply}
 				disabled={applying || replicas === currentReplicas}
 				class="flex-1 py-2 rounded-lg text-xs text-action-on-warm bg-action-warm hover:bg-action-warm-hover disabled:opacity-40 transition-colors"
-			>{applying ? t('scale.applying') : t('scale.apply')}</button>
+			>{#if applying}<ActivityIndicator size="xs" label={t('scale.applying')} />{:else}{t('scale.apply')}{/if}</button>
 		</div>
 	</div>
 </div>

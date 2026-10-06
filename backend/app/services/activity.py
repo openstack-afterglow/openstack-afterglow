@@ -32,7 +32,7 @@ def _mask_text(text: str) -> str:
 
 def service_for_resource(resource_type: str) -> str:
     """Map API resource types to their originating cloud service."""
-    if resource_type in {"instance", "keypair", "flavor"}:
+    if resource_type in {"instance", "keypair", "flavor", "hypervisor"}:
         return "nova"
     if resource_type == "image":
         return "glance"

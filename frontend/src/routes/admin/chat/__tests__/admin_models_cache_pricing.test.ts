@@ -233,7 +233,9 @@ describe("admin chat model prompt-cache pricing", () => {
   });
 
   it("prefills a scientific-notation zero as 0 and still saves an unrelated output change", async () => {
-    serve([model(1, { cache_read_price_per_million: "0E-10" })]);
+    const stored = model(1, { cache_read_price_per_million: "0E-10" });
+    serve([stored]);
+    patch.mockImplementation(async (_path: string, changes: Record<string, unknown>) => Object.assign(stored, changes));
     render(ModelPage);
     const modal = await openEditor();
     expect((within(modal).getByLabelText("캐시 읽기") as HTMLInputElement).value).toBe("0");
@@ -242,10 +244,13 @@ describe("admin chat model prompt-cache pricing", () => {
     await fireEvent.click(within(modal).getByText("저장"));
 
     await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
-    expect(patch.mock.calls[0][1]).toStrictEqual({
-      input_price_per_million: "3",
-      output_price_per_million: "16",
-    });
+    expect(patch.mock.calls[0][1]).toStrictEqual({ output_price_per_million: "16" });
+    await waitFor(() => expect(screen.queryByText("모델 가격 수정")).toBeNull());
+    const reopened = await openEditor();
+    expect((within(reopened).getByLabelText("입력") as HTMLInputElement).value).toBe("3");
+    expect((within(reopened).getByLabelText("출력") as HTMLInputElement).value).toBe("16");
+    expect((within(reopened).getByLabelText("캐시 읽기") as HTMLInputElement).value).toBe("0");
+    expect(within(reopened).queryByText(t("configuration.enterANumberGreaterThanOrEqualTo0"))).toBeNull();
     expect(toastError).not.toHaveBeenCalled();
   });
 
@@ -338,7 +343,6 @@ describe("admin chat model prompt-cache pricing", () => {
     await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
     const body = patch.mock.calls[0][1];
     expect(body).toStrictEqual({
-      input_price_per_million: "3",
       output_price_per_million: "16",
     });
     for (const key of CACHE_KEYS) expect(body).not.toHaveProperty(key);
@@ -351,15 +355,22 @@ describe("admin chat model prompt-cache pricing", () => {
     expect(createCacheGroup()).not.toBeNull();
   });
 
-  it("keeps the pair rule for input/output while cache prices stay independent", async () => {
-    serve([model(1, { cache_read_price_per_million: "0.3" })]);
+  it("clears only the output price while preserving free input and cache prices on reopen", async () => {
+    const stored = model(1, { input_price_per_million: "0", cache_read_price_per_million: "0.3" });
+    serve([stored]);
+    patch.mockImplementation(async (_path: string, changes: Record<string, unknown>) => Object.assign(stored, changes));
     render(ModelPage);
     const modal = await openEditor();
     await fireEvent.input(within(modal).getByLabelText("출력"), { target: { value: "" } });
     await fireEvent.click(within(modal).getByText("저장"));
 
-    expect(toastError).toHaveBeenCalledWith(t("configuration.enterBothInputAndOutputPricesOrLeaveBoth"));
-    expect(patch).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByText("모델 가격 수정")).toBeNull());
+    const reopened = await openEditor();
+    expect((within(reopened).getByLabelText("입력") as HTMLInputElement).value).toBe("0");
+    expect((within(reopened).getByLabelText("출력") as HTMLInputElement).value).toBe("");
+    expect((within(reopened).getByLabelText("캐시 읽기") as HTMLInputElement).value).toBe("0.3");
+    expect(patch).toHaveBeenCalledWith("/api/v1/chat/admin/models/1", { output_price_per_million: null }, "token", "project");
+    expect(toastError).not.toHaveBeenCalled();
   });
 
   it("blocks saving an invalid cache price in the editor and clears stale errors on reopen", async () => {

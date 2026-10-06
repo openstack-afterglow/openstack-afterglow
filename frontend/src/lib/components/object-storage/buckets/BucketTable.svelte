@@ -2,18 +2,22 @@
 	import { t } from '$lib/i18n/ns/object-storage';
 	import type { SwiftContainer } from '$lib/types/common';
 	import BucketRow from './BucketRow.svelte';
+	import { createArrivals } from '../arrivals';
 
 	let {
 		containers,
 		deletingId,
 		refreshing,
 		onDelete,
+		arrivals = createArrivals(),
 	}: {
 		containers: SwiftContainer[];
 		deletingId: string | null;
 		refreshing: boolean;
 		onDelete: (name: string) => Promise<void>;
+		arrivals?: ReturnType<typeof createArrivals>;
 	} = $props();
+
 </script>
 
 <div class="overflow-x-auto">
@@ -29,7 +33,8 @@
 		</thead>
 		<tbody>
 			{#each containers as c (c.name)}
-				<BucketRow container={c} {deletingId} {onDelete} />
+				{@const entrance = arrivals.next(c.name)}
+				<BucketRow container={c} {deletingId} {onDelete} {entrance} />
 			{/each}
 		</tbody>
 	</table>

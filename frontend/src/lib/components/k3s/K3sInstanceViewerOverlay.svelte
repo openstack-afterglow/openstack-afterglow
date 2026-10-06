@@ -6,7 +6,7 @@
   const s = useK3sClusterDetailController();
 </script>
 
-<div class="absolute inset-0 z-10 bg-surface-canvas overflow-y-auto">
+<div class="motion-fade absolute inset-0 z-10 bg-surface-canvas overflow-y-auto">
   <div class="px-4 pt-4">
     <button
       onclick={() => s.clearViewingInstance()}

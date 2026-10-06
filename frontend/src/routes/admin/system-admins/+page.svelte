@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api } from '$lib/api/client';
@@ -115,7 +116,7 @@
 		<LoadingSkeleton variant="table" rows={3} />
 	{:else}
 			{#if policyLoading}
-				<Alert tone="neutral" class="mb-3">{t('systemPage.policyLoading')}</Alert>
+				<Alert tone="neutral" class="mb-3"><span class="inline-flex items-center gap-2"><ActivityIndicator size="xs" />{t('systemPage.policyLoading')}</span></Alert>
 			{:else if policyError}
 				<Alert tone="danger" class="mb-3" title={t('systemPage.policyFailed')}>{policyError}</Alert>
 			{:else if policy}

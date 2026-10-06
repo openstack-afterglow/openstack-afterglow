@@ -10,6 +10,8 @@
 		match: boolean;
 		/** 네트워크 status ≠ ACTIVE */
 		down: boolean;
+		/** 첫 도착 진입 cascade 단계. null 이면 진입 모션 없음 */
+		enter: number | null;
 	}
 </script>
 
@@ -36,6 +38,8 @@
 				class:is-dim={z.dim}
 				class:is-match={z.match}
 				class:is-down={z.down}
+				class:motion-fade={z.enter !== null}
+				style:--motion-index={z.enter ?? undefined}
 				data-zone-net={z.netId}
 				rx="8"
 				x={r1(z.rect.x)}

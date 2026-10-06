@@ -29,6 +29,7 @@ Owner가 요청된 main PR들을 병합했다고 보고한 뒤, 정확한 main p
 - 2026-10-03 사용자 지시는 Kolla `stable/2025.2`의 최신 branch 상태를 유지하는 것이다. `/etc/kolla/pyproject.toml`과 operator uv 프로젝트를 직접 편집하거나 commit pin으로 되돌리지 않는다. 새 dependency 정보는 `uv sync`로만 취득하며 branch ref 갱신 옵션과 실제 설치 revision을 확인한다. 최신 branch/release의 실패한 build/test/package를 모두 파악·수정하고 로컬 검증과 GitHub Actions 발행 성공이 전부 확인된 뒤에만 Kolla rollout한다. 이 조건부 배포 승인은 main PR·merge 소유권, native KVM publication gate, 운영 backup·auth·datastore 보호를 우회하지 않는다.
 - 2026-10-04 사용자는 “네 source tag만 제한적 수정 허용”을 선택했다. 모든 정식 발행을 확인한 뒤 live/repo operator `[tool.uv.sources]`의 Droverv0.3.0·Lumenv0.6.1·Waygatev0.3.0·Palimpsestv0.3.0 tag만 갱신할 수 있다. Kolla `stable/2025.2`와 나머지 설정은 보존하고 lock은 직접 편집하지 않고 `uv sync`로만 생성한다. Owner main 통합·native reviewer·backup/auth/storage gate와 배포 선행 조건은 그대로 유지한다.
 - 2026-10-04 사용자는 배포 진행을 재요청하며 필요한 PR을 모두 생성해 자신에게 요청하도록 승인했다. 현재 GitHub refs와 main 대비 후속 커밋을 다시 확인해 이미 통합된 후보는 중복 PR을 만들지 않고, 빠진 최신 수정만 PR로 요청한다. 기존 전체 발행·native proof·auth/backup/storage 선행 조건과 허용된 operator 변경 범위는 유지한다.
+- 2026-10-05 사용자 추가 지시는 `kolla-ansible reconfigure -i multinode --tag afterglow,lumen,drover,palimpsest,waygat`를 그대로 입력해 다섯 서비스를 정상 재배포하는 것이다. 별도 wrapper·custom playbook·추가 extra-vars나 입력 교정을 요구하지 않는다. Native CLI의 `--tag` 처리와 Waygate의 명시적 `waygat` tag를 실제 image preparation·역할 실행·HAProxy 경로까지 검증하며, Kolla 갱신 후 빠진 canonical stock-site import를 공식 installer로 복원한다. 기존 immutable image pin·operator package policy·auth/backup/native 승인 경계는 몰래 해제하지 않는다.
 
 ## Capabilities
 

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-compute';
 	import RichText from '$lib/i18n/RichText.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -24,6 +25,7 @@
 	// 단건 추가 폼
 	let form = $state({ vendor_id: '10DE', device_id: '', name: '', is_audio: false, aliases: '' });
 	let saving = $state(false);
+	let deletingDeviceId = $state<string | null>(null);
 
 	// 일괄 갱신 (CSV/xlsx 업로드)
 	let csvFile = $state<File | null>(null);
@@ -81,6 +83,7 @@
 
 	async function deleteDevice(d: GpuCatalogDevice) {
 		if (!await confirmDialog(t('gpuCatalog.deleteConfirm', { name: d.name, vendorId: d.vendor_id, deviceId: d.device_id }))) return;
+		deletingDeviceId = `${d.vendor_id}:${d.device_id}`;
 		error = '';
 		notice = '';
 		try {
@@ -88,6 +91,8 @@
 			await load();
 		} catch (e) {
 			error = e instanceof ApiError ? e.message : t('gpuCatalog.deleteFailed');
+		} finally {
+			deletingDeviceId = null;
 		}
 	}
 
@@ -189,7 +194,7 @@
 				<div>
 					<div class="text-xs text-ink-2 uppercase tracking-wide mb-2">{t('gpuCatalog.devices', { count: devices.length })}</div>
 					{#if loading}
-						<div class="text-ink-2 text-sm py-4">{t('flavors.loading')}</div>
+						<div class="py-4"><ActivityIndicator size="sm" label={t('flavors.loading')} /></div>
 					{:else}
 						<div class="border border-line rounded-lg overflow-hidden">
 							<table class="w-full text-xs">
@@ -213,7 +218,11 @@
 											</td>
 											<td class="px-3 py-1.5 text-right">
 												{#if d.source === 'db'}
-													<button onclick={() => deleteDevice(d)} class="text-red-400 hover:text-red-300">{t('flavors.delete.action')}</button>
+													<button onclick={() => deleteDevice(d)} disabled={deletingDeviceId === `${d.vendor_id}:${d.device_id}`} class="text-state-danger-text hover:text-state-danger-text/90">
+														{#if deletingDeviceId === `${d.vendor_id}:${d.device_id}`}
+															<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('flavors.delete.pending')}</span></span>
+														{:else}{t('flavors.delete.action')}{/if}
+													</button>
 												{/if}
 											</td>
 										</tr>
@@ -246,7 +255,7 @@
 							onclick={addDevice}
 							disabled={saving || !form.vendor_id.trim() || !form.device_id.trim() || !form.name.trim()}
 							class="px-4 py-1.5 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm rounded-lg disabled:opacity-30"
-						>{saving ? t('flavors.specs.saving') : t('flavors.specs.addEdit')}</button>
+						>{#if saving}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('flavors.specs.saving')}</span></span>{:else}{t('flavors.specs.addEdit')}{/if}</button>
 					</div>
 				</div>
 
@@ -268,6 +277,9 @@
 							class="px-3 py-1.5 bg-surface-sunken hover:bg-surface-selected text-ink-2 text-xs rounded-lg disabled:opacity-30"
 						>{t('gpuCatalog.csvTemplate')}</button>
 					</div>
+					{#if downloading}
+						<ActivityIndicator variant="download" size="xs" label={t('gpuCatalog.downloading')} />
+					{/if}
 					<div class="flex flex-wrap items-center gap-3">
 						<input
 							type="file"
@@ -287,7 +299,7 @@
 							onclick={importCsv}
 							disabled={importing || !csvFile}
 							class="px-4 py-1.5 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm rounded-lg disabled:opacity-30"
-						>{importing ? t('gpuCatalog.uploading') : t('gpuCatalog.upload')}</button>
+						>{#if importing}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator variant="upload" size="xs" tone="ink" /><span>{t('gpuCatalog.uploading')}</span></span>{:else}{t('gpuCatalog.upload')}{/if}</button>
 					</div>
 				</div>
 			</div>

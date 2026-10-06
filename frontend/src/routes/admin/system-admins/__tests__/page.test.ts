@@ -30,7 +30,9 @@ describe('system administrator loading boundaries', () => {
 		await vi.waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
 		admins.resolve([{ user_id: 'user-1', name: 'Alice', email: 'alice@example.test', enabled: true }]);
 		expect(await screen.findByText('Alice')).toBeTruthy();
-		expect(screen.getByText('보안 정책을 불러오는 중...')).toBeTruthy();
+		const loadingPolicy = screen.getByRole('status');
+		expect(loadingPolicy.textContent).toContain('보안 정책을 불러오는 중...');
+		expect(loadingPolicy.querySelector('[role="status"]')).toBeNull();
 
 		policy.reject(new Error('policy unavailable'));
 		expect(await screen.findByText('policy unavailable')).toBeTruthy();

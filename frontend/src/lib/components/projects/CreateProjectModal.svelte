@@ -3,6 +3,7 @@
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
 	let { onClose, onSuccess }: {
 		onClose: () => void;
@@ -54,7 +55,7 @@
 	aria-label={t('createProject.title')}
 >
 	<div
-		class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md shadow-[var(--shadow-restraint)]"
+    class="motion-pop bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md shadow-[var(--shadow-restraint)]"
 		role="none"
 	>
 		<h2 class="text-base font-semibold text-ink-0 mb-4">{t('createProject.title')}</h2>
@@ -98,7 +99,7 @@
 				disabled={!name.trim() || submitting}
 				class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-action-warm/40 disabled:cursor-not-allowed text-action-on-warm text-sm font-medium rounded-lg transition-colors"
 			>
-				{submitting ? t('createProject.creating') : t('createProject.create')}
+				{#if submitting}<ActivityIndicator size="xs" label={t('createProject.creating')} />{:else}{t('createProject.create')}{/if}
 			</button>
 		</div>
 	</div>

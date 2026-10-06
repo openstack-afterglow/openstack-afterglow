@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t as tr } from '$lib/i18n/ns/database';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import type { DbBackup } from '$lib/types/database';
 
 	let {
@@ -51,7 +52,7 @@
 			{#if addError}<p class="text-red-400 text-xs">{addError}</p>{/if}
 			<button onclick={handleAdd} disabled={creating || !newBackup.name.trim()}
 				class="text-xs bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm px-3 py-1.5 rounded transition-colors">
-				{creating ? tr('state.creating') : tr('actions.backup')}
+				{#if creating}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{tr('state.creating')}</span></span>{:else}{tr('actions.backup')}{/if}
 			</button>
 		</div>
 	{/if}
@@ -79,11 +80,11 @@
 							<div class="flex justify-end gap-1">
 								<button onclick={() => onRestore(b.id)} disabled={restoringBackup === b.id}
 									class="text-warm-text hover:text-warm-text-hover disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-action-warm hover:border-action-warm transition-colors">
-									{restoringBackup === b.id ? '...' : tr('actions.restore')}
+									{#if restoringBackup === b.id}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{tr('state.restoring')}</span></span>{:else}{tr('actions.restore')}{/if}
 								</button>
 								<button onclick={() => onDelete(b.id)} disabled={deletingBackup === b.id}
 									class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-0.5 rounded border border-red-900 hover:border-red-700 transition-colors">
-									{deletingBackup === b.id ? '...' : tr('actions.delete')}
+									{#if deletingBackup === b.id}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{tr('state.deleting')}</span></span>{:else}{tr('actions.delete')}{/if}
 								</button>
 							</div>
 						</td>

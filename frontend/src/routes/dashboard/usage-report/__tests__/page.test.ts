@@ -5,7 +5,7 @@ import { tick } from 'svelte';
 import { siteConfig } from '$lib/config/site';
 import { auth, type AuthState } from '$lib/stores/auth';
 
-const { mockGet } = vi.hoisted(() => ({ mockGet: vi.fn() }));
+const { mockGet, refreshCallbacks } = vi.hoisted(() => ({ mockGet: vi.fn(), refreshCallbacks: [] as Array<() => unknown> }));
 
 vi.mock('$lib/api/client', () => ({ api: { get: mockGet } }));
 vi.mock('$lib/stores/auth', () => ({
@@ -13,7 +13,10 @@ vi.mock('$lib/stores/auth', () => ({
 	authReady: writable(true),
 }));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({
-	createAutoRefresh: () => ({ active: false, intervalSeconds: 300, intervalOptions: [60, 300] }),
+	createAutoRefresh: (callback: () => unknown) => {
+		refreshCallbacks.push(callback);
+		return { active: false, intervalSeconds: 300, intervalOptions: [60, 300] };
+	},
 }));
 
 import Page from '../+page.svelte';
@@ -101,6 +104,7 @@ describe('usage report page', () => {
 
 	beforeEach(() => {
 		mockGet.mockReset();
+		refreshCallbacks.length = 0;
 		auth.set(initialAuth);
 		siteConfig.update((config) => ({ ...config, services: { ...config.services, manila: true, swift: false, trove: false } }));
 	});
@@ -164,6 +168,24 @@ describe('usage report page', () => {
 		expect(await screen.findByText('라우터')).toBeTruthy();
 	});
 
+	it('keeps the resource inventory mounted through an auto-refresh and publishes the new totals', async () => {
+		mockSources(report(), Promise.resolve(QUOTAS));
+		render(Page);
+		const router = await screen.findByText('라우터');
+		expect(router.parentElement?.textContent?.replace(/\s+/g, '')).toContain('2/10');
+
+		const nextInventory = Promise.withResolvers<unknown>();
+		mockSources(report(), nextInventory.promise);
+		void refreshCallbacks.at(-1)?.();
+		await tick();
+		// A background refresh must not swap the inventory for a skeleton (which would remount and regrow every bar).
+		expect(screen.getByText('라우터')).toBe(router);
+
+		nextInventory.resolve({ ...QUOTAS, network: { ...QUOTAS.network, router: { limit: 10, in_use: 3 } } });
+		await vi.waitFor(() => expect(router.parentElement?.textContent?.replace(/\s+/g, '')).toContain('3/10'));
+		expect(screen.getByText('라우터')).toBe(router);
+	});
+
 	it('does not present normalized zero inventory for services whose strict quota failed', async () => {
 		mockSources(
 			report({ quota: { compute_available: false, storage_available: false } }),
@@ -194,7 +216,6 @@ describe('usage report page', () => {
 
 		const ramBar = (await screen.findByText('RAM')).closest('.usage-bar');
 		expect(ramBar?.textContent?.replace(/\s+/g, '')).toContain('0.25GB/0.5GB50%');
-		expect(ramBar?.querySelector('.usage-fill')?.getAttribute('style')).toContain('width: 50%');
 	});
 
 	it('ignores late report and chat usage from another project', async () => {

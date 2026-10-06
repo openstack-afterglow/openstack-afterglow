@@ -22,6 +22,7 @@
   import ToggleGroup from '$lib/components/ui/ToggleGroup.svelte';
   import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
   import StatusChip from '$lib/components/ui/StatusChip.svelte';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
   const selectedIdentity = derived([auth, authReady, projectSwitching, logoutInProgress], ([$auth, ready, switching, loggingOut]): PackageIdentity | null =>
     ready && !switching && !loggingOut && $auth.token && $auth.projectId && $auth.userId
@@ -195,7 +196,7 @@
 {#snippet packageActions(item: PackageSummary, stacked = false)}
   {@const digest = controller.latestVersions[item.package_id]?.version?.root_digest ?? item.tags[0]?.digest}
   <!-- Table rows stack actions so the max-content table keeps every action visible. -->
-  <div class={stacked ? 'flex flex-col items-start gap-2' : 'flex flex-wrap gap-2'}><Button variant="secondary" onclick={() => controller.openPackage(item.name)}>{t('actions.detail')}</Button>{#if digest}<Button variant="ghost" disabled={!controller.context?.package_authority} onclick={() => copyReference(item.name, digest)}>{t('actions.copyReference')}</Button><Button variant="ghost" disabled={!!controller.busy.download} onclick={() => controller.download(item.name, digest)}>{t('actions.download')}</Button>{/if}</div>
+  <div class={stacked ? 'flex flex-col items-start gap-2' : 'flex flex-wrap gap-2'}><Button variant="secondary" onclick={() => controller.openPackage(item.name)}>{t('actions.detail')}</Button>{#if digest}<Button variant="ghost" disabled={!controller.context?.package_authority} onclick={() => copyReference(item.name, digest)}>{t('actions.copyReference')}</Button><Button variant="ghost" ariaBusy={!!controller.busy.download} disabled={!!controller.busy.download} onclick={() => controller.download(item.name, digest)}>{#if controller.busy.download}<ActivityIndicator variant="download" label={t('actions.preparingDownload')} />{:else}{t('actions.download')}{/if}</Button>{/if}</div>
 {/snippet}
 {#snippet latestMetadata(item: PackageSummary, compact = false)}
   {@const latest = controller.latestVersions[item.package_id]}
@@ -222,7 +223,7 @@
         <div class="flex flex-wrap gap-2">
           <Button variant="secondary" disabled={!!controller.busy.version} onclick={() => controller.selectVersion(item.root_digest)}>{t('detail.version')}</Button>
           <Button variant="ghost" disabled={!controller.context?.package_authority} onclick={() => copyReference(item.package, item.root_digest)}>{t('actions.copyReference')}</Button>
-          <Button variant="ghost" disabled={!!controller.busy.download} onclick={() => controller.download(item.package, item.root_digest)}>{t('actions.download')}</Button>
+          <Button variant="ghost" ariaBusy={!!controller.busy.download} disabled={!!controller.busy.download} onclick={() => controller.download(item.package, item.root_digest)}>{#if controller.busy.download}<ActivityIndicator variant="download" label={t('actions.preparingDownload')} />{:else}{t('actions.download')}{/if}</Button>
         </div>
       </Card>
     {/each}

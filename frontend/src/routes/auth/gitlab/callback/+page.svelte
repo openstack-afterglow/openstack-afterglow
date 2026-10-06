@@ -4,6 +4,8 @@
 	import { page } from '$app/stores';
 	import { setAuth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import Alert from '$lib/components/ui/Alert.svelte';
 	import type { LoginResponse } from '$lib/types/auth';
 	import { resolvePostLoginProject } from '$lib/utils/authFlow';
 	import { postAuthDestination } from '$lib/utils/mcpConsent';
@@ -52,6 +54,7 @@
 				projectName: resolution.projectId === scopedProjectId ? (data.project_name || null) : null,
 				roles: data.roles ?? [],
 				isSystemAdmin: data.is_system_admin ?? false,
+				canWrite: data.can_write,
 				federated: true,
 			});
 			await goto(postAuthDestination(resolution.target));
@@ -65,18 +68,12 @@
 <main id="main-content" tabindex="-1" class="min-h-screen bg-surface-canvas flex items-center justify-center">
 	<div class="w-full max-w-md px-4 text-center">
 		{#if loading}
-			<div class="flex flex-col items-center gap-4">
-				<svg class="w-10 h-10 text-[#FC6D26] animate-spin" fill="none" viewBox="0 0 24 24">
-					<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-					<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
-				</svg>
-				<p class="text-ink-2 text-sm">{t('gitlabCallback.processing')}</p>
+			<div class="motion-fade">
+				<ActivityIndicator size="lg" label={t('gitlabCallback.processing')} />
 			</div>
 		{:else if error}
-			<div class="bg-surface-base rounded-xl border border-line-2 p-8 space-y-4">
-				<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">
-					{error}
-				</div>
+			<div class="bg-surface-base rounded-xl border border-line-2 p-8 space-y-4 text-left motion-enter">
+				<Alert tone="danger">{error}</Alert>
 				<a href="/login" class="block w-full text-center bg-surface-sunken hover:bg-surface-selected text-ink-2 font-medium rounded-lg py-2.5 text-sm transition-colors">
 					{t('gitlabCallback.backToLogin')}
 				</a>

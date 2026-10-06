@@ -1,0 +1,103 @@
+#!/usr/bin/python3
+"""Prepare state through pinned, no-follow descriptors, then copy as appuser.
+
+Cloud-init writes /etc/afterglow/afterglow.conf; the image config symlink remains
+/app/afterglow.conf -> /var/lib/afterglow/afterglow.conf. Existing state config
+is never replaced. No root pathname chown/chmod is performed in appuser state.
+"""
+import os
+import pwd
+import secrets
+import stat
+import sys
+
+
+def directory(path):
+    descriptor = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    try:
+        for component in path.strip("/").split("/"):
+            child = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                            dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child
+        return descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def prepare():
+    os.umask(0o077)
+    account = pwd.getpwnam("appuser")
+    descriptors = []
+    temporary = None
+    try:
+        app = directory("/app")
+        descriptors.append(app)
+        if os.readlink("afterglow.conf", dir_fd=app) != "/var/lib/afterglow/afterglow.conf":
+            raise RuntimeError("unexpected application config symlink")
+        parent = directory("/var/lib")
+        descriptors.append(parent)
+        try:
+            os.mkdir("afterglow", 0o700, dir_fd=parent)
+        except FileExistsError:
+            pass
+        state = os.open("afterglow", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                        dir_fd=parent)
+        descriptors.append(state)
+        os.fchown(state, account.pw_uid, account.pw_gid)
+        os.fchmod(state, 0o700)
+        staged_dir = directory("/etc/afterglow")
+        descriptors.append(staged_dir)
+        try:
+            staged = os.open("afterglow.conf", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+                             dir_fd=staged_dir)
+        except FileNotFoundError:
+            return
+        descriptors.append(staged)
+        status = os.fstat(staged)
+        if not stat.S_ISREG(status.st_mode) or status.st_nlink != 1 or status.st_uid != 0:
+            raise RuntimeError("staged configuration must be a root-owned single-link regular file")
+        os.fchmod(staged, 0o600)
+        # Drop all root privileges before any creation in the appuser directory.
+        os.initgroups(account.pw_name, account.pw_gid)
+        os.setgid(account.pw_gid)
+        os.setuid(account.pw_uid)
+        try:
+            existing = os.stat("afterglow.conf", dir_fd=state, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        else:
+            if not stat.S_ISREG(existing.st_mode):
+                raise RuntimeError("state configuration must be a regular file")
+            return
+        temporary = ".afterglow.conf." + secrets.token_hex(16)
+        output = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                         0o600, dir_fd=state)
+        try:
+            while True:
+                data = os.read(staged, 65536)
+                if not data:
+                    break
+                view = memoryview(data)
+                while view:
+                    view = view[os.write(output, view):]
+            os.fsync(output)
+        finally:
+            os.close(output)
+        os.link(temporary, "afterglow.conf", src_dir_fd=state, dst_dir_fd=state, follow_symlinks=False)
+        os.fsync(state)
+        print("afterglow-native-prepare: installed operator configuration")
+    finally:
+        if temporary is not None:
+            os.unlink(temporary, dir_fd=state)
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+
+
+if __name__ == "__main__":
+    try:
+        prepare()
+    except (OSError, RuntimeError):
+        print("afterglow-native-prepare: preparation failed; check state/config paths and ownership", file=sys.stderr)
+        sys.exit(1)

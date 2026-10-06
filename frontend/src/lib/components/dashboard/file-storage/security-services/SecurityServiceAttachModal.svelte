@@ -2,6 +2,7 @@
   import { t } from '$lib/i18n/ns/file-storage';
   import type { ShareNetwork } from '$lib/types/securityService';
   import { dialogFocus } from '$lib/utils/dialogFocus';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
   let {
     open = $bindable(),
@@ -54,8 +55,8 @@
         <button onclick={() => { open = false; }}
           class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('securityAttach.cancel')}</button>
         <button onclick={handleAttach} disabled={attaching || !selectedNetworkId}
-          class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors">
-          {attaching ? t('securityAttach.attaching') : t('securityAttach.attach')}
+          class="inline-flex items-center gap-1.5 px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors">
+          {#if attaching}<ActivityIndicator size="xs" tone="ink" />{/if}{attaching ? t('securityAttach.attaching') : t('securityAttach.attach')}
         </button>
       </div>
     </div>

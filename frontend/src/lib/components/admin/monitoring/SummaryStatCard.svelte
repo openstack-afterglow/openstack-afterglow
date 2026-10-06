@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { AnimatedNumber } from '$lib/components/ui';
 
 	let {
 		value,
@@ -20,7 +21,7 @@
 </script>
 
 <div class="bg-surface-sunken rounded-lg text-center {padding[size]}">
-	<div class="font-bold {fontSize[size]} {valueClass}">{value}</div>
+	<div class="font-bold {fontSize[size]} {valueClass}">{#if typeof value === 'number'}<AnimatedNumber {value} />{:else}{value}{/if}</div>
 	<div class="text-xs text-ink-2 mt-1">
 		{label}{#if labelExtra} {@render labelExtra()}{/if}
 	</div>

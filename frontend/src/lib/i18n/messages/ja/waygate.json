@@ -1,4 +1,10 @@
 {
+	"project.permission.denied": "現在のプロジェクトでこの操作を行う権限がありません。",
+	"project.client.owner": "所有者ユーザー ID",
+	"project.client.ownerHelp": "プロジェクトメンバーのユーザー ID を入力してください。未割り当てのクライアント設定は、一般の接続ユーザーにはダウンロードできません。",
+	"project.client.ownerSelf": "自分",
+	"project.client.ownerUnassigned": "未割り当て",
+	"project.client.assignSelf": "自分に割り当てる",
 	"workspace.breadcrumb.admin": "管理 / WAYGATE",
 	"workspace.breadcrumb.network": "ネットワーク / WAYGATE",
 	"workspace.adminTitle": "Waygate管理",

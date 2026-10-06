@@ -1,10 +1,11 @@
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import ImageCatalogToolbar from '../ImageCatalogToolbar.svelte';
+import { t } from '$lib/i18n/ns/images-keys';
 
 describe('ImageCatalogToolbar', () => {
-	it('exposes repository and tag filters beside the search field', () => {
-		render(ImageCatalogToolbar, {
+	it('exposes repository and tag filters beside the search field', async () => {
+		const { container } = render(ImageCatalogToolbar, {
 			resultCount: 3,
 			totalCount: 5,
 			repositoryCount: 2,
@@ -13,9 +14,16 @@ describe('ImageCatalogToolbar', () => {
 		});
 
 		expect(screen.getByRole('searchbox', { name: '이미지 repository 또는 tag 검색' })).toBeTruthy();
-		expect(screen.getByRole('option', { name: 'ubuntu (2)' })).toBeTruthy();
-		expect(screen.getByRole('option', { name: '24.04 (1)' })).toBeTruthy();
-		expect(screen.getByText('3개 이미지 · 2개 repository')).toBeTruthy();
+		const repository = screen.getByRole('combobox', { name: t('catalogToolbar.repositoryLabel') }) as HTMLSelectElement;
+		const tag = screen.getByRole('combobox', { name: t('catalogToolbar.tagLabel') }) as HTMLSelectElement;
+		expect(within(repository).getByRole('option', { name: 'ubuntu (2)' })).toBeTruthy();
+		expect(within(tag).getByRole('option', { name: '24.04 (1)' })).toBeTruthy();
+		expect(container.textContent?.replace(/\s/g, '')).toContain(t('catalogToolbar.resultSummary', { imageCount: 3, repositoryCount: 2 }).replace(/\s/g, ''));
+		expect(container.textContent?.replace(/\s/g, '')).toContain(t('catalogToolbar.filteredSummary', { count: 5 }).replace(/\s/g, ''));
+		await fireEvent.change(repository, { target: { value: 'ubuntu' } });
+		await fireEvent.change(tag, { target: { value: '24.04' } });
+		expect(repository.value).toBe('ubuntu');
+		expect(tag.value).toBe('24.04');
 	});
 
 	it('clears the active search without blocking filter controls', async () => {

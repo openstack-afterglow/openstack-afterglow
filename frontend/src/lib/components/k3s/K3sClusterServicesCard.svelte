@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/drover';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { untrack } from 'svelte';
 	import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
 	import { SectionHeader } from '$lib/components/ui';
@@ -25,7 +26,7 @@
 	<SectionHeader title="Service" meta={t('services.count', { count: s.services.length })} />
 
 	{#if loading}
-		<div class="mt-4 text-sm text-ink-2 text-center py-6">{t('services.loading')}</div>
+		<div class="mt-4 text-sm text-ink-2 text-center py-6"><ActivityIndicator label={t('services.loading')} /></div>
 	{:else if loadError}
 		<div class="mt-4 text-sm text-red-400">{loadError}</div>
 	{:else if s.services.length === 0}
@@ -60,7 +61,7 @@
 									disabled={!!s.workloadActioning}
 									class="px-2 py-1 rounded text-xs bg-red-900/40 text-red-300 hover:bg-red-900/70 disabled:opacity-40 transition-colors"
 								>
-									{actioning ? t('services.deleting') : t('services.delete')}
+									{#if actioning}<ActivityIndicator size="xs" label={t('services.deleting')} />{:else}{t('services.delete')}{/if}
 								</button>
 							</td>
 						</tr>

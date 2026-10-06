@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/svelte';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/svelte';
 import type { Instance } from '$lib/types/compute';
 import type { InstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
 
@@ -126,5 +126,32 @@ describe('InstanceHeader resize access', () => {
 		renderHeader({ instance: { ...activeInstance, status: 'VERIFY_RESIZE' } }, { canMutate: false });
 		expect(screen.queryByRole('button', { name: '리사이즈 확인' })).toBeNull();
 		expect(screen.queryByRole('button', { name: '되돌리기' })).toBeNull();
+	});
+});
+
+describe('InstanceHeader operation attribution', () => {
+	it('only marks the requested action as working and retains the instance status', () => {
+		renderHeader({ actioning: 'stop' });
+		expect(screen.getByRole('status').textContent?.trim()).toBe('정지 중...');
+		expect(screen.getByRole('button', { name: '정지 중...' }).hasAttribute('disabled')).toBe(true);
+		expect(screen.queryByText('재부팅 중...')).toBeNull();
+		expect(screen.getByText('ACTIVE')).toBeTruthy();
+	});
+
+	it('keeps a migration control request busy until its promise settles', async () => {
+		let resolve!: () => void;
+		mockAbortMigration.mockReturnValueOnce(new Promise<void>((done) => { resolve = done; }));
+		renderHeader({ instance: { ...activeInstance, status: 'MIGRATING' } }, { adminProjectId: 'project-a' });
+		const abort = screen.getByRole<HTMLButtonElement>('button', { name: '마이그레이션 중단' });
+		const complete = screen.getByRole<HTMLButtonElement>('button', { name: '강제 완료' });
+		await fireEvent.click(abort);
+		expect(within(abort).getByRole('status')).toBeTruthy();
+		expect(within(complete).queryByRole('status')).toBeNull();
+		expect(abort.disabled).toBe(true);
+		expect(complete.disabled).toBe(true);
+		resolve();
+		await waitFor(() => expect(abort.disabled).toBe(false));
+		expect(complete.disabled).toBe(false);
+		expect(screen.queryByRole('status')).toBeNull();
 	});
 });

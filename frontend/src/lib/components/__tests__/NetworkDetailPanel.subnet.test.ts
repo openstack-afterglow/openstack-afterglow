@@ -75,7 +75,7 @@ describe('NetworkDetailPanel subnet creation', () => {
 		mocks.get.mockResolvedValue({ ...network, project_id: 'other-project', is_shared: true });
 		render(NetworkDetailPanel, { networkId: network.id, apiBase: '/api/v1/networks', projectId: 'project-1' });
 
-		expect(await screen.findByText('서브넷 (0)')).toBeTruthy();
+		expect(await screen.findByRole('heading', { name: /^서브넷 \(\s*0\s*\)$/ })).toBeTruthy();
 		expect(screen.queryByRole('button', { name: '+ 서브넷 추가' })).toBeNull();
 		expect(screen.queryByRole('button', { name: '+ 연결' })).toBeNull();
 	});

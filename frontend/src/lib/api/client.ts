@@ -1,7 +1,7 @@
 import { browser } from '$app/environment';
 import { get } from 'svelte/store';
 import { siteConfig } from '$lib/config/site';
-import { auth, authRecovery, logoutInProgress } from '$lib/stores/auth';
+import { auth, authRecovery, logoutInProgress, type AuthState } from '$lib/stores/auth';
 import { ApiError } from '$lib/api/errors';
 import { t } from '$lib/i18n/ns/shared';
 import {
@@ -134,7 +134,7 @@ async function handleUnauthorized(): Promise<void> {
  * 동시 호출은 하나의 Promise로 합산(coalescing).
  */
 /** localStorage에 영속화된 인증 상태를 직접 읽는다 (탭 간 race 대비 최신값 확인용). */
-function _readPersistedAuth(): { token?: string; refreshToken?: string; accessExpiresAt?: number } | null {
+function _readPersistedAuth(): Partial<AuthState> | null {
 	try {
 		if (typeof localStorage === 'undefined') return null;
 		const raw = localStorage.getItem('afterglow_auth');
@@ -195,6 +195,9 @@ async function tryRefresh({ allowDuringRevocation = false }: { allowDuringRevoca
 				token: persisted.token,
 				refreshToken: persisted.refreshToken ?? state.refreshToken,
 				accessExpiresAt: persisted.accessExpiresAt ?? null,
+				roles: persisted.roles ?? state.roles,
+				isSystemAdmin: persisted.isSystemAdmin ?? state.isSystemAdmin,
+				canWrite: persisted.canWrite,
 			});
 			_refreshSettledFailure = null;
 			return persisted.token;
@@ -250,6 +253,9 @@ async function tryRefresh({ allowDuringRevocation = false }: { allowDuringRevoca
 					token: winner.token,
 					refreshToken: winner.refreshToken ?? null,
 					accessExpiresAt: winner.accessExpiresAt ?? null,
+					roles: winner.roles ?? state.roles,
+					isSystemAdmin: winner.isSystemAdmin ?? state.isSystemAdmin,
+					canWrite: winner.canWrite,
 				});
 				_refreshSettledFailure = null;
 				return winner.token;
@@ -299,6 +305,9 @@ async function tryRefresh({ allowDuringRevocation = false }: { allowDuringRevoca
 			accessExpiresAt: data.expires_at
 				? Math.floor(new Date(data.expires_at).getTime() / 1000)
 				: null,
+			roles: data.roles ?? state.roles,
+			isSystemAdmin: data.is_system_admin ?? state.isSystemAdmin,
+			canWrite: data.can_write,
 		});
 		_refreshSettledFailure = null;
 		return refreshedToken;

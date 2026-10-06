@@ -25,3 +25,10 @@ export function composeImagePrompt(draft: string, styleId: string | null | undef
 	if (!text || !style) return text;
 	return `${text}\n\n스타일: ${style.instruction}`;
 }
+
+/** Only explicit requested dimensions define a developing preview's aspect ratio. */
+export function imageRequestAspectRatio(size: string | null | undefined): string | null {
+	const dimensions = size?.match(/^(\d+)x(\d+)$/);
+	if (!dimensions || Number(dimensions[1]) <= 0 || Number(dimensions[2]) <= 0) return null;
+	return `${dimensions[1]} / ${dimensions[2]}`;
+}

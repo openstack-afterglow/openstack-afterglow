@@ -15,6 +15,7 @@
 	import ModelCapabilityBadges from './ModelCapabilityBadges.svelte';
 	import UsageRing from '$lib/components/ui/UsageRing.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import ChatContextPanel from './ChatContextPanel.svelte';
 
 	export type ComposerCommand = {
@@ -423,6 +424,7 @@
 			contextState.utilization !== null
 			&& contextState.breakdown?.complete !== false
 	);
+	const contextBusy = $derived(contextPhase === 'compacting' || (contextLoading && !knownContext));
 	const contextPercent = $derived(
 		Math.max(0, Math.round((contextState?.utilization ?? 0) * 100))
 	);
@@ -563,18 +565,20 @@
 		{#if attachments.length}
 			<div class="chips">
 				{#each attachments as a (a.previewUrl ?? a.assetId ?? a.name)}
-					<div class="chip" class:uploading={a.status === 'uploading'}>
-						{#if a.previewUrl}
-							<img src={a.previewUrl} alt={a.name} />
-						{:else}
-							<span class="chip-name">{a.name}</span>
-						{/if}
+					<div class="attachment-chip" aria-busy={a.status === 'uploading'}>
+						<div class="chip" class:uploading={a.status === 'uploading'}>
+							{#if a.previewUrl}
+								<img src={a.previewUrl} alt={a.name} />
+							{:else}
+								<span class="chip-name">{a.name}</span>
+							{/if}
+							<button type="button" class="chip-x" title={t('input.remove')} aria-label={t('input.removeAttachment')} onclick={() => removeAttachment(a)}>
+								<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6L6 18M6 6l12 12" stroke-linecap="round" /></svg>
+							</button>
+						</div>
 						{#if a.status === 'uploading'}
-							<span class="chip-spin"></span>
+							<ActivityIndicator variant="upload" size="xs" label={t('input.uploading')} />
 						{/if}
-						<button type="button" class="chip-x" title={t('input.remove')} aria-label={t('input.removeAttachment')} onclick={() => removeAttachment(a)}>
-							<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6L6 18M6 6l12 12" stroke-linecap="round" /></svg>
-						</button>
 					</div>
 				{/each}
 			</div>
@@ -685,8 +689,8 @@
 						aria-live="polite"
 						aria-atomic="true"
 					>
-						{#if contextPhase === 'compacting' || (contextLoading && !knownContext)}
-							<span class="context-spinner" aria-hidden="true"></span>
+						{#if contextBusy}
+							<ActivityIndicator size="sm" label={contextStatus} />
 						{:else if knownContext}
 							<button
 								type="button"
@@ -715,7 +719,9 @@
 								onclick={toggleContextDetails}
 							><span class="context-reason-icon">?</span></button>
 						{/if}
-						<span class="context-status-text">{contextStatus}</span>
+						{#if !contextBusy}
+							<span class="context-status-text">{contextStatus}</span>
+						{/if}
 					</div>
 				{/if}
 
@@ -746,6 +752,7 @@
 				{/if}
 
 				{#if streaming}
+					<ActivityIndicator variant="dots" size="xs" label={t('sidebar.generatingResponse')} />
 					<button type="button" class="send stop" onclick={onStop} title={t('input.stopGeneration')} aria-label={t('input.stopGeneration')}>
 						<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><rect x="7" y="7" width="10" height="10" rx="1.5" /></svg>
 					</button>
@@ -894,7 +901,7 @@
 		gap: 0.32rem;
 		min-width: 0;
 		color: var(--color-ink-2);
-		font-size: 0.72rem;
+		font-size: 0.75rem;
 		font-variant-numeric: tabular-nums;
 		white-space: nowrap;
 	}
@@ -903,7 +910,6 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
-	.context-spinner,
 	.context-reason-icon {
 		display: inline-flex;
 		width: 1.125rem;
@@ -929,12 +935,6 @@
 	.context-meter:focus-visible {
 		outline: none;
 		box-shadow: var(--focus-ring);
-	}
-	.context-spinner {
-		border: 2px solid var(--color-line-2);
-		border-top-color: currentColor;
-		border-radius: 50%;
-		animation: spin 0.8s linear infinite;
 	}
 	.context-reason-icon {
 		padding: 0;
@@ -967,9 +967,12 @@
 	}
 	.tb-right {
 		display: flex;
+		flex-wrap: wrap;
+		min-width: 0;
+		max-width: 100%;
 		align-items: center;
 		gap: 0.4rem;
-		flex-shrink: 0;
+		flex-shrink: 1;
 		margin-left: auto;
 	}
 	.input-wrap.drag-over {
@@ -981,6 +984,13 @@
 		flex-wrap: wrap;
 		gap: 0.4rem;
 		padding: 0.15rem 0.2rem 0;
+	}
+	.attachment-chip {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.25rem;
+		max-width: 100%;
 	}
 	.chip {
 		position: relative;
@@ -999,22 +1009,6 @@
 	}
 	.chip.uploading img {
 		opacity: 0.5;
-	}
-	.chip-spin {
-		position: absolute;
-		inset: 50% auto auto 50%;
-		width: 1rem;
-		height: 1rem;
-		margin: -0.5rem 0 0 -0.5rem;
-		border-radius: 50%;
-		border: 2px solid var(--color-line-2);
-		border-top-color: var(--color-accent);
-		animation: spin 0.8s linear infinite;
-	}
-	@keyframes spin {
-		to {
-			transform: rotate(360deg);
-		}
 	}
 	.chip-x {
 		position: absolute;

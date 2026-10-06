@@ -40,8 +40,9 @@
 			cx="10"
 			cy="10"
 			r="8"
-			pathLength="100"
-			stroke-dasharray={`${clampedPercent} ${100 - clampedPercent}`}
+			pathLength="1"
+			stroke-dasharray="1"
+			stroke-dashoffset={1 - clampedPercent / 100}
 		/>
 	</svg>
 </span>
@@ -71,6 +72,7 @@
 	.fill {
 		stroke: currentColor;
 		stroke-linecap: round;
-		transition: stroke-dasharray var(--motion-duration-base) var(--motion-ease-standard), stroke var(--motion-duration-fast) var(--motion-ease-standard);
+		animation: motion-draw var(--motion-duration-data) var(--motion-ease-emphasized) backwards;
+		transition: stroke-dashoffset var(--motion-duration-data) var(--motion-ease-emphasized), stroke var(--motion-duration-fast) var(--motion-ease-standard);
 	}
 </style>

@@ -9,6 +9,7 @@
 		pendingMcpConsentTicket,
 		storeMcpConsentTicket,
 	} from '$lib/utils/mcpConsent';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
@@ -125,7 +126,7 @@
 </svelte:head>
 
 <main class="consent-page">
-	<Card surface="raised" padding="lg" class="consent-card">
+	<Card surface="raised" padding="lg" class="consent-card motion-stagger">
 		<header>
 			<p class="eyebrow">{t('mcpConsent.eyebrow')}</p>
 			<h1>{t('mcpConsent.title')}</h1>
@@ -137,7 +138,7 @@
 				{#snippet children()}{error}{/snippet}
 			</Alert>
 		{:else if loading}
-			<p class="loading">{t('mcpConsent.loading')}</p>
+			<ActivityIndicator label={t('mcpConsent.loading')} />
 		{:else if consent}
 			{@const requestsManage = consent.scopes.includes('mcp:write')}
 			<section aria-labelledby="consent-client-heading" class="details">
@@ -151,8 +152,11 @@
 				{#snippet children()}{requestsManage ? t('mcpConsent.manage.body') : t('mcpConsent.read.body')}{/snippet}
 			</Alert>
 			<div class="actions">
+				{#if deciding}
+					<ActivityIndicator label={t('mcpConsent.actions.processing')} class="decision-activity motion-fade" />
+				{/if}
 				<Button variant="danger-outline" onclick={() => decide('deny')} disabled={deciding}>{t('mcpConsent.actions.deny')}</Button>
-				<Button onclick={() => decide('approve')} disabled={deciding}>{deciding ? t('mcpConsent.actions.processing') : requestsManage ? t('mcpConsent.actions.allowManage') : t('mcpConsent.actions.allowRead')}</Button>
+				<Button onclick={() => decide('approve')} disabled={deciding}>{requestsManage ? t('mcpConsent.actions.allowManage') : t('mcpConsent.actions.allowRead')}</Button>
 			</div>
 		{/if}
 	</Card>
@@ -164,11 +168,11 @@
 	header h1 { margin: 0; color: var(--color-ink-0); font-size: 1.5rem; }
 	header p { margin: 0.5rem 0 0; color: var(--color-ink-2); line-height: 1.5; }
 	.eyebrow { color: var(--color-accent) !important; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
-	.loading { margin: 0; color: var(--color-ink-2); }
 	.details { display: grid; gap: 0.75rem; padding: 1rem; border: 1px solid var(--color-line); border-radius: 0.75rem; background: var(--color-surface-sunken); }
 	.details > div { display: grid; gap: 0.25rem; }
 	.details span { color: var(--color-ink-2); font-size: 0.75rem; }
 	.details strong, .details code { color: var(--color-ink-0); font-size: 0.875rem; overflow-wrap: anywhere; }
 	.scopes { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-	.actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
+	.actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.5rem; }
+	.actions :global(.decision-activity) { margin-right: auto; }
 </style>

@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.deps import CacheMode, cache_mode, get_os_conn, get_token_info, require_admin
 from app.config import get_settings
-from app.services import activity, keystone, manila, session_store
+from app.services import activity, identity_roles, keystone, manila, session_store
 from app.services import login_guard as _login_guard
 from app.services.cache import cached_call, invalidate, ttl_slow
 
@@ -1131,28 +1131,9 @@ async def remove_user_from_group(
 
 
 @router.get("/roles", dependencies=[Depends(require_admin)])
-async def list_roles(conn: openstack.connection.Connection = Depends(get_os_conn), cm: CacheMode = Depends(cache_mode)):
-    """역할 목록."""
-
-    def _list():
-        roles = []
-        try:
-            for r in conn.identity.roles():
-                roles.append(
-                    {
-                        "id": r.id,
-                        "name": r.name or "",
-                        "domain_id": getattr(r, "domain_id", None),
-                    }
-                )
-        except Exception:
-            pass
-        return roles
-
-    try:
-        return await cached_call("afterglow:admin:roles", ttl_slow(), _list, enabled=cm.enabled, refresh=cm.refresh)
-    except Exception:
-        raise HTTPException(status_code=500, detail="역할 목록 조회 실패")
+async def list_roles(conn: openstack.connection.Connection = Depends(get_os_conn)):
+    """Fresh real implication graph; provider failures must never become an empty list."""
+    return await asyncio.to_thread(identity_roles.load_catalog, conn)
 
 
 class AssignRoleRequest(BaseModel):
@@ -1289,6 +1270,73 @@ async def revoke_group_role(
         return await asyncio.to_thread(_revoke)
     except HTTPException:
         raise
+
+
+class CreateRoleRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    name: str = Field(min_length=1, max_length=255)
+    description: str = Field(default="", max_length=4096)
+    domain_id: str | None = Field(default=None, min_length=1, max_length=255)
+
+
+class UpdateRoleRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=4096)
+
+
+@router.post("/roles", dependencies=[Depends(require_admin)], status_code=201)
+async def create_identity_role(
+    req: CreateRoleRequest,
+    token_info: dict = Depends(get_token_info),
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+):
+    return await identity_roles.create_role(conn, token_info, req.model_dump(exclude_none=True))
+
+
+# Keep these dynamic role routes after /roles/assign and /roles/assign-group.
+@router.patch("/roles/{role_id}", dependencies=[Depends(require_admin)])
+async def update_identity_role(
+    role_id: str,
+    req: UpdateRoleRequest,
+    token_info: dict = Depends(get_token_info),
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+):
+    attrs = req.model_dump(exclude_unset=True)
+    if not attrs or any(value is None for value in attrs.values()):
+        raise HTTPException(status_code=422, detail="Supply non-null role metadata")
+    return await identity_roles.update_role(conn, token_info, role_id, attrs)
+
+
+@router.delete("/roles/{role_id}", dependencies=[Depends(require_admin)])
+async def delete_identity_role(
+    role_id: str,
+    token_info: dict = Depends(get_token_info),
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+):
+    return await identity_roles.delete_role(conn, token_info, role_id)
+
+
+@router.put("/roles/{prior_role_id}/implies/{implied_role_id}", dependencies=[Depends(require_admin)])
+async def create_role_implication(
+    prior_role_id: str,
+    implied_role_id: str,
+    token_info: dict = Depends(get_token_info),
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+):
+    return await identity_roles.change_edge(conn, token_info, prior_role_id, implied_role_id)
+
+
+@router.delete("/roles/{prior_role_id}/implies/{implied_role_id}", dependencies=[Depends(require_admin)])
+async def delete_role_implication(
+    prior_role_id: str,
+    implied_role_id: str,
+    token_info: dict = Depends(get_token_info),
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+):
+    return await identity_roles.change_edge(conn, token_info, prior_role_id, implied_role_id, remove=True)
 
 
 # ============================================================================

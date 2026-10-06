@@ -52,6 +52,7 @@
 >
   {#if area && path().fill}
     <path
+      class="motion-fade"
       d={path().fill}
       fill={color}
       opacity="0.12"
@@ -59,6 +60,8 @@
   {/if}
   {#if path().line}
     <path
+      class="motion-draw"
+      pathLength="1"
       d={path().line}
       fill="none"
       stroke={color}

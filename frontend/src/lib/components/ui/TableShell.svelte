@@ -14,7 +14,7 @@
 	let { density = 'normal', stickyHeader = false, class: className = '', children }: Props = $props();
 </script>
 
-<div class="table-shell table-density-{density} {className}" class:table-sticky={stickyHeader}>
+<div class="table-shell motion-enter table-density-{density} {className}" class:table-sticky={stickyHeader}>
 	{@render children()}
 </div>
 

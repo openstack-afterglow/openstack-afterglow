@@ -1,8 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { fly, fade } from 'svelte/transition';
   import type { Snippet } from 'svelte';
-  import { MOTION_DURATION_MS } from '$lib/design/tokens';
   import { dialogFocus } from '$lib/utils/dialogFocus';
   import { motionDuration } from '$lib/utils/motion';
   import { t } from '$lib/i18n/ns/shared';
@@ -137,8 +135,7 @@
 >
   <button
     type="button"
-    class="absolute inset-0 cursor-default bg-surface-scrim-soft"
-    transition:fade={{ duration: motionDuration(MOTION_DURATION_MS.base) }}
+    class="motion-fade absolute inset-0 cursor-default bg-surface-scrim-soft"
     onclick={onClose}
     aria-label={t('slidePanel.closeOverlay')}
     tabindex={isDesktop ? -1 : 0}
@@ -146,9 +143,8 @@
   <div
     bind:this={panelEl}
     data-tour={dataTour}
-    class="@container/panel relative h-full min-w-0 overflow-y-auto border-l border-line bg-surface-raised shadow-[var(--shadow-restraint)] {width}"
+    class="motion-enter @container/panel relative h-full min-w-0 overflow-y-auto border-l border-line bg-surface-raised shadow-[var(--shadow-restraint)] [--motion-enter-offset:0rem] [--motion-enter-x:1.5rem] {width}"
     style={isDesktop && widthPx !== null ? `width: ${widthPx}px; max-width: 100%` : ''}
-    transition:fly={{ x: 400, duration: motionDuration(MOTION_DURATION_MS.panel), opacity: 1 }}
   >
     <button
       type="button"

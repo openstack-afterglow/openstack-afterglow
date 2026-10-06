@@ -8,6 +8,7 @@
 	import AdminVolumePropertiesSection from '$lib/components/admin-volume/AdminVolumePropertiesSection.svelte';
 	import AdminVolumeAttachmentsSection from '$lib/components/admin-volume/AdminVolumeAttachmentsSection.svelte';
 	import AdminVolumeMetadataSection from '$lib/components/admin-volume/AdminVolumeMetadataSection.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
 	interface Props {
 		volumeId: string;
@@ -34,22 +35,24 @@
 
 	<div class="flex-1 overflow-y-auto p-5 space-y-4">
 		{#if s.loading}
-			<div class="text-ink-2 text-sm">{t('volumeDetail.loading')}</div>
+			<ActivityIndicator label={t('volumeDetail.loading')} />
 		{:else if s.error}
 			<div class="text-red-400 text-sm">{s.error}</div>
 		{:else if s.volume}
-			<AdminVolumeStatusBar />
-			{#if s.deleteDiagnostic || s.diagnosticLoading || s.diagnosticError || s.recoveryResult}
-				<AdminVolumeDeleteDiagnosticSection />
-			{/if}
-			<AdminVolumeBasicInfoSection />
-			<AdminVolumePropertiesSection />
-			{#if s.volume.attachments.length > 0}
-				<AdminVolumeAttachmentsSection />
-			{/if}
-			{#if Object.keys(s.volume.metadata).length > 0}
-				<AdminVolumeMetadataSection />
-			{/if}
+			<div class="motion-stagger space-y-4">
+				<AdminVolumeStatusBar />
+				{#if s.deleteDiagnostic || s.diagnosticLoading || s.diagnosticError || s.recoveryResult}
+					<AdminVolumeDeleteDiagnosticSection />
+				{/if}
+				<AdminVolumeBasicInfoSection />
+				<AdminVolumePropertiesSection />
+				{#if s.volume.attachments.length > 0}
+					<AdminVolumeAttachmentsSection />
+				{/if}
+				{#if Object.keys(s.volume.metadata).length > 0}
+					<AdminVolumeMetadataSection />
+				{/if}
+			</div>
 		{/if}
 	</div>
 </div>

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/topology';
 	import type { NetworkDetail } from '$lib/types/networks';
+	import { enterStep } from './topology/firstArrival.svelte.ts';
 
 	let { network }: { network: NetworkDetail } = $props();
 
@@ -74,7 +75,8 @@
 		class="w-full"
 		style="min-height: {svgHeight}px; max-height: 500px;"
 	>
-		<!-- Network node -->
+		<!-- Network node. 마운트 시 네트워크 → 서브넷 → 라우터 순으로 페이드 cascade(keyed 라 갱신은 다시 재생하지 않는다) -->
+		<g class="motion-fade">
 		<rect
 			x={netX}
 			y={netY}
@@ -106,10 +108,14 @@
 		>
 			{network.is_external ? t('network.external') : network.is_shared ? t('network.shared') : t('network.internal')}
 		</text>
+		</g>
 
 		<!-- Subnet nodes and lines from network -->
-		{#each subnets as subnet, i}
+		{#each subnets as subnet, i (subnet.id)}
+			<!-- 점선 연결은 대시가 있으므로 그리지 않고 페이드한다 -->
 			<line
+				class="motion-fade"
+				style:--motion-index={enterStep(i + 1)}
 				x1={netCX}
 				y1={netCY}
 				x2={subnetXs()[i] + NODE_W / 2}
@@ -118,6 +124,7 @@
 				stroke-width="1.5"
 				stroke-dasharray="4 3"
 			/>
+			<g class="motion-fade" style:--motion-index={enterStep(i + 1)}>
 			<rect
 				x={subnetXs()[i]}
 				y={subnetTY}
@@ -161,14 +168,17 @@
 					GW: {subnet.gateway_ip}
 				</text>
 			{/if}
+			</g>
 		{/each}
 
 		<!-- Router nodes -->
-		{#each routerPositions as pos}
+		{#each routerPositions as pos, j (pos.router.id)}
 			{#each pos.router.connected_subnet_ids as sid}
 				{@const sidx = subnets.findIndex((s) => s.id === sid)}
 				{#if sidx >= 0}
 					<line
+						class="motion-fade"
+						style:--motion-index={enterStep(subnets.length + 1 + j)}
 						x1={subnetXs()[sidx] + NODE_W / 2}
 						y1={subnetBY}
 						x2={pos.x + NODE_W / 2}
@@ -179,6 +189,7 @@
 					/>
 				{/if}
 			{/each}
+			<g class="motion-fade" style:--motion-index={enterStep(subnets.length + 1 + j)}>
 			<rect
 				x={pos.x}
 				y={pos.y}
@@ -210,6 +221,7 @@
 			>
 				{pos.isExternal ? t('network.externalGateway') : t('network.internalRouter')}
 			</text>
+			</g>
 		{/each}
 
 		<!-- Empty state -->

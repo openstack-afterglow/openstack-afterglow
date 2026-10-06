@@ -93,6 +93,7 @@ OIDC·서비스 HTTP client의 TLS verify/설정 CA·hostname 검증은 유지�
   "roles": ["member", "reader"],
   "default_project_id": "uuid-string",
   "is_system_admin": false,
+  "can_write": true,
   "auth_method": "password"
 }
 ```
@@ -106,9 +107,10 @@ OIDC·서비스 HTTP client의 TLS verify/설정 CA·hostname 검증은 유지�
 | `user_id` | string | 사용자 UUID |
 | `username` | string | 사용자 이름 |
 | `expires_at` | string | access JWT 만료 시각 (ISO 8601) |
-| `roles` | array[string] | 현재 프로젝트에서의 역할 목록 |
+| `roles` | array[string] | 표시용 프로젝트 역할 이름. 일반 사용자에게 `admin`·`manager` 및 이들을 상속하는 사용자 정의 역할은 노출하지 않음 |
 | `default_project_id` | string | 사용자 기본 프로젝트 UUID (없으면 `""`) |
 | `is_system_admin` | boolean | 시스템 관리자 여부 |
+| `can_write` | boolean | 숨기기 전 검증된 역할로 계산한 프로젝트 쓰기 권한. 프론트엔드는 표시용 이름에서 이를 재추론하지 않음 |
 | `auth_method` | string | `password` 또는 `federated` |
 
 ### UserInfo
@@ -121,9 +123,12 @@ OIDC·서비스 HTTP client의 TLS verify/설정 CA·hostname 검증은 유지�
   "project_name": "project-name",
   "roles": ["member", "reader"],
   "is_system_admin": false,
+  "can_write": true,
   "auth_method": "password"
 }
 ```
+
+`roles`는 authorization 입력이 아니라 public projection입니다. 시스템 관리자는 전체 이름을 받으며, 일반 사용자의 분류 불가 사용자 정의 이름은 숨깁니다. 분류 cache에 새 외부 역할이 없으면 한 번 갱신하고 metadata 장애는 로그인·`/me`를 실패시키지 않습니다. 서버는 원래 Keystone 검증 결과와 별도의 프로젝트 소유권을 계속 검사하며, 이름 숨김이 실제 `can_write`를 바꾸지 않습니다.
 
 ### ProjectInfo
 

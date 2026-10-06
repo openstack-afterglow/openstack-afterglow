@@ -147,7 +147,7 @@
 
 
 	const RESOURCE_TYPES = [
-		'instance', 'keypair', 'volume', 'volume_snapshot', 'volume_backup',
+		'instance', 'hypervisor', 'keypair', 'volume', 'volume_snapshot', 'volume_backup',
 		'file_storage', 'share_snapshot', 'share_network', 'security_service',
 		'network', 'subnet', 'router', 'floating_ip', 'security_group', 'load_balancer',
 		'lb_listener', 'lb_pool', 'lb_member', 'lb_health_monitor',

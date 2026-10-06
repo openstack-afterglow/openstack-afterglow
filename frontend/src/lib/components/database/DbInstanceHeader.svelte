@@ -2,6 +2,7 @@
 	import { t as tr } from '$lib/i18n/ns/database';
 	import { useDbInstanceDetailController } from '$lib/stores/dbInstanceDetailController.svelte';
 	import AutoRefreshControl from '$lib/components/AutoRefreshControl.svelte';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
 	interface Props {
 		onClose?: () => void;
@@ -23,7 +24,7 @@
 <div class="flex items-start justify-between">
 	<div>
 		{#if s.loading && !s.instance}
-			<div class="h-7 w-40 bg-surface-sunken rounded animate-pulse mb-1"></div>
+			<div class="motion-skeleton h-7 w-40 rounded mb-1" aria-hidden="true"></div>
 		{:else}
 			<h1 class="text-xl font-bold text-ink-0">{s.instance?.name ?? ''}</h1>
 			<span class="text-xs font-medium {statusColor[s.instance?.status ?? ''] ?? 'text-ink-2'}">
@@ -41,8 +42,8 @@
 		/>
 		{#if s.instance}
 			<button onclick={() => s.deleteInstance()} disabled={s.deleting}
-				class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1.5 rounded border border-red-900 hover:border-red-700 transition-colors">
-				{s.deleting ? tr('state.deleting') : tr('actions.deleteInstance')}
+				class="inline-flex items-center gap-1.5 text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1.5 rounded border border-red-900 hover:border-red-700 transition-colors">
+				{#if s.deleting}<ActivityIndicator size="xs" tone="danger" />{/if}{s.deleting ? tr('state.deleting') : tr('actions.deleteInstance')}
 			</button>
 		{/if}
 		<!-- 닫기 버튼은 SlidePanel 이 제공한다(`[data-slide-panel-close]`) -->

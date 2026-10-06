@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-network';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import type { SubnetDetail } from '$lib/types/networks';
 
 	let {
@@ -108,12 +109,12 @@
 				<p class="text-red-400 text-xs">{addError}</p>
 			{/if}
 			<div class="flex justify-end">
-				<button
+				<button aria-busy={addingSubnet}
 					onclick={handleAdd}
 					disabled={addingSubnet}
 					class="text-sm px-4 py-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-action-on-warm rounded transition-colors"
 				>
-					{addingSubnet ? t('subnetSection.adding') : t('subnetSection.add')}
+					{#if addingSubnet}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" />{t('subnetSection.adding')}</span>{:else}{t('subnetSection.add')}{/if}
 				</button>
 			</div>
 		</div>
@@ -159,11 +160,11 @@
 								onclick={() => { editingSubnetId = null; }}
 								class="text-xs text-ink-2 hover:text-ink-1 px-3 py-1.5 transition-colors"
 							>{t('subnetSection.cancel')}</button>
-							<button
+							<button aria-busy={savingSubnet}
 								onclick={handleSave}
 								disabled={savingSubnet}
 								class="text-xs px-4 py-1.5 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected text-action-on-warm rounded transition-colors"
-							>{savingSubnet ? t('subnetSection.saving') : t('subnetSection.save')}</button>
+							>{#if savingSubnet}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" />{t('subnetSection.saving')}</span>{:else}{t('subnetSection.save')}{/if}</button>
 						</div>
 					</div>
 				{:else}
@@ -185,11 +186,11 @@
 									onclick={() => startEditSubnet(subnet)}
 									class="text-xs text-warm-text hover:text-warm-text-hover px-2 py-1 border border-action-warm hover:border-action-warm rounded transition-colors"
 								>{t('subnetSection.edit')}</button>
-								<button
+								<button aria-busy={deletingSubnetId === subnet.id}
 									onclick={() => onDelete(subnet.id, subnet.name)}
 									disabled={deletingSubnetId === subnet.id}
-									class="text-xs text-red-400 hover:text-red-300 disabled:text-ink-3 px-2 py-1 border border-red-900 hover:border-red-700 disabled:border-line-2 rounded transition-colors"
-								>{deletingSubnetId === subnet.id ? t('subnetSection.deleting') : t('subnetSection.delete')}</button>
+									class="text-xs text-[var(--color-state-danger-text)] hover:text-[var(--color-state-danger-text)] disabled:text-ink-3 px-2 py-1 border border-[var(--color-state-danger)]/30 hover:border-[var(--color-state-danger)]/30 disabled:border-line-2 rounded transition-colors"
+								>{#if deletingSubnetId === subnet.id}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" />{t('subnetSection.deleting')}</span>{:else}{t('subnetSection.delete')}{/if}</button>
 							</div>
 						</div>
 						<dl class="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">

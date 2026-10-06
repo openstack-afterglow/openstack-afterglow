@@ -2,6 +2,7 @@
 	import { t } from '$lib/i18n/ns/drover';
 	import type { ClusterTemplate, CreateClusterForm } from '$lib/types/cluster';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
+	import { ActivityIndicator, Alert, Button, ProgressTrack } from '$lib/components/ui';
 
 	let {
 		open = $bindable(),
@@ -56,13 +57,13 @@
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		use:dialogFocus={{ enabled: true, onEscape: () => (open = false) }}
-		class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
+		class="motion-fade fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 		onclick={() => { open = false; error = ''; }}
 		role="dialog"
 		aria-modal="true"
 		tabindex="-1"
 	>
-		<div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]" onclick={(e) => e.stopPropagation()} role="none">
+		<div class="motion-pop bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]" onclick={(e) => e.stopPropagation()} role="none">
 			<h2 class="text-lg font-semibold text-ink-0 mb-5">{t('clusterCreate.title')}</h2>
 			<div class="space-y-4">
 				<div>
@@ -97,12 +98,13 @@
 					</label>
 				</div>
 			</div>
-			{#if error}<div class="mt-3 text-red-400 text-xs">{error}</div>{/if}
+			{#if error}<Alert tone="danger" class="mt-3">{error}</Alert>{/if}
+			{#if creating}<ProgressTrack value={null} active label={t('clusterCreate.creating')} class="mt-4" />{/if}
 			<div class="flex justify-end gap-3 mt-6">
 				<button onclick={() => { open = false; error = ''; }} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('clusterCreate.cancel')}</button>
-				<button onclick={submit} disabled={creating || !form.name || !form.cluster_template_id} class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-ink-0 text-sm font-medium rounded-lg transition-colors">
-					{creating ? t('clusterCreate.creating') : t('clusterCreate.create')}
-				</button>
+				<Button onclick={submit} disabled={creating || !form.name || !form.cluster_template_id} ariaBusy={creating}>
+					{#if creating}<ActivityIndicator size="xs" tone="ink" />{t('clusterCreate.creating')}{:else}{t('clusterCreate.create')}{/if}
+				</Button>
 			</div>
 		</div>
 	</div>

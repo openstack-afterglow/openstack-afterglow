@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/object-storage';
+	import { t as commonT } from '$lib/i18n/ns/common';
 	import { useObjectBrowser } from '$lib/stores/objectBrowser.svelte';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
-	import { Button, Card, FileIcon, Modal } from '$lib/components/ui';
+	import { ActivityIndicator, Button, Card, FileIcon, Modal } from '$lib/components/ui';
 
 	const s = useObjectBrowser();
 	const label = $derived(s.displayName(s.previewName) || s.previewName);
+	const downloadPreparing = $derived(s.downloading !== null && s.downloading === s.previewName);
 </script>
 
 <Modal open={s.showPreview} onClose={s.closePreview} ariaLabel={t('views.previewModal.ariaLabel', { name: label })}>
@@ -13,7 +15,19 @@
 		<div class="flex items-center gap-3 border-b border-line px-4 py-3">
 			<FileIcon name={s.previewName} contentType={s.previewContentType} />
 			<h2 class="min-w-0 flex-1 truncate text-sm font-medium text-ink-0" title={s.previewName}>{label}</h2>
-			<Button variant="secondary" size="sm" onclick={() => s.downloadObject(s.previewName)}>{t('views.previewModal.download')}</Button>
+			<Button
+				variant="secondary"
+				size="sm"
+				disabled={downloadPreparing}
+				ariaBusy={downloadPreparing}
+				onclick={() => s.downloadObject(s.previewName)}
+			>
+				{#if downloadPreparing}
+					<ActivityIndicator variant="download" size="xs" label={`${t('views.previewModal.download')}: ${commonT('state.processing')}`} />
+				{:else}
+					{t('views.previewModal.download')}
+				{/if}
+			</Button>
 			<Button variant="ghost" size="icon" ariaLabel={t('views.previewModal.close')} onclick={s.closePreview}>
 				<svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
 					<path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>

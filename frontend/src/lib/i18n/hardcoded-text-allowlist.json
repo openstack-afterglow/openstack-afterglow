@@ -62,5 +62,73 @@
 	"src/lib/server/config.ts": {
 		"reason": "Operator-configurable site description default; administrators replace it in site settings.",
 		"lines": ["site_description: 'OpenStack VM + OverlayFS 배포 플랫폼',"]
+	},
+	"src/lib/docs/additionalGuides.ts": {
+		"reason": "Canonical Korean documentation source, localized through translateDocGuide dictionaries before rendering; not application chrome.",
+		"lines": "all"
+	},
+	"src/lib/docs/coreGuides.ts": {
+		"reason": "Canonical Korean documentation source, localized through translateDocGuide dictionaries before rendering; not application chrome.",
+		"lines": "all"
+	},
+	"src/lib/docs/gettingStarted.ts": {
+		"reason": "Canonical Korean documentation source, localized through translateDocGuide dictionaries before rendering; not application chrome.",
+		"lines": "all"
+	},
+	"src/lib/docs/platformGuides.ts": {
+		"reason": "Canonical Korean documentation source, localized through translateDocGuide dictionaries before rendering; not application chrome.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/en/additionalGuides.ts": {
+		"reason": "Documentation locale dictionary uses canonical Korean source text as lookup keys; translated values are rendered through translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/en/coreGuides.ts": {
+		"reason": "Documentation locale dictionary uses canonical Korean source text as lookup keys; translated values are rendered through translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/en/gettingStarted.ts": {
+		"reason": "Documentation locale dictionary uses canonical Korean source text as lookup keys; translated values are rendered through translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/en/platformGuides.ts": {
+		"reason": "Documentation locale dictionary uses canonical Korean source text as lookup keys; translated values are rendered through translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/ja/additionalGuides.ts": {
+		"reason": "Documentation locale dictionary uses canonical Korean source text as lookup keys; translated values are rendered through translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/ja/coreGuides.ts": {
+		"reason": "Documentation locale dictionary uses canonical Korean source text as lookup keys; translated values are rendered through translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/ja/gettingStarted.ts": {
+		"reason": "Documentation locale dictionary uses canonical Korean source text as lookup keys; translated values are rendered through translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/ja/platformGuides.ts": {
+		"reason": "Documentation locale dictionary uses canonical Korean source text as lookup keys; translated values are rendered through translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/zh-CN/additionalGuides.ts": {
+		"reason": "Documentation locale dictionary uses canonical Korean source text as lookup keys; translated values are rendered through translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/zh-CN/coreGuides.ts": {
+		"reason": "Documentation locale dictionary uses canonical Korean source text as lookup keys; translated values are rendered through translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/zh-CN/gettingStarted.ts": {
+		"reason": "Documentation locale dictionary uses canonical Korean source text as lookup keys; translated values are rendered through translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/translations/zh-CN/platformGuides.ts": {
+		"reason": "Documentation locale dictionary uses canonical Korean source text as lookup keys; translated values are rendered through translateDocGuide.",
+		"lines": "all"
+	},
+	"src/lib/docs/locales.ts": {
+		"reason": "Korean entry of the typed per-locale docs UI dictionary (docsMessages: Record<DocsLocale, typeof ko>) and the Korean language picker name; en/ja/zh-CN entries sit beside it.",
+		"lines": "all"
 	}
 }

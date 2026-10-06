@@ -12,6 +12,8 @@
   import Modal from '$lib/components/ui/Modal.svelte';
   import Alert from '$lib/components/ui/Alert.svelte';
   import Button from '$lib/components/ui/Button.svelte';
+  import ProgressTrack, { type ProgressTone } from '$lib/components/ui/ProgressTrack.svelte';
+  import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
   import ToggleGroup from '$lib/components/ui/ToggleGroup.svelte';
   import TutorialStartButton from '$lib/tutorial/TutorialStartButton.svelte';
   import DockerfileLintPanel, { type DockerfileLintResponse } from '$lib/components/admin/libraries/DockerfileLintPanel.svelte';
@@ -119,6 +121,13 @@
 
   const TERMINAL = new Set(['complete', 'error', 'timeout', 'cancelled']);
   const CONSUME_BLOCKING_STATUSES = new Set(['creating', 'active', 'stopped', 'stop', 'shutoff', 'error']);
+
+  /** Progress fill tone of a build/import job: in flight is accent, terminal outcomes take their state tone. */
+  function jobProgressTone(status: string): ProgressTone {
+    if (status === 'complete') return 'success';
+    if (TERMINAL.has(status)) return 'danger';
+    return 'accent';
+  }
 
   const token = $derived($auth.token ?? undefined);
   const projectId = $derived($auth.projectId ?? undefined);
@@ -1233,11 +1242,20 @@
           <h3 class="text-sm font-semibold text-ink-0">{t('history.title')}</h3>
           {#if importLoadError}<Alert tone="danger">{importLoadError}</Alert>{/if}
           {#if selectedImport}
+            {@const importRunning = !TERMINAL.has(selectedImport.status)}
             <section aria-label={t('history.selected')} class="p-3 border border-line-2 rounded-lg space-y-2 text-xs">
               <p class="font-mono">#{selectedImport.id} · {selectedImport.profile_name} · {selectedImport.source_type || 'github'}</p>
               <StatusChip status={selectedImport.status} />
-              <p>{selectedImport.progress_step || selectedImport.status} · {selectedImport.progress_pct}%</p>
-              <progress class="w-full" aria-label={t('history.progress')} max="100" value={selectedImport.progress_pct}></progress>
+              <p class="flex items-center gap-1.5">
+                {#if importRunning}<ActivityIndicator size="xs" />{/if}
+                <span>{selectedImport.progress_step || selectedImport.status} · {selectedImport.progress_pct}%</span>
+              </p>
+              <ProgressTrack
+                value={selectedImport.progress_pct}
+                label={t('history.progress')}
+                tone={jobProgressTone(selectedImport.status)}
+                active={importRunning}
+              />
               {#if selectedImport.error_message}<Alert tone="danger">{selectedImport.error_message}</Alert>{/if}
               <p>{t('history.base', { image: selectedImport.base_image_name || selectedImport.base_image_id || selectedImport.ubuntu_base })}</p>
               {#if selectedImport.github_url}<p class="break-all">{selectedImport.github_url} · {selectedImport.commit_sha} · {selectedImport.dockerfile_path}</p>{/if}
@@ -1291,7 +1309,7 @@
                       <td class="px-3 py-2 text-ink-2"><button type="button" class="underline" aria-label={t('history.jobDetails', { id: job.id })} onclick={() => selectedImportId = job.id}>#{job.id}</button></td>
                       <td class="px-3 py-2 font-mono">{job.profile_name}</td>
                       <td class="px-3 py-2 text-ink-2">{job.base_image_name || shortId(job.base_image_id)}</td>
-                      <td class="px-3 py-2"><StatusChip status={job.status} /><p class="mt-1">{job.progress_step || job.status} · {job.progress_pct}%</p>{#if job.consumer_status || job.consume_id}<p>VM {job.consume_id ? `#${job.consume_id}` : ''} {job.consumer_status || ''}</p>{/if}{#if job.error_message}<p class="text-red-300">{job.error_message}</p>{/if}</td>
+                      <td class="px-3 py-2"><StatusChip status={job.status} /><p class="mt-1 flex items-center gap-1.5">{#if !TERMINAL.has(job.status)}<ActivityIndicator size="xs" />{/if}<span>{job.progress_step || job.status} · {job.progress_pct}%</span></p>{#if job.consumer_status || job.consume_id}<p>VM {job.consume_id ? `#${job.consume_id}` : ''} {job.consumer_status || ''}</p>{/if}{#if job.error_message}<p class="text-[var(--color-state-danger-text)]">{job.error_message}</p>{/if}</td>
                     </tr>
                   {/each}
                 </tbody>
@@ -1507,17 +1525,22 @@
                     <td class="px-4 py-2.5">
                       <StatusChip status={build.status} />
                     </td>
-                    <td class="px-4 py-2.5 text-ink-2 text-xs hidden md:table-cell max-w-40 truncate">
-                      {build.progress_step || '—'}
+                    <td class="px-4 py-2.5 text-ink-2 text-xs hidden md:table-cell max-w-40">
+                      <span class="flex min-w-0 items-center gap-1.5">
+                        {#if !isDone}<ActivityIndicator size="xs" />{/if}
+                        <span class="truncate">{build.progress_step || '—'}</span>
+                      </span>
                     </td>
                     <td class="px-4 py-2.5 hidden lg:table-cell">
                       <div class="flex items-center gap-2">
-                        <div class="flex-1 h-1 bg-surface-selected rounded-full overflow-hidden">
-                          <div
-                            class="h-full rounded-full {build.status === 'complete' ? 'bg-green-500' : build.status === 'error' ? 'bg-red-500' : 'bg-action-warm'}"
-                            style="width:{build.progress_pct}%"
-                          ></div>
-                        </div>
+                        <ProgressTrack
+                          value={build.progress_pct}
+                          label={t('builds.progressLabel', { name: build.layer_name })}
+                          tone={jobProgressTone(build.status)}
+                          active={!isDone}
+                          size="xs"
+                          class="flex-1"
+                        />
                         <span class="text-xs text-ink-2 w-8 text-right">{build.progress_pct}%</span>
                       </div>
                     </td>
@@ -1633,22 +1656,25 @@
       {#if detailLoading && !buildDetail}
         <div class="space-y-2">
           {#each [1, 2, 3] as _}
-            <div class="h-8 bg-surface-sunken rounded animate-pulse"></div>
+            <div class="motion-skeleton h-8 rounded"></div>
           {/each}
         </div>
       {:else if buildDetail}
         <!-- 진행률 바 -->
         <div>
           <div class="flex justify-between text-xs text-ink-2 mb-1">
-            <span>{buildDetail.progress_step || t('buildDetail.waiting')}</span>
+            <span class="flex items-center gap-1.5">
+              {#if detailIsActive}<ActivityIndicator size="xs" />{/if}
+              {buildDetail.progress_step || t('buildDetail.waiting')}
+            </span>
             <span>{buildDetail.progress_pct}%</span>
           </div>
-          <div class="h-1.5 bg-surface-selected rounded-full overflow-hidden">
-            <div
-              class="h-full rounded-full transition-all duration-500 {buildDetail.status === 'complete' ? 'bg-green-500' : buildDetail.status === 'error' || buildDetail.status === 'cancelled' ? 'bg-red-500' : 'bg-action-warm'}"
-              style="width: {buildDetail.progress_pct}%"
-            ></div>
-          </div>
+          <ProgressTrack
+            value={buildDetail.progress_pct}
+            label={t('buildDetail.progress')}
+            tone={jobProgressTone(buildDetail.status)}
+            active={detailIsActive}
+          />
         </div>
 
         <!-- 정보 그리드 -->
@@ -1783,7 +1809,7 @@
       {#if consumeDetailLoading && !consumeDetail}
         <div class="space-y-2">
           {#each [1, 2, 3] as _}
-            <div class="h-8 bg-surface-sunken rounded animate-pulse"></div>
+            <div class="motion-skeleton h-8 rounded"></div>
           {/each}
         </div>
       {:else if consumeDetail}
@@ -1862,7 +1888,7 @@
       {#if deleteLoading}
         <div class="space-y-2">
           {#each [1, 2, 3] as _}
-            <div class="h-8 bg-surface-sunken rounded animate-pulse"></div>
+            <div class="motion-skeleton h-8 rounded"></div>
           {/each}
         </div>
       {:else if deletePreview}

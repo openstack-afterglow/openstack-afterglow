@@ -27,6 +27,8 @@ manager 정보는 앱 DB(`project_roles` 테이블)에 저장됩니다.
   관리자는 이 검사를 bypass합니다. manager가 아니면 403입니다.
 - **마지막 매니저 보호** — 프로젝트에는 최소 1명의 manager가 필요합니다. 마지막
   매니저는 해제할 수 없습니다(409).
+- 이 DB `manager`는 Keystone의 시스템 전용 `manager` 역할과 다른 프로젝트 멤버 관리 권한입니다. 프로젝트 소유만으로 Keystone 역할 CRUD·상속·시스템 권한을 변경할 수 없습니다.
+- 콘솔의 멤버·초대 목록은 현재 auth/project에만 속합니다. 다른 프로젝트로 전환하면 이전 행·액션·feedback을 즉시 비우고 늦은 응답·mutation 결과를 차단합니다. 동일 scope의 재조회는 기존 행을 유지합니다. 계정 MCP token·OAuth grant·발급 직후 secret도 같은 scope 경계를 사용하며, 확인 dialog가 열린 뒤 scope가 바뀌면 기존 폐기 요청을 제출하지 않습니다.
 
 ### 초대 흐름
 
@@ -76,6 +78,8 @@ manager 정보는 앱 DB(`project_roles` 테이블)에 저장됩니다.
 ## GET /api/v1/projects/current/permissions
 
 현재 활성 프로젝트 컨텍스트에 대한 호출자의 역할 및 실효 권한(`can_write`, `is_reader`, `is_manager` 등)을 조회합니다.
+
+일반 사용자 응답의 `roles`는 표시용입니다. `admin`·`manager` 및 이들을 상속하는 사용자 정의 역할 이름을 숨기며, 분류할 수 없는 사용자 정의 이름도 노출하지 않습니다. 원래 검증된 역할로 계산한 `can_write`를 전달하므로 이름이 숨겨져도 기존 프로젝트 쓰기 권한은 사라지지 않습니다. Login·refresh·프로젝트 전환 응답과 `/auth/me`도 같은 `roles`/`can_write` 계약을 사용합니다. 서버 authorization은 이 표시용 배열이 아니라 검증된 원래 역할과 프로젝트 소유권을 검사합니다.
 
 ### 응답 (200 OK)
 
@@ -200,7 +204,9 @@ manager 정보는 앱 DB(`project_roles` 테이블)에 저장됩니다.
 | 필드 | 타입 | 필수 | 설명 |
 |------|------|------|------|
 | `email` | string | 예 | 초대할 이메일 주소 |
-| `keystone_role` | string | 아니오 | 수락 시 부여할 Keystone role (기본 `member`) |
+| `keystone_role` | `member` 또는 `reader` | 아니오 | 수락 시 부여할 Keystone role (기본 `member`); `admin`·`manager`·사용자 정의 역할은 `422` |
+
+과거에 저장된 초대가 이 두 역할 외의 권한을 요청하더라도 수락 시 `403`으로 거부하며 Keystone에 부여하지 않습니다. 일반 사용자의 초대 목록에는 시스템 전용·분류 불가 역할을 가진 기존 초대를 노출하지 않습니다.
 
 ### 응답 (201 Created)
 

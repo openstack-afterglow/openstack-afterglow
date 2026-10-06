@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/topology';
 	import { onMount } from 'svelte';
+	import { enterStep } from './firstArrival.svelte.ts';
 	import type { TopologyNetwork, TopologyTraffic } from './types.ts';
 
 	interface Props {
@@ -15,9 +16,13 @@
 		// 'full' = 카드 + 라인 (기본, 단일 컴포넌트로 사용)
 		mode?: 'card' | 'rail' | 'full';
 		onSelect?: () => void;
+		/** 스코프 첫 도착의 진입 창. 참이면 카드는 페이드, 레일은 위에서부터 자란다. */
+		entering?: boolean;
+		/** 레인 순서(진입 cascade 단계) */
+		enterIndex?: number;
 	}
 
-	let { net, color, traffic = null, highlighted, dimmed, laneHeight, mode = 'full', onSelect }: Props = $props();
+	let { net, color, traffic = null, highlighted, dimmed, laneHeight, mode = 'full', onSelect, entering = false, enterIndex = 0 }: Props = $props();
 
 	let isLight = $state(false);
 	onMount(() => {
@@ -46,8 +51,9 @@
 	}
 
 	// 세로 라인 굵기 — 트래픽 사용량에 따라 2~7px 범위에서 단계적으로 증가
+	const RAIL_MAX_PX = 7;
 	function railWidthPx(totalBps: number): number {
-		if (totalBps >= 1e8) return 7; // ≥100Mbps
+		if (totalBps >= 1e8) return RAIL_MAX_PX; // ≥100Mbps
 		if (totalBps >= 1e7) return 6; // ≥10Mbps
 		if (totalBps >= 1e6) return 5; // ≥1Mbps
 		if (totalBps >= 1e5) return 4; // ≥100kbps
@@ -67,22 +73,50 @@
 	const txPct = $derived(netTraffic ? bpsToPct(netTraffic.tx_bps) : 0);
 	const cidr = $derived(net.subnet_details[0]?.cidr ?? '');
 	const typeLabel = $derived(net.is_external ? t('kind.external') : net.is_shared ? t('kind.shared') : t('kind.internal'));
+	const railW = $derived(railWidthPx(totalBps));
+	const step = $derived(enterStep(enterIndex));
 </script>
+
+<!--
+	레일은 SVG 선이다: 굵기는 stroke-width(레이아웃 폭 전환 없음), 진입은 래퍼의 scaleY(위에서부터),
+	실측 트래픽이 0 이 아니면 그 위로 흐름 점선이 지나간다. 둥근 끝 포함 전체 길이가 laneHeight 와 같다.
+-->
+{#snippet rail()}
+	<div class="rail" class:rail-enter={entering} style:--motion-index={entering ? step : undefined}>
+		<svg width={RAIL_MAX_PX} height={laneHeight} aria-hidden="true" class="rail-svg" style:opacity={highlighted ? 0.9 : 0.45}>
+			<line
+				x1={RAIL_MAX_PX / 2} y1={railW / 2}
+				x2={RAIL_MAX_PX / 2} y2={Math.max(railW / 2, laneHeight - railW / 2)}
+				stroke={color}
+				stroke-width={railW}
+				stroke-linecap="round"
+			/>
+			{#if netTraffic && totalBps > 0}
+				<line
+					class="motion-flow rail-flow"
+					x1={RAIL_MAX_PX / 2} y1={railW / 2}
+					x2={RAIL_MAX_PX / 2} y2={Math.max(railW / 2, laneHeight - railW / 2)}
+					stroke-width={railW}
+					stroke-linecap="butt"
+				/>
+			{/if}
+		</svg>
+	</div>
+{/snippet}
 
 {#if mode === 'rail'}
 	<!-- rail 모드: 세로 라인만 (본문 캔버스 용도, 클릭 불가). 두께는 트래픽 사용량 따라 변동. -->
 	<div class="flex flex-col items-center w-full" style="opacity: {dimmed ? 0.25 : 1}">
-		<div
-			class="rounded-full transition-all duration-300"
-			style="width: {railWidthPx(totalBps)}px; height: {laneHeight}px; background: {color}; opacity: {highlighted ? 0.9 : 0.45}"
-		></div>
+		{@render rail()}
 	</div>
 {:else}
 	<button
 		type="button"
 		onclick={onSelect}
 		class="flex flex-col items-center transition-opacity duration-200 w-full appearance-none bg-transparent border-0 p-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-line-2 rounded"
+		class:motion-fade={entering}
 		style="opacity: {dimmed ? 0.25 : 1}"
+		style:--motion-index={entering ? step : undefined}
 	>
 		<!-- Stat card -->
 		<div
@@ -103,18 +137,16 @@
 					—
 				{/if}
 			</div>
-			<!-- RX/TX mini-bar (log10 스케일, 트래픽 유무 무관하게 동일 높이) -->
+			<!-- RX/TX mini-bar (log10 스케일, 트래픽 유무 무관하게 동일 높이). 채움은 scaleX 로 움직인다. -->
 			{#if netTraffic && totalBps > 0}
 				<div class="mt-1 space-y-0.5">
 					<div class="h-0.5 rounded-full overflow-hidden"
 					     style="background: {isLight ? '#e5e7eb' : '#1f2937'}">
-						<div class="h-full bg-blue-400 transition-all duration-500"
-						     style="width: {rxPct}%"></div>
+						<div class="rate-fill rate-rx" style:transform="scaleX({rxPct / 100})"></div>
 					</div>
 					<div class="h-0.5 rounded-full overflow-hidden"
 					     style="background: {isLight ? '#e5e7eb' : '#1f2937'}">
-						<div class="h-full bg-green-400 transition-all duration-500"
-						     style="width: {txPct}%"></div>
+						<div class="rate-fill rate-tx" style:transform="scaleX({txPct / 100})"></div>
 					</div>
 				</div>
 			{:else}
@@ -124,10 +156,26 @@
 
 		{#if mode === 'full'}
 			<!-- Vertical line (full 모드 전용) — 두께는 트래픽 사용량 따라 변동 -->
-			<div
-				class="rounded-full transition-all duration-300"
-				style="width: {railWidthPx(totalBps)}px; height: {laneHeight}px; background: {color}; opacity: {highlighted ? 0.9 : 0.45}"
-			></div>
+			{@render rail()}
 		{/if}
 	</button>
 {/if}
+
+<style>
+	.rail { display: flex; justify-content: center; transform-origin: top; }
+	.rail-enter {
+		animation: motion-grow-y var(--motion-duration-data) var(--motion-ease-emphasized) backwards;
+		animation-delay: calc(var(--motion-duration-stagger) * var(--motion-index, 0));
+	}
+	.rail-svg { display: block; overflow: visible; transition: opacity var(--motion-duration-base) var(--motion-ease-standard); }
+	.rail-flow { stroke: var(--motion-sheen); }
+	.rate-fill {
+		height: 100%;
+		width: 100%;
+		transform-origin: left;
+		animation: motion-grow-x var(--motion-duration-data) var(--motion-ease-emphasized) backwards;
+		transition: transform var(--motion-duration-data) var(--motion-ease-emphasized);
+	}
+	.rate-rx { background: var(--color-chart-1); }
+	.rate-tx { background: var(--color-chart-2); }
+</style>

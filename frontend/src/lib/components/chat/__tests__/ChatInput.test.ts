@@ -7,7 +7,7 @@ vi.mock('$lib/api/chatAttachments', async (importOriginal) => {
 });
 
 import ChatInput from '../ChatInput.svelte';
-import { uploadChatAttachment } from '$lib/api/chatAttachments';
+import { uploadChatAttachment, type AttachmentRef } from '$lib/api/chatAttachments';
 
 beforeEach(() => {
 	vi.mocked(uploadChatAttachment).mockReset();
@@ -69,13 +69,10 @@ describe('ChatInput native Search', () => {
 });
 
 describe('ChatInput attachments', () => {
-	it('marks a scanned image ready instead of leaving the composer upload-blocked', async () => {
-		vi.mocked(uploadChatAttachment).mockResolvedValue({
-			id: 'asset-clean',
-			mime_type: 'image/png',
-			name: 'clean.png'
-		});
-		const { container } = render(ChatInput, {
+	it('labels an image upload until the scanned asset is ready', async () => {
+		const upload = Promise.withResolvers<AttachmentRef>();
+		vi.mocked(uploadChatAttachment).mockReturnValue(upload.promise);
+		const { container, getByRole, queryByRole } = render(ChatInput, {
 			value: '',
 			modelCaps: { vision: true },
 			onSend: vi.fn(),
@@ -88,8 +85,11 @@ describe('ChatInput attachments', () => {
 
 		await fireEvent.change(input!);
 
-		await waitFor(() => expect(container.querySelector('.chip.uploading')).toBeNull());
-		expect(container.querySelector<HTMLImageElement>('.chip img')?.alt).toBe('clean.png');
+		expect(getByRole('status')).toBeTruthy();
+		expect(getByRole('img', { name: 'clean.png' }).closest('[aria-busy="true"]')).not.toBeNull();
+		upload.resolve({ id: 'asset-clean', mime_type: 'image/png', name: 'clean.png' });
+		await waitFor(() => expect(queryByRole('status')).toBeNull());
+		expect(getByRole('img', { name: 'clean.png' }).closest('[aria-busy="true"]')).toBeNull();
 	});
 
 	it('explains when the scanned asset pipeline is unavailable', () => {
@@ -115,6 +115,23 @@ describe('ChatInput attachments', () => {
 });
 
 describe('ChatInput compact context meter', () => {
+	it('distinguishes context lookup, automatic compaction and lookup failure', async () => {
+		const view = render(ChatInput, {
+			value: '',
+			hasContextScope: true,
+			contextLoading: true,
+			onSend: vi.fn(),
+			onStop: vi.fn()
+		});
+		expect(view.getByText('컨텍스트 확인 중')).toBeTruthy();
+		await view.rerender({ contextLoading: false, contextPhase: 'compacting', contextCause: 'automatic' });
+		expect(view.queryByText('컨텍스트 확인 중')).toBeNull();
+		expect(view.getByText('컨텍스트 자동 압축 중')).toBeTruthy();
+		await view.rerender({ contextPhase: 'failed', contextError: '조회 실패' });
+		expect(view.queryByText('컨텍스트 자동 압축 중')).toBeNull();
+		expect(view.getByText('컨텍스트 조회 실패')).toBeTruthy();
+	});
+
 	it('keeps measured context use inside the composer controls', async () => {
 		const view = render(ChatInput, {
 			value: '',
@@ -423,6 +440,20 @@ describe('ChatInput shortcuts', () => {
 
 		expect(onSelect).not.toHaveBeenCalled();
 		expect(onSend).not.toHaveBeenCalled();
+	});
+});
+
+describe('ChatInput response generation', () => {
+	it('labels in-flight generation and preserves the stop action until it completes', async () => {
+		const onStop = vi.fn();
+		const view = render(ChatInput, { value: '', streaming: true, onSend: vi.fn(), onStop });
+		expect(view.getByRole('status').textContent?.trim()).toBe('응답 생성 중');
+		await fireEvent.click(view.getByRole('button', { name: '생성 중단' }));
+		expect(onStop).toHaveBeenCalledOnce();
+		await view.rerender({ streaming: false });
+		expect(view.queryByRole('status')).toBeNull();
+		expect(view.queryByRole('button', { name: '생성 중단' })).toBeNull();
+		expect(view.getByRole('button', { name: '전송' })).toBeTruthy();
 	});
 });
 

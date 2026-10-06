@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/admin-storage';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { formatNumber } from '$lib/utils/format';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 
@@ -49,7 +50,7 @@
 					disabled={extending}
 					class="px-4 py-2 bg-action-warm hover:bg-action-warm-hover text-action-on-warm text-sm rounded-lg disabled:opacity-30"
 				>
-					{extending ? t('volumeDetail.extending') : t('volumeDetail.extend')}
+					{#if extending}<span class="inline-flex items-center gap-2" role="status"><ActivityIndicator size="xs" tone="ink" /><span>{t('volumeDetail.extending')}</span></span>{:else}{t('volumeDetail.extend')}{/if}
 				</button>
 			</div>
 		</div>

@@ -4,6 +4,7 @@
 	import { api, ApiError } from '$lib/api/client';
 	import type { Network } from '$lib/types/networks';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
+	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 
 	interface Props {
 		open: boolean;
@@ -69,14 +70,14 @@
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		use:dialogFocus={{ enabled: true, onEscape: () => close() }}
-		class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
+		class="motion-fade fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
 		onclick={close}
 		role="dialog"
 		aria-modal="true"
 		tabindex="-1"
 	>
 		<div
-			class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-sm mx-4 shadow-[var(--shadow-restraint)]"
+			class="motion-pop bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-sm mx-4 shadow-[var(--shadow-restraint)]"
 			onclick={(e) => e.stopPropagation()}
 			role="none"
 		>
@@ -118,8 +119,9 @@
 				<button
 					onclick={allocate}
 					disabled={allocating || externalNetworks.length === 0}
-					class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors"
-				>{allocating ? t('network.floatingIp.allocating') : t('network.floatingIp.allocate')}</button>
+					aria-busy={allocating}
+					class="inline-flex items-center gap-1.5 px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors"
+				>{#if allocating}<ActivityIndicator size="xs" tone="ink" />{/if}{allocating ? t('network.floatingIp.allocating') : t('network.floatingIp.allocate')}</button>
 			</div>
 		</div>
 	</div>

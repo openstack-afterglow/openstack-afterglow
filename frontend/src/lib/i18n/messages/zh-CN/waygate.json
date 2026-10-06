@@ -1,4 +1,10 @@
 {
+	"project.permission.denied": "您无权在当前项目中执行此操作。",
+	"project.client.owner": "所有者用户 ID",
+	"project.client.ownerHelp": "输入项目成员的用户 ID。普通连接用户无法下载未分配客户端的配置。",
+	"project.client.ownerSelf": "我",
+	"project.client.ownerUnassigned": "未分配",
+	"project.client.assignSelf": "分配给我",
 	"workspace.breadcrumb.admin": "管理 / WAYGATE",
 	"workspace.breadcrumb.network": "网络 / WAYGATE",
 	"workspace.adminTitle": "Waygate 管理",
