@@ -2,6 +2,9 @@
 # Public contract: sh -s -- [CODEX_BASE_URL ANTHROPIC_BASE_URL]
 # Requires macOS/Linux, Python 3.11+, and a controlling terminal.
 # LUMEN_CA_BUNDLE optionally selects an operator-trusted PEM bundle.
+# Codex terminal defaults live in $CODEX_HOME/lumen-cli.config.toml, selected by
+# --profile lumen-cli. Root desktop defaults stay untouched unless model opt-in
+# is requested; both configs share path validation, private backups and updates.
 set +x
 set +v
 exec python3 - "$@" <<'LUMEN_PY'
@@ -298,7 +301,7 @@ def same(left, right):
     return left == right
 
 
-def codex_config(text, base, model, opt_in):
+def codex_config(text, base, root_settings):
     if text and not text.endswith('\n'):
         text += '\n'
     original = tomllib.loads(text)
@@ -306,8 +309,7 @@ def codex_config(text, base, model, opt_in):
         'name': 'Lumen Responses', 'base_url': base, 'env_key': 'LUMEN_API_KEY',
         'wire_api': 'responses', 'requires_openai_auth': False, 'supports_websockets': False,
     }.items()}
-    if opt_in:
-        desired[('model',)] = model
+    desired.update({(key,): value for key, value in root_settings.items()})
     expected = copy.deepcopy(original)
     for path, value in desired.items():
         put(expected, path, value)
@@ -374,14 +376,17 @@ def codex_config(text, base, model, opt_in):
                 dotted_insert = (len(output), context)
         else:
             output.append(statement)
-    if ('model',) in remaining:
+    roots = {path: value for path, value in remaining.items() if len(path) == 1}
+    if roots:
         position = first_table if first_table is not None else len(output)
-        output.insert(position, 'model = ' + toml_value(model) + '\n')
+        fields = ''.join(path[0] + ' = ' + toml_value(value) + '\n' for path, value in roots.items())
+        output.insert(position, fields)
         if dotted_insert is not None and position <= dotted_insert[0]:
             dotted_insert = (dotted_insert[0] + 1, dotted_insert[1])
         if provider_insert is not None and (first_table is None or first_table < provider_insert):
             provider_insert += 1
-        remaining.pop(('model',))
+        for path in roots:
+            remaining.pop(path)
     fields = ''.join(path[-1] + ' = ' + toml_value(value) + '\n' for path, value in remaining.items())
     if fields:
         if provider_insert is not None:
@@ -432,18 +437,21 @@ def run():
         private = config_home / 'lumen'
         key = private / 'key.sh'
         config = codex_home / 'config.toml'
+        cli_config = codex_home / 'lumen-cli.config.toml'
         candidates = [home / name for name in ('.bash_profile', '.bash_login', '.profile')]
         # Inspect every login candidate, including symlinks, before selecting one.
         login_contents = {path: files.read(path) for path in candidates}
         login = next((path for path in candidates if login_contents[path] is not None), home / '.profile')
         profiles = list(dict.fromkeys([home / '.bashrc', login, zdotdir / '.zshrc']))
-        old = {path: files.read(path) for path in [key, config, *profiles]}
+        old = {path: files.read(path) for path in [key, config, cli_config, *profiles]}
         for directory in (home, codex_home, zdotdir, private):
             fd = files.directory(directory)
             if fd is not None:
                 require(os.fstat(fd).st_uid == os.getuid())
         config_text = (old[config] or b'').decode('utf-8')
         tomllib.loads(config_text)
+        cli_config_text = (old[cli_config] or b'').decode('utf-8')
+        tomllib.loads(cli_config_text)
         # Check profile markers before asking for a credential.
         for path in profiles:
             profile((old[path] or b'').decode('utf-8'), START + '\n' + END + '\n')
@@ -484,7 +492,8 @@ def run():
         answer = tty.prompt('Replace the default Codex model? [y/N]: ').lower()
         require(answer in ('', 'y', 'yes', 'n', 'no'))
         opt_in = answer in ('y', 'yes')
-        updated = codex_config(config_text, codex, responses, opt_in)
+        updated = codex_config(config_text, codex, {'model': responses} if opt_in else {})
+        cli_updated = codex_config(cli_config_text, codex, {'model_provider': 'lumen', 'model': responses})
         quote = shlex.quote
         block = START + '\n' + '''case "$-" in *x*) _lumen_trace=1 ;; *) _lumen_trace=0 ;; esac
 case "$-" in *v*) _lumen_verbose=1 ;; *) _lumen_verbose=0 ;; esac
@@ -493,7 +502,7 @@ set +v
 '''
         block += '[ ! -r ' + quote(str(key)) + ' ] || . ' + quote(str(key)) + '\n'
         for name, value in {'CODEX_HOME': str(codex_home), 'CODEX_CA_CERTIFICATE': str(ca),
-                            'LUMEN_CODEX_MODEL': responses, 'LUMEN_MODEL': claude,
+                            'LUMEN_MODEL': claude,
                             'ANTHROPIC_BASE_URL': anthropic}.items():
             block += 'export ' + name + '=' + quote(value) + '\n'
         if share_ca:
@@ -503,20 +512,23 @@ set +v
         for name in ('ANTHROPIC_MODEL', 'ANTHROPIC_DEFAULT_SONNET_MODEL',
                      'ANTHROPIC_DEFAULT_OPUS_MODEL', 'ANTHROPIC_DEFAULT_HAIKU_MODEL'):
             block += 'export ' + name + '="$LUMEN_MODEL"\n'
+        # Native profile defaults survive subcommand -c flags; caller -m still wins.
+        block += '''unalias codex 2>/dev/null || :
+codex() {
+    command codex --strict-config --profile lumen-cli "$@"
+}
+'''
         block += '''if [ "$_lumen_verbose" = 1 ]; then unset _lumen_verbose; set -v; else unset _lumen_verbose; fi
 if [ "$_lumen_trace" = 1 ]; then unset _lumen_trace; set -x; else unset _lumen_trace; fi
 '''
         block += END + '\n'
         changes = {key: ('set +x\nset +v\nexport LUMEN_API_KEY=' + quote(api_key) + '\n').encode(),
-                   config: updated.encode()}
+                   config: updated.encode(), cli_config: cli_updated.encode()}
         for path in profiles:
             changes[path] = profile((old[path] or b'').decode('utf-8'), block).encode()
         files.install(changes, (private, codex_home), key, profiles)
         print('Lumen CLI configured. Open a new terminal, then run:')
-        command = 'codex --strict-config -c model_provider=lumen'
-        if not opt_in:
-            command += ' -m ' + quote(responses)
-        print(command)
+        print('codex')
         print('claude')
     finally:
         if tty is not None:

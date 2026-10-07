@@ -159,7 +159,7 @@
 	"apiKeys.guide.discoveryHelp": "以下はLumen discoveryが返した公開APIアドレスです。ダッシュボードのアドレスと異なる場合があり、取得だけではCLIの成功は確認できません。",
 	"apiKeys.guide.usageWarning": "サンプルリクエストは実際のAPI使用量を消費します。この画面やコピーするコマンドにキーを含めないでください。",
 	"apiKeys.installer.title": "Codex + Claude Codeの自動設定",
-	"apiKeys.installer.introduction": "まずCodex CLIとClaude Codeをインストールしてください。以下のスクリプトはクライアントのインストールやAPI呼び出しを行わず、<code>{configPath}</code>（または<code>{codexHome}</code>）のLumenプロバイダーとシェルプロファイルだけを設定します。キーはローカル端末の非表示プロンプトで入力します。実行前にダウンロード先とスクリプトの内容を確認してください。",
+	"apiKeys.installer.introduction": "まずCodex CLI 0.134.0+とClaude Codeをインストールしてください。以下のスクリプトはクライアントのインストールやAPI呼び出しを行わず、<code>{configPath}</code>（または<code>{codexHome}</code>）のLumenプロバイダー、CLI専用のlumen-cli.config.tomlとシェルプロファイルを設定します。既存のデスクトップの既定設定は保持され、設定後は新しいターミナルでcodexとclaudeを実行できます。キーはローカル端末の非表示プロンプトで入力します。実行前にダウンロード先とスクリプトの内容を確認してください。",
 	"apiKeys.installer.posixTitle": "macOS / Linux · ターミナル",
 	"apiKeys.installer.copyPosix": "macOS/Linux設定コマンドをコピー",
 	"apiKeys.installer.posixHelp": "Python 3.11+と対話型ターミナルが必要です。キーはユーザー専用ファイル（0600）に保存し、プロファイルにはそのファイルを読み込む設定だけを保存します。",

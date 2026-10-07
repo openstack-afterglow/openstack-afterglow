@@ -472,7 +472,7 @@ export const platformGuides: DocGuide[] = [
 						text: [
 							'Codex CLI와 Claude Code는 각 클라이언트의 공식 설치 안내로 먼저 설치합니다. 화면의 Codex + Claude Code 자동 설정은 CLI 바이너리를 설치하거나 provider API를 호출하는 작업이 아니라 Lumen provider·키 보관·셸 프로필 설정입니다.',
 							'실행 전 macOS/Linux /install/lumen.sh 또는 Windows /install/lumen.ps1 스크립트 내용을 확인하고 화면이 생성한 배포별 명령을 복사합니다. 키는 실행 후 로컬 숨김 프롬프트에서 입력하며 URL·명령 인자·history에 넣지 않습니다. POSIX는 Python 3.11+와 대화형 터미널, Windows는 해당 PowerShell edition과 조직 정책을 확인합니다.',
-							'설정 후 새 터미널을 열고 키를 출력하지 않은 채 클라이언트와 모델 설정을 확인합니다. 기존 Codex 기본 provider/model은 보존되므로 안내된 명시적 model_provider=lumen과 -m 모델 선택을 사용합니다. 자동 설정 성공만으로 실제 API 인증·모델 실행 성공을 주장하지 않습니다.'
+							'설정 후 새 터미널에서 codex와 claude를 실행합니다. Codex 터미널 함수가 Lumen과 선택 모델을 자동 지정하며 기존 데스크톱 provider/model은 보존합니다. 자동 설정 성공만으로 실제 API 인증·모델 실행 성공을 주장하지 않습니다.'
 						],
 						command: {
 							label: '설치된 CLI 버전만 확인하기 · provider 호출 없음',

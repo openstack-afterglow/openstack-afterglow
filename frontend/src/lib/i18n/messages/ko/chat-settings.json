@@ -159,7 +159,7 @@
 	"apiKeys.guide.discoveryHelp": "아래 주소는 Lumen discovery가 반환한 공개 API 주소입니다. 대시보드 주소와 다를 수 있으며 주소 조회만으로 CLI 성공이 확인되지는 않습니다.",
 	"apiKeys.guide.usageWarning": "예제 요청은 실제 API 사용량을 차감합니다. 키는 이 화면이나 복사 명령에 넣지 마세요.",
 	"apiKeys.installer.title": "Codex + Claude Code 자동 설정",
-	"apiKeys.installer.introduction": "Codex CLI·Claude Code를 먼저 설치하세요. 아래 스크립트는 클라이언트를 설치하거나 API를 호출하지 않고 <code>{configPath}</code>(또는 <code>{codexHome}</code>)의 Lumen provider와 셸 프로필만 설정합니다. 키는 로컬 터미널의 숨겨진 프롬프트에서 입력합니다. 실행 전 다운로드 주소와 스크립트 내용을 확인하세요.",
+	"apiKeys.installer.introduction": "Codex CLI 0.134.0+·Claude Code를 먼저 설치하세요. 아래 스크립트는 클라이언트를 설치하거나 API를 호출하지 않고 <code>{configPath}</code>(또는 <code>{codexHome}</code>)의 Lumen provider, CLI 전용 lumen-cli.config.toml과 셸 프로필을 설정합니다. 기존 데스크톱 기본값은 보존하며 설정 후 새 터미널에서 codex와 claude를 실행하면 됩니다. 키는 로컬 터미널의 숨겨진 프롬프트에서 입력합니다. 실행 전 다운로드 주소와 스크립트 내용을 확인하세요.",
 	"apiKeys.installer.posixTitle": "macOS / Linux · 터미널",
 	"apiKeys.installer.copyPosix": "macOS/Linux 설치 명령 복사",
 	"apiKeys.installer.posixHelp": "Python 3.11+와 대화형 터미널이 필요합니다. 키는 사용자 전용 파일(0600)에, 프로필에는 그 파일을 읽는 설정만 저장합니다.",

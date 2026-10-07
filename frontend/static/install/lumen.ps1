@@ -3,8 +3,9 @@
 # and decrypted only by this user's PowerShell profile into process environment.
 # Environment credentials are inherited by child processes; do not dump env or
 # enable PowerShell tracing/debug logging while entering or using credentials.
-# Existing Codex defaults are retained unless the explicit default-model prompt
-# is accepted. Changed config/profile files receive timestamped .bak copies.
+# Native Codex profile: lumen-cli.config.toml holds terminal-only root selections
+# for --profile lumen-cli. Desktop root defaults change only on explicit opt-in.
+# Both configs and the profile receive timestamped .bak copies when changed.
 # TOML must be valid UTF-8. Profiles accept UTF-8 or BOM-marked UTF-16;
 # ambiguous legacy encodings are refused without rewriting. Backups retain bytes.
 & {
@@ -118,14 +119,19 @@
         return $Parts.Count -eq 2 -and $Parts[0] -ceq 'model_providers' -and $Parts[1] -ceq 'lumen'
     }
 
-    function Update-LumenToml([string] $Text, [string] $BaseUrl, [string] $DefaultModel = '') {
+    function Update-LumenToml([string] $Text, [string] $BaseUrl, [string] $DefaultModel = '', [bool] $CliProfile = $false) {
         $BaseUrl = ConvertTo-LumenBaseUrl $BaseUrl
-        if ($DefaultModel) { $DefaultModel = ConvertTo-LumenModel $DefaultModel }
+        if ($DefaultModel -or $CliProfile) { $DefaultModel = ConvertTo-LumenModel $DefaultModel }
         $nl = "`n"; if ($Text.Contains("`r`n")) { $nl = "`r`n" }
         $fields = [ordered] @{
             name = '"Lumen Responses"'; base_url = (ConvertTo-LumenTomlString $BaseUrl)
             env_key = '"LUMEN_API_KEY"'; wire_api = '"responses"'; requires_openai_auth = 'false'; supports_websockets = 'false'
         }
+        # A native <profile>.config.toml file uses root selections, not a
+        # [profiles.<name>] table. Never apply its provider selection to config.toml.
+        $rootFields = [ordered] @{}
+        if ($DefaultModel) { $rootFields['model'] = ConvertTo-LumenTomlString $DefaultModel }
+        if ($CliProfile) { $rootFields['model_provider'] = '"lumen"' }
         $section = @(); $edits = @(); $seen = @{}; $rootSeen = @{}
         $rootEnd = $Text.Length; $providerEnd = $Text.Length; $providerFound = $false
         foreach ($statement in @(Get-LumenTomlStatements $Text)) {
@@ -139,6 +145,10 @@
                 if (Test-LumenProviderSection $section) { $providerEnd = $statement.Start }
                 $header = $m; if ($array.Success) { $header = $array }
                 $section = Get-LumenTomlPath $header.Groups[1].Value
+                if ($section[0] -cin @('model', 'model_provider')) { throw 'A Codex root selection is defined as a table; config was not changed.' }
+                if ($array.Success -and $section.Count -eq 1 -and $section[0] -ceq 'model_providers') {
+                    throw 'Array model_providers configuration needs manual migration to tables; config was not changed.'
+                }
                 if (Test-LumenProviderSection $section) {
                     if ($array.Success -or $providerFound) { throw 'Duplicate or array Lumen provider table; config was not changed.' }
                     $providerFound = $true
@@ -156,12 +166,10 @@
                 throw 'Inline/dotted model_providers configuration needs manual migration to tables; config was not changed.'
             }
             $replacement = $null
-            if ($section.Count -eq 0 -and $key.Count -eq 1 -and $key[0] -cin @('model', 'model_provider')) {
-                if ($rootSeen.ContainsKey($key[0])) { throw 'Duplicate Codex default key; config was not changed.' }
+            if ($section.Count -eq 0 -and $key[0] -cin @('model', 'model_provider')) {
+                if ($key.Count -ne 1 -or $rootSeen.ContainsKey($key[0])) { throw 'Conflicting Codex root selection; config was not changed.' }
                 $rootSeen[$key[0]] = $true
-                if ($DefaultModel -and $key[0] -ceq 'model') {
-                    $replacement = 'model = ' + (ConvertTo-LumenTomlString $DefaultModel) + $nl
-                }
+                if ($rootFields.Keys -ccontains $key[0]) { $replacement = $key[0] + ' = ' + $rootFields[$key[0]] + $nl }
             }
             if ((Test-LumenProviderSection $section) -and $fields.Keys -ccontains $key[0]) {
                 if ($key.Count -ne 1 -or $seen.ContainsKey($key[0])) { throw 'Conflicting Lumen provider key; config was not changed.' }
@@ -173,8 +181,8 @@
             }
         }
         $rootInsert = ''
-        if ($DefaultModel -and -not $rootSeen.ContainsKey('model')) {
-            $rootInsert = 'model = ' + (ConvertTo-LumenTomlString $DefaultModel) + $nl
+        foreach ($key in $rootFields.Keys) {
+            if (-not $rootSeen.ContainsKey($key)) { $rootInsert += $key + ' = ' + $rootFields[$key] + $nl }
         }
         $providerInsert = ''
         if (-not $providerFound) { $providerInsert = $nl + '[model_providers.lumen]' + $nl }
@@ -190,7 +198,7 @@
             if ($rootEnd -gt 0 -and $Text[$rootEnd - 1] -ne "`n") { $rootInsert = $nl + $rootInsert }
             $edits += [pscustomobject] @{ Start = $rootEnd; Length = 0; Value = $rootInsert; Order = 1 }
         }
-        # Apply replacements before insertions at the same offset; root insertion
+        # Replacements precede insertions at the same offset; root insertion
         # must precede an appended provider table when starting with an empty file.
         foreach ($edit in @($edits | Sort-Object -Property @{ Expression = 'Start'; Descending = $true }, @{ Expression = 'Length'; Descending = $true }, @{ Expression = 'Order'; Descending = $false })) {
             $Text = $Text.Remove($edit.Start, $edit.Length).Insert($edit.Start, $edit.Value)
@@ -241,6 +249,17 @@
     } finally {
         if ($null -ne $bytes) { [Array]::Clear($bytes, 0, $bytes.Length) }
     }
+}
+# Terminal-only selection leaves desktop/user-owned TOML defaults unchanged.
+# Remove every visible alias, including inherited/global aliases when setup
+# invokes this block in a child scope. PS 5.1 Remove-Item has no -Scope switch;
+# Alias:global:codex is not a scope-qualified alias provider path.
+while (Get-Alias -Name codex -ErrorAction SilentlyContinue) {
+    Remove-Item -LiteralPath Alias:codex -Force -ErrorAction Stop
+}
+function global:codex {
+    $binary = Get-Command codex -CommandType Application,ExternalScript -ErrorAction Stop | Select-Object -First 1
+    & $binary.Source --strict-config --profile lumen-cli @args
 }
 # <<< Lumen CLI <<<
 '@
@@ -389,8 +408,8 @@
         $caBundle = Resolve-LumenCaBundle $env:LUMEN_CA_BUNDLE $env:CODEX_CA_CERTIFICATE
         $model = ConvertTo-LumenModel (Read-Host 'Public Anthropic model ID for Claude Code (not a provider ID)')
         $responsesModel = ConvertTo-LumenModel (Read-Host 'Public Responses model ID for Codex (not a provider ID)')
-        Write-Host 'Codex defaults and unrelated TOML tables will be preserved. Use -m to select the Responses model per run.'
-        Write-Host 'Optional change: replace only the top-level Codex model with this Responses model. Your default provider stays unchanged; the command explicitly selects Lumen. Existing config is backed up.'
+        Write-Host 'Codex defaults and unrelated TOML tables will be preserved. lumen-cli.config.toml supplies terminal-only selections through --profile lumen-cli; use -m to override per run.'
+        Write-Host 'Optional change: replace only the top-level Codex model with this Responses model. Your default provider stays unchanged. Existing config is backed up.'
         $answer = Read-Host 'Use this Responses model as the top-level Codex model? [y/N]'
         if ($answer -notmatch '^(?i:y|yes|n|no)?$') { throw 'Answer y/yes or n/no; no files were changed.' }
         $defaultModel = ''; if ($answer -match '^(?i:y|yes)$') { $defaultModel = $responsesModel }
@@ -398,15 +417,21 @@
         if (-not $codexHome) { $codexHome = Join-Path ([Environment]::GetFolderPath('UserProfile')) '.codex' }
         $codexHome = [IO.Path]::GetFullPath($codexHome)
         $configPath = Join-Path $codexHome 'config.toml'
+        $cliConfigPath = Join-Path $codexHome 'lumen-cli.config.toml'
         $profilePath = $PROFILE.CurrentUserAllHosts
         if (-not $profilePath) { throw 'This host does not expose PROFILE.CurrentUserAllHosts; run setup in an interactive Windows PowerShell host.' }
         $localData = [Environment]::GetFolderPath('LocalApplicationData')
         if (-not $localData) { throw 'Windows LocalApplicationData is unavailable; no secure credential location exists.' }
         $keyPath = Join-Path $localData 'Lumen\cli\api-key.dpapi'
-        foreach ($path in @($configPath, $profilePath, $keyPath)) { Assert-LumenLocalPath $path }
+        foreach ($path in @($configPath, $cliConfigPath, $profilePath, $keyPath)) {
+            Assert-LumenLocalPath $path
+            if ([IO.Directory]::Exists($path)) { throw 'Config, profile and credential destinations must be files or absent; no files were changed.' }
+        }
         $config = ''; if ([IO.File]::Exists($configPath)) { $config = Read-LumenTextFile $configPath }
+        $cliConfig = ''; if ([IO.File]::Exists($cliConfigPath)) { $cliConfig = Read-LumenTextFile $cliConfigPath }
         $profileText = ''; if ([IO.File]::Exists($profilePath)) { $profileText = Read-LumenTextFile $profilePath $true }
         $newConfig = Update-LumenToml $config $codexUrl $defaultModel
+        $newCliConfig = Update-LumenToml $cliConfig $codexUrl $responsesModel $true
         $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
         $block = New-LumenProfileBlock $keyPath $sid $anthropicUrl $model $responsesModel $codexHome $caBundle
         $newProfile = Update-LumenProfile $profileText $block
@@ -416,6 +441,7 @@
         $key = Read-Host 'Full Lumen API key (input hidden)' -AsSecureString
         try { Save-LumenKey $key $keyPath } finally { if ($null -ne $key) { $key.Dispose() } }
         Write-LumenFile $configPath $newConfig
+        Write-LumenFile $cliConfigPath $newCliConfig
         Write-LumenFile $profilePath $newProfile $true
         # Execute only our generated block, never unrelated user profile code.
         & ([scriptblock]::Create($block))
@@ -423,8 +449,7 @@
         Write-Host "Configured current-user all-hosts profile: $profilePath"
         Write-Host 'PowerShell 5.1 and PowerShell 7 have separate profile locations: rerun in each edition you use. -NoProfile shells do not load credentials.'
         Write-Host 'Windows certificate trust is used unless your validated LUMEN_CA_BUNDLE or existing CODEX_CA_CERTIFICATE selects a custom Codex PEM bundle. Existing Claude trust overrides are untouched; TLS verification remains enabled.'
-        if ($defaultModel) { Write-Host 'Run: codex --strict-config -c model_provider=lumen' }
-        else { Write-Host 'Run: codex --strict-config -c model_provider=lumen -m "$env:LUMEN_CODEX_MODEL"' }
+        Write-Host 'Run: codex. The terminal function uses --strict-config --profile lumen-cli; desktop provider/default model stay unchanged unless you opted into the model change. Codex must support native lumen-cli.config.toml loading.'
         Write-Host 'Run: claude. Future profile loading requires an execution policy that permits this profile; other shells do not load it. Backups retain original settings and encoding.'
     }
 

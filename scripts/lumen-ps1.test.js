@@ -110,22 +110,85 @@ $again = Update-LumenToml $changed 'https://lumen.example/v1'
 	assert.ok(result.changed.includes('env_key = "LUMEN_API_KEY"'));
 });
 
-behavior("opt-in updates only root model and never changes or inserts the default provider", () => {
+behavior("native profile file selects terminal model and provider without changing nested profiles", () => {
 	const result = run(`
 $original = "model = 'old'\nmodel_provider = 'openai'\n[profiles.work]\nmodel = 'work'"
-$changed = Update-LumenToml $original 'https://lumen.example/v1' 'responses/public'
-$empty = Update-LumenToml '' 'https://lumen.example/v1' 'responses/public'
-$only = Update-LumenToml '# comment without newline' 'https://lumen.example/v1' 'responses/public'
-@{ changed = $changed; empty = $empty; only = $only; again = (Update-LumenToml $changed 'https://lumen.example/v1' 'responses/public') } | ConvertTo-Json -Compress
+$changed = Update-LumenToml $original 'https://lumen.example/v1' 'responses/public' $true
+$empty = Update-LumenToml '' 'https://lumen.example/v1' 'responses/public' $true
+$only = Update-LumenToml '# comment without newline' 'https://lumen.example/v1' 'responses/public' $true
+@{ changed = $changed; empty = $empty; only = $only; original = $original; again = (Update-LumenToml $changed 'https://lumen.example/v1' 'responses/public' $true) } | ConvertTo-Json -Compress
 `);
 	for (const value of [result.changed, result.empty, result.only]) {
-		assert.ok(value.indexOf('model = "responses/public"') < value.indexOf("[model_providers.lumen]"));
+		const root = value.slice(0, value.indexOf("["));
+		assert.ok(root.includes('model = "responses/public"'));
+		assert.ok(root.includes('model_provider = "lumen"'));
+		assert.ok(value.includes('[model_providers.lumen]'));
 	}
-	assert.ok(result.changed.includes("model_provider = 'openai'"));
-	assert.ok(!result.empty.includes("model_provider ="));
-	assert.ok(!result.only.includes("model_provider ="));
 	assert.ok(result.changed.includes("[profiles.work]\nmodel = 'work'"));
 	assert.equal(result.again, result.changed);
+});
+
+behavior("desktop model changes only on opt-in and its provider is never changed or inserted", () => {
+	const result = run(`
+$original = "model = 'old'\nmodel_provider = 'openai'\n[profiles.work]\nmodel = 'work'"
+$unchangedDefaults = Update-LumenToml $original 'https://lumen.example/v1'
+$changed = Update-LumenToml $original 'https://lumen.example/v1' 'responses/public'
+$empty = Update-LumenToml '' 'https://lumen.example/v1' 'responses/public'
+@{ unchangedDefaults = $unchangedDefaults; original = $original; changed = $changed; empty = $empty; again = (Update-LumenToml $changed 'https://lumen.example/v1' 'responses/public') } | ConvertTo-Json -Compress
+`);
+	assert.ok(result.unchangedDefaults.startsWith(result.original));
+	assert.ok(result.changed.startsWith("model = \"responses/public\"\nmodel_provider = 'openai'"));
+	assert.ok(!result.empty.includes("model_provider ="));
+	assert.ok(result.changed.includes("[profiles.work]\nmodel = 'work'"));
+	assert.equal(result.again, result.changed);
+});
+
+behavior("managed profile updates preserve unrelated fields and exact backups on idempotent reruns", () => {
+	const result = run(`
+$original = @'
+# native profile root selections
+model = "old-model"
+model_provider = "old-provider"
+approval_policy = "on-request"
+custom_setting = { nested = true }
+[profiles.work]
+model = "work-default"
+[profiles."lumen-cli"]
+model = "old-model"
+model_provider = "old-provider"
+approval_policy = "on-request"
+custom_setting = { nested = true }
+[profiles.lumen-cli.custom]
+note = "keep profile child"
+[model_providers.'lumen']
+base_url = "https://old.example/v1"
+custom_setting = { nested = true }
+[model_providers.lumen.http_headers]
+X-Custom = "keep provider child"
+'@
+$original = $original.Replace("\n", "\r\n")
+$p = Join-Path $work 'lumen-cli.config.toml'
+$rootPath = Join-Path $work 'config.toml'
+[IO.File]::WriteAllText($rootPath, "model = 'desktop'\nmodel_provider = 'openai'", (New-Object Text.UTF8Encoding($true)))
+[IO.File]::WriteAllText($p, $original, (New-Object Text.UTF8Encoding($true)))
+$rootBytes = [Convert]::ToBase64String([IO.File]::ReadAllBytes($rootPath))
+$before = [Convert]::ToBase64String([IO.File]::ReadAllBytes($p))
+$changed = Update-LumenToml (Read-LumenTextFile $p) 'https://lumen.example/v1' 'responses/public' $true
+Write-LumenFile $p $changed
+$again = Update-LumenToml (Read-LumenTextFile $p) 'https://lumen.example/v1' 'responses/public' $true
+Write-LumenFile $p $again
+$backups = @(Get-ChildItem -LiteralPath $work -Filter '*.bak')
+@{ original = $original; changed = $changed; again = $again; count = $backups.Count; before = $before; backup = [Convert]::ToBase64String([IO.File]::ReadAllBytes($backups[0].FullName)); rootUnchanged = ($rootBytes -ceq [Convert]::ToBase64String([IO.File]::ReadAllBytes($rootPath))) } | ConvertTo-Json -Compress
+`);
+	assert.equal(result.again, result.changed);
+	assert.equal(result.count, 1);
+	assert.equal(result.backup, result.before);
+	assert.equal(result.rootUnchanged, true);
+	assert.ok(result.changed.includes('model = "responses/public"\r\nmodel_provider = "lumen"'));
+	assert.ok(result.changed.includes(result.original.slice(result.original.indexOf("[profiles.work]"), result.original.indexOf("[model_providers.'lumen']"))));
+	for (const field of ['approval_policy = "on-request"', 'custom_setting = { nested = true }', '[profiles.lumen-cli.custom]\r\nnote = "keep profile child"', '[model_providers.lumen.http_headers]\r\nX-Custom = "keep provider child"']) {
+		assert.ok(result.changed.includes(field));
+	}
 });
 
 behavior("quoted dots and case-sensitive TOML keys are not mistaken for the managed provider", () => {
@@ -154,16 +217,31 @@ $bad = @(
  'model_providers.lumen.name = "x"',
  "[model_providers]\nlumen = { name = 'x' }",
  "[model_providers.lumen]\nbase_url = 'a'\nbase_url = 'b'",
- "[model_providers.lumen]\n[model_providers.lumen]",
+ "[model_providers.lumen]\n[model_providers.'lumen']",
  "[[model_providers.lumen]]\nname = 'x'",
+ "[[model_providers]]\nname = 'x'",
  "[model_providers.lumen.base_url]\nx = 'y'",
+ "model = 'a'\nmodel = 'b'",
+ "model_provider = 'a'\n'model_provider' = 'b'",
+ 'model.name = "x"',
+ 'model_provider.name = "x"',
+ "[model]\nname = 'x'",
+ "[[model_provider]]\nname = 'x'",
  'value = [1, 2',
  'value = "unterminated'
 )
-$rejected = foreach ($value in $bad) { try { $null = Update-LumenToml $value 'https://lumen.example/v1'; $false } catch { $true } }
-@($rejected) | ConvertTo-Json -Compress
+$p = Join-Path $work 'lumen-cli.config.toml'
+$rejected = foreach ($value in $bad) {
+ [IO.File]::WriteAllText($p, $value, (New-Object Text.UTF8Encoding($false)))
+ $before = [Convert]::ToBase64String([IO.File]::ReadAllBytes($p))
+ $failed = $false
+ try { Write-LumenFile $p (Update-LumenToml (Read-LumenTextFile $p) 'https://lumen.example/v1' 'responses/public' $true) } catch { $failed = $true }
+ $failed -and $before -ceq [Convert]::ToBase64String([IO.File]::ReadAllBytes($p))
+}
+@{ rejected = @($rejected); backups = @(Get-ChildItem -LiteralPath $work -Filter '*.bak').Count } | ConvertTo-Json -Compress
 `);
-	assert.ok(result.every(Boolean));
+	assert.ok(result.rejected.every(Boolean));
+	assert.equal(result.backups, 0);
 });
 
 behavior("profile marker replacement is idempotent and escaping cannot execute injected path text", () => {
@@ -189,6 +267,37 @@ $rejected = foreach ($value in $bad) { try { $null = Update-LumenProfile $value 
 	assert.equal(result.literalPath, true);
 	assert.ok(result.rejected.every(Boolean));
 });
+
+behavior("terminal function survives installer child scopes and profile startup without alias shadowing", () => {
+	const result = run(`
+$block = New-LumenProfileBlock 'C:\\private\\key.dpapi' 'S-1-5-test' 'https://lumen.example' 'public/model' 'responses/public' $work
+$tokens = $null; $errors = $null
+$profileAst = [Management.Automation.Language.Parser]::ParseInput($block, [ref] $tokens, [ref] $errors)
+if ($errors.Count) { throw ($errors | Out-String) }
+# Exercise the actual generated terminal declarations, excluding DPAPI (covered
+# by the real Windows test). No external-command or credential stand-ins.
+$terminal = [scriptblock]::Create((($profileAst.EndBlock.Statements | Select-Object -Skip 1 | ForEach-Object { $_.Extent.Text }) -join "\n"))
+Set-Alias -Name codex -Value Get-Date -Scope Global -Option ReadOnly
+Set-Alias -Name codex -Value Get-Location -Scope Script -Force
+& {
+ Set-Alias -Name codex -Value Get-Item -Force
+ & { & $terminal }
+}
+$immediate = (Get-Command codex).CommandType.ToString()
+$globalAliasGone = -not (Get-Alias -Name codex -Scope Global -ErrorAction SilentlyContinue)
+Remove-Item Function:codex -Force
+Set-Alias -Name codex -Value Get-Date -Scope Global
+. $terminal
+$startup = (Get-Command codex).CommandType.ToString()
+$startupAliasGone = -not (Get-Alias -Name codex -ErrorAction SilentlyContinue)
+@{ immediate = $immediate; globalAliasGone = $globalAliasGone; startup = $startup; startupAliasGone = $startupAliasGone } | ConvertTo-Json -Compress
+`);
+	assert.equal(result.immediate, "Function");
+	assert.equal(result.globalAliasGone, true);
+	assert.equal(result.startup, "Function");
+	assert.equal(result.startupAliasGone, true);
+});
+
 
 behavior("changed files get exact backups; identical reruns make no additional backups", () => {
 	const result = run(`
@@ -342,11 +451,16 @@ $key = ConvertTo-SecureString $first -AsPlainText -Force
 try { Save-LumenKey $key $path } finally { $key.Dispose() }
 $cipher = [IO.File]::ReadAllBytes($path)
 $block = New-LumenProfileBlock $path $sid 'https://lumen.example' 'public/model' 'responses/public' $work
-$output = & ([scriptblock]::Create($block)) 3>&1 | Out-String
+Set-Alias -Name codex -Value Get-Date -Scope Global -Option ReadOnly
+$output = & { & { & ([scriptblock]::Create($block)) } } 3>&1 | Out-String
+$immediateFunction = (Get-Command codex).CommandType -eq 'Function' -and -not (Get-Alias codex -Scope Global -ErrorAction SilentlyContinue)
 $firstLoaded = $env:LUMEN_API_KEY -ceq $first -and $env:ANTHROPIC_AUTH_TOKEN -ceq $first
 $key = ConvertTo-SecureString $second -AsPlainText -Force
 try { Save-LumenKey $key $path } finally { $key.Dispose() }
-& ([scriptblock]::Create($block))
+Remove-Item Function:codex -Force
+Set-Alias -Name codex -Value Get-Date -Scope Global
+. ([scriptblock]::Create($block))
+$startupFunction = (Get-Command codex).CommandType -eq 'Function' -and -not (Get-Alias codex -ErrorAction SilentlyContinue)
 $secondLoaded = $env:LUMEN_API_KEY -ceq $second -and $env:ANTHROPIC_AUTH_TOKEN -ceq $second
 $acl = Get-Acl -LiteralPath $path
 $directoryAcl = Get-Acl -LiteralPath ([IO.Path]::GetDirectoryName($path))
@@ -361,7 +475,7 @@ try { Save-LumenKey $invalidKey $path } catch { $invalidRejected = $true } final
 $afterInvalid = [Convert]::ToBase64String([IO.File]::ReadAllBytes($path))
 $foreign = New-LumenProfileBlock $path 'S-1-5-21-0-0-0-9999' 'https://lumen.example' 'public/model' 'responses/public' $work
 $warning = & ([scriptblock]::Create($foreign)) 3>&1 | Out-String
-@{ firstLoaded = $firstLoaded; secondLoaded = $secondLoaded; private = $private; plaintextPersisted = ([Text.Encoding]::UTF8.GetString($cipher).Contains($first)); leaked = ($output.Contains($first) -or $warning.Contains($second) -or $block.Contains($first)); foreignCleared = (-not $env:LUMEN_API_KEY -and -not $env:ANTHROPIC_AUTH_TOKEN); model = $env:ANTHROPIC_MODEL; codexModel = $env:LUMEN_CODEX_MODEL; homeMatches = ($env:CODEX_HOME -ceq $work); invalidRejected = $invalidRejected; invalidUnchanged = ($beforeInvalid -ceq $afterInvalid) } | ConvertTo-Json -Compress
+@{ firstLoaded = $firstLoaded; secondLoaded = $secondLoaded; private = $private; plaintextPersisted = ([Text.Encoding]::UTF8.GetString($cipher).Contains($first)); leaked = ($output.Contains($first) -or $warning.Contains($second) -or $block.Contains($first)); foreignCleared = (-not $env:LUMEN_API_KEY -and -not $env:ANTHROPIC_AUTH_TOKEN); model = $env:ANTHROPIC_MODEL; codexModel = $env:LUMEN_CODEX_MODEL; homeMatches = ($env:CODEX_HOME -ceq $work); invalidRejected = $invalidRejected; invalidUnchanged = ($beforeInvalid -ceq $afterInvalid); immediateFunction = $immediateFunction; startupFunction = $startupFunction } | ConvertTo-Json -Compress
 `);
 	assert.equal(result.firstLoaded, true);
 	assert.equal(result.secondLoaded, true);
@@ -374,4 +488,71 @@ $warning = & ([scriptblock]::Create($foreign)) 3>&1 | Out-String
 	assert.equal(result.homeMatches, true);
 	assert.equal(result.invalidRejected, true);
 	assert.equal(result.invalidUnchanged, true);
+	assert.equal(result.immediateFunction, true);
+	assert.equal(result.startupFunction, true);
 }, { skip: process.platform !== "win32" ? "Windows DPAPI CurrentUser and Windows ACL execution unavailable on this host; no insecure emulation is used" : false });
+
+behavior("installer preflights both native config paths before requesting or persisting a credential", () => {
+	const result = run(`
+$env:CODEX_HOME = Join-Path $work 'codex'
+$env:LUMEN_CODEX_BASE_URL = 'https://lumen.example/v1'
+$env:LUMEN_ANTHROPIC_BASE_URL = 'https://lumen.example'
+[void] [IO.Directory]::CreateDirectory($env:CODEX_HOME)
+$configPath = Join-Path $env:CODEX_HOME 'config.toml'
+$cliConfigPath = Join-Path $env:CODEX_HOME 'lumen-cli.config.toml'
+$profilePath = Join-Path $work 'profile.ps1'
+$PROFILE = [pscustomobject] @{ CurrentUserAllHosts = $profilePath }
+$installAst = $ast.Find({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Invoke-LumenInstall' }, $true)
+$statements = @()
+foreach ($statement in $installAst.Body.EndBlock.Statements) {
+ if ($statement.Extent.Text -match '^\\$key = Read-Host') { break }
+ $statements += $statement.Extent.Text
+}
+# Run the real installer preflight, stopping at the secure prompt. No storage,
+# path-check or parser substitute can hide an unsafe native config destination.
+$preflight = [scriptblock]::Create($statements -join "\n")
+$script:secretPrompted = $false
+function Read-Host {
+ param([string] $Prompt, [switch] $AsSecureString)
+ if ($AsSecureString) { $script:secretPrompted = $true; throw 'Unexpected secure prompt' }
+ $script:publicPrompt++
+ if ($script:publicPrompt -eq 1) { return 'public/anthropic' }
+ if ($script:publicPrompt -eq 2) { return 'responses/public' }
+ return 'n'
+}
+$failures = @()
+foreach ($target in @($configPath, $cliConfigPath)) {
+ foreach ($invalid in @("model = 'a'\nmodel = 'b'", "[model_providers.lumen]\nbase_url = 'a'\nbase_url = 'b'")) {
+  [IO.File]::WriteAllText($configPath, "model = 'desktop'\nmodel_provider = 'openai'")
+  [IO.File]::WriteAllText($cliConfigPath, "model = 'terminal'")
+  [IO.File]::WriteAllText($profilePath, '# user profile')
+  [IO.File]::WriteAllText($target, $invalid)
+  $before = @($configPath, $cliConfigPath, $profilePath) | ForEach-Object { [Convert]::ToBase64String([IO.File]::ReadAllBytes($_)) }
+  $script:publicPrompt = 0; $failed = $false
+  try { & $preflight *> $null } catch { $failed = $true }
+  $after = @($configPath, $cliConfigPath, $profilePath) | ForEach-Object { [Convert]::ToBase64String([IO.File]::ReadAllBytes($_)) }
+  $failures += $failed -and ($before -join '|') -ceq ($after -join '|')
+ }
+}
+[IO.File]::WriteAllText($configPath, "model = 'desktop'\nmodel_provider = 'openai'")
+Remove-Item -LiteralPath $cliConfigPath
+[void] [IO.Directory]::CreateDirectory($cliConfigPath)
+$script:publicPrompt = 0; $directoryRejected = $false
+try { & $preflight *> $null } catch { $directoryRejected = $_.Exception.Message -like '*must be files or absent*' }
+$directoryUnchanged = [IO.Directory]::Exists($cliConfigPath) -and [IO.File]::ReadAllText($configPath) -ceq "model = 'desktop'\nmodel_provider = 'openai'"
+Remove-Item -LiteralPath $cliConfigPath
+$linkedDirectory = Join-Path $work 'linked-config.toml'
+[void] [IO.Directory]::CreateDirectory($linkedDirectory)
+$null = New-Item -ItemType Junction -Path $cliConfigPath -Target $linkedDirectory
+$script:publicPrompt = 0; $linkRejected = $false
+try { & $preflight *> $null } catch { $linkRejected = $true }
+@{ failures = $failures; secretPrompted = $script:secretPrompted; linkRejected = $linkRejected; directoryRejected = $directoryRejected; directoryUnchanged = $directoryUnchanged; backups = @(Get-ChildItem -LiteralPath $work -Recurse -Filter '*.bak').Count } | ConvertTo-Json -Compress
+`);
+	assert.equal(result.failures.length, 4);
+	assert.ok(result.failures.every(Boolean));
+	assert.equal(result.secretPrompted, false);
+	assert.equal(result.linkRejected, true);
+	assert.equal(result.directoryRejected, true);
+	assert.equal(result.directoryUnchanged, true);
+	assert.equal(result.backups, 0);
+}, { skip: process.platform !== "win32" ? "Real Windows installer preflight requires Windows; no Windows API emulation" : false });

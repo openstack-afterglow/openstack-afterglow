@@ -7,6 +7,13 @@
 
 ## [Unreleased]
 
+## [1.30.3] - 2026-10-07
+
+Patch candidate for Lumen CLI automatic connection. Publication and production rollout are pending.
+
+### Fixed
+- **Lumen CLI 자동 연결** — POSIX/PowerShell 설치기가 terminal-only `codex` 함수와 native `lumen-cli.config.toml` profile(Codex 0.134.0+)을 설정해 plain `codex` 실행에서 Lumen provider와 선택 모델을 자동 지정한다. 기존 Codex TOML/데스크톱 기본값, 키 보관과 marker 재실행 계약은 보존하며 subcommand `-c`와 `-m` override를 허용한다. Claude Code auto mode의 `safeguards` 422는 Lumen 0.6.4의 명명된 Anthropic 400 fallback으로 해결하므로 수동 우회 환경변수를 강제하지 않는다.
+
 ## [1.30.2] - 2026-10-07
 
 ### Release integration

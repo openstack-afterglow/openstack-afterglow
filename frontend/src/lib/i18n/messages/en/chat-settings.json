@@ -159,7 +159,7 @@
 	"apiKeys.guide.discoveryHelp": "The addresses below are public API addresses returned by Lumen discovery. They may differ from the dashboard address, and retrieving them does not confirm CLI success.",
 	"apiKeys.guide.usageWarning": "Example requests consume actual API usage. Do not put keys in this screen or copied commands.",
 	"apiKeys.installer.title": "Automatic Codex + Claude Code setup",
-	"apiKeys.installer.introduction": "Install Codex CLI and Claude Code first. The script below does not install clients or call the API; it only configures the Lumen provider in <code>{configPath}</code> (or <code>{codexHome}</code>) and your shell profile. Enter the key at the hidden prompt in your local terminal. Check the download address and script contents before running it.",
+	"apiKeys.installer.introduction": "Install Codex CLI 0.134.0+ and Claude Code first. The script below does not install clients or call the API; it configures the Lumen provider in <code>{configPath}</code> (or <code>{codexHome}</code>), the CLI-only lumen-cli.config.toml and your shell profile. Existing desktop defaults are preserved; after setup, run codex and claude in a new terminal. Enter the key at the hidden prompt in your local terminal. Check the download address and script contents before running it.",
 	"apiKeys.installer.posixTitle": "macOS / Linux · Terminal",
 	"apiKeys.installer.copyPosix": "Copy macOS/Linux setup command",
 	"apiKeys.installer.posixHelp": "Requires Python 3.11+ and an interactive terminal. The key is stored in a user-only file (0600); the profile stores only the configuration that reads that file.",
