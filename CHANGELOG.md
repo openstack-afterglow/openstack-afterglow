@@ -9,7 +9,13 @@
 
 ## [1.30.3] - 2026-10-07
 
-Patch candidate for Lumen CLI automatic connection. Publication and production rollout are pending.
+Patch release for Lumen CLI automatic connection. Published `v1.30.3` (`9aa01e6`) and rolled out to DMS Lab Kolla with Lumen `v0.6.4` (`b586e6f`) on 2026-10-07.
+
+**Publication:** GHCR index digests — `afterglow-api` `sha256:af04fa7b…ebceec0`, `afterglow` `sha256:0ff78cb6…bb82a00`, `afterglow-worker` `sha256:4e115c20…a977c4b` (amd64, the workflow's declared platform), `afterglow-cloud-shell` `sha256:30d85188…628640c` (amd64+arm64). Each platform ran natively and reported version 1.30.3 and revision `9aa01e6`; `latest` matches the release index.
+
+**Production rollout:** After a stopped-writer backup, operator `globals.yml` pinned only Afterglow/Lumen digests, and the operator lock changed only `lumen` (0.6.4). Canonical `kolla-ansible pull` → `prechecks` → per-host `reconfigure` (Lumen then Afterglow, controller1→3) passed six digest/revision/version/health and direct/public readiness gates; none of the other containers on the three controllers changed. No Lumen API/worker error or traceback since the cutover. The deployed `/install/lumen.sh` and `/install/lumen.ps1` are byte-identical to the release.
+
+**Production acceptance:** The published installer, run in a clean HOME, wrote a 0600 key file and generated settings. Real Claude Code 2.1.292 in auto mode completed a Bash tool run and continuation (exit 0), and Codex 0.160.0 completed through the `lumen` provider (exit 0). A Messages/count_tokens request with `safeguards` now returns a named Anthropic 400. The disposable, capped smoke key was revoked (401 afterwards). Windows DPAPI/ACL installation was not exercised.
 
 ### Fixed
 - **Lumen CLI 자동 연결** — POSIX/PowerShell 설치기가 terminal-only `codex` 함수와 native `lumen-cli.config.toml` profile(Codex 0.134.0+)을 설정해 plain `codex` 실행에서 Lumen provider와 선택 모델을 자동 지정한다. 기존 Codex TOML/데스크톱 기본값, 키 보관과 marker 재실행 계약은 보존하며 subcommand `-c`와 `-m` override를 허용한다. Claude Code auto mode의 `safeguards` 422는 Lumen 0.6.4의 명명된 Anthropic 400 fallback으로 해결하므로 수동 우회 환경변수를 강제하지 않는다.
