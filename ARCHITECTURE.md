@@ -4,7 +4,7 @@
 
 Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 배포된 Drover·Lumen·Waygate·Palimpsest 서비스로 가는 인증된 BFF(gateway)이다. 브라우저 UI는 SvelteKit이 제공하지만 OpenStack 자원 생성과 권한 검사는 FastAPI 백엔드가 소유한다. 저장소 URL은 <https://github.com/openstack-afterglow/openstack-afterglow>이다.
 
-이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend 및 Cloud Shell 모두 `1.30.4`이며, backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`·Vite `8.2.0`을 manifest에 고정한다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
+이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend 및 Cloud Shell 모두 `1.30.5`이며, backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`·Vite `8.2.0`을 manifest에 고정한다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
 
 1분 요약:
 
@@ -17,6 +17,10 @@ Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 �
 프로젝트 역할은 기존 `project_owner → project_admin → project_member → project_reader`와 native `member`/`reader` 연결을 재사용한다. 소유권은 새 프로젝트 생성 또는 검토된 명시적 이전에서만 부여하며 마지막 유효 소유자를 보호한다. 역할·직접 inference edge 프리셋은 시스템 관리자의 명시적 API 실행에서만 적용된다. 일반 조회·로그인에서 자동 seeding하지 않는다. 네 서비스의 admin/editor/user/reader 부모와 세부 leaf 권한은 **현재 Keystone의 실제 역할 ID 그래프**로만 확장되며 tenant `admin`/`manager`로 승격할 수 없다. Native 서비스는 다운로드 소유권·패키지/API key scope·Kubernetes grade·provider I/O를 독립적으로 다시 검증한다.
 
 등급 cutover의 scoped architecture 검토는 현재 role-ID graph/유효 할당, subject/project-bound BFF와 native leaf 교집합, reduced credential issuance 및 응답 공개 fence, media/one-time-secret의 pending-mask와 확정 회수 상태 전이를 포함한다. Backend unit4,112/consumer contract154와 실제 native/browser 증거·한계는 [`docs/testing.md`](docs/testing.md#프로젝트-서비스-등급-검증-기록-2026-10-07-local-only)에 분리했다. 공유 index의 미해결 merge와 별도 UI/i18n/Kolla gate 실패를 이 검증으로 해결했다고 주장하지 않으며, 다른 세션의 working architecture review block은 보존하고 임시 index에 scope source만 올려 guard를 실행한다.
+
+2026-10-08 release integration은 격리 dev에서 source 전체 gate·canonical build와 불변 `v1.30.4` 발행을 완료했다. 이는 위 구현 단계의 과거 slice 기록과 별도다. 동반 발행 버전은 Lumen0.6.6·Drover0.4.4·Waygate0.3.2·Palimpsest0.3.1이며 새 운영 cutover는 하지 않았다. 사용자 승인에 따라 운영 Keystone의 빠진 서비스 역할46개·직접 inference edge67개만 명시 적용했고 기존 사용자 할당·core/project 역할과 running version을 보존했다. 일반 사용자43명의 프로젝트 멤버십106건에는 서비스 등급이 없어 사용자별 할당 검토 전 다섯 서비스 cutover를 보류한다. 현재 운영은 Afterglow1.30.3·Lumen0.6.4·Drover0.4.3·Waygate0.3.1 및 기존 Hub다. 정확한 artifact/로컬 runtime·IAM·보류 증거는 CHANGELOG1.30.4와 release-ecosystem checklist를 따른다. 이 사후 문서 갱신은 source·schema·runtime 구조를 바꾸지 않는다.
+
+Image Studio의 사후 실제 Chromium 점검에서 `lumen-images_user` 확정 거부인데 모델 조회를 기다린다는 문구가 계속 표시됐다. 1.30.5 source는 composer의 모델/옵션 상태를 `imagesAllowed`일 때만 렌더링하고 기존 권한 loading/error/필요 leaf notice를 그대로 사용한다. 로딩 flag나 요청·권한·draft/media fence는 변경하지 않는다. 재빌드한 production frontend의 실제 Chromium 31조건에서 거부/권한 대기/조회 장애, 실제 model loading, allowed readiness, 모델 오류/빈 목록·capability 오류, 독립 assets 거부와 light/dark 390–1440px를 검증했다. 거부 시 model HTTP0·페이지 overflow0·JS 오류0이며 외부 font 요청 차단은 별도 기록한다. Identity/API는 합성이고 paid provider·운영 acceptance가 아니다. 구조 영향이 없는 표시 bugfix이며 1.30.4 tag는 보존한다. 새 patch의 exact CI/발행은 parent release checklist에 따로 기록한다.
 
 
 ## Development status
@@ -973,9 +977,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "4e4218fdafc59ee98d38a99b022357f32ff1ab1b4e8b449d60ed5a9391dc5f8a",
-  "reviewed_at": "2026-10-08T03:59:21Z",
-  "summary": "Afterglow 1.30.4 release integration on origin/dev ec5894c: project/service role grades with explicit presets and current role-ID DAG BFF gating, isolated sibling execution credentials (provisioning-intent API removal, Drover authorization BFF), Lumen CLI role-based model selection installers/docs including the Lumen 0.6.6 catalog eligibility boundary, inline VM image tag chooser and dev 1.30.3 localized UI/i18n/test conflict resolution; root/backend/frontend/cloud-shell/Helm versions synced to 1.30.4; full npm run test:gate, svelte-check, i18n check and production build recorded in CHANGELOG."
+  "source_sha256": "0c712486d6b3456d08f3ee06bd53c3634b46c5c3d15b9865b44098e3de37c1fd",
+  "reviewed_at": "2026-10-08T07:52:19Z",
+  "summary": "Review publishable 1.30.5 status-only Image Studio repair and synchronized metadata. Full gate and actual compiled Chromium 31 cases passed; untracked QA receipts/screenshots excluded from publication. Existing permission/action/data fences unchanged; production cutover held."
 }
 ```
 <!-- architecture-review:end -->
