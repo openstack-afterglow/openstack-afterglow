@@ -22,6 +22,8 @@ Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 �
 
 Image Studio의 사후 실제 Chromium 점검에서 `lumen-images_user` 확정 거부인데 모델 조회를 기다린다는 문구가 계속 표시됐다. 1.30.5 source는 composer의 모델/옵션 상태를 `imagesAllowed`일 때만 렌더링하고 기존 권한 loading/error/필요 leaf notice를 그대로 사용한다. 로딩 flag나 요청·권한·draft/media fence는 변경하지 않는다. 재빌드한 production frontend의 실제 Chromium 31조건에서 거부/권한 대기/조회 장애, 실제 model loading, allowed readiness, 모델 오류/빈 목록·capability 오류, 독립 assets 거부와 light/dark 390–1440px를 검증했다. 거부 시 model HTTP0·페이지 overflow0·JS 오류0이며 외부 font 요청 차단은 별도 기록한다. Identity/API는 합성이고 paid provider·운영 acceptance가 아니다. 구조 영향이 없는 표시 bugfix이며 1.30.4 tag는 보존한다. 새 patch의 exact CI/발행은 parent release checklist에 따로 기록한다.
 
+1.30.5 exact source3941490d의 dev·tag Docker/Helm은 성공했고4개 이미지 revision·version/latest digest와 Helm version/appVersion을 확인했다. Digest 고정 published frontend의 실제 Chromium31조건도 permission/model/asset 상태·거부modelHTTP0·overflow0·JSerror0·mutation0을 통과했다. API·worker amd64와 Cloud Shell amd64/arm64는1.30.5·uid1000으로 실행됐다. 이 추가 proof는 합성 identity/API와 disposable local process이며 운영 acceptance는 아니다. Palimpsest의 native opt-out 후 final Release skip만 조건 수정·hash-matched formal Release로 보완했고 protected dev PR18/19와 정확한75593f31 hosted CI가 성공했다; native/runtime 구조와 release tag는 변경하지 않았다. 운영 hold와 역할 할당 검토 경계는 그대로다.
+
 
 ## Development status
 
@@ -978,8 +980,8 @@ Architecture maintenance는 다음 규칙을 따른다.
 {
   "schema_version": 1,
   "source_sha256": "0c712486d6b3456d08f3ee06bd53c3634b46c5c3d15b9865b44098e3de37c1fd",
-  "reviewed_at": "2026-10-08T07:52:19Z",
-  "summary": "Review publishable 1.30.5 status-only Image Studio repair and synchronized metadata. Full gate and actual compiled Chromium 31 cases passed; untracked QA receipts/screenshots excluded from publication. Existing permission/action/data fences unchanged; production cutover held."
+  "reviewed_at": "2026-10-08T08:12:28Z",
+  "summary": "Docs-only post-publication review: exact Afterglow v1.30.5 source/tag CI, OCI revisions/aliases/chart, published frontend Chromium31 and declared runtime probes; Palimpsest formal release/opt-out condition normal protected dev submission; preserve preset-only IAM and production rollout hold. No structure/runtime source changes; untracked QA evidence excluded."
 }
 ```
 <!-- architecture-review:end -->
