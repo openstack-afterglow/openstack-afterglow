@@ -3,6 +3,7 @@
 	import type { ActiveTab } from '$lib/stores/k3sClusterDetailController.svelte';
 	import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
 	import Tabs from '$lib/components/ui/Tabs.svelte';
+	import { k3sPermissions } from '$lib/stores/k3sPermissions';
 
 	const s = useK3sClusterDetailController();
 
@@ -20,7 +21,7 @@
 <Tabs
 	id="k3s-cluster-tabs"
 	value={s.activeTab}
-	items={tabs}
+	items={tabs.filter((tab) => (tab.value !== 'secrets' && tab.value !== 'configmaps') || $k3sPermissions.workloads)}
 	ariaLabel={t('overview.tabs.resources')}
 	onchange={(value) => { s.activeTab = value as ActiveTab; }}
 	class="mb-5"

@@ -2,6 +2,7 @@
 	import { t } from '$lib/i18n/ns/drover-pages';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { api, ApiError } from '$lib/api/client';
+	import { k3sPermissions } from '$lib/stores/k3sPermissions';
 	import type { K3sFlavor, K3sNodegroup } from '$lib/types/k3s';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 
@@ -57,6 +58,7 @@
 	}
 
 	async function save() {
+		if (!$k3sPermissions.editClusters) return;
 		if (form.min_size > form.max_size) {
 			error = t('nodegroupEdit.invalidRange');
 			return;
@@ -171,7 +173,7 @@
 			<button onclick={onClose} disabled={saving} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0">{t('actions.cancel')}</button>
 			<button
 				onclick={save}
-				disabled={saving}
+				disabled={!$k3sPermissions.editClusters || saving}
 				class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg"
 			>
 				{#if saving}<ActivityIndicator size="xs" label={t('state.saving')} />{:else}{t('actions.save')}{/if}

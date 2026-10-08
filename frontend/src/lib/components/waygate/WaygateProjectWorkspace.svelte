@@ -7,6 +7,8 @@
 	import { siteConfig } from '$lib/config/site';
 	import { api, ApiError } from '$lib/api/client';
 	import { toast } from '$lib/stores/toast';
+	import { auth } from '$lib/stores/auth';
+	import { serviceCapabilities } from '$lib/stores/servicePermissions';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
 	import { downloadBlobAs } from '$lib/utils/downloadBlob';
@@ -56,6 +58,28 @@
 	const { token, projectId, isCurrent } = untrack(() => scope);
 	const workspaceContext = untrack(() => admin);
 	const waygateConfigured = $derived($siteConfig.services?.waygate ?? false);
+	// Exact effective Waygate leaves from the current-project permission response;
+	// pending, failed or switching permissions deny every gated action.
+	const can = $derived({
+		createGateway: $serviceCapabilities('waygate-gateways_editor'),
+		deleteGateway: $serviceCapabilities('waygate-gateways_admin'),
+		editClients: $serviceCapabilities('waygate-clients_editor'),
+		revokeClients: $serviceCapabilities('waygate-clients_admin'),
+		route: $serviceCapabilities('waygate-routing_admin'),
+		connect: $serviceCapabilities('waygate-connect_user'),
+	});
+	// Export/import bundle client credentials together with gateway routing.
+	const canBackup = $derived(can.revokeClients && can.route);
+	const userId = $derived($auth.userId?.trim() || null);
+
+	/** Download/QR always require connect permission and the caller's enabled profile. */
+	function canAccessConfig(client: WaygateClient): boolean {
+		return can.connect && client.enabled && userId !== null && client.owner_user_id === userId;
+	}
+	function ownerLabel(client: WaygateClient): string {
+		if (!client.owner_user_id) return t('project.client.ownerUnassigned');
+		return client.owner_user_id === userId ? t('project.client.ownerSelf') : client.owner_user_id;
+	}
 
 	let servers = $state<WaygateServer[]>([]);
 	let loading = $state(true);
@@ -68,15 +92,20 @@
 	let allSelected = $derived(selectableIds.size > 0 && selectedCount === selectableIds.size);
 	let indeterminate = $derived(selectedCount > 0 && !allSelected);
 
+	$effect(() => {
+		if (!can.deleteGateway) untrack(() => selection.clear());
+	});
+
 	async function bulkDeleteServers() {
-		if (!isCurrent() || busy) return;
+		if (!isCurrent() || busy || !can.deleteGateway) return;
 		const ids = [...selection.ids].filter((id) => selectableIds.has(id));
 		if (ids.length === 0) return;
-		if (!await confirmDialog(t('project.confirm.bulkDelete', { count: ids.length })) || !isCurrent()) return;
+		if (!await confirmDialog(t('project.confirm.bulkDelete', { count: ids.length })) || !isCurrent() || !can.deleteGateway) return;
 		busy = true;
 		try {
 			const results = await executeBulkMutations(ids, (id) => {
 				if (!isCurrent()) return Promise.reject(new Error(t('project.error.projectChanged')));
+				if (!can.deleteGateway) return Promise.reject(new Error(t('project.permission.denied')));
 				return waygateApi.deleteServer(id, token, projectId);
 			});
 			if (!isCurrent()) return;
@@ -106,8 +135,16 @@
 	let defaultsSaving = $state(false);
 	let defaultsError = $state('');
 
+	function openCreateServer() {
+		if (!isCurrent() || !can.createGateway) return;
+		newServerDraft = waygateServerDraft();
+		newServerErrors = {};
+		createError = '';
+		showCreateModal = true;
+	}
+
 	function openDefaultsModal() {
-		if (!captureDetail() || !selectedServer) return;
+		if (!captureDetail() || !selectedServer || !can.createGateway) return;
 		defaultsDraft = waygateServerDraft(selectedServer);
 		defaultsErrors = {};
 		defaultsError = '';
@@ -117,6 +154,10 @@
 	async function saveServerDefaults() {
 		const detail = captureDetail();
 		if (!detail || defaultsSaving) return;
+		if (!can.createGateway) {
+			defaultsError = t('project.permission.denied');
+			return;
+		}
 		const parsed = waygateServerUpdateBody(defaultsDraft);
 		if (!parsed.ok) {
 			defaultsErrors = parsed.errors;
@@ -200,6 +241,10 @@
 
 	async function createServer() {
 		if (!isCurrent() || creating) return;
+		if (!can.createGateway) {
+			createError = t('project.permission.denied');
+			return;
+		}
 		const parsed = waygateServerCreateBody(newServerDraft);
 		if (!parsed.ok) {
 			newServerErrors = parsed.errors;
@@ -226,8 +271,8 @@
 	}
 
 	async function deleteServer(server: WaygateServer) {
-		if (!isCurrent()) return;
-		if (!(await confirmDialog(t('project.confirm.serverDelete', { name: server.name }))) || !isCurrent()) return;
+		if (!isCurrent() || !can.deleteGateway) return;
+		if (!(await confirmDialog(t('project.confirm.serverDelete', { name: server.name }))) || !isCurrent() || !can.deleteGateway) return;
 		try {
 			await waygateApi.deleteServer(server.id, token, projectId);
 			if (!isCurrent()) return;
@@ -304,7 +349,9 @@
 		defaultsSaving = false;
 		showClientModal = false;
 		clientCreating = false;
+		newClientOwner = '';
 		editingClient = null;
+		editClientOwner = '';
 		clientSaving = false;
 		downloadingClientId = null;
 		closeQr();
@@ -317,6 +364,7 @@
 		showExportModal = false;
 		exportPassphrase = '';
 		exporting = false;
+		exportNotice = '';
 		showImportModal = false;
 		importPassphrase = '';
 		importFile = null;
@@ -476,14 +524,17 @@
 	let newClientFields = $state<ReturnType<typeof ClientSettingsFields> | null>(null);
 	let clientCreating = $state(false);
 	let clientCreateError = $state('');
+	// Owner user ID controls which connect-only user may download the profile; blank = unassigned.
+	let newClientOwner = $state('');
 
 	function openClientModal() {
-		if (!captureDetail()) return;
+		if (!captureDetail() || !can.editClients) return;
 		newClientDraft = {
 			...emptyWaygateClientDraft(),
 			dns: selectedServer?.dns ?? '',
 			persistentKeepalive: String(selectedServer?.persistent_keepalive ?? WAYGATE_KEEPALIVE_DEFAULT),
 		};
+		newClientOwner = userId ?? '';
 		newClientErrors = {};
 		clientCreateError = '';
 		showClientModal = true;
@@ -492,6 +543,10 @@
 	async function createClient() {
 		const detail = captureDetail();
 		if (!detail || clientCreating) return;
+		if (!can.editClients) {
+			clientCreateError = t('project.permission.denied');
+			return;
+		}
 		const parsed = waygateClientCreateBody(newClientDraft);
 		clientCreateError = '';
 		if (!parsed.ok) {
@@ -504,13 +559,17 @@
 		const serverId = detail.id;
 		clientCreating = true;
 		try {
-			const result = await waygateApi.createClient(serverId, parsed.body, token, projectId);
+			const result = await waygateApi.createClient(serverId, { ...parsed.body, owner_user_id: newClientOwner.trim() || null }, token, projectId);
 			if (!detail.current()) return;
 			showClientModal = false;
-			toast.success(t('project.toast.clientIssued'));
-			// 발급 직후 응답에 평문 .conf가 포함되어 있으므로 바로 다운로드 제공
-			const blob = new Blob([result.tunnel_conf], { type: 'text/plain' });
-			downloadBlobAs(blob, `${result.name}.conf`);
+			// Another owner's issuance response intentionally omits plaintext credentials.
+			if (result.tunnel_conf && canAccessConfig(result)) {
+				toast.success(t('project.toast.clientIssued'));
+				const blob = new Blob([result.tunnel_conf], { type: 'text/plain' });
+				downloadBlobAs(blob, `${result.name}.conf`);
+			} else {
+				toast.success(t('project.toast.clientIssuedNoProfile'));
+			}
 			await fetchClients(serverId, true);
 		} catch (e) {
 			if (!detail.current()) return;
@@ -526,11 +585,13 @@
 	let editClientFields = $state<ReturnType<typeof ClientSettingsFields> | null>(null);
 	let clientSaving = $state(false);
 	let clientSaveError = $state('');
+	let editClientOwner = $state('');
 
 	function openEditClient(client: WaygateClient) {
-		if (!captureDetail()) return;
+		if (!captureDetail() || !can.editClients) return;
 		editingClient = client;
 		editClientDraft = waygateClientDraft(client);
+		editClientOwner = client.owner_user_id ?? '';
 		editClientErrors = {};
 		clientSaveError = '';
 	}
@@ -539,6 +600,10 @@
 		const client = editingClient;
 		const detail = captureDetail();
 		if (!detail || !client || clientSaving) return;
+		if (!can.editClients) {
+			clientSaveError = t('project.permission.denied');
+			return;
+		}
 		const parsed = waygateClientUpdateBody(client, editClientDraft);
 		clientSaveError = '';
 		if (!parsed.ok) {
@@ -548,10 +613,13 @@
 			return;
 		}
 		editClientErrors = {};
+		const owner = editClientOwner.trim();
+		// Ownership is immutable once assigned; clearing is never a valid PATCH.
+		const body = client.owner_user_id == null && owner ? { ...parsed.body, owner_user_id: owner } : parsed.body;
 		const serverId = detail.id;
 		clientSaving = true;
 		try {
-			await waygateApi.updateClient(serverId, client.id, parsed.body, token, projectId);
+			await waygateApi.updateClient(serverId, client.id, body, token, projectId);
 			if (!detail.current()) return;
 			editingClient = null;
 			toast.success(t('project.toast.clientSaved'));
@@ -568,7 +636,7 @@
 
 	async function toggleClient(client: WaygateClient) {
 		const detail = captureDetail();
-		if (!detail || mutatingClientIds.includes(client.id)) return;
+		if (!detail || mutatingClientIds.includes(client.id) || !can.revokeClients) return;
 		mutatingClientIds = [...mutatingClientIds, client.id];
 		try {
 			await waygateApi.updateClient(detail.id, client.id, { enabled: !client.enabled }, token, projectId);
@@ -583,10 +651,10 @@
 
 	async function deleteClient(client: WaygateClient) {
 		const detail = captureDetail();
-		if (!detail || mutatingClientIds.includes(client.id)) return;
+		if (!detail || mutatingClientIds.includes(client.id) || !can.revokeClients) return;
 		mutatingClientIds = [...mutatingClientIds, client.id];
 		try {
-			if (!(await confirmDialog(t('project.confirm.clientDelete', { name: client.name }))) || !detail.current()) return;
+			if (!(await confirmDialog(t('project.confirm.clientDelete', { name: client.name }))) || !detail.current() || !can.revokeClients) return;
 			await waygateApi.deleteClient(detail.id, client.id, token, projectId);
 			if (!detail.current()) return;
 			toast.success(t('project.toast.clientDeleted'));
@@ -601,9 +669,14 @@
 
 	let downloadingClientId = $state<string | null>(null);
 
+	function canAccessCurrentConfig(id: string): boolean {
+		const client = clients.find((item) => item.id === id);
+		return !!client && canAccessConfig(client);
+	}
+
 	async function downloadConfig(client: WaygateClient) {
 		const detail = captureDetail();
-		if (!detail) return;
+		if (!detail || !canAccessConfig(client)) return;
 		downloadingClientId = client.id;
 		try {
 			const { blob, filename } = await waygateApi.downloadClientConfig(
@@ -612,7 +685,7 @@
 				token,
 				projectId
 			);
-			if (!detail.current()) return;
+			if (!detail.current() || !canAccessCurrentConfig(client.id)) return;
 			downloadBlobAs(blob, filename);
 		} catch (e) {
 			if (!detail.current()) return;
@@ -631,9 +704,9 @@
 
 	async function openQr(client: WaygateClient) {
 		const detail = captureDetail();
-		if (!detail) return;
+		if (!detail || !canAccessConfig(client)) return;
 		const request = ++qrRequest;
-		const current = () => detail.current() && request === qrRequest;
+		const current = () => detail.current() && request === qrRequest && canAccessCurrentConfig(client.id);
 		qrClient = client;
 		qrDataUrl = '';
 		qrError = '';
@@ -662,6 +735,10 @@
 		qrDataUrl = '';
 		qrError = '';
 	}
+
+	$effect(() => {
+		if (qrClient && !canAccessCurrentConfig(qrClient.id)) untrack(closeQr);
+	});
 
 	// ---- 네트워크 연결 (Phase 2 — 멀티 NIC + SNAT) ----
 	let attachments = $state<WaygateNetworkAttachment[]>([]);
@@ -762,7 +839,7 @@
 	}
 
 	function openAttachModal() {
-		if (!captureDetail()) return;
+		if (!captureDetail() || !can.route) return;
 		showAttachModal = true;
 		attachError = '';
 		attachNetworkId = '';
@@ -807,6 +884,10 @@
 	async function submitAttach() {
 		const detail = captureDetail();
 		if (!detail || !attachNetworkId || !attachSubnetId || subnetsLoading || networksLoading || attaching) return;
+		if (!can.route) {
+			attachError = t('project.permission.denied');
+			return;
+		}
 		attaching = true;
 		attachError = '';
 		try {
@@ -831,9 +912,9 @@
 
 	async function detachNetwork(att: WaygateNetworkAttachment) {
 		const detail = captureDetail();
-		if (!detail) return;
+		if (!detail || !can.route) return;
 		const name = attachmentNetworkName(att.network_id);
-		if (!(await confirmDialog(t('project.confirm.networkDetach', { name, id: att.network_id }))) || !detail.current()) return;
+		if (!(await confirmDialog(t('project.confirm.networkDetach', { name, id: att.network_id }))) || !detail.current() || !can.route) return;
 		try {
 			await waygateApi.detachNetwork(detail.id, att.id, token, projectId);
 			if (!detail.current()) return;
@@ -851,6 +932,7 @@
 	let exportPassphrase = $state('');
 	let exporting = $state(false);
 	let exportError = $state('');
+	let exportNotice = $state('');
 
 	let showImportModal = $state(false);
 	let importPassphrase = $state('');
@@ -858,19 +940,36 @@
 	let importing = $state(false);
 	let importError = $state('');
 
+	function openExportModal() {
+		if (!captureDetail() || !canBackup) return;
+		exportError = '';
+		showExportModal = true;
+	}
+
+	function openImportModal() {
+		if (!captureDetail() || !canBackup) return;
+		importError = '';
+		showImportModal = true;
+	}
+
 	async function submitExport() {
 		const detail = captureDetail();
 		if (!detail || !selectedServer || exporting) return;
+		if (!canBackup) {
+			exportError = t('project.permission.denied');
+			return;
+		}
 		const name = selectedServer.name;
 		exporting = true;
 		exportError = '';
 		try {
 			const bundle = await waygateApi.exportServer(detail.id, exportPassphrase, token, projectId);
-			if (!detail.current()) return;
+			if (!detail.current() || !canBackup) return;
 			const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
 			downloadBlobAs(blob, `${name}-waygate-export.json`);
 			showExportModal = false;
 			exportPassphrase = '';
+			exportNotice = t('project.backup.exportSubsetResult', { count: bundle.excluded_assigned_client_count });
 			toast.success(t('project.toast.exported'));
 		} catch (e) {
 			if (!detail.current()) return;
@@ -883,12 +982,20 @@
 	async function submitImport() {
 		const detail = captureDetail();
 		if (!detail || !importFile || importing) return;
+		if (!canBackup) {
+			importError = t('project.permission.denied');
+			return;
+		}
 		const passphrase = importPassphrase;
 		importing = true;
 		importError = '';
 		try {
 			const text = await importFile.text();
 			if (!detail.current()) return;
+			if (!canBackup) {
+				importError = t('project.permission.denied');
+				return;
+			}
 			const bundle = JSON.parse(text);
 			const result = await waygateApi.importServer(
 				detail.id,
@@ -938,7 +1045,7 @@
 	title={t('project.server.createTitle')}
 	submitLabel={t('project.actions.create')}
 	submitting={creating}
-	onSubmit={createServer}
+	onSubmit={can.createGateway ? createServer : undefined}
 	onClose={() => { showCreateModal = false; createError = ''; }}
 >
 	<div class="space-y-4">
@@ -961,8 +1068,8 @@
 				refreshing={refreshing}
 				onManualRefresh={forceRefresh}
 			/>
-			{#if waygateConfigured}
-				<Button onclick={() => { newServerDraft = waygateServerDraft(); newServerErrors = {}; showCreateModal = true; createError = ''; }} variant="accent" size="sm">
+			{#if waygateConfigured && can.createGateway}
+				<Button onclick={openCreateServer} variant="accent" size="sm">
 					{t('project.actions.createServer')}
 				</Button>
 			{/if}
@@ -996,6 +1103,7 @@
 				<thead>
 					<tr>
 						<th>
+							{#if can.deleteGateway}
 							<SelectionToolbar
 								label={t('project.server.label')}
 								ariaLabel={t('project.selection.all')}
@@ -1003,8 +1111,11 @@
 								indeterminate={indeterminate}
 								selectedCount={selectedCount}
 								disabled={busy || selectableIds.size === 0}
-								onToggle={() => { if (isCurrent()) selection.toggleAll(selectableIds); }}
+								onToggle={() => { if (isCurrent() && can.deleteGateway) selection.toggleAll(selectableIds); }}
 							/>
+							{:else}
+								{t('project.server.label')}
+								{/if}
 						</th>
 						<th>{t('project.table.status')}</th>
 						<th>{t('project.server.endpoint')}</th>
@@ -1018,12 +1129,14 @@
 					{#each servers as server (server.id)}
 						<tr class="resource-selection-surface cursor-pointer" data-selected={selection.has(server.id)} onclick={() => openPanel(server.id)}>
 							<td class="text-[var(--color-ink-0)]">
+								{#if can.deleteGateway}
 								<SelectionCheckbox
 									checked={selection.has(server.id)}
 									disabled={busy}
 									ariaLabel={t('project.selection.server', { name: server.name })}
-									onclick={() => { if (isCurrent()) selection.toggle(server.id); }}
+									onclick={() => { if (isCurrent() && can.deleteGateway) selection.toggle(server.id); }}
 								/>
+								{/if}
 								<span class="ml-2">{server.name}</span>
 							</td>
 							<td><StatusChip status={server.status} /></td>
@@ -1032,10 +1145,12 @@
 							<td class="text-[var(--color-ink-2)] text-xs">{server.peer_count ?? '-'}</td>
 							<td class="text-[var(--color-ink-2)] text-xs">{formatDate(server.created_at)}</td>
 							<td>
+								{#if can.deleteGateway}
 								<button
 									onclick={(e) => { e.stopPropagation(); deleteServer(server); }}
 									class="text-xs text-[var(--color-state-danger)] hover:opacity-80"
 								>{t('project.actions.delete')}</button>
+								{/if}
 							</td>
 						</tr>
 					{/each}
@@ -1046,6 +1161,7 @@
 	</div>
 	</div>
 </div>
+{#if can.deleteGateway}
 <BulkSelectionOverlay
 	count={selection.count}
 	ariaLabel={t('project.selection.bulkActions')}
@@ -1053,6 +1169,7 @@
 	{busy}
 	onClear={() => selection.clear()}
 />
+{/if}
 
 {#if selectedServer}
 	<SlidePanel onClose={closePanel} ariaLabel={t('project.server.details')} dataTour="waygate-detail" width="w-full md:w-[70vw] max-w-3xl" storageKey="slidePanel.waygate-detail.width">
@@ -1074,8 +1191,12 @@
 					<div class="mt-1"><StatusChip status={selectedServer.status} /></div>
 				</div>
 				<div class="flex flex-wrap gap-2">
+					{#if can.createGateway}
 					<Button onclick={openDefaultsModal} variant="secondary" size="sm">{t('project.server.defaults')}</Button>
+					{/if}
+					{#if can.deleteGateway}
 					<Button onclick={() => deleteServer(selectedServer)} variant="danger-outline" size="sm">{t('project.actions.deleteServer')}</Button>
+					{/if}
 				</div>
 			</div>
 
@@ -1116,6 +1237,7 @@
 
 			<div class="flex items-center justify-between mb-3">
 				<h3 class="text-sm font-medium text-[var(--color-ink-1)]">{t('project.client.heading')}</h3>
+				{#if can.editClients}
 				<Button
 					onclick={openClientModal}
 					variant="accent"
@@ -1123,6 +1245,7 @@
 					disabled={selectedServer.status !== 'ACTIVE'}
 					title={selectedServer.status !== 'ACTIVE' ? t('project.client.requiresActive') : undefined}
 				>{t('project.actions.issueClient')}</Button>
+				{/if}
 			</div>
 
 			<div class="mb-4 flex min-w-0 flex-wrap items-center gap-2 [&_.auto-refresh-control]:min-w-0 [&_.auto-refresh-control]:max-w-full [&_.auto-refresh-control]:flex-wrap [&_.toggle-group]:max-w-full [&_.toggle-group]:flex-wrap" role="group" aria-label={t('project.refresh.clients')}>
@@ -1181,9 +1304,14 @@
 											<dt class="text-ink-2">{t('project.client.pskLabel')}</dt>
 											<dd class="mt-0.5 text-[var(--color-ink-1)]">{client.psk_enabled ? t('project.state.inUse') : t('project.state.none')}</dd>
 										</div>
+										<div>
+											<dt class="text-ink-2">{t('project.client.owner')}</dt>
+											<dd class="mt-0.5 break-all text-ink-1">{ownerLabel(client)}</dd>
+										</div>
 									</dl>
 								</div>
 								<div class="flex shrink-0 flex-wrap items-center gap-1" role="group" aria-label={t('project.client.actions', { name: client.name })}>
+									{#if canAccessConfig(client)}
 									<Button onclick={() => downloadConfig(client)} disabled={downloadingClientId === client.id} ariaBusy={downloadingClientId === client.id} variant="ghost" size="icon" class="!size-11 md:!size-8" ariaLabel={t('project.client.downloadConfig', { name: client.name })} title={downloadingClientId === client.id ? t('project.client.downloading') : t('project.client.downloadConfig', { name: client.name })}>
 										{#if downloadingClientId === client.id}
 											<ActivityIndicator variant="download" size="md" />
@@ -1194,12 +1322,21 @@
 									<Button onclick={() => openQr(client)} variant="ghost" size="icon" class="!size-11 md:!size-8" ariaLabel={t('project.client.qr', { name: client.name })} title={t('project.client.qr', { name: client.name })}>
 										<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3h6v6H3zm12 0h6v6h-6zM3 15h6v6H3zm12 0h2v2h-2zm6 0v6h-6m-3-9h3m6 0h-3M12 3v3m0 12v3" /></svg>
 									</Button>
+									{/if}
+									{#if can.editClients}
 									<Button onclick={() => openEditClient(client)} variant="ghost" size="icon" class="!size-11 md:!size-8" ariaLabel={t('project.client.namedSettings', { name: client.name })} title={t('project.client.namedSettings', { name: client.name })}>
 										<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6m8 4v6" /></svg>
 									</Button>
+									{/if}
+									{#if can.revokeClients}
 									<span class="mx-1 h-5 border-l border-line" aria-hidden="true"></span>
+									{/if}
+									{#if can.revokeClients}
 									<Button onclick={() => toggleClient(client)} disabled={mutatingClientIds.includes(client.id)} variant="ghost" size="xs" class="min-h-11 md:min-h-8" ariaLabel={client.enabled ? t('project.client.disable', { name: client.name }) : t('project.client.enable', { name: client.name })} title={client.enabled ? t('project.client.disable', { name: client.name }) : t('project.client.enable', { name: client.name })} ariaPressed={client.enabled}>{client.enabled ? t('project.actions.disable') : t('project.actions.enable')}</Button>
+									{/if}
+									{#if can.revokeClients}
 									<Button onclick={() => deleteClient(client)} disabled={mutatingClientIds.includes(client.id)} variant="danger-outline" size="xs" class="min-h-11 md:min-h-8" ariaLabel={t('project.client.delete', { name: client.name })} title={t('project.client.delete', { name: client.name })}>{t('project.actions.delete')}</Button>
+									{/if}
 								</div>
 							</div>
 							<ClientTraffic {client} history={trafficHistories[client.id]} now={trafficNow} pollIntervalSeconds={peerAr.intervalSeconds} />
@@ -1214,6 +1351,7 @@
 
 			<div class="flex items-center justify-between mb-3 mt-8">
 				<h3 class="text-sm font-medium text-[var(--color-ink-1)]">{t('project.network.attachedHeading')}</h3>
+				{#if can.route}
 				<Button
 					onclick={openAttachModal}
 					variant="secondary"
@@ -1221,6 +1359,7 @@
 					disabled={selectedServer.status !== 'ACTIVE'}
 					title={selectedServer.status !== 'ACTIVE' ? t('project.network.requiresActive') : undefined}
 				>{t('project.actions.attachNetwork')}</Button>
+				{/if}
 			</div>
 
 			{#if attachmentsError}
@@ -1255,7 +1394,9 @@
 								</dl>
 								<div class="flex shrink-0 items-center gap-3">
 									<StatusChip status={att.status} />
+									{#if can.route}
 									<button onclick={() => detachNetwork(att)} class="text-xs text-[var(--color-state-danger)] hover:opacity-80">{t('project.actions.detach')}</button>
+									{/if}
 								</div>
 							</div>
 						</div>
@@ -1263,13 +1404,14 @@
 				</div>
 			{/if}
 
+			{#if canBackup}
 			<div class="flex items-center justify-between mb-3 mt-8">
 				<h3 class="text-sm font-medium text-[var(--color-ink-1)]">{t('project.backup.heading')}</h3>
 			</div>
 			<div class="flex gap-2">
-				<Button onclick={() => { showExportModal = true; exportError = ''; }} variant="secondary" size="sm">{t('project.backup.exportSettings')}</Button>
+				<Button onclick={openExportModal} variant="secondary" size="sm">{t('project.backup.exportSettings')}</Button>
 				<Button
-					onclick={() => { showImportModal = true; importError = ''; }}
+					onclick={openImportModal}
 					variant="secondary"
 					size="sm"
 					disabled={selectedServer.status !== 'ACTIVE'}
@@ -1279,6 +1421,8 @@
 			<p class="mt-2 break-keep text-xs text-[var(--color-ink-3)]">
 				<RichText segments={t.rich('project.backup.help')} />
 			</p>
+			{#if exportNotice}<Alert tone="info">{exportNotice}</Alert>{/if}
+			{/if}
 		</div>
 	</SlidePanel>
 {/if}
@@ -1288,7 +1432,7 @@
 	title={t('project.server.defaults')}
 	submitLabel={t('project.actions.save')}
 	submitting={defaultsSaving}
-	onSubmit={saveServerDefaults}
+	onSubmit={can.createGateway ? saveServerDefaults : undefined}
 	onClose={() => { showDefaultsModal = false; defaultsError = ''; }}
 >
 	<ClientSettingsFields bind:this={defaultsFields} bind:draft={defaultsDraft} errors={defaultsErrors} disabled={defaultsSaving} mode="server-edit" />
@@ -1300,10 +1444,16 @@
 	title={t('project.client.issueTitle')}
 	submitLabel={t('project.actions.issue')}
 	submitting={clientCreating}
-	onSubmit={createClient}
+	onSubmit={can.editClients ? createClient : undefined}
 	onClose={() => { showClientModal = false; clientCreateError = ''; }}
 >
 	<ClientSettingsFields bind:this={newClientFields} bind:draft={newClientDraft} defaults={selectedServer ?? undefined} errors={newClientErrors} disabled={clientCreating} mode="issue" />
+	<div class="mt-4 space-y-2">
+		<Field label={t('project.client.owner')} for="waygate-new-owner" help={t('project.client.ownerHelp')}>
+			<TextInput id="waygate-new-owner" bind:value={newClientOwner} disabled={clientCreating || !can.editClients} />
+		</Field>
+		<Button variant="ghost" size="sm" disabled={!userId || clientCreating || !can.editClients} onclick={() => { if (can.editClients) newClientOwner = userId ?? ''; }}>{t('project.client.assignSelf')}</Button>
+	</div>
 	{#if clientCreateError}
 		<Alert tone="danger" class="mt-4">{clientCreateError}</Alert>
 	{/if}
@@ -1314,7 +1464,7 @@
 	title={editingClient ? t('project.client.namedSettings', { name: editingClient.name }) : t('project.client.settings')}
 	submitLabel={t('project.actions.save')}
 	submitting={clientSaving}
-	onSubmit={saveClientSettings}
+	onSubmit={can.editClients ? saveClientSettings : undefined}
 	onClose={() => { editingClient = null; clientSaveError = ''; }}
 >
 	{#if editingClient}
@@ -1326,6 +1476,14 @@
 			pskEnabled={editingClient.psk_enabled}
 			defaults={selectedServer ?? undefined}
 		/>
+		<div class="mt-4 space-y-2">
+			<Field label={t('project.client.owner')} for="waygate-edit-owner" help={t('project.client.ownerHelp')}>
+				<TextInput id="waygate-edit-owner" bind:value={editClientOwner} disabled={clientSaving || !can.editClients || editingClient.owner_user_id != null} />
+			</Field>
+			{#if editingClient.owner_user_id == null}
+				<Button variant="ghost" size="sm" disabled={!userId || clientSaving || !can.editClients} onclick={() => { if (can.editClients && editingClient?.owner_user_id == null) editClientOwner = userId ?? ''; }}>{t('project.client.assignSelf')}</Button>
+			{/if}
+		</div>
 	{/if}
 	{#if clientSaveError}
 		<Alert tone="danger" class="mt-4">{clientSaveError}</Alert>
@@ -1408,7 +1566,7 @@
 		<Button
 			onclick={submitAttach}
 			variant="primary"
-			disabled={attaching || networksLoading || subnetsLoading || !attachNetworkId || !attachSubnetId}
+			disabled={!can.route || attaching || networksLoading || subnetsLoading || !attachNetworkId || !attachSubnetId}
 			ariaBusy={attaching}
 		>{attaching ? t('project.actions.processing') : t('project.actions.attach')}</Button>
 	{/snippet}
@@ -1419,7 +1577,7 @@
 	title={t('project.backup.exportSettings')}
 	submitLabel={t('project.actions.export')}
 	submitting={exporting}
-	onSubmit={submitExport}
+	onSubmit={canBackup ? submitExport : undefined}
 	onClose={() => { showExportModal = false; exportError = ''; }}
 >
 	<div class="space-y-4">
@@ -1437,7 +1595,7 @@
 	title={t('project.backup.importSettings')}
 	submitLabel={t('project.actions.import')}
 	submitting={importing}
-	onSubmit={submitImport}
+	onSubmit={canBackup ? submitImport : undefined}
 	onClose={() => { showImportModal = false; importError = ''; importFile = null; }}
 >
 	<div class="space-y-4">

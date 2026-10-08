@@ -403,6 +403,17 @@ describe('mockup transport', () => {
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
+	it('serves an explicit workload namespace through native discovery without issuing credentials', async () => {
+		// Dynamic import required: each test resets transport's mutable singleton fixture state.
+		const { maybeMockJson } = await import('./transport');
+		const clusters = await maybeMockJson<K3sCluster[]>('GET', '/api/v1/k3s/clusters') as K3sCluster[];
+		const activeCluster = clusters.find((cluster) => cluster.status === 'ACTIVE');
+		expect(activeCluster).toBeTruthy();
+		const namespaces = await maybeMockJson<string[]>('GET', `/api/v1/k3s/clusters/${activeCluster!.id}/namespaces?cache=true`);
+		expect(namespaces).toEqual(['tutorial-workloads']);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
 	it('serves kubeconfig availability through HEAD and blob handlers for active clusters', async () => {
 		// Dynamic import required: transport owns mutable singleton fixture state that each test must reinitialize.
 		const { maybeMockBlob, maybeMockHead, maybeMockJson } = await import('./transport');
@@ -418,13 +429,13 @@ describe('mockup transport', () => {
 		expect(activeCluster).toBeTruthy();
 
 		const head = (await maybeMockHead(
-			`/api/v1/k3s/clusters/${activeCluster!.id}/kubeconfig`,
+			`/api/v1/k3s/clusters/${activeCluster!.id}/kubeconfig?grade=user`,
 			'mock-token-tutorial-scoped',
 			'mock-project-1',
 		)) as Response;
 		const blob = (await maybeMockBlob(
 			'GET',
-			`/api/v1/k3s/clusters/${activeCluster!.id}/kubeconfig`,
+			`/api/v1/k3s/clusters/${activeCluster!.id}/kubeconfig?grade=editor`,
 			'mock-token-tutorial-scoped',
 			'mock-project-1',
 		)) as Blob;

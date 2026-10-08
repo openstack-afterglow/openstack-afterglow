@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/drover-pages';
 	import { api, ApiError } from '$lib/api/client';
+	import { k3sPermissions } from '$lib/stores/k3sPermissions';
 	import type { K3sFlavor, K3sNodegroup } from '$lib/types/k3s';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 
@@ -48,6 +49,7 @@
 	}
 
 	async function save() {
+		if (!$k3sPermissions.editClusters) return;
 		saving = true;
 		error = '';
 		if (form.stampede_enabled && !form.flavor_id) {
@@ -192,7 +194,7 @@
 			<button onclick={onClose} disabled={saving} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0">{t('actions.cancel')}</button>
 			<button
 				onclick={save}
-				disabled={saving || !form.name}
+				disabled={!$k3sPermissions.editClusters || saving || !form.name}
 				class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg"
 			>
 				{saving ? t('state.creating') : Number(form.node_count) > 0 ? t('nodegroupCreate.startProvisioning') : t('actions.create')}

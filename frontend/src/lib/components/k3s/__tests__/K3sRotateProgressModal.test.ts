@@ -1,5 +1,9 @@
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/svelte';
+import { writable, type Writable } from 'svelte/store';
+import { serviceCapabilities } from '$lib/stores/servicePermissions';
+
+vi.mock('$lib/stores/servicePermissions', () => ({ serviceCapabilities: writable<(leaf: string) => boolean>(() => false) }));
 
 const { fetchWithAuth } = vi.hoisted(() => ({ fetchWithAuth: vi.fn() }));
 
@@ -31,6 +35,27 @@ function stepStates() {
 }
 
 describe('K3sRotateProgressModal', () => {
+	beforeEach(() => {
+		fetchWithAuth.mockReset();
+		(serviceCapabilities as Writable<(leaf: string) => boolean>).set((leaf) => leaf === 'drover-clusters_admin');
+	});
+	it('does not start rotation for an editor even when mounted directly', () => {
+		(serviceCapabilities as Writable<(leaf: string) => boolean>).set((leaf) => leaf === 'drover-clusters_editor');
+		const onclose = vi.fn();
+		render(K3sRotateProgressModal, { clusterId: 'c-1', clusterName: 'demo', onclose });
+		expect(fetchWithAuth).not.toHaveBeenCalled();
+		expect(onclose).toHaveBeenCalledOnce();
+	});
+	it('sends the destructive rotation POST once even when the token prop refreshes or grants go pending mid-stream', async () => {
+		fetchWithAuth.mockReturnValue(Promise.withResolvers<never>().promise);
+		const { rerender } = render(K3sRotateProgressModal, { clusterId: 'c-1', clusterName: 'demo', token: 'token-a', projectId: 'p', onclose: vi.fn() });
+		await waitFor(() => expect(fetchWithAuth).toHaveBeenCalledOnce());
+		await rerender({ clusterId: 'c-1', clusterName: 'demo', token: 'token-a2', projectId: 'p', onclose: vi.fn() });
+		(serviceCapabilities as Writable<(leaf: string) => boolean>).set(() => false);
+		(serviceCapabilities as Writable<(leaf: string) => boolean>).set((leaf) => leaf === 'drover-clusters_admin');
+		await Promise.resolve();
+		expect(fetchWithAuth).toHaveBeenCalledOnce();
+	});
 	it('marks the step the server was on when the rotation stream reports a failure', async () => {
 		fetchWithAuth.mockResolvedValue(
 			sseResponse([

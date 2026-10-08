@@ -470,9 +470,9 @@ export const platformGuides: DocGuide[] = [
 					{
 						title: 'CLI 설치와 Lumen 자동 설정을 구분합니다',
 						text: [
-							'Codex CLI와 Claude Code는 각 클라이언트의 공식 설치 안내로 먼저 설치합니다. 화면의 Codex + Claude Code 자동 설정은 CLI 바이너리를 설치하거나 provider API를 호출하는 작업이 아니라 Lumen provider·키 보관·셸 프로필 설정입니다.',
+							'Codex CLI 0.160.0+와 Claude Code 2.1.257+는 각 클라이언트의 공식 설치 안내로 먼저 설치합니다. 화면의 Codex + Claude Code 자동 설정은 CLI 바이너리 설치나 추론 호출 없이, 입력한 키로 Lumen 모델 목록(models:read)만 읽고 역할별 모델·키 보관·셸 프로필을 설정합니다.',
 							'실행 전 macOS/Linux /install/lumen.sh 또는 Windows /install/lumen.ps1 스크립트 내용을 확인하고 화면이 생성한 배포별 명령을 복사합니다. 키는 실행 후 로컬 숨김 프롬프트에서 입력하며 URL·명령 인자·history에 넣지 않습니다. POSIX는 Python 3.11+와 대화형 터미널, Windows는 해당 PowerShell edition과 조직 정책을 확인합니다.',
-							'설정 후 새 터미널에서 codex와 claude를 실행합니다. Codex 터미널 함수가 Lumen과 선택 모델을 자동 지정하며 기존 데스크톱 provider/model은 보존합니다. 자동 설정 성공만으로 실제 API 인증·모델 실행 성공을 주장하지 않습니다.'
+							'프로바이더별 모델 목록에서 Codex Sol·Luna와 Claude Fable·Opus·Sonnet·Haiku를 각각 고릅니다. 역할명은 모델 크기·품질 등급이 아니며 같은 모델을 여러 역할에 쓸 수 있습니다. 새 터미널에서 codex(Sol), codex --profile lumen-luna(Luna), claude --model opus 등으로 실행하며 기존 데스크톱 provider/model은 보존합니다. 자동 설정 성공만으로 실제 API 인증·모델 실행 성공을 주장하지 않습니다.'
 						],
 						command: {
 							label: '설치된 CLI 버전만 확인하기 · provider 호출 없음',
@@ -508,6 +508,7 @@ export const platformGuides: DocGuide[] = [
 					'채팅 접수 전 실패: 화면에 나온 HTTP 상태와 제한된 detail을 기록합니다. 접수 후 실패: run ID·safe_message·error_code를 기록합니다. provider 예외 원문·토큰·키·프롬프트를 지원 자료에 포함하지 않습니다.',
 					'이미지 첨부 또는 오디오 업로드 실패: 입력의 소유권·지원 형식·검사 완료를 확인합니다. STT timing을 요청했는데 응답이 빠졌으면 실패로 보고 SRT 구간을 임의 생성하지 않습니다.',
 					'CLI 연결 정보 조회 실패: 연결 정보 다시 불러오기를 사용하고 discovery의 공개 API 주소를 운영자에게 확인합니다. 브라우저 채팅 성공은 Responses/Anthropic API의 인증·모델 지원 성공 증거가 아닙니다.',
+					'자동 설정의 모델 목록 조회 실패: 키의 models:read 권한과 HTTPS 신뢰를 확인합니다. /cli/models가 없다는 안내는 Lumen 업그레이드가 필요하다는 뜻이며, 실패한 설치는 어떤 파일도 바꾸지 않습니다.',
 					'CLI TLS 실패: 공개 주소·인증서 이름과 로컬 CA 번들을 확인하고 연결 방법의 CA 안내를 따릅니다. 키 전체를 출력해 진단하거나 TLS 검증을 끄지 않습니다. Afterglow/Lumen 버전 불일치도 운영자가 확인해야 합니다.'
 				]
 			}

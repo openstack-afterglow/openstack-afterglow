@@ -1,7 +1,6 @@
 import { fireEvent, render, screen, waitFor, cleanup } from '@testing-library/svelte';
-import { writable } from 'svelte/store';
+import { writable, type Writable } from 'svelte/store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { t } from '$lib/i18n/ns/account';
 
 const { api, confirmDialog } = vi.hoisted(() => ({
 	api: { get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn() },
@@ -13,6 +12,9 @@ vi.mock('$lib/stores/auth', () => ({
 	authReady: writable(true), projectSwitching: writable(false), logoutInProgress: writable(false), setAuth: vi.fn(),
 }));
 vi.mock('$lib/stores/confirm.svelte', () => ({ confirmDialog }));
+vi.mock('$lib/stores/servicePermissions', () => ({
+	canManageProject: writable(true), projectPermissions: writable({ permissions: { is_owner: true }, loading: false, error: '' }), refreshProjectPermissions: vi.fn(),
+}));
 vi.mock('$lib/stores/cloudShell.svelte', () => ({ cloudShell: { close: vi.fn().mockResolvedValue(undefined) } }));
 vi.mock('$lib/stores/toast', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
@@ -23,6 +25,9 @@ import ProjectsSection from '../ProjectsSection.svelte';
 import ProjectSettingsSection from '../ProjectSettingsSection.svelte';
 import CreateProjectModal from '../../projects/CreateProjectModal.svelte';
 import { auth } from '$lib/stores/auth';
+import { projectPermissions } from '$lib/stores/servicePermissions';
+import type { PermissionState } from '$lib/stores/servicePermissions';
+const permissionFixture = projectPermissions as Writable<PermissionState>;
 
 function deferred<T>() {
 	let resolve!: (value: T) => void;
@@ -35,6 +40,7 @@ afterEach(cleanup);
 beforeEach(() => {
 	vi.resetAllMocks();
 	auth.update((state) => ({ ...state, token: 'token', projectId: 'project', userId: 'me', federated: false }));
+	permissionFixture.set({ permissions: { is_owner: true, is_manager: true, can_write: true, service_permissions: {} }, loading: false, error: '' });
 	confirmDialog.mockResolvedValue(true);
 });
 
@@ -159,35 +165,37 @@ describe('account controls follow real pending work', () => {
 		await waitFor(() => expect(create.disabled).toBe(false));
 	});
 
-	it('keeps member rows mounted during a manager-update refresh', async () => {
-		const member = { user_id: 'other', username: 'Other', email: '', source: 'direct', is_manager: false };
+	it('keeps member rows mounted during a direct-role update refresh', async () => {
+		const member = { user_id: 'other', username: 'Other', email: '', source: 'direct', is_manager: false, is_owner: false, roles: ['project_member'], direct_role_ids: ['member'], effective_role_ids: ['member'] };
 		const refresh = deferred<{ items: typeof member[] }>();
-		api.get.mockResolvedValueOnce({ items: [member] }).mockReturnValueOnce(refresh.promise);
-		api.post.mockResolvedValue({});
+		let loads = 0;
+		api.get.mockImplementation((path: string) => path.endsWith('/assignable-roles') ? Promise.resolve({ is_owner: true, roles: [{ id: 'member', name: 'project_member', area: 'project', grade: 'member' }, { id: 'admin', name: 'project_admin', area: 'project', grade: 'admin' }] }) : ++loads === 1 ? Promise.resolve({ items: [member] }) : refresh.promise);
+		api.put.mockResolvedValue({});
 		render(ProjectSettingsSection);
 		const originalRow = (await screen.findByText('Other')).closest('tr');
-		await fireEvent.click(screen.getByRole('button', { name: t('projectSettings.assignAdministrator') }));
-		await waitFor(() => expect((screen.getByRole('button', { name: t('projectSettings.assignAdministrator') }) as HTMLButtonElement).disabled).toBe(true));
+		await fireEvent.click(screen.getByRole('button', { name: '역할 편집' }));
+		await fireEvent.click(screen.getByRole('checkbox', { name: /project_admin/ }));
+		await fireEvent.click(screen.getByRole('button', { name: '역할 저장' }));
+		await waitFor(() => expect(api.put).toHaveBeenCalledWith('/api/v1/projects/project/members/other/roles', { role_ids: ['member', 'admin'] }, 'token', 'project'));
+		expect((screen.getByRole('button', { name: '역할 편집' }) as HTMLButtonElement).disabled).toBe(true);
 		expect(screen.getByText('Other').closest('tr')).toBe(originalRow);
 		refresh.resolve({ items: [{ ...member, is_manager: true }] });
-		const demote = await screen.findByRole('button', { name: t('projectSettings.removeAdministrator') }) as HTMLButtonElement;
-		await waitFor(() => expect(demote.disabled).toBe(false));
+		await waitFor(() => expect((screen.getByRole('button', { name: '역할 편집' }) as HTMLButtonElement).disabled).toBe(false));
 		expect(screen.getByText('Other').closest('tr')).toBe(originalRow);
 	});
 
-	it('re-enables manager actions after a rejected mutation', async () => {
-		api.get.mockResolvedValue({ items: [{ user_id: 'other', username: 'Other', source: 'direct', is_manager: false }] });
-		const pending = deferred<unknown>();
-		api.post.mockReturnValue(pending.promise);
+	it('re-enables role saving after a rejected mutation and keeps selected grants', async () => {
+		api.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/assignable-roles') ? { is_owner: true, roles: [{ id: 'chat', name: 'lumen-chat_user', area: 'lumen-chat', grade: 'user' }] } : { items: [{ user_id: 'other', username: 'Other', source: 'direct', is_manager: false, roles: [], direct_role_ids: [], effective_role_ids: [] }] }));
+		const pending = deferred<unknown>(); api.put.mockReturnValue(pending.promise);
 		render(ProjectSettingsSection);
-		const promote = await screen.findByRole('button', { name: t('projectSettings.assignAdministrator') }) as HTMLButtonElement;
-		await fireEvent.click(promote);
-		expect(promote.disabled).toBe(true);
-		await fireEvent.click(promote);
-		expect(api.post).toHaveBeenCalledTimes(1);
+		await fireEvent.click(await screen.findByRole('button', { name: '역할 편집' }));
+		await fireEvent.click(screen.getByRole('checkbox', { name: /lumen-chat_user/ }));
+		const save = screen.getByRole('button', { name: '역할 저장' }) as HTMLButtonElement;
+		await fireEvent.click(save); expect(save.disabled).toBe(true);
+		await fireEvent.click(save); expect(api.put).toHaveBeenCalledTimes(1);
 		pending.reject(new Error('failed'));
-		await waitFor(() => expect(promote.disabled).toBe(false));
-		expect(screen.getByText('Other')).toBeTruthy();
+		await waitFor(() => expect(save.disabled).toBe(false));
+		expect((screen.getByRole('checkbox', { name: /lumen-chat_user/ }) as HTMLInputElement).checked).toBe(true);
 	});
 
 	it('blocks duplicate invitation cancellation and recovers after failure', async () => {
@@ -214,6 +222,7 @@ describe('account controls follow real pending work', () => {
 		const members = deferred<{ items: typeof member[] }>();
 		const invitations = deferred<{ items: typeof invitation[] }>();
 		api.get.mockImplementation((path: string) => {
+			if (path.endsWith('/assignable-roles')) return Promise.resolve({ is_owner: true, roles: [] });
 			if (path.includes('/other/')) return path.endsWith('/invitations') ? invitations.promise : members.promise;
 			return Promise.resolve({ items: path.endsWith('/invitations') ? [invitation] : [member] });
 		});
@@ -225,7 +234,7 @@ describe('account controls follow real pending work', () => {
 		await waitFor(() => expect(screen.queryByText('alpha@example.test')).toBeNull());
 		await fireEvent.click(screen.getByRole('button', { name: /^멤버/ }));
 		expect(screen.queryByText('Alpha member')).toBeNull();
-		expect(screen.queryByRole('button', { name: t('projectSettings.assignAdministrator') })).toBeNull();
+		expect(screen.queryByRole('button', { name: '역할 편집' })).toBeNull();
 		members.resolve({ items: [{ ...member, user_id: 'beta-user', username: 'Beta member' }] });
 		invitations.resolve({ items: [{ ...invitation, id: 2, invited_email: 'beta@example.test' }] });
 		await screen.findByText('Beta member');
@@ -234,4 +243,32 @@ describe('account controls follow real pending work', () => {
 		expect(screen.queryByText('alpha@example.test')).toBeNull();
 	});
 
+	it('requires removal confirmation and never offers group-grant mutations', async () => {
+		const direct = { user_id: 'direct', username: 'Direct user', email: '', source: 'direct', is_manager: false, is_owner: false, roles: ['project_member'], direct_role_ids: ['member'], effective_role_ids: ['member'] };
+		const group = { ...direct, user_id: 'group', username: 'Group user', source: 'group', direct_role_ids: [], group_name: 'Team' };
+		api.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/assignable-roles') ? { is_owner: true, roles: [{ id: 'member', name: 'project_member', area: 'project', grade: 'member' }] } : { items: [direct, group] }));
+		const decision = deferred<boolean>(); confirmDialog.mockReturnValueOnce(decision.promise);
+		api.delete.mockResolvedValue({}); render(ProjectSettingsSection);
+		await screen.findByText('Group user');
+		expect(screen.getAllByRole('button', { name: '역할 편집' })).toHaveLength(1);
+		expect(screen.getAllByRole('button', { name: '멤버 제거' })).toHaveLength(1);
+		await fireEvent.click(screen.getByRole('button', { name: '멤버 제거' }));
+		expect(api.delete).not.toHaveBeenCalled();
+		decision.resolve(false);
+		await waitFor(() => expect(confirmDialog).toHaveBeenCalledTimes(1));
+		expect(api.delete).not.toHaveBeenCalled();
+		await fireEvent.click(screen.getByRole('button', { name: '멤버 제거' }));
+		await waitFor(() => expect(api.delete).toHaveBeenCalledWith('/api/v1/projects/project/members/direct', 'token', 'project'));
+	});
+
+	it('uses permissions API ownership and never offers administrator removal to a nonowner', async () => {
+		permissionFixture.set({ permissions: { is_owner: false, is_manager: true, can_write: true, service_permissions: {} }, loading: false, error: '' });
+		const member = { user_id: 'admin', username: 'Project admin', email: '', source: 'direct', is_manager: true, is_owner: false, roles: ['project_admin'], direct_role_ids: ['admin'], effective_role_ids: ['admin'] };
+		api.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/assignable-roles') ? { is_owner: false, roles: [{ id: 'chat', name: 'lumen-chat_user', area: 'lumen', grade: 'user' }] } : { items: [member] }));
+		render(ProjectSettingsSection); await screen.findByText('Project admin');
+		expect(screen.queryByRole('button', { name: '멤버 제거' })).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: '역할 편집' }));
+		expect(screen.queryByRole('checkbox', { name: /^project_admin/ })).toBeNull();
+		expect((screen.getByRole('checkbox', { name: /^lumen-chat_user/ }) as HTMLInputElement).disabled).toBe(false);
+	});
 });

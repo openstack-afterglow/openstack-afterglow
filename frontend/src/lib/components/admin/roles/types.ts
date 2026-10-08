@@ -11,7 +11,7 @@ export interface ManagedRole {
 }
 
 export interface RoleMetadata {
-	name: string;
+	name?: string;
 	description: string;
 	domain_id?: string | null;
 }

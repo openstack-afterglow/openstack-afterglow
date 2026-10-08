@@ -4,6 +4,7 @@
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
 	import type { K3sNodegroup } from '$lib/types/k3s';
+	import { k3sPermissions } from '$lib/stores/k3sPermissions';
 
 	let {
 		nodegroup,
@@ -64,13 +65,13 @@
 			{/if}
 		</div>
 		<div class="flex items-center gap-1">
-			{#if onEdit && !nodegroup.is_default}
+			{#if onEdit && !nodegroup.is_default && $k3sPermissions.editClusters}
 				<button
 					onclick={() => onEdit?.(nodegroup)}
 					class="text-xs text-ink-2 hover:text-warm-text-hover px-2 py-1 rounded transition-colors"
 				>{t('actions.edit')}</button>
 			{/if}
-			{#if onDelete && !nodegroup.is_default}
+			{#if onDelete && !nodegroup.is_default && $k3sPermissions.administerClusters}
 				<button
 					onclick={() => onDelete?.(nodegroup)}
 					class="text-xs text-ink-2 hover:text-red-400 px-2 py-1 rounded transition-colors"

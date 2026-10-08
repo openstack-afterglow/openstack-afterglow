@@ -3,6 +3,7 @@
   import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
   import { untrack } from 'svelte';
   import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
+  import { k3sPermissions } from '$lib/stores/k3sPermissions';
   import K3sResourceEditor from './K3sResourceEditor.svelte';
   import K3sYamlView from './K3sYamlView.svelte';
   import { confirmDialog } from '$lib/stores/confirm.svelte';
@@ -20,12 +21,13 @@
 
   $effect(() => {
     const ns = s.selectedNamespace;
-    if (!ns) return;
+    if (!ns || !$k3sPermissions.workloads) return;
     loadError = '';
     untrack(() => s.loadSecrets()).catch(() => { loadError = t('secrets.loadFailed'); });
   });
 
   async function handleCreate(data: Record<string, string>) {
+    if (!$k3sPermissions.workloads || (newType !== 'Opaque' && !$k3sPermissions.adminCredentials)) return;
     if (!newName.trim()) { createError = t('secrets.nameRequired'); return; }
     saving = true;
     createError = '';
@@ -42,7 +44,7 @@
   }
 
   async function handleEdit(data: Record<string, string>) {
-    if (!editingSecret) return;
+    if (!$k3sPermissions.workloads || !editingSecret || (editingSecret.type !== 'Opaque' && !$k3sPermissions.adminCredentials)) return;
     saving = true;
     try {
       await s.saveSecret(editingSecret.name, editingSecret.type, data, false);
@@ -53,6 +55,7 @@
   }
 
   async function handleDelete(name: string) {
+    if (!$k3sPermissions.workloads) return;
     if (!(await confirmDialog(t('secrets.confirmDelete', { name })))) return;
     await s.deleteSecretItem(name);
   }
@@ -63,11 +66,12 @@
     <h3 class="text-xs text-ink-2 uppercase tracking-wide">Secrets</h3>
     <button
       onclick={() => { showCreate = !showCreate; newName = ''; createError = ''; newType = 'Opaque'; }}
+      disabled={!$k3sPermissions.workloads || !s.selectedNamespace}
       class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
     >{showCreate ? t('secrets.close') : t('secrets.create')}</button>
   </div>
 
-  {#if showCreate}
+  {#if showCreate && $k3sPermissions.workloads}
     <div class="mb-3 bg-surface-sunken rounded-lg p-3">
       <div class="flex gap-2 mb-2">
         <input
@@ -80,8 +84,10 @@
           class="bg-surface-selected border border-line-2 text-ink-1 text-xs rounded px-2 py-1.5 focus:outline-none focus:border-action-warm"
         >
           <option value="Opaque">Opaque</option>
+          {#if $k3sPermissions.adminCredentials}
           <option value="kubernetes.io/tls">kubernetes.io/tls</option>
           <option value="kubernetes.io/dockerconfigjson">dockerconfigjson</option>
+          {/if}
         </select>
       </div>
       {#if createError}
@@ -123,11 +129,12 @@
             <div class="flex gap-1 shrink-0">
               <button
                 onclick={() => { editingSecret = { name: secret.name, type: secret.type, data: {} }; }}
+                disabled={!$k3sPermissions.workloads || !s.selectedNamespace || (secret.type !== 'Opaque' && !$k3sPermissions.adminCredentials)}
                 class="text-xs text-ink-2 hover:text-ink-1 px-2 py-1 border border-line-2 hover:border-line-2 rounded transition-colors"
               >{t('secrets.edit')}</button>
               <button
                 onclick={() => handleDelete(secret.name)}
-                disabled={s.cmActioning === actionKey}
+                disabled={!$k3sPermissions.workloads || !s.selectedNamespace || s.cmActioning === actionKey}
                 class="text-xs text-orange-400 hover:text-orange-300 px-2 py-1 border border-orange-900 hover:border-orange-700 rounded transition-colors disabled:text-ink-3 disabled:border-line-2 disabled:cursor-not-allowed"
               >{#if s.cmActioning === actionKey}<ActivityIndicator size="xs" label={t('secrets.deleting')} />{:else}{t('secrets.delete')}{/if}</button>
             </div>
@@ -139,7 +146,7 @@
   {/if}
 </div>
 
-{#if editingSecret}
+{#if editingSecret && $k3sPermissions.workloads && (editingSecret.type === 'Opaque' || $k3sPermissions.adminCredentials)}
   <K3sResourceEditor
     title={t('secrets.editTitle', { name: editingSecret.name })}
     mode="secret"

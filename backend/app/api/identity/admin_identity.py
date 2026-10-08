@@ -12,13 +12,14 @@ import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.api.deps import CacheMode, cache_mode, get_os_conn, get_token_info, require_admin
 from app.config import get_settings
 from app.services import activity, identity_roles, keystone, manila, session_store
 from app.services import login_guard as _login_guard
 from app.services.cache import cached_call, invalidate, ttl_slow
+from app.services.service_permissions import normalize_role_name, preset_preview
 
 _logger = logging.getLogger(__name__)
 
@@ -1029,23 +1030,11 @@ async def update_group(
 @router.delete("/groups/{group_id}", dependencies=[Depends(require_admin)], status_code=204)
 async def delete_group(
     group_id: str,
+    token_info: dict = Depends(get_token_info),
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
-    """그룹 삭제."""
-
-    def _delete():
-        try:
-            conn.identity.delete_group(group_id, ignore_missing=True)
-        except Exception as e:
-            _logger.warning("그룹 삭제 실패: %s", e)
-
-            raise HTTPException(status_code=400, detail="그룹 삭제 실패")
-
-    try:
-        await asyncio.to_thread(_delete)
-        await invalidate("afterglow:admin:groups")
-    except HTTPException:
-        raise
+    await identity_roles.change_group_membership(conn, token_info, group_id, delete=True)
+    await invalidate("afterglow:admin:groups")
 
 
 @router.get("/groups/{group_id}/users", dependencies=[Depends(require_admin)])
@@ -1083,46 +1072,20 @@ async def list_group_users(
 async def add_user_to_group(
     group_id: str,
     user_id: str,
+    token_info: dict = Depends(get_token_info),
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
-    """그룹에 사용자 추가."""
-
-    def _add():
-        try:
-            conn.identity.add_user_to_group(user_id, group_id)
-        except Exception as e:
-            _logger.warning("그룹 멤버 추가 실패: %s", e)
-
-            raise HTTPException(status_code=400, detail="그룹 멤버 추가 실패")
-
-    try:
-        await asyncio.to_thread(_add)
-    except HTTPException:
-        raise
+    await identity_roles.change_group_membership(conn, token_info, group_id, user_id=user_id)
 
 
 @router.delete("/groups/{group_id}/users/{user_id}", dependencies=[Depends(require_admin)], status_code=204)
 async def remove_user_from_group(
     group_id: str,
     user_id: str,
+    token_info: dict = Depends(get_token_info),
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
-    """그룹에서 사용자 제거."""
-
-    def _remove():
-        try:
-            conn.identity.remove_user_from_group(user_id, group_id)
-        except Exception as e:
-            _logger.warning("그룹 멤버 제거 실패: %s", e)
-
-            raise HTTPException(status_code=400, detail="그룹 멤버 제거 실패")
-
-    try:
-        await asyncio.to_thread(_remove)
-        # 그룹 멤버십 변경 시 해당 사용자의 모든 세션 무효화
-        await session_store.revoke_user_sessions(user_id)
-    except HTTPException:
-        raise
+    await identity_roles.change_group_membership(conn, token_info, group_id, user_id=user_id, remove=True)
 
 
 # ============================================================================
@@ -1134,6 +1097,20 @@ async def remove_user_from_group(
 async def list_roles(conn: openstack.connection.Connection = Depends(get_os_conn)):
     """Fresh real implication graph; provider failures must never become an empty list."""
     return await asyncio.to_thread(identity_roles.load_catalog, conn)
+
+
+@router.get("/roles/presets", dependencies=[Depends(require_admin)])
+async def role_presets():
+    """Read-only requested hierarchy; preview never seeds Keystone roles."""
+    return preset_preview()
+
+
+@router.post("/roles/presets/apply", dependencies=[Depends(require_admin)])
+async def apply_role_presets(
+    token_info: dict = Depends(get_token_info),
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+):
+    return await identity_roles.apply_role_presets(conn, token_info)
 
 
 class AssignRoleRequest(BaseModel):
@@ -1148,36 +1125,9 @@ async def assign_role(
     token_info: dict = Depends(get_token_info),
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
-    """역할 할당."""
-
-    def _assign():
-        try:
-            conn.identity.assign_project_role_to_user(req.project_id, req.user_id, req.role_id)
-            return {"status": "assigned"}
-        except Exception as e:
-            _logger.warning("역할 할당 실패: %s", e)
-            raise HTTPException(status_code=400, detail="역할 할당 실패")
-
-    try:
-        result = await asyncio.to_thread(_assign)
-    except HTTPException:
-        raise
-
-    _, admin_role_id = await asyncio.to_thread(keystone._resolve_admin_ids)
-    is_admin_role = admin_role_id is not None and req.role_id == admin_role_id
-    if is_admin_role:
-        await session_store.revoke_user_sessions(req.user_id)
-    await activity.record(
-        project_id=token_info["project_id"],
-        user_id=token_info["user_id"],
-        username=token_info.get("username", ""),
-        resource_type="identity",
-        action="admin_role_grant" if is_admin_role else "role_grant",
-        status="success",
-        resource_id=req.user_id,
-        extra={"role_id": req.role_id, "target_project_id": req.project_id},
+    return await identity_roles.change_project_assignment(
+        conn, token_info, req.project_id, req.role_id, user_id=req.user_id
     )
-    return result
 
 
 @router.delete("/roles/assign", dependencies=[Depends(require_admin)])
@@ -1188,36 +1138,9 @@ async def revoke_role(
     token_info: dict = Depends(get_token_info),
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
-    """역할 회수."""
-
-    def _revoke():
-        try:
-            conn.identity.unassign_project_role_from_user(project_id, user_id, role_id)
-            return {"status": "revoked"}
-        except Exception as e:
-            _logger.warning("역할 회수 실패: %s", e)
-            raise HTTPException(status_code=400, detail="역할 회수 실패")
-
-    try:
-        result = await asyncio.to_thread(_revoke)
-    except HTTPException:
-        raise
-
-    _, admin_role_id = await asyncio.to_thread(keystone._resolve_admin_ids)
-    is_admin_role = admin_role_id is not None and role_id == admin_role_id
-    if is_admin_role:
-        await session_store.revoke_user_sessions(user_id)
-    await activity.record(
-        project_id=token_info["project_id"],
-        user_id=token_info["user_id"],
-        username=token_info.get("username", ""),
-        resource_type="identity",
-        action="admin_role_revoke" if is_admin_role else "role_revoke",
-        status="success",
-        resource_id=user_id,
-        extra={"role_id": role_id, "target_project_id": project_id},
+    return await identity_roles.change_project_assignment(
+        conn, token_info, project_id, role_id, user_id=user_id, remove=True
     )
-    return result
 
 
 class AssignGroupRoleRequest(BaseModel):
@@ -1229,23 +1152,12 @@ class AssignGroupRoleRequest(BaseModel):
 @router.post("/roles/assign-group", dependencies=[Depends(require_admin)])
 async def assign_group_role(
     req: AssignGroupRoleRequest,
+    token_info: dict = Depends(get_token_info),
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
-    """그룹에 프로젝트 역할 할당."""
-
-    def _assign():
-        try:
-            conn.identity.assign_project_role_to_group(req.project_id, req.group_id, req.role_id)
-            return {"status": "assigned"}
-        except Exception as e:
-            _logger.warning("그룹 역할 할당 실패: %s", e)
-
-            raise HTTPException(status_code=400, detail="그룹 역할 할당 실패")
-
-    try:
-        return await asyncio.to_thread(_assign)
-    except HTTPException:
-        raise
+    return await identity_roles.change_project_assignment(
+        conn, token_info, req.project_id, req.role_id, group_id=req.group_id
+    )
 
 
 @router.delete("/roles/assign-group", dependencies=[Depends(require_admin)])
@@ -1253,23 +1165,20 @@ async def revoke_group_role(
     group_id: str = Query(...),
     project_id: str = Query(...),
     role_id: str = Query(...),
+    token_info: dict = Depends(get_token_info),
     conn: openstack.connection.Connection = Depends(get_os_conn),
 ):
-    """그룹에서 프로젝트 역할 회수."""
+    return await identity_roles.change_project_assignment(
+        conn, token_info, project_id, role_id, group_id=group_id, remove=True
+    )
 
-    def _revoke():
-        try:
-            conn.identity.unassign_project_role_from_group(project_id, group_id, role_id)
-            return {"status": "revoked"}
-        except Exception as e:
-            _logger.warning("그룹 역할 회수 실패: %s", e)
 
-            raise HTTPException(status_code=400, detail="그룹 역할 회수 실패")
-
-    try:
-        return await asyncio.to_thread(_revoke)
-    except HTTPException:
-        raise
+def _normalize_role_input(value):
+    # Normalize before ConfigDict strips strings, retaining boundary whitespace
+    # as hyphens. Legacy unchanged names are handled by the service after lookup.
+    if isinstance(value, str) and "_" in value:
+        return normalize_role_name(value)
+    return value
 
 
 class CreateRoleRequest(BaseModel):
@@ -1279,12 +1188,16 @@ class CreateRoleRequest(BaseModel):
     description: str = Field(default="", max_length=4096)
     domain_id: str | None = Field(default=None, min_length=1, max_length=255)
 
+    _normalize_name = field_validator("name", mode="before")(_normalize_role_input)
+
 
 class UpdateRoleRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     name: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = Field(default=None, max_length=4096)
+
+    _normalize_name = field_validator("name", mode="before")(_normalize_role_input)
 
 
 @router.post("/roles", dependencies=[Depends(require_admin)], status_code=201)

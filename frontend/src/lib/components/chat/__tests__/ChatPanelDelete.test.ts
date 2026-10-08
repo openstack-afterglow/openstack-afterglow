@@ -1,3 +1,4 @@
+import { grantLumen } from './lumenPermissionFixture';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { auth } from '$lib/stores/auth';
@@ -111,6 +112,24 @@ beforeEach(() => {
 });
 
 describe('ChatPanel conversation deletion confirmation', () => {
+	it('does not treat resources admin as history deletion authority', async () => {
+		grantLumen('lumen-resources_admin');
+		render(ChatPanel);
+		await screen.findByText('기존 중요한 대화');
+		const button = screen.getAllByRole('button', { name: '대화 삭제' })[0];
+		expect(button.hasAttribute('disabled')).toBe(true);
+		await fireEvent.click(button);
+		expect(mocks.delete).not.toHaveBeenCalled();
+	});
+
+	it('allows a history editor to delete without resource administration', async () => {
+		grantLumen('lumen-history_editor');
+		mocks.confirmDialog.mockResolvedValueOnce(true);
+		render(ChatPanel);
+		await screen.findByText('기존 중요한 대화');
+		await fireEvent.click(screen.getAllByRole('button', { name: '대화 삭제' })[0]);
+		await waitFor(() => expect(mocks.delete).toHaveBeenCalled());
+	});
 	it('prompts confirmation with title and cancels deletion when user rejects', async () => {
 		mocks.confirmDialog.mockResolvedValueOnce(false);
 		render(ChatPanel);

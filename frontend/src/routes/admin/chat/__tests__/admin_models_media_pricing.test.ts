@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { writable } from 'svelte/store';
 
 const mocks = vi.hoisted(() => {
 	class ApiError extends Error { constructor(message: string, public status: number) { super(message); } }
@@ -9,11 +10,20 @@ const mocks = vi.hoisted(() => {
 		listeners: new Set<(scope: { token: string; projectId: string; isSystemAdmin: boolean }) => void>(), ApiError
 	};
 });
-vi.mock('$lib/stores/auth', () => ({ auth: { subscribe(run: (scope: typeof mocks.scope) => void) { mocks.listeners.add(run); run(mocks.scope); return () => mocks.listeners.delete(run); } } }));
+vi.mock('$lib/stores/auth', () => ({
+	auth: { subscribe(run: (scope: typeof mocks.scope) => void) { mocks.listeners.add(run); run(mocks.scope); return () => mocks.listeners.delete(run); } },
+	authReady: writable(true), projectSwitching: writable(false)
+}));
+// Personal extension permissions are unrelated to these admin flows; do not consume API fixtures.
+vi.mock('$lib/stores/servicePermissions', () => ({
+	serviceCapabilities: writable<(leaf: string) => boolean>(() => false),
+	projectPermissions: writable({ permissions: null, loading: false, error: '' })
+}));
 vi.mock('$lib/api/client', () => ({ api: { get: mocks.get, post: mocks.post, patch: mocks.patch, put: vi.fn(), delete: vi.fn() }, ApiError: mocks.ApiError }));
 vi.mock('$lib/stores/chatModels', () => ({ invalidateChatModels: vi.fn() }));
 vi.mock('$lib/stores/confirm.svelte', () => ({ confirmDialog: vi.fn() }));
 vi.mock('$lib/stores/toast', () => ({ toast: { success: mocks.success, error: mocks.error } }));
+import { authReady, projectSwitching } from '$lib/stores/auth';
 import ModelPage from '../models/+page.svelte';
 
 const provider = { id: 1, name: 'OpenAI', provider_type: 'openai', api_base: null, auth_mode: 'api_key', has_api_key: true, models_dev_provider_id: 'openai', is_active: true, margin_multiplier: 1 };
@@ -32,6 +42,7 @@ async function openEditor() {
 beforeEach(() => {
 	vi.clearAllMocks();
 	mocks.scope = { token: 'token', projectId: 'project', isSystemAdmin: true };
+	authReady.set(true); projectSwitching.set(false);
 	rows = []; candidates = [];
 	mocks.get.mockImplementation(async (path: string) => {
 		if (path === '/api/v1/chat/admin/providers') return [provider];

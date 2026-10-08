@@ -5,6 +5,7 @@
   import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
   import { useK3sClusterDetailController, healthColor } from '$lib/stores/k3sClusterDetailController.svelte';
   import Button from '$lib/components/ui/Button.svelte';
+  import { k3sPermissions } from '$lib/stores/k3sPermissions';
 
   const s = useK3sClusterDetailController();
 </script>
@@ -47,7 +48,7 @@
       {/each}
     </div>
 
-    {#if s.cluster!.status === 'ACTIVE'}
+    {#if s.cluster!.status === 'ACTIVE' && $k3sPermissions.editClusters}
       <div class="flex items-center gap-1.5 mt-3 pt-3 border-t border-line">
         <span class="text-ink-2 text-xs">{t('nodes.agents')}</span>
         <button
@@ -78,7 +79,7 @@
       <div class="flex justify-between items-center">
         <dt class="text-ink-2 text-xs">{t('nodes.worker')}</dt>
         <dd class="flex items-center gap-1.5">
-          {#if s.cluster!.status === 'ACTIVE'}
+          {#if s.cluster!.status === 'ACTIVE' && $k3sPermissions.editClusters}
             <button
               onclick={() => s.decrementScale()}
               class="w-5 h-5 flex items-center justify-center bg-surface-selected hover:bg-surface-selected text-ink-0 rounded text-xs transition-colors">−</button>

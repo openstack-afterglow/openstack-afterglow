@@ -299,7 +299,6 @@ def render_secret(cfg: dict, namespace: str = "afterglow") -> str:
 
     enc_key = k3s.get("kubeconfig_encryption_key", "")
     token = k3s.get("gpu_admission_token", "")
-    provisioning_token = k3s.get("provisioning_token", "")
     lines.extend(
         [
             "",
@@ -307,7 +306,6 @@ def render_secret(cfg: dict, namespace: str = "afterglow") -> str:
             '  # 생성: python3 -c "import secrets; print(secrets.token_hex(32))"',
             f"  K3S_KUBECONFIG_ENCRYPTION_KEY: {_yaml_str(enc_key)}",
             f"  K3S_GPU_ADMISSION_TOKEN: {_yaml_str(token)}",
-            f"  K3S_PROVISIONING_TOKEN: {_yaml_str(provisioning_token)}",
         ]
     )
 
@@ -653,7 +651,6 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     lines.append("[k3s]")
     lines.append("# kubeconfig_encryption_key is injected as K3S_KUBECONFIG_ENCRYPTION_KEY from secret.yaml")
     lines.append("# gpu_admission_token is injected as K3S_GPU_ADMISSION_TOKEN from secret.yaml")
-    lines.append("# provisioning_token is injected as K3S_PROVISIONING_TOKEN from secret.yaml")
     lines.append("")
     # [worker_runtime] (non-secret runtime manager config)
     wr_workers = worker_runtime.get("workers", {})
@@ -682,7 +679,7 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
     lines.append(f"logs_mount = {_toml_str(wr_docker.get('logs_mount', '/app/logs'))}")
     lines.append(f"logs_host_path = {_toml_str(wr_docker.get('logs_host_path', ''))}")
     lines.append(
-        f"env_allowlist = {_toml_str(wr_docker.get('env_allowlist', 'AFTERGLOW_ENV,AFTERGLOW_ALLOW_INSECURE,SECRET_KEY,OS_PASSWORD,DATABASE_URL,K3S_KUBECONFIG_ENCRYPTION_KEY,K3S_GPU_ADMISSION_TOKEN,K3S_PROVISIONING_TOKEN,PROMETHEUS_PASSWORD,GITLAB_OIDC_CLIENT_SECRET,NOTION_CONFIG_ENCRYPTION_KEY'))}"
+        f"env_allowlist = {_toml_str(wr_docker.get('env_allowlist', 'AFTERGLOW_ENV,AFTERGLOW_ALLOW_INSECURE,SECRET_KEY,OS_PASSWORD,DATABASE_URL,K3S_KUBECONFIG_ENCRYPTION_KEY,K3S_GPU_ADMISSION_TOKEN,PROMETHEUS_PASSWORD,GITLAB_OIDC_CLIENT_SECRET,NOTION_CONFIG_ENCRYPTION_KEY'))}"
     )
     lines.append("")
     lines.append("[worker_runtime.kubernetes]")

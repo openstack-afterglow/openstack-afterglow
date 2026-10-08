@@ -1,5 +1,6 @@
 import { t } from '$lib/i18n/ns/chat-studio';
 import { api, ApiError, fetchWithAuth, getWebSocketUrl } from './client';
+import { requireLumenCapability } from './lumenAccess';
 import type { AvailableModel } from './chatTree';
 
 export interface RealtimeScope { token: string; projectId: string }
@@ -50,6 +51,7 @@ export const realtimeVoiceApi = {
 	models: (scope: RealtimeScope) => api.get<RealtimeModel[]>('/api/v1/chat/models?model_kind=realtime', scope.token, scope.projectId, { refresh: true }),
 	capabilities: (id: number, scope: RealtimeScope) => api.get<RealtimeCapabilities>(`/api/v1/chat/capabilities?model_id=${id}&model_kind=realtime`, scope.token, scope.projectId, { refresh: true }),
 	async createSession(modelId: number, voice: string, scope: RealtimeScope, key: string, signal: AbortSignal): Promise<RealtimeSession> {
+		requireLumenCapability('lumen-audio_user', scope.token, scope.projectId);
 		const response = await fetchWithAuth('/api/v1/chat/realtime/sessions', {
 			method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key },
 			body: JSON.stringify({ model_id: String(modelId), voice, max_duration_seconds: 300 }), signal

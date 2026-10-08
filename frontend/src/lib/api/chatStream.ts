@@ -1,5 +1,9 @@
 import { t } from '$lib/i18n/ns/chat-diagnostics';
 import { fetchWithAuth } from './client';
+import { get } from 'svelte/store';
+import { serviceCapabilities } from '$lib/stores/servicePermissions';
+import { requireLumenCapability } from './lumenAccess';
+import { chatRequestPermission, permissionReason } from './lumenPermissions';
 import { ApiError } from './errors';
 import { parseChatRunEvent, parseContextState, type ChatRunDescriptor, type ChatRunEvent, type ChatRunStatus, type ContextState } from './chatContracts';
 export type { ChatRunDescriptor, ContextState } from './chatContracts';
@@ -189,6 +193,9 @@ export async function createChatRun(
 	body: unknown,
 	{ token, projectId, signal, idempotencyKey = crypto.randomUUID() }: CreateChatRunOptions = {}
 ): Promise<ChatRunDescriptor> {
+	requireLumenCapability('lumen-chat_user', token, projectId);
+	const denied = chatRequestPermission(body, get(serviceCapabilities));
+	if (denied) throw new ApiError(403, permissionReason(denied));
 	const response = await fetchWithAuth(path, {
 		method: 'POST',
 		headers: {

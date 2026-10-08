@@ -2,6 +2,7 @@
   import { t } from '$lib/i18n/ns/drover';
   import { untrack } from 'svelte';
   import { auth } from '$lib/stores/auth';
+  import { k3sPermissions } from '$lib/stores/k3sPermissions';
   import { goto } from '$app/navigation';
   import { createK3sClusterDetailController, provideK3sClusterDetailController, type ActiveTab } from '$lib/stores/k3sClusterDetailController.svelte';
   import { createAutoRefresh } from '$lib/utils/autoRefresh.svelte';
@@ -31,6 +32,7 @@
     clusterId: () => clusterId,
     token: () => $auth.token ?? undefined,
     projectId: () => $auth.projectId ?? undefined,
+    userId: () => $auth.userId,
     adminMode: () => adminMode,
     onClose: () => (onClose ?? (() => goto('/dashboard/drover')))(),
   });
@@ -58,17 +60,29 @@
     intervalOptions: [10, 15, 30, 60]
   });
 
+  // Primitive scope dependencies avoid resets when the auth store emits a refreshed token.
+  const scopeUserId = $derived($auth.userId);
+  const scopeProjectId = $derived($auth.projectId);
+
   $effect(() => {
-    if (!$auth.projectId || !clusterId) return;
-    s.reset();
-    untrack(() => s.loadCluster());
+    const userId = scopeUserId;
+    const projectId = scopeProjectId;
+    const id = clusterId;
+    untrack(() => {
+      s.reset();
+      if (userId && projectId && id) void s.loadCluster();
+    });
+  });
+
+  $effect(() => {
+    const grade = $k3sPermissions.kubeconfigGrade;
+    if (!grade || s.isActive) untrack(() => s.checkKubeconfig());
   });
 
   $effect(() => {
     if (s.cluster?.status === 'ACTIVE' && !s.initialCheckDone) {
       s.initialCheckDone = true;
       untrack(() => {
-        s.checkKubeconfig();
         s.loadHealth();
         s.loadNamespaces();
       });
@@ -125,10 +139,10 @@
       >
       {#if s.activeTab === 'main'}
         <K3sClusterMainPanel />
-      {:else if s.activeTab === 'configmaps'}
+      {:else if s.activeTab === 'configmaps' && $k3sPermissions.workloads}
         <K3sNamespaceSelector />
         <K3sClusterConfigMapsCard />
-      {:else if s.activeTab === 'secrets'}
+      {:else if s.activeTab === 'secrets' && $k3sPermissions.workloads}
         <K3sNamespaceSelector />
         <K3sClusterSecretsCard />
       {:else if s.activeTab === 'services'}

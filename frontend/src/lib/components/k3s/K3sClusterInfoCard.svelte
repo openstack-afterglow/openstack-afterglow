@@ -8,6 +8,7 @@
   import { downloadBlobAs } from '$lib/utils/downloadBlob';
   import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
   import K3sCertificateExpiryModal from '$lib/components/k3s/K3sCertificateExpiryModal.svelte';
+  import { k3sPermissions } from '$lib/stores/k3sPermissions';
 
   const s = useK3sClusterDetailController();
   const token = $derived($auth.token ?? undefined);
@@ -17,7 +18,7 @@
   let downloadingCa = $state(false);
 
   async function downloadCa() {
-    if (!s.cluster) return;
+    if (!$k3sPermissions.inventory || !s.cluster) return;
     downloadingCa = true;
     try {
       const { blob } = await api.downloadBlob(
@@ -68,7 +69,7 @@
       <dd class="flex gap-1.5">
         <button
           onclick={downloadCa}
-          disabled={downloadingCa}
+          disabled={!$k3sPermissions.inventory || downloadingCa}
           class="text-xs px-2 py-0.5 rounded bg-surface-selected hover:bg-surface-selected text-ink-1 disabled:opacity-50 transition-colors"
         >
           {#if downloadingCa}<ActivityIndicator variant="download" size="xs" label={tc('state.processing')} />{:else}{t('overview.info.downloadCa')}{/if}

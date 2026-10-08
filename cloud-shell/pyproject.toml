@@ -1,6 +1,6 @@
 [project]
 name = "afterglow-cloud-shell"
-version = "1.30.3"
+version = "1.30.4"
 description = "Ephemeral Afterglow Cloud Shell runtime"
 requires-python = ">=3.12"
 dependencies = [

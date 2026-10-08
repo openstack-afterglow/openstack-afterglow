@@ -10,6 +10,8 @@ nav_order: 40
 
 The k3s provisioner is a subsystem that installs and operates k3s (lightweight Kubernetes) directly using only OpenStack Nova VMs + cloud-init, **without Magnum**. It handles cluster create/delete/scale, kubeconfig download, HA (embedded-etcd) bootstrap, certificate rotation, node groups, Stampede autoscale, and Cloud Provider OpenStack plugin deployment.
 
+Drover provisions OpenStack resources natively and re-checks Afterglow's `/api/v1/internal/k3s/gpu-admission` before each create. Afterglow's internal K3s API handles GPU admission only.
+
 For the proxy-style API that queries/manipulates Kubernetes resources inside the cluster (Pod/Deployment/ConfigMap/Secret/Cloud Shell, etc.), see the separate document [k3s Resource Management](k3s-resources.md).
 
 > **Activation condition:** `afterglow.conf [services] k3s = true`
@@ -259,7 +261,7 @@ Attaches/detaches additional Neutron ports to server/agent VMs. If `vm_id` does 
 
 ## Stampede Autoscale
 
-Controls the per-cluster autoscale mode. If the server-global setting `afterglow.conf [k3s] stampede_enabled` is off, enabling returns `400`.
+Controls the per-cluster autoscale mode. If the server-global setting `afterglow.conf [k3s] stampede_enabled` is off, enabling returns `400`. A cluster without current user resource authority (created before the credential-isolation change) returns `409` on enable until it is reauthorized below.
 
 | Method | Path | Description |
 |--------|------|------|
@@ -267,6 +269,20 @@ Controls the per-cluster autoscale mode. If the server-global setting `afterglow
 | `POST` | `/{cluster_id}/stampede/disable` | Disable Stampede (`200`) |
 | `GET` | `/{cluster_id}/stampede` | Per-cluster/node-group Stampede status (in-flight, capacity, quota, etc.) |
 | `GET` | `/{cluster_id}/stampede/events` | Scale event history (newest first, `limit` 1–200 default 50) |
+
+---
+
+## Cluster Resource Reauthorization
+
+Stampede, reconciliation and guest cloud plugins run with a current project user's restricted application credentials. Responses contain credential references only, never secrets.
+
+| Method | Path | Capability | Description |
+|--------|------|------|------|
+| `GET` | `/{cluster_id}/authorization` | `drover-inventory_reader` | `authorized`, active/staged generations and the caller's retirement backlog |
+| `POST` | `/{cluster_id}/authorization` | `drover-clusters_admin` | Reauthorize with the caller's own restricted credentials (`202`; ACTIVE clusters only; `409` while another mutation runs) |
+| `POST` | `/{cluster_id}/authorization/retire` | owner | Delete only the caller's own superseded credentials |
+
+**Operational cutover (not deployed):** Drain old worker jobs, apply the additive Drover 004 / Waygate 006 / Palimpsest export-delegation schemas, then upgrade Drover with native provisioning before Afterglow. A currently authorized project operator must reauthorize legacy Drover clusters and verify actual guest credential rollout and Stampede. Live Keystone Trust/application-credential policy, Glance/Barbican/Octavia role sufficiency and Cinder quota for Waygate zero-disk boot remain separate acceptance checks. Old queued work without delegation must be resubmitted. Existing tenant service/manager assignments require separately approved retirement, and superseded user credentials require their owner's retirement token. Migration 077 and its ledger entry are preserved; the old intent table remains inert data. A system administrator's home-project token is not execution authority in a foreign tenant; target-project roles and a project-scoped token are required.
 
 ---
 

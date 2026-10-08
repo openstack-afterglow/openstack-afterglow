@@ -4,6 +4,7 @@
 	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import type { K3sCluster } from '$lib/types/k3s';
+	import { k3sPermissions } from '$lib/stores/k3sPermissions';
 
 	let {
 		cluster,
@@ -18,6 +19,9 @@
 		onDownloadKubeconfig: (id: string, name: string) => void;
 		onDelete: (id: string, name: string) => void;
 	} = $props();
+
+	const canDownload = $derived($k3sPermissions.credentials && cluster.status === 'ACTIVE');
+	const canDelete = $derived($k3sPermissions.administerClusters && !deleting && cluster.status !== 'DELETING');
 </script>
 
 <div
@@ -71,19 +75,19 @@
 	<!-- Actions -->
 	<div class="flex gap-1.5" role="none" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
 		<button
-			onclick={() => onDownloadKubeconfig(cluster.id, cluster.name)}
-			disabled={cluster.status !== 'ACTIVE'}
+			onclick={() => canDownload && onDownloadKubeconfig(cluster.id, cluster.name)}
+			disabled={!canDownload}
 			class="flex-1 text-warm-text hover:text-warm-text-hover disabled:text-ink-3 text-xs px-2 py-1.5 rounded border border-action-warm hover:border-action-warm disabled:border-line-2 transition-colors text-center"
 		>kubeconfig</button>
 		<button
-			onclick={() => onSelect(cluster.id)}
+			onclick={() => !cluster.deleted_at && onSelect(cluster.id)}
 			disabled={!!cluster.deleted_at}
 			class="text-ink-2 hover:text-ink-0 disabled:text-ink-3 text-xs px-2 py-1.5 rounded border border-line-2 hover:border-line-2 disabled:border-line-2 transition-colors"
 		>{t('actions.details')}</button>
 		{#if !cluster.deleted_at}
 			<button
-				onclick={() => onDelete(cluster.id, cluster.name)}
-				disabled={deleting || cluster.status === 'DELETING'}
+				onclick={() => canDelete && onDelete(cluster.id, cluster.name)}
+				disabled={!canDelete}
 				class="text-red-400 hover:text-red-300 disabled:text-ink-3 text-xs px-2 py-1.5 rounded border border-red-900 hover:border-red-700 disabled:border-line-2 transition-colors"
 			>{#if deleting}<ActivityIndicator size="xs" label={t('state.deleting')} />{:else}{t('actions.delete')}{/if}</button>
 		{/if}

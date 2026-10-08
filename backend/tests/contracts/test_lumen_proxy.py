@@ -1,4 +1,8 @@
-"""Afterglow browser proxy contracts for the extracted Lumen service."""
+"""Lumen transport contracts with validated identities and synthetic current access.
+
+Only the current project-directory boundary is synthetic; service action guards
+remain live. Admin transport cases supply an already verified system principal.
+"""
 
 import asyncio
 import gzip
@@ -11,8 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException, Request
 from httpx import ASGITransport, AsyncClient, Headers
 from httpx import Request as HttpxRequest
 from httpx import Response as HttpxResponse
@@ -21,6 +24,19 @@ from app.api.deps import get_token_info
 from app.api.lumen import register_lumen
 from app.main import app
 from app.services.service_proxy import proxy, proxy_passthrough
+
+
+@pytest.fixture(autouse=True)
+def current_access(monkeypatch):
+    """Project-scoped current read leaves, not stale token-role authority."""
+    access = {"roles": ["member", "lumen-inventory_reader", "lumen-history_reader"]}
+
+    async def get_project_access(project_id, user_id):
+        assert (project_id, user_id) == ("project-1", "user-1")
+        return access
+
+    monkeypatch.setattr("app.services.project_service.get_project_access", get_project_access)
+    return access
 
 
 @pytest.fixture
@@ -39,6 +55,14 @@ async def _authenticated(request: Request) -> dict:
         "roles": ["member"],
     }
     request.state.token_info = token_info
+    request.state.user_id = token_info["user_id"]
+    return token_info
+
+
+async def _authenticated_system_admin(request: Request) -> dict:
+    """Stand in for token validation's verified flag, never an action-guard bypass."""
+    token_info = await _authenticated(request)
+    token_info["is_system_admin"] = True
     return token_info
 
 
@@ -85,82 +109,6 @@ def test_lumen_feature_gate_routes_inclusion():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "method,path,upstream_path,body",
-    [
-        ("get", "/api/v1/chat/conversations", "/v1/conversations", None),
-        ("post", "/api/v1/chat/conversations", "/v1/conversations", {"title": "New Chat"}),
-        ("get", "/api/v1/chat/agents", "/v1/agents", None),
-        ("delete", "/api/v1/chat/conversations/conv-1", "/v1/conversations/conv-1", None),
-        ("get", "/api/v1/chat/workspaces", "/v1/workspaces", None),
-        ("get", "/api/v1/chat/models", "/v1/chat/models", None),
-        (
-            "post",
-            "/api/v1/chat/images/generations",
-            "/v1/chat/images/generations",
-            {"model_id": "image-1", "prompt": "sunrise", "size": "1024x1024", "quality": "high", "n": 1},
-        ),
-        (
-            "post",
-            "/api/v1/chat/images/edits",
-            "/v1/chat/images/edits",
-            {"model_id": "image-1", "prompt": "sunrise", "input_asset_id": "f6d18ec7-c8d8-4db8-9bd7-2dceb0f0f68e"},
-        ),
-        ("patch", "/api/v1/chat/api-keys/7", "/v1/api-keys/7", {"name": "laptop"}),
-        (
-            "post",
-            "/api/v1/chat/claude-gateway/authorize",
-            "/v1/claude-gateway/authorize",
-            {"user_code": "ABCD-2345", "action": "approve"},
-        ),
-        (
-            "put",
-            "/api/v1/chat/admin/quotas/user-1",
-            "/v1/admin/quotas/user-1",
-            {"monthly_credit_limit": "5000", "weekly_credit_limit": None},
-        ),
-        (
-            "put",
-            "/api/v1/chat/admin/quotas/defaults",
-            "/v1/admin/quotas/defaults",
-            {"monthly_credit_limit": "100000"},
-        ),
-        (
-            "delete",
-            "/api/v1/chat/admin/quotas/user-1",
-            "/v1/admin/quotas/user-1",
-            None,
-        ),
-        (
-            "get",
-            "/api/v1/chat/admin/stats/users/user-1?range=30d&source=web",
-            "/v1/admin/stats/users/user-1",
-            None,
-        ),
-        (
-            "get",
-            "/api/v1/chat/admin/providers/billing",
-            "/v1/admin/providers/billing",
-            None,
-        ),
-    ],
-)
-async def test_browser_routes_proxy_to_lumen_service(api_client, method, path, upstream_path, body):
-    app.dependency_overrides[get_token_info] = _authenticated
-    forwarded = JSONResponse(status_code=200, content={"forwarded": True})
-    with patch("app.api.lumen.proxy.proxy", new=AsyncMock(return_value=forwarded)) as proxy_call:
-        call = getattr(api_client, method)
-        response = await (call(path, json=body) if body is not None else call(path))
-
-    assert response.status_code == 200
-    assert response.json() == {"forwarded": True}
-    service_type, request, upstream = proxy_call.await_args.args
-    assert service_type == "lumen"
-    assert upstream == upstream_path
-    assert request.state.token_info["token"] == "caller-token"
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
     ("path", "request_body", "request_type", "response_body", "response_type"),
     [
         (
@@ -180,9 +128,10 @@ async def test_browser_routes_proxy_to_lumen_service(api_client, method, path, u
     ],
 )
 async def test_audio_routes_preserve_bytes_types_and_caller_scope(
-    api_client, path, request_body, request_type, response_body, response_type
+    api_client, current_access, path, request_body, request_type, response_body, response_type
 ):
     app.dependency_overrides[get_token_info] = _authenticated
+    current_access["roles"].append("lumen-audio_user")
     received = []
 
     async def handler(request):
@@ -282,9 +231,15 @@ async def test_lumen_mcp_oauth_callback_proxies_unauthenticated_with_cookies():
 async def test_lumen_proxy_sse_streaming_non_buffering():
     req = _make_dummy_request(
         path="/api/v1/chat/runs/run-123/events",
-        headers={"X-Auth-Token": "token-1", "X-Project-Id": "proj-1"},
+        headers={
+            "X-Auth-Token": "forged-token",
+            "X-Project-Id": "forged-project",
+            "X-Target-Project-Id": "forged-target",
+            "X-User-Id": "forged-user",
+            "X-Roles": "admin",
+        },
     )
-    req.state.token_info = {"token": "token-1", "project_id": "proj-1"}
+    req.state.token_info = {"token": "caller-token", "project_id": "project-1", "user_id": "user-1"}
 
     chunk2_released = asyncio.Event()
 
@@ -317,8 +272,13 @@ async def test_lumen_proxy_sse_streaming_non_buffering():
             response = await proxy("lumen", req, "/v1/runs/run-123/events")
 
     assert len(sent_requests) == 1
-    _, stream = sent_requests[0]
+    sent_request, stream = sent_requests[0]
     assert stream is True
+    assert sent_request.headers["x-auth-token"] == "caller-token"
+    assert sent_request.headers["x-project-id"] == "project-1"
+    assert "x-target-project-id" not in sent_request.headers
+    assert "x-user-id" not in sent_request.headers
+    assert "x-roles" not in sent_request.headers
 
     iterator = response.body_iterator
     chunk1 = await anext(iterator)
@@ -329,12 +289,20 @@ async def test_lumen_proxy_sse_streaming_non_buffering():
     chunk2_released.set()
     chunk2 = await anext(iterator)
     assert chunk2 == b"data: chunk 2\n\n"
+    with pytest.raises(StopAsyncIteration):
+        await anext(iterator)
+    mock_client.aclose.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_lumen_proxy_streams_owned_asset_download_without_redirect():
     req = _make_dummy_request(path="/api/v1/chat/assets/asset-1/download")
-    req.state.token_info = {"token": "caller-token", "project_id": "project-1"}
+    req.state.token_info = {
+        "token": "caller-token",
+        "project_id": "project-1",
+        "connection_project_id": "connection-project",
+        "user_id": "user-1",
+    }
 
     async def mock_aiter_raw():
         yield b"name,value\n"
@@ -359,7 +327,7 @@ async def test_lumen_proxy_streams_owned_asset_download_without_redirect():
     mock_client.send = AsyncMock(return_value=upstream_response)
     mock_client.aclose = AsyncMock()
 
-    with patch("app.services.service_proxy._get_internal_endpoint", return_value="http://lumen.internal"):
+    with patch("app.services.service_proxy._get_internal_endpoint", return_value="http://lumen.internal") as endpoint:
         with patch("httpx.AsyncClient", return_value=mock_client):
             response = await proxy("lumen", req, "/v1/assets/asset-1/download")
 
@@ -370,6 +338,11 @@ async def test_lumen_proxy_streams_owned_asset_download_without_redirect():
     assert b"".join([chunk async for chunk in response.body_iterator]) == b"name,value\nlatency,12\n"
     upstream_response.aclose.assert_awaited_once()
     mock_client.aclose.assert_awaited_once()
+    endpoint.assert_called_once_with("caller-token", "connection-project", "lumen")
+    sent_request = mock_client.send.await_args.args[0]
+    assert sent_request.headers["x-auth-token"] == "caller-token"
+    assert sent_request.headers["x-project-id"] == "connection-project"
+    assert sent_request.headers["x-target-project-id"] == "project-1"
 
 
 @pytest.mark.asyncio
@@ -377,7 +350,7 @@ async def test_lumen_proxy_preserves_compressed_stream_bytes():
     original = b"data: compressed first delta\n\n"
     encoded = gzip.compress(original)
     req = _make_dummy_request(path="/api/v1/chat/runs/run-1/events")
-    req.state.token_info = {"token": "caller-token", "project_id": "project-1"}
+    req.state.token_info = {"token": "caller-token", "project_id": "project-1", "user_id": "user-1"}
     upstream = AsyncClient(
         transport=httpx.MockTransport(
             lambda request: HttpxResponse(
@@ -402,8 +375,10 @@ async def test_lumen_proxy_preserves_compressed_stream_bytes():
 @pytest.mark.asyncio
 @pytest.mark.parametrize("resource", ["conversations/42", "temp-threads/thread-1"])
 @pytest.mark.parametrize("operation", ["context-preview", "compactions"])
-async def test_context_routes_preserve_post_body_and_idempotency(api_client, resource, operation):
+async def test_context_routes_preserve_post_body_and_idempotency(api_client, current_access, resource, operation):
     app.dependency_overrides[get_token_info] = _authenticated
+    if operation == "compactions":
+        current_access["roles"].append("lumen-chat_user")
     request_body = {"model_id": "configured-model"}
     if operation == "context-preview":
         request_body["parts"] = [{"type": "text", "text": "unsent draft"}]
@@ -505,7 +480,7 @@ async def test_subscription_auth_routes_preserve_method_body_response_and_no_sto
     status_code,
     response_body,
 ):
-    app.dependency_overrides[get_token_info] = _authenticated
+    app.dependency_overrides[get_token_info] = _authenticated_system_admin
     received = []
 
     async def handler(request):
@@ -556,7 +531,7 @@ async def test_subscription_auth_routes_preserve_method_body_response_and_no_sto
     ],
 )
 async def test_subscription_auth_proxy_preserves_safe_error_and_no_store(api_client, status_code, code):
-    app.dependency_overrides[get_token_info] = _authenticated
+    app.dependency_overrides[get_token_info] = _authenticated_system_admin
     error_body = {"detail": {"code": code, "message": "구독 인증 요청을 계속할 수 없습니다"}}
 
     def handler(_request):
@@ -581,7 +556,7 @@ async def test_subscription_auth_proxy_preserves_safe_error_and_no_store(api_cli
 @pytest.mark.asyncio
 async def test_provider_discovery_preserves_safe_failure_without_session_unauthorized(api_client):
     """Provider-key rejection is not a browser session 401 or a successful fallback list."""
-    app.dependency_overrides[get_token_info] = _authenticated
+    app.dependency_overrides[get_token_info] = _authenticated_system_admin
     body = {
         "provider_id": 7,
         "models": [],
@@ -673,7 +648,7 @@ async def test_admin_model_routes_forward_cache_price_fields_byte_exact(
     response_body,
 ):
     """The BFF has no model schema: optional cache prices, including explicit nulls, pass through."""
-    app.dependency_overrides[get_token_info] = _authenticated
+    app.dependency_overrides[get_token_info] = _authenticated_system_admin
     request_bytes = json.dumps(body).encode() if body is not None else b""
     response_bytes = json.dumps(response_body).encode()
     received = []
@@ -702,6 +677,130 @@ async def test_admin_model_routes_forward_cache_price_fields_byte_exact(
     assert forwarded_method == method
     assert forwarded_path == f"/v1{path.removeprefix('/api/v1/chat')}"
     assert forwarded_bytes == request_bytes
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("resource", ["runs/run-1/events", "assets/asset-1/download"])
+@pytest.mark.parametrize("user_id", [None, ""])
+async def test_stream_proxy_requires_validated_identity_before_catalog(resource, user_id):
+    request = _make_dummy_request(path=f"/api/v1/chat/{resource}")
+    request.state.token_info = {"token": "caller-token", "project_id": "project-1", "user_id": user_id}
+    with (
+        patch("app.services.service_proxy._get_internal_endpoint") as endpoint,
+        patch("app.services.service_proxy.httpx.AsyncClient") as client,
+        pytest.raises(HTTPException) as failure,
+    ):
+        await proxy("lumen", request, f"/v1/{resource}")
+
+    assert failure.value.status_code == 401
+    endpoint.assert_not_called()
+    client.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_current_access_failure_never_falls_back_to_token_roles(api_client, monkeypatch):
+    async def stale_reader(request: Request):
+        token_info = await _authenticated(request)
+        token_info["roles"] = ["admin", "member", "lumen-inventory_reader"]
+        return token_info
+
+    app.dependency_overrides[get_token_info] = stale_reader
+    lookup = AsyncMock(side_effect=HTTPException(status_code=503, detail="Current access unavailable"))
+    monkeypatch.setattr("app.services.project_service.get_project_access", lookup)
+    with (
+        patch("app.services.service_proxy._get_internal_endpoint") as endpoint,
+        patch("app.services.service_proxy.httpx.AsyncClient") as client,
+    ):
+        response = await api_client.get("/api/v1/chat/models")
+
+    assert response.status_code == 503
+    # The registered BFF error handler intentionally hides private provider details.
+    assert response.json() == {"detail": "내부 서버 오류"}
+    lookup.assert_awaited_once_with("project-1", "user-1")
+    endpoint.assert_not_called()
+    client.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [("POST", "/api/v1/chat/admin/providers/7/auth/device"), ("GET", "/api/v1/chat/admin/models")],
+)
+async def test_admin_routes_reject_project_roles_and_forged_authority(api_client, current_access, method, path):
+    async def project_admin(request: Request):
+        token_info = await _authenticated(request)
+        token_info["roles"] = ["admin", "project_owner", "lumen-resources_admin"]
+        return token_info
+
+    app.dependency_overrides[get_token_info] = project_admin
+    current_access["roles"] = ["member", "admin", "project_owner", "lumen-resources_admin"]
+    with (
+        patch("app.services.service_proxy._get_internal_endpoint") as endpoint,
+        patch("app.services.service_proxy.httpx.AsyncClient") as client,
+    ):
+        response = await api_client.request(
+            method,
+            path,
+            headers={"X-Roles": "admin", "X-Is-System-Admin": "true", "X-User-Id": "root"},
+        )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "시스템 관리자 권한이 필요합니다"}
+    endpoint.assert_not_called()
+    client.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_current_audio_downgrade_denies_stale_token_leaf(api_client):
+    async def stale_audio_user(request: Request):
+        token_info = await _authenticated(request)
+        token_info["roles"] = ["member", "lumen-audio_user"]
+        return token_info
+
+    app.dependency_overrides[get_token_info] = stale_audio_user
+    with (
+        patch("app.services.service_proxy._get_internal_endpoint") as endpoint,
+        patch("app.services.service_proxy.httpx.AsyncClient") as client,
+    ):
+        response = await api_client.post("/api/v1/chat/audio/speech", json={"model_id": 1, "input": "hello"})
+
+    assert response.status_code == 403
+    endpoint.assert_not_called()
+    client.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_stream_failure_propagates_and_closes_upstream():
+    request = _make_dummy_request(path="/api/v1/chat/runs/run-1/events")
+    request.state.token_info = {"token": "caller-token", "project_id": "project-1", "user_id": "user-1"}
+
+    async def broken_stream():
+        yield b"data: first delta\n\n"
+        raise httpx.ReadError("upstream stream failed")
+
+    upstream_response = MagicMock(spec=HttpxResponse)
+    upstream_response.status_code = 200
+    upstream_response.headers = Headers({"content-type": "text/event-stream"})
+    upstream_response.aiter_raw = broken_stream
+    upstream_response.aclose = AsyncMock()
+    client = MagicMock()
+    client.build_request.side_effect = lambda method, url, headers, content: HttpxRequest(
+        method, url, headers=headers, content=content
+    )
+    client.send = AsyncMock(return_value=upstream_response)
+    client.aclose = AsyncMock()
+    with (
+        patch("app.services.service_proxy._get_internal_endpoint", return_value="http://isolated.test"),
+        patch("app.services.service_proxy.httpx.AsyncClient", return_value=client),
+    ):
+        response = await proxy("lumen", request, "/v1/runs/run-1/events")
+
+    iterator = response.body_iterator
+    assert await anext(iterator) == b"data: first delta\n\n"
+    with pytest.raises(httpx.ReadError, match="upstream stream failed"):
+        await anext(iterator)
+    upstream_response.aclose.assert_awaited_once()
+    client.aclose.assert_awaited_once()
 
 
 @pytest.mark.asyncio

@@ -100,18 +100,6 @@ def test_render_k3s_gpu_admission_credential_only_in_secret():
     assert secret["stringData"]["K3S_GPU_ADMISSION_TOKEN"] == credential
 
 
-def test_render_k3s_provisioning_credential_only_in_secret():
-    credential = "k3s-provisioning-secret-sentinel-0123456789abcdef"
-    cfg = {
-        "app": {"secret_key": "application-secret-key-sentinel-0123456789abcdef"},
-        "k3s": {"provisioning_token": credential},
-    }
-
-    assert credential not in _render_toml_for_k8s(cfg)
-    secret = yaml.safe_load(render_secret(cfg))
-    assert secret["stringData"]["K3S_PROVISIONING_TOKEN"] == credential
-
-
 def test_render_toml_includes_login_branding_paths():
     result = _render_toml_for_k8s({"app": {"logo_dark_path": "/brand-dark.png", "logo_light_path": "/brand-light.png"}})
 
@@ -364,7 +352,6 @@ def test_render_secret_always_emits_manifest_required_keys():
     assert keys["K3S_KUBECONFIG_ENCRYPTION_KEY"] == ""
     assert keys["DATABASE_URL"] == ""
     assert keys["K3S_GPU_ADMISSION_TOKEN"] == ""
-    assert keys["K3S_PROVISIONING_TOKEN"] == ""
     assert keys["PROMETHEUS_PASSWORD"] == ""
     assert keys["BUILDER_SSH_PRIVATE_KEY"] == ""
 

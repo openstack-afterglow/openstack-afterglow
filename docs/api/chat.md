@@ -24,6 +24,26 @@ Afterglow 백엔드는 독자적인 AI 모델 실행 엔진, LiteLLM 라우팅, 
 
 이미지 Studio의 스타일 썸네일은 provider 옵션이 아니다. 제출 `prompt` 끝에 화면에 표시한 `스타일: …` 지시문을 붙이고, 스타일 식별자도 idempotency fingerprint에 포함한다. 오디오 Studio의 TTS는 선택 모델 capability의 `available_voices`/`available_formats`만 노출하고, 응답 오디오 Blob을 object URL로 재생·다운로드한다. STT는 capability `available_timestamp_granularities`에 `segment`가 있을 때만 `timestamp_granularities: ["segment"]`를 보낸다. 응답 `segments`는 시간순·비중첩·범위를 다시 검사한 뒤 구간 표와 TXT/SRT로 내보내며, 요청한 timing이 빠진 응답은 실패로 처리하고 구간을 추정하지 않는다. Timing을 지원하지 않는 모델은 TXT만 제공한다. 브라우저 CSP는 이 재생에 `media-src 'self' blob:`만 허용한다.
 
+## Lumen 서비스 세부 권한
+
+현재 Keystone 역할 ID·유효 할당·실제 inference graph로 계산한 세부 권한을 BFF와 native Lumen이 각각 검사합니다. 프로젝트 owner/admin, `member`, 표시용 역할 배열이나 `can_write`는 Lumen 사용 권한을 대신하지 않습니다. 권한 directory 조회 실패는 오래된 token 부모 역할로 대체하지 않습니다.
+
+| 세부 역할 | 액션 |
+|---|---|
+| `lumen-inventory_reader`, `lumen-history_reader` | 각각 모델/asset 등 비밀 없는 inventory와 본인 대화·실행·memory 이력 |
+| `lumen-chat_user`, `lumen-images_user`, `lumen-audio_user` | 각각 텍스트, 이미지, 오디오·realtime 사용; 서로 독립 |
+| `lumen-tools_user` | 도구·agent 실행·모델에 내장된 필수 검색 |
+| `lumen-assets_editor`, `lumen-agents_editor`, `lumen-mcp_editor`, `lumen-keys_editor` | 해당 리소스 생성·편집 및 키 발급 |
+| `lumen-history_editor` | 본인 대화·memory 관리/삭제 |
+| `lumen-resources_admin` | asset·agent·설정·키의 destructive 삭제/폐기 |
+
+Native `member`는 비읽기 service leaf의 기반 조건이며 `reader`는 읽기 leaf만 허용합니다. 텍스트 전용 권한으로 호환 endpoint의 이미지·오디오·도구 옵션을 사용할 수 없습니다. Native는 소유한 실행 종류에 맞춰 취소 권한을 확인하므로 image-only/audio-only 사용자의 취소에 chat 권한을 강요하지 않습니다. Provider/model/pricing/quota의 전역 관리자 API는 verified system-admin 전용입니다.
+
+API-key scope는 발급자의 현재 권한을 좁히는 ceiling입니다. 발급에는 keys editor와 요청 scope의 현재 권한이 필요하며, 기존 키의 사용·새 provider I/O에서도 현재 enabled owner/project·유효 역할을 재검증합니다. issuer 편집 권한만 회수해도 기존 사용 scope까지 자동 소멸하지는 않지만, 사용 leaf/실제 edge를 회수하면 해당 호출은 거부합니다. 다른 사용자/private content 접근은 별도 소유권 검사로 계속 차단합니다.
+
+동일 user/project의 token 갱신·권한 확인 pending/error 동안 Studio는 입력·이미 표시한 결과 Blob을 메모리에 유지하되 미리보기/다운로드·새 액션을 숨기거나 차단합니다. 현재 권한이 복구되면 같은 Blob을 다시 보여 줍니다. 확인 중 완료한 새 응답은 게시하지 않으며 같은 입력의 명시적 재요청은 기존 idempotency intent를 재사용합니다. 확정 leaf 회수와 user/project 전환은 해당 결과·요청·object URL을 폐기합니다.
+
+
 ---
 
 ## 인증 방식
@@ -200,7 +220,7 @@ Lumen은 외부 프로그램을 위한 OpenAI/Anthropic 호환 API를 제공한�
 
 ### 로컬 CLI 자동 설정
 
-설정 **API 키 → 연결 방법 → Codex + Claude Code 자동 설정**에서 대시보드가 제공하는 스크립트를 확인하고 복사한다. Codex CLI와 Claude Code는 먼저 설치해야 한다. 설치기는 바이너리를 설치하거나 provider API를 호출하지 않는다. 일반 Lumen API 키의 **전체 값**과 두 프로토콜에 맞는 활성 공개 모델 ID가 필요하다. 목록의 key prefix와 대시보드 로그인 토큰은 사용하지 않는다.
+설정 **API 키 → 연결 방법 → Codex + Claude Code 자동 설정**에서 대시보드가 제공하는 스크립트를 확인하고 복사한다. Codex CLI 0.160.0+와 Claude Code 2.1.257+를 먼저 설치해야 한다. 설치기는 바이너리를 설치하거나 추론을 호출하지 않으며, 일반 Lumen API 키의 **전체 값**(`models:read` 권한)으로 Codex base의 `GET /cli/models`만 읽는다. 목록의 key prefix와 대시보드 로그인 토큰은 사용하지 않는다. `/cli/models`가 없는 이전 Lumen(404)이면 업그레이드 안내와 함께 아무 파일도 바꾸지 않고 중단하므로 Lumen을 Afterglow보다 먼저 배포한다.
 
 아래는 주소 형식 예시다. 실제 명령은 현재 대시보드 origin과 discovery의 Codex Responses/Anthropic SDK base를 사용하며 배포 subpath를 보존한다. 비밀 키는 URL·명령 인자·복사 명령에 넣지 않고 실행 뒤 로컬 private prompt로 입력한다.
 
@@ -212,12 +232,15 @@ curl -fsSL 'https://dashboard.example/install/lumen.sh' | sh -s -- 'https://lume
 $env:LUMEN_CODEX_BASE_URL='https://lumen.example/v1'; $env:LUMEN_ANTHROPIC_BASE_URL='https://lumen.example'; irm 'https://dashboard.example/install/lumen.ps1' | iex
 ```
 
-- **다운로드 신뢰:** 실행 전에 주소와 스크립트 내용을 확인한다. Lumen bases는 HTTPS여야 하며 userinfo·query·fragment·control character를 허용하지 않는다. 대시보드 다운로드도 HTTPS이며 개발용 loopback HTTP preview만 예외다. 설치기는 endpoint의 인증·모델 활성 상태·provider credential을 검증하는 네트워크 요청을 대신하지 않는다.
+- **다운로드 신뢰:** 실행 전에 주소와 스크립트 내용을 확인한다. Lumen bases는 HTTPS여야 하며 userinfo·query·fragment·control character를 허용하지 않는다. 대시보드 다운로드도 HTTPS이며 개발용 loopback HTTP preview만 예외다. 목록 조회는 검증된 TLS로 한 번 수행하고 redirect를 따르지 않는다. 인증 실패·빈 목록·형식 오류는 정적 목록이나 수동 ID로 대체하지 않고 변경 없이 중단한다. 목록의 사용 가능 표시는 서버 구성 증거이며 provider의 실제 추론 응답을 검증하지 않는다.
+- **역할 선택:** 실제 provider 그룹별로 번호, 표시 이름·공개 ID, `lumen/<provider>/<model>` route ID, 알려진 context·입출력 단가, 지원 프로토콜(`messages`/`responses`)을 보여 준다. Codex Sol·Luna(Responses)와 Claude Fable·Opus·Sonnet·Haiku(Messages)를 각각 번호로 고르고 Claude 시작 역할(기본 `sonnet`)을 정한다. 같은 모델을 여러 역할에 쓸 수 있고, 같은 공개 ID가 여러 provider에 있어도 route ID로 구분되어 선택한 provider에서 실행·정산된다. 구독 프로토콜 미지원처럼 사용할 수 없는 행은 사유를 표시하고 선택을 거부한다. Lumen 0.6.6부터 custom OpenAI 호환 base 행은 native Responses 지원을 증명하지 못해 `messages`만 광고하므로 Claude 역할에서만 고를 수 있다. 역할명은 위치일 뿐 모델 크기·품질 주장이 아니다. Lumen의 cross-protocol adapter가 비-Claude 모델도 Claude Code에 연결하지만 Anthropic 공식 지원 범위는 아니다.
 - **macOS/Linux:** POSIX `sh`, Python **3.11+**의 `tomllib`, controlling terminal이 필요하다. pipe stdin이 아닌 `/dev/tty`에서 키를 echo 없이 받는다. 키는 `${XDG_CONFIG_HOME:-$HOME/.config}/lumen/key.sh`(0600), 전용 디렉터리는 0700이며 TOML과 일반 셸 프로필에는 평문 키를 넣지 않는다. `~/.bashrc`, 첫 기존 `.bash_profile`/`.bash_login`/`.profile`(없으면 `.profile`), `${ZDOTDIR:-$HOME}/.zshrc`의 한 marker block을 갱신한다. 기존 profile mode와 unrelated 설정을 유지한다. 안전하지 않은 소유권·권한·symlink/hardlink·잘못된 TOML·불완전한 marker는 변경 없이 거부한다. 지원되지 않는 dotfile 구성을 삭제하거나 강제로 덮어쓰지 않는다.
 - **CA:** POSIX는 읽을 수 있는 검증 가능한 시스템 PEM 번들을 사용한다. `LUMEN_CA_BUNDLE` > 사용자 `CODEX_CA_CERTIFICATE` > platform default 순이며 사용자 지정 번들은 Claude Code의 `NODE_EXTRA_CA_CERTS`에도 적용한다. 선택 경로가 symlink여도 read-only 실제 PEM·소유권·권한을 검증하고 인증서에 chmod/write하지 않는다. 새 configured shell의 inherited CA와 기존 Node 공유 의도를 보존해 rerun 때 trust 설정·backup이 불필요하게 바뀌지 않는다. TLS 검증을 끄지 않는다. Windows도 명시적인 `LUMEN_CA_BUNDLE` > 기존 `CODEX_CA_CERTIFICATE`를 검증·선택하고 지정이 없으면 OS trust를 사용한다. Windows의 Claude trust 환경은 변경하지 않는다.
 - **Windows:** Windows PowerShell 5.1 또는 PowerShell 7에서 `Read-Host -AsSecureString`으로 키를 받는다. `%LOCALAPPDATA%\Lumen\cli\api-key.dpapi`는 **CurrentUser DPAPI**와 사용자 전용 ACL로 보호하며 plaintext fallback은 없다. `$PROFILE.CurrentUserAllHosts`가 같은 Windows SID에서만 키를 복호화한다. edition별 profile 위치가 다르므로 사용하는 edition마다 실행한다. `-NoProfile` 및 다른 셸에서는 자동 로딩하지 않는다. execution policy는 자동 변경하지 않으며 조직의 허용·서명 정책을 따른다. TOML은 valid UTF-8, profile은 UTF-8 또는 BOM-marked UTF-16만 허용한다. Inline/dotted `model_providers` 등 안전하게 갱신할 수 없는 TOML은 변경 없이 거부하고 수동 설정을 안내한다.
-- **기존 설정:** `${CODEX_HOME:-$HOME/.codex}/config.toml`의 Lumen provider와 셸 profile marker를 갱신하고, 현재 Codex 0.134.0+의 native profile 파일 `lumen-cli.config.toml`에 CLI 전용 provider/model을 설정한다. 기본 `model`과 `model_provider` 및 기존 profile의 무관한 설정은 보존한다. 명시적으로 동의한 경우에만 top-level `model`을 바꾸고 provider는 여전히 보존한다. 변경 파일은 private POSIX `.lumen-backup-*` 또는 Windows timestamped `.bak`로 백업하고 같은 내용의 재실행은 block/backup을 중복 생성하지 않는다. 키 파일의 평문 백업은 만들지 않는다.
-- **새 터미널:** 선택한 Responses ID는 `LUMEN_CODEX_MODEL`, Anthropic ID는 `LUMEN_MODEL`과 `ANTHROPIC_MODEL`/세 default model 환경 변수로 설정한다. 키는 `LUMEN_API_KEY`와 `ANTHROPIC_AUTH_TOKEN` process 환경에 들어가므로 이후 env dump·trace·자식 프로세스에 주의한다. 전체 키를 프로필/TOML/명령 history에 붙여 넣지 않는다. 설치기가 추가한 terminal-only `codex` 함수는 `--profile lumen-cli`로 Lumen provider와 선택 모델을 자동 지정하므로 `codex`, `claude`만 실행한다. Codex의 `-m` 또는 `-c`로 명시적인 override는 가능하다. 데스크톱 앱과 `command codex`(PowerShell은 실제 binary 직접 실행)는 보존된 TOML 기본값을 사용한다.
+- **기존 설정:** `${CODEX_HOME:-$HOME/.codex}/config.toml`은 데스크톱용 `[model_providers.lumen]`만 갱신하고 기존 header(예: `X-Lumen-Provider`)와 기본 `model`/`model_provider`를 보존한다. 명시적으로 동의한 경우에만 top-level `model`을 Sol 공개 ID로 바꾼다. CLI 역할은 native profile `lumen-cli`(Sol)·`lumen-sol`·`lumen-luna.config.toml`에 `model_provider = "lumen-cli"`, 선택 route ID, `model_catalog_json`을 쓴다. Profile은 `config.toml` 위에 deep merge되므로 설치기 소유 `[model_providers.lumen-cli]` table을 따로 두어 데스크톱 header가 CLI 역할 요청에 상속되지 않게 한다. `lumen-models.json`은 두 역할의 표시 이름·context·입력 형식과 Codex 0.160의 기본 instruction(rust-v0.160.0 `models-manager/prompt.md`, SHA-256 검증)만 담는다. 변경 파일은 private POSIX `.lumen-backup-*` 또는 Windows timestamped `.bak`로 백업하고 같은 내용의 재실행은 block/backup을 중복 생성하지 않는다. 키 파일의 평문 백업은 만들지 않는다.
+- **새 터미널:** `codex`는 Sol, `codex --profile lumen-luna`는 Luna로 실행되고 `/model`에는 두 역할의 provider/model 이름이 표시된다. Terminal-only `codex` 함수는 Codex 0.160 root parser를 따라 세션 명령(대화·`exec`·`review`·`resume`·`fork` 등)에만 `--strict-config`와 `--profile lumen-cli`를 붙이고, `debug prompt-input`에는 profile만, `login`·`mcp`·`features`·`completion` 같은 관리 명령에는 아무것도 붙이지 않는다. 사용자가 준 `-p/--profile`, `--strict-config`, `-m`, `-c`가 우선하며 `command codex`(PowerShell은 실제 binary 직접 실행)는 데스크톱 기본값을 그대로 쓴다. Claude Code는 `ANTHROPIC_DEFAULT_{FABLE,OPUS,SONNET,HAIKU}_MODEL`에 각 route ID, `_NAME`/`_DESCRIPTION`에 역할·provider·모델 이름, `ANTHROPIC_MODEL`에 시작 역할 alias를 받으며 `/model`에 네 역할이 표시된다. 키는 `LUMEN_API_KEY`와 `ANTHROPIC_AUTH_TOKEN` process 환경에 들어가므로 이후 env dump·trace·자식 프로세스에 주의한다. 전체 키를 프로필/TOML/명령 history에 붙여 넣지 않는다.
+- **Claude Code 모델 인식:** route ID는 Claude Code 내장 catalog에 없으므로 2.1.292는 `isn't described by this version's model catalog`와 `[claude-code:unrecognized_model]`을 stderr에 표시하고 auto-compact 창을 200k로 가정한다. 같은 버전은 이 ID에도 adaptive thinking·effort 요청을 그대로 보냈다. 실제 창이 다르면 `CLAUDE_CODE_MAX_CONTEXT_TOKENS`를, 실제 Claude 모델이면 사용자 설정 `modelPicker` 행의 `behavesAs`를 직접 지정할 수 있다. 설치기는 Claude Code가 관리하는 `settings.json`을 쓰지 않으며, gateway에서 효과가 없는 `_SUPPORTED_CAPABILITIES`도 내보내지 않는다. `/v1/messages/count_tokens`는 Anthropic API-key route에서만 upstream 값을 전달하고 그 밖의 route는 추정치 없이 `501 token_count_unavailable`이다.
+- **Provider 선택자:** 셸 환경 또는 Claude 사용자 `settings.json`의 `env.ANTHROPIC_CUSTOM_HEADERS`에 `X-Lumen-Provider` header가 있으면 다른 provider로 지정된 역할을 Lumen이 fail-closed로 거부하므로 키 입력 전에 설치를 중단한다. 다른 custom header는 허용한다. Codex 데스크톱의 selector header는 위 provider 분리로 그대로 보존된다.
 - **Claude auto mode:** Lumen 0.6.4부터 지원하지 않는 `safeguards` 요청을 필드 이름이 포함된 Anthropic 400으로 반환한다. Claude Code는 자동 재시도 후 자체 classifier로 검사하므로 별도의 `CLAUDE_CODE_AUTO_MODE_SERVER` 설정을 추가할 필요가 없다. 자체 classifier 요청도 과금 대상이다. Claude Code 2.1.292는 classifier에 `claude-sonnet-5`를 별도로 요청하므로 이 모델도 Lumen에서 활성화·가격·키 권한을 갖춰야 한다. 아직 구버전 Lumen인 배포에서는 운영자 업데이트가 필요하다.
 
 ### Codex CLI (Responses)
@@ -451,7 +474,6 @@ Discovery 응답은 generation, provider, token/project와 화면 수명으로 �
 조회 후보의 **비활성으로 저장**도 단방향 텍스트 단가를 허용한다. **가격 확인 후 등록·활성화**는 기존대로 텍스트 모델의 입력·출력 단가를 모두 명시해야 하며, 미디어 후보의 실행을 discovery metadata만으로 허용하지 않는다.
 
 입력·출력 가격 아래에는 선택 항목인 **프롬프트 캐시 단가**(캐시 읽기, 캐시 쓰기 5분, 캐시 쓰기 1시간, USD / 1M tokens)가 있다. 세 항목은 서로 및 텍스트 단가와 독립이다. 음수가 아닌 일반 소수(`^\d+(\.\d+)?$`)만 받고, 오류는 제출 전에 `Field` error로 표시한다. 입력한 문자열은 trim만 하고 float로 변환하지 않은 채 전달하며, 정밀도 한도는 Lumen이 검증한다. 등록 시 비운 캐시 항목은 보내지 않는다. 가격 수정은 prefill과 달라진 key만 보내고 기존 값을 비우면 `null`로 해제하며, 손대지 않은 항목은 보내지도 검증하지도 않는다. 바뀐 항목이 없으면 요청 없이 닫는다. Lumen이 저장된 캐시 0을 `0E-10` 같은 지수 표기로 돌려주면 목록과 prefill은 `0`으로 표시한다. 모델 목록은 설정된 캐시 단가를 표시하고, 설정되지 않은 항목은 캐시 token이 단가 설정 전까지 0 USD로 청구된다고 표시한다. 응답에 cache key 자체가 없으면(cache 단가 이전 Lumen) 0 USD 안내 대신 미지원으로 표시하고 가격 수정의 cache 입력을 숨기며, 불러온 모델이 모두 그런 응답이면 등록 form의 cache 입력도 숨긴다. models.dev 가져오기는 여전히 캐시 단가를 적용하지 않고 가격 수정에서 설정하도록 안내한다. Afterglow BFF는 모델 schema 없이 요청·응답 byte를 그대로 전달한다(`backend/tests/contracts/test_lumen_proxy.py`). 배포 순서는 Afterglow frontend → cache 단가를 지원하는 Lumen이다. 새 Lumen은 `usage.updated`에 `cache_read_input_tokens`, `cache_creation_5m_input_tokens`, `cache_creation_1h_input_tokens`, `advisor_cache_read_tokens`, `advisor_cache_creation_5m_tokens`, `advisor_cache_creation_1h_tokens` component를 보내며, 이 kind를 모르는 이전 frontend의 strict parser(`frontend/src/lib/api/chatContracts.ts`)는 그 event에서 멈춰 캐시 토큰이 있는 web run을 완료하지 못한다. 새 frontend는 이전 Lumen에서도 동작한다: 모델이 하나 이상 로드되면 cache key가 없는 응답을 미지원으로 표시하고 cache key를 보내지 않는다. 모델이 하나도 없으면 Lumen 버전을 구분할 수 없어 등록 form이 cache 입력을 유지하므로, 이전 Lumen에서 cache 단가를 채워 첫 모델을 등록하면 Lumen이 422로 거절한다.
-
 미설정 text cache의 기존 과금 규칙은 `model_kind=text`에 해당한다. Image/TTS/STT/realtime은 적용하는 text 방향의 실행 가격만 필요하다. 종류별 discovery/등록/목록 필터와 전용 가격 modal에서 image/audio `input_per_million`, `cache_read_per_million`, `output_per_million`을 `media_pricing.token_rates`에 독립 저장하며 빈 값은 explicit 0과 다르다. Text cache 열은 그대로 보존하고 JSON의 바뀐 leaf만 merge해 unknown metadata·다른 기준 가격·시간 alias를 지우지 않는다. Media token 과금 중 사용한 cache rate가 없거나 usage split이 불명확하면 0/다른 가격으로 대체하지 않고 Lumen이 정산을 미확정으로 남긴다.
 
 과금 기준은 image unit, audio duration/characters, realtime session, 실제 provider tokens를 분리한다. `audio_{input|output}_per_{second|minute|hour}`, `realtime_{input|output}_per_{second|minute|hour}`, `realtime_session_per_{second|minute|hour}`는 선택 단위를 정확한 Decimal 문자열로 보존하며 충돌 alias는 Lumen이 거부한다. Session은 최대 연결 시간만큼 예약하고 실제 경과 시간을 분 올림 없이 청구하며 PCM 합계를 더하지 않는다. Tokens의 양수 `reservation_usd`는 요청/세션 전체의 자금 상한으로 사용 단가가 아니다. 실제 modality 상세가 없으면 추정하지 않으며 OpenAI Images output split 누락은 paid unknown hold, OpenAI binary TTS/whisper-1 token basis는 I/O 전 거부한다. 기존 media omission은 legacy unit/duration이다. 가격 설정은 새로운 실행 protocol을 추가하지 않는다.

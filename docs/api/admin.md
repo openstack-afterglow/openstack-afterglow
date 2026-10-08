@@ -409,6 +409,8 @@ Zun 서비스 활성화 시에만 사용 가능합니다.
 | 메서드 | 경로 | 설명 | 파라미터/본문 |
 |--------|------|------|---------------|
 | `GET` | `/api/v1/admin/roles` | 실제 역할과 직접·간접 상속 목록 | `refresh=true`로 캐시 우회 |
+| `GET` | `/api/v1/admin/roles/presets` | 변경 없는 프로젝트/서비스 역할·상속 프리셋 미리보기 | - |
+| `POST` | `/api/v1/admin/roles/presets/apply` | 기존 ID를 재사용하는 명시적 멱등 프리셋 적용 | 시스템 관리자 확인 뒤 호출 |
 | `POST` | `/api/v1/admin/roles` | 역할 생성 (`201`) | `name`, 선택 `description`, `domain_id` (body) |
 | `PATCH` | `/api/v1/admin/roles/{role_id}` | 이름·설명 편집 | 변경할 `name` 또는 `description` (body); 도메인은 변경 불가 |
 | `DELETE` | `/api/v1/admin/roles/{role_id}` | 할당·연결이 없는 역할 삭제 | - |
@@ -425,10 +427,15 @@ Zun 서비스 활성화 시에만 사용 가능합니다.
 | `GET` | `/api/v1/admin/identity/security-policy` | 보안 정책(비밀번호·잠금 등) 조회 | - |
 | `GET` | `/api/v1/admin/identity/summary` | identity 도메인 요약(사용자·프로젝트·역할 수) | - |
 
-역할 관리 화면과 모든 역할 CRUD·상속 API는 서버가 검증한 시스템 관리자에게만 열립니다. 프로젝트 `admin` 이름이나 Afterglow DB의 프로젝트 매니저만으로 이 경계를 통과할 수 없습니다. 일반 사용자 identity/permissions 응답에서는 `admin`·`manager`와 이들을 상속하는 사용자 정의 역할 이름을 숨기며, 실제 쓰기 권한은 별도 `can_write`로 전달합니다. 프로젝트 초대는 `member`·`reader`만 선택할 수 있습니다.
+역할 CRUD·상속·프리셋 적용은 서버가 검증한 시스템 관리자에게만 열립니다. 프로젝트 `admin` 이름이나 기존 DB manager 기록은 권한이 아닙니다. 프로젝트 owner/admin은 별도의 [프로젝트 API](projects.md)에서 안전한 현재 역할 ID로 멤버 권한을 관리합니다. 일반 사용자 identity 응답은 표시용 이름과 OpenStack `can_write`를 분리하고, 독립 서비스는 현재 `service_permissions`로 액션을 판단합니다. 초대는 `project_member`·`project_reader`만 선택할 수 있습니다.
 
 목록 항목은 `id`, `name`, `description`, `domain_id`, `protected`, `system_only`, `implied_role_ids`(직접 하위), `inherited_role_ids`(전체 하위), `parent_role_ids`(직접 상위)를 반환합니다. `A → B`는 A 보유자가 B 권한을 얻는다는 뜻입니다. 화면의 `admin → manager → member → reader`는 실제 Keystone에 저장된 연결을 표시하며, 목록 조회로 기본 계층을 자동 생성하지 않습니다. 이름·ID·상속 수 정렬, 이름/ID/설명 검색, 다중 부모·공유 역할을 표시하는 상속 트리를 제공합니다.
 
+새 역할 및 이름 변경은 `area_grade` 형식입니다. 영역과 등급을 각각 소문자로 바꾸고 연속 공백을 `-`로 치환합니다(경계 공백도 동일). 예: `My Area_Read Only` → `my-area_read-only`. UI는 영역/등급 입력과 전송될 정확한 이름을 미리 보여줍니다. native core 역할과 `project_owner`는 이름 변경·삭제를 보호합니다.
+
+프리셋 미리보기는 읽기 전용입니다. 적용은 기존 `project_owner/project_admin/project_member/project_reader`와 native `member/reader` ID를 보존하고, 빠진 서비스 부모·세부 역할·직접 inference edge만 추가합니다. 재실행은 이미 있는 역할/edge를 다시 만들지 않습니다. 실제 그래프가 불명확하거나 안전 경계를 넘으면 적용하지 않습니다. 중간 실패는 `created_roles`, `created_implications`와 원인을 반환하므로 현재 목록을 확인한 뒤 같은 프리셋을 재실행합니다. 계층은 런타임의 이름 기반 가상 확장이 아닙니다.
+
+프리셋의 서비스 부모는 `<service>_admin/editor/user/reader`, 세부 권한은 `<service>-<area>_<grade>`입니다. editor는 생성·편집만, user는 허용된 사용·다운로드만, reader는 비밀 없는 메타데이터만 허용합니다. destructive/security 액션은 별도 admin leaf입니다. 프로젝트 관리자나 서비스 admin으로 시스템 역할·전역 Drover 관리자 API·Palimpsest builder/GC 권한을 얻지 않습니다. 일반 역할 assign/assign-group API에서 소유자 계층을 우회할 수 없으며 소유권은 프로젝트 전용 워크플로를 사용합니다.
 서버는 최신 그래프와 endpoint별 Redis lease 아래 변경을 검사합니다. 자기 상속·직접/간접 순환·기본 역할의 역방향 승격·사용자 정의 역할의 `admin`/`manager` 상속은 `409`입니다. 도메인 역할은 같은 도메인 또는 전역 하위 역할만 상속할 수 있고, 전역 역할은 전역 하위 역할만 상속할 수 있습니다. 기본 네 역할은 이름 변경·삭제가 금지되며 설명과 안전한 하위 연결만 편집합니다. 역할 삭제는 사용자·그룹 할당이나 직접 상위/하위 연결이 있으면 `409`, 대상이 없으면 `404`, 그래프·잠금·필수 세션 회수를 확인할 수 없으면 `503`입니다. Keystone 변경 뒤 세션 회수 실패도 `503`이므로 재시도 전에 목록을 새로 확인합니다.
 
 권한을 바꾸는 이름·연결 수정은 직접·그룹·상속 할당의 영향받은 사용자 세션을 회수하고 역할 cache를 무효화합니다. HTTP 요청 취소 이후에도 이미 진행된 변경과 필수 세션 회수를 끝내며 감사 로그를 남깁니다. 목록 조회 실패를 빈 정상 목록으로 바꾸지 않으며, UI는 이전 행을 남기되 최신 조회가 성공할 때까지 변경을 비활성화합니다. Lease는 Afterglow 간 변경을 직렬화할 뿐 Keystone CLI 등 외부 변경을 잠그는 분산 트랜잭션은 아닙니다.

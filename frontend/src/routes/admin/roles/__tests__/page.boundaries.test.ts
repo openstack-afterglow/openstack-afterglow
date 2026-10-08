@@ -14,8 +14,10 @@ vi.mock('$lib/stores/auth', () => ({
 }));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({ createAutoRefresh: () => ({ active: false, intervalSeconds: 60, intervalOptions: [30, 60] }) }));
 
+vi.mock('$lib/stores/confirm.svelte', () => ({ confirmDialog: vi.fn() }));
 import { auth, authReady, projectSwitching } from '$lib/stores/auth';
 import Page from '../+page.svelte';
+import { confirmDialog } from '$lib/stores/confirm.svelte';
 
 const admin: AuthState = { token: 'admin-token', refreshToken: null, accessExpiresAt: null, userId: 'admin', username: 'admin',
 	projectId: 'project-a', projectName: 'A', availableProjects: [], roles: ['admin'], isSystemAdmin: true, federated: false };
@@ -98,7 +100,8 @@ describe('role dashboard authorization and stale responses', () => {
 		render(Page);
 		await waitFor(() => expect((screen.getByRole('button', { name: '역할 만들기' }) as HTMLButtonElement).disabled).toBe(false));
 		await fireEvent.click(screen.getByRole('button', { name: '역할 만들기' }));
-		await fireEvent.input(screen.getByRole('textbox', { name: /^이름/ }), { target: { value: 'new-role' } });
+		await fireEvent.input(screen.getByRole('textbox', { name: /^영역/ }), { target: { value: 'new' } });
+		await fireEvent.input(screen.getByRole('textbox', { name: /^등급/ }), { target: { value: 'role' } });
 		await fireEvent.click(screen.getByRole('button', { name: '만들기' }));
 		auth.set({ ...admin, token: 'other-admin-token', userId: 'other-admin' });
 		await tick();
@@ -124,5 +127,39 @@ describe('role dashboard authorization and stale responses', () => {
 		expect((detail.getByRole('checkbox', { name: 'reader 직접 상속' }) as HTMLInputElement).checked).toBe(false);
 		expect(detail.getByText('간접 상속됨 · 직접 연결은 없음')).toBeTruthy();
 		expect(detail.getByRole('heading', { name: '간접 상속 (1) · 읽기 전용' })).toBeTruthy();
+	});
+
+	it('preserves underscore roles and applies presets only after explicit confirmation, then reads the actual DAG', async () => {
+		const confirmed = Promise.withResolvers<boolean>();
+		vi.mocked(confirmDialog).mockReturnValueOnce(confirmed.promise);
+		const existing = role('owner-id', { name: 'project_owner' });
+		const fresh = role('chat-id', { name: 'lumen-chat_user' });
+		let catalogs = 0;
+		mocks.get.mockImplementation((path: string) => Promise.resolve(path.endsWith('/presets') ? {
+			roles: [{ name: fresh.name, description: 'chat', area: 'lumen-chat', grade: 'user', parent: 'lumen_user' }], project_roles: [], implications: [{ prior: 'lumen_user', implied: fresh.name }]
+		} : ++catalogs === 1 ? [existing] : [existing, fresh]));
+		mocks.post.mockResolvedValue({ created_roles: [fresh.name], created_implications: [], roles: [existing, fresh] });
+		render(Page);
+		await screen.findAllByRole('button', { name: 'project_owner 역할 상세' });
+		await fireEvent.click(screen.getByRole('button', { name: '역할 프리셋 미리보기' }));
+		const preview = await screen.findByRole('dialog', { name: '역할 프리셋 미리보기' });
+		await fireEvent.click(within(preview).getByRole('button', { name: '프리셋 적용' }));
+		expect(mocks.post).not.toHaveBeenCalled();
+		expect(confirmDialog).toHaveBeenCalledTimes(1);
+		confirmed.resolve(true);
+		await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/v1/admin/roles/presets/apply', {}, 'admin-token', 'project-a'));
+		await waitFor(() => expect(catalogs).toBe(2));
+		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+		expect(document.body.textContent).toContain('project_owner');
+		expect(document.body.textContent).toContain('lumen-chat_user');
+		vi.mocked(confirmDialog).mockResolvedValueOnce(true);
+		mocks.post.mockResolvedValueOnce({ created_roles: [], created_implications: [], roles: [existing, fresh] });
+		await fireEvent.click(screen.getByRole('button', { name: '역할 프리셋 미리보기' }));
+		await fireEvent.click(within(await screen.findByRole('dialog', { name: '역할 프리셋 미리보기' })).getByRole('button', { name: '프리셋 적용' }));
+		await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(2));
+		await waitFor(() => expect(catalogs).toBe(3));
+		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+		expect(document.body.textContent).toContain('project_owner');
+		expect(document.body.textContent).toContain('lumen-chat_user');
 	});
 });

@@ -2,8 +2,10 @@
 	import { t } from '$lib/i18n/ns/drover';
 	import { t as tc } from '$lib/i18n/ns/common';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import Alert from '$lib/components/ui/Alert.svelte';
 	import { auth } from '$lib/stores/auth';
-	import { api } from '$lib/api/client';
+	import { api, ApiError } from '$lib/api/client';
+	import { k3sPermissions } from '$lib/stores/k3sPermissions';
 	import K3sClusterHeader from './K3sClusterHeader.svelte';
 	import K3sDeleteProgress from './K3sDeleteProgress.svelte';
 	import K3sClusterInfoCard from './K3sClusterInfoCard.svelte';
@@ -12,6 +14,7 @@
 	import K3sNodegroupsSection from './K3sNodegroupsSection.svelte';
 	import K3sClusterNetworksCard from './K3sClusterNetworksCard.svelte';
 	import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
+	import K3sClusterAuthorizationNotice from './K3sClusterAuthorizationNotice.svelte';
 
 	const s = useK3sClusterDetailController();
 
@@ -20,30 +23,40 @@
 
 	let disabling = $state(false);
 	let enabling = $state(false);
+	let stampedeError = $state('');
+
+	// Drover refuses Stampede for clusters without current resource authority (409); show why.
+	function stampedeFailure(error: unknown): string {
+		return t('overview.main.stampedeFailed', {
+			detail: error instanceof ApiError ? error.message : t('detail.serverError'),
+		});
+	}
 
 	async function disableStampede() {
-		if (!s.cluster?.id || disabling) return;
+		if (!$k3sPermissions.editClusters || !s.cluster?.id || disabling) return;
 		disabling = true;
+		stampedeError = '';
 		const token = $auth.token ?? undefined;
 		const projectId = $auth.projectId ?? undefined;
 		try {
 			await api.post(`/api/v1/k3s/clusters/${s.cluster.id}/stampede/disable`, {}, token, projectId);
-		} catch {
-			// best-effort
+		} catch (error) {
+			stampedeError = stampedeFailure(error);
 		} finally {
 			disabling = false;
 		}
 	}
 
 	async function enableStampede() {
-		if (!s.cluster?.id || enabling) return;
+		if (!$k3sPermissions.editClusters || !s.cluster?.id || enabling) return;
 		enabling = true;
+		stampedeError = '';
 		const token = $auth.token ?? undefined;
 		const projectId = $auth.projectId ?? undefined;
 		try {
 			await api.post(`/api/v1/k3s/clusters/${s.cluster.id}/stampede/enable`, {}, token, projectId);
-		} catch {
-			// best-effort
+		} catch (error) {
+			stampedeError = stampedeFailure(error);
 		} finally {
 			enabling = false;
 		}
@@ -52,6 +65,7 @@
 
 <K3sClusterHeader />
 {#if s.deleteProgress}<K3sDeleteProgress />{/if}
+<K3sClusterAuthorizationNotice />
 
 {#if isStampede}
 	<div class="mb-3 flex items-center justify-between bg-surface-selected/20 border border-action-warm/40 rounded-lg px-3 py-2.5">
@@ -61,7 +75,7 @@
 		</div>
 		<button
 			onclick={disableStampede}
-			disabled={disabling}
+			disabled={!$k3sPermissions.editClusters || disabling}
 			class="text-xs text-warm-text/70 hover:text-red-400 disabled:opacity-50 transition-colors px-2 py-1 rounded"
 		>{#if disabling}<ActivityIndicator size="xs" label={tc('state.processing')} />{:else}{t('overview.main.disable')}{/if}</button>
 	</div>
@@ -73,10 +87,13 @@
 		</div>
 		<button
 			onclick={enableStampede}
-			disabled={enabling}
+			disabled={!$k3sPermissions.editClusters || enabling}
 			class="text-xs text-ink-2 hover:text-warm-text-hover disabled:opacity-50 transition-colors px-2 py-1 rounded border border-line-2 hover:border-action-warm"
 		>{#if enabling}<ActivityIndicator size="xs" label={tc('state.processing')} />{:else}{t('overview.main.enable')}{/if}</button>
 	</div>
+{/if}
+{#if stampedeError}
+	<Alert tone="danger" class="mb-3">{stampedeError}</Alert>
 {/if}
 
 <div class="grid grid-cols-1 @3xl/panel:grid-cols-2 gap-3 mb-4">

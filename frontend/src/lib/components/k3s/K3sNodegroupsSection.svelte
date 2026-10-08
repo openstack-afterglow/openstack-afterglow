@@ -4,6 +4,7 @@
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
+	import { k3sPermissions } from '$lib/stores/k3sPermissions';
 	import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
 	import K3sNodegroupCard from '$lib/components/dashboard/drover/K3sNodegroupCard.svelte';
 	import K3sNodegroupCreateModal from '$lib/components/dashboard/drover/K3sNodegroupCreateModal.svelte';
@@ -46,7 +47,7 @@
 	});
 
 	async function confirmDelete() {
-		if (!deleteTarget) return;
+		if (!$k3sPermissions.administerClusters || !deleteTarget) return;
 		deleting = true;
 		deleteError = '';
 		try {
@@ -66,6 +67,7 @@
 		<h3 class="text-xs text-ink-2 uppercase tracking-wide">{t('overview.nodegroups.title')}</h3>
 		<button
 			onclick={() => { showCreate = true; }}
+			disabled={!$k3sPermissions.editClusters}
 			class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
 		>{t('overview.nodegroups.add')}</button>
 	</div>
@@ -87,7 +89,7 @@
 	{/if}
 </div>
 
-{#if editTarget}
+{#if editTarget && $k3sPermissions.editClusters}
 	<K3sNodegroupEditModal
 		clusterId={clusterId}
 		nodegroup={editTarget}
@@ -98,7 +100,7 @@
 	/>
 {/if}
 
-{#if showCreate}
+{#if showCreate && $k3sPermissions.editClusters}
 	<K3sNodegroupCreateModal
 		{clusterId}
 		{token}
@@ -108,7 +110,7 @@
 	/>
 {/if}
 
-{#if deleteTarget}
+{#if deleteTarget && $k3sPermissions.administerClusters}
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
@@ -132,7 +134,7 @@
 				<button onclick={() => (deleteTarget = null)} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0">{t('overview.nodegroups.cancel')}</button>
 				<button
 					onclick={confirmDelete}
-					disabled={deleting}
+					disabled={!$k3sPermissions.administerClusters || deleting}
 					class="px-4 py-2 bg-red-700 hover:bg-red-600 disabled:bg-surface-selected text-ink-0 text-sm font-medium rounded-lg"
 				>{#if deleting}<ActivityIndicator size="xs" label={t('overview.nodegroups.deleting')} />{:else}{t('overview.nodegroups.delete')}{/if}</button>
 			</div>

@@ -166,6 +166,32 @@ changing this repository's release-promotion pins or using a custom playbook.
 Keep fresh operator authentication, restorable datastore backups and full-stock
 storage/availability gates separate from operator-path preparation.
 
+A recovery gate requires an explicit census and quiescence evidence for every
+old writer (including controllers and separately deployed batch workers), not
+only named API and worker containers. Validate the matching logical dumps by
+actually importing them into isolated, disposable instances with the source
+database major/version, no production network, credentials, sockets or mounts,
+and comparing schema/data counts. `gzip -t` and `pg_restore --list` establish
+archive integrity only. MariaDB `--databases` dumps contain `CREATE DATABASE`
+and `USE`; do not import them into a different scratch schema on production.
+Recovery also needs matching keys, policy/configuration and plugin/image
+material; a file-presence receipt alone does not establish those dependencies.
+
+The 2026-10-06 Afterglow1.30.2/Lumen0.6.3 cutover records six API/worker stops,
+not a complete writer census or a pre-cutover import receipt. Later isolated
+restoration and current readiness cannot prove historical writer quiescence
+or repair a skipped precheck. Keep these gaps explicit in
+`openspec/changes/release-ecosystem-20261002/tasks.md`; do not mark the full
+deployment gate complete or restart a newer concurrent rollout to match an
+older session's expected image pins.
+
+The historical stopped-dump rehearsal on 2026-10-07 passed actual imports into
+network-none, tmpfs-only MariaDB10.11.19 and PostgreSQL16.14 instances: 58 SQL
+tables/5,101 rows (21 migration records) and 4 PostgreSQL tables/1,938 rows
+matched the dump, with both owned containers removed. This is post-cutover
+logical-restoration evidence only, not proof of pre-cutover quiescence or a
+full recovery with matching keys, configuration and plugins.
+
 From `/etc/kolla`, use the ordinary Kolla command line:
 
 ```bash

@@ -1,14 +1,19 @@
 <script lang="ts">
 	import { onDestroy, untrack } from 'svelte';
-	import { auth } from '$lib/stores/auth';
+	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
 	import { imageStudioApi, imageModelReadiness, type ImageModel, type ImageRun, type ImageApiScope, type ImageCapabilities } from '$lib/api/imageStudio';
 	import { isChatImageMime } from '$lib/api/chatAttachments';
 	import { ApiError } from '$lib/api/client';
 	import { ActivityIndicator, Alert, Button, Field, PageShell, SelectInput, TextareaInput } from '$lib/components/ui';
 	import { IMAGE_STUDIO_STYLES, composeImagePrompt, imageRequestAspectRatio, type ImageStudioStyleId } from './imageStudioStyles';
 	import { t } from '$lib/i18n/ns/chat-studio';
+	import { serviceCapabilities, serviceDenials } from '$lib/stores/servicePermissions';
+	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
 
-	const scope = $derived($auth.token && $auth.projectId ? { token: $auth.token, projectId: $auth.projectId } : null);
+	// The actor survives token/permission refresh; each action checks its own leaf.
+	const scope = $derived($authReady && !$projectSwitching && $auth.token && $auth.projectId && $auth.userId ? { token: $auth.token, projectId: $auth.projectId } : null);
+	const imagesAllowed = $derived(Boolean(scope) && $serviceCapabilities('lumen-images_user'));
+	const assetsAllowed = $derived(Boolean(scope) && $serviceCapabilities('lumen-assets_editor'));
 	const storageKey = $derived(`afterglow:image-studio:${$auth.userId ?? ''}:${$auth.projectId ?? ''}`);
 	let models = $state<ImageModel[]>([]);
 	let modelId = $state('');
@@ -68,7 +73,7 @@
 	const maxCount = $derived(Math.min(capabilities?.max_image_count ?? 1, 10));
 	const variantReady = $derived(Boolean(variants.some((variant) => variant.size === size && variant.quality === quality) && Number(count) >= 1 && Number(count) <= maxCount));
 	const requestFingerprint = $derived(JSON.stringify({ project: storageKey, modelId, prompt: composedPrompt, style: styleId, size, quality, count, inputAssetId }));
-	const canSubmit = $derived(Boolean(scope) && !readiness && !modelsLoading && !capabilitiesLoading && variantReady && !busy && Boolean(composedPrompt) && (!hasInput || Boolean(inputAssetId)));
+	const canSubmit = $derived(imagesAllowed && !readiness && !modelsLoading && !capabilitiesLoading && variantReady && !busy && Boolean(composedPrompt) && (!hasInput || Boolean(inputAssetId)));
 	const developingRatio = $derived(imageRequestAspectRatio(runContext?.size) ?? '1 / 1');
 	$effect(() => {
 		const active = runActive;
@@ -86,23 +91,28 @@
 			if (pendingIntent && pendingIntent.fingerprint !== fingerprint) pendingIntent = null;
 		});
 	});
+	function canPublish(requestScope: ImageApiScope): boolean {
+		return imagesAllowed && activeScopeKey === storageKey && requestScope.projectId === scope?.projectId;
+	}
 	function selectModel(event: Event) {
+		if (!imagesAllowed) return;
 		modelId = (event.currentTarget as HTMLSelectElement).value;
 		count = '1';
 	}
 	async function loadCapabilities(model: ImageModel, requestScope: ImageApiScope, generation: number) {
+		if (!canPublish(requestScope)) return;
 		capabilitiesLoading = true;
 		capabilitiesError = '';
 		try {
 			const loaded = await imageStudioApi.capabilities(model.id, requestScope);
-			if (generation !== capabilityRequest) return;
+			if (generation !== capabilityRequest || !canPublish(requestScope)) return;
 			capabilities = loaded;
 			const first = loaded.available_image_variants?.[0]?.split(':');
 			size = first?.[0] ?? '';
 			quality = first?.[1] ?? '';
 			count = '1';
 		} catch (cause) {
-			if (generation === capabilityRequest) capabilitiesError = message(cause);
+			if (generation === capabilityRequest && canPublish(requestScope)) capabilitiesError = message(cause);
 		} finally {
 			if (generation === capabilityRequest) capabilitiesLoading = false;
 		}
@@ -111,8 +121,10 @@
 		const selected = chosenModel;
 		const key = storageKey;
 		const authenticated = Boolean(scope);
+		const allowed = imagesAllowed;
 		const capabilityKey = selected && authenticated ? `${key}:${selected.id}` : '';
-		if (capabilityKey === activeCapabilityKey) return;
+		if (!allowed) return;
+		if (capabilityKey === activeCapabilityKey && untrack(() => Boolean(capabilities || capabilitiesLoading))) return;
 		activeCapabilityKey = capabilityKey;
 		const currentScope = authenticated ? untrack(() => scope) : null;
 		untrack(() => {
@@ -189,25 +201,28 @@
 	}
 
 	async function loadModels(requestScope: ImageApiScope, generation: number) {
+		if (!canPublish(requestScope)) return;
 		modelsLoading = true;
 		modelsError = '';
 		try {
 			const loaded = await imageStudioApi.models(requestScope);
-			if (generation !== modelRequest) return;
+			if (generation !== modelRequest || !canPublish(requestScope)) return;
 			models = loaded;
 			modelsLoaded = true;
 			if (!loaded.some((model) => String(model.id) === modelId)) modelId = loaded[0] ? String(loaded[0].id) : '';
 		} catch (cause) {
-			if (generation === modelRequest) modelsError = message(cause);
+			if (generation === modelRequest && canPublish(requestScope)) modelsError = message(cause);
 		} finally {
 			if (generation === modelRequest) modelsLoading = false;
 		}
 	}
 	async function loadRun(id: string, requestScope: ImageApiScope, generation: number) {
+		if (generation !== operation || !canPublish(requestScope) || !scope) return;
+		requestScope = scope;
 		loadingRun = true;
 		try {
 			const run = await imageStudioApi.run(id, requestScope);
-			if (generation !== operation || selectedRunId !== id) return;
+			if (generation !== operation || selectedRunId !== id || !canPublish(requestScope)) return;
 			const firstCompletion = currentRun?.run_id !== run.run_id || currentRun?.status !== 'completed';
 			currentRun = run;
 			loadingRun = false;
@@ -218,27 +233,30 @@
 				timer = setTimeout(() => { void loadRun(id, requestScope, generation); }, 2000);
 			}
 		} catch (cause) {
-			if (generation === operation) {
+			if (generation === operation && canPublish(requestScope)) {
 				loadingRun = false;
 				error = t('imageStudio.runLoadFailed', { message: message(cause) });
 			}
 		}
 	}
 	async function loadPreviews(run: ImageRun, requestScope: ImageApiScope, generation: number) {
+		if (!canPublish(requestScope)) return;
 		const controller = new AbortController();
 		downloadAbort = controller;
 		for (const asset of run.output_assets ?? []) {
-			if (generation !== operation || controller.signal.aborted) return;
+			if (generation !== operation || controller.signal.aborted || !canPublish(requestScope) || !scope) return;
+			if (previewUrls[asset.asset_id]) continue;
 			try {
-				const blob = await imageStudioApi.download(asset.asset_id, requestScope, controller.signal);
-				if (generation !== operation || controller.signal.aborted) return;
+				const blob = await imageStudioApi.download(asset.asset_id, scope, controller.signal);
+				if (generation !== operation || controller.signal.aborted || !canPublish(requestScope)) return;
 				if (asset.mime_type.startsWith('image/')) previewUrls = { ...previewUrls, [asset.asset_id]: URL.createObjectURL(blob) };
 			} catch (cause) {
-				if (generation === operation && !controller.signal.aborted) error = t('imageStudio.previewLoadFailed', { message: message(cause) });
+				if (generation === operation && !controller.signal.aborted && canPublish(requestScope)) error = t('imageStudio.previewLoadFailed', { message: message(cause) });
 			}
 		}
 	}
 	function selectRun(id: string, requestScope: ImageApiScope) {
+		if (!canPublish(requestScope)) return;
 		operation += 1;
 		clearTimer();
 		clearPreviews();
@@ -250,43 +268,63 @@
 		void loadRun(id, requestScope, operation);
 	}
 
+	function resetStudio(clearAssets = true) {
+		operation += 1;
+		modelRequest += 1;
+		capabilityRequest += 1;
+		activeCapabilityKey = '';
+		capabilities = null;
+		capabilitiesLoading = false;
+		capabilitiesError = '';
+		clearTimer();
+		clearPreviews();
+		if (clearAssets) clearInput();
+		submitAbort?.abort();
+		pendingIntent = null;
+		submitting = false;
+		loadingRun = false;
+		modelsLoading = false;
+		models = [];
+		modelsLoaded = false;
+		modelId = '';
+		runIds = [];
+		selectedRunId = null;
+		currentRun = null;
+		runContexts.clear();
+		revealedOutputs.clear();
+		runContext = null;
+		liveRunId = null;
+		error = '';
+	}
 	$effect(() => {
-		const authenticated = Boolean(scope);
-		const key = storageKey;
-		const nextScopeKey = authenticated ? key : '';
+		const nextScopeKey = scope ? storageKey : '';
 		if (nextScopeKey === activeScopeKey) return;
 		activeScopeKey = nextScopeKey;
-		const currentScope = authenticated ? untrack(() => scope) : null;
+		untrack(() => resetStudio());
+	});
+	$effect(() => {
+		const denied = $serviceDenials('lumen-images_user');
+		const assetsDenied = $serviceDenials('lumen-assets_editor');
 		untrack(() => {
-			operation += 1;
-			modelRequest += 1;
-			capabilityRequest += 1;
-			capabilities = null;
-			capabilitiesLoading = false;
-			capabilitiesError = '';
-			clearTimer();
-			clearPreviews();
-			clearInput();
-			submitAbort?.abort();
-			pendingIntent = null;
-			submitting = false;
-			loadingRun = false;
-			models = [];
-			modelsLoaded = false;
-			modelId = '';
-			runIds = [];
-			selectedRunId = null;
-			currentRun = null;
-			runContexts.clear();
-			revealedOutputs.clear();
-			runContext = null;
-			liveRunId = null;
-			error = '';
-			if (!currentScope) return;
-			const generation = modelRequest;
-			void loadModels(currentScope, generation);
-			runIds = readHistory(key);
-			if (runIds[0]) selectRun(runIds[0], currentScope);
+			if (denied) resetStudio(false);
+			if (assetsDenied) clearInput();
+		});
+	});
+	$effect(() => {
+		const allowed = imagesAllowed;
+		const key = storageKey;
+		untrack(() => {
+			if (!allowed || !scope) return;
+			if (!modelsLoaded && !modelsLoading) {
+				void loadModels(scope, modelRequest);
+				runIds = readHistory(key);
+				if (runIds[0]) selectRun(runIds[0], scope);
+			} else if (selectedRunId && !currentRun?.terminal) {
+				clearTimer();
+				void loadRun(selectedRunId, scope, operation);
+			} else if (currentRun?.status === 'completed' && currentRun.output_assets?.some((asset) => !previewUrls[asset.asset_id])) {
+				void loadPreviews(currentRun, scope, operation);
+			}
 		});
 	});
 	onDestroy(() => {
@@ -300,6 +338,7 @@
 	});
 
 	async function selectFile(event: Event) {
+		if (!assetsAllowed || activeScopeKey !== storageKey || uploading || submitting) return;
 		const file = (event.currentTarget as HTMLInputElement).files?.[0];
 		if (!file || !scope) return;
 		if (!isChatImageMime(file.type)) {
@@ -319,11 +358,11 @@
 		error = '';
 		try {
 			const asset = await imageStudioApi.upload(file, requestScope, controller.signal);
-			if (generation !== inputGeneration) return;
+			if (generation !== inputGeneration || !assetsAllowed || activeScopeKey !== storageKey || requestScope.projectId !== scope?.projectId) return;
 			inputAssetId = asset.id;
 			inputFileName = asset.name;
 		} catch (cause) {
-			if (generation !== inputGeneration) return;
+			if (generation !== inputGeneration || !assetsAllowed || activeScopeKey !== storageKey || requestScope.projectId !== scope?.projectId) return;
 			error = t('imageStudio.uploadFailed', { message: message(cause) });
 		} finally {
 			if (uploadAbort === controller) {
@@ -333,7 +372,7 @@
 		}
 	}
 	async function submit() {
-		if (!canSubmit || !scope) return;
+		if (!canSubmit || !scope || !canPublish(scope)) return;
 		const requestScope = scope;
 		const generation = ++operation;
 		const controller = new AbortController();
@@ -353,7 +392,7 @@
 			const idempotencyKey = pendingIntent?.fingerprint === fingerprint ? pendingIntent.key : crypto.randomUUID();
 			pendingIntent = { fingerprint, key: idempotencyKey };
 			const descriptor = await imageStudioApi.submit(inputAssetId ? 'edits' : 'generations', inputAssetId ? { ...request, input_asset_id: inputAssetId } : request, requestScope, idempotencyKey, controller.signal);
-			if (generation !== operation) return;
+			if (generation !== operation || !canPublish(requestScope)) return;
 			pendingIntent = null;
 			// A completed admission or known history ID is replay, not a new live result.
 			liveRunId = !runIds.includes(descriptor.run_id) && !['completed', 'failed', 'canceled'].includes(descriptor.status) ? descriptor.run_id : null;
@@ -363,34 +402,41 @@
 			selectedRunId = descriptor.run_id;
 			void loadRun(descriptor.run_id, requestScope, generation);
 		} catch (cause) {
-			if (generation === operation) error = message(cause);
+			if (generation === operation && canPublish(requestScope)) error = message(cause);
 		} finally {
 			if (submitAbort === controller) submitAbort = null;
 			if (generation === operation) submitting = false;
 		}
 	}
 	async function cancel() {
-		if (!scope || !selectedRunId || currentRun?.terminal) return;
+		if (!scope || !canPublish(scope) || !selectedRunId || currentRun?.terminal) return;
+		const requestScope = scope;
+		const generation = operation;
 		try {
 			await imageStudioApi.cancel(selectedRunId, scope);
-			if (selectedRunId && scope) void loadRun(selectedRunId, scope, operation);
-		} catch (cause) { error = t('imageStudio.cancelFailed', { message: message(cause) }); }
+			if (generation === operation && canPublish(requestScope) && selectedRunId && scope) void loadRun(selectedRunId, scope, generation);
+		} catch (cause) { if (generation === operation && canPublish(requestScope)) error = t('imageStudio.cancelFailed', { message: message(cause) }); }
 	}
 	async function download(id: string, name: string) {
-		if (!scope) return;
+		if (!scope || !canPublish(scope)) return;
+		const requestScope = scope;
+		const generation = operation;
 		try {
 			const blob = await imageStudioApi.download(id, scope);
+			if (generation !== operation || !canPublish(requestScope)) return;
 			const url = URL.createObjectURL(blob);
 			const anchor = document.createElement('a');
 			anchor.href = url;
 			anchor.download = name || `image-${id}.png`;
 			anchor.click();
 			setTimeout(() => URL.revokeObjectURL(url), 1000);
-		} catch (cause) { error = t('imageStudio.downloadFailed', { message: message(cause) }); }
+		} catch (cause) { if (generation === operation && canPublish(requestScope)) error = t('imageStudio.downloadFailed', { message: message(cause) }); }
 	}
 </script>
 
 <PageShell max="7xl">
+	<LumenPermissionNotice leaf="lumen-images_user" />
+	<LumenPermissionNotice leaf="lumen-assets_editor" />
 	<div class="studio">
 		<header class="studio-header">
 			<svg class="studio-mark" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5" /><circle cx="15.5" cy="9" r="1.75" /><path d="m3.5 17 5-5.5 4 4 2.5-2.5 5.5 5.5" /></svg>
@@ -398,19 +444,19 @@
 			<p class="muted">{t('imageStudio.description')}</p>
 			<Button href="/dashboard/chat" variant="ghost" size="sm">{t('imageStudio.textChat')}</Button>
 		</header>
-		{#if modelsError}<Alert tone="danger" title={t('imageStudio.modelsLoadFailed')}>{modelsError} <Button variant="subtle" onclick={() => scope && loadModels(scope, ++modelRequest)}>{t('imageStudio.retry')}</Button></Alert>{/if}
-		{#if error}<Alert tone="danger">{error} {#if selectedRunId}<Button variant="subtle" onclick={() => scope && selectedRunId && selectRun(selectedRunId, scope)}>{t('imageStudio.recheckStatus')}</Button>{/if}</Alert>{/if}
+		{#if modelsError}<Alert tone="danger" title={t('imageStudio.modelsLoadFailed')}>{modelsError} <Button variant="subtle" disabled={!imagesAllowed} onclick={() => imagesAllowed && scope && loadModels(scope, ++modelRequest)}>{t('imageStudio.retry')}</Button></Alert>{/if}
+		{#if error}<Alert tone="danger">{error} {#if selectedRunId}<Button variant="subtle" disabled={!imagesAllowed} onclick={() => scope && selectedRunId && selectRun(selectedRunId, scope)}>{t('imageStudio.recheckStatus')}</Button>{/if}</Alert>{/if}
 
 		<form class="composer" aria-label={t('imageStudio.request')} onsubmit={(event) => { event.preventDefault(); void submit(); }}>
-			<TextareaInput id="studio-prompt" class="composer-prompt" bind:value={prompt} rows={4} ariaLabel={t('imageStudio.prompt')} ariaDescribedBy={selectedStyle ? 'studio-input-note studio-style-note' : 'studio-input-note'} placeholder={hasInput ? t('imageStudio.referencePlaceholder') : t('imageStudio.promptPlaceholder')} disabled={busy} />
+			<TextareaInput id="studio-prompt" class="composer-prompt" bind:value={prompt} rows={4} ariaLabel={t('imageStudio.prompt')} ariaDescribedBy={selectedStyle ? 'studio-input-note studio-style-note' : 'studio-input-note'} placeholder={hasInput ? t('imageStudio.referencePlaceholder') : t('imageStudio.promptPlaceholder')} disabled={!imagesAllowed || busy} />
 			<p id="studio-input-note" class="muted attachment-hint">{t('imageStudio.attachmentHelp')}</p>
 			{#if selectedStyle}
 				<div class="style-note">
 					<p id="studio-style-note"><span class="style-note-label">{t('imageStudio.styleLabel', { style: t(selectedStyle.labelKey) })}</span> {t('imageStudio.styleNote', { suffix: `스타일: ${selectedStyle.instruction}` })}</p>
-					<Button variant="ghost" size="sm" onclick={() => (styleId = null)} disabled={busy}>{t('imageStudio.clearStyle')}</Button>
+					<Button variant="ghost" size="sm" onclick={() => { if (imagesAllowed) styleId = null; }} disabled={!imagesAllowed || busy}>{t('imageStudio.clearStyle')}</Button>
 				</div>
 			{/if}
-			{#if inputPreviewUrl}
+			{#if assetsAllowed && inputPreviewUrl}
 				<div class="attachment">
 					<img src={inputPreviewUrl} alt={t('imageStudio.inputPreview')} />
 					<div class="attachment-meta">
@@ -423,15 +469,15 @@
 			<div class="composer-bar">
 				<div class="composer-options">
 					<Field label={t('imageStudio.model')} for="studio-model" class="option-model">
-						<SelectInput id="studio-model" value={modelId} onchange={selectModel} disabled={modelsLoading || busy || models.length === 0}><option value="">{t('imageStudio.selectModel')}</option>{#each models as model (model.id)}<option value={String(model.id)}>{model.display_name}</option>{/each}</SelectInput>
+						<SelectInput id="studio-model" value={modelId} onchange={selectModel} disabled={!imagesAllowed || modelsLoading || busy || models.length === 0}><option value="">{t('imageStudio.selectModel')}</option>{#each models as model (model.id)}<option value={String(model.id)}>{model.display_name}</option>{/each}</SelectInput>
 					</Field>
-					<Field label={t('imageStudio.size')} for="studio-size"><SelectInput id="studio-size" bind:value={size} disabled={busy || capabilitiesLoading || sizes.length === 0}>{#each sizes as option (option)}<option value={option}>{option === 'auto' ? t('imageStudio.autoSize') : option.replace('x', ' × ')}</option>{/each}</SelectInput></Field>
-					<Field label={t('imageStudio.qualityLabel')} for="studio-quality"><SelectInput id="studio-quality" bind:value={quality} disabled={busy || capabilitiesLoading || qualities.length === 0}>{#each qualities as option (option)}<option value={option}>{displayQuality(option)}</option>{/each}</SelectInput></Field>
-					<Field label={t('imageStudio.imageCount')} for="studio-count"><SelectInput id="studio-count" bind:value={count} disabled={busy || capabilitiesLoading || maxCount < 1}>{#each Array.from({ length: maxCount }, (_, index) => index + 1) as option (option)}<option value={String(option)}>{option}</option>{/each}</SelectInput></Field>
+					<Field label={t('imageStudio.size')} for="studio-size"><SelectInput id="studio-size" bind:value={size} disabled={!imagesAllowed || busy || capabilitiesLoading || sizes.length === 0}>{#each sizes as option (option)}<option value={option}>{option === 'auto' ? t('imageStudio.autoSize') : option.replace('x', ' × ')}</option>{/each}</SelectInput></Field>
+					<Field label={t('imageStudio.qualityLabel')} for="studio-quality"><SelectInput id="studio-quality" bind:value={quality} disabled={!imagesAllowed || busy || capabilitiesLoading || qualities.length === 0}>{#each qualities as option (option)}<option value={option}>{displayQuality(option)}</option>{/each}</SelectInput></Field>
+					<Field label={t('imageStudio.imageCount')} for="studio-count"><SelectInput id="studio-count" bind:value={count} disabled={!imagesAllowed || busy || capabilitiesLoading || maxCount < 1}>{#each Array.from({ length: maxCount }, (_, index) => index + 1) as option (option)}<option value={String(option)}>{option}</option>{/each}</SelectInput></Field>
 				</div>
 				<div class="composer-actions">
-					<Button variant="secondary" onclick={() => fileInput?.click()} disabled={busy || !scope}>{inputPreviewUrl ? t('imageStudio.replaceImage') : t('imageStudio.attachImage')}</Button>
-					<input bind:this={fileInput} type="file" accept="image/png,image/jpeg,image/webp" class="sr-only" tabindex="-1" aria-label={t('imageStudio.inputImage')} onchange={selectFile} disabled={busy || !scope} />
+					<Button variant="secondary" onclick={() => assetsAllowed && fileInput?.click()} disabled={busy || !assetsAllowed}>{inputPreviewUrl ? t('imageStudio.replaceImage') : t('imageStudio.attachImage')}</Button>
+					<input bind:this={fileInput} type="file" accept="image/png,image/jpeg,image/webp" class="sr-only" tabindex="-1" aria-label={t('imageStudio.inputImage')} onchange={selectFile} disabled={busy || !assetsAllowed} />
 					<Button type="submit" variant="primary" size="lg" class="composer-submit" disabled={!canSubmit}>{submitting ? t('imageStudio.submitting') : t('imageStudio.createImage')}</Button>
 				</div>
 			</div>
@@ -441,9 +487,9 @@
 				{:else if modelsError}<p class="muted">{t('imageStudio.modelsRequired')}</p>
 				{:else if models.length === 0}<Alert tone="warning" title={t('imageStudio.noModelsTitle')}>{t('imageStudio.noModels')}</Alert>
 				{:else if readiness}<Alert tone="warning" title={t('imageStudio.notReady')}>{readiness}</Alert>
-				{:else if capabilitiesError}<Alert tone="danger" title={t('imageStudio.optionsLoadFailed')}>{capabilitiesError} <Button variant="subtle" onclick={() => chosenModel && scope && loadCapabilities(chosenModel, scope, ++capabilityRequest)}>{t('imageStudio.retry')}</Button></Alert>
+				{:else if capabilitiesError}<Alert tone="danger" title={t('imageStudio.optionsLoadFailed')}>{capabilitiesError} <Button variant="subtle" disabled={!imagesAllowed} onclick={() => imagesAllowed && chosenModel && scope && loadCapabilities(chosenModel, scope, ++capabilityRequest)}>{t('imageStudio.retry')}</Button></Alert>
 				{:else if !variantReady}<Alert tone="warning">{t('imageStudio.variantUnavailable')}</Alert>
-				{:else}<p role="status" class="muted">{t('imageStudio.ready')}</p>{/if}
+				{:else if imagesAllowed}<p role="status" class="muted">{t('imageStudio.ready')}</p>{/if}
 			</div>
 		</form>
 
@@ -454,7 +500,7 @@
 			</div>
 			<div class="style-grid">
 				{#each IMAGE_STUDIO_STYLES as style (style.id)}
-					<button type="button" class="style-card" class:style-selected={styleId === style.id} aria-pressed={styleId === style.id} disabled={busy} onclick={() => (styleId = styleId === style.id ? null : style.id)}>
+					<button type="button" class="style-card" class:style-selected={styleId === style.id} aria-pressed={styleId === style.id} disabled={!imagesAllowed || busy} onclick={() => { if (imagesAllowed) styleId = styleId === style.id ? null : style.id; }}>
 						<img src={style.image} alt="" loading="lazy" decoding="async" />
 						<span>{t(style.labelKey)}</span>
 					</button>
@@ -462,7 +508,7 @@
 			</div>
 		</section>
 
-		{#if selectedRunId || runIds.length}
+		{#if imagesAllowed && (selectedRunId || runIds.length)}
 			<section class="results" aria-labelledby="studio-results-title">
 				<div class="result-head">
 					<h2 id="studio-results-title">{t('imageStudio.jobResults')}</h2>

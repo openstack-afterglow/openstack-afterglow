@@ -34,7 +34,7 @@
 		</div>
 		<div>
 			<dt class="text-xs text-ink-2 mb-0.5">{t(githubLogin ? 'info.githubSsh' : 'info.keyPair')}</dt>
-			<dd class="text-sm text-ink-2 font-mono">{#if githubLogin}@{githubLogin}{:else}{s.instance!.key_name ?? '-'}{/if}</dd>
+			<dd class="text-sm text-ink-2 font-mono [overflow-wrap:anywhere]">{#if githubLogin}@{githubLogin}{:else}{s.instance!.key_name ?? '-'}{/if}</dd>
 		</div>
 		{#if showHost && s.instance!.host}
 			<div>

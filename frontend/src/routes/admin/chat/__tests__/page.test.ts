@@ -6,6 +6,7 @@ import {
   within,
 } from "@testing-library/svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { writable } from "svelte/store";
 
 const mocks = vi.hoisted(() => {
   class ApiError extends Error {
@@ -38,6 +39,13 @@ vi.mock("$lib/stores/auth", () => ({
       return () => mocks.authListeners.delete(run);
     },
   },
+  authReady: writable(true),
+  projectSwitching: writable(false),
+}));
+// Personal extension permissions are unrelated to these admin flows; do not consume API fixtures.
+vi.mock("$lib/stores/servicePermissions", () => ({
+  serviceCapabilities: writable<(leaf: string) => boolean>(() => false),
+  projectPermissions: writable({ permissions: null, loading: false, error: "" }),
 }));
 vi.mock("$lib/api/client", () => ({
   api: {
@@ -65,6 +73,7 @@ function setAuthScope(token: string, projectId: string) {
   for (const listener of mocks.authListeners) listener(mocks.authScope);
 }
 
+import { authReady, projectSwitching } from "$lib/stores/auth";
 import ModelPage from "../models/+page.svelte";
 import ProviderPage from "../+page.svelte";
 import ToolPage from "../tools/+page.svelte";
@@ -224,6 +233,8 @@ describe("admin chat model pricing", () => {
     vi.clearAllMocks();
     mocks.authListeners.clear();
     mocks.authScope = { token: "token", projectId: "project", isSystemAdmin: true };
+    authReady.set(true);
+    projectSwitching.set(false);
     queueInitialLoads();
   });
 

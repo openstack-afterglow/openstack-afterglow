@@ -1,3 +1,4 @@
+import { grantLumen } from './lumenPermissionFixture';
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -25,6 +26,14 @@ beforeEach(() => {
 });
 
 describe('ChatInput native Search', () => {
+	it('blocks persistent image uploads and tool selection for chat-only grants', async () => {
+		grantLumen('lumen-chat_user');
+		const view = render(ChatInput, { value: '', onSend: vi.fn(), onStop: vi.fn(), modelCaps: { vision: true, tool_call: true }, availableTools: [{ id: 1, name: 'Privileged tool' }] });
+		const file = new File(['image'], 'photo.png', { type: 'image/png' });
+		await fireEvent.change(view.container.querySelector('input[type="file"]')!, { target: { files: [file] } });
+		expect(uploadChatAttachment).not.toHaveBeenCalled();
+		expect(view.queryByRole('menuitemcheckbox', { name: 'Privileged tool' })).toBeNull();
+	});
 	const props = { value: '', onSend: vi.fn(), onStop: vi.fn() };
 	const nativeSearch = {
 		web_search: true,

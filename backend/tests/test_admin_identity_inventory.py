@@ -1,16 +1,21 @@
 """Identity filtering/order boundaries against an isolated creation-event store."""
 
 import asyncio
+import json
 import threading
+import time
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
+import fakeredis.aioredis
 import pytest
-from sqlalchemy import Integer, MetaData
+from requests import Response
+from sqlalchemy import Integer, MetaData, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.models.activity import ActivityLog
-from app.services import activity
+from app.services import activity, keystone, session_store
 
 
 @pytest.fixture
@@ -27,6 +32,55 @@ async def creation_db(monkeypatch):
         yield factory
     finally:
         await engine.dispose()
+
+
+@pytest.fixture
+async def group_authority(mock_conn, monkeypatch):
+    """Supply native catalog/assignments; keep owner protection and Redis locking real."""
+    roles = [
+        {"id": name, "name": name, "domain_id": None, "description": ""}
+        for name in ("member", "project_owner", "owner_bridge", "owner_alias")
+    ]
+    edges = [("owner_alias", "owner_bridge"), ("owner_bridge", "project_owner")]
+
+    def graph(path):
+        assert path == "/role_inferences"
+        response = Response()
+        response.status_code = 200
+        response._content = json.dumps(
+            {"role_inferences": [{"prior_role": {"id": prior}, "implies": [{"id": child}]} for prior, child in edges]}
+        ).encode()
+        return response
+
+    assignments = []
+
+    def group_assignments(*, group_id):
+        return iter(row for row in assignments if row["group"]["id"] == group_id)
+
+    mock_conn.endpoint_for.return_value = "https://keystone.invalid/v3"
+    mock_conn.identity.roles.side_effect = lambda: iter(roles)
+    mock_conn.identity.get.side_effect = graph
+    mock_conn.identity.role_assignments.side_effect = group_assignments
+    mock_conn.identity.group_users.side_effect = lambda group_id: iter([SimpleNamespace(id="group-member")])
+    redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+
+    async def get_redis():
+        return redis
+
+    revoke_token = MagicMock()
+    monkeypatch.setattr(session_store, "_get_redis", get_redis)
+    monkeypatch.setattr(keystone, "revoke_token", revoke_token)
+    try:
+        yield SimpleNamespace(assignments=assignments, revoke_token=revoke_token)
+    finally:
+        await redis.close()
+
+
+async def _group_sessions():
+    for user_id in ("group-member", "unaffected-user"):
+        await session_store.store_session(
+            "session-" + user_id, "token-" + user_id, "project", user_id, int(time.time()) + 3600
+        )
 
 
 def resource(id, *, name=None, description="", domain="default", enabled=True, created_at=None):
@@ -164,11 +218,16 @@ async def test_groups_use_native_dates_then_creation_events_without_mutating_cac
 @pytest.mark.parametrize("kind", ["project", "group"])
 @pytest.mark.asyncio
 async def test_creation_edit_and_delete_refresh_cached_inventory_preserving_creation_date(
-    admin_client, mock_conn, creation_db, kind
+    admin_client, mock_conn, creation_db, kind, group_authority
 ):
     rows = [resource("old", created_at="2000-01-01T00:00:00Z")]
     identity = mock_conn.identity
     getattr(identity, f"{kind}s").side_effect = lambda: iter(rows)
+    if kind == "group":
+        group_authority.assignments.append(
+            {"group": {"id": "new"}, "role": {"id": "member"}, "scope": {"project": {"id": "project"}}}
+        )
+        await _group_sessions()
 
     def create(**kwargs):
         item = resource("new", name=kwargs["name"], description=kwargs.get("description", ""))
@@ -183,6 +242,8 @@ async def test_creation_edit_and_delete_refresh_cached_inventory_preserving_crea
 
     def delete(id, **kwargs):
         rows[:] = [item for item in rows if item.id != id]
+        if kind == "group":
+            group_authority.assignments[:] = [row for row in group_authority.assignments if row["group"]["id"] != id]
 
     getattr(identity, f"create_{kind}").side_effect = create
     getattr(identity, f"update_{kind}").side_effect = update
@@ -205,6 +266,21 @@ async def test_creation_edit_and_delete_refresh_cached_inventory_preserving_crea
     assert edited[0]["created_at"] == created[0]["created_at"]
     assert (await admin_client.delete(url + "/new")).status_code == 204
     assert [item["id"] for item in await inventory()] == ["old"]
+    if kind == "group":
+        identity.role_assignments.assert_called_once_with(group_id="new")
+        identity.group_users.assert_called_once_with("new")
+        identity.delete_group.assert_called_once_with("new", ignore_missing=False)
+        assert group_authority.assignments == []
+        assert await session_store.get_session("session-group-member") is None
+        assert await session_store.get_session("session-unaffected-user") is not None
+        group_authority.revoke_token.assert_called_once_with("token-group-member")
+        async with creation_db() as session:
+            events = (
+                (await session.execute(select(ActivityLog).where(ActivityLog.action == "group_delete"))).scalars().all()
+            )
+        assert len(events) == 1
+        assert events[0].status == "success"
+        assert events[0].user_id == "test-user-123"
 
 
 @pytest.mark.parametrize("mutation", ["create", "update", "delete"])
@@ -303,3 +379,71 @@ async def test_group_iterator_failure_is_not_reported_as_a_partial_success(admin
     mock_conn.identity.groups.side_effect = broken_groups
     response = await admin_client.get("/api/v1/admin/groups?cache=true")
     assert response.status_code == 500
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role_id", ["project_owner", "owner_alias"])
+@pytest.mark.parametrize("inherited", [False, True])
+async def test_group_deletion_rejects_owner_grants_without_mutating_inventory_or_sessions(
+    admin_client, mock_conn, creation_db, group_authority, role_id, inherited
+):
+    rows = [resource("protected", created_at="2026-09-01T00:00:00Z")]
+    mock_conn.identity.groups.side_effect = lambda: iter(rows)
+    scope = (
+        {"domain": {"id": "default"}, "OS-INHERIT:inherited_to": "projects"}
+        if inherited
+        else {"project": {"id": "project"}}
+    )
+    assignment = {"group": {"id": "protected"}, "role": {"id": role_id}, "scope": scope}
+    group_authority.assignments.append(assignment)
+    await _group_sessions()
+    before = await admin_client.get("/api/v1/admin/groups?cache=true")
+    assert before.status_code == 200
+
+    response = await admin_client.delete("/api/v1/admin/groups/protected")
+
+    assert response.status_code == 409
+    assert "ownership transition" in response.json()["detail"]
+    mock_conn.identity.role_assignments.assert_called_once_with(group_id="protected")
+    mock_conn.identity.delete_group.assert_not_called()
+    mock_conn.identity.group_users.assert_not_called()
+    assert group_authority.assignments == [assignment]
+    after = await admin_client.get("/api/v1/admin/groups?cache=true")
+    assert after.status_code == 200
+    assert after.json() == before.json()
+    mock_conn.identity.groups.assert_called_once()
+    assert await session_store.get_session("session-group-member") is not None
+    assert await session_store.get_session("session-unaffected-user") is not None
+    group_authority.revoke_token.assert_not_called()
+    async with creation_db() as session:
+        events = (await session.execute(select(ActivityLog))).scalars().all()
+    assert events == []
+
+
+@pytest.mark.asyncio
+async def test_group_deletion_fails_closed_when_assignment_scope_is_unavailable(
+    admin_client, mock_conn, creation_db, group_authority
+):
+    mock_conn.identity.groups.side_effect = lambda: iter([resource("protected")])
+    # A provider response for the wrong group is not evidence that this group is safe to delete.
+    mock_conn.identity.role_assignments.side_effect = lambda **kwargs: iter(
+        [{"group": {"id": "other-group"}, "role": {"id": "member"}, "scope": {"project": {"id": "project"}}}]
+    )
+    await _group_sessions()
+    before = await admin_client.get("/api/v1/admin/groups?cache=true")
+    assert before.status_code == 200
+
+    response = await admin_client.delete("/api/v1/admin/groups/protected")
+
+    assert response.status_code == 503
+    mock_conn.identity.delete_group.assert_not_called()
+    mock_conn.identity.group_users.assert_not_called()
+    after = await admin_client.get("/api/v1/admin/groups?cache=true")
+    assert after.status_code == 200
+    assert after.json() == before.json()
+    mock_conn.identity.groups.assert_called_once()
+    assert await session_store.get_session("session-group-member") is not None
+    group_authority.revoke_token.assert_not_called()
+    async with creation_db() as session:
+        events = (await session.execute(select(ActivityLog))).scalars().all()
+    assert events == []

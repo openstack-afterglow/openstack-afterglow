@@ -35,6 +35,7 @@
 		activePath: DisplayMessage[];
 		models: AvailableModel[];
 		busy?: boolean;
+		actionsDisabled?: boolean;
 		loading?: boolean;
 		modelLocked?: boolean;
 		/** 메시지 id → 생성 속도 계측(런타임, 미저장). 낙관적 draft 는 message.metrics 로 직접 전달. */
@@ -65,6 +66,7 @@
 		activePath,
 		models,
 		busy = false,
+		actionsDisabled = false,
 		loading = false,
 		modelLocked = false,
 		metricsById = new Map<string, StreamMetrics>(),
@@ -283,7 +285,7 @@
 						<ChatMessage
 							message={msg}
 							{models}
-							{busy}
+							busy={busy || actionsDisabled}
 							{modelLocked}
 							metrics={msg.metrics ?? metricsById.get(msg.id) ?? null}
 							toolItems={restoredToolItems(msg)}

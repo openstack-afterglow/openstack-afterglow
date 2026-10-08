@@ -10,26 +10,30 @@ from app.api.palimpsest.packages import (
     checked_payload,
     current_namespace,
     package_browser_identity,
+    package_browser_request,
     read_query,
 )
-from app.services.service_proxy import package_member_request
+from app.services.palimpsest_authorization import authorize_current_package_request
 
 router = APIRouter(route_class=PackageRoute)
 
 
 async def key_control(request: Request, info: dict, *, key_id: str | None = None) -> Response:
     read_query(request, set())
-    namespace, failure = await current_namespace(request, info)
-    if failure is not None:
-        return failure
-    path = f"/v1/projects/{namespace}/keys"
+    # A role-only preflight precedes namespace lookup as well as key mutation.
+    suffix = "keys"
     if key_id is not None:
         try:
             key_id = UUID(key_id).hex
         except ValueError as exc:
             raise HTTPException(status_code=422, detail="Invalid key ID") from exc
-        path += f"/{key_id}"
-    response = await package_member_request(
+        suffix += f"/{key_id}"
+    await authorize_current_package_request(request, f"/v1/projects/{info['project_id']}/{suffix}", info)
+    namespace, failure = await current_namespace(request, info)
+    if failure is not None:
+        return failure
+    path = f"/v1/projects/{namespace}/{suffix}"
+    response = await package_browser_request(
         request,
         path,
         method=request.method,

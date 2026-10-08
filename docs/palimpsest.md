@@ -320,6 +320,15 @@ library 카탈로그를 대체하지 않는다. 관리자 화면의 **프로젝�
   다시 표시하지 못하게 한다. 같은 project/user의 JWT 갱신 자체는 identity 전환으로 취급하지 않는다.
   공유 전환 상태는 selector의 unmount/remount에도 유지하여 동시 rescope를 막습니다. 전환 중 로그아웃·identity 변경이 있었다면 같은 사용자·프로젝트로 재로그인해도 이전 전환 응답을 적용하지 않고, 동일 identity의 JWT refresh는 허용합니다.
 
+### 프로젝트 package 서비스 등급
+
+`palimpsest-inventory_reader`는 metadata/manifest, `palimpsest-download_user`는 package/layer/blob 내용 다운로드, `palimpsest-publish_editor`는 게시·tag·build-cache 쓰기를 허용합니다. `palimpsest-keys_editor`는 본인 키 발급, `palimpsest-keys_admin`은 본인 키 폐기를 허용합니다. 각 부모 등급은 현재 Keystone 실제 inference edge로만 확장하며 프로젝트 owner/admin 자체는 package 권한이 아닙니다. Native member/reader 기반 조건과 project/namespace/package 소유권은 별도로 유지합니다.
+
+키의 요청 actions는 발급자의 현재 download/publish 권한의 부분집합이어야 합니다. Publish-only 키는 download 권한을 얻지 않으며, 현재 owner 권한/graph 변경은 기존 키·다운로드 ticket 사용에도 반영됩니다. 일반 서비스 admin이나 package key로 전역 builder/GC 또는 OpenStack VM 실행 권한을 얻지 않습니다.
+
+같은 user/project의 JWT 갱신이나 permission directory 장애는 확정 회수가 아닙니다. 기존 목록·초안·일회성 secret은 메모리에 유지하고 secret은 숨긴 뒤 현재 keys/action 권한이 복구되면 다시 표시합니다. 발급/위임 leaf의 확정 회수는 secret과 진행 중 발급 epoch를 폐기하므로 권한 재부여만으로 되살아나지 않습니다. 그 외 명시적 닫기·탭/페이지 이동·scope 전환의 기존 폐기 규칙은 유지합니다.
+
+
 브라우저 package 경로는 단일 Bearer access JWT만 받고 `ppk_v1_` 키와 `X-Auth-Token` 입력은 거부한다.
 BFF는 JWT·세션·선택 프로젝트의 정확한 project/user ID를 대조하고 원본 세션 Keystone subject token을 Hub에
 전달한다. 이 경로는 token exchange·admin override·project rescope·세션 token/scope 재작성을 하지 않는다.

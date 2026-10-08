@@ -51,6 +51,22 @@ Waygate는 현재 API/worker startup에서도 VM-reachable callback 설정을 �
 
 서비스 로직 변경은 이 경로 또는 서비스 소유 system runner로 **변경한 동작을 실제 실행**합니다. 보고에는 API/DB/cache/worker/crypto/blob와 모의 identity/provider/cloud를 따로 적습니다. 필수 자격·model·ready server·artifact가 없으면 검증 공백이며 read-only 성공으로 승격하지 않습니다. 사전 조건 충족 뒤 assertion·정리 실패는 실패로 종료합니다.
 
+### 프로젝트 서비스 등급 검증 기록 (2026-10-07, local-only)
+
+현재 Keystone의 실제 role-ID DAG·유효 할당과 `area_grade` 프리셋을 검증했다. 다음 증거는 서로 대체하지 않는다.
+
+| 경계 | 실행된 결과 | 실제/합성 구분과 한계 |
+|---|---|---|
+| Afterglow | 실제 HTTP BFF + installed Keystone SDK/current directory 경계 24개; 최종 backend unit **4,112**, 소비자 contract **154** 통과 | Identity/provider directory는 합성 HTTP. 운영 Keystone 인증·역할/DB 변경 아님. 과거 JWT role claim과 DB manager에 기대던 fixture를 현재 catalog/유효 할당으로 바꿨고 hermetic network guard를 유지했다. |
+| Chromium | naming·명시적 preset·owner-only 위임, Waygate 소유 profile 원본177bytes/editor 생성/legacy owner assign-once, Drover 명시 `user/editor`312bytes와 회수 뒤 늦은 응답 공개 차단, 별도 관리자 certificate 확인; Image Blob·실제 WAV 재생·Palimpsest secret의 동일 값 장애 복구·확정 회수 폐기 | 브라우저는 실제 Chromium·현재 UI, identity/service/credential은 합성. UI 회귀9files/252tests와 최종 영향 selector5files/71tests를 별도로 실행했다(중복 집계하지 않음). 운영 credential이나 paid model 응답 증거가 아니다. |
+| Waygate | API/worker `arm64/amd64` 실행, real MariaDB11.4.12의001–004→005 ledger/record/ciphertext 보존, installed SDK→real Uvicorn current-grade/owner/export/callback 경계; opt-in smoke2통과; full serial/4worker 각각625passed/3skipped, SDK44와 root/SDK Ruff통과 | Keystone만 합성 HTTP; worker queue SELECT8/9개. Gateway VM provisioning·VPN dataplane·운영 schema apply 없음. `../waygate/openspec/changes`의 완료 archive/design과 native `ARCHITECTURE.md`/`CHANGELOG.md`에 receipt를 남겼다. SDK의 기존 service_type deprecation warning44개를 숨기지 않았다. |
+| Drover | API/worker `arm64/amd64` build/import, real MariaDB/Redis/k3s1.31.4에서 **119 checks per architecture**, 실제 RBAC/TokenRequest/CEL admission/exec; native regression **1,037 passed/3 skipped** | Keystone은 합성 HTTP. Worker cloud job 실행 아님; 두 cluster row는 같은 disposable k3s를 가리킨다. Default shell image tag/PATH는 정상 qualification이 아니며 disposable override를 구분한다. 이미 발급된 bearer는 expiry까지, 과거 full certificate는 별도 trust remediation 전까지 유효할 수 있다. `../drover/README.md`의 상세 한계를 따른다. |
+| Palimpsest | canonical API/worker4build/import, 등록된 native app/SDK/auth/SQL/CAS/real Redis에서 **182 checks per architecture**,11CAS파일 restart/recreate byte/hash 보존; root package regression309통과 | 합성 current Keystone. Smoke-only aiosqlite factory/lifespan-off 사용: canonical SQLite bootstrap의 `connect_timeout` 오류를 보존했다. MySQL startup/TLS/KVM/Glance/운영 배포 qualification 아님. `../palimpsest/docs/project-package-registry.md`와 `build/scoped-package-capabilities-smoke/` receipt를 따른다. |
+| Lumen | service **3,005**, SDK128, canonical MariaDB/Redis integration272, Compose system30(권한16시나리오) 통과; real API/online+batch worker/TLS MinIO/ClamAV, native text/image completion·decoded media·현재 owner/key revoke·owned/idempotent cancellation; canonical API/worker4build의5source hashes 일치 | Keystone/provider HTTP는 합성, 유료/운영 provider 증거 아님. 두 worker-denial 케이스는 HTTP-frozen image SQL fixture를 복제 후 downgrade/revoke하여 release했고 두 번째 public admission이 아니다. Fixed Gateway credential에 tools scope를 추가하지 않았다. Native `docs/testing.md`/change tasks가 exact command·최종 image ID·한계를 기록한다. |
+
+`npm run test:gate`는 **전체 통과하지 않았다**. 공유 Git index의 미해결 merge로 architecture gate가 차단됐고, 별도 전체 frontend 실행에는 기존 motion/번역/scanner 테스트 실패, JS 실행에는 Kolla globals mode0600 대0640 실패가 남았다. Backend 전체 lint의 남은 실패는 범위 밖 `tests/test_vm_github_ssh_history.py`의 I001 import 정렬이며, 최종 변경한 fixture10개는 Ruff check/format을 통과했다. 관련 scope의 smoke·unit·contract 통과를 전역 release gate 통과로 바꾸어 보고하지 않는다. 공유 index와 다른 작업의 실패 source는 변경하지 않는다. Root architecture는 HEAD와 명시한 현재 role consumer120파일만 합친 임시 index에서 stamp/check를 통과했다(`source_sha256=007ac694f6decbf6e9b45650044d762eba12552280622dbce2ea28d53c21a0c9`, indexed source2410개). 전체 working tree/실제 index 통과가 아니며, 실제 index SHA-256 `571bd4768270ff93ef4606e9b8c3d46631139097ebe79e994d510d72126bffeb`와 공유 working review block을 보존했다. Gbrain 동기화는 로컬 CLI가 없어 실행하지 못했다.
+
+
 ### 실패 소유권 (Failure Ownership)
 
 - **단위 / 계약 / 국소 기능 테스트**: 실패 시 작성자/개발자 소유의 확정 게이트 실패(deterministic gate failure)입니다. 원인을 반드시 수정해야 합니다.

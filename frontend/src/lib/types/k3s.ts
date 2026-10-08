@@ -138,6 +138,43 @@ export interface StampedeStatus {
 	nodegroups: StampedeNodegroupStatus[];
 }
 
+/** Drover resource-credential reference; secrets are never returned. */
+export interface K3sClusterCredential {
+	app_credential_id: string;
+	purpose: string;
+	generation: number;
+	owner_user_id: string | null;
+	state: string;
+	state_reason?: string | null;
+	role_names?: string[];
+	last_error?: string | null;
+}
+
+/** Continuous cluster authority (Stampede, reconcile, guest plugins) owned by a current project user. */
+export interface K3sClusterAuthorization {
+	cluster_id: string;
+	authorized: boolean;
+	active_generation: number | null;
+	staged_generations: number[];
+	owner_revocation_required: K3sClusterCredential[];
+	credentials: K3sClusterCredential[];
+}
+
+export interface K3sClusterReauthorization {
+	cluster_id: string;
+	generation: number;
+	operation_id: string;
+	job_id: string;
+	credentials: K3sClusterCredential[];
+	retired_credential_ids: string[];
+}
+
+export interface K3sCredentialRetirement {
+	cluster_id: string;
+	deleted_credential_ids: string[];
+	owner_revocation_required: K3sClusterCredential[];
+}
+
 export interface CertificateInfo {
 	not_after: string;
 	not_before: string;

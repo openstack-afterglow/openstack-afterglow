@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { tick, type Snippet } from 'svelte';
 	import { t } from '$lib/i18n/ns/chat-panel';
+	import { serviceCapabilities } from '$lib/stores/servicePermissions';
+	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import type { ContextState, ModelCapabilities } from '$lib/api/chatContracts';
 	import { effortLabel, effortOptionsFor } from '$lib/api/chatEffort';
@@ -114,25 +116,25 @@
 	const searchGate = $derived(modelCaps?.feature_gates?.web_search);
 	const hasNativeSearch = $derived(Boolean(modelCaps?.web_search) && searchGate?.mode === 'native');
 	const searchRequired = $derived(Boolean(modelCaps?.web_search_required));
-	const searchAvailable = $derived(searchGate?.available === true && searchGate?.pricing_available === true);
+	const searchAvailable = $derived($serviceCapabilities('lumen-tools_user') && searchGate?.available === true && searchGate?.pricing_available === true);
 	const searchTitle = $derived(!searchAvailable
 		? t('input.searchUnavailable')
 		: searchRequired ? t('input.searchRequired') : t('input.searchDescription'));
 
 	// The backend disables these gates when the scanned S3/ClamAV pipeline is unavailable.
 	const canAttachImage = $derived(
-		Boolean(modelCaps?.vision) && (modelCaps?.feature_gates?.image_input?.available ?? true)
+		$serviceCapabilities('lumen-chat_user') && $serviceCapabilities('lumen-assets_editor') && Boolean(modelCaps?.vision) && (modelCaps?.feature_gates?.image_input?.available ?? true)
 	);
 	const canAttachDocument = $derived(
-		Boolean(modelCaps?.feature_gates?.document_input?.available)
+		$serviceCapabilities('lumen-chat_user') && $serviceCapabilities('lumen-assets_editor') && Boolean(modelCaps?.feature_gates?.document_input?.available)
 	);
 	const canAttach = $derived(canAttachImage || canAttachDocument);
 	// tool_call 지원 + 사용 가능한 tool/MCP 가 있을 때만 도구 선택 노출.
 	const canUseTools = $derived(
-		Boolean(modelCaps?.tool_call) && availableTools.length + availableMcp.length > 0
+		$serviceCapabilities('lumen-tools_user') && Boolean(modelCaps?.tool_call) && availableTools.length + availableMcp.length > 0
 	);
 	// 스킬은 프롬프트 주입이라 tool_call 없이도 사용 가능.
-	const canUseSkills = $derived(availableSkills.length > 0);
+	const canUseSkills = $derived($serviceCapabilities('lumen-tools_user') && availableSkills.length > 0);
 	const hasPlus = $derived(canAttach || canUseTools || canUseSkills);
 
 	type ComposerQuickAction = {
@@ -195,7 +197,7 @@
 			const actions = quickActions.filter((action) =>
 				`${action.name} ${action.description}`.toLocaleLowerCase().includes(normalized)
 			);
-			const agents = availableAgents
+			const agents = ($serviceCapabilities('lumen-tools_user') ? availableAgents : [])
 				.filter((agent) => agent.name.toLocaleLowerCase().includes(normalized))
 				.map((agent) => ({ kind: 'agent' as const, id: agent.id, name: agent.name }));
 			return [...actions, ...agents].slice(0, 7);
@@ -208,7 +210,7 @@
 			)
 			.slice(0, 7)
 			.map((command) => ({ kind: 'command' as const, ...command }));
-		const skillShortcuts = availableSkills
+		const skillShortcuts = (canUseSkills ? availableSkills : [])
 			.filter((skill) => skill.name.toLocaleLowerCase().includes(normalized))
 			.slice(0, 5)
 			.map((skill) => ({ kind: 'skill' as const, id: skill.id, name: skill.name }));
@@ -299,22 +301,25 @@
 		return selected === null ? true : selected.includes(id);
 	}
 	function toggleTool(id: number) {
+		if (!canUseTools) return;
 		const cur = selectedToolIds ?? availableTools.map((tool) => tool.id);
 		selectedToolIds = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
 	}
 	function toggleMcp(id: number) {
+		if (!canUseTools) return;
 		const cur = selectedMcpIds ?? availableMcp.map((m) => m.id);
 		selectedMcpIds = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
 	}
 	// 스킬은 opt-in — 빈 목록에서 시작해 선택 시 추가.
 	function toggleSkill(id: number) {
+		if (!canUseSkills) return;
 		selectedSkillIds = selectedSkillIds.includes(id)
 			? selectedSkillIds.filter((x) => x !== id)
 			: [...selectedSkillIds, id];
 	}
 
 	async function addFiles(files: FileList | File[]) {
-		if (!canAttach) return;
+		if (disabled || !canAttach) return;
 		for (const file of Array.from(files)) {
 			const image = isChatImageMime(file.type);
 			const document = isChatDocumentMime(file.type);
@@ -411,7 +416,7 @@
 		effortOpen = false;
 	}
 
-	const canSend = $derived(!disabled && !sendDisabled && !streaming && value.trim().length > 0);
+	const canSend = $derived($serviceCapabilities('lumen-chat_user') && (!searchRequired || $serviceCapabilities('lumen-tools_user')) && !disabled && !sendDisabled && !streaming && value.trim().length > 0);
 
 	const format = $derived(new Intl.NumberFormat(intlLocale()));
 	const knownContext = $derived(
@@ -500,10 +505,13 @@
 
 
 <div class="composer">
+	<LumenPermissionNotice leaf="lumen-chat_user" />
+	<LumenPermissionNotice leaf="lumen-tools_user" />
+	<LumenPermissionNotice leaf="lumen-assets_editor" />
 	<input
 		bind:this={fileInput}
 		type="file"
-		accept="image/jpeg,image/png,image/webp,application/pdf"
+		accept={canAttachImage ? 'image/jpeg,image/png,image/webp,application/pdf' : 'application/pdf'}
 		multiple
 		hidden
 		onchange={onFilePick}

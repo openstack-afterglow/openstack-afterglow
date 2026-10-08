@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/drover';
 	import { fetchWithAuth } from '$lib/api/client';
+	import { onMount } from 'svelte';
+	import { get } from 'svelte/store';
+	import { k3sPermissions } from '$lib/stores/k3sPermissions';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import ProgressTrack from '$lib/components/ui/ProgressTrack.svelte';
 	import StepProgress from '$lib/components/ui/StepProgress.svelte';
@@ -43,11 +46,11 @@
 	});
 	const rotationStatus = $derived(failed ? 'failed' : done ? 'done' : 'running');
 
-	$effect(() => {
-		void startRotation();
-	});
+	// Destructive POST: start once on mount. Token/prop refreshes must never re-run it.
+	onMount(() => { void startRotation(); });
 
 	async function startRotation() {
+		if (!get(k3sPermissions).administerClusters) { onclose(); return; }
 		messages = [];
 		done = false;
 		failed = false;

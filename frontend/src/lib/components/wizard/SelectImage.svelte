@@ -1,9 +1,11 @@
 <script lang="ts">
-	import { tick } from 'svelte';
 	import type { ImageInfo } from '$lib/types/compute';
 	import { createImageCatalog, currentImagesByReference, imageReferenceParts, imageUploadInstant } from '$lib/stores/imageCatalog.svelte';
 	import { imageReferenceMatchesQuery } from '$lib/utils/imageReference';
-	import { formatDate, formatSize } from '$lib/utils/format';
+	import { formatSize } from '$lib/utils/format';
+	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { TableShell } from '$lib/components/ui';
+	import ImageDigest from '$lib/components/image/ImageDigest.svelte';
 	import { t } from '$lib/i18n/ns/vm-wizard';
 	import RichText from '$lib/i18n/RichText.svelte';
 	let { images, selectedId, onSelect }: {
@@ -24,8 +26,9 @@
 		const sourceName = image.name.trim();
 		return sourceName && sourceName !== imageReferenceParts(image).repository ? sourceName : referenceName(image);
 	}
-	let expandedRepository = $state<string | null>(null);
-	let tagPanel: HTMLElement | undefined = $state();
+	const chooserId = $props.id();
+	let expandedRepository = $state<string | null | undefined>(undefined);
+	let tagSearch = $state('');
 	let searchTerm = $state('');
 	let filtersOpen = $state(false);
 	const activeFilterCount = $derived((searchTerm.trim() ? 1 : 0) + (activeDistro === null ? 0 : 1));
@@ -84,8 +87,16 @@
 	const catalog = createImageCatalog(() => filteredImages, () => images);
 	const repositoryGroups = $derived(catalog.repositoryGroups);
 	const selectedImage = $derived(images.find(image => image.id === selectedId));
-	const openRepository = $derived(expandedRepository ?? (selectedImage ? imageReferenceParts(selectedImage).repository : null));
+	const openRepository = $derived(expandedRepository === undefined
+		? selectedImage ? imageReferenceParts(selectedImage).repository : null
+		: expandedRepository);
 	const openGroup = $derived(repositoryGroups.find(group => group.repository === openRepository));
+	const tagQuery = $derived(tagSearch.trim().toLowerCase());
+	const visibleTags = $derived(openGroup?.tags.filter(tag => tag.tag.toLowerCase().includes(tagQuery)) ?? []);
+	const uploadFormatter = $derived(new Intl.DateTimeFormat(intlLocale(), {
+		year: 'numeric', month: '2-digit', day: '2-digit',
+		hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+	}));
 
 	const repositoryTotal = $derived(new Set(currentImages.map(image => imageReferenceParts(image).repository)).size);
 
@@ -101,9 +112,13 @@
 		return distroColors[distro ?? ''] ?? 'bg-[var(--color-state-neutral)]';
 	}
 
-	function uploadDate(image: ImageInfo): string {
-		const instant = imageUploadInstant(image);
-		return instant === null ? '' : formatDate(new Date(Math.trunc(instant / 1000)).toISOString());
+	function toggleRepository(repository: string): void {
+		if (openRepository === repository) {
+			expandedRepository = null;
+		} else {
+			expandedRepository = repository;
+			tagSearch = '';
+		}
 	}
 
 </script>
@@ -184,43 +199,108 @@
 	</section>
 {/if}
 
-<div class="grid grid-cols-1 @lg/panel:grid-cols-2 @3xl/panel:grid-cols-3 gap-3">
+<div role="list" aria-label={t('image.repositoryListLabel')} class="grid grid-cols-1 @lg/panel:grid-cols-2 @3xl/panel:grid-cols-3 gap-3">
 	{#each repositoryGroups as group (group.repository)}
 		{@const image = group.latest}
-		<button
-			type="button"
-			onclick={async () => {
-				expandedRepository = group.repository;
-				await tick();
-				tagPanel?.scrollIntoView?.({ block: 'nearest' });
-			}}
-			aria-label={t('image.repositoryLabel', { name: group.repository })}
-			aria-controls="vm-image-tags"
-			aria-expanded={openRepository === group.repository}
-			class="min-w-0 rounded-xl border p-4 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-accent)] {openRepository === group.repository
-				? 'border-[var(--color-accent)] bg-[var(--color-surface-selected)]'
-				: 'border-[var(--color-line)] bg-[var(--color-surface-raised)] hover:border-[var(--color-line-2)]'}"
-		>
-			<div class="flex items-center gap-3">
-				{#if logoPath(image.os_distro ?? null)}
-					<img src={logoPath(image.os_distro ?? null)} alt="" class="h-12 w-12 flex-shrink-0 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-sunken)] p-1 object-contain" />
-				{:else}
-					<div aria-hidden="true" class="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg {avatarColor(image.os_distro ?? null)} text-sm font-bold text-[var(--color-action-on-accent)]">
-						{avatarLetter(group.repository)}
+		{@const expanded = openRepository === group.repository}
+		{@const panelId = `${chooserId}-tags-${encodeURIComponent(group.repository)}`}
+		<div role="listitem" class="min-w-0 rounded-xl border transition-colors {expanded
+			? 'col-span-full border-[var(--color-accent)] bg-[var(--color-surface-selected)]'
+			: 'border-[var(--color-line)] bg-[var(--color-surface-raised)] hover:border-[var(--color-line-2)]'}">
+			<button
+				type="button"
+				onclick={() => toggleRepository(group.repository)}
+				aria-label={t('image.repositoryLabel', { name: group.repository })}
+				aria-controls={panelId}
+				aria-expanded={expanded}
+				class="w-full min-w-0 rounded-xl p-4 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
+			>
+				<div class="flex items-center gap-3">
+					{#if logoPath(image.os_distro ?? null)}
+						<img src={logoPath(image.os_distro ?? null)} alt="" class="h-12 w-12 flex-shrink-0 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-sunken)] p-1 object-contain" />
+					{:else}
+						<div aria-hidden="true" class="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg {avatarColor(image.os_distro ?? null)} text-sm font-bold text-[var(--color-action-on-accent)]">
+							{avatarLetter(group.repository)}
+							</div>
+					{/if}
+					<div class="min-w-0 flex-1">
+						<p class="break-all font-mono text-sm font-semibold text-[var(--color-ink-0)]">{group.repository}</p>
+						<p class="mt-1 text-xs text-[var(--color-ink-2)]">{[distroLabel(image.os_distro ?? OTHER_DISTRO), image.os_type].filter(Boolean).join(' · ')}</p>
+						<p class="mt-1 text-xs text-[var(--color-ink-2)]">{t('image.tagCount', { count: group.tags.length })}</p>
+						{#if selectedImage && imageReferenceParts(selectedImage).repository === group.repository}
+							<p class="mt-1 truncate text-xs text-[var(--color-ink-2)]" title={imageReferenceParts(selectedImage).tag}>{t('image.selectedTag', { tag: imageReferenceParts(selectedImage).tag })}</p>
+						{/if}
 					</div>
-				{/if}
-				<div class="min-w-0 flex-1">
-					<p class="break-all font-mono text-sm font-semibold text-[var(--color-ink-0)]">{group.repository}</p>
-					<p class="mt-1 text-xs text-[var(--color-ink-2)]">{[distroLabel(image.os_distro ?? OTHER_DISTRO), image.os_type].filter(Boolean).join(' · ')}</p>
-					<p class="mt-1 text-xs text-[var(--color-ink-2)]">{t('image.tagCount', { count: group.tags.length })}</p>
-				</div>
-				{#if group.images.some(image => image.id === selectedId)}
-					<svg class="h-4 w-4 shrink-0 text-[var(--color-accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+					{#if group.images.some(image => image.id === selectedId)}
+						<svg class="h-4 w-4 shrink-0 text-[var(--color-accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+						</svg>
+					{/if}
+					<svg class="h-4 w-4 shrink-0 text-[var(--color-ink-2)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d={expanded ? 'm6 15 6-6 6 6' : 'm6 9 6 6 6-6'} />
 					</svg>
-				{/if}
-			</div>
-		</button>
+				</div>
+			</button>
+			{#if expanded}
+				<section id={panelId} aria-label={t('image.tagsTitle', { name: group.repository })} class="min-w-0 border-t border-[var(--color-line)] p-3 @lg/panel:p-4">
+					<p class="mb-3 text-xs text-[var(--color-ink-2)]">{t('image.tagsHelp')}</p>
+					<label for={`${panelId}-search`} class="sr-only">{t('image.tagSearchLabel', { name: group.repository })}</label>
+					<input
+						id={`${panelId}-search`}
+						type="search"
+						bind:value={tagSearch}
+						placeholder={t('image.tagSearchPlaceholder')}
+						class="mb-3 w-full rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-sunken)] px-3 py-2 text-sm text-[var(--color-ink-1)] outline-none placeholder:text-[var(--color-ink-3)] focus:border-[var(--color-line-2)]"
+					/>
+					{#if visibleTags.length > 0}
+						<TableShell density="compact">
+							<div class="min-w-[39rem]">
+								<div class="tag-row bg-[var(--color-surface-sunken)] px-3 py-2 text-xs font-medium text-[var(--color-ink-2)]" aria-hidden="true">
+									<span>{t('image.columns.tag')}</span>
+									<span>{t('image.columns.hash')}</span>
+									<span>{t('image.columns.uploadedAt')}</span>
+									<span class="text-right">{t('image.columns.size')}</span>
+								</div>
+								<ul class="m-0 list-none p-0">
+									{#each visibleTags as tag (tag.tag)}
+										{@const image = tag.current}
+										{@const instant = imageUploadInstant(image)}
+										<li class="border-t border-[var(--color-line)]">
+											<button
+												type="button"
+												disabled={image.status !== 'active'}
+												onclick={() => onSelect(image.id, selectionName(image))}
+												aria-label={image.status === 'active' ? t('image.selectLabel', { name: referenceName(image) }) : t('image.unselectableLabel', { name: referenceName(image), status: image.status })}
+												aria-pressed={selectedId === image.id}
+												title={image.status === 'active' ? tag.tag : t('image.inactiveReason', { status: image.status })}
+												class="tag-row min-h-11 w-full px-3 py-2 text-left text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-accent)] disabled:cursor-not-allowed {selectedId === image.id
+													? 'bg-[var(--color-surface-selected)]'
+													: 'bg-[var(--color-surface-base)] enabled:hover:bg-[var(--color-surface-sunken)]'}"
+											>
+												<span class="flex min-w-0 items-center gap-2 text-[var(--color-ink-1)]" title={tag.tag}>
+													<span class="min-w-0 truncate font-mono text-sm">{tag.tag}</span>
+													{#if selectedId === image.id}
+														<svg class="h-4 w-4 shrink-0 text-[var(--color-accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+													{/if}
+													{#if image.status !== 'active'}<span class="shrink-0 text-xs text-[var(--color-ink-2)]">{image.status}</span>{/if}
+												</span>
+												<ImageDigest {image} showId={false} compact />
+												<span class="whitespace-nowrap text-xs tabular-nums text-[var(--color-ink-2)]">
+													{#if instant === null}-{:else}<time datetime={image.created_at ?? undefined} title={image.created_at ?? undefined}>{uploadFormatter.format(Math.trunc(instant / 1000))}</time>{/if}
+												</span>
+												<span class="whitespace-nowrap text-right text-xs tabular-nums text-[var(--color-ink-2)]">{formatSize(image.size ?? null)}</span>
+											</button>
+										</li>
+									{/each}
+								</ul>
+							</div>
+						</TableShell>
+					{:else}
+						<p role="status" class="py-6 text-center text-sm text-[var(--color-ink-2)]">{t('image.tagSearchEmpty')}</p>
+					{/if}
+				</section>
+			{/if}
+		</div>
 	{/each}
 
 	{#if repositoryGroups.length === 0}
@@ -228,36 +308,11 @@
 	{/if}
 </div>
 
-{#if openGroup}
-	<section bind:this={tagPanel} id="vm-image-tags" aria-label={t('image.tagsTitle', { name: openGroup.repository })} class="mt-4 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-raised)] p-4">
-		<h3 class="text-sm font-semibold text-[var(--color-ink-0)]">{t('image.tagsTitle', { name: openGroup.repository })}</h3>
-		<p class="mt-1 text-xs text-[var(--color-ink-2)]">{t('image.tagsHelp')}</p>
-		<div class="mt-3 grid grid-cols-1 gap-2 @lg/panel:grid-cols-2">
-			{#each openGroup.tags as tag (tag.tag)}
-				{@const image = tag.current}
-				{@const date = uploadDate(image)}
-				<button
-					type="button"
-					disabled={image.status !== 'active'}
-					onclick={() => onSelect(image.id, selectionName(image))}
-					aria-label={image.status === 'active' ? t('image.selectLabel', { name: referenceName(image) }) : t('image.unselectableLabel', { name: referenceName(image), status: image.status })}
-					aria-pressed={selectedId === image.id}
-					class="min-w-0 rounded-lg border p-3 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-accent)] disabled:cursor-not-allowed {selectedId === image.id
-						? 'border-[var(--color-accent)] bg-[var(--color-surface-selected)]'
-						: 'border-[var(--color-line)] bg-[var(--color-surface-base)] enabled:hover:border-[var(--color-line-2)]'}"
-				>
-					<p class="break-all font-mono text-sm font-medium text-[var(--color-ink-1)]">{tag.tag}</p>
-					{#if image.size || date}
-						<div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs tabular-nums text-[var(--color-ink-2)]">
-							{#if image.size}<span>{formatSize(image.size)}</span>{/if}
-							{#if date}<time datetime={image.created_at ?? undefined}>{date}</time>{/if}
-						</div>
-					{/if}
-					{#if image.status !== 'active'}
-						<p class="mt-1 text-xs text-[var(--color-ink-2)]">{t('image.inactiveReason', { status: image.status })}</p>
-					{/if}
-				</button>
-			{/each}
-		</div>
-	</section>
-{/if}
+<style>
+	.tag-row {
+		display: grid;
+		grid-template-columns: minmax(18rem, 1fr) 4.5rem 9rem 4rem;
+		align-items: center;
+		column-gap: 0.5rem;
+	}
+</style>

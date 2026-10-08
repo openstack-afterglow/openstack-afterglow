@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
+	import { serviceCapabilities } from '$lib/stores/servicePermissions';
+	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import { toast } from '$lib/stores/toast';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -59,6 +61,9 @@
 	let loading = $state(true);
 
 	const isAdmin = $derived(base.includes('/admin'));
+	const canMcp = $derived(isAdmin ? $auth.isSystemAdmin === true : $serviceCapabilities('lumen-mcp_editor'));
+	const canAssets = $derived(isAdmin ? $auth.isSystemAdmin === true : $serviceCapabilities('lumen-assets_editor'));
+	const canDelete = $derived(isAdmin ? $auth.isSystemAdmin === true : $serviceCapabilities('lumen-resources_admin'));
 
 	let mName = $state('');
 	let mTransport = $state('http');
@@ -90,6 +95,7 @@
 
 
 	async function connectOAuth(m: McpServer) {
+		if (!canMcp) return;
 		connectingOAuthId = m.id;
 		try {
 			const result = await api.post<{ authorization_url: string }>(
@@ -109,6 +115,7 @@
 
 	async function disconnectOAuth(m: McpServer) {
 		if (!(await confirmDialog(t('extensions.oauth.disconnectConfirm', { name: m.name })))) return;
+		if (!canDelete) return;
 		try {
 			await api.delete(`${base}/mcp-servers/${m.id}/oauth`, token, projectId);
 			await load();
@@ -131,13 +138,17 @@
 
 	async function load() {
 		if (!token) return;
+		const requestToken = token;
+		const requestProject = projectId;
+		const includePrivate = !isAdmin && canAssets;
 		loading = true;
 		try {
 			const [ms, ts, ss] = await Promise.all([
 				api.get<McpServer[]>(`${base}/mcp-servers`, token, projectId),
 				api.get<CustomTool[]>(`${base}/custom-tools`, token, projectId),
-				api.get<Skill[]>(`${base}/skills`, token, projectId)
+				api.get<Skill[]>(`${base}/skills${includePrivate ? '?include_private=true' : ''}`, token, projectId)
 			]);
+			if (requestToken !== token || requestProject !== projectId || (includePrivate && !canAssets)) return;
 			mcps = ms;
 			tools = ts;
 			skills = ss;
@@ -161,6 +172,7 @@
 	}
 
 	async function addSkill() {
+		if (!canAssets) return;
 		if (!sName.trim() || !sInstructions.trim()) {
 			toast.error(t('extensions.skills.nameInstructionsRequired'));
 			return;
@@ -186,6 +198,7 @@
 	}
 
 	async function addMcp() {
+		if (!canMcp) return;
 		if (!mName.trim()) {
 			toast.error(t('extensions.mcp.nameRequired'));
 			return;
@@ -236,6 +249,7 @@
 	}
 
 	async function addTool() {
+		if (!canAssets) return;
 		if (!tName.trim() || !tUrl.trim()) {
 			toast.error(t('extensions.tools.nameUrlRequired'));
 			return;
@@ -277,6 +291,7 @@
 			{ confirmLabel: t('extensions.actions.delete') }
 		);
 		if (!ok) return;
+		if (!canDelete) return;
 		try {
 			await api.delete(`${base}/${kind}/${id}`, token, projectId);
 			await load();
@@ -286,6 +301,7 @@
 	}
 
 	async function toggle(kind: 'mcp-servers' | 'custom-tools' | 'skills', id: number, isActive: boolean) {
+		if (!(kind === 'mcp-servers' ? canMcp : canAssets)) return;
 		try {
 			await api.patch(`${base}/${kind}/${id}`, { is_active: !isActive }, token, projectId);
 			await load();
@@ -299,6 +315,7 @@
 		id: number,
 		loadPolicy: 'preloaded' | 'on_demand'
 	) {
+		if (!(kind === 'mcp-servers' ? canMcp : canAssets)) return;
 		try {
 			await api.patch(`${base}/${kind}/${id}`, { load_policy: loadPolicy }, token, projectId);
 			await load();
@@ -322,6 +339,7 @@
 {#if !only || only === 'mcp'}
 <section class="mb-8">
 	<h3 class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">{t('extensions.mcp.title')}</h3>
+	{#if !isAdmin}<LumenPermissionNotice leaf="lumen-mcp_editor" /><LumenPermissionNotice leaf="lumen-resources_admin" />{/if}
 	<p class="mb-3 text-xs text-[var(--color-ink-3)]">{t('extensions.mcp.description', { scope: isAdmin ? t('extensions.scope.global') : t('extensions.scope.personal') })}</p>
 	<div class="{cardCls} mb-4 p-5">
 		<div class="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -372,7 +390,7 @@
 			<p class="mt-3 text-xs text-[var(--color-ink-3)]">{t('extensions.mcp.authHelp')}</p>
 		{/if}
 		<div class="mt-3 flex justify-end">
-			<Button onclick={addMcp} disabled={addingMcp}>{addingMcp ? t('extensions.actions.adding') : t('extensions.mcp.add')}</Button>
+			<Button onclick={addMcp} disabled={addingMcp || !canMcp}>{addingMcp ? t('extensions.actions.adding') : t('extensions.mcp.add')}</Button>
 		</div>
 	</div>
 	{#if loading}
@@ -401,9 +419,9 @@
 						<div class="flex shrink-0 items-center gap-3 text-xs">
 							{#if !isAdmin && m.auth_mode === 'oauth'}
 								{#if oauthStatus[m.id]?.connected}
-									<button class="text-[var(--color-state-success)] hover:opacity-80" onclick={() => disconnectOAuth(m)}>{t('extensions.oauth.connected')}</button>
+									<button disabled={!canDelete} class="text-[var(--color-state-success)] hover:opacity-80" onclick={() => disconnectOAuth(m)}>{t('extensions.oauth.connected')}</button>
 								{:else}
-									<button class="text-[var(--color-accent)] hover:opacity-80" disabled={connectingOAuthId === m.id} onclick={() => connectOAuth(m)}>
+									<button class="text-[var(--color-accent)] hover:opacity-80" disabled={connectingOAuthId === m.id || !canMcp} onclick={() => connectOAuth(m)}>
 										{#if connectingOAuthId === m.id}
 											{t('extensions.oauth.preparing')}
 										{:else}
@@ -428,8 +446,8 @@
 									<option value="preloaded">{t('extensions.loadPolicy.preloadedShort')}</option>
 								</select>
 							{/if}
-							<button class="text-[var(--color-ink-2)] hover:text-[var(--color-ink-0)]" onclick={() => toggle('mcp-servers', m.id, m.is_active)}>{m.is_active ? t('extensions.actions.deactivate') : t('extensions.actions.activate')}</button>
-							<button class="text-[var(--color-state-danger)] hover:opacity-80" onclick={() => removeItem('mcp-servers', m.id, m.name)}>{t('extensions.actions.delete')}</button>
+							<button disabled={!canMcp} class="text-[var(--color-ink-2)] hover:text-[var(--color-ink-0)]" onclick={() => toggle('mcp-servers', m.id, m.is_active)}>{m.is_active ? t('extensions.actions.deactivate') : t('extensions.actions.activate')}</button>
+							<button disabled={!canDelete} class="text-[var(--color-state-danger)] hover:opacity-80" onclick={() => removeItem('mcp-servers', m.id, m.name)}>{t('extensions.actions.delete')}</button>
 						</div>
 					</div>
 				</div>
@@ -443,6 +461,7 @@
 {#if !only || only === 'tools'}
 <section>
 	<h3 class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">{t('extensions.tools.title')}</h3>
+	{#if !isAdmin}<LumenPermissionNotice leaf="lumen-assets_editor" /><LumenPermissionNotice leaf="lumen-resources_admin" />{/if}
 	<p class="mb-3 text-xs text-[var(--color-ink-3)]">{t('extensions.tools.description', { scope: isAdmin ? t('extensions.scope.global') : t('extensions.scope.personal') })}</p>
 	<div class="{cardCls} mb-4 p-5">
 		<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -464,7 +483,7 @@
 			</div>
 		{/if}
 		<div class="mt-3 flex justify-end">
-			<Button onclick={addTool} disabled={addingTool}>{addingTool ? t('extensions.actions.adding') : t('extensions.tools.add')}</Button>
+			<Button onclick={addTool} disabled={addingTool || !canAssets}>{addingTool ? t('extensions.actions.adding') : t('extensions.tools.add')}</Button>
 		</div>
 	</div>
 	{#if loading}
@@ -502,8 +521,8 @@
 								<option value="preloaded">{t('extensions.loadPolicy.preloadedShort')}</option>
 							</select>
 						{/if}
-						<button class="text-[var(--color-ink-2)] hover:text-[var(--color-ink-0)]" onclick={() => toggle('custom-tools', tool.id, tool.is_active)}>{tool.is_active ? t('extensions.actions.deactivate') : t('extensions.actions.activate')}</button>
-						<button class="text-[var(--color-state-danger)] hover:opacity-80" onclick={() => removeItem('custom-tools', tool.id, tool.name)}>{t('extensions.actions.delete')}</button>
+						<button disabled={!canAssets} class="text-[var(--color-ink-2)] hover:text-[var(--color-ink-0)]" onclick={() => toggle('custom-tools', tool.id, tool.is_active)}>{tool.is_active ? t('extensions.actions.deactivate') : t('extensions.actions.activate')}</button>
+						<button disabled={!canDelete} class="text-[var(--color-state-danger)] hover:opacity-80" onclick={() => removeItem('custom-tools', tool.id, tool.name)}>{t('extensions.actions.delete')}</button>
 					</div>
 				</div>
 			{/each}
@@ -516,6 +535,7 @@
 {#if !only || only === 'skills'}
 <section class="mt-8">
 	<h3 class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">{t('extensions.skills.title')}</h3>
+	{#if !isAdmin}<LumenPermissionNotice leaf="lumen-assets_editor" /><LumenPermissionNotice leaf="lumen-resources_admin" />{/if}
 	<p class="mb-3 text-xs text-[var(--color-ink-3)]">{t('extensions.skills.description', { scope: isAdmin ? t('extensions.scope.global') : t('extensions.scope.personal') })}</p>
 	<div class="{cardCls} mb-4 p-5">
 		<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -535,7 +555,7 @@
 			></textarea>
 		</div>
 		<div class="mt-3 flex justify-end">
-			<Button onclick={addSkill} disabled={addingSkill}>{addingSkill ? t('extensions.actions.adding') : t('extensions.skills.add')}</Button>
+			<Button onclick={addSkill} disabled={addingSkill || !canAssets}>{addingSkill ? t('extensions.actions.adding') : t('extensions.skills.add')}</Button>
 		</div>
 	</div>
 	{#if loading}
@@ -556,8 +576,8 @@
 						{#if s.description}<div class="mt-0.5 truncate text-xs text-[var(--color-ink-3)]">{s.description}</div>{/if}
 					</div>
 					<div class="flex shrink-0 items-center gap-3 text-xs">
-						<button class="text-[var(--color-ink-2)] hover:text-[var(--color-ink-0)]" onclick={() => toggle('skills', s.id, s.is_active)}>{s.is_active ? t('extensions.actions.deactivate') : t('extensions.actions.activate')}</button>
-						<button class="text-[var(--color-state-danger)] hover:opacity-80" onclick={() => removeItem('skills', s.id, s.name)}>{t('extensions.actions.delete')}</button>
+						<button disabled={!canAssets} class="text-[var(--color-ink-2)] hover:text-[var(--color-ink-0)]" onclick={() => toggle('skills', s.id, s.is_active)}>{s.is_active ? t('extensions.actions.deactivate') : t('extensions.actions.activate')}</button>
+						<button disabled={!canDelete} class="text-[var(--color-state-danger)] hover:opacity-80" onclick={() => removeItem('skills', s.id, s.name)}>{t('extensions.actions.delete')}</button>
 					</div>
 				</div>
 			{/each}

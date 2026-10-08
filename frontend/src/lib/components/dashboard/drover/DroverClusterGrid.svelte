@@ -3,6 +3,7 @@
 	import { t as tc } from '$lib/i18n/ns/common';
 	import K3sClusterCard from '$lib/components/dashboard/drover/K3sClusterCard.svelte';
 	import type { K3sCluster } from '$lib/types/k3s';
+	import { k3sPermissions } from '$lib/stores/k3sPermissions';
 
 	let {
 		clusters,
@@ -35,7 +36,7 @@
 	<div class="text-center py-20 text-ink-2">
 		<div class="text-5xl mb-4">☸</div>
 		<p class="text-lg">{t('cluster.empty')}</p>
-		<button onclick={onOpenCreate} onpointerenter={onOpenCreateIntent} onfocus={onOpenCreateIntent} class="text-warm-text hover:text-warm-text-hover text-sm mt-2 inline-block">
+		<button disabled={!$k3sPermissions.editClusters} onclick={onOpenCreate} onpointerenter={onOpenCreateIntent} onfocus={onOpenCreateIntent} class="text-warm-text hover:text-warm-text-hover text-sm mt-2 inline-block">
 			{t('cluster.createFirst')}
 		</button>
 	</div>

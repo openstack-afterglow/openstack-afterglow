@@ -5,8 +5,13 @@ import type { AdminImage } from '$lib/types/adminImage';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), patch: vi.fn(), post: vi.fn(), delete: vi.fn() }));
 vi.mock('$lib/api/client', () => ({ api: mocks, ApiError: class ApiError extends Error { status = 500; } }));
-vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token', projectId: 'project' }) }));
+vi.mock('$lib/stores/auth', () => ({
+	auth: writable({ token: 'token', projectId: 'project' }),
+	authReady: writable(true), projectSwitching: writable(false),
+}));
 vi.mock('$lib/stores/projectNames', () => ({ projectNames: { subscribe: writable(new Map([['project', 'Project']])).subscribe, load: vi.fn() } }));
+// Image export capabilities are unrelated to the catalog; keep their requests out of paginated fixtures.
+vi.mock('$lib/stores/servicePermissions', () => ({ serviceCapabilities: writable<(leaf: string) => boolean>(() => false) }));
 vi.mock('$lib/utils/autoRefresh.svelte', () => ({
 	createAutoRefresh: () => ({ active: false, intervalSeconds: 30, intervalOptions: [15, 30, 60] }),
 }));

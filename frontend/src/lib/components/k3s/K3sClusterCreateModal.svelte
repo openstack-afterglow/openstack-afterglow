@@ -3,6 +3,7 @@
 	import type { ClusterTemplate, CreateClusterForm } from '$lib/types/cluster';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 	import { ActivityIndicator, Alert, Button, ProgressTrack } from '$lib/components/ui';
+	import { canWrite } from '$lib/stores/auth';
 
 	let {
 		open = $bindable(),
@@ -39,6 +40,7 @@
 	});
 
 	async function submit() {
+		if (!$canWrite) return;
 		if (!form.name.trim() || !form.cluster_template_id) return;
 		creating = true;
 		error = '';
@@ -52,7 +54,7 @@
 	}
 </script>
 
-{#if open}
+{#if open && $canWrite}
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
@@ -102,7 +104,7 @@
 			{#if creating}<ProgressTrack value={null} active label={t('clusterCreate.creating')} class="mt-4" />{/if}
 			<div class="flex justify-end gap-3 mt-6">
 				<button onclick={() => { open = false; error = ''; }} class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('clusterCreate.cancel')}</button>
-				<Button onclick={submit} disabled={creating || !form.name || !form.cluster_template_id} ariaBusy={creating}>
+				<Button onclick={submit} disabled={!$canWrite || creating || !form.name || !form.cluster_template_id} ariaBusy={creating}>
 					{#if creating}<ActivityIndicator size="xs" tone="ink" />{t('clusterCreate.creating')}{:else}{t('clusterCreate.create')}{/if}
 				</Button>
 			</div>

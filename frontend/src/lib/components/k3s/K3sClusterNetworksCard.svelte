@@ -3,6 +3,7 @@
   import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
   import { untrack } from 'svelte';
   import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
+  import { k3sPermissions } from '$lib/stores/k3sPermissions';
 
   const s = useK3sClusterDetailController();
 
@@ -57,7 +58,7 @@
   const availableNetworks = $derived(s.networks.filter((net) => !(currentIfaces ?? []).some((iface) => iface.net_id === net.id)));
 
   async function handleAttach() {
-    if (!selectedVmId || !selectedNetId) return;
+    if (!$k3sPermissions.editClusters || !selectedVmId || !selectedNetId) return;
     attachError = '';
     try {
       await s.attachInterface(selectedVmId, selectedNetId);
@@ -69,6 +70,7 @@
   }
 
   async function handleDetach(vmId: string, portId: string) {
+    if (!$k3sPermissions.administerClusters) return;
     attachError = '';
     try {
       await s.detachInterface(vmId, portId);
@@ -81,7 +83,7 @@
 <div class="bg-surface-base border border-line rounded-xl p-4 mt-3">
   <div class="flex items-center justify-between mb-3">
     <h3 class="text-xs text-ink-2 uppercase tracking-wide">{t('networks.title')}</h3>
-    {#if s.isActive}
+    {#if s.isActive && $k3sPermissions.editClusters}
       <button
         onclick={() => { showAttachForm = !showAttachForm; selectedNetId = ''; attachError = ''; }}
         class="text-xs text-warm-text hover:text-warm-text-hover transition-colors"
@@ -144,7 +146,7 @@
             </div>
             <button
               onclick={() => handleDetach(selectedVmId, iface.port_id)}
-              disabled={iface.is_primary || s.interfaceActioning === detachingKey}
+              disabled={!$k3sPermissions.administerClusters || iface.is_primary || s.interfaceActioning === detachingKey}
               title={iface.is_primary ? t('networks.primaryCannotRemove') : t('networks.removeInterface')}
               class="shrink-0 text-xs text-orange-400 hover:text-orange-300 px-2 py-1 border border-orange-900 hover:border-orange-700 rounded transition-colors disabled:text-ink-3 disabled:border-line-2 disabled:cursor-not-allowed"
             >
@@ -159,7 +161,7 @@
       <p class="text-xs text-red-400 mt-2">{attachError}</p>
     {/if}
 
-    {#if showAttachForm && s.isActive}
+    {#if showAttachForm && s.isActive && $k3sPermissions.editClusters}
       <div class="mt-3 bg-surface-sunken rounded-lg p-3">
         <p class="text-xs text-ink-2 mb-2">{t('networks.selectAttachNetwork')}</p>
         <div class="flex gap-2">

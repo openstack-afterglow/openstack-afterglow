@@ -1,3 +1,4 @@
+import './lumenPermissionFixture';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { auth } from '$lib/stores/auth';

@@ -12,6 +12,7 @@ from fastapi.responses import Response
 from app.api.deps import _resolve_jwt_token_info, validate_keystone_id
 from app.api.palimpsest.hub import _require_palimpsest_enabled
 from app.api.palimpsest.package_protocol import PackageRoute, native_error
+from app.services.palimpsest_authorization import authorize_current_package_request
 from app.services.service_proxy import package_member_request
 
 router = APIRouter(route_class=PackageRoute)
@@ -87,7 +88,8 @@ def checked_context(response: Response, info: dict) -> dict:
         raise HTTPException(status_code=503, detail="Palimpsest Hub returned an invalid project context")
     capabilities = payload.get("capabilities")
     if not isinstance(capabilities, dict) or any(
-        not isinstance(capabilities.get(key), bool) for key in ("packages_read", "packages_write", "keys_issue")
+        not isinstance(capabilities.get(key), bool)
+        for key in ("packages_read", "packages_download", "packages_write", "keys_issue", "keys_revoke")
     ):
         raise HTTPException(status_code=503, detail="Palimpsest Hub returned invalid project capabilities")
     namespace = payload["namespace"]
@@ -121,8 +123,16 @@ def checked_context(response: Response, info: dict) -> dict:
     return payload
 
 
+async def package_browser_request(request: Request, upstream_path: str, **kwargs) -> Response:
+    """Current service gate for custom I/O outside the central browser proxy."""
+    await authorize_current_package_request(
+        request, upstream_path, request.state.token_info, method=kwargs.get("method", "GET")
+    )
+    return await package_member_request(request, upstream_path, **kwargs)
+
+
 async def project_context(request: Request, info: dict) -> tuple[Response, dict | None]:
-    response = await package_member_request(request, "/v1/projects/current")
+    response = await package_browser_request(request, "/v1/projects/current")
     if response.status_code >= 400:
         return response, None
     payload = checked_context(response, info)
@@ -183,7 +193,7 @@ async def register_namespace(request: Request, info: dict = Depends(package_brow
         body.extend(chunk)
     if bytes(body).strip() not in {b"", b"{}"}:
         raise HTTPException(status_code=422, detail="Namespace registration takes an empty body")
-    response = await package_member_request(request, f"/v1/projects/{info['project_id']}/namespace", method="PUT")
+    response = await package_browser_request(request, f"/v1/projects/{info['project_id']}/namespace", method="PUT")
     if response.status_code < 400:
         payload = checked_context(response, info)
         if payload["namespace"] is None:
@@ -192,12 +202,15 @@ async def register_namespace(request: Request, info: dict = Depends(package_brow
 
 
 async def scoped_read(request: Request, info: dict, suffix: str, query: dict[str, str]) -> Response:
+    # Authorize the operation before even fetching namespace context. This is a
+    # role-only preflight; Hub still selects/verifies the actual namespace below.
+    await authorize_current_package_request(request, f"/v1/projects/{info['project_id']}/{suffix}", info, method="GET")
     namespace, failure = await current_namespace(request, info)
     if failure is not None:
         return failure
     if "package" in query and len(f"{namespace}/{query['package']}") > 255:
         raise HTTPException(status_code=422, detail="Package reference exceeds 255 characters")
-    response = await package_member_request(request, f"/v1/projects/{namespace}/{suffix}", query=query)
+    response = await package_browser_request(request, f"/v1/projects/{namespace}/{suffix}", query=query)
     if response.status_code < 400:
         payload = checked_payload(response, info, namespace)
         if "package" in query:
@@ -250,14 +263,17 @@ async def download(digest: str, request: Request, info: dict = Depends(package_b
     if not _DIGEST.fullmatch(digest):
         raise HTTPException(status_code=422, detail="Invalid version digest")
     query = read_query(request, {"package"}, package_required=True)
+    await authorize_current_package_request(
+        request, f"/v1/projects/{info['project_id']}/versions/{digest}/download", info, method="GET"
+    )
     namespace, failure = await current_namespace(request, info)
     if failure is not None:
         return failure
     path = f"/v1/projects/{namespace}/versions/{digest}"
-    metadata = await package_member_request(request, path, query=query)
+    metadata = await package_browser_request(request, path, query=query)
     if metadata.status_code >= 400:
         return metadata
     payload = checked_payload(metadata, info, namespace)
     if payload.get("root_digest") != digest or payload.get("package") != query["package"]:
         raise HTTPException(status_code=503, detail="Palimpsest Hub returned the wrong version")
-    return await package_member_request(request, f"{path}/download", query=query, stream=True)
+    return await package_browser_request(request, f"{path}/download", query=query, stream=True)

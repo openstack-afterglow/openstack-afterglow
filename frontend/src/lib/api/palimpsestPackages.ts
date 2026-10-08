@@ -6,7 +6,7 @@ export interface ProjectContext {
   project_name: string;
   namespace: string | null;
   package_authority: string | null;
-  capabilities: { packages_read: boolean; packages_write: boolean; keys_issue: boolean };
+  capabilities: { packages_read: boolean; packages_download: boolean; packages_write: boolean; keys_issue: boolean; keys_revoke: boolean };
 }
 export interface Platform { os: string; architecture: string; variant?: string }
 export interface PackageSummary {
@@ -42,7 +42,7 @@ export interface PackageVersion {
 export interface ScopedPage<T> { project_id: string; namespace: string; items: T[]; next_cursor: string | null }
 export interface VersionPage extends ScopedPage<PackageVersion> { package: string }
 export interface KeyList { project_id: string; namespace: string; items: PackageKey[] }
-export type KeyAction = 'packages:read' | 'packages:write' | 'cache:read' | 'cache:write';
+export type KeyAction = 'packages:inventory' | 'packages:read' | 'packages:write' | 'cache:read' | 'cache:write';
 export type KeyScope = { packages: string[]; all_packages?: never } | { all_packages: true; packages?: never };
 export interface PackageKey {
   key_id: string;

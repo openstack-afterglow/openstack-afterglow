@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { writable } from "svelte/store";
 import { t } from "$lib/i18n/ns/admin-chat";
 import { initLocale } from "$lib/i18n/runtime.svelte";
 
@@ -31,6 +32,13 @@ vi.mock("$lib/stores/auth", () => ({
       return () => {};
     },
   },
+  authReady: writable(true),
+  projectSwitching: writable(false),
+}));
+// Personal extension permissions are unrelated to these admin flows; do not consume API fixtures.
+vi.mock("$lib/stores/servicePermissions", () => ({
+  serviceCapabilities: writable<(leaf: string) => boolean>(() => false),
+  projectPermissions: writable({ permissions: null, loading: false, error: "" }),
 }));
 vi.mock("$lib/api/client", () => ({
   api: {
@@ -47,6 +55,7 @@ vi.mock("$lib/stores/toast", () => ({
   toast: { success: mocks.toastSuccess, error: mocks.toastError },
 }));
 
+import { authReady, projectSwitching } from "$lib/stores/auth";
 import ModelPage from "../models/+page.svelte";
 
 const { get, post, patch, toastError } = mocks;
@@ -121,6 +130,8 @@ describe("admin chat model prompt-cache pricing", () => {
   beforeEach(() => {
     initLocale("ko");
     vi.clearAllMocks();
+    authReady.set(true);
+    projectSwitching.set(false);
     post.mockResolvedValue({});
     patch.mockResolvedValue({});
   });

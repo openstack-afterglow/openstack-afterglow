@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from app.config import get_settings
 from app.services import keystone
+from app.services.service_authorization import authorize_service_request
 
 if TYPE_CHECKING:
     import openstack
@@ -239,6 +240,7 @@ async def proxy(
     logical_project_id = token_info.get("project_id") if token_info else None
     if not token or not logical_project_id:
         raise HTTPException(status_code=401, detail="인증이 필요합니다")
+    await authorize_service_request(service_type, request, upstream_path)
 
     connection_project_id = logical_project_id
     if service_type == "lumen":
@@ -262,6 +264,7 @@ async def get_json(service_type: str, request: Request, upstream_path: str) -> A
     logical_project_id = token_info.get("project_id") if token_info else None
     if not token or not logical_project_id:
         raise HTTPException(status_code=401, detail="인증이 필요합니다")
+    await authorize_service_request(service_type, request, upstream_path)
 
     connection_project_id = logical_project_id
     if service_type == "lumen":

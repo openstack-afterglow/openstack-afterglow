@@ -4,7 +4,7 @@
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
   import { untrack } from 'svelte';
   import { goto } from '$app/navigation';
-  import { auth } from '$lib/stores/auth';
+  import { auth, canWrite } from '$lib/stores/auth';
   import { api, ApiError } from '$lib/api/client';
   import { apiMut } from '$lib/api/mutations';
   import BulkSelectionOverlay, { type BulkSelectionAction } from '$lib/components/ui/BulkSelectionOverlay.svelte';
@@ -56,15 +56,18 @@
   }
 
   function prefetchTemplates() {
+    if (!$canWrite) return;
     void api.prefetch('/api/v1/clusters/templates', $auth.token ?? undefined, $auth.projectId ?? undefined);
   }
 
   function openCreate() {
+    if (!$canWrite) return;
     showModal = true;
     void fetchTemplates();
   }
 
   async function createCluster(form: CreateClusterForm): Promise<string | true> {
+    if (!$canWrite) return t('clusters.error.createFailed');
     try {
       const body: Record<string, unknown> = {
         name: form.name,
@@ -82,7 +85,9 @@
   }
 
   async function deleteCluster(id: string, name: string) {
+    if (!$canWrite) return;
     if (!await confirmDialog(t('clusters.deleteDialog.body', { name }))) return;
+    if (!$canWrite) return;
     deleting = id;
     try {
       await apiMut(t('clusters.actions.deleteK8sCluster'), () => api.delete(`/api/v1/clusters/${id}`, $auth.token ?? undefined, $auth.projectId ?? undefined));
@@ -94,9 +99,11 @@
     }
   }
   async function runBulkDelete() {
+    if (!$canWrite) return;
     const snapshot = [...selection.ids];
     if (snapshot.length === 0) return;
     if (!await confirmDialog(t('clusters.bulk.deleteDialog', { count: snapshot.length }))) return;
+    if (!$canWrite) return;
     const tokenSnapshot = $auth.token ?? undefined;
     const projectSnapshot = $auth.projectId ?? undefined;
     bulkBusy = true;
@@ -116,7 +123,7 @@
   }
 
   const bulkActions: BulkSelectionAction[] = $derived([
-    { key: 'delete', label: t('clusters.actions.delete'), tone: 'danger', onAction: runBulkDelete },
+    { key: 'delete', label: t('clusters.actions.delete'), tone: 'danger', disabled: !$canWrite, onAction: runBulkDelete },
   ]);
 
   const ar = createAutoRefresh(() => fetchClusters(), {
@@ -146,7 +153,7 @@
         refreshing={loading}
         onManualRefresh={() => fetchClusters()}
       />
-      <button onclick={openCreate} onpointerenter={prefetchTemplates} onfocus={prefetchTemplates} class="bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">{t('clusters.actions.create')}</button>
+      <button disabled={!$canWrite} onclick={openCreate} onpointerenter={prefetchTemplates} onfocus={prefetchTemplates} class="bg-action-warm hover:bg-action-warm-hover text-ink-0 text-sm font-medium px-4 py-2 rounded-lg transition-colors">{t('clusters.actions.create')}</button>
     {/snippet}
   </PageHeader>
 
@@ -171,7 +178,7 @@
       {deleting}
       selectedIds={selection.ids}
       selectableIds={selectableIds}
-      selectionDisabled={bulkBusy}
+      selectionDisabled={bulkBusy || !$canWrite}
       onToggleSelect={(id) => selection.toggle(id)}
       onToggleAll={() => selection.toggleAll(selectableIds)}
       onDelete={deleteCluster}

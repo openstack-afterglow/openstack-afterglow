@@ -2,6 +2,7 @@
 	import { t } from '$lib/i18n/ns/drover-pages';
 	import { untrack } from 'svelte';
 	import { auth, authReady } from '$lib/stores/auth';
+	import { k3sPermissions } from '$lib/stores/k3sPermissions';
 	import { api } from '$lib/api/client';
 	import { createK3sProgress } from '$lib/stores/k3sProgress.svelte';
 	import { createK3sClusterListController } from '$lib/stores/k3sClusterListController.svelte';
@@ -22,15 +23,17 @@
 	const ctrl = createK3sClusterListController({
 		token: () => $auth.token ?? undefined,
 		projectId: () => $auth.projectId ?? undefined,
+		userId: () => $auth.userId,
 		progress,
 	});
 
 	function prefetchCreateDependencies() {
+		if (!$k3sPermissions.editClusters) return;
 		const token = $auth.token ?? undefined;
 		const projectId = $auth.projectId ?? undefined;
 		void api.prefetch('/api/v1/flavors', token, projectId);
 		void api.prefetch('/api/v1/networks', token, projectId);
-		void api.prefetch('/api/v1/keypairs', token, projectId);
+        if ($k3sPermissions.adminCredentials) void api.prefetch('/api/v1/keypairs', token, projectId);
 		void api.prefetch('/api/v1/k3s/cluster-templates', token, projectId);
 	}
 

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ImageInfo } from '$lib/types/compute';
 import SelectImage from '../SelectImage.svelte';
 import { t } from '$lib/i18n/ns/vm-wizard';
-import { formatDate } from '$lib/utils/format';
+import { t as imageText } from '$lib/i18n/ns/images-keys';
 
 const images: ImageInfo[] = [
 	{
@@ -65,7 +65,8 @@ function tagPanel(repository: string) {
 }
 
 function visibleRepositories() {
-	return screen.getAllByRole('button').filter(button => button.hasAttribute('aria-expanded') && button.getAttribute('aria-controls') === 'vm-image-tags');
+	return within(screen.getByRole('list', { name: t('image.repositoryListLabel') }))
+		.queryAllByRole('button').filter(button => button.hasAttribute('aria-expanded'));
 }
 
 describe('SelectImage', () => {
@@ -95,7 +96,7 @@ describe('SelectImage', () => {
 		const { onSelect } = renderSelector();
 		expect(screen.queryByRole('searchbox')).toBeNull();
 		await fireEvent.click(screen.getByRole('button', { name: t('image.filters.title') }));
-		const search = screen.getByRole('searchbox');
+		const search = screen.getByRole('searchbox', { name: t('image.searchLabel') });
 		await fireEvent.input(search, { target: { value: 'ubuntu 24.04' } });
 		expect(visibleRepositories()).toHaveLength(1);
 		await fireEvent.click(repositoryButton('ubuntu'));
@@ -151,7 +152,7 @@ describe('SelectImage', () => {
 		const disabledName = t('image.unselectableLabel', { name: 'ubuntu:latest', status: 'saving' });
 		const saving = screen.getByRole('button', { name: disabledName });
 		expect(saving.hasAttribute('disabled')).toBe(true);
-		expect(within(saving).getByText(t('image.inactiveReason', { status: 'saving' }))).toBeTruthy();
+
 		(saving as HTMLButtonElement).click();
 		expect(onSelect).not.toHaveBeenCalled();
 
@@ -159,9 +160,9 @@ describe('SelectImage', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'Fedora 1' }));
 		expect(screen.queryByRole('button', { name: t('image.repositoryLabel', { name: 'ubuntu' }) })).toBeNull();
 		await fireEvent.click(screen.getByRole('button', { name: 'Ubuntu 1' }));
-		await fireEvent.input(screen.getByRole('searchbox'), { target: { value: 'legacy-upload' } });
+		await fireEvent.input(screen.getByRole('searchbox', { name: t('image.searchLabel') }), { target: { value: 'legacy-upload' } });
 		expect(visibleRepositories()).toHaveLength(0);
-		await fireEvent.input(screen.getByRole('searchbox'), { target: { value: 'latest' } });
+		await fireEvent.input(screen.getByRole('searchbox', { name: t('image.searchLabel') }), { target: { value: 'latest' } });
 		expect(screen.getByRole('button', { name: disabledName }).hasAttribute('disabled')).toBe(true);
 		expect(onSelect).not.toHaveBeenCalled();
 	});
@@ -172,8 +173,7 @@ describe('SelectImage', () => {
 		render(SelectImage, { images: reverse ? uploads.reverse() : uploads, selectedId: null, onSelect });
 		await fireEvent.click(repositoryButton('ubuntu'));
 		expect(within(tagPanel('ubuntu')).getAllByRole('button')).toHaveLength(1);
-		expect(within(tagButton('ubuntu:latest')).getByText(formatDate(newer.created_at))).toBeTruthy();
-		expect(within(tagButton('ubuntu:latest')).queryByText(formatDate('2027-02-01T00:00:00Z'))).toBeNull();
+
 		await fireEvent.click(tagButton('ubuntu:latest'));
 		expect(onSelect).toHaveBeenCalledWith(newer.id, 'ubuntu:latest');
 	});
@@ -197,17 +197,66 @@ describe('SelectImage', () => {
 		);
 	});
 
-	it('omits technical identity, active/current status, and disk-format clutter from normal choices', async () => {
+	it('keeps repository summaries quiet and shows an eight-character hash with full metadata available', async () => {
 		render(SelectImage, { images: [{ ...newer, disk_format: 'raw', size: 1024 ** 3 }], selectedId: null, onSelect: vi.fn() });
-		await fireEvent.click(repositoryButton('ubuntu'));
-		for (const choice of [repositoryButton('ubuntu'), tagPanel('ubuntu')]) {
-			for (const value of [newer.id, newer.os_hash_value, 'SHA-', 'active', 'raw']) {
-				expect(choice.textContent).not.toContain(value);
-			}
-		}
-		expect(within(tagPanel('ubuntu')).getByText(/GB/)).toBeTruthy();
+		const summary = repositoryButton('ubuntu');
+		expect(summary.textContent).not.toContain('SHA-');
+		await fireEvent.click(summary);
+		const row = tagButton('ubuntu:latest');
+		const hash = within(row).getByLabelText(`SHA-256: ${newer.os_hash_value}`);
+		expect(hash.textContent?.trim()).toBe('bbbbbbbb');
+		expect(hash.getAttribute('title')).toBe(`SHA-256: ${newer.os_hash_value}`);
+		expect(within(row).getByText('1 GB')).toBeTruthy();
+		expect(within(row).queryByLabelText(imageText('digest.imageId', { id: newer.id }))).toBeNull();
+		expect(row.textContent).not.toContain('raw');
+		expect(row.textContent).not.toContain('active');
 	});
 
+	it('filters tag names without changing a selected UUID, restores results and clears the query for another repository', async () => {
+		const onSelect = vi.fn();
+		render(SelectImage, { images, selectedId: images[0].id, onSelect });
+		const search = within(tagPanel('ubuntu')).getByRole('searchbox', { name: t('image.tagSearchLabel', { name: 'ubuntu' }) });
+		await fireEvent.input(search, { target: { value: ' 24.04 ' } });
+		expect(tagButton('ubuntu:24.04')).toBeTruthy();
+		expect(screen.queryByRole('button', { name: t('image.selectLabel', { name: 'ubuntu:22.04' }) })).toBeNull();
+		expect(repositoryButton('ubuntu').textContent).toContain(t('image.selectedTag', { tag: '22.04' }));
+		await fireEvent.input(search, { target: { value: 'no-matching-tag' } });
+		expect(within(tagPanel('ubuntu')).getByRole('status').textContent).toBe(t('image.tagSearchEmpty'));
+		expect(onSelect).not.toHaveBeenCalled();
+		await fireEvent.input(search, { target: { value: '' } });
+		expect(tagButton('ubuntu:22.04').getAttribute('aria-pressed')).toBe('true');
+		await fireEvent.input(search, { target: { value: '24.04' } });
+		await fireEvent.click(repositoryButton('waygate-gateway'));
+		expect((within(tagPanel('waygate-gateway')).getByRole('searchbox') as HTMLInputElement).value).toBe('');
+		expect(tagButton('waygate-gateway:latest')).toBeTruthy();
+		expect(screen.queryByRole('region', { name: t('image.tagsTitle', { name: 'ubuntu' }) })).toBeNull();
+		expect(onSelect).not.toHaveBeenCalled();
+	});
+
+	it('matches tag names case-insensitively without reviving an older active upload', async () => {
+		const onSelect = vi.fn();
+		render(SelectImage, { images: [older, { ...newer, status: 'saving' }, images[1]], selectedId: null, onSelect });
+		await fireEvent.click(repositoryButton('ubuntu'));
+		await fireEvent.input(within(tagPanel('ubuntu')).getByRole('searchbox'), { target: { value: ' LATEST ' } });
+		const blocked = screen.getByRole('button', { name: t('image.unselectableLabel', { name: 'ubuntu:latest', status: 'saving' }) });
+		expect(blocked.hasAttribute('disabled')).toBe(true);
+		expect(within(blocked).getByLabelText(`SHA-256: ${newer.os_hash_value}`)).toBeTruthy();
+		expect(screen.queryByRole('button', { name: t('image.selectLabel', { name: 'ubuntu:24.04' }) })).toBeNull();
+		(blocked as HTMLButtonElement).click();
+		expect(onSelect).not.toHaveBeenCalled();
+	});
+
+	it('collapses and reopens the selected repository without selecting a different image', async () => {
+		const onSelect = vi.fn();
+		render(SelectImage, { images, selectedId: images[0].id, onSelect });
+		expect(tagButton('ubuntu:22.04').getAttribute('aria-pressed')).toBe('true');
+		await fireEvent.click(repositoryButton('ubuntu'));
+		expect(repositoryButton('ubuntu').getAttribute('aria-expanded')).toBe('false');
+		expect(screen.queryByRole('region', { name: t('image.tagsTitle', { name: 'ubuntu' }) })).toBeNull();
+		await fireEvent.click(repositoryButton('ubuntu'));
+		expect(tagButton('ubuntu:22.04').getAttribute('aria-pressed')).toBe('true');
+		expect(onSelect).not.toHaveBeenCalled();
+	});
 	it('preserves the chosen UUID and open repository across a refresh without substituting newer uploads', async () => {
 		const onSelect = vi.fn();
 		const { rerender } = render(SelectImage, { images: [older], selectedId: older.id, onSelect });

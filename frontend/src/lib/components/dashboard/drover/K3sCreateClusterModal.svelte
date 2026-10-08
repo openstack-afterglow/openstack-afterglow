@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/drover-pages';
+	import { untrack } from 'svelte';
 	import RichText from '$lib/i18n/RichText.svelte';
 	import { api } from '$lib/api/client';
+	import { k3sPermissions } from '$lib/stores/k3sPermissions';
 	import type { K3sFlavor, K3sNetwork, K3sKeypair, K3sClusterTemplate } from '$lib/types/k3s';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 	import Field from '$lib/components/ui/Field.svelte';
@@ -39,11 +41,14 @@
 	let keypairs = $state<K3sKeypair[]>([]);
 	let templates = $state<K3sClusterTemplate[]>([]);
 
+	// Track only the open transition: permission reloads (token refresh) must not wipe an in-progress form.
 	$effect(() => {
-		if (open) {
+		if (!open) return;
+		untrack(() => {
+			if (!$k3sPermissions.editClusters) return;
 			form = { name: '', agent_count: 1, agent_flavor_id: '', network_id: '', key_name: '', os_type: 'ubuntu', template_id: '', master_count: 1, stampede_enabled: false };
 			void loadDeps();
-		}
+		});
 	});
 
 	async function loadDeps() {
@@ -51,7 +56,7 @@
 			[flavors, networks, keypairs, templates] = await Promise.all([
 				api.get<K3sFlavor[]>('/api/v1/flavors', token, projectId),
 				api.get<K3sNetwork[]>('/api/v1/networks', token, projectId),
-				api.get<K3sKeypair[]>('/api/v1/keypairs', token, projectId),
+                $k3sPermissions.adminCredentials ? api.get<K3sKeypair[]>('/api/v1/keypairs', token, projectId) : Promise.resolve([]),
 				api.get<K3sClusterTemplate[]>('/api/v1/k3s/cluster-templates', token, projectId).catch(() => []),
 			]);
 			if (form.network_id && !networks.some(n => n.is_external && n.id === form.network_id)) form.network_id = '';
@@ -72,7 +77,7 @@
 
 </script>
 
-{#if open}
+{#if open && $k3sPermissions.editClusters}
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
@@ -184,6 +189,7 @@
 						</SelectInput>
 					</Field>
 				</div>
+                {#if $k3sPermissions.adminCredentials}
 				<div>
 					<label class="block text-xs text-ink-2 mb-1.5 uppercase tracking-wide">{t('create.keypair')}
 						<select bind:value={form.key_name}
@@ -195,6 +201,7 @@
 						</select>
 					</label>
 				</div>
+                {/if}
 
 				<!-- Stampede 오토스케일 모드 -->
 				<div class="border border-line-2 rounded-lg p-3 bg-surface-sunken/50">
@@ -232,7 +239,7 @@
 			<div class="flex justify-end gap-3 mt-6">
 				<button onclick={() => open = false}
 					class="px-4 py-2 text-sm text-ink-2 hover:text-ink-0 transition-colors">{t('actions.cancel')}</button>
-				<button data-tour="drover-create-submit" onclick={() => { open = false; onCreate({...form, template_id: form.template_id || undefined}); }} disabled={creating}
+                <button data-tour="drover-create-submit" onclick={() => { if (!$k3sPermissions.editClusters) return; open = false; onCreate({...form, key_name: $k3sPermissions.adminCredentials ? form.key_name : '', template_id: form.template_id || undefined}); }} disabled={!$k3sPermissions.editClusters || creating}
 					class="px-5 py-2 bg-action-warm hover:bg-action-warm-hover disabled:bg-surface-selected disabled:text-ink-3 text-action-on-warm text-sm font-medium rounded-lg transition-colors">
 					{t('actions.create')}
 				</button>

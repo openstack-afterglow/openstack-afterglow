@@ -123,7 +123,7 @@ test("Afterglow resolves the global service project once per play batch", () => 
 	assert.match(lookup, /run_once: true/)
 })
 
-test("Afterglow fails prechecks before restart when K3s API credentials are absent", () => {
+test("Afterglow fails prechecks before restart when the K3s GPU admission credential is absent", () => {
 	const defaults = readRepoFile("deploy/kolla/ansible/roles/afterglow/defaults/main.yml")
 	const precheck = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/precheck.yml")
 	const secrets = readRepoFile(
@@ -131,11 +131,23 @@ test("Afterglow fails prechecks before restart when K3s API credentials are abse
 	)
 
 	assert.match(defaults, /^afterglow_k3s_gpu_admission_token: ""$/m)
-	assert.match(defaults, /^afterglow_k3s_provisioning_token: ""$/m)
 	for (const taskFile of [precheck, secrets]) {
 		assert.match(taskFile, /afterglow_k3s_gpu_admission_token \| length >= 32/)
-		assert.match(taskFile, /afterglow_k3s_provisioning_token \| length >= 32/)
 		assert.match(taskFile, /afterglow_service_k3s_enabled \| bool/)
+	}
+})
+
+test("Afterglow Kolla role carries no retired K3s provisioning credential", () => {
+	const templatesDir = "deploy/kolla/ansible/roles/afterglow/templates"
+	const roleFiles = [
+		"deploy/kolla/ansible/roles/afterglow/defaults/main.yml",
+		"deploy/kolla/ansible/roles/afterglow/tasks/precheck.yml",
+		"deploy/kolla/ansible/roles/afterglow/tasks/preconditions_secrets.yml",
+		...fs.readdirSync(path.join(rootDir, templatesDir)).map((name) => `${templatesDir}/${name}`),
+	]
+
+	for (const roleFile of roleFiles) {
+		assert.doesNotMatch(readRepoFile(roleFile), /afterglow_k3s_provisioning_token/, roleFile)
 	}
 })
 
@@ -143,7 +155,7 @@ test("Afterglow checks the Keystone public catalog endpoint from every backend h
 	const precheck = readRepoFile("deploy/kolla/ansible/roles/afterglow/tasks/precheck.yml")
 	const reachability = precheck.slice(
 		precheck.indexOf("Precheck | Verify Keystone public catalog endpoint from every Afterglow host"),
-		precheck.indexOf("Precheck | Verify K3s internal API credentials"),
+		precheck.indexOf("Precheck | Verify K3s GPU admission credential"),
 	)
 
 	assert.match(reachability, /ansible\.builtin\.uri:/)

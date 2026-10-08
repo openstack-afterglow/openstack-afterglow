@@ -25,6 +25,14 @@
 	import { buildRoleGraph, deleteDisabledReason, edgeDisabledReason, matchesRole, sortRoles } from '$lib/components/admin/roles/catalog';
 	import type { ManagedRole, RoleMetadata, RoleSort, SortDirection } from '$lib/components/admin/roles/types';
 	import { t } from '$lib/i18n/ns/admin-identity';
+	import { t as tc } from '$lib/i18n/ns/common';
+	import { confirmDialog } from '$lib/stores/confirm.svelte';
+	import { isNativeRole } from '$lib/components/admin/roles/naming';
+	type RolePreset = { name: string; description: string; area: string; grade: string; parent: string | null };
+	type PresetPreview = { roles: RolePreset[]; implications: { prior: string; implied: string }[]; project_roles: RolePreset[] };
+	let preset = $state<PresetPreview | null>(null);
+	let presetLoading = $state(false);
+	let presetVersion = 0;
 
 	function identityKey(state: AuthState, verified: boolean, switching: boolean): string | null {
 		return verified && !switching && state.isSystemAdmin === true && state.token
@@ -112,6 +120,7 @@
 			loadedScope = key;
 			roles = []; fresh = false; loading = false; refreshing = false; busy = false;
 			selectedId = null; editor = null; editId = null; deleteId = null; confirmation = '';
+			preset = null; presetLoading = false; ++presetVersion;
 			loadError = ''; actionError = ''; notice = '';
 			if (key) void load();
 		});
@@ -158,9 +167,9 @@
 	async function saveMetadata(metadata: RoleMetadata) {
 		if (editor === 'edit' && editRole) {
 			const role = editRole;
-			const body = role.protected ? { description: metadata.description } : { name: metadata.name, description: metadata.description };
+			const body = { description: metadata.description, ...(!role.protected && !isNativeRole(role.name) && metadata.name !== undefined ? { name: metadata.name } : {}) };
 			await mutate((token, project) => api.patch<ManagedRole>(`/api/v1/admin/roles/${encodeURIComponent(role.id)}`, body, token, project), t('rolePage.saved'), () => { editor = null; editId = null; });
-		} else if (editor === 'create') {
+		} else if (editor === 'create' && metadata.name) {
 			await mutate((token, project) => api.post<ManagedRole>('/api/v1/admin/roles', metadata, token, project), t('rolePage.created'), () => { editor = null; });
 		}
 	}
@@ -177,6 +186,29 @@
 		const role = deleteRole;
 		void mutate((token, project) => api.delete(`/api/v1/admin/roles/${encodeURIComponent(role.id)}`, token, project), t('rolePage.deleted'), () => { deleteId = null; selectedId = null; confirmation = ''; });
 	}
+	async function previewPresets() {
+		const key = loadedScope;
+		if (!isCurrent(key) || !canMutate || presetLoading) return;
+		const version = ++presetVersion;
+		presetLoading = true; actionError = '';
+		const state = get(auth);
+		try {
+			const result = await api.get<PresetPreview>('/api/v1/admin/roles/presets', state.token!, state.projectId ?? undefined, { refresh: true });
+			if (isCurrent(key) && version === presetVersion) preset = result;
+		} catch (error) {
+			if (isCurrent(key) && version === presetVersion) actionError = message(error);
+		} finally {
+			if (isCurrent(key) && version === presetVersion) presetLoading = false;
+		}
+	}
+	async function applyPresets() {
+		const key = loadedScope;
+		const version = presetVersion;
+		if (!preset || !canMutate || !isCurrent(key)) return;
+		const confirmed = await confirmDialog(t('rolePresets.confirm'), { confirmLabel: t('rolePresets.apply'), confirmVariant: 'primary' });
+		if (!confirmed || !isCurrent(key) || version !== presetVersion || !preset) return;
+		await mutate((token, project) => api.post('/api/v1/admin/roles/presets/apply', {}, token, project), t('rolePresets.applied'), () => { preset = null; view = 'tree'; });
+	}
 </script>
 
 {#if scope && scope === loadedScope}
@@ -185,6 +217,7 @@
 			{#snippet actions()}
 				<AutoRefreshControl bind:active={ar.active} bind:intervalSeconds={ar.intervalSeconds} intervalOptions={ar.intervalOptions} refreshing={loading || refreshing || busy} onManualRefresh={() => { void load(); }} />
 				<Button disabled={!canMutate} onclick={() => openEditor(null)}>{t('rolePage.create')}</Button>
+				<Button variant="secondary" disabled={!canMutate || presetLoading} onclick={previewPresets}>{t('rolePresets.preview')}</Button>
 			{/snippet}
 		</PageHeader>
 		<div class="space-y-4 min-w-0">
@@ -245,6 +278,21 @@
 	{/if}
 	{#if editor}
 		{#key `${editor}:${editId}`}<RoleMetadataModal role={editor === 'edit' ? editRole : null} {busy} disabled={!canMutate} error={actionError || loadError} onClose={() => { if (!busy) { editor = null; actionError = ''; } }} onSave={saveMetadata} />{/key}
+	{/if}
+	{#if preset}
+		<FormModal open={true} title={t('rolePresets.preview')} submitting={busy} onClose={() => { if (!busy) { preset = null; ++presetVersion; } }}>
+			<div class="space-y-4 min-w-0">
+				<Alert tone="info">{t('rolePresets.previewHelp')}</Alert>
+				{#if actionError || loadError}<Alert tone="danger">{actionError || loadError}</Alert>{/if}
+				<ul class="space-y-2 text-sm">{#each [...preset.project_roles, ...preset.roles] as item}<li class="[overflow-wrap:anywhere]"><code>{item.name}</code><span class="text-ink-2"> — {item.description}</span></li>{/each}</ul>
+				<h3 class="text-sm font-semibold">{t('rolePresets.directImplications')}</h3>
+				<ul class="space-y-1 text-xs font-mono text-ink-2">{#each preset.implications as edge}<li class="[overflow-wrap:anywhere]">{edge.prior} → {edge.implied}</li>{/each}</ul>
+			</div>
+			{#snippet actions()}
+				<Button variant="secondary" disabled={busy} onclick={() => { preset = null; ++presetVersion; }}>{tc('actions.cancel')}</Button>
+				<Button variant="primary" disabled={!canMutate} ariaBusy={busy} onclick={applyPresets}>{t('rolePresets.apply')}</Button>
+			{/snippet}
+		</FormModal>
 	{/if}
 	{#if deleteRole}
 		<FormModal open={true} title={t('rolePage.delete.title')} submitting={busy} onClose={() => { if (!busy) { deleteId = null; actionError = ''; confirmation = ''; } }}>

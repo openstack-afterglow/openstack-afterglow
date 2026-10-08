@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/drover';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import { k3sPermissions } from '$lib/stores/k3sPermissions';
 		import { dialogFocus } from '$lib/utils/dialogFocus';
 
 	interface Props {
@@ -20,6 +21,7 @@
 	});
 
 	async function handleApply() {
+		if (!$k3sPermissions.workloads) return;
 		applying = true;
 		try {
 			await onApply(replicas);
@@ -50,13 +52,13 @@
 			<button
 				onclick={() => { replicas = Math.max(0, replicas - 1); }}
 				class="w-9 h-9 rounded-lg bg-surface-sunken text-ink-0 text-lg hover:bg-surface-selected transition-colors disabled:opacity-40"
-				disabled={replicas <= 0}
+				disabled={!$k3sPermissions.workloads || replicas <= 0}
 			>−</button>
 			<span class="text-2xl font-bold text-ink-0 tabular-nums w-12 text-center">{replicas}</span>
 			<button
 				onclick={() => { replicas = Math.min(100, replicas + 1); }}
 				class="w-9 h-9 rounded-lg bg-surface-sunken text-ink-0 text-lg hover:bg-surface-selected transition-colors disabled:opacity-40"
-				disabled={replicas >= 100}
+				disabled={!$k3sPermissions.workloads || replicas >= 100}
 			>+</button>
 		</div>
 
@@ -67,7 +69,7 @@
 			>{t('scale.cancel')}</button>
 			<button
 				onclick={handleApply}
-				disabled={applying || replicas === currentReplicas}
+				disabled={!$k3sPermissions.workloads || applying || replicas === currentReplicas}
 				class="flex-1 py-2 rounded-lg text-xs text-action-on-warm bg-action-warm hover:bg-action-warm-hover disabled:opacity-40 transition-colors"
 			>{#if applying}<ActivityIndicator size="xs" label={t('scale.applying')} />{:else}{t('scale.apply')}{/if}</button>
 		</div>

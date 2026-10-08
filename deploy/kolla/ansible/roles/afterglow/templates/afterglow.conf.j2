@@ -106,9 +106,8 @@ callback_base_url = "{{ afterglow_instance_health_callback_base_url }}"
 [k3s]
 # Shared legacy AES-256-GCM key; Drover owns its own kubeconfig encryption key.
 kubeconfig_encryption_key = "{{ afterglow_kubeconfig_encryption_key | default('') }}"
-# GPU admission and provisioning credentials are injected through the container environment.
+# The GPU admission credential is injected through the container environment.
 gpu_admission_token = "{{ afterglow_k3s_gpu_admission_token | default('') }}"
-# provisioning_token is injected as K3S_PROVISIONING_TOKEN from the secret environment.
 
 [builder]
 image_id = ""

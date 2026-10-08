@@ -1,26 +1,24 @@
 """사용자 셀프서비스 프로젝트 관리 API."""
 
 import asyncio
-import logging
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
     get_caller_project_permissions,
     get_token_info,
-    has_project_write_permission,
+    require_admin,
     require_project_manager,
 )
 from app.database import get_session
-from app.models.db import ProjectInvitation, ProjectRole
+from app.models.db import ProjectInvitation
 from app.services.identity_roles import visible_role_names
 
 router = APIRouter()
-_logger = logging.getLogger(__name__)
 
 
 class CreateProjectRequest(BaseModel):
@@ -30,7 +28,15 @@ class CreateProjectRequest(BaseModel):
 
 class CreateInvitationRequest(BaseModel):
     email: str
-    keystone_role: Literal["member", "reader"] = "member"
+    keystone_role: Literal["project_member", "project_reader"] = "project_member"
+
+
+class ReplaceMemberRolesRequest(BaseModel):
+    role_ids: list[str]
+
+
+class MigrateLegacyManagersRequest(BaseModel):
+    owner_user_id: str = Field(min_length=1)
 
 
 class ProjectPermissionsResponse(BaseModel):
@@ -38,6 +44,8 @@ class ProjectPermissionsResponse(BaseModel):
     user_id: str
     roles: list[str]
     is_system_admin: bool
+    is_owner: bool
+    service_permissions: dict[str, list[str]]
     is_manager: bool
     is_reader: bool
     can_read: bool
@@ -51,9 +59,8 @@ class ProjectPermissionsResponse(BaseModel):
 async def create_project(
     req: CreateProjectRequest,
     token_info: dict = Depends(get_token_info),
-    session: AsyncSession = Depends(get_session),
 ):
-    """인증된 사용자가 프로젝트를 생성합니다. 생성자는 자동으로 manager가 됩니다."""
+    """Create a project and explicitly assign its creator project_owner."""
     from app.services.project_service import create_project_for_user
 
     if not req.name.strip():
@@ -64,7 +71,6 @@ async def create_project(
         description=req.description,
         user_id=token_info["user_id"],
         username=token_info.get("username", ""),
-        session=session,
     )
 
 
@@ -96,34 +102,10 @@ async def get_project_permissions(
         from app.api.deps import _cached_validate
 
         try:
-            scoped = await _cached_validate(token_info["token"], project_id)
-            roles = [r.lower() for r in scoped.get("roles", []) if isinstance(r, str)]
-            role_set = set(roles)
-            can_write = has_project_write_permission(scoped)
-            is_reader = not can_write and ("reader" in role_set or len(role_set) == 0)
-
-            is_mgr = False
-            from app.database import get_session_factory
-            from app.services.project_service import is_project_manager
-
-            factory = get_session_factory()
-            if factory is not None:
-                try:
-                    async with factory() as session:
-                        is_mgr = await is_project_manager(project_id, token_info["user_id"], session)
-                except Exception:
-                    pass
-
-            return {
-                "project_id": project_id,
-                "user_id": token_info.get("user_id", ""),
-                "roles": await visible_role_names(roles, False),
-                "is_system_admin": False,
-                "is_manager": is_mgr,
-                "is_reader": is_reader,
-                "can_read": True,
-                "can_write": can_write,
-            }
+            await _cached_validate(token_info["token"], project_id)
+            return await get_caller_project_permissions(
+                project_id=project_id, token_info={**token_info, "is_system_admin": False}
+            )
         except HTTPException:
             raise
         except Exception:
@@ -139,100 +121,58 @@ async def get_project_permissions(
 async def list_project_members(
     project_id: str = Path(...),
     token_info: dict = Depends(get_token_info),
+):
+    """Current direct, group and inherited effective membership; no DB authority."""
+    from app.services.project_service import list_members
+
+    return await list_members(project_id, token_info)
+
+
+@router.get("/{project_id}/assignable-roles")
+async def get_assignable_roles(
+    project_id: str = Path(...),
+    token_info: dict = Depends(get_token_info),
+):
+    from app.services.project_service import assignable_roles
+
+    return await assignable_roles(project_id, token_info)
+
+
+@router.put("/{project_id}/members/{user_id}/roles")
+async def replace_project_member_roles(
+    req: ReplaceMemberRolesRequest,
+    project_id: str = Path(...),
+    user_id: str = Path(...),
+    token_info: dict = Depends(get_token_info),
+):
+    from app.services.project_service import replace_member_roles
+
+    return await replace_member_roles(project_id, user_id, req.role_ids, token_info)
+
+
+@router.delete("/{project_id}/members/{user_id}")
+async def remove_project_member(
+    project_id: str = Path(...),
+    user_id: str = Path(...),
+    token_info: dict = Depends(get_token_info),
+):
+    """Remove only managed direct project grants; effective/group grants remain."""
+    from app.services.project_service import replace_member_roles
+
+    member = await replace_member_roles(project_id, user_id, [], token_info, remove=True)
+    return {"status": "removed", "member": member}
+
+
+@router.post("/{project_id}/members/migrate-legacy-managers", dependencies=[Depends(require_admin)])
+async def migrate_project_legacy_managers(
+    req: MigrateLegacyManagersRequest,
+    project_id: str = Path(...),
+    token_info: dict = Depends(get_token_info),
     session: AsyncSession = Depends(get_session),
 ):
-    """프로젝트 멤버 목록 (Keystone role 할당 + manager 뱃지 + 본인 그룹 멤버 확장)."""
-    await require_project_manager(project_id, token_info)
+    from app.services.project_service import migrate_legacy_managers
 
-    # afterglow manager 목록
-    result = await session.execute(
-        select(ProjectRole).where(
-            ProjectRole.project_id == project_id,
-            ProjectRole.role == "manager",
-        )
-    )
-    manager_user_ids = {r.user_id for r in result.scalars().all()}
-    current_user_id = token_info["user_id"]
-
-    def _list_members():
-        from app.services import keystone
-
-        ks = keystone._get_admin_ks_client()
-        assignments = ks.role_assignments.list(project=project_id)
-
-        members = []
-        seen: set[str] = set()
-        group_ids: list[str] = []
-
-        # 직접 할당된 사용자 수집
-        for a in assignments:
-            user_raw = getattr(a, "user", None)
-            group_raw = getattr(a, "group", None)
-            if user_raw:
-                user_id = user_raw.get("id") if isinstance(user_raw, dict) else getattr(user_raw, "id", None)
-                if not user_id or user_id in seen:
-                    continue
-                seen.add(user_id)
-                try:
-                    u = ks.users.get(user_id)
-                    members.append(
-                        {
-                            "user_id": user_id,
-                            "username": u.name or "",
-                            "email": getattr(u, "email", "") or "",
-                            "is_manager": user_id in manager_user_ids,
-                            "source": "direct",
-                        }
-                    )
-                except Exception:
-                    members.append(
-                        {
-                            "user_id": user_id,
-                            "username": "",
-                            "email": "",
-                            "is_manager": user_id in manager_user_ids,
-                            "source": "direct",
-                        }
-                    )
-            elif group_raw:
-                group_id = group_raw.get("id") if isinstance(group_raw, dict) else getattr(group_raw, "id", None)
-                if group_id and group_id not in group_ids:
-                    group_ids.append(group_id)
-
-        # 본인이 속한 그룹의 멤버 확장
-        for group_id in group_ids:
-            try:
-                group_members = list(ks.users.list(group=group_id))
-                if not any(m.id == current_user_id for m in group_members):
-                    continue
-                try:
-                    group_info = ks.groups.get(group_id)
-                    group_name = group_info.name or group_id
-                except Exception:
-                    group_name = group_id
-                for m in group_members:
-                    if m.id in seen:
-                        continue
-                    seen.add(m.id)
-                    members.append(
-                        {
-                            "user_id": m.id,
-                            "username": m.name or "",
-                            "email": getattr(m, "email", "") or "",
-                            "is_manager": m.id in manager_user_ids,
-                            "source": "group",
-                            "group_name": group_name,
-                        }
-                    )
-            except Exception:
-                continue
-
-        return members
-
-    try:
-        return {"items": await asyncio.to_thread(_list_members)}
-    except Exception:
-        raise HTTPException(status_code=500, detail="멤버 목록 조회 실패")
+    return await migrate_legacy_managers(project_id, req.owner_user_id, token_info, session)
 
 
 # ─── 초대 ─────────────────────────────────────────────────────────────────────
@@ -323,39 +263,6 @@ async def revoke_invitation(
 
     inv.status = "revoked"
     await session.commit()
-
-
-# ─── 매니저 관리 ──────────────────────────────────────────────────────────────
-
-
-@router.post("/{project_id}/managers/{user_id}", status_code=204)
-async def promote_manager(
-    project_id: str = Path(...),
-    user_id: str = Path(...),
-    token_info: dict = Depends(get_token_info),
-    session: AsyncSession = Depends(get_session),
-):
-    """프로젝트 멤버를 manager로 승격합니다."""
-    await require_project_manager(project_id, token_info)
-
-    from app.services.project_service import promote_to_manager
-
-    await promote_to_manager(project_id, user_id, token_info["user_id"], session)
-
-
-@router.delete("/{project_id}/managers/{user_id}", status_code=204)
-async def demote_manager(
-    project_id: str = Path(...),
-    user_id: str = Path(...),
-    token_info: dict = Depends(get_token_info),
-    session: AsyncSession = Depends(get_session),
-):
-    """manager 권한을 해제합니다. 마지막 manager는 해제할 수 없습니다."""
-    await require_project_manager(project_id, token_info)
-
-    from app.services.project_service import demote_manager
-
-    await demote_manager(project_id, user_id, session)
 
 
 # ─── 헬퍼 ─────────────────────────────────────────────────────────────────────

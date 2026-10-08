@@ -70,7 +70,6 @@ callback_base_url = "{{ afterglow_instance_health_callback_base_url }}"
 [k3s]
 kubeconfig_encryption_key = "{{ afterglow_kubeconfig_encryption_key | default('') }}"
 gpu_admission_token = "{{ afterglow_k3s_gpu_admission_token | default('') }}"
-# provisioning_token is injected as K3S_PROVISIONING_TOKEN from the secret environment.
 
 [union]
 layer_store_rw_share_id = "{{ afterglow_share_layer_store_rw_id }}"

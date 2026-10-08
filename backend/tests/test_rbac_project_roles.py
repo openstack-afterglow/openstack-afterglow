@@ -1,6 +1,7 @@
-"""프로젝트 RBAC (역할별 권한 차이 및 reader 쓰기 차단) 테스트."""
+"""Project RBAC: current authority, stale token claims, and reader mutation gates."""
 
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -8,7 +9,37 @@ from httpx import ASGITransport, AsyncClient
 
 from app.api.deps import get_caller_project_permissions, get_os_conn, get_token_info, require_project_write
 from app.main import app
+from app.services import keystone
 from tests.conftest import make_token_info
+
+
+@pytest.fixture
+def project_authority(monkeypatch):
+    """Model provider role IDs, not permission responses or token-derived authority."""
+    state = SimpleNamespace(roles=["member"], project_id="test-project-123", failure=None)
+    catalog = [{"id": "role-" + name, "name": name} for name in ("admin", "manager", "member", "reader")]
+
+    def assignments(**query):
+        assert query == {"project": state.project_id, "effective": True}
+        if state.failure is not None:
+            raise state.failure
+        return [
+            {
+                "user": {"id": "test-user-123"},
+                "role": {"id": "role-" + name},
+                "scope": {"project": {"id": state.project_id}},
+            }
+            for name in state.roles
+        ]
+
+    state.assignments = MagicMock(side_effect=assignments)
+    ks = SimpleNamespace(
+        roles=SimpleNamespace(list=lambda: catalog),
+        inference_rules=SimpleNamespace(list_inference_roles=lambda: []),
+        role_assignments=SimpleNamespace(list=state.assignments),
+    )
+    monkeypatch.setattr(keystone, "_get_admin_ks_client", lambda: ks)
+    return state
 
 
 def test_require_project_write_direct():
@@ -40,27 +71,59 @@ def test_require_project_write_direct():
 
 
 @pytest.mark.asyncio
-async def test_get_caller_project_permissions_direct():
-    # reader
-    token_reader = make_token_info(roles=["reader"])
-    perms_reader = await get_caller_project_permissions(token_info=token_reader)
-    assert perms_reader["can_read"] is True
-    assert perms_reader["can_write"] is False
-    assert perms_reader["is_reader"] is True
-    assert perms_reader["is_system_admin"] is False
+@pytest.mark.parametrize("current_role,stale_role,can_write", [("reader", "member", False), ("member", "reader", True)])
+async def test_get_caller_project_permissions_direct(project_authority, current_role, stale_role, can_write):
+    project_authority.roles = [current_role]
+    info = make_token_info(roles=[stale_role])
+    permissions = await get_caller_project_permissions(token_info=info)
+    assert permissions["roles"] == [current_role]
+    assert permissions["can_read"] is True
+    assert permissions["can_write"] is can_write
+    assert permissions["is_reader"] is (not can_write)
+    assert permissions["is_system_admin"] is False
+    assert permissions["is_manager"] is False
+    assert permissions["is_owner"] is False
+    assert info["roles"] == [stale_role]
+    project_authority.assignments.assert_called_once_with(project=info["project_id"], effective=True)
 
-    # member
-    token_member = make_token_info(roles=["member"])
-    perms_member = await get_caller_project_permissions(token_info=token_member)
-    assert perms_member["can_read"] is True
-    assert perms_member["can_write"] is True
-    assert perms_member["is_reader"] is False
-    assert perms_member["is_system_admin"] is False
+
+@pytest.mark.asyncio
+async def test_permissions_resolve_explicit_target_not_token_project(project_authority):
+    project_authority.project_id = "target-project"
+    project_authority.roles = ["reader"]
+    info = make_token_info(roles=["admin"])
+    permissions = await get_caller_project_permissions(project_id="target-project", token_info=info)
+    assert permissions["project_id"] == "target-project"
+    assert permissions["can_write"] is False
+    project_authority.assignments.assert_called_once_with(project="target-project", effective=True)
+
+
+@pytest.mark.asyncio
+async def test_permissions_refresh_after_role_revocation(client, project_authority):
+    before = await client.get("/api/v1/projects/current/permissions")
+    assert before.status_code == 200
+    assert before.json()["can_write"] is True
+    project_authority.roles = ["reader"]
+    after = await client.get("/api/v1/projects/current/permissions")
+    assert after.status_code == 200
+    assert after.json()["roles"] == ["reader"]
+    assert after.json()["can_write"] is False
+    assert project_authority.assignments.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_permissions_provider_outage_never_falls_back_to_token(client, project_authority):
+    project_authority.failure = RuntimeError("synthetic authority outage")
+    response = await client.get("/api/v1/projects/current/permissions")
+    assert response.status_code == 503
+    assert "can_write" not in response.json()
+    project_authority.assignments.assert_called_once_with(project="test-project-123", effective=True)
 
 
 @pytest.fixture
-async def reader_client(mock_conn):
-    """reader 역할을 가진 AsyncClient."""
+async def reader_client(mock_conn, project_authority):
+    """Reader client with matching current provider authority."""
+    project_authority.roles = ["reader"]
 
     async def override_get_os_conn():
         yield mock_conn
@@ -92,7 +155,7 @@ async def test_api_get_current_permissions_reader(reader_client):
 
 
 @pytest.mark.asyncio
-async def test_api_get_current_permissions_member(client):
+async def test_api_get_current_permissions_member(client, project_authority):
     """GET /api/v1/projects/current/permissions endpoint member 테스트."""
     resp = await client.get("/api/v1/projects/current/permissions")
     assert resp.status_code == 200

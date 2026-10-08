@@ -298,12 +298,14 @@ async def test_metadata_lifecycle_validation_and_safe_delete(role_env):
     for attrs in ({"name": " "}, {"name": "name", "unknown": True}):
         assert (await client.post("/api/v1/admin/roles", json=attrs)).status_code == 422
     assert (await client.post("/api/v1/admin/roles", json={"name": "ADMIN"})).status_code == 409
-    assert (await client.post("/api/v1/admin/roles", json={"name": "custom"})).status_code == 409
-    created = await client.post("/api/v1/admin/roles", json={"name": "New Role", "description": "Details"})
+    assert (await client.post("/api/v1/admin/roles", json={"name": "custom"})).status_code == 422
+    created = await client.post("/api/v1/admin/roles", json={"name": "New Role_user", "description": "Details"})
     assert created.status_code == 201
     rid = created.json()["id"]
     assert created.json()["implied_role_ids"] == []
-    assert (await client.patch(f"/api/v1/admin/roles/{rid}", json={"name": "Renamed"})).json()["name"] == "Renamed"
+    assert (await client.patch(f"/api/v1/admin/roles/{rid}", json={"name": "Renamed_user"})).json()[
+        "name"
+    ] == "renamed_user"
     assert (await client.patch(f"/api/v1/admin/roles/{rid}", json={})).status_code == 422
     assert (await client.patch(f"/api/v1/admin/roles/{rid}", json={"name": None})).status_code == 422
     assert (await client.patch(f"/api/v1/admin/roles/{rid}", json={"name": "manager"})).status_code == 409
@@ -332,7 +334,7 @@ async def test_create_description_and_delete_success_clear_caches_and_audit(role
         role_env.client,
         {"afterglow:admin:roles", "afterglow:admin:identity:summary", identity_roles.VISIBILITY_KEY},
     )
-    created = await client.post("/api/v1/admin/roles", json={"name": "Audited"})
+    created = await client.post("/api/v1/admin/roles", json={"name": "Audited_user"})
     assert created.status_code == 201
     assert set(role_env.cleared) == keys
     role_env.cleared.clear()
@@ -391,14 +393,14 @@ async def test_rename_revokes_holders_and_unknown_recipients_block_removal(role_
     p, client = role_env.provider, role_env.client
     p.assignments = [{"role": {"id": "custom"}, "user": {"id": "holder"}, "scope": {"project": {"id": "p"}}}]
     await session("holder")
-    assert (await client.patch("/api/v1/admin/roles/custom", json={"name": "Renamed"})).status_code == 200
+    assert (await client.patch("/api/v1/admin/roles/custom", json={"name": "Renamed_user"})).status_code == 200
     assert await session_store.get_session("session-holder") is None
     p.edges.add(("custom", "reader"))
     p.assignments_error = True
     assert (await client.delete("/api/v1/admin/roles/custom/implies/reader")).status_code == 503
     assert ("custom", "reader") in p.edges
-    assert (await client.patch("/api/v1/admin/roles/custom", json={"name": "Again"})).status_code == 503
-    assert p.rows["custom"]["name"] == "Renamed"
+    assert (await client.patch("/api/v1/admin/roles/custom", json={"name": "Again_user"})).status_code == 503
+    assert p.rows["custom"]["name"] == "renamed_user"
     p.edges.clear()
     assert (await client.delete("/api/v1/admin/roles/custom")).status_code == 503
     assert "custom" in p.rows
@@ -448,7 +450,7 @@ async def test_graph_lease_serializes_writes_and_is_released(role_env):
         ("POST", "/roles"),
         ("PATCH", "/roles/custom"),
     ):
-        body = {"name": "New"} if method == "POST" else {"description": "x"} if method == "PATCH" else None
+        body = {"name": "New_user"} if method == "POST" else {"description": "x"} if method == "PATCH" else None
         assert (await client.request(method, "/api/v1/admin" + path, json=body)).status_code == 409
     assert ("custom", "reader") not in p.edges and "other" in p.rows
     await redis.delete(key)
@@ -587,3 +589,125 @@ async def test_cancelled_edge_removal_finishes_required_session_invalidation(rol
     assert await session_store.get_session("session-direct") is None
     assert "token-direct" in role_env.revoked
     assert identity_roles.VISIBILITY_KEY in role_env.cleared
+
+
+def existing_project_hierarchy(provider):
+    for name in ("project_owner", "project_admin", "project_member", "project_reader"):
+        provider.rows[name] = {"id": name, "name": name, "description": "existing " + name, "domain_id": None}
+    provider.edges.update(
+        {
+            ("project_owner", "project_admin"),
+            ("project_admin", "project_member"),
+            ("project_member", "project_reader"),
+            ("project_member", "member"),
+            ("project_reader", "reader"),
+        }
+    )
+
+
+@pytest.mark.asyncio
+async def test_role_area_grade_normalization_collision_and_legacy_metadata(role_env):
+    p, client = role_env.provider, role_env.client
+    response = await client.post("/api/v1/admin/roles", json={"name": " Way Gate _ Client Admin "})
+    assert response.status_code == 201
+    assert response.json()["name"] == "-way-gate-_-client-admin-"
+    assert p.rows[response.json()["id"]]["name"] == "-way-gate-_-client-admin-"
+    assert (await client.post("/api/v1/admin/roles", json={"name": "-WAY-GATE-_-CLIENT-ADMIN-"})).status_code == 409
+    for name in ("area grade", "_reader", "area_", "area_user_extra", "영역_reader", "area/path_reader"):
+        assert (await client.post("/api/v1/admin/roles", json={"name": name})).status_code == 422
+    p.rows["custom"]["name"] = "Mixed Case Legacy"
+    updated = await client.patch("/api/v1/admin/roles/custom", json={"description": "Metadata only"})
+    assert updated.status_code == 200
+    assert updated.json()["name"] == "Mixed Case Legacy"
+
+
+@pytest.mark.asyncio
+async def test_preset_preview_is_read_only_and_apply_reuses_ids_assignments_and_actual_dag(role_env):
+    from copy import deepcopy
+
+    from app.services.service_permissions import ROLE_IMPLICATIONS, SERVICE_ROLE_GRADES, service_permissions
+
+    p, client = role_env.provider, role_env.client
+    existing_project_hierarchy(p)
+    p.assignments.append(
+        {"user": {"id": "owner"}, "role": {"id": "project_owner"}, "scope": {"project": {"id": "tenant"}}}
+    )
+    existing_rows, existing_edges, assignments = deepcopy(p.rows), set(p.edges), deepcopy(p.assignments)
+    preview = await client.get("/api/v1/admin/roles/presets")
+    assert preview.status_code == 200
+    assert {"prior": "waygate_admin", "implied": "waygate_editor"} in preview.json()["implications"]
+    assert p.rows == existing_rows and p.edges == existing_edges and p.assignments == assignments
+    applied = await client.post("/api/v1/admin/roles/presets/apply")
+    assert applied.status_code == 200, applied.text
+    for rid, row in existing_rows.items():
+        assert p.rows[rid] == row
+    assert p.assignments == assignments
+    rows = {row["name"]: row for row in applied.json()["roles"] if row["domain_id"] is None}
+    assert {(rows[prior]["id"], rows[child]["id"]) for prior, child in ROLE_IMPLICATIONS} <= p.edges
+    by_id = {row["id"]: row for row in rows.values()}
+    for service, grades in SERVICE_ROLE_GRADES.items():
+        admin = rows[service + "_admin"]
+        names = ["member", admin["name"], *(by_id[rid]["name"] for rid in admin["inherited_role_ids"])]
+        assert set(service_permissions({"roles": names})[service]) == {
+            leaf for leaves in grades.values() for leaf in leaves
+        }
+    repeated = await client.post("/api/v1/admin/roles/presets/apply")
+    assert repeated.status_code == 200
+    assert repeated.json()["created_roles"] == [] and repeated.json()["created_implications"] == []
+    assert p.assignments == assignments
+
+
+@pytest.mark.asyncio
+async def test_preset_rejects_unsafe_existing_service_role_before_any_creation(role_env):
+    p, client = role_env.provider, role_env.client
+    p.rows["unsafe-reader"] = {"id": "unsafe-reader", "name": "lumen_reader", "domain_id": None, "description": ""}
+    p.edges.update({("unsafe-reader", "alias"), ("alias", "admin")})
+    before = dict(p.rows)
+    response = await client.post("/api/v1/admin/roles/presets/apply")
+    assert response.status_code == 409
+    assert p.rows == before
+
+
+@pytest.mark.asyncio
+async def test_preset_partial_provider_failure_reports_retained_roles_and_retry_is_additive(role_env):
+    p, client = role_env.provider, role_env.client
+    existing_project_hierarchy(p)
+    p.write_status = 500
+    failed = await client.post("/api/v1/admin/roles/presets/apply")
+    assert failed.status_code == 503
+    detail = failed.json()["detail"]
+    retained = {row["name"]: row["id"] for row in p.rows.values()}
+    assert "waygate_admin" in detail["created_roles"]
+    assert retained["project_owner"] == "project_owner"
+    p.write_status = None
+    retried = await client.post("/api/v1/admin/roles/presets/apply")
+    assert retried.status_code == 200
+    assert retried.json()["created_roles"] == []
+    assert {row["name"]: row["id"] for row in p.rows.values()} == retained
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method,path", [("GET", "/roles/presets"), ("POST", "/roles/presets/apply")])
+async def test_presets_require_verified_system_admin(role_env, method, path):
+    role_env.auth["is_system_admin"] = False
+    response = await role_env.client.request(method, "/api/v1/admin" + path)
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_generic_identity_assignment_and_edge_api_cannot_bypass_owner_workflow(role_env):
+    p, client = role_env.provider, role_env.client
+    existing_project_hierarchy(p)
+    p.rows["owner-alias"] = {"id": "owner-alias", "name": "owner-alias_admin", "domain_id": None, "description": ""}
+    p.edges.add(("owner-alias", "project_owner"))
+    for role_id in ("project_owner", "owner-alias"):
+        response = await client.post(
+            "/api/v1/admin/roles/assign", json={"user_id": "member", "project_id": "tenant", "role_id": role_id}
+        )
+        assert response.status_code == 409
+        response = await client.delete(
+            "/api/v1/admin/roles/assign", params={"user_id": "member", "project_id": "tenant", "role_id": role_id}
+        )
+        assert response.status_code == 409
+    assert (await client.delete("/api/v1/admin/roles/owner-alias/implies/project_owner")).status_code == 409
+    assert ("owner-alias", "project_owner") in p.edges

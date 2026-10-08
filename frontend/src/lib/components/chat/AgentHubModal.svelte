@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { auth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
+	import { serviceCapabilities } from '$lib/stores/servicePermissions';
+	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
 	import { toast } from '$lib/stores/toast';
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -51,6 +53,7 @@
 	}
 
 	async function clone(a: Agent) {
+		if (!$serviceCapabilities('lumen-agents_editor')) return;
 		if (!token) return;
 		cloningId = a.id;
 		try {
@@ -86,6 +89,7 @@
 		</div>
 
 		<div class="body">
+			<LumenPermissionNotice leaf="lumen-agents_editor" />
 			{#if loading}
 				<p class="muted">{t('agentHub.loading')}</p>
 			{:else if agents.length === 0}
@@ -119,7 +123,7 @@
 								{#if a.is_owner}
 									<span class="mine">{t('agentHub.myAgent')}</span>
 								{:else}
-									<Button variant="secondary" size="sm" disabled={cloningId === a.id} onclick={() => clone(a)}>
+									<Button variant="secondary" size="sm" disabled={cloningId === a.id || !$serviceCapabilities('lumen-agents_editor')} onclick={() => clone(a)}>
 										{cloningId === a.id ? t('agentHub.cloning') : t('agentHub.clone')}
 									</Button>
 								{/if}

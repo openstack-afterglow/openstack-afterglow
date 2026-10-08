@@ -3,12 +3,19 @@
 사용자/프로젝트/그룹/역할/할당량 관리 API (22개 엔드포인트).
 각 엔드포인트에 대해:
   - non_admin_client → 403
-  - admin_client      → 403이 아님 (관문 통과, 실제 응답은 mock에 따라 다양)
+  - admin_client      → 명시적인 성공 응답 및 provider 부작용 검증
 """
 
+import json
+import time
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import fakeredis.aioredis
 import pytest
+from requests import Response
+
+from app.services import identity_roles, keystone, session_store
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 사용자 관리 (3개)
@@ -25,7 +32,8 @@ async def test_list_users_requires_admin(non_admin_client):
 async def test_list_users_allowed(admin_client, mock_conn):
     mock_conn.identity.users.return_value = iter([])
     resp = await admin_client.get("/api/v1/admin/users")
-    assert resp.status_code != 403
+    assert resp.status_code == 200
+    assert resp.json() == {"items": [], "next_marker": None, "count": 0}
 
 
 @pytest.mark.asyncio
@@ -61,7 +69,10 @@ async def test_list_projects_requires_admin(non_admin_client):
 async def test_list_projects_allowed(admin_client, mock_conn):
     mock_conn.identity.projects.return_value = iter([])
     resp = await admin_client.get("/api/v1/admin/projects")
-    assert resp.status_code != 403
+    assert resp.status_code == 200
+    assert resp.json()["items"] == []
+    assert resp.json()["count"] == 0
+    assert resp.json()["total"] == 0
 
 
 @pytest.mark.asyncio
@@ -159,7 +170,8 @@ async def test_list_groups_requires_admin(non_admin_client):
 async def test_list_groups_allowed(admin_client, mock_conn):
     mock_conn.identity.groups.return_value = iter([])
     resp = await admin_client.get("/api/v1/admin/groups")
-    assert resp.status_code != 403
+    assert resp.status_code == 200
+    assert resp.json() == []
 
 
 @pytest.mark.asyncio
@@ -212,8 +224,11 @@ async def test_list_roles_requires_admin(non_admin_client):
 @pytest.mark.asyncio
 async def test_list_roles_allowed(admin_client, mock_conn):
     mock_conn.identity.roles.return_value = iter([])
+    mock_conn.identity.get.return_value.json.return_value = {"role_inferences": []}
     resp = await admin_client.get("/api/v1/admin/roles")
-    assert resp.status_code != 403
+    assert resp.status_code == 200
+    assert resp.json() == []
+    mock_conn.identity.get.assert_called_once_with("/role_inferences")
 
 
 @pytest.mark.asyncio
@@ -298,97 +313,137 @@ async def test_create_project_calls_both_monitoring_sgs(admin_client, mock_conn)
 
 _ADMIN_ROLE_ID = "admin-role-id-xyz"
 _MEMBER_ROLE_ID = "member-role-id-abc"
+_OWNER_ROLE_ID = "owner-role-id"
+_OWNER_ALIAS_ID = "owner-alias-id"
+
+
+@pytest.fixture
+async def assignment_authority(mock_conn, monkeypatch):
+    """Model Keystone's catalog/writes; run the real graph lock and session store."""
+    roles = [
+        {"id": rid, "name": name, "domain_id": None, "description": ""}
+        for rid, name in (
+            (_ADMIN_ROLE_ID, "admin"),
+            (_MEMBER_ROLE_ID, "member"),
+            (_OWNER_ROLE_ID, "project_owner"),
+            (_OWNER_ALIAS_ID, "owner_alias"),
+        )
+    ]
+    inferences = [
+        {"prior_role": {"id": _ADMIN_ROLE_ID}, "implies": [{"id": _MEMBER_ROLE_ID}]},
+        {"prior_role": {"id": _OWNER_ALIAS_ID}, "implies": [{"id": _OWNER_ROLE_ID}]},
+    ]
+
+    def graph(path):
+        assert path == "/role_inferences"
+        response = Response()
+        response.status_code = 200
+        response._content = json.dumps({"role_inferences": inferences}).encode()
+        return response
+
+    assignments = set()
+
+    def assign(project_id, user_id, role_id):
+        assignments.add((project_id, user_id, role_id))
+
+    def revoke(project_id, user_id, role_id):
+        assignments.remove((project_id, user_id, role_id))
+
+    mock_conn.endpoint_for.return_value = "https://keystone.invalid/v3"
+    mock_conn.identity.roles.side_effect = lambda: iter(roles)
+    mock_conn.identity.get.side_effect = graph
+    mock_conn.identity.assign_project_role_to_user.side_effect = assign
+    mock_conn.identity.unassign_project_role_from_user.side_effect = revoke
+    redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+
+    async def get_redis():
+        return redis
+
+    record = AsyncMock()
+    revoke_token = MagicMock()
+    monkeypatch.setattr(session_store, "_get_redis", get_redis)
+    monkeypatch.setattr(keystone, "revoke_token", revoke_token)
+    monkeypatch.setattr(identity_roles.activity, "record", record)
+    try:
+        yield SimpleNamespace(assignments=assignments, record=record, revoke_token=revoke_token, redis=redis)
+    finally:
+        await redis.close()
+
+
+async def _assignment_sessions(user_id):
+    for uid in (user_id, "unaffected-user"):
+        await session_store.store_session("session-" + uid, "token-" + uid, "some-proj", uid, int(time.time()) + 3600)
+
+
+async def _assert_assignment_effects(authority, user_id, project_id, role_id, *, remove=False):
+    assert await session_store.get_session("session-" + user_id) is None
+    assert await session_store.get_session("session-unaffected-user") is not None
+    authority.revoke_token.assert_called_once_with("token-" + user_id)
+    authority.record.assert_awaited_once_with(
+        project_id="test-project-123",
+        user_id="test-user-123",
+        username="testuser",
+        resource_type="role",
+        action="role_revoke" if remove else "role_assign",
+        status="success",
+        resource_id=role_id,
+        extra={"target_project_id": project_id},
+    )
 
 
 @pytest.mark.asyncio
-async def test_assign_admin_role_revokes_sessions(admin_client, mock_conn):
-    """admin role 할당 시 대상 사용자의 세션이 즉시 무효화되고 audit이 기록된다."""
-    mock_conn.identity.assign_project_role_to_user = MagicMock(return_value=None)
-
-    with (
-        patch(
-            "app.api.identity.admin_identity.keystone._resolve_admin_ids",
-            return_value=(None, _ADMIN_ROLE_ID),
-        ),
-        patch(
-            "app.api.identity.admin_identity.session_store.revoke_user_sessions",
-            new=AsyncMock(return_value=2),
-        ) as mock_revoke,
-        patch(
-            "app.api.identity.admin_identity.activity.record",
-            new=AsyncMock(),
-        ) as mock_record,
-    ):
-        resp = await admin_client.post(
-            "/api/v1/admin/roles/assign",
-            json={"user_id": "target-user-1", "project_id": "admin-proj", "role_id": _ADMIN_ROLE_ID},
-        )
+async def test_assign_admin_role_revokes_sessions(admin_client, mock_conn, assignment_authority):
+    """An admin grant changes provider state, revokes real sessions, and records the role audit."""
+    await _assignment_sessions("target-user-1")
+    resp = await admin_client.post(
+        "/api/v1/admin/roles/assign",
+        json={"user_id": "target-user-1", "project_id": "admin-proj", "role_id": _ADMIN_ROLE_ID},
+    )
 
     assert resp.status_code == 200
-    mock_revoke.assert_awaited_once_with("target-user-1")
-    mock_record.assert_awaited_once()
-    assert mock_record.call_args.kwargs["action"] == "admin_role_grant"
-    assert mock_record.call_args.kwargs["resource_id"] == "target-user-1"
+    assert resp.json() == {"status": "assigned"}
+    assert assignment_authority.assignments == {("admin-proj", "target-user-1", _ADMIN_ROLE_ID)}
+    mock_conn.identity.assign_project_role_to_user.assert_called_once_with(
+        "admin-proj", "target-user-1", _ADMIN_ROLE_ID
+    )
+    await _assert_assignment_effects(assignment_authority, "target-user-1", "admin-proj", _ADMIN_ROLE_ID)
 
 
 @pytest.mark.asyncio
-async def test_assign_non_admin_role_no_revoke(admin_client, mock_conn):
-    """일반 role 할당 시 세션 무효화는 수행하지 않고 audit만 기록된다."""
-    mock_conn.identity.assign_project_role_to_user = MagicMock(return_value=None)
-
-    with (
-        patch(
-            "app.api.identity.admin_identity.keystone._resolve_admin_ids",
-            return_value=(None, _ADMIN_ROLE_ID),
-        ),
-        patch(
-            "app.api.identity.admin_identity.session_store.revoke_user_sessions",
-            new=AsyncMock(return_value=0),
-        ) as mock_revoke,
-        patch(
-            "app.api.identity.admin_identity.activity.record",
-            new=AsyncMock(),
-        ) as mock_record,
-    ):
-        resp = await admin_client.post(
-            "/api/v1/admin/roles/assign",
-            json={"user_id": "target-user-2", "project_id": "some-proj", "role_id": _MEMBER_ROLE_ID},
-        )
+async def test_assign_non_admin_role_revokes_sessions(admin_client, mock_conn, assignment_authority):
+    """Member grants also revoke sessions so project access is immediately re-evaluated."""
+    await _assignment_sessions("target-user-2")
+    resp = await admin_client.post(
+        "/api/v1/admin/roles/assign",
+        json={"user_id": "target-user-2", "project_id": "some-proj", "role_id": _MEMBER_ROLE_ID},
+    )
 
     assert resp.status_code == 200
-    mock_revoke.assert_not_awaited()
-    mock_record.assert_awaited_once()
-    assert mock_record.call_args.kwargs["action"] == "role_grant"
+    assert resp.json() == {"status": "assigned"}
+    assert assignment_authority.assignments == {("some-proj", "target-user-2", _MEMBER_ROLE_ID)}
+    mock_conn.identity.assign_project_role_to_user.assert_called_once_with(
+        "some-proj", "target-user-2", _MEMBER_ROLE_ID
+    )
+    await _assert_assignment_effects(assignment_authority, "target-user-2", "some-proj", _MEMBER_ROLE_ID)
 
 
 @pytest.mark.asyncio
-async def test_revoke_admin_role_revokes_sessions(admin_client, mock_conn):
-    """admin role 회수 시 대상 사용자의 세션이 즉시 무효화되고 audit이 기록된다."""
-    mock_conn.identity.unassign_project_role_from_user = MagicMock(return_value=None)
-
-    with (
-        patch(
-            "app.api.identity.admin_identity.keystone._resolve_admin_ids",
-            return_value=(None, _ADMIN_ROLE_ID),
-        ),
-        patch(
-            "app.api.identity.admin_identity.session_store.revoke_user_sessions",
-            new=AsyncMock(return_value=1),
-        ) as mock_revoke,
-        patch(
-            "app.api.identity.admin_identity.activity.record",
-            new=AsyncMock(),
-        ) as mock_record,
-    ):
-        resp = await admin_client.delete(
-            f"/api/v1/admin/roles/assign?user_id=target-user-3&project_id=admin-proj&role_id={_ADMIN_ROLE_ID}",
-        )
+async def test_revoke_admin_role_revokes_sessions(admin_client, mock_conn, assignment_authority):
+    """An admin revoke removes the provider grant and invalidates only the target's sessions."""
+    assignment_authority.assignments.add(("admin-proj", "target-user-3", _ADMIN_ROLE_ID))
+    await _assignment_sessions("target-user-3")
+    resp = await admin_client.delete(
+        "/api/v1/admin/roles/assign",
+        params={"user_id": "target-user-3", "project_id": "admin-proj", "role_id": _ADMIN_ROLE_ID},
+    )
 
     assert resp.status_code == 200
-    mock_revoke.assert_awaited_once_with("target-user-3")
-    mock_record.assert_awaited_once()
-    assert mock_record.call_args.kwargs["action"] == "admin_role_revoke"
-    assert mock_record.call_args.kwargs["resource_id"] == "target-user-3"
+    assert resp.json() == {"status": "revoked"}
+    assert assignment_authority.assignments == set()
+    mock_conn.identity.unassign_project_role_from_user.assert_called_once_with(
+        "admin-proj", "target-user-3", _ADMIN_ROLE_ID
+    )
+    await _assert_assignment_effects(assignment_authority, "target-user-3", "admin-proj", _ADMIN_ROLE_ID, remove=True)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -697,32 +752,22 @@ async def test_revoke_with_other_admins_succeeds(admin_client):
 
 
 @pytest.mark.asyncio
-async def test_revoke_non_admin_role_no_revoke(admin_client, mock_conn):
-    """일반 role 회수 시 세션 무효화는 수행하지 않고 audit만 기록된다."""
-    mock_conn.identity.unassign_project_role_from_user = MagicMock(return_value=None)
-
-    with (
-        patch(
-            "app.api.identity.admin_identity.keystone._resolve_admin_ids",
-            return_value=(None, _ADMIN_ROLE_ID),
-        ),
-        patch(
-            "app.api.identity.admin_identity.session_store.revoke_user_sessions",
-            new=AsyncMock(return_value=0),
-        ) as mock_revoke,
-        patch(
-            "app.api.identity.admin_identity.activity.record",
-            new=AsyncMock(),
-        ) as mock_record,
-    ):
-        resp = await admin_client.delete(
-            f"/api/v1/admin/roles/assign?user_id=target-user-4&project_id=some-proj&role_id={_MEMBER_ROLE_ID}",
-        )
+async def test_revoke_non_admin_role_revokes_sessions(admin_client, mock_conn, assignment_authority):
+    """Member revocation invalidates sessions too, rather than keeping stale project access."""
+    assignment_authority.assignments.add(("some-proj", "target-user-4", _MEMBER_ROLE_ID))
+    await _assignment_sessions("target-user-4")
+    resp = await admin_client.delete(
+        "/api/v1/admin/roles/assign",
+        params={"user_id": "target-user-4", "project_id": "some-proj", "role_id": _MEMBER_ROLE_ID},
+    )
 
     assert resp.status_code == 200
-    mock_revoke.assert_not_awaited()
-    mock_record.assert_awaited_once()
-    assert mock_record.call_args.kwargs["action"] == "role_revoke"
+    assert resp.json() == {"status": "revoked"}
+    assert assignment_authority.assignments == set()
+    mock_conn.identity.unassign_project_role_from_user.assert_called_once_with(
+        "some-proj", "target-user-4", _MEMBER_ROLE_ID
+    )
+    await _assert_assignment_effects(assignment_authority, "target-user-4", "some-proj", _MEMBER_ROLE_ID, remove=True)
 
 
 @pytest.mark.asyncio
@@ -778,3 +823,83 @@ async def test_admin_version_returns_current_runtime_shape(admin_client):
     assert data["git"]["branch"] is None or isinstance(data["git"]["branch"], str)
 
     assert "config" not in data
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role_id", [_OWNER_ROLE_ID, _OWNER_ALIAS_ID])
+@pytest.mark.parametrize("remove", [False, True])
+@pytest.mark.parametrize("principal", ["user", "group"])
+async def test_generic_assignment_rejects_owner_bearing_roles_without_side_effects(
+    admin_client, mock_conn, assignment_authority, role_id, remove, principal
+):
+    await _assignment_sessions("target-user")
+    assignment = ("some-proj", "target-user", role_id)
+    assignment_authority.assignments.add(assignment)
+    payload = {
+        f"{principal}_id": "target-user" if principal == "user" else "target-group",
+        "project_id": "some-proj",
+        "role_id": role_id,
+    }
+    path = "/api/v1/admin/roles/assign" + ("-group" if principal == "group" else "")
+    if remove:
+        response = await admin_client.delete(path, params=payload)
+    else:
+        response = await admin_client.post(path, json=payload)
+
+    assert response.status_code == 409
+    assert "ownership workflow" in response.json()["detail"]
+    assert assignment_authority.assignments == {assignment}
+    for method in (
+        "assign_project_role_to_user",
+        "unassign_project_role_from_user",
+        "assign_project_role_to_group",
+        "unassign_project_role_from_group",
+    ):
+        getattr(mock_conn.identity, method).assert_not_called()
+    assignment_authority.record.assert_not_awaited()
+    assignment_authority.revoke_token.assert_not_called()
+    assert await session_store.get_session("session-target-user") is not None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("remove", [False, True])
+async def test_project_assignment_fails_closed_without_graph_metadata(
+    admin_client, mock_conn, assignment_authority, remove
+):
+    await _assignment_sessions("target-user")
+    mock_conn.identity.get.side_effect = RuntimeError("provider graph unavailable")
+    payload = {"user_id": "target-user", "project_id": "some-proj", "role_id": _MEMBER_ROLE_ID}
+    if remove:
+        response = await admin_client.delete("/api/v1/admin/roles/assign", params=payload)
+    else:
+        response = await admin_client.post("/api/v1/admin/roles/assign", json=payload)
+
+    assert response.status_code == 503
+    mock_conn.identity.assign_project_role_to_user.assert_not_called()
+    mock_conn.identity.unassign_project_role_from_user.assert_not_called()
+    assignment_authority.record.assert_not_awaited()
+    assignment_authority.revoke_token.assert_not_called()
+    assert await session_store.get_session("session-target-user") is not None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("remove", [False, True])
+async def test_project_assignment_rejects_concurrent_graph_mutation(
+    admin_client, mock_conn, assignment_authority, remove
+):
+    await _assignment_sessions("target-user")
+    payload = {"user_id": "target-user", "project_id": "some-proj", "role_id": _MEMBER_ROLE_ID}
+    async with identity_roles._graph_lock(mock_conn):
+        if remove:
+            response = await admin_client.delete("/api/v1/admin/roles/assign", params=payload)
+        else:
+            response = await admin_client.post("/api/v1/admin/roles/assign", json=payload)
+
+    assert response.status_code == 409
+    assert "in progress" in response.json()["detail"]
+    mock_conn.identity.roles.assert_not_called()
+    mock_conn.identity.assign_project_role_to_user.assert_not_called()
+    mock_conn.identity.unassign_project_role_from_user.assert_not_called()
+    assignment_authority.record.assert_not_awaited()
+    assignment_authority.revoke_token.assert_not_called()
+    assert await session_store.get_session("session-target-user") is not None

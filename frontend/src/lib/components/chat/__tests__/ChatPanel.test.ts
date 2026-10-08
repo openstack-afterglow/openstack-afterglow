@@ -1,3 +1,4 @@
+import { grantLumen, pendingLumen } from './lumenPermissionFixture';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
@@ -148,6 +149,27 @@ beforeEach(() => {
 });
 
 describe('ChatPanel', () => {
+	it('sends chat-only text with tool defaults explicitly disabled', async () => {
+		grantLumen('lumen-chat_user');
+		render(ChatPanel);
+		await screen.findByRole('button', { name: 'Model 1' });
+		await fireEvent.click(screen.getByTitle('저장되지 않는 임시 채팅'));
+		await fireEvent.input(screen.getByRole('textbox'), { target: { value: 'Text only' } });
+		await fireEvent.click(screen.getByRole('button', { name: '전송' }));
+		await waitFor(() => expect(mocks.createRun).toHaveBeenCalled());
+		expect(mocks.createRun.mock.calls[0][1].features.tool_policy).toMatchObject({ mode: 'none', enabled_tool_ids: [], enabled_mcp_ids: [] });
+	});
+
+	it('does not send while permissions are pending or failed', async () => {
+		pendingLumen();
+		render(ChatPanel);
+		await screen.findByRole('button', { name: 'Model 1' });
+		expect(screen.getByRole('button', { name: '전송' }).hasAttribute('disabled')).toBe(true);
+		pendingLumen('Permission service unavailable');
+		await tick();
+		expect(screen.getAllByRole('alert').some((item) => item.textContent?.includes('Permission service unavailable'))).toBe(true);
+		expect(mocks.createRun).not.toHaveBeenCalled();
+	});
 	it('marks both locally sent user and assistant messages for one-shot entrance', async () => {
 		const finish = Promise.withResolvers<void>();
 		mocks.followRun.mockImplementation(async function* () {

@@ -3,6 +3,7 @@
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { untrack } from 'svelte';
 	import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
+	import { k3sPermissions } from '$lib/stores/k3sPermissions';
 	import { SectionHeader } from '$lib/components/ui';
 	import K3sScaleModal from './K3sScaleModal.svelte';
 	import type { DeploymentInfo } from '$lib/types/k3s';
@@ -25,7 +26,7 @@
 	});
 </script>
 
-{#if scalingDeploy}
+{#if scalingDeploy && $k3sPermissions.workloads}
 	<K3sScaleModal
 		deploymentName={scalingDeploy.name}
 		currentReplicas={scalingDeploy.replicas}
@@ -73,12 +74,12 @@
 								<div class="flex items-center justify-end gap-1.5">
 									<button
 										onclick={() => s.rolloutRestartDeployment(dep.name)}
-										disabled={!!s.workloadActioning}
+										disabled={!$k3sPermissions.workloads || !!s.workloadActioning}
 										class="px-2 py-1 rounded text-xs bg-surface-selected/40 text-warm-text hover:bg-surface-selected/70 disabled:opacity-40 transition-colors"
 									>{#if actioning}<ActivityIndicator size="xs" label={t('deployments.actioning')} />{:else}{t('deployments.restart')}{/if}</button>
 									<button
 										onclick={() => { scalingDeploy = dep; }}
-										disabled={!!s.workloadActioning}
+										disabled={!$k3sPermissions.workloads || !!s.workloadActioning}
 										class="px-2 py-1 rounded text-xs bg-surface-sunken text-ink-2 hover:bg-surface-selected disabled:opacity-40 transition-colors"
 									>{t('deployments.scale')}</button>
 								</div>

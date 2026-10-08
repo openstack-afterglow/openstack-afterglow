@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { writable } from 'svelte/store';
 
 const mocks = vi.hoisted(() => {
 	const { writable } = require('svelte/store');
@@ -9,10 +10,16 @@ const mocks = vi.hoisted(() => {
 	return {
 		get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn(),
 		auth: writable({ token: 'token', projectId: 'project' }),
+		authReady: writable(true), projectSwitching: writable(false),
 		confirm: vi.fn(), invalidate: vi.fn(), ApiError
 	};
 });
-vi.mock('$lib/stores/auth', () => ({ auth: mocks.auth }));
+vi.mock('$lib/stores/auth', () => ({ auth: mocks.auth, authReady: mocks.authReady, projectSwitching: mocks.projectSwitching }));
+// Personal extension permissions are unrelated to these admin flows; do not consume API fixtures.
+vi.mock('$lib/stores/servicePermissions', () => ({
+	serviceCapabilities: writable<(leaf: string) => boolean>(() => false),
+	projectPermissions: writable({ permissions: null, loading: false, error: '' })
+}));
 vi.mock('$lib/api/client', () => ({
 	api: { get: mocks.get, post: mocks.post, patch: mocks.patch, delete: mocks.delete },
 	ApiError: mocks.ApiError
@@ -80,6 +87,7 @@ async function dragModel(source: HTMLElement, target: HTMLElement, edge: 'before
 beforeEach(() => {
 	vi.resetAllMocks();
 	mocks.auth.set({ token: 'token', projectId: 'project' });
+	mocks.authReady.set(true); mocks.projectSwitching.set(false);
 	providers = [{ ...nim }, { ...empty }, { ...other }];
 	models = [{ ...model }, { ...hidden }, { ...second }];
 	mocks.get.mockImplementation(async (path: string) => {

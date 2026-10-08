@@ -283,8 +283,6 @@ callback_base_url = ""         # e.g. http://10.0.0.1:8000
 kubeconfig_encryption_key = "" # 32-byte hex; generate: openssl rand -hex 32
 # Shared token for internal K3s GPU admission endpoint (/api/v1/internal/k3s/gpu-admission).
 gpu_admission_token = ""
-# Dedicated token for Drover Stampede provisioning intents (secret.yaml/environment only).
-provisioning_token = ""
 [worker_runtime]
 # Background worker runtime manager.
 # Default static mode preserves the current fixed Compose/Kubernetes/Kolla worker manifests
@@ -320,7 +318,7 @@ gpu_config_mount = "/app/config.gpu.toml"
 gpu_config_host_path = ""         # optional host path for config.gpu.toml
 logs_mount = "/app/logs"
 logs_host_path = ""               # optional host path for worker logs
-env_allowlist = "AFTERGLOW_ENV,AFTERGLOW_ALLOW_INSECURE,SECRET_KEY,OS_PASSWORD,DATABASE_URL,K3S_KUBECONFIG_ENCRYPTION_KEY,K3S_GPU_ADMISSION_TOKEN,K3S_PROVISIONING_TOKEN,PROMETHEUS_PASSWORD,GITLAB_OIDC_CLIENT_SECRET,NOTION_CONFIG_ENCRYPTION_KEY"
+env_allowlist = "AFTERGLOW_ENV,AFTERGLOW_ALLOW_INSECURE,SECRET_KEY,OS_PASSWORD,DATABASE_URL,K3S_KUBECONFIG_ENCRYPTION_KEY,K3S_GPU_ADMISSION_TOKEN,PROMETHEUS_PASSWORD,GITLAB_OIDC_CLIENT_SECRET,NOTION_CONFIG_ENCRYPTION_KEY"
 
 [worker_runtime.kubernetes]
 namespace = "afterglow"

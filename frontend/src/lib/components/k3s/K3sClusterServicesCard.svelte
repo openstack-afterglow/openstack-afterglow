@@ -3,6 +3,7 @@
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { untrack } from 'svelte';
 	import { useK3sClusterDetailController } from '$lib/stores/k3sClusterDetailController.svelte';
+	import { k3sPermissions } from '$lib/stores/k3sPermissions';
 	import { SectionHeader } from '$lib/components/ui';
 
 	const s = useK3sClusterDetailController();
@@ -58,7 +59,7 @@
 							<td class="py-2.5 text-right">
 								<button
 									onclick={() => s.removeSvc(svc.name)}
-									disabled={!!s.workloadActioning}
+									disabled={!$k3sPermissions.workloads || !!s.workloadActioning}
 									class="px-2 py-1 rounded text-xs bg-red-900/40 text-red-300 hover:bg-red-900/70 disabled:opacity-40 transition-colors"
 								>
 									{#if actioning}<ActivityIndicator size="xs" label={t('services.deleting')} />{:else}{t('services.delete')}{/if}

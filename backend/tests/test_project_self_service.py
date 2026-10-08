@@ -43,14 +43,13 @@ async def test_create_project_requires_auth():
 
 @pytest.mark.asyncio
 async def test_create_project_success():
-    """프로젝트 생성 성공: Keystone 프로젝트 생성 + DB manager 등록."""
+    """Project creation explicitly grants project_owner without a DB manager row."""
     mock_ks = MagicMock()
     mock_project = MagicMock()
     mock_project.id = "new-proj-id"
     mock_project.name = "MyProject"
     mock_project.description = ""
     mock_ks.projects.create.return_value = mock_project
-    mock_ks.roles.list.return_value = [MagicMock(id="role-member-id")]
 
     mock_session = AsyncMock()
     mock_session.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=None)))
@@ -74,6 +73,7 @@ async def test_create_project_success():
         patch("app.services.keystone._get_admin_ks_client", return_value=mock_ks),
         patch("app.services.keystone.get_admin_connection_for_project", side_effect=Exception("no monitoring")),
         patch("app.services.activity.record", new_callable=AsyncMock),
+        patch("app.services.project_service._grant_project_role", new_callable=AsyncMock) as grant,
         patch("app.services.project_service.cache.invalidate", new_callable=AsyncMock),
     ):
         async with AsyncClient(
@@ -88,6 +88,9 @@ async def test_create_project_success():
     data = resp.json()
     assert data["id"] == "new-proj-id"
     assert data["name"] == "MyProject"
+    grant.assert_awaited_once_with("new-proj-id", "user-abc", "project_owner", require_hierarchy=True)
+    mock_session.add.assert_not_called()
+    mock_session.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -136,7 +139,11 @@ async def test_create_invitation_requires_manager():
 
     app.dependency_overrides[get_session] = override_session
 
-    with patch("app.database.get_session_factory", return_value=None):
+    with patch(
+        "app.services.project_service.get_project_access",
+        new_callable=AsyncMock,
+        return_value={"is_owner": False, "is_manager": False, "roles": ["member"]},
+    ):
         async with AsyncClient(
             transport=ASGITransport(app=app),
             base_url="http://test",
@@ -183,7 +190,11 @@ async def test_create_invitation_success():
     with (
         patch("app.services.keystone._get_admin_ks_client", return_value=mock_ks),
         patch("app.services.activity.record", new_callable=AsyncMock),
-        patch("app.services.project_service.is_project_manager", new_callable=AsyncMock, return_value=True),
+        patch(
+            "app.services.project_service.get_project_access",
+            new_callable=AsyncMock,
+            return_value={"is_owner": False, "is_manager": True, "roles": ["project_admin", "member"]},
+        ),
     ):
         async with AsyncClient(
             transport=ASGITransport(app=app),
@@ -317,26 +328,6 @@ async def test_decline_invitation_idempotent():
 
 
 # ─── 매니저 관리 ──────────────────────────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_demote_last_manager_blocked():
-    """마지막 manager 해제 시도 → 409."""
-    from app.services.project_service import demote_manager
-
-    last_manager = MagicMock()
-    last_manager.user_id = "user-abc"
-
-    mock_session = AsyncMock()
-    mock_session.execute = AsyncMock(
-        return_value=MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[last_manager]))))
-    )
-
-    from fastapi import HTTPException
-
-    with pytest.raises(HTTPException) as exc_info:
-        await demote_manager(PROJECT_ID, "user-abc", mock_session)
-    assert exc_info.value.status_code == 409
 
 
 @pytest.mark.asyncio

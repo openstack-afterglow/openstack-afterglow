@@ -3,6 +3,7 @@
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import { api } from '$lib/api/client';
+	import { k3sPermissions } from '$lib/stores/k3sPermissions';
 	import type { CertificateExpiryResponse, CertificateInfo } from '$lib/types/k3s';
 	import K3sRotateProgressModal from './K3sRotateProgressModal.svelte';
 
@@ -132,7 +133,7 @@
 			>
 				{t('certificateExpiry.refresh')}
 			</button>
-			{#if masterCount >= 3}
+			{#if masterCount >= 3 && $k3sPermissions.administerClusters}
 				<button
 					onclick={() => (showRotateModal = true)}
 					class="text-xs px-3 py-1.5 rounded-lg bg-action-warm hover:bg-action-warm-hover text-action-on-warm transition-colors"
