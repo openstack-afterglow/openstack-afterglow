@@ -60,7 +60,8 @@ def canonical_mcp_resource_url(value: str, *, production: bool) -> str:
         raise McpOAuthError("MCP requires an HTTPS public URL in production")
     if parsed.scheme not in {"https", "http"}:
         raise McpOAuthError("MCP public URL must use HTTP or HTTPS")
-    path = parsed.path.rstrip("/") or "/api/v1/mcp"
+    # An explicit URL is the exact resource; a bare origin is served at the origin root.
+    path = parsed.path.rstrip("/")
     return urlunsplit((parsed.scheme.lower(), parsed.netloc.lower(), path, "", ""))
 
 
@@ -85,9 +86,11 @@ def oauth_urls(public_api_base: str, *, public_mcp_url: str = "", production: bo
 
 
 def require_exact_resource(value: str | None, urls: McpOAuthUrls) -> str:
-    if value != urls.resource:
+    # RFC 3986 makes an empty HTTP(S) path equivalent to "/"; WHATWG URL clients
+    # serialize an origin-root resource with the trailing slash.
+    if value != urls.resource and not (urlsplit(urls.resource).path == "" and value == f"{urls.resource}/"):
         raise McpOAuthError("resource must exactly match this MCP server")
-    return value
+    return urls.resource
 
 
 def validate_scopes(raw_scope: str | list[str] | tuple[str, ...]) -> tuple[str, ...]:

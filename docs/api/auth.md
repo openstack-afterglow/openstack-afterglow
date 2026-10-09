@@ -386,3 +386,36 @@ Keystone가 token authentication에서 반환하는 `404 Failed to validate toke
 ```
 
 응답은 [TokenResponse](#tokenresponse) (`auth_method`는 `federated`). 인증 실패 시 401.
+
+## 개인 MCP 키와 공개 연결 확인
+
+`GET /api/v1/auth/mcp-tokens`는 현재 로그인 사용자·프로젝트의 저장된 metadata만 반환합니다. `POST /api/v1/auth/mcp-tokens`는 `{name, access_level: "read"|"manage", expires_at?: ISO timestamp}`를 받고 `201`에서 한 번만 평문 `token`을 반환합니다. 기본·최대 기간은 `mcp.default_grant_ttl_days`·`mcp.max_grant_ttl_days`를 따르며 무기한 키가 아닙니다. 서버는 발급 당시 user/project 및 역할 snapshot에 묶인 **restricted** Keystone application credential을 사용합니다. 만료 입력의 offset은 UTC로 정규화하고 upstream Keystone에 microsecond를 보존하는 `Z` timestamp를 전달합니다. 클라이언트는 만료를 비우거나 유효한 미래 ISO 시각을 보냅니다.
+
+`POST /api/v1/auth/mcp-tokens/verify`는 browser access JWT, 허용된 Origin 및 `Sec-Fetch-Site: same-origin|same-site`가 필요합니다. `Content-Type: application/json`의 정확한 `{ "token": "<본인 개인 키>" }`만 받으며 본문은 최대1024bytes입니다. 잘못된·만료·폐기·다른 user/project의 키는 공개 URL에 접속하기 **전** 거부합니다. 임의 endpoint를 지정할 수 없습니다.
+
+성공 `200`의 응답은 다음 구조이며 token을 포함하지 않습니다.
+
+```json
+{
+  "endpoint": "https://cloud.dmslab.re.kr/mcp",
+  "protocol_version": "2025-11-25",
+  "server_name": "Afterglow",
+  "server_version": "<running-version>",
+  "tool_count": 18
+}
+```
+
+프로토콜/version/count는 실제 응답을 따릅니다. 위 값은 형식 예시이며 운영 성공 증거가 아닙니다. 확인은 SDK initialize·initialized·모든 tools/list 페이지만 실행하고 tools/call을 실행하지 않습니다. 실제 클라우드 접근 권한/작업 성공이나 개별 AI client의 연결을 증명하지 않습니다. TLS를 검증하며 proxy·redirect·retry를 사용하지 않습니다. 전체20초, 응답2MiB, 최대50페이지·5000도구, 분당6회 제한과 `Cache-Control: no-store`/`Pragma: no-cache`가 적용됩니다.
+
+| HTTP | `code` | 의미 |
+|---|---|---|
+| 400 | `invalid_request` | token 외 필드/본문 형식 오류 |
+| 400 | `invalid_token` | 잘못된·만료·폐기·다른 owner/project의 개인 키 |
+| 502 | `rejected` | 공개 MCP resource의 인증 거부 |
+| 502 | `redirect` | 다른 주소로 이동; 비밀을 전송하지 않고 중단 |
+| 502 | `protocol` | 올바른 MCP handshake/tool-list 응답이 아님 |
+| 503 | `not_configured` | 공개 MCP resource 미설정 |
+| 504 | `unavailable` | DNS/TLS/connection/timeout |
+| 429 | - | 확인 rate limit; 1분 뒤 재시도 |
+
+서비스 비활성은404, session/same-site/authority-storage 오류는401/403/503을 유지합니다. Audit은 확인의 user/project·상태와 안전한 실패 원인만 기록하며 token/Authorization을 기록하지 않습니다. API client의 `ApiError.code`와 계정의 네 언어 문구가 안정된 실패 분류를 사용합니다. 개인 token·인증 JSON은 개인 설정에만 저장하고, 클립보드/파일 정리는 사용자 책임입니다. 사용 안내와 클라이언트별 형식은 `/docs/mcp`를 따릅니다.

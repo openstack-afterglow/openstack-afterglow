@@ -17,6 +17,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
+from keystoneclient.utils import isotime
 from sqlalchemy import func, select
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -251,7 +252,7 @@ def create_restricted_application_credential(
         name=upstream_name,
         description="Afterglow inbound MCP delegated authority",
         roles=_role_snapshot(roles),
-        expires_at=expires_at.isoformat(),
+        expires_at=isotime(_as_utc(expires_at), subsecond=True),
         unrestricted=False,
     )
     credential_id = getattr(created, "id", None)

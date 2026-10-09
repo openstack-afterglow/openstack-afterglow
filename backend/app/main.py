@@ -443,7 +443,9 @@ _CORS_ALLOW_METHODS = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
 
 
 def _is_mcp_no_cors_path(path: str) -> bool:
-    return any(path == resource_path or path.startswith(f"{resource_path}/oauth/") for resource_path in mcp_paths())
+    return any(
+        path == resource_path or path.startswith(f"{resource_path.rstrip('/')}/oauth/") for resource_path in mcp_paths()
+    )
 
 
 def _get_allowed_origins() -> set[str]:

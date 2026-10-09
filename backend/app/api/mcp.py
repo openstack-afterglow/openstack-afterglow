@@ -68,7 +68,11 @@ def _matches_metadata_path(path: str, url: str) -> bool:
 
 
 def _require_public_mcp_path(path: str) -> None:
-    if not _matches_metadata_path(path, _urls().resource):
+    try:
+        resource = _urls().resource
+    except McpOAuthError:
+        resource = None
+    if resource is None or not _matches_metadata_path(path, resource):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
 
 
@@ -161,6 +165,12 @@ async def oauth_protected_resource_metadata(resource_path: str):
     )
 
 
+@root_router.get("/.well-known/oauth-protected-resource")
+async def oauth_root_protected_resource_metadata():
+    """RFC 9728 metadata location for a resource served at the origin root."""
+    return await oauth_protected_resource_metadata("")
+
+
 @root_router.get("/.well-known/oauth-authorization-server/{issuer_path:path}")
 async def oauth_authorization_server_metadata(issuer_path: str):
     _require_enabled()
@@ -214,6 +224,12 @@ async def oauth_register_alias(mcp_path: str, request: Request):
     return await oauth_register(request)
 
 
+@root_router.post("/oauth/register")
+async def oauth_root_register_alias(request: Request):
+    _require_public_mcp_path("")
+    return await oauth_register(request)
+
+
 @router.get("/oauth/authorize")
 @limiter.limit("10/minute")
 async def oauth_authorize(request: Request):
@@ -243,6 +259,12 @@ async def oauth_authorize(request: Request):
 @root_router.get("/{mcp_path:path}/oauth/authorize")
 async def oauth_authorize_alias(mcp_path: str, request: Request):
     _require_public_mcp_path(mcp_path)
+    return await oauth_authorize(request)
+
+
+@root_router.get("/oauth/authorize")
+async def oauth_root_authorize_alias(request: Request):
+    _require_public_mcp_path("")
     return await oauth_authorize(request)
 
 
@@ -299,6 +321,12 @@ async def oauth_token_alias(mcp_path: str, request: Request):
     return await oauth_token(request)
 
 
+@root_router.post("/oauth/token")
+async def oauth_root_token_alias(request: Request):
+    _require_public_mcp_path("")
+    return await oauth_token(request)
+
+
 @router.post("/oauth/revoke", status_code=status.HTTP_200_OK)
 @limiter.limit("30/minute")
 async def oauth_revoke(request: Request):
@@ -320,6 +348,12 @@ async def oauth_revoke(request: Request):
 @root_router.post("/{mcp_path:path}/oauth/revoke", status_code=status.HTTP_200_OK)
 async def oauth_revoke_alias(mcp_path: str, request: Request):
     _require_public_mcp_path(mcp_path)
+    return await oauth_revoke(request)
+
+
+@root_router.post("/oauth/revoke", status_code=status.HTTP_200_OK)
+async def oauth_root_revoke_alias(request: Request):
+    _require_public_mcp_path("")
     return await oauth_revoke(request)
 
 
