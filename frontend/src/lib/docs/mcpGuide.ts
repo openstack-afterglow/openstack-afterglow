@@ -3,8 +3,8 @@ import type { DocGuide } from './types';
 export const mcpGuide: DocGuide = {
 	slug: 'mcp',
 	name: 'MCP',
-	title: '개인 MCP 키로 외부 AI 연결하기',
-	summary: '계정에서 프로젝트에 묶인 개인 키와 HTTP 설정을 만들고 인증된 연결을 확인합니다. 외부 AI의 Afterglow 접근과 Lumen의 외부 서버 연결을 구분합니다.',
+	title: 'OAuth 또는 개인 MCP 키로 외부 AI 연결하기',
+	summary: 'OAuth 로그인·프로젝트 선택·동의 또는 프로젝트에 묶인 개인 키로 외부 AI를 연결합니다. HTTP 설정, 만료·회수와 연결 확인을 안내합니다.',
 	category: 'afterglow',
 	keywords: ['MCP', '개인 키', '연결 확인', 'Claude Code', 'Cursor', 'VS Code', 'Codex', 'OAuth', 'Authorization', 'mcpServers'],
 	prerequisites: [
@@ -62,8 +62,55 @@ export const mcpGuide: DocGuide = {
 			}
 		},
 		{
+			id: 'oauth',
+			title: '4. 개인 키 없이 OAuth로 연결하기',
+			paragraphs: [
+				'OAuth는 개인 키를 복사하지 않는 별도 인증 경로입니다. 아래 JSON·CLI 예시는 공식 문서에 따른 형식이며 모든 외부 클라이언트를 Afterglow에 실제 연결해 시험했다는 뜻은 아닙니다. 예시 URL을 계정의 실제 MCP 엔드포인트로 바꾸고 설치된 클라이언트의 OAuth 지원과 조직 정책을 확인하세요.',
+				'MCP URL인 https://cloud.dmslab.re.kr/mcp는 도구 요청을 보내는 resource입니다. issuer는 https://cloud.dmslab.re.kr/mcp/oauth이며 authorization_endpoint는 https://cloud.dmslab.re.kr/mcp/oauth/authorize입니다. 클라이언트는 /.well-known/oauth-protected-resource/mcp와 /.well-known/oauth-authorization-server/mcp/oauth에서 authorize·token·register URL을 찾습니다. bare /authorize나 /mcp/oauth/authorize는 커넥터에 등록할 MCP 엔드포인트가 아닙니다.',
+				'인증 요청에는 등록된 client_id, 등록된 콜백과 일치하는 redirect_uri, response_type=code, 정확한 MCP URL인 resource, scope, code_challenge, code_challenge_method=S256이 필요합니다. scope는 mcp:read 또는 mcp:read mcp:write이며 클라이언트는 state로 요청과 콜백을 연결·검증해야 합니다. 매개변수 없는 authorize URL을 직접 열지 말고 클라이언트가 생성한 로그인 URL을 사용하세요. Afterglow의 등록 정책은 token_endpoint_auth_method=none을 명시하고 grant_types에 authorization_code와 refresh_token을 모두 포함해야 합니다. 콜백은 HTTPS 또는 127.0.0.1/[::1] 같은 HTTP loopback IP만 허용하며 localhost 이름은 지원하지 않습니다.',
+				'코드 교환은 token_endpoint에 grant_type=authorization_code, code, client_id, 같은 redirect_uri·resource와 원래 code_verifier를 보냅니다. 갱신에는 grant_type=refresh_token, refresh_token과 같은 resource가 필요하며 scope를 보내면 기존 권한을 넓힐 수 없습니다. 갱신에 client_id를 보내면 최초 코드를 발급받은 클라이언트와 정확히 같아야 하며 생략은 허용됩니다. Afterglow는 token_endpoint_auth_method=none인 공개 클라이언트를 사용하므로 토큰 요청에 client_secret이나 HTTP Authorization을 보내지 마세요. 개인 키는 OAuth client_secret이 아닙니다.'
+			],
+			steps: [
+				{
+					title: '비밀 없이 MCP URL을 등록하고 OAuth 로그인을 선택합니다',
+					text: ['클라이언트에 HTTP MCP URL만 등록하세요. 개인 키, Authorization 헤더, bearer_token_env_var 또는 client_secret은 넣지 마세요. 기존 개인 키 설정과 구분되는 서버 이름을 사용하고 OAuth 로그인·Authenticate를 선택하세요. Claude Code에서는 /mcp에서 해당 서버를 인증하고 Codex에서는 codex mcp login을 실행합니다. 서버 추가 성공은 인증이나 연결 성공이 아닙니다.']
+				},
+				{
+					title: '실제 Afterglow 로그인과 프로젝트 선택을 완료합니다',
+					text: ['열린 브라우저에서 신뢰할 수 있는 Afterglow 주소인지 확인하고 본인 계정으로 로그인한 뒤 접근할 프로젝트를 선택하세요. 로그인·프로젝트 선택을 마쳐야 /oauth/mcp/authorize 동의 화면으로 진행할 수 있습니다. 클라이언트 요청을 연결하는 불투명 ticket은 로그인·프로젝트 선택 동안 유지되며 MCP URL이 아닙니다. 클라이언트에 Keystone 비밀번호나 브라우저 로그인 토큰을 복사하지 마세요.']
+				},
+				{
+					title: '클라이언트·프로젝트·권한·만료를 확인하고 동의합니다',
+					text: ['동의 화면에서 요청한 클라이언트, 사용자·프로젝트, scope와 위임 만료를 확인하세요. 조회에는 mcp:read만 허용하고 실제 변경이 필요한 경우에만 mcp:write를 포함한 권한에 동의하세요. 거절하면 접근 권한을 부여하지 않습니다. 동의가 끝난 연결은 그 사용자·프로젝트에 묶이며 대시보드 프로젝트를 바꿔도 다른 프로젝트로 이동하지 않습니다.']
+				},
+				{
+					title: '클라이언트가 PKCE 코드 교환을 마치고 연결 상태를 확인합니다',
+					text: ['동의 후 등록된 콜백으로 돌아온 일회용 authorization code를 클라이언트가 원래 PKCE code_verifier로 교환합니다. 이후 access token을 Bearer로 보내 MCP에 접속하고 refresh token을 안전하게 관리합니다. 코드·토큰을 JSON에 붙이거나 지원 요청에 공유하지 마세요. 클라이언트 상태와 조회 도구 결과는 별도로 확인하세요.']
+				},
+				{
+					title: '갱신·절대 만료와 계정 회수를 관리합니다',
+					text: ['access token의 기본 수명은 900초이며 실제 expires_in에 따라 클라이언트가 갱신합니다. refresh token은 사용할 때마다 교체됩니다. 위임의 절대 만료는 기본 30일·최대 90일이며 운영자 정책에 따라 달라질 수 있습니다. 갱신은 절대 만료를 연장하지 않으므로 만료되면 OAuth 로그인과 동의를 다시 진행하세요. 더 이상 쓰지 않거나 노출되면 계정 → 외부 AI 접근에서 해당 OAuth 연결을 회수하고 클라이언트의 저장된 인증도 지우세요. 로컬 서버 설정 삭제만으로 Afterglow 위임이 회수됐다고 가정하지 마세요.']
+				}
+			],
+			commands: [
+				{
+					label: '비밀 없는 OAuth HTTP mcpServers JSON 예시',
+					code: '{\n  "mcpServers": {\n    "my-stream-server": {\n      "type": "http",\n      "url": "https://cloud.dmslab.re.kr/mcp"\n    }\n  }\n}'
+				},
+				{
+					label: 'Claude Code OAuth HTTP 추가 예시 — 헤더 없음',
+					code: 'claude mcp add --transport http --scope user afterglow-oauth https://cloud.dmslab.re.kr/mcp'
+				},
+				{
+					label: 'Codex OAuth 서버 추가·로그인 예시',
+					code: 'codex mcp add afterglow-oauth --url https://cloud.dmslab.re.kr/mcp\ncodex mcp login afterglow-oauth'
+				}
+			],
+			links: [{ label: '계정의 외부 AI 접근', href: '/dashboard/account' }]
+		},
+		{
 			id: 'clients',
-			title: '4. 클라이언트별 형식을 구분하기',
+			title: '5. 클라이언트별 형식을 구분하기',
 			paragraphs: [
 				'아래 형식은 각 클라이언트 공식 문서를 기준으로 정리했습니다. Afterglow에서 클라이언트별 실제 연결을 시험한 결과가 아니므로 설치된 버전의 문서와 상태 화면을 함께 확인하세요.'
 			],
@@ -91,7 +138,7 @@ export const mcpGuide: DocGuide = {
 		},
 		{
 			id: 'verify',
-			title: '5. 인증된 연결 확인과 실제 조회 구분하기',
+			title: '6. 인증된 연결 확인과 실제 조회 구분하기',
 			paragraphs: [
 				'발급 창의 연결 확인을 누르거나 계정의 확인 입력란에 보관한 개인 키를 입력하세요. 브라우저 인증·동일 사이트 보호가 적용된 POST /api/v1/auth/mcp-tokens/verify는 {token}을 받고 현재 로그인 사용자·프로젝트의 키인지 먼저 확인한 후 운영자가 설정한 공개 URL에 접속합니다. 임의 URL은 받지 않으며 TLS를 검증하고 redirect를 따라가지 않습니다.',
 				'확인은 Bearer 인증으로 initialize → notifications/initialized → 전체 tools/list 페이지만 수행합니다. 결과의 endpoint, protocol_version, server_name, server_version, tool_count를 확인하세요. 키는 결과에 포함되지 않습니다. tools/call을 실행하지 않으므로 성공해도 OpenStack 조회·변경 성공이나 다른 AI 클라이언트의 연결을 증명하지 않습니다.',
@@ -100,7 +147,7 @@ export const mcpGuide: DocGuide = {
 		},
 		{
 			id: 'lumen',
-			title: '6. Lumen 위임과 외부 서버 등록은 별도입니다',
+			title: '7. Lumen 위임과 외부 서버 등록은 별도입니다',
 			paragraphs: [
 				'Afterglow 내 Lumen 채팅의 기본 클라우드 도구는 계정에서 선택한 Lumen 기본 개인 키의 위임 권한을 서버 측에서 사용합니다. 선택 해제·교체·폐기는 위임 실행에 영향을 줍니다. 이 내장 경로를 쓰려고 같은 Afterglow 서버를 외부 MCP 서버 목록에 다시 등록하거나 개인 키를 Lumen에 복사할 필요는 없습니다.',
 				'Lumen → 외부 MCP 서버는 아웃바운드 연결입니다. 채팅 설정의 MCP 서버에서 이름·HTTP·외부 URL을 등록하고 필요한 경우 본인 OAuth 연결을 진행합니다. 관리자 전역 설정은 공개·사용자별 OAuth·관리자 공유 인증 정책을 구분하며 관리자만 공유 헤더를 설정합니다. 이는 외부 AI가 Afterglow에 접근하기 위한 계정 개인 키와 다른 기능입니다.'
@@ -112,7 +159,7 @@ export const mcpGuide: DocGuide = {
 		},
 		{
 			id: 'troubleshooting',
-			title: '7. 오류를 안전하게 해결하기',
+			title: '8. 오류를 안전하게 해결하기',
 			bullets: [
 				'401: Bearer 헤더 누락, 잘못된 키, 만료·폐기를 확인하세요. 브라우저 토큰이나 Lumen API 키는 MCP 키가 아닙니다. 새 키를 발급하고 클라이언트 설정을 교체하세요.',
 				'400 invalid_token / 403: 계정 연결 확인에서 키가 잘못됐거나 만료·폐기됐거나 현재 사용자·프로젝트 소유가 아니면 400 invalid_token으로 공개 엔드포인트 접속 전에 거부됩니다. 원래 프로젝트를 선택하거나 그 프로젝트용 새 키를 발급하세요. 동일 사이트 브라우저 요청이 아니거나 MCP 요청의 Origin이 공개 엔드포인트와 다르면 403입니다. 관리자 키를 공유해 해결하지 마세요.',
@@ -134,6 +181,7 @@ export const mcpGuide: DocGuide = {
 		{ label: 'Claude Code 공식 MCP 문서', href: 'https://code.claude.com/docs/en/mcp' },
 		{ label: 'Cursor 공식 MCP 문서', href: 'https://cursor.com/docs/mcp' },
 		{ label: 'VS Code 공식 MCP 문서', href: 'https://code.visualstudio.com/docs/agent-customization/mcp-servers' },
-		{ label: 'Codex 공식 MCP 문서', href: 'https://learn.chatgpt.com/docs/extend/mcp' }
+		{ label: 'Codex 공식 MCP 문서', href: 'https://learn.chatgpt.com/docs/extend/mcp' },
+		{ label: 'MCP 공식 OAuth 인증 명세', href: 'https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization' }
 	]
 };

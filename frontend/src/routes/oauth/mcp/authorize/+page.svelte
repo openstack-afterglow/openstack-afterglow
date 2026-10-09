@@ -113,8 +113,12 @@
 			loading = false;
 			return;
 		}
-		if (!token || !projectId) {
+		if (!token) {
 			void goto('/login');
+			return;
+		}
+		if (!projectId) {
+			void goto('/select-project');
 			return;
 		}
 		void loadConsent();

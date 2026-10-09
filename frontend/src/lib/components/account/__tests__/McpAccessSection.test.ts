@@ -135,6 +135,22 @@ describe('McpAccessSection', () => {
 		expect(JSON.parse(screen.getByRole('region', { name: t('mcp.config') }).textContent!).mcpServers['my-stream-server'].headers.Authorization).toBe(['Bearer', 'YOUR_PERSONAL_MCP_TOKEN'].join(' '));
 	});
 
+	it('copies credential-free OAuth configuration even after issuing a personal token', async () => {
+		const writeText = vi.fn().mockResolvedValue(undefined);
+		Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+		siteConfig.update((config) => ({ ...config, mcp_url: 'https://cloud.dmslab.re.kr/mcp' }));
+		render(McpAccessSection);
+		await fireEvent.click(await screen.findByRole('button', { name: t('mcp.create') }));
+		const dialog = await screen.findByRole('dialog', { name: t('mcp.newToken') });
+		await fireEvent.click(within(dialog).getByRole('button', { name: t('mcp.done') }));
+		await fireEvent.click(screen.getByRole('button', { name: t('mcp.copyOAuthConfig') }));
+		await waitFor(() => expect(writeText).toHaveBeenCalledOnce());
+		expect(JSON.parse(writeText.mock.calls[0][0])).toEqual({
+			mcpServers: { 'my-stream-server': { type: 'http', url: 'https://cloud.dmslab.re.kr/mcp' } },
+		});
+		expect(screen.getByText('https://cloud.dmslab.re.kr/mcp/oauth/authorize')).toBeTruthy();
+	});
+
 	it('hides project-owned tokens and issued secrets while the new scope loads', async () => {
 		const tokens = deferred<typeof activeToken[]>();
 		const grants = deferred<typeof activeToken[]>();

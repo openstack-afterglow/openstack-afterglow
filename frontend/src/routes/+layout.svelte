@@ -60,7 +60,7 @@
 	const faviconPath = $derived(resolveFaviconPath($siteConfig));
 	const mockup = $derived(data.mockup);
 	const mockupAdminActive = $derived(mockup.active && mockup.profile === 'admin');
-	const publicRoutes = ['/', '/login', '/auth/gitlab/callback', '/oauth/claude/authorize'];
+	const publicRoutes = ['/', '/login', '/auth/gitlab/callback', '/oauth/claude/authorize', '/oauth/mcp/authorize'];
 	const isDocumentationRoute = $derived(isDocsPath($page.url.pathname));
 	let lastVerifiedToken: string | null = null;
 	let authVerifyNonce = $state(0);
@@ -259,10 +259,10 @@
 		($auth.username ?? 'U').slice(0, 2).toUpperCase()
 	);
 
-	const projectAgnosticRoutes = ['/', '/login', '/auth/gitlab/callback', '/select-project', '/oauth/claude/authorize'];
+	const projectAgnosticRoutes = ['/', '/login', '/auth/gitlab/callback', '/select-project', '/oauth/claude/authorize', '/oauth/mcp/authorize'];
 
 	const isInvitationRoute = $derived($page.url.pathname.startsWith('/invitations/'));
-	const shelllessRoutes = ['/', '/login', '/auth/gitlab/callback', '/select-project', '/oauth/claude/authorize'];
+	const shelllessRoutes = ['/', '/login', '/auth/gitlab/callback', '/select-project', '/oauth/claude/authorize', '/oauth/mcp/authorize'];
 	const showAppChrome = $derived($isLoggedIn && !isDocumentationRoute && !shelllessRoutes.includes($page.url.pathname) && !isInvitationRoute);
 	$effect(() => {
 		const token = $auth.token;

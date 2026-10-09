@@ -7,6 +7,17 @@
 
 ## [Unreleased]
 
+## [1.30.7] - 2026-10-09
+
+### Added
+- **개인 MCP OAuth 연결** — 계정 화면과 `/docs/mcp`에 개인 키가 필요 없는 HTTP MCP 설정·`https://cloud.dmslab.re.kr/mcp/oauth/authorize` 연결 방법을 한국어·영어·일본어·중국어로 제공한다. Authorization header·client secret 없이 discovery/DCR·PKCE S256·사용자 동의·refresh rotation을 사용하며 기존 API 키 발급·복사·검증·폐기는 유지한다. 현재 public-client 등록·grant·loopback callback 제약을 명시하며 모든 MCP 제품과의 호환을 주장하지 않는다.
+
+### Fixed
+- MCP 동의 화면의 exact route만 SSR/client 공개 shell로 허용하고 no-store/no-referrer를 유지한다. 미로그인 deep link의 ticket 유실과 로그인 이후 미선택 프로젝트를 건너뛰는 문제를 고친다. 선택 전에는 consent API를 호출하지 않고 현재 scoped user/project로만 동의한다.
+- Refresh의 optional `client_id`를 최초 발급 클라이언트와 대조한다. 빈 값·불일치·불명확한 DB binding은 rotation/replay side effect 전에 `invalid_grant`로 거부하고, 생략과 올바른 client의 정상 회전·replay 폐기는 유지한다. Consumed code row를 사용해 code expiry/ticket cleanup과 binding을 분리하며 DB migration은 없다.
+
+**Local qualification:** 전체 `npm run test:gate` 통과: backend4,188, frontend332files/2,510 + runner9, contract154, 실제 DB functional35, Ruff554files. Focused OAuth UI72조건·real MariaDB refresh7조건, version1.30.7·Svelte2,338files/0errors·i18n9,377messages/0errors/0warnings·hardcoded Korean0과 production build를 확인했다. 기존 DocCodeBlock tabindex경고1개는 유지한다. 실제 built Chromium의 합성 identity/API에서 로그인→프로젝트 선택→scoped 승인/거절·ticket 정리, 계정4언어48responsive/theme조건과 guide8조건을 관찰했다. 선택 전 consent GET0·credential-free JSON·가로 넘침0이며 운영 인증/provider acceptance와 구분한다.
+
 ## [1.30.6] - 2026-10-09
 
 ### Fixed

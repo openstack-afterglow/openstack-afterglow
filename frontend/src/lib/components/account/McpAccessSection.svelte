@@ -59,6 +59,7 @@
 	let loadSequence = 0;
 	const mcpEnabled = $derived($siteConfig.services.mcp);
 	const mcpUrl = $derived($siteConfig.mcp_url || `${getBaseUrl().replace(/\/+$/, '')}/api/v1/mcp`);
+	const oauthAuthorizeUrl = $derived(`${mcpUrl.replace(/\/+$/, '')}/oauth/authorize`);
 
 	let tokens = $state<McpAccessRecord[]>([]);
 	let oauthGrants = $state<McpAccessRecord[]>([]);
@@ -73,6 +74,7 @@
 	let issuedToken = $state<string | null>(null);
 	let showIssuedToken = $state(false);
 	let copied = $state<'token' | 'config' | null>(null);
+	let oauthConfigCopied = $state(false);
 	let verificationToken = $state('');
 	let verifying = $state(false);
 	let verificationSource = $state<'issued' | 'saved' | null>(null);
@@ -80,15 +82,16 @@
 	let verificationError = $state('');
 	let verificationSequence = 0;
 	const setupConfig = $derived(connectionConfig('YOUR_PERSONAL_MCP_TOKEN'));
+	const oauthConfig = $derived(connectionConfig());
 	const issuedConfig = $derived(issuedToken ? connectionConfig(issuedToken) : '');
 
-	function connectionConfig(secret: string) {
+	function connectionConfig(secret?: string) {
 		return JSON.stringify({
 			mcpServers: {
 				'my-stream-server': {
 					type: 'http',
 					url: mcpUrl,
-					headers: { Authorization: `Bearer ${secret}` },
+					...(secret ? { headers: { Authorization: `Bearer ${secret}` } } : {}),
 				},
 			},
 		}, null, 2);
@@ -154,6 +157,7 @@
 		issuedToken = null;
 		showIssuedToken = false;
 		copied = null;
+		oauthConfigCopied = false;
 		clearVerification();
 	}
 
@@ -264,6 +268,16 @@
 			if (isCurrentScope(owner) && issuedToken === secret) copied = 'config';
 		} catch {
 			if (isCurrentScope(owner) && issuedToken === secret) actionError = t('mcp.copyFailed');
+		}
+	}
+
+	async function copyOAuthConfig(owner: AccessScope) {
+		if (!isCurrentScope(owner)) return;
+		try {
+			await navigator.clipboard.writeText(oauthConfig);
+			if (isCurrentScope(owner)) oauthConfigCopied = true;
+		} catch {
+			if (isCurrentScope(owner)) actionError = t('mcp.copyFailed');
 		}
 	}
 
@@ -401,6 +415,15 @@
 
 		<p class="endpoint"><span>{t('mcp.endpoint')}</span><code>{mcpUrl}</code></p>
 		<Button href={docsHref('mcp', getLocale(), $page.url)} variant="link" size="sm">{t('mcp.docs')}</Button>
+
+		<section aria-labelledby="mcp-oauth-setup-heading" class="connection-section">
+			<h3 id="mcp-oauth-setup-heading">{t('mcp.oauthSetupTitle')}</h3>
+			<p>{t('mcp.oauthSetupHelp')}</p>
+			<p class="endpoint"><span>{t('mcp.oauthAuthorizeEndpoint')}</span><code>{oauthAuthorizeUrl}</code></p>
+			<pre class="mcp-code" role="region" aria-label={t('mcp.oauthConfig')}>{oauthConfig}</pre>
+			<p>{t('mcp.oauthClientSecretHelp')}</p>
+			<div><Button variant="outline" size="sm" onclick={copyOAuthConfig.bind(null, owner)}>{oauthConfigCopied ? t('mcp.copied') : t('mcp.copyOAuthConfig')}</Button></div>
+		</section>
 
 		<Alert tone="warning" title={t('mcp.onceTitle')}>
 			{#snippet children()}{t('mcp.onceHelp')}{/snippet}
