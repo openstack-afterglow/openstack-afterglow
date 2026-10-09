@@ -10,6 +10,7 @@
 - refresh 요청에 client_id가 있으면 기존 grant의 보존된 authorization code에서 issuing client를 확인한다. 생략은 허용하되 불일치·빈 값·불명확한 binding은 회전·replay 폐기 전에 거부한다. 단기 code 만료와 ticket cleanup은 장기 refresh binding을 없애지 않는다.
 - 공개 MCP 가이드와 네 언어 UI에 OAuth/API 키 선택, 실제 endpoint, scope, refresh·폐기, 클라이언트별 OAuth 예시와 bare authorize URL의 필수 파라미터를 설명한다.
 - 실제 운영 OAuth 승인/거절·코드 교환·MCP 읽기·회전·폐기와 개인 키 경계를 확인한다. UI 변경은 격리 빌드 smoke와 불변 patch release를 거친 canonical Kolla로 검증한다.
+- 실제 운영 consumer `tools/call`에서 발견한 SDK1.28.1 cold schema-cache refresh의 `None` callback을 처리한다. Public pagination·principal 범위·SDK validation을 유지하고 cold/beyond-page 실제 HTTP 및 cached manage-schema/read-mutation denial을 회귀 검증한다. HTTP200만으로 MCP 읽기를 완료 처리하지 않고 typed 결과와 `isError=false`를 확인한다.
 
 ## Capabilities
 
@@ -24,4 +25,4 @@
 
 ## Impact
 
-Frontend account/consent/login-return helper와 SSR/root layout의 exact OAuth shell 분류, existing OAuth token endpoint/authority의 client binding, consumer-visible SQL/UI regression, localized UI/docs 및 architecture/release 기록에 한정한다. DB schema, delegated roles, service grades, sibling services와 권한 부여 정책은 바꾸지 않는다. 공유 checkout은 보존하고 기존 격리 clone의 dev에서 작업한다. 운영 이미지 획득·설정 생성·배포는 wireguard-dmslab:/etc/kolla의 `kolla-ansible genconfig/pull/prechecks/reconfigure --tags afterglow`만 사용한다.
+Frontend account/consent/login-return helper와 SSR/root layout의 exact OAuth shell 분류, existing OAuth token endpoint/authority의 client binding, MCP transport의 SDK cold schema-cache callback, consumer-visible SQL/UI/SDK regression, localized UI/docs 및 architecture/release 기록에 한정한다. DB schema, delegated roles, service grades, sibling services와 권한 부여 정책은 바꾸지 않는다. 공유 checkout은 보존하고 기존 격리 clone의 dev에서 작업한다. 운영 이미지 획득·설정 생성·배포는 wireguard-dmslab:/etc/kolla의 `kolla-ansible genconfig/pull/prechecks/reconfigure -i /etc/kolla/multinode --tags afterglow`만 사용한다.

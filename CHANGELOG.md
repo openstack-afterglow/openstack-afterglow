@@ -7,6 +7,15 @@
 
 ## [Unreleased]
 
+## [1.30.8] - 2026-10-09
+
+### Fixed
+- **MCP cold tool 호출** — MCP SDK1.28.1의 `call_tool` schema cache miss가 paginated `ListToolsRequest` handler에 `None`을 넘기는 경로를 처리한다. 내부 refresh에는 현재 principal의 전체 허용 schema를 반환하고 실제 client discovery는 기존 bounded page와 grant-bound cursor를 유지한다. SDK가 callback을 판별하는 정확한 type annotation과 input/output validation, 현재 principal 권한·strict parsing·mutation ledger는 변경하지 않는다. 실제 SDK HTTP cold-call/첫 page 밖 호출 회귀2개는 수정 전 `NoneType.params`로 실패했으며 manage-schema cache 뒤 read grant의 valid mutation 거부도 검증한다. OAuth·기존 개인 API 키 모두 같은 consumer path를 사용한다.
+- macOS installer PTY regression harness가 큰 script를 stdin pipe에 전부 쓰는 동안 `sh -v` output이 PTY를 채워 교착되는 문제를 고친다. 기존 `sh -s`·real tty·trace·deadline·secret/기존 설치 보존 assertions를 유지하고 select loop에서 stdin feed와 output drain을 동시에 처리한다. 운영 installer 내용은 변경하지 않는다.
+
+### Changed
+- **Kolla inventory 정규화** — 사용자 지시대로 이후 배포·검증은 `/etc/kolla/multinode`를 직접 사용한다. Native parse·실제 control/plugin 대상 확인 뒤 승인된 tag로 genconfig/pull/prechecks/reconfigure를 실행하며 `multimode` alias를 생성·복구하지 않는다. 기존 inventory와 과거 명령 receipt를 덮어쓰지 않고 현재 개발 가이드와 미완료 OpenSpec deployment 명령을 동기화한다.
+
 ## [1.30.7] - 2026-10-09
 
 ### Added

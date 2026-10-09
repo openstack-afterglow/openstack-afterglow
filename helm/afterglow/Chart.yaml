@@ -2,8 +2,8 @@ apiVersion: v2
 name: afterglow
 description: OpenStack VM + OverlayFS 배포 플랫폼
 type: application
-version: 1.30.7
-appVersion: "1.30.7"
+version: 1.30.8
+appVersion: "1.30.8"
 keywords:
   - openstack
   - k3s

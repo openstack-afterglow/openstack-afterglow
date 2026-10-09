@@ -208,13 +208,19 @@ consumed = 0
 key_echo = None
 completion = None
 try:
-    child.stdin.write(request['script'].encode())
-    child.stdin.close()
+    # Trace output can fill the PTY while a large script fills stdin's pipe.
+    # Feed stdin concurrently with output draining, retaining real sh -s behavior.
+    pending = memoryview(request['script'].encode())
+    os.set_blocking(child.stdin.fileno(), False)
     deadline = time.monotonic() + 12
     while completion is None:
-        ready, _, _ = select.select([master, status_read], [], [], 0.05)
+        ready, writable, _ = select.select([master, status_read], [child.stdin] if pending else [], [], 0.05)
         if master in ready:
             output.extend(os.read(master, 65536))
+        if writable:
+            pending = pending[os.write(child.stdin.fileno(), pending):]
+            if not pending:
+                child.stdin.close()
         if index < len(request['actions']):
             action = request['actions'][index]
             position = output.find(action['prompt'].encode(), consumed)

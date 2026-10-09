@@ -173,6 +173,10 @@ Helm·생성 Kubernetes는 web/API fallback과 별도 `afterglow-mcp-ingress`를
 
 개인 키와 별도로 계정 화면은 Authorization header·token·client secret이 없는 HTTP MCP JSON과 `/mcp/oauth/authorize`를 제공한다. OAuth client는 discovery와 `/mcp/oauth/register`를 통해 public client(`token_endpoint_auth_method=none`, authorization-code와 refresh grant 모두)를 등록하고 정확한 resource·callback·PKCE S256을 보낸다. Authorization endpoint는 frontend `/oauth/mcp/authorize`로 연결하며 opaque ticket만 sessionStorage에 보존한다. 이 exact route만 SSR/client public·project-agnostic·shellless 경계에 포함하고 no-store/no-referrer를 유지하여 첫 미로그인 요청의 ticket이 가드에서 유실되지 않는다. 로그인 뒤 아직 project가 없으면 `/select-project`를 먼저 거치고, scoped session의 현재 user/project로만 동의 정보를 조회·승인·거부한다. API 키 발급·검증·폐기는 기존 경로를 유지한다.
 
+MCP SDK1.28.1는 cold `tools/call`의 schema cache miss에서 `ListToolsRequest` handler를 `None`으로 다시 호출한다. 이 내부 호출은 현재 principal에게 허용된 registry의 전체 schema snapshot을 반환하고, 실제 client `tools/list`만 page-size 제한과 grant/registry/service-fingerprint에 묶인 cursor를 사용한다. SDK의 callback 판별이 정확한 `ListToolsRequest` type annotation을 요구하므로 annotation은 유지한다. SDK input/output validation을 끄지 않으며 `_call_tool`의 현재 principal 권한·strict domain parsing·mutation ledger 경계도 그대로 적용한다. 실제 authenticated SDK HTTP 회귀는 cold caller·첫 public page 밖의 tool 호출·manage schema cache를 채운 뒤 read grant의 valid mutation 거부를 검증한다. MCP HTTP200뿐 아니라 `CallToolResult.isError=false`와 실제 typed 결과가 운영 consumer acceptance다.
+
+운영 Kolla inventory는 `/etc/kolla/multinode`를 직접 지정한다. Native parse와 실제 control/plugin 대상 그룹을 먼저 확인하고 승인된 service tag로 genconfig/pull/prechecks/reconfigure를 수행한다. `multimode` alias를 새로 만들거나 복구하지 않으며 기존 inventory bytes·대상과 과거 실행 receipt는 보존한다. 누락된 inventory의 fallback/no-host rc0를 성공 배포로 대체하지 않는다.
+
 `/mcp/oauth/token`의 refresh는 owner→grant→family→token lock 순서와 rotation/replay 폐기를 유지한다. 요청에 `client_id`가 있으면 grant에 남은 단일 `McpOAuthCode.client_id`와 대조하고, 빈 값·다른 client·누락되거나 중복된 binding은 rotation/replay side effect 전에 `invalid_grant`로 거부한다. `client_id` 생략은 허용한다. 만료 code와 하루 뒤 정리되는 authorization-request ticket은 binding의 유효기간이 아니며 consumed code row를 유지하므로 새 schema/migration은 없다. 실제 MariaDB HTTP 회귀는 거부 시 persisted state 불변, 올바른 rotation, 생략, ticket 정리 이후와 정상 replay 폐기를 검증한다.
 
 이 변경의 source/API/routing 증거와 운영 권한 전환 acceptance는 별개다. 실측 일반 멤버십93건 중 pieroot의 SYSTEM/DMSLAB2건에 기존 서비스 등급이 있다. 사용자는 기존 등급만 유지하고 일반 사용자에게 새 grant를 하지 않으며, Waygate `pieroot-macbook`의 pieroot owner 지정과 Drover `test-cluster`의 실제 pieroot authority 재인가를 승인했다. 현재 Waygate/Drover 서비스 credential의 users/projects/roles/inferences/effective assignments 조회는 native SDK로 HTTP200을 확인했다. 실제 owner 인증·호환 sibling/schema·전체 writer/복구·guest rollout 조건을 충족한 운영 acceptance만 완료로 기록하며 native KVM/provider 성공은 이 HTTP proof로 주장하지 않는다.
@@ -995,9 +999,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "b6d0a8c48f6a905836c9c44743782c4802310281fa698fb514a8b9e7a9f45f90",
-  "reviewed_at": "2026-10-09T12:11:52Z",
-  "summary": "MCP OAuth exact public consent shell preserves unauthenticated ticket and scoped project handoff; account and four-locale guide add credential-free settings; optional refresh client binding uses retained code rows with real MariaDB rejection-state regressions; personal API key, roles, schema, sibling services and canonical Kolla deployment boundaries remain unchanged."
+  "source_sha256": "10953dda98bfcf1d34513771f9437cf7362549e9676ed11f2b76dd35a724f1e8",
+  "reviewed_at": "2026-10-09T13:46:46Z",
+  "summary": "MCP SDK1.28.1 cold schema-cache callback을 principal-scoped 내부 snapshot으로 분리한다. Public pagination·SDK validation·read/write 권한을 유지한다. Real TCP consumer와 cached-schema valid-mutation denial을 확인하고 macOS PTY trace harness의 stdin/output 교착을 concurrent select로 교정했다. Patch1.30.8과 /etc/kolla/multinode 배포만 허용한다."
 }
 ```
 <!-- architecture-review:end -->

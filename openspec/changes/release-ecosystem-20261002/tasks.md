@@ -14,9 +14,11 @@
 
 ## Kolla Rollout
 
+> 2026-10-09 사용자 후속 지시: 아래 미완료 deployment 명령은 기존 `/etc/kolla/multinode`를 직접 사용한다. Native inventory parse·대상 그룹을 확인하며 `multimode` alias를 생성·복구하지 않는다. 날짜별 과거 명령/관측은 덮어쓰지 않는다.
+
 - [ ] 9. 실제 operator package pins·inventory·복구 지점을 검증한 뒤 정확한 릴리즈의 `uv sync`를 실행한다.
-- [ ] 10. 요청 inventory를 검증한 뒤 `kolla-ansible genconfig -i multimode`를 실행한다.
-- [ ] 11. genconfig 다음 표준 `kolla-ansible pull -i multimode`와 `kolla-ansible reconfigure -i multimode`를 순서대로 실행한다.
+- [ ] 10. 요청 inventory를 검증한 뒤 `kolla-ansible genconfig -i /etc/kolla/multinode`를 실행한다.
+- [ ] 11. genconfig 다음 표준 `kolla-ansible pull -i /etc/kolla/multinode`와 `kolla-ansible reconfigure -i /etc/kolla/multinode`를 순서대로 실행한다.
 - [ ] 12. 서비스 health와 실제 배포 버전·authenticated boundary를 검증하고 완료된 범위만 archive한다.
 
 ## Operational Monitoring
@@ -124,10 +126,10 @@
 - [ ] 36. 승인된 Palimpsest shared remote blob/cache/upload storage를 준비하고 기존 local volume·inventory를 보존한다.
 - [ ] 37. Palimpsest API만 세 controller에 복제하고 기존 worker는 하나만 유지하며 실제 지속 데이터는 remote backend에 둔다.
 - [ ] 38. 앞 선행 조건과 복구/auth/storage gate가 완료된 뒤 실제 wireguard-server에 SSH하여 다섯 서비스를 배포한다.
-- [ ] 39. 요청 multimode inventory로 최신 release를 해석·적용하는 표준 경로를 검증한다.
-- [ ] 40. 실제 `kolla-ansible genconfig -i multimode`를 성공시킨다.
-- [ ] 41. 실제 `kolla-ansible pull -i multimode`를 성공시킨다.
-- [ ] 42. 실제 `kolla-ansible reconfigure -i multimode`를 성공시킨다.
+- [ ] 39. 기존 `/etc/kolla/multinode` inventory로 최신 release를 해석·적용하는 표준 경로를 검증한다.
+- [ ] 40. 실제 `kolla-ansible genconfig -i /etc/kolla/multinode`를 성공시킨다.
+- [ ] 41. 실제 `kolla-ansible pull -i /etc/kolla/multinode`를 성공시킨다.
+- [ ] 42. 실제 `kolla-ansible reconfigure -i /etc/kolla/multinode`를 성공시킨다.
 - [ ] 43. cloud.dmslab.re.kr의 실제 최신 버전·readiness·인증 경계·사용자 화면을 검증한다.
 
 현재 관측: native Palimpsest main run37185453150은 승인 뒤 step7에서 KERNEL_URL/CONFIG_URL이 모두 비어 실패했다. HTTPS/hash/native guard를 완화하지 않는다. 원래 reader와 Manila 공유/access는 순서 정정 전 생성됐지만 active config·mount·app에는 적용되지 않았으며 추가 운영 쓰기는 중지했다. 실제 rollout 성공 증거가 아니다.
