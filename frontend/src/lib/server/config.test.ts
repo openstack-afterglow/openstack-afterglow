@@ -70,6 +70,29 @@ describe('loadPublicSiteConfig fallback', () => {
 		expect(loadPublicSiteConfig().runtime.api_base).toBe('https://cloud.dmslab.re.kr');
 	});
 
+	async function loadWithToml(toml: string) {
+		vi.doMock('fs', async (importOriginal) => ({
+			...(await importOriginal()),
+			readFileSync: vi.fn(() => toml),
+		}));
+		// Loaded after the filesystem mock: the module caches its TOML-derived config on first load.
+		const { loadPublicSiteConfig } = await import('./config');
+		return loadPublicSiteConfig();
+	}
+
+	it('publishes an explicit bare-origin MCP URL as the exact root resource', async () => {
+		const config = await loadWithToml('[mcp]\npublic_url = "https://MCP.example.test/"\n');
+
+		expect(config.mcp_url).toBe('https://mcp.example.test');
+	});
+
+	it('keeps an explicit MCP path exactly and leaves the unset fallback to the API base', async () => {
+		expect((await loadWithToml('[mcp]\npublic_url = "https://mcp.example.test/control/mcp/"\n')).mcp_url).toBe(
+			'https://mcp.example.test/control/mcp',
+		);
+		vi.resetModules();
+		expect((await loadWithToml('[app]\nsite_name = "Afterglow"\n')).mcp_url).toBe('');
+	});
 });
 
 describe('frontend CSP branding origins', () => {

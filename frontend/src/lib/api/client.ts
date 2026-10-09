@@ -483,16 +483,18 @@ async function request<T>(
 
 	if (!res.ok) {
 		let detail = res.statusText;
+		let code: string | undefined;
 		try {
 			const body = await res.json();
 			detail = formatErrorDetail(body, res.statusText);
+			if (typeof body?.code === 'string') code = body.code;
 		} catch {
 			detail = await res.text().catch(() => res.statusText);
 		}
 		if (res.status === 403 && path.includes('/admin')) {
 			void handleAdminForbidden();
 		}
-		throw new ApiError(res.status, detail);
+		throw new ApiError(res.status, detail, code);
 	}
 
 	if (res.status === 204) return undefined as T;

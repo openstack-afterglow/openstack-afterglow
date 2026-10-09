@@ -513,7 +513,7 @@ export const platformGuides: DocGuide[] = [
 				]
 			}
 		],
-		related: ['palimpsest'],
+		related: ['palimpsest', 'mcp'],
 		consoleLinks: [
 			{ label: 'Lumen 채팅', href: '/dashboard/chat', service: 'chat' },
 			{ label: '이미지 Studio', href: '/dashboard/chat/images', service: 'chat' },

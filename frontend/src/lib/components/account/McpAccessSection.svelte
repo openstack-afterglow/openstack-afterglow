@@ -1,12 +1,14 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/account';
 	import { t as tc } from '$lib/i18n/ns/common';
-	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { getLocale, intlLocale } from '$lib/i18n/runtime.svelte';
 	import { onMount, untrack } from 'svelte';
 	import { derived } from 'svelte/store';
 	import { api, ApiError, getBaseUrl } from '$lib/api/client';
 	import { siteConfig } from '$lib/config/site';
-	import { auth } from '$lib/stores/auth';
+	import { page } from '$app/stores';
+	import { docsHref } from '$lib/docs/locales';
+	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -16,6 +18,7 @@
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
+	import TextInput from '$lib/components/ui/TextInput.svelte';
 
 	interface McpAccessRecord {
 		id: string;
@@ -36,9 +39,18 @@
 		token: string;
 	}
 
+	interface McpConnectionResult {
+		endpoint: string;
+		protocol_version: string;
+		server_name: string;
+		server_version: string;
+		tool_count: number;
+	}
+
 	interface AccessScope {
 		token: string | undefined;
 		projectId: string | undefined;
+		userId: string | undefined;
 		enabled: boolean;
 	}
 
@@ -60,10 +72,59 @@
 	let expiresAt = $state('');
 	let issuedToken = $state<string | null>(null);
 	let showIssuedToken = $state(false);
-	let copied = $state(false);
+	let copied = $state<'token' | 'config' | null>(null);
+	let verificationToken = $state('');
+	let verifying = $state(false);
+	let verificationSource = $state<'issued' | 'saved' | null>(null);
+	let verificationResult = $state<McpConnectionResult | null>(null);
+	let verificationError = $state('');
+	let verificationSequence = 0;
+	const setupConfig = $derived(connectionConfig('YOUR_PERSONAL_MCP_TOKEN'));
+	const issuedConfig = $derived(issuedToken ? connectionConfig(issuedToken) : '');
+
+	function connectionConfig(secret: string) {
+		return JSON.stringify({
+			mcpServers: {
+				'my-stream-server': {
+					type: 'http',
+					url: mcpUrl,
+					headers: { Authorization: `Bearer ${secret}` },
+				},
+			},
+		}, null, 2);
+	}
+
+	function clearVerification() {
+		verificationSequence += 1;
+		verificationToken = '';
+		verifying = false;
+		verificationSource = null;
+		verificationResult = null;
+		verificationError = '';
+	}
 
 	function errorMessage(error: unknown, fallback: string) {
 		return error instanceof ApiError ? error.message : fallback;
+	}
+
+	const VERIFY_ERROR_KEYS = {
+		invalid_request: 'mcp.verifyError.invalidRequest',
+		invalid_token: 'mcp.verifyError.invalidToken',
+		not_configured: 'mcp.verifyError.notConfigured',
+		rejected: 'mcp.verifyError.rejected',
+		redirect: 'mcp.verifyError.redirect',
+		protocol: 'mcp.verifyError.protocol',
+		unavailable: 'mcp.verifyError.unavailable',
+	} as const;
+
+	// The verify endpoint returns stable codes; show them in the reader's language.
+	function verificationErrorMessage(error: unknown) {
+		if (error instanceof ApiError) {
+			const code = error.code;
+			if (code && Object.hasOwn(VERIFY_ERROR_KEYS, code)) return t(VERIFY_ERROR_KEYS[code as keyof typeof VERIFY_ERROR_KEYS]);
+			if (error.status === 429) return t('mcp.verifyError.rateLimited');
+		}
+		return t('mcp.verifyError.unavailable');
 	}
 
 	function isCurrentScope(owner: AccessScope | null): owner is AccessScope & { token: string; projectId: string } {
@@ -92,24 +153,27 @@
 		expiresAt = '';
 		issuedToken = null;
 		showIssuedToken = false;
-		copied = false;
+		copied = null;
+		clearVerification();
 	}
 
 	// Subscribe synchronously so even a batched A → B → A gets a new owner.
 	// Unrelated store updates keep the owner, including populated refresh rows.
 	onMount(() => {
-		const unsubscribe = derived([auth, siteConfig], ([authState, config]): AccessScope => ({
+		const unsubscribe = derived([auth, siteConfig, authReady, projectSwitching], ([authState, config, ready, switching]): AccessScope => ({
 			token: authState.token ?? undefined,
 			projectId: authState.projectId ?? undefined,
-			enabled: config.services.mcp,
+			userId: authState.userId ?? undefined,
+			enabled: config.services.mcp && ready && !switching,
 		})).subscribe((next) => {
-			if (scope?.token === next.token && scope?.projectId === next.projectId && scope?.enabled === next.enabled) return;
+			if (scope?.token === next.token && scope?.projectId === next.projectId && scope?.userId === next.userId && scope?.enabled === next.enabled) return;
 			scope = next;
 			reset();
 		});
 		return () => {
 			unsubscribe();
 			scope = null;
+			reset();
 		};
 	});
 
@@ -163,7 +227,8 @@
 			if (!isCurrentScope(owner)) return;
 			issuedToken = issued.token;
 			showIssuedToken = true;
-			copied = false;
+			copied = null;
+			clearVerification();
 			tokenName = 'Lumen';
 			expiresAt = '';
 			await loadAccessFor(owner);
@@ -178,17 +243,58 @@
 		if (!isCurrentScope(owner) || issuedToken !== secret) return;
 		issuedToken = null;
 		showIssuedToken = false;
-		copied = false;
+		copied = null;
+		clearVerification();
 	}
 
 	async function copyIssuedToken(owner: AccessScope, secret: string | null) {
 		if (!isCurrentScope(owner) || !secret || issuedToken !== secret) return;
 		try {
 			await navigator.clipboard.writeText(secret);
-			if (isCurrentScope(owner) && issuedToken === secret) copied = true;
+			if (isCurrentScope(owner) && issuedToken === secret) copied = 'token';
 		} catch {
 			if (isCurrentScope(owner) && issuedToken === secret) actionError = t('mcp.copyFailed');
 		}
+	}
+
+	async function copyIssuedConfig(owner: AccessScope, secret: string | null) {
+		if (!isCurrentScope(owner) || !secret || issuedToken !== secret) return;
+		try {
+			await navigator.clipboard.writeText(connectionConfig(secret));
+			if (isCurrentScope(owner) && issuedToken === secret) copied = 'config';
+		} catch {
+			if (isCurrentScope(owner) && issuedToken === secret) actionError = t('mcp.copyFailed');
+		}
+	}
+
+	async function verifyConnection(owner: AccessScope, secret: string | null, source: 'issued' | 'saved') {
+		if (!isCurrentScope(owner) || !secret?.trim() || verifying) return;
+		if (source === 'issued' && secret !== issuedToken) return;
+		const request = ++verificationSequence;
+		const current = () => isCurrentScope(owner) && request === verificationSequence
+			&& (source === 'issued' ? issuedToken === secret : verificationToken.trim() === secret.trim());
+		verifying = true;
+		verificationSource = source;
+		verificationResult = null;
+		verificationError = '';
+		try {
+			const result = await api.post<McpConnectionResult>(
+				'/api/v1/auth/mcp-tokens/verify', { token: secret.trim() }, owner.token, owner.projectId,
+			);
+			if (current()) verificationResult = result;
+		} catch (error) {
+			if (current()) verificationError = verificationErrorMessage(error);
+		} finally {
+			if (current()) {
+				verifying = false;
+				if (source === 'saved') verificationToken = '';
+			}
+		}
+	}
+
+	function submitVerification(owner: AccessScope, event: SubmitEvent) {
+		event.preventDefault();
+		void verifyConnection(owner, verificationToken, 'saved');
 	}
 
 	async function selectLumenDefault(owner: AccessScope, record: McpAccessRecord) {
@@ -262,7 +368,25 @@
 	});
 </script>
 
-{#if mcpEnabled && scope}
+{#snippet connectionFeedback()}
+	{#if verificationError}
+		<Alert tone="danger" title={t('mcp.verifyFailed')}>
+			{#snippet children()}{verificationError}{/snippet}
+		</Alert>
+	{:else if verificationResult}
+		{@const result = verificationResult}
+		<div role="status" class="verification-result">
+			<Alert tone="info" title={t('mcp.verified')}>
+				{#snippet children()}
+					<p>{t('mcp.verificationDetails', { name: result.server_name, version: result.server_version, protocol: result.protocol_version, count: result.tool_count })}</p>
+					<p>{t('mcp.verificationLimit')}</p>
+				{/snippet}
+			</Alert>
+		</div>
+	{/if}
+{/snippet}
+
+{#if mcpEnabled && isCurrentScope(scope)}
 	{@const owner = scope}
 	<Card class="mcp-access motion-fade" surface="raised" padding="lg">
 		<div class="section-heading">
@@ -276,6 +400,7 @@
 		</div>
 
 		<p class="endpoint"><span>{t('mcp.endpoint')}</span><code>{mcpUrl}</code></p>
+		<Button href={docsHref('mcp', getLocale(), $page.url)} variant="link" size="sm">{t('mcp.docs')}</Button>
 
 		<Alert tone="warning" title={t('mcp.onceTitle')}>
 			{#snippet children()}{t('mcp.onceHelp')}{/snippet}
@@ -314,6 +439,27 @@
 			</Field>
 			<div class="token-submit"><Button type="submit" disabled={creating || !tokenName.trim()}>{#if creating}<ActivityIndicator size="xs" label={t('mcp.creating')} />{:else}{t('mcp.create')}{/if}</Button></div>
 		</form>
+		<section aria-labelledby="mcp-setup-heading" class="connection-section">
+			<h3 id="mcp-setup-heading">{t('mcp.setupTitle')}</h3>
+			<p>{t('mcp.setupHelp')}</p>
+			<pre class="mcp-code" role="region" aria-label={t('mcp.config')}>{setupConfig}</pre>
+		</section>
+
+		<section aria-labelledby="mcp-verify-heading" class="connection-section">
+			<h3 id="mcp-verify-heading">{t('mcp.verifyTitle')}</h3>
+			<form class="verification-form" onsubmit={submitVerification.bind(null, owner)}>
+				<Field label={t('mcp.tokenLabel')} for="mcp-verification-token" help={t('mcp.verifyHelp')}>
+					{#snippet children()}
+						<TextInput id="mcp-verification-token" type="password" bind:value={verificationToken} maxlength={256} disabled={verifying} oninput={() => { verificationResult = null; verificationError = ''; }} />
+					{/snippet}
+				</Field>
+				<Button type="submit" variant="outline" disabled={verifying || !verificationToken.trim()}>
+					{#if verifying && verificationSource === 'saved'}<ActivityIndicator size="xs" label={t('mcp.verifying')} />{:else}{t('mcp.verify')}{/if}
+				</Button>
+			</form>
+			{#if verificationSource === 'saved'}{@render connectionFeedback()}{/if}
+		</section>
+
 
 		<section aria-labelledby="mcp-personal-tokens-heading">
 			<div class="subheading">
@@ -368,8 +514,21 @@
 		<Card surface="modal" padding="lg" class="issued-token-dialog">
 			<h2>{t('mcp.newToken')}</h2>
 			<p>{t('mcp.newTokenHelp')}</p>
-			{#if issuedToken}<pre>{issuedToken}</pre>{/if}
-			<div class="dialog-actions"><Button variant="outline" onclick={copyIssuedToken.bind(null, owner, issuedToken)}>{copied ? t('mcp.copied') : t('mcp.copy')}</Button><Button onclick={dismissIssuedToken.bind(null, owner, issuedToken)}>{t('mcp.done')}</Button></div>
+			{#if issuedToken}
+				<pre class="mcp-code">{issuedToken}</pre>
+				<h3>{t('mcp.config')}</h3>
+				<p>{t('mcp.configSecretWarning')}</p>
+				<pre class="mcp-code" role="region" aria-label={t('mcp.config')}>{issuedConfig}</pre>
+			{/if}
+			{#if verificationSource === 'issued'}{@render connectionFeedback()}{/if}
+			<div class="dialog-actions">
+				<Button variant="outline" onclick={copyIssuedToken.bind(null, owner, issuedToken)}>{copied === 'token' ? t('mcp.copied') : t('mcp.copy')}</Button>
+				<Button variant="outline" onclick={copyIssuedConfig.bind(null, owner, issuedToken)}>{copied === 'config' ? t('mcp.copied') : t('mcp.copyConfig')}</Button>
+				<Button variant="outline" onclick={verifyConnection.bind(null, owner, issuedToken, 'issued')} disabled={verifying}>
+					{#if verifying}<ActivityIndicator size="xs" label={t('mcp.verifying')} />{:else}{t('mcp.verify')}{/if}
+				</Button>
+				<Button onclick={dismissIssuedToken.bind(null, owner, issuedToken)}>{t('mcp.done')}</Button>
+			</div>
 		</Card>
 	</Modal>
 {/if}
@@ -397,9 +556,16 @@
 	.record-title { gap: 0.5rem; flex-wrap: wrap; }
 	.record-title strong { color: var(--color-ink-0); font-size: 0.875rem; }
 	.record-actions { flex-wrap: wrap; justify-content: flex-end; }
-	:global(.issued-token-dialog) { width: min(32rem, calc(100vw - 2rem)); display: grid; gap: 0.875rem; }
-	:global(.issued-token-dialog pre) { margin: 0; max-height: 12rem; overflow: auto; padding: 0.75rem; border: 1px solid var(--color-line); border-radius: 0.5rem; background: var(--color-surface-sunken); color: var(--color-ink-0); font-size: 0.75rem; white-space: pre-wrap; word-break: break-all; }
-	.dialog-actions { justify-content: flex-end; gap: 0.5rem; }
+	:global(.issued-token-dialog) { width: min(44rem, calc(100vw - 2rem)); display: grid; gap: 0.875rem; }
+	:global(.issued-token-dialog h3), .connection-section h3 { margin: 0; color: var(--color-ink-0); font-size: 0.875rem; }
+	.connection-section { min-width: 0; display: grid; gap: 0.75rem; }
+	.connection-section p { margin: 0; color: var(--color-ink-2); font-size: 0.8125rem; line-height: 1.5; }
+	:global(.mcp-code) { min-width: 0; margin: 0; padding: 0.75rem; border: 1px solid var(--color-line); border-radius: var(--radius-md); background: var(--color-surface-sunken); color: var(--color-ink-0); font-size: 0.75rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+	.verification-form { display: grid; gap: 0.75rem; align-items: start; }
+	.verification-form :global(button) { justify-self: start; }
+	.verification-result p { margin: 0; overflow-wrap: anywhere; }
+	.verification-result p + p { margin-top: 0.5rem; }
+	.dialog-actions { justify-content: flex-end; flex-wrap: wrap; gap: 0.5rem; }
 	@media (max-width: 56rem) { .token-form { grid-template-columns: 1fr 1fr; } .token-submit { grid-column: 1 / -1; } }
 	@media (max-width: 38rem) { .token-form { grid-template-columns: 1fr; } .record { align-items: flex-start; flex-direction: column; } .record-actions { justify-content: flex-start; } }
 </style>
