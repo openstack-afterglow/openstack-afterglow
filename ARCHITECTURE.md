@@ -4,7 +4,7 @@
 
 Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 배포된 Drover·Lumen·Waygate·Palimpsest 서비스로 가는 인증된 BFF(gateway)이다. 브라우저 UI는 SvelteKit이 제공하지만 OpenStack 자원 생성과 권한 검사는 FastAPI 백엔드가 소유한다. 저장소 URL은 <https://github.com/openstack-afterglow/openstack-afterglow>이다.
 
-이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend 및 Cloud Shell 모두 `1.30.5`이며, backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`·Vite `8.2.0`을 manifest에 고정한다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
+이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend 및 Cloud Shell 모두 `1.30.6`이며, backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`·Vite `8.2.0`을 manifest에 고정한다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
 
 1분 요약:
 
@@ -160,6 +160,18 @@ graph LR
 4. `X-Project-Id`가 생략되면 JWT project를 사용한다. 다른 project로 전환할 때 서버가 허용한 rescope만 수행하며, project-scoped connection과 resource ownership을 다시 적용한다.
 
 Browser access/refresh 검증은 `jwt_service`의 `algorithms=["HS256"]` 단일 allow-list와 서버 secret을 사용한다. Backend dependency floor는 PyJWT `>=2.15.0`(PEM guard와 unsigned payload recursion), AnyIO `>=4.14.2`(IDNA hostname), urllib3 `>=2.8.0`(response/proxy TLS), AsyncSSH `>=2.24.0`과 pypdf `==6.19.0`이다. API 이미지는 이 runtime graph를 설치하고, Notion worker는 같은 lock에서 `--only-group worker`로 HTTPX/OpenStack에 필요한 AnyIO·urllib3만 선택하며 API-only JWT/SSH/PDF package를 추가하지 않는다. TLS verify·설정 CA·endpoint/project ownership은 바꾸지 않는다. Frontend의 sanitizer/TOML/SSR serializer·test-runner floor와 CLI/operator urllib3 floor도 각 manifest/lock에 동기화한다. 구조 영향 없는 dependency 보안 갱신이며 library fix의 실행 증거와 실제 운영 exploitability를 구분한다. 상세 floor와 ownership은 [`docs/security.md`](docs/security.md)에 기록한다.
+
+### 개인 MCP 연결·공개 리소스
+
+외부 AI → Afterglow의 inbound Streamable HTTP는 `mcp.public_url`이 지정되면 그 URL 자체를 리소스로 사용한다. DMSLAB의 요청 공개 주소는 `https://cloud.dmslab.re.kr/mcp`이며 같은 dashboard host의 `/mcp` exact·`/mcp/` 경계와 `/.well-known/` discovery를 backend로 전달한다. `/mcpevil`과 frontend 동의 화면 `/oauth/mcp/authorize`는 이 routing에 포함하지 않는다. Explicit root resource는 dedicated host에서만 exact `/`·`/oauth/` 경로를 backend로 전달하며 shared web/API host 전체를 빼앗지 않는다. Unset 설정은 기존 public API base의 `/api/v1/mcp`를 따른다. Helm·생성 Kubernetes·Kolla·canonical Compose proxy는 rewrite/credential redirect 없이 이 경계를 보존한다.
+
+Helm·생성 Kubernetes는 web/API fallback과 별도 `afterglow-mcp-ingress`를 렌더하며, MCP의 Exact resource·slash-suffixed Prefix와 Traefik priority1000을 함께 적용한다. 기본 `strictPrefixMatching=false`에서도 `/mcpevil`을 넘기지 않고 bare `/mcp`가 web root fallback에 지지 않는다. Main Ingress가 합집합 TLS hosts의 certificate를 소유한다. 생성 ingress는 static overlay 뒤 마지막으로 적용한다. Native Traefik3.5.6(arm64) HTTP38조건 및 두 negative control을 관찰했지만 Kubernetes list/watch와 upstream은 합성이며 TLS·CRD transport annotations는 QA에서만 제외했다.
+
+계정의 개인 MCP key는 사용자·발급 당시 project와 제한된 Keystone application credential에 묶인다. Keystone upstream에 보낼 만료시각은 기존 `_as_utc`로 정규화한 뒤 `keystoneclient.utils.isotime(subsecond=True)`의 UTC `Z` 형식으로 직렬화하여 순간·microsecond를 보존한다. 운영에서 offset ISO 문자열이 Keystone400 `Timestamp not in expected format`을 일으킨 사실을 고치며, 만료·`unrestricted=False`·역할 snapshot·owner scope·내구성 reservation/폐기 정책을 완화하지 않는다.
+
+`POST /api/v1/auth/mcp-tokens/verify`는 browser session/same-site 보호와 현재 user/project 소유 검사를 먼저 수행한다. 고정 operator endpoint에만 Bearer를 보내고 installed MCP SDK로 initialize → initialized → paginated tools/list를 수행한다. TLS 검증·redirect/proxy/retry 금지·20초·2MiB·50페이지/5000도구·분당6회 제한과 no-store를 적용한다. 응답은 endpoint/protocol/server/tool count만 반환하며 tools/call이나 실제 cloud 조회·변경 성공을 증명하지 않는다. UI는 일회성 token과 실제 인증 JSON을 개인용으로 복사하고 scope 변경/닫기 시 평문을 지운다. `/docs/mcp`는 typed 한국어 정본과 en/ja/zh-CN 사전에서 같은 계약·클라이언트 형식·Lumen outbound와의 구분을 제공한다.
+
+이 변경의 source/API/routing 증거와 운영 권한 전환 acceptance는 별개다. 실측 일반 멤버십93건 중 pieroot의 SYSTEM/DMSLAB2건에 기존 서비스 등급이 있다. 사용자는 기존 등급만 유지하고 일반 사용자에게 새 grant를 하지 않으며, Waygate `pieroot-macbook`의 pieroot owner 지정과 Drover `test-cluster`의 실제 pieroot authority 재인가를 승인했다. 현재 Waygate/Drover 서비스 credential의 users/projects/roles/inferences/effective assignments 조회는 native SDK로 HTTP200을 확인했다. 실제 owner 인증·호환 sibling/schema·전체 writer/복구·guest rollout 조건을 충족한 운영 acceptance만 완료로 기록하며 native KVM/provider 성공은 이 HTTP proof로 주장하지 않는다.
 
 ### 기본 SVG 브랜딩
 
@@ -979,9 +991,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "0c712486d6b3456d08f3ee06bd53c3634b46c5c3d15b9865b44098e3de37c1fd",
-  "reviewed_at": "2026-10-08T08:12:28Z",
-  "summary": "Docs-only post-publication review: exact Afterglow v1.30.5 source/tag CI, OCI revisions/aliases/chart, published frontend Chromium31 and declared runtime probes; Palimpsest formal release/opt-out condition normal protected dev submission; preserve preset-only IAM and production rollout hold. No structure/runtime source changes; untracked QA evidence excluded."
+  "source_sha256": "80adf88479d1a12cb708e66c3ba11ba20d4aeb05610d2c7b6bc509f3f523e29e",
+  "reviewed_at": "2026-10-09T05:49:19Z",
+  "summary": "Shared-host /mcp transport/OAuth and owner-scoped verification integrated on dev; installed SDK UTC Z expiry fixes recorded Keystone400. Ingress, HAProxy, and Traefik routing verified. Verified ClientSession stream exception handling to prevent timeout misclassification and localized frontend verification fallback to prevent raw detail leaks. Rebuilt Chromium UI covers secrets, verification, fences, and 4 locales. Preserve existing service grades only."
 }
 ```
 <!-- architecture-review:end -->

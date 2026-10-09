@@ -7,6 +7,18 @@
 
 ## [Unreleased]
 
+## [1.30.6] - 2026-10-09
+
+### Fixed
+- **개인 MCP 키 발급 500** — 운영 로그의 Keystone400 `Timestamp not in expected format`은 numeric offset ISO expiry에서 발생했다. 기존 UTC normalization과 installed `keystoneclient.utils.isotime(subsecond=True)`으로 `Z` timestamp를 보내고 microsecond·실제 만료 순간을 보존한다. Restricted credential·owner user/project·role snapshot·내구성 cleanup은 유지한다.
+- **동일 host MCP routing** — 요청 공개 resource는 `https://cloud.dmslab.re.kr/mcp`다. Compose/Kolla HAProxy는 exact `/mcp`와 `/mcp/`·`/.well-known/` 경계를 backend로 전달하고 `/mcpevil`·frontend consent를 건드리지 않는다. Kolla의 nonempty `afterglow_mcp_public_url`만 operator URL을 override한다. Helm과 생성 Kubernetes는 별도 prioritized MCP Ingress의 Exact resource·slash-prefix descendants/discovery로 기본 Traefik에서도 경계를 보존한다. Dedicated root resource는 shared web/API host에서 거부한다.
+
+### Added
+- 계정에서 한 번 표시되는 개인 키의 실제 Bearer HTTP JSON을 복사하고, 저장한 본인 user/project key로 고정 public endpoint의 initialize·전체 tools/list를 확인한다. TLS·20초·size/page/tool limit·no redirect/proxy/retry·분당6회·no-store와 안전한 audit를 적용하며 tools/call·cloud 성공을 주장하지 않는다.
+- `/docs/mcp`의 한국어·영어·일본어·중국어 guide와 stable API error-code 현지화. 외부 AI inbound, Lumen built-in delegation, Lumen outbound MCP를 구분하고 정확한 shared-host 예제를 제공한다.
+- 현재 integration 검증: installed SDK expiry8조건과 real HAProxy38 HTTP routing조건을 포함한 backend targeted174passed. 이는 local/synthetic upstream proof이며 운영 키 발급·guest rollout·provider acceptance가 아니다. 전체 gate·CI·발행·운영 receipt는 완료 후 별도로 기록한다.
+- 운영 권한 검토의 명시 선택: 기존 서비스 등급만 유지하고 일반 사용자 자동 승격을 하지 않는다. Waygate `pieroot-macbook`의 pieroot owner 지정과 Drover `test-cluster`의 pieroot 재인가를 승인했다. 실제 사용자 authority·복구·native rollout 선행 조건이 충족되기 전 이 승인을 배포 완료로 표시하지 않는다.
+
 ## [1.30.5] - 2026-10-08
 
 ### Fixed
