@@ -644,7 +644,9 @@ data:
 
 비밀 값은 ConfigMap에 넣지 않습니다. `OS_PASSWORD`, `SECRET_KEY`, `GITLAB_OIDC_CLIENT_SECRET`, `K3S_KUBECONFIG_ENCRYPTION_KEY`, `DATABASE_URL`, `PROMETHEUS_PASSWORD`, `BUILDER_SSH_PRIVATE_KEY`는 `afterglow-secrets`에서 환경변수 또는 Secret volume으로 주입됩니다.
 
-`generate_k8s.py --config ./afterglow.conf --output-dir deploy/k8s-template`는 `configmap.yaml`, `secret.yaml`, `grafana-deployment.yaml`을 생성합니다. `[app].secret_key`가 빈 값, `change-me-in-production`, 32자 미만이면 `secret.yaml` 생성을 실패시켜 Kubernetes production guard와 맞춥니다.
+`generate_k8s.py --config ./afterglow.conf --output-dir deploy/k8s-template`는 `configmap.yaml`, `secret.yaml`, `grafana-deployment.yaml`, `ingress.yaml`을 생성합니다. `[app].secret_key`가 빈 값, `change-me-in-production`, 32자 미만이면 `secret.yaml` 생성을 실패시켜 Kubernetes production guard와 맞춥니다.
+
+공개 개인 MCP에는 `[services] mcp = true`와 `[mcp] public_url = "https://cloud.dmslab.re.kr/mcp"`를 설정합니다. Web/API origin과 resource를 함께 읽어 생성한 `ingress.yaml`을 static base/overlay 적용 **뒤 마지막으로** 적용합니다. MCP를 켜면 main web/API Ingress와 priority1000의 별도 MCP Ingress 두 문서가 포함되며, Exact `/mcp`·Prefix `/mcp/`·Prefix `/.well-known/`만 backend로 갑니다. `/mcpevil`·`/mcp-other`·frontend consent는 기존 frontend에 남습니다. Explicit root resource는 dedicated host에만 허용하고 shared web/API host root는 생성 전에 실패합니다. Main Ingress의 TLS hosts에는 MCP host가 포함되며 Secret과 credential은 출력물을 커밋하지 않습니다. Helm의 `services.mcp`·`mcp.publicUrl`도 같은 경계입니다.
 
 ### Ingress 도메인 설정
 

@@ -115,11 +115,11 @@ test.before(async () => {
 	// A real CA-signed server leaf: native Codex (rustls) rejects a CA certificate used as the leaf.
 	openssl(["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-subj", "/CN=Lumen installer test CA",
 		"-addext", "basicConstraints=critical,CA:TRUE", "-addext", "keyUsage=critical,keyCertSign,cRLSign",
-		"-keyout", caKey, "-out", caCert])
+		"-addext", "subjectKeyIdentifier=hash", "-keyout", caKey, "-out", caCert])
 	openssl(["req", "-newkey", "rsa:2048", "-nodes", "-subj", "/CN=127.0.0.1", "-keyout", key,
 		"-out", path.join(tlsRoot, "leaf.csr")])
 	fs.writeFileSync(leafExtensions, "basicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\n" +
-		"extendedKeyUsage=serverAuth\nsubjectAltName=IP:127.0.0.1\n")
+		"extendedKeyUsage=serverAuth\nsubjectAltName=IP:127.0.0.1\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid,issuer\n")
 	openssl(["x509", "-req", "-in", path.join(tlsRoot, "leaf.csr"), "-CA", caCert, "-CAkey", caKey, "-set_serial", "1",
 		"-days", "1", "-extfile", leafExtensions, "-out", cert])
 	trustedCA = path.join(tlsRoot, "trusted-ca.pem")

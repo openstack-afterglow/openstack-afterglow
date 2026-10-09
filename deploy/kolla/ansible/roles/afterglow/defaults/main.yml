@@ -67,8 +67,8 @@ afterglow_public_api_base: "{{ internal_protocol | default('http') }}://{{ kolla
 afterglow_openstack_interface: "{{ openstack_interface | default('internal') }}"
 afterglow_public_endpoint_url: "{{ public_protocol | default('https') }}://{{ kolla_external_fqdn | default('localhost') }}"
 # Optional Kolla external-VIP route. The plugin-owned fragment receives the
-# public host and dispatches /api/ to the API backend and all other paths to
-# the frontend backend without modifying Kolla's stock HAProxy templates.
+# public host and dispatches /api/, /mcp and discovery to the API backend;
+# other paths go to the frontend without modifying stock HAProxy templates.
 afterglow_public_haproxy_enabled: false
 afterglow_public_haproxy_fqdn: ""
 afterglow_public_haproxy_router_port: 18082
@@ -184,6 +184,9 @@ afterglow_service_waygate_enabled: true
 afterglow_service_palimpsest_enabled: false
 afterglow_service_chat_enabled: true
 afterglow_service_mcp_enabled: true
+# Nonempty deployment overrides win over operator TOML; empty preserves its URL
+# or the backend's existing public_api_base + /api/v1/mcp fallback.
+afterglow_mcp_public_url: ""
 # Package routes need a trusted URL; use the explicitly configured Hub public endpoint.
 # Empty keeps the detailed operator TOML authoritative; there is no catalog fallback.
 afterglow_service_palimpsest_internal_url: "{{ palimpsest_public_endpoint_url | default('') }}"

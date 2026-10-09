@@ -3,8 +3,14 @@
 {{- $defaultMcpPublicURL := printf "%s/api/v1/mcp" (trimSuffix "/" $publicApiBase) -}}
 {{- $mcpPublicURL := default $defaultMcpPublicURL .Values.mcp.publicUrl -}}
 {{- $parsedMcpURL := urlParse $mcpPublicURL -}}
-{{- $mcpPath := default "/api/v1/mcp" (trimSuffix "/" $parsedMcpURL.path) -}}
+{{- /* Ingress hosts are DNS names, not URL authorities (which may include a port). */ -}}
+{{- $mcpHost := lower (regexReplaceAll ":[0-9]+$" $parsedMcpURL.host "") -}}
+{{- /* An explicit URL is the exact resource; a bare origin is served at "/". */ -}}
+{{- $mcpPath := default "/" (regexReplaceAll "/+$" $parsedMcpURL.path "") -}}
 {{- $mcpEnabled := and .Values.services.mcp $mcpPublicURL -}}
+{{- if and $mcpEnabled (eq $mcpPath "/") (or (eq $mcpHost .Values.ingress.host) (has $mcpHost .Values.ingress.apiHosts)) -}}
+{{- fail "mcp.publicUrl at an origin root requires a dedicated host; it cannot share the web or API host" -}}
+{{- end -}}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -24,9 +30,8 @@ spec:
         - {{ . }}
         {{- end }}
         {{- if $mcpEnabled }}
-        {{- $mcpURL := urlParse $mcpPublicURL }}
-        {{- if and (ne $mcpURL.host $.Values.ingress.host) (not (has $mcpURL.host $.Values.ingress.apiHosts)) }}
-        - {{ $mcpURL.host }}
+        {{- if and (ne $mcpHost $.Values.ingress.host) (not (has $mcpHost $.Values.ingress.apiHosts)) }}
+        - {{ $mcpHost }}
         {{- end }}
         {{- end }}
       secretName: {{ .Values.ingress.tlsSecretName }}
@@ -35,25 +40,6 @@ spec:
     - host: {{ .Values.ingress.host }}
       http:
         paths:
-          {{- if $mcpEnabled }}
-          {{- $mcpURL := urlParse $mcpPublicURL }}
-          {{- if eq $mcpURL.host $.Values.ingress.host }}
-          - path: {{ $mcpPath | quote }}
-            pathType: Prefix
-            backend:
-              service:
-                name: backend
-                port:
-                  number: 8000
-          - path: /.well-known
-            pathType: Prefix
-            backend:
-              service:
-                name: backend
-                port:
-                  number: 8000
-          {{- end }}
-          {{- end }}
           - path: /api
             pathType: Prefix
             backend:
@@ -73,25 +59,6 @@ spec:
     - host: {{ . }}
       http:
         paths:
-          {{- if $mcpEnabled }}
-          {{- $mcpURL := urlParse $mcpPublicURL }}
-          {{- if eq $mcpURL.host . }}
-          - path: {{ $mcpPath | quote }}
-            pathType: Prefix
-            backend:
-              service:
-                name: backend
-                port:
-                  number: 8000
-          - path: /.well-known
-            pathType: Prefix
-            backend:
-              service:
-                name: backend
-                port:
-                  number: 8000
-          {{- end }}
-          {{- end }}
           - path: /v1
             pathType: Prefix
             backend:
@@ -114,26 +81,51 @@ spec:
                 port:
                   number: 3080
     {{- end }}
-    {{- if $mcpEnabled }}
-    {{- $mcpURL := urlParse $mcpPublicURL }}
-    {{- if and (ne $mcpURL.host $.Values.ingress.host) (not (has $mcpURL.host $.Values.ingress.apiHosts)) }}
-    # Public Streamable HTTP MCP resource and OAuth discovery endpoints.
-    - host: {{ $mcpURL.host }}
+{{- if $mcpEnabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: afterglow-mcp-ingress
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    kubernetes.io/ingress.class: {{ .Values.ingress.ingressClass | quote }}
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    traefik.ingress.kubernetes.io/router.priority: "1000"
+    traefik.ingress.kubernetes.io/router.middlewares: {{ .Release.Namespace }}-afterglow-upload-timeout@kubernetescrd
+    traefik.ingress.kubernetes.io/service.serverstransport: {{ .Release.Namespace }}-backend-long-timeout@kubernetescrd
+spec:
+  tls:
+    - hosts:
+        - {{ $mcpHost | quote }}
+      secretName: {{ .Values.ingress.tlsSecretName }}
+  rules:
+    - host: {{ $mcpHost | quote }}
       http:
         paths:
           - path: {{ $mcpPath | quote }}
+            pathType: Exact
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 8000
+          {{- if eq $mcpPath "/" }}
+          - path: /oauth/
+          {{- else }}
+          - path: {{ printf "%s/" $mcpPath | quote }}
+          {{- end }}
             pathType: Prefix
             backend:
               service:
                 name: backend
                 port:
                   number: 8000
-          - path: /.well-known
+          - path: /.well-known/
             pathType: Prefix
             backend:
               service:
                 name: backend
                 port:
                   number: 8000
-    {{- end }}
-    {{- end }}
+{{- end }}

@@ -247,8 +247,8 @@ zun_websocket_origin = "wss://zun-ws.example.com"
 
 [mcp]
 # Inbound consumer MCP control plane. Keep services.mcp=false until the Stage 2 publish gate passes.
-# 외부 MCP 클라이언트가 접속하는 정확한 Streamable HTTP resource URL. 비우거나 도메인만
-# 지정하면 public_api_base(또는 지정 도메인) + /api/v1/mcp 을 사용한다. 별도 경로를 쓸 때 전체 URL을 지정한다.
+# 외부 MCP 클라이언트가 접속하는 정확한 HTTPS resource URL. 비우면 public_api_base + /api/v1/mcp.
+# 명시 URL은 root·custom path를 그대로 사용한다. DMSLAB shared-host 예: https://cloud.dmslab.re.kr/mcp
 public_url = ""
 # 로그인(로컬 또는 OIDC) 후 표시할 Afterglow OAuth 승인 페이지 URL. 비우면
 # frontend_base_url + /oauth/mcp/authorize 를 사용한다. 클라이언트의 redirect_uri는

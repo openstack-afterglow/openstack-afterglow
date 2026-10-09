@@ -420,11 +420,31 @@ Disable `afterglow_service_cloud_shell_enabled` before rollback. Wait through th
 Set `afterglow_public_haproxy_enabled: true` and
 `afterglow_public_haproxy_fqdn` to publish the configured hostname through
 Kolla's existing external VIP/TLS frontend. The plugin owns the added HAProxy
-fragment and map entry: `/api/` is dispatched to the Afterglow API backend and
-all other paths to the frontend backend. It neither patches stock Kolla
+fragment and map entry: `/api/`, exact `/mcp`, `/mcp/` descendants, and
+`/.well-known/` discovery go to the API; every other path goes to the frontend.
+`/mcpevil`, `/mcp-other`, and `/oauth/mcp/authorize` stay on the frontend.
+It neither patches stock Kolla
 templates nor changes Kolla's certificate, DNS, external VIP, or global config.
 
 The Kolla external TLS certificate must cover the configured hostname.
+
+For DMSLab personal/OAuth MCP, configure:
+
+```yaml
+afterglow_service_mcp_enabled: true
+afterglow_mcp_public_url: "https://cloud.dmslab.re.kr/mcp"
+```
+
+The empty role default does not overwrite operator `[mcp].public_url`; a
+nonempty override is projected into both backend and the public frontend
+configuration. Explicit resource paths, including a dedicated-host root, are
+preserved rather than receiving an extra `/api/v1/mcp`. The built-in HAProxy
+fragment supports the canonical shared-host `/mcp`; an operator choosing an
+arbitrary different resource path must supply matching ingress routing.
+Deploy the matching role/config/router as well as the images. Verify public
+protected-resource and authorization-server metadata, initialize and every
+tools/list page without redirects, then issue one owned key and revoke it.
+This is connectivity/visible-tool proof, not tools/call or provider proof.
 
 ### Drover, Waygate, and Lumen Public HAProxy Routes
 

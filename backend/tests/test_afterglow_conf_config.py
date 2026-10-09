@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
 import yaml
+from jinja2 import Environment, StrictUndefined
 
 from app import config as app_config
 
@@ -38,18 +41,6 @@ def test_config_to_helm_preserves_public_mcp_configuration():
         "publicUrl": "https://mcp.example.test/control-plane/mcp",
         "oauthConsentUrl": "https://app.example.test/oauth/mcp/authorize",
     }
-
-    configmap = (ROOT / "helm/afterglow/templates/configmap.yaml").read_text(encoding="utf-8")
-    values = (ROOT / "helm/afterglow/values.yaml").read_text(encoding="utf-8")
-    assert '"mcp"' in configmap
-    assert "[mcp]" in configmap
-    assert "public_url = {{ .Values.mcp.publicUrl | quote }}" in configmap
-    assert "oauth_consent_url = {{ .Values.mcp.oauthConsentUrl | quote }}" in configmap
-    assert "mcp: false" in values
-    ingress = (ROOT / "helm/afterglow/templates/ingress.yaml").read_text(encoding="utf-8")
-    assert "urlParse $mcpPublicURL" in ingress
-    assert "Public Streamable HTTP MCP resource and OAuth discovery endpoints." in ingress
-    assert "- path: /.well-known" in ingress
 
 
 @pytest.mark.parametrize(
@@ -82,42 +73,133 @@ def test_helm_mcp_ingress_falls_back_to_public_api_base(public_api_base, expecte
         capture_output=True,
         text=True,
     )
-    ingress = next(document for document in yaml.safe_load_all(rendered.stdout) if document["kind"] == "Ingress")
+    ingress = next(
+        document
+        for document in yaml.safe_load_all(rendered.stdout)
+        if document["metadata"]["name"] == "afterglow-mcp-ingress"
+    )
     mcp_rule = next(rule for rule in ingress["spec"]["rules"] if rule["host"] == "mcp.example.test")
     paths = {entry["path"] for entry in mcp_rule["http"]["paths"]}
 
     assert "mcp.example.test" in ingress["spec"]["tls"][0]["hosts"]
-    assert paths == {expected_resource_path, "/.well-known"}
+    assert paths == {expected_resource_path, expected_resource_path + "/", "/.well-known/"}
 
 
-def test_helm_mcp_ingress_normalizes_an_explicit_origin_trailing_slash():
+def _render_helm_ingress(*overrides: str) -> subprocess.CompletedProcess[str]:
     helm = shutil.which("helm")
     if helm is None:
         pytest.skip("Helm is required to render the ingress contract")
+    arguments = [helm, "template", "afterglow", "helm/afterglow", "--show-only", "templates/ingress.yaml"]
+    for override in ("services.mcp=true", *overrides):
+        arguments.extend(("--set", override))
+    return subprocess.run(arguments, cwd=ROOT, capture_output=True, text=True)
 
-    rendered = subprocess.run(
-        [
-            helm,
-            "template",
-            "afterglow",
-            "helm/afterglow",
-            "--show-only",
-            "templates/ingress.yaml",
-            "--set",
-            "services.mcp=true",
-            "--set",
-            "mcp.publicUrl=https://mcp.example.test/",
-        ],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
+
+def test_helm_explicit_origin_mcp_url_publishes_only_mcp_and_oauth_paths_on_the_dedicated_host():
+    rendered = _render_helm_ingress("mcp.publicUrl=https://mcp.example.test/")
+    assert rendered.returncode == 0, rendered.stderr
+    ingress = next(
+        document
+        for document in yaml.safe_load_all(rendered.stdout)
+        if document["metadata"]["name"] == "afterglow-mcp-ingress"
     )
-    ingress = next(document for document in yaml.safe_load_all(rendered.stdout) if document["kind"] == "Ingress")
     mcp_rule = next(rule for rule in ingress["spec"]["rules"] if rule["host"] == "mcp.example.test")
-    paths = {entry["path"] for entry in mcp_rule["http"]["paths"]}
 
-    assert paths == {"/api/v1/mcp", "/.well-known"}
+    # The exact root resource, OAuth aliases and discovery reach the backend; /api/* does not.
+    assert [
+        (entry["path"], entry["pathType"], entry["backend"]["service"]["name"]) for entry in mcp_rule["http"]["paths"]
+    ] == [("/", "Exact", "backend"), ("/oauth/", "Prefix", "backend"), ("/.well-known/", "Prefix", "backend")]
+    assert "mcp.example.test" in ingress["spec"]["tls"][0]["hosts"]
+
+
+@pytest.mark.parametrize("authority", ["cloud.example.test", "CLOUD.EXAMPLE.TEST:443"])
+def test_helm_refuses_an_origin_root_mcp_url_on_the_shared_web_host(authority):
+    rendered = _render_helm_ingress("ingress.host=cloud.example.test", f"mcp.publicUrl=https://{authority}")
+
+    assert rendered.returncode != 0
+    assert "dedicated host" in rendered.stderr
+
+
+def _ingress_service(ingresses, host, request_path):
+    matches = []
+    for ingress in ingresses:
+        priority = ingress["metadata"].get("annotations", {}).get("traefik.ingress.kubernetes.io/router.priority")
+        for rule in ingress["spec"]["rules"]:
+            if rule["host"] != host:
+                continue
+            for entry in rule["http"]["paths"]:
+                path = entry["path"]
+                exact = entry["pathType"] == "Exact"
+                if request_path == path if exact else request_path.startswith(path):
+                    matcher = "Path" if exact else "PathPrefix"
+                    rule_length = len(f"Host(`{host}`) && {matcher}(`{path}`)")
+                    matches.append((int(priority) if priority else rule_length, entry))
+    return max(matches, key=lambda item: item[0])[1]["backend"]["service"]["name"] if matches else None
+
+
+@pytest.mark.parametrize("host_kind", ["web", "api"])
+@pytest.mark.parametrize("resource_path", ["/mcp", "/control-plane/mcp"])
+@pytest.mark.parametrize("authority", ["cloud.dmslab.re.kr", "CLOUD.DMSLAB.RE.KR:443"])
+def test_helm_explicit_shared_mcp_resource_routes_oauth_discovery_without_hijacking_frontend(
+    host_kind,
+    resource_path,
+    authority,
+):
+    host = "cloud.dmslab.re.kr"
+    host_override = f"ingress.host={host}" if host_kind == "web" else f"ingress.apiHosts[0]={host}"
+    rendered = _render_helm_ingress(host_override, f"mcp.publicUrl=https://{authority}{resource_path}///")
+    assert rendered.returncode == 0, rendered.stderr
+    ingresses = list(yaml.safe_load_all(rendered.stdout))
+    ingress = next(document for document in ingresses if document["metadata"]["name"] == "afterglow-mcp-ingress")
+
+    for path in (
+        resource_path,
+        resource_path + "/",
+        resource_path + "/oauth/authorize",
+        resource_path + "/oauth/register",
+        resource_path + "/oauth/token",
+        resource_path + "/oauth/revoke",
+        "/.well-known/oauth-protected-resource" + resource_path,
+        "/.well-known/oauth-authorization-server" + resource_path + "/oauth",
+    ):
+        assert _ingress_service(ingresses, host, path) == "backend", path
+    for path in (resource_path + "evil", "/mcpevil", "/oauth/mcp/authorize", "/account", "/"):
+        assert _ingress_service(ingresses, host, path) == "frontend", path
+    annotations = ingress["metadata"]["annotations"]
+    assert not any("rewrite" in key or "redirect" in key for key in annotations)
+    assert host in ingress["spec"]["tls"][0]["hosts"]
+
+
+def test_helm_unset_mcp_url_retains_shared_api_fallback():
+    rendered = _render_helm_ingress(
+        "ingress.host=cloud.dmslab.re.kr",
+        "app.publicApiBase=https://cloud.dmslab.re.kr",
+    )
+    assert rendered.returncode == 0, rendered.stderr
+    ingresses = list(yaml.safe_load_all(rendered.stdout))
+    host = "cloud.dmslab.re.kr"
+    assert _ingress_service(ingresses, host, "/api/v1/mcp") == "backend"
+    assert _ingress_service(ingresses, host, "/api/v1/mcp/oauth/token") == "backend"
+    assert _ingress_service(ingresses, host, "/.well-known/oauth-protected-resource/api/v1/mcp") == "backend"
+    assert _ingress_service(ingresses, host, "/oauth/mcp/authorize") == "frontend"
+
+
+@pytest.mark.parametrize(
+    "public_url",
+    ["", "https://cloud.dmslab.re.kr/mcp", "https://mcp.example.test/", "https://mcp.example.test/custom/%E2%9C%93"],
+)
+def test_kolla_mcp_override_preserves_explicit_urls_and_omits_unset_value(public_url):
+    template = (ROOT / "deploy/kolla/ansible/roles/afterglow/templates/afterglow.kolla.conf.j2").read_text()
+    start = template.index("{% if afterglow_mcp_public_url %}")
+    stop = template.index("{% endif %}", start) + len("{% endif %}")
+    environment = Environment(undefined=StrictUndefined)
+    environment.filters["to_json"] = json.dumps
+    override = tomllib.loads(environment.from_string(template[start:stop]).render(afterglow_mcp_public_url=public_url))
+    if public_url:
+        assert override == {"mcp": {"public_url": public_url}}
+    else:
+        # No empty Kolla key erases the operator source or the backend's fallback.
+        assert override == {}
 
 
 @pytest.fixture

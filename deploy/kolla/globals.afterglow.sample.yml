@@ -77,7 +77,7 @@ palimpsest_image_tag: "latest"
 # routing, container listening ports, and service-specific parameters.
 afterglow_public_endpoint_url: "https://cloud.dmslab.re.kr"
 # Route this hostname through Kolla's existing external VIP/TLS frontend.
-# The plugin forwards /api/ to the API backend and other paths to the frontend.
+# API, /mcp (including OAuth), and discovery go to backend; consent stays frontend.
 afterglow_public_haproxy_enabled: true
 afterglow_public_haproxy_fqdn: "cloud.dmslab.re.kr"
 afterglow_public_haproxy_router_port: 18082
@@ -86,6 +86,7 @@ afterglow_frontend_port: 3080
 afterglow_backend_listen_port: 18000
 afterglow_frontend_listen_port: 18081
 afterglow_public_api_base: "https://cloud.dmslab.re.kr"
+afterglow_mcp_public_url: "https://cloud.dmslab.re.kr/mcp"
 afterglow_ceph_monitors: "172.30.2.101:6789,172.30.2.102:6789,172.30.2.103:6789"
 
 # Optional Ceph RBD delete-recovery inspection. Both source files must exist on

@@ -292,7 +292,9 @@ data:
 
 Do not put secret values in the ConfigMap. `OS_PASSWORD`, `SECRET_KEY`, `GITLAB_OIDC_CLIENT_SECRET`, `K3S_KUBECONFIG_ENCRYPTION_KEY`, `DATABASE_URL`, `PROMETHEUS_PASSWORD`, and `BUILDER_SSH_PRIVATE_KEY` come from `afterglow-secrets` as environment variables or a Secret volume.
 
-`generate_k8s.py --config ./afterglow.conf --output-dir deploy/k8s-template` writes `configmap.yaml`, `secret.yaml`, and `grafana-deployment.yaml`. If `[app].secret_key` is empty, `change-me-in-production`, or shorter than 32 characters, `secret.yaml` generation fails to match the Kubernetes production guard.
+`generate_k8s.py --config ./afterglow.conf --output-dir deploy/k8s-template` writes `configmap.yaml`, `secret.yaml`, `grafana-deployment.yaml`, and `ingress.yaml`. If `[app].secret_key` is empty, `change-me-in-production`, or shorter than 32 characters, `secret.yaml` generation fails to match the Kubernetes production guard.
+
+For personal MCP, set `[services] mcp = true` and `[mcp] public_url = "https://cloud.dmslab.re.kr/mcp"`. Apply the generated `ingress.yaml` **last, after static base/overlays**. With MCP enabled it contains the main web/API Ingress and a separate priority1000 MCP Ingress: Exact `/mcp`, Prefix `/mcp/`, and Prefix `/.well-known/` go to the backend. `/mcpevil`, `/mcp-other`, and frontend consent retain their frontend route. An explicit root resource is permitted only on a dedicated host; a shared web/API host root fails before generation. The main Ingress owns the union of TLS hosts, including MCP. Do not commit generated Secrets or credentials. Helm's `services.mcp` and `mcp.publicUrl` use the same boundaries.
 
 ### Ingress Domain
 
