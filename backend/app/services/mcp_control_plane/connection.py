@@ -67,15 +67,21 @@ def _build_connection(application_credential_id: str, application_credential_sec
         auth_url=settings.os_auth_url,
         application_credential_id=application_credential_id,
         application_credential_secret=application_credential_secret,
-        project_id=principal.project_id,
     )
     session = ks_session.Session(auth=auth, timeout=30, verify=settings.ssl_verify)
-    conn = openstack.connection.Connection(
-        session=session,
-        region_name=settings.os_region_name,
-        interface=settings.os_interface,
-        app_name="afterglow-consumer-mcp",
-    )
+    try:
+        access = auth.get_access(session)
+        if access.user_id != principal.user_id or access.project_id != principal.project_id:
+            raise McpConsumerConnectionError("MCP credential owner/project mismatch")
+        conn = openstack.connection.Connection(
+            session=session,
+            region_name=settings.os_region_name,
+            interface=settings.os_interface,
+            app_name="afterglow-consumer-mcp",
+        )
+    except Exception:
+        session.session.close()
+        raise
     conn._afterglow_project_id = principal.project_id
     conn._afterglow_user_id = principal.user_id
     conn._afterglow_is_system_admin = False

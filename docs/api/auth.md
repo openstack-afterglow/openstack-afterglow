@@ -391,6 +391,8 @@ Keystone가 token authentication에서 반환하는 `404 Failed to validate toke
 
 `GET /api/v1/auth/mcp-tokens`는 현재 로그인 사용자·프로젝트의 저장된 metadata만 반환합니다. `POST /api/v1/auth/mcp-tokens`는 `{name, access_level: "read"|"manage", expires_at?: ISO timestamp}`를 받고 `201`에서 한 번만 평문 `token`을 반환합니다. 기본·최대 기간은 `mcp.default_grant_ttl_days`·`mcp.max_grant_ttl_days`를 따르며 무기한 키가 아닙니다. 서버는 발급 당시 user/project 및 역할 snapshot에 묶인 **restricted** Keystone application credential을 사용합니다. 만료 입력의 offset은 UTC로 정규화하고 upstream Keystone에 microsecond를 보존하는 `Z` timestamp를 전달합니다. 클라이언트는 만료를 비우거나 유효한 미래 ISO 시각을 보냅니다.
 
+MCP의 cloud tool은 이 application credential의 원래 scope로 인증하며 별도 project scope를 요청하지 않습니다. Keystone token의 user/project가 저장된 grant principal과 정확히 일치해야 provider에 요청하고, 다른 owner/project 또는 unscoped 응답은 거부합니다. Manager/admin/browser credential로 fallback하지 않습니다. 연결 확인의 handshake·tools/list 성공은 실제 cloud `tools/call` 성공과 별개의 증거입니다.
+
 `POST /api/v1/auth/mcp-tokens/verify`는 browser access JWT, 허용된 Origin 및 `Sec-Fetch-Site: same-origin|same-site`가 필요합니다. `Content-Type: application/json`의 정확한 `{ "token": "<본인 개인 키>" }`만 받으며 본문은 최대1024bytes입니다. 잘못된·만료·폐기·다른 user/project의 키는 공개 URL에 접속하기 **전** 거부합니다. 임의 endpoint를 지정할 수 없습니다.
 
 성공 `200`의 응답은 다음 구조이며 token을 포함하지 않습니다.

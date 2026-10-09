@@ -169,6 +169,8 @@ Helm·생성 Kubernetes는 web/API fallback과 별도 `afterglow-mcp-ingress`를
 
 계정의 개인 MCP key는 사용자·발급 당시 project와 제한된 Keystone application credential에 묶인다. Keystone upstream에 보낼 만료시각은 기존 `_as_utc`로 정규화한 뒤 `keystoneclient.utils.isotime(subsecond=True)`의 UTC `Z` 형식으로 직렬화하여 순간·microsecond를 보존한다. 운영에서 offset ISO 문자열이 Keystone400 `Timestamp not in expected format`을 일으킨 사실을 고치며, 만료·`unrestricted=False`·역할 snapshot·owner scope·내구성 reservation/폐기 정책을 완화하지 않는다.
 
+Consumer cloud connection은 grant의 application credential만으로 인증한다. Application credential의 원래 project scope는 Keystone에 이미 고정되어 있으므로 v3 인증에 별도 `scope.project`를 보내지 않는다. 응답의 `user_id`·`project_id`가 현재 grant principal과 정확히 일치해야 SDK connection을 반환하며 foreign owner/project·unscoped token은 provider dispatch 전에 거부한다. 실패 시 HTTP session을 닫고 manager/admin/browser credential fallback은 없다. 실제 운영의 같은 credential에서 explicit-scope 실패와 implicit 원래 owner/project 인증을 구분했고, installed SDK/real HTTP 회귀가 네 binding 경계를 검증한다.
+
 `POST /api/v1/auth/mcp-tokens/verify`는 browser session/same-site 보호와 현재 user/project 소유 검사를 먼저 수행한다. 고정 operator endpoint에만 Bearer를 보내고 installed MCP SDK로 initialize → initialized → paginated tools/list를 수행한다. TLS 검증·redirect/proxy/retry 금지·20초·2MiB·50페이지/5000도구·분당6회 제한과 no-store를 적용한다. 응답은 endpoint/protocol/server/tool count만 반환하며 tools/call이나 실제 cloud 조회·변경 성공을 증명하지 않는다. UI는 일회성 token과 실제 인증 JSON을 개인용으로 복사하고 scope 변경/닫기 시 평문을 지운다. `/docs/mcp`는 typed 한국어 정본과 en/ja/zh-CN 사전에서 같은 계약·클라이언트 형식·Lumen outbound와의 구분을 제공한다.
 
 개인 키와 별도로 계정 화면은 Authorization header·token·client secret이 없는 HTTP MCP JSON과 `/mcp/oauth/authorize`를 제공한다. OAuth client는 discovery와 `/mcp/oauth/register`를 통해 public client(`token_endpoint_auth_method=none`, authorization-code와 refresh grant 모두)를 등록하고 정확한 resource·callback·PKCE S256을 보낸다. Authorization endpoint는 frontend `/oauth/mcp/authorize`로 연결하며 opaque ticket만 sessionStorage에 보존한다. 이 exact route만 SSR/client public·project-agnostic·shellless 경계에 포함하고 no-store/no-referrer를 유지하여 첫 미로그인 요청의 ticket이 가드에서 유실되지 않는다. 로그인 뒤 아직 project가 없으면 `/select-project`를 먼저 거치고, scoped session의 현재 user/project로만 동의 정보를 조회·승인·거부한다. API 키 발급·검증·폐기는 기존 경로를 유지한다.
@@ -999,9 +1001,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "10953dda98bfcf1d34513771f9437cf7362549e9676ed11f2b76dd35a724f1e8",
-  "reviewed_at": "2026-10-09T13:46:46Z",
-  "summary": "MCP SDK1.28.1 cold schema-cache callback을 principal-scoped 내부 snapshot으로 분리한다. Public pagination·SDK validation·read/write 권한을 유지한다. Real TCP consumer와 cached-schema valid-mutation denial을 확인하고 macOS PTY trace harness의 stdin/output 교착을 concurrent select로 교정했다. Patch1.30.8과 /etc/kolla/multinode 배포만 허용한다."
+  "source_sha256": "7c52056cf81f45d1f933ebaa1d7f1eea7657c29ee53dd93afe043c4b78cb3700",
+  "reviewed_at": "2026-10-09T16:42:17Z",
+  "summary": "MCP consumer tool의 application credential 인증에서 명시적 project scope 요청을 제거하고 Keystone 원래 project/owner binding을 검증한다. Foreign/unscoped 토큰 거부와 네 binding 경계를 실제 SDK HTTP 회귀로 확인했다. Patch 1.30.9와 /etc/kolla/multinode 배포만 허용한다."
 }
 ```
 <!-- architecture-review:end -->

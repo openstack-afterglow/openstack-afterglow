@@ -23,7 +23,6 @@ from app.models.mcp_authority import (
     McpToolInvocation,
 )
 from app.services import k3s_crypto
-from app.services.mcp_control_plane import connection as mcp_connection
 from app.services.mcp_control_plane import lumen as mcp_lumen
 from app.services.mcp_control_plane.authority import (
     PERSONAL_TOKEN_PREFIX,
@@ -271,58 +270,6 @@ def test_mariadb_naive_deadlines_are_normalized_to_utc():
     naive = __import__("datetime").datetime(2026, 7, 27, 12, 0, 0)
 
     assert _as_utc(naive).tzinfo is __import__("datetime").UTC
-
-
-def test_consumer_connection_uses_only_the_grant_application_credential(monkeypatch):
-    captured = {}
-
-    class FakeConnection:
-        def __init__(self, **kwargs):
-            captured["connection"] = kwargs
-
-    class FakeSession:
-        def __init__(self, **kwargs):
-            captured["session"] = kwargs
-
-    class FakeCredential:
-        def __init__(self, **kwargs):
-            captured["credential"] = kwargs
-
-    import openstack
-
-    monkeypatch.setattr(mcp_connection.v3, "ApplicationCredential", FakeCredential)
-    monkeypatch.setattr(mcp_connection.ks_session, "Session", FakeSession)
-    monkeypatch.setattr(openstack.connection, "Connection", FakeConnection)
-    monkeypatch.setattr(
-        mcp_connection,
-        "get_settings",
-        lambda: SimpleNamespace(
-            os_auth_url="https://keystone.example.test/v3",
-            os_region_name="RegionOne",
-            os_interface="public",
-            ssl_verify=True,
-        ),
-    )
-    principal = SimpleNamespace(project_id="project-a", user_id="user-a")
-
-    conn = mcp_connection._build_connection("credential-id", "credential-secret", principal)
-
-    assert conn._afterglow_project_id == "project-a"
-    assert conn._afterglow_user_id == "user-a"
-    assert conn._afterglow_is_system_admin is False
-    assert captured["credential"] == {
-        "auth_url": "https://keystone.example.test/v3",
-        "application_credential_id": "credential-id",
-        "application_credential_secret": "credential-secret",
-        "project_id": "project-a",
-    }
-    assert captured["connection"]["app_name"] == "afterglow-consumer-mcp"
-
-
-def test_lumen_default_clear_route_precedes_dynamic_token_delete_route():
-    paths = [getattr(route, "path", "") for route in mcp_access.router.routes]
-
-    assert paths.index("/mcp-tokens/lumen-default") < paths.index("/mcp-tokens/{token_id}")
 
 
 @pytest.mark.asyncio

@@ -7,6 +7,11 @@
 
 ## [Unreleased]
 
+## [1.30.9] - 2026-10-09
+
+### Fixed
+- **MCP provider 인증** — 이미 사용자·프로젝트에 묶인 Keystone application credential로 인증할 때 명시적 project scope를 다시 요청하지 않는다. 운영의 같은 credential이 기존 SDK 경로에서는 실패하고 implicit scope에서는 원래 owner/project로 인증되는 것을 확인했다. 발급된 token의 owner/project가 grant와 다르거나 unscoped이면 cloud dispatch 전에 거부하고 credential·권한·TLS·read/write 경계는 그대로 유지한다. Installed SDK와 실제 HTTP의 네 owner/project 조건은 수정 전 실패했으며 constructor-kwargs echo 대신 실제 인증 동작을 회귀로 검증한다.
+
 ## [1.30.8] - 2026-10-09
 
 ### Fixed
