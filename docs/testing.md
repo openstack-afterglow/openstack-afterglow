@@ -14,6 +14,18 @@ Canonical Dockerfile의 arm64·amd64 backend image에서 실제 Uvicorn HTTP GET
 
 최종 `npm run test:target -- config`와 `npm run test:gate`가 독립 clone에서 통과했다: backendunit4,401, frontend334files/2,569+runner9, 소비자 contract174, 실제 disposable MariaDB/PostgreSQL/Redis functional35, Ruff check/format561files. Proxy20개는 config와 consumer contract target에 등록되어 전체 CI에서 실행된다. Existing Pydantic/FastAPI/websockets deprecation과 DocCodeBlock tabindex warning은 남아 있다. 불변 release·운영 rollout 증거는 해당 완료 receipt에 기록하며 로컬 proof와 혼합하지 않는다. Optional gbrain sync는 CLI 부재로 실행하지 않았고 공유 checkout이나 search guidance를 변경하지 않았다.
 
+불변 [v1.30.12 release](https://github.com/openstack-afterglow/openstack-afterglow/releases/tag/v1.30.12)는 `9cbfecad419b7d6c64e3a21b06a0cd80b1f44f93`다. 동일 SHA의 [dev CI](https://github.com/openstack-afterglow/openstack-afterglow/actions/runs/38068195517), [Docker 발행](https://github.com/openstack-afterglow/openstack-afterglow/actions/runs/38068463755), [Helm 발행](https://github.com/openstack-afterglow/openstack-afterglow/actions/runs/38068463407)이 성공했다. 발행 시점 tag/latest digest·revision이 일치했다. 현재 CI 정책상 backend/frontend/worker 발행은 amd64이며 Cloud Shell만 amd64/arm64다. 위 로컬 backend dual-architecture proof와 구분한다.
+
+운영 `kolla-ansible reconfigure -i multinode --tags afterglow`는 failed/unreachable0으로 완료됐다. 세 컨트롤러의 backend/frontend/notion worker9개가 위 revision·검증된 digest로 교체되고 backend/frontend6개가 healthy였다. 실제 backend PID1은 `--proxy-headers --forwarded-allow-ips 127.0.0.1,::1,172.30.0.11,172.30.0.12,172.30.0.13`을 사용한다. 마운트30개와 environment hash9개, 원래 비대상 container613개의 ID·immutable image ID·start/status/health/restarts가 보존됐다. 관측 창에 새로 나타난 Neutron leaf16개는 교체·삭제하지 않았다. Operator secrets/inventory bytes와 canonical globals alias/mode0640이 보존되고 globals 변경은 Afterglow tag와 image pin3개뿐이다.
+
+실제 공개 `/api/v1/admin/version/`는307/`Location: https://cloud.dmslab.re.kr/api/v1/admin/version`이며 encoded query와 공개 forged proto 헤더에서도 HTTPS를 유지했다. 정규화 URL의 무인증401과 login POST의 HTTPS307→검증422를 확인했다. 각 컨트롤러에서 forwarded HTTPS307과 direct HTTP307을 별도로 확인했고 OAuth metadata의 resource/issuer/endpoint URL은 모두 HTTPS였다. 실제 OMP-mounted capabilities·current-project overview 조회가 성공했다. 이 조회는 새 OAuth 발급·쓰기·모든 cloud domain qualification의 증거가 아니다.
+
+OMP browser relay extension 미연결로 `browser.open`을 사용할 수 없어 격리 headless Chromium으로 실제 공개 문서 화면을 확인했다. 화면 로딩 console error0, same-origin slash fetch의 최종 HTTPS URL/redirected=true/인증401, insecure resource0을 관측했다. 짧은 post-rollout smoke이며 장시간 traffic/error-rate 감시나 실제 dashboard 세션 재로그인 증거로 확대하지 않는다. Proxy-IP에 묶였던 기존 세션의 재로그인 필요성은 별도 실제-app 회귀와 운영 문서에 명시했다.
+
+Rapid schema change는 `openspec/changes/archive/2026-10-10-preserve-https-proxy-scheme/`로 archive했다. CLI의 no-delta 경고는 non-blocking이며 이 schema에는 별도 delta spec/sync 대상이 없다. 배포 release tag는 이동하지 않았고 완료 receipt만 후속 dev 커밋으로 기록한다.
+
+후속 완료 기록 커밋 전 추가 `test:gate`는 기존 다른 테스트 프로젝트의 PostgreSQL5434 점유로 functional 시작이 실패했다. 해당 프로젝트를 변경하지 않고 canonical test-profile 설정의 세 DB만 고유 project/network·Docker 할당 loopback 포트로 격리했다. 이 환경의 전체 gate 재실행은 별도 CLI installer PTY fixture(`scripts/lumen-sh.test.js:736`)의 `spawnSync python3 ETIMEDOUT`에서 중단됐다. Release 전 전체 gate와 exact-SHA hosted CI 성공 증거는 유효하지만 이 추가 실행은 통과로 기록하지 않는다. 격리 환경에서 실제 functional35개와 Ruff check/format561files는 별도로 통과했으며 installer 코드·timeout·보안 테스트를 수정하거나 건너뛰지 않았다.
+
 ## dev 푸시 통합 검증 (2026-10-10)
 
 Checkpoint `20060ce6aab244a419a9582aa74f06517b133c36`와 fetched dev `9c55578585c2f8147ef06d57e1892cac80eb6093`를 독립 clone에서 통합하고 자격증명·외부 호출 없이 전체 qualification을 완료했다.
