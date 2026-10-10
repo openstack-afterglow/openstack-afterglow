@@ -7,10 +7,12 @@
 
 ## [Unreleased]
 
-### Dev push integration (2026-10-10)
-- Merge checkpoint `20060ce6aab244a419a9582aa74f06517b133c36` with fetched dev `9c55578585c2f8147ef06d57e1892cac80eb6093` in an independent local `dev` clone, preserving both ancestries from common base `4b28e31cc83770cfa8fdb4e78c5f8221d4ddcb83`.
-- Retain checkpoint scope/authorization/deletion/public-docs/accessibility safeguards together with released OAuth browser/client-binding, cold-cache tool calls, implicit application-credential scope, safe debug, prioritized host-bound MCP ingress and role-inheritance/search behavior. Retain the released `1.30.10` manifests without a new version bump; inherited frontend npm lock metadata still says `1.30.4` and is not regenerated here. User confirmed MCP connection is working; no additional OAuth repair or unspecified MCP feature is included.
-- Verification: clean architecture stamp (`a17d5e6834bbdf82b71fc45e2a3c57e50c4bb21a6c4293f9efbe4d6930511e61`), full `npm run test:gate` exit 0 (111 orchestration, 27 Kolla contract, 19 CLI install / 36 PWSH skipped, 4,401 backend unit, 334 frontend files / 2,569 tests + 9 runner tests, 154 consumer contract, 35 disposable-datastore functional, Ruff check and format clean across 560 files). Frontend `check` passed (2,340 files / 0 errors / 1 existing DocCodeBlock tabIndex warning), `i18n:check` 0 errors / 0 warnings across 37 namespaces / 9,440 source messages, `i18n:scan` 0 hardcoded lines in 988 files, and SvelteKit production build exit 0. Real Chromium smoke verified `/docs/mcp` renders with expired credentials without redirecting or starting announcement polling intervals, while `/dashboard` redirects cleanly to `/login`.
+## [1.30.11] - 2026-10-10
+
+### Fixed
+- **공개 문서 세션 폴링 및 리다이렉트 방지** — 공개 `/docs` 경로에서 만료 세션으로 미인증 공지 폴링 요청을 보내거나 이전 요청의 늦은 401로 로그인 페이지로 리다이렉트되던 문제를 수정했다. 보호된 엔드포인트 세션 가드는 유지한다.
+- **관리자 프로젝트 삭제 안전 가드** — 관리자 프로젝트 삭제 시 28개 OpenStack 리소스 유형의 실제 할당을 사전 점검하여 확인 불가는 503, 잔여 할당은 409로 안전하게 차단한다.
+- **검증 기록** — clean architecture stamp (`d010dc225c1a1d3e7e515875257d1b4be893ce7ef6a1cd733f2d514bf79f8da1`), 전체 `npm run test:gate` 통과(111 오케스트레이션, 27 Kolla 계약, 19 CLI 설치 / 36 PWSH skip, 백엔드 단위 4,401, 프론트엔드 단위 2,569 + 러너 9, 소비자 계약 154, 격리 DB 기능 35, Ruff 검사/포맷팅 560개 파일). 프론트엔드 check 0 errors / 1 기존 warning, i18n check 0 errors / 0 warnings (37개 네임스페이스 / 9,440개 메시지), i18n scan 0개 라인, SvelteKit 프로덕션 빌드 성공. 실제 Chromium 스모크 통과.
 ### Local accumulated-source commit integration (2026-10-10, not deployed)
 - 공유 checkout의 이미 조합된 i18n·motion·기능 변경과 의도적인 `ProgressBar` 제거를 보존한다. `.omp/mcp.json`의 private 임시 credential-reader 설정은 로컬에 남기고 commit에서 제외한다. 버전·운영 설정·credential·datastore는 바꾸지 않으며 push·tag·배포를 수행하지 않는다.
 - 공개 `/docs`에서 공지 polling이 만료 세션을 갱신하다 `/login`으로 이동하던 오류를 실제 compiled Chromium의 synthetic session으로 재현했다. 문서의 polling을 차단하고 이전 요청의 늦은 401도 현재 문서를 redirect하지 않게 한다. 보호된 유사 접두 경로의 인증은 유지한다. `ProgressTrack`은 실제 in-flight `active` 상태를 `aria-busy`로 제공한다.

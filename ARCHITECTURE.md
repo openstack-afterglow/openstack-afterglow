@@ -4,7 +4,7 @@
 
 Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 배포된 Drover·Lumen·Waygate·Palimpsest 서비스로 가는 인증된 BFF(gateway)이다. 브라우저 UI는 SvelteKit이 제공하지만 OpenStack 자원 생성과 권한 검사는 FastAPI 백엔드가 소유한다. 저장소 URL은 <https://github.com/openstack-afterglow/openstack-afterglow>이다.
 
-이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend 및 Cloud Shell 모두 `1.30.10`이며, backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`·Vite `8.2.0`을 manifest에 고정한다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
+이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend 및 Cloud Shell 모두 `1.30.11`이며, backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`·Vite `8.2.0`을 manifest에 고정한다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
 
 **Dev push integration (2026-10-10):** This local `dev` combines checkpoint `20060ce6aab244a419a9582aa74f06517b133c36` and fetched dev `9c55578585c2f8147ef06d57e1892cac80eb6093`, preserving both ancestries from common base `4b28e31cc83770cfa8fdb4e78c5f8221d4ddcb83`. Historical test, browser, native and production receipts below remain scoped to their original source/runtime; they do not qualify the merged source. The final architecture stamp records a new source review, and final local qualification is recorded separately in `docs/testing.md`. The user confirmed MCP now connects; no additional OAuth repair, unspecified MCP feature, version bump, tag or production deployment is included in this push.
 
@@ -1035,9 +1035,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "d010dc225c1a1d3e7e515875257d1b4be893ce7ef6a1cd733f2d514bf79f8da1",
-  "reviewed_at": "2026-10-10T06:43:17Z",
-  "summary": "dev push integration (2026-10-10): checkpoint 20060ce6 and fetched dev 9c555785 qualified. Full gates passed (111 orchestration, 27 Kolla contract, 19 CLI / 36 PWSH skipped, 4401 backend unit, 2569 frontend unit + 9 runner, 154 contract, 35 functional, Ruff 560 files). Frontend check/i18n/build and real Chromium docs smoke passed. MCP connection preserved; no extra OAuth repair, version bump, tag or production operation."
+  "source_sha256": "9ca3802ee68a2fcd46fa8bd20d87df6c92c13ce5e1db3fc5b718ed6890d3b747",
+  "reviewed_at": "2026-10-10T07:56:36Z",
+  "summary": "Release v1.30.11: bump version from 1.30.10 to 1.30.11, update CHANGELOG and ARCHITECTURE, align manifests across root, backend, frontend, cloud-shell, helm Chart. No schema or persistent credential changes."
 }
 ```
 <!-- architecture-review:end -->
