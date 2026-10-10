@@ -729,6 +729,7 @@ def render_k8s_configmap(cfg: dict) -> str:
         f'  APP_REDIS_URL: "{REDIS_K8S}"',
         f'  # 실제 서비스 도메인으로 변경 필요 (예: https://afterglow.example.com)',
         f'  APP_ORIGIN: "{app_origin}"',
+        f'  FORWARDED_ALLOW_IPS: {_yaml_str(app.get("trusted_proxies", "127.0.0.1/32,::1/128"))}',
         "  afterglow.conf: |",
         indented,
         "",

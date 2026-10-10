@@ -4,7 +4,7 @@
 
 Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 배포된 Drover·Lumen·Waygate·Palimpsest 서비스로 가는 인증된 BFF(gateway)이다. 브라우저 UI는 SvelteKit이 제공하지만 OpenStack 자원 생성과 권한 검사는 FastAPI 백엔드가 소유한다. 저장소 URL은 <https://github.com/openstack-afterglow/openstack-afterglow>이다.
 
-이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend 및 Cloud Shell 모두 `1.30.11`이며, backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`·Vite `8.2.0`을 manifest에 고정한다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
+이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend 및 Cloud Shell 모두 `1.30.12`이며, backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`·Vite `8.2.0`을 manifest에 고정한다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
 
 **Dev push integration (2026-10-10):** This local `dev` combines checkpoint `20060ce6aab244a419a9582aa74f06517b133c36` and fetched dev `9c55578585c2f8147ef06d57e1892cac80eb6093`, preserving both ancestries from common base `4b28e31cc83770cfa8fdb4e78c5f8221d4ddcb83`. Historical test, browser, native and production receipts below remain scoped to their original source/runtime; they do not qualify the merged source. The final architecture stamp records a new source review, and final local qualification is recorded separately in `docs/testing.md`. The user confirmed MCP now connects; no additional OAuth repair, unspecified MCP feature, version bump, tag or production deployment is included in this push.
 
@@ -682,6 +682,7 @@ openstacksdk `Proxy.request`의 raw `get/put/delete` 기본값은 `raise_exc=Fal
 ### 프로세스와 포트
 
 - `backend`는 `uvicorn app.main:app`으로 내부 `8000`에서 API와 in-process background snapshot/trash/backup/MCP cleanup loop를 실행한다. `/api/v1/health`는 즉시 `{"status":"ok"}`를 반환하는 process liveness이고, 상세 health는 인증 및 Redis 상태를 추가로 본다.
+- TLS 종료 뒤 절대 URL·slash307의 scheme은 Uvicorn의 검증된 proxy headers가 소유한다. Kolla는 `--proxy-headers`와 `afterglow_backend_forwarded_allow_ips`를 명시하며 기본 신뢰는 loopback과 native `loadbalancer` inventory의 `kolla_address('api')` 주소뿐이다. Host networking에서 `*`를 기본값으로 쓰지 않는다. Kubernetes 생성기는 기존 `[app].trusted_proxies`를 ConfigMap `FORWARDED_ALLOW_IPS`로, Helm은 `app.trustedProxies`를 같은 backend 환경 변수로 연결한다. Ingress 실제 peer IP/CIDR은 운영자가 지정하며 미설정 기본값은 loopback 전용이다. 공개 HTTPS 요청은 HTTPS redirect를 유지하고 direct HTTP·비신뢰 peer는 HTTP를 유지한다. 라우트·307 method/body/query·인가·DB schema·frontend ORIGIN·OAuth의 명시 공개 URL에는 구조 영향이 없다.
 - `frontend`는 빌드된 SvelteKit Node 서버를 `PORT=3080`에서 제공한다. 로컬 Compose는 `3080:3080`과 `PUBLIC_API_BASE=http://localhost:8000`을 사용한다. frontend는 API gateway가 아니라 UI/auth shell이다. 공개 `/health`는 로그인 cookie 없이 JSON liveness를 반환하며 Compose는 redirect를 거부하고 JSON status를 검증한다.
 - Compose는 독립적인 세 manifest를 명시적 `-f`로 선택한다. `docker-compose.yml`은 published frontend/backend 두 서비스만 정의하며 DB/cache는 외부 설정이다. `docker-compose.dev.yml`은 Afterglow와 독립 Drover·Waygate·Lumen·Palimpsest API/worker 및 local datastores/migrations를 source-build한다. `docker-compose.prod.yml`은 GHCR image pull-only이고, HAProxy 3.2 TLS ingress/Docker-DNS round-robin과 private persistent Redis를 기본 제공한다. 앱 host port는 공개하지 않고 sibling 통신은 기본적으로 인증된 Keystone catalog를 사용한다. 운영 인증서는 read-only operator PEM이며 self-signed fallback은 없다. 선택 sibling image/API/worker/migration은 개별 profiles에 남고 callback/control-plane URL은 공개 catalog endpoint를 지정한다.
 - 관리자 볼륨 RBD 검사는 opt-in이다. Backend image에는 `ceph-common`이 있고, dev/prod Compose·Kolla·Kubernetes는 operator-provided `ceph.conf`와 dedicated CephX keyring을 `/etc/ceph`에 read-only mount한다. 두 파일 경로·cluster FSID·backend→pool map이 모두 있어야 활성화하며, 기존 Cinder-only 배포는 기능이 비활성인 채 `backend_unverified`를 반환한다. `client.admin`을 사용하지 않고 pool/object-prefix가 제한된 identity를 배포한다.
@@ -1035,9 +1036,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "9ca3802ee68a2fcd46fa8bd20d87df6c92c13ce5e1db3fc5b718ed6890d3b747",
-  "reviewed_at": "2026-10-10T07:56:36Z",
-  "summary": "Release v1.30.11: bump version from 1.30.10 to 1.30.11, update CHANGELOG and ARCHITECTURE, align manifests across root, backend, frontend, cloud-shell, helm Chart. No schema or persistent credential changes."
+  "source_sha256": "9596ecc9f2cffd9d3575e3ba989049edb5ebb19671317d0e3c72ebfa3c96ef28",
+  "reviewed_at": "2026-10-10T16:23:00Z",
+  "summary": "HTTPS proxy scheme repair: Kolla bounded loadbalancer trust, Kubernetes and setup ConfigMap FORWARDED_ALLOW_IPS sync, Helm wiring, and complete four-provider contract tests; documented reauthentication expectation under token_ip_binding_mode. Gate and contract verified."
 }
 ```
 <!-- architecture-review:end -->

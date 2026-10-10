@@ -126,6 +126,8 @@ public_api_base = ""
 #   예) "127.0.0.1/32,::1/128,172.18.0.0/16"  ← docker network inspect 로 확인
 # Docker Desktop macOS 환경: 192.168.65.0/24 추가 필요
 # ⚠ /12 처럼 넓은 CIDR 은 내부 컨테이너가 헤더를 위조할 수 있어 위험함
+# K8s 생성기/Helm은 이 목록을 Uvicorn FORWARDED_ALLOW_IPS에도 전달해 HTTPS scheme을 보존한다.
+# 직접 Uvicorn 실행은 --proxy-headers와 --forwarded-allow-ips를 별도로 지정해야 한다.
 trusted_proxies = "127.0.0.1/32,::1/128"
 
 [cache]

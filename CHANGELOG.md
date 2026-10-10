@@ -7,6 +7,13 @@
 
 ## [Unreleased]
 
+## [1.30.12] - 2026-10-11
+
+### Fixed
+- **HTTPS 요청의 HTTP 리다이렉트 방지** — Kolla Uvicorn이 controller-origin `X-Forwarded-Proto: https`를 무시해 `/api/v1/admin/version/` 등 slash 정규화307의 Location을 HTTP로 만들던 원인을 수정했다. Loopback과 실제 loadbalancer API IP만 신뢰하고 기존307·method/body/query·인증 경계를 유지한다.
+- Kubernetes 생성 ConfigMap과 Helm backend도 기존 `trusted_proxies`/`trustedProxies`를 Uvicorn `FORWARDED_ALLOW_IPS`에 전달한다. Ingress peer 범위는 운영자가 명시하며 기본 신뢰를 전체 네트워크로 확대하지 않는다.
+- 소비자 계약12개는 수정 전 HTTPS6개 실패·HTTP/위조6개 통과, 수정 후12개 통과했다. 실제 backend arm64·amd64 이미지의 Uvicorn HTTP에서 trusted HTTPS·direct HTTP·untrusted 위조와 query 보존을 확인했다. 로컬 probe는 lifespan을 끈 transport 검증이며 운영 startup·인증 acceptance와 구분한다.
+
 ## [1.30.11] - 2026-10-10
 
 ### Fixed

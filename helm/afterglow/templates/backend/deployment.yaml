@@ -48,11 +48,14 @@ spec:
             - "uvloop"
             - "--http"
             - "httptools"
+            - "--proxy-headers"
           ports:
             - containerPort: 8000
           env:
             - name: AFTERGLOW_ENV
               value: "production"
+            - name: FORWARDED_ALLOW_IPS
+              value: {{ .Values.app.trustedProxies | quote }}
             - name: REDIS_URL
               valueFrom:
                 configMapKeyRef:

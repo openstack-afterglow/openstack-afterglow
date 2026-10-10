@@ -5,6 +5,8 @@ metadata:
   namespace: afterglow
 data:
   APP_REDIS_URL: "redis://redis.afterglow.svc.cluster.local:6379/0"
+  # Set only the actual Ingress peer IPs/CIDRs; never trust every pod by default.
+  FORWARDED_ALLOW_IPS: "127.0.0.1/32,::1/128"
   # 실제 서비스 도메인으로 변경 필요 (예: https://afterglow.example.com)
   APP_ORIGIN: "http://afterglow.example.com"
   PUBLIC_S3_BASE: "https://s3.example.com"
@@ -48,6 +50,7 @@ data:
     # 브라우저에서 호출할 API Origin. Ingress 사용 시 APP_ORIGIN과 동일한 외부 도메인으로 설정합니다.
     frontend_base_url = "http://afterglow.example.com"
     public_api_base = "http://afterglow.example.com"
+    trusted_proxies = "127.0.0.1/32,::1/128"
 
     [logging]
     log_directory = "/app/logs"

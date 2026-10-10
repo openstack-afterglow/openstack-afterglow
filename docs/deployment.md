@@ -419,6 +419,12 @@ HAProxy **3.2**를 기본 실행합니다. 앱 컨테이너는 host port를 열�
 `/v1/`, `/.well-known/`, API docs는 backend, 나머지는 frontend로 전달합니다.
 SSE와 WebSocket 연결은 유지하며, 외부 `X-Forwarded-*`는 edge에서 덮어씁니다.
 
+HTTPS 요청의 slash 정규화307이 `Location: http://...`를 반환하면 경로를 고치거나 redirect를 끄지 말고 Uvicorn의 proxy 신뢰 목록을 확인합니다. Kolla는 `--proxy-headers`와 `afterglow_backend_forwarded_allow_ips`로 loopback 및 `loadbalancer` inventory의 API IP만 신뢰합니다. 별도 ingress topology는 실제 proxy peer IP/CIDR만 override하며 host network에서 `*`를 쓰지 않습니다. Prod Compose의 `FORWARDED_ALLOW_IPS=*`는 host port가 없는 private app network에 한정된 기존 계약입니다.
+
+Kubernetes 생성기의 `[app].trusted_proxies`와 Helm의 `app.trustedProxies`는 backend `FORWARDED_ALLOW_IPS`로 전달됩니다. 실제 Ingress peer 범위를 명시해야 하며 기본값은 loopback 전용입니다. 정적 ConfigMap은 해당 환경 변수 key와 인라인 `trusted_proxies`를 함께 맞추고 backend를 rollout합니다. 검증은 공개 HTTPS slash URL의307 Location이 HTTPS인지, query/method가 보존되는지, 정규화 URL의 인증 거부가 유지되는지와 direct HTTP·비신뢰 peer의 위조 헤더 무시를 구분합니다. 공개 `ORIGIN`/OAuth URL은 내부 HTTP service URL과 별개입니다.
+
+운영 주의사항: Uvicorn이 HAProxy 등의 리버스 프록시 IP를 신뢰하게 되면, 프록시가 주입하는 `X-Forwarded-For`가 Uvicorn의 클라이언트 IP로 해석됩니다. 기존에 프록시가 비신뢰 상태여서 프록시 내부 VIP/IP 대역으로 발급되었던 세션 토큰은, `token_ip_binding_mode = "subnet"` 활성화 시 프록시 전환 직후 클라이언트 실제 공인 IP와의 서브넷 불일치로 401(토큰 출처 불일치)이 발생하여 재로그인이 요구될 수 있습니다. 이는 의도된 보안 바인딩 동작입니다.
+
 운영자가 별도 mode 0600 env 파일에 `SECRET_KEY`, `OS_PASSWORD`, `DATABASE_URL`,
 HTTPS `ORIGIN`, HTTPS `PUBLIC_API_BASE`, 절대 경로 `TLS_CERTS_DIR`를 설정합니다.
 `afterglow.conf`에는 해당 환경의 Keystone URL·사용자·domain/project 등 나머지 설정을

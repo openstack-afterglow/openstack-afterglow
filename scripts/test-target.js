@@ -116,6 +116,7 @@ const targets = {
 			selectors: [
 				"tests/test_afterglow_conf_config.py",
 				"tests/contracts/test_ingress_root_path_coverage.py",
+				"tests/contracts/test_proxy_scheme.py",
 				"tests/test_config_insecure_guard.py",
 				"tests/test_config_keystone_url.py",
 				"tests/test_config_layer_images.py",
@@ -394,6 +395,7 @@ const targets = {
 				"tests/contracts/test_service_sdk_dependency_sources.py",
 				"tests/contracts/test_mcp_stage2_adapters.py",
 				"tests/contracts/test_ingress_root_path_coverage.py",
+				"tests/contracts/test_proxy_scheme.py",
 				"tests/contracts/test_k3s_shell_proxy.py",
 				"tests/contracts/test_mcp_lumen_bridge.py"
 			],

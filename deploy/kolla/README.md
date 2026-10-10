@@ -46,6 +46,7 @@ not grant sudo or change global Ansible settings.
      - **Lumen**: `8012`
      - **Palimpsest**: `8020`
    - App containers bind the controller API addresses only, using private upstream ports `18081`, `18000`, `18010`, `18011`, `18012`, and `18020`. HAProxy balances each frontend across its matching controller group.
+   - The backend explicitly enables Uvicorn proxy headers. `afterglow_backend_forwarded_allow_ips` defaults to loopback plus the API addresses of the native `loadbalancer` inventory group, so TLS-terminated slash redirects retain HTTPS. For a different operator-managed ingress, override it with only actual proxy peer IPs/CIDRs; never use `*` with host networking. The TLS edge must overwrite client-supplied forwarding headers.
    - A tag-selected plugin run reconciles the matching Kolla HAProxy fragments.
      Kolla recreates HAProxy only if their resulting configuration hash changes.
    - The plugin does not create external-VIP routes, DNS records, or TLS certificates. Existing Drover and Waygate public catalog URLs remain operator-owned ingress contracts.

@@ -62,6 +62,10 @@ afterglow_frontend_listen_address: "{{ 'api' | kolla_address(inventory_hostname)
 afterglow_backend_listen_port: 18000
 afterglow_frontend_listen_port: 18081
 
+# Host networking must trust only actual HAProxy peers, not every caller.
+# Override for operator-managed ingress outside the loadbalancer inventory.
+afterglow_backend_forwarded_allow_ips: "127.0.0.1,::1{% for host in groups['loadbalancer'] %},{{ 'api' | kolla_address(host) }}{% endfor %}"
+
 # ── URL 및 엔드포인트 ────────────────────────────────────────────────────────
 afterglow_public_api_base: "{{ internal_protocol | default('http') }}://{{ kolla_internal_fqdn | default(kolla_internal_vip_address) }}:{{ afterglow_backend_port }}"
 afterglow_openstack_interface: "{{ openstack_interface | default('internal') }}"
@@ -207,7 +211,7 @@ afterglow_services:
     enabled: "{{ enable_afterglow_backend | bool }}"
     image: "{{ afterglow_backend_image_ref }}"
     network_mode: host
-    command: ["uvicorn", "app.main:app", "--host", "{{ afterglow_backend_listen_address }}", "--port", "{{ afterglow_backend_listen_port | string }}"]
+    command: ["uvicorn", "app.main:app", "--host", "{{ afterglow_backend_listen_address }}", "--port", "{{ afterglow_backend_listen_port | string }}", "--proxy-headers", "--forwarded-allow-ips", "{{ afterglow_backend_forwarded_allow_ips }}"]
     restart_policy: unless-stopped
     groups: ["0"]
     volumes: >-

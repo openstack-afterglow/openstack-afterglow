@@ -76,6 +76,9 @@ palimpsest_image_tag: "latest"
 # are required. Plugin-owned settings below define public ingress URLs, HAProxy
 # routing, container listening ports, and service-specific parameters.
 afterglow_public_endpoint_url: "https://cloud.dmslab.re.kr"
+# Uvicorn trusts loopback and loadbalancer inventory API IPs automatically.
+# For a different trusted ingress topology, list only its real peer IPs/CIDRs:
+# afterglow_backend_forwarded_allow_ips: "127.0.0.1,::1,192.0.2.10"
 # Route this hostname through Kolla's existing external VIP/TLS frontend.
 # API, /mcp (including OAuth), and discovery go to backend; consent stays frontend.
 afterglow_public_haproxy_enabled: true
