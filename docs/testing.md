@@ -6,6 +6,14 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## 1.30.12 HTTPS proxy scheme 검증 (2026-10-11)
+
+Kolla controller peer의 `X-Forwarded-Proto`가 Uvicorn 기본 loopback 신뢰에서 무시되는 원인을 수정했다. 초기 세 배포 경로에서 HTTPS6개가 실패한 뒤 bounded trust 교체로12개가 통과했다. 최종 Kolla·generated Kubernetes·setup Kubernetes·Helm을 실제 ASGI app에 연결하여 redirect16개와 인증 전환4개가 통과했다. 실제 signed JWT/session store와 subnet 정책에서 전환 전 proxy-IP token200 → 전환 후401, fresh client-IP token200, 비신뢰 peer의 위조401을 검사한다. Keystone·Redis는 hermetic fixtures이며 실제 운영 인증으로 승격하지 않는다.
+
+Canonical Dockerfile의 arm64·amd64 backend image에서 실제 Uvicorn HTTP GET을 실행했다. Trusted HTTPS307·direct HTTP307·untrusted forged header307의 scheme과 encoded query 보존을 확인했다. Lifespan을 끈 sandbox transport smoke이며 운영 readiness·인가·datastore qualification은 아니다. `setup.py` ConfigMap도 required env key와 inline trust를 같은 입력으로 생성한다.
+
+최종 `npm run test:target -- config`와 `npm run test:gate`가 독립 clone에서 통과했다: backendunit4,401, frontend334files/2,569+runner9, 소비자 contract174, 실제 disposable MariaDB/PostgreSQL/Redis functional35, Ruff check/format561files. Proxy20개는 config와 consumer contract target에 등록되어 전체 CI에서 실행된다. Existing Pydantic/FastAPI/websockets deprecation과 DocCodeBlock tabindex warning은 남아 있다. 불변 release·운영 rollout 증거는 해당 완료 receipt에 기록하며 로컬 proof와 혼합하지 않는다. Optional gbrain sync는 CLI 부재로 실행하지 않았고 공유 checkout이나 search guidance를 변경하지 않았다.
+
 ## dev 푸시 통합 검증 (2026-10-10)
 
 Checkpoint `20060ce6aab244a419a9582aa74f06517b133c36`와 fetched dev `9c55578585c2f8147ef06d57e1892cac80eb6093`를 독립 clone에서 통합하고 자격증명·외부 호출 없이 전체 qualification을 완료했다.

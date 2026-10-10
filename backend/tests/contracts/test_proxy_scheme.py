@@ -3,13 +3,16 @@
 import importlib.util
 import shutil
 import subprocess
+import time
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
 import uvicorn
 import yaml
 from jinja2 import Environment, StrictUndefined
+from starlette.requests import Request
 from uvicorn.main import main as uvicorn_cli
 
 from app.main import app
@@ -159,3 +162,72 @@ async def test_untrusted_peer_cannot_forge_https_or_proxy_identity(launch):
         )
     assert response.status_code == 307
     assert response.headers["location"] == "http://cloud.example.test/api/v1/admin/version"
+
+
+async def test_proxy_cutover_requires_reauthentication_without_weakening_binding(launch, monkeypatch):
+    from app.config import Settings
+    from app.services import jwt_service, session_store
+    from app.services.token_binding import get_origin
+    from tests.conftest import make_token_info
+
+    application, trusted, untrusted = launch
+    settings = Settings.model_construct(
+        secret_key="proxy-cutover-regression-key-at-least-32-bytes",
+        trusted_proxies="127.0.0.1/32,::1/128",
+        token_ip_binding_mode="subnet",
+    )
+    for target in ("app.config.get_settings", "app.api.deps.get_settings", "app.services.jwt_service.get_settings"):
+        monkeypatch.setattr(target, lambda: settings)
+    identity = make_token_info()
+    monkeypatch.setattr("app.api.deps._cached_validate", AsyncMock(return_value=identity))
+    monkeypatch.setattr("app.services.activity.record", AsyncMock())
+    public_client = "203.0.113.42"
+    headers = {"X-Forwarded-Proto": "https", "X-Forwarded-For": public_client}
+    origin_request = Request(
+        {
+            "type": "http",
+            "client": (trusted, 43210),
+            "headers": [(k.lower().encode(), v.encode()) for k, v in headers.items()],
+        }
+    )
+    old_ip, fingerprint = get_origin(origin_request)
+    assert old_ip == trusted
+
+    async def issue_bound_access(jti, origin_ip):
+        await session_store.store_session(
+            jti=jti,
+            keystone_token=identity["token"],
+            project_id=identity["project_id"],
+            user_id=identity["user_id"],
+            exp=int(time.time()) + 600,
+            origin_ip=origin_ip,
+            origin_fp=fingerprint,
+        )
+        token, _, _ = jwt_service.sign_access(
+            identity["user_id"], identity["username"], identity["project_id"], identity["project_name"], jti
+        )
+        return token
+
+    old_access = await issue_bound_access("proxy-cutover-old", old_ip)
+    previous = uvicorn.Config(app, forwarded_allow_ips="127.0.0.1", lifespan="off")
+    previous.load()
+    before = httpx.ASGITransport(app=previous.loaded_app, client=(trusted, 43210))
+    async with httpx.AsyncClient(transport=before, base_url="http://cloud.example.test") as client:
+        response = await client.get("/api/v1/auth/me", headers={**headers, "Authorization": f"Bearer {old_access}"})
+    assert response.status_code == 200
+
+    after = httpx.ASGITransport(app=application, client=(trusted, 43210))
+    fresh_access = await issue_bound_access("proxy-cutover-fresh", public_client)
+    async with httpx.AsyncClient(transport=after, base_url="http://cloud.example.test") as client:
+        rejected = await client.get("/api/v1/auth/me", headers={**headers, "Authorization": f"Bearer {old_access}"})
+        accepted = await client.get("/api/v1/auth/me", headers={**headers, "Authorization": f"Bearer {fresh_access}"})
+    assert rejected.status_code == 401
+    assert accepted.status_code == 200
+    assert accepted.json()["user_id"] == identity["user_id"]
+
+    spoofed = httpx.ASGITransport(app=application, client=(untrusted, 43210))
+    async with httpx.AsyncClient(transport=spoofed, base_url="http://cloud.example.test") as client:
+        rejected_spoof = await client.get(
+            "/api/v1/auth/me", headers={**headers, "Authorization": f"Bearer {fresh_access}"}
+        )
+    assert rejected_spoof.status_code == 401

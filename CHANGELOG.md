@@ -11,8 +11,9 @@
 
 ### Fixed
 - **HTTPS 요청의 HTTP 리다이렉트 방지** — Kolla Uvicorn이 controller-origin `X-Forwarded-Proto: https`를 무시해 `/api/v1/admin/version/` 등 slash 정규화307의 Location을 HTTP로 만들던 원인을 수정했다. Loopback과 실제 loadbalancer API IP만 신뢰하고 기존307·method/body/query·인증 경계를 유지한다.
-- Kubernetes 생성 ConfigMap과 Helm backend도 기존 `trusted_proxies`/`trustedProxies`를 Uvicorn `FORWARDED_ALLOW_IPS`에 전달한다. Ingress peer 범위는 운영자가 명시하며 기본 신뢰를 전체 네트워크로 확대하지 않는다.
-- 소비자 계약12개는 수정 전 HTTPS6개 실패·HTTP/위조6개 통과, 수정 후12개 통과했다. 실제 backend arm64·amd64 이미지의 Uvicorn HTTP에서 trusted HTTPS·direct HTTP·untrusted 위조와 query 보존을 확인했다. 로컬 probe는 lifespan을 끈 transport 검증이며 운영 startup·인증 acceptance와 구분한다.
+- Kubernetes 두 생성기(`generate_k8s.py`, `setup.py`)와 Helm backend도 기존 `trusted_proxies`/`trustedProxies`를 Uvicorn `FORWARDED_ALLOW_IPS`에 전달한다. Ingress peer 범위는 운영자가 명시하며 기본 신뢰를 전체 네트워크로 확대하지 않는다.
+- 초기 세 배포 경로의 소비자 계약12개는 수정 전 HTTPS6개 실패·HTTP/위조6개 통과했다. 최종 네 경로의 redirect16개와 인증 전환4개가 통과했다. 실제 backend arm64·amd64 이미지의 Uvicorn HTTP에서 trusted HTTPS·direct HTTP·untrusted 위조와 query 보존을 확인했다. 로컬 probe는 lifespan을 끈 transport 검증이며 운영 startup·인증 acceptance와 구분한다.
+- Uvicorn이 실제 client IP를 반영한 뒤 기존 proxy IP로 발급된 session은 subnet 바인딩에 따라 재로그인이 필요할 수 있다. 새로 바인딩된 session의 정상 인증과 비신뢰 peer의 헤더 위조 거부를 검증했으며 token IP binding을 완화하지 않았다.
 
 ## [1.30.11] - 2026-10-10
 

@@ -563,6 +563,7 @@ def render_config_toml(cfg: dict, for_k8s: bool = False) -> str:
     lines.append(f'backend_port = {app["backend_port"]}')
     lines.append(f'frontend_port = {app["frontend_port"]}')
     lines.append(secret_key_line)
+    lines.append(f'trusted_proxies = {_toml_str(app.get("trusted_proxies", "127.0.0.1/32,::1/128"))}')
     lines.append("")
     lines.append("# 사이트 표시 이름 및 설명")
     lines.append(f'site_name = {_toml_str(app["site_name"])}')

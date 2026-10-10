@@ -683,6 +683,7 @@ openstacksdk `Proxy.request`의 raw `get/put/delete` 기본값은 `raise_exc=Fal
 
 - `backend`는 `uvicorn app.main:app`으로 내부 `8000`에서 API와 in-process background snapshot/trash/backup/MCP cleanup loop를 실행한다. `/api/v1/health`는 즉시 `{"status":"ok"}`를 반환하는 process liveness이고, 상세 health는 인증 및 Redis 상태를 추가로 본다.
 - TLS 종료 뒤 절대 URL·slash307의 scheme은 Uvicorn의 검증된 proxy headers가 소유한다. Kolla는 `--proxy-headers`와 `afterglow_backend_forwarded_allow_ips`를 명시하며 기본 신뢰는 loopback과 native `loadbalancer` inventory의 `kolla_address('api')` 주소뿐이다. Host networking에서 `*`를 기본값으로 쓰지 않는다. Kubernetes 생성기는 기존 `[app].trusted_proxies`를 ConfigMap `FORWARDED_ALLOW_IPS`로, Helm은 `app.trustedProxies`를 같은 backend 환경 변수로 연결한다. Ingress 실제 peer IP/CIDR은 운영자가 지정하며 미설정 기본값은 loopback 전용이다. 공개 HTTPS 요청은 HTTPS redirect를 유지하고 direct HTTP·비신뢰 peer는 HTTP를 유지한다. 라우트·307 method/body/query·인가·DB schema·frontend ORIGIN·OAuth의 명시 공개 URL에는 구조 영향이 없다.
+- `setup.py`와 `generate_k8s.py`는 inline app proxy 신뢰와 backend 환경 변수를 함께 생성한다. Uvicorn의 proxy 신뢰 변경은 `X-Forwarded-For`의 client IP도 반영한다. 기존 프록시 IP로 바인딩된 session은 subnet 정책에 따라 재로그인이 필요할 수 있으며 실제 client IP로 새로 바인딩된 session은 정상 인증한다. 비신뢰 peer의 헤더는 client IP와 HTTPS를 위조할 수 없고 IP 바인딩 검사는 완화하지 않는다.
 - `frontend`는 빌드된 SvelteKit Node 서버를 `PORT=3080`에서 제공한다. 로컬 Compose는 `3080:3080`과 `PUBLIC_API_BASE=http://localhost:8000`을 사용한다. frontend는 API gateway가 아니라 UI/auth shell이다. 공개 `/health`는 로그인 cookie 없이 JSON liveness를 반환하며 Compose는 redirect를 거부하고 JSON status를 검증한다.
 - Compose는 독립적인 세 manifest를 명시적 `-f`로 선택한다. `docker-compose.yml`은 published frontend/backend 두 서비스만 정의하며 DB/cache는 외부 설정이다. `docker-compose.dev.yml`은 Afterglow와 독립 Drover·Waygate·Lumen·Palimpsest API/worker 및 local datastores/migrations를 source-build한다. `docker-compose.prod.yml`은 GHCR image pull-only이고, HAProxy 3.2 TLS ingress/Docker-DNS round-robin과 private persistent Redis를 기본 제공한다. 앱 host port는 공개하지 않고 sibling 통신은 기본적으로 인증된 Keystone catalog를 사용한다. 운영 인증서는 read-only operator PEM이며 self-signed fallback은 없다. 선택 sibling image/API/worker/migration은 개별 profiles에 남고 callback/control-plane URL은 공개 catalog endpoint를 지정한다.
 - 관리자 볼륨 RBD 검사는 opt-in이다. Backend image에는 `ceph-common`이 있고, dev/prod Compose·Kolla·Kubernetes는 operator-provided `ceph.conf`와 dedicated CephX keyring을 `/etc/ceph`에 read-only mount한다. 두 파일 경로·cluster FSID·backend→pool map이 모두 있어야 활성화하며, 기존 Cinder-only 배포는 기능이 비활성인 채 `backend_unverified`를 반환한다. `client.admin`을 사용하지 않고 pool/object-prefix가 제한된 identity를 배포한다.
@@ -1036,9 +1037,9 @@ Historical fetched-dev marker provenance (not a review of this merge): `source_s
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "9596ecc9f2cffd9d3575e3ba989049edb5ebb19671317d0e3c72ebfa3c96ef28",
-  "reviewed_at": "2026-10-10T16:23:00Z",
-  "summary": "HTTPS proxy scheme repair: Kolla bounded loadbalancer trust, Kubernetes and setup ConfigMap FORWARDED_ALLOW_IPS sync, Helm wiring, and complete four-provider contract tests; documented reauthentication expectation under token_ip_binding_mode. Gate and contract verified."
+  "source_sha256": "696b9e29e887e67d72d34e8ca19d1c227265197d78eb8ed61c9e8cc0ae899e25",
+  "reviewed_at": "2026-10-10T16:34:05Z",
+  "summary": "Final HTTPS proxy cutover: two Kubernetes producers preserve configured inline/transport trust, four launch providers have redirect and authenticated reauthentication/spoof contracts, full config and project gates passed. Routes, session binding policy and datastore schema remain unchanged."
 }
 ```
 <!-- architecture-review:end -->
