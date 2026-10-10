@@ -298,6 +298,10 @@ Waygate의 `waygate-inventory_reader`는 비밀 없는 metadata, `waygate-connec
 
 `PUT /projects/{project_id}/members/{user_id}/roles`는 `assignable-roles`가 반환한 정확한 ID 목록을 받습니다. 관리자에게 허용되지 않는 소유자/관리자 전환, 시스템 전용 역할, native `admin`·`manager`로 이어지는 역할은 거부합니다. 기존 편집 불가 직접 역할과 그룹·도메인 상속은 유지합니다. `DELETE /members/{user_id}`도 같은 정책으로 관리 가능한 직접 역할만 제거하며 마지막 유효 소유자를 제거하지 않습니다.
 
+멤버 응답은 `direct_role_ids`(현재 직접 할당), `effective_role_ids`(모든 유효 할당의 현재 ID 그래프 확장), `external_role_ids`(group/domain inherited 할당만 같은 그래프로 확장)를 분리합니다. `external_role_ids`는 merged effective 목록에서 직접 부모의 descendant를 빼서 추정하지 않습니다. 같은 하위 역할이 직접 부모와 그룹·도메인 양쪽에서 부여된 경우에도 부모 제거 후 외부 상속은 남아 checked/read-only로 표시됩니다. 이 provenance projection은 조회 응답만 보완하며 실제 Keystone 할당·인가·DB schema를 변경하지 않습니다.
+
+`assignable-roles`의 각 role은 `implied_role_ids`(직접 연결)와 `inherited_role_ids`(검증된 현재 ID 그래프의 전체 descendant)를 제공합니다. 브라우저는 직접 선택한 부모의 descendant를 자동으로 체크·비활성화하고 선택을 해제하면 다시 계산합니다. 공유 부모의 상속, 기존 명시적 direct child, 편집 범위 밖의 group/domain inheritance는 유지합니다. 이름·ID·설명의 대소문자 무관 검색은 숨겨진 선택을 지우지 않으며 저장 요청에는 direct ID만 포함합니다. 이 UI projection은 새로운 Keystone grant를 만들거나 기존 direct child를 자동 삭제하지 않습니다.
+
 기존 `/managers/{user_id}` 승격·해제 경로는 제거했습니다. DB manager 행은 조회 권한이 아닙니다. 시스템 관리자의 `POST /projects/{project_id}/members/migrate-legacy-managers`만 명시한 소유자와 기존 대상자를 안전한 역할 계층으로 이전하고 DB 기록을 정리합니다. 호출 전에 현재 역할 카탈로그·할당을 검토하고, 실패 시 결과를 확인한 뒤 재실행합니다. 이 변경은 운영 데이터나 역할을 자동 수정하지 않습니다.
 
 주요 실패: `403` 권한·안전 경계 위반, `409` 마지막 소유자/동시 변경 충돌, `503` Keystone 카탈로그·할당 검증 불가. 오류를 오래된 역할이나 DB manager로 대체하지 않습니다.

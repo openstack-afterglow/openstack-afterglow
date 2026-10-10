@@ -7,6 +7,13 @@
 # GPU 디바이스 맵은 필요할 때만 `config.gpu.toml`로 분리할 수 있다.
 # 알파벳순으로 적용되어 뒤 파일이 앞을 이긴다. dict는 재귀 병합, 리스트는 덮어쓰기.
 
+[DEFAULT]
+# 애플리케이션 진단 로그만 DEBUG로 활성화합니다. 생략 시 false이며 DEBUG 환경변수가 우선합니다.
+# TOML boolean은 소문자 true/false만 허용합니다. True/False는 오류이며 자동 수정하지 않습니다.
+# [logging].log_level은 root/dependency 로그 제어로 유지됩니다. HTML traceback, wire dump,
+# 인증 우회 또는 시크릿 출력은 활성화하지 않습니다.
+debug = false
+
 [openstack]
 auth_url = "http://keystone.example.com:5000/v3"
 project_name = "admin"

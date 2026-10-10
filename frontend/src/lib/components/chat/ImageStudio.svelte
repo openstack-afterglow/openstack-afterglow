@@ -435,8 +435,7 @@
 </script>
 
 <PageShell max="7xl">
-	<LumenPermissionNotice leaf="lumen-images_user" />
-	<LumenPermissionNotice leaf="lumen-assets_editor" />
+	<LumenPermissionNotice leaves={['lumen-images_user', 'lumen-assets_editor']} />
 	<div class="studio">
 		<header class="studio-header">
 			<svg class="studio-mark" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5" /><circle cx="15.5" cy="9" r="1.75" /><path d="m3.5 17 5-5.5 4 4 2.5-2.5 5.5 5.5" /></svg>

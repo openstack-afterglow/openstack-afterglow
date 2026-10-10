@@ -7,6 +7,19 @@
 
 ## [Unreleased]
 
+## [1.30.10] - 2026-10-10
+
+### Fixed
+- **서비스 403 피드백** — exact `/api/v1/admin` 거부에만 platform-admin UI demotion을 적용한다. Lumen chat/admin 등 downstream 403은 유효한 플랫폼 인증·draft를 보존하고 해당 서비스 권한 거부로 표시한다. Grouped Lumen required leaves는 loading/error notice를 한 번만 표시하고 확인된 개별 leaf 거부는 유지하며 기존401 recovery·project generation fence는 변경하지 않는다.
+- **프로젝트 역할 편집** — 현재 server-validated role-ID transitive closure로 선택 부모의 descendant를 자동 체크·비활성화한다. 기존 멤버 응답의 `external_role_ids`는 group/domain inherited assignment만 독립적으로 확장하므로 direct-parent closure와 겹쳐도 부모 제거 뒤 checked/read-only로 보존한다. 공유 부모·명시적 direct child를 보존하고 direct IDs만 저장한다. 네 언어의 이름·ID·설명 검색과 accessible empty-result를 추가하고 숨긴 선택·owner/admin·group-only·busy 제한을 유지한다. 새 grant·endpoint·DB schema·name/grade 추론은 없다.
+
+### Added
+- **안전한 DEFAULT debug** — 유효한 lowercase TOML `[DEFAULT] debug = true`와 우선하는 `DEBUG` 환경 override(false 포함)로 application-only DEBUG를 켠다. Registered route·고정 outcome·method/status/duration·source와 최대12개 exception function/line frame을 기록하며 message/locals/source/chain·opaque object·raw header/body·credential은 공개하지 않는다. Stream/file 모두 recursive filtering, secret assignment remainder redaction 및 explicitly DEBUG인 SDK/HTTP/SQL/access descendant의 WARNING clamp를 적용한다. FastAPI debug response는 활성화하지 않는다.
+- Example/setup/Kubernetes/Helm/Kolla debug boolean 계약을 동기화하고 Helm이 변환된 `[logging]` directory/level/max_bytes를 누락하지 않도록 한다. Logging destination/rotation과 Notion worker의 별도 초기화는 보존한다. 예외 문자열을 재고정하던 incidental assertion은 제거하고 실제 cache/availability 경계는 유지한다.
+
+**Qualification boundary:** Owner-approved release scope is this Afterglow patch and companion Lumen0.6.7 direct-system repair; unrelated shared merge/UI/IAM/migration changes remain untouched. Canonical Kolla inventory is `/etc/kolla/multinode`. The existing1.30.9 immutable images and real production personal/OAuth SDK Nova/Cinder reads, wrong-client/no-side-effect and compromised refresh-family401 receipts are historical MCP proof, not publication or rollout proof of1.30.10/0.6.7. Final gate/artifact/deployed acceptance receipts are recorded separately in the changes' checklists.
+
+
 ## [1.30.9] - 2026-10-09
 
 ### Fixed

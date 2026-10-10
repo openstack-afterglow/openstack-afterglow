@@ -112,6 +112,7 @@ def _s(key: str) -> str:
 def convert(cfg: dict, include_secrets: bool) -> dict:
     """afterglow.conf dict → Helm values dict."""
     out: dict = {}
+    out["debug"] = cfg.get("DEFAULT", {}).get("debug", False)
 
     os_cfg  = cfg.get("openstack", {})
     app     = cfg.get("app", {})

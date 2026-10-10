@@ -25,6 +25,13 @@ _SENSITIVE_EXACT: frozenset[str] = frozenset(
         "kubeconfig",
         "kube_config",
         "authorization",
+        "cookie",
+        "set_cookie",
+        "headers",
+        "body",
+        "request_body",
+        "credential",
+        "credentials",
     }
 )
 
@@ -36,11 +43,48 @@ _SENSITIVE_SUBSTR: tuple[str, ...] = (
     "token",
     "private_key",
     "kubeconfig",
+    "credential",
+    "headers",
+    "cookie",
+    "body",
+    "authorization",
+    "api_key",
+    "cephx_key",
+    "kube_config",
 )
 
 # JWT/Bearer 패턴
-_BEARER_RE = re.compile(r"((?:Bearer|Token)\s+)([A-Za-z0-9\-_\.]{8,})", re.IGNORECASE)
+_BEARER_RE = re.compile(r"((?:Bearer|Token)\s+)([A-Za-z0-9_./+=-]+)", re.IGNORECASE)
 _JWT_RE = re.compile(r"(eyJ[A-Za-z0-9\-_]{4,}\.eyJ[A-Za-z0-9\-_]{4,})\.[A-Za-z0-9\-_]+")
+_BASIC_RE = re.compile(r"(Basic\s+)[A-Za-z0-9+/=]+", re.IGNORECASE)
+# Free-text assignments have no trustworthy value boundary (spaces, nested JSON,
+# escaped quotes and multiline bodies are all possible). Drop the remaining text;
+# callers can retain safe diagnostics in structured extra fields instead.
+_SECRET_KEY_PATTERN = "|".join(re.escape(key).replace("_", "[_-]") for key in sorted(_SENSITIVE_EXACT))
+_SECRET_SUBSTR_PATTERN = "|".join(re.escape(key).replace("_", "[_-]") for key in _SENSITIVE_SUBSTR)
+_SECRET_ASSIGNMENT_RE = re.compile(
+    rf"\b((?:{_SECRET_KEY_PATTERN})|[\w-]*(?:{_SECRET_SUBSTR_PATTERN})[\w-]*)"
+    r"([\"']?\s*[=:]\s*).*",
+    re.IGNORECASE | re.DOTALL,
+)
+_URL_USERINFO_RE = re.compile(r"(\b[a-z][a-z0-9+.-]*://)[^\s/]+@", re.IGNORECASE)
+_PRIVATE_KEY_RE = re.compile(r"-----BEGIN [^-]*PRIVATE KEY-----.*?-----END [^-]*PRIVATE KEY-----", re.DOTALL)
+
+# Ancestor logger levels do not constrain explicitly configured descendants.
+# Clamp these namespaces at both root output handlers as well as logger setup.
+WARNING_LOG_NAMESPACES = (
+    "openstack",
+    "urllib3",
+    "keystoneauth1",
+    "httpx",
+    "httpcore",
+    "requests",
+    "urllib",
+    "botocore",
+    "boto3",
+    "sqlalchemy.engine",
+    "uvicorn.access",
+)
 
 
 def _normalize_key(key: str) -> str:
@@ -53,36 +97,45 @@ def is_sensitive(key: str) -> bool:
     return k in _SENSITIVE_EXACT or any(s in k for s in _SENSITIVE_SUBSTR)
 
 
-def mask_value(val: object) -> str:
-    """값을 마스킹. 4자 초과면 앞 4자 + '***', 아니면 전체 '***'."""
-    s = str(val) if val is not None else ""
-    if not s:
-        return "***"
-    return (s[:4] + "***") if len(s) > 4 else "***"
-
-
 def mask_dict(d: dict, *, _depth: int = 3) -> dict:
-    """딕셔너리에서 민감 필드를 재귀적으로 마스킹한 복사본 반환."""
+    """Return recursively sanitized metadata, never unexamined deep values."""
     if _depth <= 0:
-        return d
-    result: dict = {}
-    for k, v in d.items():
-        if is_sensitive(str(k)):
-            result[k] = mask_value(v) if v is not None else v
-        elif isinstance(v, dict):
-            result[k] = mask_dict(v, _depth=_depth - 1)
-        elif isinstance(v, list):
-            result[k] = [mask_dict(i, _depth=_depth - 1) if isinstance(i, dict) else i for i in v]
+        return {"redacted": "***"}
+    sanitized = {}
+    for key, value in dict.items(d):
+        if type(key) is str:
+            sanitized[mask_str(key)] = "***" if is_sensitive(key) else sanitize_log_value(value, _depth=_depth - 1)
+        elif key is None or type(key) in (bool, int, float):
+            sanitized[str(key)] = sanitize_log_value(value, _depth=_depth - 1)
         else:
-            result[k] = v
-    return result
+            # Dictionary keys can themselves be opaque credential objects.
+            sanitized["<redacted>"] = "***"
+    return sanitized
+
+
+def sanitize_log_value(value: object, *, _depth: int = 3) -> object:
+    """Bound recursion and never stringify opaque objects (requests, exceptions)."""
+    if type(value) is str:
+        return mask_str(value)
+    if value is None or type(value) in (bool, int, float):
+        return value
+    if _depth <= 0:
+        return "***"
+    if type(value) is dict:
+        return mask_dict(value, _depth=_depth)
+    if type(value) in (list, tuple):
+        return [sanitize_log_value(item, _depth=_depth - 1) for item in value]
+    return "***"
 
 
 def mask_str(msg: str) -> str:
-    """문자열에서 JWT/Bearer 토큰 패턴을 마스킹."""
-    msg = _BEARER_RE.sub(lambda m: m.group(1) + m.group(2)[:4] + "***", msg)
-    msg = _JWT_RE.sub(lambda m: m.group(1)[:12] + "***", msg)
-    return msg
+    """Remove recognizable credentials from text after interpolation too."""
+    msg = _PRIVATE_KEY_RE.sub("***", msg)
+    msg = _BEARER_RE.sub(lambda m: m.group(1) + "***", msg)
+    msg = _BASIC_RE.sub(lambda m: m.group(1) + "***", msg)
+    msg = _JWT_RE.sub("***", msg)
+    msg = _URL_USERINFO_RE.sub(lambda m: m.group(1) + "***@", msg)
+    return _SECRET_ASSIGNMENT_RE.sub(lambda m: m.group(1) + m.group(2) + "***", msg)
 
 
 class SensitiveDataFilter(logging.Filter):
@@ -95,29 +148,38 @@ class SensitiveDataFilter(logging.Filter):
     _SKIP_ATTRS: frozenset[str] = frozenset(logging.LogRecord("", 0, "", 0, "", (), None).__dict__)
 
     def filter(self, record: logging.LogRecord) -> bool:
-        # 메시지 마스킹
-        if isinstance(record.msg, str):
-            record.msg = mask_str(record.msg)
-
-        # args 마스킹 (% 포매팅 인자)
+        if record.levelno < logging.WARNING and any(
+            record.name == namespace or record.name.startswith(namespace + ".") for namespace in WARNING_LOG_NAMESPACES
+        ):
+            return False
+        if type(record.msg) is not str:
+            record.msg = sanitize_log_value(record.msg)
         if record.args:
             if isinstance(record.args, dict):
                 record.args = mask_dict(record.args)
             elif isinstance(record.args, tuple):
                 record.args = tuple(
-                    mask_value(a) if isinstance(a, str) and len(a) > 20 and _looks_like_token(a) else a
+                    "***"
+                    if isinstance(a, BaseException) or (type(a) is str and _looks_like_token(a))
+                    else sanitize_log_value(a)
                     for a in record.args
                 )
-
-        # extra 필드 마스킹
+        # Mask the rendered message, not just the format string: split credential
+        # assignments and Bearer placeholders otherwise evade the filter.
+        record.msg = mask_str(record.getMessage())
+        record.args = ()
         for attr in list(vars(record)):
-            if attr in self._SKIP_ATTRS:
-                continue
-            if is_sensitive(attr):
-                val = getattr(record, attr)
-                if val is not None:
-                    setattr(record, attr, mask_value(val))
-
+            if type(attr) is not str:
+                record.__dict__.pop(attr)
+                record.__dict__["<redacted>"] = "***"
+            elif attr not in self._SKIP_ATTRS:
+                if mask_str(attr) != attr:
+                    record.__dict__.pop(attr)
+                    record.__dict__["<redacted>"] = "***"
+                else:
+                    setattr(record, attr, "***" if is_sensitive(attr) else sanitize_log_value(getattr(record, attr)))
+        record.exc_text = None
+        record.stack_info = None
         return True
 
 

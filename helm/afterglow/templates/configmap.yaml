@@ -15,6 +15,14 @@ data:
     # Afterglow 통합 설정 파일
     # 비밀 값은 secret.yaml의 환경변수로 주입됩니다.
 
+    [DEFAULT]
+    debug = {{ .Values.debug | default false }}
+
+    [logging]
+    log_directory = {{ .Values.logging.logDirectory | default "logs" | quote }}
+    log_level = {{ .Values.logging.logLevel | default "INFO" | quote }}
+    max_bytes = {{ .Values.logging.maxBytes | default 52428800 }}
+
     [openstack]
     auth_url = {{ .Values.openstack.authUrl | quote }}
     project_name = {{ .Values.openstack.projectName | quote }}

@@ -1,4 +1,4 @@
-import { grantLumen } from './lumenPermissionFixture';
+import { grantLumen, pendingLumen } from './lumenPermissionFixture';
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -26,6 +26,20 @@ beforeEach(() => {
 });
 
 describe('ChatInput native Search', () => {
+	it('announces permission loading once and replaces it with one settled error without enabling send', async () => {
+		pendingLumen();
+		const view = render(ChatInput, { value: 'Keep this draft', onSend: vi.fn(), onStop: vi.fn() });
+		expect(view.getAllByRole('status')).toHaveLength(1);
+		expect((view.getByRole('button', { name: '전송' }) as HTMLButtonElement).disabled).toBe(true);
+		pendingLumen('Permission service unavailable');
+		await waitFor(() => expect(view.getAllByRole('alert')).toHaveLength(1));
+		expect(view.queryByRole('status')).toBeNull();
+		expect((view.getByRole('textbox') as HTMLTextAreaElement).value).toBe('Keep this draft');
+		expect((view.getByRole('button', { name: '전송' }) as HTMLButtonElement).disabled).toBe(true);
+		grantLumen('lumen-chat_user');
+		await waitFor(() => expect(view.queryByRole('alert')).toBeNull());
+		expect((view.getByRole('button', { name: '전송' }) as HTMLButtonElement).disabled).toBe(false);
+	});
 	it('blocks persistent image uploads and tool selection for chat-only grants', async () => {
 		grantLumen('lumen-chat_user');
 		const view = render(ChatInput, { value: '', onSend: vi.fn(), onStop: vi.fn(), modelCaps: { vision: true, tool_call: true }, availableTools: [{ id: 1, name: 'Privileged tool' }] });

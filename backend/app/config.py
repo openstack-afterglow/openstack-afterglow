@@ -1,6 +1,8 @@
 """Afterglow 설정 모듈.
 
 우선순위: 환경변수 > afterglow.conf (프로젝트 루트) > 기본값
+[DEFAULT] debug는 기본 false이며 DEBUG 환경변수가 우선한다.
+TOML 불리언은 소문자 true/false만 허용되며, 환경변수가 있어도 잘못된 TOML은 실패한다.
 
 기본 브랜딩: 로고는 /afterglow-logo.svg, favicon은 /favicon.svg.
 커스텀 설정과 DB 로고 업로드가 우선하며, 업로드 초기화 시 설정된 로고로 돌아간다.
@@ -89,6 +91,9 @@ def _load_toml() -> dict:
         return {}
 
     flat: dict = {}
+    defaults = data.get("DEFAULT", {})
+    flat["debug"] = defaults.get("debug", False)
+
     ost = data.get("openstack", {})
     flat["os_auth_url"] = ost.get("auth_url", "")
     flat["os_username"] = ost.get("username", "")
@@ -380,6 +385,8 @@ class OpenStackNotificationBinding(BaseModel):
 
 
 class Settings(BaseSettings):
+    debug: bool = False
+
     # OpenStack 인증
     os_auth_url: str = ""
     os_username: str = ""

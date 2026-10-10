@@ -1,6 +1,10 @@
 # Kolla base Afterglow configuration layer. Applied before the generated
 # operator and final Kolla layers; do not edit this generated file.
 
+# Application-only diagnostics; the operator layer may override this default.
+[DEFAULT]
+debug = false
+
 [openstack]
 auth_url = "{{ afterglow_keystone_auth_url }}"
 project_name = "{{ afterglow_service_project_name }}"

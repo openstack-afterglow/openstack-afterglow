@@ -6,6 +6,23 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## 1.30.10 권한 피드백·역할 검색·안전한 debug 검증 (2026-10-10)
+
+Published1.30.9 `f48d6fe2` 기반의 격리 `dev`에서 승인된 source만 통합했다. 공유 checkout/merge conflicts·별도 IAM/migration 작업은 수정하지 않았다. 자체 frontend dependencies/backend venv의 final source digest `27a5d0e545bd8f2925694071819d2e414ab7e0ac65a7685513bebef7aecc4881`에 대해 `npm run test:gate`가 통과했다: backend unit4,284, frontend333files/2,523+runner9, consumer contract154, 실제 disposable datastore functional35, Ruff check 및 format557files. Type/locale/build는 별도 qualification이며 기존 deprecation warning을 성공 증거로 숨기지 않는다.
+
+Exact dual-output log/config/Helm regressions는 실제 settings loader와 generated YAML/TOML·Helm consumer를 사용한다. Explicit DEBUG descendant의 SDK/HTTP/SQL/access clamp와 unrelated logger 경계, opaque keys/builtin subclasses, nested/escaped/multiline secret assignment, bounded exception frames를 실제 stream/file JSON에서 검사한다. SQLAlchemy ancestor의 incidental 기본 level에 의존하던 fixture는 unrelated logger를 명시적으로 DEBUG로 설정해 경계를 격리했다. Failed-shape cache 테스트는 cache/availability/단문 record 계약을 유지하고 credential-safe filtering과 충돌하는 upstream exception wording assertion만 삭제했다.
+
+Canonical local Compose의 backend/frontend/Lumen API/worker만 own source로 build·`--no-deps --no-build --pull never --wait` 재적용했다. 19개 container baseline과 비교해 나머지15개 ID/image/start·모든 mounts/volumes·credential environment를 보존했고 유일한 environment 변화는 승인한 backend `DEBUG=true`다. 실제 running API의 main/config/log·Lumen auth bytes가 해당 source SHA와 같으며 versions1.30.10/0.6.7이다. 실제 image process에서 stream/file 두 경로의 source·exception 구조, sentinel secret 부재, wire WARNING-only와 `FastAPI.debug=false`를 확인했다. Private/runtime 값은 receipt에 기록하지 않는다.
+
+실제 유지된 local Keystone browser session에서 identity·chat conversations·chat/admin providers는200이고 dashboard Drover stats는200/available=true였다. 현재 server role-ID catalog를 쓰는 실제 멤버 modal에서 Lumen admin 선택 시15 descendants checked/disabled, parent 제거 시 재계산, case-insensitive name 검색과 accessible no-results, cancel-only/no grant mutation을 확인했다. 390/767/768/1023/1024/1440px에서 modal containment·page overflow0과 light/dark screenshots를 확인했다. Fixture의 transitive/shared parents·explicit direct child·external inheritance·busy/nonowner·hidden selection/save boundaries는 exact behavioral tests로 분리한다. 이는 새 운영 rollout이나 유료 provider 실행 증거가 아니다.
+
+Native headless Chromium은 실제 유지된 local identity와 compiled1.30.10 frontend에서 provider GET만403 합성 응답으로 바꿨다. 실제 조회실패403 feedback을 렌더링하고 같은 token·platform-admin flag·`/admin/chat`을 유지했다. 실제 Keystone/backend와 UI response fixture의 경계를 구분하며 provider mutation은 없다. Access-only 복제의 만료/refresh-cookie 부재401은 service403과 분리하고 통과 증거로 세지 않았다. 허용 localhost/127.0.0.1 origin의 OPTIONS200과 미허용 origin403/no allow-origin은 별도 CORS proof이며 allowlist를 완화하지 않았다. Native role modal은 선택한 explicit leaf를 WAYGATE 검색으로 숨긴 뒤 LUMEN 검색에 다시 선택된 상태로 복원하고 취소했다.
+
+Native-authority security review는 실제 source에 대해 no findings로 완료했다. 두 general reviewer job은 실행 실패하여 완료 review로 세지 않으며 parent가 scoped inline review를 수행했다. Optional gbrain sync는 CLI/config 부재로 차단되어 context guidance를 변경하지 않았다.
+
+Production1.30.9 MCP는 별도 실제 SDK1.28.1/TLS/no-redirect consumer로 personal read key와 browser OAuth 모두 cold capabilities/overview·28 tools·schema-validated Nova/Cinder list를 통과했다. Wrong-client refresh400 후 기존 bearer200, 정상 rotation200/new bearer200, consumed refresh replay400 후 old/new bearer401과 verification OAuth grant revoked를 확인했다. 기존 personal keys5개는 유지했다. Native OMP current-session mounting은 project registration만 완료했고 `/mcp reload`가 아직 필요하므로 이 SDK proof를 OMP-mounted invocation이라고 기록하지 않는다. Final1.30.10/0.6.7 immutable publication·canonical multinode production receipt는 OpenSpec release checklist에서 별도로 확정한다.
+
+
 ## 원칙 및 4계층 테스트 계약
 
 Afterglow 테스트 체계는 4개의 명확한 레이어 계약으로 구성됩니다.

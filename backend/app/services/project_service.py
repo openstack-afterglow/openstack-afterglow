@@ -524,10 +524,15 @@ async def _member(ks, user_id, catalog, effective, direct):
     user = await _provider_call(ks.users.get, user_id)
     groups = set()
     inherited = False
+    external = []
     for row in effective:
         if _principal(row, "user") == user_id:
-            groups.update(_group_ids(row))
-            inherited = inherited or _inherited_assignment(row)
+            row_groups = _group_ids(row)
+            row_inherited = _inherited_assignment(row)
+            groups.update(row_groups)
+            inherited = inherited or row_inherited
+            if row_groups or row_inherited:
+                external.append(row)
     group_names = []
     for gid in sorted(groups):
         group = await _provider_call(ks.groups.get, gid)
@@ -550,6 +555,7 @@ async def _member(ks, user_id, catalog, effective, direct):
         **access,
         "direct_role_ids": sorted(direct_ids),
         "effective_role_ids": sorted(effective_ids),
+        "external_role_ids": sorted(_expanded_role_ids(external, catalog, user_id)),
     }
     if group_names:
         result["group_name"] = ", ".join(group_names)

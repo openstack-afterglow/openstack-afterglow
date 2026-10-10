@@ -432,6 +432,11 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
         "",
     ]
 
+    # [DEFAULT]
+    lines.append("[DEFAULT]")
+    lines.append(f"debug = {_toml_bool(cfg.get('DEFAULT', {}).get('debug', False))}")
+    lines.append("")
+
     # [openstack]
     lines.append("[openstack]")
     lines.append(f"auth_url = {_toml_str(os_cfg.get('auth_url', ''))}")

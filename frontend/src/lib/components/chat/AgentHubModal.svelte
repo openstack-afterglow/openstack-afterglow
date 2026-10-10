@@ -89,7 +89,7 @@
 		</div>
 
 		<div class="body">
-			<LumenPermissionNotice leaf="lumen-agents_editor" />
+			<LumenPermissionNotice leaves={['lumen-agents_editor']} />
 			{#if loading}
 				<p class="muted">{t('agentHub.loading')}</p>
 			{:else if agents.length === 0}

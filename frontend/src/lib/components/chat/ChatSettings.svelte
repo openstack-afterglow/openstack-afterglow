@@ -289,7 +289,7 @@
 						{/if}
 						<div class="divider"></div>
 						<h4 class="memory-manage-title">{t('settings.memory.manageTitle')}</h4>
-						<LumenPermissionNotice leaf="lumen-history_editor" />
+						<LumenPermissionNotice leaves={['lumen-history_editor']} />
 						<p class="sec-desc">{t('settings.memory.manageDescription')}</p>
 						<form
 							class="composer"

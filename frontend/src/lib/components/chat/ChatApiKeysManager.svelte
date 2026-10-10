@@ -387,8 +387,7 @@ claude` : '');
 </script>
 
 <section>
-	<LumenPermissionNotice leaf="lumen-keys_editor" />
-	<LumenPermissionNotice leaf="lumen-resources_admin" />
+	<LumenPermissionNotice leaves={['lumen-keys_editor', 'lumen-resources_admin']} />
 	<h3 class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">{t('apiKeys.title')}</h3>
 	<p class="mb-2 text-xs text-[var(--color-ink-3)]">
 		{t('apiKeys.description')}

@@ -191,6 +191,37 @@ async def test_mixed_group_and_direct_membership_is_accurate(membership):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("origin", ["group", "inherited"])
+async def test_member_http_preserves_external_grants_overlapping_direct_parent(membership, origin):
+    membership.direct.append(assignment("member", "lumen_user"))
+    if origin == "group":
+        membership.groups["team"] = ["member"]
+        membership.direct.append(assignment(None, "lumen_reader", group="team"))
+    else:
+        membership.inherited.append(assignment("member", "lumen_reader", inherited=True))
+    app = FastAPI()
+    app.include_router(router, prefix="/projects")
+    app.dependency_overrides[get_token_info] = lambda: token()
+    expected = sorted(rid(name) for name in ["lumen_reader", "lumen-inventory_reader", "lumen-history_reader"])
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(f"/projects/{PROJECT}/members")
+        assert response.status_code == 200
+        mixed = next(row for row in response.json()["items"] if row["user_id"] == "member")
+        assert mixed["external_role_ids"] == expected
+        assert set(expected) <= set(mixed["effective_role_ids"])
+        assert set(mixed["direct_role_ids"]) == {rid("project_member"), rid("lumen_user")}
+        updated = await client.put(
+            f"/projects/{PROJECT}/members/member/roles", json={"role_ids": [rid("project_member")]}
+        )
+        assert updated.status_code == 200
+        member = updated.json()
+        assert member["direct_role_ids"] == [rid("project_member")]
+        assert member["external_role_ids"] == expected
+        assert set(expected) <= set(member["effective_role_ids"])
+        assert rid("lumen_user") not in member["effective_role_ids"]
+
+
+@pytest.mark.asyncio
 async def test_direct_replacement_preserves_group_and_unrelated_native_grants(membership):
     membership.groups["team"] = ["member"]
     membership.direct.extend(

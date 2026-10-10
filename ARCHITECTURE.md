@@ -4,7 +4,7 @@
 
 Afterglow는 OpenStack 프로젝트를 관리하는 대시보드이자, 독립 배포된 Drover·Lumen·Waygate·Palimpsest 서비스로 가는 인증된 BFF(gateway)이다. 브라우저 UI는 SvelteKit이 제공하지만 OpenStack 자원 생성과 권한 검사는 FastAPI 백엔드가 소유한다. 저장소 URL은 <https://github.com/openstack-afterglow/openstack-afterglow>이다.
 
-이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend 및 Cloud Shell 모두 `1.30.6`이며, backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`·Vite `8.2.0`을 manifest에 고정한다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
+이 문서는 이 저장소의 `dev` 브랜치와 작업 트리에서 검토한 구현을 설명한다. 애플리케이션 버전은 root/backend/frontend 및 Cloud Shell 모두 `1.30.10`이며, backend는 Python `>=3.12`, FastAPI `0.136.3`, `openstacksdk 3.3.0`, frontend는 SvelteKit `2.70.1`·Svelte `5.55.9`·Vite `8.2.0`을 manifest에 고정한다. 테스트 통과나 실제 OpenStack 배포를 이 문서의 근거로 승격하지 않는다.
 
 1분 요약:
 
@@ -180,6 +180,17 @@ MCP SDK1.28.1는 cold `tools/call`의 schema cache miss에서 `ListToolsRequest`
 운영 Kolla inventory는 `/etc/kolla/multinode`를 직접 지정한다. Native parse와 실제 control/plugin 대상 그룹을 먼저 확인하고 승인된 service tag로 genconfig/pull/prechecks/reconfigure를 수행한다. `multimode` alias를 새로 만들거나 복구하지 않으며 기존 inventory bytes·대상과 과거 실행 receipt는 보존한다. 누락된 inventory의 fallback/no-host rc0를 성공 배포로 대체하지 않는다.
 
 `/mcp/oauth/token`의 refresh는 owner→grant→family→token lock 순서와 rotation/replay 폐기를 유지한다. 요청에 `client_id`가 있으면 grant에 남은 단일 `McpOAuthCode.client_id`와 대조하고, 빈 값·다른 client·누락되거나 중복된 binding은 rotation/replay side effect 전에 `invalid_grant`로 거부한다. `client_id` 생략은 허용한다. 만료 code와 하루 뒤 정리되는 authorization-request ticket은 binding의 유효기간이 아니며 consumed code row를 유지하므로 새 schema/migration은 없다. 실제 MariaDB HTTP 회귀는 거부 시 persisted state 불변, 올바른 rotation, 생략, ticket 정리 이후와 정상 replay 폐기를 검증한다.
+
+### 서비스 권한 피드백·역할 편집·안전한 debug
+
+`client.ts`는 exact slash-delimited `/api/v1/admin`403에만 stale platform-admin UI demotion을 적용한다. Lumen `/api/v1/chat/admin` 등 downstream403은 현재 browser identity와 draft를 보존하고 실제 서비스 거부로 표시한다. `LumenPermissionNotice`는 한 surface의 required leaves를 함께 받아 loading/error를 한 번 표시하며, 확인된 개별 leaf 거부는 유지한다. 기존 permission store의 actor/project generation fence·settling과 backend native authorization은 변경하지 않는다.
+
+`ProjectMemberRolesModal`은 server-validated `inherited_role_ids` transitive closure로 선택 부모의 descendant checkbox를 checked/disabled로 투영한다. Member DTO의 `external_role_ids`는 group/domain inherited assignment만 같은 ID 그래프로 확장해 direct-parent closure와 겹쳐도 보존한다; merged effective IDs의 차집합으로 추정하지 않는다. Parent 제거 시 재계산하지만 명시적 direct child와 외부 상속은 제거하지 않는다. 공유 부모가 남으면 descendant는 계속 상속 상태다. Case-insensitive name/ID/description 검색은 숨긴 선택을 유지하고 저장에는 direct IDs만 보내며, owner/admin·group-only·busy 제한은 유지한다. 기존 멤버 응답의 provenance field만 추가하며 새 endpoint·DB·자동 할당·name/grade 추론은 없다.
+
+`Settings.debug`는 유효한 lowercase TOML `[DEFAULT] debug = true`와 명시적 `DEBUG` 환경 override(false 포함)를 따른다. 기존 log level·destination·rotation을 보존한 application-only DEBUG이며 FastAPI debug response를 켜지 않는다. DEBUG source location, registered-route/method/status/duration와 고정 outcome, 최대12개의 exception type/function-line frame만 기록한다. Exception message/source/locals/chain·raw request/header/body·opaque object는 공개하지 않으며 recursive secret filtering과 SDK/HTTP/database-wire/access WARNING clamp를 적용한다. Example/setup/Kubernetes/Helm/Kolla는 같은 boolean 계약을 렌더하고 frontend config에 debug를 투영하지 않는다. Notion worker의 별도 logging 초기화는 이번 API debug 변경으로 자동 전환하지 않는다.
+
+Lumen0.6.7은 direct `system:all` assignment를 `effective=True` 없이 읽고 기존 validated current role-ID DAG로 확장한다. Current effective project membership·API-key attenuation·project/domain admin의 fail-closed 거부는 유지하며 새로운 grant나 policy bypass가 아니다. 2026-10-10 owner 승인 범위는 이 Afterglow/Lumen 수정의 테스트·commit·immutable publication·canonical multinode Kolla 배포다. Shared conflict/UI/IAM/migration 작업은 제외·보존하고 실제 운영 결과는 release receipt에 분리한다.
+
 
 이 변경의 source/API/routing 증거와 운영 권한 전환 acceptance는 별개다. 실측 일반 멤버십93건 중 pieroot의 SYSTEM/DMSLAB2건에 기존 서비스 등급이 있다. 사용자는 기존 등급만 유지하고 일반 사용자에게 새 grant를 하지 않으며, Waygate `pieroot-macbook`의 pieroot owner 지정과 Drover `test-cluster`의 실제 pieroot authority 재인가를 승인했다. 현재 Waygate/Drover 서비스 credential의 users/projects/roles/inferences/effective assignments 조회는 native SDK로 HTTP200을 확인했다. 실제 owner 인증·호환 sibling/schema·전체 writer/복구·guest rollout 조건을 충족한 운영 acceptance만 완료로 기록하며 native KVM/provider 성공은 이 HTTP proof로 주장하지 않는다.
 
@@ -1001,9 +1012,9 @@ Architecture maintenance는 다음 규칙을 따른다.
 ```json
 {
   "schema_version": 1,
-  "source_sha256": "7c52056cf81f45d1f933ebaa1d7f1eea7657c29ee53dd93afe043c4b78cb3700",
-  "reviewed_at": "2026-10-09T16:42:17Z",
-  "summary": "MCP consumer tool의 application credential 인증에서 명시적 project scope 요청을 제거하고 Keystone 원래 project/owner binding을 검증한다. Foreign/unscoped 토큰 거부와 네 binding 경계를 실제 SDK HTTP 회귀로 확인했다. Patch 1.30.9와 /etc/kolla/multinode 배포만 허용한다."
+  "source_sha256": "6b67f498e9ea24c3643415ec865114abb110067dd79564bf3e4d487aae748455",
+  "reviewed_at": "2026-10-10T01:43:30Z",
+  "summary": "Final1.30.10 application-only sanitized debug and synced configuration, exact first-party admin403 feedback, searchable current role-ID projection with independent external assignment provenance/overlap preservation; local real identity/compiled UI and debug smoke before gates; no grant/schema/dependency/paid-provider change."
 }
 ```
 <!-- architecture-review:end -->

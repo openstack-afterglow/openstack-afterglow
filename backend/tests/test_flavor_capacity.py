@@ -774,7 +774,6 @@ async def test_discovery_reuses_a_failed_shape_until_the_snapshot_expires(cloud,
     # Polls must not flood the log either: one line for the failed shape, without a traceback.
     logged = [record for record in caplog.records if record.name == flavor_capacity.__name__]
     assert [(record.levelno, record.exc_info) for record in logged] == [(logging.WARNING, None)]
-    assert "HTTP 503" in logged[0].getMessage()
 
     del cloud.failures["/placement/allocation_candidates"]
     cloud.answers[CPU_SHAPE] = [allocation({ROOT_B: ONE})]

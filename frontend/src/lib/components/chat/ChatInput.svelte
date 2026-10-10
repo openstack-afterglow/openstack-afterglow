@@ -505,9 +505,7 @@
 
 
 <div class="composer">
-	<LumenPermissionNotice leaf="lumen-chat_user" />
-	<LumenPermissionNotice leaf="lumen-tools_user" />
-	<LumenPermissionNotice leaf="lumen-assets_editor" />
+	<LumenPermissionNotice leaves={['lumen-chat_user', 'lumen-tools_user', 'lumen-assets_editor']} />
 	<input
 		bind:this={fileInput}
 		type="file"

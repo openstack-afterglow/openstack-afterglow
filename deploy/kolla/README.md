@@ -255,7 +255,8 @@ existence; no globals override is required. Override
 Missing inputs produce empty generated layers.
 
 The role reads the backend source only to produce a protected short-lived
-staging artifact. It removes `[builder].ssh_private_key` before TOML validation.
+staging artifact. It validates the original TOML, removes `[builder].ssh_private_key`,
+and validates the sanitized result.
 The GitLab OIDC client secret remains in this protected TOML flow and is not
 shadowed by an empty container environment variable. The frontend source is
 projected through the same closed browser-safe allowlist as the final frontend
@@ -285,6 +286,51 @@ The frontend mounts only `afterglow.frontend.generated.conf`. Its allowlist
 includes branding, refresh interval, public API/UI origins, service flags,
 public S3/Grafana/chat/GitLab/MCP origins, and no credentials. Kolla-owned final
 values win over both operator inputs.
+
+#### Application-only debug diagnostics
+
+The generated base provides `[DEFAULT]` / `debug = false`. To enable diagnostics,
+add this partial TOML to the private backend operator source described above:
+
+```toml
+[DEFAULT]
+debug = true
+
+[logging]
+log_level = "INFO"
+```
+
+Use exact, unquoted lowercase TOML `true` / `false`; `True` / `False` is invalid.
+The sanitizer validates before copying and never silently rewrites invalid
+booleans. Missing `[DEFAULT]` or `debug` remains compatible with default `false`.
+The sanitized backend operator layer preserves the value, and the final Kolla
+overlay intentionally does not reassert it. The frontend public allowlist omits
+`DEFAULT` and logging settings; no browser debug toggle is added. No new Kolla
+globals variable or container `DEBUG` default is needed.
+
+An explicitly injected backend process `DEBUG=true` / `DEBUG=false` takes
+precedence over TOML, including disabling a TOML `true`. A deployment-host shell
+variable alone is not container injection. Debug enables only the `app` logger
+namespace; `[logging].log_level` / `LOG_LEVEL` retains root/dependency control,
+and protected HTTP/SDK/SQL/access loggers remain WARNING-clamped. Both output
+handlers also reject propagated DEBUG/INFO records from these namespaces even
+when a descendant explicitly enables DEBUG. Debug does not enable HTML tracebacks,
+HTTP wire logging, authentication/authorization bypass,
+insecure mode or secret output. Diagnostics are bounded route/outcome/source
+metadata; request path values, queries, headers, bodies, cookies, exception text,
+source lines, locals and chained causes are excluded. Sensitive keys and recognized
+credential patterns are masked in full. Text secret assignments (including `key`,
+`cephx_key`, `kube_config`, API-key/authorization variants, headers and bodies) redact
+the remainder: spaces, nested JSON, escaped quotes and multiline values provide no
+trusted boundary. Keep safe structure in bounded extra metadata, not string dumps.
+Callers must log static events and bounded, code-owned metadata: heuristic text
+masking is defense-in-depth, not permission to log arbitrary user text or full
+request/response/configuration dumps. Opaque non-string messages, dictionary/extra
+keys and builtin subclasses are omitted without invoking their representation;
+extras exceeding the nesting limit are redacted. Reconfigure/restart the affected
+consumers to apply the change.
+See [the deployment guide](../../docs/en/deployment.md#application-diagnostics-defaultdebug)
+for the other generation paths and precedence details.
 
 ### Palimpsest Hub endpoint and HAProxy routing
 

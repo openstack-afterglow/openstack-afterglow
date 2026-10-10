@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tomllib
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 import yaml
@@ -211,6 +212,89 @@ def isolated_config_dir(tmp_path, monkeypatch):
     yield tmp_path
     app_config.load_raw_toml.cache_clear()
     app_config.get_settings.cache_clear()
+
+
+@pytest.fixture
+def isolated_debug_config_dir(isolated_config_dir, monkeypatch):
+    """Restore all environment values seeded by get_settings after each case."""
+    monkeypatch.setattr(app_config, "_config_candidates", lambda: [isolated_config_dir / "afterglow.conf"])
+    with patch.dict(
+        os.environ,
+        {
+            "AFTERGLOW_ENV": "development",
+            "SECRET_KEY": "6ea4d2fb7c1e9d035a18be4f2740317c9d08ab72f3c46e901bf67ad5041c8ef2",
+        },
+        clear=True,
+    ):
+        yield isolated_config_dir
+
+
+@pytest.mark.parametrize(
+    ("config_text", "expected"),
+    [
+        pytest.param(None, False, id="no-config"),
+        pytest.param('[app]\nsite_name = "Debug Test"\n', False, id="no-default-section"),
+        pytest.param("[DEFAULT]\n", False, id="absent"),
+        pytest.param("[DEFAULT]\ndebug = false\n", False, id="false"),
+        pytest.param("[DEFAULT]\ndebug = true\n", True, id="true"),
+    ],
+)
+def test_get_settings_debug_from_afterglow_conf(isolated_debug_config_dir, config_text, expected):
+    if config_text is not None:
+        (isolated_debug_config_dir / "afterglow.conf").write_text(config_text, encoding="utf-8")
+
+    settings = app_config.get_settings()
+
+    assert settings.debug is expected
+
+
+@pytest.mark.parametrize(
+    ("toml_debug", "env_debug", "expected"),
+    [("false", "true", True), ("true", "false", False)],
+)
+def test_get_settings_debug_env_overrides_toml(isolated_debug_config_dir, toml_debug, env_debug, expected):
+    (isolated_debug_config_dir / "afterglow.conf").write_text(f"[DEFAULT]\ndebug = {toml_debug}\n", encoding="utf-8")
+    os.environ["DEBUG"] = env_debug
+
+    settings = app_config.get_settings()
+
+    assert settings.debug is expected
+
+
+@pytest.mark.parametrize(
+    ("base_debug", "override_debug", "env_debug", "expected"),
+    [
+        ("false", "true", None, True),
+        ("true", "false", None, False),
+        ("false", "true", "false", False),
+        ("true", "false", "true", True),
+    ],
+)
+def test_get_settings_debug_from_layered_config(
+    isolated_debug_config_dir, base_debug, override_debug, env_debug, expected
+):
+    (isolated_debug_config_dir / "afterglow.conf").write_text(f"[DEFAULT]\ndebug = {base_debug}\n", encoding="utf-8")
+    (isolated_debug_config_dir / "afterglow.local.conf").write_text(
+        f"[DEFAULT]\ndebug = {override_debug}\n", encoding="utf-8"
+    )
+    if env_debug is not None:
+        os.environ["DEBUG"] = env_debug
+
+    settings = app_config.get_settings()
+
+    assert settings.debug is expected
+
+
+@pytest.mark.parametrize("env_debug", [None, "true", "false"])
+@pytest.mark.parametrize("malformed_filename", ["afterglow.conf", "afterglow.local.conf"])
+def test_get_settings_debug_rejects_malformed_toml(isolated_debug_config_dir, env_debug, malformed_filename):
+    (isolated_debug_config_dir / "afterglow.conf").write_text("[DEFAULT]\ndebug = false\n", encoding="utf-8")
+    (isolated_debug_config_dir / malformed_filename).write_text("[DEFAULT]\ndebug=True\n", encoding="utf-8")
+    if env_debug is not None:
+        os.environ["DEBUG"] = env_debug
+
+    with pytest.raises(tomllib.TOMLDecodeError):
+        app_config.get_settings()
 
 
 def test_app_config_loads_afterglow_conf_toml_from_cwd(isolated_config_dir):

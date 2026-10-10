@@ -335,11 +335,18 @@
 		`rounded px-1.5 py-0.5 text-xs ${active ? 'bg-[var(--color-state-success)]/15 text-[var(--color-state-success)]' : 'bg-[var(--color-line)] text-[var(--color-ink-3)]'}`;
 </script>
 
+{#if !isAdmin}
+	<LumenPermissionNotice leaves={only === 'mcp'
+		? ['lumen-mcp_editor', 'lumen-resources_admin']
+		: only
+			? ['lumen-assets_editor', 'lumen-resources_admin']
+			: ['lumen-mcp_editor', 'lumen-assets_editor', 'lumen-resources_admin']} />
+{/if}
+
 <!-- MCP 서버 -->
 {#if !only || only === 'mcp'}
 <section class="mb-8">
 	<h3 class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">{t('extensions.mcp.title')}</h3>
-	{#if !isAdmin}<LumenPermissionNotice leaf="lumen-mcp_editor" /><LumenPermissionNotice leaf="lumen-resources_admin" />{/if}
 	<p class="mb-3 text-xs text-[var(--color-ink-3)]">{t('extensions.mcp.description', { scope: isAdmin ? t('extensions.scope.global') : t('extensions.scope.personal') })}</p>
 	<div class="{cardCls} mb-4 p-5">
 		<div class="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -461,7 +468,6 @@
 {#if !only || only === 'tools'}
 <section>
 	<h3 class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">{t('extensions.tools.title')}</h3>
-	{#if !isAdmin}<LumenPermissionNotice leaf="lumen-assets_editor" /><LumenPermissionNotice leaf="lumen-resources_admin" />{/if}
 	<p class="mb-3 text-xs text-[var(--color-ink-3)]">{t('extensions.tools.description', { scope: isAdmin ? t('extensions.scope.global') : t('extensions.scope.personal') })}</p>
 	<div class="{cardCls} mb-4 p-5">
 		<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -535,7 +541,6 @@
 {#if !only || only === 'skills'}
 <section class="mt-8">
 	<h3 class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">{t('extensions.skills.title')}</h3>
-	{#if !isAdmin}<LumenPermissionNotice leaf="lumen-assets_editor" /><LumenPermissionNotice leaf="lumen-resources_admin" />{/if}
 	<p class="mb-3 text-xs text-[var(--color-ink-3)]">{t('extensions.skills.description', { scope: isAdmin ? t('extensions.scope.global') : t('extensions.scope.personal') })}</p>
 	<div class="{cardCls} mb-4 p-5">
 		<div class="grid grid-cols-1 gap-3 md:grid-cols-2">

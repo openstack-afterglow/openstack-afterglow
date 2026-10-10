@@ -12,6 +12,9 @@ data:
   APP_GRAFANA_BASE: ""
   afterglow.conf: |
     # Afterglow 통합 설정 파일
+    [DEFAULT]
+    debug = false
+
     [openstack]
     auth_url = "https://keystone.example.com/v3"
     project_name = "admin"
