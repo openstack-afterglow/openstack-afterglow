@@ -1,4 +1,8 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
+  import Alert from '$lib/components/ui/Alert.svelte';
+  import Button from '$lib/components/ui/Button.svelte';
+  import Pill from '$lib/components/ui/Pill.svelte';
   import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
   import type { User } from '$lib/types/common';
   import { auth } from '$lib/stores/auth';
@@ -31,6 +35,25 @@
     exp: number;
   }
 
+  interface UserPermission {
+    scope_type: 'project' | 'domain' | 'system';
+    scope_id: string;
+    scope_name: string;
+    roles: Array<{ id: string; name: string }>;
+  }
+
+  interface UserScope {
+    userId: string;
+    token: string | undefined;
+    projectId: string | undefined;
+  }
+
+  const scopeLabels = {
+    project: 'userEdit.projectScope',
+    domain: 'userEdit.domainScope',
+    system: 'userEdit.systemScope',
+  } as const;
+
   let name = $state('');
   let email = $state('');
   let password = $state('');
@@ -42,6 +65,11 @@
   let showRevokeConfirm = $state(false);
   let sessions = $state<AdminSession[]>([]);
   let loadingSessions = $state(false);
+  let sessionsError = $state('');
+  let permissions = $state<UserPermission[]>([]);
+  let permissionsStatus = $state<'loading' | 'ready' | 'error'>('loading');
+  let permissionsError = $state('');
+  let scope: UserScope | null = null;
 
   function formatSessionTime(unixTs: number): string {
     if (!unixTs) return '—';
@@ -59,25 +87,62 @@
     return t('userEdit.unknownDevice');
   }
 
-  async function loadUserSessions(userId: string) {
+  function current(requestScope: UserScope): boolean {
+    return scope === requestScope && user?.id === requestScope.userId
+      && token === requestScope.token && projectId === requestScope.projectId;
+  }
+
+  async function loadUserSessions(requestScope: UserScope) {
+    if (!current(requestScope)) return;
     loadingSessions = true;
+    sessionsError = '';
+    sessions = [];
     try {
       const data = await api.get<{ sessions: AdminSession[]; count: number }>(
-        `/api/v1/admin/users/${userId}/sessions`, token, projectId,
+        `/api/v1/admin/users/${encodeURIComponent(requestScope.userId)}/sessions`,
+        requestScope.token, requestScope.projectId,
       );
-      sessions = data.sessions ?? [];
+      if (current(requestScope)) sessions = data.sessions;
     } catch {
-      sessions = [];
+      if (current(requestScope)) sessionsError = t('userEdit.sessionsFailed');
     } finally {
-      loadingSessions = false;
+      if (current(requestScope)) loadingSessions = false;
+    }
+  }
+
+  async function loadUserPermissions(requestScope: UserScope) {
+    if (!current(requestScope)) return;
+    permissionsStatus = 'loading';
+    permissionsError = '';
+    permissions = [];
+    try {
+      const data = await api.get<{ items: UserPermission[]; count: number }>(
+        `/api/v1/admin/users/${encodeURIComponent(requestScope.userId)}/permissions`,
+        requestScope.token, requestScope.projectId,
+      );
+      if (!current(requestScope)) return;
+      permissions = data.items;
+      permissionsStatus = 'ready';
+    } catch (e) {
+      if (!current(requestScope)) return;
+      permissionsError = e instanceof ApiError && (e.status === 401 || e.status === 403)
+        ? t('userEdit.permissionsUnauthorized') : t('userEdit.permissionsFailed');
+      permissionsStatus = 'error';
     }
   }
 
   $effect(() => {
-    if (user) {
-      name = user.name;
-      email = user.email;
-      enabled = user.enabled;
+    const selectedId = user?.id;
+    const selectedName = user?.name ?? '';
+    const selectedEmail = user?.email ?? '';
+    const selectedEnabled = user?.enabled ?? true;
+    const accessToken = token;
+    const callerProject = projectId;
+    untrack(() => {
+      scope = selectedId ? { userId: selectedId, token: accessToken, projectId: callerProject } : null;
+      name = selectedName;
+      email = selectedEmail;
+      enabled = selectedEnabled;
       password = '';
       error = '';
       revokeSuccess = '';
@@ -85,15 +150,26 @@
       updating = false;
       revoking = false;
       sessions = [];
-      loadUserSessions(user.id);
-    }
+      sessionsError = '';
+      loadingSessions = false;
+      permissions = [];
+      permissionsError = '';
+      permissionsStatus = 'loading';
+      if (scope) {
+        void loadUserSessions(scope);
+        void loadUserPermissions(scope);
+      }
+    });
+    return () => { scope = null; };
   });
 
   async function submit() {
-    if (!user) return;
+    if (!scope || !current(scope) || updating) return;
+    const requestScope = scope;
     updating = true;
     error = '';
-    const result = await onUpdate(user.id, { name, email, password, enabled });
+    const result = await onUpdate(requestScope.userId, { name, email, password, enabled });
+    if (!current(requestScope)) return;
     updating = false;
     if (result === true) {
       user = null;
@@ -103,20 +179,22 @@
   }
 
   async function revokeAllSessions() {
-    if (!user) return;
+    if (!scope || !current(scope) || revoking) return;
+    const requestScope = scope;
     showRevokeConfirm = false;
     revoking = true;
     error = '';
     revokeSuccess = '';
     try {
       const res = await api.post<{ revoked_count: number }>(
-        `/api/v1/admin/users/${user.id}/revoke-sessions`, {}, token, projectId,
+        `/api/v1/admin/users/${encodeURIComponent(requestScope.userId)}/revoke-sessions`, {}, requestScope.token, requestScope.projectId,
       );
+      if (!current(requestScope)) return;
       revokeSuccess = t('userEdit.sessionsRevoked', { count: res.revoked_count });
     } catch (e) {
-      error = e instanceof ApiError ? e.message : t('userEdit.revokeFailed');
+      if (current(requestScope)) error = e instanceof ApiError ? e.message : t('userEdit.revokeFailed');
     } finally {
-      revoking = false;
+      if (current(requestScope)) revoking = false;
     }
   }
 </script>
@@ -130,11 +208,11 @@
     use:dialogFocus={{ enabled: true, onEscape: () => (user = null) }}
     class="fixed inset-0 bg-surface-scrim/60 flex items-center justify-center z-50"
     onclick={(event) => { if (event.target === event.currentTarget) (() => { user = null; })(); }}
-    role="dialog" aria-modal="true"
+    role="dialog" aria-modal="true" aria-labelledby="admin-user-edit-title"
     tabindex="-1"
   >
-    <div class="bg-surface-base border border-line-2 rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-restraint)]">
-      <h2 class="text-lg font-semibold text-ink-0 mb-5">{t('userEdit.title')}</h2>
+    <div data-testid="admin-user-edit-panel" class="bg-surface-base border border-line-2 rounded-xl p-4 md:p-6 w-full min-w-0 max-w-xl lg:max-w-5xl max-h-[calc(100dvh-2rem)] overflow-y-auto mx-4 shadow-[var(--shadow-restraint)]">
+      <h2 id="admin-user-edit-title" class="text-lg font-semibold text-ink-0 mb-5">{t('userEdit.title')}</h2>
       {#if error}<div class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">{error}</div>{/if}
       {#if revokeSuccess}<div class="bg-green-900/40 border border-green-700 text-green-300 rounded-lg px-4 py-3 text-sm mb-4">{revokeSuccess}</div>{/if}
       <div class="space-y-4">
@@ -147,51 +225,83 @@
           </button>
           <span class="text-sm text-ink-2">{enabled ? t('userEdit.enabled') : t('userEdit.disabled')}</span>
         </div>
-        <div class="text-xs text-ink-2">{t('userEdit.userId', { id: user.id })}</div>
+        <div class="text-xs text-ink-2 [overflow-wrap:anywhere]">{t('userEdit.userId', { id: user.id })}</div>
       </div>
 
-      <!-- 활성 세션 목록 -->
-      <div class="mt-5 pt-4 border-t border-line">
-        <div class="flex items-center justify-between mb-2">
-          <p class="text-xs font-medium text-ink-2">{t('userEdit.sessionsTitle')}</p>
-          {#if loadingSessions}
-            <span class="text-xs text-ink-2"><ActivityIndicator size="xs" label={t('userEdit.loading')} /></span>
+      <div data-testid="admin-user-access-grid" class="mt-5 pt-4 border-t border-line grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <section aria-labelledby="admin-user-permissions-title" aria-busy={permissionsStatus === 'loading'} class="min-w-0">
+          <h3 id="admin-user-permissions-title" class="text-sm font-medium text-ink-0 mb-2">{t('userEdit.permissionsTitle')}</h3>
+          <p class="text-xs text-ink-2 mb-3">{t('userEdit.permissionsHelp')}</p>
+          {#if permissionsStatus === 'loading'}
+            <ActivityIndicator size="xs" label={t('userEdit.permissionsLoading')} />
+          {:else if permissionsStatus === 'error'}
+            <Alert>{permissionsError}</Alert>
+            <Button variant="secondary" size="sm" class="mt-2" onclick={() => { if (scope) void loadUserPermissions(scope); }}>{t('userEdit.retryPermissions')}</Button>
+          {:else if permissions.length === 0}
+            <p class="text-xs text-ink-2">{t('userEdit.noPermissions')}</p>
           {:else}
-            <span class="text-xs text-ink-2">{t('userEdit.sessionCount', { count: sessions.length })}</span>
+            <ul class="space-y-3">
+              {#each permissions as permission (`${permission.scope_type}:${permission.scope_id}`)}
+                <li class="bg-surface-sunken border border-line rounded-lg p-3 min-w-0">
+                  <p class="text-xs text-ink-2">{t(scopeLabels[permission.scope_type])}</p>
+                  <p class="text-sm font-medium text-ink-0 [overflow-wrap:anywhere]">{permission.scope_name}</p>
+                  <p class="text-xs font-mono text-ink-2 mt-1 [overflow-wrap:anywhere]">{t('userEdit.scopeId', { id: permission.scope_id })}</p>
+                  <ul aria-label={t('userEdit.rolesLabel', { name: permission.scope_name })} class="flex flex-wrap gap-1.5 mt-2">
+                    {#each permission.roles as role (role.id)}
+                      <li class="min-w-0 max-w-full"><Pill class="max-w-full"><span class="min-w-0 text-xs whitespace-normal [overflow-wrap:anywhere]">{role.name}</span></Pill></li>
+                    {/each}
+                  </ul>
+                </li>
+              {/each}
+            </ul>
           {/if}
-        </div>
-        {#if sessions.length > 0}
-          <div class="overflow-x-auto">
-            <table class="w-full text-xs">
-              <thead>
-                <tr class="border-b border-line-2 text-ink-2 uppercase tracking-wide text-xs">
-                  <th class="text-left py-1 pr-3">{t('userEdit.originIp')}</th>
-                  <th class="text-left py-1 pr-3">{t('userEdit.device')}</th>
-                  <th class="text-left py-1 pr-3">{t('userEdit.lastUsed')}</th>
-                  <th class="text-left py-1">{t('userEdit.status')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {#each sessions as sess (sess.jti)}
-                  <tr class="border-b border-line/50">
-                    <td class="py-1.5 pr-3 font-mono text-ink-2">{sess.origin_ip || '—'}</td>
-                    <td class="py-1.5 pr-3 text-ink-2">{deviceLabel(sess)}</td>
-                    <td class="py-1.5 pr-3 text-ink-2">{formatSessionTime(sess.last_seen)}</td>
-                    <td class="py-1.5">
-                      {#if sess.blacklisted}
-                        <span class="text-red-400 font-semibold">{t('userEdit.blocked')}</span>
-                      {:else}
-                        <span class="text-green-500">{t('userEdit.enabled')}</span>
-                      {/if}
-                    </td>
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
+        </section>
+
+        <section aria-labelledby="admin-user-sessions-title" aria-busy={loadingSessions} class="min-w-0">
+          <div class="flex items-center justify-between gap-2 mb-2">
+            <h3 id="admin-user-sessions-title" class="text-sm font-medium text-ink-0">{t('userEdit.sessionsTitle')}</h3>
+            {#if !loadingSessions && !sessionsError}
+              <span class="text-xs text-ink-2">{t('userEdit.sessionCount', { count: sessions.length })}</span>
+            {/if}
           </div>
-        {:else if !loadingSessions}
-          <p class="text-xs text-ink-2">{t('userEdit.noSessions')}</p>
-        {/if}
+          {#if loadingSessions}
+            <ActivityIndicator size="xs" label={t('userEdit.loading')} />
+          {:else if sessionsError}
+            <Alert>{sessionsError}</Alert>
+            <Button variant="secondary" size="sm" class="mt-2" onclick={() => { if (scope) void loadUserSessions(scope); }}>{t('userEdit.retrySessions')}</Button>
+          {:else if sessions.length > 0}
+            <div class="overflow-x-auto">
+              <table class="w-full text-xs">
+                <thead>
+                  <tr class="border-b border-line-2 text-ink-2 uppercase tracking-wide text-xs">
+                    <th class="text-left py-1 pr-3">{t('userEdit.originIp')}</th>
+                    <th class="text-left py-1 pr-3">{t('userEdit.device')}</th>
+                    <th class="text-left py-1 pr-3">{t('userEdit.lastUsed')}</th>
+                    <th class="text-left py-1">{t('userEdit.status')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {#each sessions as sess (sess.jti)}
+                    <tr class="border-b border-line/50">
+                      <td class="py-1.5 pr-3 font-mono text-ink-2">{sess.origin_ip || '—'}</td>
+                      <td class="py-1.5 pr-3 text-ink-2">{deviceLabel(sess)}</td>
+                      <td class="py-1.5 pr-3 text-ink-2">{formatSessionTime(sess.last_seen)}</td>
+                      <td class="py-1.5">
+                        {#if sess.blacklisted}
+                          <span class="text-[var(--color-state-danger-text)] font-semibold">{t('userEdit.blocked')}</span>
+                        {:else}
+                          <span class="text-[var(--color-state-success-text)]">{t('userEdit.enabled')}</span>
+                        {/if}
+                      </td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
+          {:else}
+            <p class="text-xs text-ink-2">{t('userEdit.noSessions')}</p>
+          {/if}
+        </section>
       </div>
 
       <!-- 세션 강제 폐기 -->
@@ -227,3 +337,4 @@
     </div>
   </div>
 {/if}
+

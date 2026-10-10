@@ -16,9 +16,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.database import get_session_factory
-from app.models.mcp_authority import McpLumenSelection, McpToolInvocation
-from app.services.mcp_control_plane.authentication import McpPrincipal
-from app.services.mcp_control_plane.authority import McpAuthorityError, _as_utc, _lock_grant, _now, lock_owner
+from app.models.mcp_authority import McpToolInvocation
+from app.services.mcp_control_plane.authentication import McpPrincipal, lock_principal_grant
+from app.services.mcp_control_plane.authority import McpAuthorityError, _as_utc, _now, lock_owner
 from app.services.mcp_control_plane.registry import REGISTRY_VERSION, RegistryEntry
 
 
@@ -64,6 +64,15 @@ def canonical_arguments_hash(arguments: object) -> str:
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
+def canonical_target_arguments(principal: McpPrincipal, arguments: object) -> dict:
+    if not isinstance(arguments, dict):
+        raise McpInvocationError("MCP domain arguments must be an object")
+    supplied = arguments.get("project_id")
+    if supplied is not None and supplied != principal.project_id:
+        raise McpInvocationError("MCP argument target differs from the authorized project")
+    return {**arguments, "project_id": principal.project_id}
+
+
 def validate_idempotency_key(value: object) -> str:
     if not isinstance(value, str) or not _IDEMPOTENCY_KEY_RE.fullmatch(value):
         raise McpInvocationError("MCP mutation idempotency_key is invalid")
@@ -78,24 +87,6 @@ def _validate_active_write_grant(grant, principal: McpPrincipal) -> None:
         or "mcp:write" not in principal.scopes
     ):
         raise McpInvocationError("MCP grant changed before mutation dispatch")
-
-
-async def _validate_lumen_selection(session, principal: McpPrincipal, *, owner_lock, source: str) -> None:
-    if source != "lumen":
-        return
-    selection = await session.get(
-        McpLumenSelection,
-        {"owner_user_id": principal.user_id, "owner_project_id": principal.project_id},
-        with_for_update=True,
-    )
-    if (
-        principal.source != "lumen"
-        or principal.selection_generation is None
-        or selection is None
-        or selection.grant_id != principal.grant_id
-        or owner_lock.lumen_selection_generation != principal.selection_generation
-    ):
-        raise McpInvocationError("Lumen delegated MCP selection changed before dispatch")
 
 
 def _decode_replay_result(row: McpToolInvocation) -> dict:
@@ -123,21 +114,12 @@ async def claim_mutation(
     if entry.effect != "external_mutation":
         raise McpInvocationError("MCP entry is not a mutation")
     key = validate_idempotency_key(idempotency_key)
-    arguments_hash = canonical_arguments_hash(arguments)
+    arguments_hash = canonical_arguments_hash(canonical_target_arguments(principal, arguments))
     now = _now()
     try:
         async with _factory()() as session, session.begin():
-            owner_lock = await lock_owner(
-                session, owner_user_id=principal.user_id, owner_project_id=principal.project_id
-            )
-            grant = await _lock_grant(
-                session,
-                grant_id=principal.grant_id,
-                owner_user_id=principal.user_id,
-                owner_project_id=principal.project_id,
-            )
+            grant = await lock_principal_grant(session, principal, write=True)
             _validate_active_write_grant(grant, principal)
-            await _validate_lumen_selection(session, principal, owner_lock=owner_lock, source=invocation_source)
             existing = await session.scalar(
                 select(McpToolInvocation)
                 .where(
@@ -149,6 +131,23 @@ async def claim_mutation(
                 .with_for_update()
             )
             if existing is None:
+                # A different key must not turn an unresolved identical operation
+                # into a second provider dispatch. The grant lock serializes claims.
+                unresolved = await session.scalar(
+                    select(McpToolInvocation)
+                    .where(
+                        McpToolInvocation.grant_id == principal.grant_id,
+                        McpToolInvocation.source == invocation_source,
+                        McpToolInvocation.tool_name == entry.name,
+                        McpToolInvocation.arguments_hash == arguments_hash,
+                        McpToolInvocation.idempotency_key.is_not(None),
+                        McpToolInvocation.status.in_(("claimed", "dispatch_authorized", "unknown")),
+                    )
+                    .limit(1)
+                    .with_for_update()
+                )
+                if unresolved is not None:
+                    raise McpInvocationError("MCP mutation has an unresolved outcome; do not retry with a new key")
                 invocation_id = str(uuid4())
                 session.add(
                     McpToolInvocation(
@@ -202,7 +201,7 @@ async def fail_pre_dispatch(
     invocation_source = _invocation_source(source)
     try:
         async with _factory()() as session, session.begin():
-            await lock_owner(session, owner_user_id=principal.user_id, owner_project_id=principal.project_id)
+            await lock_owner(session, owner_user_id=principal.user_id, owner_project_id=principal.anchor_project_id)
             invocation = await session.scalar(
                 select(McpToolInvocation)
                 .where(
@@ -231,17 +230,8 @@ async def authorize_mutation_dispatch(
     now = _now()
     try:
         async with _factory()() as session, session.begin():
-            owner_lock = await lock_owner(
-                session, owner_user_id=principal.user_id, owner_project_id=principal.project_id
-            )
-            grant = await _lock_grant(
-                session,
-                grant_id=principal.grant_id,
-                owner_user_id=principal.user_id,
-                owner_project_id=principal.project_id,
-            )
+            grant = await lock_principal_grant(session, principal, write=True)
             _validate_active_write_grant(grant, principal)
-            await _validate_lumen_selection(session, principal, owner_lock=owner_lock, source=invocation_source)
             invocation = await session.scalar(
                 select(McpToolInvocation)
                 .where(
@@ -295,7 +285,7 @@ async def complete_mutation(
             raise McpInvocationError("MCP mutation result exceeds the replay limit")
     try:
         async with _factory()() as session, session.begin():
-            await lock_owner(session, owner_user_id=principal.user_id, owner_project_id=principal.project_id)
+            await lock_owner(session, owner_user_id=principal.user_id, owner_project_id=principal.anchor_project_id)
             invocation = await session.scalar(
                 select(McpToolInvocation)
                 .where(
@@ -343,18 +333,7 @@ async def record_read_invocation(
     now = _now()
     try:
         async with _factory()() as session, session.begin():
-            owner_lock = await lock_owner(
-                session, owner_user_id=principal.user_id, owner_project_id=principal.project_id
-            )
-            grant = await _lock_grant(
-                session,
-                grant_id=principal.grant_id,
-                owner_user_id=principal.user_id,
-                owner_project_id=principal.project_id,
-            )
-            if grant.status != "active" or grant.credential_epoch != principal.credential_epoch:
-                raise McpInvocationError("MCP grant changed before invocation audit")
-            await _validate_lumen_selection(session, principal, owner_lock=owner_lock, source=invocation_source)
+            await lock_principal_grant(session, principal)
             session.add(
                 McpToolInvocation(
                     id=str(uuid4()),
@@ -362,7 +341,7 @@ async def record_read_invocation(
                     source=invocation_source,
                     tool_name=entry.name,
                     idempotency_key=None,
-                    arguments_hash=canonical_arguments_hash(arguments),
+                    arguments_hash=canonical_arguments_hash(canonical_target_arguments(principal, arguments)),
                     registry_version=REGISTRY_VERSION,
                     status=status,
                     error=(error or "")[:1024] or None,

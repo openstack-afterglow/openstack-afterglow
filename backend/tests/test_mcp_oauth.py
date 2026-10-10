@@ -64,6 +64,27 @@ def test_resource_scope_and_pkce_are_exact_and_fail_closed():
         validate_pkce_s256(challenge, "plain")
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("client_id", [None, ""])
+async def test_refresh_requires_client_before_any_storage_access(client_id):
+    from app.services.mcp_control_plane.oauth_authority import McpOAuthAuthorityError, refresh_tokens
+
+    urls = oauth_urls("https://api.example.test", production=True)
+
+    def forbidden_factory():
+        raise AssertionError("missing client_id must not touch token state")
+
+    with pytest.raises(McpOAuthAuthorityError, match="client_id is required"):
+        await refresh_tokens(
+            forbidden_factory,
+            refresh_token="synthetic-token",
+            resource=urls.resource,
+            urls=urls,
+            scope=None,
+            client_id=client_id,
+        )
+
+
 def test_redirect_registration_allows_ip_loopback_dynamic_port_and_exact_path_query_only():
     assert validate_redirect_uris(
         ["https://client.example.test/oauth/callback", "http://127.0.0.1/callback?flow=desktop"]
@@ -247,3 +268,24 @@ async def test_token_and_revoke_reject_public_client_secrets_at_transport_bounda
     assert cross_origin.status_code == 403
     exchange.assert_not_awaited()
     revoke.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("requested", "chosen", "expected"),
+    [
+        (["mcp:read"], None, ("read", ("mcp:read",))),
+        (["mcp:read", "mcp:write"], None, ("manage", ("mcp:read", "mcp:write"))),
+        (["mcp:read", "mcp:write"], "read", ("read", ("mcp:read",))),
+    ],
+)
+def test_consent_access_choice_never_expands_requested_scope(requested, chosen, expected):
+    from app.services.mcp_control_plane.oauth_authority import _consent_scopes
+
+    assert _consent_scopes(requested, chosen) == expected
+
+
+def test_read_only_oauth_request_cannot_approve_manage():
+    from app.services.mcp_control_plane.oauth_authority import McpOAuthAuthorityError, _consent_scopes
+
+    with pytest.raises(McpOAuthAuthorityError, match="may not expand"):
+        _consent_scopes(["mcp:read"], "manage")

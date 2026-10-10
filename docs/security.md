@@ -40,12 +40,19 @@ Backend `uv.lock`, frontend Bun·npm lock, root CLI `uv.lock`, operator `uv.lock
                                                └ admin 우회 + 외부/공유 자원 면제
 ```
 
+### 명시적 역할 연결과 프로젝트 권한 경계
+
+- 전역 역할 CRUD·inference edge 편집·프리셋 적용은 현재 검증된 시스템 관리자만 수행합니다. 프로젝트 reader나 native 역할 이름만으로 이 경계를 통과하지 않습니다.
+- 시스템 관리자가 선택한 전역 custom 하위 역할은 프리셋 목록 밖 이름이라는 이유만으로 차단하지 않습니다. 실제 Keystone DAG로 상속하며 프리셋 재적용이 이를 삭제하지 않습니다. Custom 이름은 native 서비스 정책의 안전성 증명이 아니므로 연결한 관리자가 해당 정책을 검토합니다.
+- 전체 전이 graph에서 알려진 core/project/service 등급 권한을 기존 ceiling으로 검증합니다. Custom alias로 `admin/manager`, reader의 native `member` 또는 관리형 쓰기 권한, 소유권·도메인·순환 제한을 우회할 수 없습니다. 캐시된 token 이름이나 preset의 가상 확장으로 권한을 만들지 않습니다.
+- 프로젝트 멤버 API는 같은 그래프의 기존 canonical 등급을 사용할 수 있지만 custom 역할을 독립 위임 대상으로 추가하지 않습니다. Metadata/lease 장애의 fail-closed, 직접/그룹/상속 세션 회수와 감사 lifecycle은 유지합니다.
+
 ### 토큰 lifecycle (Keystone)
 
 - **세션 토큰 캐시**: Redis `afterglow:cached:validate:<sha256>:<project>` (TTL 60초)
 - **logout / revoke 시**: `invalidate_token_cache(token, project_id)` 가 cache key 와
   session key 모두 즉시 삭제 → 동일 토큰으로 다음 호출 시 Keystone 재검증 → 401
-- **session 절대/idle timeout**: `app/api/deps.py` 의 `_check_session_timeout`
+- **session 절대 timeout**: Redis refresh record의 최초 `started_at`을 access/refresh/rescope에서 보존·검사하며 만료 record는 삭제한다. Missing timestamp는 기존 marker/서명된 iat로 TTL을 유지한 채 채운다. 원자적 Lua 회전은 현재 존재·blacklist·deadline을 재검사하므로 동시 refresh 중 한 요청만 성공한다.
 
 ### 브라우저 access/refresh 복구
 
@@ -56,8 +63,17 @@ Backend `uv.lock`, frontend Bun·npm lock, root CLI `uv.lock`, operator `uv.lock
 - refresh 자체의 401, 폐기/차단된 Redis 세션, 서버 session timeout, Keystone 인증 만료는 재로그인 대상이다. Keystone token authentication의 `Failed to validate token` 및 `Could not recognize Fernet token` 404는 adapter에서 Unauthorized로 정규화하며, 일반 endpoint/resource 404는 일시적 검증 실패와 구분하지 못하므로 503을 유지한다. Background refresh의 terminal 결과도 보호 요청을 기다리지 않고 로컬 인증을 지우고 로그인 화면으로 전환한다.
 - refresh 503·429·네트워크 오류는 인증 실패로 바꾸지 않고 세션을 보존하되, root shell의 닫을 수 없는 인증 복구 dialog로 작업을 중단한다. 기존 화면은 mounted 상태로 남겨 작성 내용을 유지하고, `dialogFocus`가 다른 화면·overlay를 inert 처리한다. 재시도는 기존 coalescing/cooldown 및 `Retry-After`를 따르며 성공하면 동일 화면을 복구한다. 실패 상태는 해당 access token에 묶이고 다른 로그인·회전·로그아웃 이후의 늦은 응답은 새 identity를 덮어쓰지 않는다.
 - Kolla HA에서는 backend가 모든 Valkey Sentinel을 통해 현재 master를 해석하고 `redis_url`의 사용자명·비밀번호·DB index를 발견된 master 연결에 적용한다. replica로 승격 정보가 어긋나거나 master 쓰기가 불가능하면 refresh/session 검증은 503으로 fail-closed하며, 브라우저에서 이를 terminal 401로 바꾸지 않는다.
-- 외부/presigned URL은 이 복구 경로와 브라우저 Authorization 주입 대상이 아니다. `downloadAuthenticated`는 설정된 API origin의 `/api/v1/` 경로만 인증하고 다른 URL은 자격 없이 요청한다. logout revocation fence와 늦은 401/cross-tab 회전 winner 보호를 유지한다.
+- 외부/presigned URL은 이 복구 경로와 브라우저 Authorization 주입 대상이 아니다. `downloadAuthenticated`는 설정된 API origin의 `/api/v1/` 경로만 인증하고 다른 URL은 자격 없이 요청한다. logout revocation fence와 늦은 401 보호를 유지한다. 탭 사이 자격 공유나 cross-tab 회전 winner 가져오기는 하지 않는다.
 - 명시적 로그아웃은 진행 중인 refresh의 성공/실패를 관찰한 뒤 가능한 최신 token의 서버 폐기를 시도한다. Refresh나 폐기 통신 실패가 있어도 이 기기의 auth/storage는 정리하며, 서버 폐기를 확인하지 못한 경우 이를 경고한다. 일시 장애 때 자동으로 전체 세션을 삭제하거나 인증을 우회하지 않는다.
+
+### 인증·MCP 경계 패치의 동작 및 운영 제한
+
+- GitLab federated login도 실제 요청 IP/fingerprint/device를 password login과 동일하게 저장한다. 기존 origin 없는 legacy 세션은 strict/subnet에서 거부하여 재로그인하며, 현재 호출자의 출처를 원래 login origin으로 채워 우회하지 않는다. off/log 정책은 원래 설정의 비차단 의미를 유지한다.
+- 브라우저 자격은 탭의 sessionStorage에만 저장하고 legacy localStorage 자격을 삭제한다. 기존 로그인은 한 번 다시 필요하며 새 탭은 독립 인증한다. 토큰 없는 logout marker만 공유한다. SvelteKit 자동 nonce/hash CSP를 사용하여 script unsafe-inline은 없고 SPA fallback의 실제 HTML과 CSP도 일치시킨다. 이는 JavaScript-readable 자격이나 모든 XSS 위험을 제거한 것은 아니다.
+- MCP cancellation/deadline fence는 느린 최종 owner/state GET 뒤 새 provider mutation을 막는다. 이미 HTTP 요청을 전송한 worker는 실제 종료까지 drain하며 connection과 실행 slot을 보유한다. Timeout은 rollback이 아니고 응답이 provider 종료까지 늦어질 수 있다.
+- Concurrency set의 UUID member는 본인 요청만 제거하고 TTL 자동 회수는 없다. Crash/release 실패는 capacity를 fail-closed로 유지한다. 복구 전 해당 grant를 쓰는 모든 worker의 종료/drain을 확인하고 승인된 운영 절차로 잔여 member를 제거한다. 살아 있는 worker가 있는 set의 DEL/TTL은 금지한다. Legacy numeric limiter도 drain/만료 후 새 set으로 전환한다.
+- 만료 mutation lease는 poll과 cleanup에서 unknown으로 바꾸고 key/record를 유지한다. 동일 grant/source/tool/arguments의 unresolved 작업은 새 key로도 다시 claim하지 않는다. 실제 provider 상태 확인 전 자동 재전송이 없으며 다른 grant로 바꾼 retry까지 전역 deduplication하는 것은 아니다.
+- MCP 삭제/lifecycle action은 destructiveHint=true이다. Metadata는 클라이언트 힌트이고 서버 인가·owner 검사·ledger를 대체하지 않는다. 일회성 PAT 발급 응답은 Cache-Control: no-store와 Pragma: no-cache이다.
 
 ### MCP OAuth와 개인 API 키
 
@@ -65,7 +81,7 @@ Backend `uv.lock`, frontend Bun·npm lock, root CLI `uv.lock`, operator `uv.lock
 - 현재 DCR은 public client(`token_endpoint_auth_method=none`)와 authorization-code·refresh grant 모두를 요구한다. Loopback HTTP callback은 `127.0.0.1` 또는 `[::1]`처럼 IP literal이어야 하며 `localhost`나 arbitrary HTTP callback을 허용하지 않는다. 모든 MCP 제품의 등록 형식과 호환된다는 의미가 아니다.
 - Frontend 동의 ticket은 URL에서 제거해 `sessionStorage`에만 보존한다. Password/GitLab login 뒤 미선택 project를 먼저 선택하고, consent GET/approve/deny는 현재 browser access bearer와 `X-Project-Id`가 있는 scoped session에서만 수행한다. Ticket은 권한이나 access token이 아니다.
 - 승인은 현재 user/project의 restricted Keystone application credential과 grant를 생성한다. Client에는 opaque access/refresh token만 반환하고 upstream credential은 보내지 않는다. 개인 API 키 발급·검증·폐기는 별도 방식으로 유지하며 OAuth JSON에는 Authorization header나 client secret을 포함하지 않는다.
-- Refresh의 optional `client_id`가 있으면 최초 발급 code의 client와 일치해야 한다. 빈 값·다른 client·불명확한 persisted binding은 `invalid_grant`이며 token rotation이나 replay revocation을 일으키지 않는다. `client_id` 생략은 허용하고 올바른 client의 재사용은 기존 family/grant 폐기를 유지한다. Binding은 consumed code row에 남으므로 code expiry·authorization ticket cleanup 뒤에도 유지한다.
+- Refresh의 필수 `client_id`는 최초 발급 code의 client와 일치해야 한다. 빈 값·다른 client·불명확한 persisted binding은 `invalid_grant`이며 token rotation이나 replay revocation을 일으키지 않는다. `client_id` 생략도 거부하고 올바른 client의 재사용은 기존 family/grant 폐기를 유지한다. Binding은 consumed code row에 남으므로 code expiry·authorization ticket cleanup 뒤에도 유지한다.
 - Access token은 15분, refresh token은 최대 30일이며 둘 다 grant deadline을 넘지 않는다. 계정에서 OAuth 접근을 회수하거나 `/mcp/oauth/revoke`를 호출하면 grant/family와 downstream authority를 기존 내구성 cleanup 경로로 폐기한다. Token·code·ticket·upstream secret은 문서·audit·QA receipt에 기록하지 않는다.
 - SDK 내부 schema cache refresh는 현재 principal에게 허용된 tool schema만 읽으며 cloud 권한을 부여하지 않는다. Client `tools/list`의 page-size·grant-bound cursor와 SDK input/output validation을 유지하고 모든 `tools/call`에서 registry의 현재 principal 권한·strict arguments·mutation ledger를 다시 적용한다. Manage principal의 schema가 cache에 있어도 read grant는 valid mutation을 dispatch할 수 없다. 운영 proof는 HTTP200과 함께 `isError=false` 및 실제 typed tool 결과를 확인한다.
 
@@ -249,8 +265,8 @@ master key (k3s_kubeconfig_encryption_key, 64 hex)
 
 | 항목 | 우선도 | PR 후보 |
 |---|---|---|
-| Frontend 토큰 localStorage 평문 저장 (XSS = 계정 탈취) | Critical | PR-D |
-| CSP `script-src 'unsafe-inline'` (XSS 방어 무력화) | Critical | PR-D |
+| sessionStorage 자격은 JavaScript-readable이며 탭 복제 시 복사될 수 있음 (localStorage persistence 제거) | 잔여 방어 한계 | HttpOnly BFF 설계 별도 |
+| script nonce/hash 적용, dynamic style unsafe-inline 유지 | 잔여 방어 한계 | style 정책 별도 |
 | K3s background task admin conn 무한 진행 (logout 무력화) | High | PR-C |
 | K8s securityContext / NetworkPolicy 부재 | High | PR-E |
 | `:latest` tag + ArgoCD digest pinning | High | PR-E |

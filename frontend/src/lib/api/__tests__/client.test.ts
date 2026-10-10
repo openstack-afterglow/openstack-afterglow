@@ -63,6 +63,13 @@ describe('api client', () => {
     });
   });
 
+  it('never dispatches an already-aborted MCP mutation', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(api.post('/api/v1/auth/mcp-tokens', { name: 'old owner' }, 'old-token', 'old-project', { signal: controller.signal })).rejects.toMatchObject({ name: 'AbortError' });
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
   it('PATCH 메서드가 올바르게 호출된다', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,

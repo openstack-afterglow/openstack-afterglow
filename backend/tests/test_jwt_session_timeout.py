@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -127,7 +128,7 @@ class TestJwtSessionTimeout:
             "app.api.identity.auth.keystone.validate_token",
             return_value=dict(_KS_DATA),
         ):
-            timeout_mock = AsyncMock()
+            timeout_mock = AsyncMock(return_value=time.time())
             with patch("app.api.identity.auth._check_session_timeout", timeout_mock):
                 async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
                     login = await ac.post(
@@ -183,7 +184,7 @@ class TestJwtSessionTimeout:
 
         captured_args: list[tuple[str, str]] = []
 
-        async def _capture_timeout(token_hash: str, project_id: str) -> None:
+        async def _capture_timeout(token_hash: str, project_id: str, **_kwargs) -> None:
             captured_args.append((token_hash, project_id))
 
         with patch("app.api.deps._check_session_timeout", side_effect=_capture_timeout):

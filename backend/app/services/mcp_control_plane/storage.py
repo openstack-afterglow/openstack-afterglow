@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Mapping
 from typing import Any
 
 from app.services.mcp_control_plane.compute import McpComputeError, list_project_server_volume_attachment_ids
+from app.services.mcp_control_plane.sdk import check_mutation_dispatch, run_sdk
 
 
 class McpStorageError(ValueError):
@@ -100,6 +100,7 @@ def _prepare_volume_delete(conn: Any, *, project_id: str, volume_id: str) -> dic
 
 def _delete_volume(conn: Any, *, project_id: str, volume_id: str) -> dict[str, str | int | None]:
     safe_volume = _prepare_volume_delete(conn, project_id=project_id, volume_id=volume_id)
+    check_mutation_dispatch()
     conn.block_storage.delete_volume(volume_id, ignore_missing=False, force=False)
     return safe_volume
 
@@ -197,6 +198,7 @@ def _prepare_snapshot_delete(conn: Any, *, project_id: str, snapshot_id: str) ->
 
 def _delete_snapshot(conn: Any, *, project_id: str, snapshot_id: str) -> dict[str, str | int | None]:
     snapshot = _prepare_snapshot_delete(conn, project_id=project_id, snapshot_id=snapshot_id)
+    check_mutation_dispatch()
     conn.block_storage.delete_snapshot(snapshot_id, ignore_missing=False, force=False)
     return snapshot
 
@@ -210,6 +212,7 @@ def _prepare_backup_delete(conn: Any, *, project_id: str, backup_id: str) -> dic
 
 def _delete_backup(conn: Any, *, project_id: str, backup_id: str) -> dict[str, str | int | None]:
     backup = _prepare_backup_delete(conn, project_id=project_id, backup_id=backup_id)
+    check_mutation_dispatch()
     conn.block_storage.delete_backup(backup_id, ignore_missing=False, force=False)
     return backup
 
@@ -217,7 +220,7 @@ def _delete_backup(conn: Any, *, project_id: str, backup_id: str) -> dict[str, s
 async def list_project_volumes(conn: Any, *, project_id: str, limit: int) -> list[dict[str, str | int | None]]:
     """List volumes only when each provider record proves exact project ownership."""
     try:
-        return await asyncio.to_thread(_list_volumes, conn, project_id=project_id, limit=limit)
+        return await run_sdk(_list_volumes, conn, project_id=project_id, limit=limit)
     except McpStorageError:
         raise
     except Exception as exc:
@@ -227,7 +230,7 @@ async def list_project_volumes(conn: Any, *, project_id: str, limit: int) -> lis
 async def get_project_volume(conn: Any, *, project_id: str, volume_id: str) -> dict[str, str | int | None]:
     """Read one volume only after its provider record proves exact project ownership."""
     try:
-        return await asyncio.to_thread(_get_volume, conn, project_id=project_id, volume_id=volume_id)
+        return await run_sdk(_get_volume, conn, project_id=project_id, volume_id=volume_id)
     except McpStorageError:
         raise
     except Exception as exc:
@@ -237,7 +240,7 @@ async def get_project_volume(conn: Any, *, project_id: str, volume_id: str) -> d
 async def preview_project_volume_delete(conn: Any, *, project_id: str, volume_id: str) -> dict[str, str | int | None]:
     """Validate a non-force delete against current exact-project volume state."""
     try:
-        return await asyncio.to_thread(_prepare_volume_delete, conn, project_id=project_id, volume_id=volume_id)
+        return await run_sdk(_prepare_volume_delete, conn, project_id=project_id, volume_id=volume_id)
     except McpStorageError:
         raise
     except Exception as exc:
@@ -247,7 +250,7 @@ async def preview_project_volume_delete(conn: Any, *, project_id: str, volume_id
 async def request_project_volume_delete(conn: Any, *, project_id: str, volume_id: str) -> dict[str, str | int | None]:
     """Delete only a currently available exact-project volume without force."""
     try:
-        return await asyncio.to_thread(_delete_volume, conn, project_id=project_id, volume_id=volume_id)
+        return await run_sdk(_delete_volume, conn, project_id=project_id, volume_id=volume_id)
     except McpStorageError:
         raise
     except Exception as exc:
@@ -257,7 +260,7 @@ async def request_project_volume_delete(conn: Any, *, project_id: str, volume_id
 async def list_project_snapshots(conn: Any, *, project_id: str, limit: int) -> list[dict[str, str | int | None]]:
     """List snapshots only after proving both snapshot and parent volume ownership."""
     try:
-        return await asyncio.to_thread(_list_snapshots, conn, project_id=project_id, limit=limit)
+        return await run_sdk(_list_snapshots, conn, project_id=project_id, limit=limit)
     except McpStorageError:
         raise
     except Exception as exc:
@@ -267,7 +270,7 @@ async def list_project_snapshots(conn: Any, *, project_id: str, limit: int) -> l
 async def get_project_snapshot(conn: Any, *, project_id: str, snapshot_id: str) -> dict[str, str | int | None]:
     """Read one snapshot only after proving its exact-project parent volume."""
     try:
-        return await asyncio.to_thread(_get_snapshot, conn, project_id=project_id, snapshot_id=snapshot_id)
+        return await run_sdk(_get_snapshot, conn, project_id=project_id, snapshot_id=snapshot_id)
     except McpStorageError:
         raise
     except Exception as exc:
@@ -279,7 +282,7 @@ async def preview_project_snapshot_delete(
 ) -> dict[str, str | int | None]:
     """Validate a non-force delete against current exact-project snapshot and parent volume state."""
     try:
-        return await asyncio.to_thread(_prepare_snapshot_delete, conn, project_id=project_id, snapshot_id=snapshot_id)
+        return await run_sdk(_prepare_snapshot_delete, conn, project_id=project_id, snapshot_id=snapshot_id)
     except McpStorageError:
         raise
     except Exception as exc:
@@ -291,7 +294,7 @@ async def request_project_snapshot_delete(
 ) -> dict[str, str | int | None]:
     """Delete only an available exact-project snapshot without force."""
     try:
-        return await asyncio.to_thread(_delete_snapshot, conn, project_id=project_id, snapshot_id=snapshot_id)
+        return await run_sdk(_delete_snapshot, conn, project_id=project_id, snapshot_id=snapshot_id)
     except McpStorageError:
         raise
     except Exception as exc:
@@ -301,7 +304,7 @@ async def request_project_snapshot_delete(
 async def list_project_backups(conn: Any, *, project_id: str, limit: int) -> list[dict[str, str | int | None]]:
     """List backups only after proving both backup and parent volume ownership."""
     try:
-        return await asyncio.to_thread(_list_backups, conn, project_id=project_id, limit=limit)
+        return await run_sdk(_list_backups, conn, project_id=project_id, limit=limit)
     except McpStorageError:
         raise
     except Exception as exc:
@@ -311,7 +314,7 @@ async def list_project_backups(conn: Any, *, project_id: str, limit: int) -> lis
 async def get_project_backup(conn: Any, *, project_id: str, backup_id: str) -> dict[str, str | int | None]:
     """Read one backup only after proving its exact-project parent volume."""
     try:
-        return await asyncio.to_thread(_get_backup, conn, project_id=project_id, backup_id=backup_id)
+        return await run_sdk(_get_backup, conn, project_id=project_id, backup_id=backup_id)
     except McpStorageError:
         raise
     except Exception as exc:
@@ -321,7 +324,7 @@ async def get_project_backup(conn: Any, *, project_id: str, backup_id: str) -> d
 async def preview_project_backup_delete(conn: Any, *, project_id: str, backup_id: str) -> dict[str, str | int | None]:
     """Validate a non-force delete against current exact-project backup and parent volume state."""
     try:
-        return await asyncio.to_thread(_prepare_backup_delete, conn, project_id=project_id, backup_id=backup_id)
+        return await run_sdk(_prepare_backup_delete, conn, project_id=project_id, backup_id=backup_id)
     except McpStorageError:
         raise
     except Exception as exc:
@@ -331,7 +334,7 @@ async def preview_project_backup_delete(conn: Any, *, project_id: str, backup_id
 async def request_project_backup_delete(conn: Any, *, project_id: str, backup_id: str) -> dict[str, str | int | None]:
     """Delete only an available exact-project backup without force."""
     try:
-        return await asyncio.to_thread(_delete_backup, conn, project_id=project_id, backup_id=backup_id)
+        return await run_sdk(_delete_backup, conn, project_id=project_id, backup_id=backup_id)
     except McpStorageError:
         raise
     except Exception as exc:

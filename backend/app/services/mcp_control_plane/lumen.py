@@ -14,7 +14,15 @@ from sqlalchemy import select
 from app.database import get_session_factory
 from app.models.mcp_authority import McpDelegatedGrant, McpLumenSelection, McpOwnerLock, McpPersonalToken
 from app.services.mcp_control_plane.authentication import McpPrincipal
-from app.services.mcp_control_plane.authority import McpGrantStateError, _as_utc, _now, grant_scopes
+from app.services.mcp_control_plane.authority import (
+    McpGrantStateError,
+    _as_utc,
+    _now,
+    approved_project_metadata,
+    default_grant_project,
+    grant_scopes,
+    validate_grant_project,
+)
 
 
 class McpLumenAuthorityError(RuntimeError):
@@ -94,18 +102,22 @@ def _validate_selected_row(
     if (
         selection is None
         or grant is None
-        or token is None
         or owner_lock is None
         or selection.grant_id != grant.id
         or grant.owner_user_id != user_id
-        or grant.owner_project_id != project_id
-        or grant.source != "personal_token"
         or grant.status != "active"
-        or token.grant_id != grant.id
-        or token.revoked_at is not None
+        or grant.source not in {"personal_token", "lumen"}
+        or (
+            grant.source == "personal_token"
+            and (token is None or token.grant_id != grant.id or token.revoked_at is not None)
+        )
         or _as_utc(grant.expires_at) <= _now()
     ):
         raise McpLumenAuthorityError("Lumen has no active delegated MCP grant")
+    try:
+        validate_grant_project(grant, default_grant_project(grant))
+    except McpGrantStateError as exc:
+        raise McpLumenAuthorityError("Lumen delegated MCP scope is unavailable") from exc
     return LumenGrantSnapshot(
         grant_id=str(grant.id),
         user_id=user_id,
@@ -125,7 +137,7 @@ async def selected_lumen_snapshot(*, user_id: str, project_id: str) -> LumenGran
                 await session.execute(
                     select(McpLumenSelection, McpDelegatedGrant, McpPersonalToken, McpOwnerLock)
                     .join(McpDelegatedGrant, McpDelegatedGrant.id == McpLumenSelection.grant_id)
-                    .join(McpPersonalToken, McpPersonalToken.grant_id == McpDelegatedGrant.id)
+                    .outerjoin(McpPersonalToken, McpPersonalToken.grant_id == McpDelegatedGrant.id)
                     .join(
                         McpOwnerLock,
                         (McpOwnerLock.owner_user_id == McpLumenSelection.owner_user_id)
@@ -157,15 +169,15 @@ async def selected_lumen_snapshot(*, user_id: str, project_id: str) -> LumenGran
         return None
 
 
-async def resolve_lumen_principal(snapshot: LumenGrantSnapshot) -> McpPrincipal:
-    """Revalidate an opaque snapshot immediately before registry execution."""
+async def _resolve_snapshot_grant(snapshot: LumenGrantSnapshot) -> tuple[McpDelegatedGrant, LumenGrantSnapshot]:
+    """Load one selected grant and reject stale persisted snapshot authority."""
     try:
         async with _factory()() as session:
             row = (
                 await session.execute(
                     select(McpLumenSelection, McpDelegatedGrant, McpPersonalToken, McpOwnerLock)
                     .join(McpDelegatedGrant, McpDelegatedGrant.id == McpLumenSelection.grant_id)
-                    .join(McpPersonalToken, McpPersonalToken.grant_id == McpDelegatedGrant.id)
+                    .outerjoin(McpPersonalToken, McpPersonalToken.grant_id == McpDelegatedGrant.id)
                     .join(
                         McpOwnerLock,
                         (McpOwnerLock.owner_user_id == McpLumenSelection.owner_user_id)
@@ -192,6 +204,28 @@ async def resolve_lumen_principal(snapshot: LumenGrantSnapshot) -> McpPrincipal:
     )
     if current != snapshot:
         raise McpLumenAuthorityError("Lumen delegated MCP selection changed")
+    return grant, current
+
+
+async def selected_lumen_metadata(snapshot: LumenGrantSnapshot) -> dict[str, object]:
+    """Public-safe saved selection metadata for authenticated cloud-tool discovery."""
+    grant, _ = await _resolve_snapshot_grant(snapshot)
+    projects = approved_project_metadata(grant)
+    project_id = default_grant_project(grant)
+    project = next(item for item in projects if item["id"] == project_id)
+    return {
+        "access_level": grant.access_level,
+        "project_id": project_id,
+        "project_name": project["name"],
+        "source": grant.source,
+        "allowed_projects": projects,
+        "selection_name": None if grant.source == "lumen" else grant.display_name,
+    }
+
+
+async def resolve_lumen_principal(snapshot: LumenGrantSnapshot) -> McpPrincipal:
+    """Revalidate an opaque snapshot immediately before registry execution."""
+    grant, current = await _resolve_snapshot_grant(snapshot)
     try:
         scopes = frozenset(grant_scopes(grant.access_level))
     except McpGrantStateError as exc:
@@ -199,7 +233,9 @@ async def resolve_lumen_principal(snapshot: LumenGrantSnapshot) -> McpPrincipal:
     return McpPrincipal(
         grant_id=current.grant_id,
         user_id=current.user_id,
-        project_id=current.project_id,
+        project_id=default_grant_project(grant),
+        owner_project_id=grant.owner_project_id,
+        selection_project_id=current.project_id,
         credential_epoch=current.credential_epoch,
         scopes=scopes,
         source="lumen",

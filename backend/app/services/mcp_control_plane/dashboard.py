@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import asyncio
 import math
 from typing import Any
 
 from app.services import cinder, nova
 from app.services import manila as manila_service
 from app.services import neutron as neutron_service
+from app.services.mcp_control_plane.sdk import gather_sdk, run_sdk
 
 
 class McpDashboardError(RuntimeError):
@@ -40,13 +40,13 @@ def _quota_entry(raw: object, key: str, *, usage_keys: tuple[str, ...] = ("in_us
 async def project_quotas(conn: Any, *, project_id: str, manila_enabled: bool) -> dict[str, object]:
     """Return only fixed dashboard quota fields from an exact project connection."""
     calls: dict[str, object] = {
-        "compute": asyncio.to_thread(nova.get_project_quota, conn, project_id, strict=True),
-        "storage": asyncio.to_thread(cinder.get_volume_quota, conn, project_id, strict=True),
-        "network": asyncio.to_thread(neutron_service.get_network_quota, conn, project_id, strict=True),
+        "compute": run_sdk(nova.get_project_quota, conn, project_id, strict=True),
+        "storage": run_sdk(cinder.get_volume_quota, conn, project_id, strict=True),
+        "network": run_sdk(neutron_service.get_network_quota, conn, project_id, strict=True),
     }
     if manila_enabled:
-        calls["file_storage"] = asyncio.to_thread(manila_service.get_file_storage_quota, conn, strict=True)
-    results = await asyncio.gather(*calls.values(), return_exceptions=True)
+        calls["file_storage"] = run_sdk(manila_service.get_file_storage_quota, conn, strict=True)
+    results = await gather_sdk(*calls.values())
     settled = dict(zip(calls, results, strict=True))
     if any(isinstance(value, BaseException) for value in settled.values()):
         raise McpDashboardError("MCP quota source is unavailable")

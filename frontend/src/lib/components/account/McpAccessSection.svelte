@@ -19,6 +19,12 @@
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import AnimatedNumber from '$lib/components/ui/AnimatedNumber.svelte';
 	import TextInput from '$lib/components/ui/TextInput.svelte';
+	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
+
+	interface McpProject {
+		id: string;
+		name: string;
+	}
 
 	interface McpAccessRecord {
 		id: string;
@@ -26,6 +32,9 @@
 		name: string;
 		source: string;
 		access_level: string;
+		project_scope: 'current' | 'selected' | 'all';
+		project_ids: string[];
+		projects: McpProject[];
 		status: string;
 		visible_prefix: string | null;
 		issued_at: string | null;
@@ -57,14 +66,26 @@
 	let scope = $state.raw<AccessScope | null>(null);
 	let collectionScope = $state.raw<AccessScope | null>(null);
 	let loadSequence = 0;
+	let loadController: AbortController | null = null;
+	let issuanceSequence = 0;
+	let issuanceController: AbortController | null = null;
+	let projectsScope = $state.raw<AccessScope | null>(null);
+	let projects = $state<McpProject[]>([]);
+	let projectsError = $state('');
+	let projectScope = $state<'selected' | 'all'>('selected');
+	let selectedProjectIds = $state<string[]>([]);
+	let defaultProjectSelection = true;
+	let loading = $state(false);
+	let loadError = $state('');
+	const projectsReady = $derived(projectsScope === scope && isCurrentScope(scope) && !loading);
+	const validProjectSelection = $derived(projectsReady && !loadError && projects.length > 0 && (projectScope === 'all'
+		|| (selectedProjectIds.length > 0 && selectedProjectIds.every((id) => projects.some((project) => project.id === id)))));
 	const mcpEnabled = $derived($siteConfig.services.mcp);
 	const mcpUrl = $derived($siteConfig.mcp_url || `${getBaseUrl().replace(/\/+$/, '')}/api/v1/mcp`);
 	const oauthAuthorizeUrl = $derived(`${mcpUrl.replace(/\/+$/, '')}/oauth/authorize`);
 
 	let tokens = $state<McpAccessRecord[]>([]);
 	let oauthGrants = $state<McpAccessRecord[]>([]);
-	let loading = $state(false);
-	let loadError = $state('');
 	let actionError = $state('');
 	let creating = $state(false);
 	let mutatingId = $state<string | null>(null);
@@ -81,6 +102,7 @@
 	let verificationResult = $state<McpConnectionResult | null>(null);
 	let verificationError = $state('');
 	let verificationSequence = 0;
+	let verificationController: AbortController | null = null;
 	const setupConfig = $derived(connectionConfig('YOUR_PERSONAL_MCP_TOKEN'));
 	const oauthConfig = $derived(connectionConfig());
 	const issuedConfig = $derived(issuedToken ? connectionConfig(issuedToken) : '');
@@ -97,8 +119,17 @@
 		}, null, 2);
 	}
 
+	function invalidateIssuance() {
+		issuanceSequence += 1;
+		issuanceController?.abort();
+		issuanceController = null;
+		creating = false;
+	}
+
 	function clearVerification() {
 		verificationSequence += 1;
+		verificationController?.abort();
+		verificationController = null;
 		verificationToken = '';
 		verifying = false;
 		verificationSource = null;
@@ -143,13 +174,21 @@
 	}
 
 	function reset() {
+		loadController?.abort();
+		loadController = null;
 		collectionScope = null;
+		invalidateIssuance();
+		projectsScope = null;
+		projects = [];
+		projectsError = '';
+		projectScope = 'selected';
+		selectedProjectIds = [];
+		defaultProjectSelection = true;
 		tokens = [];
 		oauthGrants = [];
 		loading = false;
 		loadError = '';
 		actionError = '';
-		creating = false;
 		mutatingId = null;
 		tokenName = 'Lumen';
 		accessLevel = 'read';
@@ -186,14 +225,51 @@
 		await loadAccessFor(scope);
 	}
 
+	function toggleProject(owner: AccessScope, id: string) {
+		if (!isCurrentScope(owner) || !projectsReady || creating || projectScope !== 'selected' || !projects.some((project) => project.id === id)) return;
+		selectedProjectIds = selectedProjectIds.includes(id)
+			? selectedProjectIds.filter((selected) => selected !== id)
+			: [...selectedProjectIds, id];
+	}
+
+	async function loadProjectsFor(owner: AccessScope & { token: string; projectId: string }, request: number, signal: AbortSignal) {
+		const previousSelection = selectedProjectIds;
+		const useDefault = defaultProjectSelection;
+		defaultProjectSelection = false;
+		projectsScope = null;
+		projects = [];
+		selectedProjectIds = [];
+		projectsError = '';
+		try {
+			const available = await api.get<McpProject[]>('/api/v1/auth/mcp-projects', owner.token, owner.projectId, { refresh: true, signal, suppressAuthRedirect: true });
+			if (!isCurrentScope(owner) || request !== loadSequence) return;
+			projects = available;
+			projectsScope = owner;
+			selectedProjectIds = (useDefault ? [owner.projectId] : previousSelection)
+				.filter((id) => available.some((project) => project.id === id));
+		} catch {
+			if (isCurrentScope(owner) && request === loadSequence) projectsError = t('mcp.projectsLoadFailed');
+		}
+	}
+
 	async function loadAccessFor(owner: AccessScope | null) {
 		if (!isCurrentScope(owner)) return;
 		const request = ++loadSequence;
+		loadController?.abort();
+		const controller = new AbortController();
+		loadController = controller;
+		const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]);
+		collectionScope = null;
+		tokens = [];
+		oauthGrants = [];
 		loading = true;
+		// A reload invalidates both the editable project snapshot and pending issuance.
+		invalidateIssuance();
+		const projectLoad = loadProjectsFor(owner, request, signal);
 		try {
 			const [personalTokens, grants] = await Promise.all([
-				api.get<McpAccessRecord[]>('/api/v1/auth/mcp-tokens', owner.token, owner.projectId),
-				api.get<McpAccessRecord[]>('/api/v1/auth/mcp-oauth/grants', owner.token, owner.projectId),
+				api.get<McpAccessRecord[]>('/api/v1/auth/mcp-tokens', owner.token, owner.projectId, { refresh: true, signal, suppressAuthRedirect: true }),
+				api.get<McpAccessRecord[]>('/api/v1/auth/mcp-oauth/grants', owner.token, owner.projectId, { refresh: true, signal, suppressAuthRedirect: true }),
 			]);
 			if (!isCurrentScope(owner) || request !== loadSequence) return;
 			tokens = personalTokens;
@@ -204,7 +280,16 @@
 			if (!isCurrentScope(owner) || request !== loadSequence) return;
 			loadError = errorMessage(error, t('mcp.loadFailed'));
 		} finally {
-			if (isCurrentScope(owner) && request === loadSequence) loading = false;
+			await projectLoad;
+			controller.abort();
+			if (loadController === controller) loadController = null;
+			if (isCurrentScope(owner) && request === loadSequence) {
+				if (loadError) {
+					projectScope = 'selected';
+					selectedProjectIds = [];
+				}
+				loading = false;
+			}
 		}
 	}
 
@@ -214,7 +299,13 @@
 	}
 
 	async function createToken(owner: AccessScope) {
-		if (!isCurrentScope(owner) || creating || !tokenName.trim()) return;
+		if (!isCurrentScope(owner) || creating || !tokenName.trim() || !validProjectSelection) return;
+		const request = ++issuanceSequence;
+		const projectRequest = loadSequence;
+		const current = () => isCurrentScope(owner) && request === issuanceSequence && projectRequest === loadSequence;
+		const controller = new AbortController();
+		const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]);
+		issuanceController = controller;
 		creating = true;
 		actionError = '';
 		try {
@@ -223,12 +314,16 @@
 				{
 					name: tokenName.trim(),
 					access_level: accessLevel,
+					project_scope: projectScope,
+					project_ids: projectScope === 'all' ? [] : [...selectedProjectIds],
 					expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
 				},
 				owner.token,
 				owner.projectId,
+				{ signal, suppressAuthRedirect: true, cache: 'no-store' },
 			);
-			if (!isCurrentScope(owner)) return;
+			if (!current()) return;
+			issuanceController = null;
 			issuedToken = issued.token;
 			showIssuedToken = true;
 			copied = null;
@@ -237,9 +332,10 @@
 			expiresAt = '';
 			await loadAccessFor(owner);
 		} catch (error) {
-			if (isCurrentScope(owner)) actionError = errorMessage(error, t('mcp.createFailed'));
+			if (current()) actionError = errorMessage(error, t('mcp.createFailed'));
 		} finally {
-			if (isCurrentScope(owner)) creating = false;
+			if (issuanceController === controller) issuanceController = null;
+			if (current()) creating = false;
 		}
 	}
 
@@ -284,6 +380,9 @@
 		if (!isCurrentScope(owner) || !secret?.trim() || verifying) return;
 		if (source === 'issued' && secret !== issuedToken) return;
 		const request = ++verificationSequence;
+		const controller = new AbortController();
+		const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]);
+		verificationController = controller;
 		const current = () => isCurrentScope(owner) && request === verificationSequence
 			&& (source === 'issued' ? issuedToken === secret : verificationToken.trim() === secret.trim());
 		verifying = true;
@@ -293,11 +392,13 @@
 		try {
 			const result = await api.post<McpConnectionResult>(
 				'/api/v1/auth/mcp-tokens/verify', { token: secret.trim() }, owner.token, owner.projectId,
+				{ signal, suppressAuthRedirect: true, cache: 'no-store' },
 			);
 			if (current()) verificationResult = result;
 		} catch (error) {
 			if (current()) verificationError = verificationErrorMessage(error);
 		} finally {
+			if (verificationController === controller) verificationController = null;
 			if (current()) {
 				verifying = false;
 				if (source === 'saved') verificationToken = '';
@@ -399,6 +500,25 @@
 	{/if}
 {/snippet}
 
+{#snippet savedRestrictions(record: McpAccessRecord)}
+	<div class="saved-restrictions" role="group" aria-label={t('mcp.savedRestrictions')}>
+		<p class="restriction-heading">{t('mcp.savedRestrictions')}</p>
+		<p>{t('mcp.savedAccess', { access: record.access_level === 'manage' ? t('mcp.manage') : t('mcp.read') })}</p>
+		{#if record.project_scope === 'all'}
+			<p>{t('mcp.savedAllProjects')}</p>
+		{:else if record.project_scope === 'selected'}
+			<p>{t('mcp.savedSelectedProjects')}</p>
+		{:else if record.project_scope === 'current'}
+			<p>{t('mcp.savedCurrentProject')}</p>
+		{/if}
+		{#if record.projects?.length}
+			<p>{t('mcp.savedProjects', { projects: record.projects.map((project) => `${project.name} (${project.id})`).join(', ') })}</p>
+		{:else}
+			<p>{t('mcp.savedProjectsUnavailable')}</p>
+		{/if}
+	</div>
+{/snippet}
+
 {#if mcpEnabled && isCurrentScope(scope)}
 	{@const owner = scope}
 	<Card class="mcp-access motion-fade" surface="raised" padding="lg">
@@ -448,7 +568,7 @@
 			</Field>
 			<Field label={t('mcp.permission')} for="mcp-token-access" help={t('mcp.permissionHelp')}>
 				{#snippet children()}
-					<select id="mcp-token-access" class="control" bind:value={accessLevel}>
+					<select id="mcp-token-access" class="control" bind:value={accessLevel} disabled={creating}>
 						<option value="read">{t('mcp.read')}</option>
 						<option value="manage">{t('mcp.manage')}</option>
 					</select>
@@ -459,7 +579,36 @@
 					<input id="mcp-token-expiry" class="control" type="datetime-local" bind:value={expiresAt} />
 				{/snippet}
 			</Field>
-			<div class="token-submit"><Button type="submit" disabled={creating || !tokenName.trim()}>{#if creating}<ActivityIndicator size="xs" label={t('mcp.creating')} />{:else}{t('mcp.create')}{/if}</Button></div>
+			<div class="project-selection">
+				<Field label={t('mcp.projects')} for="mcp-token-project-scope" help={t('mcp.projectsHelp')}>
+					{#snippet children()}
+						<select id="mcp-token-project-scope" class="control" bind:value={projectScope} disabled={!projectsReady || creating} aria-describedby="mcp-token-project-scope-message">
+							<option value="selected">{t('mcp.selectedProjects')}</option>
+							<option value="all">{t('mcp.allProjects')}</option>
+						</select>
+					{/snippet}
+				</Field>
+				{#if projectsError}
+					<Alert tone="danger" title={t('mcp.projectsLoadFailed')}>
+						{#snippet children()}{t('mcp.projectsRetryHelp')}{/snippet}
+					</Alert>
+				{:else if !projectsReady}
+					<ActivityIndicator label={t('mcp.projectsLoading')} />
+				{:else if projects.length === 0}
+					<p class="project-help">{t('mcp.noProjects')}</p>
+				{:else if projectScope === 'selected'}
+					<div class="project-options" role="group" aria-label={t('mcp.selectedProjects')}>
+						{#each projects as project (project.id)}
+							<div class="project-option">
+								<SelectionCheckbox ariaLabel={t('mcp.selectProject', { name: project.name, id: project.id })} checked={selectedProjectIds.includes(project.id)} disabled={creating} onclick={toggleProject.bind(null, owner, project.id)} />
+								<span>{project.name}<code>{project.id}</code></span>
+							</div>
+						{/each}
+					</div>
+					{#if selectedProjectIds.length === 0}<p class="project-help" role="alert">{t('mcp.projectsRequired')}</p>{/if}
+				{/if}
+			</div>
+			<div class="token-submit"><Button type="submit" disabled={creating || !tokenName.trim() || !validProjectSelection}>{#if creating}<ActivityIndicator size="xs" label={t('mcp.creating')} />{:else}{t('mcp.create')}{/if}</Button></div>
 		</form>
 		<section aria-labelledby="mcp-setup-heading" class="connection-section">
 			<h3 id="mcp-setup-heading">{t('mcp.setupTitle')}</h3>
@@ -499,6 +648,7 @@
 							<div class="record-main">
 								<div class="record-title"><strong>{record.name}</strong><StatusChip status={record.status} /></div>
 								<p>{t('mcp.recordDetails', { prefix: record.visible_prefix ?? t('mcp.noPrefix'), access: record.access_level === 'manage' ? t('mcp.manage') : t('mcp.read'), lastUsed: formatDate(record.last_used_at), expires: formatDate(record.expires_at) })}</p>
+								{@render savedRestrictions(record)}
 								{#if record.is_lumen_default}<p class="default-note">{t('mcp.lumenDefault')}</p>{/if}
 							</div>
 							<div class="record-actions">
@@ -523,7 +673,11 @@
 				<div class="records">
 					{#each oauthGrants as record (record.id)}
 						<div class="record">
-							<div class="record-main"><div class="record-title"><strong>{record.name}</strong><StatusChip status={record.status} /></div><p>{t('mcp.oauthDetails', { access: record.access_level === 'manage' ? t('mcp.manage') : t('mcp.read'), expires: formatDate(record.expires_at) })}</p></div>
+							<div class="record-main">
+								<div class="record-title"><strong>{record.name}</strong><StatusChip status={record.status} /></div>
+								<p>{t('mcp.oauthDetails', { access: record.access_level === 'manage' ? t('mcp.manage') : t('mcp.read'), expires: formatDate(record.expires_at) })}</p>
+								{@render savedRestrictions(record)}
+							</div>
 							<Button variant="danger-outline" size="xs" onclick={revokeOAuthGrant.bind(null, owner, record)} disabled={mutatingId !== null}>{t('mcp.revokeAccess')}</Button>
 						</div>
 					{/each}
@@ -565,10 +719,20 @@
 	.endpoint { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.5rem; margin: 0; color: var(--color-ink-2); font-size: 0.75rem; }
 	.endpoint span { font-weight: 600; }
 	.endpoint code { color: var(--color-ink-1); overflow-wrap: anywhere; }
-	.token-form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(9rem, 0.7fr) minmax(10rem, 0.8fr) auto; gap: 0.75rem; align-items: end; padding: 1rem; border: 1px solid var(--color-line); border-radius: 0.75rem; background: var(--color-surface-sunken); }
+	.token-form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(9rem, 0.7fr) minmax(10rem, 0.8fr); gap: 0.75rem; align-items: end; padding: 1rem; border: 1px solid var(--color-line); border-radius: var(--radius-lg); background: var(--color-surface-sunken); }
 	.control { box-sizing: border-box; width: 100%; min-height: 2.5rem; padding: 0.5rem 0.625rem; border: 1px solid var(--color-line-2); border-radius: 0.5rem; background: var(--color-surface-base); color: var(--color-ink-0); font: inherit; }
 	.control:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 	.token-submit { padding-bottom: 0.0625rem; }
+	.project-selection, .token-submit { grid-column: 1 / -1; min-width: 0; }
+	.project-selection { display: grid; gap: 0.75rem; }
+	.project-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: 0.5rem; }
+	.project-option { display: flex; align-items: center; gap: 0.75rem; min-width: 0; padding: 0.75rem; border: 1px solid var(--color-line); border-radius: var(--radius-md); background: var(--color-surface-base); }
+	.project-option span { min-width: 0; color: var(--color-ink-1); font-size: 0.8125rem; overflow-wrap: anywhere; }
+	.project-option code { display: block; color: var(--color-ink-2); font-size: 0.75rem; }
+	.project-help { margin: 0; color: var(--color-ink-2); font-size: 0.8125rem; line-height: 1.5; }
+	.record p { overflow-wrap: anywhere; }
+	.saved-restrictions { margin-top: 0.75rem; padding-top: 0.5rem; border-top: 1px solid var(--color-line); }
+	.record .restriction-heading { color: var(--color-ink-1); font-weight: 500; }
 	.subheading { margin-bottom: 0.5rem; }
 	.subheading h3 { font-size: 0.875rem; }
 	.subheading span { color: var(--color-ink-2); font-size: 0.75rem; }
@@ -588,6 +752,6 @@
 	.verification-result p { margin: 0; overflow-wrap: anywhere; }
 	.verification-result p + p { margin-top: 0.5rem; }
 	.dialog-actions { justify-content: flex-end; flex-wrap: wrap; gap: 0.5rem; }
-	@media (max-width: 56rem) { .token-form { grid-template-columns: 1fr 1fr; } .token-submit { grid-column: 1 / -1; } }
-	@media (max-width: 38rem) { .token-form { grid-template-columns: 1fr; } .record { align-items: flex-start; flex-direction: column; } .record-actions { justify-content: flex-start; } }
+	@media (min-width: 48rem) and (max-width: 63.999rem) { .token-form { grid-template-columns: 1fr 1fr; } }
+	@media (max-width: 47.999rem) { .token-form { grid-template-columns: minmax(0, 1fr); } .section-heading { align-items: flex-start; } .record { align-items: flex-start; flex-direction: column; } .record-actions { justify-content: flex-start; } }
 </style>

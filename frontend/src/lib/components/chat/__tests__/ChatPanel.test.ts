@@ -6,6 +6,9 @@ import { auth } from '$lib/stores/auth';
 import { parseChatRunEvent } from '$lib/api/chatContracts';
 import { invalidateChatModels } from '$lib/stores/chatModels';
 import ChatPanel from '../ChatPanel.svelte';
+import { siteConfig } from '$lib/config/site';
+import { projectSwitching } from '$lib/stores/auth';
+import type { CloudToolsCatalogue } from '$lib/api/chatContracts';
 
 const mocks = vi.hoisted(() => ({
 	get: vi.fn(),
@@ -78,6 +81,7 @@ function event(seq: number, type: string, payload: object) {
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	siteConfig.update((config) => ({ ...config, services: { ...config.services, mcp: false } }));
 	auth.set({
 		token: 'token',
 		refreshToken: null,
@@ -1102,4 +1106,79 @@ describe('ChatPanel', () => {
 		));
 	});
 
+});
+
+describe('ChatPanel cloud catalogue lifecycle', () => {
+	const catalogue = (name = 'Research'): CloudToolsCatalogue => ({
+		enabled: true, access_level: 'read', project_id: 'project-1', project_name: name,
+		tool_count: 12, source: 'lumen', allowed_projects: [{ id: 'project-1', name }], selection_name: null,
+	});
+	function enableCloud(load: () => Promise<CloudToolsCatalogue>) {
+		siteConfig.update((config) => ({ ...config, services: { ...config.services, mcp: true } }));
+		const fallback = mocks.get.getMockImplementation()!;
+		mocks.get.mockImplementation((path: string, ...args: unknown[]) => {
+			if (path === '/api/v1/chat/cloud-tools') return load();
+			if (path === '/api/v1/chat/models') return Promise.resolve([{ id: 1, model_name: 'model-1', display_name: 'Model 1', capabilities: { tool_call: true } }]);
+			return fallback(path, ...args);
+		});
+	}
+
+	it('shows default cloud tools with zero custom entries without injecting a fake tool ID', async () => {
+		enableCloud(async () => catalogue());
+		render(ChatPanel);
+		await screen.findByRole('button', { name: 'Model 1' });
+		await waitFor(() => expect((screen.getByRole('button', { name: '추가' }) as HTMLButtonElement).disabled).toBe(false));
+		await fireEvent.click(screen.getByRole('button', { name: '추가' }));
+		expect(screen.getByRole('menuitem', { name: '클라우드 리소스' }).textContent).toContain('Research (project-1)');
+		expect(screen.queryAllByRole('menuitemcheckbox')).toHaveLength(0);
+		await fireEvent.click(screen.getByRole('button', { name: '추가' }));
+		await fireEvent.click(screen.getByTitle('저장되지 않는 임시 채팅'));
+		await fireEvent.input(screen.getByRole('textbox'), { target: { value: 'Inspect this project' } });
+		await fireEvent.click(screen.getByRole('button', { name: '전송' }));
+		await waitFor(() => expect(mocks.createRun).toHaveBeenCalled());
+		expect(mocks.createRun.mock.calls[0][1].features.tool_policy).toMatchObject({ mode: 'agent_default', enabled_tool_ids: null, enabled_mcp_ids: null });
+		expect(mocks.get).toHaveBeenCalledWith('/api/v1/chat/cloud-tools', 'token', 'project-1', { refresh: true, signal: expect.any(AbortSignal), suppressAuthRedirect: true });
+	});
+
+	it.each(['token', 'userId', 'projectId'] as const)('discards old cloud metadata after an ABA %s change', async (field) => {
+		const old = Promise.withResolvers<CloudToolsCatalogue>();
+		let requests = 0;
+		enableCloud(() => ++requests === 1 ? old.promise : Promise.resolve(catalogue('Fresh owner')));
+		render(ChatPanel);
+		await waitFor(() => expect(requests).toBe(1));
+		const initial = field === 'token' ? 'token' : field === 'userId' ? 'user-1' : 'project-1';
+		auth.update((actor) => ({ ...actor, [field]: 'other-owner' }));
+		auth.update((actor) => ({ ...actor, [field]: initial }));
+		await waitFor(() => expect(requests).toBe(2));
+		const oldSignal = mocks.get.mock.calls.find(([path]) => path === '/api/v1/chat/cloud-tools')![3].signal as AbortSignal;
+		expect(oldSignal.aborted).toBe(true);
+		await screen.findByRole('button', { name: 'Model 1' });
+		await waitFor(() => expect((screen.getByRole('button', { name: '추가' }) as HTMLButtonElement).disabled).toBe(false));
+		await fireEvent.click(screen.getByRole('button', { name: '추가' }));
+		expect(screen.getByRole('menuitem', { name: '클라우드 리소스' }).textContent).toContain('Fresh owner');
+		old.resolve(catalogue('Prior owner secret project'));
+		await tick();
+		await tick();
+		expect(screen.queryByText(/Prior owner secret project/)).toBeNull();
+		expect(screen.getByRole('menuitem', { name: '클라우드 리소스' }).textContent).toContain('Fresh owner');
+	});
+
+	it('removes cloud metadata before project rescope and does not revive it after reload failure', async () => {
+		let requests = 0;
+		enableCloud(async () => {
+			if (++requests > 1) throw new Error('Catalogue unavailable');
+			return catalogue();
+		});
+		render(ChatPanel);
+		await screen.findByRole('button', { name: 'Model 1' });
+		await waitFor(() => expect((screen.getByRole('button', { name: '추가' }) as HTMLButtonElement).disabled).toBe(false));
+		await fireEvent.click(screen.getByRole('button', { name: '추가' }));
+		projectSwitching.set(true);
+		await tick();
+		expect(screen.queryByRole('menuitem', { name: '클라우드 리소스' })).toBeNull();
+		projectSwitching.set(false);
+		await waitFor(() => expect(requests).toBe(2));
+		await tick();
+		expect(screen.queryByRole('menuitem', { name: '클라우드 리소스' })).toBeNull();
+	});
 });

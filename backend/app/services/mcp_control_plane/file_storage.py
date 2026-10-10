@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 from app.services import manila as manila_service
+from app.services.mcp_control_plane.sdk import run_sdk
 
 
 class McpFileStorageError(ValueError):
@@ -15,7 +15,7 @@ class McpFileStorageError(ValueError):
 async def get_project_share_quota(conn: Any) -> dict[str, Any]:
     """Return project Manila quota limits and usage projected into numeric limits/in_use."""
     try:
-        quota = await asyncio.to_thread(manila_service.get_file_storage_quota, conn, strict=True)
+        quota = await run_sdk(manila_service.get_file_storage_quota, conn, strict=True)
         return {
             "shares": {
                 "limit": quota["shares"]["limit"],

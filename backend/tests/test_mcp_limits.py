@@ -8,7 +8,7 @@ from app.services.mcp_control_plane.authentication import McpPrincipal
 
 class _Redis:
     def __init__(self):
-        self.values: dict[str, int] = {}
+        self.values: dict[str, int | set[str]] = {}
 
     async def incr(self, key):
         self.values[key] = self.values.get(key, 0) + 1
@@ -17,16 +17,16 @@ class _Redis:
     async def expire(self, _key, _seconds):
         return True
 
-    async def eval(self, _script, _keys, key, maximum, _ttl):
-        self.values[key] = self.values.get(key, 0) + 1
-        if self.values[key] > maximum:
-            self.values[key] -= 1
+    async def eval(self, _script, _keys, key, maximum, owner_token):
+        owners = self.values.setdefault(key, set())
+        if len(owners) >= maximum:
             return 0
+        owners.add(owner_token)
         return 1
 
-    async def decr(self, key):
-        self.values[key] = self.values.get(key, 0) - 1
-        return self.values[key]
+    async def srem(self, key, owner_token):
+        self.values[key].discard(owner_token)
+        return 1
 
 
 @pytest.fixture
@@ -56,8 +56,8 @@ async def test_grant_call_slot_applies_per_grant_rate_and_releases_concurrency(m
     )
 
     async with limits.grant_call_slot(principal, effect="read"):
-        assert redis.values["afterglow:mcp:limit:project-a:grant-a:concurrency"] == 1
-    assert redis.values["afterglow:mcp:limit:project-a:grant-a:concurrency"] == 0
+        assert len(redis.values["afterglow:mcp:limit:project-a:grant-a:concurrency"]) == 1
+    assert len(redis.values["afterglow:mcp:limit:project-a:grant-a:concurrency"]) == 0
     with pytest.raises(limits.McpRateLimitExceeded):
         async with limits.grant_call_slot(principal, effect="read"):
             raise AssertionError("rate-limited request must not enter")

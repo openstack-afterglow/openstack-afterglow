@@ -165,8 +165,15 @@ print(json.dumps({'AFTERGLOW_LOCAL_OS_' + key: str(openstack.get(field, default)
 	composeEnvironment = { ...process.env, ...composeInputs };
 }
 
-function assertIsolatedConfiguration() {
+function assertDevelopmentConfiguration() {
 	const config = JSON.parse(compose(['config', '--format', 'json'], { capture: true }));
+	// Compose escapes '$' as '$$' when serializing config, including JSON.
+	// Restore runtime values before preserving them as interpolation inputs.
+	for (const service of Object.values(config.services)) {
+		for (const [name, value] of Object.entries(service.environment ?? {})) {
+			if (typeof value === 'string') service.environment[name] = value.replaceAll('$$', '$');
+		}
+	}
 	if (config.name !== PROJECT) fail('Compose project isolation was lost.');
 	const configSnapshotSource = `${process.cwd()}/${LOCAL_DIR}/afterglow.conf`;
 	const snapshotReaderGid = composeInputs.AFTERGLOW_LOCAL_CONFIG_GID;
@@ -175,9 +182,9 @@ function assertIsolatedConfiguration() {
 		if (!service || service.container_name) fail(`${name} must use project-scoped containers.`);
 		const environment = service.environment ?? {};
 		if (environment.DATABASE_URL) {
-			const database = new URL(environment.DATABASE_URL);
-			const schema = name === 'backend' ? 'afterglow' : name.split('-')[0];
-			if (database.hostname !== (name === 'backend' ? 'afterglow-mariadb' : 'service-mariadb') || database.pathname !== `/${schema}`) fail(`${name} is not isolated to its local database.`);
+			new URL(environment.DATABASE_URL);
+			const owner = name === 'backend' || name === 'notion-worker' ? 'afterglow' : name.split('-')[0];
+			composeInputs[`${owner.toUpperCase()}_DATABASE_URL`] = environment.DATABASE_URL;
 		}
 		if (environment.REDIS_URL && new URL(environment.REDIS_URL).hostname !== 'redis') fail(`${name} is not isolated to the local Redis.`);
 		const ports = service.ports ?? [];
@@ -217,16 +224,17 @@ function assertIsolatedConfiguration() {
 	}
 	const waygateCallbackBaseUrl = String(config.services['waygate-api'].environment.WAYGATE_CALLBACK_BASE_URL ?? '').trim();
 	if (selectedServices.includes('waygate-api') && !waygateCallbackBaseUrl) fail('WAYGATE_PUBLIC_BASE_URL is required when Waygate is selected. Its VM provisioning/agent path still needs a reachable callback; --only lumen,palimpsest does not.');
-	console.log(`Isolation checked: ${PROJECT}; local databases, cache, volumes, network and loopback ports.`);
+	console.log(`Configuration checked: ${PROJECT}; selected databases, isolated cache, volumes, network and loopback ports.`);
 	composeInputs.AFTERGLOW_LOCAL_OS_SERVICE_PROJECT_ID = config.services['drover-api'].environment.OS_SERVICE_PROJECT_ID;
 	composeInputs.WAYGATE_PUBLIC_BASE_URL = waygateCallbackBaseUrl;
 	for (const name of ['SERVICE_WAYGATE_INTERNAL_URL', 'SERVICE_DROVER_INTERNAL_URL', 'SERVICE_LUMEN_INTERNAL_URL', 'SERVICE_PALIMPSEST_INTERNAL_URL']) {
 		composeInputs[name] = config.services.backend.environment[name] ?? '';
 	}
 	composeInputs.LUMEN_MCP_CONTROL_PLANE_URL = config.services['lumen-api'].environment.MCP_CONTROL_PLANE_URL ?? '';
+	composeEnvironment = { ...process.env, ...composeInputs };
 	const envPath = `${LOCAL_DIR}/compose.env`;
 	const contents = Object.entries(composeInputs)
-		.map(([name, value]) => `${name}=${JSON.stringify(String(value).replaceAll('$', '$$'))}`)
+		.map(([name, value]) => `${name}=${JSON.stringify(String(value).replaceAll('$', () => '$$'))}`)
 		.join('\n') + '\n';
 	writeFileSync(envPath, contents, { mode: 0o600 });
 	chmodSync(envPath, 0o600);
@@ -452,7 +460,7 @@ async function main() {
 		// Scoped mode retains the canonical project, manifest, datastores and keys.
 		assertLocalPrerequisites();
 		assertSiblingSources();
-		assertIsolatedConfiguration();
+		assertDevelopmentConfiguration();
 		if (selectedServices === SERVICES) assertNoLegacyStack();
 		compose(['up', '--build', '--wait', '--wait-timeout', '240', ...selectedServices]);
 		console.log(selectedServices === SERVICES
@@ -462,7 +470,7 @@ async function main() {
 	}
 	if (command === 'config') {
 		assertLocalPrerequisites();
-		assertIsolatedConfiguration();
+		assertDevelopmentConfiguration();
 		console.log(`Prepared ${LOCAL_DIR}/compose.env (0600). Use docker compose --env-file ${LOCAL_DIR}/compose.env -f ${COMPOSE_FILE}.`);
 		return;
 	}

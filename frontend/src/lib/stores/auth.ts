@@ -1,4 +1,4 @@
-import { writable, derived } from 'svelte/store';
+import { writable, derived, get } from 'svelte/store';
 import { MOCKUP_QUERY_KEY, MOCKUP_STORAGE_KEY, MOCKUP_SESSION_KEY, isMockupProfileId } from '$lib/mockup/contracts';
 import type { MockupProfileId } from '$lib/mockup/contracts';
 
@@ -52,17 +52,34 @@ const initial: AuthState = {
 export type AuthPersistenceMode = 'real' | 'mock';
 type MockupQueryProfile = MockupProfileId | 'off' | 'invalid' | null;
 
-function loadAuthFromStorage(key: string): AuthState {
-	if (typeof window === 'undefined') return initial;
-	try {
-		const raw = localStorage.getItem(key);
-		if (raw) return { ...initial, ...JSON.parse(raw) };
-	} catch { /* ignore */ }
-	return initial;
+export const AUTH_STORAGE_KEY = 'afterglow_auth';
+export const AUTH_LOGOUT_EVENT_KEY = 'afterglow_auth_logout';
+const AUTH_LOGOUT_SEEN_KEY = 'afterglow_auth_logout_seen';
+
+function readLogoutMarker(): string | null {
+	try { return localStorage.getItem(AUTH_LOGOUT_EVENT_KEY); } catch { return null; }
+}
+
+function clearSessionMarker(): void {
+	const secure = location.protocol === 'https:' ? '; Secure' : '';
+	document.cookie = `afterglow_session=; path=/; SameSite=Strict${secure}; max-age=0`;
+}
+
+function discardLegacyCredentials(): void {
+	// Never import browser-wide credentials. Existing sessions must authenticate again.
+	try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch { /* storage may be disabled */ }
 }
 
 function loadPersistedAuth(): AuthState {
-	return loadAuthFromStorage('afterglow_auth');
+	if (typeof window === 'undefined') return initial;
+	try {
+		const raw = sessionStorage.getItem(AUTH_STORAGE_KEY);
+		if (raw && sessionStorage.getItem(AUTH_LOGOUT_SEEN_KEY) === readLogoutMarker()) {
+			return { ...initial, ...JSON.parse(raw) };
+		}
+		sessionStorage.removeItem(AUTH_STORAGE_KEY);
+	} catch { /* unavailable storage means an in-memory session */ }
+	return initial;
 }
 
 function loadMockAuth(): AuthState {
@@ -113,6 +130,7 @@ function resolveInitialMockupProfile(): MockupProfileId | null {
 }
 
 export function detectInitialAuthContext(): { mode: AuthPersistenceMode; state: AuthState } {
+	if (typeof window !== 'undefined') discardLegacyCredentials();
 	if (resolveInitialMockupProfile()) {
 		return { mode: 'mock', state: loadMockAuth() };
 	}
@@ -123,6 +141,20 @@ const initialContext = detectInitialAuthContext();
 let persistenceMode: AuthPersistenceMode = initialContext.mode;
 let mockupProfile: MockupProfileId | null = initialContext.mode === 'mock' ? readMockupProfile() : null;
 
+function readAcknowledgedLogoutMarker(): string | null {
+	try { return sessionStorage.getItem(AUTH_LOGOUT_SEEN_KEY); } catch { return null; }
+}
+
+// This is the session boundary's acknowledgement, never a routine store update's.
+let acknowledgedLogoutMarker = readAcknowledgedLogoutMarker();
+function acknowledgeLogoutMarker(marker: string | null): void {
+	acknowledgedLogoutMarker = marker;
+	try {
+		if (marker === null) sessionStorage.removeItem(AUTH_LOGOUT_SEEN_KEY);
+		else sessionStorage.setItem(AUTH_LOGOUT_SEEN_KEY, marker);
+	} catch { /* retain the acknowledgement for the current in-memory session */ }
+}
+
 export const auth = writable<AuthState>(initialContext.state);
 auth.subscribe((state) => {
 	authRecovery.update((failure) => failure?.token === state.token ? failure : null);
@@ -131,53 +163,38 @@ if (initialContext.mode === 'mock' && initialContext.state.token) {
 	authReady.set(true);
 }
 
-// 자동 영속화
+// Credentials survive reloads in this tab, but never enter browser-wide storage.
 if (typeof window !== 'undefined') {
 	auth.subscribe(($auth) => {
-		// Fix 5: Secure 속성은 HTTPS에서만 부착 — 비-localhost HTTP 배포에서 쿠키 드롭 방지
-		const secure = location.protocol === 'https:' ? '; Secure' : '';
-		if (persistenceMode === 'mock') {
+		const key = persistenceMode === 'mock' ? MOCKUP_STORAGE_KEY : AUTH_STORAGE_KEY;
+		try {
 			if ($auth.token) {
-				const serialized = JSON.stringify($auth);
-				if (sessionStorage.getItem(MOCKUP_STORAGE_KEY) !== serialized) {
-					sessionStorage.setItem(MOCKUP_STORAGE_KEY, serialized);
-				}
+				sessionStorage.setItem(key, JSON.stringify($auth));
 			} else {
-				sessionStorage.removeItem(MOCKUP_STORAGE_KEY);
+				sessionStorage.removeItem(key);
 			}
-			return;
-		}
-		if ($auth.token) {
-			const serialized = JSON.stringify($auth);
-			// 동일 값 재기록 방지 — storage 이벤트로 받은 상태를 그대로 되쓰는 왕복 차단
-			if (localStorage.getItem('afterglow_auth') !== serialized) {
-				localStorage.setItem('afterglow_auth', serialized);
-			}
-			document.cookie = `afterglow_session=1; path=/; SameSite=Strict${secure}`;
-		} else {
-			localStorage.removeItem('afterglow_auth');
-			document.cookie = `afterglow_session=; path=/; SameSite=Strict${secure}; max-age=0`;
-		}
+		} catch { /* keep the current in-memory session if storage is unavailable */ }
+		if (persistenceMode === 'mock') return;
+		const secure = location.protocol === 'https:' ? '; Secure' : '';
+		// A newly opened logged-out tab must not delete another tab's SSR marker.
+		if ($auth.token) document.cookie = `afterglow_session=1; path=/; SameSite=Strict${secure}`;
 	});
 
-	// 탭 간 세션 동기화: 같은 브라우저의 다른 탭이 토큰을 회전(갱신)하거나 로그아웃하면
-	// 즉시 이 탭의 store에 반영한다. refresh 토큰은 1회용(회전 시 즉시 폐기)이므로
-	// 동기화가 없으면 두 번째 탭이 폐기된 토큰으로 갱신을 시도하다 세션 전체가 끊긴다.
-	// storage 이벤트는 변경을 일으킨 탭 자신에게는 발생하지 않으므로 루프가 생기지 않는다.
-	window.addEventListener?.('storage', (e) => {
-		if (persistenceMode === 'mock' || e.key !== 'afterglow_auth') return;
-		if (e.newValue === null) {
-			// 다른 탭에서 로그아웃
-			authReady.set(false);
-			auth.set(initial);
-			return;
-		}
-		try {
-			const incoming = JSON.parse(e.newValue) as Partial<AuthState>;
-			if (incoming.token) auth.update((cur) => ({ ...cur, ...incoming }));
-		} catch {
-			/* 손상된 값 무시 */
-		}
+	// Only secret-free revocation is shared. Tokens and project state remain tab-local.
+	window.addEventListener?.('storage', (e: StorageEvent) => {
+		if (e.storageArea && e.storageArea !== localStorage) return;
+		if (e.key !== AUTH_LOGOUT_EVENT_KEY || !e.newValue) return;
+		// Events are queued. An older event must not revoke a new login that
+		// already acknowledged a later marker, and refresh cannot acknowledge either.
+		const latestMarker = readLogoutMarker();
+		if (latestMarker !== null && e.newValue !== latestMarker) return;
+		if (acknowledgedLogoutMarker === e.newValue) return;
+		acknowledgeLogoutMarker(e.newValue);
+		try { sessionStorage.removeItem(AUTH_STORAGE_KEY); } catch { /* clear memory below */ }
+		if (persistenceMode === 'mock') return;
+		clearSessionMarker();
+		authReady.set(false);
+		auth.set(initial);
 	});
 }
 
@@ -227,6 +244,15 @@ export const isReader = derived(
 	([$auth, $canWrite]) => !$canWrite && $auth.roles.some((r) => r.toLowerCase() === 'reader')
 );
 
+// Use only after password/OIDC authentication succeeds, not for refresh/rescope.
+export function setLoginAuth(data: Partial<AuthState> & { token: string }): void {
+	if (persistenceMode === 'real' && typeof window !== 'undefined') {
+		acknowledgeLogoutMarker(readLogoutMarker());
+	}
+	authReady.set(false);
+	auth.set({ ...initial, ...data });
+}
+
 export function setAuth(data: Partial<AuthState> & { token: string }) {
 	auth.update((state) => ({
 		...state,
@@ -250,6 +276,15 @@ export function setAvailableProjects(projects: Project[]) {
 }
 
 export function clearAuth() {
+	if (persistenceMode === 'real' && typeof window !== 'undefined' && get(auth).token) {
+		try {
+			// Random event id only: no identity, access token or refresh token.
+			const marker = crypto.randomUUID();
+			localStorage.setItem(AUTH_LOGOUT_EVENT_KEY, marker);
+			acknowledgeLogoutMarker(marker);
+		} catch { /* local logout still succeeds when storage is unavailable */ }
+		clearSessionMarker();
+	}
 	authReady.set(false);
 	auth.set(initial);
 }

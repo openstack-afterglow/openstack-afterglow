@@ -1,4 +1,10 @@
 {
+	"input.cloudTools": "Cloud resources",
+	"input.cloudBuiltin": "Built-in · automatic",
+	"input.cloudDefault": "Current project · read only",
+	"input.cloudSelected": "Saved restrictions of the selected personal key",
+	"input.cloudProjects": "Approved projects: {projects}",
+	"input.cloudAutomatic": "Lumen uses this built-in tool automatically. There is no separate toggle.",
 	"effort.auto": "Auto",
 	"effort.none": "None",
 	"effort.minimal": "Minimal",

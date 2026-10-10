@@ -96,7 +96,7 @@ afterEach(() => {
 
 describe('auth mockup persistence', () => {
 	it('boots from a tab-scoped mock profile and ignores a legacy cross-tab snapshot', async () => {
-		storage.afterglow_auth = JSON.stringify(
+		storage['session:afterglow_auth'] = JSON.stringify(
 			makeState({ token: 'real-token', refreshToken: 'real-refresh', projectId: 'real-project' }),
 		);
 		storage[MOCKUP_STORAGE_KEY] = JSON.stringify(
@@ -116,12 +116,12 @@ describe('auth mockup persistence', () => {
 			refreshToken: 'mock-refresh',
 			projectId: 'mock-project',
 		});
-		expect(storage.afterglow_auth).toContain('real-token');
+		expect(storage['session:afterglow_auth']).toContain('real-token');
 		expect(cookieWrites).toEqual([]);
 	});
 
 	it('starts a query-activated mock before real auth persistence can run', async () => {
-		storage.afterglow_auth = JSON.stringify(
+		storage['session:afterglow_auth'] = JSON.stringify(
 			makeState({ token: 'real-token', refreshToken: 'real-refresh', projectId: 'real-project' }),
 		);
 		Object.assign(globalThis.window, { location: { search: '?tutorial=on' } });
@@ -132,7 +132,7 @@ describe('auth mockup persistence', () => {
 		expect(get(mod.auth).token).toBeNull();
 		expect(mod.getMockupProfile()).toBe('on');
 		expect(storage[`session:${MOCKUP_SESSION_KEY}`]).toBe('on');
-		expect(storage.afterglow_auth).toContain('real-token');
+		expect(storage['session:afterglow_auth']).toContain('real-token');
 		expect(localStorageMock.setItem).not.toHaveBeenCalled();
 		expect(cookieWrites).toEqual([]);
 	});
@@ -140,7 +140,7 @@ describe('auth mockup persistence', () => {
 	it('lets explicit tutorial=off clear a stored mock snapshot before auth initialization', async () => {
 		storage[`session:${MOCKUP_STORAGE_KEY}`] = JSON.stringify(makeState({ token: 'mock-token' }));
 		storage[`session:${MOCKUP_SESSION_KEY}`] = 'on';
-		storage.afterglow_auth = JSON.stringify(makeState({ token: 'real-token' }));
+		storage['session:afterglow_auth'] = JSON.stringify(makeState({ token: 'real-token' }));
 		Object.assign(globalThis.window, { location: { search: '?tutorial=off' } });
 
 		// Dynamic import verifies the explicit exit wins over tab-scoped restoration.
@@ -155,7 +155,7 @@ describe('auth mockup persistence', () => {
 	it('clears a stored mock before invalid query initialization can fall through to live APIs', async () => {
 		storage[`session:${MOCKUP_STORAGE_KEY}`] = JSON.stringify(makeState({ token: 'mock-token' }));
 		storage[`session:${MOCKUP_SESSION_KEY}`] = 'on';
-		storage.afterglow_auth = JSON.stringify(makeState({ token: 'real-token' }));
+		storage['session:afterglow_auth'] = JSON.stringify(makeState({ token: 'real-token' }));
 		Object.assign(globalThis.window, { location: { search: '?tutorial=bogus' } });
 
 		// Dynamic import verifies malformed explicit activation never reuses the mock bearer.
@@ -204,7 +204,7 @@ describe('auth mockup persistence', () => {
 		const realPersisted = JSON.stringify(
 			makeState({ token: 'real-token', refreshToken: 'real-refresh', projectId: 'real-project' }),
 		);
-		storage.afterglow_auth = realPersisted;
+		storage['session:afterglow_auth'] = realPersisted;
 		cookieWrites.length = 0;
 		localStorageMock.setItem.mockClear();
 		localStorageMock.removeItem.mockClear();
@@ -222,7 +222,7 @@ describe('auth mockup persistence', () => {
 			'on',
 		);
 
-		expect(storage.afterglow_auth).toBe(realPersisted);
+		expect(storage['session:afterglow_auth']).toBe(realPersisted);
 		expect(JSON.parse(storage[`session:${MOCKUP_STORAGE_KEY}`] ?? '{}')).toMatchObject({
 			token: 'mock-token',
 			projectId: 'mock-project-1',
@@ -235,7 +235,7 @@ describe('auth mockup persistence', () => {
 	it('exitMockAuth restores the real persisted auth snapshot and clears mock storage', async () => {
 		// Dynamic import required: auth.ts derives its initial persistence mode from cookie/localStorage at module evaluation time.
 		const mod = await import('../auth');
-		storage.afterglow_auth = JSON.stringify(
+		storage['session:afterglow_auth'] = JSON.stringify(
 			makeState({
 				token: 'real-token',
 				refreshToken: 'real-refresh',
@@ -282,7 +282,7 @@ describe('auth mockup persistence', () => {
 				projectName: 'Mock Project',
 			}),
 		);
-		delete storage.afterglow_auth;
+		delete storage['session:afterglow_auth'];
 
 		mod.exitMockAuth();
 

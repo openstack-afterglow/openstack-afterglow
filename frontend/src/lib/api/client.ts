@@ -1,7 +1,7 @@
 import { browser } from '$app/environment';
 import { get } from 'svelte/store';
 import { siteConfig } from '$lib/config/site';
-import { auth, authRecovery, logoutInProgress, type AuthState } from '$lib/stores/auth';
+import { auth, authRecovery, logoutInProgress } from '$lib/stores/auth';
 import { ApiError } from '$lib/api/errors';
 import { isDocsPath } from '$lib/docs/paths';
 import { t } from '$lib/i18n/ns/shared';
@@ -134,16 +134,6 @@ async function handleUnauthorized(): Promise<void> {
  * refresh 토큰으로 새 access JWT를 발급. 성공하면 새 access token 반환, 401/인증 누락 시 null, 503/429/네트워크 오류 시 ApiError/예외 발생.
  * 동시 호출은 하나의 Promise로 합산(coalescing).
  */
-/** localStorage에 영속화된 인증 상태를 직접 읽는다 (탭 간 race 대비 최신값 확인용). */
-function _readPersistedAuth(): Partial<AuthState> | null {
-	try {
-		if (typeof localStorage === 'undefined') return null;
-		const raw = localStorage.getItem('afterglow_auth');
-		return raw ? JSON.parse(raw) : null;
-	} catch {
-		return null;
-	}
-}
 type RefreshSettledFailure =
 	| { kind: 'terminal'; accessToken: string | null | undefined; refreshToken: string }
 	| { kind: 'retryable'; accessToken: string | null | undefined; refreshToken: string; error: unknown; retryAt: number };
@@ -188,23 +178,8 @@ async function tryRefresh({ allowDuringRevocation = false }: { allowDuringRevoca
 		const { auth, setAuth } = await import('$lib/stores/auth');
 		const state = get(auth);
 
-		// 다른 탭이 이미 토큰을 회전시켰을 수 있다 — storage 이벤트 전파보다
-		// localStorage 직접 읽기가 항상 최신이므로 여기서 한 번 더 확인한다.
-		const persisted = _readPersistedAuth();
-		if (persisted?.token && persisted.token !== state.token) {
-			setAuth({
-				token: persisted.token,
-				refreshToken: persisted.refreshToken ?? state.refreshToken,
-				accessExpiresAt: persisted.accessExpiresAt ?? null,
-				roles: persisted.roles ?? state.roles,
-				isSystemAdmin: persisted.isSystemAdmin ?? state.isSystemAdmin,
-				canWrite: persisted.canWrite,
-			});
-			_refreshSettledFailure = null;
-			return persisted.token;
-		}
-
-		const refreshToken = persisted?.refreshToken ?? state.refreshToken;
+		// Each tab owns its refresh session; never import another tab's credentials.
+		const refreshToken = state.refreshToken;
 		if (!refreshToken) return null;
 
 		if (_refreshSettledFailure) {
@@ -246,21 +221,6 @@ async function tryRefresh({ allowDuringRevocation = false }: { allowDuringRevoca
 		if (get(auth).token !== state.token) return get(auth).token;
 
 		if (!res.ok) {
-			// refresh 토큰은 1회용(회전 시 폐기) — 동시에 다른 탭이 회전에 성공해
-			// 이쪽이 패배한 경우라면 그 탭의 새 토큰을 채택하고 로그아웃하지 않는다.
-			const winner = _readPersistedAuth();
-			if (winner?.token && winner.token !== state.token) {
-				setAuth({
-					token: winner.token,
-					refreshToken: winner.refreshToken ?? null,
-					accessExpiresAt: winner.accessExpiresAt ?? null,
-					roles: winner.roles ?? state.roles,
-					isSystemAdmin: winner.isSystemAdmin ?? state.isSystemAdmin,
-					canWrite: winner.canWrite,
-				});
-				_refreshSettledFailure = null;
-				return winner.token;
-			}
 			if (res.status === 401) {
 				_refreshSettledFailure = {
 					kind: 'terminal',
@@ -463,6 +423,7 @@ async function request<T>(
 	// Fix 3: caller가 401을 직접 처리하는 경우 전역 로그아웃 리다이렉트를 억제할 수 있음
 	reqOpts?: { suppressAuthRedirect?: boolean; baseUrl?: string }
 ): Promise<T> {
+	options.signal?.throwIfAborted();
 	const method = (options.method ?? 'GET').toString().toUpperCase();
 	const requestBaseUrl = reqOpts?.baseUrl ?? getBaseUrl();
 	let requestBody: unknown = options.body;
@@ -470,6 +431,7 @@ async function request<T>(
 		try { requestBody = JSON.parse(options.body); } catch { /* non-JSON body */ }
 	}
 	const mock = await maybeMockJson<T>(method, path, requestBody, token, projectId);
+	options.signal?.throwIfAborted();
 	if (mock !== symbolNoMatch) {
 		if (method === 'GET') memoryCache.set(path, { data: mock, timestamp: Date.now() });
 		return mock;
@@ -1009,10 +971,10 @@ export const api = {
 	},
 	prefetch: prefetchJson,
 	clearPrefetchCache,
-	post: <T>(path: string, body: unknown, token?: string, projectId?: string) => {
+	post: <T>(path: string, body: unknown, token?: string, projectId?: string, opts?: { signal?: AbortSignal; suppressAuthRedirect?: boolean; cache?: RequestCache }) => {
 		const scope = captureRequestScope(token, projectId);
 		return withMutationInvalidation(scope, () =>
-			request<T>(path, { method: 'POST', body: JSON.stringify(body) }, token, projectId, { baseUrl: scope.baseUrl })
+			request<T>(path, { method: 'POST', body: JSON.stringify(body), signal: opts?.signal, cache: opts?.cache }, token, projectId, { baseUrl: scope.baseUrl, suppressAuthRedirect: opts?.suppressAuthRedirect })
 		);
 	},
 	put: <T>(path: string, body: unknown, token?: string, projectId?: string) => {

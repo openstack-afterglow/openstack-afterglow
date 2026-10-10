@@ -231,7 +231,7 @@ function networkDetail(id: string): Record<string, unknown> | null {
 	};
 }
 
-function jsonFixture(method: string, normalized: string, body: unknown, profile: MockupProfileId): unknown | typeof symbolNoMatch {
+function jsonFixture(method: string, normalized: string, body: unknown, profile: MockupProfileId, requestProjectId?: string): unknown | typeof symbolNoMatch {
 	const state = getMockupState();
 	const [pathname, query = ''] = normalized.split('?');
 	const params = new URLSearchParams(query);
@@ -257,13 +257,34 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 		return { tour_id: tourId, status };
 	}
 
-	if (method === 'GET' && pathname === '/api/v1/auth/mcp-tokens') return state.mcpAccess.personalTokens;
+	if (method === 'GET' && pathname === '/api/v1/auth/mcp-projects') return state.projects.map(({ id, name }) => ({ id, name }));
+	if (method === 'GET' && pathname === '/api/v1/auth/mcp-tokens') return state.mcpAccess.personalTokens.map((record) => ({ ...record, is_lumen_default: record.status === 'active' && record.id === state.mcpAccess.lumenDefaults[requestProjectId ?? state.selectedProjectId] }));
+	if (method === 'GET' && ['/api/v1/chat/custom-tools', '/api/v1/chat/mcp-servers', '/api/v1/chat/skills'].includes(pathname)) return [];
+	if (method === 'GET' && pathname === '/api/v1/chat/cloud-tools') {
+		const project = state.projects.find((item) => item.id === (requestProjectId ?? state.selectedProjectId));
+		if (!project) mockUnsupported();
+		const selected = state.mcpAccess.personalTokens.find((record) => record.status === 'active' && record.id === state.mcpAccess.lumenDefaults[project.id]);
+		return {
+			enabled: true,
+			access_level: selected?.access_level ?? 'read',
+			project_id: project.id,
+			project_name: project.name,
+			tool_count: 24,
+			source: selected ? 'personal_token' : 'lumen',
+			allowed_projects: selected?.projects ?? [{ id: project.id, name: project.name }],
+			selection_name: selected?.name ?? null,
+		};
+	}
 	if (method === 'GET' && pathname === '/api/v1/auth/mcp-oauth/grants') return state.mcpAccess.oauthGrants;
 	if (method === 'POST' && pathname === '/api/v1/auth/mcp-tokens') {
-		const payload = body as { name?: unknown; access_level?: unknown; expires_at?: unknown } | null;
+		const payload = body as { name?: unknown; access_level?: unknown; expires_at?: unknown; project_scope?: unknown; project_ids?: unknown } | null;
 		const name = typeof payload?.name === 'string' ? payload.name.trim() : '';
 		const accessLevel = payload?.access_level;
 		if (!name || (accessLevel !== 'read' && accessLevel !== 'manage')) mockUnsupported();
+		const projectScope = payload?.project_scope;
+		const projectIds = payload?.project_ids;
+		if ((projectScope !== 'all' && projectScope !== 'selected') || !Array.isArray(projectIds) || projectIds.some((id) => typeof id !== 'string' || !state.projects.some((project) => project.id === id)) || (projectScope === 'selected' && projectIds.length === 0) || (projectScope === 'all' && projectIds.length !== 0)) mockUnsupported();
+		const approvedProjects = state.projects.filter((project) => projectScope === 'all' || (projectIds as string[]).includes(project.id)).map(({ id, name }) => ({ id, name }));
 		const id = nextMockId(state.mcpAccess.personalTokens.map((record) => record.id), 'mock-mcp-token');
 		const record = {
 			id,
@@ -271,6 +292,9 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 			name,
 			source: 'personal_token' as const,
 			access_level: accessLevel,
+			project_scope: projectScope as 'selected' | 'all',
+			project_ids: approvedProjects.map((project) => project.id),
+			projects: approvedProjects,
 			status: 'active' as const,
 			visible_prefix: `mcp_mock_${id.slice(-4)}_`,
 			issued_at: NOW_ISO,
@@ -283,14 +307,14 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 		return { ...record, token: `sk-afgl-mock-${id}` };
 	}
 	if (method === 'DELETE' && pathname === '/api/v1/auth/mcp-tokens/lumen-default') {
-		for (const record of state.mcpAccess.personalTokens) record.is_lumen_default = false;
+		delete state.mcpAccess.lumenDefaults[requestProjectId ?? state.selectedProjectId];
 		return { lumen_selection_generation: 2 };
 	}
 	const lumenDefaultTokenId = pathname.match(/^\/api\/v1\/auth\/mcp-tokens\/([^/]+)\/lumen-default$/)?.[1];
 	if (method === 'PUT' && lumenDefaultTokenId) {
 		const selected = state.mcpAccess.personalTokens.find((record) => record.id === lumenDefaultTokenId && record.status === 'active');
 		if (!selected) mockUnsupported();
-		for (const record of state.mcpAccess.personalTokens) record.is_lumen_default = record.id === lumenDefaultTokenId;
+		state.mcpAccess.lumenDefaults[requestProjectId ?? state.selectedProjectId] = selected.id;
 		return { lumen_selection_generation: 2 };
 	}
 	const personalTokenId = pathname.match(/^\/api\/v1\/auth\/mcp-tokens\/([^/]+)$/)?.[1];
@@ -324,6 +348,13 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	const consentDecision = pathname.match(/^\/api\/v1\/auth\/mcp-oauth\/consents\/([^/]+)\/(approve|deny)$/);
 	if (method === 'POST' && consentDecision) {
 		if (consentDecision[1] !== MOCK_MCP_CONSENT_TICKET) mockUnsupported();
+		if (consentDecision[2] === 'approve') {
+			const payload = body as { access_level?: unknown; project_scope?: unknown; project_ids?: unknown } | null;
+			// This tutorial client requests read only, so manage cannot be approved.
+			if (payload?.access_level !== 'read') mockUnsupported();
+			const ids = payload?.project_ids;
+			if (!Array.isArray(ids) || ids.some((id) => typeof id !== 'string' || !state.projects.some((project) => project.id === id)) || (payload?.project_scope === 'selected' ? ids.length === 0 : payload?.project_scope !== 'all' || ids.length !== 0)) mockUnsupported();
+		}
 		return { redirect_uri: `/dashboard/account?${MOCKUP_QUERY_KEY}=on` };
 	}
 
@@ -1018,12 +1049,12 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	return symbolNoMatch;
 }
 
-export async function maybeMockJson<T>(method: string, path: string, body?: unknown, _token?: string, _projectId?: string): Promise<T | typeof symbolNoMatch> {
+export async function maybeMockJson<T>(method: string, path: string, body?: unknown, _token?: string, projectId?: string): Promise<T | typeof symbolNoMatch> {
 	const profile = getActiveMockupProfile();
 	if (!profile) return symbolNoMatch;
 	const normalized = normalizePath(path);
 	const upperMethod = method.toUpperCase();
-	const fixture = jsonFixture(upperMethod, normalized, body, profile);
+	const fixture = jsonFixture(upperMethod, normalized, body, profile, projectId);
 	if (fixture !== symbolNoMatch) return cloneMockup(fixture) as T;
 	if (normalized.startsWith('/api/v1/') && upperMethod !== 'GET') mockUnsupported();
 	if (normalized.startsWith('/api/v1/')) mockUnsupported();

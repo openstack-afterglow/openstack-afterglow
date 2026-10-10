@@ -45,9 +45,14 @@ async function serveAppShell(
 		const home = await event.fetch('/');
 		if (!home.ok) return null;
 		const body = await home.text();
-		const headers = new Headers({ 'content-type': 'text/html; charset=utf-8' });
-		for (const [key, value] of Object.entries(securityHeaders)) headers.set(key, value);
-		return new Response(body, { status: 200, headers });
+		// The shell's CSP belongs to its HTML, not the original 404 response's nonce.
+		const headers = new Headers(home.headers);
+		headers.delete('content-length');
+		headers.delete('content-encoding');
+		headers.set('content-type', 'text/html; charset=utf-8');
+		const shell = new Response(body, { status: 200, headers });
+		applySecurityHeaders(shell, securityHeaders);
+		return shell;
 	} catch {
 		return null;
 	}
@@ -60,7 +65,7 @@ function buildConnectSrc(siteConfig: PublicSiteConfig): string {
 	const apiBase = siteConfig.runtime.api_base;
 	for (const raw of [apiBase, siteConfig.runtime.s3_base]) {
 		if (!raw) continue;
-		parts.add(raw);
+		addOrigin(parts, raw);
 	}
 	if (apiBase) {
 		try {
@@ -107,17 +112,31 @@ function buildImgSrc(siteConfig: PublicSiteConfig): string {
 // 리다이렉트할 때 필요 — frame-src는 프레임의 최초 로드뿐 아니라 그 프레임의
 // 이후 내비게이션(리다이렉트)까지 통제하므로 목적지인 GitLab도 허용해야 한다.
 function buildFrameSrc(siteConfig: PublicSiteConfig): string {
-	const parts = ["'self'"];
-	if (siteConfig.runtime.grafana_base) {
-		parts.push(siteConfig.runtime.grafana_base);
+	const parts = new Set(["'self'"]);
+	for (const raw of [siteConfig.runtime.grafana_base, siteConfig.runtime.librechat_base, siteConfig.runtime.gitlab_base]) {
+		addOrigin(parts, raw);
 	}
-	if (siteConfig.runtime.librechat_base) {
-		parts.push(siteConfig.runtime.librechat_base);
+	return [...parts].join(' ');
+}
+
+// Keep SvelteKit's generated script nonce/hash while extending runtime resource origins.
+function applySecurityHeaders(response: Response, securityHeaders: Record<string, string>): void {
+	const generatedCsp = response.headers.get('Content-Security-Policy');
+	for (const [key, value] of Object.entries(securityHeaders)) response.headers.set(key, value);
+	if (!generatedCsp) return;
+	const directives = new Map<string, string>();
+	for (const policy of [securityHeaders['Content-Security-Policy'], generatedCsp]) {
+		for (const directive of policy.split(';')) {
+			const value = directive.trim();
+			if (value) directives.set(value.split(/\s+/, 1)[0], value);
+		}
 	}
-	if (siteConfig.runtime.gitlab_base) {
-		parts.push(siteConfig.runtime.gitlab_base);
+	for (const directive of securityHeaders['Content-Security-Policy'].split(';')) {
+		const value = directive.trim();
+		const name = value.split(/\s+/, 1)[0];
+		if (['connect-src', 'img-src', 'frame-src'].includes(name)) directives.set(name, value);
 	}
-	return parts.join(' ');
+	response.headers.set('Content-Security-Policy', [...directives.values()].join('; '));
 }
 
 // 모든 응답에 추가할 보안 헤더
@@ -129,10 +148,10 @@ function buildSecurityHeaders(siteConfig: PublicSiteConfig): Record<string, stri
 		'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
 		'X-XSS-Protection': '0',
 		'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
-		// SvelteKit은 인라인 스타일/스크립트를 사용하므로 unsafe-inline 허용
+		// Inline styles support Svelte transitions; scripts require SvelteKit-generated nonces/hashes.
 		'Content-Security-Policy':
 			`default-src 'self'; ` +
-			`script-src 'self' 'unsafe-inline'; ` +
+			`script-src 'self'; ` +
 			`style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; ` +
 			`img-src ${buildImgSrc(siteConfig)}; ` +
 			// Audio Studio plays only browser-created object URLs (authenticated downloads, local files); no remote media.
@@ -187,21 +206,17 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 		STATIC_EXT.test(path)
 	) {
 		const response = await resolve(event);
-		for (const [key, value] of Object.entries(securityHeaders)) {
-			response.headers.set(key, value);
-		}
+		applySecurityHeaders(response, securityHeaders);
 		return response;
 	}
 
-	// 서버 사이드에서는 localStorage에 접근할 수 없으므로,
+	// 서버 사이드에서는 tab sessionStorage에 접근할 수 없으므로,
 	// 클라이언트의 auth.ts에서 설정한 마커 쿠키로 로그인 여부를 판단.
 	// (토큰 자체는 쿠키에 없으므로 쿠키 탈취 시 실제 API 호출은 불가)
 	if (mockup.profile) {
 		if (isMockupPathAllowed(mockup.profile, path)) {
 			const response = await resolve(event);
-			for (const [key, value] of Object.entries(securityHeaders)) {
-				response.headers.set(key, value);
-			}
+			applySecurityHeaders(response, securityHeaders);
 			return response;
 		}
 		return new Response(null, {
@@ -222,15 +237,13 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 
 	// SPA 폴백: 로그인 상태에서 문서 내비게이션이 404면 앱 셸(홈 SSR)을 200으로 내려
 	// 클라이언트 라우터가 요청 경로를 렌더하게 한다(요청 URL 유지, 리다이렉트 아님).
-	// SSR 시점엔 localStorage 토큰·클라 전용 데이터가 없어 유효 라우트도 404로 끝날 수 있으나,
+	// SSR 시점엔 sessionStorage 토큰·클라 전용 데이터가 없어 유효 라우트도 404로 끝날 수 있으나,
 	// 클라이언트에서는 정상 렌더되므로 딥링크·새로고침이 동작한다.
 	if (shouldSpaFallback(event, response)) {
 		const shell = await serveAppShell(event, securityHeaders);
 		if (shell) return shell;
 	}
 
-	for (const [key, value] of Object.entries(securityHeaders)) {
-		response.headers.set(key, value);
-	}
+	applySecurityHeaders(response, securityHeaders);
 	return response;
 };

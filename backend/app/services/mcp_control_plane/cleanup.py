@@ -29,6 +29,7 @@ from app.services.mcp_control_plane.authority import (
     lock_owner,
     mark_expired_grants_for_cleanup,
 )
+from app.services.mcp_control_plane.operations import reconcile_expired_invocation
 
 _AUDIT_RETENTION = timedelta(days=90)
 
@@ -44,6 +45,7 @@ class CleanupCounts:
     deleted_clients: int = 0
     deleted_authorization_requests: int = 0
     deleted_read_invocations: int = 0
+    expired_mutation_leases: int = 0
 
 
 def _db_time(value: datetime) -> datetime:
@@ -125,6 +127,7 @@ async def sweep_delegated_authority(
     expired_access_tokens = 0
     deleted_refresh_tombstones = 0
     deleted_read_invocations = 0
+    expired_mutation_leases = 0
 
     async with session_factory() as session:
         code_candidates = (
@@ -145,6 +148,18 @@ async def sweep_delegated_authority(
             await session.execute(
                 select(McpToolInvocation.id, McpToolInvocation.grant_id).where(
                     McpToolInvocation.idempotency_key.is_(None), McpToolInvocation.created_at <= _db_time(cutoff)
+                )
+            )
+        ).all()
+        stale_mutation_candidates = (
+            await session.execute(
+                select(McpToolInvocation.id, McpToolInvocation.grant_id).where(
+                    McpToolInvocation.idempotency_key.is_not(None),
+                    McpToolInvocation.status.in_(("claimed", "dispatch_authorized")),
+                    (
+                        McpToolInvocation.lease_expires_at.is_(None)
+                        | (McpToolInvocation.lease_expires_at <= _db_time(now))
+                    ),
                 )
             )
         ).all()
@@ -232,6 +247,21 @@ async def sweep_delegated_authority(
                 await session.delete(token)
                 deleted_refresh_tombstones += 1
 
+    for invocation_id, grant_id in stale_mutation_candidates:
+        async with session_factory() as session, session.begin():
+            hint = await session.get(McpDelegatedGrant, grant_id)
+            if hint is None:
+                continue
+            await lock_owner(session, owner_user_id=hint.owner_user_id, owner_project_id=hint.owner_project_id)
+            await _lock_grant(
+                session, grant_id=hint.id, owner_user_id=hint.owner_user_id, owner_project_id=hint.owner_project_id
+            )
+            invocation = await session.scalar(
+                select(McpToolInvocation).where(McpToolInvocation.id == invocation_id).with_for_update()
+            )
+            if invocation is not None and reconcile_expired_invocation(invocation, now=now):
+                expired_mutation_leases += 1
+
     for invocation_id, grant_id in invocation_candidates:
         async with session_factory() as session, session.begin():
             hint = await session.scalar(select(McpDelegatedGrant).where(McpDelegatedGrant.id == grant_id))
@@ -262,4 +292,5 @@ async def sweep_delegated_authority(
         deleted_read_invocations=deleted_read_invocations,
         deleted_clients=len(deleted_clients),
         deleted_authorization_requests=len(stale_requests),
+        expired_mutation_leases=expired_mutation_leases,
     )

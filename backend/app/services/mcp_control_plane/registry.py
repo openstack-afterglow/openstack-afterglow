@@ -11,7 +11,7 @@ import asyncio
 import json
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from hashlib import sha256
 from typing import Any, Literal
 from uuid import UUID
@@ -19,7 +19,9 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import get_settings
-from app.services.mcp_control_plane.authentication import McpPrincipal
+from app.database import get_session_factory
+from app.services.mcp_control_plane.authentication import McpPrincipal, lock_principal_grant, resolve_principal_target
+from app.services.mcp_control_plane.authority import approved_project_metadata
 from app.services.mcp_control_plane.compute import (
     McpComputeError,
     get_project_server,
@@ -80,6 +82,7 @@ from app.services.mcp_control_plane.object_storage import (
     get_project_swift_account,
 )
 from app.services.mcp_control_plane.operations import McpOperationError, get_operation
+from app.services.mcp_control_plane.sdk import sdk_deadline
 from app.services.mcp_control_plane.storage import (
     McpStorageError,
     get_project_backup,
@@ -102,11 +105,12 @@ from app.services.mcp_control_plane.waygate import (
     list_project_waygate_servers,
 )
 
-REGISTRY_VERSION = "2026-07-31.1"
+REGISTRY_VERSION = "2026-10-11.1"
 
 
 class McpDomainArguments(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
+    project_id: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 class McpDomainOutput(BaseModel):
@@ -162,12 +166,15 @@ class RegistryEntry:
     result_max_bytes: int
     handler: Callable[[ConsumerCloudContext, McpDomainArguments], Awaitable[McpDomainOutput]]
     preview_builder: Callable[[ConsumerCloudContext, McpDomainArguments], Awaitable[McpMutationPreview]] | None = None
+    destructive: bool = False
 
     def __post_init__(self) -> None:
         if self.effect == "external_mutation" and self.preview_builder is None:
             raise ValueError("External MCP mutations require a preview builder")
         if self.effect == "read" and self.preview_builder is not None:
             raise ValueError("Read-only MCP tools cannot define a mutation preview")
+        if self.effect == "read" and self.destructive:
+            raise ValueError("Read-only MCP tools cannot be destructive")
 
     def mcp_input_schema(self) -> dict[str, Any]:
         """External MCP mutations add the envelope key without widening the domain model."""
@@ -208,6 +215,28 @@ class CapabilitiesGetOutput(McpDomainOutput):
     enabled_domains: list[str]
 
 
+class ProjectsListArguments(McpDomainArguments):
+    pass
+
+
+class AllowedProjectOutput(McpDomainOutput):
+    id: str
+    name: str
+
+
+class ProjectsListOutput(McpDomainOutput):
+    projects: list[AllowedProjectOutput]
+
+
+async def _projects_list(context: ConsumerCloudContext, _: ProjectsListArguments) -> ProjectsListOutput:
+    factory = get_session_factory()
+    if factory is None:
+        raise ValueError("MCP authority storage is unavailable")
+    async with factory() as session, session.begin():
+        grant = await lock_principal_grant(session, context.principal)
+        return ProjectsListOutput(projects=approved_project_metadata(grant))
+
+
 _TOOL_DOMAIN_PREFIXES: tuple[tuple[str, str], ...] = (
     ("afterglow_vm_", "compute"),
     ("afterglow_volume_", "storage"),
@@ -225,6 +254,7 @@ _TOOL_DOMAIN_PREFIXES: tuple[tuple[str, str], ...] = (
 _INVENTORY_DOMAIN_PREFIXES: tuple[tuple[str, str], ...] = (
     *_TOOL_DOMAIN_PREFIXES,
     ("afterglow_capabilities_", "platform"),
+    ("afterglow_projects_", "platform"),
     ("afterglow_cloud_", "platform"),
     ("afterglow_quota_", "platform"),
     ("afterglow_operation_", "operations"),
@@ -460,7 +490,7 @@ async def _vm_action_preview(context: ConsumerCloudContext, arguments: VmActionA
         current_state=server["status"],
         intended_transition=arguments.action,
         dependent_resources=[],
-        destructive=False,
+        destructive=True,
         estimated_effect="asynchronous Nova lifecycle transition",
         fingerprint=fingerprint,
     )
@@ -902,7 +932,7 @@ async def _database_instance_restart_preview(
         current_state=instance["status"],
         intended_transition="restart",
         dependent_resources=[],
-        destructive=False,
+        destructive=True,
         estimated_effect="asynchronous Trove instance restart",
         fingerprint=fingerprint,
     )
@@ -1052,7 +1082,7 @@ async def _container_action_preview(
         current_state=container["status"],
         intended_transition=arguments.action,
         dependent_resources=[],
-        destructive=False,
+        destructive=True,
         estimated_effect="asynchronous Zun lifecycle transition",
         fingerprint=fingerprint,
     )
@@ -1511,6 +1541,18 @@ async def _waygate_server_get(
 
 _ENTRIES: tuple[RegistryEntry, ...] = (
     RegistryEntry(
+        name="afterglow_projects_list",
+        description="List the authenticated grant's saved allowed projects (id and name only).",
+        arguments=ProjectsListArguments,
+        output=ProjectsListOutput,
+        minimum_scope="mcp:read",
+        effect="read",
+        service_flag=None,
+        timeout_seconds=10,
+        result_max_bytes=64 * 1024,
+        handler=_projects_list,
+    ),
+    RegistryEntry(
         name="afterglow_capabilities_get",
         description="Return the enabled safe consumer-cloud domains and registry version.",
         arguments=CapabilitiesGetArguments,
@@ -1601,6 +1643,7 @@ _ENTRIES: tuple[RegistryEntry, ...] = (
         output=VmActionOutput,
         minimum_scope="mcp:write",
         effect="external_mutation",
+        destructive=True,
         service_flag=None,
         timeout_seconds=30,
         result_max_bytes=64 * 1024,
@@ -1614,6 +1657,7 @@ _ENTRIES: tuple[RegistryEntry, ...] = (
         output=VmDeleteOutput,
         minimum_scope="mcp:write",
         effect="external_mutation",
+        destructive=True,
         service_flag=None,
         timeout_seconds=30,
         result_max_bytes=64 * 1024,
@@ -1651,6 +1695,7 @@ _ENTRIES: tuple[RegistryEntry, ...] = (
         output=VolumeDeleteOutput,
         minimum_scope="mcp:write",
         effect="external_mutation",
+        destructive=True,
         service_flag=None,
         timeout_seconds=30,
         result_max_bytes=64 * 1024,
@@ -1688,6 +1733,7 @@ _ENTRIES: tuple[RegistryEntry, ...] = (
         output=SnapshotDeleteOutput,
         minimum_scope="mcp:write",
         effect="external_mutation",
+        destructive=True,
         service_flag=None,
         timeout_seconds=30,
         result_max_bytes=64 * 1024,
@@ -1725,6 +1771,7 @@ _ENTRIES: tuple[RegistryEntry, ...] = (
         output=BackupDeleteOutput,
         minimum_scope="mcp:write",
         effect="external_mutation",
+        destructive=True,
         service_flag=None,
         timeout_seconds=30,
         result_max_bytes=64 * 1024,
@@ -1762,6 +1809,7 @@ _ENTRIES: tuple[RegistryEntry, ...] = (
         output=DatabaseInstanceRestartOutput,
         minimum_scope="mcp:write",
         effect="external_mutation",
+        destructive=True,
         service_flag="service_trove_enabled",
         timeout_seconds=30,
         result_max_bytes=64 * 1024,
@@ -1775,6 +1823,7 @@ _ENTRIES: tuple[RegistryEntry, ...] = (
         output=DatabaseInstanceDeleteOutput,
         minimum_scope="mcp:write",
         effect="external_mutation",
+        destructive=True,
         service_flag="service_trove_enabled",
         timeout_seconds=30,
         result_max_bytes=64 * 1024,
@@ -1812,6 +1861,7 @@ _ENTRIES: tuple[RegistryEntry, ...] = (
         output=ContainerActionOutput,
         minimum_scope="mcp:write",
         effect="external_mutation",
+        destructive=True,
         service_flag="service_zun_enabled",
         timeout_seconds=30,
         result_max_bytes=64 * 1024,
@@ -1825,6 +1875,7 @@ _ENTRIES: tuple[RegistryEntry, ...] = (
         output=ContainerDeleteOutput,
         minimum_scope="mcp:write",
         effect="external_mutation",
+        destructive=True,
         service_flag="service_zun_enabled",
         timeout_seconds=30,
         result_max_bytes=64 * 1024,
@@ -1862,6 +1913,7 @@ _ENTRIES: tuple[RegistryEntry, ...] = (
         output=NetworkDeleteOutput,
         minimum_scope="mcp:write",
         effect="external_mutation",
+        destructive=True,
         service_flag=None,
         timeout_seconds=30,
         result_max_bytes=64 * 1024,
@@ -1899,6 +1951,7 @@ _ENTRIES: tuple[RegistryEntry, ...] = (
         output=SubnetDeleteOutput,
         minimum_scope="mcp:write",
         effect="external_mutation",
+        destructive=True,
         service_flag=None,
         timeout_seconds=30,
         result_max_bytes=64 * 1024,
@@ -2035,14 +2088,28 @@ def parse_entry_arguments(entry: RegistryEntry, arguments: object) -> McpDomainA
     return entry.arguments.model_validate(arguments)
 
 
+async def bind_entry_target(
+    principal: McpPrincipal, *, entry: RegistryEntry, arguments: McpDomainArguments
+) -> tuple[McpPrincipal, McpDomainArguments]:
+    if not entry.allowed_for(principal):
+        raise ValueError("MCP tool is unavailable")
+    resolved = await resolve_principal_target(
+        principal, arguments.project_id, write=entry.effect == "external_mutation"
+    )
+    return resolved, arguments.model_copy(update={"project_id": resolved.project_id})
+
+
 async def dispatch(
     context: ConsumerCloudContext, *, entry: RegistryEntry, arguments: McpDomainArguments
 ) -> McpDomainOutput:
     if not entry.allowed_for(context.principal):
         raise ValueError("MCP tool is unavailable")
+    principal, arguments = await bind_entry_target(context.principal, entry=entry, arguments=arguments)
+    context = replace(context, principal=principal)
     try:
-        async with asyncio.timeout(entry.timeout_seconds):
-            result = await entry.handler(context, arguments)
+        with sdk_deadline(entry.timeout_seconds):
+            async with asyncio.timeout(entry.timeout_seconds):
+                result = await entry.handler(context, arguments)
     except TimeoutError as exc:
         raise ValueError("MCP tool timed out") from exc
     return entry.output.model_validate(result)
@@ -2056,9 +2123,12 @@ async def build_mutation_preview(
         raise ValueError("MCP tool is not a mutation")
     if not entry.allowed_for(context.principal):
         raise ValueError("MCP tool is unavailable")
+    principal, arguments = await bind_entry_target(context.principal, entry=entry, arguments=arguments)
+    context = replace(context, principal=principal)
     try:
-        async with asyncio.timeout(entry.timeout_seconds):
-            preview = await entry.preview_builder(context, arguments)
+        with sdk_deadline(entry.timeout_seconds):
+            async with asyncio.timeout(entry.timeout_seconds):
+                preview = await entry.preview_builder(context, arguments)
     except TimeoutError as exc:
         raise ValueError("MCP mutation preview timed out") from exc
     return McpMutationPreview.model_validate(preview)

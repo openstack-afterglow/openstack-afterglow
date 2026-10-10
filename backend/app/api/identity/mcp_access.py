@@ -29,6 +29,7 @@ from app.services.mcp_control_plane.authority import (
     revoke_grant,
     set_lumen_selection,
 )
+from app.services.mcp_control_plane.projects import caller_membership_projects
 from app.services.mcp_control_plane.verification import (
     McpConnectionCheckError,
     verify_personal_mcp_connection,
@@ -41,6 +42,13 @@ class CreateMcpTokenRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     access_level: str = Field(pattern="^(read|manage)$")
     expires_at: datetime | None = None
+    project_scope: str = Field(default="current", pattern="^(current|selected|all)$")
+    project_ids: list[str] | None = None
+
+
+class McpProjectView(BaseModel):
+    id: str
+    name: str
 
 
 class McpTokenView(BaseModel):
@@ -56,6 +64,9 @@ class McpTokenView(BaseModel):
     last_used_at: datetime | None
     revoked_at: datetime | None
     is_lumen_default: bool
+    project_scope: str = "current"
+    project_ids: list[str] = Field(default_factory=list)
+    projects: list[McpProjectView] = Field(default_factory=list)
 
 
 class CreateMcpTokenResponse(McpTokenView):
@@ -115,6 +126,16 @@ def _raise_authority_error(exc: McpAuthorityError) -> None:
     raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@router.get("/mcp-projects", response_model=list[McpProjectView])
+async def get_mcp_projects(request: Request, token_info: dict = Depends(get_token_info), conn=Depends(get_os_conn)):
+    _require_mcp_enabled()
+    try:
+        projects = await caller_membership_projects(conn, token_info["user_id"])
+    except McpAuthorityError as exc:
+        _raise_authority_error(exc)
+    return JSONResponse(projects, headers={"Cache-Control": "no-store", "Pragma": "no-cache"})
+
+
 @router.get("/mcp-tokens", response_model=list[McpTokenView])
 async def get_mcp_tokens(request: Request, token_info: dict = Depends(get_token_info)):
     _require_mcp_enabled()
@@ -128,6 +149,7 @@ async def get_mcp_tokens(request: Request, token_info: dict = Depends(get_token_
 async def create_mcp_token(
     body: CreateMcpTokenRequest,
     request: Request,
+    http_response: Response,
     token_info: dict = Depends(get_token_info),
     conn=Depends(get_os_conn),
 ):
@@ -143,6 +165,8 @@ async def create_mcp_token(
             display_name=body.name,
             access_level=body.access_level,
             expires_at=body.expires_at,
+            project_scope=body.project_scope,
+            project_ids=body.project_ids,
         )
     except McpAuthorityError as exc:
         _raise_authority_error(exc)
@@ -153,6 +177,9 @@ async def create_mcp_token(
         name=body.name.strip(),
         source="personal_token",
         access_level=issued.access_level,
+        project_scope=issued.project_scope,
+        project_ids=[project["id"] for project in issued.approved_projects],
+        projects=[McpProjectView(id=project["id"], name=project["name"]) for project in issued.approved_projects],
         status="active",
         visible_prefix=issued.token[:20],
         issued_at=datetime.now(UTC),
@@ -162,6 +189,8 @@ async def create_mcp_token(
         is_lumen_default=False,
     )
     _mark_transactional_audit()
+    http_response.headers["Cache-Control"] = "no-store"
+    http_response.headers["Pragma"] = "no-cache"
     return response
 
 

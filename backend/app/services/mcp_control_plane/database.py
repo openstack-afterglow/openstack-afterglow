@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Mapping
 from typing import Any
+
+from app.services.mcp_control_plane.sdk import check_mutation_dispatch, run_sdk
 
 _MAX_TEXT = 255
 
@@ -111,6 +112,7 @@ def _prepare_instance_restart(conn: Any, *, project_id: str, instance_id: str) -
 
 def _restart_instance(conn: Any, *, project_id: str, instance_id: str) -> dict[str, str | None]:
     instance = _prepare_instance_restart(conn, project_id=project_id, instance_id=instance_id)
+    check_mutation_dispatch()
     response = conn.database.post(f"/instances/{instance_id}/action", json={"restart": {}})
     _require_success(response)
     return instance
@@ -125,6 +127,7 @@ def _prepare_instance_delete(conn: Any, *, project_id: str, instance_id: str) ->
 
 def _delete_instance(conn: Any, *, project_id: str, instance_id: str) -> dict[str, str | None]:
     instance = _prepare_instance_delete(conn, project_id=project_id, instance_id=instance_id)
+    check_mutation_dispatch()
     response = conn.database.delete(f"/instances/{instance_id}")
     _require_success(response)
     return instance
@@ -133,7 +136,7 @@ def _delete_instance(conn: Any, *, project_id: str, instance_id: str) -> dict[st
 async def list_project_database_instances(conn: Any, *, project_id: str, limit: int) -> list[dict[str, str | None]]:
     """List current-project Trove records through an independently scoped connection."""
     try:
-        return await asyncio.to_thread(_list_instances, conn, project_id=project_id, limit=limit)
+        return await run_sdk(_list_instances, conn, project_id=project_id, limit=limit)
     except McpDatabaseError:
         raise
     except Exception as exc:
@@ -143,7 +146,7 @@ async def list_project_database_instances(conn: Any, *, project_id: str, limit: 
 async def get_project_database_instance(conn: Any, *, project_id: str, instance_id: str) -> dict[str, str | None]:
     """Read one Trove instance through an independently scoped connection."""
     try:
-        return await asyncio.to_thread(_get_instance, conn, project_id=project_id, instance_id=instance_id)
+        return await run_sdk(_get_instance, conn, project_id=project_id, instance_id=instance_id)
     except McpDatabaseError:
         raise
     except Exception as exc:
@@ -155,7 +158,7 @@ async def preview_project_database_instance_restart(
 ) -> dict[str, str | None]:
     """Validate a restart against current exact-project Trove instance state."""
     try:
-        return await asyncio.to_thread(
+        return await run_sdk(
             _prepare_instance_restart,
             conn,
             project_id=project_id,
@@ -172,7 +175,7 @@ async def request_project_database_instance_restart(
 ) -> dict[str, str | None]:
     """Restart an active exact-project Trove instance after final validation."""
     try:
-        return await asyncio.to_thread(
+        return await run_sdk(
             _restart_instance,
             conn,
             project_id=project_id,
@@ -189,7 +192,7 @@ async def preview_project_database_instance_delete(
 ) -> dict[str, str | None]:
     """Validate a deletion against current exact-project Trove instance state."""
     try:
-        return await asyncio.to_thread(
+        return await run_sdk(
             _prepare_instance_delete,
             conn,
             project_id=project_id,
@@ -206,7 +209,7 @@ async def request_project_database_instance_delete(
 ) -> dict[str, str | None]:
     """Delete an exact-project Trove instance after final validation."""
     try:
-        return await asyncio.to_thread(
+        return await run_sdk(
             _delete_instance,
             conn,
             project_id=project_id,

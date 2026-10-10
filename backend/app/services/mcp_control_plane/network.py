@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Mapping
 from itertools import chain
 from typing import Any
+
+from app.services.mcp_control_plane.sdk import check_mutation_dispatch, run_sdk
 
 _MAX_TEXT = 255
 
@@ -99,6 +100,7 @@ def _prepare_network_delete(conn: Any, *, project_id: str, network_id: str) -> d
 
 def _delete_network(conn: Any, *, project_id: str, network_id: str) -> dict[str, str | bool | None]:
     safe_network = _prepare_network_delete(conn, project_id=project_id, network_id=network_id)
+    check_mutation_dispatch()
     conn.network.delete_network(network_id, ignore_missing=False)
     return safe_network
 
@@ -158,6 +160,7 @@ def _prepare_subnet_delete(conn: Any, *, project_id: str, subnet_id: str) -> dic
 
 def _delete_subnet(conn: Any, *, project_id: str, subnet_id: str) -> dict[str, str | int | None]:
     safe_subnet = _prepare_subnet_delete(conn, project_id=project_id, subnet_id=subnet_id)
+    check_mutation_dispatch()
     conn.network.delete_subnet(subnet_id, ignore_missing=False)
     return safe_subnet
 
@@ -165,7 +168,7 @@ def _delete_subnet(conn: Any, *, project_id: str, subnet_id: str) -> dict[str, s
 async def list_project_networks(conn: Any, *, project_id: str, limit: int) -> list[dict[str, str | bool | None]]:
     """List exact-project and explicitly shared networks with no admin bypass."""
     try:
-        return await asyncio.to_thread(_list_networks, conn, project_id=project_id, limit=limit)
+        return await run_sdk(_list_networks, conn, project_id=project_id, limit=limit)
     except McpNetworkError:
         raise
     except Exception as exc:
@@ -175,7 +178,7 @@ async def list_project_networks(conn: Any, *, project_id: str, limit: int) -> li
 async def get_project_network(conn: Any, *, project_id: str, network_id: str) -> dict[str, str | bool | None]:
     """Read one network only after owner or explicit shared-visibility proof."""
     try:
-        return await asyncio.to_thread(_get_network, conn, project_id=project_id, network_id=network_id)
+        return await run_sdk(_get_network, conn, project_id=project_id, network_id=network_id)
     except McpNetworkError:
         raise
     except Exception as exc:
@@ -187,7 +190,7 @@ async def preview_project_network_delete(
 ) -> dict[str, str | bool | None]:
     """Validate an owned non-shared network deletion against current provider state."""
     try:
-        return await asyncio.to_thread(_prepare_network_delete, conn, project_id=project_id, network_id=network_id)
+        return await run_sdk(_prepare_network_delete, conn, project_id=project_id, network_id=network_id)
     except McpNetworkError:
         raise
     except Exception as exc:
@@ -199,7 +202,7 @@ async def request_project_network_delete(
 ) -> dict[str, str | bool | None]:
     """Delete only a current-project non-shared network without force."""
     try:
-        return await asyncio.to_thread(_delete_network, conn, project_id=project_id, network_id=network_id)
+        return await run_sdk(_delete_network, conn, project_id=project_id, network_id=network_id)
     except McpNetworkError:
         raise
     except Exception as exc:
@@ -209,7 +212,7 @@ async def request_project_network_delete(
 async def list_project_subnets(conn: Any, *, project_id: str, limit: int) -> list[dict[str, str | int | None]]:
     """List subnets only after proving exact ownership and a visible parent network."""
     try:
-        return await asyncio.to_thread(_list_subnets, conn, project_id=project_id, limit=limit)
+        return await run_sdk(_list_subnets, conn, project_id=project_id, limit=limit)
     except McpNetworkError:
         raise
     except Exception as exc:
@@ -219,7 +222,7 @@ async def list_project_subnets(conn: Any, *, project_id: str, limit: int) -> lis
 async def get_project_subnet(conn: Any, *, project_id: str, subnet_id: str) -> dict[str, str | int | None]:
     """Read one subnet only after proving exact ownership and its visible parent."""
     try:
-        return await asyncio.to_thread(_get_subnet, conn, project_id=project_id, subnet_id=subnet_id)
+        return await run_sdk(_get_subnet, conn, project_id=project_id, subnet_id=subnet_id)
     except McpNetworkError:
         raise
     except Exception as exc:
@@ -229,7 +232,7 @@ async def get_project_subnet(conn: Any, *, project_id: str, subnet_id: str) -> d
 async def preview_project_subnet_delete(conn: Any, *, project_id: str, subnet_id: str) -> dict[str, str | int | None]:
     """Validate an exact-project subnet deletion against its non-shared parent network."""
     try:
-        return await asyncio.to_thread(_prepare_subnet_delete, conn, project_id=project_id, subnet_id=subnet_id)
+        return await run_sdk(_prepare_subnet_delete, conn, project_id=project_id, subnet_id=subnet_id)
     except McpNetworkError:
         raise
     except Exception as exc:
@@ -239,7 +242,7 @@ async def preview_project_subnet_delete(conn: Any, *, project_id: str, subnet_id
 async def request_project_subnet_delete(conn: Any, *, project_id: str, subnet_id: str) -> dict[str, str | int | None]:
     """Delete only an exact-project subnet under a non-shared parent network."""
     try:
-        return await asyncio.to_thread(_delete_subnet, conn, project_id=project_id, subnet_id=subnet_id)
+        return await run_sdk(_delete_subnet, conn, project_id=project_id, subnet_id=subnet_id)
     except McpNetworkError:
         raise
     except Exception as exc:

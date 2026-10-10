@@ -372,3 +372,11 @@ Works only when GitLab OIDC is enabled in `config`. When disabled, `authorize`/
 ```
 
 The response is [TokenResponse](#tokenresponse) (`auth_method` is `federated`). On authentication failure, 401.
+
+### Browser and MCP security patch compatibility
+
+The original browser session start is retained across refresh and project rescope. Expired sessions stay rejected on retries, and Redis atomically consumes rotation so concurrent requests have one winner. GitLab login records request origin/device; legacy sessions missing origin require a new login under strict/subnet policies. Logout reports revocation failures instead of claiming success.
+
+JWT credentials persist only in tab sessionStorage. Legacy localStorage credentials are discarded, requiring one login after upgrade; new tabs authenticate independently. Browser tab duplication can copy sessionStorage. SvelteKit nonce/hash CSP removes script unsafe-inline but does not make JavaScript-readable credentials HttpOnly. MCP refresh requires the issuing client_id even when omitted previously. One-time PAT issuance responses use no-store/no-cache.
+
+MCP timeout/cancellation fences new provider mutations after final ownership reads and retains the SDK worker, connection and concurrency slot until completion. Already-sent cloud requests cannot be rolled back. UUID-owned concurrency members do not auto-expire: crashed worker/release failures retain capacity until an operator verifies all related workers are drained/dead before clearing stale state. Poll/cleanup marks expired mutation leases unknown without resending, and a fresh key cannot duplicate identical unresolved arguments within the same grant/source/tool.

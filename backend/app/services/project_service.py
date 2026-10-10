@@ -575,7 +575,7 @@ async def list_members(project_id, token_info):
 
 
 def _managed_roles(catalog):
-    """Only exact global preset identities with non-elevating real descendants."""
+    """Keep canonical grades bounded while preserving administrator custom edges."""
     definitions = {row["name"]: row for row in ROLE_PRESETS}
     by_id = {row["id"]: row for row in catalog}
     by_name = {}
@@ -614,14 +614,19 @@ def _managed_roles(catalog):
                 allowed.update(leaf for level in lower for leaf in grades.get(level, ()))
         descendant_ids = row["inherited_role_ids"]
         descendants = {by_id[rid]["name"] for rid in descendant_ids}
+        bounded_descendants = {
+            name
+            for name in descendants
+            if name.casefold() in definitions or name.casefold() in identity_roles.CORE_NAMES
+        }
         cyclic = any(
             rid == row["id"] or row["id"] in by_id[rid]["inherited_role_ids"] for rid in row["implied_role_ids"]
         )
-        if row["system_only"] or cyclic or not descendants <= allowed:
+        if row["system_only"] or cyclic or not bounded_descendants <= allowed:
             continue
         # Reject a domain-specific/duplicate descendant, even when its label is safe.
         if any(
-            by_id[rid]["domain_id"] is not None or len(by_name.get(by_id[rid]["name"], ())) != 1
+            by_id[rid]["domain_id"] is not None or len(by_name.get(by_id[rid]["name"].casefold(), ())) != 1
             for rid in descendant_ids
         ):
             continue

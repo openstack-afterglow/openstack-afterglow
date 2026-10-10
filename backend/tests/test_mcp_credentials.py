@@ -276,6 +276,7 @@ def test_mariadb_naive_deadlines_are_normalized_to_utc():
 async def test_personal_token_listing_marks_only_selected_lumen_default():
     grant_a = SimpleNamespace(
         id="grant-a",
+        owner_project_id="project-a",
         display_name="first",
         source="personal_token",
         access_level="read",
@@ -311,38 +312,6 @@ async def test_personal_token_listing_marks_only_selected_lumen_default():
 
 
 @pytest.mark.asyncio
-async def test_lumen_ledger_requires_the_frozen_selection_generation():
-    from app.services.mcp_control_plane import ledger
-    from app.services.mcp_control_plane.authentication import McpPrincipal
-
-    class Session:
-        def __init__(self, selection):
-            self.selection = selection
-
-        async def get(self, _model, _identity, *, with_for_update):
-            assert with_for_update is True
-            return self.selection
-
-    principal = McpPrincipal(
-        grant_id="grant-a",
-        user_id="user-a",
-        project_id="project-a",
-        credential_epoch=2,
-        scopes=frozenset({"mcp:read", "mcp:write"}),
-        source="lumen",
-        selection_generation=7,
-    )
-    owner_lock = SimpleNamespace(lumen_selection_generation=7)
-    selection = SimpleNamespace(grant_id="grant-a")
-
-    await ledger._validate_lumen_selection(Session(selection), principal, owner_lock=owner_lock, source="lumen")
-
-    owner_lock.lumen_selection_generation = 8
-    with pytest.raises(ledger.McpInvocationError, match="selection changed"):
-        await ledger._validate_lumen_selection(Session(selection), principal, owner_lock=owner_lock, source="lumen")
-
-
-@pytest.mark.asyncio
 async def test_mounted_mcp_token_endpoint_returns_the_one_time_plaintext_token(client, monkeypatch):
     expires_at = datetime.now(UTC) + timedelta(days=30)
     settings = SimpleNamespace(
@@ -357,6 +326,8 @@ async def test_mounted_mcp_token_endpoint_returns_the_one_time_plaintext_token(c
         access_level="read",
         token="mcp-afgl-one-time-secret",
         expires_at=expires_at,
+        project_scope="current",
+        approved_projects=({"id": "project-a", "name": "Alpha", "roles": ["member"], "can_write": True},),
     )
     captured = {}
 
@@ -376,5 +347,13 @@ async def test_mounted_mcp_token_endpoint_returns_the_one_time_plaintext_token(c
 
     assert response.status_code == 201
     assert response.json()["token"] == "mcp-afgl-one-time-secret"
+    assert response.json()["project_scope"] == "current"
+    assert response.json()["project_ids"] == ["project-a"]
+    assert response.json()["projects"] == [{"id": "project-a", "name": "Alpha"}]
+    assert "approved_projects" not in response.json()
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.headers["Pragma"] == "no-cache"
     assert captured["display_name"] == "Desktop client"
     assert captured["access_level"] == "read"
+    assert captured["project_scope"] == "current"
+    assert captured["project_ids"] is None

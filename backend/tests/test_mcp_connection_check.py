@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from types import SimpleNamespace
 
 import httpx
@@ -53,6 +54,7 @@ GRANTS = {
 
 class _Tool:
     effect = "read"
+    destructive = False
 
     def __init__(self, index: int) -> None:
         self.name = f"tool_{index}"
@@ -374,3 +376,29 @@ async def test_published_connector_url_is_the_served_resource(client, root_mcp):
     protected = await client.get("/.well-known/oauth-protected-resource")
 
     assert configured_public_site_config(explicit)["mcp_url"] == protected.json()["resource"] == ROOT_RESOURCE
+
+
+@pytest.mark.asyncio
+async def test_subset_without_home_project_verifies_under_its_creation_owner(
+    client, root_mcp, running_transport, monkeypatch
+):
+    # Target B is not the ownership anchor A: selecting only B must not break
+    # management of the token from A or make B its new management owner.
+    principal = replace(GRANTS[OWN_TOKEN], project_id="selected-project-b", owner_project_id="test-project-123")
+    monkeypatch.setitem(GRANTS, OWN_TOKEN, principal)
+    async with running_transport():
+        response = await client.post(VERIFY_PATH, json={"token": OWN_TOKEN}, headers=BROWSER_HEADERS)
+    assert response.status_code == 200
+    assert root_mcp.recorder.requests
+
+
+@pytest.mark.asyncio
+async def test_target_project_cannot_claim_token_management_ownership(root_mcp, monkeypatch):
+    principal = replace(GRANTS[OWN_TOKEN], project_id="selected-project-b", owner_project_id="test-project-123")
+    monkeypatch.setitem(GRANTS, OWN_TOKEN, principal)
+    with pytest.raises(verification.McpConnectionCheckError) as rejected:
+        await verification.verify_personal_mcp_connection(
+            OWN_TOKEN, owner_user_id="test-user-123", owner_project_id="selected-project-b"
+        )
+    assert rejected.value.reason == "invalid_token"
+    assert root_mcp.recorder.requests == []

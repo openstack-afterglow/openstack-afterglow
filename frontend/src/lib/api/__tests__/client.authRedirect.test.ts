@@ -420,41 +420,19 @@ describe('unauthorized API redirect', () => {
 		}
 	});
 
-	it('adopts a cross-tab refresh winner before revoking the session', async () => {
-		let resolveRefresh!: (response: {
-			ok: boolean;
-			json: () => Promise<{ token: string; refresh_token: string; expires_at: string }>;
-		}) => void;
-		mockFetch.mockImplementationOnce(() => new Promise((resolve) => {
-			resolveRefresh = resolve;
-		}));
+	it('does not adopt a legacy localStorage refresh winner during revocation', async () => {
+		let resolveRefresh!: (response: Response) => void;
+		mockFetch.mockImplementationOnce(() => new Promise((resolve) => { resolveRefresh = resolve; }));
 		const { refreshSession, beginSessionRevocation, endSessionRevocation } = await import('../client');
-
 		const pendingRefresh = refreshSession();
 		await vi.waitFor(() => expect(mockFetch).toHaveBeenCalledOnce());
 		const pendingRevocation = beginSessionRevocation();
-		localStorage.setItem('afterglow_auth', JSON.stringify({
-			token: 'winner-token',
-			refreshToken: 'winner-refresh-token',
-			accessExpiresAt: 1_783_920_000,
-		}));
+		localStorage.setItem('afterglow_auth', JSON.stringify({ token: 'other-token', refreshToken: 'other-refresh' }));
 		try {
-			resolveRefresh({
-				ok: false,
-				json: async () => ({
-					token: '',
-					refresh_token: '',
-					expires_at: '',
-				}),
-			});
-
-			await expect(pendingRefresh).resolves.toBe('winner-token');
-			await expect(pendingRevocation).resolves.toBe('winner-token');
-			expect(setAuth).toHaveBeenCalledWith({
-				token: 'winner-token',
-				refreshToken: 'winner-refresh-token',
-				accessExpiresAt: 1_783_920_000,
-			});
+			resolveRefresh(new Response(JSON.stringify({ detail: 'revoked' }), { status: 401 }));
+			await expect(pendingRefresh).resolves.toBeNull();
+			await expect(pendingRevocation).resolves.toBeNull();
+			expect(setAuth).not.toHaveBeenCalled();
 		} finally {
 			endSessionRevocation();
 			localStorage.clear();

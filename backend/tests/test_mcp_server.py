@@ -5,6 +5,18 @@ import pytest
 from app.config import get_settings
 
 
+@pytest.fixture(autouse=True)
+def isolated_runtime_authority(monkeypatch):
+    from dataclasses import replace
+
+    async def resolve(principal, project_id=None, *, write=False):
+        return replace(
+            principal, project_id=project_id or principal.project_id, owner_project_id=principal.anchor_project_id
+        )
+
+    monkeypatch.setattr("app.services.mcp_control_plane.registry.resolve_principal_target", resolve)
+
+
 def test_mcp_routers_keep_paths_relative_to_their_mounts():
     from app.api.mcp import auth_router, root_router, router
 

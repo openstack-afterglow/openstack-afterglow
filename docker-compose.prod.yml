@@ -1,7 +1,7 @@
 # Image-only production stack. The operator supplies production configuration and
 # secrets outside this repository; this file never builds application images.
 #
-# Required for the default stack: SECRET_KEY, OS_PASSWORD, DATABASE_URL, ORIGIN,
+# Required for the default stack: SECRET_KEY, OS_PASSWORD, AFTERGLOW_DATABASE_URL, ORIGIN,
 # PUBLIC_API_BASE, and TLS_CERTS_DIR. TLS_CERTS_DIR must contain PEM files with
 # each certificate chain and its private key. Full *_IMAGE overrides support tags/digests.
 name: afterglow-production
@@ -34,7 +34,7 @@ services:
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set}
       AFTERGLOW_ENV: production
       AFTERGLOW_ALLOW_INSECURE: "0"
-      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must select the production Afterglow database}
+      DATABASE_URL: ${AFTERGLOW_DATABASE_URL:?AFTERGLOW_DATABASE_URL must select the production Afterglow database}
       REDIS_URL: redis://redis:6379/0
       SENTINEL_ENABLED: "false"
       SENTINEL_HOSTS: ""
@@ -129,7 +129,7 @@ services:
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set}
       AFTERGLOW_ENV: production
       AFTERGLOW_ALLOW_INSECURE: "0"
-      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must select the production Afterglow database}
+      DATABASE_URL: ${AFTERGLOW_DATABASE_URL:?AFTERGLOW_DATABASE_URL must select the production Afterglow database}
       REDIS_URL: redis://redis:6379/0
       SENTINEL_ENABLED: "false"
       SENTINEL_HOSTS: ""

@@ -15,7 +15,7 @@ from app.services.mcp_control_plane import connection as consumer
 
 
 @contextmanager
-def application_credential_keystone(*, user_id="user-a", project_id="project-a"):
+def application_credential_keystone(*, user_id="user-a", project_id="project-a", credential_id="credential-a"):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_args):
             pass
@@ -30,7 +30,7 @@ def application_credential_keystone(*, user_id="user-a", project_id="project-a")
             elif "scope" in auth:
                 status, payload = 400, {"error": {"message": "Application credentials cannot request scope"}}
             elif identity.get("methods") != ["application_credential"] or credential != {
-                "id": "credential-a",
+                "id": credential_id,
                 "secret": "synthetic-credential-secret",
             }:
                 status, payload = 401, {"error": {"message": "Unauthorized"}}
@@ -103,3 +103,36 @@ def test_consumer_credential_authenticates_only_its_original_owner_and_project(
             assert connection.session.get_user_id() == "user-a"
         finally:
             connection.close()
+
+
+@pytest.mark.parametrize("returned_project", ["project-a", "project-b", "project-c"])
+def test_selected_target_credential_authenticates_target_not_owner_anchor(monkeypatch, returned_project):
+    from app.services.mcp_control_plane.authentication import McpPrincipal
+
+    with application_credential_keystone(project_id=returned_project, credential_id="credential-b") as auth_url:
+        monkeypatch.setattr(
+            consumer,
+            "get_settings",
+            lambda: SimpleNamespace(
+                os_auth_url=auth_url, os_region_name="RegionOne", os_interface="public", ssl_verify=True
+            ),
+        )
+        principal = McpPrincipal(
+            grant_id="grant-a",
+            user_id="user-a",
+            project_id="project-b",
+            owner_project_id="project-a",
+            credential_epoch=1,
+            scopes=frozenset({"mcp:read"}),
+            source="personal_token",
+        )
+        if returned_project != "project-b":
+            with pytest.raises(consumer.McpConsumerConnectionError, match="owner/project"):
+                consumer._build_connection("credential-b", "synthetic-credential-secret", principal)
+        else:
+            connection = consumer._build_connection("credential-b", "synthetic-credential-secret", principal)
+            try:
+                assert connection.current_project_id == "project-b"
+                assert connection._afterglow_project_id == "project-b"
+            finally:
+                connection.close()

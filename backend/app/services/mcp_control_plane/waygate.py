@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 from app.services.keystone import get_waygate_proxy
+from app.services.mcp_control_plane.sdk import run_sdk
 
 
 class McpWaygateError(ValueError):
@@ -45,7 +45,7 @@ async def list_project_waygate_servers(
 ) -> list[dict[str, str | None]]:
     """Return bounded, exact-project Waygate metadata through its catalog service."""
     try:
-        servers = await asyncio.to_thread(_list_servers, conn)
+        servers = await run_sdk(_list_servers, conn)
         if not isinstance(servers, list):
             raise McpWaygateError("Waygate server list response is invalid")
         return [_safe_server(server, project_id=project_id) for server in servers[:limit]]
@@ -62,7 +62,7 @@ async def get_project_waygate_server(
 ) -> dict[str, str | None]:
     """Return one exact-project Waygate server through its catalog service."""
     try:
-        server = await asyncio.to_thread(_get_server, conn, server_id)
+        server = await run_sdk(_get_server, conn, server_id)
         if not isinstance(server, dict):
             raise McpWaygateError("Waygate server response is invalid")
         return _safe_server(server, project_id=project_id)

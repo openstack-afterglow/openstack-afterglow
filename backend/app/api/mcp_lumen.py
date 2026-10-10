@@ -99,9 +99,11 @@ async def preview(body: _PreviewRequest, _: None = Depends(_require_lumen_servic
         raise HTTPException(status_code=404, detail="MCP mutation tool is unavailable")
     try:
         parsed = registry.parse_entry_arguments(entry, body.arguments)
-        return await registry.build_mutation_preview(
+        principal, parsed = await registry.bind_entry_target(principal, entry=entry, arguments=parsed)
+        preview_plan = await registry.build_mutation_preview(
             registry.ConsumerCloudContext(principal=principal), entry=entry, arguments=parsed
         )
+        return preview_plan.model_dump(mode="json")
     except HTTPException:
         raise
     except Exception as exc:
@@ -124,6 +126,7 @@ async def execute(body: _ExecuteRequest, _: None = Depends(_require_lumen_servic
         raise HTTPException(status_code=404, detail="MCP tool is unavailable")
     try:
         parsed = registry.parse_entry_arguments(entry, body.arguments)
+        principal, parsed = await registry.bind_entry_target(principal, entry=entry, arguments=parsed)
     except Exception as exc:
         raise HTTPException(status_code=422, detail="MCP tool arguments are invalid") from exc
     normalized = parsed.model_dump(mode="json")

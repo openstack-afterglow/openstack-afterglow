@@ -13,7 +13,11 @@ const config = {
 			return isExternalLibrary ? undefined : true;
 		}
 	},
-	kit: { adapter: adapter() }
+	kit: {
+		adapter: adapter(),
+		// SvelteKit stamps its generated scripts with a per-response nonce (hashes when prerendered).
+		csp: { mode: 'auto', directives: { 'script-src': ['self'] } }
+	}
 };
 
 export default config;

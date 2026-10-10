@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 from app.services import barbican as barbican_service
+from app.services.mcp_control_plane.sdk import run_sdk
 
 
 class McpKeyManagerError(ValueError):
@@ -34,7 +34,7 @@ def _safe_secret_metadata(secret: dict[str, Any]) -> dict[str, Any]:
 async def list_project_secret_metadata(conn: Any, *, limit: int) -> list[dict[str, Any]]:
     """Return bounded secret metadata; never fetches or exposes secret payloads."""
     try:
-        secrets = await asyncio.to_thread(barbican_service.list_secrets, conn, max_items=limit)
+        secrets = await run_sdk(barbican_service.list_secrets, conn, max_items=limit)
         return [_safe_secret_metadata(secret) for secret in secrets]
     except McpKeyManagerError:
         raise

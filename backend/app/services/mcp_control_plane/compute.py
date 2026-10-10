@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Mapping
 from typing import Any
+
+from app.services.mcp_control_plane.sdk import check_mutation_dispatch, run_sdk
 
 
 class McpComputeError(ValueError):
@@ -110,6 +111,7 @@ def _action_server(conn: Any, *, project_id: str, server_id: str, action: str) -
     action_method = getattr(conn.compute, method_name, None)
     if not callable(action_method):
         raise McpComputeError("Nova server action is unavailable")
+    check_mutation_dispatch()
     action_method(server_id, **arguments)
     return safe_server
 
@@ -126,6 +128,7 @@ def _prepare_server_delete(conn: Any, *, project_id: str, server_id: str) -> dic
 
 def _delete_server(conn: Any, *, project_id: str, server_id: str) -> dict[str, str | None]:
     safe_server = _prepare_server_delete(conn, project_id=project_id, server_id=server_id)
+    check_mutation_dispatch()
     conn.compute.delete_server(server_id, ignore_missing=False, force=False)
     return safe_server
 
@@ -176,7 +179,7 @@ def _list_server_volume_attachment_ids(conn: Any, *, project_id: str, server_id:
 async def list_project_servers(conn: Any, *, project_id: str, limit: int) -> list[dict[str, str | None]]:
     """List only servers whose provider response independently proves ownership."""
     try:
-        return await asyncio.to_thread(_list_servers, conn, project_id=project_id, limit=limit)
+        return await run_sdk(_list_servers, conn, project_id=project_id, limit=limit)
     except McpComputeError:
         raise
     except Exception as exc:
@@ -188,7 +191,7 @@ async def list_project_server_interfaces(
 ) -> list[dict[str, str | None]]:
     """List interfaces only when both the server and each attached port are project owned."""
     try:
-        return await asyncio.to_thread(
+        return await run_sdk(
             _list_server_interfaces,
             conn,
             project_id=project_id,
@@ -206,7 +209,7 @@ async def list_project_server_volume_attachment_ids(
 ) -> list[str]:
     """List attached volume IDs only after proving the parent server is project owned."""
     try:
-        return await asyncio.to_thread(
+        return await run_sdk(
             _list_server_volume_attachment_ids,
             conn,
             project_id=project_id,
@@ -222,7 +225,7 @@ async def list_project_server_volume_attachment_ids(
 async def get_project_server(conn: Any, *, project_id: str, server_id: str) -> dict[str, str | None]:
     """Read one Nova server only after its provider record proves exact ownership."""
     try:
-        return await asyncio.to_thread(_get_server, conn, project_id=project_id, server_id=server_id)
+        return await run_sdk(_get_server, conn, project_id=project_id, server_id=server_id)
     except McpComputeError:
         raise
     except Exception as exc:
@@ -232,7 +235,7 @@ async def get_project_server(conn: Any, *, project_id: str, server_id: str) -> d
 async def project_server_overview(conn: Any, *, project_id: str) -> dict[str, int]:
     """Return fixed exact-project instance counts without server details."""
     try:
-        return await asyncio.to_thread(_server_overview, conn, project_id=project_id)
+        return await run_sdk(_server_overview, conn, project_id=project_id)
     except McpComputeError:
         raise
     except Exception as exc:
@@ -244,7 +247,7 @@ async def preview_project_server_action(
 ) -> dict[str, str | None]:
     """Validate a bounded action against current exact-project server state."""
     try:
-        return await asyncio.to_thread(
+        return await run_sdk(
             _prepare_server_action,
             conn,
             project_id=project_id,
@@ -262,7 +265,7 @@ async def request_project_server_action(
 ) -> dict[str, str | None]:
     """Request a bounded action only after final exact-project ownership/state validation."""
     try:
-        return await asyncio.to_thread(_action_server, conn, project_id=project_id, server_id=server_id, action=action)
+        return await run_sdk(_action_server, conn, project_id=project_id, server_id=server_id, action=action)
     except McpComputeError:
         raise
     except Exception as exc:
@@ -272,7 +275,7 @@ async def request_project_server_action(
 async def preview_project_server_delete(conn: Any, *, project_id: str, server_id: str) -> dict[str, str | None]:
     """Validate one exact-project server deletion without dispatching it."""
     try:
-        return await asyncio.to_thread(_prepare_server_delete, conn, project_id=project_id, server_id=server_id)
+        return await run_sdk(_prepare_server_delete, conn, project_id=project_id, server_id=server_id)
     except McpComputeError:
         raise
     except Exception as exc:
@@ -282,7 +285,7 @@ async def preview_project_server_delete(conn: Any, *, project_id: str, server_id
 async def request_project_server_delete(conn: Any, *, project_id: str, server_id: str) -> dict[str, str | None]:
     """Delete one exact-project Nova server without force or missing-resource suppression."""
     try:
-        return await asyncio.to_thread(_delete_server, conn, project_id=project_id, server_id=server_id)
+        return await run_sdk(_delete_server, conn, project_id=project_id, server_id=server_id)
     except McpComputeError:
         raise
     except Exception as exc:

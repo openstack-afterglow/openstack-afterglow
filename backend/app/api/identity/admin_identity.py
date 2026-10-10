@@ -232,6 +232,15 @@ async def list_user_sessions_admin(user_id: str):
     return {"sessions": sessions, "count": len(sessions)}
 
 
+@router.get("/users/{user_id}/permissions", dependencies=[Depends(require_admin)])
+async def get_user_permissions_admin(
+    user_id: str,
+    conn: openstack.connection.Connection = Depends(get_os_conn),
+):
+    """관리자가 사용자별 현재 유효 역할을 실제 project/domain/system 범위로 조회한다."""
+    return await asyncio.to_thread(identity_roles.user_permissions, conn, user_id)
+
+
 class UnlockAccountRequest(BaseModel):
     username: str
     domain: str = "Default"

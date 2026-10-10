@@ -101,6 +101,9 @@ async def test_lumen_bridge_records_reads_with_lumen_source(monkeypatch):
     monkeypatch.setattr(
         mcp_lumen.registry, "parse_entry_arguments", lambda *_: SimpleNamespace(model_dump=lambda **_: {})
     )
+    monkeypatch.setattr(
+        mcp_lumen.registry, "bind_entry_target", lambda principal, *, entry, arguments: _return((principal, arguments))
+    )
     monkeypatch.setattr(mcp_lumen.registry, "ConsumerCloudContext", lambda **_: object())
     monkeypatch.setattr(mcp_lumen.registry, "dispatch", AsyncMock(return_value={"servers": []}))
     monkeypatch.setattr(mcp_lumen.registry, "output_payload", lambda *_: {"servers": []})
@@ -130,6 +133,9 @@ async def test_lumen_bridge_mutation_uses_lumen_ledger_source(monkeypatch):
     monkeypatch.setattr(mcp_lumen.registry, "entry_by_name", lambda _: entry)
     monkeypatch.setattr(
         mcp_lumen.registry, "parse_entry_arguments", lambda *_: SimpleNamespace(model_dump=lambda **_: {})
+    )
+    monkeypatch.setattr(
+        mcp_lumen.registry, "bind_entry_target", lambda principal, *, entry, arguments: _return((principal, arguments))
     )
     monkeypatch.setattr(mcp_lumen.registry, "ConsumerCloudContext", lambda **_: object())
     monkeypatch.setattr(mcp_lumen.ledger, "validate_idempotency_key", lambda _: "lumen-idempotency-key")

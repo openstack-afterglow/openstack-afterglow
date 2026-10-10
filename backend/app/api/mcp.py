@@ -13,12 +13,14 @@ from urllib.parse import urlencode, urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse, RedirectResponse
+from pydantic import BaseModel, Field
 
 from app.api.deps import get_os_conn, get_token_info
 from app.api.identity.mcp_access import _mark_transactional_audit, _require_browser_mutation
 from app.config import get_settings
 from app.database import get_session_factory
 from app.rate_limit import limiter
+from app.services.mcp_control_plane.authority import McpAuthorityError
 from app.services.mcp_control_plane.oauth import McpOAuthError, oauth_urls
 from app.services.mcp_control_plane.oauth_authority import (
     McpOAuthAuthorityError,
@@ -38,6 +40,12 @@ auth_router = APIRouter()
 
 _OAUTH_NO_STORE = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
 _MAX_PUBLIC_BODY = 64 * 1024
+
+
+class OAuthConsentApproval(BaseModel):
+    project_scope: str = Field(default="current", pattern="^(current|selected|all)$")
+    project_ids: list[str] | None = None
+    access_level: str | None = Field(default=None, pattern="^(read|manage)$")
 
 
 def _require_enabled() -> None:
@@ -386,6 +394,7 @@ async def get_oauth_consent(ticket: str, token_info: dict = Depends(get_token_in
 async def approve_oauth_consent(
     ticket: str,
     request: Request,
+    body: OAuthConsentApproval | None = None,
     token_info: dict = Depends(get_token_info),
     conn=Depends(get_os_conn),
 ):
@@ -399,8 +408,11 @@ async def approve_oauth_consent(
             username=token_info.get("username", token_info["user_id"]),
             roles=token_info.get("roles", []),
             conn=conn,
+            project_scope=body.project_scope if body is not None else "current",
+            project_ids=body.project_ids if body is not None else None,
+            access_level=body.access_level if body is not None else None,
         )
-    except McpOAuthAuthorityError as exc:
+    except (McpOAuthAuthorityError, McpAuthorityError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     _mark_transactional_audit()
     return JSONResponse({"redirect_uri": _redirect_with_code(result)}, headers=_OAUTH_NO_STORE)

@@ -55,12 +55,22 @@ git merge-base --is-ancestor origin/dev HEAD
 ## Docker Compose 배포 계약
 
 - `docker-compose.yml`은 독립 실행 가능한 최소 기본값이며 Afterglow `frontend`와 `backend`만 정의한다. Redis·DB·형제 서비스는 외부 설정을 사용한다. 소스 빌드나 개발/운영 보조 서비스를 이 파일에 추가하지 않는다.
-- `docker-compose.dev.yml`은 현재 소스를 직접 빌드하는 개발 환경의 정본이다. Afterglow와 Lumen·Waygate·Drover(기존 Palimpsest 포함)를 로컬에서 실행하고 기본적으로 Compose service DNS로 통신한다. `SERVICE_*_INTERNAL_URL` 또는 private `[services]`로 목적지를 선택할 수 있고 명시적 빈 환경 변수는 카탈로그를 선택한다. 로컬 DB/cache/checkpointer·설정·키는 운영과 분리한다.
+- `docker-compose.dev.yml`은 현재 소스를 직접 빌드하는 개발 환경의 정본이다. Afterglow와 Lumen·Waygate·Drover(기존 Palimpsest 포함)를 개발 실행하고 기본적으로 Compose service DNS로 통신한다. `SERVICE_*_INTERNAL_URL` 또는 private `[services]`로 HTTP 목적지를 선택할 수 있고 명시적 빈 환경 변수는 일반 경로에서 카탈로그를 선택한다. DB는 아래 다섯 URL로 외부 대상을 명시할 수 있으며 cache/checkpointer·설정·키는 별도 계약이다.
 - `docker-compose.prod.yml`은 GitHub/GHCR에서 빌드한 이미지를 pull·동기화하여 실행하는 운영 환경의 정본이다. `build:` 및 소스 빌드 fallback을 금지한다. HAProxy가 앞단에서 운영 인증서로 TLS 종료와 LB를 담당한다. 형제 서비스는 기본적으로 인증된 OpenStack service catalog endpoint를 사용하며 명시적 환경 변수/TOML override는 신뢰된 HTTPS endpoint만 허용한다. 개발 HTTP URL, 자동 self-signed 인증서 및 insecure secret 우회를 금지한다.
 - 세 파일은 각각 명시적인 `-f`로 선택한다. 개발은 `npm run services:up` 또는 준비된 private env와 `docker-compose.dev.yml`로 실행하며, implicit override나 별도의 installed-image 개발 경로를 두지 않는다.
 - 개별 서비스 개발은 `services:config/up -- --only lumen,waygate,palimpsest`에서 필요한 서비스만 선택한다. 선택하지 않은 Drover/Waygate의 callback·service project·checkout을 요구하지 않는다. Waygate를 선택하면 VM provisioning/agent callback 설정은 여전히 필수다.
 - 기능테스트 datastore도 `docker-compose.dev.yml`의 `test` profile이 정본이며 별도 test manifest를 두지 않는다. 실행기는 기본 `afterglow-test` project에서 `mariadb/postgres/test-redis`만 명시적으로 기동·종료한다. 전용 loopback 3307/5434/6380과 tmpfs를 사용하고 개발 DB/cache·named volume·orphan을 삭제하지 않는다. 테스트만 실행할 때 cloud credential을 요구하거나 앱을 함께 시작하지 않는다.
 - 모드 전환 시 기존 project·volume·암호화 키를 보존하고 다른 프로젝트를 중지/삭제하지 않는다. `down --volumes`와 광역 prune을 사용하지 않는다. Container health와 실제 authenticated dashboard/OpenStack 통신을 별도로 검증하고 upstream 오류를 성공으로 숨기지 않는다.
+
+### DB 목적지와 운영 호환성 평가
+
+- Compose DB 입력은 `AFTERGLOW_DATABASE_URL`, `WAYGATE_DATABASE_URL`, `DROVER_DATABASE_URL`, `LUMEN_DATABASE_URL`, `PALIMPSEST_DATABASE_URL` 다섯 개다. Shell > 선택한 env-file 순서이며 dev unset/empty는 서비스별 local fallback, 최소/prod의 `AFTERGLOW_DATABASE_URL`은 nonempty 필수다. API·worker·migration/bootstrap은 같은 서비스 DB를 사용한다. 일반 `DATABASE_URL`은 컨테이너 내부 설정 이름이지 이 목적지들의 공통 override가 아니다.
+- `services:config/up`은 외부 DB를 허용하고 resolved URL을 private `.local-services/compose.env`(0600)에 비밀 출력 없이 보존한다. Runner는 `.env`, 직접 Compose는 명시한 `--env-file`을 사용하며 재사용 때도 shell이 우선한다. 설정 준비는 호환성 증거가 아니고 `up`은 선택 DB의 migration/bootstrap과 writer를 실행한다.
+- **모든 DB 영향 변경은 운영 동기화 영향과 양방향 호환성(새 writer/기존 schema, 기존 writer/새 schema)을 현재 배포 revision·schema 증거로 명시적으로 평가하거나 누락 증거를 밝힌다. 새 test/local DB 성공은 운영 qualification이 아니다.** 같은 운영 URL은 공유 DB 직접 접근이지 synchronization/replication이 아니며 자동 복사를 제공하지 않는다. 과거의 무조건 local-only 정책은 이 명시적 목적지·평가 정책으로 대체하되, 기존 architecture/release 장애 기록은 역사적 증거로 보존한다.
+- 평가는 승인된 격리 환경의 복원 production snapshot을 우선한다. Source/image revision·digest, 서비스 manifest/ledger의 logical ID·경로·checksum과 실제 schema, pending/destructive migration·backfill/lock, engine/version·charset/collation·`sql_mode`를 비교한다. 알 수 없거나 더 최신 schema는 자동 호환이 아니다. Disposable 환경에서 양방향 read/write와 mixed-version API/worker·queue/rolling upgrade, backup+restore 및 downgrade/rollback 제한을 검증한다. 개발 qualification에서 운영 DB를 조회·변경하지 않고, 운영 증거는 운영자가 승인된 경로로 제공한 자료를 사용한다.
+- Drover/Lumen/Waygate의 `<service>/scripts/migrate.py`와 `<service>/migrations/manifest.txt`가 migration 정본이다. 현재 runner는 `--apply` 없이도 `schema_migrations`를 생성할 수 있으므로 운영 read-only 검사에 사용하지 않는다. Lumen apply는 history backfill/검증도 한다. Palimpsest Hub `bootstrap.py` → `database.create_schema()`는 `Base.metadata.create_all`이며 기존 schema 업그레이드나 호환성 판정이 아니다. Afterglow의 SQL 적용은 `backend/migrations/manifest.txt`와 [배포 가이드](deployment.md#운영-데이터와-양방향-호환성-평가)를 따른다.
+- 외부 암호문에는 원래 키·rotation 상태가 필요하다. Dev runner가 생성한 local 키는 ciphertext 호환성 증거가 아니며 다섯 URL은 외부 키·Redis·PostgreSQL/checkpointer·CAS/blob를 자동 import하지 않는다. Companion state의 일관된 복원·격리와 key 보존을 별도 확인한다. Live write/migration은 기존 승인이 필요하고 volume/key 보존·no prune 규칙도 유지한다. Backup 복구가 시험되지 않았거나 irreversible DDL/backfill 이후 image만 내리는 경우 rollback을 보장하지 않는다.
+
 
 ## 태스크 명세
 

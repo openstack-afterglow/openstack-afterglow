@@ -39,7 +39,7 @@ class McpOwnerLock(Base):
 
 
 class McpDelegatedGrant(Base):
-    """Server-held, project-fixed Keystone application-credential delegation."""
+    """Server-held delegated authority with an immutable approved-project snapshot."""
 
     __tablename__ = "mcp_delegated_grants"
 
@@ -50,6 +50,8 @@ class McpDelegatedGrant(Base):
     display_name: Mapped[str] = mapped_column(VARCHAR(100), nullable=False)
     source: Mapped[str] = mapped_column(VARCHAR(20), nullable=False)
     access_level: Mapped[str] = mapped_column(VARCHAR(10), nullable=False)
+    project_scope: Mapped[str] = mapped_column(VARCHAR(20), nullable=False, default="current", server_default="current")
+    approved_projects: Mapped[list | None] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(VARCHAR(10), nullable=False, default="pending")
     application_credential_id: Mapped[str | None] = mapped_column(VARCHAR(128))
     credential_ciphertext: Mapped[str | None] = mapped_column(MEDIUMTEXT)
@@ -66,12 +68,32 @@ class McpDelegatedGrant(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
 
     __table_args__ = (
-        CheckConstraint("source IN ('personal_token', 'oauth')", name="chk_mcp_grant_source"),
+        CheckConstraint("source IN ('personal_token', 'oauth', 'lumen')", name="chk_mcp_grant_source"),
         CheckConstraint("access_level IN ('read', 'manage')", name="chk_mcp_grant_access"),
+        CheckConstraint("project_scope IN ('current', 'selected', 'all')", name="chk_mcp_grant_project_scope"),
         CheckConstraint("status IN ('pending', 'active', 'revoked', 'expired')", name="chk_mcp_grant_status"),
         Index("idx_mcp_grants_owner_status", "owner_user_id", "owner_project_id", "status"),
         Index("idx_mcp_grants_expiry", "expires_at", "status"),
     )
+
+
+class McpProjectCredential(Base):
+    """Restricted project credentials beyond the grant's original home credential.
+
+    Rows are reserved before Keystone I/O so ambiguous or partial creation remains
+    recoverable by deterministic name. Secrets are bound to grant/user/project.
+    """
+
+    __tablename__ = "mcp_project_credentials"
+
+    grant_id: Mapped[str] = mapped_column(
+        CHAR(36), ForeignKey("mcp_delegated_grants.id", ondelete="CASCADE"), primary_key=True
+    )
+    project_id: Mapped[str] = mapped_column(VARCHAR(64), primary_key=True)
+    upstream_credential_name: Mapped[str] = mapped_column(VARCHAR(128), nullable=False, unique=True)
+    application_credential_id: Mapped[str | None] = mapped_column(VARCHAR(128))
+    credential_ciphertext: Mapped[str | None] = mapped_column(MEDIUMTEXT)
+    cleanup_pending: Mapped[bool] = mapped_column(BOOLEAN, nullable=False, default=True, server_default="1")
 
 
 class McpPersonalToken(Base):
@@ -93,7 +115,7 @@ class McpPersonalToken(Base):
 
 
 class McpLumenSelection(Base):
-    """Exactly one selected active personal-token grant per user/project."""
+    """Exactly one selected active personal-token or internal Lumen grant per user/project."""
 
     __tablename__ = "mcp_lumen_selections"
 

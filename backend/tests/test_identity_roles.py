@@ -606,6 +606,61 @@ def existing_project_hierarchy(provider):
 
 
 @pytest.mark.asyncio
+async def test_project_reader_custom_implication_survives_preset_application(role_env):
+    p, client = role_env.provider, role_env.client
+    existing_project_hierarchy(p)
+    p.rows["audit-id"] = {"id": "audit-id", "name": "audit", "domain_id": None, "description": ""}
+    linked = await client.put("/api/v1/admin/roles/project_reader/implies/audit-id")
+    assert linked.status_code == 200, linked.text
+    assert linked.json() == {"status": "created"}
+    applied = await client.post("/api/v1/admin/roles/presets/apply")
+    assert applied.status_code == 200, applied.text
+    rows = {row["id"]: row for row in (await client.get("/api/v1/admin/roles")).json()}
+    for parent in ("project_owner", "project_admin", "project_member", "project_reader"):
+        assert "audit-id" in rows[parent]["inherited_role_ids"]
+    assert rows["audit-id"]["parent_role_ids"] == ["project_reader"]
+    assert "member" not in rows["project_reader"]["inherited_role_ids"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "target_name,target_domain",
+    [
+        ("admin", None),
+        ("manager", None),
+        ("member", None),
+        ("MEMBER", None),
+        ("project_admin", None),
+        ("lumen-resources_admin", None),
+        ("external_audit", "other-domain"),
+    ],
+)
+async def test_custom_descendants_cannot_bypass_preset_authority_bounds(role_env, target_name, target_domain):
+    p, client = role_env.provider, role_env.client
+    existing_project_hierarchy(p)
+    p.rows["audit-id"] = {"id": "audit-id", "name": "audit", "domain_id": None, "description": ""}
+    p.rows["alias-id"] = {"id": "alias-id", "name": "external_alias", "domain_id": None, "description": ""}
+    target = next((row["id"] for row in p.rows.values() if row["name"] == target_name), "target-id")
+    if target == "target-id":
+        p.rows[target] = {"id": target, "name": target_name, "domain_id": target_domain, "description": ""}
+    p.edges.update({("audit-id", "alias-id"), ("alias-id", target)})
+    response = await client.put("/api/v1/admin/roles/project_reader/implies/audit-id")
+    assert response.status_code == 409
+    assert ("project_reader", "audit-id") not in p.edges
+
+
+@pytest.mark.asyncio
+async def test_project_reader_principal_cannot_edit_global_role_implications(role_env):
+    p = role_env.provider
+    existing_project_hierarchy(p)
+    p.rows["audit-id"] = {"id": "audit-id", "name": "audit", "domain_id": None, "description": ""}
+    role_env.auth.update(is_system_admin=False, roles=["project_reader", "reader"])
+    denied = await role_env.client.put("/api/v1/admin/roles/project_reader/implies/audit-id")
+    assert denied.status_code == 403
+    assert ("project_reader", "audit-id") not in p.edges
+
+
+@pytest.mark.asyncio
 async def test_role_area_grade_normalization_collision_and_legacy_metadata(role_env):
     p, client = role_env.provider, role_env.client
     response = await client.post("/api/v1/admin/roles", json={"name": " Way Gate _ Client Admin "})

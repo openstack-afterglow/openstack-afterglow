@@ -1,99 +1,67 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
-import type { Writable } from 'svelte/store';
-import type { AuthState } from '../auth';
 
-// localStorage + cookie mock
-const storage: Record<string, string> = {};
-let cookieString = '';
-
-vi.stubGlobal('localStorage', {
-  getItem: (key: string) => storage[key] ?? null,
-  setItem: (key: string, val: string) => { storage[key] = val; },
-  removeItem: (key: string) => { delete storage[key]; },
+beforeEach(() => {
+	vi.resetModules();
+	localStorage.clear();
+	sessionStorage.clear();
 });
 
-vi.stubGlobal('window', { localStorage: globalThis.localStorage });
+describe('tab-local credential persistence', () => {
+	it('persists access and refresh tokens only in sessionStorage', async () => {
+		const mod = await import('../auth');
+		mod.setAuth({ token: 'secret-access', refreshToken: 'secret-refresh' });
+		expect(JSON.parse(sessionStorage.getItem(mod.AUTH_STORAGE_KEY)!)).toMatchObject({
+			token: 'secret-access', refreshToken: 'secret-refresh',
+		});
+		expect(localStorage.getItem(mod.AUTH_STORAGE_KEY)).toBeNull();
+		expect(JSON.stringify(localStorage)).not.toContain('secret-');
+	});
 
-// document.cookie mock
-Object.defineProperty(globalThis, 'document', {
-  value: {
-    get cookie() { return cookieString; },
-    set cookie(val: string) { cookieString = val; },
-  },
-  configurable: true,
-});
+	it('discards legacy browser-wide credentials without restoring them', async () => {
+		localStorage.setItem('afterglow_auth', JSON.stringify({ token: 'legacy-access', refreshToken: 'legacy-refresh' }));
+		const mod = await import('../auth');
+		expect(get(mod.auth).token).toBeNull();
+		expect(localStorage.getItem('afterglow_auth')).toBeNull();
+		expect(sessionStorage.getItem('afterglow_auth')).toBeNull();
+	});
 
-describe('auth store — 보안 테스트', () => {
-  let auth: Writable<AuthState>;
-  let setAuth: typeof import('../auth')['setAuth'];
-  let clearAuth: typeof import('../auth')['clearAuth'];
+	it('restores credentials after a reload in the same tab', async () => {
+		const first = await import('../auth');
+		first.setAuth({ token: 'tab-access', refreshToken: 'tab-refresh' });
+		vi.resetModules();
+		const reloaded = await import('../auth');
+		expect(get(reloaded.auth)).toMatchObject({ token: 'tab-access', refreshToken: 'tab-refresh' });
+	});
 
-  beforeEach(async () => {
-    vi.resetModules();
-    // localStorage 초기화
-    Object.keys(storage).forEach((k) => delete storage[k]);
-    cookieString = '';
+	it('drops a dormant tab session after another tab revoked sessions', async () => {
+		sessionStorage.setItem('afterglow_auth', JSON.stringify({ token: 'stale-access' }));
+		localStorage.setItem('afterglow_auth_logout', 'new-secret-free-event');
+		const mod = await import('../auth');
+		expect(get(mod.auth).token).toBeNull();
+		expect(sessionStorage.getItem('afterglow_auth')).toBeNull();
+	});
 
-    const mod = await import('../auth');
-    auth = mod.auth as typeof auth;
-    setAuth = mod.setAuth;
-    clearAuth = mod.clearAuth;
-    clearAuth();
-  });
+	it('clears credentials and shares only a random logout marker', async () => {
+		const mod = await import('../auth');
+		mod.setAuth({ token: 'secret-access', refreshToken: 'secret-refresh', username: 'private-user' });
+		mod.clearAuth();
+		expect(get(mod.auth).token).toBeNull();
+		expect(sessionStorage.getItem(mod.AUTH_STORAGE_KEY)).toBeNull();
+		expect(localStorage.getItem(mod.AUTH_LOGOUT_EVENT_KEY)).toMatch(/^[\da-f-]{36}$/);
+		expect(JSON.stringify(localStorage)).not.toMatch(/secret-|private-user/);
+	});
 
-  it('토큰 설정 시 localStorage에 저장됨', () => {
-    setAuth({
-      token: 'secret-token-123',
-      userId: 'u1',
-      username: 'testuser',
-      projectId: 'p1',
-      projectName: 'MyProject',
-      accessExpiresAt: null,
-      roles: ['member'],
-    });
-    expect(storage['afterglow_auth']).toBeTruthy();
-    const saved = JSON.parse(storage['afterglow_auth']);
-    // 토큰이 localStorage에 저장됨 (현재 동작 — 보안 개선 전)
-    expect(saved.token).toBe('secret-token-123');
-  });
+	it('does not clear another logged-in tab SSR marker when a fresh tab initializes', async () => {
+		document.cookie = 'afterglow_session=1; path=/';
+		const mod = await import('../auth');
+		expect(get(mod.auth).token).toBeNull();
+		expect(document.cookie).toContain('afterglow_session=1');
+	});
 
-  it('clearAuth 시 localStorage에서 토큰 제거됨', () => {
-    setAuth({
-      token: 'secret-token-123',
-      userId: 'u1',
-      username: 'testuser',
-      projectId: 'p1',
-      projectName: 'MyProject',
-      accessExpiresAt: null,
-      roles: ['member'],
-    });
-    // 저장 확인
-    expect(storage['afterglow_auth']).toBeTruthy();
-
-    // 로그아웃
-    clearAuth();
-
-    // localStorage에서 제거 확인
-    expect(storage['afterglow_auth']).toBeUndefined();
-  });
-
-  it('clearAuth 후 auth store의 token이 null', () => {
-    setAuth({ token: 'tok', userId: 'u', username: 'u', projectId: 'p', projectName: 'p', accessExpiresAt: null, roles: [] });
-    clearAuth();
-    expect(get(auth).token).toBeNull();
-  });
-
-  it('초기 상태에서 token이 null이면 localStorage에 저장 안 됨', () => {
-    clearAuth();
-    expect(storage['afterglow_auth']).toBeUndefined();
-  });
-
-  it('JSON 파싱 실패 시 초기 상태로 폴백', async () => {
-    storage['afterglow_auth'] = 'invalid json {{{';
-    vi.resetModules();
-    const mod = await import('../auth');
-    const state = get(mod.auth);
-    expect(state.token).toBeNull();
-  });
+	it('ignores corrupt tab snapshots', async () => {
+		sessionStorage.setItem('afterglow_auth', '{invalid json');
+		const mod = await import('../auth');
+		expect(get(mod.auth).token).toBeNull();
+	});
 });

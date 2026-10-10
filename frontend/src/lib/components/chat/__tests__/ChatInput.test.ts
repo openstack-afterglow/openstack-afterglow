@@ -9,9 +9,12 @@ vi.mock('$lib/api/chatAttachments', async (importOriginal) => {
 
 import ChatInput from '../ChatInput.svelte';
 import { uploadChatAttachment, type AttachmentRef } from '$lib/api/chatAttachments';
+import { siteConfig } from '$lib/config/site';
+import type { CloudToolsCatalogue } from '$lib/api/chatContracts';
 
 beforeEach(() => {
 	vi.mocked(uploadChatAttachment).mockReset();
+	siteConfig.update((config) => ({ ...config, services: { ...config.services, mcp: false } }));
 	vi.stubGlobal('matchMedia', (query: string) => ({
 		matches: query.includes('min-width: 768px') || query.includes('prefers-reduced-motion'),
 		media: query,
@@ -503,5 +506,52 @@ describe('ChatInput send-only suspension', () => {
 		await view.rerender({ sendDisabled: false });
 		await fireEvent.keyDown(textarea, { key: 'Enter' });
 		expect(onSend).toHaveBeenCalledOnce();
+	});
+});
+
+describe('ChatInput built-in cloud tools', () => {
+	const cloudTools: CloudToolsCatalogue = {
+		enabled: true, access_level: 'read', project_id: 'project-1', project_name: 'Research',
+		tool_count: 12, source: 'lumen', allowed_projects: [{ id: 'project-1', name: 'Research' }], selection_name: null,
+	};
+	const props = { value: '', projectId: 'project-1', modelCaps: { tool_call: true }, cloudTools, onSend: vi.fn(), onStop: vi.fn() };
+
+	it('shows an informational built-in item with zero custom tools and MCP servers', async () => {
+		siteConfig.update((config) => ({ ...config, services: { ...config.services, mcp: true } }));
+		const view = render(ChatInput, props);
+		await fireEvent.click(view.getByRole('button', { name: '추가' }));
+		const item = view.getByRole('menuitem', { name: '클라우드 리소스' });
+		expect(item.getAttribute('aria-disabled')).toBe('true');
+		expect(item.textContent).toContain('현재 프로젝트 · 읽기 전용');
+		expect(item.textContent).toContain('Research (project-1)');
+		expect(view.queryAllByRole('menuitemcheckbox')).toHaveLength(0);
+		expect(item.querySelector('button')).toBeNull();
+	});
+
+	it('renders selected manage access and saved projects from API metadata', async () => {
+		siteConfig.update((config) => ({ ...config, services: { ...config.services, mcp: true } }));
+		const view = render(ChatInput, { ...props, cloudTools: { ...cloudTools, source: 'personal_token', access_level: 'manage', selection_name: 'Operations key', allowed_projects: [{ id: 'project-2', name: 'Production' }] } });
+		await fireEvent.click(view.getByRole('button', { name: '추가' }));
+		const item = view.getByRole('menuitem', { name: '클라우드 리소스' });
+		expect(item.textContent).toContain('Operations key');
+		expect(item.querySelector('.chip')?.textContent).toContain('관리');
+		expect(item.textContent).toContain('Production (project-2)');
+		expect(item.textContent).not.toContain('Research (project-1)');
+		expect(item.textContent).not.toContain('현재 프로젝트 · 읽기 전용');
+	});
+
+	it('requires MCP configuration, model tool calls, Lumen tools permission and current API scope', async () => {
+		const view = render(ChatInput, props);
+		expect((view.getByRole('button', { name: '추가' }) as HTMLButtonElement).disabled).toBe(true);
+		siteConfig.update((config) => ({ ...config, services: { ...config.services, mcp: true } }));
+		await view.rerender({ modelCaps: { tool_call: false } });
+		expect((view.getByRole('button', { name: '추가' }) as HTMLButtonElement).disabled).toBe(true);
+		await view.rerender({ modelCaps: { tool_call: true }, cloudTools: { ...cloudTools, enabled: false } });
+		expect((view.getByRole('button', { name: '추가' }) as HTMLButtonElement).disabled).toBe(true);
+		await view.rerender({ cloudTools, projectId: 'project-2' });
+		expect((view.getByRole('button', { name: '추가' }) as HTMLButtonElement).disabled).toBe(true);
+		await view.rerender({ projectId: 'project-1' });
+		grantLumen('lumen-chat_user');
+		await waitFor(() => expect((view.getByRole('button', { name: '추가' }) as HTMLButtonElement).disabled).toBe(true));
 	});
 });

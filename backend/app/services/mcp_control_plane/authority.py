@@ -29,9 +29,11 @@ from app.models.mcp_authority import (
     McpLumenSelection,
     McpOwnerLock,
     McpPersonalToken,
+    McpProjectCredential,
     McpToolInvocation,
 )
 from app.services.mcp_control_plane.crypto import decrypt_application_credential, encrypt_application_credential
+from app.services.mcp_control_plane.sdk import _drain
 
 PERSONAL_TOKEN_PREFIX = "mcp-afgl-"
 PERSONAL_TOKEN_BYTES = 32
@@ -65,6 +67,8 @@ class IssuedPersonalToken:
     grant_id: str
     expires_at: datetime
     access_level: str
+    project_scope: str = "current"
+    approved_projects: tuple[dict[str, object], ...] = ()
 
 
 def _now() -> datetime:
@@ -177,7 +181,7 @@ async def _count_dispatchable_grants(session: AsyncSession, *, owner_user_id: st
             .where(
                 McpDelegatedGrant.owner_user_id == owner_user_id,
                 McpDelegatedGrant.owner_project_id == owner_project_id,
-                McpDelegatedGrant.status.in_(("pending", "active")),
+                McpDelegatedGrant.status.in_(("pending", "active")) | McpDelegatedGrant.cleanup_pending.is_(True),
             )
         )
         or 0
@@ -196,7 +200,7 @@ async def _count_dispatchable_personal_tokens(
                 McpDelegatedGrant.owner_user_id == owner_user_id,
                 McpDelegatedGrant.owner_project_id == owner_project_id,
                 McpDelegatedGrant.source == "personal_token",
-                McpDelegatedGrant.status.in_(("pending", "active")),
+                McpDelegatedGrant.status.in_(("pending", "active")) | McpDelegatedGrant.cleanup_pending.is_(True),
             )
         )
         or 0
@@ -230,6 +234,321 @@ def _role_snapshot(roles: object) -> list[dict[str, str]]:
     if not names:
         raise McpAuthorityError("the current project has no usable Keystone role")
     return [{"name": name} for name in names]
+
+
+def _approved_project_authority(grant: McpDelegatedGrant) -> list[dict[str, object]]:
+    """Saved allowlist only; NULL legacy rows remain a singleton forever."""
+    saved = getattr(grant, "approved_projects", None)
+    if saved is None:
+        project_id = grant.owner_project_id
+        return [{"id": project_id, "name": project_id, "roles": [], "can_write": grant.access_level == "manage"}]
+    if not isinstance(saved, list) or not saved:
+        raise McpGrantStateError("MCP approved projects are invalid")
+    result = []
+    seen = set()
+    for item in saved:
+        if (
+            not isinstance(item, dict)
+            or not isinstance(item.get("id"), str)
+            or not item["id"]
+            or item["id"] in seen
+            or not isinstance(item.get("name"), str)
+            or not isinstance(item.get("roles"), list)
+            or any(not isinstance(role, str) or not role for role in item["roles"])
+            or not isinstance(item.get("can_write"), bool)
+        ):
+            raise McpGrantStateError("MCP approved projects are invalid")
+        seen.add(item["id"])
+        result.append(
+            {"id": item["id"], "name": item["name"], "roles": list(item["roles"]), "can_write": item["can_write"]}
+        )
+    return result
+
+
+def approved_project_metadata(grant: McpDelegatedGrant) -> list[dict[str, str]]:
+    """Public-safe snapshot projection; never disclose Keystone role authority."""
+    return [{"id": project["id"], "name": project["name"]} for project in _approved_project_authority(grant)]
+
+
+def validate_grant_project(grant: McpDelegatedGrant, project_id: str, *, write: bool = False) -> dict[str, object]:
+    for metadata in _approved_project_authority(grant):
+        if metadata["id"] == project_id:
+            if write and (grant.access_level != "manage" or not metadata["can_write"]):
+                raise McpGrantStateError("MCP project does not allow management")
+            return metadata
+    raise McpGrantStateError("project is outside the MCP approved scope")
+
+
+def grant_project_ids(grant: McpDelegatedGrant) -> tuple[str, ...]:
+    return tuple(project["id"] for project in approved_project_metadata(grant))
+
+
+def default_grant_project(grant: McpDelegatedGrant) -> str:
+    projects = grant_project_ids(grant)
+    return grant.owner_project_id if grant.owner_project_id in projects else projects[0]
+
+
+@dataclass(frozen=True)
+class ApprovedProject:
+    id: str
+    name: str
+    roles: list[dict[str, str]]
+    can_write: bool
+    conn: Any
+    owns_connection: bool = True
+
+    def metadata(self) -> dict[str, object]:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "roles": [role["name"] for role in self.roles],
+            "can_write": self.can_write,
+        }
+
+
+async def prepare_project_authority(
+    token_info: dict,
+    *,
+    project_scope: str = "current",
+    project_ids: list[str] | None = None,
+    access_level: str = "read",
+) -> list[ApprovedProject]:
+    from app.services import keystone
+
+    conn = await asyncio.to_thread(keystone.get_openstack_connection, token_info["token"], token_info["project_id"])
+    conn._afterglow_user_id = token_info["user_id"]
+    conn._afterglow_project_id = token_info["project_id"]
+    conn._afterglow_token = token_info["token"]
+    try:
+        projects = await _prepare_connection_projects(
+            conn,
+            token_info["user_id"],
+            token_info["project_id"],
+            token_info.get("roles", []),
+            project_scope,
+            project_ids,
+            access_level,
+        )
+    except BaseException:
+        await asyncio.to_thread(conn.close)
+        raise
+    for project in projects:
+        if project.conn is conn:
+            return [ApprovedProject(p.id, p.name, p.roles, p.can_write, p.conn, True) for p in projects]
+    await asyncio.to_thread(conn.close)
+    return projects
+
+
+async def _prepare_connection_projects(
+    conn: Any,
+    user_id: str,
+    project_id: str,
+    roles: object,
+    project_scope: str,
+    project_ids: list[str] | None,
+    access_level: str,
+) -> list[ApprovedProject]:
+    from app.services.mcp_control_plane.projects import project_candidates, project_connection
+
+    _validate_access_level(access_level)
+    metadata = await project_candidates(conn, user_id, project_id, project_scope, project_ids)
+    result = []
+    try:
+        for project in metadata:
+            scoped = await project_connection(conn, user_id, project["id"])
+            role_snapshot = scoped._afterglow_roles
+            can_write = bool({role["name"].casefold() for role in role_snapshot} & {"admin", "member"})
+            if access_level == "manage" and not can_write:
+                if scoped is not conn:
+                    await asyncio.to_thread(scoped.close)
+                raise McpAuthorityError("selected project does not allow management")
+            project_name = scoped._afterglow_project_name if project_scope == "current" else project["name"]
+            result.append(
+                ApprovedProject(project["id"], project_name, role_snapshot, can_write, scoped, scoped is not conn)
+            )
+        return result
+    except BaseException:
+        await close_project_authority(result)
+        raise
+
+
+async def close_project_authority(projects: list[ApprovedProject]) -> None:
+    async def close_all() -> None:
+        for project in projects:
+            if project.owns_connection:
+                await asyncio.to_thread(project.conn.close)
+
+    task = asyncio.create_task(close_all())
+    await _drain(task)
+    task.result()
+
+
+async def grant_credential_for_project(
+    session: AsyncSession, grant: McpDelegatedGrant, project_id: str
+) -> tuple[str, str]:
+    validate_grant_project(grant, project_id)
+    credential = None
+    if project_id != grant.owner_project_id:
+        credential = await session.get(
+            McpProjectCredential, {"grant_id": grant.id, "project_id": project_id}, with_for_update=True
+        )
+        if credential is None:
+            raise McpGrantStateError("MCP project credential is unavailable")
+    secret = decrypt_grant_secret(grant, project_id=project_id, credential=credential)
+    return (credential or grant).application_credential_id, secret
+
+
+async def create_grant_credentials(
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    grant_id: str,
+    owner_user_id: str,
+    owner_project_id: str,
+    username: str,
+    projects: list[ApprovedProject],
+    expires_at: datetime,
+) -> None:
+    """Reserve every deterministic name, drain remote work, and persist before activation."""
+    canceled = asyncio.Event()
+
+    async def create_all() -> None:
+        async with session_factory() as session, session.begin():
+            await lock_owner(session, owner_user_id=owner_user_id, owner_project_id=owner_project_id)
+            grant = await _lock_grant(
+                session, grant_id=grant_id, owner_user_id=owner_user_id, owner_project_id=owner_project_id
+            )
+            if grant.status != "pending" or grant.orphan_recovery_nonce is not None:
+                raise McpGrantStateError("MCP grant was changed before credential creation")
+            if [project.metadata() for project in projects] != _approved_project_authority(grant):
+                raise McpGrantStateError("project credentials do not match the reserved approval")
+            for project in projects:
+                if project.id != owner_project_id:
+                    session.add(
+                        McpProjectCredential(
+                            grant_id=grant_id,
+                            project_id=project.id,
+                            upstream_credential_name=f"afterglow-mcp-{grant_id}-{hashlib.sha256(project.id.encode()).hexdigest()[:32]}",
+                            cleanup_pending=True,
+                        )
+                    )
+        for project in projects:
+            if canceled.is_set():
+                raise asyncio.CancelledError()
+            async with session_factory() as session, session.begin():
+                await lock_owner(session, owner_user_id=owner_user_id, owner_project_id=owner_project_id)
+                grant = await _lock_grant(
+                    session, grant_id=grant_id, owner_user_id=owner_user_id, owner_project_id=owner_project_id
+                )
+                if grant.status != "pending" or grant.orphan_recovery_nonce is not None:
+                    raise McpGrantStateError("MCP grant was changed before credential creation")
+                credential = (
+                    grant
+                    if project.id == owner_project_id
+                    else await session.get(
+                        McpProjectCredential, {"grant_id": grant_id, "project_id": project.id}, with_for_update=True
+                    )
+                )
+                name = credential.upstream_credential_name
+            created = await asyncio.to_thread(
+                create_restricted_application_credential,
+                project.conn,
+                owner_user_id=owner_user_id,
+                owner_project_id=project.id,
+                upstream_name=name,
+                expires_at=expires_at,
+                roles=project.roles,
+            )
+            # Store the returned ID first: even encryption failure remains recoverable.
+            async with session_factory() as session, session.begin():
+                await lock_owner(session, owner_user_id=owner_user_id, owner_project_id=owner_project_id)
+                grant = await _lock_grant(
+                    session, grant_id=grant_id, owner_user_id=owner_user_id, owner_project_id=owner_project_id
+                )
+                credential = (
+                    grant
+                    if project.id == owner_project_id
+                    else await session.get(
+                        McpProjectCredential, {"grant_id": grant_id, "project_id": project.id}, with_for_update=True
+                    )
+                )
+                if credential is None:
+                    credential = McpProjectCredential(
+                        grant_id=grant_id, project_id=project.id, upstream_credential_name=name, cleanup_pending=True
+                    )
+                    session.add(credential)
+                credential.application_credential_id = created["id"]
+                credential.cleanup_pending = True
+                grant.cleanup_pending = True
+            ciphertext = encrypt_application_credential(
+                created["secret"], grant_id=grant_id, owner_user_id=owner_user_id, owner_project_id=project.id
+            )
+            async with session_factory() as session, session.begin():
+                await lock_owner(session, owner_user_id=owner_user_id, owner_project_id=owner_project_id)
+                grant = await _lock_grant(
+                    session, grant_id=grant_id, owner_user_id=owner_user_id, owner_project_id=owner_project_id
+                )
+                credential = (
+                    grant
+                    if project.id == owner_project_id
+                    else await session.get(
+                        McpProjectCredential, {"grant_id": grant_id, "project_id": project.id}, with_for_update=True
+                    )
+                )
+                if grant.status != "pending" or grant.orphan_recovery_nonce is not None:
+                    raise McpGrantStateError("MCP grant was changed during credential creation")
+                credential.credential_ciphertext = ciphertext
+                if credential is not grant:
+                    credential.cleanup_pending = False
+
+    task = asyncio.create_task(create_all())
+    try:
+        await asyncio.shield(task)
+    except BaseException:
+        canceled.set()
+        await _drain(task)
+        await abandon_grant_credentials(
+            session_factory,
+            conn=projects[0].conn,
+            grant_id=grant_id,
+            owner_user_id=owner_user_id,
+            owner_project_id=owner_project_id,
+            username=username,
+        )
+        raise
+
+
+async def abandon_grant_credentials(
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    conn: Any,
+    grant_id: str,
+    owner_user_id: str,
+    owner_project_id: str,
+    username: str,
+) -> bool:
+    """Own rollback through repeated caller cancellation without abandoning remote cleanup."""
+
+    async def cleanup() -> bool:
+        await revoke_grant(
+            session_factory,
+            grant_id=grant_id,
+            owner_user_id=owner_user_id,
+            owner_project_id=owner_project_id,
+            username=username,
+        )
+        return await confirm_keystone_cleanup(
+            session_factory,
+            conn=conn,
+            grant_id=grant_id,
+            owner_user_id=owner_user_id,
+            owner_project_id=owner_project_id,
+            username=username,
+            application_credential_id=None,
+        )
+
+    task = asyncio.create_task(cleanup())
+    await _drain(task)
+    return task.result()
 
 
 def create_restricted_application_credential(
@@ -320,132 +639,93 @@ async def issue_personal_token(
     display_name: str,
     access_level: str,
     expires_at: datetime | None = None,
+    project_scope: str = "current",
+    project_ids: list[str] | None = None,
 ) -> IssuedPersonalToken:
-    """Reserve capacity, create a restricted credential, then atomically activate it."""
+    """Freeze real caller memberships and create one restricted credential per project."""
     now = _now()
     display_name = _validate_display_name(display_name)
     access_level = _validate_access_level(access_level)
     deadline = _grant_expiry(expires_at=expires_at, now=now)
-    # Reject local identity/role failures before consuming a durable capacity slot.
     if (
         getattr(conn, "_afterglow_user_id", None) != owner_user_id
         or getattr(conn, "_afterglow_project_id", None) != owner_project_id
     ):
         raise McpAuthorityError("scoped connection does not match the MCP grant owner")
-    _role_snapshot(roles)
-    await recover_stale_pending_orphans(
-        session_factory,
-        conn=conn,
-        owner_user_id=owner_user_id,
-        owner_project_id=owner_project_id,
-        username=username,
+    projects = await _prepare_connection_projects(
+        conn, owner_user_id, owner_project_id, roles, project_scope, project_ids, access_level
     )
     grant_id = str(uuid4())
-    upstream_name = f"afterglow-mcp-{grant_id}"
-
-    async with session_factory() as session, session.begin():
-        await lock_owner(session, owner_user_id=owner_user_id, owner_project_id=owner_project_id)
-        settings = get_settings()
-        if (
-            await _count_dispatchable_grants(session, owner_user_id=owner_user_id, owner_project_id=owner_project_id)
-            >= settings.mcp_max_delegated_grants
-        ):
-            raise McpGrantLimitError("the project already has the maximum number of active MCP grants")
-        if (
-            await _count_dispatchable_personal_tokens(
-                session, owner_user_id=owner_user_id, owner_project_id=owner_project_id
-            )
-            >= settings.mcp_max_personal_tokens
-        ):
-            raise McpGrantLimitError("the project already has the maximum number of active MCP personal tokens")
-        session.add(
-            McpDelegatedGrant(
-                id=grant_id,
-                owner_user_id=owner_user_id,
-                owner_project_id=owner_project_id,
-                upstream_credential_name=upstream_name,
-                display_name=display_name,
-                source="personal_token",
-                access_level=access_level,
-                status="pending",
-                expires_at=deadline,
-                cleanup_pending=True,
-                orphan_recovery_after=now + PENDING_ORPHAN_RECOVERY_GRACE,
-            )
-        )
-
-    # A crash or ambiguous remote result leaves a counted, non-dispatchable
-    # reservation. Definitive pre-creation failures release it under the owner lock.
+    credentials_ready = False
     try:
-        created = await asyncio.to_thread(
-            create_restricted_application_credential,
-            conn,
+        await recover_stale_pending_orphans(
+            session_factory,
+            conn=conn,
             owner_user_id=owner_user_id,
             owner_project_id=owner_project_id,
-            upstream_name=upstream_name,
-            expires_at=deadline,
-            roles=roles,
+            username=username,
         )
-    except Exception as exc:
-        if _definitively_not_created(exc):
-            await _release_pending_reservation(
-                session_factory, grant_id=grant_id, owner_user_id=owner_user_id, owner_project_id=owner_project_id
-            )
-        else:
-            # A timeout or transport failure may have created the deterministic
-            # upstream credential. Keep the reservation non-dispatchable until a
-            # later same-owner recovery confirms its exact name is absent.
-            async with session_factory() as session, session.begin():
-                await lock_owner(session, owner_user_id=owner_user_id, owner_project_id=owner_project_id)
-                grant = await _lock_grant(
-                    session, grant_id=grant_id, owner_user_id=owner_user_id, owner_project_id=owner_project_id
+        async with session_factory() as session, session.begin():
+            await lock_owner(session, owner_user_id=owner_user_id, owner_project_id=owner_project_id)
+            settings = get_settings()
+            if (
+                await _count_dispatchable_grants(
+                    session, owner_user_id=owner_user_id, owner_project_id=owner_project_id
                 )
-                if grant.status == "pending":
-                    grant.cleanup_pending = True
-        raise
-    try:
-        ciphertext = encrypt_application_credential(
-            created["secret"], grant_id=grant_id, owner_user_id=owner_user_id, owner_project_id=owner_project_id
+                >= settings.mcp_max_delegated_grants
+            ):
+                raise McpGrantLimitError("the project already has the maximum number of active MCP grants")
+            if (
+                await _count_dispatchable_personal_tokens(
+                    session, owner_user_id=owner_user_id, owner_project_id=owner_project_id
+                )
+                >= settings.mcp_max_personal_tokens
+            ):
+                raise McpGrantLimitError("the project already has the maximum number of active MCP personal tokens")
+            session.add(
+                McpDelegatedGrant(
+                    id=grant_id,
+                    owner_user_id=owner_user_id,
+                    owner_project_id=owner_project_id,
+                    upstream_credential_name=f"afterglow-mcp-{grant_id}",
+                    display_name=display_name,
+                    source="personal_token",
+                    access_level=access_level,
+                    project_scope=project_scope,
+                    approved_projects=[project.metadata() for project in projects],
+                    status="pending",
+                    expires_at=deadline,
+                    cleanup_pending=True,
+                    orphan_recovery_after=now + PENDING_ORPHAN_RECOVERY_GRACE,
+                )
+            )
+        await create_grant_credentials(
+            session_factory,
+            grant_id=grant_id,
+            owner_user_id=owner_user_id,
+            owner_project_id=owner_project_id,
+            username=username,
+            projects=projects,
+            expires_at=deadline,
         )
-    except Exception:
+        credentials_ready = True
+        token = _new_personal_token()
+        token_id = str(uuid4())
         async with session_factory() as session, session.begin():
             await lock_owner(session, owner_user_id=owner_user_id, owner_project_id=owner_project_id)
             grant = await _lock_grant(
                 session, grant_id=grant_id, owner_user_id=owner_user_id, owner_project_id=owner_project_id
             )
-            grant.application_credential_id = created["id"]
-            grant.cleanup_pending = True
-        raise
-    token = _new_personal_token()
-    token_id = str(uuid4())
-
-    activation_changed = False
-    async with session_factory() as session, session.begin():
-        await lock_owner(session, owner_user_id=owner_user_id, owner_project_id=owner_project_id)
-        grant = await _lock_grant(
-            session, grant_id=grant_id, owner_user_id=owner_user_id, owner_project_id=owner_project_id
-        )
-        if grant.status != "pending" or grant.orphan_recovery_nonce is not None:
-            # A cleanup claim won the race. Preserve the returned remote ID on a
-            # locally revoked row, then confirm deletion outside this transaction.
-            if grant.application_credential_id is None:
-                grant.application_credential_id = created["id"]
-            if grant.status == "pending":
-                grant.status = "revoked"
-                grant.revoked_at = now
-                grant.credential_epoch += 1
-            grant.cleanup_pending = True
-            grant.orphan_recovery_after = None
-            grant.orphan_recovery_nonce = None
-            activation_changed = True
-        else:
-            grant.application_credential_id = created["id"]
-            grant.credential_ciphertext = ciphertext
+            if (
+                grant.status != "pending"
+                or grant.orphan_recovery_nonce is not None
+                or _as_utc(grant.expires_at) <= _now()
+            ):
+                raise McpGrantStateError("MCP grant was changed before activation")
             grant.status = "active"
             grant.issued_at = now
             grant.cleanup_pending = False
             grant.orphan_recovery_after = None
-            grant.orphan_recovery_nonce = None
             session.add(
                 McpPersonalToken(
                     id=token_id,
@@ -465,23 +745,33 @@ async def issue_personal_token(
                 extra={
                     "source": "personal_token",
                     "access_level": access_level,
+                    "project_scope": project_scope,
+                    "project_ids": [project.id for project in projects],
                     "credential_epoch": grant.credential_epoch,
                 },
             )
-    if activation_changed:
-        await confirm_keystone_cleanup(
-            session_factory,
-            conn=conn,
+        return IssuedPersonalToken(
+            token=token,
+            token_id=token_id,
             grant_id=grant_id,
-            owner_user_id=owner_user_id,
-            owner_project_id=owner_project_id,
-            username=username,
-            application_credential_id=created["id"],
+            expires_at=deadline,
+            access_level=access_level,
+            project_scope=project_scope,
+            approved_projects=tuple(project.metadata() for project in projects),
         )
-        raise McpGrantStateError("MCP grant was changed before activation")
-    return IssuedPersonalToken(
-        token=token, token_id=token_id, grant_id=grant_id, expires_at=deadline, access_level=access_level
-    )
+    except BaseException:
+        if credentials_ready:
+            await abandon_grant_credentials(
+                session_factory,
+                conn=conn,
+                grant_id=grant_id,
+                owner_user_id=owner_user_id,
+                owner_project_id=owner_project_id,
+                username=username,
+            )
+        raise
+    finally:
+        await close_project_authority(projects)
 
 
 async def resolve_personal_token(
@@ -516,10 +806,9 @@ async def resolve_personal_token(
         or row.revoked_at is not None
         or grant.status != "active"
         or _as_utc(grant.expires_at) <= now
-        or not grant.application_credential_id
-        or not grant.credential_ciphertext
     ):
         raise McpGrantNotFoundError("MCP token is inactive")
+    await grant_credential_for_project(session, grant, default_grant_project(grant))
     row.last_used_at = now
     grant.last_used_at = now
     return grant
@@ -545,6 +834,14 @@ async def revoke_grant(
             grant.revoked_at = now
             grant.credential_epoch += 1
         grant.cleanup_pending = bool(grant.application_credential_id) or grant.cleanup_pending
+        additional = (
+            await session.scalars(
+                select(McpProjectCredential).where(McpProjectCredential.grant_id == grant.id).with_for_update()
+            )
+        ).all()
+        for credential in additional:
+            credential.cleanup_pending = True
+        grant.cleanup_pending = grant.cleanup_pending or bool(additional)
         tokens = (
             await session.scalars(
                 select(McpPersonalToken).where(McpPersonalToken.grant_id == grant.id).with_for_update()
@@ -581,7 +878,7 @@ async def set_lumen_selection(
     username: str,
     grant_id: str | None,
 ) -> int:
-    """Replace or clear the selected active personal token, always advancing generation."""
+    """Replace personal or internal Lumen authority; only personal grants require a PAT."""
     now = _now()
     async with session_factory() as session, session.begin():
         owner_lock = await lock_owner(session, owner_user_id=owner_user_id, owner_project_id=owner_project_id)
@@ -593,13 +890,13 @@ async def set_lumen_selection(
                 select(McpPersonalToken).where(McpPersonalToken.grant_id == grant_id).with_for_update()
             )
             if (
-                grant.source != "personal_token"
+                grant.source not in {"personal_token", "lumen"}
                 or grant.status != "active"
                 or _as_utc(grant.expires_at) <= now
-                or token is None
-                or token.revoked_at
+                or (grant.source == "personal_token" and (token is None or token.revoked_at is not None))
             ):
-                raise McpGrantStateError("Lumen selection requires an active personal token grant")
+                raise McpGrantStateError("Lumen selection requires active delegated authority")
+            await grant_credential_for_project(session, grant, default_grant_project(grant))
         selection = await session.get(
             McpLumenSelection,
             {"owner_user_id": owner_user_id, "owner_project_id": owner_project_id},
@@ -632,20 +929,32 @@ async def set_lumen_selection(
         return owner_lock.lumen_selection_generation
 
 
-def decrypt_grant_secret(grant: McpDelegatedGrant) -> str:
-    """Refuse moved, malformed, pending, revoked, or expired grant secrets."""
+def decrypt_grant_secret(
+    grant: McpDelegatedGrant,
+    project_id: str | None = None,
+    credential: McpProjectCredential | None = None,
+) -> str:
+    """Refuse moved credentials, out-of-allowlist targets, and inactive authority."""
+    target = default_grant_project(grant) if project_id is None else project_id
+    validate_grant_project(grant, target)
+    if target == grant.owner_project_id:
+        if credential is not None:
+            raise McpGrantStateError("home project credential must be the primary credential")
+        source = grant
+    else:
+        if credential is None or credential.grant_id != grant.id or credential.project_id != target:
+            raise McpGrantStateError("MCP credential does not match the target project")
+        source = credential
     if (
         grant.status != "active"
         or _as_utc(grant.expires_at) <= _now()
-        or not grant.application_credential_id
-        or not grant.credential_ciphertext
+        or not source.application_credential_id
+        or not source.credential_ciphertext
+        or (credential is not None and credential.cleanup_pending)
     ):
         raise McpGrantStateError("MCP grant is not dispatchable")
     return decrypt_application_credential(
-        grant.credential_ciphertext,
-        grant_id=grant.id,
-        owner_user_id=grant.owner_user_id,
-        owner_project_id=grant.owner_project_id,
+        source.credential_ciphertext, grant_id=grant.id, owner_user_id=grant.owner_user_id, owner_project_id=target
     )
 
 
@@ -659,6 +968,9 @@ def grant_public_view(
         "name": grant.display_name,
         "source": grant.source,
         "access_level": grant.access_level,
+        "project_scope": getattr(grant, "project_scope", None) or "current",
+        "project_ids": list(grant_project_ids(grant)),
+        "projects": approved_project_metadata(grant),
         "status": grant.status,
         "visible_prefix": token.visible_prefix if token else None,
         "issued_at": grant.issued_at or (token.issued_at if token else None),
@@ -738,112 +1050,119 @@ async def confirm_keystone_cleanup(
     username: str,
     application_credential_id: str | None,
 ) -> bool:
-    """Delete after an initial lease check; reconcile local state after external confirmation."""
-    if (
-        getattr(conn, "_afterglow_user_id", None) != owner_user_id
-        or getattr(conn, "_afterglow_project_id", None) != owner_project_id
-    ):
+    """Confirm every saved credential absent, recording partial cleanup durably."""
+    if getattr(conn, "_afterglow_user_id", None) != owner_user_id:
         raise McpAuthorityError("scoped connection does not match the MCP grant owner")
-
-    async def has_live_lease(session: AsyncSession, grant: McpDelegatedGrant) -> bool:
-        return bool(
-            await session.scalar(
-                select(func.count())
-                .select_from(McpToolInvocation)
-                .where(
-                    McpToolInvocation.grant_id == grant.id,
-                    McpToolInvocation.status == "dispatch_authorized",
-                    (McpToolInvocation.lease_expires_at.is_(None) | (McpToolInvocation.lease_expires_at > _now())),
-                )
-            )
-        )
-
-    recovery_nonce: str | None = None
-
     async with session_factory() as session, session.begin():
         await lock_owner(session, owner_user_id=owner_user_id, owner_project_id=owner_project_id)
         grant = await _lock_grant(
             session, grant_id=grant_id, owner_user_id=owner_user_id, owner_project_id=owner_project_id
         )
         grant.cleanup_last_attempt_at = _now()
-        is_orphan_recovery = (
+        recoverable = (
             grant.status == "pending"
             and grant.cleanup_pending
             and grant.orphan_recovery_after is not None
             and _as_utc(grant.orphan_recovery_after) <= _now()
-            and (
-                (application_credential_id is None and grant.application_credential_id is None)
-                or application_credential_id == grant.application_credential_id
+        )
+        live_lease = await session.scalar(
+            select(func.count())
+            .select_from(McpToolInvocation)
+            .where(
+                McpToolInvocation.grant_id == grant.id,
+                McpToolInvocation.status == "dispatch_authorized",
+                McpToolInvocation.lease_expires_at.is_(None) | (McpToolInvocation.lease_expires_at > _now()),
             )
         )
         if (
-            (grant.status not in {"revoked", "expired"} and not is_orphan_recovery)
-            or not grant.cleanup_pending
+            (grant.status not in {"revoked", "expired"} and not recoverable)
             or (application_credential_id is not None and grant.application_credential_id != application_credential_id)
-            or await has_live_lease(session, grant)
+            or live_lease
         ):
-            grant.cleanup_pending = True
             return False
-        upstream_name = grant.upstream_credential_name
-        if is_orphan_recovery:
-            recovery_nonce = str(uuid4())
-            grant.orphan_recovery_nonce = recovery_nonce
-
-    try:
-        confirmed_absent = await asyncio.to_thread(
-            delete_and_confirm_application_credential,
-            conn,
-            owner_user_id=owner_user_id,
-            application_credential_id=application_credential_id,
-            upstream_credential_name=upstream_name,
-        )
-    except Exception:
-        confirmed_absent = False
-
-    async with session_factory() as session, session.begin():
-        await lock_owner(session, owner_user_id=owner_user_id, owner_project_id=owner_project_id)
-        grant = await _lock_grant(
-            session, grant_id=grant_id, owner_user_id=owner_user_id, owner_project_id=owner_project_id
-        )
-        grant.cleanup_last_attempt_at = _now()
-        if (
-            grant.status in {"revoked", "expired"}
-            and not grant.cleanup_pending
-            and grant.application_credential_id is None
-            and grant.credential_ciphertext is None
-        ):
+        if not grant.cleanup_pending:
             return True
-        is_orphan_recovery = (
-            grant.status == "pending"
-            and grant.cleanup_pending
-            and grant.orphan_recovery_after is not None
-            and _as_utc(grant.orphan_recovery_after) <= _now()
-            and (
-                (application_credential_id is None and grant.application_credential_id is None)
-                or application_credential_id == grant.application_credential_id
+        if recoverable:
+            grant.orphan_recovery_nonce = str(uuid4())
+        nonce = grant.orphan_recovery_nonce
+        epoch = grant.credential_epoch
+        additional = (
+            await session.scalars(
+                select(McpProjectCredential).where(McpProjectCredential.grant_id == grant_id).with_for_update()
             )
-            and grant.orphan_recovery_nonce == recovery_nonce
+        ).all()
+        targets = []
+        home_approved = owner_project_id in grant_project_ids(grant)
+        if home_approved or grant.application_credential_id:
+            targets.append((owner_project_id, grant.application_credential_id, grant.upstream_credential_name))
+        for credential in additional:
+            # A dispatched credential must be cleaned even if a failed attempt had
+            # previously marked the secondary record complete.
+            if credential.cleanup_pending or credential.application_credential_id:
+                targets.append(
+                    (credential.project_id, credential.application_credential_id, credential.upstream_credential_name)
+                )
+        grace = grant.orphan_recovery_after
+
+    outcomes = {}
+    for project_id, credential_id, name in targets:
+        # Unknown results cannot be declared absent while creation may still settle.
+        if credential_id is None and grace is not None and _as_utc(grace) > _now():
+            outcomes[project_id] = False
+            continue
+        try:
+            outcomes[project_id] = await asyncio.to_thread(
+                delete_and_confirm_application_credential,
+                conn,
+                owner_user_id=owner_user_id,
+                application_credential_id=credential_id,
+                upstream_credential_name=name,
+            )
+        except Exception:
+            outcomes[project_id] = False
+
+    async with session_factory() as session, session.begin():
+        await lock_owner(session, owner_user_id=owner_user_id, owner_project_id=owner_project_id)
+        grant = await _lock_grant(
+            session, grant_id=grant_id, owner_user_id=owner_user_id, owner_project_id=owner_project_id
         )
-        if (
-            not confirmed_absent
-            or (grant.status not in {"revoked", "expired"} and not is_orphan_recovery)
-            or not grant.cleanup_pending
-            or (application_credential_id is not None and grant.application_credential_id != application_credential_id)
-        ):
-            grant.cleanup_pending = True
+        if grant.credential_epoch != epoch or grant.orphan_recovery_nonce != nonce:
             return False
-        dispatch_lease_in_flight = await has_live_lease(session, grant)
-        if is_orphan_recovery:
+        if grant.status not in {"revoked", "expired", "pending"}:
+            return False
+        additional = (
+            await session.scalars(
+                select(McpProjectCredential).where(McpProjectCredential.grant_id == grant_id).with_for_update()
+            )
+        ).all()
+        by_project = {credential.project_id: credential for credential in additional}
+        for project_id, credential_id, name in targets:
+            if not outcomes[project_id]:
+                continue
+            credential = grant if project_id == owner_project_id else by_project.get(project_id)
+            if credential is None:
+                continue
+            # A late returned ID or recreated reservation wins over an older name check.
+            if credential.application_credential_id != credential_id or credential.upstream_credential_name != name:
+                outcomes[project_id] = False
+                continue
+            credential.application_credential_id = None
+            credential.credential_ciphertext = None
+            if credential is not grant:
+                credential.cleanup_pending = False
+        complete = (
+            all(outcomes.values())
+            and not grant.application_credential_id
+            and not any(credential.cleanup_pending or credential.application_credential_id for credential in additional)
+        )
+        grant.cleanup_pending = not complete
+        grant.cleanup_last_attempt_at = _now()
+        if not complete:
+            return False
+        if grant.status == "pending":
             grant.status = "revoked"
             grant.revoked_at = _now()
             grant.credential_epoch += 1
-        # Keystone confirmed the credential is absent. A lease that begins in
-        # between the two local transactions cannot restore that credential;
-        # retain the invocation for its eventual outcome, but never retain a
-        # local credential reference that no longer exists upstream.
-        grant.cleanup_pending = False
-        grant.application_credential_id = None
-        grant.credential_ciphertext = None
         grant.orphan_recovery_after = None
         grant.orphan_recovery_nonce = None
         _audit(
@@ -853,13 +1172,9 @@ async def confirm_keystone_cleanup(
             username=username,
             action="mcp_grant.cleanup_confirmed",
             grant=grant,
-            extra={
-                "cleanup_confirmed": True,
-                "orphan_recovery": is_orphan_recovery,
-                "dispatch_lease_in_flight": dispatch_lease_in_flight,
-            },
+            extra={"cleanup_confirmed": True, "orphan_recovery": recoverable, "project_count": len(targets)},
         )
-    return True
+        return True
 
 
 async def recover_stale_pending_orphans(
@@ -879,7 +1194,7 @@ async def recover_stale_pending_orphans(
                 .where(
                     McpDelegatedGrant.owner_user_id == owner_user_id,
                     McpDelegatedGrant.owner_project_id == owner_project_id,
-                    McpDelegatedGrant.status == "pending",
+                    McpDelegatedGrant.status.in_(("pending", "revoked", "expired")),
                     McpDelegatedGrant.cleanup_pending.is_(True),
                     McpDelegatedGrant.orphan_recovery_after.is_not(None),
                     McpDelegatedGrant.orphan_recovery_after <= now.replace(tzinfo=None),
@@ -935,6 +1250,14 @@ async def mark_expired_grants_for_cleanup(
             grant.revoked_at = now
             grant.credential_epoch += 1
             grant.cleanup_pending = bool(grant.application_credential_id) or grant.cleanup_pending
+            additional = (
+                await session.scalars(
+                    select(McpProjectCredential).where(McpProjectCredential.grant_id == grant.id).with_for_update()
+                )
+            ).all()
+            for credential in additional:
+                credential.cleanup_pending = True
+            grant.cleanup_pending = grant.cleanup_pending or bool(additional)
             selection = await session.get(
                 McpLumenSelection,
                 {"owner_user_id": owner_user_id, "owner_project_id": owner_project_id},

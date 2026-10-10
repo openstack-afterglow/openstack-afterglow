@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { derived } from 'svelte/store';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { api, ApiError } from '$lib/api/client';
-	import { auth } from '$lib/stores/auth';
+	import { auth, projectSwitching } from '$lib/stores/auth';
 	import {
 		clearMcpConsentTicket,
 		pendingMcpConsentTicket,
@@ -13,6 +14,9 @@
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
+	import Field from '$lib/components/ui/Field.svelte';
+	import SelectInput from '$lib/components/ui/SelectInput.svelte';
+	import SelectionCheckbox from '$lib/components/ui/SelectionCheckbox.svelte';
 	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import { t } from '$lib/i18n/ns/public-entry';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
@@ -25,17 +29,30 @@
 		grant_deadline: string;
 	}
 
-	const token = $derived($auth.token ?? undefined);
-	const projectId = $derived($auth.projectId ?? undefined);
-	const ticket = $state<{ value: string | null }>({ value: null });
+	interface ConsentProject { id: string; name: string }
+	interface Owner {
+		token: string | null;
+		userId: string | null;
+		projectId: string | null;
+		switching: boolean;
+	}
+	interface RequestContext { token: string; projectId: string; ticket: string; controller: AbortController }
 
-	let ready = $state(false);
+	let owner: Owner | null = null;
+	let ticket = $state<string | null>(null);
+	let activeRequest: RequestContext | null = null;
+	let decisionController: AbortController | null = null;
+	let mounted = false;
 	let loading = $state(true);
 	let deciding = $state(false);
 	let error = $state('');
 	let consent = $state<ConsentDetails | null>(null);
-	let loadedTicket = $state<string | null>(null);
-
+	let projects = $state<ConsentProject[]>([]);
+	let accessLevel = $state<'read' | 'manage'>('read');
+	let projectScope = $state<'selected' | 'all'>('selected');
+	let selectedProjectIds = $state<string[]>([]);
+	const canApprove = $derived(!loading && !deciding && consent !== null && projects.length > 0
+		&& (projectScope === 'all' || selectedProjectIds.length > 0));
 	function message(error: unknown, fallback: string) {
 		return error instanceof ApiError ? error.message : fallback;
 	}
@@ -44,84 +61,140 @@
 		return new Intl.DateTimeFormat(intlLocale(), { dateStyle: 'long', timeStyle: 'short' }).format(new Date(value));
 	}
 
-	function discardTicket() {
-		clearMcpConsentTicket();
-		ticket.value = null;
+	function clearSelection() {
+		activeRequest?.controller.abort();
+		decisionController?.abort();
+		decisionController = null;
+		activeRequest = null;
 		consent = null;
+		projects = [];
+		selectedProjectIds = [];
+		accessLevel = 'read';
+		projectScope = 'selected';
+		deciding = false;
 	}
 
-	async function loadConsent() {
-		if (!ticket.value || !token || !projectId || loadedTicket === ticket.value) return;
-		loading = true;
+	function isCurrent(request: RequestContext) {
+		return mounted && activeRequest === request;
+	}
+
+	// Store subscriptions invalidate synchronously, including a batched A → B → A.
+	function reload() {
+		clearSelection();
+		loading = Boolean(ticket);
+		if (!ticket) return;
 		error = '';
+		if (!owner || owner.switching) return;
+		if (!owner.token) { void goto('/login'); return; }
+		if (!owner.projectId) { void goto('/select-project'); return; }
+		if (!owner.userId) return;
+		const request = { token: owner.token, projectId: owner.projectId, ticket, controller: new AbortController() };
+		activeRequest = request;
+		void loadConsent(request);
+	}
+
+	async function loadConsent(request: RequestContext) {
 		try {
-			consent = await api.get<ConsentDetails>(
-				`/api/v1/auth/mcp-oauth/consents/${encodeURIComponent(ticket.value)}`,
-				token,
-				projectId,
-			);
-			loadedTicket = ticket.value;
+			const [details, availableProjects] = await Promise.all([
+				api.get<ConsentDetails>(
+					`/api/v1/auth/mcp-oauth/consents/${encodeURIComponent(request.ticket)}`,
+					request.token, request.projectId, { refresh: true, suppressAuthRedirect: true, signal: request.controller.signal },
+				),
+				api.get<ConsentProject[]>('/api/v1/auth/mcp-projects', request.token, request.projectId,
+					{ refresh: true, suppressAuthRedirect: true, signal: request.controller.signal }),
+			]);
+			if (!isCurrent(request)) return;
+			consent = details;
+			projects = availableProjects;
+			selectedProjectIds = availableProjects.some((project) => project.id === request.projectId)
+				? [request.projectId] : [];
 		} catch (errorValue) {
+			if (!isCurrent(request)) return;
+			clearSelection();
 			error = message(errorValue, t('mcpConsent.error.loadFailed'));
-			discardTicket();
-		} finally {
 			loading = false;
+		} finally {
+			if (isCurrent(request)) loading = false;
 		}
 	}
 
 	async function decide(decision: 'approve' | 'deny') {
-		if (!ticket.value || !token || !projectId) return;
+		const request = activeRequest;
+		if (!request || !isCurrent(request) || !consent || loading || deciding) return;
+		if (decision === 'approve' && (!canApprove || (accessLevel === 'manage' && !consent.scopes.includes('mcp:write')))) return;
+		const body = decision === 'deny' ? {} : {
+			access_level: accessLevel,
+			project_scope: projectScope,
+			project_ids: projectScope === 'all' ? [] : [...selectedProjectIds],
+		};
+		const controller = new AbortController();
+		decisionController = controller;
 		deciding = true;
 		error = '';
 		try {
 			const result = await api.post<{ redirect_uri: string }>(
-				`/api/v1/auth/mcp-oauth/consents/${encodeURIComponent(ticket.value)}/${decision}`,
-				{},
-				token,
-				projectId,
+				`/api/v1/auth/mcp-oauth/consents/${encodeURIComponent(request.ticket)}/${decision}`,
+				body, request.token, request.projectId,
+				{
+					signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]),
+					suppressAuthRedirect: true, cache: 'no-store',
+				},
 			);
-			discardTicket();
+			if (!isCurrent(request) || controller.signal.aborted) return;
+			clearMcpConsentTicket();
+			ticket = null;
+			clearSelection();
 			window.location.assign(result.redirect_uri);
 		} catch (errorValue) {
+			if (!isCurrent(request)) return;
 			error = message(errorValue, decision === 'approve' ? t('mcpConsent.error.approveFailed') : t('mcpConsent.error.denyFailed'));
 		} finally {
-			deciding = false;
+			if (isCurrent(request) && decisionController === controller) {
+				decisionController = null;
+				deciding = false;
+			}
 		}
 	}
 
 	onMount(() => {
-		const queryTicket = $page.url.searchParams.get('ticket');
-		if (queryTicket) {
-			if (!storeMcpConsentTicket(queryTicket)) {
-				clearMcpConsentTicket();
-				error = t('mcpConsent.error.invalidRequest');
-			}
+		mounted = true;
+		ticket = pendingMcpConsentTicket();
+		const unsubscribeOwner = derived([auth, projectSwitching], ([actor, switching]): Owner => ({
+			token: actor.token, userId: actor.userId, projectId: actor.projectId, switching,
+		})).subscribe((next) => {
+			if (owner && owner.token === next.token && owner.userId === next.userId
+				&& owner.projectId === next.projectId && owner.switching === next.switching) return;
+			owner = next;
+			reload();
+		});
+		const unsubscribePage = page.subscribe(({ url }) => {
+			const queryTicket = url.searchParams.get('ticket');
+			if (!queryTicket) return;
+			const valid = storeMcpConsentTicket(queryTicket);
 			try {
 				history.replaceState(null, '', '/oauth/mcp/authorize');
 			} catch {
 				// URL cleanup is defense in depth; the backend still validates the ticket.
 			}
-		}
-		ticket.value = pendingMcpConsentTicket();
-		ready = true;
-		if (!ticket.value && !error) error = t('mcpConsent.error.missingOrExpired');
-	});
-
-	$effect(() => {
-		if (!ready) return;
-		if (!ticket.value) {
-			loading = false;
-			return;
-		}
-		if (!token) {
-			void goto('/login');
-			return;
-		}
-		if (!projectId) {
-			void goto('/select-project');
-			return;
-		}
-		void loadConsent();
+			if (!valid) {
+				clearMcpConsentTicket();
+				ticket = null;
+				clearSelection();
+				loading = false;
+				error = t('mcpConsent.error.invalidRequest');
+				return;
+			}
+			if (ticket === queryTicket) return;
+			ticket = queryTicket;
+			reload();
+		});
+		if (!ticket && !error) error = t('mcpConsent.error.missingOrExpired');
+		return () => {
+			mounted = false;
+			clearSelection();
+			unsubscribeOwner();
+			unsubscribePage();
+		};
 	});
 </script>
 
@@ -141,7 +214,8 @@
 			<Alert tone="danger" title={t('mcpConsent.error.title')}>
 				{#snippet children()}{error}{/snippet}
 			</Alert>
-		{:else if loading}
+		{/if}
+		{#if loading}
 			<ActivityIndicator label={t('mcpConsent.loading')} />
 		{:else if consent}
 			{@const requestsManage = consent.scopes.includes('mcp:write')}
@@ -152,23 +226,63 @@
 				<div><span>{t('mcpConsent.details.permissions')}</span><div class="scopes">{#each consent.scopes as scope}<StatusChip status={scope === 'mcp:write' ? 'manage' : 'read'} />{/each}</div></div>
 				<div><span>{t('mcpConsent.details.deadline')}</span><strong>{formatDeadline(consent.grant_deadline)}</strong></div>
 			</section>
-			<Alert tone={requestsManage ? 'warning' : 'info'} title={requestsManage ? t('mcpConsent.manage.title') : t('mcpConsent.read.title')}>
-				{#snippet children()}{requestsManage ? t('mcpConsent.manage.body') : t('mcpConsent.read.body')}{/snippet}
+			<div class="choices">
+				<Field label={t('mcpConsent.access.label')} for="mcp-consent-access" help={requestsManage ? t('mcpConsent.access.help') : t('mcpConsent.access.manageUnavailable')}>
+					<SelectInput id="mcp-consent-access" value={accessLevel} disabled={deciding}
+						onchange={(event) => { accessLevel = (event.target as HTMLSelectElement).value === 'manage' && requestsManage ? 'manage' : 'read'; }}>
+						<option value="read">{t('mcpConsent.access.read')}</option>
+						<option value="manage" disabled={!requestsManage}>{t('mcpConsent.access.manage')}</option>
+					</SelectInput>
+				</Field>
+				<Field label={t('mcpConsent.projects.label')} for="mcp-consent-project-scope" help={t('mcpConsent.projects.help')}>
+					<SelectInput id="mcp-consent-project-scope" value={projectScope} disabled={deciding || projects.length === 0}
+						onchange={(event) => { projectScope = (event.target as HTMLSelectElement).value === 'all' ? 'all' : 'selected'; }}>
+						<option value="selected">{t('mcpConsent.projects.selected')}</option>
+						<option value="all">{t('mcpConsent.projects.all')}</option>
+					</SelectInput>
+				</Field>
+			</div>
+			{#if projectScope === 'selected'}
+				<fieldset class="project-options" disabled={deciding}>
+					<legend>{t('mcpConsent.projects.choose')}</legend>
+					{#each projects as project (project.id)}
+						<div class="project-option">
+							<SelectionCheckbox ariaLabel={`${project.name} ${project.id}`} checked={selectedProjectIds.includes(project.id)} disabled={deciding}
+								onclick={() => {
+									if (deciding) return;
+									selectedProjectIds = selectedProjectIds.includes(project.id)
+										? selectedProjectIds.filter((id) => id !== project.id) : [...selectedProjectIds, project.id];
+								}} />
+							<span>{project.name}<code>{project.id}</code></span>
+						</div>
+					{/each}
+				</fieldset>
+			{/if}
+			{#if projects.length === 0 || (projectScope === 'selected' && selectedProjectIds.length === 0)}
+				<Alert tone="warning">
+					{#snippet children()}{t('mcpConsent.projects.empty')}{/snippet}
+				</Alert>
+			{/if}
+			<Alert tone={accessLevel === 'manage' ? 'warning' : 'info'} title={accessLevel === 'manage' ? t('mcpConsent.manage.title') : t('mcpConsent.read.title')}>
+				{#snippet children()}{accessLevel === 'manage' ? t('mcpConsent.manage.body') : t('mcpConsent.read.body')}{/snippet}
 			</Alert>
 			<div class="actions">
 				{#if deciding}
 					<ActivityIndicator label={t('mcpConsent.actions.processing')} class="decision-activity motion-fade" />
 				{/if}
 				<Button variant="danger-outline" onclick={() => decide('deny')} disabled={deciding}>{t('mcpConsent.actions.deny')}</Button>
-				<Button onclick={() => decide('approve')} disabled={deciding}>{requestsManage ? t('mcpConsent.actions.allowManage') : t('mcpConsent.actions.allowRead')}</Button>
+				<Button onclick={() => decide('approve')} disabled={!canApprove}>{accessLevel === 'manage' ? t('mcpConsent.actions.allowManage') : t('mcpConsent.actions.allowRead')}</Button>
 			</div>
+		{/if}
+		{#if error && !consent && ticket}
+			<Button variant="secondary" onclick={reload}>{t('mcpConsent.actions.retry')}</Button>
 		{/if}
 	</Card>
 </main>
 
 <style>
 	.consent-page { display: grid; min-height: 100vh; place-items: center; padding: 1rem; background: var(--color-surface-canvas); }
-	:global(.consent-card) { width: min(42rem, 100%); display: grid; gap: 1rem; }
+	:global(.consent-card) { width: min(42rem, 100%); min-width: 0; display: grid; gap: 1rem; }
 	header h1 { margin: 0; color: var(--color-ink-0); font-size: 1.5rem; }
 	header p { margin: 0.5rem 0 0; color: var(--color-ink-2); line-height: 1.5; }
 	.eyebrow { color: var(--color-accent) !important; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
@@ -177,6 +291,15 @@
 	.details span { color: var(--color-ink-2); font-size: 0.75rem; }
 	.details strong, .details code { color: var(--color-ink-0); font-size: 0.875rem; overflow-wrap: anywhere; }
 	.scopes { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+	.choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: 1rem; min-width: 0; }
+	.choices :global(.field), .choices :global(select) { min-width: 0; }
+	.project-options { display: grid; gap: 0.5rem; min-width: 0; margin: 0; padding: 0.75rem; border: 1px solid var(--color-line); border-radius: var(--radius-lg); }
+	.project-options legend { color: var(--color-ink-1); font-size: 0.875rem; }
+	.project-option { display: flex; align-items: flex-start; gap: 0.5rem; min-width: 0; color: var(--color-ink-0); font-size: 0.875rem; overflow-wrap: anywhere; }
+	.project-option :global(.selection-checkbox) { flex-shrink: 0; }
+	.project-options span { min-width: 0; }
+	.project-options code { display: block; color: var(--color-ink-2); font-size: 0.75rem; }
+	.actions :global(button) { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 	.actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.5rem; }
 	.actions :global(.decision-activity) { margin-right: auto; }
 </style>

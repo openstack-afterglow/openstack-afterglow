@@ -119,10 +119,10 @@ def check_binding(
     origin_ip = sess.get("origin_ip", "")
     origin_fp = sess.get("origin_fp", "")
 
-    # 레거시 세션(origin 미기록) — 지연 백필 신호 후 통과
-    # 배포 시 기존 세션 대량 로그아웃 방지용 안전장치
-    if not origin_ip:
-        return "ok", "legacy_session"
+    # A missing login origin cannot establish strict/subnet binding. Never
+    # adopt the current caller as the origin of an old potentially stolen token.
+    if not origin_ip and mode in {"strict", "subnet", "log"}:
+        return ("block" if mode in {"strict", "subnet"} else "log"), "legacy_session"
 
     ip_match = cur_ip == origin_ip
     subnet_match = _same_subnet(cur_ip, origin_ip)

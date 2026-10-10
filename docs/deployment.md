@@ -54,7 +54,7 @@ Compose 파일은 합쳐 쓰는 환경 overlay가 아니라 **각각 독립 실�
 | 파일 | 실행 목적 | 통신·데이터 경계 |
 |---|---|---|
 | `docker-compose.yml` | published Afterglow frontend/backend 두 개만 실행 | Redis·DB·OpenStack·형제 서비스는 외부 설정 |
-| `docker-compose.dev.yml` | 현재 Afterglow·Lumen·Waygate·Drover·Palimpsest 소스를 빌드해 로컬 실행 | Compose service DNS, private local DB/cache/checkpointer |
+| `docker-compose.dev.yml` | 현재 Afterglow·Lumen·Waygate·Drover·Palimpsest 소스를 빌드해 개발 실행 | Compose service DNS, 기본 private local DB/cache/checkpointer; 명시한 DB URL은 외부 대상 허용 |
 | `docker-compose.prod.yml` | GHCR 이미지를 pull·동기화해 운영 실행 | HAProxy TLS/LB, 일반 경로는 인증된 Keystone catalog endpoint; Palimpsest 패키지는 신뢰된 명시 URL 필수 |
 
 Dev와 prod를 같은 project/volume에 겹쳐 실행하지 않습니다. 기존 로컬 project는 dev 전환 후에도 `afterglow-local-services`이며 데이터나 암호화 키를 다시 만들지 않습니다.
@@ -249,30 +249,44 @@ Runner는 다른 project를 자동 삭제하지 않습니다.
   `docker/hub/Dockerfile`이 있어야 합니다. 이 Dockerfile은 `hub/src`와 Hub package metadata를
   복사하므로 Compose는 `../palimpsest` repository root를 build context로 사용합니다.
 - Backend source build는 BuildKit `TARGETARCH`의 `amd64` 또는 `arm64`에 맞는 OpenTofu archive를 선택합니다. Release archive는 일시적 GitHub 5xx에 bounded retry를 적용하고 공식 release manifest에서 고정한 SHA-256과 일치해야 설치됩니다. 지원하지 않는 architecture는 명시적으로 실패하며, OpenTofu download stage는 대용량 runtime package 설치와 분리됩니다.
-- 실제 provider key를 추가하려면 **로컬** Lumen 관리 UI/API에 등록합니다. 운영 provider DB나
-  암호화된 key를 복제하지 않습니다. 키가 없어도 모델 metadata와 context-preview는 검증할 수
-  있지만, 실제 provider completion 검증은 별도 자격 증명이 필요합니다.
+- 격리된 개발 DB에 실제 provider key를 추가하려면 해당 Lumen 관리 UI/API에 등록합니다.
+  운영 snapshot의 암호문을 평가하려면 승인된 경로로 원래 암호화 키도 준비해야 합니다.
+  키 없는 metadata/context-preview 성공은 실제 provider completion 검증이 아닙니다.
 
-`docker-compose.dev.yml`은 각 datastore URL을 interpolation 없는 literal로
-고정합니다. 따라서 `.env`뿐 아니라 shell에 남은 production DB URL도 local migration을
-외부로 보낼 수 없습니다. Backend는 `afterglow-mariadb`, 추출 서비스는 `service-mariadb`의
-개별 schema, Lumen checkpointer는 `lumen-postgres`, cache는 이 project의 Redis만 사용합니다.
-MariaDB/PostgreSQL은 host port를 공개하지 않습니다. 시작 전 resolved Compose의 DB/cache,
-volume/network, mount와 loopback port 경계를 검사하며, 무시된 `docker-compose.override.yml`을
-읽지 않습니다. API health와 migration 완료까지 기다린 뒤 `services:up`이 성공하지만,
-이것만으로 대시보드·OpenStack 통신까지 검증됐다는 뜻은 아닙니다.
+**서비스별 DB URL 계약**은 다음 다섯 입력입니다. Shell 값이 선택한 Compose env-file보다
+우선합니다. Runner의 `services:config/up`은 `.env`를 선택하고, 직접 Compose는
+`--env-file`로 명시한 파일(생략하면 자동 `.env`)을 사용합니다. Shell의 명시적 빈 값도
+env-file 값을 덮어쓰며, dev에서는 unset/empty일 때 아래 local fallback을 사용합니다.
 
-개발 DB 목적지는 `DATABASE_URL`과 `AFTERGLOW_DATABASE_URL`, `WAYGATE_DATABASE_URL`,
-`DROVER_DATABASE_URL`, `LUMEN_DATABASE_URL`, `PALIMPSEST_DATABASE_URL`로 변경할 수 없습니다.
-API뿐 아니라 worker와 migration/bootstrap도 같은 literal 환경 anchor를 사용합니다.
-이 값을 interpolation으로 되돌리면 plain Compose의 자동 `.env` 로딩으로 운영 DB가
-유입될 수 있습니다. 이때 ProxySQL 1045는 운영 비밀번호를 바꾸거나 local volume을
-삭제할 이유가 아닙니다. `scripts/local-services-datastore.test.js`는 실제 Compose config로
-기본 `.env`/명시적 private env file과 shell 우선순위 네 조합에서 14개 DB 소비자의
-로컬 driver·계정·host·port·schema를 검사합니다.
+| Compose 입력 | dev unset/empty fallback |
+|---|---|
+| `AFTERGLOW_DATABASE_URL` | `mysql+aiomysql://afterglow:dev@afterglow-mariadb:3306/afterglow` |
+| `WAYGATE_DATABASE_URL` | `mysql+aiomysql://waygate:dev@service-mariadb:3306/waygate` |
+| `DROVER_DATABASE_URL` | `mysql+aiomysql://drover:dev@service-mariadb:3306/drover` |
+| `LUMEN_DATABASE_URL` | `mysql+aiomysql://lumen:dev@service-mariadb:3306/lumen` |
+| `PALIMPSEST_DATABASE_URL` | `mysql+asyncmy://palimpsest:dev@service-mariadb:3306/palimpsest` |
+
+최소/prod Compose는 nonempty `AFTERGLOW_DATABASE_URL`이 필수이며 local fallback을
+사용하지 않습니다. Sibling profile을 실행할 때는 해당 서비스 URL도 준비합니다.
+각 서비스의 API·worker·migration/bootstrap은 **같은 서비스 DB**를 사용하며 위 입력이
+컨테이너의 `DATABASE_URL`로 전달됩니다. 일반 `DATABASE_URL`은 이 다섯 Compose 목적지를
+선택하는 입력이 아닙니다. Kubernetes/Kolla의 기존 runtime secret 이름과는 구분합니다.
+
+`services:config/up`은 외부 DB 목적지를 허용하고 resolved URL을 private
+`.local-services/compose.env`(0600)에 보존합니다. URL·비밀번호나 전체 resolved config를
+출력·커밋하지 않습니다. 재사용 시에도 shell 값이 이 파일보다 우선하므로 대상 선택을
+승인된 비밀 관리 경로에서 확인한 뒤 실행합니다. `services:config`는 입력 준비이며
+DB 호환성 검증이 아닙니다. `services:up`은 선택한 DB에서 migration/bootstrap과 실제
+API·worker를 실행하므로 외부 URL 설정만으로 live write 승인이 생기지 않습니다.
+
+기본 local MariaDB/PostgreSQL은 host port를 공개하지 않습니다. Redis와 Lumen
+checkpointer는 별도 local 대상이며, 시작 전 cache·volume/network·mount·loopback 경계를
+검사하고 implicit `docker-compose.override.yml`은 읽지 않습니다. API health와
+migration 완료는 대시보드·OpenStack 통신이나 운영 schema 호환성의 증거가 아닙니다.
 
 이미 빌드한 이미지로 복구할 때도 먼저 private 입력을 준비하고 명시적으로 사용합니다.
-이 명령은 DB/키를 초기화하거나 볼륨을 삭제하지 않습니다.
+키와 볼륨은 보존하지만 선택 DB에서 migration/bootstrap을 실행할 수 있으므로,
+외부 대상은 아래 평가와 기존 실행 승인이 선행되어야 합니다.
 
 ```bash
 npm run services:config
@@ -283,6 +297,46 @@ docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml 
 Bootstrap은 설정된 DB에 `create_all`을 실행하므로 누락된 테이블·index·constraint를
 생성할 수 있습니다. 과거 실행의 효과는 별도 read-only 운영 검토 대상이며, 복구를 위해
 운영 bootstrap을 다시 실행하거나 migration ledger/credentials를 변경하지 않습니다.
+
+#### 운영 데이터와 양방향 호환성 평가
+
+외부 DB를 허용하는 이 정책은 과거의 무조건 local-only 정책을 대체합니다. 기존
+architecture/release 장애 기록은 당시의 기록으로 보존하며, 이 변경으로 과거 실행이
+안전했다고 재해석하지 않습니다. **운영과 같은 URL은 같은 DB를 직접 공유하는 것**이지
+동기화/replication이나 자동 데이터 복사가 아닙니다. 운영 DB를 개발 평가 대상으로
+시작하지 말고, 승인된 격리 환경에 복원한 production snapshot을 우선 사용합니다.
+개발 qualification은 disposable 대상에서 수행하고 운영 DB를 조회·변경하지 않습니다.
+현재 운영 증거는 운영자가 승인된 경로로 제공한 자료로 평가합니다.
+
+1. 운영자가 제공한 현재 배포 source SHA·image revision/digest와 후보 버전을 비교합니다.
+   Schema 증거의 시점·대상을 기록하고 각 서비스 manifest의 logical ID·SQL 경로·SHA-256을
+   적용 ledger 및 실제 schema와 대조합니다. Afterglow는 `backend/migrations/manifest.txt`,
+   Drover/Lumen/Waygate는 각 sibling의 `<service>/migrations/manifest.txt`가 기준입니다.
+   알 수 없는 ledger 항목, 더 최신 schema 또는 checksum drift를 자동 호환으로 취급하지
+   않습니다. 증거가 없으면 운영 qualification 미확인으로 명시합니다.
+2. Pending migration의 DDL·backfill·constraint·삭제/변환·lock 영향을 검토하고 승인 범위를
+   정합니다. 현재 Compose one-off는 `python -m drover.scripts.migrate --apply`,
+   `python -m lumen.scripts.migrate --apply`, `python -m waygate.scripts.migrate --apply`와
+   `palimpsest-hub-bootstrap`입니다. 앞의 세 runner는 manifest checksum과
+   `schema_migrations`를 검사하지만 **`--apply` 없이도 ledger 테이블을 생성할 수 있어
+   read-only 운영 검사 명령이 아닙니다**. Lumen apply에는 history backfill/검증도 있습니다.
+   Palimpsest bootstrap은 `Base.metadata.create_all`이며 기존 테이블 변경을 수행하는
+   migration이나 schema 호환성 판정이 아닙니다. Exit 0만으로 승인/무변경을 주장하지 않습니다.
+3. 복원한 disposable DB에서 후보 writer/이전 schema와 이전 배포 writer/후보 schema의
+   read/write·암호문 복호화·제약·데이터 의미를 **양방향** 검증합니다. 실패 시 필요한
+   migration/중지 순서를 기록하고, API와 worker의 mixed-version 및 rolling upgrade 중
+   queue payload·동시 writer 동작도 검증합니다. 새 빈 DB 테스트 성공으로 대체하지 않습니다.
+4. 원래 ciphertext 키와 key 식별/rotation 상태를 승인된 비밀 경로로 보존합니다. 현재
+   dev runner가 생성하는 local 키는 외부 DB 암호문과 호환된다는 증거가 아닙니다.
+   다섯 URL만 설정해도 외부 키, Redis, PostgreSQL 또는 Palimpsest CAS/blob를 자동으로
+   가져오지 않습니다. Lumen durable checkpointer·필요한 memory PostgreSQL, Redis
+   queue/cache/session과 CAS 참조/실제 blob의 일관된 복원·격리도 별도 확인합니다.
+5. 운영 snapshot과 평가 DB의 engine/version·charset·collation·`sql_mode`를 비교하고,
+   DB뿐 아니라 관련 key/checkpointer/Redis/CAS의 backup+restore를 실제 시험합니다.
+   DDL implicit commit·backfill·삭제 데이터 때문에 image downgrade만으로 schema/data가
+   돌아오지 않을 수 있습니다. 복구 시점·허용 데이터 손실·writer 정지 순서·rollback 제한을
+   명시하고 검증하지 않은 downgrade를 약속하지 않습니다. 기존 live write/migration 승인,
+   volume·key 보존과 `down --volumes`/prune 금지는 그대로 적용합니다.
 
 전체 dashboard가 필요 없는 서비스 개발은 아래와 같이 선택적으로 실행합니다.
 
@@ -419,7 +473,7 @@ HAProxy **3.2**를 기본 실행합니다. 앱 컨테이너는 host port를 열�
 `/v1/`, `/.well-known/`, API docs는 backend, 나머지는 frontend로 전달합니다.
 SSE와 WebSocket 연결은 유지하며, 외부 `X-Forwarded-*`는 edge에서 덮어씁니다.
 
-운영자가 별도 mode 0600 env 파일에 `SECRET_KEY`, `OS_PASSWORD`, `DATABASE_URL`,
+운영자가 별도 mode 0600 env 파일에 `SECRET_KEY`, `OS_PASSWORD`, `AFTERGLOW_DATABASE_URL`,
 HTTPS `ORIGIN`, HTTPS `PUBLIC_API_BASE`, 절대 경로 `TLS_CERTS_DIR`를 설정합니다.
 `afterglow.conf`에는 해당 환경의 Keystone URL·사용자·domain/project 등 나머지 설정을
 준비합니다. 인증서 디렉터리에는 실제 도메인에 유효한 certificate chain과 matching
@@ -934,7 +988,9 @@ docker compose --env-file /path/to/production.env -f docker-compose.prod.yml up 
 
 `auto_create_tables`는 기존 테이블에 컬럼을 추가하지 않습니다. 이미지가 새 ORM 컬럼을 참조하는 릴리스는 **롤아웃 전에** 해당 SQL 마이그레이션을 운영 데이터베이스에 적용해야 합니다. 적용 대상과 순서는 `backend/migrations/manifest.txt`의 논리 ID를 기준으로 판단하며, 숫자 접두사만으로 판단하지 않습니다.
 
-로컬 Compose의 2026-08-02 채팅 메시지 시간대 컬럼 마이그레이션 예시:
+로컬 fallback `afterglow-mariadb`를 사용하는 격리 DB에 한정한 2026-08-02 채팅 메시지
+시간대 컬럼 마이그레이션 예시입니다. 외부 `AFTERGLOW_DATABASE_URL`을 선택한 경우 이
+명령은 선택 DB가 아니라 local MariaDB를 변경하므로 외부 대상 절차로 사용하지 않습니다.
 
 ```bash
 docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml exec -T afterglow-mariadb sh -c \

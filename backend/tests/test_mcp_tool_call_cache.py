@@ -67,6 +67,15 @@ def running_mcp(monkeypatch):
     monkeypatch.setattr(transport, "verify_mcp_bearer", authority)
     monkeypatch.setattr(transport, "grant_call_slot", no_redis_slot)
     monkeypatch.setattr(transport, "record_read_invocation", no_database_audit)
+
+    async def resolve(principal, project_id=None, *, write=False):
+        from dataclasses import replace
+
+        return replace(
+            principal, project_id=project_id or principal.project_id, owner_project_id=principal.anchor_project_id
+        )
+
+    monkeypatch.setattr(registry, "resolve_principal_target", resolve)
     app = FastAPI()
     transport.install_mcp_route(app)
 

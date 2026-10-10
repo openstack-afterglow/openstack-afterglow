@@ -6,6 +6,9 @@ import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Literal
+from uuid import uuid4
+
+import anyio
 
 from app.config import get_settings
 from app.services.cache import _get_redis
@@ -20,14 +23,14 @@ class McpRateLimitUnavailable(RuntimeError):
     """Redis is required; MCP never downgrades to process-local limiting."""
 
 
-_SLOT_TTL_SECONDS = 120
+# An active SDK thread cannot be stopped by deleting a Redis TTL. Keep each
+# unique owner's slot until actual completion; a crashed worker fails closed
+# until an operator confirms it has stopped and reconciles provider outcomes.
 _SLOT_ACQUIRE = """
-local count = redis.call('INCR', KEYS[1])
-if count == 1 then redis.call('EXPIRE', KEYS[1], ARGV[2]) end
-if count > tonumber(ARGV[1]) then
-  redis.call('DECR', KEYS[1])
-  return 0
-end
+local kind = redis.call('TYPE', KEYS[1]).ok
+if kind ~= 'none' and kind ~= 'set' then return -1 end
+if redis.call('SCARD', KEYS[1]) >= tonumber(ARGV[1]) then return 0 end
+redis.call('SADD', KEYS[1], ARGV[2])
 return 1
 """
 
@@ -62,18 +65,23 @@ async def grant_call_slot(
     await _check_rate(principal, effect=effect)
     settings = get_settings()
     key = f"{_base(principal)}:concurrency"
+    owner_token = uuid4().hex
     try:
         redis = await _get_redis()
-        acquired = await redis.eval(_SLOT_ACQUIRE, 1, key, settings.mcp_concurrent_calls_per_grant, _SLOT_TTL_SECONDS)
+        acquired = await redis.eval(_SLOT_ACQUIRE, 1, key, settings.mcp_concurrent_calls_per_grant, owner_token)
     except Exception as exc:
         raise McpRateLimitUnavailable("MCP concurrency limiting is unavailable") from exc
+    if int(acquired) == -1:
+        raise McpRateLimitUnavailable("MCP concurrency state requires a drained legacy limiter")
     if int(acquired) != 1:
         raise McpRateLimitExceeded("MCP concurrent call limit exceeded")
     try:
         yield
     finally:
         try:
-            await redis.decr(key)
+            with anyio.CancelScope(shield=True):
+                await redis.srem(key, owner_token)
         except Exception:
-            # The short TTL is the conservative recovery path; never mask a completed call response.
+            # Retaining this owner token fails closed; never free another active
+            # worker or mask a completed provider response when Redis is down.
             pass

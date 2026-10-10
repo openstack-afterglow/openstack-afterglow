@@ -69,4 +69,22 @@ describe('authentication recovery state', () => {
 		expect(get(s.authRecovery)).toBeNull();
 		expect(localStorage.getItem('afterglow_auth')).toBeNull();
 	});
+	it('cancels a scoped MCP approval waiting for refresh before its old payload dispatches', async () => {
+		// Module-boundary session helper recreates shared refresh state per test.
+		const s = await session();
+		const refresh = Promise.withResolvers<Response>();
+		mockFetch.mockReturnValueOnce(refresh.promise);
+		const controller = new AbortController();
+		const pending = s.api.post('/api/v1/auth/mcp-oauth/consents/ticket/approve', {
+			access_level: 'read', project_scope: 'selected', project_ids: ['old-project'],
+		}, 'old-access', 'old-project', { signal: controller.signal, suppressAuthRedirect: true, cache: 'no-store' });
+		const rejected = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+		await vi.waitFor(() => expect(mockFetch).toHaveBeenCalledOnce());
+		expect(mockFetch.mock.calls[0][0]).toContain('/auth/refresh');
+		controller.abort();
+		await rejected;
+		refresh.resolve(Response.json({ token: 'new-access', refresh_token: 'new-refresh' }));
+		await s.refreshSession();
+		expect(mockFetch).toHaveBeenCalledOnce();
+	});
 });

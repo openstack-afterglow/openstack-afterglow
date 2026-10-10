@@ -4,7 +4,8 @@
 	import { serviceCapabilities } from '$lib/stores/servicePermissions';
 	import LumenPermissionNotice from './LumenPermissionNotice.svelte';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
-	import type { ContextState, ModelCapabilities } from '$lib/api/chatContracts';
+	import type { CloudToolsCatalogue, ContextState, ModelCapabilities } from '$lib/api/chatContracts';
+	import { siteConfig } from '$lib/config/site';
 	import { effortLabel, effortOptionsFor } from '$lib/api/chatEffort';
 	import {
 		completeChatAttachment,
@@ -18,6 +19,7 @@
 	import UsageRing from '$lib/components/ui/UsageRing.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
+	import StatusChip from '$lib/components/ui/StatusChip.svelte';
 	import ChatContextPanel from './ChatContextPanel.svelte';
 
 	export type ComposerCommand = {
@@ -56,6 +58,8 @@
 		/** 대화별 tool/MCP 선택 — null=활성 전체(기본), 배열=해당 id 만. tool_call 지원 모델만 노출. */
 		availableTools?: { id: number; name: string }[];
 		availableMcp?: { id: number; name: string }[];
+		/** Managed cloud tools are implicitly enabled, never custom integer IDs. */
+		cloudTools?: CloudToolsCatalogue | null;
 		selectedToolIds?: number[] | null;
 		selectedMcpIds?: number[] | null;
 		/** 스킬 선택 — opt-in(기본 미선택 [], 선택된 것만 주입). 모든 모델에서 사용 가능(프롬프트 주입). */
@@ -92,6 +96,7 @@
 		attachments = $bindable([]),
 		availableTools = [],
 		availableMcp = [],
+		cloudTools = null,
 		selectedToolIds = $bindable(null),
 		selectedMcpIds = $bindable(null),
 		availableSkills = [],
@@ -129,9 +134,11 @@
 		$serviceCapabilities('lumen-chat_user') && $serviceCapabilities('lumen-assets_editor') && Boolean(modelCaps?.feature_gates?.document_input?.available)
 	);
 	const canAttach = $derived(canAttachImage || canAttachDocument);
-	// tool_call 지원 + 사용 가능한 tool/MCP 가 있을 때만 도구 선택 노출.
+	const canUseCloudTools = $derived(
+		$siteConfig.services.mcp && $serviceCapabilities('lumen-tools_user') && Boolean(modelCaps?.tool_call) && cloudTools?.enabled === true && cloudTools.project_id === projectId
+	);
 	const canUseTools = $derived(
-		$serviceCapabilities('lumen-tools_user') && Boolean(modelCaps?.tool_call) && availableTools.length + availableMcp.length > 0
+		$serviceCapabilities('lumen-tools_user') && Boolean(modelCaps?.tool_call) && (canUseCloudTools || availableTools.length + availableMcp.length > 0)
 	);
 	// 스킬은 프롬프트 주입이라 tool_call 없이도 사용 가능.
 	const canUseSkills = $derived($serviceCapabilities('lumen-tools_user') && availableSkills.length > 0);
@@ -635,6 +642,21 @@
 							{#if canUseTools}
 								{#if canAttach}<div class="plus-sep"></div>{/if}
 								<div class="plus-head">{t('input.tools')}</div>
+								{#if canUseCloudTools && cloudTools}
+									<div class="plus-opt cloud-tool" role="menuitem" aria-disabled="true" aria-label={t('input.cloudTools')}>
+										<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 18h12a4 4 0 0 0 0-8 6 6 0 0 0-11.5-2A5 5 0 0 0 6 18z" /></svg>
+										<div class="plus-opt-copy">
+											<span class="plus-opt-name">{t('input.cloudTools')}</span>
+											<span class="plus-opt-description">{t('input.cloudBuiltin')}</span>
+											<StatusChip status={cloudTools.access_level} />
+											<span class="plus-opt-description">{cloudTools.source === 'lumen' ? t('input.cloudDefault') : t('input.cloudSelected')}</span>
+											{#if cloudTools.selection_name}<span class="plus-opt-description">{cloudTools.selection_name}</span>{/if}
+											<span class="plus-opt-description">{t('input.cloudProjects', { projects: cloudTools.allowed_projects.map((project) => `${project.name || project.id} (${project.id})`).join(', ') })}</span>
+											<span class="plus-opt-description">{t('input.cloudAutomatic')}</span>
+										</div>
+									</div>
+									{#if availableTools.length || availableMcp.length}<div class="plus-sep"></div>{/if}
+								{/if}
 								{#each availableTools as tool (tool.id)}
 									<button type="button" class="plus-opt toggle" role="menuitemcheckbox" aria-checked={isOn(tool.id, selectedToolIds)} onclick={() => toggleTool(tool.id)}>
 										<span class="check" class:on={isOn(tool.id, selectedToolIds)}>
@@ -1071,12 +1093,18 @@
 		left: 0;
 		z-index: 21;
 		min-width: min(18rem, calc(100vw - 2rem));
+		max-width: min(24rem, calc(100vw - 2rem));
+		max-height: min(28rem, 60dvh);
+		overflow-y: auto;
 		background: var(--color-surface-raised);
 		border: 1px solid var(--color-line);
 		border-radius: 0.6rem;
 		box-shadow: 0 10px 28px color-mix(in oklab, var(--color-ink-0) 20%, transparent);
 		padding: 0.3rem;
 	}
+	.cloud-tool { cursor: default; }
+	.cloud-tool .plus-opt-description { font-size: 0.75rem; overflow-wrap: anywhere; }
+	.cloud-tool > svg { flex-shrink: 0; margin-top: 0.2rem; }
 	.composer-footer {
 		width: 95%;
 		margin: -1px auto 0;
@@ -1108,12 +1136,6 @@
 		color: var(--color-ink-2);
 		font-size: 0.7rem;
 		line-height: 1.35;
-	}
-	@media (min-width: 768px) and (max-width: 1023px) {
-		.plus-menu {
-			right: 0;
-			left: auto;
-		}
 	}
 	.plus-opt:hover {
 		background: var(--color-surface-sunken);

@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
-	import { setAuth } from '$lib/stores/auth';
+	import { setLoginAuth } from '$lib/stores/auth';
 	import { api, ApiError } from '$lib/api/client';
 	import ActivityIndicator from '$lib/components/ui/ActivityIndicator.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
@@ -42,7 +42,7 @@
 			const resolution = resolvePostLoginProject(data);
 			const scopedProjectId = data.project_id?.trim() || null;
 
-			setAuth({
+			setLoginAuth({
 				token: data.token,
 				refreshToken: data.refresh_token ?? null,
 				accessExpiresAt: data.expires_at

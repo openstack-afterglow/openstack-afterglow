@@ -7,6 +7,38 @@
 
 ## [Unreleased]
 
+### 누적 dev checkpoint 검증 (local, not deployed)
+- 사용자 요청 시점에 확정한147개 경로의 누적 source를 private 설정 없이 독립 snapshot에서 qualification했다. 기존1.30.11을 유지하며 서비스별 Compose DB 선택·custom 역할 경계·사용자 권한 조회·auth/MCP 변경과 OpenSpec를 함께 기록한다. 검증 중 추가된 별도의 진행 중 네트워크 작업은 보존하고 이번 checkpoint에서 제외한다. 버전 bump·push·tag·배포·운영 IAM/DB 변경은 없다.
+- 제거된 private ledger-helper 구현 테스트를 삭제하고 기존 consumer generation fence 회귀를 유지했다. OAuth DB fixture를 현재 caller-token `/auth/projects`와 native credential 정리 계약에 맞췄으며, helper 호출 횟수 대신 credential 생성 중 만료를 유발하여 revocation·키/암호문 폐기와 remote cleanup을 검증한다. Included Python의 gate-rejected imports/format만 정상화했다.
+- 최종 `npm run test:gate` exit0: backend4,595/frontend2,709+runner9/contract154/disposable functional73, Ruff573files. Frontend check0errors/기존 warning1, i18n check·scan 및 production build도 통과했다. PowerShell36skip과 실제 production writer/schema 양방향 호환성·운영 rollout의 미검증 경계는 `docs/testing.md`에 기록했다.
+
+### Custom 역할 연결과 프로젝트 관리 (local, not deployed)
+- `project_reader → audit`을 시스템 관리자가 연결할 때 custom 이름이 프리셋 목록 밖이라는 이유로 상위 `project_owner → audit`을 위험 승격으로 오인하던 검증을 수정했다. 프리셋 재적용은 custom 연결을 보존하고 기존 프로젝트 관리·멤버 할당도 계속 동작한다. `audit`만 예외 처리하지 않으며 현재 native DAG가 권위다.
+- 알려진 core/project/service ceiling과 transitive alias 검사, canonical ID·domain·cycle·owner workflow·시스템 관리자 경계를 유지한다. 일반 reader의 전역 역할 편집과 custom 역할의 독립 프로젝트 위임은 여전히 거부하며 native policy의 의미는 운영자가 검토한다.
+- 검증: 수정 전 endpoint 두 회귀에서 같은409와 후속 관리503을 재현했다. 수정 후 공유 source와 격리 clone의 역할·멤버110개, access target backend285/frontend15, 실제 Uvicorn HTTP/설치된 SDK→loopback Keystone209요청의 연결·상속·프리셋·멤버 변경·거부·제거 경로를 통과했다. Identity/auth/session은 synthetic이며 운영 역할 쓰기·배포는 하지 않았다. 상세 경계는 `docs/testing.md`에 기록했다.
+- 역할 fix와 DB 선택을 합친 격리 dev snapshot의 전체 `test:gate` 및 working/staged architecture guard 통과. Backend4411/frontend2569/contract174/functional35, PowerShell36skip이며 공유 전체 WIP·운영 IAM/DB·배포 acceptance와 구분한다.
+
+### Compose 서비스별 DB 선택 (local, not deployed)
+- `.env` 또는 shell의 `AFTERGLOW_DATABASE_URL`, `DROVER_DATABASE_URL`, `LUMEN_DATABASE_URL`, `WAYGATE_DATABASE_URL`, `PALIMPSEST_DATABASE_URL`을 각 API·worker·migration/bootstrap의 내부 `DATABASE_URL`에 전달한다. Dev의 unset/empty는 기존 local fallback이고 shell이 env-file보다 우선한다. 최소/prod Afterglow는 nonempty `AFTERGLOW_DATABASE_URL`이 필수이며 generic alias는 제거했다.
+- `services:config/up`은 외부 DB를 허용하고 resolved 목적지를 0600 private `compose.env`와 실제 시작에 동일하게 보존한다. Compose JSON의 dollar 재-escape를 해제하고 dotenv용으로 다시 escape하여 비밀번호를 변형하지 않으며 기존 키·cache/checkpointer·volume·port 경계는 유지한다.
+- DB 영향 변경은 현재 배포·schema·manifest/ledger/checksum, 복원 snapshot의 양방향 writer/schema·mixed API/worker, 원본 키·companion state, backup/restore·rollback 제한을 평가하도록 개발 규칙과 배포 가이드를 갱신했다. 같은 URL은 공유 DB 직접 접근이지 복제/자동 동기화가 아니다. 이 변경의 새 빈 DB smoke를 운영 데이터 호환성으로 승격하지 않으며 운영 DB 쓰기·migration·배포는 수행하지 않는다.
+- 검증: 14개 소비자의 두 architecture × explicit/fallback DB engine write/read 56회 및 격리 1.30.12 기반 전체 `test:gate` 통과. 공유 작업 트리 orchestration 175개 통과. 전체 공유 미완료 변경과 운영 snapshot은 미검증이며 자세한 범위·실패/수정·skip은 `docs/testing.md`에 기록했다.
+
+### MCP 다중 프로젝트 위임 및 Lumen 기본 클라우드 도구 (local, not deployed)
+- 개인 MCP 토큰과 OAuth 연결에 `read`·`manage` 권한 수준과 `current`·`selected`·`all` 프로젝트 범위를 구현했다. 마이그레이션 084는 기존 단일 프로젝트 레코드를 `project_scope='current'`로 보존하며 신규 자식 테이블 `mcp_project_credentials`를 통해 대상 프로젝트별 독립 Keystone application credential을 AEAD 암호화하여 격리 저장한다.
+- 인가 권위 검증(`GET /api/v1/auth/mcp-projects`)으로 현재 멤버십 목록을 가져오며 빈 선택을 400으로 차단한다. OAuth 동의 화면(`/oauth/mcp/authorize`)은 클라이언트의 `mcp:write` 요청을 안전한 읽기 전용으로 축소(attenuation)하여 제안하고 `mcp:write`가 없으면 관리 권한을 비활성화한다. 승인된 제한은 토큰 교환 및 refresh 회전 전반에서 불변으로 유지된다.
+- Lumen 채팅의 기존 Tools 메뉴에 기본 클라우드 도구(VM/네트워크/볼륨/스토리지/K3s 등 안전한 조회)를 내장 항목으로 제공한다. 모델의 `tool_call` 지원과 `lumen-tools_user` 권한으로 실행을 인가하며, 완료 요청 시 현재 프로젝트에 바인딩된 내부 읽기 전용 위임을 지연(lazy) 생성하고 사용자 명시 `lumen-default` 토큰 설정을 보존한다.
+- 대상 실행 및 변경 원장(ledger)은 요청 리소스의 소유 프로젝트를 위임 허용 목록과 대조하여 대상 프로젝트 전용 자격 증명으로만 dispatch한다. 변경 작업은 실행 전 non-mutating preview로 영향도를 검증하고 변경 원장에 상태를 기록한다. 프론트엔드는 토큰·사용자·프로젝트·ABA 경계에서 이전 응답 게시를 차단하며 목록 새로고침 실패 시 기존 선택을 폐기하고 안전한 재선택을 강제한다. 한국어·영어·일본어·중국어 카탈로그를 동기화했다.
+- 검증: 프론트엔드 계정/OAuth/채팅 114개 테스트, 백엔드 권한/런타임/OAuth/컨슈머 98개 테스트 통과. Svelte check 0 errors (기존 warning 1), i18n check 0 errors / 0 warnings (37개 네임스페이스 / 9,489개 메시지), i18n scan 0개 라인 통과. 실제 Uvicorn·Lumen 어댑터·SDK HTTP smoke에서 8개 시나리오(기본 카탈로그, lazy 내부 위임 및 실제 SDK 조회, 다중 선택 프로젝트 격리, 홈 프로젝트 제외 서브셋의 기본 실행, 명시적 관리 권한 보존, 가입 전/탈퇴 프로젝트 거부, OAuth 코드 교환 및 refresh 권한 축소 불변성, 전체 타깃 토큰 일괄 폐기) 전원 성공. 실제 Docker 빌드(canonical Dockerfile)로 arm64/amd64 백엔드·프론트엔드·워커 이미지 빌드 및 `x86_64`/`aarch64` 실행 검증. 실제 Chromium 헤드리스 브라우저에서 계정 화면의 권한/프로젝트 범위 선택, Alpha/Beta 선택 토큰 발급 및 저장된 제한 표시 확인, OAuth 동의 화면에서 권한 축소 제안, 빈 프로젝트 선택 차단 경고 및 승인 리다이렉트 흐름 확인. Architecture guard stamp 검증 완료.
+
+### 사용자별 프로젝트 권한 조회 (local, not deployed)
+- 관리자 사용자 수정 창에서 프로젝트 이름·전체 ID·유효 역할을 활성 세션과 함께 표시한다. 그룹/범위 상속과 실제 역할 ID DAG를 반영하고 도메인·시스템 범위는 프로젝트와 구분한다. 새 administrator-only `GET /api/v1/admin/users/{user_id}/permissions`는 표시 전용이며 할당·세션·인가 정책을 바꾸지 않는다.
+- 권한/세션 조회의 loading·실패·재조회·성공한 빈 목록을 독립적으로 표시하며 사용자·토큰·인증 프로젝트 전환/닫기 뒤 늦은 응답을 버린다. Desktop 두 열, mobile/tablet 단일 열과 viewport-bounded 스크롤을 사용하고 긴 이름·ID·역할을 줄바꿈한다. 한국어·영어·일본어·중국어 카탈로그를 동기화했다.
+- 검증: 권한/identity backend 선택 161, canonical access backend selector 276, 사용자 modal 22와 인접 역할 UI 15 통과. Backend 선택 Ruff 통과, Svelte check 0 errors/기존 DocCodeBlock warning 1, i18n check·scan 오류/누락 0, production build 통과. 실제 FastAPI·설치된 OpenStack SDK·loopback Keystone HTTP fixture에서 2페이지 범위·DAG 확장/403/404를 검증했다. 실제 Chromium에서 조회 장애→재조회·사용자 변경·빈 목록과 네 언어 × light/dark × 390/768/1440px 24조건의 수평 넘침 0·스크롤·작업 버튼 접근을 확인했다. 인증·Keystone·브라우저 API는 합성 경계이며 운영 조회/변경·배포·commit/push는 수행하지 않았다. Canonical backend runner는 기존 로컬 TOML의 line10,column9 파싱 실패로 시작하지 못하여 동일 source/selector를 `/tmp` config-discovery 문맥에서 실행했다. 로컬 설정은 변경하지 않았으며 전체 test:gate 통과로 보고하지 않는다.
+- 후속 확인: compiled production preview에서도 권한과 세션 동시 표시 및 JavaScript 오류 없음 확인. HEAD+해당 source/test/locale 9파일의 격리 index에서 architecture guard staged digest/review를 통과했다(`b497410c191653a04e0e559a3494ca67d1b5005d2063ad5dba5865d8c4460b61`, 2,531 files). 실제 index·공유 architecture review block을 보존했다.
+- **상속 응답 최종 수정/정정** — 최초 검증은 provenance link만 포함해 실제 effective scope의 `OS-INHERIT:inherited_to="projects"`를 누락했다. 이 marker와 대상 project가 함께 있는 정상 응답을 거부하던 길이 검사를 범위 키 1개 및 marker의 별도 검증으로 교체했다. 실제 SDK·Keystone loopback HTTP 회귀는 수정 전 503을 재현했고 수정 후 200·대상 프로젝트·암시 역할을 확인했다. 잘못된 marker/범위/unknown metadata는 계속 503으로 거부한다. 최종 권한/identity 167, access 276, scoped Ruff와 실제 Uvicorn HTTP smoke 통과. 최종 격리 architecture digest/review 통과(`943f2b28c4eb3e4cf984e02b219200f2f0a22dce9e7ba386fa2c9e76aa0f3c55`, 2,531 files). 앞의 161 및 `b497…`은 이 후속 수정 전 기록이며, 전체 gate·운영 acceptance·배포를 주장하지 않는다.
+
+
 ## [1.30.11] - 2026-10-10
 
 ### Fixed

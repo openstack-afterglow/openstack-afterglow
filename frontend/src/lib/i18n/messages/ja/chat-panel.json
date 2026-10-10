@@ -1,4 +1,10 @@
 {
+	"input.cloudTools": "クラウドリソース",
+	"input.cloudBuiltin": "組み込み · 自動利用",
+	"input.cloudDefault": "現在のプロジェクト · 読み取り専用",
+	"input.cloudSelected": "選択した個人キーの保存済み権限制限",
+	"input.cloudProjects": "許可されたプロジェクト: {projects}",
+	"input.cloudAutomatic": "Lumenが自動で利用する組み込みツールです。個別の切り替えはありません。",
 	"effort.auto": "自動",
 	"effort.none": "なし",
 	"effort.minimal": "最小",

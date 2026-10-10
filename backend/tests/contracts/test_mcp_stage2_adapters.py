@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import pytest
 
 from app.config import get_settings
@@ -24,6 +22,7 @@ from app.services.mcp_control_plane.object_storage import (
     get_project_swift_account,
 )
 from app.services.mcp_control_plane.registry import (
+    ConsumerCloudContext,
     FileStorageQuotaGetArguments,
     KeyManagerSecretListArguments,
     ObjectStorageAccountGetArguments,
@@ -40,6 +39,19 @@ from app.services.mcp_control_plane.waygate import (
     get_project_waygate_server,
     list_project_waygate_servers,
 )
+
+
+@pytest.fixture(autouse=True)
+def isolated_authority(monkeypatch):
+    from dataclasses import replace
+
+    async def resolve(principal, project_id=None, *, write=False):
+        return replace(
+            principal, project_id=project_id or principal.project_id, owner_project_id=principal.anchor_project_id
+        )
+
+    monkeypatch.setattr("app.services.mcp_control_plane.registry.resolve_principal_target", resolve)
+
 
 # --- File Storage Tests ---
 
@@ -100,7 +112,8 @@ async def test_registry_file_storage_quota_get_dispatch(monkeypatch):
         async def __aexit__(self, *args):
             pass
 
-    ctx = SimpleNamespace(
+    monkeypatch.setattr(ConsumerCloudContext, "openstack_connection", lambda self: DummyConnCtx())
+    ctx = ConsumerCloudContext(
         principal=McpPrincipal(
             grant_id="g1",
             user_id="u1",
@@ -109,8 +122,6 @@ async def test_registry_file_storage_quota_get_dispatch(monkeypatch):
             scopes=frozenset({"mcp:read"}),
             source="personal_token",
         ),
-        project_id="p1",
-        openstack_connection=lambda: DummyConnCtx(),
     )
 
     out = await dispatch(ctx, entry=entry, arguments=FileStorageQuotaGetArguments())
@@ -258,7 +269,8 @@ async def test_registry_object_storage_account_get_dispatch(monkeypatch):
         async def __aexit__(self, *args):
             pass
 
-    ctx = SimpleNamespace(
+    monkeypatch.setattr(ConsumerCloudContext, "openstack_connection", lambda self: DummyConnCtx())
+    ctx = ConsumerCloudContext(
         principal=McpPrincipal(
             grant_id="g1",
             user_id="u1",
@@ -267,8 +279,6 @@ async def test_registry_object_storage_account_get_dispatch(monkeypatch):
             scopes=frozenset({"mcp:read"}),
             source="personal_token",
         ),
-        project_id="p1",
-        openstack_connection=lambda: DummyConnCtx(),
     )
 
     out = await dispatch(ctx, entry=entry, arguments=ObjectStorageAccountGetArguments())
@@ -566,7 +576,8 @@ async def test_registry_key_manager_and_waygate_dispatch_redacted_results(monkey
         async def __aexit__(self, *args):
             pass
 
-    ctx = SimpleNamespace(
+    monkeypatch.setattr(ConsumerCloudContext, "openstack_connection", lambda self: DummyConnCtx())
+    ctx = ConsumerCloudContext(
         principal=McpPrincipal(
             grant_id="g1",
             user_id="u1",
@@ -575,8 +586,6 @@ async def test_registry_key_manager_and_waygate_dispatch_redacted_results(monkey
             scopes=frozenset({"mcp:read"}),
             source="personal_token",
         ),
-        project_id="p1",
-        openstack_connection=lambda: DummyConnCtx(),
     )
     key_manager_output = await dispatch(
         ctx,

@@ -40,6 +40,7 @@ from app.services.mcp_control_plane.oauth import McpOAuthError, oauth_urls
 from app.services.mcp_control_plane.registry import (
     REGISTRY_VERSION,
     ConsumerCloudContext,
+    bind_entry_target,
     build_mutation_preview,
     dispatch,
     enabled_entries,
@@ -128,7 +129,7 @@ async def _list_tools(request: types.ListToolsRequest) -> types.ListToolsResult:
             description=entry.description,
             inputSchema=entry.mcp_input_schema(),
             outputSchema=entry.output_schema(),
-            annotations=types.ToolAnnotations(readOnlyHint=entry.effect == "read", destructiveHint=False),
+            annotations=types.ToolAnnotations(readOnlyHint=entry.effect == "read", destructiveHint=entry.destructive),
         )
         for entry in page
     ]
@@ -152,6 +153,7 @@ async def _call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         if entry.effect == "read":
             await record_read_invocation(principal, entry=entry, arguments=domain_arguments, status="failed")
         raise
+    principal, parsed = await bind_entry_target(principal, entry=entry, arguments=parsed)
     normalized = parsed.model_dump(mode="json")
     if entry.effect == "read":
         try:

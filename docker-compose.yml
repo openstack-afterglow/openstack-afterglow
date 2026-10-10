@@ -15,6 +15,7 @@ services:
       - path: .env
         required: false
     environment:
+      DATABASE_URL: ${AFTERGLOW_DATABASE_URL:?AFTERGLOW_DATABASE_URL must select the standalone Afterglow database}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3080,http://127.0.0.1:3080}
       FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3080}
       PUBLIC_API_BASE: ${PUBLIC_API_BASE:-http://localhost:8000}

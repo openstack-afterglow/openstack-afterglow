@@ -361,3 +361,35 @@ describe('hooks.server SPA fallback', () => {
 		expect(fetch).not.toHaveBeenCalled();
 	});
 });
+
+
+describe('generated CSP preservation', () => {
+	it.each(["'nonce-rendered-page'", "'sha256-rendered-page'"])(
+		'keeps SvelteKit script authorization %s and runtime allowlists', async (source) => {
+			const { handle } = await loadHandle();
+			const request = createRequest('http://frontend.example.com/login');
+			const response = await handle({ event: request.event, resolve: async () => new Response('html', {
+				headers: { 'Content-Security-Policy': `script-src 'self' ${source}` },
+			}) });
+			const policy = response.headers.get('Content-Security-Policy')!;
+			expect(policy).toContain(`script-src 'self' ${source}`);
+			expect(policy).not.toContain("script-src 'self' 'unsafe-inline'");
+			expect(policy).toContain("connect-src 'self' https://api.example.com wss://api.example.com");
+		},
+	);
+
+	it('preserves the app shell policy rather than the original 404 nonce', async () => {
+		const { handle } = await loadHandle();
+		const { event, fetch } = createNavRequest('http://f.example.com/dashboard/missing', { cookies: SESSION });
+		fetch.mockResolvedValueOnce(new Response('<script nonce="shell-nonce">SHELL</script>', {
+			headers: { 'Content-Security-Policy': "script-src 'self' 'nonce-shell-nonce'" },
+		}));
+		const response = await handle({ event, resolve: async () => new Response('404', {
+			status: 404, headers: { 'Content-Security-Policy': "script-src 'self' 'nonce-original-404'" },
+		}) });
+		expect(response.status).toBe(200);
+		expect(response.headers.get('Content-Security-Policy')).toContain("'nonce-shell-nonce'");
+		expect(response.headers.get('Content-Security-Policy')).not.toContain('original-404');
+		expect(await response.text()).toContain('nonce="shell-nonce"');
+	});
+});

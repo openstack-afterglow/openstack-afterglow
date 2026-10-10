@@ -1,14 +1,16 @@
-"""Refresh JTI → {keystone_token, project_id, user_id, exp} Redis 세션 저장소.
+"""Refresh JTI → {keystone_token, project_id, user_id, exp, started_at} 세션 저장소.
 
 키 스킴: afterglow:refresh:{jti}
 TTL: refresh JWT 만료까지 남은 초 (exp - now)
 
 access JWT의 rjti 필드가 이 키를 가리킨다.
+started_at은 최초 로그인 시각이며 refresh/rescope의 원자적 회전에도 유지한다.
 """
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 from datetime import UTC, datetime
@@ -82,6 +84,51 @@ end
 return 1
 """
 
+_START_SESSION_SCRIPT = """
+local raw = redis.call('GET', KEYS[1])
+if not raw then return nil end
+local data = cjson.decode(raw)
+if not data['started_at'] then
+    -- Preserve the old timeout marker when migrating an existing session.
+    local legacy = tonumber(redis.call('GET', KEYS[2]))
+    local issued = tonumber(ARGV[1])
+    data['started_at'] = legacy and math.min(legacy, issued) or issued
+    local pttl = redis.call('PTTL', KEYS[1])
+    if pttl <= 0 then return nil end
+    redis.call('SET', KEYS[1], cjson.encode(data), 'PX', pttl)
+end
+return tostring(data['started_at'])
+"""
+
+_ROTATE_SESSION_SCRIPT = """
+local raw = redis.call('GET', KEYS[1])
+if not raw then return 0 end
+local old = cjson.decode(raw)
+local replacement = cjson.decode(ARGV[1])
+if old['user_id'] ~= replacement['user_id'] or old['blacklisted'] == true then
+    return 0
+end
+local start = tonumber(old['started_at'])
+if not start or tonumber(ARGV[5]) >= start + tonumber(ARGV[6]) then
+    redis.call('DEL', KEYS[1])
+    redis.call('SREM', KEYS[3], ARGV[3])
+    return 0
+end
+-- The current record, not a snapshot read before Keystone validation, owns
+-- the immutable login origin and absolute lifetime.
+replacement['started_at'] = start
+for _, field in ipairs({'origin_ip', 'origin_fp', 'device_type', 'os', 'auth_method'}) do
+    replacement[field] = old[field] or ''
+end
+redis.call('SETEX', KEYS[2], ARGV[2], cjson.encode(replacement))
+redis.call('DEL', KEYS[1])
+redis.call('SREM', KEYS[3], ARGV[3])
+redis.call('SADD', KEYS[3], ARGV[4])
+local ttl = redis.call('TTL', KEYS[3])
+if ttl < tonumber(ARGV[2]) then redis.call('EXPIRE', KEYS[3], ARGV[2]) end
+return 1
+"""
+
 
 def _key(jti: str) -> str:
     return f"{_PREFIX}{jti}"
@@ -102,8 +149,15 @@ async def store_session(
     origin_fp: str = "",
     device_type: str = "",
     os: str = "",
-) -> None:
-    """refresh JTI에 세션 데이터를 저장. TTL은 refresh 만료 시각까지."""
+    started_at: float | None = None,
+    previous_jti: str | None = None,
+    timeout_seconds: int | None = None,
+) -> bool:
+    """Store a login or atomically replace an active previous refresh record.
+
+    A replacement returns False when the previous record was consumed, expired,
+    revoked or blacklisted. Its original login lifetime and origin are preserved.
+    """
     r = await _get_redis()
     now = int(datetime.now(UTC).timestamp())
     ttl = max(exp - now, 1)
@@ -113,6 +167,7 @@ async def store_session(
             "project_id": project_id,
             "user_id": user_id,
             "exp": exp,
+            "started_at": now if started_at is None else started_at,
             "auth_method": auth_method,
             # 출처 바인딩 필드 (최초 로그인 시 설정, 회전 너머 그대로 운반)
             "origin_ip": origin_ip,
@@ -129,11 +184,39 @@ async def store_session(
             "os": os,
         }
     )
+    if previous_jti is not None:
+        if timeout_seconds is None or timeout_seconds <= 0:
+            raise ValueError("Session rotation requires a positive absolute timeout")
+        return bool(
+            await r.eval(
+                _ROTATE_SESSION_SCRIPT,
+                3,
+                _key(previous_jti),
+                _key(jti),
+                _user_index_key(user_id),
+                data,
+                ttl,
+                previous_jti,
+                jti,
+                now,
+                timeout_seconds,
+            )
+        )
     async with r.pipeline() as pipe:
         pipe.setex(_key(jti), ttl, data)
         pipe.sadd(_user_index_key(user_id), jti)
         pipe.expire(_user_index_key(user_id), ttl)
         await pipe.execute()
+    return True
+
+
+async def ensure_session_started_at(jti: str, project_id: str, issued_at: float) -> float | None:
+    """Persist an existing session's start once without extending its Redis TTL."""
+    r = await _get_redis()
+    token_hash = hashlib.sha256(jti.encode()).hexdigest()
+    legacy_key = f"afterglow:session_start:{token_hash}:{project_id or 'noscope'}"
+    started_at = await r.eval(_START_SESSION_SCRIPT, 2, _key(jti), legacy_key, issued_at)
+    return None if started_at is None else float(started_at)
 
 
 async def get_session(jti: str) -> dict | None:

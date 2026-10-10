@@ -466,6 +466,39 @@ async def test_assignment_query_rejects_wrong_project_and_malformed_effective_ro
 
 
 @pytest.mark.asyncio
+async def test_custom_reader_descendant_preserves_project_management_and_membership(membership):
+    edges = [
+        {"prior_role": {"id": row["id"]}, "implies": [{"id": child} for child in row["implied_role_ids"]]}
+        for row in membership.catalog
+    ]
+    edges.append({"prior_role": {"id": rid("project_reader")}, "implies": [{"id": rid("audit")}]})
+    membership.catalog = identity_roles._catalog(
+        [*membership.catalog, {"id": rid("audit"), "name": "audit", "domain_id": None}], edges
+    )
+    app = FastAPI()
+    app.include_router(router, prefix="/projects")
+    app.dependency_overrides[get_token_info] = lambda: token("admin")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        choices = await client.get(f"/projects/{PROJECT}/assignable-roles")
+        assert choices.status_code == 200, choices.text
+        assert choices.json()["is_owner"] is False
+        assert rid("project_reader") in {row["id"] for row in choices.json()["roles"]}
+        assert rid("audit") not in {row["id"] for row in choices.json()["roles"]}
+        updated = await client.put(
+            f"/projects/{PROJECT}/members/member/roles", json={"role_ids": [rid("project_reader")]}
+        )
+        assert updated.status_code == 200, updated.text
+        assert updated.json()["direct_role_ids"] == [rid("project_reader")]
+        assert set(updated.json()["roles"]) == {"project_reader", "reader", "audit"}
+        assert updated.json()["is_manager"] is False
+        denied = await client.put(f"/projects/{PROJECT}/members/member/roles", json={"role_ids": [rid("audit")]})
+        assert denied.status_code == 422
+    access = await service.get_project_access(PROJECT, "admin")
+    assert access["is_manager"] is True and access["is_owner"] is False
+    assert "audit" in access["roles"]
+
+
+@pytest.mark.asyncio
 async def test_membership_http_shapes_and_removed_manager_api(membership):
     app = FastAPI()
     app.include_router(router, prefix="/projects")

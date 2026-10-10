@@ -1,4 +1,10 @@
 {
+	"input.cloudTools": "云资源",
+	"input.cloudBuiltin": "内置 · 自动使用",
+	"input.cloudDefault": "当前项目 · 只读",
+	"input.cloudSelected": "所选个人密钥的已保存权限限制",
+	"input.cloudProjects": "获准项目：{projects}",
+	"input.cloudAutomatic": "Lumen 会自动使用此内置工具，无需单独开关。",
 	"effort.auto": "自动",
 	"effort.none": "无",
 	"effort.minimal": "最低",

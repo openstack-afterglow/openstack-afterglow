@@ -20,6 +20,9 @@ interface MockMcpAccessRecord {
 	name: string;
 	source: 'personal_token' | 'oauth';
 	access_level: 'read' | 'manage';
+	project_scope: 'current' | 'selected' | 'all';
+	project_ids: string[];
+	projects: { id: string; name: string }[];
 	status: 'active' | 'revoked';
 	visible_prefix: string | null;
 	issued_at: string | null;
@@ -36,6 +39,7 @@ interface MockupState {
 	mcpAccess: {
 		personalTokens: MockMcpAccessRecord[];
 		oauthGrants: MockMcpAccessRecord[];
+		lumenDefaults: Record<string, string>;
 	};
 	instances: Instance[];
 	volumes: Volume[];
@@ -226,6 +230,7 @@ function seedState(): MockupState {
 		selectedProjectId: PROJECT_ID,
 		tutorialStatuses: {},
 		mcpAccess: {
+			lumenDefaults: { [PROJECT_ID]: 'mock-mcp-token-lumen' },
 			personalTokens: [
 				{
 					id: 'mock-mcp-token-lumen',
@@ -233,6 +238,9 @@ function seedState(): MockupState {
 					name: 'Lumen',
 					source: 'personal_token',
 					access_level: 'read',
+					project_scope: 'current',
+					project_ids: [PROJECT_ID],
+					projects: [{ id: PROJECT_ID, name: 'sample-project-alpha' }],
 					status: 'active',
 					visible_prefix: 'mcp_mock_lumen_',
 					issued_at: NOW,
@@ -249,6 +257,9 @@ function seedState(): MockupState {
 					name: 'Desktop MCP client',
 					source: 'oauth',
 					access_level: 'read',
+					project_scope: 'selected',
+					project_ids: [PROJECT_ID, 'mock-project-2'],
+					projects: [{ id: PROJECT_ID, name: 'sample-project-alpha' }, { id: 'mock-project-2', name: 'sample-project-beta' }],
 					status: 'active',
 					visible_prefix: null,
 					issued_at: '2026-07-06T12:00:00Z',

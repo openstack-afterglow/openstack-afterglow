@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { onDestroy, onMount, tick, untrack } from 'svelte';
-	import { auth } from '$lib/stores/auth';
+	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
+	import { derived } from 'svelte/store';
+	import { siteConfig } from '$lib/config/site';
 	import { serviceCapabilities } from '$lib/stores/servicePermissions';
 	import { chatRequestPermission, permissionReason, textOnlyToolPolicy } from '$lib/api/lumenPermissions';
 	import { onChatModelsInvalidated } from '$lib/stores/chatModels';
@@ -41,6 +43,7 @@
 	import { takeAudioTranscript } from '$lib/api/audioChatHandoff';
 	import {
 		defaultChatFeatureOptions,
+		type CloudToolsCatalogue,
 		type ChatPart,
 		type ContextState,
 		type ContextUpdatedPayload,
@@ -165,6 +168,56 @@
 	// 스킬은 opt-in — 기본 미선택([]), 선택된 것만 주입.
 	let selectedSkillIds = $state<number[]>([]);
 	let composerAnchor = $state<HTMLDivElement | null>(null);
+
+	interface ToolScope {
+		token: string | null;
+		userId: string | null;
+		projectId: string | null;
+		enabled: boolean;
+		mcpEnabled: boolean;
+	}
+	let toolScope = $state.raw<ToolScope | null>(null);
+	let cloudTools = $state<CloudToolsCatalogue | null>(null);
+	let toolRequestGeneration = 0;
+	let toolController: AbortController | null = null;
+
+	function ownsTools(owner: ToolScope | null): owner is ToolScope & { token: string; projectId: string } {
+		return owner !== null && owner === toolScope && owner.enabled && !!owner.token && !!owner.projectId;
+	}
+
+	onMount(() => {
+		// A batched A → B → A must still discard A's pending catalog response.
+		const unsubscribe = derived([auth, authReady, projectSwitching, siteConfig, serviceCapabilities], ([actor, ready, switching, config, allows]): ToolScope => ({
+			token: actor.token,
+			userId: actor.userId,
+			projectId: actor.projectId,
+			enabled: ready && !switching && allows('lumen-tools_user'),
+			mcpEnabled: config.services.mcp,
+		})).subscribe((next) => {
+			if (toolScope?.token === next.token && toolScope?.userId === next.userId && toolScope?.projectId === next.projectId && toolScope?.enabled === next.enabled && toolScope?.mcpEnabled === next.mcpEnabled) return;
+			toolController?.abort();
+			toolController = null;
+			toolScope = next;
+			availableTools = [];
+			availableMcp = [];
+			availableSkills = [];
+			cloudTools = null;
+			selectedToolIds = null;
+			selectedMcpIds = null;
+			selectedSkillIds = [];
+		});
+		return () => {
+			unsubscribe();
+			toolController?.abort();
+			toolController = null;
+			toolScope = null;
+		};
+	});
+
+	$effect(() => {
+		const owner = toolScope;
+		untrack(() => { void loadToolsAndMcp(owner); });
+	});
 
 	let activeConvId = $state<string | null>(null);
 
@@ -1083,34 +1136,39 @@
 			/* 프로젝트 로드 실패는 채팅 자체를 막지 않음 */
 		}
 	}
-	async function loadToolsAndMcp() {
-		if (!token || !projectId) return;
-		try {
-			availableTools = await api.get<{ id: number; name: string }[]>(
-				'/api/v1/chat/custom-tools',
-				token,
-				projectId
-			);
-		} catch {
-			availableTools = [];
+	async function loadToolsAndMcp(owner: ToolScope | null) {
+		if (!ownsTools(owner)) return;
+		const request = ++toolRequestGeneration;
+		toolController?.abort();
+		const controller = new AbortController();
+		toolController = controller;
+		const current = () => ownsTools(owner) && request === toolRequestGeneration && !controller.signal.aborted;
+		cloudTools = null;
+		if (owner.mcpEnabled) {
+			try {
+				const catalogue = await api.get<CloudToolsCatalogue>('/api/v1/chat/cloud-tools', owner.token, owner.projectId, { refresh: true, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]), suppressAuthRedirect: true });
+				if (!current()) return;
+				if (catalogue?.enabled === true && catalogue.project_id === owner.projectId) cloudTools = catalogue;
+			} catch {
+				if (!current()) return;
+				cloudTools = null;
+			}
 		}
-		try {
-			availableMcp = await api.get<{ id: number; name: string }[]>(
-				'/api/v1/chat/mcp-servers',
-				token,
-				projectId
-			);
-		} catch {
-			availableMcp = [];
-		}
-		try {
-			availableSkills = await api.get<{ id: number; name: string }[]>(
-				'/api/v1/chat/skills',
-				token,
-				projectId
-			);
-		} catch {
-			availableSkills = [];
+		// Keep catalogue requests sequential to avoid exhausting the chat DB pool.
+		for (const [path, publish] of [
+			['/api/v1/chat/custom-tools', (items: { id: number; name: string }[]) => { availableTools = items; }],
+			['/api/v1/chat/mcp-servers', (items: { id: number; name: string }[]) => { availableMcp = items; }],
+			['/api/v1/chat/skills', (items: { id: number; name: string }[]) => { availableSkills = items; }],
+		] as const) {
+			if (!current()) return;
+			try {
+				const items = await api.get<{ id: number; name: string }[]>(path, owner.token, owner.projectId, { refresh: true, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]), suppressAuthRedirect: true });
+				if (!current()) return;
+				publish(items);
+			} catch {
+				if (!current()) return;
+				publish([]);
+			}
 		}
 	}
 
@@ -2429,7 +2487,6 @@
 				// 보조: 에이전트·프로젝트·확장(tool/MCP/skill)은 초기 버스트에서 제외해 풀 경합 완화.
 				await loadAgents();
 				await loadWorkspaces();
-				await loadToolsAndMcp();
 			})();
 		});
 	});
@@ -2630,6 +2687,7 @@
 					bind:selectedSkillIds
 					availableTools={canTools ? availableTools : []}
 					availableMcp={canTools ? availableMcp : []}
+					cloudTools={canTools && toolScope?.mcpEnabled ? cloudTools : null}
 					availableSkills={canTools ? availableSkills : []}
 					availableAgents={canTools ? agents : []}
 					onSelectAgent={(agentId) => {

@@ -186,7 +186,7 @@ async def verify_personal_mcp_connection(
     if (
         principal.source != "personal_token"
         or principal.user_id != owner_user_id
-        or principal.project_id != owner_project_id
+        or (principal.owner_project_id or principal.project_id) != owner_project_id
     ):
         raise McpConnectionCheckError("invalid_token")
     return await probe_mcp_endpoint(urls.resource, raw_token)

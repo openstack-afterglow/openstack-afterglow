@@ -25,6 +25,18 @@ from app.services.mcp_control_plane.registry import (
 )
 
 
+@pytest.fixture(autouse=True)
+def isolated_authority(monkeypatch):
+    """Isolate storage in registry units; runtime scope is tested behaviorally."""
+
+    async def resolve(principal, project_id=None, *, write=False):
+        return replace(
+            principal, project_id=project_id or principal.project_id, owner_project_id=principal.anchor_project_id
+        )
+
+    monkeypatch.setattr("app.services.mcp_control_plane.registry.resolve_principal_target", resolve)
+
+
 class _MutationArguments(McpDomainArguments):
     resource_id: str
 
@@ -105,6 +117,7 @@ def test_registry_exposes_only_explicit_safe_entries(monkeypatch):
     entries = enabled_entries(principal)
 
     assert [entry.name for entry in entries] == [
+        "afterglow_projects_list",
         "afterglow_capabilities_get",
         "afterglow_cloud_overview_get",
         "afterglow_quota_get",
@@ -126,7 +139,7 @@ def test_registry_exposes_only_explicit_safe_entries(monkeypatch):
     ]
     cloud_overview = entry_by_name("afterglow_cloud_overview_get")
     assert cloud_overview is not None
-    assert cloud_overview.input_schema()["properties"] == {}
+    assert set(cloud_overview.input_schema()["properties"]) == {"project_id"}
     assert set(cloud_overview.output_schema()["properties"]) == {
         "total_instances",
         "active_instances",
@@ -135,7 +148,7 @@ def test_registry_exposes_only_explicit_safe_entries(monkeypatch):
     }
     vm_list = entry_by_name("afterglow_vm_list")
     assert vm_list is not None
-    assert set(vm_list.input_schema()["properties"]) == {"limit"}
+    assert set(vm_list.input_schema()["properties"]) == ({"project_id"} | {"limit"})
     assert set(vm_list.output_schema()["$defs"]["VmSummaryOutput"]["properties"]) == {
         "id",
         "name",
@@ -145,7 +158,7 @@ def test_registry_exposes_only_explicit_safe_entries(monkeypatch):
     }
     vm_get = entry_by_name("afterglow_vm_get")
     assert vm_get is not None
-    assert set(vm_get.input_schema()["properties"]) == {"server_id"}
+    assert set(vm_get.input_schema()["properties"]) == ({"project_id"} | {"server_id"})
     assert set(vm_get.output_schema()["properties"]) == {
         "id",
         "name",
@@ -155,14 +168,14 @@ def test_registry_exposes_only_explicit_safe_entries(monkeypatch):
     }
     vm_interfaces_list = entry_by_name("afterglow_vm_interfaces_list")
     assert vm_interfaces_list is not None
-    assert set(vm_interfaces_list.input_schema()["properties"]) == {"server_id", "limit"}
+    assert set(vm_interfaces_list.input_schema()["properties"]) == ({"project_id"} | {"server_id", "limit"})
     assert set(vm_interfaces_list.output_schema()["$defs"]["VmInterfaceOutput"]["properties"]) == {
         "port_id",
         "mac_address",
     }
     vm_volumes_list = entry_by_name("afterglow_vm_volumes_list")
     assert vm_volumes_list is not None
-    assert set(vm_volumes_list.input_schema()["properties"]) == {"server_id", "limit"}
+    assert set(vm_volumes_list.input_schema()["properties"]) == ({"project_id"} | {"server_id", "limit"})
     assert set(vm_volumes_list.output_schema()["$defs"]["VolumeSummaryOutput"]["properties"]) == {
         "id",
         "name",
@@ -172,7 +185,7 @@ def test_registry_exposes_only_explicit_safe_entries(monkeypatch):
     }
     volume_list = entry_by_name("afterglow_volume_list")
     assert volume_list is not None
-    assert set(volume_list.input_schema()["properties"]) == {"limit"}
+    assert set(volume_list.input_schema()["properties"]) == ({"project_id"} | {"limit"})
     assert set(volume_list.output_schema()["$defs"]["VolumeSummaryOutput"]["properties"]) == {
         "id",
         "name",
@@ -182,7 +195,7 @@ def test_registry_exposes_only_explicit_safe_entries(monkeypatch):
     }
     volume_get = entry_by_name("afterglow_volume_get")
     assert volume_get is not None
-    assert set(volume_get.input_schema()["properties"]) == {"volume_id"}
+    assert set(volume_get.input_schema()["properties"]) == ({"project_id"} | {"volume_id"})
     assert set(volume_get.output_schema()["properties"]) == {
         "id",
         "name",
@@ -192,7 +205,7 @@ def test_registry_exposes_only_explicit_safe_entries(monkeypatch):
     }
     snapshot_list = entry_by_name("afterglow_volume_snapshot_list")
     assert snapshot_list is not None
-    assert set(snapshot_list.input_schema()["properties"]) == {"limit"}
+    assert set(snapshot_list.input_schema()["properties"]) == ({"project_id"} | {"limit"})
     assert set(snapshot_list.output_schema()["$defs"]["SnapshotSummaryOutput"]["properties"]) == {
         "id",
         "name",
@@ -203,7 +216,7 @@ def test_registry_exposes_only_explicit_safe_entries(monkeypatch):
     }
     snapshot_get = entry_by_name("afterglow_volume_snapshot_get")
     assert snapshot_get is not None
-    assert set(snapshot_get.input_schema()["properties"]) == {"snapshot_id"}
+    assert set(snapshot_get.input_schema()["properties"]) == ({"project_id"} | {"snapshot_id"})
     assert set(snapshot_get.output_schema()["properties"]) == {
         "id",
         "name",
@@ -214,7 +227,7 @@ def test_registry_exposes_only_explicit_safe_entries(monkeypatch):
     }
     backup_list = entry_by_name("afterglow_volume_backup_list")
     assert backup_list is not None
-    assert set(backup_list.input_schema()["properties"]) == {"limit"}
+    assert set(backup_list.input_schema()["properties"]) == ({"project_id"} | {"limit"})
     assert set(backup_list.output_schema()["$defs"]["BackupSummaryOutput"]["properties"]) == {
         "id",
         "name",
@@ -225,7 +238,7 @@ def test_registry_exposes_only_explicit_safe_entries(monkeypatch):
     }
     backup_get = entry_by_name("afterglow_volume_backup_get")
     assert backup_get is not None
-    assert set(backup_get.input_schema()["properties"]) == {"backup_id"}
+    assert set(backup_get.input_schema()["properties"]) == ({"project_id"} | {"backup_id"})
     assert set(backup_get.output_schema()["properties"]) == {
         "id",
         "name",
@@ -236,7 +249,7 @@ def test_registry_exposes_only_explicit_safe_entries(monkeypatch):
     }
     network_list = entry_by_name("afterglow_network_list")
     assert network_list is not None
-    assert set(network_list.input_schema()["properties"]) == {"limit"}
+    assert set(network_list.input_schema()["properties"]) == ({"project_id"} | {"limit"})
     assert set(network_list.output_schema()["$defs"]["NetworkSummaryOutput"]["properties"]) == {
         "id",
         "name",
@@ -247,7 +260,7 @@ def test_registry_exposes_only_explicit_safe_entries(monkeypatch):
     }
     network_get = entry_by_name("afterglow_network_get")
     assert network_get is not None
-    assert set(network_get.input_schema()["properties"]) == {"network_id"}
+    assert set(network_get.input_schema()["properties"]) == ({"project_id"} | {"network_id"})
     assert set(network_get.output_schema()["properties"]) == {
         "id",
         "name",
@@ -258,7 +271,7 @@ def test_registry_exposes_only_explicit_safe_entries(monkeypatch):
     }
     subnet_list = entry_by_name("afterglow_subnet_list")
     assert subnet_list is not None
-    assert set(subnet_list.input_schema()["properties"]) == {"limit"}
+    assert set(subnet_list.input_schema()["properties"]) == ({"project_id"} | {"limit"})
     assert set(subnet_list.output_schema()["$defs"]["SubnetSummaryOutput"]["properties"]) == {
         "id",
         "name",
@@ -269,7 +282,7 @@ def test_registry_exposes_only_explicit_safe_entries(monkeypatch):
     }
     subnet_get = entry_by_name("afterglow_subnet_get")
     assert subnet_get is not None
-    assert set(subnet_get.input_schema()["properties"]) == {"subnet_id"}
+    assert set(subnet_get.input_schema()["properties"]) == ({"project_id"} | {"subnet_id"})
     assert set(subnet_get.output_schema()["properties"]) == {
         "id",
         "name",
@@ -283,8 +296,10 @@ def test_registry_exposes_only_explicit_safe_entries(monkeypatch):
     assert vm_action is not None
     assert vm_action.minimum_scope == "mcp:write"
     assert vm_action.effect == "external_mutation"
-    assert set(vm_action.input_schema()["properties"]) == {"server_id", "action"}
-    assert set(vm_action.mcp_input_schema()["properties"]) == {"server_id", "action", "idempotency_key"}
+    assert set(vm_action.input_schema()["properties"]) == ({"project_id"} | {"server_id", "action"})
+    assert set(vm_action.mcp_input_schema()["properties"]) == (
+        {"project_id"} | {"server_id", "action", "idempotency_key"}
+    )
     assert set(vm_action.output_schema()["properties"]) == {
         "id",
         "name",
@@ -297,8 +312,8 @@ def test_registry_exposes_only_explicit_safe_entries(monkeypatch):
     assert vm_delete is not None
     assert vm_delete.minimum_scope == "mcp:write"
     assert vm_delete.effect == "external_mutation"
-    assert set(vm_delete.input_schema()["properties"]) == {"server_id"}
-    assert set(vm_delete.mcp_input_schema()["properties"]) == {"server_id", "idempotency_key"}
+    assert set(vm_delete.input_schema()["properties"]) == ({"project_id"} | {"server_id"})
+    assert set(vm_delete.mcp_input_schema()["properties"]) == ({"project_id"} | {"server_id", "idempotency_key"})
     assert set(vm_delete.output_schema()["properties"]) == {
         "id",
         "name",
@@ -311,8 +326,8 @@ def test_registry_exposes_only_explicit_safe_entries(monkeypatch):
     assert volume_delete is not None
     assert volume_delete.minimum_scope == "mcp:write"
     assert volume_delete.effect == "external_mutation"
-    assert set(volume_delete.input_schema()["properties"]) == {"volume_id"}
-    assert set(volume_delete.mcp_input_schema()["properties"]) == {"volume_id", "idempotency_key"}
+    assert set(volume_delete.input_schema()["properties"]) == ({"project_id"} | {"volume_id"})
+    assert set(volume_delete.mcp_input_schema()["properties"]) == ({"project_id"} | {"volume_id", "idempotency_key"})
     assert set(volume_delete.output_schema()["properties"]) == {
         "id",
         "name",
@@ -353,15 +368,15 @@ def test_registry_exposes_only_explicit_safe_entries(monkeypatch):
         assert entry is not None
         assert entry.minimum_scope == "mcp:write"
         assert entry.effect == "external_mutation"
-        assert set(entry.input_schema()["properties"]) == {argument_name}
-        assert set(entry.mcp_input_schema()["properties"]) == {argument_name, "idempotency_key"}
+        assert set(entry.input_schema()["properties"]) == ({"project_id"} | {argument_name})
+        assert set(entry.mcp_input_schema()["properties"]) == ({"project_id"} | {argument_name, "idempotency_key"})
         assert set(entry.output_schema()["properties"]) == expected_fields
     network_delete = entry_by_name("afterglow_network_delete")
     assert network_delete is not None
     assert network_delete.minimum_scope == "mcp:write"
     assert network_delete.effect == "external_mutation"
-    assert set(network_delete.input_schema()["properties"]) == {"network_id"}
-    assert set(network_delete.mcp_input_schema()["properties"]) == {"network_id", "idempotency_key"}
+    assert set(network_delete.input_schema()["properties"]) == ({"project_id"} | {"network_id"})
+    assert set(network_delete.mcp_input_schema()["properties"]) == ({"project_id"} | {"network_id", "idempotency_key"})
     assert set(network_delete.output_schema()["properties"]) == {
         "id",
         "name",
@@ -375,8 +390,8 @@ def test_registry_exposes_only_explicit_safe_entries(monkeypatch):
     assert subnet_delete is not None
     assert subnet_delete.minimum_scope == "mcp:write"
     assert subnet_delete.effect == "external_mutation"
-    assert set(subnet_delete.input_schema()["properties"]) == {"subnet_id"}
-    assert set(subnet_delete.mcp_input_schema()["properties"]) == {"subnet_id", "idempotency_key"}
+    assert set(subnet_delete.input_schema()["properties"]) == ({"project_id"} | {"subnet_id"})
+    assert set(subnet_delete.mcp_input_schema()["properties"]) == ({"project_id"} | {"subnet_id", "idempotency_key"})
     assert set(subnet_delete.output_schema()["properties"]) == {
         "id",
         "name",
@@ -389,7 +404,7 @@ def test_registry_exposes_only_explicit_safe_entries(monkeypatch):
     database_list = entry_by_name("afterglow_database_instance_list")
     assert database_list is not None
     assert database_list.service_flag == "service_trove_enabled"
-    assert set(database_list.input_schema()["properties"]) == {"limit"}
+    assert set(database_list.input_schema()["properties"]) == ({"project_id"} | {"limit"})
     assert set(database_list.output_schema()["$defs"]["DatabaseInstanceSummaryOutput"]["properties"]) == {
         "id",
         "name",
@@ -401,7 +416,7 @@ def test_registry_exposes_only_explicit_safe_entries(monkeypatch):
     database_get = entry_by_name("afterglow_database_instance_get")
     assert database_get is not None
     assert database_get.service_flag == "service_trove_enabled"
-    assert set(database_get.input_schema()["properties"]) == {"instance_id"}
+    assert set(database_get.input_schema()["properties"]) == ({"project_id"} | {"instance_id"})
     assert set(database_get.output_schema()["properties"]) == {
         "id",
         "name",
@@ -416,12 +431,12 @@ def test_registry_exposes_only_explicit_safe_entries(monkeypatch):
         assert entry.service_flag == "service_trove_enabled"
         assert entry.minimum_scope == "mcp:write"
         assert entry.effect == "external_mutation"
-        assert set(entry.input_schema()["properties"]) == {"instance_id"}
-        assert set(entry.mcp_input_schema()["properties"]) == {"instance_id", "idempotency_key"}
+        assert set(entry.input_schema()["properties"]) == ({"project_id"} | {"instance_id"})
+        assert set(entry.mcp_input_schema()["properties"]) == ({"project_id"} | {"instance_id", "idempotency_key"})
     container_list = entry_by_name("afterglow_container_list")
     assert container_list is not None
     assert container_list.service_flag == "service_zun_enabled"
-    assert set(container_list.input_schema()["properties"]) == {"limit"}
+    assert set(container_list.input_schema()["properties"]) == ({"project_id"} | {"limit"})
     assert set(container_list.output_schema()["$defs"]["ContainerSummaryOutput"]["properties"]) == {
         "id",
         "name",
@@ -432,7 +447,7 @@ def test_registry_exposes_only_explicit_safe_entries(monkeypatch):
     container_get = entry_by_name("afterglow_container_get")
     assert container_get is not None
     assert container_get.service_flag == "service_zun_enabled"
-    assert set(container_get.input_schema()["properties"]) == {"container_id"}
+    assert set(container_get.input_schema()["properties"]) == ({"project_id"} | {"container_id"})
     assert set(container_get.output_schema()["properties"]) == {
         "id",
         "name",
@@ -449,8 +464,10 @@ def test_registry_exposes_only_explicit_safe_entries(monkeypatch):
         assert entry.service_flag == "service_zun_enabled"
         assert entry.minimum_scope == "mcp:write"
         assert entry.effect == "external_mutation"
-        assert set(entry.input_schema()["properties"]) == expected_properties
-        assert set(entry.mcp_input_schema()["properties"]) == {*expected_properties, "idempotency_key"}
+        assert set(entry.input_schema()["properties"]) == ({"project_id"} | expected_properties)
+        assert set(entry.mcp_input_schema()["properties"]) == (
+            {"project_id"} | {*expected_properties, "idempotency_key"}
+        )
 
 
 @pytest.mark.asyncio

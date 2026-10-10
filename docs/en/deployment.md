@@ -222,15 +222,39 @@ container DNS, localhost, loopback, or an Afterglow BFF path. A targeted `--no-d
 frontend/backend recreation can parse the manifest without this value when Waygate is already
 running, but starting Waygate with an empty value fails closed in its API/worker startup validation.
 
-Development keeps the existing `afterglow-local-services` project, volume identities and encryption keys. `.local-services/` is private (0700); the config snapshot is 0640 and only its mounting services receive the file's GID through `group_add`, preserving non-root image users on Linux. Keys and generated `compose.env` remain 0600; none of these files may be printed or committed. Datastore URLs are literal local addresses, preventing shell/environment production database settings from redirecting local migrations. Local Drover API/worker/migration explicitly disable Sentinel and clear its host list so copied production settings cannot redirect the cache. Sibling service traffic defaults to Compose DNS and accepts explicit endpoint selection. OpenStack itself remains real and external. Missing sibling source fails before startup; there is no installed-image development fallback.
+Development keeps the existing `afterglow-local-services` project, volume identities and encryption keys. `.local-services/` is private (0700); the config snapshot is 0640 and only its mounting services receive the file's GID through `group_add`, preserving non-root image users on Linux. Keys and generated `compose.env` remain 0600; none of these files may be printed or committed. Local Drover API/worker/migration explicitly disable Sentinel and clear its host list so copied production settings cannot redirect the cache. Sibling service traffic defaults to Compose DNS and accepts explicit endpoint selection. OpenStack itself remains real and external. Missing sibling source fails before startup; there is no installed-image development fallback.
 
-Development database destinations cannot be overridden with `DATABASE_URL` or the
-`AFTERGLOW_DATABASE_URL`, `WAYGATE_DATABASE_URL`, `DROVER_DATABASE_URL`,
-`LUMEN_DATABASE_URL`, and `PALIMPSEST_DATABASE_URL` variables. API, worker and
-migration/bootstrap processes share the same literal local database anchors.
-`scripts/local-services-datastore.test.js` exercises real Compose configuration for
-default `.env` and explicit private env-file entry paths, with and without shell
-precedence, across all 14 database-consuming services.
+**The five service database URL inputs** follow shell > selected Compose env-file
+precedence. `services:config/up` selects `.env`; direct Compose uses the explicit
+`--env-file` (or automatic `.env` when omitted). An explicitly empty shell value
+also overrides the env-file. In dev, unset/empty resolves to these local fallbacks:
+
+| Compose input | Dev unset/empty fallback |
+|---|---|
+| `AFTERGLOW_DATABASE_URL` | `mysql+aiomysql://afterglow:dev@afterglow-mariadb:3306/afterglow` |
+| `WAYGATE_DATABASE_URL` | `mysql+aiomysql://waygate:dev@service-mariadb:3306/waygate` |
+| `DROVER_DATABASE_URL` | `mysql+aiomysql://drover:dev@service-mariadb:3306/drover` |
+| `LUMEN_DATABASE_URL` | `mysql+aiomysql://lumen:dev@service-mariadb:3306/lumen` |
+| `PALIMPSEST_DATABASE_URL` | `mysql+asyncmy://palimpsest:dev@service-mariadb:3306/palimpsest` |
+
+Minimal/prod Compose requires nonempty `AFTERGLOW_DATABASE_URL`, with no local
+fallback. Supply the corresponding sibling URLs when enabling their profiles.
+Each service's API, worker and migration/bootstrap use **the same service DB**:
+these inputs become the container's `DATABASE_URL`. Generic `DATABASE_URL` is
+not a selector for the five Compose destinations; existing Kubernetes/Kolla
+runtime secret names are a separate contract.
+
+`services:config/up` accepts external targets and preserves resolved URLs in
+private `.local-services/compose.env` (0600), without logging their values.
+Never print/commit URLs, passwords or the full resolved config. Shell overrides
+still outrank that file when reusing it; confirm target selection through the
+approved secret-management path before execution. `services:config` prepares
+inputs, not schema qualification. `services:up` runs migrations/bootstrap and
+real APIs/workers against the selected DB: a URL setting is not live-write approval.
+Local MariaDB/PostgreSQL ports remain unpublished; Redis and the Lumen checkpointer
+remain separate local targets. Cache, volume/network, mount and loopback boundaries
+are checked, and implicit `docker-compose.override.yml` is not read. Health and
+migration completion do not establish dashboard/OpenStack or production compatibility.
 
 To reuse already-built images, run `npm run services:config` followed by
 `docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml up -d --no-build --wait`.
@@ -239,6 +263,53 @@ ProxySQL authentication failures by rotating production credentials or deleting 
 A previously remote-routed Palimpsest bootstrap exiting successfully does not prove
 production was unchanged: its `create_all` can create missing tables, indexes and constraints.
 Its exact historical effects require a separate read-only operational review, not another bootstrap run.
+
+#### Production-data and bidirectional compatibility evaluation
+
+This external-target policy replaces the previous unconditional local-only policy.
+Preserve architecture/release incident records as historical evidence; it does not
+retroactively establish that earlier runs were safe. **Using the production URL
+is direct access to the same shared database**, not synchronization, replication
+or automatic copying. Prefer a restored production snapshot with approved isolation,
+not development startup against the live DB. Run development qualification only on
+disposable targets, without inspecting or mutating production databases; use current
+production evidence supplied by operators through approved channels.
+
+1. Compare operator-supplied current deployed source SHAs and image revisions/digests
+   with the candidate. Record the target/time of schema evidence and compare manifest
+   logical IDs, SQL paths and SHA-256 checksums with applied ledgers and actual schema.
+   Afterglow uses `backend/migrations/manifest.txt`; Drover/Lumen/Waygate use their
+   sibling `<service>/migrations/manifest.txt`. Unknown ledger entries, a newer schema
+   or checksum drift are **not automatically compatible**. State missing evidence
+   explicitly rather than claiming production qualification.
+2. Review pending DDL, backfills, constraints, destructive changes and locks before
+   approving execution. Current Compose one-offs are
+   `python -m drover.scripts.migrate --apply`,
+   `python -m lumen.scripts.migrate --apply`,
+   `python -m waygate.scripts.migrate --apply`, and `palimpsest-hub-bootstrap`.
+   The first three verify manifest checksums and `schema_migrations`, but **even
+   without `--apply` they can create the ledger table**, so they are not read-only
+   production inspection commands. Lumen apply also performs history backfill/checks.
+   Palimpsest bootstrap uses `Base.metadata.create_all`, not an existing-table
+   upgrade or a schema-compatibility decision. Exit 0 is not approval/no-change proof.
+3. On restored disposable DBs, test candidate writer/old schema and old deployed
+   writer/candidate schema in **both directions**: reads/writes, ciphertext decryption,
+   constraints and data semantics. Record required migration/stop order on failure.
+   Exercise mixed-version APIs/workers, queue payloads and concurrent writers during
+   rolling upgrades. Passing tests on a new empty DB cannot replace this evidence.
+4. Preserve original ciphertext keys and their identity/rotation state through an
+   approved secret path. Generated dev-runner keys do not prove compatibility with
+   external ciphertext. These five URLs alone do **not** import external keys, Redis,
+   PostgreSQL or Palimpsest CAS/blobs. Separately assess consistent restoration and
+   isolation of Lumen's durable checkpointer/required memory PostgreSQL, Redis
+   queues/cache/sessions, and CAS references plus their actual blobs.
+5. Compare engine/version, charset, collation and `sql_mode` with production evidence.
+   Actually test backup+restore of the DB and associated keys/checkpointer/Redis/CAS.
+   DDL implicit commits, backfills and deleted data may prevent an image downgrade
+   from reversing schema/data changes. Specify recovery points, acceptable data loss,
+   writer stop order and rollback/downgrade limits; do not promise untested recovery.
+   Existing live-write/migration approvals, volume/key preservation and the bans on
+   `down --volumes` and broad prune remain in force.
 
 ### 3. Verify
 
@@ -270,7 +341,7 @@ Container liveness is not dashboard success. Run `npm run services:smoke` with a
 
 The default `afterglow-production` project runs published frontend/backend images, private persistent Redis and HAProxy 3.2. Only HAProxy publishes host ports: 80/443 plus optional sibling TLS catalog listeners 8010/8011/8012/8020. API, `/v1/`, well-known discovery and API documentation routes reach backend; other routes reach frontend. Docker DNS round-robin supports up to ten replicas per application pool; existing WebSocket and SSE connections remain on their selected backend.
 
-Use a separate private production env file with real `SECRET_KEY`, `OS_PASSWORD`, external `DATABASE_URL`, HTTPS `ORIGIN`, HTTPS `PUBLIC_API_BASE` and absolute `TLS_CERTS_DIR`. Prepare the remaining Keystone/domain/project settings in `afterglow.conf`. The read-only certificate directory must contain valid domain certificate-chain/private-key PEM files. Missing/invalid certificates fail startup; no self-signed certificate is generated.
+Use a separate private production env file with real `SECRET_KEY`, `OS_PASSWORD`, external `AFTERGLOW_DATABASE_URL`, HTTPS `ORIGIN`, HTTPS `PUBLIC_API_BASE` and absolute `TLS_CERTS_DIR`. Prepare the remaining Keystone/domain/project settings in `afterglow.conf`. The read-only certificate directory must contain valid domain certificate-chain/private-key PEM files. Missing/invalid certificates fail startup; no self-signed certificate is generated.
 
 ```bash
 docker compose --env-file /path/to/production.env -f docker-compose.prod.yml pull
@@ -664,7 +735,10 @@ docker compose --env-file /path/to/production.env -f docker-compose.prod.yml up 
 
 `auto_create_tables` does not add columns to existing tables. Before rolling out an image that references a new ORM column, apply its SQL migration to the production database. Use the logical IDs in `backend/migrations/manifest.txt` to determine the required migrations and order; never rely on a numeric filename prefix alone.
 
-Example for the 2026-08-02 chat message timezone migration in local Compose:
+Example for the 2026-08-02 chat message timezone migration, **only on an isolated DB
+using the local `afterglow-mariadb` fallback**. If `AFTERGLOW_DATABASE_URL` selects an
+external target, this command changes local MariaDB, not that selected DB; it is not
+an external-target migration procedure.
 
 ```bash
 docker compose --env-file .local-services/compose.env -f docker-compose.dev.yml exec -T afterglow-mariadb sh -c \

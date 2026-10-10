@@ -83,12 +83,20 @@ class TestCheckBinding:
         action, _ = check_binding(self._sess(), "1.2.3.4", "different_fp", "off")
         assert action == "ok"
 
-    def test_legacy_session_always_ok(self):
+    @pytest.mark.parametrize("mode,expected", [("strict", "block"), ("subnet", "block"), ("log", "log")])
+    def test_legacy_session_obeys_binding_policy(self, mode, expected):
         from app.services.token_binding import check_binding
 
-        action, reason = check_binding({"origin_ip": "", "origin_fp": ""}, "1.2.3.4", "fp", "strict")
-        assert action == "ok"
+        action, reason = check_binding({"origin_ip": "", "origin_fp": ""}, "1.2.3.4", "fp", mode)
+        assert action == expected
         assert reason == "legacy_session"
+
+    @pytest.mark.parametrize("origin_ip", ["", "10.0.0.1"])
+    def test_invalid_binding_mode_fails_closed(self, origin_ip):
+        from app.services.token_binding import check_binding
+
+        with pytest.raises(ValueError, match="token_ip_binding_mode"):
+            check_binding(self._sess(origin_ip), "1.2.3.4", "fp", "invalid")
 
     def test_log_mode_same_ip_fp_ok(self):
         from app.services.token_binding import check_binding
@@ -391,11 +399,14 @@ async def test_revoke_user_sessions_skip_keystone():
 
 
 def _make_sess(blacklisted=False, origin_ip="10.0.0.1", origin_fp="fp"):
+    import time
+
     return {
         "keystone_token": "ks",
         "project_id": "proj",
         "user_id": "user1",
         "exp": 9999999999,
+        "started_at": int(time.time()),
         "auth_method": "password",
         "origin_ip": origin_ip,
         "origin_fp": origin_fp,
@@ -560,6 +571,7 @@ async def test_refresh_carries_origin(client):
         patch("app.api.identity.auth.session_store.delete_session", AsyncMock()),
         patch("app.api.identity.auth.session_store.store_session", side_effect=_mock_store),
         patch("app.api.identity.auth.asyncio.to_thread", new=AsyncMock(return_value=kc_info)),
+        patch("app.services.token_binding.get_origin", return_value=("10.1.1.1", "fp_carried")),
     ):
         resp = await client.post(
             "/api/v1/auth/refresh",

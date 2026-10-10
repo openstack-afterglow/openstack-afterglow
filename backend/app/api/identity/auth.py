@@ -70,6 +70,8 @@ async def _build_token_response(
     origin_fp: str = "",
     device_type: str = "",
     os: str = "",
+    started_at: float | None = None,
+    previous_jti: str | None = None,
 ) -> TokenResponse:
     """Keystone 토큰으로 JWT access+refresh 쌍을 발급하고 TokenResponse를 반환."""
     public_roles = await visible_role_names(roles, is_system_admin)
@@ -82,7 +84,7 @@ async def _build_token_response(
         project_name=project_name,
         refresh_jti=r_jti,
     )
-    await session_store.store_session(
+    stored = await session_store.store_session(
         jti=r_jti,
         keystone_token=keystone_token,
         project_id=project_id,
@@ -93,7 +95,12 @@ async def _build_token_response(
         origin_fp=origin_fp,
         device_type=device_type,
         os=os,
+        started_at=started_at,
+        previous_jti=previous_jti,
+        timeout_seconds=get_settings().session_timeout_seconds if previous_jti else None,
     )
+    if stored is False:
+        raise HTTPException(status_code=401, detail="세션이 만료되거나 이미 갱신되었습니다. 다시 로그인해 주세요.")
     exp_dt = datetime.fromtimestamp(a_exp, tz=UTC)
     return TokenResponse(
         token=access_str,
@@ -248,15 +255,21 @@ async def logout(token_info: dict = Depends(get_token_info)):
                 keystone_token = session.get("keystone_token") or None
             elif session:
                 _logger.warning("logout session ownership mismatch (jti=%s)", refresh_jti)
+                raise HTTPException(status_code=403, detail="세션 소유권이 일치하지 않습니다.")
             await session_store.delete_session(refresh_jti)
+        except HTTPException:
+            raise
         except Exception:
-            _logger.warning("refresh 세션 삭제 실패 (jti=%s)", refresh_jti, exc_info=True)
+            _logger.error("refresh 세션 삭제 실패 (jti=%s)", refresh_jti, exc_info=True)
+            raise HTTPException(status_code=503, detail="세션 폐기를 확인할 수 없습니다. 잠시 후 다시 시도해 주세요.")
 
     if keystone_token:
         try:
             await asyncio.to_thread(keystone.revoke_token, keystone_token)
         except Exception:
             _logger.warning("Keystone revoke 실패 — 캐시는 그대로 invalidate", exc_info=True)
+            await invalidate_token_cache(token, pid)
+            raise HTTPException(status_code=503, detail="인증 토큰 폐기를 확인할 수 없습니다. 다시 로그인해 주세요.")
     await invalidate_token_cache(token, pid)
     return {"message": "로그아웃 완료"}
 
@@ -284,6 +297,8 @@ async def refresh_token(request: Request, req: RefreshRequest):
 
     if sess is None:
         raise HTTPException(status_code=401, detail="세션이 만료되었습니다. 다시 로그인해 주세요.")
+    if sess.get("user_id") != r_payload.get("sub"):
+        raise HTTPException(status_code=401, detail="refresh 토큰의 세션 소유권이 일치하지 않습니다.")
 
     # 블랙리스트 세션은 refresh 갱신도 거부
     if sess.get("blacklisted"):
@@ -293,7 +308,40 @@ async def refresh_token(request: Request, req: RefreshRequest):
     import hashlib as _hl
 
     _rjti_hash = _hl.sha256(r_jti.encode()).hexdigest()
-    await _check_session_timeout(_rjti_hash, sess.get("project_id", ""))
+    started_at = await _check_session_timeout(
+        _rjti_hash,
+        sess.get("project_id", ""),
+        refresh_jti=r_jti,
+        session=sess,
+        issued_at=r_payload.get("iat", 0),
+    )
+
+    # A refresh credential must obey the same origin policy as access requests.
+    from app.services.token_binding import check_binding, get_origin
+
+    try:
+        cur_ip, cur_fp = get_origin(request)
+        action, reason = check_binding(sess, cur_ip, cur_fp, get_settings().token_ip_binding_mode)
+        if action == "block":
+            await session_store.blacklist_session(r_jti, reason)
+            raise HTTPException(status_code=401, detail="토큰 출처가 일치하지 않습니다.")
+        if action == "log":
+            await activity_svc.record(
+                project_id=sess.get("project_id", ""),
+                user_id=sess.get("user_id", ""),
+                username="",
+                resource_type="auth",
+                action="token_origin_mismatch",
+                status="success",
+                extra={"ip": cur_ip, "origin_ip": sess.get("origin_ip", ""), "reason": reason, "blocked": False},
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        _logger.error("refresh origin validation failed", exc_info=True)
+        raise HTTPException(
+            status_code=503, detail="토큰 바인딩 검사를 완료할 수 없습니다. 잠시 후 다시 시도해 주세요."
+        )
 
     # 최초 로그인 origin과 기기 정보를 회전 너머로 그대로 운반 (재파싱 금지)
     origin_ip = sess.get("origin_ip", "")
@@ -317,7 +365,7 @@ async def refresh_token(request: Request, req: RefreshRequest):
         _logger.error("Keystone validation failure during refresh (session preserved): %s", exc, exc_info=True)
         raise HTTPException(status_code=503, detail="인증 검증 서비스 일시적 오류. 잠시 후 다시 시도해 주세요.")
 
-    # 토큰 회전: 새 토큰 발급 및 세션 저장 후 기존 refresh 삭제
+    # Redis consumes the old record and publishes its replacement atomically.
     try:
         token_resp = await _build_token_response(
             keystone_token=kc_info["token"],
@@ -332,8 +380,9 @@ async def refresh_token(request: Request, req: RefreshRequest):
             origin_fp=origin_fp,
             device_type=device_type,
             os=os_name,
+            started_at=started_at,
+            previous_jti=r_jti,
         )
-        await session_store.delete_session(r_jti)
         return token_resp
     except HTTPException:
         raise
@@ -351,30 +400,31 @@ async def scope_project(req: ProjectScopeRequest, token_info: dict = Depends(get
     except Exception:
         raise HTTPException(status_code=403, detail="해당 프로젝트에 접근 권한이 없습니다")
 
-    # 이전 refresh 세션 정리 (JWT 경로인 경우)
     old_rjti = token_info.get("refresh_jti")
-    if old_rjti:
-        try:
-            await session_store.delete_session(old_rjti)
-        except Exception:
-            pass
-
     await record_project_access(kc_info["user_id"], kc_info["project_id"])
-    return await _build_token_response(
-        keystone_token=kc_info["token"],
-        project_id=kc_info["project_id"],
-        project_name=kc_info["project_name"],
-        user_id=kc_info["user_id"],
-        username=kc_info["username"],
-        roles=kc_info.get("roles", []),
-        is_system_admin=kc_info.get("is_system_admin", False),
-        auth_method=token_info.get("auth_method", "password"),
-        # 기존 세션의 origin·기기 정보를 그대로 운반 (프로젝트 전환 시 재파싱 금지)
-        origin_ip=token_info.get("origin_ip", ""),
-        origin_fp=token_info.get("origin_fp", ""),
-        device_type=token_info.get("device_type", ""),
-        os=token_info.get("os", ""),
-    )
+    try:
+        return await _build_token_response(
+            keystone_token=kc_info["token"],
+            project_id=kc_info["project_id"],
+            project_name=kc_info["project_name"],
+            user_id=kc_info["user_id"],
+            username=kc_info["username"],
+            roles=kc_info.get("roles", []),
+            is_system_admin=kc_info.get("is_system_admin", False),
+            auth_method=token_info.get("auth_method", "password"),
+            # 기존 세션의 origin·기기 정보를 그대로 운반 (프로젝트 전환 시 재파싱 금지)
+            origin_ip=token_info.get("origin_ip", ""),
+            origin_fp=token_info.get("origin_fp", ""),
+            device_type=token_info.get("device_type", ""),
+            os=token_info.get("os", ""),
+            started_at=token_info.get("started_at"),
+            previous_jti=old_rjti,
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        _logger.error("Failed to rotate session during project change", exc_info=True)
+        raise HTTPException(status_code=503, detail="프로젝트 세션 갱신을 완료할 수 없습니다. 다시 시도해 주세요.")
 
 
 @router.post("/logout-all")
@@ -550,6 +600,11 @@ async def gitlab_callback(
     background_tasks.add_task(_prewarm_dashboard, data["token"], data["project_id"])
     background_tasks.add_task(record_project_access, data["user_id"], data["project_id"])
 
+    from app.services.token_binding import get_origin, parse_device
+
+    origin_ip, origin_fp = get_origin(request)
+    device_type, os_name = parse_device(request.headers.get("User-Agent", ""))
+
     token_response = await _build_token_response(
         keystone_token=data["token"],
         project_id=data["project_id"],
@@ -560,6 +615,10 @@ async def gitlab_callback(
         is_system_admin=data.get("is_system_admin", False),
         auth_method="federated",
         default_project_id=data.get("default_project_id", "") or "",
+        origin_ip=origin_ip,
+        origin_fp=origin_fp,
+        device_type=device_type,
+        os=os_name,
     )
     response.delete_cookie(key=_GITLAB_OIDC_STATE_COOKIE, path=_GITLAB_OIDC_STATE_COOKIE_PATH)
     await activity_svc.record(

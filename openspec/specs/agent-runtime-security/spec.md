@@ -34,17 +34,42 @@ Execution-bound input SHALL use Pydantic allow-list validation; shell/cloud-init
 - **WHEN** token binding or ownership validation fails or throws
 - **THEN** the protected endpoint denies the action and does not expose internal information or secrets to the client
 
-### Requirement: Development datastore destinations ignore generic environment overrides
+### Requirement: Service-prefixed Compose database selection
 
-`docker-compose.dev.yml` SHALL keep API, worker and migration/bootstrap database destinations local to the `afterglow-local-services` project. Repository `.env`, an explicit private Compose env file and shell variables named `DATABASE_URL`, `AFTERGLOW_DATABASE_URL`, `WAYGATE_DATABASE_URL`, `DROVER_DATABASE_URL`, `LUMEN_DATABASE_URL` or `PALIMPSEST_DATABASE_URL` SHALL NOT redirect those processes to external databases. Backend and Notion worker SHALL use the `afterglow` schema on `afterglow-mariadb`; sibling services SHALL use their own schema on `service-mariadb`. Lumen checkpointer and Redis remain local. Recovery SHALL preserve existing volume identities, encryption keys and applied migration hashes rather than deleting databases or changing remote credentials.
+`docker-compose.dev.yml` SHALL select each service's internal `DATABASE_URL` from `AFTERGLOW_DATABASE_URL`, `DROVER_DATABASE_URL`, `LUMEN_DATABASE_URL`, `WAYGATE_DATABASE_URL` or `PALIMPSEST_DATABASE_URL` in the selected env file or shell. Shell values SHALL take precedence. All API, worker and migration/bootstrap consumers of one service SHALL use the same destination. Unset or empty named inputs SHALL retain that service's canonical local database; generic `DATABASE_URL` SHALL NOT select a destination. Production and standalone Afterglow Compose SHALL require a nonempty `AFTERGLOW_DATABASE_URL` without a generic alias or local fallback.
 
-#### Scenario: Starting development Compose with production database variables
+The local runner SHALL accept explicitly selected external destinations and preserve resolved credentials, including literal dollar signs, in `.local-services/compose.env` with mode `0600` without logging them. Redis, Lumen checkpointer, local ports, networks, existing volume identities and encryption keys SHALL remain independently protected; choosing an external database SHALL NOT import or synchronize these companion stores.
 
-- **WHEN** plain development Compose loads database overrides from `.env` or the process environment
-- **THEN** API, worker and migration/bootstrap `DATABASE_URL` values still target the canonical local schemas
+#### Scenario: Selecting a service's database from dotenv or the shell
 
-#### Scenario: Starting development Compose with its prepared private env file
+- **WHEN** an operator provides one named database URL in `.env`, an explicit env file or the shell
+- **THEN** only that owner's consumers use the selected destination
+- **AND** unrelated services keep their own selections or local fallback
 
-- **WHEN** development Compose uses `.local-services/compose.env` while remote database overrides remain in the process environment or container env file
-- **THEN** API, worker and migration/bootstrap destinations remain local and the existing project volumes and encryption keys are reused
+#### Scenario: Preserving the prepared destination
+
+- **WHEN** development Compose uses `.local-services/compose.env` after the original input file is removed or changed
+- **THEN** its prepared database destinations and credentials are preserved exactly
+- **AND** a newly provided shell value still takes precedence
+
+#### Scenario: Empty or generic input
+
+- **WHEN** a development service's named input is unset or empty, including an empty shell override
+- **THEN** its canonical local database is used even if generic `DATABASE_URL` is external
+- **AND** the same missing Afterglow input is rejected in production or standalone Compose
+
+### Requirement: Database qualification separates direct access from production compatibility
+
+Operators SHALL evaluate actual deployed images, schema ledgers/checksums, restored production snapshots, both old-writer/new-schema and new-writer/old-schema behavior, encryption-key continuity, companion state, mixed API/worker versions and rollback/restore limits whenever database-affecting work is assessed. Selecting the same database SHALL be described as direct shared access, not replication or synchronization. A connection or disposable smoke SHALL NOT be represented as production data/schema compatibility. Production writes and migration/bootstrap execution SHALL require independent approval and backup/restore evidence; migration runners that create ledgers or invoke `create_all` SHALL NOT be used as read-only inspection tools.
+
+#### Scenario: Production evidence is unavailable
+
+- **WHEN** deployed schema/image or restored-snapshot compatibility evidence is unavailable
+- **THEN** the result explicitly records the missing evidence and leaves production compatibility unqualified
+- **AND** verification uses disposable destinations without mutating production data
+
+#### Scenario: Mixed writer or rollback incompatibility
+
+- **WHEN** either writer/schema direction or the backup/restore path is incompatible or unproven
+- **THEN** the qualification records that limitation instead of assuming migrations, bootstrap or changing the URL makes rollback safe
 

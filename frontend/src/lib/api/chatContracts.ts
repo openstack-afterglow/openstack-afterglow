@@ -27,6 +27,18 @@ export interface ModelCapabilities {
 	feature_gates?: Record<string, { available: boolean; mode: 'native' | 'managed' | 'none'; reason_code: string | null; pricing_available: boolean }>;
 }
 
+/** Informational managed tools; never a custom tool ID or tool-policy toggle. */
+export interface CloudToolsCatalogue {
+	enabled: boolean;
+	access_level: 'read' | 'manage';
+	project_id: string;
+	project_name: string;
+	tool_count: number;
+	source: 'lumen' | 'personal_token';
+	allowed_projects: { id: string; name: string }[];
+	selection_name: string | null;
+}
+
 export type ChatPart =
 	| { type: 'text'; text: string }
 	| { type: 'image'; asset_id: string; mime_type: string; name: string; width: number; height: number; alt_text?: string }

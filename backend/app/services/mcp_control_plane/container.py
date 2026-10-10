@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Mapping
 from typing import Any
+
+from app.services.mcp_control_plane.sdk import check_mutation_dispatch, run_sdk
 
 _MAX_TEXT = 255
 
@@ -114,7 +115,9 @@ def _prepare_container_action(conn: Any, *, project_id: str, container_id: str, 
 
 def _action_container(conn: Any, *, project_id: str, container_id: str, action: str) -> dict[str, str | None]:
     container = _prepare_container_action(conn, project_id=project_id, container_id=container_id, action=action)
-    response = conn.session.post(f"{_endpoint(conn)}/v1/containers/{container_id}/{action}")
+    endpoint = _endpoint(conn)
+    check_mutation_dispatch()
+    response = conn.session.post(f"{endpoint}/v1/containers/{container_id}/{action}")
     _require_success(response)
     return container
 
@@ -128,7 +131,9 @@ def _prepare_container_delete(conn: Any, *, project_id: str, container_id: str) 
 
 def _delete_container(conn: Any, *, project_id: str, container_id: str) -> dict[str, str | None]:
     container = _prepare_container_delete(conn, project_id=project_id, container_id=container_id)
-    response = conn.session.delete(f"{_endpoint(conn)}/v1/containers/{container_id}")
+    endpoint = _endpoint(conn)
+    check_mutation_dispatch()
+    response = conn.session.delete(f"{endpoint}/v1/containers/{container_id}")
     _require_success(response)
     return container
 
@@ -136,7 +141,7 @@ def _delete_container(conn: Any, *, project_id: str, container_id: str) -> dict[
 async def list_project_containers(conn: Any, *, project_id: str, limit: int) -> list[dict[str, str | None]]:
     """List only raw Zun records that independently prove exact project ownership."""
     try:
-        return await asyncio.to_thread(_list_containers, conn, project_id=project_id, limit=limit)
+        return await run_sdk(_list_containers, conn, project_id=project_id, limit=limit)
     except McpContainerError:
         raise
     except Exception as exc:
@@ -146,7 +151,7 @@ async def list_project_containers(conn: Any, *, project_id: str, limit: int) -> 
 async def get_project_container(conn: Any, *, project_id: str, container_id: str) -> dict[str, str | None]:
     """Read one Zun container only after the raw response proves ownership."""
     try:
-        return await asyncio.to_thread(_get_container, conn, project_id=project_id, container_id=container_id)
+        return await run_sdk(_get_container, conn, project_id=project_id, container_id=container_id)
     except McpContainerError:
         raise
     except Exception as exc:
@@ -158,7 +163,7 @@ async def preview_project_container_action(
 ) -> dict[str, str | None]:
     """Validate a bounded container action against current exact-project state."""
     try:
-        return await asyncio.to_thread(
+        return await run_sdk(
             _prepare_container_action,
             conn,
             project_id=project_id,
@@ -176,7 +181,7 @@ async def request_project_container_action(
 ) -> dict[str, str | None]:
     """Request a bounded action only after final exact-project ownership/state validation."""
     try:
-        return await asyncio.to_thread(
+        return await run_sdk(
             _action_container,
             conn,
             project_id=project_id,
@@ -192,7 +197,7 @@ async def request_project_container_action(
 async def preview_project_container_delete(conn: Any, *, project_id: str, container_id: str) -> dict[str, str | None]:
     """Validate one stopped exact-project container deletion without dispatching it."""
     try:
-        return await asyncio.to_thread(
+        return await run_sdk(
             _prepare_container_delete,
             conn,
             project_id=project_id,
@@ -207,7 +212,7 @@ async def preview_project_container_delete(conn: Any, *, project_id: str, contai
 async def request_project_container_delete(conn: Any, *, project_id: str, container_id: str) -> dict[str, str | None]:
     """Delete only a stopped exact-project container without implicit stop or force."""
     try:
-        return await asyncio.to_thread(
+        return await run_sdk(
             _delete_container,
             conn,
             project_id=project_id,

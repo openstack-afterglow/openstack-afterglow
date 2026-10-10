@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import math
 import re
 import time
 from collections.abc import AsyncGenerator
@@ -73,25 +74,36 @@ async def invalidate_token_cache(token: str, project_id: str | None) -> None:
             _logger.warning("토큰 캐시 invalidate 실패 (%s)", key, exc_info=True)
 
 
-async def _check_session_timeout(token_hash: str, project_id: str) -> None:
-    """세션 시작 시간이 없으면 기록하고, 있으면 타임아웃 여부를 체크."""
-    from app.services.cache import _get_redis  # 지연 임포트
+async def _check_session_timeout(
+    token_hash: str,
+    project_id: str,
+    *,
+    refresh_jti: str,
+    session: dict,
+    issued_at: float,
+) -> float:
+    """Enforce the original login's lifetime across refresh and project changes.
 
-    settings = get_settings()
-    timeout = settings.session_timeout_seconds
-    key = _session_key(token_hash, project_id)
+    Legacy records are migrated from their existing marker or signed JWT iat.
+    Deleting an expired refresh record prevents retries from recreating a start.
+    """
+    from app.services.session_store import delete_session, ensure_session_started_at
+
     try:
-        r = await _get_redis()
-        start_bytes = await r.get(key)
-        now = time.time()
-        if start_bytes is None:
-            # 첫 요청 — 세션 시작 시간 기록 (TTL = timeout + 여유 60s)
-            await r.setex(key, timeout + 60, str(now))
-        else:
-            start = float(start_bytes)
-            if now - start > timeout:
-                await r.delete(key)
+        start = session.get("started_at")
+        if start is None:
+            if not math.isfinite(float(issued_at)) or float(issued_at) <= 0:
+                raise ValueError("Session issue time is invalid")
+            start = await ensure_session_started_at(refresh_jti, project_id, issued_at)
+            if start is None:
                 raise HTTPException(status_code=401, detail="세션이 만료되었습니다. 다시 로그인해 주세요.")
+        start = float(start)
+        if not math.isfinite(start) or start <= 0:
+            raise ValueError("Session start time is invalid")
+        if time.time() >= start + get_settings().session_timeout_seconds:
+            await delete_session(refresh_jti)
+            raise HTTPException(status_code=401, detail="세션이 만료되었습니다. 다시 로그인해 주세요.")
+        return start
     except HTTPException:
         raise
     except Exception:
@@ -132,10 +144,16 @@ async def _resolve_jwt_token_info(
         raise HTTPException(status_code=401, detail="세션이 만료되었습니다. 다시 로그인해 주세요.")
 
     # ── 세션 타임아웃 검증 (JWT 경로) ─────────────────────────────────────────
-    # refresh_jti를 해시해 X-Auth-Token 경로와 동일한 _check_session_timeout 재사용
+    # 최초 로그인 시작시간은 회전/프로젝트 전환 뒤에도 동일하다.
     _rjti_hash = hashlib.sha256(refresh_jti.encode()).hexdigest()
     _sess_project_id = sess.get("project_id", x_project_id or "")
-    await _check_session_timeout(_rjti_hash, _sess_project_id)
+    started_at = await _check_session_timeout(
+        _rjti_hash,
+        _sess_project_id,
+        refresh_jti=refresh_jti,
+        session=sess,
+        issued_at=payload.get("iat", 0),
+    )
 
     # ── 블랙리스트 검사 ─────────────────────────────────────────────────────
     if sess.get("blacklisted"):
@@ -228,6 +246,7 @@ async def _resolve_jwt_token_info(
             "connection_project_id": project_id,
             "project_name": payload.get("project_name", ""),
             "refresh_jti": refresh_jti,
+            "started_at": started_at,
             "auth_method": sess.get("auth_method", "password"),
         }
 
@@ -318,6 +337,7 @@ async def _resolve_jwt_token_info(
         "roles": info.get("roles", []),
         "is_system_admin": info.get("is_system_admin", False),
         "refresh_jti": refresh_jti,
+        "started_at": started_at,
         "auth_method": sess.get("auth_method", "password"),
         # 출처 필드 — switch_project 원본 운반용
         "origin_ip": sess.get("origin_ip", ""),

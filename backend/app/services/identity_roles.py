@@ -129,6 +129,94 @@ def load_catalog(conn) -> list[dict]:
         raise error from exc
 
 
+def user_permissions(conn, user_id: str) -> dict:
+    """Fresh display-only snapshot of effective grants and the actual role DAG.
+
+    Keystone expands groups and scope inheritance; role implications are expanded
+    from the validated catalog. Never infer ownership or direct-grant provenance.
+    """
+    if not isinstance(user_id, str) or not user_id.strip() or user_id != user_id.strip():
+        raise HTTPException(status_code=422, detail="Invalid user ID")
+    try:
+        user = conn.identity.get_user(user_id)
+        if user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        if _field(user, "id") != user_id:
+            raise _unavailable("Keystone returned a different user")
+        catalog = {row["id"]: row for row in load_catalog(conn)}
+        scopes = {}
+        for assignment in conn.identity.role_assignments(user_id=user_id, effective=True, include_names=True):
+            subject = _field(assignment, "user")
+            role = _field(assignment, "role")
+            scope = _field(assignment, "scope")
+            if (
+                not isinstance(subject, Mapping)
+                or subject.get("id") != user_id
+                or _field(assignment, "group") is not None
+                or not isinstance(role, Mapping)
+                or not isinstance(role.get("id"), str)
+                or role["id"] not in catalog
+                or not isinstance(scope, Mapping)
+            ):
+                raise _unavailable("Keystone effective assignment metadata is invalid")
+            scope_types = {"project", "domain", "system"}.intersection(scope)
+            if len(scope_types) != 1 or set(scope) - {"project", "domain", "system", "OS-INHERIT:inherited_to"}:
+                raise _unavailable("Keystone assignment scope is invalid")
+            role_row = catalog[role["id"]]
+            if "name" in role and role["name"] != role_row["name"]:
+                raise _unavailable("Keystone role metadata is inconsistent")
+            scope_type = next(iter(scope_types))
+            if "OS-INHERIT:inherited_to" in scope and (
+                scope_type != "project" or scope["OS-INHERIT:inherited_to"] != "projects"
+            ):
+                raise _unavailable("Keystone assignment inheritance marker is invalid")
+            metadata = scope[scope_type]
+            if not isinstance(metadata, Mapping):
+                raise _unavailable("Keystone assignment scope is invalid")
+            if scope_type == "system":
+                if set(metadata) != {"all"} or metadata["all"] is not True:
+                    raise _unavailable("Keystone system scope is invalid")
+                scope_id, scope_name = "all", "all"
+            else:
+                scope_id = metadata.get("id")
+                if not isinstance(scope_id, str) or not scope_id.strip() or scope_id != scope_id.strip():
+                    raise _unavailable("Keystone assignment scope ID is invalid")
+                scope_name = metadata.get("name")
+            key = (scope_type, scope_id)
+            if key not in scopes:
+                if scope_type != "system" and "name" not in metadata:
+                    # Older providers may omit include_names. Resolve each unique
+                    # scope once, never enumerate the directory for each user.
+                    getter = conn.identity.get_project if scope_type == "project" else conn.identity.get_domain
+                    resolved = getter(scope_id)
+                    if _field(resolved, "id") != scope_id:
+                        raise _unavailable("Keystone returned a different assignment scope")
+                    scope_name = _field(resolved, "name")
+                if not isinstance(scope_name, str) or not scope_name.strip():
+                    raise _unavailable("Keystone assignment scope name is invalid")
+                scopes[key] = {
+                    "scope_type": scope_type,
+                    "scope_id": scope_id,
+                    "scope_name": scope_name,
+                    "role_ids": set(),
+                }
+            elif "name" in metadata and scope_name != scopes[key]["scope_name"]:
+                raise _unavailable("Keystone assignment scope metadata is inconsistent")
+            scopes[key]["role_ids"].update([role_row["id"], *role_row["inherited_role_ids"]])
+        items = [
+            {
+                "scope_type": row["scope_type"],
+                "scope_id": row["scope_id"],
+                "scope_name": row["scope_name"],
+                "roles": [{"id": rid, "name": catalog[rid]["name"]} for rid in sorted(row["role_ids"])],
+            }
+            for _, row in sorted(scopes.items())
+        ]
+        return {"items": items, "count": len(items)}
+    except Exception as exc:
+        raise _provider_error(exc) from exc
+
+
 def _trusted_catalog():
     try:
         ks = keystone._get_admin_ks_client()
@@ -319,8 +407,9 @@ def _preset_names_below(name):
 
 
 def _validate_preset_catalog(catalog):
-    """Known identities have bounded descendants; unknown extra grants fail closed."""
+    """Bound known authority identities without rejecting explicit custom grants."""
     bindings, by_id = {}, {row["id"]: row for row in catalog}
+    bounded_names = {definition["name"] for definition in ROLE_PRESETS} | CORE_NAMES
     for definition in ROLE_PRESETS:
         name = definition["name"]
         matches = [row for row in catalog if row["domain_id"] is None and row["name"].casefold() == name]
@@ -332,7 +421,9 @@ def _validate_preset_catalog(catalog):
         allowed = _preset_names_below(name)
         for rid in _descendant_ids(catalog, row["id"]):
             child = by_id[rid]
-            if child["domain_id"] is not None or child["name"] not in allowed:
+            if child["domain_id"] is not None or (
+                child["name"].casefold() in bounded_names and child["name"] not in allowed
+            ):
                 raise HTTPException(
                     status_code=409, detail=f"Unsafe role implication requires review: {name} -> {child['name']}"
                 )

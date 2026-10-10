@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 from app.services.keystone import get_drover_proxy
+from app.services.mcp_control_plane.sdk import run_sdk
 
 
 class McpK3sError(ValueError):
@@ -74,7 +74,7 @@ async def list_project_k3s_clusters(
 ) -> list[dict[str, Any]]:
     """Return exact-project K3s clusters through the caller-scoped Drover catalog."""
     try:
-        clusters = await asyncio.to_thread(_list_clusters, conn, limit)
+        clusters = await run_sdk(_list_clusters, conn, limit)
         if not isinstance(clusters, list):
             raise McpK3sError("K3s cluster list response is invalid")
         return [_safe_cluster(cluster, project_id=project_id) for cluster in clusters[:limit]]
@@ -91,7 +91,7 @@ async def get_project_k3s_cluster(
 ) -> dict[str, Any]:
     """Return one exact-project K3s cluster through the caller-scoped Drover catalog."""
     try:
-        cluster = await asyncio.to_thread(_get_cluster, conn, cluster_id)
+        cluster = await run_sdk(_get_cluster, conn, cluster_id)
         if not isinstance(cluster, dict):
             raise McpK3sError("K3s cluster response is invalid")
         return _safe_cluster(cluster, project_id=project_id)

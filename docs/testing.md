@@ -6,6 +6,35 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## 누적 dev checkpoint 커밋 검증 (2026-10-11, local-only)
+
+사용자의 현재 변경 커밋 요청에 따라 private 설정을 제외한 누적 source snapshot을 검증했다. 이 snapshot의 package version은 기존 `1.30.11`이며 아래 개별 수정의 `1.30.12` 기반 격리 receipt와 서로 다른 범위다. 기존 OpenSpec와 각 수정의 smoke 기록은 보존한다.
+
+1. **최종 전체 gate**: 독립 loopback MariaDB/PostgreSQL/Redis만 제공한 `npm run test:gate`가 exit0이었다. Orchestration175, Kolla27 및 image-ref11, Unix CLI19, backend unit4,595, frontend335files/2,709 및 runner9, consumer contract154, disposable functional73/22deselected, Ruff check 및 format573files를 통과했다. PowerShell runtime이 없어36개는 skip이며 Windows 실행 증거가 아니다. 최종 source fingerprint는 `82dd2411df453e5b44a7afe9f40c65f627c930e07ee03bca02df4713860d6ee0`/2,546files다.
+2. **프론트엔드 진단·빌드**: 동일 frontend source의 Svelte check2,344files/0errors/기존 DocCodeBlock tabindex warning1, i18n check0errors/0warnings·37namespaces/9,489messages, i18n scan988files/0hard-coded Korean lines 및 production build가 통과했다. Unit 실행의 binding/raw-snippet 경고와 backend deprecation/test-key 경고는 숨기거나 성공 증거로 대체하지 않는다.
+3. **검증 중 실패와 수정**: 첫 환경 준비에서 optional `dev` extra가 빠져 pytest 실행이 불가능했으며 frozen dev-extra 설치로 해결했다. 제거된 private `ledger._validate_lumen_selection`만 호출하던 obsolete implementation test는 삭제했고, 현재 connection/ledger·HTTP consumer의 generation fence 회귀73개는 그대로 통과했다. DB gate의 OAuth4개 실패는 fixture가 예전 `list_projects` mock만 제공하고 실제 caller-token `/auth/projects` session 호출을 지원하지 않던 원인이었다. 기존 provider fixture 관례로 교체하고 불필요한 예전 mocks를 제거했다. 만료 clock은 helper 호출 횟수가 아니라 credential 생성 중에 전진시킨다. OAuth DB22개는 grant revocation·코드 미발급·home/child 암호문 및 credential ID 폐기·remote credential 정리와 refresh 권한 축소/프로젝트 범위 고정을 실제 MariaDB 상태로 검증한다. Gate가 거부한 included Python imports/format만 정상화했다.
+4. **DB 호환성 평가 범위**: Functional gate는 migration084를 축소 legacy fixture에 두 번 적용하여 singleton `current` 범위 보존과 자식 FK/cascade를 검증했다. 실제 OAuth/Lumen/추가 프로젝트 credential persistence도 disposable DB에서 실행했다. 운영 snapshot·실제 ledger/checksum·원본 키/companion state·old writer가 new 다중 프로젝트 row를 처리하는 방향·new writer가 old schema를 처리하는 방향·mixed API/worker·backup/restore/rollback은 미검증이다. 새 writer 적용 전 migration 선행과 복원 snapshot의 양방향 검증이 필요하며, additive SQL/빈 DB 성공만으로 운영 하위·상위 호환성을 승인하지 않는다. 같은 URL 선택은 직접 공유 접근이지 자동 복제/동기화가 아니다.
+5. **커밋/운영 경계**: 요청 시점에 확정한147개 경로의 snapshot을 제출한다. 검증 도중 별도로 추가된 진행 중 `network-ip-visibility` 변경은 작업 트리에 보존하며 이번 checkpoint와 gate 통과 범위에 섞지 않는다. `.env`·private TOML·`.local-services`·`.omp/mcp.json`·generated outputs/캐시는 commit에서 제외한다. 버전 bump·push·tag·배포·운영 IAM/DB 조회/쓰기·migration 및 기존 shared container/volume/key 변경은 수행하지 않았다. 임시 검증 project만 사용하며 제출 index의 architecture guard도 별도로 실행한다. Optional gbrain refresh는 CLI 부재로 실행하지 못했고 agent guidance는 변경하지 않았다.
+
+## Custom 역할 연결 경계 수정 검증 (2026-10-11)
+
+보고된 `project_reader → audit`은 관리자의 명시적 role inference 편집이다. 프리셋 이름 목록을 전체 허용 역할 목록으로 사용해 상위 `project_owner → audit`을 거부하던 원인과, 같은 그래프를 프로젝트 멤버 관리가 재차 거부하는 경로를 함께 수정했다. 일반 reader의 self-escalation을 허용하지 않으며 알려진 core/project/service 권한은 기존 ceiling으로 제한한다.
+
+1. **실패 전·통과 후 회귀**: 새 endpoint 회귀 두 개는 수정 전 각각 `409 Unsafe role implication requires review: project_owner -> audit`, 승인된 연결을 가정한 후속 프로젝트 관리의 `503 Project management role graph is unsafe`로 실패했다. 수정 후 exact10개 및 역할·멤버 파일 전체110개가 통과했다. 공유 source도 `/private/tmp` config-discovery 문맥에서 격리 interpreter로 동일110개를 통과하여 사용자 private 설정을 변경하지 않았다. Canonical `access` target은 backend285/frontend2files15개 통과.
+2. **실제 HTTP/native SDK smoke**: 격리 clone과 공유 source의 production router를 Uvicorn HTTP로 실행했다. 설치된 openstacksdk·python-keystoneclient가 loopback Keystone fixture에 실제209요청을 전송했다. 시스템 관리자 연결200 및 네 project ancestor의 실제 상속, custom edge를 보존하는 프리셋 재적용200, project-admin의 assignable 목록/멤버 reader 교체200와 `reader+audit`·native `member` 부재, custom 직접 위임422, 일반 reader 전역 편집403, custom alias의 core/member/managed-write 전이409, 연결 제거 후 fresh graph에서 audit 상속 제거와 프로젝트 관리 유지가 통과했다. 감사 lifecycle도 실행했다. Synthetic 인증/session·FakeRedis·identity provider를 사용한 boundary proof이며 운영 Keystone 인증·정책·역할 쓰기 acceptance가 아니다. 첫 smoke의 fixture `aclose` teardown 실패를 현재 설치된 `close`로 수정한 뒤 모든 cleanup을 포함해 exit0을 확인했다.
+3. **변경/운영 경계**: 기존 `identity_roles._validate_preset_catalog`와 `project_service._managed_roles` 및 기존 endpoint 회귀를 수정했다. Router/response schema·DB/ORM/SQL/manifest·native 정책·운영 인가 설정은 변경하지 않는다. Custom 역할은 프로젝트 API의 독립 위임 목록에 들어가지 않으며 `audit`이라는 이름만으로 native policy가 읽기 전용이라고 판정하지 않는다. 운영 Keystone 조회/변경·배포·기존 shared datastore 변경은 이 fix 검증에 포함하지 않는다. 공유 WIP의 별도 migration084 및 전체 동시 변경의 compatibility는 별도 판정이다.
+4. **통합 gate/architecture**: 서비스별 DB 선택과 이 역할 fix를 합친 1.30.12 기반 격리 dev snapshot에서 `npm run test:gate`가 exit0이었다. Orchestration175, Kolla27, CLI19통과/PowerShell36skip, backend4411, frontend334files/2569 및 runner9, contract174, disposable functional35/9deselected, Ruff check/format561files를 통과했다. Working와 임시 index의 staged architecture guard가 같은 `source_sha256=0bb847f540722c9904bab68466af4a42075fe05b1690db4b864a49163c330c77`/2532files를 검증했다. 두 실제 Git index와 공유 architecture review marker는 보존했다. 이 receipt는 공유 전체 WIP·migration084·운영 IAM/DB의 승인이 아니다.
+
+## Compose 서비스별 DB 선택 검증 (2026-10-11)
+
+`AFTERGLOW_DATABASE_URL`, `DROVER_DATABASE_URL`, `LUMEN_DATABASE_URL`, `WAYGATE_DATABASE_URL`, `PALIMPSEST_DATABASE_URL`을 각 서비스의 내부 `DATABASE_URL`로 전달한다. 기존 local-only 규칙을 명시적 목적지 선택으로 교체했으며 generic `DATABASE_URL`은 목적지를 고르지 않는다. Dev의 unset/empty는 local fallback, 최소/prod Afterglow는 nonempty prefixed 입력이 필수다.
+
+1. **실제 Compose와 private 준비 경로**: datastore matrix 67개가 14개 소비자의 `.env`·explicit env-file·shell 우선순위, 단일 서비스 선택, unset/empty 및 prod/base 필수 입력 경계를 통과했다. Runner 2개는 credential-safe 0600 private env-file 왕복과 원본 `.env` 제거 후 목적지 유지, 재준비 시 기존 secret 보존을 확인했다. Compose JSON의 `$` 재-escape를 decode하고 dotenv용으로 다시 escape하며 실제 subprocess에는 raw resolved 값을 전달한다. JavaScript replacement-string `$$`가 한 dollar를 의미하는 함정도 수정했다. 공유 작업 트리 `test:orchestration` 175개 통과.
+2. **실제 이미지/DB smoke**: canonical source Dockerfile의 backend·Notion·각 sibling API/worker 10개 image를 amd64/arm64로 빌드했다. 두 architecture × 명시적 외부-selected/empty-fallback × 14개 소비자에서 각 서비스 package의 실제 DB session factory를 초기화하고 `SELECT DATABASE()` 및 SQL write/read를 검증하여 56회 통과했다. 외부-selected는 같은 disposable network의 별도 synthetic schema이며 운영 DB가 아니다. Migration/bootstrap 소비자도 전달된 URL과 engine 동작을 확인했지만, 이 smoke가 실제 migration CLI 실행·API lifespan·운영 schema upgrade를 증명하는 것은 아니다.
+3. **전체 gate의 범위**: 1.30.12 기반 격리 dev clone에 이 변경만 통합하고 독립 project의 loopback ephemeral MariaDB/PostgreSQL/Redis를 제공하여 `npm run test:gate` 통과. Orchestration 175, Kolla contract 27, CLI install 19/36 PWSH skip, backend unit 4,401, frontend 334 files/2,569 tests 및 runner 9, consumer contract 174, disposable functional 35/9 deselected, Ruff check와 format 561 files. Architecture guard source digest는 `d32e88081e4349e2bf97917d8521593e811fc78d2ed20a89d032b0c77b1e4d04`(2,532 files)다. 공유 작업 트리의 다른 미완료 변경까지 전체 gate로 qualification했다고 주장하지 않는다.
+4. **실패와 수정**: 수정 전 runner의 두 credential 왕복은 실패했다. Mounted `/tmp` probe의 application import root 누락과 새 clone의 generated frontend tsconfig 누락도 확인하여 probe import 경로와 기존 `svelte-kit sync` 준비 절차를 바로잡은 뒤 위 smoke/gate가 통과했다. 이전 실패 실행은 성공 증거로 취급하지 않는다.
+5. **운영 호환성 경계**: 이 URL 선택 변경은 SQL/ORM/manifest를 변경하지 않는다. 공유 작업 트리의 별도 migration `084-mcp-project-delegation`은 이 변경의 qualification에 포함하지 않는다. 실제 배포 ledger/checksum·production snapshot·원본 암호화 키·mixed API/worker와 양방향 writer/schema·backup/restore·rollback 검증은 아직 제공되지 않았으므로 운영 데이터 호환성을 미검증으로 남긴다. 같은 URL은 직접 공유 접근이며 자동 복제/동기화가 아니다. 이 DB 변경의 검증에서 운영 DB 조회/쓰기·migration·배포와 기존 공유 port/volume/key 변경은 수행하지 않았다.
+
 ## dev 푸시 통합 검증 (2026-10-10)
 
 Checkpoint `20060ce6aab244a419a9582aa74f06517b133c36`와 fetched dev `9c55578585c2f8147ef06d57e1892cac80eb6093`를 독립 clone에서 통합하고 자격증명·외부 호출 없이 전체 qualification을 완료했다.
@@ -227,3 +256,26 @@ node ../scripts/ci/verify-vitest-shard.js --report /tmp/shard-1.json --shard 1/2
    - 인증/권한, owner check, IDOR guard, admin dependency(`require_admin`)를 건드린 경우 `auth` 또는 `access` 타깃을 반드시 포함합니다.
    - cloud-init 템플릿보간, shell 쿼팅, Pydantic validation 변경 시 관련 단위/기능 테스트를 함께 실행합니다.
 3. **커밋 전 확정 게이트**: 커밋 또는 푸시 전 반드시 `npm run test:gate` 명령을 실행하여 `test:all`과 `lint:backend` 통과를 확인합니다.
+
+
+---
+
+## 2026-10-10 인증·MCP 보안 패치 검증
+
+기준 dev SHA는 `c210f5018ba9928dee6b0def9ed0cd61c7813f5e`이며 최종 source SHA-256은 `1029b79c96c1effef9de9abe4760e8502a8aafbcdc7e1f48fcb9f158e6fdb7ff`이다. 원본과 digest가 같은 `/private/tmp` 격리 clone에서 private `afterglow.conf` 없이 Node 24.14.1·기존 lock/dependency로 `npm run test:gate`를 실행했고 exit 0이었다.
+
+| 최종 gate 계층 | 결과 |
+|---|---|
+| Backend unit | 4,458 passed |
+| Frontend Vitest | 334 files / 2,577 passed |
+| Backend contracts | 154 passed |
+| 실제 datastore functional | 43 passed / 9 deselected |
+| Backend Ruff check / format | 성공 / 565 files already formatted |
+| Frontend type check / production build | exit 0 / exit 0, 기존 접근성 warning 1건 |
+| Architecture working snapshot | 원본·검증 clone digest 일치, 성공 |
+
+기능테스트는 `docker-compose.dev.yml`의 일회용 test-profile MariaDB/PostgreSQL/Redis를 loopback 전용 포트에서 사용했다. 실제 Redis Lua 동시 회전은 한 요청만 성공하고 만료 후 반복 요청은 거부됐으며, stale owner release가 새 slot owner를 삭제하지 않음을 별도로 확인했다. 실제 MariaDB 회귀에는 OAuth refresh client binding, mutation poll/cleanup의 unknown 영속화, 새 key 중복 차단 및 동시 claim이 포함된다.
+
+MCP SDK/HTTP 경계와 browser runtime은 실제 loopback transport/Chromium을 사용하되 identity/cloud 응답은 synthetic이었다. 브라우저 확인에는 hydration, nonce 없는 inline script 차단, sessionStorage 자격 보관, 새 탭 독립 인증 및 cross-tab logout이 포함된다. 최종 queued logout 순서와 origin 누락/invalid mode는 실제 auth 모듈 및 backend selector로 독립 재검증했고 리뷰 승인을 받았다. 실제 Keystone/cloud 작업이나 운영 배포는 이 증거에 포함되지 않는다.
+
+중간 gate에서 test fixture·검증 설정 문제가 발견되어 수정했고, 전체 frontend 실행 중 카탈로그 scan 1건은 5초 timeout이었다. 동일 selector 4건과 최종 전체 gate는 통과했다. Documents의 검증 복사본에는 예상치 못한 중복 파일이 생겨 사용을 중단하고 새 `/private/tmp` clone의 동일 digest로 검증을 완료했다. 이전 실패 실행을 성공으로 취급하지 않는다.

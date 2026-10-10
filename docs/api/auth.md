@@ -392,7 +392,7 @@ Keystone가 token authentication에서 반환하는 `404 Failed to validate toke
 
 ## 개인 MCP 키와 공개 연결 확인
 
-사용자 화면은 `/dashboard/account`의 **외부 AI 접근**, 연결 안내는 공개 `/docs/mcp`다. MCP 개인 키는 브라우저 access JWT나 Lumen 추론 API 키와 다르다. 발급 사용자·프로젝트에 묶이며 `read` 또는 명시적으로 선택한 `manage`와 제한된 Keystone application credential을 사용한다. 평문 키는 발급 응답 한 번만 반환한다. 목록에는 prefix만 포함되고 서버는 해시를 저장한다. 기본 만료 30일·최대 90일은 운영자의 `mcp.default_grant_ttl_days`/`mcp.max_grant_ttl_days` 정책을 따른다.
+사용자 화면은 `/dashboard/account`의 **외부 AI 접근**, 연결 안내는 공개 `/docs/mcp`다. MCP 개인 키는 브라우저 access JWT나 Lumen 추론 API 키와 다르다. 발급 사용자·프로젝트에 묶이며 `read` 또는 명시적으로 선택한 `manage`와 제한된 Keystone application credential을 사용한다. 평문 키는 발급 응답 한 번만 반환하고 `Cache-Control: no-store`/`Pragma: no-cache`로 캐싱을 금지한다. 목록에는 prefix만 포함되고 서버는 해시를 저장한다. 기본 만료 30일·최대 90일은 운영자의 `mcp.default_grant_ttl_days`/`mcp.max_grant_ttl_days` 정책을 따른다.
 
 `GET /api/v1/auth/mcp-tokens`는 현재 로그인 사용자·프로젝트의 저장된 metadata만 반환합니다. `POST /api/v1/auth/mcp-tokens`는 `{name, access_level: "read"|"manage", expires_at?: ISO timestamp}`를 받고 `201`에서 한 번만 평문 `token`을 반환합니다. 무기한 키가 아닙니다. 서버는 발급 당시 user/project 및 역할 snapshot에 묶인 **restricted** Keystone application credential을 사용합니다. 만료 입력의 offset은 UTC로 정규화하고 upstream Keystone에 microsecond를 보존하는 `Z` timestamp를 전달합니다. 클라이언트는 만료를 비우거나 유효한 미래 ISO 시각을 보냅니다.
 
@@ -436,6 +436,12 @@ MCP의 cloud tool은 이 application credential의 원래 scope로 인증하며 
 
 정확한 `/oauth/mcp/authorize`는 공개 브라우저 동의 shell이며 protected console 전체를 공개하지 않습니다. 불투명 ticket은 URL에서 제거해 `sessionStorage`에만 보존하고 password/GitLab login·프로젝트 선택 뒤 같은 동의 화면으로 돌아옵니다. Ticket은 권한이나 access token이 아닙니다. 동의 조회·approve/deny는 현재 browser access bearer와 `X-Project-Id`가 있는 scoped session에서만 수행합니다. 승인은 해당 user/project의 restricted application credential과 grant를 만들며 클라이언트에는 opaque access/refresh token만 반환하고 upstream credential은 보내지 않습니다.
 
-Refresh의 optional `client_id`는 최초 authorization code의 client와 정확히 일치해야 합니다. 빈 값·다른 client·불명확한 persisted binding은 `invalid_grant`이며 token rotation이나 replay revocation을 일으키지 않습니다. `client_id` 생략은 허용하고 올바른 client의 consumed refresh 재사용은 기존 family/grant 폐기를 유지합니다. Binding은 consumed code row에 남으므로 code expiry·authorization ticket cleanup 뒤에도 유지됩니다. 계정의 OAuth 회수 또는 resource의 revoke endpoint는 기존 내구성 cleanup 경로로 grant/family와 downstream authority를 폐기합니다. Token·code·ticket·upstream secret은 문서·audit·QA receipt에 기록하지 않습니다.
+Refresh의 필수 `client_id`는 최초 authorization code의 client와 정확히 일치해야 합니다. 빈 값·다른 client·불명확한 persisted binding은 `invalid_grant`이며 token rotation이나 replay revocation을 일으키지 않습니다. `client_id` 생략도 거부하고 올바른 client의 consumed refresh 재사용은 기존 family/grant 폐기를 유지합니다. Binding은 consumed code row에 남으므로 code expiry·authorization ticket cleanup 뒤에도 유지됩니다. 계정의 OAuth 회수 또는 resource의 revoke endpoint는 기존 내구성 cleanup 경로로 grant/family와 downstream authority를 폐기합니다. Token·code·ticket·upstream secret은 문서·audit·QA receipt에 기록하지 않습니다.
 
 SDK 내부 cold schema-cache refresh의 `list_tools(None)`은 현재 principal에게 허용된 전체 schema를 반환합니다. 외부 `tools/list` 요청은 기존 page-size와 grant-bound cursor를 유지하고, SDK input/output validation과 모든 `tools/call`의 현재 principal 권한·strict arguments·mutation ledger를 그대로 적용합니다. Manage schema가 cache에 있어도 read grant가 mutation을 실행할 수 없습니다. 실제 tool 성공은 HTTP200뿐 아니라 `isError=false`와 typed 결과를 확인해야 하며, 위 연결 확인의 handshake·목록 성공으로 대신하지 않습니다. OAuth 세부 안전 계약은 [보안 가이드](../security.md#mcp-oauth와-개인-api-키)를 따릅니다.
+
+### 브라우저 세션 보안 패치 호환성
+
+Login 시 최초 started_at을 기록하며 refresh/project rescope가 이 시간을 변경하지 않습니다. 만료 후 반복 요청도 401이고, 동시 refresh/rescope는 Redis 원자적 소비로 하나만 성공합니다. GitLab login도 요청 origin/device를 기록하고, 출처가 없는 과거 세션은 strict/subnet에서 재로그인이 필요합니다. Logout 폐기 실패는 503이며 브라우저는 로컬 정리와 서버 폐기 확인을 구분합니다.
+
+JWT는 탭 sessionStorage에만 저장합니다. 구형 localStorage 자격은 제거하므로 적용 뒤 한 번 재로그인이 필요하고 새 탭은 독립 인증합니다. 탭 복제는 브라우저 정책에 따라 자격을 복사할 수 있습니다. CSP의 script nonce/hash 정책은 JavaScript-readable 자격을 HttpOnly로 바꾸는 것은 아닙니다.
