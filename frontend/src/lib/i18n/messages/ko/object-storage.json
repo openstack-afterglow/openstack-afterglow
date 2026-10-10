@@ -1,4 +1,5 @@
 {
+	"uploadModal.selectedFiles": "{count}개 파일 선택됨",
 	"uploadDock.seconds": "{seconds}초",
 	"uploadDock.minutesSeconds": "{minutes}분 {seconds}초",
 	"uploadDock.minutes": "{minutes}분",
@@ -20,7 +21,7 @@
 	"uploadDock.closeNamed": "{name} 업로드 결과 닫기",
 	"uploadDock.progressLabel": "{name} 업로드 진행률",
 	"uploadModal.selection": "업로드 파일 선택",
-	"uploadModal.selectedFileCount": "{count}개 파일 선택됨",
+
 	"uploadModal.title": "파일 업로드",
 	"uploadModal.inspection": "업로드한 파일은 형식·구조 검사와 SHA-256 무결성 검증을 거칩니다. 실행 파일과 활성 문서는 거부됩니다.",
 	"uploadModal.cancel": "취소",

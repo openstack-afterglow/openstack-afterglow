@@ -135,6 +135,30 @@ describe('public service documentation', () => {
 	});
 });
 
+describe('MCP OAuth consent shell', () => {
+	it('serves an unauthenticated ticket handoff without caching or referrer leakage', async () => {
+		const { handle } = await loadHandle();
+		const { load } = await import('./routes/oauth/mcp/authorize/+page.server');
+		const request = createRequest('http://frontend.example.com/oauth/mcp/authorize?ticket=' + 'a'.repeat(43));
+		const response = await handle({ event: request.event, resolve: async () => {
+			const headers = new Headers();
+			load({ setHeaders: (values) => Object.entries(values).forEach(([name, value]) => headers.set(name, value)) });
+			return new Response('consent shell', { headers });
+		} });
+		expect(response.status).toBe(200);
+		expect(response.headers.get('Location')).toBeNull();
+		expect(response.headers.get('Cache-Control')).toBe('no-store');
+		expect(response.headers.get('Referrer-Policy')).toBe('no-referrer');
+	});
+
+	it('does not make adjacent OAuth routes public', async () => {
+		const { handle } = await loadHandle();
+		const request = createRequest('http://frontend.example.com/oauth/mcp/authorize-other');
+		const response = await handle({ event: request.event, resolve: request.resolve });
+		expect(response.status).toBe(302);
+		expect(response.headers.get('Location')).toBe('/login');
+	});
+});
 describe('hooks.server mockup gating', () => {
 	it('redirects logged-out protected routes to /login when mockup mode is off', async () => {
 		const { handle } = await loadHandle();

@@ -103,6 +103,11 @@ async def probe_mcp_endpoint(endpoint: str, token: str) -> McpConnectionCheck:
     async def record_status(response: httpx.Response) -> None:
         statuses.append(response.status_code)
 
+    async def fail_on_incoming_exception(message: object) -> None:
+        if isinstance(message, Exception):
+            raise message
+        await anyio.lowlevel.checkpoint()
+
     client = httpx.AsyncClient(
         transport=_BoundedTransport(_network_transport(), _MAX_RESPONSE_BYTES),
         headers={"Authorization": f"Bearer {token}"},
@@ -120,6 +125,7 @@ async def probe_mcp_endpoint(endpoint: str, token: str) -> McpConnectionCheck:
                     read,
                     write,
                     read_timeout_seconds=timedelta(seconds=_DEADLINE_SECONDS),
+                    message_handler=fail_on_incoming_exception,
                     client_info=_CLIENT_INFO,
                 ) as session,
             ):

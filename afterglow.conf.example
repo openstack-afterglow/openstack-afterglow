@@ -7,6 +7,13 @@
 # GPU 디바이스 맵은 필요할 때만 `config.gpu.toml`로 분리할 수 있다.
 # 알파벳순으로 적용되어 뒤 파일이 앞을 이긴다. dict는 재귀 병합, 리스트는 덮어쓰기.
 
+[DEFAULT]
+# 애플리케이션 진단 로그만 DEBUG로 활성화합니다. 생략 시 false이며 DEBUG 환경변수가 우선합니다.
+# TOML boolean은 소문자 true/false만 허용합니다. True/False는 오류이며 자동 수정하지 않습니다.
+# [logging].log_level은 root/dependency 로그 제어로 유지됩니다. HTML traceback, wire dump,
+# 인증 우회 또는 시크릿 출력은 활성화하지 않습니다.
+debug = false
+
 [openstack]
 auth_url = "http://keystone.example.com:5000/v3"
 project_name = "admin"
@@ -247,9 +254,10 @@ zun_websocket_origin = "wss://zun-ws.example.com"
 
 [mcp]
 # Inbound consumer MCP control plane. Keep services.mcp=false until the Stage 2 publish gate passes.
-# 외부 MCP 클라이언트가 접속하는 정확한 Streamable HTTP resource URL. 비우면 public_api_base +
-# /api/v1/mcp 을 사용한다. 지정한 URL은 그대로 resource 가 되며, 도메인만 지정하면(예:
-# https://mcp.example.com) 전용 호스트의 루트(/)에서 제공한다. 루트 resource 는 웹/API 와 다른 호스트가 필요하다.
+# 외부 MCP 클라이언트가 접속하는 정확한 HTTPS Streamable HTTP resource URL.
+# 비우면 public_api_base + /api/v1/mcp. 명시 URL은 root·custom path를 그대로 사용한다.
+# 도메인만 지정하면 전용 호스트의 루트(/)에서 제공하며 웹/API와 다른 호스트가 필요하다.
+# DMSLAB shared-host 예: https://cloud.dmslab.re.kr/mcp
 public_url = ""
 # 로그인(로컬 또는 OIDC) 후 표시할 Afterglow OAuth 승인 페이지 URL. 비우면
 # frontend_base_url + /oauth/mcp/authorize 를 사용한다. 클라이언트의 redirect_uri는

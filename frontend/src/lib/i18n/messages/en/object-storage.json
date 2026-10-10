@@ -1,4 +1,5 @@
 {
+	"uploadModal.selectedFiles": "{count, plural, one {# file selected} other {# files selected}}",
 	"uploadDock.seconds": "{seconds, plural, one {# second} other {# seconds}}",
 	"uploadDock.minutesSeconds": "{minutes, plural, one {# minute} other {# minutes}} {seconds, plural, one {# second} other {# seconds}}",
 	"uploadDock.minutes": "{minutes, plural, one {# minute} other {# minutes}}",
@@ -20,7 +21,7 @@
 	"uploadDock.closeNamed": "Close upload result for {name}",
 	"uploadDock.progressLabel": "Upload progress for {name}",
 	"uploadModal.selection": "Select files for upload",
-	"uploadModal.selectedFileCount": "{count, plural, one {# file selected} other {# files selected}}",
+
 	"uploadModal.title": "Upload files",
 	"uploadModal.inspection": "Uploaded files undergo format and structure checks and SHA-256 integrity verification. Executables and active documents are rejected.",
 	"uploadModal.cancel": "Cancel",

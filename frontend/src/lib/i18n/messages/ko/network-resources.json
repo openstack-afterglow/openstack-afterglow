@@ -1,4 +1,5 @@
 {
+	"lb.state.loadingInfo": "로드밸런서 정보를 불러오는 중...",
 	"router.loading": "불러오는 중...",
 	"router.back": "← 대시보드",
 	"router.actions.delete": "삭제",
@@ -184,7 +185,7 @@
 	"lb.actions.adding": "추가 중…",
 	"lb.actions.remove": "제거",
 	"lb.actions.removing": "제거 중…",
-	"lb.detail.loading": "로드밸런서 정보를 불러오는 중...",
+
 	"lb.listeners.title": "리스너 ({count})",
 	"lb.listeners.empty": "리스너가 없습니다.",
 	"lb.form.optionalName": "이름 (선택)",

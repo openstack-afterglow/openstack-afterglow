@@ -40,7 +40,7 @@ git merge-base --is-ancestor origin/dev HEAD
 4. CI를 통과한 그 commit에 불변 tag를 붙인다. 기본은 patch(`1.21.0 → 1.21.1`), 명시적 version-up 요청은 minor, major는 명시적 major 요청일 때만 올린다. 필요한 metadata는 CI 전에 동기화하지만 tag는 CI 성공 뒤에 생성하며 기존 tag를 이동하지 않는다.
 5. tag-triggered workflow의 version image/package 발행과 `latest` 또는 게시된 `stable` alias가 해당 release의 revision/digest를 가리키는지 검증한다. 실제 발행 실패를 해결하며 `dev`/`nightly` 또는 untagged main 이미지를 정식 release 증거로 대체하지 않는다.
 6. 앞 단계와 복구 지점·auth/storage 선행 조건이 모두 충족된 뒤 실제 wireguard-server Kolla host에 SSH하여 다섯 서비스를 배포한다. 비밀·기존 datastore/volume·inventory·공유 인프라는 보존한다.
-7. 요청한 inventory의 표준 `kolla-ansible genconfig -i multimode` → `kolla-ansible pull -i multimode` → `kolla-ansible reconfigure -i multimode`를 실제 실행한다. inventory 이름이 없으면 기존 inventory를 덮어쓰거나 다른 이름을 쓴 성공으로 대체하지 않고, 동일 대상의 검증된 연결을 먼저 준비한다. 태그 없는 명령의 stock 서비스 영향도 범위·복구 지점에 포함한다.
+7. 표준 inventory는 `/etc/kolla/multinode`다. `/etc/kolla`에서 `kolla-ansible genconfig -i /etc/kolla/multinode` → `kolla-ansible pull -i /etc/kolla/multinode` → `kolla-ansible prechecks -i /etc/kolla/multinode` → `kolla-ansible reconfigure -i /etc/kolla/multinode`를 승인된 service tag로 실제 실행한다. 실행 전 native inventory parse와 해당 control/plugin 그룹의 실제 대상을 확인한다. `multimode` alias를 생성하거나 복구하지 않으며, 누락된 inventory의 fallback/no-host rc0를 배포 성공으로 대체하지 않는다. 기존 inventory 내용·대상과 과거 실행 기록은 보존한다. 태그 없는 명령의 stock 서비스 영향도 범위·복구 지점에 포함한다.
 8. 필요한 Afterglow·Lumen·Waygate·Drover·Palimpsest operator package만 정확한 release로 갱신한다. 기존 Kolla와 일반 Python 의존성은 보존하고, 기존 uv 정책·승인 범위 안에서 lock을 도구로 생성한다.
 9. `https://cloud.dmslab.re.kr`에서 현재 최신 release의 실제 실행 버전·readiness·인증 경계와 사용자 화면을 확인한다. 로컬/synthetic proof와 운영 proof를 분리하고 미검증·차단 조건은 명시한다.
 

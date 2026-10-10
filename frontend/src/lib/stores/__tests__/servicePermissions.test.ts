@@ -47,6 +47,7 @@ describe('API leaf service capabilities', () => {
 		mocks.get.mockRejectedValue(new Error('unavailable'));
 		stop = serviceCapabilities.subscribe(() => {}); await settle();
 		expect(get(projectPermissions).error).toBe('unavailable');
+		expect(get(projectPermissions).loading).toBe(false);
 		expect(get(serviceCapabilities)('palimpsest-keys_admin')).toBe(false);
 		expect(get(serviceCapabilities)('drover-clusters_admin')).toBe(false);
 		expect(get(serviceDenials)('drover-clusters_admin')).toBe(false);
@@ -62,5 +63,18 @@ describe('API leaf service capabilities', () => {
 		pending.resolve(permissions([])); await settle();
 		expect(get(serviceCapabilities)('lumen-audio_user')).toBe(false);
 		expect(get(serviceDenials)('lumen-audio_user')).toBe(true);
+	});
+	it('ignores the old project failure without settling a newer project request', async () => {
+		const old = Promise.withResolvers<ProjectPermissions>();
+		const current = Promise.withResolvers<ProjectPermissions>();
+		mocks.get.mockReturnValueOnce(old.promise).mockReturnValueOnce(current.promise);
+		stop = serviceCapabilities.subscribe(() => {});
+		auth.update(state => ({ ...state, projectId: 'b' }));
+		old.reject(new Error('old project denied')); await settle();
+		expect(get(projectPermissions)).toEqual({ permissions: null, loading: true, error: '' });
+		current.resolve(permissions(['lumen-chat_user'])); await settle();
+		expect(get(projectPermissions).loading).toBe(false);
+		expect(get(projectPermissions).error).toBe('');
+		expect(get(serviceCapabilities)('lumen-chat_user')).toBe(true);
 	});
 });

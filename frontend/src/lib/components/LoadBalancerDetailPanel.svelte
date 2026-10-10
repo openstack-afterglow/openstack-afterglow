@@ -45,7 +45,7 @@
 
   {#if s.loading}
     <div class="space-y-4" role="status" aria-busy="true">
-      <span class="sr-only">{t('lb.detail.loading')}</span>
+      <span class="sr-only">{t('lb.state.loadingInfo')}</span>
       {#each [1, 2, 3] as _}
         <div class="motion-skeleton h-16 rounded-lg" aria-hidden="true"></div>
       {/each}

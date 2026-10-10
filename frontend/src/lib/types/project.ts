@@ -25,6 +25,7 @@ export interface ProjectAccessMember {
 	roles: string[];
 	direct_role_ids: string[];
 	effective_role_ids: string[];
+	external_role_ids: string[];
 	source?: 'direct' | 'group' | 'mixed' | 'inherited';
 	group_name?: string;
 }
@@ -35,6 +36,8 @@ export interface AssignableProjectRole {
 	description?: string;
 	area: string | null;
 	grade: string | null;
+	implied_role_ids: string[];
+	inherited_role_ids: string[];
 }
 
 export interface AssignableProjectRoles {

@@ -639,6 +639,7 @@ async def refresh_tokens(
     resource: str | None,
     urls,
     scope: str | None,
+    client_id: str | None = None,
 ) -> TokenResult:
     require_exact_resource(resource, urls)
     token_hash = hash_oauth_value(refresh_token)
@@ -672,6 +673,14 @@ async def refresh_tokens(
         token = await session.scalar(
             select(McpOAuthToken).where(McpOAuthToken.token_hash == token_hash).with_for_update()
         )
+        if client_id is not None:
+            # The retained code binds the client for the grant's full lifetime,
+            # independently of its short exchange deadline or consent-ticket cleanup.
+            issuing_clients = (
+                await session.scalars(select(McpOAuthCode.client_id).where(McpOAuthCode.grant_id == grant.id).limit(2))
+            ).all()
+            if not client_id or len(issuing_clients) != 1 or issuing_clients[0] != client_id:
+                raise McpOAuthAuthorityError("refresh token is invalid")
         replay = (
             token is None
             or not hmac.compare_digest(token.token_hash, token_hash)

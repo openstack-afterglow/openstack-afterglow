@@ -1,4 +1,5 @@
 {
+	"lb.state.loadingInfo": "Loading load balancer information...",
 	"router.loading": "Loading...",
 	"router.back": "← Dashboard",
 	"router.actions.delete": "Delete",
@@ -184,7 +185,7 @@
 	"lb.actions.adding": "Adding…",
 	"lb.actions.remove": "Remove",
 	"lb.actions.removing": "Removing…",
-	"lb.detail.loading": "Loading load balancer information...",
+
 	"lb.listeners.title": "Listeners ({count})",
 	"lb.listeners.empty": "No listeners.",
 	"lb.form.optionalName": "Name (optional)",

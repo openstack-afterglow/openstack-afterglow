@@ -7,6 +7,7 @@ vi.mock('$lib/stores/auth', () => ({ auth: writable({ token: 'token', projectId:
 import ImageCard from '../ImageCard.svelte';
 import ImageEditModal from '../ImageEditModal.svelte';
 import ImageDistroFilter from '../ImageDistroFilter.svelte';
+import { t } from '$lib/i18n/ns/images-keys';
 
 const image = { id: 'image-a', name: 'ubuntu:latest', status: 'active', min_disk: 0, min_ram: 0 };
 beforeEach(() => vi.clearAllMocks());
@@ -29,7 +30,7 @@ describe('image catalog activity feedback', () => {
 		await view.rerender({ ...props, toggling: true });
 		expect(activation.disabled).toBe(true);
 		expect(card.getAttribute('aria-busy')).toBe('true');
-		expect(within(activation).getByRole('status')).toBeTruthy();
+		expect(within(activation).getByRole('status').textContent?.trim()).toBe(t('imageCard.toggling'));
 		expect(within(card).getAllByRole('status')).toHaveLength(1);
 		expect(within(card).getByText('active')).toBeTruthy();
 		expect(deletion.disabled).toBe(false);
@@ -42,6 +43,12 @@ describe('image catalog activity feedback', () => {
 		expect(within(card).queryByRole('status')).toBeNull();
 		expect(within(card).getByText('deactivated')).toBeTruthy();
 		expect(onToggleActivation).toHaveBeenCalledOnce();
+
+		await view.rerender(props);
+		expect(card.getAttribute('aria-busy')).not.toBe('true');
+		expect(activation.disabled).toBe(false);
+		expect(within(card).queryByRole('status')).toBeNull();
+		expect(within(card).getByText(image.status)).toBeTruthy();
 	});
 
 	it('shows edit-save feedback until the real metadata request resolves', async () => {
@@ -58,7 +65,7 @@ describe('image catalog activity feedback', () => {
 		await fireEvent.click(save);
 		expect(patch).toHaveBeenCalledExactlyOnceWith('/api/v1/images/image-a', { name: 'ubuntu:24.04' }, 'token', 'project-a');
 		expect(save.disabled).toBe(true);
-		expect(within(save).getByRole('status')).toBeTruthy();
+		expect(within(save).getByRole('status').textContent?.trim()).toBeTruthy();
 		expect(onSaved).not.toHaveBeenCalled();
 		expect(onClose).not.toHaveBeenCalled();
 		const updated = { ...image, name: 'ubuntu:24.04' };

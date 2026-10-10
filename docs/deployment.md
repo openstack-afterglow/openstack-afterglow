@@ -89,6 +89,70 @@ default_network_id = "your-network-uuid"
 
 기본 Compose backend는 `.env`를 선택적으로 읽지만 frontend에는 backend 시크릿을 주입하지 않습니다. Dev runner는 별도의 private random key를 생성·보존하며 insecure 기본 키 허용에 의존하지 않습니다. `.env.example`의 dev-only allow 플래그를 운영에 사용하지 마세요. Prod manifest는 이를 `0`으로 고정하고 실제 운영 키를 요구합니다.
 
+### 애플리케이션 진단 로그 (`DEFAULT.debug`)
+
+```toml
+[DEFAULT]
+debug = false # 애플리케이션 DEBUG 진단을 켜려면 true
+
+[logging]
+log_level = "INFO" # root/dependency 기본 로그 수준; debug와 별도
+```
+
+`[DEFAULT]`와 `debug`는 대소문자를 구분합니다. TOML boolean은 따옴표 없는 소문자
+`true` / `false`만 사용합니다. `debug = True` 또는 `False`는 유효한 TOML이 아니며,
+설정 로더·생성기는 오류를 내고 소문자로 자동 수정하지 않습니다. 섹션이나 키가 없는
+기존 설정도 그대로 사용할 수 있으며 기본값은 `false`입니다.
+
+실제 backend 프로세스에 주입된 `DEBUG` 환경변수(예: `DEBUG=true` 또는 `DEBUG=false`)가
+병합된 TOML보다 우선합니다. 따라서 `DEBUG=false`는 TOML의 `debug = true`도 끕니다.
+호스트 shell에 변수를 설정하는 것만으로 컨테이너에 전달되지는 않습니다. 기본/dev Compose
+backend는 `.env`를 읽지만 prod/Kolla/Kubernetes에서는 명시적으로 backend 환경에 주입해야
+합니다. manifest에는 TOML을 가리는 기본 `DEBUG=false` 환경변수를 추가하지 않습니다.
+
+`debug = true`는 `app` namespace의 애플리케이션 로그만 DEBUG로 활성화합니다.
+`[logging].log_level`(또는 `LOG_LEVEL`)은 root/dependency 기본 수준을 계속 제어합니다.
+OpenStack/HTTP/SDK/SQL 및 `uvicorn.access`의 보호된 logger는 WARNING 제한을 유지합니다.
+출력 handler도 이 제한을 적용하므로 하위 logger가 명시적으로 DEBUG를 설정해도
+전파된 낮은 수준의 wire/access record를 출력하지 않습니다.
+DEBUG는 HTML traceback이나 HTTP wire dump, 인증·인가 우회, insecure 모드 또는 시크릿
+출력을 허용하는 스위치가 아닙니다. 진단은 method·등록된 route template·status·duration·
+outcome과 module/function/line 같은 제한된 메타데이터이며 실제 URL path 값, query,
+header, body, cookie를 기록하지 않습니다. 예외는 type과 제한된 function/line만 기록하며
+예외 문자열·소스 줄·locals·chained cause는 제외합니다. 민감 key와 인식된 credential 패턴은
+값 전체를 `***`로 마스킹합니다. 텍스트의 민감 assignment(`key`, `cephx_key`,
+`kube_config`, API key/authorization 변형, headers/body 포함)는 뒤의 나머지 텍스트도
+마스킹합니다. 공백·중첩 JSON·이스케이프 따옴표·여러 줄 값의 경계는 신뢰할 수 없으므로
+안전한 구조는 문자열 덤프가 아닌 제한된 extra 메타데이터에 둡니다. 호출자는 정적 event
+메시지와 코드가 소유한 제한된 메타데이터만 기록해야 합니다. 문자열 패턴 마스킹은
+defense-in-depth이며 모든 임의의 사용자 텍스트·객체·설정 덤프를 안전하게 만드는 보장이
+아닙니다. opaque 비문자열 메시지, dict/extra key와 builtin subclass는 객체의 문자열
+표현을 호출하지 않고 제외합니다. 중첩 한도를 넘는 extra 값은 마스킹되지만, 이것을
+request/response 전체 덤프의 허가로 해석하지 않습니다.
+
+생성/배포 경로:
+
+- `generate_k8s.py`: 병합된 `[DEFAULT].debug`를 ConfigMap의 `afterglow.conf`에
+  소문자 TOML boolean으로 렌더링합니다. 생략 시 `false`를 제공합니다.
+- `config2helm.py`: `[DEFAULT].debug`를 최상위 Helm `debug` boolean으로 변환합니다.
+  차트 `values.yaml`의 기본값은 `false`이고 ConfigMap에 `[DEFAULT]`로 렌더링합니다.
+  이전 values 파일에 키가 없어도 호환됩니다. 변환한 `logging.logLevel`, `logDirectory`,
+  `maxBytes`도 ConfigMap의 `[logging]`에 렌더링되므로 DEBUG와 별개인 root 수준·파일 경로·
+  회전 크기를 유지합니다. 생략 시 backend 기본값(`INFO`, `logs`, 52428800)을 사용합니다.
+  Helm upgrade/ArgoCD 도구는 values를 전달하므로 별도 변환이 필요 없습니다.
+- `setup.py`: Compose용 TOML과 setup K8s ConfigMap 모두 같은 renderer로
+  `[DEFAULT].debug`를 보존하고, wizard의 미지정 값은 `false`입니다.
+- Kolla: base에 `debug = false`를 제공합니다. private backend operator TOML에서
+  `[DEFAULT]\ndebug = true`를 지정할 수 있습니다. sanitizer는 값을 보존하며 final
+  Kolla overlay는 debug를 덮어쓰지 않습니다. public frontend projection에는 포함하지 않습니다.
+- Compose manifest와 `scripts/local-services.mjs`는 TOML을 재직렬화하지 않고 mount/복사하므로
+  변경하지 않습니다. Dev의 기존 `.local-services/afterglow.conf` snapshot은 원본 수정으로
+  덮어쓰지 않으므로 실제 snapshot을 수정해야 합니다. 환경별 override에는 강제 debug 값을
+  넣지 않습니다. 정적 `deploy/k8s-template/configmap.yaml`에도 기본 `false`를 제공합니다.
+
+변경 후 해당 설정을 사용하는 프로세스를 재시작/재생성해야 합니다. 환경변수로 TOML 오류를
+덮어 정상 설정처럼 취급하거나, 생성된 private 설정/로그를 시크릿과 함께 공개하지 않습니다.
+
 ### 1-b. 설정 오버라이드 (선택)
 
 긴 옵션 섹션(GPU 디바이스 맵 등)은 별도 오버라이드 파일로 분리할 수 있습니다.  
@@ -666,7 +730,9 @@ data:
 
 비밀 값은 ConfigMap에 넣지 않습니다. `OS_PASSWORD`, `SECRET_KEY`, `GITLAB_OIDC_CLIENT_SECRET`, `K3S_KUBECONFIG_ENCRYPTION_KEY`, `DATABASE_URL`, `PROMETHEUS_PASSWORD`, `BUILDER_SSH_PRIVATE_KEY`는 `afterglow-secrets`에서 환경변수 또는 Secret volume으로 주입됩니다.
 
-`generate_k8s.py --config ./afterglow.conf --output-dir deploy/k8s-template`는 `configmap.yaml`, `secret.yaml`, `grafana-deployment.yaml`을 생성합니다. `[app].secret_key`가 빈 값, `change-me-in-production`, 32자 미만이면 `secret.yaml` 생성을 실패시켜 Kubernetes production guard와 맞춥니다.
+`generate_k8s.py --config ./afterglow.conf --output-dir deploy/k8s-template`는 `configmap.yaml`, `secret.yaml`, `grafana-deployment.yaml`, `ingress.yaml`을 생성합니다. `[app].secret_key`가 빈 값, `change-me-in-production`, 32자 미만이면 `secret.yaml` 생성을 실패시켜 Kubernetes production guard와 맞춥니다.
+
+공개 개인 MCP에는 `[services] mcp = true`와 `[mcp] public_url = "https://cloud.dmslab.re.kr/mcp"`를 설정합니다. Web/API origin과 resource를 함께 읽어 생성한 `ingress.yaml`을 static base/overlay 적용 **뒤 마지막으로** 적용합니다. MCP를 켜면 main web/API Ingress와 priority1000의 별도 MCP Ingress 두 문서가 포함되며, Exact `/mcp`·Prefix `/mcp/`·Prefix `/.well-known/`만 backend로 갑니다. `/mcpevil`·`/mcp-other`·frontend consent는 기존 frontend에 남습니다. Explicit root resource는 dedicated host에만 허용하고 shared web/API host root는 생성 전에 실패합니다. Main Ingress의 TLS hosts에는 MCP host가 포함되며 Secret과 credential은 출력물을 커밋하지 않습니다. Helm의 `services.mcp`·`mcp.publicUrl`도 같은 경계입니다.
 
 ### Ingress 도메인 설정
 

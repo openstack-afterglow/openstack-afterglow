@@ -142,8 +142,7 @@
 		</header>
 
 		<div class="body">
-			<LumenPermissionNotice leaf="lumen-agents_editor" />
-			<LumenPermissionNotice leaf="lumen-resources_admin" />
+			<LumenPermissionNotice leaves={['lumen-agents_editor', 'lumen-resources_admin']} />
 			{#if mode === 'form'}
 				<AgentBuilderForm
 					bind:form

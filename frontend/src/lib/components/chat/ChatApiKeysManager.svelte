@@ -16,7 +16,6 @@
 	import type { ChatUsage } from '$lib/api/chatTree';
 	import { dialogFocus } from '$lib/utils/dialogFocus';
 	import { t } from '$lib/i18n/ns/chat-settings';
-	import { t as commonT } from '$lib/i18n/ns/common';
 	import RichText from '$lib/i18n/RichText.svelte';
 	import { intlLocale } from '$lib/i18n/runtime.svelte';
 
@@ -388,8 +387,7 @@ claude` : '');
 </script>
 
 <section>
-	<LumenPermissionNotice leaf="lumen-keys_editor" />
-	<LumenPermissionNotice leaf="lumen-resources_admin" />
+	<LumenPermissionNotice leaves={['lumen-keys_editor', 'lumen-resources_admin']} />
 	<h3 class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">{t('apiKeys.title')}</h3>
 	<p class="mb-2 text-xs text-[var(--color-ink-3)]">
 		{t('apiKeys.description')}
@@ -414,8 +412,8 @@ claude` : '');
 	</div>
 
 	{#if loading}
-		<div class="motion-skeleton rounded-lg border border-line h-16" role="status" aria-label={commonT('state.loadingNamed', { name: t('apiKeys.title') })}>
-			<span class="sr-only">{commonT('state.loadingNamed', { name: t('apiKeys.title') })}</span>
+		<div class="motion-skeleton rounded-lg border border-line h-16" role="status" aria-label={t('apiKeys.loading')}>
+			<span class="sr-only">{t('apiKeys.loading')}</span>
 		</div>
 	{:else if keys.length === 0}
 		<p class="px-1 text-sm text-[var(--color-ink-3)]">{t('apiKeys.empty')}</p>

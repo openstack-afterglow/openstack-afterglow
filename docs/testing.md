@@ -6,6 +6,31 @@ nav_order: 8
 
 # 국소 기능테스트 가이드
 
+## dev 푸시 통합 검증 (2026-10-10)
+
+Checkpoint `20060ce6aab244a419a9582aa74f06517b133c36`와 fetched dev `9c55578585c2f8147ef06d57e1892cac80eb6093`를 독립 clone에서 통합하고 자격증명·외부 호출 없이 전체 qualification을 완료했다.
+
+1. **정적 검토 및 게이트**: 독립 백엔드·프론트엔드 검토에서 차단 이슈 없음. Ruff로 감지된 4개 빈 줄 경계를 제외한 불필요 변경 0. 전체 `npm run test:gate` 통과(orchestration 111, Kolla contract 27, CLI install 19 / 36 PWSH skipped, backend unit 4,401, frontend 334 files / 2,569 tests + runner 9, contract 154, disposable functional 35, Ruff 560 files). Frontend `check` 통과(2,340 files / 0 errors / 1 existing DocCodeBlock tabIndex warning), `i18n:check` 0 errors / 0 warnings(37 namespaces / 9,440 messages), `i18n:scan` 0 lines(988 files), SvelteKit production build 통과.
+2. **실제 브라우저 스모크**: 독립 loopback HTTP API/웹 서버와 headless Chromium에서 만료 세션의 `/docs/mcp` 로딩 시 공지 polling이나 로그인 redirect 없이 정상 렌더링 유지 확인, `/dashboard` 접근 시 `/login`으로 안전한 redirect 확인.
+3. **경계 및 비포함**: 사용자가 확인한 MCP 정상 연결을 보존하며 추가 OAuth 수정·미지정 MCP 기능·버전 변경·태그·운영 배포는 포함하지 않는다. 과거 native/production receipt는 해당 시점의 기록으로만 유효하다.
+
+## 1.30.10 권한 피드백·역할 검색·안전한 debug 검증 (2026-10-10)
+
+Published1.30.9 `f48d6fe2` 기반의 격리 `dev`에서 승인된 source만 통합했다. 공유 checkout/merge conflicts·별도 IAM/migration 작업은 수정하지 않았다. 자체 frontend dependencies/backend venv의 final source digest `27a5d0e545bd8f2925694071819d2e414ab7e0ac65a7685513bebef7aecc4881`에 대해 `npm run test:gate`가 통과했다: backend unit4,284, frontend333files/2,523+runner9, consumer contract154, 실제 disposable datastore functional35, Ruff check 및 format557files. Type/locale/build는 별도 qualification이며 기존 deprecation warning을 성공 증거로 숨기지 않는다.
+
+Exact dual-output log/config/Helm regressions는 실제 settings loader와 generated YAML/TOML·Helm consumer를 사용한다. Explicit DEBUG descendant의 SDK/HTTP/SQL/access clamp와 unrelated logger 경계, opaque keys/builtin subclasses, nested/escaped/multiline secret assignment, bounded exception frames를 실제 stream/file JSON에서 검사한다. SQLAlchemy ancestor의 incidental 기본 level에 의존하던 fixture는 unrelated logger를 명시적으로 DEBUG로 설정해 경계를 격리했다. Failed-shape cache 테스트는 cache/availability/단문 record 계약을 유지하고 credential-safe filtering과 충돌하는 upstream exception wording assertion만 삭제했다.
+
+Canonical local Compose의 backend/frontend/Lumen API/worker만 own source로 build·`--no-deps --no-build --pull never --wait` 재적용했다. 19개 container baseline과 비교해 나머지15개 ID/image/start·모든 mounts/volumes·credential environment를 보존했고 유일한 environment 변화는 승인한 backend `DEBUG=true`다. 실제 running API의 main/config/log·Lumen auth bytes가 해당 source SHA와 같으며 versions1.30.10/0.6.7이다. 실제 image process에서 stream/file 두 경로의 source·exception 구조, sentinel secret 부재, wire WARNING-only와 `FastAPI.debug=false`를 확인했다. Private/runtime 값은 receipt에 기록하지 않는다.
+
+실제 유지된 local Keystone browser session에서 identity·chat conversations·chat/admin providers는200이고 dashboard Drover stats는200/available=true였다. 현재 server role-ID catalog를 쓰는 실제 멤버 modal에서 Lumen admin 선택 시15 descendants checked/disabled, parent 제거 시 재계산, case-insensitive name 검색과 accessible no-results, cancel-only/no grant mutation을 확인했다. 390/767/768/1023/1024/1440px에서 modal containment·page overflow0과 light/dark screenshots를 확인했다. Fixture의 transitive/shared parents·explicit direct child·external inheritance·busy/nonowner·hidden selection/save boundaries는 exact behavioral tests로 분리한다. 이는 새 운영 rollout이나 유료 provider 실행 증거가 아니다.
+
+Native headless Chromium은 실제 유지된 local identity와 compiled1.30.10 frontend에서 provider GET만403 합성 응답으로 바꿨다. 실제 조회실패403 feedback을 렌더링하고 같은 token·platform-admin flag·`/admin/chat`을 유지했다. 실제 Keystone/backend와 UI response fixture의 경계를 구분하며 provider mutation은 없다. Access-only 복제의 만료/refresh-cookie 부재401은 service403과 분리하고 통과 증거로 세지 않았다. 허용 localhost/127.0.0.1 origin의 OPTIONS200과 미허용 origin403/no allow-origin은 별도 CORS proof이며 allowlist를 완화하지 않았다. Native role modal은 선택한 explicit leaf를 WAYGATE 검색으로 숨긴 뒤 LUMEN 검색에 다시 선택된 상태로 복원하고 취소했다.
+
+Native-authority security review는 실제 source에 대해 no findings로 완료했다. 두 general reviewer job은 실행 실패하여 완료 review로 세지 않으며 parent가 scoped inline review를 수행했다. Optional gbrain sync는 CLI/config 부재로 차단되어 context guidance를 변경하지 않았다.
+
+Production1.30.9 MCP는 별도 실제 SDK1.28.1/TLS/no-redirect consumer로 personal read key와 browser OAuth 모두 cold capabilities/overview·28 tools·schema-validated Nova/Cinder list를 통과했다. Wrong-client refresh400 후 기존 bearer200, 정상 rotation200/new bearer200, consumed refresh replay400 후 old/new bearer401과 verification OAuth grant revoked를 확인했다. 기존 personal keys5개는 유지했다. Native OMP current-session mounting은 project registration만 완료했고 `/mcp reload`가 아직 필요하므로 이 SDK proof를 OMP-mounted invocation이라고 기록하지 않는다. Final1.30.10/0.6.7 immutable publication·canonical multinode production receipt는 OpenSpec release checklist에서 별도로 확정한다.
+
+
 ## 원칙 및 4계층 테스트 계약
 
 Afterglow 테스트 체계는 4개의 명확한 레이어 계약으로 구성됩니다.
@@ -67,6 +92,17 @@ Waygate는 현재 API/worker startup에서도 VM-reachable callback 설정을 �
 `npm run test:gate`는 **전체 통과하지 않았다**. 공유 Git index의 미해결 merge로 architecture gate가 차단됐고, 별도 전체 frontend 실행에는 기존 motion/번역/scanner 테스트 실패, JS 실행에는 Kolla globals mode0600 대0640 실패가 남았다. Backend 전체 lint의 남은 실패는 범위 밖 `tests/test_vm_github_ssh_history.py`의 I001 import 정렬이며, 최종 변경한 fixture10개는 Ruff check/format을 통과했다. 관련 scope의 smoke·unit·contract 통과를 전역 release gate 통과로 바꾸어 보고하지 않는다. 공유 index와 다른 작업의 실패 source는 변경하지 않는다. Root architecture는 HEAD와 명시한 현재 role consumer120파일만 합친 임시 index에서 stamp/check를 통과했다(`source_sha256=007ac694f6decbf6e9b45650044d762eba12552280622dbce2ea28d53c21a0c9`, indexed source2410개). 전체 working tree/실제 index 통과가 아니며, 실제 index SHA-256 `571bd4768270ff93ef4606e9b8c3d46631139097ebe79e994d510d72126bffeb`와 공유 working review block을 보존했다. Gbrain 동기화는 로컬 CLI가 없어 실행하지 못했다.
 
 
+### Image Studio 권한 상태 표시 복구 (2026-10-08, local-only)
+
+1.30.4의 grant-dependent 실제 Chromium 기록(`evidence/afterglow-grant-ui.json`)은 거부된 `lumen-images_user`가 model fetch를 막는데 composer가 영구 model/options loading으로 표시되는 결함을 확인했다. 1.30.5는 기존 `imagesAllowed`로 해당 status만 감싸며 `LumenPermissionNotice`의 권한 pending/error/required leaf 상태를 재사용한다. 모델 조회, independent asset leaf와 응답 공개·draft/media 보존/회수 동작은 변경하지 않는다.
+
+재빌드한 SvelteKit production frontend·실제 headless Chromium·loopback HTTP fixture에서 **31조건**을 실행했다: 거부와 allowed-ready 각각 light/dark × 390/767/768/1023/1024/1440px(24조건), permission pending/error, 실제 model loading/error/empty, capability error 및 image-allowed/assets-denied(7조건). 거부 상태에는 모델 요청0·잘못된 model status0, 모든 조건의 페이지 overflow0이다. 실제 권한이 부여되면 모델·capability 조회와 ready status 및 prompt 입력 후 enabled submit을 관측했다. Submit/provider 호출은 실행하지 않았다. Error smoke 중 잘못된 HTTP 오류 문구 wait 두 건은 실제 generic model error/permission detail 렌더링으로 수정한 fixture 관측이며 source 실패를 숨기지 않는다.
+
+Served node `/_app/immutable/nodes/72.DpAv0mZL.js`와 build SHA-256은 모두 `7f83799d6430717bf013b339acd9073955e8698270293ced986d8fe277bebf03`; exercised source SHA-256은 `bea2ded4fd648d68f754f1cef7502be6958f9451be9ce3e94cf0cc5e77a04501`이다. Runtime JS 오류/console error0, 예상한503 세 경계 외 API 실패0·mutation0이며 외부 Google Fonts 요청11건 차단을 별도로 남긴다. Receipt·31 PNG는 `/tmp/afterglow-ecosystem-release-20261007.FDut9J/evidence/image-status-1305/`에 보존했다. 합성 identity·service 응답의 UI/API-contract proof이며 실제 인증/인가·유료 provider·published image·운영 cutover acceptance로 대체하지 않는다.
+
+동일 source의 `npm run test:gate`는 backend unit4,126·frontend331files/2,459와 runner9·consumercontract154·disposable MariaDB/PostgreSQL/Redis functional28·Ruff/check 및550files format을 통과했다. Architecture working digest `1165bf7e20771520ccd643da7df7eb3ed8b503891449ffc583315c13c1b8b03f`와 version1.30.5 일치를 확인했다. Svelte check2,333files/0errors·기존 DocCodeBlock tabindex warning1, production build 통과이며 Windows/paid provider/live cloud는 실행하지 않았다. 사후 문서/완료 checklist는 runtime source를 변경하지 않는다.
+
+불변 `v1.30.5` source3941490d의 dev Docker37746138117·tag Docker37746747991·Helm37746747697가 성공한 뒤 **발행 frontend 자체**를 digest `sha256:58d5361d6a6caf56c8d81d6cb5b5860aa03531d57f8bfe5040358dedab8c648a`로 실행했다. 재빌드 source proof와 별도의 실제 Chromium31조건(같은 light/dark6폭·거부/ready와7상태)을 통과했다. 거부modelHTTP0·overflow0·runtimeJSerror0·mutation0이며 public served node `72.DQVyHosE.js`는SHA256 `5ca75c92a1558c308432e3283a22207567df84d321e5ed51f45b895e3121d64e`다. Receipt·31 PNG는 `/tmp/afterglow-ecosystem-release-20261007.FDut9J/evidence/image-status-1305-published/`, OCI/runtime 증거는 `evidence/afterglow-1305-publication.json`이다. Native arm64 호스트의 Docker Desktop에서 declared amd64 frontend를 실행했으며 identity/API는 합성이다; 실제 Keystone/provider/production proof가 아니다. API·worker amd64와 Cloud Shell amd64/arm64는1.30.5·uid1000으로 실행됐다. API HTTP smoke는disposable MariaDB/Redis의health200·권한/역할3경계401까지 관측했다. 기존 harness의 nonexistent internal path→404/잘못된401 기대는 initial receipt에 남기고 machine endpoint 검증으로 세지 않았다. Owned browser/frontend/API-fixture·disposable API/DB/cache와 scratch는 모두 정리했고 공유 stack·운영 상태는 바꾸지 않았다.
 ### 실패 소유권 (Failure Ownership)
 
 - **단위 / 계약 / 국소 기능 테스트**: 실패 시 작성자/개발자 소유의 확정 게이트 실패(deterministic gate failure)입니다. 원인을 반드시 수정해야 합니다.

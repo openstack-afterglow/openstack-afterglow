@@ -1,4 +1,5 @@
 {
+	"card.noStatus": "ステータスなし",
 	"topology.lane": "レーン",
 	"topology.canvas": "キャンバス",
 	"topology.createNetworkFailed": "ネットワークの作成に失敗しました",

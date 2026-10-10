@@ -1,4 +1,5 @@
 {
+	"uploadModal.selectedFiles": "已选择 {count} 个文件",
 	"uploadDock.seconds": "{seconds} 秒",
 	"uploadDock.minutesSeconds": "{minutes} 分 {seconds} 秒",
 	"uploadDock.minutes": "{minutes} 分",
@@ -20,7 +21,7 @@
 	"uploadDock.closeNamed": "关闭 {name} 的上传结果",
 	"uploadDock.progressLabel": "{name} 的上传进度",
 	"uploadModal.selection": "选择要上传的文件",
-	"uploadModal.selectedFileCount": "已选择 {count} 个文件",
+
 	"uploadModal.title": "上传文件",
 	"uploadModal.inspection": "上传的文件将经过格式、结构检查和 SHA-256 完整性验证。可执行文件和活动文档将被拒绝。",
 	"uploadModal.cancel": "取消",

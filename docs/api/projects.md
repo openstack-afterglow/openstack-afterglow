@@ -34,6 +34,7 @@ Waygate의 `waygate-inventory_reader`는 비밀 없는 metadata, `waygate-connec
 다른 서비스의 독립 leaf·credential 경계는 [Lumen](chat.md#lumen-서비스-세부-권한), [Drover](k3s.md#drover-서비스-권한과-자격-등급), [Palimpsest](../palimpsest.md#프로젝트-package-서비스-등급)를 따릅니다. Runtime은 실제 현재 graph만 읽으므로 부모를 유지한 채 leaf edge를 제거해도 해당 권한이 회수됩니다.
 
 
+
 ### 초대 흐름
 
 ```
@@ -85,7 +86,7 @@ Waygate의 `waygate-inventory_reader`는 비밀 없는 metadata, `waygate-connec
 
 현재 활성 프로젝트의 `is_owner`, `is_manager`, `service_permissions`와 OpenStack 읽기·쓰기 권한을 조회합니다. UI는 현재 `service_permissions`의 정확한 세부 권한을 사용하며 `can_write`로 서비스 권한을 추측하지 않습니다. 확인 중·장애·프로젝트 전환 중에는 액션을 비활성화합니다.
 
-일반 사용자 응답의 `roles`는 표시용입니다. 시스템 전용·분류 불가 역할 이름은 숨깁니다. 서버 서비스 authorization은 이 표시용 배열이나 JWT의 과거 부모 역할이 아니라 현재 검증한 전역 역할 ID·유효 할당·DAG를 사용합니다. `is_manager`는 현재 프로젝트 owner/admin에 해당하며 DB manager를 의미하지 않습니다.
+일반 사용자 응답의 `roles`는 표시용입니다. 시스템 전용 `admin`·`manager` 및 이들을 상속하는 사용자 정의 역할 이름을 숨기며, 분류할 수 없는 사용자 정의 이름도 노출하지 않습니다. 원래 검증된 역할로 계산한 `can_write`를 전달하므로 이름이 숨겨져도 기존 프로젝트 쓰기 권한은 사라지지 않습니다. Login·refresh·프로젝트 전환 응답과 `/auth/me`도 같은 `roles`/`can_write` 계약을 사용합니다. 서버 서비스 authorization은 이 표시용 배열이나 JWT의 과거 부모 역할이 아니라 현재 검증한 전역 역할 ID·유효 할당·DAG와 프로젝트 소유권을 사용합니다. `is_manager`는 현재 프로젝트 owner/admin에 해당하며 DB manager를 의미하지 않습니다.
 
 ### 응답 (200 OK)
 
@@ -170,6 +171,7 @@ Waygate의 `waygate-inventory_reader`는 비밀 없는 metadata, `waygate-connec
       "roles": ["project_admin", "project_member", "member", "project_reader", "reader"],
       "direct_role_ids": ["project-admin-role-id"],
       "effective_role_ids": ["project-admin-role-id", "project-member-role-id", "native-member-role-id", "project-reader-role-id", "native-reader-role-id"],
+      "external_role_ids": [],
       "source": "direct"
     },
     {
@@ -190,6 +192,7 @@ Waygate의 `waygate-inventory_reader`는 비밀 없는 metadata, `waygate-connec
 | `is_owner`, `is_manager` | 현재 유효 `project_owner`, owner/admin 여부 |
 | `roles`, `effective_role_ids` | 현재 유효 이름·ID; 직접 할당과 구분 |
 | `direct_role_ids` | 사용자의 직접 프로젝트 할당 ID |
+| `external_role_ids` | 그룹·도메인 상속 할당만 현재 ID 그래프로 확장한 역할 ID; 직접 부모를 제거해도 남는 외부 상속을 별도로 표시 |
 | `group_name` | 그룹 경유 할당의 그룹 표시명 |
 
 ### 오류 응답
@@ -295,8 +298,11 @@ Waygate의 `waygate-inventory_reader`는 비밀 없는 metadata, `waygate-connec
 
 `PUT /projects/{project_id}/members/{user_id}/roles`는 `assignable-roles`가 반환한 정확한 ID 목록을 받습니다. 관리자에게 허용되지 않는 소유자/관리자 전환, 시스템 전용 역할, native `admin`·`manager`로 이어지는 역할은 거부합니다. 기존 편집 불가 직접 역할과 그룹·도메인 상속은 유지합니다. `DELETE /members/{user_id}`도 같은 정책으로 관리 가능한 직접 역할만 제거하며 마지막 유효 소유자를 제거하지 않습니다.
 
-기존 `/managers/{user_id}` 승격·해제 경로는 제거했습니다. DB manager 행은 조회 권한이 아닙니다. 시스템 관리자의 `POST /projects/{project_id}/members/migrate-legacy-managers`만 명시한 소유자와 기존 대상자를 안전한 역할 계층으로 이전하고 DB 기록을 정리합니다. 호출 전에 현재 역할 카탈로그·할당을 검토하고, 실패 시 결과를 확인한 뒤 재실행합니다. 이 변경은 운영 데이터나 역할을 자동 수정하지 않습니다.
+멤버 응답은 `direct_role_ids`(현재 직접 할당), `effective_role_ids`(모든 유효 할당의 현재 ID 그래프 확장), `external_role_ids`(group/domain inherited 할당만 같은 그래프로 확장)를 분리합니다. `external_role_ids`는 merged effective 목록에서 직접 부모의 descendant를 빼서 추정하지 않습니다. 같은 하위 역할이 직접 부모와 그룹·도메인 양쪽에서 부여된 경우에도 부모 제거 후 외부 상속은 남아 checked/read-only로 표시됩니다. 이 provenance projection은 조회 응답만 보완하며 실제 Keystone 할당·인가·DB schema를 변경하지 않습니다.
 
+`assignable-roles`의 각 role은 `implied_role_ids`(직접 연결)와 `inherited_role_ids`(검증된 현재 ID 그래프의 전체 descendant)를 제공합니다. 브라우저는 직접 선택한 부모의 descendant를 자동으로 체크·비활성화하고 선택을 해제하면 다시 계산합니다. 공유 부모의 상속, 기존 명시적 direct child, 편집 범위 밖의 group/domain inheritance는 유지합니다. 이름·ID·설명의 대소문자 무관 검색은 숨겨진 선택을 지우지 않으며 저장 요청에는 direct ID만 포함합니다. 이 UI projection은 새로운 Keystone grant를 만들거나 기존 direct child를 자동 삭제하지 않습니다.
+
+기존 `/managers/{user_id}` 승격·해제 경로는 제거했습니다. DB manager 행은 조회 권한이 아닙니다. 시스템 관리자의 `POST /projects/{project_id}/members/migrate-legacy-managers`만 명시한 소유자와 기존 대상자를 안전한 역할 계층으로 이전하고 DB 기록을 정리합니다. 호출 전에 현재 역할 카탈로그·할당을 검토하고, 실패 시 결과를 확인한 뒤 재실행합니다. 이 변경은 운영 데이터나 역할을 자동 수정하지 않습니다.
 주요 실패: `403` 권한·안전 경계 위반, `409` 마지막 소유자/동시 변경 충돌, `503` Keystone 카탈로그·할당 검증 불가. 오류를 오래된 역할이나 DB manager로 대체하지 않습니다.
 
 ---

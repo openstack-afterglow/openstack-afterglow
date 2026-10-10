@@ -8,7 +8,6 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Pill from '$lib/components/ui/Pill.svelte';
 	import { t } from '$lib/i18n/ns/chat-settings';
-	import { t as commonT } from '$lib/i18n/ns/common';
 	import RichText from '$lib/i18n/RichText.svelte';
 
 	// base: '/api/v1/chat/admin' (관리자 global) 또는 '/api/v1/chat' (사용자 본인)
@@ -336,11 +335,18 @@
 		`rounded px-1.5 py-0.5 text-xs ${active ? 'bg-[var(--color-state-success)]/15 text-[var(--color-state-success)]' : 'bg-[var(--color-line)] text-[var(--color-ink-3)]'}`;
 </script>
 
+{#if !isAdmin}
+	<LumenPermissionNotice leaves={only === 'mcp'
+		? ['lumen-mcp_editor', 'lumen-resources_admin']
+		: only
+			? ['lumen-assets_editor', 'lumen-resources_admin']
+			: ['lumen-mcp_editor', 'lumen-assets_editor', 'lumen-resources_admin']} />
+{/if}
+
 <!-- MCP 서버 -->
 {#if !only || only === 'mcp'}
 <section class="mb-8">
 	<h3 class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">{t('extensions.mcp.title')}</h3>
-	{#if !isAdmin}<LumenPermissionNotice leaf="lumen-mcp_editor" /><LumenPermissionNotice leaf="lumen-resources_admin" />{/if}
 	<p class="mb-3 text-xs text-[var(--color-ink-3)]">{t('extensions.mcp.description', { scope: isAdmin ? t('extensions.scope.global') : t('extensions.scope.personal') })}</p>
 	<div class="{cardCls} mb-4 p-5">
 		<div class="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -395,8 +401,8 @@
 		</div>
 	</div>
 	{#if loading}
-		<div class="motion-skeleton rounded-lg border border-line h-16" role="status" aria-label={commonT('state.loadingNamed', { name: t('extensions.mcp.title') })}>
-			<span class="sr-only">{commonT('state.loadingNamed', { name: t('extensions.mcp.title') })}</span>
+		<div class="motion-skeleton rounded-lg border border-line h-16" role="status" aria-label={t('extensions.mcp.loading')}>
+			<span class="sr-only">{t('extensions.mcp.loading')}</span>
 		</div>
 	{:else if mcps.length === 0}
 		<p class="px-1 text-sm text-[var(--color-ink-3)]">{t('extensions.mcp.empty')}</p>
@@ -462,7 +468,6 @@
 {#if !only || only === 'tools'}
 <section>
 	<h3 class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">{t('extensions.tools.title')}</h3>
-	{#if !isAdmin}<LumenPermissionNotice leaf="lumen-assets_editor" /><LumenPermissionNotice leaf="lumen-resources_admin" />{/if}
 	<p class="mb-3 text-xs text-[var(--color-ink-3)]">{t('extensions.tools.description', { scope: isAdmin ? t('extensions.scope.global') : t('extensions.scope.personal') })}</p>
 	<div class="{cardCls} mb-4 p-5">
 		<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -488,8 +493,8 @@
 		</div>
 	</div>
 	{#if loading}
-		<div class="motion-skeleton rounded-lg border border-line h-16" role="status" aria-label={commonT('state.loadingNamed', { name: t('extensions.tools.title') })}>
-			<span class="sr-only">{commonT('state.loadingNamed', { name: t('extensions.tools.title') })}</span>
+		<div class="motion-skeleton rounded-lg border border-line h-16" role="status" aria-label={t('extensions.tools.loading')}>
+			<span class="sr-only">{t('extensions.tools.loading')}</span>
 		</div>
 	{:else if tools.length === 0}
 		<p class="px-1 text-sm text-[var(--color-ink-3)]">{t('extensions.tools.empty')}</p>
@@ -536,7 +541,6 @@
 {#if !only || only === 'skills'}
 <section class="mt-8">
 	<h3 class="mb-1 text-sm font-semibold text-[var(--color-ink-1)]">{t('extensions.skills.title')}</h3>
-	{#if !isAdmin}<LumenPermissionNotice leaf="lumen-assets_editor" /><LumenPermissionNotice leaf="lumen-resources_admin" />{/if}
 	<p class="mb-3 text-xs text-[var(--color-ink-3)]">{t('extensions.skills.description', { scope: isAdmin ? t('extensions.scope.global') : t('extensions.scope.personal') })}</p>
 	<div class="{cardCls} mb-4 p-5">
 		<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -560,8 +564,8 @@
 		</div>
 	</div>
 	{#if loading}
-		<div class="motion-skeleton rounded-lg border border-line h-16" role="status" aria-label={commonT('state.loadingNamed', { name: t('extensions.skills.title') })}>
-			<span class="sr-only">{commonT('state.loadingNamed', { name: t('extensions.skills.title') })}</span>
+		<div class="motion-skeleton rounded-lg border border-line h-16" role="status" aria-label={t('extensions.skills.loading')}>
+			<span class="sr-only">{t('extensions.skills.loading')}</span>
 		</div>
 	{:else if skills.length === 0}
 		<p class="px-1 text-sm text-[var(--color-ink-3)]">{t('extensions.skills.empty')}</p>

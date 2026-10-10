@@ -144,8 +144,7 @@
 </script>
 
 <div class="projects">
-	<LumenPermissionNotice leaf="lumen-chat_user" />
-	<LumenPermissionNotice leaf="lumen-history_editor" />
+	<LumenPermissionNotice leaves={['lumen-chat_user', 'lumen-history_editor']} />
 	{#if mode === 'grid'}
 		<header class="head">
 			<h1 class="title">{t('projects.title')}</h1>

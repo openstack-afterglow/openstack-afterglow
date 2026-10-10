@@ -12,6 +12,7 @@ vi.mock('$lib/api/client', () => ({ fetchWithAuth }));
 
 import K3sRotateProgressModal from '../K3sRotateProgressModal.svelte';
 
+
 function sseResponse(events: object[], { disconnect = false } = {}) {
 	const chunks = events.map((event) => new TextEncoder().encode(`data: ${JSON.stringify(event)}\n`));
 	return {

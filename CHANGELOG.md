@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### Dev push integration (2026-10-10)
+- Merge checkpoint `20060ce6aab244a419a9582aa74f06517b133c36` with fetched dev `9c55578585c2f8147ef06d57e1892cac80eb6093` in an independent local `dev` clone, preserving both ancestries from common base `4b28e31cc83770cfa8fdb4e78c5f8221d4ddcb83`.
+- Retain checkpoint scope/authorization/deletion/public-docs/accessibility safeguards together with released OAuth browser/client-binding, cold-cache tool calls, implicit application-credential scope, safe debug, prioritized host-bound MCP ingress and role-inheritance/search behavior. Retain the released `1.30.10` manifests without a new version bump; inherited frontend npm lock metadata still says `1.30.4` and is not regenerated here. User confirmed MCP connection is working; no additional OAuth repair or unspecified MCP feature is included.
+- Verification: clean architecture stamp (`a17d5e6834bbdf82b71fc45e2a3c57e50c4bb21a6c4293f9efbe4d6930511e61`), full `npm run test:gate` exit 0 (111 orchestration, 27 Kolla contract, 19 CLI install / 36 PWSH skipped, 4,401 backend unit, 334 frontend files / 2,569 tests + 9 runner tests, 154 consumer contract, 35 disposable-datastore functional, Ruff check and format clean across 560 files). Frontend `check` passed (2,340 files / 0 errors / 1 existing DocCodeBlock tabIndex warning), `i18n:check` 0 errors / 0 warnings across 37 namespaces / 9,440 source messages, `i18n:scan` 0 hardcoded lines in 988 files, and SvelteKit production build exit 0. Real Chromium smoke verified `/docs/mcp` renders with expired credentials without redirecting or starting announcement polling intervals, while `/dashboard` redirects cleanly to `/login`.
 ### Local accumulated-source commit integration (2026-10-10, not deployed)
 - 공유 checkout의 이미 조합된 i18n·motion·기능 변경과 의도적인 `ProgressBar` 제거를 보존한다. `.omp/mcp.json`의 private 임시 credential-reader 설정은 로컬에 남기고 commit에서 제외한다. 버전·운영 설정·credential·datastore는 바꾸지 않으며 push·tag·배포를 수행하지 않는다.
 - 공개 `/docs`에서 공지 polling이 만료 세션을 갱신하다 `/login`으로 이동하던 오류를 실제 compiled Chromium의 synthetic session으로 재현했다. 문서의 polling을 차단하고 이전 요청의 늦은 401도 현재 문서를 redirect하지 않게 한다. 보호된 유사 접두 경로의 인증은 유지한다. `ProgressTrack`은 실제 in-flight `active` 상태를 `aria-busy`로 제공한다.
@@ -36,11 +40,126 @@
 - Drover BFF 허용 목록에 `GET/POST /v1/clusters/{id}/authorization`(inventory / clusters-admin)과 owner-scoped `POST .../authorization/retire`를 추가했다. 클러스터 메인 화면은 현재 자원 권한이 없는 legacy 클러스터에 재인가를 안내하고, 진행 중인 세대를 5초마다 최대 150회 polling하며, 본인 소유 교체 credential만 회수하게 한다. Stampede 활성화/비활성화 실패(예: 재인가 필요 409)를 더 이상 숨기지 않는다. 튜토리얼 mockup은 정상 권한 상태를 반환한다.
 - 형제 서비스는 서비스 password를 tenant project로 scope하지 않는다(Waygate·Drover Trust, Drover 지속 작업용 제한된 app credential, Palimpsest export Trust, Lumen credential domain 분리). 시스템 관리자 home-token override는 tenant 실행 권한이 아니므로 역할이 없는 프로젝트의 형제 서비스 변경은 fail closed다. 검증: backend unit 4111, Drover gate/proxy 132, intent 제거 선택 84, Kolla contract 27 + image-ref 11, 새 notice component 7, 합성 Chromium QA(1440/390px)를 통과했다. 관련 frontend 묶음은 315 통과·기존 rotation-modal 접근성 4 실패이며 전체 i18n guard의 기존 실패도 남아 있다. 각 형제 저장소의 로컬 suite·native SDK loopback·MariaDB ledger 결과는 해당 저장소의 CHANGELOG(Drover는 ARCHITECTURE와 OpenSpec tasks)에 있다. 운영 Keystone 정책·배포는 검증하지 않았다.
 
-### Release integration — 1.30.2 candidate
+## [1.30.10] - 2026-10-10
+
+### Fixed
+- **서비스 403 피드백** — exact `/api/v1/admin` 거부에만 platform-admin UI demotion을 적용한다. Lumen chat/admin 등 downstream 403은 유효한 플랫폼 인증·draft를 보존하고 해당 서비스 권한 거부로 표시한다. Grouped Lumen required leaves는 loading/error notice를 한 번만 표시하고 확인된 개별 leaf 거부는 유지하며 기존401 recovery·project generation fence는 변경하지 않는다.
+- **프로젝트 역할 편집** — 현재 server-validated role-ID transitive closure로 선택 부모의 descendant를 자동 체크·비활성화한다. 기존 멤버 응답의 `external_role_ids`는 group/domain inherited assignment만 독립적으로 확장하므로 direct-parent closure와 겹쳐도 부모 제거 뒤 checked/read-only로 보존한다. 공유 부모·명시적 direct child를 보존하고 direct IDs만 저장한다. 네 언어의 이름·ID·설명 검색과 accessible empty-result를 추가하고 숨긴 선택·owner/admin·group-only·busy 제한을 유지한다. 새 grant·endpoint·DB schema·name/grade 추론은 없다.
+
+### Added
+- **안전한 DEFAULT debug** — 유효한 lowercase TOML `[DEFAULT] debug = true`와 우선하는 `DEBUG` 환경 override(false 포함)로 application-only DEBUG를 켠다. Registered route·고정 outcome·method/status/duration·source와 최대12개 exception function/line frame을 기록하며 message/locals/source/chain·opaque object·raw header/body·credential은 공개하지 않는다. Stream/file 모두 recursive filtering, secret assignment remainder redaction 및 explicitly DEBUG인 SDK/HTTP/SQL/access descendant의 WARNING clamp를 적용한다. FastAPI debug response는 활성화하지 않는다.
+- Example/setup/Kubernetes/Helm/Kolla debug boolean 계약을 동기화하고 Helm이 변환된 `[logging]` directory/level/max_bytes를 누락하지 않도록 한다. Logging destination/rotation과 Notion worker의 별도 초기화는 보존한다. 예외 문자열을 재고정하던 incidental assertion은 제거하고 실제 cache/availability 경계는 유지한다.
+
+**Qualification boundary:** Owner-approved release scope is this Afterglow patch and companion Lumen0.6.7 direct-system repair; unrelated shared merge/UI/IAM/migration changes remain untouched. Canonical Kolla inventory is `/etc/kolla/multinode`. The existing1.30.9 immutable images and real production personal/OAuth SDK Nova/Cinder reads, wrong-client/no-side-effect and compromised refresh-family401 receipts are historical MCP proof, not publication or rollout proof of1.30.10/0.6.7. Final gate/artifact/deployed acceptance receipts are recorded separately in the changes' checklists.
+
+
+## [1.30.9] - 2026-10-09
+
+### Fixed
+- **MCP provider 인증** — 이미 사용자·프로젝트에 묶인 Keystone application credential로 인증할 때 명시적 project scope를 다시 요청하지 않는다. 운영의 같은 credential이 기존 SDK 경로에서는 실패하고 implicit scope에서는 원래 owner/project로 인증되는 것을 확인했다. 발급된 token의 owner/project가 grant와 다르거나 unscoped이면 cloud dispatch 전에 거부하고 credential·권한·TLS·read/write 경계는 그대로 유지한다. Installed SDK와 실제 HTTP의 네 owner/project 조건은 수정 전 실패했으며 constructor-kwargs echo 대신 실제 인증 동작을 회귀로 검증한다.
+
+## [1.30.8] - 2026-10-09
+
+### Fixed
+- **MCP cold tool 호출** — MCP SDK1.28.1의 `call_tool` schema cache miss가 paginated `ListToolsRequest` handler에 `None`을 넘기는 경로를 처리한다. 내부 refresh에는 현재 principal의 전체 허용 schema를 반환하고 실제 client discovery는 기존 bounded page와 grant-bound cursor를 유지한다. SDK가 callback을 판별하는 정확한 type annotation과 input/output validation, 현재 principal 권한·strict parsing·mutation ledger는 변경하지 않는다. 실제 SDK HTTP cold-call/첫 page 밖 호출 회귀2개는 수정 전 `NoneType.params`로 실패했으며 manage-schema cache 뒤 read grant의 valid mutation 거부도 검증한다. OAuth·기존 개인 API 키 모두 같은 consumer path를 사용한다.
+- macOS installer PTY regression harness가 큰 script를 stdin pipe에 전부 쓰는 동안 `sh -v` output이 PTY를 채워 교착되는 문제를 고친다. 기존 `sh -s`·real tty·trace·deadline·secret/기존 설치 보존 assertions를 유지하고 select loop에서 stdin feed와 output drain을 동시에 처리한다. 운영 installer 내용은 변경하지 않는다.
+
+### Changed
+- **Kolla inventory 정규화** — 사용자 지시대로 이후 배포·검증은 `/etc/kolla/multinode`를 직접 사용한다. Native parse·실제 control/plugin 대상 확인 뒤 승인된 tag로 genconfig/pull/prechecks/reconfigure를 실행하며 `multimode` alias를 생성·복구하지 않는다. 기존 inventory와 과거 명령 receipt를 덮어쓰지 않고 현재 개발 가이드와 미완료 OpenSpec deployment 명령을 동기화한다.
+
+## [1.30.7] - 2026-10-09
+
+### Added
+- **개인 MCP OAuth 연결** — 계정 화면과 `/docs/mcp`에 개인 키가 필요 없는 HTTP MCP 설정·`https://cloud.dmslab.re.kr/mcp/oauth/authorize` 연결 방법을 한국어·영어·일본어·중국어로 제공한다. Authorization header·client secret 없이 discovery/DCR·PKCE S256·사용자 동의·refresh rotation을 사용하며 기존 API 키 발급·복사·검증·폐기는 유지한다. 현재 public-client 등록·grant·loopback callback 제약을 명시하며 모든 MCP 제품과의 호환을 주장하지 않는다.
+
+### Fixed
+- MCP 동의 화면의 exact route만 SSR/client 공개 shell로 허용하고 no-store/no-referrer를 유지한다. 미로그인 deep link의 ticket 유실과 로그인 이후 미선택 프로젝트를 건너뛰는 문제를 고친다. 선택 전에는 consent API를 호출하지 않고 현재 scoped user/project로만 동의한다.
+- Refresh의 optional `client_id`를 최초 발급 클라이언트와 대조한다. 빈 값·불일치·불명확한 DB binding은 rotation/replay side effect 전에 `invalid_grant`로 거부하고, 생략과 올바른 client의 정상 회전·replay 폐기는 유지한다. Consumed code row를 사용해 code expiry/ticket cleanup과 binding을 분리하며 DB migration은 없다.
+
+**Local qualification:** 전체 `npm run test:gate` 통과: backend4,188, frontend332files/2,510 + runner9, contract154, 실제 DB functional35, Ruff554files. Focused OAuth UI72조건·real MariaDB refresh7조건, version1.30.7·Svelte2,338files/0errors·i18n9,377messages/0errors/0warnings·hardcoded Korean0과 production build를 확인했다. 기존 DocCodeBlock tabindex경고1개는 유지한다. 실제 built Chromium의 합성 identity/API에서 로그인→프로젝트 선택→scoped 승인/거절·ticket 정리, 계정4언어48responsive/theme조건과 guide8조건을 관찰했다. 선택 전 consent GET0·credential-free JSON·가로 넘침0이며 운영 인증/provider acceptance와 구분한다.
+
+## [1.30.6] - 2026-10-09
+
+### Fixed
+- **개인 MCP 키 발급 500** — 운영 로그의 Keystone400 `Timestamp not in expected format`은 numeric offset ISO expiry에서 발생했다. 기존 UTC normalization과 installed `keystoneclient.utils.isotime(subsecond=True)`으로 `Z` timestamp를 보내고 microsecond·실제 만료 순간을 보존한다. Restricted credential·owner user/project·role snapshot·내구성 cleanup은 유지한다.
+- **동일 host MCP routing** — 요청 공개 resource는 `https://cloud.dmslab.re.kr/mcp`다. Compose/Kolla HAProxy는 exact `/mcp`와 `/mcp/`·`/.well-known/` 경계를 backend로 전달하고 `/mcpevil`·frontend consent를 건드리지 않는다. Kolla의 nonempty `afterglow_mcp_public_url`만 operator URL을 override한다. Helm과 생성 Kubernetes는 별도 prioritized MCP Ingress의 Exact resource·slash-prefix descendants/discovery로 기본 Traefik에서도 경계를 보존한다. Dedicated root resource는 shared web/API host에서 거부한다.
+
+### Added
+- 계정에서 한 번 표시되는 개인 키의 실제 Bearer HTTP JSON을 복사하고, 저장한 본인 user/project key로 고정 public endpoint의 initialize·전체 tools/list를 확인한다. TLS·20초·size/page/tool limit·no redirect/proxy/retry·분당6회·no-store와 안전한 audit를 적용하며 tools/call·cloud 성공을 주장하지 않는다.
+- `/docs/mcp`의 한국어·영어·일본어·중국어 guide와 stable API error-code 현지화. 외부 AI inbound, Lumen built-in delegation, Lumen outbound MCP를 구분하고 정확한 shared-host 예제를 제공한다.
+- 현재 integration 검증: installed SDK expiry8조건과 real HAProxy38 HTTP routing조건을 포함한 backend targeted174passed. 이는 local/synthetic upstream proof이며 운영 키 발급·guest rollout·provider acceptance가 아니다. 전체 gate·CI·발행·운영 receipt는 완료 후 별도로 기록한다.
+- 운영 권한 검토의 명시 선택: 기존 서비스 등급만 유지하고 일반 사용자 자동 승격을 하지 않는다. Waygate `pieroot-macbook`의 pieroot owner 지정과 Drover `test-cluster`의 pieroot 재인가를 승인했다. 실제 사용자 authority·복구·native rollout 선행 조건이 충족되기 전 이 승인을 배포 완료로 표시하지 않는다.
+
+## [1.30.5] - 2026-10-08
+
+### Fixed
+- **Image Studio 권한 거부 상태** — `lumen-images_user`가 없거나 권한을 아직 확인할 수 없을 때 모델/옵션을 계속 확인한다는 잘못된 문구를 제거한다. 기존 권한 대기·조회 실패·필요 leaf 안내와 disabled controls를 유지하고, 실제 권한이 있는 사용자의 모델 loading·오류·빈 목록·준비 상태는 그대로 표시한다. 모델 요청이나 permission/draft/media fence는 바꾸지 않는다.
+- 검증: 재빌드한 production frontend를 실제 Chromium에서 31조건으로 실행했다. Light/dark 390/767/768/1023/1024/1440px의 거부·정상 준비 상태, 권한 pending/error, 실제 모델 pending/error/empty, capability error와 독립 assets 거부를 확인했다. 거부 시 모델 HTTP 요청0, 페이지 가로 넘침0, 실행 JS 오류0이며 외부 font 요청은 QA 범위 밖으로 차단했다. Source·served Studio node SHA-256 일치. Identity/API는 합성이며 provider inference·운영 배포 증거가 아니다. 기존 1.30.4 tag는 이동하지 않는다.
+- 필수 `npm run test:gate` 통과: backend unit4,126, frontend331files/2,459와 runner9, 소비자contract154, disposable DB functional28, backend Ruff/check·format550files. `version:check`1.30.5 일치, Svelte check2,333files/0errors·기존 DocCodeBlock 경고1개와 production build 통과. PowerShell이 없는 호스트의 Windows 실행 skip을 acceptance로 승격하지 않는다.
+
+**불변 발행:** `v1.30.5`는 `3941490d42503876153a43925e2781ec68505519`를 가리킨다. Exact dev [37746138117](https://github.com/openstack-afterglow/openstack-afterglow/actions/runs/37746138117), tag Docker [37746747991](https://github.com/openstack-afterglow/openstack-afterglow/actions/runs/37746747991), Helm [37746747697](https://github.com/openstack-afterglow/openstack-afterglow/actions/runs/37746747697) 모두 성공했다. API/frontend/worker digest `0f4d6311…e59a`/`58d5361d…648a`/`9e27fdf8…6ddb`(amd64), Cloud Shell `3317c6bd…4780`(amd64+arm64)의 revision과 version/latest 일치를 확인했다. 다운로드한 Helm1.30.5의 version/appVersion은1.30.5, OCI digest는 `048b7fef…e5a30a`다.
+
+**발행 이미지 실행:** digest 고정 frontend의 실제 Chromium31조건에서도 거부modelHTTP0·overflow0·JSerror0·mutation0이며, 권한 pending/error와 independent assets leaf를 확인했다. Served Studio node는 `72.DQVyHosE.js`/SHA256 `5ca75c92a1558c308432e3283a22207567df84d321e5ed51f45b895e3121d64e`다. API/worker와 Cloud Shell 두 architecture의 실제 runtime은 version1.30.5·uid1000이고, disposable MariaDB/Redis를 쓰는 API는 health200·권한/역할 읽기3경계401을 반환했다. Initial API harness가 존재하지 않는 internal path에401을 기대해404로 중단된 원문은 보존한다; 해당 machine endpoint acceptance로 세지 않는다. Identity/API fixture·local process proof이지 운영 인증/provider/KVM acceptance가 아니다. Receipt는 `evidence/afterglow-1305-publication.json`과 `evidence/image-status-1305-published/`이며 원본1.30.4와 운영 버전·operator·사용자 할당은 보존했다.
+
+**Palimpsest 발행 보완:**0.3.1 원래 tag-run 배포 파일의 PyPI SHA256과 같은 bytes로 [정식 GitHub Release](https://github.com/openstack-afterglow/palimpsest/releases/tag/v0.3.1)를 완성했다. Native opt-out의 skip이 publisher-success 뒤 final job으로 전파되는 조건은 protected dev [PR18](https://github.com/openstack-afterglow/palimpsest/pull/18)로 수정하고 [PR19](https://github.com/openstack-afterglow/palimpsest/pull/19)로 archive했다. 정상 merge75593f31의 Development package/Hub/Test37746548432/37746548449/37746548469 모두 성공했다. Portable gate6,436passed/261opt-in skipped와24조건 expression smoke이며 향후 tag final-job의 hosted 실행이나 native KVM qualification을 주장하지 않는다.
+
+## [1.30.4] - 2026-10-08
+
+Patch release (the deployment contract's default bump): project/service role grades with explicitly applied presets, isolated sibling execution credentials, CLI role-based model selection and the inline VM image tag chooser. It pairs with Lumen `0.6.6`, Drover `0.4.4`, Waygate `0.3.2` and Palimpsest `0.3.1`; deploy Lumen and Drover before Afterglow. Plain `member`/`reader` no longer grant sibling-service actions, so apply the reviewed role presets and assign service grades before cutting over Afterglow or a sibling service.
+
+**Local qualification (2026-10-08, this tree):** `npm run test:gate` passed — architecture freshness, JS orchestration 106, Kolla contract 27, CLI installers 19 (36 PowerShell cases skipped because this host has no `pwsh`), backend unit 4,126, frontend 331 files/2,459 tests plus runner 9, consumer contract 154, disposable MariaDB/PostgreSQL/Redis functional 28 and backend Ruff check/format after formatting three merge-resolved files. Svelte check covered 2,333 files with 0 errors and the existing `DocCodeBlock` tabindex warning, i18n check reported 0 errors/0 warnings over 9,348 source messages, and the production build succeeded. Identity, OpenStack and sibling services were synthetic; Windows installer execution and deployment are not claimed.
+
+**Tagged publication:** Immutable `v1.30.4` targets `09a451996687f03ae776af4dcc88c2783051ad9d`. Exact dev Docker [37725322925](https://github.com/openstack-afterglow/openstack-afterglow/actions/runs/37725322925), tag Docker [37725861313](https://github.com/openstack-afterglow/openstack-afterglow/actions/runs/37725861313) and Helm [37725861163](https://github.com/openstack-afterglow/openstack-afterglow/actions/runs/37725861163) succeeded. Published API/frontend/worker digests are `3f767349…76bd`, `2168f543…a760`, `b5401a37…dc3` (amd64); Cloud Shell `dc5c40d6…cfdd` declares amd64+arm64. All image revisions match `09a45199` and `latest` equals the version digest. Image tags retain the `v` prefix. The OCI chart `ghcr.io/openstack-afterglow/charts/afterglow:1.30.4` has digest `sha256:b37e1d4d9e972d8f45759162eedbfd0420b4040ffefb5dd45c58b0065c92d32c` and version/appVersion 1.30.4. The canonical publishers do not create an application GitHub Release object.
+
+**Post-tag isolated smoke:** The digest-pinned API/frontend ran against disposable MariaDB/Redis, not the shared local-services stack or production. Process health, unauthenticated access rejection, frontend pages and exact served installer bytes were observed. An empty-database first start also logged orphan-build reconciliation before `library_builds` existed; health alone is not DB readiness. The compared startup/reconciliation source is unchanged, and production schema/bootstrapping is a separate prerequisite. Synthetic Chromium verified the 56-role list, preset preview and inference tree without applying roles. Initial grant-dependent page fixtures had CORS/coverage failures and are not positive acceptance evidence.
+
+**Production IAM and rollout hold (2026-10-08):** On the user's explicit preset-only approval, the reviewed global catalog gained 46 missing service roles and 67 implication edges; the final graph has no reported missing role/edge or unsafe boundary. The reconciliation script creates only roles/edges and never writes assignments or deletes roles. The read-only inventory has 45 projects, 64 users, 7 groups, 158 direct assignments, 519 effective assignments and 13 project-group assignments. All 106 ordinary user/project memberships (43 distinct users, 104 enabled memberships, 41 projects) lack service grades. These counts are directory observations, not proof of 106 failed requests. Project/user grade decisions remain separately approved; no automatic member promotion was performed. Afterglow 1.30.3, Lumen 0.6.4, Drover 0.4.3, Waygate 0.3.1 and the old Hub revision remain running. No new operator pins/locks, writer stop, migration, genconfig/pull/reconfigure or service cutover was performed for this release set. Preserve the new tags and current runtime; do not archive the pending ecosystem rollout or waive recovery/auth/storage gates.
+
+### Added
+- **프로젝트별 서비스 등급·세부 역할** — 기존 `project_owner → project_admin → project_member → project_reader`와 native `member/reader` ID·할당을 재사용한다. 사용자 정의 역할은 `area_grade`로 정규화하고 각 영역·등급의 공백을 `-`로 바꾼다. 시스템 관리자가 네 서비스의 `admin/editor/user/reader` 부모·세부 leaf 프리셋을 미리보고 명시적으로 멱등 적용하며 조회·로그인은 역할을 생성하지 않는다. Owner만 owner/admin을 위임하고 마지막 유효 owner를 보호한다. DB manager 기록은 권한이 아니며 검토된 명시적 이전만 제공한다.
+  - Afterglow BFF·UI와 네 native 서비스는 현재 Keystone의 실제 전역 role-ID DAG·유효 프로젝트 할당으로 액션을 검사한다. `member`, 프로젝트 관리자, 서비스 부모 표시 이름이나 오래된 JWT로 권한을 복원하지 않는다. 서비스 역할을 OpenStack `admin/manager`로 승격하지 않으며 editor의 생성·편집과 admin의 삭제·보안 작업을 분리한다. Lumen은 chat/image/audio/tool leaf와 API key scope를 독립 확인하고, Waygate는 본인에게 할당된 enabled profile만 다운로드하며 legacy owner는 한 번 명시 지정한다. Palimpsest publish-only와 byte download를 분리하고 발급 scope는 현재 소유자 권한 이하다.
+  - Drover routine kubeconfig는 명시적 `user/editor` 등급을 사용하고 full administrator certificate는 별도 확인한다. 실제 Chromium에서 권한 회수 뒤 늦은 kubeconfig가 다운로드되던 race를 재현·수정했다. 응답 공개 시 요청 등급·사용자·프로젝트를 다시 검사한다. 이미 발급된 Kubernetes bearer와 과거 administrator certificate의 회수 한계는 그대로 문서화하며 운영 credential을 회전하지 않았다.
+  - 실제 HTTP BFF·installed Keystone SDK의 합성 현재 directory 경계 24개와 Chromium의 정규화·멤버 위임·Waygate 소유 profile byte 다운로드/editor 생성/legacy owner 지정·Drover `user/editor` 다운로드를 확인했다. 이미지 Blob·실제 WAV 재생·Palimpsest 일회성 secret은 같은 actor의 권한 확인 장애 동안 숨긴 채 보존하고 확인 복구 시 동일 값으로 돌아오며, 확정 회수 후 재부여로 되살아나지 않는다. UI 통합 회귀 9 files/252 tests 통과. Native DB/Kubernetes/image 증거와 한계는 각 sibling 문서에 따로 기록한다. UI identity/service 응답·credential은 합성이며 운영 역할 변경·배포·유료 provider 호출은 하지 않았다.
+  - 최종 root backend unit4,112·consumer contract154 및 영향 frontend selector5files/71tests 통과(위 UI selector와 중복 집계하지 않음), Svelte check0errors/기존 warning1·i18n check0errors 통과. HEAD+명시한 role consumer120파일의 임시 index architecture guard를 통과하고 실제 index·공유 review block을 보존했다. 전체 release gate는 공유 index merge, 별도 전체 UI/JS 실패와 범위 밖 VM-history import lint 때문에 통과로 보고하지 않는다. 정확한 native runtime 증거·canonical image 한계는 [`docs/testing.md`](docs/testing.md#프로젝트-서비스-등급-검증-기록-2026-10-07-local-only)에 기록했다.
+
+### Changed
+- **Lumen CLI 역할별 모델 선택** — POSIX/PowerShell 설치기가 숨김 키 입력 뒤 Lumen `GET /v1/cli/models`(models:read, 검증된 TLS, redirect 거부)를 읽어 provider별 실제 모델·route ID·알려진 context/단가·프로토콜을 보여 주고, Codex Sol·Luna와 Claude Fable·Opus·Sonnet·Haiku를 각각 선택하게 한다. 같은 공개 ID도 `lumen/<provider>/<model>` route ID로 선택한 provider에서 실행·정산된다. Codex는 `lumen-cli`·`lumen-sol`·`lumen-luna` native profile과 선택 모델 catalog(Codex 0.160.0+)를, Claude Code는 역할별 alias pin과 정직한 `/model` label(2.1.257+)을 사용한다. 수동 모델 ID 입력과 단일 공유 Claude 모델 설정은 제거됐다. Route ID가 provider를 정하므로 CLI profile은 설치기 소유 `model_providers.lumen-cli` table을 써서 데스크톱 `X-Lumen-Provider` header를 상속하지 않고, 셸이나 Claude 사용자 설정의 `ANTHROPIC_CUSTOM_HEADERS` selector는 키 입력 전에 설치를 중단한다. Lumen 0.6.6 catalog는 custom OpenAI 호환 base를 `messages`로만 광고하므로 그 행은 Codex 역할 후보에서 빠진다. **배포 순서:** Lumen을 먼저 배포해야 하며 `/cli/models`가 없는 Lumen에서는 설치기가 업그레이드 안내와 함께 아무 파일도 바꾸지 않고 중단한다.
+- **VM 이미지 태그 이름 공간 확보** — 해시는 알고리즘·suffix 없이 앞 8자리만 보이고 전체 알고리즘·값은 title·aria-label로 유지한다. 해시·시각·용량 열을 72/144/64px, 열 간격을 8px로 좁혀 태그 이름이 남은 폭을 사용한다. 이름 셀 전체에 전체 태그의 native title을 제공하고 비활성 행의 선택 불가 사유도 유지한다. 기존 catalog의 SHA·UUID와 실제 UUID 선택은 바꾸지 않는다.
+  - 검증: 관련 회귀 23+1개, 실제 Chromium의 네 언어 × light/dark appearance × 390/768/1440px 24조건에서 44px 행·열 정렬·메타데이터/페이지 넘침 없음, 동일 8자리 해시 prefix의 UUID 구분·선택/이전 이동과 native 지역 wheel 스크롤을 확인했다. 초기 불완전 quota fixture는 완성한 뒤 새 direct-route 네 언어 smoke에서 page error 없이 확인했다. Native title·접근성 설명·실제 hover를 검증했으며 OS tooltip 픽셀은 페이지 screenshot에 포함되지 않는다. 두 exercised component의 SHA-256은 현재 작업 트리와 일치한다. 전체 typecheck/gate·운영 배포·OpenStack VM 생성은 수행하지 않았다.
+- **VM 이미지별 inline 태그 검색·행 목록** — 이미지 이름 카드를 그 자리에서 펼쳐 바로 아래의 태그 이름 검색과 `태그 이름 / 해시값 / 업로드 시각 / 용량` 단일 행 목록을 제공한다. 공백·대소문자를 무시한 검색, 빈 결과와 선택한 태그 요약을 표시하고 다른 카드를 열면 검색을 초기화한다. 좁은 화면도 두 열 카드 대신 목록 안 가로 스크롤을 사용한다. 전체 SHA는 title·접근성 이름으로 유지하고 초 단위 업로드 시각을 표시하며 UUID는 생성 선택 행에서만 숨긴다. Current 업로드·inactive 차단·선택 보존·기존 catalog의 SHA/UUID·자동 다음 단계는 유지한다.
+  - 검증: 관련 chooser/card 23개와 이전 업로드 SHA-512·UUID 1개 회귀, i18n 검사 0 errors/0 warnings 통과. 실제 `VmCreatePanel`·native HTTP 합성 fixture의 Chromium에서 검색·빈 결과·전환/접기·선택/이전 복귀와 네 언어 × light/dark × 390/768/1440px의 24개 조건을 확인했다. 태그 13개 행의 열 정렬·페이지 가로 넘침은 0px이며 좁은 목록의 키보드 가로 스크롤도 확인했다. 기존 trust-count 테스트의 SPAN 구현 predicate 중복 매칭 실패는 변경하지 않았고 전체 typecheck/gate·운영 배포·OpenStack VM 생성은 수행하지 않았다.
+  - Scoped staged architecture guard도 통과했고 실제 index·공유 review block은 보존했다. 전체 `i18n:scan`은 983파일/3,619줄의 hard-coded Korean으로 실패했다(이번 두 runtime component의 지적은 없음). 전역 localization debt는 이 변경에서 수정하지 않았다.
+
+### Isolated sibling execution credentials
+- **BREAKING (operations):** Afterglow의 K3s provisioning-intent API(`/api/v1/internal/k3s/provisioning-intents*`), `K3sProvisioningIntent` model, `k3s_provisioning_token`/`K3S_PROVISIONING_TOKEN`과 Kolla `afterglow_k3s_provisioning_token`을 제거한다. Drover는 요청자 Trust 또는 현재 사용자의 제한된 application credential로 직접 프로비저닝하고 매 GPU 생성 전에 기존 `/gpu-admission`을 다시 호출한다. Drover를 먼저 올린 뒤 Afterglow를 올린다. `k3s_provisioning_intents` 테이블(migration 077)은 비활성 legacy data로 남으며 삭제는 별도 승인 대상이다.
+- Drover BFF 허용 목록에 `GET/POST /v1/clusters/{id}/authorization`(inventory / clusters-admin)과 owner-scoped `POST .../authorization/retire`를 추가했다. 클러스터 메인 화면은 현재 자원 권한이 없는 legacy 클러스터에 재인가를 안내하고, 진행 중인 세대를 5초마다 최대 150회 polling하며, 본인 소유 교체 credential만 회수하게 한다. Stampede 활성화/비활성화 실패(예: 재인가 필요 409)를 더 이상 숨기지 않는다. 튜토리얼 mockup은 정상 권한 상태를 반환한다.
+- 형제 서비스는 서비스 password를 tenant project로 scope하지 않는다(Waygate·Drover Trust, Drover 지속 작업용 제한된 app credential, Palimpsest export Trust, Lumen credential domain 분리). 시스템 관리자 home-token override는 tenant 실행 권한이 아니므로 역할이 없는 프로젝트의 형제 서비스 변경은 fail closed다. 기존 credential-isolation snapshot의 검증은 backend unit4111·Drover132·intent-removal84·Kolla27+11·notice7 및 합성 Chromium이다. 관련 frontend315통과/기존 rotation-modal4실패와 전역 i18n 실패가 기록되어 있으며, 현재 통합 tree의 전체 gate·운영 Keystone·배포 증거로 확대하지 않는다.
+
+### Fixed
+- **Codex 관리 명령 보존** — 1.30.3의 terminal `codex` 함수(POSIX·PowerShell)는 모든 호출에 `--strict-config --profile lumen-cli`를 붙여 `codex login status`가 "`--strict-config` is not supported for `codex login`"로 실패하는 등 `login`·`mcp`·`features`·`completion`·`debug`·`doctor` 관리 명령을 막았다. 이제 Codex 0.160 root parser를 따라 세션 명령에만 두 기본값을, `debug prompt-input`에는 profile만 붙이고 관리 명령은 그대로 전달한다. 기존 설치는 설치기를 다시 실행하면 갱신되며, 그 전에는 `command codex …`로 우회할 수 있다.
+
+## [1.30.3] - 2026-10-07
+
+Patch release for Lumen CLI automatic connection. Published `v1.30.3` (`9aa01e6`) and rolled out to DMS Lab Kolla with Lumen `v0.6.4` (`b586e6f`) on 2026-10-07.
+
+**Publication:** GHCR index digests — `afterglow-api` `sha256:af04fa7b…ebceec0`, `afterglow` `sha256:0ff78cb6…bb82a00`, `afterglow-worker` `sha256:4e115c20…a977c4b` (amd64, the workflow's declared platform), `afterglow-cloud-shell` `sha256:30d85188…628640c` (amd64+arm64). Each platform ran natively and reported version 1.30.3 and revision `9aa01e6`; `latest` matches the release index.
+
+**Production rollout:** After a stopped-writer backup, operator `globals.yml` pinned only Afterglow/Lumen digests, and the operator lock changed only `lumen` (0.6.4). Canonical `kolla-ansible pull` → `prechecks` → per-host `reconfigure` (Lumen then Afterglow, controller1→3) passed six digest/revision/version/health and direct/public readiness gates; none of the other containers on the three controllers changed. No Lumen API/worker error or traceback since the cutover. The deployed `/install/lumen.sh` and `/install/lumen.ps1` are byte-identical to the release.
+
+**Production acceptance:** The published installer, run in a clean HOME, wrote a 0600 key file and generated settings. Real Claude Code 2.1.292 in auto mode completed a Bash tool run and continuation (exit 0), and Codex 0.160.0 completed through the `lumen` provider (exit 0). A Messages/count_tokens request with `safeguards` now returns a named Anthropic 400. The disposable, capped smoke key was revoked (401 afterwards). Windows DPAPI/ACL installation was not exercised.
+
+### Fixed
+- **Lumen CLI 자동 연결** — POSIX/PowerShell 설치기가 terminal-only `codex` 함수와 native `lumen-cli.config.toml` profile(Codex 0.134.0+)을 설정해 plain `codex` 실행에서 Lumen provider와 선택 모델을 자동 지정한다. 기존 Codex TOML/데스크톱 기본값, 키 보관과 marker 재실행 계약은 보존하며 subcommand `-c`와 `-m` override를 허용한다. Claude Code auto mode의 `safeguards` 422는 Lumen 0.6.4의 명명된 Anthropic 400 fallback으로 해결하므로 수동 우회 환경변수를 강제하지 않는다.
+
+## [1.30.2] - 2026-10-07
+
+### Release integration
 - 네 언어 i18n과 기존 console motion·관리자/사용자 기능을 함께 통합한다. 실제 numeric ICU 값을 유지하면서 숫자 부분만 애니메이션하고, 이미지 내보내기는 대기·원본 다운로드·포맷 변환·마무리 상태를 구분한다. 더 이상 사용하지 않는 `ProgressBar`를 제거했다.
 - Share 상세·프로젝트 멤버/초대·MCP 목록의 이전 scope 데이터와 액션이 새 대상에 남는 오류를 수정한다. 요청·확인·mutation은 캡처한 auth/project/resource 소유권을 따르며 같은 scope refresh의 행 유지는 계속 제공한다. Secret A를 표시한 상태에서 B 값을 조회해도 A 숨기기는 즉시 가능하다.
 - HTTP 200의 `removal_unverified` 응답 뒤 자동 감사가 성공 이력을 추가하던 오류를 수정한다. 실제 HTTP 회귀의 수정 전 `failed, success`를 수정 후 `failed` 한 건으로 확인했으며, 미기록 거부·started 뒤 실패도 계속 기록한다.
 - Palimpsest 공개 endpoint sample은 정확한 HTTPS origin·일치하는 FQDN만 HAProxy에 활성화하여 published client0.2.3 역할의 검증 공백에서도 잘못된 origin/빈 host를 노출하지 않는다. 운영 설정·역할·컨테이너는 이 통합으로 변경하지 않았다.
+- 통합 뒤 한국어로만 남아 있던 신규 화면 문구를 네 언어 카탈로그로 옮긴다. 대상은 호스트 등록 제거 검토(점검·승인·결과 및 상태 label), 역할 상속 그래프·상세·편집기와 상속/삭제 차단 사유, 그리고 15개 화면의 로딩·진행·업로드 접근성 label이다. 한국어 문구와 안전 판정(정확한 호스트명, 5분 1회용 token, `removed`+`verified=true` 검증)은 그대로다. `/docs` 정본 가이드·번역 사전·언어별 docs UI 사전만 전체 파일 허용으로 한글 잔존 검사에서 제외한다.
+- 통합 과정에서 빠진 `ProgressTrack`의 `aria-busy={active}`를 복원한다. 생성·확장 중인 파일 공유처럼 진행 중인 작업을 보조기술에도 알린다.
 - **배포 증거 정정 (2026-10-07)** — 정식 Afterglow1.30.2/Lumen0.6.3 발행과 Kolla 실행은 확인했지만 C2/C3 precheck 생략, API/worker 외 writer census·사전 실제 restore·독립 key/role escrow 누락 때문에 안전한 전체 rollout 완료로 보고하지 않는다. 현재 별도 배포된 Afterglow1.30.3/Lumen0.6.4의 실제 인증·버전 UI·readiness·읽기 API는 통과했고 Hub503·C2 traceback11건·C3 OpenSearch 비정상은 남아 있다. Palimpsest native job은 kernel/config HTTPS 확보 단계에서 실패하여 VM proof가 실행되지 않았으며 정식 승격은 보류한다. 상세 한계는 release-ecosystem OpenSpec checklist와 operator README에 기록한다.
   - 사후 historical stopped dump의 network-none/tmpfs-only 실제 복원은 MariaDB58 tables·5,101 rows/ledger21개와 PostgreSQL4 tables·1,938 rows가 일치하고 cleanup exit0이다. 당시 전체 writer 중지·사전 gate·독립 key/config 복구 proof로 승격하지 않는다. C2 traceback은 Keystone connect/read timeout chain이며 backend 원인은 미확인이다.
 

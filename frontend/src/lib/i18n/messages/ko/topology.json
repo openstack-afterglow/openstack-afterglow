@@ -1,4 +1,5 @@
 {
+	"card.noStatus": "상태 없음",
 	"topology.lane": "레인",
 	"topology.canvas": "캔버스",
 	"topology.createNetworkFailed": "네트워크 생성 실패",

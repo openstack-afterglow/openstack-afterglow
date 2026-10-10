@@ -269,6 +269,28 @@ async def test_served_endpoint_rejection_is_reported_without_upstream_detail(cli
 
 
 @pytest.mark.asyncio
+async def test_malformed_endpoint_response_fails_immediately_as_protocol_error(client, root_mcp, monkeypatch):
+    async def malformed(scope, receive, send):
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-type", b"application/json")],
+            }
+        )
+        await send({"type": "http.response.body", "body": b"this-is-not-valid-json"})
+
+    recorder = _Recorder(malformed)
+    monkeypatch.setattr(verification, "_network_transport", lambda: httpx.ASGITransport(app=recorder))
+
+    response = await client.post(VERIFY_PATH, json={"token": OWN_TOKEN}, headers=BROWSER_HEADERS)
+
+    assert response.status_code == 502
+    assert response.json() == {"detail": "MCP endpoint returned an invalid MCP response", "code": "protocol"}
+    assert len(recorder.requests) == 1
+
+
+@pytest.mark.asyncio
 async def test_origin_root_resource_serves_discovery_oauth_and_challenge(
     client, root_mcp, running_transport, monkeypatch
 ):

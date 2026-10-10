@@ -4,6 +4,10 @@
 # 환경별 오버라이드: values-dev.yaml / values-prod.yaml
 # =============================================================================
 
+# [DEFAULT].debug: application diagnostics only; logging controls the root level.
+# Do not inject a default DEBUG environment variable that would override TOML.
+debug: false
+
 # -----------------------------------------------------------------------------
 # 이미지
 # -----------------------------------------------------------------------------

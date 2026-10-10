@@ -1,4 +1,5 @@
 {
+	"loadbalancersPage.loading": "로드밸런서를 불러오는 중...",
 	"adminNetworkCreateModal.title": "네트워크 생성",
 	"adminNetworkCreateModal.name": "이름",
 	"adminNetworkCreateModal.cidrLabel": "CIDR <help>(서브넷 자동 생성, 선택)</help>",

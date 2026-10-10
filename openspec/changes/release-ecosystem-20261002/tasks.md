@@ -1,3 +1,5 @@
+> 통합 기록 경계 (2026-10-10): 이 파일의 날짜별 관측·체크박스·source digest·gate·publication·production receipt는 해당 당시의 source/runtime 기록이다. Checkpoint `20060ce6`와 fetched dev `9c555785`의 현재 merged tree를 새로 검증하거나 review stamp한 기록이 아니며 이번 문서 통합에서는 checks를 실행하지 않았다. `Local Accumulated-source Commit`의 62–65와 `Five-Service Source Release and Preset-only Cutover Boundary`의 같은 번호는 서로 다른 역사적 범위이므로 제목과 날짜로 구분한다. 기존 미완료 acceptance는 완료로 바꾸지 않는다. 현재 통합 qualification 경계는 [테스트 가이드](../../../docs/testing.md)를 따른다.
+
 ## Review and Candidate
 
 - [x] 1. 다섯 기본 checkout의 현재 source와 version consumer를 검토하고 확인된 release blocker를 수정한다. Waygate framework 호환 갱신과 실제 재현 worker 종료, Afterglow dependency floor와 안전 SVG label 수정은 별도 change/evidence로 추적한다. 운영 blocker는 rollout 단계에 남긴다.
@@ -14,9 +16,11 @@
 
 ## Kolla Rollout
 
+> 2026-10-09 사용자 후속 지시: 아래 미완료 deployment 명령은 기존 `/etc/kolla/multinode`를 직접 사용한다. Native inventory parse·대상 그룹을 확인하며 `multimode` alias를 생성·복구하지 않는다. 날짜별 과거 명령/관측은 덮어쓰지 않는다.
+
 - [ ] 9. 실제 operator package pins·inventory·복구 지점을 검증한 뒤 정확한 릴리즈의 `uv sync`를 실행한다.
-- [ ] 10. 요청 inventory를 검증한 뒤 `kolla-ansible genconfig -i multimode`를 실행한다.
-- [ ] 11. genconfig 다음 표준 `kolla-ansible pull -i multimode`와 `kolla-ansible reconfigure -i multimode`를 순서대로 실행한다.
+- [ ] 10. 요청 inventory를 검증한 뒤 `kolla-ansible genconfig -i /etc/kolla/multinode`를 실행한다.
+- [ ] 11. genconfig 다음 표준 `kolla-ansible pull -i /etc/kolla/multinode`와 `kolla-ansible reconfigure -i /etc/kolla/multinode`를 순서대로 실행한다.
 - [ ] 12. 서비스 health와 실제 배포 버전·authenticated boundary를 검증하고 완료된 범위만 archive한다.
 
 ## Operational Monitoring
@@ -124,10 +128,10 @@
 - [ ] 36. 승인된 Palimpsest shared remote blob/cache/upload storage를 준비하고 기존 local volume·inventory를 보존한다.
 - [ ] 37. Palimpsest API만 세 controller에 복제하고 기존 worker는 하나만 유지하며 실제 지속 데이터는 remote backend에 둔다.
 - [ ] 38. 앞 선행 조건과 복구/auth/storage gate가 완료된 뒤 실제 wireguard-server에 SSH하여 다섯 서비스를 배포한다.
-- [ ] 39. 요청 multimode inventory로 최신 release를 해석·적용하는 표준 경로를 검증한다.
-- [ ] 40. 실제 `kolla-ansible genconfig -i multimode`를 성공시킨다.
-- [ ] 41. 실제 `kolla-ansible pull -i multimode`를 성공시킨다.
-- [ ] 42. 실제 `kolla-ansible reconfigure -i multimode`를 성공시킨다.
+- [ ] 39. 기존 `/etc/kolla/multinode` inventory로 최신 release를 해석·적용하는 표준 경로를 검증한다.
+- [ ] 40. 실제 `kolla-ansible genconfig -i /etc/kolla/multinode`를 성공시킨다.
+- [ ] 41. 실제 `kolla-ansible pull -i /etc/kolla/multinode`를 성공시킨다.
+- [ ] 42. 실제 `kolla-ansible reconfigure -i /etc/kolla/multinode`를 성공시킨다.
 - [ ] 43. cloud.dmslab.re.kr의 실제 최신 버전·readiness·인증 경계·사용자 화면을 검증한다.
 
 현재 관측: native Palimpsest main run37185453150은 승인 뒤 step7에서 KERNEL_URL/CONFIG_URL이 모두 비어 실패했다. HTTPS/hash/native guard를 완화하지 않는다. 원래 reader와 Manila 공유/access는 순서 정정 전 생성됐지만 active config·mount·app에는 적용되지 않았으며 추가 운영 쓰기는 중지했다. 실제 rollout 성공 증거가 아니다.
@@ -194,4 +198,16 @@
 - [x] 65. 검증한 source bytes를 공유 checkout에 보존적으로 반영하고 eligible project paths 983개만 stage했다(수정750·추가231·삭제2). Unmerged index 0, machine-local `.omp/mcp.json` 보존·미포함, staged architecture guard 2,524 source files/digest `fd9829077808a4223b7e52379fa6db88fce4989954962b71d62b4f16fcaabb3f` 일치를 확인했다. 실제 local commit SHA는 사용자 완료 보고에 기록한다.
 
 
+## Five-Service Source Release and Preset-only Cutover Boundary (2026-10-08)
+
+- [x] 62. 최신 origin/dev 기반 격리 clone에 각 프로젝트의 현재 변경을 정상 통합하고 개별 commit/push·필수 qualification을 완료했다. 불변 태그는 Afterglow1.30.4 `09a451996687f03ae776af4dcc88c2783051ad9d`, Lumen0.6.6 `2757a5df80f03ce90223ab4c8248485ebf037f67`, Drover0.4.4 `30bba3e3221b8d4aa96cdde3d87ae28c253cf3f9`, Waygate0.3.2 `7da6a2701d439bee6766b575719638525562cd9c`, Palimpsest0.3.1 `1458db42a1449a25b664584d144d0a97086f8f6f`다. 공유 원본 checkout/index와 main을 변경하지 않았다. 정확한 local gate·synthetic boundary·source/registry architecture 차이는 각 저장소 릴리스 기록에 남긴다.
+- [x] 63. 정확한 태그의 CI 발행을 확인했다. Afterglow Docker37725861313·Helm37725861163, Lumen v0.6.6 Package·Docker, Drover Release37725378818·Docker37725379463, Waygate Docker37725387427, Palimpsest Release37725879373·Hub37725879345가 성공했다. Afterglow chart version/appVersion1.30.4·OCI digest `b37e1d4d…92d32c`와 Afterglow/Lumen/Drover/Waygate 이미지의 tag→revision·latest digest 일치를 확인했다. Drover latest는 main-only가 아니며 실제 v0.4.4와 일치한다. 수동 stable 추가 시도의 registry403은 실패 이력으로 보존하고 latest 검증으로 대체 성공을 꾸미지 않는다. Palimpsest native KVM은 owner가 요청한 opt-in disabled 상태여서 skipped이며 KVM/Nova 부팅 성공을 주장하지 않는다.
+- [x] 68. Five-service tag 이후 grant-dependent production-source Chromium41 screenshots/197 accepted API receipts/16 denied clicks에서 실제 Image Studio 거부 상태의 영구 model loading을 발견했다. 별도 `fix-image-studio-denied-status`는 기존 `imagesAllowed`로 status만 감싸고 required-leaf notices·data/action fences를 보존한다. 새 patch1.30.5 production build의 실제 Chromium31조건에서 거부/권한pending/error·modelpending/error/empty·capabilityerror·독립 assetleaf 및 light/dark390–1440px를 확인했다. Source/served node SHA 일치·거부modelHTTP0·overflow0·JSerror0, paid provider/운영 mutation0이다. 기존1.30.4 tag는 이동하지 않는다.
+- [x] 69. Afterglow1.30.5 full gate 뒤 source3941490d를 정상 dev push하고 dev Docker37746138117 성공 후 새 불변v1.30.5를 발행했다. Tag Docker37746747991·Helm37746747697 성공,4개image revision/version/latest 및 chart1.30.5/digest 일치를 확인했다. 실제 digest-pinned frontend Chromium31조건·거부modelHTTP0·overflow0·JSerror0·mutation0과 API/worker/shell declared architecture의version1.30.5·uid1000을 확인했다. `evidence/afterglow-1305-publication.json`·`image-status-1305-published/`에 증거를 보존한다. Palimpsest0.3.1 formal Release는 original exact-hash distributions로 완성했고 final-job condition repair/완료 archive는 protected dev PR18/19·strict required checks/정상 merge75593f31를 따랐다. 해당 exact dev Development package37746548432·Hub37746548449·Test37746548469 모두 success, native KVM은 opt-out skipped다. 미래 tag final job의 실행 proof나 운영 cutover로 확대하지 않았다.
+- [x] 64. 사용자는 운영 범위를 다섯 서비스 태그로만 한정하고 IAM은 프리셋 생성만 승인했다. 실제 역할/graph 검토 후 빠진 서비스 역할46개·edge67개를 추가했으며 최종 missing/unsafe 목록은 비었다. Script는 roles POST·implies PUT만 하며 사용자 할당·role/edge 삭제를 실행하지 않는다. 별도 read-only inventory는45projects·64users·7groups·direct158·effective519·project-group13이다. 일반 사용자43명/41projects의106멤버십(활성104)에 서비스 등급이0건임을 관측했다. 이는 향후 접근 차단 위험이며 실제106요청 실패 증거가 아니다. Presets 생성은 사용자 권한 부여가 아니다.
+- [ ] 65. 사용자/프로젝트별 필요한 서비스 부모·leaf 등급과 Waygate legacy client owner, Drover legacy cluster 재인가/guest rollout을 별도 검토·승인한다. member 자동 승격·기존 할당 삭제·보호 규칙 우회를 하지 않는다. 이 조건과 새 all-writers/drain·복구/key/config escrow·실제 restore·auth/storage 선행 조건이 충족되기 전 operator5package/pin/lock 또는 Kolla를 바꾸지 않는다.
+- [ ] 66. 승인된 순서로 Hub와 sibling을 Afterglow보다 먼저 올리고 `-i /etc/kolla/multinode --tags <승인한서비스>`의 canonical genconfig→pull→필수 schema bootstrap/upgrade→reconfigure 및 per-controller shared-handler 영향 확인을 실행한다. 이번 release set에는 아직 operator 변경·중지·schema 적용·genconfig/pull/reconfigure가 없다. 현재 runtime은 Afterglow1.30.3·Lumen0.6.4·Drover0.4.3·Waygate0.3.1·old Hub이며 컨테이너 revision/health read-only 증거는 새 버전의 배포 완료가 아니다.
+- [ ] 67. 실제 공개 origin의 새 running version·readiness·인증 경계·사용자 UI와 서비스별 수명/데이터 보존 acceptance를 완료한다. Local/synthetic/provider-mocked/image import 증거를 운영 auth/cloud proof로 승격하지 않는다. 남은 운영 항목 때문에 release change를 archive하지 않는다.
+
+Sibling post-publication 기록은 Lumen d8962104/Drover29662145/Waygate63f40028 각각 정상 dev push·exact hosted check19(16success/3skip)/6success/3success를 완료했다. Palimpsest archive75593f31의3 exact-dev runs도 success다. Afterglow 최종 publication/IAM/UI 증거는 별도 docs-only dev 제출로 분리하며 source tag3941490d·모든 운영 hold를 보존한다. 최종 문서 SHA의 hosted CI는 외부 publication handoff receipt로 기록한다.
 

@@ -686,15 +686,15 @@ function jsonFixture(method: string, normalized: string, body: unknown, profile:
 	};
 	if (method === 'GET' && /^\/api\/v1\/projects\/[^/]+\/assignable-roles$/.test(pathname)) return {
 		is_owner: true, roles: [
-			{ id: 'mock-role-owner', name: 'project_owner', area: 'project', grade: 'owner' },
-			{ id: 'mock-role-member', name: 'project_member', area: 'project', grade: 'member' },
-			{ id: 'mock-role-reader', name: 'project_reader', area: 'project', grade: 'reader' },
+			{ id: 'mock-role-owner', name: 'project_owner', area: 'project', grade: 'owner', implied_role_ids: ['mock-role-member'], inherited_role_ids: ['mock-role-member', 'mock-role-reader'] },
+			{ id: 'mock-role-member', name: 'project_member', area: 'project', grade: 'member', implied_role_ids: ['mock-role-reader'], inherited_role_ids: ['mock-role-reader'] },
+			{ id: 'mock-role-reader', name: 'project_reader', area: 'project', grade: 'reader', implied_role_ids: [], inherited_role_ids: [] },
 		],
 	};
 	if (method === 'GET' && /^\/api\/v1\/projects\/[^/]+\/members$/.test(pathname)) {
 		return { items: [
-			{ user_id: 'mock-user-1', username: 'demo-user', email: 'demo@example.com', is_owner: true, is_manager: true, roles: ['project_owner', 'project_member', 'member'], direct_role_ids: ['mock-role-owner'], effective_role_ids: ['mock-role-owner', 'mock-role-member'], source: 'direct' },
-			{ user_id: 'mock-user-2', username: 'sample-researcher', email: 'researcher@example.com', is_owner: false, is_manager: false, roles: ['project_member', 'member'], direct_role_ids: ['mock-role-member'], effective_role_ids: ['mock-role-member'], source: 'direct' },
+			{ user_id: 'mock-user-1', username: 'demo-user', email: 'demo@example.com', is_owner: true, is_manager: true, roles: ['project_owner', 'project_member', 'project_reader', 'member'], direct_role_ids: ['mock-role-owner'], effective_role_ids: ['mock-role-owner', 'mock-role-member', 'mock-role-reader'], external_role_ids: [], source: 'direct' },
+			{ user_id: 'mock-user-2', username: 'sample-researcher', email: 'researcher@example.com', is_owner: false, is_manager: false, roles: ['project_member', 'project_reader', 'member'], direct_role_ids: ['mock-role-member'], effective_role_ids: ['mock-role-member', 'mock-role-reader'], external_role_ids: [], source: 'direct' },
 		] };
 	}
 	if (method === 'GET' && /^\/api\/v1\/projects\/[^/]+\/invitations$/.test(pathname)) return { items: [] };

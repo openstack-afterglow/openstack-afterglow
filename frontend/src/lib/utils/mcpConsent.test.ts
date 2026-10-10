@@ -23,6 +23,13 @@ describe('MCP OAuth consent handoff', () => {
 		expect(postAuthDestination('/dashboard')).toBe('/oauth/mcp/authorize');
 	});
 
+	it('selects a project before returning to a pending OAuth request without losing its ticket', () => {
+		storeMcpConsentTicket(ticket);
+		expect(postAuthDestination('/select-project')).toBe('/select-project');
+		expect(pendingMcpConsentTicket()).toBe(ticket);
+		expect(postAuthDestination('/dashboard')).toBe('/oauth/mcp/authorize');
+	});
+
 	it('rejects malformed ticket values and clears the route destination after use', () => {
 		expect(storeMcpConsentTicket('not a ticket')).toBe(false);
 		expect(pendingMcpConsentTicket()).toBeNull();

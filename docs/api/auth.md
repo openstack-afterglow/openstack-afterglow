@@ -390,25 +390,52 @@ Keystone가 token authentication에서 반환하는 `404 Failed to validate toke
 
 응답은 [TokenResponse](#tokenresponse) (`auth_method`는 `federated`). 인증 실패 시 401.
 
-## 개인 MCP 키와 접속 확인
+## 개인 MCP 키와 공개 연결 확인
 
 사용자 화면은 `/dashboard/account`의 **외부 AI 접근**, 연결 안내는 공개 `/docs/mcp`다. MCP 개인 키는 브라우저 access JWT나 Lumen 추론 API 키와 다르다. 발급 사용자·프로젝트에 묶이며 `read` 또는 명시적으로 선택한 `manage`와 제한된 Keystone application credential을 사용한다. 평문 키는 발급 응답 한 번만 반환한다. 목록에는 prefix만 포함되고 서버는 해시를 저장한다. 기본 만료 30일·최대 90일은 운영자의 `mcp.default_grant_ttl_days`/`mcp.max_grant_ttl_days` 정책을 따른다.
 
-`POST /api/v1/auth/mcp-tokens/verify`는 유효한 브라우저 JWT와 현재 프로젝트, 허용 Origin 및 `Sec-Fetch-Site: same-site|same-origin`을 요구한다. JSON 본문은 정확히 `{"token":"<personal MCP key>"}`이며 1 KiB로 제한한다. URL 필드는 허용하지 않는다. 키의 종류·활성 상태·사용자·프로젝트 소유권을 먼저 검증한 후에만 운영자가 설정한 공개 리소스로 요청한다.
+`GET /api/v1/auth/mcp-tokens`는 현재 로그인 사용자·프로젝트의 저장된 metadata만 반환합니다. `POST /api/v1/auth/mcp-tokens`는 `{name, access_level: "read"|"manage", expires_at?: ISO timestamp}`를 받고 `201`에서 한 번만 평문 `token`을 반환합니다. 무기한 키가 아닙니다. 서버는 발급 당시 user/project 및 역할 snapshot에 묶인 **restricted** Keystone application credential을 사용합니다. 만료 입력의 offset은 UTC로 정규화하고 upstream Keystone에 microsecond를 보존하는 `Z` timestamp를 전달합니다. 클라이언트는 만료를 비우거나 유효한 미래 ISO 시각을 보냅니다.
 
-검사는 실제 Streamable HTTP SDK로 `initialize` → `notifications/initialized` → 모든 `tools/list` 페이지를 수행하며 `tools/call`은 실행하지 않는다. TLS 인증서를 검증하고 redirect·환경 proxy를 사용하지 않는다. 전체 20초, 응답 2 MiB, 50페이지·5,000도구 한도로 제한한다. 성공 JSON은 `endpoint`, `protocol_version`, `server_name`, `server_version`, `tool_count`만 포함한다. 발급 창 종료·로그인/프로젝트 변경·component 해제는 화면의 비밀과 pending 결과를 폐기한다. 클립보드·저장한 파일은 사용자가 별도로 정리한다.
+MCP의 cloud tool은 이 application credential의 원래 scope로 인증하며 별도 project scope를 요청하지 않습니다. Keystone token의 user/project가 저장된 grant principal과 정확히 일치해야 provider에 요청하고, 다른 owner/project 또는 unscoped 응답은 거부합니다. Manager/admin/browser credential로 fallback하지 않습니다. 연결 확인의 handshake·tools/list 성공은 실제 cloud `tools/call` 성공과 별개의 증거입니다.
 
-| 상태 | 코드·의미 |
-|---|---|
-| 200 | 초기화와 전체 도구 목록 확인; 실제 OpenStack 조회/변경 또는 다른 AI 클라이언트 성공 증거는 아님 |
-| 400 | `invalid_request`(잘못된 본문), `invalid_token`(잘못된·만료·회수·다른 사용자/프로젝트 키); 외부 접속 없이 거부 |
-| 403 | 동일 사이트 browser guard 거부 |
-| 404 | MCP 비활성화 |
-| 429 | 분당 6회 제한 |
-| 503 | `not_configured`(리소스 설정 불가) 또는 authority storage 불가 |
-| 502 | `rejected`, `redirect`, `protocol`; 안전한 일반 메시지만 반환 |
-| 504 | `unavailable`; DNS·TLS·연결 실패 또는 timeout |
+`POST /api/v1/auth/mcp-tokens/verify`는 browser access JWT와 현재 프로젝트, 허용된 Origin 및 `Sec-Fetch-Site: same-origin|same-site`가 필요합니다. `Content-Type: application/json`의 정확한 `{ "token": "<본인 개인 키>" }`만 받으며 본문은 최대1024bytes입니다. 잘못된·만료·폐기·다른 user/project의 키는 공개 URL에 접속하기 **전** 거부합니다. 임의 endpoint를 지정할 수 없습니다.
 
-검사 함수의 응답은 `Cache-Control: no-store`이며 audit action은 `mcp_grant.verify`다. 원문 키나 upstream 오류 본문을 결과·감사에 기록하지 않는다.
+성공 `200`의 응답은 다음 구조이며 token을 포함하지 않습니다.
+
+```json
+{
+  "endpoint": "https://cloud.dmslab.re.kr/mcp",
+  "protocol_version": "2025-11-25",
+  "server_name": "Afterglow",
+  "server_version": "<running-version>",
+  "tool_count": 18
+}
+```
+
+프로토콜/version/count는 실제 응답을 따릅니다. 위 값은 형식 예시이며 운영 성공 증거가 아닙니다. 확인은 SDK initialize·initialized·모든 tools/list 페이지만 실행하고 tools/call을 실행하지 않습니다. 실제 클라우드 접근 권한/작업 성공이나 개별 AI client의 연결을 증명하지 않습니다. TLS를 검증하며 proxy·redirect·retry를 사용하지 않습니다. 전체20초, 응답2MiB, 최대50페이지·5000도구, 분당6회 제한과 `Cache-Control: no-store`/`Pragma: no-cache`가 적용됩니다.
+
+| HTTP | `code` | 의미 |
+|---|---|---|
+| 400 | `invalid_request` | token 외 필드/본문 형식 오류 |
+| 400 | `invalid_token` | 잘못된·만료·폐기·다른 owner/project의 개인 키 |
+| 502 | `rejected` | 공개 MCP resource의 인증 거부 |
+| 502 | `redirect` | 다른 주소로 이동; 비밀을 전송하지 않고 중단 |
+| 502 | `protocol` | 올바른 MCP handshake/tool-list 응답이 아님 |
+| 503 | `not_configured` | 공개 MCP resource 미설정 |
+| 504 | `unavailable` | DNS/TLS/connection/timeout |
+| 429 | - | 확인 rate limit; 1분 뒤 재시도 |
+
+서비스 비활성은404, session/same-site/authority-storage 오류는401/403/503을 유지합니다. Audit action은 `mcp_grant.verify`이며 확인의 user/project·상태와 안전한 실패 원인만 기록합니다. Token/Authorization이나 upstream 오류 본문을 결과·감사에 기록하지 않습니다. API client의 `ApiError.code`와 계정의 네 언어 문구가 안정된 실패 분류를 사용합니다. 발급 창 종료·로그인/프로젝트 변경·component 해제는 화면의 비밀과 pending 결과를 폐기합니다. 개인 token·인증 JSON은 개인 설정에만 저장하고, 클립보드/파일 정리는 사용자 책임입니다. 사용 안내와 클라이언트별 형식은 `/docs/mcp`를 따릅니다.
 
 외부 클라이언트에는 계정 화면의 **인증 JSON 복사** 또는 클라이언트별 개인 Bearer/OAuth 설정을 사용한다. 명시한 `mcp.public_url` 자체가 리소스이며 origin-only URL은 루트 `/`를 유지한다. 미설정 시만 `<public_api_base>/api/v1/mcp`로 대체한다. Root 리소스는 `/.well-known/oauth-protected-resource`와 `/oauth/{register,authorize,token,revoke}`를 사용한다. 전용 MCP 호스트의 DNS·정상 TLS·백엔드 routing과 Afterglow 서버의 outbound 접근은 운영자 준비 사항이다. `https://mcp.cloud.dmslab.re.kr` 예시는 운영 연결 성공 증거가 아니다. Lumen에서 외부 MCP를 등록하는 outbound 설정에 이 개인 키를 공유하지 않는다.
+
+
+### MCP OAuth 동의·갱신과 cold schema cache
+
+개인 Bearer 키와 OAuth는 별도 인증 방식입니다. OAuth 클라이언트 설정 JSON은 HTTP MCP resource URL만 포함하고 개인 키·`Authorization` header·`client_secret`을 넣지 않습니다. 예시 `https://cloud.dmslab.re.kr/mcp`의 discovery는 `/mcp/oauth/{register,authorize,token,revoke}`를 광고합니다. Authorization endpoint를 매개변수 없이 직접 여는 것은 유효한 요청이 아닙니다. 등록한 `client_id`, 정확한 callback/resource, `response_type=code`, 허용 scope, PKCE S256과 state를 포함한 클라이언트 요청을 사용합니다. Public client 등록은 `token_endpoint_auth_method=none`과 authorization-code·refresh grant 모두를 요구하며 HTTP loopback callback은 `127.0.0.1`·`[::1]` IP literal만 허용합니다.
+
+정확한 `/oauth/mcp/authorize`는 공개 브라우저 동의 shell이며 protected console 전체를 공개하지 않습니다. 불투명 ticket은 URL에서 제거해 `sessionStorage`에만 보존하고 password/GitLab login·프로젝트 선택 뒤 같은 동의 화면으로 돌아옵니다. Ticket은 권한이나 access token이 아닙니다. 동의 조회·approve/deny는 현재 browser access bearer와 `X-Project-Id`가 있는 scoped session에서만 수행합니다. 승인은 해당 user/project의 restricted application credential과 grant를 만들며 클라이언트에는 opaque access/refresh token만 반환하고 upstream credential은 보내지 않습니다.
+
+Refresh의 optional `client_id`는 최초 authorization code의 client와 정확히 일치해야 합니다. 빈 값·다른 client·불명확한 persisted binding은 `invalid_grant`이며 token rotation이나 replay revocation을 일으키지 않습니다. `client_id` 생략은 허용하고 올바른 client의 consumed refresh 재사용은 기존 family/grant 폐기를 유지합니다. Binding은 consumed code row에 남으므로 code expiry·authorization ticket cleanup 뒤에도 유지됩니다. 계정의 OAuth 회수 또는 resource의 revoke endpoint는 기존 내구성 cleanup 경로로 grant/family와 downstream authority를 폐기합니다. Token·code·ticket·upstream secret은 문서·audit·QA receipt에 기록하지 않습니다.
+
+SDK 내부 cold schema-cache refresh의 `list_tools(None)`은 현재 principal에게 허용된 전체 schema를 반환합니다. 외부 `tools/list` 요청은 기존 page-size와 grant-bound cursor를 유지하고, SDK input/output validation과 모든 `tools/call`의 현재 principal 권한·strict arguments·mutation ledger를 그대로 적용합니다. Manage schema가 cache에 있어도 read grant가 mutation을 실행할 수 없습니다. 실제 tool 성공은 HTTP200뿐 아니라 `isError=false`와 typed 결과를 확인해야 하며, 위 연결 확인의 handshake·목록 성공으로 대신하지 않습니다. OAuth 세부 안전 계약은 [보안 가이드](../security.md#mcp-oauth와-개인-api-키)를 따릅니다.

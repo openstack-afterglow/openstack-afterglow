@@ -50,6 +50,7 @@ export function hasPendingClaudeGatewayAuthorization(): boolean {
 }
 
 export function postAuthDestination(fallback: string): string {
+	if (fallback === '/select-project') return fallback;
 	if (pendingMcpConsentTicket()) return '/oauth/mcp/authorize';
 	return hasPendingClaudeGatewayAuthorization() ? '/oauth/claude/authorize' : fallback;
 }

@@ -1,4 +1,5 @@
 {
+	"uploadModal.dropFiles": "파일을 여기에 떨어뜨리세요",
 	"uploadModal.nameRequired": "이미지 이름을 입력하세요.",
 	"uploadModal.fileRequired": "업로드할 파일을 선택하세요.",
 	"uploadModal.invalidName": "이미지 이름 형식이 올바르지 않습니다.",

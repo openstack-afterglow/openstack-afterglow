@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/svelte';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/svelte';
 import type { Instance } from '$lib/types/compute';
 import type { InstanceDetailController } from '$lib/stores/instanceDetailController.svelte';
 
@@ -142,17 +142,17 @@ describe('InstanceHeader operation attribution', () => {
 		let resolve!: () => void;
 		mockAbortMigration.mockReturnValueOnce(new Promise<void>((done) => { resolve = done; }));
 		renderHeader({ instance: { ...activeInstance, status: 'MIGRATING' } }, { adminProjectId: 'project-a' });
-		const abort = screen.getByRole('button', { name: '마이그레이션 중단' });
-		const complete = screen.getByRole('button', { name: '강제 완료' });
+		const abort = screen.getByRole<HTMLButtonElement>('button', { name: '마이그레이션 중단' });
+		const complete = screen.getByRole<HTMLButtonElement>('button', { name: '강제 완료' });
 		await fireEvent.click(abort);
 		expect(mockAbortMigration).toHaveBeenCalledTimes(1);
-		expect(abort.contains(screen.getByRole('status'))).toBe(true);
-		expect(abort.hasAttribute('disabled')).toBe(true);
-		expect(complete.hasAttribute('disabled')).toBe(true);
+		expect(within(abort).getByRole('status')).toBeTruthy();
+		expect(within(complete).queryByRole('status')).toBeNull();
+		expect(abort.disabled).toBe(true);
+		expect(complete.disabled).toBe(true);
 		resolve();
-		await screen.findByRole('button', { name: '마이그레이션 중단' });
-		expect(abort.hasAttribute('disabled')).toBe(false);
-		expect(complete.hasAttribute('disabled')).toBe(false);
+		await waitFor(() => expect(abort.disabled).toBe(false));
+		expect(complete.disabled).toBe(false);
 		expect(screen.queryByRole('status')).toBeNull();
 	});
 });

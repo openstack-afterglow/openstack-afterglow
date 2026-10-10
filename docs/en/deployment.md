@@ -86,6 +86,75 @@ default_network_id = "your-network-uuid"
 
 The base backend optionally reads `.env`; frontend never receives backend secrets. The dev runner creates and preserves separate random keys and a private configuration snapshot rather than relying on the sample insecure key. Production forces the insecure bypass off and requires a real secret and operator-provided TLS certificate.
 
+### Application diagnostics (`DEFAULT.debug`)
+
+```toml
+[DEFAULT]
+debug = false # use true to enable application DEBUG diagnostics
+
+[logging]
+log_level = "INFO" # root/dependency baseline, independent of debug
+```
+
+The table name `DEFAULT` and key `debug` are case-sensitive. Use only unquoted,
+lowercase TOML booleans `true` / `false`. `debug = True` or `False` is invalid
+TOML: loaders/generators reject it and never silently rewrite it. Older configs
+without the table or key remain valid and default to `false`.
+
+`DEBUG` in the actual backend process environment (for example `DEBUG=true` or
+`DEBUG=false`) takes precedence over merged TOML; `DEBUG=false` also disables
+TOML `debug = true`. A host-shell variable is not automatically a container
+variable. Base/dev Compose backend reads `.env`; prod/Kolla/Kubernetes require
+explicit injection into the backend environment. Manifests do not inject a
+default `DEBUG=false` that would mask TOML.
+
+Enabling debug sets only the `app` application logger namespace to DEBUG.
+`[logging].log_level` (or `LOG_LEVEL`) still controls the root/dependency baseline;
+protected OpenStack/HTTP/SDK/SQL and `uvicorn.access` loggers remain clamped to
+WARNING. Output handlers enforce the same clamp on propagated DEBUG/INFO records,
+even when a descendant explicitly sets DEBUG. Debug does not enable HTML tracebacks,
+HTTP wire dumps, authentication
+or authorization bypass, insecure mode, or secret output. Diagnostics use bounded
+method/registered-route-template/status/duration/outcome and module/function/line
+metadata, not actual path values, queries, headers, bodies or cookies. Exceptions
+emit only their type and bounded frame function/line, never exception text, source
+lines, locals or chained causes. Sensitive keys and recognized credential patterns
+are masked in full as `***`. Secret assignments in text (including `key`, `cephx_key`,
+`kube_config`, API-key/authorization variants, headers and bodies) redact the remainder
+of the text: spaces, nested JSON, escaped quotes and multiline values have no trusted
+boundary. Keep safe structure in bounded extra metadata, not interpolated dumps.
+Callers must use static event messages and bounded, code-owned metadata. Heuristic
+text masking is defense-in-depth, not a guarantee that arbitrary user text, objects
+or configuration dumps are safe to log. Opaque non-string messages, dictionary/extra
+keys and builtin subclasses are omitted without invoking their representation;
+extras beyond the nesting limit are redacted. This never grants permission to dump
+full requests or responses.
+
+Generation and deployment paths:
+
+- `generate_k8s.py` preserves merged `[DEFAULT].debug` in the ConfigMap's TOML,
+  rendering lowercase booleans and supplying `false` when omitted.
+- `config2helm.py` maps it to the top-level Helm `debug` boolean. Chart values
+  default to `false`; the ConfigMap renders it back into `[DEFAULT]`. Older values
+  files without this key remain compatible. Converted `logging.logLevel`,
+  `logDirectory` and `maxBytes` also render into `[logging]`, preserving the root
+  level, file directory and rotation size independently of debug. Omitted values use
+  backend defaults (`INFO`, `logs`, 52428800). Helm upgrade/ArgoCD tooling forwards
+  values and needs no separate conversion.
+- `setup.py` uses the same renderer for Compose TOML and its K8s ConfigMap,
+  preserving the value and providing `false` for unspecified wizard inputs.
+- Kolla's base provides `debug = false`. Set `[DEFAULT]` / `debug = true` in the
+  private backend operator TOML. The sanitizer preserves it; the final Kolla
+  overlay does not override it. The public frontend projection omits it.
+- Compose manifests and `scripts/local-services.mjs` are unchanged: they mount
+  or copy TOML without reserializing it. An existing dev
+  `.local-services/afterglow.conf` snapshot is not overwritten when the original
+  changes; edit the actual snapshot. Environment profiles do not force debug.
+  The static `deploy/k8s-template/configmap.yaml` also provides `false`.
+
+Restart/recreate the consuming processes after changing settings. Environment
+overrides do not repair malformed TOML. Keep private configs and logs private.
+
 ### 2. Start Services
 
 For current-source development, provide sibling checkouts `../lumen`, `../waygate`, `../drover`, and `../palimpsest`; the first three require `docker/Dockerfile`. Palimpsest requires `docker/hub/Dockerfile`, which copies `hub/src` and the Hub package metadata, so Compose uses the `../palimpsest` repository root as its build context. Docker Compose 2.24+, Python 3.12+, and actual OpenStack credentials are required. Set the dedicated `[openstack] service_project_id` in the private config or `OS_SERVICE_PROJECT_ID` in `.env`; there is no admin-project fallback.
@@ -308,7 +377,9 @@ data:
 
 Do not put secret values in the ConfigMap. `OS_PASSWORD`, `SECRET_KEY`, `GITLAB_OIDC_CLIENT_SECRET`, `K3S_KUBECONFIG_ENCRYPTION_KEY`, `DATABASE_URL`, `PROMETHEUS_PASSWORD`, and `BUILDER_SSH_PRIVATE_KEY` come from `afterglow-secrets` as environment variables or a Secret volume.
 
-`generate_k8s.py --config ./afterglow.conf --output-dir deploy/k8s-template` writes `configmap.yaml`, `secret.yaml`, and `grafana-deployment.yaml`. If `[app].secret_key` is empty, `change-me-in-production`, or shorter than 32 characters, `secret.yaml` generation fails to match the Kubernetes production guard.
+`generate_k8s.py --config ./afterglow.conf --output-dir deploy/k8s-template` writes `configmap.yaml`, `secret.yaml`, `grafana-deployment.yaml`, and `ingress.yaml`. If `[app].secret_key` is empty, `change-me-in-production`, or shorter than 32 characters, `secret.yaml` generation fails to match the Kubernetes production guard.
+
+For personal MCP, set `[services] mcp = true` and `[mcp] public_url = "https://cloud.dmslab.re.kr/mcp"`. Apply the generated `ingress.yaml` **last, after static base/overlays**. With MCP enabled it contains the main web/API Ingress and a separate priority1000 MCP Ingress: Exact `/mcp`, Prefix `/mcp/`, and Prefix `/.well-known/` go to the backend. `/mcpevil`, `/mcp-other`, and frontend consent retain their frontend route. An explicit root resource is permitted only on a dedicated host; a shared web/API host root fails before generation. The main Ingress owns the union of TLS hosts, including MCP. Do not commit generated Secrets or credentials. Helm's `services.mcp` and `mcp.publicUrl` use the same boundaries.
 
 ### Ingress Domain
 

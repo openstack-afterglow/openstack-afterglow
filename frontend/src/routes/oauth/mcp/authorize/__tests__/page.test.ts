@@ -5,12 +5,19 @@ import { pendingMcpConsentTicket } from '$lib/utils/mcpConsent';
 const { api, auth, goto, page } = vi.hoisted(() => {
 	let value = { url: new URL('http://localhost/oauth/mcp/authorize'), data: {} };
 	const subscribers = new Set<(next: typeof value) => void>();
+	let authValue: { token: string | null; projectId: string | null } = { token: 'mock-token', projectId: 'mock-project-1' };
+	const authSubscribers = new Set<(next: typeof authValue) => void>();
 	return {
 		api: { get: vi.fn(), post: vi.fn() },
 		auth: {
-			subscribe(run: (next: { token: string; projectId: string }) => void) {
-				run({ token: 'mock-token', projectId: 'mock-project-1' });
-				return () => {};
+			subscribe(run: (next: typeof authValue) => void) {
+				authSubscribers.add(run);
+				run(authValue);
+				return () => authSubscribers.delete(run);
+			},
+			set(next: typeof authValue) {
+				authValue = next;
+				for (const run of authSubscribers) run(authValue);
 			},
 		},
 		goto: vi.fn(),
@@ -42,6 +49,7 @@ describe('MCP OAuth consent route', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		sessionStorage.clear();
+		auth.set({ token: 'mock-token', projectId: 'mock-project-1' });
 		page.set({
 			url: new URL(`http://localhost/oauth/mcp/authorize?ticket=${MOCK_MCP_CONSENT_TICKET}`),
 			data: {},
@@ -73,6 +81,21 @@ describe('MCP OAuth consent route', () => {
 			'mock-project-1',
 		);
 		expect(goto).not.toHaveBeenCalled();
+	});
+
+	it('preserves the ticket and selects a project before loading consent for an unscoped login', async () => {
+		auth.set({ token: 'mock-token', projectId: null });
+		render(Page);
+
+		await waitFor(() => expect(goto).toHaveBeenCalledWith('/select-project'));
+		expect(pendingMcpConsentTicket()).toBe(MOCK_MCP_CONSENT_TICKET);
+		expect(api.get).not.toHaveBeenCalled();
+		expect(screen.queryByRole('button', { name: '읽기 권한 허용' })).toBeNull();
+
+		auth.set({ token: 'mock-token', projectId: 'selected-project' });
+		await screen.findByRole('button', { name: '읽기 권한 허용' });
+		expect(api.get).toHaveBeenCalledOnce();
+		expect(pendingMcpConsentTicket()).toBe(MOCK_MCP_CONSENT_TICKET);
 	});
 
 	it('rejects malformed query tickets without calling the consent API', async () => {

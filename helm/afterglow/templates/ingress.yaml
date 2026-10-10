@@ -40,24 +40,7 @@ spec:
     - host: {{ .Values.ingress.host }}
       http:
         paths:
-          {{- if $mcpEnabled }}
-          {{- if eq $mcpHost $.Values.ingress.host }}
-          - path: {{ $mcpPath | quote }}
-            pathType: Prefix
-            backend:
-              service:
-                name: backend
-                port:
-                  number: 8000
-          - path: /.well-known
-            pathType: Prefix
-            backend:
-              service:
-                name: backend
-                port:
-                  number: 8000
-          {{- end }}
-          {{- end }}
+
           - path: /api
             pathType: Prefix
             backend:
@@ -77,24 +60,7 @@ spec:
     - host: {{ . }}
       http:
         paths:
-          {{- if $mcpEnabled }}
-          {{- if eq $mcpHost . }}
-          - path: {{ $mcpPath | quote }}
-            pathType: Prefix
-            backend:
-              service:
-                name: backend
-                port:
-                  number: 8000
-          - path: /.well-known
-            pathType: Prefix
-            backend:
-              service:
-                name: backend
-                port:
-                  number: 8000
-          {{- end }}
-          {{- end }}
+
           - path: /v1
             pathType: Prefix
             backend:
@@ -117,43 +83,51 @@ spec:
                 port:
                   number: 3080
     {{- end }}
-    {{- if $mcpEnabled }}
-    {{- if and (ne $mcpHost $.Values.ingress.host) (not (has $mcpHost $.Values.ingress.apiHosts)) }}
-    # Public Streamable HTTP MCP resource and OAuth discovery endpoints only; the
-    # rest of the backend API is never published on the dedicated MCP host.
-    - host: {{ $mcpHost }}
+{{- if $mcpEnabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: afterglow-mcp-ingress
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    kubernetes.io/ingress.class: {{ .Values.ingress.ingressClass | quote }}
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    traefik.ingress.kubernetes.io/router.priority: "1000"
+    traefik.ingress.kubernetes.io/router.middlewares: {{ .Release.Namespace }}-afterglow-upload-timeout@kubernetescrd
+    traefik.ingress.kubernetes.io/service.serverstransport: {{ .Release.Namespace }}-backend-long-timeout@kubernetescrd
+spec:
+  tls:
+    - hosts:
+        - {{ $mcpHost | quote }}
+      secretName: {{ .Values.ingress.tlsSecretName }}
+  rules:
+    - host: {{ $mcpHost | quote }}
       http:
         paths:
-          {{- if eq $mcpPath "/" }}
-          - path: "/"
+          - path: {{ $mcpPath | quote }}
             pathType: Exact
             backend:
               service:
                 name: backend
                 port:
                   number: 8000
-          - path: /oauth
-            pathType: Prefix
-            backend:
-              service:
-                name: backend
-                port:
-                  number: 8000
+          {{- if eq $mcpPath "/" }}
+          - path: /oauth/
           {{- else }}
-          - path: {{ $mcpPath | quote }}
-            pathType: Prefix
-            backend:
-              service:
-                name: backend
-                port:
-                  number: 8000
+          - path: {{ printf "%s/" $mcpPath | quote }}
           {{- end }}
-          - path: /.well-known
             pathType: Prefix
             backend:
               service:
                 name: backend
                 port:
                   number: 8000
-    {{- end }}
-    {{- end }}
+          - path: /.well-known/
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 8000
+{{- end }}

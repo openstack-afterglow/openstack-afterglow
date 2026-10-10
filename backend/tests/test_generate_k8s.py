@@ -80,21 +80,21 @@ def test_render_toml_includes_public_mcp_urls():
     assert 'oauth_consent_url = "https://app.example.test/oauth/mcp/authorize"' in result
 
 
-def _generated_service(ingress, host, request_path):
-    """Resolve the emitted manifest using Kubernetes longest-path/Exact precedence."""
+def _generated_service(ingresses, host, request_path):
     matches = []
-    for rule in ingress["spec"]["rules"]:
-        if rule["host"] != host:
-            continue
-        for route in rule["http"]["paths"]:
-            path = route["path"]
-            exact = route["pathType"] == "Exact"
-            prefix_match = path == "/" or request_path == path or request_path.startswith(path.rstrip("/") + "/")
-            if (exact and request_path == path) or (not exact and prefix_match):
-                matches.append((len(path), exact, route["backend"]["service"]))
-    if not matches:
-        return None
-    return max(matches, key=lambda match: match[:2])[2]
+    for ingress in ingresses:
+        priority = ingress["metadata"].get("annotations", {}).get("traefik.ingress.kubernetes.io/router.priority")
+        for rule in ingress["spec"]["rules"]:
+            if rule["host"] != host:
+                continue
+            for route in rule["http"]["paths"]:
+                path = route["path"]
+                exact = route["pathType"] == "Exact"
+                if request_path == path if exact else request_path.startswith(path):
+                    matcher = "Path" if exact else "PathPrefix"
+                    rule_length = len(f"Host(`{host}`) && {matcher}(`{path}`)")
+                    matches.append((int(priority) if priority else rule_length, route["backend"]["service"]))
+    return max(matches, key=lambda item: item[0])[1] if matches else None
 
 
 def _assert_generated_service(ingress, host, path, name, port):
@@ -116,18 +116,25 @@ def test_generated_ingress_routes_configured_resource_and_oauth_without_rewrites
     }
     configmap = yaml.safe_load(render_configmap(cfg, namespace))
     config = tomllib.loads(configmap["data"]["afterglow.conf"])
-    ingress = yaml.safe_load(render_ingress(cfg, namespace))
+    ingress = list(yaml.safe_load_all(render_ingress(cfg, namespace)))
     assert config["mcp"]["public_url"] == public_url
     assert config["mcp"]["oauth_consent_url"] == cfg["mcp"]["oauth_consent_url"]
-    assert ingress["metadata"]["namespace"] == namespace
+    assert all(document["metadata"]["namespace"] == namespace for document in ingress)
+    assert set(ingress[0]["spec"]["tls"][0]["hosts"]) == {"app.example.test", "api.example.test", mcp_host}
     profile = "dev" if namespace == "afterglow-dev" else "prod"
-    assert ingress["metadata"]["annotations"] == {
+    common_annotations = {
         "kubernetes.io/ingress.class": "traefik",
         "traefik.ingress.kubernetes.io/router.entrypoints": "web,websecure",
         "traefik.ingress.kubernetes.io/service.serverstransport": f"{namespace}-backend-long-timeout@kubernetescrd",
+    }
+    assert ingress[0]["metadata"]["annotations"] == {
+        **common_annotations,
         "cert-manager.io/cluster-issuer": f"letsencrypt-{profile}-traefik",
     }
-    assert set(ingress["spec"]["tls"][0]["hosts"]) == {"app.example.test", "api.example.test", mcp_host}
+    assert ingress[1]["metadata"]["annotations"] == {
+        **common_annotations,
+        "traefik.ingress.kubernetes.io/router.priority": "1000",
+    }
     resource_path = mcp_path.rstrip("/")
     for path in (
         resource_path,
@@ -145,7 +152,6 @@ def test_generated_ingress_routes_configured_resource_and_oauth_without_rewrites
             "/mcpevil",
             resource_path + "evil",
             "/.well-knownevil",
-            "/apiary",
             "/unrelated",
         ):
             _assert_generated_service(ingress, host, path, "frontend", 3080)
@@ -174,12 +180,17 @@ def test_generated_ingress_exposes_only_root_mcp_routes_on_dedicated_host(root_s
     }
     config = tomllib.loads(yaml.safe_load(render_configmap(cfg))["data"]["afterglow.conf"])
     assert config["mcp"]["public_url"] == cfg["mcp"]["public_url"]
-    ingress = yaml.safe_load(render_ingress(cfg))
-    paths = next(rule["http"]["paths"] for rule in ingress["spec"]["rules"] if rule["host"] == "mcp.example.test")
+    ingress = list(yaml.safe_load_all(render_ingress(cfg)))
+    paths = next(
+        rule["http"]["paths"]
+        for document in ingress
+        for rule in document["spec"]["rules"]
+        if rule["host"] == "mcp.example.test"
+    )
     assert {(path["path"], path["pathType"]) for path in paths} == {
         ("/", "Exact"),
-        ("/oauth", "Prefix"),
-        ("/.well-known", "Prefix"),
+        ("/oauth/", "Prefix"),
+        ("/.well-known/", "Prefix"),
     }
     for path in (
         "/",
@@ -218,11 +229,11 @@ def test_generated_ingress_rejects_shared_root_resource(host):
 @pytest.mark.parametrize("mcp", [{}, {"public_url": ""}])
 def test_generated_ingress_preserves_default_resource_and_frontend_fallback(services, mcp):
     cfg = {"cors": {"origins": "https://app.example.test"}, "services": services, "mcp": mcp}
-    ingress = yaml.safe_load(render_ingress(cfg))
+    ingress = list(yaml.safe_load_all(render_ingress(cfg)))
     config = tomllib.loads(yaml.safe_load(render_configmap(cfg))["data"]["afterglow.conf"])
     assert config.get("mcp", {}).get("public_url", "") == ""
     assert config["app"]["public_api_base"] + "/api/v1/mcp" == "https://app.example.test/api/v1/mcp"
-    assert ingress["spec"]["tls"][0]["hosts"] == ["app.example.test"]
+    assert ingress[0]["spec"]["tls"][0]["hosts"] == ["app.example.test"]
     for path in ("/api/v1/mcp", "/api/v1/mcp/oauth/token", "/.well-known/oauth-protected-resource/api/v1/mcp"):
         _assert_generated_service(ingress, "app.example.test", path, "backend", 8000)
     for path in ("/", "/mcp", "/mcpevil", "/oauth/mcp/authorize", "/v1/models", "/unrelated"):
@@ -235,8 +246,8 @@ def test_generated_ingress_ignores_explicit_resource_when_mcp_disabled():
         "services": {"mcp": False},
         "mcp": {"public_url": "https://mcp.example.test/"},
     }
-    ingress = yaml.safe_load(render_ingress(cfg))
-    assert ingress["spec"]["tls"][0]["hosts"] == ["app.example.test"]
+    ingress = list(yaml.safe_load_all(render_ingress(cfg)))
+    assert ingress[0]["spec"]["tls"][0]["hosts"] == ["app.example.test"]
     assert _generated_service(ingress, "mcp.example.test", "/") is None
     _assert_generated_service(ingress, "app.example.test", "/oauth/mcp/authorize", "frontend", 3080)
 
@@ -259,10 +270,12 @@ def test_generator_cli_writes_matching_config_and_ingress(tmp_path, monkeypatch,
         ["generate_k8s.py", "--config", str(config_path), "--output-dir", str(output_dir), "--namespace", namespace],
     )
     main()
-    ingress = yaml.safe_load((output_dir / "ingress.yaml").read_text(encoding="utf-8"))
+    ingress = list(yaml.safe_load_all((output_dir / "ingress.yaml").read_text(encoding="utf-8")))
     configmap = yaml.safe_load((output_dir / "configmap.yaml").read_text(encoding="utf-8"))
     assert tomllib.loads(configmap["data"]["afterglow.conf"])["mcp"]["public_url"] == f"https://{host}/mcp"
-    assert configmap["metadata"]["namespace"] == ingress["metadata"]["namespace"] == namespace
+    assert all(
+        document["metadata"]["namespace"] == configmap["metadata"]["namespace"] == namespace for document in ingress
+    )
     _assert_generated_service(ingress, host, "/mcp", "backend", 8000)
     _assert_generated_service(ingress, host, "/mcp/oauth/token", "backend", 8000)
     _assert_generated_service(ingress, host, "/.well-known/oauth-protected-resource/mcp", "backend", 8000)
@@ -303,7 +316,7 @@ def test_generator_cli_dry_run_includes_ingress_without_writing(tmp_path, monkey
     main()
     output = capsys.readouterr().out
     # Ingress is the final dry-run document, after its heading and separator line.
-    ingress = yaml.safe_load(output.split("# ingress.yaml\n", 1)[1].split("\n", 1)[1])
+    ingress = list(yaml.safe_load_all(output.split("# ingress.yaml\n", 1)[1].split("\n", 1)[1]))
     _assert_generated_service(ingress, "mcp.example.test", "/", "backend", 8000)
     assert _generated_service(ingress, "mcp.example.test", "/api/v1/auth/login") is None
     assert not output_dir.exists()

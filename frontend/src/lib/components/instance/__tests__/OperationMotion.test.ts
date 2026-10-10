@@ -37,7 +37,7 @@ describe('instance operation feedback', () => {
 		expect(screen.queryByRole('status')).toBeNull();
 		await fireEvent.click(submit);
 		expect(submit.disabled).toBe(true);
-		expect(within(submit).getByRole('status')).toBeTruthy();
+		expect(within(submit).getByRole('status').textContent?.trim()).toBe('변경 중...');
 		expect(onClose).not.toHaveBeenCalled();
 		resolve('게스트 에이전트 연결 실패');
 		await screen.findByText('게스트 에이전트 연결 실패');
@@ -52,6 +52,7 @@ describe('instance operation feedback', () => {
 		controller.current.migrateLoading = true;
 		render(MigrateModal, { type: 'live', onClose: vi.fn() });
 		const status = screen.getByRole('status');
+		expect(status.textContent?.trim()).toBe('마이그레이션 중...');
 		const submit = status.closest('button') as HTMLButtonElement;
 		expect(submit.disabled).toBe(true);
 	});
@@ -74,6 +75,7 @@ describe('instance operation feedback', () => {
 		const volumeA = screen.getByRole('link', { name: 'Volume A' }).closest('div')!.parentElement!;
 		const volumeB = screen.getByRole('link', { name: 'Volume B' }).closest('div')!.parentElement!;
 		const busy = within(volumeB).getByRole('status').closest('button') as HTMLButtonElement;
+		expect(within(volumeB).getByRole('status').textContent?.trim()).toBe('분리 중...');
 		expect(busy.disabled).toBe(true);
 		const other = within(volumeA).getByRole('button', { name: '분리' }) as HTMLButtonElement;
 		expect(other.disabled).toBe(false);
@@ -98,6 +100,7 @@ describe('instance operation feedback', () => {
 		expect(log.getAttribute('aria-busy')).toBe('true');
 		expect(controller.current.loadConsoleLog).toHaveBeenCalledWith(false);
 		expect(controller.current.consolePollAr).toMatchObject({ active: true });
+		expect(statuses.filter((status) => !status.closest('button'))).toHaveLength(1);
 	});
 
 });

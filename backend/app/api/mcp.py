@@ -293,6 +293,7 @@ async def oauth_token(request: Request):
             result = await refresh_tokens(
                 _session_factory(),
                 refresh_token=form.get("refresh_token", ""),
+                client_id=form.get("client_id"),
                 resource=form.get("resource"),
                 urls=_urls(),
                 scope=form.get("scope"),

@@ -1,4 +1,5 @@
 {
+	"card.noStatus": "无状态",
 	"topology.lane": "泳道",
 	"topology.canvas": "画布",
 	"topology.createNetworkFailed": "创建网络失败",

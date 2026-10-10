@@ -9,7 +9,7 @@ const rows = [
 ];
 
 function rowFor(alias: string) {
-	return within(screen.getByText(alias).closest('tr')!);
+	return within(screen.getByRole('row', { name: new RegExp(alias) }));
 }
 
 describe('GPU quota request activity', () => {
@@ -22,12 +22,19 @@ describe('GPU quota request activity', () => {
 			loading: false, error: '', success: '', onChange,
 		});
 		const inputs = screen.getAllByRole('spinbutton') as HTMLInputElement[];
+		expect(screen.queryByRole('status')).toBeNull();
+		expect(inputs.every((input) => !input.disabled)).toBe(true);
 		await fireEvent.change(inputs[0], { target: { value: '3' } });
+		expect(inputs[0].disabled).toBe(true);
+		expect(inputs[1].disabled).toBe(false);
+		expect(screen.getByRole('status').textContent?.trim()).toBeTruthy();
 		await fireEvent.change(inputs[1], { target: { value: '5' } });
 		expect(onChange.mock.calls).toEqual([['a100', 3], ['h100', 5]]);
-		expect(screen.getAllByRole('status')).toHaveLength(2);
 		expect(inputs[0].disabled).toBe(true);
 		expect(inputs[1].disabled).toBe(true);
+		const statuses = screen.getAllByRole('status');
+		expect(statuses).toHaveLength(2);
+		for (const status of statuses) expect(status.textContent?.trim()).toBeTruthy();
 
 		first.resolve();
 		await waitFor(() => expect(inputs[0].disabled).toBe(false));
@@ -49,7 +56,7 @@ describe('GPU quota request activity', () => {
 		});
 		await fireEvent.change(rowFor('a100').getByRole('spinbutton'), { target: { value: '3' } });
 		expect(onSetLimit).toHaveBeenCalledWith('a100', 3);
-		expect(rowFor('a100').getByRole('status')).toBeTruthy();
+		expect(rowFor('a100').getByRole('status').textContent?.trim()).toBeTruthy();
 		expect((rowFor('a100').getByRole('spinbutton') as HTMLInputElement).disabled).toBe(true);
 		expect(rowFor('h100').queryByRole('status')).toBeNull();
 		expect((rowFor('h100').getByRole('spinbutton') as HTMLInputElement).disabled).toBe(false);
@@ -66,7 +73,7 @@ describe('GPU quota request activity', () => {
 		});
 		await fireEvent.click(rowFor('h100').getByRole('button', { name: '초기화' }));
 		expect(onClear).toHaveBeenCalledWith('h100');
-		expect(rowFor('h100').getByRole('status')).toBeTruthy();
+		expect(rowFor('h100').getByRole('status').textContent?.trim()).toBeTruthy();
 		expect((rowFor('h100').getByRole('button', { name: '초기화' }) as HTMLButtonElement).disabled).toBe(true);
 		expect(rowFor('a100').queryByRole('status')).toBeNull();
 		request.resolve();

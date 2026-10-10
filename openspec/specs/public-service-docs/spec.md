@@ -7,7 +7,7 @@ Provide publicly readable, source-backed Korean, English, Japanese and Simplifie
 ## Requirements
 
 ### Requirement: Project-independent public documentation
-The frontend SHALL expose `/docs` and slash-delimited descendants as public reading routes without requiring login, project selection, or authentication recovery. Documentation reading SHALL NOT start identity verification or session refresh. Existing protected routes and backend authorization SHALL remain unchanged.
+The frontend SHALL expose `/docs` and slash-delimited descendants as public reading routes without requiring login, project selection, or authentication recovery. Documentation reading SHALL NOT start identity verification, session refresh, or authenticated announcement polling. A late expired-session response from an earlier protected-console request SHALL NOT redirect the current documentation reader to login. Existing protected routes and backend authorization SHALL remain unchanged.
 
 #### Scenario: Anonymous reader with unavailable API
 - **WHEN** an anonymous reader directly opens `/docs` or a registered guide while the API is unavailable
@@ -18,6 +18,12 @@ The frontend SHALL expose `/docs` and slash-delimited descendants as public read
 - **WHEN** a reader with an expired stored session or no selected project opens a guide
 - **THEN** the article remains readable without auth verification, refresh, or a project-selection gate
 - **AND** a signed-in reader without a project is offered the existing project-selection console destination
+
+#### Scenario: A protected-console request expires after entering documentation
+- **WHEN** a reader navigates from the protected console to `/docs` or a slash-delimited guide before an earlier console request returns HTTP 401
+- **THEN** the current documentation remains readable without a login redirect or authentication-recovery gate
+- **AND** documentation does not start authenticated announcement polling or session refresh
+- **AND** returning to a protected console route retains its normal authentication and project checks
 
 #### Scenario: Similar protected prefix
 - **WHEN** an anonymous reader requests `/docs-admin` or `/docsevil`

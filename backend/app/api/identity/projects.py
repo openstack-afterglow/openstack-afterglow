@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import (
     get_caller_project_permissions,
     get_token_info,
-    has_project_write_permission,
     require_admin,
     require_project_manager,
 )
@@ -103,28 +102,10 @@ async def get_project_permissions(
         from app.api.deps import _cached_validate
 
         try:
-            scoped = await _cached_validate(token_info["token"], project_id)
-            roles = [r.lower() for r in scoped.get("roles", []) if isinstance(r, str)]
-            role_set = set(roles)
-            can_write = has_project_write_permission(scoped)
-            is_reader = not can_write and ("reader" in role_set or len(role_set) == 0)
-
-            from app.services.project_service import get_project_access
-            from app.services.service_permissions import service_permissions
-
-            access = await get_project_access(project_id, token_info["user_id"])
-            return {
-                "project_id": project_id,
-                "user_id": token_info.get("user_id", ""),
-                "roles": await visible_role_names(access["roles"], False),
-                "is_system_admin": False,
-                "is_owner": access["is_owner"],
-                "is_manager": access["is_manager"],
-                "service_permissions": service_permissions({"roles": access["roles"], "is_system_admin": False}),
-                "is_reader": is_reader,
-                "can_read": True,
-                "can_write": can_write,
-            }
+            await _cached_validate(token_info["token"], project_id)
+            return await get_caller_project_permissions(
+                project_id=project_id, token_info={**token_info, "is_system_admin": False}
+            )
         except HTTPException:
             raise
         except Exception:

@@ -1,4 +1,5 @@
 {
+	"uploadModal.dropFiles": "Drop files here",
 	"uploadModal.nameRequired": "Enter an image name.",
 	"uploadModal.fileRequired": "Select a file to upload.",
 	"uploadModal.invalidName": "The image name format is invalid.",

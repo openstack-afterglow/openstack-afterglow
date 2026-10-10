@@ -1,4 +1,4 @@
-import { grantLumen } from './lumenPermissionFixture';
+import { grantLumen, pendingLumen } from './lumenPermissionFixture';
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -8,7 +8,7 @@ vi.mock('$lib/api/chatAttachments', async (importOriginal) => {
 });
 
 import ChatInput from '../ChatInput.svelte';
-import { uploadChatAttachment } from '$lib/api/chatAttachments';
+import { uploadChatAttachment, type AttachmentRef } from '$lib/api/chatAttachments';
 
 beforeEach(() => {
 	vi.mocked(uploadChatAttachment).mockReset();
@@ -26,6 +26,20 @@ beforeEach(() => {
 });
 
 describe('ChatInput native Search', () => {
+	it('announces permission loading once and replaces it with one settled error without enabling send', async () => {
+		pendingLumen();
+		const view = render(ChatInput, { value: 'Keep this draft', onSend: vi.fn(), onStop: vi.fn() });
+		expect(view.getAllByRole('status')).toHaveLength(1);
+		expect((view.getByRole('button', { name: '전송' }) as HTMLButtonElement).disabled).toBe(true);
+		pendingLumen('Permission service unavailable');
+		await waitFor(() => expect(view.getAllByRole('alert')).toHaveLength(1));
+		expect(view.queryByRole('status')).toBeNull();
+		expect((view.getByRole('textbox') as HTMLTextAreaElement).value).toBe('Keep this draft');
+		expect((view.getByRole('button', { name: '전송' }) as HTMLButtonElement).disabled).toBe(true);
+		grantLumen('lumen-chat_user');
+		await waitFor(() => expect(view.queryByRole('alert')).toBeNull());
+		expect((view.getByRole('button', { name: '전송' }) as HTMLButtonElement).disabled).toBe(false);
+	});
 	it('blocks persistent image uploads and tool selection for chat-only grants', async () => {
 		grantLumen('lumen-chat_user');
 		const view = render(ChatInput, { value: '', onSend: vi.fn(), onStop: vi.fn(), modelCaps: { vision: true, tool_call: true }, availableTools: [{ id: 1, name: 'Privileged tool' }] });
@@ -78,6 +92,28 @@ describe('ChatInput native Search', () => {
 });
 
 describe('ChatInput attachments', () => {
+	it('labels an image upload until the scanned asset is ready', async () => {
+		const upload = Promise.withResolvers<AttachmentRef>();
+		vi.mocked(uploadChatAttachment).mockReturnValue(upload.promise);
+		const { container, getByRole, queryByRole } = render(ChatInput, {
+			value: '',
+			modelCaps: { vision: true },
+			onSend: vi.fn(),
+			onStop: vi.fn()
+		});
+		const input = container.querySelector<HTMLInputElement>('input[type="file"]');
+		expect(input).toBeTruthy();
+		const file = new File(['image'], 'clean.png', { type: 'image/png' });
+		Object.defineProperty(input!, 'files', { configurable: true, value: [file] });
+
+		await fireEvent.change(input!);
+
+		expect(getByRole('status')).toBeTruthy();
+		expect(getByRole('img', { name: 'clean.png' }).closest('[aria-busy="true"]')).not.toBeNull();
+		upload.resolve({ id: 'asset-clean', mime_type: 'image/png', name: 'clean.png' });
+		await waitFor(() => expect(queryByRole('status')).toBeNull());
+		expect(getByRole('img', { name: 'clean.png' }).closest('[aria-busy="true"]')).toBeNull();
+	});
 	it('explains when the scanned asset pipeline is unavailable', () => {
 		const { container } = render(ChatInput, {
 			value: '',

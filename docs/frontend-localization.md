@@ -125,7 +125,7 @@ npm --prefix frontend run i18n:scan
 npm --prefix frontend run i18n:scan
 ```
 
-의도적인 서버 데이터·파싱 정규식·운영자 설정은 `hardcoded-text-allowlist.json`에 정확한 줄과 이유를 기록합니다. 파일 전체 허용으로 UI 누락을 숨기지 않습니다. 이 검사는 한글 잔존을 찾으며 하드코딩된 영어까지 자동으로 판별하지는 않습니다.
+의도적인 서버 데이터·파싱 정규식·운영자 설정은 `hardcoded-text-allowlist.json`에 정확한 줄과 이유를 기록합니다. 파일 전체 허용으로 UI 누락을 숨기지 않습니다. 유일한 예외는 `/docs`의 한국어 정본 가이드(`src/lib/docs/*Guides.ts`·`gettingStarted.ts`), 한국어 원문을 lookup key로 쓰는 `src/lib/docs/translations/<locale>/` 사전, 그리고 `src/lib/docs/locales.ts`의 언어별 docs UI 사전입니다. 이 파일들은 `translateDocGuide`·`docsMessages`를 거쳐 네 언어로 표시되는 데이터이므로 `"lines": "all"`로 허용합니다. 이 검사는 한글 잔존을 찾으며 하드코딩된 영어까지 자동으로 판별하지는 않습니다.
 
 Typed public docs의 한국어 정본, 한국어 lookup key를 쓰는 번역 dictionary 및 typed 언어별 docs UI dictionary는 별도 `translateDocGuide`/docs locale 경로로 렌더링하므로 지정된 문서 데이터 파일만 사유를 기록해 허용한다. 이 예외를 Svelte UI·loading/접근성 label·호스트 제거 안전 문구에 확장하지 않는다.
 

@@ -529,6 +529,11 @@ def render_config_toml(cfg: dict, for_k8s: bool = False) -> str:
     lines.append("# 우선순위: 환경변수 > afterglow.conf (프로젝트 루트) > 기본값")
     lines.append("")
 
+    # [DEFAULT]
+    lines.append("[DEFAULT]")
+    lines.append(f"debug = {_toml_bool(cfg.get('DEFAULT', {}).get('debug', False))}")
+    lines.append("")
+
     # [openstack]
     lines.append("[openstack]")
     lines.append(f'auth_url = {_toml_str(os_cfg["auth_url"])}')

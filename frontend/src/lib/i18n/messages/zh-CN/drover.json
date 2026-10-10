@@ -1,11 +1,13 @@
 {
+	"clusterDetail.loading": "正在查询集群",
+	"deleteProgress.label": "集群删除进度",
 	"steps.securityGroup": "安全组",
 	"steps.serverVolume": "服务器卷",
 	"steps.serverVm": "服务器虚拟机",
 	"steps.initialize": "初始化 k3s",
 	"steps.completed": "完成",
 	"steps.prepare": "准备",
-	"deleteProgress.label": "集群删除进度",
+
 	"rotateProgress.unreported": "进度流已结束。请刷新集群状态以查看结果。",
 	"steps.cleanupLb": "清理 LB",
 	"steps.appCredential": "应用凭据",
@@ -13,7 +15,6 @@
 	"steps.agentVm": "代理虚拟机",
 	"steps.recordHistory": "记录历史",
 	"progress.unknownError": "未知错误",
-	"detail.loading": "正在查询集群",
 	"detail.lookupFailed": "查询失败（{status}）",
 	"detail.serverError": "服务器错误",
 	"detail.kubeconfigPending": "kubeconfig 尚未就绪。",

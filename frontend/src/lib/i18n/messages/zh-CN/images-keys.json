@@ -1,4 +1,5 @@
 {
+	"uploadModal.dropFiles": "将文件拖放到此处",
 	"uploadModal.nameRequired": "请输入镜像名称。",
 	"uploadModal.fileRequired": "请选择要上传的文件。",
 	"uploadModal.invalidName": "镜像名称格式无效。",

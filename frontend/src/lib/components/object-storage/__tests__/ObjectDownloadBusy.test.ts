@@ -108,7 +108,7 @@ describe('object download preparation', () => {
 
 		expect(within(card).queryByRole('group')).toBeNull();
 		expect(card.getAttribute('aria-busy')).toBe('true');
-		expect(within(card).getByRole('status')).toBeTruthy();
+		expect(within(card).getByRole('status').textContent?.trim()).toBeTruthy();
 		expect(bundle.getAttribute('aria-busy')).not.toBe('true');
 		expect(within(bundle).queryByRole('status')).toBeNull();
 
@@ -141,7 +141,7 @@ describe('object download preparation', () => {
 		const busy = downloadButton(dialog);
 		expect(busy.disabled).toBe(true);
 		expect(busy.getAttribute('aria-busy')).toBe('true');
-		expect(within(busy).getByRole('status')).toBeTruthy();
+		expect(within(busy).getByRole('status').textContent?.trim()).toBeTruthy();
 		expect(downloadButton(photo).disabled).toBe(true);
 		expect(downloadButton(photo).getAttribute('aria-busy')).toBe('true');
 		expect(otherDownload.disabled).toBe(false);

@@ -92,7 +92,7 @@
 				class="w-full text-sm text-ink-2 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:bg-surface-selected file:text-ink-0 hover:file:bg-surface-selected"
 			/>
 			{#if files?.length}
-				<p class="text-xs text-ink-1">{t('uploadModal.selectedFileCount', { count: files.length })}</p>
+				<p class="text-xs text-ink-1">{t('uploadModal.selectedFiles', { count: files.length })}</p>
 			{/if}
 			<p class="text-xs text-ink-2">
 				{t('uploadModal.inspection')}

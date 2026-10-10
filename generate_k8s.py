@@ -432,6 +432,11 @@ def _render_toml_for_k8s(cfg: dict, namespace: str | None = None) -> str:
         "",
     ]
 
+    # [DEFAULT]
+    lines.append("[DEFAULT]")
+    lines.append(f"debug = {_toml_bool(cfg.get('DEFAULT', {}).get('debug', False))}")
+    lines.append("")
+
     # [openstack]
     lines.append("[openstack]")
     lines.append(f"auth_url = {_toml_str(os_cfg.get('auth_url', ''))}")
@@ -914,15 +919,17 @@ def render_ingress(cfg: dict, namespace: str = "afterglow") -> str:
     )
     frontend_host = urlparse(frontend_origin).hostname
     api_host = urlparse(public_api_base).hostname
-    # Each tuple is (path, pathType, service, port). Kubernetes Prefix is element-aware.
+    # Slash-suffixed Prefix routes also preserve boundaries on default Traefik.
     web_paths = [
-        ("/.well-known", "Prefix", "backend", 8000),
+        ("/.well-known/", "Prefix", "backend", 8000),
         ("/api", "Prefix", "backend", 8000),
         ("/", "Prefix", "frontend", 3080),
     ]
     routes = {frontend_host: list(web_paths)}
     if api_host != frontend_host:
         routes[api_host] = [("/v1", "Prefix", "lumen", 8012), *web_paths]
+    mcp_routes = None
+    tls_hosts = list(routes)
 
     if cfg.get("services", {}).get("mcp", False):
         resource = cfg.get("mcp", {}).get("public_url") or f"{public_api_base}/api/v1/mcp"
@@ -933,43 +940,48 @@ def render_ingress(cfg: dict, namespace: str = "afterglow") -> str:
             raise ValueError("mcp.public_url requires an absolute URL with a host")
         if mcp_path == "/" and mcp_host in routes:
             raise ValueError("mcp.public_url at an origin root requires a dedicated host; it cannot share the web or API host")
-        mcp_paths = (
-            [("/", "Exact", "backend", 8000), ("/oauth", "Prefix", "backend", 8000)]
-            if mcp_path == "/"
-            else [(mcp_path, "Prefix", "backend", 8000)]
-        )
-        if mcp_host in routes:
-            # The existing /.well-known and /api routes already cover discovery and the fallback.
-            for route in reversed(mcp_paths):
-                if route not in routes[mcp_host]:
-                    routes[mcp_host].insert(0, route)
-        else:
-            routes[mcp_host] = [*mcp_paths, ("/.well-known", "Prefix", "backend", 8000)]
+        mcp_paths = [
+            (mcp_path, "Exact", "backend", 8000),
+            ("/oauth/" if mcp_path == "/" else f"{mcp_path}/", "Prefix", "backend", 8000),
+            ("/.well-known/", "Prefix", "backend", 8000),
+        ]
+        mcp_routes = {mcp_host: mcp_paths}
+        if mcp_host not in tls_hosts:
+            tls_hosts.append(mcp_host)
 
     profile = "dev" if namespace == "afterglow-dev" else "prod"
-    lines = [
-        "apiVersion: networking.k8s.io/v1",
-        "kind: Ingress",
-        "metadata:",
-        "  name: afterglow-ingress",
-        f"  namespace: {namespace}",
-        "  annotations:",
-        '    kubernetes.io/ingress.class: "traefik"',
-        "    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure",
-        f"    traefik.ingress.kubernetes.io/service.serverstransport: {namespace}-backend-long-timeout@kubernetescrd",
-        f'    cert-manager.io/cluster-issuer: "letsencrypt-{profile}-traefik"',
-        "spec:",
-        "  tls:",
-        "    - hosts:",
-        *(f"        - {_yaml_str(host)}" for host in routes),
-        "      secretName: afterglow-tls",
-        "  rules:",
-    ]
-    for host, paths in routes.items():
-        lines.extend([f"    - host: {_yaml_str(host)}", "      http:", "        paths:"])
-        for path, path_type, service, port in paths:
-            lines.extend(
-                [
+    documents = []
+    ingress_definitions = [("afterglow-ingress", routes, None)]
+    if mcp_routes:
+        ingress_definitions.append(("afterglow-mcp-ingress", mcp_routes, "1000"))
+    for name, host_routes, priority in ingress_definitions:
+        lines = [
+            "apiVersion: networking.k8s.io/v1",
+            "kind: Ingress",
+            "metadata:",
+            f"  name: {name}",
+            f"  namespace: {namespace}",
+            "  annotations:",
+            '    kubernetes.io/ingress.class: "traefik"',
+            "    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure",
+            f"    traefik.ingress.kubernetes.io/service.serverstransport: {namespace}-backend-long-timeout@kubernetescrd",
+        ]
+        if priority:
+            lines.append(f'    traefik.ingress.kubernetes.io/router.priority: "{priority}"')
+        else:
+            lines.append(f'    cert-manager.io/cluster-issuer: "letsencrypt-{profile}-traefik"')
+        lines.extend([
+            "spec:",
+            "  tls:",
+            "    - hosts:",
+            *(f"        - {_yaml_str(host)}" for host in (list(host_routes) if priority else tls_hosts)),
+            "      secretName: afterglow-tls",
+            "  rules:",
+        ])
+        for host, paths in host_routes.items():
+            lines.extend([f"    - host: {_yaml_str(host)}", "      http:", "        paths:"])
+            for path, path_type, service, port in paths:
+                lines.extend([
                     f"          - path: {_yaml_str(path)}",
                     f"            pathType: {path_type}",
                     "            backend:",
@@ -977,10 +989,9 @@ def render_ingress(cfg: dict, namespace: str = "afterglow") -> str:
                     f"                name: {service}",
                     "                port:",
                     f"                  number: {port}",
-                ]
-            )
-    lines.append("")
-    return "\n".join(lines)
+                ])
+        documents.append("\n".join(lines))
+    return "\n---\n".join(documents) + "\n"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1201,6 +1212,7 @@ def main() -> None:
     print("        git에 커밋하지 마세요.")
     print()
     print("  적용 방법:")
+    print("    # Apply generated ingress after any static base/overlay Ingress; those may overwrite the main route.")
     print(f"    kubectl apply -f {secret_path}")
     print(f"    kubectl apply -f {configmap_path}")
     print(f"    kubectl apply -f {ingress_path}")

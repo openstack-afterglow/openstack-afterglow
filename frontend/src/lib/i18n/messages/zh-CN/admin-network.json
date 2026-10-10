@@ -1,4 +1,5 @@
 {
+	"loadbalancersPage.loading": "正在加载负载均衡器...",
 	"adminNetworkCreateModal.title": "创建网络",
 	"adminNetworkCreateModal.name": "名称",
 	"adminNetworkCreateModal.cidrLabel": "CIDR <help>（自动创建子网，可选）</help>",

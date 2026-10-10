@@ -1,4 +1,5 @@
 {
+	"overview.loading": "Loading overview",
 	"layout.notFound": "Page not found",
 	"layout.noAccess": "You don’t have access to this page, or it doesn’t exist.",
 	"layout.dashboard": "Go to dashboard",

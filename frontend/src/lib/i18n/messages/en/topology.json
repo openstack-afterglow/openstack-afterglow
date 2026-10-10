@@ -1,4 +1,5 @@
 {
+	"card.noStatus": "No status",
 	"topology.lane": "Lane",
 	"topology.canvas": "Canvas",
 	"topology.createNetworkFailed": "Failed to create network",

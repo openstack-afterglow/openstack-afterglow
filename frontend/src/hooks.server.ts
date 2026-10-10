@@ -15,7 +15,7 @@ import {
 } from '$lib/mockup/contracts';
 
 // 인증 없이 접근 가능한 경로
-const PUBLIC_PATHS = ['/', '/login', '/auth/gitlab/callback', '/health'];
+const PUBLIC_PATHS = ['/', '/login', '/auth/gitlab/callback', '/health', '/oauth/mcp/authorize'];
 
 // 정적 파일로 판단할 확장자 패턴
 const STATIC_EXT = /\.(js|css|svg|png|jpg|jpeg|ico|woff2?|ttf|eot|map|webp|gif)$/;
@@ -155,6 +155,7 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 		resolveEvent(target, { transformPageChunk: ({ html }) => html.replace('%afterglow.lang%',
 			isDocsPath(target.url.pathname) ? docsLocaleFromUrl(target.url) : locale) });
 	const path = event.url.pathname;
+	if (path === '/oauth/mcp/authorize') securityHeaders['Referrer-Policy'] = 'no-referrer';
 
 	const requestedMockup = event.url.searchParams.get(MOCKUP_QUERY_KEY);
 	let mockup = inactiveMockupSession();

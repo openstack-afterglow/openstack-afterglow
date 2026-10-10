@@ -435,8 +435,7 @@
 </script>
 
 <PageShell max="7xl">
-	<LumenPermissionNotice leaf="lumen-images_user" />
-	<LumenPermissionNotice leaf="lumen-assets_editor" />
+	<LumenPermissionNotice leaves={['lumen-images_user', 'lumen-assets_editor']} />
 	<div class="studio">
 		<header class="studio-header">
 			<svg class="studio-mark" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5" /><circle cx="15.5" cy="9" r="1.75" /><path d="m3.5 17 5-5.5 4 4 2.5-2.5 5.5 5.5" /></svg>
@@ -483,13 +482,15 @@
 			</div>
 			<div class="composer-status">
 				{#if !scope}<p role="status" class="muted">{t('imageStudio.signInHelp')}</p>
-				{:else if modelsLoading || capabilitiesLoading || (!modelsLoaded && !modelsError)}<p role="status" class="muted">{t('imageStudio.checkingOptions')}</p>
-				{:else if modelsError}<p class="muted">{t('imageStudio.modelsRequired')}</p>
-				{:else if models.length === 0}<Alert tone="warning" title={t('imageStudio.noModelsTitle')}>{t('imageStudio.noModels')}</Alert>
-				{:else if readiness}<Alert tone="warning" title={t('imageStudio.notReady')}>{readiness}</Alert>
-				{:else if capabilitiesError}<Alert tone="danger" title={t('imageStudio.optionsLoadFailed')}>{capabilitiesError} <Button variant="subtle" disabled={!imagesAllowed} onclick={() => imagesAllowed && chosenModel && scope && loadCapabilities(chosenModel, scope, ++capabilityRequest)}>{t('imageStudio.retry')}</Button></Alert>
-				{:else if !variantReady}<Alert tone="warning">{t('imageStudio.variantUnavailable')}</Alert>
-				{:else if imagesAllowed}<p role="status" class="muted">{t('imageStudio.ready')}</p>{/if}
+				{:else if imagesAllowed}
+					{#if modelsLoading || capabilitiesLoading || (!modelsLoaded && !modelsError)}<p role="status" class="muted">{t('imageStudio.checkingOptions')}</p>
+					{:else if modelsError}<p class="muted">{t('imageStudio.modelsRequired')}</p>
+					{:else if models.length === 0}<Alert tone="warning" title={t('imageStudio.noModelsTitle')}>{t('imageStudio.noModels')}</Alert>
+					{:else if readiness}<Alert tone="warning" title={t('imageStudio.notReady')}>{readiness}</Alert>
+					{:else if capabilitiesError}<Alert tone="danger" title={t('imageStudio.optionsLoadFailed')}>{capabilitiesError} <Button variant="subtle" disabled={!imagesAllowed} onclick={() => imagesAllowed && chosenModel && scope && loadCapabilities(chosenModel, scope, ++capabilityRequest)}>{t('imageStudio.retry')}</Button></Alert>
+					{:else if !variantReady}<Alert tone="warning">{t('imageStudio.variantUnavailable')}</Alert>
+					{:else}<p role="status" class="muted">{t('imageStudio.ready')}</p>{/if}
+				{/if}
 			</div>
 		</form>
 

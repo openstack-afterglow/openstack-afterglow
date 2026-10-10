@@ -110,10 +110,18 @@ def _tool_cursor_offset(principal: McpPrincipal, cursor: str | None) -> int:
 @_server.list_tools()
 async def _list_tools(request: types.ListToolsRequest) -> types.ListToolsResult:
     principal = current_principal()
-    offset = _tool_cursor_offset(principal, request.params.cursor if request.params else None)
     entries = enabled_entries(principal)
-    page_size = get_settings().mcp_default_page_size
-    page = entries[offset : offset + page_size]
+    if request is None:
+        # SDK 1.28 refreshes call_tool schemas with None, not a public list request.
+        # Its wrapper requires the exact ListToolsRequest annotation above.
+        page = entries
+        next_cursor = None
+    else:
+        offset = _tool_cursor_offset(principal, request.params.cursor if request.params else None)
+        page_size = get_settings().mcp_default_page_size
+        page = entries[offset : offset + page_size]
+        next_offset = offset + len(page)
+        next_cursor = _tool_cursor(principal, next_offset) if next_offset < len(entries) else None
     tools = [
         types.Tool(
             name=entry.name,
@@ -124,10 +132,9 @@ async def _list_tools(request: types.ListToolsRequest) -> types.ListToolsResult:
         )
         for entry in page
     ]
-    next_offset = offset + len(page)
     return types.ListToolsResult(
         tools=tools,
-        nextCursor=_tool_cursor(principal, next_offset) if next_offset < len(entries) else None,
+        nextCursor=next_cursor,
     )
 
 

@@ -1,4 +1,5 @@
 {
+	"loadbalancersPage.loading": "Loading load balancers...",
 	"adminNetworkCreateModal.title": "Create network",
 	"adminNetworkCreateModal.name": "Name",
 	"adminNetworkCreateModal.cidrLabel": "CIDR <help>(Create subnet automatically, optional)</help>",

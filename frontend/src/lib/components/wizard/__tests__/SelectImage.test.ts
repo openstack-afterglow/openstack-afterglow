@@ -72,6 +72,7 @@ function visibleRepositories() {
 describe('SelectImage', () => {
 	it('groups tags by repository, not OS, and selects only after a concrete tag is chosen', async () => {
 		const { onSelect } = renderSelector();
+		expect(visibleRepositories()).toHaveLength(3);
 		expect(screen.getAllByRole('button', { name: t('image.repositoryLabel', { name: 'ubuntu' }) })).toHaveLength(1);
 		expect(repositoryButton('waygate-gateway')).toBeTruthy();
 		expect(screen.queryByRole('region', { name: t('image.tagsTitle', { name: 'ubuntu' }) })).toBeNull();
@@ -151,6 +152,7 @@ describe('SelectImage', () => {
 		const disabledName = t('image.unselectableLabel', { name: 'ubuntu:latest', status: 'saving' });
 		const saving = screen.getByRole('button', { name: disabledName });
 		expect(saving.hasAttribute('disabled')).toBe(true);
+
 		(saving as HTMLButtonElement).click();
 		expect(onSelect).not.toHaveBeenCalled();
 
@@ -171,6 +173,7 @@ describe('SelectImage', () => {
 		render(SelectImage, { images: reverse ? uploads.reverse() : uploads, selectedId: null, onSelect });
 		await fireEvent.click(repositoryButton('ubuntu'));
 		expect(within(tagPanel('ubuntu')).getAllByRole('button')).toHaveLength(1);
+
 		await fireEvent.click(tagButton('ubuntu:latest'));
 		expect(onSelect).toHaveBeenCalledWith(newer.id, 'ubuntu:latest');
 	});

@@ -234,7 +234,11 @@ describe('Realtime Voice', () => {
 		render(RealtimeVoice);
 		await screen.findByText('음성 입력·출력 경로와 가격이 준비되었습니다.');
 		await fireEvent.click(screen.getByRole('button', { name: '음성 세션 시작' }));
+		const connecting = t('realtimeVoice.connecting');
+		await waitFor(() => expect(screen.queryAllByRole('status').some((item) => item.textContent?.includes(connecting))).toBe(true));
+		expect(screen.getByRole('button', { name: connecting }).hasAttribute('disabled')).toBe(true);
 		await fireEvent.click(screen.getByRole('button', { name: '세션 종료' }));
+		expect(screen.queryAllByRole('status').some((item) => item.textContent?.includes(connecting))).toBe(false);
 		microphone.resolve({ getTracks: () => [{ stop: trackStop }] } as unknown as MediaStream);
 		await waitFor(() => expect(trackStop).toHaveBeenCalled());
 		expect(calls.createSession).not.toHaveBeenCalled();

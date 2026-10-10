@@ -43,7 +43,7 @@
 	"hypervisors.removal.serviceState": "サービス状態 (state)",
 	"hypervisors.removal.forcedDown": "強制down (forced_down)",
 	"hypervisors.removal.disabledReason": "無効化理由 (disabled_reason)",
-	"hypervisors.removal.zone": "アベイラビリティーゾーン (zone)",
+	"hypervisors.removal.zone": "アベイラビリティゾーン (zone)",
 	"hypervisors.removal.serviceUpdatedAt": "サービス更新 / 最終通信の参考日時 (updated_at)",
 	"hypervisors.removal.heartbeatWarning": "updated_atはNovaサービス更新 / 最終通信の参考値であり、ping計測時刻ではありません。heartbeat downだけでは物理的な電源停止やプロセス停止を証明できず、forced_down=trueもheartbeat timeoutの証拠ではありません。",
 	"hypervisors.removal.uptimeTitle": "ホストuptime情報",

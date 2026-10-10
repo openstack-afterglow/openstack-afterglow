@@ -12,7 +12,7 @@ Afterglow의 사용자 문서 경로는 **배포된 콘솔 origin의 `/docs`**�
 
 ## 지원 언어
 
-전체 14개 가이드는 한국어, 영어, 일본어, 중국어 간체로 읽을 수 있다. 문서 헤더의 언어 메뉴에서 선택하며 본문·탐색·검색·목차·명령 복사·오류 안내가 함께 바뀐다.
+전체 15개 가이드는 한국어, 영어, 일본어, 중국어 간체로 읽을 수 있다. 문서 헤더의 언어 메뉴에서 선택하며 본문·탐색·검색·목차·명령 복사·오류 안내가 함께 바뀐다.
 
 | 언어 | 문서 홈 | 예시 가이드 |
 |---|---|---|
@@ -44,6 +44,7 @@ Afterglow의 사용자 문서 경로는 **배포된 콘솔 origin의 `/docs`**�
 | `/docs/waygate` | WireGuard 게이트웨이·클라이언트·설정·연결 |
 | `/docs/lumen` | AI 채팅·Studio·모델·한도·API/CLI 연결 |
 | `/docs/palimpsest` | 프로젝트 패키지·접근 키·불변 레이어 재사용 |
+| `/docs/mcp` | 외부 AI의 인바운드 MCP OAuth·개인 키·접속 확인과 Lumen 아웃바운드 연결의 구분 |
 
 각 가이드는 준비 사항, 작업 순서, 결과 확인, 정리·데이터 손실 주의, 장애 대응, 관련 문서와 콘솔 링크를 제공한다. 일부 작업은 UI가 아닌 외부 CLI 예시임을 본문에서 구분한다. 명령은 복사할 수 있으며 실제 환경의 이미지·사용자·ID·IP·파일 경로로 바꾸어 실행한다. 문서를 열거나 명령을 복사하는 것만으로 실행되지는 않는다.
 
@@ -69,6 +70,7 @@ Afterglow의 사용자 문서 경로는 **배포된 콘솔 origin의 `/docs`**�
 - `catalog.ts`: 전체 목록, 선택 언어 catalog의 lazy load/cache와 검색 인덱스.
 - `paths.ts`: 정확한 공개 문서 경로 판정.
 - `locales.ts`: 지원 언어·URL context·번역된 shell/index/article/copy/error 문구와 카테고리.
+- `mcpGuide.ts`: 외부 AI의 인바운드 MCP OAuth·개인 키·연결 확인과 권한·만료·회수 경계.
 - `translate.ts`: reader-facing 필드 변환; 누락·빈 번역은 오류로 처리하고 한국어 본문으로 조용히 fallback하지 않는다.
 - `translations/{en,ja,zh-CN}/`: 언어별 guide group dictionary. source literal key를 유지하고 한국어 정본 변경 시 세 언어의 해당 항목도 함께 갱신한다. slug·section ID·link URL·service gate·related slug·실행 code는 번역 대상이 아니다.
 - `frontend/src/routes/docs/`: 공개 shell·목록·서비스 article·404 화면.

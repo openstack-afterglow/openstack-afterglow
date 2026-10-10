@@ -60,7 +60,7 @@ describe('ConnectedRouterTable ownership and connection', () => {
 			onDisconnect,
 		});
 
-		const button = screen.getByRole('button', { name: /해제/ });
+		const button = within(screen.getByRole('row', { name: /my-router/ })).getByRole('button', { name: /해제/ });
 		await fireEvent.click(button);
 		expect(onDisconnect).toHaveBeenCalledWith('router-owned', 'sub-1');
 	});
@@ -114,6 +114,7 @@ describe('ConnectedRouterTable ownership and connection', () => {
 		expect(first.getAttribute('aria-busy')).not.toBe('true');
 		expect(second.getAttribute('aria-busy')).not.toBe('true');
 		expect(first.disabled).toBe(false);
+		expect(second.disabled).toBe(false);
 
 		await rerender({ ...props, connecting: true });
 		expect(within(ownedRow).getByRole('button', { busy: true })).toBe(first);

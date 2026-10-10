@@ -72,11 +72,11 @@ MINOR 증가 시 PATCH를 0으로 초기화합니다.
 
 - Git 태그 형식: `v{MAJOR}.{MINOR}.{PATCH}` (예: `v1.15.0`)
 - `v` 접두어는 Git 태그 전용입니다. `CHANGELOG.md`, API 응답, 문서에서는 `1.15.0` 형식을 사용합니다.
-- 태그는 `main` 브랜치의 머지 커밋에만 생성합니다.
-- `dev` 브랜치에서는 태그를 생성하지 않습니다.
+- 배포 요청의 tag는 [개발 가이드의 완료 계약](docs/agent-development-guide.md#사용자-요청-배포의-완료-계약)에 따라 정상 push한 정확한 `dev` commit의 CI 성공 뒤 생성한다.
+- `dev → main` PR·merge는 pie_root가 수행하며 이 절차가 main 승격 승인을 대신하지 않는다.
 
 ```bash
-# 태그 생성 (pie_root 수행)
+# 정확한 dev SHA의 CI 성공 뒤, 승인된 배포 작업에서 수행
 git tag -a v1.16.0 -m "release v1.16.0"
 git push origin v1.16.0
 ```

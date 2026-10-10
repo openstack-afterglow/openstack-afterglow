@@ -20,6 +20,8 @@ nav_order: 20
 
 **모든 관리자 엔드포인트에는 `Depends(require_admin)`가 적용**됩니다(개별 데코레이터 또는 라우터 레벨 의존성으로 선언). 관리자가 아닌 사용자는 `403 Forbidden`을 받습니다. 아래 표에서는 이 사항을 매 행마다 반복하지 않습니다.
 
+브라우저의 관리자 강등은 정확한 first-party `/api/v1/admin` 경로 경계의 `403`에만 적용됩니다. 이 경우 stale `isSystemAdmin`을 해제하고 관리자 화면에서 `/dashboard`로 이동하되 로그인 token은 유지합니다. `/api/v1/chat/admin/...`·Drover 같은 downstream 서비스 거부나 query 값에만 `/admin`이 있는 요청은 일반 resource 오류로 표시하며 platform-admin flag·현재 route·세션을 바꾸지 않습니다.
+
 - 대부분의 라우터는 `/api/v1/admin` prefix에 마운트됩니다.
 - 예외: 라이브러리 관리(`/api/v1/admin/libraries`), 공지(`/api/v1/admin/announcements`).
 - 캐시 기반 조회 엔드포인트는 대부분 `refresh` (query, boolean, 기본 `false`) 파라미터로 캐시 무시 재조회를 지원합니다.

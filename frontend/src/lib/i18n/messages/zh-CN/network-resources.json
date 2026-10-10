@@ -1,4 +1,5 @@
 {
+	"lb.state.loadingInfo": "正在加载负载均衡器信息...",
 	"router.loading": "正在加载...",
 	"router.back": "← 仪表盘",
 	"router.actions.delete": "删除",
@@ -184,7 +185,7 @@
 	"lb.actions.adding": "正在添加…",
 	"lb.actions.remove": "移除",
 	"lb.actions.removing": "正在移除…",
-	"lb.detail.loading": "正在加载负载均衡器信息...",
+
 	"lb.listeners.title": "监听器（{count}）",
 	"lb.listeners.empty": "没有监听器。",
 	"lb.form.optionalName": "名称（可选）",

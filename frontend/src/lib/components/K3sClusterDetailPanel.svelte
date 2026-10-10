@@ -122,7 +122,7 @@
     </div>
 
     {#if s.loading}
-      <div class="space-y-4" role="status" aria-label={t('detail.loading')} aria-busy="true">
+      <div class="space-y-4" role="status" aria-label={t('clusterDetail.loading')} aria-busy="true">
         <div class="motion-skeleton h-8 rounded w-64 max-w-full"></div>
         <div class="motion-skeleton h-40 rounded"></div>
       </div>

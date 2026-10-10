@@ -1,12 +1,14 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/ns/account';
 	import { t as tc } from '$lib/i18n/ns/common';
-	import { intlLocale } from '$lib/i18n/runtime.svelte';
+	import { getLocale, intlLocale } from '$lib/i18n/runtime.svelte';
 	import { onMount, untrack } from 'svelte';
 	import { derived } from 'svelte/store';
 	import { api, ApiError, getBaseUrl } from '$lib/api/client';
 	import { siteConfig } from '$lib/config/site';
-	import { auth } from '$lib/stores/auth';
+	import { page } from '$app/stores';
+	import { docsHref } from '$lib/docs/locales';
+	import { auth, authReady, projectSwitching } from '$lib/stores/auth';
 	import { confirmDialog } from '$lib/stores/confirm.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -48,6 +50,7 @@
 	interface AccessScope {
 		token: string | undefined;
 		projectId: string | undefined;
+		userId: string | undefined;
 		enabled: boolean;
 	}
 
@@ -56,6 +59,7 @@
 	let loadSequence = 0;
 	const mcpEnabled = $derived($siteConfig.services.mcp);
 	const mcpUrl = $derived($siteConfig.mcp_url || `${getBaseUrl().replace(/\/+$/, '')}/api/v1/mcp`);
+	const oauthAuthorizeUrl = $derived(`${mcpUrl.replace(/\/+$/, '')}/oauth/authorize`);
 
 	let tokens = $state<McpAccessRecord[]>([]);
 	let oauthGrants = $state<McpAccessRecord[]>([]);
@@ -70,6 +74,7 @@
 	let issuedToken = $state<string | null>(null);
 	let showIssuedToken = $state(false);
 	let copied = $state<'token' | 'config' | null>(null);
+	let oauthConfigCopied = $state(false);
 	let verificationToken = $state('');
 	let verifying = $state(false);
 	let verificationSource = $state<'issued' | 'saved' | null>(null);
@@ -77,15 +82,16 @@
 	let verificationError = $state('');
 	let verificationSequence = 0;
 	const setupConfig = $derived(connectionConfig('YOUR_PERSONAL_MCP_TOKEN'));
+	const oauthConfig = $derived(connectionConfig());
 	const issuedConfig = $derived(issuedToken ? connectionConfig(issuedToken) : '');
 
-	function connectionConfig(secret: string) {
+	function connectionConfig(secret?: string) {
 		return JSON.stringify({
 			mcpServers: {
 				'my-stream-server': {
 					type: 'http',
 					url: mcpUrl,
-					headers: { Authorization: `Bearer ${secret}` },
+					...(secret ? { headers: { Authorization: `Bearer ${secret}` } } : {}),
 				},
 			},
 		}, null, 2);
@@ -121,7 +127,7 @@
 			if (code && Object.hasOwn(VERIFY_ERROR_KEYS, code)) return t(VERIFY_ERROR_KEYS[code as keyof typeof VERIFY_ERROR_KEYS]);
 			if (error.status === 429) return t('mcp.verifyError.rateLimited');
 		}
-		return errorMessage(error, t('mcp.verifyFailed'));
+		return t('mcp.verifyError.unavailable');
 	}
 
 	function isCurrentScope(owner: AccessScope | null): owner is AccessScope & { token: string; projectId: string } {
@@ -151,18 +157,20 @@
 		issuedToken = null;
 		showIssuedToken = false;
 		copied = null;
+		oauthConfigCopied = false;
 		clearVerification();
 	}
 
 	// Subscribe synchronously so even a batched A → B → A gets a new owner.
 	// Unrelated store updates keep the owner, including populated refresh rows.
 	onMount(() => {
-		const unsubscribe = derived([auth, siteConfig], ([authState, config]): AccessScope => ({
+		const unsubscribe = derived([auth, siteConfig, authReady, projectSwitching], ([authState, config, ready, switching]): AccessScope => ({
 			token: authState.token ?? undefined,
 			projectId: authState.projectId ?? undefined,
-			enabled: config.services.mcp,
+			userId: authState.userId ?? undefined,
+			enabled: config.services.mcp && ready && !switching,
 		})).subscribe((next) => {
-			if (scope?.token === next.token && scope?.projectId === next.projectId && scope?.enabled === next.enabled) return;
+			if (scope?.token === next.token && scope?.projectId === next.projectId && scope?.userId === next.userId && scope?.enabled === next.enabled) return;
 			scope = next;
 			reset();
 		});
@@ -263,6 +271,15 @@
 		}
 	}
 
+	async function copyOAuthConfig(owner: AccessScope) {
+		if (!isCurrentScope(owner)) return;
+		try {
+			await navigator.clipboard.writeText(oauthConfig);
+			if (isCurrentScope(owner)) oauthConfigCopied = true;
+		} catch {
+			if (isCurrentScope(owner)) actionError = t('mcp.copyFailed');
+		}
+	}
 	async function verifyConnection(owner: AccessScope, secret: string | null, source: 'issued' | 'saved') {
 		if (!isCurrentScope(owner) || !secret?.trim() || verifying) return;
 		if (source === 'issued' && secret !== issuedToken) return;
@@ -382,7 +399,7 @@
 	{/if}
 {/snippet}
 
-{#if mcpEnabled && scope}
+{#if mcpEnabled && isCurrentScope(scope)}
 	{@const owner = scope}
 	<Card class="mcp-access motion-fade" surface="raised" padding="lg">
 		<div class="section-heading">
@@ -396,7 +413,16 @@
 		</div>
 
 		<p class="endpoint"><span>{t('mcp.endpoint')}</span><code>{mcpUrl}</code></p>
-		<Button href="/docs/mcp" variant="link" size="sm">{t('mcp.docs')}</Button>
+		<Button href={docsHref('mcp', getLocale(), $page.url)} variant="link" size="sm">{t('mcp.docs')}</Button>
+
+		<section aria-labelledby="mcp-oauth-setup-heading" class="connection-section">
+			<h3 id="mcp-oauth-setup-heading">{t('mcp.oauthSetupTitle')}</h3>
+			<p>{t('mcp.oauthSetupHelp')}</p>
+			<p class="endpoint"><span>{t('mcp.oauthAuthorizeEndpoint')}</span><code>{oauthAuthorizeUrl}</code></p>
+			<pre class="mcp-code" role="region" aria-label={t('mcp.oauthConfig')}>{oauthConfig}</pre>
+			<p>{t('mcp.oauthClientSecretHelp')}</p>
+			<div><Button variant="outline" size="sm" onclick={copyOAuthConfig.bind(null, owner)}>{oauthConfigCopied ? t('mcp.copied') : t('mcp.copyOAuthConfig')}</Button></div>
+		</section>
 
 		<Alert tone="warning" title={t('mcp.onceTitle')}>
 			{#snippet children()}{t('mcp.onceHelp')}{/snippet}

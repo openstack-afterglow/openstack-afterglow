@@ -27,24 +27,29 @@ from tests.conftest import make_token_info
         (["admin", "manager", "reader"], True, ["admin", "manager", "reader"], True),
     ],
 )
+@pytest.mark.parametrize("permissions_project", ["current", "foreign-project"])
+@pytest.mark.parametrize("downgraded", [False, True])
 async def test_public_identity_preserves_capability_without_exposing_system_roles(
-    client, monkeypatch, roles, system_admin, visible, can_write
+    client, monkeypatch, roles, system_admin, visible, can_write, permissions_project, downgraded
 ):
     info = make_token_info(roles=roles, is_system_admin=system_admin)
     monkeypatch.setattr("app.database.get_session_factory", lambda: None)
     app.dependency_overrides[get_token_info] = lambda: info
+    effective_project_id = info["project_id"] if permissions_project == "current" else permissions_project
+    validate = AsyncMock(return_value={**info, "project_id": effective_project_id})
+    monkeypatch.setattr("app.api.deps._cached_validate", validate)
 
     # Presentation uses verified token roles; permissions independently resolve
     # canonical role IDs from current provider assignments. Uppercase token admin
     # remains hidden, but uppercase *authority* bindings are not canonical.
-    current_roles = [role.lower() for role in roles]
+    current_roles = ["reader"] if downgraded else [role.lower() for role in roles]
     catalog = [{"id": "role-" + name, "name": name} for name in ("admin", "manager", "member", "reader")]
     assignments = MagicMock(
         return_value=[
             {
                 "user": {"id": info["user_id"]},
                 "role": {"id": "role-" + name},
-                "scope": {"project": {"id": info["project_id"]}},
+                "scope": {"project": {"id": effective_project_id}},
             }
             for name in current_roles
         ]
@@ -57,7 +62,7 @@ async def test_public_identity_preserves_capability_without_exposing_system_role
     monkeypatch.setattr(keystone, "_get_admin_ks_client", lambda: ks)
 
     me = await client.get("/api/v1/auth/me")
-    permissions = await client.get("/api/v1/projects/current/permissions")
+    permissions = await client.get(f"/api/v1/projects/{permissions_project}/permissions")
     credentials = await _build_token_response(
         keystone_token="synthetic-keystone-token",
         project_id=info["project_id"],
@@ -69,12 +74,20 @@ async def test_public_identity_preserves_capability_without_exposing_system_role
     )
 
     assert me.status_code == permissions.status_code == 200
-    for payload in (me.json(), permissions.json(), credentials.model_dump()):
+    for payload in (me.json(), credentials.model_dump()):
         assert payload["roles"] == visible
         assert payload["can_write"] is can_write
         assert payload["is_system_admin"] is system_admin
+    assert permissions.json()["project_id"] == effective_project_id
+    assert permissions.json()["roles"] == (["reader"] if downgraded else visible)
+    assert permissions.json()["can_write"] is (system_admin if downgraded else can_write)
+    assert permissions.json()["is_system_admin"] is system_admin
+    if permissions_project != "current" and not system_admin:
+        validate.assert_awaited_once_with(info["token"], effective_project_id)
+    else:
+        validate.assert_not_awaited()
     assert info["roles"] == roles
-    assignments.assert_called_once_with(project=info["project_id"], effective=True)
+    assignments.assert_called_once_with(project=effective_project_id, effective=True)
     if can_write:
         assert require_project_write(info) is info
     else:

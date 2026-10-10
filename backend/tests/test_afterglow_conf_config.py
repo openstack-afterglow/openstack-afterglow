@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tomllib
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 import yaml
@@ -73,12 +74,16 @@ def test_helm_mcp_ingress_falls_back_to_public_api_base(public_api_base, expecte
         capture_output=True,
         text=True,
     )
-    ingress = next(document for document in yaml.safe_load_all(rendered.stdout) if document["kind"] == "Ingress")
+    ingress = next(
+        document
+        for document in yaml.safe_load_all(rendered.stdout)
+        if document["metadata"]["name"] == "afterglow-mcp-ingress"
+    )
     mcp_rule = next(rule for rule in ingress["spec"]["rules"] if rule["host"] == "mcp.example.test")
     paths = {entry["path"] for entry in mcp_rule["http"]["paths"]}
 
     assert "mcp.example.test" in ingress["spec"]["tls"][0]["hosts"]
-    assert paths == {expected_resource_path, "/.well-known"}
+    assert paths == {expected_resource_path, expected_resource_path + "/", "/.well-known/"}
 
 
 def _render_helm_ingress(*overrides: str) -> subprocess.CompletedProcess[str]:
@@ -94,13 +99,17 @@ def _render_helm_ingress(*overrides: str) -> subprocess.CompletedProcess[str]:
 def test_helm_explicit_origin_mcp_url_publishes_only_mcp_and_oauth_paths_on_the_dedicated_host():
     rendered = _render_helm_ingress("mcp.publicUrl=https://mcp.example.test/")
     assert rendered.returncode == 0, rendered.stderr
-    ingress = next(document for document in yaml.safe_load_all(rendered.stdout) if document["kind"] == "Ingress")
+    ingress = next(
+        document
+        for document in yaml.safe_load_all(rendered.stdout)
+        if document["metadata"]["name"] == "afterglow-mcp-ingress"
+    )
     mcp_rule = next(rule for rule in ingress["spec"]["rules"] if rule["host"] == "mcp.example.test")
 
     # The exact root resource, OAuth aliases and discovery reach the backend; /api/* does not.
     assert [
         (entry["path"], entry["pathType"], entry["backend"]["service"]["name"]) for entry in mcp_rule["http"]["paths"]
-    ] == [("/", "Exact", "backend"), ("/oauth", "Prefix", "backend"), ("/.well-known", "Prefix", "backend")]
+    ] == [("/", "Exact", "backend"), ("/oauth/", "Prefix", "backend"), ("/.well-known/", "Prefix", "backend")]
     assert "mcp.example.test" in ingress["spec"]["tls"][0]["hosts"]
 
 
@@ -112,19 +121,21 @@ def test_helm_refuses_an_origin_root_mcp_url_on_the_shared_web_host(authority):
     assert "dedicated host" in rendered.stderr
 
 
-def _ingress_service(rule, request_path):
+def _ingress_service(ingresses, host, request_path):
     matches = []
-    for entry in rule["http"]["paths"]:
-        path = entry["path"]
-        if entry["pathType"] == "Exact":
-            matched = request_path == path
-        else:
-            prefix = path.rstrip("/")
-            matched = path == "/" or request_path == prefix or request_path.startswith(prefix + "/")
-        if matched:
-            matches.append(entry)
-    winner = max(matches, key=lambda entry: (len(entry["path"]), entry["pathType"] == "Exact"))
-    return winner["backend"]["service"]["name"]
+    for ingress in ingresses:
+        priority = ingress["metadata"].get("annotations", {}).get("traefik.ingress.kubernetes.io/router.priority")
+        for rule in ingress["spec"]["rules"]:
+            if rule["host"] != host:
+                continue
+            for entry in rule["http"]["paths"]:
+                path = entry["path"]
+                exact = entry["pathType"] == "Exact"
+                if request_path == path if exact else request_path.startswith(path):
+                    matcher = "Path" if exact else "PathPrefix"
+                    rule_length = len(f"Host(`{host}`) && {matcher}(`{path}`)")
+                    matches.append((int(priority) if priority else rule_length, entry))
+    return max(matches, key=lambda item: item[0])[1]["backend"]["service"]["name"] if matches else None
 
 
 @pytest.mark.parametrize("host_kind", ["web", "api"])
@@ -139,8 +150,8 @@ def test_helm_explicit_shared_mcp_resource_routes_oauth_discovery_without_hijack
     host_override = f"ingress.host={host}" if host_kind == "web" else f"ingress.apiHosts[0]={host}"
     rendered = _render_helm_ingress(host_override, f"mcp.publicUrl=https://{authority}{resource_path}///")
     assert rendered.returncode == 0, rendered.stderr
-    ingress = next(document for document in yaml.safe_load_all(rendered.stdout) if document["kind"] == "Ingress")
-    rule = next(rule for rule in ingress["spec"]["rules"] if rule["host"] == host)
+    ingresses = list(yaml.safe_load_all(rendered.stdout))
+    ingress = next(document for document in ingresses if document["metadata"]["name"] == "afterglow-mcp-ingress")
 
     for path in (
         resource_path,
@@ -152,9 +163,9 @@ def test_helm_explicit_shared_mcp_resource_routes_oauth_discovery_without_hijack
         "/.well-known/oauth-protected-resource" + resource_path,
         "/.well-known/oauth-authorization-server" + resource_path + "/oauth",
     ):
-        assert _ingress_service(rule, path) == "backend", path
+        assert _ingress_service(ingresses, host, path) == "backend", path
     for path in (resource_path + "evil", "/mcpevil", "/oauth/mcp/authorize", "/account", "/"):
-        assert _ingress_service(rule, path) == "frontend", path
+        assert _ingress_service(ingresses, host, path) == "frontend", path
     annotations = ingress["metadata"]["annotations"]
     assert not any("rewrite" in key or "redirect" in key for key in annotations)
     assert host in ingress["spec"]["tls"][0]["hosts"]
@@ -166,12 +177,12 @@ def test_helm_unset_mcp_url_retains_shared_api_fallback():
         "app.publicApiBase=https://cloud.dmslab.re.kr",
     )
     assert rendered.returncode == 0, rendered.stderr
-    ingress = next(document for document in yaml.safe_load_all(rendered.stdout) if document["kind"] == "Ingress")
-    rule = next(rule for rule in ingress["spec"]["rules"] if rule["host"] == "cloud.dmslab.re.kr")
-    assert _ingress_service(rule, "/api/v1/mcp") == "backend"
-    assert _ingress_service(rule, "/api/v1/mcp/oauth/token") == "backend"
-    assert _ingress_service(rule, "/.well-known/oauth-protected-resource/api/v1/mcp") == "backend"
-    assert _ingress_service(rule, "/oauth/mcp/authorize") == "frontend"
+    ingresses = list(yaml.safe_load_all(rendered.stdout))
+    host = "cloud.dmslab.re.kr"
+    assert _ingress_service(ingresses, host, "/api/v1/mcp") == "backend"
+    assert _ingress_service(ingresses, host, "/api/v1/mcp/oauth/token") == "backend"
+    assert _ingress_service(ingresses, host, "/.well-known/oauth-protected-resource/api/v1/mcp") == "backend"
+    assert _ingress_service(ingresses, host, "/oauth/mcp/authorize") == "frontend"
 
 
 @pytest.mark.parametrize(
@@ -201,6 +212,89 @@ def isolated_config_dir(tmp_path, monkeypatch):
     yield tmp_path
     app_config.load_raw_toml.cache_clear()
     app_config.get_settings.cache_clear()
+
+
+@pytest.fixture
+def isolated_debug_config_dir(isolated_config_dir, monkeypatch):
+    """Restore all environment values seeded by get_settings after each case."""
+    monkeypatch.setattr(app_config, "_config_candidates", lambda: [isolated_config_dir / "afterglow.conf"])
+    with patch.dict(
+        os.environ,
+        {
+            "AFTERGLOW_ENV": "development",
+            "SECRET_KEY": "6ea4d2fb7c1e9d035a18be4f2740317c9d08ab72f3c46e901bf67ad5041c8ef2",
+        },
+        clear=True,
+    ):
+        yield isolated_config_dir
+
+
+@pytest.mark.parametrize(
+    ("config_text", "expected"),
+    [
+        pytest.param(None, False, id="no-config"),
+        pytest.param('[app]\nsite_name = "Debug Test"\n', False, id="no-default-section"),
+        pytest.param("[DEFAULT]\n", False, id="absent"),
+        pytest.param("[DEFAULT]\ndebug = false\n", False, id="false"),
+        pytest.param("[DEFAULT]\ndebug = true\n", True, id="true"),
+    ],
+)
+def test_get_settings_debug_from_afterglow_conf(isolated_debug_config_dir, config_text, expected):
+    if config_text is not None:
+        (isolated_debug_config_dir / "afterglow.conf").write_text(config_text, encoding="utf-8")
+
+    settings = app_config.get_settings()
+
+    assert settings.debug is expected
+
+
+@pytest.mark.parametrize(
+    ("toml_debug", "env_debug", "expected"),
+    [("false", "true", True), ("true", "false", False)],
+)
+def test_get_settings_debug_env_overrides_toml(isolated_debug_config_dir, toml_debug, env_debug, expected):
+    (isolated_debug_config_dir / "afterglow.conf").write_text(f"[DEFAULT]\ndebug = {toml_debug}\n", encoding="utf-8")
+    os.environ["DEBUG"] = env_debug
+
+    settings = app_config.get_settings()
+
+    assert settings.debug is expected
+
+
+@pytest.mark.parametrize(
+    ("base_debug", "override_debug", "env_debug", "expected"),
+    [
+        ("false", "true", None, True),
+        ("true", "false", None, False),
+        ("false", "true", "false", False),
+        ("true", "false", "true", True),
+    ],
+)
+def test_get_settings_debug_from_layered_config(
+    isolated_debug_config_dir, base_debug, override_debug, env_debug, expected
+):
+    (isolated_debug_config_dir / "afterglow.conf").write_text(f"[DEFAULT]\ndebug = {base_debug}\n", encoding="utf-8")
+    (isolated_debug_config_dir / "afterglow.local.conf").write_text(
+        f"[DEFAULT]\ndebug = {override_debug}\n", encoding="utf-8"
+    )
+    if env_debug is not None:
+        os.environ["DEBUG"] = env_debug
+
+    settings = app_config.get_settings()
+
+    assert settings.debug is expected
+
+
+@pytest.mark.parametrize("env_debug", [None, "true", "false"])
+@pytest.mark.parametrize("malformed_filename", ["afterglow.conf", "afterglow.local.conf"])
+def test_get_settings_debug_rejects_malformed_toml(isolated_debug_config_dir, env_debug, malformed_filename):
+    (isolated_debug_config_dir / "afterglow.conf").write_text("[DEFAULT]\ndebug = false\n", encoding="utf-8")
+    (isolated_debug_config_dir / malformed_filename).write_text("[DEFAULT]\ndebug=True\n", encoding="utf-8")
+    if env_debug is not None:
+        os.environ["DEBUG"] = env_debug
+
+    with pytest.raises(tomllib.TOMLDecodeError):
+        app_config.get_settings()
 
 
 def test_app_config_loads_afterglow_conf_toml_from_cwd(isolated_config_dir):

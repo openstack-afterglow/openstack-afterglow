@@ -1,4 +1,5 @@
 {
+	"lb.state.loadingInfo": "ロードバランサー情報を読み込み中...",
 	"router.loading": "読み込み中...",
 	"router.back": "← ダッシュボード",
 	"router.actions.delete": "削除",
@@ -184,7 +185,7 @@
 	"lb.actions.adding": "追加中…",
 	"lb.actions.remove": "除去",
 	"lb.actions.removing": "除去中…",
-	"lb.detail.loading": "ロードバランサー情報を読み込み中...",
+
 	"lb.listeners.title": "リスナー（{count}）",
 	"lb.listeners.empty": "リスナーがありません。",
 	"lb.form.optionalName": "名前（任意）",

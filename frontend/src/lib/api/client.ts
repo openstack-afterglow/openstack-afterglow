@@ -72,7 +72,7 @@ const AUTH_PUBLIC_PATHS = new Set(['/', '/login', '/auth/gitlab/callback']);
 
 
 /**
- * /api/admin/ 경로에서 403 응답 시 isSystemAdmin=false 강등 + /dashboard로 이동.
+ * /api/v1/admin/ 경로의 Afterglow 관리자 권한 거절만 강등 + /dashboard로 이동.
  * one-shot 가드로 무한 루프 방지.
  */
 async function handleAdminForbidden(): Promise<void> {
@@ -492,7 +492,7 @@ async function request<T>(
 		} catch {
 			detail = await res.text().catch(() => res.statusText);
 		}
-		if (res.status === 403 && path.includes('/admin')) {
+		if (res.status === 403 && /^\/api\/v1\/admin(?:\/|$|[?#])/.test(path)) {
 			void handleAdminForbidden();
 		}
 		throw new ApiError(res.status, detail, code);

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import json
 import re
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -22,11 +23,11 @@ from app.models.mcp_authority import (
     McpToolInvocation,
 )
 from app.services import k3s_crypto
-from app.services.mcp_control_plane import connection as mcp_connection
 from app.services.mcp_control_plane import lumen as mcp_lumen
 from app.services.mcp_control_plane.authority import (
     PERSONAL_TOKEN_PREFIX,
     _as_utc,
+    _grant_expiry,
     _new_personal_token,
     create_restricted_application_credential,
     delete_and_confirm_application_credential,
@@ -94,33 +95,81 @@ def test_lumen_frozen_snapshot_is_strict_and_opaque():
         mcp_lumen.frozen_snapshot({**payload, "extra": "rejected"})
 
 
-def test_restricted_credential_creation_uses_exact_scoped_connection():
-    captured = {}
+@pytest.mark.parametrize("microsecond", [0, 123456])
+@pytest.mark.parametrize(
+    "offset", [None, 0, 330, -420], ids=["configured-default", "utc", "positive-offset", "negative-offset"]
+)
+def test_restricted_credential_creation_uses_exact_scoped_connection(monkeypatch, microsecond, offset):
+    import requests
+    from keystoneauth1 import session, token_endpoint
+    from openstack.connection import Connection
+    from oslo_utils import timeutils
 
-    class Identity:
-        def create_application_credential(self, **kwargs):
-            captured.update(kwargs)
-            return type("Credential", (), {"id": "credential-id", "secret": "credential-secret"})()
+    now = datetime(2026, 10, 8, 10, 0, 0, microsecond, tzinfo=UTC)
+    supplied = None if offset is None else (now + timedelta(days=1)).astimezone(timezone(timedelta(minutes=offset)))
+    deadline = _grant_expiry(expires_at=supplied, now=now)
+    sent = []
 
-    conn = type(
-        "Conn",
-        (),
-        {"_afterglow_user_id": "user-a", "_afterglow_project_id": "project-a", "identity": Identity()},
-    )()
+    def send(_session, request, **kwargs):
+        if request.method == "GET":
+            assert request.url.rstrip("/") == "https://keystone.example.test/v3"
+            response = requests.Response()
+            response.status_code = 200
+            response.request = request
+            response.headers["Content-Type"] = "application/json"
+            response._content = json.dumps(
+                {
+                    "version": {
+                        "id": "v3.14",
+                        "status": "stable",
+                        "links": [{"rel": "self", "href": "https://keystone.example.test/v3/"}],
+                    }
+                }
+            ).encode()
+            return response
+        sent.append(request)
+        credential = json.loads(request.body)["application_credential"]
+        timestamp = credential["expires_at"]
+        # Keystone2025.2 parse_expiration_date adds Z before its installed oslo parser.
+        parsed = timeutils.parse_isotime(timestamp if timestamp.endswith("Z") else timestamp + "Z")
+        assert parsed.astimezone(UTC) == deadline
+        assert timestamp.endswith("Z")
+        assert credential["unrestricted"] is False
+        assert credential["roles"] == [{"name": "member"}]
+        assert request.method == "POST"
+        assert request.url == "https://keystone.example.test/v3/users/user-a/application_credentials"
+        response = requests.Response()
+        response.status_code = 201
+        response.request = request
+        response.headers["Content-Type"] = "application/json"
+        response._content = json.dumps(
+            {"application_credential": {**credential, "id": "credential-id", "secret": "credential-secret"}}
+        ).encode()
+        return response
 
-    created = create_restricted_application_credential(
-        conn,
-        owner_user_id="user-a",
-        owner_project_id="project-a",
-        upstream_name="afterglow-mcp-grant-a",
-        expires_at=__import__("datetime").datetime.now(__import__("datetime").UTC),
-        roles=[{"name": "member"}],
+    monkeypatch.setattr(requests.Session, "send", send)
+    auth = token_endpoint.Token(endpoint="https://keystone.example.test/v3", token="owner-project-token")
+    conn = Connection(
+        session=session.Session(auth=auth),
+        identity_endpoint_override="https://keystone.example.test/v3",
+        identity_api_version="3",
     )
+    conn._afterglow_user_id = "user-a"
+    conn._afterglow_project_id = "project-a"
+    try:
+        created = create_restricted_application_credential(
+            conn,
+            owner_user_id="user-a",
+            owner_project_id="project-a",
+            upstream_name="afterglow-mcp-grant-a",
+            expires_at=deadline if supplied is None else supplied,
+            roles=[{"name": "member"}],
+        )
+    finally:
+        conn.close()
 
     assert created == {"id": "credential-id", "secret": "credential-secret"}
-    assert captured["unrestricted"] is False
-    assert captured["roles"] == [{"name": "member"}]
-    assert captured["user"] == "user-a"
+    assert len(sent) == 1
 
 
 def test_orphan_cleanup_deletes_only_the_exact_deterministic_credential_name():
@@ -221,58 +270,6 @@ def test_mariadb_naive_deadlines_are_normalized_to_utc():
     naive = __import__("datetime").datetime(2026, 7, 27, 12, 0, 0)
 
     assert _as_utc(naive).tzinfo is __import__("datetime").UTC
-
-
-def test_consumer_connection_uses_only_the_grant_application_credential(monkeypatch):
-    captured = {}
-
-    class FakeConnection:
-        def __init__(self, **kwargs):
-            captured["connection"] = kwargs
-
-    class FakeSession:
-        def __init__(self, **kwargs):
-            captured["session"] = kwargs
-
-    class FakeCredential:
-        def __init__(self, **kwargs):
-            captured["credential"] = kwargs
-
-    import openstack
-
-    monkeypatch.setattr(mcp_connection.v3, "ApplicationCredential", FakeCredential)
-    monkeypatch.setattr(mcp_connection.ks_session, "Session", FakeSession)
-    monkeypatch.setattr(openstack.connection, "Connection", FakeConnection)
-    monkeypatch.setattr(
-        mcp_connection,
-        "get_settings",
-        lambda: SimpleNamespace(
-            os_auth_url="https://keystone.example.test/v3",
-            os_region_name="RegionOne",
-            os_interface="public",
-            ssl_verify=True,
-        ),
-    )
-    principal = SimpleNamespace(project_id="project-a", user_id="user-a")
-
-    conn = mcp_connection._build_connection("credential-id", "credential-secret", principal)
-
-    assert conn._afterglow_project_id == "project-a"
-    assert conn._afterglow_user_id == "user-a"
-    assert conn._afterglow_is_system_admin is False
-    assert captured["credential"] == {
-        "auth_url": "https://keystone.example.test/v3",
-        "application_credential_id": "credential-id",
-        "application_credential_secret": "credential-secret",
-        "project_id": "project-a",
-    }
-    assert captured["connection"]["app_name"] == "afterglow-consumer-mcp"
-
-
-def test_lumen_default_clear_route_precedes_dynamic_token_delete_route():
-    paths = [getattr(route, "path", "") for route in mcp_access.router.routes]
-
-    assert paths.index("/mcp-tokens/lumen-default") < paths.index("/mcp-tokens/{token_id}")
 
 
 @pytest.mark.asyncio

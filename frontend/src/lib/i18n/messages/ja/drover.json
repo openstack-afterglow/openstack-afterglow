@@ -1,11 +1,13 @@
 {
+	"clusterDetail.loading": "クラスターを取得中",
+	"deleteProgress.label": "クラスター削除の進捗",
 	"steps.securityGroup": "セキュリティーグループ",
 	"steps.serverVolume": "サーバーボリューム",
 	"steps.serverVm": "サーバーVM",
 	"steps.initialize": "k3sの初期化",
 	"steps.completed": "完了",
 	"steps.prepare": "準備",
-	"deleteProgress.label": "クラスターの削除進捗",
+
 	"rotateProgress.unreported": "進行状況のストリームが終了しました。クラスターの状態を更新して結果を確認してください。",
 	"steps.cleanupLb": "LBのクリーンアップ",
 	"steps.appCredential": "アプリケーション認証情報",
@@ -13,7 +15,6 @@
 	"steps.agentVm": "エージェントVM",
 	"steps.recordHistory": "履歴の記録",
 	"progress.unknownError": "不明なエラー",
-	"detail.loading": "クラスターを読み込み中",
 	"detail.lookupFailed": "取得に失敗しました（{status}）",
 	"detail.serverError": "サーバーエラー",
 	"detail.kubeconfigPending": "kubeconfigはまだ準備できていません。",

@@ -1,8 +1,12 @@
 # ---------------------------------------------------------------------------
 # Structured JSON logging
 # ---------------------------------------------------------------------------
+import json
 import logging
 import os
+from datetime import UTC, datetime
+
+from app.utils.log import WARNING_LOG_NAMESPACES, SensitiveDataFilter, is_sensitive, mask_str, sanitize_log_value
 
 _STANDARD_LOG_KEYS = set(logging.LogRecord("", 0, "", 0, "", (), None).__dict__)
 
@@ -13,20 +17,29 @@ class _JSONFormatter(logging.Formatter):
             "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
-            "message": record.getMessage(),
+            "message": mask_str(record.getMessage()),
         }
         for k, v in record.__dict__.items():
             if k not in _STANDARD_LOG_KEYS and k != "message":
-                entry[k] = v
+                entry[k] = "***" if is_sensitive(k) else sanitize_log_value(v)
+        if record.levelno == logging.DEBUG:
+            entry["source"] = {"module": record.module, "function": record.funcName, "line": record.lineno}
         if record.exc_info and record.exc_info[0]:
-            entry["exception"] = self.formatException(record.exc_info)
-        return json.dumps(entry, ensure_ascii=False, default=str)
+            # Exception text, source lines, locals and chained causes may contain
+            # arbitrary credentials. Keep only structural diagnostic metadata.
+            entry["exception"] = {"type": record.exc_info[0].__name__}
+            frames = []
+            tb = record.exc_info[2]
+            while tb is not None and len(frames) < 12:
+                frames.append({"function": tb.tb_frame.f_code.co_name, "line": tb.tb_lineno})
+                tb = tb.tb_next
+            entry["exception"]["frames"] = frames
+        return json.dumps(entry, ensure_ascii=False)
 
 
 def _setup_logging() -> None:
     from app.config import get_settings
     from app.utils.daily_size_handler import DailySizeHandler
-    from app.utils.log import SensitiveDataFilter
 
     cfg = get_settings()
 
@@ -54,10 +67,17 @@ def _setup_logging() -> None:
 
     level = getattr(logging, cfg.log_level.upper(), logging.INFO)
     root.setLevel(level)
-    logging.getLogger("openstack").setLevel(logging.WARNING)
-    logging.getLogger("urllib3").setLevel(logging.WARNING)
-    logging.getLogger("keystoneauth1").setLevel(logging.WARNING)
-    logging.getLogger("httpx").setLevel(logging.WARNING)
+    # Enable only Afterglow diagnostics, not third-party HTTP/SDK wire dumps.
+    logging.getLogger("app").setLevel(logging.DEBUG if cfg.debug else logging.NOTSET)
+    for namespace in WARNING_LOG_NAMESPACES:
+        logging.getLogger(namespace).setLevel(logging.WARNING)
+    logging.getLogger(__name__).debug(
+        "logging configuration",
+        extra={
+            "application_level": "DEBUG" if cfg.debug else logging.getLevelName(level),
+            "root_level": logging.getLevelName(level),
+        },
+    )
 
 
 _setup_logging()
@@ -81,10 +101,8 @@ def _mark(label: str) -> None:
 # stdlib
 # ---------------------------------------------------------------------------
 import asyncio
-import json
 import re
 import time
-from datetime import UTC, datetime
 
 _mark("stdlib")
 
@@ -436,6 +454,18 @@ async def request_logging_middleware(request: Request, call_next):
             "request",
             extra={"method": method, "path": path, "status": status, "duration_ms": round(duration_ms, 2)},
         )
+        if _logger.isEnabledFor(logging.DEBUG):
+            _logger.debug(
+                "request diagnostic",
+                extra={
+                    "method": method,
+                    "path": path,
+                    "status": status,
+                    "duration_ms": round(duration_ms, 2),
+                    "route_matched": path != "<unmatched>",
+                    "outcome": "server_error" if status >= 500 else "client_error" if status >= 400 else "completed",
+                },
+            )
 
 
 _CORS_ALLOW_HEADERS = "Content-Type, X-Project-Id, X-Afterglow-Page, Authorization, Idempotency-Key, Last-Event-ID"

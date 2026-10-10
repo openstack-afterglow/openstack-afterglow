@@ -59,6 +59,16 @@ Backend `uv.lock`, frontend Bun·npm lock, root CLI `uv.lock`, operator `uv.lock
 - 외부/presigned URL은 이 복구 경로와 브라우저 Authorization 주입 대상이 아니다. `downloadAuthenticated`는 설정된 API origin의 `/api/v1/` 경로만 인증하고 다른 URL은 자격 없이 요청한다. logout revocation fence와 늦은 401/cross-tab 회전 winner 보호를 유지한다.
 - 명시적 로그아웃은 진행 중인 refresh의 성공/실패를 관찰한 뒤 가능한 최신 token의 서버 폐기를 시도한다. Refresh나 폐기 통신 실패가 있어도 이 기기의 auth/storage는 정리하며, 서버 폐기를 확인하지 못한 경우 이를 경고한다. 일시 장애 때 자동으로 전체 세션을 삭제하거나 인증을 우회하지 않는다.
 
+### MCP OAuth와 개인 API 키
+
+- Inbound MCP resource는 `https://cloud.dmslab.re.kr/mcp`이며 client는 discovery가 광고하는 `/mcp/oauth/authorize`, `/mcp/oauth/token`, `/mcp/oauth/register`를 사용한다. Authorization URL만 주소창에 입력하는 것은 authorization request가 아니다. 등록한 `client_id`, 정확한 callback/resource, `response_type=code`, 허용 scope, PKCE S256과 state를 포함해야 한다.
+- 현재 DCR은 public client(`token_endpoint_auth_method=none`)와 authorization-code·refresh grant 모두를 요구한다. Loopback HTTP callback은 `127.0.0.1` 또는 `[::1]`처럼 IP literal이어야 하며 `localhost`나 arbitrary HTTP callback을 허용하지 않는다. 모든 MCP 제품의 등록 형식과 호환된다는 의미가 아니다.
+- Frontend 동의 ticket은 URL에서 제거해 `sessionStorage`에만 보존한다. Password/GitLab login 뒤 미선택 project를 먼저 선택하고, consent GET/approve/deny는 현재 browser access bearer와 `X-Project-Id`가 있는 scoped session에서만 수행한다. Ticket은 권한이나 access token이 아니다.
+- 승인은 현재 user/project의 restricted Keystone application credential과 grant를 생성한다. Client에는 opaque access/refresh token만 반환하고 upstream credential은 보내지 않는다. 개인 API 키 발급·검증·폐기는 별도 방식으로 유지하며 OAuth JSON에는 Authorization header나 client secret을 포함하지 않는다.
+- Refresh의 optional `client_id`가 있으면 최초 발급 code의 client와 일치해야 한다. 빈 값·다른 client·불명확한 persisted binding은 `invalid_grant`이며 token rotation이나 replay revocation을 일으키지 않는다. `client_id` 생략은 허용하고 올바른 client의 재사용은 기존 family/grant 폐기를 유지한다. Binding은 consumed code row에 남으므로 code expiry·authorization ticket cleanup 뒤에도 유지한다.
+- Access token은 15분, refresh token은 최대 30일이며 둘 다 grant deadline을 넘지 않는다. 계정에서 OAuth 접근을 회수하거나 `/mcp/oauth/revoke`를 호출하면 grant/family와 downstream authority를 기존 내구성 cleanup 경로로 폐기한다. Token·code·ticket·upstream secret은 문서·audit·QA receipt에 기록하지 않는다.
+- SDK 내부 schema cache refresh는 현재 principal에게 허용된 tool schema만 읽으며 cloud 권한을 부여하지 않는다. Client `tools/list`의 page-size·grant-bound cursor와 SDK input/output validation을 유지하고 모든 `tools/call`에서 registry의 현재 principal 권한·strict arguments·mutation ledger를 다시 적용한다. Manage principal의 schema가 cache에 있어도 read grant는 valid mutation을 dispatch할 수 없다. 운영 proof는 HTTP200과 함께 `isError=false` 및 실제 typed tool 결과를 확인한다.
+
 ### Claude Gateway 승인 shell과 BFF 경계
 
 - `/oauth/claude/authorize`는 device verification URL로 직접 열 수 있는 public UI shell이다. Complete-link의 `user_code`는 허용 alphabet/length로 검증·정규화해 `sessionStorage`에만 보존하고 `history.replaceState`로 query를 제거한다. Page response와 document는 `Cache-Control: no-store`, `Referrer-Policy: no-referrer`를 사용한다.
